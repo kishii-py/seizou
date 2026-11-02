@@ -189,7 +189,7 @@ def test_image_upload_download_delete(client, client_logged_in, manual, media_ro
     assert got["Content-Type"] == "image/png"
     assert got["Content-Disposition"].startswith("inline")
     assert "no-store" in got["Cache-Control"]
-    got.close()
+    b"".join(got.streaming_content)  # 読み切って閉じる (close() を自分で呼ばない。PostgreSQL で接続が閉じるため)
     for name in ("manual_update", "manual_detail"):
         page = client_logged_in.get(reverse(f"manuals:{name}", args=[manual.pk])).content.decode()
         assert "/media/" not in page
