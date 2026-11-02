@@ -27,13 +27,13 @@
     {% if recent_orders %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
         <tbody>
           {% for order in recent_orders %}
           <tr class="row-hover h-10">
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ order.obj.order_date|date:"Y-m-d" }}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-48 truncate" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
+            <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
             <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|comma:0 }}<span class="text-xs text-base-content/50"> 円</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
             <td class="whitespace-nowrap">{% if order.status == "shipped" %}<span class="badge badge-sm badge-soft badge-success">{{ order.obj.get_status_display }}</span>{% elif order.status == "partial" %}<span class="badge badge-sm badge-soft badge-warning">{{ order.obj.get_status_display }}</span>{% elif order.status == "cancelled" %}<span class="badge badge-sm badge-ghost text-base-content/50">{{ order.obj.get_status_display }}</span>{% else %}<span class="badge badge-sm badge-soft badge-primary">{{ order.obj.get_status_display }}</span>{% endif %}</td>
           </tr>
