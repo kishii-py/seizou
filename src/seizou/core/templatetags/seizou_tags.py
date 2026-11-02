@@ -2,13 +2,30 @@
 
 master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
+comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。
 """
+
+from decimal import Decimal
 
 from django import template
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
 
 register = template.Library()
+
+
+@register.filter
+def comma(value):
+    """数を 3 桁ごとの区切りで出す。1234.50 → 1,234.50、1200 → 1,200。数でない物はそのまま。"""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, (Decimal, float)):
+        return f"{value:,f}"
+    return value
 
 
 def modal_url(obj) -> str | None:

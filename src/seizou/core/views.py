@@ -25,15 +25,18 @@ from __future__ import annotations
 
 import csv
 from decimal import Decimal
+from importlib import import_module
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db import models
-from django.db.models import Q
+from django.contrib.auth.views import LoginView
+from django.db import DatabaseError, models
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import select_template
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
 from seizou.core import checks
@@ -56,6 +59,13 @@ OVERRIDABLE = (
 PAGE_SIZES = (20, 50, 100)
 DEFAULT_PAGE_SIZE = 50
 MASTER_APPS = ("masters",)
+
+#: 一覧で右寄せにし、合計を出す項目の型 (IntegerField は Positive… と Small… と Big… を含む)
+NUMERIC_FIELDS = (models.DecimalField, models.IntegerField, models.FloatField)
+#: 一覧で折り返さず、等幅の数字で出す項目の型 (DateTimeField は DateField の子)
+DATE_FIELDS = (models.DateField,)
+#: 詳細で絵として出すファイルの拡張子
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
 
 
 class Notice:
@@ -98,21 +108,42 @@ def display_value(obj, name: str):
     return value() if callable(value) else value
 
 
+def file_info(value) -> dict | None:
+    """FileField の値から link の材料 (url・名前・絵かどうか) を作る。空なら None。"""
+    name = getattr(value, "name", "") or ""
+    if not name:
+        return None
+    try:
+        url = value.url
+    except ValueError:
+        return None
+    return {"url": url, "name": name.rsplit("/", 1)[-1], "is_image": name.lower().endswith(IMAGE_SUFFIXES)}
+
+
 class ScreenMixin(LoginRequiredMixin):
     """画面の名前と 1 文。画面の目録 (manage.py seizou_screens)・説明書・左のメニューが読む。"""
 
     screen_name: str = ""
     screen_help: str = ""
 
+    @classmethod
+    def screen_app(cls) -> str:
+        """画面の部品の app の名前 (module の名前から。seizou.masters.views → masters)。見出しの絵に使う。"""
+        parts = cls.__module__.split(".")
+        return parts[-2] if len(parts) >= 2 else parts[-1]
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["screen_name"] = self.screen_name
         context["screen_help"] = self.screen_help
+        context["screen_app"] = self.screen_app()
         return context
 
 
 class ColumnSpec:
-    def __init__(self, model, item):
+    """一覧の列 1 つ。numeric (右寄せと合計) と is_date (折り返さない) はテンプレートが見る。"""
+
+    def __init__(self, model, item, ext_type: str | None = None):
         if isinstance(item, (tuple, list)):
             self.name, self.label = item[0], item[1]
         else:
@@ -127,6 +158,8 @@ class ColumnSpec:
             self.label = str(self.field.verbose_name) if self.field is not None else self.name
         self.sortable = self.field is not None or self.name.startswith(company_fields.EXT_PREFIX)
         self.desc_name = "-" + self.name
+        self.numeric = isinstance(self.field, NUMERIC_FIELDS) or ext_type == "number"
+        self.is_date = isinstance(self.field, DATE_FIELDS) or ext_type == "date"
 
     def order_key(self) -> str:
         if self.name.startswith(company_fields.EXT_PREFIX):
@@ -148,7 +181,7 @@ class BaseListView(ScreenMixin, ListView):
     def column_specs(self) -> list[ColumnSpec]:
         specs = [ColumnSpec(self.model, item) for item in self.columns]
         for col in company_fields.list_columns_for(self.model):
-            specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label)))
+            specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label), ext_type=col.type))
         return specs
 
     def sort_param(self) -> str:
@@ -198,19 +231,19 @@ class BaseListView(ScreenMixin, ListView):
             # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
             if master is None and spec.name == "name" and is_master(obj):
                 master = obj
-            cells.append({"value": value, "master": master})
+            cells.append({"value": value, "master": master, "numeric": spec.numeric, "date": spec.is_date})
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
 
     def totals_for(self, queryset, specs) -> list | None:
-        """絞り込みに追従する合計の行 (数の項目だけ。無ければ出さない)。"""
+        """絞り込みに追従する合計の行 (表の数の項目だけ。無ければ出さない)。1 列 = {"value", "numeric"}。"""
         sums = {}
         for spec in specs:
-            if isinstance(spec.field, (models.DecimalField, models.IntegerField, models.FloatField)):
-                sums[spec.name] = models.Sum(spec.name)
+            if isinstance(spec.field, NUMERIC_FIELDS):
+                sums[spec.name] = Sum(spec.name)
         if not sums:
             return None
         agg = queryset.aggregate(**sums)
-        return [agg.get(spec.name) for spec in specs]
+        return [{"value": agg.get(spec.name), "numeric": spec.numeric} for spec in specs]
 
     def query_without(self, *keys) -> str:
         params = self.request.GET.copy()
@@ -267,26 +300,39 @@ class BaseDetailView(ScreenMixin, DetailView):
     template_name = "core/detail.html"
 
     def field_items(self, obj) -> list[dict]:
+        """項目の一覧。1 項目 = {"label", "value", "master", "file"} (file はファイルの項目だけ、file_info の形)。"""
         items = []
         for f in obj._meta.concrete_fields:
             if f.primary_key or f.name in ("password",):
                 continue
             value = display_value(obj, f.name)
-            items.append({"label": str(f.verbose_name), "value": value, "master": value if is_master(value) else None})
+            is_file = isinstance(f, models.FileField)
+            items.append(
+                {
+                    "label": str(f.verbose_name),
+                    "value": "" if is_file else value,
+                    "master": value if is_master(value) else None,
+                    "file": file_info(value) if is_file else None,
+                }
+            )
         for col in company_fields.columns_for(obj.__class__):
-            items.append({"label": col.label, "value": company_fields.ext_value(obj, col.name), "master": None})
+            items.append({"label": col.label, "value": company_fields.ext_value(obj, col.name), "master": None, "file": None})
         return items
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         obj = context["object"]
-        context["fields"] = self.field_items(obj)
+        fields = self.field_items(obj)
+        context["fields"] = fields
+        context["files"] = [item for item in fields if item["file"]]
         context["tabs"] = [
             {"label": label, "rows": list(getattr(obj, related).all()[:100])}
             for label, related in self.tabs
             if hasattr(obj, related)
         ]
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
+        context["list_url"] = model_url(obj.__class__, "list")
+        context["subtitle"] = str(obj._meta.verbose_name)
         return context
 
 
@@ -321,10 +367,7 @@ class BaseFormView(ScreenMixin, FormView):
                 if self.object is not None and not form.is_bound:
                     form.initial[name] = company_fields.ext_value(self.object, name[len(company_fields.EXT_PREFIX):])
         for field in form.fields.values():
-            css = "checkbox" if isinstance(field.widget, forms_checkbox_types()) else "input input-bordered"
-            if isinstance(field.widget, forms_select_types()):
-                css = "select select-bordered"
-            field.widget.attrs.setdefault("class", css)
+            field.widget.attrs.setdefault("class", widget_css(field.widget))
         return form
 
     # --- 検査の層と service ---
@@ -402,16 +445,19 @@ class BaseFormView(ScreenMixin, FormView):
         return context
 
 
-def forms_checkbox_types():
+def widget_css(widget) -> str:
+    """欄の見た目の class (daisyUI)。form が class を持っていればそちらが勝つ (setdefault)。"""
     from django.forms import widgets
 
-    return (widgets.CheckboxInput,)
-
-
-def forms_select_types():
-    from django.forms import widgets
-
-    return (widgets.Select, widgets.SelectMultiple)
+    if isinstance(widget, widgets.CheckboxInput):
+        return "checkbox"
+    if isinstance(widget, (widgets.Select, widgets.SelectMultiple)):
+        return "select w-full"
+    if isinstance(widget, widgets.Textarea):
+        return "textarea w-full"
+    if isinstance(widget, widgets.FileInput):
+        return "file-input w-full"
+    return "input w-full"
 
 
 class BaseModalView(ScreenMixin, DetailView):
@@ -466,12 +512,144 @@ class BaseSelectView(ScreenMixin, View):
         return JsonResponse({"items": items, "more": more})
 
 
+class RememberLoginView(LoginView):
+    """ログイン。「ログイン状態を保存する」が外れていたら、ブラウザを閉じたときに切れる session にする。
+
+    check が入っていれば session の長さは設定の既定 (SESSION_COOKIE_AGE) のまま。
+    """
+
+    template_name = "core/login.html"
+
+    def form_valid(self, form):
+        # ログインが session の鍵を作り直すので、その後に長さを決める。
+        response = super().form_valid(form)
+        if not self.request.POST.get("remember"):
+            self.request.session.set_expiry(0)
+        return response
+
+
+def load_model(path: str):
+    """"seizou.masters.models.Item" の形の名前から model を返す。部品が無ければ None。"""
+    module_name, _sep, attr = path.rpartition(".")
+    try:
+        return getattr(import_module(module_name), attr)
+    except (ImportError, AttributeError):
+        return None
+
+
+def count_or_none(queryset) -> int | None:
+    try:
+        return queryset.count()
+    except DatabaseError:
+        return None
+
+
+def dashboard_stats() -> list[dict]:
+    """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
+
+    1 枚 = {"label", "value", "note", "icon", "url"}。
+    """
+    today = timezone.localdate()
+    stats: list[dict] = []
+    item_model = load_model("seizou.masters.models.Item")
+    if item_model is not None:
+        stats.append(
+            {
+                "label": "品目",
+                "value": count_or_none(item_model._default_manager.all()),
+                "note": "部品マスターにある品目の数",
+                "icon": "box",
+                "url": url_or_none("masters:item_list"),
+            }
+        )
+    partner_model = load_model("seizou.masters.models.Partner")
+    if partner_model is not None:
+        stats.append(
+            {
+                "label": "取引先",
+                "value": count_or_none(partner_model._default_manager.all()),
+                "note": "得意先と外注先の数",
+                "icon": "users",
+                "url": url_or_none("masters:partner_list"),
+            }
+        )
+    order_model = load_model("seizou.orders.models.Order")
+    if order_model is not None:
+        this_month = order_model._default_manager.filter(
+            order_date__year=today.year, order_date__month=today.month
+        ).exclude(status=order_model.STATUS_CANCELLED)
+        stats.append(
+            {
+                "label": "今月の受注",
+                "value": count_or_none(this_month),
+                "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
+                "icon": "clipboard",
+                "url": url_or_none("orders:order_list"),
+            }
+        )
+    line_model = load_model("seizou.orders.models.OrderLine")
+    if line_model is not None and order_model is not None:
+        open_lines = line_model._default_manager.filter(
+            order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL)
+        )
+        stats.append(
+            {
+                "label": "注残の明細",
+                "value": count_or_none(open_lines),
+                "note": "出荷が終わっていない受注の明細の数",
+                "icon": "activity",
+                "url": url_or_none("orders:order_list"),
+            }
+        )
+    inbox_model = load_model("seizou.connect.models.Inbox")
+    if inbox_model is not None:
+        waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
+        stats.append(
+            {
+                "label": "受信箱の未処理",
+                "value": count_or_none(waiting),
+                "note": "人が受け入れるのを待つ注文の数",
+                "icon": "inbox",
+                "url": url_or_none("connect:inbox_list"),
+            }
+        )
+    return [stat for stat in stats if stat["value"] is not None]
+
+
+def recent_orders(limit: int = 5) -> list[dict] | None:
+    """最近の受注 (直近 limit 件)。受注の部品が無いか DB が読めなければ None。
+
+    1 件 = {"obj", "url", "total", "line_count"}。total は明細の金額の合計 (読むだけ)。
+    """
+    order_model = load_model("seizou.orders.models.Order")
+    if order_model is None:
+        return None
+    try:
+        rows = list(
+            order_model._default_manager.select_related("customer")
+            .annotate(total=Sum("lines__amount"), line_count=Count("lines"))
+            .order_by("-order_date", "-pk")[:limit]
+        )
+    except DatabaseError:
+        return None
+    return [
+        {"obj": row, "url": model_url(order_model, "detail", row.pk), "total": row.total, "line_count": row.line_count}
+        for row in rows
+    ]
+
+
 class HomeView(ScreenMixin, TemplateView):
-    """最初の画面。左のメニューと同じ入口を並べる (ログインの後の移動先)。"""
+    """最初の画面 (ログインの後の移動先)。今日の数字のカード、最近の受注、左のメニューと同じ入口を並べる。"""
 
     screen_name = "はじめに"
-    screen_help = "左のメニューから画面を選びます。"
+    screen_help = "今日の数字と、よく使う画面の入口。左のメニューから画面を選びます。"
     template_name = "core/home.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["stats"] = dashboard_stats()
+        context["recent_orders"] = recent_orders()
+        return context
 
 
 def decimal_or_none(value) -> Decimal | None:
