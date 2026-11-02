@@ -148,7 +148,9 @@ def test_secret_never_appears_in_response_or_log(
     broken_env = "SEIZOU_PARTNER_BROKEN_SECRET"
     broken = _new_secret().removeprefix("whsec_")
     monkeypatch.setenv(broken_env, broken)
-    services.register_connection(partner, "", broken_env, "receive", user)
+    # 同じ取引先と向きの 2 行目は N19 の続きで止めるので、壊れた鍵のつながりは別の取引先に付ける。
+    other = create_partner({"code": "TC02", "name": "作り物の取引先 2", "role": "customer"}, user)
+    services.register_connection(other, "", broken_env, "receive", user)
 
     msg_id = str(uuid.uuid4())
     body = _order_body(msg_id)
