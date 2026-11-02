@@ -9,4 +9,5 @@ PARTS = [
     "seizou.masters",
     "seizou.orders",
     "seizou.connect",
+    "seizou.shipping",
 ]
