@@ -6,7 +6,7 @@
     <div class="flex h-16 shrink-0 items-center gap-2 border-b border-base-300 px-4">
       <a href="{% url 'core:home' %}" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-9 shrink-0 rounded-lg object-contain">
-        {% else %}<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first }}</span>{% endif %}
+        {% else %}<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first|upper }}</span>{% endif %}
         <span class="min-w-0">
           <span class="block truncate font-bold" title="{{ seizou.company_name }}">{{ seizou.company_name }}</span>
           <span class="block text-xs text-base-content/50">seizou</span>

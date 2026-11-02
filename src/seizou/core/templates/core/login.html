@@ -8,7 +8,7 @@
     <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-sm">
       <div class="flex flex-col items-center text-center">
         {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-12 rounded-xl object-contain">
-        {% else %}<span class="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first }}</span>{% endif %}
+        {% else %}<span class="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first|upper }}</span>{% endif %}
         <p class="mt-4 text-lg font-bold">{{ seizou.company_name }}</p>
         <p class="mt-2 text-xs text-base-content/50">生産管理</p>
       </div>
