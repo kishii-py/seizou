@@ -1,5 +1,4 @@
 {% load seizou_icons %}
-{# 知らせは 3 種類だけ: 止まった (赤)・知らせ (黄)・できた (緑)。文は何が起きて何をすればよいか。 #}
+{# 入力の途中の知らせは 2 種類だけ: 止まった (赤)・知らせ (黄)。文は何が起きて何をすればよいか。済んだ事の知らせ (messages) は右上の toast (_toasts.html)。 #}
 {% if notice %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-mono font-medium">{{ notice.code }}</span> {{ notice.message }}</span></div>{% endif %}
 {% for warning in warnings %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-mono font-medium">{{ warning.code }}</span> {{ warning.message }}</span></div>{% endfor %}
-{% if messages %}{% for message in messages %}{% if message.level_tag == 'error' %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ message }}</span></div>{% elif message.level_tag == 'warning' %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ message }}</span></div>{% else %}<div class="alert alert-success alert-soft mb-4" role="status">{% icon "check" "size-5" %}<span>{{ message }}</span></div>{% endif %}{% endfor %}{% endif %}
