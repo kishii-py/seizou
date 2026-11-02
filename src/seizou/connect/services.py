@@ -156,3 +156,133 @@ def _refuse(message: str, msg_id):
     """断った事をログに 1 行残し、断る理由を返す。本文と鍵の値はログに出さない。"""
     logger.warning("受け口で断った: %s (webhook-id=%r)", message, msg_id)
     return message
+
+
+def send_order(purchase_order, user):
+    """発注を注文のデータにし、署名して相手の受け口へ送る。送った物は Outbox に 1 行残して返す。
+
+    - つながりは発注の取引先の、向き「送る」の物。無ければ ValueError。発注が「取消」でも ValueError。
+    - 本文は鍵の並びを固定した JSON の bytes。署名はこの bytes のまま (整形し直さない)。
+    - 相手への HTTP は transaction.atomic の外で送る (R17)。待ちは 10 秒。
+    - 相手の返事は日本語の短い文で Outbox.response に書く。200 (受け取った) なら発注を「送った」にする。
+      鍵が無い・断られた・届かないときは例外にせず、発注は「作成」のまま (人が「送り直す」を押す)。
+    - 鍵の値・本文・見出しの値をログと返す物に出さない。
+    """
+    # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
+    import requests
+    from django.utils import timezone
+
+    from seizou.core.conf import company_id
+    from seizou.core.services import company
+    from seizou.purchasing import services as purchasing_services
+
+    from .models import Outbox
+
+    partner = purchase_order.partner
+    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+        raise ValueError(f"発注 {purchase_order.po_no} は取り消してあるので送れません。")
+    connection = (
+        Connection.objects.filter(partner=partner, direction=Connection.DIRECTION_SEND)
+        .order_by("pk")
+        .first()
+    )
+    if connection is None:
+        raise ValueError(
+            f"取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
+        )
+
+    message_id = uuid.uuid4()
+    lines = [
+        {
+            "line_no": line.line_no,
+            "part_no": line.item.part_no,
+            "part_name": line.item.name,
+            "qty": str(line.qty),
+            "unit": line.unit,
+            "unit_price": str(line.unit_price),
+            "due_date": line.due_date.isoformat() if line.due_date else None,
+            "note": line.note,
+        }
+        for line in purchase_order.lines.select_related("item").order_by("line_no")
+    ]
+    order_data = {
+        "id": str(message_id),
+        "kind": "order",
+        "sent_at": timezone.localtime().isoformat(),
+        "order_no": purchase_order.po_no,
+        "order_date": purchase_order.order_date.isoformat(),
+        "buyer": {"id": company_id(), "name": company().name},
+        "supplier": {"code": partner.code, "name": partner.name},
+        "note": purchase_order.note,
+        "lines": lines,
+    }
+    raw = json.dumps(order_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+
+    with transaction.atomic():
+        outbox = Outbox.objects.create(
+            message_id=message_id,
+            connection=connection,
+            purchase_order=purchase_order,
+            response="送っています",
+        )
+
+    secret = os.environ.get(connection.secret_env)
+    signed = None
+    if not secret:
+        reply = (
+            f"鍵の置き場 {connection.secret_env} に値が無いので送っていません。.env に置いてください。"
+        )
+        kind = "no_secret"
+    else:
+        try:
+            signed = signing.headers_for(secret, str(message_id), raw)
+        except ValueError:
+            # 鍵の形 (接頭辞つきの base64) の誤り。文に鍵の値を入れない。
+            reply = (
+                f"鍵の置き場 {connection.secret_env} の値が鍵の形 (接頭辞つきの base64) でないので"
+                "送っていません。.env の値を確かめてください。"
+            )
+            kind = "bad_secret"
+
+    if signed is not None:
+        # R17: ここは atomic の外。
+        try:
+            answer = requests.post(
+                connection.url,
+                data=raw,
+                headers={**signed, "Content-Type": "application/json"},
+                timeout=10,
+            )
+        except requests.RequestException as exc:
+            reply = f"届きません: {type(exc).__name__}"
+            kind = "unreachable"
+        else:
+            if answer.status_code == 200:
+                reply = "受け取った"
+                kind = "received"
+            elif answer.status_code == 400:
+                # 返事の JSON の message (200 字まで)。読めなければ決まった文。
+                try:
+                    refused = answer.json().get("message", "")
+                except (ValueError, AttributeError):
+                    refused = ""
+                if not isinstance(refused, str) or not refused:
+                    refused = "理由が読めません"
+                reply = f"断られた: {refused[:200]}"
+                kind = "rejected"
+            else:
+                reply = f"返事が読めません (HTTP {answer.status_code})"
+                kind = "unreadable"
+
+    with transaction.atomic():
+        outbox.response = reply[: Outbox._meta.get_field("response").max_length]
+        outbox.save(update_fields=["response"])
+        if kind == "received":
+            purchasing_services.mark_sent(purchase_order, user)
+
+    logger.info(
+        "注文を送った: 発注 %s 番号 %s 返事の種類 %s", purchase_order.po_no, message_id, kind
+    )
+    return outbox

@@ -88,3 +88,36 @@ class Inbox(models.Model):
     def __str__(self):
         received = timezone.localtime(self.received_at)
         return f"{self.get_kind_display()} {self.partner.name} {received:%Y-%m-%d %H:%M}"
+
+
+class Outbox(models.Model):
+    """送った注文。connect.services.send_order が 1 回送るごとに 1 行を作る。
+
+    番号は見出しの webhook-id と同じ uuid4。相手の返事は日本語の短い文で持つ。
+    鍵の値と本文は持たない。
+    """
+
+    message_id = models.UUIDField("番号", unique=True)
+    connection = models.ForeignKey(
+        Connection,
+        verbose_name="つながり",
+        on_delete=models.PROTECT,
+        related_name="outbox_messages",
+    )
+    purchase_order = models.ForeignKey(
+        "purchasing.PurchaseOrder",
+        verbose_name="元の発注",
+        on_delete=models.PROTECT,
+        related_name="outbox_messages",
+    )
+    sent_at = models.DateTimeField("送った日時", default=timezone.now)
+    response = models.CharField("相手の返事", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "送った注文"
+        verbose_name_plural = "送った注文"
+        ordering = ["-sent_at", "-id"]
+
+    def __str__(self):
+        sent = timezone.localtime(self.sent_at)
+        return f"{sent:%Y-%m-%d %H:%M} {self.response}"
