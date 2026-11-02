@@ -76,7 +76,8 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
     width = max([len(headers), *(len(row) for _line, row in body)])
     headers += [""] * (width - len(headers))
 
-    by_label = _fields_by_label(model)
+    # 画面で入れられない列 (editable=False。例 図面の表示用) は CSV からも書かせない。
+    by_label = {label: f for label, f in _fields_by_label(model).items() if f.editable}
     registration = company_fields.registration_for(model)
     ext_by_label = {c.label: c for c in registration.columns} if registration else {}
 
@@ -123,7 +124,7 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
 
 def header_labels(model, *, skip=SKIP_HEADERS):
     """見本の CSV の見出し。表の列 (主キーを除く) の今の verbose_name を表の並びで、その後に会社ごとの項目の名前。"""
-    labels = [str(f.verbose_name) for f in model._meta.concrete_fields if not f.primary_key]
+    labels = [str(f.verbose_name) for f in model._meta.concrete_fields if not f.primary_key and f.editable]
     registration = company_fields.registration_for(model)
     labels += [c.label for c in registration.columns] if registration else []
     return [label for label in labels if label not in skip]
