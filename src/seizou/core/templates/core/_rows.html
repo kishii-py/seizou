@@ -1,26 +1,54 @@
-{% load seizou_tags %}
-<div class="overflow-x-auto bg-base-100 rounded shadow">
-<table class="table table-sm table-pin-rows">
-  <thead><tr>
-    {% for col in columns %}<th>{% if col.sortable %}<a href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %} ▲{% elif sort == col.desc_name %} ▼{% endif %}</a>{% else %}{{ col.label }}{% endif %}</th>{% endfor %}
+{% load seizou_tags seizou_icons %}
+{# 一覧の表の部分 (htmx はここだけを返す)。数は右寄せ・日付と識別子は等幅・長い字は省略して title に全文・行の高さは一定。 #}
+{% if rows %}
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm table-zebra table-pin-rows">
+  <thead><tr class="bg-base-200 text-base-content/70">
+    {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
+      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+    </th>{% endfor %}
   </tr></thead>
   <tbody>
     {% for row in rows %}
-    <tr id="row-{{ row.pk }}" class="hover cursor-pointer" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
-      {% for cell in row.cells %}<td>{% if cell.master %}{% master_link cell.master cell.value %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>{% endfor %}
+    <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+      {% for cell in row.cells %}
+      {% if cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+      {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
+      {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+      {% elif forloop.first and row.url %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>
+      {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+      {% endif %}
+      {% endfor %}
     </tr>
-    {% empty %}
-    <tr><td colspan="{{ columns|length }}" class="text-center opacity-60">まだ 1 件もありません。</td></tr>
     {% endfor %}
   </tbody>
-  {% if totals %}<tfoot><tr>{% for cell in totals %}<td class="font-bold">{{ cell|default_if_none:"" }}</td>{% endfor %}</tr></tfoot>{% endif %}
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}</tr></tfoot>{% endif %}
 </table>
 </div>
-<div class="flex items-center gap-2 mt-2 text-sm">
-  <span>{{ page_obj.start_index }}〜{{ page_obj.end_index }} / {{ paginator.count }} 件</span>
-  <div class="join ml-auto">
-    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true">前へ</a>{% endif %}
-    <span class="join-item btn btn-sm btn-disabled">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
-    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true">次へ</a>{% endif %}
-  </div>
+<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
+  {% if paginator.num_pages > 1 %}
+  <nav class="join" aria-label="ページ送り">
+    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="前のページ">{% icon "chevron-left" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-left" "size-4" %}</span>{% endif %}
+    <span class="join-item btn btn-sm pointer-events-none tabular-nums">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="次のページ">{% icon "chevron-right" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-right" "size-4" %}</span>{% endif %}
+  </nav>
+  {% endif %}
 </div>
+{% else %}
+{# 空の一覧: 絵と 1 文と次の操作 (主色のボタンは見出しの右の 1 つだけなので、ここは枠だけのボタン)。 #}
+<div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+  {% if search_q %}
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
+  <p class="mt-4 font-medium">「{{ search_q }}」に合う物はありません。</p>
+  <p class="mt-2 text-xs text-base-content/50">言葉を短くするか、絞り込みをクリアしてください。</p>
+  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ request.path }}">{% icon "x" "size-4" %}絞り込みをクリア</a>
+  {% else %}
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <p class="mt-4 font-medium">まだ 1 件もありません。</p>
+  {% if create_url %}<p class="mt-2 text-xs text-base-content/50">「新しく入れる」から 1 件目を入れます。</p>
+  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ create_url }}">{% icon "plus" "size-4" %}新しく入れる</a>{% endif %}
+  {% endif %}
+</div>
+{% endif %}
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}

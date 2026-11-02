@@ -1,0 +1,39 @@
+{% load seizou_icons %}
+{# 左のメニュー: 会社の印と名前、区分ごとの入口 (今の画面は主色の薄い地)、下に利用者とログアウト。 #}
+<div class="drawer-side z-40">
+  <label for="seizou-drawer" aria-label="メニューを閉じる" class="drawer-overlay"></label>
+  <aside class="flex min-h-full w-64 flex-col border-r border-base-300 bg-base-100">
+    <div class="flex h-16 shrink-0 items-center gap-2 border-b border-base-300 px-4">
+      <a href="{% url 'core:home' %}" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+        {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-9 shrink-0 rounded-lg object-contain">
+        {% else %}<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first|upper }}</span>{% endif %}
+        <span class="min-w-0">
+          <span class="block truncate font-bold" title="{{ seizou.company_name }}">{{ seizou.company_name }}</span>
+          <span class="block text-xs text-base-content/50">seizou</span>
+        </span>
+      </a>
+      <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">
+      {% for section in seizou.sections %}
+      <div class="mb-6">
+        {% if section.show_label %}<p class="mb-2 px-2 text-xs font-medium text-base-content/50">{{ section.label }}</p>{% endif %}
+        <ul class="flex flex-col">
+          {% for item in section.items %}
+          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span></a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </nav>
+    {% if user.is_authenticated %}
+    {% with name=user.get_full_name|default:user.get_username %}
+    <div class="flex shrink-0 items-center gap-2 border-t border-base-300 p-4">
+      <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{{ name|first|upper }}</span>
+      <span class="min-w-0 flex-1 truncate font-medium" title="{{ name }}">{{ name }}</span>
+      <form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button class="btn btn-ghost btn-square btn-sm" type="submit" title="ログアウト" aria-label="ログアウト">{% icon "logout" "size-4" %}</button></form>
+    </div>
+    {% endwith %}
+    {% endif %}
+  </aside>
+</div>
