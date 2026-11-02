@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.urls import reverse
 
 from seizou.core import settings_screen
@@ -40,7 +41,8 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     assert "アカウント管理" in body and "まだ入っていない" in body
     assert "ない (読み取りとチャットは使えない)" in body
     assert "決めていない (書く道具は断る)" in body
-    assert "SQLite" in body
+    # データベースの名前は CI の postgres の組でも通るよう、つないでいる物から決める (sqlite と postgresql の 2 つ)
+    assert {"sqlite": "SQLite", "postgresql": "PostgreSQL"}[connection.vendor] in body
 
 
 def test_settings_screen_hides_key_values(logged_in, monkeypatch):

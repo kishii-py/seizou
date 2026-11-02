@@ -16,9 +16,10 @@ seizou 自身のライセンスは Apache-2.0 (本文は LICENSE)。この文書
 
 - 版と出所の URL は、同梱物の版の一覧のファイル (`scripts/vendor.toml`) と同じにする。版を上げるときは、`scripts/vendor.toml` とこの表を一緒に書き換える。
 - Noto Sans JP は、可変のフォント 1 本 (`NotoSansJP-VF.ttf`) を同梱し、帳票の Regular と Bold はこの 1 本から作る。配布元に、日本語の Regular と Bold の static な TrueType が無いため (`scripts/vendor.toml` の `noto-sans-jp` の項目の説明)。
-- ライセンスの全文は、同梱物の横に置くファイルを指す。フォントの OFL の全文は `src/seizou/core/static/fonts/OFL.txt` に置いた。JS と CSS の LICENSE は公式の配布物から写す。JS と CSS の全文の置き場: [空欄: 全文のファイルのパス・同梱物の横に置いたときに作者が埋める]
-- Apache-2.0 の全文は LICENSE と同じなので、ここには写さない。
-- Tom Select の NOTICE: 未確認 (同梱するときに写す)。
+- ライセンスの全文は、同梱物の横に置くファイルを指す。フォントの OFL の全文は `src/seizou/core/static/fonts/OFL.txt` に置いた。JS と CSS の全文は `src/seizou/core/static/vendor/` に置いた (2026-11-03 に npm の同じ版の配布物の `LICENSE` をそのまま写した): `LICENSE-htmx.txt` (0BSD。htmx.org 2.0.11)・`LICENSE-tom-select.txt` (Apache-2.0。tom-select 2.4.3。末尾に著作権の表示を含む)・`LICENSE-tailwindcss.txt` (MIT。tailwindcss 4.3.3)・`LICENSE-daisyui.txt` (MIT。daisyui 5.7.50)。
+- Tailwind CSS と daisyUI は CSS を作る道具で、道具そのものは同梱しない。ただし作った `app.css` に両方の CSS (daisyUI の部品の見た目と Tailwind の決まり) が入るので、MIT の条件 (著作権と許諾の表示を写しに含める) のために全文を上に置いた。
+- Apache-2.0 の本文は seizou 自身の LICENSE と同じだが、Tom Select の `LICENSE` のファイルは末尾に著作権の表示 (2013〜2015 Brian Reavis) を含むので、そのまま置いた。
+- Tom Select の NOTICE: npm の 2.4.3 の配布物に NOTICE のファイルは無い (配布物の一番上にあるのは `LICENSE`・`package.json`・`README.md` と `dist/` だけ。2026-11-03 に jsDelivr の一覧で確かめた)。写す物は無い。
 - `pyproject.toml` の license の式は、`Apache-2.0 AND MIT AND 0BSD AND OFL-1.1` と一致させる。
 
 ## Python の依存 (同梱しない)

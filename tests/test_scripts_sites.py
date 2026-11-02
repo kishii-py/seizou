@@ -67,13 +67,9 @@ def test_port_is_open_sees_a_listening_socket(sites):
 
 def test_start_command_uses_noreload(sites, tmp_path):
     site = sites.Site(id="a_co", path=tmp_path / "a_co", port=8101)
-    assert sites.start_command(site, Path("/venv/bin/python3")) == [
-        "/venv/bin/python3",
-        "manage.py",
-        "runserver",
-        "8101",
-        "--noreload",
-    ]
+    # Windows では Path("/venv/bin/python3") が "\\venv\\bin\\python3" になるので、字の期待は str(python) で作る
+    python = Path("/venv/bin/python3")
+    assert sites.start_command(site, python) == [str(python), "manage.py", "runserver", "8101", "--noreload"]
 
 
 def test_start_skips_when_port_already_open(sites, tmp_path, monkeypatch):
