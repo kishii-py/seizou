@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import AcceptForm, RejectForm
+from .forms import AcceptForm, ConnectionForm, RejectForm
 from .models import Connection, Inbox
 
 
@@ -84,3 +84,28 @@ class ConnectionListView(BaseListView):
     screen_help = "取引先ごとの受け口と、鍵の置き場の名前。鍵の値は .env にだけ置き、画面には出しません。"
     columns = ("partner", "direction", "url", "secret_env", ("secret_state", "鍵の設定"))
     ordering = ("partner", "direction")
+
+
+# つながりの新規登録・詳細・編集。書く処理は services の register_connection・update_connection だけ (R13)。
+# 鍵の値の欄は持たず、詳細には値が置いてあるか (済み / まだ) と、.env に足す 1 行の名前の形だけを出す。
+class ConnectionCreateView(BaseFormView):
+    model = Connection
+    form_class = ConnectionForm
+    service = staticmethod(services.register_connection)
+    screen_name = "つながりの新規登録"
+    screen_help = "取引先・向き・受け口の URL・鍵の置き場の名前を入れて保存します。鍵の値はここに入れず、.env に置きます。"
+
+
+class ConnectionDetailView(BaseDetailView):
+    model = Connection
+    screen_name = "つながりの詳細"
+    screen_help = "取引先との受け口と鍵の置き場の名前。鍵の値は画面に出さず、置いてあるか (済み / まだ) だけを出します。"
+    template_name = "connect/connection_detail.html"
+
+
+class ConnectionUpdateView(BaseFormView):
+    model = Connection
+    form_class = ConnectionForm
+    service = staticmethod(services.update_connection)
+    screen_name = "つながりの編集"
+    screen_help = "受け口の URL や鍵の置き場の名前を直して保存します。鍵の値はここに入れず、.env に置きます。"

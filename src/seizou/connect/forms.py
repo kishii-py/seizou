@@ -8,9 +8,10 @@ form が見るのは欄の型と必須だけ。決まり (2 回目の受け入�
 from django import forms
 from django.apps import apps
 
+from seizou.core.forms import ServiceModelForm
 from seizou.masters.services import resolve_partner_item
 
-from .models import Inbox
+from .models import Connection, Inbox
 
 
 def _item_model():
@@ -72,3 +73,44 @@ class RejectForm(forms.Form):
 
     def service_kwargs(self):
         return {"reason": self.cleaned_data["reason"]}
+
+
+class ConnectionForm(ServiceModelForm):
+    """つながりの新規登録と編集の form。鍵の値の欄は持たない (値は .env にだけ置く)。
+
+    受け口の URL は Meta.fields に入れず、form の欄として書く。表の URLField の検査は点の無い PC の名前を断るので、
+    URL の確かめを services (_check_connection) の 1 か所にするため。
+    service_kwargs() は新規登録 (register_connection) と編集 (update_connection) で同じ辞書を返す。
+    """
+
+    url = forms.CharField(
+        label="受け口の URL",
+        max_length=200,
+        required=False,
+        help_text="送る向きのときだけ入れます。例 http://127.0.0.1:8002/connect/receive/order/ 。PC の名前 (点の無い名前) も使えます。",
+    )
+
+    field_order = ["partner", "direction", "url", "secret_env"]
+
+    class Meta:
+        model = Connection
+        fields = ["partner", "direction", "secret_env"]
+        help_texts = {
+            "direction": "送る = この会社が発注を送る相手。受ける = 相手から注文を受け取る。両方の向きでつなぐときは、2 行に分けて登録します。",
+            "secret_env": "鍵の値ではなく、値を入れる環境変数の名前です (SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET)。値は .env にだけ置きます。",
+        }
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, instance=instance, **kwargs)
+        if instance is not None:
+            # url は Meta.fields の外なので、ModelForm は今の値を入れない。編集の画面で空にならないよう入れる。
+            self.initial["url"] = self.instance.url
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {
+            "partner": data["partner"],
+            "url": data["url"].strip(),
+            "secret_env": data["secret_env"].strip(),
+            "direction": data["direction"],
+        }
