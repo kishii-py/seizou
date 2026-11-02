@@ -18,6 +18,8 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   指示書 (workorders.yaml)・出荷 (shipments.yaml)・納品書 (delivery_notes.yaml)・請求書 (invoices.yaml)。
   受注の明細は 得意先の取引先コード × 得意先の注文番号 × 行番号、出荷は 受注の明細 × 出荷日 で指す。
   納品書と指示書の発行日は、services が今日にするので、読み込みの日になる。
+- 最後に、部品が持つ種 (部品の demo_seed.load(seeds_dir, user)。今は業務マニュアル = seizou.manuals) を呼ぶ。
+  部品が入っていないときと、入れた物も飛ばした物も 0 のときは、出力の行を出さない。
 """
 
 from __future__ import annotations
@@ -26,9 +28,11 @@ import csv
 import datetime
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
+from importlib import import_module
 from pathlib import Path
 
 import yaml
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files import File
 from django.db import models, transaction
@@ -64,6 +68,9 @@ MORE_SEED_FILES = {
     "請求書": "invoices.yaml",
 }
 MORE_YAML_ROOT_KEYS = {"指示書": "指示書", "出荷": "出荷", "納品書": "納品書", "請求書": "請求書"}
+
+# 部品が持つ種 (種類の名前, 部品の app)。部品の demo_seed.load(seeds_dir, user) が {"入れた": n, "飛ばした": m} を返す。
+PART_SEEDS = (("業務マニュアル", "seizou.manuals"),)
 
 ITEM_PROCESS_HEADERS = ("自社品番", "工程コード", "順")
 LINE_REF_KEYS = ("得意先の取引先コード", "得意先の注文番号", "行番号")
@@ -685,6 +692,17 @@ def _first_admin():
     return get_user_model().objects.filter(is_superuser=True).order_by("pk").first()
 
 
+def _load_part_seed(app, seeds_dir, user):
+    """部品の demo_seed.load(seeds_dir, user) を呼ぶ。部品が入っていないか、入れた物も飛ばした物も 0 なら None。"""
+    if not apps.is_installed(app):
+        return None
+    counts = import_module(f"{app}.demo_seed").load(seeds_dir, user)
+    made, skipped = counts["入れた"], counts["飛ばした"]
+    if made == 0 and skipped == 0:
+        return None
+    return made, skipped
+
+
 def load(seeds_dir):
     """種のフォルダ (Path) を読んで入れる。種類ごとの {"入れた": n, "飛ばした": m} と、「注意」の文の並びを返す。"""
     seeds_dir = Path(seeds_dir)
@@ -702,6 +720,12 @@ def load(seeds_dir):
             summary[kind] = {"入れた": made, "飛ばした": skipped}
         for kind in MORE_KINDS:
             result = MORE_LOADERS[kind](seeds_dir, user, notices)
+            if result is not None:
+                read_more.append(kind)
+            made, skipped = result or (0, 0)
+            summary[kind] = {"入れた": made, "飛ばした": skipped}
+        for kind, app in PART_SEEDS:
+            result = _load_part_seed(app, seeds_dir, user)
             if result is not None:
                 read_more.append(kind)
             made, skipped = result or (0, 0)

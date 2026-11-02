@@ -633,3 +633,33 @@ def test_examples_new_kinds_go_into_an_existing_site(company_id, tmp_path, no_re
     assert summary["請求書"]["入れた"] == expected["請求書"]
     assert summary["標準の工程"]["入れた"] == 30
     assert summary["図面"]["入れた"] == expected["図面"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("company_id", "manuals"), [("a_machining", 2), ("b_plating", 1)])
+def test_examples_load_part_seeds(company_id, manuals, no_registration, capsys):
+    """部品が持つ種 (業務マニュアル) も同じ load で入り、2 回目は飛ばす。"""
+    from seizou.manuals.models import Manual
+
+    summary = demo.load(COMPANIES_DIR / company_id)
+
+    assert summary["業務マニュアル"] == {"入れた": manuals, "飛ばした": 0}
+    assert Manual.objects.count() == manuals
+    assert f"業務マニュアル: 入れた {manuals} 件・飛ばした 0 件" in capsys.readouterr().out
+
+    again = demo.load(COMPANIES_DIR / company_id)
+
+    assert again["業務マニュアル"] == {"入れた": 0, "飛ばした": manuals}
+    assert Manual.objects.count() == manuals
+
+
+@pytest.mark.django_db
+def test_part_seed_without_match_prints_nothing(tmp_path, capsys):
+    """種のフォルダの名前が部品の種に無い会社では、業務マニュアルの行を出さない (0 件の行を増やさない)。"""
+    get_user_model().objects.create_superuser("admin", password="pass-for-tests-only")
+    seeds = write_seeds(tmp_path / "seeds")
+
+    summary = demo.load(seeds)
+
+    assert summary["業務マニュアル"] == {"入れた": 0, "飛ばした": 0}
+    assert "業務マニュアル" not in capsys.readouterr().out
