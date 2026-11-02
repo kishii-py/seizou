@@ -24,11 +24,11 @@ from .models import Attachment
 
 class AttachmentListView(BaseListView):
     model = Attachment
-    columns = ("uploaded_at", "kind", "original_name", ("target_label", "対象"), "note")
+    columns = ("uploaded_at", "kind", "original_name", ("target_label", "付けた先"), "note")
     search_fields = ("original_name", "note")
     ordering = ("-uploaded_at", "-pk")
     screen_name = "添付ファイル"
-    screen_help = "記録に付けたファイルの一覧。行を押すと、付けた先の記録の詳細を開きます。"
+    screen_help = "受注や部品などの詳細の「添付ファイル」の枠から付けたファイルを、全部まとめて探す一覧。行を押すと、付けた先の詳細を開きます。"
 
 
 class AttachmentAddView(BaseFormView):
