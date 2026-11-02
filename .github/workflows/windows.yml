@@ -10,6 +10,9 @@ jobs:
     env:
       DJANGO_SETTINGS_MODULE: tests.settings
     steps:
+      # 改行を CRLF に変えずに取り出す (同梱物の sha256 の試験が Linux と同じ中身を見るため)。
+      - name: 改行を変えない設定にする
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.3.3
         with:
