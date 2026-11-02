@@ -28,6 +28,7 @@ URL の名前の約束 (画面どうしの移動に使う。無ければ link �
 from __future__ import annotations
 
 import csv
+import inspect
 from decimal import Decimal
 from importlib import import_module
 from urllib.parse import quote
@@ -453,7 +454,7 @@ class BaseFormView(ScreenMixin, FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        if self.object is not None and "instance" in self.form_class.__init__.__code__.co_varnames:
+        if self.object is not None and _accepts_instance(self.form_class):
             kwargs["instance"] = self.object
         return kwargs
 
@@ -562,6 +563,21 @@ def use_decimal_input(field) -> None:
     widget.is_required = old.is_required
     widget.is_localized = old.is_localized
     field.widget = widget
+
+
+def _accepts_instance(form_class) -> bool:
+    """form が instance= を受けるか。ModelForm (ServiceModelForm を含む) か、__init__ が instance の引数を名指ししている物だけ。
+
+    以前は form_class.__init__ の co_varnames を見ていたが、*args と **kwargs だけの __init__ (ServiceModelForm) を足したときに
+    編集の画面が空で開く不具合になったので、形で判断する。
+    """
+    if issubclass(form_class, django_forms.ModelForm):
+        return True
+    try:
+        parameters = inspect.signature(form_class.__init__).parameters
+    except (TypeError, ValueError):
+        return False
+    return "instance" in parameters
 
 
 def widget_css(widget) -> str:

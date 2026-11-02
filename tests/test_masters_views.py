@@ -89,3 +89,13 @@ def test_menu_lists_masters_screens(client_logged_in):
     response = client_logged_in.get(reverse("core:home"))
     body = response.content.decode()
     assert reverse("masters:item_list") in body and reverse("masters:partner_list") in body
+
+
+@pytest.mark.django_db
+def test_item_update_form_opens_with_current_values(client_logged_in):
+    """編集の画面は、今の値が入った状態で開く (ServiceModelForm に __init__ を足したときに空で開いた不具合の再発を止める)。"""
+    item = Item.objects.create(part_no="P-7007", name="作り物の軸受")
+    response = client_logged_in.get(reverse("masters:item_update", args=[item.pk]))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'value="P-7007"' in body and 'value="作り物の軸受"' in body
