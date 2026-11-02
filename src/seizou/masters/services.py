@@ -44,9 +44,12 @@ _ROUNDING_MODES = {
 }
 
 
-def _refuse_ext(ext):
+def _save_ext(obj, ext):
+    """会社ごとの項目 (ext) を拡張の表に書く。登録が無ければ core の fields が ValueError を投げる (黙って捨てない)。"""
     if ext is not None:
-        raise NotImplementedError("会社ごとの項目の保存は core の fields ができてから")
+        from seizou.core import fields
+
+        fields.save_ext(obj, ext)
 
 
 def _refuse_unknown_keys(data, allowed, table_name):
@@ -84,16 +87,16 @@ def _refuse_unknown_role(role):
 
 def create_item(data, user, *, ext=None):
     """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。"""
-    _refuse_ext(ext)
     _refuse_unknown_keys(data, _ITEM_KEYS, "品目")
     with transaction.atomic():
         _refuse_duplicate_part_no(data["part_no"])
-        return Item.objects.create(**data)
+        item = Item.objects.create(**data)
+        _save_ext(item, ext)
+        return item
 
 
 def update_item(item, data, user, *, ext=None):
     """data にある鍵だけを書き換える。品番を変えるときも一意を見る。"""
-    _refuse_ext(ext)
     _refuse_unknown_keys(data, _ITEM_KEYS, "品目")
     with transaction.atomic():
         if "part_no" in data:
@@ -101,22 +104,23 @@ def update_item(item, data, user, *, ext=None):
         for key, value in data.items():
             setattr(item, key, value)
         item.save()
+        _save_ext(item, ext)
         return item
 
 
 def create_partner(data, user, *, ext=None):
     """取引先を作る。役は customer・subcontractor・both のどれか。取引先コードは一意。"""
-    _refuse_ext(ext)
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     _refuse_unknown_role(data.get("role"))
     with transaction.atomic():
         _refuse_duplicate_partner_code(data["code"])
-        return Partner.objects.create(**data)
+        partner = Partner.objects.create(**data)
+        _save_ext(partner, ext)
+        return partner
 
 
 def update_partner(partner, data, user, *, ext=None):
     """data にある鍵だけを書き換える。役と取引先コードは create_partner と同じ決まりで見る。"""
-    _refuse_ext(ext)
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     if "role" in data:
         _refuse_unknown_role(data["role"])
@@ -126,6 +130,7 @@ def update_partner(partner, data, user, *, ext=None):
         for key, value in data.items():
             setattr(partner, key, value)
         partner.save()
+        _save_ext(partner, ext)
         return partner
 
 

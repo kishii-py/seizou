@@ -115,3 +115,32 @@ def ext_value(obj, column_name: str):
     if ext is None:
         return None
     return getattr(ext, column_name, None)
+
+
+def save_ext(obj, ext: dict | None):
+    """拡張の表の 1 行を書く (無ければ作る)。services が部品の表と同じトランザクションで呼ぶ。
+
+    登録 (register) が無いのに ext が来たら ValueError (黙って捨てると会社の項目が消えるため)。
+    """
+    if not ext:
+        return None
+    reg = registration_for(obj.__class__)
+    if reg is None:
+        raise ValueError(
+            f"{obj._meta.verbose_name}の会社ごとの項目が登録されていません。"
+            "会社のプロジェクトの fields を確かめてください。"
+        )
+    from django.apps import apps
+
+    ext_model = apps.get_model(reg.ext)
+    link_name = next(
+        f.name
+        for f in ext_model._meta.get_fields()
+        if getattr(f, "one_to_one", False) and f.related_model is obj.__class__
+    )
+    known = {c.name for c in reg.columns}
+    unknown = sorted(set(ext) - known)
+    if unknown:
+        raise ValueError(f"知らない会社ごとの項目 ({'・'.join(unknown)}) があります。")
+    row, _created = ext_model.objects.update_or_create(**{link_name: obj}, defaults=ext)
+    return row

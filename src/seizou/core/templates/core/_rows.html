@@ -7,7 +7,7 @@
   <tbody>
     {% for row in rows %}
     <tr id="row-{{ row.pk }}" class="hover cursor-pointer" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
-      {% for cell in row.cells %}<td>{% if cell.master %}{% master_link cell.master %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>{% endfor %}
+      {% for cell in row.cells %}<td>{% if cell.master %}{% master_link cell.master cell.value %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>{% endfor %}
     </tr>
     {% empty %}
     <tr><td colspan="{{ columns|length }}" class="text-center opacity-60">まだ 1 件もありません。</td></tr>
