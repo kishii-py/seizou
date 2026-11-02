@@ -172,3 +172,91 @@ def test_no_secret_like_values_in_docs():
         text = URL.sub(" ", _read(name))
         found = [run for run in SECRET_LIKE.findall(text) if _looks_secret(run)]
         assert not found, f"{name} に鍵の値に見える字の並びがある: {[run[:8] + '…' for run in found]}"
+
+
+# ---- 画面の一覧・プラグインの表・E2E・依存の確かめ (今夜ほかのレーンが画面を足しても落ちない形) ----
+# README に書いた物が実物にある、までを見る (部分集合)。実物の全部を README に並べさせない。
+
+
+def test_readme_has_plugin_screen_and_flow_sections():
+    text = _read("README.md")
+    headings = {line.strip() for line in text.splitlines() if line.startswith("## ")}
+    for heading in ["## Claude Code のプラグイン", "## 画面の一覧", "## 業務の流れ"]:
+        assert heading in headings, f"README に見出し「{heading}」が無い"
+    flow = {line.strip() for line in _section(text, "## 業務の流れ")}
+    for heading in ["### 生産計画", "### 注文書の読み取り", "### マニュアル", "### CSV の取り込み"]:
+        assert heading in flow, f"README の「業務の流れ」に小節「{heading}」が無い"
+
+
+# urls.py の MENU と、core の CORE_MENU の入口は、どちらも ("<字>", "<URL の名前>") の形で書いてある
+MENU_ENTRY = re.compile(r'\("([^"]+)", "')
+
+
+def _menu_labels_in_source():
+    labels = set()
+    for path in (ROOT / "src" / "seizou").glob("*/urls.py"):
+        labels.update(MENU_ENTRY.findall(path.read_text(encoding="utf-8")))
+    labels.update(MENU_ENTRY.findall(_read("src/seizou/core/context_processors.py")))
+    return labels
+
+
+def test_readme_menu_entries_exist_in_source():
+    rows = _table_rows(_section(_read("README.md"), "## 画面の一覧"))
+    assert rows, "README の画面の一覧に表が無い"
+    header = rows[0]
+    assert "入口" in header, "画面の一覧の表の見出しに「入口」が無い"
+    column = header.index("入口")
+    entries = [row[column] for row in rows[2:]]
+    assert entries, "画面の一覧の表に行が無い"
+    known = _menu_labels_in_source()
+    for entry in entries:
+        assert entry in known, f"画面の一覧の入口「{entry}」が、urls.py の MENU と CORE_MENU に無い"
+
+
+def test_readme_skill_table_matches_plugin_skills():
+    rows = _table_rows(_section(_read("README.md"), "## Claude Code のプラグイン"))
+    assert rows, "README のプラグインの節に表が無い"
+    documented = set()
+    for row in rows[2:]:
+        documented.update(re.findall(r"^/seizou:([a-z]+)$", row[0]))
+    on_disk = {path.parent.name for path in (ROOT / "plugin" / "skills").glob("*/SKILL.md")}
+    assert documented == on_disk, f"表の命令 {sorted(documented)} と plugin/skills の skill {sorted(on_disk)} が違う"
+
+
+def test_readme_e2e_env_names_are_in_conftest():
+    conftest = _read("tests/e2e/conftest.py")
+    names = set()
+    for name in ["README.md", "CONTRIBUTING.md"]:
+        names.update(re.findall(r"SEIZOU_E2E[A-Z_]*", _read(name)))
+    assert "SEIZOU_E2E" in names, "README に環境変数 SEIZOU_E2E の説明が無い"
+    for name in sorted(names):
+        assert name in conftest, f"{name} が tests/e2e/conftest.py に無い"
+
+
+def test_third_party_lists_anthropic_with_locked_version():
+    lock = tomllib.loads(_read("uv.lock"))
+    locked = [package["version"] for package in lock["package"] if package["name"] == "anthropic"]
+    assert len(locked) == 1, f"uv.lock の anthropic の項目が {len(locked)} 個ある (1 個のはず)"
+    rows = _table_rows(_section(_read("THIRD_PARTY_NOTICES.md"), "## Python の依存 (同梱しない)"))
+    assert rows, "THIRD_PARTY_NOTICES の Python の依存に表が無い"
+    name_column = rows[0].index("名前")
+    found = [row for row in rows[2:] if row[name_column] == "anthropic"]
+    assert found, "THIRD_PARTY_NOTICES の Python の依存の表に anthropic の行が無い"
+    assert locked[0] in " ".join(found[0]), f"anthropic の行に uv.lock の版 {locked[0]} が無い"
+
+
+def _intake_api_key_env():
+    """src/seizou/intake/services.py の API_KEY_ENV の字を、import せずに読む。"""
+    tree = ast.parse(_read("src/seizou/intake/services.py"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "API_KEY_ENV" for target in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError("intake/services.py に API_KEY_ENV が無い")
+
+
+def test_security_and_readme_name_intake_api_key_env():
+    env_name = _intake_api_key_env()
+    for name in ["SECURITY.md", "README.md"]:
+        assert env_name in _read(name), f"{name} に読み取りの鍵の環境変数 {env_name} が無い"

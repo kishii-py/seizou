@@ -31,6 +31,7 @@ pip で入れるときに別に取ってくる物。同梱しないので全文�
 | Pillow | 製品の依存 | MIT-CMU | 確かめた (版 13.0.0) |
 | requests | 製品の依存 | Apache-2.0 | 確かめた (版 2.34.2) |
 | PyYAML | 製品の依存 | MIT | 確かめた (版 6.0.3) |
+| anthropic | 製品の依存 (注文書の読み取り) | Apache-2.0 | 確かめた (版 2.3.0) |
 | WeasyPrint | extras `[pdf]` | BSD-3-Clause | 確かめた (版 70.0。package の情報の分類は BSD とだけあり、3 条項は LICENSE のファイルで確かめた) |
 | pytest | 開発用 | MIT | 確かめた (版 9.2.0) |
 | pytest-django | 開発用 | BSD-3-Clause | 確かめた (版 4.14.0) |
