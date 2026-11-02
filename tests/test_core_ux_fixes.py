@@ -167,14 +167,14 @@ def test_closing_day_has_min_max_and_same_messages(client_logged_in, typed, mess
 
 
 @pytest.mark.django_db
-def test_toasts_let_clicks_through_and_sit_under_the_bar(client_logged_in):
+def test_toasts_let_clicks_through_and_sit_at_the_bottom_right(client_logged_in):
     response = client_logged_in.post(
         reverse("masters:item_create"), {"part_no": "P-6006", "name": "作り物の蓋"}, follow=True
     )
     body = text(response)
     start = body.index('id="seizou-toasts"')
     frame = body[body.rindex("<div", 0, start) : body.index(">", start)]
-    assert "pointer-events-none" in frame and "top-16" in frame
+    assert "pointer-events-none" in frame and "toast-bottom" in frame and "toast-end" in frame
     assert 'class="seizou-toast pointer-events-auto' in body
     assert "btn-xs pointer-events-auto" in body  # 閉じるボタン
     # 見た目の形は前のまま (主色の地・緑の印・下の線)
