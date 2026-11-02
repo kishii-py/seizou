@@ -48,7 +48,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"
 
 LOGIN_URL = "core:login"
-LOGIN_REDIRECT_URL = "/"
+LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "core:login"
 
 # 選べる設定 (seizou.core.conf)。試験は既定で動かし、テストが必要な値を settings fixture で上書きする。

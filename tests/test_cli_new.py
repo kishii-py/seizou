@@ -201,8 +201,10 @@ def test_fields_app_from_item_fields(built, tmp_path, monkeypatch):
     apps_text = (fields / "apps.py").read_text(encoding="utf-8")
     assert "ITEM_FIELDS = [" in apps_text
     assert re.search(r"""['"]name['"]: ['"]ext02['"]""", apps_text)
-    register_lines = [line for line in apps_text.splitlines() if "register(" in line]
-    assert register_lines and all(line.strip().startswith("#") for line in register_lines)
+    # core の会社ごとの項目の仕組み (seizou.core.fields) に ready() で登録する (コメントでなく生きた行)。
+    register_lines = [line for line in apps_text.splitlines() if "fields.register(" in line]
+    assert register_lines and not any(line.strip().startswith("#") for line in register_lines)
+    assert "from seizou.core import fields" in apps_text
 
     # item_fields が空なら fields/ を作らない。
     monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path / "sites"))
