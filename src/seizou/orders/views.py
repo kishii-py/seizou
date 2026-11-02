@@ -109,4 +109,6 @@ class OrderLineSelectView(BaseSelectView):
             annotate_remaining(lines)
             .filter(remaining_total__gt=0)
             .exclude(order__status=Order.STATUS_CANCELLED)
+            # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
+            .order_by("order__order_no", "line_no", "pk")
         )

@@ -642,6 +642,8 @@ class BaseSelectView(ScreenMixin, View):
         except ValueError:
             page = 1
         qs = self.get_queryset()
+        if not qs.ordered:  # 並びが無いとページの境目が DB 次第になる。既定は pk の順。
+            qs = qs.order_by("pk")
         if term and self.search_fields:
             q = Q()
             for lookup in self.search_fields:
