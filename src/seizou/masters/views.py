@@ -4,10 +4,19 @@
 部品の小窓は、取引先ごとの品番 (tabs) と会社ごとの項目も出す (masters/_modal.html)。
 """
 
+import csv
+from urllib.parse import quote
+
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
+from django.views.decorators.http import require_GET
+
+from seizou.core import csvio
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView
 
 from . import services
 from .forms import ItemForm, PartnerForm, ProcessForm
+from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .models import Item, Partner, Process
 
 
@@ -18,6 +27,7 @@ class ItemListView(BaseListView):
     columns = ("part_no", "name", "drawing_no", "unit", "standard_price")
     search_fields = ("part_no", "name", "drawing_no")
     ordering = "part_no"
+    template_name = "masters/item_list.html"
 
 
 class ItemDetailView(BaseDetailView):
@@ -62,6 +72,7 @@ class PartnerListView(BaseListView):
     columns = ("code", "name", "short_name", "role", "closing_day", "payment_day")
     search_fields = ("code", "name", "short_name")
     ordering = "code"
+    template_name = "masters/partner_list.html"
 
 
 class PartnerDetailView(BaseDetailView):
@@ -126,3 +137,48 @@ class ProcessUpdateView(BaseFormView):
     service = staticmethod(services.update_process)
     screen_name = "工程の編集"
     screen_help = "工程の項目を編集します。「計画に使う」に印を付けると、生産計画の盤に出ます。"
+
+
+# ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)
+# 取り込みの画面は model を書かない (土台が会社ごとの項目の欄を form に足すため)。保存の後は土台の既定の移り先 (/) へ移る。
+
+
+class ItemImportView(BaseFormView):
+    form_class = ItemCsvImportForm
+    service = staticmethod(services.import_items)
+    template_name = "masters/csv_import.html"
+    screen_name = "部品マスターの CSV 取り込み"
+    screen_help = "CSV のファイルから部品をまとめて登録し、同じ自社品番の行は更新します。"
+
+
+class PartnerImportView(BaseFormView):
+    form_class = PartnerCsvImportForm
+    service = staticmethod(services.import_partners)
+    template_name = "masters/csv_import.html"
+    screen_name = "取引先の CSV 取り込み"
+    screen_help = "CSV のファイルから取引先をまとめて登録し、同じ取引先コードの行は更新します。"
+
+
+def _sample_csv(model, filename, fallback):
+    """見出しだけの見本の CSV (BOM 付きの UTF-8)。ファイル名の形は一覧の CSV の書き出しと同じ。"""
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename, safe='')}"
+    )
+    response.write("\ufeff")
+    csv.writer(response).writerow(csvio.header_labels(model))
+    return response
+
+
+@login_required
+@require_GET
+def item_import_sample(request):
+    """部品マスターの見本の CSV (画面でない口)。"""
+    return _sample_csv(Item, "部品マスターの見本.csv", "item_sample.csv")
+
+
+@login_required
+@require_GET
+def partner_import_sample(request):
+    """取引先の見本の CSV (画面でない口)。"""
+    return _sample_csv(Partner, "取引先の見本.csv", "partner_sample.csv")
