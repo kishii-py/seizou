@@ -1,6 +1,6 @@
 """選べる設定 (01 の 9 節と 10.5)。
 
-会社の settings.py の辞書 SEIZOU から読み、無ければ既定。鍵は 5 つと hidden_fields。
+会社の settings.py の辞書 SEIZOU から読み、無ければ既定。鍵は 6 つと hidden_fields。
 """
 
 from django.conf import settings
@@ -12,6 +12,7 @@ DEFAULTS = {
     "over_workorder": "warn",  # 受注より多い指示書の数量と予定より多い実績 (R06・R07): warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
+    "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
 }
 
 CHOICES = {

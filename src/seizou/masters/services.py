@@ -38,7 +38,7 @@ _PARTNER_KEYS = frozenset(
         "note",
     }
 )
-_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order"})
+_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
 _PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
 _PAYMENT_DAY_RANGE = range(1, 32)  # 1〜31 (31 は月末)
@@ -114,8 +114,11 @@ def _payment_terms(data):
     return data
 
 
-def _refuse_duplicate_process_code(code):
-    if Process.objects.filter(code=code).exists():
+def _refuse_duplicate_process_code(code, *, exclude_pk=None):
+    others = Process.objects.filter(code=code)
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    if others.exists():
         raise ValueError(f"工程コード {code} は既にあります。別のコードにしてください。")
 
 
@@ -174,11 +177,23 @@ def update_partner(partner, data, user, *, ext=None):
 
 
 def create_process(data, user):
-    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order。"""
+    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order・use_in_plan。"""
     _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
     with transaction.atomic():
         _refuse_duplicate_process_code(data["code"])
         return Process.objects.create(**data)
+
+
+def update_process(process, data, user):
+    """data にある鍵だけを書き換える。工程コードを変えるときも一意を見る。"""
+    _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
+    with transaction.atomic():
+        if "code" in data:
+            _refuse_duplicate_process_code(data["code"], exclude_pk=process.pk)
+        for key, value in data.items():
+            setattr(process, key, value)
+        process.save()
+        return process
 
 
 def map_partner_item(partner, item, partner_part_no, user, *, partner_item_name=""):

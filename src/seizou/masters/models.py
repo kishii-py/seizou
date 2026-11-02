@@ -166,6 +166,7 @@ class Process(models.Model):
     name = models.CharField("名前", max_length=100)
     is_outsourced = models.BooleanField("外注か", default=False)
     sort_order = models.PositiveIntegerField("並び順", default=0)
+    use_in_plan = models.BooleanField("計画に使う", default=False)
 
     class Meta:
         verbose_name = "工程"

@@ -7,8 +7,8 @@
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView
 
 from . import services
-from .forms import ItemForm, PartnerForm
-from .models import Item, Partner
+from .forms import ItemForm, PartnerForm, ProcessForm
+from .models import Item, Partner, Process
 
 
 class ItemListView(BaseListView):
@@ -96,3 +96,33 @@ class PartnerModalView(BaseModalView):
 class PartnerSelectView(BaseSelectView):
     model = Partner
     search_fields = ("code", "name", "short_name")
+
+
+class ProcessListView(BaseListView):
+    model = Process
+    screen_name = "工程"
+    screen_help = "工程の一覧。「計画に使う」に印を付けた工程ごとに、生産計画の盤が並びます。"
+    columns = ("code", "name", "sort_order", "use_in_plan")
+    ordering = ("sort_order", "code")
+
+
+class ProcessDetailView(BaseDetailView):
+    model = Process
+    screen_name = "工程の詳細"
+    screen_help = "工程の項目。「直す」で名前や並び順と「計画に使う」の印を直せます。"
+
+
+class ProcessCreateView(BaseFormView):
+    model = Process
+    form_class = ProcessForm
+    service = staticmethod(services.create_process)
+    screen_name = "工程を入れる"
+    screen_help = "新しい工程を足します。工程コードは会社の中で 1 つだけです。"
+
+
+class ProcessUpdateView(BaseFormView):
+    model = Process
+    form_class = ProcessForm
+    service = staticmethod(services.update_process)
+    screen_name = "工程を直す"
+    screen_help = "工程の項目を直します。「計画に使う」に印を付けると、生産計画の盤に出ます。"

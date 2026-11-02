@@ -103,3 +103,28 @@ def issued_qty(order_line):
             )
         )["total"]
     )
+
+
+def plan_step(step, start, end, user):
+    """指示書の工程の予定に開始日と終了日を置く (生産計画の盤。02 の 4 節)。
+
+    start と end は日付。両方 None で未計画に戻す。片方だけ None と start > end は ValueError。
+    取消した受注の指示書の工程は R05 で止める。取消の指示書は止めない (盤に出さないだけ)。
+    書くのは planned_start・planned_end の 2 列だけ (数は書かない)。user は受けるだけ。
+    """
+    with transaction.atomic():
+        locked = WorkOrderStep.objects.select_for_update().get(pk=step.pk)
+        if locked.workorder.order_line.order.status == "cancelled":
+            raise RuleViolation(
+                "R05", f"{_R05_RULE}取消していない受注の指示書を選んでください。"
+            )
+        if (start is None) != (end is None):
+            raise ValueError("開始日と終了日は、両方を入れるか両方を空にしてください。")
+        if start is not None and start > end:
+            raise ValueError(
+                "開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
+            )
+        locked.planned_start = start
+        locked.planned_end = end
+        locked.save(update_fields=["planned_start", "planned_end"])
+        return locked

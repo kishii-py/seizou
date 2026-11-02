@@ -44,6 +44,7 @@ SETTING_DEFAULTS = {
     "over_workorder": "warn",
     "order_number": "seq",
     "hidden_fields": [],
+    "production_plan": True,
 }
 
 ADMIN_ID = "admin"

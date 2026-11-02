@@ -10,6 +10,7 @@ app_name = "masters"
 MENU = [
     ("部品マスター", "masters:item_list"),
     ("取引先", "masters:partner_list"),
+    ("工程", "masters:process_list"),
 ]
 
 urlpatterns = [
@@ -25,4 +26,8 @@ urlpatterns = [
     path("partners/<int:pk>/edit/", views.PartnerUpdateView.as_view(), name="partner_update"),
     path("partners/<int:pk>/modal/", views.PartnerModalView.as_view(), name="partner_modal"),
     path("partners/select/", views.PartnerSelectView.as_view(), name="partner_select"),
+    path("processes/", views.ProcessListView.as_view(), name="process_list"),
+    path("processes/new/", views.ProcessCreateView.as_view(), name="process_create"),
+    path("processes/<int:pk>/", views.ProcessDetailView.as_view(), name="process_detail"),
+    path("processes/<int:pk>/edit/", views.ProcessUpdateView.as_view(), name="process_update"),
 ]

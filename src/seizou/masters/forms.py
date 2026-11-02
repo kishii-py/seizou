@@ -7,7 +7,7 @@ services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ex
 
 from seizou.core.forms import ServiceModelForm
 
-from .models import Item, Partner
+from .models import Item, Partner, Process
 
 
 class ItemForm(ServiceModelForm):
@@ -35,3 +35,11 @@ class PartnerForm(ServiceModelForm):
             "closing_day": "1〜31。月末締めは 31",
             "payment_day": "1〜31。月末は 31",
         }
+
+
+class ProcessForm(ServiceModelForm):
+    """工程を入れる・直す。外注か (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
+
+    class Meta:
+        model = Process
+        fields = ["code", "name", "sort_order", "use_in_plan"]
