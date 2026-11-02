@@ -1,0 +1,8 @@
+{% extends "core/list.html" %}
+{% load seizou_icons %}
+{# 注文残の一覧: 土台の一覧に、残のある物だけ / すべての切り替えと、受注の一覧への入口を足す。 #}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:order_list' %}">{% icon "clipboard" "size-4" %}受注の一覧</a>{{ block.super }}{% endblock %}
+{% block content %}
+{% include "orders/_all_toggle.html" %}
+{% if request.GET.all == "1" %}<div hx-include="#orders-all">{{ block.super }}</div>{% else %}{{ block.super }}{% endif %}
+{% endblock %}

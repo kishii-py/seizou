@@ -1,0 +1,15 @@
+{% load seizou_icons %}
+{# 明細の 1 行 (row は formset の 1 つの form)。行の誤りは欄の下 (赤)。既にある明細を指す隠しの欄は最後の列に置く。 #}
+<tr class="align-top" data-order-line>
+  {% for field in row.visible_fields %}{% if field.name != "DELETE" %}
+  <td class="min-w-32 [&_[aria-invalid=true]]:border-error">
+    {{ field }}
+    {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+  </td>
+  {% endif %}{% endfor %}
+  <td class="whitespace-nowrap">
+    {% if row.DELETE %}<label class="flex cursor-pointer items-center gap-2">{{ row.DELETE }}<span>消す</span></label>{% endif %}
+    {% for hidden in row.hidden_fields %}{{ hidden }}{% if hidden.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ hidden.errors|join:" " }}</p>{% endif %}{% endfor %}
+    {% if row.non_field_errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ row.non_field_errors|join:" " }}</p>{% endif %}
+  </td>
+</tr>

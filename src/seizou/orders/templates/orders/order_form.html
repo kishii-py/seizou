@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load static seizou_icons %}
+{% block content %}
+{# 受注の入力: 受注の項目 (2 列の格子) と明細の行の表を 1 つの form に。知らせと「このまま保存」は core/form.html と同じ約束。 #}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate>
+  {% csrf_token %}
+  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細の行を埋めて「保存」を押します。入れた値は、止まったときも消えません。</p>
+  {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+    {% for field in form.visible_fields %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+      </div>
+      {{ field }}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+
+  <div class="mt-6 border-t border-base-300 pt-6">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-lg font-bold">明細</h2>
+      {% if not form.single %}<p class="text-xs text-base-content/50">行を消すときは「消す」に印を付けて保存します。金額は保存のときに計算します。</p>{% endif %}
+    </div>
+    {{ form.lines.management_form }}
+    {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
+    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70">
+          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% endif %}{% endfor %}
+          <th class="whitespace-nowrap font-medium"><span class="sr-only">消す</span></th>
+        </tr></thead>
+        <tbody id="order-lines">
+          {% for row in form.lines %}{% include "orders/_order_line_row.html" %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not form.single %}
+    <template id="order-line-template">{% with row=form.lines.empty_form %}{% include "orders/_order_line_row.html" %}{% endwith %}</template>
+    <button type="button" class="btn btn-sm btn-outline mt-4 border-base-300" data-add-order-line>{% icon "plus" "size-4" %}行を足す</button>
+    {% endif %}
+  </div>
+
+  {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}やめる</a>{% endif %}
+    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>{% endif %}
+  </div>
+</form>
+{% if not form.single %}<script src="{% static 'orders/order-lines.js' %}" defer></script>{% endif %}
+{% endblock %}
