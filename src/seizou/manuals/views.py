@@ -10,19 +10,35 @@ from __future__ import annotations
 import os
 
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import FolderForm, ManualCreateForm, ManualForm
-from .models import FORMAT_CHOICES, Manual, ManualFolder, ManualImage
+from .forms import (
+    FolderDeleteForm,
+    FolderEditForm,
+    FolderForm,
+    FolderMoveForm,
+    ManualCreateForm,
+    ManualDeleteForm,
+    ManualForm,
+    ManualMoveForm,
+    ManualVersionForm,
+    ProtectForm,
+    RestoreForm,
+)
+from .models import FORMAT_CHOICES, Manual, ManualFolder, ManualImage, ManualVersion
 
 FORMAT_VALUES = frozenset(value for value, _label in FORMAT_CHOICES)
+#: PDF を作れないときの知らせ (shipping の PDF_NOTICE と同じ字。shipping の views は import しない)
+PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+PRINT_TEMPLATE = "manuals/manual_print.html"
 
 
 def folder_from_param(value):
@@ -88,6 +104,116 @@ class ManualUpdateView(BaseFormView):
     template_name = "manuals/manual_form.html"
     screen_name = "マニュアルの編集"
     screen_help = "本文を Markdown の字で書きます。上の道具の列で部品を差し込み、「プレビュー」で見た目を確かめます。"
+
+
+class ManualVersionCreateView(BaseFormView):
+    model = Manual
+    form_class = ManualVersionForm
+    service = staticmethod(services.save_as_version)
+    template_name = "manuals/manual_form.html"
+    screen_name = "新しい版として保存"
+    screen_help = "保存前の中身を版として残してから、今の中身を保存します。版の履歴から差分を見て戻せます。"
+
+
+class ManualVersionListView(BaseDetailView):
+    model = Manual
+    template_name = "manuals/manualversion_list.html"
+    screen_name = "版の履歴"
+    screen_help = "新しい版として保存したときに残った、前の中身の一覧です。差分を見て、この版に戻せます。"
+
+
+class ManualVersionDetailView(BaseDetailView):
+    model = ManualVersion
+    template_name = "manuals/manualversion_detail.html"
+    screen_name = "差分"
+    screen_help = "その版 (左) と今の中身 (右) を、Markdown の字の行のまま並べます。"
+
+    def get_queryset(self):
+        return ManualVersion.objects.select_related("manual")
+
+
+class ManualVersionRestoreView(BaseFormView):
+    model = ManualVersion
+    form_class = RestoreForm
+    service = staticmethod(services.restore_version)
+    template_name = "manuals/confirm.html"
+    screen_name = "この版に戻す"
+    screen_help = "その版の題と本文に戻します。今の中身は版として残るので、履歴は消えません。"
+
+
+class FolderUpdateView(BaseFormView):
+    model = ManualFolder
+    form_class = FolderEditForm
+    service = staticmethod(services.update_folder)
+    screen_name = "名前と色の変更"
+    screen_help = "フォルダの名前と色を変えます。保護中のフォルダも変えられます。"
+
+
+class FolderMoveView(BaseFormView):
+    model = ManualFolder
+    form_class = FolderMoveForm
+    service = staticmethod(services.move_folder)
+    screen_name = "フォルダの移動"
+    screen_help = "フォルダを中身ごと、ほかのフォルダの中かルートへ移します。自分と自分の中のフォルダへは移せません。"
+
+
+class FolderProtectView(BaseFormView):
+    model = ManualFolder
+    form_class = ProtectForm
+    service = staticmethod(services.protect_folder)
+    template_name = "manuals/confirm.html"
+    screen_name = "フォルダの保護"
+    screen_help = "保護したフォルダは、移動と削除ができなくなります。"
+
+
+class FolderDeleteView(BaseFormView):
+    model = ManualFolder
+    form_class = FolderDeleteForm
+    service = staticmethod(services.delete_folder)
+    template_name = "manuals/confirm.html"
+    screen_name = "フォルダの削除"
+    screen_help = "フォルダを削除します。中身があるときは「中身も削除する」を選びます。"
+
+
+class ManualMoveView(BaseFormView):
+    model = Manual
+    form_class = ManualMoveForm
+    service = staticmethod(services.move_manual)
+    screen_name = "マニュアルの移動"
+    screen_help = "マニュアルをほかのフォルダかルートへ移します。"
+
+
+class ManualProtectView(BaseFormView):
+    model = Manual
+    form_class = ProtectForm
+    service = staticmethod(services.protect_manual)
+    template_name = "manuals/confirm.html"
+    screen_name = "マニュアルの保護"
+    screen_help = "保護したマニュアルは、移動と削除ができなくなります。本文の編集と版はそのまま使えます。"
+
+
+class ManualDeleteView(BaseFormView):
+    model = Manual
+    form_class = ManualDeleteForm
+    service = staticmethod(services.delete_manual)
+    template_name = "manuals/confirm.html"
+    screen_name = "マニュアルの削除"
+    screen_help = "マニュアルを、版と画像と一緒に削除します。"
+
+
+@login_required
+@never_cache
+def manual_pdf(request, pk):
+    """A4 の PDF (題・版・最終更新・作った日時の帯とページ番号)。作れなければ印刷用の HTML の上に知らせを出して返す。"""
+    manual = get_object_or_404(Manual.objects.select_related("folder"), pk=pk)
+    context = {"manual": manual, "path": services.folder_path(manual.folder), "pdf": True}
+    try:
+        data = reports.render_pdf(PRINT_TEMPLATE, context)
+    except reports.PdfUnavailable:
+        return HttpResponse(reports.render_html(PRINT_TEMPLATE, {**context, "pdf": False, "pdf_notice": PDF_NOTICE}))
+    response = HttpResponse(data, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="manual-{manual.pk}-v{manual.version}.pdf"'
+    return response
 
 
 @login_required

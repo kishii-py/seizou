@@ -9,11 +9,24 @@ services は行を取り直す (保存前の中身を版に残すため) が、f
 from __future__ import annotations
 
 from django import forms
+from django.apps import apps
+from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 
-from .models import COLOR_CHOICES, FORMAT_CHOICES, FORMAT_STEPS, ManualFolder
+from seizou.core.widgets import RemoteSelect
+
+from . import services
+from .models import COLOR_CHOICES, FORMAT_CHOICES, FORMAT_STEPS, Manual, ManualFolder
 from .services import FOLDER_NOT_FOUND
 
 FORMAT_HELP = "ステップ形式は番号付きの手順、ページ形式は長い文書向けです。後から切り替えられます。"
+NOTE_HELP = "新しい版として保存するときだけ残ります (「保存」ではメモは残りません)。"
+LINK_ONE_ONLY = "紐付けは 1 件だけです。部品か取引先のどちらかを選んでください。"
+#: 紐付けの欄 (欄の名前, 部品の app, model, label, 候補の口の URL の名前)
+LINK_FIELDS = (
+    ("linked_item", "masters", "Item", "紐付け (部品)", "masters:item_select"),
+    ("linked_partner", "masters", "Partner", "紐付け (取引先)", "masters:partner_select"),
+)
 #: 本文の欄の class (_body.html の comment にも同じ字を並べる)
 BODY_WIDGET_CLASS = "textarea w-full font-mono"
 
@@ -75,7 +88,11 @@ class ManualCreateForm(forms.Form):
 
 
 class ManualForm(forms.Form):
-    """マニュアルの編集 (題・形式・置き場・本文)。本文の前後の空白と字下げは消さない。上限は services が見る。"""
+    """マニュアルの編集 (題・形式・置き場・本文・紐付け)。本文の前後の空白と字下げは消さない。上限は services が見る。
+
+    版のメモの欄は「新しい版として保存」のボタンの横に出す。「保存」(この form) はメモを渡さない。
+    紐付けは部品か取引先の 1 件 (候補の口は masters の名前だけを使う。masters の model は apps から引く)。
+    """
 
     title = forms.CharField(label="題")
     format = forms.ChoiceField(label="形式", choices=FORMAT_CHOICES, help_text=FORMAT_HELP)
@@ -86,28 +103,214 @@ class ManualForm(forms.Form):
         strip=False,
         widget=forms.Textarea(attrs={"rows": 24, "class": BODY_WIDGET_CLASS}),
     )
+    note = forms.CharField(label="版のメモ", required=False, help_text=NOTE_HELP)
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance = instance
         self.fields["folder"].queryset = folder_queryset()
+        linked = instance.linked_object() if instance is not None else None
+        self.link_models = {}
+        for name, app_label, model_name, label, url_name in LINK_FIELDS:
+            try:
+                model = apps.get_model(app_label, model_name)
+                reverse(url_name)
+            except (LookupError, NoReverseMatch):
+                # 部品か候補の口が無ければ、その欄を作らない。
+                continue
+            self.link_models[name] = model
+            self.fields[name] = forms.ModelChoiceField(
+                label=label,
+                required=False,
+                queryset=model._default_manager.all(),
+                widget=RemoteSelect(url_name),
+            )
+        # 欄の無い種類の記録に紐付いているときは、保存で紐付けを外さない。
+        self.keep_link = linked is not None and not any(isinstance(linked, m) for m in self.link_models.values())
         if instance is not None and not self.is_bound:
-            self.initial = {
-                **self.initial,
+            initial = {
                 "title": instance.title,
                 "format": instance.format,
                 "folder": instance.folder_id,
                 "body": instance.body,
             }
+            for name, model in self.link_models.items():
+                if isinstance(linked, model):
+                    initial = {**initial, name: linked.pk}
+            self.initial = {**self.initial, **initial}
+
+    def clean(self):
+        cleaned = super().clean()
+        chosen = [name for name in self.link_models if cleaned.get(name) is not None]
+        if len(chosen) > 1:
+            self.add_error(None, LINK_ONE_ONLY)
+        return cleaned
 
     def manual_data(self) -> dict:
         data = self.cleaned_data
-        return {
+        values = {
             "title": data["title"],
             "format": data["format"],
             "folder": data.get("folder"),
             "body": data.get("body", ""),
         }
+        chosen = next((data[name] for name in self.link_models if data.get(name) is not None), None)
+        if chosen is None and self.keep_link:
+            return values
+        return {**values, "linked": chosen}
 
     def service_kwargs(self):
         return {"data": self.manual_data()}
+
+
+class ManualVersionForm(ManualForm):
+    """「新しい版として保存」。編集の画面の同じ form から送る。版のメモを渡す。"""
+
+    def service_kwargs(self):
+        return {"data": self.manual_data(), "note": self.cleaned_data.get("note", "")}
+
+
+# --- 確認の画面 (confirm.html) の form。対象を持ち、画面の字と戻り先を属性で返す ---
+
+
+def local_text(value) -> str:
+    return timezone.localtime(value).strftime("%Y-%m-%d %H:%M") if value else ""
+
+
+def detail_url_of(obj) -> str:
+    if isinstance(obj, ManualFolder):
+        return reverse("manuals:manualfolder_detail", args=[obj.pk])
+    return reverse("manuals:manual_detail", args=[obj.pk])
+
+
+def name_of(obj) -> str:
+    return obj.name if isinstance(obj, ManualFolder) else obj.title
+
+
+class ConfirmForm(forms.Form):
+    """確認の画面の form の土台。confirm_text・confirm_label・danger・cancel_url を持つ。"""
+
+    danger = False
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+
+    @property
+    def cancel_url(self) -> str:
+        return detail_url_of(self.instance)
+
+    def service_kwargs(self):
+        return {}
+
+
+class ProtectForm(ConfirmForm):
+    """保護と保護の解除。隠した欄 on は今の逆 (2 回押しても同じ結果)。"""
+
+    on = forms.BooleanField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, instance=instance, **kwargs)
+        self.fields["on"].initial = not instance.protected
+
+    @property
+    def turning_on(self) -> bool:
+        return not self.instance.protected
+
+    @property
+    def confirm_text(self) -> str:
+        if self.turning_on:
+            return f"「{name_of(self.instance)}」を保護します。保護すると移動と削除ができなくなります。"
+        return f"「{name_of(self.instance)}」の保護を解除します。"
+
+    @property
+    def confirm_label(self) -> str:
+        return "保護" if self.turning_on else "保護を解除"
+
+    def service_kwargs(self):
+        return {"on": bool(self.cleaned_data.get("on"))}
+
+
+class FolderDeleteForm(ConfirmForm):
+    danger = True
+    confirm_label = "削除"
+    with_contents = forms.BooleanField(
+        label="中身も削除する (中のフォルダとマニュアルと、その版と画像)", required=False
+    )
+
+    @property
+    def confirm_text(self) -> str:
+        return f"フォルダ「{self.instance.name}」を削除します。中が空でなければ「中身も削除する」を選びます。元に戻せません。"
+
+    def service_kwargs(self):
+        return {"with_contents": bool(self.cleaned_data.get("with_contents"))}
+
+
+class ManualDeleteForm(ConfirmForm):
+    danger = True
+    confirm_label = "削除"
+
+    @property
+    def confirm_text(self) -> str:
+        return f"「{self.instance.title}」を削除します。版と画像も削除し、元に戻せません。"
+
+
+class RestoreForm(ConfirmForm):
+    confirm_label = "この版に戻す"
+
+    @property
+    def confirm_text(self) -> str:
+        version = self.instance
+        return f"版 {version.number} ({local_text(version.saved_at)}) の中身に戻します。今の中身は版として残ります。"
+
+    @property
+    def cancel_url(self) -> str:
+        return reverse("manuals:manualversion_list", args=[self.instance.manual_id])
+
+
+# --- 名前と色の変更・移動 (core/form.html) ---
+
+
+class FolderEditForm(forms.Form):
+    name = forms.CharField(label="名前")
+    color = forms.ChoiceField(label="色", choices=COLOR_CHOICES)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        if instance is not None and not self.is_bound:
+            self.initial = {**self.initial, "name": instance.name, "color": instance.color}
+
+    def service_kwargs(self):
+        return {"name": self.cleaned_data["name"], "color": self.cleaned_data["color"]}
+
+
+class FolderMoveForm(forms.Form):
+    """フォルダの移動。選べるのはルートと、自分と自分の子孫の外のフォルダ。"""
+
+    parent = FolderChoiceField(label="移動先", required=False)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        excluded = {instance.pk, *services.descendant_ids(instance)} if instance is not None else set()
+        self.fields["parent"].queryset = folder_queryset().exclude(pk__in=excluded)
+        if instance is not None and not self.is_bound:
+            self.initial = {**self.initial, "parent": instance.parent_id}
+
+    def service_kwargs(self):
+        return {"parent": self.cleaned_data.get("parent")}
+
+
+class ManualMoveForm(forms.Form):
+    folder = FolderChoiceField(label="移動先", required=False)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        self.fields["folder"].queryset = folder_queryset()
+        if isinstance(instance, Manual) and not self.is_bound:
+            self.initial = {**self.initial, "folder": instance.folder_id}
+
+    def service_kwargs(self):
+        return {"folder": self.cleaned_data.get("folder")}

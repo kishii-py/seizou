@@ -10,11 +10,33 @@ from django import template
 from django.db.models import Count
 from django.utils.safestring import mark_safe
 
-from seizou.manuals import services
+from seizou.core.views import model_url
+from seizou.manuals import diff, services
 from seizou.manuals.markdown import Rendered
 from seizou.manuals.models import ManualFolder
 
 register = template.Library()
+
+
+@register.simple_tag
+def version_diff(version):
+    """{% version_diff version as rows %}。その版の本文と今の本文の行の差分 (diff.DiffRow の並び)。"""
+    return diff.diff_rows(version.body, version.manual.body)
+
+
+@register.simple_tag
+def manual_link(manual):
+    """{% manual_link manual as link %}。紐付けの印の材料。紐付けが無ければ None。
+
+    link = {"kind": 種類の verbose_name, "label": linked_label(), "href": その記録の詳細の URL か None}。
+    """
+    if manual.linked_type_id is None or manual.linked_id is None:
+        return None
+    obj = manual.linked_object()
+    model = manual.linked_type.model_class() if manual.linked_type is not None else None
+    kind = str(model._meta.verbose_name) if model is not None else ""
+    href = model_url(type(obj), "detail", obj.pk) if obj is not None else None
+    return {"kind": kind, "label": manual.linked_label(), "href": href}
 
 
 @register.simple_tag

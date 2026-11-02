@@ -12,10 +12,23 @@
     {% endfor %}
   </nav>
   {% if tree.folder %}
-  <div class="mt-4 flex flex-wrap items-center gap-2">
-    {% include "manuals/_folder_color.html" with folder=tree.folder %}
-    <h2 class="text-lg font-bold">{{ tree.folder.name }}</h2>
-    {% if tree.folder.protected %}<span class="badge badge-sm badge-ghost gap-2">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-2">
+      {% include "manuals/_folder_color.html" with folder=tree.folder %}
+      <h2 class="text-lg font-bold">{{ tree.folder.name }}</h2>
+      {% if tree.folder.protected %}<span class="badge badge-sm badge-ghost gap-2">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+    </div>
+    {# 今のフォルダの操作。保護中は「保護を解除」だけ。 #}
+    <div class="flex flex-wrap items-center gap-2" aria-label="フォルダの操作">
+      {% if tree.folder.protected %}
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_protect' tree.folder.pk %}">{% icon "lock" "size-4" %}保護を解除</a>
+      {% else %}
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_update' tree.folder.pk %}">{% icon "pencil" "size-4" %}名前と色の変更</a>
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_move' tree.folder.pk %}">{% icon "chevron-right" "size-4" %}移動</a>
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_protect' tree.folder.pk %}">{% icon "lock" "size-4" %}保護</a>
+      <a class="btn btn-sm btn-outline border-base-300 text-error" href="{% url 'manuals:manualfolder_delete' tree.folder.pk %}">{% icon "x" "size-4" %}削除</a>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
   {% if tree.children %}

@@ -24,16 +24,40 @@
       {% if form.folder.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.folder.errors|join:" " }}</p>{% endif %}
     </div>
   </div>
+  {% if form.linked_item or form.linked_partner %}
+  <div class="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+    {% for field in form %}{% if field.name == "linked_item" or field.name == "linked_partner" %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
+      <label for="{{ field.id_for_label }}" class="mb-2 block font-medium">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+    </div>
+    {% endif %}{% endfor %}
+    <p class="text-xs text-base-content/50 sm:col-span-2">紐付けは部品か取引先の 1 件だけです。見る画面の帯に印が出ます。</p>
+  </div>
+  {% endif %}
   <div class="mt-6 min-w-0 [&_[aria-invalid=true]]:border-error">
     <label for="{{ form.body.id_for_label }}" class="mb-2 block font-medium">{{ form.body.label }}</label>
     {% include "manuals/_editor.html" %}
     <div class="mt-4">{{ form.body }}</div>
     {% if form.body.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.body.errors|join:" " }}</p>{% endif %}
   </div>
-  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
-    <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
-    <button type="button" class="btn btn-outline border-base-300" hx-post="{% url 'manuals:manual_preview' object.pk %}" hx-include="#id_body, #id_format" hx-target="#manual-preview">{% icon "eye" "size-4" %}プレビュー</button>
-    <button type="submit" class="btn btn-primary" formaction="{% url 'manuals:manual_update' object.pk %}">{% icon "check" "size-4" %}保存</button>
+  <div class="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-base-300 pt-6">
+    {# 版のメモの欄は「新しい版として保存」のすぐ横。 #}
+    <div class="flex flex-wrap items-end gap-2">
+      <div class="w-full min-w-0 sm:w-80 [&_[aria-invalid=true]]:border-error">
+        <label for="{{ form.note.id_for_label }}" class="mb-2 block font-medium">{{ form.note.label }}</label>
+        {{ form.note }}
+        {% if form.note.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.note.errors|join:" " }}</p>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-outline border-base-300" formaction="{% url 'manuals:manual_version_create' object.pk %}">{% icon "plus" "size-4" %}新しい版として保存</button>
+      <p class="w-full text-xs text-base-content/50">{{ form.note.help_text }}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+      <button type="button" class="btn btn-outline border-base-300" hx-post="{% url 'manuals:manual_preview' object.pk %}" hx-include="#id_body, #id_format" hx-target="#manual-preview">{% icon "eye" "size-4" %}プレビュー</button>
+      <button type="submit" class="btn btn-primary" formaction="{% url 'manuals:manual_update' object.pk %}">{% icon "check" "size-4" %}保存</button>
+    </div>
   </div>
 </form>
 <div class="mt-6 grid gap-6 lg:grid-cols-2 lg:items-start">

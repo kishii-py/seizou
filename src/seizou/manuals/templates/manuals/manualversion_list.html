@@ -1,0 +1,41 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 版の履歴: 今の版と、「新しい版として保存」で残った前の中身の一覧。行から差分とこの版に戻すへ。 #}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}詳細を見る</a>{% endblock %}
+{% block content %}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <div class="flex flex-wrap items-center gap-4">
+    <h2 class="text-lg font-bold">{{ object.title }}</h2>
+    <span class="badge badge-outline tabular-nums">今の版 {{ object.version }}</span>
+    <span class="text-base-content/70">最終更新 <span class="font-mono tabular-nums">{{ object.updated_at|date:"Y-m-d H:i" }}</span></span>
+  </div>
+  {% with versions=object.versions.all %}
+  {% if versions %}
+  <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+    <table class="table table-sm">
+      <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">版</th><th class="font-medium">日時</th><th class="font-medium">保存した人</th><th class="font-medium">メモ</th><th class="font-medium">操作</th></tr></thead>
+      <tbody>
+        {% for version in versions %}
+        <tr class="h-10">
+          <td class="whitespace-nowrap tabular-nums">版 {{ version.number }}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ version.saved_at|date:"Y-m-d H:i" }}</td>
+          <td class="whitespace-nowrap">{{ version.saved_by|default_if_none:"—" }}</td>
+          <td><span class="block max-w-md truncate" title="{{ version.note }}">{{ version.note|default:"—" }}</span></td>
+          <td class="whitespace-nowrap">
+            <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualversion_detail' version.pk %}">差分</a>
+            <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' version.pk %}">この版に戻す</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "list" "size-6" %}</span>
+    <p class="mt-4 font-medium">版はまだありません。編集の画面の「新しい版として保存」で、保存前の中身が版として残ります。</p>
+  </div>
+  {% endif %}
+  {% endwith %}
+</div>
+{% endblock %}
