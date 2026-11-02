@@ -1,0 +1,6 @@
+{% extends "core/detail.html" %}
+{% load seizou_icons %}
+{# 指示書の詳細: core の詳細 (項目と「工程」「進捗」のタブ)。発行のときだけ「取り消す」。 #}
+{% block actions %}{{ block.super }}
+{% if object.status == "issued" %}<a class="btn btn-outline btn-error" href="{% url 'workorders:workorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}
+{% endblock %}

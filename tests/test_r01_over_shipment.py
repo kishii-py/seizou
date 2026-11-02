@@ -177,3 +177,53 @@ def test_r01_update_warn_returns_warning(settings, user, shipped_four_and_four):
     assert len(warnings) == 1
     assert warnings[0].code == "R01"
     assert checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("6")}, user) == []
+
+
+# --- 出荷の編集の画面 ---
+
+
+def _edit_post(qty, **extra):
+    return {"qty": str(qty), "shipped_at": SHIPPED_AT.isoformat(), "note": "", **extra}
+
+
+@pytest.mark.django_db
+def test_r01_update_on_screen_stop_is_red(settings, logged_in, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    _line, second = shipped_four_and_four
+    url = reverse("shipping:shipment_update", args=[second.pk])
+
+    response = logged_in.post(url, _edit_post(7))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "alert-error" in body and "R01" in body
+    assert "このまま保存" not in body
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+    # 「このまま保存」の印を付けて送っても、止めるの設定では保存しない
+    again = logged_in.post(url, _edit_post(7, confirmed="1"))
+    assert again.status_code == 200
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+
+@pytest.mark.django_db
+def test_r01_update_on_screen_warn_then_confirm(settings, logged_in, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    line, second = shipped_four_and_four
+    url = reverse("shipping:shipment_update", args=[second.pk])
+
+    first = logged_in.post(url, _edit_post(7))
+    assert first.status_code == 200
+    body = first.content.decode()
+    assert "alert-warning" in body and "R01" in body and "このまま保存" in body
+    assert "alert-error" not in body
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+    confirmed = logged_in.post(url, _edit_post(7, confirmed="1"))
+    assert confirmed.status_code == 302
+    assert confirmed["Location"] == reverse("shipping:shipment_detail", args=[second.pk])
+    second.refresh_from_db()
+    assert second.qty == Decimal("7")
+    assert orders_services.remaining_qty(line) == Decimal("-1")

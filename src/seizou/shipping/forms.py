@@ -80,3 +80,39 @@ class DeliveryNoteForm(forms.Form):
     def service_kwargs(self) -> dict:
         shipments = sorted(self.cleaned_data["shipments"], key=lambda shipment: shipment.pk)
         return {"customer": shipments[0].order_line.order.customer, "shipments": shipments}
+
+
+class ShipmentUpdateForm(forms.Form):
+    """出荷の編集。数量と出荷日と備考だけ (受注の明細の欄は出さない。services.update_shipment が直さない)。
+
+    ModelForm にしない。ModelForm は検査の前に新しい値を対象へ書き込み、検査の層 (R01) が直す前の数を読めなくなる。
+    土台は名指しの instance に直す前の出荷を渡すので、その値を初期値にだけ使う (instance には書き込まない)。
+    """
+
+    qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
+    shipped_at = forms.DateField(
+        label="出荷日",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+    note = forms.CharField(label="備考", max_length=500, required=False)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            for name in ("qty", "shipped_at", "note"):
+                self.initial.setdefault(name, getattr(instance, name))
+
+    def service_kwargs(self) -> dict:
+        data = self.cleaned_data
+        return {
+            "qty": data["qty"],
+            "shipped_at": data["shipped_at"],
+            "note": data.get("note", ""),
+        }
+
+
+class DeliveryNoteCancelForm(forms.Form):
+    """納品書を取り消す form。欄は無い。"""
+
+    def service_kwargs(self) -> dict:
+        return {}

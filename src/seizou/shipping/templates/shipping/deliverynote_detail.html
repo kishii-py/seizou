@@ -4,4 +4,5 @@
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% if object.status == "issued" %}<a class="btn btn-outline btn-error" href="{% url 'shipping:deliverynote_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}
 {% endblock %}

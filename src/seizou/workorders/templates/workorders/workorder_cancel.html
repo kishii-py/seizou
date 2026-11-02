@@ -1,0 +1,6 @@
+{% extends "core/form.html" %}
+{# 指示書を取り消す: 取消の理由の欄だけの form。実績の入った指示書は取り消せない。取消の指示書は生産計画と進捗の盤から外れる。 #}
+{% block content %}
+<p class="mb-4 text-base-content/70">この指示書を取り消します。実績の入った指示書は取り消せません。取消の指示書は生産計画と進捗の盤から外れます。</p>
+{{ block.super }}
+{% endblock %}
