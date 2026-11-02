@@ -135,25 +135,7 @@
     {% endif %}
   </section>
   {% endif %}
-  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs{% if recent_orders is None %} lg:col-span-2{% endif %}" aria-labelledby="entrances-title">
-    <h2 id="entrances-title" class="text-lg font-bold">よく使う画面</h2>
-    {% if seizou.menu %}
-    <ul class="mt-4 grid gap-2 sm:grid-cols-2">
-      {% for item in seizou.menu %}
-      <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ item.url }}">
-        <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon item.icon "size-5" %}</span>
-        <span class="min-w-0 flex-1 truncate font-medium">{{ item.label }}</span>
-        {% icon "chevron-right" "size-4 text-base-content/50" %}
-      </a></li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "list" "size-6" %}</span>
-      <p class="mt-4 font-medium">画面はまだありません。</p>
-      <p class="mt-2 text-xs text-base-content/50">部品が入ると、ここと左のメニューに並びます。</p>
-    </div>
-    {% endif %}
-  </section>
+  {# よく使う画面: ブックマークの部品 (bookmarks) が入っていればその節 (登録した画面。0 件なら下の入口に戻る)、無ければ入口の一覧。 #}
+  {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_home.html" %}{% else %}{% include "core/_entrances.html" %}{% endif %}
 </div>
 {% endblock %}
