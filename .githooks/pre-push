@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""git の pre-push の hook。push の前に禁止語の検査をする (作り手の運用)。
+
+有効になるのは `git config core.hooksPath .githooks` を打った手元だけ。
+一覧は環境変数で渡す (読む順と形は scripts/forbidden_words.py の頭のコメント)。
+検査の本体は scripts/forbidden_words.py の 1 本で、この hook は呼ぶだけ。
+
+見る物:
+  - 相手の枝が新しい (相手の sha が全部 0) か、相手の sha が手元に無いとき:
+    押す sha の木の全部のファイル
+  - それ以外: 相手の sha から押す sha までの差分で足した行
+  - その範囲の commit の文 (題と本文) と、枝の名前
+1 つでも当たれば push を止める。一覧が読めなければ、検査をせずに push を止める。
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+import forbidden_words as fw  # noqa: E402
+
+ZERO_SHA_CHARS = frozenset("0")
+HUNK_PREFIX = "@@ "
+
+
+def git(*args: str) -> bytes:
+    return subprocess.run(
+        ["git", *args], check=True, capture_output=True, cwd=REPO_ROOT
+    ).stdout
+
+
+def git_text(*args: str) -> str:
+    return fw.decode(git(*args))
+
+
+def is_zero(sha: str) -> bool:
+    return set(sha) <= ZERO_SHA_CHARS
+
+
+def commit_exists(sha: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+        capture_output=True,
+        cwd=REPO_ROOT,
+    )
+    return result.returncode == 0
+
+
+def scan_blob(path: str, data: bytes, matchers, report: fw.Report) -> None:
+    if fw.looks_binary(data):
+        report.skipped += 1
+        return
+    report.examined += 1
+    report.hits.extend(fw.scan_text(fw.decode(data), path, matchers))
+
+
+def scan_tree(sha: str, matchers, report: fw.Report) -> None:
+    listing = git("ls-tree", "-r", "-z", sha).split(b"\x00")
+    for entry in listing:
+        if not entry:
+            continue
+        meta, _, raw_path = entry.partition(b"\t")
+        _mode, kind, oid = meta.decode().split()
+        if kind != "blob":
+            continue
+        path = fw.decode(raw_path)
+        if fw.is_skipped_path(path):
+            report.skipped += 1
+            continue
+        scan_blob(path, git("cat-file", "blob", oid), matchers, report)
+
+
+def added_lines(diff_text: str):
+    lineno = 0
+    in_hunk = False
+    for line in diff_text.splitlines():
+        if line.startswith(HUNK_PREFIX):
+            new_part = line.split(" ")[2]
+            lineno = int(new_part[1:].split(",")[0])
+            in_hunk = True
+            continue
+        if in_hunk and line.startswith("+"):
+            yield lineno, line[1:]
+            lineno += 1
+
+
+def scan_diff(base: str, head: str, matchers, report: fw.Report) -> None:
+    names = git(
+        "diff", "--name-only", "-z", "--no-renames", "--diff-filter=ACMRT", base, head
+    ).split(b"\x00")
+    for raw_path in names:
+        if not raw_path:
+            continue
+        path = fw.decode(raw_path)
+        if fw.is_skipped_path(path):
+            report.skipped += 1
+            continue
+        if fw.looks_binary(git("cat-file", "blob", f"{head}:{path}")):
+            report.skipped += 1
+            continue
+        report.examined += 1
+        diff_text = git_text(
+            "diff", "--unified=0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames",
+            base, head, "--", path,
+        )
+        for lineno, line in added_lines(diff_text):
+            report.hits.extend(fw.scan_line(line, path, lineno, matchers))
+
+
+def scan_messages(revs: list[str], matchers, report: fw.Report) -> int:
+    commits = git_text("rev-list", *revs).split()
+    for commit in commits:
+        message = git_text("log", "-1", "--format=%B", commit)
+        label = f"commit {commit[:10]} の文"
+        report.hits.extend(fw.scan_text(message, label, matchers))
+    return len(commits)
+
+
+def main() -> int:
+    remote_name = sys.argv[1] if len(sys.argv) > 1 else ""
+    try:
+        words = fw.load_words()
+    except fw.WordListError as exc:
+        print(f"push を止めた: 禁止語の一覧が読めないので検査をしていない。{exc}", file=sys.stderr)
+        print(fw.read_order_text(), file=sys.stderr)
+        return 1
+    matchers = fw.compile_matchers(words)
+
+    report = fw.Report()
+    message_count = 0
+    for raw in sys.stdin.read().splitlines():
+        parts = raw.split()
+        if len(parts) != 4:
+            continue
+        local_ref, local_sha, remote_ref, remote_sha = parts
+        if is_zero(local_sha):
+            continue
+        for ref in sorted({local_ref, remote_ref}):
+            report.hits.extend(fw.scan_line(ref, "枝の名前", 1, matchers))
+        if is_zero(remote_sha) or not commit_exists(remote_sha):
+            scan_tree(local_sha, matchers, report)
+            not_remote = [f"--remotes={remote_name}"] if remote_name else []
+            message_count += scan_messages([local_sha, "--not", *not_remote], matchers, report)
+        else:
+            scan_diff(remote_sha, local_sha, matchers, report)
+            message_count += scan_messages([local_sha, "--not", remote_sha], matchers, report)
+
+    extra = f" / commit の文 {message_count} 件"
+    if report.hits:
+        for hit in report.hits:
+            print(hit.render(), file=sys.stderr)
+        print(fw.summary_line(len(words), report, extra), file=sys.stderr)
+        print("push を止めた: 禁止語が当たった。上の場所を直してから push し直す。", file=sys.stderr)
+        return 1
+    print(fw.summary_line(len(words), report, extra), file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
