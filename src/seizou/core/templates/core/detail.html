@@ -73,4 +73,5 @@
   </div>
   {% endfor %}
 </div>
+{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
 {% endblock %}
