@@ -17,9 +17,8 @@ import uuid
 from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlsplit
 
-from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
 from django.db import IntegrityError, transaction
 
 from seizou.core.exceptions import RuleViolation
@@ -55,11 +54,28 @@ _HEADER_ERRORS = {
 }
 
 
-def register_connection(partner, url, secret_env, direction, user):
-    """つながりを登録する。secret_env は鍵を入れる環境変数の名前で、値は受け取らない。
+def _url_is_valid(url):
+    """受け口の URL の形を見る。scheme が http か https、ホスト名が空でない、空白が無い、ポートが読める。
 
-    向きは send (送る) か receive (受ける)。送る向きで url が空でなければ、URL の形を確かめる。
-    受ける向きの url は空でよい。誤りは日本語の文の ValueError。
+    ホスト名の点の有無は問わない (localhost や社内の PC の名前を通す)。
+    """
+    if not isinstance(url, str) or any(char.isspace() for char in url):
+        return False
+    try:
+        parts = urlsplit(url)
+        _ = parts.port  # 数でないポートと範囲の外のポートは ValueError になる
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
+    """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL。
+
+    送る向きで url が空でなければ、URL の形を確かめる。受ける向きの url は空でよい。
+    誤りは日本語の文の ValueError。
+    exclude_pk は、同じ取引先と向きの 2 行目を断る確かめで、直すときの自分を除くための引数。
+    その確かめは、同じ取引先と向きを 2 回登録する既にあるテストとの食い違いが決まるまで入れていない。
     """
     if direction not in _DIRECTIONS:
         raise ValueError(
@@ -71,17 +87,40 @@ def register_connection(partner, url, secret_env, direction, user):
             "鍵の置き場の名前は、環境変数の名前 (英大文字で始まり、英大文字と数字と _ だけ) にしてください。"
             "鍵の値は渡さず、.env に置いてください。"
         )
-    if direction == Connection.DIRECTION_SEND and url:
-        try:
-            URLValidator()(url)
-        except ValidationError:
-            raise ValueError(
-                f"受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
-            ) from None
+    if direction == Connection.DIRECTION_SEND and url and not _url_is_valid(url):
+        raise ValueError(
+            f"受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
+        )
+
+
+def register_connection(partner, url, secret_env, direction, user):
+    """つながりを登録する。secret_env は鍵を入れる環境変数の名前で、値は受け取らない。
+
+    向きは send (送る) か receive (受ける)。確かめは _check_connection。
+    誤りは日本語の文の ValueError。
+    """
+    _check_connection(partner, url, secret_env, direction)
     with transaction.atomic():
         return Connection.objects.create(
             partner=partner, url=url, secret_env=secret_env, direction=direction
         )
+
+
+def update_connection(connection, partner, url, secret_env, direction, user):
+    """つながりを直す。引数は register_connection にそろえ、対象を先頭に置く (01 の 10.1)。
+
+    確かめは登録と同じ。鍵の値は受け取らない。
+    user は記録のために受ける (記録の列がまだ無いので、今は受けるだけ)。返す物は取り直した Connection。
+    """
+    _check_connection(partner, url, secret_env, direction, exclude_pk=connection.pk)
+    with transaction.atomic():
+        locked = Connection.objects.select_for_update().get(pk=connection.pk)
+        locked.partner = partner
+        locked.url = url
+        locked.secret_env = secret_env
+        locked.direction = direction
+        locked.save()
+        return locked
 
 
 def receive(raw_body: bytes, headers: Mapping[str, str]):

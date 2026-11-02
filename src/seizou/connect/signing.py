@@ -33,6 +33,7 @@
 import base64
 import hashlib
 import hmac
+import secrets
 import time
 from collections.abc import Mapping
 
@@ -145,3 +146,12 @@ def verify(
         if hmac.compare_digest(candidate.encode(), expected):
             return msg_id
     raise SignatureError(SignatureError.SIGNATURE_MISMATCH)
+
+
+def new_secret() -> str:
+    """新しい鍵の値を 1 つ作る (32 bytes の乱数を base64 にし、接頭辞を付けた形)。
+
+    `_decode_secret` が読める形。値は呼ぶ側が人に 1 度だけ見せ、
+    ログ・ファイル・例外の文には出さない。
+    """
+    return _SECRET_PREFIX + base64.b64encode(secrets.token_bytes(32)).decode()
