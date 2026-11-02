@@ -1,0 +1,15 @@
+"""会社 ${id} の会社ごとの項目の表。seizou new が答えの item_fields から作った。
+
+部品の表は変えず、1 対 1 の拡張の表に列を足す。列の名前は答えの順の ext01・ext02…、見出しは verbose_name。
+"""
+
+from django.db import models
+
+
+class ItemExt(models.Model):
+    item = models.OneToOneField("masters.Item", on_delete=models.CASCADE, related_name="ext", verbose_name="品目")
+${columns}
+
+    class Meta:
+        verbose_name = "品目の会社ごとの項目"
+        verbose_name_plural = "品目の会社ごとの項目"

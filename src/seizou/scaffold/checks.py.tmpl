@@ -1,0 +1,24 @@
+"""会社 ${id} のポカよけ (会社の検査)。seizou new が空の型として作った。
+
+出荷や指示書で「これだけは防ぎたい間違い」を、core の道具 (seizou.core.checks.tools) だけで書く。
+表に直接触らない (SQL を書かない。表を書くのは部品の services)。
+今は何も登録していない。
+"""
+
+# 書き方の例 (受注の明細の残が 0 以下なのに出荷しようとしたら知らせる):
+#
+# from seizou.core.checks import Check, register, tools
+#
+#
+# class NoRemaining(Check):
+#     name = "no_remaining"
+#     action = "shipping.ship"
+#     mode = "warn"  # "stop" = 止める / "warn" = 知らせる / "off" = 通す
+#
+#     def run(self, data, user):
+#         if tools.remaining_qty(data["order_line"]) <= 0:
+#             return "この受注の明細は出荷が済んでいます。受注の明細を確かめてください。"
+#         return None
+#
+#
+# register(NoRemaining())

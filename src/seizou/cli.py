@@ -2,6 +2,7 @@
 
 seizou new <answers.yaml> [--demo]
     答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。
+    item_fields があれば会社ごとの項目の app (fields/) も作る。--demo は作り物のデータを入れる口。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
     起動はしない。起動の 1 行を最後に出す。
 
@@ -13,6 +14,7 @@ Django はこの module の中で import しない。Django を使う仕事は�
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import re
 import secrets
@@ -31,6 +33,7 @@ EXIT_INPUT = 2
 
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 FIELD_TYPES = ("text", "number", "date", "choice", "bool")
+FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
 
 # seizou.core.conf.DEFAULTS と同じ値 (core は Django を読むので、ここでは import せずに写す)。
@@ -56,6 +59,9 @@ CREATE_ADMIN = (
     "made and User.objects.create_superuser(uid, password=os.environ['SEIZOU_ADMIN_PASSWORD']); "
     "print('created' if made else 'exists')"
 )
+
+# 作り物のデータを入れる短い Python (seizou.core.demo があるときだけ。引数は種のフォルダ)。
+LOAD_DEMO = "import importlib, pathlib; importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}))"
 
 
 class AnswerError(Exception):
@@ -124,6 +130,70 @@ def settings_with_defaults(answers: dict) -> tuple[dict, list[str]]:
     return values, used_defaults
 
 
+def item_columns(answers: dict) -> tuple[list[dict], list[str]]:
+    """item_fields に列の名前 (ext01…) を付けた並びと、既定 (偽) を使った所の一覧。"""
+    columns = []
+    used_defaults = []
+    for number, field in enumerate(answers.get("item_fields") or [], start=1):
+        column = {"name": f"ext{number:02d}", "label": field.get("label"), "type": field["type"]}
+        for flag in FIELD_FLAGS:
+            if flag in field:
+                column[flag] = bool(field[flag])
+            else:
+                column[flag] = False
+                used_defaults.append(f"item_fields の {number} 番目の {flag} = False")
+        column["choices"] = [str(choice) for choice in field.get("choices") or []]
+        columns.append(column)
+    return columns, used_defaults
+
+
+def model_line(column: dict) -> str:
+    """拡張の表の 1 列。文字の上限は 100 (01 の 4 節)。必須でなければ空を許す。"""
+    label = repr(column["label"])
+    optional = not column["required"]
+    blank = ", blank=True" if optional else ""
+    null_blank = ", null=True, blank=True" if optional else ""
+    kind = column["type"]
+    if kind == "text":
+        field = f"models.CharField({label}, max_length=100{blank})"
+    elif kind == "choice":
+        choices = [(choice, choice) for choice in column["choices"]]
+        field = f"models.CharField({label}, max_length=100, choices={choices!r}{blank})"
+    elif kind == "number":
+        field = f"models.DecimalField({label}, max_digits=14, decimal_places=2{null_blank})"
+    elif kind == "date":
+        field = f"models.DateField({label}{null_blank})"
+    else:
+        field = f"models.BooleanField({label}, default=False{blank})"
+    return f"    {column['name']} = {field}"
+
+
+def fields_installed() -> bool:
+    """会社の settings.py と同じ判定 (部品マスターが PARTS にあるときだけ fields を入れる)。"""
+    from seizou.parts import PARTS
+
+    return "seizou.masters" in PARTS
+
+
+def write_fields(site: Path, company_id: str, columns: list[dict]) -> None:
+    folder = site / "fields"
+    (folder / "migrations").mkdir(parents=True, exist_ok=True)
+    (folder / "__init__.py").write_text("", encoding="utf-8")
+    (folder / "migrations" / "__init__.py").write_text("", encoding="utf-8")
+    (folder / "apps.py").write_text(
+        render(
+            "fields_apps.py.tmpl",
+            id=company_id,
+            item_fields="\n".join(f"    {column!r}," for column in columns),
+        ),
+        encoding="utf-8",
+    )
+    (folder / "models.py").write_text(
+        render("fields_models.py.tmpl", id=company_id, columns="\n".join(model_line(c) for c in columns)),
+        encoding="utf-8",
+    )
+
+
 def render(template_name: str, **values) -> str:
     text = resources.files("seizou.scaffold").joinpath(template_name).read_text(encoding="utf-8")
     return Template(text).substitute(values)
@@ -178,6 +248,7 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         ),
         encoding="utf-8",
     )
+    (site / "checks.py").write_text(render("checks.py.tmpl", id=company_id), encoding="utf-8")
     for folder in ("templates", "static/css", "manual/images"):
         (site / folder).mkdir(parents=True, exist_ok=True)
 
@@ -213,6 +284,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
     try:
         answers = load_answers(answers_path)
         settings, used_defaults = settings_with_defaults(answers)
+        columns, field_defaults = item_columns(answers)
     except AnswerError as exc:
         print(f"止まりました: {exc}", file=sys.stderr)
         return EXIT_INPUT
@@ -230,9 +302,22 @@ def command_new(answers_path: Path, demo: bool) -> int:
     if used_defaults:
         shown = "、".join(f"{key} = {SETTING_DEFAULTS[key]!r}" for key in used_defaults)
         print(f"答えに無い設定は既定を使いました: {shown}")
+    if field_defaults:
+        print(f"答えに無い項目の属性は既定を使いました: {'、'.join(field_defaults)}")
 
-    write_project(site, answers_path.resolve(), answers, settings)
+    answers_path = answers_path.resolve()
+    write_project(site, answers_path, answers, settings)
     print(f"ファイルを書きました: {site}")
+
+    if columns:
+        write_fields(site, answers["id"], columns)
+        if fields_installed():
+            result = run_manage(site, ["makemigrations", "fields"])
+            if result.returncode != 0:
+                return show_failure("会社ごとの項目の migration を作る所 (makemigrations fields)", result)
+            print("会社ごとの項目の表 (fields/) と、その migration を作りました。")
+        else:
+            print("会社ごとの項目の表 (fields/) を作りました。部品マスター (seizou.masters) が入るまでは使いません。")
 
     result = run_manage(site, ["migrate", "--no-input"])
     if result.returncode != 0:
@@ -251,6 +336,18 @@ def command_new(answers_path: Path, demo: bool) -> int:
         admin_text = f"管理者の ID: {ADMIN_ID} (既にあったので作らず、パスワードも変えていません)"
     else:
         admin_text = f"管理者の ID: {ADMIN_ID} / パスワード: {password} (パスワードはこの 1 度だけ出します)"
+
+    if demo:
+        # import せずに有無だけを見る (この process で Django の model を読まないため)。
+        if importlib.util.find_spec("seizou.core.demo") is None:
+            print("作り物のデータの読み込みは後の版です (seizou.core.demo が無い)。")
+        else:
+            # 種は答えの YAML と同じ場所の <id>/ (examples/companies/README.md の約束)。
+            seeds = answers_path.parent / answers["id"]
+            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds))])
+            if result.returncode != 0:
+                return show_failure("作り物のデータの読み込み", result)
+            print(f"作り物のデータを入れました: {seeds}")
 
     port = answers["port"]
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")

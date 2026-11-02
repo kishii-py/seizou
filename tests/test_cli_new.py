@@ -6,7 +6,9 @@ migrate と管理者と check だけ。試験用の答えは tests/fixtures/comp
 
 from __future__ import annotations
 
+import ast
 import contextlib
+import importlib.util
 import io
 import os
 import re
@@ -16,7 +18,9 @@ from pathlib import Path
 
 import pytest
 
+from seizou import cli
 from seizou.cli import main
+from seizou.parts import PARTS
 
 FIXTURE = Path(__file__).parent / "fixtures" / "companies" / "sample.yaml"
 SITE_FILES = ("manage.py", "settings.py", ".env", "answers.yaml", "README.md", "db.sqlite3")
@@ -183,3 +187,89 @@ def test_unknown_field_type_is_refused(tmp_path, monkeypatch):
     assert code == 2
     assert "color" in err
     assert not sites.exists()
+
+
+def test_fields_app_from_item_fields(built, tmp_path, monkeypatch):
+    fields = built["site"] / "fields"
+    for name in ("__init__.py", "apps.py", "models.py", "migrations/__init__.py"):
+        assert (fields / name).is_file(), name
+    models_text = (fields / "models.py").read_text(encoding="utf-8")
+    assert "class ItemExt(models.Model):" in models_text
+    assert re.search(r"""ext01 = models\.CharField\(['"]材質['"], max_length=100, blank=True\)""", models_text)
+    assert re.search(r"""ext02 = models\.CharField\(['"]表面の仕上げ['"], max_length=100, choices=""", models_text)
+    assert "めっき" in models_text
+    apps_text = (fields / "apps.py").read_text(encoding="utf-8")
+    assert "ITEM_FIELDS = [" in apps_text
+    assert re.search(r"""['"]name['"]: ['"]ext02['"]""", apps_text)
+    register_lines = [line for line in apps_text.splitlines() if "register(" in line]
+    assert register_lines and all(line.strip().startswith("#") for line in register_lines)
+
+    # item_fields が空なら fields/ を作らない。
+    monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path / "sites"))
+    text = "id: bare_co\nname: 見本の会社\nindustry: 機械加工\nitem_fields: []\nport: 8012\n"
+    answers = write_answers(tmp_path / "answers.yaml", text)
+    code, _out, err = run_new(["new", str(answers)])
+    assert code == 0, err
+    assert not (tmp_path / "sites" / "bare_co" / "fields").exists()
+
+
+def test_fields_needs_masters_in_parts(built):
+    site = built["site"]
+    text = (site / "settings.py").read_text(encoding="utf-8")
+    assert '"seizou.masters" in PARTS' in text
+    assert (site / "fields").is_dir()
+    result = manage(site, "check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    code = "from django.conf import settings; print('fields' in settings.INSTALLED_APPS)"
+    result = manage(site, "shell", "--no-imports", "-c", code)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str("seizou.masters" in PARTS)
+
+
+def test_checks_py_is_an_empty_template(built):
+    text = (built["site"] / "checks.py").read_text(encoding="utf-8")
+    register_lines = [line for line in text.splitlines() if "register(" in line]
+    assert register_lines and all(line.strip().startswith("#") for line in register_lines)
+    # コードとしては説明の文字列だけ (何も登録しない)。
+    body = ast.parse(text).body
+    assert len(body) == 1 and isinstance(body[0], ast.Expr)
+
+
+def test_demo_without_loader_exits_zero(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path))
+    real_find_spec = importlib.util.find_spec
+
+    def find_spec(name, *args, **kwargs):
+        if name == "seizou.core.demo":
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(cli.importlib.util, "find_spec", find_spec)
+    code, out, err = run_new(["new", str(FIXTURE), "--demo"])
+    assert code == 0, err
+    assert "作り物のデータの読み込みは後の版です" in out
+
+    source = Path(cli.__file__).read_text(encoding="utf-8")
+    assert "from seizou.core" not in source
+    assert not re.search(r"import django|from django", source)
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or ""]
+        else:
+            continue
+        assert not [n for n in names if n.startswith(("django", "seizou.core"))], names
+
+
+def test_model_line_covers_every_type():
+    columns = [
+        {"name": f"ext0{n}", "label": kind, "type": kind, "required": n % 2 == 0, "choices": ["甲", "乙"]}
+        for n, kind in enumerate(cli.FIELD_TYPES, start=1)
+    ]
+    lines = [cli.model_line(column) for column in columns]
+    compile("from django.db import models\n\n\nclass X:\n" + "\n".join(lines) + "\n", "models.py", "exec")
+    # 必須は 2 番目と 4 番目 (number・choice)。必須でない数と日付は null と空を許す。
+    assert "DecimalField('number', max_digits=14, decimal_places=2)" in lines[1]
+    assert "DateField('date', null=True, blank=True)" in lines[2]
+    assert "BooleanField('bool', default=False, blank=True)" in lines[4]
