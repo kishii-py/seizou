@@ -172,3 +172,38 @@ th {
   overflow-wrap: anywhere;
   word-break: break-all;
 }
+
+/* 出荷ラベル: 得意先の名前 (上の段) の下に、要点と QR の 1 行 2 列の表を置く。数量は大きく */
+.report-label-main {
+  margin-bottom: 4mm;
+}
+
+.report-label-summary {
+  vertical-align: top;
+  padding: 0 4mm 0 0;
+}
+
+.report-label-qty {
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+/* 納品書の QR: 明細の表の上の右に 20mm 角で置く (中身の字は出さない) */
+.report-qr-row {
+  margin-bottom: 3mm;
+}
+
+.report-qr-row td {
+  vertical-align: top;
+  padding: 0;
+}
+
+.report-qr-small {
+  width: 20mm;
+}
+
+.report-qr-small svg {
+  display: block;
+  width: 20mm;
+  height: 20mm;
+}

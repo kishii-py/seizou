@@ -1,0 +1,7 @@
+{% extends "core/detail.html" %}
+{% load seizou_icons %}
+{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。 #}
+{% block actions %}{{ block.super }}
+<a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}ラベル</a>
+<a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% endblock %}

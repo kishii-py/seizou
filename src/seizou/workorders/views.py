@@ -157,8 +157,11 @@ def workorder_scan(request, pk):
     workorder = get_object_or_404(
         WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
+    # 「完了」の印のために、工程ごとの実績の合計を progress の services で読む (読むだけ。表に書かない)。
+    from seizou.progress.services import recorded_qty
+
     steps = workorder.steps.select_related("process").order_by("seq")
-    rows = [{"step": step, "done": False} for step in steps]
+    rows = [{"step": step, "done": recorded_qty(step) >= step.planned_qty} for step in steps]
     return render(
         request,
         "workorders/workorder_scan.html",

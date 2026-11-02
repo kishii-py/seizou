@@ -50,3 +50,33 @@ def delivery_note_context(note) -> dict:
         "lines": lines,
         "total": total,
     }
+
+
+#: 出荷ラベルの帳票のテンプレート (core/report_base.html を継ぐ)
+SHIPMENT_LABEL_TEMPLATE = "shipping/shipment_label.html"
+
+
+def shipment_label_context(shipment) -> dict:
+    """出荷 1 つのラベルの context (1 出荷 = 1 枚。表を読むだけ)。
+
+    company = 出荷元の {"name", "address", "phone"} (振込先とロゴは出さない)、
+    label = {"number", "shipped_at", "customer", "order_no", "customer_order_no", "part_no", "item_name", "qty", "unit"}。
+    数量は出荷の数そのまま、単位は受注の明細の単位。
+    """
+    order_line = shipment.order_line
+    order = order_line.order
+    row = company()
+    return {
+        "company": {"name": row.name, "address": row.address, "phone": row.phone},
+        "label": {
+            "number": shipment.shipment_no,
+            "shipped_at": shipment.shipped_at,
+            "customer": order.customer.name,
+            "order_no": order.order_no,
+            "customer_order_no": order.customer_order_no,
+            "part_no": order_line.item.part_no,
+            "item_name": order_line.item.name,
+            "qty": shipment.qty,
+            "unit": order_line.unit,
+        },
+    }

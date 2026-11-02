@@ -1,0 +1,36 @@
+{% extends "core/report_base.html" %}
+{% load seizou_qr %}
+{% comment %}
+出荷ラベルの帳票 (1 出荷 = 1 枚)。context は shipping.reports.shipment_label_context が作り (表を読むだけ)、
+view が qr_text (出荷の詳細の絶対 URL) を足す。company は出荷元の名前・住所・電話だけ (振込先とロゴは出さない)。
+数量は出荷の数そのまま。context の値をそのまま出し、ここでは計算しない。
+見た目は core の report.css だけを使う (画面の CSS は使わない)。A4 縦の上半分に収める。並べるのは表だけ。
+pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
+{% endcomment %}
+{% block title %}出荷ラベル {{ label.number }}{% endblock %}
+{% block report_title %}出荷ラベル{% endblock %}
+{% block head %}
+{% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
+<p class="report-customer">{{ label.customer }} 御中</p>
+{% endblock %}
+{% block content %}
+<table class="report-label-main">
+  <tr>
+    <td class="report-label-summary">
+      <table class="report-meta">
+        <tr><th>出荷番号</th><td>{{ label.number }}</td></tr>
+        <tr><th>出荷日</th><td>{{ label.shipped_at|date:"Y年n月j日" }}</td></tr>
+        <tr><th>受注番号</th><td>{{ label.order_no }}</td></tr>
+        <tr><th>得意先の注文番号</th><td>{{ label.customer_order_no|default:"—" }}</td></tr>
+        <tr><th>品番</th><td>{{ label.part_no }}</td></tr>
+        <tr><th>品名</th><td>{{ label.item_name }}</td></tr>
+        <tr><th>数量</th><td class="report-label-qty">{{ label.qty|floatformat:"-2g" }} {{ label.unit }}</td></tr>
+      </table>
+    </td>
+    <td class="report-qr">
+      {% qr_svg qr_text %}
+      <p class="report-qr-text">{{ qr_text }}</p>
+    </td>
+  </tr>
+</table>
+{% endblock %}

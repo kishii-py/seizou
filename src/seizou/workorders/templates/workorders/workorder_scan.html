@@ -26,6 +26,7 @@ context は workorders.views.workorder_scan が作る: workorder・rows (1 つ =
     <div class="flex flex-wrap items-center gap-2">
       <span class="font-mono text-base-content/70">{{ row.step.seq }}</span>
       <span class="min-w-0 break-words text-lg font-bold">{{ row.step.process.name }}</span>
+      {% if row.done %}<span class="badge badge-success">完了</span>{% endif %}
     </div>
     <p class="mt-1 text-base-content/70">予定の数 <span class="tabular-nums">{{ row.step.planned_qty|floatformat:"-2g" }}</span></p>
     <a class="btn btn-outline btn-lg mt-4 w-full" href="{% url 'progress:progress_create' %}?workorder_step={{ row.step.pk }}">実績を入力</a>

@@ -11,11 +11,13 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.core import reports
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
+from seizou.progress import services as progress_services
 from seizou.workorders import services
 from seizou.workorders.reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
@@ -243,4 +245,21 @@ def test_scan_shows_cancelled_status(logged_in, user, workorder):
     body = logged_in.get(_scan_url(workorder)).content.decode()
     assert ">取消</span>" in body
     # ボタンは消さない (取消の指示書を断るかは progress の側の話)
+    assert len(_input_buttons(body)) == 2
+
+
+@pytest.mark.django_db
+def test_scan_marks_done_steps(logged_in, user, workorder):
+    first, second = workorder.steps.order_by("seq")
+    progress_services.record_progress(first, first.planned_qty, timezone.now(), user)
+
+    body = logged_in.get(_scan_url(workorder)).content.decode()
+    cards = [card for card in re.findall(r"<li .*?</li>", body, re.S) if "実績を入力" in card]
+    assert len(cards) == 2
+    done = [card for card in cards if "完了" in card]
+    assert len(done) == 1
+    assert "切断" in done[0]
+    assert reverse("progress:progress_create") + f"?workorder_step={first.pk}" in done[0]
+    assert f"?workorder_step={second.pk}" not in done[0]
+    # 完了の工程にもボタンを残す (予定を超えた実数も記録する = 現物優先)
     assert len(_input_buttons(body)) == 2

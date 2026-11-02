@@ -9,11 +9,14 @@
 納品書を取り消す画面は services.cancel_delivery_note を呼び、納品書の詳細の「取り消す」から入る。
 印刷用の HTML と PDF は画面でない口なので、関数の view にした (connect の受け口と同じ形)。
 PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、印刷用の HTML に知らせを付けて返す。
+出荷ラベル (1 出荷 = 1 枚) の印刷用の HTML と PDF も関数の view で、出荷の詳細の「ラベル」「PDF」から入る。
+帳票の QR の中身 (qr_text) は view が絶対 URL で足す (ラベルは出荷の詳細、納品書は納品書の詳細)。context の関数は request を受けない。
 """
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 
 from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
@@ -21,7 +24,12 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 from . import services
 from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentForm, ShipmentUpdateForm
 from .models import DeliveryNote, Shipment
-from .reports import DELIVERY_NOTE_TEMPLATE, delivery_note_context
+from .reports import (
+    DELIVERY_NOTE_TEMPLATE,
+    SHIPMENT_LABEL_TEMPLATE,
+    delivery_note_context,
+    shipment_label_context,
+)
 
 #: PDF を作れないときに印刷用の HTML の上に出す知らせ (05 の 6 節の文)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
@@ -60,6 +68,7 @@ class ShipmentDetailView(BaseDetailView):
     model = Shipment
     screen_name = "出荷の詳細"
     screen_help = "出荷の項目。右上の「編集」で数量と出荷日と備考を直せます。発行の納品書に入った出荷は、先に納品書を取り消してから編集します。"
+    template_name = "shipping/shipment_detail.html"
 
 
 class ShipmentCreateView(BaseFormView):
@@ -125,18 +134,57 @@ class DeliveryNoteCancelView(BaseFormView):
 def deliverynote_print(request, pk):
     """納品書の印刷用の HTML (ブラウザの印刷で A4 1 枚)。"""
     note = get_object_or_404(DeliveryNote.objects.select_related("customer"), pk=pk)
-    return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, delivery_note_context(note)))
+    context = {
+        **delivery_note_context(note),
+        "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+    }
+    return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, context))
 
 
 @login_required
 def deliverynote_pdf(request, pk):
     """納品書の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
     note = get_object_or_404(DeliveryNote.objects.select_related("customer"), pk=pk)
-    context = delivery_note_context(note)
+    context = {
+        **delivery_note_context(note),
+        "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+    }
     try:
         data = reports.render_pdf(DELIVERY_NOTE_TEMPLATE, context)
     except reports.PdfUnavailable:
         return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
     response = HttpResponse(data, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{note.note_no}.pdf"'
+    return response
+
+
+@login_required
+def shipment_label(request, pk):
+    """出荷ラベルの印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は出荷の詳細の URL。"""
+    shipment = get_object_or_404(
+        Shipment.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
+    )
+    context = {
+        **shipment_label_context(shipment),
+        "qr_text": request.build_absolute_uri(reverse("shipping:shipment_detail", args=[pk])),
+    }
+    return HttpResponse(reports.render_html(SHIPMENT_LABEL_TEMPLATE, context))
+
+
+@login_required
+def shipment_label_pdf(request, pk):
+    """出荷ラベルの PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
+    shipment = get_object_or_404(
+        Shipment.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
+    )
+    context = {
+        **shipment_label_context(shipment),
+        "qr_text": request.build_absolute_uri(reverse("shipping:shipment_detail", args=[pk])),
+    }
+    try:
+        data = reports.render_pdf(SHIPMENT_LABEL_TEMPLATE, context)
+    except reports.PdfUnavailable:
+        return HttpResponse(reports.render_html(SHIPMENT_LABEL_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+    response = HttpResponse(data, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{shipment.shipment_no}.pdf"'
     return response
