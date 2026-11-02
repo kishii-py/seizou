@@ -11,7 +11,8 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
+import unicodedata
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 
@@ -177,3 +178,108 @@ def _company_rounding():
     # core の services.company() ができたら、それに替える。
     company = Company.objects.first()
     return company.rounding if company is not None else "round"
+
+
+# カタカナ (ァ〜ヶ) をひらがなに写す表。
+_KATAKANA_TO_HIRAGANA = {code: code - 0x60 for code in range(0x30A1, 0x30F7)}
+
+
+def _fold(text):
+    """照合のために字を畳む。全角と半角、カタカナとひらがな、大文字と小文字を同じにする。"""
+    text = unicodedata.normalize("NFKC", text)
+    return text.translate(_KATAKANA_TO_HIRAGANA).casefold()
+
+
+def _page_number(page):
+    try:
+        number = int(page)
+    except (TypeError, ValueError):
+        return 1
+    return max(number, 1)
+
+
+def candidates(kind, query, page, *, per_page=30):
+    """選ぶ欄の候補を 1 ページ返す (05 の 2 節)。
+
+    kind は "item" (表示の字は「品番 品名」) か "partner" (「コード 名前」)。
+    表示の字と query を畳み、query を空白で切った語の全部を含む行を出す。空の query は全件。
+    page が整数に読めなければ 1。母集団は数千件の前提で、全件を読んでから Python で絞る。
+    """
+    if kind == "item":
+        rows = [
+            (pk, f"{part_no} {name}")
+            for pk, part_no, name in Item.objects.values_list("pk", "part_no", "name")
+        ]
+    elif kind == "partner":
+        rows = [
+            (pk, f"{code} {name}")
+            for pk, code, name in Partner.objects.values_list("pk", "code", "name")
+        ]
+    else:
+        raise ValueError(f"候補の種類 {kind!r} は使えません。item か partner にしてください。")
+
+    terms = _fold(query or "").split()
+    hits = [(pk, text) for pk, text in rows if all(term in _fold(text) for term in terms)]
+    start = (_page_number(page) - 1) * per_page
+    return {
+        "results": [{"id": pk, "text": text} for pk, text in hits[start : start + per_page]],
+        "pagination": {"more": start + per_page < len(hits)},
+    }
+
+
+_COPY_LABELS = {"unit": "単位", "unit_price": "単価"}
+
+
+def _is_blank(value):
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _same_value(now, master_value):
+    """今の欄の値とマスタの値を、マスタと同じ型にそろえて比べる。"""
+    if _is_blank(now):
+        return False
+    if isinstance(master_value, Decimal):
+        try:
+            return Decimal(str(now).strip()) == master_value
+        except InvalidOperation:
+            return False
+    return str(now).strip() == master_value
+
+
+def _values_to_copy(source):
+    if isinstance(source, Item):
+        return {"unit": source.unit, "unit_price": source.standard_price}
+    # 取引先から受注の欄に写す物は無い。
+    return {}
+
+
+def copy_values(source, current, copied_marks):
+    """マスタの値を欄へ写す 4 つの規則 (05 の 2 節) を 1 か所で当てる。
+
+    source は Item (単位と標準単価を、欄の unit と unit_price に写す) か Partner (写す物は無い)。
+    current は今の欄の値の辞書、copied_marks は前に写した欄の名前の集合。
+    規則: マスタに値が無ければ何もしない / 今の値と同じなら知らせない /
+    欄が空か前に写した値なら写して「写した」/ 人が入れた値なら残して「残した」。
+    返す物は (写す値の辞書, 知らせの文の一覧)。
+    """
+    values = {}
+    copied = []
+    kept = []
+    for field, master_value in _values_to_copy(source).items():
+        if _is_blank(master_value):
+            continue
+        now = current.get(field)
+        if _same_value(now, master_value):
+            continue
+        if _is_blank(now) or field in copied_marks:
+            values[field] = master_value
+            copied.append(_COPY_LABELS[field])
+        else:
+            kept.append(_COPY_LABELS[field])
+
+    messages = []
+    if copied:
+        messages.append(f"{'と'.join(copied)}を品目から写しました。")
+    if kept:
+        messages.append(f"{'と'.join(kept)}は入力のまま残しました。")
+    return values, messages
