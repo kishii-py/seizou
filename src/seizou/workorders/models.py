@@ -64,6 +64,9 @@ class WorkOrderStep(models.Model):
     )
     seq = models.PositiveIntegerField("順")
     planned_qty = models.DecimalField("予定の数", max_digits=12, decimal_places=2)
+    # 生産計画の盤で置く日。空 = 未計画。書くのは services.plan_step だけ。
+    planned_start = models.DateField("開始日", null=True, blank=True)
+    planned_end = models.DateField("終了日", null=True, blank=True)
 
     class Meta:
         verbose_name = "指示書の工程"
