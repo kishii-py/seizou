@@ -46,3 +46,7 @@ markers = [
 [tool.ruff]
 target-version = "py312"
 extend-exclude = ["tests/fixtures/"]
+
+[tool.ruff.lint]
+# 規則は標準の 4 群に固定する (版が上がって既定が広がっても、レーンと CI の結果が変わらないように)。
+select = ["E4", "E7", "E9", "F"]
