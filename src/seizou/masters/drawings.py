@@ -6,7 +6,7 @@ URL: /masters/items/<pk>/drawing/<filename>
 - filename は 2 つの形だけ。original<拡張子> (元のファイル。拡張子は元の名前の拡張子を小文字にした字。無ければ original) と
   preview.png (表示用の PNG)。ほかの字は 404。
 - GET の version (版の番号。無ければ今の図面) と page (表示用だけが見る。1 から。既定 1)。読めない値と無い物は 404。
-- 返すファイルの名前は表の字 (部品か版の行) だけから決め、要求の字から道を作らない。開くのは storage の open() だけ。
+- 返すファイルの名前は表の字 (部品か版の行) だけから決め、要求の字から道を作らない。開くのは storage.open() だけ。
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def version_source(version):
     )
 
 
-def _positive_int(raw):
+def positive_int(raw):
     """1 以上の整数の字なら数、ほかは None。"""
     if raw is None or not _DIGITS.fullmatch(str(raw)):
         return None
@@ -112,7 +112,7 @@ def _positive_int(raw):
 
 def find_version(item, raw):
     """GET の version の字からこの部品の版の行を引く。読めない・無い番号は None。"""
-    number = _positive_int(raw)
+    number = positive_int(raw)
     if number is None:
         return None
     return item.drawing_versions.filter(version_no=number).first()
@@ -149,7 +149,7 @@ def resolve(item, filename, params):
         )
     if filename != PREVIEW_FILENAME or not source.preview:
         return None
-    page = _positive_int(params.get("page", "1"))
+    page = positive_int(params.get("page", "1"))
     if page is None or page > source.page_count:
         return None
     name = page_name(source.preview, page)

@@ -12,6 +12,7 @@ from django.http import FileResponse, Http404
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.cache import add_never_cache_headers
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET
 
 from seizou.core import csvio
@@ -21,6 +22,7 @@ from . import drawings
 from . import services
 from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
+from .forms import DrawingRestoreForm
 from .models import Item, Partner, Process
 
 
@@ -191,11 +193,13 @@ def partner_import_sample(request):
 
 @login_required
 @require_GET
+@xframe_options_sameorigin
 def item_drawing(request, pk, filename):
     """部品の図面のファイルを、ログインした人にだけ返す口 (画面でない口。05 の 7 節)。
 
     どのファイルを返すか (元か表示用・版・ページ・Content-Type・名前の見出し) は drawings.resolve の 1 か所で決める。
     返す物が無ければ 404。ブラウザに保存させない (ログアウトの後に残った図面を見せない)。
+    同じサイトの枠の中では開ける (図面ビューアが PDF を iframe で出す。会社のプロジェクトは X-Frame-Options の DENY が既定)。
     """
     item = get_object_or_404(Item, pk=pk)
     found = drawings.resolve(item, filename, request.GET)
@@ -205,3 +209,23 @@ def item_drawing(request, pk, filename):
     response["Content-Disposition"] = found.disposition
     add_never_cache_headers(response)
     return response
+
+
+# ---------------------------------------------------------------- 図面ビューアと版に戻す (第 3 波)
+# 版とページの選び方は template tag (masters_drawing の drawing_viewer) が GET から解く。class は土台の 11 の属性だけ。
+
+
+class ItemDrawingViewerView(BaseDetailView):
+    model = Item
+    template_name = "masters/drawing_viewer.html"
+    screen_name = "図面ビューア"
+    screen_help = "部品の図面を拡大・回転して見ます。差し替えた前の図面は版として残り、見比べられます。"
+
+
+class ItemDrawingRestoreView(BaseFormView):
+    model = Item
+    form_class = DrawingRestoreForm
+    service = staticmethod(services.restore_drawing_version)
+    template_name = "masters/drawing_restore.html"
+    screen_name = "図面を版に戻す"
+    screen_help = "選んだ版の図面を今の図面に戻します。戻す前の今の図面は新しい版として残ります。"

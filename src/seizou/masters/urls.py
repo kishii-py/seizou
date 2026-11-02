@@ -34,5 +34,7 @@ urlpatterns = [
     path("partners/import/", views.PartnerImportView.as_view(), name="partner_import"),
     path("items/import/sample/", views.item_import_sample, name="item_import_sample"),
     path("partners/import/sample/", views.partner_import_sample, name="partner_import_sample"),
+    path("items/<int:pk>/drawing/view/", views.ItemDrawingViewerView.as_view(), name="item_drawing_viewer"),
+    path("items/<int:pk>/drawing/restore/", views.ItemDrawingRestoreView.as_view(), name="item_drawing_restore"),
     path("items/<int:pk>/drawing/<str:filename>", views.item_drawing, name="item_drawing"),
 ]

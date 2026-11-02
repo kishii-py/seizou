@@ -16,7 +16,6 @@
 import re
 from urllib.parse import urljoin
 
-import pytest
 from playwright.sync_api import expect
 
 from .conftest import drawing_file, login, new_item, shot, unique_mark, wait_image_loaded
@@ -67,7 +66,6 @@ def test_e24_broken_file_notice_and_saved(page_a, company_a, tmp_path):
     shot(page_a, "E-24", "a-broken")
 
 
-@pytest.mark.xfail(reason="06 の E-24 の「ログインなしでは開けない」が今の画面で通らない: 図面の URL は開発のサーバーの media の道で、ログインを見ない (N23 の要望)", strict=True, raises=AssertionError)
 def test_e24_drawing_url_needs_login(context, page_a, company_a, tmp_path):
     login(page_a, company_a)
     new_item(

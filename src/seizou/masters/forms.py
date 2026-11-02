@@ -8,12 +8,14 @@ services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ex
 import re
 
 from django import forms
+from django.utils import timezone
 
 from seizou.core import csvio
 from seizou.core.forms import ServiceModelForm
 
 from .models import Item, Partner, Process
 from .models import MONTH_END_DAY
+from .models import ItemDrawingVersion
 
 
 class ItemForm(ServiceModelForm):
@@ -246,3 +248,38 @@ class PartnerCsvImportForm(CsvImportForm):
     list_url_name = "masters:partner_list"
     sample_url_name = "masters:partner_import_sample"
     cell_readers = {"closing_day": read_closing_day, "payment_day": read_payment_day}
+
+
+# ---------------------------------------------------------------- 図面を版に戻す (第 3 波)
+
+
+class _VersionChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        saved = timezone.localtime(obj.created_at) if timezone.is_aware(obj.created_at) else obj.created_at
+        text = f"版 {obj.version_no} ({saved:%Y-%m-%d %H:%M})"
+        return f"{text} {obj.note}" if obj.note else text
+
+
+class DrawingRestoreForm(forms.Form):
+    """図面を版に戻す確認の form。選べる版はこの部品の版だけ (新しい順)。
+
+    土台は instance (部品) を渡し、services.restore_drawing_version(item, user=…, version=…, note=…) を呼ぶ。
+    """
+
+    version = _VersionChoiceField(label="戻す版", queryset=ItemDrawingVersion.objects.none(), empty_label=None)
+    note = forms.CharField(
+        label="備考",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="戻す前の今の図面を版として残すときの備考になります。",
+    )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        if instance is not None:
+            self.fields["version"].queryset = instance.drawing_versions.order_by("-version_no")
+
+    def service_kwargs(self):
+        return {"version": self.cleaned_data["version"], "note": self.cleaned_data["note"]}

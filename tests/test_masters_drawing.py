@@ -328,7 +328,7 @@ def test_modal_shows_small_image_and_warning(client_logged_in, user):
 
     tiff = modal("tiff")
     assert f'<img src="{reverse("masters:item_drawing", args=[items["tiff"].pk, "preview.png"])}"' in tiff
-    assert f'href="{reverse("masters:item_drawing", args=[items["tiff"].pk, "preview.png"])}"' in tiff
+    assert f'href="{reverse("masters:item_drawing_viewer", args=[items["tiff"].pk])}"' in tiff
     assert "alert-warning" not in tiff
     png = modal("png")
     assert f'<img src="{reverse("masters:item_drawing", args=[items["png"].pk, "original.png"])}"' in png
