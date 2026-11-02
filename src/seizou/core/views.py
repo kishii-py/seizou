@@ -135,16 +135,32 @@ def is_negative(value) -> bool:
     return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool) and value < 0
 
 
-def file_info(value) -> dict | None:
-    """FileField の値から link の材料 (url・名前・絵かどうか) を作る。空なら None。"""
+def file_info(value, url: str | None = None) -> dict | None:
+    """FileField の値から link の材料 (url・名前・絵かどうか) を作る。空なら None。
+
+    url を渡せばその URL を使う (ログインした人にだけ返す口など)。無ければ storage の URL。
+    """
     name = getattr(value, "name", "") or ""
     if not name:
         return None
-    try:
-        url = value.url
-    except ValueError:
-        return None
+    if url is None:
+        try:
+            url = value.url
+        except ValueError:
+            return None
     return {"url": url, "name": name.rsplit("/", 1)[-1], "is_image": name.lower().endswith(IMAGE_SUFFIXES)}
+
+
+def file_url_for(obj, field_name: str) -> str | None:
+    """model の file_url(field_name) があれば、その答え (空でない字) を返す。無ければ None (storage の URL を使う)。
+
+    図面や添付のように、ログインした人にだけ返す口を持つ model が、core のテンプレートを触らずに
+    詳細の画面のファイルの URL を差し替えるための約束。
+    """
+    hook = getattr(obj, "file_url", None)
+    if not callable(hook):
+        return None
+    return hook(field_name) or None
 
 
 class ScreenMixin(LoginRequiredMixin):
@@ -403,7 +419,7 @@ class BaseDetailView(ScreenMixin, DetailView):
                     "label": str(f.verbose_name),
                     "value": "" if is_file else screen_value(value),
                     "master": value if is_master(value) else None,
-                    "file": file_info(value) if is_file else None,
+                    "file": file_info(value, file_url_for(obj, f.name)) if is_file else None,
                 }
             )
         for col in company_fields.columns_for(obj.__class__):

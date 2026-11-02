@@ -128,5 +128,13 @@ def seizou(request) -> dict:
             "sections": sections(items),
             "search_url": url_or_none("core:search"),
             "manual_url": url_or_none("core:manual"),
+            # 存在する部品の短い名前 (例 "masters")。テンプレートが {% if "attachments" in seizou.parts %} で、
+            # 入っている部品の枠だけを include するために使う。
+            "parts": part_names(),
         }
     }
+
+
+def part_names() -> list[str]:
+    """存在する部品 (seizou.parts.PARTS) の app の短い名前の並び (例 ["core", "masters", ...])。"""
+    return [part.rsplit(".", 1)[-1] for part in PARTS]
