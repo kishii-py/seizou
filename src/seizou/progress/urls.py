@@ -10,6 +10,7 @@ app_name = "progress"
 MENU = [("進捗", "progress:progress_list")]
 
 urlpatterns = [
-    path("", views.ProgressListView.as_view(), name="progress_list"),
+    path("", views.ProgressBoardView.as_view(), name="progress_list"),
+    path("records/", views.ProgressListView.as_view(), name="record_list"),
     path("new/", views.ProgressCreateView.as_view(), name="progress_create"),
 ]

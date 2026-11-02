@@ -97,7 +97,7 @@ def test_record_sets_user(client_logged_in, user, step):
     assert record.recorded_at == datetime(2026, 11, 3, 15, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
     assert record.note == "作り物の備考"
 
-    listing = client_logged_in.get(reverse("progress:progress_list"))
+    listing = client_logged_in.get(reverse("progress:record_list"))
     assert listing.status_code == 200
     body = listing.content.decode()
     assert "指示書の工程" in body and str(step) in body and "tester" in body

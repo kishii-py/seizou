@@ -1,0 +1,37 @@
+{% extends "core/base.html" %}
+{% load seizou_icons progress_board %}
+{% block actions %}{{ block.super }}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}
+<a class="btn btn-outline border-base-300" href="{% url 'progress:record_list' %}">{% icon "list" "size-4" %}実績の一覧</a>{% endblock %}
+{% block content %}{{ block.super }}{% progress_board as board %}
+{# 進捗の盤: 指示書の工程ごとの予定の数・実績の合計・残。中身は boards.build_board が作る (土台の object_list は使わない)。 #}
+{# 盤の見出し・pill・行の link は htmx で取りに行かない (htmx の GET は master_link の小窓と、取りに行く要素だけ)。 #}
+{# 工程の pill: 盤に出る予定のある工程ごとのふつうの link。今の物は主色の薄い地。 #}
+<nav class="mb-4 flex flex-wrap gap-2" aria-label="工程">
+  {% for pill in board.pills %}
+  <a class="badge badge-lg border-base-300 bg-base-100 text-base-content/70 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:border-primary aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary" href="{{ pill.url }}" {% if pill.current %}aria-current="page"{% endif %}>{{ pill.name }}</a>
+  {% endfor %}
+</nav>
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% if board.rows %}
+  <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+    <table class="table table-sm table-zebra table-pin-rows">
+      <thead><tr class="bg-base-200 text-base-content/70">
+        <th class="whitespace-nowrap font-medium">指示書番号</th>
+        <th class="whitespace-nowrap font-medium">部品</th>
+        <th class="whitespace-nowrap font-medium">工程</th>
+        <th class="whitespace-nowrap text-right font-medium">予定の数</th>
+        <th class="whitespace-nowrap text-right font-medium">実績の合計</th>
+        <th class="whitespace-nowrap text-right font-medium">残</th>
+      </tr></thead>
+      <tbody id="progress-board-rows">
+        {% for row in board.rows %}{% include "progress/_board_row.html" %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-base-content/70">指示書を発行すると、工程ごとの予定・実績・残がここに並びます。</p>
+  {% endif %}
+</div>
+{# 自動の更新 (10 秒ごと)。返る部分 (progress/_rows.html) が、変わった行と、次の after を持った同じ要素を入れ直す。 #}
+{% include "progress/_board_poll.html" %}
+{% endblock %}

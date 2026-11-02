@@ -1,0 +1,12 @@
+{% load progress_board %}{% comment %}
+progress の一覧の行の部分。土台は htmx の要求に、この部分を core/_rows.html より先に探す。
+盤 (url_name が progress_list) の自動の更新: after より大きい pk の実績を持つ工程の行 (変わった行) だけを、
+template で包んだ hx-swap-oob で返す。続けて、次の after を持った取りに行く要素 (progress/_board_poll.html) を入れ直す。
+after が無いか読めない要求には行を返さず、取りに行く要素だけを返す (template tag が今の一番新しい pk を印にする)。
+それ以外 (実績の一覧の検索・並び替え・ページ送り) は core/_rows.html をそのまま使う。
+{% endcomment %}
+{% if request.resolver_match.url_name == "progress_list" %}{% progress_board as board %}
+{% if board.rows %}<template>{% for row in board.rows %}{% include "progress/_board_row.html" with oob=True %}{% endfor %}</template>{% endif %}
+{% include "progress/_board_poll.html" with oob=True %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}

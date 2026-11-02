@@ -8,6 +8,7 @@
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Progress(models.Model):
@@ -41,3 +42,7 @@ class Progress(models.Model):
                 name="progress_progress_qty_positive",
             ),
         ]
+
+    def __str__(self):
+        recorded_at = timezone.localtime(self.recorded_at).strftime("%Y-%m-%d %H:%M")
+        return f"{self.workorder_step} 実績 {self.qty} ({recorded_at})"
