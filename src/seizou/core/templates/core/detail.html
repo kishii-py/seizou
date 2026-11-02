@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% load seizou_tags %}
+{% block content %}
+<div class="card bg-base-100 shadow mb-4">
+  <div class="card-body">
+    <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
+      {% for field in fields %}<dt class="opacity-70">{{ field.label }}</dt><dd>{% if field.master %}{% master_link field.master %}{% else %}{{ field.value|default_if_none:"" }}{% endif %}</dd>{% endfor %}
+    </dl>
+    {% if edit_url %}<div class="card-actions justify-end"><a class="btn btn-sm" href="{{ edit_url }}">直す</a></div>{% endif %}
+  </div>
+</div>
+{% if tabs %}
+<div role="tablist" class="tabs tabs-bordered">
+  {% for tab in tabs %}
+  <input type="radio" name="tabs" role="tab" class="tab" aria-label="{{ tab.label }} ({{ tab.rows|length }})" {% if forloop.first %}checked{% endif %}>
+  <div role="tabpanel" class="tab-content bg-base-100 p-3">
+    <table class="table table-sm"><tbody>{% for row in tab.rows %}<tr><td>{{ row }}</td></tr>{% empty %}<tr><td class="opacity-60">まだありません。</td></tr>{% endfor %}</tbody></table>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

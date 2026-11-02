@@ -1,0 +1,26 @@
+{% load seizou_tags %}
+<div class="overflow-x-auto bg-base-100 rounded shadow">
+<table class="table table-sm table-pin-rows">
+  <thead><tr>
+    {% for col in columns %}<th>{% if col.sortable %}<a href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %} ▲{% elif sort == col.desc_name %} ▼{% endif %}</a>{% else %}{{ col.label }}{% endif %}</th>{% endfor %}
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}
+    <tr id="row-{{ row.pk }}" class="hover cursor-pointer" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+      {% for cell in row.cells %}<td>{% if cell.master %}{% master_link cell.master %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>{% endfor %}
+    </tr>
+    {% empty %}
+    <tr><td colspan="{{ columns|length }}" class="text-center opacity-60">まだ 1 件もありません。</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if totals %}<tfoot><tr>{% for cell in totals %}<td class="font-bold">{{ cell|default_if_none:"" }}</td>{% endfor %}</tr></tfoot>{% endif %}
+</table>
+</div>
+<div class="flex items-center gap-2 mt-2 text-sm">
+  <span>{{ page_obj.start_index }}〜{{ page_obj.end_index }} / {{ paginator.count }} 件</span>
+  <div class="join ml-auto">
+    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true">前へ</a>{% endif %}
+    <span class="join-item btn btn-sm btn-disabled">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true">次へ</a>{% endif %}
+  </div>
+</div>

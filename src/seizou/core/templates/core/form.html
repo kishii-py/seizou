@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block content %}
+<form method="post" class="card bg-base-100 shadow max-w-2xl" novalidate>
+  <div class="card-body">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error"><span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
+    {% for field in form.visible_fields %}
+    <label class="form-control">
+      <span class="label-text">{{ field.label }}{% if field.field.required %} <span class="text-error">*</span>{% endif %}</span>
+      {{ field }}
+      {% if field.errors %}<span class="text-error text-sm">{{ field.errors|join:" " }}</span>{% endif %}
+      {% if field.help_text %}<span class="text-xs opacity-70">{{ field.help_text }}</span>{% endif %}
+    </label>
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+    <div class="card-actions justify-end mt-2">
+      {% if cancel_url %}<a class="btn btn-ghost" href="{{ cancel_url }}">やめる</a>{% endif %}
+      <button class="btn {% if warnings %}btn-warning{% else %}btn-primary{% endif %}" type="submit">{% if warnings %}このまま保存{% else %}保存{% endif %}</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
