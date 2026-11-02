@@ -1,0 +1,10 @@
+{% extends "core/form.html" %}
+{% load seizou_icons %}
+{% block content %}
+{# 注文書を読み取る。鍵が無い会社では、上に黄の知らせと手入力・受信箱への link を出し、土台の入力の欄と保存のボタンをまとめて押せなくする。 #}
+{% if form.ready %}{{ block.super }}{% else %}
+{% url "orders:order_create" as manual_url %}{% url "connect:inbox_list" as inbox_url %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>鍵が無いので読み取りは使えません。手入力か受信箱で受けます。{% if manual_url %} <a class="link" href="{{ manual_url }}">受注を手で入れる</a>{% endif %}{% if inbox_url %} <a class="link" href="{{ inbox_url }}">受信箱</a>{% endif %}</span></div>
+<fieldset disabled>{{ block.super }}</fieldset>
+{% endif %}
+{% endblock %}
