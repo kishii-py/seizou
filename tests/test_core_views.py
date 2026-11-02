@@ -86,11 +86,12 @@ def _clean():
     checks.clear("tests.fake_service")
 
 
-def test_overridable_is_the_nine_names():
+def test_overridable_is_the_eleven_names():
     assert set(OVERRIDABLE) == {
-        "columns", "search_fields", "tabs", "form_class", "service",
+        "model", "ordering", "columns", "search_fields", "tabs", "form_class", "service",
         "template_name", "get_queryset", "screen_name", "screen_help",
     }
+    assert len(OVERRIDABLE) == 11
 
 
 @pytest.mark.django_db

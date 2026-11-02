@@ -8,7 +8,7 @@ from pathlib import Path
 
 import seizou.core
 from seizou.core.rules import check
-from seizou.core.rules.constants import BASE_VIEWS
+from seizou.core.rules.constants import BASE_VIEWS, OVERRIDABLE_ATTRS
 
 FIXTURES = Path(__file__).parent / "fixtures" / "rules" / "r15"
 RULES_MD = Path(__file__).parent.parent / "RULES.md"
@@ -108,3 +108,64 @@ def test_base_view_names_match_core_views():
     }
 
     assert names == BASE_VIEWS
+
+
+# 2 文目: 上書きしてよいのは 11 の属性だけ
+
+
+def test_override_outside_eleven_is_reported():
+    views = FIXTURES / "bad_override" / "views.py"
+    result = check([FIXTURES / "bad_override"])
+
+    assert [(v.code, v.path, v.line) for v in result.violations] == [
+        ("R15", str(views), _line_of(views, "paginate_by = 20")),
+        ("R15", str(views), _line_of(views, "def get_context_data(")),
+        ("R15", str(views), _line_of(views, 'success_url = "/orders/"')),
+    ]
+    assert result.scanned == 1
+
+
+def test_eleven_overrides_are_allowed():
+    result = check([FIXTURES / "good_override"])
+
+    assert result.violations == ()
+    assert result.scanned == 1
+
+
+def test_non_inheriting_class_is_reported_once(tmp_path):
+    views = tmp_path / "views.py"
+    views.write_text(
+        "class OrderListView(ListView):\n"
+        "    paginate_by = 20\n"
+        "    def get_context_data(self, **kwargs):\n"
+        "        return {}\n",
+        encoding="utf-8",
+    )
+
+    assert [(v.code, v.line) for v in check([views]).violations] == [("R15", 1)]
+
+
+def test_nested_class_in_view_is_reported(tmp_path):
+    views = tmp_path / "views.py"
+    views.write_text(
+        "class ItemListView(BaseListView):\n"
+        "    model = Item\n"
+        "    class Meta:\n"
+        "        verbose_name = '品目'\n",
+        encoding="utf-8",
+    )
+
+    assert [(v.code, v.line) for v in check([views]).violations] == [("R15", 3)]
+
+
+def test_overridable_constants_match_core_views():
+    tree = ast.parse(CORE_VIEWS.read_text(encoding="utf-8"))
+    (value,) = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "OVERRIDABLE" for target in node.targets)
+    ]
+
+    assert ast.literal_eval(value) == OVERRIDABLE_ATTRS
+    assert len(OVERRIDABLE_ATTRS) == 11
