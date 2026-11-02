@@ -44,3 +44,25 @@ class Company(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class NumberSequence(models.Model):
+    """連番の今の値 (seizou.core.services.next_number が使う)。
+
+    kind は番号の種類 (order・workorder・shipment・delivery_note・invoice)。
+    period は年月 (設定 order_number が ym_seq のとき "2611" の形。seq のときは空)。
+    """
+
+    kind = models.CharField("種類", max_length=35)
+    period = models.CharField("期間", max_length=10, blank=True, default="")
+    last = models.PositiveIntegerField("最後の番号", default=0)
+
+    class Meta:
+        verbose_name = "連番"
+        verbose_name_plural = "連番"
+        constraints = [
+            models.UniqueConstraint(fields=["kind", "period"], name="core_numbersequence_kind_period"),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} {self.period} {self.last}"
