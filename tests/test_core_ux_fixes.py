@@ -6,6 +6,7 @@
 
 import sys
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -23,7 +24,7 @@ from seizou.core import urls as core_urls
 from seizou.core.views import BaseListView
 from seizou.masters.models import Item, ItemProcess, Partner, PartnerItem, Process
 
-STATIC = seizou.core.__file__.rsplit("/", 1)[0] + "/static"
+FAVICON = Path(seizou.core.__file__).resolve().parent / "static" / "favicon.svg"
 
 
 @pytest.fixture
@@ -280,8 +281,7 @@ def test_csrf_failure_page_is_japanese():
 def test_favicon_link_and_file(client):
     body = text(client.get(reverse("core:login")))
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in body
-    with open(f"{STATIC}/favicon.svg", encoding="utf-8") as handle:
-        assert handle.read().startswith("<svg")
+    assert FAVICON.read_text(encoding="utf-8").startswith("<svg")
 
 
 # ---------------------------------------------------------------- 12 空の選択肢
