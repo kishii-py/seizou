@@ -15,6 +15,8 @@
  * - 同じ欄に 2 回載せない (載っていれば何もしない)。htmx:afterSettle で、差し替えた中の欄に載せる。
  * - 日本語の変換を確定する Enter (isComposing か keyCode 229) では何もしない。
  * - 1 つ選びの欄には消すボタン、複数選びの欄には 1 つずつ消すボタン。
+ * - 小窓のある候補 (data-modal-url を持つ 1 つ選びの欄) では、選んだ物の下に「詳細を見る」の link を出し、
+ *   押すと master_link と同じ小窓 (#seizou-modal) で開く。選び直すと link の先も変わり、消すと link も消える。
  */
 (function () {
   "use strict";
@@ -125,6 +127,44 @@
         },
       },
     });
+
+    // 小窓のある候補では、選んだ物の下に「詳細を見る」の link (小窓) を出す。
+    var modalTemplate = select.getAttribute("data-modal-url");
+    if (modalTemplate && !select.multiple) {
+      var link = null;
+      var openModal = function (event) {
+        event.preventDefault();
+        if (!window.htmx || !link) return;
+        window.htmx
+          .ajax("GET", link.getAttribute("data-url"), { target: "#seizou-modal-box", swap: "innerHTML" })
+          .then(function () {
+            var modal = document.getElementById("seizou-modal");
+            if (modal && typeof modal.showModal === "function") modal.showModal();
+          });
+      };
+      var syncLink = function () {
+        var value = ts.getValue();
+        if (!value) {
+          if (link) {
+            link.remove();
+            link = null;
+          }
+          return;
+        }
+        if (!link) {
+          link = document.createElement("a");
+          link.className = "link mt-1 inline-block text-sm";
+          link.href = "#";
+          link.textContent = "詳細を見る";
+          link.addEventListener("click", openModal);
+          ts.wrapper.insertAdjacentElement("afterend", link);
+        }
+        link.setAttribute("data-url", modalTemplate.replace("/0/", "/" + encodeURIComponent(value) + "/"));
+        link.href = link.getAttribute("data-url");
+      };
+      ts.on("change", syncLink);
+      syncLink();
+    }
 
     // 日本語の変換を確定する Enter は部品に渡さない (候補を選ばず、form も送らない)。
     ts.wrapper.addEventListener(

@@ -3,6 +3,7 @@
 RemoteSelect: 候補をサーバーの候補の口 (BaseSelectView の子) から 1 ページずつ取る <select>。
 描くときは選んである値の <option> だけを描き、全件を描かない (候補は static の js/seizou-select.js が
 data-select-url の口から取る)。欄の見た目の class は入力の土台 (BaseFormView.get_form) が付ける。
+小窓のある model (部品・取引先) では data-modal-url も付け、js が選んだ物の下に「詳細を見る」の link を出す (どの画面からも小窓で読む約束)。
 空の選択肢の字は「選んでください」(core の apps.ready が Django の既定の字を置き換え、field.empty_label がそれを持つ)。
 
 DecimalInput: 数 (小数) の欄。type="text" と inputmode="decimal" (スマホは数の鍵盤)。入力の土台が
@@ -16,7 +17,7 @@ import unicodedata
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 
 class RemoteSelect(forms.Select):
@@ -30,7 +31,22 @@ class RemoteSelect(forms.Select):
         attrs = super().build_attrs(base_attrs, extra_attrs)
         # URL は描くときに引く (import の時点では URL の設定が読めていないことがあるため)。
         attrs["data-select-url"] = reverse(self.url_name)
+        modal = self.modal_url_template()
+        if modal is not None:
+            attrs["data-modal-url"] = modal
         return attrs
+
+    def modal_url_template(self) -> str | None:
+        """選んだ物を小窓で開く口の URL の型 (pk の所が 0。js が選んだ id に置き換える)。
+
+        候補の口 <app>:<model>_select に対する <app>:<model>_modal。小窓の無い model (受注の明細など) は None。
+        """
+        if not self.url_name.endswith("_select"):
+            return None
+        try:
+            return reverse(self.url_name[: -len("_select")] + "_modal", args=[0])
+        except NoReverseMatch:
+            return None
 
     def selected_choices(self, value) -> list[tuple]:
         """描く選択肢: 空の選択肢 (あれば) と、選んである値の物だけ。"""
