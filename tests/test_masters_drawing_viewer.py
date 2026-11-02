@@ -104,8 +104,7 @@ def unescape(url):
 def png_size(client, url):
     response = client.get(url)
     assert response.status_code == 200, url
-    content = b"".join(response.streaming_content)
-    response.close()
+    content = b"".join(response.streaming_content)  # 読み切ると test client が close() を呼ぶ (自分で呼ばない)
     with Image.open(io.BytesIO(content)) as image:
         return image.format, image.size
 
@@ -325,7 +324,7 @@ def test_gate_allows_same_origin_frame(logged_in, user, settings):
     item = new_item(user, upload("paper.pdf", b"%PDF-1.4\n%%EOF\n", "application/pdf"))
     response = logged_in.get(gate(item, "original.pdf"))
     assert response["X-Frame-Options"] == "SAMEORIGIN"
-    response.close()
+    b"".join(response.streaming_content)  # 読み切って閉じる (close() を自分で呼ばない)
 
 
 # ---------------------------------------------------------------- 版に戻す

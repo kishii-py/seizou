@@ -48,9 +48,9 @@ def stored_files(root):
 
 
 def body_of(response) -> bytes:
-    data = b"".join(response.streaming_content)
-    response.close()
-    return data
+    # 読み切ると test client が close() を呼ぶ。自分で close() を重ねると request_finished がもう 1 度飛び、
+    # PostgreSQL では試験の取引の接続が閉じて次の要求が落ちる (CI の postgres の 7 本)。SQLite のメモリの DB は閉じない。
+    return b"".join(response.streaming_content)
 
 
 @pytest.mark.django_db
