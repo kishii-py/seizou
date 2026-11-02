@@ -37,6 +37,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "seizou.core.middleware.RuleNoticeMiddleware",
 ]
 
 # 利用者は core の物。会社のプロジェクトも同じ (01 の 10.5)。

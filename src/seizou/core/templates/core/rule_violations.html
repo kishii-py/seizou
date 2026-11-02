@@ -1,0 +1,64 @@
+{% load static seizou_icons %}<!doctype html>
+<html lang="ja" data-theme="{{ seizou.theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>決まりに沿っていません | {{ seizou.company_name }}</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+{# 決まりの検査の画面 (開発の設定のときだけ。RuleNoticeMiddleware が返す)。土台の画面を継がない単独の 1 枚で、form を置かない。ログインの画面と同じ調子で、中央のカード 1 枚だけ。 #}
+<body class="min-h-screen bg-base-200 text-sm text-base-content antialiased">
+<main class="flex min-h-screen items-center justify-center p-4">
+  <div class="w-full max-w-3xl">
+    <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-sm">
+      <p class="text-xs text-base-content/50">{{ seizou.company_name }}</p>
+      <div class="mt-2 flex items-center gap-2">
+        {% icon "alert" "size-7 text-error" %}
+        <h1 class="text-3xl font-bold tracking-tight">決まりに沿っていません</h1>
+      </div>
+      <p class="mt-2 text-base-content/70">決まりの検査で違反が {{ rule_notices.count }} 件あります。黙らせた行は {{ rule_notices.silenced }} 件です。</p>
+      <ul class="mt-6 flex flex-col gap-4">
+        {% for item in rule_notices.items %}
+        <li class="alert alert-error alert-soft items-start">
+          {% icon "alert" "size-5" %}
+          <div class="min-w-0">
+            <p><span class="font-mono font-medium">{{ item.code }}</span> {{ item.message }}</p>
+            <p class="mt-2">直し方: {{ item.fix }}</p>
+            <p class="mt-2 break-all font-mono text-xs">{{ item.path }}{% if item.line %}:{{ item.line }}{% endif %}</p>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if rule_notices.more %}<p class="mt-4 text-base-content/70">ほか {{ rule_notices.more }} 件 (写す文と .seizou/violations.md には全部入っています)</p>{% endif %}
+      <div class="mt-6">
+        <button type="button" id="rule-copy" class="btn btn-primary">{% icon "clipboard" "size-4" %}<span id="rule-copy-label">この文を写す</span></button>
+      </div>
+      <textarea id="rule-copy-text" class="textarea mt-4 h-48 w-full font-mono text-xs" aria-label="写す文" readonly hidden>{{ rule_notices.text }}</textarea>
+      <p class="mt-6 text-base-content/70">直して保存すると、開発のサーバーが自動で起動し直します。読み込み直すと、この画面が消えます。</p>
+    </div>
+  </div>
+</main>
+<script>
+(function () {
+  var button = document.getElementById("rule-copy");
+  var label = document.getElementById("rule-copy-label");
+  var text = document.getElementById("rule-copy-text");
+  // clipboard が使えないとき (ブラウザが許さないときなど) は、文を見せて全部を選んだ状態にする。
+  function showText() {
+    text.removeAttribute("hidden");
+    text.focus();
+    text.select();
+  }
+  button.addEventListener("click", function () {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      showText();
+      return;
+    }
+    navigator.clipboard.writeText(text.value).then(function () {
+      label.textContent = "写しました";
+    }, showText);
+  });
+})();
+</script>
+</body>
+</html>
