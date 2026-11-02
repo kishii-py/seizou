@@ -6,4 +6,5 @@
 
 PARTS = [
     "seizou.core",
+    "seizou.masters",
 ]
