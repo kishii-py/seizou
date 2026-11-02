@@ -15,10 +15,16 @@ import os
 import re
 import uuid
 from collections.abc import Mapping
+from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import IntegrityError, transaction
+
+from seizou.core.exceptions import RuleViolation
+from seizou.masters.services import map_partner_item, resolve_partner_item
+from seizou.orders.services import create_order
 
 from . import signing
 from .models import Connection, Inbox
@@ -142,6 +148,158 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
+
+
+# 受け入れと断るの日本語 (何が起きて、何をすればよいか)。payload の全文は文に入れない。
+MESSAGE_ALREADY_ACCEPTED = (
+    "同じ番号の注文のデータは 1 回だけ登録する (2 回届いても 1 件)。"
+    "受け入れは済んでいるので、受注の一覧を見てください。"
+)
+MESSAGE_ACCEPT_REJECTED = (
+    "この注文のデータは断り済みなので、受け入れられません。"
+    "受け入れるなら、送る側に新しい注文のデータを送ってもらってください。"
+)
+MESSAGE_NO_LINES = (
+    "注文のデータに明細がありません。この注文は断り、送る側に送り直してもらってください。"
+)
+MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから断ってください。"
+
+
+def accept(inbox, item_mapping, user):
+    """受信箱の注文のデータを受け入れて、受注 (入口 = 受信箱) を作る (R10・R11)。
+
+    item_mapping は相手の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引く。
+    item_mapping で選んだ品番が表に無ければ、その場で表に対応を足す。
+    対応の追加・受注の作成・受信箱の状態の更新は 1 つのトランザクションで行う (どれかが失敗したら全部戻る)。
+    受け入れ済みの 2 回目は RuleViolation("R11")、断った物と形の違う物は日本語の ValueError。
+    得意先の役でない取引先は create_order の ValueError がそのまま出る。返す物は作った Order。
+    """
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.status == Inbox.STATUS_ACCEPTED:
+            raise RuleViolation("R11", MESSAGE_ALREADY_ACCEPTED)
+        if locked.status == Inbox.STATUS_REJECTED:
+            raise ValueError(MESSAGE_ACCEPT_REJECTED)
+
+        payload = locked.payload if isinstance(locked.payload, dict) else {}
+        raw_lines = payload.get("lines")
+        if not isinstance(raw_lines, list) or not raw_lines:
+            raise ValueError(MESSAGE_NO_LINES)
+        mapping = dict(item_mapping or {})
+        items = {}
+        lines = []
+        for number, raw in enumerate(raw_lines, start=1):
+            part_no, part_name = _part_of(raw, number)
+            if part_no not in items:
+                items[part_no] = _item_for(locked.partner, part_no, part_name, mapping, user)
+            item = items[part_no]
+            unit = raw.get("unit")
+            note = raw.get("note")
+            lines.append(
+                {
+                    "item": item,
+                    "qty": _payload_decimal(raw.get("qty"), f" {number} 行目の数量"),
+                    "unit": unit if isinstance(unit, str) and unit else item.unit,
+                    "unit_price": _payload_decimal(raw.get("unit_price"), f" {number} 行目の単価"),
+                    "due_date": _payload_date(raw.get("due_date"), f" {number} 行目の納期"),
+                    "note": note if isinstance(note, str) else "",
+                    "customer_part_no": part_no,
+                }
+            )
+
+        order_date = _payload_date(payload.get("order_date"), "発注日")
+        if order_date is None:
+            raise ValueError(
+                "注文のデータに発注日がありません。この注文は断り、送る側に送り直してもらってください。"
+            )
+        order_no = payload.get("order_no")
+        order = create_order(
+            locked.partner,
+            lines,
+            user,
+            order_date=order_date,
+            customer_order_no=order_no if isinstance(order_no, str) else "",
+            source="inbox",
+        )
+        locked.status = Inbox.STATUS_ACCEPTED
+        locked.order = order
+        locked.save(update_fields=["status", "order"])
+        return order
+
+
+def reject(inbox, reason, user):
+    """受信箱の注文のデータを、理由を書いて断る。断れるのは状態が「届いた」の物だけ。返す物は Inbox。"""
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.status != Inbox.STATUS_RECEIVED:
+            raise ValueError(
+                f"この注文のデータは「{locked.get_status_display()}」なので、断れません。"
+                "断れるのは「届いた」の物だけです。"
+            )
+        text = reason.strip() if isinstance(reason, str) else ""
+        if not text:
+            raise ValueError(MESSAGE_NO_REASON)
+        limit = Inbox._meta.get_field("reason").max_length
+        if len(text) > limit:
+            raise ValueError(f"断る理由が {limit} 字を超えています。{limit} 字までに縮めてください。")
+        locked.status = Inbox.STATUS_REJECTED
+        locked.reason = text
+        locked.save(update_fields=["status", "reason"])
+        return locked
+
+
+def _part_of(raw, number):
+    """明細 1 行の相手の品番と品名。形が違えば日本語の ValueError。"""
+    part_no = raw.get("part_no") if isinstance(raw, dict) else None
+    if not isinstance(part_no, str) or not part_no.strip():
+        raise ValueError(
+            f"注文のデータの {number} 行目に相手の品番がありません。"
+            "この注文は断り、送る側に送り直してもらってください。"
+        )
+    part_name = raw.get("part_name")
+    return part_no.strip(), part_name if isinstance(part_name, str) else ""
+
+
+def _item_for(partner, part_no, part_name, item_mapping, user):
+    """相手の品番に対応する自社の品目。選んだ品目が表に無い対応なら、表に足す。"""
+    known = resolve_partner_item(partner, part_no)
+    chosen = item_mapping.get(part_no)
+    if chosen is None:
+        if known is None:
+            raise ValueError(f"品番 {part_no} の自社の品目を選んでください。")
+        return known
+    if known is None:
+        map_partner_item(partner, chosen, part_no, user, partner_item_name=part_name)
+    return chosen
+
+
+def _payload_decimal(value, label):
+    """payload の数の字を Decimal に直す (float を通さない)。読めなければ日本語の ValueError。"""
+    if isinstance(value, (str, int)) and not isinstance(value, bool):
+        try:
+            number = Decimal(str(value).strip())
+        except InvalidOperation:
+            number = None
+        if number is not None and number.is_finite():
+            return number
+    raise ValueError(
+        f"注文のデータの{label}が数の形ではありません。この注文は断り、送る側に送り直してもらってください。"
+    )
+
+
+def _payload_date(value, label):
+    """payload の日付の字 (YYYY-MM-DD) を date に直す。null と空は None。読めなければ日本語の ValueError。"""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            pass
+    raise ValueError(
+        f"注文のデータの{label}が日付 (YYYY-MM-DD) の形ではありません。"
+        "この注文は断り、送る側に送り直してもらってください。"
+    )
 
 
 def _header_value(headers: Mapping[str, str], name: str):
