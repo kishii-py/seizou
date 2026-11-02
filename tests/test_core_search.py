@@ -209,6 +209,6 @@ def test_topbar_search_goes_to_search_page_and_menu_has_search(client_logged_in)
 def test_search_menu_entry_is_active_on_search_page(client_logged_in):
     body = search_page(client_logged_in).content.decode()
     search_url = reverse("core:search")
-    assert f'href="{search_url}" class=' in body
-    start = body.index(f'href="{search_url}" class=')
-    assert 'aria-current="page"' in body[start : body.index("</a>", start)]
+    # 左のメニューの入口の <a> の tag (属性の並びに頼らない)。今の画面の印は aria-current="page"。
+    tags = re.findall(rf'<a[^>]*href="{re.escape(search_url)}"[^>]*>', body)
+    assert any('aria-current="page"' in tag for tag in tags)
