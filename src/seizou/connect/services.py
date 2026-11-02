@@ -266,7 +266,7 @@ def _item_for(partner, part_no, part_name, item_mapping, user):
     chosen = item_mapping.get(part_no)
     if chosen is None:
         if known is None:
-            raise ValueError(f"品番 {part_no} の自社の品目を選んでください。")
+            raise ValueError(f"品番 {part_no} の自社の部品を選んでください。")
         return known
     if known is None:
         map_partner_item(partner, chosen, part_no, user, partner_item_name=part_name)

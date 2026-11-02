@@ -345,7 +345,7 @@ def test_bar_opens_workorder_modal(client_logged_in, user, cut, workorder, step)
     assert response.status_code == 200
     modal = response.content.decode()
     assert workorder.wo_no in modal
-    assert "詳細を開く" in modal
+    assert "詳細を見る" in modal
     assert "工程の並び" in modal
     assert "切断" in modal
     assert "曲げ" in modal

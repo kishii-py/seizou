@@ -58,7 +58,7 @@ class PurchaseOrderLine(models.Model):
     line_no = models.PositiveIntegerField("行番号")
     item = models.ForeignKey(
         "masters.Item",
-        verbose_name="品目",
+        verbose_name="部品",
         on_delete=models.PROTECT,
         related_name="purchase_order_lines",
     )

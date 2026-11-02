@@ -19,17 +19,17 @@ def test_copy_values_four_rules():
     # 規則 3: 欄が空か、前に写した値なら写して「写した」。
     values, messages = services.copy_values(item, {"unit": "", "unit_price": ""}, set())
     assert values == {"unit": "個", "unit_price": Decimal("120.50")}
-    assert messages == ["単位と単価を品目から写しました。"]
+    assert messages == ["単位と単価を部品から写しました。"]
     values, messages = services.copy_values(
         item, {"unit": "本", "unit_price": "99"}, {"unit", "unit_price"}
     )
     assert values == {"unit": "個", "unit_price": Decimal("120.50")}
-    assert messages == ["単位と単価を品目から写しました。"]
+    assert messages == ["単位と単価を部品から写しました。"]
 
     # 規則 4: 人が入れた値なら残して「残した」。
     values, messages = services.copy_values(item, {"unit": "", "unit_price": "100"}, {"unit"})
     assert values == {"unit": "個"}
-    assert messages == ["単位を品目から写しました。", "単価は入力のまま残しました。"]
+    assert messages == ["単位を部品から写しました。", "単価は入力のまま残しました。"]
 
 
 def test_copy_values_compares_as_same_type():

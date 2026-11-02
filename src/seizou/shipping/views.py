@@ -28,12 +28,12 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 class ShipmentListView(BaseListView):
     model = Shipment
     screen_name = "出荷"
-    screen_help = "出荷の一覧。出荷日の新しい順に並びます。得意先と品目の名前を押すと小窓が開きます。"
+    screen_help = "出荷の一覧。出荷日の新しい順に並びます。得意先と部品の名前を押すと小窓が開きます。"
     columns = (
         "shipment_no",
         ("order_line__order__order_no", "受注番号"),
         ("order_line__order__customer", "得意先"),
-        ("order_line__item", "品目"),
+        ("order_line__item", "部品"),
         "qty",
         "shipped_at",
         ("delivery_note__note_no", "納品書番号"),
@@ -64,7 +64,7 @@ class ShipmentCreateView(BaseFormView):
     model = Shipment
     form_class = ShipmentForm
     service = staticmethod(services.ship)
-    screen_name = "出荷を入れる"
+    screen_name = "出荷の新規登録"
     screen_help = (
         "受注の明細と数量と出荷日を入れて、出荷を保存します。"
         "受注の残を超える数は、会社の設定に従って止めるか知らせます。"

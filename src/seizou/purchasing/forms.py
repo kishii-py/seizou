@@ -6,7 +6,7 @@
 - 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が send_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
-- 取引先と品目を選ぶ欄は Django の標準の Select。取引先の候補は区分が外注先か両方の物だけ。
+- 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が外注先か両方の物だけ。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 """
 
@@ -28,7 +28,7 @@ class PurchaseOrderLineForm(forms.Form):
     """明細の 1 行。何も入れていない行は formset が飛ばす。"""
 
     item = forms.ModelChoiceField(
-        label="品目", queryset=None, widget=forms.Select(attrs={"class": "select w-full"})
+        label="部品", queryset=None, widget=forms.Select(attrs={"class": "select w-full"})
     )
     qty = forms.DecimalField(
         label="数量",
@@ -41,7 +41,7 @@ class PurchaseOrderLineForm(forms.Form):
         max_length=10,
         required=False,
         widget=forms.TextInput(attrs={"class": "input w-full"}),
-        help_text="空なら品目の単位を写します。",
+        help_text="空なら部品の単位を写します。",
     )
     unit_price = forms.DecimalField(
         label="単価",

@@ -5,7 +5,7 @@
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
-- 決まりの番号の無い入力の誤り (区分が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
+- 決まりの番号の無い入力の誤り (取引先の種類が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
 - 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note・customer_part_no・ext。

@@ -43,7 +43,7 @@ class OrderLineListView(BaseListView):
         ("order__customer", "得意先"),
         ("order__order_date", "受注日"),
         ("due_date", "納期"),
-        ("item", "品目"),
+        ("item", "部品"),
         ("qty", "数量"),
         ("shipped_total", "出荷済み"),
         ("remaining_total", "残"),

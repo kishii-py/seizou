@@ -38,7 +38,7 @@ def _dec(value):
 def _refuse_non_subcontractor(partner):
     if not partner.is_subcontractor:
         raise ValueError(
-            f"取引先 {partner} は外注先ではありません。区分が外注先か両方の取引先を選んでください。"
+            f"取引先 {partner} は外注先ではありません。取引先の種類が外注先か両方の取引先を選んでください。"
         )
 
 
