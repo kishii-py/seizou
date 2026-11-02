@@ -1,11 +1,17 @@
-"""選ぶ欄の widget (05 の 2 節。枠は core)。
+"""入力の欄の widget (05 の 2 節。枠は core)。
 
 RemoteSelect: 候補をサーバーの候補の口 (BaseSelectView の子) から 1 ページずつ取る <select>。
 描くときは選んである値の <option> だけを描き、全件を描かない (候補は static の js/seizou-select.js が
 data-select-url の口から取る)。欄の見た目の class は入力の土台 (BaseFormView.get_form) が付ける。
+空の選択肢の字は「選んでください」(core の apps.ready が Django の既定の字を置き換え、field.empty_label がそれを持つ)。
+
+DecimalInput: 数 (小数) の欄。type="text" と inputmode="decimal" (スマホは数の鍵盤)。入力の土台が
+DecimalField・FloatField の数の入力をこれに替える。送られた字は全角を半角に、桁の区切りの「,」を外してから form に渡す。
 """
 
 from __future__ import annotations
+
+import unicodedata
 
 from django import forms
 from django.core.exceptions import ValidationError
@@ -51,3 +57,19 @@ class RemoteSelect(forms.Select):
             option = self.create_option(name, option_value, option_label, selected, index, attrs=attrs)
             groups.append((None, [option], index))
         return groups
+
+
+def normalize_number(text: str) -> str:
+    """数の欄の字をそろえる。全角を半角に (NFKC)、桁の区切りの「,」を外し、前後の空白を落とす。「１，２００」→「1200」。"""
+    return unicodedata.normalize("NFKC", text).replace(",", "").strip()
+
+
+class DecimalInput(forms.TextInput):
+    """数 (小数) を入れる字の欄。誤り (「12e」など) はブラウザが空にせず、そのままサーバーへ送る (誤りは form が日本語で出す)。"""
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs={"inputmode": "decimal", **(attrs or {})})
+
+    def value_from_datadict(self, data, files, name):
+        value = super().value_from_datadict(data, files, name)
+        return normalize_number(value) if isinstance(value, str) else value

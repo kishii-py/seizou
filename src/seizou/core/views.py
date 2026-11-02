@@ -6,7 +6,9 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
 
 約束:
 - 一覧: 検索 (q)・並び替え (sort)・ページ送り (page・per) ・会社ごとの項目の列・同じ条件の CSV (format=csv)。
-  htmx の要求には行の部分 (<app>/_rows.html か core/_rows.html) だけを返す。
+  htmx の要求には行の部分 (<app>/_rows.html か core/_rows.html) だけを返す。ただしブラウザの戻る
+  (htmx の HX-History-Restore-Request) には画面の全体を返す。部分と全体は同じ URL なので Vary: HX-Request を付ける。
+  合計の行は、列が合計を選んだときだけ出す (BaseListView の docstring)。
 - 詳細: 1 件の項目と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。
 - 入力: form の値が通ったら、まず検査の層 (seizou.core.checks.run) を通し、それから service を呼ぶ。
   ポカよけの止めるは赤の知らせ、知らせるは黄の知らせと「このまま保存」(confirmed=1 で保存)、
@@ -15,6 +17,8 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   無ければ cleaned_data (会社ごとの項目は ext= に分けて渡す)。検査の層の action は service の module と名前
   (例 seizou.shipping.services.ship → "shipping.ship")。
 - 小窓: 見るだけと「詳細を開く」。template は <app>/_modal.html か core/_modal.html。
+  会社ごとの項目 (一覧に出す物) と、tabs の関係する物も出す。htmx でない要求 (新しいタブ) は詳細へ移す。
+- 画面の応答はブラウザに保存させない (Cache-Control: no-store。ログアウトの後の戻るで中身を見せない)。
 - 候補の口: Tom Select の候補を 1 ページ (per_page 件) JSON で返す。
 
 URL の名前の約束 (画面どうしの移動に使う。無ければ link を出さない):
@@ -26,7 +30,9 @@ from __future__ import annotations
 import csv
 from decimal import Decimal
 from importlib import import_module
+from urllib.parse import quote
 
+from django import forms as django_forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
@@ -37,11 +43,13 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import select_template
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.cache import add_never_cache_headers, patch_vary_headers
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
 from seizou.core import checks
 from seizou.core import fields as company_fields
 from seizou.core.exceptions import CheckViolation, RuleError
+from seizou.core.widgets import DecimalInput
 
 #: 継承した画面が上書きしてよい属性 (R15 の 2 文目。決まりの検査が見る)
 OVERRIDABLE = (
@@ -62,7 +70,7 @@ PAGE_SIZES = (20, 50, 100)
 DEFAULT_PAGE_SIZE = 50
 MASTER_APPS = ("masters",)
 
-#: 一覧で右寄せにし、合計を出す項目の型 (IntegerField は Positive… と Small… と Big… を含む)
+#: 一覧で右寄せにする項目の型 (IntegerField は Positive… と Small… と Big… を含む)。合計は列が選んだときだけ
 NUMERIC_FIELDS = (models.DecimalField, models.IntegerField, models.FloatField)
 #: 一覧で折り返さず、等幅の数字で出す項目の型 (DateTimeField は DateField の子。日時は別に見る)
 DATE_FIELDS = (models.DateField,)
@@ -149,6 +157,13 @@ class ScreenMixin(LoginRequiredMixin):
         parts = cls.__module__.split(".")
         return parts[-2] if len(parts) >= 2 else parts[-1]
 
+    def dispatch(self, request, *args, **kwargs):
+        response = super().dispatch(request, *args, **kwargs)
+        # ログアウトの後にブラウザの戻るで画面の中身が見えないように、画面の応答は保存させない (never_cache と同じ)。
+        # 静的なファイル (static) は画面でないので、ここを通らない。
+        add_never_cache_headers(response)
+        return response
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["screen_name"] = self.screen_name
@@ -159,11 +174,21 @@ class ScreenMixin(LoginRequiredMixin):
 
 
 class ColumnSpec:
-    """一覧の列 1 つ。テンプレートが見る印: numeric (右寄せと合計)・is_date / is_datetime (等幅の日付)・
-    is_code (等幅の識別子)。"""
+    """一覧の列 1 つ。テンプレートが見る印: numeric (右寄せ)・total (合計の行に足す)・is_date / is_datetime (等幅の日付)・
+    is_code (等幅の識別子)。
+
+    列の書き方 (BaseListView.columns の 1 要素):
+      "part_no"                                      項目の名前だけ (見出しは verbose_name。合計なし)
+      ("order_line__item", "部品")                   名前と見出し (合計なし)
+      {"name": "amount", "label": "金額", "total": True}   辞書。total が真で、表の数の項目なら合計の行に足す (label は省ける)
+    """
 
     def __init__(self, model, item, ext_type: str | None = None):
-        if isinstance(item, (tuple, list)):
+        self.total = False
+        if isinstance(item, dict):
+            self.name, self.label = item["name"], item.get("label")
+            self.total = bool(item.get("total"))
+        elif isinstance(item, (tuple, list)):
             self.name, self.label = item[0], item[1]
         else:
             self.name, self.label = item, None
@@ -189,7 +214,12 @@ class ColumnSpec:
 
 
 class BaseListView(ScreenMixin, ListView):
-    """一覧の土台。サーバーが行を描く。既定は 1 ページ 50 件 (20 / 50 / 100)。"""
+    """一覧の土台。サーバーが行を描く。既定は 1 ページ 50 件 (20 / 50 / 100)。
+
+    合計の行は既定では出さない (締日や単価を足しても意味が無いため)。合計を出したい列は辞書で書く:
+        columns = ("order_no", {"name": "amount", "label": "金額", "total": True})
+    合計に足すのは total が真で、表の数の項目 (DecimalField・IntegerField・FloatField) の列だけ。
+    """
 
     columns: tuple = ()
     search_fields: tuple = ()
@@ -266,15 +296,23 @@ class BaseListView(ScreenMixin, ListView):
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
 
     def totals_for(self, queryset, specs) -> list | None:
-        """絞り込みに追従する合計の行 (表の数の項目だけ。無ければ出さない)。1 列 = {"value", "numeric"}。"""
+        """絞り込みに追従する合計の行 (合計を選んだ表の数の項目だけ。無ければ出さない)。1 列 = {"value", "numeric"}。"""
         sums = {}
         for spec in specs:
-            if isinstance(spec.field, NUMERIC_FIELDS):
+            if spec.total and isinstance(spec.field, NUMERIC_FIELDS):
                 sums[spec.name] = Sum(spec.name)
         if not sums:
             return None
         agg = queryset.aggregate(**sums)
-        return [{"value": agg.get(spec.name), "numeric": spec.numeric} for spec in specs]
+        return [{"value": agg.get(spec.name), "numeric": spec.name in sums} for spec in specs]
+
+    def search_hint(self) -> str:
+        """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。"""
+        labels = [
+            str(getattr(self.model._meta.get_field(f.split("__")[0]), "verbose_name", f)) for f in self.search_fields
+        ]
+        labels += [c.label for c in company_fields.columns_for(self.model) if c.searchable]
+        return "・".join(labels)
 
     def query_without(self, *keys) -> str:
         params = self.request.GET.copy()
@@ -289,10 +327,7 @@ class BaseListView(ScreenMixin, ListView):
         context["rows"] = [self.row_for(obj, specs) for obj in context["object_list"]]
         context["totals"] = self.totals_for(self.get_queryset(), specs)
         context["search_q"] = self.request.GET.get("q", "")
-        context["search_hint"] = "、".join(
-            str(getattr(self.model._meta.get_field(f.split("__")[0]), "verbose_name", f))
-            for f in self.search_fields
-        )
+        context["search_hint"] = self.search_hint()
         context["sort"] = self.sort_param()
         context["per"] = self.get_paginate_by(None)
         context["page_sizes"] = self.page_sizes
@@ -304,20 +339,39 @@ class BaseListView(ScreenMixin, ListView):
     def rows_template_names(self) -> list[str]:
         return [f"{self.model._meta.app_label}/_rows.html", "core/_rows.html"]
 
+    def wants_rows_only(self) -> bool:
+        """行の部分だけを返すか。htmx の要求でも、ブラウザの戻る (履歴の復元) には画面の全体を返す
+        (htmx は復元の要求にも HX-Request を付け、応答で body を丸ごと差し替えるため)。"""
+        headers = self.request.headers
+        return bool(headers.get("HX-Request")) and not headers.get("HX-History-Restore-Request")
+
     def render_to_response(self, context, **response_kwargs):
         if self.request.GET.get("format") == "csv":
             return self.csv_response(context)
-        if self.request.headers.get("HX-Request"):
+        if self.wants_rows_only():
             # partial: 行の部分だけを返す印。core/_rows.html はこのとき道具の帯の件数と CSV も差し替える (hx-swap-oob)。
             context["partial"] = True
             template = select_template(self.rows_template_names())
-            return HttpResponse(template.render(context, self.request))
-        return super().render_to_response(context, **response_kwargs)
+            response = HttpResponse(template.render(context, self.request))
+        else:
+            response = super().render_to_response(context, **response_kwargs)
+        # 同じ URL で部分と全体を返すので、ブラウザの保存が取り違えないように見出しで分ける。
+        patch_vary_headers(response, ("HX-Request",))
+        return response
+
+    def csv_filename(self) -> tuple[str, str]:
+        """CSV のファイルの名前 (画面の名前_YYYYMMDD.csv) と、ASCII だけの代わりの名前 (<model>_YYYYMMDD.csv)。"""
+        today = timezone.localdate().strftime("%Y%m%d")
+        name = self.screen_name or str(self.model._meta.verbose_name)
+        return f"{name}_{today}.csv", f"{self.model._meta.model_name}_{today}.csv"
 
     def csv_response(self, context) -> HttpResponse:
         specs = context["columns"]
         response = HttpResponse(content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = f'attachment; filename="{self.model._meta.model_name}.csv"'
+        filename, fallback = self.csv_filename()
+        response["Content-Disposition"] = (
+            f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename, safe='')}"
+        )
         response.write("﻿")
         writer = csv.writer(response)
         writer.writerow([s.label for s in specs])
@@ -366,15 +420,19 @@ class BaseDetailView(ScreenMixin, DetailView):
         return context
 
     def tab_for(self, obj, label: str, related: str) -> dict:
-        """関係する物の 1 つのタブ。{"label", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。"""
-        manager = getattr(obj, related)
-        rows = [{"obj": row, "url": model_url(row.__class__, "detail", row.pk)} for row in manager.all()[:100]]
-        return {"label": label, "count": manager.count(), "rows": rows}
+        return related_tab(obj, label, related)
 
     def status_for(self, obj) -> str | None:
         """見出しの横の状態の印。choices を持つ status の項目があればその表示名、無ければ None。"""
         field = next((f for f in obj._meta.concrete_fields if f.name == "status" and f.choices), None)
         return display_value(obj, "status") if field is not None else None
+
+
+def related_tab(obj, label: str, related: str) -> dict:
+    """関係する物の 1 つのタブ (詳細と小窓)。{"label", "related", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。"""
+    manager = getattr(obj, related)
+    rows = [{"obj": row, "url": model_url(row.__class__, "detail", row.pk)} for row in manager.all()[:100]]
+    return {"label": label, "related": related, "count": manager.count(), "rows": rows}
 
 
 class BaseFormView(ScreenMixin, FormView):
@@ -408,6 +466,7 @@ class BaseFormView(ScreenMixin, FormView):
                 if self.object is not None and not form.is_bound:
                     form.initial[name] = company_fields.ext_value(self.object, name[len(company_fields.EXT_PREFIX):])
         for field in form.fields.values():
+            use_decimal_input(field)
             field.widget.attrs.setdefault("class", widget_css(field.widget))
         return form
 
@@ -486,6 +545,25 @@ class BaseFormView(ScreenMixin, FormView):
         return context
 
 
+def use_decimal_input(field) -> None:
+    """数 (小数) の欄 (DecimalField・FloatField) の数の入力 (type="number") を、字の欄 (DecimalInput) に替える。
+
+    type="number" はブラウザが「12e」のような字を空にして送り、空のまま保存されるため。字の欄にして、
+    誤りはサーバーの検査が日本語で出す。全角の数字と「1,200」は DecimalInput が半角の数にそろえて通す。
+    整数の欄は type="number" のまま (min・max は ServiceModelForm が表の検査から付ける)。
+    """
+    if not isinstance(field, (django_forms.DecimalField, django_forms.FloatField)):
+        return
+    old = field.widget
+    if not isinstance(old, django_forms.NumberInput):
+        return
+    attrs = {k: v for k, v in old.attrs.items() if k not in ("step", "min", "max")}
+    widget = DecimalInput(attrs=attrs)
+    widget.is_required = old.is_required
+    widget.is_localized = old.is_localized
+    field.widget = widget
+
+
 def widget_css(widget) -> str:
     """欄の見た目の class (daisyUI)。form が class を持っていればそちらが勝つ (setdefault)。"""
     from django.forms import widgets
@@ -502,9 +580,23 @@ def widget_css(widget) -> str:
 
 
 class BaseModalView(ScreenMixin, DetailView):
-    """小窓の土台。見るだけと、詳細への移動のボタン。template は <app>/_modal.html か core/_modal.html。"""
+    """小窓の土台。見るだけと、詳細への移動のボタン。template は <app>/_modal.html か core/_modal.html。
+
+    項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
+    tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形)。
+    htmx でない要求 (link を新しいタブで開いた時) には、枠の無い中身でなく詳細の画面へ移す。
+    """
 
     modal_fields: int = 8
+    tabs: tuple = ()
+
+    def get(self, request, *args, **kwargs):
+        if not request.headers.get("HX-Request"):
+            obj = self.get_object()
+            url = model_url(obj.__class__, "detail", obj.pk)
+            if url:
+                return HttpResponseRedirect(url)
+        return super().get(request, *args, **kwargs)
 
     def get_template_names(self):
         if self.template_name:
@@ -523,7 +615,12 @@ class BaseModalView(ScreenMixin, DetailView):
                 info = file_info(value)
                 value = info["name"] if info else ""
             items.append({"label": str(f.verbose_name), "value": screen_value(value)})
-        context["fields"] = items[: self.modal_fields]
+        ext_items = [
+            {"label": col.label, "value": screen_value(company_fields.ext_value(obj, col.name))}
+            for col in company_fields.list_columns_for(obj.__class__)
+        ]
+        context["fields"] = items[: self.modal_fields] + ext_items
+        context["tabs"] = [related_tab(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
         context["detail_url"] = model_url(obj.__class__, "detail", obj.pk)
         return context
 
@@ -600,10 +697,10 @@ def dashboard_stats() -> list[dict]:
     if item_model is not None:
         stats.append(
             {
-                "label": "品目",
+                "label": "部品",
                 "value": count_or_none(item_model._default_manager.all()),
                 "unit": "件",
-                "note": "部品マスターにある品目の数",
+                "note": "部品マスターにある部品の数",
                 "icon": "box",
                 "url": url_or_none("masters:item_list"),
             }
@@ -642,7 +739,7 @@ def dashboard_stats() -> list[dict]:
         )
         stats.append(
             {
-                "label": "注残の明細",
+                "label": "まだ出荷していない明細",
                 "value": count_or_none(open_lines),
                 "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
@@ -655,7 +752,7 @@ def dashboard_stats() -> list[dict]:
         waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
         stats.append(
             {
-                "label": "受信箱の未処理",
+                "label": "届いた注文 (未処理)",
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
