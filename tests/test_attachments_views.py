@@ -227,7 +227,7 @@ def test_list_menu_and_row_link(client_logged_in, order, user):
     assert str(order) in html
     assert "新規登録" not in html
 
-    # 左のメニュー (「その他」の区分) に「添付ファイル」の入口がある。
+    # 左のメニュー (「文書」の区分) に「添付ファイル」の入口がある。
     home = html_of(client_logged_in.get(reverse("core:home")))
     assert re.search(rf'<a href="{list_url}"[^>]*>.*?<span class="truncate">添付ファイル</span></a>', home)
 

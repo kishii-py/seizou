@@ -36,6 +36,8 @@ PATHS = {
     "check": '<path d="m5 12 4.5 4.5L19 7"/>',
     "alert": '<path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/>',
     "book": '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7"/>',
+    "folder": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "paperclip": '<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
     "image": '<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m4 17 5-4 3 2.5 3-3 5 4.5"/>',
     "help": '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1 1-1.1 1.8"/><path d="M12 17h.01"/>',
     "x": '<path d="M6 6l12 12M18 6 6 18"/>',
@@ -67,6 +69,8 @@ APP_ICONS = {
     "connect": "inbox",
     "purchasing": "cart",
     "intake": "file",
+    "manuals": "book",
+    "attachments": "paperclip",
 }
 
 
