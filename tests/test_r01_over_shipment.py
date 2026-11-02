@@ -144,3 +144,86 @@ def test_r01_off_on_screen_saves(settings, logged_in, line):
     assert response.status_code == 302
     assert Shipment.objects.get().qty == Decimal("11")
     assert orders_services.remaining_qty(line) == Decimal("-1")
+
+
+# --- 出荷の編集 (shipping.update_shipment) の検査の層 ---
+
+
+@pytest.fixture
+def shipped_four_and_four(user, line):
+    """10 のうち 4 と 4 を出荷した明細と、2 つ目の出荷。"""
+    services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    second = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    return line, second
+
+
+@pytest.mark.django_db
+def test_r01_update_stop_counts_other_shipments(settings, user, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    _line, second = shipped_four_and_four
+    with pytest.raises(CheckViolation) as caught:
+        checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("7")}, user)
+    assert caught.value.code == "R01"
+    assert "11" in caught.value.message and "10" in caught.value.message
+    # 2 つ目を 6 に直すと合計がちょうど 10 なので止めない
+    assert checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("6")}, user) == []
+
+
+@pytest.mark.django_db
+def test_r01_update_warn_returns_warning(settings, user, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    _line, second = shipped_four_and_four
+    warnings = checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("7")}, user)
+    assert len(warnings) == 1
+    assert warnings[0].code == "R01"
+    assert checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("6")}, user) == []
+
+
+# --- 出荷の編集の画面 ---
+
+
+def _edit_post(qty, **extra):
+    return {"qty": str(qty), "shipped_at": SHIPPED_AT.isoformat(), "note": "", **extra}
+
+
+@pytest.mark.django_db
+def test_r01_update_on_screen_stop_is_red(settings, logged_in, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    _line, second = shipped_four_and_four
+    url = reverse("shipping:shipment_update", args=[second.pk])
+
+    response = logged_in.post(url, _edit_post(7))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "alert-error" in body and "R01" in body
+    assert "このまま保存" not in body
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+    # 「このまま保存」の印を付けて送っても、止めるの設定では保存しない
+    again = logged_in.post(url, _edit_post(7, confirmed="1"))
+    assert again.status_code == 200
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+
+@pytest.mark.django_db
+def test_r01_update_on_screen_warn_then_confirm(settings, logged_in, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    line, second = shipped_four_and_four
+    url = reverse("shipping:shipment_update", args=[second.pk])
+
+    first = logged_in.post(url, _edit_post(7))
+    assert first.status_code == 200
+    body = first.content.decode()
+    assert "alert-warning" in body and "R01" in body and "このまま保存" in body
+    assert "alert-error" not in body
+    second.refresh_from_db()
+    assert second.qty == Decimal("4")
+
+    confirmed = logged_in.post(url, _edit_post(7, confirmed="1"))
+    assert confirmed.status_code == 302
+    assert confirmed["Location"] == reverse("shipping:shipment_detail", args=[second.pk])
+    second.refresh_from_db()
+    assert second.qty == Decimal("7")
+    assert orders_services.remaining_qty(line) == Decimal("-1")

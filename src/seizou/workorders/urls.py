@@ -29,6 +29,7 @@ urlpatterns = [
     path("new/", views.WorkOrderCreateView.as_view(), name="workorder_create"),
     path("<int:pk>/", views.WorkOrderDetailView.as_view(), name="workorder_detail"),
     path("<int:pk>/modal/", views.WorkOrderModalView.as_view(), name="workorder_modal"),
+    path("<int:pk>/cancel/", views.WorkOrderCancelView.as_view(), name="workorder_cancel"),
     path("plans/", views.PlanBoardView.as_view(), name="plan_index"),
     path("plans/place/", views.plan_place, name="plan_place"),
     path("plans/<int:process_pk>/", views.PlanBoardView.as_view(), name="plan_board"),

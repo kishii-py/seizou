@@ -32,6 +32,8 @@ class WorkOrder(models.Model):
     status = models.CharField(
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
     )
+    # 書くのは services.cancel_workorder だけ。
+    cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
 
     class Meta:
         verbose_name = "指示書"

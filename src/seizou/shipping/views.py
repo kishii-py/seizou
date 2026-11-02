@@ -2,9 +2,11 @@
 
 出荷の入力は、土台が検査の層 (受注より多い出荷のポカよけ) を通してから services.ship を呼ぶ。
 止めるか、知らせて「このまま保存」か、通すかは会社の設定に従う (画面では数を比べない)。
-出荷を直す画面は作らない (出荷を直す services の関数が無い)。
+出荷の編集は services.update_shipment を呼ぶ (数量と出荷日と備考だけ。R01 は検査の層が編集にも当てる)。
+発行の納品書に入った出荷は、先に納品書を取り消してから編集する (R08)。
 
 納品書は、出荷を選んでまとめる画面 (services.create_delivery_note) と一覧と詳細を土台の上に置く。
+納品書を取り消す画面は services.cancel_delivery_note を呼び、納品書の詳細の「取り消す」から入る。
 印刷用の HTML と PDF は画面でない口なので、関数の view にした (connect の受け口と同じ形)。
 PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、印刷用の HTML に知らせを付けて返す。
 """
@@ -17,7 +19,7 @@ from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import DeliveryNoteForm, ShipmentForm
+from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentForm, ShipmentUpdateForm
 from .models import DeliveryNote, Shipment
 from .reports import DELIVERY_NOTE_TEMPLATE, delivery_note_context
 
@@ -57,7 +59,7 @@ class ShipmentListView(BaseListView):
 class ShipmentDetailView(BaseDetailView):
     model = Shipment
     screen_name = "出荷の詳細"
-    screen_help = "出荷の項目。出荷を直す画面はありません。"
+    screen_help = "出荷の項目。右上の「編集」で数量と出荷日と備考を直せます。発行の納品書に入った出荷は、先に納品書を取り消してから編集します。"
 
 
 class ShipmentCreateView(BaseFormView):
@@ -67,6 +69,17 @@ class ShipmentCreateView(BaseFormView):
     screen_name = "出荷の新規登録"
     screen_help = (
         "受注の明細と数量と出荷日を入れて、出荷を保存します。"
+        "受注の残を超える数は、会社の設定に従って止めるか知らせます。"
+    )
+
+
+class ShipmentUpdateView(BaseFormView):
+    model = Shipment
+    form_class = ShipmentUpdateForm
+    service = staticmethod(services.update_shipment)
+    screen_name = "出荷の編集"
+    screen_help = (
+        "数量と出荷日と備考を直します。発行の納品書に入った出荷は、先に納品書を取り消してから直します。"
         "受注の残を超える数は、会社の設定に従って止めるか知らせます。"
     )
 
@@ -97,6 +110,15 @@ class DeliveryNoteCreateView(BaseFormView):
     service = staticmethod(services.create_delivery_note)
     screen_name = "納品書を作る"
     screen_help = "同じ得意先の出荷を選んで、1 枚の納品書にまとめます。納品書番号は保存のときに付きます。"
+
+
+class DeliveryNoteCancelView(BaseFormView):
+    model = DeliveryNote
+    form_class = DeliveryNoteCancelForm
+    service = staticmethod(services.cancel_delivery_note)
+    template_name = "shipping/deliverynote_cancel.html"
+    screen_name = "納品書を取り消す"
+    screen_help = "発行の納品書を取り消します。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せます。"
 
 
 @login_required

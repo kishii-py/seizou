@@ -10,12 +10,14 @@
 - 指示書の数量の合計は issued_qty で出す (検査の層と同じ関数)。
   書く前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
 - 受注 (Order・OrderLine) は書かない。
+- 指示書の取消は cancel_workorder。実績が 1 件でも入った指示書は取り消せない (実績は progress を import せず、工程の逆の関係で数える)。
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
@@ -127,4 +129,38 @@ def plan_step(step, start, end, user):
         locked.planned_start = start
         locked.planned_end = end
         locked.save(update_fields=["planned_start", "planned_end"])
+        return locked
+
+
+def _progress_count(steps):
+    """工程に入った実績の件数 (読むだけ)。progress の部品が無ければ 0。
+
+    実績の表は工程の逆の関係 progress_records の先として引く (progress を import しない)。
+    """
+    try:
+        records = WorkOrderStep._meta.get_field("progress_records").related_model
+    except FieldDoesNotExist:
+        return 0
+    return records._default_manager.filter(workorder_step__in=steps).count()
+
+
+def cancel_workorder(workorder, user, *, reason=""):
+    """実績の無い指示書を取消にする。reason は「取消の理由」の列に残す。
+
+    取消の指示書は issued_qty に数えず、生産計画と進捗の盤にも出ない。取消した受注の指示書も取り消せる。
+    """
+    with transaction.atomic():
+        locked = WorkOrder.objects.select_for_update().get(pk=workorder.pk)
+        steps = list(WorkOrderStep.objects.select_for_update().filter(workorder=locked).order_by("pk"))
+        if locked.status == WorkOrder.STATUS_CANCELLED:
+            raise ValueError("この指示書は取り消し済みです。")
+        count = _progress_count(steps)
+        if count:
+            raise ValueError(f"指示書 {locked.wo_no} には実績が {count} 件入っているので、取り消せません。")
+        limit = WorkOrder._meta.get_field("cancel_reason").max_length
+        if len(reason) > limit:
+            raise ValueError(f"取消の理由が {limit} 字を超えます。理由を短くしてください。")
+        locked.status = WorkOrder.STATUS_CANCELLED
+        locked.cancel_reason = reason
+        locked.save(update_fields=["status", "cancel_reason"])
         return locked

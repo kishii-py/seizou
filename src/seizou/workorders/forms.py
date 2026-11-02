@@ -79,3 +79,18 @@ class PlanPlaceForm(forms.Form):
         else:
             cleaned["end"] = start
         return cleaned
+
+
+class WorkOrderCancelForm(forms.Form):
+    """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。"""
+
+    reason = forms.CharField(
+        label="取消の理由",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="書くと、指示書の『取消の理由』に残ります。",
+    )
+
+    def service_kwargs(self) -> dict:
+        return {"reason": self.cleaned_data["reason"]}

@@ -13,7 +13,7 @@ from seizou.core.exceptions import RuleError
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, Notice
 
 from . import plans, services
-from .forms import PlanPlaceForm, WorkOrderIssueForm
+from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
 from .models import WorkOrder, WorkOrderStep
 
 
@@ -31,6 +31,7 @@ class WorkOrderDetailView(BaseDetailView):
     screen_name = "指示書の詳細"
     screen_help = "指示書の項目と、工程の並び。"
     tabs = (("工程", "steps"), ("進捗", "progress_records"))
+    template_name = "workorders/workorder_detail.html"
 
 
 class WorkOrderCreateView(BaseFormView):
@@ -39,6 +40,15 @@ class WorkOrderCreateView(BaseFormView):
     service = staticmethod(services.issue_workorder)
     screen_name = "指示書を発行する"
     screen_help = "受注の明細と数量を選んで指示書を発行します。工程を選ばなければ、部品の標準の工程の並びを写します。"
+
+
+class WorkOrderCancelView(BaseFormView):
+    model = WorkOrder
+    form_class = WorkOrderCancelForm
+    service = staticmethod(services.cancel_workorder)
+    template_name = "workorders/workorder_cancel.html"
+    screen_name = "指示書を取り消す"
+    screen_help = "指示書を取り消します。実績の入った指示書は取り消せません。取消の指示書は生産計画と進捗の盤から外れます。"
 
 
 class PlanBoardView(BaseListView):
