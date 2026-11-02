@@ -9,15 +9,18 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
 - 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note・customer_part_no・ext。
-  update_order では、既にある明細を指す id も受ける。
+  update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
+- 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
+  shipping.services.ship と update_order の終わりに呼ぶ。止めない (現物優先)。
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
-from django.db.models import DecimalField, Sum, Value
+from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Sum, Value
 from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
@@ -30,12 +33,16 @@ _ORDER_KEYS = frozenset({"order_date", "customer_order_no", "note", "customer"})
 _LINE_KEYS = frozenset(
     {"item", "qty", "unit", "unit_price", "due_date", "note", "customer_part_no", "ext"}
 )
-_LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id"}
+_LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line"}
 _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
 _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
 _R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 _R05_RULE = "取消した受注には、出荷も指示書も作れない。"
+_SHIPPED_LINE_MESSAGE = "出荷のある明細は消せません。数量を直すか、明細を残してください。"
+
+# 出荷済みの数と残の数の型 (OrderLine.qty と同じ桁)
+_QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 
 
 def _refuse_ext(ext):
@@ -99,6 +106,26 @@ def _add_line(order, line, line_no):
     )
 
 
+_NEW_LINE = object()  # update_order の明細のうち、既存の明細を指さない (足す) 物の印
+
+
+def _line_ref(line):
+    """update_order の明細が指す既存の明細の pk。id と order_line は同じ意味。どちらの鍵も無ければ _NEW_LINE。"""
+    if "id" not in line and "order_line" not in line:
+        return _NEW_LINE
+    ref = line.get("id")
+    if "order_line" in line:
+        target = line["order_line"]
+        target_pk = getattr(target, "pk", target)
+        if "id" in line and ref != target_pk:
+            raise ValueError(
+                f"明細の id ({ref}) と order_line ({target_pk}) が違う明細を指しています。"
+                "どちらか 1 つにするか、同じ明細を指してください。"
+            )
+        ref = target_pk
+    return ref
+
+
 def _change_line(row, line, customer):
     for key in _LINE_FIELDS:
         if key in line:
@@ -142,8 +169,10 @@ def update_order(order, data, lines, user, *, ext=None):
     """受注の項目と明細を直す。
 
     data は order_date・customer_order_no・note・customer の鍵だけ。data にある鍵だけを書き換える。
-    lines は直した後の明細の全部。id のある明細はその明細を直し (鍵のある列だけ)、id の無い明細は足す
-    (行番号は今の最大 + 1 から)。lines に無い既存の明細は消す。残る明細は全部の金額を計算し直す。
+    lines は直した後の明細の全部。id か order_line のある明細はその明細を直し (鍵のある列だけ)、
+    どちらも無い明細は足す (行番号は今の最大 + 1 から)。lines に無い既存の明細は消す。
+    出荷のある明細は消せない (DB の PROTECT が止める物を、日本語の ValueError にして返す)。
+    残る明細は全部の金額を計算し直し、終わりに refresh_status で受注の状態を決め直す。
     """
     _refuse_ext(ext)
     _refuse_unknown_keys(data, _ORDER_KEYS, "受注")
@@ -156,29 +185,34 @@ def update_order(order, data, lines, user, *, ext=None):
             raise RuleViolation("R05", f"{_R05_RULE}直すときは、新しく受注を作ってください。")
 
         existing = {row.pk: row for row in locked.lines.all()}
+        refs = [_line_ref(line) for line in lines]
         keep = set()
-        for line in lines:
-            if "id" not in line:
+        for ref in refs:
+            if ref is _NEW_LINE:
                 continue
-            if line["id"] not in existing:
+            if ref not in existing:
                 raise ValueError(
-                    f"明細 {line['id']} はこの受注の明細ではありません。この受注の明細を選び直してください。"
+                    f"明細 {ref} はこの受注の明細ではありません。この受注の明細を選び直してください。"
                 )
-            keep.add(line["id"])
+            keep.add(ref)
         next_line_no = max((row.line_no for row in existing.values()), default=0) + 1
 
         for key, value in data.items():
             setattr(locked, key, value)
         locked.save()
 
-        locked.lines.exclude(pk__in=keep).delete()
-        for line in lines:
-            if "id" in line:
-                _change_line(existing[line["id"]], line, locked.customer)
+        try:
+            locked.lines.exclude(pk__in=keep).delete()
+        except ProtectedError as exc:
+            # 出荷 (shipping の PROTECT) が指す明細は DB が消させない。消す前に止まるので、表はそのまま。
+            raise ValueError(_SHIPPED_LINE_MESSAGE) from exc
+        for line, ref in zip(lines, refs, strict=True):
+            if ref is not _NEW_LINE:
+                _change_line(existing[ref], line, locked.customer)
             else:
                 _add_line(locked, line, next_line_no)
                 next_line_no += 1
-        return locked
+        return refresh_status(locked, user)
 
 
 def cancel_order(order, user, *, reason=""):
@@ -224,3 +258,43 @@ def shipped_qty(order_line):
 def remaining_qty(order_line):
     """受注の明細の残 (受注の数 − 出荷済みの数)。マイナスも返す (現物優先)。"""
     return order_line.qty - shipped_qty(order_line)
+
+
+def annotate_remaining(queryset):
+    """受注の明細の queryset に、出荷済みの数 (shipped_total) と残の数 (remaining_total) を足して返す。
+
+    shipped_qty・remaining_qty と同じ式 (出荷の数の合計、出荷が無ければ 0)。一覧と候補の口が使う。
+    出荷の表 (shipping) が無いときは、出荷済みの数を 0 とする。
+    """
+    try:
+        OrderLine._meta.get_field("shipments")
+    except FieldDoesNotExist:
+        shipped = Value(Decimal("0"), output_field=_QTY_FIELD)
+    else:
+        shipped = Coalesce(Sum("shipments__qty"), Value(Decimal("0")), output_field=_QTY_FIELD)
+    return queryset.annotate(shipped_total=shipped).annotate(
+        remaining_total=ExpressionWrapper(F("qty") - F("shipped_total"), output_field=_QTY_FIELD)
+    )
+
+
+def refresh_status(order, user):
+    """受注の状態を、明細の出荷済みの数から決め直す。返す物は取り直した Order。
+
+    取消はそのまま。全部の明細が出荷済み (出荷済みの数 >= 数量) なら出荷済、1 つでも出荷があれば一部出荷、
+    ほかは受注。明細が 0 行なら受注。受注より多い出荷も出荷済にする (止めない。現物優先)。
+    """
+    with transaction.atomic():
+        locked = Order.objects.select_for_update().get(pk=order.pk)
+        if locked.status == Order.STATUS_CANCELLED:
+            return locked
+        rows = list(annotate_remaining(OrderLine.objects.filter(order=locked)))
+        if rows and all(row.shipped_total >= row.qty for row in rows):
+            status = Order.STATUS_SHIPPED
+        elif any(row.shipped_total > 0 for row in rows):
+            status = Order.STATUS_PARTIAL
+        else:
+            status = Order.STATUS_OPEN
+        if locked.status != status:
+            locked.status = status
+            locked.save(update_fields=["status"])
+        return locked

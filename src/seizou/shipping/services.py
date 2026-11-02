@@ -10,7 +10,7 @@
   ここでは止めず、残を超える数もそのまま保存する (現物優先)。
 - 出荷済みの数と残の数は orders.services の関数で出す (検査の層と同じ関数)。
   集計の前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
-- 受注 (Order・OrderLine) は書かない。受注の状態を進める関数は orders にまだ無い。
+- 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from django.utils import timezone
 from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.orders.services import remaining_qty
+from seizou.orders.services import refresh_status, remaining_qty
 
 from .models import DeliveryNote, Shipment
 
@@ -57,13 +57,15 @@ def ship(order_line, qty, shipped_at, user, *, note=""):
                     "partial_shipment",
                     f"分納を許さない設定です。残の数 ({remaining}) をそのまま出荷してください。",
                 )
-        return Shipment.objects.create(
+        shipment = Shipment.objects.create(
             shipment_no=next_number("shipment"),
             order_line=locked,
             qty=qty,
             shipped_at=shipped_at,
             note=note,
         )
+        refresh_status(locked.order, user)
+        return shipment
 
 
 def create_delivery_note(customer, shipments, user):
