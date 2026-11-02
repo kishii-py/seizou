@@ -9,11 +9,13 @@ from importlib import import_module, util
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
+from seizou.core.search import SearchView
 from seizou.core.views import HomeView, RememberLoginView
 from seizou.parts import PARTS
 
 core_patterns = [
     path("", HomeView.as_view(), name="home"),
+    path("search/", SearchView.as_view(), name="search"),
     path("login/", RememberLoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
 ]

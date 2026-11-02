@@ -1,12 +1,12 @@
 {% load seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、部品マスターの検索、今日の日付、使い方、利用者。偽の数字は置かない。 #}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、使い方、利用者。偽の数字は置かない。 #}
 <header class="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
   {% if seizou.search_url %}
   <form method="get" action="{{ seizou.search_url }}" role="search" class="min-w-0 flex-1 sm:max-w-md">
     <label class="input w-full rounded-lg">
       {% icon "search" "size-4 text-base-content/50" %}
-      <input type="search" name="q" class="grow" placeholder="品番・品名・図面番号で検索" aria-label="部品マスターを検索">
+      <input type="search" name="q" class="grow" placeholder="品番・品名・注文番号で検索" aria-label="横断して検索">
     </label>
   </form>
   {% endif %}

@@ -1,0 +1,87 @@
+{% extends "core/base.html" %}
+{% load seizou_tags seizou_icons %}
+{% block content %}
+{# 横断の検索: 上のカードに言葉の欄・種類の chip・得意先の選択。下に種類ごとのカード (一覧と同じ表)。読むだけの画面。 #}
+<form id="search-form" method="get" action="{{ request.path }}" role="search" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <div class="flex flex-col gap-2 sm:flex-row">
+    <label class="input input-lg w-full">
+      {% icon "search" "size-5 text-base-content/50" %}
+      <input id="search-q" class="grow" type="search" name="q" value="{{ query }}" placeholder="品番・品名・図面番号・注文番号など" aria-label="検索の言葉" autocomplete="off"{% if not query %} autofocus{% endif %}>
+    </label>
+    <button type="submit" class="btn btn-primary btn-lg">{% icon "search" "size-5" %}検索</button>
+  </div>
+  {% if kind != "all" %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+    <nav class="flex flex-wrap items-center gap-2" aria-label="探す種類">
+      {% for chip in chips %}
+      {% if chip.selected %}<a class="badge badge-lg badge-primary rounded-full px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="?{{ chip.query }}" aria-current="true">{{ chip.label }}</a>
+      {% else %}<a class="badge badge-lg badge-outline rounded-full border-base-300 px-4 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="?{{ chip.query }}">{{ chip.label }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    {% if customers is not None %}
+    <div class="flex items-center gap-2">
+      <label for="search-partner" class="text-base-content/70">得意先</label>
+      <select id="search-partner" class="select select-sm w-auto max-w-64" name="partner">
+        <option value="">全得意先</option>
+        {% for customer in customers %}<option value="{{ customer.pk }}"{% if partner == customer.pk|stringformat:"s" %} selected{% endif %}>{{ customer.code }} {{ customer.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </div>
+</form>
+{% if not query %}
+{# 何も入れていない: 絵と 1 文と補足 (core/list.html の空の一覧と同じ書き方)。 #}
+<div class="mt-6 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
+  <p class="mt-4 font-medium">キーワードを入れて検索してください</p>
+  <p class="mt-2 text-xs text-base-content/50">{% if kind_labels %}{{ kind_labels }}をまとめて探します。{% endif %}言葉の一部だけでも見つかります。</p>
+</div>
+{% elif not sections %}
+<div class="mt-6 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
+  <p class="mt-4 font-medium">該当する物はありません。</p>
+  <p class="mt-2 text-xs text-base-content/50">「{{ query }}」で探しました。言葉を短くするか、種類と得意先の絞り込みを外してください。</p>
+</div>
+{% else %}
+{% for section in sections %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="search-{{ section.kind }}">
+  <h2 id="search-{{ section.kind }}" class="text-lg font-bold">{{ section.label }} <span class="tabular-nums">({{ section.total|comma }})</span></h2>
+  <div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm table-zebra table-pin-rows">
+    <thead><tr class="bg-base-200 text-base-content/70">
+      {% for col in section.columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}">{{ col.label }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for row in section.rows %}
+      <tr class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}"{% if row.url %} data-href="{{ row.url }}"{% endif %}>
+        {% for cell in row.cells %}
+        {% if forloop.first and row.url %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>
+        {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+        {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
+        {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master %}</span></td>
+        {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+        {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="mt-4 text-base-content/70"><span class="tabular-nums">{{ section.total|comma }}</span> 件中 <span class="tabular-nums">1–{{ section.shown|comma }}</span> 件{% if section.more %}。絞り込んでください (1 種類 {{ limit }} 件まで出します){% endif %}</p>
+</section>
+{% endfor %}
+{% endif %}
+<script>
+(function () {
+  // 結果の行 (data-href) のどこを押しても詳細へ移る。link・ボタン・欄を押したときはそちらに任せる (二重に動かさない)。
+  document.addEventListener("click", function (event) {
+    var row = event.target.closest("tr[data-href]");
+    if (!row || event.target.closest("a, button, input, select, label")) return;
+    window.location.href = row.getAttribute("data-href");
+  });
+  // 得意先を選び直したら、その得意先で探し直す。
+  var partner = document.getElementById("search-partner");
+  if (partner) partner.addEventListener("change", function () { partner.form.submit(); });
+})();
+</script>
+{% endblock %}
