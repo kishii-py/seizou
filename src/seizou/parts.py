@@ -18,4 +18,5 @@ PARTS = [
     "seizou.attachments",
     "seizou.assistant",
     "seizou.manuals",
+    "seizou.bookmarks",
 ]
