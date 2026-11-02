@@ -7,10 +7,10 @@
   themes: light --default;
 }
 
-/* 右上の知らせ (toast) の残り時間の線。5 秒で右から左へ縮む (base.html の script が同じ 5 秒で消す)。 */
+/* 右上の知らせ (toast) の時間の線。5 秒で左から右へ伸びる (base.html の script が同じ 5 秒で消す)。 */
 @keyframes seizou-toast-bar {
-  from { width: 100%; }
-  to { width: 0%; }
+  from { width: 0%; }
+  to { width: 100%; }
 }
 .seizou-toast-bar {
   animation: seizou-toast-bar 5s linear forwards;
