@@ -1,0 +1,40 @@
+{% extends "core/report_base.html" %}
+{% comment %}
+納品書の帳票。context は shipping.reports.delivery_note_context が作る (表を読むだけ)。
+数量は出荷の数そのまま (R08)。金額と合計は context に入った値をそのまま出し、ここでは計算しない。
+見た目は core の report.css だけを使う (画面の CSS は使わない)。
+pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
+{% endcomment %}
+{% block title %}納品書 {{ note.number }}{% endblock %}
+{% block report_title %}納品書{% endblock %}
+{% block head %}
+{% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
+<p class="report-customer">{{ customer.name }} 御中</p>
+<table class="report-meta">
+  <tr><th>納品書番号</th><td>{{ note.number }}</td></tr>
+  <tr><th>発行日</th><td>{{ note.date|date:"Y年n月j日" }}</td></tr>
+</table>
+<p>下記のとおり納品いたします。</p>
+{% endblock %}
+{% block content %}
+<table class="report-lines">
+  <thead>
+    <tr><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td>{{ line.item_code }}</td>
+      <td>{{ line.item_name }}</td>
+      <td class="num">{{ line.quantity|floatformat:"g" }}</td>
+      <td>{{ line.unit }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"g" }}</td>
+      <td class="num">{{ line.amount|floatformat:"g" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th colspan="5">合計</th><td class="num">{{ total|floatformat:"g" }}</td></tr>
+  </tfoot>
+</table>
+{% endblock %}

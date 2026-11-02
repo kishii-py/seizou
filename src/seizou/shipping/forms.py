@@ -7,11 +7,12 @@
 """
 
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core.widgets import RemoteSelect
 
-from .models import Shipment
+from .models import DeliveryNote, Shipment
 
 _OrderLine = Shipment._meta.get_field("order_line").related_model
 
@@ -48,3 +49,34 @@ class ShipmentForm(forms.Form):
             "shipped_at": data["shipped_at"],
             "note": data.get("note", ""),
         }
+
+
+class ShipmentChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        line = obj.order_line
+        return (
+            f"{obj.shipment_no} {line.order.customer.name} {line.order.order_no} "
+            f"{line.item.part_no} {line.item.name} 数量 {obj.qty.normalize():f}"
+        )
+
+
+class DeliveryNoteForm(forms.Form):
+    """納品書を作る。発行の納品書に入っていない出荷を選び、得意先は選んだ出荷の受注の得意先にする。
+
+    得意先の違う出荷が混ざったときは、services の create_delivery_note が R08 で断る (画面で先に断らない)。
+    """
+
+    shipments = ShipmentChoiceField(
+        label="出荷",
+        queryset=Shipment.objects.filter(
+            Q(delivery_note__isnull=True) | Q(delivery_note__status=DeliveryNote.STATUS_CANCELLED)
+        )
+        .select_related("order_line__order__customer", "order_line__item")
+        .order_by("order_line__order__customer__code", "shipped_at", "pk"),
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "checkbox"}),
+        help_text="同じ得意先の出荷を選びます。納品書に入っていない出荷だけが並びます。",
+    )
+
+    def service_kwargs(self) -> dict:
+        shipments = sorted(self.cleaned_data["shipments"], key=lambda shipment: shipment.pk)
+        return {"customer": shipments[0].order_line.order.customer, "shipments": shipments}
