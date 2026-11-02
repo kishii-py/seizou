@@ -1,0 +1,9 @@
+{% extends "core/error.html" %}
+{% comment %}
+上げたファイルを返せないときの画面 (503)。配り方の設定 (SEIZOU_FILE_DELIVERY) が nginx なのに nginx を通った印が無い、
+または設定の値が読めないとき。空のファイルを返して気づかれないままにしない (seizou.core.media)。
+{% endcomment %}
+{% block error_title %}ファイルを返せません{% endblock %}
+{% block error_heading %}ファイルを返せません{% endblock %}
+{% block error_text %}{{ reason }} {{ advice }}{% endblock %}
+{% block error_code %}誤りの番号 503{% endblock %}
