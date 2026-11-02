@@ -11,7 +11,8 @@
       <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
     </div>
     <p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>
-    <p class="mt-4 border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p>
+    {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
+    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
   {% if stat.url %}</a>{% else %}</div>{% endif %}
   {% endfor %}
 </div>
