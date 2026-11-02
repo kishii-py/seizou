@@ -1,6 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
 {# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でないときだけ) を足す。 #}
+{# 明細の表の先頭の「操作」の列は、行ごとの「出荷する」「指示書を発行する」(orders/_line_actions.html)。最後の欄は「残」のまま (E2E が行の最後の td で残を読む)。 #}
 {% block actions %}{{ block.super }}{% if object.status != "cancelled" %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
 {% block content %}
 {{ block.super }}
@@ -11,6 +12,7 @@
   <div class="mt-4 overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm table-zebra">
     <thead><tr class="bg-base-200 text-base-content/70">
+      <th class="whitespace-nowrap font-medium">操作</th>
       <th class="whitespace-nowrap text-right font-medium">行番号</th>
       <th class="whitespace-nowrap font-medium">部品</th>
       <th class="whitespace-nowrap text-right font-medium">数量</th>
@@ -24,6 +26,7 @@
     <tbody>
       {% for line in lines %}
       <tr class="h-10">
+        <td class="whitespace-nowrap">{% include "orders/_line_actions.html" with order=object %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no }}</td>
         <td class="whitespace-nowrap">{% master_link line.item %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>

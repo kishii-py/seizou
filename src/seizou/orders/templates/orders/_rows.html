@@ -1,0 +1,55 @@
+{% load seizou_tags seizou_icons %}{% comment %}
+orders の一覧の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+受注の一覧 (order_list) と注文残の一覧 (orderline_list) に行があるときだけ、core/_rows.html の「行がある時」の部分
+(表・ページ送り・partial のときの _list_meta.html の oob) を写して、次の 2 つを変える。
+- 受注の一覧: 状態の列 (列の名前 status) の欄を色の印にする。字は欄の値 (状態の表示名) のまま。列の並びは変えない。
+- 注文残の一覧: 行の最後に「操作」の列 (orders/_line_actions.html。出荷する・指示書を発行する)。
+それ以外 (空の一覧と、ほかの画面) は core/_rows.html をそのまま使う。
+写した元: core/_rows.html (11-02 夜の main)。土台の表の形が変わったら、ここも合わせる。
+{% endcomment %}
+{% with url_name=request.resolver_match.url_name %}
+{% if rows and url_name == "order_list" or rows and url_name == "orderline_list" %}
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm table-zebra table-pin-rows">
+  <thead><tr class="bg-base-200 text-base-content/70">
+    {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
+      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+    </th>{% endfor %}
+    {% if url_name == "orderline_list" %}<th class="whitespace-nowrap font-medium">操作</th>{% endif %}
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}
+    <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+      {% for cell in row.cells %}
+      {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
+      {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
+      {% if url_name == "order_list" and col.name == "status" %}<td class="whitespace-nowrap">{% if row.obj.status == "open" %}<span class="badge badge-soft badge-primary">{{ cell.value }}</span>{% elif row.obj.status == "partial" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif row.obj.status == "shipped" %}<span class="badge badge-soft badge-success">{{ cell.value }}</span>{% elif row.obj.status == "cancelled" %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>
+      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+      {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
+      {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+      {% elif forloop.parentloop.first and row.url %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>
+      {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+      {% endif %}
+      {% endif %}{% endfor %}
+      {% endfor %}
+      {% if url_name == "orderline_list" %}<td class="whitespace-nowrap">{% include "orders/_line_actions.html" with line=row.obj order=row.obj.order %}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if url_name == "orderline_list" %}<td></td>{% endif %}</tr></tfoot>{% endif %}
+</table>
+</div>
+<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
+  {% if paginator.num_pages > 1 %}
+  <nav class="join" aria-label="ページ送り">
+    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="前のページ">{% icon "chevron-left" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-left" "size-4" %}</span>{% endif %}
+    <span class="join-item btn btn-sm pointer-events-none tabular-nums">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="次のページ">{% icon "chevron-right" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-right" "size-4" %}</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}
+{% endwith %}

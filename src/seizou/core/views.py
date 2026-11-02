@@ -9,6 +9,7 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   htmx の要求には行の部分 (<app>/_rows.html か core/_rows.html) だけを返す。ただしブラウザの戻る
   (htmx の HX-History-Restore-Request) には画面の全体を返す。部分と全体は同じ URL なので Vary: HX-Request を付ける。
   合計の行は、列が合計を選んだときだけ出す (BaseListView の docstring)。
+  画面の全体を描くときも、行の部分は同じ順 (<app>/_rows.html → core/_rows.html) で選ぶ (core/list.html の include)。
 - 詳細: 1 件の項目と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。
 - 入力: form の値が通ったら、まず検査の層 (seizou.core.checks.run) を通し、それから service を呼ぶ。
   ポカよけの止めるは赤の知らせ、知らせるは黄の知らせと「このまま保存」(confirmed=1 で保存)、
@@ -336,6 +337,7 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_page"] = self.query_without("page", "format")
         context["query_without_sort"] = self.query_without("sort", "page", "format")
         context["create_url"] = model_url(self.model, "create")
+        context["rows_template_names"] = self.rows_template_names()
         return context
 
     def rows_template_names(self) -> list[str]:
