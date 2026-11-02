@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 確認の画面 (保護・保護を解除・削除・この版に戻す)。字とボタンの字と戻り先は form が持つ。断った文 (赤の知らせ) は base.html が出す。 #}
+{% block content %}
+<form method="post" class="max-w-2xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
+  {% csrf_token %}
+  <p class="flex items-start gap-2">{% icon "info" "size-5 text-base-content/70" %}<span>{{ form.confirm_text }}</span></p>
+  {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
+  {% for field in form.visible_fields %}
+  <div class="mt-4">
+    <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
+    {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{{ form.cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    {% if form.danger %}<button class="btn btn-error" type="submit">{% icon "x" "size-4" %}{{ form.confirm_label }}</button>
+    {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}{{ form.confirm_label }}</button>{% endif %}
+  </div>
+</form>
+{% include "core/_enter_guard.html" %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+{% load manuals_tags seizou_icons %}
+{# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。 #}
+{% block actions %}
+<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.manual_id %}">{% icon "list" "size-4" %}版の履歴</a>
+<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">{% icon "arrow-left" "size-4" %}この版に戻す</a>
+{% endblock %}
+{% block content %}
+{% version_diff object as rows %}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <p class="text-base-content/70">「{{ object.manual.title }}」の版 {{ object.number }} (<span class="font-mono tabular-nums">{{ object.saved_at|date:"Y-m-d H:i" }}</span>) と、今の中身 (版 {{ object.manual.version }}) を並べます。</p>
+  {% if object.title != object.manual.title %}<p class="mt-2 font-medium">題: {{ object.title }} → {{ object.manual.title }}</p>{% endif %}
+  <p class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70">
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-success/10" aria-hidden="true"></span>足した</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-error/10" aria-hidden="true"></span>消した</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた</span>
+  </p>
+  <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+    <table class="table table-sm">
+      <thead><tr class="bg-base-200 text-base-content/70"><th class="w-12 text-right font-medium">行</th><th class="font-medium">版 {{ object.number }}</th><th class="w-12 text-right font-medium">行</th><th class="font-medium">今の中身</th></tr></thead>
+      <tbody class="font-mono">
+        {% for row in rows %}
+        {% if row.kind == "added" %}<tr class="bg-success/10">{% elif row.kind == "removed" %}<tr class="bg-error/10">{% elif row.kind == "changed" %}<tr class="bg-warning/10">{% else %}<tr>{% endif %}
+          <td class="text-right tabular-nums text-base-content/50">{{ row.left_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all">{{ row.left|default_if_none:"" }}</td>
+          <td class="text-right tabular-nums text-base-content/50">{{ row.right_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all">{{ row.right|default_if_none:"" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-base-content/70">その版も今の中身も、本文が空です。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

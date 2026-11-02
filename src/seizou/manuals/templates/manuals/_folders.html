@@ -1,0 +1,48 @@
+{% load manuals_tags seizou_icons %}
+{% folder_tree request.GET.folder as tree %}
+{# フォルダの木: パンくず (ルート → 途中のフォルダ → 今のフォルダ)・今のフォルダの色と保護の印・子のフォルダの行 (色・名前・件数・保護)。 #}
+<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="フォルダ">
+  <nav aria-label="置き場" class="flex flex-wrap items-center gap-2">
+    {% if tree.folder %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">ルート</a>
+    {% else %}<span class="font-medium">ルート</span>{% endif %}
+    {% for crumb in tree.path %}
+    {% icon "chevron-right" "size-4 text-base-content/50" %}
+    {% if forloop.last %}<span class="font-medium">{{ crumb.name }}</span>
+    {% else %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' crumb.pk %}">{{ crumb.name }}</a>{% endif %}
+    {% endfor %}
+  </nav>
+  {% if tree.folder %}
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-2">
+      {% include "manuals/_folder_color.html" with folder=tree.folder %}
+      <h2 class="text-lg font-bold">{{ tree.folder.name }}</h2>
+      {% if tree.folder.protected %}<span class="badge badge-sm badge-ghost gap-2">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+    </div>
+    {# 今のフォルダの操作。保護中は「保護を解除」だけ。 #}
+    <div class="flex flex-wrap items-center gap-2" aria-label="フォルダの操作">
+      {% if tree.folder.protected %}
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_protect' tree.folder.pk %}">{% icon "lock" "size-4" %}保護を解除</a>
+      {% else %}
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_update' tree.folder.pk %}">{% icon "pencil" "size-4" %}名前と色の変更</a>
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_move' tree.folder.pk %}">{% icon "chevron-right" "size-4" %}移動</a>
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualfolder_protect' tree.folder.pk %}">{% icon "lock" "size-4" %}保護</a>
+      <a class="btn btn-sm btn-outline border-base-300 text-error" href="{% url 'manuals:manualfolder_delete' tree.folder.pk %}">{% icon "x" "size-4" %}削除</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  {% if tree.children %}
+  <ul class="mt-4 divide-y divide-base-200">
+    {% for child in tree.children %}
+    <li class="flex items-center gap-2 py-2">
+      {% include "manuals/_folder_color.html" with folder=child.folder %}
+      <a class="rounded font-medium hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' child.folder.pk %}">{{ child.folder.name }}</a>
+      <span class="badge badge-sm tabular-nums" title="中のフォルダとマニュアルの数">{{ child.count }}</span>
+      {% if child.folder.protected %}<span class="inline-flex items-center gap-2 text-xs text-base-content/50">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-4 text-base-content/70">フォルダはありません。</p>
+  {% endif %}
+</section>

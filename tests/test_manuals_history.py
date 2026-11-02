@@ -1,0 +1,103 @@
+"""業務マニュアルの版 (新しい版として保存・版の履歴・差分・この版に戻す)。"""
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.urls import reverse
+
+from seizou.manuals import services
+from seizou.manuals.diff import ADDED, CHANGED, REMOVED, SAME, DiffRow, diff_rows
+from seizou.manuals.models import ManualVersion
+
+
+@pytest.fixture
+def user(db):
+    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
+
+
+@pytest.fixture
+def client_logged_in(client, user):
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def manual(user):
+    manual = services.create_manual(None, "段取り替えの手順", "steps", user)
+    return services.update_manual(manual, {"body": "## 準備\n\n古い行\n消す行\n残る行"}, user)
+
+
+def test_save_as_new_version_from_edit_form(client_logged_in, manual):
+    url = reverse("manuals:manual_version_create", args=[manual.pk])
+    edit = client_logged_in.get(reverse("manuals:manual_update", args=[manual.pk])).content.decode()
+    assert f'formaction="{url}"' in edit and "新しい版として保存" in edit and "版のメモ" in edit
+    response = client_logged_in.post(
+        url,
+        {"title": "段取り替えの手順", "format": "steps", "folder": "", "body": "## 準備\n\n新しい行", "note": "手順を直した"},
+    )
+    assert response.status_code == 302
+    assert response["Location"] == reverse("manuals:manual_detail", args=[manual.pk])
+    manual.refresh_from_db()
+    assert (manual.version, manual.body) == (2, "## 準備\n\n新しい行")
+    version = ManualVersion.objects.get()
+    assert (version.number, version.note) == (1, "手順を直した")
+    assert "古い行" in version.body
+    history = client_logged_in.get(reverse("manuals:manualversion_list", args=[manual.pk])).content.decode()
+    assert "版 1" in history and "手順を直した" in history and "今の版 2" in history
+    assert reverse("manuals:manualversion_detail", args=[version.pk]) in history
+    assert reverse("manuals:manualversion_restore", args=[version.pk]) in history
+    # 「保存」はメモを残さず、版も増やさない。
+    client_logged_in.post(
+        reverse("manuals:manual_update", args=[manual.pk]),
+        {"title": "段取り替えの手順", "format": "steps", "folder": "", "body": "上書き", "note": "残らないメモ"},
+    )
+    manual.refresh_from_db()
+    assert manual.version == 2 and ManualVersion.objects.count() == 1
+
+
+def test_version_list_empty(client_logged_in, manual):
+    html = client_logged_in.get(reverse("manuals:manualversion_list", args=[manual.pk])).content.decode()
+    assert "版はまだありません。" in html
+
+
+def test_diff_rows_kinds():
+    rows = diff_rows("同じ\n古い\n消える\n残る", "同じ\n新しい\n残る\n足した")
+    assert rows == [
+        DiffRow(SAME, 1, "同じ", 1, "同じ"),
+        DiffRow(CHANGED, 2, "古い", 2, "新しい"),
+        DiffRow(REMOVED, 3, "消える", None, None),
+        DiffRow(SAME, 4, "残る", 3, "残る"),
+        DiffRow(ADDED, None, None, 4, "足した"),
+    ]
+    assert diff_rows("", "") == []
+    assert [r.kind for r in diff_rows("a", "")] == [REMOVED]
+
+
+def test_diff_page_has_four_kinds(client_logged_in, manual, user):
+    services.save_as_version(manual, {"body": "## 準備\n\n新しい行\n残る行\n足した行", "title": "新しい題"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    assert html.count('<tr class="bg-success/10">') == 1
+    assert html.count('<tr class="bg-error/10">') == 1
+    assert html.count('<tr class="bg-warning/10">') == 1
+    assert "<tr>" in html and "残る行" in html
+    assert "題: 段取り替えの手順 → 新しい題" in html
+    assert reverse("manuals:manualversion_restore", args=[version.pk]) in html
+    assert reverse("manuals:manualversion_list", args=[manual.pk]) in html
+
+
+def test_restore_confirm_then_restore(client_logged_in, manual, user):
+    services.save_as_version(manual, {"body": "版 2 の本文"}, "", user)
+    version = ManualVersion.objects.get(number=1)
+    url = reverse("manuals:manualversion_restore", args=[version.pk])
+    page = client_logged_in.get(url)
+    assert page.status_code == 200
+    html = page.content.decode()
+    assert "版 1 (" in html and "今の中身は版として残ります" in html
+    assert reverse("manuals:manualversion_list", args=[manual.pk]) in html
+    response = client_logged_in.post(url, {})
+    assert response.status_code == 302
+    assert response["Location"] == reverse("manuals:manual_detail", args=[manual.pk])
+    manual.refresh_from_db()
+    assert manual.body == "## 準備\n\n古い行\n消す行\n残る行"
+    assert manual.version == 3
+    assert ManualVersion.objects.get(number=2).note == "版 1 に戻す前の中身"

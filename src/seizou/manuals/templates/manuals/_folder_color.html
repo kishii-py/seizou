@@ -1,0 +1,8 @@
+{# フォルダの色の印 (7 色)。class は色ごとに要素で書き分ける (R19)。 #}
+{% if folder.color == "red" %}<span class="status status-error" role="img" aria-label="赤"></span>
+{% elif folder.color == "yellow" %}<span class="status status-warning" role="img" aria-label="黄"></span>
+{% elif folder.color == "green" %}<span class="status status-success" role="img" aria-label="緑"></span>
+{% elif folder.color == "blue" %}<span class="status status-info" role="img" aria-label="青"></span>
+{% elif folder.color == "pink" %}<span class="status status-secondary" role="img" aria-label="桃"></span>
+{% elif folder.color == "teal" %}<span class="status status-accent" role="img" aria-label="青緑"></span>
+{% else %}<span class="status status-neutral" role="img" aria-label="灰"></span>{% endif %}

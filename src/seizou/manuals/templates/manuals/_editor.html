@@ -1,0 +1,32 @@
+{% load seizou_icons %}
+{# 道具の列: 押すと Markdown の部品の字を、本文の欄の今の選び位置に差し込む (data-insert。改行は &#10;)。 #}
+<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="本文の部品を差し込む">
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="## 手順の名前">見出し</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="- 項目">箇条書き</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="- [ ] 確かめること">チェック項目</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="| 項目 | 状態 |&#10;|---|---|&#10;| 寸法 | {OK} |">表</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert=":::注意&#10;ここに書く&#10;:::">注意</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert=":::危険&#10;ここに書く&#10;:::">危険</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert=":::ヒント&#10;ここに書く&#10;:::">ヒント</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="![説明](image:番号)&#10;> 写真の注記">写真カード</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert=":::こうする&#10;…&#10;:::&#10;&#10;:::してはいけない&#10;…&#10;:::">こうする / してはいけない</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="- 2026-11-03 [変更] 題 — 1 文">経緯</button>
+  <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="{OK}">ピル</button>
+</div>
+<p class="mt-2 flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}ピルは {OK}・{NG}・{注意}・{情報}・{記録}・{要確認} の 6 つです。画像は下の並びの「本文に入れる」で入ります。部品の前後は 1 行空けます。</p>
+<script>
+(function () {
+  // 道具の列と、画像の並びの「本文に入れる」。document の click を 1 か所で受ける (htmx で差し替えた画像の並びのボタンにも効くように)。
+  if (window.seizouManualEditor) return;
+  window.seizouManualEditor = true;
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-insert]");
+    if (!button) return;
+    var body = document.getElementById("id_body");
+    if (!body) return;
+    event.preventDefault();
+    body.setRangeText(button.getAttribute("data-insert"), body.selectionStart, body.selectionEnd, "end");
+    body.focus();
+  });
+})();
+</script>

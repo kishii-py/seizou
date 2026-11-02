@@ -1,0 +1,30 @@
+{% load manuals_tags seizou_icons %}
+{# 画像の並び (編集の画面の本文の form の外)。追加と削除は htmx で、この箱ごと差し替える (打ちかけの本文を消さないため)。 #}
+<section id="manual-images" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="画像">
+  <h2 class="flex items-center gap-2 text-lg font-bold">{% icon "image" "size-5" %}画像</h2>
+  <form class="mt-4 flex flex-wrap items-center gap-2" hx-post="{% url 'manuals:manualimage_upload' manual.pk %}" hx-encoding="multipart/form-data" hx-target="#manual-images" hx-swap="outerHTML">
+    {% csrf_token %}
+    <input class="file-input w-full max-w-xs" type="file" name="file" accept=".png,.jpg,.jpeg,.webp" aria-label="追加する画像">
+    <button class="btn btn-outline border-base-300" type="submit">{% icon "plus" "size-4" %}画像を追加</button>
+  </form>
+  {% if error %}<p class="mt-2 flex items-center gap-2 text-error" role="alert">{% icon "alert" "size-4" %}{{ error }}</p>{% endif %}
+  {% with images=manual.images.all %}
+  {% if images %}
+  <ul class="mt-4 divide-y divide-base-200">
+    {% for image in images %}
+    <li class="flex flex-wrap items-center gap-4 py-2">
+      <img src="{% url 'manuals:manualimage_download' image.pk %}" alt="{{ image.original_name }}" class="size-16 shrink-0 rounded-lg border border-base-300 bg-base-200 object-contain" loading="lazy">
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-medium" title="{{ image.original_name }}">{{ image.original_name }}</p>
+        <p class="mt-2 text-xs text-base-content/50"><span class="tabular-nums">{{ image.size|filesizeformat }}</span> <code class="rounded bg-base-200 px-2 font-mono">![{{ image.original_name }}](image:{{ image.pk }})</code></p>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="![{{ image.original_name }}](image:{{ image.pk }})">{% icon "plus" "size-4" %}本文に入れる</button>
+      <button type="button" class="btn btn-sm btn-ghost text-error" hx-post="{% url 'manuals:manualimage_delete' image.pk %}" hx-confirm="この画像を削除します。本文の参照は「[画像: …]」の字になります。" hx-target="#manual-images" hx-swap="outerHTML">{% icon "x" "size-4" %}削除</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-4 text-base-content/70">画像はまだありません。PNG・JPEG・WebP (10MB まで) を追加できます。</p>
+  {% endif %}
+  {% endwith %}
+</section>
