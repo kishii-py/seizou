@@ -1,0 +1,22 @@
+"""会社 ${id} の会社ごとの項目の app (fields)。seizou new が答えの item_fields から作った。
+
+INSTALLED_APPS に入るのは、部品マスター (seizou.masters) が seizou.parts.PARTS にあるときだけ (settings.py が判定する)。
+"""
+
+from django.apps import AppConfig
+
+# 部品マスター (masters.Item) に足す項目。並びは答えの順。列の名前は ext01 から答えの順に付けた。
+ITEM_FIELDS = [
+${item_fields}
+]
+
+
+class FieldsConfig(AppConfig):
+    name = "fields"
+    verbose_name = "会社ごとの項目"
+
+    def ready(self):
+        # core の会社ごとの項目の仕組み (seizou.core.fields) ができたら、次の 2 行のコメントを外す。
+        # from seizou.core import fields
+        # fields.register("masters.Item", "fields.ItemExt", ITEM_FIELDS)
+        pass

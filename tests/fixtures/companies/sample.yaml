@@ -1,0 +1,28 @@
+# 試験用の答え (作り物の会社。実在しない)。tests/test_cli_new.py が読む。
+
+id: sample_co
+name: 見本の会社
+industry: 機械加工
+item_fields:
+  - label: 材質
+    type: text
+    required: false
+    in_list: true
+    searchable: true
+  - label: 表面の仕上げ
+    type: choice
+    choices:
+      - なし
+      - めっき
+      - 塗装
+    required: true
+    in_list: true
+    searchable: false
+settings:
+  order_form: multi
+  partial_shipment: true
+  over_shipment: warn
+  over_workorder: warn
+  order_number: seq
+  hidden_fields: []
+port: 8010

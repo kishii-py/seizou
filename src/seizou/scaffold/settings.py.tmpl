@@ -1,0 +1,130 @@
+"""会社 ${id} の settings。seizou new が答えの YAML から作った。
+
+鍵の値はこのファイルに書かない。鍵は同じ置き場の .env に置き、起動のときに環境変数として読む。
+"""
+
+import os
+from pathlib import Path
+
+from seizou.parts import PARTS
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _read_env(path):
+    """.env の KEY=VALUE の行を環境変数に入れる (既にある環境変数が先)。# の行と空行は飛ばす。"""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+_read_env(BASE_DIR / ".env")
+
+SECRET_KEY = os.environ["SECRET_KEY"]
+
+# 開発は 1、本番は 0 (.env で切り替える)。1 のときは core の起動の検査が走る。
+DEBUG = os.environ.get("DEBUG", "0") == "1"
+
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    *[host.strip() for host in os.environ.get("ALLOWED_HOSTS", "").split(",") if host.strip()],
+]
+
+# 部品の app は seizou.parts.PARTS から読む (配布物を上げたときに、このファイルを作り直さなくてよい)。
+# 会社ごとの項目の app (fields) は、置き場に fields/ があり、部品マスター (seizou.masters) があるときだけ入れる。
+INSTALLED_APPS = [
+    "django.contrib.contenttypes",
+    "django.contrib.auth",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    *PARTS,
+]
+if (BASE_DIR / "fields").is_dir() and "seizou.masters" in PARTS:
+    INSTALLED_APPS.append("fields")
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+AUTH_USER_MODEL = "core.User"
+ROOT_URLCONF = "seizou.core.urls"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# 2 社を同じブラウザで開けるように、cookie の名前を会社ごとに分ける。
+SESSION_COOKIE_NAME = "seizou_${id}_session"
+CSRF_COOKIE_NAME = "seizou_${id}_csrf"
+# 知らせの置き場は session (知らせの cookie の名前は Django の中で固定のため)。
+MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"
+
+# 選べる設定 (seizou.core.conf)。答えの YAML の settings と、会社の id とポート。
+SEIZOU = {
+${seizou_items}
+}
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        # 会社の上書き (templates/) を部品のテンプレートより先に探す。
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+# 既定は SQLite (試しと開発)。本番は環境変数 SEIZOU_DB=postgres で PostgreSQL にする。
+# PostgreSQL の接続は標準の環境変数 (PGHOST・PGUSER・PGPASSWORD・PGDATABASE) から読む。
+if os.environ.get("SEIZOU_DB") == "postgres":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("PGDATABASE", ""),
+            "USER": os.environ.get("PGUSER", ""),
+            "PASSWORD": os.environ.get("PGPASSWORD", ""),
+            "HOST": os.environ.get("PGHOST", ""),
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+            "OPTIONS": {
+                "transaction_mode": "IMMEDIATE",
+                "timeout": 20,
+                "init_command": "PRAGMA journal_mode=WAL;",
+            },
+        }
+    }
+
+USE_TZ = True
+TIME_ZONE = "Asia/Tokyo"
+LANGUAGE_CODE = "ja"
+
+LOGIN_URL = "core:login"
+LOGIN_REDIRECT_URL = "/"
+
+STATIC_URL = "static/"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"

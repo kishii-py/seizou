@@ -17,6 +17,9 @@ dependencies = [
     "PyYAML",
 ]
 
+[project.scripts]
+seizou = "seizou.cli:main"
+
 [project.optional-dependencies]
 pdf = [
     "weasyprint>=70.0",
