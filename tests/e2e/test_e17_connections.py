@@ -30,7 +30,10 @@ def test_e17_connection_list(page_a, page_b, company_a, company_b):
     if not (has_partner_secret(page_a, company_a) and has_partner_secret(page_b, company_b)):
         pytest.skip(NO_SECRET_REASON)
 
-    secret = os.environ[PARTNER_SECRET_ENV]
+    # 立っている runserver が鍵を持っていても、この process に値が無ければ、画面に値が出ないことを比べられない。
+    secret = os.environ.get(PARTNER_SECRET_ENV)
+    if not secret:
+        pytest.skip(NO_SECRET_REASON)
     for page, company, key in ((page_a, company_a, "a"), (page_b, company_b, "b")):
         page.goto(f"{company.base_url}/connect/connections/")
         rows = page.locator("#rows tbody tr")
