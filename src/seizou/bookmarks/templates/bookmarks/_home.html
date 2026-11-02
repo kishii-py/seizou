@@ -1,0 +1,23 @@
+{% load bookmarks_tags seizou_icons %}
+{# 最初の画面の「よく使う画面」(core/home.html が include する)。☆ で登録した画面が 1 件でもあれば登録の順に並べ、0 件なら今までの入口の一覧 (core/_entrances.html) を出す。 #}
+{# 見つからなくなった画面は並べない (上の帯の ☆ の小窓で「消す」)。class を組み立てないため、2 列にまたがるかは section の要素ごと出し分ける (R19)。 #}
+{% bookmark_home as bookmarks %}
+{% if bookmarks %}
+{% if recent_orders is None %}<section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:col-span-2" aria-labelledby="entrances-title">{% else %}<section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="entrances-title">{% endif %}
+  <div class="flex items-baseline justify-between gap-2">
+    <h2 id="entrances-title" class="text-lg font-bold">よく使う画面</h2>
+    <span class="text-xs text-base-content/50">☆ で登録した画面</span>
+  </div>
+  <ul class="mt-4 grid gap-2 sm:grid-cols-2">
+    {% for item in bookmarks %}
+    <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ item.url }}">
+      <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon item.icon "size-5" %}</span>
+      <span class="min-w-0 flex-1 truncate font-medium">{{ item.label }}</span>
+      {% icon "chevron-right" "size-4 text-base-content/50" %}
+    </a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+{% include "core/_entrances.html" %}
+{% endif %}
