@@ -391,3 +391,17 @@ def send_purchase_order(
     _click_save(page)
     page.wait_for_url(re.compile(r"/purchasing/orders/\d+/$"), timeout=SAVE_WAIT_MS)
     return page.locator("h1").inner_text().strip()
+
+
+def fill_shipment(page: Page, company: Company, *, order_no: str, qty) -> None:
+    """出荷の新規登録 (`/shipping/new/`) に、受注番号で選んだ明細と数量を入れて「保存」を押す (結果は待たない)。
+
+    `/shipping/new/` に居れば (止められて同じ画面が出ているとき) 選んである明細を残し、空のときだけ選び直す。
+    止まる・知らせる・保存できるは会社の設定で決まるので、結果は呼ぶ側が見る。
+    """
+    _go_if_not_there(page, company, "/shipping/new/")
+    line = page.locator("select[name=order_line]")
+    if line.input_value() == "":
+        choose(page, "order_line", order_no)
+    page.fill("input[name=qty]", str(qty))
+    _click_save(page)
