@@ -1,0 +1,7 @@
+.tools/
+.venv/
+__pycache__/
+*.sqlite3
+.seizou/
+docs/nights/*.allow
+.claude/settings.local.json
