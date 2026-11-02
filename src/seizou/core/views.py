@@ -139,6 +139,7 @@ class ScreenMixin(LoginRequiredMixin):
 
     screen_name: str = ""
     screen_help: str = ""
+    screen_icon: str = ""  # 題の横の絵の名前 (seizou_icons)。空なら app の絵。core 自身の画面 (検索など) が使う
 
     @classmethod
     def screen_app(cls) -> str:
@@ -151,6 +152,7 @@ class ScreenMixin(LoginRequiredMixin):
         context["screen_name"] = self.screen_name
         context["screen_help"] = self.screen_help
         context["screen_app"] = self.screen_app()
+        context["screen_icon"] = self.screen_icon
         return context
 
 

@@ -32,7 +32,7 @@ seizou_tags.master_link の link
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            {% app_icon screen_app "size-7 text-base-content/70" %}
+            {% if screen_icon %}{% icon screen_icon "size-7 text-base-content/70" %}{% else %}{% app_icon screen_app "size-7 text-base-content/70" %}{% endif %}
             <h1 class="truncate text-3xl font-bold tracking-tight">{{ screen_name }}</h1>
           </div>
           {% if screen_help %}<p class="mt-2 text-base-content/70">{{ screen_help }}</p>{% endif %}
