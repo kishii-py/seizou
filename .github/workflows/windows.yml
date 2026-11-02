@@ -9,6 +9,8 @@ jobs:
     runs-on: windows-latest
     env:
       DJANGO_SETTINGS_MODULE: tests.settings
+      # 日本語の出力を cp1252 の標準出力で落とさない (hook のスクリプトとテスト)
+      PYTHONUTF8: "1"
     steps:
       # 改行を CRLF に変えずに取り出す (同梱物の sha256 の試験が Linux と同じ中身を見るため)。
       - name: 改行を変えない設定にする

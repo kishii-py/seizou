@@ -34,6 +34,12 @@ HOOK_MARK = "[hook night_log]"
 COUNT_RE = re.compile(r"(\d+) (passed|failed|errors?|skipped)")
 
 
+# Windows の標準出力 (cp1252) で日本語の文が落ちないように utf-8 で書く。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def git_value(root: Path, *args: str) -> str:
     try:
         out = subprocess.run(
