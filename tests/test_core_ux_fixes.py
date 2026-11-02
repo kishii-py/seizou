@@ -314,7 +314,9 @@ def test_detail_tab_shows_partner_item_name(client_logged_in, partner):
     item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
     PartnerItem.objects.create(partner=partner, item=item, partner_part_no="X-1")
     body = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
-    assert "作り得 X-1" in body and "PartnerItem object" not in body
+    # 取引先ごとの品番は表で出す (取引先は小窓を開く link、品番は別の枡)。str() の既定の "PartnerItem object" は出ない
+    assert "X-1" in body and reverse("masters:partner_modal", args=[partner.pk]) in body
+    assert "PartnerItem object" not in body
 
 
 # ---------------------------------------------------------------- 14 空のタブ
