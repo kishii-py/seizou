@@ -1,7 +1,7 @@
 """つながりの登録と編集 (connect.services の register_connection・update_connection) のテスト。
 
-URL の確かめ (点の無い PC の名前を通す) と、編集の関数を見る。鍵の値は使わない (名前だけ)。
-取引先は作り物。
+同じ取引先と向きの 2 行目を断ること、URL の確かめ (点の無い PC の名前を通す) と、編集の関数を見る。
+鍵の値は使わない (名前だけ)。取引先は作り物。
 """
 
 import pytest
@@ -30,6 +30,15 @@ def partner(user):
 @pytest.fixture
 def other_partner(user):
     return create_partner({"code": "RG02", "name": "作り物の外注先", "role": "subcontractor"}, user)
+
+
+def test_second_same_partner_and_direction_is_refused(partner, user):
+    services.register_connection(partner, "", ENV_NAME, "receive", user)
+
+    with pytest.raises(ValueError, match="既にあります"):
+        services.register_connection(partner, "", OTHER_ENV_NAME, "receive", user)
+
+    assert Connection.objects.filter(partner=partner, direction="receive").count() == 1
 
 
 def test_other_direction_is_allowed(partner, user):
@@ -80,6 +89,20 @@ def test_update_connection_changes_values(partner, user):
         "send",
     )
     assert Connection.objects.count() == 1
+
+
+def test_update_connection_refuses_duplicate_but_allows_itself(partner, user):
+    received = services.register_connection(partner, "", ENV_NAME, "receive", user)
+    sent = services.register_connection(partner, PC_NAME_URL, OTHER_ENV_NAME, "send", user)
+
+    with pytest.raises(ValueError, match="既にあります"):
+        services.update_connection(sent, partner, "", OTHER_ENV_NAME, "receive", user)
+    sent.refresh_from_db()
+    assert (sent.direction, sent.url) == ("send", PC_NAME_URL)
+
+    same = services.update_connection(received, partner, "", ENV_NAME, "receive", user)
+    assert same.pk == received.pk
+    assert Connection.objects.count() == 2
 
 
 def test_update_connection_checks_env_name_and_url(partner, user):
