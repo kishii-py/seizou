@@ -1,0 +1,46 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons %}
+{# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でないときだけ) を足す。 #}
+{% block actions %}{{ block.super }}{% if object.status != "cancelled" %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
+{% block content %}
+{{ block.super }}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="order-lines-title">
+  <h2 id="order-lines-title" class="text-lg font-bold">明細</h2>
+  {% with lines=object.lines.all %}
+  {% if lines %}
+  <div class="mt-4 overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm table-zebra">
+    <thead><tr class="bg-base-200 text-base-content/70">
+      <th class="whitespace-nowrap text-right font-medium">行番号</th>
+      <th class="whitespace-nowrap font-medium">品目</th>
+      <th class="whitespace-nowrap text-right font-medium">数量</th>
+      <th class="whitespace-nowrap font-medium">単位</th>
+      <th class="whitespace-nowrap text-right font-medium">単価</th>
+      <th class="whitespace-nowrap text-right font-medium">金額</th>
+      <th class="whitespace-nowrap font-medium">納期</th>
+      <th class="whitespace-nowrap text-right font-medium">出荷済み</th>
+      <th class="whitespace-nowrap text-right font-medium">残</th>
+    </tr></thead>
+    <tbody>
+      {% for line in lines %}
+      <tr class="h-10">
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no }}</td>
+        <td class="whitespace-nowrap">{% master_link line.item %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
+        <td class="whitespace-nowrap">{{ line.unit }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|comma }}</td>
+        <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.shipped_total|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{% if line.remaining_total < 0 %}<span class="text-error">{{ line.remaining_total|comma }}</span>{% else %}{{ line.remaining_total|comma }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="mt-4 text-base-content/70">明細はありません。「直す」から明細の行を足します。</p>
+  {% endif %}
+  {% endwith %}
+</section>
+{% endblock %}

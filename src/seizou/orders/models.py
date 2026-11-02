@@ -54,6 +54,9 @@ class Order(models.Model):
         verbose_name_plural = "受注"
         ordering = ["-order_date", "-id"]
 
+    def __str__(self):
+        return self.order_no
+
 
 class OrderLine(models.Model):
     """受注の明細。金額は orders.services が数量 × 単価を丸めて書く。"""
@@ -97,3 +100,11 @@ class OrderLine(models.Model):
                 name="orders_orderline_line_no_unique",
             ),
         ]
+
+    def __str__(self):
+        return f"{self.order.order_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+
+    @property
+    def status_label(self):
+        """受注の状態の表示名 (注文残の一覧の列に使う。表示だけ)。"""
+        return self.order.get_status_display()

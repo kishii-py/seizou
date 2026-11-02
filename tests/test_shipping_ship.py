@@ -106,12 +106,12 @@ def test_over_shipment_is_not_stopped_by_services(settings, user, line):
 
 
 @pytest.mark.django_db
-def test_ship_does_not_change_order_status(user, order, line):
+def test_ship_advances_order_status(user, order, line):
     services.ship(line, Decimal("4"), SHIPPED_AT, user)
     order.refresh_from_db()
-    assert order.status == "open"
+    assert order.status == "partial"
 
     services.ship(line, Decimal("6"), SHIPPED_AT, user)
     order.refresh_from_db()
-    # 受注の状態を一部出荷・出荷済に進める関数は orders にまだ無い。
-    assert order.status == "open"
+    # ship は出荷を作った後に orders.services.refresh_status を呼び、受注の状態を進める。
+    assert order.status == "shipped"

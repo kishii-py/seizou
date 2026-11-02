@@ -1,0 +1,112 @@
+"""orders の画面 (02 の受注)。全部 core の土台を継承する (R15)。
+
+一覧は 2 つ: 受注の一覧 (Order。受注を入れる画面と詳細へ移る入口) と、注文残の一覧 (OrderLine。明細ごとの残)。
+出荷済みの数と残の数は列に持たず、services.annotate_remaining の同じ式で出す。
+受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
+"""
+
+from django.db.models import F, Prefetch
+
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView
+
+from . import services
+from .forms import OrderCancelForm, OrderForm
+from .models import Order, OrderLine
+from .services import annotate_remaining
+
+#: 既定の一覧に出す受注の状態 (出荷の残っている物)
+OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
+
+
+class OrderListView(BaseListView):
+    model = Order
+    screen_name = "受注"
+    screen_help = "受けた注文の一覧。既定は出荷の残っている受注 (受注・一部出荷) だけを出します。"
+    columns = ("order_no", "customer", "order_date", "customer_order_no", "status", "source")
+    search_fields = ("order_no", "customer__name", "customer__code", "customer_order_no")
+    ordering = ("-order_date", "-pk")
+    template_name = "orders/order_list.html"
+
+    def get_queryset(self):
+        orders = super().get_queryset().select_related("customer")
+        if self.request.GET.get("all") == "1":
+            return orders
+        return orders.filter(status__in=OPEN_STATUSES)
+
+
+class OrderLineListView(BaseListView):
+    model = OrderLine
+    screen_name = "注文残"
+    screen_help = "受注の明細ごとの出荷の残。既定は残のある明細 (取消を除く) だけを、納期の近い順に出します。"
+    columns = (
+        ("order__order_no", "受注番号"),
+        ("order__customer", "得意先"),
+        ("order__order_date", "受注日"),
+        ("due_date", "納期"),
+        ("item", "品目"),
+        ("qty", "数量"),
+        ("shipped_total", "出荷済み"),
+        ("remaining_total", "残"),
+        ("status_label", "状態"),
+    )
+    search_fields = ("order__customer__name", "item__part_no")
+    ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
+    template_name = "orders/orderline_list.html"
+
+    def get_queryset(self):
+        lines = annotate_remaining(super().get_queryset().select_related("order", "order__customer", "item"))
+        if self.request.GET.get("all") == "1":
+            return lines
+        return lines.filter(remaining_total__gt=0).exclude(order__status=Order.STATUS_CANCELLED)
+
+
+class OrderDetailView(BaseDetailView):
+    model = Order
+    screen_name = "受注の詳細"
+    screen_help = "受注の項目と明細。明細ごとに出荷済みの数と残の数を出します。"
+    template_name = "orders/order_detail.html"
+
+    def get_queryset(self):
+        # 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む。
+        lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
+        return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
+
+
+class OrderCreateView(BaseFormView):
+    model = Order
+    form_class = OrderForm
+    service = staticmethod(services.create_order)
+    template_name = "orders/order_form.html"
+    screen_name = "受注を入れる"
+    screen_help = "得意先と明細の行を入れて、受注を作ります。金額は保存のときに数量と単価から計算します。"
+
+
+class OrderUpdateView(BaseFormView):
+    model = Order
+    form_class = OrderForm
+    service = staticmethod(services.update_order)
+    template_name = "orders/order_form.html"
+    screen_name = "受注を直す"
+    screen_help = "受注の項目と明細を直します。出荷済みより少ない数量にすると、会社の設定に従って止めるか知らせます。"
+
+
+class OrderCancelView(BaseFormView):
+    model = Order
+    form_class = OrderCancelForm
+    service = staticmethod(services.cancel_order)
+    screen_name = "受注を取り消す"
+    screen_help = "受注を取消にします。取消の後は、出荷も指示書も作れません。"
+
+
+class OrderLineSelectView(BaseSelectView):
+    model = OrderLine
+    search_fields = ("order__order_no", "item__part_no", "item__name")
+
+    def get_queryset(self):
+        # 残が 0 より大きく、受注が取消でない明細だけ。表示の字は OrderLine.__str__ (受注番号-行番号 品番 品名)。
+        lines = OrderLine.objects.select_related("order", "item")
+        return (
+            annotate_remaining(lines)
+            .filter(remaining_total__gt=0)
+            .exclude(order__status=Order.STATUS_CANCELLED)
+        )
