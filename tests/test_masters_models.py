@@ -24,16 +24,17 @@ def test_models_have_japanese_verbose_names():
 
 
 def test_max_lengths_follow_the_limits():
-    # 識別子 35・名称 100・備考 500・コード 10。2 は支払日、15 は区分の列だけ。
-    allowed = {35, 100, 500, 10, 2, 15}
+    # 識別子 35・名称 100・備考 500・コード 10。15 は取引先の種類の列だけ。
+    # 支払日は 1〜31 の数の列 (支払の月と 2 列に分けた。31 は月末) なので、字の上限を持たない。
+    allowed = {35, 100, 500, 10, 15}
     seen = {}
     for model in MASTER_MODELS:
         for field in _own_fields(model):
             if isinstance(field, models.CharField):
                 assert field.max_length in allowed, f"{model.__name__}.{field.name}"
                 seen.setdefault(field.max_length, []).append(f"{model.__name__}.{field.name}")
-    assert seen[2] == ["Partner.payment_day"]
     assert seen[15] == ["Partner.role"]
+    assert isinstance(Partner._meta.get_field("payment_day"), models.PositiveSmallIntegerField)
 
 
 @pytest.mark.django_db

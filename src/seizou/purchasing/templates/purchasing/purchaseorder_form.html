@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
 {% block content %}{{ block.super }}
-{# 発注を入れる: core の入力の画面と同じ形のカードに、発注の欄と明細の行の表。保存すると services が発注を作り、つながりのある相手へ送る。 #}
+{# 発注の新規登録: core の入力の画面と同じ形のカードに、発注の欄と明細の行の表。保存すると services が発注を作り、つながりのある相手へ送る。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「保存」を押します。入れた値は、止まったときも消えません。</p>
@@ -56,7 +56,7 @@
 
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
-    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}やめる</a>{% endif %}
+    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
     {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
     {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>{% endif %}
   </div>

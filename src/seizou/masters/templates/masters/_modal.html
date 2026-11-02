@@ -1,0 +1,35 @@
+{% extends "core/_modal.html" %}
+{% load seizou_tags %}
+{# masters の小窓。項目と会社ごとの項目は core の形のまま。取引先ごとの品番は、取引先・取引先の品番・取引先の品名の表で出す。 #}
+{% block related %}
+{% for tab in tabs %}
+<section class="mt-4" aria-label="{{ tab.label }}">
+  <p class="flex items-center gap-2 text-xs font-medium text-base-content/50">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span></p>
+  {% if tab.rows %}
+  {% if tab.related == "partner_items" %}
+  <div class="mt-2 max-h-60 overflow-auto rounded-lg border border-base-300">
+    <table class="table table-sm table-pin-rows">
+      <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">取引先</th><th class="font-medium">取引先の品番</th><th class="font-medium">取引先の品名</th></tr></thead>
+      <tbody>
+        {% for row in tab.rows %}
+        <tr>
+          <td class="whitespace-nowrap"><span class="block max-w-32 truncate" title="{{ row.obj.partner.name }}">{{ row.obj.partner.short_name|default:row.obj.partner.name }}</span></td>
+          <td class="whitespace-nowrap font-mono">{{ row.obj.partner_part_no }}</td>
+          <td class="whitespace-nowrap"><span class="block max-w-40 truncate" title="{{ row.obj.partner_item_name }}">{{ row.obj.partner_item_name|default:"—" }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <ul class="mt-2 max-h-60 divide-y divide-base-200 overflow-auto rounded-lg border border-base-300">
+    {% for row in tab.rows %}<li class="truncate px-2 py-2" title="{{ row.obj }}">{{ row.obj }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/50">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
+  {% else %}
+  <p class="mt-2 text-base-content/50">{{ tab.label }}はまだありません。</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

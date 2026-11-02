@@ -1,6 +1,6 @@
 """orders の画面 (02 の受注)。全部 core の土台を継承する (R15)。
 
-一覧は 2 つ: 受注の一覧 (Order。受注を入れる画面と詳細へ移る入口) と、注文残の一覧 (OrderLine。明細ごとの残)。
+一覧は 2 つ: 受注の一覧 (Order。受注の新規登録の画面と詳細へ移る入口) と、注文残の一覧 (OrderLine。明細ごとの残)。
 出荷済みの数と残の数は列に持たず、services.annotate_remaining の同じ式で出す。
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
@@ -77,7 +77,7 @@ class OrderCreateView(BaseFormView):
     form_class = OrderForm
     service = staticmethod(services.create_order)
     template_name = "orders/order_form.html"
-    screen_name = "受注を入れる"
+    screen_name = "受注の新規登録"
     screen_help = "得意先と明細の行を入れて、受注を作ります。金額は保存のときに数量と単価から計算します。"
 
 
@@ -86,8 +86,8 @@ class OrderUpdateView(BaseFormView):
     form_class = OrderForm
     service = staticmethod(services.update_order)
     template_name = "orders/order_form.html"
-    screen_name = "受注を直す"
-    screen_help = "受注の項目と明細を直します。出荷済みより少ない数量にすると、会社の設定に従って止めるか知らせます。"
+    screen_name = "受注の編集"
+    screen_help = "受注の項目と明細を編集します。出荷済みより少ない数量にすると、会社の設定に従って止めるか知らせます。"
 
 
 class OrderCancelView(BaseFormView):

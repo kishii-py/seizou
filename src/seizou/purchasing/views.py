@@ -34,7 +34,7 @@ class PurchaseOrderCreateView(BaseFormView):
     form_class = PurchaseOrderForm
     service = staticmethod(services.create_purchase_order)
     template_name = "purchasing/purchaseorder_form.html"
-    screen_name = "発注を入れる"
+    screen_name = "発注の新規登録"
     screen_help = "外注先と明細を入れて保存すると発注の記録ができ、つながりのある相手へ同時に注文を送ります。"
 
 

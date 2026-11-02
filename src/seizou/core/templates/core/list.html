@@ -1,9 +1,11 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
-{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新しく入れる</a>{% endif %}{% endblock %}
+{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
 {% block content %}
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
-<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading">
+{# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
+{# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
   <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per">
     {% if search_hint %}
     <div class="rounded-lg bg-base-200 p-4" role="search">
@@ -14,7 +16,7 @@
       <label for="list-q" class="mt-2 block font-medium">キーワード</label>
       <label class="input mt-2 w-full">
         {% icon "search" "size-4 text-base-content/50" %}
-        <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で探す" autocomplete="off">
+        <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で絞り込む" autocomplete="off">
       </label>
     </div>
     {% endif %}

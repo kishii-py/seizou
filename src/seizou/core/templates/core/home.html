@@ -22,7 +22,7 @@
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
     <div class="flex items-center justify-between gap-2">
       <h2 id="recent-orders-title" class="text-lg font-bold">最近の受注</h2>
-      {% if orders_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ orders_url }}">受注の一覧へ{% icon "chevron-right" "size-4" %}</a>{% endif %}
+      {% if orders_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ orders_url }}">受注の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
     </div>
     {% if recent_orders %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">

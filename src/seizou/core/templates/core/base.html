@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}{{ screen_name|default:"seizou" }}{% endblock %} | {{ seizou.company_name }}</title>
+<title>{% block title %}{{ screen_name|default:"seizou" }}{% endblock %}{% if seizou.company_name %} | {{ seizou.company_name }}{% endif %}</title>
+{# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。 #}
+<link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
 <link rel="stylesheet" href="{% static 'vendor/tom-select.css' %}">
 <script src="{% static 'vendor/htmx.min.js' %}" defer></script>

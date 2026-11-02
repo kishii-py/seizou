@@ -54,8 +54,9 @@ PARTNER_HEADER = [
     "取引先コード",
     "名前",
     "略称",
-    "区分",
+    "取引先の種類",
     "締日",
+    "支払の月",
     "支払日",
     "小計の計算方法",
     "消費税の計算方法",
@@ -199,7 +200,7 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
 
     # 取引先コードは A 社の partners.csv にあり、その行は外注先 (B 社)
     partner = partner_rows("a_machining")[connection["取引先コード"]]
-    assert partner["区分"] == "外注先"
+    assert partner["取引先の種類"] == "外注先"
     assert partner["名前"] == load_answers("b_plating")["name"]
 
 
@@ -218,4 +219,4 @@ def test_b_plating_connects_from_a_machining_receive_only():
     # 取引先コードは B 社の partners.csv にあり、その行は A 社 (得意先)
     partner = partner_rows("b_plating")[connection["取引先コード"]]
     assert partner["名前"] == load_answers("a_machining")["name"]
-    assert partner["区分"] == "得意先"
+    assert partner["取引先の種類"] == "得意先"

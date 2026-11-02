@@ -1,31 +1,32 @@
 {% load seizou_icons %}
 {# 済んだ事の知らせ (Django の messages) は右上の toast で出す。できた = 主色の地に緑の印、失敗 = error、確認 = warning、お知らせ = info。 #}
 {# できたとお知らせは 5 秒で消える (下の線が残り時間)。失敗と確認は閉じるまで残る。閉じると消す処理は base.html の末尾の script。 #}
-{% if messages %}<div id="seizou-toasts" class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4" aria-live="polite">
+{# 置き場は右下 (詳細の「一覧に戻る」「編集」を覆わないため。上の帯の下に置くと 5 秒の間ボタンが隠れた)。枠 (#seizou-toasts) は押下を下の物へ通し (pointer-events-none)、箱と閉じるボタンだけが押下を受ける。 #}
+{% if messages %}<div id="seizou-toasts" class="toast toast-bottom toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4 pointer-events-none" aria-live="polite">
 {% for message in messages %}{% if message.level_tag == 'error' %}
-<div class="seizou-toast relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-error p-4 text-error-content shadow-lg sm:w-96" role="alert">
+<div class="seizou-toast pointer-events-auto relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-error p-4 text-error-content shadow-lg sm:w-96" role="alert">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-error">{% icon "x" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">失敗しました。</p><p class="mt-1 break-words">{{ message }}</p></div>
-  <button type="button" class="btn btn-ghost btn-circle btn-xs text-error-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-error-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
 </div>
 {% elif message.level_tag == 'warning' %}
-<div class="seizou-toast relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning p-4 text-warning-content shadow-lg sm:w-96" role="alert">
+<div class="seizou-toast pointer-events-auto relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning p-4 text-warning-content shadow-lg sm:w-96" role="alert">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-warning">{% icon "alert" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">確認してください。</p><p class="mt-1 break-words">{{ message }}</p></div>
-  <button type="button" class="btn btn-ghost btn-circle btn-xs text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
 </div>
 {% elif message.level_tag == 'info' %}
-<div class="seizou-toast relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info p-4 text-info-content shadow-lg sm:w-96" role="status" data-auto>
+<div class="seizou-toast pointer-events-auto relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info p-4 text-info-content shadow-lg sm:w-96" role="status" data-auto>
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-info">{% icon "info" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">お知らせ</p><p class="mt-1 break-words">{{ message }}</p></div>
-  <button type="button" class="btn btn-ghost btn-circle btn-xs text-info-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-info-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
   <span class="seizou-toast-bar absolute inset-x-0 bottom-0 h-1 bg-base-100/60" aria-hidden="true"></span>
 </div>
 {% else %}
-<div class="seizou-toast relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-primary p-4 text-primary-content shadow-lg sm:w-96" role="status" data-auto>
+<div class="seizou-toast pointer-events-auto relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-primary p-4 text-primary-content shadow-lg sm:w-96" role="status" data-auto>
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-success">{% icon "check" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">成功しました。</p><p class="mt-1 break-words">{{ message }}</p></div>
-  <button type="button" class="btn btn-ghost btn-circle btn-xs text-primary-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-primary-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
   <span class="seizou-toast-bar absolute inset-x-0 bottom-0 h-1 bg-base-100/60" aria-hidden="true"></span>
 </div>
 {% endif %}{% endfor %}</div>{% endif %}

@@ -24,5 +24,5 @@ class ProgressCreateView(BaseFormView):
     model = Progress
     form_class = ProgressRecordForm
     service = staticmethod(services.record_progress)
-    screen_name = "実績を入れる"
+    screen_name = "実績の新規登録"
     screen_help = "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。"

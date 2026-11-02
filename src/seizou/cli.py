@@ -366,7 +366,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
             result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds))])
             if result.returncode != 0:
                 return show_failure("作り物のデータの読み込み", result)
-            print(f"作り物のデータを入れました: {seeds}")
+            print(f"作り物のデータを登録しました: {seeds}")
 
     port = answers["port"]
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
@@ -383,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。",
     )
     new.add_argument("answers", type=Path, help="答えの YAML のパス")
-    new.add_argument("--demo", action="store_true", help="作り物のデータも入れる (作り物の会社のとき)")
+    new.add_argument("--demo", action="store_true", help="作り物のデータも登録する (作り物の会社のとき)")
     return parser
 
 
