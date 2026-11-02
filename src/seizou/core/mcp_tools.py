@@ -576,7 +576,7 @@ def list_shipments(days: int = 30, limit: int = 50) -> dict[str, Any]:
 
 
 def get_manual(screen: str | None = None) -> dict[str, Any]:
-    """会社のマニュアル (画面ごとの説明書) を読む。
+    """会社の使い方のページ (画面ごとの説明書。左のメニューの業務マニュアルとは別) を読む。
 
     screen: 画面の URL の名前 (list_screens の url_name。例 orders:order_list)。null なら目次。
     返す物 (null のとき): intro 前書きの HTML (無ければ空) と、count と items
