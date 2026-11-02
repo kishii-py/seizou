@@ -525,3 +525,13 @@ def test_screens_in_catalog():
     assert screens["masters:partner_import"].name == "取引先の CSV 取り込み"
     assert screens["masters:item_import"].path == "/masters/items/import/"
     assert screens["masters:partner_import"].path == "/masters/partners/import/"
+
+
+def test_non_editable_columns_are_not_csv_headers():
+    """画面で入れられない列 (図面の表示用・表示用の誤り) は、見本の見出しに出ず、CSV から書かせない。"""
+    from seizou.core import csvio
+    from seizou.masters.models import Item
+
+    labels = csvio.header_labels(Item)
+    assert "図面の表示用" not in labels
+    assert not any("誤り" in label for label in labels)
