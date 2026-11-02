@@ -1,0 +1,29 @@
+name: windows
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      DJANGO_SETTINGS_MODULE: tests.settings
+    steps:
+      # 改行を CRLF に変えずに取り出す (同梱物の sha256 の試験が Linux と同じ中身を見るため)。
+      - name: 改行を変えない設定にする
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.12.21"
+      - name: 依存を入れる (PDF の extras は入れない)
+        run: uv sync --locked --group dev
+      - name: ruff
+        run: uv run ruff check .
+      - name: pytest (PDF の試験は除く)
+        run: uv run pytest -m "not pdf"
+      - name: migration の差分が無いことを確かめる
+        run: uv run python -m django makemigrations --check --dry-run
+      - name: 空の DB に migrate する
+        run: uv run python -m django migrate

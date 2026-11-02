@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "seizou"
+version = "0.1.0"
+description = "町工場や中小の製造業が、1 つの命令で自社専用のシステムを持つための Django の部品"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0 AND MIT AND 0BSD AND OFL-1.1"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = [
+    "Django>=5.2.18,<6.2",
+    "Pillow>=13.0.0",
+    "requests",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+pdf = [
+    "weasyprint>=70.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-django",
+    "ruff",
+    "playwright",
+    "psycopg[binary]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/seizou"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "pdf: WeasyPrint が要る試験 (Windows の CI では除く)",
+]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["tests/fixtures/"]

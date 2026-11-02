@@ -1,0 +1,32 @@
+name: sqlite
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sqlite:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: tests.settings
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.12.21"
+      - name: WeasyPrint の OS の部品を入れる
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libharfbuzz-subset0
+      - name: 依存を入れる
+        run: uv sync --locked --group dev --extra pdf
+      - name: ruff
+        run: uv run ruff check .
+      - name: pytest
+        run: uv run pytest
+      - name: migration の差分が無いことを確かめる
+        run: uv run python -m django makemigrations --check --dry-run
+      - name: 空の DB に migrate する
+        run: uv run python -m django migrate
+      - name: CSS を作り直し、commit した物と比べる
+        run: uv run python scripts/build_css.py --check

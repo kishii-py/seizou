@@ -1,0 +1,8 @@
+/* 配布物の CSS の元。scripts/build_css.py がこの後ろに @source の行を足して道具の置き場で読む。 */
+/* source(none): 今の場所の自動の探索を止め、build_css.py が名指しした置き場だけを読む。 */
+@import "tailwindcss" source(none);
+
+/* 配布物の既定の theme は daisyUI の light。会社ごとの theme は build_css.py の --theme で足す。 */
+@plugin "./daisyui.mjs" {
+  themes: light --default;
+}
