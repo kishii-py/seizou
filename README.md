@@ -234,6 +234,7 @@ Django の部品を直すときの命令。
 - 書き方の検査: `uv run ruff check .`
 - 決まりの検査: `uv run python -m django seizou_check src/seizou --settings=tests.settings`
 - CSS: テンプレートを変えたら、`uv run python scripts/build_css.py` で作り直す。最初の 1 回は、道具 (Tailwind CSS と daisyUI) を取りにネットに出る。
+- 手元の 2 社の立て直し: `uv run python scripts/sites.py restart` (置き場の親は `SEIZOU_SITES_DIR`、無ければ `~/seizou-sites`。`status`・`start`・`stop` もある。runserver は `--noreload` で立てるので、取り込みの後はこれで立て直す)
 
 ### E2E (ブラウザで画面を通す試験)
 
