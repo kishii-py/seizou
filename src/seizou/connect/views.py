@@ -9,7 +9,7 @@ class の中で上書きするのは、約束の名前 (model・ordering・colum
 確かめと受信箱への登録は services.receive が行う。返事に鍵の値と本文を入れない。
 """
 
-from django.db.models import Subquery
+from django.db.models import IntegerField, Subquery, Value
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -45,7 +45,13 @@ class InboxListView(BaseListView):
         # newest_pk = 受信箱の一番新しい行の番号 (どの行にも同じ値)。行と同じ 1 つの問い合わせで読むので、
         # 返す行と次に添える after がずれない。GET の after (数) があれば、それより新しい行だけにする。
         newest = Inbox.objects.order_by("-pk").values("pk")[:1]
-        queryset = super().get_queryset().select_related("partner").annotate(newest_pk=Subquery(newest))
+        # total_count = 受信箱の全部の件数 (自動の更新で行を足したとき、上の「全 N 件」も直すため。初見テスト 2 回目の所見)。
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related("partner")
+            .annotate(newest_pk=Subquery(newest), total_count=Value(Inbox.objects.count(), output_field=IntegerField()))
+        )
         try:
             after = int(self.request.GET.get("after", ""))
         except ValueError:

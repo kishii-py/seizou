@@ -5,8 +5,11 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 どちらも、次の after を持った取りに行く要素 (connect/_inbox_poll.html) を hx-swap-oob で入れ直す。
 それ以外 (検索・並び替え・ページ送りと、つながりの一覧) は core/_rows.html をそのまま使う。
 {% endcomment %}
+{% load seizou_tags %}
 {% if request.resolver_match.url_name == "inbox_list" and "after" in request.GET %}
 {% if request.GET.after != "0" %}{% include "connect/_inbox_new_rows.html" %}
+{# 新しい行があれば、上の「全 N 件」も入れ替える (行だけ増えて件数が古いままにならないように)。<template> で包むのは行の応答の中に置くため。 #}
+{% if rows %}<template><span id="list-count" class="font-medium tabular-nums text-base-content" hx-swap-oob="true">{{ rows.0.obj.total_count|comma }}</span></template>{% endif %}
 {% elif rows %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">

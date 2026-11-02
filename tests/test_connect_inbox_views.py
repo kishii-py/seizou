@@ -107,6 +107,10 @@ def test_poll_returns_only_newer_rows(client_logged_in, receive_order):
     assert "<html" not in body
     # 次の取りに行きは、返した行の番号から
     assert 'hx-swap-oob="true"' in body and f"?after={second.pk}" in body
+    # 上の「全 N 件」も入れ替える (行だけ増えて件数が古いままにならない。初見テスト 2 回目の所見)
+    assert 'id="list-count"' in body and ">2</span>" in body
+    # 足した行の最初の欄は詳細への link (キーボードでも移れる)
+    assert f'href="/connect/inbox/{second.pk}/"' in body
 
 
 def test_poll_without_new_rows_is_empty(client_logged_in, receive_order):
