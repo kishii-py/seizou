@@ -88,6 +88,8 @@ def test_settings_follow_the_contract(built):
         "SessionStorage",
         "from seizou.parts import PARTS",
         "IMMEDIATE",
+        "seizou.core.middleware.DevAutoLoginMiddleware",
+        'SEIZOU_DEV_AUTO_LOGIN = os.environ.get("SEIZOU_DEV_AUTO_LOGIN", "0") == "1"',
     ):
         assert needle in text, needle
     block = re.search(r"^SEIZOU = \{\n(.*?)^\}", text, re.S | re.M)
@@ -106,6 +108,7 @@ def test_env_has_only_generated_secret(built):
     assert len(keys) == 1
     assert len(keys[0].split("=", 1)[1]) > 0
     assert "DEBUG=1" in lines
+    assert "SEIZOU_DEV_AUTO_LOGIN=1" in lines
     # 取引先の鍵は人が足す。値の例の行 (コメントでない行) は置かない。
     assert not [line for line in lines if line.startswith("SEIZOU_PARTNER_")]
 

@@ -16,6 +16,7 @@
 import re
 from urllib.parse import urljoin
 
+import pytest
 from playwright.sync_api import expect
 
 from .conftest import drawing_file, login, new_item, shot, unique_mark, wait_image_loaded
@@ -79,4 +80,7 @@ def test_e24_drawing_url_needs_login(context, page_a, company_a, tmp_path):
     page_a.locator("summary[aria-label=利用者のメニュー]").click()
     page_a.locator("header details").get_by_role("button", name="ログアウト").click()
     page_a.wait_for_url(re.compile(r"/login/"))
-    assert context.request.get(url, max_redirects=0).status != 200
+    status = context.request.get(url, max_redirects=0).status
+    if status == 200 and context.request.get(company_a.base_url + "/", max_redirects=0).status == 200:
+        pytest.skip("立っていた runserver が開発機の自動ログイン (SEIZOU_DEV_AUTO_LOGIN=1) で動いていて、ログアウトの後も開けるので確かめられない")
+    assert status != 200

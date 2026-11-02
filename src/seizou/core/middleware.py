@@ -12,6 +12,7 @@ runserver はファイルの変更で起動し直すので、直して保存す�
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -154,3 +155,50 @@ class RuleNoticeMiddleware:
             return response
         html = render_to_string(TEMPLATE, {"rule_notices": notices}, request=request)
         return HttpResponse(html, status=500)
+
+
+# ---------------------------------------------------------------- 開発機の自動ログイン (11-03 の昼。本人の求め)
+
+#: 会社の settings.py の設定の名前 (環境変数の名前も同じ。.env の SEIZOU_DEV_AUTO_LOGIN=1)。
+DEV_AUTO_LOGIN_SETTING = "SEIZOU_DEV_AUTO_LOGIN"
+
+
+def dev_auto_login_enabled() -> bool:
+    """開発機の自動ログインを使うか。DEBUG が真、起動の引数に runserver がある、会社の設定が真、の 3 つが全部そろったときだけ。"""
+    if not settings.DEBUG or not getattr(settings, DEV_AUTO_LOGIN_SETTING, False):
+        return False
+    return "runserver" in sys.argv
+
+
+def first_superuser():
+    """自動ログインに使う人: 有効な superuser のうち、番号 (pk) のいちばん小さい人。いなければ None (新しくは作らない)。"""
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.filter(is_superuser=True, is_active=True).order_by("pk").first()
+
+
+class DevAutoLoginMiddleware:
+    """開発機で、ログインの画面を飛ばして画面を開けるようにする。
+
+    ログインしていない要求を、first_superuser() の要求として扱う (request.user を入れ替えるだけ)。
+    - 動く条件は dev_auto_login_enabled() の 3 つ。本番の形 (gunicorn・DEBUG=0) では鎖から外れる (MiddlewareNotUsed)。
+    - ログインの画面からログインした人の要求には何もしない (権限ごとの見え方は、その人でログインして確かめる)。
+    - session には書かず、last_login も更新しない。ログアウトすると、次の要求からまた superuser として扱う。
+    - AuthenticationMiddleware の後ろに置く (request.user が要る)。
+    - 自動ログインの人は superuser なので、権限で変わる画面の確かめはこれでは済ませない (N36 の権限管理)。
+    """
+
+    def __init__(self, get_response):
+        if not dev_auto_login_enabled():
+            raise MiddlewareNotUsed(
+                f"開発機の自動ログインは、DEBUG が真で、runserver で、{DEV_AUTO_LOGIN_SETTING} が真のときだけ使う。"
+            )
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            admin = first_superuser()
+            if admin is not None:
+                request.user = admin
+        return self.get_response(request)

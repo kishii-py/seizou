@@ -10,6 +10,8 @@
 ${start_line}
 ```
 
+開発の設定 (`.env` の `DEBUG=1` と `SEIZOU_DEV_AUTO_LOGIN=1`) では、ログインの画面を飛ばして管理者として開きます。ログインの画面を見るには、`SEIZOU_DEV_AUTO_LOGIN` を 0 にして起動し直します。
+
 ## 管理者
 
 管理者の ID は `${admin_id}` です。パスワードは、`seizou new` が作ったときに画面に 1 度だけ出しました。このファイルには書きません。
@@ -20,7 +22,7 @@ ${start_line}
 
 ## 本番で使うとき
 
-- `.env` の `DEBUG` を 0 にします。
+- `.env` の `DEBUG` を 0 にし、`SEIZOU_DEV_AUTO_LOGIN` を 0 にするか消します。
 - データベースは PostgreSQL にします。環境変数 `SEIZOU_DB=postgres` と、接続の環境変数 (PGHOST・PGUSER・PGPASSWORD・PGDATABASE) を入れます。
 - `.env` には鍵を置きます。中身を人に見せたり、公開の場所に置いたりしません。
 - 上げたファイル (図面・添付・マニュアルの画像) は、ログインした人にだけ返します。大きなファイルを nginx に送らせるときは、`deploy/nginx-files.conf` を nginx の設定に読み込み、`.env` に `SEIZOU_FILE_DELIVERY=nginx` を足します。設定が足りないと、ファイルの画面が 503 で止まります (空のファイルは返しません)。
