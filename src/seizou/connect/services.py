@@ -70,12 +70,11 @@ def _url_is_valid(url):
 
 
 def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
-    """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL。
+    """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL → 2 行目。
 
     送る向きで url が空でなければ、URL の形を確かめる。受ける向きの url は空でよい。
-    誤りは日本語の文の ValueError。
-    exclude_pk は、同じ取引先と向きの 2 行目を断る確かめで、直すときの自分を除くための引数。
-    その確かめは、同じ取引先と向きを 2 回登録する既にあるテストとの食い違いが決まるまで入れていない。
+    同じ取引先と向きのつながりが既にあれば断る。exclude_pk は、直すときに自分の行を除くための引数。
+    DB の一意の制約は持たない (表を変えないため)。誤りは日本語の文の ValueError。
     """
     if direction not in _DIRECTIONS:
         raise ValueError(
@@ -90,6 +89,14 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
     if direction == Connection.DIRECTION_SEND and url and not _url_is_valid(url):
         raise ValueError(
             f"受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
+        )
+    same = Connection.objects.filter(partner=partner, direction=direction)
+    if exclude_pk is not None:
+        same = same.exclude(pk=exclude_pk)
+    if same.exists():
+        label = dict(Connection.DIRECTION_CHOICES)[direction]
+        raise ValueError(
+            f"この取引先との「{label}」のつながりは既にあります。つながりの一覧の行から編集してください。"
         )
 
 

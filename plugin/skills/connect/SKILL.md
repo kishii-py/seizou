@@ -13,7 +13,7 @@ description: 取引先と注文のデータを送り合えるように、会社�
 
 動き出す前に、次の趣旨を 1〜3 行で担当者に伝えます。
 
-- 取引先と注文のデータ (取引先との間でやり取りする注文 1 件) を送り合えるように、つながりを登録します。
+- 取引先と注文のデータ (取引先との間でやり取りする注文 1 件) を送り合えるように、つながりを登録します。登録は、担当者が会社のシステムの画面でします。
 - この会社と相手の会社の両方で、この命令を 1 回ずつ打ちます。
 - 鍵の値 (署名に使う秘密の値) は、この会話で聞かず、画面にも出しません。担当者が自分で置きます。
 
@@ -21,37 +21,29 @@ description: 取引先と注文のデータを送り合えるように、会社�
 
 1. 会社のシステムの置き場は `~/seizou-sites/<id>/` です (`/seizou:build` が作った所。`<id>` は会社の id = 会社を見分ける短い名前)。今の作業のフォルダがそこでなければ、どの会社かを聞きます。候補は `~/seizou-sites/` の下のフォルダの名前です。
 2. 置き場に `manage.py` と `answers.yaml` が無ければ、「先に `/seizou:build` で会社のシステムを立ち上げてください」の趣旨を伝えて止まります。
-3. 置き場の `README.md` の「起動」にある 1 行 (`seizou new` が書いた `cd <置き場> && <python> manage.py runserver <port>`) を読み、`<python>` の所を覚えます。この後の `manage.py` は、いつもこの python で、置き場の中で打ちます。
+3. 置き場の `README.md` の「起動」にある 1 行 (`seizou new` が書いた `cd <置き場> && <python> manage.py runserver <port>`) を読み、`<python>` の所を覚えます。この後に担当者へ案内する `manage.py` の命令は、いつもこの python で、置き場の中で打つ形にします。`answers.yaml` の `port` も覚えます。画面の URL に使います。
 4. 命令が見つからないときや失敗したときは、出力をそのまま担当者に見せて止まります。手で作業を補いません。
 
 ## 3. 聞くこと
 
 次の 4 問を 1 問ずつ聞きます。1 問を聞いたら答えを待ち、答えを読んでから次の問いを出します。答えを勝手に補いません。
 
-問 1: つなぐ相手の取引先 (取引先コード)
+問 1: つなぐ相手の取引先
 
-- 候補として、取引先マスター (取引先の表) の取引先コードと名前を読んで見せてよいです。読む命令は次のとおりで、コードと名前だけを出します。
-
-```
-<python> manage.py shell --no-imports -c '
-from django.apps import apps
-for partner in apps.get_model("masters", "Partner").objects.order_by("code"):
-    print(partner.code, partner.name, sep="\t")
-'
-```
-
-- 相手が取引先マスターに無いときは、「取引先の画面で、先に取引先を登録してください」の趣旨を伝えて止まります。この命令は取引先を作りません。
+- 候補は、担当者に画面で見てもらいます。つながりの新規登録の画面 (`http://127.0.0.1:<port>/connect/connections/new/`) を開き、「取引先」の選ぶ欄に並ぶ取引先から選んでもらいます。会社のシステムが動いていなければ、置き場の `README.md` の「起動」の 1 行で起動してもらいます。
+- 相手が選ぶ欄に無いときは、「取引先の画面で、先に新規登録してください」の趣旨を伝えて止まります。この命令は取引先を作りません。
 
 問 2: 向き
 
-- 送る (`send`): この会社が発注を送る相手です。
-- 受ける (`receive`): 相手から注文を受け取ります。
+- 送る: この会社が発注を送る相手です。
+- 受ける: 相手から注文を受け取ります。
+- 両方の向きでつなぐときは、つながりを 2 行に分けて登録します。
 
 問 3: 相手の受け口の URL (送るときだけ聞く)
 
 - 形は `http://<相手の PC>:<相手のポート>/connect/receive/order/` です。相手の担当者に聞いてもらいます。
 - 聞いた URL だけを使います。探したり、推し量って作ったりしません。
-- `<相手の PC>` は IP アドレス (例 `127.0.0.1`) か、点を含む名前にします。点の無い名前は、登録のときに URL の形の誤りになります。
+- `<相手の PC>` は IP アドレス (例 `127.0.0.1`) か PC の名前です。PC の名前 (点の無い名前) も使えます。
 - 受けるときは聞きません。URL は空で登録します。
 
 問 4: 相手の会社の id
@@ -60,50 +52,30 @@ for partner in apps.get_model("masters", "Partner").objects.order_by("code"):
 - 答えから、鍵の置き場の名前を `SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET` の形で作り、担当者に見せて確かめてもらいます。例: 相手の id が `b_plating` なら、`SEIZOU_PARTNER_B_PLATING_SECRET` です。
 - id に英小文字と数字と `_` のほかの字があれば、聞き直します。
 
-## 4. 登録する
+## 4. 画面で登録してもらう
 
-1. 同じ取引先と向きのつながりが既にあるかを、次の命令で確かめます。この命令は読むだけです。
+1. 担当者に、つながりの画面を開いてもらいます。URL は `http://127.0.0.1:<port>/connect/connections/` で、左のメニューの「つながり」からも開けます。
+2. 「新規登録」を押し、4 つの欄に問 1〜4 の答えを入れてもらいます。欄は「取引先」「向き」「受け口の URL」「鍵の置き場の名前」です。受けるときは「受け口の URL」を空のままにします。
+3. 「保存」を押してもらいます。画面は部品の関数 `register_connection` を呼んでつながりを書きます。表に直接は書きません。保存できると、つながりの詳細の画面に移ります。
+4. 同じ取引先と向きのつながりが既にあると、赤の知らせが出て保存されません。そのときは、つながりの一覧の行から詳細へ移り、「編集」で直してもらいます。
+5. 赤の知らせが出たら、その文をそのまま読んでもらいます。URL の形や鍵の置き場の名前の形の誤りも、赤の知らせで出ます。直し方は文に書いてあります。
 
-```
-SEIZOU_CONNECT_PARTNER=<取引先コード> SEIZOU_CONNECT_DIRECTION=<send か receive> <python> manage.py shell --no-imports -c '
-import os
-from django.apps import apps
-partner = apps.get_model("masters", "Partner").objects.get(code=os.environ["SEIZOU_CONNECT_PARTNER"])
-print("既にある" if partner.connections.filter(direction=os.environ["SEIZOU_CONNECT_DIRECTION"]).exists() else "まだ無い")
-'
-```
+## 5. 鍵の値を作って置いてもらう
 
-2. 「既にある」と出たら、登録せずに「この取引先とのこの向きのつながりは、既に登録してあります」の趣旨を伝えて止まります。
-3. 「まだ無い」と出たら、次の命令でつながりを登録します。この命令は、部品の関数 `seizou.connect.services.register_connection(partner, url, secret_env, direction, user)` を呼びます。
+鍵の値は、注文をやり取りする両方の会社の `.env` に、同じ値を置きます。`.env` は、会社のシステムの置き場にある、鍵を置くファイルです。手順は、公開リポジトリ (seizou) の `SECURITY.md` の「取引先の鍵の作り方」と同じです。
+
+1. 値を作るのは、2 社のうち片方の担当者だけです。その担当者に、自分の端末の窓 (この会話の外) で、置き場の中で次の命令を打ってもらいます。
 
 ```
-SEIZOU_CONNECT_PARTNER=<取引先コード> SEIZOU_CONNECT_URL=<URL> SEIZOU_CONNECT_ENV_NAME=<鍵の置き場の名前> SEIZOU_CONNECT_DIRECTION=<send か receive> <python> manage.py shell --no-imports -c '
-import os
-from django.apps import apps
-from django.contrib.auth import get_user_model
-from seizou.connect.services import register_connection
-partner = apps.get_model("masters", "Partner").objects.get(code=os.environ["SEIZOU_CONNECT_PARTNER"])
-user = get_user_model().objects.get(username="admin")
-connection = register_connection(partner, os.environ["SEIZOU_CONNECT_URL"], os.environ["SEIZOU_CONNECT_ENV_NAME"], os.environ["SEIZOU_CONNECT_DIRECTION"], user)
-print("登録しました:", connection)
-'
+<python> manage.py seizou_secret <鍵の置き場の名前>
 ```
 
-- 答えの値は環境変数で渡し、Python の文の中に書きません。shell の引用符と Python の文字列の引用符が重ならないようにするためです。
-- `<URL>` は問 3 の URL です。受けるときは `SEIZOU_CONNECT_URL=` の後に何も書かず、空にします。
-- 取引先は取引先コードで引きます。`user` は、`seizou new` が作った管理者の ID `admin` です。
-- 誤りが出たら、その文をそのまま担当者に見せて止まります。`register_connection` の誤りは日本語の文 (`ValueError`) で出ます。
-- 表に直接書きません。この命令がつながりを書くときに呼ぶのは、`register_connection` だけです。
-
-## 5. 鍵を置いてもらう
-
-鍵の値は、注文をやり取りする両方の会社の `.env` に、同じ値を置きます。`.env` は、会社のシステムの置き場にある、鍵を置くファイルです。置くのは担当者です。
-
-1. 担当者に、置き場の `.env` に `<鍵の置き場の名前>=` で始まる行を 1 行足してもらいます。例は `SEIZOU_PARTNER_B_PLATING_SECRET=` で始まる行です。`=` の後には、相手の会社と同じ値を置いてもらいます。
-2. 値の形と作り方は、公開リポジトリ (seizou) の `SECURITY.md` を見てもらいます。値の形は、この会話で書きません。
-3. 値は片方の会社が作り、もう片方の会社へ人の手で渡します。
-4. 値をこの会話に貼らないよう伝えます。貼られても、その値を書き写したり使ったりしません。
-5. Claude は `.env` を読まず、書かず、中身を画面に出しません。
+2. Claude はこの命令を打ちません。打つと、値がこの会話に出るためです。
+3. 命令は `<鍵の置き場の名前>=<値>` の 1 行を画面に 1 度だけ出します。ファイルには書きません。担当者に、出た 1 行を自社の `.env` に足してもらいます。例は `SEIZOU_PARTNER_B_PLATING_SECRET=` で始まる行です。
+4. = の後ろの値を、相手の会社の担当者へ人の手で渡してもらいます。相手は自社の `.env` に、相手の側の鍵の置き場の名前 (`SEIZOU_PARTNER_<こちらの会社の id を大文字にした物>_SECRET`) で、同じ値の 1 行を足します。相手が先に値を作っていたときは、受け取った値を、この会社の鍵の置き場の名前の後ろに置いてもらいます。
+5. 値の形は、`SECURITY.md` を見てもらいます。値の形は、この会話で書きません。
+6. 値をこの会話に貼らないよう伝えます。貼られても、その値を書き写したり使ったりしません。
+7. Claude は `.env` を読まず、書かず、中身を画面に出しません。
 
 ## 6. 起動し直してもらう
 
@@ -120,7 +92,7 @@ print("登録しました:", connection)
 
 ## 8. 確かめてもらう
 
-担当者に、つながりの画面を開いてもらいます。URL は `http://127.0.0.1:<port>/connect/connections/` で、左のメニューの「つながり」からも開けます。登録した行の「鍵の設定」が「済み」になっていれば、鍵が置けています。「まだ」のときは、`.env` の行の名前と、起動し直したかを確かめてもらいます。
+担当者に、つながりの一覧 (`http://127.0.0.1:<port>/connect/connections/`) の行から詳細を開いてもらいます。詳細の「鍵の設定」が「済み」になっていれば、鍵が置けています。「まだ」のときは、詳細の案内のとおりに、`.env` の行の名前と、起動し直したかを確かめてもらいます。
 
 ## 9. 終わりに言うこと
 
@@ -132,10 +104,12 @@ print("登録しました:", connection)
 ## してはいけないこと
 
 - 鍵の値を聞きません。書きません。画面に出しません。値の形も書きません。
+- 鍵の値を作る命令 `seizou_secret` を、Claude は打ちません。打つのは担当者で、この会話の外の窓で打ちます。
 - `.env` を読みません。書きません。
 - 相手の受け口を探しません。聞いた URL だけを使います。
 - 部品の中身 (`seizou` の package) を書き換えません。
-- 表に直接書きません。つながりを書くときに呼ぶのは `register_connection` だけです。
+- Django の `shell` の命令で、表を読みません。書きません。登録は画面でしてもらいます。
+- 表に直接書きません。つながりを書くのは、画面が呼ぶ `register_connection` だけです。
 - 取引先を作りません。取引先は、取引先の画面で登録してもらいます。
 - 試しの注文を送りません。注文を送るのは、発注の画面 (「発注を入れる」) です。
 - 手元のほかのリポジトリを読みません。読むのは公開リポジトリと、会社のシステムの置き場だけです。

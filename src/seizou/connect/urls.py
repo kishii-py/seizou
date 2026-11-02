@@ -23,4 +23,7 @@ urlpatterns = [
     path("inbox/<int:pk>/accept/", views.InboxAcceptView.as_view(), name="inbox_accept"),
     path("inbox/<int:pk>/reject/", views.InboxRejectView.as_view(), name="inbox_reject"),
     path("connections/", views.ConnectionListView.as_view(), name="connection_list"),
+    path("connections/new/", views.ConnectionCreateView.as_view(), name="connection_create"),
+    path("connections/<int:pk>/", views.ConnectionDetailView.as_view(), name="connection_detail"),
+    path("connections/<int:pk>/edit/", views.ConnectionUpdateView.as_view(), name="connection_update"),
 ]
