@@ -8,11 +8,13 @@ from __future__ import annotations
 from importlib import import_module, util
 
 from django.db import DatabaseError
+from django.urls import NoReverseMatch, reverse
 
 from seizou.parts import PARTS
 
 
 def menu() -> list[dict]:
+    """左のメニュー。URL が引ける入口だけを並べる (起動後に部品が増えた時などに 500 にしない)。"""
     items: list[dict] = []
     for part in PARTS:
         name = f"{part}.urls"
@@ -20,7 +22,11 @@ def menu() -> list[dict]:
             continue
         module = import_module(name)
         for label, url_name in getattr(module, "MENU", ()):
-            items.append({"label": label, "url_name": url_name})
+            try:
+                url = reverse(url_name)
+            except NoReverseMatch:
+                continue
+            items.append({"label": label, "url_name": url_name, "url": url})
     return items
 
 

@@ -21,7 +21,7 @@
   {% if user.is_authenticated %}
   <aside class="w-48 min-h-screen bg-base-100 border-r border-base-300">
     <ul class="menu w-full">
-      {% for item in seizou.menu %}<li><a href="{% url item.url_name %}">{{ item.label }}</a></li>{% endfor %}
+      {% for item in seizou.menu %}<li><a href="{{ item.url }}">{{ item.label }}</a></li>{% endfor %}
     </ul>
   </aside>
   {% endif %}
