@@ -260,3 +260,26 @@ def test_security_and_readme_name_intake_api_key_env():
     env_name = _intake_api_key_env()
     for name in ["SECURITY.md", "README.md"]:
         assert env_name in _read(name), f"{name} に読み取りの鍵の環境変数 {env_name} が無い"
+
+
+MCP_HEADING = "## 手元の Claude Code から操作する (MCP)"
+
+
+def test_readme_mcp_section_tools_exist_in_source():
+    text = _read("README.md")
+    headings = [line.strip() for line in text.splitlines() if line.startswith("## ")]
+    assert MCP_HEADING in headings, f"README に見出し「{MCP_HEADING}」が無い"
+    plugin_index = headings.index("## Claude Code のプラグイン")
+    assert headings[plugin_index + 1] == MCP_HEADING, (
+        f"「{MCP_HEADING}」が「## Claude Code のプラグイン」のすぐ次の見出しでない (次は {headings[plugin_index + 1]})"
+    )
+    rows = _table_rows(_section(text, MCP_HEADING))
+    assert rows, "README の MCP の節に表が無い"
+    assert rows[0] == ["道具", "何をするか", "読む / 書く"], f"MCP の節の表の見出しが違う: {rows[0]}"
+    tools = rows[2:]
+    assert len(tools) >= 12, f"MCP の節の表の道具が {len(tools)} 行しか無い (12 行以上)"
+    source = _read("src/seizou/core/mcp_tools.py")
+    for row in tools:
+        name = row[0]
+        assert f"def {name}(" in source, f"MCP の節の道具 {name} が src/seizou/core/mcp_tools.py に無い"
+        assert row[2] in ("読む", "書く"), f"MCP の節の道具 {name} の「読む / 書く」が {row[2]}"
