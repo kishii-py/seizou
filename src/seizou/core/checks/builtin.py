@@ -17,6 +17,14 @@ def _dec(value) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
+def _num(value) -> str:
+    """知らせに出す数の字。末尾の 0 を落とす (10.00 → 10、4.50 → 4.5)。桁がそろわず読みにくいため (初見テスト 2 回目の所見)。"""
+    dec = _dec(value).normalize()
+    if dec == dec.to_integral_value():
+        return str(dec.quantize(Decimal(1)))
+    return format(dec, "f")
+
+
 class OverShipment(Check):
     """R01: 出荷の数の合計が、受注の明細の数を超えたら。"""
 
@@ -29,11 +37,12 @@ class OverShipment(Check):
         qty = data.get("qty")
         if line is None or qty is None:
             return None
-        total = tools.shipped_qty(line) + _dec(qty)
+        shipped = tools.shipped_qty(line)
+        total = shipped + _dec(qty)
         if total > _dec(line.qty):
             return (
-                f"出荷の数の合計 ({total}) が受注の数 ({line.qty}) を超えます。"
-                "数を確かめてください。"
+                f"出荷の数の合計 ({_num(total)}) が受注の数 ({_num(line.qty)}) を超えます。"
+                f"出荷できる残りは {_num(_dec(line.qty) - shipped)} です。数を確かめてください。"
             )
         return None
 
@@ -54,11 +63,12 @@ class OverShipmentOnUpdate(Check):
         if shipment is None or qty is None:
             return None
         line = shipment.order_line
-        total = tools.shipped_qty(line) - _dec(shipment.qty) + _dec(qty)
+        others = tools.shipped_qty(line) - _dec(shipment.qty)
+        total = others + _dec(qty)
         if total > _dec(line.qty):
             return (
-                f"出荷の数の合計 ({total}) が受注の数 ({line.qty}) を超えます。"
-                "数を確かめてください。"
+                f"出荷の数の合計 ({_num(total)}) が受注の数 ({_num(line.qty)}) を超えます。"
+                f"この出荷に入れられる数は {_num(_dec(line.qty) - others)} までです。数を確かめてください。"
             )
         return None
 
@@ -82,7 +92,7 @@ class OrderBelowShipped(Check):
             shipped = tools.shipped_qty(line)
             if _dec(qty) < shipped:
                 return (
-                    f"受注の数 ({qty}) が出荷済みの数 ({shipped}) より少なくなります。"
+                    f"受注の数 ({_num(qty)}) が出荷済みの数 ({_num(shipped)}) より少なくなります。"
                     "数を確かめてください。"
                 )
         return None
@@ -100,11 +110,12 @@ class OverWorkorder(Check):
         qty = data.get("qty")
         if line is None or qty is None:
             return None
-        total = tools.issued_qty(line) + _dec(qty)
+        issued = tools.issued_qty(line)
+        total = issued + _dec(qty)
         if total > _dec(line.qty):
             return (
-                f"指示書の数量の合計 ({total}) が受注の数 ({line.qty}) を超えます。"
-                "数を確かめてください。"
+                f"指示書の数量の合計 ({_num(total)}) が受注の数 ({_num(line.qty)}) を超えます。"
+                f"指示書にできる残りは {_num(_dec(line.qty) - issued)} です。数を確かめてください。"
             )
         return None
 
@@ -121,11 +132,12 @@ class OverProgress(Check):
         qty = data.get("qty")
         if step is None or qty is None:
             return None
-        total = tools.recorded_qty(step) + _dec(qty)
+        recorded = tools.recorded_qty(step)
+        total = recorded + _dec(qty)
         if total > _dec(step.planned_qty):
             return (
-                f"実績の合計 ({total}) が予定の数 ({step.planned_qty}) を超えます。"
-                "数を確かめてください。"
+                f"実績の合計 ({_num(total)}) が予定の数 ({_num(step.planned_qty)}) を超えます。"
+                f"予定までの残りは {_num(_dec(step.planned_qty) - recorded)} です。数を確かめてください。"
             )
         return None
 

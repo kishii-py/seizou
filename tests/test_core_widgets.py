@@ -61,13 +61,15 @@ def test_renders_no_rows_without_value_and_with_bad_value(items):
 
 
 @pytest.mark.django_db
-def test_base_form_view_adds_select_class(items):
+def test_base_form_view_adds_width_class_but_not_daisy_select(items):
+    # 字を打って探す欄には daisyUI の select の class を付けない (Tom Select が包みに写して候補の一覧を隠す。
+    # 初見テスト 2 回目の所見)。幅の class だけを付け、見た目は input.css の .ts-wrapper で決める。
     request = RequestFactory().get("/")
     view = PickItemView()
     view.setup(request)
     form = view.get_form()
     css = form.fields["item"].widget.attrs["class"].split()
-    assert "select" in css
+    assert "w-full" in css and "select" not in css
     assert "class=" in str(form["item"]) and "data-select-url" in str(form["item"])
 
 

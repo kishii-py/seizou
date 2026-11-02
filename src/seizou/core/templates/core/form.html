@@ -2,12 +2,12 @@
 {% load seizou_icons %}
 {% block content %}
 {# 入力: 1 枚のカードの中の 2 列の格子。見出しの右に「必須」か「任意」、誤りは欄の下 (赤)、注意は薄い字。 #}
-{# 数 (小数) の欄は字の欄 (inputmode=decimal) で、整数の欄は type=number。どちらも右寄せ。 #}
+{# 数の欄は字の欄 (小数は inputmode=decimal、整数は inputmode=numeric)。どちらも右寄せ。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「保存」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>
   {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
-  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
     {% for field in form.visible_fields %}
     {% if field.widget_type == "checkbox" %}
     <div class="sm:col-span-2">
@@ -37,19 +37,5 @@
     {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>{% endif %}
   </div>
 </form>
-<script>
-(function () {
-  // Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。字の欄と選ぶ欄の Enter だけを止める。
-  // 文の欄 (textarea) の改行、ボタンの押下と Enter、日本語の変換の確定 (isComposing) は止めない。
-  var form = document.querySelector("form[data-enter-guard]");
-  if (!form) return;
-  form.addEventListener("keydown", function (event) {
-    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
-    var target = event.target;
-    if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
-    if (target.tagName === "INPUT" && /^(submit|button|reset|image)$/i.test(target.type)) return;
-    if (target.tagName === "INPUT" || target.tagName === "SELECT") event.preventDefault();
-  });
-})();
-</script>
+{% include "core/_enter_guard.html" %}
 {% endblock %}

@@ -7,6 +7,7 @@ data-select-url の口から取る)。欄の見た目の class は入力の土�
 
 DecimalInput: 数 (小数) の欄。type="text" と inputmode="decimal" (スマホは数の鍵盤)。入力の土台が
 DecimalField・FloatField の数の入力をこれに替える。送られた字は全角を半角に、桁の区切りの「,」を外してから form に渡す。
+IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台が IntegerField の数の入力をこれに替える。
 """
 
 from __future__ import annotations
@@ -69,6 +70,17 @@ class DecimalInput(forms.TextInput):
 
     def __init__(self, attrs=None):
         super().__init__(attrs={"inputmode": "decimal", **(attrs or {})})
+
+    def value_from_datadict(self, data, files, name):
+        value = super().value_from_datadict(data, files, name)
+        return normalize_number(value) if isinstance(value, str) else value
+
+
+class IntegerInput(forms.TextInput):
+    """整数を入れる字の欄。DecimalInput と同じく、誤り (「2e」など) をブラウザが空にせず、そのままサーバーへ送る。"""
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs={"inputmode": "numeric", **(attrs or {})})
 
     def value_from_datadict(self, data, files, name):
         value = super().value_from_datadict(data, files, name)

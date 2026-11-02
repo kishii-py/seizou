@@ -2,7 +2,7 @@
 {% load seizou_icons %}
 {% block content %}{{ block.super }}
 {# 発注の新規登録: core の入力の画面と同じ形のカードに、発注の欄と明細の行の表。保存すると services が発注を作り、つながりのある相手へ送る。 #}
-<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate>
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「保存」を押します。入れた値は、止まったときも消えません。</p>
   {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
@@ -76,4 +76,5 @@
   });
 })();
 </script>
+{% include "core/_enter_guard.html" %}
 {% endblock %}
