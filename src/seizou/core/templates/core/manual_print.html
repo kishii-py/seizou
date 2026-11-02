@@ -1,0 +1,53 @@
+{% load static %}<!doctype html>
+{% comment %}
+マニュアルの印刷用の 1 枚 (/manual/?print=1)。画面の土台を継がない 1 枚の HTML で、左のメニューと上の帯と入力の欄を持たない。
+紙に刷るので明るい theme に決める。全部の画面の断片を目録の順に並べ、目次の後は画面ごとに改ページする。
+断片は class を持たない素の HTML なので、画面の箱の子の選び方の class で形を付ける (core/manual.html と同じ字)。
+押せるのは「印刷」のボタンだけ (印刷のときは隠す)。
+{% endcomment %}
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マニュアル | {{ seizou.company_name }}</title>
+<link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="bg-base-100 text-sm text-base-content antialiased">
+<main class="mx-auto max-w-4xl p-6 print:max-w-none print:p-0">
+  <header class="flex flex-wrap items-end justify-between gap-4 border-b border-base-300 pb-6">
+    <div class="min-w-0">
+      <p class="text-base-content/70">{{ seizou.company_name }}</p>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight">マニュアル</h1>
+      <p class="mt-2 text-xs text-base-content/50">印刷日 <time datetime="{% now 'Y-m-d' %}">{% now "Y年n月j日" %}</time></p>
+    </div>
+    <button type="button" class="btn btn-outline border-base-300 print:hidden" onclick="window.print()">印刷</button>
+  </header>
+  <nav aria-label="目次" class="mt-6">
+    <h2 class="text-lg font-bold">目次</h2>
+    <ol class="mt-2 list-decimal pl-6">
+      {% for section in sections %}<li><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}">{{ section.name }}</a></li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% if not has_manual %}
+  <p class="mt-6 font-medium">この会社の説明書はまだありません。Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。</p>
+  {% endif %}
+  {% if intro %}
+  <div class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
+  {% elif intro_unreadable %}
+  <p class="mt-6 text-error">前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
+  {% endif %}
+  {% for section in sections %}
+  <div id="{{ section.anchor }}" class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">
+    {% if section.html %}{{ section.html }}
+    {% elif section.unreadable %}<h2>{{ section.name }}</h2>
+    <p class="text-error">説明のファイルを UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
+    {% else %}<h2>{{ section.name }}</h2>
+    <p class="text-base-content/70">この画面の説明はまだありません。<code>/seizou:manual</code> で作れます。</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</main>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{{ print_url }}" target="_blank">{% icon "file" "size-4" %}印刷用を開く</a>{% endblock %}
+{% block content %}
+{# マニュアル: 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
+{# 断片は class を持たない素の HTML なので、本文の箱の子の選び方の class で形を付ける (Tailwind の preflight が既定の見た目を消すため)。 #}
+<div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+  <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
+    <h2 class="text-lg font-bold">目次</h2>
+    <ul class="mt-4 flex flex-col">
+      {% for section in sections %}
+      {% if section.html or section.unreadable %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }}">{{ section.name }}</a></li>
+      {% else %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/50 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }} (まだ)">{{ section.name }} (まだ)</a></li>{% endif %}
+      {% endfor %}
+    </ul>
+  </nav>
+  <div class="flex min-w-0 flex-1 flex-col gap-6">
+    {% if not has_manual %}
+    <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "book" "size-6" %}</span>
+      <p class="mt-4 font-medium">この会社の説明書はまだありません。Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。</p>
+    </div>
+    {% endif %}
+    {% if intro %}
+    <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
+    {% elif intro_unreadable %}
+    <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+      <p class="text-error">前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
+    </div>
+    {% endif %}
+    {% for section in sections %}
+    <div id="{{ section.anchor }}" class="scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">
+      {% if section.html %}{{ section.html }}
+      {% elif section.unreadable %}<h2>{{ section.name }}</h2>
+      <p class="text-error">説明のファイルを UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
+      {% else %}<h2>{{ section.name }}</h2>
+      <p class="text-base-content/70">この画面の説明はまだありません。<code>/seizou:manual</code> で作れます。</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
