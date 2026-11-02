@@ -509,3 +509,72 @@ def test_plan_step_refuses_twice_listed_process(world, user):
     assert result["ok"] is False
     assert "2 つあります" in result["error"]
     assert not WorkOrderStep.objects.filter(workorder=twice, planned_start__isnull=False).exists()
+
+
+def test_plan_board_lists_bars_and_unplanned(world, user, settings):
+    # 同じ明細に指示書をもう 1 枚出し、その「切断」は日を置かずに残す。
+    unplanned = workorders_services.issue_workorder(
+        world.line, Decimal("2"), [{"process": world.cut, "planned_qty": Decimal("2")}], user
+    )
+    placed = _tools(user)["plan_step"](world.workorder.wo_no, "P10", "2026-11-10", "2026-11-11")
+    assert placed["ok"] is True, placed
+
+    board = _json(mcp_tools.plan_board("P10", start="2026-11-12"))
+    assert board["ok"] is True, board
+    assert board["process_code"] == "P10"
+    assert board["process_name"] == "作り物の切断"
+    assert [day["date"] for day in board["days"]] == [f"2026-11-{day:02d}" for day in range(9, 16)]
+    assert [day["weekday"] for day in board["days"]] == list("月火水木金土日")
+    assert [bar["wo_no"] for bar in board["bars"]] == [world.workorder.wo_no]
+    bar = board["bars"][0]
+    assert (bar["start"], bar["end"]) == ("2026-11-10", "2026-11-11")
+    assert bar["part_no"] == "T-100"
+    assert Decimal(bar["qty"]) == 10
+    assert bar["due_date"] == "2026-11-20"
+    assert [card["wo_no"] for card in board["unplanned"]] == [unplanned.wo_no]
+    assert board["unplanned_count"] == 1
+    assert board["unplanned"][0]["start"] is None
+    assert board["marked"] == ["P10"]
+
+    other_week = mcp_tools.plan_board("P10", start="2026-11-16")
+    assert other_week["bars"] == []
+    assert other_week["unplanned_count"] == 1
+    assert len(mcp_tools.plan_board("P10")["days"]) == 7
+
+    not_marked = mcp_tools.plan_board("P20")
+    assert not_marked["ok"] is False
+    assert _has_japanese(not_marked["error"])
+    unknown = mcp_tools.plan_board("P99")
+    assert unknown["ok"] is False
+    assert "P99" in unknown["error"]
+    bad_start = mcp_tools.plan_board("P10", start="2026-99-99")
+    assert bad_start["ok"] is False
+    assert "2026-99-99" in bad_start["error"]
+
+    settings.SEIZOU = {"production_plan": False}
+    turned_off = mcp_tools.plan_board("P10")
+    assert turned_off["ok"] is False
+    assert "生産計画を使わない設定" in turned_off["error"]
+
+
+def test_list_rules_shows_modes(db, settings):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    rules = _json(mcp_tools.list_rules())
+    assert rules["ok"] is True
+    modes = {(row["code"], row["action"]): row for row in rules["checks"]}
+    shipping = modes[("R01", "shipping.ship")]
+    assert shipping["mode"] == "stop"
+    assert shipping["mode_label"] == "止める"
+    assert shipping["summary"].startswith("R01")
+    issue = modes[("R06", "workorders.issue_workorder")]
+    assert issue["mode"] == "warn"
+    assert issue["mode_label"] == "知らせる"
+    assert {"R01", "R04", "R06", "R07"} <= {row["code"] for row in rules["checks"]}
+    code_rules = {row["code"]: row["message"] for row in rules["code_rules"]}
+    assert "R13" in code_rules
+    assert "services" in code_rules["R13"]
+    assert rules["note"] == mcp_tools.CORE_RULES_NOTE
+
+    settings.SEIZOU = {"over_shipment": "off"}
+    again = mcp_tools.list_rules()
+    assert {row["mode"] for row in again["checks"] if row["code"] == "R01"} == {"off"}

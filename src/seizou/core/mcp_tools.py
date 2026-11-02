@@ -25,12 +25,14 @@ from typing import Any, NotRequired, TypedDict
 
 from django.apps import apps
 from django.db.models import Prefetch
+from django.http import Http404
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from seizou.core import checks, conf, manual, screens
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.models import Company
+from seizou.core.rules import RULES
 from seizou.parts import PARTS
 
 #: 一覧の件数の上限
@@ -47,6 +49,12 @@ NO_USER_MESSAGE = (
 
 #: 知らせる段のポカよけに当たったときの、次にすることの文
 CONFIRM_HINT = "知らせを人に見せ、人が確かめてから confirm=true で呼び直すと保存します"
+
+#: ポカよけの段の日本語
+MODE_LABELS = {"stop": "止める", "warn": "知らせる", "off": "通す"}
+
+#: list_rules の、中心の決まりの読み方の 1 文
+CORE_RULES_NOTE = "中心の決まり (R02・R03・R05・R08〜R12) は、書く道具が断るときに番号と文で返します。"
 
 
 class OrderLineInput(TypedDict):
@@ -615,6 +623,84 @@ def get_manual(screen: str | None = None) -> dict[str, Any]:
     }
 
 
+def _board_card(card: dict) -> dict[str, Any]:
+    """生産計画の盤の棒と未計画の 1 つを、JSON にできる鍵だけにする。"""
+    return {
+        "wo_no": card["wo_no"],
+        "part_no": card["part_no"],
+        "item_name": card["item_name"],
+        "qty": _num(card["qty"]),
+        "due_date": _day(card["due_date"]),
+        "start": _day(card["start"]),
+        "end": _day(card["end"]),
+    }
+
+
+def plan_board(process_code: str, start: str | None = None) -> dict[str, Any]:
+    """工程の 1 週の生産計画の盤 (日を置いた予定と、未計画の予定) を返す。
+
+    process_code: 工程コード (「計画に使う」の印の付いた工程だけ。印のある工程は marked で分かる)。
+    start: 週の基の日 (YYYY-MM-DD)。その日の週の月曜から 7 日。null なら今日の週。
+    返す物: process_code・process_name 工程の名前・days (7 日の date と weekday 曜日)・
+    bars 日を置いた予定 (wo_no 指示書番号・part_no・item_name・qty 予定の数・due_date 納期・start 開始日・end 終了日)・
+    unplanned 未計画の予定 (同じ鍵) と unplanned_count・marked 計画に使う工程コードの並び。
+    予定の日を置くのは書く道具の plan_step。ok が偽なら error に、工程が使えない理由がある。
+    """
+    from seizou.workorders import plans
+
+    Process = apps.get_model("masters", "Process")
+    code = _text(process_code)
+    process = Process.objects.filter(code=code).first() if code else None
+    if process is None:
+        return _refused(f"工程コード {code or '(空)'} の工程はありません。工程コードを確かめてください。")
+    try:
+        marked = plans.resolve_process(process.pk)
+    except Http404 as exc:
+        return _refused(str(exc))
+    base = plans.parse_start(start)
+    if base is None and _text(start):
+        return _refused(f"週の基の日 (start) {_text(start)} が日付として読めません。YYYY-MM-DD の形で入れてください。")
+    board = plans.build_board(marked, base, 1)
+    return {
+        "ok": True,
+        "process_code": marked.code,
+        "process_name": marked.name,
+        "days": [{"date": day["iso"], "weekday": day["weekday"]} for day in board["days"]],
+        "bars": [_board_card(bar) for bar in board["bars"]],
+        "unplanned": [_board_card(card) for card in board["unplanned"]],
+        "unplanned_count": board["unplanned_count"],
+        "marked": [row.code for row in plans.marked_processes()],
+    }
+
+
+def list_rules() -> dict[str, Any]:
+    """会社のポカよけの今の段と、書き方の決まりの一覧を返す。
+
+    引数は無い。
+    返す物: checks (検査の層に登録されたポカよけ。code 番号・action 見る操作・mode 今の段
+    (stop 止める / warn 知らせる / off 通す)・mode_label 段の日本語・summary 1 行の説明)、
+    code_rules (書き方の決まり。code 番号・message 文)、note (中心の決まりの読み方の 1 文)。
+    書く道具は、止める段に当たると断り、知らせる段に当たると warnings を返す。
+    """
+    found = []
+    # 登録の全部を返す公開の関数が無いので、登録の表を読むだけにする (書かない)。
+    for action in list(checks._REGISTRY):
+        for check in checks.registered(action):
+            mode = check.current_mode()
+            lines = (type(check).__doc__ or "").strip().splitlines()
+            found.append(
+                {
+                    "code": check.code,
+                    "action": action,
+                    "mode": mode,
+                    "mode_label": MODE_LABELS[mode],
+                    "summary": lines[0].strip() if lines else "",
+                }
+            )
+    code_rules = [{"code": rule.CODE, "message": rule.MESSAGE} for rule in RULES]
+    return {"ok": True, "checks": found, "code_rules": code_rules, "note": CORE_RULES_NOTE}
+
+
 READ_TOOLS = (
     company_info,
     list_screens,
@@ -625,6 +711,8 @@ READ_TOOLS = (
     list_workorders,
     list_shipments,
     get_manual,
+    plan_board,
+    list_rules,
 )
 
 
