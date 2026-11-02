@@ -50,6 +50,7 @@ from django.utils.cache import add_never_cache_headers, patch_vary_headers
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
 from seizou.core import checks
+from seizou.core import dashboard
 from seizou.core import fields as company_fields
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.widgets import DecimalInput, IntegerInput, RemoteSelect
@@ -878,6 +879,8 @@ class HomeView(ScreenMixin, TemplateView):
         context["stats"] = dashboard_stats()
         context["recent_orders"] = recent_orders()
         context["orders_url"] = url_or_none("orders:order_list")
+        context["alerts"] = dashboard.due_alerts()
+        context["trend"] = dashboard.monthly_trend()
         return context
 
 
