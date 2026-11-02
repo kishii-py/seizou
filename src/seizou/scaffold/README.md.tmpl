@@ -1,0 +1,25 @@
+# ${name} のシステム (${id})
+
+この置き場は、命令 `seizou new` が答えの YAML (`answers.yaml`) から作った物です。
+
+## 起動
+
+次の 1 行で起動し、ブラウザで http://127.0.0.1:${port}/login/ を開きます。
+
+```
+${start_line}
+```
+
+## 管理者
+
+管理者の ID は `${admin_id}` です。パスワードは、`seizou new` が作ったときに画面に 1 度だけ出しました。このファイルには書きません。
+
+## 作り直し方
+
+この置き場のフォルダを消してから、同じ答えの YAML でもう 1 度 `seizou new` を打ちます。消すとデータベース (`db.sqlite3`) の中身も消えます。
+
+## 本番で使うとき
+
+- `.env` の `DEBUG` を 0 にします。
+- データベースは PostgreSQL にします。環境変数 `SEIZOU_DB=postgres` と、接続の環境変数 (PGHOST・PGUSER・PGPASSWORD・PGDATABASE) を入れます。
+- `.env` には鍵を置きます。中身を人に見せたり、公開の場所に置いたりしません。
