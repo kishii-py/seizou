@@ -16,6 +16,8 @@ dependencies = [
     "requests",
     "PyYAML",
     "anthropic>=2.3.0",
+    "qrcode>=8.2",
+    "mcp>=2.3.0",
 ]
 
 [project.scripts]
