@@ -62,9 +62,9 @@ def test_duplicate_part_no_is_refused(user):
 
 @pytest.mark.django_db
 def test_create_partner_requires_valid_role(user):
-    with pytest.raises(ValueError, match="役"):
+    with pytest.raises(ValueError, match="区分"):
         services.create_partner({"code": "C000", "name": "作り物の取引先", "role": "supplier"}, user)
-    with pytest.raises(ValueError, match="役"):
+    with pytest.raises(ValueError, match="区分"):
         services.create_partner({"code": "C000", "name": "作り物の取引先"}, user)
     assert Partner.objects.count() == 0
 
@@ -76,7 +76,7 @@ def test_create_partner_requires_valid_role(user):
         assert partner.role == role
 
     partner = Partner.objects.get(code="C001")
-    with pytest.raises(ValueError, match="役"):
+    with pytest.raises(ValueError, match="区分"):
         services.update_partner(partner, {"role": "supplier"}, user)
     services.update_partner(partner, {"role": "both", "closing_day": 31}, user)
     partner.refresh_from_db()

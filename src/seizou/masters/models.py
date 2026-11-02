@@ -11,7 +11,7 @@ from seizou.core.models import Company
 
 
 class Partner(models.Model):
-    """取引先。役は得意先・外注先・両方のどれか。
+    """取引先。区分は得意先・外注先・両方のどれか。
 
     小計と消費税の計算方法が空のときは、会社 (core の Company) の既定に従う。
     """
@@ -28,7 +28,7 @@ class Partner(models.Model):
     code = models.CharField("取引先コード", max_length=10, unique=True)
     name = models.CharField("名前", max_length=100)
     short_name = models.CharField("略称", max_length=100, blank=True)
-    role = models.CharField("役", max_length=15, choices=ROLE_CHOICES)
+    role = models.CharField("区分", max_length=15, choices=ROLE_CHOICES)
     # 締日は空欄か 1〜31 (31 は月末)。
     closing_day = models.PositiveSmallIntegerField(
         "締日",
