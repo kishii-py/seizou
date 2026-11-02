@@ -34,7 +34,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import select_template
 from django.urls import NoReverseMatch, reverse
-from django.views.generic import DetailView, FormView, ListView, View
+from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
 from seizou.core import checks
 from seizou.core import fields as company_fields
@@ -449,6 +449,14 @@ class BaseSelectView(ScreenMixin, View):
         more = len(rows) > self.per_page
         items = [{"id": obj.pk, "text": str(obj)} for obj in rows[: self.per_page]]
         return JsonResponse({"items": items, "more": more})
+
+
+class HomeView(ScreenMixin, TemplateView):
+    """最初の画面。左のメニューと同じ入口を並べる (ログインの後の移動先)。"""
+
+    screen_name = "はじめに"
+    screen_help = "左のメニューから画面を選びます。"
+    template_name = "core/home.html"
 
 
 def decimal_or_none(value) -> Decimal | None:

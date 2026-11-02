@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block content %}
+<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+  {% for item in seizou.menu %}
+  <a class="card bg-base-100 shadow hover:shadow-md" href="{% url item.url_name %}">
+    <div class="card-body py-4"><h2 class="card-title text-base">{{ item.label }}</h2></div>
+  </a>
+  {% empty %}
+  <div class="alert"><span>画面はまだありません。部品が入ると、ここと左のメニューに並びます。</span></div>
+  {% endfor %}
+</div>
+{% endblock %}

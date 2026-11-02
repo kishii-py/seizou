@@ -16,7 +16,7 @@ class FieldsConfig(AppConfig):
     verbose_name = "会社ごとの項目"
 
     def ready(self):
-        # core の会社ごとの項目の仕組み (seizou.core.fields) ができたら、次の 2 行のコメントを外す。
-        # from seizou.core import fields
-        # fields.register("masters.Item", "fields.ItemExt", ITEM_FIELDS)
-        pass
+        # core の会社ごとの項目の仕組みに登録する。一覧の列・入力の欄・検索が自動で付く。
+        from seizou.core import fields
+
+        fields.register("masters.Item", "fields.ItemExt", ITEM_FIELDS)
