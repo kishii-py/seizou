@@ -19,15 +19,15 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 この仕組みを一緒に育てる仲間を探している。次の 1 歩は、立場ごとに次のとおり。
 
 - 使う会社の方: 2 社の作り物のデータで触ってみる (下の「触り方」)。
-- 直す開発者の方: RULES.md (決まりの一覧。会期中に書く) と、決まりの反例の出し方 (CONTRIBUTING.md) を読む。
+- 直す開発者の方: RULES.md (決まりの一覧。R01〜R20) と、決まりの反例の出し方 (CONTRIBUTING.md) を読む。
 
 会期中 (2026-11-08 まで) は Issue と PR を受けられない。受付を開ける 2026-11-10 の発表の直後まで、Star と Watch で待ってほしい。
 
 会期中に作った量 (毎朝更新する。元は `docs/nights/`・pytest・RULES.md・git の履歴):
 
-- 無人の仕事の回数: 46 本 (11-03 の朝に `docs/nights/` の仕事ごとのファイルを数えた。昼に別の PC で無人で動いた分を含む)
-- commit の数: 337 (11-03 の朝の main。うち Claude との共著の印が付いた物 336)
-- テストの数: 1,247 本 (11-03 の朝の main の `uv run pytest`。通過 1,218、普段は skip の E2E 29)
+- 無人の仕事の回数: 46 本 (11-03 の朝の main 11ef599 で、`docs/nights/` の仕事ごとのファイルを数えた。昼に別の PC で無人で動いた分を含む)
+- commit の数: 337 (11-03 の朝の main 11ef599。うち Claude との共著の印が付いた物 336)
+- テストの数: 1,247 本 (11-03 の朝の main 11ef599 の `uv run pytest`。通過 1,218、普段は skip の E2E 29)
 - 決まりの数: 20 (RULES.md の R01〜R20)
 
 Claude Code のプラグインと、pip で入れる Django の部品を、この 1 つのリポジトリに置く (Apache-2.0)。
