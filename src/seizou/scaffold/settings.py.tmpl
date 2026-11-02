@@ -132,3 +132,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# 上げたファイルの配り方 (seizou.core.media)。django = Django が送る (既定)。nginx = nginx の内部の location に渡す
+# (deploy/nginx-files.conf を nginx に読み込ませてから、.env に SEIZOU_FILE_DELIVERY=nginx を書く)。
+SEIZOU_FILE_DELIVERY = os.environ.get("SEIZOU_FILE_DELIVERY", "django")

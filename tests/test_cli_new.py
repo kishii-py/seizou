@@ -23,8 +23,8 @@ from seizou.cli import main
 from seizou.parts import PARTS
 
 FIXTURE = Path(__file__).parent / "fixtures" / "companies" / "sample.yaml"
-SITE_FILES = ("manage.py", "settings.py", ".env", "answers.yaml", "README.md", "db.sqlite3")
-SITE_FOLDERS = ("templates", "static/css", "manual/images")
+SITE_FILES = ("manage.py", "settings.py", ".env", "answers.yaml", "README.md", "db.sqlite3", "deploy/nginx-files.conf")
+SITE_FOLDERS = ("templates", "static/css", "manual/images", "deploy")
 
 
 def run_new(argv: list[str]) -> tuple[int, str, str]:
