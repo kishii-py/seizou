@@ -1,0 +1,120 @@
+/* 帳票用の CSS。画面の CSS とは別に置き、WeasyPrint とブラウザの印刷の両方で同じ形にする。
+   並べるのは表だけで行う。行をまたぐセルに高さのある中身を入れない。 */
+
+/* 同梱の Noto Sans JP (可変の TrueType 1 本。太さ 100〜900 を 1 つのファイルが持つ)。
+   手元に同じ名前のフォントがあっても同梱の物を使うように、帳票だけの名前を付ける。 */
+@font-face {
+  font-family: "NotoSansJP Report";
+  src: url("/static/fonts/NotoSansJP-VF.ttf") format("truetype");
+}
+
+@page {
+  size: A4 portrait;
+  margin: 15mm 15mm 15mm 15mm;
+}
+
+html {
+  font-family: "NotoSansJP Report", sans-serif;
+  font-size: 10pt;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #000;
+}
+
+body {
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  font-weight: 700;
+}
+
+.report-title {
+  margin: 0 0 6mm;
+  font-size: 18pt;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.5em;
+}
+
+/* 上の段: 左に宛先と番号、右に会社の情報 */
+.report-head {
+  margin-bottom: 6mm;
+}
+
+.report-head td {
+  vertical-align: top;
+  padding: 0;
+}
+
+.report-head td.report-head-main {
+  width: 58%;
+  padding-right: 8mm;
+}
+
+.report-company {
+  width: 42%;
+  font-size: 9pt;
+}
+
+.report-company-name {
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.report-logo {
+  max-width: 40mm;
+  max-height: 15mm;
+}
+
+.report-customer {
+  margin-bottom: 3mm;
+  padding-bottom: 1mm;
+  border-bottom: 1pt solid #000;
+  font-size: 14pt;
+  font-weight: 700;
+}
+
+.report-meta {
+  width: auto;
+  margin-bottom: 3mm;
+}
+
+.report-meta th,
+.report-meta td {
+  padding: 0.5mm 4mm 0.5mm 0;
+  text-align: left;
+}
+
+/* 明細の表 */
+.report-lines th,
+.report-lines td {
+  border: 0.5pt solid #000;
+  padding: 1.5mm 2mm;
+}
+
+.report-lines thead th {
+  background: #eee;
+  text-align: center;
+}
+
+.report-lines .num {
+  text-align: right;
+}
+
+.report-lines tfoot th {
+  text-align: right;
+}
+
+.report-lines tfoot td {
+  font-weight: 700;
+}

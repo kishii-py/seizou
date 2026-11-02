@@ -1,0 +1,29 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+帳票の土台。帳票ごとのテンプレートはこれを継ぎ、title・report_title・head・content を埋める。
+context の company は core の Company (か同じ名前の項目を持つ物): name・address・phone・bank_account・logo。
+帳票は入力の欄を持たないので、CSRF の見出しは置かない (画面の土台の 1 か所だけ)。
+{% endcomment %}
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}帳票{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'css/report.css' %}">
+</head>
+<body>
+<h1 class="report-title">{% block report_title %}{% endblock %}</h1>
+<table class="report-head">
+  <tr>
+    <td class="report-head-main">{% block head %}{% endblock %}</td>
+    <td class="report-company">
+      {% if company.logo %}<img class="report-logo" src="{{ company.logo.url }}" alt="{{ company.name }}">{% endif %}
+      <p class="report-company-name">{{ company.name }}</p>
+      {% if company.address %}<p>{{ company.address }}</p>{% endif %}
+      {% if company.phone %}<p>電話 {{ company.phone }}</p>{% endif %}
+      {% if company.bank_account %}<p>振込先 {{ company.bank_account }}</p>{% endif %}
+    </td>
+  </tr>
+</table>
+{% block content %}{% endblock %}
+</body>
+</html>

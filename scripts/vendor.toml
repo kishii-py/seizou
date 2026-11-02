@@ -71,3 +71,13 @@ url = "https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default
 license = "Apache-2.0"
 sha256 = "407052347710e4ab259e09e0c1bd209e4f41d29a5641e85e2df032332f97bbea"
 path = "src/seizou/core/static/vendor/tom-select.css"
+
+[[item]]
+name = "noto-sans-jp"
+version = "2.004"
+# 帳票の日本語のフォント。配布元に Regular と Bold の static の TTF が無い (JP の static は CFF の OTF だけ) ので、可変の TTF 1 本を置く。
+# license の全文は同じ tag の LICENSE を src/seizou/core/static/fonts/OFL.txt に置いた。sha256 は取った物から計算した値 (配布元は sha256 を出していない)。
+url = "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/Variable/TTF/Subset/NotoSansJP-VF.ttf"
+license = "OFL-1.1"
+sha256 = "f4b373b226668ee33a6e54b02823dcd2d1209f17159f777421ae8c2275160369"
+path = "src/seizou/core/static/fonts/NotoSansJP-VF.ttf"
