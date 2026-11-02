@@ -88,6 +88,7 @@ def icon(name: str, css: str = "w-5 h-5"):
 #: 左のメニューの入口ごとの絵 (URL の名前 → 絵)。無ければ app の絵を使う。
 MENU_ICONS = {
     "core:home": "home",
+    "core:search": "search",
     "masters:partner_list": "users",
 }
 

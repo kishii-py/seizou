@@ -27,7 +27,7 @@ SECTIONS = (
 OTHER_SECTION = "その他"
 
 #: core 自身の入口 (部品の MENU と同じ形)
-CORE_MENU = (("はじめに", "core:home"),)
+CORE_MENU = (("はじめに", "core:home"), ("検索", "core:search"))
 
 
 def url_or_none(url_name: str) -> str | None:
@@ -63,7 +63,7 @@ def menu() -> list[dict]:
 
 
 def core_menu() -> list[dict]:
-    """core 自身の入口 (はじめに)。"""
+    """core 自身の入口 (はじめに・検索)。"""
     items = []
     for label, url_name in CORE_MENU:
         url = url_or_none(url_name)
@@ -126,7 +126,7 @@ def seizou(request) -> dict:
             "theme": theme,
             "menu": part_items,
             "sections": sections(items),
-            "search_url": url_or_none("masters:item_list"),
+            "search_url": url_or_none("core:search"),
             "manual_url": url_or_none("core:manual"),
         }
     }
