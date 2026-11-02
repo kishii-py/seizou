@@ -139,7 +139,8 @@ def test_new_order_tabs_are_empty(user, logged_in, customer, item):
     ]
     for label in ("指示書", "出荷", "請求書"):
         assert _badge(label, 0) in body
-    assert body.count("まだありません。") == 3
+    for label in ("指示書", "出荷", "請求書"):
+        assert f"{label}が入ると、ここに並びます。" in body
 
 
 @pytest.mark.django_db

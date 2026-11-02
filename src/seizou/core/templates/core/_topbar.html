@@ -1,5 +1,5 @@
 {% load seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、マニュアル、利用者。偽の数字は置かない。 #}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
 <header class="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
   {% if seizou.search_url %}
@@ -12,7 +12,7 @@
   {% endif %}
   <div class="ml-auto flex shrink-0 items-center gap-2">
     <span class="hidden items-center gap-2 text-base-content/70 md:flex">{% icon "calendar" "size-4" %}<time datetime="{% now 'Y-m-d' %}">{% now "Y年n月j日 (D)" %}</time></span>
-    {% if seizou.manual_url %}<a class="btn btn-square btn-sm btn-outline border-base-300" href="{{ seizou.manual_url }}" title="マニュアル" aria-label="マニュアル">{% icon "help" "size-4" %}</a>{% endif %}
+    {% if seizou.manual_url %}<a class="btn btn-square btn-sm btn-outline border-base-300" href="{{ seizou.manual_url }}" title="使い方" aria-label="使い方">{% icon "help" "size-4" %}</a>{% endif %}
     {% if user.is_authenticated %}
     {% with name=user.get_full_name|default:user.get_username %}
     <details class="dropdown dropdown-end">

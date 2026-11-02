@@ -21,6 +21,7 @@ SECTIONS = (
     ("受注・出荷", ("orders", "intake", "shipping", "connect", "purchasing", "billing")),
     ("製造", ("workorders", "progress")),
     ("マスター", ("masters",)),
+    ("文書", ("manuals", "attachments")),
 )
 
 #: どの区分にも入らない部品の入口を置く区分の見出し

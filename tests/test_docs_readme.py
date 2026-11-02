@@ -184,7 +184,7 @@ def test_readme_has_plugin_screen_and_flow_sections():
     for heading in ["## Claude Code のプラグイン", "## 画面の一覧", "## 業務の流れ"]:
         assert heading in headings, f"README に見出し「{heading}」が無い"
     flow = {line.strip() for line in _section(text, "## 業務の流れ")}
-    for heading in ["### 生産計画", "### 注文書の読み取り", "### マニュアル", "### CSV の取り込み"]:
+    for heading in ["### 生産計画", "### 注文書の読み取り", "### 使い方", "### 業務マニュアル", "### CSV の取り込み"]:
         assert heading in flow, f"README の「業務の流れ」に小節「{heading}」が無い"
 
 

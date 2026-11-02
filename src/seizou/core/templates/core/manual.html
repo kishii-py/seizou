@@ -2,7 +2,7 @@
 {% load seizou_icons %}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{{ print_url }}" target="_blank">{% icon "file" "size-4" %}印刷用を開く</a>{% endblock %}
 {% block content %}
-{# マニュアル: 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
+{# 使い方 (画面ごとの説明書): 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
 {# 断片は class を持たない素の HTML なので、本文の箱の子の選び方の class で形を付ける (Tailwind の preflight が既定の見た目を消すため)。 #}
 <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
   <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
