@@ -24,7 +24,7 @@ def test_models_have_japanese_verbose_names():
 
 
 def test_max_lengths_follow_the_limits():
-    # 識別子 35・名称 100・備考 500・コード 10。2 は支払日、15 は役の列だけ。
+    # 識別子 35・名称 100・備考 500・コード 10。2 は支払日、15 は区分の列だけ。
     allowed = {35, 100, 500, 10, 2, 15}
     seen = {}
     for model in MASTER_MODELS:

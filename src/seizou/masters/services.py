@@ -4,7 +4,7 @@
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
-- masters の決まり (品番の一意・役の 3 値・取引先 × 取引先の品番の一意) に当たったら、
+- masters の決まり (品番の一意・区分の 3 値・取引先 × 取引先の品番の一意) に当たったら、
   日本語の文の ValueError を投げる。中心の決まり (RULES.md の番号) は masters に無い。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 """
@@ -80,7 +80,7 @@ def _refuse_duplicate_partner_code(code, *, exclude_pk=None):
 def _refuse_unknown_role(role):
     if role not in _ROLES:
         raise ValueError(
-            f"役 {role!r} は使えません。"
+            f"区分 {role!r} は使えません。"
             "得意先 (customer)・外注先 (subcontractor)・両方 (both) のどれかにしてください。"
         )
 
@@ -109,7 +109,7 @@ def update_item(item, data, user, *, ext=None):
 
 
 def create_partner(data, user, *, ext=None):
-    """取引先を作る。役は customer・subcontractor・both のどれか。取引先コードは一意。"""
+    """取引先を作る。区分は customer・subcontractor・both のどれか。取引先コードは一意。"""
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     _refuse_unknown_role(data.get("role"))
     with transaction.atomic():
@@ -120,7 +120,7 @@ def create_partner(data, user, *, ext=None):
 
 
 def update_partner(partner, data, user, *, ext=None):
-    """data にある鍵だけを書き換える。役と取引先コードは create_partner と同じ決まりで見る。"""
+    """data にある鍵だけを書き換える。区分と取引先コードは create_partner と同じ決まりで見る。"""
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     if "role" in data:
         _refuse_unknown_role(data["role"])

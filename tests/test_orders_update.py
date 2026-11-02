@@ -123,7 +123,7 @@ def test_unknown_key_is_refused(user, customer, item):
     with pytest.raises(ValueError, match="この受注の明細ではありません"):
         services.update_order(order, {}, [{"id": other_line.pk, "qty": Decimal("9")}], user)
 
-    # 得意先を変えるときも、役に得意先を含む取引先だけ。
+    # 得意先を変えるときも、区分が得意先か両方の取引先だけ。
     subcontractor = masters_services.create_partner(
         {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
     )
