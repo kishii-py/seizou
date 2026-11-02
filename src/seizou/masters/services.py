@@ -9,6 +9,8 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
   作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
+- 部品の図面を新しいファイルに差し替えたら、前の図面を版 (ItemDrawingVersion) に残す (ファイルは写さず名前の字を持つ)。
+  版に戻すのは restore_drawing_version。
 """
 
 from __future__ import annotations
@@ -21,11 +23,13 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidO
 
 from django.core.files.base import ContentFile, File
 from django.db import transaction
+from django.db.models import Max
 from django.db.models.fields.files import FieldFile
-from PIL import Image, ImageFile
+from PIL import Image, ImageFile, ImageSequence
 
 from seizou.core.models import Company
 
+from .drawings import page_name
 from .models import Item, Partner, PartnerItem
 from .models import Process
 
@@ -134,6 +138,8 @@ def _refuse_duplicate_process_code(code, *, exclude_pk=None):
 DRAWING_MAX_PIXELS = 300_000_000
 #: 表示用の PNG の長い辺の上限。大きい絵は縮める (原寸は元のファイルの link)。
 PREVIEW_MAX_SIDE = 2000
+#: 表示用の PNG を作るページの上限 (1 ページ目を含む)。複数ページの TIFF の超えた分は作らない。
+DRAWING_MAX_PAGES = 20
 #: Pillow で読む図面の拡張子 (大文字も)。ほかの形 (PDF など) は読まずに link だけ。
 DRAWING_IMAGE_SUFFIXES = (".tif", ".tiff", ".png", ".jpg", ".jpeg")
 #: 表示用の絵を作れなかったときの文 (本体の決めの字)。Pillow の例外の文は足さない。
@@ -155,15 +161,17 @@ def _is_new_upload(value):
 
 
 def _drawing_preview(file):
-    """新しく上げた図面を読み、(表示用の PNG の bytes か None, 誤りの文か "") を返す。例外を外に出さない。
+    """新しく上げた図面を読み、(表示用の PNG の bytes か None, 誤りの文か "", 2 ページ目から後の PNG の bytes の並び) を返す。
+    例外を外に出さない。
 
     拡張子が DRAWING_IMAGE_SUFFIXES でなければ読まない。読んだ中身が PNG・JPEG ならそのまま絵で出すので None。
-    ほか (TIFF など) は 1 ページ目を PNG にし、長い辺を PREVIEW_MAX_SIDE まで縮める。
+    ほか (TIFF など) は 1 ページ目を PNG にし、長い辺を PREVIEW_MAX_SIDE まで縮める。複数ページなら 2 ページ目から後
+    (DRAWING_MAX_PAGES まで) も同じ形の PNG にする。
     壊れている・大きすぎるときは None と誤りの文。読んだ後は (誤りのときも) 読む位置を先頭に戻す
     (戻さないと元のファイルの保存が空になる)。
     """
     if not (getattr(file, "name", "") or "").lower().endswith(DRAWING_IMAGE_SUFFIXES):
-        return None, ""
+        return None, "", []
     try:
         file.seek(0)
         with _PIXEL_LIMIT_LOCK:
@@ -182,7 +190,7 @@ def _drawing_preview(file):
     # 壊れた中身で Pillow が出す例外 (UnidentifiedImageError・OSError・SyntaxError・ValueError・EOFError・
     # DecompressionBombError など) は全部、壊れているの文にする。部品の保存を止めず、例外の文も出さない。
     except Exception:  # noqa: BLE001
-        return None, DRAWING_BROKEN_MESSAGE
+        return None, DRAWING_BROKEN_MESSAGE, []
     finally:
         file.seek(0)
 
@@ -192,46 +200,99 @@ def _read_drawing(file):
     with Image.open(file) as image:
         width, height = image.size
         if width * height > DRAWING_MAX_PIXELS:
-            return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height)
+            return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height), []
         image.load()  # Image.open は頭だけ読む。壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
         if image.format in ("PNG", "JPEG"):
-            return None, ""
-        preview = image
-        if preview.mode == "1":
-            preview = preview.convert("L")
-        elif preview.mode not in _PREVIEW_MODES:
-            has_alpha = "A" in preview.getbands() or "transparency" in preview.info
-            preview = preview.convert("RGBA" if has_alpha else "RGB")
-        if max(preview.size) > PREVIEW_MAX_SIDE:
-            preview.thumbnail((PREVIEW_MAX_SIDE, PREVIEW_MAX_SIDE), Image.Resampling.LANCZOS)
-        buffer = io.BytesIO()
-        preview.save(buffer, format="PNG")
-        return buffer.getvalue(), ""
+            return None, "", []
+        first = _page_png(image)
+        return first, "", _later_pages(image)
+
+
+def _page_png(page):
+    """読んだ 1 ページを表示用の PNG の bytes にする (白黒は L に、長い辺を PREVIEW_MAX_SIDE まで縮める)。"""
+    preview = page
+    if preview.mode == "1":
+        preview = preview.convert("L")
+    elif preview.mode not in _PREVIEW_MODES:
+        has_alpha = "A" in preview.getbands() or "transparency" in preview.info
+        preview = preview.convert("RGBA" if has_alpha else "RGB")
+    if max(preview.size) > PREVIEW_MAX_SIDE:
+        preview.thumbnail((PREVIEW_MAX_SIDE, PREVIEW_MAX_SIDE), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    preview.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _later_pages(image):
+    """複数ページの絵の 2 ページ目から後 (DRAWING_MAX_PAGES まで) の PNG の bytes の並び。
+
+    読めない・大きすぎるページがあれば、そのページから後は作らない (誤りの文にしない。1 ページ目は見られる)。
+    """
+    pages = []
+    for index, page in enumerate(ImageSequence.Iterator(image)):
+        if index == 0:
+            continue
+        if index >= DRAWING_MAX_PAGES:
+            break
+        try:
+            width, height = page.size
+            if width * height > DRAWING_MAX_PIXELS:
+                break
+            page.load()
+            pages.append(_page_png(page))
+        except Exception:  # noqa: BLE001
+            break
+    return pages
 
 
 def _with_drawing_preview(data):
-    """data の図面 (drawing) を見て、表示用 (drawing_preview) と誤り (drawing_preview_error) を足した data を返す。
+    """data の図面 (drawing) を見て、表示用 (drawing_preview)・誤り (drawing_preview_error)・ページ数
+    (drawing_page_count) を足した data と、2 ページ目から後の PNG の bytes の並びを返す。
 
-    読むのは表と置き場に書く前。足した 2 つは部品の行と元のファイルと一緒に 1 回で書く。
-    - 新しく上げたファイル: 読んで、表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。
-    - 今の FieldFile (選び直していない) と、鍵が無いとき: data のまま (3 つとも変えない)。
-    - False・None・空 (入力の画面の「消す」): 図面と 2 つを空の字にする。
+    読むのは表と置き場に書く前。足した 3 つは部品の行と元のファイルと一緒に 1 回で書く。
+    2 ページ目から後の PNG は、名前が表示用の保存の後に決まるので、呼ぶ側が保存の後に _save_preview_pages で書く。
+    - 新しく上げたファイル: 読んで、表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。ページ数は 1 にし直す。
+    - 今の FieldFile (選び直していない) と、鍵が無いとき: data のまま (4 つとも変えない)。
+    - False・None・空 (入力の画面の「消す」): 図面と 2 つを空の字にし、ページ数を 1 にする。
     """
     if "drawing" not in data:
-        return data
+        return data, []
     drawing = data["drawing"]
     if _is_new_upload(drawing):
-        png, error = _drawing_preview(drawing)
+        png, error, pages = _drawing_preview(drawing)
         preview = ""
         if png is not None:
             stem = os.path.splitext(os.path.basename(drawing.name))[0]
             preview = ContentFile(png, name=f"{stem}.png")
-        return {**data, "drawing_preview": preview, "drawing_preview_error": error}
+        else:
+            pages = []
+        extra = {"drawing_preview": preview, "drawing_preview_error": error, "drawing_page_count": 1}
+        return {**data, **extra}, pages
     if isinstance(drawing, FieldFile):
-        return data
+        return data, []
     if not drawing:
-        return {**data, "drawing": "", "drawing_preview": "", "drawing_preview_error": ""}
-    return data
+        return {**data, "drawing": "", "drawing_preview": "", "drawing_preview_error": "", "drawing_page_count": 1}, []
+    return data, []
+
+
+def _save_preview_pages(item, pages):
+    """表示用の 2 ページ目から後の PNG を置き場に書き、部品のページ数 (作れたページの数) を書く。
+
+    名前は保存した表示用の名前から決める (<同じフォルダ>/<stem>-p<n>.png)。その名前が置き場に既にある
+    (ほかの図面の物) ときは、そのページから後を作らない (ほかの図面のファイルを指さないため)。
+    """
+    if not pages or not item.drawing_preview:
+        return
+    storage = item.drawing_preview.storage
+    count = 1
+    for number, png in enumerate(pages, start=2):
+        name = page_name(item.drawing_preview.name, number)
+        if storage.exists(name) or storage.save(name, ContentFile(png)) != name:
+            break
+        count = number
+    if count != item.drawing_page_count:
+        item.drawing_page_count = count
+        item.save(update_fields=["drawing_page_count"])
 
 
 def create_item(data, user, *, ext=None):
@@ -240,10 +301,11 @@ def create_item(data, user, *, ext=None):
     図面に新しいファイルが来たら、表示用の PNG を作る (作れなければ理由を drawing_preview_error に残し、部品は保存する)。
     """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
-    data = _with_drawing_preview(data)
+    data, pages = _with_drawing_preview(data)
     with transaction.atomic():
         _refuse_duplicate_part_no(data["part_no"])
         item = Item.objects.create(**data)
+        _save_preview_pages(item, pages)
         _save_ext(item, ext)
         return item
 
@@ -255,14 +317,57 @@ def update_item(item, data, user, *, ext=None):
     今のファイル (FieldFile) か鍵が無ければ 3 つとも変えない。差し替え・外した古いファイルは置き場に残す。
     """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
-    data = _with_drawing_preview(data)
+    data, pages = _with_drawing_preview(data)
     with transaction.atomic():
         if "part_no" in data:
             _refuse_duplicate_part_no(data["part_no"], exclude_pk=item.pk)
+        if _is_new_upload(data.get("drawing")):
+            _keep_drawing_as_version(item)
         for key, value in data.items():
             setattr(item, key, value)
         item.save()
+        _save_preview_pages(item, pages)
         _save_ext(item, ext)
+        return item
+
+
+def _keep_drawing_as_version(item, *, note=""):
+    """部品の今の図面を版の行に残す (差し替えと版に戻すの前)。今の図面が無ければ何もせず None。
+
+    呼ぶ側の transaction.atomic の中で呼ぶ。部品の行を select_for_update で取り直し、表にある 4 つ
+    (図面の名前の字・表示用の名前の字・誤りの文・ページ数) を写す。ファイルは写さない (名前の字を入れる)。
+    版の番号は、この部品の版の番号の最大 + 1。
+    """
+    current = Item.objects.select_for_update().get(pk=item.pk)
+    if not current.drawing:
+        return None
+    last = current.drawing_versions.aggregate(last=Max("version_no"))["last"] or 0
+    return current.drawing_versions.create(
+        version_no=last + 1,
+        drawing=current.drawing.name,
+        drawing_preview=current.drawing_preview.name or "",
+        drawing_preview_error=current.drawing_preview_error,
+        page_count=current.drawing_page_count,
+        note=note,
+    )
+
+
+def restore_drawing_version(item, version, user, *, note=""):
+    """選んだ版の図面を部品の今の図面に戻す。今の図面は新しい版として残す (note はその版の備考)。
+
+    写すのは版の 4 つ (図面と表示用の名前の字・誤りの文・ページ数)。表示用の PNG は作り直さず、ファイルも写さない。
+    選んだ版の行は消さない。今の図面が無い部品は版を作らずに戻す。別の部品の版は、何も変えずに ValueError。
+    返す物は部品。user は受けるだけ。
+    """
+    if version.item_id != item.pk:
+        raise ValueError(f"版 {version.version_no} はこの部品の版ではありません。この部品の版を選んでください。")
+    with transaction.atomic():
+        _keep_drawing_as_version(item, note=note)
+        item.drawing = version.drawing.name
+        item.drawing_preview = version.drawing_preview.name or ""
+        item.drawing_preview_error = version.drawing_preview_error
+        item.drawing_page_count = version.page_count
+        item.save(update_fields=["drawing", "drawing_preview", "drawing_preview_error", "drawing_page_count"])
         return item
 
 

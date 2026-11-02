@@ -1,0 +1,96 @@
+{% extends "core/base.html" %}
+{% load static seizou_icons masters_drawing %}
+{# 図面ビューア: 部品の図面を拡大・縮小・原寸・回転・移動 (drawing-viewer.js) して見る。ページ送り・版の選択・見比べるは link と GET の form (JS が無くても動く)。 #}
+{# 絵の URL はログインした人にだけ返す口 (masters:item_drawing)。PDF はブラウザの表示に任せる (iframe)。版の表は枠の下。 #}
+{% block title %}{{ object.part_no }} の図面 | {{ screen_name }}{% endblock %}
+{% block actions %}{% drawing_viewer as viewer %}
+{% if viewer.download_url %}<a class="btn btn-outline border-base-300" href="{{ viewer.download_url }}" download>{% icon "download" "size-4" %}ダウンロード</a>{% endif %}
+<a class="btn btn-outline border-base-300" href="{% url 'masters:item_detail' object.pk %}">{% icon "arrow-left" "size-4" %}詳細に戻る</a>
+{% endblock %}
+{% block content %}{% drawing_viewer as viewer %}
+<section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="図面">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <p class="min-w-0 truncate"><span class="font-mono">{{ object.part_no }}</span> <span class="text-base-content/70">{{ object.name }}</span></p>
+    <p class="text-xs text-base-content/70">{{ viewer.viewing_label }}</p>
+  </div>
+  {% if viewer.mode == "none" %}
+  <p class="mt-4 text-base-content/70">図面がありません。</p>
+  {% else %}
+  <div class="mt-4 flex flex-wrap items-center gap-2" role="toolbar" aria-label="図面の道具">
+    {% if viewer.mode == "image" %}
+    <button type="button" class="btn btn-sm btn-outline border-base-300 focus-visible:outline-2 focus-visible:outline-primary" data-action="zoom-in">{% icon "plus" "size-4" %}拡大</button>
+    <button type="button" class="btn btn-sm btn-outline border-base-300 focus-visible:outline-2 focus-visible:outline-primary" data-action="zoom-out">縮小</button>
+    <button type="button" class="btn btn-sm btn-outline border-base-300 focus-visible:outline-2 focus-visible:outline-primary" data-action="actual">原寸</button>
+    <button type="button" class="btn btn-sm btn-outline border-base-300 focus-visible:outline-2 focus-visible:outline-primary" data-action="rotate">回転</button>
+    <span class="flex items-center gap-2">
+      {% if viewer.prev_url %}<a class="btn btn-sm btn-ghost" href="{{ viewer.prev_url }}">{% icon "chevron-left" "size-4" %}前のページ</a>{% endif %}
+      <span class="text-xs tabular-nums text-base-content/70">ページ {{ viewer.page }} / {{ viewer.page_count }}</span>
+      {% if viewer.next_url %}<a class="btn btn-sm btn-ghost" href="{{ viewer.next_url }}">次のページ{% icon "chevron-right" "size-4" %}</a>{% endif %}
+    </span>
+    {% endif %}
+    {% if viewer.version_count %}
+    <form method="get" class="flex items-center gap-2">
+      <label for="drawing-version" class="text-xs text-base-content/70">版</label>
+      <select id="drawing-version" name="version" class="select select-sm w-auto">
+        <option value="">{{ viewer.current_label }}</option>
+        {% for row in viewer.rows %}{% if not row.is_current %}<option value="{{ row.no }}"{% if row.viewing %} selected{% endif %}>版 {{ row.no }}</option>{% endif %}{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline border-base-300">表示</button>
+    </form>
+    {% endif %}
+    {% if viewer.compare %}<a class="btn btn-sm btn-ghost" href="{{ viewer.single_url }}">1 枚で見る</a>
+    {% elif viewer.compare_url %}<a class="btn btn-sm btn-ghost" href="{{ viewer.compare_url }}">{% icon "eye" "size-4" %}見比べる</a>{% endif %}
+  </div>
+  {% if viewer.mode == "image" %}
+  {% if viewer.compare %}
+  <div data-drawing-viewer data-dragging="false" class="mt-4 grid h-[70vh] cursor-grab touch-none grid-cols-2 gap-2 overflow-hidden rounded-lg border border-base-300 bg-base-200 p-2 data-[dragging=true]:cursor-grabbing">
+    <figure class="flex min-h-0 flex-col gap-2">
+      <figcaption class="text-xs font-medium text-base-content/70">{{ viewer.current_label }}</figcaption>
+      <div class="min-h-0 flex-1 overflow-hidden"><img data-drawing-image src="{{ viewer.current_image_url }}" alt="図面" draggable="false" class="h-full w-full select-none object-contain"></div>
+    </figure>
+    <figure class="flex min-h-0 flex-col gap-2">
+      <figcaption class="text-xs font-medium text-base-content/70">{{ viewer.viewing_label }}</figcaption>
+      <div class="min-h-0 flex-1 overflow-hidden"><img data-drawing-image src="{{ viewer.image_url }}" alt="図面" draggable="false" class="h-full w-full select-none object-contain"></div>
+    </figure>
+  </div>
+  {% else %}
+  <div data-drawing-viewer data-dragging="false" class="mt-4 h-[70vh] cursor-grab touch-none overflow-hidden rounded-lg border border-base-300 bg-base-200 data-[dragging=true]:cursor-grabbing">
+    <img data-drawing-image src="{{ viewer.image_url }}" alt="図面" draggable="false" class="h-full w-full select-none object-contain">
+  </div>
+  {% endif %}
+  <p class="mt-2 text-xs text-base-content/50">絵の上で押したまま動かすと移動し、ホイールで拡大・縮小します。</p>
+  {% elif viewer.mode == "pdf" %}
+  <iframe src="{{ viewer.download_url }}" title="図面 (PDF)" class="mt-4 h-[70vh] w-full rounded-lg border border-base-300 bg-base-100"></iframe>
+  <p class="mt-2 text-xs text-base-content/50">PDF はブラウザの表示を使います。</p>
+  {% else %}
+  {% if viewer.error %}<div class="alert alert-warning alert-soft mt-4" role="status">{% icon "alert" "size-5" %}<span>{{ viewer.error }}</span></div>{% endif %}
+  <p class="mt-4 text-base-content/70">この図面は画面の中で絵にできません。「ダウンロード」で元のファイルを開けます。</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="図面の版">
+  <p class="flex items-center gap-2 text-lg font-bold">図面の版<span class="badge badge-sm tabular-nums">{{ viewer.version_count }}</span></p>
+  {% if viewer.version_count %}
+  <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+    <table class="table table-sm">
+      <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">版</th><th class="font-medium">保存した日時</th><th class="font-medium">備考</th><th class="font-medium"><span class="sr-only">見る</span></th></tr></thead>
+      <tbody>
+        {% for row in viewer.rows %}
+        <tr class="aria-[current=true]:bg-primary/10"{% if row.viewing %} aria-current="true"{% endif %}>
+          <td class="whitespace-nowrap tabular-nums">{% if row.is_current %}版 {{ row.no }} (今の図面){% else %}版 {{ row.no }}{% endif %}</td>
+          <td class="whitespace-nowrap tabular-nums">{% if row.created_at %}{{ row.created_at|date:"Y-m-d H:i" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td><span class="block max-w-80 truncate" title="{{ row.note }}">{{ row.note|default:"—" }}</span></td>
+          <td class="text-right"><a class="btn btn-xs btn-ghost focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.link }}">{% icon "eye" "size-4" %}見る</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if viewer.restore_url %}<div class="mt-4 flex justify-end"><a class="btn btn-outline border-base-300" href="{{ viewer.restore_url }}">版に戻す</a></div>{% endif %}
+  {% else %}
+  <p class="mt-4 text-base-content/70">前の版はありません。図面を差し替えると、前の図面がここに残ります。</p>
+  {% endif %}
+</section>
+{% if viewer.mode == "image" %}<script src="{% static 'masters/drawing-viewer.js' %}" defer></script>{% endif %}
+{% endblock %}
