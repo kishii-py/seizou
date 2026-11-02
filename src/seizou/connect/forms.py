@@ -9,6 +9,7 @@ from django import forms
 from django.apps import apps
 
 from seizou.core.forms import ServiceModelForm
+from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import resolve_partner_item
 
 from .models import Connection, Inbox
@@ -49,8 +50,10 @@ class AcceptForm(forms.Form):
         for number, (part_no, part_name) in enumerate(_partner_parts(instance), start=1):
             name = f"item_{number}"
             label = f"相手の品番 {part_no} ({part_name})" if part_name else f"相手の品番 {part_no}"
+            # 字を打って探す欄 (受注の入力と同じ候補の口)。標準の選択欄だと部品が増えたときに探せない (初見テスト 2 回目の所見)。
             self.fields[name] = forms.ModelChoiceField(
                 queryset=items,
+                widget=RemoteSelect("masters:item_select"),
                 label=label,
                 initial=resolve_partner_item(instance.partner, part_no),
                 help_text="自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
