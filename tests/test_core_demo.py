@@ -288,7 +288,7 @@ def test_seizou_new_demo_end_to_end(tmp_path, monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert code == 0, out
-    assert "作り物のデータを入れました" in out
+    assert "作り物のデータを登録しました" in out
     site = tmp_path / "a_machining"
     count = (
         "import importlib; load = importlib.import_module('seizou.core.demo').load; "

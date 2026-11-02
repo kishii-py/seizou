@@ -16,7 +16,7 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   検査の層に渡す data と service の引数は form が決める: form に service_kwargs() があればその辞書、
   無ければ cleaned_data (会社ごとの項目は ext= に分けて渡す)。検査の層の action は service の module と名前
   (例 seizou.shipping.services.ship → "shipping.ship")。
-- 小窓: 見るだけと「詳細を開く」。template は <app>/_modal.html か core/_modal.html。
+- 小窓: 見るだけと「詳細を見る」。template は <app>/_modal.html か core/_modal.html。
   会社ごとの項目 (一覧に出す物) と、tabs の関係する物も出す。htmx でない要求 (新しいタブ) は詳細へ移す。
 - 画面の応答はブラウザに保存させない (Cache-Control: no-store。ログアウトの後の戻るで中身を見せない)。
 - 候補の口: Tom Select の候補を 1 ページ (per_page 件) JSON で返す。
@@ -795,7 +795,7 @@ def recent_orders(limit: int = 5) -> list[dict] | None:
 class HomeView(ScreenMixin, TemplateView):
     """最初の画面 (ログインの後の移動先)。今日の数字のカード、最近の受注、左のメニューと同じ入口を並べる。"""
 
-    screen_name = "はじめに"
+    screen_name = "ダッシュボード"
     screen_help = "今日の数字と、よく使う画面の入口。左のメニューから画面を選びます。"
     template_name = "core/home.html"
 

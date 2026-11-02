@@ -69,7 +69,7 @@ def test_item_modal_and_detail(client_logged_in):
     # 小窓の中身は htmx の要求 (HX-Request) に返す。htmx でない要求は詳細へ移す (新しいタブで開いた時)。
     modal = client_logged_in.get(reverse("masters:item_modal", args=[item.pk]), HTTP_HX_REQUEST="true")
     assert modal.status_code == 200
-    assert "詳細を開く" in modal.content.decode()
+    assert "詳細を見る" in modal.content.decode()
     detail = client_logged_in.get(reverse("masters:item_detail", args=[item.pk]))
     assert detail.status_code == 200
     assert "取引先ごとの品番" in detail.content.decode()

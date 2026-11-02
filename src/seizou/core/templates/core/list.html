@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
-{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新しく入れる</a>{% endif %}{% endblock %}
+{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
 {% block content %}
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}

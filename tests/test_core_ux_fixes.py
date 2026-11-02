@@ -473,3 +473,24 @@ def test_payment_day_words_without_month_or_day():
 def test_day_fields_show_guidance(client_logged_in):
     body = text(client_logged_in.get(reverse("masters:partner_create")))
     assert "1〜31。月末締めは 31" in body and "1〜31。月末は 31" in body
+
+
+# ---------------------------------------------------------------- 言葉を一般的な業務システムの表現に (11-02 19:0x)
+
+
+@pytest.mark.django_db
+def test_buttons_and_titles_use_general_words(client_logged_in):
+    listing = text(client_logged_in.get(reverse("masters:item_list")))
+    assert "新規登録" in listing and "「新規登録」から 1 件目を登録します。" in listing
+    assert "新しく入れる" not in listing
+    create = text(client_logged_in.get(reverse("masters:item_create")))
+    assert "部品の新規登録" in create and "キャンセル" in create and "やめる" not in create
+    item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
+    detail = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
+    assert "一覧に戻る" in detail and "編集" in detail and "一覧へ</a>" not in detail and "直す</a>" not in detail
+    update = text(client_logged_in.get(reverse("masters:item_update", args=[item.pk])))
+    assert "部品の編集" in update
+    modal = text(client_logged_in.get(reverse("masters:item_modal", args=[item.pk]), HTTP_HX_REQUEST="true"))
+    assert "詳細を見る" in modal and "詳細を開く" not in modal
+    home = text(client_logged_in.get(reverse("core:home")))
+    assert "ダッシュボード" in home and "はじめに" not in home

@@ -17,7 +17,7 @@ from seizou.parts import PARTS
 
 #: 左のメニューの区分 (見出し, その区分に入る部品の app の名前)。並びはこの順。
 SECTIONS = (
-    ("はじめに", ("core",)),
+    ("ダッシュボード", ("core",)),
     ("受注・出荷", ("orders", "intake", "shipping", "connect", "purchasing", "billing")),
     ("製造", ("workorders", "progress")),
     ("マスター", ("masters",)),
@@ -27,7 +27,7 @@ SECTIONS = (
 OTHER_SECTION = "その他"
 
 #: core 自身の入口 (部品の MENU と同じ形)
-CORE_MENU = (("はじめに", "core:home"), ("検索", "core:search"))
+CORE_MENU = (("ダッシュボード", "core:home"), ("検索", "core:search"))
 
 
 def url_or_none(url_name: str) -> str | None:
@@ -63,7 +63,7 @@ def menu() -> list[dict]:
 
 
 def core_menu() -> list[dict]:
-    """core 自身の入口 (はじめに・検索)。"""
+    """core 自身の入口 (ダッシュボード・検索)。"""
     items = []
     for label, url_name in CORE_MENU:
         url = url_or_none(url_name)
