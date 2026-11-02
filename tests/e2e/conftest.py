@@ -175,6 +175,8 @@ def _running(company: Company) -> Iterator[Company]:
     # 会社の settings の名前は manage.py が自分で決める。渡さない物を子に残さないため、E2E の環境変数は外す。
     child_env = {key: value for key, value in os.environ.items() if not key.startswith("SEIZOU_E2E")}
     child_env.pop("DJANGO_SETTINGS_MODULE", None)
+    # 開発機の自動ログインは切る (ログインとログアウトの試験のため。会社の .env より、ここで置いた値が勝つ)。
+    child_env["SEIZOU_DEV_AUTO_LOGIN"] = "0"
     # 2 社の間の鍵: 相手の会社の id から作った名前で、2 社の runserver に同じ値を置く。
     # 会社の .env は既にある環境変数を上書きしないので、ここで置いた値が勝つ。値はログにも例外にも出さない。
     shared_secret = os.environ.get(PARTNER_SECRET_ENV)

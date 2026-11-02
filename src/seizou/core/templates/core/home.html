@@ -2,7 +2,23 @@
 {% load seizou_icons seizou_tags %}
 {% block content %}
 {# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
+{# 並びは、数字のカード → 納期アラートと月次の推移 → 最近の受注とよく使う画面 (本人の所見 11-03: 数字のカードを一番上に)。 #}
 {# 納期アラートと月次の推移 (core の dashboard が読む。受注の部品が無ければ None で、節ごと出さない)。 #}
+{% if stats %}
+<div class="mb-6 grid gap-4 sm:grid-cols-2 {% if stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
+  {% for stat in stats %}
+  {% if stat.url %}<a href="{{ stat.url }}" class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-xs font-medium text-base-content/70">{{ stat.label }}</p>
+      <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
+    </div>
+    <p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>
+    {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
+    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
+  {% if stat.url %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
 {% if alerts is not None or trend is not None %}
 <div class="mb-6 grid gap-6">
   {% if alerts is not None %}
@@ -86,22 +102,7 @@
   {% endif %}
 </div>
 {% endif %}
-{% if stats %}
-<div class="grid gap-4 sm:grid-cols-2 {% if stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
-  {% for stat in stats %}
-  {% if stat.url %}<a href="{{ stat.url }}" class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
-    <div class="flex items-start justify-between gap-2">
-      <p class="text-xs font-medium text-base-content/70">{{ stat.label }}</p>
-      <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
-    </div>
-    <p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>
-    {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
-    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
-  {% if stat.url %}</a>{% else %}</div>{% endif %}
-  {% endfor %}
-</div>
-{% endif %}
-<div class="mt-6 grid gap-6 lg:grid-cols-2">
+<div class="grid gap-6 lg:grid-cols-2">
   {% if recent_orders is not None %}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
     <div class="flex items-center justify-between gap-2">

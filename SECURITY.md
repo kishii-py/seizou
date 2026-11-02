@@ -26,7 +26,7 @@
 - 手元の Claude Code から操作する MCP サーバー (`manage.py seizou_mcp`) の書く道具 3 つ (受注を作る・出荷する・計画を置く) は、`--user` か `.env` の `SEIZOU_MCP_USER` で決めた利用者で書き、画面と同じ決まりとポカよけを通る。知らせる段のポカよけは `confirm=true` の呼び直しが要る。人の承認は、Claude Code の道具ごとの許可と、この呼び直しに乗る。書いた物が MCP からか画面からかの区別と、誰が書いたかを残す列は、まだ無い (会期後の予定)。`--read-only` で起こすと、書く道具を出さない。
 - 管理者 (`admin`) のパスワードは、`seizou new` が乱数で作り、出力に 1 度だけ出る。`/seizou:build` で立てたときは、この出力が Claude Code の会話に残るので、会社の置き場で `manage.py changepassword admin` を自分の端末で打って変える。
 - Django の `SECRET_KEY` は、`seizou new` が会社のプロジェクトを作るときに乱数で作り、`.env` に書く。`.env` は持ち主だけが読める権限で書く (Windows では、この権限は働かない)。
-- ログインは Django 標準の認証を使う。
+- ログインは Django 標準の認証を使う。開発機の自動ログイン (`seizou.core.middleware.DevAutoLoginMiddleware`) は、`DEBUG` が真で、起動が `runserver` で、`.env` の `SEIZOU_DEV_AUTO_LOGIN=1` のときだけ動き、ログインしていない要求を有効な superuser の要求として扱う。本番の形 (gunicorn・`DEBUG=0`) では動かない。会社の置き場を外から届く所で `runserver` で立てない。
 - 画面からの書き込みは、Django の CSRF の守りを通す。
 - PDF を作るときに読むファイルは、static と media の中だけに限る。
 - 上げたファイル (`/media/` の図面・添付・マニュアルの画像) は、開発機でも本番でも同じ口 (`seizou.core.media`) がログインを見てから返す。`MEDIA_ROOT` の外は読まず、断るときは全部 404 にする (「無い」と「見せない」を外から見分けさせない)。HTML・SVG・XML・JS は必ずダウンロードにし (上げたファイルのスクリプトを同じ origin で動かさない)、nosniff と保存させないヘッダーを付ける。nginx に送らせる配り方 (`SEIZOU_FILE_DELIVERY=nginx`。置き場の `deploy/nginx-files.conf`) では、nginx を通った印の無い要求を 503 で止める。

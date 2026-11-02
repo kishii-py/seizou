@@ -30,6 +30,10 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 # 開発は 1、本番は 0 (.env で切り替える)。1 のときは core の起動の検査が走る。
 DEBUG = os.environ.get("DEBUG", "0") == "1"
 
+# 開発機の自動ログイン (seizou.core.middleware.DevAutoLoginMiddleware)。1 のとき、DEBUG が真で runserver なら、
+# ログインの画面を飛ばして管理者 (有効な superuser のうち番号の小さい人) として画面を開く。本番は 0 にするか行を消す。
+SEIZOU_DEV_AUTO_LOGIN = os.environ.get("SEIZOU_DEV_AUTO_LOGIN", "0") == "1"
+
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
@@ -55,6 +59,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # 開発機の自動ログイン (DEBUG が真で runserver で、下の SEIZOU_DEV_AUTO_LOGIN が真のときだけ動く)。
+    "seizou.core.middleware.DevAutoLoginMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "seizou.core.middleware.RuleNoticeMiddleware",
