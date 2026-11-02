@@ -67,14 +67,14 @@ item_fields: []  # 問 2 の答え。部品マスターに足す項目を、答�
 settings:        # 会社ごとに選べる設定。この命令では聞かず、この既定の値を書く
   order_form: multi
   partial_shipment: true
-  over_shipment: stop
-  over_workorder: stop
+  over_shipment: warn    # 受注より多い出荷のポカよけ: warn (知らせる) / stop (止める) / off (通す)
+  over_workorder: warn   # 受注より多い指示書の数量と、予定より多い実績のポカよけ: warn / stop / off
   order_number: seq
   hidden_fields: []
 port: <会社のシステムを開くポートの番号>
 ```
 
-- `item_fields` の 1 項目に書く 5 つ (名前・型・必須か・一覧に出すか・検索に使うか) の鍵の名前と、型の値の書き方: 【未決】。決まるまでは、`examples/companies/` の例の YAML と同じ書き方にします。
+- `item_fields` の 1 項目に書く 5 つの鍵は `label` (見出し。日本語)・`type` (`text` / `number` / `date` / `choice` / `bool`)・`required`・`in_list`・`searchable` で、`type` が `choice` のときは `choices` の一覧も書きます。列の名前は書きません (答えた順に `ext01`・`ext02`… が付きます)。
 - `port` は、答えの YAML が渡されたときはその値を使います。新しい会社のポートの決め方: 【未決】。ほかの会社と同じ番号にはしません。
 
 ## 5. 会社のシステムを作る
