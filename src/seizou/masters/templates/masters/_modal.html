@@ -3,14 +3,14 @@
 {% load seizou_icons %}
 {# masters の小窓。項目と会社ごとの項目は core の形のまま。取引先ごとの品番は、取引先・取引先の品番・取引先の品名の表で出す。 #}
 {% block related %}
-{# 部品の図面。表示用の絵を作れなかったときは黄色の 1 行 (字は表の列のまま)、絵があれば小さい絵 (押すと絵を新しいタブで開く)。取引先の小窓では 2 つとも出ない。 #}
+{# 部品の図面。表示用の絵を作れなかったときは黄色の 1 行 (字は表の列のまま)、絵があれば小さい絵 (ログインした人にだけ返す口の URL。押すと絵を新しいタブで開く)。取引先の小窓では 2 つとも出ない。 #}
 {% if object.drawing_preview_error %}
 <div class="mt-4"><div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>{{ object.drawing_preview_error }}</span></div></div>
 {% endif %}
-{% with drawing=object.display_drawing %}{% if drawing %}
+{% with drawing_url=object.display_drawing_url %}{% if drawing_url %}
 <section class="mt-4" aria-label="図面">
   <p class="text-xs font-medium text-base-content/50">図面</p>
-  <a class="mt-2 block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ drawing.url }}" target="_blank" rel="noopener"><img src="{{ drawing.url }}" alt="図面" class="h-40 w-full bg-base-200 object-contain"></a>
+  <a class="mt-2 block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ drawing_url }}" target="_blank" rel="noopener"><img src="{{ drawing_url }}" alt="図面" class="h-40 w-full bg-base-200 object-contain"></a>
 </section>
 {% endif %}{% endwith %}
 {% for tab in tabs %}

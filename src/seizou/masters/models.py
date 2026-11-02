@@ -125,6 +125,13 @@ class Item(models.Model):
     drawing_preview_error = models.CharField(
         "図面の表示用の誤り", max_length=500, blank=True, editable=False
     )
+    # 表示用の PNG のページ数 (複数ページの TIFF の 2 ページ目から後も PNG にする。表示用が無ければ 1)。書くのは masters.services だけ。
+    # 入力の画面と CSV の見出しに出さない (editable=False)。小窓の先頭の 8 項目をずらさないように最後に置く。
+    drawing_page_count = models.PositiveSmallIntegerField("図面のページ数", default=1, editable=False)
+
+    #: 詳細と小窓の項目の一覧に出さない列 (core の土台が読む)。仕組みのための列で、入力の画面に無い物。
+    #: 表示用 (drawing_preview) は出す。土台の詳細の「ファイル」の節が、この列の行から TIFF の図面の絵を出すため。
+    detail_hidden_fields = ("drawing_preview_error", "drawing_page_count")
 
     class Meta:
         verbose_name = "部品"
@@ -147,6 +154,40 @@ class Item(models.Model):
             return self.drawing_preview
         if self.drawing and self.drawing.name.lower().endswith((".png", ".jpg", ".jpeg")):
             return self.drawing
+        return None
+
+    @property
+    def drawing_version_no(self):
+        """今の図面の版の番号 (読むだけ)。この部品の版の番号の最大 + 1。版が無ければ 1。"""
+        if self.pk is None:
+            return 1
+        last = self.drawing_versions.aggregate(last=models.Max("version_no"))["last"]
+        return (last or 0) + 1
+
+    def file_url(self, field_name):
+        """詳細の画面のファイルの URL (core の土台が呼ぶ)。図面と表示用は、ログインした人にだけ返す口の URL。
+
+        ほかの項目と、ファイルの無い項目は None (土台は link を出さない)。
+        """
+        from .drawings import drawing_url
+
+        if field_name == "drawing" and self.drawing:
+            return drawing_url(self, "original")
+        if field_name == "drawing_preview" and self.drawing_preview:
+            return drawing_url(self, "preview")
+        return None
+
+    @property
+    def display_drawing_url(self):
+        """小窓とビューアの絵の URL (読むだけ)。display_drawing と同じ選び方で、口の URL を返す。出す物が無ければ None。"""
+        from .drawings import drawing_url
+
+        if self.drawing_preview_error:
+            return None
+        if self.drawing_preview:
+            return drawing_url(self, "preview")
+        if self.drawing and self.drawing.name.lower().endswith((".png", ".jpg", ".jpeg")):
+            return drawing_url(self, "original")
         return None
 
 
@@ -225,3 +266,39 @@ class ItemProcess(models.Model):
 
     def __str__(self):
         return f"{self.item.part_no} {self.process}"
+
+
+class ItemDrawingVersion(models.Model):
+    """図面の版。部品の図面を差し替えたときに、前の図面を版として残す (書くのは masters.services だけ)。
+
+    ファイルは写さず、置き場に残した前の図面の名前の字を持つ (upload_to は使われない)。
+    今の図面は部品の行が持ち、その版の番号は「この部品の版の番号の最大 + 1」(Item.drawing_version_no)。
+    """
+
+    item = models.ForeignKey(
+        Item,
+        verbose_name="部品",
+        on_delete=models.CASCADE,
+        related_name="drawing_versions",
+    )
+    version_no = models.PositiveIntegerField("版")
+    drawing = models.FileField("図面ファイル", upload_to="drawings/versions/")
+    drawing_preview = models.FileField("図面の表示用", upload_to="drawings/previews/", blank=True)
+    drawing_preview_error = models.CharField("図面の表示用の誤り", max_length=500, blank=True)
+    page_count = models.PositiveSmallIntegerField("ページ数", default=1)
+    note = models.CharField("備考", max_length=500, blank=True)
+    created_at = models.DateTimeField("保存した日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "図面の版"
+        verbose_name_plural = "図面の版"
+        ordering = ["item", "-version_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item", "version_no"],
+                name="masters_itemdrawingversion_item_version_no_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.item.part_no} 版 {self.version_no}"

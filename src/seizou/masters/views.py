@@ -8,12 +8,16 @@ import csv
 from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, Http404
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.utils.cache import add_never_cache_headers
 from django.views.decorators.http import require_GET
 
 from seizou.core import csvio
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView
 
+from . import drawings
 from . import services
 from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
@@ -183,3 +187,21 @@ def item_import_sample(request):
 def partner_import_sample(request):
     """取引先の見本の CSV (画面でない口)。"""
     return _sample_csv(Partner, "取引先の見本.csv", "partner_sample.csv")
+
+
+@login_required
+@require_GET
+def item_drawing(request, pk, filename):
+    """部品の図面のファイルを、ログインした人にだけ返す口 (画面でない口。05 の 7 節)。
+
+    どのファイルを返すか (元か表示用・版・ページ・Content-Type・名前の見出し) は drawings.resolve の 1 か所で決める。
+    返す物が無ければ 404。ブラウザに保存させない (ログアウトの後に残った図面を見せない)。
+    """
+    item = get_object_or_404(Item, pk=pk)
+    found = drawings.resolve(item, filename, request.GET)
+    if found is None:
+        raise Http404("図面がありません。")
+    response = FileResponse(found.storage.open(found.name, "rb"), content_type=found.content_type)
+    response["Content-Disposition"] = found.disposition
+    add_never_cache_headers(response)
+    return response

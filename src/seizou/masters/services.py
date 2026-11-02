@@ -9,6 +9,8 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
   作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
+- 部品の図面を新しいファイルに差し替えたら、前の図面を版 (ItemDrawingVersion) に残す (ファイルは写さず名前の字を持つ)。
+  版に戻すのは restore_drawing_version。
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidO
 
 from django.core.files.base import ContentFile, File
 from django.db import transaction
+from django.db.models import Max
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile
 
@@ -259,10 +262,52 @@ def update_item(item, data, user, *, ext=None):
     with transaction.atomic():
         if "part_no" in data:
             _refuse_duplicate_part_no(data["part_no"], exclude_pk=item.pk)
+        if _is_new_upload(data.get("drawing")):
+            _keep_drawing_as_version(item)
         for key, value in data.items():
             setattr(item, key, value)
         item.save()
         _save_ext(item, ext)
+        return item
+
+
+def _keep_drawing_as_version(item, *, note=""):
+    """部品の今の図面を版の行に残す (差し替えと版に戻すの前)。今の図面が無ければ何もせず None。
+
+    呼ぶ側の transaction.atomic の中で呼ぶ。部品の行を select_for_update で取り直し、表にある 4 つ
+    (図面の名前の字・表示用の名前の字・誤りの文・ページ数) を写す。ファイルは写さない (名前の字を入れる)。
+    版の番号は、この部品の版の番号の最大 + 1。
+    """
+    current = Item.objects.select_for_update().get(pk=item.pk)
+    if not current.drawing:
+        return None
+    last = current.drawing_versions.aggregate(last=Max("version_no"))["last"] or 0
+    return current.drawing_versions.create(
+        version_no=last + 1,
+        drawing=current.drawing.name,
+        drawing_preview=current.drawing_preview.name or "",
+        drawing_preview_error=current.drawing_preview_error,
+        page_count=current.drawing_page_count,
+        note=note,
+    )
+
+
+def restore_drawing_version(item, version, user, *, note=""):
+    """選んだ版の図面を部品の今の図面に戻す。今の図面は新しい版として残す (note はその版の備考)。
+
+    写すのは版の 4 つ (図面と表示用の名前の字・誤りの文・ページ数)。表示用の PNG は作り直さず、ファイルも写さない。
+    選んだ版の行は消さない。今の図面が無い部品は版を作らずに戻す。別の部品の版は、何も変えずに ValueError。
+    返す物は部品。user は受けるだけ。
+    """
+    if version.item_id != item.pk:
+        raise ValueError(f"版 {version.version_no} はこの部品の版ではありません。この部品の版を選んでください。")
+    with transaction.atomic():
+        _keep_drawing_as_version(item, note=note)
+        item.drawing = version.drawing.name
+        item.drawing_preview = version.drawing_preview.name or ""
+        item.drawing_preview_error = version.drawing_preview_error
+        item.drawing_page_count = version.page_count
+        item.save(update_fields=["drawing", "drawing_preview", "drawing_preview_error", "drawing_page_count"])
         return item
 
 

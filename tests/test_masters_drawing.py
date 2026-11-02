@@ -279,9 +279,9 @@ def test_detail_shows_original_link_and_preview_image(client_logged_in):
     assert response["Location"] == reverse("masters:item_detail", args=[item.pk])
     body = text(client_logged_in.get(response["Location"]))
     assert item.drawing.name.endswith(".tif") and item.drawing_preview.name.endswith(".png")
-    assert f'href="{item.drawing.url}"' in body  # 元の TIFF の link (押すと原寸)
-    assert f'<img src="{item.drawing_preview.url}"' in body  # 表示用の PNG の絵
-    assert f'<img src="{item.drawing.url}"' not in body
+    assert f'href="{reverse("masters:item_drawing", args=[item.pk, "original.tif"])}"' in body  # 元の TIFF の link (押すと原寸)
+    assert f'<img src="{reverse("masters:item_drawing", args=[item.pk, "preview.png"])}"' in body  # 表示用の PNG の絵
+    assert f'<img src="{reverse("masters:item_drawing", args=[item.pk, "original.tif"])}"' not in body
     assert "alert-warning" not in body
 
 
@@ -289,10 +289,10 @@ def test_detail_shows_original_link_and_preview_image(client_logged_in):
 def test_detail_png_and_pdf(client_logged_in, user):
     items = items_of_each_kind(user)
     png = text(client_logged_in.get(reverse("masters:item_detail", args=[items["png"].pk])))
-    assert f'<img src="{items["png"].drawing.url}"' in png
+    assert f'<img src="{reverse("masters:item_drawing", args=[items["png"].pk, "original.png"])}"' in png
     assert "alert-warning" not in png
     pdf = text(client_logged_in.get(reverse("masters:item_detail", args=[items["pdf"].pk])))
-    assert f'href="{items["pdf"].drawing.url}"' in pdf
+    assert f'href="{reverse("masters:item_drawing", args=[items["pdf"].pk, "original.pdf"])}"' in pdf
     assert "<img" not in pdf
     assert "alert-warning" not in pdf
 
@@ -315,7 +315,7 @@ def test_broken_upload_on_screen_saves_and_warns(client_logged_in):
     assert 'class="alert alert-warning alert-soft mb-4" role="status"' in body
     assert "図面の表示用の絵は作れませんでした (ファイルが壊れています)。元のファイルは保存してあります。" in body
     assert "alert-error" not in body
-    assert f'href="{item.drawing.url}"' in body  # 元のファイルは link で開ける
+    assert f'href="{reverse("masters:item_drawing", args=[item.pk, "original.tif"])}"' in body  # 元のファイルは link で開ける
 
 
 @pytest.mark.django_db
@@ -327,11 +327,11 @@ def test_modal_shows_small_image_and_warning(client_logged_in, user):
         return text(client_logged_in.get(url, HTTP_HX_REQUEST="true"))
 
     tiff = modal("tiff")
-    assert f'<img src="{items["tiff"].drawing_preview.url}"' in tiff
-    assert f'href="{items["tiff"].drawing_preview.url}"' in tiff
+    assert f'<img src="{reverse("masters:item_drawing", args=[items["tiff"].pk, "preview.png"])}"' in tiff
+    assert f'href="{reverse("masters:item_drawing", args=[items["tiff"].pk, "preview.png"])}"' in tiff
     assert "alert-warning" not in tiff
     png = modal("png")
-    assert f'<img src="{items["png"].drawing.url}"' in png
+    assert f'<img src="{reverse("masters:item_drawing", args=[items["png"].pk, "original.png"])}"' in png
     assert "alert-warning" not in png
     for kind in ("pdf", "none"):
         body = modal(kind)
