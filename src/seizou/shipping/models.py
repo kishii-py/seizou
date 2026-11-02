@@ -73,3 +73,6 @@ class Shipment(models.Model):
                 name="shipping_shipment_qty_positive",
             ),
         ]
+
+    def __str__(self):
+        return self.shipment_no
