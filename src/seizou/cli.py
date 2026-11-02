@@ -259,6 +259,11 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         encoding="utf-8",
     )
     (site / "checks.py").write_text(render("checks.py.tmpl", id=company_id), encoding="utf-8")
+    (site / "deploy").mkdir(parents=True, exist_ok=True)
+    (site / "deploy" / "nginx-files.conf").write_text(
+        render("nginx-files.conf.tmpl", id=company_id, media_root=(site.resolve() / "media").as_posix()),
+        encoding="utf-8",
+    )
     for folder in ("templates", "static/css", "manual/images"):
         (site / folder).mkdir(parents=True, exist_ok=True)
 

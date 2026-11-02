@@ -2,24 +2,35 @@
 
 core 自身の URL (名前空間 core) と、存在する部品 (seizou.parts.PARTS) の urls を順に含める。
 部品の urls は <app>/urls.py に app_name を持つ。無い部品は飛ばす。
-開発 (DEBUG か runserver) のときだけ、上げたファイル (MEDIA_URL。図面など) を MEDIA_ROOT から返す道を足す。
-本番は web サーバーが返す (ここは足さない)。
+上げたファイル (MEDIA_URL の下。図面など) は、開発機でも本番でも core.media の 1 つの口 (ログインを見る) が返す。
+配り方 (Django が送るか、nginx に渡すか) は、会社の設定 SEIZOU_FILE_DELIVERY で選ぶ。
 """
 
 import re
-import sys
 from importlib import import_module, util
 
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
-from django.views.static import serve
 
 from seizou.core.manual import ManualView, manual_image
+from seizou.core.media import protected_file
 from seizou.core.search import SearchView
 from seizou.core.views import HomeView, RememberLoginView
 from seizou.parts import PARTS
+
+
+def file_patterns() -> list:
+    """上げたファイルを、ログインした人にだけ返す道 (/media/<path>。開発機でも本番でも同じ。core.media)。
+
+    MEDIA_URL が空か外の URL (http://…) なら足さない (外の置き場は、その置き場が返す)。
+    """
+    media_url = getattr(settings, "MEDIA_URL", "") or ""
+    if not media_url or "://" in media_url:
+        return []
+    prefix = re.escape(media_url.strip("/"))
+    return [re_path(rf"^{prefix}/(?P<name>.+)$", protected_file, name="file")]
+
 
 core_patterns = [
     path("", HomeView.as_view(), name="home"),
@@ -29,6 +40,7 @@ core_patterns = [
     path("login/", RememberLoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
 ]
+core_patterns += file_patterns()
 
 urlpatterns = [
     path("", include((core_patterns, "core"))),
@@ -44,28 +56,3 @@ for _part in PARTS:
     _prefix = _part.rsplit(".", 1)[-1]
     urlpatterns.append(path(f"{_prefix}/", include(_module)))
 
-
-def is_runserver() -> bool:
-    """開発のサーバー (manage.py runserver) で動いているか。"""
-    return len(sys.argv) > 1 and sys.argv[1] == "runserver"
-
-
-def media_patterns() -> list:
-    """上げたファイルを MEDIA_ROOT から返す道。DEBUG のときと runserver のときだけ (本番は web サーバーの仕事)。
-
-    DEBUG のときは Django の static() を使う。static() は DEBUG が偽だと何も返さないので、
-    DEBUG が偽の runserver では同じ形の道を自分で作る。MEDIA_URL が空か外の URL (http://…) なら足さない。
-    """
-    media_url = getattr(settings, "MEDIA_URL", "") or ""
-    media_root = getattr(settings, "MEDIA_ROOT", "") or ""
-    if not media_url or not media_root or "://" in media_url:
-        return []
-    if settings.DEBUG:
-        return static(media_url, document_root=media_root)
-    if is_runserver():
-        prefix = re.escape(media_url.lstrip("/"))
-        return [re_path(rf"^{prefix}(?P<path>.*)$", serve, kwargs={"document_root": media_root})]
-    return []
-
-
-urlpatterns += media_patterns()

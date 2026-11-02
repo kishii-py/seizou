@@ -29,6 +29,7 @@
 - ログインは Django 標準の認証を使う。
 - 画面からの書き込みは、Django の CSRF の守りを通す。
 - PDF を作るときに読むファイルは、static と media の中だけに限る。
+- 上げたファイル (`/media/` の図面・添付・マニュアルの画像) は、開発機でも本番でも同じ口 (`seizou.core.media`) がログインを見てから返す。`MEDIA_ROOT` の外は読まず、断るときは全部 404 にする (「無い」と「見せない」を外から見分けさせない)。HTML・SVG・XML・JS は必ずダウンロードにし (上げたファイルのスクリプトを同じ origin で動かさない)、nosniff と保存させないヘッダーを付ける。nginx に送らせる配り方 (`SEIZOU_FILE_DELIVERY=nginx`。置き場の `deploy/nginx-files.conf`) では、nginx を通った印の無い要求を 503 で止める。
 - PDF を作る部品 (WeasyPrint) か OS の pango が無いときは、PDF を作らず、印刷用の画面に落ちる (`seizou.core.reports.PdfUnavailable`)。
 - SQL を直接書かない (決まりの検査が止める)。
 - 依存の下限は、知られた問題を直した版に置く。`Django>=5.2.18,<6.2`・`Pillow>=13.0.0`・`weasyprint>=70.0`。
@@ -45,3 +46,4 @@
 - 2 段階の確かめ
 - 依存を上げて試験を回し、再起動する命令
 - MCP と AI チャットから書いた記録 (誰が、どの道から) を残す列と、権限に合わせて道具を絞ること
+- nginx の設定 (内部の location の `internal` など、Django から見えない物) を外から確かめる命令

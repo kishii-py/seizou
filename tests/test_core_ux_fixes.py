@@ -184,32 +184,31 @@ def test_toasts_let_clicks_through_and_sit_at_the_bottom_right(client_logged_in)
 # ---------------------------------------------------------------- 7 図面のファイル
 
 
-def test_media_is_served_in_debug(settings, tmp_path):
+def test_media_needs_login_even_in_debug(settings, tmp_path, client, db):
+    # 11-03: 開発機でも /media/ の道はログインを見る (seizou.core.media。前は DEBUG のとき誰にでも返した)。
     settings.DEBUG = True
     settings.MEDIA_ROOT = tmp_path
     (tmp_path / "drawings").mkdir()
     (tmp_path / "drawings" / "a.png").write_bytes(b"\x89PNG\r\n")
-    patterns = core_urls.media_patterns()
-    assert patterns
-    match = patterns[0].resolve("media/drawings/a.png")
-    assert match is not None
-    response = match.func(RequestFactory().get("/media/drawings/a.png"), **match.kwargs)
-    assert response.status_code == 200
+    response = client.get("/media/drawings/a.png")
+    assert response.status_code == 302 and "/login/" in response["Location"]
 
 
-def test_media_is_served_by_runserver_even_without_debug(settings, tmp_path, monkeypatch):
-    settings.DEBUG = False
-    settings.MEDIA_ROOT = tmp_path
-    monkeypatch.setattr(sys, "argv", ["manage.py", "runserver", "8001"])
-    patterns = core_urls.media_patterns()
-    assert len(patterns) == 1 and patterns[0].resolve("media/drawings/a.png") is not None
-
-
-def test_media_is_not_served_in_production(settings, tmp_path, monkeypatch):
+def test_media_is_served_to_logged_in_user_without_runserver(settings, tmp_path, monkeypatch, client_logged_in):
+    # 本番の形 (DEBUG が偽で runserver でない) でも同じ道が返す。配り方の既定は Django が送る。
     settings.DEBUG = False
     settings.MEDIA_ROOT = tmp_path
     monkeypatch.setattr(sys, "argv", ["gunicorn"])
-    assert core_urls.media_patterns() == []
+    (tmp_path / "drawings").mkdir()
+    (tmp_path / "drawings" / "a.png").write_bytes(b"\x89PNG\r\n")
+    response = client_logged_in.get("/media/drawings/a.png")
+    assert response.status_code == 200
+    assert b"".join(response.streaming_content) == b"\x89PNG\r\n"
+
+
+def test_media_route_is_absent_for_external_media_url(settings):
+    settings.MEDIA_URL = "https://files.example.com/"
+    assert core_urls.file_patterns() == []
 
 
 # ---------------------------------------------------------------- 8 小窓を新しいタブで開く

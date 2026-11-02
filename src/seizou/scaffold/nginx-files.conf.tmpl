@@ -1,0 +1,25 @@
+# seizou: 上げたファイル (図面・添付・マニュアルの画像) を nginx に送らせるための設定の断片。会社 ${id}。
+# seizou new が書いた物。alias の道は、settings.py の MEDIA_ROOT と同じにしてある。
+#
+# 使い方 (本番で、大きなファイルを nginx に送らせるとき):
+#   1. この断片を、このシステムの server { ... } の中に include する。
+#   2. Django へ渡す location (proxy_pass を書いた所) に、次の 1 行を足す。
+#        proxy_set_header X-Seizou-Proxy nginx;
+#      この印の無い要求は、seizou が 503 の画面で止める (設定の漏れに、その場で気づくため)。
+#   3. この置き場の .env に SEIZOU_FILE_DELIVERY=nginx の 1 行を足し、起動し直す。
+#
+# 仕組み: Django がログインと確かめを済ませ、本文の無い応答に X-Accel-Redirect: /seizou-files/<道> を付けて返す。
+# nginx が、この内部の location からファイルを読んで送る。internal があるので、外から /seizou-files/... は開けない。
+# Cache-Control と Content-Disposition は Django の物が引き継がれる。nosniff は引き継がれないので、ここで付ける。
+#
+# 注意:
+# - location に add_header を 1 つでも書くと、server { } に書いた add_header は、この location では出なくなる。
+#   server { } で付けているヘッダーがあれば、この中にも書く。
+# - expires と add_header Cache-Control は書かない (Django の「保存させない」が崩れ、ログアウトの後も手元の写しが開く)。
+# - 置き場 (MEDIA_ROOT) を、nginx がそのまま配る location やサイトに置かない (Django を通らずにファイルが出る)。
+
+location /seizou-files/ {
+    internal;
+    alias "${media_root}/";
+    add_header X-Content-Type-Options nosniff always;
+}
