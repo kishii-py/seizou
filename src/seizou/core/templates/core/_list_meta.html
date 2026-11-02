@@ -2,6 +2,6 @@
 {# 一覧の道具の行の右: 全体の件数と CSV と並び替えの値。htmx の応答では core/_rows.html が oob=True で差し替える (検索した後も件数と CSV の条件が合う)。 #}
 <div id="list-meta" class="ml-auto flex items-center gap-4"{% if oob %} hx-swap-oob="true"{% endif %}>
   <input type="hidden" name="sort" value="{{ sort }}">
-  <span class="text-base-content/70">全 <span class="font-medium tabular-nums text-base-content">{{ paginator.count|comma }}</span> 件</span>
+  <span class="text-base-content/70">全 <span id="list-count" class="font-medium tabular-nums text-base-content">{{ paginator.count|comma }}</span> 件</span>
   <a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_page }}&format=csv" download>{% icon "download" "size-4" %}CSV</a>
 </div>

@@ -134,11 +134,13 @@ class Inbox(models.Model):
 class Outbox(models.Model):
     """送った注文。connect.services.send_order が 1 回送るごとに 1 行を作る。
 
-    番号は見出しの webhook-id と同じ uuid4。相手の返事は日本語の短い文で持つ。
+    番号は見出しの webhook-id と同じ uuid4。同じ発注を送り直すときは 1 回目の番号を使い回す
+    (相手の受け口は同じ番号を 1 件にまとめる = R11。2 つのタブから送り直しても相手に 2 行できない)。
+    相手の返事は日本語の短い文で持つ。
     鍵の値と本文は持たない。
     """
 
-    message_id = models.UUIDField("番号", unique=True)
+    message_id = models.UUIDField("番号", db_index=True)
     connection = models.ForeignKey(
         Connection,
         verbose_name="つながり",
