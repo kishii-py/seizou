@@ -1,0 +1,84 @@
+"""指示書の表 (01 の 4 節)。
+
+指示書は受注の明細を指し、1 つの明細に何枚でも出せる。工程は指示書ごとに順を持つ。
+指示書の数量の合計は列に持たず、workorders.services の issued_qty で毎回出す。
+文字数の上限は固定 (識別子 35・備考 500・コード 10)。
+書くときは workorders.services を通す。
+"""
+
+from django.db import models
+
+
+class WorkOrder(models.Model):
+    """指示書。指示書番号は core の連番が付ける。"""
+
+    STATUS_ISSUED = "issued"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_ISSUED, "発行"),
+        (STATUS_CANCELLED, "取消"),
+    ]
+
+    wo_no = models.CharField("指示書番号", max_length=35, unique=True)
+    order_line = models.ForeignKey(
+        "orders.OrderLine",
+        verbose_name="受注の明細",
+        on_delete=models.PROTECT,
+        related_name="workorders",
+    )
+    qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
+    issued_on = models.DateField("発行日")
+    status = models.CharField(
+        "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
+    )
+
+    class Meta:
+        verbose_name = "指示書"
+        verbose_name_plural = "指示書"
+        ordering = ["-issued_on", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="workorders_workorder_qty_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return self.wo_no
+
+
+class WorkOrderStep(models.Model):
+    """指示書の工程。順は 1 から。予定の数は検査の層が実績の合計と比べる。"""
+
+    workorder = models.ForeignKey(
+        WorkOrder,
+        verbose_name="指示書",
+        on_delete=models.CASCADE,
+        related_name="steps",
+    )
+    process = models.ForeignKey(
+        "masters.Process",
+        verbose_name="工程",
+        on_delete=models.PROTECT,
+        related_name="workorder_steps",
+    )
+    seq = models.PositiveIntegerField("順")
+    planned_qty = models.DecimalField("予定の数", max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = "指示書の工程"
+        verbose_name_plural = "指示書の工程"
+        ordering = ["workorder", "seq"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(planned_qty__gt=0),
+                name="workorders_workorderstep_planned_qty_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["workorder", "seq"],
+                name="workorders_workorderstep_seq_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.workorder.wo_no} {self.seq} {self.process.name}"
