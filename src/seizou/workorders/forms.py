@@ -50,3 +50,32 @@ class WorkOrderIssueForm(forms.Form):
             "qty": qty,
             "steps": [{"process": process, "planned_qty": qty} for process in processes],
         }
+
+
+class PlanPlaceForm(forms.Form):
+    """生産計画の盤で日を置く・動かす・戻す (plan_place が使う。書くのは services.plan_step)。
+
+    step は予定の全部 (取消の物も入れる。R05 の赤の知らせを出すため)。
+    end が送られなければ clean() が決める: start が空なら end も空 (未計画に戻す)。
+    予定に既に日があれば同じ日数ずらす (動かす)。無ければ start と同じ日 (置く = 1 日)。
+    """
+
+    step = forms.ModelChoiceField(label="工程の予定", queryset=WorkOrderStep.objects.all())
+    start = forms.DateField(label="開始日", required=False)
+    end = forms.DateField(label="終了日", required=False)
+
+    def clean(self):
+        cleaned = super().clean()
+        step = cleaned.get("step")
+        if step is None or self.has_error("start") or self.has_error("end"):
+            return cleaned
+        if self.data.get("end"):
+            return cleaned
+        start = cleaned.get("start")
+        if start is None:
+            cleaned["end"] = None
+        elif step.planned_start is not None and step.planned_end is not None:
+            cleaned["end"] = start + (step.planned_end - step.planned_start)
+        else:
+            cleaned["end"] = start
+        return cleaned

@@ -1,0 +1,63 @@
+{% load seizou_tags %}
+{# 盤の部分。GET の盤が include し、POST の plan_place が成功のときにこれだけを返す (board は context から読む)。 #}
+{# style に書くのは grid の列の数・段の数と、日と棒の位置だけ。色と余白は固定の class で書く。 #}
+<div id="plan-board" data-place-url="{{ board.place_url }}" data-process="{{ board.process.pk }}" data-board-start="{{ board.board_start }}" data-weeks="{{ board.weeks }}">
+  <div id="plan-notice"></div>
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+    <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="日の計画">
+      <div class="grid" style="grid-template-columns: repeat({{ board.columns }}, minmax(0, 1fr)); grid-template-rows: auto repeat({{ board.rows }}, 3rem);">
+        {% for day in board.days %}
+        <div class="min-w-0 truncate border-b border-base-300 py-2 text-center text-xs text-base-content/70" style="grid-column: {{ day.col }}; grid-row: 1;"><span class="block font-medium">{{ day.date|date:"n/j" }}</span><span class="block">{{ day.weekday }}</span></div>
+        {% endfor %}
+        {% for day in board.days %}
+        <div class="border-l border-base-200 data-[weekend=true]:bg-base-200 aria-[current=date]:border-l-2 aria-[current=date]:border-primary" style="grid-column: {{ day.col }}; grid-row: 2 / -1;" data-date="{{ day.iso }}" {% if day.weekend %}data-weekend="true"{% endif %} {% if day.today %}aria-current="date"{% endif %}></div>
+        {% endfor %}
+        {% for bar in board.bars %}
+        <div class="group relative min-w-0 py-2" style="grid-column: {{ bar.col }} / span {{ bar.span }}; grid-row: {{ bar.row|add:1 }};">
+          <a class="plan-bar flex h-full min-w-0 cursor-grab items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-primary/40 bg-primary/10 px-2 text-xs text-base-content transition-colors hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' bar.workorder %}" draggable="true" data-step="{{ bar.step }}" hx-get="{% url 'workorders:workorder_modal' bar.workorder %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()"><span class="font-mono font-medium">{{ bar.wo_no }}</span><span class="truncate">{{ bar.part_no }} {{ bar.item_name }} {{ bar.qty|comma }}</span></a>
+          {# 吹き出し: 棒と同じ箱の中で、カーソルを乗せるか棒に移ると出る。棒との間に隙間を空けない (中のボタンへ移れるように)。 #}
+          <div class="invisible absolute left-0 top-full z-20 w-72 group-hover:visible group-focus-within:visible" role="tooltip">
+            <div class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-lg">
+              <p class="font-mono font-medium">{{ bar.wo_no }}</p>
+              <p class="mt-2 break-words">{{ bar.part_no }} {{ bar.item_name }}</p>
+              <dl class="mt-2 grid grid-cols-[4rem_1fr] gap-x-2 text-xs">
+                <dt class="text-base-content/70">数量</dt><dd>{{ bar.qty|comma }}</dd>
+                <dt class="text-base-content/70">納期</dt><dd>{{ bar.due_date|date:"Y-m-d"|default:"—" }}</dd>
+                <dt class="text-base-content/70">日</dt><dd>{{ bar.start|date:"n/j" }} → {{ bar.end|date:"n/j" }}</dd>
+              </dl>
+              {% if bar.neighbors %}
+              <p class="mt-2 text-xs text-base-content/50">前後の工程</p>
+              <ul class="text-xs">
+                {% for other in bar.neighbors %}
+                <li class="flex justify-between gap-2"><span class="truncate">{{ other.name }}</span>{% if other.start %}<span>{{ other.start|date:"n/j" }} → {{ other.end|date:"n/j" }}</span>{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+              <button class="btn btn-ghost btn-sm mt-2" type="button" hx-post="{{ board.place_url }}" hx-vals='{"step": "{{ bar.step }}", "start": "", "process": "{{ board.process.pk }}", "board_start": "{{ board.board_start }}", "weeks": "{{ board.weeks }}"}' hx-target="#plan-board" hx-swap="outerHTML">未計画に戻す</button>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="未計画">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-lg font-bold">未計画</h2>
+        <span class="badge badge-neutral">{{ board.unplanned_count }}</span>
+      </div>
+      {% if board.unplanned %}
+      <ul class="mt-4 flex flex-col gap-2">
+        {% for card in board.unplanned %}
+        <li class="plan-card cursor-grab rounded-lg border border-base-300 bg-base-100 p-2 transition-colors hover:border-primary" draggable="true" data-step="{{ card.step }}">
+          <p class="font-mono font-medium">{{ card.wo_no }}</p>
+          <p class="truncate">{{ card.part_no }} {{ card.item_name }}</p>
+          <p class="text-xs text-base-content/70">数量 {{ card.qty|comma }}・納期 {{ card.due_date|date:"Y-m-d"|default:"—" }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="mt-4 text-base-content/70">未計画の予定はありません。</p>
+      {% endif %}
+    </section>
+  </div>
+</div>

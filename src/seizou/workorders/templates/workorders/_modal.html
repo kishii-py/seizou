@@ -1,0 +1,27 @@
+{% load seizou_icons seizou_tags %}
+{# 指示書の小窓。core/_modal.html と同じ形 (題・項目・「閉じる」・「詳細を開く」) に、工程の並び (予定の日) を足す。実績は出さない。 #}
+<div class="flex items-start justify-between gap-4">
+  <h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  {% for field in fields %}
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">{{ field.label }}</dt>
+    <dd class="min-w-0 break-words">{% if field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|comma }}{% endif %}</dd>
+  </div>
+  {% endfor %}
+</dl>
+<p class="mt-4 text-xs font-medium text-base-content/50">工程の並び</p>
+<table class="table table-sm mt-2">
+  <thead><tr><th class="w-12">順</th><th>工程</th><th>開始 → 終了</th></tr></thead>
+  <tbody>
+    {% for step in object.steps.all %}
+    <tr><td class="font-mono">{{ step.seq }}</td><td>{{ step.process.name }}</td><td>{% if step.planned_start %}{{ step.planned_start|date:"n/j" }} → {{ step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  {% if detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を開く{% icon "chevron-right" "size-4" %}</a>{% endif %}
+</div>

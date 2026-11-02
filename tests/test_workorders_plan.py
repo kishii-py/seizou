@@ -1,11 +1,17 @@
 """生産計画 (02 の 4 節)。工程の予定に日を置く関数 plan_step と、工程の「計画に使う」の印。"""
 
+import re
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.urls import reverse
+from django.utils import timezone
 
+from seizou.core import demo
+from seizou.core import fields as company_fields
 from seizou.core.exceptions import RuleViolation
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
@@ -161,3 +167,267 @@ def test_create_process_accepts_use_in_plan(user):
     plain.refresh_from_db()
     assert marked.use_in_plan is True
     assert plain.use_in_plan is False
+
+
+# 2 段目: 生産計画の画面
+
+WEEK = "?start=2026-11-02"
+
+
+@pytest.fixture
+def client_logged_in(client, user):
+    client.force_login(user)
+    return client
+
+
+def _board(client, process, query=WEEK):
+    return client.get(reverse("workorders:plan_board", args=[process.pk]) + query)
+
+
+def _place(client, step, start, process, **extra):
+    data = {
+        "step": step.pk,
+        "start": start,
+        "process": process.pk,
+        "board_start": "2026-11-02",
+        "weeks": "1",
+        **extra,
+    }
+    return client.post(reverse("workorders:plan_place"), data, HTTP_HX_REQUEST="true")
+
+
+def _bar_pattern(step):
+    return re.compile(rf'<a class="plan-bar[^>]*data-step="{step.pk}"')
+
+
+def _card_pattern(step):
+    return re.compile(rf'<li class="plan-card[^>]*data-step="{step.pk}"')
+
+
+def _tooltip(html, step):
+    """棒の箱 (棒と吹き出し) の HTML。棒の data-step から「未計画に戻す」のボタンの終わりまで。"""
+    begin = html.index(f'data-step="{step.pk}"')
+    return html[begin : html.index("未計画に戻す</button>", begin)]
+
+
+@pytest.mark.django_db
+def test_board_requires_login(client):
+    response = client.get(reverse("workorders:plan_index"))
+    assert response.status_code == 302
+    assert reverse("core:login") in response["Location"]
+
+
+@pytest.mark.django_db
+def test_board_shows_bar_and_unplanned(client_logged_in, user, line, cut, workorder, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    second = services.issue_workorder(line, 2, [{"process": cut, "planned_qty": 2}], user)
+    waiting = second.steps.get()
+
+    response = _board(client_logged_in, cut)
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert _bar_pattern(step).search(html)
+    assert workorder.wo_no in _tooltip(html, step)
+    unplanned = html[html.index("<h2 class=\"text-lg font-bold\">未計画</h2>") :]
+    assert '<span class="badge badge-neutral">1</span>' in unplanned
+    assert _card_pattern(waiting).search(unplanned)
+    assert second.wo_no in unplanned
+    assert not _card_pattern(step).search(html)
+
+
+@pytest.mark.django_db
+def test_place_post_returns_board_partial(client_logged_in, cut, step):
+    response = _place(client_logged_in, step, "2026-11-04", cut)
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert 'id="plan-board"' in html
+    assert "<html" not in html
+    assert _bar_pattern(step).search(html)
+    assert _dates(step) == (date(2026, 11, 4), date(2026, 11, 4))
+
+
+@pytest.mark.django_db
+def test_place_requires_login_post_and_htmx(client, user, cut, step):
+    url = reverse("workorders:plan_place")
+    data = {"step": step.pk, "start": "2026-11-04", "process": cut.pk}
+
+    anonymous = client.post(url, data, HTTP_HX_REQUEST="true")
+    assert anonymous.status_code == 302
+    assert reverse("core:login") in anonymous["Location"]
+
+    client.force_login(user)
+    assert client.get(url, HTTP_HX_REQUEST="true").status_code == 405
+    assert client.post(url, data).status_code == 400
+    assert _dates(step) == (None, None)
+
+
+@pytest.mark.django_db
+def test_move_post_keeps_length(client_logged_in, user, cut, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 5), user)
+
+    response = _place(client_logged_in, step, "2026-11-10", cut)
+
+    assert response.status_code == 200
+    assert _dates(step) == (date(2026, 11, 10), date(2026, 11, 11))
+
+
+@pytest.mark.django_db
+def test_unplan_post_clears_dates(client_logged_in, user, cut, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 5), user)
+
+    response = _place(client_logged_in, step, "", cut)
+
+    assert response.status_code == 200
+    assert _dates(step) == (None, None)
+    html = response.content.decode()
+    assert _card_pattern(step).search(html)
+    assert not _bar_pattern(step).search(html)
+
+
+@pytest.mark.django_db
+def test_place_cancelled_order_shows_r05(client_logged_in, user, order, cut, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    orders_services.cancel_order(order, user)
+
+    response = _place(client_logged_in, step, "2026-11-06", cut)
+
+    assert response.status_code == 200
+    assert response["HX-Retarget"] == "#plan-notice"
+    assert response["HX-Reswap"] == "innerHTML"
+    html = response.content.decode()
+    assert "alert-error" in html
+    assert "R05" in html
+    assert 'id="plan-board"' not in html
+    assert _dates(step) == (date(2026, 11, 4), date(2026, 11, 4))
+
+
+@pytest.mark.django_db
+def test_place_bad_date_shows_form_error(client_logged_in, cut, step):
+    response = _place(client_logged_in, step, "2026-13-40", cut)
+
+    assert response.status_code == 200
+    assert response["HX-Retarget"] == "#plan-notice"
+    assert "alert-error" in response.content.decode()
+    assert _dates(step) == (None, None)
+
+
+@pytest.mark.django_db
+def test_tooltip_has_neighbor_steps(client_logged_in, user, cut, bend, workorder, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+
+    tooltip = _tooltip(_board(client_logged_in, cut).content.decode(), step)
+    assert "曲げ" in tooltip
+    assert "未計画" in tooltip
+
+    services.plan_step(workorder.steps.get(process=bend), date(2026, 11, 6), date(2026, 11, 7), user)
+    tooltip = _tooltip(_board(client_logged_in, cut).content.decode(), step)
+    assert "曲げ" in tooltip
+    assert "11/6 → 11/7" in tooltip
+    assert "11/20" in tooltip or "2026-11-20" in tooltip
+    html = _board(client_logged_in, cut).content.decode()
+    begin = html.index(f'data-step="{step.pk}"')
+    assert "未計画に戻す" in html[begin : begin + 4000]
+    assert 'hx-target="#plan-board"' in html
+    assert 'hx-swap="outerHTML"' in html
+
+
+@pytest.mark.django_db
+def test_bar_opens_workorder_modal(client_logged_in, user, cut, workorder, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    modal_url = reverse("workorders:workorder_modal", args=[workorder.pk])
+
+    html = _board(client_logged_in, cut).content.decode()
+    assert f'hx-get="{modal_url}"' in html
+
+    response = client_logged_in.get(modal_url, HTTP_HX_REQUEST="true")
+    assert response.status_code == 200
+    modal = response.content.decode()
+    assert workorder.wo_no in modal
+    assert "詳細を開く" in modal
+    assert "工程の並び" in modal
+    assert "切断" in modal
+    assert "曲げ" in modal
+    assert "11/4 → 11/4" in modal
+
+
+@pytest.mark.django_db
+def test_no_marked_process_shows_sentence(client_logged_in, bend):
+    response = client_logged_in.get(reverse("workorders:plan_index"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "工程の画面で「計画に使う」に印を付けると、ここに工程ごとの計画が並びます" in html
+    assert "data-date" not in html
+    assert 'id="plan-board"' not in html
+
+
+@pytest.mark.django_db
+def test_pill_for_each_marked_process(client_logged_in, cut, bend):
+    paint = Process.objects.create(code="PAINT", name="塗装", sort_order=3, use_in_plan=True)
+
+    html = client_logged_in.get(reverse("workorders:plan_index") + WEEK).content.decode()
+
+    pills = html[html.index('aria-label="工程"') : html.index("</nav>", html.index('aria-label="工程"'))]
+    assert "切断" in pills
+    assert "塗装" in pills
+    assert "曲げ" not in pills
+    assert reverse("workorders:plan_board", args=[cut.pk]) in pills
+    assert reverse("workorders:plan_board", args=[paint.pk]) in pills
+
+
+@pytest.mark.django_db
+def test_unmarked_process_board_is_404(client_logged_in, cut, bend):
+    assert _board(client_logged_in, bend).status_code == 404
+    missing = client_logged_in.get(reverse("workorders:plan_board", args=[cut.pk + bend.pk + 100]))
+    assert missing.status_code == 404
+
+
+@pytest.mark.django_db
+def test_week_and_six_weeks(client_logged_in, cut):
+    html = _board(client_logged_in, cut).content.decode()
+    assert html.count('data-date="') == 7
+    assert html.count('data-weekend="true"') == 2
+    assert 'data-date="2026-11-02"' in html
+    assert 'data-date="2026-11-08"' in html
+
+    html = _board(client_logged_in, cut, WEEK + "&weeks=6").content.decode()
+    assert html.count('data-date="') == 42
+    assert html.count('data-weekend="true"') == 12
+
+
+@pytest.mark.django_db
+def test_today_marker(client_logged_in, cut):
+    today = timezone.localdate().isoformat()
+
+    html = _board(client_logged_in, cut, "").content.decode()
+
+    assert html.count('aria-current="date"') == 1
+    assert re.search(rf'data-date="{today}"[^>]*aria-current="date"', html)
+
+
+@pytest.mark.django_db
+def test_menu_has_plan_entry(client_logged_in):
+    html = client_logged_in.get(reverse("core:home")).content.decode()
+    assert "生産計画" in html
+    assert f'href="{reverse("workorders:plan_index")}"' in html
+
+
+# 2 段目: 作り物の種の印
+
+COMPANIES_DIR = Path(__file__).resolve().parents[1] / "examples" / "companies"
+PLAN_CODES = {"a_machining": {"TURN", "MILL", "GRIND"}, "b_plating": {"PLATE"}}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company_id", sorted(PLAN_CODES))
+def test_demo_seeds_mark_plan_processes(company_id, monkeypatch):
+    # 試験用の settings には会社ごとの項目の登録が無い。ほかの試験の登録が残っていても空にする。
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+
+    demo.load(COMPANIES_DIR / company_id)
+
+    marked = set(Process.objects.filter(use_in_plan=True).values_list("code", flat=True))
+    assert marked == PLAN_CODES[company_id]
+    assert Process.objects.filter(use_in_plan=False).count() == 5 - len(PLAN_CODES[company_id])
