@@ -7,14 +7,22 @@
 - masters の決まり (品番の一意・取引先の種類の 3 値・支払の月の 3 値・支払日の 1〜31・取引先 × 取引先の品番の一意) に当たったら、
   日本語の文の ValueError を投げる。中心の決まり (RULES.md の番号) は masters に無い。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
+- 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
+  作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
 """
 
 from __future__ import annotations
 
+import io
+import os
+import threading
 import unicodedata
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
+from django.core.files.base import ContentFile, File
 from django.db import transaction
+from django.db.models.fields.files import FieldFile
+from PIL import Image, ImageFile
 
 from seizou.core.models import Company
 
@@ -122,9 +130,117 @@ def _refuse_duplicate_process_code(code, *, exclude_pk=None):
         raise ValueError(f"工程コード {code} は既にあります。別のコードにしてください。")
 
 
+#: 図面の画素の上限。A0 を 400dpi で読んだ絵 (約 2.5 億画素) が入る大きさ (00 の案)。
+DRAWING_MAX_PIXELS = 300_000_000
+#: 表示用の PNG の長い辺の上限。大きい絵は縮める (原寸は元のファイルの link)。
+PREVIEW_MAX_SIDE = 2000
+#: Pillow で読む図面の拡張子 (大文字も)。ほかの形 (PDF など) は読まずに link だけ。
+DRAWING_IMAGE_SUFFIXES = (".tif", ".tiff", ".png", ".jpg", ".jpeg")
+#: 表示用の絵を作れなかったときの文 (本体の決めの字)。Pillow の例外の文は足さない。
+DRAWING_BROKEN_MESSAGE = "図面の表示用の絵は作れませんでした (ファイルが壊れています)。元のファイルは保存してあります。"
+DRAWING_TOO_LARGE_MESSAGE = (
+    "図面の表示用の絵は作れませんでした (絵が大きすぎます。{width}×{height} 画素)。"
+    "元のファイルは保存してあります。解像度を下げて付け直すと絵を作れます。"
+)
+# PNG に保存できる形。白黒 (1) は L にしてから縮める (そのまま縮めると細い線が消える)。
+_PREVIEW_MODES = ("L", "RGB", "RGBA")
+# Pillow の上限 (Image.MAX_IMAGE_PIXELS) と、途中で切れた絵を読むか (ImageFile.LOAD_TRUNCATED_IMAGES) は
+# module 全体の値なので、変えて戻す間を 1 つずつにする。
+_PIXEL_LIMIT_LOCK = threading.Lock()
+
+
+def _is_new_upload(value):
+    """新しく上げたファイルか。Django の File で、表に既にある FieldFile でない物 (画面の入力では UploadedFile)。"""
+    return isinstance(value, File) and not isinstance(value, FieldFile)
+
+
+def _drawing_preview(file):
+    """新しく上げた図面を読み、(表示用の PNG の bytes か None, 誤りの文か "") を返す。例外を外に出さない。
+
+    拡張子が DRAWING_IMAGE_SUFFIXES でなければ読まない。読んだ中身が PNG・JPEG ならそのまま絵で出すので None。
+    ほか (TIFF など) は 1 ページ目を PNG にし、長い辺を PREVIEW_MAX_SIDE まで縮める。
+    壊れている・大きすぎるときは None と誤りの文。読んだ後は (誤りのときも) 読む位置を先頭に戻す
+    (戻さないと元のファイルの保存が空になる)。
+    """
+    if not (getattr(file, "name", "") or "").lower().endswith(DRAWING_IMAGE_SUFFIXES):
+        return None, ""
+    try:
+        file.seek(0)
+        with _PIXEL_LIMIT_LOCK:
+            # Pillow の既定の上限では A0 の図面が読めないので、変換の間だけ外し、上限は DRAWING_MAX_PIXELS で見る。
+            # 帳票の PDF の道具 (WeasyPrint) は import のときに途中で切れた絵も読む設定にするので、
+            # 変換の間だけ切れた絵を誤りにする (そのままだと壊れた図面に知らせが出ない)。
+            saved_limit = Image.MAX_IMAGE_PIXELS
+            saved_truncated = ImageFile.LOAD_TRUNCATED_IMAGES
+            Image.MAX_IMAGE_PIXELS = None
+            ImageFile.LOAD_TRUNCATED_IMAGES = False
+            try:
+                return _read_drawing(file)
+            finally:
+                Image.MAX_IMAGE_PIXELS = saved_limit
+                ImageFile.LOAD_TRUNCATED_IMAGES = saved_truncated
+    # 壊れた中身で Pillow が出す例外 (UnidentifiedImageError・OSError・SyntaxError・ValueError・EOFError・
+    # DecompressionBombError など) は全部、壊れているの文にする。部品の保存を止めず、例外の文も出さない。
+    except Exception:  # noqa: BLE001
+        return None, DRAWING_BROKEN_MESSAGE
+    finally:
+        file.seek(0)
+
+
+def _read_drawing(file):
+    """_drawing_preview の中身。Pillow の上限を外した中で呼ぶ。"""
+    with Image.open(file) as image:
+        width, height = image.size
+        if width * height > DRAWING_MAX_PIXELS:
+            return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height)
+        image.load()  # Image.open は頭だけ読む。壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
+        if image.format in ("PNG", "JPEG"):
+            return None, ""
+        preview = image
+        if preview.mode == "1":
+            preview = preview.convert("L")
+        elif preview.mode not in _PREVIEW_MODES:
+            has_alpha = "A" in preview.getbands() or "transparency" in preview.info
+            preview = preview.convert("RGBA" if has_alpha else "RGB")
+        if max(preview.size) > PREVIEW_MAX_SIDE:
+            preview.thumbnail((PREVIEW_MAX_SIDE, PREVIEW_MAX_SIDE), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        preview.save(buffer, format="PNG")
+        return buffer.getvalue(), ""
+
+
+def _with_drawing_preview(data):
+    """data の図面 (drawing) を見て、表示用 (drawing_preview) と誤り (drawing_preview_error) を足した data を返す。
+
+    読むのは表と置き場に書く前。足した 2 つは部品の行と元のファイルと一緒に 1 回で書く。
+    - 新しく上げたファイル: 読んで、表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。
+    - 今の FieldFile (選び直していない) と、鍵が無いとき: data のまま (3 つとも変えない)。
+    - False・None・空 (入力の画面の「消す」): 図面と 2 つを空の字にする。
+    """
+    if "drawing" not in data:
+        return data
+    drawing = data["drawing"]
+    if _is_new_upload(drawing):
+        png, error = _drawing_preview(drawing)
+        preview = ""
+        if png is not None:
+            stem = os.path.splitext(os.path.basename(drawing.name))[0]
+            preview = ContentFile(png, name=f"{stem}.png")
+        return {**data, "drawing_preview": preview, "drawing_preview_error": error}
+    if isinstance(drawing, FieldFile):
+        return data
+    if not drawing:
+        return {**data, "drawing": "", "drawing_preview": "", "drawing_preview_error": ""}
+    return data
+
+
 def create_item(data, user, *, ext=None):
-    """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。"""
+    """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。
+
+    図面に新しいファイルが来たら、表示用の PNG を作る (作れなければ理由を drawing_preview_error に残し、部品は保存する)。
+    """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
+    data = _with_drawing_preview(data)
     with transaction.atomic():
         _refuse_duplicate_part_no(data["part_no"])
         item = Item.objects.create(**data)
@@ -133,8 +249,13 @@ def create_item(data, user, *, ext=None):
 
 
 def update_item(item, data, user, *, ext=None):
-    """data にある鍵だけを書き換える。品番を変えるときも一意を見る。"""
+    """data にある鍵だけを書き換える。品番を変えるときも一意を見る。
+
+    図面は、新しいファイルなら元・表示用・誤りの 3 つを書き換え、「消す」(False・None・空) なら 3 つとも空にし、
+    今のファイル (FieldFile) か鍵が無ければ 3 つとも変えない。差し替え・外した古いファイルは置き場に残す。
+    """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
+    data = _with_drawing_preview(data)
     with transaction.atomic():
         if "part_no" in data:
             _refuse_duplicate_part_no(data["part_no"], exclude_pk=item.pk)

@@ -111,11 +111,20 @@ class Item(models.Model):
     name = models.CharField("品名", max_length=100)
     drawing_no = models.CharField("図面番号", max_length=35, blank=True)
     drawing = models.FileField("図面ファイル", upload_to="drawings/", blank=True)
+    # 図面の表示用の PNG (元が TIFF などのとき、保存のときに 1 回だけ作る)。書くのは masters.services だけ。
+    drawing_preview = models.FileField(
+        "図面の表示用", upload_to="drawings/previews/", blank=True, editable=False
+    )
     unit = models.CharField("単位", max_length=10, blank=True)
     standard_price = models.DecimalField(
         "標準単価 (円)", max_digits=14, decimal_places=2, null=True, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # 図面の表示用の絵を作れなかった理由の 1 文 (空 = 作れた、か作る必要が無い)。書くのは masters.services だけ。
+    # 最後に置く (土台の小窓は先頭の 8 項目を出すので、その外に置き、小窓では黄色の 1 行で出す)。
+    drawing_preview_error = models.CharField(
+        "図面の表示用の誤り", max_length=500, blank=True, editable=False
+    )
 
     class Meta:
         verbose_name = "部品"
@@ -124,6 +133,21 @@ class Item(models.Model):
 
     def __str__(self):
         return f"{self.part_no} {self.name}"
+
+    @property
+    def display_drawing(self):
+        """絵として出す図面のファイル (読むだけ)。出す物が無ければ None。
+
+        表示用の絵を作れなかった (誤りの字がある) ときは None (壊れた絵を出さない)。
+        表示用の PNG があればそれ。無ければ元の図面が PNG・JPEG ならそれ。PDF などは None (link だけ)。
+        """
+        if self.drawing_preview_error:
+            return None
+        if self.drawing_preview:
+            return self.drawing_preview
+        if self.drawing and self.drawing.name.lower().endswith((".png", ".jpg", ".jpeg")):
+            return self.drawing
+        return None
 
 
 class PartnerItem(models.Model):
