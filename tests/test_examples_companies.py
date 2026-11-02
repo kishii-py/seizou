@@ -220,3 +220,152 @@ def test_b_plating_connects_from_a_machining_receive_only():
     partner = partner_rows("b_plating")[connection["取引先コード"]]
     assert partner["名前"] == load_answers("a_machining")["name"]
     assert partner["取引先の種類"] == "得意先"
+
+
+# ---------------------------------------------------------------- 新しい種のファイル (標準の工程・指示書・出荷・納品書・請求書・図面)
+
+MORE_SEED_YAML_ROOT_KEYS = {
+    "workorders.yaml": "指示書",
+    "shipments.yaml": "出荷",
+    "delivery_notes.yaml": "納品書",
+    "invoices.yaml": "請求書",
+}
+MORE_SEED_FILES = ("item_processes.csv", *MORE_SEED_YAML_ROOT_KEYS)
+ITEM_PROCESS_HEADER = ["自社品番", "工程コード", "順"]
+PLAN_WINDOW = ("2026-11-02", "2026-11-13")
+DRAWING_MAX_BYTES = 50 * 1024
+
+
+def company_dir(company_id):
+    return COMPANIES_DIR / company_id
+
+
+def orders_by_key(company_id):
+    """(得意先の取引先コード, 得意先の注文番号, 行番号) → 明細の数量。"""
+    found = {}
+    for order in load_seed_yaml(company_id, "orders.yaml")["受注"]:
+        for line_no, line in enumerate(order["明細"], start=1):
+            found[(order["得意先の取引先コード"], order["得意先の注文番号"], line_no)] = line["数量"]
+    return found
+
+
+def shipment_keys(company_id):
+    """種の出荷の (得意先の取引先コード, 得意先の注文番号, 行番号, 出荷日)。"""
+    return [
+        (s["得意先の取引先コード"], s["得意先の注文番号"], s["行番号"], str(s["出荷日"]))
+        for s in load_seed_yaml(company_id, "shipments.yaml")["出荷"]
+    ]
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_more_seed_files_exist(company_id):
+    for name in MORE_SEED_FILES:
+        assert (company_dir(company_id) / name).is_file(), name
+    for name, root in MORE_SEED_YAML_ROOT_KEYS.items():
+        data = load_seed_yaml(company_id, name)
+        assert set(data) == {root}, name
+        assert isinstance(data[root], list) and data[root], name
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_item_processes_header_and_codes(company_id):
+    path = company_dir(company_id) / "item_processes.csv"
+    assert path.read_bytes().startswith(BOM)
+    rows = read_csv_rows(path)
+    assert rows[0] == ITEM_PROCESS_HEADER
+    part_nos = {row[0] for row in read_csv_rows(company_dir(company_id) / "items.csv")[1:]}
+    codes = {p["工程コード"] for p in load_seed_yaml(company_id, "processes.yaml")["工程"]}
+    per_item = {}
+    for part_no, code, seq in rows[1:]:
+        assert part_no in part_nos, part_no
+        assert code in codes, code
+        per_item.setdefault(part_no, []).append(int(seq))
+    # 30 品の全部に 2〜4 工程。順は 1 から重ならずに並ぶ
+    assert set(per_item) == part_nos
+    for part_no, seqs in per_item.items():
+        assert 2 <= len(seqs) <= 4, part_no
+        assert sorted(seqs) == list(range(1, len(seqs) + 1)), part_no
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_seed_references_exist(company_id):
+    orders = orders_by_key(company_id)
+    work_orders = load_seed_yaml(company_id, "workorders.yaml")["指示書"]
+    shipments = shipment_keys(company_id)
+    for entry in work_orders:
+        assert (entry["得意先の取引先コード"], entry["得意先の注文番号"], entry["行番号"]) in orders
+    for customer, order_no, line_no, _day in shipments:
+        assert (customer, order_no, line_no) in orders
+    for name, root in (("delivery_notes.yaml", "納品書"), ("invoices.yaml", "請求書")):
+        for entry in load_seed_yaml(company_id, name)[root]:
+            assert entry["出荷"], name
+            for ref in entry["出荷"]:
+                key = (entry["得意先の取引先コード"], ref["得意先の注文番号"], ref["行番号"], str(ref["出荷日"]))
+                assert key in shipments, (name, key)
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_seed_shipments_within_order_qty(company_id):
+    orders = orders_by_key(company_id)
+    shipped = {}
+    for s in load_seed_yaml(company_id, "shipments.yaml")["出荷"]:
+        key = (s["得意先の取引先コード"], s["得意先の注文番号"], s["行番号"])
+        shipped[key] = shipped.get(key, 0) + s["数量"]
+    for key, total in shipped.items():
+        assert total <= orders[key], key
+    ordered = {}
+    for entry in load_seed_yaml(company_id, "workorders.yaml")["指示書"]:
+        key = (entry["得意先の取引先コード"], entry["得意先の注文番号"], entry["行番号"])
+        ordered[key] = ordered.get(key, 0) + entry["数量"]
+        assert all(step["予定の数"] == entry["数量"] for step in entry["工程"])
+    for key, total in ordered.items():
+        assert total <= orders[key], key
+    # 1 つの出荷は納品書 1 枚にだけ入る。同じ明細に同じ日の出荷は 2 つ無い
+    keys = shipment_keys(company_id)
+    assert len(keys) == len(set(keys))
+    noted = [
+        (n["得意先の取引先コード"], r["得意先の注文番号"], r["行番号"], str(r["出荷日"]))
+        for n in load_seed_yaml(company_id, "delivery_notes.yaml")["納品書"]
+        for r in n["出荷"]
+    ]
+    assert sorted(noted) == sorted(keys)
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_seed_plan_dates_this_and_next_week(company_id):
+    first, last = PLAN_WINDOW
+    this_week = next_week = 0
+    for entry in load_seed_yaml(company_id, "workorders.yaml")["指示書"]:
+        for step in entry["工程"]:
+            start, end = step.get("開始日"), step.get("終了日")
+            assert (start is None) == (end is None)
+            if start is None:
+                continue
+            assert first <= str(start) <= str(end) <= last, step
+            assert start.weekday() < 5 and end.weekday() < 5
+            if str(end) <= "2026-11-06":
+                this_week += 1
+            elif str(start) >= "2026-11-09":
+                next_week += 1
+    assert this_week and next_week
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_drawing_files_exist_and_are_small(company_id):
+    Image = pytest.importorskip("PIL.Image", reason="図面を開く Pillow が入っていない")
+
+    rows = read_csv_rows(company_dir(company_id) / "items.csv")
+    column = rows[0].index("図面ファイル")
+    names = [row[column] for row in rows[1:] if row[column]]
+    if company_id == "b_plating":
+        assert names == [] and not (company_dir(company_id) / "files").exists()
+        return
+    assert len(names) >= 3
+    for name in names:
+        assert "/" not in name and "\\" not in name and ".." not in name
+        path = company_dir(company_id) / "files" / name
+        assert path.is_file(), name
+        assert path.stat().st_size <= DRAWING_MAX_BYTES, name
+        with Image.open(path) as image:
+            assert image.format == ("TIFF" if name.lower().endswith(".tif") else "PNG")
+    assert any(name.lower().endswith(".tif") for name in names)

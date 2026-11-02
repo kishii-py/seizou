@@ -76,3 +76,9 @@ def test_skill_has_no_later_version_questions():
 def test_skill_has_no_html_comment():
     text = _read_skill()
     assert "<!--" not in text
+
+
+def test_skill_demo_uses_the_given_answers_path():
+    # --demo の種は答えの YAML の横の <id>/ にある。写した後の answers.yaml の道では見つからない。
+    _, body = _split_frontmatter(_read_skill())
+    assert "seizou new examples/companies/<id>.yaml --demo" in body

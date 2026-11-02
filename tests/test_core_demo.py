@@ -560,3 +560,76 @@ def test_plan_dates_go_through_plan_step(tmp_path, media):
     assert "1 件目" in str(caught.value)
     assert "開始日が終了日より後です" in str(caught.value)
     assert more_counts()["指示書"] == 0
+
+
+# 会社の id: 標準の工程の行・指示書・指示書の工程・出荷・納品書・請求書・請求書の明細・図面のある部品
+EXPECTED_MORE_COUNTS = {
+    "a_machining": {"標準の工程": 85, "指示書": 10, "指示書の工程": 26, "出荷": 21, "納品書": 6, "請求書": 2, "請求書の明細": 6, "図面": 4},
+    "b_plating": {"標準の工程": 120, "指示書": 10, "指示書の工程": 40, "出荷": 21, "納品書": 5, "請求書": 2, "請求書の明細": 5, "図面": 0},
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company_id", sorted(EXPECTED_MORE_COUNTS))
+def test_examples_load_more_kinds(company_id, no_registration, media):
+    from seizou.shipping.models import Shipment
+    from seizou.workorders.models import WorkOrderStep
+
+    expected = EXPECTED_MORE_COUNTS[company_id]
+    summary = demo.load(COMPANIES_DIR / company_id)
+
+    got = more_counts()
+    assert got == {key: expected[key] for key in got}
+    assert summary["指示書"]["入れた"] == 10
+    assert summary["図面"]["入れた"] == expected["図面"]
+    # 受注の 10 件は出荷済み。出荷は全部が発行の納品書に入っている
+    assert Order.objects.filter(status=Order.STATUS_SHIPPED).count() == 10
+    assert Shipment.objects.filter(delivery_note__isnull=True).count() == 0
+    assert not Shipment.objects.exclude(delivery_note__status="issued").exists()
+    # 工程の予定に日のある工程があり、計画に使う工程だけに置いてある
+    dated = WorkOrderStep.objects.filter(planned_start__isnull=False)
+    assert dated.exists()
+    assert all(step.process.use_in_plan for step in dated)
+    # 例の種では「注意」の文を増やさない (品目の項目の登録が無い 1 件だけ)
+    assert len(summary["注意"]) == 1
+
+    drawings = Item.objects.exclude(drawing="")
+    assert drawings.count() == expected["図面"]
+    if company_id == "a_machining":
+        tiff = Item.objects.get(drawing__endswith=".tif")
+        assert tiff.drawing_preview and tiff.drawing_preview_error == ""
+        assert all(item.drawing_preview_error == "" for item in drawings)
+
+    # 2 回目は新しい 6 種類が全部「入れた 0」
+    again = demo.load(COMPANIES_DIR / company_id)
+    assert all(again[kind]["入れた"] == 0 for kind in MORE_KIND_NAMES)
+    assert more_counts() == got
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company_id", sorted(EXPECTED_MORE_COUNTS))
+def test_examples_new_kinds_go_into_an_existing_site(company_id, tmp_path, no_registration, media):
+    """今ある置き場 (古い 6 種類だけ入っている) に load を打ち直すと、新しい 6 種類だけが入る。"""
+    import shutil
+
+    old = tmp_path / "old"
+    shutil.copytree(
+        COMPANIES_DIR / company_id,
+        old,
+        ignore=shutil.ignore_patterns(
+            "item_processes.csv", "workorders.yaml", "shipments.yaml", "delivery_notes.yaml", "invoices.yaml", "files"
+        ),
+    )
+    demo.load(old)
+    assert more_counts()["出荷"] == 0
+
+    summary = demo.load(COMPANIES_DIR / company_id)
+
+    assert all(summary[kind]["入れた"] == 0 and summary[kind]["飛ばした"] > 0 for kind in demo.KINDS)
+    expected = EXPECTED_MORE_COUNTS[company_id]
+    assert summary["指示書"]["入れた"] == expected["指示書"]
+    assert summary["出荷"]["入れた"] == expected["出荷"]
+    assert summary["納品書"]["入れた"] == expected["納品書"]
+    assert summary["請求書"]["入れた"] == expected["請求書"]
+    assert summary["標準の工程"]["入れた"] == 30
+    assert summary["図面"]["入れた"] == expected["図面"]
