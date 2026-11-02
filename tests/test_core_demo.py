@@ -4,17 +4,22 @@
 """
 
 import csv
+import os
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 import yaml
 from django.contrib.auth import get_user_model
 
+from seizou import cli
 from seizou.connect.models import Connection
 from seizou.core import demo
 from seizou.core import fields as company_fields
 from seizou.masters.models import Item, Partner, PartnerItem, Process
 from seizou.orders.models import Order
+
+COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
 
 ITEM_HEADER = ["自社品番", "品名", "図面番号", "図面ファイル", "単位", "標準単価", "備考"]
 PARTNER_HEADER = ["取引先コード", "名前", "略称", "区分", "締日", "支払日", "小計の計算方法", "消費税の計算方法", "備考"]
@@ -210,3 +215,91 @@ def test_labels_map_to_choices(tmp_path):
         ("S001", "send", "http://127.0.0.1:8002/connect/receive/order/"),
         ("B001", "receive", ""),
     }
+
+
+# ---------------------------------------------------------------- 2 段目: 2 社の種
+
+# 会社の id: (品目, 取引先, 品番の対応, 工程, 受注, つながり)
+EXPECTED_EXAMPLE_COUNTS = {
+    "a_machining": (30, 5, 10, 5, 20, 1),
+    "b_plating": (30, 5, 10, 5, 20, 1),
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company_id", sorted(EXPECTED_EXAMPLE_COUNTS))
+def test_examples_load_into_test_db(company_id, no_registration):
+    summary = demo.load(COMPANIES_DIR / company_id)
+
+    items, partners, partner_items, processes, orders, connections = EXPECTED_EXAMPLE_COUNTS[company_id]
+    assert counts() == {
+        "品目": items,
+        "取引先": partners,
+        "品番の対応": partner_items,
+        "工程": processes,
+        "受注": orders,
+        "つながり": connections,
+    }
+    assert all(summary[kind]["飛ばした"] == 0 for kind in demo.KINDS)
+    # 会社ごとの項目は登録が無いので入れず、入れなかった旨が要約に出る
+    assert len(summary["注意"]) == 1
+    assert "会社ごとの項目が登録されていないので 2 列を入れませんでした" in summary["注意"][0]
+    # 受注の明細は 1〜3 行、金額は数量 × 単価 (端数は取引先の方法で丸める)
+    for order in Order.objects.all():
+        lines = list(order.lines.all())
+        assert 1 <= len(lines) <= 3
+        assert order.customer_order_no
+        for line in lines:
+            assert line.unit_price > 0
+            assert abs(line.amount - line.qty * line.unit_price) <= Decimal("0.5")
+
+
+def read_seed_csv(company_id, name):
+    with open(COMPANIES_DIR / company_id / name, encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_b_partner_items_cover_a_part_numbers():
+    a_part_numbers = {row["自社品番"] for row in read_seed_csv("a_machining", "items.csv")}
+    b_part_numbers = {row["自社品番"] for row in read_seed_csv("b_plating", "items.csv")}
+    rows = read_seed_csv("b_plating", "partner_items.csv")
+
+    assert rows
+    # 相手の品番のまま届き、自社の品番で受ける: 取引先の品番は A 社の自社品番、自社品番は B 社の品目
+    assert {row["取引先の品番"] for row in rows} <= a_part_numbers
+    assert {row["自社品番"] for row in rows} <= b_part_numbers
+    # 取引先は B 社の取引先のうち A 社 (得意先) の行
+    a_name = yaml.safe_load((COMPANIES_DIR / "a_machining.yaml").read_text(encoding="utf-8"))["name"]
+    a_codes = {row["取引先コード"] for row in read_seed_csv("b_plating", "partners.csv") if row["名前"] == a_name}
+    assert {row["取引先コード"] for row in rows} == a_codes
+    # A 社の側の品番の対応は、A 社の得意先の品番 → A 社の自社品番
+    a_rows = read_seed_csv("a_machining", "partner_items.csv")
+    assert {row["自社品番"] for row in a_rows} <= a_part_numbers
+
+
+def test_seizou_new_demo_end_to_end(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path))
+
+    code = cli.main(["new", str(COMPANIES_DIR / "a_machining.yaml"), "--demo"])
+
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "作り物のデータを入れました" in out
+    site = tmp_path / "a_machining"
+    count = (
+        "import importlib; load = importlib.import_module('seizou.core.demo').load; "
+        "import pathlib; seeds = pathlib.Path({seeds!r}); "
+        "models = importlib.import_module('seizou.masters.models'); "
+        "ext = importlib.import_module('fields.models'); "
+        "print('COUNT', models.Item.objects.count(), ext.ItemExt.objects.count()); "
+        "load(seeds); "
+        "print('AGAIN', models.Item.objects.count(), ext.ItemExt.objects.count())"
+    ).format(seeds=str(COMPANIES_DIR / "a_machining"))
+    result = cli.run_manage(site, ["shell", "--no-imports", "-c", count])
+    assert result.returncode == 0, result.stderr
+    lines = {line.split()[0]: line.split()[1:] for line in result.stdout.splitlines() if line.startswith(("COUNT", "AGAIN"))}
+    assert lines["COUNT"][0] == "30"
+    assert int(lines["COUNT"][1]) >= 1
+    # 2 回目の load で数が増えない
+    assert lines["AGAIN"] == lines["COUNT"]
+    assert os.path.exists(site / "db.sqlite3")

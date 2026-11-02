@@ -170,6 +170,11 @@ def test_seed_csv_headers(company_id):
         assert rows and rows[0] == header, name
 
 
+def partner_rows(company_id):
+    rows = read_csv_rows(COMPANIES_DIR / company_id / "partners.csv")
+    return {row[0]: dict(zip(rows[0], row, strict=True)) for row in rows[1:]}
+
+
 def test_a_machining_connects_to_b_plating_without_secret_value():
     connections = load_seed_yaml("a_machining", "connections.yaml")["つながり"]
     b_port = load_answers("b_plating")["port"]
@@ -187,10 +192,30 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     url = urlsplit(connection["受け口の URL"])
     assert url.scheme == "http"
     assert url.port == b_port
-    # パスは空欄の印だけ (受け口のパスは後で決める)
-    assert BLANK_MARK_PATTERN.fullmatch(url.path.removeprefix("/"))
+    # 受け口のパスは connect の受け口 (D15)。空欄の印は残っていない
+    assert url.path == "/connect/receive/order/"
     assert not url.query and not url.fragment
+    assert not BLANK_MARK_PATTERN.search(connection["受け口の URL"])
+
+    # 取引先コードは A 社の partners.csv にあり、その行は外注先 (B 社)
+    partner = partner_rows("a_machining")[connection["取引先コード"]]
+    assert partner["区分"] == "外注先"
+    assert partner["名前"] == load_answers("b_plating")["name"]
 
 
-def test_b_plating_has_no_connection():
-    assert load_seed_yaml("b_plating", "connections.yaml")["つながり"] == []
+def test_b_plating_connects_from_a_machining_receive_only():
+    connections = load_seed_yaml("b_plating", "connections.yaml")["つながり"]
+
+    assert len(connections) == 1
+    connection = connections[0]
+    assert set(connection) == CONNECTION_KEYS
+    assert connection["向き"] == "受ける"
+    # 受ける向きの受け口の URL は空 (相手が送ってくる側)
+    assert connection["受け口の URL"] == ""
+    secret_env = SECRET_ENV_PATTERN.fullmatch(connection["鍵の置き場の名前"])
+    assert secret_env is not None
+    assert secret_env.group(1) == OTHER_COMPANY["b_plating"].upper()
+    # 取引先コードは B 社の partners.csv にあり、その行は A 社 (得意先)
+    partner = partner_rows("b_plating")[connection["取引先コード"]]
+    assert partner["名前"] == load_answers("a_machining")["name"]
+    assert partner["区分"] == "得意先"

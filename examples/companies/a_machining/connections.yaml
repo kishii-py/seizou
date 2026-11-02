@@ -9,7 +9,7 @@
 #
 # つながりの並び
 つながり:
-  - 取引先コード: "[空欄: B 社の取引先コード・partners.csv に B 社の行を足すときに決める]"
-    受け口の URL: "http://127.0.0.1:8002/[空欄: 受け口のパス・connect の命令で決める]"
+  - 取引先コード: S001
+    受け口の URL: "http://127.0.0.1:8002/connect/receive/order/"
     鍵の置き場の名前: SEIZOU_PARTNER_B_PLATING_SECRET
     向き: 送る
