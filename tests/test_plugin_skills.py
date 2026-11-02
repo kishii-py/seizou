@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = ROOT / "plugin" / "skills"
 
 # このテストのファイルが中身を見る skill
-SKILLS = ["connect"]
+SKILLS = ["connect", "manual"]
 
 # 書かない言い回し (文書の決まり)
 BANNED_PHRASES = ["壊れない", "準拠"]
@@ -119,3 +119,9 @@ def test_connect_uses_service_and_env_name():
         assert word in body, f"connect の本文に {word} が無い"
     for word in ("Connection.objects", "objects.create"):
         assert word not in body, f"connect の本文に {word} がある (表に直接書かず、register_connection を通す)"
+
+
+def test_manual_uses_screen_catalog():
+    body = _body("manual")
+    for word in ("seizou_screens", "--format tsv", "manual/", "images/"):
+        assert word in body, f"manual の本文に {word} が無い"
