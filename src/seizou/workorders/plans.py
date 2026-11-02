@@ -19,6 +19,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
 
+from seizou.core.conf import setting
+
 from .models import WorkOrder, WorkOrderStep
 
 WEEKDAYS = "月火水木金土日"
@@ -34,11 +36,13 @@ def marked_processes():
 
 
 def resolve_process(process_pk=None):
-    """盤の工程を決める。
+    """盤の工程を決める。会社の設定 production_plan が偽なら、印の付いた工程があっても Http404。
 
     process_pk が None なら印の付いた最初の工程 (印が 1 つも無ければ None)。
     pk が来たら印の付いた工程だけを返し、無い工程・印の無い工程・読めない pk は Http404。
     """
+    if not setting("production_plan"):
+        raise Http404("生産計画を使わない設定です。")
     marked = marked_processes()
     if process_pk is None:
         return marked.first()

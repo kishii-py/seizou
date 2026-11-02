@@ -431,3 +431,47 @@ def test_demo_seeds_mark_plan_processes(company_id, monkeypatch):
     marked = set(Process.objects.filter(use_in_plan=True).values_list("code", flat=True))
     assert marked == PLAN_CODES[company_id]
     assert Process.objects.filter(use_in_plan=False).count() == 5 - len(PLAN_CODES[company_id])
+
+
+# 2 段目: 会社の設定 production_plan (立ち上げの問 3)
+
+
+def _menu_html(client):
+    return client.get(reverse("core:home")).content.decode()
+
+
+@pytest.mark.django_db
+def test_production_plan_off_hides_menu_and_board(settings, client_logged_in, cut, step):
+    settings.SEIZOU = {"production_plan": False}
+
+    html = _menu_html(client_logged_in)
+    assert "生産計画" not in html
+    assert "指示書" in html
+    assert reverse("workorders:plan_index") not in html
+    assert client_logged_in.get(reverse("workorders:plan_index")).status_code == 404
+    assert _board(client_logged_in, cut).status_code == 404
+    assert _place(client_logged_in, step, "2026-11-04", cut).status_code == 404
+    assert _dates(step) == (None, None)
+
+
+@pytest.mark.django_db
+def test_production_plan_on_shows_menu_and_board(settings, client_logged_in, cut):
+    settings.SEIZOU = {"production_plan": True}
+
+    html = _menu_html(client_logged_in)
+    assert "生産計画" in html
+    assert f'href="{reverse("workorders:plan_index")}"' in html
+    assert _board(client_logged_in, cut).status_code == 200
+
+
+@pytest.mark.django_db
+def test_production_plan_default_is_true(settings, client_logged_in, cut):
+    from seizou import cli
+    from seizou.core import conf
+
+    assert conf.DEFAULTS["production_plan"] is True
+    assert cli.SETTING_DEFAULTS["production_plan"] is True
+    settings.SEIZOU = {"order_form": "multi"}
+    html = _menu_html(client_logged_in)
+    assert "生産計画" in html
+    assert _board(client_logged_in, cut).status_code == 200

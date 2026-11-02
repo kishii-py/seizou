@@ -31,7 +31,7 @@ SETTING_VALUES = {
     "over_workorder": {"warn", "stop", "off"},
     "order_number": {"seq", "ym_seq"},
 }
-BOOL_SETTINGS = {"partial_shipment"}
+BOOL_SETTINGS = {"partial_shipment", "production_plan"}
 
 FIELD_KEYS = {"label", "type", "required", "in_list", "searchable"}
 FIELD_TYPES = {"text", "number", "date", "choice", "bool"}

@@ -38,5 +38,7 @@ settings:
   order_number: seq
   # 使わない注文の項目 (受注と受注の明細の列の名前) の一覧。決まりが見る項目は隠せない
   hidden_fields: []
+  # 生産計画を立てるか (問 3。true = 生産計画の画面を使う / false = 使わない)
+  production_plan: true
 # 開発サーバーのポート
 port: 8001
