@@ -1,8 +1,8 @@
 """画面の土台 (01 の 2 節と 10.3)。
 
 部品の画面はここの Base*View を継承する (R15)。継承した画面が上書きしてよいのは
-columns・search_fields・tabs・form_class・service・template_name・get_queryset・
-screen_name・screen_help の 9 つだけ (OVERRIDABLE)。
+model・ordering・columns・search_fields・tabs・form_class・service・template_name・
+get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
 
 約束:
 - 一覧: 検索 (q)・並び替え (sort)・ページ送り (page・per) ・会社ごとの項目の列・同じ条件の CSV (format=csv)。
@@ -45,6 +45,8 @@ from seizou.core.exceptions import CheckViolation, RuleError
 
 #: 継承した画面が上書きしてよい属性 (R15 の 2 文目。決まりの検査が見る)
 OVERRIDABLE = (
+    "model",
+    "ordering",
     "columns",
     "search_fields",
     "tabs",
