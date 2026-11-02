@@ -13,4 +13,5 @@ PARTS = [
     "seizou.purchasing",
     "seizou.workorders",
     "seizou.progress",
+    "seizou.billing",
 ]

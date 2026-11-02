@@ -1,0 +1,6 @@
+{% extends "core/form.html" %}
+{# 請求書を取り消す: 欄の無い form。入っていた出荷は、また請求できる。 #}
+{% block content %}
+<p class="mb-4 text-base-content/70">この請求書を取り消します。入っていた出荷は、また請求できます。</p>
+{{ block.super }}
+{% endblock %}
