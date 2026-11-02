@@ -275,3 +275,16 @@ def test_model_line_covers_every_type():
     assert "DecimalField('number', max_digits=14, decimal_places=2)" in lines[1]
     assert "DateField('date', null=True, blank=True)" in lines[2]
     assert "BooleanField('bool', default=False, blank=True)" in lines[4]
+
+
+def test_company_row_has_answer_name(built):
+    # 画面の上の帯に出る会社名は、答えの name で core の Company に 1 行作る。
+    result = manage(
+        built["site"],
+        "shell",
+        "--no-imports",
+        "-c",
+        "from seizou.core.models import Company; print(Company.objects.get().name)",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "見本の会社"
