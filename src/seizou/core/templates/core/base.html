@@ -53,6 +53,7 @@ seizou_tags.master_link の link
 {# 小窓の枠はここの 1 か所。中身は <app>/_modal.html か core/_modal.html を htmx で入れる。Esc と外側の押下で閉じ、開いたらカーソルは閉じるボタン (autofocus)。 #}
 <dialog id="seizou-modal" class="modal" aria-label="小窓"><div id="seizou-modal-box" class="modal-box max-w-lg rounded-xl p-6"></div><form method="dialog" class="modal-backdrop"><button tabindex="-1">閉じる</button></form></dialog>
 {# 済んだ事の知らせ (messages) は右上の toast。block body の外に置き、ログインの画面でも出す。 #}
+{% if "assistant" in seizou.parts and user.is_authenticated %}{% include "assistant/_panel.html" %}{% endif %}
 {% include "core/_toasts.html" %}
 <script>
 (function () {
