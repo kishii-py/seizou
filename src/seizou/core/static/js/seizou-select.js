@@ -74,6 +74,9 @@
       plugins: plugins,
       maxOptions: null,
       preload: "focus",
+      // 打ってから取りに行くまでの待ちは loadThrottle の 250ms だけにする
+      // (部品の既定は、打った後に refreshThrottle の 300ms を待ってから loadThrottle を待つ)。
+      refreshThrottle: 0,
       loadThrottle: DELAY_MS,
       placeholder: select.getAttribute("data-placeholder") || "字を打って探す",
       // 空の字でも取りに行く (部品の既定は空の検索を取りに行かない)。
