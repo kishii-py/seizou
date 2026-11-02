@@ -9,6 +9,7 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   htmx の要求には行の部分 (<app>/_rows.html か core/_rows.html) だけを返す。ただしブラウザの戻る
   (htmx の HX-History-Restore-Request) には画面の全体を返す。部分と全体は同じ URL なので Vary: HX-Request を付ける。
   合計の行は、列が合計を選んだときだけ出す (BaseListView の docstring)。
+  画面の全体を描くときも、行の部分は同じ順 (<app>/_rows.html → core/_rows.html) で選ぶ (core/list.html の include)。
 - 詳細: 1 件の項目と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。
 - 入力: form の値が通ったら、まず検査の層 (seizou.core.checks.run) を通し、それから service を呼ぶ。
   ポカよけの止めるは赤の知らせ、知らせるは黄の知らせと「このまま保存」(confirmed=1 で保存)、
@@ -16,6 +17,7 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   検査の層に渡す data と service の引数は form が決める: form に service_kwargs() があればその辞書、
   無ければ cleaned_data (会社ごとの項目は ext= に分けて渡す)。検査の層の action は service の module と名前
   (例 seizou.shipping.services.ship → "shipping.ship")。
+  新規登録の画面は、GET の値のうち form の欄の名前と同じ物を初期値にする (例 ?order_line=<pk>)。保存はいつもの検査と service を通る。
 - 小窓: 見るだけと「詳細を見る」。template は <app>/_modal.html か core/_modal.html。
   会社ごとの項目 (一覧に出す物) と、tabs の関係する物も出す。htmx でない要求 (新しいタブ) は詳細へ移す。
 - 画面の応答はブラウザに保存させない (Cache-Control: no-store。ログアウトの後の戻るで中身を見せない)。
@@ -335,6 +337,7 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_page"] = self.query_without("page", "format")
         context["query_without_sort"] = self.query_without("sort", "page", "format")
         context["create_url"] = model_url(self.model, "create")
+        context["rows_template_names"] = self.rows_template_names()
         return context
 
     def rows_template_names(self) -> list[str]:
@@ -451,6 +454,23 @@ class BaseFormView(ScreenMixin, FormView):
         if self.model is not None and "pk" in kwargs:
             self.object = get_object_or_404(self.model, pk=kwargs["pk"])
         return super().dispatch(request, *args, **kwargs)
+
+    def get_initial(self):
+        """form の初期値。class の initial の写しに、新規登録の画面の GET の値を足す。
+
+        受注の明細から出荷の新規登録・指示書の発行へ、明細を選んだ形で移る入口のため (例 ?order_line=<pk>)。
+        写すのは GET の鍵のうち form の欄 (base_fields) と同じ名前の物だけで、値は字のまま (同じ鍵が 2 つあれば後の物)。
+        写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・form に無い鍵・会社ごとの項目 (ext__)。
+        値の検査はしない。保存のときに form と検査の層と service が見る (数でない値や無い pk は、選ぶ欄が何も選ばないだけ)。
+        """
+        initial = super().get_initial()
+        if self.request.method != "GET" or self.object is not None:
+            return initial
+        names = getattr(self.get_form_class(), "base_fields", {})
+        for name in self.request.GET:
+            if name in names and not name.startswith(company_fields.EXT_PREFIX):
+                initial[name] = self.request.GET.get(name)
+        return initial
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
