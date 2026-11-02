@@ -1,0 +1,63 @@
+{% load seizou_icons %}
+{# 上の帯の ☆ と小窓 (tag bookmark_star が描く)。利用者のメニューと同じ <details> の形で、JS は書かない。 #}
+{# form は summary の中でなく小窓の中に置く。送った後は next (今の画面) へ戻る。登録済みの塗りは要素ごと出し分ける (R19)。 #}
+{% if user.is_authenticated %}
+<details class="dropdown dropdown-end">
+  <summary class="btn btn-square btn-sm btn-outline border-base-300 list-none [&::-webkit-details-marker]:hidden" aria-label="ブックマーク" title="ブックマーク">
+    {% if bookmarked %}{% icon "star" "size-4 fill-current" %}{% else %}{% icon "star" "size-4" %}{% endif %}
+  </summary>
+  <div class="dropdown-content z-40 mt-2 w-72 rounded-lg border border-base-300 bg-base-100 p-3 shadow-sm">
+    <p class="text-xs font-bold text-base-content/50">このページ</p>
+    <div class="mt-2 flex items-center gap-2">
+      <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ current_label|default:"—" }}</span>
+      {% if bookmarked %}<span class="badge badge-sm badge-ghost">登録済み</span>{% endif %}
+    </div>
+    {% if bookmarked %}
+    <form method="post" action="{% url 'bookmarks:toggle' %}" class="mt-2">{% csrf_token %}
+      <input type="hidden" name="url_name" value="{{ current_url_name }}">
+      <input type="hidden" name="on" value="0">
+      <input type="hidden" name="next" value="{{ next_path }}">
+      <button type="submit" class="btn btn-sm btn-ghost text-error">外す</button>
+    </form>
+    {% elif can_bookmark %}
+    <form method="post" action="{% url 'bookmarks:toggle' %}" class="mt-2">{% csrf_token %}
+      <input type="hidden" name="url_name" value="{{ current_url_name }}">
+      <input type="hidden" name="on" value="1">
+      <input type="hidden" name="next" value="{{ next_path }}">
+      <button type="submit" class="btn btn-sm btn-outline">{% icon "star" "size-4" %}このページを登録</button>
+    </form>
+    {% else %}
+    <p class="mt-2 text-xs text-base-content/70">一覧や目録の画面だけ登録できます。</p>
+    {% endif %}
+    <div class="mt-4 border-t border-base-300 pt-2">
+      <p class="text-xs font-bold text-base-content/50">ブックマーク ({{ bookmarks|length }})</p>
+      {% if bookmarks %}
+      <ul class="menu mt-2 w-full p-0">
+        {% for item in bookmarks %}
+        {% if item.lost %}
+        <li><div class="flex items-center gap-2">
+          {% icon "list" "size-4 text-base-content/50" %}
+          <span class="min-w-0 flex-1 truncate text-base-content/50">{{ item.label }} (見つかりません)</span>
+          <form method="post" action="{% url 'bookmarks:toggle' %}">{% csrf_token %}
+            <input type="hidden" name="url_name" value="{{ item.url_name }}">
+            <input type="hidden" name="on" value="0">
+            <input type="hidden" name="next" value="{{ next_path }}">
+            <button type="submit" class="btn btn-xs btn-ghost text-error">消す</button>
+          </form>
+        </div></li>
+        {% else %}
+        <li><a class="flex items-center gap-2" href="{{ item.url }}">
+          {% icon item.icon "size-4" %}
+          <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+          {% if item.url_name == current_url_name %}<span class="badge badge-sm">表示中</span>{% endif %}
+        </a></li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="mt-2 text-xs text-base-content/70">登録した画面がここに並びます。</p>
+      {% endif %}
+    </div>
+  </div>
+</details>
+{% endif %}
