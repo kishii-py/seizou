@@ -1,0 +1,52 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{% block content %}
+{# 設定: 会社の選べる設定 (読むだけ)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。 #}
+<div class="grid gap-6 lg:grid-cols-2">
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
+    <h2 id="company-settings-title" class="text-lg font-bold">会社の選べる設定</h2>
+    <p class="mt-2 text-xs text-base-content/70">今の値。変えるときは、置き場の <code class="font-mono">settings.py</code> の <code class="font-mono">SEIZOU</code> か、答えの YAML を直して起動し直す。画面から変える形は次の版。</p>
+    <div class="mt-4 overflow-auto rounded-lg border border-base-300">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">設定</th><th class="font-medium">今の値</th><th class="font-medium">鍵</th></tr></thead>
+        <tbody>
+          {% for row in company_settings %}
+          <tr><td class="whitespace-nowrap">{{ row.label }}</td><td>{{ row.value }}</td><td class="whitespace-nowrap font-mono text-xs text-base-content/70">{{ row.key }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <div class="flex flex-col gap-6">
+    <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="links-title">
+      <h2 id="links-title" class="text-lg font-bold">普段は触らない物</h2>
+      <ul class="mt-4 flex flex-col gap-2">
+        {% for link in links %}
+        {% if link.url %}
+        <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ link.url }}">
+          <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon link.icon "size-5" %}</span>
+          <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs text-base-content/70">{{ link.help }}</span></span>
+          {% icon "chevron-right" "size-4 text-base-content/50" %}
+        </a></li>
+        {% else %}
+        <li><div class="flex items-center gap-4 rounded-lg border border-dashed border-base-300 p-4 text-base-content/50">
+          <span class="rounded-lg bg-base-200 p-2">{% icon link.icon "size-5" %}</span>
+          <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs">{{ link.help }} この会社にはまだ入っていない。</span></span>
+        </div></li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </section>
+    <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="system-title">
+      <h2 id="system-title" class="text-lg font-bold">システムの状態</h2>
+      <p class="mt-2 text-xs text-base-content/70">鍵の値は出さない (有るか無いかだけ)。変えるのは置き場の <code class="font-mono">.env</code>。</p>
+      <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+        {% for row in system_rows %}
+        <dt class="whitespace-nowrap text-base-content/70">{{ row.label }}</dt><dd>{{ row.value }}</dd>
+        {% endfor %}
+        <dt class="whitespace-nowrap text-base-content/70">入っている部品</dt><dd class="font-mono text-xs">{{ parts|join:"・" }}</dd>
+      </dl>
+    </section>
+  </div>
+</div>
+{% endblock %}

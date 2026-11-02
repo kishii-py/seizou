@@ -25,6 +25,7 @@
       </summary>
       <ul class="dropdown-content menu z-40 mt-2 w-48 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         <li class="menu-title truncate text-xs">{{ name }}</li>
+        <li><a href="{% url 'core:settings' %}" class="flex items-center gap-2">{% icon "settings" "size-4" %}設定</a></li>
         <li><form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button type="submit" class="flex w-full items-center gap-2">{% icon "logout" "size-4" %}ログアウト</button></form></li>
       </ul>
     </details>

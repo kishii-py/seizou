@@ -16,6 +16,7 @@ from django.urls import include, path, re_path
 from seizou.core.manual import ManualView, manual_image
 from seizou.core.media import protected_file
 from seizou.core.search import SearchView
+from seizou.core.settings_screen import SettingsView
 from seizou.core.views import HomeView, RememberLoginView
 from seizou.parts import PARTS
 
@@ -37,6 +38,7 @@ core_patterns = [
     path("search/", SearchView.as_view(), name="search"),
     path("manual/", ManualView.as_view(), name="manual"),
     path("manual/images/<str:name>", manual_image, name="manual_image"),
+    path("settings/", SettingsView.as_view(), name="settings"),
     path("login/", RememberLoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
 ]

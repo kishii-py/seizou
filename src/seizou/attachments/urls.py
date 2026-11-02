@@ -11,7 +11,8 @@ from . import views
 app_name = "attachments"
 
 #: 左のメニューに並べる入口 (core の context processor が読む。区分は「その他」)
-MENU = [("添付ファイル", "attachments:attachment_list")]
+# 添付ファイルの一覧は普段は使わない (付けるのは各詳細の枠から) ので、左のメニューに出さず設定の画面 (core:settings) から開く (本人の指摘 11-03 昼)。
+MENU = []
 
 urlpatterns = [
     path("", views.AttachmentListView.as_view(), name="attachment_list"),
