@@ -1,6 +1,6 @@
 {% load static %}<!doctype html>
 {% comment %}
-マニュアルの印刷用の 1 枚 (/manual/?print=1)。画面の土台を継がない 1 枚の HTML で、左のメニューと上の帯と入力の欄を持たない。
+使い方の印刷用の 1 枚 (/manual/?print=1)。画面の土台を継がない 1 枚の HTML で、左のメニューと上の帯と入力の欄を持たない。
 紙に刷るので明るい theme に決める。全部の画面の断片を目録の順に並べ、目次の後は画面ごとに改ページする。
 断片は class を持たない素の HTML なので、画面の箱の子の選び方の class で形を付ける (core/manual.html と同じ字)。
 押せるのは「印刷」のボタンだけ (印刷のときは隠す)。
@@ -9,7 +9,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>マニュアル | {{ seizou.company_name }}</title>
+<title>使い方 | {{ seizou.company_name }}</title>
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
@@ -18,7 +18,7 @@
   <header class="flex flex-wrap items-end justify-between gap-4 border-b border-base-300 pb-6">
     <div class="min-w-0">
       <p class="text-base-content/70">{{ seizou.company_name }}</p>
-      <h1 class="mt-2 text-3xl font-bold tracking-tight">マニュアル</h1>
+      <h1 class="mt-2 text-3xl font-bold tracking-tight">使い方</h1>
       <p class="mt-2 text-xs text-base-content/50">印刷日 <time datetime="{% now 'Y-m-d' %}">{% now "Y年n月j日" %}</time></p>
     </div>
     <button type="button" class="btn btn-outline border-base-300 print:hidden" onclick="window.print()">印刷</button>

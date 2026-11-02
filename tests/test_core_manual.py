@@ -81,13 +81,13 @@ def test_manual_requires_login(client, site):
 def test_topbar_has_manual_button(client_logged_in, site):
     html = client_logged_in.get(reverse("core:home")).content.decode()
     assert 'href="/manual/"' in html
-    assert 'aria-label="マニュアル"' in html
+    assert 'aria-label="使い方"' in html
 
 
 def test_manual_in_screen_catalog():
     rows = [s for s in all_screens() if s.url_name == "core:manual"]
     assert len(rows) == 1
-    assert rows[0].name == "マニュアル"
+    assert rows[0].name == "使い方"
     assert rows[0].path == "/manual/"
 
 
@@ -174,7 +174,7 @@ def test_print_has_all_fragments_without_menu(client_logged_in, manual):
     assert 'id="seizou-drawer"' not in html
     assert 'aria-label="横断して検索"' not in html
     assert 'aria-label="メニュー"' not in html
-    assert "<title>マニュアル | " in html
+    assert "<title>使い方 | " in html
     assert toc_anchors(html) == [fragment_name(s.url_name) for s in all_screens()]
 
 

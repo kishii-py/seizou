@@ -1,4 +1,4 @@
-"""マニュアルのページ (05 の 10 節)。会社の置き場の manual/ にある画面ごとの説明書を、目次つきで 1 ページに並べる画面と、その約束。
+"""使い方のページ (05 の 10 節。画面ごとの説明書。業務マニュアルの部品 seizou.manuals とは別)。会社の置き場の manual/ にある画面ごとの説明書を、目次つきで 1 ページに並べる画面と、その約束。
 
 約束 (会社の置き場が持つ物。/seizou:manual の命令が書く):
   置き場: Path(settings.BASE_DIR) / "manual" の 1 か所。BASE_DIR が無ければ、置き場が無いのと同じに扱う。
@@ -101,9 +101,9 @@ def manual_sections() -> list[dict]:
 
 
 class ManualView(ScreenMixin, TemplateView):
-    """マニュアルの画面。左に目次、右に全部の画面の断片。GET の print=1 で印刷用の 1 枚。読むだけ。"""
+    """使い方の画面 (画面ごとの説明書)。左に目次、右に全部の画面の断片。GET の print=1 で印刷用の 1 枚。読むだけ。"""
 
-    screen_name = "マニュアル"
+    screen_name = "使い方"
     screen_help = "画面ごとの使い方。左の目次から読みたい画面を選びます。印刷用の 1 枚も開けます。"
     screen_icon = "book"
     template_name = "core/manual.html"

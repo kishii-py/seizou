@@ -1,9 +1,9 @@
-"""E-31 マニュアル (仕様書の 6 番の 3 節)。
+"""E-31 使い方 (画面ごとの説明書。仕様書の 6 番の 3 節)。
 
-手順: 上の帯の「マニュアル」→ 目次と本文 → 印刷用。
+手順: 上の帯の「使い方」→ 目次と本文 → 印刷用。
 期待: 画面の目録の順に並び、断片が無い画面には案内が出る。印刷用は 1 枚 (N18)。
 
-この試験が見る所: A 社にログインし、上の帯の「マニュアル」(`aria-label` が「マニュアル」の link) を押すと道が `/manual/` になる。
+この試験が見る所: A 社にログインし、上の帯の「使い方」(`aria-label` が「使い方」の link) を押すと道が `/manual/` になる。
 目次 (`nav[aria-label=目次]` の link) が 1 件以上あり、目次の link 先 (`#<anchor>`) の並びと、本文の節 (同じ id の要素) の
 並びが同じ。目次の「 (まだ)」の数と、本文の「この画面の説明はまだありません。」の数が同じ (断片が無い画面には案内が出る)。
 置き場に `manual/` のフォルダが無いときは「この会社の説明書はまだありません。」が出て、有るときは出ない。
@@ -39,7 +39,7 @@ def _body_ids_in_order(page, anchors: list[str]) -> list[str]:
 
 def test_e31_toc_body_and_print(context, page_a, company_a):
     login(page_a, company_a)
-    page_a.locator("header a[aria-label=マニュアル]").click()
+    page_a.locator("header a[aria-label=使い方]").click()
     page_a.wait_for_url(re.compile(r"/manual/$"))
 
     toc = page_a.locator("nav[aria-label=目次] a")
