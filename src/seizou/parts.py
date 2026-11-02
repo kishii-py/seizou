@@ -16,4 +16,5 @@ PARTS = [
     "seizou.billing",
     "seizou.intake",
     "seizou.attachments",
+    "seizou.assistant",
 ]

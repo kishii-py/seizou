@@ -1,0 +1,67 @@
+{% load assistant_tags seizou_icons %}{% assistant_panel as panel %}
+{# AI チャットの窓 (全部の画面の右下。ログインした人だけ)。core の base.html の 1 行が include する。紙には出さない。 #}
+{# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
+<div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">
+  <section id="assistant-panel" hidden aria-label="AI チャット">
+    <div class="flex max-h-[70vh] w-96 max-w-[calc(100vw-3rem)] flex-col gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-lg">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <h2 class="text-lg font-bold">AI チャット</h2>
+          <p class="mt-2 text-xs text-base-content/70">今の画面の使い方や、部品・受注の残・指示書・出荷のことを質問できます。答えは社内のデータとマニュアルを読んで作ります (書き込みはしません)。</p>
+        </div>
+        <button id="assistant-close" type="button" class="btn btn-ghost btn-circle btn-sm focus-visible:outline-2 focus-visible:outline-offset-2" aria-label="閉じる">{% icon "x" "size-4" %}</button>
+      </div>
+      {% if panel.available %}
+      <div id="assistant-messages" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto" aria-live="polite">{% include "assistant/_messages.html" with exchanges=panel.exchanges %}</div>
+      <form id="assistant-form" hx-post="{% url 'assistant:ask' %}" hx-target="#assistant-messages" hx-swap="beforeend" hx-indicator="#assistant-sending" hx-disabled-elt="#assistant-send" hx-on::after-request="if (event.detail.successful) this.reset()">
+        <textarea id="assistant-question" name="question" required maxlength="2000" rows="2" class="textarea w-full" aria-label="質問"></textarea>
+        <input type="hidden" name="page_url" value="{{ request.get_full_path }}">
+        <input type="hidden" name="screen_name" value="{{ screen_name }}">
+        <div class="mt-2 flex items-center justify-end gap-2">
+          <span id="assistant-sending" class="loading loading-dots loading-sm htmx-indicator" aria-hidden="true"></span>
+          <button type="button" class="btn btn-ghost btn-sm focus-visible:outline-2 focus-visible:outline-offset-2" hx-post="{% url 'assistant:clear' %}" hx-target="#assistant-messages" hx-swap="innerHTML">履歴を消す</button>
+          <button id="assistant-send" type="submit" class="btn btn-neutral btn-sm focus-visible:outline-2 focus-visible:outline-offset-2">送信</button>
+        </div>
+      </form>
+      {% else %}
+      <p class="text-base-content/70">{{ panel.no_key_message }}</p>
+      {% endif %}
+    </div>
+  </section>
+  <button id="assistant-toggle" type="button" class="btn btn-neutral rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel">AI に質問</button>
+</div>
+<script>
+(function () {
+  // 開くボタンで小窓を開け閉めする。開いたら質問の欄に focus し、吹き出しの並びを下まで送る。
+  // 小窓の中で Esc を押したら閉じて、開くボタンに focus を戻す。htmx の object は呼ばない (DOM の event だけを受ける)。
+  var toggle = document.getElementById("assistant-toggle");
+  var panel = document.getElementById("assistant-panel");
+  if (!toggle || !panel) return;
+  function toBottom() {
+    var list = document.getElementById("assistant-messages");
+    if (list) list.scrollTop = list.scrollHeight;
+  }
+  function setOpen(open) {
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) return;
+    toBottom();
+    var field = document.getElementById("assistant-question");
+    if (field) field.focus();
+  }
+  function closeToButton() {
+    setOpen(false);
+    toggle.focus();
+  }
+  toggle.addEventListener("click", function () { setOpen(panel.hidden); });
+  var close = document.getElementById("assistant-close");
+  if (close) close.addEventListener("click", closeToButton);
+  panel.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeToButton();
+  });
+  document.addEventListener("htmx:afterSwap", function (event) {
+    var target = event.detail && event.detail.target;
+    if (target && target.id === "assistant-messages") toBottom();
+  });
+})();
+</script>
