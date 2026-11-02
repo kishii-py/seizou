@@ -307,3 +307,256 @@ def test_seizou_new_demo_end_to_end(tmp_path, monkeypatch, capsys):
     # 2 回目の load で数が増えない
     assert lines["AGAIN"] == lines["COUNT"]
     assert os.path.exists(site / "db.sqlite3")
+
+
+# ---------------------------------------------------------------- 新しい 6 種類 (標準の工程・図面・指示書・出荷・納品書・請求書)
+
+MORE_KIND_NAMES = ("標準の工程", "図面", "指示書", "出荷", "納品書", "請求書")
+
+
+def more_imports():
+    # 新しい種類の表は、試験の中で引く (上の import の行は変えない)。
+    from seizou.billing.models import Invoice, InvoiceLine
+    from seizou.masters.models import ItemProcess
+    from seizou.shipping.models import DeliveryNote, Shipment
+    from seizou.workorders.models import WorkOrder, WorkOrderStep
+
+    return Invoice, InvoiceLine, ItemProcess, DeliveryNote, Shipment, WorkOrder, WorkOrderStep
+
+
+def more_counts():
+    Invoice, InvoiceLine, ItemProcess, DeliveryNote, Shipment, WorkOrder, WorkOrderStep = more_imports()
+    return {
+        "標準の工程": ItemProcess.objects.count(),
+        "指示書": WorkOrder.objects.count(),
+        "指示書の工程": WorkOrderStep.objects.count(),
+        "出荷": Shipment.objects.count(),
+        "納品書": DeliveryNote.objects.count(),
+        "請求書": Invoice.objects.count(),
+        "請求書の明細": InvoiceLine.objects.count(),
+    }
+
+
+@pytest.fixture
+def media(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    return settings.MEDIA_ROOT
+
+
+def drawing_image(fmt, **options):
+    """試験用の小さな図面 (白黒に線 2 本)。作品のファイルは読まず、この中で作る。"""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("1", (400, 300), 1)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, 390, 290), outline=0)
+    draw.line((10, 10, 390, 290), fill=0)
+    buffer = io.BytesIO()
+    image.save(buffer, format=fmt, **options)
+    return buffer.getvalue()
+
+
+# 明細は A-200 (3 枚) の 1 行だけ。出荷は 1 枚と 2 枚の分納で、受注の状態は出荷済みになる。
+MORE_ORDERS = [
+    {
+        "得意先の取引先コード": "C001",
+        "受注日": "2026-10-05",
+        "得意先の注文番号": "PO-2001",
+        "備考": "",
+        "明細": [{"自社品番": "A-200", "数量": 3, "単位": "枚", "単価": 80.5, "納期": "2026-10-25", "備考": ""}],
+    }
+]
+LINE_REF = {"得意先の取引先コード": "C001", "得意先の注文番号": "PO-2001", "行番号": 1}
+SHIPMENT_REFS = [
+    {"得意先の注文番号": "PO-2001", "行番号": 1, "出荷日": "2026-10-10"},
+    {"得意先の注文番号": "PO-2001", "行番号": 1, "出荷日": "2026-10-12"},
+]
+
+
+def write_more_seeds(folder, *, drawing_name="A-100.png", workorders=None, shipments=None):
+    folder = write_seeds(
+        folder,
+        item_rows=[
+            ["A-100", "作り物の軸", "", drawing_name, "個", "120", ""],
+            ["A-200", "作り物の板", "", "A-200.tif", "枚", "80.50", ""],
+        ],
+        orders=MORE_ORDERS,
+    )
+    write_yaml(
+        folder / "processes.yaml",
+        "工程",
+        [
+            {"工程コード": "P10", "名前": "旋削", "外注か": False, "並び順": 10, "計画に使う": True},
+            {"工程コード": "P20", "名前": "検査", "外注か": False, "並び順": 20, "計画に使う": False},
+        ],
+    )
+    write_csv(
+        folder / "item_processes.csv",
+        ["自社品番", "工程コード", "順"],
+        [["A-100", "P10", "1"], ["A-200", "P20", "2"], ["A-200", "P10", "1"]],
+    )
+    files = folder / "files"
+    files.mkdir(exist_ok=True)
+    (files / "A-100.png").write_bytes(drawing_image("PNG"))
+    (files / "A-200.tif").write_bytes(drawing_image("TIFF", compression="group4"))
+    write_yaml(
+        folder / "workorders.yaml",
+        "指示書",
+        workorders
+        or [
+            {
+                **LINE_REF,
+                "数量": 3,
+                "工程": [
+                    {"工程コード": "P10", "予定の数": 3, "開始日": "2026-11-02", "終了日": "2026-11-03"},
+                    {"工程コード": "P20", "予定の数": 3, "開始日": None, "終了日": None},
+                ],
+            }
+        ],
+    )
+    write_yaml(
+        folder / "shipments.yaml",
+        "出荷",
+        shipments
+        or [
+            {**LINE_REF, "数量": 1, "出荷日": "2026-10-10", "備考": "1 回目"},
+            {**LINE_REF, "数量": 2, "出荷日": "2026-10-12", "備考": "2 回目"},
+        ],
+    )
+    write_yaml(folder / "delivery_notes.yaml", "納品書", [{"得意先の取引先コード": "C001", "出荷": SHIPMENT_REFS}])
+    write_yaml(
+        folder / "invoices.yaml",
+        "請求書",
+        [{"得意先の取引先コード": "C001", "発行日": "2026-10-31", "出荷": SHIPMENT_REFS}],
+    )
+    return folder
+
+
+@pytest.mark.django_db
+def test_load_more_kinds_through_services(tmp_path, media, capsys):
+    from seizou.workorders.models import WorkOrderStep
+
+    get_user_model().objects.create_superuser("admin", password="pass-for-tests-only")
+    seeds = write_more_seeds(tmp_path / "seeds")
+
+    summary = demo.load(seeds)
+
+    assert {kind: summary[kind] for kind in MORE_KIND_NAMES} == {
+        "標準の工程": {"入れた": 2, "飛ばした": 0},
+        "図面": {"入れた": 2, "飛ばした": 0},
+        "指示書": {"入れた": 1, "飛ばした": 0},
+        "出荷": {"入れた": 2, "飛ばした": 0},
+        "納品書": {"入れた": 1, "飛ばした": 0},
+        "請求書": {"入れた": 1, "飛ばした": 0},
+    }
+    out = capsys.readouterr().out
+    assert out.count("入れた") == len(demo.KINDS) + len(MORE_KIND_NAMES)
+    assert "指示書: 入れた 1 件・飛ばした 0 件" in out
+    assert more_counts() == {
+        "標準の工程": 3, "指示書": 1, "指示書の工程": 2, "出荷": 2, "納品書": 1, "請求書": 1, "請求書の明細": 2,
+    }
+
+    # 標準の工程は、順の小さい順に並ぶ
+    plate = Item.objects.get(part_no="A-200")
+    assert [row.process.code for row in plate.item_processes.order_by("seq")] == ["P10", "P20"]
+    # 指示書の工程は、日のある工程だけ予定が入る
+    first, second = list(WorkOrderStep.objects.order_by("seq"))
+    assert (str(first.planned_start), str(first.planned_end)) == ("2026-11-02", "2026-11-03")
+    assert (second.planned_start, second.planned_end) == (None, None)
+    # 分納の 2 回で受注は出荷済み、請求書の明細の数量は出荷の数量
+    assert Order.objects.get().status == Order.STATUS_SHIPPED
+    from seizou.billing.models import Invoice
+    from seizou.shipping.models import Shipment
+
+    invoice = Invoice.objects.get()
+    assert sorted(line.qty for line in invoice.lines.all()) == [Decimal("1"), Decimal("2")]
+    assert sorted(s.qty for s in Shipment.objects.all()) == [Decimal("1"), Decimal("2")]
+    # 図面: PNG はそのまま、TIFF は表示用の PNG が付き、誤りの文は空
+    png_item = Item.objects.get(part_no="A-100")
+    assert png_item.drawing and not png_item.drawing_preview and png_item.drawing_preview_error == ""
+    assert plate.drawing and plate.drawing_preview and plate.drawing_preview_error == ""
+    assert plate.drawing.size > 0
+
+
+@pytest.mark.django_db
+def test_more_kinds_twice_does_not_duplicate(tmp_path, media, capsys):
+    seeds = write_more_seeds(tmp_path / "seeds")
+    demo.load(seeds)
+    before = more_counts()
+    capsys.readouterr()
+
+    summary = demo.load(seeds)
+
+    assert all(summary[kind]["入れた"] == 0 for kind in MORE_KIND_NAMES)
+    assert summary["標準の工程"]["飛ばした"] == 2
+    assert summary["出荷"]["飛ばした"] == 2
+    assert more_counts() == before
+    out = capsys.readouterr().out
+    assert out.count("入れた 0 件") == len(demo.KINDS) + len(MORE_KIND_NAMES)
+
+
+@pytest.mark.django_db
+def test_old_seed_folder_still_loads(tmp_path, capsys):
+    seeds = write_seeds(tmp_path / "seeds")
+
+    summary = demo.load(seeds)
+
+    assert all(summary[kind] == {"入れた": 0, "飛ばした": 0} for kind in MORE_KIND_NAMES)
+    out = capsys.readouterr().out
+    assert out.count("入れた") == len(demo.KINDS)
+    assert not any(f"{kind}:" in out for kind in MORE_KIND_NAMES)
+    assert more_counts() == {
+        "標準の工程": 0, "指示書": 0, "指示書の工程": 0, "出荷": 0, "納品書": 0, "請求書": 0, "請求書の明細": 0,
+    }
+
+
+@pytest.mark.django_db
+def test_unknown_reference_stops_with_file_and_position(tmp_path, media):
+    seeds = write_more_seeds(
+        tmp_path / "seeds",
+        shipments=[{**LINE_REF, "得意先の注文番号": "PO-9999", "数量": 1, "出荷日": "2026-10-10", "備考": ""}],
+    )
+
+    with pytest.raises(ValueError) as caught:
+        demo.load(seeds)
+
+    assert "shipments.yaml" in str(caught.value)
+    assert "1 件目" in str(caught.value)
+    assert "PO-9999" in str(caught.value)
+    # 全体が 1 つのトランザクション。受注も入らない
+    assert Order.objects.count() == 0
+    assert more_counts()["出荷"] == 0
+
+
+@pytest.mark.django_db
+def test_drawing_name_outside_files_is_refused(tmp_path, media):
+    seeds = write_more_seeds(tmp_path / "seeds", drawing_name="../x.png")
+
+    with pytest.raises(ValueError) as caught:
+        demo.load(seeds)
+
+    assert "items.csv" in str(caught.value)
+    assert "2 行目" in str(caught.value)
+    assert Item.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_plan_dates_go_through_plan_step(tmp_path, media):
+    workorders = [
+        {
+            **LINE_REF,
+            "数量": 3,
+            "工程": [{"工程コード": "P10", "予定の数": 3, "開始日": "2026-11-05", "終了日": "2026-11-03"}],
+        }
+    ]
+    seeds = write_more_seeds(tmp_path / "seeds", workorders=workorders)
+
+    with pytest.raises(ValueError) as caught:
+        demo.load(seeds)
+
+    assert "workorders.yaml" in str(caught.value)
+    assert "1 件目" in str(caught.value)
+    assert "開始日が終了日より後です" in str(caught.value)
+    assert more_counts()["指示書"] == 0
