@@ -46,3 +46,28 @@ url = "https://github.com/saadeghi/daisyui/releases/download/v5.7.50/daisyui-the
 license = "MIT"
 sha256 = "e48a35d8326d650181ca600560e8520cf6b44cf9242bbd9d45825607e641f251"
 tool = "daisyui-theme.mjs"
+
+[[item]]
+name = "htmx"
+version = "2.0.11"
+url = "https://cdn.jsdelivr.net/npm/htmx.org@2.0.11/dist/htmx.min.js"
+license = "0BSD"
+sha256 = "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717"
+path = "src/seizou/core/static/vendor/htmx.min.js"
+
+[[item]]
+name = "tom-select-js"
+version = "2.4.3"
+url = "https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"
+license = "Apache-2.0"
+sha256 = "b797005cf23378fb38448b80dc57a33313a5c577b841765743bb1f289c4d53e6"
+path = "src/seizou/core/static/vendor/tom-select.complete.min.js"
+
+[[item]]
+name = "tom-select-css"
+version = "2.4.3"
+# 既定の見た目 (default の theme) の CSS を tom-select.css の名前で置く。
+url = "https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.default.css"
+license = "Apache-2.0"
+sha256 = "407052347710e4ab259e09e0c1bd209e4f41d29a5641e85e2df032332f97bbea"
+path = "src/seizou/core/static/vendor/tom-select.css"
