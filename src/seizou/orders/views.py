@@ -63,7 +63,16 @@ class OrderLineListView(BaseListView):
 class OrderDetailView(BaseDetailView):
     model = Order
     screen_name = "受注の詳細"
-    screen_help = "受注の項目と明細。明細ごとに出荷済みの数と残の数を出します。"
+    screen_help = (
+        "受注の項目と明細。明細ごとに出荷済みの数と残の数を出します。"
+        "指示書・出荷・請求書のタブに、この受注の物が並びます。"
+    )
+    # 3 つとも Order の読むだけの property (models.py)。部品が入っていない会社では、そのタブを出さない。
+    tabs = (
+        ("指示書", "workorders"),
+        ("出荷", "shipments"),
+        ("請求書", "invoices"),
+    )
     template_name = "orders/order_detail.html"
 
     def get_queryset(self):

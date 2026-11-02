@@ -6,7 +6,19 @@
 書くときは orders.services を通す。
 """
 
+from django.apps import apps
 from django.db import models
+
+
+def _part_model(app_label, name):
+    """下流の部品の model を名前で引く (部品の module を import しない)。部品が入っていなければ AttributeError。
+
+    土台の詳細は hasattr でタブを外すので、部品の無い会社ではそのタブが出ない。
+    """
+    try:
+        return apps.get_model(app_label, name)
+    except LookupError as exc:
+        raise AttributeError(f"{app_label}.{name} が入っていない") from exc
 
 
 class Order(models.Model):
@@ -56,6 +68,30 @@ class Order(models.Model):
 
     def __str__(self):
         return self.order_no
+
+    @property
+    def workorders(self):
+        """この受注の明細から発行した指示書 (取消も含む)。
+
+        受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
+        """
+        return _part_model("workorders", "WorkOrder").objects.filter(order_line__order=self)
+
+    @property
+    def shipments(self):
+        """この受注の明細の出荷。
+
+        受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
+        """
+        return _part_model("shipping", "Shipment").objects.filter(order_line__order=self)
+
+    @property
+    def invoices(self):
+        """この受注の出荷が入った請求書 (取消も含む。1 枚に同じ受注の出荷が 2 つあっても 1 行)。
+
+        受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
+        """
+        return _part_model("billing", "Invoice").objects.filter(lines__shipment__order_line__order=self).distinct()
 
 
 class OrderLine(models.Model):
