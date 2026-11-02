@@ -1,0 +1,28 @@
+{
+  "order_no": "TEST-PO-001",
+  "order_date": "2026-11-02",
+  "buyer": {"name": "作り物の得意先"},
+  "note": "",
+  "lines": [
+    {
+      "line_no": 1,
+      "part_no": "X-100",
+      "part_name": "作り物のシャフト",
+      "qty": "10",
+      "unit": "個",
+      "unit_price": "120",
+      "due_date": "2026-11-20",
+      "note": ""
+    },
+    {
+      "line_no": 2,
+      "part_no": "X-200",
+      "part_name": "作り物のブラケット",
+      "qty": "5",
+      "unit": "個",
+      "unit_price": null,
+      "due_date": "2026-11-27",
+      "note": ""
+    }
+  ]
+}

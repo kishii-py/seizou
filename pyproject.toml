@@ -15,6 +15,7 @@ dependencies = [
     "Pillow>=13.0.0",
     "requests",
     "PyYAML",
+    "anthropic>=2.3.0",
 ]
 
 [project.scripts]
