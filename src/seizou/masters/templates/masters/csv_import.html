@@ -1,0 +1,25 @@
+{% extends "core/form.html" %}
+{% load seizou_icons %}
+{# CSV 取り込み (部品マスターと取引先で共通)。上に誤りの表、その下に core の入力 (ファイル・文字コード・「保存」)、その下に使える見出し。 #}
+{# link の URL の名前は form の属性 (list_url_name・sample_url_name)。誤りは form.import_errors = [(行の番号, 欄, 理由)]。 #}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url form.list_url_name %}">{% icon "arrow-left" "size-4" %}一覧に戻る</a><a class="btn btn-outline" href="{% url form.sample_url_name %}">{% icon "download" "size-4" %}見本の CSV をダウンロード</a>{% endblock %}
+{% block content %}
+{% if form.import_errors %}
+<div class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <h2 class="text-lg font-bold">CSV の誤り</h2>
+  <p class="mt-2 text-base-content/70">誤りが {{ form.import_errors|length }} 件あるので、1 件も入れていません。行の番号は、見出しを 1 行目に数えます。</p>
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th>行</th><th>欄</th><th>理由</th></tr></thead>
+      <tbody>
+        {% for line, field, reason in form.import_errors %}
+        <tr><td class="font-mono whitespace-nowrap">{% if line %}{{ line }} 行目{% else %}見出し{% endif %}</td><td class="whitespace-nowrap">{{ field }}</td><td class="text-error">{{ reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{{ block.super }}
+<p class="mt-4 text-xs text-base-content/70">使える見出し: {{ form.header_hint }}。見出しは 1 行目に書きます。1 行でも誤りがあれば 1 件も入れません。</p>
+{% endblock %}

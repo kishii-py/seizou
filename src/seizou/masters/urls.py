@@ -30,4 +30,8 @@ urlpatterns = [
     path("processes/new/", views.ProcessCreateView.as_view(), name="process_create"),
     path("processes/<int:pk>/", views.ProcessDetailView.as_view(), name="process_detail"),
     path("processes/<int:pk>/edit/", views.ProcessUpdateView.as_view(), name="process_update"),
+    path("items/import/", views.ItemImportView.as_view(), name="item_import"),
+    path("partners/import/", views.PartnerImportView.as_view(), name="partner_import"),
+    path("items/import/sample/", views.item_import_sample, name="item_import_sample"),
+    path("partners/import/sample/", views.partner_import_sample, name="partner_import_sample"),
 ]

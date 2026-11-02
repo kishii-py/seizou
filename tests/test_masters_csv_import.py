@@ -376,3 +376,152 @@ def test_examples_csv_import(company, user, no_registration, captured_ext):
     assert again == {"入れた": 0, "更新した": 30}
     _form, again = import_valid(PartnerCsvImportForm, partners, user)
     assert again == {"入れた": 0, "更新した": 5}
+
+
+# ---------------------------------------------------------------- 画面 (2 段目)
+
+SCREEN_URLS = ("masters:item_import", "masters:partner_import", "masters:item_import_sample", "masters:partner_import_sample")
+
+
+def post_csv(client, url_name, content, encoding="utf-8-sig"):
+    upload = SimpleUploadedFile("import.csv", content, content_type="text/csv")
+    return client.post(reverse(url_name), {"encoding": encoding, "file": upload})
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", SCREEN_URLS)
+def test_import_screens_require_login(client, url_name):
+    response = client.get(reverse(url_name))
+
+    assert response.status_code == 302
+    assert reverse("core:login") in response["Location"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("list_name", "import_name"),
+    [("masters:item_list", "masters:item_import"), ("masters:partner_list", "masters:partner_import")],
+)
+def test_lists_have_import_button(client_logged_in, list_name, import_name):
+    body = client_logged_in.get(reverse(list_name)).content.decode()
+
+    assert "CSV 取り込み" in body
+    assert f'href="{reverse(import_name)}"' in body
+    assert "新規登録" in body
+    assert body.count("btn-primary") == 1
+
+
+@pytest.mark.django_db
+def test_import_screen_shows_file_and_encoding_only(client_logged_in, no_registration):
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質"}])
+
+    response = client_logged_in.get(reverse("masters:item_import"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "部品マスターの CSV 取り込み" in body and 'enctype="multipart/form-data"' in body
+    assert 'name="file"' in body and 'name="encoding"' in body and "Shift_JIS" in body
+    assert "ext__ext01" not in body  # 会社ごとの項目の欄は出ない (model を書かない)
+    assert f'href="{reverse("masters:item_list")}"' in body and "一覧に戻る" in body
+    assert f'href="{reverse("masters:item_import_sample")}"' in body
+    assert "自社品番・品名・図面番号・単位・標準単価 (円)・備考・材質" in body
+    assert body.count("btn-primary") == 1
+
+
+@pytest.mark.django_db
+def test_item_import_post_saves_and_redirects(client_logged_in, no_registration):
+    content = csv_bytes("自社品番,品名,単位", "P-1001,作り物の軸,個", "P-1002,作り物の板,枚")
+
+    response = post_csv(client_logged_in, "masters:item_import", content)
+
+    assert response.status_code == 302
+    assert response["Location"] == "/"
+    assert sorted(Item.objects.values_list("part_no", flat=True)) == ["P-1001", "P-1002"]
+
+
+@pytest.mark.django_db
+def test_item_import_post_errors_show_table(client_logged_in, no_registration):
+    content = csv_bytes("自社品番,品名,標準単価 (円)", "P-1001,作り物の軸,480", "P-1002,作り物の板,abc")
+
+    response = post_csv(client_logged_in, "masters:item_import", content)
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "alert-error" in body and "3 行目" in body and "標準単価 (円)" in body
+    assert "1 件も入れていません" in body
+    assert Item.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_item_import_post_header_error_shows_header_row(client_logged_in, no_registration):
+    response = post_csv(client_logged_in, "masters:item_import", csv_bytes("品名", "作り物の軸"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "<td class=\"font-mono whitespace-nowrap\">見出し</td>" in body and "「自社品番」" in body
+    assert Item.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_partner_import_post_reads_display_days(client_logged_in, no_registration):
+    content = csv_bytes("取引先コード,名前,取引先の種類,締日,支払日", "C001,作り物の得意先,得意先,月末,翌月 25 日")
+
+    response = post_csv(client_logged_in, "masters:partner_import", content)
+
+    assert response.status_code == 302
+    partner = Partner.objects.get(code="C001")
+    assert (partner.closing_day, partner.payment_month, partner.payment_day) == (31, "next", 25)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("url_name", "model", "fallback"),
+    [("masters:item_import_sample", Item, "item_sample.csv"), ("masters:partner_import_sample", Partner, "partner_sample.csv")],
+)
+def test_sample_csv(client_logged_in, no_registration, url_name, model, fallback):
+    response = client_logged_in.get(reverse(url_name))
+
+    text = response.content.decode("utf-8")
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/csv")
+    assert f'filename="{fallback}"' in response["Content-Disposition"]
+    assert "filename*=UTF-8''" in response["Content-Disposition"]
+    assert text.startswith("﻿")
+    assert text[1:].split("\r\n") == [",".join(csvio.header_labels(model)), ""]
+    assert "図面ファイル" not in text
+    assert client_logged_in.post(reverse(url_name)).status_code == 405
+
+
+@pytest.mark.django_db
+def test_sample_csv_imports_back(client_logged_in, user, no_registration):
+    item_values = {"自社品番": "P-1001", "品名": "作り物の軸", "図面番号": "DWG-1001", "単位": "個", "標準単価 (円)": "480", "備考": "見本から"}
+    partner_values = {
+        "取引先コード": "C001", "名前": "作り物の得意先", "略称": "作り得", "取引先の種類": "得意先", "締日": "月末",
+        "支払の月": "翌月", "支払日": "25", "金額の端数の扱い": "切捨", "消費税の端数の扱い": "各行切捨", "備考": "",
+    }
+    for url_name, form_class, values in (
+        ("masters:item_import_sample", ItemCsvImportForm, item_values),
+        ("masters:partner_import_sample", PartnerCsvImportForm, partner_values),
+    ):
+        sample = client_logged_in.get(reverse(url_name)).content
+        labels = sample.decode("utf-8-sig").splitlines()[0].split(",")
+        content = sample + ",".join(values[label] for label in labels).encode() + b"\r\n"
+        _form, result = import_valid(form_class, content, user)
+        assert result == {"入れた": 1, "更新した": 0}
+
+    item = Item.objects.get()
+    assert (item.part_no, item.unit, item.standard_price, item.note) == ("P-1001", "個", Decimal("480"), "見本から")
+    partner = Partner.objects.get()
+    assert (partner.closing_day, partner.payment_month, partner.payment_day) == (31, "next", 25)
+    assert (partner.rounding, partner.tax_mode) == ("floor", "line_floor")
+
+
+def test_screens_in_catalog():
+    from seizou.core.screens import all_screens
+
+    screens = {screen.url_name: screen for screen in all_screens()}
+
+    assert screens["masters:item_import"].name == "部品マスターの CSV 取り込み"
+    assert screens["masters:partner_import"].name == "取引先の CSV 取り込み"
+    assert screens["masters:item_import"].path == "/masters/items/import/"
+    assert screens["masters:partner_import"].path == "/masters/partners/import/"

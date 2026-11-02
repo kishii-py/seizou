@@ -1,0 +1,4 @@
+{% extends "core/list.html" %}
+{% load seizou_icons %}
+{# 部品マスターの一覧。core の一覧のまま、上の帯に「CSV 取り込み」を足す (主色は土台の「新規登録」の 1 つだけ)。 #}
+{% block actions %}{{ block.super }}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_import' %}">{% icon "file" "size-4" %}CSV 取り込み</a>{% endblock %}
