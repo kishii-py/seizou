@@ -6,6 +6,7 @@
 書くときは workorders.services を通す。
 """
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 
 
@@ -45,6 +46,19 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return self.wo_no
+
+    @property
+    def progress_records(self):
+        """この指示書の工程に入った進捗の実績 (読むだけ。詳細の「進捗」のタブが使う)。
+
+        progress を import せず、工程の逆の関係 (progress の外部キー) の先の表として引く。
+        progress の部品が無いときは AttributeError (土台の hasattr が偽になり、タブを出さない)。
+        """
+        try:
+            records = WorkOrderStep._meta.get_field("progress_records").related_model
+        except FieldDoesNotExist:
+            raise AttributeError("progress_records") from None
+        return records._default_manager.filter(workorder_step__workorder=self)
 
 
 class WorkOrderStep(models.Model):

@@ -217,3 +217,123 @@ def test_empty_board_sentence(client_logged_in):
     body = _body(_board(client_logged_in))
     assert "指示書を発行すると、工程ごとの予定・実績・残がここに並びます。" in body
     assert "<table" not in body
+
+
+# --- 2 段目: 自動の更新と、指示書の詳細の「進捗」のタブ ---
+
+HX = {"HTTP_HX_REQUEST": "true"}
+
+
+def _poll(client, **params):
+    return client.get(reverse("progress:progress_list"), params, **HX)
+
+
+def _poller_url(body):
+    match = re.search(r'<div id="progress-poll" hidden hx-get="([^"]*)"', body)
+    assert match is not None, "取りに行く要素がありません"
+    return match.group(1)
+
+
+@pytest.mark.django_db
+def test_board_has_poller_every_10s(client_logged_in, issue, cut):
+    step = issue(cut).steps.get()
+    _record(step, 1)
+    newest = _record(step, 2)
+
+    body = _body(_board(client_logged_in))
+    assert 'id="progress-poll"' in body
+    assert 'hx-trigger="every 10s"' in body
+    assert 'hx-swap="none"' in body
+    assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={newest.pk}"
+    assert "hx-swap-oob" not in body  # 1 枚目は入れ替えの印を付けない
+
+
+@pytest.mark.django_db
+def test_poll_returns_only_changed_rows(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    changed, other = workorder.steps.order_by("seq")
+    _record(changed, 3)
+    before = _record(other, 5)  # 前に見た時の一番新しい実績
+    added = _record(changed, 4)
+
+    body = _body(_poll(client_logged_in, after=before.pk))
+    assert "<html" not in body
+    assert "<template" in body
+    row = _row(body, changed)
+    assert 'hx-swap-oob="true"' in row
+    cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
+    assert cells == ["10.00", "7.00", "3.00"]  # 合計は前からの 3 を含む
+    assert f'id="progress-step-{other.pk}"' not in body
+    assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={added.pk}"
+    assert re.search(r'<div id="progress-poll"[^>]*hx-swap-oob="true"', body)
+
+
+@pytest.mark.django_db
+def test_poll_without_change_returns_only_poller(client_logged_in, issue, cut):
+    step = issue(cut).steps.get()
+    newest = _record(step, 3)
+    expected = f"{reverse('progress:progress_list')}?after={newest.pk}"
+
+    body = _body(_poll(client_logged_in, after=newest.pk))
+    assert "<tr" not in body
+    assert _poller_url(body) == expected
+
+    # after が無いか読めない要求は、行を返さず、今の一番新しい実績を印にした取りに行く要素だけを返す。
+    for params in ({}, {"after": "abc"}, {"after": "-1"}):
+        body = _body(_poll(client_logged_in, **params))
+        assert "<tr" not in body
+        assert _poller_url(body) == expected
+
+
+@pytest.mark.django_db
+def test_poll_keeps_process(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    cut_step, bend_step = workorder.steps.order_by("seq")
+    before = _record(cut_step, 1)
+    _record(cut_step, 2)
+    added = _record(bend_step, 3)
+
+    body = _body(_poll(client_logged_in, process=cut.pk, after=before.pk))
+    assert f'id="progress-step-{cut_step.pk}"' in body
+    assert f'id="progress-step-{bend_step.pk}"' not in body  # ほかの工程の変わった行は返らない
+    assert _poller_url(body) == f"{reverse('progress:progress_list')}?process={cut.pk}&amp;after={added.pk}"
+
+
+@pytest.mark.django_db
+def test_full_page_ignores_after(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    cut_step, bend_step = workorder.steps.order_by("seq")
+    newest = _record(cut_step, 2)
+
+    body = _body(_board(client_logged_in, after=newest.pk))
+    assert "<html" in body
+    assert f'id="progress-step-{cut_step.pk}"' in body
+    assert f'id="progress-step-{bend_step.pk}"' in body
+
+
+@pytest.mark.django_db
+def test_record_list_htmx_uses_core_rows(client_logged_in, issue, cut, user):
+    step = issue(cut).steps.get()
+    record = _record(step, 3, user)
+
+    body = _body(client_logged_in.get(reverse("progress:record_list"), {"q": ""}, **HX))
+    assert "<html" not in body
+    assert f'id="row-{record.pk}"' in body
+    assert "progress-poll" not in body
+    assert "progress-step-" not in body
+
+
+@pytest.mark.django_db
+def test_workorder_detail_has_progress_tab(client_logged_in, issue, cut, user):
+    workorder = issue(cut)
+    step = workorder.steps.get()
+    first = _record(step, 3, user)
+    _record(step, 4, user)
+    first.refresh_from_db()
+
+    assert str(first) == f"{step} 実績 3.00 (2026-11-03 10:00)"
+    assert "object (" not in str(first)
+
+    body = _body(client_logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])))
+    assert re.search(r'aria-label="進捗">進捗<span class="badge badge-sm tabular-nums">2</span>', body)
+    assert str(first) in body

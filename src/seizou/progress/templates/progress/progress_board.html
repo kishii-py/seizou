@@ -4,6 +4,7 @@
 <a class="btn btn-outline border-base-300" href="{% url 'progress:record_list' %}">{% icon "list" "size-4" %}実績の一覧</a>{% endblock %}
 {% block content %}{{ block.super }}{% progress_board as board %}
 {# 進捗の盤: 指示書の工程ごとの予定の数・実績の合計・残。中身は boards.build_board が作る (土台の object_list は使わない)。 #}
+{# 盤の見出し・pill・行の link は htmx で取りに行かない (htmx の GET は master_link の小窓と、取りに行く要素だけ)。 #}
 {# 工程の pill: 盤に出る予定のある工程ごとのふつうの link。今の物は主色の薄い地。 #}
 <nav class="mb-4 flex flex-wrap gap-2" aria-label="工程">
   {% for pill in board.pills %}
@@ -31,4 +32,6 @@
   <p class="text-base-content/70">指示書を発行すると、工程ごとの予定・実績・残がここに並びます。</p>
   {% endif %}
 </div>
+{# 自動の更新 (10 秒ごと)。返る部分 (progress/_rows.html) が、変わった行と、次の after を持った同じ要素を入れ直す。 #}
+{% include "progress/_board_poll.html" %}
 {% endblock %}

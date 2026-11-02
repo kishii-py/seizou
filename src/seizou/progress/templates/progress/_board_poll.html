@@ -1,0 +1,8 @@
+{% comment %}
+進捗の盤の自動の更新で取りに行く要素 (見えない)。10 秒ごとに ?(process=<pk>&)after=<newest> を取りに行く。
+hx-swap="none": 応答の本体は差し込まず、hx-swap-oob の物 (変わった行と、次の after を持ったこの要素) だけを入れる。
+oob が真のとき (progress/_rows.html の応答) は、template で包んで hx-swap-oob で同じ id の要素と入れ替える。
+{% endcomment %}
+{% if oob %}<template>{% endif %}
+<div id="progress-poll" hidden hx-get="{{ request.path }}{{ board.poll_query }}" hx-trigger="every 10s" hx-swap="none"{% if oob %} hx-swap-oob="true"{% endif %}></div>
+{% if oob %}</template>{% endif %}
