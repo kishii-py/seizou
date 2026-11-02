@@ -203,7 +203,9 @@ def test_unreachable_is_recorded(monkeypatch, user, secret, subcontractor, item,
     po = _create(subcontractor, item, user)
 
     assert po.status == PurchaseOrder.STATUS_DRAFT
-    assert Outbox.objects.get().response == "届きません: ConnectionError"
+    assert Outbox.objects.get().response == (
+        "届きません: 相手につながりません。つながりの URL と、相手が立っているかを確かめてください。"
+    )
 
 
 @pytest.mark.django_db
@@ -301,3 +303,30 @@ def test_secret_value_not_in_outbox_or_logs(monkeypatch, caplog, user, secret, s
     assert "注文を送った" in caplog.text
     assert secret not in caplog.text
     assert secret[len("whsec_"):] not in caplog.text
+
+
+@pytest.mark.django_db
+def test_resend_reuses_the_first_number_so_the_receiver_keeps_one_row(
+    monkeypatch, user, secret, subcontractor, item, send_connection
+):
+    """送り直し (2 つのタブからでも) は 1 回目の番号を使い回し、相手の受信箱は 1 行のまま (初見テスト 2 回目の所見)。"""
+    buyer = masters_services.create_partner(
+        {"code": "C001", "name": "作り物の発注元", "role": "customer"}, user
+    )
+    services.register_connection(buyer, "", ENV_NAME, "receive", user)
+
+    def into_receive(data, headers):
+        result = services.receive(data, headers)
+        assert not isinstance(result, str), result
+        return FakeResponse(200, {"status": "received", "id": str(result.message_id)})
+
+    monkeypatch.setattr("requests.post", FakePost(inside=into_receive))
+
+    po = _create(subcontractor, item, user)
+    services.send_order(po, user)
+
+    outboxes = list(Outbox.objects.order_by("pk"))
+    assert len(outboxes) == 2
+    assert outboxes[0].message_id == outboxes[1].message_id
+    assert Inbox.objects.count() == 1
+    assert outboxes[1].response == "受け取った"

@@ -362,6 +362,17 @@ def _refuse(message: str, msg_id):
     return message
 
 
+def _unreachable_reply(exc) -> str:
+    """届かなかったときの相手の返事の欄の文 (例外の英語の名前を画面に出さない)。"""
+    import requests
+
+    if isinstance(exc, requests.Timeout):
+        return "届きません: 相手の返事が無く、時間切れです (10 秒)。相手が立っているかを確かめてください。"
+    if isinstance(exc, requests.ConnectionError):
+        return "届きません: 相手につながりません。つながりの URL と、相手が立っているかを確かめてください。"
+    return "届きません: 送る途中で誤りが起きました。もう 1 度送り直してください。"
+
+
 def send_order(purchase_order, user):
     """発注を注文のデータにし、署名して相手の受け口へ送る。送った物は Outbox に 1 行残して返す。
 
@@ -370,6 +381,9 @@ def send_order(purchase_order, user):
     - 相手への HTTP は transaction.atomic の外で送る (R17)。待ちは 10 秒。
     - 相手の返事は日本語の短い文で Outbox.response に書く。200 (受け取った) なら発注を「送った」にする。
       鍵が無い・断られた・届かないときは例外にせず、発注は「作成」のまま (人が「送り直す」を押す)。
+    - 送り直しは 1 回目の番号 (webhook-id) を使い回す。相手の受け口は同じ番号を 1 件にまとめる (R11) ので、
+      2 つのタブから送り直しても相手の受信箱に 2 行できない (初見テスト 2 回目の所見)。Outbox には送るたびに 1 行足す。
+    - 届かないときの返事は日本語 (例外の英語の名前を画面に出さない)。
     - 鍵の値・本文・見出しの値をログと返す物に出さない。
     """
     # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
@@ -395,7 +409,8 @@ def send_order(purchase_order, user):
             f"取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
         )
 
-    message_id = uuid.uuid4()
+    first = Outbox.objects.filter(purchase_order=purchase_order).order_by("pk").first()
+    message_id = first.message_id if first is not None else uuid.uuid4()
     lines = [
         {
             "line_no": line.line_no,
@@ -460,7 +475,7 @@ def send_order(purchase_order, user):
                 timeout=10,
             )
         except requests.RequestException as exc:
-            reply = f"届きません: {type(exc).__name__}"
+            reply = _unreachable_reply(exc)
             kind = "unreachable"
         else:
             if answer.status_code == 200:
