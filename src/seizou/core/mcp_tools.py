@@ -1,0 +1,828 @@
+"""手元の Claude Code から会社のシステムを読み書きする道具 (MCP サーバーの道具の本体)。
+
+管理コマンド seizou_mcp が、この module の関数を 1 つずつ MCP サーバーに登録する。
+この module は MCP の package を import しない (試験は関数を直に呼ぶ)。
+
+約束:
+- 道具は普通の関数 (def)。サーバーは別の thread で回すので、Django の ORM をそのまま呼べる。
+- 読む道具は READ_TOOLS の並び。書く道具は write_tools(user) が返す並び。
+  user は write_tools の中の入れ子の関数が閉じ込め、道具の引数には出さない (呼ぶ側が利用者を選べない)。
+- 関数の名前が道具の名前、docstring が道具の説明 (Claude Code が読む)。
+- 返す物は JSON にできる辞書だけ。成功は {"ok": True, ...}、断りは {"ok": False, "error": 日本語の文}
+  (決まりの番号があれば code も)。数と金額は字、日付は ISO の字 (無ければ null)、URL は道だけ (ホストとポートは付けない)。
+- 字と数は関数の中で読み直す (MCP を通さずに呼ばれても同じに断る)。件数は 1 から上限の間にそろえる。
+- 書くのは部品の services の関数だけ (R13・R14)。この module は表に書かない。
+  書く前に画面の入力の土台と同じ順で検査の層 (seizou.core.checks.run) を通す。
+  止める段は断り、知らせる段は confirm が偽なら知らせの文を返して書かない。
+- ほかの部品の model は apps.get_model で、services は関数の中で import する。
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
+from typing import Any, NotRequired, TypedDict
+
+from django.apps import apps
+from django.db.models import Prefetch
+from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
+
+from seizou.core import checks, conf, manual, screens
+from seizou.core.exceptions import CheckViolation, RuleError
+from seizou.core.models import Company
+from seizou.parts import PARTS
+
+#: 一覧の件数の上限
+MAX_ITEMS = 100
+MAX_ROWS = 200
+#: 出荷の一覧の日数の上限
+MAX_DAYS = 366
+
+#: 利用者を決めずに起こしたときの、書く道具の断りの文
+NO_USER_MESSAGE = (
+    "書く道具は、利用者を決めて起こしたときだけ使えます。"
+    "--user <利用者名> か、会社の置き場の .env の SEIZOU_MCP_USER で決めてください。"
+)
+
+#: 知らせる段のポカよけに当たったときの、次にすることの文
+CONFIRM_HINT = "知らせを人に見せ、人が確かめてから confirm=true で呼び直すと保存します"
+
+
+class OrderLineInput(TypedDict):
+    """create_order の明細の 1 行。"""
+
+    part_no: str
+    qty: Decimal
+    unit_price: Decimal
+    due_date: NotRequired[str]
+    note: NotRequired[str]
+
+
+class _Refusal(Exception):
+    """引数が読めない・行が無いときの断り。道具の中で {"ok": False, "error": 文} に直す。"""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def _refused(message: str, code: str = "") -> dict[str, Any]:
+    result: dict[str, Any] = {"ok": False, "error": message}
+    if code:
+        result["code"] = code
+    return result
+
+
+# --- 値を字にする ---
+
+
+def _num(value) -> str | None:
+    return None if value is None else str(value)
+
+
+def _day(value) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _url(name: str, pk) -> str:
+    try:
+        return reverse(name, args=[pk])
+    except NoReverseMatch:
+        return ""
+
+
+# --- 引数を読む ---
+
+
+def _text(value) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _read_text(value, label: str, max_length: int) -> str:
+    text = _text(value)
+    if len(text) > max_length:
+        raise _Refusal(f"{label}は {max_length} 字までです。短くしてください。")
+    return text
+
+
+def _read_int(value, label: str) -> int:
+    if isinstance(value, bool):
+        raise _Refusal(f"{label}が整数として読めません。整数を入れてください。")
+    try:
+        number = Decimal(_text(value))
+    except InvalidOperation:
+        raise _Refusal(f"{label} ({_text(value)}) が整数として読めません。整数を入れてください。") from None
+    if not number.is_finite() or number != number.to_integral_value():
+        raise _Refusal(f"{label} ({_text(value)}) が整数として読めません。整数を入れてください。")
+    return int(number)
+
+
+def _read_count(value, label: str, maximum: int) -> int:
+    """件数と日数。上限を超えたら上限に、1 より小さければ 1 にそろえる。"""
+    return max(1, min(_read_int(value, label), maximum))
+
+
+def _read_decimal(value, label: str, *, max_digits: int = 12) -> Decimal:
+    """数量と単価。字か数を読み、表の桁 (小数 2 桁まで) に収まらなければ断る。0 以下は services が R02 で断る。"""
+    if isinstance(value, bool):
+        raise _Refusal(f"{label}が数として読めません。数を入れてください。")
+    if isinstance(value, Decimal):
+        number = value
+    else:
+        text = _text(value).replace(",", "")
+        if not text:
+            raise _Refusal(f"{label}がありません。数を入れてください。")
+        try:
+            number = Decimal(text)
+        except InvalidOperation:
+            raise _Refusal(f"{label} ({text}) が数として読めません。数を入れてください。") from None
+    if not number.is_finite():
+        raise _Refusal(f"{label}が数として読めません。数を入れてください。")
+    if abs(number) >= Decimal(10) ** (max_digits - 2):
+        raise _Refusal(f"{label} ({number}) が大きすぎます。整数の部分を {max_digits - 2} 桁までにしてください。")
+    if number != number.quantize(Decimal("0.01")):
+        raise _Refusal(f"{label} ({number}) の小数は 2 桁までです。小数を 2 桁までにしてください。")
+    return number
+
+
+def _read_date(value, label: str) -> date:
+    if isinstance(value, date):
+        return value
+    text = _text(value)
+    if not text:
+        raise _Refusal(f"{label}がありません。YYYY-MM-DD の形で入れてください。")
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise _Refusal(f"{label} ({text}) が日付として読めません。YYYY-MM-DD の形で入れてください。") from None
+
+
+def _read_optional_date(value, label: str) -> date | None:
+    if value is None or (not isinstance(value, date) and not _text(value)):
+        return None
+    return _read_date(value, label)
+
+
+def _read_bool(value) -> bool:
+    """確認の印。真か、字の true・1・yes だけを真とする (字の "false" を真と読まない)。"""
+    if isinstance(value, bool):
+        return value
+    return _text(value).lower() in ("true", "1", "yes")
+
+
+# --- 行を引く ---
+
+
+def _partner_by_code(code):
+    Partner = apps.get_model("masters", "Partner")
+    text = _text(code)
+    partner = Partner.objects.filter(code=text).first() if text else None
+    if partner is None:
+        raise _Refusal(f"取引先コード {text or '(空)'} の取引先はありません。取引先コードを確かめてください。")
+    return partner
+
+
+def _item_by_part_no(part_no, label: str = ""):
+    Item = apps.get_model("masters", "Item")
+    text = _text(part_no)
+    item = Item.objects.filter(part_no=text).first() if text else None
+    if item is None:
+        raise _Refusal(f"{label}自社品番 {text or '(空)'} の部品はありません。search_items で品番を確かめてください。")
+    return item
+
+
+def _order_by_no(order_no):
+    Order = apps.get_model("orders", "Order")
+    text = _text(order_no)
+    order = Order.objects.select_related("customer").filter(order_no=text).first() if text else None
+    if order is None:
+        raise _Refusal(f"受注番号 {text or '(空)'} の受注はありません。list_orders で受注番号を確かめてください。")
+    return order
+
+
+def _order_line(order_no, line_no):
+    order = _order_by_no(order_no)
+    number = _read_int(line_no, "行番号 (line_no)")
+    line = order.lines.select_related("order", "item").filter(line_no=number).first()
+    if line is None:
+        raise _Refusal(
+            f"受注 {order.order_no} に行番号 {number} の明細はありません。get_order で行番号を確かめてください。"
+        )
+    return line
+
+
+def _workorder_step(workorder_no, process_code):
+    WorkOrder = apps.get_model("workorders", "WorkOrder")
+    text = _text(workorder_no)
+    workorder = WorkOrder.objects.filter(wo_no=text).first() if text else None
+    if workorder is None:
+        raise _Refusal(
+            f"指示書番号 {text or '(空)'} の指示書はありません。list_workorders で指示書番号を確かめてください。"
+        )
+    code = _text(process_code)
+    steps = list(workorder.steps.select_related("process").filter(process__code=code))
+    if not steps:
+        raise _Refusal(
+            f"指示書 {workorder.wo_no} に工程コード {code or '(空)'} の工程はありません。"
+            "list_workorders で工程コードを確かめてください。"
+        )
+    if len(steps) > 1:
+        raise _Refusal(
+            f"指示書 {workorder.wo_no} に工程コード {code} の工程が {len(steps)} つあります。"
+            "画面の生産計画の盤で日を置いてください。"
+        )
+    return steps[0]
+
+
+# --- 辞書の形 ---
+
+
+def _line_dict(line) -> dict[str, Any]:
+    """受注の明細 (annotate_remaining の shipped_total・remaining_total つき)。"""
+    return {
+        "line_no": line.line_no,
+        "part_no": line.item.part_no,
+        "item_name": line.item.name,
+        "qty": _num(line.qty),
+        "shipped_qty": _num(line.shipped_total),
+        "remaining_qty": _num(line.remaining_total),
+        "unit": line.unit,
+        "unit_price": _num(line.unit_price),
+        "amount": _num(line.amount),
+        "due_date": _day(line.due_date),
+    }
+
+
+def _order_dict(order, lines) -> dict[str, Any]:
+    return {
+        "order_no": order.order_no,
+        "customer_code": order.customer.code,
+        "customer_name": order.customer.name,
+        "order_date": _day(order.order_date),
+        "customer_order_no": order.customer_order_no,
+        "status": order.status,
+        "status_label": order.get_status_display(),
+        "url": _url("orders:order_detail", order.pk),
+        "lines": [_line_dict(line) for line in lines],
+    }
+
+
+def _annotated_lines(orders):
+    """受注の並びの明細を、出荷済みと残の数つきで行番号の順に引く (受注の pk ごとの並び)。"""
+    from seizou.orders import services as orders_services
+
+    OrderLine = apps.get_model("orders", "OrderLine")
+    rows = orders_services.annotate_remaining(
+        OrderLine.objects.filter(order__in=orders).select_related("item")
+    ).order_by("order_id", "line_no")
+    grouped: dict[int, list] = {}
+    for row in rows:
+        grouped.setdefault(row.order_id, []).append(row)
+    return grouped
+
+
+# --- 読む道具 ---
+
+
+def company_info() -> dict[str, Any]:
+    """会社の名前と、選べる設定の今の値と、入っている部品を返す。
+
+    引数は無い。
+    返す物: company (id・name 会社名・short_name 略称。会社の行が無ければ名前は空)、
+    settings (選べる設定の鍵ごとの今の値。例 over_shipment は受注より多い出荷のポカよけの段 stop / warn / off)、
+    parts (入っている部品の短い名前の並び)。
+    """
+    company = Company.objects.order_by("pk").first()
+    return {
+        "ok": True,
+        "company": {
+            "id": conf.company_id(),
+            "name": company.name if company else "",
+            "short_name": company.short_name if company else "",
+        },
+        "settings": {key: conf.setting(key) for key in conf.DEFAULTS},
+        "parts": [part.rsplit(".", 1)[-1] for part in PARTS],
+    }
+
+
+def list_screens() -> dict[str, Any]:
+    """会社のシステムの画面の目録を返す。
+
+    引数は無い。
+    返す物: count と items (画面ごとの name 画面の名前・help 1 文の説明・url_name URL の名前・path URL の道)。
+    url_name は get_manual の screen に渡せる。
+    """
+    items = [
+        {"name": screen.name, "help": screen.help, "url_name": screen.url_name, "path": screen.path}
+        for screen in screens.all_screens()
+    ]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+def search_items(query: str, limit: int = 20) -> dict[str, Any]:
+    """部品 (品目) を自社品番か品名の語で探す。
+
+    query: 品番か品名の語。空白で区切ると、全部の語を含む部品だけ。空なら全部。
+    limit: 返す件数 (1〜100。既定 20)。
+    返す物: count と items (部品ごとの part_no 自社品番・name 品名・unit 単位・url 詳細の道)。
+    ok が偽なら error に、読めなかった引数とその直し方がある。
+    """
+    from seizou.masters import services as masters_services
+
+    try:
+        count = _read_count(limit, "件数 (limit)", MAX_ITEMS)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    found = masters_services.candidates("item", _text(query), 1, per_page=count)
+    ids = [row["id"] for row in found["results"]]
+    Item = apps.get_model("masters", "Item")
+    by_pk = Item.objects.in_bulk(ids)
+    items = [
+        {
+            "part_no": by_pk[pk].part_no,
+            "name": by_pk[pk].name,
+            "unit": by_pk[pk].unit,
+            "url": _url("masters:item_detail", pk),
+        }
+        for pk in ids
+        if pk in by_pk
+    ]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+def get_item(part_no: str) -> dict[str, Any]:
+    """部品 (品目) の 1 件を自社品番で引く。
+
+    part_no: 自社品番 (完全一致)。
+    返す物: part_no・name 品名・drawing_no 図面番号・has_drawing 図面のファイルがあるか・unit 単位・
+    standard_price 標準の単価 (字。無ければ null)・note 備考・
+    partner_items (取引先ごとの partner_code・partner_name・partner_part_no 取引先の品番・partner_item_name 取引先の品名)・
+    processes (標準の工程。seq 順・process_code 工程コード・process_name 工程の名前)・url 詳細の道。
+    ok が偽なら error に、品番が無いことと探し方がある。
+    """
+    try:
+        item = _item_by_part_no(part_no)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    partner_items = item.partner_items.select_related("partner").order_by("partner__code", "partner_part_no")
+    processes = item.item_processes.select_related("process").order_by("seq")
+    return {
+        "ok": True,
+        "part_no": item.part_no,
+        "name": item.name,
+        "drawing_no": item.drawing_no,
+        "has_drawing": bool(item.drawing),
+        "unit": item.unit,
+        "standard_price": _num(item.standard_price),
+        "note": item.note,
+        "partner_items": [
+            {
+                "partner_code": row.partner.code,
+                "partner_name": row.partner.name,
+                "partner_part_no": row.partner_part_no,
+                "partner_item_name": row.partner_item_name,
+            }
+            for row in partner_items
+        ],
+        "processes": [
+            {"seq": row.seq, "process_code": row.process.code, "process_name": row.process.name}
+            for row in processes
+        ],
+        "url": _url("masters:item_detail", item.pk),
+    }
+
+
+def list_orders(status: str | None = None, customer_code: str | None = None, limit: int = 50) -> dict[str, Any]:
+    """受注の一覧を、明細ごとの出荷済みと残 (注文残) つきで受注日の新しい順に返す。
+
+    status: 状態 (open 受注・partial 一部出荷・shipped 出荷済・cancelled 取消)。null なら取消の外の全部。
+    customer_code: 得意先の取引先コード。null ならすべての得意先。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count と items (受注ごとの order_no 受注番号・customer_code・customer_name・order_date 受注日・
+    customer_order_no 得意先の注文番号・status と status_label 状態の日本語・url 詳細の道・
+    lines 明細 (line_no 行番号・part_no・item_name・qty 数量・shipped_qty 出荷済み・remaining_qty 残・
+    unit・unit_price・amount 金額・due_date 納期))。数は字。残が 0 より大きい明細が注文残。
+    ok が偽なら error に、読めなかった引数とその直し方がある。
+    """
+    Order = apps.get_model("orders", "Order")
+    labels = dict(Order.STATUS_CHOICES)
+    state = _text(status)
+    if state and state not in labels:
+        choices = "・".join(f"{value} ({label})" for value, label in Order.STATUS_CHOICES)
+        return _refused(f"状態 {state} は使えません。{choices} のどれかにしてください。")
+    try:
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+        customer = _partner_by_code(customer_code) if _text(customer_code) else None
+    except _Refusal as exc:
+        return _refused(exc.message)
+    queryset = Order.objects.select_related("customer")
+    queryset = queryset.filter(status=state) if state else queryset.exclude(status=Order.STATUS_CANCELLED)
+    if customer is not None:
+        queryset = queryset.filter(customer=customer)
+    orders = list(queryset.order_by("-order_date", "-pk")[:count])
+    lines = _annotated_lines(orders)
+    items = [_order_dict(order, lines.get(order.pk, [])) for order in orders]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+def get_order(order_no: str) -> dict[str, Any]:
+    """受注の 1 件を受注番号で引き、明細ごとの出荷と指示書も返す。
+
+    order_no: 受注番号。
+    返す物: list_orders の 1 件と同じ鍵に、明細ごとの shipments (出荷。shipment_no 出荷番号・qty 数量・
+    shipped_at 出荷日・delivery_note_no 納品書番号 (無ければ空)) と workorders (指示書。wo_no 指示書番号・
+    qty 数量・status と status_label 状態) を足した物。
+    ok が偽なら error に、受注番号が無いことと探し方がある。
+    """
+    try:
+        order = _order_by_no(order_no)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    lines = _annotated_lines([order]).get(order.pk, [])
+    result = _order_dict(order, lines)
+    for row, line in zip(result["lines"], lines, strict=True):
+        # 出荷と指示書は明細ごとに別に引く (出荷済みの合計の問い合わせに結ぶと合計がふくらむ)。
+        row["shipments"] = [
+            {
+                "shipment_no": shipment.shipment_no,
+                "qty": _num(shipment.qty),
+                "shipped_at": _day(shipment.shipped_at),
+                "delivery_note_no": shipment.delivery_note.note_no if shipment.delivery_note else "",
+            }
+            for shipment in line.shipments.select_related("delivery_note").order_by("shipped_at", "pk")
+        ]
+        row["workorders"] = [
+            {
+                "wo_no": workorder.wo_no,
+                "qty": _num(workorder.qty),
+                "status": workorder.status,
+                "status_label": workorder.get_status_display(),
+            }
+            for workorder in line.workorders.order_by("issued_on", "pk")
+        ]
+    return {"ok": True, **result}
+
+
+def list_workorders(status: str | None = None, limit: int = 50) -> dict[str, Any]:
+    """指示書の一覧を、工程ごとの予定の日と実績の数つきで発行日の新しい順に返す。
+
+    status: 状態 (issued 発行・cancelled 取消)。null なら発行だけ。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count と items (指示書ごとの wo_no 指示書番号・order_no 受注番号・line_no 行番号・part_no・item_name・
+    qty 数量・issued_on 発行日・status と status_label 状態・url 詳細の道・
+    steps 工程 (seq 順・process_code 工程コード・process_name 工程の名前・planned_qty 予定の数・
+    start 開始日・end 終了日 (未計画なら null)・recorded_qty 実績の数))。
+    工程コードは plan_step と plan_board に渡せる。ok が偽なら error に、読めなかった引数とその直し方がある。
+    """
+    from seizou.progress.services import recorded_qty
+
+    WorkOrder = apps.get_model("workorders", "WorkOrder")
+    WorkOrderStep = apps.get_model("workorders", "WorkOrderStep")
+    labels = dict(WorkOrder.STATUS_CHOICES)
+    state = _text(status) or WorkOrder.STATUS_ISSUED
+    if state not in labels:
+        choices = "・".join(f"{value} ({label})" for value, label in WorkOrder.STATUS_CHOICES)
+        return _refused(f"状態 {state} は使えません。{choices} のどれかにしてください。")
+    try:
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    workorders = (
+        WorkOrder.objects.filter(status=state)
+        .select_related("order_line__order", "order_line__item")
+        .prefetch_related(
+            Prefetch("steps", queryset=WorkOrderStep.objects.select_related("process").order_by("seq"))
+        )
+        .order_by("-issued_on", "-pk")[:count]
+    )
+    items = []
+    for workorder in workorders:
+        line = workorder.order_line
+        items.append(
+            {
+                "wo_no": workorder.wo_no,
+                "order_no": line.order.order_no,
+                "line_no": line.line_no,
+                "part_no": line.item.part_no,
+                "item_name": line.item.name,
+                "qty": _num(workorder.qty),
+                "issued_on": _day(workorder.issued_on),
+                "status": workorder.status,
+                "status_label": workorder.get_status_display(),
+                "url": _url("workorders:workorder_detail", workorder.pk),
+                "steps": [
+                    {
+                        "seq": step.seq,
+                        "process_code": step.process.code,
+                        "process_name": step.process.name,
+                        "planned_qty": _num(step.planned_qty),
+                        "start": _day(step.planned_start),
+                        "end": _day(step.planned_end),
+                        "recorded_qty": _num(recorded_qty(step)),
+                    }
+                    for step in workorder.steps.all()
+                ],
+            }
+        )
+    return {"ok": True, "count": len(items), "items": items}
+
+
+def list_shipments(days: int = 30, limit: int = 50) -> dict[str, Any]:
+    """出荷の一覧を、出荷日の新しい順に返す。
+
+    days: 今日から何日前の出荷までを出すか (1〜366。既定 30)。出荷日が先の日付の出荷も出す。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count と items (出荷ごとの shipment_no 出荷番号・order_no 受注番号・line_no 行番号・
+    customer_code 得意先の取引先コード・part_no・qty 数量・shipped_at 出荷日・
+    delivery_note_no 納品書番号 (無ければ空)・note 備考)。
+    ok が偽なら error に、読めなかった引数とその直し方がある。
+    """
+    Shipment = apps.get_model("shipping", "Shipment")
+    try:
+        span = _read_count(days, "日数 (days)", MAX_DAYS)
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    since = timezone.localdate() - timedelta(days=span)
+    shipments = (
+        Shipment.objects.filter(shipped_at__gte=since)
+        .select_related("order_line__order__customer", "order_line__item", "delivery_note")
+        .order_by("-shipped_at", "-pk")[:count]
+    )
+    items = [
+        {
+            "shipment_no": shipment.shipment_no,
+            "order_no": shipment.order_line.order.order_no,
+            "line_no": shipment.order_line.line_no,
+            "customer_code": shipment.order_line.order.customer.code,
+            "part_no": shipment.order_line.item.part_no,
+            "qty": _num(shipment.qty),
+            "shipped_at": _day(shipment.shipped_at),
+            "delivery_note_no": shipment.delivery_note.note_no if shipment.delivery_note else "",
+            "note": shipment.note,
+        }
+        for shipment in shipments
+    ]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+def get_manual(screen: str | None = None) -> dict[str, Any]:
+    """会社のマニュアル (画面ごとの説明書) を読む。
+
+    screen: 画面の URL の名前 (list_screens の url_name。例 orders:order_list)。null なら目次。
+    返す物 (null のとき): intro 前書きの HTML (無ければ空) と、count と items
+    (画面ごとの name・url_name・has_fragment 説明書のファイルがあるか)。
+    返す物 (名前のとき): name 画面の名前・help 1 文の説明・url_name・html 説明書の HTML (そのままの字)・
+    message (説明書が無いときと、読めないときの文。ほかは空)。
+    ok が偽なら error に、画面の名前が目録に無いことと探し方がある。
+    """
+    all_screens = screens.all_screens()
+    if not _text(screen):
+        intro = manual.read_fragment(manual.INTRO_NAME)
+        items = [
+            {
+                "name": entry.name,
+                "url_name": entry.url_name,
+                "has_fragment": manual.read_fragment(manual.fragment_name(entry.url_name)) is not None,
+            }
+            for entry in all_screens
+        ]
+        return {
+            "ok": True,
+            "intro": intro if isinstance(intro, str) else "",
+            "count": len(items),
+            "items": items,
+        }
+    name = _text(screen)
+    entry = next((candidate for candidate in all_screens if candidate.url_name == name), None)
+    if entry is None:
+        return _refused(f"画面 {name} は画面の目録にありません。list_screens の url_name を使ってください。")
+    fragment = manual.read_fragment(manual.fragment_name(entry.url_name))
+    if fragment is None:
+        html, message = "", "この画面の説明はまだありません。/seizou:manual で作れます。"
+    elif fragment is manual.UNREADABLE:
+        html, message = "", "説明のファイルを UTF-8 で読めませんでした。/seizou:manual で作り直してください。"
+    else:
+        html, message = fragment, ""
+    return {
+        "ok": True,
+        "name": entry.name,
+        "help": entry.help,
+        "url_name": entry.url_name,
+        "html": html,
+        "message": message,
+    }
+
+
+READ_TOOLS = (
+    company_info,
+    list_screens,
+    search_items,
+    get_item,
+    list_orders,
+    get_order,
+    list_workorders,
+    list_shipments,
+    get_manual,
+)
+
+
+# --- 書く道具 ---
+
+
+def _checked(action: str, data: dict, user, confirm) -> dict[str, Any] | None:
+    """検査の層を通す。止める段は断りの辞書、知らせる段で確認の印が無ければ知らせの辞書、通れば None。"""
+    try:
+        warnings = checks.run(action, data, user)
+    except CheckViolation as exc:
+        return _refused(exc.message, exc.code)
+    if warnings and not _read_bool(confirm):
+        return {
+            "ok": False,
+            "warnings": [{"code": warning.code, "message": warning.message} for warning in warnings],
+            "hint": CONFIRM_HINT,
+        }
+    return None
+
+
+def _order_lines(lines) -> list[dict]:
+    """create_order の明細を、受注の入力の form の service_kwargs と同じ鍵の辞書の並びにする。"""
+    if not lines:
+        raise _Refusal("明細がありません。明細を 1 行以上入れてください。")
+    if not isinstance(lines, (list, tuple)):
+        raise _Refusal("明細 (lines) が読めません。明細の行の並びにしてください。")
+    result = []
+    for number, raw in enumerate(lines, start=1):
+        label = f"明細の {number} 行目の"
+        if not isinstance(raw, dict):
+            raise _Refusal(f"{label}形が読めません。part_no・qty・unit_price を持つ行にしてください。")
+        result.append(
+            {
+                "item": _item_by_part_no(raw.get("part_no"), label),
+                "qty": _read_decimal(raw.get("qty"), f"{label}数量 (qty)"),
+                "unit_price": _read_decimal(raw.get("unit_price"), f"{label}単価 (unit_price)", max_digits=14),
+                "due_date": _read_optional_date(raw.get("due_date"), f"{label}納期 (due_date)"),
+                "note": _read_text(raw.get("note"), f"{label}備考 (note)", 500),
+            }
+        )
+    return result
+
+
+def _create_order(user, customer_code, lines, order_date, customer_order_no, confirm) -> dict[str, Any]:
+    if user is None:
+        return _refused(NO_USER_MESSAGE)
+    try:
+        customer = _partner_by_code(customer_code)
+        line_dicts = _order_lines(lines)
+        day = _read_date(order_date, "受注日 (order_date)")
+        their_no = _read_text(customer_order_no, "得意先の注文番号 (customer_order_no)", 35)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    data = {"customer": customer, "lines": line_dicts, "order_date": day, "customer_order_no": their_no}
+    stopped = _checked("orders.create_order", data, user, confirm)
+    if stopped is not None:
+        return stopped
+    from seizou.orders import services as orders_services
+
+    try:
+        order = orders_services.create_order(customer, line_dicts, user, order_date=day, customer_order_no=their_no)
+    except RuleError as exc:
+        return _refused(exc.message, exc.code)
+    except ValueError as exc:
+        return _refused(str(exc))
+    return {
+        "ok": True,
+        "order_no": order.order_no,
+        "url": _url("orders:order_detail", order.pk),
+        "line_count": order.lines.count(),
+    }
+
+
+def _ship(user, order_no, line_no, qty, shipped_at, note, confirm) -> dict[str, Any]:
+    if user is None:
+        return _refused(NO_USER_MESSAGE)
+    try:
+        line = _order_line(order_no, line_no)
+        amount = _read_decimal(qty, "数量 (qty)")
+        day = _read_date(shipped_at, "出荷日 (shipped_at)")
+        text = _read_text(note, "備考 (note)", 500)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    data = {"order_line": line, "qty": amount, "shipped_at": day, "note": text}
+    stopped = _checked("shipping.ship", data, user, confirm)
+    if stopped is not None:
+        return stopped
+    from seizou.orders import services as orders_services
+    from seizou.shipping import services as shipping_services
+
+    try:
+        shipment = shipping_services.ship(line, amount, day, user, note=text)
+    except RuleError as exc:
+        return _refused(exc.message, exc.code)
+    except ValueError as exc:
+        return _refused(str(exc))
+    order = apps.get_model("orders", "Order").objects.get(pk=line.order_id)
+    return {
+        "ok": True,
+        "shipment_no": shipment.shipment_no,
+        "order_no": order.order_no,
+        "line_no": line.line_no,
+        "status": order.status,
+        "status_label": order.get_status_display(),
+        "remaining_qty": _num(orders_services.remaining_qty(line)),
+        "url": _url("orders:order_detail", order.pk),
+    }
+
+
+def _plan_step(user, workorder_no, process_code, start, end, confirm) -> dict[str, Any]:
+    if user is None:
+        return _refused(NO_USER_MESSAGE)
+    try:
+        step = _workorder_step(workorder_no, process_code)
+        first = _read_optional_date(start, "開始日 (start)")
+        last = _read_optional_date(end, "終了日 (end)")
+    except _Refusal as exc:
+        return _refused(exc.message)
+    data = {"workorder_step": step, "start": first, "end": last}
+    stopped = _checked("workorders.plan_step", data, user, confirm)
+    if stopped is not None:
+        return stopped
+    from seizou.workorders import services as workorders_services
+
+    try:
+        placed = workorders_services.plan_step(step, first, last, user)
+    except RuleError as exc:
+        return _refused(exc.message, exc.code)
+    except ValueError as exc:
+        return _refused(str(exc))
+    return {
+        "ok": True,
+        "wo_no": step.workorder.wo_no,
+        "process_code": step.process.code,
+        "start": _day(placed.planned_start),
+        "end": _day(placed.planned_end),
+        "url": _url("workorders:workorder_detail", step.workorder_id),
+    }
+
+
+def write_tools(user) -> tuple:
+    """書く道具の並び。user (書く人) を入れ子の関数が閉じ込める。user が None なら、どの道具も断りの文を返す。"""
+
+    def create_order(
+        customer_code: str,
+        lines: list[OrderLineInput],
+        order_date: str,
+        customer_order_no: str = "",
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        """受注を 1 件作る (画面の受注の入力と同じ決まりとポカよけを通る)。
+
+        customer_code: 得意先の取引先コード。
+        lines: 明細の並び。1 行 = part_no 自社品番・qty 数量・unit_price 単価・due_date 納期 (任意。YYYY-MM-DD)・note 備考 (任意)。
+        単位は部品の単位を写す。order_date: 受注日 (YYYY-MM-DD)。customer_order_no: 得意先の注文番号 (任意)。
+        confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
+        返す物: order_no 受注番号・url 詳細の道・line_count 明細の数。
+        ok が偽のとき: error (と code 決まりの番号) は断りの理由で、保存していない。
+        warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
+        """
+        return _create_order(user, customer_code, lines, order_date, customer_order_no, confirm)
+
+    def ship(
+        order_no: str,
+        line_no: int,
+        qty: Decimal,
+        shipped_at: str,
+        note: str = "",
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        """受注の明細を出荷する (画面の出荷の入力と同じ決まりとポカよけを通る)。
+
+        order_no: 受注番号。line_no: 明細の行番号。qty: 出荷する数量。shipped_at: 出荷日 (YYYY-MM-DD)。
+        note: 備考 (任意)。confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
+        返す物: shipment_no 出荷番号・order_no・line_no・status と status_label 受注の今の状態・
+        remaining_qty その明細の残・url 受注の詳細の道。
+        ok が偽のとき: error (と code 決まりの番号。R01 受注より多い出荷・R05 取消の受注 など) は断りの理由で、保存していない。
+        warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
+        """
+        return _ship(user, order_no, line_no, qty, shipped_at, note, confirm)
+
+    def plan_step(
+        workorder_no: str,
+        process_code: str,
+        start: str,
+        end: str,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        """指示書の工程に、生産計画の開始日と終了日を置く (画面の生産計画の盤と同じ決まりを通る)。
+
+        workorder_no: 指示書番号。process_code: 工程コード (list_workorders の steps の値)。
+        start と end: 開始日と終了日 (YYYY-MM-DD)。両方を空の字にすると未計画に戻す。
+        confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
+        返す物: wo_no 指示書番号・process_code・start・end (未計画なら null)・url 指示書の詳細の道。
+        ok が偽のとき: error (と code 決まりの番号) は断りの理由で、保存していない。
+        warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
+        """
+        return _plan_step(user, workorder_no, process_code, start, end, confirm)
+
+    return (create_order, ship, plan_step)
