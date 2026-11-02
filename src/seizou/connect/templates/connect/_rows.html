@@ -1,0 +1,24 @@
+{% comment %}
+connect の一覧 (受信箱・つながり) の行の部分。土台は htmx の要求に、この部分を core/_rows.html より先に探す。
+受信箱の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
+after=0 は一覧が空だった時の取りに行きで、行が届いたら表ごと返し、まだ空なら core の空の表示を返す。
+どちらも、次の after を持った取りに行く要素 (connect/_inbox_poll.html) を hx-swap-oob で入れ直す。
+それ以外 (検索・並び替え・ページ送りと、つながりの一覧) は core/_rows.html をそのまま使う。
+{% endcomment %}
+{% if request.resolver_match.url_name == "inbox_list" and "after" in request.GET %}
+{% if request.GET.after != "0" %}{% include "connect/_inbox_new_rows.html" %}
+{% elif rows %}
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm table-zebra table-pin-rows">
+  <thead><tr class="bg-base-200 text-base-content/70">{% for col in columns %}<th class="whitespace-nowrap font-medium">{{ col.label }}</th>{% endfor %}</tr></thead>
+  <tbody>{% include "connect/_inbox_new_rows.html" %}</tbody>
+</table>
+</div>
+{% include "core/_list_meta.html" with oob=True %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}
+{% include "connect/_inbox_poll.html" with trigger="every 2s" oob=True %}
+{% else %}
+{% include "core/_rows.html" %}
+{% if request.resolver_match.url_name == "inbox_list" %}{% include "connect/_inbox_poll.html" with trigger="every 2s" oob=True %}{% endif %}
+{% endif %}

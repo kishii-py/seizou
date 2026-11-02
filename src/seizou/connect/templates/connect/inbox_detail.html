@@ -1,0 +1,37 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons %}
+{# 受信箱の詳細。見出しの右に、状態が「届いた」のときだけ「断る」と「受け入れる」。 #}
+{% block actions %}{{ block.super }}{% if object.status == "received" %}
+<a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
+<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}受け入れる</a>
+{% endif %}{% endblock %}
+{% block content %}
+{# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (02 の 0 節: uuid は出さない)。 #}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+  <dl class="grid gap-x-6 sm:grid-cols-2">
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">取引先</dt>
+      <dd class="min-w-0 break-words">{% master_link object.partner %}</dd>
+    </div>
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">届いた日時</dt>
+      <dd class="min-w-0 font-mono tabular-nums">{{ object.received_at|date:"Y-m-d H:i" }}</dd>
+    </div>
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">状態</dt>
+      <dd class="min-w-0">{{ object.get_status_display }}</dd>
+    </div>
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">受け入れて作った受注</dt>
+      <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+    </div>
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">断った理由</dt>
+      <dd class="min-w-0 break-words">{% if object.reason %}{{ object.reason }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+    </div>
+  </dl>
+  <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">明細 (相手の品番のまま)</p>
+  {% include "connect/_payload_lines.html" %}
+</div>
+{% endblock %}
