@@ -227,9 +227,10 @@ def test_list_menu_and_row_link(client_logged_in, order, user):
     assert str(order) in html
     assert "新規登録" not in html
 
-    # 左のメニュー (「文書」の区分) に「添付ファイル」の入口がある。
+    # 一覧は左のメニューに出さず、設定の画面 (普段は触らない物) から開く (11-03 の本人の指摘)。
     home = html_of(client_logged_in.get(reverse("core:home")))
-    assert re.search(rf'<a href="{list_url}"[^>]*>.*?<span class="truncate">添付ファイル</span></a>', home)
+    assert list_url not in home
+    assert list_url in html_of(client_logged_in.get(reverse("core:settings")))
 
     assert client_logged_in.get(list_url, {"sort": "target_label"}).status_code == 200
 

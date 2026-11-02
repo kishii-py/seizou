@@ -13,8 +13,8 @@ app_name = "connect"
 #: 左のメニューに並べる入口 (core の context processor が読む)
 MENU = [
     ("受信箱", "connect:inbox_list"),
-    ("つながり", "connect:connection_list"),
 ]
+# つながり (取引先との接続) は普段は触らないので、左のメニューでなく設定の画面 (core:settings) から開く (本人の指摘 11-03 昼)。
 
 urlpatterns = [
     path("receive/order/", views.receive_order, name="receive"),

@@ -223,5 +223,7 @@ def test_connection_list_shows_secret_state_without_value(
 def test_menu_has_inbox_entries(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
 
-    assert reverse("connect:inbox_list") in body and reverse("connect:connection_list") in body
-    assert "受信箱" in body and "つながり" in body
+    assert reverse("connect:inbox_list") in body and "受信箱" in body
+    # つながりは左のメニューに出さず、設定の画面から開く
+    assert reverse("connect:connection_list") not in body
+    assert reverse("connect:connection_list") in client_logged_in.get(reverse("core:settings")).content.decode()
