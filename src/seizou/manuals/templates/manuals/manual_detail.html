@@ -1,0 +1,36 @@
+{% extends "core/detail.html" %}
+{% load manuals_tags seizou_icons %}
+{# 見る画面: 上に帯 (置き場の道・版・最終更新・形式・保護)、その下に左の目次と右の本文、最後に土台の基本情報。 #}
+{% block content %}
+{% manual_body object as rendered %}
+<div class="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs">
+  <nav aria-label="置き場" class="flex flex-wrap items-center gap-2">
+    <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">ルート</a>
+    {% for crumb in object.folder.path %}
+    {% icon "chevron-right" "size-4 text-base-content/50" %}
+    <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' crumb.pk %}">{{ crumb.name }}</a>
+    {% endfor %}
+  </nav>
+  <span class="badge badge-outline tabular-nums">版 {{ object.version }}</span>
+  <span class="text-base-content/70">最終更新 <span class="font-mono tabular-nums">{{ object.updated_at|date:"Y-m-d H:i" }}</span></span>
+  <span class="badge badge-ghost">{{ object.get_format_display }}</span>
+  {% if object.protected %}<span class="badge badge-ghost gap-2">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+</div>
+<div class="mb-6 flex flex-col gap-6 lg:flex-row lg:items-start">
+  {% if rendered.toc %}
+  <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
+    <h2 class="text-lg font-bold">目次</h2>
+    <ol class="mt-4 flex flex-col">
+      {% for entry in rendered.toc %}
+      <li><a class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ entry.anchor }}" title="{{ entry.title }}"><span class="shrink-0 font-mono tabular-nums text-base-content/50">{{ entry.number }}</span><span class="truncate">{{ entry.title }}</span></a></li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% endif %}
+  <article class="min-w-0 flex-1 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="本文">
+    {% if object.body.strip %}{% include "manuals/_body.html" %}
+    {% else %}<p class="text-base-content/70">まだ本文がありません。「編集」から書きます。</p>{% endif %}
+  </article>
+</div>
+{{ block.super }}
+{% endblock %}

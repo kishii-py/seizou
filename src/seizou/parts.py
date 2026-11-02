@@ -15,4 +15,5 @@ PARTS = [
     "seizou.progress",
     "seizou.billing",
     "seizou.intake",
+    "seizou.manuals",
 ]
