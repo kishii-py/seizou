@@ -60,6 +60,15 @@ CREATE_ADMIN = (
     "print('created' if made else 'exists')"
 )
 
+# 会社の設定 (core の Company) の 1 行を、答えの会社名で作る短い Python。既にあれば触らない。
+CREATE_COMPANY = (
+    "import importlib, os; "
+    "Company = importlib.import_module('seizou.core.models').Company; "
+    "made = not Company.objects.exists(); "
+    "made and Company.objects.create(name=os.environ['SEIZOU_COMPANY_NAME']); "
+    "print('created' if made else 'exists')"
+)
+
 # 作り物のデータを入れる短い Python (seizou.core.demo があるときだけ。引数は種のフォルダ)。
 LOAD_DEMO = "import importlib, pathlib; importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}))"
 
@@ -336,6 +345,16 @@ def command_new(answers_path: Path, demo: bool) -> int:
         admin_text = f"管理者の ID: {ADMIN_ID} (既にあったので作らず、パスワードも変えていません)"
     else:
         admin_text = f"管理者の ID: {ADMIN_ID} / パスワード: {password} (パスワードはこの 1 度だけ出します)"
+
+    # 会社の設定の 1 行 (画面の上の帯に出る会社名)。答えの name を使う。
+    result = run_manage(
+        site,
+        ["shell", "--no-imports", "-c", CREATE_COMPANY],
+        {"SEIZOU_COMPANY_NAME": str(answers["name"])},
+    )
+    if result.returncode != 0:
+        return show_failure("会社の設定を作る所", result)
+    print(f"会社の設定を作りました: {answers['name']}")
 
     if demo:
         # import せずに有無だけを見る (この process で Django の model を読まないため)。
