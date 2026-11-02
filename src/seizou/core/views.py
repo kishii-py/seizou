@@ -58,6 +58,14 @@ DEFAULT_PAGE_SIZE = 50
 MASTER_APPS = ("masters",)
 
 
+class Notice:
+    """赤の知らせの中身 (例外でない物を同じ形で描くため)。"""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+
+
 def url_or_none(name: str, *args) -> str | None:
     try:
         return reverse(name, args=args)
@@ -186,7 +194,11 @@ class BaseListView(ScreenMixin, ListView):
         cells = []
         for spec in specs:
             value = display_value(obj, spec.name)
-            cells.append({"value": value, "master": value if is_master(value) else None})
+            master = value if is_master(value) else None
+            # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
+            if master is None and spec.name == "name" and is_master(obj):
+                master = obj
+            cells.append({"value": value, "master": master})
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
 
     def totals_for(self, queryset, specs) -> list | None:
@@ -357,6 +369,9 @@ class BaseFormView(ScreenMixin, FormView):
             result = self.call_service(form)
         except RuleError as exc:
             return self.render_to_response(self.get_context_data(form=form, notice=exc))
+        except ValueError as exc:
+            # 部品の決まり (番号の無い物。品番の一意など) は日本語の文の ValueError。赤の知らせにする。
+            return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
         messages.success(self.request, self.success_message)
         url = self.get_success_url_for(result)
         if self.request.headers.get("HX-Request"):

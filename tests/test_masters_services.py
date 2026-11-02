@@ -111,10 +111,11 @@ def test_unknown_keys_are_refused(user):
 
 @pytest.mark.django_db
 def test_ext_is_not_silently_dropped(user):
+    # 会社ごとの項目の登録 (core の fields.register) が無いのに ext が来たら、黙って捨てずに止める。
     ext = {"ext01": "x"}
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="登録されていません"):
         services.create_item({"part_no": "T-100", "name": "作り物の軸"}, user, ext=ext)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="登録されていません"):
         services.create_partner(
             {"code": "C001", "name": "作り物の得意先", "role": "customer"}, user, ext=ext
         )
@@ -125,9 +126,9 @@ def test_ext_is_not_silently_dropped(user):
     partner = services.create_partner(
         {"code": "C001", "name": "作り物の得意先", "role": "customer"}, user
     )
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="登録されていません"):
         services.update_item(item, {"name": "作り物の軸 改"}, user, ext=ext)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="登録されていません"):
         services.update_partner(partner, {"name": "作り物の得意先 改"}, user, ext=ext)
     item.refresh_from_db()
     partner.refresh_from_db()

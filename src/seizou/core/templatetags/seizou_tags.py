@@ -22,16 +22,18 @@ def modal_url(obj) -> str | None:
 
 
 @register.simple_tag
-def master_link(obj):
+def master_link(obj, label=None):
+    """obj の名前 (label があればその字) を、小窓を開く link にして出す。"""
     if obj is None:
         return ""
+    text = str(obj) if label is None or label == "" else str(label)
     url = modal_url(obj)
     if url is None:
-        return format_html('<span class="master-link">{}</span>', str(obj))
+        return format_html('<span class="master-link">{}</span>', text)
     return format_html(
         '<a class="link master-link" href="{0}" hx-get="{0}" hx-target="#seizou-modal-box" hx-swap="innerHTML" '
         'hx-on::after-request="document.getElementById(\'seizou-modal\').showModal()" '
         'onclick="event.preventDefault()">{1}</a>',
         url,
-        str(obj),
+        text,
     )
