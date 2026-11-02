@@ -509,3 +509,25 @@ def import_items(rows, user):
 def import_partners(rows, user):
     """取引先の CSV の行を入れる。取引先コードが既にあれば update_partner、無ければ create_partner。形は import_items と同じ。"""
     return _import_rows(rows, user, Partner, "code", "取引先コード", create_partner, update_partner)
+
+
+def set_item_processes(item, processes, user):
+    """部品の標準の工程の並びを置き換える。processes は Process の並びで、並びの順に順を 1 から付ける。
+
+    今の並びは消してから作り直す。空の並び・工程でない物・同じ工程の 2 回は、何も変えずに日本語の ValueError。
+    返す物は作った ItemProcess の並び。user は受けるだけ。
+    """
+    processes = list(processes)
+    if not processes:
+        raise ValueError("工程がありません。工程を 1 つ以上渡してください。")
+    for process in processes:
+        if not isinstance(process, Process):
+            raise ValueError(f"工程でない物 ({process!r}) が入っています。工程 (Process) だけを渡してください。")
+    seen = set()
+    for process in processes:
+        if process.pk in seen:
+            raise ValueError(f"工程 {process.code} が 2 回あります。同じ工程は 1 回だけにしてください。")
+        seen.add(process.pk)
+    with transaction.atomic():
+        item.item_processes.all().delete()
+        return [item.item_processes.create(process=process, seq=seq) for seq, process in enumerate(processes, start=1)]

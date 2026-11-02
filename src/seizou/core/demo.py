@@ -13,7 +13,11 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   画面の字を直す前の見出し (FORMER_HEADERS) も読む (種の見出しは別の係が持つので、すぐには変えない)。
 - 取引先の支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31 の数。31 は月末) の 2 列。
 - 会社ごとの項目 (items.csv の見出しのうち部品の表に無い物) は、core.fields の登録の見出しと突き合わせて ext= にする。
-- 図面の files/ は読まない。
+- 続けて、新しい 6 種類を入れる (種のファイルが無い種類は飛ばし、出力の行も出さない)。
+  標準の工程 (item_processes.csv)・図面 (items.csv の「図面ファイル」の欄と files/)・
+  指示書 (workorders.yaml)・出荷 (shipments.yaml)・納品書 (delivery_notes.yaml)・請求書 (invoices.yaml)。
+  受注の明細は 得意先の取引先コード × 得意先の注文番号 × 行番号、出荷は 受注の明細 × 出荷日 で指す。
+  納品書と指示書の発行日は、services が今日にするので、読み込みの日になる。
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from pathlib import Path
 
 import yaml
 from django.contrib.auth import get_user_model
+from django.core.files import File
 from django.db import models, transaction
 
 from seizou.core import fields as company_fields
@@ -47,6 +52,27 @@ LINE_KEYS = ("自社品番", "数量", "単位", "単価", "納期", "備考")
 CONNECTION_KEYS = ("取引先コード", "受け口の URL", "鍵の置き場の名前", "向き")
 PROCESS_KEYS = ("工程コード", "名前", "外注か", "並び順", "計画に使う")
 PARTNER_ITEM_HEADERS = ("取引先コード", "自社品番", "取引先の品番", "取引先の品名")
+
+# 新しい 6 種類 (今の 6 種類の後)。種のファイルが無い種類は飛ばす。図面は files/ のフォルダがあるときだけ回す。
+MORE_KINDS = ("標準の工程", "図面", "指示書", "出荷", "納品書", "請求書")
+MORE_SEED_FILES = {
+    "標準の工程": "item_processes.csv",
+    "図面": "files",
+    "指示書": "workorders.yaml",
+    "出荷": "shipments.yaml",
+    "納品書": "delivery_notes.yaml",
+    "請求書": "invoices.yaml",
+}
+MORE_YAML_ROOT_KEYS = {"指示書": "指示書", "出荷": "出荷", "納品書": "納品書", "請求書": "請求書"}
+
+ITEM_PROCESS_HEADERS = ("自社品番", "工程コード", "順")
+LINE_REF_KEYS = ("得意先の取引先コード", "得意先の注文番号", "行番号")
+WORKORDER_KEYS = (*LINE_REF_KEYS, "数量", "工程")
+WORKORDER_STEP_KEYS = ("工程コード", "予定の数", "開始日", "終了日")
+SHIPMENT_KEYS = (*LINE_REF_KEYS, "数量", "出荷日", "備考")
+SHIPMENT_REF_KEYS = ("得意先の注文番号", "行番号", "出荷日")
+DELIVERY_NOTE_KEYS = ("得意先の取引先コード", "出荷")
+INVOICE_KEYS = ("得意先の取引先コード", "発行日", "出荷")
 
 TRUE_WORDS = frozenset({"true", "1", "はい", "yes"})
 FALSE_WORDS = frozenset({"false", "0", "いいえ", "no"})
@@ -380,6 +406,261 @@ def _load_connections(seeds_dir, user, notices):
     return made, skipped
 
 
+def _process_by_code(code):
+    from seizou.masters.models import Process
+
+    process = Process.objects.filter(code=str(code).strip()).first()
+    if process is None:
+        raise ValueError(f"工程コード {code} が工程にありません。工程の種に行を足してください。")
+    return process
+
+
+def _order_line_by_key(customer, customer_order_no, line_no):
+    """得意先 × 得意先の注文番号 × 行番号で、受注の明細を 1 つ引く。無い・2 つ以上は日本語の ValueError。"""
+    from seizou.orders.models import Order, OrderLine
+
+    order_no = _coerce(Order._meta.get_field("customer_order_no"), customer_order_no)
+    if not order_no:
+        raise ValueError("得意先の注文番号が空です。受注の明細を指すので、書いてください。")
+    number = _coerce(OrderLine._meta.get_field("line_no"), line_no)
+    found = list(
+        OrderLine.objects.filter(order__customer=customer, order__customer_order_no=order_no, line_no=number)[:2]
+    )
+    where = f"取引先コード {customer.code}・得意先の注文番号 {order_no}・行番号 {number}"
+    if not found:
+        raise ValueError(f"受注の明細が見つかりません ({where})。受注の種に行を足してください。")
+    if len(found) > 1:
+        raise ValueError(f"受注の明細が 2 つ以上あります ({where})。")
+    return found[0]
+
+
+def _line_of_entry(entry):
+    return _order_line_by_key(
+        _partner_by_code(entry.get("得意先の取引先コード")),
+        entry.get("得意先の注文番号"),
+        entry.get("行番号"),
+    )
+
+
+def _shipments_of_entry(path, number, entry, customer, what):
+    """納品書と請求書の件の「出荷」の並びを、受注の明細 × 出荷日で出荷に引き直す。"""
+    from seizou.shipping.models import Shipment
+
+    refs = entry.get("出荷")
+    if not isinstance(refs, list) or not refs:
+        raise ValueError(f"{path.name} の {number} 件目の{what}に出荷がありません。")
+    shipped_field = Shipment._meta.get_field("shipped_at")
+    shipments = []
+    for position, ref in enumerate(refs, start=1):
+        _check_entry_keys(path, f"{number} 件目の{what}の {position} 番目", ref, SHIPMENT_REF_KEYS, "出荷")
+        with _guard(path.name, f"{number} 件目の{what}の {position} 番目の出荷"):
+            line = _order_line_by_key(customer, ref.get("得意先の注文番号"), ref.get("行番号"))
+            shipped_at = _coerce(shipped_field, ref.get("出荷日"))
+            found = list(Shipment.objects.filter(order_line=line, shipped_at=shipped_at)[:2])
+            if not found:
+                raise ValueError(
+                    f"出荷が見つかりません (得意先の注文番号 {ref.get('得意先の注文番号')}・行番号 {ref.get('行番号')}"
+                    f"・出荷日 {shipped_at})。出荷の種に行を足してください。"
+                )
+            if len(found) > 1:
+                raise ValueError(f"同じ明細に同じ日の出荷が 2 つあります (出荷日 {shipped_at})。")
+            shipments.append(found[0])
+    return shipments
+
+
+def _load_item_processes(seeds_dir, user, notices):
+    from seizou.masters import services
+    from seizou.masters.models import ItemProcess
+
+    path = seeds_dir / MORE_SEED_FILES["標準の工程"]
+    if not path.is_file():
+        return None
+    seq_field = ItemProcess._meta.get_field("seq")
+    _headers, rows = _read_csv(path, ITEM_PROCESS_HEADERS, ITEM_PROCESS_HEADERS)
+
+    grouped: dict = {}
+    for line_no, row in rows:
+        with _guard(path.name, f"{line_no} 行目"):
+            part_no = (row.get("自社品番") or "").strip()
+            code = (row.get("工程コード") or "").strip()
+            if not part_no:
+                raise ValueError("自社品番が空です。")
+            if not code:
+                raise ValueError("工程コードが空です。")
+            seq = _coerce(seq_field, row.get("順"))
+            steps = grouped.setdefault(part_no, {})
+            if seq in steps:
+                raise ValueError(f"自社品番 {part_no} に順 {seq} が 2 つあります。順は部品ごとに重ならない数にしてください。")
+            steps[seq] = (line_no, code)
+
+    made = skipped = 0
+    for part_no, steps in grouped.items():
+        first_line = min(line_no for line_no, _code in steps.values())
+        with _guard(path.name, f"{first_line} 行目 (自社品番 {part_no})"):
+            item = _item_by_part_no(part_no)
+            if item.item_processes.exists():
+                skipped += 1
+                continue
+            processes = [_process_by_code(steps[seq][1]) for seq in sorted(steps)]
+            services.set_item_processes(item, processes, user)
+            made += 1
+    return made, skipped
+
+
+def _load_drawings(seeds_dir, user, notices):
+    from seizou.masters import services
+    from seizou.masters.models import Item
+
+    files_dir = seeds_dir / MORE_SEED_FILES["図面"]
+    if not files_dir.is_dir():
+        return None
+    path = _open_file(seeds_dir, "品目")
+    by_label = _fields_by_label(Item)
+    _headers, rows = _read_csv(path, by_label, ("自社品番", "品名"), extra_ok=True)
+
+    made = skipped = 0
+    for line_no, row in rows:
+        name = (row.get("図面ファイル") or "").strip()
+        if not name:
+            continue
+        with _guard(path.name, f"{line_no} 行目"):
+            if "/" in name or "\\" in name or ".." in name:
+                raise ValueError(f"図面ファイル「{name}」は files/ の中のファイルの名前だけを書いてください (フォルダの道は書けません)。")
+            source = files_dir / name
+            if not source.is_file():
+                raise ValueError(f"図面ファイル「{name}」が files/ にありません。")
+            item = _item_by_part_no(row.get("自社品番"))
+            if item.drawing:
+                skipped += 1
+                continue
+            # 開いたまま update_item に渡し、保存の後に閉じる (先に閉じると空のファイルになる)。
+            with open(source, "rb") as handle:
+                services.update_item(item, {"drawing": File(handle, name=name)}, user)
+            made += 1
+    return made, skipped
+
+
+def _load_workorders(seeds_dir, user, notices):
+    from seizou.workorders import services
+    from seizou.workorders.models import WorkOrder, WorkOrderStep
+
+    path = seeds_dir / MORE_SEED_FILES["指示書"]
+    if not path.is_file():
+        return None
+    qty_field = WorkOrder._meta.get_field("qty")
+    planned_field = WorkOrderStep._meta.get_field("planned_qty")
+    start_field = WorkOrderStep._meta.get_field("planned_start")
+    end_field = WorkOrderStep._meta.get_field("planned_end")
+    made = skipped = 0
+    for number, entry in enumerate(_read_yaml(path, MORE_YAML_ROOT_KEYS["指示書"]), start=1):
+        _check_entry_keys(path, number, entry, WORKORDER_KEYS, "指示書")
+        raw_steps = entry.get("工程")
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise ValueError(f"{path.name} の {number} 件目の指示書に工程がありません。")
+        for position, raw in enumerate(raw_steps, start=1):
+            _check_entry_keys(path, f"{number} 件目の指示書の {position} 番目", raw, WORKORDER_STEP_KEYS, "工程")
+        with _guard(path.name, f"{number} 件目の指示書"):
+            line = _line_of_entry(entry)
+            if WorkOrder.objects.filter(order_line=line).exclude(status=WorkOrder.STATUS_CANCELLED).exists():
+                skipped += 1
+                continue
+            qty = _coerce(qty_field, entry.get("数量"))
+            steps = []
+            dates = []
+            for raw in raw_steps:
+                steps.append(
+                    {
+                        "process": _process_by_code(raw.get("工程コード")),
+                        "planned_qty": _coerce(planned_field, raw.get("予定の数")),
+                    }
+                )
+                dates.append((_coerce(start_field, raw.get("開始日")), _coerce(end_field, raw.get("終了日"))))
+            workorder = services.issue_workorder(line, qty, steps, user)
+            for step, (start, end) in zip(workorder.steps.order_by("seq"), dates):
+                if start is not None or end is not None:
+                    services.plan_step(step, start, end, user)
+            made += 1
+    return made, skipped
+
+
+def _load_shipments(seeds_dir, user, notices):
+    from seizou.shipping import services
+    from seizou.shipping.models import Shipment
+
+    path = seeds_dir / MORE_SEED_FILES["出荷"]
+    if not path.is_file():
+        return None
+    qty_field = Shipment._meta.get_field("qty")
+    date_field = Shipment._meta.get_field("shipped_at")
+    note_field = Shipment._meta.get_field("note")
+    # 段の始めに 1 度だけ読む。同じ回で同じ明細の 2 行目 (分納) を飛ばさないため。
+    already = set(Shipment.objects.values_list("order_line_id", flat=True))
+    placed = set()
+    made = skipped = 0
+    for number, entry in enumerate(_read_yaml(path, MORE_YAML_ROOT_KEYS["出荷"]), start=1):
+        _check_entry_keys(path, number, entry, SHIPMENT_KEYS, "出荷")
+        with _guard(path.name, f"{number} 件目の出荷"):
+            line = _line_of_entry(entry)
+            if line.pk in already:
+                skipped += 1
+                continue
+            shipped_at = _coerce(date_field, entry.get("出荷日"))
+            if (line.pk, shipped_at) in placed:
+                raise ValueError(f"同じ明細に同じ日の出荷が 2 つあります (出荷日 {shipped_at})。納品書で指せないので、日をずらしてください。")
+            placed.add((line.pk, shipped_at))
+            qty = _coerce(qty_field, entry.get("数量"))
+            note = _coerce(note_field, entry.get("備考"))
+            services.ship(line, qty, shipped_at, user, note=note)
+            made += 1
+    return made, skipped
+
+
+def _load_delivery_notes(seeds_dir, user, notices):
+    from seizou.shipping import services
+    from seizou.shipping.models import DeliveryNote
+
+    path = seeds_dir / MORE_SEED_FILES["納品書"]
+    if not path.is_file():
+        return None
+    made = skipped = 0
+    for number, entry in enumerate(_read_yaml(path, MORE_YAML_ROOT_KEYS["納品書"]), start=1):
+        _check_entry_keys(path, number, entry, DELIVERY_NOTE_KEYS, "納品書")
+        with _guard(path.name, f"{number} 件目の納品書"):
+            customer = _partner_by_code(entry.get("得意先の取引先コード"))
+        shipments = _shipments_of_entry(path, number, entry, customer, "納品書")
+        if any(s.delivery_note_id and s.delivery_note.status == DeliveryNote.STATUS_ISSUED for s in shipments):
+            skipped += 1
+            continue
+        with _guard(path.name, f"{number} 件目の納品書"):
+            services.create_delivery_note(customer, shipments, user)
+            made += 1
+    return made, skipped
+
+
+def _load_invoices(seeds_dir, user, notices):
+    from seizou.billing import services
+    from seizou.billing.models import Invoice
+
+    path = seeds_dir / MORE_SEED_FILES["請求書"]
+    if not path.is_file():
+        return None
+    issued_field = Invoice._meta.get_field("issued_on")
+    made = skipped = 0
+    for number, entry in enumerate(_read_yaml(path, MORE_YAML_ROOT_KEYS["請求書"]), start=1):
+        _check_entry_keys(path, number, entry, INVOICE_KEYS, "請求書")
+        with _guard(path.name, f"{number} 件目の請求書"):
+            customer = _partner_by_code(entry.get("得意先の取引先コード"))
+            issued_on = _coerce(issued_field, entry.get("発行日"))
+        shipments = _shipments_of_entry(path, number, entry, customer, "請求書")
+        if any(s.invoice_lines.filter(invoice__status=Invoice.STATUS_ISSUED).exists() for s in shipments):
+            skipped += 1
+            continue
+        with _guard(path.name, f"{number} 件目の請求書"):
+            services.create_invoice(customer, shipments, user, issued_on=issued_on)
+            made += 1
+    return made, skipped
+
+
 LOADERS = {
     "品目": _load_items,
     "取引先": _load_partners,
@@ -387,6 +668,16 @@ LOADERS = {
     "工程": _load_processes,
     "受注": _load_orders,
     "つながり": _load_connections,
+}
+
+# 新しい 6 種類。種のファイル (図面は files/) が無ければ None を返し、要約は 0 件・出力の行も出さない。
+MORE_LOADERS = {
+    "標準の工程": _load_item_processes,
+    "図面": _load_drawings,
+    "指示書": _load_workorders,
+    "出荷": _load_shipments,
+    "納品書": _load_delivery_notes,
+    "請求書": _load_invoices,
 }
 
 
@@ -404,13 +695,20 @@ def load(seeds_dir):
     user = _first_admin()
     notices: list[str] = []
     summary: dict = {}
+    read_more: list[str] = []
     with transaction.atomic():
         for kind in KINDS:
             made, skipped = LOADERS[kind](seeds_dir, user, notices)
             summary[kind] = {"入れた": made, "飛ばした": skipped}
+        for kind in MORE_KINDS:
+            result = MORE_LOADERS[kind](seeds_dir, user, notices)
+            if result is not None:
+                read_more.append(kind)
+            made, skipped = result or (0, 0)
+            summary[kind] = {"入れた": made, "飛ばした": skipped}
     summary["注意"] = notices
 
-    for kind in KINDS:
+    for kind in (*KINDS, *read_more):
         counts = summary[kind]
         print(f"{kind}: 入れた {counts['入れた']} 件・飛ばした {counts['飛ばした']} 件")
     for notice in notices:

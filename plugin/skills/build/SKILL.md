@@ -90,7 +90,7 @@ port: <会社のシステムを開くポートの番号>
 UV_SYSTEM_CERTS=true seizou new ~/seizou-sites/<id>/answers.yaml
 ```
 
-- 答えが `examples/companies/` の作り物の会社のときは、`--demo` を付けて、作り物のデータも入れます。
+- 答えが `examples/companies/` の作り物の会社のときは、上の `answers.yaml` の道ではなく、渡された答えの YAML の道のまま `seizou new examples/companies/<id>.yaml --demo` を打ちます。種は、その YAML の横の `<id>/` から入ります。命令が置き場の `answers.yaml` に答えを写します (`write_project`)。
 - この命令が、置き場を作り、要る物を入れ、データベースを用意し (`migrate`)、管理者を 1 人作り、画面の見た目のファイル (CSS) を作ります。
 - 命令が見つからないときや失敗したときは、出力をそのまま担当者に見せて止まります。命令の代わりに `manage.py` や `settings.py` を書いたり、手で作業を補ったりしません。
 
