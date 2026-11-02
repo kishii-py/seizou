@@ -15,15 +15,15 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from . import r13_services_only, r14_no_raw_sql, r15_inherit_base_view
+from . import r13_services_only, r14_no_raw_sql, r15_inherit_base_view, r16_no_core_model_change
 from .engine import Result, Violation, run
 
 __all__ = ["RULES", "Result", "Violation", "check", "check_at_startup", "default_paths", "last_result"]
 
 logger = logging.getLogger(__name__)
 
-#: 見る決まりの並び (R16 は夜の N9 が足す)
-RULES = (r13_services_only, r14_no_raw_sql, r15_inherit_base_view)
+#: 見る決まりの並び
+RULES = (r13_services_only, r14_no_raw_sql, r15_inherit_base_view, r16_no_core_model_change)
 
 _last_result: Result | None = None
 
