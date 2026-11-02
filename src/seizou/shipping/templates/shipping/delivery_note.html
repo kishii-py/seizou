@@ -26,15 +26,15 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
     <tr>
       <td>{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
-      <td class="num">{{ line.quantity|floatformat:"g" }}</td>
+      <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{{ line.unit_price|floatformat:"g" }}</td>
-      <td class="num">{{ line.amount|floatformat:"g" }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g" }}</td>
+      <td class="num">{{ line.amount|floatformat:"-2g" }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th colspan="5">合計</th><td class="num">{{ total|floatformat:"g" }}</td></tr>
+    <tr><th colspan="5">合計</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
   </tfoot>
 </table>
 {% endblock %}

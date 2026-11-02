@@ -30,17 +30,17 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
       <td>{{ line.shipment_no }}</td>
       <td>{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
-      <td class="num">{{ line.quantity|floatformat:"g" }}</td>
+      <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{{ line.unit_price|floatformat:"g" }}</td>
-      <td class="num">{{ line.amount|floatformat:"g" }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g" }}</td>
+      <td class="num">{{ line.amount|floatformat:"-2g" }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th colspan="7">小計</th><td class="num">{{ subtotal|floatformat:"g" }}</td></tr>
-    <tr><th colspan="7">消費税 ({{ tax_rate_percent }}%)</th><td class="num">{{ tax|floatformat:"g" }}</td></tr>
-    <tr><th colspan="7">合計</th><td class="num">{{ total|floatformat:"g" }}</td></tr>
+    <tr><th colspan="7">小計</th><td class="num">{{ subtotal|floatformat:"-2g" }}</td></tr>
+    <tr><th colspan="7">消費税 ({{ tax_rate_percent }}%)</th><td class="num">{{ tax|floatformat:"-2g" }}</td></tr>
+    <tr><th colspan="7">合計</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
   </tfoot>
 </table>
 {% endblock %}

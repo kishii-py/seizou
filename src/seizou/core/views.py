@@ -163,6 +163,15 @@ def file_url_for(obj, field_name: str) -> str | None:
     return hook(field_name) or None
 
 
+def hidden_detail_fields(obj) -> frozenset:
+    """詳細と小窓に出さない項目の名前。model の detail_hidden_fields (名前の並び) があればそれ、無ければ空。
+
+    表示用の絵や変換の誤りの文のように、仕組みのために持つ列 (入力の画面に無い物) を、
+    利用者の目に触れる一覧から外すための約束。入力の form と services には関係しない。
+    """
+    return frozenset(getattr(obj, "detail_hidden_fields", ()) or ())
+
+
 class ScreenMixin(LoginRequiredMixin):
     """画面の名前と 1 文。画面の目録 (manage.py seizou_screens)・説明書・左のメニューが読む。"""
 
@@ -409,8 +418,9 @@ class BaseDetailView(ScreenMixin, DetailView):
     def field_items(self, obj) -> list[dict]:
         """項目の一覧。1 項目 = {"label", "value", "master", "file"} (file はファイルの項目だけ、file_info の形)。"""
         items = []
+        hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
-            if f.primary_key or f.name in ("password",):
+            if f.primary_key or f.name in ("password",) or f.name in hidden:
                 continue
             value = display_value(obj, f.name)
             is_file = isinstance(f, models.FileField)
@@ -659,8 +669,9 @@ class BaseModalView(ScreenMixin, DetailView):
         context = super().get_context_data(**kwargs)
         obj = context["object"]
         items = []
+        hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
-            if f.primary_key:
+            if f.primary_key or f.name in hidden:
                 continue
             value = display_value(obj, f.name)
             if isinstance(f, models.FileField):
