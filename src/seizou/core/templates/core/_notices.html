@@ -1,0 +1,4 @@
+{# 知らせは 3 種類だけ: 止まった (赤)・知らせ (黄)・できた (緑)。文は何が起きて何をすればよいか。 #}
+{% if notice %}<div class="alert alert-error mb-3" role="alert"><span>{{ notice.code }}: {{ notice.message }}</span></div>{% endif %}
+{% for warning in warnings %}<div class="alert alert-warning mb-3" role="alert"><span>{{ warning.code }}: {{ warning.message }}</span></div>{% endfor %}
+{% if messages %}{% for message in messages %}<div class="alert {% if message.level_tag == 'error' %}alert-error{% elif message.level_tag == 'warning' %}alert-warning{% else %}alert-success{% endif %} mb-3" role="alert"><span>{{ message }}</span></div>{% endfor %}{% endif %}

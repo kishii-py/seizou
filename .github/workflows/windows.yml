@@ -29,3 +29,5 @@ jobs:
         run: uv run python -m django makemigrations --check --dry-run
       - name: 空の DB に migrate する
         run: uv run python -m django migrate
+      - name: 決まりの検査 (書き方の決まり) を部品のコードに回す
+        run: uv run python -m django seizou_check src/seizou

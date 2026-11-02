@@ -46,16 +46,20 @@ class OrderBelowShipped(Check):
     setting_key = "over_shipment"
 
     def run(self, data, user):
-        line = data.get("order_line")
-        qty = data.get("qty")
-        if line is None or qty is None:
-            return None
-        shipped = tools.shipped_qty(line)
-        if _dec(qty) < shipped:
-            return (
-                f"受注の数 ({qty}) が出荷済みの数 ({shipped}) より少なくなります。"
-                "数を確かめてください。"
-            )
+        # 受注の入力は明細が複数 (lines = [{"order_line": 明細, "qty": 数}, ...])。1 行の形 (order_line・qty) も受ける。
+        pairs = []
+        for item in data.get("lines") or ():
+            if isinstance(item, dict) and item.get("order_line") is not None and item.get("qty") is not None:
+                pairs.append((item["order_line"], item["qty"]))
+        if data.get("order_line") is not None and data.get("qty") is not None:
+            pairs.append((data["order_line"], data["qty"]))
+        for line, qty in pairs:
+            shipped = tools.shipped_qty(line)
+            if _dec(qty) < shipped:
+                return (
+                    f"受注の数 ({qty}) が出荷済みの数 ({shipped}) より少なくなります。"
+                    "数を確かめてください。"
+                )
         return None
 
 

@@ -1,0 +1,36 @@
+{% load static %}<!doctype html>
+<html lang="ja" data-theme="{{ seizou.theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ screen_name|default:"seizou" }}{% endblock %} | {{ seizou.company_name }}</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+<link rel="stylesheet" href="{% static 'vendor/tom-select.css' %}">
+<script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+<script src="{% static 'vendor/tom-select.complete.min.js' %}" defer></script>
+</head>
+{# CSRF の見出しはここの 1 か所にだけ書く (R18)。htmx の要求は全部この見出しを持つ。 #}
+<body class="min-h-screen bg-base-200" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<div class="navbar bg-primary text-primary-content shadow">
+  <div class="flex-1 px-2 text-lg font-bold">{{ seizou.company_name }}</div>
+  <div class="flex-none px-2 text-sm">
+    {% if user.is_authenticated %}{{ user.get_username }} <a class="link ml-2" href="{% url 'core:logout' %}">ログアウト</a>{% endif %}
+  </div>
+</div>
+<div class="flex">
+  {% if user.is_authenticated %}
+  <aside class="w-48 min-h-screen bg-base-100 border-r border-base-300">
+    <ul class="menu w-full">
+      {% for item in seizou.menu %}<li><a href="{% url item.url_name %}">{{ item.label }}</a></li>{% endfor %}
+    </ul>
+  </aside>
+  {% endif %}
+  <main class="flex-1 p-4">
+    {% block heading %}{% if screen_name %}<h1 class="text-xl font-bold mb-1">{{ screen_name }}</h1>{% if screen_help %}<p class="text-sm opacity-70 mb-3">{{ screen_help }}</p>{% endif %}{% endif %}{% endblock %}
+    {% include "core/_notices.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<dialog id="seizou-modal" class="modal"><div id="seizou-modal-box" class="modal-box"></div><form method="dialog" class="modal-backdrop"><button>閉じる</button></form></dialog>
+</body>
+</html>

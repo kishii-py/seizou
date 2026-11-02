@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% block title %}ログイン{% endblock %}
+{% block heading %}{% endblock %}
+{% block content %}
+<div class="card bg-base-100 max-w-sm mx-auto mt-12 shadow">
+  <form method="post" class="card-body">
+    {% csrf_token %}
+    <h1 class="card-title">ログイン</h1>
+    {% if form.non_field_errors %}<div class="alert alert-error"><span>ID かパスワードが違います。確かめてもう一度入れてください。</span></div>{% endif %}
+    <label class="form-control">
+      <span class="label-text">ID</span>
+      <input class="input input-bordered" type="text" name="username" value="{{ form.username.value|default:'' }}" autofocus required>
+    </label>
+    <label class="form-control">
+      <span class="label-text">パスワード</span>
+      <input class="input input-bordered" type="password" name="password" required>
+    </label>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn btn-primary mt-2" type="submit">入る</button>
+  </form>
+</div>
+{% endblock %}
