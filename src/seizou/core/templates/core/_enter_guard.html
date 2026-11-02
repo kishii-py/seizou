@@ -1,0 +1,16 @@
+{# Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。form[data-enter-guard] を持つ画面が include する。 #}
+<script>
+(function () {
+  // Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。字の欄と選ぶ欄の Enter だけを止める。
+  // 文の欄 (textarea) の改行、ボタンの押下と Enter、日本語の変換の確定 (isComposing) は止めない。
+  var form = document.querySelector("form[data-enter-guard]");
+  if (!form) return;
+  form.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+    var target = event.target;
+    if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
+    if (target.tagName === "INPUT" && /^(submit|button|reset|image)$/i.test(target.type)) return;
+    if (target.tagName === "INPUT" || target.tagName === "SELECT") event.preventDefault();
+  });
+})();
+</script>

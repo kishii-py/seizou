@@ -1,8 +1,8 @@
 {% load seizou_icons %}
-{# 左のメニュー: 会社の印と名前、区分ごとの入口 (今の画面は主色の薄い地)、下に利用者とログアウト。 #}
+{# 左のメニュー: 会社の印と名前、区分ごとの入口 (今の画面は主色の薄い地)、下に利用者とログアウト。高さは画面いっぱいで固定し、入口が多いときは nav の中が送れる (下が切れて見える所見の直し)。 #}
 <div class="drawer-side z-40">
   <label for="seizou-drawer" aria-label="メニューを閉じる" class="drawer-overlay"></label>
-  <aside class="flex min-h-full w-64 flex-col border-r border-base-300 bg-base-100">
+  <aside class="flex h-screen w-64 flex-col border-r border-base-300 bg-base-100">
     <div class="flex h-16 shrink-0 items-center gap-2 border-b border-base-300 px-4">
       <a href="{% url 'core:home' %}" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-9 shrink-0 rounded-lg object-contain">

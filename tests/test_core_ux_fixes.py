@@ -156,7 +156,7 @@ def test_closing_day_has_min_max_and_same_messages(client_logged_in, typed, mess
     page = text(client_logged_in.get(url))
     start = page.index('name="closing_day"')
     tag = page[page.rindex("<input", 0, start) : page.index(">", start)]
-    assert 'type="number"' in tag and 'min="1"' in tag and 'max="31"' in tag
+    assert 'type="text"' in tag and 'inputmode="numeric"' in tag and 'type="number"' not in tag
     response = client_logged_in.post(url, {"code": "C009", "name": "作り物の社", "role": "customer", "closing_day": typed})
     assert response.status_code == 200
     assert message in text(response)

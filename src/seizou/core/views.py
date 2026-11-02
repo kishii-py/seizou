@@ -52,7 +52,7 @@ from django.views.generic import DetailView, FormView, ListView, TemplateView, V
 from seizou.core import checks
 from seizou.core import fields as company_fields
 from seizou.core.exceptions import CheckViolation, RuleError
-from seizou.core.widgets import DecimalInput
+from seizou.core.widgets import DecimalInput, IntegerInput, RemoteSelect
 
 #: 継承した画面が上書きしてよい属性 (R15 の 2 文目。決まりの検査が見る)
 OVERRIDABLE = (
@@ -593,19 +593,23 @@ class BaseFormView(ScreenMixin, FormView):
 
 
 def use_decimal_input(field) -> None:
-    """数 (小数) の欄 (DecimalField・FloatField) の数の入力 (type="number") を、字の欄 (DecimalInput) に替える。
+    """数の欄の数の入力 (type="number") を、字の欄に替える (小数は DecimalInput、整数は IntegerInput)。
 
-    type="number" はブラウザが「12e」のような字を空にして送り、空のまま保存されるため。字の欄にして、
-    誤りはサーバーの検査が日本語で出す。全角の数字と「1,200」は DecimalInput が半角の数にそろえて通す。
-    整数の欄は type="number" のまま (min・max は ServiceModelForm が表の検査から付ける)。
+    type="number" はブラウザが「12e」のような字を空にして送り、空のまま保存されるため (整数の欄 = 締日なども同じ。
+    初見テスト 2 回目の所見)。字の欄にして、誤りはサーバーの検査が日本語で出す (整数の下限と上限は
+    ServiceModelForm が表の検査から form の検査に付けてある)。全角の数字と「1,200」は半角の数にそろえて通す。
     """
-    if not isinstance(field, (django_forms.DecimalField, django_forms.FloatField)):
+    if isinstance(field, (django_forms.DecimalField, django_forms.FloatField)):
+        make = DecimalInput
+    elif isinstance(field, django_forms.IntegerField):
+        make = IntegerInput
+    else:
         return
     old = field.widget
     if not isinstance(old, django_forms.NumberInput):
         return
     attrs = {k: v for k, v in old.attrs.items() if k not in ("step", "min", "max")}
-    widget = DecimalInput(attrs=attrs)
+    widget = make(attrs=attrs)
     widget.is_required = old.is_required
     widget.is_localized = old.is_localized
     field.widget = widget
@@ -632,6 +636,11 @@ def widget_css(widget) -> str:
 
     if isinstance(widget, widgets.CheckboxInput):
         return "checkbox"
+    if isinstance(widget, RemoteSelect):
+        # 字を打って探す欄 (Tom Select) には daisyUI の select の class を付けない。Tom Select が包みに class を写し、
+        # select の見た目 (overflow と矢印) が候補の一覧を隠して二重の枠と矢印になるため (初見テスト 2 回目の所見)。
+        # 包みの見た目は scripts/css/input.css の .ts-wrapper の決まりで input にそろえる。
+        return "w-full"
     if isinstance(widget, (widgets.Select, widgets.SelectMultiple)):
         return "select w-full"
     if isinstance(widget, widgets.Textarea):
