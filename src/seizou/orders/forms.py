@@ -51,7 +51,7 @@ class OrderLineForm(forms.Form):
         queryset=OrderLine.objects.none(), required=False, widget=forms.HiddenInput
     )
     item = forms.ModelChoiceField(
-        label="品目",
+        label="部品",
         queryset=Item.objects.all(),
         widget=RemoteSelect("masters:item_select"),
         empty_label=EMPTY_LABEL,

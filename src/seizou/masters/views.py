@@ -109,14 +109,14 @@ class ProcessListView(BaseListView):
 class ProcessDetailView(BaseDetailView):
     model = Process
     screen_name = "工程の詳細"
-    screen_help = "工程の項目。「直す」で名前や並び順と「計画に使う」の印を直せます。"
+    screen_help = "工程の項目。「編集」で名前や並び順と「計画に使う」の印を変えられます。"
 
 
 class ProcessCreateView(BaseFormView):
     model = Process
     form_class = ProcessForm
     service = staticmethod(services.create_process)
-    screen_name = "工程を入れる"
+    screen_name = "工程の新規登録"
     screen_help = "新しい工程を足します。工程コードは会社の中で 1 つだけです。"
 
 
@@ -124,5 +124,5 @@ class ProcessUpdateView(BaseFormView):
     model = Process
     form_class = ProcessForm
     service = staticmethod(services.update_process)
-    screen_name = "工程を直す"
-    screen_help = "工程の項目を直します。「計画に使う」に印を付けると、生産計画の盤に出ます。"
+    screen_name = "工程の編集"
+    screen_help = "工程の項目を編集します。「計画に使う」に印を付けると、生産計画の盤に出ます。"

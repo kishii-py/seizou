@@ -106,7 +106,7 @@ def run_search(query: str, *, kind: str = ALL, partner: int | None = None, limit
 
 
 def customer_choices() -> list | None:
-    """得意先の選択肢 (区分が得意先か両方の取引先)。マスターの部品が無いか、表が読めなければ None。"""
+    """得意先の選択肢 (取引先の種類が得意先か両方の取引先)。マスターの部品が無いか、表が読めなければ None。"""
     if not apps.is_installed("seizou.masters"):
         return None
     partner_model = load_model("seizou.masters.models.Partner")

@@ -124,7 +124,7 @@ def _refuse_duplicate_process_code(code, *, exclude_pk=None):
 
 def create_item(data, user, *, ext=None):
     """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。"""
-    _refuse_unknown_keys(data, _ITEM_KEYS, "品目")
+    _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
     with transaction.atomic():
         _refuse_duplicate_part_no(data["part_no"])
         item = Item.objects.create(**data)
@@ -134,7 +134,7 @@ def create_item(data, user, *, ext=None):
 
 def update_item(item, data, user, *, ext=None):
     """data にある鍵だけを書き換える。品番を変えるときも一意を見る。"""
-    _refuse_unknown_keys(data, _ITEM_KEYS, "品目")
+    _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
     with transaction.atomic():
         if "part_no" in data:
             _refuse_duplicate_part_no(data["part_no"], exclude_pk=item.pk)
@@ -346,7 +346,7 @@ def copy_values(source, current, copied_marks):
 
     messages = []
     if copied:
-        messages.append(f"{'と'.join(copied)}を品目から写しました。")
+        messages.append(f"{'と'.join(copied)}を部品から写しました。")
     if kept:
         messages.append(f"{'と'.join(kept)}は入力のまま残しました。")
     return values, messages

@@ -65,7 +65,7 @@ class InboxAcceptView(BaseFormView):
     form_class = AcceptForm
     service = staticmethod(services.accept)
     screen_name = "注文を受け入れる"
-    screen_help = "相手の品番ごとに自社の品目を選んで保存すると、受注ができます。表に無い品番の対応は、その場で表に足します。"
+    screen_help = "相手の品番ごとに自社の部品を選んで保存すると、受注ができます。表に無い品番の対応は、その場で表に足します。"
     template_name = "connect/inbox_accept.html"
 
 

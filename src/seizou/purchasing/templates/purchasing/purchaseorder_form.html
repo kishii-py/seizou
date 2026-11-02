@@ -21,14 +21,14 @@
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
 
   <h2 class="mt-6 text-lg font-bold">明細</h2>
-  <p class="mt-2 text-xs text-base-content/50">何も入れていない行は保存しません。単位が空なら品目の単位を写します。</p>
+  <p class="mt-2 text-xs text-base-content/50">何も入れていない行は保存しません。単位が空なら部品の単位を写します。</p>
   {{ form.lines.management_form }}
   {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
   <div class="mt-4 overflow-x-auto">
     <table class="table [&_input[type=number]]:text-right">
       <thead>
         <tr>
-          <th>品目 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
+          <th>部品 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>数量 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>単位</th>
           <th>単価 <span class="badge badge-xs badge-soft badge-error">必須</span></th>

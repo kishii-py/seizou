@@ -24,7 +24,7 @@ class ProcessChoiceField(forms.ModelMultipleChoiceField):
 
 
 class WorkOrderIssueForm(forms.Form):
-    """指示書の発行。工程を選ばなければ、選んだ明細の品目の標準の工程の並びを写す。"""
+    """指示書の発行。工程を選ばなければ、選んだ明細の部品の標準の工程の並びを写す。"""
 
     order_line = OrderLineChoiceField(
         label="受注の明細",
@@ -35,7 +35,7 @@ class WorkOrderIssueForm(forms.Form):
         label="工程",
         queryset=_Process.objects.all(),
         required=False,
-        help_text="選ばなければ、品目の標準の工程の並びを写します。予定の数は工程ごとに数量と同じです。",
+        help_text="選ばなければ、部品の標準の工程の並びを写します。予定の数は工程ごとに数量と同じです。",
     )
 
     def service_kwargs(self):

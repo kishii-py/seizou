@@ -1,5 +1,5 @@
 {% load seizou_icons seizou_tags %}
-{# 指示書の小窓。core/_modal.html と同じ形 (題・項目・「閉じる」・「詳細を開く」) に、工程の並び (予定の日) を足す。実績は出さない。 #}
+{# 指示書の小窓。core/_modal.html と同じ形 (題・項目・「閉じる」・「詳細を見る」) に、工程の並び (予定の日) を足す。実績は出さない。 #}
 <div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>
   <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
@@ -23,5 +23,5 @@
 </table>
 <div class="modal-action mt-6">
   <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
-  {% if detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を開く{% icon "chevron-right" "size-4" %}</a>{% endif %}
+  {% if detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
 </div>

@@ -52,7 +52,7 @@ class AcceptForm(forms.Form):
                 queryset=items,
                 label=label,
                 initial=resolve_partner_item(instance.partner, part_no),
-                help_text="自社の品目を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
+                help_text="自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
             )
             self.part_fields.append((name, part_no))
 

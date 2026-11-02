@@ -43,7 +43,7 @@ class OrderLineListView(BaseListView):
         ("order__customer", "得意先"),
         ("order__order_date", "受注日"),
         ("due_date", "納期"),
-        ("item", "品目"),
+        ("item", "部品"),
         ("qty", "数量"),
         ("shipped_total", "出荷済み"),
         ("remaining_total", "残"),
@@ -109,4 +109,6 @@ class OrderLineSelectView(BaseSelectView):
             annotate_remaining(lines)
             .filter(remaining_total__gt=0)
             .exclude(order__status=Order.STATUS_CANCELLED)
+            # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
+            .order_by("order__order_no", "line_no", "pk")
         )
