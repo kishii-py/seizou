@@ -62,9 +62,9 @@ def test_duplicate_part_no_is_refused(user):
 
 @pytest.mark.django_db
 def test_create_partner_requires_valid_role(user):
-    with pytest.raises(ValueError, match="区分"):
+    with pytest.raises(ValueError, match="取引先の種類"):
         services.create_partner({"code": "C000", "name": "作り物の取引先", "role": "supplier"}, user)
-    with pytest.raises(ValueError, match="区分"):
+    with pytest.raises(ValueError, match="取引先の種類"):
         services.create_partner({"code": "C000", "name": "作り物の取引先"}, user)
     assert Partner.objects.count() == 0
 
@@ -76,13 +76,47 @@ def test_create_partner_requires_valid_role(user):
         assert partner.role == role
 
     partner = Partner.objects.get(code="C001")
-    with pytest.raises(ValueError, match="区分"):
+    with pytest.raises(ValueError, match="取引先の種類"):
         services.update_partner(partner, {"role": "supplier"}, user)
     services.update_partner(partner, {"role": "both", "closing_day": 31}, user)
     partner.refresh_from_db()
     assert partner.role == "both"
     assert partner.closing_day == 31
     assert partner.name == "作り物の取引先 1"
+
+
+@pytest.mark.django_db
+def test_partner_payment_terms_are_accepted(user):
+    # 支払の月は 当月・翌月・翌々月 か空。支払日は 1〜31 の整数か空 (31 は月末)。
+    partner = services.create_partner(
+        {"code": "C001", "name": "作り物の得意先", "role": "customer", "payment_month": "next", "payment_day": 25},
+        user,
+    )
+    partner.refresh_from_db()
+    assert (partner.payment_month, partner.payment_day) == ("next", 25)
+    services.update_partner(partner, {"payment_month": "after_next", "payment_day": 31}, user)
+    partner.refresh_from_db()
+    assert (partner.payment_month, partner.payment_day) == ("after_next", 31)
+    # 空は空の値にそろう (支払の月は ""、支払日は None)。
+    services.update_partner(partner, {"payment_month": None, "payment_day": ""}, user)
+    partner.refresh_from_db()
+    assert (partner.payment_month, partner.payment_day) == ("", None)
+
+
+@pytest.mark.django_db
+def test_partner_payment_terms_out_of_range_are_refused(user):
+    base = {"code": "C001", "name": "作り物の得意先", "role": "customer"}
+    with pytest.raises(ValueError, match="支払の月"):
+        services.create_partner({**base, "payment_month": "month_end"}, user)
+    for day in (0, 32, "25", "末", True):
+        with pytest.raises(ValueError, match="支払日"):
+            services.create_partner({**base, "payment_day": day}, user)
+    assert Partner.objects.count() == 0
+    partner = services.create_partner(base, user)
+    with pytest.raises(ValueError, match="支払日"):
+        services.update_partner(partner, {"payment_day": 40}, user)
+    with pytest.raises(ValueError, match="支払の月"):
+        services.update_partner(partner, {"payment_month": "翌月"}, user)
 
 
 @pytest.mark.django_db

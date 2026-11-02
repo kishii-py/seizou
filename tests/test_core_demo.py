@@ -22,7 +22,10 @@ from seizou.orders.models import Order
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
 
 ITEM_HEADER = ["自社品番", "品名", "図面番号", "図面ファイル", "単位", "標準単価", "備考"]
-PARTNER_HEADER = ["取引先コード", "名前", "略称", "区分", "締日", "支払日", "小計の計算方法", "消費税の計算方法", "備考"]
+# 小計の計算方法・消費税の計算方法は、画面の字 (金額の端数の扱い・消費税の端数の扱い) を直す前の見出し。種はこの字のままでも読む。
+PARTNER_HEADER = [
+    "取引先コード", "名前", "略称", "取引先の種類", "締日", "支払の月", "支払日", "小計の計算方法", "消費税の計算方法", "備考",
+]
 PARTNER_ITEM_HEADER = ["取引先コード", "自社品番", "取引先の品番", "取引先の品名"]
 
 ITEM_ROWS = [
@@ -30,8 +33,8 @@ ITEM_ROWS = [
     ["A-200", "作り物の板", "", "", "枚", "80.50", ""],
 ]
 PARTNER_ROWS = [
-    ["C001", "作り物の得意先", "得意", "得意先", "25", "末", "四捨五入", "トータル", ""],
-    ["S001", "作り物の外注先", "", "外注先", "", "", "", "", ""],
+    ["C001", "作り物の得意先", "得意", "得意先", "25", "翌月", "31", "四捨五入", "トータル", ""],
+    ["S001", "作り物の外注先", "", "外注先", "", "", "", "", "", ""],
 ]
 PARTNER_ITEM_ROWS = [["C001", "A-100", "X-1", "相手の軸"]]
 PROCESSES = [{"工程コード": "P10", "名前": "旋削", "外注か": False, "並び順": 10}]
@@ -122,7 +125,8 @@ def test_load_small_seeds_through_services(tmp_path, capsys):
     assert second.note == "急ぎ"
 
     partner = Partner.objects.get(code="C001")
-    assert (partner.closing_day, partner.payment_day) == (25, "末")
+    # 支払の月は字 (翌月) から choices の値に、支払日は数に (31 は月末)。
+    assert (partner.closing_day, partner.payment_month, partner.payment_day) == (25, "next", 31)
     connection = Connection.objects.get()
     assert connection.secret_env == "SEIZOU_PARTNER_B_PLATING_SECRET"
     assert PartnerItem.objects.get().item.part_no == "A-100"
@@ -190,9 +194,9 @@ def test_ext_columns_without_registration_are_reported(tmp_path, no_registration
 @pytest.mark.django_db
 def test_labels_map_to_choices(tmp_path):
     rows = [
-        ["C001", "得意先の社", "", "得意先", "", "", "切上", "各行四捨五入", ""],
-        ["S001", "外注先の社", "", "外注先", "", "", "切捨", "各行切捨", ""],
-        ["B001", "両方の社", "", "両方", "", "", "", "", ""],
+        ["C001", "得意先の社", "", "得意先", "", "", "", "切上", "各行四捨五入", ""],
+        ["S001", "外注先の社", "", "外注先", "", "", "", "切捨", "各行切捨", ""],
+        ["B001", "両方の社", "", "両方", "", "", "", "", "", ""],
     ]
     seeds = write_seeds(tmp_path / "seeds", orders=[])
     write_csv(seeds / "partners.csv", PARTNER_HEADER, rows)

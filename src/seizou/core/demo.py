@@ -10,6 +10,8 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
 - 1 行でも services が断ったら、ファイルと位置を日本語の文に入れて ValueError を上げ、全体を巻き戻す。
   YAML は行の番号が取れないので「N 件目」で示す (明細の変換の誤りは「M 行目の明細」まで。services が断った受注は、受注の位置と注文番号)。CSV は行の番号 (見出しが 1 行目)。
 - CSV の見出しと YAML の鍵は、部品の表の verbose_name (日本語の項目名)。対応の表は手で書かず、model の _meta から引く。
+  画面の字を直す前の見出し (FORMER_HEADERS) も読む (種の見出しは別の係が持つので、すぐには変えない)。
+- 取引先の支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31 の数。31 は月末) の 2 列。
 - 会社ごとの項目 (items.csv の見出しのうち部品の表に無い物) は、core.fields の登録の見出しと突き合わせて ext= にする。
 - 図面の files/ は読まない。
 """
@@ -63,9 +65,21 @@ def _is_blank(raw):
     return raw is None or (isinstance(raw, str) and raw.strip() == "")
 
 
+#: 画面の字 (verbose_name) を直す前の見出し → 列の名前。種の CSV がこの字のままでも読む。
+FORMER_HEADERS = {
+    "masters.Item": {"標準単価": "standard_price"},
+    "masters.Partner": {"小計の計算方法": "rounding", "消費税の計算方法": "tax_mode"},
+}
+
+
 def _fields_by_label(model):
-    """見出し (verbose_name) → 列。主キーは除く。"""
-    return {f.verbose_name: f for f in model._meta.concrete_fields if not f.primary_key}
+    """見出し (verbose_name) → 列。主キーは除く。前の見出し (FORMER_HEADERS) でも引ける。"""
+    fields = {f.verbose_name: f for f in model._meta.concrete_fields if not f.primary_key}
+    by_name = {f.name: f for f in fields.values()}
+    for header, name in FORMER_HEADERS.get(model._meta.label, {}).items():
+        if name in by_name:
+            fields.setdefault(header, by_name[name])
+    return fields
 
 
 def _choice_value(field, raw):
@@ -233,7 +247,7 @@ def _load_partners(seeds_dir, user, notices):
 
     path = _open_file(seeds_dir, "取引先")
     by_label = _fields_by_label(Partner)
-    _headers, rows = _read_csv(path, by_label, ("取引先コード", "名前", "区分"))
+    _headers, rows = _read_csv(path, by_label, ("取引先コード", "名前", "取引先の種類"))
 
     made = skipped = 0
     for line_no, row in rows:

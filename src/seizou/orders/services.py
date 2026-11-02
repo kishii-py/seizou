@@ -62,7 +62,7 @@ def _refuse_unknown_keys(data, allowed, table_name):
 def _refuse_non_customer(partner):
     if not partner.is_customer:
         raise ValueError(
-            f"取引先 {partner} は得意先ではありません。区分が得意先か両方の取引先を選んでください。"
+            f"取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
         )
 
 

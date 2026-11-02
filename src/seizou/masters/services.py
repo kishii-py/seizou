@@ -4,7 +4,7 @@
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
-- masters の決まり (品番の一意・区分の 3 値・取引先 × 取引先の品番の一意) に当たったら、
+- masters の決まり (品番の一意・取引先の種類の 3 値・支払の月の 3 値・支払日の 1〜31・取引先 × 取引先の品番の一意) に当たったら、
   日本語の文の ValueError を投げる。中心の決まり (RULES.md の番号) は masters に無い。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 """
@@ -31,6 +31,7 @@ _PARTNER_KEYS = frozenset(
         "short_name",
         "role",
         "closing_day",
+        "payment_month",
         "payment_day",
         "rounding",
         "tax_mode",
@@ -39,6 +40,8 @@ _PARTNER_KEYS = frozenset(
 )
 _PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
+_PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
+_PAYMENT_DAY_RANGE = range(1, 32)  # 1〜31 (31 は月末)
 _ROUNDING_MODES = {
     "round": ROUND_HALF_UP,
     "ceil": ROUND_CEILING,
@@ -82,9 +85,33 @@ def _refuse_duplicate_partner_code(code, *, exclude_pk=None):
 def _refuse_unknown_role(role):
     if role not in _ROLES:
         raise ValueError(
-            f"区分 {role!r} は使えません。"
+            f"取引先の種類 {role!r} は使えません。"
             "得意先 (customer)・外注先 (subcontractor)・両方 (both) のどれかにしてください。"
         )
+
+
+def _payment_terms(data):
+    """支払の月と支払日を見て、空を表の空の値 (支払の月は ""、支払日は None) にそろえた data を返す。
+
+    支払の月は 当月 (current)・翌月 (next)・翌々月 (after_next) か空。支払日は 1〜31 の整数か空。外れは ValueError。
+    """
+    data = dict(data)
+    if "payment_month" in data:
+        month = data["payment_month"] or ""
+        if month and month not in _PAYMENT_MONTHS:
+            raise ValueError(
+                f"支払の月 {month!r} は使えません。"
+                "当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。"
+            )
+        data["payment_month"] = month
+    if "payment_day" in data:
+        day = data["payment_day"]
+        if day == "":
+            day = None
+        if day is not None and (isinstance(day, bool) or not isinstance(day, int) or day not in _PAYMENT_DAY_RANGE):
+            raise ValueError(f"支払日 {day!r} は使えません。1〜31 の整数か空にしてください (月末は 31)。")
+        data["payment_day"] = day
+    return data
 
 
 def _refuse_duplicate_process_code(code):
@@ -116,9 +143,13 @@ def update_item(item, data, user, *, ext=None):
 
 
 def create_partner(data, user, *, ext=None):
-    """取引先を作る。区分は customer・subcontractor・both のどれか。取引先コードは一意。"""
+    """取引先を作る。取引先の種類は customer・subcontractor・both のどれか。取引先コードは一意。
+
+    支払の月は current・next・after_next か空、支払日は 1〜31 の整数か空 (31 は月末)。
+    """
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     _refuse_unknown_role(data.get("role"))
+    data = _payment_terms(data)
     with transaction.atomic():
         _refuse_duplicate_partner_code(data["code"])
         partner = Partner.objects.create(**data)
@@ -127,10 +158,11 @@ def create_partner(data, user, *, ext=None):
 
 
 def update_partner(partner, data, user, *, ext=None):
-    """data にある鍵だけを書き換える。区分と取引先コードは create_partner と同じ決まりで見る。"""
+    """data にある鍵だけを書き換える。取引先の種類・取引先コード・支払の条件は create_partner と同じ決まりで見る。"""
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     if "role" in data:
         _refuse_unknown_role(data["role"])
+    data = _payment_terms(data)
     with transaction.atomic():
         if "code" in data:
             _refuse_duplicate_partner_code(data["code"], exclude_pk=partner.pk)

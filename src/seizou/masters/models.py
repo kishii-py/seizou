@@ -9,11 +9,22 @@ from django.db import models
 
 from seizou.core.models import Company
 
+#: 締日と支払日の 31 は月末の印
+MONTH_END_DAY = 31
+
+
+def day_label(day):
+    """月の中の日の画面の字。31 は「月末」、ほかは「n 日」、空は None。"""
+    if day is None:
+        return None
+    return "月末" if day == MONTH_END_DAY else f"{day} 日"
+
 
 class Partner(models.Model):
-    """取引先。区分は得意先・外注先・両方のどれか。
+    """取引先。取引先の種類は得意先・外注先・両方のどれか。
 
-    小計と消費税の計算方法が空のときは、会社 (core の Company) の既定に従う。
+    金額と消費税の端数の扱いが空のときは、会社 (core の Company) の既定に従う。
+    支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31。31 は月末) の 2 列。画面には 1 つの字で出す。
     """
 
     ROLE_CUSTOMER = "customer"
@@ -25,10 +36,19 @@ class Partner(models.Model):
         (ROLE_BOTH, "両方"),
     ]
 
+    PAYMENT_CURRENT = "current"
+    PAYMENT_NEXT = "next"
+    PAYMENT_AFTER_NEXT = "after_next"
+    PAYMENT_MONTH_CHOICES = [
+        (PAYMENT_CURRENT, "当月"),
+        (PAYMENT_NEXT, "翌月"),
+        (PAYMENT_AFTER_NEXT, "翌々月"),
+    ]
+
     code = models.CharField("取引先コード", max_length=10, unique=True)
     name = models.CharField("名前", max_length=100)
     short_name = models.CharField("略称", max_length=100, blank=True)
-    role = models.CharField("区分", max_length=15, choices=ROLE_CHOICES)
+    role = models.CharField("取引先の種類", max_length=15, choices=ROLE_CHOICES)
     # 締日は空欄か 1〜31 (31 は月末)。
     closing_day = models.PositiveSmallIntegerField(
         "締日",
@@ -36,12 +56,21 @@ class Partner(models.Model):
         blank=True,
         validators=[MinValueValidator(1), MaxValueValidator(31)],
     )
-    payment_day = models.CharField("支払日", max_length=2, blank=True)
+    # 支払の月は空 (未設定) か 当月・翌月・翌々月。支払日は空か 1〜31 (31 は月末。締日と同じ約束)。
+    payment_month = models.CharField(
+        "支払の月", max_length=10, choices=PAYMENT_MONTH_CHOICES, blank=True, default=""
+    )
+    payment_day = models.PositiveSmallIntegerField(
+        "支払日",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+    )
     rounding = models.CharField(
-        "小計の計算方法", max_length=10, choices=Company.ROUNDING_CHOICES, blank=True
+        "金額の端数の扱い", max_length=10, choices=Company.ROUNDING_CHOICES, blank=True
     )
     tax_mode = models.CharField(
-        "消費税の計算方法", max_length=10, choices=Company.TAX_CHOICES, blank=True
+        "消費税の端数の扱い", max_length=10, choices=Company.TAX_CHOICES, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
@@ -53,6 +82,19 @@ class Partner(models.Model):
     def __str__(self):
         return self.name
 
+    def get_closing_day_display(self):
+        """締日の画面の字 (31 は「月末」、ほかは「n 日」)。表の値は数のまま。一覧と詳細の土台が読む。"""
+        return day_label(self.closing_day)
+
+    def get_payment_day_display(self):
+        """支払の条件の画面の字。支払の月と合わせて 1 つにする (例「翌月 25 日」「翌月末」)。表の値は 2 列のまま。"""
+        month = self.get_payment_month_display() if self.payment_month else ""
+        if self.payment_day is None:
+            return month or None
+        if self.payment_day == MONTH_END_DAY:
+            return f"{month}末" if month else day_label(self.payment_day)
+        return f"{month} {day_label(self.payment_day)}" if month else day_label(self.payment_day)
+
     @property
     def is_customer(self):
         return self.role in (self.ROLE_CUSTOMER, self.ROLE_BOTH)
@@ -63,7 +105,7 @@ class Partner(models.Model):
 
 
 class Item(models.Model):
-    """部品マスター (品目)。品番は会社の中で一意。"""
+    """部品マスター (部品)。品番は会社の中で一意。"""
 
     part_no = models.CharField("自社品番", max_length=35, unique=True)
     name = models.CharField("品名", max_length=100)
@@ -71,13 +113,13 @@ class Item(models.Model):
     drawing = models.FileField("図面ファイル", upload_to="drawings/", blank=True)
     unit = models.CharField("単位", max_length=10, blank=True)
     standard_price = models.DecimalField(
-        "標準単価", max_digits=14, decimal_places=2, null=True, blank=True
+        "標準単価 (円)", max_digits=14, decimal_places=2, null=True, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
     class Meta:
-        verbose_name = "品目"
-        verbose_name_plural = "品目"
+        verbose_name = "部品"
+        verbose_name_plural = "部品"
         ordering = ["part_no"]
 
     def __str__(self):
@@ -85,7 +127,7 @@ class Item(models.Model):
 
 
 class PartnerItem(models.Model):
-    """取引先ごとの品番。取引先の品番を自社の品目に対応させる。"""
+    """取引先ごとの品番。取引先の品番を自社の部品に対応させる。"""
 
     partner = models.ForeignKey(
         Partner,
@@ -112,6 +154,10 @@ class PartnerItem(models.Model):
             ),
         ]
 
+    def __str__(self):
+        partner = self.partner.short_name or self.partner.name
+        return f"{partner} {self.partner_part_no}"
+
 
 class Process(models.Model):
     """工程。"""
@@ -126,13 +172,16 @@ class Process(models.Model):
         verbose_name_plural = "工程"
         ordering = ["sort_order", "code"]
 
+    def __str__(self):
+        return f"{self.code} {self.name}"
+
 
 class ItemProcess(models.Model):
     """標準の工程の並び。"""
 
     item = models.ForeignKey(
         Item,
-        verbose_name="品目",
+        verbose_name="部品",
         on_delete=models.CASCADE,
         related_name="item_processes",
     )
@@ -148,3 +197,6 @@ class ItemProcess(models.Model):
         verbose_name = "標準の工程の並び"
         verbose_name_plural = "標準の工程の並び"
         ordering = ["item", "seq"]
+
+    def __str__(self):
+        return f"{self.item.part_no} {self.process}"
