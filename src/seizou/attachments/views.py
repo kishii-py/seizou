@@ -1,16 +1,63 @@
-"""attachments の口 (02 の 5 節の N30)。
+"""attachments の画面と口 (02 の 5 節の N30)。画面は core の土台を継承する (R15)。
 
-ファイルを返す口は画面でないので関数の view (R15 は class だけを見る)。ログインした人にだけ返し、
-ブラウザに保存させない (土台の画面と同じ no-store)。media の生の URL と保存の名前は画面に出さない。
+付けるのは記録の詳細の「添付ファイル」の枠 (attachments/_panel.html) からだけ。付ける画面の名前は
+attachment_add にする (attachment_create にすると、土台の一覧が付ける先の無い「新規登録」を出すため)。
+保存の後と一覧の行は attachment_detail (付けた先の記録の詳細へ移るだけの口) へ移る。
+削除の後は、remove_attachment が返す付けていた先の記録の詳細へ土台が移す。
+
+ファイルを返す口と、移るだけの口は画面でないので関数の view (R15 は class だけを見る)。
+ファイルはログインした人にだけ返し、ブラウザに保存させない (土台の画面と同じ no-store)。
+media の生の URL と保存の名前は画面に出さない。
 """
 
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
 
+from seizou.core.views import BaseFormView, BaseListView, model_url, url_or_none
+
 from . import services
+from .forms import AttachmentDeleteForm, AttachmentForm
 from .models import Attachment
+
+
+class AttachmentListView(BaseListView):
+    model = Attachment
+    columns = ("uploaded_at", "kind", "original_name", ("target_label", "対象"), "note")
+    search_fields = ("original_name", "note")
+    ordering = ("-uploaded_at", "-pk")
+    screen_name = "添付ファイル"
+    screen_help = "記録に付けたファイルの一覧。行を押すと、付けた先の記録の詳細を開きます。"
+
+
+class AttachmentAddView(BaseFormView):
+    model = Attachment
+    form_class = AttachmentForm
+    service = staticmethod(services.add_attachment)
+    screen_name = "添付ファイルを付ける"
+    screen_help = "記録の詳細の「添付ファイル」の枠から開き、写真・検査成績書・作業手順などのファイルを付けます。"
+
+
+class AttachmentDeleteView(BaseFormView):
+    model = Attachment
+    form_class = AttachmentDeleteForm
+    service = staticmethod(services.remove_attachment)
+    template_name = "attachments/attachment_delete.html"
+    screen_name = "添付ファイルの削除"
+    screen_help = "添付ファイルを削除し、付けた先の記録の詳細に戻ります。削除したファイルは元に戻せません。"
+
+
+@login_required
+def attachment_detail(request, pk):
+    """付けた先の記録の詳細へ移るだけの口 (保存の後と一覧の行の移り先)。
+
+    付けた先が無いか、付けた先に詳細の画面が無ければ一覧へ (一覧も無ければ /)。
+    """
+    attachment = get_object_or_404(Attachment, pk=pk)
+    target = attachment.target
+    url = model_url(target.__class__, "detail", target.pk) if target is not None else None
+    return HttpResponseRedirect(url or url_or_none("attachments:attachment_list") or "/")
 
 
 @never_cache

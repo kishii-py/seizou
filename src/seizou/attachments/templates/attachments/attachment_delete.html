@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 添付ファイルの削除の確認: 1 枚のカード。「削除」で行とファイルを消し、付けた先の記録の詳細へ戻る。赤の知らせは base.html が出す。 #}
+{# core/form.html はボタンの字が「保存」なので使わない。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-start gap-2">{% icon "alert" "size-5 text-error" %}<span>「{{ object.original_name }}」を削除します。付けた先: {{ object.target_label }}。削除したファイルは元に戻せません。</span></p>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'attachments:attachment_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}

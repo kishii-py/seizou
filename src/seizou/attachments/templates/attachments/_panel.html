@@ -1,0 +1,49 @@
+{% load attachments_tags seizou_icons %}
+{# 添付ファイルの枠: core の詳細の画面 (core/detail.html) の下に出る。付ける・開く・削除へ進む。 #}
+{# ファイルはログインした人にだけ返す口で開く。media の生の URL と保存の名前は出さない。 #}
+{% attachments_for object as attachment_rows %}{% content_type_id object as attachment_ct %}
+<section id="attachments" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="attachments-heading">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h2 id="attachments-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "file" "size-5 text-base-content/70" %}添付ファイル<span class="badge badge-sm tabular-nums">{{ attachment_rows|length }}</span></h2>
+    <a class="btn btn-sm btn-outline border-base-300" href="{% url 'attachments:attachment_add' %}?content_type={{ attachment_ct }}&amp;object_id={{ object.pk }}">{% icon "plus" "size-4" %}添付ファイルを付ける</a>
+  </div>
+  {% if attachment_rows %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>種類</th>
+          <th>ファイル名</th>
+          <th class="text-right">大きさ</th>
+          <th>付けた日時</th>
+          <th>付けた人</th>
+          <th>備考</th>
+          <th class="text-right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in attachment_rows %}
+        <tr class="hover:bg-base-200">
+          <td class="whitespace-nowrap">{{ row.get_kind_display }}</td>
+          <td class="max-w-xs"><span class="block truncate" title="{{ row.original_name }}">{{ row.original_name }}</span></td>
+          <td class="whitespace-nowrap text-right font-mono tabular-nums">{{ row.size|filesizeformat }}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ row.uploaded_at|date:"Y-m-d H:i" }}</td>
+          <td class="whitespace-nowrap">{% if row.uploaded_by %}{{ row.uploaded_by }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td class="max-w-xs break-words text-base-content/70">{{ row.note }}</td>
+          <td class="whitespace-nowrap text-right">
+            <a class="btn btn-ghost btn-sm" href="{% url 'attachments:attachment_download' row.pk %}" target="_blank" rel="noopener">{% icon "external" "size-4" %}開く</a>
+            <a class="btn btn-ghost btn-sm text-error" href="{% url 'attachments:attachment_delete' row.pk %}">{% icon "x" "size-4" %}削除</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="flex flex-col items-center justify-center p-6 text-center">
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "file" "size-6" %}</span>
+    <p class="mt-4 font-medium">添付ファイルは、まだ付いていません。</p>
+    <p class="mt-2 text-xs text-base-content/50">写真・検査成績書・作業手順などを付けると、ここに並びます。</p>
+  </div>
+  {% endif %}
+</section>
