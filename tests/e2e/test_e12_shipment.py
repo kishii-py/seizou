@@ -54,3 +54,49 @@ def test_e12_stop_then_partial(page_a, company_a):
     expect(remaining).to_have_text(re.compile(r"^6(\.0+)?$"))
     shot(page_a, "E-12", "a-remaining")
 
+
+
+def test_e12_partial_second_and_warn(page_a, page_b, company_a, company_b):
+    """E-12 の続き (余力)。A 社の分納 (4 の次の 6 が通り残 0) と、`warn` の B 社の「このまま保存」(11 で残 -1)。
+
+    見ない所 (理由): 分納を許さない会社 (答えの YAML にその設定を持つ会社が 2 社の中に無い)。
+    """
+    login(page_a, company_a)
+    order_no = new_order(
+        page_a,
+        company_a,
+        customer=seed_name(company_a, "partners", CUSTOMER_CODE),
+        part_no="WK-1001",
+        qty=10,
+        unit_price=480,
+        mark=unique_mark("e12a"),
+    )
+    order_url = page_a.url
+    for qty in (4, 6):
+        fill_shipment(page_a, company_a, order_no=order_no, qty=qty)
+        expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
+        page_a.goto(f"{company_a.base_url}/shipping/new/")
+    page_a.goto(order_url)
+    remaining = page_a.locator("#order-lines-title ~ div tbody tr").first.locator("td").last
+    expect(remaining).to_have_text(re.compile(r"^0(\.0+)?$"))
+
+    login(page_b, company_b)
+    order_no_b = new_order(
+        page_b,
+        company_b,
+        customer=seed_name(company_b, "partners", CUSTOMER_CODE),
+        part_no="SB-2001",
+        qty=10,
+        unit_price=45,
+        mark=unique_mark("e12b"),
+    )
+    order_url_b = page_b.url
+    fill_shipment(page_b, company_b, order_no=order_no_b, qty=11)
+    warning = page_b.locator(".alert-warning")
+    expect(warning).to_have_count(1)
+    shot(page_b, "E-12", "b-warn")
+    page_b.get_by_role("button", name="このまま保存").click()
+    expect(page_b.locator(".seizou-toast[role=status]")).to_be_visible()
+    page_b.goto(order_url_b)
+    remaining_b = page_b.locator("#order-lines-title ~ div tbody tr").first.locator("td").last
+    expect(remaining_b).to_have_text(re.compile(r"^-1(\.0+)?$"))

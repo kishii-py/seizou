@@ -43,3 +43,25 @@ def test_e03_search_swaps_rows_only(page_a, company_a):
     assert page_a.evaluate("window.__e2e_marker") == "kept"
 
     shot(page_a, "E-03", "a-search")
+
+
+def test_e03_header_click_sorts(page_a, company_a):
+    """E-03 の並び替え (余力): 見出し「自社品番」を押すと昇順、もう一度押すと降順になる。
+
+    見ない所 (理由): 昇順の 1 回目は既定の並び (品番の昇順) と同じなので、「押すと逆になる」のは 2 回目から。
+    """
+    login(page_a, company_a)
+    page_a.goto(f"{company_a.base_url}/masters/items/")
+    header = page_a.locator("#rows thead th").filter(has_text="自社品番")
+    rows = page_a.locator("#rows tbody tr td:first-child")
+    expect(rows.first).to_be_visible()
+
+    header.get_by_role("link").click()
+    expect(header).to_have_attribute("aria-sort", "ascending")
+    ascending = rows.all_inner_texts()
+    assert ascending == sorted(ascending)
+
+    header.get_by_role("link").click()
+    expect(header).to_have_attribute("aria-sort", "descending")
+    expect(rows.first).to_have_text(ascending[-1])
+    assert rows.all_inner_texts() == list(reversed(ascending))
