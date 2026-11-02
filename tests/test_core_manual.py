@@ -4,6 +4,7 @@
 """
 
 import re
+from urllib.parse import urljoin
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -144,3 +145,86 @@ def test_unreadable_fragment_is_reported(client_logged_in, manual):
     box = section_box(response.content.decode(), "masters_item_list")
     assert "UTF-8 で読めませんでした" in box
     assert "/seizou:manual" in box
+
+
+# 2 段目: 印刷用の 1 枚と絵の口
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"tests-only-not-a-real-picture"
+
+
+def write_image(folder, name, data=PNG_BYTES):
+    images = folder / "images"
+    images.mkdir(exist_ok=True)
+    (images / name).write_bytes(data)
+
+
+def test_print_has_all_fragments_without_menu(client_logged_in, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    order_fragment = "<section><h2>受注</h2><p>作り物の受注の説明</p></section>"
+    write_fragment(manual, "orders_order_list", order_fragment)
+    response = manual_page(client_logged_in, print="1")
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert html.lstrip().lower().startswith("<!doctype html>")
+    assert html.count("<html") == 1
+    assert '<html lang="ja" data-theme="light">' in html
+    assert ITEM_FRAGMENT in section_box(html, "masters_item_list")
+    assert order_fragment in section_box(html, "orders_order_list")
+    assert "この画面の説明はまだありません" in section_box(html, "masters_partner_list")
+    assert 'id="seizou-drawer"' not in html
+    assert 'aria-label="横断して検索"' not in html
+    assert 'aria-label="メニュー"' not in html
+    assert "<title>マニュアル | " in html
+    assert toc_anchors(html) == [fragment_name(s.url_name) for s in all_screens()]
+
+
+@pytest.mark.django_db
+def test_print_requires_login(client, site):
+    response = manual_page(client, print="1")
+    assert response.status_code == 302
+    assert reverse("core:login") in response["Location"]
+
+
+def test_manual_image_is_served(client_logged_in, manual):
+    write_image(manual, "masters_item_list.png")
+    response = client_logged_in.get("/manual/images/masters_item_list.png")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/png"
+    assert b"".join(response.streaming_content) == PNG_BYTES
+
+
+@pytest.mark.parametrize("name", ["..", ".hidden.png", "a.svg", "a.html", "missing.png", "..a.png"])
+def test_manual_image_refuses_bad_names(client_logged_in, manual, name):
+    write_image(manual, ".hidden.png")
+    write_image(manual, "a.svg", b"<svg></svg>")
+    write_image(manual, "a.html", b"<p></p>")
+    (manual / "..a.png").write_bytes(PNG_BYTES)
+    response = client_logged_in.get(reverse("core:manual_image", args=[name]))
+    assert response.status_code == 404
+
+
+def test_manual_image_outside_folder_is_refused(client_logged_in, manual):
+    """manual/images/ の外 (manual/ の直下) にある絵は、名前の形が正しくても出さない。"""
+    (manual / "outside.png").write_bytes(PNG_BYTES)
+    write_image(manual, "inside.png")
+    try:
+        (manual / "images" / "link.png").symlink_to(manual / "outside.png")
+    except OSError:
+        pytest.skip("この OS の利用者は symlink を作れない (Windows で権限が無いとき)")
+    assert client_logged_in.get(reverse("core:manual_image", args=["inside.png"])).status_code == 200
+    assert client_logged_in.get(reverse("core:manual_image", args=["link.png"])).status_code == 404
+
+
+@pytest.mark.django_db
+def test_manual_image_requires_login(client, manual):
+    write_image(manual, "masters_item_list.png")
+    response = client.get(reverse("core:manual_image", args=["masters_item_list.png"]))
+    assert response.status_code == 302
+    assert reverse("core:login") in response["Location"]
+
+
+def test_relative_image_path_resolves():
+    expected = reverse("core:manual_image", args=["x.png"])
+    page = reverse("core:manual")
+    assert urljoin(page, "images/x.png") == expected
+    assert urljoin(f"{page}?print=1", "images/x.png") == expected

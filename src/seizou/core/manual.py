@@ -22,6 +22,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, Http404
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.views.generic import TemplateView
@@ -34,6 +36,17 @@ UNREADABLE = object()
 
 #: 前書きの断片の名前 (manual/index.html)
 INTRO_NAME = "index"
+
+#: 絵の口が返す拡張子と型 (SVG は中に script を持てるので出さない)
+IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+#: 印刷用の 1 枚を選ぶ GET の値 (/manual/?print=1)
+PRINT_PARAM = "print"
 
 
 def manual_dir() -> Path | None:
@@ -94,6 +107,12 @@ class ManualView(ScreenMixin, TemplateView):
     screen_help = "画面ごとの使い方。左の目次から読みたい画面を選びます。印刷用の 1 枚も開けます。"
     screen_icon = "book"
     template_name = "core/manual.html"
+    print_template_name = "core/manual_print.html"
+
+    def get_template_names(self):
+        if self.request.GET.get(PRINT_PARAM) == "1":
+            return [self.print_template_name]
+        return super().get_template_names()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -103,5 +122,20 @@ class ManualView(ScreenMixin, TemplateView):
         context["intro"] = None if intro is None or intro is UNREADABLE else mark_safe(intro)
         context["intro_unreadable"] = intro is UNREADABLE
         context["has_manual"] = folder is not None and folder.is_dir()
-        context["print_url"] = f"{reverse('core:manual')}?print=1"
+        context["print_url"] = f"{reverse('core:manual')}?{PRINT_PARAM}=1"
         return context
+
+
+@login_required
+def manual_image(request, name: str):
+    """manual/images/<name> の絵を返す。名前が . で始まる・.. を含む・拡張子が外れ・ファイルが無い・
+    manual/images/ の外を指す、のどれかなら 404。読むだけ。"""
+    folder = manual_dir()
+    suffix = Path(name).suffix.lower()
+    if folder is None or name.startswith(".") or ".." in name or suffix not in IMAGE_TYPES:
+        raise Http404("絵がありません。")
+    images = (folder / "images").resolve()
+    path = (images / name).resolve()
+    if path.parent != images or not path.is_file():
+        raise Http404("絵がありません。")
+    return FileResponse(path.open("rb"), content_type=IMAGE_TYPES[suffix])

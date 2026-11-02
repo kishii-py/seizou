@@ -16,7 +16,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
 from django.views.static import serve
 
-from seizou.core.manual import ManualView
+from seizou.core.manual import ManualView, manual_image
 from seizou.core.search import SearchView
 from seizou.core.views import HomeView, RememberLoginView
 from seizou.parts import PARTS
@@ -25,6 +25,7 @@ core_patterns = [
     path("", HomeView.as_view(), name="home"),
     path("search/", SearchView.as_view(), name="search"),
     path("manual/", ManualView.as_view(), name="manual"),
+    path("manual/images/<str:name>", manual_image, name="manual_image"),
     path("login/", RememberLoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
 ]
