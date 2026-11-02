@@ -1,0 +1,42 @@
+# 立ち上げの質問への答え (作り物の会社。実在しない)。`seizou new` がこのファイルを読む。
+# 種のファイル (作り物のデータ) は、ファイル名から拡張子を除いた名前のフォルダに置く。
+
+# 会社の id。ファイル名 (拡張子なし) と同じ。英小文字と数字と `_` だけ (先頭は英字)
+id: a_machining
+# 会社の名前 (問 1 の前半)。作り物の名前
+name: A 社
+# 業種 (問 1 の後半)
+industry: 機械加工
+# 部品マスターに足す項目 (問 2)。並ぶ順は答えた順。列の名前は組み立ての命令が付ける
+item_fields:
+  # 見出し (画面に出る項目の名前)
+  - label: 材質
+    # 型 (text = 文字 / number = 数 / date = 日付 / choice = 選択肢 / bool = はいいいえ)
+    type: text
+    # 必須か (true = 空で保存できない)
+    required: false
+    # 一覧に出すか (true = 品目の一覧に列が出る)
+    in_list: true
+    # 検索に使うか (true = 一覧の検索の欄でこの値を探す)
+    searchable: true
+  - label: 図面の版
+    type: text
+    required: false
+    in_list: true
+    searchable: false
+# 選べる設定。中身がそのまま会社の settings.py の SEIZOU の辞書になる
+settings:
+  # 受注の形 (multi = 1 件に明細が複数 / single = 1 件 1 品)
+  order_form: multi
+  # 分納 (true = 許す / false = 許さない)
+  partial_shipment: true
+  # 受注より多い出荷 (warn = 知らせる / stop = 止める / off = 通す)
+  over_shipment: stop
+  # 受注より多い指示書の数量と、予定より多い実績 (warn = 知らせる / stop = 止める / off = 通す)
+  over_workorder: warn
+  # 受注番号の形 (seq = 連番 / ym_seq = 年月 + 連番)
+  order_number: seq
+  # 使わない注文の項目 (受注と受注の明細の列の名前) の一覧。決まりが見る項目は隠せない
+  hidden_fields: []
+# 開発サーバーのポート
+port: 8001
