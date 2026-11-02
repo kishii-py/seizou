@@ -534,3 +534,13 @@ def new_item(page: Page, company: Company, *, part_no: str, name: str, drawing: 
     _click_save(page)
     page.wait_for_url(re.compile(r"/masters/items/\d+/$"), timeout=SAVE_WAIT_MS)
     return urlparse(page.url).path
+
+
+def wait_image_loaded(page: Page, image) -> None:
+    """`img` の locator が指す 1 枚が読めた (`complete` かつ `naturalWidth` が 0 より大きい) のを待つ。
+
+    要素が出ただけでは絵は読めていない。E-04 と E-24 が、詳細と小窓の絵を見るために使う。
+    """
+    page.wait_for_function(
+        "element => element.complete && element.naturalWidth > 0", arg=image.element_handle(), timeout=SELECT_WAIT_MS
+    )
