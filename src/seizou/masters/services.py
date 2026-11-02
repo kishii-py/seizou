@@ -19,6 +19,7 @@ from django.db import transaction
 from seizou.core.models import Company
 
 from .models import Item, Partner, PartnerItem
+from .models import Process
 
 _ITEM_KEYS = frozenset(
     {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"}
@@ -36,6 +37,7 @@ _PARTNER_KEYS = frozenset(
         "note",
     }
 )
+_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
 _ROUNDING_MODES = {
     "round": ROUND_HALF_UP,
@@ -85,6 +87,11 @@ def _refuse_unknown_role(role):
         )
 
 
+def _refuse_duplicate_process_code(code):
+    if Process.objects.filter(code=code).exists():
+        raise ValueError(f"工程コード {code} は既にあります。別のコードにしてください。")
+
+
 def create_item(data, user, *, ext=None):
     """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。"""
     _refuse_unknown_keys(data, _ITEM_KEYS, "品目")
@@ -132,6 +139,14 @@ def update_partner(partner, data, user, *, ext=None):
         partner.save()
         _save_ext(partner, ext)
         return partner
+
+
+def create_process(data, user):
+    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order。"""
+    _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
+    with transaction.atomic():
+        _refuse_duplicate_process_code(data["code"])
+        return Process.objects.create(**data)
 
 
 def map_partner_item(partner, item, partner_part_no, user, *, partner_item_name=""):
