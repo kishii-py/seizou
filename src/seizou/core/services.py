@@ -1,7 +1,7 @@
 """core の公開する関数 (01 の 10.3)。
 
 - company(): 会社の設定 (Company) の 1 行。無ければ既定で作る。
-- next_number(kind): 会社ごとの連番。kind は "order"・"workorder"・"shipment"・"delivery_note"・"invoice"。
+- next_number(kind): 会社ごとの連番。kind は "order"・"workorder"・"shipment"・"delivery_note"・"invoice"・"purchase_order"。
   形は選べる設定 order_number で決まる (seq = 連番 / ym_seq = 年月 + 連番。月ごとに 1 から)。
   トランザクションの中でだけ呼べる (外で呼ぶと RuntimeError)。行をロックして増やすので、同時に呼んでも重ならない。
 """
@@ -20,6 +20,7 @@ PREFIXES = {
     "shipment": "SH",
     "delivery_note": "DN",
     "invoice": "IV",
+    "purchase_order": "PO",
 }
 
 
