@@ -2,19 +2,29 @@
 
 一覧は行を押すと詳細、部品の名前の字を押すと小窓 (core の master_link)。
 発行は検査の層 (受注より多い指示書のポカよけ) を通ってから services.issue_workorder を呼ぶ。
+現品票の印刷用の HTML と PDF は画面でない口なので、関数の view にした (shipping の納品書と同じ形)。
+PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現品票の印刷用の HTML に知らせを付けて返す。
+現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。
 """
 
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseBadRequest
-from django.shortcuts import render
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from seizou.core import reports
 from seizou.core.exceptions import RuleError
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, Notice
 
 from . import plans, services
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
 from .models import WorkOrder, WorkOrderStep
+from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
+
+#: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (05 の 6 節の文。shipping の納品書と同じ字)
+PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
 
 
 class WorkOrderListView(BaseListView):
@@ -102,3 +112,64 @@ def plan_place(request):
     response["HX-Retarget"] = "#plan-notice"
     response["HX-Reswap"] = "innerHTML"
     return response
+
+
+@login_required
+def workorder_tag(request, pk):
+    """指示書の現品票の印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は読み取りの着地の URL。"""
+    workorder = get_object_or_404(
+        WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
+    )
+    context = {
+        **workorder_tag_context(workorder),
+        "qr_text": request.build_absolute_uri(reverse("workorders:workorder_scan", args=[pk])),
+    }
+    return HttpResponse(reports.render_html(WORKORDER_TAG_TEMPLATE, context))
+
+
+@login_required
+def workorder_tag_pdf(request, pk):
+    """指示書の現品票の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
+    workorder = get_object_or_404(
+        WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
+    )
+    context = {
+        **workorder_tag_context(workorder),
+        "qr_text": request.build_absolute_uri(reverse("workorders:workorder_scan", args=[pk])),
+    }
+    try:
+        data = reports.render_pdf(WORKORDER_TAG_TEMPLATE, context)
+    except reports.PdfUnavailable:
+        return HttpResponse(reports.render_html(WORKORDER_TAG_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+    response = HttpResponse(data, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{workorder.wo_no}.pdf"'
+    return response
+
+
+@never_cache
+@login_required
+def workorder_scan(request, pk):
+    """現品票の QR を読んだ先 (読み取りの着地)。工程ごとに、その工程を選んだ実績の新規登録へ移る link を並べる。
+
+    画面の応答は土台の画面と同じくブラウザに保存させない (never_cache)。表に書かない (移るだけの link)。
+    見出しと <title> は core/base.html が screen_name を読むので、土台の画面と同じ鍵を context に入れる。
+    """
+    workorder = get_object_or_404(
+        WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
+    )
+    steps = workorder.steps.select_related("process").order_by("seq")
+    rows = [{"step": step, "done": False} for step in steps]
+    return render(
+        request,
+        "workorders/workorder_scan.html",
+        {
+            "workorder": workorder,
+            "rows": rows,
+            "screen_name": "現品票の読み取り",
+            "screen_help": (
+                "現品票の QR から開く画面です。"
+                "工程の「実績を入力」を押すと、その工程を選んだ形で実績の新規登録が開きます。"
+            ),
+            "screen_app": "workorders",
+        },
+    )
