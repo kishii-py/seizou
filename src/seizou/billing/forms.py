@@ -1,0 +1,89 @@
+"""billing の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
+
+- 作る form: 得意先・出荷 (checkbox)・発行日。service_kwargs() が create_invoice の引数を作る。
+  候補は billable_shipments() (発行の納品書に入っていて、取消でない請求書に入っていない出荷) と、その出荷のある得意先。
+  得意先と違う出荷を選んだときは、画面で先に断らず services の R09 の赤の知らせに任せる。
+  checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
+- 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
+- ほかの部品の model は import しない。外部キーの先を related_model で引く。
+"""
+
+from django import forms
+from django.utils import timezone
+
+from .models import Invoice
+from .services import billable_shipments
+
+_Partner = Invoice._meta.get_field("customer").related_model
+
+
+class ShipmentCheckboxes(forms.CheckboxSelectMultiple):
+    """出荷の checkbox。行ごとに data-partner (出荷の受注の得意先の pk) を付ける。"""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        instance = getattr(value, "instance", None)
+        if instance is not None:
+            option["attrs"]["data-partner"] = instance.order_line.order.customer_id
+        return option
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        # 外の枠 (div) には checkbox の見た目を付けない (Django の雛形は widget の class を外の枠にも付けるため)。
+        context["widget"]["attrs"].pop("class", None)
+        return context
+
+
+class ShipmentChoiceField(forms.ModelMultipleChoiceField):
+    """出荷を選ぶ欄。字は「出荷番号 得意先 品番 品名 数量 出荷日 納品書番号」。"""
+
+    def label_from_instance(self, obj):
+        line = obj.order_line
+        qty = f"{obj.qty.normalize():f}"
+        note_no = obj.delivery_note.note_no if obj.delivery_note else ""
+        return (
+            f"{obj.shipment_no} {line.order.customer.name} {line.item.part_no} {line.item.name} "
+            f"{qty} {obj.shipped_at:%Y-%m-%d} {note_no}"
+        )
+
+
+class InvoiceForm(forms.Form):
+    """請求書を作る form。"""
+
+    customer = forms.ModelChoiceField(label="得意先", queryset=_Partner.objects.none(), widget=forms.Select)
+    shipments = ShipmentChoiceField(
+        label="出荷",
+        queryset=billable_shipments().none(),
+        widget=ShipmentCheckboxes(attrs={"class": "checkbox"}),
+        help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
+    )
+    issued_on = forms.DateField(
+        label="発行日",
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        candidates = billable_shipments()
+        self.fields["customer"].queryset = _Partner.objects.filter(
+            pk__in=candidates.values("order_line__order__customer_id")
+        ).order_by("code")
+        self.fields["shipments"].queryset = candidates.select_related(
+            "order_line__order__customer", "order_line__item", "delivery_note"
+        ).order_by("shipped_at", "shipment_no")
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {
+            "customer": data["customer"],
+            "shipments": list(data["shipments"]),
+            "issued_on": data["issued_on"],
+        }
+
+
+class InvoiceCancelForm(forms.Form):
+    """請求書を取り消す form。欄は無い。"""
+
+    def service_kwargs(self):
+        return {}
