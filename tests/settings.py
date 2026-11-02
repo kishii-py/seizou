@@ -19,13 +19,36 @@ DEBUG = False
 
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 
+from seizou.parts import PARTS  # noqa: E402  (存在する部品の一覧。部品を足すレーンは parts.py に足す)
+
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    *PARTS,
 ]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+]
+
+# 利用者は core の物。会社のプロジェクトも同じ (01 の 10.5)。
+AUTH_USER_MODEL = "core.User"
+ROOT_URLCONF = "seizou.core.urls"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# 知らせの置き場は session (知らせの cookie の名前は Django の中で固定のため)。
+MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"
+
+# 選べる設定 (seizou.core.conf)。試験は既定で動かし、テストが必要な値を settings fixture で上書きする。
+SEIZOU = {}
 
 TEMPLATES = [
     {
