@@ -12,10 +12,11 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 from PIL import Image, ImageDraw, ImageFile
 
 from seizou.masters import services
-from seizou.masters.models import Item
+from seizou.masters.models import Item, Partner
 
 
 @pytest.fixture(autouse=True)
@@ -242,3 +243,127 @@ def test_preview_keys_are_refused(user):
         with pytest.raises(ValueError, match="知らない項目"):
             services.update_item(item, {key: "x"}, user)
     assert not Item.objects.filter(part_no="P-7301").exists()
+
+
+# ---------------------------------------------------------------- 2 段目: 詳細と小窓と一覧と入力の画面
+
+
+@pytest.fixture
+def client_logged_in(client, user):
+    client.force_login(user)
+    return client
+
+
+def text(response):
+    return response.content.decode()
+
+
+def items_of_each_kind(user):
+    return {
+        "tiff": new_item(user, upload("scan.tif", g4_tiff(), "image/tiff"), part_no="P-8101"),
+        "png": new_item(user, upload("photo.png", png_bytes(), "image/png"), part_no="P-8102"),
+        "pdf": new_item(user, upload("paper.pdf", b"%PDF-1.4\n%%EOF\n", "application/pdf"), part_no="P-8103"),
+        "none": new_item(user, part_no="P-8104"),
+        "broken": new_item(user, upload("broken.tif", b"broken" * 50), part_no="P-8105"),
+    }
+
+
+@pytest.mark.django_db
+def test_detail_shows_original_link_and_preview_image(client_logged_in):
+    response = client_logged_in.post(
+        reverse("masters:item_create"),
+        {"part_no": "P-8001", "name": "作り物の部品", "drawing": upload("scan.tif", g4_tiff(), "image/tiff")},
+    )
+    item = Item.objects.get(part_no="P-8001")
+    assert response.status_code == 302
+    assert response["Location"] == reverse("masters:item_detail", args=[item.pk])
+    body = text(client_logged_in.get(response["Location"]))
+    assert item.drawing.name.endswith(".tif") and item.drawing_preview.name.endswith(".png")
+    assert f'href="{item.drawing.url}"' in body  # 元の TIFF の link (押すと原寸)
+    assert f'<img src="{item.drawing_preview.url}"' in body  # 表示用の PNG の絵
+    assert f'<img src="{item.drawing.url}"' not in body
+    assert "alert-warning" not in body
+
+
+@pytest.mark.django_db
+def test_detail_png_and_pdf(client_logged_in, user):
+    items = items_of_each_kind(user)
+    png = text(client_logged_in.get(reverse("masters:item_detail", args=[items["png"].pk])))
+    assert f'<img src="{items["png"].drawing.url}"' in png
+    assert "alert-warning" not in png
+    pdf = text(client_logged_in.get(reverse("masters:item_detail", args=[items["pdf"].pk])))
+    assert f'href="{items["pdf"].drawing.url}"' in pdf
+    assert "<img" not in pdf
+    assert "alert-warning" not in pdf
+
+
+@pytest.mark.django_db
+def test_broken_upload_on_screen_saves_and_warns(client_logged_in):
+    before = Item.objects.count()
+    url = reverse("masters:item_create")
+    response = client_logged_in.post(
+        url,
+        {"part_no": "P-8201", "name": "作り物の部品", "drawing": upload("broken.tif", b"broken" * 50)},
+        follow=True,
+    )
+    item = Item.objects.get(part_no="P-8201")
+    detail_url = reverse("masters:item_detail", args=[item.pk])
+    assert response.redirect_chain == [(detail_url, 302)]
+    assert Item.objects.count() == before + 1
+    body = text(response)
+    assert "保存しました。" in body  # 土台の toast のまま
+    assert 'class="alert alert-warning alert-soft mb-4" role="status"' in body
+    assert "図面の表示用の絵は作れませんでした (ファイルが壊れています)。元のファイルは保存してあります。" in body
+    assert "alert-error" not in body
+    assert f'href="{item.drawing.url}"' in body  # 元のファイルは link で開ける
+
+
+@pytest.mark.django_db
+def test_modal_shows_small_image_and_warning(client_logged_in, user):
+    items = items_of_each_kind(user)
+
+    def modal(kind):
+        url = reverse("masters:item_modal", args=[items[kind].pk])
+        return text(client_logged_in.get(url, HTTP_HX_REQUEST="true"))
+
+    tiff = modal("tiff")
+    assert f'<img src="{items["tiff"].drawing_preview.url}"' in tiff
+    assert f'href="{items["tiff"].drawing_preview.url}"' in tiff
+    assert "alert-warning" not in tiff
+    png = modal("png")
+    assert f'<img src="{items["png"].drawing.url}"' in png
+    assert "alert-warning" not in png
+    for kind in ("pdf", "none"):
+        body = modal(kind)
+        assert "<img" not in body
+        assert "alert-warning" not in body
+    broken = modal("broken")
+    assert "alert-warning" in broken
+    assert services.DRAWING_BROKEN_MESSAGE in broken
+    assert "<img" not in broken
+    # 取引先ごとの品番の表は今のまま後に続く
+    assert "取引先ごとの品番" in tiff and tiff.index("<img") < tiff.index("取引先ごとの品番")
+    # 取引先の小窓 (同じテンプレート) には図面の 2 つが出ない
+    partner = Partner.objects.create(code="C801", name="作り物の得意先", role="customer")
+    body = text(client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true"))
+    assert "作り物の得意先" in body
+    assert "<img" not in body and "alert-warning" not in body
+
+
+@pytest.mark.django_db
+def test_list_has_no_drawing_columns(client_logged_in, user):
+    items_of_each_kind(user)
+    body = text(client_logged_in.get(reverse("masters:item_list")))
+    assert "P-8101" in body
+    for label in ("図面ファイル", "図面の表示用", "図面の表示用の誤り"):
+        assert label not in body
+
+
+@pytest.mark.django_db
+def test_form_has_no_preview_fields(client_logged_in, user):
+    item = items_of_each_kind(user)["tiff"]
+    for url in (reverse("masters:item_create"), reverse("masters:item_update", args=[item.pk])):
+        body = text(client_logged_in.get(url))
+        assert 'name="drawing"' in body
+        assert 'name="drawing_preview' not in body
+        assert "図面の表示用" not in body
