@@ -1,4 +1,5 @@
 {% extends "core/report_base.html" %}
+{% load seizou_qr %}
 {% comment %}
 納品書の帳票。context は shipping.reports.delivery_note_context が作る (表を読むだけ)。
 数量は出荷の数そのまま (R08)。金額と合計は context に入った値をそのまま出し、ここでは計算しない。
@@ -17,6 +18,12 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
 <p>下記のとおり納品いたします。</p>
 {% endblock %}
 {% block content %}
+{% if qr_text %}
+{# QR は納品書の詳細の URL (社内の人が控えから詳細を開くため)。得意先に渡す紙なので、中身の字は出さない。 #}
+<table class="report-qr-row">
+  <tr><td></td><td class="report-qr-small">{% qr_svg qr_text %}</td></tr>
+</table>
+{% endif %}
 <table class="report-lines">
   <thead>
     <tr><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr>
