@@ -87,6 +87,7 @@ class PartnerDetailView(BaseDetailView):
     screen_name = "取引先の詳細"
     screen_help = "取引先の項目と、取引先ごとの品番。"
     tabs = (("取引先ごとの品番", "partner_items"),)
+    template_name = "masters/partner_detail.html"
 
 
 class PartnerCreateView(BaseFormView):

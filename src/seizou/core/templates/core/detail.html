@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load seizou_tags seizou_icons %}
 {% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
-{# 詳細: 見出しの帯 (大きい主の字・副題・状態の印、右に「一覧に戻る」「編集」)、tabs で基本情報と関係する物、ファイルの節。 #}
+{# 詳細: 見出しの帯 (大きい主の字・副題・状態の印、右に「一覧に戻る」「編集」)、tabs で基本情報と関係する物、ファイルの節。関係する物の行は block tab_rows (部品と取引先の詳細が、取引先ごとの品番を表に差し替える)。 #}
 {% block heading %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
@@ -56,12 +56,14 @@
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
     {% if tab.rows %}
+    {% block tab_rows %}
     <ul class="divide-y divide-base-200">
       {% for row in tab.rows %}
       <li>{% if row.url %}<a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}"><span class="truncate">{{ row.obj }}</span>{% icon "chevron-right" "size-4 text-base-content/50" %}</a>
         {% else %}<span class="block truncate px-2 py-2" title="{{ row.obj }}">{{ row.obj }}</span>{% endif %}</li>
       {% endfor %}
     </ul>
+    {% endblock %}
     {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/50">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
     {% else %}
     <div class="flex flex-col items-center justify-center p-6 text-center">

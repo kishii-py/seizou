@@ -1,0 +1,20 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags %}
+{# 取引先の詳細。取引先ごとの品番のタブは、自社品番 (小窓を開く link)・品名・取引先の品番・取引先の品名の表。ほかは core の詳細のまま。 #}
+{% block tab_rows %}{% if tab.related == "partner_items" %}
+<div class="overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">自社品番</th><th class="font-medium">品名</th><th class="font-medium">取引先の品番</th><th class="font-medium">取引先の品名</th></tr></thead>
+    <tbody>
+      {% for row in tab.rows %}
+      <tr>
+        <td class="whitespace-nowrap font-mono">{% master_link row.obj.item row.obj.item.part_no %}</td>
+        <td>{{ row.obj.item.name }}</td>
+        <td class="whitespace-nowrap font-mono">{{ row.obj.partner_part_no }}</td>
+        <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}{{ block.super }}{% endif %}{% endblock %}
