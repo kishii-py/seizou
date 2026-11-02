@@ -136,6 +136,21 @@ def _login_page_answers(company: Company) -> bool:
         return False
 
 
+@dataclass
+class _Started:
+    """fixture が起こした runserver 1 つ分 (立て直しで同じ命令と環境を使うため覚える)。"""
+
+    process: subprocess.Popen
+    command: list[str]
+    env: dict[str, str]
+    log: object  # 出力の一時ファイル
+    own_log: bool = False  # restart_company が開いた物なら真 (`_running` の with が閉じる物は偽)
+
+
+#: 会社の id → fixture が起こした runserver。立っていた物を使うときは入れない (止めない・立て直さない)。
+_STARTED: dict[str, _Started] = {}
+
+
 def _partner_of(company: Company) -> Company:
     """2 社のうち、company でない方の会社 (鍵の置き場の名前を相手の id から作るため)。"""
     for yaml_name in ("a_machining.yaml", "b_plating.yaml"):
@@ -171,6 +186,7 @@ def _running(company: Company) -> Iterator[Company]:
         process = subprocess.Popen(
             command, cwd=REPO_ROOT, env=child_env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
+        _STARTED[company.id] = _Started(process, command, child_env, log)
         try:
             deadline = time.monotonic() + START_TIMEOUT_SECONDS
             while not _login_page_answers(company):
@@ -181,6 +197,12 @@ def _running(company: Company) -> Iterator[Company]:
                 time.sleep(0.3)
             yield company
         finally:
+            # 立て直しで入れ替わっていれば、表の今の process を止める (表から外す)。
+            started = _STARTED.pop(company.id, None)
+            if started is not None:
+                process = started.process
+                if started.own_log:
+                    started.log.close()
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
                 try:
@@ -405,3 +427,110 @@ def fill_shipment(page: Page, company: Company, *, order_no: str, qty) -> None:
         choose(page, "order_line", order_no)
     page.fill("input[name=qty]", str(qty))
     _click_save(page)
+
+
+# --- 立て直しと図面と部品の登録 (N28) ---------------------------------------------
+
+
+def _server_answers(company: Company) -> bool:
+    """ログインの画面の URL に HTTP の答えがあれば真。状態の番号は問わない。
+
+    決まりの検査に違反があるとログインの画面も 500 で返るので、200 だけを真にする
+    `_login_page_answers` では立て直しを待てない。`HTTPError` は `URLError` の子なので先に受ける。
+    """
+    try:
+        with urllib.request.urlopen(company.login_url, timeout=2):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _stop_group(process: subprocess.Popen) -> None:
+    """process group に SIGTERM → 10 秒 → SIGKILL (`_running` の止め方と同じ)。"""
+    if process.poll() is None:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+
+
+def restart_company(company: Company) -> None:
+    """runserver を止めて、同じ命令と環境で起こし直す。起動の後、`_server_answers` が真になるまで待つ。
+
+    立て直すのは fixture が起こした物だけ。立っていた runserver を使っているときは skip する
+    (その process を止める道が無い)。`--noreload` で起こしているので、置いた・消したファイルは立て直すと反映される。
+    """
+    started = _STARTED.get(company.id)
+    if started is None:
+        pytest.skip("立っていた runserver を使っているので立て直せない (fixture が起こした物だけを立て直す)")
+    _stop_group(started.process)
+    if started.own_log:
+        started.log.close()
+    deadline = time.monotonic() + 10
+    while _is_listening(company.port):
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"{company.id} のポート {company.port} が止めた後も閉じない")
+        time.sleep(0.2)
+    log = tempfile.TemporaryFile()
+    process = subprocess.Popen(
+        started.command, cwd=REPO_ROOT, env=started.env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+    )
+    # 起動の途中で失敗しても、`_running` の終わりが表の今の process を止める。
+    _STARTED[company.id] = _Started(process, started.command, started.env, log, own_log=True)
+    deadline = time.monotonic() + START_TIMEOUT_SECONDS
+    while not _server_answers(company):
+        if process.poll() is not None or time.monotonic() > deadline:
+            log.seek(0)
+            tail = log.read().decode("utf-8", errors="replace")[-1500:]
+            raise RuntimeError(f"{company.id} の立て直しの後、{START_TIMEOUT_SECONDS} 秒以内に答えない:\n{tail}")
+        time.sleep(0.3)
+
+
+def drawing_file(folder: Path, kind: str) -> Path:
+    """作り物の図面を Pillow で folder に作って Path を返す (線と英数字だけ。実在の図面ではない)。
+
+    kind: "tiff" = RGB・LZW 圧縮 (1200×800)、"g4" = 白黒 (`1`)・G4 圧縮、"broken" = 正しい TIFF の頭の数十 bytes だけを残した `.tif`。
+    """
+    from PIL import Image, ImageDraw
+
+    if kind not in ("tiff", "g4", "broken"):
+        raise ValueError(f"kind は tiff・g4・broken のどれか: {kind!r}")
+    image = Image.new("RGB", (1200, 800), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((60, 60, 1140, 740), outline="black", width=4)
+    draw.line((60, 400, 1140, 400), fill="black", width=3)
+    draw.line((600, 60, 600, 740), fill="black", width=3)
+    draw.ellipse((420, 220, 780, 580), outline="black", width=4)
+    draw.text((90, 90), "E2E DRAWING", fill="black")
+    draw.text((90, 120), f"MARK {kind.upper()} {datetime.now():%m%d%H%M%S}", fill="black")
+    if kind == "g4":
+        path = folder / "e2e-drawing-g4.tif"
+        image.convert("1").save(path, format="TIFF", compression="group4")
+    elif kind == "tiff":
+        path = folder / "e2e-drawing-lzw.tif"
+        image.save(path, format="TIFF", compression="tiff_lzw")
+    else:
+        valid = folder / "e2e-drawing-valid.tif"
+        image.save(valid, format="TIFF", compression="tiff_lzw")
+        path = folder / "e2e-drawing-broken.tif"
+        path.write_bytes(valid.read_bytes()[:64])
+    return path
+
+
+def new_item(page: Page, company: Company, *, part_no: str, name: str, drawing: Path | None = None) -> str:
+    """部品の新規登録 (`/masters/items/new/`) に自社品番・品名 (と図面のファイル) を入れて「保存」し、詳細の道を返す。
+
+    品番は `unique_mark` (35 字以内)。保存の後に部品の詳細 (道が `/masters/items/<pk>/`) へ移ったことを見る。
+    """
+    page.goto(f"{company.base_url}/masters/items/new/")
+    page.fill("input[name=part_no]", part_no)
+    page.fill("input[name=name]", name)
+    if drawing is not None:
+        page.set_input_files("input[name=drawing]", str(drawing))
+    _click_save(page)
+    page.wait_for_url(re.compile(r"/masters/items/\d+/$"), timeout=SAVE_WAIT_MS)
+    return urlparse(page.url).path
