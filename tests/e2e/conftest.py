@@ -17,7 +17,8 @@
    - `SEIZOU_E2E_USER`: 管理者の ID。無ければ `admin`
    - `SEIZOU_E2E_PASSWORD_A_MACHINING`: A 社の管理者のパスワード
    - `SEIZOU_E2E_PASSWORD_B_PLATING`: B 社の管理者のパスワード
-   パスワードの値は、どのファイルにも、絵の名前にも、ログにも書かない。
+   - `SEIZOU_E2E_PARTNER_SECRET`: 2 社の間の署名の鍵。fixture が起こす runserver に、相手の会社の id から作った名前で渡す
+   パスワードと鍵の値は、どのファイルにも、絵の名前にも、ログにも書かない。
 5. 期待の文は、仕様書の 6 番の 3 節の「期待」の列をそのまま、試験の docstring に写す。
 6. 作り物のデータだけが映る前提で書く。実在の会社名・人名・品番を試験に書かない。
 
@@ -28,6 +29,7 @@
 
 from __future__ import annotations
 
+import csv
 import os
 import re
 import signal
@@ -41,19 +43,20 @@ import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 import yaml
-from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 E2E_DIR = Path(__file__).resolve().parent
 REPO_ROOT = E2E_DIR.parents[1]
 COMPANIES_DIR = REPO_ROOT / "examples" / "companies"
 GATE = "SEIZOU_E2E"
 GATE_SKIP_REASON = "2 社が立っていない (SEIZOU_E2E 未設定)"
+PARTNER_SECRET_ENV = "SEIZOU_E2E_PARTNER_SECRET"
 DEFAULT_USER = "admin"
 VIEWPORT = {"width": 1280, "height": 800}
 START_TIMEOUT_SECONDS = 30
@@ -133,6 +136,15 @@ def _login_page_answers(company: Company) -> bool:
         return False
 
 
+def _partner_of(company: Company) -> Company:
+    """2 社のうち、company でない方の会社 (鍵の置き場の名前を相手の id から作るため)。"""
+    for yaml_name in ("a_machining.yaml", "b_plating.yaml"):
+        other = _load_company(yaml_name)
+        if other.id != company.id:
+            return other
+    raise RuntimeError(f"{company.id} の相手の会社が見つからない")
+
+
 @contextmanager
 def _running(company: Company) -> Iterator[Company]:
     manage = company.site / "manage.py"
@@ -148,6 +160,11 @@ def _running(company: Company) -> Iterator[Company]:
     # 会社の settings の名前は manage.py が自分で決める。渡さない物を子に残さないため、E2E の環境変数は外す。
     child_env = {key: value for key, value in os.environ.items() if not key.startswith("SEIZOU_E2E")}
     child_env.pop("DJANGO_SETTINGS_MODULE", None)
+    # 2 社の間の鍵: 相手の会社の id から作った名前で、2 社の runserver に同じ値を置く。
+    # 会社の .env は既にある環境変数を上書きしないので、ここで置いた値が勝つ。値はログにも例外にも出さない。
+    shared_secret = os.environ.get(PARTNER_SECRET_ENV)
+    if shared_secret:
+        child_env[f"SEIZOU_PARTNER_{_partner_of(company).id.upper()}_SECRET"] = shared_secret
     command = [sys.executable, str(manage), "runserver", f"127.0.0.1:{company.port}", "--noreload"]
     with tempfile.TemporaryFile() as log:
         # 新しい process group に入れ、終わりにその group だけを止める (pkill を使わない)。
@@ -253,3 +270,124 @@ def shot(page: Page, code: str, scene: str) -> Path:
     path = folder / f"{code}_{scene}.png"
     page.screenshot(path=str(path), full_page=True)
     return path
+
+
+# --- 助けの関数 (画面の操作。試験の中で何度も使う手順) -------------------------------
+
+SAVE_WAIT_MS = 20_000  # 保存の後の移動を待つ上限 (発注は保存の中で相手へ送るので長め)
+SELECT_WAIT_MS = 15_000  # 選ぶ欄の候補を待つ上限
+
+
+def seed_name(company: Company, kind: str, code: str) -> str:
+    """種のファイルから、取引先コード (kind="partners") か自社品番 (kind="items") の名前を読む。読むだけ。"""
+    path = COMPANIES_DIR / company.id / f"{kind}.csv"
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if code in (row.get("取引先コード"), row.get("自社品番")):
+                return row.get("名前") or row["品名"]
+    raise LookupError(f"{company.id} の種 {kind}.csv に {code} が無い")
+
+
+def unique_mark(prefix: str) -> str:
+    """回すごとに違う印 (`E2E-<prefix>-<月日時分秒>`。35 字以内)。会社の DB に残る行を、自分の物だけ引くために使う。"""
+    mark = f"E2E-{prefix}-{datetime.now():%m%d%H%M%S}"
+    if len(mark) > 35:
+        raise ValueError(f"印が 35 字を超える: {len(mark)} 字")
+    return mark
+
+
+def has_partner_secret(page: Page, company: Company) -> bool:
+    """つながりの一覧 (`/connect/connections/`) の「鍵の設定」の欄が、全部の行で「済み」なら真。
+
+    ログインは呼ぶ側が済ませておく。値は読まない (画面は値を出さず、済み / まだ だけを出す)。
+    """
+    page.goto(f"{company.base_url}/connect/connections/")
+    headers = [text.strip() for text in page.locator("#rows thead th").all_inner_texts()]
+    if "鍵の設定" not in headers:
+        return False
+    index = headers.index("鍵の設定")
+    states = [
+        row.locator("td").nth(index).inner_text().strip() for row in page.locator("#rows tbody tr").all()
+    ]
+    return bool(states) and all(state == "済み" for state in states)
+
+
+def choose(page: Page, name: str, text: str) -> None:
+    """選ぶ欄 (Tom Select。元の `<select name=...>` は隠れる) の入れ口に text を打ち、text を含む候補を押す。
+
+    欄に着くと空の検索 (q=) の候補を取りに行く。その返事の前に打つと、打った字の検索が送られない
+    ことがあるので、まず空の検索の返事と候補の表示を待つ。打った後は約 250ms 後に q=text の返事が来るので、
+    それを待ってから押す (打つ前の候補を押すことは無い)。text は候補の字に含まれる字 (品番・名前) にする。
+    押した後、元の select に値が入ったことを見て終わる。
+    """
+
+    def asked(response, expected: str) -> bool:
+        url = urlparse(response.url)
+        if not url.path.endswith("/select/"):
+            return False
+        return parse_qs(url.query, keep_blank_values=True).get("q") == [expected]
+
+    select = page.locator(f"select[name='{name}']")
+    wrapper = select.locator("xpath=following-sibling::div[contains(@class,'ts-wrapper')][1]")
+    options = wrapper.locator(".ts-dropdown .option")
+    with page.expect_response(lambda response: asked(response, ""), timeout=SELECT_WAIT_MS):
+        wrapper.locator(".ts-control").click()
+    options.first.wait_for(state="visible", timeout=SELECT_WAIT_MS)
+    with page.expect_response(lambda response: asked(response, text), timeout=SELECT_WAIT_MS):
+        wrapper.locator(".ts-control input").press_sequentially(text)
+    option = options.filter(has_text=text).first
+    option.wait_for(state="visible", timeout=SELECT_WAIT_MS)
+    option.click()
+    expect(select).not_to_have_value("", timeout=SELECT_WAIT_MS)
+
+
+def _go_if_not_there(page: Page, company: Company, path: str) -> None:
+    if urlparse(page.url).path != path:
+        page.goto(f"{company.base_url}{path}")
+
+
+def _click_save(page: Page) -> None:
+    # 「このまま保存」にも「保存」が入るので、名前の全部で選ぶ。
+    page.get_by_role("button", name="保存", exact=True).click()
+
+
+def new_order(
+    page: Page, company: Company, *, customer: str, part_no: str, qty, unit_price, mark: str
+) -> str:
+    """受注の新規登録 (`/orders/new/`) で明細 1 行の受注を入れて「保存」し、受注番号を返す。
+
+    customer は得意先の名前 (候補の字に含まれる字。種の名前は `seed_name` で読める)。
+    mark は得意先の注文番号に入れる印 (`unique_mark`)。保存の後に受注の詳細へ移ったことを見る。
+    """
+    _go_if_not_there(page, company, "/orders/new/")
+    choose(page, "customer", customer)
+    page.fill("input[name=customer_order_no]", mark)
+    page.fill("input[name=order_date]", date.today().isoformat())
+    choose(page, "lines-0-item", part_no)
+    page.fill("input[name=lines-0-qty]", str(qty))
+    page.fill("input[name=lines-0-unit_price]", str(unit_price))
+    _click_save(page)
+    page.wait_for_url(re.compile(r"/orders/\d+/$"), timeout=SAVE_WAIT_MS)
+    return page.locator("h1").inner_text().strip()
+
+
+def send_purchase_order(
+    page: Page, company: Company, *, partner_code: str, part_no: str, qty, mark: str, unit_price=100
+) -> str:
+    """発注の新規登録 (`/purchasing/orders/new/`) で明細 1 行の発注を入れて「保存」し、発注番号を返す。
+
+    保存と同時に相手へ送る。取引先と部品は標準の `<select>` なので、種の名前の候補の値で `select_option` する。
+    単価は画面で必須なので、決まった作り物の値 (unit_price) を入れる。mark は備考に入れる。
+    """
+    _go_if_not_there(page, company, "/purchasing/orders/new/")
+    partner_label = seed_name(company, "partners", partner_code)
+    partner_value = page.locator("select[name=partner] option").filter(has_text=partner_label).first
+    page.select_option("select[name=partner]", value=partner_value.get_attribute("value"))
+    page.fill("textarea[name=note]", mark)
+    item_value = page.locator("select[name=lines-0-item] option").filter(has_text=part_no).first
+    page.select_option("select[name=lines-0-item]", value=item_value.get_attribute("value"))
+    page.fill("input[name=lines-0-qty]", str(qty))
+    page.fill("input[name=lines-0-unit_price]", str(unit_price))
+    _click_save(page)
+    page.wait_for_url(re.compile(r"/purchasing/orders/\d+/$"), timeout=SAVE_WAIT_MS)
+    return page.locator("h1").inner_text().strip()
