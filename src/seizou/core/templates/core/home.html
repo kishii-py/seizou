@@ -1,12 +1,73 @@
 {% extends "core/base.html" %}
+{% load seizou_icons seizou_tags %}
 {% block content %}
-<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-  {% for item in seizou.menu %}
-  <a class="card bg-base-100 shadow hover:shadow-md" href="{{ item.url }}">
-    <div class="card-body py-4"><h2 class="card-title text-base">{{ item.label }}</h2></div>
-  </a>
-  {% empty %}
-  <div class="alert"><span>画面はまだありません。部品が入ると、ここと左のメニューに並びます。</span></div>
+{# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
+{% if stats %}
+<div class="grid gap-4 sm:grid-cols-2 {% if stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
+  {% for stat in stats %}
+  {% if stat.url %}<a href="{{ stat.url }}" class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-xs font-medium text-base-content/70">{{ stat.label }}</p>
+      <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
+    </div>
+    <p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>
+    <p class="mt-4 border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p>
+  {% if stat.url %}</a>{% else %}</div>{% endif %}
   {% endfor %}
+</div>
+{% endif %}
+<div class="mt-6 grid gap-6 lg:grid-cols-2">
+  {% if recent_orders is not None %}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
+    <div class="flex items-center justify-between gap-2">
+      <h2 id="recent-orders-title" class="text-lg font-bold">最近の受注</h2>
+      {% if orders_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ orders_url }}">受注の一覧へ{% icon "chevron-right" "size-4" %}</a>{% endif %}
+    </div>
+    {% if recent_orders %}
+    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
+        <tbody>
+          {% for order in recent_orders %}
+          <tr class="row-hover h-10">
+            <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ order.obj.order_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-48 truncate" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
+            <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|comma:0 }}<span class="text-xs text-base-content/50"> 円</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap">{% if order.status == "shipped" %}<span class="badge badge-sm badge-soft badge-success">{{ order.obj.get_status_display }}</span>{% elif order.status == "partial" %}<span class="badge badge-sm badge-soft badge-warning">{{ order.obj.get_status_display }}</span>{% elif order.status == "cancelled" %}<span class="badge badge-sm badge-ghost text-base-content/50">{{ order.obj.get_status_display }}</span>{% else %}<span class="badge badge-sm badge-soft badge-primary">{{ order.obj.get_status_display }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "clipboard" "size-6" %}</span>
+      <p class="mt-4 font-medium">受注はまだありません。</p>
+      <p class="mt-2 text-xs text-base-content/50">受注を入れると、新しい順に 5 件ここに並びます。</p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs{% if recent_orders is None %} lg:col-span-2{% endif %}" aria-labelledby="entrances-title">
+    <h2 id="entrances-title" class="text-lg font-bold">よく使う画面</h2>
+    {% if seizou.menu %}
+    <ul class="mt-4 grid gap-2 sm:grid-cols-2">
+      {% for item in seizou.menu %}
+      <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ item.url }}">
+        <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon item.icon "size-5" %}</span>
+        <span class="min-w-0 flex-1 truncate font-medium">{{ item.label }}</span>
+        {% icon "chevron-right" "size-4 text-base-content/50" %}
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "list" "size-6" %}</span>
+      <p class="mt-4 font-medium">画面はまだありません。</p>
+      <p class="mt-2 text-xs text-base-content/50">部品が入ると、ここと左のメニューに並びます。</p>
+    </div>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}

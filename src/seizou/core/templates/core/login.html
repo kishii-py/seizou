@@ -1,22 +1,44 @@
 {% extends "core/base.html" %}
+{% load seizou_icons %}
 {% block title %}ログイン{% endblock %}
-{% block heading %}{% endblock %}
-{% block content %}
-<div class="card bg-base-100 max-w-sm mx-auto mt-12 shadow">
-  <form method="post" class="card-body">
-    {% csrf_token %}
-    <h1 class="card-title">ログイン</h1>
-    {% if form.non_field_errors %}<div class="alert alert-error"><span>ID かパスワードが違います。確かめてもう一度入れてください。</span></div>{% endif %}
-    <label class="form-control">
-      <span class="label-text">ID</span>
-      <input class="input input-bordered" type="text" name="username" value="{{ form.username.value|default:'' }}" autofocus required>
-    </label>
-    <label class="form-control">
-      <span class="label-text">パスワード</span>
-      <input class="input input-bordered" type="password" name="password" required>
-    </label>
-    <input type="hidden" name="next" value="{{ next }}">
-    <button class="btn btn-primary mt-2" type="submit">入る</button>
-  </form>
-</div>
+{# ログインは左のメニューと上の帯を出さず、中央のカード 1 枚だけ。 #}
+{% block body %}
+<main class="flex min-h-screen items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-sm">
+      <div class="flex flex-col items-center text-center">
+        {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-12 rounded-xl object-contain">
+        {% else %}<span class="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first }}</span>{% endif %}
+        <p class="mt-4 text-lg font-bold">{{ seizou.company_name }}</p>
+        <p class="mt-2 text-xs text-base-content/50">生産管理</p>
+      </div>
+      <h1 class="sr-only">ログイン</h1>
+      {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-6" role="alert">{% icon "alert" "size-5" %}<span>ID かパスワードが違います。確かめてもう一度入れてください。</span></div>{% endif %}
+      <form method="post" class="mt-6 flex flex-col gap-4">
+        {% csrf_token %}
+        <div>
+          <label for="id_username" class="mb-2 block font-medium">ID</label>
+          <label class="input w-full">
+            {% icon "user" "size-4 text-base-content/50" %}
+            <input id="id_username" class="grow" type="text" name="username" value="{{ form.username.value|default:'' }}" placeholder="例: genba01" autocomplete="username" autocapitalize="none" autofocus required>
+          </label>
+        </div>
+        <div>
+          <label for="id_password" class="mb-2 block font-medium">パスワード</label>
+          <label class="input w-full">
+            {% icon "lock" "size-4 text-base-content/50" %}
+            <input id="id_password" class="grow" type="password" name="password" placeholder="パスワードを入れる" autocomplete="current-password" required>
+          </label>
+        </div>
+        <label class="flex cursor-pointer items-center gap-2">
+          <input type="checkbox" name="remember" value="1" class="checkbox checkbox-sm checkbox-primary" {% if not form.is_bound or request.POST.remember %}checked{% endif %}>
+          <span>ログイン状態を保存する</span>
+        </label>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-primary w-full" type="submit">{% icon "login" "size-4" %}ログイン</button>
+      </form>
+    </div>
+    <p class="mt-6 text-center text-xs text-base-content/50">© {{ seizou.company_name }}</p>
+  </div>
+</main>
 {% endblock %}

@@ -2,10 +2,10 @@
 
 master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
-comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。
+comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
 """
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django import template
 from django.urls import NoReverseMatch, reverse
@@ -15,12 +15,21 @@ register = template.Library()
 
 
 @register.filter
-def comma(value):
-    """数を 3 桁ごとの区切りで出す。1234.50 → 1,234.50、1200 → 1,200。数でない物はそのまま。"""
+def comma(value, digits=None):
+    """数を 3 桁ごとの区切りで出す。1234.50 → 1,234.50、1200 → 1,200。数でない物はそのまま。
+
+    digits を渡すと小数の桁をその数にそろえる (四捨五入。画面に出すだけで、値は変えない)。
+    """
     if value is None or value == "":
         return ""
     if isinstance(value, bool):
         return value
+    if digits not in (None, ""):
+        if not isinstance(value, (int, Decimal, float)):
+            return value
+        places = int(digits)
+        rounded = Decimal(str(value)).quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+        return f"{rounded:,f}"
     if isinstance(value, int):
         return f"{value:,}"
     if isinstance(value, (Decimal, float)):

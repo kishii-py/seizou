@@ -50,6 +50,9 @@ PATHS = {
     "external": '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
     "building": '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3"/>',
     "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/>',
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    "chevron-left": '<path d="m15 6-6 6 6 6"/>',
+    "chevrons-up-down": '<path d="m8 9 4-4 4 4"/><path d="m8 15 4 4 4-4"/>',
 }
 
 #: 部品の app ごとの絵 (左のメニューで使う)
@@ -80,6 +83,18 @@ def svg(name: str, css: str = "w-5 h-5") -> str:
 @register.simple_tag
 def icon(name: str, css: str = "w-5 h-5"):
     return svg(name, css)
+
+
+#: 左のメニューの入口ごとの絵 (URL の名前 → 絵)。無ければ app の絵を使う。
+MENU_ICONS = {
+    "core:home": "home",
+    "masters:partner_list": "users",
+}
+
+
+def menu_icon_name(url_name: str, app_label: str) -> str:
+    """入口の絵の名前。入口ごとの絵が無ければ app の絵、それも無ければ list。"""
+    return MENU_ICONS.get(url_name) or APP_ICONS.get(app_label, "list")
 
 
 @register.simple_tag

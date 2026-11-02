@@ -62,8 +62,11 @@ MASTER_APPS = ("masters",)
 
 #: 一覧で右寄せにし、合計を出す項目の型 (IntegerField は Positive… と Small… と Big… を含む)
 NUMERIC_FIELDS = (models.DecimalField, models.IntegerField, models.FloatField)
-#: 一覧で折り返さず、等幅の数字で出す項目の型 (DateTimeField は DateField の子)
+#: 一覧で折り返さず、等幅の数字で出す項目の型 (DateTimeField は DateField の子。日時は別に見る)
 DATE_FIELDS = (models.DateField,)
+#: 一覧で等幅の字で出す識別子 (品番・番号・コード) の項目の名前と、名前の末尾
+CODE_NAMES = ("code",)
+CODE_SUFFIXES = ("_no", "_code")
 #: 詳細で絵として出すファイルの拡張子
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
 
@@ -108,6 +111,17 @@ def display_value(obj, name: str):
     return value() if callable(value) else value
 
 
+def screen_value(value):
+    """画面に出す形の値。真偽は「はい」「いいえ」にする (True / False を画面に出さない)。ほかはそのまま。"""
+    if isinstance(value, bool):
+        return "はい" if value else "いいえ"
+    return value
+
+
+def is_negative(value) -> bool:
+    return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool) and value < 0
+
+
 def file_info(value) -> dict | None:
     """FileField の値から link の材料 (url・名前・絵かどうか) を作る。空なら None。"""
     name = getattr(value, "name", "") or ""
@@ -141,7 +155,8 @@ class ScreenMixin(LoginRequiredMixin):
 
 
 class ColumnSpec:
-    """一覧の列 1 つ。numeric (右寄せと合計) と is_date (折り返さない) はテンプレートが見る。"""
+    """一覧の列 1 つ。テンプレートが見る印: numeric (右寄せと合計)・is_date / is_datetime (等幅の日付)・
+    is_code (等幅の識別子)。"""
 
     def __init__(self, model, item, ext_type: str | None = None):
         if isinstance(item, (tuple, list)):
@@ -159,7 +174,9 @@ class ColumnSpec:
         self.sortable = self.field is not None or self.name.startswith(company_fields.EXT_PREFIX)
         self.desc_name = "-" + self.name
         self.numeric = isinstance(self.field, NUMERIC_FIELDS) or ext_type == "number"
-        self.is_date = isinstance(self.field, DATE_FIELDS) or ext_type == "date"
+        self.is_datetime = isinstance(self.field, models.DateTimeField)
+        self.is_date = (isinstance(self.field, DATE_FIELDS) and not self.is_datetime) or ext_type == "date"
+        self.is_code = not self.numeric and (self.name in CODE_NAMES or self.name.endswith(CODE_SUFFIXES))
 
     def order_key(self) -> str:
         if self.name.startswith(company_fields.EXT_PREFIX):
@@ -231,7 +248,17 @@ class BaseListView(ScreenMixin, ListView):
             # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
             if master is None and spec.name == "name" and is_master(obj):
                 master = obj
-            cells.append({"value": value, "master": master, "numeric": spec.numeric, "date": spec.is_date})
+            cells.append(
+                {
+                    "value": screen_value(value),
+                    "master": master,
+                    "numeric": spec.numeric,
+                    "negative": spec.numeric and is_negative(value),
+                    "date": spec.is_date,
+                    "datetime": spec.is_datetime,
+                    "code": spec.is_code,
+                }
+            )
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
 
     def totals_for(self, queryset, specs) -> list | None:
@@ -277,6 +304,8 @@ class BaseListView(ScreenMixin, ListView):
         if self.request.GET.get("format") == "csv":
             return self.csv_response(context)
         if self.request.headers.get("HX-Request"):
+            # partial: 行の部分だけを返す印。core/_rows.html はこのとき道具の帯の件数と CSV も差し替える (hx-swap-oob)。
+            context["partial"] = True
             template = select_template(self.rows_template_names())
             return HttpResponse(template.render(context, self.request))
         return super().render_to_response(context, **response_kwargs)
@@ -310,13 +339,14 @@ class BaseDetailView(ScreenMixin, DetailView):
             items.append(
                 {
                     "label": str(f.verbose_name),
-                    "value": "" if is_file else value,
+                    "value": "" if is_file else screen_value(value),
                     "master": value if is_master(value) else None,
                     "file": file_info(value) if is_file else None,
                 }
             )
         for col in company_fields.columns_for(obj.__class__):
-            items.append({"label": col.label, "value": company_fields.ext_value(obj, col.name), "master": None, "file": None})
+            value = screen_value(company_fields.ext_value(obj, col.name))
+            items.append({"label": col.label, "value": value, "master": None, "file": None})
         return items
 
     def get_context_data(self, **kwargs):
@@ -325,15 +355,22 @@ class BaseDetailView(ScreenMixin, DetailView):
         fields = self.field_items(obj)
         context["fields"] = fields
         context["files"] = [item for item in fields if item["file"]]
-        context["tabs"] = [
-            {"label": label, "rows": list(getattr(obj, related).all()[:100])}
-            for label, related in self.tabs
-            if hasattr(obj, related)
-        ]
+        context["tabs"] = [self.tab_for(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
         context["list_url"] = model_url(obj.__class__, "list")
-        context["subtitle"] = str(obj._meta.verbose_name)
+        context["status"] = self.status_for(obj)
         return context
+
+    def tab_for(self, obj, label: str, related: str) -> dict:
+        """関係する物の 1 つのタブ。{"label", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。"""
+        manager = getattr(obj, related)
+        rows = [{"obj": row, "url": model_url(row.__class__, "detail", row.pk)} for row in manager.all()[:100]]
+        return {"label": label, "count": manager.count(), "rows": rows}
+
+    def status_for(self, obj) -> str | None:
+        """見出しの横の状態の印。choices を持つ status の項目があればその表示名、無ければ None。"""
+        field = next((f for f in obj._meta.concrete_fields if f.name == "status" and f.choices), None)
+        return display_value(obj, "status") if field is not None else None
 
 
 class BaseFormView(ScreenMixin, FormView):
@@ -477,7 +514,11 @@ class BaseModalView(ScreenMixin, DetailView):
         for f in obj._meta.concrete_fields:
             if f.primary_key:
                 continue
-            items.append({"label": str(f.verbose_name), "value": display_value(obj, f.name)})
+            value = display_value(obj, f.name)
+            if isinstance(f, models.FileField):
+                info = file_info(value)
+                value = info["name"] if info else ""
+            items.append({"label": str(f.verbose_name), "value": screen_value(value)})
         context["fields"] = items[: self.modal_fields]
         context["detail_url"] = model_url(obj.__class__, "detail", obj.pk)
         return context
@@ -547,7 +588,7 @@ def count_or_none(queryset) -> int | None:
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
-    1 枚 = {"label", "value", "note", "icon", "url"}。
+    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。
     """
     today = timezone.localdate()
     stats: list[dict] = []
@@ -557,6 +598,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "品目",
                 "value": count_or_none(item_model._default_manager.all()),
+                "unit": "件",
                 "note": "部品マスターにある品目の数",
                 "icon": "box",
                 "url": url_or_none("masters:item_list"),
@@ -568,6 +610,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "取引先",
                 "value": count_or_none(partner_model._default_manager.all()),
+                "unit": "社",
                 "note": "得意先と外注先の数",
                 "icon": "users",
                 "url": url_or_none("masters:partner_list"),
@@ -582,6 +625,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "今月の受注",
                 "value": count_or_none(this_month),
+                "unit": "件",
                 "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
                 "icon": "clipboard",
                 "url": url_or_none("orders:order_list"),
@@ -596,6 +640,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "注残の明細",
                 "value": count_or_none(open_lines),
+                "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
                 "icon": "activity",
                 "url": url_or_none("orders:order_list"),
@@ -608,6 +653,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "受信箱の未処理",
                 "value": count_or_none(waiting),
+                "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
                 "icon": "inbox",
                 "url": url_or_none("connect:inbox_list"),
@@ -619,7 +665,8 @@ def dashboard_stats() -> list[dict]:
 def recent_orders(limit: int = 5) -> list[dict] | None:
     """最近の受注 (直近 limit 件)。受注の部品が無いか DB が読めなければ None。
 
-    1 件 = {"obj", "url", "total", "line_count"}。total は明細の金額の合計 (読むだけ)。
+    1 件 = {"obj", "url", "total", "line_count", "status"}。total は明細の金額の合計 (読むだけ)、
+    status は状態の値 (open / partial / shipped / cancelled。印の色を選ぶのに使う)。
     """
     order_model = load_model("seizou.orders.models.Order")
     if order_model is None:
@@ -633,7 +680,13 @@ def recent_orders(limit: int = 5) -> list[dict] | None:
     except DatabaseError:
         return None
     return [
-        {"obj": row, "url": model_url(order_model, "detail", row.pk), "total": row.total, "line_count": row.line_count}
+        {
+            "obj": row,
+            "url": model_url(order_model, "detail", row.pk),
+            "total": row.total,
+            "line_count": row.line_count,
+            "status": row.status,
+        }
         for row in rows
     ]
 
@@ -649,6 +702,7 @@ class HomeView(ScreenMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context["stats"] = dashboard_stats()
         context["recent_orders"] = recent_orders()
+        context["orders_url"] = url_or_none("orders:order_list")
         return context
 
 

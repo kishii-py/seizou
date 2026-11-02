@@ -1,22 +1,76 @@
 {% extends "core/base.html" %}
-{% load seizou_tags %}
-{% block content %}
-<div class="card bg-base-100 shadow mb-4">
-  <div class="card-body">
-    <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
-      {% for field in fields %}<dt class="opacity-70">{{ field.label }}</dt><dd>{% if field.master %}{% master_link field.master %}{% else %}{{ field.value|default_if_none:"" }}{% endif %}</dd>{% endfor %}
-    </dl>
-    {% if edit_url %}<div class="card-actions justify-end"><a class="btn btn-sm" href="{{ edit_url }}">直す</a></div>{% endif %}
+{% load seizou_tags seizou_icons %}
+{% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
+{# 詳細: 見出しの帯 (大きい主の字・副題・状態の印、右に「一覧へ」「直す」)、tabs で基本情報と関係する物、ファイルの節。 #}
+{% block heading %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+  <div class="min-w-0">
+    <p class="flex items-center gap-2 text-xs text-base-content/50">{% app_icon screen_app "size-4" %}{{ screen_name }}</p>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
+      {% if status %}<span class="badge badge-soft badge-primary gap-2"><span class="status status-primary" aria-hidden="true"></span>{{ status }}</span>{% endif %}
+    </div>
+    {% if screen_help %}<p class="mt-2 text-base-content/70">{{ screen_help }}</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    {% block actions %}{% endblock %}
+    {% if list_url %}<a class="btn btn-outline border-base-300" href="{{ list_url }}">{% icon "arrow-left" "size-4" %}一覧へ</a>{% endif %}
+    {% if edit_url %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}直す</a>{% endif %}
   </div>
 </div>
-{% if tabs %}
-<div role="tablist" class="tabs tabs-bordered">
+{% endblock %}
+{% block content %}
+<div role="tablist" aria-label="詳細の区分" class="tabs tabs-box gap-2 rounded-xl border border-base-300 bg-base-100 p-2 shadow-xs">
+  <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
+    <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
+  </label>
+  <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+    <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+    <dl class="grid gap-x-6 sm:grid-cols-2">
+      {% for field in fields %}
+      <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+        <dt class="text-base-content/70">{{ field.label }}</dt>
+        <dd class="min-w-0 break-words">{% if field.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ field.file.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ field.file.name }}</span></a>
+          {% elif field.master %}{% master_link field.master %}
+          {% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>
+          {% else %}{{ field.value|comma }}{% endif %}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% if files %}
+    <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">ファイル</p>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for field in files %}
+      <a class="group block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ field.file.url }}" target="_blank" rel="noopener">
+        {% if field.file.is_image %}<img src="{{ field.file.url }}" alt="{{ field.label }}" class="h-40 w-full bg-base-200 object-contain">
+        {% else %}<span class="flex h-40 items-center justify-center bg-base-200 text-base-content/50">{% icon "file" "size-6" %}</span>{% endif %}
+        <span class="flex items-center justify-between gap-2 p-2 text-xs"><span class="font-medium">{{ field.label }}</span><span class="truncate text-base-content/50" title="{{ field.file.name }}">{{ field.file.name }}</span></span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
   {% for tab in tabs %}
-  <input type="radio" name="tabs" role="tab" class="tab" aria-label="{{ tab.label }} ({{ tab.rows|length }})" {% if forloop.first %}checked{% endif %}>
-  <div role="tabpanel" class="tab-content bg-base-100 p-3">
-    <table class="table table-sm"><tbody>{% for row in tab.rows %}<tr><td>{{ row }}</td></tr>{% empty %}<tr><td class="opacity-60">まだありません。</td></tr>{% endfor %}</tbody></table>
+  <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
+    <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
+  </label>
+  <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+    {% if tab.rows %}
+    <ul class="divide-y divide-base-200">
+      {% for row in tab.rows %}
+      <li>{% if row.url %}<a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}"><span class="truncate">{{ row.obj }}</span>{% icon "chevron-right" "size-4 text-base-content/50" %}</a>
+        {% else %}<span class="block truncate px-2 py-2" title="{{ row.obj }}">{{ row.obj }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/50">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
+    {% else %}
+    <div class="flex flex-col items-center justify-center p-6 text-center">
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+      <p class="mt-4 font-medium">まだありません。</p>
+      <p class="mt-2 text-xs text-base-content/50">関係する物が入ると、ここに並びます。</p>
+    </div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
-{% endif %}
 {% endblock %}

@@ -1,14 +1,30 @@
 {% extends "core/base.html" %}
+{% load seizou_icons %}
+{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新しく入れる</a>{% endif %}{% endblock %}
 {% block content %}
-<form method="get" class="flex flex-wrap items-end gap-2 mb-3" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, keyup changed delay:300ms from:input[name='q']">
-  <label class="form-control"><span class="label-text">検索</span><input class="input input-bordered input-sm" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}"></label>
-  <label class="form-control"><span class="label-text">1 ページ</span>
-    <select class="select select-bordered select-sm" name="per" hx-trigger="change">{% for n in page_sizes %}<option value="{{ n }}" {% if n == per %}selected{% endif %}>{{ n }} 件</option>{% endfor %}</select>
-  </label>
-  <input type="hidden" name="sort" value="{{ sort }}">
-  <button class="btn btn-sm" type="submit">絞る</button>
-  <a class="btn btn-sm btn-ghost" href="?{{ query_without_page }}&format=csv">CSV</a>
-  {% if create_url %}<a class="btn btn-sm btn-primary ml-auto" href="{{ create_url }}">新しく入れる</a>{% endif %}
-</form>
-<div id="rows">{% include "core/_rows.html" %}</div>
+{# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading">
+  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per">
+    {% if search_hint %}
+    <div class="rounded-lg bg-base-200 p-4" role="search">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-xs font-medium text-base-content/50">絞り込み</p>
+        <a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ request.path }}">{% icon "x" "size-4" %}クリア</a>
+      </div>
+      <label for="list-q" class="mt-2 block font-medium">キーワード</label>
+      <label class="input mt-2 w-full">
+        {% icon "search" "size-4 text-base-content/50" %}
+        <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で探す" autocomplete="off">
+      </label>
+    </div>
+    {% endif %}
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+      <select id="list-per" class="select select-sm w-auto" name="per" aria-label="1 ページの件数">{% for n in page_sizes %}<option value="{{ n }}" {% if n == per %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <span class="text-base-content/70">件ずつ表示</span>
+      <span id="list-loading" class="loading loading-spinner loading-xs htmx-indicator text-primary" aria-hidden="true"></span>
+      {% include "core/_list_meta.html" %}
+    </div>
+  </form>
+  <div id="rows" class="mt-4">{% include "core/_rows.html" %}</div>
+</div>
 {% endblock %}

@@ -12,6 +12,7 @@ from importlib import import_module, util
 from django.db import DatabaseError
 from django.urls import NoReverseMatch, reverse
 
+from seizou.core.templatetags.seizou_icons import menu_icon_name
 from seizou.parts import PARTS
 
 #: 左のメニューの区分 (見出し, その区分に入る部品の app の名前)。並びはこの順。
@@ -36,10 +37,15 @@ def url_or_none(url_name: str) -> str | None:
         return None
 
 
+def entry(label: str, url_name: str, url: str, app: str) -> dict:
+    return {"label": label, "url_name": url_name, "url": url, "app": app, "icon": menu_icon_name(url_name, app)}
+
+
 def menu() -> list[dict]:
     """左のメニュー。URL が引ける入口だけを並べる (起動後に部品が増えた時などに 500 にしない)。
 
-    1 つの入口は {"label", "url_name", "url", "app"} の辞書。app は部品の app の名前 (例 "masters")。
+    1 つの入口は {"label", "url_name", "url", "app", "icon"} の辞書。app は部品の app の名前 (例 "masters")、
+    icon は線の絵の名前 (seizou_icons)。
     """
     items: list[dict] = []
     for part in PARTS:
@@ -52,7 +58,7 @@ def menu() -> list[dict]:
             url = url_or_none(url_name)
             if url is None:
                 continue
-            items.append({"label": label, "url_name": url_name, "url": url, "app": app})
+            items.append(entry(label, url_name, url, app))
     return items
 
 
@@ -62,7 +68,7 @@ def core_menu() -> list[dict]:
     for label, url_name in CORE_MENU:
         url = url_or_none(url_name)
         if url is not None:
-            items.append({"label": label, "url_name": url_name, "url": url, "app": "core"})
+            items.append(entry(label, url_name, url, "core"))
     return items
 
 
@@ -82,14 +88,21 @@ def mark_active(items: list[dict], path: str) -> None:
 
 
 def sections(items: list[dict]) -> list[dict]:
-    """入口を区分に分ける。入口が無い区分は出さない。区分に入らない app は「その他」に置く。"""
+    """入口を区分に分ける。入口が無い区分は出さない。区分に入らない app は「その他」に置く。
+
+    1 区分 = {"label", "items", "show_label"}。入口が 1 つで見出しと同じ字なら、見出しは出さない (show_label が偽)。
+    """
     groups = [{"label": label, "items": []} for label, _apps in SECTIONS]
     by_app = {app: group for group, (_label, apps) in zip(groups, SECTIONS) for app in apps}
     other = {"label": OTHER_SECTION, "items": []}
     for item in items:
         by_app.get(item["app"], other)["items"].append(item)
     groups.append(other)
-    return [group for group in groups if group["items"]]
+    groups = [group for group in groups if group["items"]]
+    for group in groups:
+        only = group["items"][0] if len(group["items"]) == 1 else None
+        group["show_label"] = not (only is not None and only["label"] == group["label"])
+    return groups
 
 
 def seizou(request) -> dict:
