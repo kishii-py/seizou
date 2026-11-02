@@ -350,3 +350,41 @@ def copy_values(source, current, copied_marks):
     if kept:
         messages.append(f"{'と'.join(kept)}は入力のまま残しました。")
     return values, messages
+
+
+def _import_rows(rows, user, model, key, label, create, update):
+    """CSV の行を 1 つのトランザクションで入れる。鍵の列の値が既にあれば update、無ければ create。
+
+    どれかの行で services が断ったら、行の番号を付けて ValueError を上げ直す (全部が巻き戻り、1 件も入らない)。
+    """
+    made = updated = 0
+    with transaction.atomic():
+        for row in rows:
+            line, data, ext = row["line"], row["data"], row.get("ext")
+            try:
+                if _is_blank(data.get(key)):
+                    raise ValueError(f"{label}が空です。値を入れてください。")
+                current = model.objects.filter(**{key: data[key]}).first()
+                if current is None:
+                    create(data, user, ext=ext)
+                    made += 1
+                else:
+                    update(current, data, user, ext=ext)
+                    updated += 1
+            except ValueError as exc:
+                raise ValueError(f"{line} 行目: {exc}") from exc
+    return {"入れた": made, "更新した": updated}
+
+
+def import_items(rows, user):
+    """部品の CSV の行を入れる (05 の 8 節)。自社品番が既にあれば update_item、無ければ create_item。
+
+    rows の 1 つは {"line": 行の番号, "data": {列の名前: 値}, "ext": {会社ごとの項目の列の名前: 値} か None}。
+    data は CSV にある列だけ (無い列は更新しても今の値のまま)。返す物は {"入れた": n, "更新した": m}。
+    """
+    return _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item)
+
+
+def import_partners(rows, user):
+    """取引先の CSV の行を入れる。取引先コードが既にあれば update_partner、無ければ create_partner。形は import_items と同じ。"""
+    return _import_rows(rows, user, Partner, "code", "取引先コード", create_partner, update_partner)
