@@ -144,3 +144,36 @@ def test_r01_off_on_screen_saves(settings, logged_in, line):
     assert response.status_code == 302
     assert Shipment.objects.get().qty == Decimal("11")
     assert orders_services.remaining_qty(line) == Decimal("-1")
+
+
+# --- 出荷の編集 (shipping.update_shipment) の検査の層 ---
+
+
+@pytest.fixture
+def shipped_four_and_four(user, line):
+    """10 のうち 4 と 4 を出荷した明細と、2 つ目の出荷。"""
+    services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    second = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    return line, second
+
+
+@pytest.mark.django_db
+def test_r01_update_stop_counts_other_shipments(settings, user, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    _line, second = shipped_four_and_four
+    with pytest.raises(CheckViolation) as caught:
+        checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("7")}, user)
+    assert caught.value.code == "R01"
+    assert "11" in caught.value.message and "10" in caught.value.message
+    # 2 つ目を 6 に直すと合計がちょうど 10 なので止めない
+    assert checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("6")}, user) == []
+
+
+@pytest.mark.django_db
+def test_r01_update_warn_returns_warning(settings, user, shipped_four_and_four):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    _line, second = shipped_four_and_four
+    warnings = checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("7")}, user)
+    assert len(warnings) == 1
+    assert warnings[0].code == "R01"
+    assert checks.run("shipping.update_shipment", {"object": second, "qty": Decimal("6")}, user) == []

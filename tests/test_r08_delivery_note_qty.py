@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone
 
+from seizou.billing import services as billing_services
 from seizou.core.exceptions import RuleViolation
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
@@ -134,3 +135,82 @@ def test_note_number_and_date_are_set(user, customer, line):
     assert note.status == "issued"
     assert note.customer == customer
     assert str(note) == note.note_no
+
+
+# --- 納品書を取り消してから出荷を直す (R08 の 2 文目) ---
+
+
+@pytest.mark.django_db
+def test_issued_note_blocks_shipment_update(user, customer, line):
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment], user)
+
+    with pytest.raises(RuleViolation) as caught:
+        services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
+    assert caught.value.code == "R08"
+    assert caught.value.message.startswith(R08_RULE)
+    assert note.note_no in caught.value.message
+    assert shipment.shipment_no in caught.value.message
+
+    shipment.refresh_from_db()
+    assert shipment.qty == Decimal("4")
+
+
+@pytest.mark.django_db
+def test_cancel_note_then_update_shipment(user, customer, line):
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment], user)
+
+    services.cancel_delivery_note(note, user)
+    services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
+
+    shipment.refresh_from_db()
+    assert shipment.qty == Decimal("3")
+    assert orders_services.remaining_qty(line) == Decimal("7")
+
+
+@pytest.mark.django_db
+def test_cancelled_note_shipment_is_not_billable(user, customer, line):
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment], user)
+    services.cancel_delivery_note(note, user)
+
+    with pytest.raises(RuleViolation) as caught:
+        billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
+    assert caught.value.code == "R09"
+    assert shipment.shipment_no in caught.value.message
+
+
+@pytest.mark.django_db
+def test_invoiced_note_cannot_be_cancelled(user, customer, line):
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment], user)
+    shipment.refresh_from_db()
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
+
+    with pytest.raises(ValueError) as caught:
+        services.cancel_delivery_note(note, user)
+    message = str(caught.value)
+    assert invoice.invoice_no in message
+    assert note.note_no in message
+    assert shipment.shipment_no in message
+    assert "先に請求書を取り消して" in message
+
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_cancelled_note_shipments_go_on_a_new_note(user, customer, line):
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    old_note = services.create_delivery_note(customer, [shipment], user)
+    services.cancel_delivery_note(old_note, user)
+    services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
+
+    new_note = services.create_delivery_note(customer, [shipment], user)
+
+    assert new_note.pk != old_note.pk
+    assert new_note.status == DeliveryNote.STATUS_ISSUED
+    shipment.refresh_from_db()
+    assert shipment.delivery_note == new_note
+    assert [row.qty for row in new_note.shipments.all()] == [Decimal("3")]

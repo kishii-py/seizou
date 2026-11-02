@@ -11,12 +11,15 @@
 - 出荷済みの数と残の数は orders.services の関数で出す (検査の層と同じ関数)。
   集計の前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
+- 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
+  発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
@@ -101,3 +104,84 @@ def create_delivery_note(customer, shipments, user):
             shipment.delivery_note = note
             shipment.save(update_fields=["delivery_note"])
         return note
+
+
+def _issued_invoice_of(shipment):
+    """出荷が入っている発行の請求書 (読むだけ)。無いか、請求書の部品が無ければ None。
+
+    請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は
+    明細の外部キー invoice の先の表の STATUS_ISSUED から読む (billing を import しない)。
+    """
+    try:
+        lines = Shipment._meta.get_field("invoice_lines").related_model
+    except FieldDoesNotExist:
+        return None
+    issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
+    line = (
+        lines._default_manager.select_related("invoice")
+        .filter(shipment=shipment, invoice__status=issued)
+        .order_by("pk")
+        .first()
+    )
+    return line.invoice if line is not None else None
+
+
+def cancel_delivery_note(note, user):
+    """発行の納品書を取消にする。入っていた出荷は納品書を指したまま残す (取消の納品書の詳細に出る)。
+
+    取消の納品書の出荷は請求できず (billing が R09 で断る)、直してから新しい納品書にまとめ直せる。
+    発行の請求書に入った出荷があれば、何も変えずに ValueError (先に請求書を取り消す)。
+    """
+    with transaction.atomic():
+        locked = DeliveryNote.objects.select_for_update().get(pk=note.pk)
+        if locked.status == DeliveryNote.STATUS_CANCELLED:
+            raise ValueError("この納品書は取り消し済みです。")
+        shipments = list(
+            Shipment.objects.select_for_update().filter(delivery_note=locked).order_by("pk")
+        )
+        for shipment in shipments:
+            invoice = _issued_invoice_of(shipment)
+            if invoice is not None:
+                raise ValueError(
+                    f"納品書 {locked.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に"
+                    "入っています。先に請求書を取り消してから、納品書を取り消してください。"
+                )
+        locked.status = DeliveryNote.STATUS_CANCELLED
+        locked.save(update_fields=["status"])
+        return locked
+
+
+def update_shipment(shipment, qty, shipped_at, user, *, note=""):
+    """出荷の数量と出荷日と備考を直す。出荷番号と受注の明細は変えない。
+
+    発行の納品書に入った出荷は R08 で断る (先に cancel_delivery_note)。
+    受注より多い数はここでは止めない (現物優先。検査の層が services の前に見る)。
+    """
+    qty = _dec(qty)
+    with transaction.atomic():
+        line = _OrderLine.objects.select_for_update().get(pk=shipment.order_line_id)
+        locked = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        if line.order.status == "cancelled":
+            raise RuleViolation("R05", f"{_R05_RULE}取消した受注の出荷は直せません。")
+        current = locked.delivery_note
+        if current is not None and current.status == DeliveryNote.STATUS_ISSUED:
+            raise RuleViolation(
+                "R08",
+                f"{_R08_RULE}出荷 {locked.shipment_no} は納品書 {current.note_no} に入っているので、"
+                "先に納品書を取り消してください。",
+            )
+        if not qty > 0:
+            raise RuleViolation("R02", _R02_MESSAGE)
+        if not setting("partial_shipment"):
+            remaining = remaining_qty(line) + locked.qty
+            if qty != remaining:
+                raise RuleViolation(
+                    "partial_shipment",
+                    f"分納を許さない設定です。この出荷を除いた残の数 ({remaining}) をそのまま出荷してください。",
+                )
+        locked.qty = qty
+        locked.shipped_at = shipped_at
+        locked.note = note
+        locked.save(update_fields=["qty", "shipped_at", "note"])
+        refresh_status(line.order, user)
+        return locked

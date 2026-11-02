@@ -38,6 +38,31 @@ class OverShipment(Check):
         return None
 
 
+class OverShipmentOnUpdate(Check):
+    """R01: 出荷を直した数で、出荷の数の合計が受注の明細の数を超えたら (出荷の編集)。
+
+    data の object は直す前の出荷 (土台の入力の画面が渡す)。合計は、出荷済みの数から直す前の数を引き、新しい数を足す。
+    """
+
+    name = "R01"
+    action = "shipping.update_shipment"
+    setting_key = "over_shipment"
+
+    def run(self, data, user):
+        shipment = data.get("object")
+        qty = data.get("qty")
+        if shipment is None or qty is None:
+            return None
+        line = shipment.order_line
+        total = tools.shipped_qty(line) - _dec(shipment.qty) + _dec(qty)
+        if total > _dec(line.qty):
+            return (
+                f"出荷の数の合計 ({total}) が受注の数 ({line.qty}) を超えます。"
+                "数を確かめてください。"
+            )
+        return None
+
+
 class OrderBelowShipped(Check):
     """R04: 出荷済みの数より少ない数量に、受注の明細を変えたら。"""
 
@@ -105,7 +130,7 @@ class OverProgress(Check):
         return None
 
 
-BUILTIN = (OverShipment(), OrderBelowShipped(), OverWorkorder(), OverProgress())
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OrderBelowShipped(), OverWorkorder(), OverProgress())
 
 for _check in BUILTIN:
     register(_check)
