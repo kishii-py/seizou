@@ -247,6 +247,27 @@ Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は
 
 会社の置き場のコードが決まりに沿っていないと、開発のサーバーのどの画面も「決まりに沿っていません」の 1 枚になる。この画面には、違反の番号・文・ファイルと行・直し方と、文を写すボタンが出る。違反の一覧は、起動のときに会社の置き場の `.seizou/violations.md` にも写る。`/seizou:fix` が、会社の置き場の側だけを直す。
 
+## Claude Code でどう作ったか
+
+このリポジトリのコードと文書は、会期中に Claude Code で書いた。作り方は次の 4 段の繰り返しで、記録は `docs/nights/` にある。
+
+1. 本体の会話 (作者と Claude Code の会話) が、仕様から依頼書を 1 本ずつ書く。依頼書には、書いてよいファイルの表・守ること・採用の条件 (機械で確かめる grep と試験) を書く。
+2. 別の Mac の無人のレーンが、依頼書を 1 本ずつ受け、git の作業場を分けて、依頼書の範囲だけを作り、手元の commit で止まる。
+3. 本体の Mac が、門 (差分の範囲・禁止語・テスト・書き方の検査・決まりの検査・migration・CSS の作り直し) を通った枝だけを main に取り込む。通らない枝は取り込まず、main を戻す。
+4. 作者が朝に、差分と決まりの一覧とテストの結果を見る。
+
+会期中の取り込みは 109 回 (11-02 に 45 回、11-03 に 64 回)、レーンの記録は 75 本、Claude との共著の印が付いた commit は 596 (11-03 の main 35627f4)。
+
+| 役 | モデルか機能 | 理由 | 確かめる所 |
+|---|---|---|---|
+| 本体の会話 | Claude Code の会話 | 仕様と決めを読み、依頼書の範囲と採用の条件を決める判断が要る | `docs/nights/<日付>.md` (取り込みの記録)・`docs/nights/20261102/briefs/` (依頼書の写し) |
+| 無人のレーン | Claude Code の無人の会話 (判断の要る実装は opus。手順の決まった仕事は sonnet) | 人が見ていない間に、依頼書 1 本ずつの範囲で進める | `docs/nights/<日付>/<題>.md` (動かした model は `docs/nights/20261103/N49.md` などの記録の行) |
+| hook | 作り手の hook 2 つ (`scripts/night_guard.py` = 許しの一覧に無いファイルへの書き込みを止める・`scripts/night_log.py` = 返事の終わりに記録の行を足す)・git の pre-push (`.githooks/pre-push` = 禁止語の検査)・製品の hook (`plugin/hooks/guard_core.py` = R20) | AI の書き込みと push を、言葉の約束でなく仕組みで止める | `scripts/hooks.md`・`tests/test_hooks_night_guard.py`・`tests/test_hooks_night_log.py`・`tests/test_hooks_forbidden_words.py`・`tests/test_plugin_guard_core.py` |
+| skill | プラグインの skill 4 本 (`/seizou:build`・`/seizou:connect`・`/seizou:fix`・`/seizou:manual`) | 工場の人が日本語の問いに答えるだけで、立ち上げ・取引先とのつながり・違反の直し・説明書を進められる | 上の「Claude Code のプラグイン」の表の確かめのテスト |
+| MCP | 製品の MCP サーバー (`manage.py seizou_mcp`) | 手元の Claude Code が、画面と同じ services と決まりを通して会社のデータを読み書きする | 上の「手元の Claude Code から操作する (MCP)」の表・`tests/test_core_mcp_tools.py` |
+
+製品の中で Claude の API を呼ぶ 3 つ (注文書の読み取り = opus・AI チャット = sonnet・フィードバックの聞き取り = haiku) の使い分けと理由は、上の「選べる設定」の表の `intake_model`・`assistant_model`・`feedback_model` の行にある。commit の共著の印は作品の CLAUDE.md の決まりで 1 つの字にそろえていて (sonnet の印は N6 の記録の 2 つだけ)、動かした model の多くは印からは分からないので、レーンの記録の行に書いてある。
+
 ## 本番の決まり
 
 本番で使うときの決まり (予定)。
