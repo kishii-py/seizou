@@ -1,0 +1,239 @@
+"""stock の公開する関数 (完成品の在庫)。画面とほかの部品は、この関数だけを通して在庫の動きを書く。
+
+- 在庫数 = その部品の動きの数量の合計 − その部品の出荷の数量の合計。動きが 1 件も無い部品は在庫を数えていない (None)。
+- 出荷は動きの表に書かず、集計で引く (shipping の Shipment を apps.get_model で読む。出荷の部品が無ければ 0)。
+- マイナスの在庫は止めない (現物優先。一覧と盤で赤の数にして知らせるだけ)。
+- 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
+- 書くのは transaction.atomic の中で、部品の行を select_for_update で取り直してから (部品の行は読むだけで書かない)。
+- 番号の無い入力の誤りは日本語の ValueError。数量の符号は種類で決める (入庫は正、出庫は負、調整は渡された符号のまま)。
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from django.apps import apps
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import FieldDoesNotExist
+from django.db import transaction
+from django.db.models import Case, DecimalField, Exists, ExpressionWrapper, OuterRef, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
+from django.utils import timezone
+
+from .models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, KIND_RECEIVED, StockMove, kind_sign
+
+# 数の合計の型 (StockMove.qty と同じ桁)
+_QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
+_ZERO = Decimal("0")
+
+_POSITIVE_MESSAGE = "数量は 0 より大きい数にしてください。"
+
+
+def _dec(value):
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+def _pk(item):
+    """部品か部品の pk を pk にする。"""
+    return getattr(item, "pk", item)
+
+
+def _shipment_model():
+    """出荷の表。shipping の部品が無ければ None (出荷の合計は 0)。"""
+    try:
+        return apps.get_model("shipping", "Shipment")
+    except LookupError:
+        return None
+
+
+def _user_or_none(user):
+    return user if getattr(user, "pk", None) is not None else None
+
+
+def _lock(item):
+    """部品の行を select_for_update で取り直す (同じ部品の動きを 1 本ずつ入れるため。部品は書かない)。"""
+    return type(item)._default_manager.select_for_update().get(pk=item.pk)
+
+
+def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
+    """在庫の動きを 1 行作る。呼ぶ側の transaction.atomic の中で呼ぶ。符号は種類で合わせ、0 は ValueError。"""
+    qty = _dec(qty)
+    sign = kind_sign(kind)
+    if sign:
+        qty = abs(qty) * sign
+    if qty == 0:
+        raise ValueError("数量が 0 の動きは残せません。0 でない数にしてください。")
+    locked = _lock(item)
+    return StockMove.objects.create(
+        item=locked,
+        kind=kind,
+        qty=qty,
+        moved_on=moved_on,
+        content_type=ContentType.objects.get_for_model(source) if source is not None else None,
+        object_id=source.pk if source is not None else None,
+        note=note or "",
+        moved_by=_user_or_none(user),
+    )
+
+
+# --- 読む (在庫数) ---
+
+
+def balances(items) -> dict:
+    """部品 (か pk) の並びに対する在庫数を {pk: Decimal か None} で返す。動きの無い部品は None。
+
+    問い合わせは 2 回まで (動きの合計を部品ごとに 1 回、出荷の合計を部品ごとに 1 回)。引き算は Python で行う。
+    """
+    pks = [_pk(item) for item in items]
+    if not pks:
+        return {}
+    moved = {
+        row["item"]: _dec(row["total"])
+        for row in StockMove.objects.filter(item__in=pks).order_by().values("item").annotate(total=Sum("qty"))
+    }
+    shipped = {}
+    shipment_model = _shipment_model()
+    if shipment_model is not None and moved:
+        rows = (
+            shipment_model._default_manager.filter(order_line__item__in=list(moved))
+            .order_by()
+            .values("order_line__item")
+            .annotate(total=Sum("qty"))
+        )
+        shipped = {row["order_line__item"]: _dec(row["total"]) for row in rows}
+    return {pk: (moved[pk] - shipped.get(pk, _ZERO)) if pk in moved else None for pk in pks}
+
+
+def balance(item):
+    """その部品の在庫数。動きが無ければ None (在庫を数えていない)。全部の出荷を引く (取消の受注の出荷も数える = 起きた事)。"""
+    return balances([item])[_pk(item)]
+
+
+def annotate_balance(queryset, item_ref):
+    """部品を item_ref で指す queryset に、在庫数 (stock_balance) と最後の動きの日 (last_moved_on) を足して返す。
+
+    item_ref は外の行の部品の列の名前 (Item の queryset なら "pk"、受注の明細の queryset なら "item_id")。
+    動きと出荷の合計は Subquery で足す (多の join を足さない。annotate_remaining の後に当てても残が重ならない)。
+    動きが無い部品は stock_balance も last_moved_on も None。読むだけ。
+    """
+    moves = StockMove.objects.filter(item=OuterRef(item_ref))
+    moved_total = Subquery(
+        moves.order_by().values("item").annotate(total=Sum("qty")).values("total")[:1], output_field=_QTY_FIELD
+    )
+    shipment_model = _shipment_model()
+    if shipment_model is None:
+        shipped_total = Value(_ZERO, output_field=_QTY_FIELD)
+    else:
+        shipped = (
+            shipment_model._default_manager.filter(order_line__item=OuterRef(item_ref))
+            .order_by()
+            .values("order_line__item")
+            .annotate(total=Sum("qty"))
+            .values("total")[:1]
+        )
+        shipped_total = Coalesce(Subquery(shipped, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
+    stock_balance = Case(
+        When(
+            Exists(moves),
+            then=ExpressionWrapper(
+                Coalesce(moved_total, Value(_ZERO), output_field=_QTY_FIELD) - shipped_total,
+                output_field=_QTY_FIELD,
+            ),
+        ),
+        default=Value(None, output_field=_QTY_FIELD),
+        output_field=_QTY_FIELD,
+    )
+    last_moved_on = Subquery(moves.order_by("-moved_on", "-pk").values("moved_on")[:1])
+    return queryset.annotate(stock_balance=stock_balance, last_moved_on=last_moved_on)
+
+
+def finished_qty(workorder):
+    """指示書の完成の数 = その指示書の最後の工程 (順が最大) の実績の合計。工程か progress の部品が無ければ 0。読むだけ。
+
+    注残の盤の completed_total と同じ数え方 (指示書の数量で切らない = 現物優先)。
+    """
+    steps = list(workorder.steps.all())
+    if not steps:
+        return _ZERO
+    last = max(steps, key=lambda step: (step.seq, step.pk))
+    try:
+        type(last)._meta.get_field("progress_records")
+    except FieldDoesNotExist:
+        return _ZERO
+    total = last.progress_records.order_by().aggregate(total=Sum("qty"))["total"]
+    return _ZERO if total is None else _dec(total)
+
+
+def stocked_qty(workorder):
+    """その指示書を元の記録に持つ製造の完了の動きの合計 (既に入庫にした数)。読むだけ。"""
+    total = (
+        StockMove.objects.filter(
+            kind=KIND_FINISHED,
+            content_type=ContentType.objects.get_for_model(workorder),
+            object_id=workorder.pk,
+        )
+        .order_by()
+        .aggregate(total=Sum("qty"))["total"]
+    )
+    return _ZERO if total is None else _dec(total)
+
+
+# --- 書く (在庫の動き) ---
+
+
+def record_finished(workorder, qty, user, *, moved_on=None, note=""):
+    """製造の完了を入庫にする (指示書を選んで手で押す)。完成の数より多くても止めない (現物優先)。
+
+    取消の指示書と 0 以下の数量は ValueError。moved_on の既定は今日。
+    """
+    qty = _dec(qty)
+    if moved_on is None:
+        moved_on = timezone.localdate()
+    with transaction.atomic():
+        current = type(workorder)._default_manager.select_related("order_line__item").get(pk=workorder.pk)
+        if current.status == type(current).STATUS_CANCELLED:
+            raise ValueError("取り消した指示書は入庫にできません。発行の指示書を選んでください。")
+        if not qty > 0:
+            raise ValueError(_POSITIVE_MESSAGE)
+        return _move(current.order_line.item, KIND_FINISHED, qty, moved_on, user, source=current, note=note)
+
+
+def record_received(receipt, user):
+    """受入を入庫にする。purchasing の receive が transaction.atomic の中で呼ぶ (日付と備考は受入の物)。"""
+    with transaction.atomic():
+        return _move(
+            receipt.line.item,
+            KIND_RECEIVED,
+            receipt.qty,
+            receipt.received_on,
+            user,
+            source=receipt,
+            note=receipt.note,
+        )
+
+
+def record_issued(item, qty, moved_on, user, *, note=""):
+    """払い出し (検査や社内の使用で在庫から出した数)。0 以下の数量は ValueError。在庫より多くても止めない。"""
+    qty = _dec(qty)
+    if not qty > 0:
+        raise ValueError(_POSITIVE_MESSAGE)
+    with transaction.atomic():
+        return _move(item, KIND_ISSUED, qty, moved_on, user, note=note)
+
+
+def adjust(item, counted_qty, moved_on, user, *, note=""):
+    """棚卸しの調整。実地の在庫数 (counted_qty) と今の在庫数の差を動きとして残す (符号はそのまま)。
+
+    動きの無い部品は今の在庫数を 0 として、実地の数がそのまま入る (この 1 件で在庫を数え始める)。
+    実地の数が負と、差が 0 は ValueError。
+    """
+    counted = _dec(counted_qty)
+    if counted < 0:
+        raise ValueError("実地の在庫数は 0 以上の数にしてください。")
+    with transaction.atomic():
+        locked = _lock(item)
+        current = balance(locked)
+        diff = counted - (_ZERO if current is None else current)
+        if diff == 0:
+            raise ValueError("今の在庫数と同じです。調整は要りません。")
+        return _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)

@@ -9,6 +9,8 @@
 - 保存と同時に送る (02)。発注を保存したトランザクションを抜けた後で、取引先に向き「送る」の
   つながりがあれば connect.services.send_order を呼ぶ。相手への HTTP は atomic の外 (R17)。
 - 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note。
+- 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
+- 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 """
 
 from __future__ import annotations
@@ -22,6 +24,17 @@ from seizou.core.services import next_number
 from seizou.masters.services import round_amount
 
 from .models import PurchaseOrder, PurchaseOrderLine
+from .models import Receipt
+
+from datetime import timedelta
+
+from django.apps import apps
+from django.db.models import DecimalField, ExpressionWrapper, F, OuterRef, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
+
+# 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
+_QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
+_ZERO = Decimal("0")
 
 _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"})
 
@@ -84,11 +97,12 @@ def _has_send_connection(partner):
     return connections.filter(direction=connections.model.DIRECTION_SEND).exists()
 
 
-def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None):
+def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None, send=True):
     """発注を作る。明細は lines の並びの順に行番号を 1 から付ける。
 
     保存の後、取引先に向き「送る」のつながりがあれば相手の受け口へ送る (送れなくても例外にせず、
     送った注文の表に返事を残し、発注は「作成」のまま)。つながりが無ければ送らない。
+    send が偽なら、つながりがあっても送らない (作り物のデータの種が、相手に送らずに発注を入れるため)。
     """
     _refuse_non_subcontractor(partner)
     if not lines:
@@ -106,7 +120,7 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
         _save_ext(purchase_order, ext)
 
     # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
-    if _has_send_connection(partner):
+    if send and _has_send_connection(partner):
         from seizou.connect import services as connect_services
 
         connect_services.send_order(purchase_order, user)
@@ -197,3 +211,130 @@ def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
         return locked
+
+
+# --- 受入 (協力企業管理の 2 つ目の画面。受け入れた数 × 発注の単価が支払の金額) ---
+
+
+def receive(line, qty, received_on, user, *, note=""):
+    """発注の明細に受入を 1 件入れる。金額は 受け入れた数 × 明細の単価 を発注の取引先の方法で丸める (R03 の形)。
+
+    断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
+    受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る。
+    全部の明細で受入の数が明細の数量以上になれば、発注を「納品された」(STATUS_DELIVERED) にする。
+    """
+    qty = _dec(qty)
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=line.purchase_order_id)
+        if locked.status == PurchaseOrder.STATUS_CANCELLED:
+            raise ValueError(
+                "取り消した発注には受入を入れられません。取消していない発注の明細を選んでください。"
+            )
+        if not qty > 0:
+            raise ValueError("数量は 0 より大きい数にしてください。")
+        current = PurchaseOrderLine.objects.select_related("purchase_order", "item").get(pk=line.pk)
+        receipt = Receipt.objects.create(
+            line=current,
+            received_on=received_on,
+            qty=qty,
+            amount=round_amount(locked.partner, qty * current.unit_price),
+            note=note or "",
+            received_by=user if getattr(user, "pk", None) is not None else None,
+        )
+        if apps.is_installed("seizou.stock"):
+            from seizou.stock import services as stock_services
+
+            stock_services.record_received(receipt, user)
+        if locked.status != PurchaseOrder.STATUS_DELIVERED:
+            lines = list(annotate_received(locked.lines.all()))
+            if lines and all(row.remaining_total <= 0 for row in lines):
+                locked.status = PurchaseOrder.STATUS_DELIVERED
+                locked.save(update_fields=["status"])
+        return receipt
+
+
+def received_qty(line):
+    """発注の明細の受入の数 (受入から集計。列に持たない。orders.services.shipped_qty と同じ形)。"""
+    return line.receipts.aggregate(total=Coalesce(Sum("qty"), Value(_ZERO), output_field=_QTY_FIELD))["total"]
+
+
+def remaining_qty(line):
+    """発注の明細の受入の残 = 明細の数量 − 受入の数。マイナスも返す (現物優先)。"""
+    return line.qty - received_qty(line)
+
+
+def annotate_received(queryset):
+    """発注の明細の queryset に、受入の数 (received_total) と受入の残 (remaining_total) を足して返す。
+
+    received_qty・remaining_qty と同じ式 (受入の数の合計、受入が無ければ 0)。join は受入の 1 つだけ。候補の口と詳細が使う。
+    """
+    received = Coalesce(Sum("receipts__qty"), Value(_ZERO), output_field=_QTY_FIELD)
+    return queryset.annotate(received_total=received).annotate(
+        remaining_total=ExpressionWrapper(F("qty") - F("received_total"), output_field=_QTY_FIELD)
+    )
+
+
+def annotate_order_received(queryset):
+    """発注の queryset に、明細の数量の合計 (ordered_total)・受入の数の合計 (received_total)・差 (receive_remaining) を足す。
+
+    明細と受入の合計は別の Subquery で足す (lines と receipts の 2 つの join を 1 つの問い合わせに置くと、行が重なって数えられる)。
+    発注の一覧が使う。読むだけ。
+    """
+    ordered = (
+        PurchaseOrderLine.objects.filter(purchase_order=OuterRef("pk"))
+        .order_by()
+        .values("purchase_order")
+        .annotate(total=Sum("qty"))
+        .values("total")[:1]
+    )
+    received = (
+        Receipt.objects.filter(line__purchase_order=OuterRef("pk"))
+        .order_by()
+        .values("line__purchase_order")
+        .annotate(total=Sum("qty"))
+        .values("total")[:1]
+    )
+    return queryset.annotate(
+        ordered_total=Coalesce(Subquery(ordered, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
+        received_total=Coalesce(Subquery(received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
+    ).annotate(
+        receive_remaining=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD)
+    )
+
+
+def payable_by_partner(today=None):
+    """支払の見込み (先月と今月)。受入の金額を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
+
+    保存した金額の合計 (Sum) で、DB で掛け算をしない。today の既定は今日。行は取引先コードの順で、
+    2 か月とも 0 の取引先は入れない。返す物 = {"months": [{"key", "label"} × 2], "rows": [{"partner",
+    "last_month", "this_month"}, …], "totals": {"last_month", "this_month"}}。
+    """
+    if today is None:
+        today = timezone.localdate()
+    this_start = today.replace(day=1)
+    last_start = (this_start - timedelta(days=1)).replace(day=1)
+    next_start = (this_start + timedelta(days=32)).replace(day=1)
+    months = [
+        {"key": f"{last_start:%Y-%m}", "label": f"先月 ({last_start.month} 月)"},
+        {"key": f"{this_start:%Y-%m}", "label": f"今月 ({this_start.month} 月)"},
+    ]
+    sums = {}
+    for slot, start, end in (("last_month", last_start, this_start), ("this_month", this_start, next_start)):
+        rows = (
+            Receipt.objects.filter(received_on__gte=start, received_on__lt=end)
+            .order_by()
+            .values("line__purchase_order__partner")
+            .annotate(total=Sum("amount"))
+        )
+        for row in rows:
+            slots = sums.setdefault(row["line__purchase_order__partner"], {"last_month": _ZERO, "this_month": _ZERO})
+            slots[slot] = _dec(row["total"] or _ZERO)
+    shown = [pk for pk, slots in sums.items() if slots["last_month"] or slots["this_month"]]
+    partner_model = PurchaseOrder._meta.get_field("partner").related_model
+    partners = partner_model._default_manager.filter(pk__in=shown).order_by("code", "pk") if shown else []
+    result_rows = [{"partner": partner, **sums[partner.pk]} for partner in partners]
+    totals = {
+        "last_month": sum((row["last_month"] for row in result_rows), _ZERO),
+        "this_month": sum((row["this_month"] for row in result_rows), _ZERO),
+    }
+    return {"months": months, "rows": result_rows, "totals": totals}

@@ -2,9 +2,13 @@
 
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 金額は purchasing.services が数量 × 単価を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
-受入・検収・支給材は会期後。書くときは purchasing.services を通す。
+受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収・支給材は会期後。書くときは purchasing.services を通す。
+受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 """
 
+from decimal import Decimal
+
+from django.conf import settings
 from django.db import models
 
 
@@ -56,6 +60,18 @@ class PurchaseOrder(models.Model):
     def __str__(self):
         return self.po_no
 
+    @property
+    def receipts(self):
+        """この発注の受入 (読むだけ。詳細の「受入」のタブが .all() と .count() を読む)。"""
+        return Receipt.objects.filter(line__purchase_order=self).select_related("line__purchase_order", "line__item")
+
+    @property
+    def lines_with_received(self):
+        """明細に受入の数 (received_total) と受入の残 (remaining_total) を足した物 (読むだけ。詳細の明細の表が回す)。"""
+        from . import services
+
+        return services.annotate_received(self.lines.select_related("item").order_by("line_no", "pk"))
+
 
 class PurchaseOrderLine(models.Model):
     """発注の明細。金額は purchasing.services が数量 × 単価を丸めて書く。"""
@@ -98,3 +114,55 @@ class PurchaseOrderLine(models.Model):
                 name="purchasing_purchaseorderline_line_no_unique",
             ),
         ]
+
+    def __str__(self):
+        # 受注の明細と同じ形 (候補の口が str(obj) を返す)。発注と部品を読むので、引く側は select_related を付ける。
+        return f"{self.purchase_order.po_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+
+
+class Receipt(models.Model):
+    """受入。協力企業から受け入れた物の記録。発注の明細ごとに何回でも入れられる (分納)。
+
+    金額は purchasing.services が 受け入れた数 × 明細の単価 を発注の取引先の方法で丸めて書く (DB で計算しない)。
+    列の名前を amount にするのは、金額の閲覧の無い人に土台が「—」を出すため (access.is_money_name)。
+    """
+
+    line = models.ForeignKey(
+        PurchaseOrderLine,
+        verbose_name="発注の明細",
+        on_delete=models.PROTECT,
+        related_name="receipts",
+    )
+    received_on = models.DateField("受入日")
+    qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
+    amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
+    note = models.CharField("備考", max_length=500, blank=True)
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="入れた人",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="receipts",
+    )
+
+    class Meta:
+        verbose_name = "受入"
+        verbose_name_plural = "受入"
+        ordering = ("-received_on", "-pk")
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="purchasing_receipt_qty_positive",
+            ),
+        ]
+
+    def __str__(self):
+        line = self.line
+        return f"{self.received_on:%Y-%m-%d} {line.purchase_order.po_no}-{line.line_no} {line.item.part_no} {_qty_text(self.qty)}"
+
+
+def _qty_text(value) -> str:
+    """数量の字。末尾の 0 を落とす (10.00 → 10、2.50 → 2.5)。"""
+    dec = value if isinstance(value, Decimal) else Decimal(str(value))
+    return format(dec.normalize(), "f") if dec != dec.to_integral_value() else str(dec.quantize(Decimal(1)))

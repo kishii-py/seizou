@@ -20,4 +20,5 @@ PARTS = [
     "seizou.manuals",
     "seizou.bookmarks",
     "seizou.accounts",
+    "seizou.stock",
 ]
