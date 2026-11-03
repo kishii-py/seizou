@@ -776,15 +776,36 @@ def _accepts_instance(form_class) -> bool:
     return "instance" in parameters
 
 
+#: 検索で - と同じに扱うダッシュ (‐ ‑ ‒ – — ― −。NFKC で - にならない物。全角の「－」は NFKC で - になる)
+SEARCH_DASHES = "‐‑‒–—―−"
+#: 1 語の揺れの数の上限 (1 語の Q は lookups の数 × この数の icontains の OR まで)
+SEARCH_VARIANTS_MAX = 24
+
+
+def _dash_variant(text: str) -> str:
+    """SEARCH_DASHES の字を全部 - にし、長音の「ー」は直前の字が ASCII の英数字のときだけ - にした字
+    (品番の「WKー1001」を「WK-1001」に当てる。「メーター」の「ー」は変えない)。"""
+    chars = []
+    for index, ch in enumerate(text):
+        prev = text[index - 1] if index else ""
+        if ch in SEARCH_DASHES or (ch == "ー" and prev.isascii() and prev.isalnum()):
+            chars.append("-")
+        else:
+            chars.append(ch)
+    return "".join(chars)
+
+
 def search_variants(term: str) -> list[str]:
     """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (初見テスト 2 回目の所見)。
 
-    返す物は重ねない並び (打った字・NFKC・カタカナ・ひらがな)。DB の側は変えず、OR で引く。
+    返す物は重ねない並び (打った字・NFKC・長音とダッシュ (英数字の後の「ー」・‐・− など) を - にした形・カタカナ・ひらがな)。
+    DB の側は変えず、OR で引く。揺れの数は SEARCH_VARIANTS_MAX まで。
     """
     folded = unicodedata.normalize("NFKC", term)
     kata = "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in folded)
     hira = "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in folded)
-    return list(dict.fromkeys([term, folded, kata, hira]))
+    variants = [term, folded, _dash_variant(folded), kata, hira]
+    return list(dict.fromkeys(variants))[:SEARCH_VARIANTS_MAX]
 
 
 def search_q(lookups, term: str) -> Q:

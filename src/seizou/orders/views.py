@@ -90,7 +90,7 @@ class OrderLineListView(BaseListView):
         ("order__order_date", "受注日"),
         ("status_label", "状態"),
     )
-    search_fields = ("order__customer__name", "item__part_no")
+    search_fields = ("order__customer__name", "item__part_no", "order__order_no", "order__customer_order_no")
     ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
     template_name = "orders/orderline_list.html"
 
