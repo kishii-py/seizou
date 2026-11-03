@@ -20,7 +20,7 @@ SECTIONS = (
     ("ダッシュボード", ("core",)),
     ("受注管理", ("orders", "intake", "connect")),
     ("協力企業管理", ("purchasing",)),
-    ("製造", ("workorders", "progress")),
+    ("製造", ("workorders", "progress", "stock")),
     ("出荷と請求", ("shipping", "billing")),
     ("マスター", ("masters", "accounts")),
     ("文書", ("manuals", "attachments")),

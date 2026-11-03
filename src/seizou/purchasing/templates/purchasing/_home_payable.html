@@ -1,0 +1,15 @@
+{% load purchasing_tags seizou_icons seizou_tags %}{% comment %}
+ダッシュボードの数字のカード 1 枚 (受入の金額の今月の合計)。core/home.html の数字のカードの枠の中に include される。
+中身は tag payable_card。受入の表が無ければ何も出さない。金額を見られない人には数を「—」にする (カードは残す)。
+カードの class は core/home.html の数字のカードを写した (写した元: 11-03 の main の home.html)。土台の形が変わったら合わせる。
+class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う要素は要素ごと if で出し分ける。
+{% endcomment %}{% payable_card as card %}{% if card %}
+  {% if card.url %}<a href="{{ card.url }}" class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
+    <div class="flex items-start justify-between gap-2">
+      <p class="text-xs font-medium text-base-content/70">今月の支払の見込み</p>
+      <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon "yen" "size-5" %}</span>
+    </div>
+    {% if card.hidden %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums text-base-content/50">—</span></p>{% else %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ card.value|comma:0 }}</span> <span class="text-base-content/50">円</span></p>{% endif %}
+    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ card.month }} 月に受け入れた数量 × 発注の単価の合計</p></div>
+  {% if card.url %}</a>{% else %}</div>{% endif %}
+{% endif %}
