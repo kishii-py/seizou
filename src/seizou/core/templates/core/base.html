@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}{{ screen_name|default:"seizou" }}{% endblock %}{% if seizou.company_name %} | {{ seizou.company_name }}{% endif %}</title>
+<title>{% if seizou.practice %}練習: {% endif %}{% block title %}{{ screen_name|default:"seizou" }}{% endblock %}{% if seizou.company_name %} | {{ seizou.company_name }}{% endif %}</title>
 {# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。 #}
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
@@ -25,6 +25,7 @@ seizou_tags.master_link の link
 {% endcomment %}
 {# CSRF の見出しはここの 1 か所にだけ書く (R18)。htmx の要求は全部この見出しを持つ。 #}
 <body class="min-h-screen bg-base-200 text-sm text-base-content antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% if seizou.practice %}{% include "core/_practice_band.html" %}{% endif %}
 {% block body %}
 {# 骨格: 左に固定の縦メニュー (lg 以上で常に開く)、上に横の帯、中に内容。 #}
 <div class="drawer lg:drawer-open">

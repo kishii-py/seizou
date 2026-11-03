@@ -385,6 +385,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
+    print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らない。閉じるときは seizou_practice stop)。")
     return EXIT_OK
 
 

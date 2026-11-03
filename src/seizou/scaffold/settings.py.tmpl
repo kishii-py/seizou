@@ -139,6 +139,14 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# 練習モード: manage.py seizou_practice start が立てるサーバーだけが、写した DB と上げたファイルの道を渡す。
+# cookie の名前も分ける (同じ PC で開いた本番の画面と、ログインと CSRF の cookie が混ざらないように)。
+if os.environ.get("SEIZOU_PRACTICE_DB"):
+    DATABASES["default"]["NAME"] = os.environ["SEIZOU_PRACTICE_DB"]
+    MEDIA_ROOT = os.environ["SEIZOU_PRACTICE_MEDIA"]
+    SESSION_COOKIE_NAME += "_practice"
+    CSRF_COOKIE_NAME += "_practice"
+
 # 上げたファイルの配り方 (seizou.core.media)。django = Django が送る (既定)。nginx = nginx の内部の location に渡す
 # (deploy/nginx-files.conf を nginx に読み込ませてから、.env に SEIZOU_FILE_DELIVERY=nginx を書く)。
 SEIZOU_FILE_DELIVERY = os.environ.get("SEIZOU_FILE_DELIVERY", "django")
