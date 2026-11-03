@@ -229,7 +229,8 @@ def test_cancel_confirm_screens_say_cancel(client, user, order):
     from seizou.billing import services as billing_services
 
     invoice = _invoice(user, order)
-    payment = billing_services.record_payment(invoice, ISSUED_ON, Decimal("1000"), user)
+    # 入金は別の請求書に記録する (入金の残る請求書の取消の確かめの画面は「取り消す」を出さない = N89)。
+    payment = billing_services.record_payment(_invoice(user, order), ISSUED_ON, Decimal("1000"), user)
     client.force_login(user)
     for url in (
         reverse("orders:order_cancel", args=[order.pk]),

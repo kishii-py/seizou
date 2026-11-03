@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 
 from seizou.billing import services
 from seizou.billing.models import Invoice, Payment
@@ -81,7 +82,7 @@ def test_cancel_refused_while_payment_left(user, invoice):
     assert services.cancel_refusal(invoice) == TWO_LEFT
 
 
-def test_refusal_counts_without_money(on, user, invoice):
+def test_refusal_counts_without_money(on, client, user, invoice):
     services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
 
     # 伝票編集 (請求書を書ける)・金額の閲覧なし = 件数だけ (「円」が無い)
@@ -90,6 +91,15 @@ def test_refusal_counts_without_money(on, user, invoice):
     assert refusal == ONE_LEFT_COUNT
     assert "円" not in refusal
     assert _status(invoice) == Invoice.STATUS_ISSUED
+
+    # 取消の確かめの画面の黄の文も件数だけ
+    client.force_login(jimu)
+    response = client.get(reverse("billing:invoice_cancel", args=[invoice.pk]))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert ONE_LEFT_COUNT in html
+    assert ONE_LEFT not in html
+    assert "取り消す</button>" not in html
 
     # 金額の閲覧あり = 件数と合計
     keiri = account("keiri", permissions=["billing"], see_money=True)
@@ -122,3 +132,36 @@ def test_cancel_passes_after_payments_cancelled(user, invoice):
     with pytest.raises(RuleViolation) as caught:
         services.record_payment(invoice, RECEIVED_ON, Decimal("500"), user)
     assert caught.value.code == "R21"
+
+
+def test_cancel_screen_hides_button_while_payment_left(client_logged_in, user, invoice):
+    payment = services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
+    url = reverse("billing:invoice_cancel", args=[invoice.pk])
+    back = reverse("billing:invoice_detail", args=[invoice.pk]) + "#payments"
+
+    # 確かめの画面: 「取り消す」と form の文を出さず、黄の知らせと詳細の入金の枠へ戻る link だけ
+    # (ログアウトの form がどの画面にもあるので、<form の字でなく釦の字で見る)
+    response = client_logged_in.get(url)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "取り消す</button>" not in html
+    assert "保存</button>" not in html
+    assert "この請求書を取り消します。" not in html
+    assert "alert-warning" in html
+    assert ONE_LEFT in html
+    assert f'href="{back}"' in html
+
+    # URL を直に打った POST は services が赤の知らせで止める (請求書は発行のまま)
+    response = client_logged_in.post(url, {})
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "alert-error" in html
+    assert ONE_LEFT in html
+    assert _status(invoice) == Invoice.STATUS_ISSUED
+
+    # 入金を取り消した後は、今までどおり「取り消す」が出る
+    services.cancel_payment(payment, user)
+    html = client_logged_in.get(url).content.decode()
+    assert "取り消す</button>" in html
+    assert "この請求書を取り消します。入っていた出荷は、また請求できます。" in html
+    assert "alert-warning" not in html
