@@ -119,3 +119,38 @@ def test_order_detail_line_menu_is_above_sidebar(logged_in, order):
 def test_row_menu_templates_have_no_z40():
     for path in MENU_TEMPLATES:
         assert "z-40" not in path.read_text(encoding="utf-8"), path
+
+
+# --- 3. 右下の「AI に質問」が保存と最後の行に重ならない ---------------------------------------------
+
+MAIN_WITH_ROOM = '<main class="flex-1 p-4 pb-24 lg:p-6 lg:pb-24">'
+MAIN_PLAIN = '<main class="flex-1 p-4 lg:p-6">'
+
+
+@pytest.mark.django_db
+def test_main_has_room_for_assistant_button(logged_in):
+    body = logged_in.get(reverse("core:home")).content.decode()
+
+    assert 'id="assistant-toggle"' in body
+    assert MAIN_WITH_ROOM in body
+    assert MAIN_PLAIN not in body
+
+
+@pytest.mark.django_db
+def test_main_has_no_room_without_assistant(logged_in, monkeypatch):
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "assistant"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+
+    body = logged_in.get(reverse("core:home")).content.decode()
+
+    assert 'id="assistant-toggle"' not in body
+    assert MAIN_PLAIN in body
+    assert MAIN_WITH_ROOM not in body
+
+
+def test_app_css_has_bottom_room():
+    built = APP_CSS.read_text(encoding="utf-8")
+    assert ".pb-24{" in built
+    assert ".lg\\:pb-24{" in built
