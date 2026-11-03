@@ -1,5 +1,5 @@
 {% load seizou_icons seizou_tags %}
-{# 小窓の中身。見るだけと、詳細への移動のボタン。小窓の枠 (dialog) は base.html の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
+{# 小窓の中身。見るだけと、「編集」(編集の権限のある人 = edit_url) と「詳細を見る」のボタン。小窓の枠 (dialog) は base.html の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
 {# 項目の後に会社ごとの項目 (fields に続けて並ぶ)。関係する物 (tabs) は block related。部品ごとの形は <app>/_modal.html が extends して block を上書きする。 #}
 <div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>
@@ -29,5 +29,6 @@
 {% endblock %}
 <div class="modal-action mt-6">
   <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  {% if edit_url %}<a class="btn btn-outline border-base-300" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}
   {% if detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
 </div>

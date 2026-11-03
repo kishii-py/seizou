@@ -22,7 +22,7 @@ class ExtractionListView(BaseListView):
     model = Extraction
     screen_name = "注文書の読み取り"
     screen_help = "置いた注文書と、AI が読み取った中身。人が確かめて「受注にする」を押すまで、受注にはなりません。"
-    columns = ("read_at", "customer", ("summary", "中身の要約"), "status", "order", "read_by")
+    columns = ("read_at", "customer", ("summary", "中身の要約"), "status", {"name": "order", "sort_key": "order__order_no"}, "read_by")
     search_fields = ("customer__name", "customer__code")
     ordering = ("-read_at", "-pk")
 

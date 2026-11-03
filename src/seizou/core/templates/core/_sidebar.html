@@ -15,10 +15,10 @@
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
     </div>
     <nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">
-      {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。 #}
+      {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。戻るの後は末尾の script が今の大項目を開き直す。 #}
       {% for section in seizou.sections %}
       {% if section.collapsible %}
-      <details class="group mb-1" name="seizou-menu-section"{% if section.active %} open{% endif %}>
+      <details class="group mb-1" name="seizou-menu-section"{% if section.active %} data-seizou-active open{% endif %}>
         <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden">{% icon section.icon "size-5" %}<span class="min-w-0 flex-1 truncate">{{ section.label }}</span>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}</summary>
         {% for group in section.groups %}
         {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/50">{{ group.label }}</p>{% endif %}
@@ -50,3 +50,12 @@
     {% endif %}
   </aside>
 </div>
+{# 戻る (htmx の履歴の復元) は body の中身を差し替える。新しい中身が古い中身より先に入るので、同じ name の details の取り合いで今の大項目が閉じる (本人の初見テスト 3 回目)。差し替えの後に今の大項目 (data-seizou-active) を開き直す。差し替えのたびにこの script も入り直すので、登録は 1 回だけ。 #}
+<script>
+if (!window.seizouSidebarReopen) {
+  window.seizouSidebarReopen = true;
+  document.addEventListener("htmx:historyRestore", function () {
+    document.querySelectorAll("details[data-seizou-active]").forEach(function (section) { section.open = true; });
+  });
+}
+</script>

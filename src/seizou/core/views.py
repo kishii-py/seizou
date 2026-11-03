@@ -380,7 +380,16 @@ class BaseListView(ScreenMixin, ListView):
 
     def paginate_queryset(self, queryset, page_size):
         # 部品の get_queryset が annotate を足した後の queryset (self.object_list) がここに来る。
-        return super().paginate_queryset(self.order_annotated(queryset), page_size)
+        # 頁は Paginator.get_page で選ぶ (範囲の外と 0 以下は最後の頁、数でない字は 1 頁目、last は最後の頁)。404 にしない。
+        paginator = self.get_paginator(
+            self.order_annotated(queryset),
+            page_size,
+            orphans=self.get_paginate_orphans(),
+            allow_empty_first_page=self.get_allow_empty(),
+        )
+        number = self.kwargs.get(self.page_kwarg) or self.request.GET.get(self.page_kwarg) or 1
+        page = paginator.get_page(paginator.num_pages if number == "last" else number)
+        return (paginator, page, page.object_list, page.has_other_pages())
 
     def get_paginate_by(self, queryset):
         try:
@@ -512,7 +521,7 @@ class BaseListView(ScreenMixin, ListView):
 
     def csv_response(self, context) -> HttpResponse:
         specs = context["columns"]
-        if not access.can_see_money(self.request.user):
+        if any(s.money for s in specs) and not access.can_see_money(self.request.user):
             specs = [s for s in specs if not s.money]
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         filename, fallback = self.csv_filename()
@@ -600,6 +609,9 @@ class BaseFormView(ScreenMixin, FormView):
     service = None
     template_name = "core/form.html"
     success_message = "保存しました。"
+    #: 削除の画面 (service の名前が DELETE_SERVICE_PREFIXES で始まる) の知らせ
+    delete_message = "削除しました。"
+    DELETE_SERVICE_PREFIXES = ("delete_", "remove_")
     object = None
 
     # --- 対象 (直すとき) ---
@@ -699,7 +711,8 @@ class BaseFormView(ScreenMixin, FormView):
         except ValueError as exc:
             # 部品の決まり (番号の無い物。品番の一意など) は日本語の文の ValueError。赤の知らせにする。
             return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
-        messages.success(self.request, self.success_message)
+        deleted = self.get_service().__name__.startswith(self.DELETE_SERVICE_PREFIXES)
+        messages.success(self.request, self.delete_message if deleted else self.success_message)
         url = self.get_success_url_for(result)
         if self.request.headers.get("HX-Request"):
             response = HttpResponse(status=200)
@@ -767,15 +780,60 @@ def _accepts_instance(form_class) -> bool:
     return "instance" in parameters
 
 
+#: 検索で - と同じに扱うダッシュ (‐ ‑ ‒ – — ― −。NFKC で - にならない物。全角の「－」は NFKC で - になる)
+SEARCH_DASHES = "‐‑‒–—―−"
+#: 1 語の揺れの数の上限 (1 語の Q は lookups の数 × この数の icontains の OR まで)
+SEARCH_VARIANTS_MAX = 24
+
+
+def _dash_variant(text: str) -> str:
+    """SEARCH_DASHES の字を全部 - にし、長音の「ー」は直前の字が ASCII の英数字のときだけ - にした字
+    (品番の「WKー1001」を「WK-1001」に当てる。「メーター」の「ー」は変えない)。"""
+    chars = []
+    for index, ch in enumerate(text):
+        prev = text[index - 1] if index else ""
+        if ch in SEARCH_DASHES or (ch == "ー" and prev.isascii() and prev.isalnum()):
+            chars.append("-")
+        else:
+            chars.append(ch)
+    return "".join(chars)
+
+
+def _kana_switch_variants(text: str) -> list[str]:
+    """1 語の中の仮名の 1 か所で字の種類を切り替えた揺れ (「ニッケルメッキ」から「ニッケルめっき」を作る。初見テスト 3 回目)。
+
+    隣り合う 2 字がどちらも仮名 (ひらがな・カタカナ・長音の「ー」) の所 k ごとに、カタカナ (text[:k]) + ひらがな (text[k:]) と
+    ひらがな (text[:k]) + カタカナ (text[k:]) の 2 つを、左の k から順に返す。仮名の外の字は変えない。2 か所以上の切り替えは作らない。
+    """
+
+    def is_kana(ch: str) -> bool:
+        return "ぁ" <= ch <= "ゖ" or "ァ" <= ch <= "ヶ" or ch == "ー"
+
+    def kata(part: str) -> str:
+        return "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in part)
+
+    def hira(part: str) -> str:
+        return "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in part)
+
+    variants = []
+    for k in range(1, len(text)):
+        if is_kana(text[k - 1]) and is_kana(text[k]):
+            variants += [kata(text[:k]) + hira(text[k:]), hira(text[:k]) + kata(text[k:])]
+    return variants
+
+
 def search_variants(term: str) -> list[str]:
     """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (初見テスト 2 回目の所見)。
 
-    返す物は重ねない並び (打った字・NFKC・カタカナ・ひらがな)。DB の側は変えず、OR で引く。
+    返す物は重ねない並び (打った字・NFKC・長音とダッシュ (英数字の後の「ー」・‐・− など) を - にした形・カタカナ・ひらがな・
+    1 語の中の仮名の 1 か所で字の種類を切り替えた形)。DB の側は変えず、OR で引く。揺れの数は SEARCH_VARIANTS_MAX まで
+    (仮名が長く続く語は、右の方の切り替えを落とす)。
     """
     folded = unicodedata.normalize("NFKC", term)
     kata = "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in folded)
     hira = "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in folded)
-    return list(dict.fromkeys([term, folded, kata, hira]))
+    variants = [term, folded, _dash_variant(folded), kata, hira, *_kana_switch_variants(folded)]
+    return list(dict.fromkeys(variants))[:SEARCH_VARIANTS_MAX]
 
 
 def search_q(lookups, term: str) -> Q:
@@ -824,7 +882,7 @@ def widget_css(widget) -> str:
 
 
 class BaseModalView(ScreenMixin, DetailView):
-    """小窓の土台。見るだけと、詳細への移動のボタン。template は <app>/_modal.html か core/_modal.html。
+    """小窓の土台。見るだけと、詳細への移動のボタンと、編集の権限のある人には編集の link。template は <app>/_modal.html か core/_modal.html。
 
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
     tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形)。
@@ -870,6 +928,9 @@ class BaseModalView(ScreenMixin, DetailView):
         context["fields"] = items[: self.modal_fields] + ext_items
         context["tabs"] = [related_tab(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
         context["detail_url"] = model_url(obj.__class__, "detail", obj.pk)
+        context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
+        if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
+            context["edit_url"] = None
         return context
 
 
@@ -971,6 +1032,7 @@ def dashboard_stats() -> list[dict]:
         this_month = order_model._default_manager.filter(
             order_date__year=today.year, order_date__month=today.month
         ).exclude(status=order_model.STATUS_CANCELLED)
+        order_list_url = url_or_none("orders:order_list")
         stats.append(
             {
                 "label": "今月の受注",
@@ -978,22 +1040,19 @@ def dashboard_stats() -> list[dict]:
                 "unit": "件",
                 "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
                 "icon": "clipboard",
-                "url": url_or_none("orders:order_list"),
+                "url": f"{order_list_url}?all=1&month={today:%Y-%m}" if order_list_url else None,
             }
         )
-    line_model = load_model("seizou.orders.models.OrderLine")
-    if line_model is not None and order_model is not None:
-        open_lines = line_model._default_manager.filter(
-            order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL)
-        )
+    lines = dashboard.lines_to_ship()
+    if lines is not None:
         stats.append(
             {
                 "label": "まだ出荷していない明細",
-                "value": count_or_none(open_lines),
+                "value": count_or_none(lines),
                 "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
                 "icon": "activity",
-                "url": url_or_none("orders:order_list"),
+                "url": url_or_none("orders:orderline_list"),
             }
         )
     inbox_model = load_model("seizou.connect.models.Inbox")

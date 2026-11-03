@@ -5,6 +5,8 @@
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
 
+from datetime import date
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponseRedirect
@@ -19,6 +21,15 @@ from .services import annotate_remaining
 
 #: 既定の一覧に出す受注の状態 (出荷の残っている物)
 OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
+
+
+def _month(value):
+    """GET の month (YYYY-MM) を、その月の 1 日と翌月の 1 日の組にする。読めなければ None。"""
+    try:
+        year, month = (int(part) for part in str(value or "").split("-"))
+        return date(year, month, 1), date(year + month // 12, month % 12 + 1, 1)
+    except ValueError:
+        return None
 
 
 class OrderListView(BaseListView):
@@ -37,6 +48,10 @@ class OrderListView(BaseListView):
 
     def get_queryset(self):
         orders = super().get_queryset().select_related("customer")
+        month = _month(self.request.GET.get("month"))
+        if month is not None:
+            # その月の受注日の、取消を除く全部の状態 (ダッシュボードの今月の受注のカードと同じ数え方)
+            return orders.filter(order_date__gte=month[0], order_date__lt=month[1]).exclude(status=Order.STATUS_CANCELLED)
         if self.request.GET.get("all") == "1":
             return orders
         return orders.filter(status__in=OPEN_STATUSES)
@@ -78,7 +93,7 @@ class OrderLineListView(BaseListView):
         ("order__order_date", "受注日"),
         ("status_label", "状態"),
     )
-    search_fields = ("order__customer__name", "item__part_no")
+    search_fields = ("order__customer__name", "item__part_no", "order__order_no", "order__customer_order_no")
     ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
     template_name = "orders/orderline_list.html"
 

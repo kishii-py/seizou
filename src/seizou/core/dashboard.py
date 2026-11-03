@@ -8,6 +8,7 @@
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
+- lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -414,6 +415,22 @@ def payments_this_month(today=None) -> Decimal | None:
     except DatabaseError:
         return None
     return _ZERO if total is None else Decimal(str(total))
+
+
+def lines_to_ship():
+    """まだ出荷していない明細。注文残の一覧の既定 (orders の OrderLineListView = 残が 0 より大きく、取消でない受注の明細) と
+    同じ数え方で、カードの数と押した先の一覧の件数を合わせる。部品が無ければ None。"""
+    order_model = _model("orders", "Order")
+    line_model = _model("orders", "OrderLine")
+    if order_model is None or line_model is None:
+        return None
+    from seizou.orders.services import annotate_remaining
+
+    return (
+        annotate_remaining(line_model._default_manager.all())
+        .filter(remaining_total__gt=0)
+        .exclude(order__status=order_model.STATUS_CANCELLED)
+    )
 
 
 def _periods(today, months):
