@@ -617,7 +617,15 @@ def test_examples_new_kinds_go_into_an_existing_site(company_id, tmp_path, no_re
         COMPANIES_DIR / company_id,
         old,
         ignore=shutil.ignore_patterns(
-            "item_processes.csv", "workorders.yaml", "shipments.yaml", "delivery_notes.yaml", "invoices.yaml", "files"
+            "item_processes.csv",
+            "workorders.yaml",
+            "shipments.yaml",
+            "delivery_notes.yaml",
+            "invoices.yaml",
+            "files",
+            # 在庫の動きの種は指示書の種を指すので、指示書を外した古い置き場では一緒に外す (受入の種も新しい種類)
+            "stock_moves.yaml",
+            "receipts.yaml",
         ),
     )
     demo.load(old)

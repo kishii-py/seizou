@@ -56,6 +56,7 @@ PATHS = {
     "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     "chevron-left": '<path d="m15 6-6 6 6 6"/>',
     "chevrons-up-down": '<path d="m8 9 4-4 4 4"/><path d="m8 15 4 4 4-4"/>',
+    "archive": '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>',
 }
 
 #: 部品の app ごとの絵 (左のメニューで使う)
@@ -72,6 +73,7 @@ APP_ICONS = {
     "intake": "file",
     "manuals": "book",
     "attachments": "paperclip",
+    "stock": "archive",
 }
 
 

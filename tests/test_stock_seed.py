@@ -97,11 +97,12 @@ def test_seed_without_files_is_silent(tmp_path):
     assert demo_seed.load(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
     assert StockMove.objects.count() == 0
 
-    # 在庫の動きの種は、指示書の種 (workorders.yaml) の無いフォルダでは読まない (製造の完了が指示書を指すため)
+    # 在庫の動きの種は取引先と受注と指示書の種を指すので、それらの無い置き場では ValueError で止まる (黙って飛ばさない)
     (tmp_path / "stock_moves.yaml").write_text(
         (COMPANIES_DIR / "a_machining" / "stock_moves.yaml").read_text(encoding="utf-8"), encoding="utf-8"
     )
-    assert demo_seed.load(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
+    with pytest.raises(ValueError, match="stock_moves.yaml の 1 件目"):
+        demo_seed.load(tmp_path, None)
     assert StockMove.objects.count() == 0
 
 

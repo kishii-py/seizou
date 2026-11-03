@@ -16,8 +16,8 @@ DEMO_PASSWORD = "seizou-demo-1103"
 
 #: (部署, 開ける部品, 既定の権限, 並び)
 DEPARTMENTS = (
-    ("製造", ("workorders", "progress", "masters"), ("workorders",), 1),
-    ("受注と出荷", ("orders", "intake", "connect", "shipping", "purchasing", "masters"), ("orders", "shipping"), 2),
+    ("製造", ("workorders", "progress", "stock", "masters"), ("workorders",), 1),
+    ("受注と出荷", ("orders", "intake", "connect", "shipping", "purchasing", "stock", "masters"), ("orders", "shipping"), 2),
     ("経理", ("billing", "orders", "shipping", "masters"), ("billing",), 3),
     ("総務", ("masters",), ("master_edit",), 4),
 )
