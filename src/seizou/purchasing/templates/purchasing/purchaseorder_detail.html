@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
-{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直すと取り消すのボタン。 #}
+{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直すと取り消すのボタン。 #}
 {% block actions %}{{ block.super }}{% if object.status == "draft" %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
@@ -23,6 +23,7 @@
           <th class="text-right">金額</th>
           <th class="text-right">受入の数</th>
           <th class="text-right">受入の残</th>
+          <th>出荷の知らせ</th>
           <th>納期</th>
           <th>備考</th>
           <th>操作</th>
@@ -40,6 +41,7 @@
           <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
+          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}<ul>{% for row in notice.rows %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and line.remaining_total > 0 %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ row.qty_text }}&amp;received_on={{ row.shipped_at|date:'Y-m-d' }}">受入を記録する</a>{% endif %}</li>{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total|comma }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
           <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>

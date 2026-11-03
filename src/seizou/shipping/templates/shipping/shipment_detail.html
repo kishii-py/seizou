@@ -1,7 +1,17 @@
 {% extends "core/detail.html" %}
 {% load seizou_icons %}
-{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。 #}
+{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。届いた注文で作った受注の出荷だけ、下に出荷の知らせの節 (送った印か、赤の届いていない知らせと「送り直す」)。 #}
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}ラベル</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% endblock %}
+{% block content %}{{ block.super }}
+{% with state=object.notice_state %}{% if state %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipment-notice-title">
+  <h2 id="shipment-notice-title" class="text-lg font-bold">出荷の知らせ (相手の seizou へ送った出荷)</h2>
+  {% if object.notice_sent_at %}<p class="mt-4"><span class="badge badge-soft badge-success">{{ state }}</span></p>
+  {% else %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ state }}</span></div>
+  <form method="post" action="{% url 'shipping:shipment_notice_resend' object.pk %}" class="mt-4">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}
+</section>
+{% endif %}{% endwith %}
 {% endblock %}

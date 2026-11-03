@@ -7,6 +7,7 @@
 from django.urls import path
 
 from . import views
+from . import shipping_notice
 
 app_name = "shipping"
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path("<int:pk>/edit/", views.ShipmentUpdateView.as_view(), name="shipment_update"),
     path("<int:pk>/label/", views.shipment_label, name="shipment_label"),
     path("<int:pk>/label/pdf/", views.shipment_label_pdf, name="shipment_label_pdf"),
+    path("<int:pk>/notice/resend/", shipping_notice.resend_shipping_notice, name="shipment_notice_resend"),
     path("notes/", views.DeliveryNoteListView.as_view(), name="deliverynote_list"),
     path("notes/new/", views.DeliveryNoteCreateView.as_view(), name="deliverynote_create"),
     path("notes/<int:pk>/", views.DeliveryNoteDetailView.as_view(), name="deliverynote_detail"),
