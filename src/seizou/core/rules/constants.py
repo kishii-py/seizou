@@ -49,6 +49,7 @@ PART_APPS = (
     "bookmarks",
     "accounts",
     "stock",
+    "feedback",
 )
 
 #: 古い版 (daisyUI 2〜4) の class 名で、今の版 (5) に無い物。R19 の検査が見る。

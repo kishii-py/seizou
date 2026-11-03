@@ -38,6 +38,7 @@
       {% endif %}
       {% endfor %}
     </nav>
+{% if "feedback" in seizou.parts %}{% include "feedback/_menu.html" %}{% endif %}
     {% if user.is_authenticated %}
     {% with name=user.get_full_name|default:user.get_username %}
     <div class="flex shrink-0 items-center gap-2 border-t border-base-300 p-4">

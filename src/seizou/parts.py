@@ -21,4 +21,5 @@ PARTS = [
     "seizou.bookmarks",
     "seizou.accounts",
     "seizou.stock",
+    "seizou.feedback",
 ]

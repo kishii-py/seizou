@@ -1,0 +1,8 @@
+{% load seizou_icons %}
+{# フィードバックの入口 (core/_sidebar.html が左のメニューの下、利用者の行の上で include する)。全部の画面に出るので、既にある試験が数える字 (主色のボタン・今の画面の印 など) を書かない。 #}
+{# 今の画面の URL の名前を ?screen= で渡し、入力の画面の「画面」の初期値にする (土台の get_initial が GET の鍵を写す)。 #}
+{% if user.is_authenticated %}
+<div id="feedback-entry" class="shrink-0 border-t border-base-300 px-4 py-2">
+  <a href="{% url 'feedback:feedback_create' %}?screen={{ request.resolver_match.view_name|urlencode }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary">{% icon "pencil" "size-5" %}<span class="truncate">フィードバック</span></a>
+</div>
+{% endif %}
