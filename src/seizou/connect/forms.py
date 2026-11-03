@@ -109,7 +109,7 @@ class ConnectionForm(ServiceModelForm):
         model = Connection
         fields = ["partner", "direction", "secret_env"]
         help_texts = {
-            "direction": "送る = この会社が発注を送る相手。受ける = 相手から注文を受け取る。両方の向きでつなぐときは、2 行に分けて登録します。",
+            "direction": "送る = この会社から相手の seizou へ送る (発注・注文回答・出荷の知らせ・検収)。受ける = 相手から届く物を受ける。往復には 2 社とも両方の向きが要るので、2 行に分けて登録します。",
             "secret_env": "鍵の値ではなく、値を入れる環境変数の名前です (SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET)。値は .env にだけ置きます。",
         }
 

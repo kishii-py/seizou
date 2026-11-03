@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.connect import services
-from seizou.connect.forms import AcceptForm, RejectForm
+from seizou.connect.forms import AcceptForm, ConnectionForm, RejectForm
 from seizou.connect.models import Inbox
 from seizou.masters import services as masters_services
 from seizou.purchasing.models import Receipt
@@ -115,3 +115,20 @@ def test_accept_and_reject_screens_show_japanese(client, user, inbox):
     assert DJANGO_REQUIRED not in reject_body
     inbox.refresh_from_db()
     assert inbox.status == Inbox.STATUS_RECEIVED
+
+
+DIRECTION_HELP = (
+    "送る = この会社から相手の seizou へ送る (発注・注文回答・出荷の知らせ・検収)。受ける = 相手から届く物を受ける。"
+    "往復には 2 社とも両方の向きが要るので、2 行に分けて登録します。"
+)
+
+
+@pytest.mark.django_db
+def test_connection_direction_help(client, user):
+    assert ConnectionForm().fields["direction"].help_text == DIRECTION_HELP
+
+    client.force_login(user)
+    body = client.get(reverse("connect:connection_create")).content.decode()
+
+    assert DIRECTION_HELP in body
+    assert "この会社が発注を送る相手" not in body
