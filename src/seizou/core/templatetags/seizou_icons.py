@@ -74,6 +74,7 @@ APP_ICONS = {
     "manuals": "book",
     "attachments": "paperclip",
     "stock": "archive",
+    "feedback": "pencil",
 }
 
 

@@ -1,0 +1,42 @@
+{% extends "core/detail.html" %}
+{% load feedback_tags seizou_icons %}
+{# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ) の 3 つの節。 #}
+{% block content %}{{ block.super }}
+{% if object.transcript %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-transcript-title">
+  <h2 id="feedback-transcript-title" class="text-lg font-bold">会話の記録</h2>
+  <p class="mt-2 text-xs text-base-content/50">AI の聞き取りの往復。使った token: 入力 {{ object.input_tokens }} / 出力 {{ object.output_tokens }}。</p>
+  <div class="mt-4 flex flex-col gap-2">{% include "feedback/_chat_messages.html" with turns=object.transcript %}</div>
+</section>
+{% endif %}
+{% feedback_detail object as info %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-issue-title">
+  <h2 id="feedback-issue-title" class="text-lg font-bold">Issue の文</h2>
+  <p class="mt-2 text-xs text-base-content/50">GitHub の Issue に写す文。取引先の名前と金額らしい数は「〇〇」に伏せてあります。貼る前に見直してください。会話の記録は入りません。</p>
+  <textarea id="feedback-issue" readonly rows="16" class="textarea mt-4 w-full font-mono text-xs" aria-label="Issue の文">{{ info.issue_text }}</textarea>
+  <div class="mt-4 flex justify-end">
+    <button id="feedback-copy" type="button" class="btn btn-sm btn-outline border-base-300" data-done="写しました">{% icon "check" "size-4" %}Issue の文を写す</button>
+  </div>
+</section>
+{% if info.can_manage %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">
+  <h2 id="feedback-status-title" class="text-lg font-bold">状態</h2>
+  <p class="mt-2 text-xs text-base-content/50">今の状態: {{ object.get_status_display }}。世話役が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
+  <div class="mt-4 flex flex-wrap items-center gap-4">
+    {% if object.status == "draft" %}<form method="post" action="{% url 'feedback:confirm' object.pk %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}確認済みにする</button></form>{% endif %}
+    {% if object.status != "sent" %}<form method="post" action="{% url 'feedback:sent' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="url" name="sent_url" class="input input-sm w-72" placeholder="送った先の URL (任意)" aria-label="送った先の URL"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button></form>{% endif %}
+  </div>
+</section>
+{% endif %}
+{# 「写す」: 押したら textarea の字をクリップボードに写し、ボタンの字を data-done にする。クリップボードの無いブラウザでは何もしない (textarea は readonly で、字を選んで写せる)。 #}
+<script>
+(function () {
+  var button = document.getElementById("feedback-copy");
+  var area = document.getElementById("feedback-issue");
+  if (!button || !area || !navigator.clipboard) return;
+  button.addEventListener("click", function () {
+    navigator.clipboard.writeText(area.value).then(function () { button.textContent = button.dataset.done; });
+  });
+})();
+</script>
+{% endblock %}
