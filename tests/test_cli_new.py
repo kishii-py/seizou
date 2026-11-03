@@ -291,3 +291,38 @@ def test_company_row_has_answer_name(built):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "見本の会社"
+
+
+def _company_value(site: Path, name: str) -> str:
+    """作った置き場の会社の 1 行の列 name の値 (manage.py shell で print する)。"""
+    result = manage(
+        site,
+        "shell",
+        "--no-imports",
+        "-c",
+        f"from seizou.core.models import Company; print(Company.objects.get().{name})",
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip().splitlines()[-1]
+
+
+def test_company_row_has_answer_company_info(built):
+    # 納品書と請求書の会社の欄に出る会社の情報は、答えの company を core の services.update_company で入れる。
+    site = built["site"]
+    assert _company_value(site, "address") == "〒000-0000 見本県架空市見本町 1-2-3"
+    assert _company_value(site, "phone") == "00-0000-0000"
+    assert _company_value(site, "bank_account") == "作り物銀行 見本支店 普通 0000000 名義 ミホンノカイシャ"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["company: [1]", "company: {fax: 00-0000-0000}", "company: {phone: 12345}"],
+)
+def test_bad_company_is_refused(tmp_path, monkeypatch, text):
+    sites = tmp_path / "sites"
+    monkeypatch.setenv("SEIZOU_SITES_DIR", str(sites))
+    answers = write_answers(tmp_path / "answers.yaml", f"id: plain_co\nname: 見本の会社\nport: 8011\n{text}\n")
+    code, _out, err = run_new(["new", str(answers)])
+    assert code == 2
+    assert "company" in err
+    assert not sites.exists()

@@ -7,6 +7,7 @@
 - validate_setting(key, value): 選べる設定の値を確かめて、整えた値を返す。誤りは日本語の ValueError (知らない鍵は KeyError)。
 - set_setting(key, value, user): 設定の画面からの上書き (SettingOverride) を書く。clear_setting(key, user) は消す。
   どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (履歴の表は持たない)。
+- update_company(company, data, user): 会社の情報 (住所・電話・振込先・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
 """
 
 from __future__ import annotations
@@ -144,4 +145,57 @@ def clear_setting(key, user):
     logger.info("設定を戻した: %s %r → %r (%s)", key, before, conf.setting(key), _user_name(user))
 
 
-__all__ = ["clear_setting", "company", "next_number", "set_setting", "transaction", "validate_setting"]
+#: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
+COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "logo")
+
+
+def update_company(company, data, user):
+    """会社の 1 行の会社の情報を data の値で直し、直した行 (表から取り直した物) を返す。
+
+    data の鍵は COMPANY_INFO_FIELDS の中だけ (ほかの鍵は KeyError。会社名は答えの YAML の name で決まり、ここでは変えない)。
+    字の値は前後の空白を落とし、列の字数を超えると日本語の ValueError (表に書く前)。
+    transaction.atomic の中で会社の行を select_for_update で取り直し、取り直した行と比べて変わった列だけを書く
+    (変わった列が無ければ書かない)。画面の ModelForm は検証の中で対象の物の値を先に書き換えるので、渡された物とは比べない。
+    書いた後に logging の "seizou.settings" に INFO の 1 行 (変えた列の見出しだけ。値は書かない = 振込先の番号を記録に残さない)。
+    logo は、新しく上げたファイル (UploadedFile) なら company/ の下に "logo" + 拡張子 (小文字) で置き、False (「クリア」) なら
+    今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
+    (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
+    """
+    from pathlib import PurePath
+
+    from django.core.files.uploadedfile import UploadedFile
+
+    unknown = [key for key in data if key not in COMPANY_INFO_FIELDS]
+    if unknown:
+        raise KeyError(f"知らない会社の情報の鍵: {'・'.join(str(key) for key in unknown)}")
+    logo = data.get("logo")
+    values = {}
+    for name in COMPANY_INFO_FIELDS:
+        if name not in data or name == "logo":
+            continue
+        field = Company._meta.get_field(name)
+        value = data[name]
+        text = "" if value is None else str(value).strip()
+        if field.max_length is not None and len(text) > field.max_length:
+            raise ValueError(f"{field.verbose_name}は {field.max_length} 字までにしてください。")
+        values[name] = text
+    with transaction.atomic():
+        row = Company.objects.select_for_update().get(pk=company.pk)
+        changed = [name for name, value in values.items() if getattr(row, name) != value]
+        for name in changed:
+            setattr(row, name, values[name])
+        if isinstance(logo, UploadedFile):
+            row.logo.save("logo" + PurePath(logo.name or "").suffix.lower(), logo, save=False)
+            changed.append("logo")
+        elif logo is False and row.logo:
+            row.logo = ""
+            changed.append("logo")
+        if changed:
+            row.save(update_fields=changed)
+    if changed:
+        labels = "・".join(str(Company._meta.get_field(name).verbose_name) for name in changed)
+        logger.info("会社の情報を変えた: %s (%s)", labels, _user_name(user))
+    return row
+
+
+__all__ = ["clear_setting", "company", "next_number", "set_setting", "transaction", "update_company", "validate_setting"]

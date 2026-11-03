@@ -130,4 +130,4 @@ class AdjustCreateView(BaseFormView):
     form_class = AdjustForm
     service = staticmethod(services.adjust)
     screen_name = "棚卸しの調整"
-    screen_help = "実地の在庫数を入れると、今の在庫数との差を動きとして残します。在庫を数え始める部品は、この画面で今の数を入れます。"
+    screen_help = "実地の在庫数を入れると、今の在庫数との差を動きとして残し、入れた数がそのまま在庫数になります。在庫を数え始める部品は、この画面で今の数を入れます (数え始めた日より前の出荷は、在庫数から引きません)。"

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import secrets
@@ -35,6 +36,8 @@ ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 FIELD_TYPES = ("text", "number", "date", "choice", "bool")
 FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
+#: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは設定の画面から上げる)
+COMPANY_KEYS = ("address", "phone", "bank_account")
 
 # seizou.core.conf.DEFAULTS と同じ値 (core は Django を読むので、ここでは import せずに写す)。
 SETTING_DEFAULTS = {
@@ -66,12 +69,14 @@ CREATE_ADMIN = (
     "print('created' if made else 'exists')"
 )
 
-# 会社の設定 (core の Company) の 1 行を、答えの会社名で作る短い Python。既にあれば触らない。
+# 会社の設定 (core の Company) の 1 行を、答えの会社名と会社の情報 (company) で作る短い Python。既にあれば触らない。
 CREATE_COMPANY = (
-    "import importlib, os; "
+    "import importlib, json, os; "
     "Company = importlib.import_module('seizou.core.models').Company; "
+    "services = importlib.import_module('seizou.core.services'); "
     "made = not Company.objects.exists(); "
     "made and Company.objects.create(name=os.environ['SEIZOU_COMPANY_NAME']); "
+    "made and services.update_company(services.company(), json.loads(os.environ['SEIZOU_COMPANY_FIELDS']), None); "
     "print('created' if made else 'exists')"
 )
 
@@ -128,6 +133,17 @@ def load_answers(path: Path) -> dict:
                 f"item_fields の {number} 番目の型を知りません: {field.get('type')!r}。"
                 f"{' / '.join(FIELD_TYPES)} のどれかで書きます。"
             )
+
+    # 会社の情報 (任意)。打ち違えた鍵を黙って捨てると請求書に住所が出ないので、知らない鍵は断る
+    company = answers.get("company")
+    if company is not None:
+        if not isinstance(company, dict):
+            raise AnswerError(f"company は鍵と値の並びで書きます ({'・'.join(COMPANY_KEYS)})。")
+        for key, value in company.items():
+            if key not in COMPANY_KEYS:
+                raise AnswerError(f"company の鍵を知りません: {key}。{' / '.join(COMPANY_KEYS)} のどれかで書きます。")
+            if not isinstance(value, str):
+                raise AnswerError(f"company の {key} は字で書きます (数に読める値は引用符で囲む): {value!r}")
     return answers
 
 
@@ -383,7 +399,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
     result = run_manage(
         site,
         ["shell", "--no-imports", "-c", CREATE_COMPANY],
-        {"SEIZOU_COMPANY_NAME": str(answers["name"])},
+        {"SEIZOU_COMPANY_NAME": str(answers["name"]), "SEIZOU_COMPANY_FIELDS": json.dumps(answers.get("company") or {}, ensure_ascii=False)},
     )
     if result.returncode != 0:
         return show_failure("会社の設定を作る所", result)

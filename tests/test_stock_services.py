@@ -283,3 +283,190 @@ def test_source_is_generic_reference(user, customer, subcontractor, items, proce
     assert issued.source is None
     assert issued.source_label() == ""
     assert str(issued) == "2026-11-04 T-100 払い出し -1"
+
+
+# --- 棚卸しで数え始めた部品 (N80。本人の初見テスト R3 の「実地の数 5 が −65 と出る」) ---
+
+
+def _annotated():
+    """部品の queryset に annotate_balance を当てた行 ({pk: 部品})。"""
+    return {item.pk: item for item in services.annotate_balance(Item.objects.all(), "pk")}
+
+
+def _same(got, value):
+    return (got is None and value is None) or (got is not None and value is not None and Decimal(str(got)) == value)
+
+
+@pytest.mark.django_db
+def test_first_count_ignores_earlier_shipments(user, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    shipping_services.ship(line, Decimal("30"), ORDER_DATE, user)
+    assert services.balance(item) is None  # 出荷だけでは在庫を数えていない
+
+    move = services.adjust(item, Decimal("5"), DAY1, user, note="棚卸し")
+
+    assert move.kind == KIND_ADJUSTED and move.qty == Decimal("5")
+    assert services.balance(item) == Decimal("5")  # 5 − 70 = −65 でない
+    row = _annotated()[item.pk]
+    assert row.stock_counted_from == DAY1
+    assert _same(row.stock_balance, Decimal("5"))
+
+
+@pytest.mark.django_db
+def test_count_twice_keeps_counted(user, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    shipping_services.ship(line, Decimal("30"), ORDER_DATE, user)
+    services.adjust(item, Decimal("5"), DAY1, user)
+    count = StockMove.objects.count()
+
+    for day in (DAY1, DAY2):
+        with pytest.raises(ValueError, match="調整は要りません"):
+            services.adjust(item, Decimal("5"), day, user)
+
+    assert StockMove.objects.count() == count
+    assert services.balance(item) == Decimal("5")
+
+
+@pytest.mark.django_db
+def test_first_count_absorbs_same_day_shipments(user, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    shipping_services.ship(line, Decimal("2"), DAY1, user)  # 数える前に入れた、数え始めの日と同じ日の出荷
+
+    move = services.adjust(item, Decimal("5"), DAY1, user)
+
+    assert move.qty == Decimal("7")  # 実地の数 5 + その日と後の出荷 2
+    assert services.balance(item) == Decimal("5")
+
+
+@pytest.mark.django_db
+def test_shipments_after_first_count_are_subtracted(user, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    services.adjust(item, Decimal("5"), DAY1, user)
+    assert services.balance(item) == Decimal("5")
+
+    shipping_services.ship(line, Decimal("2"), DAY2, user)
+    assert services.balance(item) == Decimal("3")
+    shipping_services.ship(line, Decimal("1"), DAY1, user)  # 数え始めの日と同じ日 (数えた後に入れた物) は引く
+    assert services.balance(item) == Decimal("2")
+
+
+@pytest.mark.django_db
+def test_backdated_shipment_after_first_count_is_ignored(user, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    services.adjust(item, Decimal("5"), DAY2, user)
+    assert services.balance(item) == Decimal("5")
+
+    shipping_services.ship(line, Decimal("3"), DAY1, user)  # 数え始めの日より前の出荷日 = 実地の数に入っている
+    assert services.balance(item) == Decimal("5")
+    shipping_services.ship(line, Decimal("1"), DAY2, user)
+    assert services.balance(item) == Decimal("4")
+
+
+@pytest.mark.django_db
+def test_count_after_moves_keeps_all_shipments(user, customer, items, processes):
+    item = items[0]
+    workorder = _issue(user, _line(user, customer, item), processes[:1])
+    services.record_finished(workorder, Decimal("10"), user, moved_on=DAY1)
+    shipping_services.ship(workorder.order_line, Decimal("4"), ORDER_DATE, user)
+    assert services.balance(item) == Decimal("6")
+
+    move = services.adjust(item, Decimal("5"), DAY2, user)
+
+    assert move.qty == Decimal("-1")
+    assert services.balance(item) == Decimal("5")
+    assert _annotated()[item.pk].stock_counted_from is None  # 最初の行は製造の完了
+    # 最初の行が製造の完了の部品は、今までどおり全部の出荷を引く (N42 のまま)
+    shipping_services.ship(workorder.order_line, Decimal("1"), ORDER_DATE, user)
+    assert services.balance(item) == Decimal("4")
+
+
+@pytest.mark.django_db
+def test_moves_after_count_still_add(user, customer, subcontractor, items, processes, no_http):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    services.adjust(item, Decimal("5"), DAY1, user)
+
+    issued = services.record_issued(item, Decimal("2"), DAY2, user)
+    assert issued.qty == Decimal("-2")
+    assert services.balance(item) == Decimal("3")
+
+    workorder = _issue(user, _line(user, customer, item), processes[:1])
+    finished = services.record_finished(workorder, Decimal("4"), user, moved_on=DAY2)
+    assert finished.qty == Decimal("4")
+    assert services.balance(item) == Decimal("7")
+
+    po = purchasing_services.create_purchase_order(
+        subcontractor,
+        [{"item": item, "qty": Decimal("5"), "unit_price": Decimal("10")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    purchasing_services.receive(po.lines.get(), Decimal("5"), DAY2, user)
+    assert StockMove.objects.get(kind=KIND_RECEIVED).qty == Decimal("5")
+    assert services.balance(item) == Decimal("12")
+
+
+@pytest.mark.django_db
+def test_annotate_balance_matches_after_count(user, customer, items, processes, django_assert_max_num_queries):
+    counted, recounted = items
+    moved = masters_services.create_item({"part_no": "T-300", "name": "作り物の環", "unit": "個"}, user)
+    shipped_only = masters_services.create_item({"part_no": "T-400", "name": "作り物の棒", "unit": "本"}, user)
+    plain = masters_services.create_item({"part_no": "T-500", "name": "作り物の蓋", "unit": "個"}, user)
+
+    # 数え始めた部品: 前の日・同じ日 (数える前と後)・後の日の出荷
+    line = _line(user, customer, counted, qty="70")
+    shipping_services.ship(line, Decimal("40"), ORDER_DATE, user)
+    shipping_services.ship(line, Decimal("2"), DAY1, user)
+    services.adjust(counted, Decimal("5"), DAY1, user)
+    shipping_services.ship(line, Decimal("1"), DAY1, user)
+    shipping_services.ship(line, Decimal("1"), DAY2, user)
+    shipping_services.ship(line, Decimal("3"), ORDER_DATE, user)  # 数え始めの日より前の出荷日 (引かない)
+
+    # 動きの後に数えた部品 (最初の行は製造の完了。全部の出荷を引く)
+    workorder = _issue(user, _line(user, customer, recounted), processes[:1])
+    services.record_finished(workorder, Decimal("10"), user, moved_on=DAY1)
+    shipping_services.ship(workorder.order_line, Decimal("4"), ORDER_DATE, user)
+    services.adjust(recounted, Decimal("5"), DAY2, user)
+    shipping_services.ship(workorder.order_line, Decimal("1"), ORDER_DATE, user)
+
+    # 動きだけの部品と、出荷だけの部品
+    other = _issue(user, _line(user, customer, moved), processes[:1])
+    services.record_finished(other, Decimal("9"), user, moved_on=DAY1)
+    shipping_services.ship(other.order_line, Decimal("3"), ORDER_DATE, user)
+    shipping_services.ship(_line(user, customer, shipped_only), Decimal("4"), ORDER_DATE, user)
+
+    with django_assert_max_num_queries(2):
+        expected = services.balances([counted, recounted, moved, shipped_only, plain])
+    assert expected == {
+        counted.pk: Decimal("3"),
+        recounted.pk: Decimal("4"),
+        moved.pk: Decimal("6"),
+        shipped_only.pk: None,
+        plain.pk: None,
+    }
+
+    rows = _annotated()
+    for pk, value in expected.items():
+        assert _same(rows[pk].stock_balance, value), (pk, rows[pk].stock_balance, value)
+    assert rows[counted.pk].stock_counted_from == DAY1
+    for pk in (recounted.pk, moved.pk, shipped_only.pk, plain.pk):
+        assert rows[pk].stock_counted_from is None, pk
+    assert rows[counted.pk].last_moved_on == DAY1
+
+    # 受注の明細 (annotate_remaining の後) に item_id で当てても、残の数は変わらず、在庫数は同じ
+    remaining = {row.pk: row.remaining_total for row in orders_services.annotate_remaining(OrderLine.objects.all())}
+    annotated = services.annotate_balance(orders_services.annotate_remaining(OrderLine.objects.all()), "item_id")
+    for row in annotated:
+        assert row.remaining_total == remaining[row.pk]
+        assert _same(row.stock_balance, expected.get(row.item_id)), (row.pk, row.stock_balance)
+    assert len(remaining) == annotated.count()

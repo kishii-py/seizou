@@ -1,6 +1,8 @@
 """stock の公開する関数 (完成品の在庫)。画面とほかの部品は、この関数だけを通して在庫の動きを書く。
 
 - 在庫数 = その部品の動きの数量の合計 − その部品の出荷の数量の合計。動きが 1 件も無い部品は在庫を数えていない (None)。
+  ただし棚卸しで数え始めた部品 (動きの最初の行 = 入れた順で pk の一番小さい行が棚卸しの調整) は、その行の日付
+  (数え始めの日) より前の出荷日の出荷を引かない (実地の数に入っている)。数え始めの日と同じ日と後の日の出荷は引く。
 - 出荷は動きの表に書かず、集計で引く (shipping の Shipment を apps.get_model で読む。出荷の部品が無ければ 0)。
 - マイナスの在庫は止めない (現物優先。一覧と盤で赤の数にして知らせるだけ)。
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
@@ -10,14 +12,27 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
-from django.db.models import Case, DecimalField, Exists, ExpressionWrapper, OuterRef, Subquery, Sum, Value, When
+from django.db.models import (
+    Case,
+    DateField,
+    DecimalField,
+    Exists,
+    ExpressionWrapper,
+    OuterRef,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
+from django.db.models.lookups import Exact
 from django.utils import timezone
 
 from .models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, KIND_RECEIVED, StockMove, kind_sign
@@ -44,6 +59,19 @@ def _shipment_model():
         return apps.get_model("shipping", "Shipment")
     except LookupError:
         return None
+
+
+def _shipped_on_or_after(item, day):
+    """その部品の出荷のうち、出荷日が day と同じ日か後の物の数量の合計 (Decimal。出荷の部品が無ければ 0)。読むだけ。"""
+    shipment_model = _shipment_model()
+    if shipment_model is None:
+        return _ZERO
+    total = (
+        shipment_model._default_manager.filter(order_line__item=_pk(item), shipped_at__gte=day)
+        .order_by()
+        .aggregate(total=Sum("qty"))["total"]
+    )
+    return _ZERO if total is None else _dec(total)
 
 
 def _user_or_none(user):
@@ -82,41 +110,72 @@ def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
 def balances(items) -> dict:
     """部品 (か pk) の並びに対する在庫数を {pk: Decimal か None} で返す。動きの無い部品は None。
 
-    問い合わせは 2 回まで (動きの合計を部品ごとに 1 回、出荷の合計を部品ごとに 1 回)。引き算は Python で行う。
+    問い合わせは 2 回まで (動きの行を入れた順 (pk の順) に 1 回、出荷の合計を部品と出荷日ごとに 1 回)。
+    部品ごとの動きの合計と最初の行 (棚卸しの調整なら、その日付が数え始めの日) と引き算は Python で行う。
+    数え始めの日のある部品は、出荷日がその日より前の出荷を足さない (annotate_balance と同じ数え方)。
     """
     pks = [_pk(item) for item in items]
     if not pks:
         return {}
-    moved = {
-        row["item"]: _dec(row["total"])
-        for row in StockMove.objects.filter(item__in=pks).order_by().values("item").annotate(total=Sum("qty"))
-    }
+    moved = {}
+    counted_from = {}
+    for item_pk, kind, moved_on, qty in (
+        StockMove.objects.filter(item__in=pks).order_by("pk").values_list("item", "kind", "moved_on", "qty")
+    ):
+        if item_pk not in moved:
+            # 部品の最初の行 (入れた順)。棚卸しの調整なら、その日付から数え始めた部品
+            moved[item_pk] = _ZERO
+            counted_from[item_pk] = moved_on if kind == KIND_ADJUSTED else None
+        moved[item_pk] += _dec(qty)
     shipped = {}
     shipment_model = _shipment_model()
     if shipment_model is not None and moved:
         rows = (
             shipment_model._default_manager.filter(order_line__item__in=list(moved))
             .order_by()
-            .values("order_line__item")
+            .values("order_line__item", "shipped_at")
             .annotate(total=Sum("qty"))
         )
-        shipped = {row["order_line__item"]: _dec(row["total"]) for row in rows}
+        for row in rows:
+            item_pk = row["order_line__item"]
+            start = counted_from.get(item_pk)
+            if start is not None and row["shipped_at"] < start:
+                continue  # 数え始めの日より前の出荷は、実地の数に入っている
+            shipped[item_pk] = shipped.get(item_pk, _ZERO) + _dec(row["total"])
     return {pk: (moved[pk] - shipped.get(pk, _ZERO)) if pk in moved else None for pk in pks}
 
 
 def balance(item):
-    """その部品の在庫数。動きが無ければ None (在庫を数えていない)。全部の出荷を引く (取消の受注の出荷も数える = 起きた事)。"""
+    """その部品の在庫数。動きが無ければ None (在庫を数えていない)。全部の出荷を引く (取消の受注の出荷も数える = 起きた事)。
+
+    ただし棚卸しで数え始めた部品は、数え始めの日より前の出荷日の出荷を引かない (実地の数に入っている)。
+    """
     return balances([item])[_pk(item)]
 
 
 def annotate_balance(queryset, item_ref):
-    """部品を item_ref で指す queryset に、在庫数 (stock_balance) と最後の動きの日 (last_moved_on) を足して返す。
+    """部品を item_ref で指す queryset に、数え始めの日 (stock_counted_from)・在庫数 (stock_balance)・
+    最後の動きの日 (last_moved_on) を足して返す。
 
     item_ref は外の行の部品の列の名前 (Item の queryset なら "pk"、受注の明細の queryset なら "item_id")。
+    stock_counted_from は、棚卸しで数え始めた部品 (動きの最初の行 = pk の一番小さい行が棚卸しの調整) のその行の日付。
+    ほかの部品 (最初の行が製造の完了・受入・払い出しの部品と、動きの無い部品) は None。
+    stock_balance は balances と同じ数え方 (数え始めの日より前の出荷日の出荷を引かない)。
     動きと出荷の合計は Subquery で足す (多の join を足さない。annotate_remaining の後に当てても残が重ならない)。
     動きが無い部品は stock_balance も last_moved_on も None。読むだけ。
     """
     moves = StockMove.objects.filter(item=OuterRef(item_ref))
+    first = moves.order_by("pk")
+    counted_from = Case(
+        When(
+            Exact(Subquery(first.values("kind")[:1]), Value(KIND_ADJUSTED)),
+            then=Subquery(first.values("moved_on")[:1]),
+        ),
+        default=Value(None, output_field=DateField()),
+        output_field=DateField(),
+    )
+    # 出荷の Subquery が OuterRef で数え始めの日を読むので、先の annotate で足す (同じ annotate の中では読めない)
+    queryset = queryset.annotate(stock_counted_from=counted_from)
     moved_total = Subquery(
         moves.order_by().values("item").annotate(total=Sum("qty")).values("total")[:1], output_field=_QTY_FIELD
     )
@@ -125,7 +184,13 @@ def annotate_balance(queryset, item_ref):
         shipped_total = Value(_ZERO, output_field=_QTY_FIELD)
     else:
         shipped = (
-            shipment_model._default_manager.filter(order_line__item=OuterRef(item_ref))
+            shipment_model._default_manager.filter(
+                order_line__item=OuterRef(item_ref),
+                # 数え始めの日のある部品は、その日と後の出荷だけ (無い部品は全部 = date.min から)
+                shipped_at__gte=Coalesce(
+                    OuterRef("stock_counted_from"), Value(date.min, output_field=DateField()), output_field=DateField()
+                ),
+            )
             .order_by()
             .values("order_line__item")
             .annotate(total=Sum("qty"))
@@ -224,7 +289,12 @@ def record_issued(item, qty, moved_on, user, *, note=""):
 def adjust(item, counted_qty, moved_on, user, *, note=""):
     """棚卸しの調整。実地の在庫数 (counted_qty) と今の在庫数の差を動きとして残す (符号はそのまま)。
 
-    動きの無い部品は今の在庫数を 0 として、実地の数がそのまま入る (この 1 件で在庫を数え始める)。
+    入れた直後の在庫数は、いつも実地の数になる。
+    動きの無い部品 (今の在庫数 None) は、この 1 件で在庫を数え始める (moved_on が数え始めの日)。差は
+    実地の数 + その部品の出荷日が moved_on と同じ日か後の出荷の合計 (入れた時に既にある物)。この行が最初の行になり、
+    数え始めの日より前の出荷は在庫数から引かないので、在庫数 = 差 − その日と後の出荷 = 実地の数。
+    その日と後の出荷が無ければ、実地の数がそのまま入る。
+    動きのある部品は、差 = 実地の数 − 今の在庫数 (数え始めの日は変わらない)。
     実地の数が負と、差が 0 は ValueError。
     """
     counted = _dec(counted_qty)
@@ -233,7 +303,10 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
     with transaction.atomic():
         locked = _lock(item)
         current = balance(locked)
-        diff = counted - (_ZERO if current is None else current)
+        if current is None:
+            diff = counted + _shipped_on_or_after(locked, moved_on)
+        else:
+            diff = counted - current
         if diff == 0:
             raise ValueError("今の在庫数と同じです。調整は要りません。")
         return _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)

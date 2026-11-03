@@ -23,7 +23,7 @@ from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
 from seizou.core import access, conf, doctor, services
-from seizou.core.forms import SettingForm
+from seizou.core.forms import CompanyForm, SettingForm
 from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
 from seizou.parts import PARTS
@@ -329,3 +329,34 @@ def setting_clear(request, key):
     else:
         messages.success(request, "答えの値に戻しました。")
     return HttpResponseRedirect(reverse("core:settings"))
+
+
+class CompanyUpdateView(BaseFormView):
+    """会社の情報の変更 (納品書と請求書の会社の欄に出す住所・電話・振込先・ロゴ)。
+
+    使う人: 総務 / いつ: 使い始めるときと、住所や振込先が変わったとき / 何のために: 納品書と請求書の会社の欄に出す住所・電話・振込先・ロゴを入れる / 次にすること: 設定の画面の「会社の情報」で確かめ、納品書か請求書の印刷で見る
+    対象はいつも会社の 1 行 (services.company())。土台の call_service が update_company(会社, user=..., data=...) を呼ぶ。
+    門は設定の変更と同じ settings_denied (アカウント管理の権限。3 状態の外)。form_valid の require_write も core.update_company (ACCOUNT_ACTIONS) で 2 重に断る。
+    """
+
+    screen_name = "会社の情報の変更"
+    screen_help = "納品書と請求書の会社の欄に出す住所・電話・振込先・ロゴを入れる。振込先は請求書だけに出る。保存すると設定の画面へ戻る。"
+    screen_icon = "settings"
+    form_class = CompanyForm
+    service = staticmethod(services.update_company)
+    success_url = reverse_lazy("core:settings")
+
+    def dispatch(self, request, *args, **kwargs):
+        denied = settings_denied(request)
+        if denied is not None:
+            add_never_cache_headers(denied)
+            return denied
+        if request.user.is_authenticated:
+            self.object = services.company()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # 土台は model が無いと cancel_url を None にするので、設定の画面へ戻す
+        context["cancel_url"] = reverse("core:settings")
+        return context

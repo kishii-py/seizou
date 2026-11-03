@@ -9,9 +9,10 @@ SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。�
 """
 
 from django import forms
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 
 from seizou.core import conf
+from seizou.core.models import Company
 
 #: 選ぶ欄の空の選択肢の字 (core の apps.ready が Django の既定の字をこれに置き換える)
 EMPTY_LABEL = "選んでください"
@@ -136,3 +137,24 @@ class SettingForm(forms.Form):
 
     def service_kwargs(self):
         return {"key": self.key, "value": self.value()}
+
+
+class CompanyForm(ServiceModelForm):
+    """会社の情報 (住所・電話・振込先・ロゴ) の入力。値を確かめて保存するのは services の update_company (form は欄の型と字数だけ)。"""
+
+    # ロゴは絵だけ (Pillow で絵かを確かめる)。SVG と HTML は上げたファイルの口がダウンロードにして <img> に出ないので受けない
+    logo = forms.ImageField(
+        label="ロゴ",
+        required=False,
+        validators=[FileExtensionValidator(["png", "jpg", "jpeg"])],
+        help_text="PNG か JPEG の絵。納品書と請求書の会社の欄の頭に出る。消すときは「クリア」に check を入れて保存。",
+    )
+
+    class Meta:
+        model = Company
+        fields = ("address", "phone", "bank_account", "logo")
+        help_texts = {
+            "address": "納品書と請求書の会社の欄に出す。郵便番号から 1 行で (例: 〒000-0000 見本県架空市見本町 1-2-3)。",
+            "phone": "例: 00-0000-0000",
+            "bank_account": "請求書だけに出す。銀行・支店・口座の種類・番号・名義を 1 行で (例: 作り物銀行 見本支店 普通 0000000 名義 ミホン)。",
+        }

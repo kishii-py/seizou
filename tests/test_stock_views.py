@@ -251,3 +251,33 @@ def test_stock_list_marks_numbers_and_sorts(user, logged_in, customer, items, cu
     lines = logged_in.get(url, {"format": "csv", "sort": "-stock_balance"}).content.decode("utf-8").lstrip("﻿").splitlines()
     assert "在庫数" in lines[0]
     assert lines[1].startswith("T-100,")
+
+
+@pytest.mark.django_db
+def test_count_from_screen_with_past_shipments(user, logged_in, customer, items):
+    item = items[0]
+    line = _line(user, customer, item, qty="70")
+    today = timezone.localdate()
+    yesterday = today.fromordinal(today.toordinal() - 1)  # 数え始める日より前の出荷
+    shipping_services.ship(line, Decimal("40"), yesterday, user)
+    shipping_services.ship(line, Decimal("30"), yesterday, user)
+    url = reverse("stock:adjust_create")
+
+    response = logged_in.post(url, {"item": item.pk, "counted_qty": "5", "moved_on": _today(), "note": "棚卸し"})
+    assert response.status_code == 302
+    assert StockMove.objects.get(kind=KIND_ADJUSTED).qty == Decimal("5")
+
+    listed = logged_in.get(reverse("stock:stock_list"))
+    labels = [col.label for col in listed.context["columns"]]
+    index = labels.index("在庫数")
+    row = next(row for row in listed.context["rows"] if row["obj"].pk == item.pk)
+    assert Decimal(str(row["cells"][index]["value"])) == Decimal("5")  # −65 でない
+    cell = _row_tds(listed.content.decode(), item.pk)[index]
+    assert "text-error" not in cell and "-65" not in cell
+
+    count = StockMove.objects.count()
+    response = logged_in.post(url, {"item": item.pk, "counted_qty": "5", "moved_on": _today(), "note": ""})
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "alert-error" in body and "調整は要りません" in body
+    assert StockMove.objects.count() == count

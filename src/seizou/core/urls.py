@@ -20,7 +20,7 @@ from seizou.core.login_guard import LockoutAuthenticationForm
 from seizou.core.manual import ManualView, manual_fragment, manual_image, manual_pdf
 from seizou.core.media import protected_file
 from seizou.core.search import SearchView
-from seizou.core.settings_screen import SettingsView, SettingUpdateView, setting_clear
+from seizou.core.settings_screen import CompanyUpdateView, SettingsView, SettingUpdateView, setting_clear
 from seizou.core.views import HomeView, RememberLoginView
 from seizou.parts import PARTS
 
@@ -46,6 +46,7 @@ core_patterns = [
     path("manual/images/<str:name>", manual_image, name="manual_image"),
     path("guide/<str:anchor>/", screen_guide, name="screen_guide"),
     path("settings/", SettingsView.as_view(), name="settings"),
+    path("settings/company/", CompanyUpdateView.as_view(), name="company_update"),
     path("settings/<str:key>/edit/", SettingUpdateView.as_view(), name="setting_update"),
     path("settings/<str:key>/clear/", setting_clear, name="setting_clear"),
     path("login/", RememberLoginView.as_view(authentication_form=LockoutAuthenticationForm), name="login"),
