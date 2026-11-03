@@ -170,6 +170,7 @@ def sections(items: list[dict]) -> list[dict]:
 def seizou(request) -> dict:
     from seizou.core import access
     from seizou.core import services
+    from seizou.core import practice
 
     try:
         company = services.company()
@@ -196,6 +197,7 @@ def seizou(request) -> dict:
             # 入っている部品の枠だけを include するために使う。
             "parts": part_names(),
             "hide_money": access.hides_money(getattr(request, "user", None)),  # 金額の閲覧が無い人 (on) に金額の枡を隠す印
+            "practice": practice.is_practice(),  # 練習モード (seizou_practice start が立てたサーバー) の印。base.html が帯と題の「練習: 」を出す
         }
     }
 

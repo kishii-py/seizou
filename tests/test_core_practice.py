@@ -17,6 +17,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
+from django.urls import reverse
 
 from seizou import cli
 from seizou.core import backup, practice
@@ -349,3 +350,36 @@ def test_is_practice_reads_env_only(monkeypatch):
     for value in ("0", "yes", ""):
         monkeypatch.setenv("SEIZOU_PRACTICE", value)
         assert practice.is_practice() is False
+
+
+BAND = "練習モード (ここでの登録は本番に残りません。閉じるときは seizou_practice stop)"
+BAND_CLASS = 'class="bg-warning text-warning-content px-4 py-2 text-center text-sm font-bold"'
+
+
+@pytest.mark.django_db
+def test_band_and_title_only_in_practice_mode(client, monkeypatch):
+    monkeypatch.delenv("SEIZOU_PRACTICE", raising=False)
+    response = client.get(reverse("core:login"))
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert response.context["seizou"]["practice"] is False
+    assert "練習モード" not in html
+    assert "<title>練習: " not in html
+
+    monkeypatch.setenv("SEIZOU_PRACTICE", "1")
+    response = client.get(reverse("core:login"))
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert response.context["seizou"]["practice"] is True
+    assert BAND in html
+    assert "<title>練習: " in html
+    assert BAND_CLASS in html
+
+    user = get_user_model().objects.create_user("tester", password="pass-for-tests-only")
+    client.force_login(user)
+    response = client.get(reverse("core:home"))
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert BAND in html
+    assert "<title>練習: " in html
+    assert html.index("<body") < html.index(BAND) < html.index('<div class="drawer')
