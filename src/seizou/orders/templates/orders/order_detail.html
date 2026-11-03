@@ -1,5 +1,5 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons orders_board %}
+{% load seizou_tags seizou_icons %}
 {# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でないときだけ) を足す。取消の受注は「編集」も出さない (取消の受注は直せない = R05)。 #}
 {# 明細の表の先頭の「操作」の列は、行ごとの ⋮ のメニュー (orders/_line_menu.html。右クリックでも同じメニュー。出荷する・指示書を発行する・発注する・部品の小窓・図面)。ボタンを並べる形は表が枠より広くなったのでやめた (決め 11-03 17:2x)。最後の欄は「残」のまま (E2E が行の最後の td で残を読む)。「検収」の列 (検収の数の合計と最後の検収日) は「出荷済み」と「残」の間。 #}
 {% block edit_button %}{% if object.status != "cancelled" %}{{ block.super }}{% endif %}{% endblock %}
