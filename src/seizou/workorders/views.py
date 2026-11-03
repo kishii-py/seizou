@@ -44,7 +44,7 @@ class WorkOrderListView(BaseListView):
     )
     columns = (
         "wo_no",
-        "order_line",
+        {"name": "order_line", "sort_key": "order_line__order__order_no"},
         ("order_line__item", "部品"),
         "qty",
         "issued_on",

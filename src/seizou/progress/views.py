@@ -35,7 +35,7 @@ class ProgressListView(BaseListView):
     model = Progress
     screen_name = "実績の一覧"
     screen_help = "指示書の工程ごとに入れた実績の記録。日時の新しい順に並びます。"
-    columns = ("workorder_step", "qty", "recorded_at", "recorded_by", "note")
+    columns = ({"name": "workorder_step", "sort_key": "workorder_step__workorder__wo_no"}, "qty", "recorded_at", "recorded_by", "note")
     search_fields = ("workorder_step__workorder__wo_no",)
     ordering = ("-recorded_at", "-id")
 
