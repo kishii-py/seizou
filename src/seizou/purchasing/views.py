@@ -26,15 +26,15 @@ class PurchaseOrderListView(BaseListView):
     screen_name = "発注"
     screen_help = "協力企業への発注。行を押すと明細と、相手へ送った記録が見られます。"
     # received_total・receive_remaining は annotate の列 (purchasing.services.annotate_order_received の Subquery)。
-    # 土台の ColumnSpec では並び替えと数の欄にならない (字のまま出る)。
+    # columns の印 (kind・sortable) で土台が右寄せ・赤・並び替えを出す。
     columns = (
         "po_no",
         "partner",
         "order_date",
         "status",
         "replied_at",
-        ("received_total", "受入の数"),
-        ("receive_remaining", "受入の残"),
+        {"name": "received_total", "label": "受入の数", "kind": "number", "sortable": True},
+        {"name": "receive_remaining", "label": "受入の残", "kind": "number", "sortable": True},
         "note",
     )
     search_fields = ("po_no", "partner__name", "partner__code")

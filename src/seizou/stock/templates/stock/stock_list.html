@@ -3,7 +3,7 @@
 {% comment %}
 在庫の一覧: core の一覧の上に、動きの一覧・払い出し・棚卸しの調整・製造の完了を入庫にするの入口のボタン (主色は製造の完了だけ)。
 一覧の model は部品なので、土台の「新規登録」は部品の新規登録を指す。actions の block は土台の中身を使わず、自分の入口だけを出す。
-在庫数の欄は annotate の列なので、土台では字のまま出る (右寄せと赤は core の列の口が要る = 要望)。
+在庫数と最終の動きの日は annotate の列。columns の印 (kind・sortable) で土台が右寄せ・赤・等幅の日付・並び替えを出す。
 {% endcomment %}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'stock:stockmove_list' %}">{% icon "list" "size-4" %}動きの一覧</a>
 <a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}">{% icon "truck" "size-4" %}払い出し</a>

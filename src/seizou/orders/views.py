@@ -53,19 +53,20 @@ class OrderLineListView(BaseListView):
         "既定は残のある明細 (取消を除く) を納期の近い順に出します。"
         "行の ⋮ か右クリックから、出荷・指示書の発行・実績・発注へ移れます。"
     )
-    # board__<名前> は OrderLine.board (orders.board.BoardRow) の読むだけの値。shipped_total・remaining_total は
-    # annotate の列。どちらも土台の ColumnSpec では並び替えと合計の対象にならない (合計の行はテンプレートの tag が出す)。
+    # board__<名前> は OrderLine.board (orders.board.BoardRow) の読むだけの値 (kind だけ = 並び替えと合計は無い)。
+    # shipped_total・remaining_total は annotate の列 (kind と sortable = 土台が右寄せと並び替えを出す)。
+    # 合計の行はテンプレートの tag が出す (土台の total は書かない)。
     columns = (
         ("order__order_no", "受注番号"),
         ("order__customer", "得意先"),
         ("item", "部品"),
         ("due_date", "納期"),
-        ("board__days_left", "納期まで"),
+        {"name": "board__days_left", "label": "納期まで", "kind": "number"},
         ("qty", "数量"),
-        ("shipped_total", "出荷済み"),
-        ("board__acceptance_total", "検収"),
-        ("remaining_total", "残"),
-        ("board__stock_balance", "在庫"),
+        {"name": "shipped_total", "label": "出荷済み", "kind": "number", "sortable": True},
+        {"name": "board__acceptance_total", "label": "検収", "kind": "number"},
+        {"name": "remaining_total", "label": "残", "kind": "number", "sortable": True},
+        {"name": "board__stock_balance", "label": "在庫", "kind": "number"},
         ("board__workorder_label", "指示書"),
         ("board__progress_label", "進捗"),
         ("board__plan_end", "計画の終了日"),

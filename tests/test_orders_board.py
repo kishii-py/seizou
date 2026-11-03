@@ -593,3 +593,47 @@ def test_order_no_links_to_detail(user, logged_in, customer, item):
 
     first_td = re.search(r"<td[^>]*>.*?</td>", tr_html, re.S).group(0)
     assert f'href="{reverse("orders:order_detail", args=[line.order_id])}">{line.order.order_no}</a>' in first_td
+
+
+def _heads(html):
+    """thead の見出し: 字 (タグを外した物) → (th の開きの tag, th の中の HTML)。"""
+    thead = re.search(r"<thead>.*?</thead>", html, re.S)
+    assert thead, "thead が無い"
+    heads = {}
+    for opening, inner in re.findall(r"(<th[^>]*>)(.*?)</th>", thead.group(0), re.S):
+        heads[re.sub(r"<[^>]+>", "", inner).strip()] = (opening, inner)
+    return heads
+
+
+@pytest.mark.django_db
+def test_board_sorts_by_annotated_columns_only(user, logged_in, customer, item):
+    shipped = _line(user, customer, item, qty="10")
+    shipping_services.ship(shipped, Decimal("4"), ORDER_DATE, user)  # 出荷済み 4・残 6
+    plain = _line(user, customer, item, qty="10")  # 出荷済み 0・残 10
+    url = reverse("orders:orderline_list")
+
+    def first_pk(sort):
+        response = logged_in.get(url, {"sort": sort})
+        assert response.context["sort"] == sort
+        return response.context["rows"][0]["obj"].pk
+
+    assert first_pk("-shipped_total") == shipped.pk
+    assert first_pk("shipped_total") == plain.pk
+    assert first_pk("-remaining_total") == plain.pk
+    assert first_pk("remaining_total") == shipped.pk
+
+    # board__ の Python の値は並び替えない (無視して既定の並び)
+    response = logged_in.get(url, {"sort": "board__days_left"})
+    assert response.status_code == 200
+    assert response.context["sort"] == ""
+
+    body = logged_in.get(url).content.decode()
+    heads = _heads(body)
+    for label in ("納期まで", "数量", "出荷済み", "検収", "残", "在庫"):
+        assert "text-right" in heads[label][0], label
+    for label in ("指示書", "判断"):
+        assert "text-right" not in heads[label][0], label
+    assert "sort=shipped_total" in heads["出荷済み"][1]
+    assert "sort=remaining_total" in heads["残"][1]
+    assert "<a " not in heads["納期まで"][1]
+    assert len(_totals(body)) == len(COLUMNS) + 1
