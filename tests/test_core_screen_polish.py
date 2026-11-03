@@ -195,3 +195,67 @@ def test_manual_search_miss_keeps_core_sentence(client, user):
     html = client.get(reverse("manuals:manual_list"), {"q": "当たらない言葉"}).content.decode()
     assert "に合う物はありません。" in html
     assert ROOT_EMPTY not in html
+
+
+# ---------------------------------------------------------------- 2. 取消の確かめの画面の案内と釦
+
+SHIPPED_AT = date(2026, 11, 5)
+ISSUED_ON = date(2026, 11, 30)
+REQUIRED_GUIDE = "「必須」の欄を埋めて"
+
+
+def _shipment(user, order, qty="4"):
+    from seizou.shipping import services as shipping_services
+
+    return shipping_services.ship(order.lines.get(), Decimal(qty), SHIPPED_AT, user)
+
+
+def _delivery_note(user, order, shipments):
+    from seizou.shipping import services as shipping_services
+
+    return shipping_services.create_delivery_note(order.customer, shipments, user)
+
+
+def _invoice(user, order):
+    from seizou.billing import services as billing_services
+
+    shipment = _shipment(user, order)
+    _delivery_note(user, order, [shipment])
+    shipment.refresh_from_db()
+    return billing_services.create_invoice(order.customer, [shipment], user, issued_on=ISSUED_ON)
+
+
+def test_cancel_confirm_screens_say_cancel(client, user, order):
+    from seizou.billing import services as billing_services
+
+    invoice = _invoice(user, order)
+    payment = billing_services.record_payment(invoice, ISSUED_ON, Decimal("1000"), user)
+    client.force_login(user)
+    for url in (
+        reverse("orders:order_cancel", args=[order.pk]),
+        reverse("billing:invoice_cancel", args=[invoice.pk]),
+        reverse("billing:payment_cancel", args=[payment.pk]),
+    ):
+        response = client.get(url)
+        assert response.status_code == 200, url
+        html = response.content.decode()
+        assert "取り消す</button>" in html, url
+        assert REQUIRED_GUIDE not in html, url
+        assert "保存</button>" not in html, url
+
+
+def test_create_screen_keeps_save_guide(client, user):
+    client.force_login(user)
+    html = client.get(reverse("masters:item_create")).content.decode()
+    assert "「必須」の欄を埋めて「保存」を押します。" in html
+    assert "保存</button>" in html
+
+
+def test_has_required_filter():
+    from seizou.billing.forms import InvoiceCancelForm, PaymentForm
+    from seizou.core.templatetags.seizou_tags import has_required
+    from seizou.orders.forms import OrderCancelForm
+
+    assert has_required(InvoiceCancelForm()) is False
+    assert has_required(OrderCancelForm()) is False
+    assert has_required(PaymentForm()) is True

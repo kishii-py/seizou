@@ -89,6 +89,7 @@ class InvoiceForm(forms.Form):
 
 class InvoiceCancelForm(forms.Form):
     """請求書を取り消す form。欄は無い。"""
+    submit_label = "取り消す"
 
     def service_kwargs(self):
         return {}
@@ -127,6 +128,7 @@ class PaymentForm(forms.Form):
 
 class PaymentCancelForm(forms.Form):
     """入金を取り消す form。欄は無い。"""
+    submit_label = "取り消す"
 
     def service_kwargs(self):
         return {}

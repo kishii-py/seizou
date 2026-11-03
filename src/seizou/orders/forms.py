@@ -211,6 +211,7 @@ class OrderForm(ServiceModelForm):
 
 class OrderCancelForm(forms.Form):
     """受注の取消。理由は備考の末尾に足される (services.cancel_order)。"""
+    submit_label = "取り消す"
 
     reason = forms.CharField(
         label="取消の理由",

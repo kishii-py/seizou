@@ -4,6 +4,7 @@ master_link: 品目か取引先を渡すと名前を出し、押すと小窓で�
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
+has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 """
 
 from decimal import ROUND_HALF_UP, Decimal
@@ -45,6 +46,12 @@ def can_manage_accounts(context):
 
     request = context.get("request")
     return access.can_manage_accounts(getattr(request, "user", None))
+
+
+@register.filter
+def has_required(form):
+    """{% if form|has_required %}。form の見える欄に必須の欄が 1 つでもあるか。"""
+    return any(field.field.required for field in form.visible_fields())
 
 
 def modal_url(obj) -> str | None:
