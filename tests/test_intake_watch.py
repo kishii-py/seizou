@@ -7,19 +7,25 @@ autouse の fixture が _ask_claude を「呼ばれたら AssertionError」に�
 """
 
 import json
+from datetime import timedelta
+from io import StringIO
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.connect.models import Inbox
-from seizou.intake import services
+from seizou.intake import services, watch
 from seizou.intake.models import Extraction
 from seizou.masters.services import create_partner
 from seizou.orders.models import Order
 from tests.test_connect_send import FakePost
-from tests.test_intake_extract import FAKE_KEY, PDF_BYTES, refuse_api, reply_data
+from tests.test_intake_extract import FAKE_KEY, PDF_BYTES, PNG_BYTES, refuse_api, reply_data
 
 UNKNOWN_SENDER = "知らない作り物の会社"
 
@@ -185,3 +191,153 @@ def test_watched_extraction_is_not_ordered_from_intake_screen(with_key, monkeypa
     body = response.content.decode()
     assert "届いた注文へ回した" in body
     assert reverse("intake:extraction_accept", args=[extraction.pk]) not in body
+
+
+# ここから命令 (seizou_intake_watch)。見張るフォルダは tmp_path/scan、見張りの記録の置き場 (BASE_DIR) は tmp_path/site。
+
+
+@pytest.fixture
+def scan(settings, tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    site.mkdir()
+    settings.BASE_DIR = site
+    folder = tmp_path / "scan"
+    folder.mkdir()
+    monkeypatch.setattr(watch, "SETTLE_SECONDS", 0)
+    return folder
+
+
+def run_command(*args):
+    """命令を打ち、(標準出力, 標準エラー) の字を返す。"""
+    out, err = StringIO(), StringIO()
+    call_command("seizou_intake_watch", *args, stdout=out, stderr=err)
+    return out.getvalue(), err.getvalue()
+
+
+def test_once_reads_and_moves_to_done(with_key, monkeypatch, scan, customer, user):
+    answer_with(monkeypatch, "作り物の得意先")
+    (scan / "order.pdf").write_bytes(PDF_BYTES)
+    (scan / "memo.txt").write_text("作り物のメモ", encoding="utf-8")
+
+    out, _err = run_command(str(scan), "--once", "--user", "tester")
+
+    assert (scan / "done" / "order.pdf").exists()
+    assert not (scan / "order.pdf").exists()
+    assert (scan / "memo.txt").exists()  # 読む拡張子でない物は動かさない
+    inbox = Inbox.objects.get()
+    assert inbox.partner == customer
+    assert inbox.source == Inbox.SOURCE_INTAKE
+    assert f"読んだ: order.pdf → 届いた注文 {inbox.pk} (取引先 作り物の得意先)" in out
+    assert "1 周見ました: 読んだ 1 件・同じ中身 0 件・読めなかった 0 件" in out
+    assert not (Path(scan.parent / "site") / watch.RECORD).exists()  # --once は記録を書かない
+    assert Order.objects.count() == 0
+
+
+def test_unreadable_file_goes_to_failed_with_reason(with_key, scan, user):
+    (scan / "bad.pdf").write_text("作り物の字だけのファイル", encoding="utf-8")
+
+    out, _err = run_command(str(scan), "--once", "--user", "tester")
+
+    assert (scan / "failed" / "bad.pdf").exists()
+    reason = (scan / "failed" / "bad.pdf.txt").read_text(encoding="utf-8")
+    assert reason == f"{services.MESSAGE_UNREADABLE_TYPE}\n"
+    assert Inbox.objects.count() == 0
+    assert Extraction.objects.count() == 0
+    assert "読めなかった: bad.pdf → failed/bad.pdf" in out
+    assert "読めなかった 1 件" in out
+
+
+def test_no_key_goes_to_failed_and_keeps_going(without_key, scan, user):
+    (scan / "a.pdf").write_bytes(PDF_BYTES)
+    (scan / "b.png").write_bytes(PNG_BYTES)
+    (scan / "failed").mkdir()
+    (scan / "failed" / "a.pdf").write_bytes(b"%PDF-1.4\n% older file for tests\n")  # 同じ名前があれば -2 を付ける
+
+    out, err = run_command(str(scan), "--once", "--user", "tester")
+
+    assert (scan / "failed" / "a-2.pdf").exists()
+    assert (scan / "failed" / "b.png").exists()
+    for name in ("a-2.pdf.txt", "b.png.txt"):
+        assert (scan / "failed" / name).read_text(encoding="utf-8") == f"{services.MESSAGE_NO_KEY}\n"
+    assert "鍵 (ANTHROPIC_API_KEY) が無いので" in err
+    assert "読めなかった 2 件" in out
+    assert Inbox.objects.count() == 0
+
+
+def test_waiting_row_from_command(with_key, monkeypatch, scan, customer, user):
+    answer_with(monkeypatch, UNKNOWN_SENDER)
+    (scan / "order.pdf").write_bytes(PDF_BYTES)
+
+    out, _err = run_command(str(scan), "--once", "--user", "tester")
+
+    assert (scan / "done" / "order.pdf").exists()
+    inbox = Inbox.objects.get()
+    assert inbox.partner is None
+    assert f"読んだ: order.pdf → 届いた注文 {inbox.pk} (差出人の確認待ち: {UNKNOWN_SENDER})" in out
+
+    (scan / "again.pdf").write_bytes(PDF_BYTES)  # 同じ中身をもう一度置く
+    out, _err = run_command(str(scan), "--once", "--user", "tester")
+    assert (scan / "done" / "again.pdf").exists()
+    assert f"同じ中身: again.pdf → 届いた注文 {inbox.pk} に入っています" in out
+    assert Inbox.objects.count() == 1
+
+
+def test_folder_from_settings_and_bad_arguments(with_key, monkeypatch, settings, scan, customer, user):
+    answer_with(monkeypatch, "作り物の得意先")
+    (scan / "order.pdf").write_bytes(PDF_BYTES)
+    settings.SEIZOU = {"intake_watch_folder": f" {scan} "}
+
+    out, _err = run_command("--once", "--user", "tester")
+    assert "1 周見ました: 読んだ 1 件" in out
+
+    settings.SEIZOU = {}
+    with pytest.raises(CommandError, match="見張るフォルダがありません。命令の引数か"):
+        run_command("--once", "--user", "tester")
+    with pytest.raises(CommandError, match="見張るフォルダがありません: "):
+        run_command(str(scan / "nothing"), "--once", "--user", "tester")
+    with pytest.raises(CommandError, match="利用者 nobody がいません"):
+        run_command(str(scan), "--once", "--user", "nobody")
+    with pytest.raises(CommandError, match="1 以上"):
+        run_command(str(scan), "--once", "--interval", "0", "--user", "tester")
+
+
+def test_loop_record_status_and_stop(monkeypatch, settings, scan, user):
+    site = Path(settings.BASE_DIR)
+    record_file = site / watch.RECORD
+    stop_file = site / watch.STOP
+
+    def stop_after_first_round(seconds):
+        assert record_file.exists()
+        assert watch.request_stop() is True
+
+    monkeypatch.setattr(watch, "_sleep", stop_after_first_round)
+    monkeypatch.setattr(watch, "close_old_connections", lambda: None)
+
+    out, _err = run_command(str(scan), "--interval", "5", "--user", "tester")
+
+    assert "見張りを始めました: " in out
+    assert "見張りを止めました: " in out
+    assert not record_file.exists()
+    assert not stop_file.exists()
+    assert run_command("--status")[0].strip() == "見張りは動いていません。"
+    assert run_command("--stop")[0].strip() == "見張りは動いていません。"
+
+    now = timezone.now()
+    record = {"pid": 4242, "folder": str(scan), "interval": 10, "started_at": now.isoformat(), "seen_at": now.isoformat()}
+    record_file.write_text(json.dumps(record), encoding="utf-8")
+    assert run_command("--status")[0].startswith(f"動いている: {scan} (pid 4242・10 秒ごと")
+    with pytest.raises(CommandError, match="既に見張っています"):
+        run_command(str(scan), "--user", "tester")
+    with pytest.raises(CommandError, match="既に見張っています"):
+        run_command(str(scan), "--once", "--user", "tester")
+    out, _err = run_command("--stop")
+    assert out.startswith("止める合図を置きました。次の見回り (10 秒以内) で止まります。")
+    assert stop_file.exists()
+
+    record["seen_at"] = (now - timedelta(hours=1)).isoformat()
+    record_file.write_text(json.dumps(record), encoding="utf-8")
+    assert run_command("--status")[0].startswith("止まっている (記録が古い): ")
+    out, _err = run_command(str(scan), "--user", "tester")  # 古い記録と残った合図は置き直して立てる
+    assert "見張りを始めました: " in out
+    assert not record_file.exists()
+    assert not stop_file.exists()
