@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.billing import services as billing_services
+from seizou.billing.models import Invoice
 from seizou.masters import services as masters_services
 from tests.test_billing_payment_views import PASSWORD, RECEIVED_ON, _cell, _cells, _customer, _invoice, _order_line, _panel
 
@@ -62,7 +63,9 @@ def test_list_balance_is_money_column(client_logged_in, invoice):
 
 def test_cancelled_invoice_payment_label_is_dash(client_logged_in, user, item, invoice):
     billing_services.record_payment(invoice, RECEIVED_ON, Decimal("500"), user)
-    cancelled = billing_services.cancel_invoice(invoice, user)
+    # 入金の残る請求書の取消は services が止める (決め 11-04 06:4x)。止める前に取り消した請求書 (古いデータ) は表に直に作る。
+    Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.STATUS_CANCELLED)
+    cancelled = Invoice.objects.get(pk=invoice.pk)
 
     assert cancelled.payment_status() == "partial"
     assert cancelled.payment_status_label() == "—"
