@@ -6,6 +6,8 @@ a2_manager = アカウント管理だけ)。判定を有効にする試験は se
 """
 
 import logging
+from datetime import date
+from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -17,6 +19,8 @@ from seizou.core import services as core_services
 from seizou.core.models import SettingOverride
 from seizou.manuals import services as manuals_services
 from seizou.manuals.models import ManualImage
+from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
 from tests.test_core_settings_edit import clear_url, edit_url
 from tests.test_manuals_views import png_upload
 
@@ -164,3 +168,61 @@ def test_denied_page_names_screen_and_part(db, on, client):
         assert response.status_code == 403, name
         assert text in response.content.decode(), name
     assert client.get(reverse("billing:invoice_list")).status_code == 200
+
+
+# ---------------------------------------------------------------- 記録だけの金額 (精査 A2 の B4)
+
+
+@pytest.fixture
+def order(admin):
+    """作り物の受注 1 件 (単価 1,500 × 10)。"""
+    customer = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, admin)
+    shaft = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, admin)
+    return orders_services.create_order(
+        customer,
+        [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("1500")}],
+        admin,
+        order_date=date(2026, 11, 2),
+    )
+
+
+def _money_records(caplog):
+    return [record.getMessage() for record in access_records(caplog) if "(金額の閲覧)" in record.getMessage()]
+
+
+def test_hide_money_records_once_in_log_mode(settings, client, admin, order, caplog):
+    caplog.set_level(logging.WARNING, logger="seizou.access")
+    genba = account("genba")
+    detail_url = reverse("orders:order_detail", args=[order.pk])
+
+    def open_detail(person):
+        client.force_login(person)
+        caplog.clear()
+        response = client.get(detail_url)
+        assert response.status_code == 200
+        return response, response.content.decode()
+
+    # 既定 (log): 見せて、記録に 1 行だけ (印を何度読んでも 1 行)。
+    response, html = open_detail(genba)
+    assert "1,500" in html
+    assert _money_records(caplog) == ["記録だけ (金額の閲覧): genba が 単価と金額を見た (金額の閲覧)"]
+    assert bool(response.context["seizou"]["hide_money"]) is False
+    # 金額の列の無い一覧は印を読まないので、金額の閲覧の記録は増えない。
+    caplog.clear()
+    assert client.get(reverse("masters:process_list")).status_code == 200
+    assert _money_records(caplog) == []
+
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    response, html = open_detail(genba)
+    assert "1,500" not in html
+    assert _money_records(caplog) == []
+    assert bool(response.context["seizou"]["hide_money"]) is True
+    response, html = open_detail(admin)
+    assert "1,500" in html
+    assert bool(response.context["seizou"]["hide_money"]) is False
+
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "off"}}
+    response, html = open_detail(genba)
+    assert "1,500" in html
+    assert _money_records(caplog) == []
+    assert bool(response.context["seizou"]["hide_money"]) is False
