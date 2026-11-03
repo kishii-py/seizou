@@ -2,15 +2,17 @@
 
 見る所: 設定 transcription_minutes_per_line (既定 1・画面から変えない・点検が良い)、カードの行数 (入口が読み取りか
 届いた注文の、今月の取消でない受注の明細) と ≒ 転記の分の字、設定の値の戻し方、問い合わせの数、
-読み取りと届いた注文を受注にした直後の緑の知らせの 1 文 (手入力の受注には付かない)。
+読み取りと届いた注文を受注にした直後の緑の知らせの 1 文 (手入力の受注には付かない)、受付の平均の分
+(承認の日時の列 Inbox.accepted_at は N82 が足す。列の無い main では無い方の枝だけが通り、ある方の枝は取り込みの後の main で回る)。
 日は TODAY を渡して固定し、dashboard_stats と画面を通す試験だけ今日 (timezone.localdate) で作る。名前は作り物だけ。
 """
 
 import json
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -21,6 +23,7 @@ from django.utils import timezone
 
 from seizou.connect import services as connect_services
 from seizou.connect import signing
+from seizou.connect.models import Inbox
 from seizou.core import conf, dashboard, doctor, views
 from seizou.core import services as core_services
 from seizou.intake import services as intake_services
@@ -194,3 +197,39 @@ def test_manual_order_has_no_saved_note(user, customer, shaft):
     note = SimpleNamespace(saved_note="明細 1 行を手で打たずに受注にしました。")
     assert views.with_saved_note("保存しました。", note) == "保存しました。明細 1 行を手で打たずに受注にしました。"
     assert views.with_saved_note("保存しました。", SimpleNamespace(saved_note=3)) == "保存しました。"
+
+
+def test_average_minutes_rounds():
+    tz = ZoneInfo("Asia/Tokyo")
+    at = datetime(2026, 11, 3, 10, 0, tzinfo=tz)
+    pairs = [(at, at + timedelta(minutes=12)), (at, at + timedelta(minutes=21))]
+    assert dashboard._average_minutes(pairs) == 17  # 16.5 の四捨五入
+    skipped = pairs + [(None, at), (at, None), (at, at - timedelta(minutes=5))]
+    assert dashboard._average_minutes(skipped) == 17
+    assert dashboard._average_minutes([]) is None
+
+
+def test_accept_minutes_needs_column(user, customer, shaft):
+    has_column = any(field.name == "accepted_at" for field in Inbox._meta.get_fields())
+    if not has_column:
+        # 承認の日時の列 (N82 が足す) が無い main: 問い合わせをせずに None で、カードの脚注に受付の平均を出さない。
+        with CaptureQueriesContext(connection) as captured:
+            assert dashboard.accept_minutes_this_month(TODAY) is None
+        assert len(captured.captured_queries) == 0
+        assert "受付の平均" not in views.dashboard_stats()[-1]["note"]
+    else:
+        # 列がある main (N82 の後): 今月に届いた注文 2 件を承認し、届いてから承認までを 12 分と 21 分にする。
+        today = timezone.localdate()
+        received = datetime(today.year, today.month, today.day, 10, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        for number, minutes in ((1, 12), (2, 21)):
+            payload = _payload(str(uuid.uuid4()), [_line(1, f"A-{number}00")])
+            inbox = connect_services.record_inbox(customer, payload, user)
+            connect_services.accept(inbox, {f"A-{number}00": shaft}, user, send=False)
+            # 試験の中だけの直し: 届いた日時と承認の日時を決めた値にする。
+            Inbox.objects.filter(pk=inbox.pk).update(
+                received_at=received, accepted_at=received + timedelta(minutes=minutes)
+            )
+        with CaptureQueriesContext(connection) as captured:
+            assert dashboard.accept_minutes_this_month(today) == 17
+        assert len(captured.captured_queries) == 1
+        assert "受付の平均 17 分" in views.dashboard_stats()[-1]["note"]

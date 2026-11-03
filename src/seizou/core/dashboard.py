@@ -11,6 +11,7 @@
 - lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
 - minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
 - hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
+- accept_minutes_this_month: 今月の受付 (届いた注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
@@ -483,6 +484,47 @@ def hands_free_lines(today=None) -> int | None:
         )
     except DatabaseError:
         return None
+
+
+def _average_minutes(pairs) -> int | None:
+    """(届いた日時, 承認の日時) の組の並びから、かかった分の平均を四捨五入した整数。どちらかが None の組と、承認が届いたより前の組は飛ばす。組が 1 つも無ければ None。"""
+    spans = [
+        Decimal(str((accepted - received).total_seconds())) / 60
+        for received, accepted in pairs
+        if received is not None and accepted is not None and accepted >= received
+    ]
+    if not spans:
+        return None
+    return int((sum(spans) / len(spans)).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def accept_minutes_this_month(today=None) -> int | None:
+    """今月 (承認の日時が today の月。地域の時刻) に承認した届いた注文の、届いてから承認までの分の平均。承認の日時の列 (Inbox.accepted_at。N82 が足す) が無い・受信箱の部品が無い・今月の承認が無い・DB が読めなければ None。列があれば問い合わせは 1 回。"""
+    from django.core.exceptions import FieldDoesNotExist
+
+    inbox_model = _model("connect", "Inbox")
+    if inbox_model is None:
+        return None
+    try:
+        inbox_model._meta.get_field("accepted_at")
+    except FieldDoesNotExist:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    start = date(today.year, today.month, 1)
+    end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    try:
+        pairs = list(
+            inbox_model._default_manager.filter(
+                status=inbox_model.STATUS_ACCEPTED,
+                # 期間の境は地域の時刻の 0 時 (production_trend と同じ)。
+                accepted_at__gte=timezone.make_aware(datetime.combine(start, time.min)),
+                accepted_at__lt=timezone.make_aware(datetime.combine(end, time.min)),
+            ).values_list("received_at", "accepted_at")
+        )
+    except DatabaseError:
+        return None
+    return _average_minutes(pairs)
 
 
 def lines_to_ship():

@@ -1110,6 +1110,9 @@ def dashboard_stats() -> list[dict]:
     hands_free = dashboard.hands_free_lines(today)
     if hands_free is not None:
         note = f"{today.month} 月に、読み取った注文書と届いた注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
+        accept = dashboard.accept_minutes_this_month(today)
+        if accept is not None:
+            note += f"。受付の平均 {accept} 分"
         stats.append(
             {
                 "label": "手で打たずに受けた明細",
