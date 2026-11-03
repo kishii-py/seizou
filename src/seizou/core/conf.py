@@ -9,6 +9,7 @@
 表の読みは savepoint (transaction.atomic) で包み、読めない読みが外の transaction (services の atomic の中) を壊さないようにする。
 """
 
+import re
 import time
 
 from django.apps import apps
@@ -29,6 +30,8 @@ DEFAULTS = {
     "intake_model": "claude-opus-5-5",  # 注文書の読み取りが使う model
     "feedback_model": "claude-haiku-5-5",  # フィードバックの AI の聞き取りが使う model (安い model)
     "menu": [],  # 左のメニューの括り (label・apps・screens の並び)。空なら既定の並び (core.context_processors.SECTIONS)
+    "brand_color": "",  # 画面の主色 (# と 16 進の 6 桁。空なら土台の色。2 社を並べたときに見分ける)
+    "industry": "",  # 業種 (seizou new が答えの YAML の industry を写す。左上の会社の名前の下に出す。空なら seizou)
 }
 
 CHOICES = {
@@ -144,3 +147,18 @@ def company_id() -> str:
     """会社の id (組み立ての命令が SEIZOU に書く)。試験では空。"""
     values = getattr(settings, "SEIZOU", {}) or {}
     return values.get("id", "")
+
+
+#: 画面の主色 (brand_color) の形。# と 16 進の 6 桁 (fullmatch で見る。services の validate_setting も使う)
+BRAND_COLOR_PATTERN = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def brand_color() -> str:
+    """画面の主色 (brand_color) を、# と 16 進の 6 桁の小文字で返す。形の違う値と空は空の字 (土台の色)。
+
+    答えの YAML の書き損じと画面の値を、base.html の style に入れる前にここで止める。
+    """
+    value = setting("brand_color")
+    if isinstance(value, str) and BRAND_COLOR_PATTERN.fullmatch(value):
+        return value.lower()
+    return ""
