@@ -27,6 +27,11 @@ from .models import Item, Partner, Process
 
 
 class ItemListView(BaseListView):
+    """部品マスターの一覧。
+
+    使う人: 全員 / いつ: 部品の情報を見るときと、新しい部品を登録するとき / 何のために: 品番・図面・工程・取引先ごとの品番を 1 か所で持つ / 次にすること: 品名を押して小窓、行から詳細へ。直すのは生産管理
+    """
+
     model = Item
     screen_name = "部品マスター"
     screen_help = "部品 (品番・品名・図面) を 1 か所に持つ表。品名を押すと、画面を移らずに中身を見られます。"
@@ -37,6 +42,11 @@ class ItemListView(BaseListView):
 
 
 class ItemDetailView(BaseDetailView):
+    """部品の詳細。
+
+    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの品番と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ
+    """
+
     model = Item
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
@@ -45,6 +55,11 @@ class ItemDetailView(BaseDetailView):
 
 
 class ItemCreateView(BaseFormView):
+    """部品の新規登録の入力。
+
+    使う人: 生産管理 / いつ: 新しい部品が増えたとき / 何のために: 品番・品名・図面を登録する / 次にすること: 部品の詳細で標準の工程と取引先ごとの品番を足す
+    """
+
     model = Item
     form_class = ItemForm
     service = staticmethod(services.create_item)
@@ -53,6 +68,11 @@ class ItemCreateView(BaseFormView):
 
 
 class ItemUpdateView(BaseFormView):
+    """部品の編集の入力。
+
+    使う人: 生産管理 / いつ: 図面や単価が変わったとき / 何のために: 部品の項目を直す / 次にすること: 部品の詳細で確かめる
+    """
+
     model = Item
     form_class = ItemForm
     service = staticmethod(services.update_item)
@@ -61,6 +81,11 @@ class ItemUpdateView(BaseFormView):
 
 
 class ItemModalView(BaseModalView):
+    """部品の小窓。
+
+    使う人: 全員 / いつ: 受注や指示書の画面で部品を確かめたいとき / 何のために: 画面を移らずに要点と取引先ごとの品番を見る / 次にすること: 要れば部品の詳細へ
+    """
+
     model = Item
     screen_name = "部品の小窓"
     screen_help = "部品の要点と取引先ごとの品番を見るだけの小窓。詳細へ移れます。"
@@ -73,6 +98,11 @@ class ItemSelectView(BaseSelectView):
 
 
 class PartnerListView(BaseListView):
+    """取引先の一覧。
+
+    使う人: 営業・経理 / いつ: 取引先が増えたときと、締日と支払の条件を直すとき / 何のために: 得意先と協力企業を持つ / 次にすること: 行から詳細へ。受注と発注で選ぶ
+    """
+
     model = Partner
     screen_name = "取引先"
     screen_help = "得意先と協力企業。締日・支払日と端数の扱いを取引先ごとに持ちます。"
@@ -83,6 +113,11 @@ class PartnerListView(BaseListView):
 
 
 class PartnerDetailView(BaseDetailView):
+    """取引先の詳細。
+
+    使う人: 営業・経理 / いつ: 取引先の条件と履歴を見るとき / 何のために: 項目と取引先ごとの品番、受注と発注の履歴を見る / 次にすること: 「編集」へ
+    """
+
     model = Partner
     screen_name = "取引先の詳細"
     screen_help = "取引先の項目と、取引先ごとの品番、受注と発注の履歴。"
@@ -92,6 +127,11 @@ class PartnerDetailView(BaseDetailView):
 
 
 class PartnerCreateView(BaseFormView):
+    """取引先の新規登録の入力。
+
+    使う人: 営業 / いつ: 取引先が増えたとき / 何のために: 得意先か協力企業を登録する / 次にすること: 受注と発注で選べるようになる
+    """
+
     model = Partner
     form_class = PartnerForm
     service = staticmethod(services.create_partner)
@@ -100,6 +140,11 @@ class PartnerCreateView(BaseFormView):
 
 
 class PartnerUpdateView(BaseFormView):
+    """取引先の編集の入力。
+
+    使う人: 営業・経理 / いつ: 締日・支払日・端数の扱いを直すとき / 何のために: 取引先の項目を直す / 次にすること: 取引先の詳細で確かめる
+    """
+
     model = Partner
     form_class = PartnerForm
     service = staticmethod(services.update_partner)
@@ -108,6 +153,11 @@ class PartnerUpdateView(BaseFormView):
 
 
 class PartnerModalView(BaseModalView):
+    """取引先の小窓。
+
+    使う人: 全員 / いつ: 受注や出荷の画面で取引先を確かめたいとき / 何のために: 画面を移らずに要点を見る / 次にすること: 要れば取引先の詳細へ
+    """
+
     model = Partner
     screen_name = "取引先の小窓"
     screen_help = "取引先の要点を見るだけの小窓。詳細へ移れます。"
@@ -119,6 +169,11 @@ class PartnerSelectView(BaseSelectView):
 
 
 class ProcessListView(BaseListView):
+    """工程の一覧。
+
+    使う人: 生産管理 / いつ: 工程が増えたとき / 何のために: 工程と「計画に使う」の印を持つ / 次にすること: 印を付けた工程が生産計画の盤に出る
+    """
+
     model = Process
     screen_name = "工程"
     screen_help = "工程の一覧。「計画に使う」に印を付けた工程ごとに、生産計画の盤が並びます。"
@@ -127,12 +182,22 @@ class ProcessListView(BaseListView):
 
 
 class ProcessDetailView(BaseDetailView):
+    """工程の詳細。
+
+    使う人: 生産管理 / いつ: 工程の項目を確かめるとき / 何のために: 名前・並び順・「計画に使う」を見る / 次にすること: 「編集」へ
+    """
+
     model = Process
     screen_name = "工程の詳細"
     screen_help = "工程の項目。「編集」で名前や並び順と「計画に使う」の印を変えられます。"
 
 
 class ProcessCreateView(BaseFormView):
+    """工程の新規登録の入力。
+
+    使う人: 生産管理 / いつ: 工程が増えたとき / 何のために: 工程コードと名前を登録する / 次にすること: 「計画に使う」なら生産計画の盤に出る
+    """
+
     model = Process
     form_class = ProcessForm
     service = staticmethod(services.create_process)
@@ -141,6 +206,11 @@ class ProcessCreateView(BaseFormView):
 
 
 class ProcessUpdateView(BaseFormView):
+    """工程の編集の入力。
+
+    使う人: 生産管理 / いつ: 並び順や「計画に使う」を変えるとき / 何のために: 工程の項目を直す / 次にすること: 生産計画の盤で確かめる
+    """
+
     model = Process
     form_class = ProcessForm
     service = staticmethod(services.update_process)
@@ -153,6 +223,11 @@ class ProcessUpdateView(BaseFormView):
 
 
 class ItemImportView(BaseFormView):
+    """部品マスターの CSV 取り込みの入力。
+
+    使う人: 生産管理・総務 / いつ: 立ち上げのときと、部品をまとめて足すとき / 何のために: CSV から部品をまとめて登録・更新する / 次にすること: 部品マスターで確かめる
+    """
+
     form_class = ItemCsvImportForm
     service = staticmethod(services.import_items)
     template_name = "masters/csv_import.html"
@@ -161,6 +236,11 @@ class ItemImportView(BaseFormView):
 
 
 class PartnerImportView(BaseFormView):
+    """取引先の CSV 取り込みの入力。
+
+    使う人: 営業・総務 / いつ: 立ち上げのときと、取引先をまとめて足すとき / 何のために: CSV から取引先をまとめて登録・更新する / 次にすること: 取引先の一覧で確かめる
+    """
+
     form_class = PartnerCsvImportForm
     service = staticmethod(services.import_partners)
     template_name = "masters/csv_import.html"
@@ -218,6 +298,11 @@ def item_drawing(request, pk, filename):
 
 
 class ItemDrawingViewerView(BaseDetailView):
+    """図面ビューア。
+
+    使う人: 全員 / いつ: 図面を確かめるときと、前の版と見比べるとき / 何のために: 図面を拡大・回転して見る / 次にすること: 要れば「図面を版に戻す」へ
+    """
+
     model = Item
     template_name = "masters/drawing_viewer.html"
     screen_name = "図面ビューア"
@@ -225,6 +310,11 @@ class ItemDrawingViewerView(BaseDetailView):
 
 
 class ItemDrawingRestoreView(BaseFormView):
+    """図面を版に戻す入力。
+
+    使う人: 生産管理 / いつ: 差し替えた図面を前の版に戻すとき / 何のために: 選んだ版を今の図面にする / 次にすること: 図面ビューアで確かめる
+    """
+
     model = Item
     form_class = DrawingRestoreForm
     service = staticmethod(services.restore_drawing_version)

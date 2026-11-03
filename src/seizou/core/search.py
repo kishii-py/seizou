@@ -165,7 +165,10 @@ def query_string(**params) -> str:
 
 
 class SearchView(ScreenMixin, TemplateView):
-    """横断の検索の画面。GET の q (言葉)・kind (種類。all か部品の KIND)・partner (取引先の pk)。読むだけ。"""
+    """横断の検索の画面。GET の q (言葉)・kind (種類。all か部品の KIND)・partner (取引先の pk)。読むだけ。
+
+    使う人: 全員 / いつ: 品番や注文番号で探すとき / 何のために: 横断して探す / 次にすること: 行を押して詳細へ
+    """
 
     screen_name = "検索"
     screen_help = "品番・品名・注文番号などで横断して探し、行を押すと詳細へ移る。"

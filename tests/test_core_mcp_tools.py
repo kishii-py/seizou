@@ -578,3 +578,14 @@ def test_list_rules_shows_modes(db, settings):
     settings.SEIZOU = {"over_shipment": "off"}
     again = mcp_tools.list_rules()
     assert {row["mode"] for row in again["checks"] if row["code"] == "R01"} == {"off"}
+
+
+def test_list_screens_returns_usecase():
+    screens = _json(mcp_tools.list_screens())
+    assert screens["ok"] is True
+    items = screens["items"]
+    assert items
+    assert all(isinstance(item.get("usecase"), str) for item in items)
+    assert all(item["url_name"] for item in items)
+    home = next(item for item in items if item["url_name"] == "core:home")
+    assert home["usecase"].startswith("使う人:")

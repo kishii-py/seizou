@@ -19,6 +19,11 @@ OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
 
 
 class OrderListView(BaseListView):
+    """受注の一覧。
+
+    使う人: 営業 / いつ: 注文書が届いたときと、受注の状態を見るとき / 何のために: 受けた注文を受注として持ち、直す / 次にすること: 「新規登録」か行から詳細へ。指示書の発行は生産管理が注文残で行う
+    """
+
     model = Order
     screen_name = "受注"
     screen_help = "受けた注文の一覧。既定は出荷の残っている受注 (受注・一部出荷) だけを出します。"
@@ -35,6 +40,12 @@ class OrderListView(BaseListView):
 
 
 class OrderLineListView(BaseListView):
+    """注文残の一覧 (注文残の盤)。
+
+    使う人: 生産管理 / いつ: 毎日と、注文が入ったとき /
+    何のために: 注文ごとに、在庫で払い出せるか・指示書を出すか・進んでいるか・間に合うかを判断し、その場で手配する / 次にすること: 行の ⋮ か右クリックから出荷・指示書の発行・実績・発注へ
+    """
+
     model = OrderLine
     screen_name = "注文残"
     screen_help = (
@@ -75,6 +86,11 @@ class OrderLineListView(BaseListView):
 
 
 class OrderDetailView(BaseDetailView):
+    """受注の詳細。
+
+    使う人: 営業・生産管理 / いつ: 受注の中身と進み具合を確かめるとき / 何のために: 明細ごとの出荷済みと残、指示書・出荷・請求書を見る / 次にすること: 明細の行から出荷か指示書の発行へ。直すなら「編集」
+    """
+
     model = Order
     screen_name = "受注の詳細"
     screen_help = (
@@ -96,6 +112,11 @@ class OrderDetailView(BaseDetailView):
 
 
 class OrderCreateView(BaseFormView):
+    """受注の新規登録の入力。
+
+    使う人: 営業 / いつ: 注文書が届いたとき / 何のために: 注文を受注として登録する / 次にすること: 保存すると注文残に出る (指示書の発行は生産管理)
+    """
+
     model = Order
     form_class = OrderForm
     service = staticmethod(services.create_order)
@@ -105,6 +126,11 @@ class OrderCreateView(BaseFormView):
 
 
 class OrderUpdateView(BaseFormView):
+    """受注の編集の入力。
+
+    使う人: 営業 / いつ: 数量や納期が変わったとき / 何のために: 受注の項目と明細を直す / 次にすること: 受注の詳細で確かめる
+    """
+
     model = Order
     form_class = OrderForm
     service = staticmethod(services.update_order)
@@ -114,6 +140,11 @@ class OrderUpdateView(BaseFormView):
 
 
 class OrderCancelView(BaseFormView):
+    """受注を取り消す確かめの入力。
+
+    使う人: 営業 / いつ: 注文が無くなったとき / 何のために: 受注を取消にする (出荷も指示書も作れなくなる) / 次にすること: 受注の一覧へ戻る
+    """
+
     model = Order
     form_class = OrderCancelForm
     service = staticmethod(services.cancel_order)

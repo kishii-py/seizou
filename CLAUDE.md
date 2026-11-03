@@ -29,6 +29,7 @@
 - CSRF の見出しは土台のテンプレートの 1 か所にだけ書く。
 - class 名を途中で組み立てない。
 - 画面に出る言葉は日本語。識別子は英語。
+- 画面の class の docstring に、ユースケースを「使う人: … / いつ: … / 何のために: … / 次にすること: …」の形で 1〜2 行書く (`seizou.core.screens.all_screens()` が `usecase` として拾い、MCP と AI チャットの `list_screens` が返す。`tests/test_core_screens.py` が全部の画面に揃っていることを見る)。
 
 ## git
 

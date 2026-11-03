@@ -16,6 +16,8 @@ class ProgressBoardView(BaseListView):
 
     model を Progress にするのは、土台が htmx の部分を model の app の名前で選ぶため (progress/_rows.html)。
     土台の object_list (実績の 50 件) は使わない。
+
+    使う人: 製造・生産管理 / いつ: 工程が終わるたびと、進み具合を見るとき / 何のために: 指示書の工程ごとの予定・実績・残を見る / 次にすること: 行から実績の新規登録へ
     """
 
     model = Progress
@@ -25,6 +27,11 @@ class ProgressBoardView(BaseListView):
 
 
 class ProgressListView(BaseListView):
+    """実績の一覧。
+
+    使う人: 製造・生産管理 / いつ: 入れた実績を確かめるとき / 何のために: 工程ごとの実績の記録を見る / 次にすること: 指示書の詳細へ
+    """
+
     model = Progress
     screen_name = "実績の一覧"
     screen_help = "指示書の工程ごとに入れた実績の記録。日時の新しい順に並びます。"
@@ -34,6 +41,11 @@ class ProgressListView(BaseListView):
 
 
 class ProgressCreateView(BaseFormView):
+    """実績の新規登録の入力。
+
+    使う人: 製造 / いつ: 工程が終わるたびと、現品票の QR を読んだとき / 何のために: 実績の数を入れる / 次にすること: 次の工程へ。最後の工程なら製造の完了を入庫にする
+    """
+
     model = Progress
     form_class = ProgressRecordForm
     service = staticmethod(services.record_progress)

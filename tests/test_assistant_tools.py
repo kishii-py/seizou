@@ -180,3 +180,17 @@ def test_labels_cover_all_tools():
     for label in list(tools.TOOL_LABELS.values()) + list(tools.PROPOSAL_TITLES.values()):
         for word in WINDOW_WORDS:
             assert word not in label, (label, word)
+
+
+def test_list_screens_tool_describes_and_returns_usecase():
+    tool = next(tool for tool in tools.TOOLS if tool["name"] == "list_screens")
+    assert "使う人" in tool["description"]
+
+    outcome = tools.run_tool("list_screens", None)
+    assert outcome["is_error"] is False
+    items = json.loads(outcome["content"])["items"]
+    assert all(isinstance(item.get("usecase"), str) for item in items)
+    home = next(item for item in items if item["url_name"] == "core:home")
+    assert home["usecase"].startswith("使う人:")
+    assert outcome["urls"]
+    assert all(url.startswith("/") for url in outcome["urls"])

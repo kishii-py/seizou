@@ -41,6 +41,8 @@
 | R19 | class 名を途中で組み立てない。古い版の class 名を使わない | 決まりの検査 | `tests/test_r19_no_dynamic_classnames.py` |
 | R20 | AI は部品の中身を書き換えない。会社の違いは拡張の表と設定とテンプレートと会社の検査で出す | 製品の hook (`plugin/hooks/guard_core.py`) | hook のテスト |
 
+番号の無い約束 (決まりの検査は見ない。`tests/test_core_screens.py` が見る): 画面の class の docstring に、ユースケースを「使う人: … / いつ: … / 何のために: … / 次にすること: …」の形で 1〜2 行書く。画面の目録 (`all_screens()`) が `usecase` として拾い、MCP と AI チャットの `list_screens` が返す (AI が画面を選ぶ材料)。
+
 ## 黙らせ方 (書き方の決まり)
 
 どうしても守れない行には、その行の末尾か直上のコメントに `seizou: ignore[R14] 理由` の形で、番号と理由を書く (番号は必須。番号の無い印は効かない)。黙らせた数は検査の結果に必ず出る。

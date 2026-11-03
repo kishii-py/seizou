@@ -23,6 +23,11 @@ from .models import Attachment
 
 
 class AttachmentListView(BaseListView):
+    """添付ファイルの一覧。
+
+    使う人: 全員 / いつ: どこに何を付けたかを探すとき / 何のために: 付けたファイルを全部まとめて探す / 次にすること: 行から付けた先の詳細へ
+    """
+
     model = Attachment
     columns = ("uploaded_at", "kind", "original_name", ("target_label", "付けた先"), "note")
     search_fields = ("original_name", "note")
@@ -32,6 +37,11 @@ class AttachmentListView(BaseListView):
 
 
 class AttachmentAddView(BaseFormView):
+    """添付ファイルを付ける入力。
+
+    使う人: 全員 / いつ: 写真や検査成績書を残すとき / 何のために: 記録の詳細にファイルを付ける / 次にすること: 付けた先の詳細の枠から開く
+    """
+
     model = Attachment
     form_class = AttachmentForm
     service = staticmethod(services.add_attachment)
@@ -40,6 +50,11 @@ class AttachmentAddView(BaseFormView):
 
 
 class AttachmentDeleteView(BaseFormView):
+    """添付ファイルの削除の確かめ。
+
+    使う人: 全員 / いつ: 付け間違えたとき / 何のために: 添付ファイルを削除する / 次にすること: 付けた先の詳細へ戻る
+    """
+
     model = Attachment
     form_class = AttachmentDeleteForm
     service = staticmethod(services.remove_attachment)

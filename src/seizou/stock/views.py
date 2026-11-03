@@ -28,6 +28,11 @@ def _pk_or_none(raw):
 
 
 class StockListView(BaseListView):
+    """在庫の一覧。
+
+    使う人: 生産管理 / いつ: 注文が入ったときと、在庫で払い出せるかを見るとき / 何のために: 完成品の在庫数を部品ごとに見る / 次にすること: 行から部品の詳細へ。数え始めは棚卸しの調整
+    """
+
     model = ItemModel
     screen_name = "在庫"
     screen_help = (
@@ -45,6 +50,11 @@ class StockListView(BaseListView):
 
 
 class StockMoveListView(BaseListView):
+    """在庫の動きの一覧。
+
+    使う人: 生産管理 / いつ: 在庫数の根拠を確かめるとき / 何のために: 入庫・払い出し・棚卸しの調整の記録を見る / 次にすること: 行から動きの詳細へ
+    """
+
     model = StockMove
     screen_name = "在庫の動き"
     screen_help = (
@@ -65,12 +75,22 @@ class StockMoveListView(BaseListView):
 
 
 class StockMoveDetailView(BaseDetailView):
+    """在庫の動きの詳細。
+
+    使う人: 生産管理 / いつ: 1 件の動きを確かめるとき / 何のために: 部品・種類・数量・日付と入れた人を見る / 次にすること: 在庫の動きへ戻る
+    """
+
     model = StockMove
     screen_name = "在庫の動きの詳細"
     screen_help = "在庫の動き 1 件の部品・種類・数量・日付・備考と、入れた人と日時。入庫は正、出庫は負の数です。"
 
 
 class FinishedCreateView(BaseFormView):
+    """製造の完了を入庫にする入力。
+
+    使う人: 製造・生産管理 / いつ: 最後の工程が終わったとき / 何のために: 完成した数を入庫にする / 次にすること: 在庫に出る。出荷へ
+    """
+
     model = StockMove
     form_class = FinishedForm
     service = staticmethod(services.record_finished)
@@ -82,6 +102,11 @@ class FinishedCreateView(BaseFormView):
 
 
 class IssueCreateView(BaseFormView):
+    """払い出しの入力。
+
+    使う人: 生産管理 / いつ: 検査や社内の使用で在庫から出したとき / 何のために: 出した数を記録する / 次にすること: 在庫で確かめる
+    """
+
     model = StockMove
     form_class = IssueForm
     service = staticmethod(services.record_issued)
@@ -90,6 +115,11 @@ class IssueCreateView(BaseFormView):
 
 
 class AdjustCreateView(BaseFormView):
+    """棚卸しの調整の入力。
+
+    使う人: 生産管理 / いつ: 棚卸しのときと、在庫を数え始めるとき / 何のために: 実地の数との差を動きとして残す / 次にすること: 在庫で確かめる
+    """
+
     model = StockMove
     form_class = AdjustForm
     service = staticmethod(services.adjust)

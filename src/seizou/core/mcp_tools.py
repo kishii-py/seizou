@@ -344,11 +344,12 @@ def list_screens() -> dict[str, Any]:
     """会社のシステムの画面の目録を返す。
 
     引数は無い。
-    返す物: count と items (画面ごとの name 画面の名前・help 1 文の説明・url_name URL の名前・path URL の道)。
+    返す物: count と items (画面ごとの name 画面の名前・help 1 文の説明・usecase ユースケース (使う人 / いつ / 何のために / 次にすること。無い画面は空の字)・url_name URL の名前・path URL の道)。
     url_name は get_manual の screen に渡せる。
+    画面を選ぶときは usecase を読む。
     """
     items = [
-        {"name": screen.name, "help": screen.help, "url_name": screen.url_name, "path": screen.path}
+        {"name": screen.name, "help": screen.help, "usecase": screen.usecase, "url_name": screen.url_name, "path": screen.path}
         for screen in screens.all_screens()
     ]
     return {"ok": True, "count": len(items), "items": items}
