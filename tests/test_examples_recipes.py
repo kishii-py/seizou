@@ -144,3 +144,10 @@ def test_recipes_match_the_two_companies(company_id, recipe_id):
     _merged, added = cli.apply_recipe(answers, recipe)
     assert (added["項目"], added["設定"]) == (0, 0)
     assert added["工程"] == recipe["processes"]
+
+
+def test_recipes_readme_lists_every_recipe():
+    text = (cli.recipes_dir() / "README.md").read_text(encoding="utf-8")
+    for recipe_id in EXPECTED_IDS:
+        assert f"`{recipe_id}`" in text, recipe_id
+        assert read_recipe(recipe_id)["industry"]["name"] in text, recipe_id
