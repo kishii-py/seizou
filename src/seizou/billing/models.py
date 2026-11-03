@@ -72,7 +72,12 @@ class Invoice(models.Model):
         return self.PAYMENT_PAID
 
     def payment_status_label(self) -> str:
-        """入金の状態の字 (一覧の「入金」の列と、詳細の「入金」の枠の印)。"""
+        """入金の状態の字 (一覧の「入金」の列と、詳細の「入金」の枠の印)。
+
+        取消の請求書は「—」(状態の payment_status は請求書の状態を見ないまま = N56 の 1-1)。
+        """
+        if self.status == self.STATUS_CANCELLED:
+            return "—"
         return self.PAYMENT_LABELS[self.payment_status()]
 
 
