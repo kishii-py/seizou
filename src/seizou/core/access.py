@@ -103,8 +103,21 @@ _KIND_ACTIONS = {
         "intake.accept_extracted",
     ),
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
-    "shipping": ("shipping.ship", "shipping.update_shipment", "shipping.create_delivery_note", "shipping.cancel_delivery_note"),
-    "billing": ("billing.create_invoice", "billing.cancel_invoice"),
+    "shipping": (
+        "shipping.ship",
+        "shipping.update_shipment",
+        "shipping.create_delivery_note",
+        "shipping.cancel_delivery_note",
+        # 出荷の知らせを相手に送り直す口 (N55。本体が起こす前に入れる前提)
+        "connect.send_shipping_notice",
+    ),
+    "billing": (
+        "billing.create_invoice",
+        "billing.cancel_invoice",
+        # 入金 (N56。本体が起こす前に入れる前提)
+        "billing.record_payment",
+        "billing.cancel_payment",
+    ),
     "purchasing": (
         "purchasing.create_purchase_order",
         "purchasing.cancel_purchase_order",
@@ -130,11 +143,21 @@ FREE_ACTIONS = frozenset(
 #: アカウント管理の門で守る action (3 状態の外)。core.set_setting は設定の画面からの変更 (N48) の action で、
 #: 画面の門 (can_manage_accounts) と同じ判定で 2 重に断る (依頼書 N48 の迷った事 2 = 本体の決め)
 ACCOUNT_ACTIONS = frozenset(
-    {"accounts.issue_account", "accounts.update_account", "accounts.delete_account", "core.set_setting"}
+    {
+        "accounts.issue_account",
+        "accounts.update_account",
+        "accounts.delete_account",
+        "core.set_setting",
+        # 部署を画面から直す口 (N57。本体が起こす前に入れる前提)
+        "accounts.create_department",
+        "accounts.update_department",
+        "accounts.delete_department",
+    }
 )
 #: 金額が主な登録 → (書面, 操作)
 MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
+    "billing.record_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
@@ -150,7 +173,7 @@ ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments")
 # ---------------------------------------------------------------- 金額の値
 
 #: 金額の項目の名前 (core の 1 か所の集まり)
-MONEY_FIELDS = frozenset({"unit_price", "amount", "standard_price", "total", "subtotal", "tax"})
+MONEY_FIELDS = frozenset({"unit_price", "amount", "standard_price", "total", "subtotal", "tax", "balance", "paid_total"})
 #: 金額の閲覧が無い人に見せる字
 MASK = "—"
 
