@@ -8,5 +8,6 @@
 <a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}">{% icon "truck" "size-4" %}払い出し</a>
 <a class="btn btn-outline border-base-300" href="{% url 'stock:adjust_create' %}">{% icon "check" "size-4" %}棚卸しの調整</a>
 <a class="btn btn-primary" href="{% url 'stock:finished_create' %}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
-{% block content %}<p class="mb-4 text-xs text-base-content/70">入庫は正、出庫は負の数です。出荷はここに並ばず、出荷の記録から集計で在庫数を引きます。</p>
+{# 題の下の説明の 1 文は出さない (決め 11-03 15:5x 本人「推奨で」。「?」で説明書の断片を見る)。 #}
+{% block content %}
 {{ block.super }}{% endblock %}
