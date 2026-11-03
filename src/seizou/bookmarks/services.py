@@ -12,6 +12,7 @@ from functools import lru_cache
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
+from seizou.core import access
 from seizou.core.screens import Screen, all_screens
 from seizou.core.templatetags.seizou_icons import menu_icon_name
 from seizou.core.views import url_or_none
@@ -87,11 +88,12 @@ def is_bookmarked(user, url_name: str) -> bool:
 
 
 def bookmarks_for(user) -> list[dict]:
-    """その人の登録を並びの順に返す (読むだけ。DB を読むのは 1 回)。
+    """その人の登録を並びの順に返す (読むだけ。登録の表を読むのは 1 回。部署の判定は利用者の物の控えを読む)。
 
     1 つは {"url_name", "label", "url", "icon", "lost"} の辞書。label は目録の今の名前 (目録に無ければ控えの名前)、
     url は reverse の結果 (作れなければ None)、icon は線の絵の名前 (目録に無ければ list)、
     lost は目録に無いか url が作れないときに真。ログインしていない人は空の並び。
+    部署で開けない画面 (access.can_open が偽。部署の判定が on のときだけ) は並びに入れない (登録は消さない)。
     """
     if not _logged_in(user):
         return []
@@ -99,6 +101,8 @@ def bookmarks_for(user) -> list[dict]:
     items: list[dict] = []
     for row in Bookmark.objects.filter(user=user).order_by("position", "pk"):
         screen = screens.get(row.url_name)
+        if screen is not None and not access.can_open(user, screen.app, record=False):
+            continue
         url = url_or_none(row.url_name) if row.url_name else None
         items.append(
             {

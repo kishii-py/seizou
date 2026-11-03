@@ -7,6 +7,7 @@ from django.contrib.auth.models import AnonymousUser
 from seizou.bookmarks import services
 from seizou.bookmarks.models import Bookmark
 from seizou.bookmarks.services import catalog
+from seizou.core import access
 from seizou.core.screens import Screen
 from seizou.core.templatetags.seizou_icons import menu_icon_name
 
@@ -36,6 +37,9 @@ def test_add_list_screen_and_list(user, django_assert_num_queries):
     assert row.label == "受注"
     assert services.is_bookmarked(user, "orders:order_list")
     catalog()
+    # 要求の中では、左のメニュー (access.visible_menu) がテンプレートより先に部署の判定を読み、利用者の物に控える。
+    # その後の並びは、登録の表を 1 回読むだけ (画面ごとの部署の判定は控えを読む)。
+    access.can_open(user, "orders", record=False)
     with django_assert_num_queries(1):
         items = services.bookmarks_for(user)
     assert items == [

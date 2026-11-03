@@ -11,9 +11,13 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.bookmarks import services as bookmarks_services
+from seizou.bookmarks.models import Bookmark
+from seizou.bookmarks.templatetags import bookmarks_tags
 from seizou.core import access
 from seizou.core import conf
 from seizou.core import services as core_services
@@ -249,3 +253,41 @@ def test_access_rows_are_read_once_per_user_object(db, on, django_assert_num_que
     again = User.objects.get(pk=genba.pk)
     with django_assert_num_queries(2):
         assert access.can_open(again, "billing", record=False) is False
+
+
+# ---------------------------------------------------------------- ブックマーク (精査 A2 の S3)
+
+
+def test_bookmarks_hide_screens_outside_department(db, on, settings, caplog):
+    caplog.set_level(logging.WARNING, logger="seizou.access")
+    seizo_dept = accounts_services.create_department("製造", ["workorders", "progress", "masters"], [], None)
+    genba = account("genba", departments=[seizo_dept])
+    # 部署で開けない画面も登録は断らない (並びに出さないだけ)。
+    bookmarks_services.add_bookmark(genba, "billing:invoice_list")
+    bookmarks_services.add_bookmark(genba, "workorders:workorder_list")
+
+    def listed(person):
+        return [item["url_name"] for item in bookmarks_services.bookmarks_for(person)]
+
+    def home(person):
+        request = RequestFactory().get("/")
+        request.user = person
+        return [item["url_name"] for item in bookmarks_tags.bookmark_home({"request": request})]
+
+    both = ["billing:invoice_list", "workorders:workorder_list"]
+    assert listed(genba) == ["workorders:workorder_list"]
+    assert Bookmark.objects.filter(user=genba).count() == 2
+    assert home(genba) == ["workorders:workorder_list"]
+
+    # 既定 (log) では 2 件とも並び、記録は書かない (左のメニューと同じ)。
+    settings.SEIZOU = {}
+    genba = User.objects.get(pk=genba.pk)
+    assert listed(genba) == both
+    assert access_records(caplog) == []
+
+    # on に戻し、部署の開ける部品に請求を足すと 2 件 (登録の行が残っているので、また出る)。
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    accounts_services.update_department(seizo_dept, {"apps": ["workorders", "progress", "masters", "billing"]}, None)
+    genba = User.objects.get(pk=genba.pk)
+    assert listed(genba) == both
+    assert home(genba) == both
