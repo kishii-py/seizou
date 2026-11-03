@@ -45,5 +45,7 @@ settings:
     department: "on"
     write: "on"
     money: "on"
+  # 画面の主色 (# と 16 進の 6 桁。無ければ土台の色。2 社を並べたときに見分ける)
+  brand_color: "#15803d"
 # 開発サーバーのポート
 port: 8001

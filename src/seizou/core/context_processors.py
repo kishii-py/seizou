@@ -180,6 +180,7 @@ def _hides_money(user) -> bool:
 
 def seizou(request) -> dict:
     from seizou.core import access
+    from seizou.core import conf
     from seizou.core import services
     from seizou.core import practice
 
@@ -189,10 +190,14 @@ def seizou(request) -> dict:
         company = services.company()
         company_name = company.name
         theme = company.theme or "light"
+        brand_color = conf.brand_color()
+        industry = conf.setting("industry") or ""
     except DatabaseError:
         company = None
         company_name = "seizou"
         theme = "light"
+        brand_color = ""
+        industry = ""
     part_items = menu()
     part_items = access.visible_menu(user, part_items)
     items = [*core_menu(), *part_items]
@@ -202,6 +207,8 @@ def seizou(request) -> dict:
             "company": company,
             "company_name": company_name,
             "theme": theme,
+            "brand_color": brand_color,
+            "industry": industry,
             "menu": part_items,
             "sections": sections(items),
             "search_url": url_or_none("core:search"),

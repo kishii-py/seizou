@@ -113,7 +113,7 @@ def test_ports_are_8001_and_8002_and_differ():
 def test_settings_have_five_keys_and_hidden_fields(company_id):
     settings = load_answers(company_id)["settings"]
 
-    assert set(settings) == set(SETTING_VALUES) | BOOL_SETTINGS | {"hidden_fields", "access_control"}
+    assert set(settings) == set(SETTING_VALUES) | BOOL_SETTINGS | {"hidden_fields", "access_control", "brand_color"}
     for key, allowed in SETTING_VALUES.items():
         assert settings[key] in allowed, key
     for key in BOOL_SETTINGS:

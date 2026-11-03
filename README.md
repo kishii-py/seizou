@@ -235,6 +235,8 @@ Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は
 | `intake_model` | 注文書の読み取りが使う model | Claude の model の名前 | `claude-opus-5-5` | 読み取りは精度が要るので opus。費用を抑えるなら sonnet |
 | `feedback_model` | フィードバックの AI の聞き取りが使う model | Claude の model の名前 | `claude-haiku-5-5` | 聞き取りと仕分けだけなので安い haiku。答えの質を上げるなら sonnet |
 | `menu` | 左のメニューの括り | 括りの並び。1 つは `label` (見出し)・`apps` (部品の名前の並び)・`screens` (画面の URL の名前の並び)。空なら既定の並び (ダッシュボード / 製造部 / 生産管理部 (中項目 受注管理・協力企業管理) / 出荷と請求 / マスター / 文書) | `[]` | 部署の分け方が違う会社は、答えの YAML の `settings` の `menu` で括りを書く。同じ画面を 2 つの括りに出せる。大項目は開け閉めでき、今の画面の大項目だけ開く (会社の括りに中項目は書けない) |
+| `brand_color` | 画面の主色 | `#` と 16 進の 6 桁 (例 `#15803d`) | 空 (土台の色) | 2 社を並べて見せるときや、会社の色に合わせたいとき。例の 2 社は A 社が緑、B 社が青 |
+| `industry` | 業種 (左上の会社の名前の下の字) | 字 | 答えの YAML の `industry` (問 1 の後半) | 画面を見た人に何の会社かを伝える。空なら「seizou」|
 
 使わない注文の項目は、`hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
 

@@ -216,7 +216,7 @@ def render(template_name: str, **values) -> str:
 
 def seizou_items(answers: dict, settings: dict) -> str:
     """settings.py の SEIZOU の辞書の中身。鍵ごとに 1 行、値は Python の literal。"""
-    values = {"id": answers["id"], **settings, "port": answers["port"]}
+    values = {"id": answers["id"], "industry": str(answers.get("industry") or ""), **settings, "port": answers["port"]}
     return "\n".join(f"    {key!r}: {value!r}," for key, value in values.items())
 
 

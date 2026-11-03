@@ -63,7 +63,7 @@ def next_number(kind: str) -> str:
 
 
 #: 字で持つ設定 (model の名前)。空でない 100 字まで
-_TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model")  # feedback_model は N59 の前提 (本体が先に入れた)
+_TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model", "industry")  # feedback_model は N59 の前提 (本体が先に入れた)
 _TEXT_MAX = 100
 
 
@@ -96,6 +96,11 @@ def validate_setting(key, value):
                 f"値はそれぞれ off / log / on にしてください (入れた値: {value!r})。"
             )
         return {kind: value[kind] for kind in kinds}
+    if key == "brand_color":
+        text = value.strip() if isinstance(value, str) else ""
+        if not conf.BRAND_COLOR_PATTERN.fullmatch(text):
+            raise ValueError(f"brand_color は # と 16 進の 6 桁 (例 #15803d) にしてください (入れた値: {value!r})。")
+        return text.lower()
     if key in _TEXT_SETTINGS:
         text = value.strip() if isinstance(value, str) else ""
         if not text or len(text) > _TEXT_MAX:
