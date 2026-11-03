@@ -293,7 +293,7 @@ def test_search_money_column():
     section = SearchSection(
         kind="tests",
         label="試験",
-        columns=(SearchColumn("金額", numeric=True, money=True), SearchColumn("品番", code=True)),
+        columns=(SearchColumn("金額", numeric=True, money=True), SearchColumn("品番", is_code=True)),
         rows=(SearchRow(cells=(Decimal("1200"), "T-100")),),
         total=1,
     )

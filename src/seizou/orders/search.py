@@ -15,9 +15,9 @@ from .models import Order, OrderLine
 KIND = "orders"
 LABEL = "受注"
 COLUMNS = (
-    SearchColumn("受注番号", code=True),
+    SearchColumn("受注番号", is_code=True),
     SearchColumn("得意先"),
-    SearchColumn("受注日", date=True),
+    SearchColumn("受注日", is_date=True),
     SearchColumn("品番"),
     SearchColumn("状態"),
 )

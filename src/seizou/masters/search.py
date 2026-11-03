@@ -18,9 +18,9 @@ from .models import Item, PartnerItem
 KIND = "items"
 LABEL = "部品マスター"
 COLUMNS = (
-    SearchColumn("自社品番", code=True),
+    SearchColumn("自社品番", is_code=True),
     SearchColumn("品名"),
-    SearchColumn("図面番号", code=True),
+    SearchColumn("図面番号", is_code=True),
     SearchColumn("単位"),
 )
 
