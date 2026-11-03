@@ -101,6 +101,7 @@ def test_issue_creates_user_access_and_log(manager, seizou_dept):
     ("login_id", "password", "permissions", "words"),
     [
         ("soumu", PASSWORD, [], "このログイン ID は使われています"),
+        ("SOUMU", PASSWORD, [], "このログイン ID は使われています"),
         ("gen ba", PASSWORD, [], "ログイン ID は英数字と"),
         ("", PASSWORD, [], "ログイン ID は英数字と"),
         ("genba", "kumo-26", [], "パスワードを受け付けられません"),
@@ -220,6 +221,14 @@ def _last_manager(manager, second, admin_row):
     services.update_account(fresh(manager.seizou_access), {"manage_accounts": False}, second.user)
 
 
+def _self_full_control(manager, second, admin_row):
+    services.update_account(fresh(manager.seizou_access), {"full_control": True}, manager)
+
+
+def _self_money(manager, second, admin_row):
+    services.update_account(fresh(manager.seizou_access), {"see_money": True}, manager)
+
+
 def _superuser(manager, second, admin_row):
     services.update_account(admin_row, {"see_money": True}, manager)
 
@@ -234,6 +243,8 @@ REFUSED = [
         "先に別のアカウントにアカウント管理の権限を付けてください。",
         True,
     ),
+    (_self_full_control, "自分のアカウントにフルコントロールと金額の閲覧は付けられません。別のアカウント管理の担当者に頼んでください。", False),
+    (_self_money, "自分のアカウントにフルコントロールと金額の閲覧は付けられません。別のアカウント管理の担当者に頼んでください。", False),
     (_superuser, "システム管理者のアカウントは、この画面から変更も削除もできません。", False),
 ]
 
@@ -283,3 +294,20 @@ def test_create_department_refuses_unknown_and_duplicate(db):
     with pytest.raises(ValueError, match="知らない権限の名前です"):
         services.create_department("総務", ["masters"], ["admin_all"], None)
     assert list(Department.objects.values_list("name", flat=True)) == ["製造"]
+
+
+@pytest.mark.django_db
+def test_self_update_keeps_own_flags(manager, seizou_dept):
+    # 変更の form は印を 4 つとも送る。印を変えない自分の保存と、自分の金額の閲覧を外す変更は通す。
+    second = issue("soumu2", by=manager, full_control=True)
+    own = {"full_control": True, "see_money": False, "manage_accounts": False, "departments": [seizou_dept]}
+
+    services.update_account(fresh(second), own, second.user)
+    assert list(fresh(second).departments.all()) == [seizou_dept]
+
+    services.update_account(fresh(second), {"see_money": True}, manager)
+    assert fresh(second).see_money is True
+
+    services.update_account(fresh(second), own, second.user)
+    row = fresh(second)
+    assert (row.full_control, row.see_money) == (True, False)

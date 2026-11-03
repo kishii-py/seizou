@@ -93,6 +93,8 @@ _KIND_ACTIONS = {
         "manuals.move_manual",
         "manuals.protect_manual",
         "manuals.delete_manual",
+        "manuals.add_image",
+        "manuals.remove_image",
     ),
     "orders": (
         "orders.create_order",
@@ -431,6 +433,13 @@ def denied_response(request, heading: str, text: str):
     return render(request, "core/access_denied.html", {"heading": heading, "text": text}, status=403)
 
 
+def _screen_title(request) -> str:
+    """要求の画面の名前 (土台の画面の screen_name)。引けなければ空の字。core の views を import しない (request.resolver_match の view の class から読む)。"""
+    match = getattr(request, "resolver_match", None)
+    view_class = getattr(getattr(match, "func", None), "view_class", None)
+    return str(getattr(view_class, "screen_name", "") or "")
+
+
 def screen_denied(request, app, *, by_department):
     """画面の門。開けないときは 403 の応答、開けるときは None。未ログインは None (ログインへ移すのは LoginRequiredMixin)。"""
     user = getattr(request, "user", None)
@@ -446,10 +455,14 @@ def screen_denied(request, app, *, by_department):
         )
     if by_department and not can_open(user, app):
         names = "・".join(d.name for d in departments_of(user)) or "なし"
+        label = app_label(app)
+        screen = _screen_title(request)
+        # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (例「届いた注文」の画面 = 「受注管理」の部品)
+        where = f"「{screen}」の画面です (「{label}」の部品)" if screen and screen != label else f"「{label}」の画面です"
         return denied_response(
             request,
             DENIED_HEADING,
-            f"「{app_label(app)}」の画面です。あなたの部署: {names}。"
+            f"{where}。あなたの部署: {names}。"
             "この画面を使う必要があるときは、アカウント管理の担当者に頼んでください。",
         )
     return None

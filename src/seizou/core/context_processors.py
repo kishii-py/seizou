@@ -12,6 +12,7 @@ from importlib import import_module, util
 
 from django.db import DatabaseError
 from django.urls import NoReverseMatch, reverse
+from django.utils.functional import SimpleLazyObject
 
 from seizou.core.templatetags.seizou_icons import menu_icon_name, section_icon_name
 from seizou.parts import PARTS
@@ -167,10 +168,22 @@ def sections(items: list[dict]) -> list[dict]:
     return [group for group in groups if group["items"]]
 
 
+def _hides_money(user) -> bool:
+    """テンプレートが金額の枡を隠す印 (seizou.hide_money) の中身。テンプレートが読んだ時に 1 回だけ判定する。
+
+    金額の閲覧の無い人は、on で真 (隠す)、log で偽 (見せて記録に 1 行)、off で偽。未ログインは偽。
+    """
+    from seizou.core import access
+
+    return bool(getattr(user, "is_authenticated", False)) and not access.can_see_money(user)
+
+
 def seizou(request) -> dict:
     from seizou.core import access
     from seizou.core import services
     from seizou.core import practice
+
+    user = getattr(request, "user", None)
 
     try:
         company = services.company()
@@ -181,7 +194,7 @@ def seizou(request) -> dict:
         company_name = "seizou"
         theme = "light"
     part_items = menu()
-    part_items = access.visible_menu(getattr(request, "user", None), part_items)
+    part_items = access.visible_menu(user, part_items)
     items = [*core_menu(), *part_items]
     mark_active(items, getattr(request, "path", "") or "")
     return {
@@ -196,7 +209,8 @@ def seizou(request) -> dict:
             # 存在する部品の短い名前 (例 "masters")。テンプレートが {% if "attachments" in seizou.parts %} で、
             # 入っている部品の枠だけを include するために使う。
             "parts": part_names(),
-            "hide_money": access.hides_money(getattr(request, "user", None)),  # 金額の閲覧が無い人 (on) に金額の枡を隠す印
+            # 金額の閲覧が無い人 (on) に金額の枡を隠す印。テンプレートが読んだ時に判定し、log では記録に 1 行 (精査 A2 の B4)
+            "hide_money": SimpleLazyObject(lambda: _hides_money(user)),
             "practice": practice.is_practice(),  # 練習モード (seizou_practice start が立てたサーバー) の印。base.html が帯と題の「練習: 」を出す
         }
     }

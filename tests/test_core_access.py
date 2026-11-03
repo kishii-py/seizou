@@ -4,6 +4,7 @@
 access_for は利用者の物に行を控えるので、行を作り直した後は User.objects.get で読み直す。
 """
 
+import inspect
 import logging
 from datetime import date
 from decimal import Decimal
@@ -214,6 +215,55 @@ def test_every_form_action_is_classified():
         assert action in known, f"{pattern.name} の action {action} が権限の表に無い (core/access.py に足す)"
     # 表の名前が今の画面の action と同じ形であること (書き違いで黙って素通りしないため)。
     assert {"shipping.ship", "masters.update_item", "connect.send_order", "workorders.issue_workorder"} <= seen
+
+
+#: POST の関数の view (module の名前.関数の名前) → 頭で require_write に渡す権限の表の action
+POST_FUNCTION_ACTIONS = {
+    "seizou.manuals.views.image_upload": "manuals.add_image",
+    "seizou.manuals.views.image_delete": "manuals.remove_image",
+    "seizou.workorders.views.plan_place": "workorders.plan_step",
+    "seizou.shipping.shipping_notice.resend_shipping_notice": "connect.send_shipping_notice",
+    "seizou.purchasing.acceptance.resend_acceptance": "connect.send_acceptance",
+    "seizou.connect.reply.resend_reply": "connect.accept",
+}
+#: POST の関数の view のうち、権限の表の action を通さない口 → 理由
+POST_FUNCTION_WITHOUT_ACTION = {
+    "seizou.core.settings_screen.setting_clear": "設定の門 (settings_denied = アカウント管理の権限)",
+    "seizou.connect.views.receive_order": "取引先の受け口 (ログインの外。署名の確かめ = R12)",
+    "seizou.workorders.views.workorder_accept": "現場の記録 (02 の 7 節。権限なし)",
+    "seizou.assistant.views.ask": "会話の控え (session) だけ",
+    "seizou.assistant.views.clear": "会話の控え (session) だけ",
+    "seizou.assistant.views.approve": "承認の中の assistant.services._carry_out が require_write を通す",
+    "seizou.manuals.views.manual_preview": "表に書かない (本文を描くだけ)",
+    "seizou.bookmarks.views.toggle": "自分のブックマークだけ",
+    "seizou.feedback.views.confirm": "feedback の services が世話役だけに絞る",
+    "seizou.feedback.views.sent": "feedback の services が世話役だけに絞る",
+    "seizou.feedback.views.delete": "feedback の services が書いた人と世話役に絞る (対象は一覧と同じ絞りの中から引く)",
+    "seizou.feedback.views.ask": "会話の控え (session) だけ",
+    "seizou.feedback.views.reset": "会話の控え (session) だけ",
+}
+
+
+def test_every_post_function_view_is_classified():
+    # 関数の view (土台を継がない口) の POST は test_every_form_action_is_classified が見ないので、ここで分ける。
+    known = {*access.ACTION_KINDS, *access.FREE_ACTIONS, *access.ACCOUNT_ACTIONS}
+    seen = set()
+    for pattern in _url_patterns(get_resolver().url_patterns):
+        if getattr(pattern.callback, "view_class", None) is not None:
+            continue
+        function = inspect.unwrap(pattern.callback)
+        source = inspect.getsource(function)
+        if "@require_POST" not in source:
+            continue
+        name = f"{function.__module__}.{function.__name__}"
+        seen.add(name)
+        if name in POST_FUNCTION_ACTIONS:
+            assert POST_FUNCTION_ACTIONS[name] in known, f"{name} の action が権限の表に無い (core/access.py に足す)"
+            assert "require_write(" in source, f"{name} は require_write を呼ばない"
+        else:
+            assert name in POST_FUNCTION_WITHOUT_ACTION, f"{pattern.name} ({name}) の POST の口を分ける (この 2 つの表のどちらかに足す)"
+    # 表の名前の書き違いで黙って素通りしないため。
+    assert set(POST_FUNCTION_ACTIONS) | set(POST_FUNCTION_WITHOUT_ACTION) <= seen
 
 
 # ---------------------------------------------------------------- 記録だけ・使わない
