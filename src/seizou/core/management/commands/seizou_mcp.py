@@ -58,12 +58,12 @@ def instructions(user, *, read_only: bool = False) -> str:
     """サーバーの使い方の 1 段落 (Claude Code が最初に読む)。"""
     if read_only:
         tools = (
-            "読む道具 (会社・画面の目録・部品・受注と注文残・指示書・出荷・使い方・業務マニュアル) があります。"
+            "読む道具 (会社・画面の目録・部品・受注と注文残・指示書・出荷・使い方・業務マニュアル・受入と検収・入金・フィードバック) があります。"
             "今は読むだけで起こしたので、書く道具はありません。"
         )
     else:
         tools = (
-            "読む道具 (会社・画面の目録・部品・受注と注文残・指示書・出荷・使い方・業務マニュアル) と、"
+            "読む道具 (会社・画面の目録・部品・受注と注文残・指示書・出荷・使い方・業務マニュアル・受入と検収・入金・フィードバック) と、"
             "書く道具 (受注を作る・出荷する・工程の予定を置く) があります。"
             "書く道具は画面と同じ決まりとポカよけを通ります。"
         )
@@ -76,6 +76,7 @@ def instructions(user, *, read_only: bool = False) -> str:
         "ok が偽なら、error か warnings を人に見せてください。"
         "warnings は人が確かめてから、同じ引数に confirm=true で呼び直すと保存します。"
         "数と金額は字で返します。"
+        "受入と入金の金額は、金額の閲覧の判定に従い、見せない相手には「—」で返します。"
     )
 
 
@@ -86,8 +87,9 @@ def build_server(user, *, read_only: bool = False):
     except ImportError as exc:
         raise CommandError(MISSING_PACKAGE_MESSAGE) from exc
     server = MCPServer(name="seizou", instructions=instructions(user, read_only=read_only))
+    bound = {tool.__name__: tool for tool in mcp_tools.viewer_tools(user)}
     for tool in mcp_tools.READ_TOOLS:
-        server.add_tool(tool)
+        server.add_tool(bound.get(tool.__name__, tool))
     if not read_only:
         for tool in mcp_tools.write_tools(user):
             server.add_tool(tool)
