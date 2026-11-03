@@ -49,3 +49,21 @@ def test_partner_create_shows_rounding_help(client_logged_in):
     assert ROUNDING_HELP in body and TAX_HELP in body
     # 取引先の種類の字は「協力企業」(古い呼び名は tests/test_wording.py が全部のファイルで見るので、ここには書かない)
     assert "協力企業" in body
+
+
+# --- 受注と注文残の一覧の切り替えの字 ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["orders:order_list", "orders:orderline_list"])
+def test_order_lists_toggle_says_shipping_remaining(client_logged_in, url_name):
+    response = client_logged_in.get(reverse(url_name))
+    assert response.status_code == 200
+    body = text(response)
+    assert 'aria-current="true">出荷の残りがある物だけ</span>' in body
+    assert "残のある物だけ" not in body
+
+    everything = text(client_logged_in.get(reverse(url_name), {"all": "1"}))
+    assert ">出荷の残りがある物だけ</a>" in everything
+    assert 'aria-current="true">すべて</span>' in everything
+    assert "残のある物だけ" not in everything
