@@ -39,7 +39,13 @@ class StockListView(BaseListView):
         "完成品の在庫数を部品ごとに見ます。在庫数 = 入庫 (製造の完了・受入) の合計 − 出庫 (出荷・払い出し) の合計。"
         "動きの無い部品は並びません。棚卸しの調整で数え始めます。行を押すと部品の詳細へ移ります。"
     )
-    columns = ("part_no", "name", "unit", ("stock_balance", "在庫数"), ("last_moved_on", "最終の動きの日"))
+    columns = (
+        "part_no",
+        "name",
+        "unit",
+        {"name": "stock_balance", "label": "在庫数", "kind": "number", "sortable": True},
+        {"name": "last_moved_on", "label": "最終の動きの日", "kind": "date", "sortable": True},
+    )
     search_fields = ("part_no", "name")
     ordering = ("part_no",)
     template_name = "stock/stock_list.html"

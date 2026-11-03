@@ -3,6 +3,7 @@
 受注・指示書・実績・出荷は services で作る。日は timezone.localdate() から数える。作り物のデータだけを使う。
 """
 
+import re
 from decimal import Decimal
 
 import pytest
@@ -206,3 +207,47 @@ def test_adjust_form_uses_remote_select(logged_in):
         body = logged_in.get(reverse(name)).content.decode()
         assert f'data-select-url="{select_url}"' in body, name
     assert select_url == "/masters/items/select/"
+
+
+def _row_tds(body, pk):
+    """一覧の行 (<tr id="row-<pk>">) の <td> の HTML の並び。"""
+    match = re.search(rf'<tr id="row-{pk}".*?</tr>', body, re.S)
+    assert match, f"row-{pk} が無い"
+    return re.findall(r"<td[^>]*>.*?</td>", match.group(0), re.S)
+
+
+@pytest.mark.django_db
+def test_stock_list_marks_numbers_and_sorts(user, logged_in, customer, items, cut):
+    seven, minus = items[0], items[1]
+    workorder = _issue(user, _line(user, customer, seven), cut)
+    services.record_finished(workorder, Decimal("10"), user)
+    services.record_issued(seven, Decimal("3"), timezone.localdate(), user)
+    services.adjust(minus, Decimal("4"), timezone.localdate(), user)
+    services.record_issued(minus, Decimal("6"), timezone.localdate(), user)  # 在庫 −2 (払い出しは在庫より多くても止めない)
+    url = reverse("stock:stock_list")
+
+    response = logged_in.get(url)
+    labels = [col.label for col in response.context["columns"]]
+    balance = response.context["columns"][labels.index("在庫数")]
+    moved_on = response.context["columns"][labels.index("最終の動きの日")]
+    assert balance.numeric and balance.sortable
+    assert moved_on.is_date and moved_on.sortable
+    body = response.content.decode()
+    index = labels.index("在庫数")
+    assert "text-error" in _row_tds(body, minus.pk)[index]
+    assert "text-error" not in _row_tds(body, seven.pk)[index]
+
+    def balances(sort):
+        rows = logged_in.get(url, {"sort": sort}).context["rows"]
+        return [Decimal(str(row["cells"][index]["value"])) for row in rows]
+
+    assert balances("stock_balance") == [Decimal("-2"), Decimal("7")]
+    assert balances("-stock_balance") == [Decimal("7"), Decimal("-2")]
+
+    response = logged_in.get(url, {"sort": "last_moved_on"})
+    assert response.status_code == 200
+    assert response.context["sort"] == "last_moved_on"
+
+    lines = logged_in.get(url, {"format": "csv", "sort": "-stock_balance"}).content.decode("utf-8").lstrip("﻿").splitlines()
+    assert "在庫数" in lines[0]
+    assert lines[1].startswith("T-100,")

@@ -4,6 +4,7 @@ Django の test client で HTML を見る。つながりの無い協力企業で
 (呼ばれないことを見る)。取引先と品目は作り物。日は timezone.localdate() から数える。
 """
 
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -198,3 +199,36 @@ def test_cancelled_order_refused_on_screen(user, client_logged_in, subcontractor
     assert "alert-error" in body and "取り消した発注" in body
     assert Receipt.objects.count() == 0
     assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_CANCELLED
+
+
+def _row_tds(body, pk):
+    """一覧の行 (<tr id="row-<pk>">) の <td> の HTML の並び。"""
+    match = re.search(rf'<tr id="row-{pk}".*?</tr>', body, re.S)
+    assert match, f"row-{pk} が無い"
+    return re.findall(r"<td[^>]*>.*?</td>", match.group(0), re.S)
+
+
+@pytest.mark.django_db
+def test_order_list_marks_received_numbers_and_sorts(user, client_logged_in, subcontractor, items, fake_post):
+    partial = _order(subcontractor, user, (items[0], "10", "25"))
+    services.receive(partial.lines.get(), Decimal("4"), timezone.localdate(), user)  # 残 6
+    over = _order(subcontractor, user, (items[1], "10", "25"))
+    services.receive(over.lines.get(), Decimal("12"), timezone.localdate(), user)  # 残 −2 (発注より多くても止めない)
+    url = reverse("purchasing:purchaseorder_list")
+
+    response = client_logged_in.get(url)
+    labels = [col.label for col in response.context["columns"]]
+    received, remaining = labels.index("受入の数"), labels.index("受入の残")
+    for index in (received, remaining):
+        col = response.context["columns"][index]
+        assert col.numeric and col.sortable, col.label
+    body = response.content.decode()
+    assert "text-error" in _row_tds(body, over.pk)[remaining]
+    assert "text-error" not in _row_tds(body, partial.pk)[remaining]
+
+    def values(sort, index):
+        rows = client_logged_in.get(url, {"sort": sort}).context["rows"]
+        return [Decimal(str(row["cells"][index]["value"])) for row in rows]
+
+    assert values("receive_remaining", remaining) == [Decimal("-2"), Decimal("6")]
+    assert values("-received_total", received) == [Decimal("12"), Decimal("4")]

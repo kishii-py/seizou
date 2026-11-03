@@ -222,31 +222,69 @@ class ColumnSpec:
       "part_no"                                      項目の名前だけ (見出しは verbose_name。合計なし)
       ("order_line__item", "部品")                   名前と見出し (合計なし)
       {"name": "amount", "label": "金額", "total": True}   辞書。total が真で、表の数の項目なら合計の行に足す (label は省ける)
+      {"name": "shipped_total", "label": "出荷済み", "kind": "number", "sortable": True, "total": True}   辞書の全部の鍵
+
+    辞書の鍵:
+      kind      number (右寄せ・負は赤) / money (右寄せ。金額の閲覧が無い人には「—」。CSV から外す) / date (等幅の Y-m-d)。
+                書かなければ表の項目の型で決める (会社ごとの項目は型の number / date)。ほかの字は ValueError
+      sortable  真なら見出しが並び替えの link になる。書かなければ表の項目と会社ごとの項目だけ並び替える
+      total     真なら合計の行に足す
+    表の項目でない名前 (annotate の列) に sortable か total を書くと、土台は order_by と Sum にその名前を渡す
+    (queryset の annotate にある約束。無ければ何もしない)。board__<名前> のような Python の値 (model の property) には
+    kind だけを書く (sortable・total を書かない)。
+
+    印:
+      numeric      右寄せと等幅の数字 (表の数の項目・kind が number / money・会社ごとの項目の数)。負は赤
+      money        金額の列 (kind が money か、名前の最後が access.MONEY_FIELDS)。金額の閲覧の判定で欄・合計・CSV を「—」にする
+      total        合計の行に足す (表の数の項目と、kind が number / money の annotate の列)
+      is_date      等幅の Y-m-d (表の日付の項目・kind が date・会社ごとの項目の日付)
+      is_datetime  等幅の Y-m-d H:i (表の日時の項目)
+      is_code      等幅の識別子 (数でない、名前が code か _no / _code で終わる列)
+      sortable     見出しが並び替えの link
+      annotated    表の項目でない名前に sortable か total の印が付いた列 (annotate の列として order_by と Sum に渡す)
     """
+
+    #: 辞書の kind に書ける値
+    KINDS = ("number", "money", "date")
 
     def __init__(self, model, item, ext_type: str | None = None):
         self.total = False
+        kind = None
+        sortable = None
         if isinstance(item, dict):
             self.name, self.label = item["name"], item.get("label")
             self.total = bool(item.get("total"))
+            kind = item.get("kind")
+            if "sortable" in item:
+                sortable = bool(item["sortable"])
         elif isinstance(item, (tuple, list)):
             self.name, self.label = item[0], item[1]
         else:
             self.name, self.label = item, None
+        if kind is None and ext_type in ("number", "date"):
+            kind = ext_type
+        if kind is not None and kind not in self.KINDS:
+            raise ValueError(f"知らない列の種類: {kind!r} ({self.name})。number / money / date のどれかにしてください。")
+        self.kind = kind
+        is_ext = self.name.startswith(company_fields.EXT_PREFIX)
         self.field = None
-        if not self.name.startswith(company_fields.EXT_PREFIX) and "__" not in self.name:
+        if not is_ext and "__" not in self.name:
             try:
                 self.field = model._meta.get_field(self.name)
             except Exception:  # noqa: BLE001 - 項目でない名前 (関数など) は並び替えない
                 self.field = None
         if self.label is None:
             self.label = str(self.field.verbose_name) if self.field is not None else self.name
-        self.sortable = self.field is not None or self.name.startswith(company_fields.EXT_PREFIX)
+        self.sortable = sortable if sortable is not None else (self.field is not None or is_ext)
         self.desc_name = "-" + self.name
-        self.numeric = isinstance(self.field, NUMERIC_FIELDS) or ext_type == "number"
+        self.numeric = self.kind in ("number", "money") or isinstance(self.field, NUMERIC_FIELDS) or ext_type == "number"
+        self.money = self.kind == "money" or access.is_money_name(self.name)
         self.is_datetime = isinstance(self.field, models.DateTimeField)
-        self.is_date = (isinstance(self.field, DATE_FIELDS) and not self.is_datetime) or ext_type == "date"
+        self.is_date = (
+            self.kind == "date" or (isinstance(self.field, DATE_FIELDS) and not self.is_datetime) or ext_type == "date"
+        )
         self.is_code = not self.numeric and (self.name in CODE_NAMES or self.name.endswith(CODE_SUFFIXES))
+        self.annotated = (self.sortable or self.total) and self.field is None and not is_ext
 
     def order_key(self) -> str:
         if self.name.startswith(company_fields.EXT_PREFIX):
@@ -259,7 +297,10 @@ class BaseListView(ScreenMixin, ListView):
 
     合計の行は既定では出さない (締日や単価を足しても意味が無いため)。合計を出したい列は辞書で書く:
         columns = ("order_no", {"name": "amount", "label": "金額", "total": True})
-    合計に足すのは total が真で、表の数の項目 (DecimalField・IntegerField・FloatField) の列だけ。
+    合計に足すのは total が真で、表の数の項目 (DecimalField・IntegerField・FloatField) の列と、kind が number / money の
+    annotate の列 (部品の get_queryset が annotate した名前) だけ。
+    annotate の列の並び替えは、部品の get_queryset が annotate を足した後 (paginate_queryset と csv_response) で当てる
+    (Django の土台は get_ordering の並びを部品の get_queryset の super() の中、annotate より先に当てるため)。
     """
 
     columns: tuple = ()
@@ -281,12 +322,32 @@ class BaseListView(ScreenMixin, ListView):
         allowed = {s.name for s in self.column_specs() if s.sortable}
         return sort if sort.lstrip("-") in allowed else ""
 
-    def get_ordering(self):
+    def annotated_sort(self) -> str:
+        """並び替えの先 (sort_param) が annotate の列なら、その字 (- 付きのまま)。ほかは空の字。"""
         sort = self.sort_param()
-        if sort:
+        name = sort.lstrip("-")
+        return sort if sort and any(s.annotated and s.name == name for s in self.column_specs()) else ""
+
+    def get_ordering(self):
+        # annotate の列の並び替えは、ここでは既定の並びを返す (Django の土台がこの戻り値を部品の annotate より先に
+        # order_by に渡し、無い名前は FieldError になるため)。並び替えは paginate_queryset と csv_response で当てる。
+        sort = self.sort_param()
+        if sort and not self.annotated_sort():
             spec = next(s for s in self.column_specs() if s.name == sort.lstrip("-"))
             return ("-" if sort.startswith("-") else "") + spec.order_key()
         return self.ordering or "-pk"
+
+    def order_annotated(self, queryset):
+        """annotate の列の並び替えを、部品の get_queryset の後の queryset に当てる。annotate に無い名前は並び替えない。"""
+        sort = self.annotated_sort()
+        name = sort.lstrip("-")
+        if sort and name in queryset.query.annotations:
+            return queryset.order_by(("-" if sort.startswith("-") else "") + name)
+        return queryset
+
+    def paginate_queryset(self, queryset, page_size):
+        # 部品の get_queryset が annotate を足した後の queryset (self.object_list) がここに来る。
+        return super().paginate_queryset(self.order_annotated(queryset), page_size)
 
     def get_paginate_by(self, queryset):
         try:
@@ -316,7 +377,7 @@ class BaseListView(ScreenMixin, ListView):
         cells = []
         for spec in specs:
             value = display_value(obj, spec.name)
-            if access.is_money_name(spec.name) and not access.can_see_money(self.request.user):
+            if spec.money and not access.can_see_money(self.request.user):
                 value = access.MASK
             master = value if is_master(value) else None
             # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
@@ -336,16 +397,24 @@ class BaseListView(ScreenMixin, ListView):
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
 
     def totals_for(self, queryset, specs) -> list | None:
-        """絞り込みに追従する合計の行 (合計を選んだ表の数の項目だけ。無ければ出さない)。1 列 = {"value", "numeric"}。"""
+        """絞り込みに追従する合計の行 (合計を選んだ、表の数の項目と、kind が number / money の annotate の列。
+        無ければ出さない)。1 列 = {"value", "numeric"}。annotate の列は queryset の annotate にある名前だけ足す。"""
         sums = {}
         for spec in specs:
-            if spec.total and isinstance(spec.field, NUMERIC_FIELDS):
+            if spec.total and (
+                isinstance(spec.field, NUMERIC_FIELDS)
+                or (spec.annotated and spec.numeric and spec.name in queryset.query.annotations)
+            ):
                 sums[spec.name] = Sum(spec.name)
         if not sums:
             return None
-        agg = queryset.aggregate(**sums)
-        if any(access.is_money_name(name) for name in agg) and not access.can_see_money(self.request.user):
-            agg = {name: access.MASK if access.is_money_name(name) else value for name, value in agg.items()}
+        # 集計の名前は列の名前と分ける (annotate と同じ名前で aggregate すると、Django は annotate の値を足さない)。
+        aliases = {f"seizou_total_{index}": name for index, name in enumerate(sums)}
+        result = queryset.aggregate(**{alias: sums[name] for alias, name in aliases.items()})
+        agg = {name: result[alias] for alias, name in aliases.items()}
+        masked = {spec.name for spec in specs if spec.money and spec.name in sums}
+        if masked and not access.can_see_money(self.request.user):
+            agg = {name: access.MASK if name in masked else value for name, value in agg.items()}
         return [{"value": agg.get(spec.name), "numeric": spec.name in sums} for spec in specs]
 
     def search_hint(self) -> str:
@@ -411,7 +480,7 @@ class BaseListView(ScreenMixin, ListView):
     def csv_response(self, context) -> HttpResponse:
         specs = context["columns"]
         if not access.can_see_money(self.request.user):
-            specs = [s for s in specs if not access.is_money_name(s.name)]
+            specs = [s for s in specs if not s.money]
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         filename, fallback = self.csv_filename()
         response["Content-Disposition"] = (
@@ -420,7 +489,7 @@ class BaseListView(ScreenMixin, ListView):
         response.write("﻿")
         writer = csv.writer(response)
         writer.writerow([s.label for s in specs])
-        for obj in self.get_queryset():
+        for obj in self.order_annotated(self.get_queryset()):
             writer.writerow(["" if v is None else str(v) for v in (display_value(obj, s.name) for s in specs)])
         return response
 
