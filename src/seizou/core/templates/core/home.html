@@ -27,7 +27,6 @@
     <h2 id="shipping-title" class="text-lg font-bold">出荷 (直近 6 か月)</h2>
     {% include "core/_screen_help.html" with part="shipping" label="出荷の説明" %}
     </div>
-    <p class="mt-2 text-xs text-base-content/70">出荷日の月ごとの数量と金額 (円) です。後で受注が取消になった出荷も数えます。今月は途中の数です。</p>
     {% if shipping.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
       <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "truck" "size-6" %}</span>
@@ -68,7 +67,6 @@
     <h2 id="production-title" class="text-lg font-bold">生産 (直近 6 か月)</h2>
     {% include "core/_screen_help.html" with part="production" label="生産の説明" %}
     </div>
-    <p class="mt-2 text-xs text-base-content/70">発行は指示書の発行日の月の数量 (取消を除く)、完成は指示書の最後の工程に入れた実績の数 (実績の日時の月) です。今月は途中の数です。</p>
     {% if production.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
       <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "factory" "size-6" %}</span>
@@ -146,7 +144,6 @@
       </div>
       {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">注文残の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
     </div>
-    <p class="mt-2 text-xs text-base-content/70">納期を過ぎても出荷が終わっていない明細と、{{ alerts.days }} 日以内に納期が来る明細です。それぞれ納期の古い順に {{ alerts.limit }} 行まで並びます。</p>
     {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
     {% if alerts.overdue.count or alerts.soon.count %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
