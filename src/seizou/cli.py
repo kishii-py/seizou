@@ -273,6 +273,28 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         (site / folder).mkdir(parents=True, exist_ok=True)
 
 
+def copy_manual(seeds: Path, site: Path) -> int:
+    """種のフォルダの manual/ にある画面ごとの説明書の断片 (*.html) を、会社の置き場の manual/ に写す。写した数を返す。
+
+    種に manual/ が無ければ何もせず 0。置き場に同じ名前のファイルがあれば写さない (上書きしない)。
+    写すのは manual/ の直下の .html だけ (絵の images/ は種に置かない)。copyfile なので最終更新は写した時刻
+    (使い方の冊子の表紙の日付は写した日になる)。
+    """
+    source = seeds / "manual"
+    if not source.is_dir():
+        return 0
+    target = site / "manual"
+    target.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for path in sorted(source.glob("*.html")):
+        destination = target / path.name
+        if destination.exists():
+            continue
+        shutil.copyfile(path, destination)
+        copied += 1
+    return copied
+
+
 def child_env(extra: dict | None = None) -> dict:
     # 代入にする。親 (pytest-django など) の DJANGO_SETTINGS_MODULE を子に引き継がない。
     return {**os.environ, "DJANGO_SETTINGS_MODULE": "settings", **(extra or {})}
@@ -380,6 +402,9 @@ def command_new(answers_path: Path, demo: bool) -> int:
             # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
             sys.stdout.write(result.stdout or "")
             print(f"作り物のデータを登録しました: {seeds}")
+            copied = copy_manual(seeds, site)
+            if copied:
+                print(f"説明書の断片を写しました: {copied} 件 ({site / 'manual'})")
 
     port = answers["port"]
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")

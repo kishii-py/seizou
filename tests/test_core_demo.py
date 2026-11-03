@@ -310,6 +310,8 @@ def test_seizou_new_demo_end_to_end(tmp_path, monkeypatch, capsys):
     # 2 回目の load で数が増えない
     assert lines["AGAIN"] == lines["COUNT"]
     assert os.path.exists(site / "db.sqlite3")
+    assert "説明書の断片を写しました" in out
+    assert len(list((site / "manual").glob("*.html"))) == len(list((COMPANIES_DIR / "a_machining" / "manual").glob("*.html")))
 
 
 # ---------------------------------------------------------------- 新しい 6 種類 (標準の工程・図面・指示書・出荷・納品書・請求書)
