@@ -18,6 +18,7 @@
    - `SEIZOU_E2E_PASSWORD_A_MACHINING`: A 社の管理者のパスワード
    - `SEIZOU_E2E_PASSWORD_B_PLATING`: B 社の管理者のパスワード
    - `SEIZOU_E2E_PARTNER_SECRET`: 2 社の間の署名の鍵。fixture が起こす runserver に、相手の会社の id から作った名前で渡す
+   - `SEIZOU_E2E_PORT_<id の大文字>`: その会社の port を答えの YAML の値から変える (夜のレーンが一時の置き場を別の port で立てて回し、本物のデモに触らないため)
    パスワードと鍵の値は、どのファイルにも、絵の名前にも、ログにも書かない。
 5. 期待の文は、仕様書の 6 番の 3 節の「期待」の列をそのまま、試験の docstring に写す。
 6. 作り物のデータだけが映る前提で書く。実在の会社名・人名・品番を試験に書かない。
@@ -89,7 +90,7 @@ def _sites_dir() -> Path:
 def _load_company(yaml_name: str) -> Company:
     answers = yaml.safe_load((COMPANIES_DIR / yaml_name).read_text(encoding="utf-8"))
     company_id = str(answers["id"])
-    port = int(answers["port"])
+    port = int(os.environ.get(f"SEIZOU_E2E_PORT_{company_id.upper()}") or answers["port"])
     return Company(
         id=company_id,
         name=str(answers["name"]),
@@ -365,7 +366,8 @@ def choose(page: Page, name: str, text: str) -> None:
 
     select = page.locator(f"select[name='{name}']")
     wrapper = select.locator("xpath=following-sibling::div[contains(@class,'ts-wrapper')][1]")
-    options = wrapper.locator(".ts-dropdown .option")
+    # 候補の一覧は body の直下に描く (seizou-select.js の dropdownParent)。Tom Select が一覧の中の箱に付ける id (<select の id>-ts-dropdown) で引く。
+    options = page.locator(f"[id='{select.get_attribute('id')}-ts-dropdown'] .option")
     with page.expect_response(lambda response: asked(response, ""), timeout=SELECT_WAIT_MS):
         wrapper.locator(".ts-control").click()
     options.first.wait_for(state="visible", timeout=SELECT_WAIT_MS)
