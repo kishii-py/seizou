@@ -268,3 +268,64 @@ def test_existing_column_forms_unchanged(user, items):
     response = call(_TotalItemList, user, sort="-standard_price")
     body(response)
     assert column_values(response, 0) == ["P-1001", "P-1002", "P-1003"]
+
+
+class _PagedItemList(BaseListView):
+    model = Item
+    screen_name = "作り物の同じ単価の一覧"
+    template_name = "core/list.html"
+    paginate_by = 2
+    columns = (
+        "part_no",
+        "standard_price",
+        {"name": "price_x2", "label": "倍の単価", "kind": "money", "sortable": True},
+    )
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .annotate(
+                price_x2=ExpressionWrapper(
+                    F("standard_price") * 2, output_field=DecimalField(max_digits=12, decimal_places=2)
+                )
+            )
+        )
+
+
+@pytest.fixture
+def same_price_items(db):
+    # 単価が同じ 3 つ。並び替えの鍵が 1 つだけだと、同じ値の行の順は DB 任せになる
+    return [
+        Item.objects.create(part_no="P-2001", name="作り物の軸", standard_price=Decimal("10")),
+        Item.objects.create(part_no="P-2002", name="作り物の板", standard_price=Decimal("10")),
+        Item.objects.create(part_no="P-2003", name="作り物の台", standard_price=Decimal("10")),
+    ]
+
+
+def test_sort_adds_pk_as_second_key(user, same_price_items):
+    ascending = ["P-2001", "P-2002", "P-2003"]
+    for sort in ("standard_price", "-standard_price", "price_x2", "-price_x2"):
+        prefix = "-" if sort.startswith("-") else ""
+        pages, pks = [], []
+        for page in (1, 2):
+            response = call(_PagedItemList, user, sort=sort, page=page)
+            body(response)
+            assert response.status_code == 200, sort
+            pages.append(column_values(response, 0))
+            pks += [row["pk"] for row in response.context_data["rows"]]
+            # 2 つ目の鍵の有無は query で見る (SQLite がたまたま pk の順で返しても見分ける)
+            assert response.context_data["paginator"].object_list.query.order_by == (sort, prefix + "pk"), sort
+        # 1 ページ目と 2 ページ目に同じ行が出ず、抜けもしない
+        assert len(pks) == len(set(pks)) == 3, sort
+        expected = ascending if not prefix else ascending[::-1]
+        assert pages == [expected[:2], expected[2:]], sort
+
+    # 並び替えの要求が無いときは既定の並びのまま (2 つ目の鍵を足さない)
+    response = call(_PagedItemList, user)
+    body(response)
+    assert response.context_data["paginator"].object_list.query.order_by == ("-pk",)
+
+    # CSV も同じ順
+    rows = csv_rows(call(_PagedItemList, user, format="csv", sort="-standard_price"))
+    assert [row[0] for row in rows[1:]] == ["P-2003", "P-2002", "P-2001"]

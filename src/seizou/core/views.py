@@ -301,6 +301,8 @@ class BaseListView(ScreenMixin, ListView):
     annotate の列 (部品の get_queryset が annotate した名前) だけ。
     annotate の列の並び替えは、部品の get_queryset が annotate を足した後 (paginate_queryset と csv_response) で当てる
     (Django の土台は get_ordering の並びを部品の get_queryset の super() の中、annotate より先に当てるため)。
+    並び替えの要求がある時は、同じ値の行の順を pk でそろえる (昇順は pk、降順は -pk。ページ送りの境で行が重なったり抜けたりしない)。
+    既定の並び (ordering) には足さない。
     """
 
     columns: tuple = ()
@@ -334,15 +336,20 @@ class BaseListView(ScreenMixin, ListView):
         sort = self.sort_param()
         if sort and not self.annotated_sort():
             spec = next(s for s in self.column_specs() if s.name == sort.lstrip("-"))
-            return ("-" if sort.startswith("-") else "") + spec.order_key()
+            prefix = "-" if sort.startswith("-") else ""
+            return (prefix + spec.order_key(), prefix + "pk")
         return self.ordering or "-pk"
 
     def order_annotated(self, queryset):
         """annotate の列の並び替えを、部品の get_queryset の後の queryset に当てる。annotate に無い名前は並び替えない。"""
         sort = self.annotated_sort()
-        name = sort.lstrip("-")
-        if sort and name in queryset.query.annotations:
-            return queryset.order_by(("-" if sort.startswith("-") else "") + name)
+        if not sort:
+            return queryset
+        spec = next(s for s in self.column_specs() if s.name == sort.lstrip("-"))
+        prefix = "-" if sort.startswith("-") else ""
+        key = spec.order_key()
+        if key in queryset.query.annotations:
+            return queryset.order_by(prefix + key, prefix + "pk")
         return queryset
 
     def paginate_queryset(self, queryset, page_size):
