@@ -2,8 +2,8 @@
 
 普段は触らない物を、左のメニューでなくここにまとめる (本人の指摘 11-03 昼「普段簡単に触らないものは、設定をいじれる所に」):
 会社の選べる設定の今の値と出所 (画面 / 答え (settings.py) / 既定。アカウント管理の権限がある人は行の「編集」から
-1 つずつ変え、「答えの値に戻す」で画面の値を消す。menu は答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、システムの状態 (開発の設定・自動ログイン・
-ファイルの配り方・DB・AI の鍵の有無・MCP の利用者の有無・入っている部品)。鍵の値は出さない (有るか無いかだけ)。
+1 つずつ変え、「答えの値に戻す」で画面の値を消す。menu は答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、フィードバックの一覧の入口 (入っている会社だけ)、システムの状態 (開発の設定・自動ログイン・
+ファイルの配り方・DB・AI の鍵の有無・MCP の利用者の有無・入っている部品・点検 (ボタンで走らせる))。鍵の値は出さない (有るか無いかだけ)。
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from django.utils.cache import add_never_cache_headers
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from seizou.core import access, conf, services
+from seizou.core import access, conf, doctor, services
 from seizou.core.forms import SettingForm
 from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
@@ -68,6 +68,9 @@ SETTINGS_DENIED_TEXT = "「設定の変更」の画面です。アカウント�
 
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 MCP_USER_ENV = "SEIZOU_MCP_USER"
+
+#: 画面に出す「直す」の行の数 (点検の表の順の最初から。残りは命令 seizou_doctor で見る)
+DOCTOR_SHOWN = 3
 
 
 def _display(key: str, value) -> str:
@@ -151,20 +154,30 @@ def system_rows() -> list[dict]:
     return rows
 
 
+def doctor_summary(rows) -> dict:
+    """点検の結果の要点。rows は doctor.run() の並び (Row)。shown は直す物の最初の DOCTOR_SHOWN 件 (点検の表の順)。
+
+    読むだけで、結果を保存しない (表にも session にも書かない)。production は本番の条件か (DEBUG が偽)。
+    """
+    fixes = [row for row in rows if not row.ok]
+    return {"rows": list(rows), "fixes": fixes, "shown": fixes[:DOCTOR_SHOWN], "production": doctor.is_production()}
+
+
 class SettingsView(ScreenMixin, TemplateView):
     """設定の画面。選べる設定を変えるのは、行の「編集」から開く設定の変更の画面 (SettingUpdateView)。
 
     使う人: 総務 / いつ: 会社の動きや取引先との接続を見直すとき / 何のために: 選べる設定の今の値と出所、普段は触らない物の入口、
-    システムの状態を 1 か所で見る / 次にすること: 行の「編集」で値を変えるか、取引先との接続やアカウント管理へ進む
+    システムの状態を 1 か所で見る (アカウント管理の担当者は「点検を走らせる」で直す物も見る) / 次にすること: 行の「編集」で値を変えるか、取引先との接続やアカウント管理へ進む
     """
 
     screen_name = "設定"
-    screen_help = "会社の選べる設定の今の値と、普段は触らない物 (取引先との接続・アカウント管理) の入口、システムの状態。"
+    screen_help = "会社の選べる設定の今の値と、普段は触らない物 (取引先との接続・アカウント管理) の入口、システムの状態。アカウント管理の担当者は「点検を走らせる」で、命令 seizou_doctor と同じ点検の直す物を見る。"
     screen_icon = "settings"
     template_name = "core/settings.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context.setdefault("doctor", None)  # GET では None (まだ走らせていない)。POST は doctor= で渡す
         context["company_settings"] = company_settings()
         context["links"] = [
             {
@@ -186,6 +199,15 @@ class SettingsView(ScreenMixin, TemplateView):
                 "icon": "users",
             },
         ]
+        if apps.is_installed("seizou.feedback"):
+            context["links"].append(
+                {
+                    "label": "フィードバックの一覧",
+                    "help": "現場の人が伝えた困りごと・要望・不具合の下書き。自分の分は全員、全部はアカウント管理の担当者が見る。伝えるのは左のメニューの下の「フィードバック」から。",
+                    "url": url_or_none("feedback:feedback_list"),
+                    "icon": "pencil",
+                }
+            )
         from seizou.core import access
 
         context["can_edit"] = access.can_manage_accounts(self.request.user)
@@ -195,6 +217,13 @@ class SettingsView(ScreenMixin, TemplateView):
         context["system_rows"] = system_rows()
         context["parts"] = [part.rsplit(".", 1)[-1] for part in PARTS]
         return context
+
+    def post(self, request, *args, **kwargs):
+        """「点検を走らせる」。core/doctor.run をその場で呼び、結果を同じ画面に出す (保存しない)。アカウント管理の担当者だけ。"""
+        denied = settings_denied(request)
+        if denied is not None:
+            return denied
+        return self.render_to_response(self.get_context_data(doctor=doctor_summary(doctor.run())))
 
 
 def settings_denied(request):

@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
 {% block content %}
-{# 設定: 会社の選べる設定 (今の値と出所。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。 #}
+{# 設定: 会社の選べる設定 (今の値と出所。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
 {# 設定の表は 5 列 (設定・今の値・出所・鍵・編集) なので、幅いっぱいの枠に置く (半分の幅だと出所と編集が横の送りの先に隠れる = 11-03 の本体の手の確かめ)。入口と状態の 2 つはその下に並べる。 #}
 <div class="flex flex-col gap-6">
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
@@ -39,13 +39,26 @@
       </ul>
     </section>
     <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="system-title">
-      <h2 id="system-title" class="text-lg font-bold">システムの状態</h2>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="system-title" class="text-lg font-bold">システムの状態</h2>
+        {% if can_edit %}<form method="post" action="{% url 'core:settings' %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}点検を走らせる</button></form>{% endif %}
+      </div>
       <p class="mt-2 text-xs text-base-content/70">鍵の値は出さない (有るか無いかだけ)。変えるのは置き場の <code class="font-mono">.env</code>。</p>
       <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         {% for row in system_rows %}
         <dt class="whitespace-nowrap text-base-content/70">{{ row.label }}</dt><dd>{{ row.value }}</dd>
         {% endfor %}
         <dt class="whitespace-nowrap text-base-content/70">入っている部品</dt><dd class="font-mono text-xs">{{ parts|join:"・" }}</dd>
+        <dt class="whitespace-nowrap text-base-content/70">点検</dt>
+        <dd id="doctor-result">
+          {% if doctor is None %}まだ走らせていない。アカウント管理の担当者が見出しの右のボタンで、命令 <code class="font-mono">manage.py seizou_doctor</code> と同じ物を見る。
+          {% elif doctor.fixes %}<span class="font-medium text-error">直す物 {{ doctor.fixes|length }} 件</span> ({{ doctor.rows|length }} 件を見た)
+          <ul class="mt-1 flex flex-col gap-1 text-xs">{% for row in doctor.shown %}<li>{{ row.label }}: {{ row.detail }} → 直し方: {{ row.fix }}</li>{% endfor %}</ul>
+          {% if doctor.fixes|length > doctor.shown|length %}<p class="mt-1 text-xs text-base-content/70">残りは <code class="font-mono">manage.py seizou_doctor</code> で見る。</p>{% endif %}
+          {% else %}良い ({{ doctor.rows|length }} 件を見た)
+          {% endif %}
+          {% if doctor is not None and not doctor.production %}<p class="mt-1 text-xs text-base-content/70">開発の設定 (DEBUG=1) なので、本番の条件の行 (自動ログイン・ALLOWED_HOSTS・https・collectstatic) は見ていない。命令の <code class="font-mono">--production</code> で見る。</p>{% endif %}
+        </dd>
       </dl>
     </section>
   </div>
