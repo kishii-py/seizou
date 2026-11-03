@@ -52,6 +52,11 @@ def folder_from_param(value):
 
 
 class ManualListView(BaseListView):
+    """マニュアルの一覧 (フォルダの木)。
+
+    使う人: 全員 / いつ: 手順を決めたときと、新人に教えるとき (書くのは各部署の担当) / 何のために: 手順書と社内の文書を置き場ごとに持ち、育てる / 次にすること: 読むなら行から、書くなら「新規登録」
+    """
+
     model = Manual
     template_name = "manuals/manual_list.html"
     columns = ("title", ("folder_path_text", "置き場"), "format", "protected", "updated_at")
@@ -72,6 +77,11 @@ class ManualListView(BaseListView):
 
 
 class FolderCreateView(BaseFormView):
+    """新しいフォルダの入力。
+
+    使う人: 全員 / いつ: マニュアルの置き場を分けるとき / 何のために: フォルダを作る / 次にすること: マニュアルを置く
+    """
+
     model = ManualFolder
     form_class = FolderForm
     service = staticmethod(services.create_folder)
@@ -80,6 +90,11 @@ class FolderCreateView(BaseFormView):
 
 
 class ManualCreateView(BaseFormView):
+    """マニュアルの新規登録の入力。
+
+    使う人: 全員 / いつ: 手順を決めたとき (書くのは各部署の担当) / 何のために: 置き場と題と形式を決めて作る / 次にすること: 「編集」で本文を書く
+    """
+
     model = Manual
     form_class = ManualCreateForm
     service = staticmethod(services.create_manual)
@@ -88,6 +103,11 @@ class ManualCreateView(BaseFormView):
 
 
 class ManualDetailView(BaseDetailView):
+    """マニュアルの本文を読む画面。
+
+    使う人: 全員 / いつ: 手順を確かめるときと、新人に教えるとき / 何のために: 本文を読む / 次にすること: 直すなら「編集」、前の中身は版の履歴
+    """
+
     model = Manual
     template_name = "manuals/manual_detail.html"
     screen_name = "マニュアル"
@@ -98,6 +118,11 @@ class ManualDetailView(BaseDetailView):
 
 
 class ManualUpdateView(BaseFormView):
+    """マニュアルの編集の入力。
+
+    使う人: 全員 / いつ: 手順が変わったとき / 何のために: 本文を書く / 次にすること: プレビューで確かめて保存 (大きく直すなら「新しい版として保存」)
+    """
+
     model = Manual
     form_class = ManualForm
     service = staticmethod(services.update_manual)
@@ -107,6 +132,11 @@ class ManualUpdateView(BaseFormView):
 
 
 class ManualVersionCreateView(BaseFormView):
+    """新しい版として保存する入力。
+
+    使う人: 全員 / いつ: 大きく直すとき / 何のために: 前の中身を版として残して保存する / 次にすること: 版の履歴で差分を見る
+    """
+
     model = Manual
     form_class = ManualVersionForm
     service = staticmethod(services.save_as_version)
@@ -116,6 +146,11 @@ class ManualVersionCreateView(BaseFormView):
 
 
 class ManualVersionListView(BaseDetailView):
+    """版の履歴の一覧。
+
+    使う人: 全員 / いつ: 前の中身を見たいとき / 何のために: 残した版の一覧を見る / 次にすること: 差分を見るか、この版に戻す
+    """
+
     model = Manual
     template_name = "manuals/manualversion_list.html"
     screen_name = "版の履歴"
@@ -123,6 +158,11 @@ class ManualVersionListView(BaseDetailView):
 
 
 class ManualVersionDetailView(BaseDetailView):
+    """版と今の中身の差分。
+
+    使う人: 全員 / いつ: 何を直したかを確かめるとき / 何のために: 版と今の中身を並べて見る / 次にすること: 要れば「この版に戻す」
+    """
+
     model = ManualVersion
     template_name = "manuals/manualversion_detail.html"
     screen_name = "差分"
@@ -133,6 +173,11 @@ class ManualVersionDetailView(BaseDetailView):
 
 
 class ManualVersionRestoreView(BaseFormView):
+    """この版に戻す確かめの入力。
+
+    使う人: 全員 / いつ: 直し間違えたとき / 何のために: 版の題と本文に戻す / 次にすること: マニュアルを読んで確かめる
+    """
+
     model = ManualVersion
     form_class = RestoreForm
     service = staticmethod(services.restore_version)
@@ -142,6 +187,11 @@ class ManualVersionRestoreView(BaseFormView):
 
 
 class FolderUpdateView(BaseFormView):
+    """フォルダの名前と色の変更の入力。
+
+    使う人: 全員 / いつ: フォルダの名前や色を変えるとき / 何のために: 名前と色を直す / 次にすること: マニュアルの一覧へ戻る
+    """
+
     model = ManualFolder
     form_class = FolderEditForm
     service = staticmethod(services.update_folder)
@@ -150,6 +200,11 @@ class FolderUpdateView(BaseFormView):
 
 
 class FolderMoveView(BaseFormView):
+    """フォルダの移動の入力。
+
+    使う人: 全員 / いつ: 置き場を整理するとき / 何のために: フォルダを中身ごと移す / 次にすること: マニュアルの一覧で確かめる
+    """
+
     model = ManualFolder
     form_class = FolderMoveForm
     service = staticmethod(services.move_folder)
@@ -158,6 +213,11 @@ class FolderMoveView(BaseFormView):
 
 
 class FolderProtectView(BaseFormView):
+    """フォルダの保護の入力。
+
+    使う人: 全員 / いつ: 動かされたくないとき / 何のために: 移動と削除を止める / 次にすること: マニュアルの一覧へ戻る
+    """
+
     model = ManualFolder
     form_class = ProtectForm
     service = staticmethod(services.protect_folder)
@@ -167,6 +227,11 @@ class FolderProtectView(BaseFormView):
 
 
 class FolderDeleteView(BaseFormView):
+    """フォルダの削除の確かめ。
+
+    使う人: 全員 / いつ: 要らなくなったとき / 何のために: フォルダを (中身ごと) 削除する / 次にすること: マニュアルの一覧へ戻る
+    """
+
     model = ManualFolder
     form_class = FolderDeleteForm
     service = staticmethod(services.delete_folder)
@@ -176,6 +241,11 @@ class FolderDeleteView(BaseFormView):
 
 
 class ManualMoveView(BaseFormView):
+    """マニュアルの移動の入力。
+
+    使う人: 全員 / いつ: 置き場を整理するとき / 何のために: マニュアルをほかのフォルダへ移す / 次にすること: マニュアルの一覧で確かめる
+    """
+
     model = Manual
     form_class = ManualMoveForm
     service = staticmethod(services.move_manual)
@@ -184,6 +254,11 @@ class ManualMoveView(BaseFormView):
 
 
 class ManualProtectView(BaseFormView):
+    """マニュアルの保護の入力。
+
+    使う人: 全員 / いつ: 動かされたくないとき / 何のために: 移動と削除を止める / 次にすること: マニュアルの一覧へ戻る
+    """
+
     model = Manual
     form_class = ProtectForm
     service = staticmethod(services.protect_manual)
@@ -193,6 +268,11 @@ class ManualProtectView(BaseFormView):
 
 
 class ManualDeleteView(BaseFormView):
+    """マニュアルの削除の確かめ。
+
+    使う人: 全員 / いつ: 要らなくなったとき / 何のために: 版と画像ごと削除する / 次にすること: マニュアルの一覧へ戻る
+    """
+
     model = Manual
     form_class = ManualDeleteForm
     service = staticmethod(services.delete_manual)
