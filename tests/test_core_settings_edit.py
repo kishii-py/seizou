@@ -10,18 +10,12 @@ import logging
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from seizou.core import conf, services
 from seizou.core.models import SettingOverride
-
-
-@pytest.fixture(autouse=True)
-def fresh_setting_cache():
-    # 試験の transaction は戻るが、process の中の控えは戻らない。前と後で捨て、ほかの試験に上書きを残さない。
-    conf.reset_cache()
-    yield
-    conf.reset_cache()
 
 
 @pytest.fixture
@@ -108,6 +102,30 @@ def test_setting_without_db_falls_back_to_answer(settings):
     # 読めなかった結果は控えない (migrate の後に読み直せるように)
     assert conf._cache is None
     assert conf.overrides() == {}
+
+
+def test_overrides_read_uses_a_savepoint(db):
+    # 試験の transaction の中では atomic() が savepoint になり、SAVEPOINT と RELEASE SAVEPOINT も数えられる
+    conf.reset_cache()
+    with CaptureQueriesContext(connection) as queries:
+        conf.overrides()
+
+    sqls = [q["sql"] for q in queries.captured_queries]
+    assert any("SAVEPOINT" in sql for sql in sqls)
+    assert any(sql.startswith("SELECT") and "core_settingoverride" in sql for sql in sqls)
+
+
+def test_overrides_read_failure_keeps_outer_transaction(db, monkeypatch):
+    # 表の無い置き場の代わりに、表の名前を無い名前に差し替える (表を消す DDL と cursor は使わない)。
+    # PostgreSQL では savepoint が無いと、失敗した読みの後の外の atomic の問い合わせが全部落ちる (CI の postgres の組が見る)
+    conf.reset_cache()
+    with transaction.atomic():
+        with monkeypatch.context() as patch:
+            patch.setattr(SettingOverride._meta, "db_table", "core_no_such_table_for_tests")
+            assert conf.overrides() == {}
+        assert conf._cache is None
+        assert SettingOverride.objects.count() == 0
+        assert conf.overrides() == {}
 
 
 # ---------------------------------------------------------------- 1 段目: 書く関数
@@ -327,11 +345,36 @@ def test_edit_hidden_fields_with_checkboxes(manager_client):
 
 
 def test_hidden_field_candidates_match_orders_forms():
-    from seizou.core.settings_screen import HIDDEN_FIELD_CANDIDATES
-    from seizou.orders.forms import KEPT_FIELDS, OrderForm, OrderLineForm
+    # 候補は orders の側 (forms.hideable_fields) が持ち、core の設定の画面は importlib で同じ並びを引く
+    from seizou.core import settings_screen
+    from seizou.orders.forms import KEPT_FIELDS, OrderForm, OrderLineForm, hideable_fields
 
-    names = {name for name, _label in HIDDEN_FIELD_CANDIDATES}
-    assert names == (set(OrderForm.base_fields) | set(OrderLineForm.base_fields)) - KEPT_FIELDS - {"order_line"}
+    fields = {**OrderForm.base_fields, **OrderLineForm.base_fields}
+    names = [name for name, _label in hideable_fields()]
+    assert set(names) == set(fields) - KEPT_FIELDS - {"order_line"}
+    assert len(names) == len(set(names))
+    assert all(label == str(fields[name].label) for name, label in hideable_fields())
+    assert settings_screen.hideable_fields() == tuple(hideable_fields())
+
+
+def test_hideable_fields_are_empty_without_orders(monkeypatch):
+    # db の fixture を付けない。apps.is_installed を差し替えた context の中では hideable_fields() だけを呼ぶ
+    from seizou.core import settings_screen
+    from seizou.core.forms import SettingForm
+
+    def no_orders_forms(name):
+        raise ImportError(name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(settings_screen, "import_module", no_orders_forms)
+        assert settings_screen.hideable_fields() == ()
+    with monkeypatch.context() as patch:
+        patch.setattr(settings_screen.apps, "is_installed", lambda label: False)
+        assert settings_screen.hideable_fields() == ()
+    with monkeypatch.context() as patch:
+        patch.setattr(settings_screen, "import_module", no_orders_forms)
+        form = SettingForm(key="hidden_fields")
+    assert list(form.fields[SettingForm.HIDDEN_FIELDS_FIELD].choices) == []
 
 
 def test_invalid_input_is_not_saved(manager_client):

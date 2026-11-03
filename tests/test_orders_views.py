@@ -319,3 +319,19 @@ def test_menu_has_order_entry(logged_in):
     body = response.content.decode()
     assert reverse("orders:order_list") in body
     assert "受注" in body
+
+
+@pytest.mark.django_db
+def test_hideable_fields_can_all_be_hidden(settings):
+    from seizou.orders.forms import KEPT_FIELDS, OrderForm, OrderLineForm, hideable_fields
+
+    names = [name for name, _label in hideable_fields()]
+    settings.SEIZOU = {"hidden_fields": names}
+    order_fields = set(OrderForm().fields)
+    line_fields = set(OrderLineForm().fields)
+    assert not set(names) & order_fields
+    assert not set(names) & line_fields
+    # 決まりが見る欄は残る
+    assert {"customer", "order_date"} <= order_fields
+    assert {"item", "qty", "unit_price"} <= line_fields
+    assert not set(names) & KEPT_FIELDS

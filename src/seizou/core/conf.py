@@ -6,13 +6,14 @@
 画面の上書きは process の中に控え (dict) を持つ。書いた時 (core の services の set_setting・clear_setting) に捨て、
 別の process (gunicorn の複数の worker) の書いた値は CACHE_SECONDS 秒で読み直す。表が読めないとき
 (migrate の前の置き場・DB を止めた試験) は上書き無しと同じで、控えにも入れない。SEIZOU と既定は控えずに毎回読む。
+表の読みは savepoint (transaction.atomic) で包み、読めない読みが外の transaction (services の atomic の中) を壊さないようにする。
 """
 
 import time
 
 from django.apps import apps
 from django.conf import settings
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 
 DEFAULTS = {
     "order_form": "multi",  # 受注の形: multi (1 件に明細が複数) / single (1 件 1 品)
@@ -66,6 +67,7 @@ def overrides() -> dict:
     控えが CACHE_SECONDS 秒より新しければ控えを返す。古いか無ければ表を 1 回読んで控える。
     表が読めないときは {} を返し、控えに入れない (migrate の後に読み直せるように)。読めないのは、
     app の登録の前・表の無い置き場 (DatabaseError)・pytest-django が db の無い試験で DB を止めたとき (RuntimeError)。
+    表の読みは savepoint (transaction.atomic) の中 (PostgreSQL で失敗した問い合わせが外の transaction を壊さないように)。
     """
     global _cache
     cached = _cache
@@ -79,8 +81,12 @@ def overrides() -> dict:
     except LookupError:
         return {}
     try:
-        # queryset は遅延なので、dict(...) で読み切るまでを try の中に置く
-        values = dict(model._default_manager.values_list("key", "value"))
+        # queryset は遅延なので、dict(...) で読み切るまでを try の中に置く。
+        # savepoint (transaction.atomic) で包む: PostgreSQL では失敗した問い合わせ (migrate の前は表が無い) が外の transaction を
+        # 壊し、以後の問い合わせが全部落ちる。services.next_number などは atomic の中から setting() を読むので、外に響かないようにする。
+        # with も try の中に置く: db の無い試験では atomic の入口 (get_autocommit → ensure_connection) が RuntimeError を出す。
+        with transaction.atomic():
+            values = dict(model._default_manager.values_list("key", "value"))
     except (DatabaseError, RuntimeError):
         return {}
     _cache = (values, now)

@@ -89,7 +89,7 @@ class SettingForm(forms.Form):
     def __init__(self, *args, key, **kwargs):
         super().__init__(*args, **kwargs)
         # 見出しの日本語は設定の画面の表から読む。module の頭で読むと settings_screen → forms の輪になるので、ここで読む
-        from seizou.core.settings_screen import HIDDEN_FIELD_CANDIDATES, SETTING_LABELS, SUB_LABELS
+        from seizou.core.settings_screen import SETTING_LABELS, SUB_LABELS, hideable_fields
 
         self.key = key
         label, words = SETTING_LABELS.get(key, (key, {}))
@@ -117,7 +117,7 @@ class SettingForm(forms.Form):
             self.fields[self.HIDDEN_FIELDS_FIELD] = forms.MultipleChoiceField(
                 label=label,
                 required=False,
-                choices=HIDDEN_FIELD_CANDIDATES,
+                choices=hideable_fields(),
                 widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
                 initial=list(current or ()),
                 help_text="check を入れた項目を受注の入力から外す。決まりが見る項目 (得意先・部品・数量・単価・受注日) は隠せない。",

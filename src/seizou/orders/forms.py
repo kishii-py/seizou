@@ -44,6 +44,21 @@ def hidden_names() -> set[str]:
     return set(setting("hidden_fields") or ()) - KEPT_FIELDS
 
 
+def hideable_fields() -> tuple[tuple[str, str], ...]:
+    """hidden_fields (使わない注文の項目) に書ける欄の候補 ((名前, 見出し) の並び)。
+
+    受注の form (OrderForm・OrderLineForm) の欄 − 決まりが見る欄 (KEPT_FIELDS) − 明細を指す隠しの欄 (order_line)。
+    note は両方の form にあるので 1 つ。見出しは欄の label と同じ。core の設定の画面 (seizou.core.settings_screen.hideable_fields)
+    が importlib で引く (core は部品を import しない)。欄を足したり外したりしたら、ここも直す (試験が突き合わせる)。
+    """
+    return (
+        ("customer_order_no", "得意先の注文番号"),
+        ("due_date", "納期"),
+        ("unit", "単位"),
+        ("note", "備考"),
+    )
+
+
 def _date_input():
     return forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 
