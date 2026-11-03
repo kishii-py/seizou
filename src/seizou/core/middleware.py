@@ -17,8 +17,11 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.contrib.auth import REDIRECT_FIELD_NAME
 from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse
+from django.http import QueryDict
+from django.shortcuts import resolve_url
 from django.template.loader import render_to_string
 
 logger = logging.getLogger(__name__)
@@ -202,3 +205,57 @@ class DevAutoLoginMiddleware:
             if admin is not None:
                 request.user = admin
         return self.get_response(request)
+
+
+# ---------------------------------------------------------------- htmx の要求のログインの切れ (N69)
+
+#: htmx が画面の今の URL (利用者が見ていた画面) を入れる見出し
+HX_CURRENT_URL = "HX-Current-URL"
+#: 401 の本文 (htmx は 401 の本文を差し替えない。htmx の外の道具が読む)
+LOGIN_GONE_TEXT = "ログインが切れました。ログインの画面へ移ります。"
+
+
+def _login_url() -> str:
+    return resolve_url(settings.LOGIN_URL)
+
+
+def _back_to(request, location: str) -> str:
+    """ログインの後に戻る先 (next) を付けたログインの URL。
+
+    戻る先は HX-Current-URL の道と query (利用者が見ていた画面)。見出しが無い・道が / で始まらない・
+    // で始まる・外の host のときは、302 の Location のまま返す。戻る先の確かめはログインの view がする。
+    """
+    current = urlsplit(request.headers.get(HX_CURRENT_URL, ""))
+    if not current.path.startswith("/") or current.path.startswith("//"):
+        return location
+    if current.netloc and current.netloc != request.get_host():
+        return location
+    page = current.path + (f"?{current.query}" if current.query else "")
+    query = QueryDict(mutable=True)
+    query[REDIRECT_FIELD_NAME] = page
+    # Django の redirect_to_login と同じ形 (/ は符号にしない)。
+    return f"{_login_url()}?{query.urlencode(safe='/')}"
+
+
+class HtmxLoginMiddleware:
+    """htmx の部分の要求でログインが要るとき、302 の代わりに 401 と HX-Redirect を返し、画面の全体をログインの画面へ移す。
+
+    部分の差し替えの中にログインの画面がはまり込まない。戻る先は利用者が見ていた画面 (HX-Current-URL)。
+    - settings の MIDDLEWARE の AuthenticationMiddleware より後ろに置く。
+    - 応答だけを見て、利用者と session を読まない (ログインしているかを見ず、ログインの道へ移す 302 だけを替える)。
+    - ほかの 302 と、htmx でない要求の応答は触らない。開発でも本番でも鎖に残る。
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if not request.headers.get("HX-Request") or response.status_code != 302:
+            return response
+        location = response.get("Location", "")
+        if urlsplit(location).path != urlsplit(_login_url()).path:
+            return response
+        replaced = HttpResponse(LOGIN_GONE_TEXT, status=401, content_type="text/plain; charset=utf-8")
+        replaced["HX-Redirect"] = _back_to(request, location)
+        return replaced

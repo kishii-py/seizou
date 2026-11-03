@@ -36,6 +36,12 @@ INTERNAL_PATTERN = re.compile(r"^\s*internal\s*;", re.MULTILINE)
 ALIAS_PATTERN = re.compile(r'alias\s+"?([^";]+?)/?"?\s*;')
 #: 設定の値が外れたときの直し方の後ろ半分
 SETTING_FIX = "answers.yaml の settings と settings.py の SEIZOU を直す (画面で上書きした値なら設定の画面で直す)。"
+#: Cookie が http でも送られるときの直し方
+COOKIE_FIX = (
+    "settings.py の if not DEBUG: の中に SESSION_COOKIE_SECURE = True と CSRF_COOKIE_SECURE = True があるかを見て、"
+    "無ければ足し、nginx で https を受ける (seizou の docs/operations.md の「版を上げる手順」)。"
+    "LAN の中だけで http で開く置き場は、この 2 行を消すので、この行は直すのまま残る。"
+)
 
 
 @dataclass(frozen=True)
@@ -335,6 +341,14 @@ def check_connection_urls() -> list[Row]:
     return rows
 
 
+def check_cookies() -> list[Row]:
+    label = "Cookie が HTTPS だけ"
+    off = [name for name in ("SESSION_COOKIE_SECURE", "CSRF_COOKIE_SECURE") if not getattr(settings, name, False)]
+    if not off:
+        return [_good(label, "セッションと CSRF の Cookie を HTTPS の道でだけ送る")]
+    return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", COOKIE_FIX)]
+
+
 def _safe(label, check) -> list[Row]:
     """点検の関数を 1 つ呼ぶ。例外は、その関数の行を「直す」にして次へ進む。"""
     try:
@@ -373,6 +387,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("会社の選べる設定", check_settings, False),
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
+        ("Cookie が HTTPS だけ", check_cookies, True),
     ]
     rows = []
     for label, check, production_only in checks:

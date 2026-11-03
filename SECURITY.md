@@ -28,6 +28,7 @@
 - 管理者 (`admin`) のパスワードは、`seizou new` が乱数で作り、出力に 1 度だけ出る。`/seizou:build` で立てたときは、この出力が Claude Code の会話に残るので、会社の置き場で `manage.py changepassword admin` を自分の端末で打って変える。
 - Django の `SECRET_KEY` は、`seizou new` が会社のプロジェクトを作るときに乱数で作り、`.env` に書く。`.env` は持ち主だけが読める権限で書く (Windows では、この権限は働かない)。
 - ログインは Django 標準の認証を使う。開発機の自動ログイン (`seizou.core.middleware.DevAutoLoginMiddleware`) は、`DEBUG` が真で、起動が `runserver` で、`.env` の `SEIZOU_DEV_AUTO_LOGIN=1` のときだけ動き、ログインしていない要求を有効な superuser の要求として扱う。本番の形 (gunicorn・`DEBUG=0`) では動かない。会社の置き場を外から届く所で `runserver` で立てない。
+- ログインの画面は、同じ ID と同じ接続元 (`REMOTE_ADDR`) で 5 回続けて失敗すると、15 分の間はその組を受け付けない (正しいパスワードでも)。数はサーバーの cache に ID と接続元の組の要約 (sha256) で持ち、成功で消す。締め出したときはサーバーの記録 (`seizou.login`) に 1 行出す (パスワードは書かない)。`seizou new` が書く `settings.py` は、本番 (`DEBUG=0`) でセッションと CSRF の Cookie を HTTPS の道でだけ送り、セッションの Cookie を JavaScript から読ませない。htmx の部分の要求でログインが切れていたら、部分を差し替えずに画面の全体をログインの画面へ移す (`seizou.core.middleware.HtmxLoginMiddleware`)。保存のボタンは押すと止まり、同じ form を 2 回送らない (画面の JavaScript。サーバーの側の確かめの代わりではない)。
 - 画面からの書き込みは、Django の CSRF の守りを通す。
 - PDF を作るときに読むファイルは、static と media の中だけに限る。
 - 上げたファイル (`/media/` の図面・添付・マニュアルの画像) は、開発機でも本番でも同じ口 (`seizou.core.media`) がログインを見てから返す。`MEDIA_ROOT` の外は読まず、断るときは全部 404 にする (「無い」と「見せない」を外から見分けさせない)。HTML・SVG・XML・JS は必ずダウンロードにし (上げたファイルのスクリプトを同じ origin で動かさない)、nosniff と保存させないヘッダーを付ける。nginx に送らせる配り方 (`SEIZOU_FILE_DELIVERY=nginx`。置き場の `deploy/nginx-files.conf`) では、nginx を通った印の無い要求を 503 で止める。
@@ -43,7 +44,6 @@
 
 ## 会期後の予定
 
-- ログインの回数の制限
 - 2 段階の確かめ
 - 依存を上げて試験を回し、再起動するまでを 1 つにした命令 (版を上げる手順は、今は [docs/operations.md](docs/operations.md) に手で進める形である)
 - MCP と AI チャットから書いた記録 (誰が、どの道から) を残す列と、権限に合わせて道具を絞ること
