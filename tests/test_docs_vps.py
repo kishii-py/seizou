@@ -19,6 +19,8 @@ DOC = ROOT / "docs" / "vps.md"
 STEP = re.compile(r"## (\d+)\. ")
 CHECK = "確かめ方: "
 MIN_STEPS = 15
+# どの段の確かめ方にも、SELinux が Enforcing のままかを見る命令を置く (本人の決め 11-04 06:3x)
+SELINUX_CHECK = "getenforce"
 
 # URL の名前 (英数字と . と - の並び。<名前> のような置き字は拾わない)
 URL_HOST = re.compile(r"https?://([A-Za-z0-9.-]+)")
@@ -76,6 +78,12 @@ def test_vps_every_step_has_check_line():
     assert len(numbers) >= MIN_STEPS, f"段が {len(numbers)} しかない ({MIN_STEPS} 以上)"
     missing = [number for number, section in steps if not any(line.startswith(CHECK) for line in section.splitlines())]
     assert not missing, f"確かめ方の行が無い段: {missing}"
+    no_selinux = [
+        number
+        for number, section in steps
+        if not any(line.startswith(CHECK) and SELINUX_CHECK in line for line in section.splitlines())
+    ]
+    assert not no_selinux, f"確かめ方に {SELINUX_CHECK} の無い段: {no_selinux}"
 
 
 def test_vps_hosts_and_ips_are_examples_only():
