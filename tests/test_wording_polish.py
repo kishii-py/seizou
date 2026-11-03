@@ -22,9 +22,11 @@ from seizou.core.exceptions import RuleViolation
 from seizou.core.screens import all_screens
 from seizou.masters import services as masters_services
 from seizou.masters.forms import PartnerForm
+from seizou.masters.models import Process
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
+from seizou.workorders.models import WorkOrder
 
 RECEIVE_ENV = "SEIZOU_PARTNER_POLISHCO_SECRET"
 ORDER_DATE = date(2026, 11, 2)
@@ -236,3 +238,55 @@ def test_qty_text_drops_trailing_zeros():
     assert shipping_services._qty_text(Decimal("4.50")) == "4.5"
     assert shipping_services._qty_text(Decimal("10.00")) == "10"
     assert shipping_services._qty_text(Decimal("0.25")) == "0.25"
+
+
+# --- 取消した受注の明細を選んだ指示書 (形は tests/test_workorders_views.py を写した) ---
+
+
+@pytest.fixture
+def cancelled_line(user, order_line):
+    """取り消した受注の明細 (数量 5)。order_line (数量 10) は取り消していない。"""
+    order = orders_services.create_order(
+        order_line.order.customer,
+        [{"item": order_line.item, "qty": Decimal("5"), "unit_price": Decimal("100")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    orders_services.cancel_order(order, user)
+    return order.lines.get()
+
+
+@pytest.fixture
+def cut(db):
+    return Process.objects.create(code="CUT", name="切断", sort_order=1)
+
+
+@pytest.mark.django_db
+def test_issue_with_cancelled_line_is_r05_red_and_keeps_choice(client_logged_in, cancelled_line, cut):
+    response = client_logged_in.post(
+        reverse("workorders:workorder_create"),
+        {"order_line": cancelled_line.pk, "qty": "5", "processes": [cut.pk]},
+    )
+    assert response.status_code == 200
+    body = text(response)
+    assert "alert-error" in body and "R05" in body
+    assert "取消していない受注の明細を選んでください。" in body
+    assert "正しく選択してください" not in body
+    assert f'<option value="{cancelled_line.pk}" selected>' in body
+    assert WorkOrder.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_issue_form_keeps_cancelled_line_from_link(client_logged_in, order_line, cancelled_line):
+    response = client_logged_in.get(reverse("workorders:workorder_create"), {"order_line": cancelled_line.pk})
+    assert response.status_code == 200
+    assert f'<option value="{cancelled_line.pk}" selected>' in text(response)
+
+    # 何も選ばない画面の選択肢には、取消の明細を出さない (今のまま)
+    plain = client_logged_in.get(reverse("workorders:workorder_create"))
+    choices = [value for value, _label in plain.context["form"].fields["order_line"].choices if value]
+    assert [int(str(value)) for value in choices] == [order_line.pk]
+    # 数でない ?order_line= は飛ばす (選択肢は今のまま)
+    odd = client_logged_in.get(reverse("workorders:workorder_create"), {"order_line": "abc"})
+    choices = [value for value, _label in odd.context["form"].fields["order_line"].choices if value]
+    assert [int(str(value)) for value in choices] == [order_line.pk]
