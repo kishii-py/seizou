@@ -103,6 +103,22 @@ def menu_icon_name(url_name: str, app_label: str) -> str:
     return MENU_ICONS.get(url_name) or APP_ICONS.get(app_label, "list")
 
 
+#: 左のメニューの大項目ごとの絵 (見出し → 絵)。会社の設定 menu の括りと「その他」は、最初の入口の絵を使う。
+SECTION_ICONS = {
+    "ダッシュボード": "home",
+    "製造部": "factory",
+    "生産管理部": "clipboard",
+    "出荷と請求": "truck",
+    "マスター": "box",
+    "文書": "book",
+}
+
+
+def section_icon_name(label: str, items: list[dict]) -> str:
+    """大項目の絵の名前。大項目ごとの絵が無ければ最初の入口の絵、入口も無ければ folder。"""
+    return SECTION_ICONS.get(label) or (items[0]["icon"] if items else "folder")
+
+
 @register.simple_tag
 def app_icon(app_label: str, css: str = "w-5 h-5"):
     return svg(APP_ICONS.get(app_label, "list"), css)

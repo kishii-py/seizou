@@ -14,7 +14,7 @@ import re
 
 from playwright.sync_api import expect
 
-from .conftest import fill_shipment, login, new_order, seed_name, shot, unique_mark
+from .conftest import fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 
@@ -34,7 +34,7 @@ def test_e13_note_and_print(context, page_a, company_a):
     fill_shipment(page_a, company_a, order_no=order_no, qty=4)
     expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
 
-    page_a.locator("aside nav").get_by_role("link", name="納品書", exact=True).click()
+    menu_link(page_a, "納品書").click()
     page_a.wait_for_url(re.compile(r"/shipping/notes/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/shipping/notes/new/$"))

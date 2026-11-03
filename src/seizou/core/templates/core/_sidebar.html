@@ -1,5 +1,5 @@
 {% load seizou_icons %}
-{# 左のメニュー: 会社の印と名前、区分ごとの入口 (今の画面は主色の薄い地)、下に利用者とログアウト。高さは画面いっぱいで固定し、入口が多いときは nav の中が送れる (下が切れて見える所見の直し)。 #}
+{# 左のメニュー: 会社の印と名前、大項目ごとの入口 (大項目は開け閉めし、今の画面の大項目だけ開く。今の画面は主色の薄い地)、下に利用者とログアウト。高さは画面いっぱいで固定し、入口が多いときは nav の中が送れる (下が切れて見える所見の直し)。 #}
 <div class="drawer-side z-40">
   <label for="seizou-drawer" aria-label="メニューを閉じる" class="drawer-overlay"></label>
   <aside class="flex h-screen w-64 flex-col border-r border-base-300 bg-base-100">
@@ -15,15 +15,27 @@
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
     </div>
     <nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">
+      {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。 #}
       {% for section in seizou.sections %}
-      <div class="mb-6">
-        {% if section.show_label %}<p class="mb-2 px-2 text-xs font-medium text-base-content/50">{{ section.label }}</p>{% endif %}
+      {% if section.collapsible %}
+      <details class="group mb-1" name="seizou-menu-section"{% if section.active %} open{% endif %}>
+        <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden">{% icon section.icon "size-5" %}<span class="min-w-0 flex-1 truncate">{{ section.label }}</span>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}</summary>
+        {% for group in section.groups %}
+        {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/50">{{ group.label }}</p>{% endif %}
         <ul class="flex flex-col">
-          {% for item in section.items %}
-          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span></a></li>
+          {% for item in group.items %}
+          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span></a></li>
           {% endfor %}
         </ul>
-      </div>
+        {% endfor %}
+      </details>
+      {% else %}
+      <ul class="mb-1 flex flex-col">
+        {% for item in section.items %}
+        <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span></a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
       {% endfor %}
     </nav>
     {% if user.is_authenticated %}

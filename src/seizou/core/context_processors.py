@@ -1,8 +1,9 @@
 """テンプレートに会社の設定と左のメニューを渡す。
 
 メニューは、存在する部品 (seizou.parts.PARTS) の urls.py にある MENU = [("受注", "orders:list"), ...] を順に並べた物。
-左のメニューでは、入口を部品の app ごとに区分 (SECTIONS) に分けて見出しを付ける。
-入口が 1 つも無い区分は出さない。今開いている画面の入口には active の印を付ける。
+左のメニューでは、入口を部品の app ごとに大項目 (SECTIONS) に分け、大項目ごとに開け閉めする (今の画面の大項目だけ開く)。
+大項目の中に中項目の見出し (受注管理・協力企業管理) を置ける。入口が 1 つも無い大項目は出さない。
+今開いている画面の入口には active の印を付ける。
 """
 
 from __future__ import annotations
@@ -12,21 +13,22 @@ from importlib import import_module, util
 from django.db import DatabaseError
 from django.urls import NoReverseMatch, reverse
 
-from seizou.core.templatetags.seizou_icons import menu_icon_name
+from seizou.core.templatetags.seizou_icons import menu_icon_name, section_icon_name
 from seizou.parts import PARTS
 
-#: 左のメニューの区分 (見出し, その区分に入る部品の app の名前)。並びはこの順。
+#: 左のメニューの大項目 (見出し, 中項目の並び)。中項目は (見出し, その中項目に入る部品の app の名前)。見出しが空の中項目は、
+#: 見出し無しで入口を並べる。並びはこの順。
+#: 決め 11-03 14:1x: 製造業なので製造部をダッシュボードのすぐ下に置き、受注管理と協力企業管理は生産管理部の中項目にする。
 SECTIONS = (
-    ("ダッシュボード", ("core",)),
-    ("受注管理", ("orders", "intake", "connect")),
-    ("協力企業管理", ("purchasing",)),
-    ("製造", ("workorders", "progress", "stock")),
-    ("出荷と請求", ("shipping", "billing")),
-    ("マスター", ("masters", "accounts")),
-    ("文書", ("manuals", "attachments")),
+    ("ダッシュボード", (("", ("core",)),)),
+    ("製造部", (("", ("workorders", "progress", "stock")),)),
+    ("生産管理部", (("受注管理", ("orders", "intake", "connect")), ("協力企業管理", ("purchasing",)))),
+    ("出荷と請求", (("", ("shipping", "billing")),)),
+    ("マスター", (("", ("masters", "accounts")),)),
+    ("文書", (("", ("manuals", "attachments")),)),
 )
 
-#: どの区分にも入らない部品の入口を置く区分の見出し
+#: どの大項目にも入らない部品の入口を置く大項目の見出し
 OTHER_SECTION = "その他"
 
 #: core 自身の入口 (部品の MENU と同じ形)
@@ -94,6 +96,7 @@ def custom_sections() -> list[dict]:
     """会社の設定 menu (左のメニューの括り)。1 つ = {"label", "apps", "screens"}。形の違う物は捨てる。空なら []。
 
     決め 11-03 (02 の 8 節の候補 4): 括りは会社ごとに答えの YAML で決め、同じ画面を 2 つの括りに出せる。
+    会社の括りは大項目だけで、中項目は書けない (本体の選び 11-03 14:1x)。
     """
     from seizou.core import conf
 
@@ -110,34 +113,58 @@ def custom_sections() -> list[dict]:
     return result
 
 
-def sections(items: list[dict]) -> list[dict]:
-    """入口を区分に分ける。入口が無い区分は出さない。区分に入らない app は「その他」に置く。
+def section(label: str, parts: list[tuple[str, list[dict]]]) -> dict:
+    """1 つの大項目。parts は (中項目の見出し, 入口の並び) の並び (入口の無い中項目は捨てる)。
 
-    1 区分 = {"label", "items", "show_label"}。入口が 1 つで見出しと同じ字なら、見出しは出さない (show_label が偽)。
-    会社の設定 menu があれば、その括り (app か画面の URL の名前で選ぶ。同じ入口を 2 つの括りに出せる) で分け、
+    返す物 = {"label", "items", "groups", "show_label", "collapsible", "active", "icon"}。
+    - items は大項目の入口の全部 (中項目の順)。groups は中項目の並び (1 つ = {"label", "items"}。見出しの無い中項目は label が空)。
+    - show_label: 入口が 1 つで見出しと同じ字なら偽 (見出しを出さない)。
+    - collapsible: 開け閉めする大項目。ダッシュボードの括りと show_label が偽の物は、開け閉め無しで入口を直に出す。
+    - active: 今の画面の入口を持つ (左のメニューではその大項目だけ開いて出す)。
+    - icon: 大項目の絵の名前 (seizou_icons)。
+    """
+    groups = [{"label": sublabel, "items": chosen} for sublabel, chosen in parts if chosen]
+    items = [item for group in groups for item in group["items"]]
+    only = items[0] if len(items) == 1 else None
+    show_label = not (only is not None and only["label"] == label)
+    return {
+        "label": label,
+        "items": items,
+        "groups": groups,
+        "show_label": show_label,
+        "collapsible": show_label and label != SECTIONS[0][0],
+        "active": any(item.get("active") for item in items),
+        "icon": section_icon_name(label, items),
+    }
+
+
+def sections(items: list[dict]) -> list[dict]:
+    """入口を大項目に分ける (1 つの形は section())。入口が無い大項目は出さない。大項目に入らない app は「その他」に置く。
+
+    会社の設定 menu があれば、その括り (app か画面の URL の名前で選ぶ。同じ入口を 2 つの括りに出せる。中項目は無し) で分け、
     ダッシュボードの括り (core) はいつも先頭に置く。
     """
     custom = custom_sections()
+    placed: set[int] = set()
+    groups: list[dict] = []
     if custom:
-        groups = [{"label": SECTIONS[0][0], "items": [item for item in items if item["app"] == "core"]}]
-        placed = {id(item) for item in groups[0]["items"]}
-        for section in custom:
-            chosen = [item for item in items if item["app"] in section["apps"] or item["url_name"] in section["screens"]]
+        core_items = [item for item in items if item["app"] == "core"]
+        placed.update(id(item) for item in core_items)
+        groups.append(section(SECTIONS[0][0], [("", core_items)]))
+        for raw in custom:
+            chosen = [item for item in items if item["app"] in raw["apps"] or item["url_name"] in raw["screens"]]
             placed.update(id(item) for item in chosen)
-            groups.append({"label": section["label"], "items": chosen})
-        groups.append({"label": OTHER_SECTION, "items": [item for item in items if id(item) not in placed]})
+            groups.append(section(raw["label"], [("", chosen)]))
     else:
-        groups = [{"label": label, "items": []} for label, _apps in SECTIONS]
-        by_app = {app: group for group, (_label, apps) in zip(groups, SECTIONS) for app in apps}
-        other = {"label": OTHER_SECTION, "items": []}
-        for item in items:
-            by_app.get(item["app"], other)["items"].append(item)
-        groups.append(other)
-    groups = [group for group in groups if group["items"]]
-    for group in groups:
-        only = group["items"][0] if len(group["items"]) == 1 else None
-        group["show_label"] = not (only is not None and only["label"] == group["label"])
-    return groups
+        for label, subsections in SECTIONS:
+            parts = []
+            for sublabel, apps in subsections:
+                chosen = [item for item in items if item["app"] in apps]
+                placed.update(id(item) for item in chosen)
+                parts.append((sublabel, chosen))
+            groups.append(section(label, parts))
+    groups.append(section(OTHER_SECTION, [("", [item for item in items if id(item) not in placed])]))
+    return [group for group in groups if group["items"]]
 
 
 def seizou(request) -> dict:

@@ -39,15 +39,16 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     assert "sample_co / 8010" in body
     assert reverse("connect:connection_list") in body and "取引先との接続" in body
     assert reverse("attachments:attachment_list") in body and "添付ファイルの一覧" in body
-    # アカウント管理の入口: 部品 accounts (N36) が入っていれば一覧への link、無ければ「まだ入っていない」の案内
-    assert "アカウント管理" in body
+    # アカウント管理の入口: 部品 accounts (N36) が入っていれば一覧への link、無ければ「まだ入っていない」の案内。
+    # 題の下の説明の 1 文は出さない (決め 11-03 14:1x) ので、字「アカウント管理」は入口の出る人の画面で見る
     if apps.is_installed("seizou.accounts"):
         # 普通の利用者には入口を出さない (アカウント管理の権限がある人と管理者だけ)
         assert reverse("accounts:access_list") not in body
         logged_in.force_login(get_user_model().objects.create_superuser(username="boss", password="tests-only"))
-        assert reverse("accounts:access_list") in logged_in.get(reverse("core:settings")).content.decode()
+        boss_body = logged_in.get(reverse("core:settings")).content.decode()
+        assert reverse("accounts:access_list") in boss_body and "アカウント管理" in boss_body
     else:
-        assert "まだ入っていない" in body
+        assert "アカウント管理" in body and "まだ入っていない" in body
     assert "ない (読み取りとチャットは使えない)" in body
     assert "決めていない (書く道具は断る)" in body
     # データベースの名前は CI の postgres の組でも通るよう、つないでいる物から決める (sqlite と postgresql の 2 つ)

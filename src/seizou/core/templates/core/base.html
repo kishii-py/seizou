@@ -40,7 +40,7 @@ seizou_tags.master_link の link
             <h1 class="truncate text-3xl font-bold tracking-tight">{{ screen_name }}</h1>
             {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
           </div>
-          {% if screen_help %}<p class="mt-2 text-base-content/70">{{ screen_help }}</p>{% endif %}
+          {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x: 画面はシンプルに。「?」で説明書の断片を見る)。1 文は画面の目録と説明書と MCP の一覧が読む。 #}
         </div>
         <div class="flex flex-wrap items-center gap-2">{% block actions %}{% endblock %}</div>
       </div>

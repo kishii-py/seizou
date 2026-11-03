@@ -18,7 +18,7 @@ from datetime import date
 
 from playwright.sync_api import expect
 
-from .conftest import COMPANIES_DIR, fill_shipment, login, new_order, seed_name, shot, unique_mark
+from .conftest import COMPANIES_DIR, fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 MONTH_OFFSETS = {"当月": 0, "翌月": 1, "翌々月": 2}
@@ -53,7 +53,7 @@ def _shipment_no(page) -> str:
 
 
 def _open_invoice_form(page, company, customer: str) -> None:
-    page.locator("aside nav").get_by_role("link", name="請求書", exact=True).click()
+    menu_link(page, "請求書").click()
     page.wait_for_url(re.compile(r"/billing/invoices/$"))
     page.get_by_role("link", name="新規登録").first.click()
     page.wait_for_url(re.compile(r"/billing/invoices/new/$"))
@@ -73,7 +73,7 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
     first_shipment = _shipment_no(page_a)
 
-    page_a.locator("aside nav").get_by_role("link", name="納品書", exact=True).click()
+    menu_link(page_a, "納品書").click()
     page_a.wait_for_url(re.compile(r"/shipping/notes/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/shipping/notes/new/$"))

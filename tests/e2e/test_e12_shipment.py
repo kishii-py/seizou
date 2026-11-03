@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
-from .conftest import fill_shipment, login, new_order, seed_name, shot, unique_mark
+from .conftest import fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 
@@ -33,7 +33,7 @@ def test_e12_stop_then_partial(page_a, company_a):
     )
     order_url = page_a.url
 
-    page_a.locator("aside nav").get_by_role("link", name="出荷", exact=True).click()
+    menu_link(page_a, "出荷").click()
     page_a.wait_for_url(re.compile(r"/shipping/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/shipping/new/$"))

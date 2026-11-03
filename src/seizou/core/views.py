@@ -177,7 +177,10 @@ def hidden_detail_fields(obj) -> frozenset:
 
 
 class ScreenMixin(LoginRequiredMixin):
-    """画面の名前と 1 文。画面の目録 (manage.py seizou_screens)・説明書・左のメニューが読む。"""
+    """画面の名前と 1 文。画面の目録 (manage.py seizou_screens)・説明書・MCP の一覧が読む。
+
+    1 文 (screen_help) は画面の題の下には出さない (決め 11-03 14:1x: 画面はシンプルに。「?」で説明書の断片を見る)。
+    """
 
     screen_name: str = ""
     screen_help: str = ""
