@@ -86,9 +86,10 @@ def test_empty_query_searches_nothing_and_shows_hint(client_logged_in, bracket, 
     body = response.content.decode()
     assert "キーワードを入れて検索してください" in body
     assert response.context["sections"] == []
-    # 題と説明、chip (全て・部品マスター・受注) と得意先の選択
+    # 題と説明、chip (全て・部品マスター・受注) と得意先の選択。説明の 1 文は題の下に出さず (決め 11-03 14:1x)、
+    # 目録と説明書が読む screen_help にある
     assert "<h1" in body and "検索</h1>" in body
-    assert "品番・品名・注文番号などで横断して探し" in body
+    assert "品番・品名・注文番号などで横断して探し" in response.context["screen_help"]
     assert "全て" in body and "部品マスター" in body and "受注" in body
     assert "全得意先" in body
 

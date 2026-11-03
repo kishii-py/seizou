@@ -15,7 +15,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import has_partner_secret, login, send_purchase_order, shot, unique_mark
+from .conftest import has_partner_secret, login, menu_link, send_purchase_order, shot, unique_mark
 
 NO_SECRET_REASON = "2 社に同じ鍵が渡っていない (SEIZOU_E2E_PARTNER_SECRET)"
 
@@ -27,8 +27,7 @@ def test_e16_send_and_reply(page_a, page_b, company_a, company_b):
         pytest.skip(NO_SECRET_REASON)
 
     page_a.goto(company_a.base_url)
-    sidebar = page_a.locator("aside nav")
-    sidebar.get_by_role("link", name="発注", exact=True).click()
+    menu_link(page_a, "発注").click()
     page_a.wait_for_url(re.compile(r"/purchasing/orders/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/purchasing/orders/new/$"))

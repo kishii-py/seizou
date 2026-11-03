@@ -10,7 +10,7 @@
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
       {% if status %}<span class="badge badge-soft badge-primary gap-2"><span class="status status-primary" aria-hidden="true"></span>{{ status }}</span>{% endif %}
     </div>
-    {% if screen_help %}<p class="mt-2 text-base-content/70">{{ screen_help }}</p>{% endif %}
+    {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x。「?」で説明書の断片を見る)。 #}
   </div>
   <div class="flex flex-wrap items-center gap-2">
     {% block actions %}{% endblock %}

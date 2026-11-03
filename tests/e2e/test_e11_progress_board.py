@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
-from .conftest import login, new_order, seed_name, shot, unique_mark
+from .conftest import login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 PROCESS_CODE = "TURN"
@@ -36,7 +36,7 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
         page_a, company_a, customer=customer, part_no="WK-1001", qty=10, unit_price=480, mark=unique_mark("e11")
     )
 
-    page_a.locator("aside nav").get_by_role("link", name="指示書", exact=True).click()
+    menu_link(page_a, "指示書").click()
     page_a.wait_for_url(re.compile(r"/workorders/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/workorders/new/$"))

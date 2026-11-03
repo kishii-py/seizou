@@ -126,8 +126,11 @@ FREE_ACTIONS = frozenset(
         "stock.adjust",
     }
 )
-#: アカウント管理の門で守る action (3 状態の外)
-ACCOUNT_ACTIONS = frozenset({"accounts.issue_account", "accounts.update_account", "accounts.delete_account"})
+#: アカウント管理の門で守る action (3 状態の外)。core.set_setting は設定の画面からの変更 (N48) の action で、
+#: 画面の門 (can_manage_accounts) と同じ判定で 2 重に断る (依頼書 N48 の迷った事 2 = 本体の決め)
+ACCOUNT_ACTIONS = frozenset(
+    {"accounts.issue_account", "accounts.update_account", "accounts.delete_account", "core.set_setting"}
+)
 #: 金額が主な登録 → (書面, 操作)
 MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),

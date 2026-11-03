@@ -429,8 +429,10 @@ def test_words_use_parts_and_new_labels(client_logged_in, partner):
     assert "届いた注文 (未処理)" in home and "受信箱の未処理" not in home
     detail = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
     assert "部品の詳細" in detail and "標準単価 (円)" in detail
-    listing = text(client_logged_in.get(reverse("masters:item_list")))
-    assert "品名を押すと、画面を移らずに中身を見られます。" in listing and "小窓で開けます" not in listing
+    listing = client_logged_in.get(reverse("masters:item_list"))
+    # 説明の 1 文は題の下に出さず (決め 11-03 14:1x)、目録と説明書が読む screen_help にある
+    assert "品名を押すと、画面を移らずに中身を見られます。" in listing.context["screen_help"]
+    assert "小窓で開けます" not in text(listing) and "小窓で開けます" not in listing.context["screen_help"]
     form = text(client_logged_in.get(reverse("masters:partner_create")))
     for label in ("金額の端数の扱い", "消費税の端数の扱い", "取引先の種類", "支払の月"):
         assert label in form, label

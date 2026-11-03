@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import choose, login, new_order, seed_name, shot, unique_mark
+from .conftest import choose, login, menu_link, new_order, seed_name, shot, unique_mark
 
 PART_NO = "WK-1001"
 CUSTOMER_CODE = "C001"
@@ -24,9 +24,7 @@ STANDARD_PRICE = "480"
 
 def test_e08_one_line_order_in_list(page_a, company_a):
     login(page_a, company_a)
-    sidebar = page_a.locator("aside nav")
-
-    sidebar.get_by_role("link", name="受注", exact=True).click()
+    menu_link(page_a, "受注").click()
     page_a.wait_for_url(re.compile(r"/orders/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/orders/new/$"))
@@ -46,7 +44,7 @@ def test_e08_one_line_order_in_list(page_a, company_a):
     expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
     shot(page_a, "E-08", "a-order-detail")
 
-    sidebar.get_by_role("link", name="受注", exact=True).click()
+    menu_link(page_a, "受注").click()
     page_a.wait_for_url(re.compile(r"/orders/$"))
     page_a.fill("#list-q", mark)
     rows = page_a.locator("#rows tbody tr")

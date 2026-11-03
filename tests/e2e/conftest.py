@@ -283,6 +283,18 @@ def is_logged_in(page: Page, company: Company) -> bool:
     return company.name in page.locator("body").inner_text()
 
 
+def menu_link(page: Page, label: str):
+    """左のメニューの入口 (link)。入口の大項目 (details) が閉じていれば、先に見出しを押して開く。
+
+    決め 11-03 14:1x: 大項目ごとに開け閉めし、今の画面の大項目だけ開いているので、ほかの大項目の入口は押す前に開く。
+    """
+    sidebar = page.locator("aside nav")
+    section = sidebar.locator("details", has=page.get_by_role("link", name=label, exact=True, include_hidden=True))
+    if section.count() and not section.first.evaluate("details => details.open"):
+        section.first.locator("summary").click()
+    return sidebar.get_by_role("link", name=label, exact=True)
+
+
 def shot(page: Page, code: str, scene: str) -> Path:
     """`docs/e2e/<今日の日付 YYYYMMDD>/<code>_<scene>.png` に画面全体の絵を撮る。"""
     if not re.fullmatch(r"E-\d{2}", code):
