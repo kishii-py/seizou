@@ -4,7 +4,10 @@
 connect/_inbox_entrance.html の中だけ (order_list.html には {% load %} を書かない)。
 届いた注文の詳細 (connect/inbox_detail.html) の「差出人を選ぶ」の form と、その form を出すか (承認できる人か) の判定も置く。
 届いた注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (本体の追記 11)。
+payload_number: 届いた本文の数の字を Decimal に読む filter。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す (読めない字はそのまま)。
 """
+
+from decimal import Decimal, InvalidOperation
 
 from django import template
 from django.db import DatabaseError
@@ -74,3 +77,19 @@ def same_order_notice(inbox):
         "status": dict(Inbox.STATUS_CHOICES).get(status, status),
         "url": reverse("connect:inbox_detail", args=[pk]),
     }
+
+
+@register.filter
+def payload_number(value):
+    """届いた本文の数の字 (例 "50.00") を Decimal に読む。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す。
+
+    字 (str) と整数 (int) だけを読み、前後の空白は落とす (受け口の services._payload_decimal と同じ読み方。float を通さない)。
+    読めない字・有限でない数 (NaN など)・数でない値・None は、そのまま返す (comma は字をそのまま出し、None と空の字は空にする)。
+    """
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return value
+    try:
+        number = Decimal(str(value).strip())
+    except InvalidOperation:
+        return value
+    return number if number.is_finite() else value

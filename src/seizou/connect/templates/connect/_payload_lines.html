@@ -1,4 +1,5 @@
 {# 注文のデータの明細の表 (相手の品番のまま)。受信箱の詳細と受け入れの画面で使う。object は受信箱の行。 #}
+{% load seizou_tags connect_tags %}
 <div class="overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm">
   <thead><tr class="bg-base-200 text-base-content/70">
@@ -16,9 +17,9 @@
       <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no|default_if_none:"" }}</td>
       <td class="whitespace-nowrap font-mono">{{ line.part_no }}</td>
       <td><span class="block max-w-xs truncate" title="{{ line.part_name }}">{{ line.part_name }}</span></td>
-      <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty }}</td>
+      <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|payload_number|comma }}</td>
       <td class="whitespace-nowrap">{{ line.unit }}</td>
-      <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|default_if_none:"" }}{% endif %}</td>
+      <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|default_if_none:""|payload_number|comma }}{% endif %}</td>
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}</td>
     </tr>
     {% empty %}
