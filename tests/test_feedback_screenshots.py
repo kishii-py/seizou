@@ -5,6 +5,7 @@
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.datastructures import MultiValueDict
 
@@ -247,3 +248,48 @@ def test_edit_screen_adds_screenshots(client_logged_in, plain):
     row.refresh_from_db()
     assert row.title == "直した題"
     assert len(attached(row)) == 1
+
+
+# ---- 2. 詳細の「画面の絵」の小さい絵 ----
+
+
+def test_detail_thumbnails_images_only_and_panel_once(client_logged_in, plain):
+    row = services.create_feedback(form_data(), plain, screenshots=[png("a.png")])
+    shot = attached(row)[0]
+    pdf = attachments_services.add_attachment(row, png("memo.pdf", b"%PDF-1.4"), plain, kind="other")
+
+    html = html_of(client_logged_in.get(f"/feedback/{row.pk}/"))
+    assert 'id="feedback-screenshots"' in html
+    assert "画面の絵" in html
+    assert f'<img src="/attachments/{shot.pk}/download/"' in html
+    assert html.count(f"/attachments/{shot.pk}/download/") == 3
+    assert html.count(f"/attachments/{pdf.pk}/download/") == 1
+    assert html.count('id="attachments"') == 1
+
+    bare = services.create_feedback(form_data(title="絵の無い題"), plain)
+    html = html_of(client_logged_in.get(f"/feedback/{bare.pk}/"))
+    assert 'id="feedback-screenshots"' not in html
+    assert 'id="attachments"' in html
+
+
+def test_panel_add_returns_to_feedback_detail(client_logged_in, plain):
+    row = services.create_feedback(form_data(), plain)
+    ct = ContentType.objects.get_for_model(Feedback).pk
+    detail = f"/feedback/{row.pk}/"
+
+    assert f"/attachments/new/?content_type={ct}&amp;object_id={row.pk}" in html_of(client_logged_in.get(detail))
+
+    response = client_logged_in.post(
+        "/attachments/new/", {"content_type": ct, "object_id": row.pk, "file": png("c.png"), "kind": "photo"}
+    )
+    shot = attached(row)[0]
+    assert response.status_code == 302
+    assert response["Location"] == f"/attachments/{shot.pk}/"
+    response = client_logged_in.get(response["Location"])
+    assert response.status_code == 302
+    assert response["Location"] == detail
+
+    html = html_of(client_logged_in.get(detail))
+    section = html[html.index('id="feedback-screenshots"') :]
+    assert f'<img src="/attachments/{shot.pk}/download/"' in section
+    assert "c.png" in section
