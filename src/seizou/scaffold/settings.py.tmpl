@@ -61,6 +61,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     # 開発機の自動ログイン (DEBUG が真で runserver で、下の SEIZOU_DEV_AUTO_LOGIN が真のときだけ動く)。
     "seizou.core.middleware.DevAutoLoginMiddleware",
+    # htmx の部分の要求でログインが切れていたら、画面の全体をログインの画面へ移す (302 の代わりに 401 と HX-Redirect)。
+    "seizou.core.middleware.HtmxLoginMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "seizou.core.middleware.RuleNoticeMiddleware",
