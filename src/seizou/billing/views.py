@@ -33,7 +33,7 @@ class InvoiceListView(BaseListView):
     model = Invoice
     screen_name = "請求書"
     screen_help = "得意先ごとに出荷をまとめた請求書。行を押すと詳細へ進み、そこから印刷用の画面を開けます。"
-    columns = ("invoice_no", "customer", "issued_on", "period_from", "period_to", "total", ("payment_status_label", "入金"), ("balance", "残"), "status")
+    columns = ("invoice_no", "customer", "issued_on", "period_from", "period_to", "total", ("payment_status_label", "入金"), {"name": "balance", "label": "残", "kind": "money"}, "status")
     search_fields = ("invoice_no", "customer__name", "customer__code")
     ordering = ("-issued_on", "-id")
     template_name = "billing/invoice_list.html"
