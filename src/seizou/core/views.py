@@ -990,19 +990,16 @@ def dashboard_stats() -> list[dict]:
                 "url": url_or_none("orders:order_list"),
             }
         )
-    line_model = load_model("seizou.orders.models.OrderLine")
-    if line_model is not None and order_model is not None:
-        open_lines = line_model._default_manager.filter(
-            order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL)
-        )
+    lines = dashboard.lines_to_ship()
+    if lines is not None:
         stats.append(
             {
                 "label": "まだ出荷していない明細",
-                "value": count_or_none(open_lines),
+                "value": count_or_none(lines),
                 "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
                 "icon": "activity",
-                "url": url_or_none("orders:order_list"),
+                "url": url_or_none("orders:orderline_list"),
             }
         )
     inbox_model = load_model("seizou.connect.models.Inbox")
