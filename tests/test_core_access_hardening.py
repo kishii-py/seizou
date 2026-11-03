@@ -143,3 +143,24 @@ def test_access_control_edit_is_superuser_only(client, admin):
     client.force_login(admin)
     assert client.get(edit_url("access_control")).status_code == 200
     assert edit_url("access_control") in client.get(reverse("core:settings")).content.decode()
+
+
+# ---------------------------------------------------------------- 403 の画面の名前 (精査 A2 の S6)
+
+
+def test_denied_page_names_screen_and_part(db, on, client):
+    keiri_dept = accounts_services.create_department("経理", ["billing"], [], None)
+    keiri = account("keiri", departments=[keiri_dept], see_money=True)
+    client.force_login(keiri)
+
+    expected = {
+        "connect:inbox_list": "「届いた注文」の画面です (「受注管理」の部品)。あなたの部署: 経理。",
+        "purchasing:receipt_list": "「受入」の画面です (「発注」の部品)。あなたの部署: 経理。",
+        # 画面の名前と部品の名前が同じときは括弧を付けない (今の字のまま)。
+        "orders:order_list": "「受注」の画面です。あなたの部署: 経理。",
+    }
+    for name, text in expected.items():
+        response = client.get(reverse(name))
+        assert response.status_code == 403, name
+        assert text in response.content.decode(), name
+    assert client.get(reverse("billing:invoice_list")).status_code == 200
