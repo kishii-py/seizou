@@ -10,15 +10,36 @@ import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import connection
+from django.test import Client
 from django.urls import reverse
 
 from seizou.core import settings_screen
+from seizou.core.doctor import Row
 
 
 @pytest.fixture
 def logged_in(client, db):
     client.force_login(get_user_model().objects.create_user(username="tester", password="tests-only"))
     return client
+
+
+@pytest.fixture
+def manager_client(client, db):
+    """アカウント管理の権限がある人 (システム管理者)。"""
+    client.force_login(get_user_model().objects.create_superuser("boss", password="tests-only"))
+    return client
+
+
+def _doctor_part(body):
+    """「システムの状態」の「点検」の行の中身 (id="doctor-result" の dd)。"""
+    start = body.index('id="doctor-result"')
+    return body[start : body.index("</dd>", start)]
+
+
+def _system_part(body):
+    """「システムの状態」の節 (見出しのボタンを含む)。"""
+    start = body.index('aria-labelledby="system-title"')
+    return body[start : body.index("</section>", start)]
 
 
 def test_anonymous_is_sent_to_login(client, db):
@@ -53,6 +74,11 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     assert "決めていない (書く道具は断る)" in body
     # データベースの名前は CI の postgres の組でも通るよう、つないでいる物から決める (sqlite と postgresql の 2 つ)
     assert {"sqlite": "SQLite", "postgresql": "PostgreSQL"}[connection.vendor] in body
+    # フィードバックの一覧の入口: 部品 feedback (N59) が入っている会社だけ。一覧は自分の分を全員が見られるので全員に出す
+    if apps.is_installed("seizou.feedback"):
+        assert reverse("feedback:feedback_list") in body and "フィードバックの一覧" in body
+    else:
+        assert "フィードバックの一覧" not in body
 
 
 def test_settings_screen_hides_key_values(logged_in, monkeypatch):
@@ -108,3 +134,100 @@ def test_system_rows_show_dash_without_db():
     # db の fixture を付けない = pytest-django が DB を RuntimeError で止める道
     rows = {row["label"]: row["value"] for row in settings_screen.system_rows()}
     assert rows["画面で上書きした設定"] == "—"
+
+
+# ---------------------------------------------------------------- 点検 (core/doctor.run をボタンの POST で走らせる)
+
+
+def test_doctor_button_only_for_manager(logged_in):
+    form = f'<form method="post" action="{reverse("core:settings")}">'
+
+    body = logged_in.get(reverse("core:settings")).content.decode()
+    assert form not in body and "点検を走らせる" not in body
+    assert "まだ走らせていない" in _doctor_part(body)
+
+    logged_in.force_login(get_user_model().objects.create_superuser("boss", password="tests-only"))
+    boss_body = logged_in.get(reverse("core:settings")).content.decode()
+    system = _system_part(boss_body)
+    assert form in system and "点検を走らせる" in system and "btn-outline" in system
+    assert boss_body.count("btn-primary") == 0
+    assert "まだ走らせていない" in _doctor_part(boss_body)
+
+
+def test_doctor_post_is_refused_for_plain_and_anonymous(logged_in, monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("変えられない人の POST で点検を走らせた")
+
+    monkeypatch.setattr(settings_screen.doctor, "run", fail)
+
+    response = logged_in.post(reverse("core:settings"))
+    assert response.status_code == 403
+    body = response.content.decode()
+    assert "この画面は開けません" in body and "アカウント管理の権限" in body
+    assert "no-store" in response["Cache-Control"]
+
+    anonymous = Client().post(reverse("core:settings"))
+    assert anonymous.status_code == 302 and "/login/" in anonymous["Location"]
+
+
+def test_doctor_post_lists_first_three_fixes(manager_client, monkeypatch):
+    rows = [Row(True, "良い 1", "g1")] + [Row(False, f"直す {n}", f"d{n}", f"f{n}") for n in range(1, 6)]
+    monkeypatch.setattr(settings_screen.doctor, "run", lambda production=None: rows)
+
+    response = manager_client.post(reverse("core:settings"))
+    assert response.status_code == 200
+    part = _doctor_part(response.content.decode())
+    assert "直す物 5 件" in part and "6 件を見た" in part
+    for n in (1, 2, 3):
+        assert f"直す {n}" in part and f"d{n}" in part and f"→ 直し方: f{n}" in part
+    assert "直す 4" not in part and "直す 5" not in part
+    assert "残りは" in part and "seizou_doctor" in part
+    assert "text-error" in part
+
+    # 結果は保存しない (表にも session にも書かない) ので、次の GET は「まだ走らせていない」
+    again = _doctor_part(manager_client.get(reverse("core:settings")).content.decode())
+    assert "まだ走らせていない" in again and "直す 1" not in again
+
+
+def test_doctor_post_says_good_when_nothing_to_fix(manager_client, monkeypatch, settings):
+    rows = [Row(True, "良い 1", "g1"), Row(True, "良い 2", "g2")]
+    monkeypatch.setattr(settings_screen.doctor, "run", lambda production=None: rows)
+
+    # tests.settings の既定 (DEBUG が偽 = 本番の条件)。先に 1 回送って、試験の client の middleware を DEBUG が偽のときの形で組ませる
+    settings.DEBUG = False
+    part = _doctor_part(manager_client.post(reverse("core:settings")).content.decode())
+    assert "良い (2 件を見た)" in part
+    assert "直す物" not in part and "残りは" not in part
+    assert "本番の条件の行" not in part
+
+    settings.DEBUG = True
+    part = _doctor_part(manager_client.post(reverse("core:settings")).content.decode())
+    assert "良い (2 件を見た)" in part
+    assert "本番の条件の行" in part and "--production" in part
+
+
+def test_doctor_post_runs_real_doctor_without_secret_values(client, db, monkeypatch, settings):
+    monkeypatch.setenv("SECRET_KEY", "env-secret-key-must-not-appear")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ai-key-must-not-appear")
+    monkeypatch.setenv("SEIZOU_PARTNER_TESTCO_SECRET", "partner-secret-must-not-appear")
+    monkeypatch.setenv("PGPASSWORD", "db-password-must-not-appear")
+    settings.SECRET_KEY = "fake-settings-secret-must-not-appear"
+    # SECRET_KEY を替えた後にログインする (session の確かめの字が SECRET_KEY から作られるため)
+    client.force_login(get_user_model().objects.create_superuser("boss", password="tests-only"))
+
+    response = client.post(reverse("core:settings"))
+    assert response.status_code == 200
+    body = response.content.decode()
+    part = _doctor_part(body)
+    assert "件を見た" in part
+    # tests.settings は DEBUG が偽 (本番の条件) で STATIC_ROOT が無いので、直す物が 1 件以上ある (数は決めない)
+    assert "直す物" in part
+    for value in (
+        "env-secret-key-must-not-appear",
+        "ai-key-must-not-appear",
+        "partner-secret-must-not-appear",
+        "db-password-must-not-appear",
+        "fake-settings-secret-must-not-appear",
+    ):
+        leaked = value in body
+        assert not leaked, "画面に鍵の値が出た"
