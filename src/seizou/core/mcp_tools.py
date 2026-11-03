@@ -266,6 +266,27 @@ def _purchase_order_by_no(po_no):
     return order
 
 
+def _invoice_by_no(invoice_no):
+    """請求書を番号の完全一致で引く (得意先と、入金の全部 (記録した人つき) を先に読む)。"""
+    Invoice = apps.get_model("billing", "Invoice")
+    Payment = apps.get_model("billing", "Payment")
+    text = _text(invoice_no)
+    invoice = None
+    if text:
+        invoice = (
+            Invoice.objects.select_related("customer")
+            .prefetch_related(Prefetch("payments", queryset=Payment.objects.select_related("recorded_by")))
+            .filter(invoice_no=text)
+            .first()
+        )
+    if invoice is None:
+        raise _Refusal(
+            f"請求書番号 {text or '(空)'} の請求書はありません。"
+            "入金の一覧 (list_payments) か画面の請求書の一覧で番号を確かめてください。"
+        )
+    return invoice
+
+
 def _order_line(order_no, line_no):
     order = _order_by_no(order_no)
     number = _read_int(line_no, "行番号 (line_no)")
@@ -935,6 +956,89 @@ def list_acceptances(order_no: str | None = None, days: int = 30, limit: int = 5
     return {"ok": True, "count": len(items), "items": items}
 
 
+def _payment_dict(payment, shown: bool) -> dict[str, Any]:
+    """入金の 1 件 (請求書と得意先は引いてある物)。"""
+    invoice = payment.invoice
+    return {
+        "invoice_no": invoice.invoice_no,
+        "customer_code": invoice.customer.code,
+        "customer_name": invoice.customer.name,
+        "received_on": _day(payment.received_on),
+        "amount": _money(payment.amount, shown),
+        "method": payment.method,
+        "method_label": payment.get_method_display(),
+        "note": payment.note,
+        "status": payment.status,
+        "status_label": payment.get_status_display(),
+        "recorded_by": _username(payment.recorded_by),
+        "recorded_at": _when(payment.recorded_at),
+        "url": _url("billing:invoice_detail", payment.invoice_id),
+    }
+
+
+def _list_payments(user, invoice_no, days, limit) -> dict[str, Any]:
+    """list_payments の中身。user は金額の閲覧を判定する閲覧の人 (None もある)。"""
+    if not _installed("billing"):
+        return _refused("請求書の部品 (billing) が入っていないので、入金は読めません。")
+    try:
+        span = _read_count(days, "日数 (days)", MAX_DAYS)
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+        invoice = _invoice_by_no(invoice_no) if _text(invoice_no) else None
+    except _Refusal as exc:
+        return _refused(exc.message)
+    shown = _money_shown(user)
+    if invoice is not None:
+        # 先に読んだ入金を Python で切る (並びは表の既定 = 入金日の新しい順。取消の入金も入る)。
+        payments = list(invoice.payments.all())[:count]
+    else:
+        Payment = apps.get_model("billing", "Payment")
+        payments = (
+            Payment.objects.filter(received_on__gte=timezone.localdate() - timedelta(days=span))
+            .select_related("invoice__customer", "recorded_by")
+            .order_by("-received_on", "-pk")[:count]
+        )
+    items = [_payment_dict(payment, shown) for payment in payments]
+    result: dict[str, Any] = {"ok": True, "count": len(items), "money_hidden": not shown, "items": items}
+    if invoice is not None:
+        result["invoice"] = {
+            "invoice_no": invoice.invoice_no,
+            "customer_code": invoice.customer.code,
+            "customer_name": invoice.customer.name,
+            "issued_on": _day(invoice.issued_on),
+            "due_on": _day(invoice.due_on),
+            "status": invoice.status,
+            "status_label": invoice.get_status_display(),
+            "total": _money(invoice.total, shown),
+            "paid_total": _money(invoice.paid_total(), shown),
+            "balance": _money(invoice.balance(), shown),
+            "payment_status": invoice.payment_status(),
+            "payment_status_label": invoice.payment_status_label(),
+            "url": _url("billing:invoice_detail", invoice.pk),
+        }
+    return result
+
+
+def list_payments(invoice_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
+    """入金 (請求書に対する入金の記録。経理が記録する) の一覧を入金日の新しい順に返す。invoice_no を渡すと、その請求書の残 (合計・入金済み・残・入金の状態) と、その請求書の入金の全部 (取消も) を返す。
+
+    invoice_no: 請求書番号 (完全一致)。渡すと、その請求書の入金の全部 (日数を見ない) と invoice。null なら全部の請求書の入金。
+    days: 今日から何日前の入金までを出すか (1〜366。既定 30)。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count・money_hidden 金額を隠したか・items (入金ごとの invoice_no 請求書番号・
+    customer_code と customer_name 得意先の取引先コードと名前・received_on 入金日・amount 金額・
+    method 入金の方法 (transfer / cash / bill / other) と method_label (振込 / 現金 / 手形 / その他)・note 備考・
+    status と status_label 状態 (recorded 記録 / cancelled 取消)・recorded_by 記録した人のログイン ID・recorded_at 記録の日時・
+    url 請求書の詳細の道)。
+    invoice_no を渡したときだけ invoice (invoice_no・customer_code・customer_name・issued_on 発行日・due_on 支払期日・
+    status と status_label 請求書の状態 (issued 発行 / cancelled 取消)・total 合計・paid_total 入金済み・balance 残・
+    payment_status と payment_status_label 入金の状態 (unpaid 未入金 / partial 一部入金 / paid 入金済み)・url) もある。
+    残 (balance) は 合計 − 取消でない入金の合計 で、多い入金ならマイナス。
+    金額 (amount・total・paid_total・balance) は金額の閲覧の判定に従い、見せない相手には「—」で money_hidden が真。入金の状態と方法は見える。
+    ok が偽なら error に、読めなかった引数とその直し方か、請求書番号が無いことか、部品が入っていないことがある。
+    """
+    return _list_payments(None, invoice_no, days, limit)
+
+
 READ_TOOLS = (
     company_info,
     list_screens,
@@ -951,11 +1055,12 @@ READ_TOOLS = (
     get_manual_body,
     list_receipts,
     list_acceptances,
+    list_payments,
 )
 
 
 def viewer_tools(user) -> tuple:
-    """金額の閲覧の判定に閲覧の人が要る読む道具 (list_receipts) の、利用者を閉じ込めた版。
+    """金額の閲覧の判定に閲覧の人が要る読む道具 (list_receipts・list_payments) の、利用者を閉じ込めた版。
 
     seizou_mcp.build_server と assistant.tools.run_tool が READ_TOOLS の同じ名前の物と差し替えて使う
     (write_tools と同じ閉じ込めの形。名前・引数・docstring は READ_TOOLS の物と同じで、違うのは閲覧の人だけ)。
@@ -967,8 +1072,12 @@ def viewer_tools(user) -> tuple:
     def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
         return _list_receipts(user, po_no, days, limit)
 
+    def list_payments(invoice_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
+        return _list_payments(user, invoice_no, days, limit)
+
     list_receipts.__doc__ = plain["list_receipts"].__doc__
-    return (list_receipts,)
+    list_payments.__doc__ = plain["list_payments"].__doc__
+    return (list_receipts, list_payments)
 
 
 # --- 書く道具 ---

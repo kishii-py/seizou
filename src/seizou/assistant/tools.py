@@ -40,6 +40,7 @@ TOOL_LABELS = {
     "get_manual_body": "マニュアルを読んだ",
     "list_receipts": "受入を読んだ",
     "list_acceptances": "検収を読んだ",
+    "list_payments": "入金を読んだ",
     "create_order": "受注の登録を提案した",
     "ship": "出荷を提案した",
     "plan_step": "計画の置き直しを提案した",
@@ -315,6 +316,29 @@ TOOLS = [
         "input_schema": _schema(
             {
                 "order_no": {"type": "string", "description": "受注番号 (完全一致)。渡すと、その受注の検収の全部 (日数を見ない)。省ける。"},
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": mcp_tools.MAX_DAYS,
+                    "description": f"さかのぼる日数 (1〜{mcp_tools.MAX_DAYS}。省くと 30)。",
+                },
+                "limit": _limit(mcp_tools.MAX_ROWS, 50),
+            }
+        ),
+    },
+    {
+        "name": "list_payments",
+        "description": (
+            "入金 (請求書に対する入金の記録) を入金日の新しい順に返す。invoice_no を渡すと、その請求書の残"
+            " (合計・入金済み・残・入金の状態 = 未入金 / 一部入金 / 入金済み) と入金の全部を返す。"
+            "金額は金額の閲覧の判定に従い、見せない相手には「—」。読むだけ。"
+        ),
+        "input_schema": _schema(
+            {
+                "invoice_no": {
+                    "type": "string",
+                    "description": "請求書番号 (完全一致)。渡すと、その請求書の残と入金の全部 (日数を見ない)。省ける。",
+                },
                 "days": {
                     "type": "integer",
                     "minimum": 1,

@@ -9,7 +9,7 @@ import inspect
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from mcp.server.mcpserver import MCPServer
 from seizou.accounts import services as accounts_services
 from seizou.assistant import services as assistant_services
 from seizou.assistant import tools
+from seizou.billing import services as billing_services
 from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
 from seizou.core import access, mcp_tools
@@ -30,6 +31,7 @@ from seizou.feedback import services as feedback_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
+from seizou.shipping import services as shipping_services
 from tests.test_assistant_services import FAKE_KEY, script, text_reply, tool_reply
 
 User = get_user_model()
@@ -39,9 +41,13 @@ ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "kumo-tests-2611"
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
-NEW_TOOLS = ["list_receipts", "list_acceptances"]
+NEW_TOOLS = ["list_receipts", "list_acceptances", "list_payments"]
 #: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
-MONEY_TOOLS = ["list_receipts"]
+MONEY_TOOLS = ["list_receipts", "list_payments"]
+#: 請求書の日 (日数で絞らないので固定)
+ORDER_DATE = date(2026, 11, 2)
+SHIPPED_AT = date(2026, 11, 5)
+ISSUED_ON = date(2026, 11, 30)
 #: 名札に書かない語
 WINDOW_WORDS = ("品目", "生産計画", "図面", "合計")
 
@@ -171,6 +177,25 @@ def accepted_line(user, customer, item, today):
     line = order.lines.get()
     _accept(line, "3", today)
     return line
+
+
+@pytest.fixture
+def invoice(user, customer, item):
+    """出荷 4 と 6 の請求書 (小計 15,000・消費税 1,500・合計 16,500。tests/test_billing_payment.py の形)。"""
+    order = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("1500")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    line = order.lines.get()
+    shipments = []
+    for qty in ("4", "6"):
+        shipment = shipping_services.ship(line, Decimal(qty), SHIPPED_AT, user)
+        shipping_services.create_delivery_note(customer, [shipment], user)
+        shipment.refresh_from_db()
+        shipments.append(shipment)
+    return billing_services.create_invoice(customer, shipments, user, issued_on=ISSUED_ON)
 
 
 def account(login_id, **flags):
@@ -361,6 +386,75 @@ def test_list_acceptances_rows_and_filters(accepted_line, today):
         assert _has_japanese(refused["error"]), bad
 
 
+# --- 入金と請求書の残 ---
+
+
+def test_list_payments_rows_and_invoice_balance(settings, user, manager, invoice, today):
+    payment = billing_services.record_payment(invoice, today, Decimal("6500"), user, note="作り物の入金")
+
+    found = _json(mcp_tools.list_payments())
+    assert found["ok"] is True
+    assert (found["count"], found["money_hidden"]) == (1, False)
+    assert "invoice" not in found
+    row = found["items"][0]
+    assert row["invoice_no"] == invoice.invoice_no
+    assert (row["customer_code"], row["customer_name"]) == ("C001", "作り物の得意先")
+    assert row["received_on"] == today.isoformat()
+    assert Decimal(row["amount"]) == 6500
+    assert (row["method"], row["method_label"]) == ("transfer", "振込")
+    assert row["note"] == "作り物の入金"
+    assert (row["status"], row["status_label"]) == ("recorded", "記録")
+    assert row["recorded_by"] == "tester"
+    assert datetime.fromisoformat(row["recorded_at"]).tzinfo is not None
+    assert row["url"] == reverse("billing:invoice_detail", args=[invoice.pk])
+
+    one = _json(mcp_tools.list_payments(invoice_no=invoice.invoice_no))
+    assert one["count"] == 1
+    block = one["invoice"]
+    assert block["invoice_no"] == invoice.invoice_no
+    assert (block["customer_code"], block["customer_name"]) == ("C001", "作り物の得意先")
+    assert block["issued_on"] == ISSUED_ON.isoformat()
+    assert block["due_on"] == invoice.due_on.isoformat()
+    assert (block["status"], block["status_label"]) == ("issued", "発行")
+    assert Decimal(block["total"]) == 16500
+    assert Decimal(block["paid_total"]) == 6500
+    assert Decimal(block["balance"]) == 10000
+    assert (block["payment_status"], block["payment_status_label"]) == ("partial", "一部入金")
+    assert block["url"] == reverse("billing:invoice_detail", args=[invoice.pk])
+
+    billing_services.cancel_payment(payment, user)
+    after = mcp_tools.list_payments(invoice_no=invoice.invoice_no)
+    assert (after["items"][0]["status"], after["items"][0]["status_label"]) == ("cancelled", "取消")
+    assert Decimal(after["invoice"]["balance"]) == 16500
+    assert after["invoice"]["payment_status"] == "unpaid"
+
+    missing = mcp_tools.list_payments(invoice_no="INV-NONE")
+    assert missing["ok"] is False
+    assert "INV-NONE" in missing["error"]
+    assert _has_japanese(missing["error"])
+    for bad in ({"days": "x"}, {"limit": "x"}):
+        refused = mcp_tools.list_payments(**bad)
+        assert refused["ok"] is False, bad
+        assert _has_japanese(refused["error"]), bad
+
+    billing_services.record_payment(invoice, today - timedelta(days=2), Decimal("1000"), user)
+    assert mcp_tools.list_payments()["count"] == 2
+    assert mcp_tools.list_payments(days=1)["count"] == 1
+    assert mcp_tools.list_payments(invoice_no=invoice.invoice_no, days=1)["count"] == 2
+    assert mcp_tools.list_payments(limit=1)["count"] == 1
+
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    hidden = _json(mcp_tools.list_payments(invoice_no=invoice.invoice_no))
+    assert hidden["money_hidden"] is True
+    assert {hidden["invoice"][key] for key in ("total", "paid_total", "balance")} == {access.MASK}
+    assert {item["amount"] for item in hidden["items"]} == {access.MASK}
+    assert hidden["invoice"]["payment_status_label"] == "一部入金"
+    assert {item["method_label"] for item in hidden["items"]} == {"振込"}
+    seen = _viewer(manager, "list_payments")(invoice_no=invoice.invoice_no)
+    assert seen["money_hidden"] is False
+    assert Decimal(seen["invoice"]["balance"]) == 15500
+
+
 # --- 部品の有無・目録 ---
 
 
@@ -369,6 +463,7 @@ def test_tools_refuse_when_part_missing(monkeypatch):
     for app, result in (
         ("purchasing", mcp_tools.list_receipts()),
         ("connect", mcp_tools.list_acceptances()),
+        ("billing", mcp_tools.list_payments()),
     ):
         assert result["ok"] is False, app
         assert app in result["error"], app

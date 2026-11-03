@@ -122,6 +122,7 @@ claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利�
 | `get_manual_body` | 業務マニュアルの 1 件の本文を字だけで返す (8000 字まで。`search_manuals` の番号で引く) | 読む |
 | `list_receipts` | 受入 (協力企業から受け入れた物の記録。発注側) の一覧を、検収を送った日時つきで返す。金額は金額の閲覧の判定に従う | 読む |
 | `list_acceptances` | 検収 (得意先の seizou からの受け入れた数の知らせ。受注側) の一覧を返す。受入 (`list_receipts`) とは別 | 読む |
+| `list_payments` | 入金の一覧と、請求書番号を渡したときはその請求書の残 (合計・入金済み・残・入金の状態) を返す。金額は金額の閲覧の判定に従う | 読む |
 | `create_order` | 受注を 1 件作る | 書く |
 | `ship` | 受注の明細を出荷する | 書く |
 | `plan_step` | 指示書の工程に、生産計画の開始日と終了日を置く | 書く |
