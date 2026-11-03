@@ -9,4 +9,5 @@ app_name = "assistant"
 urlpatterns = [
     path("ask/", views.ask, name="ask"),
     path("clear/", views.clear, name="clear"),
+    path("approve/", views.approve, name="approve"),
 ]

@@ -1,0 +1,21 @@
+{% load seizou_icons %}
+{# 提案のカード (書く道具の呼び出しを、すぐには保存せずに出す)。保存するのは人が「承認」を押した口 (assistant:approve) だけ。 #}
+{# 状態ごとに要素を出し分ける (class は固定の字)。CSRF の見出しは base.html の body の hx-headers が付ける (R18)。 #}
+<div id="assistant-proposal-{{ proposal.id }}" class="mt-2 rounded-lg border border-base-300 bg-base-200 p-2 text-xs">
+  <p class="font-bold">提案: {{ proposal.title }}</p>
+  <ul class="mt-2 flex flex-col gap-1">{% for line in proposal.summary %}<li>{{ line }}</li>{% endfor %}</ul>
+  {% if proposal.state == "pending" %}<form hx-post="{% url 'assistant:approve' %}" hx-target="#assistant-proposal-{{ proposal.id }}" hx-swap="outerHTML" class="mt-2 flex justify-end">
+    <input type="hidden" name="proposal_id" value="{{ proposal.id }}">
+    <button type="submit" class="btn btn-neutral btn-xs focus-visible:outline-2 focus-visible:outline-offset-2">承認</button>
+  </form>
+  {% elif proposal.state == "warned" %}{% for warning in proposal.warnings %}<p class="mt-2 text-warning">{% icon "alert" "size-4" %}<span class="font-mono font-medium">{{ warning.code }}</span> {{ warning.message }}</p>{% endfor %}
+  <form hx-post="{% url 'assistant:approve' %}" hx-target="#assistant-proposal-{{ proposal.id }}" hx-swap="outerHTML" class="mt-2 flex justify-end">
+    <input type="hidden" name="proposal_id" value="{{ proposal.id }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn btn-warning btn-xs focus-visible:outline-2 focus-visible:outline-offset-2">このまま保存</button>
+  </form>
+  {% elif proposal.state == "saved" %}<p class="mt-2 text-success">{% icon "check" "size-4" %}{{ proposal.notice }}</p>{% if proposal.url %}
+  <a class="link break-all" href="{{ proposal.url }}">{{ proposal.url }}</a>{% endif %}
+  {% else %}<p class="mt-2 text-error">{% icon "alert" "size-4" %}{% if proposal.code %}<span class="font-mono font-medium">{{ proposal.code }}</span> {% endif %}{{ proposal.notice }}</p>
+  {% endif %}
+</div>

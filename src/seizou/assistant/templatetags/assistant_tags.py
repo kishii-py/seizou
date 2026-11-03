@@ -2,9 +2,15 @@
 
 from django import template
 
-from seizou.assistant import services
+from seizou.assistant import services, tools
 
 register = template.Library()
+
+
+@register.filter
+def tool_label(name):
+    """道具の名前を、答えの下の名札の日本語にする (表は tools.TOOL_LABELS の 1 か所)。"""
+    return tools.label_for(name)
 
 
 @register.simple_tag(takes_context=True)

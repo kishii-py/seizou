@@ -1,10 +1,13 @@
+{% load assistant_tags %}
 {# AI チャットの吹き出し (1 往復ごとに 2 つ)。質問は右、答えは左。字は escape してから改行を br にする (markdown を描かない)。 #}
-{# 答えの下の link は services が道具の返した URL だけに絞った物。答えの字の中は書き換えない。 #}
+{# 答えの下に、使った道具の名札と、services が道具の返した URL だけに絞った link を並べる。答えの字の中は書き換えない。 #}
 {% for exchange in exchanges %}<div class="chat chat-end">
   <div class="chat-bubble chat-bubble-neutral break-words">{{ exchange.question|linebreaksbr }}</div>
 </div>
 <div class="chat chat-start">
-  <div class="chat-bubble break-words">{{ exchange.answer|linebreaksbr }}{% if exchange.links %}
+  <div class="chat-bubble break-words">{{ exchange.answer|linebreaksbr }}{% if exchange.tools %}
+    <div class="mt-2 flex flex-wrap gap-2">{% for name in exchange.tools %}<span class="badge badge-ghost badge-sm">{{ name|tool_label }}</span>{% endfor %}</div>{% endif %}{% for proposal in exchange.proposals %}
+    {% include "assistant/_proposal.html" with proposal=proposal %}{% endfor %}{% if exchange.links %}
     <div class="mt-2 flex flex-col gap-2">{% for url in exchange.links %}<a class="link break-all" href="{{ url }}">{{ url }}</a>{% endfor %}</div>{% endif %}</div>
 </div>
 {% endfor %}
