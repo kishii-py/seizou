@@ -15,19 +15,33 @@
 画面の並び:
   目次と本文は目録の並び (部品の並びと URL の並び) のまま。左のメニューの区分には分けない。
   /manual/?print=1 は印刷用の 1 枚 (core/manual_print.html。左のメニューと上の帯なし) を返す。
+
+冊子 (PDF):
+  /manual/pdf/ (manual_pdf) は、表紙・目次・画面ごとの章・ページ番号の冊子 (core/manual_booklet.html) を帳票の部品 (core.reports) で PDF にして返す。
+  PDF を作れなければ、同じ 1 枚を印刷用の HTML にし、上に知らせを出して返す。
+  命令 manage.py seizou_manual_pdf は、同じ冊子を manual/使い方.pdf に書き出す (--out で書き出し先を替える)。
+  冊子に絵は入らない (帳票の部品が manual/images/ を読まないため)。
 """
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from datetime import timezone as dt_timezone
+from importlib import metadata
 from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.db import DatabaseError
 from django.http import FileResponse, Http404
+from django.http import HttpResponse
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.safestring import mark_safe
+from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
 
+from seizou.core import reports
 from seizou.core.screens import all_screens
 from seizou.core.views import ScreenMixin
 
@@ -47,6 +61,18 @@ IMAGE_TYPES = {
 
 #: 印刷用の 1 枚を選ぶ GET の値 (/manual/?print=1)
 PRINT_PARAM = "print"
+
+#: 冊子の 1 枚 (帳票の部品 core.reports が描く)
+BOOKLET_TEMPLATE = "core/manual_booklet.html"
+
+#: 命令の既定の書き出し先の名前 (会社の置き場の manual/ の下)
+BOOKLET_FILENAME = "使い方.pdf"
+
+#: 口の Content-Disposition の名前 (見出しは ASCII。日本語の名前は Django が MIME の形にし、ブラウザで崩れる)
+PDF_FILENAME = "seizou-manual.pdf"
+
+#: PDF を作れないときの知らせ (shipping・manuals の PDF_NOTICE と同じ字。ほかの app の views は import しない)
+PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
 
 
 def manual_dir() -> Path | None:
@@ -100,6 +126,59 @@ def manual_sections() -> list[dict]:
     return sections
 
 
+def package_version() -> str:
+    """seizou の package の版 (冊子の表紙に出す)。package が入っていなければ空の字。"""
+    try:
+        return metadata.version("seizou")
+    except metadata.PackageNotFoundError:
+        return ""
+
+
+def manual_date() -> date | None:
+    """説明書を作った日。manual/ の下の断片 (*.html。前書きを含む) の最終更新の一番新しい物を、TIME_ZONE の日付にした物。
+
+    置き場が無い・断片が 1 つも無いなら None (表紙に出さない)。
+    """
+    folder = manual_dir()
+    if folder is None or not folder.is_dir():
+        return None
+    times = [path.stat().st_mtime for path in folder.glob("*.html") if path.is_file()]
+    if not times:
+        return None
+    return timezone.localtime(datetime.fromtimestamp(max(times), tz=dt_timezone.utc)).date()
+
+
+def booklet_context() -> dict:
+    """冊子の材料 (口と命令が同じ物を描く)。帳票の部品は context processor を通らないので、会社名と版もここで渡す。
+
+    会社名は会社の設定の 1 行の名前。DB を読めなければ "seizou" (context processor と同じ落とし方)。
+    置き場と表に書かない (会社の行が無いときだけ、services.company が既定の 1 行を作る。context processor と同じ)。
+    """
+    from seizou.core import services
+
+    try:
+        company_name = services.company().name
+    except DatabaseError:
+        company_name = "seizou"
+    folder = manual_dir()
+    intro = read_fragment(INTRO_NAME)
+    return {
+        "company_name": company_name,
+        "system_name": "seizou",
+        "version": package_version(),
+        "manual_date": manual_date(),
+        "sections": manual_sections(),
+        "intro": None if intro is None or intro is UNREADABLE else mark_safe(intro),
+        "intro_unreadable": intro is UNREADABLE,
+        "has_manual": folder is not None and folder.is_dir(),
+    }
+
+
+def render_booklet_pdf() -> bytes:
+    """冊子の PDF の bytes。WeasyPrint が無ければ reports.PdfUnavailable がそのまま上がる (口と命令がそれぞれ受ける)。"""
+    return reports.render_pdf(BOOKLET_TEMPLATE, booklet_context())
+
+
 class ManualView(ScreenMixin, TemplateView):
     """使い方の画面 (画面ごとの説明書)。左に目次、右に全部の画面の断片。GET の print=1 で印刷用の 1 枚。読むだけ。"""
 
@@ -123,6 +202,7 @@ class ManualView(ScreenMixin, TemplateView):
         context["intro_unreadable"] = intro is UNREADABLE
         context["has_manual"] = folder is not None and folder.is_dir()
         context["print_url"] = f"{reverse('core:manual')}?{PRINT_PARAM}=1"
+        context["pdf_url"] = reverse("core:manual_pdf")
         return context
 
 
@@ -139,3 +219,17 @@ def manual_image(request, name: str):
     if path.parent != images or not path.is_file():
         raise Http404("絵がありません。")
     return FileResponse(path.open("rb"), content_type=IMAGE_TYPES[suffix])
+
+
+@login_required
+@never_cache
+def manual_pdf(request):
+    """使い方の冊子の PDF (表紙・目次・画面ごとの章・ページ番号)。作れなければ、印刷用の HTML の上に知らせを出して返す。読むだけ。"""
+    context = booklet_context()
+    try:
+        data = reports.render_pdf(BOOKLET_TEMPLATE, context)
+    except reports.PdfUnavailable:
+        return HttpResponse(reports.render_html(BOOKLET_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+    response = HttpResponse(data, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{PDF_FILENAME}"'
+    return response

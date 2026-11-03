@@ -13,7 +13,7 @@ from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
 
-from seizou.core.manual import ManualView, manual_image
+from seizou.core.manual import ManualView, manual_image, manual_pdf
 from seizou.core.media import protected_file
 from seizou.core.search import SearchView
 from seizou.core.settings_screen import SettingsView
@@ -37,6 +37,7 @@ core_patterns = [
     path("", HomeView.as_view(), name="home"),
     path("search/", SearchView.as_view(), name="search"),
     path("manual/", ManualView.as_view(), name="manual"),
+    path("manual/pdf/", manual_pdf, name="manual_pdf"),
     path("manual/images/<str:name>", manual_image, name="manual_image"),
     path("settings/", SettingsView.as_view(), name="settings"),
     path("login/", RememberLoginView.as_view(), name="login"),

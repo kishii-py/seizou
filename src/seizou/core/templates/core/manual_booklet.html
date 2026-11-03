@@ -1,0 +1,76 @@
+{% load static %}<!doctype html>
+{% comment %}
+使い方の冊子 (A4 縦。表紙・目次・画面ごとの章と、各ページの下の会社名とページ番号)。
+PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに口が返す印刷用の画面の両方に使う。
+字と A4 縦は report.css を読み、冊子の形はこの 1 枚の style に書く (画面の土台と画面の CSS は使わない)。
+目次のページ番号は target-counter で引く。各ページの下の会社名は、表紙の会社名を string-set で覚えた物を引く。
+絵は出さない (帳票の部品が manual/images/ を読まないため)。img を display: none にし、断片の字は書き換えない。
+入力の欄を持たないので、CSRF の見出しは置かない。
+{% endcomment %}
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>使い方 | {{ company_name }}</title>
+<link rel="stylesheet" href="{% static 'css/report.css' %}">
+<style>
+@page {
+  @bottom-center {
+    content: string(booklet-company) "　" counter(page) " / " counter(pages);
+    font-family: "NotoSansJP Report", sans-serif;
+    font-size: 8pt;
+  }
+}
+@page :first {
+  @bottom-center { content: none; }
+}
+.booklet-notice { margin: 0 0 4mm; padding: 2mm 3mm; border: 0.5pt solid #000; }
+.booklet-cover { padding-top: 70mm; text-align: center; }
+.booklet-company { font-size: 14pt; string-set: booklet-company content(); }
+.booklet-cover h1 { margin: 6mm 0 4mm; font-size: 28pt; font-weight: 700; }
+.booklet-system { font-size: 16pt; }
+.booklet-meta { margin-top: 20mm; font-size: 10pt; }
+.booklet-toc, .booklet-chapter { break-before: page; }
+.booklet-toc h2, .booklet-chapter h2 { margin: 0 0 4mm; padding-bottom: 1mm; border-bottom: 1pt solid #000; font-size: 16pt; font-weight: 700; }
+.booklet-toc ol { margin: 0; padding-left: 8mm; }
+.booklet-toc li { margin: 1mm 0; }
+.booklet-toc a { color: inherit; text-decoration: none; }
+.booklet-toc a::after { content: leader(".") target-counter(attr(href), page); }
+.booklet-chapter h3 { margin: 4mm 0 2mm; font-size: 12pt; font-weight: 700; page-break-after: avoid; }
+.booklet-chapter p { margin: 2mm 0; }
+.booklet-chapter ol, .booklet-chapter ul { margin: 2mm 0; padding-left: 6mm; }
+.booklet-chapter table { margin: 2mm 0; }
+.booklet-chapter th, .booklet-chapter td { border: 0.5pt solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
+.booklet-chapter th { background: #eee; }
+.booklet-empty { color: #999; }
+img { display: none; }
+</style>
+</head>
+<body>
+{% if pdf_notice %}<p class="booklet-notice" role="alert">{{ pdf_notice }}</p>{% endif %}
+<section class="booklet-cover">
+  <p class="booklet-company">{{ company_name }}</p>
+  <h1>使い方</h1>
+  <p class="booklet-system">{{ system_name }}</p>
+  <p class="booklet-meta">{% if version %}版 {{ version }}{% endif %}{% if manual_date %}{% if version %} / {% endif %}説明書を作った日 {{ manual_date|date:"Y年n月j日" }}{% endif %}</p>
+</section>
+<nav class="booklet-toc" aria-label="目次">
+  <h2>目次</h2>
+  <ol>
+    {% if intro or intro_unreadable %}<li><a href="#index">はじめに</a></li>{% endif %}
+    {% for section in sections %}<li><a href="#{{ section.anchor }}">{{ section.name }}</a></li>
+    {% endfor %}
+  </ol>
+</nav>
+{% if intro %}<div id="index" class="booklet-chapter">{{ intro }}</div>
+{% elif intro_unreadable %}<div id="index" class="booklet-chapter"><h2>はじめに</h2><p>前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。/seizou:manual で作り直してください。</p></div>
+{% endif %}
+{% for section in sections %}<div id="{{ section.anchor }}" class="booklet-chapter">
+{% if section.html %}{{ section.html }}
+{% elif section.unreadable %}<h2>{{ section.name }}</h2>
+<p>説明のファイルを UTF-8 で読めませんでした。/seizou:manual で作り直してください。</p>
+{% else %}<h2>{{ section.name }}</h2>
+<p class="booklet-empty">この画面の説明書はまだありません</p>
+{% endif %}</div>
+{% endfor %}
+</body>
+</html>
