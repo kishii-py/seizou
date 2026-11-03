@@ -14,6 +14,8 @@
 - 開く URL は、`http://127.0.0.1:<ポート>` でなく `https://<名前>` です。
 - つながりの受け口の URL は、https の名前です。
 
+OS は AlmaLinux 9 (RHEL 系) です。仕事で使う前提なので、SELinux (OS がプログラムごとに読み書きできる物を絞る仕組み) は Enforcing (断る形) のまま使います。動かないときも、`setenforce 0` で SELinux を止めません。
+
 データベースは、`seizou new` の既定の SQLite のままにします。README の「本番の決まり」は PostgreSQL を勧めていますが、この手順は小さな 2 社を SQLite で立てます。PostgreSQL へ移す手順は会期後です。
 
 立てた後の毎日の運用 (控え・戻し・点検・版上げ) は [operations.md](operations.md) にあります。
@@ -26,23 +28,25 @@
 
 | 物 | 値 |
 |---|---|
-| VPS の OS | Ubuntu 24.04 LTS |
+| VPS の OS | AlmaLinux 9 (SELinux は Enforcing) |
 | VPS の IP | `203.0.113.10` (文書の例のための範囲。実在しない) |
 | 名前 (DNS) | `a.example.jp` (A 社)・`b.example.jp` (B 社) |
 | 会社 | 若葉精機 (A 社・`a_machining`・発注する側・ポート 8001)・白樺めっき工業 (B 社・`b_plating`・注文を受ける側・ポート 8002)。seizou の `examples/companies/` にある作り物の 2 社 |
-| OS の利用者 | `seizou` (サーバーを動かす利用者。人はこの利用者でログインしない) |
-| seizou の置き場 | `/srv/seizou/src` (git の clone)・答えの YAML の置き場 `/srv/seizou/answers/` |
+| OS の利用者 | `seizou` (サーバーを動かす利用者。人はこの利用者でログインしない)・`nginx` (nginx が動く利用者。nginx を入れると作られる) |
+| seizou の置き場 | `/srv/seizou/src` (git の clone)・答えの YAML の置き場 `/srv/seizou/answers/`・uv の置き場 `/srv/seizou/tools/` |
 | 会社の置き場 | `/srv/seizou-sites/<会社の id>/` |
 | systemd の unit | `seizou-a_machining.service`・`seizou-b_plating.service` |
-| nginx の設定 | `/etc/nginx/sites-available/seizou-a_machining`・`/etc/nginx/sites-available/seizou-b_plating` |
+| nginx の設定 | `/etc/nginx/conf.d/seizou-a_machining.conf`・`/etc/nginx/conf.d/seizou-b_plating.conf` |
 
 命令の中の `a_machining`・`8001`・`a.example.jp` は A 社の値です。B 社の分は `b_plating`・`8002`・`b.example.jp` に置き換えて、同じ命令をもう 1 度打ちます。
 
 各段の最後の「確かめ方」の行は、打つ命令と、見えるはずの答えです。「(VPS で確かめる)」の付いた答えは、作者が VPS で見ていない見込みの字です。付いていない答えは、作者が手元の一時の置き場で同じ手順を通して見た字です (道は VPS の物に置き換えた)。
 
+各段の一番最後の行は、SELinux の確かめ方です。`getenforce` が `Enforcing` を出し、`sudo ausearch -m AVC,USER_AVC -ts recent` (ここ 10 分の、SELinux が断った記録) が `<no matches>` を出せば、その段で SELinux は何も断っていません。記録が出たときは、`sudo ausearch -m AVC,USER_AVC -ts recent -i` で読みやすい形にし、`comm=` (断られたプログラム) と `scontext` (そのプログラムの印) と `tcontext` (触ろうとした物の印) を見て、その段の context (ファイルの印) か boolean (SELinux の切り替え) を見直します。
+
 ## 1. VPS と名前を用意する
 
-Ubuntu 24.04 LTS の VPS を 1 台借ります。メモリは 2GB を目安にします (2 社 × gunicorn 1 つ)。借りる所の画面で、ssh の公開鍵を登録しておきます (2 で、パスワードのログインを止めるため)。
+AlmaLinux 9 の VPS を 1 台借ります。メモリは 2GB を目安にします (2 社 × gunicorn 1 つ)。借りる所の画面で、ssh の公開鍵を登録しておきます (2 で、パスワードのログインを止めるため)。
 
 名前の管理の画面 (DNS) で、`a.example.jp` と `b.example.jp` の A レコードを足し、値を VPS の IP にします。この後の命令は、VPS に ssh でログインして打ちます。
 
@@ -51,76 +55,96 @@ ssh <自分の利用者>@203.0.113.10
 ```
 
 確かめ方: `getent hosts a.example.jp` → `203.0.113.10    a.example.jp` (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 2. どの会社でも同じ守り
 
-最初に、OS の部品の一覧を新しくします。
+最初に、SELinux が Enforcing で、再起動の後も Enforcing のままかを見ます。
 
 ```
-sudo apt update
+getenforce
+grep '^SELINUX=' /etc/selinux/config
 ```
+
+借りる所の像が Permissive (断らずに記録だけする形) なら、`sudo setenforce 1` を打ち、`/etc/selinux/config` の `SELINUX=` の行を `enforcing` に直します。Disabled なら、`/etc/selinux/config` を直してから `sudo touch /.autorelabel` と `sudo reboot` を打ちます (再起動のときに、全部のファイルの context を付け直します)。
 
 ssh のログインを鍵だけにします。先に、別の窓で鍵でログインできることを確かめてから打ちます (鍵で入れないままパスワードを止めると、入れなくなります)。
 
 ```
 echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/00-seizou.conf
-sudo systemctl restart ssh
+sudo systemctl restart sshd
 ```
 
-設定は、`/etc/ssh/sshd_config.d/` の頭の名前のファイルに書きます。借りる所によっては、同じフォルダの別のファイル (例 `50-cloud-init.conf`) がパスワードのログインを許していて、ssh は先に読んだ値を使うためです。
+設定は、`/etc/ssh/sshd_config.d/` の頭の名前のファイルに書きます。同じフォルダの別のファイル (例 `50-cloud-init.conf`) がパスワードのログインを許していることがあり、ssh は先に読んだ値を使うためです。
 
-防火壁 (ufw) で、ssh・http・https の 3 つだけを開けます。nginx の profile の名前 (`Nginx Full`) は、nginx を入れる前には無いので使いません。
-
-```
-sudo ufw allow OpenSSH
-sudo ufw allow 80,443/tcp
-sudo ufw enable
-```
-
-自動のセキュリティ更新を入れ、時計が合っているかを見ます。受ける側は注文の時刻を前後 5 分の幅で確かめるので、時計がずれると注文を断ります (README の「取引先とつなぐ」)。
+防火壁 (firewalld) で、http と https を開けます。ssh は初めから開いています。ブラウザの管理画面 (cockpit) を使わないなら、その口を閉じます。
 
 ```
-sudo apt install unattended-upgrades
+sudo firewall-cmd --permanent --add-service=http --add-service=https
+sudo firewall-cmd --permanent --remove-service=cockpit
+sudo firewall-cmd --reload
+```
+
+自動のセキュリティ更新を入れます。`/etc/dnf/automatic.conf` の `upgrade_type` をセキュリティの更新だけにし、更新を入れる timer を動かします。
+
+```
+sudo dnf install dnf-automatic
+sudo sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.conf
+sudo systemctl enable --now dnf-automatic-install.timer
+```
+
+時計が合っているかを見ます。受ける側は注文の時刻を前後 5 分の幅で確かめるので、時計がずれると注文を断ります (README の「取引先とつなぐ」)。
+
+```
 timedatectl
 ```
 
-確かめ方: `sudo sshd -T | grep -i '^passwordauthentication'` → `passwordauthentication no`・`sudo ufw status` → `OpenSSH` と `80,443/tcp` (と、その `(v6)` の行) だけが `ALLOW`・`timedatectl` → `System clock synchronized: yes` (VPS で確かめる)
+確かめ方: `grep '^SELINUX=' /etc/selinux/config` → `SELINUX=enforcing`・`sudo sshd -T | grep -i '^passwordauthentication'` → `passwordauthentication no`・`sudo firewall-cmd --list-services` → `dhcpv6-client http https ssh` (dhcpv6-client は IPv6 の住所を受け取る口で、初めからある)・`systemctl is-active dnf-automatic-install.timer` → `active`・`timedatectl` → `System clock synchronized: yes` (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 3. 道具を入れる
 
+certbot は EPEL (RHEL 系の追加の置き場) から入れます。EPEL の案内のとおり、先に CRB の置き場を開けます。nginx と python3.12 は、AlmaLinux の AppStream から入ります。
+
 ```
-sudo apt install git pipx nginx certbot python3-certbot-nginx libpango-1.0-0 libpangoft2-1.0-0
+sudo dnf config-manager --set-enabled crb
+sudo dnf install epel-release
+sudo dnf install git nginx python3.12 certbot python3-certbot-nginx pango policycoreutils-python-utils
 ```
 
-最後の 2 つは、PDF の帳票を作るための pango です (README の「前提」)。
+`pango` は PDF の帳票を作るための部品です (README の「前提」)。`policycoreutils-python-utils` は、10 で context を足す命令 `semanage` を入れます。
 
-確かめ方: `nginx -v` → `nginx version:` で始まる 1 行・`certbot --version` → `certbot` で始まる 1 行 (VPS で確かめる)
+確かめ方: `nginx -v` → `nginx version:` で始まる 1 行・`certbot --version` → `certbot` で始まる 1 行・`python3.12 --version` → `Python 3.12.` で始まる 1 行 (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 4. OS の利用者と置き場
 
 サーバーを動かす利用者 `seizou` を作り、置き場のフォルダを用意します。
 
 ```
-sudo adduser --system --group --home /srv/seizou seizou
+sudo useradd --system --user-group --create-home --home-dir /srv/seizou --shell /sbin/nologin seizou
 sudo install -d -o seizou -g seizou /srv/seizou/answers /srv/seizou-sites
 ```
 
 利用者 `seizou` は、ログインの shell を持ちません。この後の seizou の命令は、`sudo -u seizou -H <命令>` の形で、利用者 `seizou` として打ちます。
 
 確かめ方: `id seizou` → `uid=` で始まり `(seizou)` を含む 1 行 (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 5. seizou を入れる
 
 ```
-sudo -u seizou -H pipx install uv
+sudo -u seizou -H python3.12 -m venv /srv/seizou/tools
+sudo -u seizou -H /srv/seizou/tools/bin/pip install uv
 sudo -u seizou -H git clone https://github.com/kishii-py/seizou.git /srv/seizou/src
-sudo -u seizou -H /srv/seizou/.local/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --inexact
-sudo -u seizou -H /srv/seizou/.local/bin/uv pip install --python /srv/seizou/src/.venv/bin/python gunicorn
+sudo -u seizou -H /srv/seizou/tools/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --inexact --python /usr/bin/python3.12
+sudo -u seizou -H /srv/seizou/tools/bin/uv pip install --python /srv/seizou/src/.venv/bin/python gunicorn
 ```
 
-`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。本番の Web サーバーの gunicorn は seizou の依存に入っていないので、最後の 1 行で別に入れます。`--inexact` は、依存に無い物 (gunicorn) を消さない印です。この印が無いと、次に `uv sync` を打ったときに gunicorn が消えます。版を上げるときも、同じ形で打ちます (18)。
+`--python /usr/bin/python3.12` は、3 で入れた OS の Python を使う印です。uv が自分で取る Python は `/srv/seizou` の下に置かれ、SELinux の印が実行の物にならないので使いません。`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。本番の Web サーバーの gunicorn は seizou の依存に入っていないので、最後の 1 行で別に入れます。`--inexact` は、依存に無い物 (gunicorn) を消さない印です。この印が無いと、次に `uv sync` を打ったときに gunicorn が消えます。版を上げるときも、同じ形で打ちます (18)。
 
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/seizou --help` → `new       答えの YAML から会社のプロジェクトを作る` の行・`sudo -u seizou -H /srv/seizou/src/.venv/bin/gunicorn --version` → `gunicorn (version` で始まる 1 行 (gunicorn は VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 6. 答えの YAML を置く
 
@@ -138,6 +162,7 @@ rm a_machining.yaml b_plating.yaml
 ```
 
 確かめ方: `sudo ls /srv/seizou/answers` → `a_machining.yaml  b_plating.yaml` (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 7. 会社の置き場を 2 つ作る
 
@@ -151,6 +176,7 @@ sudo -u seizou -H env SEIZOU_SITES_DIR=/srv/seizou-sites /srv/seizou/src/.venv/b
 命令は、管理者のパスワードを出力に 1 度だけ出します。14 で変えるまで控え、画面の写しや記録やチャットに貼りません。出力の「次にすること」の runserver の 1 行と、置き場の `README.md` の「起動」の 1 行は、手元で試すための物です。VPS では使わず、11 の gunicorn で動かします。
 
 確かめ方: `seizou new` の出力 → `できた物: /srv/seizou-sites/a_machining の会社のプロジェクト。` で始まる行・`sudo ls /srv/seizou-sites` → `a_machining  b_plating`
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 8. .env を本番の形にする
 
@@ -169,9 +195,10 @@ ALLOWED_HOSTS=a.example.jp
 SEIZOU_FILE_DELIVERY=nginx
 ```
 
-`SECRET_KEY` の行は、`seizou new` が作った値のまま触りません (2 社で違う値です)。注文書の読み取りと AI チャットを使う会社だけ、API の鍵 (`ANTHROPIC_API_KEY`) の行を足します。`.env` の中身は、画面に出しません (`cat` で開かない)。
+`SECRET_KEY` の行は、`seizou new` が作った値のまま触りません (2 社で違う値です)。注文書の読み取りと AI チャットを使う会社だけ、API の鍵 (`ANTHROPIC_API_KEY`) の行を足します。`.env` の中身は、画面に出しません (`cat` で開かない)。`nano` が無ければ `sudo dnf install nano` で入れます。
 
 確かめ方: `sudo stat -c %a /srv/seizou-sites/a_machining/.env` → `600`・`sudo grep -c -x -F -e DEBUG=0 -e SEIZOU_DEV_AUTO_LOGIN=0 -e ALLOWED_HOSTS=a.example.jp -e SEIZOU_FILE_DELIVERY=nginx /srv/seizou-sites/a_machining/.env` → `4`
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 9. 静的ファイルを集めて点検する
 
@@ -183,26 +210,43 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py check --deploy
 ```
 
-`DEBUG=0` では Django が静的ファイル (画面の CSS と JS) を送らないので、`collectstatic` で `staticfiles/` に集め、12 で nginx に配らせます。点検の読み方は、[operations.md](operations.md) の「立ち上げの確かめ (点検)」にあります。
+`DEBUG=0` では Django が静的ファイル (画面の CSS と JS) を送らないので、`collectstatic` で `staticfiles/` に集め、12 で nginx に配らせます。点検の読み方は、[operations.md](operations.md) の「立ち上げの確かめ (点検)」にあります。点検は SELinux を見ないので、SELinux は各段の最後の行で見ます。
 
 `check --deploy` は、2 件の注意を出します。`security.W008` (http を https へ移す設定) は、13 で certbot が足す nginx の移しが受け持ちます。`security.W004` (HSTS = ブラウザに https だけで開かせる見出し) を足すかは、会社が決めます。この手順では足しません。
 
 確かめ方: `… manage.py seizou_doctor --production` → 最後の方に `点検の結果: 良い 15 件・直す 0 件`・`… manage.py check --deploy` → `security.W004` と `security.W008` の 2 件だけ (`System check identified 2 issues (0 silenced).`)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
-## 10. 置き場の権限
+## 10. 置き場の権限と SELinux の context
 
-nginx (利用者 `www-data`) が置き場の中で読むのは、静的ファイル (`staticfiles/`) と上げたファイル (`media/`) です。データベースと `.env` と控えは、`www-data` から読めないようにします。2 社とも次を打ちます。
+nginx (利用者 `nginx`) が置き場の中で読むのは、静的ファイル (`staticfiles/`) と上げたファイル (`media/`) と、`include` で読む断片 (`deploy/nginx-files.conf`) です。データベースと `.env` と控えは、nginx から読めないようにします。2 社とも次を打ちます。
 
 ```
-sudo chgrp www-data /srv/seizou-sites/a_machining
+sudo chgrp nginx /srv/seizou-sites/a_machining
 sudo chmod 750 /srv/seizou-sites/a_machining
 sudo -u seizou chmod 600 /srv/seizou-sites/a_machining/db.sqlite3
-sudo -u seizou install -d -m 700 /srv/seizou-sites/a_machining/backups /srv/seizou-sites/a_machining/practice
+sudo -u seizou install -d -m 700 /srv/seizou-sites/a_machining/backups /srv/seizou-sites/a_machining/practice /srv/seizou-sites/a_machining/upload-tmp
+sudo -u seizou install -d -m 755 /srv/seizou-sites/a_machining/media
 ```
 
-控え (`backups/`) と練習モードの写し (`practice/`) は、命令が後で作ると、ほかの利用者も読める権限 (フォルダは 755、データベースの写しは 644) になります。そこで、先に持ち主だけが入れるフォルダを作っておきます。データベースの作業のファイル (`db.sqlite3-wal`) は、`db.sqlite3` と同じ 600 で作られます。`.env` は 600 のままです。
+控え (`backups/`) と練習モードの写し (`practice/`) は、命令が後で作ると、ほかの利用者も読める権限 (フォルダは 755、データベースの写しは 644) になります。そこで、先に持ち主だけが入れるフォルダを作っておきます。データベースの作業のファイル (`db.sqlite3-wal`) は、`db.sqlite3` と同じ 600 で作られます。`.env` は 600 のままです。`media/` と `upload-tmp/` (上げたファイルの一時の置き場。11 で使う) は、下の context を付けるために先に作ります。
 
-確かめ方: `sudo -u www-data test -r /srv/seizou-sites/a_machining/staticfiles/css/app.css && echo 読める` → `読める`・`sudo -u www-data test -r /srv/seizou-sites/a_machining/db.sqlite3 || echo 読めない` → `読めない` (VPS で確かめる)
+次に、SELinux の context を足します。`/srv` の下のファイルは、そのままでは `var_t` (データの印) で、nginx は読めません。この印の決まりは 2 社分を 1 度に足すので、2 回目は打ちません。
+
+```
+sudo semanage fcontext -a -t httpd_sys_content_t '/srv/seizou-sites/[^/]+/(staticfiles|media|upload-tmp)(/.*)?'
+sudo semanage fcontext -a -t httpd_config_t '/srv/seizou-sites/[^/]+/deploy(/.*)?'
+sudo semanage fcontext -a -t bin_t '/srv/seizou/src/\.venv/bin(/.*)?'
+sudo restorecon -R /srv/seizou-sites /srv/seizou/src/.venv/bin
+```
+
+- `httpd_sys_content_t` は、nginx が読める中身の印です。上げたファイルは、Django がログインを見てから `X-Accel-Redirect` で断片の内部の location (`/seizou-files/`) に渡し、nginx がその alias の `media/` から読みます。このため、`media/` の印が要ります。後で Django が `media/` の中に作るフォルダとファイルは、`media/` と同じ印になります。
+- `httpd_config_t` は、nginx の設定の印です。nginx は 12 の `include` で、置き場の断片を読みます。
+- `bin_t` は、実行の印です。systemd は 11 で、置き場の外の `/srv/seizou/src/.venv/bin/gunicorn` を動かします。
+- データベースと `.env` と控えは `var_t` のままなので、権限に加えて SELinux でも nginx から読めません。
+
+確かめ方: `ls -Zd /srv/seizou-sites/a_machining/staticfiles /srv/seizou-sites/a_machining/media | grep -c httpd_sys_content_t` → `2`・`ls -Z /srv/seizou-sites/a_machining/deploy/nginx-files.conf` → `httpd_config_t` を含む 1 行・`sudo -u nginx test -r /srv/seizou-sites/a_machining/staticfiles/css/app.css && echo 読める` → `読める`・`sudo -u nginx test -r /srv/seizou-sites/a_machining/db.sqlite3 || echo 読めない` → `読めない` (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 11. gunicorn を systemd で動かす
 
@@ -218,6 +262,7 @@ User=seizou
 Group=seizou
 WorkingDirectory=/srv/seizou-sites/a_machining
 Environment=DJANGO_SETTINGS_MODULE=settings
+Environment=TMPDIR=/srv/seizou-sites/a_machining/upload-tmp
 ExecStart=/srv/seizou/src/.venv/bin/gunicorn --chdir /srv/seizou-sites/a_machining --pythonpath /srv/seizou-sites/a_machining --bind 127.0.0.1:8001 --workers 1 --threads 4 --timeout 90 'django.core.wsgi:get_wsgi_application()'
 Restart=on-failure
 
@@ -230,19 +275,21 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now seizou-a_machining seizou-b_plating
 ```
 
-各行の理由は次の 5 つです。
+各行の理由は次の 6 つです。
 
 - `--bind 127.0.0.1:8001` は、同じ VPS の中 (nginx) からだけ届く待ち方です。外から Django に直に届くと、nginx が付ける https の印 (`X-Forwarded-Proto`) と nginx を通った印 (`X-Seizou-Proxy`) を偽れるためです。
 - `--workers 1 --threads 4` は、ログインの締め出しの数がサーバーの process の記憶にあるためです。worker を増やすと、worker ごとに数えます ([operations.md](operations.md) の「ログインの締め出し」)。
 - `--timeout 90` は、注文書の読み取りと AI チャットが API の答えを 60 秒まで待つためです。gunicorn の既定の 30 秒では、途中で切れます。
 - `'django.core.wsgi:get_wsgi_application()'` と `--chdir`・`--pythonpath`・`DJANGO_SETTINGS_MODULE=settings` は、置き場の `settings.py` を `settings` の名前で読んで、Django の app を作る書き方です。
+- `TMPDIR` は、上げたファイルの一時の置き場を置き場の中にする行です。Django は 2.5MB より大きいファイルを一時のファイルに受け、受け終わったら `media/` へ名前を変えて移します。名前を変えて移したファイルは、SELinux の印を移す前のまま持つので、`/tmp` で受けると `tmp_t` のままになり、nginx が読めない見込みです。`upload-tmp/` は 10 で `media/` と同じ印にしてあります。
 - `.env` は `settings.py` が自分で読むので、unit に `EnvironmentFile` は書きません。
 
 確かめ方: `systemctl is-active seizou-a_machining` → `active`・`curl -fsS -H 'Host: a.example.jp' http://127.0.0.1:8001/health/` → `{"ok": true}` (作者の手元では、gunicorn と同じ形で Django の app を作り、`/health/` が `200 OK` と `{"ok": true}` を返すのを見た。gunicorn の上の答えは VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。gunicorn が動かず `comm="gunicorn"` か `comm="(gunicorn)"` の記録が出たら、10 の `bin_t` の行を見る)
 
 ## 12. nginx の server を 2 つ書く
 
-`sudo nano /etc/nginx/sites-available/seizou-a_machining` で、次の中身のファイルを作ります。B 社は、名前を `b.example.jp` に、道の `a_machining` を `b_plating` に、ポートを `8002` に置き換えた `seizou-b_plating` を作ります。
+`sudo nano /etc/nginx/conf.d/seizou-a_machining.conf` で、次の中身のファイルを作ります。B 社は、名前を `b.example.jp` に、道の `a_machining` を `b_plating` に、ポートを `8002` に置き換えた `seizou-b_plating.conf` を作ります。AlmaLinux の nginx は `conf.d/` の `.conf` のファイルを読みます。
 
 ```
 server {
@@ -266,10 +313,12 @@ server {
 }
 ```
 
+SELinux の既定では、nginx はほかのプログラムのポートへつなげません。gunicorn (8001・8002) へつなげるように boolean を入れてから、nginx を立てます。
+
 ```
-sudo ln -s /etc/nginx/sites-available/seizou-a_machining /etc/nginx/sites-enabled/
-sudo ln -s /etc/nginx/sites-available/seizou-b_plating /etc/nginx/sites-enabled/
+sudo setsebool -P httpd_can_network_connect 1
 sudo nginx -t
+sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 ```
 
@@ -280,20 +329,24 @@ sudo systemctl reload nginx
 - `include` の行は、`seizou new` が置き場に書いた断片 (`deploy/nginx-files.conf`) を読みます。上げたファイルは、Django がログインを見てから、断片の内部の location に渡します。上げたファイルの置き場を nginx がそのまま配る location (`location /media/`) は書きません。書くと、ログインを通らずにファイルが出ます。
 - `proxy_set_header` の 3 行が無いと、次のように止まります。`Host` が無いと `ALLOWED_HOSTS` で 400 になります。`X-Forwarded-Proto` が無いと、ログインの保存が 403 (CSRF) になります。`X-Seizou-Proxy` が無いと、上げたファイルの画面が 503 になります。nginx は、外から来た同じ名前の見出しを、この値で上書きします。
 - `proxy_read_timeout 90s` は、11 の `--timeout 90` と合わせた待ち時間です。
+- `setsebool -P` の `-P` は、再起動の後も boolean を残す印です。
 - 443 (https) の server は、13 で certbot が書きます。
 
-確かめ方: `sudo nginx -t` → `syntax is ok` と `test is successful`・`curl -fsS http://a.example.jp/health/` → `{"ok": true}` (VPS で確かめる。作者の手元では、Django の試しの client で、https の印つきの `/health/` が 200、`ALLOWED_HOSTS` に無い名前が 400、https の印つきのログインの保存が 200、印の無いログインの保存が 403 になるのを見た)
+確かめ方: `sudo nginx -t` → `syntax is ok` と `test is successful`・`getsebool httpd_can_network_connect` → `httpd_can_network_connect --> on`・`curl -fsS http://a.example.jp/health/` → `{"ok": true}` (VPS で確かめる。作者の手元では、Django の試しの client で、https の印つきの `/health/` が 200、`ALLOWED_HOSTS` に無い名前が 400、https の印つきのログインの保存が 200、印の無いログインの保存が 403 になるのを見た)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。`/health/` が 502 で `comm="nginx"` と `name_connect` の記録が出たら boolean を、`include` の所で nginx が止まったら 10 の `httpd_config_t` の行を見る)
 
 ## 13. https にする (Let's Encrypt)
 
 ```
 sudo certbot --nginx -d a.example.jp
 sudo certbot --nginx -d b.example.jp
+sudo systemctl enable --now certbot-renew.timer
 ```
 
-certbot は証明書を取り、12 の server に 443 の待ち受けと、http から https への移し (301) を足します。初めての certbot は、知らせを受けるメールの宛先と、利用の条件への同意を聞きます。証明書の更新は、certbot が入れる timer が自動でします。
+certbot は証明書を取り、12 の server に 443 の待ち受けと、http から https への移し (301) を足します。初めての certbot は、知らせを受けるメールの宛先と、利用の条件への同意を聞きます。証明書の更新は、最後の 1 行で動かす timer がします。
 
 確かめ方: `curl -fsS https://a.example.jp/health/` → `{"ok": true}`・`curl -sI http://a.example.jp/login/` → `301` と `Location: https://a.example.jp/login/`・`sudo certbot renew --dry-run` → `Congratulations, all simulated renewals succeeded` (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 14. ログインして管理者のパスワードを変える
 
@@ -305,7 +358,10 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 
 nginx の後ろでは、Django から見た接続元が、いつも同じ VPS の nginx になります。このため、ログインの締め出しは ID ごとになり、ほかの人がある ID を 15 分止めることもできます。2 社は別の process なので、片方の締め出しはもう片方に及びません。締め出しの決まりは、[operations.md](operations.md) の「ログインの締め出し」にあります。
 
-確かめ方: `https://a.example.jp/login/` でログインする → ダッシュボードが出る (「CSRF」の 403 の画面が出たら、12 の `X-Forwarded-Proto` の行を見る) (VPS で確かめる)
+ログインの後に、図面か添付を 1 つ上げて開きます。開けなければ、11 の `TMPDIR` と 10 の `media/` の context を見ます。
+
+確かめ方: `https://a.example.jp/login/` でログインする → ダッシュボードが出る (「CSRF」の 403 の画面が出たら、12 の `X-Forwarded-Proto` の行を見る)・上げたファイルを開く → ファイルが出る (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。上げたファイルが開けず `comm="nginx"` と `tmp_t` の記録が出たら、11 の `TMPDIR` の行を見る)
 
 ## 15. もう 1 度点検する
 
@@ -316,6 +372,7 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 ```
 
 確かめ方: `… manage.py seizou_doctor --production` → `点検の結果: 良い 15 件・直す 0 件`
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 16. 2 社をつなぐ
 
@@ -353,26 +410,29 @@ sudo systemctl restart seizou-a_machining seizou-b_plating
 ```
 
 確かめ方: 2 社の「取引先との接続」の詳細 → 「鍵の設定」が `済み` (VPS で確かめる)・A 社の `… manage.py seizou_doctor --production` → `良い  つながり 白樺めっき工業 (送る) の受け口の URL: https` と `良い  つながり 白樺めっき工業 (送る) の鍵: ある (SEIZOU_PARTNER_B_PLATING_SECRET)` の行と、`点検の結果: 良い 17 件・直す 0 件`
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 17. A 社から発注して、B 社の届いた注文に出るまで
 
 A 社の「発注」の「新規登録」で、B 社への発注を保存します。保存すると、注文のデータが B 社へ送られます。B 社の「届いた注文」に新しい行が出たら、行の「承認」を押し、「注文を受け入れる」の画面で保存します。
 
-届かないときは、次の 4 つを見ます。
+届かないときは、次の 5 つを見ます。
 
 - A 社の発注の詳細の、送った結果の字
 - B 社のサーバーの記録 (`sudo journalctl -u seizou-b_plating -n 50`)
 - 2 社の時計 (2 の `timedatectl`)
 - `.env` の鍵の置き場の名前と、足した後の起動し直し (16)
+- SELinux の記録 (`sudo ausearch -m AVC,USER_AVC -ts recent -i`)
 
 確かめ方: B 社の「届いた注文」を開いておく → 新しい行が出る (開いたまま 2 秒ごとに足される)・A 社の発注の一覧 → 状態が「送った」から「相手が受け入れた」に変わる (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 18. 毎日の控えと、版を上げるとき
 
 毎日の控えは、[operations.md](operations.md) の「毎日の控え」の cron の 1 行を、利用者 `seizou` の cron に 2 社分足します。
 
 ```
-sudo -u seizou crontab -e
+sudo crontab -u seizou -e
 ```
 
 足す 2 行は、道を VPS の物にした次の形です。
@@ -389,6 +449,8 @@ sudo -u seizou crontab -e
 - 2 段目 (サーバーを止める): `sudo systemctl stop seizou-a_machining seizou-b_plating`
 - 3 段目 (入れ直す): `sudo -u seizou -H git -C /srv/seizou/src pull` と、5 の `uv sync … --inexact` の 1 行
 - 4〜6 段目 (`migrate`・点検・`collectstatic --no-input`): 2 社とも打つ
+- 6 段目の後: `sudo restorecon -R /srv/seizou-sites /srv/seizou/src/.venv/bin` (入れ直しで増えたファイルの context をそろえる)
 - 7 段目 (サーバーを立てる): `sudo systemctl restart seizou-a_machining seizou-b_plating`
 
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py seizou_restore --list` → 控えの名前 (`20` で始まる日時) の行が並ぶ (作者の手元では、`seizou_backup` の後に `20261104-060125  2026-11-04T06:01:25  sqlite  seizou 0.1.0  0.7 MB` の形の 1 行を見た)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
