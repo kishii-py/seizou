@@ -116,8 +116,9 @@ def _check_b_plating():
     assert inbox.status == Inbox.STATUS_ACCEPTED
     assert inbox.partner.code == "C001"
     assert inbox.summary() == "WK-1001 ×200 ほか 1 行"
-    assert inbox.reply_sent_at is None  # 注文回答は相手に届いていない (送る向きのつながりが無い)
-    assert "取引先との接続" in inbox.reply_response
+    assert inbox.reply_sent_at is None  # 注文回答は送っていない (種の受け入れは send=False)
+    assert inbox.reply_response == services.MESSAGE_REPLY_SEED
+    assert inbox.reply_message_id is None
     order = inbox.order
     assert order.order_no == "SO-000021"
     assert order.source == Order.SOURCE_INBOX

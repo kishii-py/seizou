@@ -189,7 +189,7 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     connections = load_seed_yaml("a_machining", "connections.yaml")["つながり"]
     b_port = load_answers("b_plating")["port"]
 
-    assert len(connections) == 1
+    assert [c["向き"] for c in connections] == ["送る", "受ける"]
     connection = connections[0]
     # 鍵の値を入れる欄が無いこと
     assert set(connection) == CONNECTION_KEYS
@@ -212,11 +212,19 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     assert partner["取引先の種類"] == "協力企業"
     assert partner["名前"] == load_answers("b_plating")["name"]
 
+    # 逆向き (B 社から注文回答と出荷の知らせを受ける)。取引先と鍵の置き場の名前は送る向きと同じ、受け口の URL は空
+    back = connections[1]
+    assert set(back) == CONNECTION_KEYS
+    assert back["取引先コード"] == connection["取引先コード"]
+    assert back["鍵の置き場の名前"] == connection["鍵の置き場の名前"]
+    assert back["受け口の URL"] == ""
 
-def test_b_plating_connects_from_a_machining_receive_only():
+
+def test_b_plating_connects_with_a_machining_both_ways():
     connections = load_seed_yaml("b_plating", "connections.yaml")["つながり"]
+    a_port = load_answers("a_machining")["port"]
 
-    assert len(connections) == 1
+    assert [c["向き"] for c in connections] == ["受ける", "送る"]
     connection = connections[0]
     assert set(connection) == CONNECTION_KEYS
     assert connection["向き"] == "受ける"
@@ -229,6 +237,18 @@ def test_b_plating_connects_from_a_machining_receive_only():
     partner = partner_rows("b_plating")[connection["取引先コード"]]
     assert partner["名前"] == load_answers("a_machining")["name"]
     assert partner["取引先の種類"] == "得意先"
+
+    # 逆向き (A 社へ注文回答と出荷の知らせを送る)。取引先と鍵の置き場の名前は受ける向きと同じ、受け口は A 社の connect の受け口
+    back = connections[1]
+    assert set(back) == CONNECTION_KEYS
+    assert back["取引先コード"] == connection["取引先コード"]
+    assert back["鍵の置き場の名前"] == connection["鍵の置き場の名前"]
+    url = urlsplit(back["受け口の URL"])
+    assert url.scheme == "http"
+    assert url.port == a_port
+    assert url.path == "/connect/receive/order/"
+    assert not url.query and not url.fragment
+    assert not BLANK_MARK_PATTERN.search(back["受け口の URL"])
 
 
 # ---------------------------------------------------------------- 新しい種のファイル (標準の工程・指示書・出荷・納品書・請求書・図面)

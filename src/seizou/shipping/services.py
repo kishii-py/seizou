@@ -36,6 +36,7 @@ from .models import DeliveryNote, Shipment
 _R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 _R05_RULE = "取消した受注には、出荷も指示書も作れない。"
 _R08_RULE = "納品書の数量は出荷の数量と一致する。納品書を出した後の出荷は、納品書を取り消してから直す。"
+MESSAGE_NOTICE_SEED = "作り物の種の読み込みなので出荷の知らせを送っていません (相手の記録は相手の種が持つ)。"
 
 # 受注の明細の表は、出荷の外部キーの先として引く (orders の models を import しない)。
 _OrderLine = Shipment._meta.get_field("order_line").related_model
@@ -45,8 +46,11 @@ def _dec(value):
     return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
-def ship(order_line, qty, shipped_at, user, *, note=""):
-    """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。"""
+def ship(order_line, qty, shipped_at, user, *, note="", send=True):
+    """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
+
+    send が偽なら、届いた注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
+    """
     qty = _dec(qty)
     with transaction.atomic():
         locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
@@ -74,6 +78,8 @@ def ship(order_line, qty, shipped_at, user, *, note=""):
 
     # 出荷の知らせを相手へ送る。HTTP は atomic の外 (R17)。shipping と connect の循環を避けるため関数の中で import する。
     if _is_edi_order(locked.order):
+        if not send:
+            return record_notice_response(shipment, MESSAGE_NOTICE_SEED, user)
         from seizou.connect import services as connect_services
 
         return connect_services.send_shipping_notice(shipment, user)

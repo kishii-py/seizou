@@ -225,8 +225,8 @@ def test_labels_map_to_choices(tmp_path):
 
 # 会社の id: (品目, 取引先, 品番の対応, 工程, 受注, つながり)
 EXPECTED_EXAMPLE_COUNTS = {
-    "a_machining": (30, 5, 10, 5, 20, 1),
-    "b_plating": (30, 5, 11, 5, 21, 1),
+    "a_machining": (30, 5, 10, 5, 20, 2),
+    "b_plating": (30, 5, 11, 5, 21, 2),
 }
 
 

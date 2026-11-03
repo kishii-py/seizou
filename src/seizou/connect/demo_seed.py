@@ -6,11 +6,12 @@ shipping_notices.yaml (A 社。出荷の知らせと注文回答の写し) を�
 
 - 書くのは services の関数だけ (connect.services・purchasing.services)。表に直接書かない。標準出力に書かない。
 - 届いた注文の写しは、受け口 (署名の確かめ) を通さずに受信箱に 1 行入れ、受け入れて受注にする (入口は「届いた注文」)。
-  相手の品番は取引先ごとの品番の表 (partner_items.csv) で自社の品目に引く。注文回答は送らない
-  (B 社の種に送る向きのつながりが無いので、受け入れの中の注文回答は相手に届かず、届いた注文の返事の欄に書くだけ)。
+  相手の品番は取引先ごとの品番の表 (partner_items.csv) で自社の品目に引く。受け入れは send=False で呼び、
+  注文回答を相手に送らない (届いた注文の返事の欄に書くだけ)。2 社のつながりは両向き。
 - 出荷の知らせは発注の明細に付ける。注文回答の写しは発注の状態を「作成」→「送った」→「相手が受け入れた」に進める
   (相手に送らず、送った注文の行も作らない)。
-- 相手の会社に HTTP を送らない。種の取引先に向き「送る」のつながりを足さない (足すと受け入れが注文回答を送る)。
+- 相手の会社に HTTP を送らない。受け入れは send=False で呼び、注文回答を相手に送らない (返事の欄に書くだけ)。
+  2 社のつながりは両向き。
 - 2 回入れても重ならない。自然な鍵で既にある物は飛ばす (上書きしない): 届いた注文の写し = 取引先 × 相手の発注番号 の
   受注が既にある、検収 = 受注の明細 × 検収日、出荷の知らせ = 発注の明細 × 相手の出荷番号。
   番号は自然な鍵の字から uuid5 で作る (入れ直しても同じ番号。表の一意の制約が 2 つ目の守り)。
@@ -179,7 +180,7 @@ def _load_inbox(entry, user):
         message_id = _message_id("inbox", partner.code, order_no)
         payload = _inbox_payload(entry, order_no, message_id)
         inbox = services.record_inbox(partner, payload, user, message_id=message_id)
-        order = services.accept(inbox, {}, user)
+        order = services.accept(inbox, {}, user, send=False)
         # 受け入れは渡した行を書き換えず、表の行を取り直して書くので、受注から取り直す (飛ばす道と同じ式)。
         inbox = order.inbox_message
         made += 1

@@ -620,7 +620,8 @@ def _load_shipments(seeds_dir, user, notices):
             placed.add((line.pk, shipped_at))
             qty = _coerce(qty_field, entry.get("数量"))
             note = _coerce(note_field, entry.get("備考"))
-            services.ship(line, qty, shipped_at, user, note=note)
+            # 作り物の種は相手に送らない (届いた注文の写しの受注の出荷も、出荷の知らせを送らず返事の欄に書く)
+            services.ship(line, qty, shipped_at, user, note=note, send=False)
             made += 1
     return made, skipped
 
