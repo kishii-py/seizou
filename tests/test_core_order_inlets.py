@@ -7,7 +7,6 @@
 
 import json
 from datetime import date, datetime
-from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,15 +14,13 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
-from django.utils import timezone
 
 from seizou.connect import services as connect_services
 from seizou.core import dashboard
 from seizou.intake import services as intake_services
 from seizou.intake.models import Extraction
 from seizou.masters.models import Partner
-from seizou.masters.services import create_item, create_partner
-from seizou.orders import services as orders_services
+from seizou.masters.services import create_partner
 from tests.test_intake_extract import FAKE_KEY, refuse_api, reply_data, upload
 
 TODAY = date(2026, 11, 3)
@@ -116,89 +113,3 @@ def test_partner_list_queries_do_not_grow(client, user):
     with CaptureQueriesContext(connection) as six:
         assert client.get(url).status_code == 200
     assert len(six.captured_queries) == len(one.captured_queries)
-
-
-class _NoParts:
-    """部品が 1 つも入っていない会社の apps の代わり。"""
-
-    def get_model(self, app_label, name):
-        raise LookupError(f"{app_label}.{name}")
-
-
-@pytest.fixture
-def shaft(user):
-    return create_item({"part_no": "T-100", "name": "作り物のシャフト", "unit": "個"}, user)
-
-
-def _order(user, customer, item, count, order_date):
-    return orders_services.create_order(
-        customer,
-        [{"item": item, "qty": Decimal("1"), "unit_price": Decimal("100")} for _ in range(count)],
-        user,
-        order_date=order_date,
-    )
-
-
-def _chart_part(body):
-    """ダッシュボードの本文のうち、注文の入口の図の svg (id="inlet-chart") の中。"""
-    start = body.index('<svg id="inlet-chart"')
-    return body[start : body.index("</svg>", start)]
-
-
-def test_inlet_chart_has_circle_per_customer(client, user, partners, shaft):
-    today = timezone.localdate()  # 画面を通すので今日 (図の今月は画面と同じ日で数える)
-    _order(user, partners["C1"], shaft, 3, today)
-    _order(user, partners["C2"], shaft, 2, today)
-
-    inlets = dashboard.order_inlets(today)
-    rows = inlets["rows"]
-    assert [row["lines"] for row in rows[:2]] == [3, 2]
-    assert len(rows) == 5  # 得意先 4 社と両方の 1 社 (協力企業は入らない)
-    assert rows[0]["name"] == "作り物の直接の得意先" and rows[0]["inlet"] == "direct"
-    assert rows[1]["inlet"] == "intake" and rows[1]["inlet_label"] == "注文書の読み取り"
-    assert {row["inlet"] for row in rows[2:]} == {"direct", "manual"}
-    assert inlets["total_lines"] == 5
-    assert inlets["others"] is None
-
-    client.force_login(user)
-    body = client.get(reverse("core:home")).content.decode()
-    assert "注文の入口 (今月)" in body
-    chart = _chart_part(body)
-    assert chart.count("<circle") == 5
-    assert chart.count('class="fill-primary"') == 2  # 直接の C1 と両方の B1
-    assert chart.count('class="fill-secondary"') == 1
-    assert "受注" in chart and "今月 5 行" in chart
-
-
-def test_inlet_chart_others_after_twelve(client, user):
-    long_name = "作り物のとても長い名前の得意先の株式会社さん"[:20]
-    _partner(user, "K01", long_name)
-    for number in range(2, 15):
-        _partner(user, f"K{number:02d}", f"作り物の得意先 {number}")
-
-    inlets = dashboard.order_inlets(TODAY)
-    assert len(inlets["rows"]) == 12
-    assert inlets["others"]["count"] == 2 and inlets["others"]["lines"] == 0
-    assert inlets["others"]["y"]
-    assert inlets["rows"][0]["name"] == long_name[:12] + "…"
-
-    client.force_login(user)
-    chart = _chart_part(client.get(reverse("core:home")).content.decode())
-    assert chart.count("<circle") == 12
-    assert "ほか 2 社" in chart
-
-
-def test_order_inlets_one_query(client, user, monkeypatch):
-    client.force_login(user)
-    assert dashboard.order_inlets(TODAY) is None
-    assert "注文の入口 (今月)" not in client.get(reverse("core:home")).content.decode()
-
-    for number in range(1, 6):
-        _partner(user, f"N{number}", f"作り物の得意先 {number}")
-    with CaptureQueriesContext(connection) as captured:
-        inlets = dashboard.order_inlets(TODAY)
-    assert len(captured.captured_queries) == 1
-    assert len(inlets["rows"]) == 5
-
-    monkeypatch.setattr(dashboard, "apps", _NoParts())
-    assert dashboard.order_inlets(TODAY) is None

@@ -13,7 +13,6 @@
 - hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
 - accept_minutes_this_month: 今月の受付 (届いた注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
-- order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。
@@ -34,7 +33,7 @@ from decimal import ROUND_HALF_UP, InvalidOperation
 from django.apps import apps
 from django.db import DatabaseError
 from django.db.models import DecimalField, F, Q, Sum, Value
-from django.db.models import Case, CharField, Count, Exists, OuterRef, When
+from django.db.models import Case, CharField, Exists, OuterRef, When
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -670,113 +669,6 @@ def annotate_order_inlet(partners, today=None):
     return partners.annotate(
         order_inlet=Case(*whens, default=Value(labels["manual"]), output_field=CharField())
     )
-
-
-# 注文の入口の図の枠と置き場 (y は下へ増える)。1 行の帯の高さ・上下の余白・名前の字の右の端・丸の中心と半径・
-# 受注の箱の左の端と幅と高さ・名前の字数の上限。幅は月次の図と同じ _WIDTH。
-_INLET_ROW = 28
-_INLET_TOP = 24
-_INLET_LABEL_X = 232
-_INLET_DOT_X = 248
-_INLET_DOT_R = 7
-_INLET_BOX_LEFT = 448
-_INLET_BOX_WIDTH = 168
-_INLET_BOX_HEIGHT = 56
-_INLET_NAME_MAX = 12
-
-
-def order_inlets(today=None, *, limit=12) -> dict | None:
-    """ダッシュボードの「注文の入口」の図。得意先 (両方を含む) を今月 (受注日が today の月) の取消でない受注の明細の多い順 (同じ数はコードの順) に limit 社まで並べ、注文の入口 (annotate_order_inlet) と今月の明細の数を、図の座標つきで返す。残りの得意先は「ほか n 社」の 1 行にまとめる。得意先が 1 社も無い・取引先か受注の部品が無い・DB が読めなければ None。問い合わせは 1 回。
-
-    返す物は _inlet_chart の形。
-    """
-    partner_model = _model("masters", "Partner")
-    order_model = _model("orders", "Order")
-    if partner_model is None or order_model is None or _model("orders", "OrderLine") is None:
-        return None
-    if today is None:
-        today = timezone.localdate()
-    start = date(today.year, today.month, 1)
-    end = _first_of_next_month(today.year, today.month)  # この日は含まない
-    customers = partner_model._default_manager.filter(
-        role__in=(partner_model.ROLE_CUSTOMER, partner_model.ROLE_BOTH)
-    )
-    month_lines = Count(
-        "orders__lines",
-        filter=Q(orders__order_date__gte=start, orders__order_date__lt=end)
-        & ~Q(orders__status=order_model.STATUS_CANCELLED),
-    )
-    try:
-        partners = list(
-            annotate_order_inlet(customers, today).annotate(month_lines=month_lines).order_by("-month_lines", "code")
-        )
-    except DatabaseError:
-        return None
-    if not partners:
-        return None
-    keys = {label: key for key, label in INLETS}
-    rows = []
-    for partner in partners[:limit]:
-        name = partner.short_name or partner.name
-        if len(name) > _INLET_NAME_MAX:
-            name = name[:_INLET_NAME_MAX] + "…"
-        rows.append(
-            {
-                "name": name,
-                "lines": partner.month_lines,
-                "inlet": keys.get(partner.order_inlet, "manual"),
-                "inlet_label": partner.order_inlet,
-            }
-        )
-    rest = partners[limit:]
-    others = {"count": len(rest), "lines": sum(partner.month_lines for partner in rest)} if rest else None
-    return _inlet_chart(rows, others)
-
-
-def _inlet_chart(rows, others) -> dict:
-    """注文の入口の図の座標 (字は小数 1 桁 = _num)。1 行 = {"name" (略称か名前を _INLET_NAME_MAX 字まで。長ければ末尾に「…」), "lines", "inlet" (INLETS の鍵), "inlet_label", "y", "x1", "x2", "y2"} (線は丸の右の端から箱の左の端の中央へ)。箱 = {"x", "y", "width", "height", "label_y", "count_y", "cx"}。others = {"count", "lines", "y"} か None。高さは行の数で決め、箱は行の帯の中央に置く。
-
-    返す物 = {"width", "height", "rows", "others", "box", "total_lines", "dot_x", "dot_r", "label_x"}。
-    行の帯 (others の 1 行を含む) が箱より低いときは、帯を箱の高さの中央に置く。
-    """
-    bands = len(rows) + (1 if others else 0)
-    content = max(_INLET_ROW * bands, _INLET_BOX_HEIGHT)
-    first_y = _INLET_TOP + (content - _INLET_ROW * bands) / 2 + _INLET_ROW / 2
-    box_y = _INLET_TOP + (content - _INLET_BOX_HEIGHT) / 2
-    box_middle = box_y + _INLET_BOX_HEIGHT / 2
-    placed = [
-        {
-            **row,
-            "y": _num(first_y + _INLET_ROW * index),
-            "x1": _num(_INLET_DOT_X + _INLET_DOT_R),
-            "x2": _num(_INLET_BOX_LEFT),
-            "y2": _num(box_middle),
-        }
-        for index, row in enumerate(rows)
-    ]
-    placed_others = None
-    if others:
-        placed_others = {**others, "y": _num(first_y + _INLET_ROW * len(rows))}
-    total_lines = sum(row["lines"] for row in rows) + (others["lines"] if others else 0)
-    return {
-        "width": _WIDTH,
-        "height": _INLET_TOP * 2 + content,
-        "rows": placed,
-        "others": placed_others,
-        "box": {
-            "x": _num(_INLET_BOX_LEFT),
-            "y": _num(box_y),
-            "width": _num(_INLET_BOX_WIDTH),
-            "height": _num(_INLET_BOX_HEIGHT),
-            "label_y": _num(box_middle - 4),
-            "count_y": _num(box_middle + 14),
-            "cx": _num(_INLET_BOX_LEFT + _INLET_BOX_WIDTH / 2),
-        },
-        "total_lines": total_lines,
-        "dot_x": _num(_INLET_DOT_X),
-        "dot_r": _num(_INLET_DOT_R),
-        "label_x": _num(_INLET_LABEL_X),
-    }
 
 
 # 業務の流れ (ダッシュボードの「はじめての方へ」の枠と、上の帯の「案内」の小窓の前後の段)。固定の字で、画面から直す口は無い。
