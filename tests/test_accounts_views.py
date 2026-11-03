@@ -159,6 +159,7 @@ def test_gate_and_menu(on, settings, client, manager):
         assert response.status_code == 403, url
         assert "アカウント管理の権限が要ります" in response.content.decode()
     assert "アカウント管理" not in _menu_labels(client)
+    assert reverse("accounts:access_list") not in client.get(reverse("core:settings")).content.decode()
 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "off"}}
     assert client.get(urls[0]).status_code == 403
@@ -167,7 +168,9 @@ def test_gate_and_menu(on, settings, client, manager):
     client.force_login(manager)
     for url in urls:
         assert client.get(url).status_code == 200, url
-    assert "アカウント管理" in _menu_labels(client)
+    # 左のメニューには出さず (決め 11-03 の候補 7)、設定の画面の入口から開く
+    assert "アカウント管理" not in _menu_labels(client)
+    assert reverse("accounts:access_list") in client.get(reverse("core:settings")).content.decode()
 
 
 @pytest.mark.django_db

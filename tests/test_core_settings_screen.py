@@ -42,7 +42,10 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     # アカウント管理の入口: 部品 accounts (N36) が入っていれば一覧への link、無ければ「まだ入っていない」の案内
     assert "アカウント管理" in body
     if apps.is_installed("seizou.accounts"):
-        assert reverse("accounts:access_list") in body
+        # 普通の利用者には入口を出さない (アカウント管理の権限がある人と管理者だけ)
+        assert reverse("accounts:access_list") not in body
+        logged_in.force_login(get_user_model().objects.create_superuser(username="boss", password="tests-only"))
+        assert reverse("accounts:access_list") in logged_in.get(reverse("core:settings")).content.decode()
     else:
         assert "まだ入っていない" in body
     assert "ない (読み取りとチャットは使えない)" in body

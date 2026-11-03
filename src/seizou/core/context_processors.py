@@ -18,8 +18,10 @@ from seizou.parts import PARTS
 #: 左のメニューの区分 (見出し, その区分に入る部品の app の名前)。並びはこの順。
 SECTIONS = (
     ("ダッシュボード", ("core",)),
-    ("受注・出荷", ("orders", "intake", "shipping", "connect", "purchasing", "billing")),
+    ("受注管理", ("orders", "intake", "connect")),
+    ("協力企業管理", ("purchasing",)),
     ("製造", ("workorders", "progress")),
+    ("出荷と請求", ("shipping", "billing")),
     ("マスター", ("masters", "accounts")),
     ("文書", ("manuals", "attachments")),
 )
@@ -88,17 +90,49 @@ def mark_active(items: list[dict], path: str) -> None:
         item["active"] = item is best
 
 
+def custom_sections() -> list[dict]:
+    """会社の設定 menu (左のメニューの括り)。1 つ = {"label", "apps", "screens"}。形の違う物は捨てる。空なら []。
+
+    決め 11-03 (02 の 8 節の候補 4): 括りは会社ごとに答えの YAML で決め、同じ画面を 2 つの括りに出せる。
+    """
+    from seizou.core import conf
+
+    value = conf.setting("menu")
+    if not isinstance(value, list):
+        return []
+    result = []
+    for raw in value:
+        if not isinstance(raw, dict) or not isinstance(raw.get("label"), str) or not raw["label"].strip():
+            continue
+        apps = [a for a in (raw.get("apps") or []) if isinstance(a, str)]
+        screens = [u for u in (raw.get("screens") or []) if isinstance(u, str)]
+        result.append({"label": raw["label"].strip(), "apps": apps, "screens": screens})
+    return result
+
+
 def sections(items: list[dict]) -> list[dict]:
     """入口を区分に分ける。入口が無い区分は出さない。区分に入らない app は「その他」に置く。
 
     1 区分 = {"label", "items", "show_label"}。入口が 1 つで見出しと同じ字なら、見出しは出さない (show_label が偽)。
+    会社の設定 menu があれば、その括り (app か画面の URL の名前で選ぶ。同じ入口を 2 つの括りに出せる) で分け、
+    ダッシュボードの括り (core) はいつも先頭に置く。
     """
-    groups = [{"label": label, "items": []} for label, _apps in SECTIONS]
-    by_app = {app: group for group, (_label, apps) in zip(groups, SECTIONS) for app in apps}
-    other = {"label": OTHER_SECTION, "items": []}
-    for item in items:
-        by_app.get(item["app"], other)["items"].append(item)
-    groups.append(other)
+    custom = custom_sections()
+    if custom:
+        groups = [{"label": SECTIONS[0][0], "items": [item for item in items if item["app"] == "core"]}]
+        placed = {id(item) for item in groups[0]["items"]}
+        for section in custom:
+            chosen = [item for item in items if item["app"] in section["apps"] or item["url_name"] in section["screens"]]
+            placed.update(id(item) for item in chosen)
+            groups.append({"label": section["label"], "items": chosen})
+        groups.append({"label": OTHER_SECTION, "items": [item for item in items if id(item) not in placed]})
+    else:
+        groups = [{"label": label, "items": []} for label, _apps in SECTIONS]
+        by_app = {app: group for group, (_label, apps) in zip(groups, SECTIONS) for app in apps}
+        other = {"label": OTHER_SECTION, "items": []}
+        for item in items:
+            by_app.get(item["app"], other)["items"].append(item)
+        groups.append(other)
     groups = [group for group in groups if group["items"]]
     for group in groups:
         only = group["items"][0] if len(group["items"]) == 1 else None

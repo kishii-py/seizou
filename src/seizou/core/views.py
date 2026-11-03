@@ -505,16 +505,16 @@ class BaseFormView(ScreenMixin, FormView):
         """form の初期値。class の initial の写しに、新規登録の画面の GET の値を足す。
 
         受注の明細から出荷の新規登録・指示書の発行へ、明細を選んだ形で移る入口のため (例 ?order_line=<pk>)。
-        写すのは GET の鍵のうち form の欄 (base_fields) と同じ名前の物だけで、値は字のまま (同じ鍵が 2 つあれば後の物)。
-        写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・form に無い鍵・会社ごとの項目 (ext__)。
+        写すのは GET の鍵の全部 (値は字のまま。同じ鍵が 2 つあれば後の物)。form の欄に無い鍵も写すので、form の __init__ が
+        self.initial.get("from_line") のように読める (注残の盤の「発注する」が明細の pk を渡す入口のため。決め 11-03)。
+        写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・会社ごとの項目 (ext__)。
         値の検査はしない。保存のときに form と検査の層と service が見る (数でない値や無い pk は、選ぶ欄が何も選ばないだけ)。
         """
         initial = super().get_initial()
         if self.request.method != "GET" or self.object is not None:
             return initial
-        names = getattr(self.get_form_class(), "base_fields", {})
         for name in self.request.GET:
-            if name in names and not name.startswith(company_fields.EXT_PREFIX):
+            if not name.startswith(company_fields.EXT_PREFIX):
                 initial[name] = self.request.GET.get(name)
         return initial
 

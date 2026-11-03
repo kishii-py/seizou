@@ -28,6 +28,7 @@ import csv
 import datetime
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
+import inspect
 from importlib import import_module
 from pathlib import Path
 
@@ -70,7 +71,9 @@ MORE_SEED_FILES = {
 MORE_YAML_ROOT_KEYS = {"指示書": "指示書", "出荷": "出荷", "納品書": "納品書", "請求書": "請求書"}
 
 # 部品が持つ種 (種類の名前, 部品の app)。部品の demo_seed.load(seeds_dir, user) が {"入れた": n, "飛ばした": m} を返す。
-PART_SEEDS = (("業務マニュアル", "seizou.manuals"),)
+PART_SEEDS = (("業務マニュアル", "seizou.manuals"), ("権限", "seizou.accounts"))
+# 種のフォルダを読まない部品の種は、種のフォルダに印のファイルがあるときだけ入れる (中身は読まない)。
+PART_SEED_MARKERS = {"seizou.accounts": "accounts.yaml"}
 
 ITEM_PROCESS_HEADERS = ("自社品番", "工程コード", "順")
 LINE_REF_KEYS = ("得意先の取引先コード", "得意先の注文番号", "行番号")
@@ -696,7 +699,20 @@ def _load_part_seed(app, seeds_dir, user):
     """部品の demo_seed.load(seeds_dir, user) を呼ぶ。部品が入っていないか、入れた物も飛ばした物も 0 なら None。"""
     if not apps.is_installed(app):
         return None
-    counts = import_module(f"{app}.demo_seed").load(seeds_dir, user)
+    marker = PART_SEED_MARKERS.get(app)
+    if marker is not None and not (Path(seeds_dir) / marker).is_file():
+        return None
+    load_seed = import_module(f"{app}.demo_seed").load
+    if "seeds_dir" in inspect.signature(load_seed).parameters:
+        counts = load_seed(seeds_dir, user)
+    else:
+        # 種のフォルダを読まない部品 (権限の部署とアカウントは固定の種)。返す物が入れ子なら数を足す
+        counts = load_seed(user)
+    if "入れた" not in counts:
+        counts = {
+            "入れた": sum(c["入れた"] for c in counts.values()),
+            "飛ばした": sum(c["飛ばした"] for c in counts.values()),
+        }
     made, skipped = counts["入れた"], counts["飛ばした"]
     if made == 0 and skipped == 0:
         return None
