@@ -720,6 +720,29 @@ def _load_part_seed(app, seeds_dir, user):
     return made, skipped
 
 
+def _load_part_seeds_after_orders(seeds_dir, user):
+    """部品の demo_seed.load_after_orders(seeds_dir, user) を、受注の後・出荷の前に呼ぶ (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため)。
+
+    返す物は 種類 → (入れた, 飛ばした) の辞書。口の無い部品と 0 件の部品は入れない。
+    """
+    found = {}
+    for kind, app in PART_SEEDS:
+        if not apps.is_installed(app):
+            continue
+        marker = PART_SEED_MARKERS.get(app)
+        if marker is not None and not (Path(seeds_dir) / marker).is_file():
+            continue
+        load_early = getattr(import_module(f"{app}.demo_seed"), "load_after_orders", None)
+        if load_early is None:
+            continue
+        counts = load_early(seeds_dir, user)
+        made, skipped = counts["入れた"], counts["飛ばした"]
+        if made == 0 and skipped == 0:
+            continue
+        found[kind] = (made, skipped)
+    return found
+
+
 def load(seeds_dir):
     """種のフォルダ (Path) を読んで入れる。種類ごとの {"入れた": n, "飛ばした": m} と、「注意」の文の並びを返す。"""
     seeds_dir = Path(seeds_dir)
@@ -731,10 +754,13 @@ def load(seeds_dir):
     notices: list[str] = []
     summary: dict = {}
     read_more: list[str] = []
+    early: dict = {}
     with transaction.atomic():
         for kind in KINDS:
             made, skipped = LOADERS[kind](seeds_dir, user, notices)
             summary[kind] = {"入れた": made, "飛ばした": skipped}
+            if kind == "受注":
+                early = _load_part_seeds_after_orders(seeds_dir, user)
         for kind in MORE_KINDS:
             result = MORE_LOADERS[kind](seeds_dir, user, notices)
             if result is not None:
@@ -743,6 +769,10 @@ def load(seeds_dir):
             summary[kind] = {"入れた": made, "飛ばした": skipped}
         for kind, app in PART_SEEDS:
             result = _load_part_seed(app, seeds_dir, user)
+            if kind in early:
+                # 受注の後の口の数は同じ種類に足す (出力の行は部品の種の段に 1 行)
+                before = result or (0, 0)
+                result = (before[0] + early[kind][0], before[1] + early[kind][1])
             if result is not None:
                 read_more.append(kind)
             made, skipped = result or (0, 0)

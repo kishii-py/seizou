@@ -565,8 +565,10 @@ def test_plan_dates_go_through_plan_step(tmp_path, media):
 # 会社の id: 標準の工程の行・指示書・指示書の工程・出荷・納品書・請求書・請求書の明細・図面のある部品
 EXPECTED_MORE_COUNTS = {
     "a_machining": {"標準の工程": 85, "指示書": 10, "指示書の工程": 26, "出荷": 21, "納品書": 6, "請求書": 2, "請求書の明細": 6, "図面": 4},
-    "b_plating": {"標準の工程": 120, "指示書": 10, "指示書の工程": 40, "出荷": 21, "納品書": 5, "請求書": 2, "請求書の明細": 5, "図面": 0},
+    "b_plating": {"標準の工程": 120, "指示書": 10, "指示書の工程": 40, "出荷": 24, "納品書": 6, "請求書": 2, "請求書の明細": 5, "図面": 0},
 }
+# 出荷済みの受注の数。B 社は届いた注文の写しの受注 (受注の 21 件目) も出荷済み
+EXPECTED_SHIPPED_ORDERS = {"a_machining": 10, "b_plating": 11}
 
 
 @pytest.mark.django_db
@@ -582,8 +584,8 @@ def test_examples_load_more_kinds(company_id, no_registration, media):
     assert got == {key: expected[key] for key in got}
     assert summary["指示書"]["入れた"] == 10
     assert summary["図面"]["入れた"] == expected["図面"]
-    # 受注の 10 件は出荷済み。出荷は全部が発行の納品書に入っている
-    assert Order.objects.filter(status=Order.STATUS_SHIPPED).count() == 10
+    # 受注の 10 件 (B 社は届いた注文の写しの受注も入れて 11 件) は出荷済み。出荷は全部が発行の納品書に入っている
+    assert Order.objects.filter(status=Order.STATUS_SHIPPED).count() == EXPECTED_SHIPPED_ORDERS[company_id]
     assert Shipment.objects.filter(delivery_note__isnull=True).count() == 0
     assert not Shipment.objects.exclude(delivery_note__status="issued").exists()
     # 工程の予定に日のある工程があり、計画に使う工程だけに置いてある

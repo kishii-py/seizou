@@ -1,8 +1,10 @@
 """2 社の作り物の出荷の知らせと検収の種 (core/demo.py の PART_SEEDS が呼ぶ)。
 
-load(seeds_dir, user) が、種のフォルダの acceptances.yaml (B 社。届いた注文の写しと検収) と
-shipping_notices.yaml (A 社。出荷の知らせと注文回答の写し) を読み、services の関数で入れる。
-どちらのファイルも無ければ何もせず {"入れた": 0, "飛ばした": 0} を返す (出力の行を出さない)。
+load_after_orders(seeds_dir, user) が acceptances.yaml (B 社。届いた注文の写しと検収) を、
+load(seeds_dir, user) が shipping_notices.yaml (A 社。出荷の知らせと注文回答の写し) を読み、services の関数で入れる。
+core の demo.load は load_after_orders を受注の後・出荷の前に (出荷と納品書の種が届いた注文の写しの受注を指すため)、
+load を部品の種の段で呼び、2 つの数を同じ種類に足す。
+ファイルが無ければ何もせず {"入れた": 0, "飛ばした": 0} を返す (出力の行を出さない)。
 
 - 書くのは services の関数だけ (connect.services・purchasing.services)。表に直接書かない。標準出力に書かない。
 - 届いた注文の写しは、受け口 (署名の確かめ) を通さずに受信箱に 1 行入れ、受け入れて受注にする (入口は「届いた注文」)。
@@ -302,15 +304,20 @@ def _load_notices(path, user):
     return made, skipped
 
 
-def load(seeds_dir, user) -> dict:
-    """種のフォルダの届いた注文の写しと検収・出荷の知らせを入れる。返す物は {"入れた": n, "飛ばした": m}。"""
+def load_after_orders(seeds_dir, user) -> dict:
+    """種のフォルダの届いた注文の写しと検収 (acceptances.yaml。B 社) を入れる。core の demo.load が受注の後・出荷の前に呼ぶ (出荷と納品書の種が、届いた注文の写しの受注を指すため)。返す物は {"入れた": n, "飛ばした": m}。"""
     seeds_dir = Path(seeds_dir)
     made = skipped = 0
     acceptances = seeds_dir / ACCEPTANCES_FILE
     if acceptances.is_file():
-        entry_made, entry_skipped = _load_acceptances(acceptances, user)
-        made += entry_made
-        skipped += entry_skipped
+        made, skipped = _load_acceptances(acceptances, user)
+    return {"入れた": made, "飛ばした": skipped}
+
+
+def load(seeds_dir, user) -> dict:
+    """種のフォルダの出荷の知らせと注文回答の写し (shipping_notices.yaml。A 社) を入れる。返す物は {"入れた": n, "飛ばした": m}。"""
+    seeds_dir = Path(seeds_dir)
+    made = skipped = 0
     notices = seeds_dir / NOTICES_FILE
     if notices.is_file():
         entry_made, entry_skipped = _load_notices(notices, user)

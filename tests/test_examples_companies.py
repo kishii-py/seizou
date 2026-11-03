@@ -275,6 +275,11 @@ def orders_by_key(company_id):
     for order in load_seed_yaml(company_id, "orders.yaml")["受注"]:
         for line_no, line in enumerate(order["明細"], start=1):
             found[(order["得意先の取引先コード"], order["得意先の注文番号"], line_no)] = line["数量"]
+    # 届いた注文の写し (connect の種) も受注になる。出荷の種はこの受注も 取引先コード × 得意先の注文番号 × 行番号 で指す
+    if (company_dir(company_id) / "acceptances.yaml").is_file():
+        for entry in load_seed_yaml(company_id, "acceptances.yaml")["届いた注文"]:
+            for line_no, line in enumerate(entry["明細"], start=1):
+                found[(entry["取引先コード"], entry["相手の発注番号"], line_no)] = line["数量"]
     return found
 
 
