@@ -1,0 +1,117 @@
+# 運用の手引き (控え・戻し・点検・版上げ)
+
+読み手は、会社のシステムを預かる人です。プログラムは書けなくてかまいません。
+
+## この文書は何か
+
+この文書は、`seizou new` で立ち上げた会社のシステムを、毎日安心して使い続けるための手順です。毎日の控え (バックアップ) の取り方、壊したときの戻し方、立ち上げの確かめ (点検) の読み方、seizou の版を上げる手順を書きます。
+
+命令は、置き場 (`seizou new` が作ったフォルダ。既定は `~/seizou-sites/<会社の id>/`) に移ってから、`<python> manage.py …` の形で打ちます。`<python>` は、置き場の README の「起動」の 1 行に出てくる Python と同じ物です (例 `<seizou を clone した場所>/.venv/bin/python`)。
+
+## 毎日の控え (バックアップ)
+
+次の命令で、控えを 1 つ取ります。
+
+```
+<python> manage.py seizou_backup
+```
+
+この命令は、置き場の `backups/` の下に、日時の名前のフォルダ (例 `backups/20261103-020000/`) を 1 つ作ります。中身は次の 4 つです。
+
+- データベースの写し (SQLite は `db.sqlite3`、PostgreSQL は `db.pgdump`)
+- 上げたファイル (図面・添付・マニュアルの画像) の写し `media/`
+- 会社の答え `answers.yaml` の写し (置き場にあるときだけ)
+- 中身の一覧 `backup.json` (取った日時・データベースの種類・会社の id・seizou の版・上げたファイルの数)
+
+`.env` (鍵) は控えに入りません。`.env` だけは、控えとは別の安全な場所に人の手で写してください。中身を人に見せたり、メールやチャットに貼ったりしません。
+
+控えのフォルダは、同じ PC が壊れたときに備えて、別の PC か外の記録装置にも写してください。遠くの置き場へ自動で控える仕組みはありません。置き場を変えるときは `--to <フォルダ>` を付けます。
+
+毎晩 2 時に自動で控えるには、cron に次の 1 行を足します (置き場と Python の道は例です。自分の物に置き換えてください)。
+
+```
+0 2 * * * cd /path/to/site && /path/to/.venv/bin/python manage.py seizou_backup >> backups/backup.log 2>&1
+```
+
+古い控えは自動では消えません。30 日より前の控えを消すには、先に `<python> manage.py seizou_restore --list` で一覧を見てから、次の 1 行を打ちます。
+
+```
+find /path/to/site/backups -maxdepth 1 -type d -name '20??????-??????*' -mtime +30 -exec rm -r {} +
+```
+
+PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります。`pg_dump` が見つからないとき、命令は何も書かずに止まり、手で取るための 1 行を出します。
+
+## 戻す (復元)
+
+戻すと、今のデータベースと上げたファイルが、控えを取った時点の物に置き換わります。次の順に進めます。
+
+1. サーバーを止めます (runserver の窓を閉じるか、サーバーの service を止める)。
+2. `<python> manage.py seizou_restore --list` で控えの一覧を出し、戻す控えの名前を選びます。
+3. `<python> manage.py seizou_restore <控えの名前>` を打ちます。
+4. 「本当に戻しますか?」の問いに `yes` と打ちます。ほかの答えでは何も変えずに止まります。
+5. 控えの seizou の版が今より古いときは、`<python> manage.py migrate` を打ちます。
+6. `<python> manage.py seizou_doctor` で点検し、直す物があれば直します。
+7. サーバーを立てます。
+
+命令は、戻す前の今の物を `backups/<日時>-before-restore/` に控えます。戻したことを取り消すには、同じ命令にその名前を渡します (`<python> manage.py seizou_restore <日時>-before-restore`)。
+
+上げたファイルは、控えの時点の物にそろいます。控えの後に上げたファイルは消えますが、`<日時>-before-restore` の中に残っています。`answers.yaml` は戻しません (置き場の `settings.py` と対の物で、データではないため)。
+
+命令は、別の会社の控えと、データベースの種類が違う控えを戻しません。
+
+PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1 行を出して止まります。その 1 行で戻し、上げたファイルは控えの `media/` を `MEDIA_ROOT` (置き場の `media/`) に写してください。
+
+## 立ち上げの確かめ (点検)
+
+次の命令で、置き場を点検します。点検は読むだけで、何も書き換えません。
+
+```
+<python> manage.py seizou_doctor
+```
+
+打つのは、立ち上げた直後、本番にする前 (`--production` を付ける)、版を上げた後、戻した後です。
+
+命令は 1 行に 1 つ、`良い  <見た物>: <様子>` か `直す  <見た物>: <様子> → 直し方: <すること>` を出します。最後に「点検の結果: 良い N 件・直す M 件」を出します。直す物が 1 つでもあれば、終わりの番号 1 で終わります (cron や監視の道具が見分けられます)。
+
+見る物は次のとおりです。鍵は、値を出さずに、有るか無いかだけを見ます。
+
+- `SECRET_KEY` (置いてあるか。短すぎないか)
+- `.env` の権限 (持ち主だけが読めるか)
+- 開発の設定 (`DEBUG`)
+- 開発機の自動ログイン (本番の条件だけ)
+- `ALLOWED_HOSTS` (ほかの PC から開く名前があるか。本番の条件だけ)
+- migrate の漏れ
+- Django の起動の検査 (`check`)
+- 上げたファイルの置き場 (`MEDIA_ROOT` に書けるか)
+- 控えの置き場 (`backups/` に書けるか)
+- CSS (seizou の画面の見た目のファイルがあるか)
+- `collectstatic` (本番の条件だけ)
+- 上げたファイルの配り方 (nginx に渡すときは、`deploy/nginx-files.conf` の `internal;` と alias の道)
+- 会社の選べる設定 (`answers.yaml` の `settings` の値が選べる値の中か)
+- つながりの鍵 (取引先ごとの鍵の置き場の名前が `.env` にあるか)
+- つながりの受け口の URL (`https://` か。本番の条件だけ)
+
+「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
+
+## 版を上げる手順
+
+seizou の新しい版を入れるときは、次の順に進めます。
+
+1. `<python> manage.py seizou_backup` で控えを取ります。
+2. サーバーを止めます。
+3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。
+4. `<python> manage.py migrate` を打ちます。
+5. `<python> manage.py seizou_doctor` で点検し、直す物があれば直します。
+6. 本番で nginx が静的ファイルを配る形なら、`<python> manage.py collectstatic --no-input` を打ちます。
+7. サーバーを立てます (runserver の 1 行か、サーバーの service の再起動。手元の 2 社のデモは `uv run python scripts/sites.py restart`)。
+8. 画面を 1 つ開いて、ログインと一覧が出ることを確かめます。
+
+うまく動かないときは、前の版に戻します。PyPI の版は `pip install seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
+
+## 困ったとき
+
+`manage.py` が `KeyError: 'SECRET_KEY'` で止まるときは、置き場に `.env` が無いか、`.env` に `SECRET_KEY=` の行がありません。`.env` は控えに入らないので、別に写しておいた `.env` を置き場に戻してください。このときは `settings.py` が先に止まるので、点検も動きません。
+
+上げたファイルの画面が 503 で止まるときは、nginx の設定が足りません。画面の案内のとおりに直し、点検の「上げたファイルの配り方」の行を見てください。
+
+どの画面も「決まりに沿っていません」になるときは、開発の設定 (`DEBUG` が 1) で、会社の側のコードが決まりを破っています。画面の文を写して、Claude Code の `/seizou:fix` で直してください。
