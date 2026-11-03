@@ -1,9 +1,18 @@
 """選べる設定 (01 の 9 節と 10.5)。
 
-会社の settings.py の辞書 SEIZOU から読み、無ければ既定。鍵は DEFAULTS のとおり。
+読む順は 3 段: 画面の上書き (表 SettingOverride。設定の画面から保存した値) → 会社の settings.py の辞書 SEIZOU →
+既定 (DEFAULTS)。鍵は DEFAULTS のとおり。
+
+画面の上書きは process の中に控え (dict) を持つ。書いた時 (core の services の set_setting・clear_setting) に捨て、
+別の process (gunicorn の複数の worker) の書いた値は CACHE_SECONDS 秒で読み直す。表が読めないとき
+(migrate の前の置き場・DB を止めた試験) は上書き無しと同じで、控えにも入れない。SEIZOU と既定は控えずに毎回読む。
 """
 
+import time
+
+from django.apps import apps
 from django.conf import settings
+from django.db import DatabaseError
 
 DEFAULTS = {
     "order_form": "multi",  # 受注の形: multi (1 件に明細が複数) / single (1 件 1 品)
@@ -26,13 +35,77 @@ CHOICES = {
     "order_number": ("seq", "ym_seq"),
 }
 
+#: 画面の上書きの控えの寿命 (秒)。別の process (gunicorn の複数の worker) が、ほかの worker の書いた上書きを読み直すまでの長さ
+CACHE_SECONDS = 30
+#: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
+LOCKED_KEYS = ("menu",)
+#: 値の出所の字 (設定の画面が出す)
+SOURCE_SCREEN = "画面"
+SOURCE_ANSWER = "答え (settings.py)"
+SOURCE_DEFAULT = "既定"
+
+# 画面の上書きの控え。(上書きの辞書, 読んだ時刻) の組か None。
+# 組を 1 つの名前に入れる (辞書と時刻を 2 つの名前に分けると、別の thread が片方だけ新しい物を見るため)。
+_cache = None
+
+
+def _now() -> float:
+    """控えの時計。試験は monkeypatch でこの関数を差し替えて時計を進める (time.monotonic は Django の接続も読むため)。"""
+    return time.monotonic()
+
+
+def reset_cache() -> None:
+    """控えを捨てる。次に読む時に表を読み直す (services の set_setting・clear_setting と試験が呼ぶ)。"""
+    global _cache
+    _cache = None
+
+
+def overrides() -> dict:
+    """画面の上書きの全部 {鍵: 値} (読むだけ。中身を変えない)。
+
+    控えが CACHE_SECONDS 秒より新しければ控えを返す。古いか無ければ表を 1 回読んで控える。
+    表が読めないときは {} を返し、控えに入れない (migrate の後に読み直せるように)。読めないのは、
+    app の登録の前・表の無い置き場 (DatabaseError)・pytest-django が db の無い試験で DB を止めたとき (RuntimeError)。
+    """
+    global _cache
+    cached = _cache
+    now = _now()
+    if cached is not None and now - cached[1] < CACHE_SECONDS:
+        return cached[0]
+    if not apps.ready:
+        return {}
+    try:
+        model = apps.get_model("core", "SettingOverride")
+    except LookupError:
+        return {}
+    try:
+        # queryset は遅延なので、dict(...) で読み切るまでを try の中に置く
+        values = dict(model._default_manager.values_list("key", "value"))
+    except (DatabaseError, RuntimeError):
+        return {}
+    _cache = (values, now)
+    return values
+
 
 def setting(key: str):
-    """SEIZOU の値。無い鍵は既定で補う。知らない鍵は KeyError。"""
+    """選べる設定の値。画面の上書き → SEIZOU → 既定の順に読む。知らない鍵は KeyError。"""
     if key not in DEFAULTS:
         raise KeyError(f"知らない設定の鍵: {key}")
+    saved = overrides()
+    if key in saved:
+        return saved[key]
     values = getattr(settings, "SEIZOU", {}) or {}
     return values.get(key, DEFAULTS[key])
+
+
+def setting_source(key: str) -> str:
+    """値の出所の字 (SOURCE_SCREEN・SOURCE_ANSWER・SOURCE_DEFAULT のどれか)。知らない鍵は KeyError。"""
+    if key not in DEFAULTS:
+        raise KeyError(f"知らない設定の鍵: {key}")
+    if key in overrides():
+        return SOURCE_SCREEN
+    values = getattr(settings, "SEIZOU", {}) or {}
+    return SOURCE_ANSWER if key in values else SOURCE_DEFAULT
 
 
 #: 権限の判定の状態 (off = 使わない / log = 記録だけ / on = 有効。seizou.core.access)
