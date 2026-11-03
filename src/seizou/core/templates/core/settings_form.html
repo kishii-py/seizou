@@ -1,0 +1,8 @@
+{% extends "core/form.html" %}
+{% load seizou_icons %}
+{# 設定の変更: 選べる設定 1 つの入力。「答えの値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。 #}
+{% block actions %}{% if can_clear %}<form method="post" action="{% url 'core:setting_clear' setting_key %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}答えの値に戻す</button></form>{% endif %}{% endblock %}
+{% block content %}
+<p class="mb-4 text-sm text-base-content/70">「{{ setting_label }}」(鍵 <code class="font-mono">{{ setting_key }}</code>)。今の値の出所: {{ source }}。保存した値は、置き場の settings.py の SEIZOU と答えの YAML より優先されます。</p>
+{{ block.super }}
+{% endblock %}
