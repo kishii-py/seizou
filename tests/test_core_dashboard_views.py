@@ -153,3 +153,33 @@ def test_home_without_orders_part_hides_sections(logged_in, monkeypatch):
     body = home(logged_in)
     assert "納期アラート" not in body and "月次の推移" not in body
     assert 'id="trend-chart"' not in body
+
+
+@pytest.mark.django_db
+def test_bottom_row_is_orders_left_alerts_right(logged_in, user, customer, shaft):
+    make_order(user, customer, shaft, timezone.localdate() - timedelta(days=3))
+    body = home(logged_in)
+    recent = body.index('id="recent-orders-title"')
+    alerts = body.index('id="due-alerts-title"')
+    entrances = body.index('id="entrances-title"')
+    assert recent < alerts < entrances
+
+
+@pytest.mark.django_db
+def test_rows_open_order_detail_on_click(logged_in, user, customer, shaft):
+    late = make_order(user, customer, shaft, timezone.localdate() - timedelta(days=3))
+    url = reverse("orders:order_detail", args=[late.pk])
+    body = home(logged_in)
+    row = (
+        '<tr class="row-hover h-10 cursor-pointer" '
+        f"onclick=\"if(!event.target.closest('a')){{window.location='{url}'}}\">"
+    )
+    # 「最近の受注」の行と、納期アラートの遅れの行の 2 つ。
+    assert body.count(row) == 2
+    recent = body[body.index('id="recent-orders-title"') : body.index('id="due-alerts-title"')]
+    alerts = body[body.index('id="due-alerts-title"') : body.index('id="entrances-title"')]
+    for part in (recent, alerts):
+        assert row in part
+        # 行の中の受注番号の link も残る (キーボードは Tab で link に乗って Enter)。
+        tail = part[part.index(row) :]
+        assert re.search(rf'<a [^>]*href="{re.escape(url)}">{re.escape(late.order_no)}</a>', tail)
