@@ -5,10 +5,13 @@ form が見るのは欄の型と必須だけ。services の決まりの違反は
 画面の土台が赤の知らせにする。
 整数の欄は、表の検査 (MinValueValidator・MaxValueValidator) から下限と上限を取り、欄の min・max と
 form の検査にそろえる (例: 締日は 1〜31。誤りの文は「1 以上」「31 以下」)。
+SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。値を確かめて整えるのは core の services。
 """
 
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
+
+from seizou.core import conf
 
 #: 選ぶ欄の空の選択肢の字 (core の apps.ready が Django の既定の字をこれに置き換える)
 EMPTY_LABEL = "選んでください"
@@ -56,3 +59,80 @@ class ServiceModelForm(forms.ModelForm):
     def validate_unique(self):
         # 一意は services が見る (同じ文を 2 か所に持たない)。
         return
+
+
+#: 複数の checkbox の 1 つずつの見た目 (daisyUI)
+CHECKBOX_CSS = "checkbox checkbox-sm"
+
+
+class Checkboxes(forms.CheckboxSelectMultiple):
+    """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。"""
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context["widget"]["attrs"].pop("class", None)
+        return context
+
+
+class SettingForm(forms.Form):
+    """選べる設定 key 1 つの入力。欄は鍵の種類で決まる。
+
+    選べる値 (conf.CHOICES) は select、真偽は checkbox、権限の判定 (access_control) は 3 つの select、
+    使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前) は字。
+    欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
+    """
+
+    #: hidden_fields の欄の名前。鍵の名前のままだと、テンプレートの form.hidden_fields が隠しの欄の並びでなく
+    #: この欄を指し、checkbox が 2 度出る (2 度目は見えない所に残り、外した check も送られる) ため別の名前にする
+    HIDDEN_FIELDS_FIELD = "names"
+
+    def __init__(self, *args, key, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 見出しの日本語は設定の画面の表から読む。module の頭で読むと settings_screen → forms の輪になるので、ここで読む
+        from seizou.core.settings_screen import HIDDEN_FIELD_CANDIDATES, SETTING_LABELS, SUB_LABELS
+
+        self.key = key
+        label, words = SETTING_LABELS.get(key, (key, {}))
+        current = conf.setting(key)
+        if key in conf.CHOICES:
+            self.fields[key] = forms.ChoiceField(
+                label=label,
+                choices=[(v, f"{words.get(v, v)} ({v})") for v in conf.CHOICES[key]],
+                initial=current,
+            )
+        elif isinstance(conf.DEFAULTS[key], bool):
+            self.fields[key] = forms.BooleanField(
+                label=f"{label}: {words[True]}",
+                required=False,
+                initial=current,
+                help_text=f"check を外すと「{words[False]}」。",
+            )
+        elif key == "access_control":
+            choices = [(m, f"{words.get(m, m)} ({m})") for m in conf.ACCESS_MODES]
+            for kind in conf.DEFAULTS["access_control"]:
+                self.fields[kind] = forms.ChoiceField(
+                    label=SUB_LABELS.get(kind, kind), choices=choices, initial=conf.access_control(kind)
+                )
+        elif key == "hidden_fields":
+            self.fields[self.HIDDEN_FIELDS_FIELD] = forms.MultipleChoiceField(
+                label=label,
+                required=False,
+                choices=HIDDEN_FIELD_CANDIDATES,
+                widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+                initial=list(current or ()),
+                help_text="check を入れた項目を受注の入力から外す。決まりが見る項目 (得意先・部品・数量・単価・受注日) は隠せない。",
+            )
+        else:
+            self.fields[key] = forms.CharField(label=label, max_length=100, initial=current)
+
+    def value(self):
+        """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
+        data = self.cleaned_data
+        if self.key == "access_control":
+            return {kind: data[kind] for kind in conf.DEFAULTS["access_control"]}
+        if self.key == "hidden_fields":
+            return list(data[self.HIDDEN_FIELDS_FIELD])
+        return data[self.key]
+
+    def service_kwargs(self):
+        return {"key": self.key, "value": self.value()}

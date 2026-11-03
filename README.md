@@ -200,7 +200,9 @@ API の鍵は要らない。道具は手元のデータベースを読み書き�
 | `intake_model` | 注文書の読み取りが使う model | Claude の model の名前 | `claude-opus-5-5` | 読み取りは精度が要るので opus。費用を抑えるなら sonnet |
 | `menu` | 左のメニューの括り | 括りの並び。1 つは `label` (見出し)・`apps` (部品の名前の並び)・`screens` (画面の URL の名前の並び)。空なら既定の並び (製造部 / 生産管理部 (中項目 受注管理・協力企業管理) / 出荷と請求 / マスター / 文書) | `[]` | 部署の分け方が違う会社は、答えの YAML の `settings` の `menu` で括りを書く。同じ画面を 2 つの括りに出せる。大項目は開け閉めでき、今の画面の大項目だけ開く (会社の括りに中項目は書けない) |
 
-使わない注文の項目は、`hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。画面から設定を変える形は会期後。
+使わない注文の項目は、`hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
+
+右上の利用者のメニューの「設定」から、アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、この表の設定を 1 つずつ画面で変えられる (行の「編集」)。画面で保存した値は会社の置き場のデータベースに入り、答えの YAML (`settings.py` の `SEIZOU`) の値より優先される。設定の画面の「出所」の列で、今の値が画面・答え・既定のどれから来たかが分かる。「答えの値に戻す」を押すと、画面の値を消して答えの値に戻る。`menu` (左のメニューの括り) は画面からは変えず、答えの YAML に書く。変えた値はその場で効く (複数の worker で動かす置き場では 30 秒以内にそろう)。
 
 ## 取引先とつなぐ
 

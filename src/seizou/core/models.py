@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
@@ -66,3 +67,30 @@ class NumberSequence(models.Model):
 
     def __str__(self):
         return f"{self.kind} {self.period} {self.last}"
+
+
+class SettingOverride(models.Model):
+    """選べる設定の画面からの上書き。seizou.core.conf.setting が答えの YAML より先に読む。
+
+    1 鍵 1 行。履歴は持たない (変更は logging の 1 行)。値は答えの YAML と同じ形 (真偽・字・字の並び・辞書)。
+    """
+
+    key = models.CharField("設定の鍵", max_length=50, unique=True)
+    value = models.JSONField("値")
+    updated_at = models.DateTimeField("変えた日時", auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="変えた人",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "設定の上書き"
+        verbose_name_plural = "設定の上書き"
+        ordering = ("key",)
+
+    def __str__(self):
+        return f"{self.key} = {self.value!r}"

@@ -1,8 +1,8 @@
 """設定の画面 (/settings/。右上の利用者のメニューの「設定」から開く)。
 
 普段は触らない物を、左のメニューでなくここにまとめる (本人の指摘 11-03 昼「普段簡単に触らないものは、設定をいじれる所に」):
-会社の選べる設定の今の値 (読むだけ。変えるのは答えの YAML か settings.py。画面から変える形は次の版)、
-取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、システムの状態 (開発の設定・自動ログイン・
+会社の選べる設定の今の値と出所 (画面 / 答え (settings.py) / 既定。アカウント管理の権限がある人は行の「編集」から
+1 つずつ変え、「答えの値に戻す」で画面の値を消す。menu は答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、システムの状態 (開発の設定・自動ログイン・
 ファイルの配り方・DB・AI の鍵の有無・MCP の利用者の有無・入っている部品)。鍵の値は出さない (有るか無いかだけ)。
 """
 
@@ -11,10 +11,17 @@ from __future__ import annotations
 import os
 
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponseRedirect
+from django.urls import reverse, reverse_lazy
+from django.utils.cache import add_never_cache_headers
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from seizou.core import conf
-from seizou.core.views import ScreenMixin, url_or_none
+from seizou.core import access, conf, services
+from seizou.core.forms import SettingForm
+from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
 from seizou.parts import PARTS
 
 #: 選べる設定の見出しと、値の読み方 (README の「選べる設定」の表と同じ言葉)
@@ -35,6 +42,18 @@ SETTING_LABELS = {
 #: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
 SUB_LABELS = {"department": "部署", "write": "編集の権限", "money": "金額の閲覧"}
 
+#: 受注の入力から外せる項目の候補 (hidden_fields の欄)。orders の form の欄 − 決まりが見る欄 (KEPT_FIELDS) − order_line。
+#: core は orders を import しないので字で持ち、試験 (tests/test_core_settings_edit.py) が orders の form と突き合わせる
+HIDDEN_FIELD_CANDIDATES = (
+    ("customer_order_no", "得意先の注文番号"),
+    ("due_date", "納期"),
+    ("unit", "単位"),
+    ("note", "備考"),
+)
+
+#: 設定の変更を断る 403 の画面の文
+SETTINGS_DENIED_TEXT = "「設定の変更」の画面です。アカウント管理の権限が要ります。" + access.CONTACT
+
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 MCP_USER_ENV = "SEIZOU_MCP_USER"
 
@@ -53,11 +72,19 @@ def _display(key: str, value) -> str:
 
 
 def company_settings() -> list[dict]:
-    """選べる設定の今の値の並び (鍵・見出し・値の字)。"""
+    """選べる設定の今の値の並び (鍵・見出し・値の字・出所の字・画面から変えられるか)。"""
     rows = []
     for key in conf.DEFAULTS:
         label, _words = SETTING_LABELS.get(key, (key, {}))
-        rows.append({"key": key, "label": label, "value": _display(key, conf.setting(key))})
+        rows.append(
+            {
+                "key": key,
+                "label": label,
+                "value": _display(key, conf.setting(key)),
+                "source": conf.setting_source(key),
+                "editable": key not in conf.LOCKED_KEYS,
+            }
+        )
     return rows
 
 
@@ -102,7 +129,7 @@ def system_rows() -> list[dict]:
 
 
 class SettingsView(ScreenMixin, TemplateView):
-    """設定の画面。読むだけ。"""
+    """設定の画面。選べる設定を変えるのは、行の「編集」から開く設定の変更の画面 (SettingUpdateView)。"""
 
     screen_name = "設定"
     screen_help = "会社の選べる設定の今の値と、普段は触らない物 (取引先との接続・アカウント管理) の入口、システムの状態。"
@@ -134,9 +161,86 @@ class SettingsView(ScreenMixin, TemplateView):
         ]
         from seizou.core import access
 
+        context["can_edit"] = access.can_manage_accounts(self.request.user)
         # アカウント管理の入口は、アカウント管理の権限がある人と管理者にだけ出す (無い人が押すと 403 になるため)
         if not access.can_manage_accounts(self.request.user):
             context["links"] = [link for link in context["links"] if link["label"] != "アカウント管理"]
         context["system_rows"] = system_rows()
         context["parts"] = [part.rsplit(".", 1)[-1] for part in PARTS]
         return context
+
+
+def settings_denied(request):
+    """設定の変更の門。変えられない人には 403 の応答、変えられる人と未ログインは None。
+
+    変えられるのはアカウント管理の権限かフルコントロールかシステム管理者 (access.can_manage_accounts。3 状態の外で、
+    いつも効く)。権限の部品が無い会社ではシステム管理者だけ。未ログインをログインへ移すのは土台 (LoginRequiredMixin)。
+    """
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        return None
+    if access.can_manage_accounts(user):
+        return None
+    return access.denied_response(request, access.DENIED_HEADING, SETTINGS_DENIED_TEXT)
+
+
+class SettingUpdateView(BaseFormView):
+    """設定の変更 (選べる設定 1 つの入力。URL の key が鍵)。
+
+    使う人: アカウント管理の担当者 / いつ: 会社の動きを変えると決めたとき / 何のために: 答えの YAML を直さずに設定を変える /
+    次にすること: 設定の画面で出所が「画面」になった事を見る。
+    model は持たない (self.object は None のまま)。土台の call_service が set_setting(user=..., key=..., value=...) を呼ぶ。
+    """
+
+    screen_name = "設定の変更"
+    screen_help = "会社の選べる設定を 1 つ変える。保存した値は答えの YAML より優先され、「答えの値に戻す」で答えの値に戻る。"
+    screen_icon = "settings"
+    form_class = SettingForm
+    service = staticmethod(services.set_setting)
+    template_name = "core/settings_form.html"
+    success_url = reverse_lazy("core:settings")
+
+    def dispatch(self, request, *args, **kwargs):
+        denied = settings_denied(request)
+        if denied is not None:
+            add_never_cache_headers(denied)
+            return denied
+        # 知らない鍵と画面から変えない鍵は 404 (土台の form_valid は KeyError を知らせにしないので、ここで止める)
+        key = kwargs.get("key")
+        if key not in conf.DEFAULTS or key in conf.LOCKED_KEYS:
+            raise Http404("画面から変えられる設定の鍵ではありません。")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["key"] = self.kwargs["key"]
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        key = self.kwargs["key"]
+        context["setting_key"] = key
+        context["setting_label"] = SETTING_LABELS.get(key, (key, {}))[0]
+        context["source"] = conf.setting_source(key)
+        context["can_clear"] = context["source"] == conf.SOURCE_SCREEN
+        # 土台は model が無いと cancel_url を None にするので、設定の画面へ戻す
+        context["cancel_url"] = reverse("core:settings")
+        return context
+
+
+@login_required
+@require_POST
+def setting_clear(request, key):
+    """「答えの値に戻す」の口。画面の上書きを消し、設定の画面へ戻る。"""
+    denied = settings_denied(request)
+    if denied is not None:
+        return denied
+    if key not in conf.DEFAULTS or key in conf.LOCKED_KEYS:
+        raise Http404("画面から変えられる設定の鍵ではありません。")
+    try:
+        services.clear_setting(key, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "答えの値に戻しました。")
+    return HttpResponseRedirect(reverse("core:settings"))
