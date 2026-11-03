@@ -6,6 +6,7 @@
 """
 
 import json
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -249,7 +250,8 @@ def test_system_has_company_date_screen_and_manual(manual):
     assert "/orders/?q=x" in system
     assert "受注の一覧の使い方の字" in system
     assert "<section" not in system
-    assert "この窓からは書き込めません" in system
+    assert "この窓からは変更できません" in system
+    assert "提案のカード" in system
 
     (manual / "orders_order_list.html").write_text("<section><p>" + "あ" * 5000 + "</p></section>", encoding="utf-8")
     long_system = services.build_system("/orders/", "受注")
@@ -393,3 +395,206 @@ def test_history_reads_old_and_new_shape():
     filled = new["proposals"][1]
     assert (filled["title"], filled["warnings"], filled["url"]) == ("", [], "")
     assert (odd["tools"], odd["proposals"]) == ([], [])
+
+
+# ---- 提案と承認 (2 段目) ----
+
+
+@pytest.fixture
+def order(user):
+    from datetime import date
+    from decimal import Decimal
+
+    from seizou.orders import services as orders_services
+
+    customer = masters_services.create_partner({"code": "AV01", "name": "作り物の得意先", "role": "customer"}, user)
+    item = masters_services.create_item({"part_no": "AV-100", "name": "作り物の軸", "unit": "個"}, user)
+    return orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")}],
+        user,
+        order_date=date(2026, 11, 2),
+    )
+
+
+def _shipments():
+    from seizou.shipping.models import Shipment
+
+    return Shipment.objects.count()
+
+
+def _ship_arguments(order, qty="3"):
+    return {"order_no": order.order_no, "line_no": 1, "qty": qty, "shipped_at": timezone.localdate().isoformat()}
+
+
+def _session_with(proposal):
+    session = {}
+    services.remember(
+        session,
+        {"question": "出荷して", "answer": "提案しました。", "links": [], "tools": [proposal["tool"]], "proposals": [proposal]},
+    )
+    return session
+
+
+@pytest.mark.django_db
+def test_write_tool_becomes_proposal(with_key, monkeypatch, order):
+    calls = script(
+        monkeypatch,
+        [tool_reply("ship", {**_ship_arguments(order), "confirm": True}), text_reply("出荷の提案を出しました。")],
+    )
+
+    result = ask(f"{order.order_no} の 1 行目を 3 個出荷して")
+
+    assert result["text"] == "出荷の提案を出しました。"
+    assert result["tools"] == ["ship"]
+    (proposal,) = result["proposals"]
+    assert (proposal["state"], proposal["tool"], proposal["title"]) == ("pending", "ship", "出荷")
+    assert "confirm" not in proposal["arguments"]
+    assert proposal["arguments"]["qty"] == "3"
+    assert any(order.order_no in line and "3" in line for line in proposal["summary"])
+    assert len(proposal["id"]) == 16
+    json.dumps(proposal, ensure_ascii=False)
+
+    (tool_result,) = calls[1]["messages"][-1]["content"]
+    assert "is_error" not in tool_result
+    sent = json.loads(tool_result["content"])
+    assert sent["proposed"] is True
+    assert sent["proposal_id"] == proposal["id"]
+    assert sent["message"] == services.PROPOSAL_MESSAGE
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_write_tool_with_bad_arguments_is_error(with_key, monkeypatch):
+    calls = script(monkeypatch, [tool_reply("ship", ["辞書でない"]), text_reply("分かりません。")])
+
+    result = ask("出荷して")
+
+    assert result["proposals"] == []
+    (tool_result,) = calls[1]["messages"][-1]["content"]
+    assert tool_result["is_error"] is True
+    assert tool_result["content"] == "道具 ship の引数が違います。"
+
+
+@pytest.mark.django_db
+def test_approve_saves_once(user, order):
+    proposal = services.propose("ship", _ship_arguments(order))
+    session = _session_with(proposal)
+
+    saved = services.approve(session, proposal["id"], user)
+
+    assert saved["state"] == "saved"
+    assert saved["url"] == reverse("orders:order_detail", args=[order.pk])
+    assert saved["notice"].startswith("保存しました。出荷 ")
+    assert "この明細の残は 7" in saved["notice"]
+    assert _shipments() == 1
+    assert services.history(session)[0]["proposals"][0]["state"] == "saved"
+
+    again = services.approve(session, proposal["id"], user)
+    assert again["state"] == "saved"
+    assert again["notice"] == services.MESSAGE_PROPOSAL_SAVED
+    assert _shipments() == 1
+
+
+@pytest.mark.django_db
+def test_approve_warn_then_confirm(settings, user, order):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    proposal = services.propose("ship", _ship_arguments(order, qty="12"))
+    session = _session_with(proposal)
+
+    warned = services.approve(session, proposal["id"], user)
+    assert warned["state"] == "warned"
+    assert warned["warnings"][0]["code"] == "R01"
+    assert _shipments() == 0
+    assert services.history(session)[0]["proposals"][0]["state"] == "warned"
+
+    saved = services.approve(session, proposal["id"], user, confirm=True)
+    assert saved["state"] == "saved"
+    assert saved["warnings"] == []
+    assert _shipments() == 1
+
+
+@pytest.mark.django_db
+def test_approve_stop_is_refused(settings, user, order):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    proposal = services.propose("ship", _ship_arguments(order, qty="12"))
+
+    refused = services.approve(_session_with(proposal), proposal["id"], user, confirm=True)
+
+    assert refused["state"] == "refused"
+    assert refused["code"] == "R01"
+    assert refused["notice"]
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_approve_refused_without_permission(settings, user, order):
+    settings.SEIZOU = {"access_control": {"department": "log", "write": "on", "money": "log"}}
+    proposal = services.propose("ship", _ship_arguments(order))
+    session = _session_with(proposal)
+
+    refused = services.approve(session, proposal["id"], user)
+
+    assert refused["state"] == "refused"
+    assert refused["code"] == "権限"
+    assert "アカウント管理の担当者" in refused["notice"]
+    assert _shipments() == 0
+
+    admin = get_user_model().objects.create_superuser("admin-for-tests", password="pass-for-tests-only")
+    assert services.approve(session, proposal["id"], admin)["state"] == "saved"
+    assert _shipments() == 1
+
+
+@pytest.mark.django_db
+def test_approve_missing_and_expired(user, order):
+    proposal = services.propose("ship", _ship_arguments(order))
+    session = _session_with(proposal)
+
+    missing = services.approve(session, "0000000000000000", user)
+    assert missing["state"] == "missing"
+    assert missing["notice"] == services.MESSAGE_PROPOSAL_MISSING
+    assert services.approve(session, "", user)["state"] == "missing"
+    assert services.approve({}, proposal["id"], user)["state"] == "missing"
+
+    old = {
+        **proposal,
+        "created_at": (timezone.now() - timedelta(minutes=services.PROPOSAL_MAX_MINUTES + 1)).isoformat(timespec="seconds"),
+    }
+    expired = services.approve(_session_with(old), old["id"], user)
+    assert expired["state"] == "refused"
+    assert expired["notice"] == services.MESSAGE_PROPOSAL_EXPIRED
+    assert _shipments() == 0
+
+    unknown_tool = {**proposal, "tool": "drop_everything"}
+    assert services.approve(_session_with(unknown_tool), proposal["id"], user)["notice"] == services.MESSAGE_PROPOSAL_ARGS
+    bad_arguments = {**proposal, "arguments": {"nope": 1}}
+    assert services.approve(_session_with(bad_arguments), proposal["id"], user)["notice"] == services.MESSAGE_PROPOSAL_ARGS
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_create_order_proposal_saves_order(user, order):
+    from seizou.orders.models import Order
+
+    masters_services.create_item({"part_no": "AV-200", "name": "作り物の板", "unit": "枚"}, user)
+    arguments = {
+        "customer_code": "AV01",
+        "order_date": "2026-11-05",
+        "lines": [
+            {"part_no": "AV-100", "qty": "2", "unit_price": "100"},
+            {"part_no": "AV-200", "qty": 1, "unit_price": 50, "due_date": "2026-11-30"},
+        ],
+    }
+    proposal = services.propose("create_order", arguments)
+    assert proposal["title"] == "受注の登録"
+    assert any("AV-100" in line for line in proposal["summary"])
+    assert any("AV-200" in line and "2026-11-30" in line for line in proposal["summary"])
+
+    saved = services.approve(_session_with(proposal), proposal["id"], user)
+
+    assert saved["state"] == "saved"
+    created = Order.objects.exclude(pk=order.pk).get()
+    assert created.lines.count() == 2
+    assert created.order_no in saved["notice"]
+    assert "明細 2 行" in saved["notice"]
+    assert saved["url"] == reverse("orders:order_detail", args=[created.pk])

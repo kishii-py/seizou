@@ -19,6 +19,7 @@ from tests.test_assistant_services import FAKE_KEY, refuse_api, script, text_rep
 
 ASK_URL = "/assistant/ask/"
 CLEAR_URL = "/assistant/clear/"
+APPROVE_URL = "/assistant/approve/"
 HTMX = {"HTTP_HX_REQUEST": "true"}
 
 
@@ -225,6 +226,7 @@ def test_clear_empties_history(with_key, client_logged_in, monkeypatch):
 def test_urls():
     assert reverse("assistant:ask") == ASK_URL
     assert reverse("assistant:clear") == CLEAR_URL
+    assert reverse("assistant:approve") == APPROVE_URL
 
 
 @pytest.mark.django_db
@@ -241,3 +243,133 @@ def test_tool_labels_under_answer(with_key, client_logged_in, monkeypatch, order
 
     html = client_logged_in.get(reverse("core:home")).content.decode()
     assert '<span class="badge badge-ghost badge-sm">部品を探した</span>' in html
+
+
+# ---- 提案のカードと承認 (2 段目) ----
+
+
+def _shipments():
+    from seizou.shipping.models import Shipment
+
+    return Shipment.objects.count()
+
+
+def _ask_ship(client, monkeypatch, order, qty="3"):
+    """ship の偽の往復で質問し、返事の本文と、session に残った提案を返す。"""
+    arguments = {"order_no": order.order_no, "line_no": 1, "qty": qty, "shipped_at": "2026-11-05"}
+    script(monkeypatch, [tool_reply("ship", arguments), text_reply("出荷の提案を出しました。")])
+    body = ask(client, f"{order.order_no} の 1 行目を {qty} 個出荷して").content.decode()
+    (proposal,) = saved_history(client)[-1]["proposals"]
+    return body, proposal
+
+
+def approve(client, proposal_id, **data):
+    return client.post(APPROVE_URL, {"proposal_id": proposal_id, **data}, **HTMX)
+
+
+@pytest.mark.django_db
+def test_write_tool_shows_proposal_card(with_key, client_logged_in, monkeypatch, order):
+    body, proposal = _ask_ship(client_logged_in, monkeypatch, order)
+
+    assert f'id="assistant-proposal-{proposal["id"]}"' in body
+    assert "提案: 出荷" in body
+    assert ">承認<" in body
+    assert 'hx-post="/assistant/approve/"' in body
+    assert "出荷を提案した" in body
+    assert "alert-" not in body
+    assert "csrf" not in body.lower()
+    assert proposal["state"] == "pending"
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_approve_saves_and_repeat_is_refused(with_key, client_logged_in, monkeypatch, order):
+    _, proposal = _ask_ship(client_logged_in, monkeypatch, order)
+
+    response = approve(client_logged_in, proposal["id"])
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "保存しました" in body
+    assert f'href="{reverse("orders:order_detail", args=[order.pk])}"' in body
+    assert "text-success" in body
+    assert ">承認<" not in body
+    assert _shipments() == 1
+
+    again = approve(client_logged_in, proposal["id"]).content.decode()
+    assert "保存済み" in again
+    assert _shipments() == 1
+
+    html = client_logged_in.get(reverse("core:home")).content.decode()
+    assert f'id="assistant-proposal-{proposal["id"]}"' in html
+    assert "保存しました" in html
+    assert ">承認<" not in html
+
+
+@pytest.mark.django_db
+def test_approve_warn_shows_confirm_button(with_key, client_logged_in, monkeypatch, order, settings):
+    settings.SEIZOU = {"over_shipment": "warn"}
+    _, proposal = _ask_ship(client_logged_in, monkeypatch, order, qty="12")
+
+    first = approve(client_logged_in, proposal["id"]).content.decode()
+
+    assert "R01" in first
+    assert "text-warning" in first
+    assert "このまま保存" in first
+    assert 'name="confirm" value="1"' in first
+    assert f'name="proposal_id" value="{proposal["id"]}"' in first
+    assert _shipments() == 0
+
+    second = approve(client_logged_in, proposal["id"], confirm="1").content.decode()
+    assert "保存しました" in second
+    assert _shipments() == 1
+
+
+@pytest.mark.django_db
+def test_approve_stop_is_red(with_key, client_logged_in, monkeypatch, order, settings):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    _, proposal = _ask_ship(client_logged_in, monkeypatch, order, qty="12")
+
+    body = approve(client_logged_in, proposal["id"], confirm="1").content.decode()
+
+    assert "R01" in body
+    assert "text-error" in body
+    assert "このまま保存" not in body
+    assert ">承認<" not in body
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_approve_refused_without_permission(with_key, client_logged_in, monkeypatch, order, settings):
+    settings.SEIZOU = {"access_control": {"department": "log", "write": "on", "money": "log"}}
+    _, proposal = _ask_ship(client_logged_in, monkeypatch, order)
+
+    body = approve(client_logged_in, proposal["id"]).content.decode()
+
+    assert "権限" in body
+    assert "アカウント管理の担当者" in body
+    assert "text-error" in body
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_approve_guards(with_key, client, user, monkeypatch, order):
+    anonymous = client.post(APPROVE_URL, {"proposal_id": "x"}, **HTMX)
+    assert anonymous.status_code == 302
+    assert anonymous["Location"].startswith(reverse("core:login"))
+
+    client.force_login(user)
+    missing = approve(client, "0000000000000000")
+    assert missing.status_code == 200
+    assert "見つかりません" in missing.content.decode()
+    assert client.get(APPROVE_URL, **HTMX).status_code == 405
+
+    _, proposal = _ask_ship(client, monkeypatch, order)
+    assert client.post(APPROVE_URL, {"proposal_id": proposal["id"]}).status_code == 400
+    assert _shipments() == 0
+
+    client.post(CLEAR_URL, **HTMX)
+    after_clear = approve(client, proposal["id"])
+    assert after_clear.status_code == 200
+    assert "見つかりません" in after_clear.content.decode()
+    assert _shipments() == 0

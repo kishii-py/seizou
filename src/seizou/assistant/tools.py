@@ -52,6 +52,80 @@ def label_for(name):
     return TOOL_LABELS.get(name, name) if isinstance(name, str) else str(name)
 
 
+_UNREADABLE = "(読めません)"
+
+
+def _shown(arguments, key, *, optional=False):
+    """引数の値を要約の字にする。無い・空なら、任意の引数は ""、要る引数は「(読めません)」。"""
+    value = arguments.get(key) if isinstance(arguments, dict) else None
+    try:
+        text = "" if value is None else " ".join(str(value).split())
+    except Exception:
+        return _UNREADABLE
+    if not text:
+        return "" if optional else _UNREADABLE
+    return text
+
+
+def _order_summary(arguments):
+    lines = [f"得意先コード: {_shown(arguments, 'customer_code')}", f"受注日: {_shown(arguments, 'order_date')}"]
+    their_no = _shown(arguments, "customer_order_no", optional=True)
+    if their_no:
+        lines.append(f"得意先の注文番号: {their_no}")
+    rows = arguments.get("lines")
+    if not isinstance(rows, list):
+        lines.append(f"明細: {_UNREADABLE}")
+        return lines
+    lines.append(f"明細 {len(rows)} 行:")
+    for number, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            lines.append(f"{number}. {_UNREADABLE}")
+            continue
+        notes = [f"単価 {_shown(row, 'unit_price')}"]
+        for label, key in (("納期", "due_date"), ("備考", "note")):
+            value = _shown(row, key, optional=True)
+            if value:
+                notes.append(f"{label} {value}")
+        lines.append(f"{number}. {_shown(row, 'part_no')} × {_shown(row, 'qty')} ({'・'.join(notes)})")
+    return lines
+
+
+def _ship_summary(arguments):
+    lines = [
+        f"受注 {_shown(arguments, 'order_no')} の {_shown(arguments, 'line_no')} 行目を {_shown(arguments, 'qty')} 出荷",
+        f"出荷日: {_shown(arguments, 'shipped_at')}",
+    ]
+    note = _shown(arguments, "note", optional=True)
+    if note:
+        lines.append(f"備考: {note}")
+    return lines
+
+
+def _plan_summary(arguments):
+    lines = [f"指示書 {_shown(arguments, 'workorder_no')} の工程 {_shown(arguments, 'process_code')}"]
+    start = _shown(arguments, "start", optional=True)
+    end = _shown(arguments, "end", optional=True)
+    if not start and not end:
+        lines.append("未計画に戻す")
+    else:
+        lines.append(f"開始日 {start or _UNREADABLE} 〜 終了日 {end or _UNREADABLE}")
+    return lines
+
+
+def summarize(name, arguments):
+    """提案のカードの要約の行 (何を・いくつ・いつ)。DB を読まない。例外を投げない (読めない物は「(読めません)」)。"""
+    if not isinstance(arguments, dict):
+        return [_UNREADABLE]
+    builders = {"create_order": _order_summary, "ship": _ship_summary, "plan_step": _plan_summary}
+    try:
+        builder = builders.get(name) if isinstance(name, str) else None
+        if builder is not None:
+            return builder(arguments)
+        return [f"{key}: {_shown(arguments, key)}" for key in arguments]
+    except Exception:
+        return [_UNREADABLE]
+
+
 # ---- Claude の API に渡す形 ----
 
 
@@ -207,6 +281,71 @@ TOOLS = [
         "input_schema": _schema(
             {"manual_id": {"type": "integer", "description": "マニュアルの番号 (search_manuals の id)。"}},
             ["manual_id"],
+        ),
+    },
+    # 書く道具。呼んでもすぐには保存しない (services が提案のカードにし、利用者が承認してから保存する)。
+    # confirm は渡さない (知らせを飛ばす印を付けられるのは承認の口だけ)。
+    {
+        "name": "create_order",
+        "description": (
+            "受注の登録を提案する。すぐには保存しない。提案のカードになり、利用者が承認してから、"
+            "画面の受注の入力と同じ決まりとポカよけを通って保存される。得意先コード・受注日・明細 (品番・数量・単価) が要る。"
+        ),
+        "input_schema": _schema(
+            {
+                "customer_code": {"type": "string", "description": "得意先の取引先コード。"},
+                "lines": {
+                    "type": "array",
+                    "description": "明細の並び (1 行以上)。単位は部品の単位を写す。",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "part_no": {"type": "string", "description": "自社品番。"},
+                            "qty": {"type": ["number", "string"], "description": "数量。"},
+                            "unit_price": {"type": ["number", "string"], "description": "単価。"},
+                            "due_date": {"type": "string", "description": f"納期の{_DATE}省ける。"},
+                            "note": {"type": "string", "description": "備考。省ける。"},
+                        },
+                        "required": ["part_no", "qty", "unit_price"],
+                    },
+                },
+                "order_date": {"type": "string", "description": f"受注の{_DATE}"},
+                "customer_order_no": {"type": "string", "description": "得意先の注文番号。省ける。"},
+            },
+            ["customer_code", "lines", "order_date"],
+        ),
+    },
+    {
+        "name": "ship",
+        "description": (
+            "受注の明細の出荷を提案する。すぐには保存しない。提案のカードになり、利用者が承認してから、"
+            "画面の出荷の入力と同じ決まりとポカよけを通って保存される。受注番号・行番号・数量・出荷日が要る。"
+        ),
+        "input_schema": _schema(
+            {
+                "order_no": {"type": "string", "description": "受注番号。"},
+                "line_no": {"type": "integer", "description": "明細の行番号 (get_order の line_no)。"},
+                "qty": {"type": ["number", "string"], "description": "出荷する数量。"},
+                "shipped_at": {"type": "string", "description": f"出荷の{_DATE}"},
+                "note": {"type": "string", "description": "備考。省ける。"},
+            },
+            ["order_no", "line_no", "qty", "shipped_at"],
+        ),
+    },
+    {
+        "name": "plan_step",
+        "description": (
+            "指示書の工程の予定の日 (開始日と終了日) の置き直しを提案する。すぐには保存しない。提案のカードになり、"
+            "利用者が承認してから、画面の計画の盤と同じ決まりを通って保存される。指示書番号・工程コード・開始日・終了日が要る。"
+        ),
+        "input_schema": _schema(
+            {
+                "workorder_no": {"type": "string", "description": "指示書番号。"},
+                "process_code": {"type": "string", "description": "工程コード (list_workorders の steps の値)。"},
+                "start": {"type": "string", "description": f"開始の{_DATE}両方を空の字にすると未計画に戻す。"},
+                "end": {"type": "string", "description": f"終了の{_DATE}両方を空の字にすると未計画に戻す。"},
+            },
+            ["workorder_no", "process_code", "start", "end"],
         ),
     },
 ]

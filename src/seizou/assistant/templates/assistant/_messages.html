@@ -6,7 +6,8 @@
 </div>
 <div class="chat chat-start">
   <div class="chat-bubble break-words">{{ exchange.answer|linebreaksbr }}{% if exchange.tools %}
-    <div class="mt-2 flex flex-wrap gap-2">{% for name in exchange.tools %}<span class="badge badge-ghost badge-sm">{{ name|tool_label }}</span>{% endfor %}</div>{% endif %}{% if exchange.links %}
+    <div class="mt-2 flex flex-wrap gap-2">{% for name in exchange.tools %}<span class="badge badge-ghost badge-sm">{{ name|tool_label }}</span>{% endfor %}</div>{% endif %}{% for proposal in exchange.proposals %}
+    {% include "assistant/_proposal.html" with proposal=proposal %}{% endfor %}{% if exchange.links %}
     <div class="mt-2 flex flex-col gap-2">{% for url in exchange.links %}<a class="link break-all" href="{{ url }}">{{ url }}</a>{% endfor %}</div>{% endif %}</div>
 </div>
 {% endfor %}

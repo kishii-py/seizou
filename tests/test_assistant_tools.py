@@ -58,11 +58,10 @@ def _mcp_functions():
 
 
 def test_tools_match_mcp_functions():
-    read_names = {tool.__name__ for tool in mcp_tools.READ_TOOLS}
     names = [tool["name"] for tool in tools.TOOLS]
     assert len(names) == len(set(names))
-    assert set(names) == read_names
-    assert names == [tool.__name__ for tool in mcp_tools.READ_TOOLS]
+    assert set(names) == set(_mcp_functions())
+    assert names == [tool.__name__ for tool in mcp_tools.READ_TOOLS] + list(tools.WRITE_TOOL_NAMES)
 
     functions = _mcp_functions()
     for tool in tools.TOOLS:
