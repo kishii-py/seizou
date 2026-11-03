@@ -88,6 +88,19 @@ def normalize_screens(value) -> str:
     return " ".join(names)
 
 
+def list_filter(params) -> dict:
+    """一覧の絞り込みの今の値 {"status": 字, "kind": 字}。画面の get_queryset と tag の feedback_filter が読む。
+
+    params は GET の QueryDict か辞書 (.get で読む)。値が STATUSES・KINDS の中なら字のまま、
+    外の値・空・無い鍵は空の字 (絞らない)。
+    """
+    if not hasattr(params, "get"):
+        params = {}
+    status = params.get("status")
+    kind = params.get("kind")
+    return {"status": status if status in STATUSES else "", "kind": kind if kind in KINDS else ""}
+
+
 # ---- 権限 ----
 
 
@@ -241,6 +254,36 @@ def mark_sent(feedback, user, sent_url=""):
         feedback.sent_url = url
         feedback.save(update_fields=["status", "sent_url", "updated_at"])
         return feedback
+
+
+#: 削除の断りの文 (口は messages.error にする)
+MESSAGE_ALREADY_DELETED = "この下書きは既にありません。一覧を開き直してください。"
+MESSAGE_CANNOT_DELETE = "この下書きは、書いた人かアカウント管理の担当者だけが削除できます。"
+#: {status} に今の状態の表示 (get_status_display) を入れる
+MESSAGE_DELETE_DRAFT_ONLY = "下書きだけを削除できます (今は {status})。確認済みと送った物は残します。"
+
+
+def can_delete(feedback, user) -> bool:
+    """削除できるか。状態が下書きで、直せる人 (書いた人か世話役) のとき。"""
+    return feedback.status == "draft" and can_edit(feedback, user)
+
+
+def delete_feedback(feedback, user) -> None:
+    """下書きを 1 件消す。
+
+    下書きだけ。書いた人か世話役 (アカウント管理の権限)。確認済みと送った物は残す (世話役が GitHub に写した物と、
+    その前の確かめの印)。会話の記録と token も一緒に消える。
+    行は atomic の中で select_for_update で取り直し、無い → 状態 → 人の順に確かめる (外れたら日本語の ValueError)。
+    """
+    with transaction.atomic():
+        row = Feedback.objects.select_for_update().filter(pk=feedback.pk).first()
+        if row is None:
+            raise ValueError(MESSAGE_ALREADY_DELETED)
+        if row.status != "draft":
+            raise ValueError(MESSAGE_DELETE_DRAFT_ONLY.format(status=row.get_status_display()))
+        if not can_edit(row, user):
+            raise ValueError(MESSAGE_CANNOT_DELETE)
+        row.delete()
 
 
 # ---- Issue の文 ----

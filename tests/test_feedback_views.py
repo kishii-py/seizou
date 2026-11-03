@@ -212,9 +212,7 @@ def test_update_screen_saves_and_refuses_others(client, plain, other):
 
     client.force_login(other)
     response = client.post(edit, form_data(title="ほかの人の題"))
-    html = html_of(response)
-    assert response.status_code == 200
-    assert "alert-error" in html and "書いた人" in html
+    assert response.status_code == 404
     row.refresh_from_db()
     assert row.title == "直した題"
 
@@ -249,3 +247,117 @@ def test_urls():
     assert reverse("feedback:feedback_update", args=[1]) == "/feedback/1/edit/"
     assert reverse("feedback:confirm", args=[1]) == "/feedback/1/confirm/"
     assert reverse("feedback:sent", args=[1]) == "/feedback/1/sent/"
+
+
+def test_delete_button_and_endpoint(client, plain, other, manager):
+    mine = make(plain, "消す下書き")
+    endpoint = f"/feedback/{mine.pk}/delete/"
+
+    client.force_login(plain)
+    html = html_of(client.get(f"/feedback/{mine.pk}/"))
+    assert 'id="feedback-delete"' in html
+    assert f'action="{endpoint}"' in html
+
+    client.force_login(other)
+    assert client.post(endpoint).status_code == 404
+    assert Feedback.objects.filter(pk=mine.pk).exists()
+
+    client.force_login(plain)
+    assert client.get(endpoint).status_code == 405
+    response = client.post(endpoint)
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert not Feedback.objects.filter(pk=mine.pk).exists()
+    assert "下書きを削除しました。" in html_of(client.get("/feedback/"))
+
+    theirs = make(other, "ほかの人の下書き")
+    client.force_login(manager)
+    assert 'id="feedback-delete"' in html_of(client.get(f"/feedback/{theirs.pk}/"))
+    response = client.post(f"/feedback/{theirs.pk}/delete/")
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert not Feedback.objects.filter(pk=theirs.pk).exists()
+    client.get("/feedback/")
+
+    kept = make(plain, "確認済みの物")
+    services.mark_confirmed(kept, manager)
+    detail = f"/feedback/{kept.pk}/"
+    client.force_login(plain)
+    assert 'id="feedback-delete"' not in html_of(client.get(detail))
+    client.force_login(manager)
+    assert 'id="feedback-delete"' not in html_of(client.get(detail))
+    response = client.post(f"/feedback/{kept.pk}/delete/")
+    assert response.status_code == 302 and response["Location"] == detail
+    html = html_of(client.get(detail))
+    assert "bg-error" in html and "下書きだけ" in html
+    assert Feedback.objects.filter(pk=kept.pk).exists()
+
+    client.logout()
+    response = client.post(f"/feedback/{kept.pk}/delete/")
+    assert response.status_code == 302 and reverse("core:login") in response["Location"]
+    assert Feedback.objects.filter(pk=kept.pk).exists()
+
+
+def test_list_filters_by_status_and_kind(client, plain, other, manager):
+    make(plain, "下書きの不具合", data={"kind": "bug"})
+    confirmed = make(plain, "確認済みの要望", data={"kind": "common"})
+    services.mark_confirmed(confirmed, manager)
+    make(other, "ほかの人の下書き")
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/?status=draft"))
+    assert "下書きの不具合" in html
+    assert "確認済みの要望" not in html and "ほかの人の下書き" not in html
+    assert 'id="feedback-filter"' in html
+    assert 'name="status"' in html and 'name="kind"' in html
+    assert '<option value="draft" selected>' in html
+
+    html = html_of(client.get("/feedback/?kind=common"))
+    assert "確認済みの要望" in html and "下書きの不具合" not in html
+
+    html = html_of(client.get("/feedback/?status=draft&kind=common"))
+    assert "確認済みの要望" not in html and "下書きの不具合" not in html
+
+    html = html_of(client.get("/feedback/?status=nonsense&kind="))
+    assert "確認済みの要望" in html and "下書きの不具合" in html
+
+    html = html_of(client.get("/feedback/?status=confirmed", HTTP_HX_REQUEST="true"))
+    assert "<html" not in html
+    assert "確認済みの要望" in html and "下書きの不具合" not in html
+
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/?status=draft"))
+    assert "下書きの不具合" in html and "ほかの人の下書き" in html
+    assert "確認済みの要望" not in html
+
+
+def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager):
+    from seizou.core.views import BaseFormView
+
+    row = make(plain, "元の題")
+    edit = f"/feedback/{row.pk}/edit/"
+
+    client.force_login(other)
+    assert client.get(edit).status_code == 404
+    assert client.post(edit, form_data(title="ほかの人の題")).status_code == 404
+    row.refresh_from_db()
+    assert row.title == "元の題"
+
+    client.force_login(manager)
+    response = client.get(edit)
+    assert response.status_code == 200
+    assert 'value="元の題"' in html_of(response)
+
+    services.mark_confirmed(row, manager)
+    client.force_login(plain)
+    assert client.get(edit).status_code == 200
+    response = client.post(edit, form_data(title="確認済みの後の題"))
+    html = html_of(response)
+    assert response.status_code == 200
+    assert "alert-error" in html and "書いた人" in html
+    row.refresh_from_db()
+    assert row.title == "元の題"
+
+    client.logout()
+    response = client.get(edit)
+    assert response.status_code == 302 and reverse("core:login") in response["Location"]
+
+    assert not hasattr(BaseFormView, "get_queryset")

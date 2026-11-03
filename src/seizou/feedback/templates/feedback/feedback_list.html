@@ -1,0 +1,19 @@
+{% extends "core/list.html" %}
+{% load feedback_tags seizou_icons %}
+{# フィードバックの一覧: 土台の一覧の上に、状態と種類の絞り込みの欄を足す (絞るのは FeedbackListView.get_queryset。外の値は絞らない)。 #}
+{# 土台の検索の form の外の別の form で、同じ #rows を差し替える。検索の欄 (q・per・sort) の値は hx-include で一緒に送る (注残の盤と同じ形)。 #}
+{% block content %}{% feedback_filter as filter %}
+<form id="feedback-filter" method="get" action="{{ request.path }}" class="mb-4 flex flex-wrap items-end gap-4" role="search" aria-label="状態と種類で絞り込む" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-include="#list-q, #list-per, #list-meta">
+  <label class="flex flex-col gap-2">
+    <span class="text-xs font-medium text-base-content/50">状態</span>
+    <select name="status" class="select select-sm w-auto"><option value="">すべて</option>{% for value, label in filter.statuses %}<option value="{{ value }}"{% if value == filter.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  </label>
+  <label class="flex flex-col gap-2">
+    <span class="text-xs font-medium text-base-content/50">種類</span>
+    <select name="kind" class="select select-sm w-auto"><option value="">すべて</option>{% for value, label in filter.kinds %}<option value="{{ value }}"{% if value == filter.kind %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  </label>
+  <button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "filter" "size-4" %}絞り込み</button>
+</form>
+{# 土台の検索とページ送りの要求に、絞り込みの欄の値を足す。 #}
+<div hx-include="#feedback-filter">{{ block.super }}</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load feedback_tags seizou_icons %}
-{# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ) の 3 つの節。 #}
+{# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
 {% block content %}{{ block.super }}
 {% if object.transcript %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-transcript-title">
@@ -26,6 +26,13 @@
     {% if object.status == "draft" %}<form method="post" action="{% url 'feedback:confirm' object.pk %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}確認済みにする</button></form>{% endif %}
     {% if object.status != "sent" %}<form method="post" action="{% url 'feedback:sent' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="url" name="sent_url" class="input input-sm w-72" placeholder="送った先の URL (任意)" aria-label="送った先の URL"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button></form>{% endif %}
   </div>
+</section>
+{% endif %}
+{% if info.can_delete %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-delete-title">
+  <h2 id="feedback-delete-title" class="text-lg font-bold">下書きの削除</h2>
+  <p class="mt-2 text-xs text-base-content/50">要らなくなった下書きを消します。消した下書きは元に戻せません。確認済みと送った物は消せません。</p>
+  <form method="post" action="{% url 'feedback:delete' object.pk %}" class="mt-4 flex justify-end">{% csrf_token %}<button id="feedback-delete" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}削除</button></form>
 </section>
 {% endif %}
 {# 「写す」: 押したら textarea の字をクリップボードに写し、ボタンの字を data-done にする。クリップボードの無いブラウザでは何もしない (textarea は readonly で、字を選んで写せる)。 #}

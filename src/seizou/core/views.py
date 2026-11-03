@@ -605,7 +605,11 @@ class BaseFormView(ScreenMixin, FormView):
     # --- 対象 (直すとき) ---
     def dispatch(self, request, *args, **kwargs):
         if self.model is not None and "pk" in kwargs:
-            self.object = get_object_or_404(self.model, pk=kwargs["pk"])
+            # 部品の画面が get_queryset を持つときは、その絞りの中から対象を引く (絞りの外は 404)。土台は get_queryset を持たない。
+            # ログインの前は利用者で絞れないので表の全部から引く (この後の ScreenMixin・LoginRequiredMixin の門がログインへ移す)。
+            get_queryset = getattr(self, "get_queryset", None)
+            source = get_queryset() if get_queryset is not None and request.user.is_authenticated else self.model
+            self.object = get_object_or_404(source, pk=kwargs["pk"])
         return super().dispatch(request, *args, **kwargs)
 
     def get_initial(self):

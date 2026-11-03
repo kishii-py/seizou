@@ -220,3 +220,48 @@ def test_screen_catalog_and_choices(db):
     assert services.screen_name("orders:order_list") == "受注"
     assert services.screen_name("no:such") == ""
     assert services.screen_name(None) == ""
+
+
+def test_delete_feedback_draft_only_by_owner_or_manager(plain, other, manager):
+    draft = services.create_feedback(dict(BASE), plain)
+    assert services.can_delete(draft, plain)
+    assert services.can_delete(draft, manager)
+    assert not services.can_delete(draft, other)
+
+    with pytest.raises(ValueError, match="書いた人かアカウント管理の担当者だけ"):
+        services.delete_feedback(draft, other)
+    assert Feedback.objects.filter(pk=draft.pk).exists()
+
+    services.delete_feedback(draft, plain)
+    assert not Feedback.objects.filter(pk=draft.pk).exists()
+    with pytest.raises(ValueError, match="既にありません"):
+        services.delete_feedback(draft, plain)
+
+    confirmed = services.create_feedback(dict(BASE), plain)
+    services.mark_confirmed(confirmed, manager)
+    sent = services.create_feedback(dict(BASE), plain)
+    services.mark_sent(sent, manager)
+    for row, label in ((confirmed, "確認済み"), (sent, "送った")):
+        assert not services.can_delete(row, plain)
+        assert not services.can_delete(row, manager)
+        for user in (plain, manager):
+            with pytest.raises(ValueError) as caught:
+                services.delete_feedback(row, user)
+            assert "下書きだけ" in str(caught.value)
+            assert f"今は {label}" in str(caught.value)
+        assert Feedback.objects.filter(pk=row.pk).exists()
+
+    theirs = services.create_feedback(dict(BASE), other)
+    services.delete_feedback(theirs, manager)
+    assert not Feedback.objects.filter(pk=theirs.pk).exists()
+
+
+def test_list_filter_accepts_known_values_only():
+    from django.http import QueryDict
+
+    empty = {"status": "", "kind": ""}
+    assert services.list_filter({"status": "draft", "kind": "bug"}) == {"status": "draft", "kind": "bug"}
+    assert services.list_filter({"status": "x", "kind": ""}) == empty
+    assert services.list_filter({}) == empty
+    assert services.list_filter(None) == empty
+    assert services.list_filter(QueryDict("status=sent&kind=common")) == {"status": "sent", "kind": "common"}
