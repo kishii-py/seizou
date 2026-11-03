@@ -249,6 +249,8 @@ class ColumnSpec:
 
     #: 辞書の kind に書ける値
     KINDS = ("number", "money", "date")
+    #: 辞書に書ける鍵 (起動の検査 seizou.core.system_checks が、ほかの鍵を誤りにする)
+    KEYS = ("name", "label", "kind", "sortable", "total", "sort_key")
 
     def __init__(self, model, item, ext_type: str | None = None):
         self.total = False

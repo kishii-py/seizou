@@ -12,6 +12,8 @@ class CoreConfig(AppConfig):
     def ready(self):
         # 同梱のポカよけ (R01・R04・R06・R07) を検査の層に登録する。
         from .checks import builtin  # noqa: F401
+        # 一覧の列 (columns) の書き方を、Django の起動の検査 (system check) に登録する。
+        from . import system_checks  # noqa: F401
 
         # 選ぶ欄の空の選択肢の字 (Django の既定は英語の「- Select an option -」)。Django 6.1 は ready() での置き換えを認める。
         # 表の choices の欄・ModelChoiceField・RemoteSelect の空の選択肢が、この字になる (form の class を作る前に置く)。
