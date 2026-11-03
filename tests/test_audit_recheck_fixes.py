@@ -9,11 +9,14 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
+from django.test import Client
 from django.urls import reverse
 
 from seizou.connect.models import Inbox
 from seizou.connect.templatetags.connect_tags import payload_number
 from seizou.core import dashboard
+from seizou.core.screens import all_screens
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.masters import services as masters_services
 from seizou.masters.forms import HolidayForm
@@ -185,3 +188,22 @@ def test_home_flow_links_go_to_inbox_and_orderlines(logged_in, customer):
     assert f'href="{inbox_url}"' in section
     assert f'href="{lines_url}"' in section
     assert f'次にすること: <a class="link link-hover text-primary" href="{inbox_url}">受注</a>' in section
+
+
+# ---------------------------------------------------------------- 5. /favicon.ico の口
+
+
+def test_favicon_ico_redirects_without_login(client):
+    assert reverse("core:favicon") == "/favicon.ico"
+    response = client.get("/favicon.ico")
+    assert response.status_code == 302
+    assert response["Location"] == "/static/favicon.svg"
+    assert finders.find("favicon.svg") is not None
+
+
+def test_favicon_is_not_a_screen_and_link_is_single(logged_in):
+    assert "core:favicon" not in {screen.url_name for screen in all_screens()}
+    login_html = Client().get(reverse("core:login")).content.decode()
+    assert login_html.count('rel="icon"') == 1
+    home_html = logged_in.get(reverse("core:home")).content.decode()
+    assert home_html.count('rel="icon"') == 1
