@@ -40,7 +40,7 @@ from . import services
 EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg")
 DONE_DIR = "done"
 FAILED_DIR = "failed"
-#: 書きかけのファイルを読まない待ち (最後に書いた時刻からの秒)。複合機や共有フォルダへの写しが終わるのを待つ。試験は 0 にする
+#: 書きかけのファイルを読まない待ち (最後に書いた時刻からの秒)。複合機や共有フォルダへの写しが終わるのを待つ。試験は負の値にする (ファイルの時刻と時計の差に左右されないため)
 SETTLE_SECONDS = 2
 #: 見回りの間の既定 (秒)
 DEFAULT_INTERVAL = 10

@@ -203,7 +203,8 @@ def scan(settings, tmp_path, monkeypatch):
     settings.BASE_DIR = site
     folder = tmp_path / "scan"
     folder.mkdir()
-    monkeypatch.setattr(watch, "SETTLE_SECONDS", 0)
+    # 負の値にして、書いた直後のファイルも読む (Windows の CI ではファイルの時刻が time.time() より数ミリ秒先に出て、0 だと読まれない事があった)
+    monkeypatch.setattr(watch, "SETTLE_SECONDS", -5)
     return folder
 
 
