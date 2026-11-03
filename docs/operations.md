@@ -43,6 +43,8 @@ find /path/to/site/backups -maxdepth 1 -type d -name '20??????-??????*' -mtime +
 
 PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります。`pg_dump` が見つからないとき、命令は何も書かずに止まり、手で取るための 1 行を出します。
 
+`settings.py` の `MEDIA_ROOT` が置き場そのものかその親のフォルダを指しているときは、控えに置き場の全部 (`.env` を含む) が入り、戻しが置き場ごと消すのを防ぐため、控えと戻しは何も書かず何も消さずに止まります (`seizou new` が書く `MEDIA_ROOT = BASE_DIR / "media"` では起きません)。
+
 ## 戻す (復元)
 
 戻すと、今のデータベースと上げたファイルが、控えを取った時点の物に置き換わります。次の順に進めます。
@@ -86,6 +88,7 @@ PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1
 - migrate の漏れ
 - Django の起動の検査 (`check`)
 - 上げたファイルの置き場 (`MEDIA_ROOT` に書けるか)
+- 上げたファイルの置き場の場所 (`MEDIA_ROOT` が置き場そのものか、その親を指していないか。指していれば、控えと戻しは止まる)
 - 控えの置き場 (`backups/` に書けるか)
 - CSS (seizou の画面の見た目のファイルがあるか)
 - `collectstatic` (本番の条件だけ)

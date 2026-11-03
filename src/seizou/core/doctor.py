@@ -200,6 +200,25 @@ def check_media_root() -> list[Row]:
     return [_writable(label, path, "最初の upload で作られる", fix)]
 
 
+#: MEDIA_ROOT が置き場そのものかその親のときの直し方
+MEDIA_ROOT_PLACE_FIX = (
+    'settings.py の MEDIA_ROOT を、置き場の中のフォルダ (seizou new が書く形は MEDIA_ROOT = BASE_DIR / "media") にする。'
+    "直すまで、seizou_backup と seizou_restore は何もせずに止まる。"
+)
+
+
+def check_media_root_place() -> list[Row]:
+    label = "上げたファイルの置き場の場所 (MEDIA_ROOT)"
+    base = _base_dir()
+    root = getattr(settings, "MEDIA_ROOT", "") or ""
+    if base is None or not root:
+        return []
+    problem = backup.media_root_problem(base, root)
+    if problem:
+        return [_bad(label, problem, MEDIA_ROOT_PLACE_FIX)]
+    return [_good(label, "置き場そのものでも、その親でもない")]
+
+
 def check_backups_dir() -> list[Row]:
     label = "控えの置き場 (backups/)"
     try:
@@ -380,6 +399,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("migrate の漏れ", check_migrations, False),
         ("Django の起動の検査 (check)", check_django, False),
         ("上げたファイルの置き場 (MEDIA_ROOT)", check_media_root, False),
+        ("上げたファイルの置き場の場所 (MEDIA_ROOT)", check_media_root_place, False),
         ("控えの置き場 (backups/)", check_backups_dir, False),
         ("CSS", check_css, False),
         ("collectstatic", check_collectstatic, True),
