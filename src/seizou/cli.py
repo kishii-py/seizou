@@ -376,6 +376,8 @@ def command_new(answers_path: Path, demo: bool) -> int:
             result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds))])
             if result.returncode != 0:
                 return show_failure("作り物のデータの読み込み", result)
+            # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
+            sys.stdout.write(result.stdout or "")
             print(f"作り物のデータを登録しました: {seeds}")
 
     port = answers["port"]
