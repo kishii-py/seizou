@@ -7,6 +7,7 @@
 - production_trend: 直近の月ごとの指示書の発行の件数と数量と、完成の数 (最後の工程の実績) と、図の座標の字を返す。
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
+- payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -385,6 +386,28 @@ def payable_this_month(today=None) -> Decimal | None:
         total = receipt_model._default_manager.filter(received_on__gte=start, received_on__lt=end).aggregate(
             total=Sum("amount")
         )["total"]
+    except DatabaseError:
+        return None
+    return _ZERO if total is None else Decimal(str(total))
+
+
+def payments_this_month(today=None) -> Decimal | None:
+    """今月の入金 = 入金日が今月 (1 日から月末まで) の、取消でない入金の金額の合計。入金が無ければ 0。
+
+    保存した金額 (billing.services が記録した物) を足すだけで、DB で掛け算をしない。
+    入金の表 (billing の Payment) が無いか DB が読めなければ None (画面はカードを出さない。偽の 0 を置かない)。
+    """
+    payment_model = _model("billing", "Payment")
+    if payment_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    start = date(today.year, today.month, 1)
+    end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    try:
+        total = payment_model._default_manager.filter(
+            status=payment_model.STATUS_RECORDED, received_on__gte=start, received_on__lt=end
+        ).aggregate(total=Sum("amount"))["total"]
     except DatabaseError:
         return None
     return _ZERO if total is None else Decimal(str(total))

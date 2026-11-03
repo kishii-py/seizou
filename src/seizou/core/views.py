@@ -900,7 +900,7 @@ def count_or_none(queryset) -> int | None:
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
-    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。金額のカード (今月の支払の見込み) は "money" が真で、
+    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。金額のカード (支払の見込みと入金) は "money" が真で、
     HomeView が金額を見られない人に "hidden" を付け、画面は数を「—」にする (カードは残す)。
     """
     today = timezone.localdate()
@@ -983,6 +983,20 @@ def dashboard_stats() -> list[dict]:
                 "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
                 "icon": "yen",
                 "url": url_or_none("purchasing:receipt_list"),
+                "money": True,
+            }
+        )
+    # 7 枚目: 入金 (入金の表 = billing の Payment があるとき。入金日が今月の、取消でない入金の金額の合計 = N56 の要望)
+    payments = dashboard.payments_this_month(today)
+    if payments is not None:
+        stats.append(
+            {
+                "label": "今月の入金",
+                "value": payments,
+                "unit": "円",
+                "note": f"{today.month} 月に入金日のある入金の金額の合計 (取消を除く)",
+                "icon": "yen",
+                "url": url_or_none("billing:invoice_list"),
                 "money": True,
             }
         )
