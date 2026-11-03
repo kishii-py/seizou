@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
-{# 取引先の詳細。取引先ごとの品番のタブは、自社品番 (小窓を開く link)・品名・取引先の品番・取引先の品名の表。ほかは core の詳細のまま。 #}
+{# 取引先の詳細。取引先ごとの品番は自社品番 (小窓を開く link)・品名・取引先の品番・取引先の品名の表。受注履歴と発注履歴は番号 (詳細への link)・日付・状態の表 (本人の決め 11-03 09:2x「協力企業管理の発注履歴も 1 行追加」)。ほかは core の詳細のまま。 #}
 {% block tab_rows %}{% if tab.related == "partner_items" %}
 <div class="overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm">
@@ -12,6 +12,38 @@
         <td>{{ row.obj.item.name }}</td>
         <td class="whitespace-nowrap font-mono">{{ row.obj.partner_part_no }}</td>
         <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif tab.related == "orders" %}
+<div class="overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">受注日</th><th class="font-medium">得意先の注文番号</th><th class="font-medium">状態</th></tr></thead>
+    <tbody>
+      {% for row in tab.rows %}
+      <tr>
+        <td class="whitespace-nowrap font-mono">{% if row.url %}<a class="link link-primary" href="{{ row.url }}">{{ row.obj.order_no }}</a>{% else %}{{ row.obj.order_no }}{% endif %}</td>
+        <td class="whitespace-nowrap">{{ row.obj.order_date|date:"Y-m-d" }}</td>
+        <td class="whitespace-nowrap font-mono">{% if row.obj.customer_order_no %}{{ row.obj.customer_order_no }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+        <td class="whitespace-nowrap">{{ row.obj.get_status_display }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif tab.related == "purchase_orders" %}
+<div class="overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">発注番号</th><th class="font-medium">発注日</th><th class="font-medium">状態</th><th class="font-medium">備考</th></tr></thead>
+    <tbody>
+      {% for row in tab.rows %}
+      <tr>
+        <td class="whitespace-nowrap font-mono">{% if row.url %}<a class="link link-primary" href="{{ row.url }}">{{ row.obj.po_no }}</a>{% else %}{{ row.obj.po_no }}{% endif %}</td>
+        <td class="whitespace-nowrap">{{ row.obj.order_date|date:"Y-m-d" }}</td>
+        <td class="whitespace-nowrap">{{ row.obj.get_status_display }}</td>
+        <td>{% if row.obj.note %}{{ row.obj.note }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -85,8 +85,9 @@ class PartnerListView(BaseListView):
 class PartnerDetailView(BaseDetailView):
     model = Partner
     screen_name = "取引先の詳細"
-    screen_help = "取引先の項目と、取引先ごとの品番。"
-    tabs = (("取引先ごとの品番", "partner_items"),)
+    screen_help = "取引先の項目と、取引先ごとの品番、受注と発注の履歴。"
+    # 受注と発注の履歴は、その部品が入っている会社だけ (土台が hasattr で飛ばす)。本人の決め 11-03 09:2x (協力企業管理の発注履歴)。
+    tabs = (("取引先ごとの品番", "partner_items"), ("受注履歴", "orders"), ("発注履歴", "purchase_orders"))
     template_name = "masters/partner_detail.html"
 
 

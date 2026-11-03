@@ -61,6 +61,13 @@ def test_display_words():
     assert settings_screen._display("partial_shipment", False) == "許さない (False)"
     assert settings_screen._display("hidden_fields", []) == "なし"
     assert settings_screen._display("hidden_fields", ["a", "b"]) == "a・b"
+    # 辞書の設定 (権限の判定。N36 が conf.DEFAULTS に足す) は「中の鍵: 値」を「・」で。知らない鍵はそのまま
+    assert (
+        settings_screen._display("access_control", {"department": "log", "write": "on", "money": "off"})
+        == "部署: 記録だけ (log)・編集の権限: 有効 (on)・金額の閲覧: 使わない (off)"
+    )
+    assert settings_screen._display("access_control", {}) == "なし"
+    assert settings_screen._display("unknown_dict", {"a": 1}) == "a: 1"
 
 
 def test_user_menu_has_settings_and_sidebar_has_no_connections(logged_in):
