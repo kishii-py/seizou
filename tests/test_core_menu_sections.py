@@ -22,7 +22,7 @@ def test_default_sections_follow_the_decided_order(db):
     groups = sections([*core_menu(), *menu()])
 
     assert _labels(groups)[:5] == ["ダッシュボード", "受注管理", "協力企業管理", "製造", "出荷と請求"]
-    assert "受注" in _entries(groups, "受注管理") and "受信箱" in _entries(groups, "受注管理")
+    assert "受注" in _entries(groups, "受注管理") and "届いた注文" in _entries(groups, "受注管理")
     assert _entries(groups, "協力企業管理") == ["発注"]
     assert "出荷" in _entries(groups, "出荷と請求") and "請求書" in _entries(groups, "出荷と請求")
     # アカウント管理は左のメニューに出ない (設定の画面から開く)
@@ -39,7 +39,7 @@ def test_company_menu_setting_groups_screens(db, settings):
     groups = sections([*core_menu(), *menu()])
 
     assert _labels(groups)[:3] == ["ダッシュボード", "営業", "現場"]
-    assert _entries(groups, "営業") == ["受注", "受信箱"]
+    assert _entries(groups, "営業") == ["受注", "届いた注文"]
     # 同じ画面 (受注) を 2 つの括りに出せる。app で選んだ入口も並ぶ
     assert "受注" in _entries(groups, "現場") and "指示書" in _entries(groups, "現場")
     # 括りに無い入口は「その他」に残る

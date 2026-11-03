@@ -112,7 +112,7 @@ _KINDS = (
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # 日本語の文 (何が起きて、何をすればよいか)。返事の本文と鍵の値は文に入れない。
-_NEXT = "手入力か受信箱で受けてください。"
+_NEXT = "手入力か届いた注文で受けてください。"
 MESSAGE_NO_KEY = f"鍵が無いので読み取りは使えません。{_NEXT}"
 MESSAGE_TOO_LARGE = "ファイルが 20MB を超えています。ページを分けるか、解像度を下げてから置き直してください。"
 MESSAGE_UNREADABLE_TYPE = "読めない形式です。PDF・PNG・JPEG の注文書を置いてください。"

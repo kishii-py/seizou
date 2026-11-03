@@ -147,7 +147,7 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
     if source not in _SOURCES:
         raise ValueError(
             f"入口 {source!r} は使えません。"
-            "手入力 (manual)・読み取り (intake)・受信箱 (inbox) のどれかにしてください。"
+            "手入力 (manual)・読み取り (intake)・届いた注文 (inbox) のどれかにしてください。"
         )
     if not lines:
         raise ValueError("明細がありません。明細を 1 行以上入れてください。")
