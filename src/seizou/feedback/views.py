@@ -4,8 +4,8 @@
   上書きするのは 11 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
 - 一覧と詳細は get_queryset で自分の分に絞る (世話役 = アカウント管理の権限は全部)。編集の画面は土台の dispatch が
   対象を絞らずに引くので、直せるかは services の update_feedback が見る (直せない人には赤の知らせ)。
-- 口 (状態の変更) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
-  断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る。
+- 口 (状態の変更と削除) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
+  断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る (削除が通ったときだけ一覧へ)。
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
   (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら、中身の無い 200 で編集の画面へ移す (土台の form_valid と同じ形)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
@@ -122,6 +122,23 @@ def sent(request, pk):
     else:
         messages.success(request, "送った状態にしました。")
     return _back_to_detail(pk)
+
+
+@login_required
+@require_POST
+def delete(request, pk):
+    """下書きを削除する (書いた人か世話役。下書きだけ)。消したら一覧へ、断られたら赤の知らせで詳細へ戻る。
+
+    対象は一覧と同じ絞り (_visible_to) の中から引く (ほかの人の下書きは 404)。
+    """
+    feedback = get_object_or_404(_visible_to(Feedback.objects.all(), request.user), pk=pk)
+    try:
+        services.delete_feedback(feedback, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return _back_to_detail(pk)
+    messages.success(request, "下書きを削除しました。")
+    return HttpResponseRedirect(reverse("feedback:feedback_list"))
 
 
 _HTMX_ONLY = "フィードバックの画面からの要求だけを受けます。"

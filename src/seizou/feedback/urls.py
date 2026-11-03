@@ -1,7 +1,7 @@
 """feedback の URL (core の urls.py が /feedback/ に入れる)。
 
 入口は左のメニューの下の「フィードバック」(core/_sidebar.html の include) で、部品の MENU には出さない。
-画面の URL の名前は土台の約束 (feedback_list / _detail / _create / _update)。口は confirm・sent と、AI の聞き取りの ask・reset。
+画面の URL の名前は土台の約束 (feedback_list / _detail / _create / _update)。口は confirm・sent・delete と、AI の聞き取りの ask・reset。
 """
 
 from django.urls import path
@@ -20,6 +20,7 @@ urlpatterns = [
     path("<int:pk>/edit/", views.FeedbackUpdateView.as_view(), name="feedback_update"),
     path("<int:pk>/confirm/", views.confirm, name="confirm"),
     path("<int:pk>/sent/", views.sent, name="sent"),
+    path("<int:pk>/delete/", views.delete, name="delete"),
     path("ask/", views.ask, name="ask"),
     path("reset/", views.reset, name="reset"),
 ]

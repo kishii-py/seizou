@@ -249,3 +249,50 @@ def test_urls():
     assert reverse("feedback:feedback_update", args=[1]) == "/feedback/1/edit/"
     assert reverse("feedback:confirm", args=[1]) == "/feedback/1/confirm/"
     assert reverse("feedback:sent", args=[1]) == "/feedback/1/sent/"
+
+
+def test_delete_button_and_endpoint(client, plain, other, manager):
+    mine = make(plain, "消す下書き")
+    endpoint = f"/feedback/{mine.pk}/delete/"
+
+    client.force_login(plain)
+    html = html_of(client.get(f"/feedback/{mine.pk}/"))
+    assert 'id="feedback-delete"' in html
+    assert f'action="{endpoint}"' in html
+
+    client.force_login(other)
+    assert client.post(endpoint).status_code == 404
+    assert Feedback.objects.filter(pk=mine.pk).exists()
+
+    client.force_login(plain)
+    assert client.get(endpoint).status_code == 405
+    response = client.post(endpoint)
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert not Feedback.objects.filter(pk=mine.pk).exists()
+    assert "下書きを削除しました。" in html_of(client.get("/feedback/"))
+
+    theirs = make(other, "ほかの人の下書き")
+    client.force_login(manager)
+    assert 'id="feedback-delete"' in html_of(client.get(f"/feedback/{theirs.pk}/"))
+    response = client.post(f"/feedback/{theirs.pk}/delete/")
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert not Feedback.objects.filter(pk=theirs.pk).exists()
+    client.get("/feedback/")
+
+    kept = make(plain, "確認済みの物")
+    services.mark_confirmed(kept, manager)
+    detail = f"/feedback/{kept.pk}/"
+    client.force_login(plain)
+    assert 'id="feedback-delete"' not in html_of(client.get(detail))
+    client.force_login(manager)
+    assert 'id="feedback-delete"' not in html_of(client.get(detail))
+    response = client.post(f"/feedback/{kept.pk}/delete/")
+    assert response.status_code == 302 and response["Location"] == detail
+    html = html_of(client.get(detail))
+    assert "bg-error" in html and "下書きだけ" in html
+    assert Feedback.objects.filter(pk=kept.pk).exists()
+
+    client.logout()
+    response = client.post(f"/feedback/{kept.pk}/delete/")
+    assert response.status_code == 302 and reverse("core:login") in response["Location"]
+    assert Feedback.objects.filter(pk=kept.pk).exists()
