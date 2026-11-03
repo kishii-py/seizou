@@ -105,12 +105,27 @@ _KIND_ACTIONS = {
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
     "shipping": ("shipping.ship", "shipping.update_shipment", "shipping.create_delivery_note", "shipping.cancel_delivery_note"),
     "billing": ("billing.create_invoice", "billing.cancel_invoice"),
-    "purchasing": ("purchasing.create_purchase_order", "purchasing.cancel_purchase_order", "connect.send_order"),
+    "purchasing": (
+        "purchasing.create_purchase_order",
+        "purchasing.cancel_purchase_order",
+        "connect.send_order",
+        "purchasing.receive",  # 受入 (N42。協力企業管理の 2 つ目の画面)
+    ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)
 ACTION_KINDS = {action: kind for kind, actions in _KIND_ACTIONS.items() for action in actions}
 #: 権限が要らない action (見る・探す・現場の記録)
-FREE_ACTIONS = frozenset({"progress.record_progress", "attachments.add_attachment", "attachments.remove_attachment"})
+# 権限の要らない action (見る・探す・現場の記録)。在庫の動き (N42) は現場の記録と同じ扱い
+FREE_ACTIONS = frozenset(
+    {
+        "progress.record_progress",
+        "attachments.add_attachment",
+        "attachments.remove_attachment",
+        "stock.record_finished",
+        "stock.record_issued",
+        "stock.adjust",
+    }
+)
 #: アカウント管理の門で守る action (3 状態の外)
 ACCOUNT_ACTIONS = frozenset({"accounts.issue_account", "accounts.update_account", "accounts.delete_account"})
 #: 金額が主な登録 → (書面, 操作)
