@@ -1,0 +1,13 @@
+{% load seizou_icons %}
+{# 使い方の小窓の中身。core.manual.manual_fragment が htmx の要求に返す。小窓の枠は base.html の #seizou-modal の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
+<div class="flex items-start justify-between gap-4">
+  <h3 class="min-w-0 truncate text-lg font-bold" title="{{ screen.name }}">{{ screen.name }}</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<div class="mt-4 max-h-[70vh] overflow-y-auto [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">
+  {% if html %}{{ html }}{% elif unreadable %}<p class="text-error">説明のファイルを UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>{% else %}<p class="text-base-content/70">この画面の説明書はまだありません。<code>/seizou:manual</code> で書けます。</p>{% endif %}
+</div>
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  <a class="btn btn-outline border-base-300" href="{{ manual_url }}">{% icon "book" "size-4" %}使い方の全部を開く</a>
+</div>

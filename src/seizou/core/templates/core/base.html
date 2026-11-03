@@ -38,6 +38,7 @@ seizou_tags.master_link の link
           <div class="flex items-center gap-2">
             {% if screen_icon %}{% icon screen_icon "size-7 text-base-content/70" %}{% else %}{% app_icon screen_app "size-7 text-base-content/70" %}{% endif %}
             <h1 class="truncate text-3xl font-bold tracking-tight">{{ screen_name }}</h1>
+            {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
           </div>
           {% if screen_help %}<p class="mt-2 text-base-content/70">{{ screen_help }}</p>{% endif %}
         </div>
