@@ -20,6 +20,7 @@ from . import (
     r14_no_raw_sql,
     r15_inherit_base_view,
     r16_no_core_model_change,
+    r17_http_outside_atomic,
     r18_csrf_single_place,
     r19_no_dynamic_classnames,
 )
@@ -35,6 +36,7 @@ RULES = (
     r14_no_raw_sql,
     r15_inherit_base_view,
     r16_no_core_model_change,
+    r17_http_outside_atomic,
     r18_csrf_single_place,
     r19_no_dynamic_classnames,
 )
