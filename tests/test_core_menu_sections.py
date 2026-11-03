@@ -23,7 +23,7 @@ def test_default_sections_follow_the_decided_order(db):
 
     assert _labels(groups)[:5] == ["ダッシュボード", "受注管理", "協力企業管理", "製造", "出荷と請求"]
     assert "受注" in _entries(groups, "受注管理") and "届いた注文" in _entries(groups, "受注管理")
-    assert _entries(groups, "協力企業管理") == ["発注"]
+    assert _entries(groups, "協力企業管理") == ["発注", "受入"]
     assert "出荷" in _entries(groups, "出荷と請求") and "請求書" in _entries(groups, "出荷と請求")
     # アカウント管理は左のメニューに出ない (設定の画面から開く)
     assert "アカウント管理" not in [item["label"] for group in groups for item in group["items"]]

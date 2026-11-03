@@ -21,12 +21,16 @@
           <th>単位</th>
           <th class="text-right">単価</th>
           <th class="text-right">金額</th>
+          <th class="text-right">受入の数</th>
+          <th class="text-right">受入の残</th>
           <th>納期</th>
           <th>備考</th>
+          <th>操作</th>
         </tr>
       </thead>
       <tbody>
-        {% for line in object.lines.all %}
+        {# 明細は受入の数 (received_total) と受入の残 (remaining_total) を足した物 (発注の読むだけの property)。 #}
+        {% for line in object.lines_with_received %}
         <tr>
           <td class="text-right tabular-nums">{{ line.line_no }}</td>
           <td>{% master_link line.item %}</td>
@@ -34,8 +38,11 @@
           <td>{{ line.unit }}</td>
           <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|comma }}{% endif %}</td>
           <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
+          <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
+          {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
+          <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

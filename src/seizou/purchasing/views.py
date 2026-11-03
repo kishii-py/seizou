@@ -7,25 +7,43 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 from seizou.connect import services as connect_services
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
+from seizou.core.views import BaseSelectView
+
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
+from .forms import ReceiptForm
 from .models import PurchaseOrder
+from .models import PurchaseOrderLine, Receipt
 
 
 class PurchaseOrderListView(BaseListView):
     model = PurchaseOrder
     screen_name = "発注"
     screen_help = "協力企業への発注。行を押すと明細と、相手へ送った記録が見られます。"
-    columns = ("po_no", "partner", "order_date", "status", "replied_at", "note")
+    # received_total・receive_remaining は annotate の列 (purchasing.services.annotate_order_received の Subquery)。
+    # 土台の ColumnSpec では並び替えと数の欄にならない (字のまま出る)。
+    columns = (
+        "po_no",
+        "partner",
+        "order_date",
+        "status",
+        "replied_at",
+        ("received_total", "受入の数"),
+        ("receive_remaining", "受入の残"),
+        "note",
+    )
     search_fields = ("po_no", "partner__name", "partner__code")
     ordering = ("-order_date", "-id")
+
+    def get_queryset(self):
+        return services.annotate_order_received(super().get_queryset().select_related("partner"))
 
 
 class PurchaseOrderDetailView(BaseDetailView):
     model = PurchaseOrder
     screen_name = "発注の詳細"
     screen_help = "発注の項目と明細、相手へ送った記録。「作成」のときだけ送り直しと取消ができます。"
-    tabs = (("送った記録", "outbox_messages"),)
+    tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
     template_name = "purchasing/purchaseorder_detail.html"
 
 
@@ -52,3 +70,68 @@ class PurchaseOrderCancelView(BaseFormView):
     service = staticmethod(services.cancel_purchase_order)
     screen_name = "発注を取り消す"
     screen_help = "「作成」の発注を取り消します。理由は備考の末尾に残ります。"
+
+
+# --- 受入 (協力企業管理の 2 つ目の画面) ---
+
+
+class ReceiptListView(BaseListView):
+    model = Receipt
+    screen_name = "受入"
+    screen_help = (
+        "協力企業から受け入れた物の記録。受け入れた数 × 発注の単価が支払の金額になります。"
+        "上の表は取引先ごとの先月と今月の支払の見込みです。"
+    )
+    columns = (
+        ("received_on", "受入日"),
+        ("line__purchase_order__po_no", "発注番号"),
+        ("line__purchase_order__partner", "取引先"),
+        ("line__item", "部品"),
+        "qty",
+        "amount",
+        "note",
+    )
+    search_fields = (
+        "line__purchase_order__po_no",
+        "line__purchase_order__partner__name",
+        "line__item__part_no",
+        "line__item__name",
+    )
+    ordering = ("-received_on", "-pk")
+    template_name = "purchasing/receipt_list.html"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("line__purchase_order__partner", "line__item")
+
+
+class ReceiptDetailView(BaseDetailView):
+    model = Receipt
+    screen_name = "受入の詳細"
+    screen_help = "受入 1 件の発注の明細・受入日・数量・金額 (受け入れた数 × 発注の単価) と、入れた人。"
+
+
+class ReceiptCreateView(BaseFormView):
+    model = Receipt
+    form_class = ReceiptForm
+    service = staticmethod(services.receive)
+    screen_name = "受入の新規登録"
+    screen_help = (
+        "発注の明細を字で探して選び、受入日と数量を入れて保存します。"
+        "発注の詳細の「受入を登録」から開くと、明細と残の数が入っています。"
+    )
+
+
+class PurchaseOrderLineSelectView(BaseSelectView):
+    model = PurchaseOrderLine
+    search_fields = ("purchase_order__po_no", "purchase_order__partner__name", "item__part_no", "item__name")
+
+    def get_queryset(self):
+        # 受入の残が 0 より大きく、発注が取消でない明細だけ。表示の字は PurchaseOrderLine.__str__ (発注番号-行番号 品番 品名)。
+        lines = PurchaseOrderLine.objects.select_related("purchase_order", "item")
+        return (
+            services.annotate_received(lines)
+            .filter(remaining_total__gt=0)
+            .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+            # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
+            .order_by("purchase_order__po_no", "line_no", "pk")
+        )

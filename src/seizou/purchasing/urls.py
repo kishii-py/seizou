@@ -10,7 +10,7 @@ from . import views
 app_name = "purchasing"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-MENU = [("発注", "purchasing:purchaseorder_list")]
+MENU = [("発注", "purchasing:purchaseorder_list"), ("受入", "purchasing:receipt_list")]
 
 urlpatterns = [
     path("orders/", views.PurchaseOrderListView.as_view(), name="purchaseorder_list"),
@@ -18,4 +18,8 @@ urlpatterns = [
     path("orders/<int:pk>/", views.PurchaseOrderDetailView.as_view(), name="purchaseorder_detail"),
     path("orders/<int:pk>/send/", views.PurchaseOrderSendView.as_view(), name="purchaseorder_send"),
     path("orders/<int:pk>/cancel/", views.PurchaseOrderCancelView.as_view(), name="purchaseorder_cancel"),
+    path("receipts/", views.ReceiptListView.as_view(), name="receipt_list"),
+    path("receipts/new/", views.ReceiptCreateView.as_view(), name="receipt_create"),
+    path("receipts/<int:pk>/", views.ReceiptDetailView.as_view(), name="receipt_detail"),
+    path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
 ]

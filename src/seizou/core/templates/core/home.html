@@ -17,6 +17,7 @@
     <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
   {% if stat.url %}</a>{% else %}</div>{% endif %}
   {% endfor %}
+  {% if "purchasing" in seizou.parts %}{% include "purchasing/_home_payable.html" %}{% endif %}
 </div>
 {% endif %}
 {% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}

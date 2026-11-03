@@ -4,6 +4,7 @@
 - 指示書・工程・実績の合計は prefetch_for で 1 ページ分まとめて読む。annotate_remaining の後に多の join を足さない
   (出荷の Sum と同じ問い合わせに指示書の join を足すと、残が重なって数えられるため)。BoardRow は .all() だけを使う。
 - 部品 (workorders・progress) が無い会社では、指示書と進捗の値は空 (「未」・空の字・None) で、盤は開く。
+- 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 """
 
@@ -82,6 +83,11 @@ def prefetch_for(queryset):
         .order_by("issued_on", "pk")
         .prefetch_related(Prefetch("steps", queryset=steps))
     )
+    if apps.is_installed("seizou.stock"):
+        # 在庫数は Subquery なので、annotate_remaining の後に当てても残は変わらず、問い合わせの数も増えない。
+        from seizou.stock.services import annotate_balance
+
+        queryset = annotate_balance(queryset, "item_id")
     return queryset.prefetch_related(Prefetch("workorders", queryset=workorders))
 
 
@@ -260,6 +266,21 @@ class BoardRow:
     def is_overdue(self) -> bool:
         return self.days_left is not None and self.days_left < 0
 
+    # --- 在庫 ---
+    @cached_property
+    def stock_balance(self):
+        """在庫数 (読むだけ)。stock の部品が無ければ None。annotate の stock_balance があればそれ、無ければ stock.services.balance (関数の試験のため)。"""
+        if not apps.is_installed("seizou.stock"):
+            return None
+        if "stock_balance" in self.line.__dict__:
+            value = self.line.__dict__["stock_balance"]
+            if value is None or isinstance(value, Decimal):
+                return value
+            return Decimal(str(value))
+        from seizou.stock.services import balance
+
+        return balance(self.line.item)
+
     # --- 判断 ---
     @cached_property
     def remaining(self) -> Decimal:
@@ -273,7 +294,7 @@ class BoardRow:
     def judgement_code(self) -> str:
         """判断の印の code。上から順に最初に当たった物 (決まった規則だけ。自動の判断はしない)。
 
-        1 取消: 受注が取消 / 2 出荷済み: 残が 0 以下 / 3 出荷できる: 完成の数が残以上 /
+        1 取消: 受注が取消 / 2 出荷済み: 残が 0 以下 / 3 出荷できる: 完成の数が残以上、か、在庫が残以上 /
         4 遅れ: 納期が今日より前 / 5 指示書が要る: 指示書の数量の合計が残より少ない / 6 製造中: ほか。
         """
         if self.line.order.status == Order.STATUS_CANCELLED:
@@ -281,7 +302,7 @@ class BoardRow:
         remaining = self.remaining
         if remaining <= 0:
             return "done"
-        if self.completed_total >= remaining:
+        if self.completed_total >= remaining or (self.stock_balance is not None and self.stock_balance >= remaining):
             return "ship"
         if self.is_overdue:
             return "late"
