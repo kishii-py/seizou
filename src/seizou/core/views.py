@@ -609,6 +609,9 @@ class BaseFormView(ScreenMixin, FormView):
     service = None
     template_name = "core/form.html"
     success_message = "保存しました。"
+    #: 削除の画面 (service の名前が DELETE_SERVICE_PREFIXES で始まる) の知らせ
+    delete_message = "削除しました。"
+    DELETE_SERVICE_PREFIXES = ("delete_", "remove_")
     object = None
 
     # --- 対象 (直すとき) ---
@@ -708,7 +711,8 @@ class BaseFormView(ScreenMixin, FormView):
         except ValueError as exc:
             # 部品の決まり (番号の無い物。品番の一意など) は日本語の文の ValueError。赤の知らせにする。
             return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
-        messages.success(self.request, self.success_message)
+        deleted = self.get_service().__name__.startswith(self.DELETE_SERVICE_PREFIXES)
+        messages.success(self.request, self.delete_message if deleted else self.success_message)
         url = self.get_success_url_for(result)
         if self.request.headers.get("HX-Request"):
             response = HttpResponse(status=200)
