@@ -17,6 +17,11 @@ from .models import PurchaseOrderLine, Receipt
 
 
 class PurchaseOrderListView(BaseListView):
+    """発注の一覧。
+
+    使う人: 生産管理 / いつ: 協力企業に出すと決めたときと、発注の状態を見るとき / 何のために: 協力企業への発注と送った記録を持つ / 次にすること: 「新規登録」か行から詳細へ。受入は受入の画面
+    """
+
     model = PurchaseOrder
     screen_name = "発注"
     screen_help = "協力企業への発注。行を押すと明細と、相手へ送った記録が見られます。"
@@ -40,6 +45,11 @@ class PurchaseOrderListView(BaseListView):
 
 
 class PurchaseOrderDetailView(BaseDetailView):
+    """発注の詳細。
+
+    使う人: 生産管理 / いつ: 発注の中身と相手の回答を確かめるとき / 何のために: 明細・送った記録・受入を見る / 次にすること: 「受入を登録」へ。「作成」のままなら送り直しか取消
+    """
+
     model = PurchaseOrder
     screen_name = "発注の詳細"
     screen_help = "発注の項目と明細、相手へ送った記録。「作成」のときだけ送り直しと取消ができます。"
@@ -48,6 +58,11 @@ class PurchaseOrderDetailView(BaseDetailView):
 
 
 class PurchaseOrderCreateView(BaseFormView):
+    """発注の新規登録の入力。
+
+    使う人: 生産管理 / いつ: 協力企業に出すと決めたとき / 何のために: 協力企業に注文を送る / 次にすること: 相手の届いた注文に届く。物が届いたら受入
+    """
+
     model = PurchaseOrder
     form_class = PurchaseOrderForm
     service = staticmethod(services.create_purchase_order)
@@ -57,6 +72,11 @@ class PurchaseOrderCreateView(BaseFormView):
 
 
 class PurchaseOrderSendView(BaseFormView):
+    """注文を送り直す確かめの入力。
+
+    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「作成」の発注をもう一度送る / 次にすること: 発注の詳細の送った記録で確かめる
+    """
+
     model = PurchaseOrder
     form_class = SendForm
     service = staticmethod(connect_services.send_order)
@@ -65,6 +85,11 @@ class PurchaseOrderSendView(BaseFormView):
 
 
 class PurchaseOrderCancelView(BaseFormView):
+    """発注を取り消す確かめの入力。
+
+    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「作成」の発注を取り消す / 次にすること: 発注の一覧へ戻る
+    """
+
     model = PurchaseOrder
     form_class = CancelForm
     service = staticmethod(services.cancel_purchase_order)
@@ -76,6 +101,11 @@ class PurchaseOrderCancelView(BaseFormView):
 
 
 class ReceiptListView(BaseListView):
+    """受入の一覧。
+
+    使う人: 生産管理・経理 / いつ: 協力企業から物が届いたときと、月の支払の見込みを見るとき / 何のために: 受け入れた数と支払の見込みを見る / 次にすること: 「新規登録」で受入を記録
+    """
+
     model = Receipt
     screen_name = "受入"
     screen_help = (
@@ -105,12 +135,22 @@ class ReceiptListView(BaseListView):
 
 
 class ReceiptDetailView(BaseDetailView):
+    """受入の詳細。
+
+    使う人: 生産管理・経理 / いつ: 受入 1 件を確かめるとき / 何のために: 発注の明細・受入日・数量・金額を見る / 次にすること: 発注の詳細へ
+    """
+
     model = Receipt
     screen_name = "受入の詳細"
     screen_help = "受入 1 件の発注の明細・受入日・数量・金額 (受け入れた数 × 発注の単価) と、入れた人。"
 
 
 class ReceiptCreateView(BaseFormView):
+    """受入の新規登録の入力。
+
+    使う人: 生産管理 / いつ: 協力企業から物が届いたとき / 何のために: 発注の明細ごとに受け入れた日と数を記録する (在庫の入庫になる) / 次にすること: 受入の一覧で支払の見込みを見る
+    """
+
     model = Receipt
     form_class = ReceiptForm
     service = staticmethod(services.receive)
