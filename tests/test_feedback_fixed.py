@@ -1,5 +1,7 @@
 """フィードバックの「直した」(状態と記録・詳細の「直したと記録する」と「直しました」の節・ログインのときの 1 回の知らせ・一覧の印)。本物の API は呼ばない。題と名前は作り物。"""
 
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -323,3 +325,24 @@ def test_new_fix_after_seen_notifies_again(client, plain, manager):
     html = html_of(client.get("/feedback/"))
     assert "「出荷の画面で日付がずれる」(1 件)" in html
     assert "「受注の一覧で並びが戻る」" not in html
+
+
+# ---- 4. 一覧の「直した」の印 ----
+
+
+def test_list_marks_fixed_rows(client, plain, manager):
+    make(plain, "下書きの題")
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "", manager)
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/"))
+    assert html.count("badge badge-soft badge-success") == 1
+    assert re.search(r'badge-success">直した<', html)
+    assert html.count('<tr id="row-') == 2
+    assert f'href="/feedback/{fixed.pk}/"' in html
+
+    html = html_of(client.get("/feedback/?status=fixed", HTTP_HX_REQUEST="true"))
+    assert "<html" not in html
+    assert html.count('<tr id="row-') == 1
+    assert html.count("badge badge-soft badge-success") == 1
