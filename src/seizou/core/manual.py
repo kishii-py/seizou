@@ -22,10 +22,17 @@
   命令 manage.py seizou_manual_pdf は、同じ冊子を manual/使い方.pdf に書き出す (--out で書き出し先を替える)。
   冊子に絵は入らない (帳票の部品が manual/images/ を読まないため)。
   表紙の主色は BOOKLET_PRIMARY_COLOR の固定の 1 色 (会社の行に色の列が無い)。副題は BOOKLET_SUBTITLE。
+
+小窓 (画面と枠の「?」):
+  /manual/fragment/<anchor>/ (manual_fragment) は、htmx の要求に、その画面の断片を小窓の中身 (core/_manual_fragment.html) にして返す。
+  ?part=<h3 の id> を付けると、断片のその <h3 id="…"> から次の <h3 か </section> の前までだけを出す。無ければ画面の全部を出す。
+  htmx でない要求 (新しいタブ・JS の無いとき) は /manual/#<anchor> へ移す。anchor が画面の目録に無ければ 404。
+  絵の相対の道 (src="images/…") は、小窓を開いたページの道で解けないように /manual/images/ に直して出す (置き場のファイルは直さない)。
 """
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from datetime import timezone as dt_timezone
 from importlib import metadata
@@ -36,6 +43,8 @@ from django.contrib.auth.decorators import login_required
 from django.db import DatabaseError
 from django.http import FileResponse, Http404
 from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.safestring import mark_safe
@@ -74,6 +83,18 @@ PDF_FILENAME = "seizou-manual.pdf"
 
 #: PDF を作れないときの知らせ (shipping・manuals の PDF_NOTICE と同じ字。ほかの app の views は import しない)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+#: 枠を選ぶ GET の鍵 (/manual/fragment/<anchor>/?part=<h3 の id>)
+PART_PARAM = "part"
+
+#: 枠の id の形。外れた値は「無い」と同じ扱い (画面の全部を出す)。値を HTML に戻さない
+PART_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+#: 小窓の中身 (小窓の枠は base.html の #seizou-modal の 1 か所)
+FRAGMENT_TEMPLATE = "core/_manual_fragment.html"
+
+#: 断片の無い画面の 1 文の前半 (テンプレートが /seizou:manual の案内を続ける)
+MISSING_SENTENCE = "この画面の説明書はまだありません。"
 
 #: 冊子の主色 (表紙の帯と題・章の頭の帯と番号)。会社の行に色の列が無いので固定の濃い青
 BOOKLET_PRIMARY_COLOR = "#1f3a5f"
@@ -242,3 +263,73 @@ def manual_pdf(request):
     response = HttpResponse(data, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{PDF_FILENAME}"'
     return response
+
+
+def screen_for_anchor(anchor: str):
+    """断片の名前 (anchor) の画面 (目録の Screen)。目録に無い名前 (.. や : 入り・前書きの index も) なら None。
+
+    目録は 1 回だけ歩く (URL の木を読むので、1 要求に 1 回)。
+    """
+    for screen in all_screens():
+        if fragment_name(screen.url_name) == anchor:
+            return screen
+    return None
+
+
+def absolute_images(html: str) -> str:
+    """断片の中の絵の相対の道 (src="images/…") を、使い方のページの道 (/manual/images/…) に直した字。
+
+    小窓は /manual/ でないページに差し込まれるので、相対の道のままでは絵が出ない。置き場のファイルは直さない。
+    """
+    return html.replace('src="images/', f'src="{reverse("core:manual")}images/')
+
+
+def fragment_body(html: str) -> str:
+    """画面の全部を小窓に出すときの中身。最初の <h2>…</h2> を 1 つだけ外す (小窓の題が画面の名前を出すので、2 度出さない)。"""
+    return re.sub(r"<h2\b[^>]*>.*?</h2>", "", html, count=1, flags=re.S)
+
+
+def fragment_part(html: str, part: str | None) -> str | None:
+    """断片のうち、枠の見出し <h3 id="<part>"> から、次の <h3 か </section> の手前まで (無ければ末尾まで)。
+
+    part の形が PART_ID に合わない・その見出しが断片に無いなら None (口が画面の全部に落とす)。
+    """
+    if not part or not PART_ID.fullmatch(part):
+        return None
+    start = re.search(rf'<h3\b[^>]*\sid="{re.escape(part)}"', html)
+    if start is None:
+        return None
+    end = re.compile(r"<h3\b|</section>").search(html, start.end())
+    return html[start.start() : end.start() if end else len(html)]
+
+
+def fragment_for_modal(fragment: str, part: str | None) -> str:
+    """小窓に出す字。枠 (part) が断片にあればその枠だけ、無ければ画面の全部 (最初の <h2> を外す)。絵の道は直す。"""
+    piece = fragment_part(fragment, part)
+    if piece is None:
+        piece = fragment_body(fragment)
+    return absolute_images(piece)
+
+
+@login_required
+@never_cache
+def manual_fragment(request, anchor: str):
+    """画面と枠の「?」が開く小窓の中身 (その画面の断片。?part=<h3 の id> で枠だけ)。読むだけ。
+
+    htmx でない要求は使い方のページのその画面の所 (/manual/#<anchor>) へ移す。anchor が目録に無ければ 404。
+    part の値は HTML に戻さない。
+    """
+    screen = screen_for_anchor(anchor)
+    if screen is None:
+        raise Http404("この画面の説明書はありません。")
+    manual_url = f"{reverse('core:manual')}#{anchor}"
+    if not request.headers.get("HX-Request"):
+        return HttpResponseRedirect(manual_url)
+    fragment = read_fragment(anchor)
+    unreadable = fragment is UNREADABLE
+    html = None if fragment is None or unreadable else mark_safe(fragment_for_modal(fragment, request.GET.get(PART_PARAM)))
+    return render(
+        request,
+        FRAGMENT_TEMPLATE,
+        {"screen": screen, "html": html, "unreadable": unreadable, "manual_url": manual_url},
+    )

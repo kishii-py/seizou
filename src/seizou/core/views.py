@@ -205,6 +205,7 @@ class ScreenMixin(LoginRequiredMixin):
         context["screen_help"] = self.screen_help
         context["screen_app"] = self.screen_app()
         context["screen_icon"] = self.screen_icon
+        context["screen_anchor"] = (getattr(self.request.resolver_match, "view_name", "") or "").replace(":", "_") if hasattr(self, "request") else ""
         return context
 
 

@@ -5,7 +5,7 @@
 {% block heading %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
-    <p class="flex items-center gap-2 text-xs text-base-content/50">{% app_icon screen_app "size-4" %}{{ screen_name }}</p>
+    <p class="flex items-center gap-2 text-xs text-base-content/50">{% app_icon screen_app "size-4" %}{{ screen_name }}{% include "core/_screen_help.html" with part="" label="この画面の説明" %}</p>
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
       {% if status %}<span class="badge badge-soft badge-primary gap-2"><span class="status status-primary" aria-hidden="true"></span>{{ status }}</span>{% endif %}
@@ -25,7 +25,7 @@
     <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
-    <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">基本</p>{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
     <dl class="grid gap-x-6 sm:grid-cols-2">
       {% for field in fields %}
       <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
@@ -55,6 +55,7 @@
     <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">{{ tab.label }}</p>{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
     {% if tab.rows %}
     {% block tab_rows %}
     <ul class="divide-y divide-base-200">
