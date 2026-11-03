@@ -18,7 +18,9 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   指示書 (workorders.yaml)・出荷 (shipments.yaml)・納品書 (delivery_notes.yaml)・請求書 (invoices.yaml)。
   受注の明細は 得意先の取引先コード × 得意先の注文番号 × 行番号、出荷は 受注の明細 × 出荷日 で指す。
   納品書と指示書の発行日は、services が今日にするので、読み込みの日になる。
-- 最後に、部品が持つ種 (部品の demo_seed.load(seeds_dir, user)。今は業務マニュアル = seizou.manuals) を呼ぶ。
+- 最後に、部品が持つ種 (部品の demo_seed.load(seeds_dir, user)) を PART_SEEDS の順に呼ぶ。業務マニュアル・権限・在庫・出荷の知らせと検収・入金 の 5 つ。
+  受注の後 (つながりの前) に、部品の demo_seed に load_after_orders(seeds_dir, user) があれば先に呼ぶ
+  (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため。数は同じ種類に足し、出力の行は 1 行)。
   部品が入っていないときと、入れた物も飛ばした物も 0 のときは、出力の行を出さない。
 """
 
@@ -620,7 +622,8 @@ def _load_shipments(seeds_dir, user, notices):
             placed.add((line.pk, shipped_at))
             qty = _coerce(qty_field, entry.get("数量"))
             note = _coerce(note_field, entry.get("備考"))
-            services.ship(line, qty, shipped_at, user, note=note)
+            # 作り物の種は相手に送らない (届いた注文の写しの受注の出荷も、出荷の知らせを送らず返事の欄に書く)
+            services.ship(line, qty, shipped_at, user, note=note, send=False)
             made += 1
     return made, skipped
 
@@ -719,6 +722,29 @@ def _load_part_seed(app, seeds_dir, user):
     return made, skipped
 
 
+def _load_part_seeds_after_orders(seeds_dir, user):
+    """部品の demo_seed.load_after_orders(seeds_dir, user) を、受注の後・出荷の前に呼ぶ (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため)。
+
+    返す物は 種類 → (入れた, 飛ばした) の辞書。口の無い部品と 0 件の部品は入れない。
+    """
+    found = {}
+    for kind, app in PART_SEEDS:
+        if not apps.is_installed(app):
+            continue
+        marker = PART_SEED_MARKERS.get(app)
+        if marker is not None and not (Path(seeds_dir) / marker).is_file():
+            continue
+        load_early = getattr(import_module(f"{app}.demo_seed"), "load_after_orders", None)
+        if load_early is None:
+            continue
+        counts = load_early(seeds_dir, user)
+        made, skipped = counts["入れた"], counts["飛ばした"]
+        if made == 0 and skipped == 0:
+            continue
+        found[kind] = (made, skipped)
+    return found
+
+
 def load(seeds_dir):
     """種のフォルダ (Path) を読んで入れる。種類ごとの {"入れた": n, "飛ばした": m} と、「注意」の文の並びを返す。"""
     seeds_dir = Path(seeds_dir)
@@ -730,10 +756,13 @@ def load(seeds_dir):
     notices: list[str] = []
     summary: dict = {}
     read_more: list[str] = []
+    early: dict = {}
     with transaction.atomic():
         for kind in KINDS:
             made, skipped = LOADERS[kind](seeds_dir, user, notices)
             summary[kind] = {"入れた": made, "飛ばした": skipped}
+            if kind == "受注":
+                early = _load_part_seeds_after_orders(seeds_dir, user)
         for kind in MORE_KINDS:
             result = MORE_LOADERS[kind](seeds_dir, user, notices)
             if result is not None:
@@ -742,6 +771,10 @@ def load(seeds_dir):
             summary[kind] = {"入れた": made, "飛ばした": skipped}
         for kind, app in PART_SEEDS:
             result = _load_part_seed(app, seeds_dir, user)
+            if kind in early:
+                # 受注の後の口の数は同じ種類に足す (出力の行は部品の種の段に 1 行)
+                before = result or (0, 0)
+                result = (before[0] + early[kind][0], before[1] + early[kind][1])
             if result is not None:
                 read_more.append(kind)
             made, skipped = result or (0, 0)

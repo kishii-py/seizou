@@ -583,14 +583,25 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         return existing
 
 
-def record_inbox(partner, payload, user, *, message_id=None):
+def record_inbox(partner, payload, user, *, message_id=None, received_at=None):
     """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しのため)。
 
     署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
     user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
+    received_at を渡すと、届いた日時をその値にする (timezone 付きの datetime。作り物の種の「届いた日時」のため。渡さなければ今)。同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)。
     """
+    # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
+    import datetime
+
+    from django.utils import timezone
+
     if not isinstance(payload, dict):
         raise ValueError("注文のデータは辞書 (send_order が作る形) にしてください。")
+    if received_at is not None and (
+        not isinstance(received_at, datetime.datetime) or timezone.is_naive(received_at)
+    ):
+        raise ValueError("届いた日時は timezone 付きの日時にしてください。")
+    values = {} if received_at is None else {"received_at": received_at}
     if message_id is None:
         message_id = uuid.uuid4()
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す (receive と同じ形)。
@@ -602,6 +613,7 @@ def record_inbox(partner, payload, user, *, message_id=None):
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
                 payload=payload,
+                **values,
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
@@ -620,9 +632,10 @@ MESSAGE_NO_LINES = (
     "注文のデータに明細がありません。この注文は断り、送る側に送り直してもらってください。"
 )
 MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから断ってください。"
+MESSAGE_REPLY_SEED = "作り物の種の読み込みなので注文回答を送っていません (相手の記録は相手の種が持つ)。"
 
 
-def accept(inbox, item_mapping, user):
+def accept(inbox, item_mapping, user, *, send=True):
     """受信箱の注文のデータを受け入れて、受注 (入口 = 受信箱) を作る (R10・R11)。
 
     item_mapping は相手の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引く。
@@ -630,6 +643,7 @@ def accept(inbox, item_mapping, user):
     対応の追加・受注の作成・受信箱の状態の更新は 1 つのトランザクションで行う (どれかが失敗したら全部戻る)。
     受け入れ済みの 2 回目は RuleViolation("R11")、断った物と形の違う物は日本語の ValueError。
     得意先の役でない取引先は create_order の ValueError がそのまま出る。返す物は作った Order。
+    send が偽なら注文回答を送らず (送る口を呼ばない)、番号も付けず、返事の欄に MESSAGE_REPLY_SEED を書く (作り物の種の読み込みのため)。
     """
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
@@ -680,10 +694,15 @@ def accept(inbox, item_mapping, user):
         )
         locked.status = Inbox.STATUS_ACCEPTED
         locked.order = order
-        locked.save(update_fields=["status", "order"])
+        if send:
+            locked.save(update_fields=["status", "order"])
+        else:
+            locked.reply_response = MESSAGE_REPLY_SEED
+            locked.save(update_fields=["status", "order", "reply_response"])
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
-    send_reply(locked, user)
+    if send:
+        send_reply(locked, user)
     return order
 
 

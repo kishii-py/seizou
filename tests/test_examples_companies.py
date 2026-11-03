@@ -189,7 +189,7 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     connections = load_seed_yaml("a_machining", "connections.yaml")["つながり"]
     b_port = load_answers("b_plating")["port"]
 
-    assert len(connections) == 1
+    assert [c["向き"] for c in connections] == ["送る", "受ける"]
     connection = connections[0]
     # 鍵の値を入れる欄が無いこと
     assert set(connection) == CONNECTION_KEYS
@@ -212,11 +212,19 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     assert partner["取引先の種類"] == "協力企業"
     assert partner["名前"] == load_answers("b_plating")["name"]
 
+    # 逆向き (B 社から注文回答と出荷の知らせを受ける)。取引先と鍵の置き場の名前は送る向きと同じ、受け口の URL は空
+    back = connections[1]
+    assert set(back) == CONNECTION_KEYS
+    assert back["取引先コード"] == connection["取引先コード"]
+    assert back["鍵の置き場の名前"] == connection["鍵の置き場の名前"]
+    assert back["受け口の URL"] == ""
 
-def test_b_plating_connects_from_a_machining_receive_only():
+
+def test_b_plating_connects_with_a_machining_both_ways():
     connections = load_seed_yaml("b_plating", "connections.yaml")["つながり"]
+    a_port = load_answers("a_machining")["port"]
 
-    assert len(connections) == 1
+    assert [c["向き"] for c in connections] == ["受ける", "送る"]
     connection = connections[0]
     assert set(connection) == CONNECTION_KEYS
     assert connection["向き"] == "受ける"
@@ -230,6 +238,18 @@ def test_b_plating_connects_from_a_machining_receive_only():
     assert partner["名前"] == load_answers("a_machining")["name"]
     assert partner["取引先の種類"] == "得意先"
 
+    # 逆向き (A 社へ注文回答と出荷の知らせを送る)。取引先と鍵の置き場の名前は受ける向きと同じ、受け口は A 社の connect の受け口
+    back = connections[1]
+    assert set(back) == CONNECTION_KEYS
+    assert back["取引先コード"] == connection["取引先コード"]
+    assert back["鍵の置き場の名前"] == connection["鍵の置き場の名前"]
+    url = urlsplit(back["受け口の URL"])
+    assert url.scheme == "http"
+    assert url.port == a_port
+    assert url.path == "/connect/receive/order/"
+    assert not url.query and not url.fragment
+    assert not BLANK_MARK_PATTERN.search(back["受け口の URL"])
+
 
 # ---------------------------------------------------------------- 新しい種のファイル (標準の工程・指示書・出荷・納品書・請求書・図面)
 
@@ -238,6 +258,11 @@ MORE_SEED_YAML_ROOT_KEYS = {
     "shipments.yaml": "出荷",
     "delivery_notes.yaml": "納品書",
     "invoices.yaml": "請求書",
+}
+# 部品の種のファイル (出荷の知らせと検収・入金)。片方の会社にしか無い物があるので、会社ごとに書く
+PART_SEED_YAML_ROOT_KEYS = {
+    "a_machining": {"shipping_notices.yaml": "発注", "payments.yaml": "請求書"},
+    "b_plating": {"acceptances.yaml": "届いた注文", "payments.yaml": "請求書"},
 }
 MORE_SEED_FILES = ("item_processes.csv", *MORE_SEED_YAML_ROOT_KEYS)
 ITEM_PROCESS_HEADER = ["自社品番", "工程コード", "順"]
@@ -255,6 +280,11 @@ def orders_by_key(company_id):
     for order in load_seed_yaml(company_id, "orders.yaml")["受注"]:
         for line_no, line in enumerate(order["明細"], start=1):
             found[(order["得意先の取引先コード"], order["得意先の注文番号"], line_no)] = line["数量"]
+    # 届いた注文の写し (connect の種) も受注になる。出荷の種はこの受注も 取引先コード × 得意先の注文番号 × 行番号 で指す
+    if (company_dir(company_id) / "acceptances.yaml").is_file():
+        for entry in load_seed_yaml(company_id, "acceptances.yaml")["届いた注文"]:
+            for line_no, line in enumerate(entry["明細"], start=1):
+                found[(entry["取引先コード"], entry["相手の発注番号"], line_no)] = line["数量"]
     return found
 
 
@@ -271,6 +301,15 @@ def test_more_seed_files_exist(company_id):
     for name in MORE_SEED_FILES:
         assert (company_dir(company_id) / name).is_file(), name
     for name, root in MORE_SEED_YAML_ROOT_KEYS.items():
+        data = load_seed_yaml(company_id, name)
+        assert set(data) == {root}, name
+        assert isinstance(data[root], list) and data[root], name
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_part_seed_yaml_holds_one_list(company_id):
+    for name, root in PART_SEED_YAML_ROOT_KEYS[company_id].items():
+        assert (company_dir(company_id) / name).is_file(), name
         data = load_seed_yaml(company_id, name)
         assert set(data) == {root}, name
         assert isinstance(data[root], list) and data[root], name

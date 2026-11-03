@@ -1,16 +1,19 @@
 """2 社の作り物の出荷の知らせと検収の種 (core/demo.py の PART_SEEDS が呼ぶ)。
 
-load(seeds_dir, user) が、種のフォルダの acceptances.yaml (B 社。届いた注文の写しと検収) と
-shipping_notices.yaml (A 社。出荷の知らせと注文回答の写し) を読み、services の関数で入れる。
-どちらのファイルも無ければ何もせず {"入れた": 0, "飛ばした": 0} を返す (出力の行を出さない)。
+load_after_orders(seeds_dir, user) が acceptances.yaml (B 社。届いた注文の写しと検収) を、
+load(seeds_dir, user) が shipping_notices.yaml (A 社。出荷の知らせと注文回答の写し) を読み、services の関数で入れる。
+core の demo.load は load_after_orders を受注の後・出荷の前に (出荷と納品書の種が届いた注文の写しの受注を指すため)、
+load を部品の種の段で呼び、2 つの数を同じ種類に足す。
+ファイルが無ければ何もせず {"入れた": 0, "飛ばした": 0} を返す (出力の行を出さない)。
 
 - 書くのは services の関数だけ (connect.services・purchasing.services)。表に直接書かない。標準出力に書かない。
 - 届いた注文の写しは、受け口 (署名の確かめ) を通さずに受信箱に 1 行入れ、受け入れて受注にする (入口は「届いた注文」)。
-  相手の品番は取引先ごとの品番の表 (partner_items.csv) で自社の品目に引く。注文回答は送らない
-  (B 社の種に送る向きのつながりが無いので、受け入れの中の注文回答は相手に届かず、届いた注文の返事の欄に書くだけ)。
+  相手の品番は取引先ごとの品番の表 (partner_items.csv) で自社の品目に引く。受け入れは send=False で呼び、
+  注文回答を相手に送らない (届いた注文の返事の欄に書くだけ)。2 社のつながりは両向き。
 - 出荷の知らせは発注の明細に付ける。注文回答の写しは発注の状態を「作成」→「送った」→「相手が受け入れた」に進める
   (相手に送らず、送った注文の行も作らない)。
-- 相手の会社に HTTP を送らない。種の取引先に向き「送る」のつながりを足さない (足すと受け入れが注文回答を送る)。
+- 相手の会社に HTTP を送らない。受け入れは send=False で呼び、注文回答を相手に送らない (返事の欄に書くだけ)。
+  2 社のつながりは両向き。
 - 2 回入れても重ならない。自然な鍵で既にある物は飛ばす (上書きしない): 届いた注文の写し = 取引先 × 相手の発注番号 の
   受注が既にある、検収 = 受注の明細 × 検収日、出荷の知らせ = 発注の明細 × 相手の出荷番号。
   番号は自然な鍵の字から uuid5 で作る (入れ直しても同じ番号。表の一意の制約が 2 つ目の守り)。
@@ -37,7 +40,7 @@ from .models import Acceptance, ShippingNotice
 
 ACCEPTANCES_FILE = "acceptances.yaml"
 ACCEPTANCES_ROOT = "届いた注文"
-INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "明細", "検収")
+INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "届いた日時", "明細", "検収")
 INBOX_LINE_KEYS = ("相手の品番", "品名", "数量", "単位", "単価", "納期")
 ACCEPTANCE_KEYS = ("行番号", "検収日", "数量")
 
@@ -98,6 +101,33 @@ def _date(raw, label):
         return datetime.date.fromisoformat(str(raw).strip())
     except ValueError as exc:
         raise ValueError(f"{label}「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
+
+
+def _datetime(raw, label):
+    """日時の字か datetime を、timezone 付きの datetime にする (無ければ会社の時刻の帯)。空なら None。
+
+    PyYAML は 2026-10-28 10:15:00 を timezone の無い datetime にして返す。datetime は date の子なので先に見る。
+    時刻の無い日 (date だけ) は日時として読まない。
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    message = f"{label}「{raw}」を日時 (YYYY-MM-DD HH:MM:SS) として読めません。"
+    if isinstance(raw, datetime.datetime):
+        value = raw
+    elif isinstance(raw, datetime.date):
+        raise ValueError(message)
+    else:
+        try:
+            value = datetime.datetime.fromisoformat(str(raw).strip())
+        except ValueError as exc:
+            raise ValueError(message) from exc
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value)
+    return value
 
 
 def _text(raw):
@@ -178,8 +208,14 @@ def _load_inbox(entry, user):
     if order is None:
         message_id = _message_id("inbox", partner.code, order_no)
         payload = _inbox_payload(entry, order_no, message_id)
-        inbox = services.record_inbox(partner, payload, user, message_id=message_id)
-        order = services.accept(inbox, {}, user)
+        inbox = services.record_inbox(
+            partner,
+            payload,
+            user,
+            message_id=message_id,
+            received_at=_datetime(entry.get("届いた日時"), "届いた日時"),
+        )
+        order = services.accept(inbox, {}, user, send=False)
         # 受け入れは渡した行を書き換えず、表の行を取り直して書くので、受注から取り直す (飛ばす道と同じ式)。
         inbox = order.inbox_message
         made += 1
@@ -301,15 +337,20 @@ def _load_notices(path, user):
     return made, skipped
 
 
-def load(seeds_dir, user) -> dict:
-    """種のフォルダの届いた注文の写しと検収・出荷の知らせを入れる。返す物は {"入れた": n, "飛ばした": m}。"""
+def load_after_orders(seeds_dir, user) -> dict:
+    """種のフォルダの届いた注文の写しと検収 (acceptances.yaml。B 社) を入れる。core の demo.load が受注の後・出荷の前に呼ぶ (出荷と納品書の種が、届いた注文の写しの受注を指すため)。返す物は {"入れた": n, "飛ばした": m}。"""
     seeds_dir = Path(seeds_dir)
     made = skipped = 0
     acceptances = seeds_dir / ACCEPTANCES_FILE
     if acceptances.is_file():
-        entry_made, entry_skipped = _load_acceptances(acceptances, user)
-        made += entry_made
-        skipped += entry_skipped
+        made, skipped = _load_acceptances(acceptances, user)
+    return {"入れた": made, "飛ばした": skipped}
+
+
+def load(seeds_dir, user) -> dict:
+    """種のフォルダの出荷の知らせと注文回答の写し (shipping_notices.yaml。A 社) を入れる。返す物は {"入れた": n, "飛ばした": m}。"""
+    seeds_dir = Path(seeds_dir)
+    made = skipped = 0
     notices = seeds_dir / NOTICES_FILE
     if notices.is_file():
         entry_made, entry_skipped = _load_notices(notices, user)

@@ -7,9 +7,14 @@
 #     鍵の置き場の名前: 鍵の値を入れる環境変数の名前 (SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET)
 #     向き: 送る か 受ける
 #
+# 2 社とも相手と両向き (送る・受ける) の 2 件。種の読み込みは相手に HTTP を送らない (受け入れと出荷は送らない形で入れる)。
 # つながりの並び
 つながり:
   - 取引先コード: S001
     受け口の URL: "http://127.0.0.1:8002/connect/receive/order/"
     鍵の置き場の名前: SEIZOU_PARTNER_B_PLATING_SECRET
     向き: 送る
+  - 取引先コード: S001
+    受け口の URL: ""
+    鍵の置き場の名前: SEIZOU_PARTNER_B_PLATING_SECRET
+    向き: 受ける

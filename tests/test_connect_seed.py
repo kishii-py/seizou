@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from seizou.connect import demo_seed, services
 from seizou.connect.models import Acceptance, Inbox, Outbox, ShippingNotice
@@ -25,6 +26,7 @@ from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
 from seizou.purchasing.models import PurchaseOrder, Receipt
+from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
@@ -82,6 +84,34 @@ def test_record_inbox_makes_row_once(user):
     assert Inbox.objects.count() == 1
 
 
+@pytest.mark.django_db
+def test_record_inbox_takes_received_at(user):
+    customer = masters_services.create_partner({"code": "C901", "name": "作り物の発注元", "role": "customer"}, user)
+    received_at = timezone.make_aware(datetime.datetime(2026, 10, 28, 10, 15))
+
+    inbox = services.record_inbox(customer, {"order_no": "X-1", "lines": []}, user, received_at=received_at)
+
+    assert Inbox.objects.get(pk=inbox.pk).received_at == received_at
+
+    # 同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)
+    later = timezone.make_aware(datetime.datetime(2026, 10, 29, 9, 0))
+    again = services.record_inbox(
+        customer, {"order_no": "X-1", "lines": []}, user, message_id=inbox.message_id, received_at=later
+    )
+    assert again.pk == inbox.pk
+    assert Inbox.objects.get(pk=inbox.pk).received_at == received_at
+
+    # timezone の無い日時は断る
+    with pytest.raises(ValueError, match="timezone 付きの日時"):
+        services.record_inbox(customer, {"order_no": "X-2", "lines": []}, user, received_at=datetime.datetime(2026, 10, 28, 10, 15))
+    assert Inbox.objects.count() == 1
+
+    # 渡さなければ今の日時
+    before = timezone.now()
+    plain = services.record_inbox(customer, {"order_no": "X-3", "lines": []}, user)
+    assert abs(Inbox.objects.get(pk=plain.pk).received_at - before) < datetime.timedelta(minutes=1)
+
+
 def _edi_counts():
     return (
         Inbox.objects.count(),
@@ -116,8 +146,10 @@ def _check_b_plating():
     assert inbox.status == Inbox.STATUS_ACCEPTED
     assert inbox.partner.code == "C001"
     assert inbox.summary() == "WK-1001 ×200 ほか 1 行"
-    assert inbox.reply_sent_at is None  # 注文回答は相手に届いていない (送る向きのつながりが無い)
-    assert "取引先との接続" in inbox.reply_response
+    assert timezone.localtime(inbox.received_at).strftime("%Y-%m-%d %H:%M") == "2026-10-28 10:15"  # 種に書いた届いた日時
+    assert inbox.reply_sent_at is None  # 注文回答は送っていない (種の受け入れは send=False)
+    assert inbox.reply_response == services.MESSAGE_REPLY_SEED
+    assert inbox.reply_message_id is None
     order = inbox.order
     assert order.order_no == "SO-000021"
     assert order.source == Order.SOURCE_INBOX
@@ -137,7 +169,20 @@ def _check_b_plating():
     assert Acceptance.objects.filter(inbox=inbox).count() == 2
     assert orders_services.acceptance_summary(lines[1])["total"] == Decimal("40")
     assert Order.objects.count() == 21
-    assert Shipment.objects.filter(order_line__order=order).count() == 0  # 届いた注文の写しの受注は出荷しない
+    # 届いた注文の写しの受注の出荷 (出荷の種の末尾 3 件)。番号は A 社の種の相手の出荷番号と同じ
+    shipments = list(Shipment.objects.filter(order_line__order=order).select_related("order_line").order_by("shipment_no"))
+    assert [(s.shipment_no, s.order_line.line_no, s.qty, s.shipped_at) for s in shipments] == [
+        ("SH-000022", 1, Decimal("200"), datetime.date(2026, 10, 29)),
+        ("SH-000023", 2, Decimal("40"), datetime.date(2026, 11, 1)),
+        ("SH-000024", 2, Decimal("60"), datetime.date(2026, 11, 3)),
+    ]
+    # 出荷の知らせは送っていない (種の出荷は send=False。番号も付けない)
+    assert all(s.notice_message_id is None and s.notice_sent_at is None for s in shipments)
+    assert all(s.notice_response == shipping_services.MESSAGE_NOTICE_SEED for s in shipments)
+    # 3 件とも同じ 1 枚の発行の納品書に入っている
+    assert len({s.delivery_note_id for s in shipments}) == 1
+    assert shipments[0].delivery_note.status == "issued"
+    assert order.status == Order.STATUS_SHIPPED
     assert ShippingNotice.objects.count() == 0
 
 
@@ -170,16 +215,23 @@ def test_examples_load_edi_seeds_twice(company_id, no_registration, media, no_ht
 
 @pytest.mark.django_db
 def test_seed_without_files_is_silent(tmp_path):
+    assert demo_seed.load_after_orders(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
     assert demo_seed.load(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
 
     # 届いた注文の写しは取引先の種を指し、出荷の知らせは受入の種の発注を指すので、それらの無い置き場では
-    # ValueError で止まる (黙って飛ばさない)
-    for company_id, name in (("b_plating", "acceptances.yaml"), ("a_machining", "shipping_notices.yaml")):
+    # ValueError で止まる (黙って飛ばさない)。届いた注文の写しは受注の後の口 (load_after_orders) が読む
+    cases = (
+        ("b_plating", "acceptances.yaml", demo_seed.load_after_orders),
+        ("a_machining", "shipping_notices.yaml", demo_seed.load),
+    )
+    for company_id, name, load_seed in cases:
         folder = tmp_path / company_id
         folder.mkdir()
         shutil.copy(COMPANIES_DIR / company_id / name, folder / name)
         with pytest.raises(ValueError, match=f"{name} の 1 件目"):
-            demo_seed.load(folder, None)
+            load_seed(folder, None)
+    # 部品の種の段の load は届いた注文の写しを読まない
+    assert demo_seed.load(tmp_path / "b_plating", None) == {"入れた": 0, "飛ばした": 0}
     assert Inbox.objects.count() == 0
     assert ShippingNotice.objects.count() == 0
 
@@ -223,12 +275,33 @@ def _check_b_references(folder):
         assert entry["相手の発注番号"] not in customer_order_nos  # 受注の種と重ならない
         # 2 社の種の突き合わせ: 届いた注文は A 社の発注と同じ中身、検収は A 社の受入と同じ日と数
         assert entry["発注日"] == a_order["発注日"]
+        assert entry["届いた日時"].date() == entry["発注日"]  # 届いた日時は発注日と同じ日
         assert [(line["相手の品番"], line["数量"], line["単価"], line["納期"]) for line in entry["明細"]] == [
             (line["自社品番"], line["数量"], line["単価"], line["納期"]) for line in a_order["明細"]
         ]
         assert [(a["行番号"], a["検収日"], a["数量"]) for a in entry["検収"]] == [
             (r["行番号"], r["受入日"], r["数量"]) for r in a_order["受入"]
         ]
+    # 2 社の種の出荷の突き合わせ: 届いた注文の写しの受注の出荷は、A 社の出荷の知らせと同じ行と日と数で、
+    # 新しい置き場の出荷番号 (出荷の種の並びの順の連番) が A 社の相手の出荷番号と同じ
+    inbox_keys = {(entry["取引先コード"], entry["相手の発注番号"]) for entry in _yaml(folder / "acceptances.yaml", "届いた注文")}
+    seeded = [
+        (position, s)
+        for position, s in enumerate(_yaml(folder / "shipments.yaml", "出荷"), start=1)
+        if (s["得意先の取引先コード"], s["得意先の注文番号"]) in inbox_keys
+    ]
+    a_notices = _yaml(a_folder / "shipping_notices.yaml", "発注")[0]["出荷の知らせ"]
+    assert [(s["行番号"], s["出荷日"], s["数量"]) for _position, s in seeded] == [
+        (n["行番号"], n["出荷日"], n["数量"]) for n in a_notices
+    ]
+    assert [f"SH-{position:06d}" for position, _s in seeded] == [n["相手の出荷番号"] for n in a_notices]
+    # 納品書の種に、その出荷だけを指す 1 件がある
+    refs = sorted((s["得意先の注文番号"], s["行番号"], str(s["出荷日"])) for _position, s in seeded)
+    notes = [
+        sorted((r["得意先の注文番号"], r["行番号"], str(r["出荷日"])) for r in note["出荷"])
+        for note in _yaml(folder / "delivery_notes.yaml", "納品書")
+    ]
+    assert notes.count(refs) == 1
 
 
 @pytest.mark.parametrize("company_id", ["a_machining", "b_plating"])
