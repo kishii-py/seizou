@@ -799,16 +799,40 @@ def _dash_variant(text: str) -> str:
     return "".join(chars)
 
 
+def _kana_switch_variants(text: str) -> list[str]:
+    """1 語の中の仮名の 1 か所で字の種類を切り替えた揺れ (「ニッケルメッキ」から「ニッケルめっき」を作る。初見テスト 3 回目)。
+
+    隣り合う 2 字がどちらも仮名 (ひらがな・カタカナ・長音の「ー」) の所 k ごとに、カタカナ (text[:k]) + ひらがな (text[k:]) と
+    ひらがな (text[:k]) + カタカナ (text[k:]) の 2 つを、左の k から順に返す。仮名の外の字は変えない。2 か所以上の切り替えは作らない。
+    """
+
+    def is_kana(ch: str) -> bool:
+        return "ぁ" <= ch <= "ゖ" or "ァ" <= ch <= "ヶ" or ch == "ー"
+
+    def kata(part: str) -> str:
+        return "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in part)
+
+    def hira(part: str) -> str:
+        return "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in part)
+
+    variants = []
+    for k in range(1, len(text)):
+        if is_kana(text[k - 1]) and is_kana(text[k]):
+            variants += [kata(text[:k]) + hira(text[k:]), hira(text[:k]) + kata(text[k:])]
+    return variants
+
+
 def search_variants(term: str) -> list[str]:
     """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (初見テスト 2 回目の所見)。
 
-    返す物は重ねない並び (打った字・NFKC・長音とダッシュ (英数字の後の「ー」・‐・− など) を - にした形・カタカナ・ひらがな)。
-    DB の側は変えず、OR で引く。揺れの数は SEARCH_VARIANTS_MAX まで。
+    返す物は重ねない並び (打った字・NFKC・長音とダッシュ (英数字の後の「ー」・‐・− など) を - にした形・カタカナ・ひらがな・
+    1 語の中の仮名の 1 か所で字の種類を切り替えた形)。DB の側は変えず、OR で引く。揺れの数は SEARCH_VARIANTS_MAX まで
+    (仮名が長く続く語は、右の方の切り替えを落とす)。
     """
     folded = unicodedata.normalize("NFKC", term)
     kata = "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in folded)
     hira = "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in folded)
-    variants = [term, folded, _dash_variant(folded), kata, hira]
+    variants = [term, folded, _dash_variant(folded), kata, hira, *_kana_switch_variants(folded)]
     return list(dict.fromkeys(variants))[:SEARCH_VARIANTS_MAX]
 
 

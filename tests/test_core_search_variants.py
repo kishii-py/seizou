@@ -71,6 +71,27 @@ def test_list_and_cross_search_find_mixed_kana_and_dash(logged_in, items):
     picked = logged_in.get(reverse("masters:item_select"), {"q": "WKー2001"}).json()
     assert [item["text"].split()[0] for item in picked["items"]] == ["WK-2001"]
 
+    # 3b: 1 語の中でカタカナとひらがなが混じる品名 (「ニッケルめっき処理」) に、「ニッケルメッキ」で当たる
+    assert part_nos(logged_in.get(item_list, {"q": "ニッケルメッキ"})) == ["SB-2002"]
+    mixed = logged_in.get(reverse("core:search"), {"q": "ニッケルメッキ"})
+    assert mixed.status_code == 200
+    assert "SB-2002" in mixed.content.decode() and "WK-2001" not in mixed.content.decode()
+    picked = logged_in.get(reverse("masters:item_select"), {"q": "にっけるメッキ"}).json()
+    assert [item["text"].split()[0] for item in picked["items"]] == ["SB-2002"]
+
+
+def test_kana_switch_variants():
+    assert "ニッケルめっき" in search_variants("ニッケルメッキ")
+    assert "ニッケルめっき処理" in search_variants("ニッケルメッキ処理")
+    assert "めっきニッケル" in search_variants("メッキにっける")
+    # 今の 5 つの揺れは先頭のまま (打った字・NFKC・長音とダッシュ・カタカナ・ひらがな)
+    assert search_variants("ニッケルメッキ")[:2] == ["ニッケルメッキ", "にっけるめっき"]
+    # 数の上限。仮名の外の字は変えない
+    assert len(search_variants("あ" * 30)) <= SEARCH_VARIANTS_MAX
+    assert len(search_variants("ニッケルメッキ")) == 14
+    assert search_variants("abc") == ["abc"]
+    assert search_variants("処理") == ["処理"]
+
 
 @pytest.mark.django_db
 def test_orderline_search_matches_order_numbers(logged_in, user, customer, items):
