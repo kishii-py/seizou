@@ -2,7 +2,8 @@
 {% load seizou_icons %}
 {% block content %}
 {# 設定: 会社の選べる設定 (今の値と出所。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。 #}
-<div class="grid gap-6 lg:grid-cols-2">
+{# 設定の表は 5 列 (設定・今の値・出所・鍵・編集) なので、幅いっぱいの枠に置く (半分の幅だと出所と編集が横の送りの先に隠れる = 11-03 の本体の手の確かめ)。入口と状態の 2 つはその下に並べる。 #}
+<div class="flex flex-col gap-6">
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
     <h2 id="company-settings-title" class="text-lg font-bold">会社の選べる設定</h2>
     <p class="mt-2 text-xs text-base-content/70">今の値と出所 (画面 / 答え (settings.py) / 既定)。アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、行の「編集」から変えられる。画面で保存した値は、置き場の <code class="font-mono">settings.py</code> の <code class="font-mono">SEIZOU</code> と答えの YAML より優先される。左のメニューの括り (<code class="font-mono">menu</code>) は答えの YAML で書く。</p>
@@ -17,7 +18,7 @@
       </table>
     </div>
   </section>
-  <div class="flex flex-col gap-6">
+  <div class="grid gap-6 lg:grid-cols-2">
     <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="links-title">
       <h2 id="links-title" class="text-lg font-bold">普段は触らない物</h2>
       <ul class="mt-4 flex flex-col gap-2">
