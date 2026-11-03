@@ -28,7 +28,7 @@ Item = OrderLine._meta.get_field("item").related_model
 #: hidden_fields に並んでも外さない欄
 KEPT_FIELDS = frozenset({"customer", "item", "qty", "unit_price", "order_date"})
 #: 明細の行から services に渡す鍵
-LINE_KEYS = ("item", "qty", "unit", "unit_price", "due_date", "note")
+LINE_KEYS = ("item", "customer_part_no", "qty", "unit", "unit_price", "due_date", "note")
 #: 直すときに data に入れる受注の鍵
 ORDER_KEYS = ("customer", "order_date", "customer_order_no", "note")
 #: 明細の行の formset の prefix (テンプレートと行を足す JS が使う)
@@ -53,6 +53,7 @@ def hideable_fields() -> tuple[tuple[str, str], ...]:
     """
     return (
         ("customer_order_no", "得意先の注文番号"),
+        ("customer_part_no", "得意先の品番"),
         ("due_date", "納期"),
         ("unit", "単位"),
         ("note", "備考"),
@@ -75,6 +76,8 @@ class OrderLineForm(forms.Form):
         widget=RemoteSelect("masters:item_select"),
         empty_label=EMPTY_LABEL,
     )
+    # 相手の注文書の品番 (例 RB-3110)。表は部品の次 (注文書を見ながら 部品 → 品番 の順に入れる)。
+    customer_part_no = forms.CharField(label="得意先の品番", max_length=35, required=False)
     # 0 以下は保存の前に欄の横で断る (R02 の決まりは services にもあり、こちらは入力の誤りの案内。初見テスト 2 回目の所見)
     qty = forms.DecimalField(
         label="数量",
@@ -175,6 +178,7 @@ class OrderForm(ServiceModelForm):
         return {
             "order_line": row.pk,
             "item": row.item_id,
+            "customer_part_no": row.customer_part_no,
             "qty": row.qty,
             "unit": row.unit,
             "unit_price": row.unit_price,

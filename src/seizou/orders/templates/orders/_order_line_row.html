@@ -6,6 +6,7 @@
     {{ field }}
     {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
   </td>
+  {% if field.name == "unit_price" %}<td class="whitespace-nowrap text-right tabular-nums" data-line-amount></td>{% endif %}
   {% endif %}{% endfor %}
   <td class="whitespace-nowrap">
     {% if row.DELETE %}<label class="flex cursor-pointer items-center gap-2">{{ row.DELETE }}<span>消す</span></label>{% endif %}

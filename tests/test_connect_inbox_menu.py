@@ -217,7 +217,7 @@ def test_row_menu_markup_follows_core_js(client_logged_in, receive_order):
     assert re.match(rf'<tr id="row-{inbox.pk}"[^>]* {row_attr}[ >]', row)
     assert f'<details class="dropdown dropdown-end {menu_class}">' in row
     assert '<summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>' in row
-    assert '<ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">' in row
+    assert '<ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">' in row
     # 行の押下で詳細へ移る onclick は、link と ⋮ の欄の中の押下では動かない (JS の頭の comment の約束)
     assert "closest('a, details')" in row
     assert "closest('a, details')" in js

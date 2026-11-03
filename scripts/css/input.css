@@ -17,7 +17,7 @@
 }
 
 /* 字を打って探す欄 (Tom Select の包み)。欄本体には daisyUI の select の class を付けない (views.widget_css)。
-   包みの見た目を input にそろえる。候補の一覧 (.ts-dropdown) は包みの外へはみ出して描く。 */
+   包みの見た目を input にそろえる。候補の一覧 (.ts-dropdown) は body の直下に描く (seizou-select.js の dropdownParent。小窓の中の欄だけ包みの中)。body > .ts-dropdown は部品の CSS の .ts-dropdown (z-index 10。app.css より後に読む) より強い選び方にするため。 */
 .ts-wrapper .ts-control {
   border: 1px solid var(--color-base-300);
   border-radius: var(--radius-field);
@@ -31,14 +31,16 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
-.ts-wrapper .ts-dropdown {
+.ts-wrapper .ts-dropdown,
+body > .ts-dropdown {
   border: 1px solid var(--color-base-300);
   border-radius: var(--radius-field);
   background-color: var(--color-base-100);
   color: var(--color-base-content);
   z-index: 50;
 }
-.ts-wrapper .ts-dropdown .active {
+.ts-wrapper .ts-dropdown .active,
+body > .ts-dropdown .active {
   background-color: var(--color-base-200);
   color: var(--color-base-content);
 }

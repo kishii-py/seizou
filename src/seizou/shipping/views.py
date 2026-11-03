@@ -91,6 +91,7 @@ class ShipmentCreateView(BaseFormView):
     model = Shipment
     form_class = ShipmentForm
     service = staticmethod(services.ship)
+    template_name = "shipping/shipment_form.html"
     screen_name = "出荷の新規登録"
     screen_help = (
         "受注の明細と数量と出荷日を入れて、出荷を保存します。"

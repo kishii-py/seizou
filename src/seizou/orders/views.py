@@ -5,9 +5,12 @@
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
 
+from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
+from django.http import Http404, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, url_or_none
 
 from . import board, services
 from .forms import OrderCancelForm, OrderForm
@@ -169,3 +172,17 @@ class OrderLineSelectView(BaseSelectView):
             # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
             .order_by("order__order_no", "line_no", "pk")
         )
+
+
+@login_required
+def orderline_modal(request, pk):
+    """受注の明細の小窓の口。その明細の部品の小窓 (masters:item_modal) へ移す。
+
+    受注の明細を選ぶ欄 (出荷の入力) の「詳細を見る」が開く (core の RemoteSelect は <app>:<model>_modal の口が
+    あれば link を出す)。明細そのものの小窓は持たない。部品の部品が入っていない会社では 404。
+    """
+    line = get_object_or_404(OrderLine.objects.only("item_id"), pk=pk)
+    url = url_or_none("masters:item_modal", line.item_id)
+    if url is None:
+        raise Http404("部品の小窓がありません。")
+    return HttpResponseRedirect(url)

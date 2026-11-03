@@ -7,7 +7,7 @@ context: line (受注の明細。board・remaining_total・order・item を持�
 {% url 'shipping:shipment_create' as ship_url %}{% url 'workorders:workorder_create' as issue_url %}{% url 'progress:progress_create' as progress_url %}{% url 'purchasing:purchaseorder_create' as po_url %}{% url 'masters:item_modal' line.item_id as item_modal_url %}
 <details class="dropdown dropdown-end row-menu">
   <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
-  <ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+  <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
     {% if line.order.status != "cancelled" and line.remaining_total > 0 %}
     {% if ship_url %}<li><a class="flex items-center gap-2" href="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷する</a></li>{% endif %}
     {% if issue_url and can_issue %}<li><a class="flex items-center gap-2" href="{{ issue_url }}?order_line={{ line.pk }}">{% icon "factory" "size-4" %}指示書を発行する</a></li>{% endif %}

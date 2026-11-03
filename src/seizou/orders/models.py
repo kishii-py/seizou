@@ -140,7 +140,13 @@ class OrderLine(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.order.order_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+        text = f"{self.order.order_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+        # 集計 (services.annotate_remaining) を通した明細だけ、末尾に受注の残りを足す (出荷の入力の候補の口の字。
+        # 出荷の画面の JS が「 残り n」を読んで数量の欄の下に写す)。集計の無い明細は今の字のまま。
+        remaining = getattr(self, "remaining_total", None)
+        if remaining is None:
+            return text
+        return f"{text} 残り {remaining.normalize():f}"
 
     @property
     def status_label(self):

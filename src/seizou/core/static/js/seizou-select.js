@@ -14,6 +14,8 @@
  * - 通信に失敗したら「該当なし」に見せず、赤の知らせを欄の下に 1 回だけ出す。
  * - 同じ欄に 2 回載せない (載っていれば何もしない)。htmx:afterSettle で、差し替えた中の欄に載せる。
  * - 日本語の変換を確定する Enter (isComposing か keyCode 229) では何もしない。
+ * - 候補の一覧は body の直下に描き、欄の位置に合わせて置く (小窓の中の欄だけ包みの中)。表の箱の scroll でも置き直す。
+ * - 取りに行っている間の Enter は止め、返ってきた一覧の先頭を選ぶ。
  * - 1 つ選びの欄には消すボタン、複数選びの欄には 1 つずつ消すボタン。
  * - 小窓のある候補 (data-modal-url を持つ 1 つ選びの欄) では、選んだ物の下に「詳細を見る」の link を出し、
  *   押すと master_link と同じ小窓 (#seizou-modal) で開く。選び直すと link の先も変わり、消すと link も消える。
@@ -68,12 +70,16 @@
     } else {
       plugins.clear_button = { title: "消す" };
     }
+    var inDialog = !!select.closest("dialog");
 
     var ts = new window.TomSelect(select, {
       valueField: "id",
       labelField: "text",
       searchField: ["text"],
       plugins: plugins,
+      // 候補の一覧を body の直下に描き、欄の位置に合わせて置く (表の overflow の箱に切られない。R3 の止まる)。
+      // 小窓 (dialog) の中の欄は包みの中のまま (dialog は最上層に出るので、body の直下の一覧は裏に隠れる)。
+      dropdownParent: inDialog ? null : "body",
       maxOptions: null,
       preload: "focus",
       // 打ってから取りに行くまでの待ちは loadThrottle の 250ms だけにする
@@ -167,15 +173,46 @@
     }
 
     // 日本語の変換を確定する Enter は部品に渡さない (候補を選ばず、form も送らない)。
+    // 候補を取りに行っている間 (ts.loading が 0 より大きい) の Enter も部品に渡さず、返ってきた一覧の先頭を選ぶ
+    // (前の字の一覧の先頭を黙って選ばない。初見テスト R3 の「止まる」と、最初から値の入っている欄の Enter)。
+    var enterWaiting = false;
     ts.wrapper.addEventListener(
       "keydown",
       function (event) {
-        if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) {
+        if (event.key !== "Enter") return;
+        if (event.isComposing || event.keyCode === 229) {
           event.stopPropagation();
+          return;
+        }
+        // 字を打っていない (欄に着いた時の空の検索・字を全部消した) 間の Enter は今のまま部品に渡す
+        // (待たせると、返ってきた全件の先頭を黙って選ぶため)。
+        if (ts.loading > 0 && ts.control_input.value.trim() !== "") {
+          event.preventDefault();
+          event.stopPropagation();
+          enterWaiting = true;
         }
       },
       true
     );
+    ts.on("load", function (options) {
+      if (!enterWaiting || ts.loading > 0) return;
+      enterWaiting = false;
+      if (options && options.length) ts.addItem(String(options[0].id));
+    });
+    ts.on("blur", function () {
+      enterWaiting = false;
+    });
+  }
+
+  // 表の箱を横に送ったときも、body の直下に描いた一覧を欄に付いてこさせる
+  // (部品は画面の scroll と幅の変化でしか置き直さない。capture の scroll は泡立たない scroll も受ける)。
+  function reposition(event) {
+    var target = event.target;
+    if (target && target.closest && target.closest(".ts-dropdown")) return;
+    document.querySelectorAll(SELECTOR).forEach(function (select) {
+      var ts = select.tomselect;
+      if (ts && ts.isOpen && ts.settings.dropdownParent === "body") ts.positionDropdown();
+    });
   }
 
   function init(root) {
@@ -188,6 +225,8 @@
   }
 
   window.seizouSelect = { init: init };
+
+  document.addEventListener("scroll", reposition, true);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
