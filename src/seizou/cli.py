@@ -48,6 +48,7 @@ SETTING_DEFAULTS = {
     "access_control": {"department": "log", "write": "log", "money": "log"},
     "assistant_model": "claude-sonnet-5-5",
     "intake_model": "claude-opus-5-5",
+    "feedback_model": "claude-haiku-5-5",
     "menu": [],
 }
 

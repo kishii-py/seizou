@@ -30,6 +30,7 @@ SETTING_KEYS = [
     "production_plan",
     "assistant_model",
     "intake_model",
+    "feedback_model",
     "menu",
     "access_control",
 ]

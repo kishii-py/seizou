@@ -447,3 +447,11 @@ def test_readme_has_setting_row_and_section():
     flow = "\n".join(_section(text, "## 業務の流れ"))
     assert re.search(r"^### フィードバック$", flow, re.M)
     assert "feedback_model" in flow
+
+
+def test_cli_setting_default_matches_conf():
+    from seizou import cli
+
+    assert cli.SETTING_DEFAULTS["feedback_model"] == conf.DEFAULTS["feedback_model"] == chat.DEFAULT_MODEL == "claude-haiku-5-5"
+    keys = list(cli.SETTING_DEFAULTS)
+    assert keys.index("feedback_model") == keys.index("intake_model") + 1
