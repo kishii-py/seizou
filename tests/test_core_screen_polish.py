@@ -153,3 +153,45 @@ def test_second_cancel_message(user, order):
         orders_services.cancel_order(order, user)
     assert caught.value.code == "R05"
     assert caught.value.message == "この受注は取り消し済みです。"
+
+
+# ---------------------------------------------------------------- 6. マニュアルの最上位の文
+
+ROOT_EMPTY = "このフォルダの直下にはマニュアルがありません。フォルダを開いてください。"
+NONE_YET = "まだ 1 件もありません。"
+
+
+def test_manual_root_with_folders_says_open_folder(client, user):
+    from seizou.manuals import services as manuals_services
+
+    folder = manuals_services.create_folder(None, "段取り", "blue", user)
+    manuals_services.create_manual(folder, "段取りの手順", "steps", user)
+    client.force_login(user)
+    url = reverse("manuals:manual_list")
+
+    html = client.get(url).content.decode()
+    assert ROOT_EMPTY in html
+    assert NONE_YET not in html
+
+    partial = client.get(url, **HTMX).content.decode()
+    assert ROOT_EMPTY in partial
+    assert NONE_YET not in partial
+    assert 'hx-swap-oob' in partial
+
+
+def test_manual_root_without_folders_says_none_yet(client, user):
+    client.force_login(user)
+    html = client.get(reverse("manuals:manual_list")).content.decode()
+    assert NONE_YET in html
+    assert ROOT_EMPTY not in html
+
+
+def test_manual_search_miss_keeps_core_sentence(client, user):
+    from seizou.manuals import services as manuals_services
+
+    folder = manuals_services.create_folder(None, "段取り", "blue", user)
+    manuals_services.create_manual(folder, "段取りの手順", "steps", user)
+    client.force_login(user)
+    html = client.get(reverse("manuals:manual_list"), {"q": "当たらない言葉"}).content.decode()
+    assert "に合う物はありません。" in html
+    assert ROOT_EMPTY not in html
