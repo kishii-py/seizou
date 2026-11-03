@@ -265,8 +265,8 @@ def test_money_masked_everywhere(on, logged_in, user, shaft, invoice):
     home = logged_in.get(reverse("core:home"))
     assert home.status_code == 200
     assert [row["total"] for row in home.context["recent_orders"]] == [None]
-    assert home.context["trend"] is None
-    assert "月次の推移" not in home.content.decode()
+    assert home.context["shipping"]["amount_chart"] is None
+    assert 'id="shipping-amount-chart"' not in home.content.decode()
 
     assert _amount_totals(User.objects.get(pk=user.pk))[0]["value"] == access.MASK
 
@@ -283,8 +283,8 @@ def test_money_visible_with_permission(on, client, shaft, invoice):
 
     home = client.get(reverse("core:home"))
     assert [row["total"] for row in home.context["recent_orders"]] == [Decimal("15000")]
-    assert home.context["trend"] is not None
-    assert "月次の推移" in home.content.decode()
+    assert home.context["shipping"]["amount_chart"] is not None
+    assert "出荷 (直近 6 か月)" in home.content.decode()
 
     assert _amount_totals(keiri)[0]["value"] == Decimal("15000")
 

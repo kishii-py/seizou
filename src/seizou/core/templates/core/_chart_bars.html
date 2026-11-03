@@ -1,20 +1,22 @@
 {% load seizou_tags %}
-{# 月次の推移の図 (inline SVG。JS を使わない)。数と座標は全部 core の dashboard.monthly_trend が出し、ここは置くだけ。色は theme の class だけで、系列ごとに for を分ける (class を組み立てない)。値は棒の title と図の下の表で読む。 #}
-<div class="mt-4 overflow-x-auto">
-  <svg id="trend-chart" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" role="img" aria-label="月次の推移の図。月ごとの受注と出荷の金額 (円)">
-    <title>月次の推移 (直近 6 か月): 受注と出荷の金額</title>
-    {% for tick in trend.chart.ticks %}
-    <line class="stroke-base-300" x1="{{ trend.chart.left }}" x2="{{ trend.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
-    <text class="fill-base-content/70 text-xs" x="{{ trend.chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
+{# 月ごとの棒の図 (inline SVG。JS を使わない)。数と座標は全部 core の dashboard が出し、ここは置くだけ。 #}
+{# home.html が include の with で渡す物: chart (図の数)・chart_id (svg の id)・chart_title (title の字)・chart_label (読み上げの字)・first と first_label (1 つ目の系列)・second と second_label (2 つ目の系列。渡さなければ描かない)・money (真なら値を円で書く)。 #}
+{# 色は theme の class だけで、1 つ目は主色、2 つ目は副色の固定の順。系列ごとに for を分ける (class を組み立てない)。値は棒の title と図の下の表で読む。 #}
+<div class="mt-2 overflow-x-auto">
+  <svg id="{{ chart_id }}" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart_label }}">
+    <title>{{ chart_title }}</title>
+    {% for tick in chart.ticks %}
+    <line class="stroke-base-300" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+    <text class="fill-base-content/70 text-xs" x="{{ chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
     {% endfor %}
-    {% for bar in trend.chart.order_bars %}
-    <path class="fill-primary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} 受注 {{ bar.value|comma:0 }} 円</title></path>
+    {% for bar in first %}
+    <path class="fill-primary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ first_label }} {% if money %}{{ bar.value|comma:0 }} 円{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
     {% endfor %}
-    {% for bar in trend.chart.shipment_bars %}
-    <path class="fill-secondary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} 出荷 {{ bar.value|comma:0 }} 円</title></path>
+    {% for bar in second %}
+    <path class="fill-secondary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ second_label }} {% if money %}{{ bar.value|comma:0 }} 円{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
     {% endfor %}
-    {% for label in trend.chart.labels %}
-    <text class="fill-base-content/70 text-xs" x="{{ label.x }}" y="{{ trend.chart.label_y }}" text-anchor="middle">{{ label.label }}</text>
+    {% for month in chart.labels %}
+    <text class="fill-base-content/70 text-xs" x="{{ month.x }}" y="{{ chart.label_y }}" text-anchor="middle">{{ month.label }}</text>
     {% endfor %}
   </svg>
 </div>
