@@ -14,6 +14,11 @@ from .models import Extraction
 
 
 class ExtractionListView(BaseListView):
+    """注文書の読み取りの一覧。
+
+    使う人: 営業 / いつ: 紙や PDF の注文書が来たとき / 何のために: AI が読んだ中身を確かめて受注にする / 次にすること: 「読み取る」か行から詳細へ
+    """
+
     model = Extraction
     screen_name = "注文書の読み取り"
     screen_help = "置いた注文書と、AI が読み取った中身。人が確かめて「受注にする」を押すまで、受注にはなりません。"
@@ -23,6 +28,11 @@ class ExtractionListView(BaseListView):
 
 
 class ExtractionCreateView(BaseFormView):
+    """注文書を読み取る入力。
+
+    使う人: 営業 / いつ: 紙や PDF の注文書が来たとき / 何のために: 得意先と注文書を置いて AI に明細を読ませる / 次にすること: 読み取りの詳細で中身を確かめる
+    """
+
     model = Extraction
     form_class = UploadForm
     service = staticmethod(services.extract_order)
@@ -32,6 +42,11 @@ class ExtractionCreateView(BaseFormView):
 
 
 class ExtractionDetailView(BaseDetailView):
+    """読み取りの詳細。
+
+    使う人: 営業 / いつ: 読み取った中身を確かめるとき / 何のために: 得意先の品番のままの明細を見る / 次にすること: 「受注にする」へ
+    """
+
     model = Extraction
     screen_name = "読み取りの詳細"
     screen_help = "AI が読み取った注文書の中身。明細は得意先の品番のまま並べています。"
@@ -39,6 +54,11 @@ class ExtractionDetailView(BaseDetailView):
 
 
 class ExtractionAcceptView(BaseFormView):
+    """読み取りを受注にする入力。
+
+    使う人: 営業 / いつ: 読み取りが正しいと確かめたとき / 何のために: 得意先の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると注文残に出る
+    """
+
     model = Extraction
     form_class = AcceptForm
     service = staticmethod(services.accept_extracted)

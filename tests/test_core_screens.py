@@ -17,7 +17,7 @@ PROMISE = "使う人: … / いつ: … / 何のために: … / 次にするこ
 # まだ docstring の無い画面の url_name。core:settings は N48 が settings_screen.py を触るので本体が後で足し、ここから外す
 PENDING_SCREENS = {"core:settings"}
 # 2 段目で部品ごとに docstring を書き、書いた部品をここから外す。終わったら空
-PENDING_APPS = {"accounts", "attachments", "billing", "intake", "manuals", "stock"}
+PENDING_APPS = {"accounts", "attachments", "billing", "manuals", "stock"}
 
 LINE = "使う人: 営業 / いつ: a / 何のために: b / 次にすること: c"
 
