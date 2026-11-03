@@ -15,7 +15,7 @@
   <div class="flex flex-wrap items-center gap-2">
     {% block actions %}{% endblock %}
     {% if list_url %}<a class="btn btn-outline border-base-300" href="{{ list_url }}">{% icon "arrow-left" "size-4" %}一覧に戻る</a>{% endif %}
-    {% if edit_url %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}
+    {% block edit_button %}{% if edit_url %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}{% endblock %}
   </div>
 </div>
 {% endblock %}
