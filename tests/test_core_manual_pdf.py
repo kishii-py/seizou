@@ -5,13 +5,17 @@
 (fixture と道具は tests/test_core_manual.py の形を写した。既にあるテストは import しない)。
 """
 
+import io
 import os
 import re
 import time
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
@@ -29,6 +33,7 @@ ORDER_FRAGMENT = "<section><h2>受注</h2><p>作り物の受注の説明</p></se
 INTRO_FRAGMENT = "<section><h2>作り物の前書き</h2><p>読み方の字</p></section>"
 FAKE_PDF = b"%PDF-1.4 test"
 UNAVAILABLE = "PDF の部品 (WeasyPrint) が使えません。印刷用の画面をお使いください。"
+SKILLS_DIR = Path(__file__).resolve().parents[1] / "plugin" / "skills"
 
 
 @pytest.fixture
@@ -297,3 +302,80 @@ def test_booklet_pdf_with_weasyprint(db, manual, caplog):
     # A4 縦 = 210mm × 297mm (WeasyPrint の長さは CSS の px。1mm = 96 / 25.4 px)
     assert round(page.width * 25.4 / 96) == 210
     assert round(page.height * 25.4 / 96) == 297
+
+
+# 2 段目: 命令と skill
+
+
+def test_command_writes_default_pdf(db, manual, fake_pdf):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    out = io.StringIO()
+    call_command("seizou_manual_pdf", stdout=out)
+    target = manual / "使い方.pdf"
+    assert target.read_bytes() == FAKE_PDF
+    text = out.getvalue()
+    assert str(target.resolve()) in text
+    assert f"(1 / {len(all_screens())} 画面に説明書)" in text
+    assert fake_pdf["template"] == "core/manual_booklet.html"
+
+
+def test_command_out_option(db, manual, fake_pdf, tmp_path):
+    target = tmp_path / "x" / "book.pdf"
+    with pytest.raises(CommandError, match="書き出し先のフォルダがありません"):
+        call_command("seizou_manual_pdf", out=str(target))
+    assert not target.parent.exists()
+    assert "template" not in fake_pdf
+
+    target.parent.mkdir()
+    call_command("seizou_manual_pdf", out=str(target), stdout=io.StringIO())
+    assert target.read_bytes() == FAKE_PDF
+    assert not (manual / "使い方.pdf").exists()
+
+
+def test_command_without_manual_folder_fails(db, site, fake_pdf):
+    for options in ({}, {"out": str(site / "book.pdf")}):
+        with pytest.raises(CommandError) as excinfo:
+            call_command("seizou_manual_pdf", **options)
+        message = str(excinfo.value)
+        assert "manual/" in message
+        assert "/seizou:manual" in message
+    assert list(site.iterdir()) == []
+    assert "template" not in fake_pdf
+
+
+def test_command_without_weasyprint_fails(db, manual, no_pdf):
+    with pytest.raises(CommandError, match="WeasyPrint"):
+        call_command("seizou_manual_pdf")
+    assert not (manual / "使い方.pdf").exists()
+
+
+def _split_frontmatter(text):
+    """冒頭の --- と --- の間 (見出し) と、その後 (本文) に分ける (tests/test_plugin_skills.py の読み方を写した)。"""
+    lines = text.splitlines()
+    assert lines and lines[0].strip() == "---", "冒頭の見出しが --- で始まっていない"
+    for i, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return lines[1:i], "\n".join(lines[i + 1 :])
+    raise AssertionError("冒頭の見出しの終わりの --- が無い")
+
+
+def skill_body(name):
+    _, body = _split_frontmatter((SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8"))
+    return body
+
+
+def test_manual_skill_makes_pdf():
+    body = skill_body("manual")
+    for word in ("seizou_manual_pdf", "使い方.pdf", "--out", "## 8. PDF を作る", "## 9. 終わりに言うこと"):
+        assert word in body, f"manual の本文に {word} が無い"
+    assert "PDF は後の版です" not in body
+    assert body.index("## 7. 確かめる") < body.index("## 8. PDF を作る") < body.index("## 9. 終わりに言うこと")
+
+
+def test_build_skill_runs_manual_skill():
+    body = skill_body("build")
+    for word in ("## 8. 説明書を書き起こす", "/seizou:manual", "説明書も作りますか", "## 9. 終わりに言うこと", "## してはいけないこと"):
+        assert word in body, f"build の本文に {word} が無い"
+    for word in ("ロゴ", "振込先", "本番か"):
+        assert word not in body, word
+    assert body.index("## 7. 起動して知らせる") < body.index("## 8. 説明書を書き起こす") < body.index("## 9. 終わりに言うこと")
