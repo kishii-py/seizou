@@ -225,6 +225,7 @@ POST_FUNCTION_ACTIONS = {
     "seizou.shipping.shipping_notice.resend_shipping_notice": "connect.send_shipping_notice",
     "seizou.purchasing.acceptance.resend_acceptance": "connect.send_acceptance",
     "seizou.connect.reply.resend_reply": "connect.accept",
+    "seizou.connect.sender.choose_sender": "connect.accept",
 }
 #: POST の関数の view のうち、権限の表の action を通さない口 → 理由
 POST_FUNCTION_WITHOUT_ACTION = {
