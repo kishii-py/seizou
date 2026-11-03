@@ -38,6 +38,7 @@ TOOL_LABELS = {
     "list_rules": "決まりを読んだ",
     "search_manuals": "マニュアルを探した",
     "get_manual_body": "マニュアルを読んだ",
+    "list_receipts": "受入を読んだ",
     "create_order": "受注の登録を提案した",
     "ship": "出荷を提案した",
     "plan_step": "計画の置き直しを提案した",
@@ -281,6 +282,26 @@ TOOLS = [
         "input_schema": _schema(
             {"manual_id": {"type": "integer", "description": "マニュアルの番号 (search_manuals の id)。"}},
             ["manual_id"],
+        ),
+    },
+    {
+        "name": "list_receipts",
+        "description": (
+            "受入 (協力企業から受け入れた物の記録。発注側。支払の見込みの元) を受入日の新しい順に返す。検収を送った日時つき。"
+            "検収 (得意先の seizou からの受け入れた数の知らせ) は list_acceptances。"
+            "金額は金額の閲覧の判定に従い、見せない相手には「—」。読むだけ。"
+        ),
+        "input_schema": _schema(
+            {
+                "po_no": {"type": "string", "description": "発注番号 (完全一致)。渡すと、その発注の受入の全部 (日数を見ない)。省ける。"},
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": mcp_tools.MAX_DAYS,
+                    "description": f"さかのぼる日数 (1〜{mcp_tools.MAX_DAYS}。省くと 30)。",
+                },
+                "limit": _limit(mcp_tools.MAX_ROWS, 50),
+            }
         ),
     },
     # 書く道具。呼んでもすぐには保存しない (services が提案のカードにし、利用者が承認してから保存する)。

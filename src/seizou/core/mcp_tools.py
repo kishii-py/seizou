@@ -32,7 +32,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from seizou.core import checks, conf, manual, screens
+from seizou.core import access, checks, conf, manual, screens
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.models import Company
 from seizou.core.rules import RULES
@@ -106,6 +106,26 @@ def _url(name: str, pk) -> str:
         return reverse(name, args=[pk])
     except NoReverseMatch:
         return ""
+
+
+def _when(value) -> str | None:
+    """日時を ISO の字に (会社の時刻。秒まで)。無ければ None。"""
+    return None if value is None else timezone.localtime(value).isoformat(timespec="seconds")
+
+
+def _username(user) -> str:
+    """人のログイン ID。無ければ空の字。"""
+    return "" if user is None else user.get_username()
+
+
+def _money_shown(user) -> bool:
+    """金額を見せるか。閲覧の人 user (None もある) で金額の閲覧を判定し、記録は書かない (読む道具は金額を見たことを記録しない)。"""
+    return access.can_see_money(user, record=False)
+
+
+def _money(value, shown: bool) -> str | None:
+    """金額の字。見せないときは画面の枡と同じ字 (access.MASK)。"""
+    return _num(value) if shown else access.MASK
 
 
 def html_to_text(html: str, limit: int) -> str:
@@ -232,6 +252,15 @@ def _order_by_no(order_no):
     order = Order.objects.select_related("customer").filter(order_no=text).first() if text else None
     if order is None:
         raise _Refusal(f"受注番号 {text or '(空)'} の受注はありません。list_orders で受注番号を確かめてください。")
+    return order
+
+
+def _purchase_order_by_no(po_no):
+    PurchaseOrder = apps.get_model("purchasing", "PurchaseOrder")
+    text = _text(po_no)
+    order = PurchaseOrder.objects.filter(po_no=text).first() if text else None
+    if order is None:
+        raise _Refusal(f"発注番号 {text or '(空)'} の発注はありません。発注番号を確かめてください。")
     return order
 
 
@@ -796,6 +825,65 @@ def get_manual_body(manual_id: int) -> dict[str, Any]:
     }
 
 
+def _list_receipts(user, po_no, days, limit) -> dict[str, Any]:
+    """list_receipts の中身。user は金額の閲覧を判定する閲覧の人 (None もある)。"""
+    if not _installed("purchasing"):
+        return _refused("受入の部品 (purchasing) が入っていないので、受入は読めません。")
+    try:
+        span = _read_count(days, "日数 (days)", MAX_DAYS)
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+        order = _purchase_order_by_no(po_no) if _text(po_no) else None
+    except _Refusal as exc:
+        return _refused(exc.message)
+    Receipt = apps.get_model("purchasing", "Receipt")
+    receipts = Receipt.objects.select_related("line__purchase_order__partner", "line__item", "received_by")
+    if order is not None:
+        receipts = receipts.filter(line__purchase_order=order)
+    else:
+        receipts = receipts.filter(received_on__gte=timezone.localdate() - timedelta(days=span))
+    shown = _money_shown(user)
+    items = []
+    for receipt in receipts.order_by("-received_on", "-pk")[:count]:
+        line = receipt.line
+        items.append(
+            {
+                "po_no": line.purchase_order.po_no,
+                "line_no": line.line_no,
+                "partner_code": line.purchase_order.partner.code,
+                "partner_name": line.purchase_order.partner.name,
+                "part_no": line.item.part_no,
+                "item_name": line.item.name,
+                "received_on": _day(receipt.received_on),
+                "qty": _num(receipt.qty),
+                "unit": line.unit,
+                "amount": _money(receipt.amount, shown),
+                "note": receipt.note,
+                "received_by": _username(receipt.received_by),
+                "acceptance_sent_at": _when(receipt.acceptance_sent_at),
+                "acceptance_state": receipt.acceptance_state(),
+                "url": _url("purchasing:receipt_detail", receipt.pk),
+            }
+        )
+    return {"ok": True, "count": len(items), "money_hidden": not shown, "items": items}
+
+
+def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
+    """受入 (協力企業から受け入れた物の記録。発注側。受け入れた数 × 発注の単価が支払の金額) の一覧を、受入日の新しい順に返す。検収 (得意先の seizou からの受け入れた数の知らせ = list_acceptances) とは別。
+
+    po_no: 発注番号 (完全一致)。渡すと、その発注の受入の全部 (日数を見ない)。null なら全部の発注。
+    days: 今日から何日前の受入までを出すか (1〜366。既定 30)。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count・money_hidden 金額を隠したか・items (受入ごとの po_no 発注番号・line_no 明細の行番号・
+    partner_code と partner_name 協力企業の取引先コードと名前・part_no 自社品番・item_name 品名・received_on 受入日・
+    qty 受け入れた数・unit 単位・amount 金額・note 備考・received_by 入れた人のログイン ID・
+    acceptance_sent_at 検収を送った日時・acceptance_state 検収の送りの字 (送った … / 届いていない: … / 空)・url 受入の詳細の道)。
+    金額 (amount) は、金額の閲覧の判定が on の会社で閲覧の無い利用者 (と、利用者を決めずに起こしたとき) には「—」で、そのとき money_hidden が真。
+    acceptance_sent_at は、seizou どうしで送った発注の受入を、相手の受注の明細に検収として送れた日時 (送る物でない受入とまだ届いていない受入は null)。
+    ok が偽なら error に、読めなかった引数とその直し方か、部品が入っていないことがある。
+    """
+    return _list_receipts(None, po_no, days, limit)
+
+
 READ_TOOLS = (
     company_info,
     list_screens,
@@ -810,6 +898,7 @@ READ_TOOLS = (
     list_rules,
     search_manuals,
     get_manual_body,
+    list_receipts,
 )
 
 

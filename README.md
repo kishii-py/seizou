@@ -120,6 +120,7 @@ claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利�
 | `list_rules` | ポカよけの今の段と、書き方の決まりの一覧を返す | 読む |
 | `search_manuals` | 業務マニュアル (会社の人が書いた作業の手順書と社内の文書) を題と本文の言葉で探す。画面ごとの使い方 (`get_manual`) とは別 | 読む |
 | `get_manual_body` | 業務マニュアルの 1 件の本文を字だけで返す (8000 字まで。`search_manuals` の番号で引く) | 読む |
+| `list_receipts` | 受入 (協力企業から受け入れた物の記録。発注側) の一覧を、検収を送った日時つきで返す。金額は金額の閲覧の判定に従う | 読む |
 | `create_order` | 受注を 1 件作る | 書く |
 | `ship` | 受注の明細を出荷する | 書く |
 | `plan_step` | 指示書の工程に、生産計画の開始日と終了日を置く | 書く |
