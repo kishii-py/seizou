@@ -435,7 +435,7 @@ def test_accept_succeeds_when_reply_is_unreachable(
     assert inbox.reply_sent_at is None
     assert inbox.reply_response.startswith("届きません")
     assert inbox.reply_message_id is not None
-    assert inbox.reply_state().startswith("届いていない: 届きません")
+    assert inbox.reply_state().startswith("届きません")
     po.refresh_from_db()
     assert po.status == PurchaseOrder.STATUS_SENT
 

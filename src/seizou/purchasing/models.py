@@ -184,11 +184,13 @@ class Receipt(models.Model):
         """発注の詳細の「検収」の節に出す字。送る物でない受入は空の字 (テンプレートが薄い「—」を出す)。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、送れていなくて返事があれば
-        「届いていない: <相手の返事>」。
+        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
         """
         if self.acceptance_sent_at is not None:
             return f"送った {timezone.localtime(self.acceptance_sent_at):%Y-%m-%d %H:%M}"
         if self.acceptance_response:
+            if self.acceptance_response.startswith(("届きません", "断られた")):
+                return self.acceptance_response
             return f"届いていない: {self.acceptance_response}"
         return ""
 

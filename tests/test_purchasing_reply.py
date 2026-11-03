@@ -114,9 +114,10 @@ def test_status_labels(user, po):
 
 
 @pytest.mark.django_db
-def test_cancel_refuses_rejected(user, po):
+def test_cancel_takes_rejected(user, po):
     rejected = services.mark_rejected(services.mark_sent(po, user), user, reason="作り物の理由")
 
-    with pytest.raises(ValueError, match="「作成」の発注だけ"):
-        services.cancel_purchase_order(rejected, user)
-    assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_REJECTED
+    # 断られた発注は相手が受けていないので、連絡なしに取り消せる (精査 A1 の想定外 S9)
+    cancelled = services.cancel_purchase_order(rejected, user)
+    assert cancelled.status == PurchaseOrder.STATUS_CANCELLED
+    assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_CANCELLED

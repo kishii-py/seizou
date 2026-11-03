@@ -57,6 +57,11 @@ class AcceptForm(forms.Form):
                 label=label,
                 initial=resolve_partner_item(instance.partner, part_no),
                 help_text="自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
+                # required の文は services._item_for と同じ字。invalid_choice は Django が % で値を差し込むので、品番の % を重ねる。
+                error_messages={
+                    "required": f"品番 {part_no} の自社の部品を選んでください。",
+                    "invalid_choice": f"品番 {part_no.replace('%', '%%')} の自社の部品が候補にありません。選び直してください。",
+                },
             )
             self.part_fields.append((name, part_no))
 
@@ -72,6 +77,11 @@ class RejectForm(forms.Form):
         label="断った理由",
         max_length=Inbox._meta.get_field("reason").max_length,
         widget=forms.Textarea(attrs={"rows": 3}),
+        # services の MESSAGE_NO_REASON と reject の文と同じ字 (文に % を書かない = Django が値を差し込まない)。
+        error_messages={
+            "required": "断る理由がありません。理由を書いてから断ってください。",
+            "max_length": f"断る理由が {Inbox._meta.get_field('reason').max_length} 字を超えています。{Inbox._meta.get_field('reason').max_length} 字までに縮めてください。",
+        },
     )
 
     def service_kwargs(self):
@@ -99,7 +109,7 @@ class ConnectionForm(ServiceModelForm):
         model = Connection
         fields = ["partner", "direction", "secret_env"]
         help_texts = {
-            "direction": "送る = この会社が発注を送る相手。受ける = 相手から注文を受け取る。両方の向きでつなぐときは、2 行に分けて登録します。",
+            "direction": "送る = この会社から相手の seizou へ送る (発注・注文回答・出荷の知らせ・検収)。受ける = 相手から届く物を受ける。往復には 2 社とも両方の向きが要るので、2 行に分けて登録します。",
             "secret_env": "鍵の値ではなく、値を入れる環境変数の名前です (SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET)。値は .env にだけ置きます。",
         }
 

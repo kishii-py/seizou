@@ -137,7 +137,7 @@ def test_record_notice_response_truncates_and_marks_sent(user, shipment):
 def test_notice_state_text():
     assert Shipment().notice_state() == ""
     assert Shipment(notice_response="届きません: 相手につながりません。").notice_state() == (
-        "届いていない: 届きません: 相手につながりません。"
+        "届きません: 相手につながりません。"
     )
     sent = Shipment(notice_sent_at=datetime(2026, 11, 5, 1, 30, tzinfo=UTC), notice_response="受け取った")
     # 日時は会社の時刻 (Asia/Tokyo) で出す
@@ -278,7 +278,7 @@ def test_shipment_detail_shows_red_notice_and_resend_form(monkeypatch, logged_in
     section = _section(_detail(logged_in, shipment))
 
     assert "alert-error" in section
-    assert "届いていない: 届きません" in section
+    assert "届きません" in section
     form = re.search(r"<form[^>]*>.*?</form>", section, re.S).group(0)
     assert f'action="{reverse("shipping:shipment_notice_resend", args=[shipment.pk])}"' in form
     assert 'method="post"' in form

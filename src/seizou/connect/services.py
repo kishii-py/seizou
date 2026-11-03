@@ -203,6 +203,10 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     if payload.get("kind") == "shipping_notice":
         return _receive_shipping_notice(message_id, partner, payload)
 
+    # 明細の数が受注の明細の表の欄に入らない注文は、受信箱に入れずに断る (承認の後の 500 を防ぐ。精査 A1 の不具合 2)。
+    problem = _order_lines_problem(payload)
+    if problem:
+        return _refuse(problem, msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
@@ -268,6 +272,7 @@ MESSAGE_ACCEPTANCE_NOT_ACCEPTED = (
     "承認の後に送り直してください。"
 )
 MESSAGE_ACCEPTANCE_QTY = "検収の数が 0 より大きい数の形ではありません。"
+MESSAGE_ACCEPTANCE_QTY_DIGITS = "検収の数は、整数の部分 10 桁・小数 2 桁までにしてください。"
 MESSAGE_ACCEPTANCE_DATE = "検収日が日付 (YYYY-MM-DD) の形ではありません。"
 MESSAGE_ACCEPTANCE_NOT_SENT_ORDER = (
     "seizou どうしで送った発注ではないので、検収を送っていません。"
@@ -287,6 +292,8 @@ MESSAGE_SHIPPING_UNKNOWN_ORDER = (
 )
 MESSAGE_SHIPPING_OTHER_PARTNER = "出荷の知らせの元の発注は、その取引先への物ではありません。"
 MESSAGE_SHIPPING_QTY = "出荷の知らせの数が 0 より大きい数の形ではありません。"
+MESSAGE_SHIPPING_QTY_DIGITS = "出荷の知らせの数は、整数の部分 10 桁・小数 2 桁までにしてください。"
+MESSAGE_SHIPPING_CANCELLED = "出荷の知らせの元の発注は取り消してあるので、受けられません。発注した会社に確かめてください。"
 MESSAGE_SHIPPING_DATE = "出荷日が日付 (YYYY-MM-DD) の形ではありません。"
 MESSAGE_SHIPPING_NOT_EDI_ORDER = (
     "届いた注文で作った受注ではないので、出荷の知らせを送っていません。"
@@ -434,7 +441,7 @@ def _receive_acceptance(message_id, partner, payload):
 def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, buyer_order_no, buyer_line_no):
     """検収を受注の明細に 1 行で記録する (受ける側の書く関数)。返す物は Acceptance。
 
-    数が 0 以下・検収日が日付でない・その届いた注文から作った受注の明細でないときは日本語の ValueError。
+    数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・検収日が日付でない・その届いた注文から作った受注の明細でないときは日本語の ValueError。
     同じ番号 (message_id) の 2 回目は新しい行を作らず 1 回目の行を返す (R11 の考え。番号の一意の制約に当てる)。
     user は記録のために受ける (受け口からは None)。
     """
@@ -445,6 +452,8 @@ def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, 
         positive = False
     if not positive:
         raise ValueError("検収の数は 0 より大きい数にしてください。")
+    if not _fits_field(number, Acceptance._meta.get_field("qty")):
+        raise ValueError(MESSAGE_ACCEPTANCE_QTY_DIGITS)
     if not isinstance(accepted_on, date):
         raise ValueError("検収日は日付にしてください。")
     if order_line.order_id != inbox.order_id:
@@ -470,8 +479,9 @@ def _receive_shipping_notice(message_id, partner, payload):
     """署名の通った出荷の知らせを、元の送った注文の発注の明細に 1 回だけ付ける。返す物は ShippingNoticeReceipt か、断る理由の文。
 
     引く順は 形 → 元の注文の番号 (order_id) で送った注文 (Outbox) → その発注の取引先が署名の通ったつながりの取引先と同じ
-    → その発注の明細の行番号 (line_no)。発注の状態は見ない (取り消せるのは「作成」の発注だけなので、送った注文の行がある
-    発注は取消になっていない)。同じ番号か、同じ明細 × 同じ相手の出荷番号の 2 回目は 1 回目の行を返す (R11 の考え)。
+    → その発注の明細の行番号 (line_no)。取り消した発注への知らせは断る (送れずに「作成」のまま取り消した発注にも、
+    断られた後に取り消した発注にも、送った注文の行がある。精査 A1 の不具合 4)。
+    同じ番号か、同じ明細 × 同じ相手の出荷番号の 2 回目は 1 回目の行を返す (R11 の考え)。
     相手の発注番号 (order_no) は引く鍵でも記録する列でもないので読まない。受け口に利用者はいないので user は None。
     """
     # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
@@ -519,6 +529,8 @@ def _receive_shipping_notice(message_id, partner, payload):
     purchase_order = outbox.purchase_order
     if purchase_order.partner_id != partner.pk:
         return _refuse(MESSAGE_SHIPPING_OTHER_PARTNER, msg_id)
+    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+        return _refuse(MESSAGE_SHIPPING_CANCELLED, msg_id)
     line = purchase_order.lines.filter(line_no=line_no).first()
     if line is None:
         return _refuse(
@@ -545,7 +557,7 @@ def _receive_shipping_notice(message_id, partner, payload):
 def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_no, supplier_order_no=""):
     """出荷の知らせを発注の明細に 1 行で記録する (受ける側の書く関数)。返す物は ShippingNotice。
 
-    数が 0 以下・出荷日が日付でない・相手の出荷番号が 1〜35 字の字でないときは日本語の ValueError。
+    数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・出荷日が日付でない・相手の出荷番号が 1〜35 字の字でないときは日本語の ValueError。
     同じ番号 (message_id) か、同じ明細 × 同じ相手の出荷番号の 2 回目は新しい行を作らず 1 回目の行を返す
     (R11 の考え。番号の一意の制約と、自然な鍵の一意の制約に当てる)。user は記録のために受ける (受け口からは None)。
     """
@@ -556,6 +568,8 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         positive = False
     if not positive:
         raise ValueError("出荷の知らせの数は 0 より大きい数にしてください。")
+    if not _fits_field(number, ShippingNotice._meta.get_field("qty")):
+        raise ValueError(MESSAGE_SHIPPING_QTY_DIGITS)
     if not isinstance(shipped_at, date):
         raise ValueError("出荷日は日付にしてください。")
     limit = ShippingNotice._meta.get_field("shipment_no").max_length
@@ -656,6 +670,9 @@ def accept(inbox, item_mapping, user, *, send=True):
         raw_lines = payload.get("lines")
         if not isinstance(raw_lines, list) or not raw_lines:
             raise ValueError(MESSAGE_NO_LINES)
+        problem = _order_lines_problem(payload)
+        if problem:
+            raise ValueError(f"{problem}この注文は断り、送る側に送り直してもらってください。")
         mapping = dict(item_mapping or {})
         items = {}
         lines = []
@@ -976,6 +993,61 @@ def _payload_decimal(value, label):
     raise ValueError(
         f"注文のデータの{label}が数の形ではありません。この注文は断り、送る側に送り直してもらってください。"
     )
+
+
+def _fits_field(number, field):
+    """number (Decimal) が 0 より大きく、表の欄 field (DecimalField) の桁に入るか。
+
+    整数の部分は max_digits − decimal_places 桁まで、小数は decimal_places 桁まで (末尾の 0 は数えない = 10.000 は通す)。
+    is_finite() だけでは 1e20 と 0.001 が通り、表に入れた後で読むと 500 になる (精査 A1 の不具合 1・2・3・5)。
+    """
+    if not isinstance(number, Decimal) or not number.is_finite() or number <= 0:
+        return False
+    if number >= Decimal(10) ** (field.max_digits - field.decimal_places):
+        return False
+    return number == number.quantize(Decimal(1).scaleb(-field.decimal_places))
+
+
+def _order_lines_problem(payload):
+    """注文のデータの明細の数量・単価・金額 (数量 × 単価) が、受注の明細の表の欄に入らないときの日本語の文。入れば None。
+
+    見るのは読める数 (字か整数で、有限の数) のうち 0 より大きい物だけ。読めない数・0 と負・明細の無い注文・形の違う行は見ない
+    (承認の時に accept と create_order が止める = N39 の決めと R02)。受け口 (receive) と承認 (accept) が呼ぶ。
+    connect は orders の model を頭で import しない (app の登録から引く)。
+    """
+    from django.apps import apps
+
+    order_line = apps.get_model("orders", "OrderLine")
+    amount = order_line._meta.get_field("amount")
+    amount_whole = amount.max_digits - amount.decimal_places
+    lines = payload.get("lines") if isinstance(payload, dict) else None
+    for number, raw in enumerate(lines if isinstance(lines, list) else [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        figures = {}
+        for key, label in (("qty", "数量"), ("unit_price", "単価")):
+            value = raw.get(key)
+            if isinstance(value, bool) or not isinstance(value, (str, int)):
+                continue
+            try:
+                figure = Decimal(str(value).strip())
+            except InvalidOperation:
+                continue
+            if not figure.is_finite() or figure <= 0:
+                # 0 と負は今までどおり承認の時に create_order が R02 で止める (表に入らないので 500 にならない。
+                # tests/test_r10_inbox_accept.py の数量 0 の注文が受信箱に入る形を変えない)。
+                continue
+            field = order_line._meta.get_field(key)
+            if not _fits_field(figure, field):
+                whole = field.max_digits - field.decimal_places
+                return (
+                    f"注文の {number} 行目の{label}は、0 より大きく、"
+                    f"整数の部分 {whole} 桁・小数 {field.decimal_places} 桁までの数にしてください。"
+                )
+            figures[key] = figure
+        if len(figures) == 2 and figures["qty"] * figures["unit_price"] >= Decimal(10) ** amount_whole:
+            return f"注文の {number} 行目の金額 (数量 × 単価) が、整数の部分 {amount_whole} 桁を超えます。数量と単価を確かめてください。"
+    return None
 
 
 def _payload_date(value, label):

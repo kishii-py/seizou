@@ -27,6 +27,7 @@ from seizou.masters.services import round_amount
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
+from .models import _qty_text
 
 from datetime import timedelta
 
@@ -42,8 +43,8 @@ _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"}
 
 _POSITIVE_MESSAGE = "数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
-    "送った後の取消は相手への連絡が要るので、会期後の版です。"
-    "取り消せるのは状態が「作成」の発注だけです。"
+    "送った後の発注は、この画面から取り消せません。相手に連絡してください。"
+    "取り消せるのは状態が「作成」か「断られた」の発注だけです。"
 )
 
 
@@ -130,13 +131,13 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
 
 
 def cancel_purchase_order(purchase_order, user, *, reason=""):
-    """発注を取消にする。状態が「作成」のときだけ。
+    """発注を取消にする。状態が「作成」か「断られた」のときだけ (断られた発注は相手が受けていないので、連絡なしに取り消せる。精査 A1 の想定外 S9)。
 
     reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す (受注の取消と同じ形)。
     """
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
-        if locked.status != PurchaseOrder.STATUS_DRAFT:
+        if locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
             raise ValueError(_CANCEL_AFTER_SENT_MESSAGE)
         if reason:
             added = f"取消の理由: {reason}"
@@ -356,16 +357,18 @@ def annotate_order_received(queryset):
 
 
 def shipping_notice_summary(line):
-    """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total"}。
+    """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total", "total_text"}。
 
+    total_text は合計の字 (末尾の 0 を落とす = 行の qty_text と同じ形)。
     逆の関係 shipping_notices を読むだけで、purchasing は connect を import しない。connect の無い会社では行が無い。
     行は表の並び (出荷日の古い順)。発注の詳細の明細の表が読む。
     """
     rows = getattr(line, "shipping_notices", None)
     if rows is None:
-        return {"rows": [], "count": 0, "total": _ZERO}
+        return {"rows": [], "count": 0, "total": _ZERO, "total_text": "0"}
     items = list(rows.all())
-    return {"rows": items, "count": len(items), "total": sum((row.qty for row in items), _ZERO)}
+    total = sum((row.qty for row in items), _ZERO)
+    return {"rows": items, "count": len(items), "total": total, "total_text": _qty_text(total)}
 
 
 def payable_by_partner(today=None):
