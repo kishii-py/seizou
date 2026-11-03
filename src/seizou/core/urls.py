@@ -15,6 +15,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
 
 from seizou.core.health import health
+from seizou.core.login_guard import LockoutAuthenticationForm
 from seizou.core.manual import ManualView, manual_fragment, manual_image, manual_pdf
 from seizou.core.media import protected_file
 from seizou.core.search import SearchView
@@ -45,7 +46,7 @@ core_patterns = [
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/<str:key>/edit/", SettingUpdateView.as_view(), name="setting_update"),
     path("settings/<str:key>/clear/", setting_clear, name="setting_clear"),
-    path("login/", RememberLoginView.as_view(), name="login"),
+    path("login/", RememberLoginView.as_view(authentication_form=LockoutAuthenticationForm), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("health/", health, name="health"),
 ]
