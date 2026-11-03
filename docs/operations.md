@@ -90,8 +90,40 @@ PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1
 - 会社の選べる設定 (`answers.yaml` の `settings` の値が選べる値の中か)
 - つながりの鍵 (取引先ごとの鍵の置き場の名前が `.env` にあるか)
 - つながりの受け口の URL (`https://` か。本番の条件だけ)
+- Cookie が HTTPS だけ (セッションと CSRF の Cookie。本番の条件だけ)
 
 「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
+
+## 本番の守り (HTTPS・ログイン・稼働の確認)
+
+本番 (`.env` の `DEBUG=0`) で、seizou が自分で守る物と、置き場で確かめる物です。
+
+### 稼働の確認の口 `/health/`
+
+`/health/` は、ログインを見ずに `{"ok": true}` を返します。データベースは読みません (サーバーが要求に答えるかだけを見ます)。監視の道具や nginx の確かめは、この URL を開きます (例 `curl -fsS https://<このシステムの名前>/health/`)。名前は `.env` の `ALLOWED_HOSTS` にある物を使います (無い名前では 400 になります)。データベースと置き場の確かめは `seizou_doctor` で見ます。
+
+### HTTPS と Cookie
+
+本番では、ログインの Cookie (セッションと CSRF) を HTTPS の道でだけ送ります (`seizou new` が書く `settings.py` の `if not DEBUG:` の行)。nginx で https を受け、Django へ渡す location (`proxy_pass` を書いた所) に次の 2 行を書きます。
+
+```
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+LAN の中だけで http で開く置き場では、この形のままではブラウザが Cookie を送らず、ログインできません。その置き場は、`settings.py` の `SESSION_COOKIE_SECURE` と `CSRF_COOKIE_SECURE` の 2 行を消します (点検の「Cookie が HTTPS だけ」は「直す」のまま残ります)。
+
+### ログインの締め出し
+
+ログインの画面で、同じ ID と同じ接続元 (IP) から 5 回続けて失敗すると、15 分の間はその組のログインを受け付けません (正しいパスワードでも)。画面には「ログインに続けて失敗したので、15 分の間は受け付けません。」と出ます。ログインに成功すると数え直します。締め出したときは、サーバーの記録 (`seizou.login`) に 1 行出ます (パスワードは書きません)。
+
+数は、サーバーの process の記憶 (Django の既定の cache) に持ちます。15 分より早く解くには、サーバーを立て直します。nginx の後ろでは接続元がいつも nginx になるので、ID ごとの締め出しになります (ほかの人が、ある ID を 15 分止めることもできます)。gunicorn の worker を複数にすると、worker ごとに数えます。
+
+### ログインが切れたときと、2 回押し
+
+一覧の検索や小窓の途中でログインが切れても、画面の一部にログインの画面がはまり込まず、画面の全体がログインの画面に移ります。ログインの後は、元の画面へ戻ります (`settings.py` の `MIDDLEWARE` の `HtmxLoginMiddleware`)。
+
+保存のボタンは、押すと「処理中…」になり、同じ画面から 2 回送りません。htmx で送る欄も、送っている間は送るボタンを押せません。
 
 ## 版を上げる手順
 
@@ -107,6 +139,18 @@ seizou の新しい版を入れるときは、次の順に進めます。
 8. 画面を 1 つ開いて、ログインと一覧が出ることを確かめます。
 
 うまく動かないときは、前の版に戻します。PyPI の版は `pip install seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
+
+`settings.py` に次の行が無い置き場 (この版より前に `seizou new` で作った物) は、版を上げるときに足します。`ALLOWED_HOSTS` の行の後に、次の塊を足します。Cookie の 2 行は、HTTPS で開く置き場だけです (上の「HTTPS と Cookie」)。
+
+```
+SESSION_COOKIE_HTTPONLY = True
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+```
+
+`MIDDLEWARE` の `"seizou.core.middleware.DevAutoLoginMiddleware",` の次の行に、`"seizou.core.middleware.HtmxLoginMiddleware",` を足します。
 
 ## 困ったとき
 
