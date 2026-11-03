@@ -16,11 +16,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils import timezone
 from PIL import Image, ImageDraw
 
 from seizou.connect import services as connect_services
 from seizou.connect import signing
-from seizou.connect.models import Inbox
+from seizou.connect.models import Inbox, Outbox
 from seizou.core.exceptions import RuleViolation
 from seizou.core.screens import all_screens
 from seizou.core.views import hidden_detail_fields
@@ -381,3 +382,75 @@ def test_root_with_folder_keeps_open_folder_sentence(client_logged_in, user):
     body = text(client_logged_in.get(reverse("manuals:manual_list")))
     assert ROOT_EMPTY in body
     assert FOLDER_EMPTY not in body
+
+
+# --- 発注の送った記録の相手の名前 (送り方は tests/test_purchasing_views.py を写した = requests.post を偽の物に差し替え) ---
+
+SEND_ENV = "SEIZOU_PARTNER_POLISHSUB_SECRET"
+PARTNER_URL = "https://partner.example.test/connect/receive/order/"
+
+
+class _FakeResponse:
+    def __init__(self, status_code, data=None):
+        self.status_code = status_code
+        self._data = data or {}
+
+    def json(self):
+        return self._data
+
+
+class _FakePost:
+    def __init__(self, reply):
+        self.reply = reply
+
+    def __call__(self, url, data=None, headers=None, timeout=None):
+        return self.reply
+
+
+@pytest.fixture
+def send_partner(monkeypatch, user):
+    partner = masters_services.create_partner({"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user)
+    monkeypatch.setenv(SEND_ENV, _new_secret())
+    connect_services.register_connection(partner, PARTNER_URL, SEND_ENV, "send", user)
+    return partner
+
+
+def _purchase_post(partner, item):
+    return {
+        "partner": partner.pk,
+        "order_date": "2026-11-02",
+        "note": "作り物の発注",
+        "lines-TOTAL_FORMS": "1",
+        "lines-INITIAL_FORMS": "0",
+        "lines-MIN_NUM_FORMS": "0",
+        "lines-MAX_NUM_FORMS": "1000",
+        "lines-0-item": item.pk,
+        "lines-0-qty": "10",
+        "lines-0-unit_price": "25.5",
+        "lines-0-due_date": "2026-11-20",
+    }
+
+
+@pytest.mark.django_db
+def test_outbox_received_row_names_partner(monkeypatch, client_logged_in, user, send_partner):
+    monkeypatch.setattr("requests.post", _FakePost(_FakeResponse(200, {"status": "received"})))
+    item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    response = client_logged_in.post(reverse("purchasing:purchaseorder_create"), _purchase_post(send_partner, item))
+    assert response.status_code == 302
+    outbox = Outbox.objects.get()
+    assert outbox.response == "受け取った"
+    assert str(outbox).endswith(" 作り物の協力企業 が受け取った")
+    detail = text(client_logged_in.get(response["Location"]))
+    assert "作り物の協力企業 が受け取った" in detail
+
+
+@pytest.mark.django_db
+def test_outbox_rejected_row_keeps_response(monkeypatch, client_logged_in, user, send_partner):
+    monkeypatch.setattr("requests.post", _FakePost(_FakeResponse(400, {"message": "作り物の断る理由"})))
+    item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    client_logged_in.post(reverse("purchasing:purchaseorder_create"), _purchase_post(send_partner, item))
+    outbox = Outbox.objects.get()
+    assert outbox.response == "断られた: 作り物の断る理由"
+    sent = timezone.localtime(outbox.sent_at)
+    assert str(outbox) == f"{sent:%Y-%m-%d %H:%M} 断られた: 作り物の断る理由"
+    assert "が受け取った" not in str(outbox)

@@ -183,6 +183,9 @@ class Outbox(models.Model):
 
     def __str__(self):
         sent = timezone.localtime(self.sent_at)
+        # 相手が受け取った行は、誰が受け取ったかを添える (発注の詳細の「送った記録」のタブの行の字。初見テスト 3 回目)。
+        if self.response == "受け取った":
+            return f"{sent:%Y-%m-%d %H:%M} {self.connection.partner.name} が受け取った"
         return f"{sent:%Y-%m-%d %H:%M} {self.response}"
 
 
