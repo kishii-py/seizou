@@ -223,15 +223,18 @@ class ColumnSpec:
       ("order_line__item", "部品")                   名前と見出し (合計なし)
       {"name": "amount", "label": "金額", "total": True}   辞書。total が真で、表の数の項目なら合計の行に足す (label は省ける)
       {"name": "shipped_total", "label": "出荷済み", "kind": "number", "sortable": True, "total": True}   辞書の全部の鍵
+      {"name": "board__days_left", "label": "納期まで", "kind": "number", "sort_key": "due_date"}   別の鍵で並べる
 
     辞書の鍵:
       kind      number (右寄せ・負は赤) / money (右寄せ。金額の閲覧が無い人には「—」。CSV から外す) / date (等幅の Y-m-d)。
                 書かなければ表の項目の型で決める (会社ごとの項目は型の number / date)。ほかの字は ValueError
       sortable  真なら見出しが並び替えの link になる。書かなければ表の項目と会社ごとの項目だけ並び替える
       total     真なら合計の行に足す
+      sort_key  並び替えの鍵。書くと見出しが並び替えの link になる。Python の値の列 (board__<名前>) を、同じ順になる
+                表の項目 (__ で辿る名前も可) か annotate の列で並べるときに書く
     表の項目でない名前 (annotate の列) に sortable か total を書くと、土台は order_by と Sum にその名前を渡す
     (queryset の annotate にある約束。無ければ何もしない)。board__<名前> のような Python の値 (model の property) には
-    kind だけを書く (sortable・total を書かない)。
+    kind だけを書く (sortable・total を書かない。並べたいときは sort_key)。
 
     印:
       numeric      右寄せと等幅の数字 (表の数の項目・kind が number / money・会社ごとの項目の数)。負は赤
@@ -241,7 +244,7 @@ class ColumnSpec:
       is_datetime  等幅の Y-m-d H:i (表の日時の項目)
       is_code      等幅の識別子 (数でない、名前が code か _no / _code で終わる列)
       sortable     見出しが並び替えの link
-      annotated    表の項目でない名前に sortable か total の印が付いた列 (annotate の列として order_by と Sum に渡す)
+      annotated    並び替えか合計の先が annotate の列 (sort_key があれば sort_key の先で決める。order_by と Sum に渡す)
     """
 
     #: 辞書の kind に書ける値
@@ -249,10 +252,12 @@ class ColumnSpec:
 
     def __init__(self, model, item, ext_type: str | None = None):
         self.total = False
+        self.sort_key = None
         kind = None
         sortable = None
         if isinstance(item, dict):
             self.name, self.label = item["name"], item.get("label")
+            self.sort_key = item.get("sort_key") or None
             self.total = bool(item.get("total"))
             kind = item.get("kind")
             if "sortable" in item:
@@ -275,7 +280,10 @@ class ColumnSpec:
                 self.field = None
         if self.label is None:
             self.label = str(self.field.verbose_name) if self.field is not None else self.name
-        self.sortable = sortable if sortable is not None else (self.field is not None or is_ext)
+        if self.sort_key is not None:
+            self.sortable = True
+        else:
+            self.sortable = sortable if sortable is not None else (self.field is not None or is_ext)
         self.desc_name = "-" + self.name
         self.numeric = self.kind in ("number", "money") or isinstance(self.field, NUMERIC_FIELDS) or ext_type == "number"
         self.money = self.kind == "money" or access.is_money_name(self.name)
@@ -284,9 +292,23 @@ class ColumnSpec:
             self.kind == "date" or (isinstance(self.field, DATE_FIELDS) and not self.is_datetime) or ext_type == "date"
         )
         self.is_code = not self.numeric and (self.name in CODE_NAMES or self.name.endswith(CODE_SUFFIXES))
-        self.annotated = (self.sortable or self.total) and self.field is None and not is_ext
+        if self.sort_key is not None:
+            # 表の項目か __ で辿る名前は get_ordering の道、表に無い名前は annotate の列 (部品の get_queryset の後に並べる)
+            self.annotated = "__" not in self.sort_key and not self._has_field(model, self.sort_key)
+        else:
+            self.annotated = (self.sortable or self.total) and self.field is None and not is_ext
+
+    @staticmethod
+    def _has_field(model, name: str) -> bool:
+        try:
+            model._meta.get_field(name)
+        except FieldDoesNotExist:
+            return False
+        return True
 
     def order_key(self) -> str:
+        if self.sort_key:
+            return self.sort_key
         if self.name.startswith(company_fields.EXT_PREFIX):
             return f"{company_fields.EXT_ACCESSOR}__{self.name[len(company_fields.EXT_PREFIX):]}"
         return self.name
@@ -299,8 +321,10 @@ class BaseListView(ScreenMixin, ListView):
         columns = ("order_no", {"name": "amount", "label": "金額", "total": True})
     合計に足すのは total が真で、表の数の項目 (DecimalField・IntegerField・FloatField) の列と、kind が number / money の
     annotate の列 (部品の get_queryset が annotate した名前) だけ。
+    表の項目の並び替えは get_ordering が、sort_key があれば sort_key の鍵で返す。
     annotate の列の並び替えは、部品の get_queryset が annotate を足した後 (paginate_queryset と csv_response) で当てる
-    (Django の土台は get_ordering の並びを部品の get_queryset の super() の中、annotate より先に当てるため)。
+    (sort_key があれば sort_key の鍵で。Django の土台は get_ordering の並びを部品の get_queryset の super() の中、
+    annotate より先に当てるため)。
     並び替えの要求がある時は、同じ値の行の順を pk でそろえる (昇順は pk、降順は -pk。ページ送りの境で行が重なったり抜けたりしない)。
     既定の並び (ordering) には足さない。
     """

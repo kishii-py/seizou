@@ -329,3 +329,77 @@ def test_sort_adds_pk_as_second_key(user, same_price_items):
     # CSV も同じ順
     rows = csv_rows(call(_PagedItemList, user, format="csv", sort="-standard_price"))
     assert [row[0] for row in rows[1:]] == ["P-2003", "P-2002", "P-2001"]
+
+
+def test_column_spec_sort_key():
+    # 表の項目の名前 = get_ordering の道 (annotated 偽)
+    spec = ColumnSpec(Item, {"name": "x__y", "label": "X", "kind": "number", "sort_key": "part_no"})
+    assert spec.sortable and spec.order_key() == "part_no" and not spec.annotated and spec.numeric
+    assert spec.sort_key == "part_no"
+
+    # 表に無い名前 = annotate の列 (annotated 真)
+    spec = ColumnSpec(Item, {"name": "x__y", "label": "X", "kind": "number", "sort_key": "name_len"})
+    assert spec.sortable and spec.order_key() == "name_len" and spec.annotated
+
+    # __ で辿る名前は表の道
+    spec = ColumnSpec(Item, {"name": "x__y", "label": "X", "sort_key": "partner__name"})
+    assert spec.sortable and spec.order_key() == "partner__name" and not spec.annotated
+
+    # sort_key の無い書き方は今までどおり
+    spec = ColumnSpec(Item, {"name": "board__days_left", "label": "納期まで", "kind": "number"})
+    assert spec.sort_key is None and not spec.sortable and not spec.annotated
+    assert spec.order_key() == "board__days_left"
+    spec = ColumnSpec(Item, "part_no")
+    assert spec.sort_key is None and spec.sortable and spec.order_key() == "part_no"
+    spec = ColumnSpec(Item, ("x_total", "X"))
+    assert spec.sort_key is None and not spec.sortable
+
+
+class _SortKeyItemList(BaseListView):
+    model = Item
+    screen_name = "作り物の別の鍵の一覧"
+    template_name = "core/list.html"
+    columns = (
+        "part_no",
+        {"name": "no_such_value", "label": "無い値", "kind": "number", "sort_key": "name_len"},
+        {"name": "no_such_code", "label": "無い品番", "sort_key": "part_no"},
+        {"name": "ghost", "label": "無い鍵", "sort_key": "ghost_total"},
+    )
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .annotate(name_len=ExpressionWrapper(Length("name") - Value(5), output_field=IntegerField()))
+        )
+
+
+def th_inner(text: str, label: str) -> str:
+    """見出しの字を含む th の全体 (開きの tag から </th> の前まで)。"""
+    start = text[: text.index(label)].rindex("<th ")
+    return text[start : text.index("</th>", start)]
+
+
+def test_sort_key_orders_python_value_column(user, items):
+    # annotate の列を鍵にする (name_len の −4・0・5 の順)
+    response = call(_SortKeyItemList, user, sort="no_such_value")
+    text = body(response)
+    assert column_values(response, 0) == ["P-1001", "P-1002", "P-1003"]
+    assert response.context_data["sort"] == "no_such_value"
+    head = th_inner(text, "無い値")
+    assert 'aria-sort="ascending"' in head and "sort=-no_such_value" in head
+    assert response.context_data["paginator"].object_list.query.order_by == ("name_len", "pk")
+
+    # 表の項目を鍵にする (get_ordering の道)
+    response = call(_SortKeyItemList, user, sort="-no_such_code")
+    body(response)
+    assert column_values(response, 0) == ["P-1003", "P-1002", "P-1001"]
+    assert response.context_data["paginator"].object_list.query.order_by == ("-part_no", "-pk")
+
+    # annotate に無い名前は並び替えない (200 のまま既定の並び。見出しは link のまま)
+    response = call(_SortKeyItemList, user, sort="ghost")
+    text = body(response)
+    assert response.status_code == 200
+    assert response.context_data["paginator"].object_list.query.order_by == ("-pk",)
+    assert response.context_data["sort"] == "ghost"
+    assert "<a " in th_inner(text, "無い鍵")
