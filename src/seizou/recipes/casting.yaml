@@ -1,0 +1,60 @@
+# 業種の見本 (作り物)。答えの YAML の industry が、下の name か aliases のどれかに当たると、
+# seizou new が部品マスターの項目・工程・向く設定を最初に入れる (答えの YAML に書いた物が勝つ)。
+# 形は src/seizou/recipes/README.md。答えの YAML に recipe: none と書けば入れない。
+
+# 業種 (name = 出力に出す名前。aliases = 問 1 の答えに当てる言い換え。字の幅と空白はそろえてから比べる)
+industry:
+  name: 鋳造
+  aliases:
+    - 鋳造
+    - 鋳物
+    - 鋳物製造
+    - 砂型鋳造
+    - 精密鋳造
+    - ダイカスト
+# 部品マスターに足す項目 (答えの YAML の item_fields と同じ形。5 つの鍵を全部書く)
+item_fields:
+  - label: 材質
+    type: text
+    required: false
+    in_list: true
+    searchable: true
+  - label: 型の番号
+    type: text
+    required: false
+    in_list: true
+    searchable: true
+  - label: 重さ
+    type: number
+    required: false
+    in_list: true
+    searchable: false
+# 工程の並び (1 件は 工程コード (code。英大文字と数字と _ で 10 字まで)・名前 (name)・協力企業に出すか (is_outsourced)・
+# 並び順 (sort_order)・計画に使う (use_in_plan) の 5 つ。計画に使う工程を 1 つ以上)
+processes:
+  - code: MOLD
+    name: 造型
+    is_outsourced: false
+    sort_order: 10
+    use_in_plan: true
+  - code: POUR
+    name: 鋳込み
+    is_outsourced: false
+    sort_order: 20
+    use_in_plan: true
+  - code: FIN
+    name: 仕上げ
+    is_outsourced: false
+    sort_order: 30
+    use_in_plan: false
+  - code: INSP
+    name: 検査
+    is_outsourced: false
+    sort_order: 40
+    use_in_plan: false
+# 向く設定 (答えの YAML の settings に無い鍵だけを補う。書ける鍵は order_form・partial_shipment・over_shipment・
+# over_workorder・order_number・production_plan)。取り数と不良の見込みで数が揺れるので、止めずに知らせ、分納を許す
+settings:
+  over_shipment: warn
+  over_workorder: warn
+  partial_shipment: true

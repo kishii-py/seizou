@@ -13,7 +13,7 @@ import yaml
 from seizou import cli
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
-EXPECTED_IDS = ("machining", "plating")
+EXPECTED_IDS = ("casting", "machining", "plating", "sheet_metal")
 
 ROOT_KEYS = {"industry", "item_fields", "processes", "settings"}
 INDUSTRY_KEYS = {"name", "aliases"}
@@ -118,6 +118,8 @@ def test_industry_words_do_not_overlap():
     assert matched("表面処理") == "plating"
     assert matched("めっき") == "plating"
     assert matched("メッキ") == "plating"
+    assert matched(" 鋳 物 ") == "casting"
+    assert matched("板金加工") == "sheet_metal"
     assert matched("食品") is None
     assert matched("金属加工") is None
 
