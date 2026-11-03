@@ -83,6 +83,35 @@ def _media_root() -> Path | None:
     return Path(root) if root else None
 
 
+#: MEDIA_ROOT が置き場 (BASE_DIR) そのものか、その親を指すときの断りの文 ({media_root}・{base_dir} = resolve した道)
+MEDIA_ROOT_PROBLEM = (
+    "MEDIA_ROOT ({media_root}) が置き場 ({base_dir}) そのものか、その親を指しています。"
+    "media/ のような置き場の中のフォルダにしてください。"
+)
+
+
+def media_root_problem(base_dir, media_root) -> str | None:
+    """MEDIA_ROOT が置き場 (BASE_DIR) そのものか、その親 (祖先) を指すときの断りの文。ほかは None (読むだけ)。
+
+    2 つの道を resolve してから比べる。置き場の中 (子孫) と、置き場の外の別の場所は None (断らない)。
+    どちらかが空 (None・空の字) のときも None (空の MEDIA_ROOT と BASE_DIR の無い settings は点検の別の行が見る)。
+    """
+    if not base_dir or not media_root:
+        return None
+    base = Path(base_dir).resolve()
+    media = Path(media_root).resolve()
+    if base.is_relative_to(media):
+        return MEDIA_ROOT_PROBLEM.format(media_root=media, base_dir=base)
+    return None
+
+
+def _refuse_bad_media_root() -> None:
+    """控えと戻しの頭で呼ぶ。MEDIA_ROOT が置き場そのものかその親なら、何も書かず何も消さずに BackupError で止める。"""
+    problem = media_root_problem(_base_dir(), _media_root())
+    if problem:
+        raise BackupError(problem + " 何も書かず、何も消していません。")
+
+
 def default_dir() -> Path:
     """既定の控えの置き場 (置き場の backups/)。"""
     base = _base_dir()
@@ -109,6 +138,7 @@ def take_backup(parent: Path, *, suffix: str = "") -> dict:
 
     途中で失敗したら、作りかけのフォルダを消してから例外を上げ直す (半端な控えを残さない)。
     """
+    _refuse_bad_media_root()
     kind = database_kind()
     if kind not in DB_FILES:
         raise BackupError(f"この DB ({kind}) の控えは取れません。")
@@ -250,6 +280,7 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     answers.yaml は戻さない (置き場の settings.py と対の物で、データではない)。
     返す物は {"folder": 控え, "retreat": 退避のフォルダ, "manifest": 控えの backup.json}。
     """
+    _refuse_bad_media_root()
     folder = Path(folder)
     manifest = read_manifest(folder)
     kind = database_kind()
