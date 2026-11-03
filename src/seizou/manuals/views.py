@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
-from seizou.core import reports
+from seizou.core import access, reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
@@ -38,6 +38,9 @@ from .models import FORMAT_CHOICES, Manual, ManualFolder, ManualImage, ManualVer
 FORMAT_VALUES = frozenset(value for value, _label in FORMAT_CHOICES)
 #: PDF を作れないときの知らせ (shipping の PDF_NOTICE と同じ字。shipping の views は import しない)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+#: 権限の表の action の名前 (字で書かず関数から作る = 名前がずれない。purchasing/acceptance.py と同じ形)
+ADD_IMAGE_ACTION = access.action_name(services.add_image)
+REMOVE_IMAGE_ACTION = access.action_name(services.remove_image)
 PRINT_TEMPLATE = "manuals/manual_print.html"
 
 
@@ -332,6 +335,11 @@ def manual_preview(request, pk):
 def image_upload(request, pk):
     """画像を追加する口 (htmx の部分)。画像の並びを返す (編集の画面の打ちかけの本文を消さないため、画面を移さない)。"""
     manual = get_object_or_404(Manual, pk=pk)
+    try:
+        access.require_write(request.user, ADD_IMAGE_ACTION)
+    except access.AccessDenied as exc:
+        # str(exc) は「権限: …」の形なので、文 (message) だけを出す。
+        return render(request, "manuals/_images.html", {"manual": manual, "error": exc.message})
     error = None
     try:
         services.add_image(manual, request.FILES.get("file"), request.user)
@@ -346,6 +354,11 @@ def image_delete(request, pk):
     """画像を削除する口 (htmx の部分)。画像の並びを返す。"""
     image = get_object_or_404(ManualImage.objects.select_related("manual"), pk=pk)
     manual = image.manual
+    try:
+        access.require_write(request.user, REMOVE_IMAGE_ACTION)
+    except access.AccessDenied as exc:
+        # str(exc) は「権限: …」の形なので、文 (message) だけを出す。
+        return render(request, "manuals/_images.html", {"manual": manual, "error": exc.message})
     error = None
     try:
         manual = services.remove_image(image, request.user)

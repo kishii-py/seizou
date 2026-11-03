@@ -93,6 +93,8 @@ _KIND_ACTIONS = {
         "manuals.move_manual",
         "manuals.protect_manual",
         "manuals.delete_manual",
+        "manuals.add_image",
+        "manuals.remove_image",
     ),
     "orders": (
         "orders.create_order",
