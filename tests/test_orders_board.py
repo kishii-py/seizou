@@ -506,7 +506,9 @@ def test_issue_item_follows_write_permission(settings, client, user, customer, i
 
 
 @pytest.mark.django_db
-def test_judgement_badges_and_marks(user, logged_in, customer, item, cut):
+def test_judgement_badges_and_marks(settings, user, logged_in, customer, item, cut):
+    # 本物の今日に頼る試験なので、定休日を無しにして「納期まで」を暦の日と同じにする (曜日に左右されない)
+    settings.SEIZOU = {"weekly_holidays": []}
     today = timezone.localdate()
     late = _line(user, customer, item, due=today - timedelta(days=3))
     ready = _line(user, customer, item, due=today + timedelta(days=2))
