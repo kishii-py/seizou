@@ -7,6 +7,7 @@
 """
 
 from decimal import Decimal
+from functools import cached_property
 
 from django.conf import settings
 from django.db import models
@@ -119,6 +120,13 @@ class PurchaseOrderLine(models.Model):
     def __str__(self):
         # 受注の明細と同じ形 (候補の口が str(obj) を返す)。発注と部品を読むので、引く側は select_related を付ける。
         return f"{self.purchase_order.po_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+
+    @cached_property
+    def shipping_notice(self):
+        """出荷の知らせの要約 (読むだけ)。発注の詳細の明細の表が読む。"""
+        from . import services
+
+        return services.shipping_notice_summary(self)
 
 
 class Receipt(models.Model):

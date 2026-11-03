@@ -225,6 +225,51 @@ class Acceptance(models.Model):
         return f"{self.accepted_on:%Y-%m-%d} {self.order_line} {_qty_text(self.qty)}"
 
 
+class ShippingNotice(models.Model):
+    """出荷の知らせ (EDI の 3 段目)。相手 (注文を受けた協力企業の seizou) が出荷した日と数の知らせを、発注の明細ごとに出荷 1 件 1 行で持つ。
+
+    番号の一意の制約と、発注の明細 × 相手の出荷番号 の一意の制約で、同じ知らせは 1 行 (R11 の考え)。
+    受入 (purchasing.Receipt) は人が記録する別の物で、この行は受入の初期値になるだけ。
+    書くのは connect.services.record_shipping_notice だけ。
+    """
+
+    message_id = models.UUIDField("出荷の知らせの番号", unique=True)
+    line = models.ForeignKey(
+        "purchasing.PurchaseOrderLine",
+        verbose_name="発注の明細",
+        on_delete=models.PROTECT,
+        related_name="shipping_notices",
+    )
+    shipment_no = models.CharField("相手の出荷番号", max_length=35)
+    supplier_order_no = models.CharField("相手の受注番号", max_length=35, blank=True)
+    shipped_at = models.DateField("出荷日")
+    qty = models.DecimalField("出荷の数", max_digits=12, decimal_places=2)
+    received_at = models.DateTimeField("届いた日時", default=timezone.now)
+
+    class Meta:
+        verbose_name = "出荷の知らせ"
+        verbose_name_plural = "出荷の知らせ"
+        # 発注の明細の枡に古い順で並べる。
+        ordering = ["shipped_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="connect_shippingnotice_qty_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["line", "shipment_no"],
+                name="connect_shippingnotice_line_shipment_no_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.shipped_at:%Y-%m-%d} {self.line} ×{self.qty_text()}"
+
+    def qty_text(self):
+        """出荷の数の字 (末尾の 0 を落とす)。発注の詳細の枡と、受入の初期値の GET の鍵の値に使う。"""
+        return _qty_text(self.qty)
+
+
 def _qty_text(value) -> str:
     """数量の字。末尾の 0 を落とす (10.00 → 10、2.50 → 2.5)。purchasing の models と同じ (connect は purchasing を頭で import しない)。"""
     dec = value if isinstance(value, Decimal) else Decimal(str(value))

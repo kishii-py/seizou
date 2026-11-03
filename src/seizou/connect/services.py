@@ -8,6 +8,7 @@
 - 承認 (受け入れ) と断りの後、send_reply が結果を「注文回答」にして相手の受け口へ返す。
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
+- 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import map_partner_item, resolve_partner_item
@@ -31,6 +33,7 @@ from seizou.orders.services import create_order
 
 from . import signing
 from .models import Acceptance, Connection, Inbox
+from .models import ShippingNotice
 
 logger = logging.getLogger("seizou.connect")
 
@@ -142,6 +145,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     通らなければ断る理由の日本語の文字列を返し、受信箱には入れない。
     本文の kind が order_reply (注文回答) なら受信箱に入れず、元の発注に当てて ReplyReceipt を返す。
     本文の kind が acceptance (検収) なら受信箱に入れず、受注の明細に当てて AcceptanceReceipt を返す。
+    本文の kind が shipping_notice (出荷の知らせ) なら受信箱に入れず、発注の明細に当てて ShippingNoticeReceipt を返す。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
@@ -195,6 +199,9 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     # 検収 (相手が受け入れた数の知らせ) も届いた注文の行にせず、元の注文から作った受注の明細に当てる。
     if payload.get("kind") == "acceptance":
         return _receive_acceptance(message_id, partner, payload)
+    # 出荷の知らせ (相手が出荷した日と数) も届いた注文の行にせず、元の送った注文の発注の明細に当てる。
+    if payload.get("kind") == "shipping_notice":
+        return _receive_shipping_notice(message_id, partner, payload)
 
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
@@ -232,6 +239,18 @@ class AcceptanceReceipt:
     acceptance: object
 
 
+@dataclass(frozen=True)
+class ShippingNoticeReceipt:
+    """受け口が出荷の知らせを発注の明細に付けた (か、同じ知らせの 2 回目だった) 印。
+
+    受け口の view は message_id だけを読む (ReplyReceipt と同じ)。message_id は付けた行の番号
+    (同じ明細 × 同じ出荷番号の 2 回目は 1 回目の行の番号)。notice は付けた ShippingNotice の行。
+    """
+
+    message_id: uuid.UUID
+    notice: object
+
+
 MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・result を字で送ってください。"
 MESSAGE_REPLY_RESULT = "注文回答の結果が accepted か rejected ではありません。"
 MESSAGE_REPLY_OTHER_PARTNER = "注文回答の元の発注は、その取引先への物ではありません。"
@@ -256,6 +275,25 @@ MESSAGE_ACCEPTANCE_NOT_SENT_ORDER = (
 )
 MESSAGE_ACCEPTANCE_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので検収を送っていません。"
+    "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
+)
+
+# 出荷の知らせ (EDI の 3 段目) の断る理由と、送らなかった理由の日本語。
+MESSAGE_SHIPPING_SHAPE = (
+    "出荷の知らせの形が読めません。order_id・shipment_no・shipped_at・qty を字で、line_no を数で送ってください。"
+)
+MESSAGE_SHIPPING_UNKNOWN_ORDER = (
+    "出荷の知らせの元の注文 (送った注文) がありません。注文のデータの番号を確かめてください。"
+)
+MESSAGE_SHIPPING_OTHER_PARTNER = "出荷の知らせの元の発注は、その取引先への物ではありません。"
+MESSAGE_SHIPPING_QTY = "出荷の知らせの数が 0 より大きい数の形ではありません。"
+MESSAGE_SHIPPING_DATE = "出荷日が日付 (YYYY-MM-DD) の形ではありません。"
+MESSAGE_SHIPPING_NOT_EDI_ORDER = (
+    "届いた注文で作った受注ではないので、出荷の知らせを送っていません。"
+    "seizou どうしで届いた注文を承認した受注の出荷だけが、相手への出荷の知らせになります。"
+)
+MESSAGE_SHIPPING_NO_CONNECTION = (
+    "取引先との接続 (送る向き) が無いので出荷の知らせを送っていません。"
     "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
 )
 
@@ -426,6 +464,123 @@ def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, 
             )
     except IntegrityError:
         return Acceptance.objects.get(message_id=message_id)
+
+
+def _receive_shipping_notice(message_id, partner, payload):
+    """署名の通った出荷の知らせを、元の送った注文の発注の明細に 1 回だけ付ける。返す物は ShippingNoticeReceipt か、断る理由の文。
+
+    引く順は 形 → 元の注文の番号 (order_id) で送った注文 (Outbox) → その発注の取引先が署名の通ったつながりの取引先と同じ
+    → その発注の明細の行番号 (line_no)。発注の状態は見ない (取り消せるのは「作成」の発注だけなので、送った注文の行がある
+    発注は取消になっていない)。同じ番号か、同じ明細 × 同じ相手の出荷番号の 2 回目は 1 回目の行を返す (R11 の考え)。
+    相手の発注番号 (order_no) は引く鍵でも記録する列でもないので読まない。受け口に利用者はいないので user は None。
+    """
+    # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
+    from .models import Outbox
+
+    msg_id = str(message_id)
+    order_id = payload.get("order_id")
+    line_no = payload.get("line_no")
+    supplier_order_no = payload.get("supplier_order_no")
+    shipment_no = payload.get("shipment_no")
+    shipped_at = payload.get("shipped_at")
+    qty = payload.get("qty")
+    # str でない値を filter と Decimal に渡さないよう、先に形を見る。line_no は JSON の整数 (bool は int の子なので外す)。
+    if not all(isinstance(value, str) and value for value in (order_id, shipment_no, shipped_at, qty)):
+        return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
+    if isinstance(line_no, bool) or not isinstance(line_no, int) or line_no < 1:
+        return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
+    if len(shipment_no) > ShippingNotice._meta.get_field("shipment_no").max_length:
+        return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
+    supplier_order_no = supplier_order_no if isinstance(supplier_order_no, str) else ""
+    try:
+        order_message_id = uuid.UUID(order_id)
+    except ValueError:
+        return _refuse(MESSAGE_SHIPPING_UNKNOWN_ORDER, msg_id)
+    try:
+        qty_value = _payload_decimal(qty, "出荷の数")
+    except ValueError:
+        return _refuse(MESSAGE_SHIPPING_QTY, msg_id)
+    if not qty_value > 0:
+        return _refuse(MESSAGE_SHIPPING_QTY, msg_id)
+    try:
+        shipped_date = date.fromisoformat(shipped_at)
+    except ValueError:
+        return _refuse(MESSAGE_SHIPPING_DATE, msg_id)
+
+    # 同じ発注の送り直しは同じ番号で Outbox に複数行ある (get でなく最初の 1 行)。
+    outbox = (
+        Outbox.objects.select_related("purchase_order")
+        .filter(message_id=order_message_id)
+        .order_by("pk")
+        .first()
+    )
+    if outbox is None:
+        return _refuse(MESSAGE_SHIPPING_UNKNOWN_ORDER, msg_id)
+    purchase_order = outbox.purchase_order
+    if purchase_order.partner_id != partner.pk:
+        return _refuse(MESSAGE_SHIPPING_OTHER_PARTNER, msg_id)
+    line = purchase_order.lines.filter(line_no=line_no).first()
+    if line is None:
+        return _refuse(
+            f"出荷の知らせの明細の行番号 {line_no} が発注 {purchase_order.po_no} にありません。", msg_id
+        )
+
+    with transaction.atomic():
+        try:
+            notice = record_shipping_notice(
+                line,
+                qty_value,
+                shipped_date,
+                None,
+                message_id=message_id,
+                shipment_no=shipment_no,
+                supplier_order_no=supplier_order_no,
+            )
+        except ValueError as exc:
+            transaction.set_rollback(True)
+            return _refuse(str(exc), msg_id)
+    return ShippingNoticeReceipt(message_id=notice.message_id, notice=notice)
+
+
+def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_no, supplier_order_no=""):
+    """出荷の知らせを発注の明細に 1 行で記録する (受ける側の書く関数)。返す物は ShippingNotice。
+
+    数が 0 以下・出荷日が日付でない・相手の出荷番号が 1〜35 字の字でないときは日本語の ValueError。
+    同じ番号 (message_id) か、同じ明細 × 同じ相手の出荷番号の 2 回目は新しい行を作らず 1 回目の行を返す
+    (R11 の考え。番号の一意の制約と、自然な鍵の一意の制約に当てる)。user は記録のために受ける (受け口からは None)。
+    """
+    try:
+        number = qty if isinstance(qty, Decimal) else Decimal(str(qty))
+        positive = number.is_finite() and number > 0
+    except InvalidOperation:
+        positive = False
+    if not positive:
+        raise ValueError("出荷の知らせの数は 0 より大きい数にしてください。")
+    if not isinstance(shipped_at, date):
+        raise ValueError("出荷日は日付にしてください。")
+    limit = ShippingNotice._meta.get_field("shipment_no").max_length
+    if not isinstance(shipment_no, str) or not shipment_no or len(shipment_no) > limit:
+        raise ValueError("相手の出荷番号は 1〜35 字の字にしてください。")
+    # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない (record_acceptance と同じ)。
+    try:
+        with transaction.atomic():
+            return ShippingNotice.objects.create(
+                message_id=message_id,
+                line=line,
+                shipment_no=shipment_no,
+                supplier_order_no=(supplier_order_no or "")[:limit],
+                shipped_at=shipped_at,
+                qty=number,
+            )
+    except IntegrityError:
+        existing = (
+            ShippingNotice.objects.filter(Q(message_id=message_id) | Q(line=line, shipment_no=shipment_no))
+            .order_by("pk")
+            .first()
+        )
+        if existing is None:
+            raise
+        return existing
 
 
 # 受け入れと断るの日本語 (何が起きて、何をすればよいか)。payload の全文は文に入れない。
@@ -675,6 +830,72 @@ def send_acceptance(receipt, user):
     return saved
 
 
+def send_shipping_notice(shipment, user):
+    """出荷を「出荷の知らせ」にし、署名して、注文を送ってきた相手 (得意先の seizou) の受け口へ送る。
+
+    - 送るのは、届いた注文 (Inbox) で作った受注の出荷だけ。それ以外は HTTP を送らず、返事の欄に書いて返す。
+    - 番号は送る前に保存し (届かなくても残る)、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
+    - つながりは届いた注文の取引先の、向き「送る」の物 (注文回答と同じ向き)。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order・send_reply・send_acceptance と同じ _deliver。
+    - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (出荷は成立する)。
+      返事は出荷の notice_response に、相手が受け取ったときだけ notice_sent_at に書く。
+      出荷の列は shipping.services の assign_notice_number・record_notice_response が書く。
+    - 鍵の値・本文・見出しの値をログと返す物に出さない。返す物は取り直した Shipment。
+    """
+    # connect と shipping の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
+    from django.apps import apps
+    from django.utils import timezone
+
+    from seizou.core.conf import company_id
+    from seizou.core.services import company
+    from seizou.shipping import services as shipping_services
+
+    # 数量と出荷日は表の値で送る (出荷を作った直後の物は、数量が渡した桁のままのため。send_acceptance と同じ)。
+    shipment_model = apps.get_model("shipping", "Shipment")
+    current = shipment_model.objects.select_related("order_line__order").get(pk=shipment.pk)
+    line = current.order_line
+    order = line.order
+
+    # 届いた注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
+    inbox = getattr(order, "inbox_message", None)
+    if inbox is None:
+        return shipping_services.record_notice_response(current, MESSAGE_SHIPPING_NOT_EDI_ORDER, user)
+    message_id = shipping_services.assign_notice_number(current, user)
+
+    connection = (
+        Connection.objects.filter(partner_id=inbox.partner_id, direction=Connection.DIRECTION_SEND)
+        .order_by("pk")
+        .first()
+    )
+    if connection is None:
+        return shipping_services.record_notice_response(current, MESSAGE_SHIPPING_NO_CONNECTION, user)
+
+    order_data = inbox.payload if isinstance(inbox.payload, dict) else {}
+    order_no = order_data.get("order_no")
+    notice_data = {
+        "id": str(message_id),
+        "kind": "shipping_notice",
+        "sent_at": timezone.localtime().isoformat(),
+        "order_id": str(inbox.message_id),
+        "order_no": order_no if isinstance(order_no, str) else "",
+        "line_no": line.line_no,
+        "supplier_order_no": order.order_no,
+        "shipment_no": current.shipment_no,
+        "shipped_at": current.shipped_at.isoformat(),
+        "qty": str(current.qty),
+        "supplier": {"id": company_id(), "name": company().name},
+    }
+    raw = json.dumps(notice_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    # R17: ここは atomic の外。送る所は send_order・send_reply・send_acceptance と同じ _deliver。
+    reply, kind = _deliver(connection, message_id, raw)
+
+    saved = shipping_services.record_notice_response(current, reply, user, sent=(kind == "received"))
+    logger.info("出荷の知らせを送った: 出荷 %s 番号 %s 返事の種類 %s", current.pk, message_id, kind)
+    return saved
+
+
 def _part_of(raw, number):
     """明細 1 行の相手の品番と品名。形が違えば日本語の ValueError。"""
     part_no = raw.get("part_no") if isinstance(raw, dict) else None
@@ -758,6 +979,7 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
     """本文の bytes を署名して相手の受け口へ送り、返事を (日本語の文, 種類) にして返す。
 
     send_order と send_reply が呼ぶ。requests.post を呼ぶのはこの 1 か所だけ。
+    send_acceptance (検収) と send_shipping_notice (出荷の知らせ) も、この 1 か所から送る。
     呼び手は transaction.atomic の外から呼ぶ (R17)。待ちは 10 秒。
     種類は received (受け取った) / rejected (断られた) / unreadable / unreachable / no_secret / bad_secret。
     鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。

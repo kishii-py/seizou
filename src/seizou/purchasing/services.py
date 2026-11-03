@@ -355,6 +355,19 @@ def annotate_order_received(queryset):
     )
 
 
+def shipping_notice_summary(line):
+    """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total"}。
+
+    逆の関係 shipping_notices を読むだけで、purchasing は connect を import しない。connect の無い会社では行が無い。
+    行は表の並び (出荷日の古い順)。発注の詳細の明細の表が読む。
+    """
+    rows = getattr(line, "shipping_notices", None)
+    if rows is None:
+        return {"rows": [], "count": 0, "total": _ZERO}
+    items = list(rows.all())
+    return {"rows": items, "count": len(items), "total": sum((row.qty for row in items), _ZERO)}
+
+
 def payable_by_partner(today=None):
     """支払の見込み (先月と今月)。受入の金額を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
 
