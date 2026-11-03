@@ -40,6 +40,7 @@ SETTING_LABELS = {
     "access_control": ("権限の判定 (部署・編集の権限・金額の閲覧)", {"off": "使わない", "log": "記録だけ", "on": "有効"}),
     "assistant_model": ("AI チャットが使う model", {}),
     "intake_model": ("注文書の読み取りが使う model", {}),
+    "feedback_model": ("フィードバックの AI の聞き取りが使う model", {}),
     "menu": ("左のメニューの括り (空なら既定の並び)", {}),
 }
 

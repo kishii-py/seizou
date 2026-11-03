@@ -63,7 +63,7 @@ def next_number(kind: str) -> str:
 
 
 #: 字で持つ設定 (model の名前)。空でない 100 字まで
-_TEXT_SETTINGS = ("assistant_model", "intake_model")
+_TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model")  # feedback_model は N59 の前提 (本体が先に入れた)
 _TEXT_MAX = 100
 
 
