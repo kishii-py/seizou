@@ -10,6 +10,7 @@
 - 世話役 = アカウント管理の権限 (seizou.core.access.can_manage_accounts)。確認済みと送ったにできるのは世話役だけ。
 - 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
   添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
+- 直した (fixed) は世話役が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from .models import Feedback
 
 #: 種類の値の並び (使い方・自社の作業・皆の要望・不具合)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
-#: 状態の値の並び (下書き → 確認済み → 送った)
+#: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した)
 STATUSES = tuple(value for value, _ in Feedback.STATUS_CHOICES)
 #: data に入れてよい鍵
 FIELD_KEYS = ("kind", "screen", "title", "problem", "situation", "wish", "screens")
@@ -40,6 +41,8 @@ MASK = "〇〇"
 TITLE_MAX_CHARS = Feedback._meta.get_field("title").max_length
 #: 送った先の URL の字数の上限 (表の列の長さ)
 SENT_URL_MAX_CHARS = Feedback._meta.get_field("sent_url").max_length
+#: 直した場所の字数の上限 (表の列の長さ)
+FIXED_NOTE_MAX_CHARS = Feedback._meta.get_field("fixed_note").max_length
 
 MESSAGE_KIND = "種類は 使い方・自社の作業・皆の要望・不具合 のどれかです。"
 MESSAGE_TITLE_EMPTY = "題を入力してください。"
@@ -48,6 +51,8 @@ MESSAGE_PROBLEM_EMPTY = "困りごとを入力してください。"
 MESSAGE_CANNOT_EDIT = "この下書きは、書いた人 (下書きの間) かアカウント管理の担当者だけが直せます。"
 MESSAGE_ALREADY_SENT = "この件は送った状態です。"
 MESSAGE_SENT_URL = "送った先は http か https の URL にしてください。"
+MESSAGE_ALREADY_FIXED = "この件は既に直した状態です。"
+MESSAGE_FIXED_NOTE_LONG = f"直した場所は {FIXED_NOTE_MAX_CHARS} 字までです。短くしてください。"
 
 #: 金額らしい数 (¥・￥ の後の数と、円の前の数)
 _MONEY = re.compile(r"[¥￥]\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*円")
@@ -349,10 +354,13 @@ def mark_sent(feedback, user, sent_url=""):
     """下書きか確認済み → 送った。世話役だけ。送った物をもう一度は ValueError。
 
     sent_url は空か、http:// か https:// で始まる 200 字までの字 (GitHub の Issue の URL など。字として持つだけ)。
+    直した物も ValueError (直した後に送ったへ戻さない)。
     """
     _refuse_non_manager(user, "送った状態")
     if feedback.status == "sent":
         raise ValueError(MESSAGE_ALREADY_SENT)
+    if feedback.status == "fixed":
+        raise ValueError(MESSAGE_ALREADY_FIXED)
     url = _text(sent_url)
     if url and (not url.startswith(("http://", "https://")) or len(url) > SENT_URL_MAX_CHARS or any(ch.isspace() for ch in url)):
         raise ValueError(MESSAGE_SENT_URL)
@@ -360,6 +368,28 @@ def mark_sent(feedback, user, sent_url=""):
         feedback.status = "sent"
         feedback.sent_url = url
         feedback.save(update_fields=["status", "sent_url", "updated_at"])
+        return feedback
+
+
+def mark_fixed(feedback, note, user):
+    """直した状態にする (下書き・確認済み・送ったのどれからでも。Issue にせずに直す事もあるため)。世話役だけ。
+
+    note は直した場所と版 (例「版 0.4.0 の受注の入力の画面」。空でよい。前後の空白を外して 200 字まで)。
+    直した日時は今にし、知らせた日時は空にする (書いた人が次にログインしたときに 1 回知らせる = signals.py)。
+    既に直した物は ValueError。直した後は、書いた人は直せず消せない (can_edit・can_delete は書いた人に下書きだけを許すため)。
+    """
+    _refuse_non_manager(user, "直した状態")
+    if feedback.status == "fixed":
+        raise ValueError(MESSAGE_ALREADY_FIXED)
+    text = _text(note)
+    if len(text) > FIXED_NOTE_MAX_CHARS:
+        raise ValueError(MESSAGE_FIXED_NOTE_LONG)
+    with transaction.atomic():
+        feedback.status = "fixed"
+        feedback.fixed_at = timezone.now()
+        feedback.fixed_note = text
+        feedback.fixed_seen_at = None
+        feedback.save(update_fields=["status", "fixed_at", "fixed_note", "fixed_seen_at", "updated_at"])
         return feedback
 
 
