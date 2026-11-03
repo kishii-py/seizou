@@ -53,8 +53,8 @@ def test_partial_shipment_disallowed_requires_full_remaining(settings, user, lin
 
     with pytest.raises(RuleViolation) as caught:
         services.ship(line, Decimal("4"), SHIPPED_AT, user)
-    assert caught.value.code == "partial_shipment"
-    assert caught.value.message.startswith("分納を許さない設定です。")
+    assert caught.value.code == "分納"
+    assert caught.value.message.startswith("この会社は分納を許していません (設定「分納」)。")
     assert "10" in caught.value.message
     assert Shipment.objects.count() == 0
 
@@ -63,5 +63,5 @@ def test_partial_shipment_disallowed_requires_full_remaining(settings, user, lin
 
     with pytest.raises(RuleViolation) as caught:
         services.ship(line, Decimal("1"), SHIPPED_AT, user)
-    assert caught.value.code == "partial_shipment"
+    assert caught.value.code == "分納"
     assert Shipment.objects.count() == 1

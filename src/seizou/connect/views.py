@@ -76,7 +76,7 @@ class InboxListView(BaseListView):
 class InboxDetailView(BaseDetailView):
     """届いた注文の詳細。
 
-    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「受け入れる」か「断る」へ
+    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「承認」か「断る」へ
     """
 
     model = Inbox
@@ -122,7 +122,7 @@ class ConnectionListView(BaseListView):
     model = Connection
     screen_name = "取引先との接続"
     screen_help = "取引先ごとの受け口と、鍵の置き場の名前。鍵の値は .env にだけ置き、画面には出しません。"
-    columns = ("partner", "direction", "url", "secret_env", ("secret_state", "鍵の設定"))
+    columns = ("direction", "partner", "url", "secret_env", ("secret_state", "鍵の設定"))
     ordering = ("partner", "direction")
 
 

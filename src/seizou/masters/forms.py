@@ -50,6 +50,8 @@ class PartnerForm(ServiceModelForm):
         help_texts = {
             "closing_day": "1〜31。月末締めは 31",
             "payment_day": "1〜31。月末は 31",
+            "rounding": "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。",
+            "tax_mode": "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。",
         }
 
 

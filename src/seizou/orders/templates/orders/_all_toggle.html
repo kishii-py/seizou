@@ -1,11 +1,11 @@
-{# 一覧の出し分け: 残のある物だけ (既定) / すべて (?all=1)。「すべて」のときは検索とページ送りの htmx の要求にも all=1 を付ける (hx-include)。 #}
+{# 一覧の出し分け: 出荷の残りがある物だけ (既定) / すべて (?all=1)。「すべて」のときは検索とページ送りの htmx の要求にも all=1 を付ける (hx-include)。 #}
 <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="出す物">
   {% if request.GET.all == "1" %}
-  <a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}">残のある物だけ</a>
+  <a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}">出荷の残りがある物だけ</a>
   <span class="btn btn-sm btn-active pointer-events-none" aria-current="true">すべて</span>
   <input type="hidden" id="orders-all" name="all" value="1">
   {% else %}
-  <span class="btn btn-sm btn-active pointer-events-none" aria-current="true">残のある物だけ</span>
+  <span class="btn btn-sm btn-active pointer-events-none" aria-current="true">出荷の残りがある物だけ</span>
   <a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}?all=1">すべて</a>
   {% endif %}
 </div>

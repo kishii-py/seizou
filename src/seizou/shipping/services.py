@@ -3,7 +3,7 @@
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
-- 分納を許さない設定 (partial_shipment が偽) の違反も RuleViolation で、code は設定の鍵の名前。
+- 分納を許さない設定 (partial_shipment が偽) の違反も RuleViolation で、code は設定の画面の名前「分納」。
 - 決まりの番号の無い入力の誤り (出荷の一覧が空) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 受注より多い出荷のポカよけは検査の層 (seizou.core.checks) が services の前に見る。
@@ -46,6 +46,14 @@ def _dec(value):
     return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
+def _qty_text(value) -> str:
+    """知らせに出す数の字。末尾の 0 を落とす (10.00 → 10、4.50 → 4.5)。core.checks.builtin._num と同じ形。"""
+    dec = _dec(value).normalize()
+    if dec == dec.to_integral_value():
+        return str(dec.quantize(Decimal(1)))
+    return format(dec, "f")
+
+
 def ship(order_line, qty, shipped_at, user, *, note="", send=True):
     """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
 
@@ -64,8 +72,8 @@ def ship(order_line, qty, shipped_at, user, *, note="", send=True):
             remaining = remaining_qty(locked)
             if qty != remaining:
                 raise RuleViolation(
-                    "partial_shipment",
-                    f"分納を許さない設定です。残の数 ({remaining}) をそのまま出荷してください。",
+                    "分納",
+                    f"この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
         shipment = Shipment.objects.create(
             shipment_no=next_number("shipment"),
@@ -191,8 +199,8 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
             remaining = remaining_qty(line) + locked.qty
             if qty != remaining:
                 raise RuleViolation(
-                    "partial_shipment",
-                    f"分納を許さない設定です。この出荷を除いた残の数 ({remaining}) をそのまま出荷してください。",
+                    "分納",
+                    f"この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
         locked.qty = qty
         locked.shipped_at = shipped_at

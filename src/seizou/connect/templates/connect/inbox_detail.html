@@ -1,9 +1,9 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
-{# 届いた注文の詳細。見出しの右に、状態が「届いた」のときだけ「断る」と「受け入れる」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
+{# 届いた注文の詳細。見出しの右に、状態が「届いた」のときだけ「断る」と「承認」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
 {% block actions %}{{ block.super }}{% if object.status == "received" %}
 <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
-<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}受け入れる</a>
+<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}承認</a>
 {% endif %}{% endblock %}
 {% block content %}
 {# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (02 の 0 節: uuid は出さない)。 #}

@@ -6,6 +6,7 @@ services.issue_workorder(order_line=..., qty=..., steps=..., user=...) を呼ぶ
 """
 
 from django import forms
+from django.db.models import Q
 
 from .models import WorkOrder, WorkOrderStep
 
@@ -37,6 +38,17 @@ class WorkOrderIssueForm(forms.Form):
         required=False,
         help_text="選ばなければ、部品の標準の工程の並びを写します。予定の数は工程ごとに数量と同じです。",
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 取消した受注の明細は選択肢に出さない。ただし選んで届いた明細 (POST の値か、新規登録の GET の ?order_line= の初期値) は
+        # 選択肢に残す。保存のときに services.issue_workorder が R05 の赤の文で止める (出荷の入力と同じ知らせ)。
+        # Django の「正しく選択してください」で、選んだ明細が欄から消える形にしない (初見テスト 3 回目)。
+        chosen = self.data.get(self.add_prefix("order_line")) if self.is_bound else self.initial.get("order_line")
+        pk = str(getattr(chosen, "pk", chosen) or "")
+        if pk.isdigit():
+            field = self.fields["order_line"]
+            field.queryset = _OrderLine.objects.filter(~Q(order__status="cancelled") | Q(pk=int(pk))).select_related("order", "item")
 
     def service_kwargs(self):
         line = self.cleaned_data["order_line"]
