@@ -882,7 +882,7 @@ def widget_css(widget) -> str:
 
 
 class BaseModalView(ScreenMixin, DetailView):
-    """小窓の土台。見るだけと、詳細への移動のボタン。template は <app>/_modal.html か core/_modal.html。
+    """小窓の土台。見るだけと、詳細への移動のボタンと、編集の権限のある人には編集の link。template は <app>/_modal.html か core/_modal.html。
 
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
     tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形)。
@@ -928,6 +928,9 @@ class BaseModalView(ScreenMixin, DetailView):
         context["fields"] = items[: self.modal_fields] + ext_items
         context["tabs"] = [related_tab(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
         context["detail_url"] = model_url(obj.__class__, "detail", obj.pk)
+        context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
+        if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
+            context["edit_url"] = None
         return context
 
 
