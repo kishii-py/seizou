@@ -1,0 +1,7 @@
+{% extends "core/form.html" %}
+{% load seizou_tags %}
+{# 入金の記録: 土台の入力の上に、請求書の番号と得意先と 合計・入金済み・残 の 1 行。金額は金額の閲覧が無い人には —。 #}
+{% block content %}
+<p class="mb-4 text-sm text-base-content/70">請求書 <span class="font-mono">{{ object.invoice_no }}</span> ({{ object.customer.name }})。合計 <span class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.total|comma }}{% endif %}</span>・入金済み <span class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.paid_total|comma }}{% endif %}</span>・残 <span class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.balance|comma }}{% endif %}</span></p>
+{{ block.super }}
+{% endblock %}

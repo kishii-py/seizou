@@ -1,0 +1,7 @@
+{% extends "core/form.html" %}
+{% load seizou_tags %}
+{# 入金を取り消す: 欄の無い form。取消の記録は履歴に残り、請求書の残の金額に戻る。 #}
+{% block content %}
+<p class="mb-4 text-base-content/70">請求書 <span class="font-mono">{{ object.invoice.invoice_no }}</span> の入金 (入金日 {{ object.received_on|date:"Y-m-d" }}・{{ object.get_method_display }}{% if not seizou.hide_money %}・金額 {{ object.amount|comma }}{% endif %}) を取り消します。取消の記録は履歴に残り、請求書の残の金額に戻ります。</p>
+{{ block.super }}
+{% endblock %}
