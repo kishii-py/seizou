@@ -330,7 +330,7 @@ def test_orderline_list_rows_have_entrances(user, logged_in, customer, item):
         line = orders[status].lines.get()
         tr_html = _tr(everything, line.pk)
         assert "?order_line=" not in tr_html
-        assert _cells(tr_html)[-1] == "—"
+        assert "受注の詳細" in tr_html and "from_line=" not in tr_html
     for href in _entrances(open_line):
         assert href in everything
 

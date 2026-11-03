@@ -47,6 +47,7 @@ class WorkOrderListView(BaseListView):
     )
     search_fields = ("wo_no",)
     ordering = ("-issued_on", "-id")
+    template_name = "workorders/workorder_list.html"
 
     def get_queryset(self):
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")

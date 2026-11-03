@@ -4,15 +4,20 @@
 作り物のデータだけを使う。
 """
 
+import io
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 
 from seizou.masters import services as masters_services
 from seizou.orders import board
@@ -380,3 +385,209 @@ def test_existing_entrances_still_present(user, logged_in, customer, item):
 
     assert f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"' in body
     assert f'href="{reverse("workorders:workorder_create")}?order_line={line.pk}"' in body
+
+
+# --- 2 段目: 盤の行の部分 (印・合計・行のメニュー・絞り込みの欄) ---
+
+
+def _tr(body, pk):
+    """一覧の行 (<tr id="row-<pk>" ...>...</tr>) の HTML。"""
+    match = re.search(rf'<tr id="row-{pk}".*?</tr>', body, re.S)
+    assert match, f"row-{pk} が無い"
+    return match.group(0)
+
+
+def _cells(html):
+    """<td> の字 (タグを外して前後の空白を落とす)。"""
+    return [re.sub(r"<[^>]+>", "", cell).strip() for cell in re.findall(r"<td[^>]*>(.*?)</td>", html, re.S)]
+
+
+def _png():
+    buffer = io.BytesIO()
+    Image.new("1", (40, 30), 1).save(buffer, format="PNG")
+    return SimpleUploadedFile("作り物の図面.png", buffer.getvalue(), content_type="image/png")
+
+
+@pytest.mark.django_db
+def test_row_menu_markup_and_links(settings, tmp_path, user, logged_in, customer, item, cut, bend):
+    settings.MEDIA_ROOT = tmp_path
+    drawn = masters_services.create_item({"part_no": "T-300", "name": "作り物の図面つき", "drawing": _png()}, user)
+    line = _line(user, customer, item, due=timezone.localdate() + timedelta(days=3))
+    shipping_services.ship(line, Decimal("4"), ORDER_DATE, user)
+    workorder = _issue(user, line, cut, bend)
+    first = workorder.steps.get(seq=1)
+    _record(user, first, "3")
+    other = _line(user, customer, drawn, due=timezone.localdate() + timedelta(days=5))
+
+    body = logged_in.get(reverse("orders:orderline_list")).content.decode()
+
+    tr_html = _tr(body, line.pk)
+    assert re.match(rf'<tr id="row-{line.pk}" class="row-hover h-10" data-row-menu>', tr_html)
+    assert "onclick=" not in tr_html.split(">", 1)[0]
+    assert '<details class="dropdown dropdown-end row-menu">' in tr_html
+    assert '<summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>' in tr_html
+    assert '<ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">' in tr_html
+    hrefs = [
+        f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"',
+        f'href="{reverse("workorders:workorder_create")}?order_line={line.pk}"',
+        f'href="{reverse("progress:progress_create")}?workorder_step={first.pk}"',
+        f'href="{reverse("orders:order_detail", args=[line.order_id])}"',
+        f'hx-get="{reverse("masters:item_modal", args=[item.pk])}"',
+        f'href="{reverse("workorders:workorder_tag", args=[workorder.pk])}"',
+        f'href="{reverse("purchasing:purchaseorder_create")}?from_line={line.pk}"',
+    ]
+    if apps.is_installed("seizou.attachments"):
+        hrefs.append(f'href="{reverse("orders:order_detail", args=[line.order_id])}#attachments"')
+    for href in hrefs:
+        assert href in tr_html, href
+    for word in ("出荷する", "指示書を発行する", "実績を入れる", "受注の詳細", "部品の小窓", "現品票", "発注する"):
+        assert word in tr_html, word
+    assert "item_drawing_viewer" not in tr_html
+    assert reverse("masters:item_drawing_viewer", args=[item.pk]) not in tr_html
+    assert ">図面<" not in re.sub(r"<svg.*?</svg>", "", tr_html, flags=re.S)
+
+    other_html = _tr(body, other.pk)
+    assert f'href="{reverse("masters:item_drawing_viewer", args=[drawn.pk])}"' in other_html
+    # 指示書の無い明細には、実績と現品票の項目が無い。
+    assert "workorder_step=" not in other_html
+    assert "/tag/" not in other_html
+
+
+def _finished_and_cancelled(user, customer, item):
+    done = _line(user, customer, item, qty="2")
+    shipping_services.ship(done, Decimal("2"), ORDER_DATE, user)
+    cancelled = _line(user, customer, item)
+    orders_services.cancel_order(cancelled.order, user)
+    return done, cancelled
+
+
+@pytest.mark.django_db
+def test_finished_and_cancelled_rows_have_no_action_links(user, logged_in, customer, item, cut):
+    done, cancelled = _finished_and_cancelled(user, customer, item)
+    _issue(user, done, cut, qty="2")
+
+    body = logged_in.get(reverse("orders:orderline_list"), {"all": "1"}).content.decode()
+
+    for line in (done, cancelled):
+        tr_html = _tr(body, line.pk)
+        assert "?order_line=" not in tr_html
+        assert "from_line=" not in tr_html
+        assert "受注の詳細" in tr_html
+        assert "部品の小窓" in tr_html
+        assert f'hx-get="{reverse("masters:item_modal", args=[item.pk])}"' in tr_html
+    # 出荷済みの明細の判断は「出荷済み」、取消は「取消」(薄い印)。
+    assert '<span class="badge badge-ghost text-base-content/50">出荷済み</span>' in _tr(body, done.pk)
+    assert '<span class="badge badge-ghost text-base-content/50">取消</span>' in _tr(body, cancelled.pk)
+
+
+@pytest.mark.django_db
+def test_issue_item_follows_write_permission(settings, client, user, customer, item):
+    line = _line(user, customer, item)
+    issue_href = f'href="{reverse("workorders:workorder_create")}?order_line={line.pk}"'
+    ship_href = f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"'
+    admin = get_user_model().objects.create_superuser("admin-tester", password="pass-for-tests-only")
+
+    def row_for(person):
+        client.force_login(person)
+        return _tr(client.get(reverse("orders:orderline_list")).content.decode(), line.pk)
+
+    # 既定 (log) では誰にでも出る。
+    assert issue_href in row_for(user)
+
+    settings.SEIZOU = {"access_control": {"department": "log", "write": "on", "money": "log"}}
+    denied = row_for(user)
+    assert issue_href not in denied
+    assert "指示書を発行する" not in denied
+    assert ship_href in denied
+    assert issue_href in row_for(admin)
+
+
+@pytest.mark.django_db
+def test_judgement_badges_and_marks(user, logged_in, customer, item, cut):
+    today = timezone.localdate()
+    late = _line(user, customer, item, due=today - timedelta(days=3))
+    ready = _line(user, customer, item, due=today + timedelta(days=2))
+    _record(user, _issue(user, ready, cut).steps.get(), "10")
+    needed = _line(user, customer, item, due=today + timedelta(days=4))
+    planned = _line(user, customer, item, due=today + timedelta(days=1))
+    step = _issue(user, planned, cut).steps.get()
+    workorders_services.plan_step(step, today, today + timedelta(days=3), user)
+
+    body = logged_in.get(reverse("orders:orderline_list")).content.decode()
+
+    late_html = _tr(body, late.pk)
+    assert '<span class="badge badge-soft badge-error">遅れ</span>' in late_html
+    assert '<span class="text-error">-3</span>' in late_html
+    assert '<span class="text-base-content/50">未</span>' in late_html
+    assert '<span class="badge badge-soft badge-success">出荷できる</span>' in _tr(body, ready.pk)
+    assert '<span class="badge badge-soft badge-warning">指示書が要る</span>' in _tr(body, needed.pk)
+    planned_html = _tr(body, planned.pk)
+    assert '<span class="badge badge-soft badge-primary">製造中</span>' in planned_html
+    assert '<span class="badge badge-sm badge-soft badge-warning">納期より後</span>' in planned_html
+    assert (today + timedelta(days=3)).isoformat() in planned_html
+    assert "納期より後" not in _tr(body, needed.pk)
+
+
+def _totals(html):
+    tfoot = re.search(r"<tfoot>.*?</tfoot>", html, re.S)
+    assert tfoot, "tfoot が無い"
+    return _cells(tfoot.group(0))
+
+
+def _dec(text):
+    return Decimal(text.replace(",", ""))
+
+
+@pytest.mark.django_db
+def test_totals_row_follows_filter(user, logged_in, customer, item):
+    plate = masters_services.create_item({"part_no": "T-200", "name": "作り物の板", "unit": "枚"}, user)
+    first = _line(user, customer, item, qty="10")
+    shipping_services.ship(first, Decimal("4"), ORDER_DATE, user)
+    _line(user, customer, item, qty="5")
+    _line(user, customer, plate, qty="3")
+    url = reverse("orders:orderline_list")
+
+    cells = _totals(logged_in.get(url).content.decode())
+    assert cells[0] == "合計"
+    assert len(cells) == len(COLUMNS) + 1
+    qty, shipped, remaining = (cells[COLUMNS.index(name)] for name in ("数量", "出荷済み", "残"))
+    assert (_dec(qty), _dec(shipped), _dec(remaining)) == (Decimal("18"), Decimal("4"), Decimal("14"))
+
+    filtered = _totals(logged_in.get(url, {"q": "T-200"}).content.decode())
+    assert [_dec(filtered[COLUMNS.index(name)]) for name in ("数量", "出荷済み", "残")] == [3, 0, 3]
+
+    partial = logged_in.get(url, {"q": "T-100"}, HTTP_HX_REQUEST="true").content.decode()
+    assert "<html" not in partial
+    assert [_dec(_totals(partial)[COLUMNS.index(name)]) for name in ("数量", "出荷済み", "残")] == [15, 4, 11]
+    assert '<div id="list-meta"' in partial and 'hx-swap-oob="true"' in partial
+
+
+@pytest.mark.django_db
+def test_filter_form_and_hx_include(user, logged_in, customer, item):
+    _line(user, customer, item, due=timezone.localdate() - timedelta(days=1))
+    url = reverse("orders:orderline_list")
+
+    body = logged_in.get(url).content.decode()
+    assert body.count('id="board-filter"') == 1
+    assert 'name="due_from"' in body and 'name="due_to"' in body and 'name="overdue"' in body
+    assert 'hx-include="#orders-all, #board-filter"' in body
+    assert 'hx-include="#list-q, #list-per, #list-meta"' in body
+    assert "納期が過ぎた物だけ" in body
+    assert 'name="overdue" value="1" class="checkbox checkbox-sm">' in body
+
+    checked = logged_in.get(url, {"overdue": "1", "due_from": "2026-11-01"}).content.decode()
+    assert 'name="overdue" value="1" class="checkbox checkbox-sm" checked>' in checked
+    assert 'name="due_from" class="input input-sm" value="2026-11-01"' in checked
+    everything = logged_in.get(url, {"all": "1"}).content.decode()
+    form = re.search(r'<form id="board-filter".*?</form>', everything, re.S).group(0)
+    assert '<input type="hidden" name="all" value="1">' in form
+
+
+@pytest.mark.django_db
+def test_order_no_links_to_detail(user, logged_in, customer, item):
+    line = _line(user, customer, item)
+
+    tr_html = _tr(logged_in.get(reverse("orders:orderline_list")).content.decode(), line.pk)
+
+    first_td = re.search(r"<td[^>]*>.*?</td>", tr_html, re.S).group(0)
+    assert f'href="{reverse("orders:order_detail", args=[line.order_id])}">{line.order.order_no}</a>' in first_td

@@ -236,3 +236,31 @@ def test_detail_and_modal_show_accepted_fields(user, client_logged_in, workorder
     body = modal.content.decode()
     assert "受けた日時" in body and "受けた人" in body
     assert [field["label"] for field in modal.context["fields"]][-2:] == ["受けた日時", "受けた人"]
+
+
+# --- 2 段目: 一覧の絞り込みの欄 ---
+
+
+@pytest.mark.django_db
+def test_list_filter_form(user, client_logged_in, customer, item, cut, bend):
+    _issue(user, _line(user, customer, item), cut)
+    url = reverse("workorders:workorder_list")
+
+    body = client_logged_in.get(url).content.decode()
+    assert body.count('id="workorder-filter"') == 1
+    assert '<select name="process" class="select select-sm w-auto">' in body
+    assert '<option value="">すべて</option>' in body
+    assert f'<option value="{cut.pk}">切断</option>' in body
+    assert f'<option value="{bend.pk}">曲げ</option>' in body
+    assert body.index(">切断<") < body.index(">曲げ<")
+    assert 'name="unaccepted" value="1" class="checkbox checkbox-sm">' in body
+    assert 'name="today" value="1" class="checkbox checkbox-sm">' in body
+    assert "未着手だけ" in body and "今日の計画だけ" in body
+    assert 'hx-include="#workorder-filter"' in body
+    assert 'hx-include="#list-q, #list-per, #list-meta"' in body
+
+    chosen = client_logged_in.get(url, {"process": cut.pk, "unaccepted": "1"}).content.decode()
+    assert f'<option value="{cut.pk}" selected>切断</option>' in chosen
+    assert f'<option value="{bend.pk}">曲げ</option>' in chosen
+    assert 'name="unaccepted" value="1" class="checkbox checkbox-sm" checked>' in chosen
+    assert 'name="today" value="1" class="checkbox checkbox-sm">' in chosen
