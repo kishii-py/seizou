@@ -16,6 +16,7 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET
 
 from seizou.core import csvio
+from seizou.core import dashboard
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView
 
 from . import drawings
@@ -108,10 +109,14 @@ class PartnerListView(BaseListView):
     model = Partner
     screen_name = "取引先"
     screen_help = "得意先と協力企業。締日・支払日と端数の扱いを取引先ごとに持ちます。"
-    columns = ("code", "name", "short_name", "role", "closing_day", "payment_day")
+    columns = ("code", "name", "short_name", "role", "closing_day", "payment_day", {"name": "order_inlet", "label": "注文の入口", "sortable": False})
     search_fields = ("code", "name", "short_name")
     ordering = "code"
     template_name = "masters/partner_list.html"
+
+    def get_queryset(self):
+        # 注文の入口の列 (core.dashboard.annotate_order_inlet の annotate。並び替えと絞り込みはしない)
+        return dashboard.annotate_order_inlet(super().get_queryset())
 
 
 class PartnerDetailView(BaseDetailView):
