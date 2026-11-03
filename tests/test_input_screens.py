@@ -16,9 +16,11 @@ from django.urls import reverse
 import seizou.connect
 import seizou.core
 import seizou.orders
+import seizou.shipping
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
+from seizou.shipping import services as shipping_services
 
 CORE = Path(seizou.core.__file__).resolve().parent
 REPO = Path(__file__).resolve().parent.parent
@@ -28,12 +30,14 @@ APP_CSS = CORE / "static" / "css" / "app.css"
 ROW_MENU_JS = CORE / "static" / "js" / "seizou-row-menu.js"
 ORDERS = Path(seizou.orders.__file__).resolve().parent
 CONNECT = Path(seizou.connect.__file__).resolve().parent
+SHIPPING = Path(seizou.shipping.__file__).resolve().parent
 MENU_TEMPLATES = (
     ORDERS / "templates" / "orders" / "_line_menu.html",
     ORDERS / "templates" / "orders" / "_row_menu.html",
     CONNECT / "templates" / "connect" / "_inbox_row.html",
 )
 ORDER_DATE = date(2026, 11, 2)
+SHIPPED_AT = date(2026, 11, 5)
 
 
 @pytest.fixture
@@ -299,3 +303,78 @@ def test_customer_part_no_is_hideable():
     from seizou.orders.forms import hideable_fields
 
     assert ("customer_part_no", "得意先の品番") in hideable_fields()
+
+
+# --- 4-3. 出荷の入力の残り -----------------------------------------------------------------
+
+SHIPMENT_FORM_JS = SHIPPING / "static" / "shipping" / "shipment-form.js"
+NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
+
+
+@pytest.fixture
+def plate(user):
+    return masters_services.create_item({"part_no": "T-200", "name": "作り物の板", "unit": "枚"}, user)
+
+
+@pytest.fixture
+def split_order(user, customer, shaft, plate):
+    """明細 10 と 5 の受注。1 行目に 4 を出荷した後 (残り 6 と 5)。"""
+    order = orders_services.create_order(
+        customer,
+        [
+            {"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100")},
+            {"item": plate, "qty": Decimal("5"), "unit_price": Decimal("200")},
+        ],
+        user,
+        order_date=ORDER_DATE,
+    )
+    shipping_services.ship(order.lines.get(line_no=1), Decimal("4"), SHIPPED_AT, user)
+    return order
+
+
+@pytest.mark.django_db
+def test_orderline_candidates_end_with_remaining(logged_in, split_order):
+    first = split_order.lines.get(line_no=1)
+    data = logged_in.get(reverse("orders:orderline_select")).json()
+
+    assert data["items"][0]["text"].endswith(" 残り 6")
+    assert " 残り" not in str(first)
+
+
+@pytest.mark.django_db
+def test_shipment_form_shows_remaining_under_qty(logged_in, split_order):
+    first = split_order.lines.get(line_no=1)
+    response = logged_in.get(reverse("shipping:shipment_create"), {"order_line": first.pk})
+
+    body = response.content.decode()
+    assert "残り 6" in body
+    assert re.search(r'<p id="id_qty_helptext"[^>]*>残り 6</p>', body)
+    assert "shipping/shipment-form.js" in body
+    assert "shipping/shipment_form.html" in [template.name for template in response.templates]
+
+
+@pytest.mark.django_db
+def test_shipment_form_without_line_shows_hint(logged_in, split_order):
+    for params in ({}, {"order_line": "abc"}, {"order_line": "999999"}):
+        body = logged_in.get(reverse("shipping:shipment_create"), params).content.decode()
+        assert NO_LINE_HELP in body, params
+
+
+def test_shipment_form_js_writes_text_only():
+    text = SHIPMENT_FORM_JS.read_text(encoding="utf-8")
+    for word in ("textContent", "残り", "_helptext", NO_LINE_HELP):
+        assert word in text, word
+    for word in ("innerHTML", "insertAdjacentHTML", "className", "classList.add", "fetch("):
+        assert word not in text, word
+
+
+@pytest.mark.django_db
+def test_shipment_post_still_saves(logged_in, split_order):
+    second = split_order.lines.get(line_no=2)
+    response = logged_in.post(
+        reverse("shipping:shipment_create"),
+        {"order_line": second.pk, "qty": "2", "shipped_at": SHIPPED_AT.isoformat(), "note": ""},
+    )
+
+    assert response.status_code == 302
+    assert orders_services.remaining_qty(second) == Decimal("3")

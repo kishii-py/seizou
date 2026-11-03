@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
+from .conftest import choose
 from .conftest import fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
@@ -100,3 +101,37 @@ def test_e12_partial_second_and_warn(page_a, page_b, company_a, company_b):
     page_b.goto(order_url_b)
     remaining_b = page_b.locator("#order-lines-title ~ div tbody tr").first.locator("td").last
     expect(remaining_b).to_have_text(re.compile(r"^-1(\.0+)?$"))
+
+
+# 送った後の scroll の event は次の描画で届く (行のメニューは画面の scroll で閉じる)。押す前に 2 つ先の描画まで待つ。
+NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+
+
+def test_e12_remaining_beside_qty(page_a, company_a):
+    """期待 (06 の E-12 の一部): 4 と 6 は通る (分納の 2 回目の数を、受注の残りを見て決める)。
+
+    見る所: 受注の詳細の明細の ⋮ の「出荷する」から開いた出荷の新規登録で、数量の欄の下に受注の残りが出て、
+    受注の明細を選び直すと残りの字と選んだ字が変わること (初見テスト R3 の「計画と違う所」の 3)。見ない所: 保存 (相手に送る道を通らない)。
+    """
+    login(page_a, company_a)
+    customer = seed_name(company_a, "partners", CUSTOMER_CODE)
+    new_order(page_a, company_a, customer=customer, part_no="WK-1001", qty=10, unit_price=480, mark=unique_mark("e12r"))
+    first_url = page_a.url
+    second_no = new_order(
+        page_a, company_a, customer=customer, part_no="WK-1001", qty=5, unit_price=480, mark=unique_mark("e12s")
+    )
+
+    page_a.goto(first_url)
+    row = page_a.locator("tr[data-row-menu]").first
+    row.scroll_into_view_if_needed()
+    page_a.evaluate(NEXT_FRAMES)
+    row.locator('summary[aria-label="行の操作"]').click()
+    row.get_by_role("link", name="出荷する").click()
+    page_a.wait_for_url(re.compile(r"/shipping/new/\?order_line=\d+$"))
+    help_text = page_a.locator("#id_qty_helptext")
+    expect(help_text).to_have_text("残り 10")
+
+    choose(page_a, "order_line", second_no)
+    expect(help_text).to_have_text("残り 5")
+    expect(page_a.locator("select[name='order_line'] option:checked")).to_contain_text("残り 5")
+    shot(page_a, "E-12", "a-remaining-beside-qty")

@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{% load static %}
+{# 出荷の新規登録の入力。土台の入力の画面に、受注の明細を選び直したときに数量の欄の下の「残り n」を写す JS を足すだけ。 #}
+{% block content %}{{ block.super }}<script src="{% static 'shipping/shipment-form.js' %}" defer></script>{% endblock %}

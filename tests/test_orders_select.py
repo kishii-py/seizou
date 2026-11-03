@@ -73,8 +73,8 @@ def test_orderline_select_lists_lines_with_remaining(user, logged_in, customer, 
     data = _select(logged_in)
     assert data["more"] is False
     assert [row["id"] for row in data["items"]] == [first.pk, second.pk]
-    assert data["items"][0]["text"] == f"{order.order_no}-1 T-100 作り物の軸"
-    assert data["items"][1]["text"] == str(second)
+    assert data["items"][0]["text"] == f"{order.order_no}-1 T-100 作り物の軸 残り 6"
+    assert data["items"][1]["text"] == f"{second} 残り 5"
 
 
 @pytest.mark.django_db

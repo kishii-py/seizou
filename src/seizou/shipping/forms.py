@@ -11,6 +11,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core.widgets import RemoteSelect
+from seizou.orders.services import remaining_qty
 
 from .models import DeliveryNote, Shipment
 
@@ -18,6 +19,8 @@ _OrderLine = Shipment._meta.get_field("order_line").related_model
 
 #: 選ぶ欄の空の選択肢の字 (選ぶ欄の JS が載る前と、JS が無いときに見える)
 EMPTY_LABEL = "選んでください"
+#: 出荷の入力で受注の明細が決まっていないときの、数量の欄の下の字 (shipping/shipment-form.js も同じ字を出す)
+NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
 
 
 class ShipmentForm(forms.Form):
@@ -40,6 +43,19 @@ class ShipmentForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
     )
     note = forms.CharField(label="備考", max_length=500, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 数量の欄の下に、選んだ受注の明細の残り (受注の数 − 出荷済みの数) を出す。明細の pk は送られた値か、
+        # 受注の明細から移る入口の初期値 (?order_line=<pk>。土台の get_initial が字のまま写す)。数を比べて断ることはしない。
+        raw = self.data.get("order_line") if self.is_bound else self.initial.get("order_line")
+        line = None
+        if raw is not None and str(raw).isdigit():
+            line = _OrderLine.objects.filter(pk=int(raw)).first()
+        if line is None:
+            self.fields["qty"].help_text = NO_LINE_HELP
+        else:
+            self.fields["qty"].help_text = f"残り {remaining_qty(line).normalize():f}"
 
     def service_kwargs(self) -> dict:
         data = self.cleaned_data
