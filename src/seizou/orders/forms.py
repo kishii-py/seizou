@@ -10,6 +10,8 @@ service_kwargs() が services.create_order / update_order の引数を作る (01
   services が要る受注日は外さない。外した欄の鍵は services に渡さない (直すときは今の値のまま)。
 """
 
+from decimal import Decimal
+
 from django import forms
 
 from seizou.core import fields as company_fields
@@ -58,9 +60,22 @@ class OrderLineForm(forms.Form):
         widget=RemoteSelect("masters:item_select"),
         empty_label=EMPTY_LABEL,
     )
-    qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
+    # 0 以下は保存の前に欄の横で断る (R02 の決まりは services にもあり、こちらは入力の誤りの案内。初見テスト 2 回目の所見)
+    qty = forms.DecimalField(
+        label="数量",
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
+    )
     unit = forms.CharField(label="単位", max_length=10, required=False)
-    unit_price = forms.DecimalField(label="単価", max_digits=14, decimal_places=2)
+    unit_price = forms.DecimalField(
+        label="単価",
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "単価は 0 より大きい数にしてください。"},
+    )
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(label="備考", max_length=500, required=False)
 
