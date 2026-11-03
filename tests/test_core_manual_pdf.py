@@ -175,7 +175,7 @@ def test_booklet_has_cover_toc_and_chapters(db, manual):
     assert 'class="booklet-cover"' in html
     assert f'<p class="booklet-company">{escape(services.company().name)}</p>' in html
     assert "<h1>使い方</h1>" in html
-    assert '<p class="booklet-system">seizou</p>' in html
+    assert '<p class="booklet-system">生産管理システム seizou</p>' in html
     version = core_manual.package_version()
     assert version
     meta = cover_meta(html)
@@ -296,12 +296,18 @@ def test_booklet_pdf_with_weasyprint(db, manual, caplog):
     assert "Failed to load image" not in caplog.text
 
     document = reports._render_document(core_manual.BOOKLET_TEMPLATE, core_manual.booklet_context())
-    # 表紙 1・目次 1 以上・章は 1 画面 1 ページ以上
-    assert len(document.pages) >= len(all_screens()) + 2
+    # 表紙 1・「この冊子について」1・目次 1 以上・章は 1 画面 1 ページ以上
+    assert len(document.pages) >= len(all_screens()) + 3
     page = document.pages[0]
     # A4 縦 = 210mm × 297mm (WeasyPrint の長さは CSS の px。1mm = 96 / 25.4 px)
     assert round(page.width * 25.4 / 96) == 210
     assert round(page.height * 25.4 / 96) == 297
+    # 栞の木でページの位置を見る (1 つの栞は (題, (ページの番号 (0 から), x, y), 下の栞, 開閉) の tuple)。
+    # 表紙が 1 ページに収まり、2 ページ目が「この冊子について」、3 ページ目から目次
+    tree = document.make_bookmark_tree()
+    label, (cover_page, _, _), children, _ = tree[0]
+    assert (label, cover_page) == ("使い方", 0)
+    assert [(child[0], child[1][0]) for child in children[:2]] == [("この冊子について", 1), ("目次", 2)]
 
 
 # 2 段目: 命令と skill
@@ -379,3 +385,143 @@ def test_build_skill_runs_manual_skill():
     for word in ("ロゴ", "振込先", "本番か"):
         assert word not in body, word
     assert body.index("## 7. 起動して知らせる") < body.index("## 8. 説明書を書き起こす") < body.index("## 9. 終わりに言うこと")
+
+
+# 表紙の帯・「この冊子について」・下の帯・主色 (冊子の見た目)
+
+
+def style_of(html: str) -> str:
+    style = re.search(r"<style>(.*?)</style>", html, re.S)
+    assert style, "冊子の style が無い"
+    return style.group(1)
+
+
+def between(html: str, start: str, end: str) -> str:
+    """html の中の start の字から、その後の最初の end の字の前まで。"""
+    begin = html.index(start)
+    return html[begin : html.index(end, begin)]
+
+
+def test_cover_has_band_title_and_foot(db, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    html = booklet_html()
+    name = escape(services.company().name)
+    version = core_manual.package_version()
+    today = japanese_date(timezone.localdate())
+    order = [
+        '<section class="booklet-cover">',
+        '<div class="booklet-band">',
+        "<h1>使い方</h1>",
+        '<p class="booklet-subtitle">画面ごとの操作の手引きと、お金と数の決まり</p>',
+        '<p class="booklet-meta">',
+        '<p class="booklet-cover-foot">',
+        '<section class="booklet-about">',
+    ]
+    for word in order:
+        assert html.count(word) == 1, word
+    places = [html.index(word) for word in order]
+    assert places == sorted(places)
+    for word in (
+        f'<p class="booklet-company">{name}</p>',
+        '<p class="booklet-system">生産管理システム seizou</p>',
+        f'<span class="booklet-version">版 {version}</span>',
+        f'<span class="booklet-date">説明書を作った日 {today}</span>',
+    ):
+        assert word in html, word
+    assert "自動で作りました" in between(html, '<p class="booklet-cover-foot">', "</p>")
+    band = between(html, '<div class="booklet-band">', "</div>")
+    assert name in band
+    assert "生産管理システム" in band
+    assert "<h1>" not in band
+
+
+def test_about_page_between_cover_and_toc(db, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    html = booklet_html()
+    assert html.count('class="booklet-about"') == 1
+    about = between(html, '<section class="booklet-about">', "</section>")
+    for word in (
+        "<h2>この冊子について</h2>",
+        escape(services.company().name),
+        "?",
+        "使い方",
+        "AI チャット",
+        "道筋",
+        "手順",
+        "注意",
+        "動作確認",
+    ):
+        assert word in about, word
+    assert "説明書を作った日" not in about
+    assert "booklet-chapter" not in about
+    cover_at = html.index('class="booklet-cover"')
+    assert cover_at < html.index('class="booklet-about"') < html.index('<nav class="booklet-toc"')
+    # 目次に載らず、章の数も変わらない
+    assert toc_anchors(html) == screen_anchors()
+    assert html.count('class="booklet-chapter"') == len(all_screens())
+
+
+def test_style_has_color_footer_and_first_page(db, site):
+    style = style_of(booklet_html())
+    assert style.count(core_manual.BOOKLET_PRIMARY_COLOR) >= 3
+    for word in (
+        "@bottom-left",
+        '"seizou 使い方"',
+        "@bottom-center",
+        "@bottom-right",
+        "string(booklet-version)",
+        "string-set: booklet-version content()",
+        "string-set: booklet-company content()",
+        "string(booklet-company)",
+        "counter(page)",
+        "counter(pages)",
+        "counter-reset: booklet-chapter",
+        "position: relative",
+        "position: absolute",
+        "break-before: page",
+        "img { display: none; }",
+    ):
+        assert word in style, word
+    first = re.search(r"@page :first \{(.*?)\n\}", style, re.S)
+    assert first, "1 ページ目の @page が無い"
+    assert "margin: 0" in first.group(1)
+    assert first.group(1).count("content: none") == 3
+    colors = set(re.findall(r"#[0-9a-fA-F]{3,8}\b", style))
+    assert colors <= {core_manual.BOOKLET_PRIMARY_COLOR, "#fff", "#000", "#eee", "#999"}
+    for word in ("display: flex", "display: grid", "rgb(", "hsl(", "oklch("):
+        assert word not in style, word
+
+
+def test_booklet_context_has_color_and_subtitle(client_logged_in, site, fake_pdf):
+    keys = {
+        "company_name",
+        "system_name",
+        "version",
+        "manual_date",
+        "sections",
+        "intro",
+        "intro_unreadable",
+        "has_manual",
+        "primary_color",
+        "subtitle",
+    }
+    context = core_manual.booklet_context()
+    assert keys <= set(context)
+    assert context["primary_color"] == core_manual.BOOKLET_PRIMARY_COLOR
+    assert re.fullmatch(r"#[0-9a-f]{6}", context["primary_color"])
+    assert context["subtitle"] == core_manual.BOOKLET_SUBTITLE == "画面ごとの操作の手引きと、お金と数の決まり"
+
+    response = client_logged_in.get(reverse("core:manual_pdf"))
+    assert response.status_code == 200
+    seen = fake_pdf["context"]
+    assert keys <= set(seen)
+    assert seen["primary_color"] == core_manual.BOOKLET_PRIMARY_COLOR
+    assert seen["subtitle"] == core_manual.BOOKLET_SUBTITLE
+
+
+def test_fallback_html_has_cover_band(client_logged_in, manual, no_pdf):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    html = client_logged_in.get(reverse("core:manual_pdf")).content.decode()
+    for word in ('class="booklet-band"', 'class="booklet-about"', 'role="alert"'):
+        assert word in html, word
+    assert html.index('role="alert"') < html.index('<section class="booklet-cover">')

@@ -21,6 +21,7 @@
   PDF を作れなければ、同じ 1 枚を印刷用の HTML にし、上に知らせを出して返す。
   命令 manage.py seizou_manual_pdf は、同じ冊子を manual/使い方.pdf に書き出す (--out で書き出し先を替える)。
   冊子に絵は入らない (帳票の部品が manual/images/ を読まないため)。
+  表紙の主色は BOOKLET_PRIMARY_COLOR の固定の 1 色 (会社の行に色の列が無い)。副題は BOOKLET_SUBTITLE。
 """
 
 from __future__ import annotations
@@ -73,6 +74,12 @@ PDF_FILENAME = "seizou-manual.pdf"
 
 #: PDF を作れないときの知らせ (shipping・manuals の PDF_NOTICE と同じ字。ほかの app の views は import しない)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+#: 冊子の主色 (表紙の帯と題・章の頭の帯と番号)。会社の行に色の列が無いので固定の濃い青
+BOOKLET_PRIMARY_COLOR = "#1f3a5f"
+
+#: 冊子の表紙の副題
+BOOKLET_SUBTITLE = "画面ごとの操作の手引きと、お金と数の決まり"
 
 
 def manual_dir() -> Path | None:
@@ -171,6 +178,8 @@ def booklet_context() -> dict:
         "intro": None if intro is None or intro is UNREADABLE else mark_safe(intro),
         "intro_unreadable": intro is UNREADABLE,
         "has_manual": folder is not None and folder.is_dir(),
+        "primary_color": BOOKLET_PRIMARY_COLOR,
+        "subtitle": BOOKLET_SUBTITLE,
     }
 
 

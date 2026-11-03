@@ -6,6 +6,8 @@ PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに�
 目次のページ番号は target-counter で引く。各ページの下の会社名は、表紙の会社名を string-set で覚えた物を引く。
 絵は出さない (帳票の部品が manual/images/ を読まないため)。img を display: none にし、断片の字は書き換えない。
 入力の欄を持たないので、CSRF の見出しは置かない。
+表紙は 1 ページ目の余白を無くして主色の帯を紙の端まで出し、2 ページ目に「この冊子について」(目次に載せない) を置く。
+主色は booklet_context() の primary_color。章の頭の帯と番号は style で付け、断片の字は書き換えない。
 {% endcomment %}
 <html lang="ja">
 <head>
@@ -14,25 +16,49 @@ PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに�
 <link rel="stylesheet" href="{% static 'css/report.css' %}">
 <style>
 @page {
+  @bottom-left {
+    content: "seizou 使い方";
+    font-family: "NotoSansJP Report", sans-serif;
+    font-size: 8pt;
+    color: #999;
+  }
   @bottom-center {
     content: string(booklet-company) "　" counter(page) " / " counter(pages);
     font-family: "NotoSansJP Report", sans-serif;
     font-size: 8pt;
   }
+  @bottom-right {
+    content: string(booklet-version);
+    font-family: "NotoSansJP Report", sans-serif;
+    font-size: 8pt;
+    color: #999;
+  }
 }
 @page :first {
+  margin: 0;
+  @bottom-left { content: none; }
   @bottom-center { content: none; }
+  @bottom-right { content: none; }
 }
-.booklet-notice { margin: 0 0 4mm; padding: 2mm 3mm; border: 0.5pt solid #000; }
-.booklet-cover { padding-top: 70mm; text-align: center; }
-.booklet-company { font-size: 14pt; string-set: booklet-company content(); }
-.booklet-cover h1 { margin: 6mm 0 4mm; font-size: 28pt; font-weight: 700; }
-.booklet-system { font-size: 16pt; }
-.booklet-meta { margin-top: 20mm; font-size: 10pt; }
-.booklet-toc, .booklet-chapter { break-before: page; }
-.booklet-toc h2, .booklet-chapter h2 { margin: 0 0 4mm; padding-bottom: 1mm; border-bottom: 1pt solid #000; font-size: 16pt; font-weight: 700; }
-.booklet-toc ol { margin: 0; padding-left: 8mm; }
-.booklet-toc li { margin: 1mm 0; }
+body { counter-reset: booklet-chapter; }
+.booklet-notice { margin: 4mm; padding: 2mm 3mm; border: 0.5pt solid #000; }
+.booklet-cover { position: relative; height: 296mm; }
+.booklet-band { padding: 32mm 20mm 14mm; background: {{ primary_color }}; color: #fff; }
+.booklet-company { margin: 0; font-size: 26pt; font-weight: 700; line-height: 1.3; string-set: booklet-company content(); }
+.booklet-system { margin: 3mm 0 0; font-size: 11pt; letter-spacing: 0.15em; }
+.booklet-title { padding: 34mm 20mm 0; }
+.booklet-cover h1 { margin: 0; font-size: 44pt; font-weight: 700; line-height: 1.2; color: {{ primary_color }}; }
+.booklet-subtitle { margin: 6mm 0 0; font-size: 13pt; }
+.booklet-meta { margin: 28mm 0 0; font-size: 11pt; line-height: 1.8; }
+.booklet-meta span { display: block; }
+.booklet-version { string-set: booklet-version content(); }
+.booklet-cover-foot { position: absolute; left: 20mm; right: 20mm; bottom: 14mm; padding-top: 3mm; border-top: 0.5pt solid #999; font-size: 8pt; color: #999; }
+.booklet-about, .booklet-toc, .booklet-chapter { break-before: page; }
+.booklet-about h2, .booklet-toc h2, .booklet-chapter h2 { margin: 0 0 5mm; padding: 1mm 0 1.5mm 4mm; border-left: 2.5mm solid {{ primary_color }}; border-bottom: 0.5pt solid #999; font-size: 16pt; font-weight: 700; }
+.booklet-about h3 { margin: 5mm 0 1.5mm; font-size: 11pt; font-weight: 700; color: {{ primary_color }}; }
+.booklet-about p { margin: 1.5mm 0; }
+.booklet-toc ol { margin: 0; padding-left: 10mm; }
+.booklet-toc li { margin: 1.5mm 0; font-size: 11pt; }
 .booklet-toc a { color: inherit; text-decoration: none; }
 .booklet-toc a::after { content: leader(".") target-counter(attr(href), page); }
 .booklet-chapter h3 { margin: 4mm 0 2mm; font-size: 12pt; font-weight: 700; page-break-after: avoid; }
@@ -48,10 +74,28 @@ img { display: none; }
 <body>
 {% if pdf_notice %}<p class="booklet-notice" role="alert">{{ pdf_notice }}</p>{% endif %}
 <section class="booklet-cover">
-  <p class="booklet-company">{{ company_name }}</p>
-  <h1>使い方</h1>
-  <p class="booklet-system">{{ system_name }}</p>
-  <p class="booklet-meta">{% if version %}版 {{ version }}{% endif %}{% if manual_date %}{% if version %} / {% endif %}説明書を作った日 {{ manual_date|date:"Y年n月j日" }}{% endif %}</p>
+  <div class="booklet-band">
+    <p class="booklet-company">{{ company_name }}</p>
+    <p class="booklet-system">生産管理システム {{ system_name }}</p>
+  </div>
+  <div class="booklet-title">
+    <h1>使い方</h1>
+    <p class="booklet-subtitle">{{ subtitle }}</p>
+    <p class="booklet-meta">{% if version %}<span class="booklet-version">版 {{ version }}</span>{% endif %}{% if manual_date %}<span class="booklet-date">説明書を作った日 {{ manual_date|date:"Y年n月j日" }}</span>{% endif %}</p>
+  </div>
+  <p class="booklet-cover-foot">この冊子は seizou が会社の画面から自動で作りました。</p>
+</section>
+<section class="booklet-about">
+  <h2>この冊子について</h2>
+  <p>この冊子は、{{ company_name }} の生産管理システム seizou の使い方を、画面ごとにまとめた物です。</p>
+  <h3>読む人</h3>
+  <p>工場で PC を任された担当の方と、毎日の仕事で画面を使うみなさんに向けて書いています。プログラムの知識は要りません。</p>
+  <h3>章の並び</h3>
+  <p>1 つの章が 1 つの画面です。章は画面の目録の順に並びます (ダッシュボードから始まり、機能ごとに画面が続きます)。前書きの「はじめに」がある会社では、それが最初の章です。目次のページ番号で、読みたい画面の章を探せます。説明書のまだ無い画面の章には、その旨の 1 行だけがあります。</p>
+  <h3>困ったとき</h3>
+  <p>画面の上の帯の右にある「?」の印のボタン (使い方) を押すと、この冊子と同じ説明を画面で読めます。AI チャットが入っている会社では、画面の右下のチャットで、その画面の使い方を質問できます。</p>
+  <h3>章の中の見出し</h3>
+  <p>各章は「道筋」(その画面までの行き方)、「手順」(番号の順に行う操作。画面の字は「」で囲んでいます)、「注意」(お金と数の決まりと、この会社の設定で変わる動き)、「動作確認」(操作と期待する結果の表) の順に並びます。見出しの無い章は、その画面の説明書がまだ書かれていません。</p>
 </section>
 <nav class="booklet-toc" aria-label="目次">
   <h2>目次</h2>
