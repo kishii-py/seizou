@@ -275,7 +275,7 @@ def issue_account(login_id, password, departments, permissions, flags, user):
     """アカウントを発行する。flags は see_money・full_control・manage_accounts・is_active (既定は真) の辞書。"""
     User = get_user_model()
     login_id = clean_login_id(login_id)
-    if User._default_manager.filter(username=login_id).exists():
+    if User._default_manager.filter(username__iexact=login_id).exists():
         raise ValueError(LOGIN_ID_USED)
     permissions = clean_permissions(permissions)
     departments = clean_departments(departments)

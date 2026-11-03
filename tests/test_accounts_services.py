@@ -101,6 +101,7 @@ def test_issue_creates_user_access_and_log(manager, seizou_dept):
     ("login_id", "password", "permissions", "words"),
     [
         ("soumu", PASSWORD, [], "このログイン ID は使われています"),
+        ("SOUMU", PASSWORD, [], "このログイン ID は使われています"),
         ("gen ba", PASSWORD, [], "ログイン ID は英数字と"),
         ("", PASSWORD, [], "ログイン ID は英数字と"),
         ("genba", "kumo-26", [], "パスワードを受け付けられません"),
