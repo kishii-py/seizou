@@ -37,6 +37,11 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 class ShipmentListView(BaseListView):
+    """出荷の一覧。
+
+    使う人: 出荷 / いつ: 製品ができて送るときと、出荷の記録を見るとき / 何のために: 受注の明細ごとの出荷を見る / 次にすること: 「新規登録」で出荷を記録し、納品書を作る
+    """
+
     model = Shipment
     screen_name = "出荷"
     screen_help = "出荷の一覧。出荷日の新しい順に並びます。得意先と部品の名前を押すと小窓が開きます。"
@@ -66,6 +71,11 @@ class ShipmentListView(BaseListView):
 
 
 class ShipmentDetailView(BaseDetailView):
+    """出荷の詳細。
+
+    使う人: 出荷 / いつ: 出荷の中身を確かめるときと、直すとき / 何のために: 出荷の項目を見る / 次にすること: 「編集」で直すか、納品書を作る
+    """
+
     model = Shipment
     screen_name = "出荷の詳細"
     screen_help = "出荷の項目。右上の「編集」で数量と出荷日と備考を直せます。発行の納品書に入った出荷は、先に納品書を取り消してから編集します。"
@@ -73,6 +83,11 @@ class ShipmentDetailView(BaseDetailView):
 
 
 class ShipmentCreateView(BaseFormView):
+    """出荷の新規登録の入力。
+
+    使う人: 出荷 / いつ: 製品ができて送るとき / 何のために: 受注の明細ごとに出荷を記録する / 次にすること: 納品書を作り、ラベルを印刷する
+    """
+
     model = Shipment
     form_class = ShipmentForm
     service = staticmethod(services.ship)
@@ -84,6 +99,11 @@ class ShipmentCreateView(BaseFormView):
 
 
 class ShipmentUpdateView(BaseFormView):
+    """出荷の編集の入力。
+
+    使う人: 出荷 / いつ: 数量や出荷日を直すとき / 何のために: 出荷の項目を直す (納品書に入った物は先に納品書を取り消す) / 次にすること: 出荷の詳細で確かめる
+    """
+
     model = Shipment
     form_class = ShipmentUpdateForm
     service = staticmethod(services.update_shipment)
@@ -95,6 +115,11 @@ class ShipmentUpdateView(BaseFormView):
 
 
 class DeliveryNoteListView(BaseListView):
+    """納品書の一覧。
+
+    使う人: 出荷 / いつ: 出荷と同時 / 何のために: 得意先に渡す納品書を持つ / 次にすること: 行から詳細へ (印刷用の画面と PDF)。請求は経理
+    """
+
     model = DeliveryNote
     screen_name = "納品書"
     screen_help = "納品書の一覧。発行日の新しい順に並びます。行を押すと、印刷用の画面と PDF の入口がある詳細へ移ります。"
@@ -107,6 +132,11 @@ class DeliveryNoteListView(BaseListView):
 
 
 class DeliveryNoteDetailView(BaseDetailView):
+    """納品書の詳細。
+
+    使う人: 出荷 / いつ: 納品書を印刷するとき / 何のために: 項目とまとめた出荷を見る / 次にすること: 印刷用の画面か PDF を開いて得意先に渡す
+    """
+
     model = DeliveryNote
     screen_name = "納品書の詳細"
     screen_help = "納品書の項目と、まとめた出荷。印刷用の画面と PDF は新しいタブで開きます。"
@@ -115,6 +145,11 @@ class DeliveryNoteDetailView(BaseDetailView):
 
 
 class DeliveryNoteCreateView(BaseFormView):
+    """納品書を作る入力。
+
+    使う人: 出荷 / いつ: 出荷と同時 / 何のために: 同じ得意先の出荷を 1 枚の納品書にまとめる / 次にすること: 納品書の詳細から印刷
+    """
+
     model = DeliveryNote
     form_class = DeliveryNoteForm
     service = staticmethod(services.create_delivery_note)
@@ -123,6 +158,11 @@ class DeliveryNoteCreateView(BaseFormView):
 
 
 class DeliveryNoteCancelView(BaseFormView):
+    """納品書を取り消す確かめの入力。
+
+    使う人: 出荷 / いつ: 出荷を直すときと、納品書を作り直すとき / 何のために: 発行の納品書を取り消す / 次にすること: 出荷を直して納品書を作り直す
+    """
+
     model = DeliveryNote
     form_class = DeliveryNoteCancelForm
     service = staticmethod(services.cancel_delivery_note)
