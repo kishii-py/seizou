@@ -53,6 +53,8 @@
           <td>{{ line.note }}</td>
           <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
         </tr>
+        {# 受けすぎ (受入の数の合計が明細の数量を超えた) の明細は、行の下に黄の知らせ (purchasing_tags の over_receipt_text。受入は止めない)。 #}
+        {% over_receipt_text line as over %}{% if over %}<tr data-over-receipt="{{ line.pk }}"><td colspan="12"><div class="alert alert-warning alert-soft" role="alert">{% icon "alert" "size-5" %}<span>明細 {{ line.line_no }}: {{ over }}</span></div></td></tr>{% endif %}
         {% endfor %}
       </tbody>
     </table>

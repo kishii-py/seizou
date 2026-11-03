@@ -381,6 +381,29 @@ def annotate_order_notices(queryset):
     )
 
 
+# 受けすぎの知らせ (受入の数の合計が明細の数量を超えた明細)。知らせるだけで、受入は止めない (receive の決まりのまま)。
+OVER_RECEIPT_MESSAGE = "受入の数 {received} が発注の数 {qty} を超えています。"
+
+
+def over_receipt_message(line):
+    """明細 (annotate_received の received_total つき) の受けすぎの知らせの字。超えていなければ空の字。読むだけで、問い合わせをしない。"""
+    received = getattr(line, "received_total", None)
+    if received is None or not received > line.qty:
+        return ""
+    return OVER_RECEIPT_MESSAGE.format(received=_qty_text(received), qty=_qty_text(line.qty))
+
+
+def over_receipt_lines(line_ids):
+    """明細の番号の集まりのうち、受入の数の合計が数量を超えた明細 (received_total つき) の list。
+
+    集計は 1 回 (annotate_received の Sum を HAVING で絞る。行ごとに数えない)。受入の一覧の黄の知らせが使う。読むだけ。
+    """
+    lines = PurchaseOrderLine.objects.filter(pk__in=line_ids).select_related("purchase_order", "item")
+    return list(
+        annotate_received(lines).filter(received_total__gt=F("qty")).order_by("purchase_order__po_no", "line_no", "pk")
+    )
+
+
 def shipping_notice_summary(line):
     """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total", "total_text"}。
 

@@ -351,6 +351,44 @@ def test_detail_marks_changed_heading(client_logged_in, user, subcontractor, ite
     assert "seizou-changed" not in again
 
 
+# --- 8. 受けすぎの知らせ (受入の数の合計が明細の数量を超えた明細。本体の追記) ---
+
+
+@pytest.mark.django_db
+def test_over_receipt_notice_is_shown(client_logged_in, user, subcontractor, item):
+    po = _sent_order(subcontractor, item, user)
+    line = po.lines.get()
+    services.receive(line, Decimal("6"), date(2026, 11, 3), user)
+    services.receive(line, Decimal("6.00"), date(2026, 11, 4), user)  # 受けすぎでも受入は止まらない
+    message = "受入の数 12 が発注の数 10 を超えています。"
+
+    detail = _detail(client_logged_in, po)
+    assert f'data-over-receipt="{line.pk}"' in detail
+    assert f"明細 1: {message}" in detail
+    # 知らせの行は #po-live の中 (2 秒ごとの更新で入れ替わる)
+    assert detail.index('<div id="po-live">') < detail.index(message) < detail.index('id="purchaseorder-detail-poll"')
+
+    receipts = client_logged_in.get(reverse("purchasing:receipt_list")).content.decode()
+    assert f"{line}: {message}" in receipts
+    assert receipts.count(message) == 1  # 受入が 2 行でも、明細ごとに 1 つ
+
+
+@pytest.mark.django_db
+def test_over_receipt_notice_not_shown_for_equal_or_less(client_logged_in, user, subcontractor, item):
+    equal = _sent_order(subcontractor, item, user)
+    less = _sent_order(subcontractor, item, user)
+    services.receive(equal.lines.get(), Decimal("10"), date(2026, 11, 3), user)
+    services.receive(less.lines.get(), Decimal("4"), date(2026, 11, 3), user)
+
+    for po in (equal, less):
+        body = _detail(client_logged_in, po)
+        assert "を超えています" not in body
+        assert "data-over-receipt" not in body
+    receipts = client_logged_in.get(reverse("purchasing:receipt_list")).content.decode()
+    assert equal.po_no in receipts and less.po_no in receipts
+    assert "を超えています" not in receipts
+
+
 # --- 3. 色づけの CSS ---
 
 

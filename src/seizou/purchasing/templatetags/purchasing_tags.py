@@ -4,6 +4,7 @@
 金額の閲覧の判定は core の access.can_see_money (関数の中で import する)。
 ダッシュボードのカード「今月の支払の見込み」は core の dashboard_stats() が数字のカードの並びに出す (11-03 の本体の直し)。
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
+- over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
 """
 
 from decimal import Decimal
@@ -78,3 +79,28 @@ def live_state(context, obj):
     seen = _live_seen(request) if request is not None else {}
     changed = key in seen and seen[key] != value
     return {"token": f"{key}:{value}", "changed": changed}
+
+
+@register.simple_tag
+def over_receipt_text(line):
+    """{% over_receipt_text line as over %}。明細 (received_total つき) の受けすぎの知らせの字。超えていなければ空の字。
+
+    発注の詳細の明細の表 (lines_with_received の明細) が行の下に黄の知らせを出すのに使う。問い合わせをしない。
+    """
+    from .. import services
+
+    return services.over_receipt_message(line)
+
+
+@register.simple_tag
+def over_receipt_notices(rows):
+    """{% over_receipt_notices rows as over %}。受入の一覧の行 (土台の rows) の明細のうち、受けすぎの明細の並び。
+
+    1 つ = {"line", "message"}。集計 1 回 (purchasing.services.over_receipt_lines)。行が無ければ問い合わせをしない。
+    """
+    from .. import services
+
+    ids = {row["obj"].line_id for row in rows or ()}
+    if not ids:
+        return []
+    return [{"line": line, "message": services.over_receipt_message(line)} for line in services.over_receipt_lines(ids)]
