@@ -1,9 +1,9 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons orders_board %}
-{# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でないときだけ) を足す。取消の受注は「編集」も出さない (取消の受注は直せない = R05)。 #}
+{% load seizou_tags seizou_icons %}
+{# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でなく、受注の権限がある人だけ) を足す。取消の受注は「編集」も出さない (取消の受注は直せない = R05)。 #}
 {# 明細の表の先頭の「操作」の列は、行ごとの ⋮ のメニュー (orders/_line_menu.html。右クリックでも同じメニュー。出荷する・指示書を発行する・発注する・部品の小窓・図面)。ボタンを並べる形は表が枠より広くなったのでやめた (決め 11-03 17:2x)。最後の欄は「残」のまま (E2E が行の最後の td で残を読む)。「検収」の列 (検収の数の合計と最後の検収日) は「出荷済み」と「残」の間。 #}
 {% block edit_button %}{% if object.status != "cancelled" %}{{ block.super }}{% endif %}{% endblock %}
-{% block actions %}{{ block.super }}{% if object.status != "cancelled" %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
+{% block actions %}{{ block.super }}{% can_write "orders.Order" as can_cancel %}{% if object.status != "cancelled" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
 {% block content %}
 {{ block.super }}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="order-lines-title">
@@ -11,6 +11,8 @@
   {% with lines=object.lines.all %}
   {% if lines %}
   {% can_write "workorders.WorkOrder" as can_issue %}
+  {% can_write "shipping.Shipment" as can_ship %}
+  {% can_write "purchasing.PurchaseOrder" as can_po %}
   <div class="mt-4 overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm table-zebra">
     <thead><tr class="bg-base-200 text-base-content/70">
@@ -29,7 +31,7 @@
     <tbody>
       {% for line in lines %}
       <tr class="h-10" data-row-menu>
-        <td class="whitespace-nowrap">{% include "orders/_line_menu.html" with line=line order=object can_issue=can_issue %}</td>
+        <td class="whitespace-nowrap">{% include "orders/_line_menu.html" with line=line order=object can_issue=can_issue can_ship=can_ship can_po=can_po %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no }}</td>
         <td class="whitespace-nowrap">{% master_link line.item %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>

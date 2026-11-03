@@ -4,12 +4,14 @@ master_link: 品目か取引先を渡すと名前を出し、押すと小窓で�
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾の 0 を落とす。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
+can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口の釦を出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 """
 
 from decimal import ROUND_HALF_UP, Decimal
 
 from django import template
+from django.apps import apps
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
 
@@ -53,6 +55,22 @@ def can_manage_accounts(context):
 
     request = context.get("request")
     return access.can_manage_accounts(getattr(request, "user", None))
+
+
+@register.simple_tag(takes_context=True)
+def can_write(context, label, verb="create"):
+    """{% can_write "workorders.WorkOrder" as can_issue %}。部品の model の書く入口の釦 (新規登録・取消・入金の記録・受入など、その model の新規登録と同じ種類の権限で決まる物) を出すか。
+
+    部品が無ければ偽。編集の判定が on のときだけ権限で偽になる (core.access.can_write_model と同じ判定)。
+    """
+    from seizou.core import access
+
+    try:
+        model = apps.get_model(label)
+    except (LookupError, ValueError):
+        return False
+    request = context.get("request")
+    return access.can_write_model(getattr(request, "user", None), model, verb)
 
 
 @register.filter

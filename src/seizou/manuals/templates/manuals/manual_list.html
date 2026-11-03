@@ -1,8 +1,11 @@
 {% extends "core/list.html" %}
-{% load manuals_tags seizou_icons %}
+{% load manuals_tags seizou_tags seizou_icons %}
 {# マニュアルの一覧: 上にフォルダの木 (パンくずと子のフォルダ)、下に土台の検索とマニュアルの行。検索の言葉があれば全部のフォルダを横断する。 #}
 {% block actions %}{% folder_tree request.GET.folder as tree %}
+{% can_write "manuals.Manual" as can_manual %}
+{% if can_manual %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualfolder_create' %}{% if tree.folder %}?parent={{ tree.folder.pk }}{% endif %}">{% icon "plus" "size-4" %}新しいフォルダ</a>
 <a class="btn btn-primary" href="{% url 'manuals:manual_create' %}{% if tree.folder %}?folder={{ tree.folder.pk }}{% endif %}">{% icon "plus" "size-4" %}新規登録</a>
+{% endif %}
 {% endblock %}
 {% block content %}{% include "manuals/_folders.html" %}{{ block.super }}{% endblock %}
