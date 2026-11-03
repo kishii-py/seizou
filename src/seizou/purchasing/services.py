@@ -44,7 +44,7 @@ _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"}
 _POSITIVE_MESSAGE = "数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
     "送った後の取消は相手への連絡が要るので、会期後の版です。"
-    "取り消せるのは状態が「作成」の発注だけです。"
+    "取り消せるのは状態が「作成」か「断られた」の発注だけです。"
 )
 
 
@@ -131,13 +131,13 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
 
 
 def cancel_purchase_order(purchase_order, user, *, reason=""):
-    """発注を取消にする。状態が「作成」のときだけ。
+    """発注を取消にする。状態が「作成」か「断られた」のときだけ (断られた発注は相手が受けていないので、連絡なしに取り消せる。精査 A1 の想定外 S9)。
 
     reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す (受注の取消と同じ形)。
     """
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
-        if locked.status != PurchaseOrder.STATUS_DRAFT:
+        if locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
             raise ValueError(_CANCEL_AFTER_SENT_MESSAGE)
         if reason:
             added = f"取消の理由: {reason}"

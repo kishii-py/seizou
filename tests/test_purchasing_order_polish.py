@@ -3,6 +3,7 @@
 - 出荷の知らせの合計は、行と同じく末尾の 0 を落とした字。
 - 送れなかった「作成」の発注は、詳細の頭に黄の知らせで理由を出す (送った記録の最後の返事)。
 - 出荷の知らせの「受入を記録する」は、その明細の知らせの合計が受入の合計より多い間だけ出す。
+- 断られた発注は取り消せる (送り直すは「作成」だけ)。送った・相手が受け入れた発注は取り消せない。
 Django の test client で HTML を見る。取引先と品目は作り物。相手への HTTP は requests.post を偽の物に差し替える。
 """
 
@@ -190,3 +191,32 @@ def test_receipt_link_follows_notice_total(client_logged_in, user, subcontractor
     # 知らせ 100 > 受入 40 なので、2 つの行の両方に出る
     assert _notice_cell(_detail(client_logged_in, other)).count("受入を記録する") == 2
     assert no_http.calls == 0
+
+
+@pytest.mark.django_db
+def test_rejected_order_can_be_cancelled_on_screen(client_logged_in, user, subcontractor, item, no_http):
+    po = _order(subcontractor, item, user)
+    rejected = services.mark_rejected(services.mark_sent(po, user), user, reason="作り物の断りの理由")
+    cancel_url = reverse("purchasing:purchaseorder_cancel", args=[po.pk])
+
+    body = _detail(client_logged_in, rejected)
+
+    assert cancel_url in body
+    assert reverse("purchasing:purchaseorder_send", args=[po.pk]) not in body
+
+    response = client_logged_in.post(cancel_url, {"reason": "別の協力企業へ出し直す"})
+
+    assert response.status_code == 302
+    assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_CANCELLED
+
+
+@pytest.mark.django_db
+def test_accepted_or_sent_order_is_not_cancellable(client_logged_in, user, subcontractor, item, no_http):
+    sent = services.mark_sent(_order(subcontractor, item, user), user)
+    accepted = services.mark_accepted(services.mark_sent(_order(subcontractor, item, user), user), user)
+
+    for po in (sent, accepted):
+        assert reverse("purchasing:purchaseorder_cancel", args=[po.pk]) not in _detail(client_logged_in, po)
+        with pytest.raises(ValueError, match="「作成」か「断られた」の発注だけ"):
+            services.cancel_purchase_order(po, user)
+        assert PurchaseOrder.objects.get(pk=po.pk).status == po.status
