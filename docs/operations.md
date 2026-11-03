@@ -43,6 +43,8 @@ find /path/to/site/backups -maxdepth 1 -type d -name '20??????-??????*' -mtime +
 
 PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります。`pg_dump` が見つからないとき、命令は何も書かずに止まり、手で取るための 1 行を出します。
 
+`settings.py` の `MEDIA_ROOT` が置き場そのものかその親のフォルダを指しているときは、控えに置き場の全部 (`.env` を含む) が入り、戻しが置き場ごと消すのを防ぐため、控えと戻しは何も書かず何も消さずに止まります (`seizou new` が書く `MEDIA_ROOT = BASE_DIR / "media"` では起きません)。
+
 ## 戻す (復元)
 
 戻すと、今のデータベースと上げたファイルが、控えを取った時点の物に置き換わります。次の順に進めます。
