@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from seizou.connect import demo_seed, services
 from seizou.connect.models import Acceptance, Inbox, Outbox, ShippingNotice
@@ -83,6 +84,34 @@ def test_record_inbox_makes_row_once(user):
     assert Inbox.objects.count() == 1
 
 
+@pytest.mark.django_db
+def test_record_inbox_takes_received_at(user):
+    customer = masters_services.create_partner({"code": "C901", "name": "作り物の発注元", "role": "customer"}, user)
+    received_at = timezone.make_aware(datetime.datetime(2026, 10, 28, 10, 15))
+
+    inbox = services.record_inbox(customer, {"order_no": "X-1", "lines": []}, user, received_at=received_at)
+
+    assert Inbox.objects.get(pk=inbox.pk).received_at == received_at
+
+    # 同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)
+    later = timezone.make_aware(datetime.datetime(2026, 10, 29, 9, 0))
+    again = services.record_inbox(
+        customer, {"order_no": "X-1", "lines": []}, user, message_id=inbox.message_id, received_at=later
+    )
+    assert again.pk == inbox.pk
+    assert Inbox.objects.get(pk=inbox.pk).received_at == received_at
+
+    # timezone の無い日時は断る
+    with pytest.raises(ValueError, match="timezone 付きの日時"):
+        services.record_inbox(customer, {"order_no": "X-2", "lines": []}, user, received_at=datetime.datetime(2026, 10, 28, 10, 15))
+    assert Inbox.objects.count() == 1
+
+    # 渡さなければ今の日時
+    before = timezone.now()
+    plain = services.record_inbox(customer, {"order_no": "X-3", "lines": []}, user)
+    assert abs(Inbox.objects.get(pk=plain.pk).received_at - before) < datetime.timedelta(minutes=1)
+
+
 def _edi_counts():
     return (
         Inbox.objects.count(),
@@ -117,6 +146,7 @@ def _check_b_plating():
     assert inbox.status == Inbox.STATUS_ACCEPTED
     assert inbox.partner.code == "C001"
     assert inbox.summary() == "WK-1001 ×200 ほか 1 行"
+    assert timezone.localtime(inbox.received_at).strftime("%Y-%m-%d %H:%M") == "2026-10-28 10:15"  # 種に書いた届いた日時
     assert inbox.reply_sent_at is None  # 注文回答は送っていない (種の受け入れは send=False)
     assert inbox.reply_response == services.MESSAGE_REPLY_SEED
     assert inbox.reply_message_id is None
@@ -245,6 +275,7 @@ def _check_b_references(folder):
         assert entry["相手の発注番号"] not in customer_order_nos  # 受注の種と重ならない
         # 2 社の種の突き合わせ: 届いた注文は A 社の発注と同じ中身、検収は A 社の受入と同じ日と数
         assert entry["発注日"] == a_order["発注日"]
+        assert entry["届いた日時"].date() == entry["発注日"]  # 届いた日時は発注日と同じ日
         assert [(line["相手の品番"], line["数量"], line["単価"], line["納期"]) for line in entry["明細"]] == [
             (line["自社品番"], line["数量"], line["単価"], line["納期"]) for line in a_order["明細"]
         ]

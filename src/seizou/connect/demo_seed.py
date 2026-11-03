@@ -40,7 +40,7 @@ from .models import Acceptance, ShippingNotice
 
 ACCEPTANCES_FILE = "acceptances.yaml"
 ACCEPTANCES_ROOT = "届いた注文"
-INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "明細", "検収")
+INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "届いた日時", "明細", "検収")
 INBOX_LINE_KEYS = ("相手の品番", "品名", "数量", "単位", "単価", "納期")
 ACCEPTANCE_KEYS = ("行番号", "検収日", "数量")
 
@@ -101,6 +101,33 @@ def _date(raw, label):
         return datetime.date.fromisoformat(str(raw).strip())
     except ValueError as exc:
         raise ValueError(f"{label}「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
+
+
+def _datetime(raw, label):
+    """日時の字か datetime を、timezone 付きの datetime にする (無ければ会社の時刻の帯)。空なら None。
+
+    PyYAML は 2026-10-28 10:15:00 を timezone の無い datetime にして返す。datetime は date の子なので先に見る。
+    時刻の無い日 (date だけ) は日時として読まない。
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    message = f"{label}「{raw}」を日時 (YYYY-MM-DD HH:MM:SS) として読めません。"
+    if isinstance(raw, datetime.datetime):
+        value = raw
+    elif isinstance(raw, datetime.date):
+        raise ValueError(message)
+    else:
+        try:
+            value = datetime.datetime.fromisoformat(str(raw).strip())
+        except ValueError as exc:
+            raise ValueError(message) from exc
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value)
+    return value
 
 
 def _text(raw):
@@ -181,7 +208,13 @@ def _load_inbox(entry, user):
     if order is None:
         message_id = _message_id("inbox", partner.code, order_no)
         payload = _inbox_payload(entry, order_no, message_id)
-        inbox = services.record_inbox(partner, payload, user, message_id=message_id)
+        inbox = services.record_inbox(
+            partner,
+            payload,
+            user,
+            message_id=message_id,
+            received_at=_datetime(entry.get("届いた日時"), "届いた日時"),
+        )
         order = services.accept(inbox, {}, user, send=False)
         # 受け入れは渡した行を書き換えず、表の行を取り直して書くので、受注から取り直す (飛ばす道と同じ式)。
         inbox = order.inbox_message

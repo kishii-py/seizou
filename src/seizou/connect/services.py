@@ -583,14 +583,25 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         return existing
 
 
-def record_inbox(partner, payload, user, *, message_id=None):
+def record_inbox(partner, payload, user, *, message_id=None, received_at=None):
     """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しのため)。
 
     署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
     user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
+    received_at を渡すと、届いた日時をその値にする (timezone 付きの datetime。作り物の種の「届いた日時」のため。渡さなければ今)。同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)。
     """
+    # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
+    import datetime
+
+    from django.utils import timezone
+
     if not isinstance(payload, dict):
         raise ValueError("注文のデータは辞書 (send_order が作る形) にしてください。")
+    if received_at is not None and (
+        not isinstance(received_at, datetime.datetime) or timezone.is_naive(received_at)
+    ):
+        raise ValueError("届いた日時は timezone 付きの日時にしてください。")
+    values = {} if received_at is None else {"received_at": received_at}
     if message_id is None:
         message_id = uuid.uuid4()
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す (receive と同じ形)。
@@ -602,6 +613,7 @@ def record_inbox(partner, payload, user, *, message_id=None):
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
                 payload=payload,
+                **values,
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
