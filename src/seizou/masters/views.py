@@ -23,7 +23,9 @@ from . import services
 from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
+from .forms import HolidayDeleteForm, HolidayForm
 from .models import Item, Partner, Process
+from .models import Holiday
 
 
 class ItemListView(BaseListView):
@@ -321,3 +323,69 @@ class ItemDrawingRestoreView(BaseFormView):
     template_name = "masters/drawing_restore.html"
     screen_name = "図面を版に戻す"
     screen_help = "選んだ版の図面を今の図面に戻します。戻す前の今の図面は新しい版として残ります。"
+
+
+# ---------------------------------------------------------------- 会社の休日 (稼働日の数え方は core.calendar)
+# 編集の画面は持たない (間違えた日は詳細から削除して足し直す)。詳細に「編集」は出ない (土台の edit_url が無い)。
+
+
+class HolidayListView(BaseListView):
+    """休日の一覧。
+
+    使う人: 生産管理・総務 / いつ: 年の初めと、会社の休みが決まったとき / 何のために: 祝日と会社の休みを 1 か所に持ち、納期までの稼働日を正しく数える / 次にすること: 「新規登録」で足す。間違えた日は詳細から削除する
+    """
+
+    model = Holiday
+    screen_name = "休日"
+    screen_help = "祝日と会社の休みを日付の順に並べる表。注残の盤の「納期まで」は、この休日と定休日の曜日を除いた稼働日で数えます。年で絞れます。"
+    columns = ("date", "name", "kind", "created_by")
+    search_fields = ("name",)
+    ordering = ("date",)
+    template_name = "masters/holiday_list.html"
+
+    def get_queryset(self):
+        # ?year=2026 (4 桁の数の字だけ) で年を絞る。ほかの字は無視して全部を出す。
+        holidays = super().get_queryset()
+        year = self.request.GET.get("year", "")
+        if len(year) == 4 and year.isascii() and year.isdigit():
+            holidays = holidays.filter(date__year=int(year))
+        return holidays
+
+
+class HolidayCreateView(BaseFormView):
+    """休日の新規登録の入力。
+
+    使う人: 生産管理・総務 / いつ: 祝日や会社の休みが決まったとき / 何のために: 休日を 1 日足して、稼働日の数え方に入れる / 次にすること: 注残の盤の「納期まで」で確かめる
+    """
+
+    model = Holiday
+    form_class = HolidayForm
+    service = staticmethod(services.create_holiday)
+    screen_name = "休日の新規登録"
+    screen_help = "休日を 1 日足します。日付は 1 日に 1 件だけです。定休日の曜日 (土日など) は足さなくても休みとして数えます。"
+
+
+class HolidayDetailView(BaseDetailView):
+    """休日の詳細。
+
+    使う人: 生産管理・総務 / いつ: 休日の中身を確かめるとき / 何のために: 日付・名前・種類と登録した人を見る / 次にすること: 間違えた日は「削除」で消す
+    """
+
+    model = Holiday
+    template_name = "masters/holiday_detail.html"
+    screen_name = "休日の詳細"
+    screen_help = "休日の日付・名前・種類と、登録した人。間違えた日は「削除」で消します。"
+
+
+class HolidayDeleteView(BaseFormView):
+    """休日の削除の確かめ。
+
+    使う人: 生産管理・総務 / いつ: 間違えて足した休日を消すとき / 何のために: 休日を消し、その日を稼働日として数える / 次にすること: 休日の一覧で確かめる
+    """
+
+    model = Holiday
+    form_class = HolidayDeleteForm
+    service = staticmethod(services.delete_holiday)
+    template_name = "masters/holiday_delete.html"
+    screen_name = "休日の削除"
+    screen_help = "休日を消し、休日の一覧に戻ります。消した日は稼働日として数えます。"

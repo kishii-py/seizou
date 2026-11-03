@@ -8,10 +8,13 @@
 import pytest
 
 from seizou.core import conf
+from seizou.core import calendar
 
 
 @pytest.fixture(autouse=True)
 def fresh_setting_cache():
     conf.reset_cache()
+    calendar.reset_cache()
     yield
     conf.reset_cache()
+    calendar.reset_cache()

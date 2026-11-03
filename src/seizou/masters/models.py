@@ -4,6 +4,7 @@
 ほかの部品はこの表を外部キーで指してよいが、書くときは masters.services を通す。
 """
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -302,3 +303,39 @@ class ItemDrawingVersion(models.Model):
 
     def __str__(self):
         return f"{self.item.part_no} 版 {self.version_no}"
+
+
+class Holiday(models.Model):
+    """会社の休日 (祝日と会社の休み)。日付は一意。書くのは masters.services だけ。
+
+    定休日の曜日 (土日など) は表に持たず、設定 weekly_holidays が持つ。稼働日の数え方は core.calendar。
+    """
+
+    KIND_PUBLIC = "public"
+    KIND_COMPANY = "company"
+    KIND_CHOICES = [
+        (KIND_PUBLIC, "祝日"),
+        (KIND_COMPANY, "会社の休み"),
+    ]
+
+    date = models.DateField("日付", unique=True)
+    name = models.CharField("名前", max_length=100)
+    kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="登録した人",
+        editable=False,
+    )
+    created_at = models.DateTimeField("登録した日時", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "休日"
+        verbose_name_plural = "休日"
+        ordering = ("date",)
+
+    def __str__(self):
+        return f"{self.date:%Y-%m-%d} {self.name}"
