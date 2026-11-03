@@ -85,3 +85,20 @@ def all_screens() -> list[Screen]:
             )
         )
     return screens
+
+
+def usecase_rows(usecase: str) -> list[tuple[str, str]]:
+    """usecase の 1 行の字 (使う人: … / いつ: … / 何のために: … / 次にすること: …) を、USECASE_KEYS の順の (鍵, 値) の並びにする。鍵の無い・値の空の物は入れない。例外を投げない。
+
+    鍵の字で切る (行の頭か「 / 」の後の「鍵:」だけを鍵と見る)。値の中の「 / 」は、次に鍵が続かない限り値に残す。
+    """
+    keys = "|".join(re.escape(key) for key in USECASE_KEYS)
+    pieces = re.split(rf"(?:^|\s*/\s*)({keys}):\s*", usecase or "")
+    found: dict[str, str] = {}
+    for key, value in zip(pieces[1::2], pieces[2::2]):
+        value = value.strip()
+        if value.endswith("/"):
+            value = value[:-1].rstrip()
+        if value and key not in found:
+            found[key] = value
+    return [(key, found[key]) for key in USECASE_KEYS if key in found]
