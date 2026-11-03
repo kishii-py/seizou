@@ -21,7 +21,7 @@ from playwright.sync_api import expect
 from .conftest import login, shot
 
 STILL_NONE = " (まだ)"
-FRAGMENT_NONE = "この画面の説明はまだありません。"
+FRAGMENT_NONE = "この画面の説明書はまだありません。"
 MANUAL_NONE = "この会社の説明書はまだありません。"
 
 

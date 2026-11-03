@@ -3,6 +3,7 @@
 master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
+can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
 """
 
 from decimal import ROUND_HALF_UP, Decimal
@@ -35,6 +36,15 @@ def comma(value, digits=None):
     if isinstance(value, (Decimal, float)):
         return f"{value:,f}"
     return value
+
+
+@register.simple_tag(takes_context=True)
+def can_manage_accounts(context):
+    """{% can_manage_accounts as is_manager %}。アカウント管理を使える人か (core.access.can_manage_accounts と同じ判定)。"""
+    from seizou.core import access
+
+    request = context.get("request")
+    return access.can_manage_accounts(getattr(request, "user", None))
 
 
 def modal_url(obj) -> str | None:

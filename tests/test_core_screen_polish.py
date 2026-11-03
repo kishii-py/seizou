@@ -63,3 +63,43 @@ def test_access_form_shows_connections_label(client, manager):
     response = client.get(reverse("accounts:access_create"))
     assert response.status_code == 200
     assert "取引先との接続" in response.content.decode()
+
+
+# ---------------------------------------------------------------- 3. 説明書が無い時の文
+
+SCREEN_NONE = "この画面の説明書はまだありません。管理者が作ります。"
+COMPANY_NONE = "この会社の説明書はまだありません。管理者が作ります。"
+MANAGER_CODE = "<code>/seizou:manual</code>"
+HTMX = {"HTTP_HX_REQUEST": "true"}
+
+
+def _manual_pages(client):
+    """小窓 (「?」)・使い方・印刷用の 3 つの HTML。"""
+    fragment = client.get(reverse("core:manual_fragment", args=["masters_item_list"]), **HTMX)
+    page = client.get(reverse("core:manual"))
+    printed = client.get(reverse("core:manual"), {"print": "1"})
+    for response in (fragment, page, printed):
+        assert response.status_code == 200
+    return [response.content.decode() for response in (fragment, page, printed)]
+
+
+@pytest.mark.parametrize("who", ["user", "manager"])
+def test_missing_screen_manual_sentence(request, client, settings, tmp_path, who):
+    settings.BASE_DIR = tmp_path
+    (tmp_path / "manual").mkdir()
+    client.force_login(request.getfixturevalue(who))
+    for html in _manual_pages(client):
+        assert SCREEN_NONE in html
+        assert (MANAGER_CODE in html) is (who == "manager")
+        assert "この画面の説明はまだありません" not in html
+
+
+@pytest.mark.parametrize("who", ["user", "manager"])
+def test_missing_company_manual_sentence(request, client, settings, tmp_path, who):
+    settings.BASE_DIR = tmp_path
+    client.force_login(request.getfixturevalue(who))
+    fragment, page, printed = _manual_pages(client)
+    assert SCREEN_NONE in fragment
+    for html in (page, printed):
+        assert COMPANY_NONE in html
+        assert ("Claude Code で <code>/seizou:manual</code> を打つと" in html) is (who == "manager")

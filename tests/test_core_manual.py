@@ -112,8 +112,8 @@ def test_missing_fragment_shows_placeholder(client_logged_in, manual):
     html = manual_page(client_logged_in).content.decode()
     box = section_box(html, "masters_partner_list")
     assert "<h2>取引先</h2>" in box
-    assert "この画面の説明はまだありません" in box
-    assert "/seizou:manual" in box
+    assert "この画面の説明書はまだありません" in box
+    assert "/seizou:manual" not in box
     assert "(まだ)" in toc_line(html, "masters_partner_list")
 
 
@@ -132,7 +132,7 @@ def test_no_manual_folder_is_not_error(client_logged_in, site):
     assert response.status_code == 200
     html = response.content.decode()
     assert "この会社の説明書はまだありません" in html
-    assert "この画面の説明はまだありません" in section_box(html, "core_home")
+    assert "この画面の説明書はまだありません" in section_box(html, "core_home")
 
 
 def test_unreadable_fragment_is_reported(client_logged_in, manual):
@@ -170,7 +170,7 @@ def test_print_has_all_fragments_without_menu(client_logged_in, manual):
     assert '<html lang="ja" data-theme="light">' in html
     assert ITEM_FRAGMENT in section_box(html, "masters_item_list")
     assert order_fragment in section_box(html, "orders_order_list")
-    assert "この画面の説明はまだありません" in section_box(html, "masters_partner_list")
+    assert "この画面の説明書はまだありません" in section_box(html, "masters_partner_list")
     assert 'id="seizou-drawer"' not in html
     assert 'aria-label="横断して検索"' not in html
     assert 'aria-label="メニュー"' not in html

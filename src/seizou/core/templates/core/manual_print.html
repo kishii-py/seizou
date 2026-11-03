@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static seizou_tags %}<!doctype html>
 {% comment %}
 使い方の印刷用の 1 枚 (/manual/?print=1)。画面の土台を継がない 1 枚の HTML で、左のメニューと上の帯と入力の欄を持たない。
 紙に刷るので明るい theme に決める。全部の画面の断片を目録の順に並べ、目次の後は画面ごとに改ページする。
@@ -30,8 +30,9 @@
       {% endfor %}
     </ol>
   </nav>
+  {% can_manage_accounts as is_manager %}
   {% if not has_manual %}
-  <p class="mt-6 font-medium">この会社の説明書はまだありません。Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。</p>
+  <p class="mt-6 font-medium">この会社の説明書はまだありません。管理者が作ります。{% if is_manager %}Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。{% endif %}</p>
   {% endif %}
   {% if intro %}
   <div class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
@@ -44,7 +45,7 @@
     {% elif section.unreadable %}<h2>{{ section.name }}</h2>
     <p class="text-error">説明のファイルを UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
     {% else %}<h2>{{ section.name }}</h2>
-    <p class="text-base-content/70">この画面の説明はまだありません。<code>/seizou:manual</code> で作れます。</p>
+    <p class="text-base-content/70">この画面の説明書はまだありません。管理者が作ります。{% if is_manager %}<code>/seizou:manual</code> で書けます。{% endif %}</p>
     {% endif %}
   </div>
   {% endfor %}
