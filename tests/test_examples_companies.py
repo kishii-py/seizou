@@ -259,6 +259,11 @@ MORE_SEED_YAML_ROOT_KEYS = {
     "delivery_notes.yaml": "納品書",
     "invoices.yaml": "請求書",
 }
+# 部品の種のファイル (出荷の知らせと検収・入金)。片方の会社にしか無い物があるので、会社ごとに書く
+PART_SEED_YAML_ROOT_KEYS = {
+    "a_machining": {"shipping_notices.yaml": "発注", "payments.yaml": "請求書"},
+    "b_plating": {"acceptances.yaml": "届いた注文", "payments.yaml": "請求書"},
+}
 MORE_SEED_FILES = ("item_processes.csv", *MORE_SEED_YAML_ROOT_KEYS)
 ITEM_PROCESS_HEADER = ["自社品番", "工程コード", "順"]
 PLAN_WINDOW = ("2026-11-02", "2026-11-13")
@@ -296,6 +301,15 @@ def test_more_seed_files_exist(company_id):
     for name in MORE_SEED_FILES:
         assert (company_dir(company_id) / name).is_file(), name
     for name, root in MORE_SEED_YAML_ROOT_KEYS.items():
+        data = load_seed_yaml(company_id, name)
+        assert set(data) == {root}, name
+        assert isinstance(data[root], list) and data[root], name
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_part_seed_yaml_holds_one_list(company_id):
+    for name, root in PART_SEED_YAML_ROOT_KEYS[company_id].items():
+        assert (company_dir(company_id) / name).is_file(), name
         data = load_seed_yaml(company_id, name)
         assert set(data) == {root}, name
         assert isinstance(data[root], list) and data[root], name
