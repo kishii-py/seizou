@@ -29,6 +29,7 @@
       <dt class="text-base-content/70 sm:whitespace-nowrap">住所</dt><dd class="min-w-0 break-words">{{ seizou.company.address|default:"なし" }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">電話</dt><dd class="min-w-0 break-words">{{ seizou.company.phone|default:"なし" }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">振込先</dt><dd class="min-w-0 break-words">{{ seizou.company.bank_account|default:"なし" }}</dd>
+      <dt class="text-base-content/70 sm:whitespace-nowrap">ロゴ</dt><dd class="min-w-0 break-words">{% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="ロゴ" class="size-12 rounded-xl object-contain">{% else %}なし{% endif %}</dd>
     </dl>
   </section>
   <div class="grid gap-6 lg:grid-cols-2">

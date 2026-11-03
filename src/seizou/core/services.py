@@ -146,7 +146,7 @@ def clear_setting(key, user):
 
 
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
-COMPANY_INFO_FIELDS = ("address", "phone", "bank_account")
+COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "logo")
 
 
 def update_company(company, data, user):
@@ -157,13 +157,21 @@ def update_company(company, data, user):
     transaction.atomic の中で会社の行を select_for_update で取り直し、取り直した行と比べて変わった列だけを書く
     (変わった列が無ければ書かない)。画面の ModelForm は検証の中で対象の物の値を先に書き換えるので、渡された物とは比べない。
     書いた後に logging の "seizou.settings" に INFO の 1 行 (変えた列の見出しだけ。値は書かない = 振込先の番号を記録に残さない)。
+    logo は、新しく上げたファイル (UploadedFile) なら company/ の下に "logo" + 拡張子 (小文字) で置き、False (「クリア」) なら
+    今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
+    (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
     """
+    from pathlib import PurePath
+
+    from django.core.files.uploadedfile import UploadedFile
+
     unknown = [key for key in data if key not in COMPANY_INFO_FIELDS]
     if unknown:
         raise KeyError(f"知らない会社の情報の鍵: {'・'.join(str(key) for key in unknown)}")
+    logo = data.get("logo")
     values = {}
     for name in COMPANY_INFO_FIELDS:
-        if name not in data:
+        if name not in data or name == "logo":
             continue
         field = Company._meta.get_field(name)
         value = data[name]
@@ -176,6 +184,12 @@ def update_company(company, data, user):
         changed = [name for name, value in values.items() if getattr(row, name) != value]
         for name in changed:
             setattr(row, name, values[name])
+        if isinstance(logo, UploadedFile):
+            row.logo.save("logo" + PurePath(logo.name or "").suffix.lower(), logo, save=False)
+            changed.append("logo")
+        elif logo is False and row.logo:
+            row.logo = ""
+            changed.append("logo")
         if changed:
             row.save(update_fields=changed)
     if changed:

@@ -9,7 +9,7 @@ SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。�
 """
 
 from django import forms
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 
 from seizou.core import conf
 from seizou.core.models import Company
@@ -142,9 +142,17 @@ class SettingForm(forms.Form):
 class CompanyForm(ServiceModelForm):
     """会社の情報 (住所・電話・振込先・ロゴ) の入力。値を確かめて保存するのは services の update_company (form は欄の型と字数だけ)。"""
 
+    # ロゴは絵だけ (Pillow で絵かを確かめる)。SVG と HTML は上げたファイルの口がダウンロードにして <img> に出ないので受けない
+    logo = forms.ImageField(
+        label="ロゴ",
+        required=False,
+        validators=[FileExtensionValidator(["png", "jpg", "jpeg"])],
+        help_text="PNG か JPEG の絵。納品書と請求書の会社の欄の頭に出る。消すときは「クリア」に check を入れて保存。",
+    )
+
     class Meta:
         model = Company
-        fields = ("address", "phone", "bank_account")
+        fields = ("address", "phone", "bank_account", "logo")
         help_texts = {
             "address": "納品書と請求書の会社の欄に出す。郵便番号から 1 行で (例: 〒000-0000 見本県架空市見本町 1-2-3)。",
             "phone": "例: 00-0000-0000",

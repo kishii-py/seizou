@@ -6,14 +6,17 @@ services の update_company (値の整え・字数・記録の 1 行)、設定�
 
 from __future__ import annotations
 
+import io
 import logging
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
+from PIL import Image
 
 from seizou.billing import services as billing_services
 from seizou.core import services
@@ -194,3 +197,81 @@ def test_invoice_shows_bank_and_delivery_note_does_not(manager_client, admin):
     company = delivery_note_context(note)["company"]
     assert "bank_account" not in company
     assert (company["name"], company["address"], company["phone"]) == (services.company().name, ADDRESS, PHONE)
+
+
+# ---------------------------------------------------------------- 2c: ロゴ (PNG か JPEG。画面からだけ)
+
+
+@pytest.fixture
+def media(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    return settings.MEDIA_ROOT
+
+
+def png_upload(name="ロゴ.png") -> SimpleUploadedFile:
+    """試験用の小さな PNG (4×3。tests/test_manuals_views.py の png_upload と同じ作り)。"""
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 3), (30, 120, 200)).save(buffer, format="PNG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
+
+
+def test_update_company_saves_and_clears_logo(admin, media, caplog):
+    caplog.set_level(logging.INFO, logger="seizou.settings")
+
+    services.update_company(services.company(), {"logo": png_upload("ロゴ.PNG")}, admin)
+    first = Company.objects.get().logo.name
+    assert first.startswith("company/") and first.endswith(".png")  # 名前は logo + 小文字の拡張子
+    assert (media / first).is_file()
+    assert "会社の情報を変えた: ロゴ" in settings_records(caplog)[-1].getMessage()
+
+    services.update_company(services.company(), {"logo": png_upload()}, admin)
+    second = Company.objects.get().logo.name
+    assert second.startswith("company/") and second != first
+    assert (media / first).is_file()  # 差し替えた古いファイルは置き場に残る
+
+    count = len(settings_records(caplog))
+    services.update_company(services.company(), {"logo": Company.objects.get().logo}, admin)  # 今のファイル
+    services.update_company(services.company(), {"logo": None}, admin)
+    assert Company.objects.get().logo.name == second
+    assert len(settings_records(caplog)) == count  # 何も変わらず、記録も増えない
+
+    services.update_company(services.company(), {"logo": False}, admin)  # 「クリア」
+    assert Company.objects.get().logo.name == ""
+    assert (media / second).is_file()
+
+
+def test_company_screen_refuses_non_image_logo(manager_client, media):
+    url = reverse("core:company_update")
+    not_image = SimpleUploadedFile("ロゴ.png", "絵でない字".encode(), content_type="image/png")
+    svg = SimpleUploadedFile(
+        "ロゴ.svg", b'<svg xmlns="http://www.w3.org/2000/svg" width="4" height="3"></svg>', content_type="image/svg+xml"
+    )
+
+    for upload in (not_image, svg):
+        response = manager_client.post(url, {"address": ADDRESS, "phone": PHONE, "bank_account": "", "logo": upload})
+        assert response.status_code == 200, upload.name
+        assert 'id="id_logo_error"' in response.content.decode(), upload.name
+
+    row = Company.objects.get()
+    assert not row.logo
+    assert row.address == ""  # 誤りの欄があれば何も保存しない
+
+
+def test_reports_show_logo_only_when_set(manager_client, admin, media):
+    invoice, note = _invoice_and_note(admin)
+    name = services.company().name
+
+    for body in _print_bodies(manager_client, invoice, note):
+        assert 'class="report-logo"' not in body
+        assert name in body
+
+    response = manager_client.post(
+        reverse("core:company_update"), {"address": ADDRESS, "phone": PHONE, "bank_account": "", "logo": png_upload()}
+    )
+    assert response.status_code == 302
+
+    for body in _print_bodies(manager_client, invoice, note):
+        assert 'class="report-logo"' in body
+        assert 'src="/media/company/' in body
+    settings_body = manager_client.get(reverse("core:settings")).content.decode()
+    assert '<img src="/media/company/' in settings_body
