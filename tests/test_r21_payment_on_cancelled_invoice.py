@@ -70,8 +70,10 @@ def test_r21_issued_invoice_accepts_payment(user, invoice):
 def test_r21_cancelled_invoice_keeps_old_payment_but_refuses_new(user, invoice):
     old = services.record_payment(invoice, RECEIVED_ON, Decimal("1000"), user)
 
-    # 入金が残っていても、請求書の取消は今までどおり通る。
-    services.cancel_invoice(invoice, user)
+    # 入金が残っている請求書の取消は services が止める (決め 11-04 06:4x)。止める前に取り消した請求書 (古いデータ) は表に直に作る。
+    with pytest.raises(ValueError, match="入金が残っています"):
+        services.cancel_invoice(invoice, user)
+    Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.STATUS_CANCELLED)
     assert Invoice.objects.get(pk=invoice.pk).status == Invoice.STATUS_CANCELLED
 
     with pytest.raises(RuleViolation) as caught:

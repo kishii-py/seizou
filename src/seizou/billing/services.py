@@ -5,13 +5,14 @@
 - 中心の決まり (R09 = 請求書の明細は、出荷済みの物だけ) に当たったら RuleViolation("R09", message)。
   message は RULES.md の R09 の文と、外す出荷の番号と「外してください」。
   「出荷済み」は、発行の納品書に入っている出荷と読む。
-- 決まりの番号の無い入力の誤り (出荷の一覧が空・取り消し済みの請求書を取り消す) は日本語の ValueError。
+- 決まりの番号の無い入力の誤り (出荷の一覧が空・取り消し済みの請求書を取り消す・取消でない入金の残る請求書を取り消す) は日本語の ValueError。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
 - 消費税の計算は _tax の 1 か所、支払期日の計算は payment_due_date の 1 か所。
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
+  取消でない入金の残る請求書は cancel_invoice が断る (先に cancel_payment。文は cancel_refusal の 1 か所。決め 11-04 06:4x)。
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 
+from seizou.core import access
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import company, next_number
 from seizou.masters.services import round_amount
@@ -132,12 +134,41 @@ def create_invoice(customer, shipments, user, *, issued_on):
         return invoice
 
 
+def _yen(value):
+    """金額の字。core の |comma と同じ形 (3 桁ごとの区切り。小数の末尾の 0 を落とす。7500.00 → 7,500、1234.50 → 1,234.5)。"""
+    return f"{value.normalize():,f}"
+
+
+def cancel_refusal(invoice, *, hide_money=False) -> str:
+    """請求書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
+
+    取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (残りの件数と合計) を返す。
+    hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人)。
+    cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。請求書の状態は見ない。
+    """
+    rows = [row for row in invoice.payments.all() if row.status == Payment.STATUS_RECORDED]
+    if not rows:
+        return ""
+    left = f"残り {len(rows)} 件"
+    if not hide_money:
+        left += f"・合計 {_yen(sum((row.amount for row in rows), _ZERO))} 円"
+    return f"入金が残っています。先に入金を取り消してください ({left})。"
+
+
 def cancel_invoice(invoice, user):
-    """請求書を取消にする。明細は残す (入っていた出荷は、また請求できる)。"""
+    """請求書を取消にする。明細は残す (入っていた出荷は、また請求できる)。
+
+    取消でない入金が残っていれば、何も変えずに ValueError (先に cancel_payment で入金を取り消す。決め 11-04 06:4x)。
+    文は cancel_refusal の 1 か所 (金額の閲覧の無い人には件数だけ = access.hides_money)。
+    入金の行はロックしない (record_payment は請求書の行をロックしてから入金を足すので、請求書の行のロックで足りる)。
+    """
     with transaction.atomic():
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
             raise ValueError("この請求書は取り消し済みです。")
+        refusal = cancel_refusal(locked, hide_money=access.hides_money(user))
+        if refusal:
+            raise ValueError(refusal)
         locked.status = Invoice.STATUS_CANCELLED
         locked.save(update_fields=["status"])
         return locked
