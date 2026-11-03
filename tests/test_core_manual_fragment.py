@@ -163,3 +163,32 @@ def test_images_point_to_manual_images(client_logged_in, manual):
     assert f'src="{expected}"' in html
     assert 'src="images/' not in html
     assert (manual / "masters_item_list.html").read_text(encoding="utf-8").count('src="images/') == 1
+
+
+# ---------------------------------------------------------------- 2 段目: ?part= の枠の切り出し
+
+
+def test_part_slices_from_h3_to_next_heading(client_logged_in, manual):
+    write_fragment(manual, "masters_item_detail", FRAME_FRAGMENT)
+    basic = modal(client_logged_in, "masters_item_detail", part="basic").content.decode()
+    assert '<h3 id="basic">基本情報</h3>' in basic
+    assert "作り物の基本の字" in basic
+    assert "作り物の関係の字" not in basic
+    assert "概要" not in basic
+    related = modal(client_logged_in, "masters_item_detail", part="related").content.decode()
+    assert '<h3 id="related">関係する物</h3>' in related
+    assert "作り物の関係の字" in related
+    assert "作り物の基本の字" not in related
+    assert "</section>" not in related
+    assert "概要" not in related
+
+
+@pytest.mark.parametrize("part", ["nothing", "../x", ""])
+def test_part_not_found_falls_back_to_whole(client_logged_in, manual, part):
+    write_fragment(manual, "masters_item_detail", FRAME_FRAGMENT)
+    html = modal(client_logged_in, "masters_item_detail", part=part).content.decode()
+    assert "作り物の基本の字" in html
+    assert "作り物の関係の字" in html
+    assert "<h2" not in html
+    if part:
+        assert part not in html

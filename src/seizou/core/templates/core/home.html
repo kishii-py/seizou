@@ -22,7 +22,10 @@
 {% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}
   {% if shipping is not None %}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipping-title">
+    <div class="flex items-center justify-between gap-2">
     <h2 id="shipping-title" class="text-lg font-bold">出荷 (直近 6 か月)</h2>
+    {% include "core/_screen_help.html" with part="shipping" label="出荷の説明" %}
+    </div>
     <p class="mt-2 text-xs text-base-content/70">出荷日の月ごとの数量と金額 (円) です。後で受注が取消になった出荷も数えます。今月は途中の数です。</p>
     {% if shipping.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
@@ -60,7 +63,10 @@
   {% endif %}
   {% if production is not None %}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="production-title">
+    <div class="flex items-center justify-between gap-2">
     <h2 id="production-title" class="text-lg font-bold">生産 (直近 6 か月)</h2>
+    {% include "core/_screen_help.html" with part="production" label="生産の説明" %}
+    </div>
     <p class="mt-2 text-xs text-base-content/70">発行は指示書の発行日の月の数量 (取消を除く)、完成は指示書の最後の工程に入れた実績の数 (実績の日時の月) です。今月は途中の数です。</p>
     {% if production.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
@@ -96,7 +102,10 @@
   {% if recent_orders is not None %}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
     <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
       <h2 id="recent-orders-title" class="text-lg font-bold">最近の受注</h2>
+      {% include "core/_screen_help.html" with part="recent-orders" label="最近の受注の説明" %}
+      </div>
       {% if orders_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ orders_url }}">受注の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
     </div>
     {% if recent_orders %}
@@ -130,6 +139,7 @@
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-2">
         <h2 id="due-alerts-title" class="text-lg font-bold">納期アラート</h2>
+        {% include "core/_screen_help.html" with part="due-alerts" label="納期アラートの説明" %}
         <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
         <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
       </div>

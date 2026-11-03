@@ -25,7 +25,7 @@
     <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
-    <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">基本</p>{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
     <dl class="grid gap-x-6 sm:grid-cols-2">
       {% for field in fields %}
       <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
@@ -55,6 +55,7 @@
     <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">{{ tab.label }}</p>{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
     {% if tab.rows %}
     {% block tab_rows %}
     <ul class="divide-y divide-base-200">

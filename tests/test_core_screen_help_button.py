@@ -4,18 +4,23 @@ Django の test client で HTML を見る (本物のブラウザは使わない)
 """
 
 import re
+from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 
 import seizou.core
 from seizou.core.manual import fragment_name
 from seizou.core.screens import all_screens
 from seizou.core.views import BaseListView
+from seizou.masters import services as masters_services
 from seizou.masters.models import Item
+from seizou.orders import services as orders_services
 
 HELP_TEMPLATE = Path(seizou.core.__file__).parent / "templates" / "core" / "_screen_help.html"
 
@@ -133,3 +138,55 @@ def test_topbar_manual_button_stays(client_logged_in, site):
     assert 'aria-label="使い方"' in html
     assert 'href="/manual/"' in html
     assert html.count(SCREEN_LABEL) == 1
+
+
+# ---------------------------------------------------------------- 2 段目: 枠の「?」と skill
+
+#: ダッシュボードの節の id (home.html の aria-labelledby から -title を外した物) と「?」の名前
+HOME_FRAMES = {
+    "shipping": "出荷の説明",
+    "production": "生産の説明",
+    "recent-orders": "最近の受注の説明",
+    "due-alerts": "納期アラートの説明",
+}
+
+
+def test_detail_tabs_have_frame_help(client_logged_in, site, item):
+    html = page(client_logged_in, reverse("masters:item_detail", args=[item.pk]))
+    assert html.count('?part=basic"') == 1
+    assert html.count('name="detail-tabs"') == 3  # 基本情報と関係する物のタブ 2 つ
+    assert html.count('?part=related"') == 2
+    assert 'aria-label="基本情報の説明"' in html
+    assert 'aria-label="関係する物の説明"' in html
+    assert html.count(SCREEN_LABEL) == 1
+    assert "取引先ごとの品番が入ると、ここに並びます。" in html
+
+
+@pytest.mark.django_db
+def test_home_sections_have_frame_help(client_logged_in, site, user):
+    customer = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    shaft = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    orders_services.create_order(
+        customer,
+        [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": timezone.localdate() + timedelta(days=3)}],
+        user,
+        order_date=timezone.localdate(),
+    )
+    html = page(client_logged_in, reverse("core:home"))
+    labelled = re.findall(r'<section[^>]*aria-labelledby="([^"]+)-title"', html)
+    # よく使う画面の節 (entrances。bookmarks/_home.html か core/_entrances.html) はこのレーンの物でないので「?」を付けない
+    assert sorted(set(labelled) - {"entrances"}) == sorted(HOME_FRAMES)
+    assert "?part=entrances" not in html
+    for frame, label in HOME_FRAMES.items():
+        assert html.count(f'?part={frame}"') == 1, frame
+        assert f'aria-label="{label}"' in html, frame
+    assert html.count(SCREEN_LABEL) == 1
+
+
+def test_skill_names_frame_ids():
+    skill = Path(__file__).resolve().parent.parent / "plugin" / "skills" / "manual" / "SKILL.md"
+    text = skill.read_text(encoding="utf-8")
+    assert "<h3 id=" in text
+    for frame in ["basic", "related", *HOME_FRAMES]:
+        assert f"`{frame}`" in text, frame
+    assert len(re.findall(r"^## ", text, re.M)) == 10
