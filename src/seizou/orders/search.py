@@ -1,13 +1,14 @@
 """受注の横断の検索 (core の検索の画面が呼ぶ。約束は seizou.core.search)。
 
 受注番号・得意先の注文番号・明細の品目の品番と品名で部分一致。取引先を渡すと、その得意先の受注に絞る。読むだけ。
+語の揺れ (全角と半角・ひらがなとカタカナ) は一覧の検索と同じ (core の search_q)。
 詳細の URL (orders:order_detail) がまだ無ければ、行の url は None にする。
 """
 
 from django.db.models import Q
 
 from seizou.core.search import SearchColumn, SearchRow, SearchSection
-from seizou.core.views import url_or_none
+from seizou.core.views import search_q, url_or_none
 
 from .models import Order, OrderLine
 
@@ -36,12 +37,8 @@ def search(query, *, partner=None, limit=50):
     if partner is not None:
         orders = orders.filter(customer_id=partner)
     for term in query.split():
-        lines = OrderLine.objects.filter(Q(item__part_no__icontains=term) | Q(item__name__icontains=term))
-        orders = orders.filter(
-            Q(order_no__icontains=term)
-            | Q(customer_order_no__icontains=term)
-            | Q(pk__in=lines.values("order_id"))
-        )
+        lines = OrderLine.objects.filter(search_q(["item__part_no", "item__name"], term))
+        orders = orders.filter(search_q(["order_no", "customer_order_no"], term) | Q(pk__in=lines.values("order_id")))
     orders = orders.order_by("-order_date", "-pk")
     total = orders.count()
     page = orders.select_related("customer").prefetch_related("lines__item")[:limit]

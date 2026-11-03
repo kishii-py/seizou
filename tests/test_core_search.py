@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db import DatabaseError
 from django.urls import reverse
 
+from seizou.core import fields as company_fields
 from seizou.core import search as core_search
 from seizou.core.search import SearchRow, SearchSection
 from seizou.core.views import url_or_none
@@ -213,3 +214,50 @@ def test_search_menu_entry_is_active_on_search_page(client_logged_in):
     # 左のメニューの入口の <a> の tag (属性の並びに頼らない)。今の画面の印は aria-current="page"。
     tags = re.findall(rf'<a[^>]*href="{re.escape(search_url)}"[^>]*>', body)
     assert any('aria-current="page"' in tag for tag in tags)
+
+
+# --- 語の揺れ (全角と半角・ひらがなとカタカナ)。一覧の検索と同じ core の search_q で引く ---
+# 全角のダッシュは U+FF0D (－)。U+2212 (−) と長音 (ー) は NFKC で "-" にならないので品番の試験に使わない。
+
+
+@pytest.mark.parametrize("word", ["ぶらけっと", "ﾌﾞﾗｹｯﾄ", "Ｐ－１００１", "ＤＷ－５０１"])
+def test_items_found_by_other_width_and_kana(client_logged_in, bracket, shaft, word):
+    response = search_page(client_logged_in, q=word)
+    assert section_kinds(response) == ["items"], word
+    body = response.content.decode()
+    assert reverse("masters:item_detail", args=[bracket.pk]) in body
+    assert "P-2002" not in body
+
+
+def test_partner_part_no_and_company_fields_fold_too(bracket, customer, monkeypatch):
+    PartnerItem.objects.create(partner=customer, item=bracket, partner_part_no="X-9001")
+    assert masters_search.search("Ｘ－９００１").total == 1
+    Item.objects.create(part_no="P-3003", name="座金", unit="ダース")
+    assert masters_search.search("だーす").total == 0
+    monkeypatch.setattr(company_fields, "search_fields_for", lambda model: ["unit"])
+    assert masters_search.search("だーす").total == 1
+    assert masters_search.search("ﾀﾞｰｽ").rows[0].cells[0] == "P-3003"
+
+
+def test_orders_found_by_other_width_and_kana(client_logged_in, user, bracket, shaft, customer):
+    order = make_order(user, customer, [bracket, shaft], customer_order_no="PO-555")
+    for word in ("しゃふと", "ｼｬﾌﾄ", "ＰＯ－５５５", "Ｐ－２００２"):
+        response = search_page(client_logged_in, q=word, kind="orders")
+        assert section_kinds(response) == ["orders"], word
+        assert order.order_no in response.content.decode(), word
+    assert orders_search.search("ぶらけっと").total == 1
+
+
+def test_all_terms_must_match_even_with_variants(client_logged_in, bracket, shaft):
+    assert section_kinds(search_page(client_logged_in, q="ぶらけっと Ｐ－１００１")) == ["items"]
+    assert search_page(client_logged_in, q="ぶらけっと Ｐ－２００２").context["sections"] == []
+
+
+def test_cross_search_agrees_with_list_search(client_logged_in, bracket, shaft):
+    detail = reverse("masters:item_detail", args=[bracket.pk])
+    for word in ("ぶらけっと", "Ｐ－１００１"):
+        listed = client_logged_in.get(reverse("masters:item_list"), {"q": word}, HTTP_HX_REQUEST="true")
+        listed_body = listed.content.decode()
+        assert "P-1001" in listed_body and "P-2002" not in listed_body, word
+        found_body = search_page(client_logged_in, q=word, kind="items").content.decode()
+        assert detail in found_body and "P-2002" not in found_body, word

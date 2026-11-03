@@ -39,3 +39,16 @@ def test_partner_filter_returns_empty(user):
     section = search.search("刃物", partner=1)
     assert section.total == 0 and section.rows == ()
     assert search.search("刃物").total == 1
+
+
+def test_manuals_found_by_other_width_and_kana(client_logged_in, user):
+    # 全角のダッシュは U+FF0D (－)。本文は Markdown の字のまま引く (描いた HTML ではない)。
+    manual = services.create_manual(None, "刃物の交換の手順", "steps", user)
+    services.update_manual(manual, {"body": "バイトの番号を確かめる。\n\n- 図面 WK-1001 を見る"}, user)
+    other = services.create_manual(None, "朝の点検", "steps", user)
+    for word in ("ばいと", "ﾊﾞｲﾄ", "ＷＫ－１００１"):
+        assert search.search(word).total == 1, word
+    assert search.search("ばいと 朝").total == 0
+    html = client_logged_in.get(reverse("core:search"), {"q": "ばいと"}).content.decode()
+    assert reverse("manuals:manual_detail", args=[manual.pk]) in html
+    assert reverse("manuals:manual_detail", args=[other.pk]) not in html

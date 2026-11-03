@@ -1,6 +1,7 @@
 """部品マスターの横断の検索 (core の検索の画面が呼ぶ。約束は seizou.core.search)。
 
 品番・品名・図面番号・取引先の品番と、会社ごとの項目のうち検索に使う物 (登録の searchable) で部分一致。
+語の揺れ (全角と半角・ひらがなとカタカナ) は一覧の検索と同じ (core の search_q)。
 取引先を渡すと、その取引先の品番を持つ品目に絞る。読むだけ。
 """
 
@@ -10,6 +11,7 @@ from django.urls import reverse
 
 from seizou.core import fields as company_fields
 from seizou.core.search import SearchColumn, SearchRow, SearchSection
+from seizou.core.views import search_q
 
 from .models import Item, PartnerItem
 
@@ -44,17 +46,12 @@ def search(query, *, partner=None, limit=50):
     if partner is not None:
         links = links.filter(partner_id=partner)
         items = items.filter(pk__in=links.values("item_id"))
-    extra = company_lookups()
+    lookups = ["part_no", "name", "drawing_no", *company_lookups()]
     for term in query.split():
-        q = (
-            Q(part_no__icontains=term)
-            | Q(name__icontains=term)
-            | Q(drawing_no__icontains=term)
-            | Q(pk__in=links.filter(partner_part_no__icontains=term).values("item_id"))
+        items = items.filter(
+            search_q(lookups, term)
+            | Q(pk__in=links.filter(search_q(["partner_part_no"], term)).values("item_id"))
         )
-        for lookup in extra:
-            q |= Q(**{f"{lookup}__icontains": term})
-        items = items.filter(q)
     items = items.order_by("part_no")
     total = items.count()
     rows = tuple(
