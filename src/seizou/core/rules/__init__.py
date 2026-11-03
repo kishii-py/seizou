@@ -21,6 +21,7 @@ from . import (
     r15_inherit_base_view,
     r16_no_core_model_change,
     r18_csrf_single_place,
+    r19_no_dynamic_classnames,
 )
 from .engine import Result, Violation, run
 
@@ -35,6 +36,7 @@ RULES = (
     r15_inherit_base_view,
     r16_no_core_model_change,
     r18_csrf_single_place,
+    r19_no_dynamic_classnames,
 )
 
 _last_result: Result | None = None
