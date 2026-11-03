@@ -4,5 +4,6 @@
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% url 'billing:invoice_create' as invoice_url %}{% if invoice_url %}{% if object.status == "issued" %}<a class="btn btn-outline border-base-300" href="{{ invoice_url }}?customer={{ object.customer_id }}">{% icon "yen" "size-4" %}請求書を作る</a>{% endif %}{% endif %}
 {% if object.status == "issued" %}<a class="btn btn-outline btn-error" href="{% url 'shipping:deliverynote_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}
 {% endblock %}

@@ -2,7 +2,9 @@
 
 master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
-comma: 数を 3 桁ごとの区切りつきで出す (小数の桁は表の定義のまま。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
+comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾の 0 を落とす。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
+can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
+has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 """
 
 from decimal import ROUND_HALF_UP, Decimal
@@ -16,7 +18,9 @@ register = template.Library()
 
 @register.filter
 def comma(value, digits=None):
-    """数を 3 桁ごとの区切りで出す。1234.50 → 1,234.50、1200 → 1,200。数でない物はそのまま。
+    """数を 3 桁ごとの区切りで出す。1234.50 → 1,234.5、10.00 → 10、1200 → 1,200。数でない物はそのまま。
+
+    Decimal は小数の末尾の 0 を落とす (字の末尾を削る。指数の形にしない)。CSV と保存の値は変えない。
 
     digits を渡すと小数の桁をその数にそろえる (四捨五入。画面に出すだけで、値は変えない)。
     """
@@ -32,9 +36,29 @@ def comma(value, digits=None):
         return f"{rounded:,f}"
     if isinstance(value, int):
         return f"{value:,}"
-    if isinstance(value, (Decimal, float)):
+    if isinstance(value, Decimal):
+        text = f"{value:,f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return "0" if text == "-0" else text
+    if isinstance(value, float):
         return f"{value:,f}"
     return value
+
+
+@register.simple_tag(takes_context=True)
+def can_manage_accounts(context):
+    """{% can_manage_accounts as is_manager %}。アカウント管理を使える人か (core.access.can_manage_accounts と同じ判定)。"""
+    from seizou.core import access
+
+    request = context.get("request")
+    return access.can_manage_accounts(getattr(request, "user", None))
+
+
+@register.filter
+def has_required(form):
+    """{% if form|has_required %}。form の見える欄に必須の欄が 1 つでもあるか。"""
+    return any(field.field.required for field in form.visible_fields())
 
 
 def modal_url(obj) -> str | None:

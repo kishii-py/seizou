@@ -46,11 +46,11 @@
       <p class="mt-2 text-xs text-base-content/70">鍵の値は出さない (有るか無いかだけ)。変えるのは置き場の <code class="font-mono">.env</code>。</p>
       <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
         {% for row in system_rows %}
-        <dt class="whitespace-nowrap text-base-content/70">{{ row.label }}</dt><dd>{{ row.value }}</dd>
+        <dt class="text-base-content/70 sm:whitespace-nowrap">{{ row.label }}</dt><dd class="min-w-0 break-words">{{ row.value }}</dd>
         {% endfor %}
-        <dt class="whitespace-nowrap text-base-content/70">入っている部品</dt><dd class="font-mono text-xs">{{ parts|join:"・" }}</dd>
-        <dt class="whitespace-nowrap text-base-content/70">点検</dt>
-        <dd id="doctor-result">
+        <dt class="text-base-content/70 sm:whitespace-nowrap">入っている部品</dt><dd class="min-w-0 break-words font-mono text-xs">{{ parts|join:"・" }}</dd>
+        <dt class="text-base-content/70 sm:whitespace-nowrap">点検</dt>
+        <dd id="doctor-result" class="min-w-0 break-words">
           {% if doctor is None %}まだ走らせていない。アカウント管理の担当者が見出しの右のボタンで、命令 <code class="font-mono">manage.py seizou_doctor</code> と同じ物を見る。
           {% elif doctor.fixes %}<span class="font-medium text-error">直す物 {{ doctor.fixes|length }} 件</span> ({{ doctor.rows|length }} 件を見た)
           <ul class="mt-1 flex flex-col gap-1 text-xs">{% for row in doctor.shown %}<li>{{ row.label }}: {{ row.detail }} → 直し方: {{ row.fix }}</li>{% endfor %}</ul>

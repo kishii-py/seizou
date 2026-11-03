@@ -92,7 +92,8 @@ def test_panel_without_key_shows_sentence(without_key, client_logged_in):
     html = client_logged_in.get(reverse("core:home")).content.decode()
 
     assert 'id="assistant-toggle"' in html
-    assert services.MESSAGE_NO_KEY in html
+    assert services.MESSAGE_NO_KEY not in html
+    assert "AI チャットは、管理者が設定すると使えます。" in html
     assert 'name="question"' not in html
     assert "/assistant/ask/" not in html
     assert 'id="assistant-messages"' not in html

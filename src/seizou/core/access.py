@@ -50,7 +50,7 @@ KIND_LABELS = {
     "items": "部品マスター",
     "partners": "取引先",
     "processes": "工程",
-    "connections": "つながり",
+    "connections": "取引先との接続",
     "manuals": "マニュアル",
     "orders": "受注",
     "workorders": "指示書",

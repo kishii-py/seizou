@@ -106,14 +106,14 @@ def test_missing_fragment_sentence(client_logged_in, manual):
     html = modal(client_logged_in).content.decode()
     assert core_manual.MISSING_SENTENCE in html
     assert "この画面の説明書はまだありません" in html
-    assert "/seizou:manual" in html
+    assert "/seizou:manual" not in html
 
 
 def test_missing_manual_folder_sentence(client_logged_in, site):
     assert not (site / "manual").exists()
     html = modal(client_logged_in).content.decode()
     assert "この画面の説明書はまだありません" in html
-    assert "/seizou:manual" in html
+    assert "/seizou:manual" not in html
 
 
 def test_unreadable_fragment_sentence(client_logged_in, manual):

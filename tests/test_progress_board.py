@@ -114,7 +114,7 @@ def test_board_shows_planned_recorded_remaining(client_logged_in, issue, cut, us
     body = _body(_board(client_logged_in))
     row = _row(body, step)
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["10.00", "7.00", "3.00"]
+    assert cells == ["10", "7", "3"]
     assert reverse("workorders:workorder_detail", args=[workorder.pk]) in row
     assert workorder.wo_no in row
     assert "T-100 作り物の軸" in row and reverse("masters:item_modal", args=[step.workorder.order_line.item.pk]) in row
@@ -132,10 +132,10 @@ def test_negative_remaining_is_red(client_logged_in, issue, cut, bend):
     body = _body(_board(client_logged_in))
     over_row = _row(body, over_step)
     assert 'data-over="true"' in over_row
-    assert re.search(r'data-\[over=true\]:text-error" data-over="true">-2\.00</td>', over_row)
+    assert re.search(r'data-\[over=true\]:text-error" data-over="true">-2</td>', over_row)
     other_row = _row(body, other_step)
     assert 'data-over="true"' not in other_row
-    assert ">0.00</td>" in other_row  # 残が 0 の工程も出す
+    assert ">0</td>" in other_row  # 残が 0 の工程も出す
 
 
 @pytest.mark.django_db
@@ -262,7 +262,7 @@ def test_poll_returns_only_changed_rows(client_logged_in, issue, cut, bend):
     row = _row(body, changed)
     assert 'hx-swap-oob="true"' in row
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["10.00", "7.00", "3.00"]  # 合計は前からの 3 を含む
+    assert cells == ["10", "7", "3"]  # 合計は前からの 3 を含む
     assert f'id="progress-step-{other.pk}"' not in body
     assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={added.pk}"
     assert re.search(r'<div id="progress-poll"[^>]*hx-swap-oob="true"', body)
