@@ -18,11 +18,15 @@ from seizou.core import demo
 from seizou.core import fields as company_fields
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
-#: 種の入金の件数 (A 社 = 一部入金 1、B 社 = 全額 1)
-EXPECTED = {"a_machining": 1, "b_plating": 1}
+#: 種の入金の件数 (A 社 = 一部入金 1・全額 1、B 社 = 全額 1)
+EXPECTED = {"a_machining": 2, "b_plating": 1}
 #: 会社の id: [(得意先の取引先コード, 発行日, 入金の状態の字)]
 EXPECTED_STATUS = {
-    "a_machining": [("C002", datetime.date(2026, 10, 29), "一部入金"), ("C003", datetime.date(2026, 11, 2), "未入金")],
+    "a_machining": [
+        ("C002", datetime.date(2026, 10, 29), "一部入金"),
+        ("C003", datetime.date(2026, 11, 2), "未入金"),
+        ("C004", datetime.date(2026, 10, 31), "入金済み"),
+    ],
     "b_plating": [("C001", datetime.date(2026, 10, 29), "入金済み"), ("C004", datetime.date(2026, 11, 2), "未入金")],
 }
 METHOD_WORDS = ("振込", "現金", "手形", "その他", "", None)
@@ -71,9 +75,10 @@ def test_examples_load_payment_seeds_twice(company_id, no_registration, media, n
     if company_id == "a_machining":
         assert first.paid_total() == Decimal("100000")
         assert first.balance() > 0
+        assert _invoice("C004", datetime.date(2026, 10, 31)).balance() == 0  # 3 枚目は全額
     else:
         assert first.balance() == 0  # 全額 (金額は請求書の合計)
-    payment = Payment.objects.get()
+    payment = Payment.objects.get(invoice=first)
     assert payment.invoice == first
     assert payment.method == Payment.METHOD_TRANSFER
     assert payment.status == Payment.STATUS_RECORDED
