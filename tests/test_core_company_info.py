@@ -21,6 +21,7 @@ from seizou.core.models import Company
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
+from seizou.shipping.reports import delivery_note_context
 
 ADDRESS = "〒000-0000 見本県架空市見本町 1-2-3"
 PHONE = "00-0000-0000"
@@ -174,3 +175,22 @@ def test_invoice_and_delivery_note_show_address_and_phone(manager_client, admin)
     for body in _print_bodies(manager_client, invoice, note):
         assert ADDRESS in body
         assert f"電話 {PHONE}" in body
+
+
+# ---------------------------------------------------------------- 2b: 振込先 (請求書だけ)
+
+BANK = "作り物銀行 見本支店 普通 0000000 名義 ミホンノカイシャ"
+
+
+def test_invoice_shows_bank_and_delivery_note_does_not(manager_client, admin):
+    services.update_company(services.company(), {"address": ADDRESS, "phone": PHONE, "bank_account": BANK}, admin)
+    invoice, note = _invoice_and_note(admin)
+
+    invoice_body, note_body = _print_bodies(manager_client, invoice, note)
+
+    assert f"振込先 {BANK}" in invoice_body
+    assert "振込先" not in note_body and BANK not in note_body
+    assert ADDRESS in note_body and f"電話 {PHONE}" in note_body
+    company = delivery_note_context(note)["company"]
+    assert "bank_account" not in company
+    assert (company["name"], company["address"], company["phone"]) == (services.company().name, ADDRESS, PHONE)

@@ -144,8 +144,9 @@ class CompanyForm(ServiceModelForm):
 
     class Meta:
         model = Company
-        fields = ("address", "phone")
+        fields = ("address", "phone", "bank_account")
         help_texts = {
             "address": "納品書と請求書の会社の欄に出す。郵便番号から 1 行で (例: 〒000-0000 見本県架空市見本町 1-2-3)。",
             "phone": "例: 00-0000-0000",
+            "bank_account": "請求書だけに出す。銀行・支店・口座の種類・番号・名義を 1 行で (例: 作り物銀行 見本支店 普通 0000000 名義 ミホン)。",
         }

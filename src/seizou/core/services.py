@@ -146,7 +146,7 @@ def clear_setting(key, user):
 
 
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
-COMPANY_INFO_FIELDS = ("address", "phone")
+COMPANY_INFO_FIELDS = ("address", "phone", "bank_account")
 
 
 def update_company(company, data, user):

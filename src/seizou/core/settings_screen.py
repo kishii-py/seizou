@@ -332,15 +332,15 @@ def setting_clear(request, key):
 
 
 class CompanyUpdateView(BaseFormView):
-    """会社の情報の変更 (納品書と請求書の会社の欄に出す住所・電話)。
+    """会社の情報の変更 (納品書と請求書の会社の欄に出す住所・電話・振込先)。
 
-    使う人: 総務 / いつ: 使い始めるときと、住所や電話が変わったとき / 何のために: 納品書と請求書の会社の欄に出す住所・電話を入れる / 次にすること: 設定の画面の「会社の情報」で確かめ、納品書か請求書の印刷で見る
+    使う人: 総務 / いつ: 使い始めるときと、住所や振込先が変わったとき / 何のために: 納品書と請求書の会社の欄に出す住所・電話・振込先を入れる / 次にすること: 設定の画面の「会社の情報」で確かめ、納品書か請求書の印刷で見る
     対象はいつも会社の 1 行 (services.company())。土台の call_service が update_company(会社, user=..., data=...) を呼ぶ。
     門は設定の変更と同じ settings_denied (アカウント管理の権限。3 状態の外)。form_valid の require_write も core.update_company (ACCOUNT_ACTIONS) で 2 重に断る。
     """
 
     screen_name = "会社の情報の変更"
-    screen_help = "納品書と請求書の会社の欄に出す住所・電話を入れる。保存すると設定の画面へ戻る。"
+    screen_help = "納品書と請求書の会社の欄に出す住所・電話・振込先を入れる。振込先は請求書だけに出る。保存すると設定の画面へ戻る。"
     screen_icon = "settings"
     form_class = CompanyForm
     service = staticmethod(services.update_company)

@@ -37,7 +37,7 @@ FIELD_TYPES = ("text", "number", "date", "choice", "bool")
 FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
 #: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは設定の画面から上げる)
-COMPANY_KEYS = ("address", "phone")
+COMPANY_KEYS = ("address", "phone", "bank_account")
 
 # seizou.core.conf.DEFAULTS と同じ値 (core は Django を読むので、ここでは import せずに写す)。
 SETTING_DEFAULTS = {

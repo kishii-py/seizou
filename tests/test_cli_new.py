@@ -311,6 +311,7 @@ def test_company_row_has_answer_company_info(built):
     site = built["site"]
     assert _company_value(site, "address") == "〒000-0000 見本県架空市見本町 1-2-3"
     assert _company_value(site, "phone") == "00-0000-0000"
+    assert _company_value(site, "bank_account") == "作り物銀行 見本支店 普通 0000000 名義 ミホンノカイシャ"
 
 
 @pytest.mark.parametrize(

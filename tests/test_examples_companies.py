@@ -427,3 +427,4 @@ def test_company_is_fake_contact(company_id):
     assert all(isinstance(value, str) for value in company.values())
     assert "見本県架空市" in company["address"]
     assert re.fullmatch(r"0[0-9]-[0-9]{4}-[0-9]{4}", company["phone"])
+    assert company["bank_account"].startswith("作り物銀行 ")
