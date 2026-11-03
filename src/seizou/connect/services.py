@@ -53,6 +53,10 @@ MESSAGE_SIGNATURE_MISMATCH = (
 )
 MESSAGE_INVALID_ID = "番号 (webhook-id) が uuid の形ではありません。"
 MESSAGE_INVALID_BODY = "本文が JSON の形ではありません。"
+#: 知らない種類の通知 ({kind} は本文の kind の字を 40 字で切った物。字でなければ決まった字)
+MESSAGE_UNKNOWN_KIND = "知らない種類の通知です: {kind}"
+#: 明細の無い注文 (送る側へ返す文。承認の時の MESSAGE_NO_LINES とは読み手が違う)
+MESSAGE_RECEIVE_NO_LINES = "明細の無い注文は受けません。"
 
 # 鍵と関係なく決まる誤り。1 つ目の鍵で出たら、ほかの鍵を試さずに断る。
 _HEADER_ERRORS = {
@@ -147,6 +151,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が order_reply (注文回答) なら受信箱に入れず、元の発注に当てて ReplyReceipt を返す。
     本文の kind が acceptance (検収) なら受信箱に入れず、受注の明細に当てて AcceptanceReceipt を返す。
     本文の kind が shipping_notice (出荷の知らせ) なら受信箱に入れず、発注の明細に当てて ShippingNoticeReceipt を返す。
+    kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
@@ -194,7 +199,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
         return _refuse(MESSAGE_INVALID_BODY, msg_id)
 
     # 注文回答 (承認か断りの結果) は届いた注文の行にせず、元の発注に当てる。
-    # kind が無い物と知らない kind は、今までどおり注文として入れる。
+    # kind が無い物は注文として入れる。知らない kind は断る。
     if payload.get("kind") == "order_reply":
         return _receive_reply(message_id, partner, payload)
     # 検収 (相手が受け入れた数の知らせ) も届いた注文の行にせず、元の注文から作った受注の明細に当てる。
@@ -203,6 +208,15 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     # 出荷の知らせ (相手が出荷した日と数) も届いた注文の行にせず、元の送った注文の発注の明細に当てる。
     if payload.get("kind") == "shipping_notice":
         return _receive_shipping_notice(message_id, partner, payload)
+    kind = payload.get("kind")
+    if kind is not None and kind != "order":
+        # 鍵の値と本文は文に入れない。kind の字だけを 40 字で切って出す。
+        shown = kind[:40] if isinstance(kind, str) else "(字でない値)"
+        return _refuse(MESSAGE_UNKNOWN_KIND.format(kind=shown), msg_id)
+    # 明細の無い注文は受信箱に入れずに断る (数の欄の検査 _order_lines_problem の前)。
+    lines = payload.get("lines")
+    if not isinstance(lines, list) or not lines:
+        return _refuse(MESSAGE_RECEIVE_NO_LINES, msg_id)
 
     # 明細の数が受注の明細の表の欄に入らない注文は、受信箱に入れずに断る (承認の後の 500 を防ぐ。精査 A1 の不具合 2)。
     problem = _order_lines_problem(payload)
