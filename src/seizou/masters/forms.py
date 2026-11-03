@@ -16,6 +16,7 @@ from seizou.core.forms import ServiceModelForm
 from .models import Item, Partner, Process
 from .models import MONTH_END_DAY
 from .models import ItemDrawingVersion
+from .models import Holiday
 
 
 class ItemForm(ServiceModelForm):
@@ -290,3 +291,21 @@ class DrawingRestoreForm(forms.Form):
 
     def service_kwargs(self):
         return {"version": self.cleaned_data["version"], "note": self.cleaned_data["note"]}
+
+
+# ---------------------------------------------------------------- 会社の休日
+
+class HolidayForm(ServiceModelForm):
+    """休日を 1 日足す。日付の一意は services が見る (ServiceModelForm は一意を見ない)。登録した人は欄に出さない。"""
+
+    class Meta:
+        model = Holiday
+        fields = ["date", "name", "kind"]
+        widgets = {"date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")}
+
+
+class HolidayDeleteForm(forms.Form):
+    """休日の削除の確認。欄は無い (土台が delete_holiday(対象, user=…) を呼ぶ)。"""
+
+    def service_kwargs(self) -> dict:
+        return {}
