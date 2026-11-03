@@ -1,0 +1,9 @@
+{% extends "core/error.html" %}
+{% comment %}
+権限の判定で開けない画面と書面の 403 (seizou.core.access.denied_response が描く)。
+heading は題、text は何の画面か・自分の所属・頼む先の文。
+{% endcomment %}
+{% block error_title %}{{ heading }}{% endblock %}
+{% block error_heading %}{{ heading }}{% endblock %}
+{% block error_text %}{{ text }}{% endblock %}
+{% block error_code %}誤りの番号 403{% endblock %}

@@ -113,12 +113,21 @@ def test_ports_are_8001_and_8002_and_differ():
 def test_settings_have_five_keys_and_hidden_fields(company_id):
     settings = load_answers(company_id)["settings"]
 
-    assert set(settings) == set(SETTING_VALUES) | BOOL_SETTINGS | {"hidden_fields"}
+    assert set(settings) == set(SETTING_VALUES) | BOOL_SETTINGS | {"hidden_fields", "access_control"}
     for key, allowed in SETTING_VALUES.items():
         assert settings[key] in allowed, key
     for key in BOOL_SETTINGS:
         assert isinstance(settings[key], bool), key
     assert settings["hidden_fields"] == []
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_access_control_is_on(company_id):
+    # 2 社とも権限の判定を 3 つとも有効にする。YAML 1.1 は引用符の無い on を真偽で読むので、値が字であることも見る。
+    access_control = load_answers(company_id)["settings"]["access_control"]
+
+    assert access_control == {"department": "on", "write": "on", "money": "on"}
+    assert all(isinstance(value, str) for value in access_control.values())
 
 
 @pytest.mark.parametrize("company_id", COMPANY_IDS)

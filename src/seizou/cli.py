@@ -45,6 +45,7 @@ SETTING_DEFAULTS = {
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,
+    "access_control": {"department": "log", "write": "log", "money": "log"},
 }
 
 ADMIN_ID = "admin"

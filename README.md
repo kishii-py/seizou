@@ -190,8 +190,9 @@ API の鍵は要らない。道具は手元のデータベースを読み書き�
 | `over_workorder` | 受注より多い指示書の数量と、予定より多い実績 (ポカよけの R06・R07) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 歩留まりを見込んで多めに作る会社は、知らせるか通す。受注どおりに作る会社は止める |
 | `order_number` | 受注番号の形 | `seq` (連番) / `ym_seq` (年月 + 連番) | `seq` | 月ごとに数える会社は年月つき |
 | `production_plan` | 生産計画の画面を使うか (立ち上げの問 3) | `true` (使う) / `false` (使わない) | `true` | 工程ごとに日の計画を立てる会社は使う。立てない会社は使わない (メニューに「生産計画」が出ない) |
+| `access_control` | 権限の判定 (部署・編集の権限・金額の閲覧のそれぞれ) | 3 つそれぞれ `off` (使わない) / `log` (記録だけ) / `on` (有効) | `{'department': 'log', 'write': 'log', 'money': 'log'}` | 立ち上げてすぐは記録だけにし、断られる人がいないかをサーバーの記録で確かめてから有効にする。例の 2 社は 3 つとも有効 |
 
-使わない注文の項目は、`hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤。画面から設定を変える形は会期後。
+使わない注文の項目は、`hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。画面から設定を変える形は会期後。
 
 ## 取引先とつなぐ
 

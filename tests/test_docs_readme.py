@@ -28,6 +28,7 @@ SETTING_KEYS = [
     "over_workorder",
     "order_number",
     "production_plan",
+    "access_control",
 ]
 
 # THIRD_PARTY_NOTICES の表の名前 → scripts/vendor.toml の項目の名前の頭
