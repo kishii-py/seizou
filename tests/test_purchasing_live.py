@@ -271,6 +271,86 @@ def test_receipt_list_is_unchanged(client_logged_in, user, subcontractor, item):
         assert "purchaseorder-poll" not in body
 
 
+# --- 2. 発注の詳細の 2 秒ごとの更新 ---
+
+
+def _detail(client, po, live=None):
+    """発注の詳細の HTML。live を渡すと 2 秒ごとの更新と同じ要求 (htmx の要求・見出しに前の更新の字) にする。"""
+    url = reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    if live is None:
+        response = client.get(url)
+    else:
+        response = client.get(url, HTTP_HX_REQUEST="true", HTTP_X_SEIZOU_LIVE=live)
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def _heading(body):
+    """見出しの帯 (<div id="po-heading" ...>) の開きの tag と、黄の知らせの入れ物までの HTML。"""
+    start = body.index('<div id="po-heading"')
+    return body[start : body.index('id="po-alert"', start)]
+
+
+@pytest.mark.django_db
+def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
+    po = _sent_order(subcontractor, item, user)
+
+    body = _detail(client_logged_in, po)
+
+    for word in (
+        'id="po-heading"',
+        'id="po-alert"',
+        'id="po-live"',
+        'id="purchaseorder-detail-poll"',
+        'hx-select="#po-live"',
+        'hx-select-oob="#po-heading,#po-alert"',
+        "X-Seizou-Live",
+    ):
+        assert word in body, word
+    heading = _heading(body)
+    assert f'data-live="po-{po.pk}:sent:0:0"' in heading
+    assert "seizou-changed" not in body
+    # 見出しの h1 と状態の印は同じ帯の中 (E2E の h1 ~ .badge が通る並び)
+    assert heading.index("<h1") < heading.index("badge") and "送った" in heading
+    # 明細と検収の節は #po-live の中、取りに行く要素は #po-live の外
+    live = body[body.index('<div id="po-live">') : body.index('id="purchaseorder-detail-poll"')]
+    assert 'id="po-lines-title"' in live
+    assert "x-csrftoken" not in body[body.index('id="purchaseorder-detail-poll"') :].split("</div>")[0].lower()
+
+    # 「作成」の発注: 釦と link の行は今のまま (送り直す 1・受入を登録 1)
+    draft = services.create_purchase_order(
+        subcontractor,
+        [{"item": item, "qty": Decimal("5"), "unit_price": Decimal("100")}],
+        user,
+        order_date=date(2026, 11, 2),
+        send=False,
+    )
+    body = _detail(client_logged_in, draft)
+    assert body.count("送り直す") == 1
+    assert body.count("受入を登録") == 1
+    assert f'data-live="po-{draft.pk}:draft:0:0"' in body
+
+
+@pytest.mark.django_db
+def test_detail_marks_changed_heading(client_logged_in, user, subcontractor, item):
+    po = _sent_order(subcontractor, item, user)
+    before = _live(_detail(client_logged_in, po))
+    assert before == f"po-{po.pk}:sent:0:0"
+
+    services.mark_accepted(po, user)
+    body = _detail(client_logged_in, po, live=before)
+    assert "seizou-changed" in _heading(body).split(">")[0]
+    assert _live(body) == f"po-{po.pk}:accepted:0:0"
+
+    services.receive(po.lines.get(), Decimal("4"), date(2026, 11, 3), user)
+    body = _detail(client_logged_in, po, live=_live(body))
+    assert "seizou-changed" in _heading(body).split(">")[0]
+    assert _live(body) == f"po-{po.pk}:accepted:0:4"
+
+    again = _detail(client_logged_in, po, live=_live(body))
+    assert "seizou-changed" not in again
+
+
 # --- 3. 色づけの CSS ---
 
 

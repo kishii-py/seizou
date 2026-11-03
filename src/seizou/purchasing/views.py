@@ -57,6 +57,9 @@ class PurchaseOrderDetailView(BaseDetailView):
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
     template_name = "purchasing/purchaseorder_detail.html"
 
+    def get_queryset(self):
+        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset()))
+
 
 class PurchaseOrderCreateView(BaseFormView):
     """発注の新規登録の入力。
