@@ -542,10 +542,10 @@ FLOWS = (
         "key": "sales",
         "title": "受注から入金まで",
         "steps": (
-            {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "orders:order_list",
+            {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "connect:inbox_list",
              "count": "inbox", "count_label": "届いた注文の未処理", "unit": "件",
              "next_text": "届いた注文を受け入れて、受注にします。"},
-            {"key": "workorder", "label": "指示書", "model": ("workorders", "WorkOrder"), "url_name": "workorders:workorder_list",
+            {"key": "workorder", "label": "指示書", "model": ("workorders", "WorkOrder"), "url_name": "orders:orderline_list",
              "count": "workorder", "count_label": "指示書の無い明細", "unit": "行",
              "next_text": "注文残の一覧から、明細に指示書を出します。"},
             {"key": "shipment", "label": "出荷", "model": ("shipping", "Shipment"), "url_name": "shipping:shipment_list",

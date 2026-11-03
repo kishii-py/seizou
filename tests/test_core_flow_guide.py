@@ -131,7 +131,7 @@ def test_flow_guide_counts_open_order_and_next(user, customer, shaft, cutting):
     assert sales["出荷"] == 1
     first = flow_of("sales")["next"]
     assert first["label"] == "指示書"  # 届いた注文が 0 なので受注の段は飛ぶ
-    assert first["url"] == reverse("workorders:workorder_list")
+    assert first["url"] == reverse("orders:orderline_list")
 
     # 指示書を出した明細は数えない (出荷の段は残る)
     workorders_services.issue_workorder(
@@ -228,7 +228,7 @@ def test_flow_neighbors_prev_and_next():
     shipping = dashboard.flow_neighbors("shipping:shipment_list")
     assert shipping["flow"] == "受注から入金まで"
     assert shipping["label"] == "出荷"
-    assert shipping["prev"] == {"label": "指示書", "url": reverse("workorders:workorder_list")}
+    assert shipping["prev"] == {"label": "指示書", "url": reverse("orders:orderline_list")}
     assert shipping["next"] == {"label": "納品書", "url": reverse("shipping:deliverynote_list")}
 
     purchase = dashboard.flow_neighbors("purchasing:purchaseorder_list")
@@ -255,7 +255,7 @@ def test_home_shows_flow_guide_between_cards_and_charts(logged_in, user, custome
     shipping = body.index('aria-labelledby="shipping-title"')
     assert stats < frame < shipping
     section = re.search(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', body, re.S).group(0)
-    workorders_url = reverse("workorders:workorder_list")
+    workorders_url = reverse("orders:orderline_list")
     assert f'次にすること: <a class="link link-hover text-primary" href="{workorders_url}">指示書</a>' in section
     assert "btn-primary" not in section
     for word in ("はじめに", "品目", "注残の明細", "受信箱の未処理"):
