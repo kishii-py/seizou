@@ -5,6 +5,7 @@ tests/test_orders_acceptance.py の形で直に置く)。取引先・部品・�
 日数で絞る道具の試験は今日からの相対の日で作る (回す日で結果が変わらないように)。
 """
 
+import inspect
 import json
 import logging
 from datetime import timedelta
@@ -15,13 +16,17 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
+from mcp.server.mcpserver import MCPServer
 
 from seizou.accounts import services as accounts_services
+from seizou.assistant import services as assistant_services
 from seizou.assistant import tools
 from seizou.core import access, mcp_tools
+from seizou.core.management.commands import seizou_mcp
 from seizou.feedback import services as feedback_services
 from seizou.masters import services as masters_services
 from seizou.purchasing import services as purchasing_services
+from tests.test_assistant_services import FAKE_KEY, script, text_reply, tool_reply
 
 User = get_user_model()
 
@@ -31,6 +36,8 @@ PASSWORD = "kumo-tests-2611"
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
 NEW_TOOLS = ["list_receipts"]
+#: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
+MONEY_TOOLS = ["list_receipts"]
 #: 名札に書かない語
 WINDOW_WORDS = ("品目", "生産計画", "図面", "合計")
 
@@ -113,6 +120,11 @@ def account(login_id, **flags):
     return User.objects.get(username=login_id)
 
 
+def _viewer(user, name):
+    """閲覧の人 user を閉じ込めた道具 name。"""
+    return {tool.__name__: tool for tool in mcp_tools.viewer_tools(user)}[name]
+
+
 # --- 受入 ---
 
 
@@ -155,7 +167,7 @@ def test_list_receipts_rows_and_filters(user, purchase_line, receipt, today):
         assert _has_japanese(refused["error"]), bad
 
 
-def test_list_receipts_masks_money_by_viewer(settings, on, receipt, caplog):
+def test_list_receipts_masks_money_by_viewer(settings, on, manager, receipt, caplog):
     caplog.set_level(logging.INFO, logger="seizou.access")
 
     hidden = _json(mcp_tools.list_receipts())
@@ -163,11 +175,95 @@ def test_list_receipts_masks_money_by_viewer(settings, on, receipt, caplog):
     assert hidden["items"][0]["amount"] == access.MASK
     assert Decimal(hidden["items"][0]["qty"]) == 4
 
+    seen = _json(_viewer(manager, "list_receipts")())
+    assert seen["money_hidden"] is False
+    assert Decimal(seen["items"][0]["amount"]) == 400
+    clerk = _viewer(account("jimu"), "list_receipts")()
+    assert (clerk["money_hidden"], clerk["items"][0]["amount"]) == (True, access.MASK)
+    keeper = _viewer(account("keiri", see_money=True), "list_receipts")()
+    assert keeper["money_hidden"] is False
+    assert Decimal(keeper["items"][0]["amount"]) == 400
+
     settings.SEIZOU = {}
     shown = mcp_tools.list_receipts()
     assert shown["money_hidden"] is False
     assert Decimal(shown["items"][0]["amount"]) == 400
     assert _access_records(caplog) == []
+
+
+# --- 閲覧の人の差し替え ---
+
+
+def test_viewer_tools_match_plain_tools(receipt):
+    plain = {tool.__name__: tool for tool in mcp_tools.READ_TOOLS}
+    bound = mcp_tools.viewer_tools(None)
+    assert [tool.__name__ for tool in bound] == MONEY_TOOLS
+    for tool in bound:
+        name = tool.__name__
+        assert tool is not plain[name], name
+        assert inspect.signature(tool) == inspect.signature(plain[name]), name
+        assert tool.__doc__ == plain[name].__doc__, name
+        assert _json(tool()) == _json(plain[name]()), name
+
+
+def test_build_server_registers_bound_money_tools(on, manager, receipt, monkeypatch):
+    registered = {}
+
+    def add_tool(server, fn, *args, **kwargs):
+        registered[fn.__name__] = fn
+
+    monkeypatch.setattr(MCPServer, "add_tool", add_tool)
+    read_names = {tool.__name__ for tool in mcp_tools.READ_TOOLS}
+
+    seizou_mcp.build_server(manager)
+    assert set(registered) == read_names | {tool.__name__ for tool in mcp_tools.write_tools(manager)}
+    for name in MONEY_TOOLS:
+        assert registered[name] is not getattr(mcp_tools, name), name
+        assert registered[name].__doc__ == getattr(mcp_tools, name).__doc__, name
+    assert registered["list_orders"] is mcp_tools.list_orders
+    assert registered["list_receipts"]()["money_hidden"] is False
+    assert mcp_tools.list_receipts()["money_hidden"] is True
+
+    registered.clear()
+    seizou_mcp.build_server(manager, read_only=True)
+    assert set(registered) == read_names
+    assert registered["list_receipts"] is not mcp_tools.list_receipts
+
+
+def test_run_tool_passes_viewer_to_money_tools(on, manager, receipt, monkeypatch):
+    plain = tools.run_tool("list_receipts", {})
+    assert plain["is_error"] is False
+    hidden = json.loads(plain["content"])
+    assert (hidden["money_hidden"], hidden["items"][0]["amount"]) == (True, access.MASK)
+
+    viewed = tools.run_tool("list_receipts", {}, user=manager)
+    seen = json.loads(viewed["content"])
+    assert seen["money_hidden"] is False
+    assert Decimal(seen["items"][0]["amount"]) == 400
+    assert viewed["urls"] == [reverse("purchasing:receipt_detail", args=[receipt.pk])]
+    assert tools.run_tool("list_orders", {}, user=manager)["is_error"] is False
+    assert tools.run_tool("list_receipts", {"po_no": "PO-NONE"}, user=manager)["is_error"] is True
+    assert tools.run_tool("drop_everything", {}, user=manager) == {
+        "content": "道具 drop_everything はありません。",
+        "is_error": True,
+        "urls": [],
+    }
+
+    # answer が窓を開いた人を run_tool に渡す。
+    calls = []
+
+    def fake_run_tool(name, arguments, user=None):
+        calls.append((name, user))
+        return {"content": "{}", "is_error": False, "urls": []}
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.setattr(tools, "run_tool", fake_run_tool)
+    script(monkeypatch, [tool_reply("list_receipts", {}), text_reply("今日の受入は 1 件です。")])
+    result = assistant_services.answer(
+        "今日の受入は", page_url="/", screen_name="ダッシュボード", user=manager, history=[]
+    )
+    assert result["tool_calls"] == ["list_receipts"]
+    assert calls == [("list_receipts", manager)]
 
 
 # --- 部品の有無・目録 ---

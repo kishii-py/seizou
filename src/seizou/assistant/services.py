@@ -378,7 +378,7 @@ def answer(question, *, page_url, screen_name, user, history):
                 )
                 results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
                 continue
-            outcome = tools.run_tool(block.name, block.input)
+            outcome = tools.run_tool(block.name, block.input, user=user)
             urls.extend(url for url in outcome["urls"] if url not in urls)
             result = {"type": "tool_result", "tool_use_id": block.id, "content": outcome["content"]}
             if outcome["is_error"]:

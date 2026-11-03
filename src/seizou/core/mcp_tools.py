@@ -7,6 +7,8 @@
 - 道具は普通の関数 (def)。サーバーは別の thread で回すので、Django の ORM をそのまま呼べる。
 - 読む道具は READ_TOOLS の並び。書く道具は write_tools(user) が返す並び。
   user は write_tools の中の入れ子の関数が閉じ込め、道具の引数には出さない (呼ぶ側が利用者を選べない)。
+- 金額を返す読む道具 (list_receipts・list_payments) は閲覧の人 (user) で金額の閲覧を判定する。READ_TOOLS の物は閲覧の人が無く (None)、MCP サーバーは viewer_tools(user) の同じ名前の物と差し替えて登録する (AI チャットは assistant.tools.run_tool が利用者を受けて同じ差し替えをする)。
+  判定が on の会社で見せない相手には、金額を「—」(access.MASK) にし money_hidden を真にする。
 - 関数の名前が道具の名前、docstring が道具の説明 (Claude Code が読む)。
 - 返す物は JSON にできる辞書だけ。成功は {"ok": True, ...}、断りは {"ok": False, "error": 日本語の文}
   (決まりの番号があれば code も)。数と金額は字、日付は ISO の字 (無ければ null)、URL は道だけ (ホストとポートは付けない)。
@@ -900,6 +902,23 @@ READ_TOOLS = (
     get_manual_body,
     list_receipts,
 )
+
+
+def viewer_tools(user) -> tuple:
+    """金額の閲覧の判定に閲覧の人が要る読む道具 (list_receipts) の、利用者を閉じ込めた版。
+
+    seizou_mcp.build_server と assistant.tools.run_tool が READ_TOOLS の同じ名前の物と差し替えて使う
+    (write_tools と同じ閉じ込めの形。名前・引数・docstring は READ_TOOLS の物と同じで、違うのは閲覧の人だけ)。
+    user が None なら READ_TOOLS の物と同じ答え。
+    """
+    # 入れ子の def より前に取る (def の後は、同じ名前が内側の関数を指す)。
+    plain = {tool.__name__: tool for tool in READ_TOOLS}
+
+    def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
+        return _list_receipts(user, po_no, days, limit)
+
+    list_receipts.__doc__ = plain["list_receipts"].__doc__
+    return (list_receipts,)
 
 
 # --- 書く道具 ---

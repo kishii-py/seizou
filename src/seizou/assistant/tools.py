@@ -414,15 +414,18 @@ def _error(text):
     return {"content": text, "is_error": True, "urls": []}
 
 
-def run_tool(name, arguments):
+def run_tool(name, arguments, user=None):
     """読む道具を 1 つ回して {"content": 字, "is_error": 真偽, "urls": [URL...]} を返す。例外を外に投げない。
 
     mcp_tools の {"ok": ...} の辞書を、ok が真なら ok を外した JSON の字に、偽なら断りの文にする。
     文に例外の中身を入れない (中身は API に送られるので、表の名前や SQL を出さない)。
+    user (窓を開いた人) を受けたら、金額の閲覧をその人で判定する道具は mcp_tools.viewer_tools の同じ名前の物を回す
+    (None なら今までどおり FUNCTIONS の物 = 閲覧の人が無い判定)。
     """
     if isinstance(name, str) and name in WRITE_TOOL_NAMES:
         return _error(f"書く道具 {name} は提案のカードを通します。")
-    function = FUNCTIONS.get(name) if isinstance(name, str) else None
+    bound = {tool.__name__: tool for tool in mcp_tools.viewer_tools(user)} if user is not None else {}
+    function = (bound.get(name) or FUNCTIONS.get(name)) if isinstance(name, str) else None
     if function is None:
         return _error(f"道具 {name} はありません。")
     if arguments is None:
