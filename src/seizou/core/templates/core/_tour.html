@@ -1,0 +1,15 @@
+{% load static seizou_icons %}
+{# ガイドツアーの段の JSON と、枠と吹き出しの markup。段のある画面だけ出す (core.tours の TOURS を seizou_tour の tag が渡す)。動きは core の static の seizou-tour.js。class は固定の字で、JS は class を足さない (Tailwind はテンプレートの字だけを読むため)。 #}
+{% if steps %}
+{{ steps|json_script:"seizou-tour" }}
+<div id="seizou-tour-root" hidden>
+  <div data-tour-ring class="pointer-events-none fixed z-50 rounded-lg" aria-hidden="true"></div>
+  <div data-tour-bubble class="fixed z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm" role="dialog" aria-labelledby="seizou-tour-title">
+    <p data-tour-count class="text-xs text-base-content/50"></p>
+    <h2 id="seizou-tour-title" data-tour-title class="mt-2 text-lg font-bold"></h2>
+    <p data-tour-text class="mt-2"></p>
+    <div class="mt-4 flex justify-end gap-2"><button type="button" class="btn btn-ghost btn-sm" data-tour-close>閉じる</button><button type="button" class="btn btn-outline btn-sm border-base-300" data-tour-prev>{% icon "chevron-left" "size-4" %}前へ</button><button type="button" class="btn btn-outline btn-sm border-base-300" data-tour-next>次へ{% icon "chevron-right" "size-4" %}</button></div>
+  </div>
+</div>
+<script src="{% static 'js/seizou-tour.js' %}" defer></script>
+{% endif %}

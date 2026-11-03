@@ -11,4 +11,4 @@
   </div>
 </div>
 {% endif %}
-<div class="modal-action mt-6"><form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form></div>
+<div class="modal-action mt-6">{% if has_tour %}<button type="button" class="btn btn-outline border-base-300" data-tour-start>順に見る</button>{% endif %}<form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form></div>

@@ -10,7 +10,7 @@ from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 
-from seizou.core import dashboard
+from seizou.core import dashboard, tours
 from seizou.core.manual import screen_for_anchor
 from seizou.core.screens import usecase_rows
 
@@ -37,5 +37,10 @@ def screen_guide(request, anchor: str):
     return render(
         request,
         GUIDE_TEMPLATE,
-        {"screen": screen, "rows": rows, "neighbors": dashboard.flow_neighbors(screen.url_name)},
+        {
+            "screen": screen,
+            "rows": rows,
+            "neighbors": dashboard.flow_neighbors(screen.url_name),
+            "has_tour": tours.tour_for(screen.url_name) is not None,
+        },
     )

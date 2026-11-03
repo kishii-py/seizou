@@ -2,11 +2,12 @@
 
 {% flow_guide as flow %}               ダッシュボードの枠の値 (core.dashboard.flow_guide。home.html が読む)
 {% screen_has_guide as has_guide %}    今の画面にユースケースがあるか (_topbar.html が「案内」のボタンを出すかに使う)
+{% seizou_tour %}                      今の画面のツアーの段の JSON と markup (core/_tour.html。段の無い画面は何も出さない)
 """
 
 from django import template
 
-from seizou.core import dashboard, screens
+from seizou.core import dashboard, screens, tours
 
 register = template.Library()
 
@@ -24,3 +25,11 @@ def screen_has_guide(context) -> bool:
     if view_class is None or not getattr(view_class, "screen_name", ""):
         return False
     return bool(screens.usecase_from(view_class.__doc__))
+
+
+@register.inclusion_tag("core/_tour.html", takes_context=True)
+def seizou_tour(context):
+    """今の画面のツアーの段 (core.tours.tour_for)。request の無い描き方とツアーの無い画面は steps が None (何も出さない)。"""
+    match = getattr(context.get("request"), "resolver_match", None)
+    url_name = (getattr(match, "view_name", "") or "") if match is not None else ""
+    return {"steps": tours.tour_for(url_name) if url_name else None}
