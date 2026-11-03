@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load seizou_icons %}
+{% load seizou_icons seizou_tags %}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{{ print_url }}" target="_blank">{% icon "file" "size-4" %}印刷用を開く</a><a class="btn btn-outline border-base-300" href="{{ pdf_url }}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>{% endblock %}
 {% block content %}
 {# 使い方 (画面ごとの説明書): 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
@@ -15,10 +15,11 @@
     </ul>
   </nav>
   <div class="flex min-w-0 flex-1 flex-col gap-6">
+    {% can_manage_accounts as is_manager %}
     {% if not has_manual %}
     <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
       <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "book" "size-6" %}</span>
-      <p class="mt-4 font-medium">この会社の説明書はまだありません。Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。</p>
+      <p class="mt-4 font-medium">この会社の説明書はまだありません。管理者が作ります。{% if is_manager %}Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。{% endif %}</p>
     </div>
     {% endif %}
     {% if intro %}
@@ -34,7 +35,7 @@
       {% elif section.unreadable %}<h2>{{ section.name }}</h2>
       <p class="text-error">説明のファイルを UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
       {% else %}<h2>{{ section.name }}</h2>
-      <p class="text-base-content/70">この画面の説明はまだありません。<code>/seizou:manual</code> で作れます。</p>
+      <p class="text-base-content/70">この画面の説明書はまだありません。管理者が作ります。{% if is_manager %}<code>/seizou:manual</code> で書けます。{% endif %}</p>
       {% endif %}
     </div>
     {% endfor %}

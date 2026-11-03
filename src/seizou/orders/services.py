@@ -39,7 +39,6 @@ _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
 _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
 _R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
-_R05_RULE = "取消した受注には、出荷も指示書も作れない。"
 _SHIPPED_LINE_MESSAGE = "出荷のある明細は消せません。数量を直すか、明細を残してください。"
 
 # 出荷済みの数と残の数の型 (OrderLine.qty と同じ桁)
@@ -183,7 +182,7 @@ def update_order(order, data, lines, user, *, ext=None):
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
-            raise RuleViolation("R05", f"{_R05_RULE}直すときは、新しく受注を作ってください。")
+            raise RuleViolation("R05", "取消した受注は直せません。直すときは、新しく受注を作ってください。")
 
         existing = {row.pk: row for row in locked.lines.all()}
         refs = [_line_ref(line) for line in lines]
@@ -224,7 +223,7 @@ def cancel_order(order, user, *, reason=""):
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
-            raise RuleViolation("R05", f"{_R05_RULE}取消は済んでいるので、このままにしてください。")
+            raise RuleViolation("R05", "この受注は取り消し済みです。")
         if reason:
             added = f"取消の理由: {reason}"
             note = f"{locked.note}\n{added}" if locked.note else added

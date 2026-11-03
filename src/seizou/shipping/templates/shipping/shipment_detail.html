@@ -4,6 +4,7 @@
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}ラベル</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% url 'shipping:deliverynote_create' as note_url %}{% if note_url %}{% if not object.delivery_note or object.delivery_note.status == "cancelled" %}<a class="btn btn-outline border-base-300" href="{{ note_url }}?shipments={{ object.pk }}">{% icon "file" "size-4" %}納品書を作る</a>{% endif %}{% endif %}
 {% endblock %}
 {% block content %}{{ block.super }}
 {% with state=object.notice_state %}{% if state %}

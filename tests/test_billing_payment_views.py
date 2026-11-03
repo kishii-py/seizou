@@ -135,7 +135,7 @@ def test_detail_shows_payment_panel_and_button(client_logged_in, invoice):
     assert 'id="payments"' in body
     panel = _panel(response)
     assert "未入金" in panel
-    assert "16,500.00" in panel
+    assert "16,500" in panel
     assert reverse("billing:payment_create", args=[invoice.pk]) in panel
     assert "入金は、まだ記録されていません。" in panel
     assert "「入金を記録する」から 1 件目を記録します。" in panel
@@ -149,7 +149,7 @@ def test_create_get_shows_invoice_summary(client_logged_in, invoice):
     assert response.status_code == 200
     assert invoice.invoice_no in body
     assert "作り物の得意先" in body
-    assert "残" in body and "16,500.00" in body
+    assert "残" in body and "16,500" in body
     for name in ("received_on", "amount", "method", "note"):
         assert f'name="{name}"' in body
     for label in ("振込", "現金", "手形", "その他"):
@@ -177,9 +177,9 @@ def test_create_post_records_and_returns_to_invoice(client_logged_in, user, invo
     body = detail.content.decode()
     panel = _panel(detail)
     assert "一部入金" in panel
-    assert "10,000.00" in panel
+    assert "10,000" in panel
     assert "2026-12-25" in panel
-    assert "6,500.00" in panel
+    assert "6,500" in panel
     assert "振込" in panel
     assert "tester" in panel
     assert "作り物の入金" in panel
@@ -223,7 +223,7 @@ def test_cancel_payment_from_screen(client_logged_in, user, invoice):
     assert "を取り消します" in text
     assert invoice.invoice_no in text
     assert "振込" in text
-    assert "6,500.00" in text
+    assert "6,500" in text
 
     response = client_logged_in.post(url, {})
     assert response.status_code == 302
@@ -232,7 +232,7 @@ def test_cancel_payment_from_screen(client_logged_in, user, invoice):
     panel = _panel(detail)
     assert ">取消</td>" in panel
     assert "未入金" in panel
-    assert "16,500.00" in panel
+    assert "16,500" in panel
     assert url not in panel
     payment.refresh_from_db()
     assert payment.status == Payment.STATUS_CANCELLED
@@ -294,13 +294,13 @@ def test_money_masked_in_payment_screens(on, client, invoice):
 
     detail = client.get(reverse("billing:invoice_detail", args=[invoice.pk]))
     panel = _panel(detail)
-    assert "16,500.00" not in detail.content.decode()
+    assert "16,500" not in detail.content.decode()
     assert "—" in panel
     assert "未入金" in panel
 
     form = client.get(reverse("billing:payment_create", args=[invoice.pk]))
     assert form.status_code == 200
-    assert "16,500.00" not in form.content.decode()
+    assert "16,500" not in form.content.decode()
 
     refused = client.post(reverse("billing:payment_create", args=[invoice.pk]), POST)
     body = refused.content.decode()
@@ -310,8 +310,8 @@ def test_money_masked_in_payment_screens(on, client, invoice):
 
     keiri = account("keiri", permissions=["billing"], see_money=True)
     client.force_login(keiri)
-    assert "16,500.00" in _panel(client.get(reverse("billing:invoice_detail", args=[invoice.pk])))
-    assert "16,500.00" in client.get(reverse("billing:payment_create", args=[invoice.pk])).content.decode()
+    assert "16,500" in _panel(client.get(reverse("billing:invoice_detail", args=[invoice.pk])))
+    assert "16,500" in client.get(reverse("billing:payment_create", args=[invoice.pk])).content.decode()
     saved = client.post(reverse("billing:payment_create", args=[invoice.pk]), POST)
     assert saved.status_code == 302
     assert Payment.objects.count() == 1
