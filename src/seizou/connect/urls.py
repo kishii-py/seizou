@@ -8,6 +8,7 @@
 from django.urls import path
 
 from . import views
+from . import reply
 
 app_name = "connect"
 
@@ -24,6 +25,7 @@ urlpatterns = [
     path("inbox/<int:pk>/", views.InboxDetailView.as_view(), name="inbox_detail"),
     path("inbox/<int:pk>/accept/", views.InboxAcceptView.as_view(), name="inbox_accept"),
     path("inbox/<int:pk>/reject/", views.InboxRejectView.as_view(), name="inbox_reject"),
+    path("inbox/<int:pk>/reply/resend/", reply.resend_reply, name="inbox_reply_resend"),
     path("connections/", views.ConnectionListView.as_view(), name="connection_list"),
     path("connections/new/", views.ConnectionCreateView.as_view(), name="connection_create"),
     path("connections/<int:pk>/", views.ConnectionDetailView.as_view(), name="connection_detail"),
