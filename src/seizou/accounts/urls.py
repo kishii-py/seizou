@@ -1,6 +1,7 @@
 """accounts の URL (core の urls.py が /accounts/ に入れる)。名前は model (Access) の約束 <model>_list / _detail / _create / _update。
 
 行の移り先 (access_detail) は編集へ移るだけの関数の view。削除 (access_delete) は編集の画面の「削除」から入る。
+部署 (Department) は departments/ の下で、名前は department_list / _create / _detail / _update / _delete (アカウント管理の一覧の「部署」から入る)。
 """
 
 from django.urls import path
@@ -18,4 +19,9 @@ urlpatterns = [
     path("<int:pk>/", views.access_detail, name="access_detail"),
     path("<int:pk>/edit/", views.AccessUpdateView.as_view(), name="access_update"),
     path("<int:pk>/delete/", views.AccessDeleteView.as_view(), name="access_delete"),
+    path("departments/", views.DepartmentListView.as_view(), name="department_list"),
+    path("departments/new/", views.DepartmentCreateView.as_view(), name="department_create"),
+    path("departments/<int:pk>/", views.DepartmentDetailView.as_view(), name="department_detail"),
+    path("departments/<int:pk>/edit/", views.DepartmentUpdateView.as_view(), name="department_update"),
+    path("departments/<int:pk>/delete/", views.DepartmentDeleteView.as_view(), name="department_delete"),
 ]

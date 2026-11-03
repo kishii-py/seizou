@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{% load seizou_icons %}
+{# 部署の新規登録と編集: core の入力の画面に、編集のときだけ「削除」の link を足す。既にいる人の権限は services が触らない。 #}
+{% block actions %}{{ block.super }}{% if object %}<a class="btn btn-ghost text-error" href="{% url 'accounts:department_delete' object.pk %}">{% icon "x" "size-4" %}削除</a>{% endif %}{% endblock %}

@@ -10,11 +10,11 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
-from seizou.core.views import BaseFormView, BaseListView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import AccountDeleteForm, AccountForm
-from .models import Access
+from .forms import AccountDeleteForm, AccountForm, DepartmentDeleteForm, DepartmentForm
+from .models import Access, Department
 
 
 class AccessListView(BaseListView):
@@ -96,3 +96,78 @@ class AccessDeleteView(BaseFormView):
     template_name = "accounts/access_delete.html"
     screen_name = "アカウントの削除"
     screen_help = "削除したアカウントではログインできなくなります。記録の名前は残り、同じログイン ID は空きます。"
+
+
+class DepartmentListView(BaseListView):
+    """部署の一覧。
+
+    使う人: 総務 / いつ: 部署の分け方を見直すとき / 何のために: 部署ごとの開ける部品と既定の権限と人数を見る / 次にすること: 行を押して詳細を見るか、「新規登録」で部署を足す
+    """
+
+    model = Department
+    screen_name = "部署"
+    screen_help = "部署の一覧。部署ごとの開ける部品・既定の権限・人数。行を押すと詳細へ移ります。新規登録は右上から。"
+    columns = (
+        ("name", "部署"),
+        ("apps", "開ける部品"),
+        ("default_permissions", "既定の権限"),
+        ("member_count", "人数"),
+        ("sort_order", "並び順"),
+    )
+    search_fields = ("name",)
+    ordering = ("sort_order", "pk")
+    template_name = "accounts/department_list.html"
+
+
+class DepartmentCreateView(BaseFormView):
+    """部署の新規登録の入力。
+
+    使う人: 総務 / いつ: 新しい部署ができたとき / 何のために: 部署の名前と開ける部品と既定の権限を決める / 次にすること: アカウント管理で、その部署を人に付ける
+    """
+
+    model = Department
+    form_class = DepartmentForm
+    service = staticmethod(services.create_department)
+    template_name = "accounts/department_form.html"
+    screen_name = "部署の新規登録"
+    screen_help = "部署の名前と、開ける部品と、部署を付けたときに入る既定の権限を決めます。"
+
+
+class DepartmentDetailView(BaseDetailView):
+    """部署の詳細。
+
+    使う人: 総務 / いつ: 部署の中身と所属する人を確かめるとき / 何のために: 開ける部品と既定の権限と所属する人を見る / 次にすること: 「編集」で直すか、人の行からアカウントの編集へ移る
+    """
+
+    model = Department
+    tabs = (("所属する人", "members"),)
+    screen_name = "部署の詳細"
+    screen_help = "部署の開ける部品と既定の権限、所属する人の一覧。人の行を押すとアカウントの編集へ移ります。"
+
+
+class DepartmentUpdateView(BaseFormView):
+    """部署の編集の入力。
+
+    使う人: 総務 / いつ: 部署の開ける部品や既定の権限を変えるとき / 何のために: 部署の設定を直す (既にいる人の権限は変わらない) / 次にすること: 変えた権限を人にも付けるなら、アカウント管理で 1 人ずつ直す
+    """
+
+    model = Department
+    form_class = DepartmentForm
+    service = staticmethod(services.update_department)
+    template_name = "accounts/department_form.html"
+    screen_name = "部署の編集"
+    screen_help = "部署の名前と開ける部品と既定の権限を直します。既にいる人の権限は変わりません。"
+
+
+class DepartmentDeleteView(BaseFormView):
+    """部署の削除の確認。
+
+    使う人: 総務 / いつ: 使わなくなった部署を消すとき / 何のために: 人が付いていない部署を一覧から消す / 次にすること: 人が付いていれば、先にアカウント管理で部署を外す
+    """
+
+    model = Department
+    form_class = DepartmentDeleteForm
+    service = staticmethod(services.delete_department)
+    template_name = "accounts/department_delete.html"
+    screen_name = "部署の削除"
+    screen_help = "人が付いていない部署を消します。人が付いている部署は、先にアカウント管理でその人の部署を外してください。"

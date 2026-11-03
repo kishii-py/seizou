@@ -1,0 +1,15 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 部署の削除の確認: 1 枚のカード。人が付いている部署は services が断る (土台の赤の知らせ)。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-center gap-2">{% icon "alert" "size-5 text-error" %}<span>部署「<span class="font-medium">{{ object.name }}</span>」を削除します。</span></p>
+  {% if object.member_count %}<p class="mt-2 text-base-content/70">今 {{ object.member_count }} 人のアカウントが付いています。人が付いている部署は削除できません。先にアカウント管理で、その人の部署を外してください。</p>
+  {% else %}<p class="mt-2 text-base-content/70">削除した部署は元に戻せません。既にいる人の権限は変わりません。</p>{% endif %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'accounts:department_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}
