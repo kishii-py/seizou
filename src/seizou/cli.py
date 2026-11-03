@@ -384,6 +384,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
     port = answers["port"]
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
+    print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     return EXIT_OK
 
 

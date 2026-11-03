@@ -125,4 +125,4 @@ UV_SYSTEM_CERTS=true seizou new ~/seizou-sites/<id>/answers.yaml
 
 ## 手元の Claude Code から操作する
 
-立ち上げた後に、会社の置き場 `~/seizou-sites/<id>/` のフォルダで Claude Code を開くと、プラグインの MCP サーバー `seizou` (Claude Code が会社のシステムの道具を呼ぶ口) が立ち、受注・出荷・指示書・部品・マニュアルを読めます。受注を作る・出荷する・工程の予定を置く道具は、置き場の `.env` に `SEIZOU_MCP_USER=<利用者名>` の 1 行があるときだけ書き、画面と同じポカよけを通ります。プラグインを入れていない Claude Code で使うときは、置き場で `claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利用者名>` を打ちます (`<python>` は置き場の `README.md` の起動の 1 行の python です)。API の鍵は要りません (手元のデータベースを読み書きするだけです)。担当者に伝えるときは、短く平易な文にします。
+立ち上げた後に、会社の置き場 `~/seizou-sites/<id>/` のフォルダで Claude Code を開くと、プラグインの MCP サーバー `seizou` (Claude Code が会社のシステムの道具を呼ぶ口) が立ち、受注・出荷・指示書・部品・マニュアル・受入・検収・入金・フィードバックを読めます。受注を作る・出荷する・工程の予定を置く道具は、置き場の `.env` に `SEIZOU_MCP_USER=<利用者名>` の 1 行があるときだけ書き、画面と同じポカよけを通ります。プラグインを入れていない Claude Code で使うときは、置き場で `claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利用者名>` を打ちます (`<python>` は置き場の `README.md` の起動の 1 行の python です)。API の鍵は要りません (手元のデータベースを読み書きするだけです)。担当者に伝えるときは、短く平易な文にします。
