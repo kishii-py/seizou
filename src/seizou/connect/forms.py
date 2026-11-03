@@ -57,6 +57,11 @@ class AcceptForm(forms.Form):
                 label=label,
                 initial=resolve_partner_item(instance.partner, part_no),
                 help_text="自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
+                # required の文は services._item_for と同じ字。invalid_choice は Django が % で値を差し込むので、品番の % を重ねる。
+                error_messages={
+                    "required": f"品番 {part_no} の自社の部品を選んでください。",
+                    "invalid_choice": f"品番 {part_no.replace('%', '%%')} の自社の部品が候補にありません。選び直してください。",
+                },
             )
             self.part_fields.append((name, part_no))
 
@@ -72,6 +77,11 @@ class RejectForm(forms.Form):
         label="断った理由",
         max_length=Inbox._meta.get_field("reason").max_length,
         widget=forms.Textarea(attrs={"rows": 3}),
+        # services の MESSAGE_NO_REASON と reject の文と同じ字 (文に % を書かない = Django が値を差し込まない)。
+        error_messages={
+            "required": "断る理由がありません。理由を書いてから断ってください。",
+            "max_length": f"断る理由が {Inbox._meta.get_field('reason').max_length} 字を超えています。{Inbox._meta.get_field('reason').max_length} 字までに縮めてください。",
+        },
     )
 
     def service_kwargs(self):
