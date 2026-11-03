@@ -19,8 +19,10 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from html import unescape
 from typing import Any, NotRequired, TypedDict
 
 from django.apps import apps
@@ -28,6 +30,7 @@ from django.db.models import Prefetch
 from django.http import Http404
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.html import strip_tags
 
 from seizou.core import checks, conf, manual, screens
 from seizou.core.exceptions import CheckViolation, RuleError
@@ -40,12 +43,17 @@ MAX_ITEMS = 100
 MAX_ROWS = 200
 #: 出荷の一覧の日数の上限
 MAX_DAYS = 366
+#: get_manual_body が返す業務マニュアルの本文の字数の上限 (超えた分は切り、truncated を真にする)
+MANUAL_BODY_CHARS = 8000
 
 #: 利用者を決めずに起こしたときの、書く道具の断りの文
 NO_USER_MESSAGE = (
     "書く道具は、利用者を決めて起こしたときだけ使えます。"
     "--user <利用者名> か、会社の置き場の .env の SEIZOU_MCP_USER で決めてください。"
 )
+
+#: 書く道具の名前 → 検査の層と権限の判定が見る action (<app>.<services の関数の名前>)
+WRITE_ACTIONS = {"create_order": "orders.create_order", "ship": "shipping.ship", "plan_step": "workorders.plan_step"}
 
 #: 知らせる段のポカよけに当たったときの、次にすることの文
 CONFIRM_HINT = "知らせを人に見せ、人が確かめてから confirm=true で呼び直すと保存します"
@@ -98,6 +106,24 @@ def _url(name: str, pk) -> str:
         return reverse(name, args=[pk])
     except NoReverseMatch:
         return ""
+
+
+def html_to_text(html: str, limit: int) -> str:
+    """HTML を字だけにする。塊の終わりと br を改行にし、行の中の空白を 1 つに詰め、空の行を捨て、limit 字で切る。
+
+    字から字への関数で、DB を読まない (説明書と業務マニュアルの本文を、HTML のまま Claude に渡さないために使う)。
+    """
+    broken = re.sub(
+        r"</(?:p|li|h[1-6]|tr|div|section)\s*>|<br\s*/?>", "\n", html or "", flags=re.IGNORECASE
+    )
+    text = unescape(strip_tags(broken))
+    lines = (" ".join(line.split()) for line in text.splitlines())
+    return "\n".join(line for line in lines if line)[:limit]
+
+
+def _installed(app: str) -> bool:
+    """部品 seizou.<app> が会社に入っているか (試験が差し替える)。"""
+    return apps.is_installed(f"seizou.{app}")
 
 
 # --- 引数を読む ---
@@ -701,6 +727,74 @@ def list_rules() -> dict[str, Any]:
     return {"ok": True, "checks": found, "code_rules": code_rules, "note": CORE_RULES_NOTE}
 
 
+def _manual_dict(row) -> dict[str, Any]:
+    """業務マニュアルの 1 件の見出しの鍵 (横断の検索の列と同じ。題・置き場・形式・最終更新)。"""
+    return {
+        "id": row.pk,
+        "title": row.title,
+        "folder": row.folder_path_text(),
+        "format": row.get_format_display(),
+        "updated_at": timezone.localtime(row.updated_at).date().isoformat(),
+        "url": _url("manuals:manual_detail", row.pk),
+    }
+
+
+def search_manuals(query: str, limit: int = 20) -> dict[str, Any]:
+    """業務マニュアル (会社の人が書いた作業の手順書と社内の文書) を題と本文の言葉で探す。画面ごとの使い方 (get_manual) とは別。
+
+    query: 探す言葉。空白で区切ると、全部の語を題か本文に含むマニュアルだけ。空なら全部。
+    limit: 返す件数 (1〜100。既定 20)。
+    返す物: count・total 当たった全部の数・items (題の順。マニュアルごとの id 番号・title 題・
+    folder 置き場の道 (ルートなら「ルート」)・format 形式・updated_at 最終更新の日・url 詳細の道)。
+    id を get_manual_body の manual_id に渡すと本文を読める。
+    ok が偽なら error に、読めなかった引数か、業務マニュアルの部品が入っていないことがある。
+    """
+    if not _installed("manuals"):
+        return _refused("業務マニュアルの部品 (manuals) が入っていないので、マニュアルは探せません。")
+    try:
+        count = _read_count(limit, "件数 (limit)", MAX_ITEMS)
+    except _Refusal as exc:
+        return _refused(exc.message)
+    from seizou.manuals import services as manuals_services
+
+    found = manuals_services.search_manuals(_text(query)).select_related("folder")
+    total = found.count()
+    items = [_manual_dict(row) for row in found[:count]]
+    return {"ok": True, "count": len(items), "total": total, "items": items}
+
+
+def get_manual_body(manual_id: int) -> dict[str, Any]:
+    """業務マニュアルの 1 件の本文を字だけで返す (画面ごとの使い方 (get_manual) とは別)。
+
+    manual_id: マニュアルの番号 (search_manuals の items の id)。
+    返す物: search_manuals の 1 件と同じ鍵 (id・title・folder・format・updated_at・url) と、
+    text 本文の字 (見出し・段落・手順の行ごとに改行。8000 字まで)・truncated 字数で切ったか・total_chars 切る前の字数。
+    ok が偽なら error に、番号が読めないか、その番号のマニュアルが無いことと探し方がある。
+    """
+    if not _installed("manuals"):
+        return _refused("業務マニュアルの部品 (manuals) が入っていないので、マニュアルは探せません。")
+    try:
+        number = _read_int(manual_id, "マニュアルの番号 (manual_id)")
+    except _Refusal as exc:
+        return _refused(exc.message)
+    from seizou.manuals import services as manuals_services
+
+    Manual = apps.get_model("manuals", "Manual")
+    row = Manual.objects.select_related("folder").filter(pk=number).first()
+    if row is None:
+        return _refused(f"番号 {number} のマニュアルはありません。search_manuals で番号を確かめてください。")
+    html = manuals_services.render_body(row).html
+    whole = html_to_text(html, len(html))
+    text = html_to_text(html, MANUAL_BODY_CHARS)
+    return {
+        "ok": True,
+        **_manual_dict(row),
+        "text": text,
+        "truncated": len(whole) > len(text),
+        "total_chars": len(whole),
+    }
+
+
 READ_TOOLS = (
     company_info,
     list_screens,
@@ -713,6 +807,8 @@ READ_TOOLS = (
     get_manual,
     plan_board,
     list_rules,
+    search_manuals,
+    get_manual_body,
 )
 
 
@@ -768,7 +864,7 @@ def _create_order(user, customer_code, lines, order_date, customer_order_no, con
     except _Refusal as exc:
         return _refused(exc.message)
     data = {"customer": customer, "lines": line_dicts, "order_date": day, "customer_order_no": their_no}
-    stopped = _checked("orders.create_order", data, user, confirm)
+    stopped = _checked(WRITE_ACTIONS["create_order"], data, user, confirm)
     if stopped is not None:
         return stopped
     from seizou.orders import services as orders_services
@@ -798,7 +894,7 @@ def _ship(user, order_no, line_no, qty, shipped_at, note, confirm) -> dict[str, 
     except _Refusal as exc:
         return _refused(exc.message)
     data = {"order_line": line, "qty": amount, "shipped_at": day, "note": text}
-    stopped = _checked("shipping.ship", data, user, confirm)
+    stopped = _checked(WRITE_ACTIONS["ship"], data, user, confirm)
     if stopped is not None:
         return stopped
     from seizou.orders import services as orders_services
@@ -833,7 +929,7 @@ def _plan_step(user, workorder_no, process_code, start, end, confirm) -> dict[st
     except _Refusal as exc:
         return _refused(exc.message)
     data = {"workorder_step": step, "start": first, "end": last}
-    stopped = _checked("workorders.plan_step", data, user, confirm)
+    stopped = _checked(WRITE_ACTIONS["plan_step"], data, user, confirm)
     if stopped is not None:
         return stopped
     from seizou.workorders import services as workorders_services

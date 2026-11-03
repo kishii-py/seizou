@@ -35,6 +35,8 @@ def ask(request):
         "question": question.strip()[: services.MAX_QUESTION_CHARS],
         "answer": result["text"],
         "links": result["links"],
+        "tools": result["tools"],
+        "proposals": result["proposals"],
     }
     services.remember(request.session, exchange)
     return render(request, "assistant/_messages.html", {"exchanges": [exchange]})

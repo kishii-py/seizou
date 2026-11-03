@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from seizou.assistant import services, tools
+from seizou.core import conf
 from seizou.core import services as core_services
 from seizou.masters import services as masters_services
 
@@ -118,17 +119,17 @@ def test_key_name_same_as_intake():
 
 def test_model_name_default_and_setting(settings):
     settings.SEIZOU = {}
-    assert services.model_name() == "claude-sonnet-5-5"
-    settings.SEIZOU = {"assistant_model": "claude-opus-5-5"}
+    assert services.model_name() == conf.DEFAULTS["assistant_model"]
+    settings.SEIZOU = {"assistant_model": " claude-opus-5-5 "}
     assert services.model_name() == "claude-opus-5-5"
     settings.SEIZOU = {"assistant_model": ""}
-    assert services.model_name() == "claude-sonnet-5-5"
+    assert services.model_name() == services.DEFAULT_MODEL
 
 
 def test_no_key_does_not_call_api(without_key):
     result = ask("AS-100 の受注の残はいくつ")
 
-    assert result == {"text": services.MESSAGE_NO_KEY, "tool_calls": [], "links": []}
+    assert result == {"text": services.MESSAGE_NO_KEY, "tool_calls": [], "tools": [], "links": [], "proposals": []}
 
 
 @pytest.mark.django_db
@@ -294,7 +295,7 @@ def test_api_error_message_is_returned(with_key, monkeypatch):
 
     result = ask("質問")
 
-    assert result == {"text": services.MESSAGE_BUSY, "tool_calls": [], "links": []}
+    assert result == {"text": services.MESSAGE_BUSY, "tool_calls": [], "tools": [], "links": [], "proposals": []}
 
 
 def test_history_helpers():
@@ -314,7 +315,9 @@ def test_history_helpers():
         {"question": "link が無い", "answer": "答え"},
         "字だけ",
     ]
-    assert services.history(session) == [{"question": "形の合う物", "answer": "答え", "links": ["/orders/"]}]
+    assert services.history(session) == [
+        {"question": "形の合う物", "answer": "答え", "links": ["/orders/"], "tools": [], "proposals": []}
+    ]
 
     session[services.HISTORY_KEY] = "並びでない"
     assert services.history(session) == []
@@ -324,3 +327,69 @@ def test_history_helpers():
     assert services.HISTORY_KEY not in session
     assert services.history(session) == []
     services.forget(session)
+
+
+@pytest.mark.django_db
+def test_answer_returns_tools_without_repeat(with_key, monkeypatch, items):
+    script(
+        monkeypatch,
+        [
+            tool_reply("search_items", {"query": "AS"}),
+            tool_reply("search_items", {"query": "BX"}, tool_id="t2"),
+            text_reply("2 つあります。"),
+        ],
+    )
+
+    result = ask("部品を 2 つ探して")
+
+    assert result["text"] == "2 つあります。"
+    assert result["tool_calls"] == ["search_items", "search_items"]
+    assert result["tools"] == ["search_items"]
+    assert result["proposals"] == []
+
+
+def test_history_reads_old_and_new_shape():
+    proposal = {
+        "id": "0123456789abcdef",
+        "tool": "ship",
+        "title": "出荷",
+        "arguments": {"order_no": "SO-1", "line_no": 1, "qty": "3", "shipped_at": "2026-11-05"},
+        "summary": ["受注 SO-1 の 1 行目を 3 出荷"],
+        "created_at": "2026-11-05T10:00:00+09:00",
+        "state": "pending",
+        "notice": "",
+        "code": "",
+        "warnings": [],
+        "url": "",
+    }
+    session = {
+        services.HISTORY_KEY: [
+            {"question": "古い形", "answer": "答え", "links": []},
+            {
+                "question": "新しい形",
+                "answer": "答え",
+                "links": ["/orders/"],
+                "tools": ["get_order", 1, "ship"],
+                "proposals": [
+                    proposal,
+                    {**proposal, "id": 5},
+                    {**proposal, "arguments": ["辞書でない"]},
+                    {**proposal, "summary": ["字", 1]},
+                    {key: value for key, value in proposal.items() if key != "state"},
+                    "字だけ",
+                    {**proposal, "id": "fedcba9876543210", "title": 1, "warnings": "並びでない", "url": None},
+                ],
+            },
+            {"question": "形の違う tools", "answer": "答え", "links": [], "tools": "ship", "proposals": {}},
+        ]
+    }
+
+    old, new, odd = services.history(session)
+
+    assert old == {"question": "古い形", "answer": "答え", "links": [], "tools": [], "proposals": []}
+    assert new["tools"] == ["get_order", "ship"]
+    assert new["proposals"][0] == proposal
+    assert [entry["id"] for entry in new["proposals"]] == ["0123456789abcdef", "fedcba9876543210"]
+    filled = new["proposals"][1]
+    assert (filled["title"], filled["warnings"], filled["url"]) == ("", [], "")
+    assert (odd["tools"], odd["proposals"]) == ([], [])

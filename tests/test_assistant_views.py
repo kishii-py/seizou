@@ -126,7 +126,7 @@ def test_ask_returns_partial_and_keeps_history(with_key, client_logged_in, monke
     assert "<html" not in body
     assert "ダッシュボード" in calls[0]["system"]
     assert saved_history(client_logged_in) == [
-        {"question": "作り物の質問", "answer": "作り物の答えです。", "links": []}
+        {"question": "作り物の質問", "answer": "作り物の答えです。", "links": [], "tools": [], "proposals": []}
     ]
 
     html = client_logged_in.get(reverse("core:home")).content.decode()
@@ -225,3 +225,19 @@ def test_clear_empties_history(with_key, client_logged_in, monkeypatch):
 def test_urls():
     assert reverse("assistant:ask") == ASK_URL
     assert reverse("assistant:clear") == CLEAR_URL
+
+
+@pytest.mark.django_db
+def test_tool_labels_under_answer(with_key, client_logged_in, monkeypatch, order):
+    script(
+        monkeypatch,
+        [tool_reply("search_items", {"query": "AV-100"}), text_reply("AV-100 は作り物の軸です。")],
+    )
+
+    body = ask(client_logged_in, "AV-100 は何").content.decode()
+
+    assert '<span class="badge badge-ghost badge-sm">部品を探した</span>' in body
+    assert saved_history(client_logged_in)[0]["tools"] == ["search_items"]
+
+    html = client_logged_in.get(reverse("core:home")).content.decode()
+    assert '<span class="badge badge-ghost badge-sm">部品を探した</span>' in html

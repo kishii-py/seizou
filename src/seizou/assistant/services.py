@@ -4,7 +4,8 @@
   鍵の値を画面・ログ・例外の文・返す物に出さない。製品から外の命令は起こさない。
 - API を呼ぶのは _ask_claude の 1 か所。呼ぶのは atomic の外 (表に書かないので atomic を使わない)。
   試験はこの関数を作り物の返事に差し替え、本物の API を呼ばない。
-- 道具 (seizou.assistant.tools) は読むだけ。表に書かない。
+- 道具の中身は seizou.core.mcp_tools (MCP サーバーと同じ関数)。seizou.assistant.tools が Claude に渡す形と回し方を持つ。
+  読む道具は回して結果を Claude に返す。表に書かない。
 - 答えの数と日付と番号は道具の結果だけから作るよう、system で頼む。答えは素の字 (markdown を描かない)。
 - 会話の履歴は session に持つ (表を作らない)。session には鍵への代入と pop だけをする。
 - tool_choice・thinking・temperature を送らない (今の世代のモデルは既定のままで動き、強制すると断られる)。
@@ -15,11 +16,11 @@ from __future__ import annotations
 import os
 from urllib.parse import urlsplit
 
-from django.conf import settings
 from django.db import DatabaseError
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
+from seizou.core import conf, mcp_tools
 from seizou.core import services as core_services
 from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
@@ -27,7 +28,7 @@ from . import tools
 
 #: 鍵を入れる環境変数の名前 (intake と同じ名前。intake を import しないので、intake の無い会社でも動く)
 API_KEY_ENV = "ANTHROPIC_API_KEY"
-#: 会話に使う model の既定 (会社の settings の SEIZOU["assistant_model"] で替えられる)
+#: 会話に使う model の最後の既定 (会社の設定 assistant_model が空のとき。設定の既定は core の conf.DEFAULTS)
 DEFAULT_MODEL = "claude-sonnet-5-5"
 #: 1 回の呼び出しの待ちの上限 (秒)。再試行はしない
 TIMEOUT_SECONDS = 60
@@ -91,11 +92,8 @@ def is_available():
 
 
 def model_name():
-    """会話に使う model の名前。SEIZOU["assistant_model"] が空でない字ならそれ、無ければ DEFAULT_MODEL。
-
-    core の conf.setting は知らない鍵で KeyError になるので、settings.SEIZOU を直接読む。
-    """
-    value = (getattr(settings, "SEIZOU", {}) or {}).get("assistant_model")
+    """会話に使う model の名前。会社の設定 assistant_model が空でない字ならそれ、ほかは DEFAULT_MODEL。"""
+    value = conf.setting("assistant_model")
     if isinstance(value, str) and value.strip():
         return value.strip()
     return DEFAULT_MODEL
@@ -114,18 +112,69 @@ def _is_exchange(entry):
     )
 
 
+def _is_proposal(entry):
+    """提案の辞書の形か (id・tool・state が字、arguments が辞書、summary が字の並び)。"""
+    return (
+        isinstance(entry, dict)
+        and all(isinstance(entry.get(key), str) for key in ("id", "tool", "state"))
+        and isinstance(entry.get("arguments"), dict)
+        and isinstance(entry.get("summary"), list)
+        and all(isinstance(line, str) for line in entry["summary"])
+    )
+
+
+def _proposal(entry):
+    """形の合う提案を、足りない鍵を補った写しにする (字でない題・知らせ・番号・道は ""、並びでない warnings は [])。"""
+
+    def text(key):
+        value = entry.get(key)
+        return value if isinstance(value, str) else ""
+
+    warnings = entry.get("warnings")
+    return {
+        "id": entry["id"],
+        "tool": entry["tool"],
+        "title": text("title"),
+        "arguments": dict(entry["arguments"]),
+        "summary": list(entry["summary"]),
+        "created_at": text("created_at"),
+        "state": entry["state"],
+        "notice": text("notice"),
+        "code": text("code"),
+        "warnings": list(warnings) if isinstance(warnings, list) else [],
+        "url": text("url"),
+    }
+
+
 def history(session):
-    """session の履歴のうち、形の合う往復 ({"question": 字, "answer": 字, "links": [字...]}) だけを返す。"""
+    """session の履歴のうち、形の合う往復だけを写して返す。
+
+    1 往復 = {"question": 字, "answer": 字, "links": [字...], "tools": [道具の名前...], "proposals": [提案...]}。
+    tools と proposals の無い古い往復も読む (tools は字の並びでなければ []、proposals は形の合う物だけ)。
+    """
     if session is None:
         return []
     raw = session.get(HISTORY_KEY)
     if not isinstance(raw, list):
         return []
-    return [
-        {"question": entry["question"], "answer": entry["answer"], "links": list(entry["links"])}
-        for entry in raw
-        if _is_exchange(entry)
-    ]
+    exchanges = []
+    for entry in raw:
+        if not _is_exchange(entry):
+            continue
+        names = entry.get("tools")
+        proposals = entry.get("proposals")
+        exchanges.append(
+            {
+                "question": entry["question"],
+                "answer": entry["answer"],
+                "links": list(entry["links"]),
+                "tools": [name for name in names if isinstance(name, str)] if isinstance(names, list) else [],
+                "proposals": [_proposal(item) for item in proposals if _is_proposal(item)]
+                if isinstance(proposals, list)
+                else [],
+            }
+        )
+    return exchanges
 
 
 def remember(session, exchange):
@@ -175,7 +224,7 @@ def _screen_manual(page_path):
     fragment = read_fragment(fragment_name(view_name))
     if fragment is None or fragment is UNREADABLE:
         return ""
-    return tools.plain_text(fragment, MAX_CONTEXT_CHARS)
+    return mcp_tools.html_to_text(fragment, MAX_CONTEXT_CHARS)
 
 
 def build_system(page_url, screen_name):
@@ -201,8 +250,14 @@ def build_system(page_url, screen_name):
 # ---- 答え ----
 
 
-def _reply(text, tool_calls=(), links=()):
-    return {"text": text, "tool_calls": list(tool_calls), "links": list(links)}
+def _reply(text, tool_calls=(), links=(), proposals=()):
+    return {
+        "text": text,
+        "tool_calls": list(tool_calls),
+        "tools": list(dict.fromkeys(tool_calls)),
+        "links": list(links),
+        "proposals": list(proposals),
+    }
 
 
 def _history_turns(past):
@@ -243,7 +298,8 @@ def _links(urls, text):
 
 
 def answer(question, *, page_url, screen_name, user, history):
-    """質問に答える。返す物は {"text": 答えの字, "tool_calls": [道具の名前...], "links": [URL...]}。
+    """質問に答える。返す物は {"text": 答えの字, "tool_calls": [呼んだ道具の名前...], "tools": [重ねない名前...],
+    "links": [URL...], "proposals": [提案...]}。
 
     例外を外に投げない (API の失敗は日本語の文を text に入れて返す)。user は今は受けるだけ。
     空の質問・長すぎる質問・鍵が無いときは API を呼ばない。道具の往復は MAX_TOOL_ROUNDS 回まで。
