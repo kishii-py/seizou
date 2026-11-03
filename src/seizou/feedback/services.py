@@ -428,6 +428,7 @@ def export_markdown(feedback) -> str:
     """GitHub の Issue に写す文 (題・種類・画面・影響する画面・作品の版・書いた日・困りごと・場面・望む形)。
 
     取引先の名前と金額らしい数は伏せる。会話の記録・書いた人・会社名は入れない。空の節は出さない。
+    画面の絵 (画像の添付ファイル) が 1 枚以上なら、末尾に枚数とファイル名 (伏せ字つき) の 1 行。絵そのものは入れない (世話役が Issue に手で付ける)。0 枚なら今までと同じ文。
     """
     names = _partner_names()
     lines = [
@@ -445,4 +446,8 @@ def export_markdown(feedback) -> str:
         body = _mask(value, names).strip()
         if body:
             lines.extend(["", f"## {heading}", body])
+    shots = screenshots_of(feedback)
+    if shots:
+        files = "・".join(_mask(row.original_name, names).strip() for row in shots)
+        lines.extend(["", f"画面の絵: {len(shots)} 枚 ({files}。絵は世話役が Issue に手で付ける)"])
     return "\n".join(lines) + "\n"

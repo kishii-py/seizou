@@ -3,6 +3,8 @@
 本物の API は呼ばない。storage は tmp_path の下。題と名前は作り物。
 """
 
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -14,6 +16,7 @@ from seizou.attachments import services as attachments_services
 from seizou.feedback import services
 from seizou.feedback.forms import FeedbackForm, ScreenshotsField
 from seizou.feedback.models import Feedback
+from seizou.masters import services as masters_services
 from tests.test_assistant_services import refuse_api
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
@@ -293,3 +296,29 @@ def test_panel_add_returns_to_feedback_detail(client_logged_in, plain):
     section = html[html.index('id="feedback-screenshots"') :]
     assert f'<img src="/attachments/{shot.pk}/download/"' in section
     assert "c.png" in section
+
+
+# ---- 3. Issue の文の末尾の 1 行 ----
+
+
+def test_export_markdown_screenshot_line(client_logged_in, plain):
+    masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, plain)
+    row = services.create_feedback(form_data(), plain)
+    before = services.export_markdown(row)
+    assert "画面の絵" not in before
+
+    attachments_services.add_attachment(row, png("memo.pdf", b"%PDF-1.4"), plain, kind="other")
+    assert services.export_markdown(row) == before
+
+    shot_row = services.create_feedback(
+        form_data(title="絵のある題"), plain, screenshots=[png("作り物の得意先_5,000円.png"), png("b.png")]
+    )
+    text = services.export_markdown(shot_row)
+    line = "画面の絵: 2 枚 (〇〇_〇〇.png・b.png。絵は世話役が Issue に手で付ける)"
+    assert text.splitlines()[-1] == line
+    assert "作り物の得意先" not in text
+    assert "5,000" not in text
+
+    html = html_of(client_logged_in.get(f"/feedback/{shot_row.pk}/"))
+    issue = re.search(r'<textarea id="feedback-issue"[^>]*>(.*?)</textarea>', html, re.S).group(1)
+    assert line in issue
