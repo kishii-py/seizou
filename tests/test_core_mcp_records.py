@@ -8,7 +8,8 @@ tests/test_orders_acceptance.py の形で直に置く)。取引先・部品・�
 import inspect
 import json
 import logging
-from datetime import timedelta
+import uuid
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -21,10 +22,13 @@ from mcp.server.mcpserver import MCPServer
 from seizou.accounts import services as accounts_services
 from seizou.assistant import services as assistant_services
 from seizou.assistant import tools
+from seizou.connect import services as connect_services
+from seizou.connect.models import Inbox
 from seizou.core import access, mcp_tools
 from seizou.core.management.commands import seizou_mcp
 from seizou.feedback import services as feedback_services
 from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
 from tests.test_assistant_services import FAKE_KEY, script, text_reply, tool_reply
 
@@ -35,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "kumo-tests-2611"
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
-NEW_TOOLS = ["list_receipts"]
+NEW_TOOLS = ["list_receipts", "list_acceptances"]
 #: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
 MONEY_TOOLS = ["list_receipts"]
 #: 名札に書かない語
@@ -112,6 +116,61 @@ def purchase_line(user, subcontractor, item, today):
 def receipt(user, purchase_line, today):
     """今日の受入 4 個 (金額 400)。"""
     return purchasing_services.receive(purchase_line, Decimal("4"), today, user, note="作り物の受入")
+
+
+@pytest.fixture
+def customer(user):
+    """作り物の得意先 (締めと支払の欄は tests/test_billing_payment.py の形)。"""
+    return masters_services.create_partner(
+        {
+            "code": "C001",
+            "name": "作り物の得意先",
+            "role": "customer",
+            "closing_day": 20,
+            "payment_month": "next",
+            "payment_day": 25,
+        },
+        user,
+    )
+
+
+def _accept(line, qty, accepted_on):
+    """受注の明細に検収を 1 行付ける。元の届いた注文 (受け入れた物) は受注ごとに 1 行置く
+    (tests/test_orders_acceptance.py の _accept の形)。"""
+    inbox = Inbox.objects.filter(order=line.order).first()
+    if inbox is None:
+        inbox = Inbox.objects.create(
+            message_id=uuid.uuid4(),
+            partner=line.order.customer,
+            kind="order",
+            payload={},
+            status="accepted",
+            order=line.order,
+        )
+    return connect_services.record_acceptance(
+        inbox,
+        line,
+        Decimal(qty),
+        accepted_on,
+        None,
+        message_id=uuid.uuid4(),
+        buyer_order_no="PO-0001",
+        buyer_line_no=line.line_no,
+    )
+
+
+@pytest.fixture
+def accepted_line(user, customer, item, today):
+    """受注 1 件 (明細 1 行) に、今日の検収 3。"""
+    order = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")}],
+        user,
+        order_date=today,
+    )
+    line = order.lines.get()
+    _accept(line, "3", today)
+    return line
 
 
 def account(login_id, **flags):
@@ -266,12 +325,51 @@ def test_run_tool_passes_viewer_to_money_tools(on, manager, receipt, monkeypatch
     assert calls == [("list_receipts", manager)]
 
 
+# --- 検収 ---
+
+
+def test_list_acceptances_rows_and_filters(accepted_line, today):
+    found = _json(mcp_tools.list_acceptances())
+    assert found["ok"] is True
+    assert found["count"] == 1
+    assert "money_hidden" not in found
+    row = found["items"][0]
+    order = accepted_line.order
+    assert row["order_no"] == order.order_no
+    assert row["line_no"] == accepted_line.line_no
+    assert (row["customer_code"], row["customer_name"]) == ("C001", "作り物の得意先")
+    assert (row["part_no"], row["item_name"]) == ("T-100", "作り物の軸")
+    assert row["accepted_on"] == today.isoformat()
+    assert Decimal(row["qty"]) == 3
+    assert (row["buyer_order_no"], row["buyer_line_no"]) == ("PO-0001", accepted_line.line_no)
+    assert datetime.fromisoformat(row["received_at"]).tzinfo is not None
+    assert row["url"] == reverse("orders:order_detail", args=[order.pk])
+
+    _accept(accepted_line, "2", today - timedelta(days=2))
+    assert mcp_tools.list_acceptances()["count"] == 2
+    assert mcp_tools.list_acceptances(days=1)["count"] == 1
+    assert mcp_tools.list_acceptances(order_no=order.order_no, days=1)["count"] == 2
+    assert mcp_tools.list_acceptances(limit=1)["count"] == 1
+
+    missing = mcp_tools.list_acceptances(order_no="NO-SUCH")
+    assert missing["ok"] is False
+    assert "NO-SUCH" in missing["error"]
+    assert _has_japanese(missing["error"])
+    for bad in ({"days": "x"}, {"limit": "x"}):
+        refused = mcp_tools.list_acceptances(**bad)
+        assert refused["ok"] is False, bad
+        assert _has_japanese(refused["error"]), bad
+
+
 # --- 部品の有無・目録 ---
 
 
 def test_tools_refuse_when_part_missing(monkeypatch):
     monkeypatch.setattr(mcp_tools, "_installed", lambda app: False)
-    for app, result in (("purchasing", mcp_tools.list_receipts()),):
+    for app, result in (
+        ("purchasing", mcp_tools.list_receipts()),
+        ("connect", mcp_tools.list_acceptances()),
+    ):
         assert result["ok"] is False, app
         assert app in result["error"], app
         assert _has_japanese(result["error"]), app
@@ -289,6 +387,8 @@ def test_new_tools_are_listed_everywhere():
             assert word not in tools.TOOL_LABELS[name], (name, word)
     assert "検収" in described["list_receipts"]
     assert "発注側" in described["list_receipts"]
+    assert "受入" in described["list_acceptances"]
+    assert "受注側" in described["list_acceptances"]
 
     lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
     for name in NEW_TOOLS:

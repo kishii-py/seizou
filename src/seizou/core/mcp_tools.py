@@ -886,6 +886,55 @@ def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> 
     return _list_receipts(None, po_no, days, limit)
 
 
+def list_acceptances(order_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
+    """検収 (得意先の seizou が受け入れた数の知らせ。受注側。受注の明細ごとに 1 件) の一覧を、検収日の新しい順に返す。受入 (協力企業から受け入れた物の記録 = list_receipts) とは別。
+
+    order_no: 受注番号 (完全一致)。渡すと、その受注の検収の全部 (日数を見ない)。null なら全部の受注。
+    days: 今日から何日前の検収までを出すか (1〜366。既定 30)。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count と items (検収ごとの order_no 受注番号・line_no 明細の行番号・
+    customer_code と customer_name 得意先の取引先コードと名前・part_no 自社品番・item_name 品名・accepted_on 検収日・
+    qty 検収の数・buyer_order_no 相手 (得意先) の発注番号・buyer_line_no 相手の行番号・
+    received_at 知らせが届いた日時・url 受注の詳細の道)。金額は無い。
+    検収の数と出荷済みの数の差は、list_orders の明細の shipped_qty と比べる。
+    ok が偽なら error に、読めなかった引数とその直し方か、部品が入っていないことがある。
+    """
+    if not _installed("connect"):
+        return _refused("取引先とつなぐ部品 (connect) が入っていないので、検収は読めません。")
+    try:
+        span = _read_count(days, "日数 (days)", MAX_DAYS)
+        count = _read_count(limit, "件数 (limit)", MAX_ROWS)
+        order = _order_by_no(order_no) if _text(order_no) else None
+    except _Refusal as exc:
+        return _refused(exc.message)
+    Acceptance = apps.get_model("connect", "Acceptance")
+    acceptances = Acceptance.objects.select_related("order_line__order__customer", "order_line__item")
+    if order is not None:
+        acceptances = acceptances.filter(order_line__order=order)
+    else:
+        acceptances = acceptances.filter(accepted_on__gte=timezone.localdate() - timedelta(days=span))
+    items = []
+    for acceptance in acceptances.order_by("-accepted_on", "-pk")[:count]:
+        line = acceptance.order_line
+        items.append(
+            {
+                "order_no": line.order.order_no,
+                "line_no": line.line_no,
+                "customer_code": line.order.customer.code,
+                "customer_name": line.order.customer.name,
+                "part_no": line.item.part_no,
+                "item_name": line.item.name,
+                "accepted_on": _day(acceptance.accepted_on),
+                "qty": _num(acceptance.qty),
+                "buyer_order_no": acceptance.buyer_order_no,
+                "buyer_line_no": acceptance.buyer_line_no,
+                "received_at": _when(acceptance.received_at),
+                "url": _url("orders:order_detail", line.order_id),
+            }
+        )
+    return {"ok": True, "count": len(items), "items": items}
+
+
 READ_TOOLS = (
     company_info,
     list_screens,
@@ -901,6 +950,7 @@ READ_TOOLS = (
     search_manuals,
     get_manual_body,
     list_receipts,
+    list_acceptances,
 )
 
 

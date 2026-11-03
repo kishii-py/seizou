@@ -39,6 +39,7 @@ TOOL_LABELS = {
     "search_manuals": "マニュアルを探した",
     "get_manual_body": "マニュアルを読んだ",
     "list_receipts": "受入を読んだ",
+    "list_acceptances": "検収を読んだ",
     "create_order": "受注の登録を提案した",
     "ship": "出荷を提案した",
     "plan_step": "計画の置き直しを提案した",
@@ -294,6 +295,26 @@ TOOLS = [
         "input_schema": _schema(
             {
                 "po_no": {"type": "string", "description": "発注番号 (完全一致)。渡すと、その発注の受入の全部 (日数を見ない)。省ける。"},
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": mcp_tools.MAX_DAYS,
+                    "description": f"さかのぼる日数 (1〜{mcp_tools.MAX_DAYS}。省くと 30)。",
+                },
+                "limit": _limit(mcp_tools.MAX_ROWS, 50),
+            }
+        ),
+    },
+    {
+        "name": "list_acceptances",
+        "description": (
+            "検収 (得意先の seizou が受け入れた数の知らせ。受注側) を検収日の新しい順に返す"
+            " (受注番号・行番号・部品・検収の数・相手の発注番号)。"
+            "受入 (協力企業から受け入れた物の記録) は list_receipts。読むだけ。"
+        ),
+        "input_schema": _schema(
+            {
+                "order_no": {"type": "string", "description": "受注番号 (完全一致)。渡すと、その受注の検収の全部 (日数を見ない)。省ける。"},
                 "days": {
                     "type": "integer",
                     "minimum": 1,
