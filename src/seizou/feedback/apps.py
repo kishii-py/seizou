@@ -11,3 +11,7 @@ class FeedbackConfig(AppConfig):
     label = "feedback"
     verbose_name = "フィードバック"
     default_auto_field = "django.db.models.BigAutoField"
+
+    def ready(self):
+        # 書いた本人がログインしたときの「直した」の知らせ (user_logged_in の受け手)。
+        from . import signals  # noqa: F401

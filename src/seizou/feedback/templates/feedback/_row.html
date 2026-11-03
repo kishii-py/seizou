@@ -1,0 +1,16 @@
+{% load seizou_tags %}
+{# フィードバックの一覧の 1 行 (feedback/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Feedback)・columns。 #}
+{# 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link)。状態の列 (列の名前 status) が「直した」の行だけ緑の印にする。class は要素ごとの固定の字。 #}
+<tr id="row-{{ row.pk }}" class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}">
+  {% for cell in row.cells %}
+  {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
+  {% if forloop.parentloop.first %}{% if cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}">{{ cell.value|date:"Y-m-d H:i" }}</a></td>{% else %}<td class="whitespace-nowrap"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>{% endif %}
+  {% elif col.name == "status" and row.obj.status == "fixed" %}<td class="whitespace-nowrap"><span class="badge badge-soft badge-success">{{ cell.value }}</span></td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value|comma }}</td>
+  {% elif cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
+  {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</td>
+  {% else %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endif %}{% endfor %}
+  {% endfor %}
+</tr>
