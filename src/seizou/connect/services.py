@@ -9,6 +9,7 @@
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
+- 届いた注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
 """
 
 from __future__ import annotations
@@ -597,12 +598,14 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         return existing
 
 
-def record_inbox(partner, payload, user, *, message_id=None, received_at=None):
-    """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しのため)。
+def record_inbox(partner, payload, user, *, message_id=None, received_at=None, source=Inbox.SOURCE_DIRECT, extraction=None, sender_name=""):
+    """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しと、見張るフォルダの読み取りのため)。
 
     署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
     user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
     received_at を渡すと、届いた日時をその値にする (timezone 付きの datetime。作り物の種の「届いた日時」のため。渡さなければ今)。同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)。
+    source は入口 (Inbox.SOURCE_CHOICES の値。既定は直接)。読み取り (intake の extract_to_inbox) は元の読み取り (extraction) と読み取った差出人の字 (sender_name。列の長さで切る) を渡す。
+    partner が None (取引先の空の行 = 差出人の確認待ち) でよいのは、入口が読み取りのときだけ。ほかは日本語の ValueError。
     """
     # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
     import datetime
@@ -615,6 +618,13 @@ def record_inbox(partner, payload, user, *, message_id=None, received_at=None):
         not isinstance(received_at, datetime.datetime) or timezone.is_naive(received_at)
     ):
         raise ValueError("届いた日時は timezone 付きの日時にしてください。")
+    if source not in {value for value, _label in Inbox.SOURCE_CHOICES}:
+        raise ValueError(f"入口 {source!r} は使えません。直接 (direct) か読み取り (intake) にしてください。")
+    if partner is None and source != Inbox.SOURCE_INTAKE:
+        raise ValueError("取引先がありません。取引先の空の行は、注文書の読み取り (入口 = 読み取り) からだけ入れます。")
+    # 読み取りの返事の検査 (intake の _check_reply) は差出人の字数を見ないので、列の長さで切る。
+    limit = Inbox._meta.get_field("sender_name").max_length
+    sender_name = sender_name.strip()[:limit] if isinstance(sender_name, str) else ""
     values = {} if received_at is None else {"received_at": received_at}
     if message_id is None:
         message_id = uuid.uuid4()
@@ -627,6 +637,9 @@ def record_inbox(partner, payload, user, *, message_id=None, received_at=None):
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
                 payload=payload,
+                source=source,
+                extraction=extraction,
+                sender_name=sender_name,
                 **values,
             )
     except IntegrityError:
@@ -647,6 +660,9 @@ MESSAGE_NO_LINES = (
 )
 MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから断ってください。"
 MESSAGE_REPLY_SEED = "作り物の種の読み込みなので注文回答を送っていません (相手の記録は相手の種が持つ)。"
+MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。届いた注文の詳細の「差出人を選ぶ」で得意先を選んでから承認してください。"
+MESSAGE_REPLY_INTAKE = "注文書の読み取りから入った注文なので、注文回答は送りません。"
+MESSAGE_SENDER_DIRECT = "受け口から届いた注文の取引先は署名で決まるので、変えられません (R12)。"
 
 
 def accept(inbox, item_mapping, user, *, send=True):
@@ -658,13 +674,22 @@ def accept(inbox, item_mapping, user, *, send=True):
     受け入れ済みの 2 回目は RuleViolation("R11")、断った物と形の違う物は日本語の ValueError。
     得意先の役でない取引先は create_order の ValueError がそのまま出る。返す物は作った Order。
     send が偽なら注文回答を送らず (送る口を呼ばない)、番号も付けず、返事の欄に MESSAGE_REPLY_SEED を書く (作り物の種の読み込みのため)。
+    取引先の空の行 (差出人の確認待ち) は、表に書く前に MESSAGE_NO_SENDER の ValueError で断る (choose_sender で選んでから)。
+    読み取りの行 (入口 = 読み取り) は、単価の無い明細を品目の標準単価に、注文日が無ければ届いた日にし、受注の入口を「読み取り」にする。
+    承認した日時 (accepted_at) を状態と受注と同じトランザクションで書く。
     """
+    # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
+    from django.utils import timezone
+
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.status == Inbox.STATUS_ACCEPTED:
             raise RuleViolation("R11", MESSAGE_ALREADY_ACCEPTED)
         if locked.status == Inbox.STATUS_REJECTED:
             raise ValueError(MESSAGE_ACCEPT_REJECTED)
+        if locked.partner_id is None:
+            raise ValueError(MESSAGE_NO_SENDER)
+        intake_row = locked.source == Inbox.SOURCE_INTAKE
 
         payload = locked.payload if isinstance(locked.payload, dict) else {}
         raw_lines = payload.get("lines")
@@ -683,12 +708,22 @@ def accept(inbox, item_mapping, user, *, send=True):
             item = items[part_no]
             unit = raw.get("unit")
             note = raw.get("note")
+            if intake_row and raw.get("unit_price") is None:
+                # 読み取りの単価の無い明細は品目の標準単価 (intake の _unit_price と同じ扱い。intake の関数は呼ばない)。
+                if not item.standard_price:
+                    raise ValueError(
+                        f"品番 {part_no} の単価が、注文書にも部品マスターの標準単価にもありません。"
+                        "部品マスターに標準単価を入れてから承認してください。"
+                    )
+                unit_price = item.standard_price
+            else:
+                unit_price = _payload_decimal(raw.get("unit_price"), f" {number} 行目の単価")
             lines.append(
                 {
                     "item": item,
                     "qty": _payload_decimal(raw.get("qty"), f" {number} 行目の数量"),
                     "unit": unit if isinstance(unit, str) and unit else item.unit,
-                    "unit_price": _payload_decimal(raw.get("unit_price"), f" {number} 行目の単価"),
+                    "unit_price": unit_price,
                     "due_date": _payload_date(raw.get("due_date"), f" {number} 行目の納期"),
                     "note": note if isinstance(note, str) else "",
                     "customer_part_no": part_no,
@@ -696,6 +731,9 @@ def accept(inbox, item_mapping, user, *, send=True):
             )
 
         order_date = _payload_date(payload.get("order_date"), "発注日")
+        if order_date is None and intake_row:
+            # 読み取りの行で注文日が無ければ届いた日 (intake の accept_extracted の「読んだ日」と同じ扱い)。
+            order_date = timezone.localtime(locked.received_at).date()
         if order_date is None:
             raise ValueError(
                 "注文のデータに発注日がありません。この注文は断り、送る側に送り直してもらってください。"
@@ -707,15 +745,16 @@ def accept(inbox, item_mapping, user, *, send=True):
             user,
             order_date=order_date,
             customer_order_no=order_no if isinstance(order_no, str) else "",
-            source="inbox",
+            source="intake" if intake_row else "inbox",
         )
         locked.status = Inbox.STATUS_ACCEPTED
         locked.order = order
+        locked.accepted_at = timezone.now()
         if send:
-            locked.save(update_fields=["status", "order"])
+            locked.save(update_fields=["status", "order", "accepted_at"])
         else:
             locked.reply_response = MESSAGE_REPLY_SEED
-            locked.save(update_fields=["status", "order", "reply_response"])
+            locked.save(update_fields=["status", "order", "accepted_at", "reply_response"])
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
     if send:
@@ -747,6 +786,31 @@ def reject(inbox, reason, user):
     return locked
 
 
+def choose_sender(inbox, partner, user):
+    """差出人の確認待ちの届いた注文 (入口 = 読み取り) に、差出人の得意先を選ぶ。返す物は Inbox。
+
+    選べるのは入口が読み取りで状態が「届いた」の行だけ。取引先が当たった行の付け直しもできる (名前の当て違いを直すため)。
+    入口が直接の行は署名で取引先が決まるので断る (R12)。得意先でない取引先も断る。誤りは日本語の ValueError。
+    user は記録のために受ける。
+    """
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.source == Inbox.SOURCE_DIRECT:
+            raise ValueError(MESSAGE_SENDER_DIRECT)
+        if locked.status != Inbox.STATUS_RECEIVED:
+            raise ValueError("差出人を選べるのは「届いた」の注文だけです。")
+        if partner is None:
+            raise ValueError("差出人の取引先を選んでください。")
+        if not partner.is_customer:
+            raise ValueError(
+                f"取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
+            )
+        locked.partner = partner
+        locked.save(update_fields=["partner"])
+    logger.info("差出人を選んだ: 届いた注文 %s 取引先 %s", locked.pk, partner.code)
+    return locked
+
+
 MESSAGE_REPLY_BEFORE_DECISION = (
     "承認か断りをする前の届いた注文には、注文回答を送れません。受け入れるか断ってから送ってください。"
 )
@@ -762,6 +826,7 @@ def send_reply(inbox, user):
     - 送れるのは、種類が注文で、受け入れたか断った後の行だけ。それ以外は日本語の ValueError。
     - 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
     - つながりは届いた注文の取引先の、向き「送る」の物。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - 読み取りの行 (入口 = 読み取り) は相手へ送らず、返事の欄に MESSAGE_REPLY_INTAKE を書く。
     - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order と同じ _deliver。
     - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (承認と断りは成立する)。
       返事は reply_response に書き、相手が受け取ったときだけ reply_sent_at を書く。
@@ -782,12 +847,17 @@ def send_reply(inbox, user):
             locked.save(update_fields=["reply_message_id"])
     message_id = locked.reply_message_id
 
-    connection = (
-        Connection.objects.filter(partner=locked.partner, direction=Connection.DIRECTION_SEND)
-        .order_by("pk")
-        .first()
-    )
-    if connection is None:
+    # 読み取りの行は相手の seizou とつながっていないので、つながりを引かず HTTP を送らない。
+    connection = None
+    if locked.source != Inbox.SOURCE_INTAKE:
+        connection = (
+            Connection.objects.filter(partner=locked.partner, direction=Connection.DIRECTION_SEND)
+            .order_by("pk")
+            .first()
+        )
+    if locked.source == Inbox.SOURCE_INTAKE:
+        reply, kind = MESSAGE_REPLY_INTAKE, "intake"
+    elif connection is None:
         reply, kind = MESSAGE_REPLY_NO_CONNECTION, "no_connection"
     else:
         accepted = locked.status == Inbox.STATUS_ACCEPTED
@@ -918,7 +988,8 @@ def send_shipping_notice(shipment, user):
 
     # 届いた注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
     inbox = getattr(order, "inbox_message", None)
-    if inbox is None:
+    # 読み取りの行から作った受注は、相手の seizou とつながっていないので送らない (出荷の詳細の送り直しもここを通る)。
+    if inbox is None or inbox.source != Inbox.SOURCE_DIRECT:
         return shipping_services.record_notice_response(current, MESSAGE_SHIPPING_NOT_EDI_ORDER, user)
     message_id = shipping_services.assign_notice_number(current, user)
 
