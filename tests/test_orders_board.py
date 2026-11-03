@@ -501,7 +501,7 @@ def test_issue_item_follows_write_permission(settings, client, user, customer, i
     denied = row_for(user)
     assert issue_href not in denied
     assert "指示書を発行する" not in denied
-    assert ship_href in denied
+    assert ship_href not in denied
     assert issue_href in row_for(admin)
 
 
