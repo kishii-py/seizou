@@ -1221,6 +1221,10 @@ def _create_order(user, customer_code, lines, order_date, customer_order_no, con
     if user is None:
         return _refused(NO_USER_MESSAGE)
     try:
+        access.require_write(user, WRITE_ACTIONS["create_order"])
+    except access.AccessDenied as exc:
+        return _refused(exc.message, exc.code)
+    try:
         customer = _partner_by_code(customer_code)
         line_dicts = _order_lines(lines)
         day = _read_date(order_date, "受注日 (order_date)")
@@ -1250,6 +1254,10 @@ def _create_order(user, customer_code, lines, order_date, customer_order_no, con
 def _ship(user, order_no, line_no, qty, shipped_at, note, confirm) -> dict[str, Any]:
     if user is None:
         return _refused(NO_USER_MESSAGE)
+    try:
+        access.require_write(user, WRITE_ACTIONS["ship"])
+    except access.AccessDenied as exc:
+        return _refused(exc.message, exc.code)
     try:
         line = _order_line(order_no, line_no)
         amount = _read_decimal(qty, "数量 (qty)")
@@ -1286,6 +1294,10 @@ def _ship(user, order_no, line_no, qty, shipped_at, note, confirm) -> dict[str, 
 def _plan_step(user, workorder_no, process_code, start, end, confirm) -> dict[str, Any]:
     if user is None:
         return _refused(NO_USER_MESSAGE)
+    try:
+        access.require_write(user, WRITE_ACTIONS["plan_step"])
+    except access.AccessDenied as exc:
+        return _refused(exc.message, exc.code)
     try:
         step = _workorder_step(workorder_no, process_code)
         first = _read_optional_date(start, "開始日 (start)")
@@ -1331,7 +1343,7 @@ def write_tools(user) -> tuple:
         単位は部品の単位を写す。order_date: 受注日 (YYYY-MM-DD)。customer_order_no: 得意先の注文番号 (任意)。
         confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
         返す物: order_no 受注番号・url 詳細の道・line_count 明細の数。
-        ok が偽のとき: error (と code 決まりの番号) は断りの理由で、保存していない。
+        ok が偽のとき: error (と code 決まりの番号。権限の判定で断るときは code が「権限」) は断りの理由で、保存していない。
         warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
         """
         return _create_order(user, customer_code, lines, order_date, customer_order_no, confirm)
@@ -1350,7 +1362,7 @@ def write_tools(user) -> tuple:
         note: 備考 (任意)。confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
         返す物: shipment_no 出荷番号・order_no・line_no・status と status_label 受注の今の状態・
         remaining_qty その明細の残・url 受注の詳細の道。
-        ok が偽のとき: error (と code 決まりの番号。R01 受注より多い出荷・R05 取消の受注 など) は断りの理由で、保存していない。
+        ok が偽のとき: error (と code 決まりの番号。R01 受注より多い出荷・R05 取消の受注 など。権限の判定で断るときは code が「権限」) は断りの理由で、保存していない。
         warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
         """
         return _ship(user, order_no, line_no, qty, shipped_at, note, confirm)
@@ -1368,7 +1380,7 @@ def write_tools(user) -> tuple:
         start と end: 開始日と終了日 (YYYY-MM-DD)。両方を空の字にすると未計画に戻す。
         confirm: 知らせ (warnings) を人が確かめた後だけ true にする。
         返す物: wo_no 指示書番号・process_code・start・end (未計画なら null)・url 指示書の詳細の道。
-        ok が偽のとき: error (と code 決まりの番号) は断りの理由で、保存していない。
+        ok が偽のとき: error (と code 決まりの番号。権限の判定で断るときは code が「権限」) は断りの理由で、保存していない。
         warnings があれば知らせを人に見せ、人が確かめてから同じ引数に confirm=true で呼び直す。
         """
         return _plan_step(user, workorder_no, process_code, start, end, confirm)
