@@ -1,0 +1,54 @@
+{% extends "core/form.html" %}
+{% load seizou_icons %}
+{# アカウントの発行と編集: core の入力の画面に、権限の欄を助ける小さな JS を足す。 #}
+{# まとめ (マスター編集・伝票編集) に check を入れると、中の種類に check が入って薄く (disabled) なる。外すと元に戻る。 #}
+{# 部署に check を入れると、その部署の既定の権限に check が入る (部署を外しても権限は残る)。 #}
+{# JS が動かなくても、まとめの名前は services が中の種類に開いて判定する。 #}
+{% block actions %}{{ block.super }}{% if object %}<a class="btn btn-ghost text-error" href="{% url 'accounts:access_delete' object.pk %}">{% icon "x" "size-4" %}削除</a>{% endif %}{% endblock %}
+{% block content %}{{ block.super }}
+{{ form.script_data|json_script:"access-data" }}
+<script>
+(function () {
+  var source = document.getElementById("access-data");
+  if (!source) return;
+  var data = JSON.parse(source.textContent);
+  function boxes(name) {
+    return Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"][name="' + name + '"]'));
+  }
+  var permissions = boxes("permissions");
+  function permission(value) {
+    return permissions.filter(function (input) { return input.value === value; })[0];
+  }
+  function applyGroups() {
+    var locked = {};
+    Object.keys(data.groups).forEach(function (group) {
+      var box = permission(group);
+      if (box && box.checked) data.groups[group].forEach(function (kind) { locked[kind] = true; });
+    });
+    permissions.forEach(function (input) {
+      if (data.groups[input.value]) return;
+      if (locked[input.value]) {
+        if (!input.disabled) input.dataset.before = input.checked ? "1" : "";
+        input.checked = true;
+        input.disabled = true;
+      } else if (input.disabled) {
+        input.disabled = false;
+        input.checked = input.dataset.before === "1";
+      }
+    });
+  }
+  permissions.forEach(function (input) { input.addEventListener("change", applyGroups); });
+  boxes("departments").forEach(function (input) {
+    input.addEventListener("change", function () {
+      if (!input.checked) return;
+      (data.departments[input.value] || []).forEach(function (name) {
+        var box = permission(name);
+        if (box && !box.disabled) box.checked = true;
+      });
+      applyGroups();
+    });
+  });
+  applyGroups();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,119 @@
+"""アカウント管理の入力 (02 の 7 節)。form は欄と、services の引数 (service_kwargs) を作るだけ。
+
+表を読むのは __init__ の中だけ (部署の候補と、画面の小さな script が読む辞書)。書くのは services だけ (R13)。
+"""
+
+from django import forms
+
+from seizou.core import access
+
+from .models import Department
+
+PASSWORD_HELP_NEW = "8 字以上。よくある物・数字だけ・ログイン ID に似た物は使えません。"
+PASSWORD_HELP_EDIT = PASSWORD_HELP_NEW + "空のままなら変わりません。"
+CHECKBOX_CSS = "checkbox checkbox-sm"
+
+
+class Checkboxes(forms.CheckboxSelectMultiple):
+    """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。"""
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context["widget"]["attrs"].pop("class", None)
+        return context
+
+
+def permission_choices() -> list[tuple[str, str]]:
+    """権限の欄の選び (まとめ 2 つ → 種類 10。種類には中身の注記を添える)。"""
+    choices = []
+    for name in access.PERMISSION_NAMES:
+        label = access.permission_label(name)
+        note = access.KIND_NOTES.get(name)
+        choices.append((name, f"{label} ({note})" if note else label))
+    return choices
+
+
+class AccountForm(forms.Form):
+    """アカウントの発行と編集。instance (Access) があれば編集 (ログイン ID は変えない)。"""
+
+    login_id = forms.CharField(label="ログイン ID", max_length=150)
+    password = forms.CharField(label="パスワード", strip=False, widget=forms.PasswordInput(render_value=False))
+    departments = forms.ModelMultipleChoiceField(
+        label="部署",
+        queryset=Department.objects.none(),
+        required=False,
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="部署に check を入れると、その部署の既定の権限に check が入ります。",
+    )
+    permissions = forms.MultipleChoiceField(
+        label="権限",
+        choices=(),
+        required=False,
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="まとめ (マスター編集・伝票編集) を付けると、中の種類が全部付きます。",
+    )
+    see_money = forms.BooleanField(label="金額の閲覧", required=False)
+    full_control = forms.BooleanField(label="フルコントロール", required=False)
+    manage_accounts = forms.BooleanField(label="アカウント管理", required=False)
+    is_active = forms.BooleanField(label="使用中", required=False, initial=True)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        self.instance = instance
+        self.creating = instance is None
+        if instance is not None:
+            kwargs["initial"] = {
+                **(kwargs.get("initial") or {}),
+                "login_id": instance.user.get_username(),
+                "departments": [d.pk for d in instance.departments.all()],
+                "permissions": list(instance.write_permissions or []),
+                "see_money": instance.see_money,
+                "full_control": instance.full_control,
+                "manage_accounts": instance.manage_accounts,
+                "is_active": instance.user.is_active,
+            }
+        super().__init__(*args, **kwargs)
+        departments = list(Department.objects.all())
+        self.fields["departments"].queryset = Department.objects.all()
+        self.fields["permissions"].choices = permission_choices()
+        password = self.fields["password"]
+        if self.creating:
+            password.help_text = PASSWORD_HELP_NEW
+        else:
+            login_id = self.fields["login_id"]
+            login_id.disabled = True
+            login_id.required = False
+            password.required = False
+            password.help_text = PASSWORD_HELP_EDIT
+        #: 画面の小さな script が読む辞書 (まとめの中の種類と、部署ごとの既定の権限)
+        self.script_data = {
+            "groups": {name: list(kinds) for name, (_label, kinds) in access.GROUPS.items()},
+            "departments": {str(d.pk): list(d.default_permissions or []) for d in departments},
+        }
+
+    def flags(self) -> dict:
+        data = self.cleaned_data
+        return {key: bool(data.get(key)) for key in ("see_money", "full_control", "manage_accounts", "is_active")}
+
+    def service_kwargs(self) -> dict:
+        data = self.cleaned_data
+        departments = list(data.get("departments") or [])
+        permissions = list(data.get("permissions") or [])
+        if self.creating:
+            return {
+                "login_id": data["login_id"],
+                "password": data["password"],
+                "departments": departments,
+                "permissions": permissions,
+                "flags": self.flags(),
+            }
+        return {
+            "data": {"departments": departments, "permissions": permissions, **self.flags()},
+            "password": data.get("password") or None,
+        }
+
+
+class AccountDeleteForm(forms.Form):
+    """アカウントの削除の確認 (欄なし)。"""
+
+    def service_kwargs(self) -> dict:
+        return {}

@@ -33,6 +33,8 @@ ORDER_KEYS = ("customer", "order_date", "customer_order_no", "note")
 LINES_PREFIX = "lines"
 #: 選ぶ欄の空の選択肢の字 (選ぶ欄の JS が載る前と、JS が無いときに見える)
 EMPTY_LABEL = "選んでください"
+#: 金額の閲覧が無い人 (権限の判定の on) が、直す画面で明細の行を足したときの欄の外の誤り
+NEW_LINE_WITHOUT_MONEY = "金額の閲覧の権限が無い方は、明細の行を足せません。足すときはアカウント管理の担当者に頼んでください。"
 
 
 def hidden_names() -> set[str]:
@@ -62,16 +64,29 @@ class OrderLineForm(forms.Form):
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(label="備考", max_length=500, required=False)
 
-    def __init__(self, *args, order=None, **kwargs):
+    def __init__(self, *args, order=None, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.order = order
+        self.hide_money = hide_money
         if order is not None:
             # 指せるのはこの受注の明細だけ (ほかの受注の明細の番号が来たら欄の誤り)。
             self.fields["order_line"].queryset = OrderLine.objects.filter(order=order)
         for name in hidden_names():
             self.fields.pop(name, None)
+        if hide_money:
+            # 金額の閲覧が無い人には単価の欄を出さない。line() は欄に無い鍵を渡さないので、既にある明細の単価は今のまま。
+            self.fields.pop("unit_price", None)
         # 入力の土台は外側の form の欄にだけ見た目の class を付けるので、行の欄には同じ関数で付ける。
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", widget_css(field.widget))
+
+    def clean(self):
+        data = super().clean()
+        # 単価の欄の無い人が直す画面で行を足すと、services が新しい明細の単価を要るので、ここで断る (消す印の行は除く)。
+        if self.hide_money and self.order is not None and not data.get("DELETE"):
+            if data.get("order_line") is None and self.has_changed():
+                raise forms.ValidationError(NEW_LINE_WITHOUT_MONEY)
+        return data
 
     def line(self) -> dict | None:
         """services に渡す明細の辞書。消す印の行と空の行は None。"""
@@ -101,7 +116,7 @@ class OrderForm(ServiceModelForm):
             "order_date": _date_input(),
         }
 
-    def __init__(self, data=None, files=None, *args, instance=None, **kwargs):
+    def __init__(self, data=None, files=None, *args, instance=None, hide_money=False, **kwargs):
         super().__init__(data, files, *args, instance=instance, **kwargs)
         self.creating = instance is None
         self.fields["customer"].empty_label = EMPTY_LABEL
@@ -122,7 +137,7 @@ class OrderForm(ServiceModelForm):
             data=data,
             prefix=LINES_PREFIX,
             initial=[self.line_initial(row) for row in rows],
-            form_kwargs={"order": None if self.creating else instance},
+            form_kwargs={"order": None if self.creating else instance, "hide_money": hide_money},
         )
 
     @staticmethod

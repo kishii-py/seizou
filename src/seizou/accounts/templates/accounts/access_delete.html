@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# アカウントの削除の確認: 1 枚のカード。削除は行を消さず、ログイン ID に印を付けて元の ID を空ける (services の delete_account)。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-center gap-2">{% icon "alert" "size-5 text-error" %}<span>アカウント「<span class="font-mono font-medium">{{ object.user.get_username }}</span>」を削除します。</span></p>
+  <p class="mt-2 text-base-content/70">記録の名前は残り、同じログイン ID は空きます。削除したアカウントは元に戻せません。</p>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'accounts:access_update' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}

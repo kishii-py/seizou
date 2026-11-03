@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
+from seizou.core import access
 from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
@@ -58,6 +59,9 @@ class InvoiceCancelView(BaseFormView):
 @login_required
 def invoice_print(request, pk):
     """印刷用の HTML (新しいタブで開き、ブラウザで印刷する)。"""
+    refused = access.refuse_money_document(request, "請求書")
+    if refused is not None:
+        return refused
     invoice = get_object_or_404(Invoice, pk=pk)
     return HttpResponse(render_html(REPORT_TEMPLATE, invoice_context(invoice)))
 
@@ -65,6 +69,9 @@ def invoice_print(request, pk):
 @login_required
 def invoice_pdf(request, pk):
     """PDF。作れない環境では、印刷用の HTML の上に知らせを出して返す。"""
+    refused = access.refuse_money_document(request, "請求書")
+    if refused is not None:
+        return refused
     invoice = get_object_or_404(Invoice, pk=pk)
     context = invoice_context(invoice)
     try:

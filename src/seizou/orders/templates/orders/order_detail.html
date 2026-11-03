@@ -31,8 +31,8 @@
         <td class="whitespace-nowrap">{% master_link line.item %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
         <td class="whitespace-nowrap">{{ line.unit }}</td>
-        <td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|comma }}</td>
-        <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|comma }}{% endif %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
         <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.shipped_total|comma }}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{% if line.remaining_total < 0 %}<span class="text-error">{{ line.remaining_total|comma }}</span>{% else %}{{ line.remaining_total|comma }}{% endif %}</td>

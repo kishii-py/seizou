@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from seizou.core import access
 from seizou.core import reports
 from seizou.core.exceptions import RuleError
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, Notice
@@ -96,6 +97,7 @@ def plan_place(request):
     if form.is_valid():
         data = form.cleaned_data
         try:
+            access.require_write(request.user, "workorders.plan_step")
             services.plan_step(data["step"], data["start"], data["end"], request.user)
         except RuleError as exc:
             notice = exc

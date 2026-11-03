@@ -40,5 +40,10 @@ settings:
   hidden_fields: []
   # 生産計画を立てるか (問 3。true = 生産計画の画面を使う / false = 使わない)
   production_plan: true
+  # 権限の判定 (部署・編集の権限・金額の閲覧。"off" = 使わない / "log" = 記録だけ / "on" = 有効)。値は引用符で囲む
+  access_control:
+    department: "on"
+    write: "on"
+    money: "on"
 # 開発サーバーのポート
 port: 8001

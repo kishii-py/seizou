@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.urls import reverse
@@ -38,7 +39,12 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     assert "sample_co / 8010" in body
     assert reverse("connect:connection_list") in body and "取引先との接続" in body
     assert reverse("attachments:attachment_list") in body and "添付ファイルの一覧" in body
-    assert "アカウント管理" in body and "まだ入っていない" in body
+    # アカウント管理の入口: 部品 accounts (N36) が入っていれば一覧への link、無ければ「まだ入っていない」の案内
+    assert "アカウント管理" in body
+    if apps.is_installed("seizou.accounts"):
+        assert reverse("accounts:access_list") in body
+    else:
+        assert "まだ入っていない" in body
     assert "ない (読み取りとチャットは使えない)" in body
     assert "決めていない (書く道具は断る)" in body
     # データベースの名前は CI の postgres の組でも通るよう、つないでいる物から決める (sqlite と postgresql の 2 つ)

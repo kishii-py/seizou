@@ -32,8 +32,8 @@
           <td>{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>
           <td>{{ line.unit }}</td>
-          <td class="text-right tabular-nums">{{ line.unit_price|comma }}</td>
-          <td class="text-right tabular-nums">{{ line.amount|comma }}</td>
+          <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|comma }}{% endif %}</td>
+          <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
         </tr>

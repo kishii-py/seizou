@@ -18,6 +18,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
+from seizou.core import access
 from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
@@ -137,6 +138,7 @@ def deliverynote_print(request, pk):
     context = {
         **delivery_note_context(note),
         "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+        "hide_money": not access.can_see_money(request.user),  # 金額の閲覧が無い人 (on) には単価と金額の枡を空で出す
     }
     return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, context))
 
@@ -148,6 +150,7 @@ def deliverynote_pdf(request, pk):
     context = {
         **delivery_note_context(note),
         "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+        "hide_money": not access.can_see_money(request.user),  # 金額の閲覧が無い人 (on) には単価と金額の枡を空で出す
     }
     try:
         data = reports.render_pdf(DELIVERY_NOTE_TEMPLATE, context)

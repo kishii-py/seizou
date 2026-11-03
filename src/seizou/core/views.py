@@ -49,6 +49,7 @@ from django.utils import timezone
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
+from seizou.core import access
 from seizou.core import checks
 from seizou.core import dashboard
 from seizou.core import fields as company_fields
@@ -179,6 +180,7 @@ class ScreenMixin(LoginRequiredMixin):
     screen_name: str = ""
     screen_help: str = ""
     screen_icon: str = ""  # 題の横の絵の名前 (seizou_icons)。空なら app の絵。core 自身の画面 (検索など) が使う
+    opens_by_department = True  # 一覧と入力と盤は部署で開けるかを見る。詳細・小窓・候補の口は見ない
 
     @classmethod
     def screen_app(cls) -> str:
@@ -187,6 +189,10 @@ class ScreenMixin(LoginRequiredMixin):
         return parts[-2] if len(parts) >= 2 else parts[-1]
 
     def dispatch(self, request, *args, **kwargs):
+        denied = access.screen_denied(request, self.screen_app(), by_department=self.opens_by_department)
+        if denied is not None:
+            add_never_cache_headers(denied)
+            return denied
         response = super().dispatch(request, *args, **kwargs)
         # ログアウトの後にブラウザの戻るで画面の中身が見えないように、画面の応答は保存させない (never_cache と同じ)。
         # 静的なファイル (static) は画面でないので、ここを通らない。
@@ -307,6 +313,8 @@ class BaseListView(ScreenMixin, ListView):
         cells = []
         for spec in specs:
             value = display_value(obj, spec.name)
+            if access.is_money_name(spec.name) and not access.can_see_money(self.request.user):
+                value = access.MASK
             master = value if is_master(value) else None
             # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
             if master is None and spec.name == "name" and is_master(obj):
@@ -333,6 +341,8 @@ class BaseListView(ScreenMixin, ListView):
         if not sums:
             return None
         agg = queryset.aggregate(**sums)
+        if any(access.is_money_name(name) for name in agg) and not access.can_see_money(self.request.user):
+            agg = {name: access.MASK if access.is_money_name(name) else value for name, value in agg.items()}
         return [{"value": agg.get(spec.name), "numeric": spec.name in sums} for spec in specs]
 
     def search_hint(self) -> str:
@@ -363,6 +373,8 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_page"] = self.query_without("page", "format")
         context["query_without_sort"] = self.query_without("sort", "page", "format")
         context["create_url"] = model_url(self.model, "create")
+        if context["create_url"] and not access.can_write_model(self.request.user, self.model, "create"):
+            context["create_url"] = None
         context["rows_template_names"] = self.rows_template_names()
         return context
 
@@ -397,6 +409,8 @@ class BaseListView(ScreenMixin, ListView):
 
     def csv_response(self, context) -> HttpResponse:
         specs = context["columns"]
+        if not access.can_see_money(self.request.user):
+            specs = [s for s in specs if not access.is_money_name(s.name)]
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         filename, fallback = self.csv_filename()
         response["Content-Disposition"] = (
@@ -414,6 +428,7 @@ class BaseDetailView(ScreenMixin, DetailView):
     """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。"""
 
     tabs: tuple = ()
+    opens_by_department = False
     template_name = "core/detail.html"
 
     def field_items(self, obj) -> list[dict]:
@@ -424,6 +439,8 @@ class BaseDetailView(ScreenMixin, DetailView):
             if f.primary_key or f.name in ("password",) or f.name in hidden:
                 continue
             value = display_value(obj, f.name)
+            if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
+                value = None
             is_file = isinstance(f, models.FileField)
             items.append(
                 {
@@ -446,6 +463,8 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["files"] = [item for item in fields if item["file"]]
         context["tabs"] = [self.tab_for(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
+        if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
+            context["edit_url"] = None
         context["list_url"] = model_url(obj.__class__, "list")
         context["status"] = self.status_for(obj)
         return context
@@ -503,6 +522,8 @@ class BaseFormView(ScreenMixin, FormView):
         kwargs = super().get_form_kwargs()
         if self.object is not None and _accepts_instance(self.form_class):
             kwargs["instance"] = self.object
+        if access.takes_hide_money(self.form_class) and not access.can_see_money(self.request.user):
+            kwargs["hide_money"] = True
         return kwargs
 
     def get_form(self, form_class=None):
@@ -546,6 +567,10 @@ class BaseFormView(ScreenMixin, FormView):
         return self.get_service()(*args, user=self.request.user, **kwargs)
 
     def form_valid(self, form):
+        try:
+            access.require_write(self.request.user, self.get_action())
+        except access.AccessDenied as exc:
+            return self.render_to_response(self.get_context_data(form=form, notice=exc))
         kwargs = self.service_kwargs(form)
         check_data = {**form.cleaned_data, **{k: v for k, v in kwargs.items() if k != "data"}, **kwargs.get("data", {})}
         if self.object is not None:
@@ -661,6 +686,7 @@ class BaseModalView(ScreenMixin, DetailView):
 
     modal_fields: int = 8
     tabs: tuple = ()
+    opens_by_department = False
 
     def get(self, request, *args, **kwargs):
         if not request.headers.get("HX-Request"):
@@ -684,6 +710,8 @@ class BaseModalView(ScreenMixin, DetailView):
             if f.primary_key or f.name in hidden:
                 continue
             value = display_value(obj, f.name)
+            if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
+                value = None
             if isinstance(f, models.FileField):
                 info = file_info(value)
                 value = info["name"] if info else ""
@@ -704,6 +732,7 @@ class BaseSelectView(ScreenMixin, View):
     model = None
     search_fields: tuple = ()
     per_page = 30
+    opens_by_department = False
 
     def get_queryset(self):
         return self.model._default_manager.all()
@@ -881,6 +910,10 @@ class HomeView(ScreenMixin, TemplateView):
         context["orders_url"] = url_or_none("orders:order_list")
         context["alerts"] = dashboard.due_alerts()
         context["trend"] = dashboard.monthly_trend()
+        if not access.can_see_money(self.request.user):
+            context["recent_orders"] = access.without_totals(context["recent_orders"])
+            if "trend" in context:
+                context["trend"] = None
         return context
 
 

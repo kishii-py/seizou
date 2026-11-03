@@ -34,6 +34,7 @@ from django.apps import apps
 from django.db import DatabaseError
 from django.views.generic import TemplateView
 
+from seizou.core import access
 from seizou.core.views import ScreenMixin, is_master, is_negative, load_model, screen_value
 from seizou.parts import PARTS
 
@@ -51,6 +52,7 @@ class SearchColumn:
     numeric: bool = False
     code: bool = False
     date: bool = False
+    money: bool = False  # 金額の列。金額の閲覧が無い人には「—」
 
 
 @dataclass(frozen=True)
@@ -126,13 +128,15 @@ def as_column(column) -> SearchColumn:
     return SearchColumn(column) if isinstance(column, str) else column
 
 
-def display_section(section: SearchSection) -> dict:
+def display_section(section: SearchSection, *, hide_money=False) -> dict:
     """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url"}、1 枡 = _rows.html と同じ印の辞書。"""
     columns = [as_column(c) for c in section.columns]
     rows = []
     for row in section.rows:
         cells = []
         for column, value in zip(columns, row.cells):
+            if hide_money and column.money:
+                value = access.MASK
             cells.append(
                 {
                     "value": screen_value(value),
@@ -192,7 +196,7 @@ class SearchView(ScreenMixin, TemplateView):
                 "kind_labels": "・".join(m.LABEL for m in modules),
                 "customers": customers,
                 "partner": partner_value,
-                "sections": [display_section(s) for s in sections],
+                "sections": [display_section(s, hide_money=not access.can_see_money(self.request.user, record=False)) for s in sections],
                 "limit": LIMIT,
             }
         )

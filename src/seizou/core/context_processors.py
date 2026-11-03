@@ -107,6 +107,7 @@ def sections(items: list[dict]) -> list[dict]:
 
 
 def seizou(request) -> dict:
+    from seizou.core import access
     from seizou.core import services
 
     try:
@@ -118,6 +119,7 @@ def seizou(request) -> dict:
         company_name = "seizou"
         theme = "light"
     part_items = menu()
+    part_items = access.visible_menu(getattr(request, "user", None), part_items)
     items = [*core_menu(), *part_items]
     mark_active(items, getattr(request, "path", "") or "")
     return {
@@ -132,6 +134,7 @@ def seizou(request) -> dict:
             # 存在する部品の短い名前 (例 "masters")。テンプレートが {% if "attachments" in seizou.parts %} で、
             # 入っている部品の枠だけを include するために使う。
             "parts": part_names(),
+            "hide_money": access.hides_money(getattr(request, "user", None)),  # 金額の閲覧が無い人 (on) に金額の枡を隠す印
         }
     }
 
