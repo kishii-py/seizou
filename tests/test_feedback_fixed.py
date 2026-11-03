@@ -136,3 +136,88 @@ def test_fixed_status_in_choices_and_filter():
     assert services.list_filter({"status": "fixed"}) == {"status": "fixed", "kind": ""}
     assert services.FIXED_NOTE_MAX_CHARS == 200
     assert Feedback.detail_hidden_fields == ("transcript", "fixed_at", "fixed_note", "fixed_seen_at")
+
+
+# ---- 2. 詳細の「直したと記録する」と「直しました」の節 ----
+
+
+def test_detail_fixed_form_only_for_manager(client, plain, manager):
+    row = make(plain)
+
+    client.force_login(manager)
+    html = html_of(client.get(f"/feedback/{row.pk}/"))
+    assert f'action="/feedback/{row.pk}/fixed/"' in html
+    assert 'name="fixed_note"' in html and 'maxlength="200"' in html
+    assert "直したと記録する" in html
+    assert 'id="feedback-fixed"' not in html
+
+    client.force_login(plain)
+    html = html_of(client.get(f"/feedback/{row.pk}/"))
+    assert '/fixed/"' not in html
+    assert "直したと記録する" not in html
+
+
+def test_fixed_endpoint_and_detail_section(client, plain, other, manager):
+    row = make(plain)
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(plain)
+    response = client.post(f"/feedback/{row.pk}/fixed/", {"fixed_note": "版 0.4.0 の受注の一覧"})
+    assert response.status_code == 302 and response["Location"] == detail
+    html = html_of(client.get(detail))
+    assert "bg-error" in html and "アカウント管理の担当者だけ" in html
+    row.refresh_from_db()
+    assert row.status == "draft"
+    assert client.get(f"/feedback/{row.pk}/fixed/").status_code == 405
+
+    client.force_login(manager)
+    response = client.post(f"/feedback/{row.pk}/fixed/", {"fixed_note": "版 0.4.0 の受注の一覧"})
+    assert response.status_code == 302 and response["Location"] == detail
+    row.refresh_from_db()
+    assert row.status == "fixed"
+    html = html_of(client.get(detail))
+    assert "直した状態にしました。" in html
+    assert 'id="feedback-fixed"' in html and "直しました" in html
+    assert "版 0.4.0 の受注の一覧" in html
+    assert timezone.localtime(row.fixed_at).strftime("%Y-%m-%d %H:%M") in html
+    assert "直したと記録する" not in html
+    assert "送ったにする" not in html and "確認済みにする" not in html
+
+    response = client.post(f"/feedback/{row.pk}/fixed/", {"fixed_note": ""})
+    assert response.status_code == 302 and response["Location"] == detail
+    html = html_of(client.get(detail))
+    assert "bg-error" in html and "既に直した" in html
+
+    client.force_login(plain)
+    html = html_of(client.get(detail))
+    assert 'id="feedback-fixed"' in html and "版 0.4.0 の受注の一覧" in html
+    assert "直したと記録する" not in html
+
+    client.force_login(other)
+    assert client.get(detail).status_code == 404
+
+    sent = make(plain, "送った題")
+    services.mark_sent(sent, manager, sent_url="https://example.com/issues/1")
+    services.mark_fixed(sent, "", manager)
+    client.force_login(manager)
+    html = html_of(client.get(f"/feedback/{sent.pk}/"))
+    assert 'id="feedback-fixed"' in html
+    assert "送ったにする" not in html
+    assert "書いていません" in html
+
+
+def test_list_filter_shows_fixed(client, plain, manager):
+    make(plain, "下書きの題")
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "", manager)
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/"))
+    assert '<option value="fixed"' in html and "直した" in html
+
+    html = html_of(client.get("/feedback/?status=fixed"))
+    assert "直した題" in html and "下書きの題" not in html
+    assert '<option value="fixed" selected>' in html
+
+    html = html_of(client.get("/feedback/?status=draft"))
+    assert "下書きの題" in html and "直した題" not in html

@@ -2,6 +2,17 @@
 {% load feedback_tags seizou_icons %}
 {# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
 {% block content %}{{ block.super }}
+{% if object.fixed_at %}
+<section id="feedback-fixed" class="mt-6 rounded-xl border border-success bg-success/10 p-6 shadow-xs" aria-labelledby="feedback-fixed-title">
+  <h2 id="feedback-fixed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "check" "size-5 text-success" %}直しました</h2>
+  <p class="mt-2 text-xs text-base-content/50">この一言から直しました。書いた人には、直した後に初めてログインしたときに 1 回だけ知らせます。</p>
+  <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+    <dt class="text-base-content/70">直した日時</dt><dd class="font-mono tabular-nums">{{ object.fixed_at|date:"Y-m-d H:i" }}</dd>
+    <dt class="text-base-content/70">直した場所</dt><dd class="break-words">{% if object.fixed_note %}{{ object.fixed_note }}{% else %}書いていません{% endif %}</dd>
+    {% if object.fixed_seen_at %}<dt class="text-base-content/70">知らせた日時</dt><dd class="font-mono tabular-nums">{{ object.fixed_seen_at|date:"Y-m-d H:i" }}</dd>{% endif %}
+  </dl>
+</section>
+{% endif %}
 {% if object.transcript %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-transcript-title">
   <h2 id="feedback-transcript-title" class="text-lg font-bold">会話の記録</h2>
@@ -36,9 +47,11 @@
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">
   <h2 id="feedback-status-title" class="text-lg font-bold">状態</h2>
   <p class="mt-2 text-xs text-base-content/50">今の状態: {{ object.get_status_display }}。世話役が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
+  {% if object.status != "fixed" %}<p class="mt-2 text-xs text-base-content/50">直した版を入れたら「直したと記録する」で、直した場所と版 (任意) を残します。書いた人が次にログインしたときに、1 回だけ知らせが出ます。</p>{% endif %}
   <div class="mt-4 flex flex-wrap items-center gap-4">
     {% if object.status == "draft" %}<form method="post" action="{% url 'feedback:confirm' object.pk %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}確認済みにする</button></form>{% endif %}
-    {% if object.status != "sent" %}<form method="post" action="{% url 'feedback:sent' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="url" name="sent_url" class="input input-sm w-72" placeholder="送った先の URL (任意)" aria-label="送った先の URL"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button></form>{% endif %}
+    {% if object.status == "draft" or object.status == "confirmed" %}<form method="post" action="{% url 'feedback:sent' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="url" name="sent_url" class="input input-sm w-72" placeholder="送った先の URL (任意)" aria-label="送った先の URL"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button></form>{% endif %}
+    {% if object.status != "fixed" %}<form method="post" action="{% url 'feedback:fixed' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="text" name="fixed_note" maxlength="200" class="input input-sm w-72" placeholder="直した場所と版 (任意)" aria-label="直した場所と版"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}直したと記録する</button></form>{% endif %}
   </div>
 </section>
 {% endif %}

@@ -238,6 +238,7 @@ POST_FUNCTION_WITHOUT_ACTION = {
     "seizou.bookmarks.views.toggle": "自分のブックマークだけ",
     "seizou.feedback.views.confirm": "feedback の services が世話役だけに絞る",
     "seizou.feedback.views.sent": "feedback の services が世話役だけに絞る",
+    "seizou.feedback.views.fixed": "feedback の services が世話役だけに絞る",
     "seizou.feedback.views.delete": "feedback の services が書いた人と世話役に絞る (対象は一覧と同じ絞りの中から引く)",
     "seizou.feedback.views.ask": "会話の控え (session) だけ",
     "seizou.feedback.views.reset": "会話の控え (session) だけ",

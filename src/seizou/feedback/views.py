@@ -138,6 +138,23 @@ def sent(request, pk):
 
 @login_required
 @require_POST
+def fixed(request, pk):
+    """直した状態にする (世話役だけ。POST の fixed_note は直した場所と版で任意)。詳細へ戻る。
+
+    書いた人には、次にログインの画面からログインしたときに知らせが出る (signals.py)。
+    """
+    feedback = get_object_or_404(Feedback, pk=pk)
+    try:
+        services.mark_fixed(feedback, request.POST.get("fixed_note", ""), request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "直した状態にしました。書いた人が次にログインしたときに知らせます。")
+    return _back_to_detail(pk)
+
+
+@login_required
+@require_POST
 def delete(request, pk):
     """下書きを削除する (書いた人か世話役。下書きだけ)。消したら一覧へ、断られたら赤の知らせで詳細へ戻る。
 
