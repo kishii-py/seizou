@@ -22,6 +22,11 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 class InvoiceListView(BaseListView):
+    """請求書の一覧。
+
+    使う人: 経理 / いつ: 締日の後 / 何のために: 納品書の出た出荷をまとめた請求書を持つ / 次にすること: 「新規登録」か行から詳細へ (印刷)
+    """
+
     model = Invoice
     screen_name = "請求書"
     screen_help = "得意先ごとに出荷をまとめた請求書。行を押すと詳細へ進み、そこから印刷用の画面を開けます。"
@@ -31,6 +36,11 @@ class InvoiceListView(BaseListView):
 
 
 class InvoiceDetailView(BaseDetailView):
+    """請求書の詳細。
+
+    使う人: 経理 / いつ: 請求書を印刷するとき / 何のために: 項目と明細を見る / 次にすること: 印刷用の画面か PDF を開いて得意先に送る
+    """
+
     model = Invoice
     screen_name = "請求書の詳細"
     screen_help = "請求書の項目と明細。印刷用の画面と PDF は新しいタブで開きます。"
@@ -39,6 +49,11 @@ class InvoiceDetailView(BaseDetailView):
 
 
 class InvoiceCreateView(BaseFormView):
+    """請求書の新規登録の入力。
+
+    使う人: 経理 / いつ: 締日の後 / 何のために: 得意先ごとに納品書の出た出荷をまとめて請求書を作る / 次にすること: 請求書の詳細から印刷
+    """
+
     model = Invoice
     form_class = InvoiceForm
     service = staticmethod(services.create_invoice)
@@ -48,6 +63,11 @@ class InvoiceCreateView(BaseFormView):
 
 
 class InvoiceCancelView(BaseFormView):
+    """請求書を取り消す確かめの入力。
+
+    使う人: 経理 / いつ: 請求を作り直すとき / 何のために: 発行の請求書を取り消す / 次にすること: 請求書を作り直す
+    """
+
     model = Invoice
     form_class = InvoiceCancelForm
     service = staticmethod(services.cancel_invoice)
