@@ -111,7 +111,7 @@ def test_toggle_on_then_star_is_filled_and_listed(client_logged_in, user):
     assert client_logged_in.get(TOGGLE_URL).status_code == 405
 
 
-def test_toggle_off_restores_entrances(client_logged_in, user):
+def test_toggle_off_leaves_hint_only(client_logged_in, user):
     services.add_bookmark(user, "orders:order_list")
     assert 'href="/masters/items/"' not in entrances_of(html_of(client_logged_in.get("/")))
 
@@ -121,8 +121,8 @@ def test_toggle_off_restores_entrances(client_logged_in, user):
     assert response["Location"] == "/"
     assert not Bookmark.objects.filter(user=user).exists()
     home = entrances_of(html_of(client_logged_in.get("/")))
-    assert 'href="/masters/items/"' in home
-    assert "☆ で登録した画面" not in home
+    assert "上の帯の ☆ で登録した画面がここに並びます。" in home
+    assert 'href="/orders/"' not in home and 'href="/masters/items/"' not in home
 
 
 def test_detail_screen_cannot_be_registered(client_logged_in, order):
@@ -169,10 +169,10 @@ def test_lost_bookmark_can_be_removed(client_logged_in, user):
     assert "昔の画面 (見つかりません)" in star
     [form] = [form for form in forms_of(star) if 'value="old:gone_list"' in form]
     assert "消す" in form and 'name="on" value="0"' in form
-    # 最初の画面には見つからなくなった画面を並べない (並べる物が無ければ入口の一覧)。
+    # 最初の画面には見つからなくなった画面を並べない (並べる物が無ければ 1 行の案内)。
     home = entrances_of(html_of(client_logged_in.get("/")))
     assert "昔の画面" not in home
-    assert 'href="/masters/items/"' in home
+    assert "上の帯の ☆ で登録した画面がここに並びます。" in home
 
     response = client_logged_in.post(TOGGLE_URL, {"url_name": "old:gone_list", "on": "0", "next": "/orders/"})
 

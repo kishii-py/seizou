@@ -909,11 +909,11 @@ class HomeView(ScreenMixin, TemplateView):
         context["recent_orders"] = recent_orders()
         context["orders_url"] = url_or_none("orders:order_list")
         context["alerts"] = dashboard.due_alerts()
-        context["trend"] = dashboard.monthly_trend()
+        context["shipping"] = dashboard.shipping_trend()
+        context["production"] = dashboard.production_trend()
         if not access.can_see_money(self.request.user):
             context["recent_orders"] = access.without_totals(context["recent_orders"])
-            if "trend" in context:
-                context["trend"] = None
+            context["shipping"] = dashboard.without_amounts(context["shipping"])
         return context
 
 

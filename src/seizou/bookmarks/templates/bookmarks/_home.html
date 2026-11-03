@@ -1,5 +1,5 @@
 {% load bookmarks_tags seizou_icons %}
-{# 最初の画面の「よく使う画面」(core/home.html が include する)。☆ で登録した画面が 1 件でもあれば登録の順に並べ、0 件なら今までの入口の一覧 (core/_entrances.html) を出す。 #}
+{# 最初の画面の「よく使う画面」(core/home.html が include する)。☆ で登録した画面が 1 件でもあれば登録の順に並べ、0 件なら 1 行の案内だけ (入口は左のメニューにある。本人の決め 11-03)。 #}
 {# 見つからなくなった画面は並べない (上の帯の ☆ の小窓で「消す」)。class を組み立てないため、2 列にまたがるかは section の要素ごと出し分ける (R19)。 #}
 {% bookmark_home as bookmarks %}
 {% if bookmarks %}
@@ -19,5 +19,8 @@
   </ul>
 </section>
 {% else %}
-{% include "core/_entrances.html" %}
+<section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="entrances-title">
+  <h2 id="entrances-title" class="text-lg font-bold">よく使う画面</h2>
+  <p class="mt-2 text-xs text-base-content/70">上の帯の ☆ で登録した画面がここに並びます。</p>
+</section>
 {% endif %}

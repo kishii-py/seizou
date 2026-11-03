@@ -2,8 +2,8 @@
 {% load seizou_icons seizou_tags %}
 {% block content %}
 {# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
-{# 並びは、数字のカード → 納期アラートと月次の推移 → 最近の受注とよく使う画面 (本人の所見 11-03: 数字のカードを一番上に)。 #}
-{# 納期アラートと月次の推移 (core の dashboard が読む。受注の部品が無ければ None で、節ごと出さない)。 #}
+{# 並びは、数字のカード → 出荷の図と生産の図 → 最近の受注 (左) と納期アラート (右) → よく使う画面 (本人の決め 11-03 11:0x)。 #}
+{# 出荷と生産の図と納期アラート (core の dashboard が読む。部品が無ければ None で、節ごと出さない。金額を見られない人には金額の図を出さない)。受注の行はどこを押しても受注の詳細へ移る (行の中の link はそのまま動く)。 #}
 {% if stats %}
 <div class="mb-6 grid gap-4 sm:grid-cols-2 {% if stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
   {% for stat in stats %}
@@ -19,78 +19,36 @@
   {% endfor %}
 </div>
 {% endif %}
-{% if alerts is not None or trend is not None %}
-<div class="mb-6 grid gap-6">
-  {% if alerts is not None %}
-  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="due-alerts-title">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex flex-wrap items-center gap-2">
-        <h2 id="due-alerts-title" class="text-lg font-bold">納期アラート</h2>
-        <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
-        <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
-      </div>
-      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">注文残の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
-    </div>
-    <p class="mt-2 text-xs text-base-content/70">納期を過ぎても出荷が終わっていない明細と、{{ alerts.days }} 日以内に納期が来る明細です。それぞれ納期の古い順に {{ alerts.limit }} 行まで並びます。</p>
-    {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
-    {% if alerts.overdue.count or alerts.soon.count %}
-    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
-      <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">得意先</th><th class="font-medium">品番</th><th class="font-medium">品名</th><th class="text-right font-medium">残</th><th class="font-medium">納期</th><th class="font-medium">状況</th></tr></thead>
-        <tbody>
-          {% for row in alerts.overdue.rows %}
-          <tr class="row-hover h-10">
-            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
-            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
-            <td class="whitespace-nowrap"><span class="badge badge-sm badge-soft badge-error">{{ row.days }} 日遅れ</span></td>
-          </tr>
-          {% endfor %}
-          {% for row in alerts.soon.rows %}
-          <tr class="row-hover h-10">
-            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
-            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
-            <td class="whitespace-nowrap">{% if row.days == 0 %}<span class="badge badge-sm badge-soft badge-warning">今日</span>{% else %}<span class="badge badge-sm badge-soft badge-warning">あと {{ row.days }} 日</span>{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-  </section>
-  {% endif %}
-  {% if trend is not None %}
-  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="trend-title">
-    <h2 id="trend-title" class="text-lg font-bold">月次の推移 (直近 6 か月)</h2>
-    <p class="mt-2 text-xs text-base-content/70">受注は受注日の月、出荷は出荷日の月の金額 (円) です。取消の受注は入れていません。今月は途中の数です。</p>
-    {% if trend.is_empty %}
+{% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}
+  {% if shipping is not None %}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipping-title">
+    <h2 id="shipping-title" class="text-lg font-bold">出荷 (直近 6 か月)</h2>
+    <p class="mt-2 text-xs text-base-content/70">出荷日の月ごとの数量と金額 (円) です。後で受注が取消になった出荷も数えます。今月は途中の数です。</p>
+    {% if shipping.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "activity" "size-6" %}</span>
-      <p class="mt-4 font-medium">直近 6 か月の受注と出荷はまだありません。</p>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "truck" "size-6" %}</span>
+      <p class="mt-4 font-medium">直近 6 か月の出荷はまだありません。</p>
     </div>
     {% else %}
     <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
-      <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>受注</li>
-      {% if trend.has_shipping %}<li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-secondary" aria-hidden="true"></span>出荷</li>{% endif %}
+      <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>数量</li>
     </ul>
-    {% include "core/_chart_bars.html" %}
+    {% include "core/_chart_bars.html" with chart=shipping.qty_chart chart_id="shipping-qty-chart" chart_title="出荷の数量 (直近 6 か月)" chart_label="出荷の数量の図。月ごとの出荷の数量" first=shipping.qty_chart.qty_bars first_label="出荷の数量" money=False %}
+    {% if shipping.amount_chart is not None %}
+    <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+      <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>金額 (円)</li>
+    </ul>
+    {% include "core/_chart_bars.html" with chart=shipping.amount_chart chart_id="shipping-amount-chart" chart_title="出荷の金額 (直近 6 か月)" chart_label="出荷の金額の図。月ごとの出荷の金額 (円)" first=shipping.amount_chart.amount_bars first_label="出荷の金額" money=True %}
+    {% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">受注件数</th><th class="text-right font-medium">受注金額 (円)</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">出荷金額 (円)</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th><th class="text-right font-medium">金額 (円)</th></tr></thead>
         <tbody>
-          {% for month in trend.months %}
+          {% for month in shipping.months %}
           <tr class="row-hover h-10">
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ month.order_count|comma }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ month.order_amount|comma:0 }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_count is not None %}{{ month.shipment_count|comma }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_count|comma }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_qty|floatformat:"-2g" }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|comma:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           </tr>
           {% endfor %}
@@ -100,9 +58,41 @@
     {% endif %}
   </section>
   {% endif %}
-</div>
-{% endif %}
-<div class="grid gap-6 lg:grid-cols-2">
+  {% if production is not None %}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="production-title">
+    <h2 id="production-title" class="text-lg font-bold">生産 (直近 6 か月)</h2>
+    <p class="mt-2 text-xs text-base-content/70">発行は指示書の発行日の月の数量 (取消を除く)、完成は指示書の最後の工程に入れた実績の数 (実績の日時の月) です。今月は途中の数です。</p>
+    {% if production.is_empty %}
+    <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "factory" "size-6" %}</span>
+      <p class="mt-4 font-medium">直近 6 か月の指示書と実績はまだありません。</p>
+    </div>
+    {% else %}
+    <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+      <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>発行</li>
+      {% if production.has_progress %}<li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-secondary" aria-hidden="true"></span>完成</li>{% endif %}
+    </ul>
+    {% include "core/_chart_bars.html" with chart=production.chart chart_id="production-chart" chart_title="生産 (直近 6 か月): 指示書の発行の数量と完成の数" chart_label="生産の図。月ごとの指示書の発行の数量と完成の数" first=production.chart.issued_bars first_label="発行" second=production.chart.completed_bars second_label="完成" money=False %}
+    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">発行件数</th><th class="text-right font-medium">発行の数量</th><th class="text-right font-medium">完成の数</th></tr></thead>
+        <tbody>
+          {% for month in production.months %}
+          <tr class="row-hover h-10">
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ month.issued_count|comma }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ month.issued_qty|floatformat:"-2g" }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{% if month.completed_qty is not None %}{{ month.completed_qty|floatformat:"-2g" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+{% if shipping is not None or production is not None %}</div>{% endif %}
+{% if recent_orders is not None and alerts is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif recent_orders is not None or alerts is not None %}<div class="mb-6 grid gap-6">{% endif %}
   {% if recent_orders is not None %}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
     <div class="flex items-center justify-between gap-2">
@@ -115,7 +105,7 @@
         <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
         <tbody>
           {% for order in recent_orders %}
-          <tr class="row-hover h-10">
+          {% if order.url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ order.url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
@@ -135,7 +125,52 @@
     {% endif %}
   </section>
   {% endif %}
-  {# よく使う画面: ブックマークの部品 (bookmarks) が入っていればその節 (登録した画面。0 件なら下の入口に戻る)、無ければ入口の一覧。 #}
-  {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_home.html" %}{% else %}{% include "core/_entrances.html" %}{% endif %}
-</div>
+  {% if alerts is not None %}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="due-alerts-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 id="due-alerts-title" class="text-lg font-bold">納期アラート</h2>
+        <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
+        <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
+      </div>
+      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">注文残の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+    </div>
+    <p class="mt-2 text-xs text-base-content/70">納期を過ぎても出荷が終わっていない明細と、{{ alerts.days }} 日以内に納期が来る明細です。それぞれ納期の古い順に {{ alerts.limit }} 行まで並びます。</p>
+    {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
+    {% if alerts.overdue.count or alerts.soon.count %}
+    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">得意先</th><th class="font-medium">品番</th><th class="font-medium">品名</th><th class="text-right font-medium">残</th><th class="font-medium">納期</th><th class="font-medium">状況</th></tr></thead>
+        <tbody>
+          {% for row in alerts.overdue.rows %}
+          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
+            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
+            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap"><span class="badge badge-sm badge-soft badge-error">{{ row.days }} 日遅れ</span></td>
+          </tr>
+          {% endfor %}
+          {% for row in alerts.soon.rows %}
+          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
+            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
+            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap">{% if row.days == 0 %}<span class="badge badge-sm badge-soft badge-warning">今日</span>{% else %}<span class="badge badge-sm badge-soft badge-warning">あと {{ row.days }} 日</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+{% if recent_orders is not None or alerts is not None %}</div>{% endif %}
+{# よく使う画面: 下の段の外の全幅の 1 段。ブックマークの部品 (bookmarks) が入っていればその節 (登録した画面。0 件なら 1 行の案内)、無ければ入口の一覧。 #}
+{% if "bookmarks" in seizou.parts %}{% include "bookmarks/_home.html" %}{% else %}{% include "core/_entrances.html" %}{% endif %}
 {% endblock %}
