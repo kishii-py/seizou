@@ -86,6 +86,7 @@ PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1
 - migrate の漏れ
 - Django の起動の検査 (`check`)
 - 上げたファイルの置き場 (`MEDIA_ROOT` に書けるか)
+- 上げたファイルの置き場の場所 (`MEDIA_ROOT` が置き場そのものか、その親を指していないか。指していれば、控えと戻しは止まる)
 - 控えの置き場 (`backups/` に書けるか)
 - CSS (seizou の画面の見た目のファイルがあるか)
 - `collectstatic` (本番の条件だけ)

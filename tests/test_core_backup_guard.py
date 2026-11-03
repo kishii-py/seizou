@@ -15,6 +15,7 @@ from django.core.management.base import CommandError
 
 from seizou.core import backup
 from tests.test_core_backup import hand_made_backup, retreats
+from tests.test_core_doctor import fix_lines, good_lines, run_doctor
 
 ENV_VALUE = "fake-env-value-that-must-not-appear"
 
@@ -124,3 +125,29 @@ def test_restore_refuses_and_deletes_nothing(site, settings, tmp_path):
     assert tree(site) == before
     assert retreats(site / "backups") == []
     assert retreats(elsewhere) == []
+
+
+@pytest.mark.django_db
+def test_doctor_shows_media_root_place(site, settings):
+    label = "上げたファイルの置き場の場所"
+    code, out = run_doctor()
+    outputs = [out]
+
+    assert code == 0, fix_lines(out)
+    assert any(label in line for line in good_lines(out))
+
+    for media_root in (site, site.parent):
+        settings.MEDIA_ROOT = media_root
+        for debug in (True, False):
+            settings.DEBUG = debug
+            code, out = run_doctor()
+            outputs.append(out)
+
+            assert code == 1
+            fixes = fix_lines(out)
+            assert len(fixes) == 1, fixes
+            shows_fix = label in fixes[0] and 'BASE_DIR / "media"' in fixes[0]
+            assert shows_fix
+
+    env_value_leaked = ENV_VALUE in "\n".join(outputs)
+    assert not env_value_leaked, "出力に .env の中身が出た"
