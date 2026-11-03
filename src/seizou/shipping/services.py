@@ -13,11 +13,14 @@
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
+- 出荷の後、届いた注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
+  出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
+import uuid
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
@@ -68,7 +71,13 @@ def ship(order_line, qty, shipped_at, user, *, note=""):
             note=note,
         )
         refresh_status(locked.order, user)
-        return shipment
+
+    # 出荷の知らせを相手へ送る。HTTP は atomic の外 (R17)。shipping と connect の循環を避けるため関数の中で import する。
+    if _is_edi_order(locked.order):
+        from seizou.connect import services as connect_services
+
+        return connect_services.send_shipping_notice(shipment, user)
+    return shipment
 
 
 def create_delivery_note(customer, shipments, user):
@@ -184,4 +193,48 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
         locked.note = note
         locked.save(update_fields=["qty", "shipped_at", "note"])
         refresh_status(line.order, user)
+        return locked
+
+
+# --- 出荷の知らせ (出荷を相手の seizou の発注の明細へ送る記録。EDI の 3 段目) ---
+
+
+def _is_edi_order(order):
+    """受注が届いた注文 (seizou どうし) で作った物か。
+
+    入口 (source) を先に見て、手入力と読み取りの受注では問い合わせを起こさない。届いた注文は 1 対 1 の逆の関係
+    inbox_message を読むだけ (connect の model を import しない)。無ければ RelatedObjectDoesNotExist
+    (AttributeError の子) なので getattr が None を返す。connect の無い会社では属性が無く偽。
+    """
+    return order.source == order.SOURCE_INBOX and getattr(order, "inbox_message", None) is not None
+
+
+def assign_notice_number(shipment, user):
+    """出荷に出荷の知らせの番号を付けて返す。既にあればそのまま返す (送り直しは 1 回目の番号を使い回す)。
+
+    connect.services.send_shipping_notice が送る前に呼ぶ (届かなくても番号が残る)。返す物は uuid.UUID。
+    """
+    with transaction.atomic():
+        locked = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        if locked.notice_message_id is None:
+            locked.notice_message_id = uuid.uuid4()
+            locked.save(update_fields=["notice_message_id"])
+        return locked.notice_message_id
+
+
+def record_notice_response(shipment, response, user, *, sent=False):
+    """出荷の知らせの相手の返事を出荷に書く (500 字で切る)。sent が真なら出荷の知らせを送った日時も書く。
+
+    sent が偽なら送った日時は今の値のまま (消さない)。connect.services.send_shipping_notice が呼ぶ。
+    返す物は取り直した Shipment。
+    """
+    limit = Shipment._meta.get_field("notice_response").max_length
+    with transaction.atomic():
+        locked = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        locked.notice_response = response[:limit]
+        fields = ["notice_response"]
+        if sent:
+            locked.notice_sent_at = timezone.now()
+            fields.append("notice_sent_at")
+        locked.save(update_fields=fields)
         return locked
