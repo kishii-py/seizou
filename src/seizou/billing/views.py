@@ -2,19 +2,22 @@
 
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
+入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
+一覧の「入金」と「残」は Invoice の method の列で、「未入金だけ」(?unpaid=1) は取消でない入金が 1 つも無い発行の請求書。
 """
 
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 
 from seizou.core import access
 from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import InvoiceCancelForm, InvoiceForm
-from .models import Invoice
+from .forms import InvoiceCancelForm, InvoiceForm, PaymentCancelForm, PaymentForm
+from .models import Invoice, Payment
 from .reports import invoice_context
 
 REPORT_TEMPLATE = "billing/invoice.html"
@@ -30,9 +33,16 @@ class InvoiceListView(BaseListView):
     model = Invoice
     screen_name = "請求書"
     screen_help = "得意先ごとに出荷をまとめた請求書。行を押すと詳細へ進み、そこから印刷用の画面を開けます。"
-    columns = ("invoice_no", "customer", "issued_on", "period_from", "period_to", "total", "status")
+    columns = ("invoice_no", "customer", "issued_on", "period_from", "period_to", "total", ("payment_status_label", "入金"), ("balance", "残"), "status")
     search_fields = ("invoice_no", "customer__name", "customer__code")
     ordering = ("-issued_on", "-id")
+    template_name = "billing/invoice_list.html"
+
+    def get_queryset(self):
+        invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
+        if self.request.GET.get("unpaid") == "1":
+            invoices = invoices.filter(status=Invoice.STATUS_ISSUED).exclude(payments__status=Payment.STATUS_RECORDED)
+        return invoices
 
 
 class InvoiceDetailView(BaseDetailView):
@@ -46,6 +56,9 @@ class InvoiceDetailView(BaseDetailView):
     screen_help = "請求書の項目と明細。印刷用の画面と PDF は新しいタブで開きます。"
     tabs = (("明細", "lines"),)
     template_name = "billing/invoice_detail.html"
+
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related("payments")
 
 
 class InvoiceCreateView(BaseFormView):
@@ -74,6 +87,41 @@ class InvoiceCancelView(BaseFormView):
     template_name = "billing/invoice_cancel.html"
     screen_name = "請求書を取り消す"
     screen_help = "発行の請求書を取り消します。明細は残ります。"
+
+
+class PaymentCreateView(BaseFormView):
+    """入金の記録の入力。
+
+    使う人: 経理 / いつ: 得意先から入金があったとき / 何のために: 請求書ごとに入金の日付と金額と方法を記録して残を更新する / 次にすること: 請求書の詳細の「入金」の枠で残を確かめる
+    """
+
+    model = Invoice
+    form_class = PaymentForm
+    service = staticmethod(services.record_payment)
+    template_name = "billing/payment_form.html"
+    screen_name = "入金の記録"
+    screen_help = "請求書に対する入金の日付・金額・方法を記録します。請求額との差は残として残り、多い入金も記録できます。"
+
+
+class PaymentCancelView(BaseFormView):
+    """入金を取り消す入力。
+
+    使う人: 経理 / いつ: 入金を間違えて記録したとき / 何のために: 入金を取消にして残を戻す (記録は履歴に残る) / 次にすること: 正しい入金を記録し直す
+    """
+
+    model = Payment
+    form_class = PaymentCancelForm
+    service = staticmethod(services.cancel_payment)
+    template_name = "billing/payment_cancel.html"
+    screen_name = "入金を取り消す"
+    screen_help = "記録した入金を取消にします。取消の記録は履歴に残り、請求書の残の金額に戻ります。"
+
+
+@login_required
+def payment_detail(request, pk):
+    """保存と取消の後に請求書の詳細へ移るだけの口 (土台は保存の後に、services が返す Payment の _detail へ移す)。"""
+    payment = get_object_or_404(Payment, pk=pk)
+    return HttpResponseRedirect(reverse("billing:invoice_detail", args=[payment.invoice_id]))
 
 
 @login_required

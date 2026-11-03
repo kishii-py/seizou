@@ -6,12 +6,17 @@
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
+- 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
+  金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
 """
+
+from decimal import Decimal
 
 from django import forms
 from django.utils import timezone
 
 from .models import Invoice
+from .models import Payment
 from .services import billable_shipments
 
 _Partner = Invoice._meta.get_field("customer").related_model
@@ -84,6 +89,44 @@ class InvoiceForm(forms.Form):
 
 class InvoiceCancelForm(forms.Form):
     """請求書を取り消す form。欄は無い。"""
+
+    def service_kwargs(self):
+        return {}
+
+
+class PaymentForm(forms.Form):
+    """入金を記録する form。請求書は欄に持たない (土台が URL の pk の請求書を record_payment に渡す)。"""
+
+    received_on = forms.DateField(
+        label="入金日",
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+    )
+    amount = forms.DecimalField(
+        label="金額",
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "入金の金額は 0 より大きい数にしてください。"},
+        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+    )
+    method = forms.ChoiceField(label="入金の方法", choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_TRANSFER)
+    note = forms.CharField(
+        label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
+    )
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {
+            "received_on": data["received_on"],
+            "amount": data["amount"],
+            "method": data["method"],
+            "note": data["note"],
+        }
+
+
+class PaymentCancelForm(forms.Form):
+    """入金を取り消す form。欄は無い。"""
 
     def service_kwargs(self):
         return {}
