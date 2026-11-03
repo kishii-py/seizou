@@ -52,6 +52,7 @@ class OrderLineListView(BaseListView):
         "受注の明細ごとの残と、納期までの日数・指示書・進捗・計画の終了日・判断の印を並べる盤。"
         "既定は残のある明細 (取消を除く) を納期の近い順に出します。"
         "行の ⋮ か右クリックから、出荷・指示書の発行・実績・発注へ移れます。"
+        "「納期まで」は、マスターの「休日」の日と定休日の曜日を除いた稼働日の数です。"
     )
     # board__<名前> は OrderLine.board (orders.board.BoardRow) の読むだけの値 (kind。並び替えは sort_key = 同じ順になる表の項目か annotate の列。合計は無い)。
     # shipped_total・remaining_total は annotate の列 (kind と sortable = 土台が右寄せと並び替えを出す)。

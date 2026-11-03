@@ -6,6 +6,7 @@
 - 部品 (workorders・progress) が無い会社では、指示書と進捗の値は空 (「未」・空の字・None) で、盤は開く。
 - 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
+- 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db.models import DecimalField, OuterRef, Prefetch, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+
+from seizou.core import calendar
 
 from . import services
 from .models import Order, OrderLine
@@ -174,9 +177,10 @@ class BoardRow:
     all() の後に filter・exclude・order_by を呼ぶと prefetch が効かず N+1 になるので、絞りと並べ替えは Python で行う。
     """
 
-    def __init__(self, line, today=None):
+    def __init__(self, line, today=None, *, holidays=None):
         self.line = line
         self.today = today if today is not None else timezone.localdate()
+        self.holidays = holidays
 
     # --- 指示書 ---
     @cached_property
@@ -290,15 +294,19 @@ class BoardRow:
 
     @cached_property
     def days_left(self):
-        """納期までの日数 (過ぎていればマイナス)。納期が無ければ None。"""
+        """納期までの稼働日の数 (core.calendar.workdays_between。休日と定休日を除く)。納期が過ぎていれば -1 以下。納期が無ければ None。"""
         due = self.line.due_date
         if due is None:
             return None
-        return (due - self.today).days
+        days = calendar.workdays_between(self.today, due, holidays=self.holidays)
+        # 休みの日に盤を見ると、前の休みの日の納期は稼働日の数が 0 になる。遅れの行を 0 に見せない
+        return min(days, -1) if due < self.today else days
 
     @cached_property
     def is_overdue(self) -> bool:
-        return self.days_left is not None and self.days_left < 0
+        """納期が今日より前か (暦の日で決める。稼働日の数でない)。"""
+        due = self.line.due_date
+        return due is not None and due < self.today
 
     # --- 在庫 ---
     @cached_property
