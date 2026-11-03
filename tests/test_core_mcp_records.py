@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "kumo-tests-2611"
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
-NEW_TOOLS = ["list_receipts", "list_acceptances", "list_payments"]
+NEW_TOOLS = ["list_receipts", "list_acceptances", "list_payments", "list_feedback", "get_feedback"]
 #: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
 MONEY_TOOLS = ["list_receipts", "list_payments"]
 #: 請求書の日 (日数で絞らないので固定)
@@ -196,6 +196,35 @@ def invoice(user, customer, item):
         shipment.refresh_from_db()
         shipments.append(shipment)
     return billing_services.create_invoice(customer, shipments, user, issued_on=ISSUED_ON)
+
+
+@pytest.fixture
+def feedback_rows(user, manager):
+    """不具合 (確認済み。会話の記録つき) と、後に書いた皆の要望 (下書き) の 2 件。"""
+    bug = feedback_services.create_feedback(
+        {
+            "kind": "bug",
+            "screen": "orders:order_list",
+            "title": "受注の一覧で並びが戻る",
+            "problem": "並び替えた後に詳細から戻ると、並びが元に戻る。",
+            "screens": "orders:order_list",
+        },
+        user,
+        transcript=[{"role": "user", "text": "並びが戻る"}, {"role": "assistant", "text": "どの画面ですか"}],
+        input_tokens=120,
+        output_tokens=80,
+    )
+    feedback_services.mark_confirmed(bug, manager)
+    wish = feedback_services.create_feedback(
+        {
+            "kind": "common",
+            "screen": "orders:order_list",
+            "title": "一覧に納期の列がほしい",
+            "problem": "納期を見るのに、毎回詳細を開いている。",
+        },
+        user,
+    )
+    return bug, wish
 
 
 def account(login_id, **flags):
@@ -455,6 +484,68 @@ def test_list_payments_rows_and_invoice_balance(settings, user, manager, invoice
     assert Decimal(seen["invoice"]["balance"]) == 15500
 
 
+# --- フィードバック ---
+
+
+def test_list_feedback_and_get_feedback(user, customer, feedback_rows):
+    bug, wish = feedback_rows
+    screen_label = f"{feedback_services.screen_name('orders:order_list')} (orders:order_list)"
+
+    found = _json(mcp_tools.list_feedback())
+    assert found["ok"] is True
+    assert [row["id"] for row in found["items"]] == [wish.pk, bug.pk]
+    row = found["items"][0]
+    assert (row["kind"], row["kind_label"]) == ("common", "皆の要望")
+    assert row["title"] == "一覧に納期の列がほしい"
+    assert (row["screen"], row["screen_label"]) == ("orders:order_list", screen_label)
+    assert (row["status"], row["status_label"]) == ("draft", "下書き")
+    assert row["created_by"] == "tester"
+    assert datetime.fromisoformat(row["created_at"]).tzinfo is not None
+    assert datetime.fromisoformat(row["updated_at"]).tzinfo is not None
+    assert row["url"] == reverse("feedback:feedback_detail", args=[wish.pk])
+
+    confirmed = mcp_tools.list_feedback(status="confirmed")
+    assert [item["id"] for item in confirmed["items"]] == [bug.pk]
+    assert confirmed["items"][0]["status_label"] == "確認済み"
+    assert [item["id"] for item in mcp_tools.list_feedback(kind="bug")["items"]] == [bug.pk]
+    assert mcp_tools.list_feedback(limit=1)["count"] == 1
+    bad_status = mcp_tools.list_feedback(status="x")
+    assert bad_status["ok"] is False
+    assert all(value in bad_status["error"] for value in ("draft", "confirmed", "sent"))
+    bad_kind = mcp_tools.list_feedback(kind="x")
+    assert bad_kind["ok"] is False
+    assert all(value in bad_kind["error"] for value in ("usage", "company", "common", "bug"))
+    assert _has_japanese(bad_status["error"]) and _has_japanese(bad_kind["error"])
+    assert mcp_tools.list_feedback(limit="x")["ok"] is False
+
+    body = _json(mcp_tools.get_feedback(bug.pk))
+    assert body["ok"] is True
+    assert (body["id"], body["kind"], body["status"]) == (bug.pk, "bug", "confirmed")
+    assert body["problem"] == "並び替えた後に詳細から戻ると、並びが元に戻る。"
+    assert (body["situation"], body["wish"], body["sent_url"]) == ("", "", "")
+    assert body["screens"] == ["orders:order_list"]
+    assert (body["input_tokens"], body["output_tokens"]) == (120, 80)
+    assert body["issue_text"].startswith("# ")
+    assert "## 困りごと" in body["issue_text"]
+    whole = json.dumps(body, ensure_ascii=False)
+    assert "transcript" not in whole
+    assert "role" not in whole
+
+    named = feedback_services.create_feedback(
+        {"kind": "usage", "title": "注文書の読み取り", "problem": "作り物の得意先 の注文書で数が読めない。"}, user
+    )
+    masked = mcp_tools.get_feedback(named.pk)
+    assert "作り物の得意先" in masked["problem"]
+    assert "〇〇" in masked["issue_text"]
+    assert "作り物の得意先" not in masked["issue_text"]
+    assert masked["screens"] == []
+
+    for bad in (999, "abc"):
+        refused = mcp_tools.get_feedback(bad)
+        assert refused["ok"] is False, bad
+        assert _has_japanese(refused["error"]), bad
+
+
 # --- 部品の有無・目録 ---
 
 
@@ -464,6 +555,8 @@ def test_tools_refuse_when_part_missing(monkeypatch):
         ("purchasing", mcp_tools.list_receipts()),
         ("connect", mcp_tools.list_acceptances()),
         ("billing", mcp_tools.list_payments()),
+        ("feedback", mcp_tools.list_feedback()),
+        ("feedback", mcp_tools.get_feedback(1)),
     ):
         assert result["ok"] is False, app
         assert app in result["error"], app
