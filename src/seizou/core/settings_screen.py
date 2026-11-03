@@ -26,17 +26,24 @@ SETTING_LABELS = {
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
     "hidden_fields": ("使わない注文の項目", {}),
+    "access_control": ("権限の判定 (部署・編集の権限・金額の閲覧)", {"off": "使わない", "log": "記録だけ", "on": "有効"}),
 }
+
+#: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
+SUB_LABELS = {"department": "部署", "write": "編集の権限", "money": "金額の閲覧"}
 
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 MCP_USER_ENV = "SEIZOU_MCP_USER"
 
 
 def _display(key: str, value) -> str:
-    """値の日本語。選べる値は表から、一覧は「・」で、空は「なし」。"""
+    """値の日本語。選べる値は表から、一覧は「・」で、辞書は「中の鍵: 値」を「・」で、空は「なし」。"""
     _label, words = SETTING_LABELS.get(key, (key, {}))
     if isinstance(value, (list, tuple)):
         return "・".join(str(v) for v in value) if value else "なし"
+    if isinstance(value, dict):
+        # 辞書の設定 (例: 権限の判定 access_control = {"department": "log", ...})。中の値は同じ鍵の表で日本語にする。
+        return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, v)}" for k, v in value.items()) if value else "なし"
     if value in words:
         return f"{words[value]} ({value})"
     return str(value)
