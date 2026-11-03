@@ -371,6 +371,13 @@ def test_frame_ids(company_id):
 
 
 @pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_every_screen_has_fragment(company_id):
+    """画面の目録の全部の画面に、種の断片がある (画面を足したら、2 社の種に断片を足すまで落ちる)。"""
+    missing = sorted(set(screens_by_name()) - set(fragments(company_id)))
+    assert missing == [], f"説明書の断片の無い画面がある (examples/companies/{company_id}/manual/ に足す): {missing}"
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
 def test_rules_are_quoted_from_rules_md(company_id):
     rules = rule_texts()
     assert {"R01", "R02", "R09", "R21"} <= set(rules), "RULES.md の表を読めない"
