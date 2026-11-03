@@ -7,7 +7,7 @@
 - 道具は普通の関数 (def)。サーバーは別の thread で回すので、Django の ORM をそのまま呼べる。
 - 読む道具は READ_TOOLS の並び。書く道具は write_tools(user) が返す並び。
   user は write_tools の中の入れ子の関数が閉じ込め、道具の引数には出さない (呼ぶ側が利用者を選べない)。
-- 金額を返す読む道具 (list_receipts・list_payments) は閲覧の人 (user) で金額の閲覧を判定する。READ_TOOLS の物は閲覧の人が無く (None)、MCP サーバーは viewer_tools(user) の同じ名前の物と差し替えて登録する (AI チャットは assistant.tools.run_tool が利用者を受けて同じ差し替えをする)。
+- 金額を返す読む道具 (get_item・list_orders・get_order・list_receipts・list_payments) は閲覧の人 (user) で金額の閲覧を判定する。READ_TOOLS の物は閲覧の人が無く (None)、MCP サーバーは viewer_tools(user) の同じ名前の物と差し替えて登録する (AI チャットは assistant.tools.run_tool が利用者を受けて同じ差し替えをする)。
   判定が on の会社で見せない相手には、金額を「—」(access.MASK) にし money_hidden を真にする。
 - 関数の名前が道具の名前、docstring が道具の説明 (Claude Code が読む)。
 - 返す物は JSON にできる辞書だけ。成功は {"ok": True, ...}、断りは {"ok": False, "error": 日本語の文}
@@ -324,8 +324,8 @@ def _workorder_step(workorder_no, process_code):
 # --- 辞書の形 ---
 
 
-def _line_dict(line) -> dict[str, Any]:
-    """受注の明細 (annotate_remaining の shipped_total・remaining_total つき)。"""
+def _line_dict(line, shown) -> dict[str, Any]:
+    """受注の明細 (annotate_remaining の shipped_total・remaining_total つき)。shown が偽なら単価と金額は「—」。"""
     return {
         "line_no": line.line_no,
         "part_no": line.item.part_no,
@@ -334,13 +334,13 @@ def _line_dict(line) -> dict[str, Any]:
         "shipped_qty": _num(line.shipped_total),
         "remaining_qty": _num(line.remaining_total),
         "unit": line.unit,
-        "unit_price": _num(line.unit_price),
-        "amount": _num(line.amount),
+        "unit_price": _money(line.unit_price, shown),
+        "amount": _money(line.amount, shown),
         "due_date": _day(line.due_date),
     }
 
 
-def _order_dict(order, lines) -> dict[str, Any]:
+def _order_dict(order, lines, shown) -> dict[str, Any]:
     return {
         "order_no": order.order_no,
         "customer_code": order.customer.code,
@@ -350,7 +350,7 @@ def _order_dict(order, lines) -> dict[str, Any]:
         "status": order.status,
         "status_label": order.get_status_display(),
         "url": _url("orders:order_detail", order.pk),
-        "lines": [_line_dict(line) for line in lines],
+        "lines": [_line_dict(line, shown) for line in lines],
     }
 
 
@@ -440,30 +440,24 @@ def search_items(query: str, limit: int = 20) -> dict[str, Any]:
     return {"ok": True, "count": len(items), "items": items}
 
 
-def get_item(part_no: str) -> dict[str, Any]:
-    """部品 (品目) の 1 件を自社品番で引く。
-
-    part_no: 自社品番 (完全一致)。
-    返す物: part_no・name 品名・drawing_no 図面番号・has_drawing 図面のファイルがあるか・unit 単位・
-    standard_price 標準の単価 (字。無ければ null)・note 備考・
-    partner_items (取引先ごとの partner_code・partner_name・partner_part_no 取引先の品番・partner_item_name 取引先の品名)・
-    processes (標準の工程。seq 順・process_code 工程コード・process_name 工程の名前)・url 詳細の道。
-    ok が偽なら error に、品番が無いことと探し方がある。
-    """
+def _get_item(user, part_no) -> dict[str, Any]:
+    """get_item の中身。user は金額の閲覧を判定する閲覧の人 (None もある)。"""
     try:
         item = _item_by_part_no(part_no)
     except _Refusal as exc:
         return _refused(exc.message)
+    shown = _money_shown(user)
     partner_items = item.partner_items.select_related("partner").order_by("partner__code", "partner_part_no")
     processes = item.item_processes.select_related("process").order_by("seq")
     return {
         "ok": True,
+        "money_hidden": not shown,
         "part_no": item.part_no,
         "name": item.name,
         "drawing_no": item.drawing_no,
         "has_drawing": bool(item.drawing),
         "unit": item.unit,
-        "standard_price": _num(item.standard_price),
+        "standard_price": _money(item.standard_price, shown),
         "note": item.note,
         "partner_items": [
             {
@@ -482,18 +476,22 @@ def get_item(part_no: str) -> dict[str, Any]:
     }
 
 
-def list_orders(status: str | None = None, customer_code: str | None = None, limit: int = 50) -> dict[str, Any]:
-    """受注の一覧を、明細ごとの出荷済みと残 (注文残) つきで受注日の新しい順に返す。
+def get_item(part_no: str) -> dict[str, Any]:
+    """部品 (品目) の 1 件を自社品番で引く。
 
-    status: 状態 (open 受注・partial 一部出荷・shipped 出荷済・cancelled 取消)。null なら取消の外の全部。
-    customer_code: 得意先の取引先コード。null ならすべての得意先。
-    limit: 返す件数 (1〜200。既定 50)。
-    返す物: count と items (受注ごとの order_no 受注番号・customer_code・customer_name・order_date 受注日・
-    customer_order_no 得意先の注文番号・status と status_label 状態の日本語・url 詳細の道・
-    lines 明細 (line_no 行番号・part_no・item_name・qty 数量・shipped_qty 出荷済み・remaining_qty 残・
-    unit・unit_price・amount 金額・due_date 納期))。数は字。残が 0 より大きい明細が注文残。
-    ok が偽なら error に、読めなかった引数とその直し方がある。
+    part_no: 自社品番 (完全一致)。
+    返す物: money_hidden 金額を隠したか・part_no・name 品名・drawing_no 図面番号・has_drawing 図面のファイルがあるか・unit 単位・
+    standard_price 標準の単価 (字。無ければ null)・note 備考・
+    partner_items (取引先ごとの partner_code・partner_name・partner_part_no 取引先の品番・partner_item_name 取引先の品名)・
+    processes (標準の工程。seq 順・process_code 工程コード・process_name 工程の名前)・url 詳細の道。
+    standard_price は、金額の閲覧の判定が on の会社で閲覧の無い利用者 (と、利用者を決めずに起こしたとき) には「—」で、そのとき money_hidden が真。
+    ok が偽なら error に、品番が無いことと探し方がある。
     """
+    return _get_item(None, part_no)
+
+
+def _list_orders(user, status, customer_code, limit) -> dict[str, Any]:
+    """list_orders の中身。user は金額の閲覧を判定する閲覧の人 (None もある)。"""
     Order = apps.get_model("orders", "Order")
     labels = dict(Order.STATUS_CHOICES)
     state = _text(status)
@@ -511,25 +509,36 @@ def list_orders(status: str | None = None, customer_code: str | None = None, lim
         queryset = queryset.filter(customer=customer)
     orders = list(queryset.order_by("-order_date", "-pk")[:count])
     lines = _annotated_lines(orders)
-    items = [_order_dict(order, lines.get(order.pk, [])) for order in orders]
-    return {"ok": True, "count": len(items), "items": items}
+    shown = _money_shown(user)
+    items = [_order_dict(order, lines.get(order.pk, []), shown) for order in orders]
+    return {"ok": True, "count": len(items), "money_hidden": not shown, "items": items}
 
 
-def get_order(order_no: str) -> dict[str, Any]:
-    """受注の 1 件を受注番号で引き、明細ごとの出荷と指示書も返す。
+def list_orders(status: str | None = None, customer_code: str | None = None, limit: int = 50) -> dict[str, Any]:
+    """受注の一覧を、明細ごとの出荷済みと残 (注文残) つきで受注日の新しい順に返す。
 
-    order_no: 受注番号。
-    返す物: list_orders の 1 件と同じ鍵に、明細ごとの shipments (出荷。shipment_no 出荷番号・qty 数量・
-    shipped_at 出荷日・delivery_note_no 納品書番号 (無ければ空)) と workorders (指示書。wo_no 指示書番号・
-    qty 数量・status と status_label 状態) を足した物。
-    ok が偽なら error に、受注番号が無いことと探し方がある。
+    status: 状態 (open 受注・partial 一部出荷・shipped 出荷済・cancelled 取消)。null なら取消の外の全部。
+    customer_code: 得意先の取引先コード。null ならすべての得意先。
+    limit: 返す件数 (1〜200。既定 50)。
+    返す物: count・money_hidden 金額を隠したか・items (受注ごとの order_no 受注番号・customer_code・customer_name・order_date 受注日・
+    customer_order_no 得意先の注文番号・status と status_label 状態の日本語・url 詳細の道・
+    lines 明細 (line_no 行番号・part_no・item_name・qty 数量・shipped_qty 出荷済み・remaining_qty 残・
+    unit・unit_price・amount 金額・due_date 納期))。数は字。残が 0 より大きい明細が注文残。
+    単価と金額 (unit_price・amount) は、金額の閲覧の判定が on の会社で閲覧の無い利用者 (と、利用者を決めずに起こしたとき) には「—」で、そのとき money_hidden が真。
+    ok が偽なら error に、読めなかった引数とその直し方がある。
     """
+    return _list_orders(None, status, customer_code, limit)
+
+
+def _get_order(user, order_no) -> dict[str, Any]:
+    """get_order の中身。user は金額の閲覧を判定する閲覧の人 (None もある)。"""
     try:
         order = _order_by_no(order_no)
     except _Refusal as exc:
         return _refused(exc.message)
     lines = _annotated_lines([order]).get(order.pk, [])
-    result = _order_dict(order, lines)
+    shown = _money_shown(user)
+    result = _order_dict(order, lines, shown)
     for row, line in zip(result["lines"], lines, strict=True):
         # 出荷と指示書は明細ごとに別に引く (出荷済みの合計の問い合わせに結ぶと合計がふくらむ)。
         row["shipments"] = [
@@ -550,7 +559,20 @@ def get_order(order_no: str) -> dict[str, Any]:
             }
             for workorder in line.workorders.order_by("issued_on", "pk")
         ]
-    return {"ok": True, **result}
+    return {"ok": True, "money_hidden": not shown, **result}
+
+
+def get_order(order_no: str) -> dict[str, Any]:
+    """受注の 1 件を受注番号で引き、明細ごとの出荷と指示書も返す。
+
+    order_no: 受注番号。
+    返す物: money_hidden 金額を隠したか と、list_orders の 1 件と同じ鍵に、明細ごとの shipments (出荷。shipment_no 出荷番号・qty 数量・
+    shipped_at 出荷日・delivery_note_no 納品書番号 (無ければ空)) と workorders (指示書。wo_no 指示書番号・
+    qty 数量・status と status_label 状態) を足した物。
+    単価と金額 (明細の unit_price・amount) は、金額の閲覧の判定が on の会社で閲覧の無い利用者 (と、利用者を決めずに起こしたとき) には「—」で、そのとき money_hidden が真。
+    ok が偽なら error に、受注番号が無いことと探し方がある。
+    """
+    return _get_order(None, order_no)
 
 
 def list_workorders(status: str | None = None, limit: int = 50) -> dict[str, Any]:
@@ -1156,7 +1178,7 @@ READ_TOOLS = (
 
 
 def viewer_tools(user) -> tuple:
-    """金額の閲覧の判定に閲覧の人が要る読む道具 (list_receipts・list_payments) の、利用者を閉じ込めた版。
+    """金額の閲覧の判定に閲覧の人が要る読む道具 (get_item・list_orders・get_order・list_receipts・list_payments) の、利用者を閉じ込めた版。
 
     seizou_mcp.build_server と assistant.tools.run_tool が READ_TOOLS の同じ名前の物と差し替えて使う
     (write_tools と同じ閉じ込めの形。名前・引数・docstring は READ_TOOLS の物と同じで、違うのは閲覧の人だけ)。
@@ -1165,15 +1187,25 @@ def viewer_tools(user) -> tuple:
     # 入れ子の def より前に取る (def の後は、同じ名前が内側の関数を指す)。
     plain = {tool.__name__: tool for tool in READ_TOOLS}
 
+    def get_item(part_no: str) -> dict[str, Any]:
+        return _get_item(user, part_no)
+
+    def list_orders(status: str | None = None, customer_code: str | None = None, limit: int = 50) -> dict[str, Any]:
+        return _list_orders(user, status, customer_code, limit)
+
+    def get_order(order_no: str) -> dict[str, Any]:
+        return _get_order(user, order_no)
+
     def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
         return _list_receipts(user, po_no, days, limit)
 
     def list_payments(invoice_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
         return _list_payments(user, invoice_no, days, limit)
 
-    list_receipts.__doc__ = plain["list_receipts"].__doc__
-    list_payments.__doc__ = plain["list_payments"].__doc__
-    return (list_receipts, list_payments)
+    bound = (get_item, list_orders, get_order, list_receipts, list_payments)
+    for tool in bound:
+        tool.__doc__ = plain[tool.__name__].__doc__
+    return bound
 
 
 # --- 書く道具 ---

@@ -44,7 +44,9 @@ ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
 NEW_TOOLS = ["list_receipts", "list_acceptances", "list_payments", "list_feedback", "get_feedback"]
 #: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
-MONEY_TOOLS = ["list_receipts", "list_payments"]
+MONEY_TOOLS = ["get_item", "list_orders", "get_order", "list_receipts", "list_payments"]
+#: 引数の要る道具に渡す引数 (無い番号は、どちらの版も同じ断りの文を返す)
+VIEWER_ARGS = {"get_item": {"part_no": "T-100"}, "get_order": {"order_no": "NO-SUCH"}}
 #: 請求書の日 (日数で絞らないので固定)
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
@@ -317,7 +319,8 @@ def test_viewer_tools_match_plain_tools(receipt):
         assert tool is not plain[name], name
         assert inspect.signature(tool) == inspect.signature(plain[name]), name
         assert tool.__doc__ == plain[name].__doc__, name
-        assert _json(tool()) == _json(plain[name]()), name
+        args = VIEWER_ARGS.get(name, {})
+        assert _json(tool(**args)) == _json(plain[name](**args)), name
 
 
 def test_build_server_registers_bound_money_tools(on, manager, receipt, monkeypatch):
@@ -334,7 +337,7 @@ def test_build_server_registers_bound_money_tools(on, manager, receipt, monkeypa
     for name in MONEY_TOOLS:
         assert registered[name] is not getattr(mcp_tools, name), name
         assert registered[name].__doc__ == getattr(mcp_tools, name).__doc__, name
-    assert registered["list_orders"] is mcp_tools.list_orders
+    assert registered["list_workorders"] is mcp_tools.list_workorders
     assert registered["list_receipts"]()["money_hidden"] is False
     assert mcp_tools.list_receipts()["money_hidden"] is True
 

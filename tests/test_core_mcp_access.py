@@ -5,13 +5,16 @@
 判定を有効にする試験は settings の fixture で SEIZOU を替える (tests/settings.py は SEIZOU = {} のまま = 3 つとも記録だけ)。
 """
 
+import json
 import logging
+from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 
 from seizou.accounts import services as accounts_services
-from seizou.core import mcp_tools
+from seizou.assistant import tools as assistant_tools
+from seizou.core import access, mcp_tools
 from seizou.orders.models import Order
 from seizou.shipping.models import Shipment
 from seizou.workorders.models import WorkOrderStep
@@ -63,6 +66,29 @@ def _write_all(tools, world) -> dict:
         "create_order": tools["create_order"]("C001", NEW_ORDER_LINES, NEW_ORDER_DATE),
         "ship": tools["ship"](world.order.order_no, 1, "1", world.today.isoformat()),
         "plan_step": tools["plan_step"](world.workorder.wo_no, "P10", PLAN_START, PLAN_END),
+    }
+
+
+def _viewer(person, name):
+    """閲覧の人 person を閉じ込めた読む道具 name。"""
+    return {tool.__name__: tool for tool in mcp_tools.viewer_tools(person)}[name]
+
+
+def _money_reads(read) -> dict:
+    """部品・受注の一覧・受注の 1 件を読む道具で読み、金額の欄と数の欄を集める。read(name) は道具を返す。"""
+
+    def lines(result):
+        return [line for order in result.get("items", [result]) for line in order["lines"]]
+
+    item = read("get_item")("T-100")
+    listed = read("list_orders")()
+    order = read("get_order")(listed["items"][0]["order_no"])
+    return {
+        "hidden": {item["money_hidden"], listed["money_hidden"], order["money_hidden"]},
+        "standard_price": item["standard_price"],
+        "unit_prices": [line["unit_price"] for line in lines(listed) + lines(order)],
+        "amounts": [line["amount"] for line in lines(listed) + lines(order)],
+        "qty": [(line["qty"], line["shipped_qty"], line["remaining_qty"]) for line in lines(order)],
     }
 
 
@@ -133,3 +159,58 @@ def test_write_tools_log_mode_records_and_saves(world, caplog):
     messages = [record.getMessage() for record in access_records(caplog)]
     wanted = "記録だけ (編集の権限): genba が orders.create_order を保存しようとした"
     assert sum(message.startswith(wanted) for message in messages) == 1, messages
+
+
+# --- 読む道具の金額 (精査 A2 の S1) ---
+
+
+def test_read_tools_mask_money_by_viewer(settings, on, world, admin, caplog):
+    caplog.set_level(logging.INFO, logger="seizou.access")
+    plain = {tool.__name__: tool for tool in mcp_tools.READ_TOOLS}
+
+    hidden = _money_reads(plain.get)
+    assert hidden["hidden"] == {True}
+    assert hidden["standard_price"] == access.MASK
+    assert set(hidden["unit_prices"]) == set(hidden["amounts"]) == {access.MASK}
+    # 数は金額でないので見える (明細 1 = 10 個のうち 4 個出荷済み)。
+    assert [tuple(Decimal(value) for value in row) for row in hidden["qty"]] == [(10, 4, 6), (5, 0, 5)]
+    # 標準単価の無い部品も「—」(見せないときは無いことも知らせない)。
+    assert mcp_tools.get_item("T-200")["standard_price"] == access.MASK
+
+    keiri = account("keiri", see_money=True)
+    for person in (admin, keiri):
+        seen = _money_reads(lambda name, person=person: _viewer(person, name))
+        assert seen["hidden"] == {False}, person
+        assert Decimal(seen["standard_price"]) == Decimal("120"), person
+        assert [Decimal(value) for value in seen["unit_prices"]] == [Decimal("100"), Decimal("250")] * 2, person
+        assert [Decimal(value) for value in seen["amounts"]] == [Decimal("1000"), Decimal("1250")] * 2, person
+    genba = account("genba")
+    masked = _money_reads(lambda name: _viewer(genba, name))
+    assert masked["hidden"] == {True}
+    assert masked["standard_price"] == access.MASK
+    assert set(masked["unit_prices"]) == {access.MASK}
+
+    settings.SEIZOU = {}
+    for read in (plain.get, lambda name: _viewer(genba, name)):
+        shown = _money_reads(read)
+        assert shown["hidden"] == {False}
+        assert Decimal(shown["standard_price"]) == Decimal("120")
+        assert [Decimal(value) for value in shown["amounts"]] == [Decimal("1000"), Decimal("1250")] * 2
+    assert mcp_tools.get_item("T-200")["standard_price"] is None
+    # 読む道具は金額を見たことを記録しない (_money_shown は record=False)。
+    assert access_records(caplog) == []
+
+
+def test_run_tool_masks_order_money_for_viewer(on, world, admin):
+    genba = account("genba")
+    arguments = {"order_no": world.order.order_no}
+
+    masked = assistant_tools.run_tool("get_order", arguments, user=genba)
+    assert masked["is_error"] is False
+    body = json.loads(masked["content"])
+    assert body["money_hidden"] is True
+    assert {line["unit_price"] for line in body["lines"]} == {access.MASK}
+
+    seen = json.loads(assistant_tools.run_tool("get_order", arguments, user=admin)["content"])
+    assert seen["money_hidden"] is False
+    assert [Decimal(line["unit_price"]) for line in seen["lines"]] == [Decimal("100"), Decimal("250")]
