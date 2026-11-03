@@ -1,11 +1,14 @@
 {% comment %}
-connect の一覧 (受信箱・つながり) の行の部分。土台は htmx の要求に、この部分を core/_rows.html より先に探す。
-受信箱の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
+connect の一覧 (届いた注文・取引先との接続) の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+届いた注文の一覧 (inbox_list) に行があるときは、core/_rows.html の「行がある時」の部分 (表・ページ送り・partial のときの
+_list_meta.html の oob) を写し、1 行を connect/_inbox_row.html (状態の列の書き分けと、最後の「操作」の列) にした。
+写した元: core/_rows.html (11-03 昼の main)。土台の表の形が変わったら、ここも合わせる。
+届いた注文の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
 after=0 は一覧が空だった時の取りに行きで、行が届いたら表ごと返し、まだ空なら core の空の表示を返す。
 どちらも、次の after を持った取りに行く要素 (connect/_inbox_poll.html) を hx-swap-oob で入れ直す。
-それ以外 (検索・並び替え・ページ送りと、つながりの一覧) は core/_rows.html をそのまま使う。
+それ以外 (届いた注文の空の一覧と、取引先との接続の一覧) は core/_rows.html をそのまま使う。
 {% endcomment %}
-{% load seizou_tags %}
+{% load seizou_tags seizou_icons %}
 {% if request.resolver_match.url_name == "inbox_list" and "after" in request.GET %}
 {% if request.GET.after != "0" %}{% include "connect/_inbox_new_rows.html" %}
 {# 新しい行があれば、上の「全 N 件」も入れ替える (行だけ増えて件数が古いままにならないように)。<template> で包むのは行の応答の中に置くため。 #}
@@ -13,7 +16,7 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 {% elif rows %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">
-  <thead><tr class="bg-base-200 text-base-content/70">{% for col in columns %}<th class="whitespace-nowrap font-medium">{{ col.label }}</th>{% endfor %}</tr></thead>
+  <thead><tr class="bg-base-200 text-base-content/70">{% for col in columns %}<th class="whitespace-nowrap font-medium">{{ col.label }}</th>{% endfor %}<th class="whitespace-nowrap font-medium">操作</th></tr></thead>
   <tbody>{% include "connect/_inbox_new_rows.html" %}</tbody>
 </table>
 </div>
@@ -21,7 +24,36 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 {% else %}{% include "core/_rows.html" %}
 {% endif %}
 {% include "connect/_inbox_poll.html" with trigger="every 2s" oob=True %}
+{% elif request.resolver_match.url_name == "inbox_list" %}
+{% if rows %}
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm table-zebra table-pin-rows">
+  <thead><tr class="bg-base-200 text-base-content/70">
+    {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
+      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+    </th>{% endfor %}
+    <th class="whitespace-nowrap font-medium">操作</th>
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}{% include "connect/_inbox_row.html" with new=False %}{% endfor %}
+  </tbody>
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}<td></td></tr></tfoot>{% endif %}
+</table>
+</div>
+<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
+  {% if paginator.num_pages > 1 %}
+  <nav class="join" aria-label="ページ送り">
+    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="前のページ">{% icon "chevron-left" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-left" "size-4" %}</span>{% endif %}
+    <span class="join-item btn btn-sm pointer-events-none tabular-nums">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="次のページ">{% icon "chevron-right" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-right" "size-4" %}</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}
+{% include "connect/_inbox_poll.html" with trigger="every 2s" oob=True %}
 {% else %}
 {% include "core/_rows.html" %}
-{% if request.resolver_match.url_name == "inbox_list" %}{% include "connect/_inbox_poll.html" with trigger="every 2s" oob=True %}{% endif %}
 {% endif %}

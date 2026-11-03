@@ -1,13 +1,2 @@
-{% load seizou_tags %}
-{# 受信箱の自動の更新で表の先頭に足す行。新しく届いた行だけ、各欄の地に色を付ける (表の縞の色より前に出すため、行でなく欄に付ける)。欄の描き方は core/_rows.html に合わせた。 #}
-{% for row in rows %}
-<tr id="row-{{ row.pk }}" class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}">
-  {% for cell in row.cells %}
-  {% if forloop.first %}<td class="whitespace-nowrap bg-primary/10{% if cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
-  {% elif cell.datetime %}<td class="whitespace-nowrap bg-primary/10 font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
-  {% elif cell.master %}<td class="whitespace-nowrap bg-primary/10"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
-  {% else %}<td class="whitespace-nowrap bg-primary/10"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
-  {% endif %}
-  {% endfor %}
-</tr>
-{% endfor %}
+{# 届いた注文の自動の更新で表の先頭に足す行。新しく届いた行だけ、各欄の地に色を付ける (new)。行の作りと行の操作は connect/_inbox_row.html と同じ。 #}
+{% for row in rows %}{% include "connect/_inbox_row.html" with new=True %}{% endfor %}

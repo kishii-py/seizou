@@ -16,6 +16,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 
 from seizou.core.services import next_number
 from seizou.masters.services import round_amount
@@ -150,15 +151,49 @@ def mark_sent(purchase_order, user):
         return locked
 
 
-def mark_accepted(purchase_order, user):
-    """「送った」の発注を「相手が受けた」にする。それ以外の状態は ValueError。"""
+def mark_accepted(purchase_order, user, *, reply_message_id=None):
+    """「送った」の発注を「相手が受け入れた」にする。それ以外の状態は ValueError。
+
+    注文回答の日時 (こちらに届いて当てた時刻) を書く。reply_message_id は相手の注文回答の番号
+    (connect の受け口が渡す。同じ番号の 2 回目は受け口が見分けて呼ばない。DB の一意の制約もある)。
+    """
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
         if locked.status != PurchaseOrder.STATUS_SENT:
             raise ValueError(
-                f"状態が「{locked.get_status_display()}」の発注は「相手が受けた」にできません。"
+                f"状態が「{locked.get_status_display()}」の発注は「相手が受け入れた」にできません。"
                 "「送った」の発注だけを進めてください。"
             )
         locked.status = PurchaseOrder.STATUS_ACCEPTED
-        locked.save(update_fields=["status"])
+        locked.replied_at = timezone.now()
+        fields = ["status", "replied_at"]
+        if reply_message_id is not None:
+            locked.reply_message_id = reply_message_id
+            fields.append("reply_message_id")
+        locked.save(update_fields=fields)
+        return locked
+
+
+def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
+    """「送った」の発注を「断られた」にする。それ以外の状態は ValueError。
+
+    reason は相手の断りの理由 (500 字で切る。空でもよい)。注文回答の日時と番号は mark_accepted と同じ。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+        if locked.status != PurchaseOrder.STATUS_SENT:
+            raise ValueError(
+                f"状態が「{locked.get_status_display()}」の発注は「断られた」にできません。"
+                "「送った」の発注だけを進めてください。"
+            )
+        text = reason if isinstance(reason, str) else ""
+        limit = PurchaseOrder._meta.get_field("reply_note").max_length
+        locked.status = PurchaseOrder.STATUS_REJECTED
+        locked.replied_at = timezone.now()
+        locked.reply_note = text[:limit]
+        fields = ["status", "replied_at", "reply_note"]
+        if reply_message_id is not None:
+            locked.reply_message_id = reply_message_id
+            fields.append("reply_message_id")
+        locked.save(update_fields=fields)
         return locked

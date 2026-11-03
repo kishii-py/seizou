@@ -5,6 +5,8 @@
   受けるときに os.environ から値を読む。鍵の値を例外の文・ログ・返す物に入れない。
 - 署名の確かめは signing.verify をそのまま呼ぶ。ここで書き直さない。
 - 受け口は受注を作らない (R10)。受け入れて受注にする関数は、受注の部品ができてから足す。
+- 承認 (受け入れ) と断りの後、send_reply が結果を「注文回答」にして相手の受け口へ返す。
+  受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import os
 import re
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
@@ -136,6 +139,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     raw_body は受けた本文の bytes (整形しない)。headers は見出しの名前 → 値の mapping。
     通れば Inbox を返す。同じ番号が既にあれば、新しい行を作らず 1 回目の行を返す。
     通らなければ断る理由の日本語の文字列を返し、受信箱には入れない。
+    本文の kind が order_reply (注文回答) なら受信箱に入れず、元の発注に当てて ReplyReceipt を返す。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
@@ -182,6 +186,11 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     if not isinstance(payload, dict):
         return _refuse(MESSAGE_INVALID_BODY, msg_id)
 
+    # 注文回答 (承認か断りの結果) は届いた注文の行にせず、元の発注に当てる。
+    # kind が無い物と知らない kind は、今までどおり注文として入れる。
+    if payload.get("kind") == "order_reply":
+        return _receive_reply(message_id, partner, payload)
+
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
@@ -194,6 +203,92 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
+
+
+@dataclass(frozen=True)
+class ReplyReceipt:
+    """受け口が注文回答を元の発注に当てた (か、同じ番号の 2 回目だった) 印。
+
+    受け口の view は message_id だけを読む (注文は Inbox、注文回答はこの印。どちらも message_id を持つ)。
+    """
+
+    message_id: uuid.UUID
+    purchase_order: object
+
+
+MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・result を字で送ってください。"
+MESSAGE_REPLY_RESULT = "注文回答の結果が accepted か rejected ではありません。"
+MESSAGE_REPLY_OTHER_PARTNER = "注文回答の元の発注は、その取引先への物ではありません。"
+MESSAGE_REPLY_ORDER_ID = "注文回答の元の注文のデータの番号が、送った物と合いません。"
+_REPLY_RESULTS = ("accepted", "rejected")
+
+
+def _receive_reply(message_id, partner, payload):
+    """署名の通った注文回答を、元の発注に 1 回だけ当てる。返す物は ReplyReceipt か、断る理由の文。
+
+    引く順は 発注番号 (order_no) → 発注の取引先が署名の通ったつながりの取引先と同じ → その発注の
+    送った注文に order_id の番号がある。同じ回答の番号の 2 回目は何もせずに通す (R11 の考え)。
+    発注を書くのは purchasing の services だけ (受け口に利用者はいないので user は None)。
+    断るときは全部を戻す (作成 → 送った も残さない)。
+    """
+    # connect は purchasing の model を頭で import しない (輪になるため)。
+    from django.apps import apps
+
+    from seizou.purchasing import services as purchasing_services
+
+    from .models import Outbox
+
+    purchase_order_model = apps.get_model("purchasing", "PurchaseOrder")
+    msg_id = str(message_id)
+    order_no = payload.get("order_no")
+    order_id = payload.get("order_id")
+    result = payload.get("result")
+    # str でない値を filter に渡すと TypeError になるので、先に形を見る。
+    if not all(isinstance(value, str) and value for value in (order_no, order_id, result)):
+        return _refuse(MESSAGE_REPLY_SHAPE, msg_id)
+    if result not in _REPLY_RESULTS:
+        return _refuse(MESSAGE_REPLY_RESULT, msg_id)
+    try:
+        order_message_id = uuid.UUID(order_id)
+    except ValueError:
+        return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
+    reason = payload.get("reason")
+    reason = reason if isinstance(reason, str) else ""
+
+    with transaction.atomic():
+        # 同じ回答が同時に 2 つ届いても、2 つ目は 1 つ目が終わるまで待ち、番号で見分ける。
+        purchase_order = (
+            purchase_order_model.objects.select_for_update().filter(po_no=order_no).first()
+        )
+        if purchase_order is None:
+            return _refuse(
+                f"注文回答の元の発注 {order_no[:35]} がありません。発注番号を確かめてください。", msg_id
+            )
+        if purchase_order.partner_id != partner.pk:
+            return _refuse(MESSAGE_REPLY_OTHER_PARTNER, msg_id)
+        if not Outbox.objects.filter(
+            purchase_order=purchase_order, message_id=order_message_id
+        ).exists():
+            return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
+        if purchase_order.reply_message_id == message_id:
+            return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
+        try:
+            # 回答が来た = 相手は注文を受け取っている。「作成」なら先に「送った」にする
+            # (送った時の返事が落ちた場合の救い)。「取消」は mark_sent が断る。
+            if purchase_order.status != purchase_order.STATUS_SENT:
+                purchasing_services.mark_sent(purchase_order, None)
+            if result == "accepted":
+                updated = purchasing_services.mark_accepted(
+                    purchase_order, None, reply_message_id=message_id
+                )
+            else:
+                updated = purchasing_services.mark_rejected(
+                    purchase_order, None, reason=reason, reply_message_id=message_id
+                )
+        except (ValueError, IntegrityError) as exc:
+            transaction.set_rollback(True)
+            return _refuse(str(exc), msg_id)
+    return ReplyReceipt(message_id=message_id, purchase_order=updated)
 
 
 # 受け入れと断るの日本語 (何が起きて、何をすればよいか)。payload の全文は文に入れない。
@@ -270,7 +365,10 @@ def accept(inbox, item_mapping, user):
         locked.status = Inbox.STATUS_ACCEPTED
         locked.order = order
         locked.save(update_fields=["status", "order"])
-        return order
+
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
+    send_reply(locked, user)
+    return order
 
 
 def reject(inbox, reason, user):
@@ -291,7 +389,86 @@ def reject(inbox, reason, user):
         locked.status = Inbox.STATUS_REJECTED
         locked.reason = text
         locked.save(update_fields=["status", "reason"])
-        return locked
+
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (断りは成立する)。
+    send_reply(locked, user)
+    return locked
+
+
+MESSAGE_REPLY_BEFORE_DECISION = (
+    "承認か断りをする前の届いた注文には、注文回答を送れません。受け入れるか断ってから送ってください。"
+)
+MESSAGE_REPLY_NO_CONNECTION = (
+    "取引先との接続 (送る向き) が無いので注文回答を送っていません。"
+    "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
+)
+
+
+def send_reply(inbox, user):
+    """承認か断りの結果を「注文回答」にし、署名して、注文を送ってきた相手の受け口へ送る。
+
+    - 送れるのは、種類が注文で、受け入れたか断った後の行だけ。それ以外は日本語の ValueError。
+    - 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
+    - つながりは届いた注文の取引先の、向き「送る」の物。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order と同じ _deliver。
+    - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (承認と断りは成立する)。
+      返事は reply_response に書き、相手が受け取ったときだけ reply_sent_at を書く。
+    - 鍵の値・本文・見出しの値をログと返す物に出さない。返す物は取り直した Inbox。
+    """
+    # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
+    from django.utils import timezone
+
+    from seizou.core.conf import company_id
+    from seizou.core.services import company
+
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.kind != Inbox.KIND_ORDER or locked.status == Inbox.STATUS_RECEIVED:
+            raise ValueError(MESSAGE_REPLY_BEFORE_DECISION)
+        if locked.reply_message_id is None:
+            locked.reply_message_id = uuid.uuid4()
+            locked.save(update_fields=["reply_message_id"])
+    message_id = locked.reply_message_id
+
+    connection = (
+        Connection.objects.filter(partner=locked.partner, direction=Connection.DIRECTION_SEND)
+        .order_by("pk")
+        .first()
+    )
+    if connection is None:
+        reply, kind = MESSAGE_REPLY_NO_CONNECTION, "no_connection"
+    else:
+        accepted = locked.status == Inbox.STATUS_ACCEPTED
+        order_data = locked.payload if isinstance(locked.payload, dict) else {}
+        order_no = order_data.get("order_no")
+        reply_data = {
+            "id": str(message_id),
+            "kind": "order_reply",
+            "sent_at": timezone.localtime().isoformat(),
+            "order_id": str(locked.message_id),
+            "order_no": order_no if isinstance(order_no, str) else "",
+            "result": "accepted" if accepted else "rejected",
+            "supplier_order_no": locked.order.order_no if accepted and locked.order else "",
+            "reason": "" if accepted else locked.reason,
+            "supplier": {"id": company_id(), "name": company().name},
+        }
+        raw = json.dumps(reply_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        # R17: ここは atomic の外。
+        reply, kind = _deliver(connection, message_id, raw)
+
+    with transaction.atomic():
+        saved = Inbox.objects.select_for_update().get(pk=locked.pk)
+        saved.reply_response = reply[: Inbox._meta.get_field("reply_response").max_length]
+        fields = ["reply_response"]
+        if kind == "received":
+            saved.reply_sent_at = timezone.now()
+            fields.append("reply_sent_at")
+        saved.save(update_fields=fields)
+
+    logger.info("注文回答: 届いた注文 %s 番号 %s 返事の種類 %s", saved.pk, message_id, kind)
+    return saved
 
 
 def _part_of(raw, number):
@@ -373,6 +550,56 @@ def _unreachable_reply(exc) -> str:
     return "届きません: 送る途中で誤りが起きました。もう 1 度送り直してください。"
 
 
+def _deliver(connection, message_id, raw) -> tuple[str, str]:
+    """本文の bytes を署名して相手の受け口へ送り、返事を (日本語の文, 種類) にして返す。
+
+    send_order と send_reply が呼ぶ。requests.post を呼ぶのはこの 1 か所だけ。
+    呼び手は transaction.atomic の外から呼ぶ (R17)。待ちは 10 秒。
+    種類は received (受け取った) / rejected (断られた) / unreadable / unreachable / no_secret / bad_secret。
+    鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
+    """
+    # 試験が requests.post を差し替えるため、関数の中で import する。
+    import requests
+
+    secret = os.environ.get(connection.secret_env)
+    if not secret:
+        reply = (
+            f"鍵の置き場 {connection.secret_env} に値が無いので送っていません。.env に置いてください。"
+        )
+        return reply, "no_secret"
+    try:
+        signed = signing.headers_for(secret, str(message_id), raw)
+    except ValueError:
+        # 鍵の形 (接頭辞つきの base64) の誤り。文に鍵の値を入れない。
+        reply = (
+            f"鍵の置き場 {connection.secret_env} の値が鍵の形 (接頭辞つきの base64) でないので"
+            "送っていません。.env の値を確かめてください。"
+        )
+        return reply, "bad_secret"
+
+    try:
+        answer = requests.post(
+            connection.url,
+            data=raw,
+            headers={**signed, "Content-Type": "application/json"},
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        return _unreachable_reply(exc), "unreachable"
+    if answer.status_code == 200:
+        return "受け取った", "received"
+    if answer.status_code == 400:
+        # 返事の JSON の message (200 字まで)。読めなければ決まった文。
+        try:
+            refused = answer.json().get("message", "")
+        except (ValueError, AttributeError):
+            refused = ""
+        if not isinstance(refused, str) or not refused:
+            refused = "理由が読めません"
+        return f"断られた: {refused[:200]}", "rejected"
+    return f"返事が読めません (HTTP {answer.status_code})", "unreadable"
+
+
 def send_order(purchase_order, user):
     """発注を注文のデータにし、署名して相手の受け口へ送る。送った物は Outbox に 1 行残して返す。
 
@@ -387,7 +614,6 @@ def send_order(purchase_order, user):
     - 鍵の値・本文・見出しの値をログと返す物に出さない。
     """
     # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
-    import requests
     from django.utils import timezone
 
     from seizou.core.conf import company_id
@@ -447,53 +673,8 @@ def send_order(purchase_order, user):
             response="送っています",
         )
 
-    secret = os.environ.get(connection.secret_env)
-    signed = None
-    if not secret:
-        reply = (
-            f"鍵の置き場 {connection.secret_env} に値が無いので送っていません。.env に置いてください。"
-        )
-        kind = "no_secret"
-    else:
-        try:
-            signed = signing.headers_for(secret, str(message_id), raw)
-        except ValueError:
-            # 鍵の形 (接頭辞つきの base64) の誤り。文に鍵の値を入れない。
-            reply = (
-                f"鍵の置き場 {connection.secret_env} の値が鍵の形 (接頭辞つきの base64) でないので"
-                "送っていません。.env の値を確かめてください。"
-            )
-            kind = "bad_secret"
-
-    if signed is not None:
-        # R17: ここは atomic の外。
-        try:
-            answer = requests.post(
-                connection.url,
-                data=raw,
-                headers={**signed, "Content-Type": "application/json"},
-                timeout=10,
-            )
-        except requests.RequestException as exc:
-            reply = _unreachable_reply(exc)
-            kind = "unreachable"
-        else:
-            if answer.status_code == 200:
-                reply = "受け取った"
-                kind = "received"
-            elif answer.status_code == 400:
-                # 返事の JSON の message (200 字まで)。読めなければ決まった文。
-                try:
-                    refused = answer.json().get("message", "")
-                except (ValueError, AttributeError):
-                    refused = ""
-                if not isinstance(refused, str) or not refused:
-                    refused = "理由が読めません"
-                reply = f"断られた: {refused[:200]}"
-                kind = "rejected"
-            else:
-                reply = f"返事が読めません (HTTP {answer.status_code})"
-                kind = "unreadable"
+    # R17: ここは atomic の外。送る所は send_reply と同じ _deliver。
+    reply, kind = _deliver(connection, message_id, raw)
 
     with transaction.atomic():
         outbox.response = reply[: Outbox._meta.get_field("response").max_length]

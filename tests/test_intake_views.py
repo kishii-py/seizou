@@ -182,9 +182,11 @@ def test_list_shows_record(client_logged_in, extraction):
     assert reverse("intake:extraction_create") in body
 
 
-def test_menu_has_intake_entry(client_logged_in):
+def test_menu_has_no_intake_entry_but_url_works(client_logged_in):
+    # 左のメニューの入口は外した (受注の画面の「読み取る (OCR)」から入る。02 の 8 節の決め 6)。URL と画面は残る。
     response = client_logged_in.get(reverse("core:home"))
 
     body = response.content.decode()
-    assert "注文書の読み取り" in body
-    assert reverse("intake:extraction_list") in body
+    assert "注文書の読み取り" not in body
+    assert reverse("intake:extraction_list") not in body
+    assert client_logged_in.get(reverse("intake:extraction_list")).status_code == 200
