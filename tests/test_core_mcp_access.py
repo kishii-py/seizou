@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from seizou.accounts import services as accounts_services
 from seizou.assistant import tools as assistant_tools
 from seizou.core import access, mcp_tools
+from seizou.feedback import services as feedback_services
 from seizou.orders.models import Order
 from seizou.shipping.models import Shipment
 from seizou.workorders.models import WorkOrderStep
@@ -214,3 +215,37 @@ def test_run_tool_masks_order_money_for_viewer(on, world, admin):
     seen = json.loads(assistant_tools.run_tool("get_order", arguments, user=admin)["content"])
     assert seen["money_hidden"] is False
     assert [Decimal(line["unit_price"]) for line in seen["lines"]] == [Decimal("100"), Decimal("250")]
+
+
+# --- フィードバックの道具 (精査 A2 の S8 の道具の側) ---
+
+
+def _ids(result) -> list:
+    return [row["id"] for row in result["items"]]
+
+
+def test_feedback_tools_show_own_rows_to_non_manager(admin):
+    genba = account("genba")
+    jimu = account("jimu", permissions=["slip_edit"])
+    own = feedback_services.create_feedback(
+        {"kind": "common", "title": "一覧に納期の列がほしい", "problem": "納期を見るのに、毎回詳細を開いている。"}, genba
+    )
+    other = feedback_services.create_feedback(
+        {"kind": "bug", "title": "受注の一覧で並びが戻る", "problem": "詳細から戻ると、並びが元に戻る。"}, jimu
+    )
+
+    assert _ids(_viewer(genba, "list_feedback")()) == [own.pk]
+    assert _viewer(genba, "get_feedback")(own.pk)["ok"] is True
+    hidden = _viewer(genba, "get_feedback")(other.pk)
+    missing = _viewer(genba, "get_feedback")(999999)
+    assert hidden["ok"] is False
+    # 見えない行は、無い番号と同じ文 (番号の字だけ違う)。ほかの人の下書きがあることを知らせない。
+    assert hidden["error"] == missing["error"].replace("999999", str(other.pk))
+
+    a2_manager = account("a2_manager", manage_accounts=True)
+    for person in (a2_manager, admin):
+        assert _ids(_viewer(person, "list_feedback")()) == [other.pk, own.pk], person
+        assert _viewer(person, "get_feedback")(other.pk)["ok"] is True, person
+    # 利用者を決めずに起こした道具 (READ_TOOLS) は今までどおり全部。
+    assert _ids(mcp_tools.list_feedback()) == [other.pk, own.pk]
+    assert mcp_tools.get_feedback(other.pk)["ok"] is True

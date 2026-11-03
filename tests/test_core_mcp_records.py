@@ -44,9 +44,9 @@ ALL_ON = {"department": "on", "write": "on", "money": "on"}
 #: このファイルが見る、足した読む道具 (READ_TOOLS の末尾の並び)
 NEW_TOOLS = ["list_receipts", "list_acceptances", "list_payments", "list_feedback", "get_feedback"]
 #: 閲覧の人を閉じ込める道具 (viewer_tools の並び)
-MONEY_TOOLS = ["get_item", "list_orders", "get_order", "list_receipts", "list_payments"]
+MONEY_TOOLS = ["get_item", "list_orders", "get_order", "list_receipts", "list_payments", "list_feedback", "get_feedback"]
 #: 引数の要る道具に渡す引数 (無い番号は、どちらの版も同じ断りの文を返す)
-VIEWER_ARGS = {"get_item": {"part_no": "T-100"}, "get_order": {"order_no": "NO-SUCH"}}
+VIEWER_ARGS = {"get_item": {"part_no": "T-100"}, "get_order": {"order_no": "NO-SUCH"}, "get_feedback": {"feedback_id": 1}}
 #: 請求書の日 (日数で絞らないので固定)
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
