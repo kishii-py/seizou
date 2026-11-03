@@ -43,4 +43,9 @@ PART_APPS = (
     "connect",
     "purchasing",
     "intake",
+    "attachments",
+    "assistant",
+    "manuals",
+    "bookmarks",
+    "accounts",
 )
