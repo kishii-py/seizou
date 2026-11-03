@@ -174,8 +174,8 @@ def test_home_sections_have_frame_help(client_logged_in, site, user):
     )
     html = page(client_logged_in, reverse("core:home"))
     labelled = re.findall(r'<section[^>]*aria-labelledby="([^"]+)-title"', html)
-    # よく使う画面の節 (entrances。bookmarks/_home.html か core/_entrances.html) はこのレーンの物でないので「?」を付けない
-    assert sorted(set(labelled) - {"entrances"}) == sorted(HOME_FRAMES)
+    # よく使う画面の節 (entrances) と、はじめての方への節 (flow-guide。説明書の枠の表に無い = N68 の要望) は「?」を付けない
+    assert sorted(set(labelled) - {"entrances", "flow-guide"}) == sorted(HOME_FRAMES)
     assert "?part=entrances" not in html
     for frame, label in HOME_FRAMES.items():
         assert html.count(f'?part={frame}"') == 1, frame

@@ -8,6 +8,8 @@
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
+- flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
+- flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -23,7 +25,8 @@ from decimal import ROUND_CEILING, Decimal
 
 from django.apps import apps
 from django.db import DatabaseError
-from django.db.models import Sum
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -512,3 +515,237 @@ def _chart(rows, max_value, series):
         **bars_by_name,
         "labels": labels,
     }
+
+
+# 業務の流れ (ダッシュボードの「はじめての方へ」の枠と、上の帯の「案内」の小窓の前後の段)。固定の字で、画面から直す口は無い。
+# 1 段 = key・label・model (部品の有無を見る (app_label, name))・url_name・count (数える段の鍵。数えない段は None)・
+# count_label・unit・next_text。部品の入っていない段は出さない (_flow_steps)。数え方は _FLOW_COUNTS の関数。
+FLOWS = (
+    {
+        "key": "sales",
+        "title": "受注から入金まで",
+        "steps": (
+            {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "orders:order_list",
+             "count": "inbox", "count_label": "届いた注文の未処理", "unit": "件",
+             "next_text": "届いた注文を受け入れて、受注にします。"},
+            {"key": "workorder", "label": "指示書", "model": ("workorders", "WorkOrder"), "url_name": "workorders:workorder_list",
+             "count": "workorder", "count_label": "指示書の無い明細", "unit": "行",
+             "next_text": "注文残の一覧から、明細に指示書を出します。"},
+            {"key": "shipment", "label": "出荷", "model": ("shipping", "Shipment"), "url_name": "shipping:shipment_list",
+             "count": "shipment", "count_label": "出荷の残っている受注", "unit": "件",
+             "next_text": "出荷できる明細を出荷します。"},
+            {"key": "delivery_note", "label": "納品書", "model": ("shipping", "DeliveryNote"), "url_name": "shipping:deliverynote_list",
+             "count": "delivery_note", "count_label": "納品書に入っていない出荷", "unit": "件",
+             "next_text": "出荷をまとめて納品書を出します。"},
+            {"key": "invoice", "label": "請求書", "model": ("billing", "Invoice"), "url_name": "billing:invoice_list",
+             "count": "invoice", "count_label": "請求書に入っていない出荷", "unit": "件",
+             "next_text": "納品書に入った出荷をまとめて請求書を出します。"},
+            {"key": "payment", "label": "入金", "model": ("billing", "Payment"), "url_name": "billing:invoice_list",
+             "count": "payment", "count_label": "入金の残っている請求書", "unit": "件",
+             "next_text": "入金があった請求書に入金を記録します。"},
+        ),
+    },
+    {
+        "key": "purchase",
+        "title": "発注から検収まで",
+        "steps": (
+            {"key": "purchase_order", "label": "発注", "model": ("purchasing", "PurchaseOrder"), "url_name": "purchasing:purchaseorder_list",
+             "count": "purchase_draft", "count_label": "まだ送っていない発注", "unit": "件",
+             "next_text": "作成のままの発注を協力企業に送ります。"},
+            {"key": "reply", "label": "注文回答", "model": ("connect", "Connection"), "url_name": "purchasing:purchaseorder_list",
+             "count": "purchase_sent", "count_label": "返事を待つ発注", "unit": "件",
+             "next_text": "協力企業の返事を待ちます。断られた発注は直して送り直します。"},
+            {"key": "shipping_notice", "label": "出荷の知らせ", "model": ("connect", "ShippingNotice"), "url_name": "purchasing:purchaseorder_list",
+             "count": None, "count_label": "", "unit": "", "next_text": ""},
+            {"key": "receipt", "label": "受入", "model": ("purchasing", "Receipt"), "url_name": "purchasing:receipt_list",
+             "count": "receipt", "count_label": "受入の残っている知らせの明細", "unit": "行",
+             "next_text": "届いた物を受入に記録します。"},
+            {"key": "acceptance", "label": "検収", "model": ("connect", "Acceptance"), "url_name": "purchasing:receipt_list",
+             "count": None, "count_label": "", "unit": "", "next_text": ""},
+        ),
+    },
+)
+
+
+def _flow_steps(flow):
+    """流れの段のうち、部品の model が引けて URL がある段だけを、URL を足した写しにして並びの順に返す。問い合わせをしない。"""
+    steps = []
+    for step in flow["steps"]:
+        if _model(*step["model"]) is None:
+            continue
+        url = _url(step["url_name"])
+        if url is None:
+            continue
+        steps.append({**step, "url": url})
+    return steps
+
+
+def _flow_count(key):
+    """数える段の鍵から件数 (1 回の問い合わせ)。数える元の部品が無いか DB が読めなければ None (偽の 0 を置かない)。"""
+    queryset_of = _FLOW_COUNTS.get(key)
+    queryset = queryset_of() if queryset_of is not None else None
+    if queryset is None:
+        return None
+    try:
+        return queryset.count()
+    except DatabaseError:
+        return None
+
+
+def _received_inbox():
+    """届いた注文のうち、人が受け入れていない物 (受信箱の状態が「届いた」)。"""
+    inbox_model = _model("connect", "Inbox")
+    if inbox_model is None:
+        return None
+    return inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
+
+
+def _lines_without_workorder():
+    """受注か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
+    order_model = _model("orders", "Order")
+    line_model = _model("orders", "OrderLine")
+    workorder_model = _model("workorders", "WorkOrder")
+    if order_model is None or line_model is None or workorder_model is None:
+        return None
+    from seizou.orders.services import annotate_remaining
+
+    # 指示書の絞り込み (副問い合わせ) は残を足す前に置く。残を足した後に多の join を足さない (出荷の数が重なるため)。
+    queryset = line_model._default_manager.filter(
+        order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL)
+    ).exclude(workorders__status=workorder_model.STATUS_ISSUED)
+    return annotate_remaining(queryset).filter(remaining_total__gt=0)
+
+
+def _orders_to_ship():
+    """出荷の残っている受注 (状態が受注か一部出荷)。"""
+    order_model = _model("orders", "Order")
+    if order_model is None:
+        return None
+    return order_model._default_manager.filter(status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL))
+
+
+def _shipments_without_note():
+    """発行の納品書に入っていない出荷 (納品書の無い出荷と、取消の納品書を指したままの出荷)。"""
+    shipment_model = _model("shipping", "Shipment")
+    note_model = _model("shipping", "DeliveryNote")
+    if shipment_model is None or note_model is None:
+        return None
+    return shipment_model._default_manager.exclude(delivery_note__status=note_model.STATUS_ISSUED)
+
+
+def _shipments_to_invoice():
+    """請求書に入っていない出荷 (billing の読むだけの関数 billable_shipments)。"""
+    if _model("billing", "Invoice") is None:
+        return None
+    from seizou.billing.services import billable_shipments
+
+    return billable_shipments()
+
+
+def _invoices_to_be_paid():
+    """発行の請求書のうち、取消でない入金の合計が合計に足りない物 (一部入金も数える)。"""
+    invoice_model = _model("billing", "Invoice")
+    payment_model = _model("billing", "Payment")
+    if invoice_model is None or payment_model is None:
+        return None
+    # 保存した入金の金額を足すだけ (掛け算と丸めをしない)。名前を paid_total にしない (Invoice の method と重なる)。
+    paid = Coalesce(
+        Sum("payments__amount", filter=Q(payments__status=payment_model.STATUS_RECORDED)),
+        Value(Decimal("0")),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    )
+    return (
+        invoice_model._default_manager.filter(status=invoice_model.STATUS_ISSUED)
+        .annotate(paid_sum=paid)
+        .filter(paid_sum__lt=F("total"))
+    )
+
+
+def _purchase_drafts():
+    """まだ送っていない発注 (状態が作成)。"""
+    purchase_model = _model("purchasing", "PurchaseOrder")
+    if purchase_model is None:
+        return None
+    return purchase_model._default_manager.filter(status=purchase_model.STATUS_DRAFT)
+
+
+def _purchases_sent():
+    """返事を待つ発注 (状態が送った)。"""
+    purchase_model = _model("purchasing", "PurchaseOrder")
+    if purchase_model is None:
+        return None
+    return purchase_model._default_manager.filter(status=purchase_model.STATUS_SENT)
+
+
+def _noticed_lines_to_receive():
+    """出荷の知らせのある発注の明細のうち、受入の残が 0 より大きく、発注が取消でない物。"""
+    purchase_model = _model("purchasing", "PurchaseOrder")
+    line_model = _model("purchasing", "PurchaseOrderLine")
+    notice_model = _model("connect", "ShippingNotice")
+    if purchase_model is None or line_model is None or notice_model is None:
+        return None
+    from seizou.purchasing.services import annotate_received
+
+    # 知らせは副問い合わせ (join を足さない)。join は受入の 1 つだけ。
+    queryset = line_model._default_manager.filter(
+        pk__in=notice_model._default_manager.values("line_id")
+    ).exclude(purchase_order__status=purchase_model.STATUS_CANCELLED)
+    return annotate_received(queryset).filter(remaining_total__gt=0)
+
+
+# 数える段の鍵 (FLOWS の count) → 数える物の queryset を返す関数 (部品が無ければ None)。
+_FLOW_COUNTS = {
+    "inbox": _received_inbox,
+    "workorder": _lines_without_workorder,
+    "shipment": _orders_to_ship,
+    "delivery_note": _shipments_without_note,
+    "invoice": _shipments_to_invoice,
+    "payment": _invoices_to_be_paid,
+    "purchase_draft": _purchase_drafts,
+    "purchase_sent": _purchases_sent,
+    "receipt": _noticed_lines_to_receive,
+}
+
+
+def flow_guide() -> dict | None:
+    """ダッシュボードの「はじめての方へ」の枠。業務の流れ (FLOWS) を、部品の入っている段だけ並べ、数える段の件数と、流れごとの次にすること (件数が 1 以上の最初の段) を足す。段が 1 つも無い流れは入れず、流れが 1 本も無ければ None。読むだけ。問い合わせは数える段ごとに 1 回。
+
+    返す物 = {"flows": [{"key", "title", "steps": [段], "next": 段か None}]}。
+    段 = FLOWS の段の写しに url を足し、count を件数 (数えない段と数えられない段は None) にした物。
+    """
+    flows = []
+    for flow in FLOWS:
+        steps = [
+            {**step, "count": _flow_count(step["count"]) if step["count"] else None} for step in _flow_steps(flow)
+        ]
+        if not steps:
+            continue
+        first = next((step for step in steps if step["count"]), None)
+        flows.append({"key": flow["key"], "title": flow["title"], "steps": steps, "next": first})
+    return {"flows": flows} if flows else None
+
+
+def flow_neighbors(url_name: str) -> dict | None:
+    """「案内」の小窓の、流れの中の前後の画面。url_name の画面が段にある最初の流れで、その画面の段の前の段と後の段 (同じ画面の段は飛ばす) を返す。無ければ None。問い合わせをしない。
+
+    返す物 = {"flow": 流れの title, "label": その画面の段の label を「・」でつないだ字, "prev": {"label", "url"} か None, "next": 同じ形か None}。
+    前後は部品の入っている段だけで決める (指示書の部品が無い会社では、出荷の前の段が受注)。
+    """
+    for flow in FLOWS:
+        steps = _flow_steps(flow)
+        here = [index for index, step in enumerate(steps) if step["url_name"] == url_name]
+        if not here:
+            continue
+        before = steps[here[0] - 1] if here[0] > 0 else None
+        after = steps[here[-1] + 1] if here[-1] + 1 < len(steps) else None
+        return {
+            "flow": flow["title"],
+            "label": "・".join(steps[index]["label"] for index in here),
+            "prev": _neighbor(before),
+            "next": _neighbor(after),
+        }
+    return None
+
+
+def _neighbor(step):
+    return None if step is None else {"label": step["label"], "url": step["url"]}
