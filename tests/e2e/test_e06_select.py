@@ -21,6 +21,8 @@ TYPED_PART_NO = "WK-1021"
 CUSTOMER_CODE = "C001"
 FIELD = "lines-0-item"
 TYPE_DELAY_MS = 100  # 人が普通に打つ速さ (1 字 0.1 秒)
+# 送った後の scroll の event と置き直しは次の描画で動く。測る前に 2 つ先の描画まで待つ。
+NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
 
 
 def _asked(response, expected: str) -> bool:
@@ -61,10 +63,13 @@ def test_e06_part_candidates_clickable_outside_table(page_a, company_a):
         "content => content.parentElement.parentElement === document.body"
     )
     assert parent_is_body
+    # 画面全体の絵は窓の大きさを一時変えるので、測る前に撮る。
+    shot(page_a, "E-06", "a-part-candidates")
 
     option = options.filter(has_text=PART_NO).first
     option.wait_for(state="visible", timeout=SELECT_WAIT_MS)
     option.scroll_into_view_if_needed()
+    page_a.evaluate(NEXT_FRAMES)
     box = option.bounding_box()
     assert box is not None
     x = box["x"] + box["width"] / 2
@@ -78,7 +83,6 @@ def test_e06_part_candidates_clickable_outside_table(page_a, company_a):
         [x, y],
     )
     assert PART_NO in on_top
-    shot(page_a, "E-06", "a-part-candidates")
 
     page_a.mouse.click(x, y)
     expect(page_a.locator(f"select[name='{FIELD}'] option:checked")).to_contain_text(PART_NO, timeout=SELECT_WAIT_MS)

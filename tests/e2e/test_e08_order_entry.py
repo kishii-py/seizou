@@ -80,6 +80,9 @@ def test_e08_zero_qty_is_red(page_a, company_a):
     expect(page_a.locator("#order-lines .text-error").first).to_be_visible()
 
 
+NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+
+
 def _menu_links_readable(page, row) -> list[str]:
     """開いた行のメニューの項目 (a) が全部、左のメニューの右にあり、真ん中の点の一番上がその項目であることを見る。字を返す。"""
     links = row.locator("details.row-menu[open] ul li a")
@@ -118,6 +121,9 @@ def test_e08_line_menu_readable_beside_sidebar(page_a, company_a):
         mark=unique_mark("e08m"),
     )
     row = page_a.locator("tr[data-row-menu]").first
+    # 行のメニューは画面の scroll で閉じる。押す前に行を窓の中へ送り、送った分の scroll の event (次の描画で届く) を待つ。
+    row.scroll_into_view_if_needed()
+    page_a.evaluate(NEXT_FRAMES)
 
     row.locator('summary[aria-label="行の操作"]').click()
     texts = _menu_links_readable(page_a, row)
