@@ -3,6 +3,9 @@
  * <template id="order-line-template"> の空の行を写し、__prefix__ を次の番号に替えて表の末尾に足す。
  * formset の管理の欄 (lines-TOTAL_FORMS) を 1 つ増やし、足した行の選ぶ欄に seizou-select.js を載せる。
  * 行を消すのは「消す」の印 (formset の DELETE) で、保存のときに services が明細を外す。
+ * 明細の行の金額 (数量 × 単価) を、数量か単価の欄が変わるたびに data-line-amount の枡に出す
+ * (保存の前に見るための目安。保存の値は services が得意先の端数の扱いで丸める = R03)。字は textContent で出す。
+ * 明細 1 行の会社 (「行を足す」の釦が無い) でも読む。釦が無ければ「行を足す」の動きは何もしない。
  */
 (function () {
   "use strict";
@@ -45,4 +48,36 @@
     event.preventDefault();
     addLine(button);
   });
+
+  // 数の欄の字 (全角の数字と桁の区切りの「,」も受ける。数の欄の normalize_number と同じそろえ方)。数でなければ null。
+  function parseNumber(text) {
+    var value = String(text).normalize("NFKC").replace(/,/g, "").trim();
+    return /^\d+(\.\d+)?$/.test(value) ? Number(value) : null;
+  }
+
+  function updateAmount(row) {
+    var cell = row.querySelector("[data-line-amount]");
+    if (!cell) return;
+    var qty = row.querySelector('input[name$="-qty"]');
+    var price = row.querySelector('input[name$="-unit_price"]');
+    var qtyValue = qty ? parseNumber(qty.value) : null;
+    var priceValue = price ? parseNumber(price.value) : null;
+    if (qtyValue === null || priceValue === null) {
+      cell.textContent = "";
+      return;
+    }
+    var amount = Math.round(qtyValue * priceValue * 100) / 100;
+    cell.textContent = amount.toLocaleString("ja-JP", { maximumFractionDigits: 2 });
+  }
+
+  function onLineEdit(event) {
+    var target = event.target;
+    var row = target && target.closest ? target.closest("[data-order-line]") : null;
+    if (row) updateAmount(row);
+  }
+
+  document.addEventListener("input", onLineEdit);
+  document.addEventListener("change", onLineEdit);
+  // 編集の画面の既にある明細の金額を、読み込みの時に 1 回出す。「行を足す」で足した行は、打ったときに出る。
+  document.querySelectorAll("[data-order-line]").forEach(updateAmount);
 })();

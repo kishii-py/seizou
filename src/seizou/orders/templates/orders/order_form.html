@@ -24,14 +24,14 @@
   <div class="mt-6 border-t border-base-300 pt-6">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-lg font-bold">明細</h2>
-      {% if not form.single %}<p class="text-xs text-base-content/50">行を消すときは「消す」に印を付けて保存します。金額は保存のときに計算します。</p>{% endif %}
+      {% if not form.single %}<p class="text-xs text-base-content/50">行を消すときは「消す」に印を付けて保存します。金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。</p>{% endif %}
     </div>
     {{ form.lines.management_form }}
     {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right">
       <table class="table table-sm">
         <thead><tr class="bg-base-200 text-base-content/70">
-          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% endif %}{% endfor %}
+          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
           <th class="whitespace-nowrap font-medium"><span class="sr-only">消す</span></th>
         </tr></thead>
         <tbody id="order-lines">
@@ -52,6 +52,6 @@
     {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>{% endif %}
   </div>
 </form>
-{% if not form.single %}<script src="{% static 'orders/order-lines.js' %}" defer></script>{% endif %}
+<script src="{% static 'orders/order-lines.js' %}" defer></script>
 {% include "core/_enter_guard.html" %}
 {% endblock %}

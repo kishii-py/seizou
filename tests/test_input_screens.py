@@ -154,3 +154,56 @@ def test_app_css_has_bottom_room():
     built = APP_CSS.read_text(encoding="utf-8")
     assert ".pb-24{" in built
     assert ".lg\\:pb-24{" in built
+
+
+# --- 4-1. 受注の入力の金額 --------------------------------------------------------------------
+
+ORDER_LINES_JS = ORDERS / "static" / "orders" / "order-lines.js"
+AMOUNT_HEADER = '<th class="whitespace-nowrap text-right font-medium">金額</th>'
+
+
+def _line_headers(body: str) -> list[str]:
+    """受注の入力の明細の表の見出しの字 (タグと「必須」の印を除く)。"""
+    thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
+    cells = re.findall(r"<th[^>]*>(.*?)</th>", thead, re.S)
+    return [re.sub(r"<span[^>]*>.*?</span>", "", cell, flags=re.S).strip() for cell in cells]
+
+
+@pytest.mark.django_db
+def test_order_form_shows_amount_after_unit_price(logged_in):
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    headers = _line_headers(body)
+    assert headers[headers.index("単価") + 1] == "金額"
+    assert body.count("data-line-amount") >= 1
+    assert "orders/order-lines.js" in body
+    assert "金額は保存のときに計算します" not in body
+    assert "金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。" in body
+
+
+@pytest.mark.django_db
+def test_order_form_single_mode_keeps_amount(settings, logged_in):
+    settings.SEIZOU = {"order_form": "single"}
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    assert "orders/order-lines.js" in body
+    assert AMOUNT_HEADER in body
+    assert "data-line-amount" in body
+
+
+@pytest.mark.django_db
+def test_order_form_without_money_has_no_amount(settings, logged_in):
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    assert 'name="lines-0-unit_price"' not in body
+    assert AMOUNT_HEADER not in body
+    assert "data-line-amount" not in body
+
+
+def test_order_lines_js_shows_amount_as_text():
+    text = ORDER_LINES_JS.read_text(encoding="utf-8")
+    for word in ("data-line-amount", "textContent", 'normalize("NFKC")', "data-add-order-line"):
+        assert word in text, word
+    assert "innerHTML" not in text
+

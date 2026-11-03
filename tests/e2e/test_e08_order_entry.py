@@ -136,3 +136,21 @@ def test_e08_line_menu_readable_beside_sidebar(page_a, company_a):
     row.click(button="right")
     texts = _menu_links_readable(page_a, row)
     assert "出荷する" in texts
+
+
+def test_e08_amount_before_save(page_a, company_a):
+    """期待 (06 の E-08 の一部): 金額 = 数量 × 単価。
+
+    見る所: 受注の新規登録で部品と数量と単価を入れると、保存の前に明細の行の金額の枡に数量 × 単価が出ること (02 の「金額 [自動]」)。
+    見ない所: 保存の金額 (services が得意先の端数の扱いで丸める。services の試験が見る)。保存はしない。
+    """
+    login(page_a, company_a)
+    page_a.goto(f"{company_a.base_url}/orders/new/")
+    choose(page_a, "lines-0-item", PART_NO)
+    page_a.fill("input[name=lines-0-qty]", "10")
+    page_a.press("input[name=lines-0-qty]", "Tab")
+    page_a.fill("input[name=lines-0-unit_price]", STANDARD_PRICE)
+    page_a.press("input[name=lines-0-unit_price]", "Tab")
+
+    expect(page_a.locator("#order-lines [data-order-line]").first.locator("[data-line-amount]")).to_have_text("4,800")
+    shot(page_a, "E-08", "a-amount-before-save")
