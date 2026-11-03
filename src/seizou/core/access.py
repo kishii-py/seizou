@@ -63,6 +63,7 @@ KIND_NOTES = {
     "items": "部品・標準の工程・図面・取引先ごとの品番",
     "orders": "届いた注文の受け入れと断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
+    "processes": "工程と会社の休日",
 }
 #: まとめの名前 → (表示名, 中の種類)
 GROUPS = {
@@ -77,7 +78,7 @@ PERMISSION_NAMES = (*GROUPS, *KIND_LABELS)
 _KIND_ACTIONS = {
     "items": ("masters.create_item", "masters.update_item", "masters.import_items", "masters.restore_drawing_version"),
     "partners": ("masters.create_partner", "masters.update_partner", "masters.import_partners"),
-    "processes": ("masters.create_process", "masters.update_process"),
+    "processes": ("masters.create_process", "masters.update_process", "masters.create_holiday", "masters.delete_holiday"),
     "connections": ("connect.register_connection", "connect.update_connection"),
     "manuals": (
         "manuals.create_folder",

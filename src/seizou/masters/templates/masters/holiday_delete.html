@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 休日の削除の確認: 1 枚のカード。「削除」で行を消し、休日の一覧へ戻る。赤の知らせは base.html が出す。 #}
+{# core/form.html はボタンの字が「保存」なので使わない (attachments/attachment_delete.html と同じ形)。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-start gap-2">{% icon "alert" "size-5 text-error" %}<span>{{ object.date|date:"Y-m-d" }} {{ object.name }} を削除します。削除した日は稼働日として数えます。</span></p>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'masters:holiday_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}

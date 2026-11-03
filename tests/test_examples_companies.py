@@ -261,8 +261,8 @@ MORE_SEED_YAML_ROOT_KEYS = {
 }
 # 部品の種のファイル (出荷の知らせと検収・入金)。片方の会社にしか無い物があるので、会社ごとに書く
 PART_SEED_YAML_ROOT_KEYS = {
-    "a_machining": {"shipping_notices.yaml": "発注", "payments.yaml": "請求書"},
-    "b_plating": {"acceptances.yaml": "届いた注文", "payments.yaml": "請求書"},
+    "a_machining": {"shipping_notices.yaml": "発注", "payments.yaml": "請求書", "holidays.yaml": "休日"},
+    "b_plating": {"acceptances.yaml": "届いた注文", "payments.yaml": "請求書", "holidays.yaml": "休日"},
 }
 MORE_SEED_FILES = ("item_processes.csv", *MORE_SEED_YAML_ROOT_KEYS)
 ITEM_PROCESS_HEADER = ["自社品番", "工程コード", "順"]

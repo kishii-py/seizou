@@ -103,7 +103,7 @@ QUOTED = re.compile(r"「([^「」]+)」")
 RULE_SECTIONS = ("## 中心の決まり", "## 同梱のポカよけ")
 
 HTMX = {"HTTP_HX_REQUEST": "true"}
-MANUAL_MISSING = "この画面の説明はまだありません。"
+MANUAL_MISSING = "この画面の説明書はまだありません。"
 
 
 class FragmentParser(HTMLParser):

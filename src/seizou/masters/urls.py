@@ -11,6 +11,7 @@ MENU = [
     ("部品マスター", "masters:item_list"),
     ("取引先", "masters:partner_list"),
     ("工程", "masters:process_list"),
+    ("休日", "masters:holiday_list"),
 ]
 
 urlpatterns = [
@@ -37,4 +38,8 @@ urlpatterns = [
     path("items/<int:pk>/drawing/view/", views.ItemDrawingViewerView.as_view(), name="item_drawing_viewer"),
     path("items/<int:pk>/drawing/restore/", views.ItemDrawingRestoreView.as_view(), name="item_drawing_restore"),
     path("items/<int:pk>/drawing/<str:filename>", views.item_drawing, name="item_drawing"),
+    path("holidays/", views.HolidayListView.as_view(), name="holiday_list"),
+    path("holidays/new/", views.HolidayCreateView.as_view(), name="holiday_create"),
+    path("holidays/<int:pk>/", views.HolidayDetailView.as_view(), name="holiday_detail"),
+    path("holidays/<int:pk>/delete/", views.HolidayDeleteView.as_view(), name="holiday_delete"),
 ]

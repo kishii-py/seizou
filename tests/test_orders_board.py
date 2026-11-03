@@ -138,7 +138,7 @@ def test_board_row_values(user, customer, item, cut, bend):
     assert row.completed_total == Decimal("0")
     assert row.plan_end == TODAY + timedelta(days=3)
     assert row.plan_late is False
-    assert row.days_left == 5
+    assert row.days_left == 3  # 11-10 (火) → 11-15 (日): 稼働日は 11・12・13 の 3 日 (土日を除く)
     assert row.is_overdue is False
     assert row.latest_workorder == workorder
     assert row.remaining == Decimal("6")
@@ -285,7 +285,8 @@ def test_filters_read_dates_and_overdue():
 
 
 @pytest.mark.django_db
-def test_list_columns_and_csv(user, logged_in, customer, item, cut):
+def test_list_columns_and_csv(user, logged_in, customer, item, cut, settings):
+    settings.SEIZOU = {"weekly_holidays": []}  # 本物の今日から数えるので、曜日に左右されないよう定休日を無くす (稼働日 = 暦の日)
     today = timezone.localdate()
     late = _line(user, customer, item, due=today - timedelta(days=2))
     issued = _line(user, customer, item, due=today + timedelta(days=4))
@@ -505,7 +506,9 @@ def test_issue_item_follows_write_permission(settings, client, user, customer, i
 
 
 @pytest.mark.django_db
-def test_judgement_badges_and_marks(user, logged_in, customer, item, cut):
+def test_judgement_badges_and_marks(settings, user, logged_in, customer, item, cut):
+    # 本物の今日に頼る試験なので、定休日を無しにして「納期まで」を暦の日と同じにする (曜日に左右されない)
+    settings.SEIZOU = {"weekly_holidays": []}
     today = timezone.localdate()
     late = _line(user, customer, item, due=today - timedelta(days=3))
     ready = _line(user, customer, item, due=today + timedelta(days=2))
