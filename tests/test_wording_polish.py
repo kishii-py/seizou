@@ -4,6 +4,7 @@
 """
 
 import base64
+import io
 import json
 import re
 import secrets
@@ -13,16 +14,19 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from PIL import Image, ImageDraw
 
 from seizou.connect import services as connect_services
 from seizou.connect import signing
 from seizou.connect.models import Inbox
 from seizou.core.exceptions import RuleViolation
 from seizou.core.screens import all_screens
+from seizou.core.views import hidden_detail_fields
 from seizou.masters import services as masters_services
 from seizou.masters.forms import PartnerForm
-from seizou.masters.models import Process
+from seizou.masters.models import Item, Process
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
@@ -290,3 +294,56 @@ def test_issue_form_keeps_cancelled_line_from_link(client_logged_in, order_line,
     odd = client_logged_in.get(reverse("workorders:workorder_create"), {"order_line": "abc"})
     choices = [value for value, _label in odd.context["form"].fields["order_line"].choices if value]
     assert [int(str(value)) for value in choices] == [order_line.pk]
+
+
+# --- 部品の詳細の図面の表示用の欄 (TIFF の作り方は tests/test_masters_drawing.py を写した) ---
+
+PREVIEW_LABEL = "図面 (画面で見る用の絵)"
+
+
+@pytest.fixture
+def media(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
+def _g4_tiff(size=(800, 600)):
+    """白黒 (1) の絵に線を 2 本描いた G4 の TIFF (スキャンした図面の代わり)。"""
+    image = Image.new("1", size, 1)
+    draw = ImageDraw.Draw(image)
+    draw.line((0, 0, size[0] - 1, size[1] - 1), fill=0)
+    draw.rectangle((10, 10, size[0] // 2, size[1] // 2), outline=0)
+    buffer = io.BytesIO()
+    image.save(buffer, format="TIFF", compression="group4")
+    return buffer.getvalue()
+
+
+@pytest.mark.django_db
+def test_item_without_drawing_hides_preview_row(client_logged_in, user, media):
+    item = masters_services.create_item({"part_no": "P-9101", "name": "作り物の部品"}, user)
+    response = client_logged_in.get(reverse("masters:item_detail", args=[item.pk]))
+    assert response.status_code == 200
+    body = text(response)
+    assert "図面の表示用" not in body
+    assert PREVIEW_LABEL not in body
+
+
+@pytest.mark.django_db
+def test_item_with_tiff_shows_preview_label(client_logged_in, user, media):
+    drawing = SimpleUploadedFile("scan.tif", _g4_tiff(), content_type="image/tiff")
+    item = masters_services.create_item({"part_no": "P-9102", "name": "作り物の部品", "drawing": drawing}, user)
+    assert item.drawing_preview
+    body = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
+    assert PREVIEW_LABEL in body
+    assert "<img" in body
+    assert "図面の表示用" not in body
+
+
+def test_item_hidden_detail_fields_follow_preview():
+    assert "drawing_preview" in hidden_detail_fields(Item(part_no="P-1"))
+    assert "drawing_preview" not in hidden_detail_fields(Item(part_no="P-2", drawing_preview="drawings/previews/x.png"))
+    for part_no in ("P-1", "P-2"):
+        hidden = hidden_detail_fields(Item(part_no=part_no))
+        assert {"drawing_preview_error", "drawing_page_count"} <= hidden
+    assert Item._meta.get_field("drawing_preview").verbose_name == PREVIEW_LABEL
+

@@ -114,7 +114,7 @@ class Item(models.Model):
     drawing = models.FileField("図面ファイル", upload_to="drawings/", blank=True)
     # 図面の表示用の PNG (元が TIFF などのとき、保存のときに 1 回だけ作る)。書くのは masters.services だけ。
     drawing_preview = models.FileField(
-        "図面の表示用", upload_to="drawings/previews/", blank=True, editable=False
+        "図面 (画面で見る用の絵)", upload_to="drawings/previews/", blank=True, editable=False
     )
     unit = models.CharField("単位", max_length=10, blank=True)
     standard_price = models.DecimalField(
@@ -130,9 +130,13 @@ class Item(models.Model):
     # 入力の画面と CSV の見出しに出さない (editable=False)。小窓の先頭の 8 項目をずらさないように最後に置く。
     drawing_page_count = models.PositiveSmallIntegerField("図面のページ数", default=1, editable=False)
 
-    #: 詳細と小窓の項目の一覧に出さない列 (core の土台が読む)。仕組みのための列で、入力の画面に無い物。
-    #: 表示用 (drawing_preview) は出す。土台の詳細の「ファイル」の節が、この列の行から TIFF の図面の絵を出すため。
-    detail_hidden_fields = ("drawing_preview_error", "drawing_page_count")
+    #: 詳細と小窓の項目の一覧に出さない列 (core の土台が物 1 件ずつ読む)。仕組みのための列で、入力の画面に無い物。
+    #: 表示用 (drawing_preview) は、絵がある部品だけ出す (土台の詳細の「ファイル」の節が、この列の行から TIFF の図面の絵を出す)。
+    #: 絵の無い部品では「—」の行になり、何の欄か分からないので出さない (初見テスト 3 回目)。
+    @property
+    def detail_hidden_fields(self):
+        hidden = ("drawing_preview_error", "drawing_page_count")
+        return hidden if self.drawing_preview else (*hidden, "drawing_preview")
 
     class Meta:
         verbose_name = "部品"
