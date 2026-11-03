@@ -583,6 +583,30 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         return existing
 
 
+def record_inbox(partner, payload, user, *, message_id=None):
+    """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しのため)。
+
+    署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
+    user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("注文のデータは辞書 (send_order が作る形) にしてください。")
+    if message_id is None:
+        message_id = uuid.uuid4()
+    # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す (receive と同じ形)。
+    # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
+    try:
+        with transaction.atomic():
+            return Inbox.objects.create(
+                message_id=message_id,
+                partner=partner,
+                kind=Inbox.KIND_ORDER,
+                payload=payload,
+            )
+    except IntegrityError:
+        return Inbox.objects.get(message_id=message_id)
+
+
 # 受け入れと断るの日本語 (何が起きて、何をすればよいか)。payload の全文は文に入れない。
 MESSAGE_ALREADY_ACCEPTED = (
     "同じ番号の注文のデータは 1 回だけ登録する (2 回届いても 1 件)。"
