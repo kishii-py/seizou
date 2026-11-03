@@ -330,7 +330,7 @@ def test_orderline_list_rows_have_entrances(user, logged_in, customer, item):
         line = orders[status].lines.get()
         tr_html = _tr(everything, line.pk)
         assert "?order_line=" not in tr_html
-        assert _cells(tr_html)[-1] == "—"
+        assert "受注の詳細" in tr_html and "from_line=" not in tr_html
     for href in _entrances(open_line):
         assert href in everything
 
@@ -369,5 +369,5 @@ def test_order_list_csv_unchanged(user, logged_in, customer, item):
     assert "操作" not in orders_csv
 
     lines_csv = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode()
-    assert lines_csv.lstrip("﻿").splitlines()[0] == "受注番号,得意先,受注日,納期,部品,数量,出荷済み,残,状態"
+    assert lines_csv.lstrip("﻿").splitlines()[0] == "受注番号,得意先,部品,納期,納期まで,数量,出荷済み,残,指示書,進捗,計画の終了日,判断,受注日,状態"
     assert "操作" not in lines_csv

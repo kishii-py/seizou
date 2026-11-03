@@ -1,0 +1,63 @@
+{% load seizou_tags seizou_icons orders_board %}{% comment %}
+注文残の一覧 (注残の盤) の行の部分。orders/_rows.html が、行があるときに include する (空の一覧は core/_rows.html)。
+core/_rows.html の「行がある時」の部分 (表の箱・見出し・ページ送り・partial のときの _list_meta.html の oob) を写して、次を変える。
+- 欄は列の名前で出し分ける: 受注番号は受注の詳細への link、納期までは過ぎていれば赤の数、指示書の「未」と空の進捗は薄い字、
+  計画の終了日が納期より後なら印、判断は印の code ごとに色の印 (字は orders.board.JUDGEMENTS)。
+- 数量・出荷済み・残・納期までは右寄せ (出荷済みと残は annotate の列で、土台の列の印が数の欄にならないため、名前で見る)。
+- 行は data-row-menu を持ち、最後に「操作」の列 (orders/_row_menu.html。⋮ と右クリックの同じメニュー)。行に onclick は無い。
+- 合計の行 (数量・出荷済み・残) は tag board_totals が、絞り込みの後の全部の明細から出す (土台の合計は annotate の列を足せないため)。
+- 「指示書を発行する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける。行ごとでなく 1 回だけ呼ぶ。
+class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄は、要素ごと if で出し分ける。
+写した元: core/_rows.html (11-03 の main)。土台の表の形が変わったら、ここも合わせる。
+{% endcomment %}
+{% can_write "workorders.WorkOrder" as can_issue %}
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm table-zebra table-pin-rows">
+  <thead><tr class="bg-base-200 text-base-content/70">
+    {% for col in columns %}{% if col.name == "board__days_left" or col.name == "qty" or col.name == "shipped_total" or col.name == "remaining_total" %}<th class="whitespace-nowrap font-medium text-right"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% else %}<th class="whitespace-nowrap font-medium"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% endif %}
+      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+    </th>{% endfor %}
+    <th class="whitespace-nowrap font-medium">操作</th>
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}
+    <tr id="row-{{ row.pk }}" class="row-hover h-10" data-row-menu>
+      {% for cell in row.cells %}
+      {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
+      {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
+      {% if col.name == "order__order_no" %}<td class="whitespace-nowrap font-mono"><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'orders:order_detail' row.obj.order_id %}">{{ cell.value|default_if_none:"" }}</a></td>
+      {% elif col.name == "due_date" or col.name == "board__plan_end" or col.name == "order__order_date" %}{% if cell.value %}<td class="whitespace-nowrap"><span class="font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</span>{% if col.name == "board__plan_end" and row.obj.board.plan_late %} <span class="badge badge-sm badge-soft badge-warning">納期より後</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/50">—</span></td>{% endif %}
+      {% elif col.name == "board__days_left" %}{% if cell.value is None %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>{% elif cell.value < 0 %}<td class="whitespace-nowrap text-right tabular-nums"><span class="text-error">{{ cell.value }}</span></td>{% else %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value }}</td>{% endif %}
+      {% elif col.name == "remaining_total" and row.obj.remaining_total < 0 %}<td class="whitespace-nowrap text-right tabular-nums"><span class="text-error">{{ cell.value|comma }}</span></td>
+      {% elif col.name == "qty" or col.name == "shipped_total" or col.name == "remaining_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value|comma }}</td>
+      {% elif col.name == "board__workorder_label" %}{% if cell.value == "未" %}<td class="whitespace-nowrap"><span class="text-base-content/50">{{ cell.value }}</span></td>{% else %}<td class="whitespace-nowrap">{{ cell.value }}</td>{% endif %}
+      {% elif col.name == "board__progress_label" %}{% if cell.value %}<td class="whitespace-nowrap">{{ cell.value }}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/50">—</span></td>{% endif %}
+      {% elif col.name == "board__judgement" %}<td class="whitespace-nowrap">{% with code=row.obj.board.judgement_code %}{% if code == "late" %}<span class="badge badge-soft badge-error">{{ cell.value }}</span>{% elif code == "ship" %}<span class="badge badge-soft badge-success">{{ cell.value }}</span>{% elif code == "need_workorder" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif code == "making" %}<span class="badge badge-soft badge-primary">{{ cell.value }}</span>{% else %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% endif %}{% endwith %}</td>
+      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+      {% elif cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
+      {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</td>
+      {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+      {% elif cell.code %}<td class="whitespace-nowrap font-mono"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+      {% else %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+      {% endif %}
+      {% endif %}{% endfor %}
+      {% endfor %}
+      <td class="whitespace-nowrap text-right">{% include "orders/_row_menu.html" with line=row.obj can_issue=can_issue %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% board_totals paginator.object_list as sums %}
+  <tfoot><tr class="bg-base-200 font-bold text-base-content">{% for col in columns %}{% if col.name == "qty" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.qty|comma }}</td>{% elif col.name == "shipped_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.shipped|comma }}</td>{% elif col.name == "remaining_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.remaining|comma }}</td>{% elif forloop.first %}<td class="whitespace-nowrap">合計</td>{% else %}<td></td>{% endif %}{% endfor %}<td></td></tr></tfoot>
+</table>
+</div>
+<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
+  {% if paginator.num_pages > 1 %}
+  <nav class="join" aria-label="ページ送り">
+    {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="前のページ">{% icon "chevron-left" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-left" "size-4" %}</span>{% endif %}
+    <span class="join-item btn btn-sm pointer-events-none tabular-nums">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.next_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="次のページ">{% icon "chevron-right" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-right" "size-4" %}</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}

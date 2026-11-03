@@ -2,6 +2,7 @@
 {% load seizou_icons %}
 {# 指示書の詳細: core の詳細 (項目と「工程」「進捗」のタブ)。発行のときだけ「取り消す」。 #}
 {% block actions %}{{ block.super }}
+{% if object.status == "issued" %}{% if object.accepted_at %}<span class="badge badge-soft badge-success gap-2">{% icon "check" "size-4" %}受けた {{ object.accepted_at|date:"Y-m-d H:i" }}{% if object.accepted_by %} {{ object.accepted_by }}{% endif %}</span>{% else %}<form method="post" action="{% url 'workorders:workorder_accept' object.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}受けた</button></form>{% endif %}{% endif %}
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a>
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 {% if object.status == "issued" %}<a class="btn btn-outline btn-error" href="{% url 'workorders:workorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}

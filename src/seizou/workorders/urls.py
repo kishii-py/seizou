@@ -30,6 +30,7 @@ urlpatterns = [
     path("<int:pk>/", views.WorkOrderDetailView.as_view(), name="workorder_detail"),
     path("<int:pk>/modal/", views.WorkOrderModalView.as_view(), name="workorder_modal"),
     path("<int:pk>/cancel/", views.WorkOrderCancelView.as_view(), name="workorder_cancel"),
+    path("<int:pk>/accept/", views.workorder_accept, name="workorder_accept"),
     path("<int:pk>/tag/", views.workorder_tag, name="workorder_tag"),
     path("<int:pk>/tag/pdf/", views.workorder_tag_pdf, name="workorder_tag_pdf"),
     path("<int:pk>/scan/", views.workorder_scan, name="workorder_scan"),

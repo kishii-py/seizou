@@ -1,0 +1,19 @@
+{% load seizou_icons %}{% comment %}
+注残の盤の絞り込みの欄: 納期の期間 (due_from・due_to) と「納期が過ぎた物だけ」(overdue=1)。読むのは orders.board.filters。
+土台の検索の form の外の別の form で、同じ #rows を差し替える。検索の欄 (q・per・sort) の値は hx-include で一緒に送る
+(隠しの欄で写すと同じ鍵が 2 つ送られ、古い方が勝つため)。JS が無いときの送信 (method="get") では q が落ちる。
+土台の検索とページ送りの要求には、orderline_list.html の hx-include="#orders-all, #board-filter" がこの欄の値を足す。
+{% endcomment %}
+<form id="board-filter" method="get" action="{{ request.path }}" class="mb-4 flex flex-wrap items-end gap-4" role="search" aria-label="納期で絞り込む" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-include="#list-q, #list-per, #list-meta">
+  <label class="flex flex-col gap-2">
+    <span class="text-xs font-medium text-base-content/50">納期 (から)</span>
+    <input type="date" name="due_from" class="input input-sm" value="{{ request.GET.due_from }}">
+  </label>
+  <label class="flex flex-col gap-2">
+    <span class="text-xs font-medium text-base-content/50">納期 (まで)</span>
+    <input type="date" name="due_to" class="input input-sm" value="{{ request.GET.due_to }}">
+  </label>
+  <label class="flex items-center gap-2"><input type="checkbox" name="overdue" value="1" class="checkbox checkbox-sm"{% if request.GET.overdue == "1" %} checked{% endif %}>納期が過ぎた物だけ</label>
+  {% if request.GET.all == "1" %}<input type="hidden" name="all" value="1">{% endif %}
+  <button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "filter" "size-4" %}絞り込み</button>
+</form>

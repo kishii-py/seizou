@@ -6,6 +6,8 @@
 書くときは orders.services を通す。
 """
 
+from functools import cached_property
+
 from django.apps import apps
 from django.db import models
 
@@ -144,3 +146,10 @@ class OrderLine(models.Model):
     def status_label(self):
         """受注の状態の表示名 (注文残の一覧の列に使う。表示だけ)。"""
         return self.order.get_status_display()
+
+    @cached_property
+    def board(self):
+        """注残の盤の判断の値 (読むだけ)。一覧の columns が board__<名前> で読む。関数は orders.board。"""
+        from .board import BoardRow
+
+        return BoardRow(self)

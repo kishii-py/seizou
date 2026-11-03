@@ -3,12 +3,13 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
 受注の一覧 (order_list) と注文残の一覧 (orderline_list) に行があるときだけ、core/_rows.html の「行がある時」の部分
 (表・ページ送り・partial のときの _list_meta.html の oob) を写して、次の 2 つを変える。
 - 受注の一覧: 状態の列 (列の名前 status) の欄を色の印にする。字は欄の値 (状態の表示名) のまま。列の並びは変えない。
-- 注文残の一覧: 行の最後に「操作」の列 (orders/_line_actions.html。出荷する・指示書を発行する)。
+- 注文残の一覧 (注残の盤): orders/_board_rows.html (判断の列の印・合計の行・行のメニュー)。
 それ以外 (空の一覧と、ほかの画面) は core/_rows.html をそのまま使う。
 写した元: core/_rows.html (11-02 夜の main)。土台の表の形が変わったら、ここも合わせる。
 {% endcomment %}
 {% with url_name=request.resolver_match.url_name %}
-{% if rows and url_name == "order_list" or rows and url_name == "orderline_list" %}
+{% if rows and url_name == "orderline_list" %}{% include "orders/_board_rows.html" %}
+{% elif rows and url_name == "order_list" %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">
   <thead><tr class="bg-base-200 text-base-content/70">

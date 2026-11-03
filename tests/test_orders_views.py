@@ -294,7 +294,7 @@ def test_orderline_list_shows_remaining(user, logged_in, customer, plate, shippe
     body = response.content.decode()
     assert "注文残" in body and "出荷済み" in body and "一部出荷" in body
     # 残の数の字は DB で桁が違う (SQLite は 6、PostgreSQL は 6.00)。
-    assert 'title="6"' in body or 'title="6.00"' in body
+    assert any(f'<td class="whitespace-nowrap text-right tabular-nums">{n}</td>' in body for n in ("6", "6.00"))
     assert reverse("masters:item_modal", args=[shipped_order.lines.get().item_id]) in body
 
     everything = logged_in.get(reverse("orders:orderline_list"), {"all": "1"})
