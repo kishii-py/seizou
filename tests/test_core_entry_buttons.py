@@ -16,15 +16,16 @@ from seizou.orders import services as orders_services
 from seizou.orders.templatetags import orders_board
 from tests import test_orders_board
 from tests.test_core_access import account
-from tests.test_orders_board import _line, _tr
+from tests.test_orders_board import _issue, _line, _tr
 
 User = get_user_model()
 
 # 注残の盤の試験の fixture を借りる (pytest は module の名前で fixture を見つける)。
-# user = Access の行の無い普通の利用者 tester (精査 A2 と N76 の名前)。customer と item は作り物。
+# user = Access の行の無い普通の利用者 tester (精査 A2 と N76 の名前)。customer と item と工程の cut は作り物。
 user = test_orders_board.user
 customer = test_orders_board.customer
 item = test_orders_board.item
+cut = test_orders_board.cut
 
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 
@@ -184,3 +185,26 @@ def test_order_detail_hides_cancel_ship_and_po(client, on, user, customer, item,
     # 取消の受注は、システム管理者にも「取消」を出さない (今の形のまま)。
     orders_services.cancel_order(order, admin)
     assert cancel_href not in _page(client, admin, detail_url)
+
+
+# ---------------------------------------------------------------- 3 指示書の詳細
+
+
+@pytest.mark.django_db
+def test_workorder_cancel_hidden_accept_kept(settings, client, on, user, customer, item, cut):
+    workorder = _issue(user, _line(user, customer, item), cut, qty="4")
+    detail_url = reverse("workorders:workorder_detail", args=[workorder.pk])
+    cancel_href = f'href="{reverse("workorders:workorder_cancel", args=[workorder.pk])}"'
+    accept_form = f'action="{reverse("workorders:workorder_accept", args=[workorder.pk])}"'
+
+    denied = _page(client, user, detail_url)
+    assert cancel_href not in denied
+    # 「受けた」は現場の記録 (押した先は編集の権限を見ない) なので、権限の無い人にも出す。
+    assert accept_form in denied and "受けた" in denied
+
+    planner = account("planner", permissions=["workorders"])
+    allowed = _page(client, planner, detail_url)
+    assert cancel_href in allowed and accept_form in allowed
+
+    settings.SEIZOU = {}
+    assert cancel_href in _page(client, user, detail_url)
