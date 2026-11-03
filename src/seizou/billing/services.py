@@ -10,13 +10,15 @@
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
 - 消費税の計算は _tax の 1 か所、支払期日の計算は payment_due_date の 1 か所。
+- 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
+  取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
 """
 
 from __future__ import annotations
 
 import calendar
 from datetime import date
-from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 
@@ -24,12 +26,15 @@ from seizou.core.exceptions import RuleViolation
 from seizou.core.services import company, next_number
 from seizou.masters.services import round_amount
 
-from .models import Invoice, InvoiceLine
+from .models import Invoice, InvoiceLine, Payment
 
 #: 消費税の率 (会社の設定に置くまでの定数)
 TAX_RATE = Decimal("0.10")
+#: 入金の備考の上限 (表の列と同じ)
+PAYMENT_NOTE_MAX = 500
 
 _R09_RULE = "請求書の明細は、出荷済みの物だけ。"
+_R21_RULE = "取消した請求書には、入金を記録できない。"
 _YEN = Decimal("1")
 _ZERO = Decimal("0")
 
@@ -134,6 +139,50 @@ def cancel_invoice(invoice, user):
         if locked.status == Invoice.STATUS_CANCELLED:
             raise ValueError("この請求書は取り消し済みです。")
         locked.status = Invoice.STATUS_CANCELLED
+        locked.save(update_fields=["status"])
+        return locked
+
+
+def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_TRANSFER, note=""):
+    """請求書に入金を 1 件記録する。記録した人は user (pk が無ければ空)。
+
+    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
+    """
+    try:
+        amount = Decimal(str(amount))
+        readable = amount.is_finite()
+    except (InvalidOperation, ValueError, TypeError):
+        readable = False
+    if not readable:
+        raise ValueError(f"入金の金額を数として読めません (入れた値: {amount!r})。")
+    if not amount > 0:
+        raise ValueError(f"入金の金額は 0 より大きい数にしてください (入れた値: {amount})。")
+    if method not in dict(Payment.METHOD_CHOICES):
+        raise ValueError(f"入金の方法は 振込 / 現金 / 手形 / その他 のどれかにしてください (入れた値: {method!r})。")
+    if len(note or "") > PAYMENT_NOTE_MAX:
+        raise ValueError(f"備考は {PAYMENT_NOTE_MAX} 字までにしてください。")
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
+        if locked.status == Invoice.STATUS_CANCELLED:
+            raise RuleViolation("R21", f"{_R21_RULE}請求書 {locked.invoice_no} は取消なので、発行の請求書を選び直してください。")
+        return Payment.objects.create(
+            invoice=locked,
+            received_on=received_on,
+            amount=amount,
+            method=method,
+            note=note or "",
+            recorded_by=user if getattr(user, "pk", None) is not None else None,
+        )
+
+
+def cancel_payment(payment, user):
+    """記録した入金を取消にする。行は消さない (履歴)。請求書の状態は見ない (取消の請求書に残った入金も取り消せる)。"""
+    with transaction.atomic():
+        locked = Payment.objects.select_for_update().get(pk=payment.pk)
+        if locked.status == Payment.STATUS_CANCELLED:
+            raise ValueError("この入金は取り消し済みです。")
+        locked.status = Payment.STATUS_CANCELLED
         locked.save(update_fields=["status"])
         return locked
 
