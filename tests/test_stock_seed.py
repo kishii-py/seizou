@@ -56,7 +56,7 @@ def test_examples_load_stock_seeds_twice(company_id, no_registration, media, no_
     assert len(summary["注意"]) == 1  # 例の種では「注意」の文を増やさない
     if company_id == "a_machining":
         order = PurchaseOrder.objects.get()
-        assert order.status == PurchaseOrder.STATUS_DRAFT  # 2 行目が一部なので「納品された」にならない
+        assert order.status == PurchaseOrder.STATUS_ACCEPTED  # 出荷の知らせの種 (connect) が注文回答の写しで「相手が受け入れた」に進める。2 行目が一部なので「納品された」にならない
         assert Outbox.objects.count() == 0  # 相手に送っていない
         assert Receipt.objects.count() == 2
     else:
