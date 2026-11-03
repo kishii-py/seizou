@@ -1,7 +1,7 @@
 """connect の URL。URL の根 (seizou.core.urls) が connect/ の下に含める。
 
 注文の受け口は /connect/receive/order/ になる。
-画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは届いた注文の行ごと。
+画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは届いた注文の行ごと。差出人を選ぶも同じ。
 注文回答 (承認か断りの結果) も、注文と同じ受け口 (receive) が受ける。
 """
 
@@ -9,6 +9,7 @@ from django.urls import path
 
 from . import views
 from . import reply
+from . import sender
 
 app_name = "connect"
 
@@ -26,6 +27,7 @@ urlpatterns = [
     path("inbox/<int:pk>/accept/", views.InboxAcceptView.as_view(), name="inbox_accept"),
     path("inbox/<int:pk>/reject/", views.InboxRejectView.as_view(), name="inbox_reject"),
     path("inbox/<int:pk>/reply/resend/", reply.resend_reply, name="inbox_reply_resend"),
+    path("inbox/<int:pk>/sender/", sender.choose_sender, name="inbox_sender"),
     path("connections/", views.ConnectionListView.as_view(), name="connection_list"),
     path("connections/new/", views.ConnectionCreateView.as_view(), name="connection_create"),
     path("connections/<int:pk>/", views.ConnectionDetailView.as_view(), name="connection_detail"),

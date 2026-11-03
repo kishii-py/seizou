@@ -5,21 +5,25 @@ tests/test_r10_inbox_accept.py の _payload と _line の形。requests.post は
 (読み取りの行は相手へ何も送らない)。鍵はテストのたびに作り、環境変数に置く。
 """
 
+import re
 import uuid
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from django.utils import timezone
 
 from seizou.connect import services
 from seizou.connect.models import Inbox
+from seizou.core import access
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import create_item, create_partner
 from seizou.orders.models import Order
 from seizou.shipping import services as shipping_services
 from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
+from tests.test_core_access import account
 from tests.test_intake_extract import reply_data
 from tests.test_r10_inbox_accept import _line, _payload
 
@@ -212,3 +216,95 @@ def test_no_reply_and_no_shipping_notice_for_intake_row(monkeypatch, customer, i
     again = services.send_shipping_notice(shipment, user)
     assert again.notice_response == services.MESSAGE_SHIPPING_NOT_EDI_ORDER
     assert again.notice_sent_at is None
+
+
+# ここから届いた注文の詳細 (差出人の確認待ちの印・差出人を選ぶ form と口・送り直すを出さない・明細の欄)。
+
+
+def _messages(response):
+    return [(message.level_tag, str(message)) for message in response.context["messages"]]
+
+
+def _detail(client, inbox):
+    response = client.get(reverse("connect:inbox_detail", args=[inbox.pk]))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def test_detail_shows_waiting_badge_and_sender_form(client, customer, subcontractor, user):
+    waiting = intake_row(None, user)
+    direct = direct_row(customer, user)
+    client.force_login(user)
+
+    body = _detail(client, waiting)
+    assert "差出人の確認待ち" in body
+    assert SENDER in body
+    assert re.search(r"入口</dt>\s*<dd[^>]*>読み取り", body)
+    assert f'action="{reverse("connect:inbox_sender", args=[waiting.pk])}"' in body
+    assert f'value="{customer.pk}"' in body
+    assert "作り物の協力企業" not in body  # 候補は得意先と両方だけ
+    assert reverse("connect:inbox_accept", args=[waiting.pk]) not in body
+    assert reverse("connect:inbox_reject", args=[waiting.pk]) in body
+
+    body = _detail(client, direct)
+    assert reverse("connect:inbox_sender", args=[direct.pk]) not in body
+    assert re.search(r"入口</dt>\s*<dd[^>]*>直接", body)
+    assert "読み取った差出人" not in body
+    assert reverse("connect:inbox_accept", args=[direct.pk]) in body
+
+
+def test_sender_post_sets_partner(client, customer, subcontractor, user):
+    waiting = intake_row(None, user)
+    url = reverse("connect:inbox_sender", args=[waiting.pk])
+    detail_url = reverse("connect:inbox_detail", args=[waiting.pk])
+    client.force_login(user)
+    assert client.get(url).status_code == 405
+
+    response = client.post(url, {"partner": subcontractor.pk}, follow=True)
+    assert response.redirect_chain == [(detail_url, 302)]
+    assert ("error", "選んだ取引先が候補にありません。選び直してください。") in _messages(response)
+    response = client.post(url, {"partner": ""}, follow=True)
+    assert ("error", "差出人の取引先を選んでください。") in _messages(response)
+    waiting.refresh_from_db()
+    assert waiting.partner is None
+
+    response = client.post(url, {"partner": customer.pk}, follow=True)
+    assert response.redirect_chain == [(detail_url, 302)]
+    assert ("success", "差出人を 作り物の得意先 にしました。「承認」で受注にできます。") in _messages(response)
+    waiting.refresh_from_db()
+    assert waiting.partner == customer
+    assert reverse("connect:inbox_accept", args=[waiting.pk]) in response.content.decode()
+
+
+def test_sender_form_follows_write_permission(settings, client, customer, user):
+    waiting = intake_row(None, user)
+    url = reverse("connect:inbox_sender", args=[waiting.pk])
+    settings.SEIZOU = {"access_control": {"department": "log", "write": "on", "money": "log"}}
+
+    # 受注の権限の無いアカウントには form を出さず、POST しても変えない
+    client.force_login(account("plain-clerk"))
+    body = _detail(client, waiting)
+    assert "差出人の確認待ち" in body
+    assert url not in body
+    response = client.post(url, {"partner": customer.pk}, follow=True)
+    assert ("error", access.write_message("orders")) in _messages(response)
+    waiting.refresh_from_db()
+    assert waiting.partner is None
+
+    # システム管理者には出る
+    client.force_login(get_user_model().objects.create_superuser("admin-tester", password="pass-for-tests-only"))
+    assert url in _detail(client, waiting)
+
+
+def test_intake_row_hides_resend_and_shows_lines(client, customer, user):
+    row = intake_row(customer, user)
+    services.reject(row, "作り物の理由で断る", user)
+    client.force_login(user)
+
+    body = _detail(client, row)
+
+    assert reverse("connect:inbox_reply_resend", args=[row.pk]) not in body
+    assert services.MESSAGE_REPLY_INTAKE in body
+    lines = body.split("明細 (相手の品番のまま)", 1)[1]
+    assert "X-200" in lines
+    assert "None" not in lines
