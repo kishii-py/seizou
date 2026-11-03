@@ -14,6 +14,8 @@ from seizou.connect.models import Inbox
 from seizou.connect.templatetags.connect_tags import payload_number
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.masters import services as masters_services
+from seizou.masters.forms import HolidayForm
+from seizou.masters.models import Holiday
 
 
 @pytest.fixture
@@ -108,3 +110,28 @@ def test_inbox_detail_and_accept_drop_trailing_zeros(logged_in, customer):
             assert shown in table, (name, shown)
         for raw in ("50.00", "45.00", "1234.50", "None"):
             assert raw not in table, (name, raw)
+
+
+# ---------------------------------------------------------------- 4. 休日の form の必須の文
+
+HOLIDAY_REQUIRED = {
+    "date": ["休日の日付を入れてください。"],
+    "name": ["休日の名前を入れてください。"],
+    "kind": ["種類 (祝日か会社の休み) を選んでください。"],
+}
+DJANGO_REQUIRED = "このフィールドは必須です"  # tests/test_edi_wording.py と同じ字
+
+
+@pytest.mark.django_db
+def test_holiday_form_required_messages_are_japanese():
+    assert HolidayForm(data={}).errors == HOLIDAY_REQUIRED
+
+
+def test_holiday_create_shows_japanese_required_messages(logged_in):
+    response = logged_in.post(reverse("masters:holiday_create"), {})
+    assert response.status_code == 200
+    html = response.content.decode()
+    for messages in HOLIDAY_REQUIRED.values():
+        assert messages[0] in html
+    assert DJANGO_REQUIRED not in html
+    assert Holiday.objects.count() == 0
