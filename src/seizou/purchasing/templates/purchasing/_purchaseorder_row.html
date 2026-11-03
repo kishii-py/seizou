@@ -1,0 +1,14 @@
+{% load seizou_tags seizou_icons purchasing_tags %}{% live_state row.obj as live %}{% comment %}
+発注の一覧の 1 行。欄の描き方は core/_rows.html の既定と同じ。live.token = 状態の字 (tr の属性に入れる)、live.changed = 前の更新と字が違う (purchasing_tags の live_state)。
+色は表の縞の色より前に出すため、行でなく欄に付ける (connect/_inbox_row.html と同じ)。
+{% endcomment %}
+<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" data-live="{{ live.token }}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+  {% for cell in row.cells %}
+  {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}{% if live.changed %} seizou-changed{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums{% if live.changed %} seizou-changed{% endif %}">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+  {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums{% if live.changed %} seizou-changed{% endif %}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
+  {% elif cell.master %}<td class="whitespace-nowrap{% if live.changed %} seizou-changed{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if live.changed %} seizou-changed{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endfor %}
+</tr>

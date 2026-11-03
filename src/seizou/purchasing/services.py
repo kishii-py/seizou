@@ -34,6 +34,8 @@ from datetime import timedelta
 from django.apps import apps
 from django.db.models import DecimalField, ExpressionWrapper, F, OuterRef, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Count, IntegerField
 
 # 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -353,6 +355,29 @@ def annotate_order_received(queryset):
         received_total=Coalesce(Subquery(received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
     ).annotate(
         receive_remaining=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD)
+    )
+
+
+def annotate_order_notices(queryset):
+    """発注の queryset に、相手から届いた出荷の知らせの数 (notice_count) を足す。読むだけ。
+
+    発注の一覧と詳細の 2 秒ごとの更新が、行の状態の字 (purchasing_tags.live_state) に使う。明細ごとの知らせを発注で数える
+    Subquery (annotate_order_received と同じ形。join を重ねない)。connect を import せず、逆の関係 shipping_notices を
+    model の _meta から引く。connect の無い会社では 0。
+    """
+    try:
+        field = PurchaseOrderLine._meta.get_field("shipping_notices")
+    except FieldDoesNotExist:
+        return queryset.annotate(notice_count=Value(0, output_field=IntegerField()))
+    notices = (
+        field.related_model.objects.filter(line__purchase_order=OuterRef("pk"))
+        .order_by()
+        .values("line__purchase_order")
+        .annotate(n=Count("pk"))
+        .values("n")[:1]
+    )
+    return queryset.annotate(
+        notice_count=Coalesce(Subquery(notices, output_field=IntegerField()), Value(0), output_field=IntegerField())
     )
 
 

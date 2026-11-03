@@ -39,9 +39,10 @@ class PurchaseOrderListView(BaseListView):
     )
     search_fields = ("po_no", "partner__name", "partner__code")
     ordering = ("-order_date", "-id")
+    template_name = "purchasing/purchaseorder_list.html"
 
     def get_queryset(self):
-        return services.annotate_order_received(super().get_queryset().select_related("partner"))
+        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset().select_related("partner")))
 
 
 class PurchaseOrderDetailView(BaseDetailView):

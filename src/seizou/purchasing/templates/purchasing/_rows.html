@@ -1,0 +1,9 @@
+{% comment %}
+purchasing の一覧 (発注・受入) の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+発注の一覧 (purchaseorder_list) は core/_rows.html を include し、1 行を purchasing/_purchaseorder_row.html にする (状態の字 data-live と、
+前の更新と状態が違う行の欄の色 seizou-changed)。2 秒ごとの更新で取りに行く要素は purchasing/purchaseorder_list.html にあり、ここには置かない。
+それ以外 (受入の一覧) は core/_rows.html をそのまま使う。
+{% endcomment %}
+{% if request.resolver_match.url_name == "purchaseorder_list" %}{% include "core/_rows.html" with row_template="purchasing/_purchaseorder_row.html" %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}
