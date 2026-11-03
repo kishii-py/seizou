@@ -1,6 +1,6 @@
 """入力の土台 (BaseFormView.get_initial) が、新規登録の画面の GET の値を form の初期値にする約束。
 
-写すのは GET の鍵のうち form の欄と同じ名前の物だけ。POST と編集の画面では写さない。
+写すのは GET の鍵の全部 (会社ごとの項目 ext__ を除く)。form に無い鍵も写し、form の __init__ が読める。POST と編集の画面では写さない。
 受注の明細から出荷の新規登録・指示書の発行へ、明細を選んだ形で移る入口 (?order_line=<pk>) に使う。
 """
 
@@ -50,9 +50,10 @@ def test_get_value_becomes_initial():
     assert _view(request).get_initial() == {"name": "X"}
 
 
-def test_unknown_key_is_not_copied():
+def test_unknown_key_is_copied_but_ext_is_not():
+    # form に無い鍵も写す (form の __init__ が self.initial.get("from_line") で読む)。会社ごとの項目 (ext__) は写さない。
     request = RequestFactory().get("/x/", {"other": "1", "ext__color": "赤"})
-    assert _view(request).get_initial() == {}
+    assert _view(request).get_initial() == {"other": "1"}
 
 
 def test_post_does_not_copy_get_values():

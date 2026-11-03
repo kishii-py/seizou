@@ -27,6 +27,9 @@ SETTING_LABELS = {
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
     "hidden_fields": ("使わない注文の項目", {}),
     "access_control": ("権限の判定 (部署・編集の権限・金額の閲覧)", {"off": "使わない", "log": "記録だけ", "on": "有効"}),
+    "assistant_model": ("AI チャットが使う model", {}),
+    "intake_model": ("注文書の読み取りが使う model", {}),
+    "menu": ("左のメニューの括り (空なら既定の並び)", {}),
 }
 
 #: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
@@ -129,6 +132,11 @@ class SettingsView(ScreenMixin, TemplateView):
                 "icon": "users",
             },
         ]
+        from seizou.core import access
+
+        # アカウント管理の入口は、アカウント管理の権限がある人と管理者にだけ出す (無い人が押すと 403 になるため)
+        if not access.can_manage_accounts(self.request.user):
+            context["links"] = [link for link in context["links"] if link["label"] != "アカウント管理"]
         context["system_rows"] = system_rows()
         context["parts"] = [part.rsplit(".", 1)[-1] for part in PARTS]
         return context

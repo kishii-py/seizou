@@ -1,6 +1,6 @@
 """選べる設定 (01 の 9 節と 10.5)。
 
-会社の settings.py の辞書 SEIZOU から読み、無ければ既定。鍵は 7 つと hidden_fields。
+会社の settings.py の辞書 SEIZOU から読み、無ければ既定。鍵は DEFAULTS のとおり。
 """
 
 from django.conf import settings
@@ -14,6 +14,9 @@ DEFAULTS = {
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
     "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
     "access_control": {"department": "log", "write": "log", "money": "log"},  # 権限の判定: 部署・編集の権限・金額の閲覧のそれぞれ off / log / on
+    "assistant_model": "claude-sonnet-5-5",  # AI チャットが使う model (会社の鍵で呼ぶ)
+    "intake_model": "claude-opus-5-5",  # 注文書の読み取りが使う model
+    "menu": [],  # 左のメニューの括り (label・apps・screens の並び)。空なら既定の並び (core.context_processors.SECTIONS)
 }
 
 CHOICES = {

@@ -28,6 +28,9 @@ SETTING_KEYS = [
     "over_workorder",
     "order_number",
     "production_plan",
+    "assistant_model",
+    "intake_model",
+    "menu",
     "access_control",
 ]
 

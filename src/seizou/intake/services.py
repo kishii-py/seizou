@@ -21,11 +21,11 @@ import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from seizou.core import conf
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
@@ -135,11 +135,8 @@ def is_available():
 
 
 def model_name():
-    """読み取りに使う model の名前。SEIZOU["intake_model"] が空でない字ならそれ、無ければ DEFAULT_MODEL。
-
-    core の conf.setting は知らない鍵で KeyError になるので、settings.SEIZOU を直接読む。
-    """
-    value = (getattr(settings, "SEIZOU", {}) or {}).get("intake_model")
+    """読み取りに使う model の名前。会社の設定 intake_model (core の conf.DEFAULTS に既定) が空でない字ならそれ、無ければ DEFAULT_MODEL。"""
+    value = conf.setting("intake_model")
     if isinstance(value, str) and value.strip():
         return value.strip()
     return DEFAULT_MODEL

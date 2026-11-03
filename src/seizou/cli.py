@@ -46,6 +46,9 @@ SETTING_DEFAULTS = {
     "hidden_fields": [],
     "production_plan": True,
     "access_control": {"department": "log", "write": "log", "money": "log"},
+    "assistant_model": "claude-sonnet-5-5",
+    "intake_model": "claude-opus-5-5",
+    "menu": [],
 }
 
 ADMIN_ID = "admin"

@@ -9,10 +9,8 @@ from . import views
 
 app_name = "accounts"
 
-#: 左のメニューに並べる入口 (アカウント管理を使えない人には core の access.visible_menu が出さない)
-MENU = [
-    ("アカウント管理", "accounts:access_list"),
-]
+#: 左のメニューには出さない (普段は触らない物は右上の「設定」から開く = 決め 11-03 の候補 7)。設定の画面が入口を持つ。
+MENU = []
 
 urlpatterns = [
     path("", views.AccessListView.as_view(), name="access_list"),
