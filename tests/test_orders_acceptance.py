@@ -112,7 +112,7 @@ def test_order_detail_has_acceptance_column_before_remaining(user, logged_in, cu
     table = body[start : body.index("</table>", start)]
     heads = [_text(th) for th in _TH.findall(table)]
     assert heads == ["操作", "行番号", "部品", "数量", "単位", "単価", "金額", "納期", "出荷済み", "検収", "残"]
-    rows = [[_text(td) for td in _TD.findall(row)] for row in re.findall(r'<tr class="h-10">(.*?)</tr>', table, re.S)]
+    rows = [[_text(td) for td in _TD.findall(row)] for row in re.findall(r'<tr class="h-10"[^>]*>(.*?)</tr>', table, re.S)]
     assert len(rows) == 2
     assert all(len(cells) == len(heads) for cells in rows)
     accepted, plain = rows
