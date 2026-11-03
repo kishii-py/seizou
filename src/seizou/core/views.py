@@ -831,7 +831,8 @@ def count_or_none(queryset) -> int | None:
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
-    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。
+    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。金額のカード (今月の支払の見込み) は "money" が真で、
+    HomeView が金額を見られない人に "hidden" を付け、画面は数を「—」にする (カードは残す)。
     """
     today = timezone.localdate()
     stats: list[dict] = []
@@ -902,6 +903,20 @@ def dashboard_stats() -> list[dict]:
                 "url": url_or_none("connect:inbox_list"),
             }
         )
+    # 6 枚目: 今月の支払の見込み (受入の部品があるとき。受け入れた数 × 発注の単価の合計 = N42 の要望 4)
+    payable = dashboard.payable_this_month(today)
+    if payable is not None:
+        stats.append(
+            {
+                "label": "今月の支払の見込み",
+                "value": payable,
+                "unit": "円",
+                "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
+                "icon": "yen",
+                "url": url_or_none("purchasing:receipt_list"),
+                "money": True,
+            }
+        )
     return [stat for stat in stats if stat["value"] is not None]
 
 
@@ -952,6 +967,9 @@ class HomeView(ScreenMixin, TemplateView):
         if not access.can_see_money(self.request.user):
             context["recent_orders"] = access.without_totals(context["recent_orders"])
             context["shipping"] = dashboard.without_amounts(context["shipping"])
+            for stat in context["stats"]:
+                if stat.get("money"):
+                    stat["hidden"] = True  # 金額のカードの数を「—」にする (カードは残す)
         return context
 
 

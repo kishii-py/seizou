@@ -2,9 +2,8 @@
 
 load(seeds_dir, user) が、種のフォルダの stock_moves.yaml (在庫の動き) と receipts.yaml (受入。発注も一緒) を読み、
 services の関数で入れる。どちらのファイルも無ければ何もせず {"入れた": 0, "飛ばした": 0} を返す (出力の行を出さない)。
-在庫の動きの製造の完了は指示書の種 (workorders.yaml) の指示書を指すので、stock_moves.yaml は workorders.yaml が
-同じフォルダにあるときだけ読む (指示書の種の無いフォルダでは在庫の動きの種を丸ごと飛ばす。受入の種は指示書に関わらず読む)。
-両方あるのに指示書が見つからないときは、ほかの誤りと同じく ValueError で止まる。
+在庫の動きの製造の完了は指示書の種 (workorders.yaml) の指示書を指す。指示書が見つからないときは、ほかの誤りと同じく
+ValueError で止まる (指示書の種の無いフォルダに在庫の動きの種を置かない。core の試験は古い置き場を写すときに在庫の種も外す)。
 
 - 書くのは services の関数だけ (stock.services・purchasing.services)。表に直接書かない。標準出力に書かない。
 - 2 回入れても重ならない。自然な鍵で既にある物は飛ばす: 製造の完了 = その指示書に製造の完了の動きが既にある、
@@ -33,8 +32,6 @@ from .models import KIND_FINISHED, KIND_ISSUED, StockMove
 
 MOVES_FILE = "stock_moves.yaml"
 RECEIPTS_FILE = "receipts.yaml"
-#: 在庫の動きの種が指す指示書の種 (core の demo が読む物)。無いフォルダでは在庫の動きの種を読まない
-WORKORDERS_FILE = "workorders.yaml"
 MOVES_ROOT = "在庫の動き"
 RECEIPTS_ROOT = "発注"
 
@@ -277,7 +274,7 @@ def load(seeds_dir, user) -> dict:
     seeds_dir = Path(seeds_dir)
     made = skipped = 0
     moves = seeds_dir / MOVES_FILE
-    if moves.is_file() and (seeds_dir / WORKORDERS_FILE).is_file():
+    if moves.is_file():
         entry_made, entry_skipped = _load_moves(moves, user)
         made += entry_made
         skipped += entry_skipped

@@ -104,6 +104,9 @@ def test_home_shows_payable_card(user, logged_in, partners, shaft, no_http):
     assert "2,400" in card and "円" in card
     assert f'href="{reverse("purchasing:receipt_list")}"' in body[body.rindex("<a", 0, start) : start]
     assert f"{timezone.localdate().month} 月に受け入れた数量" in card
+    # 6 枚目のカードとして数字のカードの並びに入る (xl で 3 列 × 2 段、2xl で 1 段)
+    assert body.index("届いた注文 (未処理)") < start
+    assert "xl:grid-cols-3 2xl:grid-cols-6" in body
     for word in ("品目", "注残の明細", "はじめに"):
         assert word not in body, word
 
