@@ -5,6 +5,7 @@
 
 import base64
 import json
+import re
 import secrets
 import uuid
 
@@ -150,3 +151,15 @@ def test_inbox_detail_button_says_approve(client_logged_in, inbox):
 def test_inbox_detail_usecase_says_approve():
     usecases = {screen.url_name: screen.usecase for screen in all_screens()}
     assert "次にすること: 「承認」か「断る」へ" in usecases["connect:inbox_detail"]
+
+
+# --- 取引先との接続の一覧の先頭の列 (向き) が詳細への link ---
+
+
+@pytest.mark.django_db
+def test_connection_list_first_column_links_to_detail(client_logged_in, receive_connection):
+    response = client_logged_in.get(reverse("connect:connection_list"))
+    assert response.status_code == 200
+    detail_url = reverse("connect:connection_detail", args=[receive_connection.pk])
+    links = re.findall(rf'<a class="link link-hover[^"]*" href="{re.escape(detail_url)}"[^>]*>(.*?)</a>', text(response))
+    assert links == ["受ける"]
