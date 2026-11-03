@@ -21,6 +21,7 @@ DEFAULTS = {
     "over_shipment": "warn",  # 受注より多い出荷のポカよけ (R01・R04): warn / stop / off
     "over_workorder": "warn",  # 受注より多い指示書の数量と予定より多い実績 (R06・R07): warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
+    "transcription_minutes_per_line": 1,  # 1 行の転記にかかる分 (ダッシュボードの「手で打たずに受けた明細」の ≒ 転記 m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
     "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
     "weekly_holidays": [5, 6],  # 定休日の曜日 (0 = 月 〜 6 = 日)。既定は土日。休日の表 (masters の Holiday) と合わせて稼働日を決める (core.calendar)
@@ -41,7 +42,7 @@ CHOICES = {
 #: 画面の上書きの控えの寿命 (秒)。別の process (gunicorn の複数の worker) が、ほかの worker の書いた上書きを読み直すまでの長さ
 CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
-LOCKED_KEYS = ("menu", "weekly_holidays")
+LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line")
 #: 値の出所の字 (設定の画面が出す)
 SOURCE_SCREEN = "画面"
 SOURCE_ANSWER = "答え (settings.py)"

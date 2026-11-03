@@ -35,6 +35,7 @@ SETTING_LABELS = {
     "over_shipment": ("受注より多い出荷 (R01・R04)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "over_workorder": ("受注より多い指示書の数量と予定より多い実績 (R06・R07)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
+    "transcription_minutes_per_line": ("1 行の転記にかかる分 (手で打たずに受けた明細の「≒ 転記 m 分」。答えの YAML で変える)", {}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
     "weekly_holidays": ("定休日の曜日 (0 = 月 … 5 = 土・6 = 日。祝日と会社の休みはマスターの「休日」)", {}),
     "hidden_fields": ("使わない注文の項目", {}),

@@ -275,7 +275,7 @@ def check_settings() -> list[Row]:
         label = f"設定 {key}"
         detail = f"値の出所: {conf.setting_source(key)}"
         if key in conf.LOCKED_KEYS:
-            if not isinstance(value, list):
+            if isinstance(conf.DEFAULTS[key], list) and not isinstance(value, list):
                 rows.append(_bad(label, detail, f"{key} は並び (list) にしてください。{SETTING_FIX}"))
             continue
         try:
