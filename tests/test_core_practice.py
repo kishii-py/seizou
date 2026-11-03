@@ -352,7 +352,7 @@ def test_is_practice_reads_env_only(monkeypatch):
         assert practice.is_practice() is False
 
 
-BAND = "練習モード (ここでの登録は本番に残りません。閉じるときは seizou_practice stop)"
+BAND = "練習モード (ここでの登録は本番に残りません。取引先へは送りません。閉じるときは seizou_practice stop)"
 BAND_CLASS = 'class="bg-warning text-warning-content px-4 py-2 text-center text-sm font-bold"'
 
 
@@ -383,3 +383,18 @@ def test_band_and_title_only_in_practice_mode(client, monkeypatch):
     assert BAND in html
     assert "<title>練習: " in html
     assert html.index("<body") < html.index(BAND) < html.index('<div class="drawer')
+
+
+def test_practice_env_blanks_partner_secrets(tmp_path, monkeypatch):
+    """練習の子の process には取引先とのつながりの鍵を渡さない (空の字。settings.py の setdefault が .env から入れ直さない)。"""
+    monkeypatch.setenv("SEIZOU_PARTNER_B_PLATING_SECRET", "whsec_dummy_value_for_test")
+    monkeypatch.setenv("SEIZOU_PARTNER_A_MACHINING_SECRET", "whsec_dummy_value_for_test_2")
+    monkeypatch.setenv("SEIZOU_OTHER_VALUE", "keep")
+    env = practice.practice_env(tmp_path)
+    assert env["SEIZOU_PARTNER_B_PLATING_SECRET"] == ""
+    assert env["SEIZOU_PARTNER_A_MACHINING_SECRET"] == ""
+    assert env["SEIZOU_OTHER_VALUE"] == "keep"
+    assert env[practice.ENV_FLAG] == "1"
+    assert practice.is_partner_secret("SEIZOU_PARTNER_X_SECRET") is True
+    assert practice.is_partner_secret("SEIZOU_PARTNER_X") is False
+    assert practice.is_partner_secret("SECRET_KEY") is False
