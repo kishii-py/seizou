@@ -1,7 +1,7 @@
 """読み取りの一致率 (N83): 読み取った明細が、そのまま受注に残ったか (intake.outcome.match_counts と core の dashboard.reading_match)。
 
 見る所: 4 つの欄 (品番・数量・単価・納期) が同じなら「そのまま」、全角と空白はそろえて比べる、人が消した行は「直した」、
-人が足した行は数えない、問い合わせは枚数で増えない、読み取りの詳細と「受注にする」の画面の 1 行。
+人が足した行は数えない、問い合わせは枚数で増えない、読み取りの詳細と「受注にする」の画面の 1 行、取引先の詳細の節。
 本物の API は呼ばない (読み取りの行は _ask_claude を作り物の返事に差し替えて extract_order で作る)。名前は作り物だけ。
 返事 (tests/fixtures/intake/order_reply.json) は明細 2 行 = X-100 ×10 単価 120 納期 2026-11-20 / X-200 ×5 単価 null 納期 2026-11-27。
 """
@@ -151,3 +151,17 @@ def test_match_screens_show_counts(client, user, ordered, read_order):
     body = client.get(reverse("intake:extraction_detail", args=[read_order(other).pk])).content.decode()
     assert "この読み取り:" not in body
     assert "この得意先の読み取り (これまで)" not in body
+
+
+def test_partner_detail_shows_reading_match(client, user, customer, ordered):
+    client.force_login(user)
+    _extraction, order, first, second = ordered()
+    orders_services.update_order(order, {}, [{"id": first.pk, "qty": Decimal("12")}, {"id": second.pk}], user)
+
+    body = client.get(reverse("masters:partner_detail", args=[customer.pk])).content.decode()
+    assert "注文書の読み取り" in body
+    assert "読み取りから受注にした明細: 明細 2 行中 1 行そのまま (人が直したのは 1 行)" in body
+
+    other = create_partner({"code": "IO03", "name": "作り物の協力企業", "role": "subcontractor"}, user)
+    body = client.get(reverse("masters:partner_detail", args=[other.pk])).content.decode()
+    assert "読み取りから受注にした明細" not in body
