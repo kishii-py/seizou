@@ -9,10 +9,12 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from django.urls import reverse
 
+from seizou.core.views import BaseListView
 from seizou.masters import services as masters_services
-from seizou.masters.models import Process
+from seizou.masters.models import Item, Process
 from seizou.orders import services as orders_services
 from seizou.workorders import services as workorders_services
 
@@ -108,3 +110,59 @@ def test_workorder_list_sorts_order_line_ascending(logged_in, user, customer, sh
 
     assert ascending == [first.order_no, second.order_no]
     assert descending == [second.order_no, first.order_no]
+
+
+# ---------------------------------------------------------------- 2 範囲の外の頁
+
+
+class _PagedItemList(BaseListView):
+    model = Item
+    screen_name = "作り物の部品の頁"
+    columns = ("part_no", "name")
+    ordering = ("part_no",)
+    paginate_by = 2
+    template_name = "core/list.html"
+
+
+def call(view, user, **params):
+    request = RequestFactory().get("/", params)
+    request.user = user
+    return view.as_view()(request)
+
+
+@pytest.fixture
+def three_items(db):
+    return [
+        Item.objects.create(part_no=f"P-77{index}", name=f"作り物の部品 {index}", standard_price=Decimal("10"))
+        for index in range(1, 4)
+    ]
+
+
+@pytest.mark.django_db
+def test_out_of_range_page_shows_last_or_first(user, three_items):
+    expected = {"99": 2, "3": 2, "0": 2, "-1": 2, "abc": 1, "": 1, "last": 2, "1": 1, "2": 2}
+    for page, number in expected.items():
+        response = call(_PagedItemList, user, page=page)
+        assert response.status_code == 200, page
+        assert response.context_data["page_obj"].number == number, page
+        assert response.context_data["is_paginated"] is True, page
+
+    last = call(_PagedItemList, user, page="99")
+    assert [row["obj"].part_no for row in last.context_data["rows"]] == ["P-773"]
+
+
+@pytest.mark.django_db
+def test_empty_list_page_out_of_range_is_first_page(user):
+    response = call(_PagedItemList, user, page="5")
+    assert response.status_code == 200
+    assert response.context_data["page_obj"].number == 1
+    assert response.context_data["rows"] == []
+
+
+@pytest.mark.django_db
+def test_item_list_out_of_range_page_is_not_404(logged_in, three_items):
+    url = reverse("masters:item_list")
+    assert logged_in.get(url, {"page": "99"}).status_code == 200
+    rows_only = logged_in.get(url, {"page": "99"}, HTTP_HX_REQUEST="true")
+    assert rows_only.status_code == 200
+    assert rows_only.context["page_obj"].number == 1  # 50 件の頁に 3 件 = 1 頁だけ

@@ -380,7 +380,16 @@ class BaseListView(ScreenMixin, ListView):
 
     def paginate_queryset(self, queryset, page_size):
         # 部品の get_queryset が annotate を足した後の queryset (self.object_list) がここに来る。
-        return super().paginate_queryset(self.order_annotated(queryset), page_size)
+        # 頁は Paginator.get_page で選ぶ (範囲の外と 0 以下は最後の頁、数でない字は 1 頁目、last は最後の頁)。404 にしない。
+        paginator = self.get_paginator(
+            self.order_annotated(queryset),
+            page_size,
+            orphans=self.get_paginate_orphans(),
+            allow_empty_first_page=self.get_allow_empty(),
+        )
+        number = self.kwargs.get(self.page_kwarg) or self.request.GET.get(self.page_kwarg) or 1
+        page = paginator.get_page(paginator.num_pages if number == "last" else number)
+        return (paginator, page, page.object_list, page.has_other_pages())
 
     def get_paginate_by(self, queryset):
         try:
