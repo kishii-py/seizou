@@ -152,7 +152,7 @@ TOOLS = [
     },
     {
         "name": "list_screens",
-        "description": "このシステムの画面の目録 (画面の名前・1 文の説明・URL の名前・URL の道) を返す。読むだけ。",
+        "description": "このシステムの画面の目録 (画面の名前・1 文の説明・ユースケース (使う人 / いつ / 何のために / 次にすること)・URL の名前・URL の道) を返す。どの画面を開けばよいかは usecase で選ぶ。読むだけ。",
         "input_schema": _schema(),
     },
     {
