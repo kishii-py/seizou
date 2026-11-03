@@ -268,6 +268,10 @@ Django の部品を直すときの命令。
 - CSS: テンプレートを変えたら、`uv run python scripts/build_css.py` で作り直す。最初の 1 回は、道具 (Tailwind CSS と daisyUI) を取りにネットに出る。
 - 手元の 2 社の立て直し: `uv run python scripts/sites.py restart` (置き場の親は `SEIZOU_SITES_DIR`、無ければ `~/seizou-sites`。`status`・`start`・`stop` もある。runserver は `--noreload` で立てるので、取り込みの後はこれで立て直す)
 
+### 一覧の列 (columns) の印
+
+一覧の画面 (`BaseListView`) の `columns` の 1 要素は、項目の名前の字 (`"part_no"`)、名前と見出しの組 (`("item", "部品")`)、辞書のどれかで書く。辞書の `kind` は欄の種類で、`number` は右寄せと負の数の赤、`money` は右寄せで、金額の閲覧が無い人には「—」になり CSV からも外れる。`date` は等幅の年月日になる。`sortable` を真にすると見出しが並び替えの link になり、表の項目でない名前 (部品の `get_queryset` が annotate した列) も並び替える。`total` を真にすると、表の数の項目と、`kind` が number / money の annotate の列を、絞り込みに追従する合計の行に足す。`sort_key` は、Python の値の列 (例 注残の盤の `board__days_left`) を、同じ順になる別の列 (表の項目か annotate の列。例 `due_date`) で並べるときに書く。並び替えたときは、同じ値の行を `pk` の順にそろえる。
+
 ### E2E (ブラウザで画面を通す試験)
 
 2 社を立てて、ブラウザで画面を通す試験。`tests/e2e/` に、仕様書の番号ごとに 1 ファイルを置く。環境変数 `SEIZOU_E2E` が `1` のときだけ動き、無ければ全部 skip するので、普段の `uv run pytest` と CI には影響しない。
