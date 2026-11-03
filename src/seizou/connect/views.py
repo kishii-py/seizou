@@ -76,7 +76,7 @@ class InboxListView(BaseListView):
 class InboxDetailView(BaseDetailView):
     """届いた注文の詳細。
 
-    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「受け入れる」か「断る」へ
+    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「承認」か「断る」へ
     """
 
     model = Inbox

@@ -6,7 +6,7 @@
 
 この試験が見る所: 2 社に同じ鍵が渡っていれば、B 社の受信箱を開いたまま、A 社で `WK-1001` の発注を送る。B 社の画面を読み直さずに
 15 秒以内に新しい行が現れ、その行の欄に新しい行の色 (`bg-primary/10`) が付く。受け入れる前に B 社の受注の一覧を A 社の発注番号で
-絞ると 0 行。受信箱の詳細の「受け入れる」を押すと、部品の欄に B 社の品番 (`SB-2001`) が初めから選ばれていて、「保存」で B 社の受注の
+絞ると 0 行。受信箱の詳細の「承認」を押すと、部品の欄に B 社の品番 (`SB-2001`) が初めから選ばれていて、「保存」で B 社の受注の
 詳細へ移り、得意先の注文番号が A 社の発注番号になる。受け入れた後に同じ絞り込みで 1 行。
 見ない所 (理由): 同じ注文をもう 1 回送る・受け入れを 2 回押す・断る (今夜の範囲の外。冪等と二重押しは接続の試験が見る)。
 """
@@ -60,7 +60,7 @@ def test_e15_arrives_and_accept_makes_order(page_a, page_b, company_a, company_b
 
     inbox_pk = new_ids[0].removeprefix("row-")
     page_b.goto(f"{company_b.base_url}/connect/inbox/{inbox_pk}/")
-    page_b.get_by_role("link", name="受け入れる").click()
+    page_b.get_by_role("link", name="承認", exact=True).click()
     page_b.wait_for_url(re.compile(rf"/connect/inbox/{inbox_pk}/accept/$"))
     expect(page_b.locator("select[name=item_1] option:checked")).to_contain_text(OWN_PART_NO)
     page_b.get_by_role("button", name="保存", exact=True).click()
