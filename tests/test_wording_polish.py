@@ -8,6 +8,8 @@ import json
 import re
 import secrets
 import uuid
+from datetime import date
+from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -16,11 +18,17 @@ from django.urls import reverse
 from seizou.connect import services as connect_services
 from seizou.connect import signing
 from seizou.connect.models import Inbox
+from seizou.core.exceptions import RuleViolation
 from seizou.core.screens import all_screens
 from seizou.masters import services as masters_services
 from seizou.masters.forms import PartnerForm
+from seizou.orders import services as orders_services
+from seizou.shipping import services as shipping_services
+from seizou.shipping.models import Shipment
 
 RECEIVE_ENV = "SEIZOU_PARTNER_POLISHCO_SECRET"
+ORDER_DATE = date(2026, 11, 2)
+SHIPPED_AT = date(2026, 11, 5)
 
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。"
 TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。"
@@ -163,3 +171,68 @@ def test_connection_list_first_column_links_to_detail(client_logged_in, receive_
     detail_url = reverse("connect:connection_detail", args=[receive_connection.pk])
     links = re.findall(rf'<a class="link link-hover[^"]*" href="{re.escape(detail_url)}"[^>]*>(.*?)</a>', text(response))
     assert links == ["受ける"]
+
+
+# --- 分納を許さない会社の出荷の知らせ (形は tests/test_shipping_partial.py と tests/test_shipping_views.py を写した) ---
+
+PARTIAL_SHIP_MESSAGE = "この会社は分納を許していません (設定「分納」)。残りの数 10 をまとめて出荷してください。"
+PARTIAL_UPDATE_MESSAGE = "この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 10 をまとめて出荷してください。"
+
+
+@pytest.fixture
+def order_line(user):
+    """数量 10 の明細 1 行の受注の明細。"""
+    customer = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    order = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    return order.lines.get()
+
+
+@pytest.mark.django_db
+def test_partial_shipment_notice_is_japanese(settings, user, order_line):
+    settings.SEIZOU = {"partial_shipment": False}
+    with pytest.raises(RuleViolation) as caught:
+        shipping_services.ship(order_line, Decimal("4"), SHIPPED_AT, user)
+    assert caught.value.code == "分納"
+    assert caught.value.message == PARTIAL_SHIP_MESSAGE
+    assert Shipment.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_partial_shipment_update_notice_is_japanese(settings, user, order_line):
+    shipment = shipping_services.ship(order_line, Decimal("10"), SHIPPED_AT, user)
+    settings.SEIZOU = {"partial_shipment": False}
+    with pytest.raises(RuleViolation) as caught:
+        shipping_services.update_shipment(shipment, Decimal("4"), SHIPPED_AT, user)
+    assert caught.value.code == "分納"
+    assert caught.value.message == PARTIAL_UPDATE_MESSAGE
+    shipment.refresh_from_db()
+    assert shipment.qty == Decimal("10")
+
+
+@pytest.mark.django_db
+def test_partial_shipment_screen_has_no_internal_name(settings, client_logged_in, order_line):
+    settings.SEIZOU = {"partial_shipment": False}
+    response = client_logged_in.post(
+        reverse("shipping:shipment_create"),
+        {"order_line": order_line.pk, "qty": "4", "shipped_at": "2026-11-05", "note": ""},
+    )
+    assert response.status_code == 200
+    body = text(response)
+    alert = re.search(r'<div class="alert alert-error[^"]*"[^>]*>(.*?)</div>', body, re.S)
+    assert alert is not None
+    assert f">分納</span> {PARTIAL_SHIP_MESSAGE}</span>" in alert.group(1)
+    assert "10.00" not in alert.group(1)
+    assert "partial_shipment" not in body
+    assert Shipment.objects.count() == 0
+
+
+def test_qty_text_drops_trailing_zeros():
+    assert shipping_services._qty_text(Decimal("4.50")) == "4.5"
+    assert shipping_services._qty_text(Decimal("10.00")) == "10"
+    assert shipping_services._qty_text(Decimal("0.25")) == "0.25"
