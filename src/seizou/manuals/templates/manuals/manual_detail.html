@@ -1,16 +1,19 @@
 {% extends "core/detail.html" %}
-{% load manuals_tags seizou_icons %}
+{% load manuals_tags seizou_tags seizou_icons %}
 {# 見る画面: 上に帯 (置き場の道・版・最終更新・形式・保護・紐付け)、その下に左の目次と右の本文、最後に土台の基本情報。 #}
-{# 操作は土台の「一覧に戻る」と主色の「編集」の前。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。 #}
+{# 操作は土台の「一覧に戻る」と主色の「編集」の前。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。保護・移動・削除・保護を解除は、マニュアルの権限がある人だけ (決め 11-04 00:0x)。 #}
 {% block actions %}
+{% can_write "manuals.Manual" as can_manual %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}PDF</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.pk %}">{% icon "list" "size-4" %}版の履歴</a>
+{% if can_manual %}
 {% if object.protected %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護を解除</a>
 {% else %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_move' object.pk %}">{% icon "chevron-right" "size-4" %}移動</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護</a>
 <a class="btn btn-outline border-base-300 text-error" href="{% url 'manuals:manual_delete' object.pk %}">{% icon "x" "size-4" %}削除</a>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block content %}

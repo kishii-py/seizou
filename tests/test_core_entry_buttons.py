@@ -16,6 +16,7 @@ from django.urls import resolve, reverse
 from seizou.billing import services as billing_services
 from seizou.core import access
 from seizou.core.templatetags import seizou_tags
+from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.templatetags import orders_board
@@ -341,3 +342,67 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
     for entry in entries:
         assert entry in logged, entry
     assert fake_post.calls == 0
+
+
+# ---------------------------------------------------------------- 6 マニュアル
+
+
+@pytest.mark.django_db
+def test_manual_buttons_hidden_without_permission(settings, client, on, user):
+    folder = manuals_services.create_folder(None, "作り物の置き場", "gray", user)
+    manual = manuals_services.create_manual(folder, "作り物の手順", "steps", user)
+    list_url = reverse("manuals:manual_list")
+    folder_url = f"{list_url}?folder={folder.pk}"
+    detail_url = reverse("manuals:manual_detail", args=[manual.pk])
+    list_entries = (
+        f'href="{reverse("manuals:manualfolder_create")}',
+        f'href="{reverse("manuals:manual_create")}',
+    )
+    folder_entries = (
+        'aria-label="フォルダの操作"',
+        f'href="{reverse("manuals:manualfolder_update", args=[folder.pk])}"',
+        f'href="{reverse("manuals:manualfolder_move", args=[folder.pk])}"',
+        f'href="{reverse("manuals:manualfolder_protect", args=[folder.pk])}"',
+        f'href="{reverse("manuals:manualfolder_delete", args=[folder.pk])}"',
+    )
+    detail_entries = (
+        f'href="{reverse("manuals:manual_move", args=[manual.pk])}"',
+        f'href="{reverse("manuals:manual_protect", args=[manual.pk])}"',
+        f'href="{reverse("manuals:manual_delete", args=[manual.pk])}"',
+    )
+    # 見るだけの口 (PDF と版の履歴) は権限に依らず出る。
+    detail_reads = (
+        f'href="{reverse("manuals:manual_pdf", args=[manual.pk])}"',
+        f'href="{reverse("manuals:manualversion_list", args=[manual.pk])}"',
+    )
+
+    def pages(person):
+        return {
+            "list": _page(client, person, list_url),
+            "folder": _page(client, person, folder_url),
+            "detail": _page(client, person, detail_url),
+        }
+
+    denied = pages(user)
+    for entry in list_entries:
+        assert entry not in denied["list"], entry
+    for entry in folder_entries:
+        assert entry not in denied["folder"], entry
+    assert "作り物の置き場" in denied["folder"]
+    for entry in detail_entries:
+        assert entry not in denied["detail"], entry
+    for entry in detail_reads:
+        assert entry in denied["detail"], entry
+
+    def assert_all_shown(shown):
+        for entry in list_entries:
+            assert entry in shown["list"], entry
+        for entry in folder_entries:
+            assert entry in shown["folder"], entry
+        for entry in (*detail_entries, *detail_reads):
+            assert entry in shown["detail"], entry
+
+    assert_all_shown(pages(account("manual_editor", permissions=["manuals"])))
+
+    settings.SEIZOU = {}
+    assert_all_shown(pages(user))
