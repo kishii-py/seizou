@@ -9,6 +9,8 @@
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
+- minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
+- hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_HALF_UP, InvalidOperation
 
 from django.apps import apps
 from django.db import DatabaseError
@@ -30,6 +33,8 @@ from django.db.models import DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+
+from seizou.core import conf
 
 # 図の枠 (viewBox の大きさ) と描く所。y は下へ増え、_BASELINE が値 0 の基線。
 _WIDTH = 640
@@ -415,6 +420,66 @@ def payments_this_month(today=None) -> Decimal | None:
     except DatabaseError:
         return None
     return _ZERO if total is None else Decimal(str(total))
+
+
+MAX_MINUTES_PER_LINE = Decimal(60)  # 1 行の転記の分の上限。これを超える値と 0 以下は既定に戻す
+
+
+def minutes_per_line() -> Decimal:
+    """会社の設定 transcription_minutes_per_line (1 行の転記にかかる分) を Decimal で返す。真偽・数でない字・有限でない数・0 以下・MAX_MINUTES_PER_LINE を超える数は既定 (conf.DEFAULTS) に戻す (画面を 500 にしないよう、例外を投げない。core.calendar の定休日と同じ考え)。"""
+    default = Decimal(conf.DEFAULTS["transcription_minutes_per_line"])
+    value = conf.setting("transcription_minutes_per_line")
+    if isinstance(value, bool):
+        return default
+    try:
+        minutes = Decimal(str(value))
+    except InvalidOperation:
+        return default
+    if not minutes.is_finite() or minutes <= 0 or minutes > MAX_MINUTES_PER_LINE:
+        return default
+    return minutes
+
+
+def transcription_text(minutes: int) -> str:
+    """転記の分の字。60 分より少なければ「m 分」、60 分からは「h 時間 m 分」(m が 0 なら「h 時間」)。"""
+    hours, rest = divmod(minutes, 60)
+    if hours == 0:
+        return f"{rest} 分"
+    if rest == 0:
+        return f"{hours:,} 時間"
+    return f"{hours:,} 時間 {rest} 分"
+
+
+def saved_minutes(lines: int) -> int:
+    """lines × 1 行の転記の分 (minutes_per_line) を四捨五入した分の整数 (ROUND_HALF_UP)。"""
+    return int((lines * minutes_per_line()).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def hands_free_lines(today=None) -> int | None:
+    """今月 (受注日が today の月) の、取消でない受注の明細のうち、受注の入口が読み取りか届いた注文の行数。受注の部品が無いか DB が読めなければ None。問い合わせは 1 回 (count)。
+
+    入口は受注の列 (Order.source) で、明細の列ではない。
+    """
+    order_model = _model("orders", "Order")
+    line_model = _model("orders", "OrderLine")
+    if order_model is None or line_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    start = date(today.year, today.month, 1)
+    end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    try:
+        return (
+            line_model._default_manager.filter(
+                order__order_date__gte=start,
+                order__order_date__lt=end,
+                order__source__in=(order_model.SOURCE_INTAKE, order_model.SOURCE_INBOX),
+            )
+            .exclude(order__status=order_model.STATUS_CANCELLED)
+            .count()
+        )
+    except DatabaseError:
+        return None
 
 
 def lines_to_ship():

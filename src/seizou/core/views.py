@@ -1096,6 +1096,21 @@ def dashboard_stats() -> list[dict]:
                 "money": True,
             }
         )
+    # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと届いた注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
+    hands_free = dashboard.hands_free_lines(today)
+    if hands_free is not None:
+        note = f"{today.month} 月に、読み取った注文書と届いた注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
+        stats.append(
+            {
+                "label": "手で打たずに受けた明細",
+                "value": hands_free,
+                "unit": "行",
+                "detail": f"≒ 転記 {dashboard.transcription_text(dashboard.saved_minutes(hands_free))}",
+                "note": note,
+                "icon": "check",
+                "url": None,
+            }
+        )
     return [stat for stat in stats if stat["value"] is not None]
 
 
