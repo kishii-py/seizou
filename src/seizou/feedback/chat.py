@@ -47,7 +47,7 @@ MESSAGE_TOO_LONG = f"{MAX_MESSAGE_CHARS} 字を超えています。短くして
 #: 質問を使い切った後の利用者の字の末尾に足す 1 文 (session には足さない)
 FORCE_DRAFT_NOTE = f"(質問は {MAX_QUESTIONS} 回までです。これ以上は聞かず、draft_feedback で下書きを出してください。)"
 #: 下書きができたときの知らせ (口が messages.info で出し、編集の画面の toast に出る)
-DRAFT_READY_MESSAGE = "AI の下書きを作りました。内容を直して「保存」を押してください。"
+DRAFT_READY_MESSAGE = "AI の下書きを作りました。内容を直して「保存」を押してください。画面の絵があれば、入力の形の「画面の絵」の欄で付けられます。"
 
 _WEEKDAYS = "月火水木金土日"
 

@@ -13,7 +13,7 @@ from django.utils.datastructures import MultiValueDict
 
 from seizou.assistant import services as assistant_services
 from seizou.attachments import services as attachments_services
-from seizou.feedback import services
+from seizou.feedback import chat, services
 from seizou.feedback.forms import FeedbackForm, ScreenshotsField
 from seizou.feedback.models import Feedback
 from seizou.masters import services as masters_services
@@ -322,3 +322,11 @@ def test_export_markdown_screenshot_line(client_logged_in, plain):
     html = html_of(client_logged_in.get(f"/feedback/{shot_row.pk}/"))
     issue = re.search(r'<textarea id="feedback-issue"[^>]*>(.*?)</textarea>', html, re.S).group(1)
     assert line in issue
+
+
+# ---- 4. AI の下書きの知らせの 1 文 ----
+
+
+def test_draft_ready_message_mentions_screenshots():
+    assert chat.DRAFT_READY_MESSAGE.startswith("AI の下書きを作りました。内容を直して「保存」を押してください。")
+    assert "画面の絵" in chat.DRAFT_READY_MESSAGE
