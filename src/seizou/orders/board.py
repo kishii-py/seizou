@@ -16,12 +16,12 @@ from functools import cached_property
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import DecimalField, Prefetch, Sum, Value
+from django.db.models import DecimalField, OuterRef, Prefetch, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from . import services
-from .models import Order
+from .models import Order, OrderLine
 
 #: 判断の印の code と字 (印の字はこの 1 か所。テンプレートは code で色を選ぶ)。規則は BoardRow.judgement_code
 JUDGEMENTS = (
@@ -64,11 +64,34 @@ def _has_progress(step_model) -> bool:
     return True
 
 
+def annotate_acceptance(queryset):
+    """検収の数の合計 (acceptance_total) を副問い合わせで足す。connect の部品が無い (逆の関係 acceptances が無い) ときは 0。
+
+    orders は connect を import しない (逆の関係の model を OrderLine の descriptor から取る)。副問い合わせなので、
+    annotate_remaining の出荷の Sum (join) と掛け合わない。決め 11-03 (EDI の 4 段目 = 検収。N54 が落とした盤の列)。
+    """
+    relation = getattr(OrderLine, "acceptances", None)
+    if relation is None:
+        return queryset.annotate(acceptance_total=Value(_ZERO, output_field=_QTY_FIELD))
+    model = relation.rel.related_model
+    total = (
+        model._default_manager.filter(order_line=OuterRef("pk"))
+        .order_by()
+        .values("order_line")
+        .annotate(total=Sum("qty"))
+        .values("total")[:1]
+    )
+    return queryset.annotate(
+        acceptance_total=Coalesce(Subquery(total, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
+    )
+
+
 def prefetch_for(queryset):
     """指示書 (取消を除く) と工程と、工程ごとの実績の合計 (recorded_total) を 1 ページ分まとめて読む prefetch を足す。
 
     行の数に関わらず、指示書と工程の 2 回の問い合わせで済む。workorders の部品が無ければ queryset をそのまま返す。
     """
+    queryset = annotate_acceptance(queryset)
     workorder_model, step_model = _workorder_models()
     if workorder_model is None:
         return queryset
@@ -124,13 +147,24 @@ def apply_filters(queryset, filters, today=None):
 
 
 def totals_of(queryset) -> dict:
-    """絞り込みの後の全部の明細の合計 (数量・出荷済み・残)。annotate の列の合計は Django が副問い合わせにする。"""
-    sums = queryset.aggregate(
-        qty=Coalesce(Sum("qty"), Value(_ZERO), output_field=_QTY_FIELD),
-        shipped=Coalesce(Sum("shipped_total"), Value(_ZERO), output_field=_QTY_FIELD),
-        remaining=Coalesce(Sum("remaining_total"), Value(_ZERO), output_field=_QTY_FIELD),
-    )
-    return {"qty": sums["qty"], "shipped": sums["shipped"], "remaining": sums["remaining"]}
+    """絞り込みの後の全部の明細の合計 (数量・出荷済み・残・検収)。annotate の列の合計は Django が副問い合わせにする。
+
+    検収 (accepted) は annotate_acceptance を通した queryset だけ足す (通していなければ 0)。
+    """
+    aggregates = {
+        "qty": Coalesce(Sum("qty"), Value(_ZERO), output_field=_QTY_FIELD),
+        "shipped": Coalesce(Sum("shipped_total"), Value(_ZERO), output_field=_QTY_FIELD),
+        "remaining": Coalesce(Sum("remaining_total"), Value(_ZERO), output_field=_QTY_FIELD),
+    }
+    if "acceptance_total" in queryset.query.annotations:
+        aggregates["accepted"] = Coalesce(Sum("acceptance_total"), Value(_ZERO), output_field=_QTY_FIELD)
+    sums = queryset.aggregate(**aggregates)
+    return {
+        "qty": sums["qty"],
+        "shipped": sums["shipped"],
+        "remaining": sums["remaining"],
+        "accepted": sums.get("accepted", _ZERO),
+    }
 
 
 class BoardRow:
@@ -280,6 +314,15 @@ class BoardRow:
         from seizou.stock.services import balance
 
         return balance(self.line.item)
+
+    # --- 検収 ---
+    @cached_property
+    def acceptance_total(self) -> Decimal:
+        """検収の数の合計 (読むだけ)。annotate の acceptance_total があればそれ、無ければ services.acceptance_summary (関数の試験のため)。"""
+        if "acceptance_total" in self.line.__dict__:
+            value = self.line.__dict__["acceptance_total"]
+            return _ZERO if value is None else Decimal(str(value))
+        return services.acceptance_summary(self.line)["total"]
 
     # --- 判断 ---
     @cached_property
