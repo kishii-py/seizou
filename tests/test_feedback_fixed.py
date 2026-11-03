@@ -2,6 +2,7 @@
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
@@ -221,3 +222,104 @@ def test_list_filter_shows_fixed(client, plain, manager):
 
     html = html_of(client.get("/feedback/?status=draft"))
     assert "下書きの題" in html and "直した題" not in html
+
+
+# ---- 3. ログインのときの知らせ ----
+
+NOTICE = "あなたの一言から直しました"
+
+
+def test_unseen_fixed_and_notice_text(plain, other, manager):
+    first = make(plain, "受注の一覧で並びが戻る")
+    theirs = make(other, "ほかの人の題")
+    second = make(plain, "出荷の画面で日付がずれる")
+    services.mark_fixed(first, "", manager)
+    services.mark_fixed(theirs, "", manager)
+    services.mark_fixed(second, "", manager)
+
+    rows = services.unseen_fixed(plain)
+    assert [r.title for r in rows] == ["出荷の画面で日付がずれる", "受注の一覧で並びが戻る"]
+    assert services.unseen_fixed(AnonymousUser()) == []
+    assert services.fixed_notice([rows[0]]) == (
+        "あなたの一言から直しました: 「出荷の画面で日付がずれる」(1 件)。"
+        "詳細は左のメニューの下の「フィードバック」の一覧で見られます。"
+    )
+    assert "「出荷の画面で日付がずれる」ほか (2 件)" in services.fixed_notice(rows)
+    assert services.fixed_notice([]) == ""
+
+    before = {row.pk: row.updated_at for row in rows}
+    assert services.mark_fixed_seen(rows, other) == 0
+    assert services.mark_fixed_seen(rows, plain) == 2
+    for row in rows:
+        row.refresh_from_db()
+        assert row.fixed_seen_at is not None
+        assert row.updated_at == before[row.pk]
+    assert services.mark_fixed_seen(rows, plain) == 0
+    theirs.refresh_from_db()
+    assert theirs.fixed_seen_at is None
+
+
+def test_login_shows_fixed_notice_once(client, plain, manager):
+    row = make(plain, "受注の一覧で並びが戻る")
+    services.mark_fixed(row, "版 0.4.0 の受注の一覧", manager)
+
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert NOTICE in html
+    assert "「受注の一覧で並びが戻る」(1 件)" in html
+    row.refresh_from_db()
+    assert row.fixed_seen_at is not None
+
+    assert NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert NOTICE not in html_of(client.get("/feedback/"))
+
+
+def test_notice_only_for_author(client, plain, other, manager):
+    row = make(plain)
+    services.mark_fixed(row, "", manager)
+
+    assert login(client, "other").status_code == 302
+    assert NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    assert login(client, "admin").status_code == 302
+    assert NOTICE not in html_of(client.get("/feedback/"))
+    row.refresh_from_db()
+    assert row.fixed_seen_at is None
+
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert NOTICE in html_of(client.get("/feedback/"))
+
+
+def test_force_login_keeps_notice_for_real_login(client, plain, manager):
+    row = make(plain)
+    services.mark_fixed(row, "", manager)
+
+    client.force_login(plain)
+    row.refresh_from_db()
+    assert row.fixed_seen_at is None
+    assert NOTICE not in html_of(client.get("/feedback/"))
+
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert NOTICE in html_of(client.get("/feedback/"))
+    row.refresh_from_db()
+    assert row.fixed_seen_at is not None
+
+
+def test_new_fix_after_seen_notifies_again(client, plain, manager):
+    first = make(plain, "受注の一覧で並びが戻る")
+    second = make(plain, "出荷の画面で日付がずれる")
+    services.mark_fixed(first, "", manager)
+
+    assert login(client, "tester").status_code == 302
+    assert "「受注の一覧で並びが戻る」(1 件)" in html_of(client.get("/feedback/"))
+    client.logout()
+
+    services.mark_fixed(second, "", manager)
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert "「出荷の画面で日付がずれる」(1 件)" in html
+    assert "「受注の一覧で並びが戻る」" not in html

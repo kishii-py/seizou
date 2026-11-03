@@ -393,6 +393,48 @@ def mark_fixed(feedback, note, user):
         return feedback
 
 
+def unseen_fixed(user) -> list:
+    """user が書いたフィードバックのうち、直した日時があり、まだ知らせていない物の並び (直した日時の新しい順)。読むだけ。
+
+    pk の無い利用者 (ログインしていない人) は空の並び。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return []
+    rows = Feedback.objects.filter(created_by_id=user_pk, fixed_at__isnull=False, fixed_seen_at__isnull=True)
+    return list(rows.order_by("-fixed_at", "-pk"))
+
+
+def fixed_notice(rows) -> str:
+    """ログインのときの知らせの文 (いちばん新しく直した物の題と件数)。空の並びなら空の字。
+
+    題は伏せない (書いた本人にだけ出す字のため)。toast は字だけを出すので link は入れず、行き先を字で書く。
+    """
+    rows = list(rows)
+    if not rows:
+        return ""
+    more = "ほか " if len(rows) > 1 else ""
+    return (
+        f"あなたの一言から直しました: 「{rows[0].title}」{more}({len(rows)} 件)。"
+        "詳細は左のメニューの下の「フィードバック」の一覧で見られます。"
+    )
+
+
+def mark_fixed_seen(rows, user) -> int:
+    """知らせた日時を今にする (user が書いた行で、まだ空の物だけ)。書いた行の数を返す。
+
+    変えた日時 (updated_at) は変えない (知らせは中身の変更でないため。queryset の update は auto_now を動かさない)。
+    """
+    user_pk = getattr(user, "pk", None)
+    pks = [row.pk for row in rows]
+    if user_pk is None or not pks:
+        return 0
+    with transaction.atomic():
+        return Feedback.objects.filter(pk__in=pks, created_by_id=user_pk, fixed_seen_at__isnull=True).update(
+            fixed_seen_at=timezone.now()
+        )
+
+
 #: 削除の断りの文 (口は messages.error にする)
 MESSAGE_ALREADY_DELETED = "この下書きは既にありません。一覧を開き直してください。"
 MESSAGE_CANNOT_DELETE = "この下書きは、書いた人かアカウント管理の担当者だけが削除できます。"
