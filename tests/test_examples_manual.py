@@ -332,6 +332,12 @@ def test_fragment_shape(company_id):
         count = len(re.findall(r"<li>", can.group(1))) if can else 0
         if not 3 <= count <= 6:
             problems.append(f"{where}: できることの <li> が {count} (3〜6)")
+        # 注意は当たる決まりのある画面だけ。1〜2 行で、どの行も決まりの番号で始まる
+        note = re.search(r"<h3>注意</h3>\s*<ul>(.*?)</ul>", raw, re.S)
+        if "<h3>注意</h3>" in raw:
+            lines = re.findall(r"<li>(.*?)</li>", note.group(1), re.S) if note else []
+            if not 1 <= len(lines) <= 2 or not all(re.match(r"R[0-9]{2} ", line) for line in lines):
+                problems.append(f"{where}: 注意は決まりの番号で始まる 1〜2 行")
     assert problems == [], "\n".join(problems)
 
 
