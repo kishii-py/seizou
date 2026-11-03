@@ -1,12 +1,16 @@
 """使う人の結果の数字 (N83): 1 行の転記の分の設定と、ダッシュボードの「手で打たずに受けた明細」のカード。
 
 見る所: 設定 transcription_minutes_per_line (既定 1・画面から変えない・点検が良い)、カードの行数 (入口が読み取りか
-届いた注文の、今月の取消でない受注の明細) と ≒ 転記の分の字、設定の値の戻し方、問い合わせの数。
+届いた注文の、今月の取消でない受注の明細) と ≒ 転記の分の字、設定の値の戻し方、問い合わせの数、
+読み取りと届いた注文を受注にした直後の緑の知らせの 1 文 (手入力の受注には付かない)。
 日は TODAY を渡して固定し、dashboard_stats と画面を通す試験だけ今日 (timezone.localdate) で作る。名前は作り物だけ。
 """
 
+import json
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -15,12 +19,19 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
+from seizou.connect import services as connect_services
+from seizou.connect import signing
 from seizou.core import conf, dashboard, doctor, views
 from seizou.core import services as core_services
+from seizou.intake import services as intake_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from tests.test_connect_signing import _new_secret
+from tests.test_intake_extract import FAKE_KEY, REPLY_PATH, refuse_api, upload
+from tests.test_r10_inbox_accept import _line, _payload
 
 TODAY = date(2026, 11, 3)
+ENV_NAME = "SEIZOU_PARTNER_OUTCOMECO_SECRET"
 
 
 @pytest.fixture
@@ -142,3 +153,44 @@ def test_hands_free_lines_one_query(user, customer, shaft, monkeypatch):
 
     monkeypatch.setattr(dashboard, "apps", _NoParts())
     assert dashboard.hands_free_lines(TODAY) is None
+
+
+def _messages(response):
+    return [str(message) for message in response.context["messages"]]
+
+
+def test_accept_message_says_lines_not_typed(client, user, customer, shaft, monkeypatch):
+    client.force_login(user)
+    bracket = masters_services.create_item(
+        {"part_no": "B-200", "name": "作り物のブラケット", "unit": "個", "standard_price": Decimal("240")}, user
+    )
+
+    # 注文書の読み取り (明細 2 行) を受注にする。本物の API は呼ばない。
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.setattr(intake_services, "_ask_claude", lambda model, block: REPLY_PATH.read_text(encoding="utf-8"))
+    extraction = intake_services.extract_order(upload(), customer, user)
+    monkeypatch.setattr(intake_services, "_ask_claude", refuse_api)
+    url = reverse("intake:extraction_accept", args=[extraction.pk])
+    response = client.post(url, {"item_1": shaft.pk, "item_2": bracket.pk}, follow=True)
+    assert _messages(response) == ["保存しました。明細 2 行を手で打たずに受注にしました。"]
+
+    # 届いた注文 (明細 1 行) を受け入れる。
+    secret = _new_secret()
+    monkeypatch.setenv(ENV_NAME, secret)
+    connect_services.register_connection(customer, "", ENV_NAME, "receive", user)
+    msg_id = str(uuid.uuid4())
+    body = json.dumps(_payload(msg_id, [_line(1, "A-100")]), ensure_ascii=False).encode("utf-8")
+    inbox = connect_services.receive(body, signing.headers_for(secret, msg_id, body))
+    response = client.post(reverse("connect:inbox_accept", args=[inbox.pk]), {"item_1": bracket.pk}, follow=True)
+    messages = _messages(response)
+    assert len(messages) == 1 and messages[0].endswith("明細 1 行を手で打たずに受注にしました。"), messages
+
+
+def test_manual_order_has_no_saved_note(user, customer, shaft):
+    order = make_order(user, customer, shaft, 2, source="manual", order_date=TODAY)
+    assert getattr(order, "saved_note", "") == ""
+
+    assert views.with_saved_note("保存しました。", None) == "保存しました。"
+    note = SimpleNamespace(saved_note="明細 1 行を手で打たずに受注にしました。")
+    assert views.with_saved_note("保存しました。", note) == "保存しました。明細 1 行を手で打たずに受注にしました。"
+    assert views.with_saved_note("保存しました。", SimpleNamespace(saved_note=3)) == "保存しました。"
