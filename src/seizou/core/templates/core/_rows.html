@@ -1,5 +1,6 @@
 {% load seizou_tags seizou_icons %}
 {# 一覧の表の部分 (htmx はここだけを返す)。数は右寄せ・日付と識別子は等幅・長い字は省略して title に全文・行の高さは一定。 #}
+{# row_template: 1 行を描く template の名前 (無ければ下の欄の描き方)。actions_label: 最後の列の見出し (無ければ列を出さない)。include する側が with で渡す (connect の届いた注文)。 #}
 {% if rows %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">
@@ -7,9 +8,10 @@
     {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
       {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
     </th>{% endfor %}
+    {% if actions_label %}<th class="whitespace-nowrap font-medium">{{ actions_label }}</th>{% endif %}
   </tr></thead>
   <tbody>
-    {% for row in rows %}
+    {% for row in rows %}{% if row_template %}{% include row_template %}{% else %}
     <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
       {% for cell in row.cells %}
       {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
@@ -20,9 +22,9 @@
       {% endif %}
       {% endfor %}
     </tr>
-    {% endfor %}
+    {% endif %}{% endfor %}
   </tbody>
-  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}</tr></tfoot>{% endif %}
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if actions_label %}<td></td>{% endif %}</tr></tfoot>{% endif %}
 </table>
 </div>
 <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
