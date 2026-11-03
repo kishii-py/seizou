@@ -5,16 +5,21 @@
 人は accounts の services で作る。名前は作り物。
 """
 
+from decimal import Decimal
+
 import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.urls import resolve, reverse
 
+from seizou.billing import services as billing_services
 from seizou.core import access
 from seizou.core.templatetags import seizou_tags
 from seizou.orders import services as orders_services
 from seizou.orders.templatetags import orders_board
+from seizou.shipping import services as shipping_services
 from tests import test_orders_board
+from tests.test_billing_payment_views import RECEIVED_ON, SHIPPED_AT, _customer, _invoice, _order_line
 from tests.test_core_access import account
 from tests.test_orders_board import _issue, _line, _tr
 
@@ -208,3 +213,82 @@ def test_workorder_cancel_hidden_accept_kept(settings, client, on, user, custome
 
     settings.SEIZOU = {}
     assert cancel_href in _page(client, user, detail_url)
+
+
+# ---------------------------------------------------------------- 4 納品書と請求書
+
+
+def _billing_customer(user):
+    """締め日と支払の決まりのある得意先 (請求書の試験と同じ形)。"""
+    return _customer(user, code="C101", closing_day=20, payment_month="next", payment_day=25)
+
+
+@pytest.mark.django_db
+def test_delivery_note_hides_cancel_and_invoice(client, on, user, item):
+    buyer = _billing_customer(user)
+    shipment = shipping_services.ship(_order_line(user, buyer, item), Decimal("4"), SHIPPED_AT, user)
+    note = shipping_services.create_delivery_note(buyer, [shipment], user)
+    detail_url = reverse("shipping:deliverynote_detail", args=[note.pk])
+    cancel_href = f'href="{reverse("shipping:deliverynote_cancel", args=[note.pk])}"'
+    invoice_href = f'href="{reverse("billing:invoice_create")}?customer={buyer.pk}"'
+    documents = (
+        f'href="{reverse("shipping:deliverynote_print", args=[note.pk])}"',
+        f'href="{reverse("shipping:deliverynote_pdf", args=[note.pk])}"',
+    )
+
+    denied = _page(client, user, detail_url)
+    assert cancel_href not in denied
+    assert invoice_href not in denied and "請求書を作る" not in denied
+    # 納品書は金額の門の書面ではないので、印刷用の画面と PDF は出す。
+    for href in documents:
+        assert href in denied, href
+
+    jimu = account("jimu", permissions=["slip_edit"])
+    allowed = _page(client, jimu, detail_url)
+    assert cancel_href in allowed
+    assert invoice_href in allowed and "請求書を作る" in allowed
+
+
+@pytest.mark.django_db
+def test_invoice_hides_cancel_payment_and_documents(settings, client, on, user, item):
+    buyer = _billing_customer(user)
+    invoice = _invoice(user, buyer, _order_line(user, buyer, item))
+    payment = billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
+    unpaid = _invoice(user, buyer, _order_line(user, buyer, item))
+    detail_url = reverse("billing:invoice_detail", args=[invoice.pk])
+    unpaid_url = reverse("billing:invoice_detail", args=[unpaid.pk])
+    writes = (
+        f'href="{reverse("billing:invoice_cancel", args=[invoice.pk])}"',
+        f'href="{reverse("billing:payment_create", args=[invoice.pk])}"',
+        f'href="{reverse("billing:payment_cancel", args=[payment.pk])}"',
+    )
+    documents = (
+        f'href="{reverse("billing:invoice_print", args=[invoice.pk])}"',
+        f'href="{reverse("billing:invoice_pdf", args=[invoice.pk])}"',
+    )
+    guide = "「入金を記録する」から"
+
+    denied = _page(client, user, detail_url)
+    for href in (*writes, *documents):
+        assert href not in denied, href
+    assert guide not in _page(client, user, unpaid_url)
+
+    # 伝票編集で金額の閲覧が無い人: 書く入口は出し、金額の書面 (印刷と PDF) は出さない。
+    jimu = account("jimu", permissions=["slip_edit"])
+    clerk = _page(client, jimu, detail_url)
+    for href in writes:
+        assert href in clerk, href
+    for href in documents:
+        assert href not in clerk, href
+    assert guide in _page(client, jimu, unpaid_url)
+
+    keiri = account("keiri", permissions=["billing"], see_money=True)
+    full = _page(client, keiri, detail_url)
+    for href in (*writes, *documents):
+        assert href in full, href
+
+    settings.SEIZOU = {}
+    logged = _page(client, user, detail_url)
+    for href in (*writes, *documents):
+        assert href in logged, href
+    assert guide in _page(client, user, unpaid_url)
