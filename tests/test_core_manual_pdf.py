@@ -11,6 +11,7 @@ import re
 import time
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote, urljoin
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -139,7 +140,10 @@ def test_pdf_returns_pdf_when_available(client_logged_in, manual, fake_pdf):
     response = client_logged_in.get(reverse("core:manual_pdf"))
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
-    assert response["Content-Disposition"] == 'inline; filename="seizou-manual.pdf"'
+    assert response["Content-Disposition"] == "inline; filename=\"seizou-manual.pdf\"; filename*=UTF-8''%E4%BD%BF%E3%81%84%E6%96%B9.pdf"
+    # 見出しの値は全部 ASCII (日本語の名前は UTF-8 を % で書いた filename* で添える)
+    response["Content-Disposition"].encode("ascii")
+    assert quote(core_manual.BOOKLET_FILENAME, safe="") == "%E4%BD%BF%E3%81%84%E6%96%B9.pdf"
     assert "no-store" in response["Cache-Control"]
     assert response.content == FAKE_PDF
     assert fake_pdf["template"] == "core/manual_booklet.html"
@@ -194,9 +198,12 @@ def test_booklet_has_cover_toc_and_chapters(db, manual):
         "string-set",
         "string(booklet-company)",
         "break-before: page",
-        "img { display: none; }",
     ):
         assert word in style.group(1), word
+    # 絵は隠さず、章の幅に収める
+    assert "display: none" not in style.group(1)
+    assert ".booklet-chapter img {" in style.group(1)
+    assert "max-width: 100%" in style.group(1)
     assert 'href="/static/css/report.css"' in html
     assert "csrf" not in html.lower()
 
@@ -285,15 +292,50 @@ def test_pdf_is_not_a_screen():
     assert not [s for s in all_screens() if s.url_name == "core:manual_pdf"]
 
 
+def test_booklet_base_resolves_fragment_images(db, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    html = booklet_html()
+    # <base> は <head> の中の 1 つで、相対の道を持つ <title>・<link> より前
+    assert html.count('<base href="/manual/">') == 1
+    base_at = html.index("<base ")
+    assert html.index("<head>") < base_at < html.index("</head>")
+    assert base_at < html.index("<link rel=")
+    assert base_at < html.index("<title>")
+    # 冊子の <base> + 断片の相対の道・絵の口の道・帳票の部品の絵の根が同じ道
+    assert reverse("core:manual") == "/manual/"
+    assert (
+        urljoin("/manual/", "images/masters_item_list.png")
+        == reverse("core:manual_image", args=["masters_item_list.png"])
+        == reports.MANUAL_IMAGES_PREFIX + "masters_item_list.png"
+    )
+    # 断片の字は書き換えない (相対の道のまま)
+    assert '<img src="images/masters_item_list.png"' in chapter(html, "masters_item_list")
+    assert 'src="/manual/images/' not in html
+
+
 @pytest.mark.pdf
 def test_booklet_pdf_with_weasyprint(db, manual, caplog):
+    from PIL import Image
+
+    images = manual / "images"
+    images.mkdir()
+    Image.new("RGB", (8, 8), "white").save(images / "masters_item_list.png")
     write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
     write_fragment(manual, "orders_order_list", ORDER_FRAGMENT)
+    # 受注の章は、絵の 1 行を挟んだ字に書き直す (絵のファイルは置かない)
+    order_with_image = ORDER_FRAGMENT.replace("</section>", '<img src="images/orders_order_list.png" alt="受注"></section>')
+    write_fragment(manual, "orders_order_list", order_with_image)
     data = core_manual.render_booklet_pdf()
     assert data.startswith(b"%PDF")
     assert b"NotoSansJP" in data
-    # 絵は display: none で取りに行かない (取りに行くと WeasyPrint の記録に断りが出る)
-    assert "Failed to load image" not in caplog.text
+    # 読めた絵は PDF に埋め込まれる (PDF 1.4 なので辞書は圧縮されない)。読めた絵は記録に出ない
+    assert re.search(rb"/Subtype\s*/Image", data)
+    assert "masters_item_list.png" not in caplog.text
+    # 無い絵は WeasyPrint が記録に断りを出して飛ばす (落ちない)
+    assert "Failed to load image" in caplog.text
+    assert "orders_order_list.png" in caplog.text
+    # <base> を足しても、目次の飛び先 (href="#…") は冊子の中の章に解ける
+    assert "target points to undefined anchor" not in caplog.text
 
     document = reports._render_document(core_manual.BOOKLET_TEMPLATE, core_manual.booklet_context())
     # 表紙 1・「この冊子について」1・目次 1 以上・章は 1 画面 1 ページ以上
@@ -479,9 +521,11 @@ def test_style_has_color_footer_and_first_page(db, site):
         "position: relative",
         "position: absolute",
         "break-before: page",
-        "img { display: none; }",
     ):
         assert word in style, word
+    assert "display: none" not in style
+    assert ".booklet-chapter img {" in style
+    assert "max-width: 100%" in style
     first = re.search(r"@page :first \{(.*?)\n\}", style, re.S)
     assert first, "1 ページ目の @page が無い"
     assert "margin: 0" in first.group(1)

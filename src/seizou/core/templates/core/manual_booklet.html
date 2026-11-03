@@ -4,7 +4,7 @@
 PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに口が返す印刷用の画面の両方に使う。
 字と A4 縦は report.css を読み、冊子の形はこの 1 枚の style に書く (画面の土台と画面の CSS は使わない)。
 目次のページ番号は target-counter で引く。各ページの下の会社名は、表紙の会社名を string-set で覚えた物を引く。
-絵は出さない (帳票の部品が manual/images/ を読まないため)。img を display: none にし、断片の字は書き換えない。
+絵は断片の <img src="images/…"> のまま出す。head の base (/manual/) で相対の道が /manual/images/… に解け、帳票の部品 (core.reports.fetch_local) が manual/images/ から読む (manual_image と同じ制限)。無い絵は飛ばす。断片の字は書き換えない。
 入力の欄を持たないので、CSRF の見出しは置かない。
 表紙は 1 ページ目の余白を無くして主色の帯を紙の端まで出し、2 ページ目に「この冊子について」(目次に載せない) を置く。
 主色は booklet_context() の primary_color。章の頭の帯と番号は style で付け、断片の字は書き換えない。
@@ -12,6 +12,7 @@ PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに�
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<base href="/manual/">
 <title>使い方 | {{ company_name }}</title>
 <link rel="stylesheet" href="{% static 'css/report.css' %}">
 <style>
@@ -71,7 +72,7 @@ body { counter-reset: booklet-chapter; }
 .booklet-chapter th, .booklet-chapter td { border: 0.5pt solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
 .booklet-chapter th { background: #eee; }
 .booklet-empty { color: #999; }
-img { display: none; }
+.booklet-chapter img { display: block; max-width: 100%; height: auto; margin: 2mm 0; border: 0.5pt solid #999; }
 </style>
 </head>
 <body>
