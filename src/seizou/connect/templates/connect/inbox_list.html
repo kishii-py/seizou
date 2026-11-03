@@ -1,6 +1,6 @@
 {% extends "core/list.html" %}
 {% block content %}
 {{ block.super }}
-{# 受信箱の自動の更新 (2 秒ごと)。取りに行く要素は connect/_inbox_poll.html。返る断片 (connect/_rows.html) が、次の after を持った同じ要素を入れ直す。 #}
+{# 届いた注文の自動の更新 (2 秒ごと)。取りに行く要素は connect/_inbox_poll.html。返る断片 (connect/_rows.html) が、次の after を持った同じ要素を入れ直す。 #}
 {% include "connect/_inbox_poll.html" with trigger="every 2s" %}
 {% endblock %}

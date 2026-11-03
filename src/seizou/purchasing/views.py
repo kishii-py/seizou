@@ -16,7 +16,7 @@ class PurchaseOrderListView(BaseListView):
     model = PurchaseOrder
     screen_name = "発注"
     screen_help = "協力企業への発注。行を押すと明細と、相手へ送った記録が見られます。"
-    columns = ("po_no", "partner", "order_date", "status", "note")
+    columns = ("po_no", "partner", "order_date", "status", "replied_at", "note")
     search_fields = ("po_no", "partner__name", "partner__code")
     ordering = ("-order_date", "-id")
 

@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_icons %}
-{# つながりの詳細。core の基本情報の下に「鍵の設定」のカードを足す。鍵の値は出さず、置いてあるか (済み / まだ) と、.env に足す 1 行の名前の形だけを出す。 #}
+{# 取引先との接続の詳細。core の基本情報の下に「鍵の設定」のカードを足す。鍵の値は出さず、置いてあるか (済み / まだ) と、.env に足す 1 行の名前の形だけを出す。 #}
 {% block content %}{{ block.super }}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="secret-title">
   <div class="flex flex-wrap items-center gap-2">

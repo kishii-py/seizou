@@ -144,6 +144,6 @@ def test_detail_shows_secret_set_without_value(client_logged_in, connection, mon
 def test_screens_in_catalog():
     names = {screen.url_name: screen.name for screen in all_screens()}
 
-    assert names.get("connect:connection_create") == "つながりの新規登録"
-    assert names.get("connect:connection_detail") == "つながりの詳細"
-    assert names.get("connect:connection_update") == "つながりの編集"
+    assert names.get("connect:connection_create") == "取引先との接続の新規登録"
+    assert names.get("connect:connection_detail") == "取引先との接続の詳細"
+    assert names.get("connect:connection_update") == "取引先との接続の編集"
