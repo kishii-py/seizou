@@ -1,10 +1,10 @@
 {% extends "core/list.html" %}
 {% load seizou_icons %}
 {# 注文残の一覧 (注残の盤): 土台の一覧に、残のある物だけ / すべての切り替えと、納期の絞り込みの欄と、受注の一覧への入口を足す。 #}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:order_list' %}">{% icon "clipboard" "size-4" %}受注の一覧</a>{{ block.super }}{% endblock %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:order_list' %}" data-tour="order-link">{% icon "clipboard" "size-4" %}受注の一覧</a>{{ block.super }}{% endblock %}
 {% block content %}
 {% include "orders/_all_toggle.html" %}
 {% include "orders/_board_filter.html" %}
 {# 土台の検索とページ送りの要求に、「すべて」(#orders-all。すべてのときだけある) と納期の絞り込みの欄の値を足す。無い id は htmx が無視する。 #}
-<div hx-include="#orders-all, #board-filter">{{ block.super }}</div>
+<div hx-include="#orders-all, #board-filter" data-tour="board">{{ block.super }}</div>
 {% endblock %}

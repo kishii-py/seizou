@@ -14,6 +14,7 @@ from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
 
+from seizou.core.guide import screen_guide
 from seizou.core.health import health
 from seizou.core.login_guard import LockoutAuthenticationForm
 from seizou.core.manual import ManualView, manual_fragment, manual_image, manual_pdf
@@ -43,6 +44,7 @@ core_patterns = [
     path("manual/pdf/", manual_pdf, name="manual_pdf"),
     path("manual/fragment/<str:anchor>/", manual_fragment, name="manual_fragment"),
     path("manual/images/<str:name>", manual_image, name="manual_image"),
+    path("guide/<str:anchor>/", screen_guide, name="screen_guide"),
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/<str:key>/edit/", SettingUpdateView.as_view(), name="setting_update"),
     path("settings/<str:key>/clear/", setting_clear, name="setting_clear"),

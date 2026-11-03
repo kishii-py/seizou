@@ -1,5 +1,5 @@
-{% load seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
+{% load seizou_guide seizou_icons %}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
 <header class="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
   {% if seizou.search_url %}
@@ -14,6 +14,7 @@
     <span class="hidden items-center gap-2 text-base-content/70 md:flex">{% icon "calendar" "size-4" %}<time datetime="{% now 'Y-m-d' %}">{% now "Y年n月j日 (D)" %}</time></span>
     {# ブックマーク (☆): 部品 bookmarks が入っていれば、その部品の帯の部品を出す (登録と一覧の小窓)。 #}
     {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_star.html" %}{% endif %}
+    {% if screen_anchor %}{% screen_has_guide as has_guide %}{% if has_guide %}<a class="btn btn-sm btn-outline border-base-300" href="{% url 'core:manual' %}#{{ screen_anchor }}" hx-get="{% url 'core:screen_guide' screen_anchor %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()" title="この画面でできること" aria-label="この画面の案内" data-tour="guide">{% icon "info" "size-4" %}<span class="hidden sm:inline">案内</span></a>{% endif %}{% endif %}
     {% if seizou.manual_url %}<a class="btn btn-square btn-sm btn-outline border-base-300" href="{{ seizou.manual_url }}" title="使い方" aria-label="使い方">{% icon "help" "size-4" %}</a>{% endif %}
     {% if user.is_authenticated %}
     {% with name=user.get_full_name|default:user.get_username %}
@@ -33,3 +34,4 @@
     {% endif %}
   </div>
 </header>
+{% seizou_tour %}

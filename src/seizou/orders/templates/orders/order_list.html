@@ -3,7 +3,7 @@
 {# 受注の一覧: 土台の一覧に、残のある物だけ / すべての切り替えと、注文残の一覧への入口を足す。 #}
 {# 受注の入口は 1 つの画面にまとめる (02 の 8 節の決め 6): 手入力の「新規登録」(主色は土台のこれだけ)・注文書の読み取りのボタン (intake の読み取りの画面へ。枠だけ)・上の段の「届いた注文を開く」。 #}
 {# 部品が入っていない会社では、その入口を出さない。connect のタグは include の先 (connect/_inbox_entrance.html) で読む。 #}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:orderline_list' %}">{% icon "list" "size-4" %}注文残の一覧</a>{% if "intake" in seizou.parts %}{% url 'intake:extraction_create' as ocr_url %}{% if ocr_url %}<a class="btn btn-outline border-base-300" href="{{ ocr_url }}">{% icon "file" "size-4" %}読み取る (OCR)</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:orderline_list' %}" data-tour="orderline-link">{% icon "list" "size-4" %}注文残の一覧</a>{% if "intake" in seizou.parts %}{% url 'intake:extraction_create' as ocr_url %}{% if ocr_url %}<a class="btn btn-outline border-base-300" href="{{ ocr_url }}" data-tour="ocr">{% icon "file" "size-4" %}読み取る (OCR)</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
 {% block content %}
 {% if "connect" in seizou.parts %}{% include "connect/_inbox_entrance.html" %}{% endif %}
 {% include "orders/_all_toggle.html" %}
