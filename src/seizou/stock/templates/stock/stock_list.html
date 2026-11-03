@@ -1,0 +1,13 @@
+{% extends "core/list.html" %}
+{% load seizou_icons %}
+{% comment %}
+在庫の一覧: core の一覧の上に、動きの一覧・払い出し・棚卸しの調整・製造の完了を入庫にするの入口のボタン (主色は製造の完了だけ)。
+一覧の model は部品なので、土台の「新規登録」は部品の新規登録を指す。actions の block は土台の中身を使わず、自分の入口だけを出す。
+在庫数の欄は annotate の列なので、土台では字のまま出る (右寄せと赤は core の列の口が要る = 要望)。
+{% endcomment %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'stock:stockmove_list' %}">{% icon "list" "size-4" %}動きの一覧</a>
+<a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}">{% icon "truck" "size-4" %}払い出し</a>
+<a class="btn btn-outline border-base-300" href="{% url 'stock:adjust_create' %}">{% icon "check" "size-4" %}棚卸しの調整</a>
+<a class="btn btn-primary" href="{% url 'stock:finished_create' %}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
+{% block content %}<p class="mb-4 text-xs text-base-content/70">在庫数 = 入庫 (製造の完了・受入) の合計 − 出庫 (出荷・払い出し) の合計です。出荷は出荷の記録から集計で引きます。動きの無い部品は並びません。棚卸しの調整で数え始めます。</p>
+{{ block.super }}{% endblock %}

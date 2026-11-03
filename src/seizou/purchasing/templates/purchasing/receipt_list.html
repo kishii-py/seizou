@@ -1,0 +1,5 @@
+{% extends "core/list.html" %}
+{% load seizou_icons %}
+{# 受入の一覧: core の一覧の上に、取引先ごとの先月と今月の支払の見込みの表。主色のボタンは土台の「新規登録」だけ。 #}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_list' %}">{% icon "cart" "size-4" %}発注の一覧</a>{{ block.super }}{% endblock %}
+{% block content %}{% include "purchasing/_payable_table.html" %}{{ block.super }}{% endblock %}

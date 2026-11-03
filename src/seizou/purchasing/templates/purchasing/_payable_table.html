@@ -1,0 +1,48 @@
+{% load purchasing_tags seizou_tags seizou_icons %}{% comment %}
+支払の見込み (取引先ごと。先月と今月)。受入の一覧の上に置く。中身は tag payable_table (purchasing.services.payable_by_partner)。
+金額を見られない人には、欄は残して金額の枡を「—」にする (02 の 7 節)。class の中に {{ }} と {% if %} を書かない (R19)。
+{% endcomment %}{% payable_table as payable %}
+<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
+  <h2 id="payable-title" class="text-lg font-bold">支払の見込み (取引先ごと)</h2>
+  <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計 (円)。受入日の月で数えます。</p>
+  {% if not payable.rows %}
+  <p class="mt-4 text-base-content/70">先月と今月の受入はまだありません。</p>
+  {% else %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr class="text-base-content/70">
+          <th class="font-medium">取引先</th>
+          {% for month in payable.months %}<th class="text-right font-medium">{{ month.label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in payable.rows %}
+        <tr>
+          <td>{% master_link row.partner %}</td>
+          {% if payable.hidden %}
+          <td class="text-right tabular-nums"><span class="text-base-content/50">—</span></td>
+          <td class="text-right tabular-nums"><span class="text-base-content/50">—</span></td>
+          {% else %}
+          <td class="text-right tabular-nums">{{ row.last_month|comma:0 }}</td>
+          <td class="text-right tabular-nums">{{ row.this_month|comma:0 }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="bg-base-200 font-bold text-base-content">
+          <td>合計</td>
+          {% if payable.hidden %}
+          <td class="text-right tabular-nums"><span class="text-base-content/50">—</span></td>
+          <td class="text-right tabular-nums"><span class="text-base-content/50">—</span></td>
+          {% else %}
+          <td class="text-right tabular-nums">{{ payable.totals.last_month|comma:0 }}</td>
+          <td class="text-right tabular-nums">{{ payable.totals.this_month|comma:0 }}</td>
+          {% endif %}
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% endif %}
+</section>

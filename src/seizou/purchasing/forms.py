@@ -17,7 +17,9 @@ from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
+from seizou.core.widgets import RemoteSelect
 
+from . import services
 from .models import PurchaseOrder, PurchaseOrderLine
 
 LINE_KEYS = ("item", "qty", "unit", "unit_price", "due_date", "note")
@@ -154,3 +156,57 @@ class CancelForm(forms.Form):
 
     def service_kwargs(self):
         return {"reason": self.cleaned_data["reason"]}
+
+
+def _purchase_line(raw):
+    """発注の明細の pk の字から明細を引く。読めない字・1 未満・無い pk は None (画面は 200 のまま)。"""
+    if raw is None:
+        return None
+    try:
+        pk = int(str(raw))
+    except (TypeError, ValueError):
+        return None
+    if pk < 1:
+        return None
+    return PurchaseOrderLine.objects.filter(pk=pk).first()
+
+
+class ReceiptForm(forms.Form):
+    """受入の form。発注の明細は字を打って探す欄 (候補は受入の残がある明細だけ)。
+
+    欄の値として受けるのは全部の明細で、取消の発注の明細は services が日本語の文で断る (出荷の form と同じ考え)。
+    初期値の line (発注の詳細の「受入を登録」が GET の ?line=<pk> で渡す) があれば、その明細の受入の残を数量の初期値にする
+    (受入の残は purchasing.services.remaining_qty。受注の明細の残 = orders の同じ名前の関数とは別)。
+    """
+
+    line = forms.ModelChoiceField(
+        label="発注の明細",
+        queryset=PurchaseOrderLine.objects.select_related("purchase_order", "item"),
+        widget=RemoteSelect("purchasing:purchaseorderline_select"),
+        empty_label="選んでください",
+    )
+    received_on = forms.DateField(label="受入日", initial=timezone.localdate, widget=_date_input())
+    qty = forms.DecimalField(
+        label="数量",
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+    )
+    note = forms.CharField(
+        label="備考",
+        max_length=500,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "input w-full"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        line = _purchase_line(self.initial.get("line"))
+        if line is not None:
+            rest = services.remaining_qty(line)
+            if rest > 0:
+                self.initial.setdefault("qty", rest)
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {"line": data["line"], "qty": data["qty"], "received_on": data["received_on"], "note": data["note"]}
