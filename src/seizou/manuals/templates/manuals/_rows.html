@@ -4,6 +4,7 @@ manuals の一覧の行の部分。土台はこの部分を core/_rows.html よ�
 「このフォルダの直下にはマニュアルがありません。
 フォルダを開いてください。」の空の枠を出す
 (最上位はフォルダに属さないマニュアルだけを並べるので、フォルダの中にあるのに「まだ 1 件もありません」と出ていた)。
+フォルダの中で行が無いときは、空の枠の「新規登録」を ?folder=<今のフォルダ> つきにする (core の空の枠の新規登録は置き場を持たず、一番上に作られていた。初見テスト 3 回目)。
 それ以外は core/_rows.html をそのまま使う (版の一覧など、ほかの manuals の一覧も url_name で分けて今のまま)。
 写した元: core/_rows.html の空の枠 (11-03 夜の main)。
 {% endcomment %}{% if request.resolver_match.url_name == "manual_list" and not rows and not search_q %}{% folder_tree request.GET.folder as tree %}{% endif %}
@@ -11,6 +12,14 @@ manuals の一覧の行の部分。土台はこの部分を core/_rows.html よ�
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">このフォルダの直下にはマニュアルがありません。フォルダを開いてください。</p>
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% elif tree and tree.folder %}
+<div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <p class="mt-4 font-medium">このフォルダの直下にはまだ 1 件もありません。</p>
+  {% if create_url %}<p class="mt-2 text-xs text-base-content/50">「新規登録」で、このフォルダの中に 1 件目を作ります。</p>
+  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ create_url }}?folder={{ tree.folder.pk }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
 {% else %}{% include "core/_rows.html" %}{% endif %}

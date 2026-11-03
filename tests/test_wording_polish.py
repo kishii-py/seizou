@@ -26,6 +26,7 @@ from seizou.core.screens import all_screens
 from seizou.core.views import hidden_detail_fields
 from seizou.masters import services as masters_services
 from seizou.masters.forms import PartnerForm
+from seizou.manuals import services as manuals_services
 from seizou.masters.models import Item, Process
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
@@ -347,3 +348,36 @@ def test_item_hidden_detail_fields_follow_preview():
         assert {"drawing_preview_error", "drawing_page_count"} <= hidden
     assert Item._meta.get_field("drawing_preview").verbose_name == PREVIEW_LABEL
 
+
+
+# --- 空のフォルダの一覧の「新規登録」(フォルダの作り方は tests/test_manuals_views.py を写した) ---
+
+FOLDER_EMPTY = "このフォルダの直下にはまだ 1 件もありません。"
+ROOT_EMPTY = "このフォルダの直下にはマニュアルがありません。フォルダを開いてください。"
+
+
+@pytest.mark.django_db
+def test_empty_folder_create_link_keeps_folder(client_logged_in, user):
+    folder = manuals_services.create_folder(None, "段取り", "blue", user)
+    url = reverse("manuals:manual_list")
+    create_href = f'href="{reverse("manuals:manual_create")}?folder={folder.pk}"'
+
+    body = text(client_logged_in.get(url, {"folder": folder.pk}))
+    assert FOLDER_EMPTY in body
+    assert body.count(create_href) == 2  # 見出しの右の「新規登録」と空の枠
+
+    partial = text(client_logged_in.get(url, {"folder": folder.pk}, HTTP_HX_REQUEST="true"))
+    assert FOLDER_EMPTY in partial
+    assert create_href in partial
+
+    form = text(client_logged_in.get(reverse("manuals:manual_create"), {"folder": folder.pk}))
+    assert re.search(rf'<option value="{folder.pk}"[^>]*\bselected\b', form)
+
+
+@pytest.mark.django_db
+def test_root_with_folder_keeps_open_folder_sentence(client_logged_in, user):
+    folder = manuals_services.create_folder(None, "段取り", "blue", user)
+    manuals_services.create_manual(folder, "段取りの手順", "steps", user)
+    body = text(client_logged_in.get(reverse("manuals:manual_list")))
+    assert ROOT_EMPTY in body
+    assert FOLDER_EMPTY not in body
