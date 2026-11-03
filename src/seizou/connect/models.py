@@ -59,6 +59,8 @@ class Inbox(models.Model):
 
     番号の一意の制約で、同じ番号のデータは 1 行だけにする (R11)。
     人が受け入れるまで受注にはならない (R10)。
+    入口は 2 つ。直接 (受け口 = services.receive。取引先は署名で決まる = R12) と、読み取り (見張るフォルダの注文書 = intake の extract_to_inbox。取引先は差出人の名前から当て、当たらなければ空 = 差出人の確認待ち)。
+    読み取りの行は、相手の seizou とつながっていないので、注文回答と出荷の知らせを送らない。
     """
 
     KIND_ORDER = "order"
@@ -77,16 +79,38 @@ class Inbox(models.Model):
         (STATUS_REJECTED, "断った"),
     ]
 
+    SOURCE_DIRECT = "direct"
+    SOURCE_INTAKE = "intake"
+    SOURCE_CHOICES = [
+        (SOURCE_DIRECT, "直接"),
+        (SOURCE_INTAKE, "読み取り"),
+    ]
+
     message_id = models.UUIDField("番号", unique=True)
+    # 受け口から届いた行はいつも入る (R12)。読み取りの行で差出人が当たらないときは空 (差出人の確認待ち。services.choose_sender で選ぶ)。
     partner = models.ForeignKey(
         "masters.Partner",
         verbose_name="取引先",
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="inbox_messages",
     )
     kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES)
+    source = models.CharField("入口", max_length=10, choices=SOURCE_CHOICES, default=SOURCE_DIRECT)
     received_at = models.DateTimeField("届いた日時", default=timezone.now)
     payload = models.JSONField("中身")
+    # 読み取りの行の元の注文書の読み取り (ファイルと読み取った中身)。直接の行は空。
+    extraction = models.ForeignKey(
+        "intake.Extraction",
+        verbose_name="元の読み取り",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="inbox_messages",
+    )
+    # 読み取りの行の、注文書から読んだ差出人の会社名 (確認待ちの表示と、選ぶときの手がかり)。
+    sender_name = models.CharField("読み取った差出人", max_length=100, blank=True)
     status = models.CharField(
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_RECEIVED
     )
@@ -99,6 +123,8 @@ class Inbox(models.Model):
         blank=True,
         related_name="inbox_message",
     )
+    # services.accept が書く。この列より前に承認した行は空。
+    accepted_at = models.DateTimeField("承認した日時", null=True, blank=True)
     reason = models.CharField("断った理由", max_length=500, blank=True)
     # 注文回答 (承認か断りの結果を、注文を送ってきた相手の受け口へ返した記録)。connect.services.send_reply が書く。
     # 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。画面に出さない。
@@ -114,7 +140,8 @@ class Inbox(models.Model):
 
     def __str__(self):
         received = timezone.localtime(self.received_at)
-        return f"{self.get_kind_display()} {self.partner.name} {received:%Y-%m-%d %H:%M}"
+        name = self.partner.name if self.partner_id else "差出人の確認待ち"
+        return f"{self.get_kind_display()} {name} {received:%Y-%m-%d %H:%M}"
 
     def summary(self):
         """一覧に出す中身の要約 (例「T-100 ×10 ほか 2 行」)。payload の lines の形が違えば空の字。"""
@@ -141,9 +168,12 @@ class Inbox(models.Model):
 
         送れた (相手の受け口が 200) なら「送った <日時>」、承認か断りの後で届いていなければ
         「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
+        読み取りの行 (入口 = 読み取り) は相手へ送らないので、返事の欄の字をそのまま出す。
         """
         if self.status == self.STATUS_RECEIVED:
             return ""
+        if self.source == self.SOURCE_INTAKE:
+            return self.reply_response
         if self.reply_sent_at is not None:
             return f"送った {timezone.localtime(self.reply_sent_at):%Y-%m-%d %H:%M}"
         if self.reply_response.startswith(("届きません", "断られた")):

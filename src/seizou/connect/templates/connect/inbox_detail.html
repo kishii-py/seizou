@@ -1,9 +1,9 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons %}
+{% load seizou_tags seizou_icons connect_tags %}
 {# 届いた注文の詳細。見出しの右に、状態が「届いた」のときだけ「断る」と「承認」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
 {% block actions %}{{ block.super }}{% if object.status == "received" %}
 <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
-<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}承認</a>
+{% if object.partner_id %}<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}承認</a>{% endif %}
 {% endif %}{% endblock %}
 {% block content %}
 {# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (02 の 0 節: uuid は出さない)。 #}
@@ -12,15 +12,26 @@
   <dl class="grid gap-x-6 sm:grid-cols-2">
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">取引先</dt>
-      <dd class="min-w-0 break-words">{% master_link object.partner %}</dd>
+      <dd class="min-w-0 break-words">{% if object.partner_id %}{% master_link object.partner %}{% else %}<span class="badge badge-soft badge-warning">差出人の確認待ち</span>{% endif %}{% if object.source == "intake" and object.status == "received" %}{% can_accept_inbox as can_accept %}{% if can_accept %}<form method="post" action="{% url 'connect:inbox_sender' object.pk %}" class="mt-2 flex flex-wrap items-center gap-2">{% csrf_token %}{% sender_form as sender %}{{ sender.partner }}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "building" "size-4" %}差出人を選ぶ</button></form>{% endif %}{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">届いた日時</dt>
       <dd class="min-w-0 font-mono tabular-nums">{{ object.received_at|date:"Y-m-d H:i" }}</dd>
     </div>
+    {# 入口 = 直接 (受け口) か読み取り (見張るフォルダの注文書)。読み取りの行は元の読み取りへの link と、注文書から読んだ差出人の字を出す。 #}
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">入口</dt>
+      <dd class="min-w-0 break-words">{{ object.get_source_display }}{% if object.extraction_id %}{% url "intake:extraction_detail" object.extraction_id as extraction_url %}{% if extraction_url %} <a class="link link-primary" href="{{ extraction_url }}">元の読み取り</a>{% endif %}{% endif %}</dd>
+    </div>
+    {% if object.source == "intake" %}
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">読み取った差出人</dt>
+      <dd class="min-w-0 break-words">{% if object.sender_name %}{{ object.sender_name }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+    </div>
+    {% endif %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">状態</dt>
-      <dd class="min-w-0">{{ object.get_status_display }}</dd>
+      <dd class="min-w-0">{{ object.get_status_display }}{% same_order_notice object as same %}{% if same %}<div class="mt-2 flex flex-wrap items-center gap-2"><a class="link link-primary" href="{{ same.url }}"><span class="badge badge-soft badge-warning">同じ注文番号の注文が既に届いています (届いた注文 {{ same.pk }}。{{ same.status }})</span></a></div>{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">受け入れて作った受注</dt>
@@ -33,7 +44,7 @@
     {# 注文回答 = 承認か断りの結果を、注文を送ってきた相手へ返した記録 (送った日時か、届いていない理由)。 #}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">注文回答</dt>
-      <dd class="min-w-0 break-words">{% with reply=object.reply_state %}{% if reply %}{{ reply }}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}{% if object.status != "received" and not object.reply_sent_at %}<form method="post" action="{% url 'connect:inbox_reply_resend' object.pk %}" class="mt-2">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</dd>
+      <dd class="min-w-0 break-words">{% with reply=object.reply_state %}{% if reply %}{{ reply }}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}{% if object.status != "received" and not object.reply_sent_at and object.source == "direct" %}<form method="post" action="{% url 'connect:inbox_reply_resend' object.pk %}" class="mt-2">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</dd>
     </div>
   </dl>
   <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">明細 (相手の品番のまま)</p>

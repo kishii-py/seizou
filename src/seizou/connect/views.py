@@ -9,7 +9,8 @@ class の中で上書きするのは、約束の名前 (model・ordering・colum
 確かめと届いた注文への登録 (注文回答なら元の発注に当てる) は services.receive が行う。返事に鍵の値と本文を入れない。
 """
 
-from django.db.models import Case, IntegerField, Subquery, Value, When
+from django.db.models import Case, IntegerField, OuterRef, Subquery, Value, When
+from django.db.models.fields.json import KT
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -43,10 +44,10 @@ class InboxListView(BaseListView):
     model = Inbox
     screen_name = "届いた注文"
     screen_help = (
-        "取引先 (seizou どうし) から届いた注文。行の操作の「承認」(受け入れ) で受注にすると注残に出ます。"
-        "2 秒ごとに新しい行を先頭に足します。承認するまで受注にはなりません。"
+        "取引先 (seizou どうし) から届いた注文と、見張るフォルダに置いた注文書の読み取り (列「入口」で分かる)。行の操作の「承認」(受け入れ) で受注にすると注残に出ます。"
+        "差出人が当たらない読み取りは黄の「差出人の確認待ち」で、詳細で差出人を選んでから承認します。2 秒ごとに新しい行を先頭に足します。承認するまで受注にはなりません。"
     )
-    columns = ("received_at", "partner", ("summary", "中身の要約"), "status")
+    columns = ("received_at", "partner", "source", ("summary", "中身の要約"), "status")
     ordering = (
         Case(When(status=Inbox.STATUS_RECEIVED, then=Value(0)), default=Value(1), output_field=IntegerField()),
         "-received_at",
@@ -65,6 +66,20 @@ class InboxListView(BaseListView):
             .get_queryset()
             .select_related("partner", "order")
             .annotate(newest_pk=Subquery(newest), total_count=Value(Inbox.objects.count(), output_field=IntegerField()))
+        )
+        # same_order_pk・same_order_status = 同じ取引先から同じ注文番号で前に届いた行 (一番古い 1 つ) の番号と状態
+        # (本体の追記 11。状態の列の黄の知らせ)。行と同じ 1 つの問い合わせで読む。取引先の空の行と、注文番号が空か null の行は比べない
+        # (空の字は JSON の鍵の比べ方で除く。KT の字と "" を比べると SQLite が JSON として読めずに落ちる)。
+        earlier = (
+            Inbox.objects.annotate(order_no_text=KT("payload__order_no"))
+            .filter(partner_id=OuterRef("partner_id"), order_no_text=OuterRef("order_no_text"), pk__lt=OuterRef("pk"))
+            .exclude(payload__order_no="")
+            .exclude(payload__order_no=None)
+            .order_by("pk")
+        )
+        queryset = queryset.annotate(order_no_text=KT("payload__order_no")).annotate(
+            same_order_pk=Subquery(earlier.values("pk")[:1]),
+            same_order_status=Subquery(earlier.values("status")[:1]),
         )
         try:
             after = int(self.request.GET.get("after", ""))

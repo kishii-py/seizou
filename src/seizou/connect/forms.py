@@ -127,3 +127,25 @@ class ConnectionForm(ServiceModelForm):
             "secret_env": data["secret_env"].strip(),
             "direction": data["direction"],
         }
+
+
+class SenderForm(forms.Form):
+    """差出人を選ぶ form (届いた注文の詳細。入口が読み取りの行だけ)。得意先か両方の取引先から 1 つ。保存は services.choose_sender (form は欄の型と必須だけ)。"""
+
+    partner = forms.ModelChoiceField(
+        queryset=None,
+        label="差出人の取引先",
+        widget=forms.Select(attrs={"class": "select select-sm w-auto"}),
+        error_messages={
+            "required": "差出人の取引先を選んでください。",
+            "invalid_choice": "選んだ取引先が候補にありません。選び直してください。",
+        },
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 取引先の表は Inbox の外部キーの先から引く (masters の model を import しない。_item_model と同じ考え。読むだけ)。
+        partner = Inbox._meta.get_field("partner").related_model
+        self.fields["partner"].queryset = partner._default_manager.filter(
+            role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH)
+        ).order_by("code")

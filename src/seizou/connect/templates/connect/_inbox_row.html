@@ -1,8 +1,10 @@
-{% load seizou_tags seizou_icons %}{% comment %}
+{% load seizou_tags seizou_icons connect_tags %}{% comment %}
 届いた注文の一覧の 1 行 (connect/_rows.html の表と、自動の更新で先頭に足す connect/_inbox_new_rows.html が include する)。
 context: row (土台の row_for の 1 行。obj は Inbox)・columns・new (自動の更新で足す行なら真。各欄の地に色を付ける。
 表の縞の色より前に出すため、行でなく欄に付ける)。
 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link、取引先は master_link)。状態の列 (列の名前 status) だけ値で書き分ける。
+取引先の列は、取引先の空の行 (読み取りの差出人の確認待ち) だけ、黄の印と読み取った差出人の字で書く。
+状態の列の後ろに、同じ取引先から同じ注文番号で前に届いた行があれば、黄の知らせとその行への link を出す (本体の追記 11。中身は same_order_notice)。
 行の操作は ⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment
 (行に data-row-menu、最後の欄に details.row-menu)。行の押下で詳細へ移る onclick は、link と ⋮ の欄の中の押下では動かない
 (closest('a, details'))。項目は画面へ移る link だけ (承認の小窓は作らない。承認は受け入れの画面へ移る)。
@@ -13,7 +15,8 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
   {% for cell in row.cells %}
   {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る (orders/_rows.html と同じ形)。 #}
   {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
-  {% if col.name == "status" %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}">{% if row.obj.status == "received" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif row.obj.status == "accepted" %}{% url "orders:order_detail" row.obj.order_id as order_url %}<span class="inline-flex items-center gap-2">{{ cell.value }}{% if row.obj.order %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ row.obj.order.order_no }}</a>{% else %}<span class="font-mono">{{ row.obj.order.order_no }}</span>{% endif %}{% endif %}</span>{% elif row.obj.status == "rejected" %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>
+  {% if col.name == "status" %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}">{% if row.obj.status == "received" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif row.obj.status == "accepted" %}{% url "orders:order_detail" row.obj.order_id as order_url %}<span class="inline-flex items-center gap-2">{{ cell.value }}{% if row.obj.order %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ row.obj.order.order_no }}</a>{% else %}<span class="font-mono">{{ row.obj.order.order_no }}</span>{% endif %}{% endif %}</span>{% elif row.obj.status == "rejected" %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% else %}{{ cell.value|default_if_none:"" }}{% endif %}{% same_order_notice row.obj as same %}{% if same %} <a class="link link-primary" href="{{ same.url }}"><span class="badge badge-soft badge-warning">同じ注文番号の注文が既に届いています (届いた注文 {{ same.pk }}。{{ same.status }})</span></a>{% endif %}</td>
+  {% elif col.name == "partner" and not row.obj.partner_id %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}"><span class="badge badge-soft badge-warning">差出人の確認待ち</span>{% if row.obj.sender_name %} <span class="text-base-content/70">{{ row.obj.sender_name }}</span>{% endif %}</td>
   {% elif forloop.parentloop.first and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
   {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums{% if new %} bg-primary/10{% endif %}">{% if cell.master %}{% master_link cell.master cell.value %}{% else %}{{ cell.value|comma }}{% endif %}</td>
   {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums{% if new %} bg-primary/10{% endif %}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
@@ -28,7 +31,9 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
       <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
       <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         {% if row.obj.status == "received" %}
+        {% if row.obj.partner_id %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}承認</a></li>
+        {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}断る</a></li>
         {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_detail' row.obj.pk %}">{% icon "eye" "size-4" %}詳細を見る</a></li>

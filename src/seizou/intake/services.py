@@ -9,18 +9,23 @@
 - 鍵は環境変数 API_KEY_ENV からだけ読み、client に明示して渡す (ほかの資格に落ちる道を作らない)。
   鍵の値を表・画面・ログ・例外の文・返す物に出さない。製品から外の命令は起こさない。
 - 読み取った値をそのまま受注にしない。人が確かめの画面で品目を選び、accept_extracted を呼んだときだけ受注を作る。
-- 呼んでよい部品は core・masters・orders (01 の 1 節)。ほかの部品の model は import しない。
+- 見張るフォルダの読み取り (extract_to_inbox) は受注を作らず、届いた注文の行にする (R10)。差出人の会社名で得意先を当て、当たらなければ取引先の空の行 (差出人の確認待ち) にする。同じ中身の注文書は 1 行 (R11)。
+- 呼んでよい部品は core・masters・orders (01 の 1 節)。見張りの extract_to_inbox だけが connect の services を関数の中の import で呼ぶ (表に無い向き。shipping の ship が connect を呼ぶのと同じ形)。ほかの部品の model は import しない。
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
+import unicodedata
+import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from django.apps import apps
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
@@ -123,6 +128,11 @@ MESSAGE_BUSY = "読み取りが混んでいます。少し待ってからもう�
 MESSAGE_NO_CREDIT = f"API の残高が足りません。{_NEXT}"
 MESSAGE_TIMEOUT = f"{TIMEOUT_SECONDS} 秒の間に読み取れませんでした。少し待ってからもう一度置くか、{_NEXT}"
 MESSAGE_UNREACHABLE = f"読み取りの API に届きませんでした。少し待ってからもう一度置くか、{_NEXT}"
+MESSAGE_IN_INBOX = "この読み取りは届いた注文に入れてあります。届いた注文の画面で差出人を確かめてから承認してください。"
+MESSAGE_NO_CONNECT = "届いた注文の部品 (connect) が入っていないので、見張りの読み取りは使えません。"
+
+#: 見張りの読み取りの届いた注文の番号を作る名前空間 (同じ中身の注文書は同じ番号 = R11)
+WATCH_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "seizou:intake:watch")
 
 
 class IntakeUnavailable(ValueError):
@@ -147,10 +157,11 @@ def extract_order(file, customer, user):
 
     鍵が無い (IntakeUnavailable)・得意先でない・大きすぎる・読めない形式は、API を呼ぶ前に ValueError で止める。
     API は atomic の外で呼ぶ。返事が JSON でないか形が違えば ValueError で、記録は残さない。受注は作らない。
+    customer は None でよい (見張りの読み取り = extract_to_inbox。得意先は差出人の名前から後で当てる)。画面の form は得意先を必須にしている。
     """
     if not is_available():
         raise IntakeUnavailable(MESSAGE_NO_KEY)
-    if not customer.is_customer:
+    if customer is not None and not customer.is_customer:
         raise ValueError(
             f"取引先 {customer} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
         )
@@ -184,7 +195,7 @@ def accept_extracted(extraction, item_mapping, user):
 
     item_mapping は得意先の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引き、
     選んだ品目が表に無い対応なら表に足す。対応の追加・受注の作成・状態の更新は 1 つのトランザクション。
-    受注にした物の 2 回目と捨てた物は日本語の ValueError。数量と単価の決まり (R02) は orders の RuleViolation。
+    受注にした物の 2 回目と捨てた物と届いた注文へ回した物は日本語の ValueError。数量と単価の決まり (R02) は orders の RuleViolation。
     """
     with transaction.atomic():
         locked = Extraction.objects.select_for_update().get(pk=extraction.pk)
@@ -193,6 +204,8 @@ def accept_extracted(extraction, item_mapping, user):
             raise ValueError(f"この読み取りは受注 {order_no} にしてあります。受注の詳細を見てください。")
         if locked.status == Extraction.STATUS_DISCARDED:
             raise ValueError("この読み取りは捨ててあるので、受注にできません。注文書を置き直してください。")
+        if locked.status == Extraction.STATUS_INBOX:
+            raise ValueError(MESSAGE_IN_INBOX)
 
         cleaned = _check_reply(locked.extracted)
         customer = locked.customer
@@ -232,6 +245,92 @@ def accept_extracted(extraction, item_mapping, user):
         locked.order = order
         locked.save(update_fields=["status", "order"])
         return order
+
+
+def extract_to_inbox(file, user):
+    """見張るフォルダの注文書 1 枚を読み取り、届いた注文 (connect の Inbox。入口 = 読み取り) に 1 行入れる。受注は作らない (R10)。返す物は (Inbox, 新しく作ったか)。
+
+    届いた注文の番号は中身の sha256 から作る uuid5 (同じ中身の注文書は同じ番号 = R11)。同じ番号の行が既にあれば、
+    API を呼ばず、読み取りの行も作らずに (その行, False) を返す。読み取りの断り (鍵・大きさ・形式・API の失敗・返事の形) は
+    extract_order の IntakeUnavailable と ValueError がそのまま出る。差出人の会社名 (buyer.name) で得意先を当て、
+    当たらなければ取引先の空の行 (差出人の確認待ち) にする。読み取りの行は状態を「届いた注文へ回した」にする
+    (読み取りの画面の「受注にする」で 2 つ目の受注を作らないため)。connect が入っていなければ日本語の ValueError。
+    """
+    if not apps.is_installed("seizou.connect"):
+        raise ValueError(MESSAGE_NO_CONNECT)
+    # intake と connect の輪を避けるため、関数の中で import する (shipping の ship と同じ形)。
+    from seizou.connect import services as connect_services
+
+    if hasattr(file, "seek"):
+        file.seek(0)
+    data = file.read(MAX_BYTES + 1)
+    if hasattr(file, "seek"):
+        file.seek(0)
+    message_id = uuid.uuid5(WATCH_NAMESPACE, hashlib.sha256(data).hexdigest())
+
+    # 同じ中身の確かめは API を呼ぶ前 (読むだけ。connect の表は app の登録から引く)。
+    inbox_model = apps.get_model("connect", "Inbox")
+    existing = inbox_model._default_manager.filter(message_id=message_id).first()
+    if existing is not None:
+        return existing, False
+
+    extraction = extract_order(file, None, user)
+    sender = extraction.extracted["buyer"]["name"]
+    partner = _match_sender(sender)
+
+    with transaction.atomic():
+        locked = Extraction.objects.select_for_update().get(pk=extraction.pk)
+        locked.customer = partner
+        locked.status = Extraction.STATUS_INBOX
+        locked.save(update_fields=["customer", "status"])
+        inbox = connect_services.record_inbox(
+            partner,
+            locked.extracted,
+            user,
+            message_id=message_id,
+            source=inbox_model.SOURCE_INTAKE,
+            extraction=locked,
+            sender_name=sender,
+        )
+    # 同じ番号が同時に入ったときは、record_inbox が先の行を返す (この読み取りは結ばれない)。
+    return inbox, inbox.extraction_id == locked.pk
+
+
+def _normal_name(text):
+    """名前を比べる形にそろえた字 (NFKC で全角半角をそろえ、空白を全部落とし、casefold)。字でなければ ""。"""
+    if not isinstance(text, str):
+        return ""
+    return "".join(unicodedata.normalize("NFKC", text).split()).casefold()
+
+
+def _match_sender(name):
+    """読み取った差出人の名前から得意先を 1 つ当てる。返す物は取引先か None。
+
+    候補は取引先の種類が得意先か両方の物 (読むだけ。取引先の表は Extraction の外部キーの先から引く)。
+    段は 1) 名前の完全一致 (前後の空白を落とした字どうし) → 2) そろえた名前 (_normal_name) の一致 →
+    3) そろえた略称の一致 (略称が空の取引先は比べない。取引先に別名の列が無いので略称で代える)。
+    前の段で 1 つ以上当たればそこで決め、1 つなら当たり、2 つ以上なら None (人が選ぶ)。名前が空なら None。
+    """
+    if not isinstance(name, str) or not name.strip():
+        return None
+    partner_model = Extraction._meta.get_field("customer").related_model
+    candidates = list(
+        partner_model._default_manager.filter(
+            role__in=(partner_model.ROLE_CUSTOMER, partner_model.ROLE_BOTH)
+        ).only("pk", "name", "short_name")
+    )
+    plain = name.strip()
+    normal = _normal_name(name)
+    stages = (
+        lambda partner: partner.name.strip() == plain,
+        lambda partner: _normal_name(partner.name) == normal,
+        lambda partner: bool(partner.short_name.strip()) and _normal_name(partner.short_name) == normal,
+    )
+    for matches in stages:
+        found = [partner for partner in candidates if matches(partner)]
+        if found:
+            return found[0] if len(found) == 1 else None
+    return None
 
 
 def _block_for(data):
