@@ -22,7 +22,7 @@ def user(db):
 @pytest.fixture
 def subcontractor(user):
     return masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor", "rounding": "round"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor", "rounding": "round"}, user
     )
 
 
@@ -72,7 +72,7 @@ def test_partner_must_be_subcontractor(user, item, no_http):
     customer = masters_services.create_partner(
         {"code": "C001", "name": "作り物の得意先", "role": "customer"}, user
     )
-    with pytest.raises(ValueError, match="外注先ではありません"):
+    with pytest.raises(ValueError, match="協力企業ではありません"):
         services.create_purchase_order(customer, [_line(item)], user, order_date=ORDER_DATE)
     assert PurchaseOrder.objects.count() == 0
 
@@ -115,7 +115,7 @@ def test_qty_and_price_must_be_positive(user, subcontractor, item, no_http, qty,
 @pytest.mark.parametrize(("rounding", "expected"), [("round", "100"), ("ceil", "101"), ("floor", "100")])
 def test_amount_is_rounded_by_partner(user, item, no_http, rounding, expected):
     partner = masters_services.create_partner(
-        {"code": "S002", "name": "作り物の外注先", "role": "subcontractor", "rounding": rounding}, user
+        {"code": "S002", "name": "作り物の協力企業", "role": "subcontractor", "rounding": rounding}, user
     )
     # 3 × 33.35 = 100.05
     po = services.create_purchase_order(

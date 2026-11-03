@@ -123,9 +123,9 @@ def test_partner_payment_terms_out_of_range_are_refused(user):
 def test_duplicate_partner_code_is_refused(user):
     services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
     with pytest.raises(ValueError, match="取引先コード C001 は既にあります"):
-        services.create_partner({"code": "C001", "name": "作り物の外注先", "role": "subcontractor"}, user)
+        services.create_partner({"code": "C001", "name": "作り物の協力企業", "role": "subcontractor"}, user)
     other = services.create_partner(
-        {"code": "C002", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "C002", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
     with pytest.raises(ValueError, match="取引先コード C001 は既にあります"):
         services.update_partner(other, {"code": "C001"}, user)

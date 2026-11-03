@@ -348,7 +348,7 @@ def test_create_order_goes_through_services(world, user):
     zero = create_order("C001", [{"part_no": "T-100", "qty": "0", "unit_price": "100"}], "2026-11-03")
     assert zero["ok"] is False
     assert zero["code"] == "R02"
-    masters_services.create_partner({"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user)
+    masters_services.create_partner({"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user)
     not_customer = create_order("S001", good_line, "2026-11-03")
     assert not_customer["ok"] is False
     assert "得意先ではありません" in not_customer["error"]

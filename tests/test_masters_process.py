@@ -26,7 +26,7 @@ def test_create_process(user):
         False,
         10,
     )
-    outsourced = services.create_process({"code": "P90", "name": "外注の仕上げ", "is_outsourced": True}, user)
+    outsourced = services.create_process({"code": "P90", "name": "協力企業の仕上げ", "is_outsourced": True}, user)
     assert outsourced.is_outsourced is True
     assert outsourced.sort_order == 0
 

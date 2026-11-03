@@ -75,7 +75,7 @@ class ItemSelectView(BaseSelectView):
 class PartnerListView(BaseListView):
     model = Partner
     screen_name = "取引先"
-    screen_help = "得意先と外注先。締日・支払日と端数の扱いを取引先ごとに持ちます。"
+    screen_help = "得意先と協力企業。締日・支払日と端数の扱いを取引先ごとに持ちます。"
     columns = ("code", "name", "short_name", "role", "closing_day", "payment_day")
     search_fields = ("code", "name", "short_name")
     ordering = "code"

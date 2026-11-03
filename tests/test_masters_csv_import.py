@@ -104,7 +104,7 @@ def test_partners_roundtrip_with_list_export(client_logged_in, user, no_registra
         {"code": "C001", "name": "作り物の得意先", "role": "customer", "closing_day": 31, "payment_month": "next", "payment_day": 31, "rounding": "ceil"},
         {"code": "C002", "name": "作り物の商会", "role": "both", "closing_day": 20, "payment_month": "next", "payment_day": 25, "tax_mode": "line_floor"},
         {"code": "C003", "name": "作り物の工業", "role": "customer", "payment_month": "current"},
-        {"code": "S001", "name": "作り物の外注先", "short_name": "作り外", "role": "subcontractor", "note": "書き出しに無い列"},
+        {"code": "S001", "name": "作り物の協力企業", "short_name": "作り外", "role": "subcontractor", "note": "書き出しに無い列"},
         {"code": "S002", "name": "作り物の塗装", "role": "subcontractor", "closing_day": 25, "payment_month": "after_next", "payment_day": 10},
         {"code": "S003", "name": "作り物の熱処理", "role": "subcontractor", "closing_day": 5, "payment_day": 31},
     ]
@@ -165,7 +165,7 @@ def test_error_rows_import_nothing(user, no_registration):
 def test_service_refusal_rolls_back_all_rows(user):
     rows = [
         {"line": 2, "data": {"code": "C001", "name": "作り物の得意先", "role": "customer"}, "ext": None},
-        {"line": 3, "data": {"code": "C002", "name": "作り物の外注先", "role": "subcontractor", "payment_day": 32}, "ext": None},
+        {"line": 3, "data": {"code": "C002", "name": "作り物の協力企業", "role": "subcontractor", "payment_day": 32}, "ext": None},
     ]
 
     with pytest.raises(ValueError, match="3 行目"):

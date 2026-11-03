@@ -207,7 +207,7 @@ def test_connection_list_shows_secret_state_without_value(
     client_logged_in, connection, secret, user, monkeypatch
 ):
     monkeypatch.delenv(UNSET_ENV_NAME, raising=False)
-    other = create_partner({"code": "VC02", "name": "作り物の外注先", "role": "subcontractor"}, user)
+    other = create_partner({"code": "VC02", "name": "作り物の協力企業", "role": "subcontractor"}, user)
     services.register_connection(other, "https://example.com/connect/receive/order/", UNSET_ENV_NAME, "send", user)
 
     body = client_logged_in.get(reverse("connect:connection_list")).content.decode()

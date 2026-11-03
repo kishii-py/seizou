@@ -46,7 +46,7 @@ class PartnerForm(ServiceModelForm):
 
 
 class ProcessForm(ServiceModelForm):
-    """工程を入れる・直す。外注か (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
+    """工程を入れる・直す。協力企業に出すか (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
 
     class Meta:
         model = Process

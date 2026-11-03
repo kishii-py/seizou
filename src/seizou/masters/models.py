@@ -21,7 +21,7 @@ def day_label(day):
 
 
 class Partner(models.Model):
-    """取引先。取引先の種類は得意先・外注先・両方のどれか。
+    """取引先。取引先の種類は得意先・協力企業・両方のどれか。
 
     金額と消費税の端数の扱いが空のときは、会社 (core の Company) の既定に従う。
     支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31。31 は月末) の 2 列。画面には 1 つの字で出す。
@@ -32,7 +32,7 @@ class Partner(models.Model):
     ROLE_BOTH = "both"
     ROLE_CHOICES = [
         (ROLE_CUSTOMER, "得意先"),
-        (ROLE_SUBCONTRACTOR, "外注先"),
+        (ROLE_SUBCONTRACTOR, "協力企業"),
         (ROLE_BOTH, "両方"),
     ]
 
@@ -229,7 +229,7 @@ class Process(models.Model):
 
     code = models.CharField("工程コード", max_length=10, unique=True)
     name = models.CharField("名前", max_length=100)
-    is_outsourced = models.BooleanField("外注か", default=False)
+    is_outsourced = models.BooleanField("協力企業に出すか", default=False)
     sort_order = models.PositiveIntegerField("並び順", default=0)
     use_in_plan = models.BooleanField("計画に使う", default=False)
 

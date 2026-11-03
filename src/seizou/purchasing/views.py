@@ -15,7 +15,7 @@ from .models import PurchaseOrder
 class PurchaseOrderListView(BaseListView):
     model = PurchaseOrder
     screen_name = "発注"
-    screen_help = "外注先への発注。行を押すと明細と、相手へ送った記録が見られます。"
+    screen_help = "協力企業への発注。行を押すと明細と、相手へ送った記録が見られます。"
     columns = ("po_no", "partner", "order_date", "status", "note")
     search_fields = ("po_no", "partner__name", "partner__code")
     ordering = ("-order_date", "-id")
@@ -35,7 +35,7 @@ class PurchaseOrderCreateView(BaseFormView):
     service = staticmethod(services.create_purchase_order)
     template_name = "purchasing/purchaseorder_form.html"
     screen_name = "発注の新規登録"
-    screen_help = "外注先と明細を入れて保存すると発注の記録ができ、つながりのある相手へ同時に注文を送ります。"
+    screen_help = "協力企業と明細を入れて保存すると発注の記録ができ、つながりのある相手へ同時に注文を送ります。"
 
 
 class PurchaseOrderSendView(BaseFormView):

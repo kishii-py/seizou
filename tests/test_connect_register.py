@@ -29,7 +29,7 @@ def partner(user):
 
 @pytest.fixture
 def other_partner(user):
-    return create_partner({"code": "RG02", "name": "作り物の外注先", "role": "subcontractor"}, user)
+    return create_partner({"code": "RG02", "name": "作り物の協力企業", "role": "subcontractor"}, user)
 
 
 def test_second_same_partner_and_direction_is_refused(partner, user):

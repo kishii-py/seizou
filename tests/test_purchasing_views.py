@@ -54,7 +54,7 @@ def client_logged_in(client, user):
 @pytest.fixture
 def subcontractor(user):
     return masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
 
 
@@ -213,7 +213,7 @@ def test_customer_only_partner_is_not_a_choice(client_logged_in, user, subcontra
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "作り物の外注先" in body and "作り物の両方の取引先" in body
+    assert "作り物の協力企業" in body and "作り物の両方の取引先" in body
     assert "作り物の得意先だけ" not in body
     assert 'id="po-line-template"' in body and "行を足す" in body
 
@@ -239,7 +239,7 @@ def test_list_shows_orders_and_searches(monkeypatch, client_logged_in, user, sub
     monkeypatch.setattr("requests.post", FakePost())
     client_logged_in.post(reverse("purchasing:purchaseorder_create"), _post_data(subcontractor, items))
     other = masters_services.create_partner(
-        {"code": "S002", "name": "作り物の別の外注先", "role": "subcontractor"}, user
+        {"code": "S002", "name": "作り物の別の協力企業", "role": "subcontractor"}, user
     )
     client_logged_in.post(reverse("purchasing:purchaseorder_create"), _post_data(other, items))
 

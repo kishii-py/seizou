@@ -81,7 +81,7 @@ def secret(monkeypatch):
 @pytest.fixture
 def subcontractor(user):
     return masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
 
 
@@ -140,7 +140,7 @@ def test_send_records_outbox_and_marks_sent(monkeypatch, user, secret, subcontra
     assert sent["order_no"] == po.po_no
     assert sent["order_date"] == "2026-11-02"
     assert set(sent["buyer"]) == {"id", "name"}
-    assert sent["supplier"] == {"code": "S001", "name": "作り物の外注先"}
+    assert sent["supplier"] == {"code": "S001", "name": "作り物の協力企業"}
     assert sent["note"] == "作り物の発注の備考"
     assert "+09:00" in sent["sent_at"]
     (line,) = sent["lines"]
