@@ -216,7 +216,7 @@ def test_screen_catalog_and_choices(db):
     assert services.screen_catalog() is catalog
 
     choices = dict(services.screen_choices())
-    assert choices["orders:order_list"] == "受注 (orders:order_list)"
+    assert choices["orders:order_list"] == "受注"
     assert services.screen_name("orders:order_list") == "受注"
     assert services.screen_name("no:such") == ""
     assert services.screen_name(None) == ""
@@ -265,3 +265,42 @@ def test_list_filter_accepts_known_values_only():
     assert services.list_filter({}) == empty
     assert services.list_filter(None) == empty
     assert services.list_filter(QueryDict("status=sent&kind=common")) == {"status": "sent", "kind": "common"}
+
+
+# ---- 画面の字に URL の名前を出さない (N77 の 9) ----
+
+
+def test_screen_choices_have_no_url_names(db):
+    choices = services.screen_choices()
+    labels = [label for _url_name, label in choices]
+
+    assert all(":" not in label for label in labels)
+    assert all(label.strip() for label in labels)
+    assert len(labels) == len(set(labels))  # 見出しが重ならない
+    # 同じ名前の画面は、目録の順で 2 つ目から「名前 (2)」
+    catalog = services.screen_catalog()
+    names = [screen.name for screen in catalog.values()]
+    twice = next(name for name in names if names.count(name) > 1)
+    same = [label for url_name, label in choices if catalog[url_name].name == twice]
+    assert same[:2] == [twice, f"{twice} (2)"]
+    # 値 (保存する字) は URL の名前のまま
+    assert [url_name for url_name, _label in choices] == list(catalog)
+
+
+def test_normalize_screens_accepts_screen_names(db):
+    assert services.normalize_screens("受注、注文残") == "orders:order_list orders:orderline_list"
+    assert services.normalize_screens("受注 orders:order_list") == "orders:order_list"
+    assert services.normalize_screens("注文残,受注\n受注") == "orders:orderline_list orders:order_list"
+
+    # 名前に空白を含む画面は、1 つの名前として引ける (同じ名前の画面があれば目録の順に全部)
+    catalog = services.screen_catalog()
+    spaced = next(screen.name for screen in catalog.values() if " " in screen.name)
+    expected = " ".join(url_name for url_name, screen in catalog.items() if screen.name == spaced)
+    assert services.normalize_screens(spaced) == expected
+    assert services.normalize_screens(f"受注、{spaced}") == f"orders:order_list {expected}"
+
+    with pytest.raises(ValueError) as refused:
+        services.normalize_screens("無い画面")
+    message = str(refused.value)
+    assert "画面の名前" in message and "無い画面" in message
+    assert "list_screens" not in message and "url_name" not in message

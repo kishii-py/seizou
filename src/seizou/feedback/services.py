@@ -51,8 +51,8 @@ MESSAGE_SENT_URL = "送った先は http か https の URL にしてください
 
 #: 金額らしい数 (¥・￥ の後の数と、円の前の数)
 _MONEY = re.compile(r"[¥￥]\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*円")
-#: 影響する画面の区切り (空白とカンマ)
-_SEPARATORS = re.compile(r"[\s,、，]+")
+#: 影響する画面の区切り (「、」「,」「，」と改行)。画面の名前に空白を含む物があるので、空白は分けた 1 つが引けないときだけ区切る
+_NAME_SEPARATORS = re.compile(r"[,、，\n]+")
 
 
 # ---- 画面の目録 ----
@@ -65,8 +65,26 @@ def screen_catalog() -> dict[str, Screen]:
 
 
 def screen_choices() -> list[tuple[str, str]]:
-    """入力の欄の選択肢 [(URL の名前, 「名前 (URL の名前)」), ...] (目録の順)。"""
-    return [(url_name, f"{screen.name} ({url_name})") for url_name, screen in screen_catalog().items()]
+    """入力の欄の選択肢 [(URL の名前, 画面の名前), ...] (目録の順)。画面に URL の名前を出さない。同じ名前の 2 つ目からは「名前 (2)」。"""
+    seen: dict[str, int] = {}
+    choices = []
+    for url_name, screen in screen_catalog().items():
+        seen[screen.name] = seen.get(screen.name, 0) + 1
+        count = seen[screen.name]
+        choices.append((url_name, screen.name if count == 1 else f"{screen.name} ({count})"))
+    return choices
+
+
+def _screen_words() -> dict[str, list[str]]:
+    """URL の名前・画面の名前・選択肢の見出しのそれぞれから、URL の名前の並びを引く表 (画面の名前が同じ画面は目録の順に全部)。"""
+    words: dict[str, list[str]] = {}
+    catalog = screen_catalog()
+    for url_name, label in screen_choices():
+        for word in (url_name, catalog[url_name].name, label):
+            found = words.setdefault(word, [])
+            if url_name not in found:
+                found.append(url_name)
+    return words
 
 
 def screen_name(url_name) -> str:
@@ -76,19 +94,34 @@ def screen_name(url_name) -> str:
 
 
 def normalize_screens(value) -> str:
-    """影響する画面の字 (空白とカンマで区切る) を、重ねない出た順の並びにして空白で結ぶ。
+    """影響する画面の字を、URL の名前の重ねない出た順の並びにして空白で結ぶ (保存する字と Issue の文は今のまま)。
 
-    目録に無い名前があれば日本語の ValueError。空なら空の字。
+    画面の名前でも URL の名前でも受ける。先に「、」「,」「，」と改行で分け、分けた 1 つが画面の名前か URL の名前なら
+    それ、無ければその 1 つを空白で分けて 1 つずつ引く (画面の名前に空白を含む物があるため。AI は URL の名前を空白で書く)。
+    画面の名前が同じ画面は全部。目録に無い名前があれば日本語の ValueError。空なら空の字。
     """
     text = "" if value is None else str(value)
-    names = list(dict.fromkeys(name for name in _SEPARATORS.split(text) if name))
-    unknown = [name for name in names if name not in screen_catalog()]
+    words = _screen_words()
+    found: list[str] = []
+    unknown: list[str] = []
+    for part in _NAME_SEPARATORS.split(text):
+        part = part.strip()
+        if not part:
+            continue
+        if part in words:
+            found += words[part]
+            continue
+        for word in part.split():
+            if word in words:
+                found += words[word]
+            else:
+                unknown.append(word)
     if unknown:
         raise ValueError(
-            f"影響する画面に、画面の目録に無い名前があります: {'・'.join(unknown)}。"
-            "list_screens の url_name (例 orders:order_list) で書いてください。"
+            f"影響する画面に、画面の目録に無い名前があります: {'・'.join(dict.fromkeys(unknown))}。"
+            "画面の名前を「、」で区切って書いてください (例 受注、注文残)。"
         )
-    return " ".join(names)
+    return " ".join(dict.fromkeys(found))
 
 
 def list_filter(params) -> dict:
