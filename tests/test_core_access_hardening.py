@@ -1,4 +1,4 @@
-"""精査 A2 の権限の判定の直し (マニュアルの画像・設定の画面の権限の判定・403 の画面の名前・記録だけの金額) を見る。
+"""精査 A2 の権限の判定の直し (マニュアルの画像・設定の画面の権限の判定・403 の画面の名前・記録だけの金額・ブックマーク・部署の読みの控え) を見る。
 
 人と部署は accounts の services で作る。名前は作り物 (genba = 権限なし・金額なし、keiri = 経理・金額あり、
 a2_manager = アカウント管理だけ)。判定を有効にする試験は settings の fixture で SEIZOU を替える
@@ -11,9 +11,14 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.bookmarks import services as bookmarks_services
+from seizou.bookmarks.models import Bookmark
+from seizou.bookmarks.templatetags import bookmarks_tags
+from seizou.core import access
 from seizou.core import conf
 from seizou.core import services as core_services
 from seizou.core.models import SettingOverride
@@ -226,3 +231,63 @@ def test_hide_money_records_once_in_log_mode(settings, client, admin, order, cap
     assert "1,500" in html
     assert _money_records(caplog) == []
     assert bool(response.context["seizou"]["hide_money"]) is False
+
+
+# ---------------------------------------------------------------- 部署の読みの控え (N91)
+
+
+def test_access_rows_are_read_once_per_user_object(db, on, django_assert_num_queries):
+    seizo_dept = accounts_services.create_department("製造", ["workorders", "progress", "masters"], [], None)
+    genba = account("genba", departments=[seizo_dept])
+
+    # 1 回目は数えない (設定の控えと権限の行を読む。設定の控えの冷え方に数が左右されないように)。
+    assert access.can_open(genba, "billing", record=False) is False
+    # 同じ利用者の物では、判定を何度呼んでも DB を読まない (利用者の物の控えを読む)。
+    with django_assert_num_queries(0):
+        assert access.can_open(genba, "workorders", record=False) is True
+        assert access.can_open(genba, "orders", record=False) is False
+        assert [d.name for d in access.departments_of(genba)] == ["製造"]
+        assert access.is_unrestricted(genba) is False
+
+    # 表から取り直した利用者の物は読み直す (権限の行と部署の prefetch の 2 回。設定の控えは温かい)。
+    again = User.objects.get(pk=genba.pk)
+    with django_assert_num_queries(2):
+        assert access.can_open(again, "billing", record=False) is False
+
+
+# ---------------------------------------------------------------- ブックマーク (精査 A2 の S3)
+
+
+def test_bookmarks_hide_screens_outside_department(db, on, settings, caplog):
+    caplog.set_level(logging.WARNING, logger="seizou.access")
+    seizo_dept = accounts_services.create_department("製造", ["workorders", "progress", "masters"], [], None)
+    genba = account("genba", departments=[seizo_dept])
+    # 部署で開けない画面も登録は断らない (並びに出さないだけ)。
+    bookmarks_services.add_bookmark(genba, "billing:invoice_list")
+    bookmarks_services.add_bookmark(genba, "workorders:workorder_list")
+
+    def listed(person):
+        return [item["url_name"] for item in bookmarks_services.bookmarks_for(person)]
+
+    def home(person):
+        request = RequestFactory().get("/")
+        request.user = person
+        return [item["url_name"] for item in bookmarks_tags.bookmark_home({"request": request})]
+
+    both = ["billing:invoice_list", "workorders:workorder_list"]
+    assert listed(genba) == ["workorders:workorder_list"]
+    assert Bookmark.objects.filter(user=genba).count() == 2
+    assert home(genba) == ["workorders:workorder_list"]
+
+    # 既定 (log) では 2 件とも並び、記録は書かない (左のメニューと同じ)。
+    settings.SEIZOU = {}
+    genba = User.objects.get(pk=genba.pk)
+    assert listed(genba) == both
+    assert access_records(caplog) == []
+
+    # on に戻し、部署の開ける部品に請求を足すと 2 件 (登録の行が残っているので、また出る)。
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    accounts_services.update_department(seizo_dept, {"apps": ["workorders", "progress", "masters", "billing"]}, None)
+    genba = User.objects.get(pk=genba.pk)
+    assert listed(genba) == both
+    assert home(genba) == both
