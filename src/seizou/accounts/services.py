@@ -33,6 +33,7 @@ CONTACT_OTHER = "別のアカウント管理の担当者に頼んでください
 SELF_DELETE = "自分のアカウントは削除できません。" + CONTACT_OTHER
 SELF_DISABLE = "自分のアカウントは使用停止にできません。" + CONTACT_OTHER
 SELF_MANAGE = "自分のアカウントからアカウント管理の権限は外せません。" + CONTACT_OTHER
+SELF_GRANT = "自分のアカウントにフルコントロールと金額の閲覧は付けられません。" + CONTACT_OTHER
 LAST_MANAGER = (
     "アカウント管理を使える使用中のアカウントがこの 1 つだけのため、止められません。"
     "先に別のアカウントにアカウント管理の権限を付けてください。"
@@ -316,6 +317,8 @@ def update_account(target, data, user, *, password=None):
         has = flags.get("manage_accounts", row.manage_accounts) or flags.get("full_control", row.full_control)
         if had and not has:
             raise ValueError(SELF_MANAGE)
+        if any(flags.get(key) and not getattr(row, key) for key in ("full_control", "see_money")):
+            raise ValueError(SELF_GRANT)
     if before_manager and not after_manager and manager_count() <= 1:
         raise ValueError(LAST_MANAGER)
     if password:

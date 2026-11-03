@@ -66,6 +66,11 @@ def hideable_fields() -> tuple:
 
 #: 設定の変更を断る 403 の画面の文
 SETTINGS_DENIED_TEXT = "「設定の変更」の画面です。アカウント管理の権限が要ります。" + access.CONTACT
+#: 画面から変えるのはシステム管理者だけの鍵。アカウント管理の権限 1 つで 3 つの判定を外せないように。
+#: LOCKED_KEYS と違い、鍵は画面にあり、システム管理者は変えられる (精査 A2 の S5)
+SUPERUSER_ONLY_KEYS = ("access_control",)
+#: システム管理者だけの鍵を変えようとした人に出す 403 の画面の文
+SUPERUSER_ONLY_TEXT = "「権限の判定」は、システム管理者だけが画面から変えられます。変えるときはシステム管理者に頼んでください。"
 
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 MCP_USER_ENV = "SEIZOU_MCP_USER"
@@ -180,6 +185,11 @@ class SettingsView(ScreenMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context.setdefault("doctor", None)  # GET では None (まだ走らせていない)。POST は doctor= で渡す
         context["company_settings"] = company_settings()
+        if not self.request.user.is_superuser:
+            # システム管理者だけの鍵は、ほかの人に「編集」の link を出さない (押すと 403 になるため)
+            for row in context["company_settings"]:
+                if row["key"] in SUPERUSER_ONLY_KEYS:
+                    row["editable"] = False
         context["links"] = [
             {
                 "label": "取引先との接続 (つながり)",
@@ -241,6 +251,16 @@ def settings_denied(request):
     return access.denied_response(request, access.DENIED_HEADING, SETTINGS_DENIED_TEXT)
 
 
+def superuser_only_denied(request, key):
+    """システム管理者だけが変える鍵 (SUPERUSER_ONLY_KEYS) の門。変えられない人には 403 の応答、ほかと未ログインは None。"""
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        return None
+    if key in SUPERUSER_ONLY_KEYS and not user.is_superuser:
+        return access.denied_response(request, access.DENIED_HEADING, SUPERUSER_ONLY_TEXT)
+    return None
+
+
 class SettingUpdateView(BaseFormView):
     """設定の変更 (選べる設定 1 つの入力。URL の key が鍵)。
 
@@ -266,6 +286,10 @@ class SettingUpdateView(BaseFormView):
         key = kwargs.get("key")
         if key not in conf.DEFAULTS or key in conf.LOCKED_KEYS:
             raise Http404("画面から変えられる設定の鍵ではありません。")
+        denied = superuser_only_denied(request, key)
+        if denied is not None:
+            add_never_cache_headers(denied)
+            return denied
         return super().dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
@@ -294,6 +318,10 @@ def setting_clear(request, key):
         return denied
     if key not in conf.DEFAULTS or key in conf.LOCKED_KEYS:
         raise Http404("画面から変えられる設定の鍵ではありません。")
+    denied = superuser_only_denied(request, key)
+    if denied is not None:
+        add_never_cache_headers(denied)
+        return denied
     try:
         services.clear_setting(key, request.user)
     except ValueError as exc:

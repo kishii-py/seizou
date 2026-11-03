@@ -12,8 +12,12 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.core import conf
+from seizou.core import services as core_services
+from seizou.core.models import SettingOverride
 from seizou.manuals import services as manuals_services
 from seizou.manuals.models import ManualImage
+from tests.test_core_settings_edit import clear_url, edit_url
 from tests.test_manuals_views import png_upload
 
 User = get_user_model()
@@ -104,3 +108,38 @@ def test_manual_images_log_mode_records(client, manual, caplog):
     assert ManualImage.objects.count() == 1
     messages = [record.getMessage() for record in access_records(caplog)]
     assert sum("manuals.add_image を保存しようとした" in message for message in messages) == 1, messages
+
+
+# ---------------------------------------------------------------- 設定の画面の権限の判定 (精査 A2 の S5)
+
+
+def test_access_control_edit_is_superuser_only(client, admin):
+    # システム管理者が先に画面の値を置く (「答えの値に戻す」が消せる行がある形で見る)。
+    core_services.set_setting("access_control", {"department": "log", "write": "log", "money": "log"}, admin)
+    before = (conf.setting("access_control"), SettingOverride.objects.count())
+    a2_manager = account("a2_manager", manage_accounts=True)
+    client.force_login(a2_manager)
+
+    for response in (
+        client.get(edit_url("access_control")),
+        client.post(edit_url("access_control"), {"department": "on", "write": "on", "money": "off"}),
+        client.post(clear_url("access_control")),
+    ):
+        assert response.status_code == 403
+        body = response.content.decode()
+        assert "この画面は開けません" in body
+        assert "システム管理者だけ" in body
+        assert "no-store" in response["Cache-Control"]
+    assert (conf.setting("access_control"), SettingOverride.objects.count()) == before
+
+    page = client.get(reverse("core:settings")).content.decode()
+    assert edit_url("over_shipment") in page
+    assert edit_url("access_control") not in page
+    # ほかの鍵は今までどおりアカウント管理の権限で変えられる。
+    changed = client.post(edit_url("over_shipment"), {"over_shipment": "stop"})
+    assert changed.status_code == 302
+    assert conf.setting("over_shipment") == "stop"
+
+    client.force_login(admin)
+    assert client.get(edit_url("access_control")).status_code == 200
+    assert edit_url("access_control") in client.get(reverse("core:settings")).content.decode()
