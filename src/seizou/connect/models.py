@@ -100,10 +100,16 @@ class Inbox(models.Model):
         related_name="inbox_message",
     )
     reason = models.CharField("断った理由", max_length=500, blank=True)
+    # 注文回答 (承認か断りの結果を、注文を送ってきた相手の受け口へ返した記録)。connect.services.send_reply が書く。
+    # 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。画面に出さない。
+    reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True)
+    # 相手の受け口が 200 を返したときだけ入れる。空 = まだ相手に届いていない。
+    reply_sent_at = models.DateTimeField("注文回答を送った日時", null=True, blank=True)
+    reply_response = models.CharField("注文回答の相手の返事", max_length=500, blank=True)
 
     class Meta:
-        verbose_name = "受信箱"
-        verbose_name_plural = "受信箱"
+        verbose_name = "届いた注文"
+        verbose_name_plural = "届いた注文"
         ordering = ["-received_at", "-id"]
 
     def __str__(self):
@@ -129,6 +135,18 @@ class Inbox(models.Model):
         if len(lines) > 1:
             text += f" ほか {len(lines) - 1} 行"
         return text
+
+    def reply_state(self):
+        """詳細に出す注文回答の字。「届いた」なら空の字 (テンプレートが薄い「—」を出す)。
+
+        送れた (相手の受け口が 200) なら「送った <日時>」、承認か断りの後で届いていなければ
+        「届いていない: <相手の返事>」。
+        """
+        if self.status == self.STATUS_RECEIVED:
+            return ""
+        if self.reply_sent_at is not None:
+            return f"送った {timezone.localtime(self.reply_sent_at):%Y-%m-%d %H:%M}"
+        return f"届いていない: {self.reply_response}"
 
 
 class Outbox(models.Model):

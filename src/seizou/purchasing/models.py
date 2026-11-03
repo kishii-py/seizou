@@ -14,12 +14,14 @@ class PurchaseOrder(models.Model):
     STATUS_DRAFT = "draft"
     STATUS_SENT = "sent"
     STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
     STATUS_DELIVERED = "delivered"
     STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (STATUS_DRAFT, "作成"),
         (STATUS_SENT, "送った"),
-        (STATUS_ACCEPTED, "相手が受けた"),
+        (STATUS_ACCEPTED, "相手が受け入れた"),
+        (STATUS_REJECTED, "断られた"),
         (STATUS_DELIVERED, "納品された"),
         (STATUS_CANCELLED, "取消"),
     ]
@@ -36,6 +38,15 @@ class PurchaseOrder(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_DRAFT
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # 注文回答 (相手が承認か断りをした結果)。connect の受け口が purchasing.services の mark_accepted・mark_rejected で書く。
+    # 日時はこちらに届いて当てた時刻 (相手の時計は使わない)。
+    replied_at = models.DateTimeField("注文回答の日時", null=True, blank=True)
+    reply_note = models.CharField("断りの理由", max_length=500, blank=True)
+    # 当てた注文回答の番号。同じ番号が 2 回届いたら 2 回目は何もしない (R11 の考え。DB の一意の制約も)。
+    reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
+
+    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    detail_hidden_fields = ("reply_message_id",)
 
     class Meta:
         verbose_name = "発注"
