@@ -104,7 +104,13 @@ _KIND_ACTIONS = {
     ),
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
     "shipping": ("shipping.ship", "shipping.update_shipment", "shipping.create_delivery_note", "shipping.cancel_delivery_note"),
-    "billing": ("billing.create_invoice", "billing.cancel_invoice"),
+    "billing": (
+        "billing.create_invoice",
+        "billing.cancel_invoice",
+        # 入金 (N56。本体が起こす前に入れる前提)
+        "billing.record_payment",
+        "billing.cancel_payment",
+    ),
     "purchasing": (
         "purchasing.create_purchase_order",
         "purchasing.cancel_purchase_order",
@@ -144,6 +150,7 @@ ACCOUNT_ACTIONS = frozenset(
 #: 金額が主な登録 → (書面, 操作)
 MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
+    "billing.record_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
@@ -159,7 +166,7 @@ ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments")
 # ---------------------------------------------------------------- 金額の値
 
 #: 金額の項目の名前 (core の 1 か所の集まり)
-MONEY_FIELDS = frozenset({"unit_price", "amount", "standard_price", "total", "subtotal", "tax"})
+MONEY_FIELDS = frozenset({"unit_price", "amount", "standard_price", "total", "subtotal", "tax", "balance", "paid_total"})
 #: 金額の閲覧が無い人に見せる字
 MASK = "—"
 
