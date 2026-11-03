@@ -84,10 +84,25 @@ def port_is_open(port: int) -> bool:
         return sock.connect_ex((HOST, port)) == 0
 
 
+#: 取引先とのつながりの鍵の環境変数の名前の形 (SEIZOU_PARTNER_<相手の id>_SECRET)。練習の子の process には渡さない
+PARTNER_SECRET_PREFIX = "SEIZOU_PARTNER_"
+PARTNER_SECRET_SUFFIX = "_SECRET"
+
+
+def is_partner_secret(name: str) -> bool:
+    """取引先とのつながりの鍵の環境変数か (SEIZOU_PARTNER_<相手の id>_SECRET)。"""
+    return name.startswith(PARTNER_SECRET_PREFIX) and name.endswith(PARTNER_SECRET_SUFFIX)
+
+
 def practice_env(folder: Path) -> dict:
-    """子の process に渡す環境変数 (今の環境変数に、練習の印と写しの DB と写しの上げたファイルの道を足した物)。"""
+    """子の process に渡す環境変数 (今の環境変数に、練習の印と写しの DB と写しの上げたファイルの道を足した物)。
+
+    取引先とのつながりの鍵 (SEIZOU_PARTNER_<相手の id>_SECRET) は空の字で渡す。練習の画面で発注を保存しても
+    相手の会社に送られない (connect の送る口は鍵が無いと送らない)。空の字で渡すのは、置き場の settings.py が
+    .env を setdefault で読み、無い鍵を .env から入れ直すため。
+    """
     return {
-        **os.environ,
+        **{name: ("" if is_partner_secret(name) else value) for name, value in os.environ.items()},
         ENV_FLAG: "1",
         ENV_DB: str(folder / backup.DB_FILES["sqlite"]),
         ENV_MEDIA: str(folder / backup.MEDIA_DIR),
