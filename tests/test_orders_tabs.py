@@ -371,5 +371,5 @@ def test_order_list_csv_unchanged(user, logged_in, customer, item):
     assert "操作" not in orders_csv
 
     lines_csv = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode()
-    assert lines_csv.lstrip("﻿").splitlines()[0] == "受注番号,得意先,部品,納期,納期まで,数量,出荷済み,残,在庫,指示書,進捗,計画の終了日,判断,受注日,状態"
+    assert lines_csv.lstrip("﻿").splitlines()[0] == "受注番号,得意先,部品,納期,納期まで,数量,出荷済み,検収,残,在庫,指示書,進捗,計画の終了日,判断,受注日,状態"
     assert "操作" not in lines_csv
