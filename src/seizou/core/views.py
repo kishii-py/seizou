@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import csv
 import inspect
+import unicodedata
 from decimal import Decimal
 from importlib import import_module
 from urllib.parse import quote
@@ -39,6 +40,7 @@ from django import forms as django_forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
+from django.core.exceptions import FieldDoesNotExist
 from django.db import DatabaseError, models
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
@@ -303,10 +305,7 @@ class BaseListView(ScreenMixin, ListView):
         for term in self.search_terms():
             if not lookups:
                 break
-            q = Q()
-            for lookup in lookups:
-                q |= Q(**{f"{lookup}__icontains": term})
-            qs = qs.filter(q)
+            qs = qs.filter(search_q(lookups, term))
         return qs
 
     # --- 行 ---
@@ -348,11 +347,9 @@ class BaseListView(ScreenMixin, ListView):
 
     def search_hint(self) -> str:
         """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。"""
-        labels = [
-            str(getattr(self.model._meta.get_field(f.split("__")[0]), "verbose_name", f)) for f in self.search_fields
-        ]
+        labels = [lookup_label(self.model, f) for f in self.search_fields]
         labels += [c.label for c in company_fields.columns_for(self.model) if c.searchable]
-        return "・".join(labels)
+        return "・".join(dict.fromkeys(labels))
 
     def query_without(self, *keys) -> str:
         params = self.request.GET.copy()
@@ -451,6 +448,10 @@ class BaseDetailView(ScreenMixin, DetailView):
                     "file": file_info(value, file_url_for(obj, f.name)) if is_file else None,
                 }
             )
+            # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (初見テスト 2 回目の E-05)
+            linked = getattr(value, "item", None) if value is not None and not is_master(value) else None
+            if is_master(linked) and not any(c.name == "item" for c in obj._meta.concrete_fields):
+                items.append({"label": "部品", "value": screen_value(linked), "master": linked, "file": None})
         for col in company_fields.columns_for(obj.__class__):
             value = screen_value(company_fields.ext_value(obj, col.name))
             items.append({"label": col.label, "value": value, "master": None, "file": None})
@@ -657,6 +658,42 @@ def _accepts_instance(form_class) -> bool:
     return "instance" in parameters
 
 
+def search_variants(term: str) -> list[str]:
+    """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (初見テスト 2 回目の所見)。
+
+    返す物は重ねない並び (打った字・NFKC・カタカナ・ひらがな)。DB の側は変えず、OR で引く。
+    """
+    folded = unicodedata.normalize("NFKC", term)
+    kata = "".join(chr(ord(ch) + 0x60) if "ぁ" <= ch <= "ゖ" else ch for ch in folded)
+    hira = "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in folded)
+    return list(dict.fromkeys([term, folded, kata, hira]))
+
+
+def search_q(lookups, term: str) -> Q:
+    """lookups のどれかが term (の揺れ) を含む Q。"""
+    q = Q()
+    for lookup in lookups:
+        for variant in search_variants(term):
+            q |= Q(**{f"{lookup}__icontains": variant})
+    return q
+
+
+def lookup_label(model, lookup: str) -> str:
+    """検索の案内に出す欄の名前。`customer__name` のように辿る物は末尾の欄の名前 (相手の表の verbose_name)。"""
+    current = model
+    field = None
+    for part in lookup.split("__"):
+        try:
+            field = current._meta.get_field(part)
+        except FieldDoesNotExist:
+            return part
+        related = getattr(field, "related_model", None)
+        if related is None:
+            break
+        current = related
+    return str(getattr(field, "verbose_name", lookup))
+
+
 def widget_css(widget) -> str:
     """欄の見た目の class (daisyUI)。form が class を持っていればそちらが勝つ (setdefault)。"""
     from django.forms import widgets
@@ -748,10 +785,7 @@ class BaseSelectView(ScreenMixin, View):
         if not qs.ordered:  # 並びが無いとページの境目が DB 次第になる。既定は pk の順。
             qs = qs.order_by("pk")
         if term and self.search_fields:
-            q = Q()
-            for lookup in self.search_fields:
-                q |= Q(**{f"{lookup}__icontains": term})
-            qs = qs.filter(q)
+            qs = qs.filter(search_q(self.search_fields, term))
         start = (page - 1) * self.per_page
         rows = list(qs[start : start + self.per_page + 1])
         more = len(rows) > self.per_page
@@ -898,10 +932,10 @@ def recent_orders(limit: int = 5) -> list[dict] | None:
 
 
 class HomeView(ScreenMixin, TemplateView):
-    """最初の画面 (ログインの後の移動先)。今日の数字のカード、最近の受注、左のメニューと同じ入口を並べる。"""
+    """最初の画面 (ログインの後の移動先。全員が意識する KPI の置き場)。上から 数字のカード → 出荷と生産の図 → 最近の受注と納期アラート → よく使う画面 (☆ で登録した画面)。"""
 
     screen_name = "ダッシュボード"
-    screen_help = "今日の数字と、よく使う画面の入口。左のメニューから画面を選びます。"
+    screen_help = "今日の数字と、出荷と生産の図、最近の受注と納期の遅れ。上の帯の ☆ で登録した画面が「よく使う画面」に並びます。"
     template_name = "core/home.html"
 
     def get_context_data(self, **kwargs):
