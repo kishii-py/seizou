@@ -13,6 +13,7 @@
 - hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
+- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -831,3 +832,25 @@ def flow_neighbors(url_name: str) -> dict | None:
 
 def _neighbor(step):
     return None if step is None else {"label": step["label"], "url": step["url"]}
+
+
+def reading_match(*, customer=None, extraction=None) -> dict | None:
+    """読み取りの一致率 (intake.outcome.match_counts)。extraction を渡せばその 1 枚、customer を渡せばその得意先のこれまでの全部。読み取りの部品が無い・どちらも渡さない・受注にした行が 1 枚も無い (lines が 0)・DB が読めなければ None。
+
+    対象は状態が「受注にした」で受注のある読み取りの行だけ (取消の受注も数える)。問い合わせは 2 回まで。返す物 = {"extractions", "lines", "same", "fixed"}。
+    """
+    extraction_model = _model("intake", "Extraction")
+    if extraction_model is None or (customer is None and extraction is None):
+        return None
+    from seizou.intake.outcome import match_counts
+
+    queryset = extraction_model._default_manager.filter(status=extraction_model.STATUS_ORDERED, order__isnull=False)
+    if extraction is not None:
+        queryset = queryset.filter(pk=extraction.pk)
+    else:
+        queryset = queryset.filter(customer=customer)
+    try:
+        counts = match_counts(queryset)
+    except DatabaseError:
+        return None
+    return counts if counts["lines"] else None
