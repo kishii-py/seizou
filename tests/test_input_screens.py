@@ -18,6 +18,7 @@ import seizou.core
 import seizou.orders
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from seizou.orders.models import Order
 
 CORE = Path(seizou.core.__file__).resolve().parent
 REPO = Path(__file__).resolve().parent.parent
@@ -207,3 +208,94 @@ def test_order_lines_js_shows_amount_as_text():
         assert word in text, word
     assert "innerHTML" not in text
 
+
+
+# --- 4-2. 受注の入力の得意先の品番 ---------------------------------------------------------------
+
+
+def _create_post(customer, item, **line):
+    return {
+        "customer": customer.pk,
+        "order_date": ORDER_DATE.isoformat(),
+        "customer_order_no": "PO-0001",
+        "lines-TOTAL_FORMS": "1",
+        "lines-INITIAL_FORMS": "0",
+        "lines-MIN_NUM_FORMS": "0",
+        "lines-MAX_NUM_FORMS": "1000",
+        "lines-0-item": item.pk,
+        "lines-0-qty": "10",
+        "lines-0-unit": "",
+        "lines-0-unit_price": "100",
+        "lines-0-due_date": "",
+        "lines-0-note": "",
+        **{f"lines-0-{key}": value for key, value in line.items()},
+    }
+
+
+def _update_post(order, **line):
+    row = order.lines.get()
+    data = {
+        "customer": order.customer_id,
+        "order_date": order.order_date.isoformat(),
+        "customer_order_no": order.customer_order_no,
+        "note": order.note,
+        "lines-TOTAL_FORMS": "1",
+        "lines-INITIAL_FORMS": "1",
+        "lines-MIN_NUM_FORMS": "0",
+        "lines-MAX_NUM_FORMS": "1000",
+        "lines-0-order_line": row.pk,
+        "lines-0-item": row.item_id,
+        "lines-0-qty": str(row.qty),
+        "lines-0-unit": row.unit,
+        "lines-0-unit_price": str(row.unit_price),
+        "lines-0-due_date": "",
+        "lines-0-note": "",
+    }
+    data.update({f"lines-0-{key}": value for key, value in line.items()})
+    return data
+
+
+@pytest.mark.django_db
+def test_create_order_saves_customer_part_no(logged_in, customer, shaft):
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+    assert "得意先の品番" in _line_headers(body)
+
+    response = logged_in.post(reverse("orders:order_create"), _create_post(customer, shaft, customer_part_no="RB-3110"))
+
+    order = Order.objects.get()
+    assert response.status_code == 302
+    assert order.lines.get().customer_part_no == "RB-3110"
+
+
+@pytest.mark.django_db
+def test_edit_order_shows_and_changes_customer_part_no(user, logged_in, customer, shaft):
+    order = orders_services.create_order(
+        customer,
+        [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100"), "customer_part_no": "RB-3110"}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    body = logged_in.get(reverse("orders:order_update", args=[order.pk])).content.decode()
+    assert re.search(r'<input[^>]*name="lines-0-customer_part_no"[^>]*value="RB-3110"', body)
+
+    response = logged_in.post(
+        reverse("orders:order_update", args=[order.pk]), _update_post(order, customer_part_no="RB-3111")
+    )
+
+    assert response.status_code == 302
+    assert order.lines.get().customer_part_no == "RB-3111"
+
+
+@pytest.mark.django_db
+def test_hidden_customer_part_no_is_not_shown(settings, logged_in):
+    settings.SEIZOU = {"hidden_fields": ["customer_part_no"]}
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    assert "得意先の品番" not in _line_headers(body)
+    assert "lines-0-customer_part_no" not in body
+
+
+def test_customer_part_no_is_hideable():
+    from seizou.orders.forms import hideable_fields
+
+    assert ("customer_part_no", "得意先の品番") in hideable_fields()
