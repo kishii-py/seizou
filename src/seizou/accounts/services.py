@@ -3,6 +3,7 @@
 全部 transaction.atomic の中で書き、アカウントの変更は AccessLog に前と後 (snapshot) を残す。user は変えた人。
 返す物は利用者 (User)。core に利用者の詳細の画面が無いので、入力の土台の保存の後の移り先は一覧になる。
 断る変更は日本語の ValueError (何も変えず、記録も残さない)。入力の土台が赤の知らせにする。
+部署 (Department) の作る・直す・消すもここ。部署を直しても既にいる人の権限は変えない (N36 の約束)。
 """
 
 from __future__ import annotations
@@ -41,6 +42,14 @@ DELETED = "削除したアカウントは変更も削除もできません。"
 LOGIN_ID_USED = "このログイン ID は使われています。別の ID にしてください。"
 LOGIN_ID_FORM = "ログイン ID は英数字と @ . + - _ で、150 字までにしてください。"
 PASSWORD_REFUSED = "パスワードを受け付けられません: "
+DEPARTMENT_NAME_EMPTY = "部署の名前を入れてください。"
+DEPARTMENT_NAME_USED = "部署「{name}」は既にあります。別の名前にしてください。"
+DEPARTMENT_APP_UNKNOWN = "部署の開ける部品に選べない名前です: {app}"
+DEPARTMENT_SORT_ORDER = "並び順は 0 以上の整数にしてください。"
+DEPARTMENT_IN_USE = (
+    "部署「{name}」には {count} 人のアカウントが付いているため削除できません。"
+    "先にアカウント管理で、その人の部署を外してください。"
+)
 
 
 # ---------------------------------------------------------------- 確かめ
@@ -102,6 +111,16 @@ def department_apps() -> list[str]:
     """部署の「開ける部品」に選べる名前 (PARTS の短い名前のうち、いつも開く部品と accounts の外)。"""
     names = [part.rsplit(".", 1)[-1] for part in PARTS]
     return [name for name in names if name not in access.ALWAYS_OPEN_APPS and name not in access.ACCOUNT_APPS]
+
+
+def clean_apps(apps) -> list[str]:
+    """部署の開ける部品の名前を確かめ、department_apps() の並び (PARTS の順) にそろえて重なりを消す。"""
+    allowed = department_apps()
+    apps = list(apps or ())
+    for app in apps:
+        if app not in allowed:
+            raise ValueError(DEPARTMENT_APP_UNKNOWN.format(app=app))
+    return [name for name in allowed if name in apps]
 
 
 # ---------------------------------------------------------------- 記録
@@ -175,7 +194,7 @@ def _locked(target) -> Access:
 
 @transaction.atomic
 def create_department(name, apps, default_permissions, user, *, sort_order=0) -> Department:
-    """部署を作る (種のため。画面は作らない)。記録の表には残さない。"""
+    """部署を作る (種と、部署の新規登録の画面が呼ぶ)。記録の表には残さない。"""
     name = (name or "").strip()
     if not name:
         raise ValueError("部署の名前を入れてください。")
@@ -192,6 +211,59 @@ def create_department(name, apps, default_permissions, user, *, sort_order=0) ->
         default_permissions=clean_permissions(default_permissions),
         sort_order=sort_order,
     )
+
+
+@transaction.atomic
+def update_department(target, data, user) -> Department:
+    """部署を直す。data の鍵は name・apps・default_permissions・sort_order (無い鍵は今のまま)。
+
+    表から読み直して直す (渡された物を書き換えない)。既にいる人の権限と部署の付け外しには触らない
+    (N36 の約束「部署と権限は別々に付け外しする」)。記録の表には残さない (create_department と同じ)。
+    user は変えた人 (今は使わない。引数の形は入力の土台のため)。返すのは直した部署 (土台が詳細へ移す)。
+    """
+    row = Department.objects.select_for_update().get(pk=target.pk)
+    data = dict(data or {})
+    values = {}
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise ValueError(DEPARTMENT_NAME_EMPTY)
+        if Department.objects.filter(name=name).exclude(pk=row.pk).exists():
+            raise ValueError(DEPARTMENT_NAME_USED.format(name=name))
+        values["name"] = name
+    if "apps" in data:
+        values["apps"] = clean_apps(data["apps"])
+    if "default_permissions" in data:
+        values["default_permissions"] = clean_permissions(data["default_permissions"])
+    if "sort_order" in data:
+        sort_order = data["sort_order"]
+        if isinstance(sort_order, bool):
+            raise ValueError(DEPARTMENT_SORT_ORDER)
+        try:
+            sort_order = int(sort_order)
+        except (TypeError, ValueError):
+            raise ValueError(DEPARTMENT_SORT_ORDER) from None
+        if sort_order < 0:
+            raise ValueError(DEPARTMENT_SORT_ORDER)
+        values["sort_order"] = sort_order
+    for key, value in values.items():
+        setattr(row, key, value)
+    row.save()
+    return row
+
+
+@transaction.atomic
+def delete_department(target, user) -> None:
+    """部署を消す。生きている人が 1 人でも付いていれば断る (何も変えない。先にアカウント管理で人の部署を外す)。
+
+    消すときは、削除済みのアカウントとのつながりの行だけを Django が消す (記録の表の前と後は部署の名前の字なので残る)。
+    既にいる人の権限には触らない。記録の表には残さない。返すのは None (入力の土台が一覧へ移す)。
+    """
+    row = Department.objects.select_for_update().get(pk=target.pk)
+    count = row.accesses.filter(deleted_at__isnull=True).count()
+    if count:
+        raise ValueError(DEPARTMENT_IN_USE.format(name=row.name, count=count))
+    row.delete()
 
 
 # ---------------------------------------------------------------- アカウント

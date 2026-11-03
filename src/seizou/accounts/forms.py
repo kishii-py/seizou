@@ -6,8 +6,10 @@
 from django import forms
 
 from seizou.core import access
+from seizou.core.screens import all_screens
 
-from .models import Department
+from . import services
+from .models import Department, app_labels
 
 PASSWORD_HELP_NEW = "8 字以上。よくある物・数字だけ・ログイン ID に似た物は使えません。"
 PASSWORD_HELP_EDIT = PASSWORD_HELP_NEW + "空のままなら変わりません。"
@@ -114,6 +116,73 @@ class AccountForm(forms.Form):
 
 class AccountDeleteForm(forms.Form):
     """アカウントの削除の確認 (欄なし)。"""
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+def department_app_choices() -> list[tuple[str, str]]:
+    """部署の「開ける部品」の欄の選び (app の名前, 左のメニューの入口の字)。並びは services.department_apps() (PARTS の順)。
+
+    画面を 1 つも持たない部品 (bookmarks) は、check しても何も変わらないので出さない。入口の無い部品 (intake) は部品の表示名。
+    """
+    with_screens = {screen.app for screen in all_screens()}
+    labels = app_labels()
+    return [
+        (app, labels.get(app) or access.app_label(app)) for app in services.department_apps() if app in with_screens
+    ]
+
+
+class DepartmentForm(forms.Form):
+    """部署の新規登録と編集。instance (Department) があれば編集。"""
+
+    name = forms.CharField(label="部署", max_length=50)
+    apps = forms.MultipleChoiceField(
+        label="開ける部品",
+        choices=(),
+        required=False,
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="check を入れた部品の画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
+    )
+    default_permissions = forms.MultipleChoiceField(
+        label="既定の権限",
+        choices=(),
+        required=False,
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="アカウントの発行と編集でこの部署に check を入れたときに、自動で check が入る権限。既にいる人の権限は変わりません。",
+    )
+    sort_order = forms.IntegerField(label="並び順", min_value=0, initial=0, help_text="小さい数が先に並びます。")
+
+    def __init__(self, *args, instance=None, **kwargs):
+        self.instance = instance
+        self.creating = instance is None
+        if instance is not None:
+            kwargs["initial"] = {
+                **(kwargs.get("initial") or {}),
+                "name": instance.name,
+                "apps": list(instance.apps or []),
+                "default_permissions": list(instance.default_permissions or []),
+                "sort_order": instance.sort_order,
+            }
+        super().__init__(*args, **kwargs)
+        self.fields["apps"].choices = department_app_choices()
+        self.fields["default_permissions"].choices = permission_choices()
+
+    def service_kwargs(self) -> dict:
+        data = self.cleaned_data
+        values = {
+            "name": data["name"],
+            "apps": list(data.get("apps") or []),
+            "default_permissions": list(data.get("default_permissions") or []),
+            "sort_order": data["sort_order"],
+        }
+        if self.creating:
+            return values
+        return {"data": values}
+
+
+class DepartmentDeleteForm(forms.Form):
+    """部署の削除の確認 (欄なし)。"""
 
     def service_kwargs(self) -> dict:
         return {}

@@ -14,6 +14,22 @@ from django.db import models
 from seizou.core import access
 
 
+def app_labels() -> dict[str, str]:
+    """部署の「開ける部品」の表示 (左のメニューの入口の字)。入口は要求ごとに会社の設定で変わるので、呼ぶたびに作る。
+
+    部品の app の名前 → 入口の字。同じ app の入口は「・」でつなぐ (例 masters →「部品マスター・取引先・工程」)。
+    入口の無い app (intake など) は入らない (呼ぶ側が access.app_label で部品の表示名を補う)。
+    """
+    from seizou.core.context_processors import menu
+
+    labels: dict[str, list[str]] = {}
+    for item in menu():
+        names = labels.setdefault(item["app"], [])
+        if item["label"] not in names:
+            names.append(item["label"])
+    return {app: "・".join(names) for app, names in labels.items()}
+
+
 class Department(models.Model):
     name = models.CharField("部署", max_length=50, unique=True)
     apps = models.JSONField("開ける部品", default=list)
@@ -27,6 +43,26 @@ class Department(models.Model):
 
     def __str__(self):
         return self.name
+
+    # --- 一覧と詳細の表示 (土台の display_value が get_<名前>_display を先に見る。一覧・詳細・CSV の全部がこの字になる) ---
+    def get_apps_display(self) -> str:
+        """開ける部品を左のメニューの入口の字で「・」でつなぐ (入口の無い部品は部品の表示名。空なら空の字)。"""
+        labels = app_labels()
+        return "・".join(labels.get(app) or access.app_label(app) for app in (self.apps or []))
+
+    def get_default_permissions_display(self) -> str:
+        """既定の権限の表示名を「・」で (画面の並び = まとめ 2 つ → 種類 10。空なら空の字)。"""
+        names = self.default_permissions or []
+        return "・".join(access.permission_label(name) for name in access.PERMISSION_NAMES if name in names)
+
+    @property
+    def members(self):
+        """所属する生きている人 (Access の queryset。削除済みは出さない)。詳細の「所属する人」のタブが読む。"""
+        return self.accesses.filter(deleted_at__isnull=True).select_related("user").order_by("user__username")
+
+    def member_count(self) -> int:
+        """所属する生きている人の数 (一覧の「人数」の列)。"""
+        return self.members.count()
 
 
 class Access(models.Model):
