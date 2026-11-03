@@ -23,6 +23,9 @@ PDF_VERSION = "1.4"
 
 STATIC_PREFIX = "/static/"
 MEDIA_PREFIX = "/media/"
+# 説明書の絵の道。core:manual_image の道と、冊子の <base href="/manual/"> + 断片の images/<名前> が解ける道の
+# 2 つと同じ字 (試験が突き合わせる)。
+MANUAL_IMAGES_PREFIX = "/manual/images/"
 
 # 帳票が読む物の型。<link rel="stylesheet"> は text/css でないと WeasyPrint が読まない。
 CONTENT_TYPES = {
@@ -31,6 +34,7 @@ CONTENT_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
     ".gif": "image/gif",
     ".svg": "image/svg+xml",
 }
@@ -77,10 +81,12 @@ def _render_document(template, context):
 
 
 def fetch_local(url):
-    """帳票が読むファイルの中身と型を返す。static と media の下だけを読む。
+    """帳票が読むファイルの中身と型を返す。static と media と、説明書の絵 (manual/images/) の下だけを読む。
 
     BASE_URL の起点の /static/ の下は staticfiles の finders で引き (collectstatic に頼らない)、
-    /media/ の下は MEDIA_ROOT の下だけを読む。ほかの URL (http・https・file・data など) と、
+    /media/ の下は MEDIA_ROOT の下だけを読む。/manual/images/ の下は、説明書の置き場 (core.manual.manual_dir())
+    の images/ の直下の絵だけを、絵の口 (core.manual.manual_image) と同じ制限で読む (名前が . で始まらない・
+    .. を含まない・拡張子は .png・.jpg・.jpeg・.webp だけ・symlink の先も images/ の中)。ほかの URL (http・https・file・data など) と、
     根の外に出るパスは ValueError で断る。WeasyPrint は断られた物を「取れない」として飛ばす。
     鍵・環境変数・ネットワークには触れない。
     """
@@ -107,13 +113,37 @@ def fetch_local(url):
         file_path = (root / relative).resolve()
         if not file_path.is_relative_to(root):
             raise ValueError(f"media の外のパスは読みません: {path}")
+    elif path.startswith(MANUAL_IMAGES_PREFIX):
+        file_path = _manual_image_path(path[len(MANUAL_IMAGES_PREFIX) :], path)
     else:
-        raise ValueError(f"static と media の外は読みません: {path}")
+        raise ValueError(f"static と media と manual/images の外は読みません: {path}")
 
     if not file_path.is_file():
         raise FileNotFoundError(f"ファイルがありません: {path}")
     content_type = CONTENT_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
     return file_path.read_bytes(), content_type
+
+
+def _manual_image_path(name, path):
+    """説明書の絵 (manual/images/<name>) の実体のパスを返す。絵の口 (core.manual.manual_image) と同じ制限で断る。
+
+    置き場が無い・名前の形の外 (images/ の直下でない・. で始まる・.. を含む・拡張子が外れ)・
+    images/ の外を指す (resolve() の後に見るので symlink の先も) なら ValueError。無いファイルは fetch_local が断る。
+    core.manual は頭で import しない (core.manual が reports を頭で import するので輪になる)。
+    """
+    from seizou.core.manual import IMAGE_TYPES, manual_dir
+
+    folder = manual_dir()
+    if folder is None:
+        raise ValueError("説明書の置き場 (BASE_DIR) が無いので絵は読みません")
+    name = _checked_relative(name)
+    if "/" in name or name.startswith(".") or ".." in name or Path(name).suffix.lower() not in IMAGE_TYPES:
+        raise ValueError(f"説明書の絵として読めない名前です: {path}")
+    root = (folder / "images").resolve()
+    file_path = (root / name).resolve()
+    if file_path.parent != root:
+        raise ValueError(f"manual/images の外のパスは読みません: {path}")
+    return file_path
 
 
 def _checked_relative(relative):

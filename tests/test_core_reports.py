@@ -6,10 +6,13 @@
 
 import importlib
 import importlib.util
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
+from django.urls import reverse
 
 import seizou.core
 from seizou.core import reports
@@ -136,3 +139,104 @@ def test_url_fetcher_allows_static_and_media_only(settings, tmp_path):
 
     with pytest.raises(FileNotFoundError):
         reports.fetch_local(base + "static/css/no-such-file.css")
+
+
+# 説明書の絵の根 (/manual/images/ → 会社の置き場の manual/images/。絵の口 core.manual.manual_image と同じ制限)
+
+MANUAL_PNG = b"\x89PNG\r\n\x1a\n" + b"tests-only"
+
+
+def write_manual_image(base_dir, relative, data=MANUAL_PNG):
+    path = base_dir / "manual" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
+def test_url_fetcher_reads_manual_images(settings, tmp_path):
+    settings.BASE_DIR = tmp_path
+    write_manual_image(tmp_path, "images/shot.png")
+    write_manual_image(tmp_path, "images/photo.webp", b"RIFF tests-only WEBP")
+    write_manual_image(tmp_path, "images/pic.jpg", b"\xff\xd8 tests-only")
+    write_manual_image(tmp_path, "images/pic2.jpeg", b"\xff\xd8 tests-only 2")
+    base = reports.BASE_URL
+
+    assert reports.fetch_local(base + "manual/images/shot.png") == (MANUAL_PNG, "image/png")
+    assert reports.fetch_local(base + "manual/images/photo.webp") == (b"RIFF tests-only WEBP", "image/webp")
+    assert reports.fetch_local(base + "manual/images/pic.jpg") == (b"\xff\xd8 tests-only", "image/jpeg")
+    assert reports.fetch_local(base + "manual/images/pic2.jpeg") == (b"\xff\xd8 tests-only 2", "image/jpeg")
+    assert reports.CONTENT_TYPES[".webp"] == "image/webp"
+
+    # 絵の口の道・冊子の <base href="/manual/"> + 断片の相対の道・絵の根の 3 つが同じ道
+    assert reports.MANUAL_IMAGES_PREFIX == "/manual/images/"
+    assert reverse("core:manual_image", args=["shot.png"]) == reports.MANUAL_IMAGES_PREFIX + "shot.png"
+    assert urljoin(reverse("core:manual"), "images/shot.png") == reports.MANUAL_IMAGES_PREFIX + "shot.png"
+
+
+def test_url_fetcher_refuses_bad_manual_image_names(settings, tmp_path):
+    settings.BASE_DIR = tmp_path
+    write_manual_image(tmp_path, "images/shot.png")
+    write_manual_image(tmp_path, "images/.hidden.png")
+    write_manual_image(tmp_path, "images/..a.png")
+    write_manual_image(tmp_path, "images/a.svg", b"<svg></svg>")
+    write_manual_image(tmp_path, "images/a.gif", b"GIF89a")
+    write_manual_image(tmp_path, "images/a.html", b"<p></p>")
+    write_manual_image(tmp_path, "images/sub/shot.png")
+    write_manual_image(tmp_path, "outside.png")
+    base = reports.BASE_URL
+
+    refused = [
+        base + "manual/images/../outside.png",
+        base + "manual/images/%2e%2e/outside.png",
+        base + "manual/images/.hidden.png",
+        base + "manual/images/..a.png",
+        base + "manual/images/a.svg",
+        base + "manual/images/a.gif",
+        base + "manual/images/a.html",
+        base + "manual/images/sub/shot.png",
+        base + "manual/images//etc/hosts",
+        base + "manual/images/",
+        base + "manual/outside.png",
+    ]
+    for url in refused:
+        with pytest.raises(ValueError):
+            reports.fetch_local(url)
+
+    with pytest.raises(FileNotFoundError):
+        reports.fetch_local(base + "manual/images/missing.png")
+
+    # 置き場が無い (BASE_DIR が空) なら、名前が正しくても読まない
+    settings.BASE_DIR = ""
+    with pytest.raises(ValueError):
+        reports.fetch_local(base + "manual/images/shot.png")
+
+
+def test_url_fetcher_refuses_manual_image_symlink_outside(settings, tmp_path):
+    """manual/images/ の外 (manual/ の直下) を指す symlink は、名前の形が正しくても読まない。"""
+    settings.BASE_DIR = tmp_path
+    outside = write_manual_image(tmp_path, "outside.png")
+    write_manual_image(tmp_path, "images/inside.png")
+    try:
+        (tmp_path / "manual" / "images" / "link.png").symlink_to(outside)
+    except OSError:
+        pytest.skip("この OS の利用者は symlink を作れない (Windows で権限が無いとき)")
+    base = reports.BASE_URL
+
+    assert reports.fetch_local(base + "manual/images/inside.png") == (MANUAL_PNG, "image/png")
+    with pytest.raises(ValueError):
+        reports.fetch_local(base + "manual/images/link.png")
+
+
+def test_report_css_numbers_pages():
+    """report.css の既にある @page の中に、下の中央のページ番号 (n / N) がある。"""
+    body, _ = reports.fetch_local(reports.BASE_URL + "static/css/report.css")
+    css = body.decode("utf-8")
+
+    assert "@bottom-center" in css
+    assert 'content: counter(page) " / " counter(pages);' in css
+    assert '"NotoSansJP Report"' in css
+    page = re.search(r"@page \{(.*?)\n\}", css, re.S)
+    assert page, "@page の規則が無い"
+    assert "@bottom-center" in page.group(1)
+    # @page の規則は 1 つのまま (注記の中の字は数えない)
+    assert len(re.findall(r"^@page", css, re.M)) == 1

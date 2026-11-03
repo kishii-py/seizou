@@ -10,6 +10,7 @@
   絵: manual/images/<名前>.png。断片の中から images/<名前>.png の相対の道で指す。
     ページの道は末尾に / を付けた /manual/ なので、相対の道は /manual/images/<名前> に解ける。
     そこは manual_image が返す (ログインが要る。拡張子は .png・.jpg・.jpeg・.webp だけ)。
+    冊子 (PDF) では <base href="/manual/"> で同じ道に解け、帳票の部品 (core.reports.fetch_local の /manual/images/ の根) が manual/images/ から同じ制限で読む。
   読むだけ。置き場に書かない。断片の中身は直さず、そのまま出す (mark_safe)。
 
 画面の並び:
@@ -20,7 +21,8 @@
   /manual/pdf/ (manual_pdf) は、表紙・目次・画面ごとの章・ページ番号の冊子 (core/manual_booklet.html) を帳票の部品 (core.reports) で PDF にして返す。
   PDF を作れなければ、同じ 1 枚を印刷用の HTML にし、上に知らせを出して返す。
   命令 manage.py seizou_manual_pdf は、同じ冊子を manual/使い方.pdf に書き出す (--out で書き出し先を替える)。
-  冊子に絵は入らない (帳票の部品が manual/images/ を読まないため)。
+  口の Content-Disposition は ASCII の名前 (PDF_FILENAME) と日本語の名前 (BOOKLET_FILENAME。UTF-8 を % で書いた filename*) の両方を持つ。
+  冊子に絵が入る (断片の <img src="images/…"> をそのまま出し、帳票の部品が manual/images/ から読む。無い絵は飛ばす)。
   表紙の主色は BOOKLET_PRIMARY_COLOR の固定の 1 色 (会社の行に色の列が無い)。副題は BOOKLET_SUBTITLE。
 
 小窓 (画面と枠の「?」):
@@ -37,6 +39,7 @@ from datetime import date, datetime
 from datetime import timezone as dt_timezone
 from importlib import metadata
 from pathlib import Path
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -78,7 +81,7 @@ BOOKLET_TEMPLATE = "core/manual_booklet.html"
 #: 命令の既定の書き出し先の名前 (会社の置き場の manual/ の下)
 BOOKLET_FILENAME = "使い方.pdf"
 
-#: 口の Content-Disposition の名前 (見出しは ASCII。日本語の名前は Django が MIME の形にし、ブラウザで崩れる)
+#: 口の Content-Disposition の ASCII の名前 (filename=。古いブラウザ用)。日本語の名前は BOOKLET_FILENAME を UTF-8 の % の形の filename* で添える
 PDF_FILENAME = "seizou-manual.pdf"
 
 #: PDF を作れないときの知らせ (shipping・manuals の PDF_NOTICE と同じ字。ほかの app の views は import しない)
@@ -264,7 +267,7 @@ def manual_pdf(request):
     except reports.PdfUnavailable:
         return HttpResponse(reports.render_html(BOOKLET_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
     response = HttpResponse(data, content_type="application/pdf")
-    response["Content-Disposition"] = f'inline; filename="{PDF_FILENAME}"'
+    response["Content-Disposition"] = f"inline; filename=\"{PDF_FILENAME}\"; filename*=UTF-8''{quote(BOOKLET_FILENAME, safe='')}"
     return response
 
 
