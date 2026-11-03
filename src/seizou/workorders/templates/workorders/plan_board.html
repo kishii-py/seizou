@@ -1,16 +1,6 @@
 {% extends "core/base.html" %}
 {% load seizou_icons workorders_plan %}
-{% block actions %}{{ block.super }}{% plan_board as board %}{% if board.process %}
-<div class="join">
-  <a class="btn btn-sm join-item" href="{{ board.links.prev }}">{% icon "chevron-left" "size-4" %}前</a>
-  <a class="btn btn-sm join-item" href="{{ board.links.today }}">今日</a>
-  <a class="btn btn-sm join-item" href="{{ board.links.next }}">次{% icon "chevron-right" "size-4" %}</a>
-</div>
-<div class="join">
-  {% if board.weeks == 1 %}<a class="btn btn-sm join-item btn-active" href="{{ board.links.week }}" aria-current="true">週</a>{% else %}<a class="btn btn-sm join-item" href="{{ board.links.week }}">週</a>{% endif %}
-  {% if board.weeks == 6 %}<a class="btn btn-sm join-item btn-active" href="{{ board.links.six_weeks }}" aria-current="true">6 週</a>{% else %}<a class="btn btn-sm join-item" href="{{ board.links.six_weeks }}">6 週</a>{% endif %}
-</div>
-{% endif %}{% endblock %}
+{# 期間の切り替えのボタンは盤の頭 (_plan_board.html) にある。盤の中身は block content で 1 回だけ作る。 #}
 {% block content %}{{ block.super }}{% plan_board as board %}
 {% if board.process %}
 {# 工程の pill: 印の付いた工程ごとの盤へのふつうの link (期間の引数を引き継ぐ)。今の工程は主色の薄い地。 #}
@@ -30,6 +20,29 @@
   function boardOf(element) {
     return element ? element.closest("#plan-board") : null;
   }
+  // 吹き出しは横スクロールの箱に切られないように画面に対して置く (class の fixed)。
+  // 棒の下に出し、右にはみ出せば左へ寄せ、下に入らなければ棒の上に出す。隠れている間も実寸は取れる。
+  function placeTip(box) {
+    var bar = box.querySelector(".plan-bar");
+    var tip = box.querySelector("[role=tooltip]");
+    if (!bar || !tip) return;
+    var rect = bar.getBoundingClientRect();
+    var left = Math.max(8, Math.min(rect.left, window.innerWidth - tip.offsetWidth - 8));
+    var top = rect.bottom;
+    if (top + tip.offsetHeight > window.innerHeight) {
+      top = Math.max(8, rect.top - tip.offsetHeight);
+    }
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+  function placeTipOf(event) {
+    var element = elementOf(event.target);
+    if (!boardOf(element)) return;
+    var box = element.closest("[data-bar-box]");
+    if (box) placeTip(box);
+  }
+  document.addEventListener("mouseover", placeTipOf);
+  document.addEventListener("focusin", placeTipOf);
   document.addEventListener("dragstart", function (event) {
     var element = elementOf(event.target);
     var item = boardOf(element) ? element.closest("[data-step]") : null;

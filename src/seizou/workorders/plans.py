@@ -151,12 +151,34 @@ def _place_in_rows(bars):
     return len(row_ends)
 
 
+def _months(days):
+    """日の並びを月で区切った帯。1 つ = {"label": "11 月", "col": 帯の最初の日の列 (1 から), "span": 日の数}。"""
+    months = []
+    for day in days:
+        key = (day["date"].year, day["date"].month)
+        if months and months[-1]["key"] == key:
+            months[-1]["span"] += 1
+        else:
+            months.append(
+                {"key": key, "label": f"{day['date'].month} 月", "col": day["col"], "span": 1}
+            )
+    return [{"label": m["label"], "col": m["col"], "span": m["span"]} for m in months]
+
+
+def _row_heads(bars, rows):
+    """段の見出し。1 つ = {"row": 1 から, "label": その段に最初に置かれた棒の品名 (棒の無い段は空)}。"""
+    labels: dict[int, str] = {}
+    for bar in bars:
+        labels.setdefault(bar["row"], bar["item_name"])
+    return [{"row": number, "label": labels.get(number, "")} for number in range(1, rows + 1)]
+
+
 def build_board(process, start, weeks):
     """盤の中身の辞書。process が None (印が 1 つも無い) なら process だけが None の辞書を返す。
 
     start は期間の基の日 (None = 今日)、weeks は 1 か 6。
     鍵: process・pills・days・bars・rows・unplanned・unplanned_count・links・place_url・
-    board_start (今の期間の start。今日なら空)・weeks。
+    board_start (今の期間の start。今日なら空)・weeks・months (月の帯)・row_heads (段の見出し)。
     """
     weeks = weeks if weeks in WEEKS_CHOICES else 1
     today = timezone.localdate()
@@ -221,9 +243,11 @@ def build_board(process, start, weeks):
             for marked in marked_processes()
         ],
         "days": days,
+        "months": _months(days),
         "columns": length,
         "bars": bars,
         "rows": rows,
+        "row_heads": _row_heads(bars, rows),
         "unplanned": unplanned,
         "unplanned_count": len(unplanned),
         "links": _period_links(process, start, weeks, base),
