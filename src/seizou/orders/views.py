@@ -63,6 +63,7 @@ class OrderLineListView(BaseListView):
         ("board__days_left", "納期まで"),
         ("qty", "数量"),
         ("shipped_total", "出荷済み"),
+        ("board__acceptance_total", "検収"),
         ("remaining_total", "残"),
         ("board__stock_balance", "在庫"),
         ("board__workorder_label", "指示書"),

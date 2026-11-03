@@ -121,3 +121,35 @@ def test_order_detail_has_acceptance_column_before_remaining(user, logged_in, cu
     assert plain[heads.index("検収")] == "—"
     # 最後の欄は「残」のまま (E2E が行の最後の td で残を読む)
     assert accepted[-1].replace(".00", "") == "10" and plain[-1].replace(".00", "") == "5"
+
+
+@pytest.mark.django_db
+def test_board_has_acceptance_column_with_totals(user, logged_in, customer, item):
+    """注残の盤の「検収」の列 (出荷済みの次。検収の数の合計、0 の行は「—」) と、合計の行の検収。本体が N54 の落とした物を足した (11-03)。"""
+    from tests.test_orders_board import _cells, _totals, _tr
+
+    order = orders_services.create_order(
+        customer,
+        [
+            {"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")},
+            {"item": item, "qty": Decimal("5"), "unit_price": Decimal("100")},
+        ],
+        user,
+        order_date=ORDER_DATE,
+    )
+    first, second = order.lines.order_by("line_no")
+    _accept(first, "4", date(2026, 11, 5))
+    _accept(first, "6", date(2026, 11, 7))
+
+    response = logged_in.get(reverse("orders:orderline_list"))
+    assert response.status_code == 200
+    labels = [col.label for col in response.context["columns"]]
+    assert labels.index("検収") == labels.index("出荷済み") + 1
+    body = response.content.decode()
+    accepted = _cells(_tr(body, first.pk))[labels.index("検収")]
+    plain = _cells(_tr(body, second.pk))[labels.index("検収")]
+    assert accepted.replace(".00", "") == "10" and plain == "—"
+    assert _totals(body)[labels.index("検収")].replace(".00", "") == "10"
+    # CSV にも同じ列
+    csv_text = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode("utf-8")
+    assert "検収" in csv_text.lstrip("\ufeff").splitlines()[0].split(",")
