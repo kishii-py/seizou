@@ -15,7 +15,15 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from . import r13_services_only, r14_no_raw_sql, r15_inherit_base_view, r16_no_core_model_change
+from . import (
+    r13_services_only,
+    r14_no_raw_sql,
+    r15_inherit_base_view,
+    r16_no_core_model_change,
+    r17_http_outside_atomic,
+    r18_csrf_single_place,
+    r19_no_dynamic_classnames,
+)
 from .engine import Result, Violation, run
 
 __all__ = ["RULES", "Result", "Violation", "check", "check_at_startup", "default_paths", "last_result"]
@@ -23,7 +31,15 @@ __all__ = ["RULES", "Result", "Violation", "check", "check_at_startup", "default
 logger = logging.getLogger(__name__)
 
 #: 見る決まりの並び
-RULES = (r13_services_only, r14_no_raw_sql, r15_inherit_base_view, r16_no_core_model_change)
+RULES = (
+    r13_services_only,
+    r14_no_raw_sql,
+    r15_inherit_base_view,
+    r16_no_core_model_change,
+    r17_http_outside_atomic,
+    r18_csrf_single_place,
+    r19_no_dynamic_classnames,
+)
 
 _last_result: Result | None = None
 
