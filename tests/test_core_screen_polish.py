@@ -335,3 +335,29 @@ def test_assistant_panel_without_key(request, client, monkeypatch, who):
         assert assistant_services.MESSAGE_NO_KEY in html
     else:
         assert "ANTHROPIC_API_KEY" not in html
+
+
+# ---------------------------------------------------------------- 4. 数の字の末尾の 0
+
+
+def test_comma_drops_trailing_zeros():
+    from seizou.core.templatetags.seizou_tags import comma
+
+    assert comma(Decimal("10.00")) == "10"
+    assert comma(Decimal("1234.50")) == "1,234.5"
+    assert comma(Decimal("12000.00")) == "12,000"
+    assert comma(Decimal("0.00")) == "0"
+    assert comma(Decimal("-2.00")) == "-2"
+    assert comma(Decimal("-0.00")) == "0"
+    assert comma(Decimal("1E+3")) == "1,000"
+    assert comma(1200) == "1,200"
+    assert comma(None) == ""
+    assert comma(Decimal("10"), 2) == "10.00"  # 小数の桁を決める形は今のまま
+
+
+def test_order_detail_quantity_without_trailing_zeros(client, user, order):
+    client.force_login(user)
+    html = client.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+    assert ">10</td>" in html
+    assert ">10.00</td>" not in html
+    assert ">1,200</td>" in html  # 単価 1200.00

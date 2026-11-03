@@ -340,7 +340,7 @@ def test_bar_has_three_lines(client_logged_in, user, workorder, step):
     html = _board(client_logged_in, step.process).content.decode()
 
     tag, body = _bar_tag_and_body(html, step)
-    assert _spans(body) == [workorder.wo_no, "T-100 作り物の軸", "数量 4.00"]  # 予定の数は小数 2 桁で持ち、comma はそのまま出す
+    assert _spans(body) == [workorder.wo_no, "T-100 作り物の軸", "数量 4"]  # 予定の数は小数 2 桁で持ち、comma は小数の末尾の 0 を落として出す
     assert "title=" not in tag
 
 
@@ -440,7 +440,7 @@ def test_compact_bar_in_six_weeks(client_logged_in, user, line, cut, workorder, 
     tag, body = _bar_tag_and_body(html, step)
     assert _spans(body) == [workorder.wo_no]
     assert "数量" not in body
-    assert f'title="{workorder.wo_no} T-100 作り物の軸 数量 4.00 (計画)"' in tag
+    assert f'title="{workorder.wo_no} T-100 作り物の軸 数量 4 (計画)"' in tag
     wide_tag, wide_body = _bar_tag_and_body(html, wide)
     assert len(_spans(wide_body)) == 3
     assert "title=" not in wide_tag

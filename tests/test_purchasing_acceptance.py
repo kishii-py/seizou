@@ -220,7 +220,7 @@ def test_order_detail_shows_acceptance_section_for_sent_orders(
     tbody = section[section.index("<tbody>") : section.index("</tbody>")]
     rows = {re.search(r"\d{4}-\d{2}-\d{2}", row).group(0): row for row in re.findall(r"<tr>(.*?)</tr>", tbody, re.S)}
     assert set(rows) == {"2026-11-02", "2026-11-03"}
-    assert "送った " in rows["2026-11-02"] and "4.00" in rows["2026-11-02"]
+    assert "送った " in rows["2026-11-02"] and ">4</td>" in rows["2026-11-02"]
     assert "text-error" not in rows["2026-11-02"]
     assert "text-error" in rows["2026-11-03"] and "届いていない: 届きません" in rows["2026-11-03"]
     assert reverse("purchasing:receipt_acceptance_resend", args=[lost.pk]) in rows["2026-11-03"]
