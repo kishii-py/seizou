@@ -8,9 +8,12 @@
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
 - 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が協力企業か両方の物だけ。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
+- 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
+  その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
 """
 
 from django import forms
+from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
@@ -66,6 +69,21 @@ class PurchaseOrderLineForm(forms.Form):
 PurchaseOrderLineFormSet = forms.formset_factory(PurchaseOrderLineForm, extra=1)
 
 
+def _order_line(raw):
+    """受注の明細の pk の字から明細を引く (部品も一緒に読む)。読めない字・無い pk・orders の無い会社では None。"""
+    if raw is None:
+        return None
+    try:
+        pk = int(str(raw))
+    except (TypeError, ValueError):
+        return None
+    try:
+        line_model = apps.get_model("orders", "OrderLine")
+    except LookupError:
+        return None
+    return line_model._default_manager.select_related("item").filter(pk=pk).first()
+
+
 class PurchaseOrderForm(forms.Form):
     """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。"""
 
@@ -81,8 +99,19 @@ class PurchaseOrderForm(forms.Form):
         self.fields["partner"].queryset = partner_model._default_manager.filter(
             role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH)
         )
+        # 注残の盤の「発注する」から来たとき (GET の from_line)、その明細を最初の行の初期値にする。
+        # 単価は入れない (協力企業の単価は受注の単価と別で、利用者が打つ)。無い pk・読めない字は初期値なし。
+        self.from_line = _order_line(self.initial.get("from_line"))
+        line_initial = None
+        if self.from_line is not None:
+            from seizou.orders.services import remaining_qty
+
+            line = self.from_line
+            line_initial = [
+                {"item": line.item_id, "qty": remaining_qty(line), "unit": line.unit, "due_date": line.due_date}
+            ]
         self.lines = PurchaseOrderLineFormSet(
-            data=self.data if self.is_bound else None, prefix="lines"
+            data=self.data if self.is_bound else None, initial=line_initial, prefix="lines"
         )
 
     def is_valid(self):

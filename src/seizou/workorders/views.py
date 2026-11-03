@@ -7,8 +7,9 @@ PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現�
 現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。
 """
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
@@ -19,7 +20,7 @@ from seizou.core import reports
 from seizou.core.exceptions import RuleError
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, Notice
 
-from . import plans, services
+from . import plans, services, worklist
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
 from .models import WorkOrder, WorkOrderStep
 from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
@@ -31,10 +32,25 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 class WorkOrderListView(BaseListView):
     model = WorkOrder
     screen_name = "指示書"
-    screen_help = "発行した指示書の一覧。発行日の新しい順に並びます。"
-    columns = ("wo_no", "order_line", ("order_line__item", "部品"), "qty", "issued_on", "status")
+    screen_help = (
+        "発行した指示書の一覧。発行日の新しい順に並びます。工程・未着手・今日の計画で絞り込めます。"
+        "行を押すと詳細で「受けた」の印を付けられます。"
+    )
+    columns = (
+        "wo_no",
+        "order_line",
+        ("order_line__item", "部品"),
+        "qty",
+        "issued_on",
+        "status",
+        ("accepted_label", "受けた"),
+    )
     search_fields = ("wo_no",)
     ordering = ("-issued_on", "-id")
+
+    def get_queryset(self):
+        workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
+        return worklist.apply_list_filters(workorders, worklist.list_filters(self.request.GET))
 
 
 class WorkOrderDetailView(BaseDetailView):
@@ -114,6 +130,26 @@ def plan_place(request):
     response["HX-Retarget"] = "#plan-notice"
     response["HX-Reswap"] = "innerHTML"
     return response
+
+
+@login_required
+@require_POST
+def workorder_accept(request, pk):
+    """製造部の「受けた」の口 (POST だけ。画面でない口なので関数の view)。
+
+    成功は緑の知らせ、ValueError は赤の知らせ (右下の toast) で、どちらも詳細へ戻る。
+    現場の記録なので編集の権限は見ない (02 の 7 節の「権限が要らない」)。
+    """
+    workorder = get_object_or_404(WorkOrder, pk=pk)
+    try:
+        services.accept_workorder(workorder, request.user)
+    except RuleError as exc:
+        messages.error(request, exc.message)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "受けました。")
+    return HttpResponseRedirect(reverse("workorders:workorder_detail", args=[pk]))
 
 
 @login_required

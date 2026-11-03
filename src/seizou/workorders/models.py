@@ -6,8 +6,10 @@
 書くときは workorders.services を通す。
 """
 
+from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
+from django.utils import timezone
 
 
 class WorkOrder(models.Model):
@@ -34,6 +36,17 @@ class WorkOrder(models.Model):
     )
     # 書くのは services.cancel_workorder だけ。
     cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
+    # 製造部が受けた (着手した) 印。空 = 未着手。書くのは services.accept_workorder だけ。
+    accepted_at = models.DateTimeField("受けた日時", null=True, blank=True)
+    # 受けた人。書くのは services.accept_workorder だけ (進捗の実績の「人」と同じ形)。
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="受けた人",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="accepted_workorders",
+    )
 
     class Meta:
         verbose_name = "指示書"
@@ -48,6 +61,12 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return self.wo_no
+
+    def accepted_label(self) -> str:
+        """一覧の「受けた」の列の字 (表示だけ)。未着手は「未」、受けた物は日時 (YYYY-MM-DD HH:MM)。"""
+        if self.accepted_at is None:
+            return "未"
+        return timezone.localtime(self.accepted_at).strftime("%Y-%m-%d %H:%M")
 
     @property
     def progress_records(self):
