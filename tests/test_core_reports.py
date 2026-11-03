@@ -6,6 +6,7 @@
 
 import importlib
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urljoin
@@ -224,3 +225,18 @@ def test_url_fetcher_refuses_manual_image_symlink_outside(settings, tmp_path):
     assert reports.fetch_local(base + "manual/images/inside.png") == (MANUAL_PNG, "image/png")
     with pytest.raises(ValueError):
         reports.fetch_local(base + "manual/images/link.png")
+
+
+def test_report_css_numbers_pages():
+    """report.css の既にある @page の中に、下の中央のページ番号 (n / N) がある。"""
+    body, _ = reports.fetch_local(reports.BASE_URL + "static/css/report.css")
+    css = body.decode("utf-8")
+
+    assert "@bottom-center" in css
+    assert 'content: counter(page) " / " counter(pages);' in css
+    assert '"NotoSansJP Report"' in css
+    page = re.search(r"@page \{(.*?)\n\}", css, re.S)
+    assert page, "@page の規則が無い"
+    assert "@bottom-center" in page.group(1)
+    # @page の規則は 1 つのまま (注記の中の字は数えない)
+    assert len(re.findall(r"^@page", css, re.M)) == 1

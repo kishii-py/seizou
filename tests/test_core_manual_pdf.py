@@ -108,7 +108,7 @@ def toc_anchors(html: str) -> list[str]:
 
 def chapter(html: str, anchor: str) -> str:
     """冊子の 1 章 (id="<anchor>" の div) の中身。"""
-    box = re.search(rf'<div id="{re.escape(anchor)}" class="booklet-chapter">(.*?)</div>', html, re.S)
+    box = re.search(rf'<div id="{re.escape(anchor)}" class="booklet-chapter(?: booklet-stub)?">(.*?)</div>', html, re.S)
     assert box, f"{anchor} の章が無い"
     return box.group(1)
 
@@ -187,8 +187,8 @@ def test_booklet_has_cover_toc_and_chapters(db, manual):
     assert f"説明書を作った日 {japanese_date(timezone.localdate())}" in meta
     assert toc_anchors(html) == screen_anchors()
     for anchor in screen_anchors():
-        assert html.count(f'<div id="{anchor}" class="booklet-chapter">') == 1
-    assert html.count('class="booklet-chapter"') == len(all_screens())
+        assert len(re.findall(rf'<div id="{re.escape(anchor)}" class="booklet-chapter(?: booklet-stub)?">', html)) == 1
+    assert len(re.findall(r'<div id="[^"]+" class="booklet-chapter(?: booklet-stub)?">', html)) == len(all_screens())
     style = re.search(r"<style>(.*?)</style>", html, re.S)
     assert style, "冊子の style が無い"
     for word in (
@@ -273,7 +273,7 @@ def test_intro_is_first_chapter(db, manual):
     assert '<a href="#index">はじめに</a>' in html
     first = screen_anchors()[0]
     intro_at = html.index('<div id="index" class="booklet-chapter">')
-    assert intro_at < html.index(f'<div id="{first}" class="booklet-chapter">')
+    assert intro_at < html.index(f'<div id="{first}" class="booklet-chapter')
     assert intro_at > html.index('<nav class="booklet-toc"')
     assert INTRO_FRAGMENT in chapter(html, "index")
 
@@ -338,8 +338,8 @@ def test_booklet_pdf_with_weasyprint(db, manual, caplog):
     assert "target points to undefined anchor" not in caplog.text
 
     document = reports._render_document(core_manual.BOOKLET_TEMPLATE, core_manual.booklet_context())
-    # 表紙 1・「この冊子について」1・目次 1 以上・章は 1 画面 1 ページ以上
-    assert len(document.pages) >= len(all_screens()) + 3
+    # 表紙 1・「この冊子について」1・目次 1 以上・断片を書いた 2 章は 1 章 1 ページ以上。断片の無い章は詰める
+    assert 3 + 2 <= len(document.pages) < len(all_screens())
     page = document.pages[0]
     # A4 縦 = 210mm × 297mm (WeasyPrint の長さは CSS の px。1mm = 96 / 25.4 px)
     assert round(page.width * 25.4 / 96) == 210
@@ -500,7 +500,7 @@ def test_about_page_between_cover_and_toc(db, manual):
     assert cover_at < html.index('class="booklet-about"') < html.index('<nav class="booklet-toc"')
     # 目次に載らず、章の数も変わらない
     assert toc_anchors(html) == screen_anchors()
-    assert html.count('class="booklet-chapter"') == len(all_screens())
+    assert len(re.findall(r'<div id="[^"]+" class="booklet-chapter(?: booklet-stub)?">', html)) == len(all_screens())
 
 
 def test_style_has_color_footer_and_first_page(db, site):
@@ -609,3 +609,73 @@ def test_toc_title_larger_than_chapter_title(db, manual):
     nav = re.search(r'<nav class="booklet-toc" aria-label="目次">(.*?)</nav>', html, re.S)
     assert nav, "目次の nav が無い"
     assert "<ol>" in nav.group(1)
+
+
+# 断片の無い章 (booklet-stub) を詰める
+
+
+def test_stub_chapters_marked_and_packed_by_css(db, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    (manual / "orders_order_list.html").write_bytes(ORDER_FRAGMENT.encode("shift_jis"))
+    html = booklet_html()
+    for word in (
+        '<div id="masters_item_list" class="booklet-chapter">',
+        '<div id="masters_partner_list" class="booklet-chapter booklet-stub">',
+        '<div id="orders_order_list" class="booklet-chapter booklet-stub">',
+    ):
+        assert html.count(word) == 1, word
+    assert html.count('class="booklet-chapter booklet-stub"') + html.count('class="booklet-chapter"') == len(all_screens())
+    # 目次は全部の画面を載せたまま
+    assert toc_anchors(html) == screen_anchors()
+    assert ITEM_FRAGMENT in chapter(html, "masters_item_list")
+    assert "この画面の説明書はまだありません" in chapter(html, "masters_partner_list")
+    assert "UTF-8 で読めませんでした" in chapter(html, "orders_order_list")
+    style = style_of(html)
+    assert ".booklet-stub { break-inside: avoid; }" in style
+    assert ".booklet-stub + .booklet-stub { break-before: auto;" in style
+    # 章は新しいページから始まるまま (stub の並びの 2 つ目からだけを、選び方の強さで前の stub に続ける)
+    assert ".booklet-about, .booklet-toc, .booklet-chapter { break-before: page; }" in style
+    # 章の番号は stub にも付く (counter-increment は .booklet-chapter の規則のまま)
+    rules = re.findall(r"([^{}]+)\{[^}]*counter-increment[^}]*\}", style)
+    assert [rule.strip() for rule in rules] == [".booklet-chapter"]
+    # class は途中から組み立てない (R19)
+    assert re.search(r'class="[^"]*(\{\{|\{%)', html) is None
+
+
+@pytest.mark.pdf
+def test_booklet_pdf_packs_stub_chapters(db, manual, caplog):
+    from PIL import Image
+
+    images = manual / "images"
+    images.mkdir()
+    Image.new("RGB", (8, 8), "white").save(images / "masters_item_list.png")
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    write_fragment(manual, "orders_order_list", ORDER_FRAGMENT)
+    document = reports._render_document(core_manual.BOOKLET_TEMPLATE, core_manual.booklet_context())
+    assert 3 + 2 <= len(document.pages) < len(all_screens())
+
+    # 栞の木 (1 つの栞は (題, (ページの番号 (0 から), x, y), 下の栞, 開閉) の tuple)。
+    # 「使い方」の子は「この冊子について」「目次」と、目録の順の章。画面の名前は重なることがあるので位置で突き合わせる
+    tree = document.make_bookmark_tree()
+    label, _, children, _ = tree[0]
+    assert label == "使い方"
+    assert [child[0] for child in children[:2]] == ["この冊子について", "目次"]
+    anchors = screen_anchors()
+    chapters = children[2:]
+    assert len(chapters) == len(anchors)
+    pages = [child[1][0] for child in chapters]
+    assert pages == sorted(pages)
+    written = {"masters_item_list", "orders_order_list"}
+    for i, anchor in enumerate(anchors):
+        if anchor not in written:
+            continue
+        # 断片のある章は新しいページから。その次の stub も新しいページから (stub の並びの最初)
+        assert pages[i] > pages[i - 1], anchor
+        assert anchors[i + 1] not in written
+        assert pages[i + 1] > pages[i], anchors[i + 1]
+    # 続く stub は同じページに並ぶ
+    assert any(
+        anchors[j] not in written and anchors[j + 1] not in written and pages[j] == pages[j + 1]
+        for j in range(len(pages) - 1)
+    )
+    assert "target points to undefined anchor" not in caplog.text

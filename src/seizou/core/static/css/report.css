@@ -11,6 +11,13 @@
 @page {
   size: A4 portrait;
   margin: 15mm 15mm 15mm 15mm;
+  /* ページ番号 (下の中央に「n / N」)。report.css を読む帳票の全部に効く。
+     使い方の冊子は自分の @page で会社名つきに上書きし、表紙 (:first) では消す。 */
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-family: "NotoSansJP Report", sans-serif;
+    font-size: 8pt;
+  }
 }
 
 html {
