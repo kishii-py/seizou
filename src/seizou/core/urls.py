@@ -5,6 +5,7 @@ core 自身の URL (名前空間 core) と、存在する部品 (seizou.parts.PA
 上げたファイル (MEDIA_URL の下。図面など) は、開発機でも本番でも core.media の 1 つの口 (ログインを見る) が返す。
 配り方 (Django が送るか、nginx に渡すか) は、会社の設定 SEIZOU_FILE_DELIVERY で選ぶ。
 稼働の確認の口 (/health/。core.health) はログインを見ない。監視の道具と nginx が開く。
+印の口 (/favicon.ico) は、ログインを見ずに印の絵 (static の favicon.svg) へ移す。Django の誤りの画面と、PDF や CSV を開いたタブは <link rel="icon"> を持たず、ブラウザがこの URL を取りに来るため。
 """
 
 import re
@@ -12,7 +13,10 @@ from importlib import import_module, util
 
 from django.conf import settings
 from django.contrib.auth import views as auth_views
+from django.templatetags.static import static
 from django.urls import include, path, re_path
+from django.utils.functional import lazy
+from django.views.generic import RedirectView
 
 from seizou.core.guide import screen_guide
 from seizou.core.health import health
@@ -52,6 +56,7 @@ core_patterns = [
     path("login/", RememberLoginView.as_view(authentication_form=LockoutAuthenticationForm), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("health/", health, name="health"),
+    path("favicon.ico", RedirectView.as_view(url=lazy(static, str)("favicon.svg"), permanent=False), name="favicon"),
 ]
 core_patterns += file_patterns()
 

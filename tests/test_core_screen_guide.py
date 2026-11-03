@@ -77,7 +77,7 @@ def test_guide_returns_four_rows_for_htmx(logged_in):
 def test_guide_shows_flow_neighbors(logged_in):
     body = guide(logged_in, "shipping_shipment_list").content.decode()
     assert "受注から入金まで" in body
-    workorders_url = reverse("workorders:workorder_list")
+    workorders_url = reverse("orders:orderline_list")
     notes_url = reverse("shipping:deliverynote_list")
     assert re.search(rf'<a class="btn btn-sm btn-outline border-base-300" href="{workorders_url}">.*?前の段: 指示書</a>', body)
     assert re.search(rf'<a class="btn btn-sm btn-outline border-base-300" href="{notes_url}">次の段: 納品書', body)

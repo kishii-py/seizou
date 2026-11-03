@@ -304,6 +304,12 @@ class HolidayForm(ServiceModelForm):
         model = Holiday
         fields = ["date", "name", "kind"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")}
+        # required の文は、空の欄の下に出る。名前の文は services.create_holiday と同じ字 (文に % を書かない)。
+        error_messages = {
+            "date": {"required": "休日の日付を入れてください。"},
+            "name": {"required": "休日の名前を入れてください。"},
+            "kind": {"required": "種類 (祝日か会社の休み) を選んでください。"},
+        }
 
 
 class HolidayDeleteForm(forms.Form):
