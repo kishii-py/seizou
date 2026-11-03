@@ -22,6 +22,12 @@
     </div>
   </div>
   <ul class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70" aria-label="凡例">
+    <li class="text-base-content/50">枠線 = 状態</li>
+    <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-warning"></span>計画</li>
+    <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-info"></span>着手</li>
+    <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-success"></span>完了</li>
+    <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-error"></span>遅れ</li>
+    <li class="flex items-center gap-2"><span class="inline-block size-3 rounded bg-primary/15"></span>塗り = 部品の色</li>
     <li class="flex items-center gap-2"><span class="inline-block size-3 rounded bg-base-200"></span>休日</li>
     <li class="flex items-center gap-2"><span class="inline-block h-3 w-0.5 bg-primary"></span>今日</li>
   </ul>
@@ -29,7 +35,7 @@
     <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="日の計画">
       {# 横にスクロールする箱。6 週は列の幅の下限で箱からはみ出し、左の段の見出しは止まったまま。 #}
       <div class="overflow-x-auto">
-        <div class="grid" style="grid-template-columns: 9rem repeat({{ board.columns }}, minmax(2.75rem, 1fr)); grid-template-rows: auto auto auto repeat({{ board.rows }}, 3rem);">
+        <div class="grid" style="grid-template-columns: 9rem repeat({{ board.columns }}, minmax(2.75rem, 1fr)); grid-template-rows: auto auto auto repeat({{ board.rows }}, 4.5rem);">
           {# 描く順 = 重なりの下から上: 角 → 日の枠 (落とす所) → 月の帯 → 日の数字と曜日 → 段の見出し → 棒。 #}
           <div class="sticky left-0 z-10 border-b border-r border-base-300 bg-base-100" style="grid-column: 1; grid-row: 1 / 4;"></div>
           {% for day in board.days %}
@@ -47,7 +53,9 @@
           {% endfor %}
           {% for bar in board.bars %}
           <div class="group min-w-0 py-1" data-bar-box style="grid-column: {{ bar.col|add:1 }} / span {{ bar.span }}; grid-row: {{ bar.row|add:3 }};">
-            <a class="plan-bar flex h-full min-w-0 cursor-grab items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-primary/40 bg-primary/10 px-2 text-xs text-base-content transition-colors hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' bar.workorder %}" draggable="true" data-step="{{ bar.step }}" hx-get="{% url 'workorders:workorder_modal' bar.workorder %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()"><span class="font-mono font-medium">{{ bar.wo_no }}</span><span class="truncate">{{ bar.part_no }} {{ bar.item_name }} {{ bar.qty|comma }}</span></a>
+            {# 棒: 塗りは部品の色 (data-tone)、枠線は状態 (data-state)。狭くて 1 行にした棒だけに、切れた字の全部を title で出す。 #}
+            <a class="plan-bar flex h-full min-w-0 cursor-grab flex-col justify-center gap-0.5 overflow-hidden rounded-lg border-2 px-2 text-xs text-base-content transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[tone=primary]:bg-primary/15 data-[tone=secondary]:bg-secondary/15 data-[tone=accent]:bg-accent/15 data-[tone=info]:bg-info/15 data-[tone=success]:bg-success/15 data-[tone=warning]:bg-warning/15 data-[state=planned]:border-warning data-[state=accepted]:border-info data-[state=done]:border-success data-[state=late]:border-error" href="{% url 'workorders:workorder_detail' bar.workorder %}" draggable="true" data-step="{{ bar.step }}" data-tone="{{ bar.tone }}" data-state="{{ bar.state }}" {% if bar.compact %}title="{{ bar.wo_no }} {{ bar.part_no }} {{ bar.item_name }} 数量 {{ bar.qty|comma }} ({{ bar.state_label }})"{% endif %} hx-get="{% url 'workorders:workorder_modal' bar.workorder %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% if bar.compact %}<span class="truncate font-mono font-medium">{{ bar.wo_no }}</span>{% else %}<span class="truncate font-mono font-medium">{{ bar.wo_no }}</span><span class="truncate">{{ bar.part_no }} {{ bar.item_name }}</span>
+              <span class="truncate text-base-content/70">数量 {{ bar.qty|comma }}</span>{% endif %}</a>
             {# 吹き出し: 横スクロールの箱に切られないように画面に対して置き、位置は plan_board.html の script が入れる。 #}
             {# 棒と同じ箱の中に置き、棒との間に隙間を空けない (中のボタンへ移れるように)。祖先に描く基準を変える指定を付けない。 #}
             <div class="invisible fixed z-20 w-72 group-hover:visible group-focus-within:visible" role="tooltip">
@@ -58,6 +66,7 @@
                   <dt class="text-base-content/70">数量</dt><dd>{{ bar.qty|comma }}</dd>
                   <dt class="text-base-content/70">納期</dt><dd>{{ bar.due_date|date:"Y-m-d"|default:"—" }}</dd>
                   <dt class="text-base-content/70">日</dt><dd>{{ bar.start|date:"n/j" }} → {{ bar.end|date:"n/j" }}</dd>
+                  <dt class="text-base-content/70">状態</dt><dd>{{ bar.state_label }}</dd>
                 </dl>
                 {% if bar.neighbors %}
                 <p class="mt-2 text-xs text-base-content/50">前後の工程</p>
@@ -83,7 +92,8 @@
       {% if board.unplanned %}
       <ul class="mt-4 flex flex-col gap-2">
         {% for card in board.unplanned %}
-        <li class="plan-card cursor-grab rounded-lg border border-base-300 bg-base-100 p-2 transition-colors hover:border-primary" draggable="true" data-step="{{ card.step }}">
+        {# 左の太い線は部品の色 (盤の棒の塗りと同じ色)。 #}
+        <li class="plan-card cursor-grab rounded-lg border border-l-4 border-base-300 bg-base-100 p-2 transition-shadow hover:shadow-md data-[tone=primary]:border-l-primary data-[tone=secondary]:border-l-secondary data-[tone=accent]:border-l-accent data-[tone=info]:border-l-info data-[tone=success]:border-l-success data-[tone=warning]:border-l-warning" draggable="true" data-step="{{ card.step }}" data-tone="{{ card.tone }}">
           <p class="font-mono font-medium">{{ card.wo_no }}</p>
           <p class="truncate">{{ card.part_no }} {{ card.item_name }}</p>
           <p class="text-xs text-base-content/70">数量 {{ card.qty|comma }}・納期 {{ card.due_date|date:"Y-m-d"|default:"—" }}</p>

@@ -4,7 +4,7 @@ fixture は tests/test_workorders_plan.py の物を写した (既にあるファ
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -305,3 +305,175 @@ def test_drop_targets_unchanged(client_logged_in, cut):
     box = re.search(r'<div id="plan-board"[^>]*>', html).group(0)
     for attr in ("data-place-url=", "data-process=", "data-board-start=", "data-weeks="):
         assert attr in box, attr
+
+
+# 2 段目: 棒 (3 行・部品ごとの塗り・状態の枠線・狭いときの 1 行) と凡例
+
+
+def _bar_tag_and_body(html, step):
+    """棒の <a> の開きの tag と中身。"""
+    found = re.search(
+        rf'(<a class="plan-bar[^>]*data-step="{step.pk}"[^>]*>)(.*?)</a>', html, re.DOTALL
+    )
+    assert found, step.pk
+    return found.group(1), found.group(2)
+
+
+def _bar_attr(html, step, name):
+    tag, _ = _bar_tag_and_body(html, step)
+    return re.search(rf'{name}="([^"]*)"', tag).group(1)
+
+
+def _card_attr(html, step, name):
+    tag = re.search(rf'<li class="plan-card[^>]*data-step="{step.pk}"[^>]*>', html).group(0)
+    return re.search(rf'{name}="([^"]*)"', tag).group(1)
+
+
+def _spans(body):
+    return [text.strip() for text in re.findall(r"<span[^>]*>([^<]*)</span>", body)]
+
+
+@pytest.mark.django_db
+def test_bar_has_three_lines(client_logged_in, user, workorder, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+
+    html = _board(client_logged_in, step.process).content.decode()
+
+    tag, body = _bar_tag_and_body(html, step)
+    assert _spans(body) == [workorder.wo_no, "T-100 作り物の軸", "数量 4.00"]  # 予定の数は小数 2 桁で持ち、comma はそのまま出す
+    assert "title=" not in tag
+
+
+@pytest.mark.django_db
+def test_bar_tone_follows_item_pk(client_logged_in, user, order, line, cut, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    same_item = services.issue_workorder(line, 2, [{"process": cut, "planned_qty": 2}], user)
+    gear = _second_item_step(user, order, cut)
+
+    html = _board(client_logged_in, cut).content.decode()
+
+    tone = _bar_attr(html, step, "data-tone")
+    assert tone == plans.PART_TONES[line.item.pk % 6]
+    assert tone == plans.part_tone(line.item.pk)
+    assert _card_attr(html, same_item.steps.get(), "data-tone") == tone
+    gear_item = gear.workorder.order_line.item
+    assert gear_item.pk == line.item.pk + 1
+    assert _card_attr(html, gear, "data-tone") == plans.part_tone(gear_item.pk)
+    assert _card_attr(html, gear, "data-tone") != tone
+
+    services.plan_step(gear, date(2026, 11, 5), date(2026, 11, 5), user)
+    html = _board(client_logged_in, cut).content.decode()
+    assert _bar_attr(html, gear, "data-tone") == plans.part_tone(gear_item.pk)
+
+
+@pytest.mark.django_db
+def test_bar_state_precedence(client_logged_in, user, order, cut, bend, workorder, step):
+    from seizou.progress import services as progress_services
+
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    html = _board(client_logged_in, cut).content.decode()
+    assert _bar_attr(html, step, "data-state") == "planned"
+
+    services.accept_workorder(workorder, user)
+    html = _board(client_logged_in, cut).content.decode()
+    assert _bar_attr(html, step, "data-state") == "accepted"
+
+    # 納期 11/20 より後に置き直す (11/24 は 11/2 の週の外なので、11/23 の週の盤で見る)。
+    services.plan_step(step, date(2026, 11, 24), date(2026, 11, 24), user)
+    late_week = "?start=2026-11-23"
+    html = _board(client_logged_in, cut, late_week).content.decode()
+    assert _bar_attr(html, step, "data-state") == "late"
+
+    # 最後の工程 (曲げ) の実績が予定の数に達すると、遅れていても「完了」。
+    bend_step = workorder.steps.get(process=bend)
+    recorded_at = timezone.make_aware(datetime(2026, 11, 5, 10, 30))
+    progress_services.record_progress(bend_step, Decimal("3"), recorded_at, user)
+    html = _board(client_logged_in, cut, late_week).content.decode()
+    assert _bar_attr(html, step, "data-state") == "late"
+    progress_services.record_progress(bend_step, Decimal("1"), recorded_at, user)
+    html = _board(client_logged_in, cut, late_week).content.decode()
+    assert _bar_attr(html, step, "data-state") == "done"
+
+    # 納期の無い明細は、いつに置いても「遅れ」にならない。
+    item = masters_services.create_item({"part_no": "T-300", "name": "作り物の板", "unit": "個"}, user)
+    undated = orders_services.create_order(
+        order.customer,
+        [{"item": item, "qty": Decimal("3"), "unit_price": Decimal("100"), "due_date": None}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    free = services.issue_workorder(
+        undated.lines.get(), Decimal("3"), [{"process": cut, "planned_qty": Decimal("3")}], user
+    ).steps.get()
+    services.plan_step(free, date(2026, 11, 24), date(2026, 11, 24), user)
+    html = _board(client_logged_in, cut, late_week).content.decode()
+    assert _bar_attr(html, free, "data-state") == "planned"
+
+
+@pytest.mark.django_db
+def test_board_queries_do_not_grow_with_bars(client_logged_in, user, line, cut, step):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    _board(client_logged_in, cut)
+    with CaptureQueriesContext(connection) as one_bar:
+        assert _board(client_logged_in, cut).status_code == 200
+
+    for _ in range(3):
+        more = services.issue_workorder(line, 1, [{"process": cut, "planned_qty": 1}], user)
+        services.plan_step(more.steps.get(), date(2026, 11, 4), date(2026, 11, 4), user)
+    with CaptureQueriesContext(connection) as four_bars:
+        html = _board(client_logged_in, cut).content.decode()
+    assert html.count('<a class="plan-bar') == 4
+    assert len(four_bars.captured_queries) == len(one_bar.captured_queries)
+
+
+@pytest.mark.django_db
+def test_compact_bar_in_six_weeks(client_logged_in, user, line, cut, workorder, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+    wide = services.issue_workorder(line, 2, [{"process": cut, "planned_qty": 2}], user).steps.get()
+    services.plan_step(wide, date(2026, 11, 9), date(2026, 11, 10), user)
+
+    html = _board(client_logged_in, cut, WEEK + "&weeks=6").content.decode()
+
+    tag, body = _bar_tag_and_body(html, step)
+    assert _spans(body) == [workorder.wo_no]
+    assert "数量" not in body
+    assert f'title="{workorder.wo_no} T-100 作り物の軸 数量 4.00 (計画)"' in tag
+    wide_tag, wide_body = _bar_tag_and_body(html, wide)
+    assert len(_spans(wide_body)) == 3
+    assert "title=" not in wide_tag
+
+    html = _board(client_logged_in, cut).content.decode()
+    tag, body = _bar_tag_and_body(html, step)
+    assert len(_spans(body)) == 3
+    assert "title=" not in tag
+
+
+@pytest.mark.django_db
+def test_legend_lists_states_and_fill(client_logged_in, cut):
+    legend = _legend(_board(client_logged_in, cut).content.decode())
+    for word in ("計画", "着手", "完了", "遅れ", "部品の色", "休日", "今日"):
+        assert word in legend, word
+
+
+@pytest.mark.django_db
+def test_tooltip_shows_state(client_logged_in, user, cut, step):
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
+
+    html = _board(client_logged_in, cut).content.decode()
+
+    tooltip = _tooltip(html, step)
+    assert '<dt class="text-base-content/70">状態</dt><dd>計画</dd>' in tooltip
+    begin = html.index(f'data-step="{step.pk}"')
+    assert "未計画に戻す</button>" in html[begin : begin + 4000]
+
+
+@pytest.mark.django_db
+def test_unplanned_card_has_tone_border(client_logged_in, cut, step):
+    html = _board(client_logged_in, cut).content.decode()
+
+    tag = re.search(rf'<li class="plan-card[^>]*data-step="{step.pk}"[^>]*>', html).group(0)
+    assert "border-l-4" in tag.split('"')[1].split()
+    assert "data-tone=" in tag
