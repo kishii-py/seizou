@@ -23,7 +23,7 @@ def test_partner_select_carries_modal_url_template():
 
 
 def test_select_without_modal_has_no_template():
-    # 受注の明細には小窓が無いので、印を付けない (js は link を出さない)
-    html = RemoteSelect("orders:orderline_select").render("line", None)
+    # 発注の明細には小窓が無いので、印を付けない (js は link を出さない)
+    html = RemoteSelect("purchasing:purchaseorderline_select").render("line", None)
 
     assert "data-modal-url" not in html

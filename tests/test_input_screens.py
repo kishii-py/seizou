@@ -378,3 +378,37 @@ def test_shipment_post_still_saves(logged_in, split_order):
 
     assert response.status_code == 302
     assert orders_services.remaining_qty(second) == Decimal("3")
+
+
+# --- 4-4. 出荷の入力から部品の小窓 -----------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_orderline_modal_moves_to_item_modal(logged_in, order):
+    line = order.lines.get()
+    response = logged_in.get(reverse("orders:orderline_modal", args=[line.pk]), HTTP_HX_REQUEST="true")
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("masters:item_modal", args=[line.item_id])
+
+
+@pytest.mark.django_db
+def test_orderline_modal_requires_login_and_known_line(client, logged_in, order):
+    line = order.lines.get()
+    logged_in.logout()
+    response = client.get(reverse("orders:orderline_modal", args=[line.pk]))
+    assert response.status_code == 302
+    assert reverse("core:login") in response["Location"]
+
+    user = get_user_model().objects.get(username="tester")
+    client.force_login(user)
+    assert client.get(reverse("orders:orderline_modal", args=[999999])).status_code == 404
+
+
+def test_orderline_select_carries_modal_url_template():
+    from seizou.core.widgets import RemoteSelect
+
+    html = RemoteSelect("orders:orderline_select").render("order_line", None)
+
+    assert 'data-modal-url="' in html
+    assert reverse("orders:orderline_modal", args=[0]) in html
