@@ -10,6 +10,20 @@
 </section>
 {% endif %}
 {% feedback_detail object as info %}
+{% if info.screenshots %}
+<section id="feedback-screenshots" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-screenshots-title">
+  <h2 id="feedback-screenshots-title" class="flex items-center gap-2 text-lg font-bold">{% icon "image" "size-5 text-base-content/70" %}画面の絵<span class="badge badge-sm tabular-nums">{{ info.screenshots|length }}</span></h2>
+  <p class="mt-2 text-xs text-base-content/50">入力の形と添付ファイルの枠から付けた画像です。押すと別の画面で開きます。Issue の文には枚数とファイル名だけが入るので、絵は GitHub の Issue に手で付けてください。</p>
+  <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for row in info.screenshots %}
+    <a class="group block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'attachments:attachment_download' row.pk %}" target="_blank" rel="noopener">
+      <img src="{% url 'attachments:attachment_download' row.pk %}" alt="{{ row.original_name }}" class="h-40 w-full bg-base-200 object-contain" loading="lazy">
+      <span class="block truncate p-2 text-xs text-base-content/70" title="{{ row.original_name }}">{{ row.original_name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-issue-title">
   <h2 id="feedback-issue-title" class="text-lg font-bold">Issue の文</h2>
   <p class="mt-2 text-xs text-base-content/50">GitHub の Issue に写す文。取引先の名前と金額らしい数は「〇〇」に伏せてあります。貼る前に見直してください。会話の記録は入りません。</p>

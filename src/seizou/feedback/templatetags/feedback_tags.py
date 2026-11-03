@@ -37,7 +37,7 @@ def feedback_panel(context):
 
 @register.simple_tag(takes_context=True)
 def feedback_detail(context, feedback):
-    """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": 世話役か, "can_delete": 下書きを消せるか}。
+    """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": 世話役か, "can_delete": 下書きを消せるか, "screenshots": 画面の絵 (画像の添付ファイル。付けた順)}。
 
     request が無ければ世話役でなく、消せない。
     """
@@ -45,6 +45,7 @@ def feedback_detail(context, feedback):
     user = getattr(request, "user", None) if request is not None else None
     return {
         "issue_text": services.export_markdown(feedback),
+        "screenshots": services.screenshots_of(feedback),
         "can_manage": user is not None and services.can_manage(user),
         "can_delete": user is not None and services.can_delete(feedback, user),
     }
