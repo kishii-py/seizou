@@ -7,6 +7,7 @@
 - 受け口は受注を作らない (R10)。受け入れて受注にする関数は、受注の部品ができてから足す。
 - 承認 (受け入れ) と断りの後、send_reply が結果を「注文回答」にして相手の受け口へ返す。
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
+- 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
 from . import signing
-from .models import Connection, Inbox
+from .models import Acceptance, Connection, Inbox
 
 logger = logging.getLogger("seizou.connect")
 
@@ -140,6 +141,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     通れば Inbox を返す。同じ番号が既にあれば、新しい行を作らず 1 回目の行を返す。
     通らなければ断る理由の日本語の文字列を返し、受信箱には入れない。
     本文の kind が order_reply (注文回答) なら受信箱に入れず、元の発注に当てて ReplyReceipt を返す。
+    本文の kind が acceptance (検収) なら受信箱に入れず、受注の明細に当てて AcceptanceReceipt を返す。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
@@ -190,6 +192,9 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     # kind が無い物と知らない kind は、今までどおり注文として入れる。
     if payload.get("kind") == "order_reply":
         return _receive_reply(message_id, partner, payload)
+    # 検収 (相手が受け入れた数の知らせ) も届いた注文の行にせず、元の注文から作った受注の明細に当てる。
+    if payload.get("kind") == "acceptance":
+        return _receive_acceptance(message_id, partner, payload)
 
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
@@ -216,11 +221,43 @@ class ReplyReceipt:
     purchase_order: object
 
 
+@dataclass(frozen=True)
+class AcceptanceReceipt:
+    """受け口が検収を受注の明細に付けた (か、同じ番号の 2 回目だった) 印。
+
+    受け口の view は message_id だけを読む (ReplyReceipt と同じ)。acceptance は付けた Acceptance の行。
+    """
+
+    message_id: uuid.UUID
+    acceptance: object
+
+
 MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・result を字で送ってください。"
 MESSAGE_REPLY_RESULT = "注文回答の結果が accepted か rejected ではありません。"
 MESSAGE_REPLY_OTHER_PARTNER = "注文回答の元の発注は、その取引先への物ではありません。"
 MESSAGE_REPLY_ORDER_ID = "注文回答の元の注文のデータの番号が、送った物と合いません。"
 _REPLY_RESULTS = ("accepted", "rejected")
+
+# 検収 (EDI の 4 段目) の断る理由と、送らなかった理由の日本語。
+MESSAGE_ACCEPTANCE_SHAPE = "検収の形が読めません。order_id・line_no・accepted_on・qty を送ってください。"
+MESSAGE_ACCEPTANCE_UNKNOWN_ORDER = (
+    "検収の元の注文 (届いた注文) がありません。注文のデータの番号を確かめてください。"
+)
+MESSAGE_ACCEPTANCE_OTHER_PARTNER = "検収の元の注文は、その取引先からの物ではありません。"
+MESSAGE_ACCEPTANCE_NOT_ACCEPTED = (
+    "検収の元の注文は承認していない (受注になっていない) ので、検収を受けられません。"
+    "承認の後に送り直してください。"
+)
+MESSAGE_ACCEPTANCE_QTY = "検収の数が 0 より大きい数の形ではありません。"
+MESSAGE_ACCEPTANCE_DATE = "検収日が日付 (YYYY-MM-DD) の形ではありません。"
+MESSAGE_ACCEPTANCE_NOT_SENT_ORDER = (
+    "seizou どうしで送った発注ではないので、検収を送っていません。"
+    "相手に送った発注の受入だけが検収になります。"
+)
+MESSAGE_ACCEPTANCE_NO_CONNECTION = (
+    "取引先との接続 (送る向き) が無いので検収を送っていません。"
+    "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
+)
 
 
 def _receive_reply(message_id, partner, payload):
@@ -289,6 +326,106 @@ def _receive_reply(message_id, partner, payload):
             transaction.set_rollback(True)
             return _refuse(str(exc), msg_id)
     return ReplyReceipt(message_id=message_id, purchase_order=updated)
+
+
+def _receive_acceptance(message_id, partner, payload):
+    """署名の通った検収を、元の届いた注文から作った受注の明細に 1 回だけ付ける。返す物は AcceptanceReceipt か、断る理由の文。
+
+    引く順は 形 → 元の注文の番号 (order_id) で届いた注文 → 届いた注文の取引先が署名の通ったつながりの取引先と同じ
+    → 届いた注文が受け入れた (受注がある) 物 → その受注の明細の行番号 (line_no)。
+    同じ検収の番号の 2 回目は 1 回目の行を返す (R11 の考え)。受け口に利用者はいないので user は None。
+    """
+    msg_id = str(message_id)
+    order_id = payload.get("order_id")
+    order_no = payload.get("order_no")
+    line_no = payload.get("line_no")
+    accepted_on = payload.get("accepted_on")
+    qty = payload.get("qty")
+    # str でない値を filter と Decimal に渡さないよう、先に形を見る。line_no は JSON の整数 (bool は int の子なので外す)。
+    if not all(isinstance(value, str) and value for value in (order_id, accepted_on, qty)):
+        return _refuse(MESSAGE_ACCEPTANCE_SHAPE, msg_id)
+    if isinstance(line_no, bool) or not isinstance(line_no, int) or line_no < 1:
+        return _refuse(MESSAGE_ACCEPTANCE_SHAPE, msg_id)
+    order_no = order_no if isinstance(order_no, str) else ""
+    try:
+        order_message_id = uuid.UUID(order_id)
+    except ValueError:
+        return _refuse(MESSAGE_ACCEPTANCE_UNKNOWN_ORDER, msg_id)
+    try:
+        qty_value = _payload_decimal(qty, "検収の数")
+    except ValueError:
+        return _refuse(MESSAGE_ACCEPTANCE_QTY, msg_id)
+    if not qty_value > 0:
+        return _refuse(MESSAGE_ACCEPTANCE_QTY, msg_id)
+    try:
+        accepted_date = date.fromisoformat(accepted_on)
+    except ValueError:
+        return _refuse(MESSAGE_ACCEPTANCE_DATE, msg_id)
+
+    inbox = (
+        Inbox.objects.select_related("order", "partner").filter(message_id=order_message_id).first()
+    )
+    if inbox is None:
+        return _refuse(MESSAGE_ACCEPTANCE_UNKNOWN_ORDER, msg_id)
+    if inbox.partner_id != partner.pk:
+        return _refuse(MESSAGE_ACCEPTANCE_OTHER_PARTNER, msg_id)
+    if inbox.status != Inbox.STATUS_ACCEPTED or inbox.order is None:
+        return _refuse(MESSAGE_ACCEPTANCE_NOT_ACCEPTED, msg_id)
+    line = inbox.order.lines.filter(line_no=line_no).first()
+    if line is None:
+        return _refuse(f"検収の明細の行番号 {line_no} が受注 {inbox.order.order_no} にありません。", msg_id)
+
+    with transaction.atomic():
+        try:
+            acceptance = record_acceptance(
+                inbox,
+                line,
+                qty_value,
+                accepted_date,
+                None,
+                message_id=message_id,
+                buyer_order_no=order_no,
+                buyer_line_no=line_no,
+            )
+        except ValueError as exc:
+            transaction.set_rollback(True)
+            return _refuse(str(exc), msg_id)
+    return AcceptanceReceipt(message_id=message_id, acceptance=acceptance)
+
+
+def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, buyer_order_no, buyer_line_no):
+    """検収を受注の明細に 1 行で記録する (受ける側の書く関数)。返す物は Acceptance。
+
+    数が 0 以下・検収日が日付でない・その届いた注文から作った受注の明細でないときは日本語の ValueError。
+    同じ番号 (message_id) の 2 回目は新しい行を作らず 1 回目の行を返す (R11 の考え。番号の一意の制約に当てる)。
+    user は記録のために受ける (受け口からは None)。
+    """
+    try:
+        number = qty if isinstance(qty, Decimal) else Decimal(str(qty))
+        positive = number.is_finite() and number > 0
+    except InvalidOperation:
+        positive = False
+    if not positive:
+        raise ValueError("検収の数は 0 より大きい数にしてください。")
+    if not isinstance(accepted_on, date):
+        raise ValueError("検収日は日付にしてください。")
+    if order_line.order_id != inbox.order_id:
+        raise ValueError("検収の明細は、その届いた注文から作った受注の明細ではありません。")
+    limit = Acceptance._meta.get_field("buyer_order_no").max_length
+    # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない (receive の Inbox と同じ)。
+    try:
+        with transaction.atomic():
+            return Acceptance.objects.create(
+                message_id=message_id,
+                inbox=inbox,
+                order_line=order_line,
+                buyer_order_no=(buyer_order_no or "")[:limit],
+                buyer_line_no=buyer_line_no,
+                accepted_on=accepted_on,
+                qty=number,
+            )
+    except IntegrityError:
+        return Acceptance.objects.get(message_id=message_id)
 
 
 # 受け入れと断るの日本語 (何が起きて、何をすればよいか)。payload の全文は文に入れない。
@@ -468,6 +605,73 @@ def send_reply(inbox, user):
         saved.save(update_fields=fields)
 
     logger.info("注文回答: 届いた注文 %s 番号 %s 返事の種類 %s", saved.pk, message_id, kind)
+    return saved
+
+
+def send_acceptance(receipt, user):
+    """受入を「検収」にし、署名して、注文を送った相手 (協力企業の seizou) の受け口へ送る。
+
+    - 送るのは、送った注文 (Outbox) の行がある発注の受入だけ。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - 番号は送る前に保存し (届かなくても残る)、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
+    - つながりは発注の取引先の、向き「送る」の物 (注文と同じ向き)。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order・send_reply と同じ _deliver。
+    - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (受入は成立する)。
+      返事は受入の acceptance_response に、相手が受け取ったときだけ acceptance_sent_at に書く。
+      受入の列は purchasing.services の assign_acceptance_number・record_acceptance_response が書く。
+    - 鍵の値・本文・見出しの値をログと返す物に出さない。返す物は取り直した Receipt。
+    """
+    # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
+    from django.apps import apps
+    from django.utils import timezone
+
+    from seizou.core.conf import company_id
+    from seizou.core.services import company
+    from seizou.purchasing import services as purchasing_services
+
+    from .models import Outbox
+
+    # 数量と受入日は表の値で送る (受入を作った直後の物は、数量が渡した桁のままのため)。
+    receipt_model = apps.get_model("purchasing", "Receipt")
+    current = receipt_model.objects.select_related("line__purchase_order__partner").get(pk=receipt.pk)
+    line = current.line
+    purchase_order = line.purchase_order
+
+    first = Outbox.objects.filter(purchase_order=purchase_order).order_by("pk").first()
+    if first is None:
+        return purchasing_services.record_acceptance_response(
+            current, MESSAGE_ACCEPTANCE_NOT_SENT_ORDER, user
+        )
+    message_id = purchasing_services.assign_acceptance_number(current, user)
+
+    connection = (
+        Connection.objects.filter(partner=purchase_order.partner, direction=Connection.DIRECTION_SEND)
+        .order_by("pk")
+        .first()
+    )
+    if connection is None:
+        return purchasing_services.record_acceptance_response(
+            current, MESSAGE_ACCEPTANCE_NO_CONNECTION, user
+        )
+
+    acceptance_data = {
+        "id": str(message_id),
+        "kind": "acceptance",
+        "sent_at": timezone.localtime().isoformat(),
+        "order_id": str(first.message_id),
+        "order_no": purchase_order.po_no,
+        "line_no": line.line_no,
+        "accepted_on": current.received_on.isoformat(),
+        "qty": str(current.qty),
+        "buyer": {"id": company_id(), "name": company().name},
+    }
+    raw = json.dumps(acceptance_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    # R17: ここは atomic の外。送る所は send_order・send_reply と同じ _deliver。
+    reply, kind = _deliver(connection, message_id, raw)
+
+    saved = purchasing_services.record_acceptance_response(current, reply, user, sent=(kind == "received"))
+    logger.info("検収を送った: 受入 %s 番号 %s 返事の種類 %s", current.pk, message_id, kind)
     return saved
 
 

@@ -2,7 +2,7 @@
 
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 金額は purchasing.services が数量 × 単価を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
-受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収・支給材は会期後。書くときは purchasing.services を通す。
+受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 """
 
@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class PurchaseOrder(models.Model):
@@ -145,6 +146,16 @@ class Receipt(models.Model):
         on_delete=models.PROTECT,
         related_name="receipts",
     )
+    # 検収 (受入を相手の seizou へ送った記録)。connect.services.send_acceptance が purchasing.services の
+    # assign_acceptance_number・record_acceptance_response で書く。
+    # 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。画面に出さない。
+    acceptance_message_id = models.UUIDField("検収の番号", null=True, blank=True, unique=True)
+    # 相手の受け口が 200 を返したときだけ入れる。空 = まだ相手に届いていない (か、送る物ではない)。
+    acceptance_sent_at = models.DateTimeField("検収を送った日時", null=True, blank=True)
+    acceptance_response = models.CharField("検収の相手の返事", max_length=500, blank=True)
+
+    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    detail_hidden_fields = ("acceptance_message_id",)
 
     class Meta:
         verbose_name = "受入"
@@ -160,6 +171,18 @@ class Receipt(models.Model):
     def __str__(self):
         line = self.line
         return f"{self.received_on:%Y-%m-%d} {line.purchase_order.po_no}-{line.line_no} {line.item.part_no} {_qty_text(self.qty)}"
+
+    def acceptance_state(self):
+        """発注の詳細の「検収」の節に出す字。送る物でない受入は空の字 (テンプレートが薄い「—」を出す)。
+
+        送れた (相手の受け口が 200) なら「送った <日時>」、送れていなくて返事があれば
+        「届いていない: <相手の返事>」。
+        """
+        if self.acceptance_sent_at is not None:
+            return f"送った {timezone.localtime(self.acceptance_sent_at):%Y-%m-%d %H:%M}"
+        if self.acceptance_response:
+            return f"届いていない: {self.acceptance_response}"
+        return ""
 
 
 def _qty_text(value) -> str:
