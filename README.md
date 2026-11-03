@@ -107,7 +107,7 @@ claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利�
 
 | 道具 | 何をするか | 読む / 書く |
 |---|---|---|
-| `company_info` | 会社の名前・選べる設定の今の値・入っている部品を返す | 読む |
+| `company_info` | 会社の名前・選べる設定の今の値と出所・入っている部品を返す | 読む |
 | `list_screens` | 画面の目録 (名前・1 文・URL) を返す | 読む |
 | `search_items` | 部品を品番か品名の語で探す | 読む |
 | `get_item` | 部品の 1 件を、取引先ごとの品番と標準の工程つきで返す | 読む |

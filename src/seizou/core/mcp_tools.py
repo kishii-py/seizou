@@ -372,11 +372,12 @@ def _annotated_lines(orders):
 
 
 def company_info() -> dict[str, Any]:
-    """会社の名前と、選べる設定の今の値と、入っている部品を返す。
+    """会社の名前と、選べる設定の今の値と出所と、入っている部品を返す。
 
     引数は無い。
     返す物: company (id・name 会社名・short_name 略称。会社の行が無ければ名前は空)、
     settings (選べる設定の鍵ごとの今の値。例 over_shipment は受注より多い出荷のポカよけの段 stop / warn / off)、
+    sources (鍵ごとの値の出所。画面 = 設定の画面で上書きした値 / 答え (settings.py) = 会社の settings.py の SEIZOU / 既定)、
     parts (入っている部品の短い名前の並び)。
     """
     company = Company.objects.order_by("pk").first()
@@ -388,6 +389,7 @@ def company_info() -> dict[str, Any]:
             "short_name": company.short_name if company else "",
         },
         "settings": {key: conf.setting(key) for key in conf.DEFAULTS},
+        "sources": {key: conf.setting_source(key) for key in conf.DEFAULTS},
         "parts": [part.rsplit(".", 1)[-1] for part in PARTS],
     }
 

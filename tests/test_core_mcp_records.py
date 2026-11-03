@@ -25,7 +25,8 @@ from seizou.assistant import tools
 from seizou.billing import services as billing_services
 from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
-from seizou.core import access, mcp_tools
+from seizou.core import access, conf, mcp_tools
+from seizou.core import services as core_services
 from seizou.core.management.commands import seizou_mcp
 from seizou.feedback import services as feedback_services
 from seizou.masters import services as masters_services
@@ -546,6 +547,24 @@ def test_list_feedback_and_get_feedback(user, customer, feedback_rows):
         assert _has_japanese(refused["error"]), bad
 
 
+# --- 会社の設定の出所 ---
+
+
+def test_company_info_reports_sources(settings, manager):
+    settings.SEIZOU = {"over_shipment": "stop"}
+    info = _json(mcp_tools.company_info())
+    assert info["sources"]["over_shipment"] == conf.SOURCE_ANSWER
+    assert info["sources"]["order_form"] == conf.SOURCE_DEFAULT
+    assert set(info["sources"]) == set(info["settings"]) == set(conf.DEFAULTS)
+    assert info["settings"]["over_shipment"] == "stop"
+
+    core_services.set_setting("over_shipment", "off", manager)
+    after = _json(mcp_tools.company_info())
+    assert after["sources"]["over_shipment"] == conf.SOURCE_SCREEN
+    assert after["settings"]["over_shipment"] == "off"
+    assert after["sources"]["order_form"] == conf.SOURCE_DEFAULT
+
+
 # --- 部品の有無・目録 ---
 
 
@@ -577,6 +596,7 @@ def test_new_tools_are_listed_everywhere():
     assert "発注側" in described["list_receipts"]
     assert "受入" in described["list_acceptances"]
     assert "受注側" in described["list_acceptances"]
+    assert "出所" in described["company_info"]
 
     lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
     for name in NEW_TOOLS:
@@ -584,3 +604,5 @@ def test_new_tools_are_listed_everywhere():
         assert len(rows) == 1, name
         assert rows[0].endswith("| 読む |"), name
     assert sum("| 書く |" in line for line in lines) == 3
+    (company_row,) = [line for line in lines if line.startswith("| `company_info` |")]
+    assert "出所" in company_row
