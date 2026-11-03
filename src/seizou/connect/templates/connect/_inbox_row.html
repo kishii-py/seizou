@@ -26,7 +26,7 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
   <td class="whitespace-nowrap text-right{% if new %} bg-primary/10{% endif %}">
     <details class="dropdown dropdown-end row-menu">
       <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
-      <ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         {% if row.obj.status == "received" %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}承認</a></li>
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}断る</a></li>

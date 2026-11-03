@@ -7,7 +7,8 @@
  *     ... <td class="whitespace-nowrap text-right">
  *       <details class="dropdown dropdown-end row-menu">
  *         <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
- *         <ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+ *         <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+ *           (z-50 は左のメニュー z-40・上の帯 z-30 より上)
  *           <li><a href="...">出荷する</a></li> ...
  *         </ul>
  *       </details>
@@ -22,6 +23,8 @@
  *   表の箱 (overflow-auto) の端で切れないため。閉じたら inline の style を消す。
  *   daisyUI の dropdown は中に focus が無いと中身が透明なので、opacity と scale も inline の style で置く。
  * - 画面の右端・下端ではみ出す分は、左か上へずらす。
+ * - 左は main の左の端 (左のメニューの右) より左に出さない。summary の下に右端をそろえて出すと左へはみ出すときは、
+ *   summary の左端にそろえて右へ開く。
  * - 1 つ開く時、ほかの行の details.row-menu は閉じる (open を外す)。
  *   Escape・メニューの外の押下・項目 (a) の押下・画面と表の箱の scroll で閉じる。
  * - 行の onclick で詳細へ移る画面では、onclick の closest('a') を closest('a, details') にする
@@ -86,6 +89,10 @@
     var height = list.offsetHeight;
     var viewWidth = document.documentElement.clientWidth;
     var viewHeight = document.documentElement.clientHeight;
+    // 左の端の下限は main の左の端 (左のメニューの右)。幅の狭い画面では左のメニューが閉じていて main の左は 0 (画面の端と同じ)。
+    var minLeft = EDGE;
+    var main = document.querySelector("main");
+    if (main) minLeft = Math.max(EDGE, Math.round(main.getBoundingClientRect().left) + EDGE);
     var left;
     var top;
     if (point) {
@@ -96,11 +103,13 @@
     } else {
       var anchor = (summary || details).getBoundingClientRect();
       left = anchor.right - width;
+      // 右端をそろえると左のメニューの下へ出るとき (表の先頭の列の ⋮) は、summary の左端にそろえて右へ開く。
+      if (left < minLeft) left = anchor.left;
       top = anchor.bottom + GAP;
       if (top + height > viewHeight - EDGE) top = anchor.top - height - GAP;
     }
     if (left + width > viewWidth - EDGE) left = viewWidth - EDGE - width;
-    if (left < EDGE) left = EDGE;
+    if (left < minLeft) left = minLeft;
     if (top < EDGE) top = EDGE;
     style.left = Math.round(left) + "px";
     style.top = Math.round(top) + "px";

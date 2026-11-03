@@ -429,7 +429,7 @@ def test_row_menu_markup_and_links(settings, tmp_path, user, logged_in, customer
     assert "onclick=" not in tr_html.split(">", 1)[0]
     assert '<details class="dropdown dropdown-end row-menu">' in tr_html
     assert '<summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>' in tr_html
-    assert '<ul class="menu dropdown-content z-40 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">' in tr_html
+    assert '<ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">' in tr_html
     hrefs = [
         f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"',
         f'href="{reverse("workorders:workorder_create")}?order_line={line.pk}"',

@@ -78,3 +78,55 @@ def test_e08_zero_qty_is_red(page_a, company_a):
     shot(page_a, "E-08", "a-zero-qty")
     # 06 の期待は欄の横の赤の文。明細の行の中 (数量の欄の下) に赤の文があるか。今は無いので、上の印 (期待どおりに動かない理由つき) を付けてある。
     expect(page_a.locator("#order-lines .text-error").first).to_be_visible()
+
+
+def _menu_links_readable(page, row) -> list[str]:
+    """開いた行のメニューの項目 (a) が全部、左のメニューの右にあり、真ん中の点の一番上がその項目であることを見る。字を返す。"""
+    links = row.locator("details.row-menu[open] ul li a")
+    expect(links.first).to_be_visible()
+    sidebar_right = page.locator("aside").first.evaluate("aside => aside.getBoundingClientRect().right")
+    texts = []
+    for index in range(links.count()):
+        link = links.nth(index)
+        placed = link.evaluate(
+            """link => {
+                const box = link.getBoundingClientRect();
+                const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+                return { left: box.left, onTop: !!top && link.contains(top) };
+            }"""
+        )
+        assert placed["left"] >= sidebar_right, link.inner_text()
+        assert placed["onTop"], link.inner_text()
+        texts.append(link.inner_text().strip())
+    return texts
+
+
+def test_e08_line_menu_readable_beside_sidebar(page_a, company_a):
+    """期待 (06 の E-08): 一覧に出る。0 は欄の横に赤の文で保存されない (入れた値は残る)。金額 = 数量 × 単価。出荷済みより下げると止まる。
+
+    見る所: 受注の詳細の明細の ⋮ と右クリックのメニューが、幅 1280 の窓で左のメニューの裏に隠れず、項目の字が全部読めること (初見テスト R3)。
+    見ない所: 06 の E-08 の期待そのもの (この関数は受注を作った後の詳細の明細のメニューだけを見る)。
+    """
+    login(page_a, company_a)
+    new_order(
+        page_a,
+        company_a,
+        customer=seed_name(company_a, "partners", CUSTOMER_CODE),
+        part_no=PART_NO,
+        qty=10,
+        unit_price=STANDARD_PRICE,
+        mark=unique_mark("e08m"),
+    )
+    row = page_a.locator("tr[data-row-menu]").first
+
+    row.locator('summary[aria-label="行の操作"]').click()
+    texts = _menu_links_readable(page_a, row)
+    for label in ("出荷する", "指示書を発行する", "発注する"):
+        assert label in texts, label
+    shot(page_a, "E-08", "a-line-menu")
+
+    page_a.keyboard.press("Escape")
+    expect(row.locator("details.row-menu[open]")).to_have_count(0)
+    row.click(button="right")
+    texts = _menu_links_readable(page_a, row)
+    assert "出荷する" in texts

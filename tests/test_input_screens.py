@@ -5,15 +5,66 @@ E-06・E-08・E-38・E-12・E-05。
 """
 
 import re
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
+import pytest
+from django.contrib.auth import get_user_model
+from django.urls import reverse
+
+import seizou.connect
 import seizou.core
+import seizou.orders
+from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
 
 CORE = Path(seizou.core.__file__).resolve().parent
 REPO = Path(__file__).resolve().parent.parent
 SELECT_JS = CORE / "static" / "js" / "seizou-select.js"
 INPUT_CSS = REPO / "scripts" / "css" / "input.css"
 APP_CSS = CORE / "static" / "css" / "app.css"
+ROW_MENU_JS = CORE / "static" / "js" / "seizou-row-menu.js"
+ORDERS = Path(seizou.orders.__file__).resolve().parent
+CONNECT = Path(seizou.connect.__file__).resolve().parent
+MENU_TEMPLATES = (
+    ORDERS / "templates" / "orders" / "_line_menu.html",
+    ORDERS / "templates" / "orders" / "_row_menu.html",
+    CONNECT / "templates" / "connect" / "_inbox_row.html",
+)
+ORDER_DATE = date(2026, 11, 2)
+
+
+@pytest.fixture
+def user(db):
+    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
+
+
+@pytest.fixture
+def logged_in(client, user):
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def customer(user):
+    return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+
+
+@pytest.fixture
+def shaft(user):
+    return masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+
+
+@pytest.fixture
+def order(user, customer, shaft):
+    """明細 1 行 (数量 10・単価 100) の受注。"""
+    return orders_services.create_order(
+        customer,
+        [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100")}],
+        user,
+        order_date=ORDER_DATE,
+    )
 
 
 # --- 1. 候補の一覧を body の直下に描き、取りに行っている間の Enter を止める -------------------------
@@ -45,3 +96,26 @@ def test_input_css_styles_list_under_body():
     assert "body > .ts-dropdown .active {" in source
     built = APP_CSS.read_text(encoding="utf-8")
     assert len(re.findall(r"body ?> ?\.ts-dropdown", built)) >= 2
+
+
+# --- 2. ⋮ のメニューを左のメニューに隠さない ------------------------------------------------------
+
+
+def test_row_menu_js_keeps_left_of_main():
+    text = ROW_MENU_JS.read_text(encoding="utf-8")
+    for word in ('querySelector("main")', "minLeft", "anchor.left"):
+        assert word in text, word
+    assert "className" not in text and "classList.add" not in text
+
+
+@pytest.mark.django_db
+def test_order_detail_line_menu_is_above_sidebar(logged_in, order):
+    body = logged_in.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+
+    assert '<ul class="menu dropdown-content z-50 w-56' in body
+    assert "z-40 w-56" not in body
+
+
+def test_row_menu_templates_have_no_z40():
+    for path in MENU_TEMPLATES:
+        assert "z-40" not in path.read_text(encoding="utf-8"), path
