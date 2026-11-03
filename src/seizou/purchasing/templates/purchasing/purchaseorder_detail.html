@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
-{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表。「作成」のときだけ送り直すと取り消すのボタン。 #}
+{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直すと取り消すのボタン。 #}
 {% block actions %}{{ block.super }}{% if object.status == "draft" %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
@@ -49,4 +49,28 @@
     </table>
   </div>
 </section>
+{% if object.outbox_messages.exists %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="po-acceptance-title">
+  <h2 id="po-acceptance-title" class="text-lg font-bold">検収 (相手の seizou へ送った受入)</h2>
+  <p class="mt-2 text-xs text-base-content/70">受入を登録すると、相手の受注の明細に検収の印として送ります。届いていない物は「送り直す」で送れます。</p>
+  {% with receipts=object.receipts.all %}{% if receipts %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th>受入日</th><th>明細</th><th class="text-right">数量</th><th>検収</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for receipt in receipts %}
+        <tr>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ receipt.received_on|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap">{{ receipt.line.line_no }} {% master_link receipt.line.item %}</td>
+          <td class="text-right tabular-nums">{{ receipt.qty|comma }}</td>
+          <td>{% with state=receipt.acceptance_state %}{% if receipt.acceptance_sent_at %}{{ state }}{% elif state %}<span class="text-error">{{ state }}</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
+          <td class="whitespace-nowrap">{% if not receipt.acceptance_sent_at %}<form method="post" action="{% url 'purchasing:receipt_acceptance_resend' receipt.pk %}">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="mt-4 text-base-content/70">受入はまだありません。</p>{% endif %}{% endwith %}
+</section>
+{% endif %}
 {% endblock %}

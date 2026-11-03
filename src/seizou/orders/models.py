@@ -153,3 +153,10 @@ class OrderLine(models.Model):
         from .board import BoardRow
 
         return BoardRow(self)
+
+    @cached_property
+    def acceptance(self):
+        """検収の要約 (読むだけ)。受注の詳細の明細の表が読む。関数は orders.services.acceptance_summary。"""
+        from . import services
+
+        return services.acceptance_summary(self)

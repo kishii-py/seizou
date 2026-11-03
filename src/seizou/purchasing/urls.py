@@ -6,6 +6,7 @@
 from django.urls import path
 
 from . import views
+from . import acceptance
 
 app_name = "purchasing"
 
@@ -21,5 +22,6 @@ urlpatterns = [
     path("receipts/", views.ReceiptListView.as_view(), name="receipt_list"),
     path("receipts/new/", views.ReceiptCreateView.as_view(), name="receipt_create"),
     path("receipts/<int:pk>/", views.ReceiptDetailView.as_view(), name="receipt_detail"),
+    path("receipts/<int:pk>/acceptance/resend/", acceptance.resend_acceptance, name="receipt_acceptance_resend"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
 ]

@@ -21,6 +21,7 @@ from decimal import Decimal
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Sum, Value
+from django.db.models import Count, Max
 from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
@@ -253,6 +254,29 @@ def shipped_qty(order_line):
             output_field=DecimalField(max_digits=12, decimal_places=2),
         )
     )["total"]
+
+
+def acceptance_summary(order_line):
+    """検収 (connect の Acceptance) の数の合計と最後の検収日。逆の関係 acceptances を読むだけで、orders は connect を import しない。
+
+    返す物は {"count": 件数, "total": 検収の数の合計 (Decimal), "last_on": 最後の検収日か None}。
+    connect の部品が無い会社 (逆の関係が無い) では 0 件。読むだけ。
+    """
+    rows = getattr(order_line, "acceptances", None)
+    if rows is None:
+        return {"count": 0, "total": Decimal("0"), "last_on": None}
+    sums = rows.aggregate(
+        count=Count("pk"),
+        total=Coalesce(Sum("qty"), Value(Decimal("0")), output_field=_QTY_FIELD),
+        last_on=Max("accepted_on"),
+    )
+    total = sums["total"]
+    # SQLite は集計の値を桁なしで返すことがあるので Decimal(str()) で受ける。
+    return {
+        "count": sums["count"],
+        "total": total if isinstance(total, Decimal) else Decimal(str(total)),
+        "last_on": sums["last_on"],
+    }
 
 
 def remaining_qty(order_line):
