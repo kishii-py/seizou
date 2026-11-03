@@ -18,7 +18,7 @@
       <td><span class="block max-w-xs truncate" title="{{ line.part_name }}">{{ line.part_name }}</span></td>
       <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty }}</td>
       <td class="whitespace-nowrap">{{ line.unit }}</td>
-      <td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|default_if_none:"" }}</td>
+      <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|default_if_none:"" }}{% endif %}</td>
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}</td>
     </tr>
     {% empty %}

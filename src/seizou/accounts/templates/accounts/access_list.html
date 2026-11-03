@@ -1,0 +1,4 @@
+{% extends "core/list.html" %}
+{% load seizou_icons %}
+{# アカウント管理の一覧: 土台の一覧に「削除済みも表示」の切り替えを足す (削除済みの行は既定で出さない)。 #}
+{% block actions %}{{ block.super }}{% if request.GET.deleted == "1" %}<a class="btn btn-ghost" href="{{ request.path }}">{% icon "eye" "size-4" %}削除済みを隠す</a>{% else %}<a class="btn btn-ghost" href="{{ request.path }}?deleted=1">{% icon "eye" "size-4" %}削除済みも表示</a>{% endif %}{% endblock %}

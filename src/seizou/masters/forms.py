@@ -23,6 +23,13 @@ class ItemForm(ServiceModelForm):
         model = Item
         fields = ["part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"]
 
+    def __init__(self, *args, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if hide_money:
+            # 金額の閲覧が無い人 (権限の判定の on) には標準単価の欄を出さない。土台は cleaned_data を渡し、
+            # update_item は渡した鍵だけを直すので、標準単価は保存済みの値のまま。
+            self.fields.pop("standard_price", None)
+
 
 class PartnerForm(ServiceModelForm):
     class Meta:
