@@ -8,10 +8,13 @@
 - 画面の目録は URL の木を歩いて作るので、process の中で 1 回だけ作って覚える (screen_catalog)。
   試験は screen_catalog.cache_clear() で作り直す。
 - 世話役 = アカウント管理の権限 (seizou.core.access.can_manage_accounts)。確認済みと送ったにできるのは世話役だけ。
+- 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
+  添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
 """
 
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 
@@ -117,6 +120,103 @@ def can_edit(feedback, user) -> bool:
     return user_pk is not None and feedback.created_by_id == user_pk and feedback.status == "draft"
 
 
+# ---- 画面の絵 ----
+
+#: 画面の絵に許す拡張子 (小文字。添付ファイルの部品がブラウザの中で開く画像の形式)
+SCREENSHOT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+#: 入力の欄の accept の字
+SCREENSHOT_ACCEPT = "image/png,image/jpeg,image/webp"
+#: 1 枚の大きさの上限 (MB と、同じ上限のバイト)
+SCREENSHOT_MAX_MB = 5
+SCREENSHOT_MAX_BYTES = SCREENSHOT_MAX_MB * 1024 * 1024
+#: 1 回に付けられる枚数
+SCREENSHOT_MAX_COUNT = 3
+#: 添付ファイルの種類 (その他。写真はカメラで撮った物のため) と備考
+SCREENSHOT_KIND = "other"
+SCREENSHOT_NOTE = "画面の絵"
+
+MESSAGE_SCREENSHOT_NO_PART = "添付ファイルの部品が入っていない会社では、画面の絵を付けられません。"
+MESSAGE_SCREENSHOT_NOT_LIST = "画面の絵は、ファイルの並びで渡してください。"
+MESSAGE_SCREENSHOT_COUNT = (
+    f"画面の絵は 1 回に {SCREENSHOT_MAX_COUNT} 枚までです。"
+    f"{SCREENSHOT_MAX_COUNT} 枚までにして保存し、残りは編集の画面で付けてください。"
+)
+MESSAGE_SCREENSHOT_TYPE = "画面の絵は PNG・JPEG・WebP の画像だけを付けられます。画像のファイルを選び直してください。"
+MESSAGE_SCREENSHOT_EMPTY = "画面の絵のファイルが空です。中身のある画像を選び直してください。"
+MESSAGE_SCREENSHOT_SIZE = f"画面の絵は 1 枚 {SCREENSHOT_MAX_MB}MB までです。小さくしてから選び直してください。"
+
+
+def screenshots_enabled() -> bool:
+    """画面の絵を付けられる会社か (添付ファイルの部品が入っているか)。入力の欄の有無もこれで決める。"""
+    return apps.is_installed("seizou.attachments")
+
+
+def _attachments_services():
+    """添付ファイルの部品の services。部品が無い会社では None。
+
+    purchasing → stock と同じく、入っていない部品を import しない (import は関数の中のここだけ)。
+    """
+    if not screenshots_enabled():
+        return None
+    from seizou.attachments import services as attachments_services
+
+    return attachments_services
+
+
+def _checked_screenshots(screenshots) -> list:
+    """画面の絵の決まりを書く前に全部見て、通ったファイルの並びを返す。DB と storage に触らない。
+
+    並びでなければ ValueError。空の値 (None・選ばなかった欄) を除いて空なら [] (部品が無い会社でも断らない)。
+    部品の有無 → 枚数 → 1 枚ずつ 形式 → 空 → 大きさ → 名前の字数 の順に見て、外れたら日本語の ValueError。
+    名前の字数は添付ファイルの部品の上限と文で先に見る (add_attachment が 2 枚目で断ると、1 枚目のファイルが storage に残るため)。
+    """
+    if not isinstance(screenshots, (list, tuple)):
+        raise ValueError(MESSAGE_SCREENSHOT_NOT_LIST)
+    files = [file for file in screenshots if file]
+    if not files:
+        return []
+    attachments_services = _attachments_services()
+    if attachments_services is None:
+        raise ValueError(MESSAGE_SCREENSHOT_NO_PART)
+    if len(files) > SCREENSHOT_MAX_COUNT:
+        raise ValueError(MESSAGE_SCREENSHOT_COUNT)
+    for file in files:
+        name = os.path.basename(getattr(file, "name", "") or "")
+        if attachments_services.extension_of(name) not in SCREENSHOT_EXTENSIONS:
+            raise ValueError(MESSAGE_SCREENSHOT_TYPE)
+        size = getattr(file, "size", None) or 0
+        if size <= 0:
+            raise ValueError(MESSAGE_SCREENSHOT_EMPTY)
+        if size > SCREENSHOT_MAX_BYTES:
+            raise ValueError(MESSAGE_SCREENSHOT_SIZE)
+        if len(name) > attachments_services.MAX_NAME_LENGTH:
+            raise ValueError(attachments_services.MESSAGE_NAME_TOO_LONG)
+    return files
+
+
+def _attach_screenshots(feedback, files, user) -> None:
+    """確かめの済んだファイルを、並びの順に 1 枚ずつ添付ファイルとして行に結ぶ (書く関数の atomic の中で呼ぶ)。"""
+    if not files:
+        return
+    attachments_services = _attachments_services()
+    for file in files:
+        attachments_services.add_attachment(feedback, file, user, kind=SCREENSHOT_KIND, note=SCREENSHOT_NOTE)
+
+
+def screenshots_of(feedback) -> list:
+    """下書きの画像の添付ファイルの並び (付けた順)。読むだけ。
+
+    入力の形で付けた物と、添付ファイルの枠から付けた画像 (PNG・JPEG・WebP) の両方。PDF・TIFF・CSV などは入れない。
+    部品が無い会社と保存前の行は空の並び。
+    """
+    attachments_services = _attachments_services()
+    if attachments_services is None or getattr(feedback, "pk", None) is None:
+        return []
+    rows = list(attachments_services.attachments_for(feedback))
+    rows.reverse()
+    return [row for row in rows if attachments_services.extension_of(row.original_name) in SCREENSHOT_EXTENSIONS]
+
+
 # ---- 書く ----
 
 
@@ -187,16 +287,18 @@ def _author(user):
     return user if getattr(user, "pk", None) is not None else None
 
 
-def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=0):
+def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=0, screenshots=()):
     """フィードバックを 1 件作る (状態は下書き)。作った行を返す。
 
     data は FIELD_KEYS の鍵の辞書 (知らない鍵は ValueError。無い鍵は種類が皆の要望、ほかは空)。
     書いた人は user に pk があれば user。会話の記録は形の合う物だけ、token は 0 以上の整数に丸める。
+    screenshots は画面の絵のファイルの並び (画像だけ・1 枚 5MB・3 枚まで。外れたら行もファイルも作らずに ValueError)。添付ファイルの部品で行に結ぶ。
     """
     _refuse_unknown_keys(data)
     values = {key: _checked_value(key, data.get(key, "common" if key == "kind" else "")) for key in FIELD_KEYS}
+    files = _checked_screenshots(screenshots)
     with transaction.atomic():
-        return Feedback.objects.create(
+        row = Feedback.objects.create(
             **values,
             status="draft",
             created_by=_author(user),
@@ -204,21 +306,26 @@ def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=
             input_tokens=_tokens(input_tokens),
             output_tokens=_tokens(output_tokens),
         )
+        _attach_screenshots(row, files, user)
+        return row
 
 
-def update_feedback(feedback, data, user):
+def update_feedback(feedback, data, user, *, screenshots=()):
     """data にある鍵だけを書き換える (create_feedback と同じ確かめ)。状態・token・会話の記録は変えない。
 
     直せるのは、書いた人 (下書きの間) か世話役だけ (外は ValueError)。
+    screenshots は create_feedback と同じ (直せる人だけが付けられる。直せない人は絵も付けない)。
     """
     if not can_edit(feedback, user):
         raise ValueError(MESSAGE_CANNOT_EDIT)
     _refuse_unknown_keys(data)
     values = {key: _checked_value(key, value) for key, value in data.items()}
+    files = _checked_screenshots(screenshots)
     with transaction.atomic():
         for key, value in values.items():
             setattr(feedback, key, value)
         feedback.save(update_fields=[*values, "updated_at"])
+        _attach_screenshots(feedback, files, user)
         return feedback
 
 
