@@ -215,6 +215,8 @@ def test_detail_line_has_two_entrances(user, logged_in, customer, item):
         assert href in body
     assert "出荷する" in body and "指示書を発行する" in body
     assert '<th class="whitespace-nowrap font-medium">操作</th>' in body
+    # 入口は行の ⋮ のメニュー (右クリックでも同じ。注残の盤と同じ部品の約束 = data-row-menu と details.row-menu)
+    assert "data-row-menu" in body and 'class="dropdown row-menu"' in body and "部品の小窓" in body
 
 
 @pytest.mark.django_db
