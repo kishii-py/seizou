@@ -109,6 +109,7 @@ _KIND_ACTIONS = {
         "purchasing.create_purchase_order",
         "purchasing.cancel_purchase_order",
         "connect.send_order",
+        "connect.send_acceptance",  # 検収を相手に送り直す口 (N54。本体が起こす前に入れる前提)
         "purchasing.receive",  # 受入 (N42。協力企業管理の 2 つ目の画面)
     ),
 }
