@@ -34,6 +34,8 @@ from datetime import timedelta
 from django.apps import apps
 from django.db.models import DecimalField, ExpressionWrapper, F, OuterRef, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Count, IntegerField
 
 # 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -353,6 +355,52 @@ def annotate_order_received(queryset):
         received_total=Coalesce(Subquery(received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
     ).annotate(
         receive_remaining=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD)
+    )
+
+
+def annotate_order_notices(queryset):
+    """発注の queryset に、相手から届いた出荷の知らせの数 (notice_count) を足す。読むだけ。
+
+    発注の一覧と詳細の 2 秒ごとの更新が、行の状態の字 (purchasing_tags.live_state) に使う。明細ごとの知らせを発注で数える
+    Subquery (annotate_order_received と同じ形。join を重ねない)。connect を import せず、逆の関係 shipping_notices を
+    model の _meta から引く。connect の無い会社では 0。
+    """
+    try:
+        field = PurchaseOrderLine._meta.get_field("shipping_notices")
+    except FieldDoesNotExist:
+        return queryset.annotate(notice_count=Value(0, output_field=IntegerField()))
+    notices = (
+        field.related_model.objects.filter(line__purchase_order=OuterRef("pk"))
+        .order_by()
+        .values("line__purchase_order")
+        .annotate(n=Count("pk"))
+        .values("n")[:1]
+    )
+    return queryset.annotate(
+        notice_count=Coalesce(Subquery(notices, output_field=IntegerField()), Value(0), output_field=IntegerField())
+    )
+
+
+# 受けすぎの知らせ (受入の数の合計が明細の数量を超えた明細)。知らせるだけで、受入は止めない (receive の決まりのまま)。
+OVER_RECEIPT_MESSAGE = "受入の数 {received} が発注の数 {qty} を超えています。"
+
+
+def over_receipt_message(line):
+    """明細 (annotate_received の received_total つき) の受けすぎの知らせの字。超えていなければ空の字。読むだけで、問い合わせをしない。"""
+    received = getattr(line, "received_total", None)
+    if received is None or not received > line.qty:
+        return ""
+    return OVER_RECEIPT_MESSAGE.format(received=_qty_text(received), qty=_qty_text(line.qty))
+
+
+def over_receipt_lines(line_ids):
+    """明細の番号の集まりのうち、受入の数の合計が数量を超えた明細 (received_total つき) の list。
+
+    集計は 1 回 (annotate_received の Sum を HAVING で絞る。行ごとに数えない)。受入の一覧の黄の知らせが使う。読むだけ。
+    """
+    lines = PurchaseOrderLine.objects.filter(pk__in=line_ids).select_related("purchase_order", "item")
+    return list(
+        annotate_received(lines).filter(received_total__gt=F("qty")).order_by("purchase_order__po_no", "line_no", "pk")
     )
 
 

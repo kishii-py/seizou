@@ -1,6 +1,8 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons %}
+{% load seizou_tags seizou_icons purchasing_tags %}
 {# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。書く入口 (送り直す・取り消す・受入・検収の送り直す) は発注の権限がある人だけ (決め 11-04 00:0x)。 #}
+{# 見出しの帯 (#po-heading)・黄の知らせ (#po-alert)・明細と検収の節 (#po-live) は 2 秒ごとに同じ URL を取りに行って入れ替え、前の更新と状態が違う発注の見出しの帯に seizou-changed を付ける (purchasing_tags の live_state)。タブは入れ替えない (選んだタブが基本情報に戻らないように)。 #}
+{% block heading %}{% live_state object as live %}<div id="po-heading" class="rounded-lg{% if live.changed %} seizou-changed{% endif %}" data-live="{{ live.token }}">{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if object.status == "draft" and can_po %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
@@ -10,9 +12,10 @@
 <a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>
 {% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
-{% block content %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
+{% block content %}{% can_write "purchasing.PurchaseOrder" as can_po %}<div id="po-alert">{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「送り直す」を押してください。</span></div>
-{% endif %}{% endwith %}{% endif %}{{ block.super }}
+{% endif %}{% endwith %}{% endif %}</div>{{ block.super }}
+<div id="po-live">
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="po-lines-title">
   <h2 id="po-lines-title" class="text-lg font-bold">明細</h2>
   <div class="mt-4 overflow-x-auto">
@@ -50,6 +53,8 @@
           <td>{{ line.note }}</td>
           <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
         </tr>
+        {# 受けすぎ (受入の数の合計が明細の数量を超えた) の明細は、行の下に黄の知らせ (purchasing_tags の over_receipt_text。受入は止めない)。 #}
+        {% over_receipt_text line as over %}{% if over %}<tr data-over-receipt="{{ line.pk }}"><td colspan="12"><div class="alert alert-warning alert-soft" role="alert">{% icon "alert" "size-5" %}<span>明細 {{ line.line_no }}: {{ over }}</span></div></td></tr>{% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -79,4 +84,6 @@
   {% else %}<p class="mt-4 text-base-content/70">受入はまだありません。</p>{% endif %}{% endwith %}
 </section>
 {% endif %}
+</div>
+<div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
 {% endblock %}

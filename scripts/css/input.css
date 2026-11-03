@@ -44,3 +44,12 @@ body > .ts-dropdown .active {
   background-color: var(--color-base-200);
   color: var(--color-base-content);
 }
+
+/* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
+   2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */
+@keyframes seizou-changed {
+  from { background-color: color-mix(in oklab, var(--color-primary) 20%, transparent); }
+}
+.seizou-changed {
+  animation: seizou-changed 2s ease-out;
+}

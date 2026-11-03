@@ -39,9 +39,10 @@ class PurchaseOrderListView(BaseListView):
     )
     search_fields = ("po_no", "partner__name", "partner__code")
     ordering = ("-order_date", "-id")
+    template_name = "purchasing/purchaseorder_list.html"
 
     def get_queryset(self):
-        return services.annotate_order_received(super().get_queryset().select_related("partner"))
+        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset().select_related("partner")))
 
 
 class PurchaseOrderDetailView(BaseDetailView):
@@ -55,6 +56,9 @@ class PurchaseOrderDetailView(BaseDetailView):
     screen_help = "発注の項目と明細、相手へ送った記録。「作成」のときだけ送り直しと取消ができます。"
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
     template_name = "purchasing/purchaseorder_detail.html"
+
+    def get_queryset(self):
+        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset()))
 
 
 class PurchaseOrderCreateView(BaseFormView):
