@@ -103,7 +103,14 @@ _KIND_ACTIONS = {
         "intake.accept_extracted",
     ),
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
-    "shipping": ("shipping.ship", "shipping.update_shipment", "shipping.create_delivery_note", "shipping.cancel_delivery_note"),
+    "shipping": (
+        "shipping.ship",
+        "shipping.update_shipment",
+        "shipping.create_delivery_note",
+        "shipping.cancel_delivery_note",
+        # 出荷の知らせを相手に送り直す口 (N55。本体が起こす前に入れる前提)
+        "connect.send_shipping_notice",
+    ),
     "billing": (
         "billing.create_invoice",
         "billing.cancel_invoice",
