@@ -12,7 +12,6 @@
 - minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
 - hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
 - accept_minutes_this_month: 今月の受付 (届いた注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
-- annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。
@@ -33,7 +32,6 @@ from decimal import ROUND_HALF_UP, InvalidOperation
 from django.apps import apps
 from django.db import DatabaseError
 from django.db.models import DecimalField, F, Q, Sum, Value
-from django.db.models import Case, CharField, Exists, OuterRef, When
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -642,33 +640,6 @@ def _chart(rows, max_value, series):
         **bars_by_name,
         "labels": labels,
     }
-
-
-INLETS = (("direct", "seizou で直接"), ("intake", "注文書の読み取り"), ("manual", "手入力"))  # 注文の入口の鍵と字 (取引先の一覧の列と、注文の入口の図の色の順)
-
-
-def annotate_order_inlet(partners, today=None):
-    """取引先の queryset に、注文の入口の字の列 order_inlet を足す (読むだけ。問い合わせを足さない = 副問い合わせ)。得意先 (両方を含む) のうち、受ける向きのつながり (connect の Connection) がある = seizou で直接、無くて今月を含む直近 3 か月 (_periods(today, 3) の最初の月の 1 日から) に読み取りの行 (intake の Extraction) がある = 注文書の読み取り、それ以外 = 手入力。協力企業だけの取引先は None。connect と intake の部品が無ければ、その枝を飛ばす。"""
-    if today is None:
-        today = timezone.localdate()
-    labels = dict(INLETS)
-    whens = [When(role=partners.model.ROLE_SUBCONTRACTOR, then=Value(None))]
-    connection_model = _model("connect", "Connection")
-    if connection_model is not None:
-        receiving = connection_model._default_manager.filter(
-            partner=OuterRef("pk"), direction=connection_model.DIRECTION_RECEIVE
-        )
-        whens.append(When(Exists(receiving), then=Value(labels["direct"])))
-    extraction_model = _model("intake", "Extraction")
-    if extraction_model is not None:
-        first_year, first_month = _periods(today, 3)[0]
-        # 期間の境は地域の時刻の 0 時 (production_trend と同じ)。
-        since = timezone.make_aware(datetime.combine(date(first_year, first_month, 1), time.min))
-        recent = extraction_model._default_manager.filter(customer=OuterRef("pk"), read_at__gte=since)
-        whens.append(When(Exists(recent), then=Value(labels["intake"])))
-    return partners.annotate(
-        order_inlet=Case(*whens, default=Value(labels["manual"]), output_field=CharField())
-    )
 
 
 # 業務の流れ (ダッシュボードの「はじめての方へ」の枠と、上の帯の「案内」の小窓の前後の段)。固定の字で、画面から直す口は無い。
