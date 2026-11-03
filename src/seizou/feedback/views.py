@@ -2,8 +2,9 @@
 
 - 画面 4 つ: 一覧・新規登録・詳細・編集。URL の名前は土台の約束 (<app>:<model>_list / _detail / _create / _update)。
   上書きするのは 11 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
-- 一覧と詳細は get_queryset で自分の分に絞る (世話役 = アカウント管理の権限は全部)。編集の画面は土台の dispatch が
-  対象を絞らずに引くので、直せるかは services の update_feedback が見る (直せない人には赤の知らせ)。
+- 一覧と詳細は get_queryset で自分の分に絞る (世話役 = アカウント管理の権限は全部)。編集の画面も同じ絞りの中から
+  対象を引く (土台の dispatch が部品の get_queryset を読む)。絞りの中で直せない物 (確認済みの後の書いた人) は
+  services の update_feedback が断る (赤の知らせ)。
 - 口 (状態の変更と削除) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
   断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る (削除が通ったときだけ一覧へ)。
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
@@ -97,6 +98,10 @@ class FeedbackUpdateView(BaseFormView):
     service = staticmethod(services.update_feedback)
     screen_name = "フィードバックの編集"
     screen_help = "下書きの種類・画面・題・困りごと・場面・望む形・影響する画面を直します。直せるのは書いた人 (下書きの間) とアカウント管理の担当者です。"
+
+    def get_queryset(self):
+        # 土台の dispatch がこの絞りの中から対象を引く (一覧と詳細と同じ。ほかの人の下書きは 404)。
+        return _visible_to(Feedback.objects.all(), self.request.user)
 
 
 def _back_to_detail(pk):

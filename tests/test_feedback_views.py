@@ -212,9 +212,7 @@ def test_update_screen_saves_and_refuses_others(client, plain, other):
 
     client.force_login(other)
     response = client.post(edit, form_data(title="ほかの人の題"))
-    html = html_of(response)
-    assert response.status_code == 200
-    assert "alert-error" in html and "書いた人" in html
+    assert response.status_code == 404
     row.refresh_from_db()
     assert row.title == "直した題"
 
@@ -329,3 +327,37 @@ def test_list_filters_by_status_and_kind(client, plain, other, manager):
     html = html_of(client.get("/feedback/?status=draft"))
     assert "下書きの不具合" in html and "ほかの人の下書き" in html
     assert "確認済みの要望" not in html
+
+
+def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager):
+    from seizou.core.views import BaseFormView
+
+    row = make(plain, "元の題")
+    edit = f"/feedback/{row.pk}/edit/"
+
+    client.force_login(other)
+    assert client.get(edit).status_code == 404
+    assert client.post(edit, form_data(title="ほかの人の題")).status_code == 404
+    row.refresh_from_db()
+    assert row.title == "元の題"
+
+    client.force_login(manager)
+    response = client.get(edit)
+    assert response.status_code == 200
+    assert 'value="元の題"' in html_of(response)
+
+    services.mark_confirmed(row, manager)
+    client.force_login(plain)
+    assert client.get(edit).status_code == 200
+    response = client.post(edit, form_data(title="確認済みの後の題"))
+    html = html_of(response)
+    assert response.status_code == 200
+    assert "alert-error" in html and "書いた人" in html
+    row.refresh_from_db()
+    assert row.title == "元の題"
+
+    client.logout()
+    response = client.get(edit)
+    assert response.status_code == 302 and reverse("core:login") in response["Location"]
+
+    assert not hasattr(BaseFormView, "get_queryset")
