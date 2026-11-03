@@ -1,4 +1,4 @@
-{% load assistant_tags seizou_icons %}{% assistant_panel as panel %}
+{% load assistant_tags seizou_icons seizou_tags %}{% assistant_panel as panel %}
 {# AI チャットの窓 (全部の画面の右下。ログインした人だけ)。core の base.html の 1 行が include する。紙には出さない。 #}
 {# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
 <div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">
@@ -24,7 +24,8 @@
         </div>
       </form>
       {% else %}
-      <p class="text-base-content/70">{{ panel.no_key_message }}</p>
+      <p class="text-base-content/70">AI チャットは、管理者が設定すると使えます。できること: 受注や出荷の問い合わせ・画面の使い方・書き込みの提案 (承認してから保存)。</p>
+      {% can_manage_accounts as is_manager %}{% if is_manager %}<p class="text-xs text-base-content/70">{{ panel.no_key_message }}</p>{% endif %}
       {% endif %}
     </div>
   </section>

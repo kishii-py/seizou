@@ -315,3 +315,23 @@ def test_delivery_note_detail_links_to_invoice(client, user, order):
 
     shipping_services.cancel_delivery_note(note, user)
     assert "請求書を作る" not in client.get(detail_url).content.decode()
+
+
+# ---------------------------------------------------------------- 9. AI チャットの鍵なしの文
+
+NO_KEY_FOR_ALL = "AI チャットは、管理者が設定すると使えます。"
+
+
+@pytest.mark.parametrize("who", ["user", "manager"])
+def test_assistant_panel_without_key(request, client, monkeypatch, who):
+    from seizou.assistant import services as assistant_services
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.force_login(request.getfixturevalue(who))
+    html = client.get(reverse("core:home")).content.decode()
+    assert NO_KEY_FOR_ALL in html
+    assert 'name="question"' not in html
+    if who == "manager":
+        assert assistant_services.MESSAGE_NO_KEY in html
+    else:
+        assert "ANTHROPIC_API_KEY" not in html
