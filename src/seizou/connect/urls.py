@@ -12,10 +12,9 @@ from . import views
 app_name = "connect"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-#: 画面の名前は「届いた注文」。左のメニューの字は、core の試験 (tests/test_core_menu_sections.py) がこの字を見るので、
-#: 本体がその試験を直すまで今の字のまま (N39 の記録の要望)。
+#: 左のメニューの字も画面の名前も「届いた注文」(決め 11-03 の候補 3。「受信箱」は使わない)。
 MENU = [
-    ("受信箱", "connect:inbox_list"),
+    ("届いた注文", "connect:inbox_list"),
 ]
 # 取引先との接続は普段は触らないので、左のメニューでなく設定の画面 (core:settings) から開く (本人の指摘 11-03 昼)。
 
