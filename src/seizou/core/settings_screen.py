@@ -9,10 +9,13 @@
 from __future__ import annotations
 
 import os
+from importlib import import_module
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import DatabaseError
 from django.http import Http404, HttpResponseRedirect
 from django.urls import reverse, reverse_lazy
 from django.utils.cache import add_never_cache_headers
@@ -21,6 +24,7 @@ from django.views.generic import TemplateView
 
 from seizou.core import access, conf, services
 from seizou.core.forms import SettingForm
+from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
 from seizou.parts import PARTS
 
@@ -42,14 +46,21 @@ SETTING_LABELS = {
 #: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
 SUB_LABELS = {"department": "部署", "write": "編集の権限", "money": "金額の閲覧"}
 
-#: 受注の入力から外せる項目の候補 (hidden_fields の欄)。orders の form の欄 − 決まりが見る欄 (KEPT_FIELDS) − order_line。
-#: core は orders を import しないので字で持ち、試験 (tests/test_core_settings_edit.py) が orders の form と突き合わせる
-HIDDEN_FIELD_CANDIDATES = (
-    ("customer_order_no", "得意先の注文番号"),
-    ("due_date", "納期"),
-    ("unit", "単位"),
-    ("note", "備考"),
-)
+
+def hideable_fields() -> tuple:
+    """受注の入力から外せる項目の候補 ((名前, 見出し) の並び)。hidden_fields の欄の choices。
+
+    orders の forms.hideable_fields() を importlib で引く (core は部品を import しない。core/search.py の providers と同じ形)。
+    orders が入っていない会社と、関数の無い orders では空の並び。module の import の時には引かない (呼ばれた時だけ)。
+    """
+    if not apps.is_installed("seizou.orders"):
+        return ()
+    try:
+        provider = getattr(import_module("seizou.orders.forms"), "hideable_fields")
+    except (ImportError, AttributeError):
+        return ()
+    return tuple(provider())
+
 
 #: 設定の変更を断る 403 の画面の文
 SETTINGS_DENIED_TEXT = "「設定の変更」の画面です。アカウント管理の権限が要ります。" + access.CONTACT
@@ -97,6 +108,16 @@ def _database_name() -> str:
     return engine.rsplit(".", 1)[-1] or "不明"
 
 
+def _override_count() -> str:
+    """画面で上書きした設定の数の字。表が読めないとき (migrate の前の置き場・DB を止めた試験) は「—」。"""
+    try:
+        count = SettingOverride.objects.count()
+    except (DatabaseError, RuntimeError):
+        # RuntimeError は pytest-django が db の無い試験で DB を止めた時の例外 (conf.overrides と同じ扱い)
+        return "—"
+    return f"{count} 件"
+
+
 def system_rows() -> list[dict]:
     """システムの状態 (読むだけ。鍵の値は出さない)。"""
     from seizou.core import media, middleware
@@ -113,6 +134,7 @@ def system_rows() -> list[dict]:
             "value": "nginx に渡す (X-Accel-Redirect)" if delivery == media.DELIVERY_NGINX else "Django が送る",
         },
         {"label": "データベース", "value": _database_name()},
+        {"label": "画面で上書きした設定", "value": _override_count()},
         {
             "label": "AI の鍵 (注文書の読み取り・AI チャット)",
             "value": "ある" if os.environ.get(ANTHROPIC_KEY_ENV, "").strip() else "ない (読み取りとチャットは使えない)",

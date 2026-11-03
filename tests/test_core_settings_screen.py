@@ -87,3 +87,24 @@ def test_user_menu_has_settings_and_sidebar_has_no_connections(logged_in):
     # つながりは左のメニューから設定の画面へ移した (普段は触らない物)
     assert reverse("connect:connection_list") not in body
     assert reverse("connect:inbox_list") in body
+
+
+def test_settings_screen_counts_screen_overrides(logged_in):
+    from seizou.core import services
+
+    body = logged_in.get(reverse("core:settings")).content.decode()
+    assert "画面で上書きした設定" in body and "0 件" in body
+
+    services.set_setting("over_shipment", "stop", None)
+    services.set_setting("partial_shipment", False, None)
+    body = logged_in.get(reverse("core:settings")).content.decode()
+    assert "2 件" in body
+    rows = settings_screen.system_rows()
+    assert [row["label"] for row in rows].count("画面で上書きした設定") == 1
+    assert {row["label"]: row["value"] for row in rows}["画面で上書きした設定"] == "2 件"
+
+
+def test_system_rows_show_dash_without_db():
+    # db の fixture を付けない = pytest-django が DB を RuntimeError で止める道
+    rows = {row["label"]: row["value"] for row in settings_screen.system_rows()}
+    assert rows["画面で上書きした設定"] == "—"
