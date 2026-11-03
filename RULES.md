@@ -16,6 +16,7 @@
 | R10 | 受信箱の注文は、人が受け入れるまで受注にならない | `services` | `tests/test_r10_inbox_accept.py` |
 | R11 | 同じ番号の注文のデータは 1 回だけ登録する (2 回届いても 1 件) | DB の一意の制約と `services` | `tests/test_r11_dedupe.py` |
 | R12 | 受け口は、登録した取引先からの、署名の合う物だけを受ける | `services` (署名の検査) | `tests/test_r12_signature.py` |
+| R21 | 取消した請求書には、入金を記録できない | `services` | `tests/test_r21_payment_on_cancelled_invoice.py` |
 
 ## 同梱のポカよけ (会社の設定で、止める / 知らせる / 通す を選ぶ。既定は知らせる)
 
