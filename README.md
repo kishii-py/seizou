@@ -277,6 +277,7 @@ Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は
 |---|---|---|---|
 | 本体の会話 | Claude Code の会話 | 仕様と決めを読み、依頼書の範囲と採用の条件を決める判断が要る | `docs/nights/<日付>.md` (取り込みの記録)・`docs/nights/20261102/briefs/` (依頼書の写し) |
 | 無人のレーン | Claude Code の無人の会話 (判断の要る実装は opus。手順の決まった仕事は sonnet) | 人が見ていない間に、依頼書 1 本ずつの範囲で進める | `docs/nights/<日付>/<題>.md` (動かした model は `docs/nights/20261103/N49.md` などの記録の行) |
+| 精査のレーン | Claude Code の無人の会話 (opus) と、ブラウザ (Playwright の headless) | 入った物を、仕様と採点の基準と作者の初見のテストの所見に照らして試し、直す物の一覧を書く。作品のコードは直さない (直すのは別のレーン) | 報告は計画の文書 (リポジトリの外)。報告から起こした直しは `docs/nights/20261103.md` の 71 回目以降の行と、`docs/nights/20261103/N74.md` などの記録 |
 | hook | 作り手の hook 2 つ (`scripts/night_guard.py` = 許しの一覧に無いファイルへの書き込みを止める・`scripts/night_log.py` = 返事の終わりに記録の行を足す)・git の pre-push (`.githooks/pre-push` = 禁止語の検査)・製品の hook (`plugin/hooks/guard_core.py` = R20) | AI の書き込みと push を、言葉の約束でなく仕組みで止める | `scripts/hooks.md`・`tests/test_hooks_night_guard.py`・`tests/test_hooks_night_log.py`・`tests/test_hooks_forbidden_words.py`・`tests/test_plugin_guard_core.py` |
 | skill | プラグインの skill 4 本 (`/seizou:build`・`/seizou:connect`・`/seizou:fix`・`/seizou:manual`) | 工場の人が日本語の問いに答えるだけで、立ち上げ・取引先とのつながり・違反の直し・説明書を進められる | 上の「Claude Code のプラグイン」の表の確かめのテスト |
 | MCP | 製品の MCP サーバー (`manage.py seizou_mcp`) | 手元の Claude Code が、画面と同じ services と決まりを通して会社のデータを読み書きする | 上の「手元の Claude Code から操作する (MCP)」の表・`tests/test_core_mcp_tools.py` |
@@ -348,7 +349,7 @@ Django の部品を直すときの命令。
 会期の後は、現場の声を次の順に直した版へつなぐ。会社の人が画面の「フィードバック」に困りごとや要望を書くと、取引先の名前と金額らしい数を「〇〇」に伏せた Issue の文ができる。世話役 (GOVERNANCE.md) がその文を確かめて GitHub の Issue に写し、直した版を出す。各社は、上の「毎日の運用」の版を上げる手順でその版を入れる (Issue の受付は、冒頭のとおり 2026-11-10 の発表の直後に開ける)。
 
 - VPS へ建てる命令 (nginx の設定を外から確かめる命令を含む)
-- ログインの回数の制限と、2 段階の確かめ
+- 2 段階の確かめ
 - 依存を上げて試験を回し、再起動するまでを 1 つにした命令 (版を上げる手順は、今は [docs/operations.md](docs/operations.md) に手で進める形である)
 - 外から届く URL を持たない会社どうしをつなぐ中継
 
