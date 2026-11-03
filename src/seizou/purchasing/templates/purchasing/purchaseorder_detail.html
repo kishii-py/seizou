@@ -1,16 +1,16 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
-{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。 #}
-{% block actions %}{{ block.super }}{% if object.status == "draft" %}
+{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。書く入口 (送り直す・取り消す・受入・検収の送り直す) は発注の権限がある人だけ (決め 11-04 00:0x)。 #}
+{% block actions %}{{ block.super }}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if object.status == "draft" and can_po %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
   <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}送り直す</button>
 </form>
-{% endif %}{% if object.status == "draft" or object.status == "rejected" %}
+{% endif %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" %}
 <a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>
-{% endif %}{% endblock %}
+{% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
-{% block content %}{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
+{% block content %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「送り直す」を押してください。</span></div>
 {% endif %}{% endwith %}{% endif %}{{ block.super }}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="po-lines-title">
@@ -45,10 +45,10 @@
           <td class="text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
-          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}<ul>{% for row in notice.rows %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and line.remaining_total > 0 and notice.total > line.received_total %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ row.qty_text }}&amp;received_on={{ row.shipped_at|date:'Y-m-d' }}">受入を記録する</a>{% endif %}</li>{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
+          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}<ul>{% for row in notice.rows %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and line.remaining_total > 0 and notice.total > line.received_total and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ row.qty_text }}&amp;received_on={{ row.shipped_at|date:'Y-m-d' }}">受入を記録する</a>{% endif %}</li>{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
-          <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
+          <td class="whitespace-nowrap">{% if object.status != "cancelled" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -70,7 +70,7 @@
           <td class="whitespace-nowrap">{{ receipt.line.line_no }} {% master_link receipt.line.item %}</td>
           <td class="text-right tabular-nums">{{ receipt.qty|comma }}</td>
           <td>{% with state=receipt.acceptance_state %}{% if receipt.acceptance_sent_at %}{{ state }}{% elif state %}<span class="text-error">{{ state }}</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
-          <td class="whitespace-nowrap">{% if not receipt.acceptance_sent_at %}<form method="post" action="{% url 'purchasing:receipt_acceptance_resend' receipt.pk %}">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</td>
+          <td class="whitespace-nowrap">{% if not receipt.acceptance_sent_at and can_po %}<form method="post" action="{% url 'purchasing:receipt_acceptance_resend' receipt.pk %}">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

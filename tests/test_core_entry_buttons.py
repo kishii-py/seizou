@@ -5,6 +5,7 @@
 人は accounts の services で作る。名前は作り物。
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -15,13 +16,17 @@ from django.urls import resolve, reverse
 from seizou.billing import services as billing_services
 from seizou.core import access
 from seizou.core.templatetags import seizou_tags
+from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.templatetags import orders_board
+from seizou.purchasing.models import PurchaseOrder
 from seizou.shipping import services as shipping_services
-from tests import test_orders_board
+from tests import test_orders_board, test_purchasing_receipt_views
 from tests.test_billing_payment_views import RECEIVED_ON, SHIPPED_AT, _customer, _invoice, _order_line
 from tests.test_core_access import account
 from tests.test_orders_board import _issue, _line, _tr
+from tests.test_purchasing_receipt_views import _order as _purchase_order
+from tests.test_purchasing_shipping_notice import _notice
 
 User = get_user_model()
 
@@ -31,6 +36,8 @@ user = test_orders_board.user
 customer = test_orders_board.customer
 item = test_orders_board.item
 cut = test_orders_board.cut
+# 相手への HTTP を呼んだら落とす requests.post (つながりの無い協力企業の発注は送らない)。
+fake_post = test_purchasing_receipt_views.fake_post
 
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 
@@ -292,3 +299,45 @@ def test_invoice_hides_cancel_payment_and_documents(settings, client, on, user, 
     for href in (*writes, *documents):
         assert href in logged, href
     assert guide in _page(client, user, unpaid_url)
+
+
+# ---------------------------------------------------------------- 5 発注の詳細
+
+
+@pytest.mark.django_db
+def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, item, fake_post):
+    partner = masters_services.create_partner(
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
+    )
+    # つながりの無い協力企業の発注は送られず「作成」のまま = 「送り直す」「取り消す」が出る形。
+    po = _purchase_order(partner, user, (item, "10", "25"))
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+    line = po.lines.get()
+    _notice(line, "4", date(2026, 11, 5), "SH-0001")
+    detail_url = reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    receipt_url = reverse("purchasing:receipt_create")
+    entries = (
+        f'href="{receipt_url}?line={line.pk}"',
+        f'href="{receipt_url}?line={line.pk}&amp;qty=',
+        "受入を登録",
+        "受入を記録する",
+        f'action="{reverse("purchasing:purchaseorder_send", args=[po.pk])}"',
+        f'href="{reverse("purchasing:purchaseorder_cancel", args=[po.pk])}"',
+    )
+
+    denied = _page(client, user, detail_url)
+    for entry in entries:
+        assert entry not in denied, entry
+    # 出荷の知らせの行 (日と数) は権限に依らず出る。
+    assert "2026-11-05" in denied
+
+    buyer = account("buyer", permissions=["purchasing"])
+    allowed = _page(client, buyer, detail_url)
+    for entry in entries:
+        assert entry in allowed, entry
+
+    settings.SEIZOU = {}
+    logged = _page(client, user, detail_url)
+    for entry in entries:
+        assert entry in logged, entry
+    assert fake_post.calls == 0
