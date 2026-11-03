@@ -35,6 +35,11 @@ def receive_order(request):
 # 取りに行く要素は connect/_inbox_poll.html、返す行の部分は connect/_rows.html (1 行は connect/_inbox_row.html)。
 # 並びは未承認 (状態が「届いた」) を上に、その中と残りは届いた日時の新しい順。
 class InboxListView(BaseListView):
+    """届いた注文の一覧。
+
+    使う人: 営業 / いつ: 取引先 (seizou どうし) から注文が届いたとき / 何のために: 届いた注文を確かめて受注にする / 次にすること: 行の操作の「承認」か「断る」へ
+    """
+
     model = Inbox
     screen_name = "届いた注文"
     screen_help = (
@@ -69,6 +74,11 @@ class InboxListView(BaseListView):
 
 
 class InboxDetailView(BaseDetailView):
+    """届いた注文の詳細。
+
+    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「受け入れる」か「断る」へ
+    """
+
     model = Inbox
     screen_name = "届いた注文の詳細"
     screen_help = "届いた注文のデータの中身。明細は相手の品番のまま並べています。"
@@ -76,6 +86,11 @@ class InboxDetailView(BaseDetailView):
 
 
 class InboxAcceptView(BaseFormView):
+    """注文を受け入れる入力。
+
+    使う人: 営業 / いつ: 届いた注文を受注にすると決めたとき / 何のために: 相手の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると注文残に出る
+    """
+
     model = Inbox
     form_class = AcceptForm
     service = staticmethod(services.accept)
@@ -85,6 +100,11 @@ class InboxAcceptView(BaseFormView):
 
 
 class InboxRejectView(BaseFormView):
+    """注文を断る入力。
+
+    使う人: 営業 / いつ: 届いた注文を受けないと決めたとき / 何のために: 理由を書いて断る (相手に返す) / 次にすること: 届いた注文の一覧へ戻る
+    """
+
     model = Inbox
     form_class = RejectForm
     service = staticmethod(services.reject)
@@ -94,6 +114,11 @@ class InboxRejectView(BaseFormView):
 
 # 取引先との接続の一覧。鍵の値は出さず、置き場の名前と、値が置いてあるか (済み / まだ) だけを出す。入力の画面は作らない。
 class ConnectionListView(BaseListView):
+    """取引先との接続の一覧。
+
+    使う人: 総務 / いつ: 取引先と seizou どうしでつなぐとき / 何のために: 受け口の URL と鍵の置き場の名前を持つ / 次にすること: 「新規登録」の後に .env に鍵を置く
+    """
+
     model = Connection
     screen_name = "取引先との接続"
     screen_help = "取引先ごとの受け口と、鍵の置き場の名前。鍵の値は .env にだけ置き、画面には出しません。"
@@ -104,6 +129,11 @@ class ConnectionListView(BaseListView):
 # 取引先との接続の新規登録・詳細・編集。書く処理は services の register_connection・update_connection だけ (R13)。
 # 鍵の値の欄は持たず、詳細には値が置いてあるか (済み / まだ) と、.env に足す 1 行の名前の形だけを出す。
 class ConnectionCreateView(BaseFormView):
+    """取引先との接続の新規登録の入力。
+
+    使う人: 総務 / いつ: 新しい取引先とつなぐとき / 何のために: 受け口と鍵の置き場の名前を登録する / 次にすること: .env に鍵を置き、詳細で済みを確かめる
+    """
+
     model = Connection
     form_class = ConnectionForm
     service = staticmethod(services.register_connection)
@@ -112,6 +142,11 @@ class ConnectionCreateView(BaseFormView):
 
 
 class ConnectionDetailView(BaseDetailView):
+    """取引先との接続の詳細。
+
+    使う人: 総務 / いつ: 鍵の設定が済んでいるかを確かめるとき / 何のために: 受け口と鍵の置き場の名前と、済みかまだかを見る / 次にすること: 「編集」へ
+    """
+
     model = Connection
     screen_name = "取引先との接続の詳細"
     screen_help = "取引先との受け口と鍵の置き場の名前。鍵の値は画面に出さず、置いてあるか (済み / まだ) だけを出します。"
@@ -119,6 +154,11 @@ class ConnectionDetailView(BaseDetailView):
 
 
 class ConnectionUpdateView(BaseFormView):
+    """取引先との接続の編集の入力。
+
+    使う人: 総務 / いつ: 受け口の URL や鍵の置き場の名前が変わったとき / 何のために: 接続の項目を直す / 次にすること: 詳細で確かめる
+    """
+
     model = Connection
     form_class = ConnectionForm
     service = staticmethod(services.update_connection)
