@@ -259,3 +259,59 @@ def test_has_required_filter():
     assert has_required(InvoiceCancelForm()) is False
     assert has_required(OrderCancelForm()) is False
     assert has_required(PaymentForm()) is True
+
+
+# ---------------------------------------------------------------- 8. 次の一手の釦
+
+
+def _selected_option(html, name, value):
+    """select の name の欄で、value の option に selected があるか。"""
+    import re
+
+    select = re.search(rf'<select name="{name}"[^>]*>(.*?)</select>', html, re.S)
+    assert select, f"{name} の選ぶ欄が無い"
+    return re.search(rf'<option value="{value}"[^>]*\bselected\b', select.group(1)) is not None
+
+
+def test_shipment_detail_links_to_delivery_note(client, user, order):
+    import re
+
+    shipment = _shipment(user, order)
+    client.force_login(user)
+    html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
+    link = f'{reverse("shipping:deliverynote_create")}?shipments={shipment.pk}'
+    assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
+    assert "納品書を作る" in html
+    assert html.count("btn-primary") == 1  # 主色は「編集」の 1 つのまま
+
+    form = client.get(link).content.decode()
+    checkbox = re.search(rf'<input type="checkbox" name="shipments" value="{shipment.pk}"[^>]*>', form)
+    assert checkbox and "checked" in checkbox.group(0)
+
+
+def test_shipment_in_issued_note_has_no_delivery_note_button(client, user, order):
+    shipment = _shipment(user, order)
+    _delivery_note(user, order, [shipment])
+    client.force_login(user)
+    html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
+    assert "納品書を作る" not in html
+
+
+def test_delivery_note_detail_links_to_invoice(client, user, order):
+    from seizou.shipping import services as shipping_services
+
+    note = _delivery_note(user, order, [_shipment(user, order)])
+    client.force_login(user)
+    detail_url = reverse("shipping:deliverynote_detail", args=[note.pk])
+    html = client.get(detail_url).content.decode()
+    link = f'{reverse("billing:invoice_create")}?customer={order.customer_id}'
+    assert f'href="{link}"' in html
+    assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
+    assert "請求書を作る" in html
+    assert "btn-primary" not in html  # 納品書には「編集」が無い。足した釦も主色にしない
+
+    form = client.get(link).content.decode()
+    assert _selected_option(form, "customer", order.customer_id)
+
+    shipping_services.cancel_delivery_note(note, user)
+    assert "請求書を作る" not in client.get(detail_url).content.decode()
