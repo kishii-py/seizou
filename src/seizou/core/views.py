@@ -521,7 +521,7 @@ class BaseListView(ScreenMixin, ListView):
 
     def csv_response(self, context) -> HttpResponse:
         specs = context["columns"]
-        if not access.can_see_money(self.request.user):
+        if any(s.money for s in specs) and not access.can_see_money(self.request.user):
             specs = [s for s in specs if not s.money]
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         filename, fallback = self.csv_filename()

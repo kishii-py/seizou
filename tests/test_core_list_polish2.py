@@ -4,6 +4,9 @@
 (tests/test_core_list_columns.py の call の形)。名前は作り物だけ。
 """
 
+import csv
+import io
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -166,3 +169,37 @@ def test_item_list_out_of_range_page_is_not_404(logged_in, three_items):
     rows_only = logged_in.get(url, {"page": "99"}, HTTP_HX_REQUEST="true")
     assert rows_only.status_code == 200
     assert rows_only.context["page_obj"].number == 1  # 50 件の頁に 3 件 = 1 頁だけ
+
+
+# ---------------------------------------------------------------- 4 金額の列の無い一覧の CSV の記録
+
+
+MONEY_LOG = {"access_control": {"department": "off", "write": "off", "money": "log"}}
+
+
+def access_records(caplog):
+    return [r for r in caplog.records if r.name == "seizou.access"]
+
+
+def csv_header(response) -> list[str]:
+    text = response.content.decode("utf-8-sig")
+    return next(csv.reader(io.StringIO(text)))
+
+
+@pytest.mark.django_db
+def test_csv_without_money_columns_writes_no_money_record(settings, caplog, logged_in, customer, shaft):
+    settings.SEIZOU = MONEY_LOG
+    caplog.set_level(logging.WARNING, logger="seizou.access")
+
+    partners = logged_in.get(reverse("masters:partner_list"), {"format": "csv"})
+    assert partners.status_code == 200
+    assert access_records(caplog) == []
+    assert csv_header(partners)[:2] == ["取引先コード", "名前"]
+
+    items = logged_in.get(reverse("masters:item_list"), {"format": "csv"})
+    assert items.status_code == 200
+    records = [r.getMessage() for r in access_records(caplog)]
+    assert len(records) == 1
+    assert records[0].startswith("記録だけ (金額の閲覧): tester が ")
+    # 記録だけ (log) は見せる = 標準単価の列は残る
+    assert any(name.startswith("標準単価") for name in csv_header(items))
