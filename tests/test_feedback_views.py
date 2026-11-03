@@ -296,3 +296,36 @@ def test_delete_button_and_endpoint(client, plain, other, manager):
     response = client.post(f"/feedback/{kept.pk}/delete/")
     assert response.status_code == 302 and reverse("core:login") in response["Location"]
     assert Feedback.objects.filter(pk=kept.pk).exists()
+
+
+def test_list_filters_by_status_and_kind(client, plain, other, manager):
+    make(plain, "下書きの不具合", data={"kind": "bug"})
+    confirmed = make(plain, "確認済みの要望", data={"kind": "common"})
+    services.mark_confirmed(confirmed, manager)
+    make(other, "ほかの人の下書き")
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/?status=draft"))
+    assert "下書きの不具合" in html
+    assert "確認済みの要望" not in html and "ほかの人の下書き" not in html
+    assert 'id="feedback-filter"' in html
+    assert 'name="status"' in html and 'name="kind"' in html
+    assert '<option value="draft" selected>' in html
+
+    html = html_of(client.get("/feedback/?kind=common"))
+    assert "確認済みの要望" in html and "下書きの不具合" not in html
+
+    html = html_of(client.get("/feedback/?status=draft&kind=common"))
+    assert "確認済みの要望" not in html and "下書きの不具合" not in html
+
+    html = html_of(client.get("/feedback/?status=nonsense&kind="))
+    assert "確認済みの要望" in html and "下書きの不具合" in html
+
+    html = html_of(client.get("/feedback/?status=confirmed", HTTP_HX_REQUEST="true"))
+    assert "<html" not in html
+    assert "確認済みの要望" in html and "下書きの不具合" not in html
+
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/?status=draft"))
+    assert "下書きの不具合" in html and "ほかの人の下書き" in html
+    assert "確認済みの要望" not in html

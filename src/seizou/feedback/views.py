@@ -45,9 +45,16 @@ class FeedbackListView(BaseListView):
     ordering = ("-created_at", "-pk")
     screen_name = "フィードバック"
     screen_help = "伝えた困りごと・要望・不具合の下書きと状態の一覧。自分の分が並び、アカウント管理の担当者には全部が並びます。"
+    template_name = "feedback/feedback_list.html"
 
     def get_queryset(self):
-        return _visible_to(super().get_queryset(), self.request.user)
+        queryset = _visible_to(super().get_queryset(), self.request.user)
+        chosen = services.list_filter(self.request.GET)
+        if chosen["status"]:
+            queryset = queryset.filter(status=chosen["status"])
+        if chosen["kind"]:
+            queryset = queryset.filter(kind=chosen["kind"])
+        return queryset
 
 
 class FeedbackCreateView(BaseFormView):
