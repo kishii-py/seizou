@@ -182,3 +182,50 @@ class Outbox(models.Model):
     def __str__(self):
         sent = timezone.localtime(self.sent_at)
         return f"{sent:%Y-%m-%d %H:%M} {self.response}"
+
+
+class Acceptance(models.Model):
+    """検収 (EDI の 4 段目)。相手 (注文を送ってきた得意先の seizou) が受け入れた数の知らせを、受注の明細ごとに 1 件 1 行で持つ。
+
+    番号の一意の制約で同じ番号は 1 行 (R11 の考え)。届いた注文の承認 (accept) とは別の言葉。
+    書くのは connect.services.record_acceptance だけ。
+    """
+
+    message_id = models.UUIDField("検収の番号", unique=True)
+    inbox = models.ForeignKey(
+        Inbox,
+        verbose_name="元の届いた注文",
+        on_delete=models.PROTECT,
+        related_name="acceptances",
+    )
+    order_line = models.ForeignKey(
+        "orders.OrderLine",
+        verbose_name="受注の明細",
+        on_delete=models.PROTECT,
+        related_name="acceptances",
+    )
+    buyer_order_no = models.CharField("相手の発注番号", max_length=35, blank=True)
+    buyer_line_no = models.PositiveIntegerField("相手の行番号")
+    accepted_on = models.DateField("検収日")
+    qty = models.DecimalField("検収の数", max_digits=12, decimal_places=2)
+    received_at = models.DateTimeField("届いた日時", default=timezone.now)
+
+    class Meta:
+        verbose_name = "検収"
+        verbose_name_plural = "検収"
+        ordering = ["-accepted_on", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="connect_acceptance_qty_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.accepted_on:%Y-%m-%d} {self.order_line} {_qty_text(self.qty)}"
+
+
+def _qty_text(value) -> str:
+    """数量の字。末尾の 0 を落とす (10.00 → 10、2.50 → 2.5)。purchasing の models と同じ (connect は purchasing を頭で import しない)。"""
+    dec = value if isinstance(value, Decimal) else Decimal(str(value))
+    return format(dec.normalize(), "f") if dec != dec.to_integral_value() else str(dec.quantize(Decimal(1)))

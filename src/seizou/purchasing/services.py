@@ -11,11 +11,13 @@
 - 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note。
 - 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
+- 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
+import uuid
 
 from django.db import transaction
 from django.utils import timezone
@@ -222,6 +224,8 @@ def receive(line, qty, received_on, user, *, note=""):
     断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
     受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る。
     全部の明細で受入の数が明細の数量以上になれば、発注を「納品された」(STATUS_DELIVERED) にする。
+    seizou どうしで送った発注なら、atomic を抜けた後に検収を相手へ送り、送った後の列を持つ受入を返す
+    (送れなくても例外にしない。受入は成立する)。
     """
     qty = _dec(qty)
     with transaction.atomic():
@@ -250,7 +254,56 @@ def receive(line, qty, received_on, user, *, note=""):
             if lines and all(row.remaining_total <= 0 for row in lines):
                 locked.status = PurchaseOrder.STATUS_DELIVERED
                 locked.save(update_fields=["status"])
-        return receipt
+
+    # 検収を相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    if _is_sent_order(locked):
+        from seizou.connect import services as connect_services
+
+        return connect_services.send_acceptance(receipt, user)
+    return receipt
+
+
+# --- 検収 (受入を相手の seizou の受注の明細へ送る記録。EDI の 4 段目) ---
+
+
+def _is_sent_order(purchase_order):
+    """発注に送った注文 (connect の Outbox) の行があるか (= seizou どうしで送った発注か)。
+
+    逆の関係 outbox_messages を読むだけ (connect の model を import しない)。connect の無い会社では属性が無く偽。
+    """
+    outbox = getattr(purchase_order, "outbox_messages", None)
+    return outbox is not None and outbox.exists()
+
+
+def assign_acceptance_number(receipt, user):
+    """受入に検収の番号を付けて返す。既にあればそのまま返す (送り直しは 1 回目の番号を使い回す)。
+
+    connect.services.send_acceptance が送る前に呼ぶ (届かなくても番号が残る)。返す物は uuid.UUID。
+    """
+    with transaction.atomic():
+        locked = Receipt.objects.select_for_update().get(pk=receipt.pk)
+        if locked.acceptance_message_id is None:
+            locked.acceptance_message_id = uuid.uuid4()
+            locked.save(update_fields=["acceptance_message_id"])
+        return locked.acceptance_message_id
+
+
+def record_acceptance_response(receipt, response, user, *, sent=False):
+    """検収の相手の返事を受入に書く (500 字で切る)。sent が真なら検収を送った日時も書く。
+
+    sent が偽なら送った日時は今の値のまま (消さない)。connect.services.send_acceptance が呼ぶ。
+    返す物は取り直した Receipt。
+    """
+    limit = Receipt._meta.get_field("acceptance_response").max_length
+    with transaction.atomic():
+        locked = Receipt.objects.select_for_update().get(pk=receipt.pk)
+        locked.acceptance_response = response[:limit]
+        fields = ["acceptance_response"]
+        if sent:
+            locked.acceptance_sent_at = timezone.now()
+            fields.append("acceptance_sent_at")
+        locked.save(update_fields=fields)
+        return locked
 
 
 def received_qty(line):
