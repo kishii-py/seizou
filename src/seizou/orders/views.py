@@ -9,7 +9,7 @@ from django.db.models import F, Prefetch
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView
 
-from . import services
+from . import board, services
 from .forms import OrderCancelForm, OrderForm
 from .models import Order, OrderLine
 from .services import annotate_remaining
@@ -37,16 +37,27 @@ class OrderListView(BaseListView):
 class OrderLineListView(BaseListView):
     model = OrderLine
     screen_name = "注文残"
-    screen_help = "受注の明細ごとの出荷の残。既定は残のある明細 (取消を除く) だけを、納期の近い順に出します。"
+    screen_help = (
+        "受注の明細ごとの残と、納期までの日数・指示書・進捗・計画の終了日・判断の印を並べる盤。"
+        "既定は残のある明細 (取消を除く) を納期の近い順に出します。"
+        "行の ⋮ か右クリックから、出荷・指示書の発行・実績・発注へ移れます。"
+    )
+    # board__<名前> は OrderLine.board (orders.board.BoardRow) の読むだけの値。shipped_total・remaining_total は
+    # annotate の列。どちらも土台の ColumnSpec では並び替えと合計の対象にならない (合計の行はテンプレートの tag が出す)。
     columns = (
         ("order__order_no", "受注番号"),
         ("order__customer", "得意先"),
-        ("order__order_date", "受注日"),
-        ("due_date", "納期"),
         ("item", "部品"),
+        ("due_date", "納期"),
+        ("board__days_left", "納期まで"),
         ("qty", "数量"),
         ("shipped_total", "出荷済み"),
         ("remaining_total", "残"),
+        ("board__workorder_label", "指示書"),
+        ("board__progress_label", "進捗"),
+        ("board__plan_end", "計画の終了日"),
+        ("board__judgement", "判断"),
+        ("order__order_date", "受注日"),
         ("status_label", "状態"),
     )
     search_fields = ("order__customer__name", "item__part_no")
@@ -54,10 +65,12 @@ class OrderLineListView(BaseListView):
     template_name = "orders/orderline_list.html"
 
     def get_queryset(self):
-        lines = annotate_remaining(super().get_queryset().select_related("order", "order__customer", "item"))
-        if self.request.GET.get("all") == "1":
-            return lines
-        return lines.filter(remaining_total__gt=0).exclude(order__status=Order.STATUS_CANCELLED)
+        # 納期の絞り込みは annotate_remaining の前 (WHERE)。指示書と工程と実績は prefetch で読む (多の join を足さない)。
+        lines = super().get_queryset().select_related("order", "order__customer", "item")
+        lines = annotate_remaining(board.apply_filters(lines, board.filters(self.request.GET)))
+        if self.request.GET.get("all") != "1":
+            lines = lines.filter(remaining_total__gt=0).exclude(order__status=Order.STATUS_CANCELLED)
+        return board.prefetch_for(lines)
 
 
 class OrderDetailView(BaseDetailView):
