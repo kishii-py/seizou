@@ -6,18 +6,21 @@
   対象を絞らずに引くので、直せるかは services の update_feedback が見る (直せない人には赤の知らせ)。
 - 口 (状態の変更) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
   断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る。
+- AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
+  (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら、中身の無い 200 で編集の画面へ移す (土台の form_valid と同じ形)。
+- CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
 """
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
-from . import services
+from . import chat, services
 from .forms import FeedbackForm
 from .models import Feedback
 
@@ -56,6 +59,7 @@ class FeedbackCreateView(BaseFormView):
     model = Feedback
     form_class = FeedbackForm
     service = staticmethod(services.create_feedback)
+    template_name = "feedback/feedback_form.html"
     screen_name = "フィードバックを送る"
     screen_help = "今の画面で困ったこと・直してほしいこと・おかしい動きを、種類・画面・題・困りごとの形で下書きにします。下書きは会社の中に残ります。"
 
@@ -118,3 +122,38 @@ def sent(request, pk):
     else:
         messages.success(request, "送った状態にしました。")
     return _back_to_detail(pk)
+
+
+_HTMX_ONLY = "フィードバックの画面からの要求だけを受けます。"
+
+
+@login_required
+@require_POST
+def ask(request):
+    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。"""
+    if not request.headers.get("HX-Request"):
+        return HttpResponseBadRequest(_HTMX_ONLY)
+    result = chat.answer(
+        request.session,
+        request.POST.get("message", ""),
+        user=request.user,
+        screen=request.POST.get("screen", ""),
+    )
+    feedback = result["feedback"]
+    if feedback is not None:
+        messages.info(request, chat.DRAFT_READY_MESSAGE)
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = reverse("feedback:feedback_update", args=[feedback.pk])
+        return response
+    turns = result["turns"] or [{"role": "assistant", "text": result["text"]}]
+    return render(request, "feedback/_chat_messages.html", {"turns": turns})
+
+
+@login_required
+@require_POST
+def reset(request):
+    """AI の聞き取りの会話を消す (「最初から」)。返す物は中身の無い 200 (吹き出しの並びが空になる)。"""
+    if not request.headers.get("HX-Request"):
+        return HttpResponseBadRequest(_HTMX_ONLY)
+    chat.reset_chat(request.session)
+    return HttpResponse("")

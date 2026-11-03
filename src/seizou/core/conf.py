@@ -26,6 +26,7 @@ DEFAULTS = {
     "access_control": {"department": "log", "write": "log", "money": "log"},  # 権限の判定: 部署・編集の権限・金額の閲覧のそれぞれ off / log / on
     "assistant_model": "claude-sonnet-5-5",  # AI チャットが使う model (会社の鍵で呼ぶ)
     "intake_model": "claude-opus-5-5",  # 注文書の読み取りが使う model
+    "feedback_model": "claude-haiku-5-5",  # フィードバックの AI の聞き取りが使う model (安い model)
     "menu": [],  # 左のメニューの括り (label・apps・screens の並び)。空なら既定の並び (core.context_processors.SECTIONS)
 }
 
