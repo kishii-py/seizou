@@ -40,6 +40,8 @@ def site(settings, tmp_path):
     settings.SEIZOU_DEV_AUTO_LOGIN = False
     settings.SEIZOU_FILE_DELIVERY = "django"
     settings.ALLOWED_HOSTS = ["testserver", "example.test"]
+    settings.SESSION_COOKIE_SECURE = True
+    settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {}
     env = site / ".env"
     if os.name == "nt":
@@ -257,3 +259,66 @@ def test_doctor_never_prints_secret_values_and_reads_no_environ(site, settings, 
     assert not env_value_leaked, "出力に .env の中身が出た"
     source = Path(doctor.__file__).read_text(encoding="utf-8")
     assert "os.environ" not in source
+
+
+# ---------------------------------------------------------------- Cookie が HTTPS だけ (N69)
+
+
+@pytest.mark.django_db
+def test_cookie_row_only_in_production(site, settings):
+    code, out = run_doctor()
+    assert any("Cookie が HTTPS だけ" in line for line in good_lines(out))
+
+    settings.SESSION_COOKIE_SECURE = False
+    code, out = run_doctor()
+
+    assert code == 1
+    rows = [line for line in fix_lines(out) if "Cookie が HTTPS だけ" in line]
+    assert len(rows) == 1
+    # 直し方の文は 2 つの設定の名前を両方持つので、「が偽」まで含めて比べる。
+    assert "SESSION_COOKIE_SECURE が偽" in rows[0]
+    assert "CSRF_COOKIE_SECURE が偽" not in rows[0]
+    assert "docs/operations.md" in rows[0]
+
+    settings.DEBUG = True
+    code, out = run_doctor()
+    assert "Cookie が HTTPS だけ" not in out
+    code, out = run_doctor("--production")
+    assert any("Cookie が HTTPS だけ" in line for line in fix_lines(out))
+
+
+def test_scaffold_sets_https_cookies_only_in_production():
+    import ast
+    import string
+
+    import seizou.scaffold
+
+    text = (Path(seizou.scaffold.__file__).parent / "settings.py.tmpl").read_text(encoding="utf-8")
+    tree = ast.parse(string.Template(text).safe_substitute(id="t", seizou_items=""))
+
+    def assigned(nodes) -> dict:
+        found = {}
+        for node in nodes:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                found[node.targets[0].id] = node.value
+        return found
+
+    top = assigned(tree.body)
+    assert isinstance(top.get("SESSION_COOKIE_HTTPONLY"), ast.Constant) and top["SESSION_COOKIE_HTTPONLY"].value is True
+    for name in ("SESSION_COOKIE_SECURE", "CSRF_COOKIE_SECURE", "SECURE_PROXY_SSL_HEADER"):
+        assert name not in top, name
+
+    blocks = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.UnaryOp)
+        and isinstance(node.test.op, ast.Not)
+        and isinstance(node.test.operand, ast.Name)
+        and node.test.operand.id == "DEBUG"
+    ]
+    assert len(blocks) == 1
+    inner = assigned(blocks[0].body)
+    assert ast.literal_eval(inner["SESSION_COOKIE_SECURE"]) is True
+    assert ast.literal_eval(inner["CSRF_COOKIE_SECURE"]) is True
+    assert ast.literal_eval(inner["SECURE_PROXY_SSL_HEADER"]) == ("HTTP_X_FORWARDED_PROTO", "https")
