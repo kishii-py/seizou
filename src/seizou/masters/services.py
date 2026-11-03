@@ -27,11 +27,13 @@ from django.db.models import Max
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
+from seizou.core import calendar
 from seizou.core.models import Company
 
 from .drawings import page_name
 from .models import Item, Partner, PartnerItem
 from .models import Process
+from .models import Holiday
 
 _ITEM_KEYS = frozenset(
     {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"}
@@ -636,3 +638,45 @@ def set_item_processes(item, processes, user):
     with transaction.atomic():
         item.item_processes.all().delete()
         return [item.item_processes.create(process=process, seq=seq) for seq, process in enumerate(processes, start=1)]
+
+
+# ---------------------------------------------------------------- 会社の休日 (稼働日の数え方は core.calendar)
+
+_HOLIDAY_KEYS = frozenset({"date", "name", "kind"})
+_HOLIDAY_KINDS = frozenset(value for value, _label in Holiday.KIND_CHOICES)
+
+
+def create_holiday(data, user):
+    """休日を 1 日足す。日付は一意。data の鍵は date・name・kind。
+
+    種類が祝日 (public) か会社の休み (company) でない・名前が空・同じ日付の休日が既にある、のどれかなら日本語の ValueError。
+    書いた後に稼働日の控え (core.calendar) を捨てる。作った行を返す (土台は休日の詳細へ移す)。
+    """
+    _refuse_unknown_keys(data, _HOLIDAY_KEYS, "休日")
+    if data.get("kind") not in _HOLIDAY_KINDS:
+        raise ValueError("休日の種類は 祝日 か 会社の休み です。")
+    if not str(data.get("name") or "").strip():
+        raise ValueError("休日の名前を入れてください。")
+    with transaction.atomic():
+        day = data.get("date")
+        existing = Holiday.objects.filter(date=day).first()
+        if existing is not None:
+            raise ValueError(f"{day:%Y-%m-%d} の休日は既にあります ({existing.name})。")
+        row = Holiday.objects.create(**data, created_by=user if getattr(user, "pk", None) is not None else None)
+    # 同じ要求のこの後の読みが新しい休日を数えるよう、控えを捨てる (別の process は CACHE_SECONDS 秒で読み直す)
+    calendar.reset_cache()
+    return row
+
+
+def delete_holiday(holiday, user):
+    """休日を消す。無ければ日本語の ValueError。None を返す (土台が一覧へ移す)。
+
+    行は atomic の中で取り直して消す。書いた後に稼働日の控え (core.calendar) を捨てる。user は受けるだけ (記録の列が無い)。
+    """
+    with transaction.atomic():
+        row = Holiday.objects.select_for_update().filter(pk=holiday.pk).first()
+        if row is None:
+            raise ValueError("この休日は既に消してあります。")
+        row.delete()
+    calendar.reset_cache()
+    return None

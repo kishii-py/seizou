@@ -36,6 +36,7 @@ SETTING_LABELS = {
     "over_workorder": ("受注より多い指示書の数量と予定より多い実績 (R06・R07)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
+    "weekly_holidays": ("定休日の曜日 (0 = 月 … 5 = 土・6 = 日。祝日と会社の休みはマスターの「休日」)", {}),
     "hidden_fields": ("使わない注文の項目", {}),
     "access_control": ("権限の判定 (部署・編集の権限・金額の閲覧)", {"off": "使わない", "log": "記録だけ", "on": "有効"}),
     "assistant_model": ("AI チャットが使う model", {}),
