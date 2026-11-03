@@ -4,6 +4,7 @@
 - 送れなかった「作成」の発注は、詳細の頭に黄の知らせで理由を出す (送った記録の最後の返事)。
 - 出荷の知らせの「受入を記録する」は、その明細の知らせの合計が受入の合計より多い間だけ出す。
 - 断られた発注は取り消せる (送り直すは「作成」だけ)。送った・相手が受け入れた発注は取り消せない。
+- 取り消せない発注の文は、相手への連絡を促す (「会期後」の字を画面に出さない)。
 Django の test client で HTML を見る。取引先と品目は作り物。相手への HTTP は requests.post を偽の物に差し替える。
 """
 
@@ -220,3 +221,16 @@ def test_accepted_or_sent_order_is_not_cancellable(client_logged_in, user, subco
         with pytest.raises(ValueError, match="「作成」か「断られた」の発注だけ"):
             services.cancel_purchase_order(po, user)
         assert PurchaseOrder.objects.get(pk=po.pk).status == po.status
+
+
+@pytest.mark.django_db
+def test_cancel_message_has_no_event_words(client_logged_in, user, subcontractor, item, no_http):
+    sent = services.mark_sent(_order(subcontractor, item, user), user)
+
+    response = client_logged_in.post(reverse("purchasing:purchaseorder_cancel", args=[sent.pk]), {"reason": ""})
+
+    body = response.content.decode()
+    assert "相手に連絡してください" in body
+    assert "「作成」か「断られた」の発注だけ" in body
+    assert "会期後" not in body
+    assert PurchaseOrder.objects.get(pk=sent.pk).status == PurchaseOrder.STATUS_SENT

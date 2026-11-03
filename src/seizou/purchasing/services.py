@@ -43,7 +43,7 @@ _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"}
 
 _POSITIVE_MESSAGE = "数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
-    "送った後の取消は相手への連絡が要るので、会期後の版です。"
+    "送った後の発注は、この画面から取り消せません。相手に連絡してください。"
     "取り消せるのは状態が「作成」か「断られた」の発注だけです。"
 )
 
