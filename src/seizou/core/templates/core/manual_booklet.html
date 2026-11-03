@@ -55,6 +55,9 @@ body { counter-reset: booklet-chapter; }
 .booklet-cover-foot { position: absolute; left: 20mm; right: 20mm; bottom: 14mm; padding-top: 3mm; border-top: 0.5pt solid #999; font-size: 8pt; color: #999; }
 .booklet-about, .booklet-toc, .booklet-chapter { break-before: page; }
 .booklet-about h2, .booklet-toc h2, .booklet-chapter h2 { margin: 0 0 5mm; padding: 1mm 0 1.5mm 4mm; border-left: 2.5mm solid {{ primary_color }}; border-bottom: 0.5pt solid #999; font-size: 16pt; font-weight: 700; }
+.booklet-toc h2 { font-size: 20pt; }
+.booklet-chapter { counter-increment: booklet-chapter; }
+.booklet-chapter > h2:first-of-type::before, .booklet-chapter > section > h2:first-of-type::before { content: counter(booklet-chapter) ". "; color: {{ primary_color }}; }
 .booklet-about h3 { margin: 5mm 0 1.5mm; font-size: 11pt; font-weight: 700; color: {{ primary_color }}; }
 .booklet-about p { margin: 1.5mm 0; }
 .booklet-toc ol { margin: 0; padding-left: 10mm; }

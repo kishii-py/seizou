@@ -525,3 +525,43 @@ def test_fallback_html_has_cover_band(client_logged_in, manual, no_pdf):
     for word in ('class="booklet-band"', 'class="booklet-about"', 'role="alert"'):
         assert word in html, word
     assert html.index('role="alert"') < html.index('<section class="booklet-cover">')
+
+
+# 章の頭の番号と目次の題 (冊子の見た目の 2 段目)
+
+
+def test_chapter_heads_numbered_by_css_only(db, manual):
+    write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
+    html = booklet_html()
+    style = style_of(html)
+    assert re.search(r"\.booklet-chapter \{[^}]*counter-increment: booklet-chapter", style)
+    rule = re.search(r"([^{}]+)\{[^}]*content: counter\(booklet-chapter\) \"\. \"[^}]*\}", style)
+    assert rule, "章の番号の ::before が無い"
+    assert [s.strip() for s in rule.group(1).split(",")] == [
+        ".booklet-chapter > h2:first-of-type::before",
+        ".booklet-chapter > section > h2:first-of-type::before",
+    ]
+    for line in style.splitlines():
+        if "counter-increment" in line or "counter(booklet-chapter)" in line:
+            assert "booklet-about" not in line, line
+            assert "booklet-toc" not in line, line
+    # 番号は CSS だけで付け、断片の字は書き換えない
+    assert ITEM_FRAGMENT in chapter(html, "masters_item_list")
+    assert "<h2>1. " not in html
+    assert "1. 部品マスター" not in html
+
+
+def test_toc_title_larger_than_chapter_title(db, manual):
+    html = booklet_html()
+    style = style_of(html)
+    toc = re.search(r"\.booklet-toc h2 \{[^}]*font-size: (\d+)pt", style)
+    heads = re.search(r"\.booklet-about h2, \.booklet-toc h2, \.booklet-chapter h2 \{[^}]*font-size: (\d+)pt", style)
+    assert toc, "目次の題の大きさが無い"
+    assert heads, "章の題の形が無い"
+    assert int(toc.group(1)) > int(heads.group(1))
+    # 選び方の強さが同じなので、後に書いた目次の題の大きさが勝つ
+    assert style.index(heads.group(0)) < style.index(toc.group(0))
+    assert "list-style: none" not in style
+    nav = re.search(r'<nav class="booklet-toc" aria-label="目次">(.*?)</nav>', html, re.S)
+    assert nav, "目次の nav が無い"
+    assert "<ol>" in nav.group(1)
