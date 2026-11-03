@@ -980,6 +980,7 @@ def dashboard_stats() -> list[dict]:
         this_month = order_model._default_manager.filter(
             order_date__year=today.year, order_date__month=today.month
         ).exclude(status=order_model.STATUS_CANCELLED)
+        order_list_url = url_or_none("orders:order_list")
         stats.append(
             {
                 "label": "今月の受注",
@@ -987,7 +988,7 @@ def dashboard_stats() -> list[dict]:
                 "unit": "件",
                 "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
                 "icon": "clipboard",
-                "url": url_or_none("orders:order_list"),
+                "url": f"{order_list_url}?all=1&month={today:%Y-%m}" if order_list_url else None,
             }
         )
     lines = dashboard.lines_to_ship()

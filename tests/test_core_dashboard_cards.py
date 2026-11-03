@@ -3,6 +3,7 @@
 受注と出荷は services で作る (tests/test_core_dashboard.py の make_order の形)。名前は作り物だけ。
 """
 
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -80,3 +81,42 @@ def test_lines_card_matches_orderline_list(logged_in, user, customer, shaft):
     assert listing.context["paginator"].count == stat["value"]
     shown = {(row["obj"].order.order_no, row["obj"].line_no) for row in listing.context["rows"]}
     assert shown == {(order_a.order_no, 2), (order_c.order_no, 1)}
+
+
+@pytest.mark.django_db
+def test_this_month_card_links_month_filtered_orders(logged_in, user, customer, shaft):
+    today = timezone.localdate()
+    last_month = today.replace(day=1) - timedelta(days=1)
+    kept = make_order(user, customer, shaft, [("1", "100", None)], order_date=today)
+    shipped = make_order(user, customer, shaft, [("2", "100", None)], order_date=today)
+    shipping_services.ship(shipped.lines.get(), Decimal("2"), today, user)
+    cancelled = make_order(user, customer, shaft, [("3", "100", None)], order_date=today)
+    services.cancel_order(cancelled, user)
+    make_order(user, customer, shaft, [("4", "100", None)], order_date=last_month)
+
+    stat = card(MONTH_LABEL)
+    assert stat["value"] == 2  # 受注のままの 1 件と、全部を出荷した 1 件
+    assert stat["url"] == reverse("orders:order_list") + "?all=1&month=" + today.strftime("%Y-%m")
+
+    listing = logged_in.get(stat["url"])
+    assert listing.status_code == 200
+    assert listing.context["paginator"].count == stat["value"]
+    assert {row["obj"].order_no for row in listing.context["rows"]} == {kept.order_no, shipped.order_no}
+
+    url = reverse("orders:order_list")
+    everything = logged_in.get(url, {"all": "1"}).context["paginator"].count
+    default = logged_in.get(url).context["paginator"].count
+    assert everything == 4 and default == 2  # 全部 / 出荷の残っている物 (今月の 1 件と先月の 1 件)
+    for params, expected in (({"all": "1", "month": "2026-13"}, everything), ({"month": "abc"}, default)):
+        response = logged_in.get(url, params)
+        assert response.status_code == 200, params
+        assert response.context["paginator"].count == expected, params
+
+
+def test_month_param_reads_year_and_month_only():
+    from seizou.orders.views import _month
+
+    assert _month("2026-11") == (date(2026, 11, 1), date(2026, 12, 1))
+    assert _month("2026-12") == (date(2026, 12, 1), date(2027, 1, 1))
+    for value in (None, "", "abc", "2026", "2026-13", "2026-0", "0-5", "2026-11-05", "9999-12"):
+        assert _month(value) is None, value
