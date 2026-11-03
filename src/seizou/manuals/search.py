@@ -18,7 +18,7 @@ COLUMNS = (
     SearchColumn("題"),
     SearchColumn("置き場"),
     SearchColumn("形式"),
-    SearchColumn("最終更新", date=True),
+    SearchColumn("最終更新", is_date=True),
 )
 
 

@@ -46,12 +46,12 @@ ALL = "all"
 
 @dataclass(frozen=True)
 class SearchColumn:
-    """結果の表の列 1 つ。numeric は右寄せと区切り、code は等幅の識別子、date は等幅の日付。"""
+    """結果の表の列 1 つ。numeric は右寄せと区切り、is_code は等幅の識別子、is_date は等幅の日付、money は金額の列 (一覧の ColumnSpec の印と同じ名前)。"""
 
     label: str
     numeric: bool = False
-    code: bool = False
-    date: bool = False
+    is_code: bool = False
+    is_date: bool = False
     money: bool = False  # 金額の列。金額の閲覧が無い人には「—」
 
 
@@ -143,9 +143,9 @@ def display_section(section: SearchSection, *, hide_money=False) -> dict:
                     "master": value if is_master(value) else None,
                     "numeric": column.numeric,
                     "negative": column.numeric and is_negative(value),
-                    "date": column.date and not isinstance(value, datetime.datetime),
-                    "datetime": column.date and isinstance(value, datetime.datetime),
-                    "code": column.code,
+                    "date": column.is_date and not isinstance(value, datetime.datetime),
+                    "datetime": column.is_date and isinstance(value, datetime.datetime),
+                    "code": column.is_code,
                 }
             )
         rows.append({"cells": cells, "url": row.url})

@@ -622,10 +622,10 @@ def test_board_sorts_by_annotated_columns_only(user, logged_in, customer, item):
     assert first_pk("-remaining_total") == plain.pk
     assert first_pk("remaining_total") == shipped.pk
 
-    # board__ の Python の値は並び替えない (無視して既定の並び)
+    # board__ の Python の値は sort_key で並べる (納期まで = 納期の順)
     response = logged_in.get(url, {"sort": "board__days_left"})
     assert response.status_code == 200
-    assert response.context["sort"] == ""
+    assert response.context["sort"] == "board__days_left"
 
     body = logged_in.get(url).content.decode()
     heads = _heads(body)
@@ -635,5 +635,33 @@ def test_board_sorts_by_annotated_columns_only(user, logged_in, customer, item):
         assert "text-right" not in heads[label][0], label
     assert "sort=shipped_total" in heads["出荷済み"][1]
     assert "sort=remaining_total" in heads["残"][1]
-    assert "<a " not in heads["納期まで"][1]
+    assert "sort=board__days_left" in heads["納期まで"][1]
+    assert len(_totals(body)) == len(COLUMNS) + 1
+
+
+@pytest.mark.django_db
+def test_board_sorts_python_values_by_sort_key(user, logged_in, customer, item):
+    late = _line(user, customer, item, due=date(2026, 11, 20))
+    early = _line(user, customer, item, due=date(2026, 11, 10))
+    url = reverse("orders:orderline_list")
+
+    def order_by(sort):
+        return logged_in.get(url, {"sort": sort}).context["paginator"].object_list.query.order_by
+
+    # 納期まで = 納期の順 (表の項目の道)
+    response = logged_in.get(url, {"sort": "board__days_left"})
+    assert response.context["rows"][0]["obj"].pk == early.pk
+    response = logged_in.get(url, {"sort": "-board__days_left"})
+    assert response.context["rows"][0]["obj"].pk == late.pk
+    assert order_by("board__days_left") == ("due_date", "pk")
+    # 検収・在庫 = annotate の列 (tests/settings.py は PARTS の全部 = workorders と stock がある)
+    assert order_by("board__stock_balance") == ("stock_balance", "pk")
+    assert order_by("-board__acceptance_total") == ("-acceptance_total", "-pk")
+
+    body = logged_in.get(url).content.decode()
+    heads = _heads(body)
+    for label, sort in (("納期まで", "board__days_left"), ("検収", "board__acceptance_total"), ("在庫", "board__stock_balance")):
+        assert f"sort={sort}" in heads[label][1], label
+    for label in ("指示書", "進捗", "計画の終了日", "判断"):
+        assert "<a " not in heads[label][1], label
     assert len(_totals(body)) == len(COLUMNS) + 1

@@ -232,3 +232,29 @@ def test_order_list_marks_received_numbers_and_sorts(user, client_logged_in, sub
 
     assert values("receive_remaining", remaining) == [Decimal("-2"), Decimal("6")]
     assert values("-received_total", received) == [Decimal("12"), Decimal("4")]
+
+
+@pytest.mark.django_db
+def test_order_list_totals_follow_filter(user, client_logged_in, subcontractor, items, fake_post):
+    partial = _order(subcontractor, user, (items[0], "10", "25"))
+    services.receive(partial.lines.get(), Decimal("4"), timezone.localdate(), user)  # 受入 4・残 6
+    over = _order(subcontractor, user, (items[1], "10", "25"))
+    services.receive(over.lines.get(), Decimal("12"), timezone.localdate(), user)  # 受入 12・残 −2
+    url = reverse("purchasing:purchaseorder_list")
+
+    response = client_logged_in.get(url)
+    labels = [col.label for col in response.context["columns"]]
+    received, remaining = labels.index("受入の数"), labels.index("受入の残")
+    totals = response.context["totals"]
+    assert totals is not None
+    assert Decimal(str(totals[received]["value"])) == Decimal("16") and totals[received]["numeric"]
+    assert Decimal(str(totals[remaining]["value"])) == Decimal("4") and totals[remaining]["numeric"]
+    # 合計に足すのは受入の数と残の 2 列だけ
+    assert [index for index, cell in enumerate(totals) if cell["numeric"]] == [received, remaining]
+    body = response.content.decode()
+    assert "合計" in body[body.index("<tfoot>") : body.index("</tfoot>")]
+
+    # 検索で絞ると合計が追従する (残 6 の発注だけ = 受入 4・残 6)
+    totals = client_logged_in.get(url, {"q": partial.po_no}).context["totals"]
+    assert Decimal(str(totals[received]["value"])) == Decimal("4")
+    assert Decimal(str(totals[remaining]["value"])) == Decimal("6")
