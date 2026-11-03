@@ -21,7 +21,7 @@ COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies
 COMPANY_IDS = ("a_machining", "b_plating")
 OTHER_COMPANY = {"a_machining": "b_plating", "b_plating": "a_machining"}
 
-ANSWER_KEYS = {"id", "name", "industry", "item_fields", "settings", "port"}
+ANSWER_KEYS = {"id", "name", "industry", "item_fields", "settings", "port", "company"}
 ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 EXPECTED_PORTS = {"a_machining": 8001, "b_plating": 8002}
 
@@ -417,3 +417,13 @@ def test_drawing_files_exist_and_are_small(company_id):
         with Image.open(path) as image:
             assert image.format == ("TIFF" if name.lower().endswith(".tif") else "PNG")
     assert any(name.lower().endswith(".tif") for name in names)
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_company_is_fake_contact(company_id):
+    # 会社の情報 (答えの company) は作り物の形だけ (住所は見本県架空市、電話は 00-0000-000n)
+    company = load_answers(company_id)["company"]
+    assert set(company) <= {"address", "phone", "bank_account"}
+    assert all(isinstance(value, str) for value in company.values())
+    assert "見本県架空市" in company["address"]
+    assert re.fullmatch(r"0[0-9]-[0-9]{4}-[0-9]{4}", company["phone"])

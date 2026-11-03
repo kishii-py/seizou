@@ -12,6 +12,7 @@ from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
 
 from seizou.core import conf
+from seizou.core.models import Company
 
 #: 選ぶ欄の空の選択肢の字 (core の apps.ready が Django の既定の字をこれに置き換える)
 EMPTY_LABEL = "選んでください"
@@ -136,3 +137,15 @@ class SettingForm(forms.Form):
 
     def service_kwargs(self):
         return {"key": self.key, "value": self.value()}
+
+
+class CompanyForm(ServiceModelForm):
+    """会社の情報 (住所・電話・振込先・ロゴ) の入力。値を確かめて保存するのは services の update_company (form は欄の型と字数だけ)。"""
+
+    class Meta:
+        model = Company
+        fields = ("address", "phone")
+        help_texts = {
+            "address": "納品書と請求書の会社の欄に出す。郵便番号から 1 行で (例: 〒000-0000 見本県架空市見本町 1-2-3)。",
+            "phone": "例: 00-0000-0000",
+        }
