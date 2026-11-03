@@ -3,6 +3,8 @@
 seizou new <answers.yaml> [--demo]
     答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。
     item_fields があれば会社ごとの項目の app (fields/) も作る。--demo は作り物のデータを入れる口。
+    答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
+    工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
     起動はしない。起動の 1 行を最後に出す。
 
@@ -22,6 +24,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import unicodedata
 from importlib import resources
 from pathlib import Path
 from string import Template
@@ -55,6 +58,15 @@ SETTING_DEFAULTS = {
     "menu": [],
 }
 
+#: 業種の見本 (src/seizou/recipes/<業種の id>.yaml) の根の鍵。答えの YAML の部分と同じ形
+RECIPE_KEYS = ("industry", "item_fields", "processes", "settings")
+#: 見本の工程の 1 件の鍵 (masters.services.create_process の data と同じ)
+RECIPE_PROCESS_KEYS = ("code", "name", "is_outsourced", "sort_order", "use_in_plan")
+#: 見本が補える設定の鍵 (業種で向きが変わる物だけ。権限・model・メニュー・隠す項目は見本に書かない)
+RECIPE_SETTING_KEYS = ("order_form", "partial_shipment", "over_shipment", "over_workorder", "order_number", "production_plan")
+#: 見本の工程コードの形 (英大文字で始め、英大文字と数字と _ で 10 字まで。工程の表の工程コードは 10 字で一意)
+RECIPE_CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9_]{0,9}")
+
 ADMIN_ID = "admin"
 
 # 管理者を作る短い Python (manage.py shell -c に渡し、子の process の中だけで Django を読む)。
@@ -82,6 +94,24 @@ CREATE_COMPANY = (
 
 # 作り物のデータを入れる短い Python (seizou.core.demo があるときだけ。引数は種のフォルダ)。
 LOAD_DEMO = "import importlib, pathlib; importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}))"
+
+# 業種の見本の工程を入れる短い Python。工程コードか名前が同じ工程が既にあれば飛ばす (種の工程が先に入っていれば種が勝つ)。
+# 工程は部品マスターの services の create_process で作り (表に直接書かない = R13)、入れた数だけを最後の行に出す。
+# 工程の並びは環境変数 SEIZOU_RECIPE_PROCESSES に JSON で受ける。
+CREATE_PROCESSES = """\
+import importlib, json, os
+transaction = importlib.import_module('django.db').transaction
+services = importlib.import_module('seizou.masters.services')
+Process = importlib.import_module('seizou.masters.models').Process
+made = 0
+with transaction.atomic():
+    for row in json.loads(os.environ['SEIZOU_RECIPE_PROCESSES']):
+        if Process.objects.filter(code=row['code']).exists() or Process.objects.filter(name=row['name']).exists():
+            continue
+        services.create_process(row, None)
+        made += 1
+print(made)
+"""
 
 
 class AnswerError(Exception):
@@ -144,7 +174,163 @@ def load_answers(path: Path) -> dict:
                 raise AnswerError(f"company の鍵を知りません: {key}。{' / '.join(COMPANY_KEYS)} のどれかで書きます。")
             if not isinstance(value, str):
                 raise AnswerError(f"company の {key} は字で書きます (数に読める値は引用符で囲む): {value!r}")
+
+    # 業種の見本を入れない印 (任意)。書き損じを黙って通さないので、none の外の値は断る
+    if "recipe" in answers and answers["recipe"] != "none":
+        raise AnswerError(f"recipe に書けるのは none だけです (業種の見本を入れないとき): {answers['recipe']!r}")
     return answers
+
+
+def recipes_dir() -> Path:
+    """業種の見本の置き場 (部品の中。pip で入れた版にも入る)。"""
+    return Path(__file__).parent / "recipes"
+
+
+def _industry_key(text) -> str:
+    """業種の字をそろえる (NFKC で字の幅をそろえ、空白を全部除き、英字を小文字にする)。"""
+    return "".join(unicodedata.normalize("NFKC", str(text)).split()).lower()
+
+
+def _industry_words(recipe: dict) -> set[str]:
+    """見本の業種の名前と言い換えを、そろえた字の集まりにする。"""
+    industry = recipe["industry"]
+    return {_industry_key(word) for word in [industry["name"], *(industry.get("aliases") or [])]}
+
+
+def _check_recipe(name: str, recipe) -> None:
+    """業種の見本 1 本の鍵と型と重なりを確かめる。誤りは AnswerError (文にファイルの名前と、どこが違うか)。"""
+
+    def refuse(where: str, what: str) -> None:
+        raise AnswerError(f"業種の見本 {name} の {where} が違います: {what}")
+
+    if not isinstance(recipe, dict):
+        refuse("形", "鍵と値の並びではありません")
+    unknown = [str(key) for key in recipe if key not in RECIPE_KEYS]
+    if unknown:
+        refuse("根の鍵", f"知らない鍵 {'・'.join(unknown)} があります ({' / '.join(RECIPE_KEYS)} のどれかで書きます)")
+
+    industry = recipe.get("industry")
+    if not isinstance(industry, dict):
+        refuse("industry", "鍵と値の並び (name と aliases) で書きます")
+    if not isinstance(industry.get("name"), str) or not industry["name"].strip():
+        refuse("industry の name", "空でない字で書きます")
+    aliases = industry.get("aliases") or []
+    if not isinstance(aliases, list) or not all(isinstance(word, str) and word.strip() for word in aliases):
+        refuse("industry の aliases", "空でない字の並びで書きます")
+
+    fields = recipe.get("item_fields") or []
+    if not isinstance(fields, list):
+        refuse("item_fields", "項目の並びで書きます")
+    labels = set()
+    for number, field in enumerate(fields, start=1):
+        where = f"item_fields の {number} 番目"
+        if not isinstance(field, dict):
+            refuse(where, "鍵と値の並びで書きます")
+        label = field.get("label")
+        if not isinstance(label, str) or not label.strip():
+            refuse(where, "label を空でない字で書きます")
+        if field.get("type") not in FIELD_TYPES:
+            refuse(where, f"型を知りません: {field.get('type')!r} ({' / '.join(FIELD_TYPES)} のどれかで書きます)")
+        if label in labels:
+            refuse(where, f"見出し {label} がほかの項目と重なります")
+        labels.add(label)
+
+    processes = recipe.get("processes") or []
+    if not isinstance(processes, list):
+        refuse("processes", "工程の並びで書きます")
+    codes, titles = set(), set()
+    for number, process in enumerate(processes, start=1):
+        where = f"processes の {number} 番目"
+        if not isinstance(process, dict) or set(process) != set(RECIPE_PROCESS_KEYS):
+            refuse(where, f"鍵は {'・'.join(RECIPE_PROCESS_KEYS)} の 5 つをちょうど書きます")
+        code, title, order = process["code"], process["name"], process["sort_order"]
+        if not isinstance(code, str) or not RECIPE_CODE_PATTERN.fullmatch(code):
+            refuse(where, f"工程コード {code!r} は英大文字で始め、英大文字と数字と _ で 10 字までで書きます")
+        if not isinstance(title, str) or not title.strip() or len(title) > 100:
+            refuse(where, "name は 1〜100 字の字で書きます")
+        for flag in ("is_outsourced", "use_in_plan"):
+            if not isinstance(process[flag], bool):
+                refuse(where, f"{flag} は true か false で書きます")
+        if isinstance(order, bool) or not isinstance(order, int) or order < 0:
+            refuse(where, "sort_order は 0 以上の整数で書きます")
+        if code in codes:
+            refuse(where, f"工程コード {code} がほかの工程と重なります")
+        if title in titles:
+            refuse(where, f"工程の名前 {title} がほかの工程と重なります")
+        codes.add(code)
+        titles.add(title)
+
+    settings = recipe.get("settings") or {}
+    if not isinstance(settings, dict):
+        refuse("settings", "鍵と値の並びで書きます")
+    unknown = [str(key) for key in settings if key not in RECIPE_SETTING_KEYS]
+    if unknown:
+        refuse("settings", f"見本に書けない鍵 {'・'.join(unknown)} があります ({' / '.join(RECIPE_SETTING_KEYS)} のどれかで書きます)")
+
+
+def load_recipes(folder: Path) -> dict:
+    """folder の業種の見本 (*.yaml) を名前の順に読み、{業種の id (ファイル名から拡張子を除いた物): 見本} を返す。
+
+    1 本ずつ鍵と型と重なりを確かめ、見本どうしで業種の名前と言い換えが重ならないことも見る。誤りは AnswerError。
+    設定の値が選べる値かは見ない (試験が見る)。README.md は読まない。
+    """
+    recipes = {}
+    owners = {}  # そろえた業種の字 → その字を持つ見本のファイルの名前
+    for path in sorted(folder.glob("*.yaml")):
+        try:
+            recipe = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            raise AnswerError(f"業種の見本 {path.name} を読めません。") from exc
+        _check_recipe(path.name, recipe)
+        for word in sorted(_industry_words(recipe)):
+            if word in owners:
+                raise AnswerError(f"業種の見本 {owners[word]} と {path.name} の業種の名前か言い換えが重なります: {word}")
+            owners[word] = path.name
+        recipes[path.stem] = recipe
+    return recipes
+
+
+def find_recipe(answers: dict, recipes: dict) -> tuple[str, dict] | None:
+    """答えの industry に当たる業種の見本の (id, 見本)。recipe: none・industry が無い・どれにも当たらないときは None。
+
+    字の幅と空白と英字の大小をそろえた後で、見本の名前か言い換えのどれかと全部が同じときだけ当たる。
+    """
+    if answers.get("recipe") == "none" or not answers.get("industry"):
+        return None
+    key = _industry_key(answers["industry"])
+    for recipe_id, recipe in recipes.items():
+        if key in _industry_words(recipe):
+            return recipe_id, recipe
+    return None
+
+
+def apply_recipe(answers: dict, recipe: dict) -> tuple[dict, dict]:
+    """答えに無い項目 (見出しで比べる) と設定 (鍵で比べる) を見本から補った答えの写しと、足した物を返す。
+
+    答えの辞書は書き換えない。項目は答えの項目の後ろに見本の順で足す (答えの項目の列の名前 ext01… は変わらない)。
+    答えの settings が辞書でなければ設定は触らない (後の settings_with_defaults が断る)。
+    足した物は {"項目": n, "設定": k, "工程": [見本の工程の並び]} (工程は命令が、既にある物を飛ばして入れる)。
+    """
+    merged = dict(answers)
+    given_fields = answers.get("item_fields") or []
+    labels = {field.get("label") for field in given_fields}
+    extra_fields = [dict(field) for field in recipe.get("item_fields") or [] if field["label"] not in labels]
+    if extra_fields:
+        merged["item_fields"] = [*given_fields, *extra_fields]
+
+    added_settings = 0
+    given_settings = answers.get("settings") or {}
+    if isinstance(given_settings, dict):
+        settings = dict(given_settings)
+        for key, value in (recipe.get("settings") or {}).items():
+            if key not in settings:
+                settings[key] = value
+                added_settings += 1
+        if added_settings:
+            merged["settings"] = settings
+
+    processes = [dict(process) for process in recipe.get("processes") or []]
+    return merged, {"項目": len(extra_fields), "設定": added_settings, "工程": processes}
 
 
 def settings_with_defaults(answers: dict) -> tuple[dict, list[str]]:
@@ -341,6 +527,13 @@ def command_new(answers_path: Path, demo: bool) -> int:
 
     try:
         answers = load_answers(answers_path)
+        # 業種の見本 (任意)。答えの industry が見本に当たれば、答えに無い項目と設定を見本から補った答えに置き換える
+        recipe_found = None
+        recipe_added = {"項目": 0, "設定": 0, "工程": []}
+        if answers.get("recipe") != "none" and answers.get("industry"):
+            recipe_found = find_recipe(answers, load_recipes(recipes_dir()))
+        if recipe_found:
+            answers, recipe_added = apply_recipe(answers, recipe_found[1])
         settings, used_defaults = settings_with_defaults(answers)
         columns, field_defaults = item_columns(answers)
     except AnswerError as exc:
@@ -422,11 +615,34 @@ def command_new(answers_path: Path, demo: bool) -> int:
             if copied:
                 print(f"説明書の断片を写しました: {copied} 件 ({site / 'manual'})")
 
+    # 業種の見本の工程は種の後に入れる (工程コードか名前が同じ工程を飛ばすので、種の工程と種の出力の行が勝つ)
+    recipe_processes = 0
+    if recipe_found and recipe_added["工程"] and fields_installed():
+        result = run_manage(
+            site,
+            ["shell", "--no-imports", "-c", CREATE_PROCESSES],
+            {"SEIZOU_RECIPE_PROCESSES": json.dumps(recipe_added["工程"], ensure_ascii=False)},
+        )
+        if result.returncode != 0:
+            return show_failure("業種の見本の工程を入れる所", result)
+        last = result.stdout.strip().splitlines()[-1:]
+        recipe_processes = int(last[0]) if last and last[0].isdigit() else 0
+    if recipe_found:
+        recipe_name = recipe_found[1]["industry"]["name"]
+        if recipe_added["項目"] or recipe_processes or recipe_added["設定"]:
+            print(
+                f"業種の見本 ({recipe_name}) から入れました: "
+                f"項目 {recipe_added['項目']}・工程 {recipe_processes}・設定 {recipe_added['設定']}。"
+                "工程と設定は画面で直せます。見本を入れずに作り直すときは、答えの YAML に recipe: none と書きます。"
+            )
+        else:
+            print(f"業種の見本 ({recipe_name}) と同じ物が全部あったので、足した物はありません。")
+
     port = answers["port"]
     print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
-    print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らない。閉じるときは seizou_practice stop)。")
+    print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
     return EXIT_OK
 
 
