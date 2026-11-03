@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 USECASE = re.compile(r"使う人: .+ / いつ: .+ / 何のために: .+ / 次にすること: .+")
 PROMISE = "使う人: … / いつ: … / 何のために: … / 次にすること: …"
 
-# まだ docstring の無い画面の url_name。core:settings は N48 が settings_screen.py を触るので本体が後で足し、ここから外す
-PENDING_SCREENS = {"core:settings"}
+# まだ docstring の無い画面の url_name (core:settings は N48 の後に本体が足した = 空)
+PENDING_SCREENS: set[str] = set()
 # 2 段目で部品ごとに docstring を書き、書いた部品をここから外す。終わったら空
 PENDING_APPS = set()
 
