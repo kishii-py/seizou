@@ -85,7 +85,7 @@ def customer(user):
 
 @pytest.fixture
 def subcontractor(user):
-    return create_partner({"code": "IN02", "name": "作り物の外注先", "role": "subcontractor"}, user)
+    return create_partner({"code": "IN02", "name": "作り物の協力企業", "role": "subcontractor"}, user)
 
 
 def test_extract_saves_record(with_key, fake_reply, customer, user):

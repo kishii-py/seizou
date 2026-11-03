@@ -91,14 +91,14 @@ def test_create_order_with_two_lines(user, customer, item):
 @pytest.mark.django_db
 def test_customer_must_have_customer_role(user, item):
     subcontractor = masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
     with pytest.raises(ValueError, match="得意先ではありません"):
         services.create_order(subcontractor, _one_line(item), user, order_date=ORDER_DATE)
     assert Order.objects.count() == 0
 
     both = masters_services.create_partner(
-        {"code": "B001", "name": "作り物の得意先と外注先", "role": "both"}, user
+        {"code": "B001", "name": "作り物の得意先と協力企業", "role": "both"}, user
     )
     order = services.create_order(both, _one_line(item), user, order_date=ORDER_DATE)
     assert order.customer == both

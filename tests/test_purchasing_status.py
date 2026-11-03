@@ -19,7 +19,7 @@ def user(db):
 @pytest.fixture
 def po(user):
     partner = masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
     item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
     return services.create_purchase_order(

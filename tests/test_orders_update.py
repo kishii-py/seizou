@@ -125,7 +125,7 @@ def test_unknown_key_is_refused(user, customer, item):
 
     # 得意先を変えるときも、区分が得意先か両方の取引先だけ。
     subcontractor = masters_services.create_partner(
-        {"code": "S001", "name": "作り物の外注先", "role": "subcontractor"}, user
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
     )
     with pytest.raises(ValueError, match="得意先ではありません"):
         services.update_order(order, {"customer": subcontractor}, [{"id": line.pk}], user)

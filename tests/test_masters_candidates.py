@@ -69,7 +69,7 @@ def test_no_match_returns_empty_page():
 @pytest.mark.django_db
 def test_partner_text_is_code_and_name():
     partner = Partner.objects.create(code="C001", name="作り物の得意先", role="customer")
-    Partner.objects.create(code="S001", name="作り物の外注先", role="subcontractor")
+    Partner.objects.create(code="S001", name="作り物の協力企業", role="subcontractor")
     result = services.candidates("partner", "得意", 1)
     assert result["results"] == [{"id": partner.pk, "text": "C001 作り物の得意先"}]
 

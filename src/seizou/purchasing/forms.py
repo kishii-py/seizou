@@ -6,7 +6,7 @@
 - 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が send_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
-- 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が外注先か両方の物だけ。
+- 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が協力企業か両方の物だけ。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 """
 

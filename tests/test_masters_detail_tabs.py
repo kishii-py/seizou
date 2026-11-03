@@ -67,7 +67,7 @@ def test_partner_detail_shows_order_history_as_table(client_logged_in, partner_i
 
 
 def test_partner_detail_shows_purchase_history_as_table(client_logged_in, db):
-    supplier = Partner.objects.create(code="S001", name="作り物の外注先", role="supplier")
+    supplier = Partner.objects.create(code="S001", name="作り物の協力企業", role="subcontractor")
     po = PurchaseOrder.objects.create(po_no="PO-0001", partner=supplier, order_date=date(2026, 11, 3), status=PurchaseOrder.STATUS_SENT)
     body = client_logged_in.get(reverse("masters:partner_detail", args=[supplier.pk])).content.decode()
 

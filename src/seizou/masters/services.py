@@ -98,7 +98,7 @@ def _refuse_unknown_role(role):
     if role not in _ROLES:
         raise ValueError(
             f"取引先の種類 {role!r} は使えません。"
-            "得意先 (customer)・外注先 (subcontractor)・両方 (both) のどれかにしてください。"
+            "得意先 (customer)・協力企業 (subcontractor)・両方 (both) のどれかにしてください。"
         )
 
 

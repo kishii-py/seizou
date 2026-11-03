@@ -3,7 +3,7 @@
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - ext (会社ごとの項目) は core の fields.save_ext に渡す。登録が無ければ save_ext が ValueError を投げる。
-- 決まりの番号の無い入力の誤り (外注先でない・明細が無い・知らない鍵・数量と単価が 0 以下) は日本語の ValueError。
+- 決まりの番号の無い入力の誤り (協力企業でない・明細が無い・知らない鍵・数量と単価が 0 以下) は日本語の ValueError。
   RULES.md の R02 の対象に発注は入っていないので RuleViolation にしない。DB の制約は付ける。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 保存と同時に送る (02)。発注を保存したトランザクションを抜けた後で、取引先に向き「送る」の
@@ -38,7 +38,7 @@ def _dec(value):
 def _refuse_non_subcontractor(partner):
     if not partner.is_subcontractor:
         raise ValueError(
-            f"取引先 {partner} は外注先ではありません。取引先の種類が外注先か両方の取引先を選んでください。"
+            f"取引先 {partner} は協力企業ではありません。取引先の種類が協力企業か両方の取引先を選んでください。"
         )
 
 

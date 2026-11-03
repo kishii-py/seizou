@@ -816,7 +816,7 @@ def dashboard_stats() -> list[dict]:
                 "label": "取引先",
                 "value": count_or_none(partner_model._default_manager.all()),
                 "unit": "社",
-                "note": "得意先と外注先の数",
+                "note": "得意先と協力企業の数",
                 "icon": "users",
                 "url": url_or_none("masters:partner_list"),
             }

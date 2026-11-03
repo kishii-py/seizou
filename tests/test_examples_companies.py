@@ -207,9 +207,9 @@ def test_a_machining_connects_to_b_plating_without_secret_value():
     assert not url.query and not url.fragment
     assert not BLANK_MARK_PATTERN.search(connection["受け口の URL"])
 
-    # 取引先コードは A 社の partners.csv にあり、その行は外注先 (B 社)
+    # 取引先コードは A 社の partners.csv にあり、その行は協力企業 (B 社)
     partner = partner_rows("a_machining")[connection["取引先コード"]]
-    assert partner["取引先の種類"] == "外注先"
+    assert partner["取引先の種類"] == "協力企業"
     assert partner["名前"] == load_answers("b_plating")["name"]
 
 
