@@ -23,6 +23,7 @@ from seizou.orders.models import Order
 from seizou.shipping import services as shipping_services
 from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
+from tests.test_connect_inbox_menu import _poll, _row
 from tests.test_core_access import account
 from tests.test_intake_extract import reply_data
 from tests.test_r10_inbox_accept import _line, _payload
@@ -308,3 +309,83 @@ def test_intake_row_hides_resend_and_shows_lines(client, customer, user):
     lines = body.split("明細 (相手の品番のまま)", 1)[1]
     assert "X-200" in lines
     assert "None" not in lines
+
+
+# ここから届いた注文の一覧 (入口の列・確認待ちの印・同じ注文番号の知らせ = 本体の追記 11)。
+
+NOTICE = "同じ注文番号の注文が既に届いています"
+
+
+def _list(client):
+    response = client.get(reverse("connect:inbox_list"))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def test_list_shows_entrance_and_waiting_badge(client, customer, user):
+    direct = direct_row(customer, user)
+    matched = intake_row(customer, user, order_no="TEST-PO-010")
+    client.force_login(user)
+
+    body = _list(client)
+    assert re.search(r">\s*入口\s*<", body)
+    assert "直接" in _row(body, direct.pk)
+    assert "読み取り" in _row(body, matched.pk)
+    assert reverse("connect:inbox_accept", args=[matched.pk]) in _row(body, matched.pk)
+
+    # 自動の更新で足した取引先の空の行にも印と色が付き、行の操作に「承認」が無い
+    waiting = intake_row(None, user, order_no="TEST-PO-011")
+    row = _row(_poll(client, matched.pk).content.decode(), waiting.pk)
+    assert "差出人の確認待ち" in row
+    assert SENDER in row
+    assert "bg-primary/10" in row
+    assert reverse("connect:inbox_accept", args=[waiting.pk]) not in row
+    assert reverse("connect:inbox_reject", args=[waiting.pk]) in row
+
+    row = _row(_list(client), waiting.pk)
+    assert "差出人の確認待ち" in row
+    assert "bg-primary/10" not in row
+    assert reverse("connect:inbox_accept", args=[waiting.pk]) not in row
+
+
+def test_same_order_no_notice_on_second_row(client, customer, user):
+    first = direct_row(customer, user)  # 注文番号 PO-0001
+    second = direct_row(customer, user)  # 番号 (id) は違い、注文番号は同じ
+    client.force_login(user)
+
+    body = _list(client)
+    assert NOTICE not in _row(body, first.pk)
+    row = _row(body, second.pk)
+    assert f"{NOTICE} (届いた注文 {first.pk}。届いた)" in row
+    assert reverse("connect:inbox_detail", args=[first.pk]) in row
+    assert f"{NOTICE} (届いた注文 {first.pk}。届いた)" in _detail(client, second)
+    assert NOTICE not in _detail(client, first)
+
+    # 知らせるだけで、断らない・状態を変えない。前の行の状態が変われば字も変わる
+    second.refresh_from_db()
+    assert second.status == Inbox.STATUS_RECEIVED
+    services.reject(first, "作り物の理由で断る", user)
+    third = direct_row(customer, user)
+    row = _row(_poll(client, second.pk).content.decode(), third.pk)
+    assert f"{NOTICE} (届いた注文 {first.pk}。断った)" in row
+
+
+def test_same_order_no_from_other_partner_has_no_notice(client, customer, other_customer, user):
+    first = direct_row(customer, user)
+    other = direct_row(other_customer, user)  # 同じ注文番号でも取引先が違う
+    waiting_a = intake_row(None, user, order_no="PO-0001")
+    waiting_b = intake_row(None, user, order_no="PO-0001")  # 取引先の空の行どうしは比べない
+    blank = []
+    for order_no in ("", "", None, None):
+        data = _payload(str(uuid.uuid4()), [_line(1, "X-100")])
+        data["order_no"] = order_no  # 注文番号が空か null の行どうしも比べない
+        blank.append(services.record_inbox(customer, data, user))
+    client.force_login(user)
+
+    body = _list(client)
+    for row in (first, other, waiting_a, waiting_b, *blank):
+        assert NOTICE not in _row(body, row.pk)
+    assert NOTICE not in _detail(client, other)
+    assert NOTICE not in _detail(client, waiting_b)
+    assert NOTICE not in _detail(client, blank[1])
+    assert NOTICE not in _detail(client, blank[3])
