@@ -316,7 +316,7 @@ def test_acceptance_for_unaccepted_order_is_refused(
         assert receipt.acceptance_sent_at is None
         assert receipt.acceptance_response.startswith("断られた: 検収の元の注文は承認していない")
         assert receipt.acceptance_response == f"断られた: {services.MESSAGE_ACCEPTANCE_NOT_ACCEPTED}"
-        assert receipt.acceptance_state().startswith("届いていない: 断られた: ")
+        assert receipt.acceptance_state().startswith("断られた: ")
 
 
 @pytest.mark.parametrize(
@@ -376,7 +376,7 @@ def test_receipt_stands_when_acceptance_is_unreachable_and_resend_reuses_number(
     assert receipt.acceptance_sent_at is None
     assert receipt.acceptance_response.startswith("届きません")
     assert receipt.acceptance_message_id is not None
-    assert receipt.acceptance_state().startswith("届いていない: 届きません")
+    assert receipt.acceptance_state().startswith("届きません")
     assert Acceptance.objects.count() == 0
 
     fake = FakePost(inside=_into_receive)

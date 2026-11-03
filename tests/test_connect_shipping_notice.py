@@ -365,7 +365,7 @@ def test_shipment_stands_when_notice_is_unreachable_and_resend_reuses_number(
     assert shipment.notice_sent_at is None
     assert shipment.notice_response.startswith("届きません")
     assert shipment.notice_message_id is not None
-    assert shipment.notice_state().startswith("届いていない: 届きません")
+    assert shipment.notice_state().startswith("届きません")
     assert ShippingNotice.objects.count() == 0
 
     fake = FakePost(inside=_into_receive)

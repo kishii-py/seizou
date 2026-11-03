@@ -109,7 +109,7 @@ def test_record_acceptance_response_truncates_and_marks_sent(user, receipt):
 def test_acceptance_state_text():
     assert Receipt().acceptance_state() == ""
     assert Receipt(acceptance_response="届きません: 相手につながりません。").acceptance_state() == (
-        "届いていない: 届きません: 相手につながりません。"
+        "届きません: 相手につながりません。"
     )
     sent = Receipt(
         acceptance_sent_at=datetime(2026, 11, 5, 1, 30, tzinfo=UTC), acceptance_response="受け取った"
@@ -222,7 +222,7 @@ def test_order_detail_shows_acceptance_section_for_sent_orders(
     assert set(rows) == {"2026-11-02", "2026-11-03"}
     assert "送った " in rows["2026-11-02"] and "4.00" in rows["2026-11-02"]
     assert "text-error" not in rows["2026-11-02"]
-    assert "text-error" in rows["2026-11-03"] and "届いていない: 届きません" in rows["2026-11-03"]
+    assert "text-error" in rows["2026-11-03"] and "届きません" in rows["2026-11-03"]
     assert reverse("purchasing:receipt_acceptance_resend", args=[lost.pk]) in rows["2026-11-03"]
     assert reverse("purchasing:receipt_acceptance_resend", args=[sent.pk]) not in body
     # 「送った」の発注なので、作成のときの「送り直す」(主色) も出ない

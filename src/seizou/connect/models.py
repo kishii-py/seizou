@@ -140,12 +140,14 @@ class Inbox(models.Model):
         """詳細に出す注文回答の字。「届いた」なら空の字 (テンプレートが薄い「—」を出す)。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、承認か断りの後で届いていなければ
-        「届いていない: <相手の返事>」。
+        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
         """
         if self.status == self.STATUS_RECEIVED:
             return ""
         if self.reply_sent_at is not None:
             return f"送った {timezone.localtime(self.reply_sent_at):%Y-%m-%d %H:%M}"
+        if self.reply_response.startswith(("届きません", "断られた")):
+            return self.reply_response
         return f"届いていない: {self.reply_response}"
 
 
