@@ -44,3 +44,22 @@ def test_settings_system_rows_wrap_on_narrow_screen(client, manager):
 
 def test_app_css_has_sm_nowrap():
     assert ".sm\\:whitespace-nowrap" in APP_CSS.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- 7. 権限の選択肢の「つながり」
+
+
+def test_kind_label_for_connections():
+    from seizou.core import access
+
+    assert access.KIND_LABELS["connections"] == "取引先との接続"
+
+
+def test_access_form_shows_connections_label(client, manager):
+    from django.apps import apps
+
+    assert apps.is_installed("seizou.accounts")  # 試験の設定は全部の部品を入れる (tests/settings.py の PARTS)
+    client.force_login(manager)
+    response = client.get(reverse("accounts:access_create"))
+    assert response.status_code == 200
+    assert "取引先との接続" in response.content.decode()
