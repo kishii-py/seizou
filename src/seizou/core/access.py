@@ -132,6 +132,9 @@ ACTION_KINDS = {action: kind for kind, actions in _KIND_ACTIONS.items() for acti
 # 権限の要らない action (見る・探す・現場の記録)。在庫の動き (N42) は現場の記録と同じ扱い
 FREE_ACTIONS = frozenset(
     {
+        # フィードバック (N59。鍵の無い会社でも誰でも伝えられる = 本体が起こす前に入れる前提)
+        "feedback.create_feedback",
+        "feedback.update_feedback",
         "progress.record_progress",
         "attachments.add_attachment",
         "attachments.remove_attachment",
@@ -168,7 +171,7 @@ MONEY_ACTIONS = {
 #: アカウント管理の権限で開く部品 (3 状態の外)
 ACCOUNT_APPS = ("accounts",)
 #: 部署に関係なく開く部品 (検索・使い方・ダッシュボード・設定は core の画面)
-ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments")
+ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments", "feedback")
 
 # ---------------------------------------------------------------- 金額の値
 
