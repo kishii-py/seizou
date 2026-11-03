@@ -18,6 +18,11 @@ from .models import Access
 
 
 class AccessListView(BaseListView):
+    """アカウント管理の一覧。
+
+    使う人: 総務 / いつ: 人が入ったときと辞めたとき / 何のために: アカウントと部署と権限を持つ / 次にすること: 右上の「新規登録」で発行、行から編集
+    """
+
     model = Access
     screen_name = "アカウント管理"
     screen_help = "アカウントの一覧。ログイン ID で絞り込み、行を押すと編集へ移ります。発行は右上の「新規登録」から。"
@@ -46,6 +51,11 @@ def access_detail(request, pk):
 
 
 class AccessCreateView(BaseFormView):
+    """アカウントの発行の入力。
+
+    使う人: 総務 / いつ: 人が入ったとき / 何のために: ログイン ID とパスワードを決め、部署と権限を付ける / 次にすること: ID とパスワードを本人に渡す
+    """
+
     model = Access
     form_class = AccountForm
     service = staticmethod(services.issue_account)
@@ -58,6 +68,11 @@ class AccessCreateView(BaseFormView):
 
 
 class AccessUpdateView(BaseFormView):
+    """アカウントの編集の入力。
+
+    使う人: 総務 / いつ: 部署や権限が変わったとき / 何のために: 部署と権限を付け外しする / 次にすること: アカウント管理で確かめる
+    """
+
     model = Access
     form_class = AccountForm
     service = staticmethod(services.update_account)
@@ -70,6 +85,11 @@ class AccessUpdateView(BaseFormView):
 
 
 class AccessDeleteView(BaseFormView):
+    """アカウントの削除の確かめ。
+
+    使う人: 総務 / いつ: 人が辞めたとき / 何のために: ログインできなくする / 次にすること: アカウント管理へ戻る
+    """
+
     model = Access
     form_class = AccountDeleteForm
     service = staticmethod(services.delete_account)
