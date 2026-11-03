@@ -30,6 +30,12 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 class WorkOrderListView(BaseListView):
+    """指示書の一覧。
+
+    使う人: 製造・生産管理 / いつ: 製造は朝と工程の切り替え時、生産管理は進み具合を見るとき /
+    何のために: 製造は今日の仕事を知り、生産管理は依頼した物が受けられ進んでいるかを見る / 次にすること: 行から詳細へ (受けた印・現品票・実績)。生産管理は注文残へ戻る
+    """
+
     model = WorkOrder
     screen_name = "指示書"
     screen_help = (
@@ -55,6 +61,11 @@ class WorkOrderListView(BaseListView):
 
 
 class WorkOrderDetailView(BaseDetailView):
+    """指示書の詳細。
+
+    使う人: 製造・生産管理 / いつ: 指示書を受けるときと、工程の進みを見るとき / 何のために: 項目と工程の並びと実績を見て「受けた」の印を付ける / 次にすること: 現品票を印刷し、工程ごとに実績の新規登録へ
+    """
+
     model = WorkOrder
     screen_name = "指示書の詳細"
     screen_help = "指示書の項目と、工程の並び。"
@@ -63,6 +74,11 @@ class WorkOrderDetailView(BaseDetailView):
 
 
 class WorkOrderCreateView(BaseFormView):
+    """指示書を発行する入力。
+
+    使う人: 生産管理 / いつ: 注文残を見て作ると決めたとき / 何のために: 製造部に生産を依頼する (数量と工程の並び) / 次にすること: 製造が指示書を受ける
+    """
+
     model = WorkOrder
     form_class = WorkOrderIssueForm
     service = staticmethod(services.issue_workorder)
@@ -71,6 +87,11 @@ class WorkOrderCreateView(BaseFormView):
 
 
 class WorkOrderCancelView(BaseFormView):
+    """指示書を取り消す確かめの入力。
+
+    使う人: 生産管理 / いつ: 作らなくなったとき / 何のために: 指示書を取り消す (実績の入った物は取り消せない) / 次にすること: 注文残へ戻る
+    """
+
     model = WorkOrder
     form_class = WorkOrderCancelForm
     service = staticmethod(services.cancel_workorder)
@@ -80,7 +101,10 @@ class WorkOrderCancelView(BaseFormView):
 
 
 class PlanBoardView(BaseListView):
-    """生産計画の盤 (02 の 4 節)。盤の中身は template tag (workorders_plan) が plans.build_board で作る。"""
+    """生産計画の盤 (02 の 4 節)。盤の中身は template tag (workorders_plan) が plans.build_board で作る。
+
+    使う人: 生産管理 / いつ: 週の始めと、指示書を発行した後 / 何のために: 工程ごとに日の計画を置く / 次にすること: 製造が盤を見て順に作る
+    """
 
     model = WorkOrderStep
     template_name = "workorders/plan_board.html"
@@ -92,6 +116,11 @@ class PlanBoardView(BaseListView):
 
 
 class WorkOrderModalView(BaseModalView):
+    """指示書の小窓。
+
+    使う人: 製造・生産管理 / いつ: 生産計画の盤や注文残で指示書を確かめたいとき / 何のために: 画面を移らずに要点と工程の並びを見る / 次にすること: 要れば指示書の詳細へ
+    """
+
     model = WorkOrder
     screen_name = "指示書の小窓"
     screen_help = "指示書の要点と工程の並びを見るだけの小窓。詳細へ移れます。"
