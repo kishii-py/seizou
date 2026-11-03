@@ -27,6 +27,7 @@ from seizou.masters.services import round_amount
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
+from .models import _qty_text
 
 from datetime import timedelta
 
@@ -356,16 +357,18 @@ def annotate_order_received(queryset):
 
 
 def shipping_notice_summary(line):
-    """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total"}。
+    """出荷の知らせ (connect の ShippingNotice) の行と数の合計。返す物は {"rows", "count", "total", "total_text"}。
 
+    total_text は合計の字 (末尾の 0 を落とす = 行の qty_text と同じ形)。
     逆の関係 shipping_notices を読むだけで、purchasing は connect を import しない。connect の無い会社では行が無い。
     行は表の並び (出荷日の古い順)。発注の詳細の明細の表が読む。
     """
     rows = getattr(line, "shipping_notices", None)
     if rows is None:
-        return {"rows": [], "count": 0, "total": _ZERO}
+        return {"rows": [], "count": 0, "total": _ZERO, "total_text": "0"}
     items = list(rows.all())
-    return {"rows": items, "count": len(items), "total": sum((row.qty for row in items), _ZERO)}
+    total = sum((row.qty for row in items), _ZERO)
+    return {"rows": items, "count": len(items), "total": total, "total_text": _qty_text(total)}
 
 
 def payable_by_partner(today=None):

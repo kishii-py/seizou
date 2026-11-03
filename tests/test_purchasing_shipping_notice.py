@@ -110,7 +110,7 @@ def test_shipping_notice_summary_and_line_property(user, subcontractor, item, fa
     po = _order(subcontractor, item, user)
     line = po.lines.get()
 
-    assert services.shipping_notice_summary(line) == {"rows": [], "count": 0, "total": 0}
+    assert services.shipping_notice_summary(line) == {"rows": [], "count": 0, "total": 0, "total_text": "0"}
 
     later = _notice(line, "6", date(2026, 11, 7), "SH-0002")
     earlier = _notice(line, "4", date(2026, 11, 5), "SH-0001")
