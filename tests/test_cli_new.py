@@ -209,9 +209,9 @@ def test_fields_app_from_item_fields(built, tmp_path, monkeypatch):
     assert register_lines and not any(line.strip().startswith("#") for line in register_lines)
     assert "from seizou.core import fields" in apps_text
 
-    # item_fields が空なら fields/ を作らない。
+    # item_fields が空で、業種の見本も入れない (recipe: none) なら fields/ を作らない。
     monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path / "sites"))
-    text = "id: bare_co\nname: 見本の会社\nindustry: 機械加工\nitem_fields: []\nport: 8012\n"
+    text = "id: bare_co\nname: 見本の会社\nindustry: 機械加工\nrecipe: none\nitem_fields: []\nport: 8012\n"
     answers = write_answers(tmp_path / "answers.yaml", text)
     code, _out, err = run_new(["new", str(answers)])
     assert code == 0, err
