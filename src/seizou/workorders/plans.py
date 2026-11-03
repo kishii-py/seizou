@@ -7,13 +7,18 @@
 - 盤に出すのは、指示書が取消でなく、受注も取消でない予定だけ。
 - 段: 棒を開始日・終了日・指示書番号の順に並べ、最後の棒の終了日が開始日より前の段に上から入れる。
   段の数は棒の段の数 + 1 (下に空の段を 1 つ置き、どの日にも落とせる所を残す)。
+- 見た目の材料: 部品の色 (tone。部品の pk で決まる theme の色の名前) と棒の状態 (state。計画・着手・完了・遅れ)。
+  class の字は返さない (Tailwind はテンプレートしか読まないので、テンプレートが data- の属性で切り替える)。
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 
-from django.db.models import Prefetch
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import DecimalField, Prefetch, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
@@ -25,6 +30,14 @@ from .models import WorkOrder, WorkOrderStep
 
 WEEKDAYS = "月火水木金土日"
 WEEKS_CHOICES = (1, 6)
+
+# 部品の色 (棒の塗りと未計画のカードの左の線)。部品の pk で決まる = 同じ部品はどの盤でも同じ色。
+# error は遅れの枠線の色なので、塗りに使わない。
+PART_TONES = ("primary", "secondary", "accent", "info", "success", "warning")
+
+# 棒の状態 (枠線の色)。重なったときは 完了 > 遅れ > 着手 > 計画 の順に決める (bar_state)。
+STATES = (("planned", "計画"), ("accepted", "着手"), ("done", "完了"), ("late", "遅れ"))
+STATE_LABELS = dict(STATES)
 
 # 工程の表は、予定の外部キーの先として引く (masters の models を import しない)。
 _Process = WorkOrderStep._meta.get_field("process").related_model
@@ -112,6 +125,63 @@ def _neighbors(step):
     ]
 
 
+def part_tone(item_pk) -> str:
+    """部品の色の名前 (PART_TONES の 1 つ)。部品の pk の剰余で決める。"""
+    return PART_TONES[item_pk % len(PART_TONES)]
+
+
+def _last_step(step):
+    """同じ指示書の最後の工程 (順が最大。prefetch した並びの最後)。"""
+    steps = list(step.workorder.steps.all())
+    return steps[-1] if steps else step
+
+
+def bar_state(step, recorded_last) -> str:
+    """棒の状態。上から順に最初に当たった物 (完了 > 遅れ > 着手 > 計画)。
+
+    recorded_last は指示書の最後の工程の実績の合計 (進捗の部品が無ければ None)。
+    - done 完了: 最後の工程の実績の合計が、その工程の予定の数以上。
+    - late 遅れ: 終了日が納期より後 (納期が空なら当たらない)。
+    - accepted 着手: 製造部が指示書を受けた (accepted_at がある)。
+    - planned 計画: ほか。
+    """
+    if recorded_last is not None and recorded_last >= _last_step(step).planned_qty:
+        return "done"
+    due_date = step.workorder.order_line.due_date
+    if due_date is not None and step.planned_end is not None and step.planned_end > due_date:
+        return "late"
+    if step.workorder.accepted_at is not None:
+        return "accepted"
+    return "planned"
+
+
+def _recorded_totals(step_pks) -> dict[int, Decimal]:
+    """工程の予定ごとの実績の合計 {pk: 合計}。盤 1 枚で 1 回の query (棒ごとに読まない)。
+
+    progress を import せず、予定の逆の関係 (progress の外部キー) を通して集計する。
+    進捗の部品が無い置き場では空の辞書 (= 「完了」は出ない)。
+    """
+    try:
+        WorkOrderStep._meta.get_field("progress_records")
+    except FieldDoesNotExist:
+        return {}
+    if not step_pks:
+        return {}
+    rows = (
+        WorkOrderStep.objects.filter(pk__in=step_pks)
+        .order_by()
+        .annotate(
+            total=Coalesce(
+                Sum("progress_records__qty"),
+                Value(Decimal("0")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+        .values_list("pk", "total")
+    )
+    return {pk: Decimal(str(total)) for pk, total in rows}
+
+
 def _card(step):
     line = step.workorder.order_line
     return {
@@ -124,6 +194,7 @@ def _card(step):
         "due_date": line.due_date,
         "start": step.planned_start,
         "end": step.planned_end,
+        "tone": part_tone(line.item_id),
     }
 
 
@@ -151,12 +222,35 @@ def _place_in_rows(bars):
     return len(row_ends)
 
 
+def _months(days):
+    """日の並びを月で区切った帯。1 つ = {"label": "11 月", "col": 帯の最初の日の列 (1 から), "span": 日の数}。"""
+    months = []
+    for day in days:
+        key = (day["date"].year, day["date"].month)
+        if months and months[-1]["key"] == key:
+            months[-1]["span"] += 1
+        else:
+            months.append(
+                {"key": key, "label": f"{day['date'].month} 月", "col": day["col"], "span": 1}
+            )
+    return [{"label": m["label"], "col": m["col"], "span": m["span"]} for m in months]
+
+
+def _row_heads(bars, rows):
+    """段の見出し。1 つ = {"row": 1 から, "label": その段に最初に置かれた棒の品名 (棒の無い段は空)}。"""
+    labels: dict[int, str] = {}
+    for bar in bars:
+        labels.setdefault(bar["row"], bar["item_name"])
+    return [{"row": number, "label": labels.get(number, "")} for number in range(1, rows + 1)]
+
+
 def build_board(process, start, weeks):
     """盤の中身の辞書。process が None (印が 1 つも無い) なら process だけが None の辞書を返す。
 
     start は期間の基の日 (None = 今日)、weeks は 1 か 6。
     鍵: process・pills・days・bars・rows・unplanned・unplanned_count・links・place_url・
-    board_start (今の期間の start。今日なら空)・weeks。
+    board_start (今の期間の start。今日なら空)・weeks・months (月の帯)・row_heads (段の見出し)。
+    棒と未計画のカードに tone (部品の色)、棒に state・state_label (状態) と compact (1 行にする棒)。
     """
     weeks = weeks if weeks in WEEKS_CHOICES else 1
     today = timezone.localdate()
@@ -189,9 +283,12 @@ def build_board(process, start, weeks):
         )
 
     steps = active_steps(process)
-    placed = _with_neighbors(
-        steps.filter(planned_start__lte=last, planned_end__gte=first)
-    ).order_by("planned_start", "planned_end", "workorder__wo_no")
+    placed = list(
+        _with_neighbors(
+            steps.filter(planned_start__lte=last, planned_end__gte=first)
+        ).order_by("planned_start", "planned_end", "workorder__wo_no")
+    )
+    totals = _recorded_totals({_last_step(step).pk for step in placed})
     bars = []
     for step in placed:
         bar = _card(step)
@@ -200,6 +297,11 @@ def build_board(process, start, weeks):
         bar["col"] = (shown_from - first).days + 1
         bar["span"] = (shown_to - shown_from).days + 1
         bar["neighbors"] = _neighbors(step)
+        state = bar_state(step, totals.get(_last_step(step).pk))
+        bar["state"] = state
+        bar["state_label"] = STATE_LABELS[state]
+        # 6 週の盤の 1 日の棒は狭いので 1 行だけにする (切れた字の全部は title で出す)。
+        bar["compact"] = weeks == 6 and bar["span"] < 2
         bars.append(bar)
     rows = _place_in_rows(bars) + 1
 
@@ -221,9 +323,11 @@ def build_board(process, start, weeks):
             for marked in marked_processes()
         ],
         "days": days,
+        "months": _months(days),
         "columns": length,
         "bars": bars,
         "rows": rows,
+        "row_heads": _row_heads(bars, rows),
         "unplanned": unplanned,
         "unplanned_count": len(unplanned),
         "links": _period_links(process, start, weeks, base),
