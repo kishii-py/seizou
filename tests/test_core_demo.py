@@ -226,7 +226,7 @@ def test_labels_map_to_choices(tmp_path):
 # 会社の id: (品目, 取引先, 品番の対応, 工程, 受注, つながり)
 EXPECTED_EXAMPLE_COUNTS = {
     "a_machining": (30, 5, 10, 5, 20, 1),
-    "b_plating": (30, 5, 10, 5, 20, 1),
+    "b_plating": (30, 5, 11, 5, 21, 1),
 }
 
 
@@ -626,6 +626,10 @@ def test_examples_new_kinds_go_into_an_existing_site(company_id, tmp_path, no_re
             # 在庫の動きの種は指示書の種を指すので、指示書を外した古い置き場では一緒に外す (受入の種も新しい種類)
             "stock_moves.yaml",
             "receipts.yaml",
+            # 出荷の知らせ・届いた注文の写しと検収・入金の種は、発注と請求書の種を指すので一緒に外す
+            "shipping_notices.yaml",
+            "acceptances.yaml",
+            "payments.yaml",
         ),
     )
     demo.load(old)
