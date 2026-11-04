@@ -355,8 +355,12 @@ def _follow(kind, user, exc: AccessDenied, what: str, need: str) -> None:
 # ---------------------------------------------------------------- 3 つの判定
 
 
-def can_open(user, app, *, record=True) -> bool:
-    """部署で app の画面を開けるか。accounts はアカウント管理の権限で決める (3 状態の外)。"""
+def can_open(user, app, *, record=True, screen=None) -> bool:
+    """部署で app の画面を開けるか。accounts はアカウント管理の権限で決める (3 状態の外)。
+
+    screen は開いた画面の名前 (部署の門 screen_denied が渡す。403 の文と同じ名前)。log の記録の行に画面の名前を出す (決め 11-04 14:4x の 3)。
+    無いとき・空のとき・部品の名前と同じときは、記録の行は今の字のまま (「<部品>」の画面を開いた)。
+    """
     if app in ACCOUNT_APPS:
         return can_manage_accounts(user)
     if app in ALWAYS_OPEN_APPS:
@@ -370,7 +374,9 @@ def can_open(user, app, *, record=True) -> bool:
     if state == "log":
         if record:
             label = app_label(app)
-            log_only("department", user, f"「{label}」の画面を開いた", f"「{label}」を開ける部署")
+            # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (403 の文と同じ選び方。例「届いた注文」の画面 = 「受注管理」の部品)
+            what = f"「{screen}」の画面 (「{label}」の部品) を開いた" if screen and screen != label else f"「{label}」の画面を開いた"
+            log_only("department", user, what, f"「{label}」を開ける部署")
         return True
     return False
 
@@ -459,10 +465,11 @@ def screen_denied(request, app, *, by_department):
             DENIED_HEADING,
             "「アカウント管理」の画面です。アカウント管理の権限が要ります。" + CONTACT,
         )
-    if by_department and not can_open(user, app):
+    # 画面の名前は 403 の文と、log のときの記録の行の両方に使う (決め 11-04 14:4x の 3)
+    screen = _screen_title(request)
+    if by_department and not can_open(user, app, screen=screen):
         names = "・".join(d.name for d in departments_of(user)) or "なし"
         label = app_label(app)
-        screen = _screen_title(request)
         # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (例「届いた注文」の画面 = 「受注管理」の部品)
         where = f"「{screen}」の画面です (「{label}」の部品)" if screen and screen != label else f"「{label}」の画面です"
         return denied_response(
