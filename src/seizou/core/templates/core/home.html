@@ -1,5 +1,6 @@
 {% extends "core/base.html" %}
 {% load seizou_guide seizou_icons seizou_tags %}
+{% load seizou_outcome %}
 {% block content %}
 {# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
 {# 並びは、数字のカード → 業務の流れの枠 (core の dashboard.flow_guide) →出荷の図と生産の図 →最近の受注 (左) と納期アラート (右) → よく使う画面 (本人の決め 11-03 11:0x)。 #}
@@ -199,6 +200,36 @@
   </section>
   {% endif %}
 {% if recent_orders is not None or alerts is not None %}</div>{% endif %}
+{# 注文の入口の図 (core の dashboard.order_inlets。得意先が無ければ節ごと出さない)。最近の受注と納期アラートの後、よく使う画面の前 (本人の決め 11-03 11:0x の並びの間に足す。並びの順は変えない = N93 (N83 の 2817da4 の形))。 #}
+{% order_inlets as inlets %}
+{% if inlets %}
+<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="inlets-title">
+  <div class="flex items-center justify-between gap-2">
+  <h2 id="inlets-title" class="text-lg font-bold">注文の入口 (今月)</h2>
+  {% include "core/_screen_help.html" with part="inlets" label="注文の入口の説明" %}
+  </div>
+  <p class="mt-2 text-base-content/70">得意先ごとの注文の入口と、今月の明細の数です。入口が違っても、明細は 1 か所の受注に集まります。</p>
+  <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-primary" cx="6" cy="6" r="6"></circle></svg>seizou で直接</li>
+    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-secondary" cx="6" cy="6" r="6"></circle></svg>注文書の読み取り</li>
+    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-base-content/70" cx="6" cy="6" r="6"></circle></svg>手入力</li>
+  </ul>
+  <div class="mt-2 overflow-x-auto">
+    <svg id="inlet-chart" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ inlets.width }} {{ inlets.height }}" role="img" aria-label="注文の入口の図。得意先ごとの入口と今月の明細の数">
+      <title>注文の入口 (今月)</title>
+      {% for row in inlets.rows %}
+      <line class="stroke-base-300" x1="{{ row.x1 }}" y1="{{ row.y }}" x2="{{ row.x2 }}" y2="{{ row.y2 }}" vector-effect="non-scaling-stroke"></line>
+      {% if row.inlet == "direct" %}<circle class="fill-primary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% elif row.inlet == "intake" %}<circle class="fill-secondary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% else %}<circle class="fill-base-content/70" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% endif %}
+      <text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ row.y }}" text-anchor="end" dominant-baseline="middle">{{ row.name }} {{ row.lines|comma }} 行</text>
+      {% endfor %}
+      {% if inlets.others %}<text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ inlets.others.y }}" text-anchor="end" dominant-baseline="middle">ほか {{ inlets.others.count|comma }} 社 ({{ inlets.others.lines|comma }} 行)</text>{% endif %}
+      <rect class="stroke-base-300" fill="none" x="{{ inlets.box.x }}" y="{{ inlets.box.y }}" width="{{ inlets.box.width }}" height="{{ inlets.box.height }}" rx="8" vector-effect="non-scaling-stroke"></rect>
+      <text class="fill-base-content/70 text-xs font-medium" x="{{ inlets.box.cx }}" y="{{ inlets.box.label_y }}" text-anchor="middle">受注</text>
+      <text class="fill-base-content/70 text-xs" x="{{ inlets.box.cx }}" y="{{ inlets.box.count_y }}" text-anchor="middle">今月 {{ inlets.total_lines|comma }} 行</text>
+    </svg>
+  </div>
+</section>
+{% endif %}
 {# よく使う画面: 下の段の外の全幅の 1 段。ブックマークの部品 (bookmarks) が入っていればその節 (登録した画面。0 件なら 1 行の案内)、無ければ入口の一覧。 #}
 {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_home.html" %}{% else %}{% include "core/_entrances.html" %}{% endif %}
 {% endblock %}
