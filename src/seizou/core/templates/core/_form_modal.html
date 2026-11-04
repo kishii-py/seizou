@@ -1,11 +1,12 @@
 {% load seizou_icons %}
 {# 入力の小窓の中身 (BaseFormView の小窓の形。小窓の枠 dialog は base.html の 1 か所)。題と閉じるボタン、赤と黄の知らせ、入力のカード (core/_form_card.html)。 #}
 {# 根の箱の seizou-modal-wide の印で、小窓の箱を入力の幅に広げる (scripts/css/input.css)。キャンセルは出さず、閉じるボタンだけ。 #}
+{# カードを別に持つ入力は、app の小窓 (<app>/_form_modal.html) が form_card にカードのテンプレートの名前を渡して、この中身を include する。 #}
 <div class="seizou-modal-wide">
   <div class="mb-4 flex items-start justify-between gap-4">
     <h3 class="min-w-0 truncate text-lg font-bold" title="{{ screen_name }}">{{ screen_name }}</h3>
     <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる">{% icon "x" "size-4" %}</button></form>
   </div>
   {% include "core/_notices.html" %}
-  {% include "core/_form_card.html" %}
+  {% include form_card|default:"core/_form_card.html" %}
 </div>
