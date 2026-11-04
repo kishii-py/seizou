@@ -14,6 +14,9 @@
 (function () {
   // 生産計画の盤のドラッグ。盤の箱は POST のたびに丸ごと差し替わるので、手続きは document に付ける。
   // 終了日は計算しない (plan_place の form が決める)。htmx は defer で読むので、drop の中でだけ呼ぶ。
+  // 棒とカードは押すと計画の詳細の小窓を開く (hx-get)。ドラッグの後に click が来るブラウザでは、
+  // ドラッグを始めた棒かカードの click を 1 回だけ飲む (小窓を開かない)。来なければ dragend の 300ms 後に忘れる。
+  var dragged = null;
   function elementOf(target) {
     return target && target.nodeType === 1 ? target : target && target.parentElement;
   }
@@ -47,9 +50,28 @@
     var element = elementOf(event.target);
     var item = boardOf(element) ? element.closest("[data-step]") : null;
     if (!item) return;
+    dragged = item;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", item.getAttribute("data-step"));
   });
+  document.addEventListener("dragend", function () {
+    window.setTimeout(function () {
+      dragged = null;
+    }, 300);
+  });
+  // capture で document が先に受け、htmx (棒とカードの要素の手続き) に届かせない。
+  document.addEventListener(
+    "click",
+    function (event) {
+      if (!dragged) return;
+      var element = elementOf(event.target);
+      if (!element || element.closest("[data-step]") !== dragged) return;
+      dragged = null;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true
+  );
   document.addEventListener("dragover", function (event) {
     var element = elementOf(event.target);
     if (!boardOf(element) || !element.closest("[data-date]")) return;

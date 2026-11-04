@@ -36,5 +36,6 @@ urlpatterns = [
     path("<int:pk>/scan/", views.workorder_scan, name="workorder_scan"),
     path("plans/", views.PlanBoardView.as_view(), name="plan_index"),
     path("plans/place/", views.plan_place, name="plan_place"),
+    path("plans/steps/<int:pk>/", views.PlanDetailView.as_view(), name="plan_detail"),
     path("plans/<int:process_pk>/", views.PlanBoardView.as_view(), name="plan_board"),
 ]
