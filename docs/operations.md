@@ -110,11 +110,12 @@ PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1
 
 ### HTTPS と Cookie
 
-本番では、ログインの Cookie (セッションと CSRF) を HTTPS の道でだけ送ります (`seizou new` が書く `settings.py` の `if not DEBUG:` の行)。nginx で https を受け、Django へ渡す location (`proxy_pass` を書いた所) に次の 2 行を書きます。
+本番では、ログインの Cookie (セッションと CSRF) を HTTPS の道でだけ送ります (`seizou new` が書く `settings.py` の `if not DEBUG:` の行)。nginx で https を受け、Django へ渡す location (`proxy_pass` を書いた所) に次の 3 行を書きます。3 行目は、下の「ログインの締め出し」が接続元を見分けるための行です。
 
 ```
 proxy_set_header Host $host;
 proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Real-IP $remote_addr;
 ```
 
 LAN の中だけで http で開く置き場では、この形のままではブラウザが Cookie を送らず、ログインできません。その置き場は、`settings.py` の `SESSION_COOKIE_SECURE` と `CSRF_COOKIE_SECURE` の 2 行を消します (点検の「Cookie が HTTPS だけ」は「直す」のまま残ります)。
@@ -123,7 +124,9 @@ LAN の中だけで http で開く置き場では、この形のままではブ�
 
 ログインの画面で、同じ ID と同じ接続元 (IP) から 5 回続けて失敗すると、15 分の間はその組のログインを受け付けません (正しいパスワードでも)。画面には「ログインに続けて失敗したので、15 分の間は受け付けません。」と出ます。ログインに成功すると数え直します。締め出したときは、サーバーの記録 (`seizou.login`) に 1 行出ます (パスワードは書きません)。
 
-数は、サーバーの process の記憶 (Django の既定の cache) に持ちます。15 分より早く解くには、サーバーを立て直します。nginx の後ろでは接続元がいつも nginx になるので、ID ごとの締め出しになります (ほかの人が、ある ID を 15 分止めることもできます)。gunicorn の worker を複数にすると、worker ごとに数えます。
+数は、サーバーの process の記憶 (Django の既定の cache) に持ちます。15 分より早く解くには、サーバーを立て直します。gunicorn の worker を複数にすると、worker ごとに数えます。
+
+nginx の後ろでは、Django から見た接続元 (`REMOTE_ADDR`) がいつも nginx (127.0.0.1) になり、ID ごとの締め出しになります (ほかの人が、ある ID を 15 分止めることもできます)。その置き場は、`.env` に `SEIZOU_CLIENT_IP_HEADER=X-Real-IP` の 1 行を足し、nginx の `proxy_set_header X-Real-IP $remote_addr;` (上の「HTTPS と Cookie」の 3 行目) の値を接続元にします。nginx は、外から来た同じ名前の見出しをこの値で上書きします。手前に nginx のような proxy が無い置き場では、この行を書きません (書くと、利用者が見出しで接続元を偽れます)。CDN (Cloudflare など) を通す置き場では、nginx の realip で CDN から来た要求の接続元を取り直してから渡します。
 
 ### ログインが切れたときと、2 回押し
 
@@ -137,7 +140,7 @@ seizou の新しい版を入れるときは、次の順に進めます。
 
 1. `<python> manage.py seizou_backup` で控えを取ります。
 2. サーバーを止めます。
-3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。
+3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。本番の VPS ([docs/vps.md](vps.md) の 5 の形) では `uv sync --locked --no-dev --extra pdf --inexact` です。`--extra pdf` が無いと PDF の部品 (weasyprint) が入らず、`--inexact` が無いと後から入れた gunicorn が消えます。
 4. `<python> manage.py migrate` を打ちます。
 5. `<python> manage.py seizou_doctor` で点検し、直す物があれば直します。
 6. 本番で nginx が静的ファイルを配る形なら、`<python> manage.py collectstatic --no-input` を打ちます。

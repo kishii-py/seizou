@@ -186,18 +186,19 @@ sudo -u seizou -H env SEIZOU_SITES_DIR=/srv/seizou-sites /srv/seizou/src/.venv/b
 sudo -u seizou -H nano /srv/seizou-sites/a_machining/.env
 ```
 
-`DEBUG` と `SEIZOU_DEV_AUTO_LOGIN` の行を 0 に直し、`ALLOWED_HOSTS` と `SEIZOU_FILE_DELIVERY` の 2 行を足して、次の 4 行がある形にします。B 社は `ALLOWED_HOSTS=b.example.jp` です。
+`DEBUG` と `SEIZOU_DEV_AUTO_LOGIN` の行を 0 に直し、`ALLOWED_HOSTS`・`SEIZOU_FILE_DELIVERY`・`SEIZOU_CLIENT_IP_HEADER` の 3 行を足して、次の 5 行がある形にします。B 社は `ALLOWED_HOSTS=b.example.jp` です。
 
 ```
 DEBUG=0
 SEIZOU_DEV_AUTO_LOGIN=0
 ALLOWED_HOSTS=a.example.jp
 SEIZOU_FILE_DELIVERY=nginx
+SEIZOU_CLIENT_IP_HEADER=X-Real-IP
 ```
 
-`SECRET_KEY` の行は、`seizou new` が作った値のまま触りません (2 社で違う値です)。注文書の読み取りと AI チャットを使う会社だけ、API の鍵 (`ANTHROPIC_API_KEY`) の行を足します。`.env` の中身は、画面に出しません (`cat` で開かない)。`nano` が無ければ `sudo dnf install nano` で入れます。
+`SECRET_KEY` の行は、`seizou new` が作った値のまま触りません (2 社で違う値です)。注文書の読み取りと AI チャットを使う会社だけ、API の鍵 (`ANTHROPIC_API_KEY`) の行を足します。`SEIZOU_CLIENT_IP_HEADER` は、ログインの締め出しが接続元を 12 の nginx が付ける見出し `X-Real-IP` から読む印です (無いと、nginx の後ろでは接続元がいつも 127.0.0.1 になり、ID ごとの締め出しになります)。`.env` の中身は、画面に出しません (`cat` で開かない)。`nano` が無ければ `sudo dnf install nano` で入れます。
 
-確かめ方: `sudo stat -c %a /srv/seizou-sites/a_machining/.env` → `600`・`sudo grep -c -x -F -e DEBUG=0 -e SEIZOU_DEV_AUTO_LOGIN=0 -e ALLOWED_HOSTS=a.example.jp -e SEIZOU_FILE_DELIVERY=nginx /srv/seizou-sites/a_machining/.env` → `4`
+確かめ方: `sudo stat -c %a /srv/seizou-sites/a_machining/.env` → `600`・`sudo grep -c -x -F -e DEBUG=0 -e SEIZOU_DEV_AUTO_LOGIN=0 -e ALLOWED_HOSTS=a.example.jp -e SEIZOU_FILE_DELIVERY=nginx -e SEIZOU_CLIENT_IP_HEADER=X-Real-IP /srv/seizou-sites/a_machining/.env` → `5`
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 9. 静的ファイルを集めて点検する
@@ -283,6 +284,7 @@ sudo systemctl enable --now seizou-a_machining seizou-b_plating
 - `'django.core.wsgi:get_wsgi_application()'` と `--chdir`・`--pythonpath`・`DJANGO_SETTINGS_MODULE=settings` は、置き場の `settings.py` を `settings` の名前で読んで、Django の app を作る書き方です。
 - `TMPDIR` は、上げたファイルの一時の置き場を置き場の中にする行です。Django は 2.5MB より大きいファイルを一時のファイルに受け、受け終わったら `media/` へ名前を変えて移します。名前を変えて移したファイルは、SELinux の印を移す前のまま持つので、`/tmp` で受けると `tmp_t` のままになり、nginx が読めない見込みです。`upload-tmp/` は 10 で `media/` と同じ印にしてあります。
 - `.env` は `settings.py` が自分で読むので、unit に `EnvironmentFile` は書きません。
+- gunicorn 26 以降は、既定で制御の socket (`/run/user/<uid>/gunicorn.ctl`) を作ろうとします。unit に `ProtectHome=yes` のような守りを足すと `Permission denied` の記録が出るので、そのときは `ExecStart` に `--no-control-socket` を足します (この版の unit は守りを足していないので、そのままで動きます)。
 
 確かめ方: `systemctl is-active seizou-a_machining` → `active`・`curl -fsS -H 'Host: a.example.jp' http://127.0.0.1:8001/health/` → `{"ok": true}` (作者の手元では、gunicorn と同じ形で Django の app を作り、`/health/` が `200 OK` と `{"ok": true}` を返すのを見た。gunicorn の上の答えは VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。gunicorn が動かず `comm="gunicorn"` か `comm="(gunicorn)"` の記録が出たら、10 の `bin_t` の行を見る)
@@ -299,6 +301,7 @@ server {
 
     location /static/ {
         alias /srv/seizou-sites/a_machining/staticfiles/;
+        add_header Cache-Control "public, no-cache";
     }
 
     include /srv/seizou-sites/a_machining/deploy/nginx-files.conf;
@@ -308,6 +311,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Seizou-Proxy nginx;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_read_timeout 90s;
     }
 }
@@ -325,9 +329,9 @@ sudo systemctl reload nginx
 各行の理由は次のとおりです。
 
 - `client_max_body_size 25m` は、図面と添付と注文書を 1 つ 20MB まで上げられるためです。nginx の既定の 1MB では上げられません。
-- `location /static/` は、9 で集めた静的ファイルを nginx が配る所です。
+- `location /static/` は、9 で集めた静的ファイルを nginx が配る所です。`Cache-Control "public, no-cache"` は、ブラウザに毎回確かめさせる印です。seizou の静的ファイルは名前にハッシュが付かないので、長く持たせると版を上げた後に古い CSS が残ります。
 - `include` の行は、`seizou new` が置き場に書いた断片 (`deploy/nginx-files.conf`) を読みます。上げたファイルは、Django がログインを見てから、断片の内部の location に渡します。上げたファイルの置き場を nginx がそのまま配る location (`location /media/`) は書きません。書くと、ログインを通らずにファイルが出ます。
-- `proxy_set_header` の 3 行が無いと、次のように止まります。`Host` が無いと `ALLOWED_HOSTS` で 400 になります。`X-Forwarded-Proto` が無いと、ログインの保存が 403 (CSRF) になります。`X-Seizou-Proxy` が無いと、上げたファイルの画面が 503 になります。nginx は、外から来た同じ名前の見出しを、この値で上書きします。
+- `proxy_set_header` の 4 行が無いと、次のように止まります。`Host` が無いと `ALLOWED_HOSTS` で 400 になります。`X-Forwarded-Proto` が無いと、ログインの保存が 403 (CSRF) になります。`X-Seizou-Proxy` が無いと、上げたファイルの画面が 503 になります。`X-Real-IP` が無いと、ログインの締め出しが接続元を見分けられず、ID ごとの締め出しになります (8 の `SEIZOU_CLIENT_IP_HEADER` と対)。nginx は、外から来た同じ名前の見出しを、この値で上書きします。CDN (Cloudflare など) を通す置き場では、nginx の realip で CDN から来た要求の接続元 (`CF-Connecting-IP` など) を `$remote_addr` に取り直してから、この行で渡します。
 - `proxy_read_timeout 90s` は、11 の `--timeout 90` と合わせた待ち時間です。
 - `setsebool -P` の `-P` は、再起動の後も boolean を残す印です。
 - 443 (https) の server は、13 で certbot が書きます。
