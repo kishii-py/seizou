@@ -33,6 +33,14 @@ from .models import Holiday
 INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": FilterSpec.as_is}
 
 
+#: 取引先の候補の口の GET の role → 出す取引先の種類 (精査 A9 の 4 節の 1。受注の得意先の欄は customer)。
+#: 無い・知らない値なら種類で絞らない (今までどおり全部。マニュアルの紐付けの欄など)。
+PARTNER_SELECT_ROLES = {
+    "customer": (Partner.ROLE_CUSTOMER, Partner.ROLE_BOTH),
+    "supplier": (Partner.ROLE_SUBCONTRACTOR, Partner.ROLE_BOTH),
+}
+
+
 def _hide_inactive(view, queryset):
     """印「使用停止も出す」が切 (既定) なら使用中だけ。件数と CSV も同じ条件になる。"""
     return queryset if view.flag_on("inactive") else queryset.filter(active=True)
@@ -196,8 +204,11 @@ class PartnerSelectView(BaseSelectView):
     search_fields = ("code", "name", "short_name")
 
     def get_queryset(self):
-        # 候補は使用中だけ (N135。受注の得意先の欄が、使用停止の取引先を出さない)
-        return services.active_partners()
+        # 候補は使用中だけ (N135。受注の得意先の欄が、使用停止の取引先を出さない)。
+        # GET の role があれば取引先の種類で絞る (customer = 得意先と両方 / supplier = 協力企業と両方。受注の得意先の欄に協力企業を出さない)。
+        partners = services.active_partners()
+        roles = PARTNER_SELECT_ROLES.get(self.request.GET.get("role", ""))
+        return partners.filter(role__in=roles) if roles else partners
 
 
 class ProcessListView(BaseListView):

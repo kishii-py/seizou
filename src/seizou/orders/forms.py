@@ -146,7 +146,8 @@ class OrderForm(ServiceModelForm):
         model = Order
         fields = ["customer", "order_date", "customer_order_no", "note"]
         widgets = {
-            "customer": RemoteSelect("masters:partner_select"),
+            # 候補は得意先と両方の取引先だけ (協力企業を出さない。精査 A9 の 4 節の 1)
+            "customer": RemoteSelect("masters:partner_select", query={"role": "customer"}),
             "order_date": _date_input(),
         }
 
