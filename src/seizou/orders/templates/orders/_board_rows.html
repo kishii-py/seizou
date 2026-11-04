@@ -70,4 +70,4 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
   </nav>
   {% endif %}
 </div>
-{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
