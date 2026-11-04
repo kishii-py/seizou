@@ -35,7 +35,7 @@ processes:
     sort_order: 10
     use_in_plan: false
   - code: PLATE
-    name: めっき
+    name: 表面処理
     is_outsourced: false
     sort_order: 20
     use_in_plan: true
