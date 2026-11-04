@@ -334,3 +334,41 @@ def build_board(process, start, weeks):
         "first": first,
         "last": last,
     }
+
+
+# --- 計画の詳細の小窓 (決め 11-04 14:5x。盤の棒と未計画のカードを押すと開く) ---
+
+
+def detail_steps():
+    """計画の詳細の小窓が引く工程の予定。会社の設定 production_plan が偽なら Http404 (盤と同じ)。"""
+    if not setting("production_plan"):
+        raise Http404("生産計画を使わない設定です。")
+    return WorkOrderStep.objects.select_related(
+        "process", "workorder__order_line__order__customer", "workorder__order_line__item"
+    )
+
+
+def plan_detail(step):
+    """計画の詳細の小窓の中身 (読むだけ)。step は detail_steps() で引いた工程の予定。
+
+    鍵: step・workorder・line・order・customer・item・state_label (盤の棒と同じ状態の字。取消の指示書は「取消」)・
+    steps (指示書の工程の並び。1 つ = {"step", "current" (押した棒の工程か)})。在庫の見込みは item_projection が作る。
+    """
+    workorder = step.workorder
+    line = workorder.order_line
+    steps = list(workorder.steps.select_related("process").order_by("seq"))
+    if workorder.status == WorkOrder.STATUS_CANCELLED:
+        state_label = workorder.get_status_display()
+    else:
+        last = steps[-1] if steps else step
+        state_label = STATE_LABELS[bar_state(step, _recorded_totals({last.pk}).get(last.pk))]
+    return {
+        "step": step,
+        "workorder": workorder,
+        "line": line,
+        "order": line.order,
+        "customer": line.order.customer,
+        "item": line.item,
+        "state_label": state_label,
+        "steps": [{"step": other, "current": other.pk == step.pk} for other in steps],
+    }
