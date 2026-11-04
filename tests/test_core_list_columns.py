@@ -236,7 +236,7 @@ def test_date_kind_renders_iso(user, items):
     text = body(response)
     cell = response.context_data["rows"][0]["cells"][3]
     assert cell["date"] and not cell["numeric"]
-    assert '<td class="whitespace-nowrap font-mono tabular-nums">2026-11-03</td>' in text
+    assert '<td class="whitespace-nowrap font-mono tabular-nums">2026-11-03 <span class="text-xs text-base-content/50">(火)</span></td>' in text
 
     rows = csv_rows(call(_AnnotatedItemList, user, format="csv"))
     assert rows[0][3] == "動きの日"

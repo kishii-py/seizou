@@ -8,17 +8,23 @@ can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く�
 部署の判定が on のときは、釦の行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
+weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
 """
 
 import re
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from django import template
 from django.apps import apps
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 register = template.Library()
+
+#: 曜日の字 (date.weekday() の 0 = 月 … 6 = 日)
+WEEKDAYS_JA = "月火水木金土日"
 
 
 @register.filter
@@ -119,3 +125,17 @@ def rule_code(value):
     if isinstance(value, str) and re.fullmatch(r"R[0-9]{2}", value):
         return value
     return ""
+
+
+@register.filter
+def weekday_ja(value):
+    """{{ day|weekday_ja }}。日付 (date か datetime) の曜日の 1 字 (月〜日)。日付でない物 (字・数) と None は空の字。
+
+    時刻つきの datetime は画面の時刻 (設定の TIME_ZONE) に直してから曜日を決める (画面に出す日付の字と曜日をそろえる)。
+    """
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+    elif not isinstance(value, date):
+        return ""
+    return WEEKDAYS_JA[value.weekday()]

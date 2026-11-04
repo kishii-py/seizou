@@ -35,7 +35,7 @@
         <dd class="min-w-0 break-words">{% if field.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ field.file.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ field.file.name }}</span></a>
           {% elif field.master %}{% master_link field.master %}
           {% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>
-          {% else %}{{ field.value|comma }}{% endif %}</dd>
+          {% else %}{{ field.value|comma }}{% with day=field.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</dd>
       </div>
       {% endfor %}
     </dl>
