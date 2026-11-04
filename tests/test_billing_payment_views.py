@@ -262,21 +262,22 @@ def test_list_has_payment_columns_and_unpaid_filter(client_logged_in, user, item
     assert unpaid_row["payment_status_label"] == "未入金"
     assert unpaid_row["balance"] == Decimal("16500.00")
     body = response.content.decode()
-    assert '<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">すべて</span>' in body
+    # 「未入金だけ」は絞り込みの枠の中の印 (既定は切。N127)。古い「すべて / 未入金だけ」の切り替えは無い
+    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" data-list-filter>未入金だけ</label>' in body
     assert 'id="invoices-unpaid"' not in body
 
-    filtered = client_logged_in.get(reverse("billing:invoice_list") + "?unpaid=1")
+    filtered = client_logged_in.get(reverse("billing:invoice_list") + "?f_unpaid=1")
     body = filtered.content.decode()
     assert invoice.invoice_no in body
     assert paid.invoice_no not in body
     assert cancelled.invoice_no not in body
-    assert '<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">未入金だけ</span>' in body
-    assert '<input type="hidden" id="invoices-unpaid" name="unpaid" value="1">' in body
-    assert 'hx-include="#invoices-unpaid"' in body
+    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" checked data-list-filter>未入金だけ</label>' in body
+    assert 'id="invoices-unpaid"' not in body
+    assert 'hx-include="#invoices-unpaid"' not in body
 
-    searched = client_logged_in.get(reverse("billing:invoice_list") + f"?unpaid=1&q={invoice.invoice_no}")
+    searched = client_logged_in.get(reverse("billing:invoice_list") + f"?f_unpaid=1&q={invoice.invoice_no}")
     assert [row["obj"].pk for row in searched.context["rows"]] == [invoice.pk]
-    missed = client_logged_in.get(reverse("billing:invoice_list") + f"?unpaid=1&q={paid.invoice_no}")
+    missed = client_logged_in.get(reverse("billing:invoice_list") + f"?f_unpaid=1&q={paid.invoice_no}")
     assert missed.context["rows"] == []
 
 

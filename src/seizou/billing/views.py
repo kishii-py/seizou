@@ -3,7 +3,7 @@
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
-一覧の「入金」と「残」は Invoice の method の列で、「未入金だけ」(?unpaid=1) は取消でない入金が 1 つも無い発行の請求書。
+一覧の「入金」と「残」は Invoice の method の列で、「未入金だけ」(絞り込みの枠の印 f_unpaid=1) は取消でない入金が 1 つも無い発行の請求書 (状態の絞りがあれば、状態はそちらを使う)。
 """
 
 from django.contrib.auth.decorators import login_required
@@ -24,6 +24,11 @@ REPORT_TEMPLATE = "billing/invoice.html"
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください"
 
 
+def _unpaid_only(invoices):
+    """「未入金だけ」の印の条件 (取消でない入金が 1 つも無い請求書)。状態を発行に絞るのは InvoiceListView.get_queryset。"""
+    return invoices.exclude(payments__status=Payment.STATUS_RECORDED)
+
+
 class InvoiceListView(BaseListView):
     """請求書の一覧。
 
@@ -39,17 +44,17 @@ class InvoiceListView(BaseListView):
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
         {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+        {"name": "unpaid", "label": "未入金だけ", "kind": "flag", "when": _unpaid_only},
     )
     ordering = ("-issued_on", "-id")
     template_name = "billing/invoice_list.html"
 
     def get_queryset(self):
         invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
-        if self.request.GET.get("unpaid") == "1":
-            # 状態の絞り (f_status) に読める値があれば、状態はそちらを使い、「未入金だけ」は入金の有無だけを見る (N120)。
+        if any(spec.name == "unpaid" and spec.is_on(self.request.GET) for spec in self.filter_specs()):
+            # 入金の有無は印の when (_unpaid_only) が見る。状態の絞り (f_status) に読める値が無いときだけ、状態を発行に絞る (N120・N127)。
             if not any(spec.name == "status" and spec.values(self.request.GET) for spec in self.filter_specs()):
                 invoices = invoices.filter(status=Invoice.STATUS_ISSUED)
-            invoices = invoices.exclude(payments__status=Payment.STATUS_RECORDED)
         return invoices
 
 

@@ -1,7 +1,7 @@
 """請求書の一覧と発注の一覧の絞り (N120。土台は N117 の BaseListView.filters。本人の決め 11-04 15:0x)。
 
 GET の名前は f_<name> (期間は f_<name>_from と f_<name>_to)。空と読めない値は絞らない。
-請求書の「未入金だけ」(?unpaid=1) は今までどおり動き、状態の絞りに読める値があれば状態はそちらを使う。
+請求書の「未入金だけ」(絞り込みの枠の印 f_unpaid=1。N127 で ?unpaid=1 から移した) は、状態の絞りに読める値があれば状態はそちらを使う。
 発注の 2 秒ごとの更新の要求は HTTP_HX_REQUEST="true" と見出し X-Seizou-Live (tests/test_purchasing_live.py と同じ形)。
 相手の会社に HTTP を送らない (send=False・つながりなし。requests.post は呼んだら落とす物に差し替える)。取引先と品目は作り物。
 """
@@ -90,14 +90,16 @@ def test_invoice_status_filter_takes_priority_over_unpaid(client_logged_in, user
     assert response.context["filter_active"] is True
     assert _pks(client_logged_in.get(url, {"f_status": "issued"})) == [paid.pk, unpaid.pk]
     # 「未入金だけ」だけ: 今までどおり、発行で取消でない入金の無い請求書
-    assert _pks(client_logged_in.get(url, {"unpaid": "1"})) == [unpaid.pk]
+    assert _pks(client_logged_in.get(url, {"f_unpaid": "1"})) == [unpaid.pk]
     # 両方: 状態は絞りの値を使い、「未入金だけ」は入金の有無だけを見る
-    assert _pks(client_logged_in.get(url, {"unpaid": "1", "f_status": "cancelled"})) == [cancelled.pk]
-    assert _pks(client_logged_in.get(url, {"unpaid": "1", "f_status": "issued"})) == [unpaid.pk]
+    assert _pks(client_logged_in.get(url, {"f_unpaid": "1", "f_status": "cancelled"})) == [cancelled.pk]
+    assert _pks(client_logged_in.get(url, {"f_unpaid": "1", "f_status": "issued"})) == [unpaid.pk]
     # 状態の絞りの読めない値は空と同じ (「未入金だけ」が今までどおり発行に絞る)
-    response = client_logged_in.get(url, {"unpaid": "1", "f_status": "作り物の字"})
+    response = client_logged_in.get(url, {"f_unpaid": "1", "f_status": "作り物の字"})
     assert _pks(response) == [unpaid.pk]
-    assert response.context["filter_active"] is False
+    # 「未入金だけ」の印が入なので絞りは効いている (N127)。状態の読めない字は数えない
+    assert response.context["filter_active"] is True
+    assert [f["active"] for f in response.context["filters"]] == [False, False, False, True]
 
 
 @pytest.mark.django_db
@@ -114,7 +116,7 @@ def test_invoice_issued_range_and_customer(client_logged_in, user, item):
         assert f'name="{name}"' in body, name
     for label in ("状態", "得意先", "発行日"):
         assert f">{label}</label>" in body, label
-    assert 'id="invoices-unpaid"' not in body  # 「未入金だけ」の切り替えは今のまま (既定は「すべて」)
+    assert 'id="invoices-unpaid"' not in body  # 古い「すべて / 未入金だけ」の切り替えは無い (N127。印は枠の中)
 
     # 発行日の期間は両端を含み、片側だけでも絞れる
     response = client_logged_in.get(url, {"f_issued_from": "2026-11-15", "f_issued_to": "2026-11-30"})
@@ -123,7 +125,7 @@ def test_invoice_issued_range_and_customer(client_logged_in, user, item):
     assert _pks(client_logged_in.get(url, {"f_issued_to": "2026-10-31"})) == [early.pk]
     # 得意先と発行日をかけ合わせる (AND)。「未入金だけ」とも重ねられる
     assert _pks(client_logged_in.get(url, {"f_customer": str(first.pk), "f_issued_from": "2026-11-01"})) == [late.pk]
-    assert _pks(client_logged_in.get(url, {"unpaid": "1", "f_customer": str(second.pk)})) == [middle.pk]
+    assert _pks(client_logged_in.get(url, {"f_unpaid": "1", "f_customer": str(second.pk)})) == [middle.pk]
 
 
 # --- 発注の一覧 ---
