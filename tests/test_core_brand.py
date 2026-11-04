@@ -4,15 +4,21 @@ brand_color は base.html の <html> の style で daisyUI の主色の変数を
 会社の設定は settings の fixture で SEIZOU を替える (tests/test_core_settings_screen.py の形)。名前は作り物だけ。
 """
 
+import ast
 import re
+from pathlib import Path
 
 import pytest
+import yaml
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+from seizou import cli
 from seizou.core import conf
 from seizou.core import services
 
+COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
+COMPANY_IDS = ("a_machining", "b_plating")
 SUBTITLE = '<span class="block text-xs text-base-content/50">'
 
 
@@ -86,3 +92,41 @@ def test_validate_industry():
     for bad in ("業" * 41, None):
         with pytest.raises(ValueError, match="industry \\(業種\\) は 40 字まで"):
             services.validate_setting("industry", bad)
+
+
+def read_answers(company_id) -> dict:
+    with open(COMPANIES_DIR / f"{company_id}.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def test_cli_writes_industry_into_seizou():
+    lines = cli.seizou_items({"id": "x_co", "industry": "機械加工", "port": 8012}, {}).split("\n")
+    assert lines == ["    'id': 'x_co',", "    'industry': '機械加工',", "    'port': 8012,"]
+    # 答えの settings に industry があればそちらが勝つ。答えの頭に無ければ空の字
+    given = cli.seizou_items({"id": "x_co", "industry": "機械加工", "port": 1}, {"industry": "作り物"})
+    assert "    'industry': '作り物'," in given and "機械加工" not in given
+    assert "    'industry': ''," in cli.seizou_items({"id": "x_co", "port": 1}, {})
+
+
+def test_example_companies_have_different_brand_colors():
+    colors = {}
+    for company_id in COMPANY_IDS:
+        answers = read_answers(company_id)
+        colors[company_id] = answers["settings"]["brand_color"]
+        assert conf.BRAND_COLOR_PATTERN.fullmatch(colors[company_id]), company_id
+        assert answers["industry"]
+    assert len(set(colors.values())) == len(COMPANY_IDS)
+
+
+@pytest.mark.parametrize("company_id", COMPANY_IDS)
+def test_example_companies_show_their_color_and_industry(settings, client, db, company_id):
+    # seizou new と同じ道 (settings_with_defaults → seizou_items) で SEIZOU の辞書を作り、答えの値が画面に出るかを見る
+    answers = read_answers(company_id)
+    values, _ = cli.settings_with_defaults(answers)
+    settings.SEIZOU = ast.literal_eval("{\n" + cli.seizou_items(answers, values) + "\n}")
+    # 2 社の答えは権限の判定が 3 つとも on なので、システム管理者で入る
+    client.force_login(get_user_model().objects.create_superuser("admin-brand", password="tests-only-2611"))
+
+    color = answers["settings"]["brand_color"]
+    assert f'style="--color-primary: {color}; --color-primary-content: #ffffff"' in html_tag(client)
+    assert subtitle(client) == answers["industry"]
