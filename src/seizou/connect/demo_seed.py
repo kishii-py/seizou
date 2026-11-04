@@ -10,6 +10,7 @@ load を部品の種の段で呼び、2 つの数を同じ種類に足す。
 - 届いた注文の写しは、受け口 (署名の確かめ) を通さずに受信箱に 1 行入れ、受け入れて受注にする (入口は「届いた注文」)。
   相手の品番は取引先ごとの品番の表 (partner_items.csv) で自社の品目に引く。受け入れは send=False で呼び、
   注文回答を相手に送らない (届いた注文の返事の欄に書くだけ)。2 社のつながりは両向き。
+  届いた注文の写しに「承認した日時」があれば、受け入れの承認した日時をその値にする (無ければ読み込みの日時)。
 - 出荷の知らせは発注の明細に付ける。注文回答の写しは発注の状態を「作成」→「送った」→「相手が受け入れた」に進める
   (相手に送らず、送った注文の行も作らない)。
 - 相手の会社に HTTP を送らない。受け入れは send=False で呼び、注文回答を相手に送らない (返事の欄に書くだけ)。
@@ -40,7 +41,7 @@ from .models import Acceptance, ShippingNotice
 
 ACCEPTANCES_FILE = "acceptances.yaml"
 ACCEPTANCES_ROOT = "届いた注文"
-INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "届いた日時", "明細", "検収")
+INBOX_KEYS = ("取引先コード", "相手の発注番号", "発注日", "届いた日時", "承認した日時", "明細", "検収")
 INBOX_LINE_KEYS = ("相手の品番", "品名", "数量", "単位", "単価", "納期")
 ACCEPTANCE_KEYS = ("行番号", "検収日", "数量")
 
@@ -208,6 +209,7 @@ def _load_inbox(entry, user):
     if order is None:
         message_id = _message_id("inbox", partner.code, order_no)
         payload = _inbox_payload(entry, order_no, message_id)
+        accepted_at = _datetime(entry.get("承認した日時"), "承認した日時")
         inbox = services.record_inbox(
             partner,
             payload,
@@ -215,7 +217,7 @@ def _load_inbox(entry, user):
             message_id=message_id,
             received_at=_datetime(entry.get("届いた日時"), "届いた日時"),
         )
-        order = services.accept(inbox, {}, user, send=False)
+        order = services.accept(inbox, {}, user, send=False, accepted_at=accepted_at)
         # 受け入れは渡した行を書き換えず、表の行を取り直して書くので、受注から取り直す (飛ばす道と同じ式)。
         inbox = order.inbox_message
         made += 1

@@ -311,3 +311,23 @@ def test_seed_references_exist(company_id):
         _check_a_references(folder)
     else:
         _check_b_references(folder)
+
+
+@pytest.mark.django_db
+def test_b_plating_seed_accepted_at_is_seed_time(no_registration, media, no_http):
+    demo.load(COMPANIES_DIR / "b_plating")  # seizou new --demo が呼ぶ物
+
+    inbox = Inbox.objects.get()
+    assert timezone.localtime(inbox.accepted_at).strftime("%Y-%m-%d %H:%M") == "2026-10-28 10:40"  # 種に書いた承認した日時
+    assert datetime.timedelta(0) <= inbox.accepted_at - inbox.received_at < datetime.timedelta(days=1)
+    accepted_at = inbox.accepted_at
+
+    demo.load(COMPANIES_DIR / "b_plating")
+
+    assert Inbox.objects.get().accepted_at == accepted_at  # 2 回目は届いた注文を飛ばし、書き直さない
+    # 種の約束: 届いた日時 <= 承認した日時 < 届いた日時 + 1 日
+    for entry in _yaml(COMPANIES_DIR / "b_plating" / "acceptances.yaml", "届いた注文"):
+        assert entry["届いた日時"] <= entry["承認した日時"] < entry["届いた日時"] + datetime.timedelta(days=1)
+    # timezone の無い日時は、受け入れ済みの行でも状態を見る前に断る
+    with pytest.raises(ValueError, match="承認した日時は timezone 付きの日時"):
+        services.accept(inbox, {}, None, send=False, accepted_at=datetime.datetime(2026, 10, 28, 10, 40))
