@@ -11,6 +11,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ログインの締め出しの数のファイルは、リポジトリの中でなく一時の置き場に (core.login_guard。既定は BASE_DIR / "cache" / "login")。
+SEIZOU_LOGIN_CACHE_DIR = tempfile.mkdtemp(prefix="seizou-login-cache-")
+
 # 試験用と分かる平文。本物の鍵ではない。
 SECRET_KEY = "seizou-tests-only-plain-words-not-a-real-key"
 

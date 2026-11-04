@@ -1,8 +1,10 @@
 """ログインの締め出し (総当たりの止め)。
 
 同じ ID と同じ接続元 (REMOTE_ADDR) の組で 5 回続けて失敗すると、15 分の間はその組のログインを受け付けない
-(正しいパスワードでも)。成功で数え直す。数は Django の既定の cache に組の sha256 を鍵にして持つ
-(打たれた ID の字を鍵にしない)。締め出したときに記録 (seizou.login) に 1 行出す (パスワードは出さない)。
+(正しいパスワードでも)。成功で数え直す。数は置き場 (settings.BASE_DIR) の cache/login/ のファイルに、組の sha256 を鍵にして持つ
+(打たれた ID の字を鍵にしない)。ファイルなので、同じ置き場で動く gunicorn の worker と process の全部で 1 か所に数える
+(process の記憶に持つと worker ごとに数え、締め出しまでの回数が揺れる)。置き場は settings.py の SEIZOU_LOGIN_CACHE_DIR で変えられ、
+BASE_DIR が無いときだけ process の記憶に持つ。締め出したときに記録 (seizou.login) に 1 行出す (パスワードは出さない)。
 回数と分は固定 (設定の鍵を作らない)。接続元は既定では REMOTE_ADDR だけを見る (proxy が付ける見出しは偽れるため)。
 nginx の後ろでは REMOTE_ADDR がいつも nginx (127.0.0.1) になり ID ごとの締め出しになるので、手前の proxy が接続元を
 見出しに入れる置き場だけ、置き場の .env (か settings.py) に SEIZOU_CLIENT_IP_HEADER=X-Real-IP のように見出しの名前を書く。
@@ -15,15 +17,19 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
-from django.core.cache import cache
+from django.core.cache.backends.filebased import FileBasedCache
+from django.core.cache.backends.locmem import LocMemCache
 from django.core.exceptions import ValidationError
 from django.views.decorators.debug import sensitive_variables
 
 #: 手前の proxy が接続元を入れる見出しの名前を書く設定 (settings.py の名前と環境変数の名前は同じ)。空なら REMOTE_ADDR だけを見る。
 HEADER_SETTING = "SEIZOU_CLIENT_IP_HEADER"
+#: 締め出しの数のファイルを置く場所を書く設定 (settings.py)。無ければ BASE_DIR / "cache" / "login"。
+CACHE_DIR_SETTING = "SEIZOU_LOGIN_CACHE_DIR"
 
 #: 続けて失敗してよい回数 (この回数目の失敗で締め出す)
 FAIL_LIMIT = 5
@@ -38,6 +44,20 @@ INVALID_MESSAGE = "ID かパスワードが違います。確かめてもう一�
 LOCKED_MESSAGE = f"ログインに続けて失敗したので、{LOCK_MINUTES} 分の間は受け付けません。"
 
 logger = logging.getLogger("seizou.login")
+
+
+def _make_cache():
+    """締め出しの数の置き場。置き場の cache/login/ のファイル (worker と process の全部で 1 か所)。BASE_DIR が無ければ process の記憶。"""
+    location = getattr(settings, CACHE_DIR_SETTING, None)
+    if not location:
+        base = getattr(settings, "BASE_DIR", None)
+        location = Path(base) / "cache" / "login" if base else None
+    if location:
+        return FileBasedCache(str(location), {"TIMEOUT": LOCK_SECONDS})
+    return LocMemCache("seizou-login", {"TIMEOUT": LOCK_SECONDS})
+
+
+cache = _make_cache()
 
 
 def client_ip_header() -> str:

@@ -279,7 +279,7 @@ sudo systemctl enable --now seizou-a_machining seizou-b_plating
 各行の理由は次の 6 つです。
 
 - `--bind 127.0.0.1:8001` は、同じ VPS の中 (nginx) からだけ届く待ち方です。外から Django に直に届くと、nginx が付ける https の印 (`X-Forwarded-Proto`) と nginx を通った印 (`X-Seizou-Proxy`) を偽れるためです。
-- `--workers 1 --threads 4` は、ログインの締め出しの数がサーバーの process の記憶にあるためです。worker を増やすと、worker ごとに数えます ([operations.md](operations.md) の「ログインの締め出し」)。
+- `--workers 1 --threads 4` は、2GB の VPS で 2 社を動かすための小さな形です。worker を増やしてもよく、ログインの締め出しの数は置き場の `cache/login/` のファイルで 1 か所に数えるので、worker の数で変わりません ([operations.md](operations.md) の「ログインの締め出し」)。
 - `--timeout 90` は、注文書の読み取りと AI チャットが API の答えを 60 秒まで待つためです。gunicorn の既定の 30 秒では、途中で切れます。
 - `'django.core.wsgi:get_wsgi_application()'` と `--chdir`・`--pythonpath`・`DJANGO_SETTINGS_MODULE=settings` は、置き場の `settings.py` を `settings` の名前で読んで、Django の app を作る書き方です。
 - `TMPDIR` は、上げたファイルの一時の置き場を置き場の中にする行です。Django は 2.5MB より大きいファイルを一時のファイルに受け、受け終わったら `media/` へ名前を変えて移します。名前を変えて移したファイルは、SELinux の印を移す前のまま持つので、`/tmp` で受けると `tmp_t` のままになり、nginx が読めない見込みです。`upload-tmp/` は 10 で `media/` と同じ印にしてあります。

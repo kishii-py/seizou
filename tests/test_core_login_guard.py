@@ -9,7 +9,6 @@ import logging
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.urls import resolve, reverse
 
 from seizou.core import login_guard
@@ -28,9 +27,12 @@ WRONG = "tests-only-wrong-1103"
 
 @pytest.fixture(autouse=True)
 def fresh_cache():
-    cache.clear()
+    # 締め出しの数は login_guard.cache (置き場の cache/login/ のファイル。試験では tests.settings の SEIZOU_LOGIN_CACHE_DIR = 一時の置き場)。
+    # 試験の中で login_guard.cache を差し替える物があるので、始めに見た物を終わりにも消す。
+    store = login_guard.cache
+    store.clear()
     yield
-    cache.clear()
+    store.clear()
 
 
 @pytest.fixture
@@ -98,7 +100,7 @@ def test_lock_is_per_username_and_address(client, user):
 @pytest.mark.django_db
 def test_lock_ends_when_the_count_expires(client, user, monkeypatch):
     lock_out(client)
-    cache.delete(login_guard.failure_key("genba01", "127.0.0.1"))
+    login_guard.cache.delete(login_guard.failure_key("genba01", "127.0.0.1"))
 
     assert attempt(client, "genba01", PASSWORD).status_code == 302
 
@@ -201,3 +203,27 @@ def test_lock_behind_proxy_is_per_header_address(client, user, settings):
 
     other = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP="203.0.113.6")
     assert other.status_code == 302, "別の接続元 (見出しの値) は締め出されない"
+
+
+def test_lock_count_is_shared_between_processes_of_the_same_site(settings, tmp_path):
+    """数は置き場の cache/login/ のファイルに持つので、別の process (gunicorn の別の worker) の cache も同じ数を見る (11-04。VPS の報告)。"""
+    settings.SEIZOU_LOGIN_CACHE_DIR = str(tmp_path / "login")
+    first = login_guard._make_cache()
+    second = login_guard._make_cache()
+    assert type(first).__name__ == "FileBasedCache"
+    first.clear()
+    try:
+        for _ in range(login_guard.FAIL_LIMIT - 1):
+            first.set(failure_key("genba01", "203.0.113.5"), first.get(failure_key("genba01", "203.0.113.5"), 0) + 1, 900)
+        key = failure_key("genba01", "203.0.113.5")
+        assert second.get(key) == login_guard.FAIL_LIMIT - 1
+        second.set(key, second.get(key, 0) + 1, 900)
+        assert first.get(key) == login_guard.FAIL_LIMIT
+    finally:
+        first.clear()
+
+
+def test_cache_falls_back_to_memory_without_base_dir(settings):
+    settings.SEIZOU_LOGIN_CACHE_DIR = ""
+    settings.BASE_DIR = None
+    assert type(login_guard._make_cache()).__name__ == "LocMemCache"
