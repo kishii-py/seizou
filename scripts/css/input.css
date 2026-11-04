@@ -54,11 +54,23 @@ body > .ts-dropdown .active {
   animation: seizou-changed 2s ease-out;
 }
 
-/* 入力の小窓 (core/_form_modal.html の根の箱 .seizou-modal-wide) は、小窓の箱 (base.html の #seizou-modal-box。max-w-lg = 32rem) を
-   入力の 2 列が並ぶ幅 (56rem。画面が狭ければ画面の幅から 2rem を引いた幅) まで広げる。箱の class は base.html の 1 か所のまま
-   (見るだけの小窓は今の幅)。中身の印で選ぶ (:has)。層の外の決まりなので、Tailwind の max-w-lg と daisyUI の modal-box より強い。 */
+/* 小窓の箱 (base.html の #seizou-modal-box。daisyUI の modal-box は max-w-lg = 32rem) の幅と高さ (本人 11-04 22:2x
+   「modal がもっと幅広い方がいい。細い modal は本当に少しの情報しかない場合に限定したい。上部が画面の上にぴったり
+   くっついているのも変」)。箱の class は base.html の 1 か所のまま、ここの決まりで広げる (層の外の決まりなので、
+   Tailwind の max-w-lg と daisyUI の modal-box より強い)。
+   - 既定 (見るだけの小窓 = 部品・計画の詳細・決まりの説明など): 48rem。画面が狭ければ画面の幅から 2rem を引いた幅。
+   - 入力の小窓 (core/_form_modal.html の根の箱 .seizou-modal-wide): 64rem (入力の 2 列と明細の表が並ぶ幅)。
+   - 少ない中身の小窓 (根の箱に .seizou-modal-narrow を付けた物。確認の文と釦だけなど): 28rem。
+   - 高さは画面から上下 2rem ずつ空ける (中身が多いときは箱の中で巻く。上に貼り付かない)。 */
+#seizou-modal-box {
+  max-width: min(48rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+}
 #seizou-modal-box:has(> .seizou-modal-wide) {
-  max-width: min(56rem, calc(100vw - 2rem));
+  max-width: min(64rem, calc(100vw - 2rem));
+}
+#seizou-modal-box:has(> .seizou-modal-narrow) {
+  max-width: min(28rem, calc(100vw - 2rem));
 }
 
 /* ファイルの欄 (core/_file_field.html) の枠の中の素の <input type=file> は見せない (枠の全体が押せる)。
