@@ -14,6 +14,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 
+from seizou.core import fields as company_fields
+from seizou.core.system_checks import check_list_filters, list_filter_errors
 from seizou.core.views import BaseListView, FilterSpec
 from seizou.masters import services as masters_services
 from seizou.masters.models import Item
@@ -187,3 +189,191 @@ def test_csv_uses_the_same_filters(user, orders):
         FilterSpec(Order, {"name": "status", "kind": "multi", "field": "status"})
     with pytest.raises(ValueError, match="絞りに書けない鍵"):
         FilterSpec(Order, {"name": "status", "kind": "choice", "field": "status", "multiple": True})
+
+
+# ---------------------------------------------------------------- N122 土台の広げ (flag・lookup の候補・会社ごとの項目・起動の検査)
+
+
+def _open_only(queryset):
+    """作り物の flag の条件 (出荷済でない受注だけ)。"""
+    return queryset.exclude(status=Order.STATUS_SHIPPED)
+
+
+def _before_third(queryset):
+    """作り物の flag の条件 (受注日が 11-03 より前の受注だけ)。"""
+    return queryset.filter(order_date__lt=date(2026, 11, 3))
+
+
+class _FlagOrderList(BaseListView):
+    model = Order
+    screen_name = "作り物の flag の一覧"
+    columns = ("order_no", "customer", "order_date", "status")
+    filters = (
+        {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": _open_only, "default": True},
+        {"name": "early", "label": "11-03 より前の受注だけ", "kind": "flag", "when": _before_third},
+    )
+    ordering = ("order_date", "pk")
+    template_name = "core/list.html"
+
+
+def test_flag_filter_on_off_default_and_clear(user, orders):
+    made = orders["orders"]
+    opened = [made[0].pk, made[2].pk, made[4].pk]
+
+    # 鍵が無ければ既定 (open は入、early は切)。既定のままなら「絞りを外す」は出さない
+    response = call(_FlagOrderList, user)
+    assert listed(response) == opened
+    flag_open, flag_early = response.context_data["filters"]
+    assert (flag_open["checked"], flag_open["active"]) == (True, False)
+    assert (flag_early["checked"], flag_early["active"]) == (False, False)
+    assert not response.context_data["filter_active"]
+    body = response.render().content.decode()
+    hidden = '<input type="hidden" name="f_open" value="0">'
+    box = 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残りがある物だけ</label>'
+    assert hidden in body and box in body and body.index(hidden) < body.index(box)
+    assert 'name="f_early" value="1" class="checkbox checkbox-sm" data-list-filter>' in body
+    assert "絞りを外す" not in body
+
+    # 0 で切れる (既定と違うので「絞りを外す」が出る)。欄から送ると 0 と 1 の両方が届き、後の 1 を読む
+    response = call(_FlagOrderList, user, f_open="0")
+    assert listed(response) == [order.pk for order in made]
+    assert response.context_data["filters"][0]["active"]
+    assert "絞りを外す" in response.render().content.decode()
+    assert listed(call(_FlagOrderList, user, f_open=["0", "1"])) == opened
+    assert listed(call(_FlagOrderList, user, f_open="x")) == opened  # 読めない値は既定
+    assert listed(call(_FlagOrderList, user, f_open="0", f_early="1")) == [made[0].pk, made[1].pk]
+    assert listed(call(_FlagOrderList, user, f_early=["0", "1"])) == [made[0].pk]
+
+    # ページ送りの link は 0 と 1 を同じ順で持ち越し、「絞りを外す」の link は f_ を外す (= 既定に戻る)
+    response = call(_FlagOrderList, user, f_open=["0", "1"], f_early="0", q="作り物")
+    context = response.context_data
+    assert "f_open=0&f_open=1" in context["query_without_page"]
+    assert "f_open" not in context["query_without_filters"] and "f_early" not in context["query_without_filters"]
+    assert "q=" in context["query_without_filters"]
+
+    # CSV と htmx の行の部分も同じ条件
+    response = call(_FlagOrderList, user, f_open="0", format="csv")
+    assert response.content.decode("utf-8-sig").count("\n") == 6
+    request = RequestFactory().get("/", {"f_open": "0"}, HTTP_HX_REQUEST="true")
+    request.user = user
+    partial = _FlagOrderList.as_view()(request).content.decode()
+    assert 'id="list-filter-clear" class="pb-2" hx-swap-oob="true"' in partial and "絞りを外す" in partial
+    assert 'id="list-count" class="font-medium tabular-nums text-base-content">5<' in partial
+
+
+def test_flag_declaration_mistakes_raise_value_error():
+    good = {"name": "open", "label": "作り物の印", "kind": "flag", "when": _open_only}
+    spec = FilterSpec(Order, good)
+    assert (spec.kind, spec.default, spec.params) == ("flag", False, ("f_open",))
+    assert spec.q({"f_open": "1"}) is None  # flag は q() でなく apply() が when を掛ける
+
+    with pytest.raises(ValueError, match="when"):
+        FilterSpec(Order, {"name": "open", "label": "作り物の印", "kind": "flag"})
+    with pytest.raises(ValueError, match="field"):
+        FilterSpec(Order, {**good, "field": "status"})
+    with pytest.raises(ValueError, match="label"):
+        FilterSpec(Order, {"name": "open", "kind": "flag", "when": _open_only})
+    with pytest.raises(ValueError, match="default"):
+        FilterSpec(Order, {**good, "default": "True"})
+    with pytest.raises(ValueError, match="flag の絞りだけ"):
+        FilterSpec(Order, {"name": "status", "kind": "choice", "field": "status", "when": _open_only})
+
+
+def test_lookup_choices_limit_candidates_and_reading(user, orders):
+    made, north, south = orders["orders"], orders["north"], orders["south"]
+    maker = masters_services.create_partner({"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user)
+
+    def customers():
+        return [(partner.pk, partner.name) for partner in (north, south)]
+
+    class _ChoiceLookupList(_OrderList):
+        filters = ({"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer", "choices": customers},)
+
+    response = call(_ChoiceLookupList, user, f_customer=str(south.pk), per="20")
+    assert listed(response) == [made[1].pk, made[3].pk]
+    customer = response.context_data["filters"][0]
+    assert customer["options"] == [(str(north.pk), north.name), (str(south.pk), south.name)]
+    assert str(maker.pk) not in [value for value, _ in customer["options"]]
+
+    # 候補に無い pk (表にはある協力企業) と数でない字は絞らない
+    for value in (str(maker.pk), "abc"):
+        response = call(_ChoiceLookupList, user, f_customer=value, per="20")
+        assert response.context_data["paginator"].count == 5
+        assert response.context_data["filters"][0]["value"] == ""
+
+
+def test_company_field_filters_follow_the_registered_type(user, monkeypatch):
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+    company_fields.register(
+        "masters.Item",
+        "fields.ItemExt",
+        [
+            {"label": "表面の仕上げ", "type": "choice", "choices": ["めっき", "塗装"]},
+            {"label": "検査日", "type": "date"},
+            {"label": "膜厚", "type": "number"},
+            {"label": "材質", "type": "text"},
+            {"label": "作り物の印", "type": "bool"},
+            {"label": "社内の区分", "type": "choice", "choices": ["甲"], "in_list": False},
+        ],
+    )
+
+    finish = FilterSpec(Item, {"name": "finish", "field": "ext__ext01"})
+    assert (finish.kind, finish.label) == ("choice", "表面の仕上げ")
+    assert finish.choice_values() == [("めっき", "めっき"), ("塗装", "塗装")]
+    assert finish.q({"f_finish": "めっき"}).children == [("ext__ext01", "めっき")]
+    assert finish.q({"f_finish": "金"}) is None
+
+    checked = FilterSpec(Item, {"name": "checked", "label": "検査した日", "kind": "date_range", "field": "ext__ext02"})
+    assert (checked.kind, checked.label) == ("date_range", "検査した日")
+    q = checked.q({"f_checked_from": "2026-11-01", "f_checked_to": "2026-11-30"})
+    assert q.children == [("ext__ext02__gte", date(2026, 11, 1)), ("ext__ext02__lte", date(2026, 11, 30))]
+
+    thickness = FilterSpec(Item, {"name": "thickness", "field": "ext__ext03"})
+    assert thickness.kind == "number_range"
+    q = thickness.q({"f_thickness_from": "5", "f_thickness_to": "1,000"})
+    assert q.children == [("ext__ext03__gte", Decimal("5")), ("ext__ext03__lte", Decimal("1000"))]
+
+    for field, message in (
+        ("ext__ext04", "絞れません"),
+        ("ext__ext05", "絞れません"),
+        ("ext__ext09", "登録されていません"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            FilterSpec(Item, {"name": "x", "field": field})
+    with pytest.raises(ValueError, match="絞りの種類は choice"):
+        FilterSpec(Item, {"name": "x", "kind": "lookup", "field": "ext__ext01"})
+
+    # 一覧に出す会社ごとの項目のうち絞れる物は、宣言の後ろに自動で足す (同じ項目の宣言があれば足さない)
+    assert [spec.name for spec in _ItemList().filter_specs()] == ["price", "ext01", "ext02", "ext03"]
+
+    class _DeclaredExtList(_ItemList):
+        filters = ({"name": "finish", "label": "仕上げ", "field": "ext__ext01"},)
+
+    assert [spec.name for spec in _DeclaredExtList().filter_specs()] == ["finish", "ext02", "ext03"]
+    body = call(_DeclaredExtList, user).render().content.decode()
+    assert '<option value="めっき">めっき</option>' in body
+    for name in ("f_finish", "f_ext02_from", "f_ext02_to", "f_ext03_from", "f_ext03_to"):
+        assert f'name="{name}"' in body, name
+    for name in ("f_ext01", "f_ext04", "f_ext05", "f_ext06"):
+        assert f'name="{name}"' not in body, name
+
+
+def test_list_filter_errors_find_broken_declarations():
+    class _BrokenList(BaseListView):
+        model = Order
+        screen_name = "作り物の壊れた絞りの一覧"
+        filters = (
+            {"name": "open", "label": "作り物の印", "kind": "flag"},
+            {"name": "status", "kind": "multi", "field": "status"},
+            {"name": "nothing", "kind": "choice", "field": "no_such_field"},
+            {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
+        )
+
+    errors = list_filter_errors([_BrokenList])
+    assert [error.id for error in errors] == ["seizou.E004"] * 3
+    for error, name in zip(errors, ("open", "status", "nothing"), strict=True):
+        assert f"_BrokenList の filters の絞り {name} を読めません" in error.msg
+        assert error.obj is _BrokenList and error.hint
+    assert list_filter_errors([_OrderList, _ItemList, _FlagOrderList, object]) == []
+    # URL の木にある一覧の宣言 (N117〜N121 の絞り) は全部読める
+    assert check_list_filters() == []
