@@ -2,6 +2,7 @@
 {% load feedback_tags seizou_icons %}
 {# フィードバックの新規登録: 鍵のある会社では、上に AI の聞き取りの段 (1 問ずつ。下書きができると編集の画面へ移る)、下に土台の入力の形。鍵が無ければ入力の形だけ。 #}
 {# AI の段の form は htmx の POST (CSRF の見出しは base.html が付ける)。送信のボタンは主色にしない (主色は入力の形の「保存」だけ)。 #}
+{# 待つ間は、吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
 {% block content %}{% feedback_panel as panel %}
 {% if panel.available %}
 <section id="feedback-chat" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-chat-title">
@@ -13,11 +14,11 @@
     <button type="button" class="btn btn-ghost btn-sm" hx-post="{% url 'feedback:reset' %}" hx-target="#feedback-chat-messages" hx-swap="innerHTML">{% icon "x" "size-4" %}最初から</button>
   </div>
   <div id="feedback-chat-messages" class="mt-4 flex max-h-96 flex-col gap-2 overflow-y-auto" aria-live="polite">{% include "feedback/_chat_messages.html" with turns=panel.turns %}</div>
-  <form id="feedback-chat-form" class="mt-4" hx-post="{% url 'feedback:ask' %}" hx-target="#feedback-chat-messages" hx-swap="beforeend" hx-indicator="#feedback-sending" hx-disabled-elt="#feedback-send" hx-on::after-request="if (event.detail.successful) this.reset()">
+  <div id="feedback-pending" class="mt-2 hidden [&.htmx-request]:block" aria-hidden="true">{% include "core/_chat_bubble.html" with who="ai" pending=True only %}</div>
+  <form id="feedback-chat-form" class="mt-4" hx-post="{% url 'feedback:ask' %}" hx-target="#feedback-chat-messages" hx-swap="beforeend" hx-indicator="#feedback-pending" hx-disabled-elt="#feedback-send" hx-on::after-request="if (event.detail.successful) this.reset()">
     <textarea id="feedback-message" name="message" required maxlength="2000" rows="2" class="textarea w-full" aria-label="AI への返事"></textarea>
     <input type="hidden" name="screen" value="{{ panel.screen }}">
     <div class="mt-2 flex items-center justify-end gap-2">
-      <span id="feedback-sending" class="loading loading-dots loading-sm htmx-indicator" aria-hidden="true"></span>
       <button id="feedback-send" type="submit" class="btn btn-neutral btn-sm">{% icon "chevron-right" "size-4" %}送信</button>
     </div>
   </form>
