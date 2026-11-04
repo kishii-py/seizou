@@ -5,6 +5,8 @@
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
 
+from datetime import timedelta
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponseRedirect
@@ -44,6 +46,21 @@ def _overdue_lines(lines):
     return lines.filter(due_date__lt=timezone.localdate())
 
 
+def _this_week_due():
+    """今週 (月曜から日曜) が納期の明細の組 (盤のタブ)。週の始まりは月曜で、定休日の設定は見ない。"""
+    today = timezone.localdate()
+    monday = today - timedelta(days=today.weekday())
+    return {"f_open": "1", "f_due_from": monday.isoformat(), "f_due_to": (monday + timedelta(days=6)).isoformat()}
+
+
+def _this_month_ordered():
+    """今月が受注日の受注の組 (受注の一覧のタブ)。状態は問わない (既定の印を切る)。"""
+    today = timezone.localdate()
+    first = today.replace(day=1)
+    last = (first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    return {"f_open": "0", "f_ordered_from": first.isoformat(), "f_ordered_to": last.isoformat()}
+
+
 class OrderListView(BaseListView):
     """受注の一覧。
 
@@ -63,6 +80,12 @@ class OrderListView(BaseListView):
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
         # 既定で入の flag。状態を選んだら、印を切に描いて掛けない (disabled_when。N118 の「状態を選んだら既定を外す」を土台の形で。N143)。
         {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _open_orders, "default": True, "disabled_when": _status_chosen},
+    )
+    # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が足す (既定の印を切る)。
+    presets = (
+        {"label": "未出荷がある", "params": {"f_open": "1"}},
+        {"label": "今月の受注", "params": _this_month_ordered},
+        {"label": "出荷済", "params": {"f_status": Order.STATUS_SHIPPED}},
     )
     ordering = ("-order_date", "-pk")
     template_name = "orders/order_list.html"
@@ -119,6 +142,12 @@ class OrderLineListView(BaseListView):
         {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": FilterSpec.as_is, "default": True},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "due_date"},
         {"name": "overdue", "label": "納期が過ぎた物だけ", "kind": "flag", "when": _overdue_lines},
+    )
+    # 絞りのタブ (土台の presets。UX の案 3-A)。「出荷の残りがある」は既定の印と同じ組 (開いた直後に選ばれた見た目になる)。
+    presets = (
+        {"label": "出荷の残りがある", "params": {"f_open": "1"}},
+        {"label": "納期が過ぎた", "params": {"f_open": "1", "f_overdue": "1"}},
+        {"label": "今週が納期", "params": _this_week_due},
     )
     ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
     template_name = "orders/orderline_list.html"
