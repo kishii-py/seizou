@@ -1390,10 +1390,16 @@ class BaseModalView(ScreenMixin, DetailView):
 
 
 class BaseSelectView(ScreenMixin, View):
-    """候補の口。Tom Select の候補を 1 ページ返す (05 の 2 節)。"""
+    """候補の口。Tom Select の候補を 1 ページ返す (05 の 2 節)。
+
+    columns に項目の名前を並べると、候補ごとに id と text の横にその値も返す (例 部品の unit と standard_price。
+    選ぶ欄の JS が、同じ行の空の単位と単価の欄に写す = 05 の 2 節の「選んだら写す」)。金額の項目
+    (access.is_money_name) は、金額の閲覧が無い人には返さない。
+    """
 
     model = None
     search_fields: tuple = ()
+    columns: tuple = ()
     per_page = 30
     opens_by_department = False
 
@@ -1414,8 +1420,22 @@ class BaseSelectView(ScreenMixin, View):
         start = (page - 1) * self.per_page
         rows = list(qs[start : start + self.per_page + 1])
         more = len(rows) > self.per_page
-        items = [{"id": obj.pk, "text": str(obj)} for obj in rows[: self.per_page]]
+        names = self.shown_columns()
+        items = [
+            {"id": obj.pk, "text": str(obj), **{name: getattr(obj, name) for name in names}}
+            for obj in rows[: self.per_page]
+        ]
         return JsonResponse({"items": items, "more": more})
+
+    def shown_columns(self) -> tuple:
+        """候補に足す項目 (columns)。金額の閲覧が無い人には金額の項目を外す。
+
+        判定は要求ごとに 1 回。記録は書かない (候補の口は字を打つたびに呼ばれる。単価が欄に見える受注の入力の画面が記録する)。
+        """
+        names = tuple(self.columns)
+        if any(access.is_money_name(name) for name in names) and not access.can_see_money(self.request.user, record=False):
+            names = tuple(name for name in names if not access.is_money_name(name))
+        return names
 
 
 class RememberLoginView(LoginView):

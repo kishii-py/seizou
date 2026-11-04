@@ -111,6 +111,9 @@ class ItemModalView(BaseModalView):
 class ItemSelectView(BaseSelectView):
     model = Item
     search_fields = ("part_no", "name")
+    # 候補ごとに単位と標準単価も返す (選ぶ欄の JS が受注の明細の行の空の単位と単価の欄に写す。初見テスト R4 4-3b)。
+    # 標準単価は金額の閲覧が無い人には返さない (土台の BaseSelectView が外す)。
+    columns = ("unit", "standard_price")
 
     def get_queryset(self):
         # 候補は使用中だけ (N135。受注と発注の入力の欄が、使用停止の部品を出さない)
