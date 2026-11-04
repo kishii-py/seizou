@@ -3,12 +3,14 @@
 ブラウザでの確かめ (選ぶ欄・行を足す JS) は朝の E2E。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.orders import services
@@ -100,6 +102,17 @@ def test_order_list_requires_login(client):
         response = client.get(reverse(name))
         assert response.status_code == 302
         assert reverse("core:login") in response["Location"]
+
+
+@pytest.mark.django_db
+def test_create_form_order_date_starts_today_and_update_keeps_value(logged_in, shipped_order):
+    """受注の新規登録の受注日は今日が入っている (初見テスト R4 4-3a)。直す画面は受注の今の受注日のまま。"""
+    today = timezone.localdate().isoformat()
+    create = logged_in.get(reverse("orders:order_create")).content.decode()
+    assert re.search(rf'<input type="date" name="order_date" value="{today}"', create)
+
+    edit = logged_in.get(reverse("orders:order_update", args=[shipped_order.pk])).content.decode()
+    assert re.search(rf'<input type="date" name="order_date" value="{ORDER_DATE.isoformat()}"', edit)
 
 
 @pytest.mark.django_db
