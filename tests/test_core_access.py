@@ -214,7 +214,7 @@ def test_every_form_action_is_classified():
         seen.add(action)
         assert action in known, f"{pattern.name} の action {action} が権限の表に無い (core/access.py に足す)"
     # 表の名前が今の画面の action と同じ形であること (書き違いで黙って素通りしないため)。
-    assert {"shipping.ship", "masters.update_item", "connect.send_order", "workorders.issue_workorder"} <= seen
+    assert {"shipping.ship", "masters.update_item", "purchasing.resend_purchase_order", "workorders.issue_workorder"} <= seen
 
 
 #: POST の関数の view (module の名前.関数の名前) → 頭で require_write に渡す権限の表の action
