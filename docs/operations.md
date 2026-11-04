@@ -124,7 +124,7 @@ LAN の中だけで http で開く置き場では、この形のままではブ�
 
 ログインの画面で、同じ ID と同じ接続元 (IP) から 5 回続けて失敗すると、15 分の間はその組のログインを受け付けません (正しいパスワードでも)。画面には「ログインに続けて失敗したので、15 分の間は受け付けません。」と出ます。ログインに成功すると数え直します。締め出したときは、サーバーの記録 (`seizou.login`) に 1 行出ます (パスワードは書きません)。
 
-数は、サーバーの process の記憶 (Django の既定の cache) に持ちます。15 分より早く解くには、サーバーを立て直します。gunicorn の worker を複数にすると、worker ごとに数えます。
+数は、置き場の `cache/login/` のファイルに持ちます (同じ置き場で動く gunicorn の worker と process の全部で 1 か所に数えるので、worker を複数にしても 5 回目で締め出します)。15 分より早く解くには、`cache/login/` の中のファイルを消します (サーバーを立て直しても数は残ります)。置く場所は `settings.py` の `SEIZOU_LOGIN_CACHE_DIR` で変えられます。
 
 nginx の後ろでは、Django から見た接続元 (`REMOTE_ADDR`) がいつも nginx (127.0.0.1) になり、ID ごとの締め出しになります (ほかの人が、ある ID を 15 分止めることもできます)。その置き場は、`.env` に `SEIZOU_CLIENT_IP_HEADER=X-Real-IP` の 1 行を足し、nginx の `proxy_set_header X-Real-IP $remote_addr;` (上の「HTTPS と Cookie」の 3 行目) の値を接続元にします。nginx は、外から来た同じ名前の見出しをこの値で上書きします。手前に nginx のような proxy が無い置き場では、この行を書きません (書くと、利用者が見出しで接続元を偽れます)。CDN (Cloudflare など) を通す置き場では、nginx の realip で CDN から来た要求の接続元を取り直してから渡します。
 
