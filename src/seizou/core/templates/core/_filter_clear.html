@@ -1,3 +1,5 @@
 {% load seizou_icons %}
 {# 「絞りを外す」(絞りの値が 1 つでもあるときだけ)。キーワード・件数・並び替えは残す。htmx の応答では core/_rows.html が oob=True で差し替える (欄を変えた後も出し入れと link の条件が合う)。 #}
+{# htmx の応答 (oob) では、ほかの絞りに従う印 (FilterSpec の disabled_when) も core/_filter_flag.html で描き直す (状態を選ぶと印が切になる形と表を合わせる)。 #}
 <span id="list-filter-clear" class="pb-2"{% if oob %} hx-swap-oob="true"{% endif %}>{% if filter_active %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_filters }}">{% icon "x" "size-4" %}絞りを外す</a>{% endif %}</span>
+{% if oob %}{% for f in filters %}{% if f.follows %}{% include "core/_filter_flag.html" %}{% endif %}{% endfor %}{% endif %}
