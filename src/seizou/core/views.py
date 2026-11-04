@@ -346,18 +346,34 @@ class FilterSpec:
       {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"}    開始と終了の 2 欄
       {"name": "qty", "label": "数", "kind": "number_range", "field": "qty"}                 最小と最大の 2 欄
       {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"}         FK の先の全部から選ぶ
+      {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer", "choices": customers}
+                                                    choices があれば FK の先の全部の代わりに候補にする ((pk, 字) の組の並びか関数)
+      {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": open_only, "default": True}
+                                                    チェック 1 つ。入のときだけ when (queryset を受けて queryset を返す関数) を掛ける
+      {"name": "thickness", "field": "ext__ext02"}  会社ごとの項目 (core/fields.py)。種類と見出しは項目の登録から決める
 
     GET の名前は f_<name> (期間と数の範囲は f_<name>_from と f_<name>_to)。q・sort・page・per・format と重ならない。
     絞り方: choice と lookup は field と同じ値、date_range と number_range は両端を含む (gte と lte)。
     日時の項目の期間は日付で比べる (field__date__gte。終わりの日の夜の記録も入る)。
     空の欄と読めない値 (日付でない字・数でない字・候補に無い値) は、絞らない (空と同じ。知らせは出さない)。
     lookup の候補は FK の先の model の全部 (並びは model の ordering、無ければ name、無ければ USERNAME_FIELD、無ければ pk)。
+    flag: f_<name>=1 が入、f_<name>=0 が切、鍵が無いか読めない値は default (省略は切)。field と choices は書けない。
+      欄は hidden の 0 の後にチェックの 1 を置くので、入のときは両方が届き、後の 1 を読む。when の中は .filter()・.exclude()・
+      annotate だけにする (services を呼ばない。SQL を書かない)。「クリア」と「絞りを外す」は f_ を外すので default に戻る。
+      default と違う値のときだけ「絞りを外す」を出す (active)。
+    会社ごとの項目: field に ext__<列の名前> を書く。型が choice なら choice (候補は項目の choices)、date なら date_range、
+      number なら number_range。text と bool は絞れない (ValueError)。kind は省ける (書くなら同じ種類)。
+      BaseListView は一覧に出す会社ごとの項目のうち絞れる物を、宣言の後ろに自動で足す (GET の名前は f_<列の名前>)。
     """
 
     #: kind に書ける値
-    KINDS = ("choice", "date_range", "number_range", "lookup")
+    KINDS = ("choice", "date_range", "number_range", "lookup", "flag")
     #: 辞書に書ける鍵
-    KEYS = ("name", "label", "kind", "field", "choices")
+    KEYS = ("name", "label", "kind", "field", "choices", "when", "default")
+    #: flag に書ける鍵 (when と default は flag だけ)
+    FLAG_KEYS = ("name", "label", "kind", "when", "default")
+    #: 会社ごとの項目の型 → 絞りの種類 (text と bool は絞れない)
+    EXT_KINDS = {"choice": "choice", "date": "date_range", "number": "number_range"}
     #: GET の名前の頭
     PREFIX = "f_"
     RANGE_KINDS = ("date_range", "number_range")
@@ -367,26 +383,82 @@ class FilterSpec:
         if unknown:
             raise ValueError(f"絞りに書けない鍵があります: {unknown!r}。{' / '.join(self.KEYS)} のどれかにしてください。")
         self.name = item["name"]
-        self.kind = item["kind"]
-        if self.kind not in self.KINDS:
-            raise ValueError(f"知らない絞りの種類: {self.kind!r} ({self.name})。{' / '.join(self.KINDS)} のどれかにしてください。")
-        self.field_name = item.get("field") or self.name
-        self.field = field_at(model, self.field_name)
-        self.label = item.get("label") or str(self.field.verbose_name)
+        self.kind = item.get("kind")
+        self.field = None
+        self.column = None
+        self.when = None
+        self.default = False
+        if self.kind == "flag":
+            self.field_name = None
+            self._read_flag(item)
+        else:
+            misplaced = [key for key in ("when", "default") if key in item]
+            if misplaced:
+                raise ValueError(f"{misplaced!r} は flag の絞りだけに書けます ({self.name})。")
+            self.field_name = item.get("field") or self.name
+            if self.field_name.startswith(company_fields.EXT_PREFIX):
+                self._read_ext(model)
+            elif self.kind not in self.KINDS:
+                raise ValueError(f"知らない絞りの種類: {self.kind!r} ({self.name})。{' / '.join(self.KINDS)} のどれかにしてください。")
+            else:
+                self.field = field_at(model, self.field_name)
+        if self.column is not None:
+            label = self.column.label
+        else:
+            label = str(self.field.verbose_name) if self.field is not None else None
+        self.label = item.get("label") or label
         self.choices = item.get("choices")
         self.param = self.PREFIX + self.name
         self.param_from = self.param + "_from"
         self.param_to = self.param + "_to"
         self.params = (self.param_from, self.param_to) if self.kind in self.RANGE_KINDS else (self.param,)
 
+    def _read_flag(self, item: dict) -> None:
+        """flag の宣言を読む (field と choices は書けない。when は関数。default は True か False)。"""
+        extra = [key for key in item if key not in self.FLAG_KEYS]
+        if extra:
+            raise ValueError(
+                f"flag の絞り ({self.name}) に {extra!r} は書けません。条件は when (queryset を受けて queryset を返す関数) に書いてください。"
+            )
+        if not callable(item.get("when")):
+            raise ValueError(f"flag の絞り ({self.name}) に when (queryset を受けて queryset を返す関数) がありません。")
+        if not item.get("label"):
+            raise ValueError(f"flag の絞り ({self.name}) に label (チェックの横の字) がありません。")
+        default = item.get("default", False)
+        if not isinstance(default, bool):
+            raise ValueError(f"flag の絞り ({self.name}) の default は True か False で書きます ({default!r})。")
+        self.when = item["when"]
+        self.default = default
+
+    def _read_ext(self, model) -> None:
+        """会社ごとの項目 (field = ext__<列の名前>) の宣言を読む。種類は項目の型から決める。"""
+        name = self.field_name[len(company_fields.EXT_PREFIX):]
+        column = next((c for c in company_fields.columns_for(model) if c.name == name), None)
+        if column is None:
+            raise ValueError(f"会社ごとの項目 {name} は {model._meta.label} に登録されていません ({self.name})。")
+        kind = self.EXT_KINDS.get(column.type)
+        if kind is None:
+            raise ValueError(
+                f"会社ごとの項目 {name} ({column.label}) の型 {column.type} は絞れません ({self.name})。"
+                f"絞れるのは {' / '.join(self.EXT_KINDS)} の型です。"
+            )
+        if self.kind is not None and self.kind != kind:
+            raise ValueError(f"会社ごとの項目 {name} ({column.label}) の絞りの種類は {kind} です ({self.name} の kind は {self.kind!r})。")
+        self.kind = kind
+        self.column = column
+
     # --- 値を読む (読めない値は None = 絞らない) ---
     def choice_values(self) -> list[tuple[str, str]]:
-        choices = self.choices if self.choices is not None else self.field.flatchoices
+        choices = self.choices
+        if choices is None:
+            choices = [(c, c) for c in self.column.choices] if self.column is not None else self.field.flatchoices
         if callable(choices):
             choices = choices()
         return [(str(value), str(text)) for value, text in choices]
 
     def lookup_values(self) -> list[tuple[str, str]]:
+        if self.choices is not None:
+            return self.choice_values()
         related = self.field.related_model
         rows = related._default_manager.all()
         if not related._meta.ordering:
@@ -416,7 +488,11 @@ class FilterSpec:
                 pk = related._meta.pk.to_python(raw)
             except ValidationError:
                 return None
+            if self.choices is not None:
+                return pk if str(pk) in {value for value, _ in self.choice_values()} else None
             return pk if related._default_manager.filter(pk=pk).exists() else None
+        if self.kind == "flag":
+            return {"1": True, "0": False}.get(raw)
         return raw if raw in {value for value, _ in self.choice_values()} else None
 
     def values(self, params) -> dict:
@@ -428,9 +504,21 @@ class FilterSpec:
                 result[name] = value
         return result
 
+    def is_on(self, params) -> bool:
+        """flag が入か (鍵が無いか読めない値は default)。"""
+        return self.values(params).get(self.param, self.default)
+
+    def apply(self, queryset, params):
+        """queryset に絞りを掛ける。flag は入のときだけ when を、ほかは q() を掛ける。"""
+        if self.kind == "flag":
+            return self.when(queryset) if self.is_on(params) else queryset
+        q = self.q(params)
+        return queryset if q is None else queryset.filter(q)
+
     def q(self, params) -> Q | None:
+        """flag でない絞りの条件 (flag は apply が when を掛けるので None)。"""
         values = self.values(params)
-        if not values:
+        if not values or self.kind == "flag":
             return None
         if self.kind in self.RANGE_KINDS:
             key = self.field_name + ("__date" if isinstance(self.field, models.DateTimeField) else "")
@@ -457,12 +545,16 @@ class FilterSpec:
             "value_from": shown.get(self.param_from, ""),
             "value_to": shown.get(self.param_to, ""),
             "active": bool(values),
+            "checked": False,
             "options": [],
         }
         if self.kind == "choice":
             item["options"] = self.choice_values()
         elif self.kind == "lookup":
             item["options"] = self.lookup_values()
+        elif self.kind == "flag":
+            on = self.is_on(params)
+            item.update(value="1" if on else "", checked=on, active=on != self.default)
         return item
 
 
@@ -569,14 +661,19 @@ class BaseListView(ScreenMixin, ListView):
 
     # --- 絞り ---
     def filter_specs(self) -> list[FilterSpec]:
-        return [FilterSpec(self.model, item) for item in self.filters]
+        """宣言 (filters) の絞りと、その後ろに一覧に出す会社ごとの項目のうち絞れる物 (宣言に同じ項目が無い物)。"""
+        specs = [FilterSpec(self.model, item) for item in self.filters]
+        declared = {spec.field_name for spec in specs}
+        for col in company_fields.list_columns_for(self.model):
+            field = company_fields.EXT_PREFIX + col.name
+            if col.type in FilterSpec.EXT_KINDS and field not in declared:
+                specs.append(FilterSpec(self.model, {"name": col.name, "field": field}))
+        return specs
 
     def apply_filters(self, queryset):
-        """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。"""
+        """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。flag は入のときだけ when を掛ける。"""
         for spec in self.filter_specs():
-            q = spec.q(self.request.GET)
-            if q is not None:
-                queryset = queryset.filter(q)
+            queryset = spec.apply(queryset, self.request.GET)
         return queryset
 
     # --- 行 ---
