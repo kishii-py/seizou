@@ -322,3 +322,20 @@ def test_scaffold_sets_https_cookies_only_in_production():
     assert ast.literal_eval(inner["SESSION_COOKIE_SECURE"]) is True
     assert ast.literal_eval(inner["CSRF_COOKIE_SECURE"]) is True
     assert ast.literal_eval(inner["SECURE_PROXY_SSL_HEADER"]) == ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+@pytest.mark.django_db
+def test_settings_check_takes_empty_brand_color_and_industry_as_unset(settings):
+    # 既定の空の字 (主色なし・業種なし) は「良い」。N77 の 10 は、ここが「直す」になって落ちた
+    settings.SEIZOU = {}
+    assert [(row.ok, row.label) for row in doctor.check_settings()] == [(True, "会社の選べる設定")]
+
+    # 値があるときだけ形を見る (主色は # と 16 進の 6 桁、業種は 40 字まで)
+    settings.SEIZOU = {"brand_color": "red", "industry": "業" * 41}
+    fixes = {row.label: row.fix for row in doctor.check_settings() if not row.ok}
+    assert set(fixes) == {"設定 brand_color", "設定 industry"}
+    assert "brand_color は # と 16 進の 6 桁" in fixes["設定 brand_color"]
+    assert "industry (業種) は 40 字まで" in fixes["設定 industry"]
+
+    settings.SEIZOU = {"brand_color": "#15803D", "industry": "機械加工"}
+    assert [(row.ok, row.label) for row in doctor.check_settings()] == [(True, "会社の選べる設定")]

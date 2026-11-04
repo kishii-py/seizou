@@ -53,5 +53,7 @@ settings:
     department: "on"
     write: "on"
     money: "on"
+  # 画面の主色 (# と 16 進の 6 桁。無ければ土台の色。2 社を並べたときに見分ける。業種は上の industry を seizou new が写す)
+  brand_color: "#15803d"
 # 開発サーバーのポート
 port: 8001

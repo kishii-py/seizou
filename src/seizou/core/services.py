@@ -67,11 +67,15 @@ def next_number(kind: str) -> str:
 _TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model")  # feedback_model は N59 の前提 (本体が先に入れた)
 _TEXT_MAX = 100
 
+#: 業種 (industry) の字数の上限 (左上の会社の名前の下に出す)
+_INDUSTRY_MAX = 40
+
 
 def validate_setting(key, value):
     """選べる設定 key の値 value を確かめて、整えた値を返す。
 
     知らない鍵は KeyError。画面から変えない鍵 (conf.LOCKED_KEYS) と、形の合わない値は日本語の ValueError。
+    主色 (brand_color) と業種 (industry) は、空の字を既定 (設定なし) として通す (点検 seizou_doctor が既定の値も確かめるため)。
     """
     if key not in conf.DEFAULTS:
         raise KeyError(f"知らない設定の鍵: {key}")
@@ -97,6 +101,16 @@ def validate_setting(key, value):
                 f"値はそれぞれ off / log / on にしてください (入れた値: {value!r})。"
             )
         return {kind: value[kind] for kind in kinds}
+    if key == "brand_color":
+        text = value.strip() if isinstance(value, str) else None
+        if text is None or (text and not conf.BRAND_COLOR_PATTERN.fullmatch(text)):
+            raise ValueError(f"brand_color は # と 16 進の 6 桁 (例 #15803d) にしてください。空なら土台の色です (入れた値: {value!r})。")
+        return text.lower()
+    if key == "industry":
+        text = value.strip() if isinstance(value, str) else None
+        if text is None or len(text) > _INDUSTRY_MAX:
+            raise ValueError(f"industry (業種) は {_INDUSTRY_MAX} 字までの字にしてください。空なら左上は seizou です (入れた値: {value!r})。")
+        return text
     if key in _TEXT_SETTINGS:
         text = value.strip() if isinstance(value, str) else ""
         if not text or len(text) > _TEXT_MAX:
