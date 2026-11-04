@@ -1,7 +1,7 @@
 """指示書・出荷・納品書の一覧の絞り (N119。N117 の土台 BaseListView.filters の宣言だけ。本人の決め 11-04 15:0x)。
 
 指示書の工程の絞り (f_process) は逆向きの FK なので、同じ工程を 2 回持つ指示書も 1 回だけ出る。
-古い GET の process (製造向けの欄) は f_process と同じ意味で、両方あれば f_process を使う。名前は作り物だけ。
+古い GET の process (製造向けの別の form) は、N128 で読まなくなった (絞りは f_process だけ)。名前は作り物だけ。
 """
 
 from datetime import date
@@ -80,9 +80,9 @@ def test_workorder_list_has_four_filters_and_process_lists_each_workorder_once(c
         assert f'name="{name}"' in body
     for label in ("状態", "工程", "部品", "発行日"):
         assert f">{label}</label>" in body
-    # 製造向けの欄の tag の値が土台の filters を上書きすると、名前の無い欄が出る (workorder_list.html の受ける名前)。
+    # 名前の無い欄が出ない。製造向けの別の form は無い (N128 で絞り込みの枠の中へ移した)。
     assert 'for="list-f-"' not in body
-    assert body.count('id="workorder-filter"') == 1
+    assert 'id="workorder-filter"' not in body
     assert f'<option value="{cut.pk}">{cut}</option>' in body
     assert f'<option value="{item.pk}">{item}</option>' in body
 
@@ -98,15 +98,15 @@ def test_workorder_list_has_four_filters_and_process_lists_each_workorder_once(c
 
 
 @pytest.mark.django_db
-def test_old_process_get_is_read_as_the_new_filter(client_logged_in, workorders):
+def test_old_process_get_is_not_read(client_logged_in, workorders):
     first, second, third = workorders["first"], workorders["second"], workorders["third"]
     cut, bend = workorders["cut"], workorders["bend"]
     url = reverse("workorders:workorder_list")
 
-    assert listed(client_logged_in.get(url, {"process": cut.pk})) == [third.pk, first.pk]
-    # 土台の欄から送ると f_process は空の字で届く (空は絞らない)。古い process の値で絞る。
-    assert listed(client_logged_in.get(url, {"process": bend.pk, "f_process": ""})) == [third.pk, second.pk]
-    # 両方あれば新しい方 (f_process) だけで絞る (古い process とかけ合わせない)。
+    # 古い GET の process は読まない (N128。別名を足さない)。絞らずに 3 つとも出る。
+    assert listed(client_logged_in.get(url, {"process": cut.pk})) == [third.pk, second.pk, first.pk]
+    assert listed(client_logged_in.get(url, {"process": bend.pk, "f_process": ""})) == [third.pk, second.pk, first.pk]
+    # 両方あれば f_process だけで絞る (古い process とかけ合わせない)。
     both = client_logged_in.get(url, {"process": bend.pk, "f_process": str(cut.pk)})
     assert listed(both) == [third.pk, first.pk]
     assert both.context["paginator"].count == 2
