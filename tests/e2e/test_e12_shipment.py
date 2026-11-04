@@ -110,7 +110,7 @@ NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestA
 def test_e12_remaining_beside_qty(page_a, company_a):
     """期待 (06 の E-12 の一部): 4 と 6 は通る (分納の 2 回目の数を、受注の残りを見て決める)。
 
-    見る所: 受注の詳細の明細の ⋮ の「出荷する」から開いた出荷の新規登録で、数量の欄の下に受注の残りが出て、
+    見る所: 受注の詳細の明細の ⋮ の「出荷する」から開いた出荷の新規登録の小窓 (N124) で、数量の欄の下に受注の残りが出て、
     受注の明細を選び直すと残りの字と選んだ字が変わること (初見テスト R3 の「計画と違う所」の 3)。見ない所: 保存 (相手に送る道を通らない)。
     """
     login(page_a, company_a)
@@ -127,11 +127,12 @@ def test_e12_remaining_beside_qty(page_a, company_a):
     page_a.evaluate(NEXT_FRAMES)
     row.locator('summary[aria-label="行の操作"]').click()
     row.get_by_role("link", name="出荷する").click()
-    page_a.wait_for_url(re.compile(r"/shipping/new/\?order_line=\d+$"))
-    help_text = page_a.locator("#id_qty_helptext")
+    expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
+    box = page_a.locator("#seizou-modal-box")
+    help_text = box.locator("#id_qty_helptext")
     expect(help_text).to_have_text("残り 10")
 
     choose(page_a, "order_line", second_no)
     expect(help_text).to_have_text("残り 5")
-    expect(page_a.locator("select[name='order_line'] option:checked")).to_contain_text("残り 5")
+    expect(box.locator("select[name='order_line'] option:checked")).to_contain_text("残り 5")
     shot(page_a, "E-12", "a-remaining-beside-qty")

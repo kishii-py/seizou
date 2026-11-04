@@ -50,7 +50,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
   </nav>
   {% endif %}
 </div>
-{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
 {% else %}{% include "core/_rows.html" %}
 {% endif %}
 {% endwith %}
