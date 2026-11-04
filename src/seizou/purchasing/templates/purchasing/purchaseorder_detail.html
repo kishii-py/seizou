@@ -84,6 +84,7 @@
   {% else %}<p class="mt-4 text-base-content/70">受入はまだありません。</p>{% endif %}{% endwith %}
 </section>
 {% endif %}
+{% include "purchasing/_timeline.html" %}
 </div>
 <div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
 {% endblock %}
