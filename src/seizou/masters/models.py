@@ -243,6 +243,9 @@ class Process(models.Model):
     is_outsourced = models.BooleanField("協力企業に出すか", default=False)
     sort_order = models.PositiveIntegerField("並び順", default=0)
     use_in_plan = models.BooleanField("計画に使う", default=False)
+    # 使用停止 (N140。部品と取引先の N135 と同じ形): 外すと指示書の発行の候補に出ず、部品の標準の工程の並びからも写さない。
+    # 消さないので、今までの指示書の工程はそのまま残る。編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
+    active = models.BooleanField("使用中", default=True, editable=False)
 
     class Meta:
         verbose_name = "工程"

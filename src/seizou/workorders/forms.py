@@ -8,10 +8,11 @@ services.issue_workorder(order_line=..., qty=..., steps=..., user=...) を呼ぶ
 from django import forms
 from django.db.models import Q
 
+from seizou.masters.services import active_processes
+
 from .models import WorkOrder, WorkOrderStep
 
 _OrderLine = WorkOrder._meta.get_field("order_line").related_model
-_Process = WorkOrderStep._meta.get_field("process").related_model
 
 
 class OrderLineChoiceField(forms.ModelChoiceField):
@@ -34,13 +35,15 @@ class WorkOrderIssueForm(forms.Form):
     qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
     processes = ProcessChoiceField(
         label="工程",
-        queryset=_Process.objects.all(),
+        queryset=None,
         required=False,
-        help_text="選ばなければ、部品の標準の工程の並びを写します。予定の数は工程ごとに数量と同じです。",
+        help_text="選ばなければ、部品の標準の工程の並びを写します (使用停止の工程は写しません)。予定の数は工程ごとに数量と同じです。",
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # 工程は使用中だけ (N140。発行は新しく作るだけの form なので keep を使わない)
+        self.fields["processes"].queryset = active_processes()
         # 取消した受注の明細は選択肢に出さない。ただし選んで届いた明細 (POST の値か、新規登録の GET の ?order_line= の初期値) は
         # 選択肢に残す。保存のときに services.issue_workorder が R05 の赤の文で止める (出荷の入力と同じ知らせ)。
         # Django の「正しく選択してください」で、選んだ明細が欄から消える形にしない (初見テスト 3 回目)。
@@ -55,7 +58,8 @@ class WorkOrderIssueForm(forms.Form):
         qty = self.cleaned_data["qty"]
         processes = list(self.cleaned_data.get("processes") or ())
         if not processes:
-            standard = line.item.item_processes.select_related("process").order_by("seq")
+            # 使用停止の工程は写さない (N140)。部品の標準の工程の並びの行は消さないので、使用中に戻すとまた写る。
+            standard = line.item.item_processes.filter(process__active=True).select_related("process").order_by("seq")
             processes = [row.process for row in standard]
         return {
             "order_line": line,

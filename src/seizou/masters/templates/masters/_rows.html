@@ -1,5 +1,5 @@
 {% comment %}
 masters の一覧の行の部分 (N135)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
-部品と取引先の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。工程と休日の一覧は core/_rows.html のまま。
+部品と取引先 (N135) と工程 (N140) の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。休日の一覧は core/_rows.html のまま。
 {% endcomment %}
-{% if request.resolver_match.url_name == "item_list" or request.resolver_match.url_name == "partner_list" %}{% include "core/_rows.html" with row_template="masters/_row.html" %}{% else %}{% include "core/_rows.html" %}{% endif %}
+{% if request.resolver_match.url_name == "item_list" or request.resolver_match.url_name == "partner_list" or request.resolver_match.url_name == "process_list" %}{% include "core/_rows.html" with row_template="masters/_row.html" %}{% else %}{% include "core/_rows.html" %}{% endif %}

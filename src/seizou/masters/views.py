@@ -38,7 +38,7 @@ def _as_is(queryset):
     return queryset
 
 
-#: 部品と取引先の一覧の絞りの印 (N135)。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
+#: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
 INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": _as_is}
 
 
@@ -216,7 +216,11 @@ class ProcessListView(BaseListView):
     screen_name = "工程"
     screen_help = "工程の一覧。「計画に使う」に印を付けた工程ごとに、生産計画の盤が並びます。"
     columns = ("code", "name", "sort_order", "use_in_plan")
+    filters = (INACTIVE_FILTER,)
     ordering = ("sort_order", "code")
+
+    def get_queryset(self):
+        return _hide_inactive(self, super().get_queryset())
 
 
 class ProcessDetailView(BaseDetailView):
@@ -226,6 +230,7 @@ class ProcessDetailView(BaseDetailView):
     """
 
     model = Process
+    template_name = "masters/process_detail.html"
     screen_name = "工程の詳細"
     screen_help = "工程の項目。「編集」で名前や並び順と「計画に使う」の印を変えられます。"
 

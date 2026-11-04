@@ -1,0 +1,7 @@
+{% extends "core/detail.html" %}
+{% load seizou_icons %}
+{# 工程の詳細 (N140)。使用停止の工程だけ、上に黄色の 1 行。見出し・ボタン・項目は core の詳細のまま。 #}
+{% block content %}
+{% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の工程です。指示書の発行の候補に出ず、部品の標準の工程の並びからも写しません。今までの指示書の工程はそのまま残ります。</span></div>{% endif %}
+{{ block.super }}
+{% endblock %}

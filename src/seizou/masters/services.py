@@ -55,7 +55,7 @@ _PARTNER_KEYS = frozenset(
         "active",
     }
 )
-_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan"})
+_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan", "active"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
 _PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
 _PAYMENT_DAY_RANGE = range(1, 32)  # 1〜31 (31 は月末)
@@ -408,7 +408,7 @@ def update_partner(partner, data, user, *, ext=None):
 
 
 def create_process(data, user):
-    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order・use_in_plan。"""
+    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order・use_in_plan・active。"""
     _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
     with transaction.atomic():
         _refuse_duplicate_process_code(data["code"])
@@ -518,6 +518,14 @@ def active_partners(*, keep=None):
     取引先の種類の絞り (得意先だけ・協力企業だけ) は呼ぶ側が filter で足す。
     """
     return _active(Partner, keep)
+
+
+def active_processes(*, keep=None):
+    """使用中の工程 (指示書の発行で選ぶ工程の候補の母集団。読むだけ。N140)。並びは工程の表の既定 (並び順 → 工程コード)。
+
+    keep (工程か pk) は使用停止でも残す (active_items と同じ口)。今ある指示書の工程と部品の標準の工程の並びの行は消さない。
+    """
+    return _active(Process, keep)
 
 
 def refuse_inactive(partner, items=()):
