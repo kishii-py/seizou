@@ -5,6 +5,7 @@
   (出荷の Sum と同じ問い合わせに指示書の join を足すと、残が重なって数えられるため)。BoardRow は .all() だけを使う。
 - 部品 (workorders・progress) が無い会社では、指示書と進捗の値は空 (「未」・空の字・None) で、盤は開く。
 - 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
+- 出荷 (shipping) と納品書は、行のメニューの「納品書を作る」の対象を決めるため、prefetch_for が別の問い合わせで読む (join を足さない)。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 - 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。
 - 盤の絞り (出荷の残りがある物だけ・納期・納期が過ぎた物だけ) は views.OrderLineListView.filters の宣言 (決め 11-04 17:3x)。
@@ -58,6 +59,14 @@ def _workorder_models():
         return None, None
 
 
+def _shipment_model():
+    """出荷の model (Shipment)。shipping の部品が無ければ None。"""
+    try:
+        return apps.get_model("shipping", "Shipment")
+    except LookupError:
+        return None
+
+
 def _has_progress(step_model) -> bool:
     """指示書の工程に実績の逆の関係 (progress_records) があるか (progress の部品が入っているか)。"""
     try:
@@ -93,8 +102,14 @@ def prefetch_for(queryset):
     """指示書 (取消を除く) と工程と、工程ごとの実績の合計 (recorded_total) を 1 ページ分まとめて読む prefetch を足す。
 
     行の数に関わらず、指示書と工程の 2 回の問い合わせで済む。workorders の部品が無ければ queryset をそのまま返す。
+    出荷 (納品書つき) も 1 回の問い合わせで読む (BoardRow.unnoted_shipment のため。shipping の部品が無ければ読まない)。
     """
     queryset = annotate_acceptance(queryset)
+    shipment_model = _shipment_model()
+    if shipment_model is not None:
+        # prefetch は別の問い合わせなので、annotate_remaining の出荷の Sum と掛け合わない (N130)。
+        shipments = shipment_model.objects.select_related("delivery_note").order_by("shipped_at", "pk")
+        queryset = queryset.prefetch_related(Prefetch("shipments", queryset=shipments))
     workorder_model, step_model = _workorder_models()
     if workorder_model is None:
         return queryset
@@ -299,6 +314,24 @@ class BoardRow:
             value = self.line.__dict__["acceptance_total"]
             return _ZERO if value is None else Decimal(str(value))
         return services.acceptance_summary(self.line)["total"]
+
+    # --- 納品書 ---
+    @cached_property
+    def unnoted_shipment(self):
+        """納品書の無い出荷 (納品書が取消の物を含む) のうち、出荷日 → pk の順で最後の物。無ければ None (N130)。
+
+        行のメニューの「納品書を作る」が対象にする。決まりは納品書の入力の候補 (shipping の DeliveryNoteForm) と同じ。
+        shipping の部品が無ければ None。prefetch があればその写しを読む (.all() だけ。納品書は select_related の写し)。
+        """
+        manager = getattr(self.line, "shipments", None)
+        if manager is None:
+            return None
+        rows = [
+            s
+            for s in manager.all()
+            if s.delivery_note_id is None or s.delivery_note.status == type(s.delivery_note).STATUS_CANCELLED
+        ]
+        return max(rows, key=lambda s: (s.shipped_at, s.pk), default=None)
 
     # --- 判断 ---
     @cached_property
