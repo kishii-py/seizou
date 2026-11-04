@@ -34,7 +34,8 @@ import csv
 import inspect
 import re
 import unicodedata
-from decimal import Decimal
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from importlib import import_module
 from pathlib import Path
 from urllib.parse import quote
@@ -44,7 +45,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db import DatabaseError, models
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
@@ -324,6 +325,147 @@ class ColumnSpec:
         return self.name
 
 
+def field_at(model, path: str):
+    """__ で辿る項目の名前 (例 workorder_step__process) の最後の項目。無ければ FieldDoesNotExist。"""
+    current, field = model, None
+    for part in path.split("__"):
+        if current is None:
+            raise FieldDoesNotExist(f"{model.__name__} に {path} がありません。")
+        field = current._meta.get_field(part)
+        current = field.related_model
+    return field
+
+
+class FilterSpec:
+    """一覧の絞り 1 つ (BaseListView.filters の 1 要素。決め 11-04 15:0x)。
+
+    絞りの書き方 (辞書。鍵は KEYS):
+      {"name": "status", "label": "状態", "kind": "choice", "field": "status"}               項目の choices から選ぶ
+      {"name": "status", "label": "状態", "kind": "choice", "field": "status", "choices": open_statuses}
+                                                    choices は (値, 字) の組の並びか、それを返す関数
+      {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"}    開始と終了の 2 欄
+      {"name": "qty", "label": "数", "kind": "number_range", "field": "qty"}                 最小と最大の 2 欄
+      {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"}         FK の先の全部から選ぶ
+
+    GET の名前は f_<name> (期間と数の範囲は f_<name>_from と f_<name>_to)。q・sort・page・per・format と重ならない。
+    絞り方: choice と lookup は field と同じ値、date_range と number_range は両端を含む (gte と lte)。
+    日時の項目の期間は日付で比べる (field__date__gte。終わりの日の夜の記録も入る)。
+    空の欄と読めない値 (日付でない字・数でない字・候補に無い値) は、絞らない (空と同じ。知らせは出さない)。
+    lookup の候補は FK の先の model の全部 (並びは model の ordering、無ければ name、無ければ USERNAME_FIELD、無ければ pk)。
+    """
+
+    #: kind に書ける値
+    KINDS = ("choice", "date_range", "number_range", "lookup")
+    #: 辞書に書ける鍵
+    KEYS = ("name", "label", "kind", "field", "choices")
+    #: GET の名前の頭
+    PREFIX = "f_"
+    RANGE_KINDS = ("date_range", "number_range")
+
+    def __init__(self, model, item: dict):
+        unknown = [key for key in item if key not in self.KEYS]
+        if unknown:
+            raise ValueError(f"絞りに書けない鍵があります: {unknown!r}。{' / '.join(self.KEYS)} のどれかにしてください。")
+        self.name = item["name"]
+        self.kind = item["kind"]
+        if self.kind not in self.KINDS:
+            raise ValueError(f"知らない絞りの種類: {self.kind!r} ({self.name})。{' / '.join(self.KINDS)} のどれかにしてください。")
+        self.field_name = item.get("field") or self.name
+        self.field = field_at(model, self.field_name)
+        self.label = item.get("label") or str(self.field.verbose_name)
+        self.choices = item.get("choices")
+        self.param = self.PREFIX + self.name
+        self.param_from = self.param + "_from"
+        self.param_to = self.param + "_to"
+        self.params = (self.param_from, self.param_to) if self.kind in self.RANGE_KINDS else (self.param,)
+
+    # --- 値を読む (読めない値は None = 絞らない) ---
+    def choice_values(self) -> list[tuple[str, str]]:
+        choices = self.choices if self.choices is not None else self.field.flatchoices
+        if callable(choices):
+            choices = choices()
+        return [(str(value), str(text)) for value, text in choices]
+
+    def lookup_values(self) -> list[tuple[str, str]]:
+        related = self.field.related_model
+        rows = related._default_manager.all()
+        if not related._meta.ordering:
+            names = {f.name for f in related._meta.get_fields()}
+            key = "name" if "name" in names else getattr(related, "USERNAME_FIELD", "pk")
+            rows = rows.order_by(key if key in names else "pk")
+        return [(str(row.pk), str(row)) for row in rows]
+
+    def read(self, raw: str):
+        raw = (raw or "").strip()
+        if not raw:
+            return None
+        if self.kind == "date_range":
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                return None
+        if self.kind == "number_range":
+            try:
+                number = Decimal(raw.replace(",", ""))
+            except InvalidOperation:
+                return None
+            return number if number.is_finite() else None
+        if self.kind == "lookup":
+            related = self.field.related_model
+            try:
+                pk = related._meta.pk.to_python(raw)
+            except ValidationError:
+                return None
+            return pk if related._default_manager.filter(pk=pk).exists() else None
+        return raw if raw in {value for value, _ in self.choice_values()} else None
+
+    def values(self, params) -> dict:
+        """GET の名前ごとの読めた値 (読めない値は入れない)。"""
+        result = {}
+        for name in self.params:
+            value = self.read(params.get(name, ""))
+            if value is not None:
+                result[name] = value
+        return result
+
+    def q(self, params) -> Q | None:
+        values = self.values(params)
+        if not values:
+            return None
+        if self.kind in self.RANGE_KINDS:
+            key = self.field_name + ("__date" if isinstance(self.field, models.DateTimeField) else "")
+            q = Q()
+            if self.param_from in values:
+                q &= Q(**{f"{key}__gte": values[self.param_from]})
+            if self.param_to in values:
+                q &= Q(**{f"{key}__lte": values[self.param_to]})
+            return q
+        return Q(**{self.field_name: values[self.param]})
+
+    def context(self, params) -> dict:
+        """テンプレート (core/_filters.html) が描く材料。欄の値は読めた値だけ (読めない字は空の欄にする)。"""
+        values = self.values(params)
+        shown = {name: str(value) for name, value in values.items()}
+        item = {
+            "name": self.name,
+            "label": self.label,
+            "kind": self.kind,
+            "param": self.param,
+            "param_from": self.param_from,
+            "param_to": self.param_to,
+            "value": shown.get(self.param, ""),
+            "value_from": shown.get(self.param_from, ""),
+            "value_to": shown.get(self.param_to, ""),
+            "active": bool(values),
+            "options": [],
+        }
+        if self.kind == "choice":
+            item["options"] = self.choice_values()
+        elif self.kind == "lookup":
+            item["options"] = self.lookup_values()
+        return item
+
+
 class BaseListView(ScreenMixin, ListView):
     """一覧の土台。サーバーが行を描く。既定は 1 ページ 50 件 (20 / 50 / 100)。
 
@@ -337,10 +479,13 @@ class BaseListView(ScreenMixin, ListView):
     annotate より先に当てるため)。
     並び替えの要求がある時は、同じ値の行の順を pk でそろえる (昇順は pk、降順は -pk。ページ送りの境で行が重なったり抜けたりしない)。
     既定の並び (ordering) には足さない。
+    絞り (filters) は FilterSpec の辞書の並び。get_queryset が検索の後に足すので、件数・合計・CSV も同じ条件になる。
+    ページ送りと並び替えの link は GET の残り (query_without_page・query_without_sort) で、絞りの f_ の値を持ち越す。
     """
 
     columns: tuple = ()
     search_fields: tuple = ()
+    filters: tuple = ()
     ordering = None
     paginate_by = DEFAULT_PAGE_SIZE
     page_sizes = PAGE_SIZES
@@ -420,7 +565,19 @@ class BaseListView(ScreenMixin, ListView):
             if not lookups:
                 break
             qs = qs.filter(search_q(lookups, term))
-        return qs
+        return self.apply_filters(qs)
+
+    # --- 絞り ---
+    def filter_specs(self) -> list[FilterSpec]:
+        return [FilterSpec(self.model, item) for item in self.filters]
+
+    def apply_filters(self, queryset):
+        """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。"""
+        for spec in self.filter_specs():
+            q = spec.q(self.request.GET)
+            if q is not None:
+                queryset = queryset.filter(q)
+        return queryset
 
     # --- 行 ---
     def row_for(self, obj, specs) -> dict:
@@ -492,6 +649,12 @@ class BaseListView(ScreenMixin, ListView):
         context["page_sizes"] = self.page_sizes
         context["query_without_page"] = self.query_without("page", "format")
         context["query_without_sort"] = self.query_without("sort", "page", "format")
+        filter_specs = self.filter_specs()
+        context["filters"] = [spec.context(self.request.GET) for spec in filter_specs]
+        context["filter_active"] = any(item["active"] for item in context["filters"])
+        context["query_without_filters"] = self.query_without(
+            "page", "format", *(name for spec in filter_specs for name in spec.params)
+        )
         context["create_url"] = model_url(self.model, "create")
         if context["create_url"] and not access.can_write_model(self.request.user, self.model, "create"):
             context["create_url"] = None
