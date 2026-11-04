@@ -19,6 +19,11 @@
   var DROP = "[data-file-drop]";
   var INPUT = 'input[type="file"]';
   var PASS = "input, a, label, button, select, textarea"; // 枠の押下で選ぶ画面を開かない物
+  var FIELD = "[data-file-field]";
+  var KB = 1024;
+  var MB = 1024 * 1024;
+  var IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  var thumbUrls = new WeakMap(); // 一覧 → 今出しているサムネの URL の並び (作り直すときに捨てる)
 
   function elementOf(node) {
     return node && node.nodeType === 1 ? node : null;
@@ -45,6 +50,49 @@
     var input = inputOf(box);
     if (!input || input.matches(":disabled")) return null;
     return box;
+  }
+
+  function sizeText(bytes) {
+    if (bytes < KB) return bytes + " バイト";
+    if (bytes < MB) return (bytes / KB).toFixed(1) + " KB";
+    return (bytes / MB).toFixed(1) + " MB";
+  }
+
+  function dropThumbs(list) {
+    var urls = thumbUrls.get(list) || [];
+    for (var i = 0; i < urls.length; i++) URL.revokeObjectURL(urls[i]);
+    thumbUrls.set(list, []);
+  }
+
+  // 絵のファイルは、行の頭の img にサムネを出す (URL.createObjectURL。通信しない)。
+  function showThumb(list, row, file) {
+    var thumb = row.querySelector("[data-file-drop-thumb]");
+    if (!thumb || IMAGE_TYPES.indexOf(file.type) === -1) return;
+    var url = URL.createObjectURL(file);
+    thumbUrls.get(list).push(url);
+    thumb.src = url;
+    thumb.alt = file.name;
+    thumb.hidden = false;
+  }
+
+  // 選んだファイルの一覧を作り直す (枠の下。行は template を写し、名前と大きさを textContent で入れる)。
+  function render(input) {
+    var field = input.closest(FIELD);
+    if (!field) return;
+    var list = field.querySelector("[data-file-drop-list]");
+    var template = field.querySelector("template[data-file-drop-item]");
+    if (!list || !template) return;
+    dropThumbs(list);
+    list.replaceChildren();
+    var files = input.files || [];
+    for (var i = 0; i < files.length; i++) {
+      var row = template.content.firstElementChild.cloneNode(true);
+      row.querySelector("[data-file-drop-name]").textContent = files[i].name;
+      row.querySelector("[data-file-drop-size]").textContent = sizeText(files[i].size);
+      showThumb(list, row, files[i]);
+      list.appendChild(row);
+    }
+    list.hidden = files.length === 0;
   }
 
   function onDragOver(event) {
@@ -88,8 +136,15 @@
     if (box) inputOf(box).click();
   }
 
+  function onChange(event) {
+    var input = elementOf(event.target);
+    if (!input || !input.matches(INPUT) || !input.closest(DROP)) return;
+    render(input);
+  }
+
   document.addEventListener("dragover", onDragOver);
   document.addEventListener("dragleave", onDragLeave);
   document.addEventListener("drop", onDrop);
   document.addEventListener("click", onClick);
+  document.addEventListener("change", onChange);
 })();
