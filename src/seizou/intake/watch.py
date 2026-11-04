@@ -33,6 +33,7 @@ from django.conf import settings
 from django.core.files import File
 from django.db import close_old_connections
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from . import services
 
@@ -192,6 +193,20 @@ def status() -> dict | None:
     if record is None:
         return None
     return {**record, "running": _fresh(record)}
+
+
+def status_time(value) -> str:
+    """--status に出す日時の字。記録の日時 (ISO の字) を、settings の TIME_ZONE の時刻の「2026-11-04 09:40:17」の形にする。
+
+    記録のファイルは ISO の字のまま (読み書きの形を変えない)。読めない字・timezone の無い字・字でない値は、今までと同じ字のまま返す。
+    """
+    try:
+        parsed = parse_datetime(value) if isinstance(value, str) else None
+    except ValueError:
+        parsed = None
+    if parsed is None or timezone.is_naive(parsed):
+        return f"{value}"
+    return timezone.localtime(parsed).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def request_stop() -> bool:

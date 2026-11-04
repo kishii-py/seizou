@@ -342,3 +342,30 @@ def test_loop_record_status_and_stop(monkeypatch, settings, scan, user):
     assert "見張りを始めました: " in out
     assert not record_file.exists()
     assert not stop_file.exists()
+
+
+def test_status_shows_local_time(settings, scan):
+    """--status の日時は、記録の ISO の字 (UTC) を settings の TIME_ZONE の「2026-11-04 09:40:17」の形で出す。記録のファイルは ISO のまま。"""
+    settings.TIME_ZONE = "Asia/Tokyo"
+    record_file = Path(settings.BASE_DIR) / watch.RECORD
+    now = timezone.now()
+    started = "2026-11-04T00:40:17.153686+00:00"
+    record = {"pid": 4242, "folder": str(scan), "interval": 10, "started_at": started, "seen_at": now.isoformat()}
+    record_file.write_text(json.dumps(record), encoding="utf-8")
+
+    out = run_command("--status")[0].strip()
+    seen = timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")
+    assert out == f"動いている: {scan} (pid 4242・10 秒ごと・始めた日時 2026-11-04 09:40:17・最後の見回り {seen})"
+    assert "+00:00" not in out
+    assert json.loads(record_file.read_text(encoding="utf-8"))["started_at"] == started  # 記録は ISO のまま
+
+    record["seen_at"] = "2026-11-04T00:40:23.185549+00:00"
+    record_file.write_text(json.dumps(record), encoding="utf-8")
+    out = run_command("--status")[0].strip()
+    assert out == f"止まっている (記録が古い): {scan} (pid 4242・最後の見回り 2026-11-04 09:40:23)。もう一度立てると置き直します。"
+
+    record["started_at"] = "読めない字"
+    record["seen_at"] = now.isoformat()
+    record_file.write_text(json.dumps(record), encoding="utf-8")
+    assert "・始めた日時 読めない字・最後の見回り " in run_command("--status")[0]
+    assert watch.status_time("2026-11-04T09:40:17") == "2026-11-04T09:40:17"  # timezone の無い字もそのまま

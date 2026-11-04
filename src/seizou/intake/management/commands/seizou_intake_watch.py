@@ -120,12 +120,12 @@ class Command(BaseCommand):
         elif current["running"]:
             self.stdout.write(
                 f"動いている: {current.get('folder', '')} (pid {current['pid']}・{current.get('interval', '')} 秒ごと・"
-                f"始めた日時 {current.get('started_at', '')}・最後の見回り {current.get('seen_at', '')})"
+                f"始めた日時 {watch.status_time(current.get('started_at', ''))}・最後の見回り {watch.status_time(current.get('seen_at', ''))})"
             )
         else:
             self.stdout.write(
                 f"止まっている (記録が古い): {current.get('folder', '')} "
-                f"(pid {current['pid']}・最後の見回り {current.get('seen_at', '')})。もう一度立てると置き直します。"
+                f"(pid {current['pid']}・最後の見回り {watch.status_time(current.get('seen_at', ''))})。もう一度立てると置き直します。"
             )
 
     def _stop(self):
