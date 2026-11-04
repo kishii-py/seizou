@@ -80,6 +80,7 @@ description: 会社のシステムの画面ごとの使い方を、日本語の�
 | ダッシュボード (`core:home`) | 生産の節 | `production` |
 | ダッシュボード (`core:home`) | 最近の受注の節 | `recent-orders` |
 | ダッシュボード (`core:home`) | 納期アラートの節 | `due-alerts` |
+| ダッシュボード (`core:home`) | 注文の入口の節 | `inlets` |
 | 詳細の画面 (`<app>:<model>_detail` の全部) | 基本情報のタブ | `basic` |
 | 詳細の画面 (`<app>:<model>_detail` の全部) | 関係する物のタブ (タブがいくつあっても 1 つの枠) | `related` |
 

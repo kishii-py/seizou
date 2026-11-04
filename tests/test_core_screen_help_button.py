@@ -148,6 +148,7 @@ HOME_FRAMES = {
     "production": "生産の説明",
     "recent-orders": "最近の受注の説明",
     "due-alerts": "納期アラートの説明",
+    "inlets": "注文の入口の説明",
 }
 
 
