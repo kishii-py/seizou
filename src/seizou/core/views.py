@@ -63,6 +63,7 @@ from seizou.core import access
 from seizou.core import checks
 from seizou.core import dashboard
 from seizou.core import fields as company_fields
+from seizou.core import summary as list_summary
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.widgets import DecimalInput, IntegerInput, RemoteSelect
 
@@ -573,6 +574,8 @@ class BaseListView(ScreenMixin, ListView):
     既定の並び (ordering) には足さない。
     絞り (filters) は FilterSpec の辞書の並び。get_queryset が検索の後に足すので、件数・合計・CSV も同じ条件になる。
     ページ送りと並び替えの link は GET の残り (query_without_page・query_without_sort) で、絞りの f_ の値を持ち越す。
+    集計 (GET view=summary。core/summary.py): 表の代わりに、絞りの軸 (g_by) ごとの件数か数の列の合計 (g_val) の表と横棒の図を出す。
+    絞り・検索・部品の get_queryset の後の行を数える。CSV (format=csv) も集計の行になる。軸が 1 つも無い一覧は表のまま。
     """
 
     columns: tuple = ()
@@ -737,8 +740,10 @@ class BaseListView(ScreenMixin, ListView):
         context = super().get_context_data(**kwargs)
         specs = self.column_specs()
         context["columns"] = specs
-        context["rows"] = [self.row_for(obj, specs) for obj in context["object_list"]]
-        context["totals"] = self.totals_for(self.get_queryset(), specs)
+        # 集計 (view=summary) のときは表の行と合計の行を作らない (画面は core/_summary.html だけを描く)。
+        context["summary"] = self.summary_for(specs)
+        context["rows"] = [] if context["summary"] else [self.row_for(obj, specs) for obj in context["object_list"]]
+        context["totals"] = None if context["summary"] else self.totals_for(self.get_queryset(), specs)
         context["search_q"] = self.request.GET.get("q", "")
         context["search_hint"] = self.search_hint()
         context["sort"] = self.sort_param()
@@ -756,7 +761,33 @@ class BaseListView(ScreenMixin, ListView):
         if context["create_url"] and not access.can_write_model(self.request.user, self.model, "create"):
             context["create_url"] = None
         context["rows_template_names"] = self.rows_template_names()
+        context["summary_axes"] = context["summary"]["axes"] if context["summary"] else self.summary_axes()
+        context["query_without_view"] = self.query_without("page", "format", *list_summary.PARAMS)
         return context
+
+    # --- 集計 (GET view=summary。core/summary.py) ---
+    def summary_axes(self) -> list:
+        """集計の軸 (絞りの choice と lookup の項目と、date_range の項目の月。多の側へ辿る項目は外す)。"""
+        return list_summary.axes_for(self.model, self.filter_specs())
+
+    def summary_for(self, specs) -> dict | None:
+        """GET view=summary のときの集計。ほかの view と、軸が 1 つも無い一覧は None (表のまま)。
+
+        量は件数と、表の数の項目の列 (主キーを除く) の合計。金額の列は金額の閲覧が無い人には出さず、GET で選んでも件数に戻す。
+        """
+        if self.request.GET.get("view") != list_summary.VIEW:
+            return None
+        axes = self.summary_axes()
+        if not axes:
+            return None
+        numeric = [s for s in specs if isinstance(s.field, NUMERIC_FIELDS) and not s.field.primary_key]
+        money_ok = not any(s.money for s in numeric) or access.can_see_money(self.request.user, record=False)
+        measures = list_summary.measures_for(numeric, money_ok=money_ok)
+        axis = list_summary.pick_axis(axes, self.request.GET.get("g_by", ""))
+        measure = list_summary.pick_measure(measures, self.request.GET.get("g_val", ""))
+        if measure.money:
+            access.can_see_money(self.request.user)  # 金額を見せる時の記録 (row_for と同じ。log の形のとき 1 行)
+        return {**list_summary.summarize(self.get_queryset(), axis, measure), "axes": axes, "measures": measures}
 
     def rows_template_names(self) -> list[str]:
         return [f"{self.model._meta.app_label}/_rows.html", "core/_rows.html"]
@@ -769,11 +800,13 @@ class BaseListView(ScreenMixin, ListView):
 
     def render_to_response(self, context, **response_kwargs):
         if self.request.GET.get("format") == "csv":
-            return self.csv_response(context)
+            summary = context.get("summary")
+            return self.summary_csv_response(summary) if summary else self.csv_response(context)
         if self.wants_rows_only():
             # partial: 行の部分だけを返す印。core/_rows.html はこのとき道具の帯の件数と CSV も差し替える (hx-swap-oob)。
+            # 集計のときは core/_summary.html (同じく oob で差し替える)。
             context["partial"] = True
-            template = select_template(self.rows_template_names())
+            template = select_template(["core/_summary.html"] if context.get("summary") else self.rows_template_names())
             response = HttpResponse(template.render(context, self.request))
         else:
             response = super().render_to_response(context, **response_kwargs)
@@ -801,6 +834,19 @@ class BaseListView(ScreenMixin, ListView):
         writer.writerow([s.label for s in specs])
         for obj in self.order_annotated(self.get_queryset()):
             writer.writerow(["" if v is None else str(v) for v in (display_value(obj, s.name) for s in specs)])
+        return response
+
+    def summary_csv_response(self, summary) -> HttpResponse:
+        """集計の CSV (画面の表と同じ行と合計の行)。ファイルの名前は 画面の名前_集計_YYYYMMDD.csv (代わりは <model>_summary_YYYYMMDD.csv)。"""
+        (name, day), (ascii_name, ascii_day) = (part.rsplit("_", 1) for part in self.csv_filename())
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            f"attachment; filename=\"{ascii_name}_summary_{ascii_day}\"; "
+            f"filename*=UTF-8''{quote(f'{name}_集計_{day}', safe='')}"
+        )
+        response.write("\ufeff")
+        writer = csv.writer(response)
+        writer.writerows(list_summary.csv_rows(summary))
         return response
 
 
