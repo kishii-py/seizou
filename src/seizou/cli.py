@@ -9,6 +9,8 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     そのファイルに admin:<値> の 1 行で書く (持ち主だけが読める)。
     画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
+    --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
+    (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
@@ -106,6 +108,13 @@ LOAD_DEMO = (
     "import importlib, pathlib; "
     "importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}), partner_base_urls={bases!r})"
 )
+
+#: 作り物の利用者のログイン ID (seizou.accounts.demo_seed.ACCOUNTS と同じ並び。この module は Django を読まないので写す。試験が同じことを見る)
+DEMO_ACCOUNT_IDS = ("genba", "jimu", "keiri")
+#: 作り物の利用者のパスワードを子の process に渡す環境変数 (seizou.accounts.demo_seed.PASSWORDS_ENV と同じ名前。値はログイン ID → パスワードの JSON)
+DEMO_PASSWORDS_ENV = "SEIZOU_DEMO_PASSWORDS"
+#: 種のフォルダにこのファイルがあると、作り物の利用者を入れる (seizou.core.demo の PART_SEED_MARKERS と同じ)
+DEMO_ACCOUNTS_MARKER = "accounts.yaml"
 
 # 業種の見本の工程を入れる短い Python。工程コードか名前が同じ工程が既にあれば飛ばす (種の工程が先に入っていれば種が勝つ)。
 # 工程は部品マスターの services の create_process で作り (表に直接書かない = R13)、入れた数だけを最後の行に出す。
@@ -502,6 +511,17 @@ def write_secret_file(path: Path, text: str) -> None:
     os.chmod(path, 0o600)
 
 
+def append_secret_lines(path: Path, lines: list[str]) -> None:
+    """持ち主だけが読めるファイルの末尾に行を足す (無ければ作る。末尾が改行でなければ先に改行を足す。Windows では権限を無視する)。"""
+    text = "".join(f"{line}\n" for line in lines)
+    if path.is_file() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        text = "\n" + text
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+    os.chmod(path, 0o600)
+
+
 def write_project(site: Path, answers_path: Path, answers: dict, settings: dict) -> None:
     company_id = answers["id"]
     site.mkdir(parents=True, exist_ok=True)
@@ -593,6 +613,18 @@ def run_manage(site: Path, args: list[str], extra_env: dict | None = None) -> su
     )
 
 
+def demo_passwords(choice: str | None) -> dict:
+    """--demo-password の値から ログイン ID → パスワード を作る (決め 11-04 15:0x)。
+
+    random なら 1 人ずつ乱数 (管理者と同じ作り方)。ほかの字なら 3 人ともその字。None なら空 (公開の合言葉のまま)。
+    """
+    if not choice:
+        return {}
+    if choice == "random":
+        return {login_id: secrets.token_urlsafe(12) for login_id in DEMO_ACCOUNT_IDS}
+    return dict.fromkeys(DEMO_ACCOUNT_IDS, choice)
+
+
 def show_failure(step: str, result: subprocess.CompletedProcess) -> int:
     sys.stdout.write(result.stdout or "")
     sys.stderr.write(result.stderr or "")
@@ -600,7 +632,7 @@ def show_failure(step: str, result: subprocess.CompletedProcess) -> int:
     return EXIT_CHILD
 
 
-def command_new(answers_path: Path, demo: bool, password_file: Path | None = None) -> int:
+def command_new(answers_path: Path, demo: bool, password_file: Path | None = None, demo_password: str | None = None) -> int:
     print("答えの YAML から会社のプロジェクトを作ります。")
     print("置き場にファイルを書き、データベースを用意し (migrate)、管理者を 1 人作ります。起動はしません。")
 
@@ -688,6 +720,7 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     print(f"会社の設定を作りました: {answers['name']}")
 
     seed_copied = 0
+    made_passwords: dict = {}
     if demo:
         # import せずに有無だけを見る (この process で Django の model を読まないため)。
         if importlib.util.find_spec("seizou.core.demo") is None:
@@ -695,10 +728,13 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
         else:
             # 種は答えの YAML と同じ場所の <id>/ (examples/companies/README.md の約束)。
             seeds = answers_path.parent / answers["id"]
+            # 作り物の利用者のパスワード (--demo-password)。種に作り物の利用者の印があるときだけ作り、子の process に環境変数で渡す
+            made_passwords = demo_passwords(demo_password) if (seeds / DEMO_ACCOUNTS_MARKER).is_file() else {}
+            demo_env = {DEMO_PASSWORDS_ENV: json.dumps(made_passwords)} if made_passwords else None
             if bases:
                 shown = "、".join(f"{key} → {value}" for key, value in sorted(bases.items()))
                 print(f"つながりの種の受け口の URL の頭を、相手の置き場の URL にします: {shown}")
-            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds), bases=bases)])
+            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds), bases=bases)], demo_env)
             if result.returncode != 0:
                 return show_failure("作り物のデータの読み込み", result)
             # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
@@ -738,6 +774,15 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     print(f"できた物: {site} の会社のプロジェクト。")
     for line in admin_lines:
         print(line)
+    # 作り物の利用者のパスワード (--demo-password random)。管理者と同じく 1 人 1 行で出す。渡された値は出さない
+    if made_passwords and demo_password == "random" and password_file is not None:
+        append_secret_lines(password_file, [f"{login_id}:{value}" for login_id, value in made_passwords.items()])
+        print(f"作り物の利用者 {len(made_passwords)} 人のパスワードを書いたファイル: {password_file} (1 人 1 行で足しました。画面には出しません)")
+    elif made_passwords and demo_password == "random":
+        for login_id, value in made_passwords.items():
+            print(f"作り物の利用者 {login_id} のパスワード: {value}")
+    elif made_passwords:
+        print(f"作り物の利用者 {len(made_passwords)} 人のパスワード: --demo-password で渡した値にしました。")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
@@ -755,6 +800,11 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("answers", type=Path, help="答えの YAML のパス")
     new.add_argument("--demo", action="store_true", help="作り物のデータも登録する (作り物の会社のとき)")
     new.add_argument(
+        "--demo-password",
+        metavar="random|<値>",
+        help="--demo の作り物の利用者 3 人のパスワード。random なら 1 人ずつ乱数を作って 1 人 1 行で出す。既定は README の公開の合言葉",
+    )
+    new.add_argument(
         "--password-file",
         type=Path,
         metavar="PATH",
@@ -766,7 +816,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "new":
-        return command_new(args.answers, args.demo, args.password_file)
+        return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)
     return EXIT_INPUT
 
 
