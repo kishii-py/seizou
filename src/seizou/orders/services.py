@@ -237,6 +237,8 @@ def cancel_order(order, user, *, reason=""):
             locked.note = note
         locked.status = Order.STATUS_CANCELLED
         locked.save()
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
         return locked
 
 
