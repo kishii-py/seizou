@@ -12,7 +12,10 @@ register = template.Library()
 
 @register.simple_tag(takes_context=True)
 def workorder_filters(context):
-    """{% workorder_filters as filters %}。{"process", "unaccepted", "today", "processes"} を返す。"""
+    """{% workorder_filters as worklist_filters %}。{"process", "unaccepted", "today", "processes"} を返す。
+
+    受ける名前を filters にしない (土台の一覧の絞りの欄 core/_filters.html が同じ名前の context を読むため。N119)。
+    """
     filters = worklist.list_filters(context["request"].GET)
     filters["processes"] = worklist.processes_for_filter()
     return filters

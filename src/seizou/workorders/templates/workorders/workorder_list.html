@@ -5,17 +5,17 @@
 土台の検索とページ送りの要求には、下の div の hx-include がこの欄の値を足す。
 {% endcomment %}
 {% block content %}
-{% workorder_filters as filters %}
+{% workorder_filters as worklist_filters %}
 <form id="workorder-filter" method="get" action="{{ request.path }}" class="mb-4 flex flex-wrap items-end gap-4" role="search" aria-label="製造向けの絞り込み" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-include="#list-q, #list-per, #list-meta">
   <label class="flex flex-col gap-2">
     <span class="text-xs font-medium text-base-content/50">工程</span>
     <select name="process" class="select select-sm w-auto">
       <option value="">すべて</option>
-      {% for process in filters.processes %}<option value="{{ process.pk }}"{% if filters.process == process.pk %} selected{% endif %}>{{ process.name }}</option>{% endfor %}
+      {% for process in worklist_filters.processes %}<option value="{{ process.pk }}"{% if worklist_filters.process == process.pk %} selected{% endif %}>{{ process.name }}</option>{% endfor %}
     </select>
   </label>
-  <label class="flex items-center gap-2"><input type="checkbox" name="unaccepted" value="1" class="checkbox checkbox-sm"{% if filters.unaccepted %} checked{% endif %}>未着手だけ</label>
-  <label class="flex items-center gap-2"><input type="checkbox" name="today" value="1" class="checkbox checkbox-sm"{% if filters.today %} checked{% endif %}>今日の計画だけ</label>
+  <label class="flex items-center gap-2"><input type="checkbox" name="unaccepted" value="1" class="checkbox checkbox-sm"{% if worklist_filters.unaccepted %} checked{% endif %}>未着手だけ</label>
+  <label class="flex items-center gap-2"><input type="checkbox" name="today" value="1" class="checkbox checkbox-sm"{% if worklist_filters.today %} checked{% endif %}>今日の計画だけ</label>
   <button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "filter" "size-4" %}絞り込み</button>
 </form>
 <div hx-include="#workorder-filter">{{ block.super }}</div>
