@@ -10,7 +10,7 @@ SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
   503 の画面で止まる (nginx の設定の漏れに、その場で気づくため)。
 
 どの配り方でも同じ事:
-- ログインしていなければログインの画面へ (login_required)。
+- ログインしていなければログインの画面へ。例外は会社の情報のロゴ (ログインの画面に出す物) だけ (is_public)。
 - 断るときは全部 404 (ファイルが「無い」と「見せない」を外から見分けさせない)。MEDIA_ROOT の外は読まない。
 - HTML・SVG・XML・JS のような、ブラウザがスクリプトとして動かしうる型は、必ずダウンロードにする (上げたファイルの
   スクリプトが、同じ origin で動くのを防ぐ)。
@@ -28,7 +28,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import render
 from django.utils.cache import add_never_cache_headers
@@ -103,6 +103,18 @@ def local_file(relative: PurePosixPath) -> Path | None:
     return target
 
 
+def is_public(relative: PurePosixPath) -> bool:
+    """ログインしていなくても返すファイルか = 会社の情報のロゴだけ (ログインの画面と左上に出すので、ログインの前にも要る)。
+
+    今の会社の行の logo と同じ道の物だけ。company/ の下のほかのファイルや、外した古いロゴは含めない。
+    """
+    from seizou.core.models import Company
+
+    row = Company.objects.order_by("pk").only("logo").first()
+    name = row.logo.name if row is not None and row.logo else ""
+    return bool(name) and PurePosixPath(name) == relative
+
+
 def content_type_of(name: str) -> str:
     """拡張子から推した型。推せなければ application/octet-stream。"""
     guessed, _encoding = mimetypes.guess_type(name)
@@ -127,10 +139,15 @@ def _unavailable(request, reason: str, advice: str):
     return render(request, "core/file_delivery_error.html", {"reason": reason, "advice": advice}, status=503)
 
 
-@login_required
 @require_http_methods(["GET", "HEAD"])
 def protected_file(request, name: str):
-    """上げたファイルを、ログインした人にだけ返す (画面でない口)。URL の <path> は MEDIA_ROOT からの相対の道。"""
+    """上げたファイルを、ログインした人にだけ返す (画面でない口)。URL の <path> は MEDIA_ROOT からの相対の道。
+
+    会社の情報のロゴ (is_public) だけは、ログインの画面に出すので、ログインしていなくても返す。
+    """
+    relative = relative_path(name)
+    if not request.user.is_authenticated and not (relative is not None and is_public(relative)):
+        return redirect_to_login(request.get_full_path())
     mode = delivery()
     if mode not in DELIVERIES:
         return _unavailable(request, f"{SETTING} の値「{mode}」は、django か nginx のどちらかにしてください。", ADVICE_BAD_VALUE)
@@ -138,7 +155,6 @@ def protected_file(request, name: str):
         return _unavailable(
             request, f"要求に、nginx を通った印 ({PROXY_HEADER}: {PROXY_HEADER_VALUE}) がありません。", ADVICE_NO_PROXY
         )
-    relative = relative_path(name)
     target = local_file(relative) if relative is not None else None
     if target is None:
         raise Http404("ファイルがありません。")
