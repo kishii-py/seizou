@@ -69,7 +69,7 @@ def test_e08_zero_qty_is_red(page_a, company_a):
     choose(page_a, "lines-0-item", PART_NO)
     page_a.fill("input[name=lines-0-qty]", "0")
     page_a.fill("input[name=lines-0-unit_price]", STANDARD_PRICE)
-    page_a.get_by_role("button", name="保存", exact=True).click()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
 
     # 止まること (道が変わらない・入れた値が残る・画面の上に赤の知らせ R02) は今の画面で通る。先に見る。
     assert re.search(r"/orders/new/$", page_a.url)
