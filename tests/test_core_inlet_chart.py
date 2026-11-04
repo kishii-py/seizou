@@ -22,7 +22,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from seizou.connect import services as connect_services
-from seizou.core import dashboard
+from seizou.core import dashboard, views
 from seizou.intake import services as intake_services
 from seizou.intake.models import Extraction
 from seizou.masters.models import Partner
@@ -197,3 +197,16 @@ def test_home_frames_can_shrink():
         assert len(tags) == 1, frame
         assert "min-w-0" in tags[0].split(), frame
     assert ".min-w-0{" in (CORE / "static" / "css" / "app.css").read_text(encoding="utf-8")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("minutes", "text"),
+    [(59, "受付の平均 59 分"), (61, "受付の平均 1 時間 1 分"), (120, "受付の平均 2 時間")],
+)
+def test_accept_average_text(monkeypatch, minutes, text):
+    # 「受付の平均」は 60 分からは「h 時間 m 分」(精査 A7 の 3 節の 2 で「受付の平均 2007 分」と出た)。字の作り方は ≒ 転記と同じ transcription_text。
+    monkeypatch.setattr(dashboard, "accept_minutes_this_month", lambda today=None: minutes)
+    cards = [stat for stat in views.dashboard_stats() if stat["label"] == "手で打たずに受けた明細"]
+    assert len(cards) == 1
+    assert cards[0]["note"].endswith(f"。{text}")
