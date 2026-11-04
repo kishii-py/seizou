@@ -267,7 +267,7 @@ Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は
 
 ## Claude Code でどう作ったか
 
-このリポジトリのコードと文書は、会期中に Claude Code で書いた。作ったのは 2 人と Claude Code で、model は主に Claude Fable 5.1 と Claude Opus 5.5。Mac は 2 台で、1 台は作者の手元にあり、仕様から依頼書を書く会話と、枝を main に取り込む会話を動かす。もう 1 台は会社に置いた常時稼働の Mac で、夜は依頼書 1 本ずつで動く無人のレーンがそこで走る。その記録が `docs/nights/` にある (読み方は [docs/nights/README.md](docs/nights/README.md))。作り方は次の 4 段の繰り返し。
+このリポジトリのコードと文書は、会期中に Claude Code で書いた。チームは 2 人で、Claude Code (model は主に Claude Fable 5.1 と Claude Opus 5.5) と一緒に作っている。Mac は 2 台で、1 台は作者の手元にあり、仕様から依頼書を書く会話と、枝を main に取り込む会話を動かす。もう 1 台は会社に置いた常時稼働の Mac で、夜は依頼書 1 本ずつで動く無人のレーンがそこで走る。その記録が `docs/nights/` にある (読み方は [docs/nights/README.md](docs/nights/README.md))。作り方は次の 4 段の繰り返し。
 
 1. 本体の会話 (作者と Claude Code の会話) が、仕様から依頼書を 1 本ずつ書く。依頼書には、書いてよいファイルの表・守ること・採用の条件 (機械で確かめる grep と試験) を書く。
 2. 別の Mac の無人のレーンが、依頼書を 1 本ずつ受け、git の作業場を分けて、依頼書の範囲だけを作り、手元の commit で止まる。
