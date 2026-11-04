@@ -246,17 +246,18 @@ def test_flow_neighbors_prev_and_next():
 
 
 @pytest.mark.django_db
-def test_home_shows_flow_guide_between_cards_and_charts(logged_in, user, customer, shaft, monkeypatch):
+def test_home_shows_today_tasks_before_cards(logged_in, user, customer, shaft, monkeypatch):
     make_order(user, customer, shaft)
     body = home(logged_in)
-    assert body.count("はじめての方へ") == 1
-    stats = body.index('data-tour="stats"')
     frame = body.index('aria-labelledby="flow-guide-title"')
+    stats = body.index('data-tour="stats"')
     shipping = body.index('aria-labelledby="shipping-title"')
-    assert stats < frame < shipping
+    assert frame < stats < shipping
     section = re.search(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', body, re.S).group(0)
-    workorders_url = reverse("orders:orderline_list")
-    assert f'次にすること: <a class="link link-hover text-primary" href="{workorders_url}">指示書</a>' in section
+    # 題は h2 の 1 回 (行の並びの aria-label にも同じ字が入るので、見える字で数える)
+    assert section.count('<h2 id="flow-guide-title" class="text-lg font-bold">今日やること</h2>') == 1
+    assert "はじめての方へ" not in section
+    assert "次にすること:" not in section
     assert "btn-primary" not in section
     for word in ("はじめに", "品目", "注残の明細", "受信箱の未処理"):
         assert word not in body, word
@@ -265,5 +266,5 @@ def test_home_shows_flow_guide_between_cards_and_charts(logged_in, user, custome
     with_frame = body.count("btn-primary")
     monkeypatch.setattr(dashboard, "flow_guide", lambda: None)
     without = home(logged_in)
-    assert "はじめての方へ" not in without
+    assert 'aria-labelledby="flow-guide-title"' not in without
     assert without.count("btn-primary") == with_frame
