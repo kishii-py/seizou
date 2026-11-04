@@ -15,6 +15,13 @@ from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
 
 
+def _subcontractor_choices():
+    """発注の一覧の取引先の絞りの候補 (取引先の種類が協力企業か両方。発注を入れる form の候補と同じ。名前の順)。"""
+    partner_model = PurchaseOrder._meta.get_field("partner").related_model
+    rows = partner_model._default_manager.filter(role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH))
+    return [(row.pk, str(row)) for row in rows.order_by("name", "pk")]
+
+
 class PurchaseOrderListView(BaseListView):
     """発注の一覧。
 
@@ -37,11 +44,18 @@ class PurchaseOrderListView(BaseListView):
         "note",
     )
     search_fields = ("po_no", "partner__name", "partner__code")
+    # 取引先は choice に候補の関数を渡す (lookup は FK の先の全部を候補にし、choices を見ないため)。
+    # 納期は明細の項目 (lines__due_date)。明細が 2 行合うと同じ発注が 2 回出るので、get_queryset が distinct() で 1 回にする。
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
+        {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
+    )
     ordering = ("-order_date", "-id")
     template_name = "purchasing/purchaseorder_list.html"
 
     def get_queryset(self):
-        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset().select_related("partner")))
+        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset().select_related("partner").distinct()))
 
 
 class PurchaseOrderDetailView(BaseDetailView):
