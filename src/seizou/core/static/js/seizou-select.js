@@ -82,6 +82,9 @@
       // 候補の一覧を body の直下に描き、欄の位置に合わせて置く (表の overflow の箱に切られない。R3 の止まる)。
       // 小窓 (dialog) の中の欄は包みの中のまま (dialog は最上層に出るので、body の直下の一覧は裏に隠れる)。
       dropdownParent: inDialog ? null : "body",
+      // 読み込み中に包みへ付く class を部品の既定の "loading" から変える (daisyUI の .loading = 丸い読み込みの印の形が
+      // 包みに当たり、欄が正方形に伸びて候補の一覧が窓の下の端に置かれる。初見テスト R4 の 1)。
+      loadingClass: "ts-loading",
       maxOptions: null,
       preload: "focus",
       // 打ってから取りに行くまでの待ちは loadThrottle の 250ms だけにする

@@ -95,6 +95,15 @@ def test_select_js_draws_list_under_body_and_waits_for_load_on_enter():
     assert text.count("className =") == 2
 
 
+def test_select_js_renames_the_loading_class():
+    """読み込み中の class を部品の既定の loading から変える (daisyUI の .loading と重なり、欄が正方形に伸びて
+    候補の一覧が欄から離れて窓の下の端に出る。初見テスト R4 の 1)。"""
+    text = SELECT_JS.read_text(encoding="utf-8")
+    assert 'loadingClass: "ts-loading"' in text
+    assert 'loadingClass: "loading"' not in text
+    assert ".ts-wrapper.loading" not in INPUT_CSS.read_text(encoding="utf-8")
+
+
 def test_input_css_styles_list_under_body():
     source = INPUT_CSS.read_text(encoding="utf-8")
     assert "body > .ts-dropdown {" in source
