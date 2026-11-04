@@ -8,3 +8,4 @@
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 {% if object.status == "issued" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'workorders:workorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}
 {% endblock %}
+{% block content %}{{ block.super }}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}{% endblock %}

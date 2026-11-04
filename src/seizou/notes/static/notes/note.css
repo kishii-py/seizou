@@ -1,0 +1,15 @@
+/* 書式つきのメモ (notes) の見た目の足し。class の字は Quill の物と data 属性だけ (CSS の土台の app.css は変えない)。 */
+/* 閲覧の形の本文は掃除した HTML (ul と ol の素の li) なので、Quill が消した印 (list-style-type: none) を戻す。 */
+[data-note-view] .ql-editor ul > li:not([data-list]) { list-style-type: disc; }
+[data-note-view] .ql-editor ol > li:not([data-list]) { list-style-type: decimal; }
+[data-note-view] .ql-editor ul { padding-left: 1.5em; }
+[data-note-view] .ql-editor li:not([data-list]) { padding-left: 0.25em; }
+[data-note-view] .ql-editor { padding: 0; }
+/* 記入の形の箱の高さ (空でも 12 行ほど打てる大きさ) */
+[data-note-box] .ql-editor { min-height: 16rem; }
+/* Quill の link の小窓の字を日本語にする (同梱の CSS は英語の字を ::before と ::after に書く) */
+[data-note-editor] .ql-snow .ql-tooltip::before { content: "リンク先:"; }
+[data-note-editor] .ql-snow .ql-tooltip[data-mode="link"]::before { content: "リンク先を入れる:"; }
+[data-note-editor] .ql-snow .ql-tooltip a.ql-action::after { content: "直す"; }
+[data-note-editor] .ql-snow .ql-tooltip a.ql-remove::before { content: "外す"; }
+[data-note-editor] .ql-snow .ql-tooltip.ql-editing a.ql-action::after { content: "決める"; }

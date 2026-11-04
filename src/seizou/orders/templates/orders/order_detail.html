@@ -52,4 +52,5 @@
   {% endif %}
   {% endwith %}
 </section>
+{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}
 {% endblock %}
