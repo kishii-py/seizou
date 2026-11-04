@@ -300,7 +300,7 @@ def item_drawing(request, pk, filename):
 
 
 # ---------------------------------------------------------------- 図面ビューアと版に戻す (第 3 波)
-# 版とページの選び方は template tag (masters_drawing の drawing_viewer) が GET から解く。class は土台の 11 の属性だけ。
+# 版とページの選び方は template tag (masters_drawing の drawing_viewer) が GET から解く。class は土台の 12 の属性だけ。
 
 
 class ItemDrawingViewerView(BaseDetailView):
