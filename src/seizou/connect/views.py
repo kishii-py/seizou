@@ -48,6 +48,11 @@ class InboxListView(BaseListView):
         "差出人が当たらない読み取りは黄の「差出人の確認待ち」で、詳細で差出人を選んでから承認します。2 秒ごとに新しい行を先頭に足します。承認するまで受注にはなりません。"
     )
     columns = ("received_at", "partner", "source", ("summary", "中身の要約"), "status")
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "partner", "label": "取引先", "kind": "lookup", "field": "partner"},
+        {"name": "received", "label": "受信日", "kind": "date_range", "field": "received_at"},
+    )
     ordering = (
         Case(When(status=Inbox.STATUS_RECEIVED, then=Value(0)), default=Value(1), output_field=IntegerField()),
         "-received_at",
@@ -59,13 +64,13 @@ class InboxListView(BaseListView):
         # newest_pk = 届いた注文の一番新しい行の番号 (どの行にも同じ値)。行と同じ 1 つの問い合わせで読むので、
         # 返す行と次に添える after がずれない。GET の after (数) があれば、それより新しい行だけにする。
         newest = Inbox.objects.order_by("-pk").values("pk")[:1]
-        # total_count = 届いた注文の全部の件数 (自動の更新で行を足したとき、上の「全 N 件」も直すため。初見テスト 2 回目の所見)。
+        # total_count = 絞りの後の件数 (絞りが無ければ全部。自動の更新で行を足したとき、上の「全 N 件」も直すため。初見テスト 2 回目の所見)。
         # order は状態の列の受注番号の link のため。
         queryset = (
             super()
             .get_queryset()
             .select_related("partner", "order")
-            .annotate(newest_pk=Subquery(newest), total_count=Value(Inbox.objects.count(), output_field=IntegerField()))
+            .annotate(newest_pk=Subquery(newest), total_count=Value(super().get_queryset().count(), output_field=IntegerField()))
         )
         # same_order_pk・same_order_status = 同じ取引先から同じ注文番号で前に届いた行 (一番古い 1 つ) の番号と状態
         # (本体の追記 11。状態の列の黄の知らせ)。行と同じ 1 つの問い合わせで読む。取引先の空の行と、注文番号が空か null の行は比べない
