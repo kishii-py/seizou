@@ -94,3 +94,24 @@ def test_partner_import_skips_order_inlet_column(user, no_registration):
 
     assert not item_form.is_valid()
     assert any("注文の入口" in reason for _line, _header, reason in item_form.import_errors), item_form.import_errors
+
+
+# ---------------------------------------------------------------- 3. 取り込みの後の知らせ (入れた数と直した数)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("url_name", "content"),
+    [
+        ("masters:item_import", csv_bytes("自社品番,品名", "P-1001,作り物の軸", "P-1002,作り物の板")),
+        ("masters:partner_import", csv_bytes("取引先コード,名前,取引先の種類", "C001,作り物の得意先,得意先", "C002,作り物の商会,得意先")),
+    ],
+)
+def test_import_message_counts_new_and_updated(client_logged_in, user, no_registration, url_name, content):
+    services.create_item({"part_no": "P-1001", "name": "作り物の軸"}, user)
+    services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+
+    response = post_csv(client_logged_in, url_name, content)
+
+    assert response.status_code == 302
+    assert saved_messages(response) == ["保存しました。1 件入れ、1 件直しました。"]

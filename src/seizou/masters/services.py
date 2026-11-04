@@ -609,7 +609,7 @@ def _import_rows(rows, user, model, key, label, create, update, *, note=""):
             except ValueError as exc:
                 raise ValueError(f"{line} 行目: {exc}") from exc
     result = ImportResult({"入れた": made, "更新した": updated})
-    result.saved_note = note
+    result.saved_note = f"{made} 件入れ、{updated} 件直しました。{note}"
     return result
 
 
