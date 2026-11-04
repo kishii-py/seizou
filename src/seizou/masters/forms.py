@@ -79,12 +79,22 @@ class PartnerForm(ServiceModelForm):
         _active_on_edit_only(self)
 
 
+#: 工程の使用中の欄の下の案内 (N140)
+PROCESS_ACTIVE_HELP = "外すと使用停止にします。指示書の発行の候補に出ず、部品の標準の工程の並びからも写しません。今までの指示書の工程はそのまま残ります。"
+
+
 class ProcessForm(ServiceModelForm):
     """工程を入れる・直す。協力企業に出すか (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
+
+    active = forms.BooleanField(label="使用中", required=False, help_text=PROCESS_ACTIVE_HELP)
 
     class Meta:
         model = Process
         fields = ["code", "name", "sort_order", "use_in_plan"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _active_on_edit_only(self)
 
 
 # ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)

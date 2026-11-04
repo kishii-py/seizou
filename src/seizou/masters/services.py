@@ -55,7 +55,7 @@ _PARTNER_KEYS = frozenset(
         "active",
     }
 )
-_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan"})
+_PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan", "active"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
 _PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
 _PAYMENT_DAY_RANGE = range(1, 32)  # 1〜31 (31 は月末)
@@ -408,7 +408,7 @@ def update_partner(partner, data, user, *, ext=None):
 
 
 def create_process(data, user):
-    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order・use_in_plan。"""
+    """工程を作る。工程コードは一意。data の鍵は code・name・is_outsourced・sort_order・use_in_plan・active。"""
     _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
     with transaction.atomic():
         _refuse_duplicate_process_code(data["code"])
