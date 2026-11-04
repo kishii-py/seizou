@@ -40,9 +40,9 @@
 {% else %}
 {# 空の一覧: 絵と 1 文と次の操作 (主色のボタンは見出しの右の 1 つだけなので、ここは枠だけのボタン)。 #}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  {% if search_q %}
+  {% if search_q or filter_active %}
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
-  <p class="mt-4 font-medium">「{{ search_q }}」に合う物はありません。</p>
+  <p class="mt-4 font-medium">{% if search_q %}「{{ search_q }}」に{% else %}絞りの条件に{% endif %}合う物はありません。</p>
   <p class="mt-2 text-xs text-base-content/50">言葉を短くするか、絞り込みをクリアしてください。</p>
   <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ request.path }}">{% icon "x" "size-4" %}絞り込みをクリア</a>
   {% else %}
@@ -53,4 +53,4 @@
   {% endif %}
 </div>
 {% endif %}
-{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
