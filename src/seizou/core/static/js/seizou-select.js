@@ -21,6 +21,10 @@
  *   押すと master_link と同じ小窓 (#seizou-modal) で開く。選び直すと link の先も変わり、消すと link も消える。
  *   入力の小窓 (#seizou-modal-box) の中の欄の link は、小窓を差し替えず新しいタブで開く (入れかけの値を消さない)。
  *   小窓の口は htmx でない要求を詳細の画面へ移すので、新しいタブには詳細の画面が出る。
+ * - 候補に unit と standard_price のある物 (部品の候補の口が返す) を選んだら、同じ表の行 (tr) の name が -unit と
+ *   -unit_price で終わる欄に写す (05 の 2 節の「選んだら写す」。規則は masters.services.copy_values と同じ:
+ *   欄が空か前に写したままの値なら写し、人が打った字は残す)。写したら欄の下に「単位と単価を部品から写しました。」を出す。
+ *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
  */
 (function () {
   "use strict";
@@ -28,6 +32,12 @@
   var SELECTOR = "select[data-select-url]";
   var DELAY_MS = 250;
   var ERROR_TEXT = "候補を取れませんでした。通信を確かめて、欄を開き直してください。";
+  // 候補の値の鍵 → 同じ行の欄の name の末尾と、知らせの字の名前
+  var COPY_FIELDS = [
+    { key: "unit", suffix: "-unit", label: "単位" },
+    { key: "standard_price", suffix: "-unit_price", label: "単価" },
+  ];
+  var COPIED_TAIL = "を部品から写しました。";
 
   function pageUrl(base, query, page) {
     var url = new URL(base, window.location.href);
@@ -59,6 +69,29 @@
       state.notice = null;
     }
     state.errorShown = false;
+  }
+
+  // 選んだ候補の値を同じ表の行の欄に写し、写した欄の名前 (単位・単価) の並びを返す。
+  // 写すのは欄が空か、前に写したままの値 (data-copied と同じ字) のときだけ。人が打った字は残す。
+  function copyFromOption(select, option) {
+    var copied = [];
+    var row = select.closest("tr");
+    if (!option || !row) return copied;
+    COPY_FIELDS.forEach(function (spec) {
+      var value = option[spec.key];
+      if (value === undefined || value === null || String(value).trim() === "") return;
+      var input = row.querySelector('input[name$="' + spec.suffix + '"]');
+      if (!input) return;
+      var now = input.value.trim();
+      if (now !== "" && now !== input.getAttribute("data-copied")) return;
+      value = String(value);
+      if (now === value) return;
+      input.value = value;
+      input.setAttribute("data-copied", value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      copied.push(spec.label);
+    });
+    return copied;
   }
 
   function attach(select) {
@@ -181,6 +214,25 @@
       };
       ts.on("change", syncLink);
       syncLink();
+    }
+
+    // 部品の候補を選んだら、同じ明細の行の単位と単価の欄に写し、欄の下に知らせを 1 つ出す (選び直すと出し直す)。
+    if (!select.multiple) {
+      var copyNote = null;
+      ts.on("change", function () {
+        if (copyNote) {
+          copyNote.remove();
+          copyNote = null;
+        }
+        var value = ts.getValue();
+        var copied = value ? copyFromOption(select, ts.options[value]) : [];
+        if (!copied.length) return;
+        copyNote = document.createElement("p");
+        copyNote.className = "mt-2 text-xs text-base-content/50";
+        copyNote.setAttribute("role", "status");
+        copyNote.textContent = copied.join("と") + COPIED_TAIL;
+        ts.wrapper.parentNode.appendChild(copyNote);
+      });
     }
 
     // 日本語の変換を確定する Enter は部品に渡さない (候補を選ばず、form も送らない)。

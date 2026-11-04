@@ -3,12 +3,14 @@
 ブラウザでの確かめ (選ぶ欄・行を足す JS) は朝の E2E。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.orders import services
@@ -103,12 +105,24 @@ def test_order_list_requires_login(client):
 
 
 @pytest.mark.django_db
+def test_create_form_order_date_starts_today_and_update_keeps_value(logged_in, shipped_order):
+    """受注の新規登録の受注日は今日が入っている (初見テスト R4 4-3a)。直す画面は受注の今の受注日のまま。"""
+    today = timezone.localdate().isoformat()
+    create = logged_in.get(reverse("orders:order_create")).content.decode()
+    assert re.search(rf'<input type="date" name="order_date" value="{today}"', create)
+
+    edit = logged_in.get(reverse("orders:order_update", args=[shipped_order.pk])).content.decode()
+    assert re.search(rf'<input type="date" name="order_date" value="{ORDER_DATE.isoformat()}"', edit)
+
+
+@pytest.mark.django_db
 def test_create_order_with_two_lines_shows_in_list(logged_in, customer, shaft, plate):
     form_page = logged_in.get(reverse("orders:order_create"))
     assert form_page.status_code == 200
     body = form_page.content.decode()
     assert 'name="note"' not in body  # 入れる画面に備考の欄を置かない (create_order に note が無い)
-    assert f'data-select-url="{reverse("masters:partner_select")}"' in body
+    # 得意先の欄の候補は得意先と両方の取引先だけ (候補の口の URL に role=customer。精査 A9 の 4 節の 1)
+    assert f'data-select-url="{reverse("masters:partner_select")}?role=customer"' in body
     assert f'data-select-url="{reverse("masters:item_select")}"' in body
     assert 'id="order-line-template"' in body and "行を足す" in body
 

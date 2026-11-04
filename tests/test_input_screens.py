@@ -91,8 +91,9 @@ def test_select_js_draws_list_under_body_and_waits_for_load_on_enter():
     # 取った字を HTML として差し込まない。innerHTML の字は小窓を開く htmx の swap の名前の 1 か所 (今のまま) だけ。
     assert ".innerHTML" not in text and "insertAdjacentHTML" not in text
     assert text.count("innerHTML") == 1 and 'swap: "innerHTML"' in text
-    # class は今の 2 行 (知らせと「詳細を見る」の link) だけ。新しい行で class を足さない。
-    assert text.count("className =") == 2
+    # class は今の 3 行 (通信の誤りの知らせ・「詳細を見る」の link・部品から写した知らせ) だけ。どれも固定の字で、
+    # テンプレートで使っている class (app.css に入っている物) だけ。新しい行で class を足さない。
+    assert text.count("className =") == 3
 
 
 def test_select_js_renames_the_loading_class():
@@ -421,3 +422,69 @@ def test_orderline_select_carries_modal_url_template():
 
     assert 'data-modal-url="' in html
     assert reverse("orders:orderline_modal", args=[0]) in html
+
+
+# --- R4 4-3b. 部品を選んだら単位と単価を写す (05 の 2 節の「選んだら写す」) ------------------------------------
+
+
+@pytest.fixture
+def priced(user):
+    return masters_services.create_item(
+        {"part_no": "T-300", "name": "作り物の座金", "unit": "袋", "standard_price": Decimal("1234.50")}, user
+    )
+
+
+@pytest.mark.django_db
+def test_item_candidates_carry_unit_and_standard_price(logged_in, priced, shaft):
+    data = logged_in.get(reverse("masters:item_select"), {"q": "T-"}).json()
+    rows = {row["id"]: row for row in data["items"]}
+
+    assert rows[priced.pk] == {"id": priced.pk, "text": "T-300 作り物の座金", "unit": "袋", "standard_price": "1234.50"}
+    # 標準単価の無い部品は null (JS は写さない)
+    assert rows[shaft.pk]["unit"] == "個"
+    assert rows[shaft.pk]["standard_price"] is None
+
+
+@pytest.mark.django_db
+def test_item_candidates_hide_standard_price_without_money(settings, logged_in, priced):
+    # 金額の判定が on で、Access の行の無い利用者 (金額の閲覧なし) には標準単価を返さない。単位は返す。
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    row = logged_in.get(reverse("masters:item_select"), {"q": "T-300"}).json()["items"][0]
+
+    assert row == {"id": priced.pk, "text": "T-300 作り物の座金", "unit": "袋"}
+
+
+@pytest.mark.django_db
+def test_other_candidates_stay_id_and_text(logged_in, customer):
+    row = logged_in.get(reverse("masters:partner_select")).json()["items"][0]
+
+    assert set(row) == {"id", "text"}
+
+
+def test_select_js_copies_unit_and_price_into_same_row():
+    text = SELECT_JS.read_text(encoding="utf-8")
+    for word in (
+        'select.closest("tr")',
+        '{ key: "unit", suffix: "-unit", label: "単位" }',
+        '{ key: "standard_price", suffix: "-unit_price", label: "単価" }',
+        # 欄が空か前に写したままの値のときだけ写す (人が打った字は残す)
+        'now !== "" && now !== input.getAttribute("data-copied")',
+        # 明細の金額の目安 (orders/order-lines.js) が数え直す
+        'input.dispatchEvent(new Event("input", { bubbles: true }))',
+    ):
+        assert word in text, word
+
+
+def test_select_js_copy_note_matches_copy_values_wording(priced):
+    text = SELECT_JS.read_text(encoding="utf-8")
+    # 知らせの字は masters.services.copy_values の「写した」の文と同じ形 (単位と単価を部品から写しました。)
+    _values, messages = masters_services.copy_values(priced, {"unit": "", "unit_price": ""}, set())
+    assert messages == ["単位と単価を部品から写しました。"]
+    assert 'var COPIED_TAIL = "を部品から写しました。";' in text
+    assert 'copied.join("と") + COPIED_TAIL' in text
+    # 知らせは字だけ (textContent) で、class は固定の字 (app.css に入っている物)
+    assert 'copyNote.className = "mt-2 text-xs text-base-content/50";' in text
+    assert 'copyNote.setAttribute("role", "status");' in text
+    built = APP_CSS.read_text(encoding="utf-8")
+    for name in (".mt-2", ".text-xs", "text-base-content\\/50"):
+        assert name in built, name

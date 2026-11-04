@@ -4,6 +4,8 @@ RemoteSelect: 候補をサーバーの候補の口 (BaseSelectView の子) か�
 描くときは選んである値の <option> だけを描き、全件を描かない (候補は static の js/seizou-select.js が
 data-select-url の口から取る)。欄の見た目の class は入力の土台 (BaseFormView.get_form) が付ける。
 小窓のある model (部品・取引先) では data-modal-url も付け、js が選んだ物の下に「詳細を見る」の link を出す (どの画面からも小窓で読む約束)。
+query (辞書) を渡すと候補の口の URL に付ける (例 受注の得意先の欄は {"role": "customer"} で、協力企業を候補に出さない。
+js は q と page をこの URL に足すので、query の鍵は残る)。
 空の選択肢の字は「選んでください」(core の apps.ready が Django の既定の字を置き換え、field.empty_label がそれを持つ)。
 
 DecimalInput: 数 (小数) の欄。type="text" と inputmode="decimal" (スマホは数の鍵盤)。入力の土台が
@@ -17,20 +19,24 @@ import unicodedata
 
 from django import forms
 from django.core.exceptions import ValidationError
+from urllib.parse import urlencode
+
 from django.urls import NoReverseMatch, reverse
 
 
 class RemoteSelect(forms.Select):
-    """候補の口の URL の名前 (例 "masters:item_select") を持つ 1 つ選びの欄。"""
+    """候補の口の URL の名前 (例 "masters:item_select") を持つ 1 つ選びの欄。query は候補の口の URL に付ける GET の値。"""
 
-    def __init__(self, url_name: str, attrs=None):
+    def __init__(self, url_name: str, attrs=None, query: dict | None = None):
         super().__init__(attrs=attrs)
         self.url_name = url_name
+        self.query = dict(query or {})
 
     def build_attrs(self, base_attrs, extra_attrs=None):
         attrs = super().build_attrs(base_attrs, extra_attrs)
         # URL は描くときに引く (import の時点では URL の設定が読めていないことがあるため)。
-        attrs["data-select-url"] = reverse(self.url_name)
+        url = reverse(self.url_name)
+        attrs["data-select-url"] = f"{url}?{urlencode(self.query)}" if self.query else url
         modal = self.modal_url_template()
         if modal is not None:
             attrs["data-modal-url"] = modal

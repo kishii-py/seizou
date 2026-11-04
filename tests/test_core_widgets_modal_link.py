@@ -27,3 +27,19 @@ def test_select_without_modal_has_no_template():
     html = RemoteSelect("purchasing:purchaseorderline_select").render("line", None)
 
     assert "data-modal-url" not in html
+
+
+def test_query_is_added_to_select_url_and_modal_stays():
+    # query は候補の口の URL に付く (受注の得意先の欄の role=customer)。小窓の URL の型は今のまま。
+    html = RemoteSelect("masters:partner_select", query={"role": "customer"}).render("customer", None)
+
+    assert f'data-select-url="{reverse("masters:partner_select")}?role=customer"' in html
+    assert f'data-modal-url="{reverse("masters:partner_modal", args=[0])}"' in html
+
+
+def test_order_form_customer_field_asks_for_customers_only():
+    from seizou.orders.forms import OrderForm
+
+    widget = OrderForm.base_fields["customer"].widget
+    assert widget.url_name == "masters:partner_select"
+    assert widget.query == {"role": "customer"}

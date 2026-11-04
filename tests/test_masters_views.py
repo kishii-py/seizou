@@ -85,6 +85,24 @@ def test_partner_select_returns_candidates(client_logged_in):
 
 
 @pytest.mark.django_db
+def test_partner_select_narrows_by_role(client_logged_in):
+    """GET の role で取引先の種類を絞る (精査 A9 の 4 節の 1)。role が無い・知らない値なら全部。"""
+    customer = Partner.objects.create(code="C001", name="作り物の得意先", role="customer")
+    subcontractor = Partner.objects.create(code="S001", name="作り物の協力企業", role="subcontractor")
+    both = Partner.objects.create(code="B001", name="作り物の両方", role="both")
+
+    def ids(**params):
+        return {row["id"] for row in client_logged_in.get(reverse("masters:partner_select"), params).json()["items"]}
+
+    assert ids(role="customer") == {customer.pk, both.pk}
+    assert ids(role="supplier") == {subcontractor.pk, both.pk}
+    assert ids() == {customer.pk, subcontractor.pk, both.pk}
+    assert ids(role="unknown") == {customer.pk, subcontractor.pk, both.pk}
+    # 字の検索と一緒に効く
+    assert ids(role="customer", q="作り物の協力企業") == set()
+
+
+@pytest.mark.django_db
 def test_menu_lists_masters_screens(client_logged_in):
     response = client_logged_in.get(reverse("core:home"))
     body = response.content.decode()

@@ -13,6 +13,7 @@ service_kwargs() が services.create_order / update_order の引数を作る (01
 from decimal import Decimal
 
 from django import forms
+from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.conf import setting
@@ -145,7 +146,8 @@ class OrderForm(ServiceModelForm):
         model = Order
         fields = ["customer", "order_date", "customer_order_no", "note"]
         widgets = {
-            "customer": RemoteSelect("masters:partner_select"),
+            # 候補は得意先と両方の取引先だけ (協力企業を出さない。精査 A9 の 4 節の 1)
+            "customer": RemoteSelect("masters:partner_select", query={"role": "customer"}),
             "order_date": _date_input(),
         }
 
@@ -158,6 +160,8 @@ class OrderForm(ServiceModelForm):
         if self.creating:
             # create_order に note の引数が無いので、入れる画面に備考の欄を置かない。
             self.fields.pop("note")
+            # 受注日の初期値は今日 (出荷日・発注日と同じ形。初見テスト R4 4-3a)。直す画面は受注の今の値のまま。
+            self.fields["order_date"].initial = timezone.localdate
         for name in hidden_names():
             self.fields.pop(name, None)
         self.single = setting("order_form") == "single"

@@ -73,8 +73,9 @@ def test_orderline_select_lists_lines_with_remaining(user, logged_in, customer, 
     data = _select(logged_in)
     assert data["more"] is False
     assert [row["id"] for row in data["items"]] == [first.pk, second.pk]
-    assert data["items"][0]["text"] == f"{order.order_no}-1 T-100 作り物の軸 残り 6"
-    assert data["items"][1]["text"] == f"{second} 残り 5"
+    # 字は「受注番号-行番号 品番 品名 / 得意先 残り n」(得意先の注文番号が空なら括弧を出さない)
+    assert data["items"][0]["text"] == f"{order.order_no}-1 T-100 作り物の軸 / 作り物の得意先 残り 6"
+    assert data["items"][1]["text"] == f"{second} / 作り物の得意先 残り 5"
 
 
 @pytest.mark.django_db
@@ -127,3 +128,32 @@ def test_annotate_remaining_matches_remaining_qty(user, customer, shaft, plate):
         assert row.shipped_total == services.shipped_qty(row)
         assert row.remaining_total == services.remaining_qty(row)
     assert [row.remaining_total for row in rows] == [Decimal("3.5"), Decimal("-2"), Decimal("3")]
+
+
+@pytest.mark.django_db
+def test_orderline_select_finds_by_customer_and_customer_order_no(user, logged_in, customer, shaft, plate):
+    """得意先の名前・取引先コード・得意先の注文番号でも探せる (初見テスト R4 2-2)。字に得意先と注文番号が出て、残りは末尾のまま。"""
+    other_customer = masters_services.create_partner(
+        {"code": "C002", "name": "作り物の別の得意先", "role": "customer"}, user
+    )
+    mine = services.create_order(
+        customer, [_line(shaft, "3")], user, order_date=ORDER_DATE, customer_order_no="PO-7781"
+    )
+    other = services.create_order(other_customer, [_line(plate, "2")], user, order_date=ORDER_DATE)
+    mine_line = mine.lines.get()
+    other_line = other.lines.get()
+
+    by_order_no = _select(logged_in, q="PO-7781")["items"]
+    assert [row["id"] for row in by_order_no] == [mine_line.pk]
+    assert by_order_no[0]["text"] == f"{mine.order_no}-1 T-100 作り物の軸 / 作り物の得意先 (注文番号 PO-7781) 残り 3"
+
+    assert [row["id"] for row in _select(logged_in, q="作り物の別の得意先")["items"]] == [other_line.pk]
+    assert [row["id"] for row in _select(logged_in, q="C002")["items"]] == [other_line.pk]
+
+
+@pytest.mark.django_db
+def test_orderline_text_without_annotation_stays_short(user, customer, shaft):
+    """集計の無い明細 (詳細の見出しなど) の字は得意先を足さない今の形のまま。"""
+    order = services.create_order(customer, [_line(shaft, "1")], user, order_date=ORDER_DATE, customer_order_no="PO-1")
+
+    assert str(order.lines.get()) == f"{order.order_no}-1 T-100 作り物の軸"
