@@ -137,11 +137,10 @@ sudo install -d -o seizou -g seizou /srv/seizou/answers /srv/seizou-sites
 sudo -u seizou -H python3.12 -m venv /srv/seizou/tools
 sudo -u seizou -H /srv/seizou/tools/bin/pip install uv
 sudo -u seizou -H git clone https://github.com/kishii-py/seizou.git /srv/seizou/src
-sudo -u seizou -H /srv/seizou/tools/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --inexact --python /usr/bin/python3.12
-sudo -u seizou -H /srv/seizou/tools/bin/uv pip install --python /srv/seizou/src/.venv/bin/python gunicorn
+sudo -u seizou -H /srv/seizou/tools/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --extra server --python /usr/bin/python3.12
 ```
 
-`--python /usr/bin/python3.12` は、3 で入れた OS の Python を使う印です。uv が自分で取る Python は `/srv/seizou` の下に置かれ、SELinux の印が実行の物にならないので使いません。`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。本番の Web サーバーの gunicorn は seizou の依存に入っていないので、最後の 1 行で別に入れます。`--inexact` は、依存に無い物 (gunicorn) を消さない印です。この印が無いと、次に `uv sync` を打ったときに gunicorn が消えます。版を上げるときも、同じ形で打ちます (18)。
+`--python /usr/bin/python3.12` は、3 で入れた OS の Python を使う印です。uv が自分で取る Python は `/srv/seizou` の下に置かれ、SELinux の印が実行の物にならないので使いません。`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。`--extra server` は、本番の Web サーバーの gunicorn を入れる印です (seizou の extra `server`)。この版より前に gunicorn を別に入れた置き場は、`--extra server` を付けて打ち直せば、そのまま同じ venv に入ります。版を上げるときも、同じ形で打ちます (18)。
 
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/seizou --help` → `new       答えの YAML から会社のプロジェクトを作る` の行・`sudo -u seizou -H /srv/seizou/src/.venv/bin/gunicorn --version` → `gunicorn (version` で始まる 1 行 (gunicorn は VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
@@ -451,7 +450,7 @@ sudo crontab -u seizou -e
 版を上げるときは、[operations.md](operations.md) の「版を上げる手順」の 8 段のとおりに進めます。VPS では、次の段を読み替えます。
 
 - 2 段目 (サーバーを止める): `sudo systemctl stop seizou-a_machining seizou-b_plating`
-- 3 段目 (入れ直す): `sudo -u seizou -H git -C /srv/seizou/src pull` と、5 の `uv sync … --inexact` の 1 行
+- 3 段目 (入れ直す): `sudo -u seizou -H git -C /srv/seizou/src pull` と、5 の `uv sync … --extra server` の 1 行
 - 4〜6 段目 (`migrate`・点検・`collectstatic --no-input`): 2 社とも打つ
 - 6 段目の後: `sudo restorecon -R /srv/seizou-sites /srv/seizou/src/.venv/bin` (入れ直しで増えたファイルの context をそろえる)
 - 7 段目 (サーバーを立てる): `sudo systemctl restart seizou-a_machining seizou-b_plating`
