@@ -1,2 +1,2 @@
-{# 届いた注文の自動の更新で表の先頭に足す行。新しく届いた行だけ、各欄の地に色を付ける (new)。行の作りと行の操作は connect/_inbox_row.html と同じ。 #}
+{# 受信した注文の自動の更新で表の先頭に足す行。新しく届いた行だけ、各欄の地に色を付ける (new)。行の作りと行の操作は connect/_inbox_row.html と同じ。 #}
 {% for row in rows %}{% include "connect/_inbox_row.html" with new=True %}{% endfor %}

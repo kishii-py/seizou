@@ -1,6 +1,6 @@
 {% load seizou_tags seizou_icons %}
 {# 一覧の表の部分 (htmx はここだけを返す)。数は右寄せ・日付と識別子は等幅・長い字は省略して title に全文・行の高さは一定。 #}
-{# row_template: 1 行を描く template の名前 (無ければ下の欄の描き方)。actions_label: 最後の列の見出し (無ければ列を出さない)。include する側が with で渡す (connect の届いた注文)。 #}
+{# row_template: 1 行を描く template の名前 (無ければ下の欄の描き方)。actions_label: 最後の列の見出し (無ければ列を出さない)。include する側が with で渡す (connect の受信した注文)。 #}
 {% if rows %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">

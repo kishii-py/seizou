@@ -8,7 +8,7 @@ app_name = "orders"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)。受注管理の先頭に注文残の盤 (決め 11-04 17:4x)。
 MENU = [
-    ("注文残", "orders:orderline_list"),
+    ("生産管理ボード", "orders:orderline_list"),
     ("受注", "orders:order_list"),
 ]
 

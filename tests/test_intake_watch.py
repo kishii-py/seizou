@@ -189,7 +189,7 @@ def test_watched_extraction_is_not_ordered_from_intake_screen(with_key, monkeypa
     response = client.get(reverse("intake:extraction_detail", args=[extraction.pk]))
     assert response.status_code == 200
     body = response.content.decode()
-    assert "届いた注文へ回した" in body
+    assert "受信した注文へ回した" in body
     assert reverse("intake:extraction_accept", args=[extraction.pk]) not in body
 
 
@@ -228,7 +228,7 @@ def test_once_reads_and_moves_to_done(with_key, monkeypatch, scan, customer, use
     inbox = Inbox.objects.get()
     assert inbox.partner == customer
     assert inbox.source == Inbox.SOURCE_INTAKE
-    assert f"読んだ: order.pdf → 届いた注文 {inbox.pk} (取引先 作り物の得意先)" in out
+    assert f"読んだ: order.pdf → 受信した注文 {inbox.pk} (取引先 作り物の得意先)" in out
     assert "1 周見ました: 読んだ 1 件・同じ中身 0 件・読めなかった 0 件" in out
     assert not (Path(scan.parent / "site") / watch.RECORD).exists()  # --once は記録を書かない
     assert Order.objects.count() == 0
@@ -274,12 +274,12 @@ def test_waiting_row_from_command(with_key, monkeypatch, scan, customer, user):
     assert (scan / "done" / "order.pdf").exists()
     inbox = Inbox.objects.get()
     assert inbox.partner is None
-    assert f"読んだ: order.pdf → 届いた注文 {inbox.pk} (差出人の確認待ち: {UNKNOWN_SENDER})" in out
+    assert f"読んだ: order.pdf → 受信した注文 {inbox.pk} (差出人の確認待ち: {UNKNOWN_SENDER})" in out
 
     (scan / "again.pdf").write_bytes(PDF_BYTES)  # 同じ中身をもう一度置く
     out, _err = run_command(str(scan), "--once", "--user", "tester")
     assert (scan / "done" / "again.pdf").exists()
-    assert f"同じ中身: again.pdf → 届いた注文 {inbox.pk} に入っています" in out
+    assert f"同じ中身: again.pdf → 受信した注文 {inbox.pk} に入っています" in out
     assert Inbox.objects.count() == 1
 
 

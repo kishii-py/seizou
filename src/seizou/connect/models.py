@@ -134,8 +134,8 @@ class Inbox(models.Model):
     reply_response = models.CharField("注文回答の相手の返事", max_length=500, blank=True)
 
     class Meta:
-        verbose_name = "届いた注文"
-        verbose_name_plural = "届いた注文"
+        verbose_name = "受信した注文"
+        verbose_name_plural = "受信した注文"
         ordering = ["-received_at", "-id"]
 
     def __str__(self):
@@ -222,14 +222,14 @@ class Outbox(models.Model):
 class Acceptance(models.Model):
     """検収 (EDI の 4 段目)。相手 (注文を送ってきた得意先の seizou) が受け入れた数の知らせを、受注の明細ごとに 1 件 1 行で持つ。
 
-    番号の一意の制約で同じ番号は 1 行 (R11 の考え)。届いた注文の承認 (accept) とは別の言葉。
+    番号の一意の制約で同じ番号は 1 行 (R11 の考え)。受信した注文の承認 (accept) とは別の言葉。
     書くのは connect.services.record_acceptance だけ。
     """
 
     message_id = models.UUIDField("検収の番号", unique=True)
     inbox = models.ForeignKey(
         Inbox,
-        verbose_name="元の届いた注文",
+        verbose_name="元の受信した注文",
         on_delete=models.PROTECT,
         related_name="acceptances",
     )

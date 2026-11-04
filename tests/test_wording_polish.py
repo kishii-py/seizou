@@ -101,7 +101,7 @@ def test_order_lists_toggle_says_shipping_remaining(client_logged_in, url_name, 
     assert "残のある物だけ" not in everything
 
 
-# --- 届いた注文の詳細の「承認」(形は tests/test_connect_inbox_views.py の receive_order を写した) ---
+# --- 受信した注文の詳細の「承認」(形は tests/test_connect_inbox_views.py の receive_order を写した) ---
 
 
 def _new_secret() -> str:
@@ -169,7 +169,7 @@ def test_inbox_detail_button_says_approve(client_logged_in, inbox):
 
 def test_inbox_detail_usecase_says_approve():
     usecases = {screen.url_name: screen.usecase for screen in all_screens()}
-    assert "次にすること: 「承認」か「断る」へ" in usecases["connect:inbox_detail"]
+    assert "次にすること: 「承認」か「却下」へ" in usecases["connect:inbox_detail"]
 
 
 # --- 取引先との接続の一覧の先頭の列 (向き) が詳細への link ---

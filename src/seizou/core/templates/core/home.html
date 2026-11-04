@@ -164,7 +164,7 @@
         <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
         <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
       </div>
-      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">注文残の一覧を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">生産管理ボードを見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
     </div>
     {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
     {% if alerts.overdue.count or alerts.soon.count %}

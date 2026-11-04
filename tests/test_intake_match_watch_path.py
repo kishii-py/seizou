@@ -1,4 +1,4 @@
-"""見張りの道の読み取りの一致率 (N107。精査 A7 の 4 節の 6): 届いた注文で承認して受注にした見張りの読み取りも、一致率に数える。
+"""見張りの道の読み取りの一致率 (N107。精査 A7 の 4 節の 6): 受信した注文で承認して受注にした見張りの読み取りも、一致率に数える。
 
 読み取りの行は intake の extract_to_inbox で作る (本物の API は呼ばない。_ask_claude を作り物の返事に差し替える)。
 返事は明細 2 行 = X-100 ×10 単価 120 / X-200 ×5 単価 null (承認すると品目の標準単価)。同じ中身の注文書は 1 行にまとまるので、
@@ -34,7 +34,7 @@ items = test_connect_inbox_intake.items
 
 
 def test_watch_path_order_is_counted_and_fix_lowers_same(with_key, monkeypatch, client, customer, items, user):
-    # 1 枚目 = 差出人の名前が当たった見張りの読み取り。届いた注文で承認して受注にする
+    # 1 枚目 = 差出人の名前が当たった見張りの読み取り。受信した注文で承認して受注にする
     answer_with(monkeypatch, "作り物の得意先")
     matched, _created = services.extract_to_inbox(upload(), user)
     order = connect_services.accept(matched, items, user)
@@ -81,7 +81,7 @@ def test_inbox_reading_without_order_is_not_counted(with_key, monkeypatch, clien
     waiting, _created = services.extract_to_inbox(upload(PDF_BYTES + b"% 3\n"), user)
     connect_services.choose_sender(waiting, customer, user)
 
-    # 届いた注文のまま (届いた・断った・差出人を選んだだけ) の読み取りは数えない
+    # 受信した注文のまま (届いた・断った・差出人を選んだだけ) の読み取りは数えない
     assert Extraction.objects.filter(status=Extraction.STATUS_INBOX).count() == 3
     for extraction in Extraction.objects.all():
         assert dashboard.reading_match(extraction=extraction) is None

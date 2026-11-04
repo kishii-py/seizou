@@ -1440,7 +1440,7 @@ def with_saved_note(message: str, result) -> str:
     """入力の土台の知らせの字。service が返した物に saved_message (字) があれば「保存しました。」をその字に置き換え、
     saved_note (1 文の字) があれば知らせの後ろに付ける。
 
-    例: 届いた注文と読み取りを受注にした直後の「明細 n 行を手で打たずに受注にしました。」(orders.services.create_order が付ける)。
+    例: 受信した注文と読み取りを受注にした直後の「明細 n 行を手で打たずに受注にしました。」(orders.services.create_order が付ける)。
     部品の画面は知らせの文を上書きできない (R15 の 11 に success_message が無い) ので、文と色は service の返す物が持つ
     (色は saved_level。"warning" なら form_valid が黄 (確認してください) の知らせにする)。
     """
@@ -1517,7 +1517,7 @@ def dashboard_stats() -> list[dict]:
         waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
         stats.append(
             {
-                "label": "届いた注文 (未処理)",
+                "label": "受信した注文 (未処理)",
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
@@ -1553,10 +1553,10 @@ def dashboard_stats() -> list[dict]:
                 "money": True,
             }
         )
-    # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと届いた注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
+    # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
     hands_free = dashboard.hands_free_lines(today)
     if hands_free is not None:
-        note = f"{today.month} 月に、読み取った注文書と届いた注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
+        note = f"{today.month} 月に、読み取った注文書と受信した注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
         accept = dashboard.accept_minutes_this_month(today)
         if accept is not None:
             note += f"。受付の平均 {dashboard.transcription_text(accept)}"
@@ -1606,7 +1606,7 @@ def recent_orders(limit: int = 5) -> list[dict] | None:
 class HomeView(ScreenMixin, TemplateView):
     """最初の画面 (ログインの後の移動先。全員が意識する KPI の置き場)。上から 数字のカード → 出荷と生産の図 → 最近の受注と納期アラート → よく使う画面 (☆ で登録した画面)。
 
-    使う人: 全員 / いつ: ログイン直後と朝 / 何のために: 今日の数字と、出荷と生産の図、納期の遅れを見る / 次にすること: 遅れの行から注文残へ。☆ で登録した画面へ
+    使う人: 全員 / いつ: ログイン直後と朝 / 何のために: 今日の数字と、出荷と生産の図、納期の遅れを見る / 次にすること: 遅れの行から生産管理ボードへ。☆ で登録した画面へ
     """
 
     screen_name = "ダッシュボード"

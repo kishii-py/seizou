@@ -292,7 +292,7 @@ def test_orderline_list_shows_remaining(user, logged_in, customer, plate, shippe
     assert rows[0].shipped_total == Decimal("4")
     assert rows[0].remaining_total == Decimal("6")
     body = response.content.decode()
-    assert "注文残" in body and "出荷済み" in body and "一部出荷" in body
+    assert "生産管理ボード" in body and "受注残 (出荷の残りがある注文の明細)" in body and "出荷済み" in body and "一部出荷" in body
     # 残の数の字は DB で桁が違う (SQLite は 6、PostgreSQL は 6.00)。
     assert any(f'<td class="whitespace-nowrap text-right tabular-nums">{n}</td>' in body for n in ("6", "6.00"))
     assert reverse("masters:item_modal", args=[shipped_order.lines.get().item_id]) in body

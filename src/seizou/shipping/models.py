@@ -4,7 +4,7 @@
 納品書は得意先ごとに出荷をまとめた物で、数量と金額の写しを持たない。
 納品書の明細は、その納品書に結ばれた出荷そのもの (R08 の「納品書の数量は出荷の数量と一致する」)。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
-出荷の知らせ (EDI の 3 段目) の記録は Shipment の notice_* の 3 列。届いた注文で作った受注の出荷だけが、出荷の後に connect.services.send_shipping_notice で相手へ送られる。
+出荷の知らせ (EDI の 3 段目) の記録は Shipment の notice_* の 3 列。受信した注文で作った受注の出荷だけが、出荷の後に connect.services.send_shipping_notice で相手へ送られる。
 書くときは shipping.services を通す。
 """
 

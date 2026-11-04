@@ -131,7 +131,7 @@ class ConnectionForm(ServiceModelForm):
 
 
 class SenderForm(forms.Form):
-    """差出人を選ぶ form (届いた注文の詳細。入口が読み取りの行だけ)。得意先か両方の取引先から 1 つ。保存は services.choose_sender (form は欄の型と必須だけ)。"""
+    """差出人を選ぶ form (受信した注文の詳細。入口が読み取りの行だけ)。得意先か両方の取引先から 1 つ。保存は services.choose_sender (form は欄の型と必須だけ)。"""
 
     partner = forms.ModelChoiceField(
         queryset=None,

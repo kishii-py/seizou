@@ -35,7 +35,7 @@ def plain(db):
 
 def test_screens_label_has_no_url_name_words(client, plain):
     row = services.create_feedback(
-        {"kind": "bug", "screen": "orders:order_list", "title": "受注の一覧で並びが戻る", "problem": "並び替えた後に戻ると、並びが元に戻る。", "screens": "受注、注文残"},
+        {"kind": "bug", "screen": "orders:order_list", "title": "受注の一覧で並びが戻る", "problem": "並び替えた後に戻ると、並びが元に戻る。", "screens": "受注、生産管理ボード"},
         plain,
     )
     client.force_login(plain)

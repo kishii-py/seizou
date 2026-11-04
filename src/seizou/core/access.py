@@ -61,7 +61,7 @@ KIND_LABELS = {
 #: 種類の中身の注記 (アカウントの入力の画面の check の字に添える)
 KIND_NOTES = {
     "items": "部品・標準の工程・図面・取引先ごとの品番",
-    "orders": "届いた注文の受け入れと断り・注文書の読み取りを含む",
+    "orders": "受信した注文の受け入れと断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
 }
@@ -376,7 +376,7 @@ def can_open(user, app, *, record=True, screen=None) -> bool:
     if state == "log":
         if record:
             label = app_label(app)
-            # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (403 の文と同じ選び方。例「届いた注文」の画面 = 「受注管理」の部品)
+            # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (403 の文と同じ選び方。例「受信した注文」の画面 = 「受注管理」の部品)
             what = f"「{screen}」の画面 (「{label}」の部品) を開いた" if screen and screen != label else f"「{label}」の画面を開いた"
             log_only("department", user, what, f"「{label}」を開ける部署")
         return True
@@ -472,7 +472,7 @@ def screen_denied(request, app, *, by_department):
     if by_department and not can_open(user, app, screen=screen):
         names = "・".join(d.name for d in departments_of(user)) or "なし"
         label = app_label(app)
-        # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (例「届いた注文」の画面 = 「受注管理」の部品)
+        # 画面の名前と部品の名前が違うときだけ、部品の名前を括弧で添える (例「受信した注文」の画面 = 「受注管理」の部品)
         where = f"「{screen}」の画面です (「{label}」の部品)" if screen and screen != label else f"「{label}」の画面です"
         return denied_response(
             request,

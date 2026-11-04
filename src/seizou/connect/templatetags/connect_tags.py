@@ -1,9 +1,9 @@
-"""connect のテンプレートタグ。ほかの部品の画面に、届いた注文の入口を出すために使う (読むだけ)。
+"""connect のテンプレートタグ。ほかの部品の画面に、受信した注文の入口を出すために使う (読むだけ)。
 
 受注の画面 (orders/order_list.html) は connect の無い会社でも開くので、このタグを読むのは
 connect/_inbox_entrance.html の中だけ (order_list.html には {% load %} を書かない)。
-届いた注文の詳細 (connect/inbox_detail.html) の「差出人を選ぶ」の form と、その form を出すか (承認できる人か) の判定も置く。
-届いた注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (本体の追記 11)。
+受信した注文の詳細 (connect/inbox_detail.html) の「差出人を選ぶ」の form と、その form を出すか (承認できる人か) の判定も置く。
+受信した注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (本体の追記 11)。
 payload_number: 届いた本文の数の字を Decimal に読む filter。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す (読めない字はそのまま)。
 """
 
@@ -24,7 +24,7 @@ register = template.Library()
 
 @register.simple_tag
 def pending_order_count():
-    """未承認 (状態が「届いた」) の届いた注文の件数。ダッシュボードの「届いた注文 (未処理)」と同じ数え方。
+    """未承認 (状態が「届いた」) の受信した注文の件数。ダッシュボードの「受信した注文 (未処理)」と同じ数え方。
 
     表がまだ無い (migrate の前) などで読めなければ 0。
     """
@@ -36,13 +36,13 @@ def pending_order_count():
 
 @register.simple_tag
 def sender_form():
-    """届いた注文の詳細の「差出人を選ぶ」の form ({% sender_form as sender %})。欄は得意先か両方の取引先の選択欄 1 つ。"""
+    """受信した注文の詳細の「差出人を選ぶ」の form ({% sender_form as sender %})。欄は得意先か両方の取引先の選択欄 1 つ。"""
     return SenderForm()
 
 
 @register.simple_tag(takes_context=True)
 def can_accept_inbox(context):
-    """今の利用者が届いた注文を承認できるか ({% can_accept_inbox as can_accept %})。
+    """今の利用者が受信した注文を承認できるか ({% can_accept_inbox as can_accept %})。
 
     差出人を選ぶ form を出すかの判定 (権限の無い人に入口を出さない = 決め 11-04 00:0x)。編集の判定が on のときだけ偽になりうる。
     """

@@ -9,7 +9,7 @@
 - 鍵は環境変数 API_KEY_ENV からだけ読み、client に明示して渡す (ほかの資格に落ちる道を作らない)。
   鍵の値を表・画面・ログ・例外の文・返す物に出さない。製品から外の命令は起こさない。
 - 読み取った値をそのまま受注にしない。人が確かめの画面で品目を選び、accept_extracted を呼んだときだけ受注を作る。
-- 見張るフォルダの読み取り (extract_to_inbox) は受注を作らず、届いた注文の行にする (R10)。差出人の会社名で得意先を当て、当たらなければ取引先の空の行 (差出人の確認待ち) にする。同じ中身の注文書は 1 行 (R11)。
+- 見張るフォルダの読み取り (extract_to_inbox) は受注を作らず、受信した注文の行にする (R10)。差出人の会社名で得意先を当て、当たらなければ取引先の空の行 (差出人の確認待ち) にする。同じ中身の注文書は 1 行 (R11)。
 - 呼んでよい部品は core・masters・orders (01 の 1 節)。見張りの extract_to_inbox だけが connect の services を関数の中の import で呼ぶ (表に無い向き。shipping の ship が connect を呼ぶのと同じ形)。ほかの部品の model は import しない。
 """
 
@@ -117,7 +117,7 @@ _KINDS = (
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # 日本語の文 (何が起きて、何をすればよいか)。返事の本文と鍵の値は文に入れない。
-_NEXT = "手入力か届いた注文で受けてください。"
+_NEXT = "手入力か受信した注文で受けてください。"
 MESSAGE_NO_KEY = f"鍵が無いので読み取りは使えません。{_NEXT}"
 MESSAGE_TOO_LARGE = "ファイルが 20MB を超えています。ページを分けるか、解像度を下げてから置き直してください。"
 MESSAGE_UNREADABLE_TYPE = "読めない形式です。PDF・PNG・JPEG の注文書を置いてください。"
@@ -128,10 +128,10 @@ MESSAGE_BUSY = "読み取りが混んでいます。少し待ってからもう�
 MESSAGE_NO_CREDIT = f"API の残高が足りません。{_NEXT}"
 MESSAGE_TIMEOUT = f"{TIMEOUT_SECONDS} 秒の間に読み取れませんでした。少し待ってからもう一度置くか、{_NEXT}"
 MESSAGE_UNREACHABLE = f"読み取りの API に届きませんでした。少し待ってからもう一度置くか、{_NEXT}"
-MESSAGE_IN_INBOX = "この読み取りは届いた注文に入れてあります。届いた注文の画面で差出人を確かめてから承認してください。"
-MESSAGE_NO_CONNECT = "届いた注文の部品 (connect) が入っていないので、見張りの読み取りは使えません。"
+MESSAGE_IN_INBOX = "この読み取りは受信した注文に入れてあります。受信した注文の画面で差出人を確かめてから承認してください。"
+MESSAGE_NO_CONNECT = "受信した注文の部品 (connect) が入っていないので、見張りの読み取りは使えません。"
 
-#: 見張りの読み取りの届いた注文の番号を作る名前空間 (同じ中身の注文書は同じ番号 = R11)
+#: 見張りの読み取りの受信した注文の番号を作る名前空間 (同じ中身の注文書は同じ番号 = R11)
 WATCH_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "seizou:intake:watch")
 
 
@@ -195,7 +195,7 @@ def accept_extracted(extraction, item_mapping, user):
 
     item_mapping は得意先の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引き、
     選んだ品目が表に無い対応なら表に足す。対応の追加・受注の作成・状態の更新は 1 つのトランザクション。
-    受注にした物の 2 回目と捨てた物と届いた注文へ回した物は日本語の ValueError。数量と単価の決まり (R02) は orders の RuleViolation。
+    受注にした物の 2 回目と捨てた物と受信した注文へ回した物は日本語の ValueError。数量と単価の決まり (R02) は orders の RuleViolation。
     """
     with transaction.atomic():
         locked = Extraction.objects.select_for_update().get(pk=extraction.pk)
@@ -248,12 +248,12 @@ def accept_extracted(extraction, item_mapping, user):
 
 
 def extract_to_inbox(file, user):
-    """見張るフォルダの注文書 1 枚を読み取り、届いた注文 (connect の Inbox。入口 = 読み取り) に 1 行入れる。受注は作らない (R10)。返す物は (Inbox, 新しく作ったか)。
+    """見張るフォルダの注文書 1 枚を読み取り、受信した注文 (connect の Inbox。入口 = 読み取り) に 1 行入れる。受注は作らない (R10)。返す物は (Inbox, 新しく作ったか)。
 
-    届いた注文の番号は中身の sha256 から作る uuid5 (同じ中身の注文書は同じ番号 = R11)。同じ番号の行が既にあれば、
+    受信した注文の番号は中身の sha256 から作る uuid5 (同じ中身の注文書は同じ番号 = R11)。同じ番号の行が既にあれば、
     API を呼ばず、読み取りの行も作らずに (その行, False) を返す。読み取りの断り (鍵・大きさ・形式・API の失敗・返事の形) は
     extract_order の IntakeUnavailable と ValueError がそのまま出る。差出人の会社名 (buyer.name) で得意先を当て、
-    当たらなければ取引先の空の行 (差出人の確認待ち) にする。読み取りの行は状態を「届いた注文へ回した」にする
+    当たらなければ取引先の空の行 (差出人の確認待ち) にする。読み取りの行は状態を「受信した注文へ回した」にする
     (読み取りの画面の「受注にする」で 2 つ目の受注を作らないため)。connect が入っていなければ日本語の ValueError。
     """
     if not apps.is_installed("seizou.connect"):

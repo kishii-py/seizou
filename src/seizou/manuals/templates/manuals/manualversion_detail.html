@@ -3,7 +3,7 @@
 {# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。 #}
 {% block actions %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.manual_id %}">{% icon "list" "size-4" %}版の履歴</a>
-<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">{% icon "arrow-left" "size-4" %}この版に戻す</a>
+<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">{% icon "arrow-left" "size-4" %}復元</a>
 {% endblock %}
 {% block content %}
 {% version_diff object as rows %}

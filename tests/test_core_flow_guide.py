@@ -130,7 +130,7 @@ def test_flow_guide_counts_open_order_and_next(user, customer, shaft, cutting):
     assert sales["指示書"] == 1
     assert sales["出荷"] == 1
     first = flow_of("sales")["next"]
-    assert first["label"] == "指示書"  # 届いた注文が 0 なので受注の段は飛ぶ
+    assert first["label"] == "指示書"  # 受信した注文が 0 なので受注の段は飛ぶ
     assert first["url"] == reverse("orders:orderline_list")
 
     # 指示書を出した明細は数えない (出荷の段は残る)
@@ -140,7 +140,7 @@ def test_flow_guide_counts_open_order_and_next(user, customer, shaft, cutting):
     assert counts("sales")["指示書"] == 0
     assert counts("sales")["出荷"] == 1
 
-    # 届いた注文 (人が受け入れていない物) があれば、受注の段が次にすることになる
+    # 受信した注文 (人が受け入れていない物) があれば、受注の段が次にすることになる
     Inbox.objects.create(message_id=uuid.uuid4(), partner=customer, kind="order", payload={})
     assert counts("sales")["受注"] == 1
     assert flow_of("sales")["next"]["label"] == "受注"

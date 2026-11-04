@@ -1,8 +1,8 @@
 """受注の画面 (orders:order_list) の入口 (02 の 8 節の決め 6 = 1 つの目的に 1 つの画面) のテスト。
 
-受注の画面から、手入力の「新規登録」・「読み取る (OCR)」(intake の読み取りの画面へ)・「届いた注文を開く」の 3 つに入る。
+受注の画面から、手入力の「新規登録」・「読み取る (OCR)」(intake の読み取りの画面へ)・「受信した注文を開く」の 3 つに入る。
 左のメニューから「注文書の読み取り」の入口を外した (URL は残る)。手入力の受注は保存した時点で注残に入る (承認の段は無い)。
-届いた注文の行は、送る側と同じ形の注文のデータを署名して services.receive に渡して作る。
+受信した注文の行は、送る側と同じ形の注文のデータを署名して services.receive に渡して作る。
 鍵はテストのたびに作り、環境変数に置く。固定の鍵の文字列をファイルに書かない。品番と会社名は作り物。
 """
 
@@ -64,9 +64,9 @@ def receive_order(monkeypatch, customer, user):
 
 
 def _entrance(body):
-    """受注の画面の、届いた注文の入口の段の HTML。"""
-    match = re.search(r'<div class="mb-4 flex[^"]*">.*?届いた注文を開く</a>\s*</div>', body, re.S)
-    assert match, "届いた注文の入口の段が無い"
+    """受注の画面の、受信した注文の入口の段の HTML。"""
+    match = re.search(r'<div class="mb-4 flex[^"]*">.*?受信した注文を開く</a>\s*</div>', body, re.S)
+    assert match, "受信した注文の入口の段が無い"
     return match.group(0)
 
 
@@ -84,7 +84,7 @@ def test_order_list_has_ocr_button(client_logged_in):
 def test_order_list_shows_pending_count_and_link(client_logged_in, receive_order, user):
     # 0 件でも段と link は出す (link が入口のため)
     empty = _entrance(client_logged_in.get(reverse("orders:order_list")).content.decode())
-    assert "届いた注文 (未承認)" in empty
+    assert "受信した注文 (未承認)" in empty
     assert '<span class="font-medium tabular-nums">0</span>' in empty
     assert f'href="{reverse("connect:inbox_list")}"' in empty
 
@@ -93,9 +93,9 @@ def test_order_list_shows_pending_count_and_link(client_logged_in, receive_order
 
     entrance = _entrance(client_logged_in.get(reverse("orders:order_list")).content.decode())
 
-    assert "届いた注文 (未承認)" in entrance
+    assert "受信した注文 (未承認)" in entrance
     assert '<span class="font-medium tabular-nums">1</span>' in entrance
-    assert "届いた注文を開く" in entrance
+    assert "受信した注文を開く" in entrance
     assert f'href="{reverse("connect:inbox_list")}"' in entrance
 
 

@@ -1,4 +1,4 @@
-"""注文書の見張り。フォルダに置いた注文書 (PDF・PNG・JPEG) を古い順に読み取り、届いた注文に入口「読み取り」の行で並べる。
+"""注文書の見張り。フォルダに置いた注文書 (PDF・PNG・JPEG) を古い順に読み取り、受信した注文に入口「読み取り」の行で並べる。
 
 命令 seizou_intake_watch は引数を読んで結果を書くだけで、処理はこの module に置く (seizou_practice と core/practice.py の分け方)。
 
@@ -85,7 +85,7 @@ def pending(folder) -> list[Path]:
 
 
 def handle(path, user) -> dict:
-    """ファイル 1 つを読み取って届いた注文に入れ、done/ か failed/ へ動かす。返す物は結果の辞書。
+    """ファイル 1 つを読み取って受信した注文に入れ、done/ か failed/ へ動かす。返す物は結果の辞書。
 
     result は inbox (新しく入れた)・same (同じ中身が入っている)・failed (読めなかった)。読み取りの断り
     (鍵が無い・形式・大きさ・API の失敗・返事の形・connect が無い) と開けない・読めないは failed/ へ動かし、

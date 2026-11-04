@@ -190,7 +190,7 @@ def test_accept_sends_reply_and_marks_purchase_order_accepted(
     assert call["headers"]["Content-Type"] == "application/json"
     inbox.refresh_from_db()
     assert inbox.reply_message_id is not None
-    # 見出しの 3 つで署名が通り、番号は届いた注文の注文回答の番号と同じ
+    # 見出しの 3 つで署名が通り、番号は受信した注文の注文回答の番号と同じ
     assert signing.verify(reply_secret, call["headers"], call["data"]) == str(inbox.reply_message_id)
 
     sent = json.loads(call["data"].decode("utf-8"))
@@ -217,7 +217,7 @@ def test_accept_sends_reply_and_marks_purchase_order_accepted(
     assert inbox.status == Inbox.STATUS_ACCEPTED
     assert inbox.reply_sent_at is not None
     assert inbox.reply_response == "受け取った"
-    # 注文回答は届いた注文の行にしない (発注した側の届いた注文は増えない)
+    # 注文回答は受信した注文の行にしない (発注した側の受信した注文は増えない)
     assert Inbox.objects.count() == 1
 
 

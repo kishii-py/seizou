@@ -21,7 +21,7 @@ class ExtractionListView(BaseListView):
 
     model = Extraction
     screen_name = "注文書の読み取り"
-    screen_help = "置いた注文書と、AI が読み取った中身。人が確かめて「受注にする」を押すまで、受注にはなりません。"
+    screen_help = "置いた注文書と、AI が読み取った中身。人が確かめて「受注登録」を押すまで、受注にはなりません。"
     columns = ("read_at", "customer", ("summary", "中身の要約"), "status", {"name": "order", "sort_key": "order__order_no"}, "read_by")
     search_fields = ("customer__name", "customer__code")
     ordering = ("-read_at", "-pk")
@@ -44,7 +44,7 @@ class ExtractionCreateView(BaseFormView):
 class ExtractionDetailView(BaseDetailView):
     """読み取りの詳細。
 
-    使う人: 営業 / いつ: 読み取った中身を確かめるとき / 何のために: 得意先の品番のままの明細を見る / 次にすること: 「受注にする」へ
+    使う人: 営業 / いつ: 読み取った中身を確かめるとき / 何のために: 得意先の品番のままの明細を見る / 次にすること: 「受注登録」へ
     """
 
     model = Extraction
@@ -56,7 +56,7 @@ class ExtractionDetailView(BaseDetailView):
 class ExtractionAcceptView(BaseFormView):
     """読み取りを受注にする入力。
 
-    使う人: 営業 / いつ: 読み取りが正しいと確かめたとき / 何のために: 得意先の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると注文残に出る
+    使う人: 営業 / いつ: 読み取りが正しいと確かめたとき / 何のために: 得意先の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると生産管理ボードに出る
     """
 
     model = Extraction

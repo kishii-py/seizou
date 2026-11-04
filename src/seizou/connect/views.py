@@ -1,12 +1,12 @@
 """connect の画面と受け口。
 
-画面 (届いた注文・届いた注文の詳細・受け入れる・断る・取引先との接続) は core の土台を継承する (R15)。
+画面 (受信した注文・受信した注文の詳細・受け入れる・断る・取引先との接続) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
 書く処理は services の accept・reject だけで、土台が検査の層を通してから呼ぶ。
 
 受け口 (receive_order) は相手の会社の機械が呼ぶ口で、画面ではないので core の土台を継承しない関数の view にした。
 ログインは要らず、CSRF の対象外で、POST だけを受ける (05 の 5 節)。
-確かめと届いた注文への登録 (注文回答なら元の発注に当てる) は services.receive が行う。返事に鍵の値と本文を入れない。
+確かめと受信した注文への登録 (注文回答なら元の発注に当てる) は services.receive が行う。返事に鍵の値と本文を入れない。
 """
 
 from django.db.models import Case, IntegerField, OuterRef, Subquery, Value, When
@@ -40,19 +40,19 @@ def receive_order(request):
     return JsonResponse({"status": "received", "id": str(result.message_id)}, status=200)
 
 
-# 届いた注文。2 秒ごとに、今の一番新しい行より新しい行だけを取りに行き、表の先頭に足す (05 の 5 節)。
+# 受信した注文。2 秒ごとに、今の一番新しい行より新しい行だけを取りに行き、表の先頭に足す (05 の 5 節)。
 # 取りに行く要素は connect/_inbox_poll.html、返す行の部分は connect/_rows.html (1 行は connect/_inbox_row.html)。
 # 並びは未承認 (状態が「届いた」) を上に、その中と残りは届いた日時の新しい順。
 class InboxListView(BaseListView):
-    """届いた注文の一覧。
+    """受信した注文の一覧。
 
-    使う人: 営業 / いつ: 取引先 (seizou どうし) から注文が届いたとき / 何のために: 届いた注文を確かめて受注にする / 次にすること: 行の操作の「承認」か「断る」へ
+    使う人: 営業 / いつ: 取引先 (seizou どうし) から注文が届いたとき / 何のために: 受信した注文を確かめて受注にする / 次にすること: 行の操作の「承認」か「却下」へ
     """
 
     model = Inbox
-    screen_name = "届いた注文"
+    screen_name = "受信した注文"
     screen_help = (
-        "取引先 (seizou どうし) から届いた注文と、見張るフォルダに置いた注文書の読み取り (列「入口」で分かる)。行の操作の「承認」(受け入れ) で受注にすると注残に出ます。"
+        "取引先 (seizou どうし) から受信した注文と、見張るフォルダに置いた注文書の読み取り (列「入口」で分かる)。行の操作の「承認」(受け入れ) で受注にすると生産管理ボードに出ます。"
         "差出人が当たらない読み取りは黄の「差出人の確認待ち」で、詳細で差出人を選んでから承認します。2 秒ごとに新しい行を先頭に足します。承認するまで受注にはなりません。"
     )
     columns = ("received_at", "partner", "source", ("summary", "中身の要約"), "status")
@@ -69,7 +69,7 @@ class InboxListView(BaseListView):
     template_name = "connect/inbox_list.html"
 
     def get_queryset(self):
-        # newest_pk = 届いた注文の一番新しい行の番号 (どの行にも同じ値)。行と同じ 1 つの問い合わせで読むので、
+        # newest_pk = 受信した注文の一番新しい行の番号 (どの行にも同じ値)。行と同じ 1 つの問い合わせで読むので、
         # 返す行と次に添える after がずれない。GET の after (数) があれば、それより新しい行だけにする。
         newest = Inbox.objects.order_by("-pk").values("pk")[:1]
         # total_count = 絞りの後の件数 (絞りが無ければ全部。自動の更新で行を足したとき、上の「全 N 件」も直すため。初見テスト 2 回目の所見)。
@@ -102,21 +102,21 @@ class InboxListView(BaseListView):
 
 
 class InboxDetailView(BaseDetailView):
-    """届いた注文の詳細。
+    """受信した注文の詳細。
 
-    使う人: 営業 / いつ: 届いた注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「承認」か「断る」へ
+    使う人: 営業 / いつ: 受信した注文の中身を確かめるとき / 何のために: 相手の品番のままの明細を見る / 次にすること: 「承認」か「却下」へ
     """
 
     model = Inbox
-    screen_name = "届いた注文の詳細"
-    screen_help = "届いた注文のデータの中身。明細は相手の品番のまま並べています。"
+    screen_name = "受信した注文の詳細"
+    screen_help = "受信した注文のデータの中身。明細は相手の品番のまま並べています。"
     template_name = "connect/inbox_detail.html"
 
 
 class InboxAcceptView(BaseFormView):
     """注文を受け入れる入力。
 
-    使う人: 営業 / いつ: 届いた注文を受注にすると決めたとき / 何のために: 相手の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると注文残に出る
+    使う人: 営業 / いつ: 受信した注文を受注にすると決めたとき / 何のために: 相手の品番を自社の部品に対応させて受注を作る / 次にすること: 保存すると生産管理ボードに出る
     """
 
     model = Inbox
@@ -130,7 +130,7 @@ class InboxAcceptView(BaseFormView):
 class InboxRejectView(BaseFormView):
     """注文を断る入力。
 
-    使う人: 営業 / いつ: 届いた注文を受けないと決めたとき / 何のために: 理由を書いて断る (相手に返す) / 次にすること: 届いた注文の一覧へ戻る
+    使う人: 営業 / いつ: 受信した注文を受けないと決めたとき / 何のために: 理由を書いて断る (相手に返す) / 次にすること: 受信した注文の一覧へ戻る
     """
 
     model = Inbox

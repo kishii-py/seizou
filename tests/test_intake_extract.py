@@ -202,7 +202,7 @@ def _refused_reply(monkeypatch, customer, user, text):
     with pytest.raises(ValueError) as caught:
         services.extract_order(upload(), customer, user)
     assert Extraction.objects.count() == 0
-    assert "手入力か届いた注文で受けてください" in str(caught.value)
+    assert "手入力か受信した注文で受けてください" in str(caught.value)
     return str(caught.value)
 
 

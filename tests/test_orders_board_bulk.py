@@ -1,6 +1,6 @@
 """注文残の盤の小窓と、選んだ行の一括の出荷と発注 (決め 11-04 17:4x・17:5x〜18:0x。N124)。
 
-- 左のメニューの受注管理の先頭に「注文残」の入口がある。
+- 左のメニューの受注管理の先頭に「生産管理ボード」の入口がある。
 - 盤の行の頭 (受注番号の枡の中) の選ぶ欄と、表の上の「選んだ行の操作」の帯。出荷と発注の権限が無い人には出さない。
 - 行のメニューの出荷・指示書・実績・発注は data-modal-form を持ち、入力の土台の小窓で開く (href はそのまま)。
 - 一括出荷の入力 (shipping:shipment_bulk_create) は、選んだ明細を 1 回の保存で出荷する。どれか 1 行が R01 か services の
@@ -119,7 +119,7 @@ def test_menu_has_board_entry_first_in_orders_group():
     groups = sections([*core_menu(), *menu()])
     production = next(group for group in groups if group["label"] == "生産管理部")
     orders_group = next(group for group in production["groups"] if group["label"] == "受注管理")
-    assert [entry["label"] for entry in orders_group["items"]] == ["注文残", "受注", "届いた注文"]
+    assert [entry["label"] for entry in orders_group["items"]] == ["生産管理ボード", "受注", "受信した注文"]
 
 
 # --- 2〜4. 盤の選ぶ欄と帯 ---

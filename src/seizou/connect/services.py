@@ -9,7 +9,7 @@
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
-- 届いた注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
+- 受信した注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
 """
 
 from __future__ import annotations
@@ -198,14 +198,14 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     if not isinstance(payload, dict):
         return _refuse(MESSAGE_INVALID_BODY, msg_id)
 
-    # 注文回答 (承認か断りの結果) は届いた注文の行にせず、元の発注に当てる。
+    # 注文回答 (承認か断りの結果) は受信した注文の行にせず、元の発注に当てる。
     # kind が無い物は注文として入れる。知らない kind は断る。
     if payload.get("kind") == "order_reply":
         return _receive_reply(message_id, partner, payload)
-    # 検収 (相手が受け入れた数の知らせ) も届いた注文の行にせず、元の注文から作った受注の明細に当てる。
+    # 検収 (相手が受け入れた数の知らせ) も受信した注文の行にせず、元の注文から作った受注の明細に当てる。
     if payload.get("kind") == "acceptance":
         return _receive_acceptance(message_id, partner, payload)
-    # 出荷の知らせ (相手が出荷した日と数) も届いた注文の行にせず、元の送った注文の発注の明細に当てる。
+    # 出荷の知らせ (相手が出荷した日と数) も受信した注文の行にせず、元の送った注文の発注の明細に当てる。
     if payload.get("kind") == "shipping_notice":
         return _receive_shipping_notice(message_id, partner, payload)
     kind = payload.get("kind")
@@ -279,7 +279,7 @@ _REPLY_RESULTS = ("accepted", "rejected")
 # 検収 (EDI の 4 段目) の断る理由と、送らなかった理由の日本語。
 MESSAGE_ACCEPTANCE_SHAPE = "検収の形が読めません。order_id・line_no・accepted_on・qty を送ってください。"
 MESSAGE_ACCEPTANCE_UNKNOWN_ORDER = (
-    "検収の元の注文 (届いた注文) がありません。注文のデータの番号を確かめてください。"
+    "検収の元の注文 (受信した注文) がありません。注文のデータの番号を確かめてください。"
 )
 MESSAGE_ACCEPTANCE_OTHER_PARTNER = "検収の元の注文は、その取引先からの物ではありません。"
 MESSAGE_ACCEPTANCE_NOT_ACCEPTED = (
@@ -311,8 +311,8 @@ MESSAGE_SHIPPING_QTY_DIGITS = "出荷の知らせの数は、整数の部分 10 
 MESSAGE_SHIPPING_CANCELLED = "出荷の知らせの元の発注は取り消してあるので、受けられません。発注した会社に確かめてください。"
 MESSAGE_SHIPPING_DATE = "出荷日が日付 (YYYY-MM-DD) の形ではありません。"
 MESSAGE_SHIPPING_NOT_EDI_ORDER = (
-    "届いた注文で作った受注ではないので、出荷の知らせを送っていません。"
-    "seizou どうしで届いた注文を承認した受注の出荷だけが、相手への出荷の知らせになります。"
+    "受信した注文で作った受注ではないので、出荷の知らせを送っていません。"
+    "seizou どうしで受信した注文を承認した受注の出荷だけが、相手への出荷の知らせになります。"
 )
 MESSAGE_SHIPPING_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので出荷の知らせを送っていません。"
@@ -389,10 +389,10 @@ def _receive_reply(message_id, partner, payload):
 
 
 def _receive_acceptance(message_id, partner, payload):
-    """署名の通った検収を、元の届いた注文から作った受注の明細に 1 回だけ付ける。返す物は AcceptanceReceipt か、断る理由の文。
+    """署名の通った検収を、元の受信した注文から作った受注の明細に 1 回だけ付ける。返す物は AcceptanceReceipt か、断る理由の文。
 
-    引く順は 形 → 元の注文の番号 (order_id) で届いた注文 → 届いた注文の取引先が署名の通ったつながりの取引先と同じ
-    → 届いた注文が受け入れた (受注がある) 物 → その受注の明細の行番号 (line_no)。
+    引く順は 形 → 元の注文の番号 (order_id) で受信した注文 → 受信した注文の取引先が署名の通ったつながりの取引先と同じ
+    → 受信した注文が受け入れた (受注がある) 物 → その受注の明細の行番号 (line_no)。
     同じ検収の番号の 2 回目は 1 回目の行を返す (R11 の考え)。受け口に利用者はいないので user は None。
     """
     msg_id = str(message_id)
@@ -456,7 +456,7 @@ def _receive_acceptance(message_id, partner, payload):
 def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, buyer_order_no, buyer_line_no):
     """検収を受注の明細に 1 行で記録する (受ける側の書く関数)。返す物は Acceptance。
 
-    数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・検収日が日付でない・その届いた注文から作った受注の明細でないときは日本語の ValueError。
+    数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・検収日が日付でない・その受信した注文から作った受注の明細でないときは日本語の ValueError。
     同じ番号 (message_id) の 2 回目は新しい行を作らず 1 回目の行を返す (R11 の考え。番号の一意の制約に当てる)。
     user は記録のために受ける (受け口からは None)。
     """
@@ -472,7 +472,7 @@ def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, 
     if not isinstance(accepted_on, date):
         raise ValueError("検収日は日付にしてください。")
     if order_line.order_id != inbox.order_id:
-        raise ValueError("検収の明細は、その届いた注文から作った受注の明細ではありません。")
+        raise ValueError("検収の明細は、その受信した注文から作った受注の明細ではありません。")
     limit = Acceptance._meta.get_field("buyer_order_no").max_length
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない (receive の Inbox と同じ)。
     try:
@@ -613,7 +613,7 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
 
 
 def record_inbox(partner, payload, user, *, message_id=None, received_at=None, source=Inbox.SOURCE_DIRECT, extraction=None, sender_name=""):
-    """受け口を通さずに、届いた注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しと、見張るフォルダの読み取りのため)。
+    """受け口を通さずに、受信した注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しと、見張るフォルダの読み取りのため)。
 
     署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
     user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
@@ -674,9 +674,9 @@ MESSAGE_NO_LINES = (
 )
 MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから断ってください。"
 MESSAGE_REPLY_SEED = "作り物の種の読み込みなので注文回答を送っていません (相手の記録は相手の種が持つ)。"
-MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。届いた注文の詳細の「差出人を選ぶ」で得意先を選んでから承認してください。"
+MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。受信した注文の詳細の「差出人を選ぶ」で得意先を選んでから承認してください。"
 MESSAGE_REPLY_INTAKE = "注文書の読み取りから入った注文なので、注文回答は送りません。"
-MESSAGE_SENDER_DIRECT = "受け口から届いた注文の取引先は署名で決まるので、変えられません (R12)。"
+MESSAGE_SENDER_DIRECT = "受け口から受信した注文の取引先は署名で決まるので、変えられません (R12)。"
 
 
 def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
@@ -809,7 +809,7 @@ def reject(inbox, reason, user):
 
 
 def choose_sender(inbox, partner, user):
-    """差出人の確認待ちの届いた注文 (入口 = 読み取り) に、差出人の得意先を選ぶ。返す物は Inbox。
+    """差出人の確認待ちの受信した注文 (入口 = 読み取り) に、差出人の得意先を選ぶ。返す物は Inbox。
 
     選べるのは入口が読み取りで状態が「届いた」の行だけ。取引先が当たった行の付け直しもできる (名前の当て違いを直すため)。
     入口が直接の行は署名で取引先が決まるので断る (R12)。得意先でない取引先も断る。誤りは日本語の ValueError。
@@ -829,12 +829,12 @@ def choose_sender(inbox, partner, user):
             )
         locked.partner = partner
         locked.save(update_fields=["partner"])
-    logger.info("差出人を選んだ: 届いた注文 %s 取引先 %s", locked.pk, partner.code)
+    logger.info("差出人を選んだ: 受信した注文 %s 取引先 %s", locked.pk, partner.code)
     return locked
 
 
 MESSAGE_REPLY_BEFORE_DECISION = (
-    "承認か断りをする前の届いた注文には、注文回答を送れません。受け入れるか断ってから送ってください。"
+    "承認か断りをする前の受信した注文には、注文回答を送れません。受け入れるか断ってから送ってください。"
 )
 MESSAGE_REPLY_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので注文回答を送っていません。"
@@ -847,7 +847,7 @@ def send_reply(inbox, user):
 
     - 送れるのは、種類が注文で、受け入れたか断った後の行だけ。それ以外は日本語の ValueError。
     - 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
-    - つながりは届いた注文の取引先の、向き「送る」の物。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - つながりは受信した注文の取引先の、向き「送る」の物。無ければ HTTP を送らず、返事の欄に書いて返す。
     - 読み取りの行 (入口 = 読み取り) は相手へ送らず、返事の欄に MESSAGE_REPLY_INTAKE を書く。
     - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order と同じ _deliver。
     - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (承認と断りは成立する)。
@@ -911,7 +911,7 @@ def send_reply(inbox, user):
             fields.append("reply_sent_at")
         saved.save(update_fields=fields)
 
-    logger.info("注文回答: 届いた注文 %s 番号 %s 返事の種類 %s", saved.pk, message_id, kind)
+    logger.info("注文回答: 受信した注文 %s 番号 %s 返事の種類 %s", saved.pk, message_id, kind)
     return saved
 
 
@@ -985,9 +985,9 @@ def send_acceptance(receipt, user):
 def send_shipping_notice(shipment, user):
     """出荷を「出荷の知らせ」にし、署名して、注文を送ってきた相手 (得意先の seizou) の受け口へ送る。
 
-    - 送るのは、届いた注文 (Inbox) で作った受注の出荷だけ。それ以外は HTTP を送らず、返事の欄に書いて返す。
+    - 送るのは、受信した注文 (Inbox) で作った受注の出荷だけ。それ以外は HTTP を送らず、返事の欄に書いて返す。
     - 番号は送る前に保存し (届かなくても残る)、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
-    - つながりは届いた注文の取引先の、向き「送る」の物 (注文回答と同じ向き)。無ければ HTTP を送らず、返事の欄に書いて返す。
+    - つながりは受信した注文の取引先の、向き「送る」の物 (注文回答と同じ向き)。無ければ HTTP を送らず、返事の欄に書いて返す。
     - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order・send_reply・send_acceptance と同じ _deliver。
     - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (出荷は成立する)。
       返事は出荷の notice_response に、相手が受け取ったときだけ notice_sent_at に書く。
@@ -1008,7 +1008,7 @@ def send_shipping_notice(shipment, user):
     line = current.order_line
     order = line.order
 
-    # 届いた注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
+    # 受信した注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
     inbox = getattr(order, "inbox_message", None)
     # 読み取りの行から作った受注は、相手の seizou とつながっていないので送らない (出荷の詳細の送り直しもここを通る)。
     if inbox is None or inbox.source != Inbox.SOURCE_DIRECT:

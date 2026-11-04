@@ -1,6 +1,6 @@
 """受注の詳細の「流れ」の枠の出来事を集める、読むだけの module (決め 11-04 22:0x。N131)。表に書かない。
 
-- 受注から入金までの出来事 (届いた注文・登録・指示書・着手・実績・出荷・納品書・請求書・入金・メモ・取消) を、
+- 受注から入金までの出来事 (受信した注文・登録・指示書・着手・実績・出荷・納品書・請求書・入金・メモ・取消) を、
   受注の明細から逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
   (メモだけは逆向きの関係が無いので、notes.services.note_for で読む)。
 - 部品が入っていない会社では、その部品の出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
@@ -106,7 +106,7 @@ def _cancelled(obj) -> str:
 
 
 def _inbox_events(order) -> list[Event]:
-    # 届いた注文から作った受注だけ。connect が無いか、手入力の受注なら getattr が None を返す
+    # 受信した注文から作った受注だけ。connect が無いか、手入力の受注なら getattr が None を返す
     # (逆向きの 1 対 1 の「無い」は AttributeError の仲間)。
     inbox = getattr(order, "inbox_message", None)
     if inbox is None:
@@ -114,7 +114,7 @@ def _inbox_events(order) -> list[Event]:
     url = _url(inbox)
     events = [Event(inbox.received_at, "inbox", "注文が届いた", url)]
     if inbox.accepted_at is not None:
-        events.append(Event(inbox.accepted_at, "inbox", "届いた注文を承認", url))
+        events.append(Event(inbox.accepted_at, "inbox", "受信した注文を承認", url))
     return events
 
 

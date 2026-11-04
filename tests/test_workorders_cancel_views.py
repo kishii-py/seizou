@@ -64,7 +64,7 @@ def test_detail_has_cancel_link_only_when_issued(logged_in, user, workorder):
     assert issued.status_code == 200
     body = issued.content.decode()
     assert f'href="{cancel_url}"' in body
-    assert "取り消す" in body
+    assert "取消</a>" in body
 
     services.cancel_workorder(workorder, user)
     cancelled = logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk]))

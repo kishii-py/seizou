@@ -43,7 +43,7 @@ class Order(models.Model):
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, "手入力"),
         (SOURCE_INTAKE, "読み取り"),
-        (SOURCE_INBOX, "届いた注文"),
+        (SOURCE_INBOX, "受信した注文"),
     ]
 
     order_no = models.CharField("受注番号", max_length=35, unique=True)

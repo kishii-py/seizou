@@ -1,4 +1,4 @@
-"""精査 A6 の後始末 (N88): 届いた注文の明細の数の末尾の 0・休日の form の必須の文・/favicon.ico の口・ダッシュボードの流れの案内の行き先。
+"""精査 A6 の後始末 (N88): 受信した注文の明細の数の末尾の 0・休日の form の必須の文・/favicon.ico の口・ダッシュボードの流れの案内の行き先。
 
 Django の test client と関数で見る (本物のブラウザは使わない)。HTTP を送らない。取引先と品目は作り物。
 """
@@ -40,7 +40,7 @@ def customer(user):
 
 
 def order_payload(lines):
-    """届いた注文の本文 (tests/test_edi_wording.py の inbox の形。明細だけを差し替える)。"""
+    """受信した注文の本文 (tests/test_edi_wording.py の inbox の形。明細だけを差し替える)。"""
     return {
         "id": str(uuid.uuid4()),
         "kind": "order",
@@ -67,7 +67,7 @@ def payload_line(line_no, part_no, qty, unit_price):
     }
 
 
-# ---------------------------------------------------------------- 3. 届いた注文の明細の数の末尾の 0
+# ---------------------------------------------------------------- 3. 受信した注文の明細の数の末尾の 0
 
 
 @pytest.mark.parametrize(

@@ -378,7 +378,7 @@ class HolidayListView(BaseListView):
 
     model = Holiday
     screen_name = "休日"
-    screen_help = "祝日と会社の休みを日付の順に並べる表。注残の盤の「納期まで」は、この休日と定休日の曜日を除いた稼働日で数えます。年で絞れます。"
+    screen_help = "祝日と会社の休みを日付の順に並べる表。生産管理ボードの「納期まで」は、この休日と定休日の曜日を除いた稼働日で数えます。年で絞れます。"
     columns = ("date", "name", "kind", "created_by")
     search_fields = ("name",)
     ordering = ("date",)
@@ -396,7 +396,7 @@ class HolidayListView(BaseListView):
 class HolidayCreateView(BaseFormView):
     """休日の新規登録の入力。
 
-    使う人: 生産管理・総務 / いつ: 祝日や会社の休みが決まったとき / 何のために: 休日を 1 日足して、稼働日の数え方に入れる / 次にすること: 注残の盤の「納期まで」で確かめる
+    使う人: 生産管理・総務 / いつ: 祝日や会社の休みが決まったとき / 何のために: 休日を 1 日足して、稼働日の数え方に入れる / 次にすること: 生産管理ボードの「納期まで」で確かめる
     """
 
     model = Holiday

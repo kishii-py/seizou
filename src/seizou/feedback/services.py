@@ -124,7 +124,7 @@ def normalize_screens(value) -> str:
     if unknown:
         raise ValueError(
             f"影響する画面に、画面の目録に無い名前があります: {'・'.join(dict.fromkeys(unknown))}。"
-            "画面の名前を「、」で区切って書いてください (例 受注、注文残)。"
+            "画面の名前を「、」で区切って書いてください (例 受注、生産管理ボード)。"
         )
     return " ".join(dict.fromkeys(found))
 

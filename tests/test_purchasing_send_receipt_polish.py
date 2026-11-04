@@ -73,7 +73,7 @@ def test_create_undelivered_is_yellow_only(monkeypatch, client_logged_in, subcon
     level, text = notices[0]
     assert level == "warning"
     assert text.startswith("注文は相手に届いていません。")
-    assert text.endswith("直したら「送り直す」を押してください。")
+    assert text.endswith("直したら「再送」を押してください。")
     assert "success" not in [level for level, _text in notices]
     assert po.status == PurchaseOrder.STATUS_DRAFT
 

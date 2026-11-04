@@ -1,5 +1,5 @@
 {% load seizou_tags seizou_icons connect_tags %}{% comment %}
-届いた注文の一覧の 1 行 (connect/_rows.html の表と、自動の更新で先頭に足す connect/_inbox_new_rows.html が include する)。
+受信した注文の一覧の 1 行 (connect/_rows.html の表と、自動の更新で先頭に足す connect/_inbox_new_rows.html が include する)。
 context: row (土台の row_for の 1 行。obj は Inbox)・columns・new (自動の更新で足す行なら真。各欄の地に色を付ける。
 表の縞の色より前に出すため、行でなく欄に付ける)。
 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link、取引先は master_link)。状態の列 (列の名前 status) だけ値で書き分ける。
@@ -34,7 +34,7 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
         {% if row.obj.partner_id %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}承認</a></li>
         {% endif %}
-        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}断る</a></li>
+        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}却下</a></li>
         {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_detail' row.obj.pk %}">{% icon "eye" "size-4" %}詳細を見る</a></li>
         {% if row.obj.status == "accepted" and row.obj.order %}{% url 'orders:order_detail' row.obj.order_id as order_detail_url %}{% if order_detail_url %}<li><a class="flex items-center gap-2" href="{{ order_detail_url }}">{% icon "clipboard" "size-4" %}受注の詳細</a></li>{% endif %}{% endif %}

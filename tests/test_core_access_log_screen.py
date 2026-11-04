@@ -36,10 +36,10 @@ def test_log_line_names_screen_and_part(settings, client, caplog):
     caplog.set_level(logging.WARNING, logger="seizou.access")
     client.force_login(_keiri())
 
-    # 精査 A7 の 4 節の 2 の手順: 経理の人が届いた注文の一覧 (connect = 部署の外) を開く。log なので開ける。
+    # 精査 A7 の 4 節の 2 の手順: 経理の人が受信した注文の一覧 (connect = 部署の外) を開く。log なので開ける。
     assert client.get(reverse("connect:inbox_list")).status_code == 200
     assert _department_lines(caplog) == [
-        "記録だけ (部署): keiri が 「届いた注文」の画面 (「受注管理」の部品) を開いた (「受注管理」を開ける部署)"
+        "記録だけ (部署): keiri が 「受信した注文」の画面 (「受注管理」の部品) を開いた (「受注管理」を開ける部署)"
     ]
 
     # 画面の名前と部品の名前が同じときは括弧を付けない (403 の文と同じ選び方。今の字のまま)。

@@ -1,6 +1,6 @@
 """E-40 発注側のライブ更新 (N84)。
 
-手順: A 社で注文を送る → A 社の発注の一覧をその発注番号で絞って開いたままにする → B 社の受信箱で届いた注文を承認して保存する。
+手順: A 社で注文を送る → A 社の発注の一覧をその発注番号で絞って開いたままにする → B 社の受信箱で受信した注文を承認して保存する。
 期待: A 社の一覧のその発注の行が、開き直さずに数秒で「相手が受け入れた」になり、行の欄が一瞬色づく (seizou-changed)。
 絞り込みは保たれる。
 
@@ -58,7 +58,7 @@ def test_e40_accept_updates_purchase_list_without_reload(page_a, page_b, company
     expect(rows_a.first).to_contain_text(po_no)
     page_a.evaluate(WATCH_SCRIPT)
 
-    # B 社: 届いた注文を待ち、詳細の「承認」→「保存」。
+    # B 社: 受信した注文を待ち、詳細の「承認」→「保存」。
     page_b.wait_for_function(
         "known => [...document.querySelectorAll('#rows tbody tr')].some(row => !known.includes(row.id))",
         arg=known,

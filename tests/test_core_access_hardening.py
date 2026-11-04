@@ -163,7 +163,7 @@ def test_denied_page_names_screen_and_part(db, on, client):
     client.force_login(keiri)
 
     expected = {
-        "connect:inbox_list": "「届いた注文」の画面です (「受注管理」の部品)。あなたの部署: 経理。",
+        "connect:inbox_list": "「受信した注文」の画面です (「受注管理」の部品)。あなたの部署: 経理。",
         "purchasing:receipt_list": "「受入」の画面です (「発注」の部品)。あなたの部署: 経理。",
         # 画面の名前と部品の名前が同じときは括弧を付けない (今の字のまま)。
         "orders:order_list": "「受注」の画面です。あなたの部署: 経理。",

@@ -88,9 +88,9 @@ def test_department_outsider_buttons_hidden(settings, client, user, customer, it
     assert "「入金を記録する」から" not in invoice
     # 指示書 (workorders は部署の外): 「取り消す」が無い。
     assert docs["workorder_cancel"] not in _page(client, jimu, docs["urls"]["workorder"])
-    # 納品書: 「請求書を作る」(billing) は無く、「取り消す」(shipping = 部署の中) は出る。
+    # 納品書: 「請求書作成」(billing) は無く、「取消」(shipping = 部署の中) は出る。
     note = _page(client, jimu, docs["urls"]["note"])
-    assert docs["note_invoice"] not in note and "請求書を作る" not in note
+    assert docs["note_invoice"] not in note and "請求書作成" not in note
     assert docs["note_cancel"] in note
     # 注残の盤: 「実績を入れる」(progress) と「指示書を発行する」(workorders) は無く、「出荷する」(shipping) は出る。
     row = _row(client, jimu, docs)
@@ -117,7 +117,7 @@ def test_department_insider_buttons_shown(settings, client, user, customer, item
     assert docs["invoice_cancel"] in invoice
     assert docs["payment_create"] in invoice
     note = _page(client, keiri, docs["urls"]["note"])
-    assert docs["note_invoice"] in note and "請求書を作る" in note
+    assert docs["note_invoice"] in note and "請求書作成" in note
 
     assert docs["workorder_cancel"] in _page(client, kenmu, docs["urls"]["workorder"])
     row = _row(client, kenmu, docs)

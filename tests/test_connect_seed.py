@@ -1,8 +1,8 @@
 """2 社の出荷の知らせと検収の種 (connect.demo_seed。core の demo.load の PART_SEEDS が呼ぶ) と、
-届いた注文を受け口を通さずに入れる関数 (connect.services.record_inbox)。
+受信した注文を受け口を通さずに入れる関数 (connect.services.record_inbox)。
 
 例の種 (examples/companies/<id>/) を demo.load で入れ、2 回目は飛ばすこと、A 社の発注の明細に出荷の知らせが付き
-発注が「相手が受け入れた」に進むこと、B 社に届いた注文の写しと受注と検収が入ること、種の指す物が他の種にあること
+発注が「相手が受け入れた」に進むこと、B 社に受信した注文の写しと受注と検収が入ること、種の指す物が他の種にあること
 (2 社の種の突き合わせ) を見る。HTTP は呼ばない (呼んだら落とす)。取引先は作り物。
 """
 
@@ -30,7 +30,7 @@ from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
-#: 種の出荷の知らせ・届いた注文の写し・検収の件数 (A 社 = 出荷の知らせ 3、B 社 = 届いた注文 1・検収 2)
+#: 種の出荷の知らせ・受信した注文の写し・検収の件数 (A 社 = 出荷の知らせ 3、B 社 = 受信した注文 1・検収 2)
 EXPECTED = {"a_machining": 3, "b_plating": 3}
 KIND = "出荷の知らせと検収"
 
@@ -169,7 +169,7 @@ def _check_b_plating():
     assert Acceptance.objects.filter(inbox=inbox).count() == 2
     assert orders_services.acceptance_summary(lines[1])["total"] == Decimal("40")
     assert Order.objects.count() == 21
-    # 届いた注文の写しの受注の出荷 (出荷の種の末尾 3 件)。番号は A 社の種の相手の出荷番号と同じ
+    # 受信した注文の写しの受注の出荷 (出荷の種の末尾 3 件)。番号は A 社の種の相手の出荷番号と同じ
     shipments = list(Shipment.objects.filter(order_line__order=order).select_related("order_line").order_by("shipment_no"))
     assert [(s.shipment_no, s.order_line.line_no, s.qty, s.shipped_at) for s in shipments] == [
         ("SH-000022", 1, Decimal("200"), datetime.date(2026, 10, 29)),
@@ -218,8 +218,8 @@ def test_seed_without_files_is_silent(tmp_path):
     assert demo_seed.load_after_orders(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
     assert demo_seed.load(tmp_path, None) == {"入れた": 0, "飛ばした": 0}
 
-    # 届いた注文の写しは取引先の種を指し、出荷の知らせは受入の種の発注を指すので、それらの無い置き場では
-    # ValueError で止まる (黙って飛ばさない)。届いた注文の写しは受注の後の口 (load_after_orders) が読む
+    # 受信した注文の写しは取引先の種を指し、出荷の知らせは受入の種の発注を指すので、それらの無い置き場では
+    # ValueError で止まる (黙って飛ばさない)。受信した注文の写しは受注の後の口 (load_after_orders) が読む
     cases = (
         ("b_plating", "acceptances.yaml", demo_seed.load_after_orders),
         ("a_machining", "shipping_notices.yaml", demo_seed.load),
@@ -230,7 +230,7 @@ def test_seed_without_files_is_silent(tmp_path):
         shutil.copy(COMPANIES_DIR / company_id / name, folder / name)
         with pytest.raises(ValueError, match=f"{name} の 1 件目"):
             load_seed(folder, None)
-    # 部品の種の段の load は届いた注文の写しを読まない
+    # 部品の種の段の load は受信した注文の写しを読まない
     assert demo_seed.load(tmp_path / "b_plating", None) == {"入れた": 0, "飛ばした": 0}
     assert Inbox.objects.count() == 0
     assert ShippingNotice.objects.count() == 0
@@ -268,12 +268,12 @@ def _check_b_references(folder):
     partner_items = {(row["取引先コード"], row["取引先の品番"]) for row in _csv(folder / "partner_items.csv")}
     customer_order_nos = {order["得意先の注文番号"] for order in _yaml(folder / "orders.yaml", "受注")}
     a_order = _yaml(a_folder / "receipts.yaml", "発注")[0]
-    for entry in _yaml(folder / "acceptances.yaml", "届いた注文"):
+    for entry in _yaml(folder / "acceptances.yaml", "受信した注文"):
         code = entry["取引先コード"]
         assert partner_names[code] == a_name
         assert all((code, line["相手の品番"]) in partner_items for line in entry["明細"])
         assert entry["相手の発注番号"] not in customer_order_nos  # 受注の種と重ならない
-        # 2 社の種の突き合わせ: 届いた注文は A 社の発注と同じ中身、検収は A 社の受入と同じ日と数
+        # 2 社の種の突き合わせ: 受信した注文は A 社の発注と同じ中身、検収は A 社の受入と同じ日と数
         assert entry["発注日"] == a_order["発注日"]
         assert entry["届いた日時"].date() == entry["発注日"]  # 届いた日時は発注日と同じ日
         assert [(line["相手の品番"], line["数量"], line["単価"], line["納期"]) for line in entry["明細"]] == [
@@ -282,9 +282,9 @@ def _check_b_references(folder):
         assert [(a["行番号"], a["検収日"], a["数量"]) for a in entry["検収"]] == [
             (r["行番号"], r["受入日"], r["数量"]) for r in a_order["受入"]
         ]
-    # 2 社の種の出荷の突き合わせ: 届いた注文の写しの受注の出荷は、A 社の出荷の知らせと同じ行と日と数で、
+    # 2 社の種の出荷の突き合わせ: 受信した注文の写しの受注の出荷は、A 社の出荷の知らせと同じ行と日と数で、
     # 新しい置き場の出荷番号 (出荷の種の並びの順の連番) が A 社の相手の出荷番号と同じ
-    inbox_keys = {(entry["取引先コード"], entry["相手の発注番号"]) for entry in _yaml(folder / "acceptances.yaml", "届いた注文")}
+    inbox_keys = {(entry["取引先コード"], entry["相手の発注番号"]) for entry in _yaml(folder / "acceptances.yaml", "受信した注文")}
     seeded = [
         (position, s)
         for position, s in enumerate(_yaml(folder / "shipments.yaml", "出荷"), start=1)
@@ -324,9 +324,9 @@ def test_b_plating_seed_accepted_at_is_seed_time(no_registration, media, no_http
 
     demo.load(COMPANIES_DIR / "b_plating")
 
-    assert Inbox.objects.get().accepted_at == accepted_at  # 2 回目は届いた注文を飛ばし、書き直さない
+    assert Inbox.objects.get().accepted_at == accepted_at  # 2 回目は受信した注文を飛ばし、書き直さない
     # 種の約束: 届いた日時 <= 承認した日時 < 届いた日時 + 1 日
-    for entry in _yaml(COMPANIES_DIR / "b_plating" / "acceptances.yaml", "届いた注文"):
+    for entry in _yaml(COMPANIES_DIR / "b_plating" / "acceptances.yaml", "受信した注文"):
         assert entry["届いた日時"] <= entry["承認した日時"] < entry["届いた日時"] + datetime.timedelta(days=1)
     # timezone の無い日時は、受け入れ済みの行でも状態を見る前に断る
     with pytest.raises(ValueError, match="承認した日時は timezone 付きの日時"):

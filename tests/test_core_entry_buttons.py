@@ -212,8 +212,8 @@ def test_workorder_cancel_hidden_accept_kept(settings, client, on, user, custome
 
     denied = _page(client, user, detail_url)
     assert cancel_href not in denied
-    # 「受けた」は現場の記録 (押した先は編集の権限を見ない) なので、権限の無い人にも出す。
-    assert accept_form in denied and "受けた" in denied
+    # 「着手」は現場の記録 (押した先は編集の権限を見ない) なので、権限の無い人にも出す。
+    assert accept_form in denied and "着手" in denied
 
     planner = account("planner", permissions=["workorders"])
     allowed = _page(client, planner, detail_url)
@@ -246,7 +246,7 @@ def test_delivery_note_hides_cancel_and_invoice(client, on, user, item):
 
     denied = _page(client, user, detail_url)
     assert cancel_href not in denied
-    assert invoice_href not in denied and "請求書を作る" not in denied
+    assert invoice_href not in denied and "請求書作成" not in denied
     # 納品書は金額の門の書面ではないので、印刷用の画面と PDF は出す。
     for href in documents:
         assert href in denied, href
@@ -254,7 +254,7 @@ def test_delivery_note_hides_cancel_and_invoice(client, on, user, item):
     jimu = account("jimu", permissions=["slip_edit"])
     allowed = _page(client, jimu, detail_url)
     assert cancel_href in allowed
-    assert invoice_href in allowed and "請求書を作る" in allowed
+    assert invoice_href in allowed and "請求書作成" in allowed
 
 
 @pytest.mark.django_db

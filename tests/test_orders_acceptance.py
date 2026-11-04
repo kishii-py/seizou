@@ -1,6 +1,6 @@
 """受注の詳細の明細の「検収」の列 (orders)。EDI の 4 段目。
 
-検収の行は connect.services.record_acceptance で作る (元の届いた注文を 1 行置いてから)。
+検収の行は connect.services.record_acceptance で作る (元の受信した注文を 1 行置いてから)。
 orders は connect を import しない (逆の関係 acceptances を読むだけ)。試験は 2 つの部品をまとめて置く。
 受注は services で作る。作り物のデータだけを使う。
 """
@@ -49,7 +49,7 @@ def item(user):
 
 
 def _accept(line, qty, accepted_on):
-    """受注の明細に検収を 1 行付ける。元の届いた注文 (受け入れた物) は受注ごとに 1 行置く。"""
+    """受注の明細に検収を 1 行付ける。元の受信した注文 (受け入れた物) は受注ごとに 1 行置く。"""
     inbox = Inbox.objects.filter(order=line.order).first()
     if inbox is None:
         inbox = Inbox.objects.create(

@@ -10,13 +10,13 @@
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
 - minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
-- hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
-- accept_minutes_this_month: 今月の受付 (届いた注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
+- hands_free_lines: 今月、手で打たずに (読み取りと受信した注文から) 受けた明細の行数。
+- accept_minutes_this_month: 今月の受付 (受信した注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
-- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (届いた注文を経て受注にした読み取り) も数える。
+- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -461,7 +461,7 @@ def saved_minutes(lines: int) -> int:
 
 
 def hands_free_lines(today=None) -> int | None:
-    """今月 (受注日が today の月) の、取消でない受注の明細のうち、受注の入口が読み取りか届いた注文の行数。受注の部品が無いか DB が読めなければ None。問い合わせは 1 回 (count)。
+    """今月 (受注日が today の月) の、取消でない受注の明細のうち、受注の入口が読み取りか受信した注文の行数。受注の部品が無いか DB が読めなければ None。問い合わせは 1 回 (count)。
 
     入口は受注の列 (Order.source) で、明細の列ではない。
     """
@@ -500,7 +500,7 @@ def _average_minutes(pairs) -> int | None:
 
 
 def accept_minutes_this_month(today=None) -> int | None:
-    """今月 (承認の日時が today の月。地域の時刻) に承認した届いた注文の、届いてから承認までの分の平均。承認の日時の列 (Inbox.accepted_at。N82 が足す) が無い・受信箱の部品が無い・今月の承認が無い・DB が読めなければ None。列があれば問い合わせは 1 回。"""
+    """今月 (承認の日時が today の月。地域の時刻) に承認した受信した注文の、届いてから承認までの分の平均。承認の日時の列 (Inbox.accepted_at。N82 が足す) が無い・受信箱の部品が無い・今月の承認が無い・DB が読めなければ None。列があれば問い合わせは 1 回。"""
     from django.core.exceptions import FieldDoesNotExist
 
     inbox_model = _model("connect", "Inbox")
@@ -788,11 +788,11 @@ FLOWS = (
         "title": "受注から入金まで",
         "steps": (
             {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "connect:inbox_list",
-             "count": "inbox", "count_label": "届いた注文の未処理", "unit": "件",
-             "next_text": "届いた注文を受け入れて、受注にします。"},
+             "count": "inbox", "count_label": "受信した注文の未処理", "unit": "件",
+             "next_text": "受信した注文を受け入れて、受注にします。"},
             {"key": "workorder", "label": "指示書", "model": ("workorders", "WorkOrder"), "url_name": "orders:orderline_list",
              "count": "workorder", "count_label": "指示書の無い明細", "unit": "行",
-             "next_text": "注文残の一覧から、明細に指示書を出します。"},
+             "next_text": "生産管理ボードから、明細に指示書を出します。"},
             {"key": "shipment", "label": "出荷", "model": ("shipping", "Shipment"), "url_name": "shipping:shipment_list",
              "count": "shipment", "count_label": "出荷の残っている受注", "unit": "件",
              "next_text": "出荷できる明細を出荷します。"},
@@ -855,7 +855,7 @@ def _flow_count(key):
 
 
 def _received_inbox():
-    """届いた注文のうち、人が受け入れていない物 (受信箱の状態が「届いた」)。"""
+    """受信した注文のうち、人が受け入れていない物 (受信箱の状態が「届いた」)。"""
     inbox_model = _model("connect", "Inbox")
     if inbox_model is None:
         return None
@@ -1017,9 +1017,9 @@ def reading_match(*, customer=None, extraction=None) -> dict | None:
     """読み取りの一致率 (intake.outcome.match_counts)。extraction を渡せばその 1 枚、customer を渡せばその得意先のこれまでの全部。読み取りの部品が無い・どちらも渡さない・受注にした行が 1 枚も無い (lines が 0)・DB が読めなければ None。
 
     対象は受注になった読み取りの行 (取消の受注も数える)。画面の道 = 状態が「受注にした」で受注のある行 (得意先は読み取りの行の得意先)。
-    見張りの道 = 状態が「届いた注文へ回した」で、その届いた注文 (connect の Inbox) が受注になった行 (得意先は届いた注文の取引先 =
-    受注の得意先。差出人を後で選んだ行は、読み取りの行の得意先が空のまま)。届いた注文の部品が無ければ画面の道だけ。
-    比べる明細はどちらもその受注の明細。問い合わせは 2 回まで (届いた注文は 1 回目に join で読む)。返す物 = {"extractions", "lines", "same", "fixed"}。
+    見張りの道 = 状態が「受信した注文へ回した」で、その受信した注文 (connect の Inbox) が受注になった行 (得意先は受信した注文の取引先 =
+    受注の得意先。差出人を後で選んだ行は、読み取りの行の得意先が空のまま)。受信した注文の部品が無ければ画面の道だけ。
+    比べる明細はどちらもその受注の明細。問い合わせは 2 回まで (受信した注文は 1 回目に join で読む)。返す物 = {"extractions", "lines", "same", "fixed"}。
     """
     extraction_model = _model("intake", "Extraction")
     if extraction_model is None or (customer is None and extraction is None):
@@ -1037,7 +1037,7 @@ def reading_match(*, customer=None, extraction=None) -> dict | None:
     if _model("connect", "Inbox") is None:
         queryset = extraction_model._default_manager.filter(ordered).annotate(order_key=F("order"))
     else:
-        # 見張りの道の受注は届いた注文の側にある (読み取りの行の order は空)。絞りと同じ join を使う。
+        # 見張りの道の受注は受信した注文の側にある (読み取りの行の order は空)。絞りと同じ join を使う。
         queryset = extraction_model._default_manager.filter(ordered | watched).annotate(
             order_key=Coalesce(F("order"), F("inbox_messages__order"))
         )

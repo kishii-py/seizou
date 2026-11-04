@@ -282,7 +282,7 @@ def test_shipment_detail_links_to_delivery_note(client, user, order):
     html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
     link = f'{reverse("shipping:deliverynote_create")}?shipments={shipment.pk}'
     assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
-    assert "納品書を作る" in html
+    assert "納品書作成" in html
     assert html.count("btn-primary") == 1  # 主色は「編集」の 1 つのまま
 
     form = client.get(link).content.decode()
@@ -295,7 +295,7 @@ def test_shipment_in_issued_note_has_no_delivery_note_button(client, user, order
     _delivery_note(user, order, [shipment])
     client.force_login(user)
     html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
-    assert "納品書を作る" not in html
+    assert "納品書作成" not in html
 
 
 def test_delivery_note_detail_links_to_invoice(client, user, order):
@@ -308,14 +308,14 @@ def test_delivery_note_detail_links_to_invoice(client, user, order):
     link = f'{reverse("billing:invoice_create")}?customer={order.customer_id}'
     assert f'href="{link}"' in html
     assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
-    assert "請求書を作る" in html
+    assert "請求書作成" in html
     assert "btn-primary" not in html  # 納品書には「編集」が無い。足した釦も主色にしない
 
     form = client.get(link).content.decode()
     assert _selected_option(form, "customer", order.customer_id)
 
     shipping_services.cancel_delivery_note(note, user)
-    assert "請求書を作る" not in client.get(detail_url).content.decode()
+    assert "請求書作成" not in client.get(detail_url).content.decode()
 
 
 # ---------------------------------------------------------------- 9. AI チャットの鍵なしの文

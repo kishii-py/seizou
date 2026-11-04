@@ -20,7 +20,7 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   納品書と指示書の発行日は、services が今日にするので、読み込みの日になる。
 - 最後に、部品が持つ種 (部品の demo_seed.load(seeds_dir, user)) を PART_SEEDS の順に呼ぶ。業務マニュアル・権限・在庫・出荷の知らせと検収・入金・休日 の 6 つ。
   受注の後 (つながりの前) に、部品の demo_seed に load_after_orders(seeds_dir, user) があれば先に呼ぶ
-  (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため。数は同じ種類に足し、出力の行は 1 行)。
+  (受信した注文の写しの受注を、出荷と納品書の種が指せるようにするため。数は同じ種類に足し、出力の行は 1 行)。
   部品が入っていないときと、入れた物も飛ばした物も 0 のときは、出力の行を出さない。
 - load(seeds_dir, partner_base_urls=…) に相手の会社の id → 置き場の URL の頭 を渡すと、つながりの受け口の URL の頭
   (種の http://127.0.0.1:800x) をその頭に置き換えて入れる (外の置き場の https のため。相手の id は鍵の置き場の名前から取る)。
@@ -643,7 +643,7 @@ def _load_shipments(seeds_dir, user, notices):
             placed.add((line.pk, shipped_at))
             qty = _coerce(qty_field, entry.get("数量"))
             note = _coerce(note_field, entry.get("備考"))
-            # 作り物の種は相手に送らない (届いた注文の写しの受注の出荷も、出荷の知らせを送らず返事の欄に書く)
+            # 作り物の種は相手に送らない (受信した注文の写しの受注の出荷も、出荷の知らせを送らず返事の欄に書く)
             services.ship(line, qty, shipped_at, user, note=note, send=False)
             made += 1
     return made, skipped
@@ -744,7 +744,7 @@ def _load_part_seed(app, seeds_dir, user):
 
 
 def _load_part_seeds_after_orders(seeds_dir, user):
-    """部品の demo_seed.load_after_orders(seeds_dir, user) を、受注の後・出荷の前に呼ぶ (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため)。
+    """部品の demo_seed.load_after_orders(seeds_dir, user) を、受注の後・出荷の前に呼ぶ (受信した注文の写しの受注を、出荷と納品書の種が指せるようにするため)。
 
     返す物は 種類 → (入れた, 飛ばした) の辞書。口の無い部品と 0 件の部品は入れない。
     """
