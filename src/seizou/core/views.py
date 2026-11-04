@@ -337,6 +337,15 @@ def field_at(model, path: str):
     return field
 
 
+def _takes_values(func) -> bool:
+    """flag の when が (queryset, values) の 2 つを受けるか (1 つの関数には queryset だけを渡す)。"""
+    try:
+        inspect.signature(func).bind(None, None)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 class FilterSpec:
     """一覧の絞り 1 つ (BaseListView.filters の 1 要素。決め 11-04 15:0x)。
 
@@ -351,6 +360,9 @@ class FilterSpec:
                                                     choices があれば FK の先の全部の代わりに候補にする ((pk, 字) の組の並びか関数)
       {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": open_only, "default": True}
                                                     チェック 1 つ。入のときだけ when (queryset を受けて queryset を返す関数) を掛ける
+      {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": open_only, "default": True,
+       "disabled_when": lambda values: values.get("status") is not None}
+                                                    disabled_when (values を受けて真か偽を返す関数) が真の間は、印を切に描いて押せなくし、when を掛けない
       {"name": "thickness", "field": "ext__ext02"}  会社ごとの項目 (core/fields.py)。種類と見出しは項目の登録から決める
 
     GET の名前は f_<name> (期間と数の範囲は f_<name>_from と f_<name>_to)。q・sort・page・per・format と重ならない。
@@ -362,6 +374,10 @@ class FilterSpec:
       欄は hidden の 0 の後にチェックの 1 を置くので、入のときは両方が届き、後の 1 を読む。when の中は .filter()・.exclude()・
       annotate だけにする (services を呼ばない。SQL を書かない)。「クリア」と「絞りを外す」は f_ を外すので default に戻る。
       default と違う値のときだけ「絞りを外す」を出す (active)。
+      values: 同じ一覧の絞りの名前ごとの読めた値の辞書 (FilterSpec.values_by_name。読めた値の無い絞りは鍵が無い)。
+      when が 2 つの引数を受ける関数なら when(queryset, values) で呼ぶ (1 つの関数は今までどおり when(queryset)。inspect.signature で見る)。
+      disabled_when が真の間は、隠しの欄が印の値を持ち越す (入なら 1)。従う絞りを外すと、印は元の値に戻る。
+      htmx の応答では、disabled_when のある印だけを core/_filter_clear.html が oob で描き直す (チェックと表を合わせる)。
     会社ごとの項目: field に ext__<列の名前> を書く。型が choice なら choice (候補は項目の choices)、date なら date_range、
       number なら number_range。text と bool は絞れない (ValueError)。kind は省ける (書くなら同じ種類)。
       BaseListView は一覧に出す会社ごとの項目のうち絞れる物を、宣言の後ろに自動で足す (GET の名前は f_<列の名前>)。
@@ -370,9 +386,11 @@ class FilterSpec:
     #: kind に書ける値
     KINDS = ("choice", "date_range", "number_range", "lookup", "flag")
     #: 辞書に書ける鍵
-    KEYS = ("name", "label", "kind", "field", "choices", "when", "default")
-    #: flag に書ける鍵 (when と default は flag だけ)
-    FLAG_KEYS = ("name", "label", "kind", "when", "default")
+    KEYS = ("name", "label", "kind", "field", "choices", "when", "default", "disabled_when")
+    #: flag に書ける鍵 (when と default と disabled_when は flag だけ)
+    FLAG_KEYS = ("name", "label", "kind", "when", "default", "disabled_when")
+    #: flag だけに書ける鍵
+    FLAG_ONLY_KEYS = ("when", "default", "disabled_when")
     #: 会社ごとの項目の型 → 絞りの種類 (text と bool は絞れない)
     EXT_KINDS = {"choice": "choice", "date": "date_range", "number": "number_range"}
     #: GET の名前の頭
@@ -388,12 +406,14 @@ class FilterSpec:
         self.field = None
         self.column = None
         self.when = None
+        self.when_takes_values = False
+        self.disabled_when = None
         self.default = False
         if self.kind == "flag":
             self.field_name = None
             self._read_flag(item)
         else:
-            misplaced = [key for key in ("when", "default") if key in item]
+            misplaced = [key for key in self.FLAG_ONLY_KEYS if key in item]
             if misplaced:
                 raise ValueError(f"{misplaced!r} は flag の絞りだけに書けます ({self.name})。")
             self.field_name = item.get("field") or self.name
@@ -428,7 +448,14 @@ class FilterSpec:
         default = item.get("default", False)
         if not isinstance(default, bool):
             raise ValueError(f"flag の絞り ({self.name}) の default は True か False で書きます ({default!r})。")
+        disabled_when = item.get("disabled_when")
+        if disabled_when is not None and not callable(disabled_when):
+            raise ValueError(
+                f"flag の絞り ({self.name}) の disabled_when は関数 (絞りの名前ごとの値の辞書を受けて真か偽を返す) で書きます。"
+            )
         self.when = item["when"]
+        self.when_takes_values = _takes_values(item["when"])
+        self.disabled_when = disabled_when
         self.default = default
 
     def _read_ext(self, model) -> None:
@@ -506,13 +533,49 @@ class FilterSpec:
         return result
 
     def is_on(self, params) -> bool:
-        """flag が入か (鍵が無いか読めない値は default)。"""
+        """flag が入か (鍵が無いか読めない値は default)。disabled_when は見ない (is_disabled)。"""
         return self.values(params).get(self.param, self.default)
 
-    def apply(self, queryset, params):
-        """queryset に絞りを掛ける。flag は入のときだけ when を、ほかは q() を掛ける。"""
+    def value(self, params):
+        """この絞りの読めた値 1 つ (無ければ None)。範囲は (始め, 終わり) の組 (読めない端は None)、flag は入か (bool)。"""
         if self.kind == "flag":
-            return self.when(queryset) if self.is_on(params) else queryset
+            return self.is_on(params)
+        values = self.values(params)
+        if not values:
+            return None
+        if self.kind in self.RANGE_KINDS:
+            return (values.get(self.param_from), values.get(self.param_to))
+        return values[self.param]
+
+    @staticmethod
+    def values_by_name(specs, params) -> dict:
+        """一覧の絞りの名前ごとの読めた値 (flag の when と disabled_when に渡す辞書。読めた値の無い絞りは鍵を入れない)。
+
+        値を受ける flag (2 つの引数の when か disabled_when) が無い一覧は、読まずに空の辞書を返す (lookup の問い合わせを足さない)。
+        """
+        if not any(spec.when_takes_values or spec.disabled_when is not None for spec in specs):
+            return {}
+        result = {}
+        for spec in specs:
+            value = spec.value(params)
+            if value is not None:
+                result[spec.name] = value
+        return result
+
+    def is_disabled(self, values) -> bool:
+        """flag を切に描き、when を掛けないか (disabled_when があり、values で真)。"""
+        return self.disabled_when is not None and bool(self.disabled_when(values))
+
+    def apply(self, queryset, params, named=None):
+        """queryset に絞りを掛ける。flag は入で disabled_when が真でないときだけ when を、ほかは q() を掛ける。
+
+        named は一覧の絞りの名前ごとの読めた値 (values_by_name)。省くと空の辞書 (ほかの絞りに値が無い) として読む。
+        """
+        if self.kind == "flag":
+            named = {} if named is None else named
+            if not self.is_on(params) or self.is_disabled(named):
+                return queryset
+            return self.when(queryset, named) if self.when_takes_values else self.when(queryset)
         q = self.q(params)
         return queryset if q is None else queryset.filter(q)
 
@@ -531,8 +594,12 @@ class FilterSpec:
             return q
         return Q(**{self.field_name: values[self.param]})
 
-    def context(self, params) -> dict:
-        """テンプレート (core/_filters.html) が描く材料。欄の値は読めた値だけ (読めない字は空の欄にする)。"""
+    def context(self, params, named=None) -> dict:
+        """テンプレート (core/_filters.html) が描く材料。欄の値は読めた値だけ (読めない字は空の欄にする)。
+
+        flag は、named (values_by_name) で disabled_when が真なら、切 (checked が偽)・押せない (disabled)・絞らない (active が偽) に描き、
+        隠しの欄の値 (kept) に印の値を持ち越す。follows は disabled_when があるか (htmx の応答で描き直す印)。
+        """
         values = self.values(params)
         shown = {name: str(value) for name, value in values.items()}
         item = {
@@ -555,7 +622,11 @@ class FilterSpec:
             item["options"] = self.lookup_values()
         elif self.kind == "flag":
             on = self.is_on(params)
-            item.update(value="1" if on else "", checked=on, active=on != self.default)
+            item.update(kept="0", disabled=False, follows=self.disabled_when is not None)
+            if self.is_disabled({} if named is None else named):
+                item.update(kept="1" if on else "0", disabled=True, active=False)
+            else:
+                item.update(value="1" if on else "", checked=on, active=on != self.default)
         return item
 
 
@@ -674,9 +745,11 @@ class BaseListView(ScreenMixin, ListView):
         return specs
 
     def apply_filters(self, queryset):
-        """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。flag は入のときだけ when を掛ける。"""
-        for spec in self.filter_specs():
-            queryset = spec.apply(queryset, self.request.GET)
+        """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。flag は入で disabled_when が真でないときだけ when を掛ける。"""
+        specs = self.filter_specs()
+        named = FilterSpec.values_by_name(specs, self.request.GET)
+        for spec in specs:
+            queryset = spec.apply(queryset, self.request.GET, named)
         return queryset
 
     # --- 行 ---
@@ -752,7 +825,8 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_page"] = self.query_without("page", "format")
         context["query_without_sort"] = self.query_without("sort", "page", "format")
         filter_specs = self.filter_specs()
-        context["filters"] = [spec.context(self.request.GET) for spec in filter_specs]
+        named = FilterSpec.values_by_name(filter_specs, self.request.GET)
+        context["filters"] = [spec.context(self.request.GET, named) for spec in filter_specs]
         context["filter_active"] = any(item["active"] for item in context["filters"])
         context["query_without_filters"] = self.query_without(
             "page", "format", *(name for spec in filter_specs for name in spec.params)
