@@ -161,6 +161,8 @@ if not DEBUG:
 
 `MIDDLEWARE` の `"seizou.core.middleware.DevAutoLoginMiddleware",` の次の行に、`"seizou.core.middleware.HtmxLoginMiddleware",` を足します。
 
+画面ごとの説明書の断片が無い置き場 (この版より前に、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
+
 ## 困ったとき
 
 `manage.py` が `KeyError: 'SECRET_KEY'` で止まるときは、置き場に `.env` が無いか、`.env` に `SECRET_KEY=` の行がありません。`.env` は控えに入らないので、別に写しておいた `.env` を置き場に戻してください。このときは `settings.py` が先に止まるので、点検も動きません。
