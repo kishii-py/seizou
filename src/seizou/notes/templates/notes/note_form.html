@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load notes_tags seizou_icons %}
+{% block content %}
+{# 記入の形: メモの枠 (#notes) を Quill の編集の箱にした物。詳細の画面の「書く」は、この画面の #notes だけを htmx で取って枠と入れ替える (hx-select)。 #}
+{# 「保存」は土台の入力 (検査の層と services.save_note) を通り、付けた先の詳細の #notes へ移る。「やめる」は詳細の画面の #notes を入れ直す。 #}
+{# 道具の列の釦と選ぶ欄の class (ql-…) は Quill の物 (Quill が絵を入れる)。「元に戻す」だけは Quill に絵が無いので、Quill の線の class で絵を書く。 #}
+{% include "notes/_assets.html" %}
+{% note_target_url form.target as back_url %}
+<section id="notes" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="notes-heading">
+  <form method="post" action="{% url 'notes:note_edit' %}" hx-post="{% url 'notes:note_edit' %}" hx-select="#notes" hx-target="#notes" hx-swap="outerHTML ignoreTitle:true" data-note-form>
+    {% csrf_token %}
+    {{ form.content_type }}{{ form.object_id }}{{ form.body_html }}
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <h2 id="notes-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "pencil" "size-5 text-base-content/70" %}メモ</h2>
+      <div class="flex flex-wrap items-center gap-2">
+        {% if back_url %}<a class="btn btn-sm btn-ghost" href="{{ back_url }}#notes" hx-get="{{ back_url }}" hx-select="#notes" hx-target="#notes" hx-swap="outerHTML ignoreTitle:true">やめる</a>{% endif %}
+        <button class="btn btn-sm btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>
+      </div>
+    </div>
+    <div class="mt-4">{% include "core/_notices.html" %}</div>
+    {% if form.non_field_errors %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
+    <div class="alert alert-error alert-soft mb-4" role="alert" data-note-error hidden></div>
+    <div data-note-editor data-upload-url="{% url 'notes:noteimage_upload' %}">
+      <div data-note-toolbar>
+        <span class="ql-formats">
+          <select class="ql-header" aria-label="見出し"><option value="2">見出し</option><option value="3">小見出し</option><option selected>本文</option></select>
+        </span>
+        <span class="ql-formats">
+          <button type="button" class="ql-bold" aria-label="太字"></button>
+          <button type="button" class="ql-italic" aria-label="斜体"></button>
+          <button type="button" class="ql-underline" aria-label="下線"></button>
+          <button type="button" class="ql-strike" aria-label="取り消し線"></button>
+          <select class="ql-color" aria-label="字の色"></select>
+        </span>
+        <span class="ql-formats">
+          <button type="button" class="ql-list" value="bullet" aria-label="箇条書き"></button>
+          <button type="button" class="ql-list" value="ordered" aria-label="番号"></button>
+          <button type="button" class="ql-blockquote" aria-label="引用"></button>
+        </span>
+        <span class="ql-formats">
+          <button type="button" class="ql-image" aria-label="写真"></button>
+          <button type="button" class="ql-link" aria-label="リンク"></button>
+          <button type="button" class="ql-undo" aria-label="元に戻す"><svg viewBox="0 0 18 18" aria-hidden="true"><polyline class="ql-stroke" points="6 4 3 7 6 10"></polyline><path class="ql-stroke" d="M3 7h8a4 4 0 0 1 0 8H8"></path></svg></button>
+        </span>
+      </div>
+      <div data-note-box>{{ form.body_html.value|default_if_none:""|note_html }}</div>
+    </div>
+  </form>
+</section>
+{% endblock %}
