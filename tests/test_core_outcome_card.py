@@ -233,3 +233,14 @@ def test_accept_minutes_needs_column(user, customer, shaft):
             assert dashboard.accept_minutes_this_month(today) == 17
         assert len(captured.captured_queries) == 1
         assert "受付の平均 17 分" in views.dashboard_stats()[-1]["note"]
+
+
+# ---------------------------------------------------------------- 知らせの文と色は service の返す物が持つ (N96 の前提。11-04)
+
+
+def test_with_saved_note_uses_service_message_then_note():
+    assert views.with_saved_note("保存しました。", SimpleNamespace()) == "保存しました。"
+    assert views.with_saved_note("保存しました。", SimpleNamespace(saved_note="明細 1 行。")) == "保存しました。明細 1 行。"
+    assert views.with_saved_note("保存しました。", SimpleNamespace(saved_message="相手に送りました。")) == "相手に送りました。"
+    assert views.with_saved_note("保存しました。", SimpleNamespace(saved_message="", saved_note="x")) == "保存しました。x"
+    assert views.with_saved_note("保存しました。", SimpleNamespace(saved_message=None, saved_note=None)) == "保存しました。"
