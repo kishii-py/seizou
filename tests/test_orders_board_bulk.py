@@ -6,6 +6,7 @@
 - 一括出荷の入力 (shipping:shipment_bulk_create) は、選んだ明細を 1 回の保存で出荷する。どれか 1 行が R01 か services の
   決まりで止まると全部を保存しない。出荷の知らせは全部を保存した後に atomic の外で送る (R17)。
 - 発注の入力は、選んだ明細 (?line= の繰り返し) を明細の行の初期値に埋める。
+- 行の押下で選ぶ (決め 11-04 22:4x。N137): 選ぶ欄は見せない class で、見出しの全部を選ぶ欄は無く、帯に「全部を選ぶ」「選択を外す」。
 作り物のデータだけを使う。作り物の作り方は tests/test_orders_board.py と tests/test_shipping_ship.py を写した。
 """
 
@@ -13,6 +14,7 @@ import json
 import re
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -34,6 +36,7 @@ from tests.test_shipping_notice import _inbox_order
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
 MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
+JS = Path(orders_services.__file__).resolve().parent / "static" / "orders" / "board-select.js"
 
 
 @pytest.fixture
@@ -133,6 +136,14 @@ def test_board_has_pick_boxes_and_band(logged_in, lines):
         # 選ぶ欄は行の頭 (受注番号の枡の中。列は足さない)。
         first_td = re.search(r"<td[^>]*>.*?</td>", tr_html, re.S).group(0)
         assert "data-board-pick" in first_td and line.order.order_no in first_td
+        # 行の押下で選ぶ (N137): 欄は見せない class で、欄と受注番号の link の間に字を置かない (受注番号の字が行ごとにずれない)。
+        assert '<input type="checkbox" class="sr-only" name="line"' in first_td
+        assert 'data-board-pick><a class="link' in first_td
+        assert "checkbox checkbox-sm" not in tr_html
+        # 選んだ行の地は、JS が付ける data-tone と行の固定の class で決まる (R19)。
+        assert tr_html.startswith(f'<tr id="row-{line.pk}" class="row-hover h-10 data-[tone=primary]:bg-primary/15" data-row-menu>')
+    thead = re.search(r"<thead>.*?</thead>", body, re.S).group(0)
+    assert 'type="checkbox"' not in thead and "data-board-all" not in thead
     assert body.count('id="board-bulk"') == 1
     band = _band(body)
     assert re.match(r'<form id="board-bulk"[^>]* hidden data-board-bulk>', band)
@@ -141,7 +152,9 @@ def test_board_has_pick_boxes_and_band(logged_in, lines):
     assert band.count('hx-target="#seizou-modal-box"') == 2
     assert band.count('hx-include="#board-bulk"') == 2
     assert 'type="submit"' not in band
-    assert "data-board-all" in body
+    assert '<button type="button" class="link link-hover text-sm" data-board-all>全部を選ぶ</button>' in band
+    assert '<button type="button" class="link link-hover text-sm" data-board-none>選択を外す</button>' in band
+    assert body.count("data-board-all") == 1
     assert "orders/board-select.js" in body
 
 
@@ -176,6 +189,33 @@ def test_no_write_permission_hides_band_and_pick_boxes(settings, client, user, l
     admin = get_user_model().objects.create_superuser("admin-tester", password="pass-for-tests-only")
     client.force_login(admin)
     assert 'id="board-bulk"' in client.get(reverse("orders:orderline_list")).content.decode()
+
+
+def test_board_select_js_picks_rows_by_press():
+    """行の押下で選ぶ JS の約束 (N137)。ブラウザで動かさず、字で見る (ブラウザでの確かめは本体の手の確かめ)。"""
+    text = JS.read_text(encoding="utf-8")
+    # 行の押下を document に委譲し、⋮ のメニューを閉じる押下 (core の js/seizou-row-menu.js) より先に見る (capture)。
+    assert 'document.addEventListener("click", onClick, true)' in text
+    for word in (
+        '"tr[data-row-menu]"',
+        '"[data-board-pick]"',
+        '"a, button, input, select, textarea, label, summary, details"',
+        '"details.row-menu[open]"',
+        'row.dataset.tone = "primary"',
+        "delete row.dataset.tone",
+        'new Event("change", { bubbles: true })',
+        "event.shiftKey",
+        "[data-board-all]",
+        "[data-board-none]",
+        "htmx:afterSettle",
+        "band.hidden = picked === 0",
+    ):
+        assert word in text, word
+    # 選ぶ欄の無い行 (取消の受注と残の無い明細) は、押しても選ばず地も変えない。
+    assert "if (!box) return;" in text
+    # 右クリックのメニューには触らない。見せない class と class の字を触らない (R19)。取った字を HTML にしない。通信しない。
+    for word in ("contextmenu", "sr-only", "classList", "className", "innerHTML", "fetch(", "window.htmx"):
+        assert word not in text, word
 
 
 # --- 5. 行のメニューの小窓の印 ---
