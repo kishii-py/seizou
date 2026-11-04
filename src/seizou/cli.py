@@ -1,8 +1,12 @@
 """命令 seizou (Claude Code 無しで動く)。
 
-seizou new <answers.yaml> [--demo]
+seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。
     item_fields があれば会社ごとの項目の app (fields/) も作る。--demo は作り物のデータを入れる口。
+    --demo のつながりの種の受け口の URL の頭 (http://127.0.0.1:800x) は、答えの partner_base_urls (相手の会社の id → 置き場の URL の頭)
+    か環境変数 SEIZOU_PARTNER_<相手の id の大文字>_URL があれば、その頭に置き換えて入れる (環境変数が勝つ。外の置き場の https のため)。
+    管理者の ID とパスワードは「できた物」の後に 1 行ずつ出す。--password-file を渡すと、パスワードを画面に出さず、
+    そのファイルに admin:<値> の 1 行で書く (持ち主だけが読める)。
     画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -30,6 +34,7 @@ import unicodedata
 from importlib import resources
 from pathlib import Path
 from string import Template
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -43,6 +48,8 @@ FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
 #: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは設定の画面から上げる)
 COMPANY_KEYS = ("address", "phone", "bank_account")
+#: --demo のつながりの種の受け口の頭を、相手の置き場の URL にする環境変数 (SEIZOU_PARTNER_<相手の会社の id の大文字>_URL)。答えの partner_base_urls より勝つ
+PARTNER_URL_ENV = re.compile(r"SEIZOU_PARTNER_([A-Z][A-Z0-9_]*)_URL")
 
 # seizou.core.conf.DEFAULTS と同じ値 (core は Django を読むので、ここでは import せずに写す)。
 SETTING_DEFAULTS = {
@@ -94,8 +101,11 @@ CREATE_COMPANY = (
     "print('created' if made else 'exists')"
 )
 
-# 作り物のデータを入れる短い Python (seizou.core.demo があるときだけ。引数は種のフォルダ)。
-LOAD_DEMO = "import importlib, pathlib; importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}))"
+# 作り物のデータを入れる短い Python (seizou.core.demo があるときだけ。引数は種のフォルダと、相手の会社の id → 受け口の URL の頭)。
+LOAD_DEMO = (
+    "import importlib, pathlib; "
+    "importlib.import_module('seizou.core.demo').load(pathlib.Path({seeds!r}), partner_base_urls={bases!r})"
+)
 
 # 業種の見本の工程を入れる短い Python。工程コードか名前が同じ工程が既にあれば飛ばす (種の工程が先に入っていれば種が勝つ)。
 # 工程は部品マスターの services の create_process で作り (表に直接書かない = R13)、入れた数だけを最後の行に出す。
@@ -180,7 +190,57 @@ def load_answers(path: Path) -> dict:
     # 業種の見本を入れない印 (任意)。書き損じを黙って通さないので、none の外の値は断る
     if "recipe" in answers and answers["recipe"] != "none":
         raise AnswerError(f"recipe に書けるのは none だけです (業種の見本を入れないとき): {answers['recipe']!r}")
+
+    # --demo のつながりの種の受け口の頭 (任意)。打ち違えた URL を黙って通すと相手に届かないので、形の違う物は断る
+    bases = answers.get("partner_base_urls")
+    if bases is not None:
+        if not isinstance(bases, dict):
+            raise AnswerError("partner_base_urls は 相手の会社の id: 置き場の URL の頭 の並びで書きます (例 b_plating: https://b.example.jp)。")
+        for key, value in bases.items():
+            check_base_url(f"partner_base_urls の {key}", key, value)
     return answers
+
+
+def check_base_url(where: str, partner_id, value) -> str:
+    """相手の会社の id と置き場の URL の頭の形を見て、末尾の / を落とした頭を返す。誤りは AnswerError。
+
+    頭は http:// か https:// で始まり、ホスト名があり、空白と ? と # を含まない (道の頭 /b のような物は持ってよい)。
+    """
+    if not isinstance(partner_id, str) or not ID_PATTERN.match(partner_id):
+        raise AnswerError(f"{where}: 相手の会社の id の形が違います: {partner_id!r}。英小文字で始め、英小文字と数字と _ だけで書きます。")
+    try:
+        parts = urlsplit(value) if isinstance(value, str) else None
+    except ValueError:
+        parts = None
+    if (
+        parts is None
+        or parts.scheme not in ("http", "https")
+        or not parts.netloc
+        or parts.query
+        or parts.fragment
+        or any(char.isspace() for char in value)
+    ):
+        raise AnswerError(f"{where}: 置き場の URL の頭の形が違います: {value!r}。https:// で始まる URL (例 https://b.example.jp) で書きます。")
+    return value.rstrip("/")
+
+
+def partner_base_urls(answers: dict, environ=None) -> dict[str, str]:
+    """--demo のつながりの種の受け口の頭 (相手の会社の id → 置き場の URL の頭。末尾の / は落とす)。
+
+    答えの partner_base_urls に、環境変数 SEIZOU_PARTNER_<相手の id の大文字>_URL を重ねる (環境変数が勝つ。空の値は無い物とする)。
+    誤りは AnswerError。
+    """
+    environ = os.environ if environ is None else environ
+    bases = {
+        key: check_base_url(f"partner_base_urls の {key}", key, value)
+        for key, value in (answers.get("partner_base_urls") or {}).items()
+    }
+    for name, value in sorted(environ.items()):
+        match = PARTNER_URL_ENV.fullmatch(name)
+        if match and value.strip():
+            partner_id = match.group(1).lower()
+            bases[partner_id] = check_base_url(f"環境変数 {name}", partner_id, value.strip())
+    return bases
 
 
 def recipes_dir() -> Path:
@@ -540,7 +600,7 @@ def show_failure(step: str, result: subprocess.CompletedProcess) -> int:
     return EXIT_CHILD
 
 
-def command_new(answers_path: Path, demo: bool) -> int:
+def command_new(answers_path: Path, demo: bool, password_file: Path | None = None) -> int:
     print("答えの YAML から会社のプロジェクトを作ります。")
     print("置き場にファイルを書き、データベースを用意し (migrate)、管理者を 1 人作ります。起動はしません。")
 
@@ -555,6 +615,9 @@ def command_new(answers_path: Path, demo: bool) -> int:
             answers, recipe_added = apply_recipe(answers, recipe_found[1])
         settings, used_defaults = settings_with_defaults(answers)
         columns, field_defaults = item_columns(answers)
+        bases = partner_base_urls(answers) if demo else {}
+        if password_file is not None and not password_file.parent.is_dir():
+            raise AnswerError(f"--password-file のフォルダがありません: {password_file.parent}")
     except AnswerError as exc:
         print(f"止まりました: {exc}", file=sys.stderr)
         return EXIT_INPUT
@@ -602,10 +665,17 @@ def command_new(answers_path: Path, demo: bool) -> int:
     )
     if result.returncode != 0:
         return show_failure("管理者を作る所", result)
+    # ID とパスワードは 1 行ずつ (機械で拾う人が行の頭で探せる)。「管理者のパスワード: 」の行は値を出すときだけ
+    admin_lines = [f"管理者の ID: {ADMIN_ID}"]
     if result.stdout.strip().splitlines()[-1:] == ["exists"]:
-        admin_text = f"管理者の ID: {ADMIN_ID} (既にあったので作らず、パスワードも変えていません)"
+        admin_lines.append("管理者は既にあったので作らず、パスワードも変えていません。")
+    elif password_file is not None:
+        # 画面と記録に値を残さない。後の段が止まっても控えが残るよう、作った直後に書く
+        write_secret_file(password_file, f"{ADMIN_ID}:{password}\n")
+        admin_lines.append(f"管理者のパスワードを書いたファイル: {password_file} (画面には出しません。持ち主だけが読めます)")
     else:
-        admin_text = f"管理者の ID: {ADMIN_ID} / パスワード: {password} (パスワードはこの 1 度だけ出します)"
+        admin_lines.append(f"管理者のパスワード: {password}")
+        admin_lines.append("パスワードはこの 1 度だけ出します。")
 
     # 会社の設定の 1 行 (画面の上の帯に出る会社名)。答えの name を使う。
     result = run_manage(
@@ -625,7 +695,10 @@ def command_new(answers_path: Path, demo: bool) -> int:
         else:
             # 種は答えの YAML と同じ場所の <id>/ (examples/companies/README.md の約束)。
             seeds = answers_path.parent / answers["id"]
-            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds))])
+            if bases:
+                shown = "、".join(f"{key} → {value}" for key, value in sorted(bases.items()))
+                print(f"つながりの種の受け口の URL の頭を、相手の置き場の URL にします: {shown}")
+            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds), bases=bases)])
             if result.returncode != 0:
                 return show_failure("作り物のデータの読み込み", result)
             # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
@@ -662,7 +735,9 @@ def command_new(answers_path: Path, demo: bool) -> int:
             print(f"業種の見本 ({recipe_name}) と同じ物が全部あったので、足した物はありません。")
 
     port = answers["port"]
-    print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
+    print(f"できた物: {site} の会社のプロジェクト。")
+    for line in admin_lines:
+        print(line)
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
@@ -679,13 +754,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     new.add_argument("answers", type=Path, help="答えの YAML のパス")
     new.add_argument("--demo", action="store_true", help="作り物のデータも登録する (作り物の会社のとき)")
+    new.add_argument(
+        "--password-file",
+        type=Path,
+        metavar="PATH",
+        help="管理者のパスワードを画面に出さず、このファイルに admin:<値> の 1 行で書く (持ち主だけが読める)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "new":
-        return command_new(args.answers, args.demo)
+        return command_new(args.answers, args.demo, args.password_file)
     return EXIT_INPUT
 
 
