@@ -11,7 +11,7 @@
     <div class="rounded-lg bg-base-200 p-4" role="search">
       <div class="flex items-center justify-between gap-2">
         <p class="text-xs font-medium text-base-content/50">絞り込み</p>
-        <a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ request.path }}">{% icon "x" "size-4" %}クリア</a>
+        <a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ request.path }}{% if summary %}?view=summary{% endif %}">{% icon "x" "size-4" %}クリア</a>
       </div>
       {% if search_hint %}
       <label for="list-q" class="mt-2 block font-medium">キーワード</label>
@@ -24,12 +24,21 @@
     </div>
     {% endif %}
     <div class="mt-4 flex flex-wrap items-center gap-2">
+      {% if summary %}
+      {# 集計 (view=summary) の軸と量。変えると絞りの欄と同じく #rows を取り直す (data-list-filter)。view は隠しの欄で持ち越す。 #}
+      <input type="hidden" name="view" value="summary">
+      <label for="list-g-by" class="text-base-content/70">軸</label>
+      <select id="list-g-by" class="select select-sm w-auto" name="g_by" data-list-filter>{% for axis in summary.axes %}<option value="{{ axis.key }}"{% if axis.key == summary.axis.key %} selected{% endif %}>{{ axis.label }}</option>{% endfor %}</select>
+      <label for="list-g-val" class="text-base-content/70">量</label>
+      <select id="list-g-val" class="select select-sm w-auto" name="g_val" data-list-filter>{% for measure in summary.measures %}<option value="{{ measure.key }}"{% if measure.key == summary.measure.key %} selected{% endif %}>{{ measure.label }}</option>{% endfor %}</select>
+      {% else %}
       <select id="list-per" class="select select-sm w-auto" name="per" aria-label="1 ページの件数">{% for n in page_sizes %}<option value="{{ n }}" {% if n == per %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <span class="text-base-content/70">件ずつ表示</span>
+      {% endif %}
       <span id="list-loading" class="loading loading-spinner loading-xs htmx-indicator text-primary" aria-hidden="true"></span>
       {% include "core/_list_meta.html" %}
     </div>
   </form>
-  <div id="rows" class="mt-4">{% include rows_template_names %}</div>
+  <div id="rows" class="mt-4">{% if summary %}{% include "core/_summary.html" %}{% else %}{% include rows_template_names %}{% endif %}</div>
 </div>
 {% endblock %}
