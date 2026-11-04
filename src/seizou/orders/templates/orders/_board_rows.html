@@ -8,12 +8,14 @@ core/_rows.html の「行がある時」の部分 (表の箱・見出し・ペ�
 - 行は data-row-menu を持ち、最後に「操作」の列 (orders/_row_menu.html。⋮ と右クリックの同じメニュー)。行に onclick は無い。
 - 合計の行 (数量・出荷済み・検収・残) は tag board_totals が、絞り込みの後の全部の明細から出す (盤の columns に total は書かない)。
 - 「出荷する」「指示書を発行する」「発注する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける (権限の無い人には出さない = 決め 11-04 00:0x)。行ごとでなく 1 回だけ呼ぶ。
+- 「実績を入れる」も同じ tag (progress の部品を部署で開ける人だけ。実績の記録は編集の権限が要らないので、決めるのは部署の判定 = 決め 11-04 12:5x)。
 class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄は、要素ごと if で出し分ける。
 写した元: core/_rows.html (11-03 の main)。土台の表の形が変わったら、ここも合わせる。
 {% endcomment %}
 {% can_write "workorders.WorkOrder" as can_issue %}
 {% can_write "shipping.Shipment" as can_ship %}
 {% can_write "purchasing.PurchaseOrder" as can_po %}
+{% can_write "progress.Progress" as can_progress %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">
   <thead><tr class="bg-base-200 text-base-content/70">
@@ -45,7 +47,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {% endif %}
       {% endif %}{% endfor %}
       {% endfor %}
-      <td class="whitespace-nowrap text-right">{% include "orders/_row_menu.html" with line=row.obj can_issue=can_issue can_ship=can_ship can_po=can_po %}</td>
+      <td class="whitespace-nowrap text-right">{% include "orders/_row_menu.html" with line=row.obj can_issue=can_issue can_ship=can_ship can_po=can_po can_progress=can_progress %}</td>
     </tr>
     {% endfor %}
   </tbody>
