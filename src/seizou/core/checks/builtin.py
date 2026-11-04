@@ -3,6 +3,7 @@
 mode は会社の設定 (over_shipment・over_workorder) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (01 の 10.4 の引数の名前) に合わせる。
+R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は N124)。
 """
 
 from __future__ import annotations
@@ -71,6 +72,27 @@ class OverShipmentOnUpdate(Check):
                 f"この出荷に入れられる数は {_num(_dec(line.qty) - others)} までです。数を確かめてください。"
             )
         return None
+
+
+class OverShipmentLines(Check):
+    """R01: 一括出荷 (shipping.ship_lines) の明細ごとに、出荷の数の合計が受注の明細の数を超えたら (N124)。
+
+    data の lines は (受注の明細, 数量) の組の list (shipping の一括出荷の form の service_kwargs)。
+    1 行ずつ OverShipment と同じ式で見て、超える行の文の頭に受注番号と行の番号を付け、1 つの文につなぐ。
+    止めるなら全部の行を保存しない (services の ship_lines は 1 つの atomic)。
+    """
+
+    name = "R01"
+    action = "shipping.ship_lines"
+    setting_key = "over_shipment"
+
+    def run(self, data, user):
+        texts = []
+        for line, qty in data.get("lines") or ():
+            text = OverShipment().run({"order_line": line, "qty": qty}, user)
+            if text:
+                texts.append(f"{line.order.order_no} の {line.line_no} 行目: {text}")
+        return " ".join(texts) or None
 
 
 class OrderBelowShipped(Check):
@@ -145,7 +167,7 @@ class OverProgress(Check):
         return None
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OrderBelowShipped(), OverWorkorder(), OverProgress())
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress())
 
 for _check in BUILTIN:
     register(_check)

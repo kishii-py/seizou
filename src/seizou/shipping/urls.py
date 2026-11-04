@@ -20,6 +20,7 @@ MENU = [
 urlpatterns = [
     path("", views.ShipmentListView.as_view(), name="shipment_list"),
     path("new/", views.ShipmentCreateView.as_view(), name="shipment_create"),
+    path("bulk/", views.ShipmentBulkCreateView.as_view(), name="shipment_bulk_create"),
     path("<int:pk>/", views.ShipmentDetailView.as_view(), name="shipment_detail"),
     path("<int:pk>/edit/", views.ShipmentUpdateView.as_view(), name="shipment_update"),
     path("<int:pk>/label/", views.shipment_label, name="shipment_label"),

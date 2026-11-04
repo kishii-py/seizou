@@ -15,6 +15,7 @@
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
 - 出荷の後、届いた注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
+- 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
 """
 
 from __future__ import annotations
@@ -54,44 +55,87 @@ def _qty_text(value) -> str:
     return format(dec, "f")
 
 
-def ship(order_line, qty, shipped_at, user, *, note="", send=True):
-    """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
+def _record_shipment(order_line, qty, shipped_at, user, note):
+    """出荷の保存の部分 (ship と ship_lines が atomic の中で呼ぶ)。明細に行の錠を掛け、R05・R02・分納を見て、出荷を作り、受注の状態を直す。
 
-    send が偽なら、届いた注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
+    返す物は (出荷, 錠を掛けた明細)。HTTP は送らない (送るのは _after_ship。atomic の外 = R17)。
     """
     qty = _dec(qty)
-    with transaction.atomic():
-        locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
-        if locked.order.status == "cancelled":
-            raise RuleViolation(
-                "R05", f"{_R05_RULE}取消していない受注の明細を選んでください。"
-            )
-        if not qty > 0:
-            raise RuleViolation("R02", _R02_MESSAGE)
-        if not setting("partial_shipment"):
-            remaining = remaining_qty(locked)
-            if qty != remaining:
-                raise RuleViolation(
-                    "分納",
-                    f"この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
-                )
-        shipment = Shipment.objects.create(
-            shipment_no=next_number("shipment"),
-            order_line=locked,
-            qty=qty,
-            shipped_at=shipped_at,
-            note=note,
+    locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
+    if locked.order.status == "cancelled":
+        raise RuleViolation(
+            "R05", f"{_R05_RULE}取消していない受注の明細を選んでください。"
         )
-        refresh_status(locked.order, user)
+    if not qty > 0:
+        raise RuleViolation("R02", _R02_MESSAGE)
+    if not setting("partial_shipment"):
+        remaining = remaining_qty(locked)
+        if qty != remaining:
+            raise RuleViolation(
+                "分納",
+                f"この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
+            )
+    shipment = Shipment.objects.create(
+        shipment_no=next_number("shipment"),
+        order_line=locked,
+        qty=qty,
+        shipped_at=shipped_at,
+        note=note,
+    )
+    refresh_status(locked.order, user)
+    return shipment, locked
 
-    # 出荷の知らせを相手へ送る。HTTP は atomic の外 (R17)。shipping と connect の循環を避けるため関数の中で import する。
-    if _is_edi_order(locked.order):
+
+def _after_ship(shipment, order, user, send):
+    """出荷の後の知らせ。届いた注文で作った受注の出荷なら、出荷の知らせを相手へ送る (atomic の外で呼ぶ = R17)。"""
+    if _is_edi_order(order):
         if not send:
             return record_notice_response(shipment, MESSAGE_NOTICE_SEED, user)
         from seizou.connect import services as connect_services
 
         return connect_services.send_shipping_notice(shipment, user)
     return shipment
+
+
+def ship(order_line, qty, shipped_at, user, *, note="", send=True):
+    """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
+
+    send が偽なら、届いた注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
+    """
+    with transaction.atomic():
+        shipment, locked = _record_shipment(order_line, qty, shipped_at, user, note)
+    # 出荷の知らせを相手へ送る。HTTP は atomic の外 (R17)。shipping と connect の循環を避けるため関数の中で import する。
+    return _after_ship(shipment, locked.order, user, send)
+
+
+class ShippedLines(list):
+    """一括出荷の返す物 (知らせの後の出荷の list)。入力の土台は saved_message を知らせの字にする。
+
+    1 件の出荷の返す物 (出荷) は saved_level を持たないので、ここも持たない (知らせは緑)。
+    """
+
+    @property
+    def saved_message(self) -> str:
+        return f"{len(self)} 件の出荷を登録しました。"
+
+
+def ship_lines(lines, shipped_at, user, *, note=""):
+    """選んだ受注の明細を、同じ出荷日でまとめて出荷する (一括出荷。注文残の盤の「選んだ行の操作」。N124)。
+
+    lines は (受注の明細, 数量) の組の list。1 行ずつ ship と同じ決まり (R05・R02・分納) を通し、どれか 1 行が断られたら
+    全部を保存しない (1 つの atomic)。断りの文の頭に受注番号と行の番号を付ける。
+    出荷の知らせ (届いた注文で作った受注) は、全部を保存した後に atomic の外で 1 件ずつ送る (R17)。
+    """
+    if not lines:
+        raise ValueError("出荷する明細を 1 行以上選んでください。")
+    with transaction.atomic():
+        recorded = []
+        for line, qty in lines:
+            try:
+                recorded.append(_record_shipment(line, qty, shipped_at, user, note))
+            except RuleViolation as exc:
+                raise RuleViolation(exc.code, f"{line.order.order_no} の {line.line_no} 行目: {exc.message}") from exc
+    return ShippedLines(_after_ship(shipment, locked.order, user, True) for shipment, locked in recorded)
 
 
 def create_delivery_note(customer, shipments, user):

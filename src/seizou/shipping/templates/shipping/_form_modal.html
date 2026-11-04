@@ -1,0 +1,13 @@
+{% load seizou_icons %}
+{# shipping の入力の小窓の中身。入力の土台は小窓のテンプレートを app ごとに選ぶ (shipping/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
+{# 一括出荷は明細の表のカード (shipping/_shipment_bulk_card.html)。題と閉じるボタンと知らせは core/_form_modal.html の字を写した。ほかの入力 (出荷の新規登録・編集・納品書) は土台の小窓のまま。 #}
+{% if request.resolver_match.url_name == "shipment_bulk_create" %}
+<div class="seizou-modal-wide">
+  <div class="mb-4 flex items-start justify-between gap-4">
+    <h3 class="min-w-0 truncate text-lg font-bold" title="{{ screen_name }}">{{ screen_name }}</h3>
+    <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる">{% icon "x" "size-4" %}</button></form>
+  </div>
+  {% include "core/_notices.html" %}
+  {% include "shipping/_shipment_bulk_card.html" %}
+</div>
+{% else %}{% include "core/_form_modal.html" %}{% endif %}

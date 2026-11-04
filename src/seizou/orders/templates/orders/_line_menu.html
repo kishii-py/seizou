@@ -2,16 +2,16 @@
 受注の詳細の明細 1 行の操作のメニュー (⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment)。
 context: line (受注の明細。annotate_remaining の remaining_total と item を持つ)・order (受注)・can_issue (指示書の発行の入口を出すか。can_write の tag の答え)・can_ship と can_po (出荷と発注の入口を出すか。can_write の tag の答え)。
 決め 11-03 17:2x (本人「どんどん進めて」): 行の頭に並べていた「出荷する」「指示書を発行する」のボタンを、注残の盤と同じ行のメニューに移す (表が幅 1280 の画面で枠より広くなり、検収と残の列が横の送りの先に隠れていたため)。
-項目は画面へ移る link だけ。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。出荷と指示書と発注は、受注が取消でなく残が 0 より大きいときだけ。
+項目は画面へ移る link だけ。出荷・指示書の発行・発注の 3 つは data-modal-form を持ち、core の JS (js/seizou-modal.js) が小窓で開く。JS が無いときは href で画面へ移る (決め 11-04 17:5x)。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。出荷と指示書と発注は、受注が取消でなく残が 0 より大きいときだけ。
 {% endcomment %}
 {% url 'shipping:shipment_create' as ship_url %}{% url 'workorders:workorder_create' as issue_url %}{% url 'purchasing:purchaseorder_create' as po_url %}{% url 'masters:item_modal' line.item_id as item_modal_url %}
 <details class="dropdown row-menu">
   <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
   <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
     {% if order.status != "cancelled" and line.remaining_total > 0 %}
-    {% if ship_url and can_ship %}<li><a class="flex items-center gap-2" href="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷する</a></li>{% endif %}
-    {% if issue_url and can_issue %}<li><a class="flex items-center gap-2" href="{{ issue_url }}?order_line={{ line.pk }}">{% icon "factory" "size-4" %}指示書を発行する</a></li>{% endif %}
-    {% if po_url and can_po %}<li><a class="flex items-center gap-2" href="{{ po_url }}?from_line={{ line.pk }}">{% icon "cart" "size-4" %}発注する</a></li>{% endif %}
+    {% if ship_url and can_ship %}<li><a class="flex items-center gap-2" href="{{ ship_url }}?order_line={{ line.pk }}" data-modal-form="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷する</a></li>{% endif %}
+    {% if issue_url and can_issue %}<li><a class="flex items-center gap-2" href="{{ issue_url }}?order_line={{ line.pk }}" data-modal-form="{{ issue_url }}?order_line={{ line.pk }}">{% icon "factory" "size-4" %}指示書を発行する</a></li>{% endif %}
+    {% if po_url and can_po %}<li><a class="flex items-center gap-2" href="{{ po_url }}?from_line={{ line.pk }}" data-modal-form="{{ po_url }}?from_line={{ line.pk }}">{% icon "cart" "size-4" %}発注する</a></li>{% endif %}
     {% endif %}
     {% if item_modal_url %}<li><a class="flex items-center gap-2" href="{{ item_modal_url }}" hx-get="{{ item_modal_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% icon "box" "size-4" %}部品の小窓</a></li>{% endif %}
     {% if line.item.drawing %}<li><a class="flex items-center gap-2" href="{% url 'masters:item_drawing_viewer' line.item_id %}">{% icon "image" "size-4" %}図面</a></li>{% endif %}

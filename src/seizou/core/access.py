@@ -108,6 +108,8 @@ _KIND_ACTIONS = {
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
     "shipping": (
         "shipping.ship",
+        # 一括出荷 (N124。注文残の盤で選んだ明細をまとめて出荷)
+        "shipping.ship_lines",
         "shipping.update_shipment",
         "shipping.create_delivery_note",
         "shipping.cancel_delivery_note",
