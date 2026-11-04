@@ -96,27 +96,34 @@ def test_this_month_card_links_month_filtered_orders(logged_in, user, customer, 
 
     stat = card(MONTH_LABEL)
     assert stat["value"] == 2  # 受注のままの 1 件と、全部を出荷した 1 件
-    assert stat["url"] == reverse("orders:order_list") + "?all=1&month=" + today.strftime("%Y-%m")
+    first = today.replace(day=1)
+    last = (first + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+    assert stat["url"] == reverse("orders:order_list") + f"?f_open=0&f_ordered_from={first}&f_ordered_to={last}"
 
     listing = logged_in.get(stat["url"])
     assert listing.status_code == 200
-    assert listing.context["paginator"].count == stat["value"]
-    assert {row["obj"].order_no for row in listing.context["rows"]} == {kept.order_no, shipped.order_no}
+    # 絞り込みの枠の受注日の期間は取消も出す。カードの数は取消を除く (N126 の本体への知らせの 2 の (a))。
+    assert listing.context["paginator"].count == stat["value"] + 1
+    assert {row["obj"].order_no for row in listing.context["rows"]} == {kept.order_no, shipped.order_no, cancelled.order_no}
 
     url = reverse("orders:order_list")
-    everything = logged_in.get(url, {"all": "1"}).context["paginator"].count
+    everything = logged_in.get(url, {"f_open": "0"}).context["paginator"].count
     default = logged_in.get(url).context["paginator"].count
     assert everything == 4 and default == 2  # 全部 / 出荷の残っている物 (今月の 1 件と先月の 1 件)
-    for params, expected in (({"all": "1", "month": "2026-13"}, everything), ({"month": "abc"}, default)):
+    for params, expected in (({"f_open": "0", "f_ordered_from": "2026-13-01"}, everything), ({"month": "abc"}, default)):
         response = logged_in.get(url, params)
         assert response.status_code == 200, params
         assert response.context["paginator"].count == expected, params
 
 
-def test_month_param_reads_year_and_month_only():
-    from seizou.orders.views import _month
-
-    assert _month("2026-11") == (date(2026, 11, 1), date(2026, 12, 1))
-    assert _month("2026-12") == (date(2026, 12, 1), date(2027, 1, 1))
-    for value in (None, "", "abc", "2026", "2026-13", "2026-0", "0-5", "2026-11-05", "9999-12"):
-        assert _month(value) is None, value
+@pytest.mark.django_db
+def test_month_param_reads_year_and_month_only(monkeypatch):
+    # 受注の一覧の古い month の GET は無い (N126)。カードの link は今月の 1 日と末日を受注日の期間に書く (12 月と閏年の 2 月も)。
+    for today, first, last in (
+        (date(2026, 11, 15), "2026-11-01", "2026-11-30"),
+        (date(2026, 12, 31), "2026-12-01", "2026-12-31"),
+        (date(2028, 2, 10), "2028-02-01", "2028-02-29"),
+    ):
+        monkeypatch.setattr(views.timezone, "localdate", lambda today=today: today)
+        (stat,) = [s for s in views.dashboard_stats() if s["label"] == MONTH_LABEL]
+        assert stat["url"].endswith(f"?f_open=0&f_ordered_from={first}&f_ordered_to={last}"), today

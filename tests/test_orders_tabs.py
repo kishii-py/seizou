@@ -291,7 +291,7 @@ def _four_orders(user, customer, item):
 def test_order_list_status_badges(user, logged_in, customer, item):
     orders = _four_orders(user, customer, item)
 
-    body = logged_in.get(reverse("orders:order_list"), {"all": "1"}).content.decode()
+    body = logged_in.get(reverse("orders:order_list"), {"f_open": "0"}).content.decode()
 
     for status, order in orders.items():
         tr_html = _tr(body, order.pk)
@@ -306,7 +306,7 @@ def test_order_list_status_badges(user, logged_in, customer, item):
 def test_order_list_partial_has_badges(user, logged_in, customer, item):
     _four_orders(user, customer, item)
 
-    response = logged_in.get(reverse("orders:order_list"), {"all": "1"}, HTTP_HX_REQUEST="true")
+    response = logged_in.get(reverse("orders:order_list"), {"f_open": "0"}, HTTP_HX_REQUEST="true")
     partial = response.content.decode()
 
     assert "<html" not in partial
@@ -327,7 +327,7 @@ def test_orderline_list_rows_have_entrances(user, logged_in, customer, item):
         for href in _entrances(line):
             assert href in _tr(default, line.pk)
 
-    everything = logged_in.get(reverse("orders:orderline_list"), {"all": "1"}).content.decode()
+    everything = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"}).content.decode()
     for status in ("shipped", "cancelled"):
         line = orders[status].lines.get()
         tr_html = _tr(everything, line.pk)
@@ -364,7 +364,7 @@ def test_empty_search_uses_core_empty_state(user, logged_in, customer, item):
 def test_order_list_csv_unchanged(user, logged_in, customer, item):
     _four_orders(user, customer, item)
 
-    orders_csv = logged_in.get(reverse("orders:order_list"), {"all": "1", "format": "csv"}).content.decode()
+    orders_csv = logged_in.get(reverse("orders:order_list"), {"f_open": "0", "format": "csv"}).content.decode()
     header, *rows = orders_csv.lstrip("﻿").splitlines()
     assert header == "受注番号,得意先,受注日,得意先の注文番号,状態,入口"
     assert len(rows) == 4

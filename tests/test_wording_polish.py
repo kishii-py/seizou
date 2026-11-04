@@ -84,17 +84,20 @@ def test_partner_create_shows_rounding_help(client_logged_in):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("url_name", ["orders:order_list", "orders:orderline_list"])
-def test_order_lists_toggle_says_shipping_remaining(client_logged_in, url_name):
+@pytest.mark.parametrize(
+    ("url_name", "label"), [("orders:order_list", "出荷の残っている受注だけ"), ("orders:orderline_list", "出荷の残りがある物だけ")]
+)
+def test_order_lists_toggle_says_shipping_remaining(client_logged_in, url_name, label):
+    # 出し分けは絞り込みの枠の中のチェック 1 つ (決め 11-04 17:3x)。古い「すべて」の釦は無い。
     response = client_logged_in.get(reverse(url_name))
     assert response.status_code == 200
     body = text(response)
-    assert 'aria-current="true">出荷の残りがある物だけ</span>' in body
+    assert f'class="checkbox checkbox-sm" checked data-list-filter>{label}</label>' in body
+    assert 'aria-current="true">すべて</span>' not in body
     assert "残のある物だけ" not in body
 
-    everything = text(client_logged_in.get(reverse(url_name), {"all": "1"}))
-    assert ">出荷の残りがある物だけ</a>" in everything
-    assert 'aria-current="true">すべて</span>' in everything
+    everything = text(client_logged_in.get(reverse(url_name), {"f_open": "0"}))
+    assert f'class="checkbox checkbox-sm" data-list-filter>{label}</label>' in everything
     assert "残のある物だけ" not in everything
 
 
