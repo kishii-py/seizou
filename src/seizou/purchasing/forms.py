@@ -19,6 +19,7 @@ from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.widgets import RemoteSelect
+from seizou.masters.services import active_items, active_partners
 
 from . import services
 from .models import PurchaseOrder, PurchaseOrderLine
@@ -65,8 +66,8 @@ class PurchaseOrderLineForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        item_model = PurchaseOrderLine._meta.get_field("item").related_model
-        self.fields["item"].queryset = item_model._default_manager.all()
+        # 部品は使用中だけ (N135。発注は新しく作るだけの form)
+        self.fields["item"].queryset = active_items()
 
 
 PurchaseOrderLineFormSet = forms.formset_factory(PurchaseOrderLineForm, extra=1)
@@ -110,7 +111,7 @@ class PurchaseOrderForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         partner_model = PurchaseOrder._meta.get_field("partner").related_model
-        self.fields["partner"].queryset = partner_model._default_manager.filter(
+        self.fields["partner"].queryset = active_partners().filter(
             role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH)
         )
         # 注残の盤の「発注する」から来たとき (GET の from_line)、その明細を最初の行の初期値にする。

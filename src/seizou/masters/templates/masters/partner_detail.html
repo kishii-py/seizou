@@ -1,7 +1,8 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
 {% load seizou_outcome %}
-{# 取引先の詳細。取引先ごとの品番は自社品番 (小窓を開く link)・品名・取引先の品番・取引先の品名の表。受注履歴と発注履歴は番号 (詳細への link)・日付・状態の表 (本人の決め 11-03 09:2x「協力企業管理の発注履歴も 1 行追加」)。ほかは core の詳細のまま。 #}
+{% load seizou_icons %}
+{# 取引先の詳細。取引先ごとの品番は自社品番 (小窓を開く link)・品名・取引先の品番・取引先の品名の表。受注履歴と発注履歴は番号 (詳細への link)・日付・状態の表 (本人の決め 11-03 09:2x「協力企業管理の発注履歴も 1 行追加」)。使用停止の取引先は、上に黄色の 1 行。ほかは core の詳細のまま。 #}
 {% block tab_rows %}{% if tab.related == "partner_items" %}
 <div class="overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm">
@@ -51,6 +52,8 @@
   </table>
 </div>
 {% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block content %}{{ block.super }}
+{% block content %}
+{% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の取引先です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div>{% endif %}
+{{ block.super }}
 {% reading_match customer=object as match %}{% if match %}<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="reading-match-title"><h2 id="reading-match-title" class="font-bold">注文書の読み取り</h2>{% include "core/_reading_match.html" with match=match label="読み取りから受注にした明細" %}</section>{% endif %}
 {% endblock %}

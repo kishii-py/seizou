@@ -1,9 +1,10 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# 部品の詳細。図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先ごとの品番のタブは、取引先・取引先の品番・取引先の品名の表 (小窓と同じ形)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
+{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先ごとの品番のタブは、取引先・取引先の品番・取引先の品名の表 (小窓と同じ形)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
 {% block actions %}{% if object.drawing %}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_drawing_viewer' object.pk %}">{% icon "image" "size-4" %}図面ビューア</a>{% endif %}{% endblock %}
 {% block content %}
+{% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div>{% endif %}
 {% if object.drawing_preview_error %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>{{ object.drawing_preview_error }}</span></div>{% endif %}
 {{ block.super }}
 {% endblock %}

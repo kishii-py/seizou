@@ -19,11 +19,9 @@ from seizou.core.conf import setting
 from seizou.core.forms import ServiceModelForm
 from seizou.core.views import widget_css
 from seizou.core.widgets import RemoteSelect
+from seizou.masters.services import active_items, active_partners
 
 from .models import Order, OrderLine
-
-# 品目の表は、明細の外部キーの先として引く (masters の models を import しない)。
-Item = OrderLine._meta.get_field("item").related_model
 
 #: hidden_fields に並んでも外さない欄
 KEPT_FIELDS = frozenset({"customer", "item", "qty", "unit_price", "order_date"})
@@ -72,7 +70,7 @@ class OrderLineForm(forms.Form):
     )
     item = forms.ModelChoiceField(
         label="部品",
-        queryset=Item.objects.all(),
+        queryset=None,
         widget=RemoteSelect("masters:item_select"),
         empty_label=EMPTY_LABEL,
     )
@@ -101,6 +99,8 @@ class OrderLineForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.order = order
         self.hide_money = hide_money
+        # 部品は使用中だけ。今ある明細の部品は使用停止でも残す (受注の直しを止めない。N135)。
+        self.fields["item"].queryset = active_items(keep=self.initial.get("item"))
         if order is not None:
             # 指せるのはこの受注の明細だけ (ほかの受注の明細の番号が来たら欄の誤り)。
             self.fields["order_line"].queryset = OrderLine.objects.filter(order=order)
@@ -153,6 +153,8 @@ class OrderForm(ServiceModelForm):
         super().__init__(data, files, *args, instance=instance, **kwargs)
         self.creating = instance is None
         self.fields["customer"].empty_label = EMPTY_LABEL
+        # 得意先は使用中だけ。直す受注の今の得意先は使用停止でも残す (N135)。
+        self.fields["customer"].queryset = active_partners(keep=None if self.creating else instance.customer_id)
         if self.creating:
             # create_order に note の引数が無いので、入れる画面に備考の欄を置かない。
             self.fields.pop("note")

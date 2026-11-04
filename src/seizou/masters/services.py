@@ -23,7 +23,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidO
 
 from django.core.files.base import ContentFile, File
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
@@ -36,7 +36,7 @@ from .models import Process
 from .models import Holiday
 
 _ITEM_KEYS = frozenset(
-    {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"}
+    {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note", "active"}
 )
 _PARTNER_KEYS = frozenset(
     {
@@ -50,6 +50,7 @@ _PARTNER_KEYS = frozenset(
         "rounding",
         "tax_mode",
         "note",
+        "active",
     }
 )
 _PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan"})
@@ -493,22 +494,46 @@ def _page_number(page):
     return max(number, 1)
 
 
+def _active(model, keep):
+    keep = getattr(keep, "pk", keep)
+    condition = Q(active=True)
+    if keep not in (None, ""):
+        condition |= Q(pk=keep)
+    return model.objects.filter(condition)
+
+
+def active_items(*, keep=None):
+    """使用中の部品 (候補の母集団。読むだけ。N135)。
+
+    keep (部品か pk) は使用停止でも残す。今ある受注を直す画面が、今の明細の部品を候補に残すため (直しを止めない)。
+    """
+    return _active(Item, keep)
+
+
+def active_partners(*, keep=None):
+    """使用中の取引先 (候補の母集団。読むだけ。N135)。keep は active_items と同じ (直す受注の今の得意先を残す)。
+
+    取引先の種類の絞り (得意先だけ・協力企業だけ) は呼ぶ側が filter で足す。
+    """
+    return _active(Partner, keep)
+
+
 def candidates(kind, query, page, *, per_page=30):
     """選ぶ欄の候補を 1 ページ返す (05 の 2 節)。
 
     kind は "item" (表示の字は「品番 品名」) か "partner" (「コード 名前」)。
-    表示の字と query を畳み、query を空白で切った語の全部を含む行を出す。空の query は全件。
+    表示の字と query を畳み、query を空白で切った語の全部を含む行を出す。空の query は使用中の全件 (使用停止は出さない。N135)。
     page が整数に読めなければ 1。母集団は数千件の前提で、全件を読んでから Python で絞る。
     """
     if kind == "item":
         rows = [
             (pk, f"{part_no} {name}")
-            for pk, part_no, name in Item.objects.values_list("pk", "part_no", "name")
+            for pk, part_no, name in active_items().values_list("pk", "part_no", "name")
         ]
     elif kind == "partner":
         rows = [
             (pk, f"{code} {name}")
-            for pk, code, name in Partner.objects.values_list("pk", "code", "name")
+            for pk, code, name in active_partners().values_list("pk", "code", "name")
         ]
     else:
         raise ValueError(f"候補の種類 {kind!r} は使えません。item か partner にしてください。")
