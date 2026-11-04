@@ -152,6 +152,8 @@ class CsvImportForm(forms.Form):
     sample_url_name = ""
     #: 列の名前 → 字を読む関数 (field, 字, CSV にある列の名前の集合) → {列の名前: 値}。無い列は csvio.to_value。
     cell_readers = {}
+    #: 読まない見出し (見出しの対応に入れず、値も読まない)。子が足す (一覧の読むだけの列)
+    skip_headers = csvio.SKIP_HEADERS
     #: 読まない列の名前 (値があっても入れず、字の誤りも見ない)。子の __init__ が決める (金額の閲覧の無い人の標準単価)
     unread_fields = ()
 
@@ -190,7 +192,7 @@ class CsvImportForm(forms.Form):
         else:
             try:
                 _headers, columns, ext_columns, table = csvio.read_table(
-                    text, self.model, required=self.required_headers
+                    text, self.model, required=self.required_headers, skip=self.skip_headers
                 )
             except ValueError as exc:
                 errors.append((None, "", str(exc)))
@@ -278,6 +280,9 @@ class PartnerCsvImportForm(CsvImportForm):
     list_url_name = "masters:partner_list"
     sample_url_name = "masters:partner_import_sample"
     cell_readers = {"closing_day": read_closing_day, "payment_day": read_payment_day}
+    #: 取引先の一覧の読むだけの列「注文の入口」(一覧の CSV の書き出しに出る。core の dashboard.annotate_order_inlet の列) は読まない。
+    #: 一覧で落とした CSV をそのまま入れ直せるように。
+    skip_headers = (*csvio.SKIP_HEADERS, "注文の入口")
 
 
 # ---------------------------------------------------------------- 図面を版に戻す (第 3 波)

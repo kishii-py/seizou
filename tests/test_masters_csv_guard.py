@@ -8,8 +8,9 @@ from django.contrib.messages import get_messages
 
 from seizou.core import fields as company_fields
 from seizou.masters import services
+from seizou.masters.forms import ItemCsvImportForm, PartnerCsvImportForm
 from seizou.masters.models import Item
-from tests.test_masters_csv_import import csv_bytes, post_csv
+from tests.test_masters_csv_import import csv_bytes, make_form, post_csv
 
 NO_MONEY = {"department": "off", "write": "off", "money": "on"}
 WITH_MONEY = {"department": "off", "write": "off", "money": "off"}
@@ -68,3 +69,28 @@ def test_item_import_with_money_changes_standard_price(settings, client_logged_i
     assert Item.objects.get(part_no="P-1001").standard_price == Decimal("9999.00")
     notes = saved_messages(response)
     assert notes and not any(SKIPPED in note for note in notes), notes
+
+
+# ---------------------------------------------------------------- 1a. 取引先の CSV が読むだけの列「注文の入口」を読まない
+
+
+@pytest.mark.django_db
+def test_partner_import_skips_order_inlet_column(user, no_registration):
+    services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    form = make_form(
+        PartnerCsvImportForm,
+        csv_bytes(
+            "取引先コード,名前,取引先の種類,注文の入口",
+            "C001,作り物の得意先,得意先,seizou で直接",
+            "C002,作り物の商会,得意先,どれでもない字",
+        ),
+    )
+
+    assert form.is_valid(), form.import_errors or form.errors
+    assert services.import_partners(**form.service_kwargs(), user=user) == {"入れた": 1, "更新した": 1}
+    assert "注文の入口" not in form.header_hint
+
+    item_form = make_form(ItemCsvImportForm, csv_bytes("自社品番,品名,注文の入口", "P-1001,作り物の軸,手入力"))
+
+    assert not item_form.is_valid()
+    assert any("注文の入口" in reason for _line, _header, reason in item_form.import_errors), item_form.import_errors
