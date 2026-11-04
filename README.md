@@ -25,7 +25,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 
 会期中に作った量 (毎朝更新する。元は `docs/nights/`・pytest・画面の目録・`src/seizou/parts.py`・RULES.md・git の履歴):
 
-- 無人の仕事の回数: 113 本 (11-04 の main 4a0a253 で、`docs/nights/` の仕事ごとのファイルを数えた。昼に別の PC で無人で動いた分を含む)
+- 無人の仕事の回数: 103 本 (11-04 の main 4a0a253 で、`docs/nights/<日付>/` の仕事ごとの記録のファイルを数えた。昼に別の PC で無人で動いた分を含む)
 - commit の数: 888 (11-04 の main 4a0a253。うち Claude との共著の印が付いた物 874)
 - テストの数: 2,478 本 (11-04 の main 4a0a253 の `uv run pytest`。通過 2,439、普段は skip の E2E 39)
 - 画面の数: 116 (11-04 の main 4a0a253。土台を継承した画面の目録 `seizou_screens` の画面)
