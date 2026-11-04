@@ -89,7 +89,9 @@ def _display(key: str, value) -> str:
         return "・".join(str(v) for v in value) if value else "なし"
     if isinstance(value, dict):
         # 辞書の設定 (例: 権限の判定 access_control = {"department": "log", ...})。中の値は同じ鍵の表で日本語にする。
-        return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, v)}" for k, v in value.items()) if value else "なし"
+        # 並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、保存した並びに頼らない)。知らない鍵はその後ろ。
+        keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
+        return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys) if value else "なし"
     if value in words:
         return words[value]
     return str(value)
