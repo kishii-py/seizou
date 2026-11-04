@@ -171,6 +171,8 @@ def cancel_delivery_note(note, user):
                 )
         locked.status = DeliveryNote.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
         return locked
 
 

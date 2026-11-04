@@ -18,10 +18,13 @@ from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
+from seizou.shipping import services as shipping_services
+from seizou.shipping.models import DeliveryNote
 from seizou.workorders import services as workorders_services
 from seizou.workorders.models import WorkOrder
 
 ORDER_DATE = date(2026, 11, 2)
+SHIPPED_AT = date(2026, 11, 5)
 CANCELLED = [("success", "取り消しました。")]
 
 
@@ -77,3 +80,20 @@ def test_workorder_cancel_says_cancelled(logged_in, user, order):
     assert _messages(response) == CANCELLED
     workorder.refresh_from_db()
     assert workorder.status == WorkOrder.STATUS_CANCELLED
+
+
+@pytest.fixture
+def note(user, order):
+    """受注の 4 を出荷し、納品書にまとめた物。"""
+    shipment = shipping_services.ship(order.lines.get(), Decimal("4"), SHIPPED_AT, user)
+    return shipping_services.create_delivery_note(order.customer, [shipment], user)
+
+
+def test_delivery_note_cancel_says_cancelled(logged_in, note):
+    response = logged_in.post(reverse("shipping:deliverynote_cancel", args=[note.pk]), {})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("shipping:deliverynote_detail", args=[note.pk])
+    assert _messages(response) == CANCELLED
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_CANCELLED
