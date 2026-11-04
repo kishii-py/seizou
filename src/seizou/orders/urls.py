@@ -6,8 +6,9 @@ from . import views
 
 app_name = "orders"
 
-#: 左のメニューに並べる入口 (core の context processor が読む)。注文残の一覧へは受注の一覧から移る。
+#: 左のメニューに並べる入口 (core の context processor が読む)。受注管理の先頭に注文残の盤 (決め 11-04 17:4x)。
 MENU = [
+    ("注文残", "orders:orderline_list"),
     ("受注", "orders:order_list"),
 ]
 
