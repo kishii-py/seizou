@@ -151,7 +151,7 @@ def test_cancelled_and_finished_rows_have_no_pick_box(user, logged_in, customer,
     done = _line(user, customer, item, qty="2")
     shipping_services.ship(done, Decimal("2"), ORDER_DATE, user)
 
-    body = logged_in.get(reverse("orders:orderline_list"), {"all": "1"}).content.decode()
+    body = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"}).content.decode()  # N126 で「すべて」は印 f_open=0
 
     for line in (cancelled, done):
         tr_html = _tr(body, line.pk)
