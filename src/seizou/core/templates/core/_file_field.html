@@ -1,0 +1,15 @@
+{% load seizou_icons %}
+{# ファイルの欄 (決め 11-04 14:4x)。破線の枠の中に <input type=file> を 1 つ置き、枠へドラッグしても入る (core/static/js/seizou-file-drop.js)。 #}
+{# 渡し方: 入力の土台 (core/form.html) は loop の field をそのまま {{ field }} で出す (name・id・accept・multiple と、編集の画面の「現在」の link と「クリア」は widget のまま)。 #}
+{# form の外の欄 (manuals/_images.html) は input_name・input_id・input_accept・input_label を渡し、ここで <input> を描く。 #}
+{# class は今ある物だけ (R19)。ドラッグの間は JS が枠に data-tone="primary" を付ける (data-[tone=primary]:bg-primary/15)。 #}
+<div class="min-w-0 flex-1" data-file-field>
+  <div class="cursor-pointer rounded-lg border-2 border-dashed border-base-300 bg-base-200 p-4 hover:border-primary data-[tone=primary]:bg-primary/15" data-file-drop>
+    {% if input_name %}<input type="file" name="{{ input_name }}" class="file-input w-full" id="{{ input_id }}" accept="{{ input_accept }}" aria-label="{{ input_label }}">{% else %}{{ field }}{% endif %}
+    <p class="mt-2 flex items-center gap-2 text-xs text-base-content/70">{% icon "paperclip" "size-4" %}ファイルを選ぶ か、ここへドラッグ</p>
+  </div>
+  {# 選んだファイルの一覧。input の change のたびに JS が template の行を写して名前と大きさを入れ、選んでいなければ hidden にする。 #}
+  <ul class="mt-2 divide-y divide-base-200" data-file-drop-list hidden></ul>
+  {# 絵 (PNG・JPEG・WebP・GIF) は行の頭の img にサムネを出す (JS が URL.createObjectURL の URL を入れて hidden を外す)。 #}
+  <template data-file-drop-item><li class="flex items-center gap-4 py-2"><img class="size-16 shrink-0 rounded-lg border border-base-300 bg-base-100 object-contain" alt="" hidden data-file-drop-thumb><span class="min-w-0 flex-1 truncate font-medium" data-file-drop-name></span><span class="shrink-0 text-xs text-base-content/50 tabular-nums" data-file-drop-size></span></li></template>
+</div>
