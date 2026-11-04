@@ -1,0 +1,85 @@
+{% load seizou_icons seizou_tags workorders_plan %}
+{# 計画の詳細の小窓 (決め 11-04 14:5x)。生産計画の盤の棒と未計画のカードを押すと開く。枠 (dialog) は base.html の 1 か所。見るだけ (置き直しは盤のドラッグ)。 #}
+{# 中身は workorders_plan の plan_detail が plans.plan_detail で作る (小窓の view は土台のまま。R15)。形は core/_modal.html にそろえる (題・項目・「閉じる」・「詳細を見る」)。 #}
+{% plan_detail object as plan %}
+<div class="flex items-start justify-between gap-4">
+  <h3 class="min-w-0 truncate text-lg font-bold">計画の詳細</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">指示書番号</dt>
+    <dd class="min-w-0 break-words"><a class="link link-hover font-mono" href="{% url 'workorders:workorder_detail' plan.workorder.pk %}">{{ plan.workorder.wo_no }}</a></dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">状態</dt>
+    <dd class="min-w-0 break-words">{{ plan.state_label }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">部品</dt>
+    <dd class="min-w-0 break-words"><a class="link link-hover" href="{% url 'masters:item_detail' plan.item.pk %}"><span class="font-mono">{{ plan.item.part_no }}</span> {{ plan.item.name }}</a></dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">受注の明細</dt>
+    <dd class="min-w-0 break-words"><a class="link link-hover font-mono" href="{% url 'orders:order_detail' plan.order.pk %}">{{ plan.order.order_no }}</a> {{ plan.line.line_no }} 行目・{{ plan.customer.name }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">数量</dt>
+    <dd class="min-w-0 break-words">{{ plan.workorder.qty|comma }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">納期</dt>
+    <dd class="min-w-0 break-words">{% if plan.line.due_date %}{{ plan.line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+  </div>
+</dl>
+<p class="mt-4 text-xs font-medium text-base-content/50">工程の並び</p>
+<table class="table table-sm mt-2">
+  <thead><tr><th class="w-12">順</th><th>工程</th><th>開始 → 終了</th></tr></thead>
+  <tbody>
+    {% for row in plan.steps %}
+    {# 押した棒の工程を太字にする (aria-current で読み上げにも伝える)。 #}
+    <tr{% if row.current %} class="font-bold" aria-current="step"{% endif %}><td class="font-mono">{{ row.step.seq }}</td><td>{{ row.step.process.name }}</td><td>{% if row.step.planned_start %}{{ row.step.planned_start|date:"n/j" }} → {{ row.step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="mt-4 flex flex-wrap gap-2">
+  <a class="btn btn-outline btn-sm border-base-300" href="{% url 'workorders:workorder_tag' plan.workorder.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a>
+  <a class="btn btn-outline btn-sm border-base-300" href="{% url 'workorders:workorder_tag_pdf' plan.workorder.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+</div>
+{# 在庫の見込みの図 (今日から 8 週)。数と座標は workorders_plan の plan_projection が plans.item_projection で作る (在庫の部品が無ければ出さない)。 #}
+{# 小窓の幅に合わせた小さな SVG。色は theme の class だけ。0 より大きい棒は主色、0 より下の棒 (足りない数) は fill-current と text-error で赤。系列ごとに for を分ける (class を組み立てない)。 #}
+{% plan_projection plan.item as outlook %}
+{% if outlook %}
+<section class="mt-4" aria-label="在庫の見込み">
+  <p class="text-xs font-medium text-base-content/50">在庫の見込み (今日から 8 週)</p>
+  <ul class="mt-2 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+    <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>見込みの在庫</li>
+    {# 赤の印は図の棒と同じ fill-current と text-error (app.css に bg-error が無いので小さな SVG で描く)。 #}
+    <li class="flex items-center gap-2"><svg class="size-3 fill-current text-error" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2"></rect></svg>足りない数</li>
+  </ul>
+  <svg id="plan-stock-chart" class="mt-2 block h-auto w-full" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
+    <title>在庫の見込み (今日から 8 週)</title>
+    {% for tick in outlook.chart.ticks %}
+    <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+    <text class="fill-base-content/70 text-xs" x="{{ outlook.chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
+    {% endfor %}
+    {% for bar in outlook.chart.up %}
+    <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+    {% endfor %}
+    {% for bar in outlook.chart.down %}
+    <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+    {% endfor %}
+    {% for label in outlook.chart.labels %}
+    <text class="fill-base-content/70 text-xs" x="{{ label.x }}" y="{{ outlook.chart.label_y }}" text-anchor="start">{{ label.label }}</text>
+    {% endfor %}
+  </svg>
+  {% with projection=outlook.projection %}
+  <p class="mt-2 text-xs text-base-content/70">今の在庫 {% if projection.counted %}{{ projection.current|comma }}{% else %}— (数えていないので 0 から){% endif %}・指示書 {{ projection.workorders }} 件 (+{{ projection.workorder_qty|comma }})・受注 {{ projection.lines }} 件 (−{{ projection.line_qty|comma }})</p>
+  {% if projection.undated %}<p class="mt-1 text-xs text-base-content/50">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
+  {% endwith %}
+</section>
+{% endif %}
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  <a class="btn btn-primary" href="{% url 'workorders:workorder_detail' plan.workorder.pk %}">詳細を見る{% icon "chevron-right" "size-4" %}</a>
+</div>
