@@ -914,6 +914,8 @@ class BaseFormView(ScreenMixin, FormView):
             return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
         deleted = self.get_service().__name__.startswith(self.DELETE_SERVICE_PREFIXES)
         text = with_saved_note(self.delete_message if deleted else self.success_message, result)
+        if self.in_modal:
+            return self.saved_in_modal(text, "warning" if getattr(result, "saved_level", "") == "warning" else "success")
         # service の返す物の saved_level が "warning" なら黄 (確認してください) の知らせ。ほかは緑 (成功しました)。
         if getattr(result, "saved_level", "") == "warning":
             messages.warning(self.request, text)
@@ -925,6 +927,19 @@ class BaseFormView(ScreenMixin, FormView):
             response["HX-Redirect"] = url
             return response
         return HttpResponseRedirect(url)
+
+    def saved_in_modal(self, text: str, level: str) -> HttpResponse:
+        """小窓の形の保存の後: 本文の無い 204 に、HX-Trigger の seizou:saved (知らせの字 message と色 level) を付ける。
+
+        htmx は 204 では小窓の中身を差し替えず、form に seizou:saved を出す (body まで泡立つ)。messages には残さない
+        (残すと、次に画面の全体を開いたときに古い知らせが出る)。JSON は既定の ensure_ascii (日本語は \\u の形) のまま
+        (見出しの値は latin-1 の字だけ。日本語を生で入れると Django が =?utf-8?b?…?= の形に変え、htmx が読めない)。
+        """
+        import json
+
+        response = HttpResponse(status=204)
+        response["HX-Trigger"] = json.dumps({"seizou:saved": {"message": text, "level": level}})
+        return response
 
     def get_success_url_for(self, result) -> str:
         if getattr(self, "success_url", None):
