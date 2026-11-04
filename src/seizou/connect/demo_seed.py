@@ -266,8 +266,11 @@ def _load_acceptances(path, user):
 # --- A 社: 出荷の知らせと注文回答の写し ---
 
 
-def _apply_reply(order, word, user):
-    """注文回答の写し。「作成」なら「送った」に、「送った」なら「相手が受け入れた」に進める (数えない)。"""
+def _apply_reply(order, word, user, replied_at=None):
+    """注文回答の写し。「作成」なら「送った」に、「送った」なら「相手が受け入れた」に進める (数えない)。
+
+    replied_at は注文回答の日時の写し (無ければ services が今にする)。
+    """
     from seizou.purchasing import services as purchasing_services
     from seizou.purchasing.models import PurchaseOrder
 
@@ -278,7 +281,24 @@ def _apply_reply(order, word, user):
         purchasing_services.mark_sent(current, user)
         current = PurchaseOrder.objects.get(pk=order.pk)
     if current.status == PurchaseOrder.STATUS_SENT:
-        purchasing_services.mark_accepted(current, user)
+        purchasing_services.mark_accepted(current, user, replied_at=replied_at)
+
+
+def _reply_time(order, notice_days):
+    """注文回答の写しの日時。発注日の翌日の 9:00 (会社の時刻の帯)。出荷の知らせがそれより早ければ、
+    いちばん早い出荷日の 9:00 (発注日より前にはしない)。
+
+    種を読んだ時刻にすると、流れの枠で「相手が受け入れた」が出荷の知らせと受入の後に並ぶため (精査 A9 の 3 節の 2)。
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    day = order.order_date + datetime.timedelta(days=1)
+    if notice_days:
+        day = min(day, min(notice_days))
+    day = max(day, order.order_date)
+    return timezone.make_aware(datetime.datetime.combine(day, datetime.time(9, 0)))
 
 
 def _load_notice_order(entry, user):
@@ -299,9 +319,11 @@ def _load_notice_order(entry, user):
             f"発注が見つかりません (取引先コード {code}・備考 {note})。受入の種 (receipts.yaml) に発注を足してください。"
         )
     made = skipped = 0
+    notice_days = []
     for index, raw in enumerate(entry.get("出荷の知らせ") or [], start=1):
         _check_keys(raw, NOTICE_KEYS, f"{index} 件目の出荷の知らせ")
         number = _line_no(raw.get("行番号"), "出荷の知らせ")
+        notice_days.append(_date(raw.get("出荷日"), "出荷日"))
         line = order.lines.filter(line_no=number).first()
         if line is None:
             raise ValueError(f"出荷の知らせの行番号 {number} の明細がその発注にありません。")
@@ -325,7 +347,7 @@ def _load_notice_order(entry, user):
         made += 1
     word = _text(entry.get("注文回答"))
     if word:
-        _apply_reply(order, word, user)
+        _apply_reply(order, word, user, replied_at=_reply_time(order, notice_days))
     return made, skipped
 
 

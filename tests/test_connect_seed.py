@@ -200,6 +200,8 @@ def test_examples_load_edi_seeds_twice(company_id, no_registration, media, no_ht
     if company_id == "a_machining":
         _check_a_machining()
         replied_at = PurchaseOrder.objects.get().replied_at
+        # 注文回答の写しの日時は、種を読んだ時刻でなく、発注日 (10-28) の翌日の 9:00 (精査 A9 の 3 節の 2)
+        assert timezone.localtime(replied_at) == timezone.make_aware(datetime.datetime(2026, 10, 29, 9, 0))
     else:
         _check_b_plating()
     counts = _edi_counts()
