@@ -4,7 +4,7 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">{% icon "image" "size-5" %}画像</h2>
   <form class="mt-4 flex flex-wrap items-center gap-2" hx-post="{% url 'manuals:manualimage_upload' manual.pk %}" hx-encoding="multipart/form-data" hx-target="#manual-images" hx-swap="outerHTML">
     {% csrf_token %}
-    <input class="file-input w-full max-w-xs" type="file" name="file" accept=".png,.jpg,.jpeg,.webp" aria-label="追加する画像">
+    {% include "core/_file_field.html" with input_name="file" input_id="manual-image-file" input_accept=".png,.jpg,.jpeg,.webp" input_label="追加する画像" %}
     <button class="btn btn-outline border-base-300" type="submit">{% icon "plus" "size-4" %}画像を追加</button>
   </form>
   {% if error %}<p class="mt-2 flex items-center gap-2 text-error" role="alert">{% icon "alert" "size-4" %}{{ error }}</p>{% endif %}
