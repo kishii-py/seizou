@@ -98,7 +98,7 @@ class PlanPlaceForm(forms.Form):
 
 
 class WorkOrderCancelForm(forms.Form):
-    """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。"""
+    """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。保存の釦は「WO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
 
     reason = forms.CharField(
@@ -108,6 +108,11 @@ class WorkOrderCancelForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
         help_text="書くと、指示書の『取消の理由』に残ります。",
     )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.wo_no} を取り消す"
 
     def service_kwargs(self) -> dict:
         return {"reason": self.cleaned_data["reason"]}

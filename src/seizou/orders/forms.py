@@ -216,7 +216,7 @@ class OrderForm(ServiceModelForm):
 
 
 class OrderCancelForm(forms.Form):
-    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。"""
+    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存の釦は「SO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
 
     reason = forms.CharField(
@@ -226,6 +226,11 @@ class OrderCancelForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
         help_text="書くと、受注の備考の末尾に「取消の理由: …」として残ります。",
     )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.order_no} を取り消す"
 
     def service_kwargs(self) -> dict:
         return {"reason": self.cleaned_data["reason"]}

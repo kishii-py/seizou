@@ -6,12 +6,14 @@
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
 一括出荷の form (ShipmentBulkForm) は、注文残の盤で選んだ明細の行ごとに数量と「この行を出さない」の欄を持ち、
 service_kwargs() の lines (受注の明細と数量の組) を検査の層の一括出荷の R01 と services.ship_lines に渡す (N124)。
+出荷と一括出荷と納品書の取消の保存の釦の字は、押した結果の数と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
 """
 
 from django import forms
 from django.db.models import Q
 from django.utils import timezone
 
+from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_unit
 from seizou.core.widgets import RemoteSelect
 from seizou.orders.services import remaining_qty
 
@@ -30,12 +32,15 @@ SHIPPED_AT_ERRORS = {
 }
 
 
-class ShipmentForm(forms.Form):
+class ShipmentForm(SubmitLabelMixin, forms.Form):
     """出荷の入力。受注の明細の候補は候補の口 (orders:orderline_select) が残のある明細だけを返す。
 
     欄の値として受けるのは全部の明細 (取消の受注の明細も)。取消の受注の明細は services が R05 で断る
     (画面で先に断らない)。
+    保存の釦は「10 個を出荷する」(明細の決まっている形。決まっていなければ「出荷する」。N138)。
     """
+
+    submit_label_plain = "出荷する"
 
     order_line = forms.ModelChoiceField(
         label="受注の明細",
@@ -64,6 +69,20 @@ class ShipmentForm(forms.Form):
             self.fields["qty"].help_text = NO_LINE_HELP
         else:
             self.fields["qty"].help_text = f"残り {remaining_qty(line).normalize():f}"
+        # 保存の釦の字 (N138): 描いたときの明細の単位で「10 個を出荷する」。明細を選び直したら JS が「出荷する」に戻す (data-label-line)。
+        self.label_line = line
+        self.fields["qty"].widget.attrs["data-label-qty"] = True
+        if line is not None:
+            self.fields["order_line"].widget.attrs["data-label-line"] = str(line.pk)
+
+    def submit_label_templates(self) -> list:
+        if self.label_line is None:
+            return []
+        unit = line_unit(self.label_line)
+        return [f"{{qty}} {unit}を出荷する" if unit else "{qty} を出荷する"]
+
+    def submit_label_values(self) -> dict:
+        return {"qty": label_number(self.submit_value("qty"))}
 
     def service_kwargs(self) -> dict:
         data = self.cleaned_data
@@ -82,7 +101,7 @@ BULK_QTY_PREFIX = "qty_"
 BULK_SKIP_PREFIX = "skip_"
 
 
-class ShipmentBulkForm(forms.Form):
+class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
     """一括出荷の入力 (注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷する。N124)。
 
     明細の pk は line の繰り返し。開いたときは土台の get_initial が写した字か字の list (?line=<pk>&line=<pk>)、
@@ -91,7 +110,10 @@ class ShipmentBulkForm(forms.Form):
     開いたときは、取消の受注と残の無い明細を行に出さず、その数を dropped に持つ。送ったときは送られた行をそのまま
     services に渡す (開いた後に取消になった明細は services が R05 で断る。画面で先に断らない)。
     数を残と比べない (受注より多い出荷は、検査の層の一括出荷の R01 が会社の設定に従って見る)。
+    保存の釦は「2 行・合計 30 個を出荷する」(行の単位が違えば「2 行を出荷する」。N138)。
     """
+
+    submit_label_plain = "出荷する"
 
     shipped_at = forms.DateField(
         label="出荷日",
@@ -132,6 +154,9 @@ class ShipmentBulkForm(forms.Form):
                 label="数量", max_digits=12, decimal_places=2, initial=remaining
             )
             self.fields[f"{BULK_SKIP_PREFIX}{pk}"] = forms.BooleanField(label="この行を出さない", required=False)
+            # 保存の釦の字を JS が埋め直す印 (N138。同じ行の数量と「この行を出さない」)。
+            self.fields[f"{BULK_QTY_PREFIX}{pk}"].widget.attrs["data-label-qty"] = True
+            self.fields[f"{BULK_SKIP_PREFIX}{pk}"].widget.attrs["data-label-skip"] = True
             self.rows.append(
                 {
                     "line": line,
@@ -149,6 +174,26 @@ class ShipmentBulkForm(forms.Form):
             for field in self.visible_fields()
             if not field.name.startswith((BULK_QTY_PREFIX, BULK_SKIP_PREFIX))
         ]
+
+    def submit_label_templates(self) -> list:
+        if not self.rows:
+            return []
+        units = {line_unit(row["line"]) for row in self.rows}
+        if len(units) == 1 and "" not in units:
+            return [f"{{rows}} 行・合計 {{qty}} {units.pop()}を出荷する", "{rows} 行を出荷する"]
+        return ["{rows} 行を出荷する"]
+
+    def submit_label_values(self) -> dict:
+        rows, total = 0, 0
+        for row in self.rows:
+            pk = row["line"].pk
+            if self.submit_value(f"{BULK_SKIP_PREFIX}{pk}"):
+                continue
+            qty = label_decimal(self.submit_value(f"{BULK_QTY_PREFIX}{pk}"))
+            if qty is None:
+                return {}
+            rows, total = rows + 1, total + qty
+        return {"rows": str(rows), "qty": label_number(total)} if rows else {}
 
     def _picked(self, cleaned):
         return [row for row in self.rows if not cleaned.get(f"{BULK_SKIP_PREFIX}{row['line'].pk}")]
@@ -230,8 +275,13 @@ class ShipmentUpdateForm(forms.Form):
 
 
 class DeliveryNoteCancelForm(forms.Form):
-    """納品書を取り消す form。欄は無い。"""
+    """納品書を取り消す form。欄は無い。保存の釦は「DN-000001 を取り消す」(土台が対象を instance= で渡す。N138)。"""
     submit_label = "取り消す"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.note_no} を取り消す"
 
     def service_kwargs(self) -> dict:
         return {}

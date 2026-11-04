@@ -6,13 +6,21 @@ form が見るのは欄の型と必須だけ。services の決まりの違反は
 整数の欄は、表の検査 (MinValueValidator・MaxValueValidator) から下限と上限を取り、欄の min・max と
 form の検査にそろえる (例: 締日は 1〜31。誤りの文は「1 以上」「31 以下」)。
 SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。値を確かめて整えるのは core の services。
+SubmitLabelMixin: 保存の釦の字に、押した結果の対象と数と金額を書く口 (N138)。字を組むのは部品の form、
+入力のたびに埋め直すのは static の js/seizou-submit-label.js (同じ型を同じ決まりで埋める)。
 """
+
+import json
+import re
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django import forms
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 
 from seizou.core import conf
 from seizou.core.models import Company
+from seizou.core.templatetags.seizou_tags import comma
+from seizou.core.widgets import normalize_number
 
 #: 選ぶ欄の空の選択肢の字 (core の apps.ready が Django の既定の字をこれに置き換える)
 EMPTY_LABEL = "選んでください"
@@ -159,3 +167,76 @@ class CompanyForm(ServiceModelForm):
             "phone": "例: 00-0000-0000",
             "bank_account": "請求書だけに出す。銀行・支店・口座の種類・番号・名義を 1 行で (例: 作り物銀行 見本支店 普通 0000000 名義 ミホン)。",
         }
+
+
+#: 保存の釦の字の型の置き場 (行の数・数量の合計・金額の合計。js/seizou-submit-label.js と同じ 3 つ)
+SUBMIT_LABEL_SLOT = re.compile(r"\{(rows|qty|amount)\}")
+
+
+def label_decimal(value):
+    """釦の字に使う数の値。全角と桁の区切りをそろえて Decimal にする。空・数でない字・bool は None。"""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = Decimal(normalize_number(str(value)))
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
+
+
+def label_number(value):
+    """釦の字に書く数。小数 2 桁で四捨五入し、3 桁ごとに区切る (45000.00 → 45,000)。数でなければ None。"""
+    number = label_decimal(value)
+    if number is None:
+        return None
+    try:
+        return comma(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    except InvalidOperation:  # 桁が多すぎる数 (例 1e999999)
+        return None
+
+
+def line_unit(line) -> str:
+    """明細の単位 (明細の単位が空なら部品の単位)。どちらも空なら空の字。"""
+    return getattr(line, "unit", "") or getattr(getattr(line, "item", None), "unit", "") or ""
+
+
+class SubmitLabelMixin:
+    """保存の釦の字に、押した結果の対象と数と金額を書く口 (N138。決め 11-04 23:0x「ボタンに金額を入れて、押す前の迷いを減らす」)。
+
+    - submit_label_plain: 数の分からないときの字 (例「出荷する」)。入力のカードの「必須」の案内もこの字を引く。
+    - submit_label_templates(): 字の型の並び。{rows} (行の数)・{qty} (数量の合計)・{amount} (金額の合計) の置き場を、
+      分かる値で全部埋められる最初の型を使う。どれも埋められなければ submit_label_plain。
+    - submit_label_values(): 型を埋める値の字 (分かる物だけ)。開いた form は初期値、送った form は通った値から組む。
+    - submit_label: 描くときの釦の字。submit_label_template: 釦の data-submit-label に置く型の並び (JSON)。
+      js/seizou-submit-label.js が入力のたびに同じ型を埋め直す (JS が無ければ描いたときの字のまま)。型が無ければ空。
+    """
+
+    submit_label_plain = "保存"
+
+    def submit_label_templates(self) -> list:
+        return []
+
+    def submit_label_values(self) -> dict:
+        return {}
+
+    def submit_value(self, name):
+        """欄の値。送った form は通った値 (cleaned_data) だけ、開いた form は初期値 (GET の字を含む)。"""
+        if self.is_bound:
+            return getattr(self, "cleaned_data", {}).get(name)
+        value = self.initial.get(name)
+        if value is None and name in self.fields:
+            value = self.fields[name].initial
+        return value() if callable(value) else value
+
+    @property
+    def submit_label(self) -> str:
+        values = {key: value for key, value in self.submit_label_values().items() if value}
+        for template in self.submit_label_templates():
+            if all(name in values for name in SUBMIT_LABEL_SLOT.findall(template)):
+                return SUBMIT_LABEL_SLOT.sub(lambda match: values[match.group(1)], template)
+        return self.submit_label_plain
+
+    @property
+    def submit_label_template(self) -> str:
+        templates = self.submit_label_templates()
+        return json.dumps(templates, ensure_ascii=False) if templates else ""
