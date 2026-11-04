@@ -1,16 +1,43 @@
 {# Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。form[data-enter-guard] を持つ画面が include する。 #}
+{# 決め 11-04 22:0x (入力の磨き): Enter は止めたうえで次の欄へ移し、Ctrl+Enter (Mac は ⌘+Enter も) で保存のボタンを押す。 #}
+{# document に 1 回だけ付ける (小窓の入力を開くたびに htmx がこの script をもう一度動かすので、印で 2 回目を飛ばす)。 #}
 <script>
 (function () {
-  // Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。字の欄と選ぶ欄の Enter だけを止める。
-  // 文の欄 (textarea) の改行、ボタンの押下と Enter、日本語の変換の確定 (isComposing) は止めない。
-  var form = document.querySelector("form[data-enter-guard]");
-  if (!form) return;
-  form.addEventListener("keydown", function (event) {
-    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+  // Enter で保存まで進めない (05 の決め「Enter で登録しない。登録はボタン」)。字の欄と選ぶ欄の Enter は止めて、次の欄へ移す。
+  // 次の欄 = 同じ form の見える欄 (input・select・textarea) の並びの次。最後の欄では移らない。
+  // 文の欄 (TEXTAREA) の改行、ボタンの押下と Enter、日本語の変換の確定 (isComposing)、部品が先に使った Enter は止めない。
+  // 検索つきの選択 (Tom Select の包みの中) の Enter は止めるだけで移さない (候補を選ぶのは部品の仕事)。
+  // Ctrl+Enter と Cmd+Enter は、同じ form の保存のボタン (type="submit" の最後の物) を押す。
+  if (window.seizouEnterGuard) return;
+  window.seizouEnterGuard = true;
+  var NOT_FIELD = /^(submit|button|reset|image)$/i;
+  // 見える欄だけ (type が隠しの欄と、包みに隠された元の select は箱を持たないか tabIndex が -1)。
+  function fieldsOf(form) {
+    return Array.prototype.filter.call(form.querySelectorAll("input, select, textarea"), function (field) {
+      if (field.disabled || field.tabIndex < 0 || NOT_FIELD.test(field.type)) return false;
+      return field.getClientRects().length > 0;
+    });
+  }
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     var target = event.target;
+    var form = target.closest ? target.closest("form[data-enter-guard]") : null;
+    if (!form) return;
+    if (event.ctrlKey || event.metaKey) {
+      var buttons = form.querySelectorAll('button[type="submit"]');
+      var save = buttons[buttons.length - 1];
+      event.preventDefault();
+      if (save && !save.disabled) save.click();
+      return;
+    }
     if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
-    if (target.tagName === "INPUT" && /^(submit|button|reset|image)$/i.test(target.type)) return;
-    if (target.tagName === "INPUT" || target.tagName === "SELECT") event.preventDefault();
+    if (target.tagName === "INPUT" && NOT_FIELD.test(target.type)) return;
+    if (target.tagName !== "INPUT" && target.tagName !== "SELECT") return;
+    event.preventDefault();
+    if (target.closest(".ts-wrapper")) return;
+    var fields = fieldsOf(form);
+    var index = fields.indexOf(target);
+    if (index >= 0 && index + 1 < fields.length) fields[index + 1].focus();
   });
 })();
 </script>
