@@ -57,21 +57,19 @@ class WorkOrderListView(BaseListView):
         {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process"},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+        {"name": "unaccepted", "label": "未着手だけ", "kind": "flag", "when": worklist.unaccepted_only},
+        {"name": "today", "label": "今日の計画だけ", "kind": "flag", "when": worklist.planned_today},
     )
     ordering = ("-issued_on", "-id")
-    template_name = "workorders/workorder_list.html"
 
     def get_queryset(self):
-        # 古い GET の process (製造向けの欄) は絞りの f_process と同じ意味。f_process が読めたら古い方は読まない (両方あれば新しい方)。
-        # 工程は指示書から見て逆向きの FK なので、f_process で絞ったときは同じ指示書が重ならないように distinct で外す。
+        # 工程 (f_process) と今日の計画 (f_today) は、指示書から見て逆向きの FK (工程の行) で絞る。
+        # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。N122)。
         params = self.request.GET
-        old = worklist.list_filters(params)
-        new_process = any(spec.values(params) for spec in self.filter_specs() if spec.name == "process")
-        if new_process:
-            old["process"] = None
+        specs = {spec.name: spec for spec in self.filter_specs()}
+        joined = bool(specs["process"].values(params)) or specs["today"].is_on(params)
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
-        workorders = worklist.apply_list_filters(workorders, old)
-        return workorders.distinct() if new_process else workorders
+        return workorders.distinct() if joined else workorders
 
 
 class WorkOrderDetailView(BaseDetailView):
