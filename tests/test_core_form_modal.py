@@ -179,3 +179,13 @@ def test_list_and_base_have_the_hooks(logged_in):
         assert word in script
     for word in (".classList", ".className", ".innerHTML", "insertAdjacentHTML", "outerHTML"):
         assert word not in script
+
+
+def test_modal_box_width_rules_are_in_the_css_source():
+    """小窓の箱の幅の決まり (既定 48rem・入力 64rem・少ない中身 28rem・上下に 2rem の隙間) は scripts/css/input.css に 1 か所 (本人 11-04 22:2x)。"""
+    from pathlib import Path
+
+    css = Path(__file__).resolve().parents[1].joinpath("scripts", "css", "input.css").read_text(encoding="utf-8")
+    assert "#seizou-modal-box {\n  max-width: min(48rem, calc(100vw - 2rem));\n  max-height: calc(100vh - 4rem);\n}" in css
+    assert "#seizou-modal-box:has(> .seizou-modal-wide) {\n  max-width: min(64rem, calc(100vw - 2rem));\n}" in css
+    assert "#seizou-modal-box:has(> .seizou-modal-narrow) {\n  max-width: min(28rem, calc(100vw - 2rem));\n}" in css
