@@ -83,7 +83,7 @@ def test_workorder_list_has_four_filters_and_process_lists_each_workorder_once(c
     # 名前の無い欄が出ない。製造向けの別の form は無い (N128 で絞り込みの枠の中へ移した)。
     assert 'for="list-f-"' not in body
     assert 'id="workorder-filter"' not in body
-    assert f'<option value="{cut.pk}">{cut}</option>' in body
+    assert f'<option value="{cut.pk}">{cut.name}</option>' in body  # 工程の候補の字は名前だけ (N142)
     assert f'<option value="{item.pk}">{item}</option>' in body
 
     response = client_logged_in.get(url, {"f_process": str(cut.pk)})

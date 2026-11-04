@@ -29,6 +29,12 @@ from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
 
 
+def _process_choices():
+    """工程の絞りの候補。字は工程の名前だけ (工程コードを付けない)。並びは工程の ordering (並び順・工程コード)。"""
+    process = WorkOrderStep._meta.get_field("process").related_model
+    return [(row.pk, row.name) for row in process._default_manager.all()]
+
+
 class WorkOrderListView(BaseListView):
     """指示書の一覧。
 
@@ -54,7 +60,7 @@ class WorkOrderListView(BaseListView):
     search_fields = ("wo_no",)
     filters = (
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
-        {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process"},
+        {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
         {"name": "unaccepted", "label": "未着手だけ", "kind": "flag", "when": worklist.unaccepted_only},

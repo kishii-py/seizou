@@ -23,6 +23,7 @@ from django.urls import reverse
 from seizou.core import access
 from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.masters.services import active_partners
 
 from . import services
 from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentBulkForm, ShipmentForm, ShipmentUpdateForm
@@ -36,6 +37,13 @@ from .reports import (
 
 #: PDF を作れないときに印刷用の HTML の上に出す知らせ (05 の 6 節の文)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+
+def _customer_choices():
+    """出荷と納品書の一覧の得意先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (N135 の active_partners)。並びは取引先の ordering。"""
+    partner = DeliveryNote._meta.get_field("customer").related_model
+    rows = active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
+    return [(row.pk, str(row)) for row in rows]
 
 
 class ShipmentListView(BaseListView):
@@ -63,7 +71,7 @@ class ShipmentListView(BaseListView):
         "order_line__order__customer__name",
     )
     filters = (
-        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "order_line__order__customer"},
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "order_line__order__customer", "choices": _customer_choices},
         {"name": "shipped", "label": "出荷日", "kind": "date_range", "field": "shipped_at"},
     )
     ordering = ("-shipped_at", "-id")
@@ -150,7 +158,7 @@ class DeliveryNoteListView(BaseListView):
     columns = ("note_no", "customer", "issued_on", "status")
     search_fields = ("note_no", "customer__name")
     filters = (
-        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer", "choices": _customer_choices},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
     )

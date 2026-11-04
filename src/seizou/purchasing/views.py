@@ -7,6 +7,7 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from seizou.core.views import BaseSelectView
+from seizou.masters.services import active_partners
 
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
@@ -16,9 +17,9 @@ from .models import PurchaseOrderLine, Receipt
 
 
 def _subcontractor_choices():
-    """発注の一覧の取引先の絞りの候補 (取引先の種類が協力企業か両方。発注を入れる form の候補と同じ。名前の順)。"""
+    """発注の一覧の取引先の絞りの候補 (取引先の種類が協力企業か両方で、使用中の物。発注を入れる form の候補と同じ = N135。名前の順)。"""
     partner_model = PurchaseOrder._meta.get_field("partner").related_model
-    rows = partner_model._default_manager.filter(role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH))
+    rows = active_partners().filter(role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH))
     return [(row.pk, str(row)) for row in rows.order_by("name", "pk")]
 
 

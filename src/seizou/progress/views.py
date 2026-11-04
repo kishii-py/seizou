@@ -4,11 +4,17 @@
 通ってから services.record_progress を呼ぶ。
 """
 
-from seizou.core.views import BaseFormView, BaseListView
+from seizou.core.views import BaseFormView, BaseListView, field_at
 
 from . import services
 from .forms import ProgressRecordForm
 from .models import Progress
+
+
+def _process_choices():
+    """工程の絞りの候補。字は工程の名前だけ (工程コードを付けない)。並びは工程の ordering (並び順・工程コード)。"""
+    process = field_at(Progress, "workorder_step__process").related_model
+    return [(row.pk, row.name) for row in process._default_manager.all()]
 
 
 class ProgressBoardView(BaseListView):
@@ -39,7 +45,7 @@ class ProgressListView(BaseListView):
     search_fields = ("workorder_step__workorder__wo_no",)
     filters = (
         {"name": "recorded", "label": "期間", "kind": "date_range", "field": "recorded_at"},
-        {"name": "process", "label": "工程", "kind": "lookup", "field": "workorder_step__process"},
+        {"name": "process", "label": "工程", "kind": "lookup", "field": "workorder_step__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "workorder_step__workorder__order_line__item"},
         {"name": "user", "label": "入れた人", "kind": "lookup", "field": "recorded_by"},
     )

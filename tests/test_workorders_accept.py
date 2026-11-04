@@ -250,16 +250,16 @@ def test_list_filter_form(user, client_logged_in, customer, item, cut, bend):
     assert 'id="workorder-filter"' not in body
     assert '<select id="list-f-process" class="select select-sm mt-2 w-auto" name="f_process" data-list-filter>' in body
     assert '<option value="">すべて</option>' in body
-    assert f'<option value="{cut.pk}">{cut}</option>' in body
-    assert f'<option value="{bend.pk}">{bend}</option>' in body
-    assert body.index(f">{cut}<") < body.index(f">{bend}<")
+    assert f'<option value="{cut.pk}">{cut.name}</option>' in body  # 工程の候補の字は名前だけ (N142)
+    assert f'<option value="{bend.pk}">{bend.name}</option>' in body
+    assert body.index(f">{cut.name}<") < body.index(f">{bend.name}<")
     assert 'name="f_unaccepted" value="1" class="checkbox checkbox-sm" data-list-filter>未着手だけ</label>' in body
     assert 'name="f_today" value="1" class="checkbox checkbox-sm" data-list-filter>今日の計画だけ</label>' in body
     assert 'name="process"' not in body and 'name="unaccepted"' not in body and 'name="today"' not in body
     assert 'hx-include="#workorder-filter"' not in body
 
     chosen = client_logged_in.get(url, {"f_process": cut.pk, "f_unaccepted": "1"}).content.decode()
-    assert f'<option value="{cut.pk}" selected>{cut}</option>' in chosen
-    assert f'<option value="{bend.pk}">{bend}</option>' in chosen
+    assert f'<option value="{cut.pk}" selected>{cut.name}</option>' in chosen
+    assert f'<option value="{bend.pk}">{bend.name}</option>' in chosen
     assert 'name="f_unaccepted" value="1" class="checkbox checkbox-sm" checked data-list-filter>' in chosen
     assert 'name="f_today" value="1" class="checkbox checkbox-sm" data-list-filter>' in chosen

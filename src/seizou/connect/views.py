@@ -16,10 +16,18 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.masters.services import active_partners
 
 from . import services
 from .forms import AcceptForm, ConnectionForm, RejectForm
 from .models import Connection, Inbox
+
+
+def _sender_choices():
+    """InboxListView の取引先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (差出人を選ぶ欄と同じ種類。N135 の active_partners)。"""
+    partner = Inbox._meta.get_field("partner").related_model
+    rows = active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
+    return [(row.pk, str(row)) for row in rows]
 
 
 @csrf_exempt
@@ -50,7 +58,7 @@ class InboxListView(BaseListView):
     columns = ("received_at", "partner", "source", ("summary", "中身の要約"), "status")
     filters = (
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
-        {"name": "partner", "label": "取引先", "kind": "lookup", "field": "partner"},
+        {"name": "partner", "label": "取引先", "kind": "lookup", "field": "partner", "choices": _sender_choices},
         {"name": "received", "label": "受信日", "kind": "date_range", "field": "received_at"},
     )
     ordering = (
