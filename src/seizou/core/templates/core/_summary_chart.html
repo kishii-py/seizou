@@ -1,0 +1,15 @@
+{% load seizou_tags %}
+{# 集計の横棒の図 (inline SVG。JS を使わない)。数と座標は core/templatetags/seizou_charts.py の summary_chart が出し、ここは置くだけ。 #}
+{# 色と形の決まりはここ 1 か所: 棒は主色の 1 色、字は薄い小さな字、基線は枠の線の色 (ダッシュボードの図と同じ class)。値は棒の右の字と title で読む。 #}
+<div class="overflow-x-auto">
+  <svg id="{{ chart_id }}" class="block h-auto w-full min-w-120" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ title }}の図">
+    <title>{{ title }}</title>
+    <line class="stroke-base-300" x1="{{ chart.base_x }}" x2="{{ chart.base_x }}" y1="{{ chart.top }}" y2="{{ chart.bottom }}" vector-effect="non-scaling-stroke"></line>
+    {% for bar in chart.bars %}
+    <text class="fill-base-content/70 text-xs" x="{{ chart.label_x }}" y="{{ bar.y }}" text-anchor="end" dominant-baseline="middle">{{ bar.label }}</text>
+    {% if bar.d %}<path class="fill-primary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.full }} {% if money %}{{ bar.value|comma:0 }} 円{% else %}{{ bar.value|comma }}{% endif %}</title></path>{% endif %}
+    <text class="fill-base-content/70 text-xs" x="{{ bar.value_x }}" y="{{ bar.y }}" dominant-baseline="middle">{% if money %}{{ bar.value|comma:0 }} 円{% else %}{{ bar.value|comma }}{% endif %}</text>
+    {% endfor %}
+  </svg>
+  {% if chart.rest %}<p class="mt-2 text-xs text-base-content/50">ほか {{ chart.rest|comma }} 行は表で見られます。</p>{% endif %}
+</div>
