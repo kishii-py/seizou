@@ -10,6 +10,7 @@
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
+  line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (N124)。
 """
 
 from django import forms
@@ -86,6 +87,17 @@ def _order_line(raw):
     return line_model._default_manager.select_related("item").filter(pk=pk).first()
 
 
+def _order_lines(raw):
+    """GET の line (字か字の list。土台の get_initial が同じ鍵の繰り返しを list にする) から受注の明細を選んだ順に引く。読めない字は飛ばす。"""
+    values = raw if isinstance(raw, list) else ([] if raw is None else [raw])
+    lines = []
+    for value in values:
+        line = _order_line(value)
+        if line is not None and all(line.pk != picked.pk for picked in lines):
+            lines.append(line)
+    return lines
+
+
 class PurchaseOrderForm(forms.Form):
     """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。"""
 
@@ -103,15 +115,21 @@ class PurchaseOrderForm(forms.Form):
         )
         # 注残の盤の「発注する」から来たとき (GET の from_line)、その明細を最初の行の初期値にする。
         # 単価は入れない (協力企業の単価は受注の単価と別で、利用者が打つ)。無い pk・読めない字は初期値なし。
-        self.from_line = _order_line(self.initial.get("from_line"))
-        line_initial = None
-        if self.from_line is not None:
-            from seizou.orders.services import remaining_qty
+        # 盤の「選んだ行の操作」の「発注する」から来たとき (GET の line の繰り返し)、選んだ明細を順に埋める。
+        # 取消の受注と残の無い明細は飛ばす。from_line と同じ明細は 1 行にする (N124)。
+        from seizou.orders.services import remaining_qty
 
-            line = self.from_line
-            line_initial = [
-                {"item": line.item_id, "qty": remaining_qty(line), "unit": line.unit, "due_date": line.due_date}
-            ]
+        self.from_line = _order_line(self.initial.get("from_line"))
+        picked = [(self.from_line, remaining_qty(self.from_line))] if self.from_line is not None else []
+        for line in _order_lines(self.initial.get("line")):
+            if line.order.status == "cancelled" or any(line.pk == done.pk for done, _ in picked):
+                continue
+            rest = remaining_qty(line)
+            if rest > 0:
+                picked.append((line, rest))
+        line_initial = [
+            {"item": line.item_id, "qty": rest, "unit": line.unit, "due_date": line.due_date} for line, rest in picked
+        ] or None
         self.lines = PurchaseOrderLineFormSet(
             data=self.data if self.is_bound else None, initial=line_initial, prefix="lines"
         )
