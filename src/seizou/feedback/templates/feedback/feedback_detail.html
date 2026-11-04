@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load feedback_tags seizou_icons %}
 {# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
-{% block content %}{{ block.super }}
+{% block content %}{% feedback_fields fields as fields %}{{ block.super }}
 {% if object.fixed_at %}
 <section id="feedback-fixed" class="mt-6 rounded-xl border border-success bg-success/10 p-6 shadow-xs" aria-labelledby="feedback-fixed-title">
   <h2 id="feedback-fixed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "check" "size-5 text-success" %}直しました</h2>
