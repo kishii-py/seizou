@@ -1,15 +1,2 @@
 {% extends "core/list.html" %}
-{# 請求書の一覧: 土台の一覧に、すべて (既定) / 未入金だけ (?unpaid=1) の切り替えを足す。「未入金だけ」のときは検索とページ送りの htmx の要求にも unpaid=1 を付ける (hx-include)。 #}
-{% block content %}
-<div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="出す物">
-  {% if request.GET.unpaid == "1" %}
-  <a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}">すべて</a>
-  <span class="btn btn-sm btn-active pointer-events-none" aria-current="true">未入金だけ</span>
-  <input type="hidden" id="invoices-unpaid" name="unpaid" value="1">
-  {% else %}
-  <span class="btn btn-sm btn-active pointer-events-none" aria-current="true">すべて</span>
-  <a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}?unpaid=1">未入金だけ</a>
-  {% endif %}
-</div>
-{% if request.GET.unpaid == "1" %}<div hx-include="#invoices-unpaid">{{ block.super }}</div>{% else %}{{ block.super }}{% endif %}
-{% endblock %}
+{# 請求書の一覧: 土台の一覧のまま。「未入金だけ」は絞り込みの枠の中の印 (InvoiceListView.filters の unpaid。GET は f_unpaid=1。N127)。 #}
