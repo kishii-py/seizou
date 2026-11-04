@@ -6,7 +6,7 @@
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
 {# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
-  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter]">
+  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter], seizou:refresh from:body">
     {% if search_hint or filters %}
     <div class="rounded-lg bg-base-200 p-4" role="search">
       <div class="flex items-center justify-between gap-2">

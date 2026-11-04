@@ -53,3 +53,10 @@ body > .ts-dropdown .active {
 .seizou-changed {
   animation: seizou-changed 2s ease-out;
 }
+
+/* 入力の小窓 (core/_form_modal.html の根の箱 .seizou-modal-wide) は、小窓の箱 (base.html の #seizou-modal-box。max-w-lg = 32rem) を
+   入力の 2 列が並ぶ幅 (56rem。画面が狭ければ画面の幅から 2rem を引いた幅) まで広げる。箱の class は base.html の 1 か所のまま
+   (見るだけの小窓は今の幅)。中身の印で選ぶ (:has)。層の外の決まりなので、Tailwind の max-w-lg と daisyUI の modal-box より強い。 */
+#seizou-modal-box:has(> .seizou-modal-wide) {
+  max-width: min(56rem, calc(100vw - 2rem));
+}

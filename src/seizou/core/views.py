@@ -773,7 +773,15 @@ def related_tab(obj, label: str, related: str) -> dict:
 
 
 class BaseFormView(ScreenMixin, FormView):
-    """入力の土台。form の値が通ったら検査の層を通し、service を呼ぶ。土台が ModelForm の save を呼ぶことは無い。"""
+    """入力の土台。form の値が通ったら検査の層を通し、service を呼ぶ。土台が ModelForm の save を呼ぶことは無い。
+
+    小窓の形 (決め 11-04 17:5x〜18:0x。一覧の行の操作はページを移らず小窓で入力する): htmx の要求で見出し HX-Target が
+    seizou-modal-box (base.html の小窓の箱) のとき、同じ URL の入力を小窓の中身 (<app>/_form_modal.html か core/_form_modal.html)
+    で返す。誤り・赤の知らせ・黄の知らせと「このまま保存」(confirmed=1) は、同じ形のカードが小窓の中に描き直される。
+    保存したら移らず、本文の無い 204 に HX-Trigger の seizou:saved (知らせの字と色) を付けて返す (messages に残さない)。
+    seizou-modal.js が小窓を閉じ、右上の知らせを出し、一覧の行を今の絞りのまま取り直す。
+    それ以外の要求 (直の要求・htmx のほかの要求) は今までどおり画面の全体で、保存したら移る。
+    """
 
     model = None
     form_class = None
@@ -783,6 +791,8 @@ class BaseFormView(ScreenMixin, FormView):
     #: 削除の画面 (service の名前が DELETE_SERVICE_PREFIXES で始まる) の知らせ
     delete_message = "削除しました。"
     DELETE_SERVICE_PREFIXES = ("delete_", "remove_")
+    #: 小窓の形の印 (htmx の要求の見出し HX-Target の値 = base.html の小窓の箱の id)
+    MODAL_TARGET = "seizou-modal-box"
     object = None
 
     # --- 対象 (直すとき) ---
@@ -794,6 +804,26 @@ class BaseFormView(ScreenMixin, FormView):
             source = get_queryset() if get_queryset is not None and request.user.is_authenticated else self.model
             self.object = get_object_or_404(source, pk=kwargs["pk"])
         return super().dispatch(request, *args, **kwargs)
+
+    # --- 小窓の形 ---
+    @property
+    def in_modal(self) -> bool:
+        """小窓の形か。htmx の要求で、差し替える先 (HX-Target) が小窓の箱のときだけ (GET と POST の両方)。"""
+        headers = self.request.headers
+        return bool(headers.get("HX-Request")) and headers.get("HX-Target") == self.MODAL_TARGET
+
+    def get_template_names(self):
+        """小窓の形は <app>/_form_modal.html → core/_form_modal.html (部品が小窓の形だけ別に持てる口)。ほかは template_name。"""
+        if self.in_modal:
+            app = self.model._meta.app_label if self.model is not None else self.screen_app()
+            return [f"{app}/_form_modal.html", "core/_form_modal.html"]
+        return super().get_template_names()
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        # 同じ URL で小窓の中身と画面の全体を返すので、ブラウザの保存が取り違えないように見出しで分ける (一覧の HX-Request と同じ)。
+        patch_vary_headers(response, ("HX-Target",))
+        return response
 
     def get_initial(self):
         """form の初期値。class の initial の写しに、新規登録の画面の GET の値を足す。
@@ -884,6 +914,8 @@ class BaseFormView(ScreenMixin, FormView):
             return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
         deleted = self.get_service().__name__.startswith(self.DELETE_SERVICE_PREFIXES)
         text = with_saved_note(self.delete_message if deleted else self.success_message, result)
+        if self.in_modal:
+            return self.saved_in_modal(text, "warning" if getattr(result, "saved_level", "") == "warning" else "success")
         # service の返す物の saved_level が "warning" なら黄 (確認してください) の知らせ。ほかは緑 (成功しました)。
         if getattr(result, "saved_level", "") == "warning":
             messages.warning(self.request, text)
@@ -895,6 +927,19 @@ class BaseFormView(ScreenMixin, FormView):
             response["HX-Redirect"] = url
             return response
         return HttpResponseRedirect(url)
+
+    def saved_in_modal(self, text: str, level: str) -> HttpResponse:
+        """小窓の形の保存の後: 本文の無い 204 に、HX-Trigger の seizou:saved (知らせの字 message と色 level) を付ける。
+
+        htmx は 204 では小窓の中身を差し替えず、form に seizou:saved を出す (body まで泡立つ)。messages には残さない
+        (残すと、次に画面の全体を開いたときに古い知らせが出る)。JSON は既定の ensure_ascii (日本語は \\u の形) のまま
+        (見出しの値は latin-1 の字だけ。日本語を生で入れると Django が =?utf-8?b?…?= の形に変え、htmx が読めない)。
+        """
+        import json
+
+        response = HttpResponse(status=204)
+        response["HX-Trigger"] = json.dumps({"seizou:saved": {"message": text, "level": level}})
+        return response
 
     def get_success_url_for(self, result) -> str:
         if getattr(self, "success_url", None):
@@ -914,7 +959,9 @@ class BaseFormView(ScreenMixin, FormView):
         context.setdefault("notice", None)
         context.setdefault("warnings", [])
         context["object"] = self.object
-        context["cancel_url"] = model_url(self.model, "list") if self.model is not None else None
+        context["in_modal"] = self.in_modal
+        # 小窓では「キャンセル」を出さない (閉じるボタンだけ)。
+        context["cancel_url"] = model_url(self.model, "list") if self.model is not None and not self.in_modal else None
         return context
 
 
