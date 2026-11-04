@@ -5,12 +5,11 @@
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
 
-from datetime import date
-
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, url_or_none
 
@@ -23,15 +22,6 @@ from .services import annotate_remaining
 OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
 
 
-def _month(value):
-    """GET の month (YYYY-MM) を、その月の 1 日と翌月の 1 日の組にする。読めなければ None。"""
-    try:
-        year, month = (int(part) for part in str(value or "").split("-"))
-        return date(year, month, 1), date(year + month // 12, month % 12 + 1, 1)
-    except ValueError:
-        return None
-
-
 def _customer_choices():
     """得意先の絞りの候補。取引先の種類が得意先か両方の物だけ (協力企業だけの取引先は出さない)。並びは取引先の ordering。"""
     partner = Order._meta.get_field("customer").related_model
@@ -42,6 +32,21 @@ def _customer_choices():
 def _chosen(view, name):
     """一覧の絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は、土台の FilterSpec と同じく無いのと同じ。"""
     return any(spec.values(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
+def _flag_on(view, name):
+    """一覧の flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。"""
+    return any(spec.is_on(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
+def _as_is(queryset):
+    """印だけを宣言する flag の when (何もしない)。条件は画面の get_queryset が、ほかの条件と合わせて掛ける。"""
+    return queryset
+
+
+def _overdue_lines(lines):
+    """納期が今日より前の明細だけ (暦の日で比べる。盤の判断の「遅れ」と同じ)。"""
+    return lines.filter(due_date__lt=timezone.localdate())
 
 
 class OrderListView(BaseListView):
@@ -61,6 +66,8 @@ class OrderListView(BaseListView):
         {"name": "customer", "label": "得意先", "kind": "choice", "field": "customer", "choices": _customer_choices},
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
+        # 既定で入の flag。条件は get_queryset が状態の選びと合わせて掛ける (状態を選んだら外す = N118。when は何もしない)。
+        {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _as_is, "default": True},
     )
     ordering = ("-order_date", "-pk")
     template_name = "orders/order_list.html"
@@ -71,14 +78,10 @@ class OrderListView(BaseListView):
         if _chosen(self, "due"):
             # 納期は明細の項目 (逆向きの FK)。期間に入る明細が 2 行あると同じ受注が 2 回出るので、1 回にする。
             orders = orders.distinct()
-        month = _month(self.request.GET.get("month"))
-        if month is not None:
-            # その月の受注日の、取消を除く全部の状態 (ダッシュボードの今月の受注のカードと同じ数え方)
-            return orders.filter(order_date__gte=month[0], order_date__lt=month[1]).exclude(status=Order.STATUS_CANCELLED)
-        if self.request.GET.get("all") == "1" or _chosen(self, "status"):
-            # 状態を選んだときは、選んだ状態の全部を出す (既定の「出荷の残っている受注だけ」を外す)。
-            return orders
-        return orders.filter(status__in=OPEN_STATUSES)
+        if _flag_on(self, "open") and not _chosen(self, "status"):
+            # 「出荷の残っている受注だけ」(既定で入) は、状態を選んでいないときだけ掛ける (状態を選んだら、その状態の全部を出す)。
+            return orders.filter(status__in=OPEN_STATUSES)
+        return orders
 
 
 class OrderLineListView(BaseListView):
@@ -118,14 +121,21 @@ class OrderLineListView(BaseListView):
         ("status_label", "状態"),
     )
     search_fields = ("order__customer__name", "item__part_no", "order__order_no", "order__customer_order_no")
+    # 盤の絞り (決め 11-04 17:3x = 絞りは枠の 1 か所)。「出荷の残りがある物だけ」は既定で入の flag で、条件 (残が 0 より大きく、取消でない受注の明細) は
+    # get_queryset が annotate_remaining の後に掛ける (土台は絞りを annotate より前に掛けるので、when では残を読めない)。
+    filters = (
+        {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": _as_is, "default": True},
+        {"name": "due", "label": "納期", "kind": "date_range", "field": "due_date"},
+        {"name": "overdue", "label": "納期が過ぎた物だけ", "kind": "flag", "when": _overdue_lines},
+    )
     ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
     template_name = "orders/orderline_list.html"
 
     def get_queryset(self):
-        # 納期の絞り込みは annotate_remaining の前 (WHERE)。指示書と工程と実績は prefetch で読む (多の join を足さない)。
+        # 納期の絞り (f_due・f_overdue) は土台 (super) が annotate_remaining の前 (WHERE) に掛ける。指示書と工程と実績は prefetch で読む (多の join を足さない)。
         lines = super().get_queryset().select_related("order", "order__customer", "item")
-        lines = annotate_remaining(board.apply_filters(lines, board.filters(self.request.GET)))
-        if self.request.GET.get("all") != "1":
+        lines = annotate_remaining(lines)
+        if _flag_on(self, "open"):
             lines = lines.filter(remaining_total__gt=0).exclude(order__status=Order.STATUS_CANCELLED)
         return board.prefetch_for(lines)
 

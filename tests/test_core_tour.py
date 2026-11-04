@@ -73,9 +73,7 @@ def test_tour_targets_exist_in_templates():
             ORDERLINE_LIST,
         )
     )
-    id_sources = (CORE / "templates" / "core" / "list.html").read_text(encoding="utf-8") + (
-        ORDERS / "templates" / "orders" / "_board_filter.html"
-    ).read_text(encoding="utf-8")
+    id_sources = (CORE / "templates" / "core" / "list.html").read_text(encoding="utf-8")
     home = (CORE / "templates" / "core" / "home.html").read_text(encoding="utf-8")
     for steps in TOURS.values():
         for step in steps:

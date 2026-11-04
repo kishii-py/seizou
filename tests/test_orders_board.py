@@ -23,6 +23,7 @@ from seizou.masters import services as masters_services
 from seizou.orders import board
 from seizou.orders import services as orders_services
 from seizou.orders.models import OrderLine
+from seizou.orders.views import OrderLineListView
 from seizou.progress import services as progress_services
 from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
@@ -268,17 +269,18 @@ def test_num_drops_trailing_zeros():
 
 
 def test_filters_read_dates_and_overdue():
-    assert board.filters({"due_from": "2026-11-01", "due_to": "2026-11-30", "overdue": "1"}) == {
-        "due_from": date(2026, 11, 1),
-        "due_to": date(2026, 11, 30),
-        "overdue": True,
+    # 盤の絞りは OrderLineListView.filters の宣言 (決め 11-04 17:3x)。GET は f_<name>。古い名前 (due_from・overdue・all) は読まない。
+    specs = {spec.name: spec for spec in OrderLineListView().filter_specs()}
+    assert [(name, spec.kind) for name, spec in specs.items()] == [("open", "flag"), ("due", "date_range"), ("overdue", "flag")]
+    assert specs["due"].values({"f_due_from": "2026-11-01", "f_due_to": "2026-11-30"}) == {
+        "f_due_from": date(2026, 11, 1),
+        "f_due_to": date(2026, 11, 30),
     }
-    assert board.filters({"due_from": "abc", "due_to": "2026-1-5", "overdue": "yes"}) == {
-        "due_from": None,
-        "due_to": None,
-        "overdue": False,
-    }
-    assert board.filters({}) == {"due_from": None, "due_to": None, "overdue": False}
+    assert specs["due"].values({"f_due_from": "abc", "f_due_to": "2026-1-5", "due_from": "2026-11-01"}) == {}
+    assert specs["open"].is_on({}) is True and specs["open"].is_on({"f_open": "0"}) is False
+    assert specs["open"].is_on({"all": "1"}) is True
+    assert specs["overdue"].is_on({}) is False and specs["overdue"].is_on({"f_overdue": "1"}) is True
+    assert specs["overdue"].is_on({"overdue": "1", "f_overdue": "yes"}) is False
 
 
 # --- 画面 (注文残の一覧) ---
@@ -328,14 +330,14 @@ def test_period_and_overdue_filters(user, logged_in, customer, item):
     iso = today.isoformat()
     cases = [
         ({}, {yesterday, same_day, next_week}),
-        ({"due_from": iso}, {same_day, next_week}),
-        ({"due_to": iso}, {yesterday, same_day}),
-        ({"due_from": iso, "due_to": iso}, {same_day}),
-        ({"overdue": "1"}, {yesterday}),
-        ({"due_from": "abc"}, {yesterday, same_day, next_week}),
-        ({"due_to": "2026-1-5"}, {yesterday, same_day, next_week}),
-        ({"all": "1", "overdue": "1"}, {yesterday, finished}),
-        ({"all": "1", "due_from": iso}, {same_day, next_week}),
+        ({"f_due_from": iso}, {same_day, next_week}),
+        ({"f_due_to": iso}, {yesterday, same_day}),
+        ({"f_due_from": iso, "f_due_to": iso}, {same_day}),
+        ({"f_overdue": "1"}, {yesterday}),
+        ({"f_due_from": "abc"}, {yesterday, same_day, next_week}),
+        ({"f_due_to": "2026-1-5"}, {yesterday, same_day, next_week}),
+        ({"f_open": "0", "f_overdue": "1"}, {yesterday, finished}),
+        ({"f_open": "0", "f_due_from": iso}, {same_day, next_week}),
     ]
     for params, expected in cases:
         for headers in ({}, {"HTTP_HX_REQUEST": "true"}):
@@ -469,7 +471,7 @@ def test_finished_and_cancelled_rows_have_no_action_links(user, logged_in, custo
     done, cancelled = _finished_and_cancelled(user, customer, item)
     _issue(user, done, cut, qty="2")
 
-    body = logged_in.get(reverse("orders:orderline_list"), {"all": "1"}).content.decode()
+    body = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"}).content.decode()
 
     for line in (done, cancelled):
         tr_html = _tr(body, line.pk)
@@ -572,20 +574,21 @@ def test_filter_form_and_hx_include(user, logged_in, customer, item):
     _line(user, customer, item, due=timezone.localdate() - timedelta(days=1))
     url = reverse("orders:orderline_list")
 
+    # 盤の絞りは土台の絞り込みの枠の中だけ (決め 11-04 17:3x)。古い form・「すべて」の釦・hx-include は無い。
     body = logged_in.get(url).content.decode()
-    assert body.count('id="board-filter"') == 1
-    assert 'name="due_from"' in body and 'name="due_to"' in body and 'name="overdue"' in body
-    assert 'hx-include="#orders-all, #board-filter"' in body
-    assert 'hx-include="#list-q, #list-per, #list-meta"' in body
-    assert "納期が過ぎた物だけ" in body
-    assert 'name="overdue" value="1" class="checkbox checkbox-sm">' in body
+    assert 'id="board-filter"' not in body and 'id="orders-all"' not in body and "hx-include=\"#orders-all" not in body
+    for name in ('name="f_open"', 'name="f_due_from"', 'name="f_due_to"', 'name="f_overdue"'):
+        assert body.count(name) == (2 if name in ('name="f_open"', 'name="f_overdue"') else 1), name
+    for old in ('name="due_from"', 'name="due_to"', 'name="overdue"', 'name="all"'):
+        assert old not in body, old
+    assert 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残りがある物だけ</label>' in body
+    assert 'name="f_overdue" value="1" class="checkbox checkbox-sm" data-list-filter>納期が過ぎた物だけ</label>' in body
 
-    checked = logged_in.get(url, {"overdue": "1", "due_from": "2026-11-01"}).content.decode()
-    assert 'name="overdue" value="1" class="checkbox checkbox-sm" checked>' in checked
-    assert 'name="due_from" class="input input-sm" value="2026-11-01"' in checked
-    everything = logged_in.get(url, {"all": "1"}).content.decode()
-    form = re.search(r'<form id="board-filter".*?</form>', everything, re.S).group(0)
-    assert '<input type="hidden" name="all" value="1">' in form
+    checked = logged_in.get(url, {"f_overdue": "1", "f_due_from": "2026-11-01"}).content.decode()
+    assert 'name="f_overdue" value="1" class="checkbox checkbox-sm" checked data-list-filter>' in checked
+    assert 'name="f_due_from" value="2026-11-01"' in checked
+    everything = logged_in.get(url, {"f_open": "0"}).content.decode()
+    assert 'name="f_open" value="1" class="checkbox checkbox-sm" data-list-filter>出荷の残りがある物だけ</label>' in everything
 
 
 @pytest.mark.django_db

@@ -269,12 +269,12 @@ def test_list_default_hides_shipped_and_cancelled(user, logged_in, customer, sha
     assert set(_row_objects(default)) == {open_order, shipped_order}  # 受注と一部出荷
     assert reverse("orders:orderline_list") in default.content.decode()
 
-    everything = logged_in.get(reverse("orders:order_list"), {"all": "1"})
+    everything = logged_in.get(reverse("orders:order_list"), {"f_open": "0"})
     assert set(_row_objects(everything)) == {open_order, shipped_order, done, cancelled}
-    assert 'hx-include="#orders-all"' in everything.content.decode()
+    assert 'hx-include="#orders-all"' not in everything.content.decode()
 
-    # 検索 (htmx の行の部分) でも all=1 を保つ。
-    rows = logged_in.get(reverse("orders:order_list"), {"all": "1", "q": done.order_no}, HTTP_HX_REQUEST="true")
+    # 検索 (htmx の行の部分) でも印の切を保つ (絞り込みの枠の form が印の欄も送る)。
+    rows = logged_in.get(reverse("orders:order_list"), {"f_open": "0", "q": done.order_no}, HTTP_HX_REQUEST="true")
     assert _row_objects(rows) == [done]
 
 
@@ -297,7 +297,7 @@ def test_orderline_list_shows_remaining(user, logged_in, customer, plate, shippe
     assert any(f'<td class="whitespace-nowrap text-right tabular-nums">{n}</td>' in body for n in ("6", "6.00"))
     assert reverse("masters:item_modal", args=[shipped_order.lines.get().item_id]) in body
 
-    everything = logged_in.get(reverse("orders:orderline_list"), {"all": "1"})
+    everything = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"})
     assert set(_row_objects(everything)) == set(OrderLine.objects.all())
 
 

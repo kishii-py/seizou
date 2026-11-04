@@ -46,11 +46,12 @@ def test_status_filter_drops_the_default_and_shows_shipped(user, logged_in, cust
     body = logged_in.get(url, {"f_status": "shipped", "format": "csv"}).content.decode("utf-8-sig")
     assert done.order_no in body and open_order.order_no not in body
 
-    # 読めない値は空と同じ (既定のまま)。all=1 と month は今までどおり (month は取消を除く)。
+    # 読めない値は空と同じ (既定のまま)。印 (f_open) を外すと全部、外して状態を選ぶとその状態だけ。受注日の期間は取消も出す (N126)。
     assert _listed(logged_in.get(url, {"f_status": "zzz"})) == [open_order]
-    assert set(_listed(logged_in.get(url, {"all": "1"}))) == {open_order, done, cancelled}
-    assert _listed(logged_in.get(url, {"all": "1", "f_status": "open"})) == [open_order]
-    assert set(_listed(logged_in.get(url, {"all": "1", "month": "2026-11"}))) == {open_order, done}
+    assert set(_listed(logged_in.get(url, {"f_open": "0"}))) == {open_order, done, cancelled}
+    assert _listed(logged_in.get(url, {"f_open": "0", "f_status": "open"})) == [open_order]
+    month = {"f_open": "0", "f_ordered_from": "2026-11-01", "f_ordered_to": "2026-11-30"}
+    assert set(_listed(logged_in.get(url, month))) == {open_order, done, cancelled}
 
 
 @pytest.mark.django_db
