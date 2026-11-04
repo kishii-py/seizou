@@ -169,3 +169,26 @@ def test_invoiced_note_cancel_is_red(logged_in, user, customer, shipment, note):
     assert invoice.invoice_no in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_cancel_note_screen_says_cancel(logged_in, user, customer, shipment, note):
+    url = reverse("shipping:deliverynote_cancel", args=[note.pk])
+    page = logged_in.get(url)
+    assert page.status_code == 200
+    body = page.content.decode()
+    assert "取り消す</button>" in body
+    assert "保存</button>" not in body
+    # 欄の無い form なので、土台の「必須」の案内は出ない
+    assert "「必須」の欄を埋めて" not in body
+
+    # 請求済みで止まった画面でも、釦の字は「取り消す」のまま
+    billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    response = logged_in.post(url, {})
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "alert-error" in body
+    assert "取り消す</button>" in body
+    assert "保存</button>" not in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED

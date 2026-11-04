@@ -129,6 +129,7 @@ class ShipmentUpdateForm(forms.Form):
 
 class DeliveryNoteCancelForm(forms.Form):
     """納品書を取り消す form。欄は無い。"""
+    submit_label = "取り消す"
 
     def service_kwargs(self) -> dict:
         return {}
