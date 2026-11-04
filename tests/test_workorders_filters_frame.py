@@ -8,7 +8,6 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,17 +16,6 @@ from seizou.orders import services as orders_services
 from seizou.workorders import services as workorders_services
 
 HTMX = {"HTTP_HX_REQUEST": "true"}
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def client_logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture

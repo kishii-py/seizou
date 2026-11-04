@@ -285,78 +285,95 @@ def stock_projection(item, days=56, *, start=None):
         offset = max((day - start).days, 0)
         return offset if offset < days else -1
 
+    _projection_add_workorders(item, offset_of, changes, result)
+    _projection_take_lines(item, offset_of, changes, result)
+    result["days"] = _projection_days(start, days, current, changes)
+    return result
+
+
+def _projection_add_workorders(item, offset_of, changes, result):
+    """在庫の見込みの「足す」(stock_projection の段)。発行の指示書のまだ入庫にしていない数を、最後の工程の終了日の changes に足す。
+
+    offset_of は日を期間の何日目 (0 から) にする関数。足した件数と数と、日の無い件数を result に数える。workorders の部品が無ければ何もしない。
+    """
     try:
         workorder_model = apps.get_model("workorders", "WorkOrder")
         step_model = apps.get_model("workorders", "WorkOrderStep")
     except LookupError:
-        workorder_model = None
-    if workorder_model is not None:
-        last_end = step_model._default_manager.filter(workorder=OuterRef("pk")).order_by("-seq")
-        finished = (
-            StockMove.objects.filter(
-                kind=KIND_FINISHED,
-                content_type__app_label="workorders",
-                content_type__model="workorder",
-                object_id=OuterRef("pk"),
-            )
-            .order_by()
-            .values("object_id")
-            .annotate(total=Sum("qty"))
-            .values("total")[:1]
+        return
+    last_end = step_model._default_manager.filter(workorder=OuterRef("pk")).order_by("-seq")
+    finished = (
+        StockMove.objects.filter(
+            kind=KIND_FINISHED,
+            content_type__app_label="workorders",
+            content_type__model="workorder",
+            object_id=OuterRef("pk"),
         )
-        rows = (
-            workorder_model._default_manager.filter(
-                order_line__item=_pk(item), status=workorder_model.STATUS_ISSUED
-            )
-            .exclude(order_line__order__status="cancelled")
-            .annotate(
-                finish_on=Subquery(last_end.values("planned_end")[:1]),
-                stocked=Coalesce(Subquery(finished, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
-            )
-            .order_by()
-            .values_list("qty", "stocked", "finish_on")
+        .order_by()
+        .values("object_id")
+        .annotate(total=Sum("qty"))
+        .values("total")[:1]
+    )
+    rows = (
+        workorder_model._default_manager.filter(
+            order_line__item=_pk(item), status=workorder_model.STATUS_ISSUED
         )
-        for qty, stocked, finish_on in rows:
-            rest = _dec(qty) - _dec(stocked)
-            if rest <= 0:
-                continue
-            offset = offset_of(finish_on)
-            if offset is None:
-                result["undated"] += 1
-            elif offset >= 0:
-                changes[offset] = changes.get(offset, _ZERO) + rest
-                result["workorders"] += 1
-                result["workorder_qty"] += rest
+        .exclude(order_line__order__status="cancelled")
+        .annotate(
+            finish_on=Subquery(last_end.values("planned_end")[:1]),
+            stocked=Coalesce(Subquery(finished, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
+        )
+        .order_by()
+        .values_list("qty", "stocked", "finish_on")
+    )
+    for qty, stocked, finish_on in rows:
+        rest = _dec(qty) - _dec(stocked)
+        if rest <= 0:
+            continue
+        offset = offset_of(finish_on)
+        if offset is None:
+            result["undated"] += 1
+        elif offset >= 0:
+            changes[offset] = changes.get(offset, _ZERO) + rest
+            result["workorders"] += 1
+            result["workorder_qty"] += rest
 
+
+def _projection_take_lines(item, offset_of, changes, result):
+    """在庫の見込みの「引く」(stock_projection の段)。受注の明細の出荷の残りを、納期の changes から引く。
+
+    offset_of は日を期間の何日目 (0 から) にする関数。引いた件数と数と、日の無い件数を result に数える。orders の部品が無ければ何もしない。
+    """
     try:
         line_model = apps.get_model("orders", "OrderLine")
     except LookupError:
-        line_model = None
-    if line_model is not None:
-        from seizou.orders.services import annotate_remaining
+        return
+    from seizou.orders.services import annotate_remaining
 
-        rows = (
-            annotate_remaining(line_model._default_manager.filter(item=_pk(item)).exclude(order__status="cancelled"))
-            .filter(remaining_total__gt=0)
-            .order_by()
-            .values_list("remaining_total", "due_date")
-        )
-        for remaining, due_date in rows:
-            offset = offset_of(due_date)
-            if offset is None:
-                result["undated"] += 1
-            elif offset >= 0:
-                changes[offset] = changes.get(offset, _ZERO) - _dec(remaining)
-                result["lines"] += 1
-                result["line_qty"] += _dec(remaining)
+    rows = (
+        annotate_remaining(line_model._default_manager.filter(item=_pk(item)).exclude(order__status="cancelled"))
+        .filter(remaining_total__gt=0)
+        .order_by()
+        .values_list("remaining_total", "due_date")
+    )
+    for remaining, due_date in rows:
+        offset = offset_of(due_date)
+        if offset is None:
+            result["undated"] += 1
+        elif offset >= 0:
+            changes[offset] = changes.get(offset, _ZERO) - _dec(remaining)
+            result["lines"] += 1
+            result["line_qty"] += _dec(remaining)
 
+
+def _projection_days(start, days, current, changes):
+    """在庫の見込みの日ごとの数 (stock_projection の段)。元の数 (current。None は 0) に changes を日の順に足した、その日の終わりの数の並び。"""
     running = _ZERO if current is None else current
     series = []
     for offset in range(days):
         running += changes.get(offset, _ZERO)
         series.append({"date": start + timedelta(days=offset), "qty": running})
-    result["days"] = series
-    return result
+    return series
 
 
 # --- 書く (在庫の動き) ---

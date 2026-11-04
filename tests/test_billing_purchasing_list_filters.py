@@ -35,12 +35,6 @@ def user(db):
 
 
 @pytest.fixture
-def client_logged_in(client, user):
-    client.force_login(user)
-    return client
-
-
-@pytest.fixture
 def item(user):
     return masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
 

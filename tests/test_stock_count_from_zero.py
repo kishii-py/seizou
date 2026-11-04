@@ -8,7 +8,6 @@ import re
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.db import IntegrityError, transaction
 from django.urls import reverse
@@ -20,17 +19,6 @@ from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
 from seizou.stock import services
 from seizou.stock.models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, KIND_RECEIVED, StockMove
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture

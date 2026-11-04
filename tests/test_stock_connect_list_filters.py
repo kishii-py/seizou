@@ -7,7 +7,6 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.connect import services as connect_services
@@ -16,17 +15,6 @@ from seizou.masters import services as masters_services
 from seizou.stock import services as stock_services
 
 TOKYO = ZoneInfo("Asia/Tokyo")
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture

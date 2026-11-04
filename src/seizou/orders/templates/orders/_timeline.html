@@ -1,25 +1,4 @@
-{% load orders_timeline seizou_tags %}
-{# 受注の流れの枠 (決め 11-04 22:0x。N131): 受注から入金までの出来事を、左に点と縦の線、右に日時と明細の番号と出来事の字で、古い順に並べる。出来事は orders の流れの module の events_for。 #}
-{# 出来事の字は、その記録の詳細の画面への link (小窓にしない)。金額は、明細の表の単価と金額と同じく、seizou.hide_money のとき出さない。取消の受注の「受注を取消」は日時の記録が無いので日時の欄が「—」。 #}
+{% load orders_timeline %}
+{# 受注の流れの枠 (決め 11-04 22:0x。N131)。受注から入金までの出来事は orders の流れの module の events_for が集め、枠の形は core/_flow.html。取消の受注の「受注を取消」は日時の記録が無いので日時の欄が「—」。 #}
 {% order_timeline object as events %}
-<section id="order-flow" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="order-flow-title">
-  <h2 id="order-flow-title" class="text-lg font-bold">流れ</h2>
-  {% if events %}
-  <ol class="mt-4">
-    {% for e in events %}
-    <li class="flex gap-4" data-flow-kind="{{ e.kind }}">
-      <div class="flex flex-col items-center" aria-hidden="true">
-        <span class="mt-1 size-3 shrink-0 rounded-full bg-primary"></span>
-        {% if not forloop.last %}<span class="w-0.5 grow bg-base-200"></span>{% endif %}
-      </div>
-      <div class="min-w-0 pb-6">
-        <p class="flex flex-wrap items-baseline gap-2 text-xs text-base-content/70"><span class="font-mono tabular-nums">{% if e.when is None %}—{% elif e.has_time %}{{ e.when|date:"Y-m-d H:i" }}{% else %}{{ e.when|date:"Y-m-d" }}{% endif %}</span>{% if e.line_no %}<span>明細 {{ e.line_no }}</span>{% endif %}</p>
-        <p class="mt-1">{% if e.url %}<a class="link link-hover" href="{{ e.url }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}{% if e.amount is not None and not seizou.hide_money %} <span class="tabular-nums">({{ e.amount|comma }} 円)</span>{% endif %}</p>
-      </div>
-    </li>
-    {% endfor %}
-  </ol>
-  {% else %}
-  <p class="mt-4 text-base-content/70">まだ動きがありません。</p>
-  {% endif %}
-</section>
+{% include "core/_flow.html" with flow_id="order-flow" %}

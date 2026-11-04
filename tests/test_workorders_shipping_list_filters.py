@@ -8,7 +8,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.masters import services as masters_services
@@ -17,17 +16,6 @@ from seizou.shipping import services as shipping_services
 from seizou.shipping.models import DeliveryNote, Shipment
 from seizou.workorders import services as workorders_services
 from seizou.workorders.models import WorkOrder
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def client_logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture

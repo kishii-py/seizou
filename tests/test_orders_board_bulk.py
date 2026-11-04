@@ -40,17 +40,6 @@ JS = Path(orders_services.__file__).resolve().parent / "static" / "orders" / "bo
 
 
 @pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
-
-
-@pytest.fixture
 def customer(user):
     return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
 

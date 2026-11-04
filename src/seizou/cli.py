@@ -637,19 +637,9 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     print("置き場にファイルを書き、データベースを用意し (migrate)、管理者を 1 人作ります。起動はしません。")
 
     try:
-        answers = load_answers(answers_path)
-        # 業種の見本 (任意)。答えの industry が見本に当たれば、答えに無い項目と設定を見本から補った答えに置き換える
-        recipe_found = None
-        recipe_added = {"項目": 0, "設定": 0, "工程": []}
-        if answers.get("recipe") != "none" and answers.get("industry"):
-            recipe_found = find_recipe(answers, load_recipes(recipes_dir()))
-        if recipe_found:
-            answers, recipe_added = apply_recipe(answers, recipe_found[1])
-        settings, used_defaults = settings_with_defaults(answers)
-        columns, field_defaults = item_columns(answers)
-        bases = partner_base_urls(answers) if demo else {}
-        if password_file is not None and not password_file.parent.is_dir():
-            raise AnswerError(f"--password-file のフォルダがありません: {password_file.parent}")
+        answers, recipe_found, recipe_added, settings, used_defaults, columns, field_defaults, bases = _new_answers(
+            answers_path, demo, password_file
+        )
     except AnswerError as exc:
         print(f"止まりました: {exc}", file=sys.stderr)
         return EXIT_INPUT
@@ -671,6 +661,56 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
         print(f"答えに無い項目の属性は既定を使いました: {'、'.join(field_defaults)}")
 
     answers_path = answers_path.resolve()
+    failure = _new_files(site, answers_path, answers, settings, columns)
+    if failure is not None:
+        return failure
+    admin_lines, failure = _new_admin(site, password_file)
+    if failure is not None:
+        return failure
+    failure = _new_company(site, answers)
+    if failure is not None:
+        return failure
+    seed_copied, made_passwords, failure = _new_demo(site, demo, answers, answers_path, bases, demo_password)
+    if failure is not None:
+        return failure
+
+    # 説明書の断片の標準の組は --demo の有無に関わらず写す (種の後なので、同じ名前は種の断片が勝つ)
+    default_copied = copy_manual_default(site)
+    if seed_copied or default_copied:
+        print(f"説明書の断片を写しました: {seed_copied + default_copied} 件 (標準 {default_copied}・種 {seed_copied}。{site / 'manual'})")
+
+    # 業種の見本の工程は種の後に入れる (工程コードか名前が同じ工程を飛ばすので、種の工程と種の出力の行が勝つ)
+    failure = _new_recipe_processes(site, recipe_found, recipe_added)
+    if failure is not None:
+        return failure
+
+    _new_report(site, answers["port"], admin_lines, made_passwords, demo_password, password_file)
+    return EXIT_OK
+
+
+def _new_answers(answers_path: Path, demo: bool, password_file: Path | None) -> tuple:
+    """seizou new の段 (答えを読む)。業種の見本で補い、設定と項目と相手の URL の頭を作る。答えの誤りは AnswerError。
+
+    返す物 = (answers, recipe_found, recipe_added, settings, used_defaults, columns, field_defaults, bases)。
+    """
+    answers = load_answers(answers_path)
+    # 業種の見本 (任意)。答えの industry が見本に当たれば、答えに無い項目と設定を見本から補った答えに置き換える
+    recipe_found = None
+    recipe_added = {"項目": 0, "設定": 0, "工程": []}
+    if answers.get("recipe") != "none" and answers.get("industry"):
+        recipe_found = find_recipe(answers, load_recipes(recipes_dir()))
+    if recipe_found:
+        answers, recipe_added = apply_recipe(answers, recipe_found[1])
+    settings, used_defaults = settings_with_defaults(answers)
+    columns, field_defaults = item_columns(answers)
+    bases = partner_base_urls(answers) if demo else {}
+    if password_file is not None and not password_file.parent.is_dir():
+        raise AnswerError(f"--password-file のフォルダがありません: {password_file.parent}")
+    return answers, recipe_found, recipe_added, settings, used_defaults, columns, field_defaults, bases
+
+
+def _new_files(site: Path, answers_path: Path, answers: dict, settings: dict, columns: list[dict]) -> int | None:
+    """seizou new の段 (ファイルを書く)。置き場のファイルと会社ごとの項目の表を書き、migrate する。子の process が失敗したら終わりの番号。"""
     write_project(site, answers_path, answers, settings)
     print(f"ファイルを書きました: {site}")
 
@@ -688,7 +728,11 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     if result.returncode != 0:
         return show_failure("migrate", result)
     print("データベースを用意しました (migrate)。")
+    return None
 
+
+def _new_admin(site: Path, password_file: Path | None) -> tuple[list[str], int | None]:
+    """seizou new の段 (管理者)。管理者を 1 人作り、「できた物」の後に出す行を返す。子の process が失敗したら ([], 終わりの番号)。"""
     password = secrets.token_urlsafe(12)
     result = run_manage(
         site,
@@ -696,7 +740,7 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
         {"SEIZOU_ADMIN_ID": ADMIN_ID, "SEIZOU_ADMIN_PASSWORD": password},
     )
     if result.returncode != 0:
-        return show_failure("管理者を作る所", result)
+        return [], show_failure("管理者を作る所", result)
     # ID とパスワードは 1 行ずつ (機械で拾う人が行の頭で探せる)。「管理者のパスワード: 」の行は値を出すときだけ
     admin_lines = [f"管理者の ID: {ADMIN_ID}"]
     if result.stdout.strip().splitlines()[-1:] == ["exists"]:
@@ -708,8 +752,11 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     else:
         admin_lines.append(f"管理者のパスワード: {password}")
         admin_lines.append("パスワードはこの 1 度だけ出します。")
+    return admin_lines, None
 
-    # 会社の設定の 1 行 (画面の上の帯に出る会社名)。答えの name を使う。
+
+def _new_company(site: Path, answers: dict) -> int | None:
+    """seizou new の段 (会社の設定)。画面の上の帯に出る会社名の 1 行を、答えの name で作る。子の process が失敗したら終わりの番号。"""
     result = run_manage(
         site,
         ["shell", "--no-imports", "-c", CREATE_COMPANY],
@@ -718,36 +765,38 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     if result.returncode != 0:
         return show_failure("会社の設定を作る所", result)
     print(f"会社の設定を作りました: {answers['name']}")
+    return None
 
-    seed_copied = 0
-    made_passwords: dict = {}
-    if demo:
-        # import せずに有無だけを見る (この process で Django の model を読まないため)。
-        if importlib.util.find_spec("seizou.core.demo") is None:
-            print("作り物のデータの読み込みは後の版です (seizou.core.demo が無い)。")
-        else:
-            # 種は答えの YAML と同じ場所の <id>/ (examples/companies/README.md の約束)。
-            seeds = answers_path.parent / answers["id"]
-            # 作り物の利用者のパスワード (--demo-password)。種に作り物の利用者の印があるときだけ作り、子の process に環境変数で渡す
-            made_passwords = demo_passwords(demo_password) if (seeds / DEMO_ACCOUNTS_MARKER).is_file() else {}
-            demo_env = {DEMO_PASSWORDS_ENV: json.dumps(made_passwords)} if made_passwords else None
-            if bases:
-                shown = "、".join(f"{key} → {value}" for key, value in sorted(bases.items()))
-                print(f"つながりの種の受け口の URL の頭を、相手の置き場の URL にします: {shown}")
-            result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds), bases=bases)], demo_env)
-            if result.returncode != 0:
-                return show_failure("作り物のデータの読み込み", result)
-            # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
-            sys.stdout.write(result.stdout or "")
-            print(f"作り物のデータを登録しました: {seeds}")
-            seed_copied = copy_manual(seeds, site)
 
-    # 説明書の断片の標準の組は --demo の有無に関わらず写す (種の後なので、同じ名前は種の断片が勝つ)
-    default_copied = copy_manual_default(site)
-    if seed_copied or default_copied:
-        print(f"説明書の断片を写しました: {seed_copied + default_copied} 件 (標準 {default_copied}・種 {seed_copied}。{site / 'manual'})")
+def _new_demo(
+    site: Path, demo: bool, answers: dict, answers_path: Path, bases: dict, demo_password: str | None
+) -> tuple[int, dict, int | None]:
+    """seizou new の段 (--demo の作り物のデータ)。返す物 = (写した種の説明書の断片の数, 作り物の利用者のパスワード, 失敗の終わりの番号か None)。"""
+    if not demo:
+        return 0, {}, None
+    # import せずに有無だけを見る (この process で Django の model を読まないため)。
+    if importlib.util.find_spec("seizou.core.demo") is None:
+        print("作り物のデータの読み込みは後の版です (seizou.core.demo が無い)。")
+        return 0, {}, None
+    # 種は答えの YAML と同じ場所の <id>/ (examples/companies/README.md の約束)。
+    seeds = answers_path.parent / answers["id"]
+    # 作り物の利用者のパスワード (--demo-password)。種に作り物の利用者の印があるときだけ作り、子の process に環境変数で渡す
+    made_passwords = demo_passwords(demo_password) if (seeds / DEMO_ACCOUNTS_MARKER).is_file() else {}
+    demo_env = {DEMO_PASSWORDS_ENV: json.dumps(made_passwords)} if made_passwords else None
+    if bases:
+        shown = "、".join(f"{key} → {value}" for key, value in sorted(bases.items()))
+        print(f"つながりの種の受け口の URL の頭を、相手の置き場の URL にします: {shown}")
+    result = run_manage(site, ["shell", "--no-imports", "-c", LOAD_DEMO.format(seeds=str(seeds), bases=bases)], demo_env)
+    if result.returncode != 0:
+        return 0, made_passwords, show_failure("作り物のデータの読み込み", result)
+    # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
+    sys.stdout.write(result.stdout or "")
+    print(f"作り物のデータを登録しました: {seeds}")
+    return copy_manual(seeds, site), made_passwords, None
 
-    # 業種の見本の工程は種の後に入れる (工程コードか名前が同じ工程を飛ばすので、種の工程と種の出力の行が勝つ)
+
+def _new_recipe_processes(site: Path, recipe_found, recipe_added: dict) -> int | None:
+    """seizou new の段 (業種の見本の工程)。見本の工程を入れ、見本から入れた物の数を出す。子の process が失敗したら終わりの番号。"""
     recipe_processes = 0
     if recipe_found and recipe_added["工程"] and fields_installed():
         result = run_manage(
@@ -769,8 +818,13 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
             )
         else:
             print(f"業種の見本 ({recipe_name}) と同じ物が全部あったので、足した物はありません。")
+    return None
 
-    port = answers["port"]
+
+def _new_report(
+    site: Path, port: int, admin_lines: list[str], made_passwords: dict, demo_password: str | None, password_file: Path | None
+) -> None:
+    """seizou new の段 (できた物)。管理者と作り物の利用者のパスワードの行と、起動・点検・練習の 1 行ずつを出す。"""
     print(f"できた物: {site} の会社のプロジェクト。")
     for line in admin_lines:
         print(line)
@@ -786,7 +840,6 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
-    return EXIT_OK
 
 
 def build_parser() -> argparse.ArgumentParser:

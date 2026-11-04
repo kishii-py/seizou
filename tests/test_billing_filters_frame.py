@@ -36,12 +36,6 @@ def user(db):
 
 
 @pytest.fixture
-def client_logged_in(client, user):
-    client.force_login(user)
-    return client
-
-
-@pytest.fixture
 def invoices(user):
     """発行日の同じ請求書 5 つ (未入金・入金済み・一部入金・入金を取り消して未入金に戻った物・取消)。並びは作った順の逆。"""
     item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)

@@ -566,6 +566,11 @@ class FilterSpec:
         """flag を切に描き、when を掛けないか (disabled_when があり、values で真)。"""
         return self.disabled_when is not None and bool(self.disabled_when(values))
 
+    @staticmethod
+    def as_is(queryset):
+        """印だけを宣言する flag の when (何もしない)。条件は画面の get_queryset が、ほかの条件と合わせて掛ける。"""
+        return queryset
+
     def apply(self, queryset, params, named=None):
         """queryset に絞りを掛ける。flag は入で disabled_when が真でないときだけ when を、ほかは q() を掛ける。
 
@@ -751,6 +756,14 @@ class BaseListView(ScreenMixin, ListView):
         for spec in specs:
             queryset = spec.apply(queryset, self.request.GET, named)
         return queryset
+
+    def flag_on(self, name: str) -> bool:
+        """flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。宣言に無い名前は偽。"""
+        return any(spec.is_on(self.request.GET) for spec in self.filter_specs() if spec.name == name)
+
+    def filter_chosen(self, name: str) -> bool:
+        """絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は無いのと同じ。宣言に無い名前は偽。"""
+        return any(spec.values(self.request.GET) for spec in self.filter_specs() if spec.name == name)
 
     # --- 行 ---
     def row_for(self, obj, specs) -> dict:

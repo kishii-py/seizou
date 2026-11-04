@@ -51,9 +51,9 @@ class InvoiceListView(BaseListView):
 
     def get_queryset(self):
         invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
-        if any(spec.name == "unpaid" and spec.is_on(self.request.GET) for spec in self.filter_specs()):
+        if self.flag_on("unpaid"):
             # 入金の有無は印の when (_unpaid_only) が見る。状態の絞り (f_status) に読める値が無いときだけ、状態を発行に絞る (N120・N127)。
-            if not any(spec.name == "status" and spec.values(self.request.GET) for spec in self.filter_specs()):
+            if not self.filter_chosen("status"):
                 invoices = invoices.filter(status=Invoice.STATUS_ISSUED)
         return invoices
 
