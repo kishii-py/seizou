@@ -172,6 +172,8 @@ sudo -u seizou -H env SEIZOU_SITES_DIR=/srv/seizou-sites /srv/seizou/src/.venv/b
 
 `--demo` は付けません。`--demo` は作り物のデータを入れる印で、作り物の 2 社で試すときだけ付けます。実在の会社は、自分のデータを入れます。
 
+`--demo` を付けなくても、`seizou new` は画面ごとの説明書の断片の標準の組を置き場の `manual/` に写すので、本番の置き場でも上の帯の「使い方」と画面の「?」の説明が空になりません (この版より前に作った置き場は、`docs/operations.md` の「版を上げる手順」のとおりに写します)。
+
 命令は、管理者のパスワードを出力に 1 度だけ出します。14 で変えるまで控え、画面の写しや記録やチャットに貼りません。出力の「次にすること」の runserver の 1 行と、置き場の `README.md` の「起動」の 1 行は、手元で試すための物です。VPS では使わず、11 の gunicorn で動かします。
 
 確かめ方: `seizou new` の出力 → `できた物: /srv/seizou-sites/a_machining の会社のプロジェクト。` で始まる行・`sudo ls /srv/seizou-sites` → `a_machining  b_plating`

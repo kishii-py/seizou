@@ -182,7 +182,7 @@ Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は
 
 上の帯の「使い方」を押すと、画面の目録の順 (部品と URL の並び) に並んだ目次と、画面ごとの説明が開く。説明は会社の置き場の `manual/` の断片で、`/seizou:manual` が書く。断片の無い画面には、無い旨の案内が出る。印刷用の 1 枚の画面もある。説明書は PDF の冊子にもなる。「使い方」の画面の「PDF」(`/manual/pdf/`。表紙・目次・画面ごとの章・ページ番号) で開くか、会社の置き場で `manage.py seizou_manual_pdf` を打つと `manual/使い方.pdf` に書き出す (`--out` で場所を変えられる)。画面の題の横の「?」を押すと、その画面の説明書の断片が小窓で開く。ダッシュボードの枠と詳細の枠にも「?」があり、押すとその枠の説明だけが出る。
 
-`--demo` で立てた 2 社には、画面ごとの説明書の断片が初めから入っている (`examples/companies/<id>/manual/` から置き場の `manual/` に写す)。自社の分は `/seizou:manual` で書く。
+`seizou new` は、画面ごとの説明書の断片の標準の組 (部品の中の `src/seizou/core/manual_default/`) を置き場の `manual/` に写す。会社ごとに直すなら、置き場の `manual/` のそのファイルを編集するか、`/seizou:manual` で書き直す。`--demo` で立てた 2 社は、種の断片 (`examples/companies/<id>/manual/`) を先に写すので、同じ名前は種の断片が勝つ。
 
 会社の置き場で `manage.py seizou_practice start` を打つと、今のデータの写しを使う練習用のサーバーが別のポートに立ち (全部の画面の上に黄色の帯「練習モード」が出て、ここでの登録は本番に残らず、取引先へも送らない。`seizou_practice stop` で止めると写しも消える。SQLite の置き場だけ)、手順と注意は `docs/operations.md` の「練習モード」にある。
 
