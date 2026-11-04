@@ -4,6 +4,7 @@ form の service_kwargs() が、表の欄を data= (会社ごとの項目は土�
 services.create_feedback(data, user, screenshots=…) / update_feedback(feedback, data, user, screenshots=…) に渡す
 (画面の絵は選んだときだけ渡す)。form が見るのは欄の型と必須だけ (値の決まりと画面の絵の形式・大きさ・枚数は services)。
 「画面」の欄は画面の目録から選ぶ。左のメニューの「フィードバック」から開くと、土台の get_initial が GET の screen を初期値にする。
+「影響する画面」の欄の見出しは SCREENS_LABEL (表の verbose_name は内部の字を含み、変えると migration が要るので変えない。詳細も同じ字)。
 """
 
 from django import forms
@@ -13,6 +14,11 @@ from seizou.core.forms import ServiceModelForm
 
 from . import services
 from .models import Feedback
+
+
+#: 「影響する画面」の欄の見出し。表の verbose_name は内部の字を含むが、変えると migration が要るので変えない。
+#: 入力の画面 (新規登録と編集) は FeedbackForm の Meta.labels が、詳細は feedback_tags の feedback_fields がこの字を出す。
+SCREENS_LABEL = "影響する画面"
 
 
 class FileWidget(forms.FileInput):
@@ -44,6 +50,7 @@ class FeedbackForm(ServiceModelForm):
         model = Feedback
         fields = ["kind", "screen", "title", "problem", "situation", "wish", "screens"]
         widgets = {"screens": forms.TextInput}
+        labels = {"screens": SCREENS_LABEL}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

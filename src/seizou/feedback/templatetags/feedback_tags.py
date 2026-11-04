@@ -4,11 +4,13 @@
 {% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、世話役の印 (info.can_manage) と、削除の印 (info.can_delete)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_filter as filter %}        一覧の絞り込みの選択肢と今の値
+{% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
 """
 
 from django import template
 
 from seizou.feedback import chat, services
+from seizou.feedback.forms import SCREENS_LABEL
 from seizou.feedback.models import Feedback
 
 register = template.Library()
@@ -60,3 +62,15 @@ def feedback_filter(context):
     request = context.get("request")
     params = getattr(request, "GET", {}) if request is not None else {}
     return {"statuses": Feedback.STATUS_CHOICES, "kinds": Feedback.KIND_CHOICES, **services.list_filter(params)}
+
+
+@register.simple_tag
+def feedback_fields(fields):
+    """詳細の基本情報の項目の並び (土台の context の fields) の写し。影響する画面の見出しだけを SCREENS_LABEL にする。
+
+    土台の詳細は表の verbose_name を見出しにする (影響する画面は内部の字を含む)。部品の画面は R15 で get_context_data を
+    上書きできないので、詳細のテンプレートが block.super の前に {% feedback_fields fields as fields %} で並びを替える。
+    項目の辞書は欄の名前を持たないので、表の verbose_name と同じ見出しの項目を替える。元の並びと辞書は変えない。
+    """
+    stored = str(Feedback._meta.get_field("screens").verbose_name)
+    return [{**item, "label": SCREENS_LABEL} if item["label"] == stored else item for item in fields or []]
