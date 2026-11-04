@@ -1,6 +1,7 @@
 """画面の案内とガイドツアーの tag (読むだけ)。ダッシュボードの「はじめての方へ」の枠 (flow_guide)、上の帯の「案内」のボタンを出すか (screen_has_guide)、ツアーの段の並び (seizou_tour)。画面は今の要求の URL の名前で引き、画面の class の属性は使わない (R15)。
 
-{% flow_guide as flow %}               ダッシュボードの枠の値 (core.dashboard.flow_guide。home.html が読む)
+{% flow_guide as flow %}               業務の流れの段と件数の値 (core.dashboard.flow_guide)
+{% today_tasks as today %}             ダッシュボードの「今日やること」の枠の値 (core.dashboard.today_tasks。home.html が読む。部署で開けない行は外す)
 {% screen_has_guide as has_guide %}    今の画面にユースケースがあるか (_topbar.html が「案内」のボタンを出すかに使う)
 {% seizou_tour %}                      今の画面のツアーの段の JSON と markup (core/_tour.html。段の無い画面は何も出さない)
 """
@@ -15,6 +16,13 @@ register = template.Library()
 @register.simple_tag
 def flow_guide():
     return dashboard.flow_guide()
+
+
+@register.simple_tag(takes_context=True)
+def today_tasks(context):
+    """「今日やること」の枠の値 (core.dashboard.today_tasks)。request の利用者で、部署で開けない行を外す。"""
+    user = getattr(context.get("request"), "user", None)
+    return dashboard.today_tasks(user)
 
 
 @register.simple_tag(takes_context=True)

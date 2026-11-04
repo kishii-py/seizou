@@ -15,6 +15,7 @@
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
+- today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行は外す)。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -38,8 +39,9 @@ from django.db.models import Case, CharField, Count, Exists, OuterRef, When
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 
-from seizou.core import conf
+from seizou.core import access, conf
 
 # 図の枠 (viewBox の大きさ) と描く所。y は下へ増え、_BASELINE が値 0 の基線。
 _WIDTH = 640
@@ -985,6 +987,69 @@ def flow_guide() -> dict | None:
         first = next((step for step in steps if step["count"]), None)
         flows.append({"key": flow["key"], "title": flow["title"], "steps": steps, "next": first})
     return {"flows": flows} if flows else None
+
+
+#: 「今日やること」の枠の題 (home.html と tours.py が読む。本人が題を変えるときはここだけ)
+TODAY_TITLE = "今日やること"
+
+#: 段の key が行の key (移る先の表の鍵) と違う段 (発注の 2 段は、段の key でなく数える物の名前で行を呼ぶ)
+_TASK_KEY_OF_STEP = {"purchase_order": "purchase_draft", "reply": "purchase_sent"}
+
+
+def _task_targets() -> dict:
+    """行の key → (釦の字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。"""
+    inbox = _model("connect", "Inbox")
+    purchase = _model("purchasing", "PurchaseOrder")
+    return {
+        "order": ("受信した注文", "connect:inbox_list", {"f_status": inbox.STATUS_RECEIVED} if inbox else {}),
+        "workorder": ("生産管理ボード", "orders:orderline_list", {}),
+        "shipment": ("受注", "orders:order_list", {}),
+        "delivery_note": ("納品書", "shipping:deliverynote_list", {}),
+        "invoice": ("請求書", "billing:invoice_list", {}),
+        "payment": ("請求書", "billing:invoice_list", {"f_unpaid": "1"}),
+        "purchase_draft": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_DRAFT} if purchase else {}),
+        "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}),
+        "receipt": ("受入", "purchasing:receipt_list", {}),
+    }
+
+
+def today_tasks(user=None) -> dict | None:
+    """「今日やること」の枠。flow_guide() の段のうち件数が 1 以上の物を、流れの順に 1 行ずつ並べる。読むだけで、ここでは問い合わせをしない (数は flow_guide の物)。
+
+    返す物 = {"title": TODAY_TITLE, "rows": [行], "guide": flow_guide() の値}。流れが 1 本も無ければ None。
+    行 = {"key" (移る先の表の鍵), "flow" (流れの key), "label" (段の count_label), "count", "unit", "button" (移る先の画面の名前), "url_name", "url" (絞りの GET つき)}。
+    user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行は外す (core.access.can_open。記録は書かない)。None なら外さない。
+    移る先に絞りの GET が無い段 (指示書の無い明細・納品書に入っていない出荷・請求書に入っていない出荷・受入の残) は素の一覧へ移る。
+    """
+    guide = flow_guide()
+    if guide is None:
+        return None
+    targets = _task_targets()
+    rows = []
+    for flow in guide["flows"]:
+        for step in flow["steps"]:
+            key = _TASK_KEY_OF_STEP.get(step["key"], step["key"])
+            if not step["count"] or key not in targets:
+                continue
+            button, url_name, params = targets[key]
+            url = _url(url_name)
+            if url is None:
+                continue
+            if user is not None and not access.can_open(user, url_name.split(":")[0], record=False):
+                continue
+            rows.append(
+                {
+                    "key": key,
+                    "flow": flow["key"],
+                    "label": step["count_label"],
+                    "count": step["count"],
+                    "unit": step["unit"],
+                    "button": button,
+                    "url_name": url_name,
+                    "url": f"{url}?{urlencode(params)}" if params else url,
+                }
+            )
+    return {"title": TODAY_TITLE, "rows": rows, "guide": guide}
 
 
 def flow_neighbors(url_name: str) -> dict | None:

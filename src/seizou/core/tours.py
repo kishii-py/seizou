@@ -1,9 +1,12 @@
 """ガイドツアーの段の並び (固定の字)。画面の URL の名前 → 段 (selector・title・text) の並び。上の帯の seizou_tour の tag が今の画面の段を JSON で出し、static/js/seizou-tour.js が順に示す。selector は今ある id か data-tour="<名前>" の属性か、今ある aria-labelledby の節。要素の無い段は JS が飛ばす。文を画面から直す口は無い。
 
 段の字は、部品の無い会社のダッシュボードにも JSON で入る。ダッシュボードの試験が「無いこと」を見る字を書かない。
+ダッシュボードの 1 段目の題だけは、枠の題と同じ字を core.dashboard の TODAY_TITLE から読む (題を変えるときは 1 か所)。
 """
 
 from __future__ import annotations
+
+from seizou.core.dashboard import TODAY_TITLE
 
 #: 上の帯の「案内」のボタンの段 (受注の一覧と注文残の一覧で同じ字)
 _GUIDE_STEP = {
@@ -15,14 +18,14 @@ _GUIDE_STEP = {
 TOURS: dict[str, tuple[dict, ...]] = {
     "core:home": (
         {
+            "selector": '[data-tour="flow-guide"]',
+            "title": TODAY_TITLE,
+            "text": "手を動かす物のある段が、数と移る先の釦で並びます。釦を押すと、その物に絞った一覧が開きます。",
+        },
+        {
             "selector": '[data-tour="stats"]',
             "title": "今日の数字",
             "text": "部品・取引先・今月の受注などの数です。カードを押すと、その一覧が開きます。",
-        },
-        {
-            "selector": '[data-tour="flow-guide"]',
-            "title": "業務の流れ",
-            "text": "段を押すとその画面が開きます。数字はその段で手を動かす物の件数で、「次にすること」から始められます。",
         },
         {
             "selector": 'section[aria-labelledby="shipping-title"]',
