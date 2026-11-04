@@ -60,8 +60,9 @@ NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestA
 def test_e05_part_modal_from_shipment_form(page_a, company_a):
     """期待 (06 の E-05 の一部): どの画面でも同じ小窓が開く。Esc で閉じ、入力の途中の値は残る。
 
-    見る所: 受注の詳細の ⋮ の「出荷する」から開いた出荷の新規登録で、受注の明細の欄の下の「詳細を見る」を押すと
-    部品の小窓が開き、Esc で閉じても数量に入れた字が残ること (初見テスト R3)。見ない所: 小窓から詳細へ移る所 (上の関数が見る)、保存。
+    見る所: 受注の詳細の ⋮ の「出荷する」は出荷の新規登録を小窓で開く (N124)。小窓の中の受注の明細の欄の下の「詳細を見る」を押すと
+    新しいタブに部品の詳細が開き、小窓と数量に入れた字が残ること (精査 A8 の 3 節の 1)。同じ「出荷する」の link の先 (画面の全体) では、
+    「詳細を見る」で部品の小窓が開き、Esc で閉じても数量に入れた字が残ること (初見テスト R3)。見ない所: 小窓から詳細へ移る所 (上の関数が見る)、保存。
     """
     login(page_a, company_a)
     new_order(
@@ -77,11 +78,30 @@ def test_e05_part_modal_from_shipment_form(page_a, company_a):
     row.scroll_into_view_if_needed()
     page_a.evaluate(NEXT_FRAMES)
     row.locator('summary[aria-label="行の操作"]').click()
-    row.get_by_role("link", name="出荷する").click()
+    entry = row.get_by_role("link", name="出荷する")
+    form_path = entry.get_attribute("href")
+    entry.click()
+    modal = page_a.locator("#seizou-modal")
+    box = page_a.locator("#seizou-modal-box")
+    expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
+    box.locator("input[name=qty]").fill("3")
+    with page_a.context.expect_page() as opened:
+        box.locator("select[name='order_line'] ~ a", has_text="詳細を見る").first.click()
+    detail = opened.value
+    detail.wait_for_url(re.compile(r"/masters/items/\d+/$"))
+    expect(detail.locator("main")).to_contain_text(PART_NO)
+    detail.close()
+    expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
+    expect(box.locator("input[name=qty]")).to_have_value("3")
+    # 書きかけの小窓を閉じる確認 (N132) が出たら「OK」で閉じる (確認の無い版では呼ばれない)。
+    page_a.once("dialog", lambda dialog: dialog.accept())
+    page_a.keyboard.press("Escape")
+    expect(page_a.locator("#seizou-modal[open]")).to_have_count(0)
+
+    page_a.goto(f"{company_a.base_url}{form_path}")
     page_a.wait_for_url(re.compile(r"/shipping/new/\?order_line=\d+$"))
     page_a.fill("input[name=qty]", "3")
 
-    modal = page_a.locator("#seizou-modal")
     page_a.locator("select[name='order_line'] ~ a", has_text="詳細を見る").first.click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
     expect(modal).to_contain_text(PART_NO)

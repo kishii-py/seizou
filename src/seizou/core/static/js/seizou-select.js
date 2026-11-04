@@ -19,6 +19,8 @@
  * - 1 つ選びの欄には消すボタン、複数選びの欄には 1 つずつ消すボタン。
  * - 小窓のある候補 (data-modal-url を持つ 1 つ選びの欄) では、選んだ物の下に「詳細を見る」の link を出し、
  *   押すと master_link と同じ小窓 (#seizou-modal) で開く。選び直すと link の先も変わり、消すと link も消える。
+ *   入力の小窓 (#seizou-modal-box) の中の欄の link は、小窓を差し替えず新しいタブで開く (入れかけの値を消さない)。
+ *   小窓の口は htmx でない要求を詳細の画面へ移すので、新しいタブには詳細の画面が出る。
  */
 (function () {
   "use strict";
@@ -140,7 +142,13 @@
       var link = null;
       var openModal = function (event) {
         event.preventDefault();
-        if (!window.htmx || !link) return;
+        if (!link) return;
+        // 入力の小窓の中では、同じ箱に部品の小窓を入れると入力が消える (精査 A8 の 3 節の 1)。新しいタブで開く。
+        if (link.closest("#seizou-modal-box")) {
+          window.open(link.href, "_blank", "noopener");
+          return;
+        }
+        if (!window.htmx) return;
         window.htmx
           .ajax("GET", link.getAttribute("data-url"), { target: "#seizou-modal-box", swap: "innerHTML" })
           .then(function () {
