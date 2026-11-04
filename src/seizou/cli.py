@@ -1,10 +1,12 @@
 """命令 seizou (Claude Code 無しで動く)。
 
-seizou new <answers.yaml> [--demo]
+seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。
     item_fields があれば会社ごとの項目の app (fields/) も作る。--demo は作り物のデータを入れる口。
     --demo のつながりの種の受け口の URL の頭 (http://127.0.0.1:800x) は、答えの partner_base_urls (相手の会社の id → 置き場の URL の頭)
     か環境変数 SEIZOU_PARTNER_<相手の id の大文字>_URL があれば、その頭に置き換えて入れる (環境変数が勝つ。外の置き場の https のため)。
+    管理者の ID とパスワードは「できた物」の後に 1 行ずつ出す。--password-file を渡すと、パスワードを画面に出さず、
+    そのファイルに admin:<値> の 1 行で書く (持ち主だけが読める)。
     画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -598,7 +600,7 @@ def show_failure(step: str, result: subprocess.CompletedProcess) -> int:
     return EXIT_CHILD
 
 
-def command_new(answers_path: Path, demo: bool) -> int:
+def command_new(answers_path: Path, demo: bool, password_file: Path | None = None) -> int:
     print("答えの YAML から会社のプロジェクトを作ります。")
     print("置き場にファイルを書き、データベースを用意し (migrate)、管理者を 1 人作ります。起動はしません。")
 
@@ -614,6 +616,8 @@ def command_new(answers_path: Path, demo: bool) -> int:
         settings, used_defaults = settings_with_defaults(answers)
         columns, field_defaults = item_columns(answers)
         bases = partner_base_urls(answers) if demo else {}
+        if password_file is not None and not password_file.parent.is_dir():
+            raise AnswerError(f"--password-file のフォルダがありません: {password_file.parent}")
     except AnswerError as exc:
         print(f"止まりました: {exc}", file=sys.stderr)
         return EXIT_INPUT
@@ -661,10 +665,17 @@ def command_new(answers_path: Path, demo: bool) -> int:
     )
     if result.returncode != 0:
         return show_failure("管理者を作る所", result)
+    # ID とパスワードは 1 行ずつ (機械で拾う人が行の頭で探せる)。「管理者のパスワード: 」の行は値を出すときだけ
+    admin_lines = [f"管理者の ID: {ADMIN_ID}"]
     if result.stdout.strip().splitlines()[-1:] == ["exists"]:
-        admin_text = f"管理者の ID: {ADMIN_ID} (既にあったので作らず、パスワードも変えていません)"
+        admin_lines.append("管理者は既にあったので作らず、パスワードも変えていません。")
+    elif password_file is not None:
+        # 画面と記録に値を残さない。後の段が止まっても控えが残るよう、作った直後に書く
+        write_secret_file(password_file, f"{ADMIN_ID}:{password}\n")
+        admin_lines.append(f"管理者のパスワードを書いたファイル: {password_file} (画面には出しません。持ち主だけが読めます)")
     else:
-        admin_text = f"管理者の ID: {ADMIN_ID} / パスワード: {password} (パスワードはこの 1 度だけ出します)"
+        admin_lines.append(f"管理者のパスワード: {password}")
+        admin_lines.append("パスワードはこの 1 度だけ出します。")
 
     # 会社の設定の 1 行 (画面の上の帯に出る会社名)。答えの name を使う。
     result = run_manage(
@@ -724,7 +735,9 @@ def command_new(answers_path: Path, demo: bool) -> int:
             print(f"業種の見本 ({recipe_name}) と同じ物が全部あったので、足した物はありません。")
 
     port = answers["port"]
-    print(f"できた物: {site} の会社のプロジェクト。{admin_text}")
+    print(f"できた物: {site} の会社のプロジェクト。")
+    for line in admin_lines:
+        print(line)
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
@@ -741,13 +754,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     new.add_argument("answers", type=Path, help="答えの YAML のパス")
     new.add_argument("--demo", action="store_true", help="作り物のデータも登録する (作り物の会社のとき)")
+    new.add_argument(
+        "--password-file",
+        type=Path,
+        metavar="PATH",
+        help="管理者のパスワードを画面に出さず、このファイルに admin:<値> の 1 行で書く (持ち主だけが読める)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "new":
-        return command_new(args.answers, args.demo)
+        return command_new(args.answers, args.demo, args.password_file)
     return EXIT_INPUT
 
 
