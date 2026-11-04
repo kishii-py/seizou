@@ -60,9 +60,9 @@ TOURS: dict[str, tuple[dict, ...]] = {
     ),
     "orders:orderline_list": (
         {
-            "selector": "#board-filter",
-            "title": "納期で絞る",
-            "text": "納期の期間や、納期が過ぎた物だけに絞り込めます。",
+            "selector": "#list-q",
+            "title": "絞り込む",
+            "text": "キーワードの下の欄で、出荷の残りがある物だけ・納期の期間・納期が過ぎた物だけに絞り込めます。",
         },
         {
             "selector": '[data-tour="board"]',
