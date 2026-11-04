@@ -145,6 +145,9 @@ FREE_ACTIONS = frozenset(
         "stock.record_finished",
         "stock.record_issued",
         "stock.adjust",
+        # 書式つきのメモ (N114。現場の記録と同じ扱い = ログインした人なら誰でも書ける。本体が起こす前に入れる前提)
+        "notes.save_note",
+        "notes.add_image",
     }
 )
 #: アカウント管理の門で守る action (3 状態の外)。core.set_setting は設定の画面からの変更 (N48) の action で、
@@ -176,8 +179,8 @@ MONEY_ACTIONS = {
 
 #: アカウント管理の権限で開く部品 (3 状態の外)
 ACCOUNT_APPS = ("accounts",)
-#: 部署に関係なく開く部品 (検索・使い方・ダッシュボード・設定は core の画面)
-ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments", "feedback")
+#: 部署に関係なく開く部品 (検索・使い方・ダッシュボード・設定は core の画面。notes = 書式つきのメモ。N114)
+ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments", "feedback", "notes")
 
 # ---------------------------------------------------------------- 金額の値
 
