@@ -166,6 +166,7 @@ class CsvImportForm(forms.Form):
             "Excel で「CSV (コンマ区切り)」で保存したファイルは Shift_JIS、「CSV UTF-8」で保存したファイルと"
             "一覧の「CSV」のボタンで落としたファイルは UTF-8 を選びます。"
         ),
+        error_messages={"required": "文字コードを選んでください。"},
     )
 
     def __init__(self, *args, **kwargs):

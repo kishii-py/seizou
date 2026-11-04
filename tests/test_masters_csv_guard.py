@@ -5,6 +5,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 
 from seizou.core import fields as company_fields
 from seizou.masters import services
@@ -115,3 +117,19 @@ def test_import_message_counts_new_and_updated(client_logged_in, user, no_regist
 
     assert response.status_code == 302
     assert saved_messages(response) == ["保存しました。1 件入れ、1 件直しました。"]
+
+
+# ---------------------------------------------------------------- 4. 文字コードの欄を付けずに送ったときの文
+
+
+@pytest.mark.django_db
+def test_import_without_encoding_asks_to_choose(client_logged_in, no_registration):
+    upload = SimpleUploadedFile("import.csv", csv_bytes("自社品番,品名", "P-1001,作り物の軸"), content_type="text/csv")
+
+    response = client_logged_in.post(reverse("masters:item_import"), {"file": upload})
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "文字コードを選んでください。" in body
+    assert "このフィールドは必須です。" not in body
+    assert Item.objects.count() == 0
