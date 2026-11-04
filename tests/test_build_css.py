@@ -82,3 +82,42 @@ def test_main_check_fails_when_css_differs(build_css, tmp_path, monkeypatch):
     monkeypatch.setattr(build_css, "build", fake_build)
     assert build_css.main(["--out", str(out), "--check"]) != 0
     assert out.read_text(encoding="utf-8") == ALL_CLASSES
+
+
+# ---------------------------------------------------------------- 道具の取り直しの判定 (署名で sha256 が変わっても取り直さない)
+
+
+def _item(sha: str) -> dict:
+    return {"tool": "tailwindcss", "platform": "test", "url": "https://example.invalid/tailwindcss", "sha256": sha}
+
+
+def test_ensure_tools_skips_download_when_signed_binary_matches_marker(build_css, tmp_path, monkeypatch):
+    dest = tmp_path / "tailwindcss"
+    dest.write_bytes(b"signed binary (sha differs from the list)")
+    build_css.record_source_sha(dest, "abc123")
+    monkeypatch.setattr(build_css, "current_platform", lambda: "test")
+    monkeypatch.setattr(build_css, "download", lambda *a, **k: pytest.fail("取り直してはいけない"))
+    monkeypatch.setattr(build_css, "prepare_executable", lambda path: pytest.fail("署名し直してはいけない"))
+
+    assert build_css.ensure_tools([_item("abc123")], tmp_path) == dest
+
+
+def test_ensure_tools_downloads_and_records_when_version_changes(build_css, tmp_path, monkeypatch):
+    dest = tmp_path / "tailwindcss"
+    dest.write_bytes(b"old")
+    build_css.record_source_sha(dest, "old-sha")
+    calls = []
+    monkeypatch.setattr(build_css, "current_platform", lambda: "test")
+    monkeypatch.setattr(build_css, "download", lambda url, d, sha: (calls.append(("download", sha)), d.write_bytes(b"new")))
+    monkeypatch.setattr(build_css, "prepare_executable", lambda path: calls.append(("prepare", path.name)))
+
+    assert build_css.ensure_tools([_item("new-sha")], tmp_path) == dest
+    assert calls == [("download", "new-sha"), ("prepare", "tailwindcss")]
+    assert build_css.recorded_source_sha(dest) == "new-sha"
+
+
+def test_is_current_accepts_exact_sha_without_marker(build_css, tmp_path):
+    dest = tmp_path / "daisyui.mjs"
+    dest.write_bytes(b"mjs")
+    assert build_css.is_current(dest, build_css.sha256_of(dest))
+    assert not build_css.is_current(dest, "other")
