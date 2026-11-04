@@ -142,6 +142,7 @@ class PurchaseOrderForm(forms.Form):
 
 class SendForm(forms.Form):
     """送り直す form。欄は無い。"""
+    submit_label = "送り直す"
 
     def service_kwargs(self):
         return {}
@@ -149,6 +150,7 @@ class SendForm(forms.Form):
 
 class CancelForm(forms.Form):
     """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。"""
+    submit_label = "取り消す"
 
     reason = forms.CharField(
         label="取消の理由", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3})

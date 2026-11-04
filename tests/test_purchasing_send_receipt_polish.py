@@ -9,8 +9,10 @@ import requests
 from django.contrib.messages import get_messages
 from django.urls import reverse
 
+from seizou.purchasing.forms import CancelForm, SendForm
 from seizou.purchasing.models import PurchaseOrder
-from tests import test_purchasing_views
+from tests import test_purchasing_shipping_notice, test_purchasing_views
+from tests.test_purchasing_shipping_notice import _order
 from tests.test_purchasing_views import FakePost, _post_data
 
 # 発注の画面の試験の fixture を借りる (pytest は module の名前で fixture を見つける)。
@@ -20,6 +22,9 @@ client_logged_in = test_purchasing_views.client_logged_in
 subcontractor = test_purchasing_views.subcontractor
 items = test_purchasing_views.items
 send_connection = test_purchasing_views.send_connection
+# 数量 10 の発注の部品 (作り物の軸) と、相手への HTTP を呼んだら落とす requests.post (つながりの無い協力企業の発注は送らない)。
+item = test_purchasing_shipping_notice.item
+fake_post = test_purchasing_shipping_notice.fake_post
 
 
 def _notices(response):
@@ -98,3 +103,25 @@ def test_resend_returns_to_detail(monkeypatch, client_logged_in, subcontractor, 
     assert _notices(response) == [("success", "相手に送りました。")]
     assert fake.calls == 1
     assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_SENT
+
+
+# ---------------------------------------------------------------- 4 発注の取消と送り直しの釦の字
+
+
+@pytest.mark.django_db
+def test_cancel_and_send_buttons_say_what_they_do(client_logged_in, user, subcontractor, item, fake_post):
+    po = _order(subcontractor, item, user, send=False)
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+
+    cancel = client_logged_in.get(reverse("purchasing:purchaseorder_cancel", args=[po.pk])).content.decode()
+
+    assert "取り消す</button>" in cancel
+    assert "保存</button>" not in cancel
+
+    send = client_logged_in.get(reverse("purchasing:purchaseorder_send", args=[po.pk])).content.decode()
+
+    assert "送り直す</button>" in send
+    assert "保存</button>" not in send
+    assert SendForm.submit_label == "送り直す"
+    assert CancelForm.submit_label == "取り消す"
+    assert fake_post.calls == 0
