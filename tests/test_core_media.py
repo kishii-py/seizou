@@ -194,3 +194,45 @@ def test_delivery_defaults_to_django(settings):
     assert media.delivery() == "django"
     settings.SEIZOU_FILE_DELIVERY = " NGINX "
     assert media.delivery() == "nginx"
+
+
+# ---------------------------------------------------------------- 会社のロゴ (ログインの画面に出すので、ログインの前にも返す)
+
+
+@pytest.fixture
+def company_logo(root, db):
+    from seizou.core.models import Company
+
+    (root / "company").mkdir()
+    (root / "company" / "logo.png").write_bytes(PNG)
+    (root / "company" / "other.png").write_bytes(PNG)
+    Company.objects.create(name="作り物の会社", logo="company/logo.png")
+    return "company/logo.png"
+
+
+def test_anonymous_can_get_the_company_logo(client, company_logo):
+    response = client.get("/media/company/logo.png")
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/png"
+    assert "attachment" not in response.get("Content-Disposition", "")
+    assert response["X-Content-Type-Options"] == "nosniff"
+
+
+def test_anonymous_can_get_the_company_logo_in_nginx_mode_too(client, company_logo, nginx):
+    response = client.get("/media/company/logo.png", **nginx)
+    assert response.status_code == 200
+    assert response["X-Accel-Redirect"] == "/seizou-files/company/logo.png"
+
+
+def test_other_files_under_company_still_need_login(client, company_logo):
+    response = client.get("/media/company/other.png")
+    assert response.status_code == 302
+    assert "/login/" in response["Location"]
+
+
+def test_logo_is_private_again_when_cleared(client, company_logo):
+    from seizou.core.models import Company
+
+    Company.objects.update(logo="")
+    response = client.get("/media/company/logo.png")
+    assert response.status_code == 302
