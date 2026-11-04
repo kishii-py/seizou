@@ -63,5 +63,11 @@ def test_e03_header_click_sorts(page_a, company_a):
 
     header.get_by_role("link").click()
     expect(header).to_have_attribute("aria-sort", "descending")
-    expect(rows.first).to_have_text(ascending[-1])
-    assert rows.all_inner_texts() == list(reversed(ascending))
+    # 部品が 1 頁に収まらない置き場 (E2E を何度も回した 2 社) では、昇順の頁の末尾は全体の最大でない。
+    # 降順の頁が降順に並び、先頭が昇順の頁の末尾以上であることを見る (1 頁に収まる置き場では昇順の逆と同じ)。
+    expect(rows.first).not_to_have_text(ascending[0])
+    descending = rows.all_inner_texts()
+    assert descending == sorted(descending, reverse=True)
+    assert descending[0] >= ascending[-1]
+    if len(ascending) < 50:  # 1 頁の既定の行数 (core.views.DEFAULT_PAGE_SIZE) より少ない = 全部が 1 頁に収まっている
+        assert descending == list(reversed(ascending))
