@@ -27,10 +27,12 @@ WRONG = "tests-only-wrong-1103"
 
 @pytest.fixture(autouse=True)
 def fresh_cache():
-    # 締め出しの数は login_guard.cache (置き場の cache/login/ のファイル。試験では tests.settings の SEIZOU_LOGIN_CACHE_DIR = 一時の置き場)
-    login_guard.cache.clear()
+    # 締め出しの数は login_guard.cache (置き場の cache/login/ のファイル。試験では tests.settings の SEIZOU_LOGIN_CACHE_DIR = 一時の置き場)。
+    # 試験の中で login_guard.cache を差し替える物があるので、始めに見た物を終わりにも消す。
+    store = login_guard.cache
+    store.clear()
     yield
-    login_guard.cache.clear()
+    store.clear()
 
 
 @pytest.fixture
