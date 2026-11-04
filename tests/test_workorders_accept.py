@@ -204,13 +204,13 @@ def test_list_filters_process_unaccepted_today(user, client_logged_in, customer,
     url = reverse("workorders:workorder_list")
     cases = [
         ({}, [first, second]),
-        ({"process": cut.pk}, [first]),
-        ({"process": bend.pk}, [first, second]),
-        ({"unaccepted": "1"}, [second]),
-        ({"today": "1"}, [second]),
-        ({"process": cut.pk, "unaccepted": "1"}, []),
-        ({"process": "abc"}, [first, second]),
-        ({"process": "0"}, [first, second]),
+        ({"f_process": cut.pk}, [first]),
+        ({"f_process": bend.pk}, [first, second]),
+        ({"f_unaccepted": "1"}, [second]),
+        ({"f_today": "1"}, [second]),
+        ({"f_process": cut.pk, "f_unaccepted": "1"}, []),
+        ({"f_process": "abc"}, [first, second]),
+        ({"f_process": "0"}, [first, second]),
     ]
     for params, expected in cases:
         for headers in ({}, {"HTTP_HX_REQUEST": "true"}):
@@ -238,7 +238,7 @@ def test_detail_and_modal_show_accepted_fields(user, client_logged_in, workorder
     assert [field["label"] for field in modal.context["fields"]][-2:] == ["受けた日時", "受けた人"]
 
 
-# --- 2 段目: 一覧の絞り込みの欄 ---
+# --- 2 段目: 一覧の絞り込みの欄 (N128 から土台の絞り込みの枠の中) ---
 
 
 @pytest.mark.django_db
@@ -247,20 +247,19 @@ def test_list_filter_form(user, client_logged_in, customer, item, cut, bend):
     url = reverse("workorders:workorder_list")
 
     body = client_logged_in.get(url).content.decode()
-    assert body.count('id="workorder-filter"') == 1
-    assert '<select name="process" class="select select-sm w-auto">' in body
+    assert 'id="workorder-filter"' not in body
+    assert '<select id="list-f-process" class="select select-sm mt-2 w-auto" name="f_process" data-list-filter>' in body
     assert '<option value="">すべて</option>' in body
-    assert f'<option value="{cut.pk}">切断</option>' in body
-    assert f'<option value="{bend.pk}">曲げ</option>' in body
-    assert body.index(">切断<") < body.index(">曲げ<")
-    assert 'name="unaccepted" value="1" class="checkbox checkbox-sm">' in body
-    assert 'name="today" value="1" class="checkbox checkbox-sm">' in body
-    assert "未着手だけ" in body and "今日の計画だけ" in body
-    assert 'hx-include="#workorder-filter"' in body
-    assert 'hx-include="#list-q, #list-per, #list-meta"' in body
+    assert f'<option value="{cut.pk}">{cut}</option>' in body
+    assert f'<option value="{bend.pk}">{bend}</option>' in body
+    assert body.index(f">{cut}<") < body.index(f">{bend}<")
+    assert 'name="f_unaccepted" value="1" class="checkbox checkbox-sm" data-list-filter>未着手だけ</label>' in body
+    assert 'name="f_today" value="1" class="checkbox checkbox-sm" data-list-filter>今日の計画だけ</label>' in body
+    assert 'name="process"' not in body and 'name="unaccepted"' not in body and 'name="today"' not in body
+    assert 'hx-include="#workorder-filter"' not in body
 
-    chosen = client_logged_in.get(url, {"process": cut.pk, "unaccepted": "1"}).content.decode()
-    assert f'<option value="{cut.pk}" selected>切断</option>' in chosen
-    assert f'<option value="{bend.pk}">曲げ</option>' in chosen
-    assert 'name="unaccepted" value="1" class="checkbox checkbox-sm" checked>' in chosen
-    assert 'name="today" value="1" class="checkbox checkbox-sm">' in chosen
+    chosen = client_logged_in.get(url, {"f_process": cut.pk, "f_unaccepted": "1"}).content.decode()
+    assert f'<option value="{cut.pk}" selected>{cut}</option>' in chosen
+    assert f'<option value="{bend.pk}">{bend}</option>' in chosen
+    assert 'name="f_unaccepted" value="1" class="checkbox checkbox-sm" checked data-list-filter>' in chosen
+    assert 'name="f_today" value="1" class="checkbox checkbox-sm" data-list-filter>' in chosen
