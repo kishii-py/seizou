@@ -8,12 +8,15 @@
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
+- 入金と請求書の取消の保存の釦の字は、押した結果の金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
 """
 
 from decimal import Decimal
 
 from django import forms
 from django.utils import timezone
+
+from seizou.core.forms import SubmitLabelMixin, label_number
 
 from .models import Invoice
 from .models import Payment
@@ -88,15 +91,26 @@ class InvoiceForm(forms.Form):
 
 
 class InvoiceCancelForm(forms.Form):
-    """請求書を取り消す form。欄は無い。"""
+    """請求書を取り消す form。欄は無い。保存の釦は「IV-000001 を取り消す」(土台が対象を instance= で渡す。N138)。"""
     submit_label = "取り消す"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.invoice_no} を取り消す"
 
     def service_kwargs(self):
         return {}
 
 
-class PaymentForm(forms.Form):
-    """入金を記録する form。請求書は欄に持たない (土台が URL の pk の請求書を record_payment に渡す)。"""
+class PaymentForm(SubmitLabelMixin, forms.Form):
+    """入金を記録する form。請求書は欄に持たない (土台が URL の pk の請求書を record_payment に渡す)。
+
+    保存の釦は「¥12,000 を入金として記録する」(金額を入れる前は「入金として記録する」。N138)。
+    金額は使う人が自分で入れる字なので、金額の閲覧が無い人にも隠さない (発注の合計は form が掛けて出す字なので隠す)。
+    """
+
+    submit_label_plain = "入金として記録する"
 
     received_on = forms.DateField(
         label="入金日",
@@ -109,12 +123,18 @@ class PaymentForm(forms.Form):
         decimal_places=2,
         min_value=Decimal("0.01"),
         error_messages={"min_value": "入金の金額は 0 より大きい数にしてください。"},
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-amount": True}),
     )
     method = forms.ChoiceField(label="入金の方法", choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_TRANSFER)
     note = forms.CharField(
         label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
     )
+
+    def submit_label_templates(self) -> list:
+        return ["¥{amount} を入金として記録する"]
+
+    def submit_label_values(self) -> dict:
+        return {"amount": label_number(self.submit_value("amount"))}
 
     def service_kwargs(self):
         data = self.cleaned_data

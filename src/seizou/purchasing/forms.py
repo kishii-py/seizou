@@ -11,6 +11,8 @@
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
   line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (N124)。
+- 発注・受入・取り消すの保存の釦の字は、押した結果の数と金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
+  金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注の釦に金額を書かない。
 """
 
 from django import forms
@@ -18,6 +20,7 @@ from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
+from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_unit
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
@@ -41,7 +44,7 @@ class PurchaseOrderLineForm(forms.Form):
         label="数量",
         max_digits=12,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-qty": True}),
     )
     unit = forms.CharField(
         label="単位",
@@ -54,7 +57,7 @@ class PurchaseOrderLineForm(forms.Form):
         label="単価",
         max_digits=14,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-price": True}),
     )
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(
@@ -99,8 +102,13 @@ def _order_lines(raw):
     return lines
 
 
-class PurchaseOrderForm(forms.Form):
-    """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。"""
+class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
+    """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。
+
+    保存の釦は「3 行・合計 ¥45,000 で発注する」(単価の無い行があれば「3 行で発注する」。金額の閲覧が無い人も「3 行で発注する」。N138)。
+    """
+
+    submit_label_plain = "発注する"
 
     partner = forms.ModelChoiceField(label="取引先", queryset=None)
     order_date = forms.DateField(label="発注日", initial=timezone.localdate, widget=_date_input())
@@ -108,7 +116,8 @@ class PurchaseOrderForm(forms.Form):
         label="備考", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 2})
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, hide_money=False, **kwargs):
+        self.hide_money = hide_money
         super().__init__(*args, **kwargs)
         partner_model = PurchaseOrder._meta.get_field("partner").related_model
         self.fields["partner"].queryset = active_partners().filter(
@@ -134,6 +143,36 @@ class PurchaseOrderForm(forms.Form):
         self.lines = PurchaseOrderLineFormSet(
             data=self.data if self.is_bound else None, initial=line_initial, prefix="lines"
         )
+
+    def submit_label_templates(self) -> list:
+        if self.hide_money:
+            return ["{rows} 行で発注する"]
+        return ["{rows} 行・合計 ¥{amount} で発注する", "{rows} 行で発注する"]
+
+    def submit_label_values(self) -> dict:
+        # 開いた形は初期値の行 (盤で選んだ明細。単価は空)、送った形は入れた行 (has_changed) の通った値。
+        rows, amount, priced = 0, 0, True
+        for row in self.lines.forms:
+            if self.is_bound:
+                if not row.has_changed():
+                    continue
+                values = getattr(row, "cleaned_data", {})
+            else:
+                values = row.initial or {}
+            qty = label_decimal(values.get("qty"))
+            if qty is None:
+                if self.is_bound:
+                    return {}
+                continue
+            price = label_decimal(values.get("unit_price"))
+            rows += 1
+            if price is None:
+                priced = False
+            else:
+                amount += qty * price
+        if not rows:
+            return {}
+        return {"rows": str(rows), "amount": label_number(amount) if priced else None}
 
     def is_valid(self):
         # 発注の欄と明細の行の両方を確かめ、どちらの誤りも画面に出す。
@@ -168,12 +207,17 @@ class SendForm(forms.Form):
 
 
 class CancelForm(forms.Form):
-    """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。"""
+    """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。保存の釦は「PO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
 
     reason = forms.CharField(
         label="取消の理由", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3})
     )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.po_no} を取り消す"
 
     def service_kwargs(self):
         return {"reason": self.cleaned_data["reason"]}
@@ -192,13 +236,16 @@ def _purchase_line(raw):
     return PurchaseOrderLine.objects.filter(pk=pk).first()
 
 
-class ReceiptForm(forms.Form):
+class ReceiptForm(SubmitLabelMixin, forms.Form):
     """受入の form。発注の明細は字を打って探す欄 (候補は受入の残がある明細だけ)。
 
     欄の値として受けるのは全部の明細で、取消の発注の明細は services が日本語の文で断る (出荷の form と同じ考え)。
     初期値の line (発注の詳細の「受入を登録」が GET の ?line=<pk> で渡す) があれば、その明細の受入の残を数量の初期値にする
     (受入の残は purchasing.services.remaining_qty。受注の明細の残 = orders の同じ名前の関数とは別)。
+    保存の釦は「5 個を受け入れる」(明細の決まっている形。決まっていなければ「受け入れる」。N138)。
     """
+
+    submit_label_plain = "受け入れる"
 
     line = forms.ModelChoiceField(
         label="発注の明細",
@@ -227,6 +274,20 @@ class ReceiptForm(forms.Form):
             rest = services.remaining_qty(line)
             if rest > 0:
                 self.initial.setdefault("qty", rest)
+        # 保存の釦の字 (N138): 描いたときの明細の単位で「5 個を受け入れる」。明細を選び直したら JS が「受け入れる」に戻す。
+        self.label_line = _purchase_line(self.data.get("line")) if self.is_bound else line
+        self.fields["qty"].widget.attrs["data-label-qty"] = True
+        if self.label_line is not None:
+            self.fields["line"].widget.attrs["data-label-line"] = str(self.label_line.pk)
+
+    def submit_label_templates(self) -> list:
+        if self.label_line is None:
+            return []
+        unit = line_unit(self.label_line)
+        return [f"{{qty}} {unit}を受け入れる" if unit else "{qty} を受け入れる"]
+
+    def submit_label_values(self) -> dict:
+        return {"qty": label_number(self.submit_value("qty"))}
 
     def service_kwargs(self):
         data = self.cleaned_data
