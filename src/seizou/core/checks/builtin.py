@@ -110,6 +110,9 @@ class OverWorkorder(Check):
         qty = data.get("qty")
         if line is None or qty is None:
             return None
+        if getattr(getattr(line, "order", None), "status", None) == "cancelled":
+            # 取消の受注の明細は、service の R05 (取消した受注には作れない) が先に赤で止める。R06 の数の超えは見ない。
+            return None
         issued = tools.issued_qty(line)
         total = issued + _dec(qty)
         if total > _dec(line.qty):
