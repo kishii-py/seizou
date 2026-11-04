@@ -1,10 +1,20 @@
 {% extends "core/list.html" %}
-{% load seizou_icons %}
+{% load seizou_icons seizou_tags static %}
 {# 注文残の一覧 (注残の盤): 土台の一覧に、残のある物だけ / すべての切り替えと、納期の絞り込みの欄と、受注の一覧への入口を足す。 #}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:order_list' %}" data-tour="order-link">{% icon "clipboard" "size-4" %}受注の一覧</a>{{ block.super }}{% endblock %}
 {% block content %}
 {% include "orders/_all_toggle.html" %}
 {% include "orders/_board_filter.html" %}
+{% can_write "shipping.Shipment" as can_ship %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
+{% if bulk_ship_url and can_ship or bulk_po_url and can_po %}
+{# 選んだ行の操作: 行の頭のチェック (form の属性が board-bulk) の値を、釦が htmx で小窓に読む。1 行も選んでいないときは JS (orders/board-select.js) が隠す。 #}
+<form id="board-bulk" method="get" action="{{ bulk_ship_url|default:bulk_po_url }}" class="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-base-200 p-2" aria-label="選んだ行の操作" hidden data-board-bulk>
+  <span class="text-sm"><span class="tabular-nums" data-board-count>0</span> 行を選んでいます</span>
+  {% if bulk_ship_url and can_ship %}<button type="button" class="btn btn-sm btn-primary" hx-get="{{ bulk_ship_url }}" hx-include="#board-bulk" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()">{% icon "truck" "size-4" %}出荷する</button>{% endif %}
+  {% if bulk_po_url and can_po %}<button type="button" class="btn btn-sm btn-outline border-base-300" hx-get="{{ bulk_po_url }}" hx-include="#board-bulk" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()">{% icon "cart" "size-4" %}発注する</button>{% endif %}
+</form>
+<script src="{% static 'orders/board-select.js' %}" defer></script>
+{% endif %}
 {# 土台の検索とページ送りの要求に、「すべて」(#orders-all。すべてのときだけある) と納期の絞り込みの欄の値を足す。無い id は htmx が無視する。 #}
 <div hx-include="#orders-all, #board-filter" data-tour="board">{{ block.super }}</div>
 {% endblock %}

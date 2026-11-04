@@ -8,6 +8,9 @@ core/_rows.html の「行がある時」の部分 (表の箱・見出し・ペ�
 - 行は data-row-menu を持ち、最後に「操作」の列 (orders/_row_menu.html。⋮ と右クリックの同じメニュー)。行に onclick は無い。
 - 合計の行 (数量・出荷済み・検収・残) は tag board_totals が、絞り込みの後の全部の明細から出す (盤の columns に total は書かない)。
 - 「出荷する」「指示書を発行する」「発注する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける (権限の無い人には出さない = 決め 11-04 00:0x)。行ごとでなく 1 回だけ呼ぶ。
+- 行の頭の選ぶ欄 (受注番号の枡の中。name が line、form が board-bulk) は、orderline_list.html の帯の form の値になる。帯の釦が 1 つも出ない人には欄を出さない。
+  取消の受注と残の無い明細には出さない。見出しの受注番号の枡には、今のページの行を全部選ぶ欄を置く。
+  列を足さずに受注番号の枡に入れるのは、既にある盤の試験が枡の番号と合計の行の枡の数を見るため (N124)。
 - 「実績を入れる」も同じ tag (progress の部品を部署で開ける人だけ。実績の記録は編集の権限が要らないので、決めるのは部署の判定 = 決め 11-04 12:5x)。
 class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄は、要素ごと if で出し分ける。
 写した元: core/_rows.html (11-03 の main)。土台の表の形が変わったら、ここも合わせる。
@@ -16,11 +19,12 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
 {% can_write "shipping.Shipment" as can_ship %}
 {% can_write "purchasing.PurchaseOrder" as can_po %}
 {% can_write "progress.Progress" as can_progress %}
+{% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm table-zebra table-pin-rows">
   <thead><tr class="bg-base-200 text-base-content/70">
     {% for col in columns %}{% if col.numeric %}<th class="whitespace-nowrap font-medium text-right"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% else %}<th class="whitespace-nowrap font-medium"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% endif %}
-      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+      {% if col.name == "order__order_no" %}{% if bulk_ship_url and can_ship or bulk_po_url and can_po %}<input type="checkbox" class="checkbox checkbox-sm" aria-label="この表の行を全部選ぶ" data-board-all> {% endif %}{% endif %}{% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
     </th>{% endfor %}
     <th class="whitespace-nowrap font-medium">操作</th>
   </tr></thead>
@@ -30,7 +34,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {% for cell in row.cells %}
       {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
       {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
-      {% if col.name == "order__order_no" %}<td class="whitespace-nowrap font-mono"><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'orders:order_detail' row.obj.order_id %}">{{ cell.value|default_if_none:"" }}</a></td>
+      {% if col.name == "order__order_no" %}<td class="whitespace-nowrap font-mono">{% if bulk_ship_url and can_ship or bulk_po_url and can_po %}{% if row.obj.order.status != "cancelled" and row.obj.remaining_total > 0 %}<input type="checkbox" class="checkbox checkbox-sm" name="line" value="{{ row.pk }}" form="board-bulk" aria-label="この行を選ぶ" data-board-pick> {% endif %}{% endif %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'orders:order_detail' row.obj.order_id %}">{{ cell.value|default_if_none:"" }}</a></td>
       {% elif col.name == "due_date" or col.name == "board__plan_end" or col.name == "order__order_date" %}{% if cell.value %}<td class="whitespace-nowrap"><span class="font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</span>{% if col.name == "board__plan_end" and row.obj.board.plan_late %} <span class="badge badge-sm badge-soft badge-warning">納期より後</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/50">—</span></td>{% endif %}
       {% elif col.name == "board__days_left" and cell.value is None %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>
       {% elif col.name == "board__acceptance_total" and not cell.value %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>
