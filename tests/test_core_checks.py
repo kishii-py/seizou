@@ -73,3 +73,18 @@ def test_builtin_default_mode_is_warn(settings):
 
     settings.SEIZOU = {}
     assert {c.current_mode() for c in builtin.BUILTIN} == {"warn"}
+
+
+def test_r06_skips_cancelled_order_line(monkeypatch):
+    """取消の受注の明細は R06 (数の超え) を見ない。service の R05 (取消した受注には作れない) が先に赤で止める (11-04。精査 A7 の 3 節の 5)。"""
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from seizou.core.checks import builtin, tools
+
+    monkeypatch.setattr(tools, "issued_qty", lambda line: Decimal("150"))
+    check = builtin.OverWorkorder()
+    cancelled = SimpleNamespace(qty=Decimal("150"), order=SimpleNamespace(status="cancelled"))
+    assert check.run({"order_line": cancelled, "qty": "1"}, user=None) is None
+    open_line = SimpleNamespace(qty=Decimal("150"), order=SimpleNamespace(status="open"))
+    assert "超えます" in (check.run({"order_line": open_line, "qty": "1"}, user=None) or "")
