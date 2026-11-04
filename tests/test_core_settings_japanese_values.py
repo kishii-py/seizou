@@ -89,3 +89,10 @@ def test_posted_values_stay_english_and_are_saved(manager_client):
     assert "<td>止める</td>" in body and "<td>年月 + 連番</td>" in body
     assert "<td>部署: 有効・編集の権限: 使わない・金額の閲覧: 記録だけ</td>" in body
     assert body.count(f">{conf.SOURCE_SCREEN}</td>") == 3
+
+
+def test_dict_values_render_in_fixed_order_regardless_of_stored_key_order():
+    """辞書の設定の字は、保存した鍵の並びに頼らず SUB_LABELS の順で出す (PostgreSQL の jsonb は鍵を並べ替えて返す。CI の postgres で 132 回目から落ちていた)。"""
+    stored = {"money": "log", "write": "off", "department": "on"}
+    assert settings_screen._display("access_control", stored) == "部署: 有効・編集の権限: 使わない・金額の閲覧: 記録だけ"
+    assert settings_screen._display("access_control", {"extra": "on", "department": "log"}) == "部署: 記録だけ・extra: 有効"
