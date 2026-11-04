@@ -5,8 +5,6 @@
 受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
 """
 
-from datetime import date
-
 from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponseRedirect
@@ -22,15 +20,6 @@ from .services import annotate_remaining
 
 #: 既定の一覧に出す受注の状態 (出荷の残っている物)
 OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
-
-
-def _month(value):
-    """GET の month (YYYY-MM) を、その月の 1 日と翌月の 1 日の組にする。読めなければ None。"""
-    try:
-        year, month = (int(part) for part in str(value or "").split("-"))
-        return date(year, month, 1), date(year + month // 12, month % 12 + 1, 1)
-    except ValueError:
-        return None
 
 
 def _customer_choices():
@@ -77,6 +66,8 @@ class OrderListView(BaseListView):
         {"name": "customer", "label": "得意先", "kind": "choice", "field": "customer", "choices": _customer_choices},
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
+        # 既定で入の flag。条件は get_queryset が状態の選びと合わせて掛ける (状態を選んだら外す = N118。when は何もしない)。
+        {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _as_is, "default": True},
     )
     ordering = ("-order_date", "-pk")
     template_name = "orders/order_list.html"
@@ -87,14 +78,10 @@ class OrderListView(BaseListView):
         if _chosen(self, "due"):
             # 納期は明細の項目 (逆向きの FK)。期間に入る明細が 2 行あると同じ受注が 2 回出るので、1 回にする。
             orders = orders.distinct()
-        month = _month(self.request.GET.get("month"))
-        if month is not None:
-            # その月の受注日の、取消を除く全部の状態 (ダッシュボードの今月の受注のカードと同じ数え方)
-            return orders.filter(order_date__gte=month[0], order_date__lt=month[1]).exclude(status=Order.STATUS_CANCELLED)
-        if self.request.GET.get("all") == "1" or _chosen(self, "status"):
-            # 状態を選んだときは、選んだ状態の全部を出す (既定の「出荷の残っている受注だけ」を外す)。
-            return orders
-        return orders.filter(status__in=OPEN_STATUSES)
+        if _flag_on(self, "open") and not _chosen(self, "status"):
+            # 「出荷の残っている受注だけ」(既定で入) は、状態を選んでいないときだけ掛ける (状態を選んだら、その状態の全部を出す)。
+            return orders.filter(status__in=OPEN_STATUSES)
+        return orders
 
 
 class OrderLineListView(BaseListView):
