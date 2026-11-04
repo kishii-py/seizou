@@ -6,6 +6,7 @@
 """
 
 import pytest
+from django.contrib.auth import get_user_model
 
 from seizou.core import conf
 from seizou.core import calendar
@@ -18,3 +19,21 @@ def fresh_setting_cache():
     yield
     conf.reset_cache()
     calendar.reset_cache()
+
+
+@pytest.fixture
+def user(db):
+    """試験の利用者 (11-04 の試験のファイルが同じ字で書いていた物)。試験のファイルで同じ名前を書けば、そちらが勝つ。"""
+    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
+
+
+@pytest.fixture
+def logged_in(client, user):
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def client_logged_in(client, user):
+    client.force_login(user)
+    return client

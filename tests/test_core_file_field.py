@@ -9,7 +9,6 @@ input の name と multiple は今までどおり (form の処理と E2E の set
 import re
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.urls import reverse
 
@@ -22,17 +21,6 @@ SCRIPT = '<script src="/static/js/seizou-file-drop.js" defer></script>'
 def no_key(monkeypatch):
     """鍵を外す (注文書の読み取りと AI の聞き取りの段が本物の API を呼ばない。欄はどちらでも描く)。"""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 def _box_with_input(name: str) -> re.Pattern:

@@ -10,7 +10,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.urls import reverse
 
@@ -30,17 +29,6 @@ SHIPPED_AT = date(2026, 11, 5)
 ISSUED_ON = date(2026, 11, 30)
 RECEIVED_ON = date(2026, 12, 25)
 CANCELLED = [("success", "取り消しました。")]
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture

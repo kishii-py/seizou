@@ -7,7 +7,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.intake.forms import UploadForm
@@ -21,17 +20,6 @@ from seizou.purchasing.forms import PurchaseOrderForm, PurchaseOrderLineForm
 from seizou.purchasing.models import PurchaseOrder
 
 DIMMED = " text-base-content/50"
-
-
-@pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
-
-
-@pytest.fixture
-def logged_in(client, user):
-    client.force_login(user)
-    return client
 
 
 @pytest.fixture
