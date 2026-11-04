@@ -1,7 +1,8 @@
 """読み取りの一致率 (N83)。注文書の読み取り (Extraction) の明細が、そのまま受注に残ったかを数える。読むだけで、表に書かない。
 
 約束:
-- 対象は呼ぶ側が絞る (状態が「受注にした」で受注のある読み取りの行。core の dashboard.reading_match)。
+- 対象は呼ぶ側が絞る (状態が「受注にした」で受注のある読み取りの行と、状態が「届いた注文へ回した」でその届いた注文が
+  受注になった読み取りの行 = 見張りの道。core の dashboard.reading_match)。
   取消の受注も数える (読み取りの正しさは取消と関係ない)。
 - 読んだ値 = extracted["lines"] の i 番目 (0 から)。保存した値 = その受注の明細のうち行番号 i + 1 の物
   (accept_extracted は明細を extracted["lines"] の順に行番号 1 から作る)。保存した明細が無い (人が消した) 行は「直した」。
@@ -71,13 +72,16 @@ def _same_line(read, saved) -> bool:
         return False
 
 
-def match_counts(extractions) -> dict:
-    """読み取りの行の queryset (状態と受注の絞りは呼ぶ側) の、読んだ明細の数と、そのまま受注に残った数と、人が直した数。返す物 = {"extractions": 枚数, "lines": n, "same": m, "fixed": k} (k = n − m)。問い合わせは 2 回まで (読み取りの行の受注の番号と中身・その受注の明細の 6 つの値)。読むだけ。"""
+def match_counts(extractions, *, order_field="order_id") -> dict:
+    """読み取りの行の queryset (状態と受注の絞りは呼ぶ側) の、読んだ明細の数と、そのまま受注に残った数と、人が直した数。返す物 = {"extractions": 枚数, "lines": n, "same": m, "fixed": k} (k = n − m)。問い合わせは 2 回まで (読み取りの行の受注の番号と中身・その受注の明細の 6 つの値)。読むだけ。
+
+    order_field は受注の番号を読む列の名前。既定は読み取りの行の受注。見張りの道の受注は届いた注文の側にあるので、呼ぶ側が注釈の名前を渡す。
+    """
     try:
         line_model = apps.get_model("orders", "OrderLine")
     except LookupError:
         return dict(_EMPTY)
-    rows = list(extractions.values_list("order_id", "extracted"))
+    rows = list(extractions.values_list(order_field, "extracted"))
     order_ids = {order_id for order_id, _extracted in rows if order_id is not None}
     saved = {}
     if order_ids:
