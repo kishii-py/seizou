@@ -152,6 +152,10 @@ class CsvImportForm(forms.Form):
     sample_url_name = ""
     #: 列の名前 → 字を読む関数 (field, 字, CSV にある列の名前の集合) → {列の名前: 値}。無い列は csvio.to_value。
     cell_readers = {}
+    #: 読まない見出し (見出しの対応に入れず、値も読まない)。子が足す (一覧の読むだけの列)
+    skip_headers = csvio.SKIP_HEADERS
+    #: 読まない列の名前 (値があっても入れず、字の誤りも見ない)。子の __init__ が決める (金額の閲覧の無い人の標準単価)
+    unread_fields = ()
 
     file = forms.FileField(label="CSV のファイル")
     encoding = forms.ChoiceField(
@@ -162,6 +166,7 @@ class CsvImportForm(forms.Form):
             "Excel で「CSV (コンマ区切り)」で保存したファイルは Shift_JIS、「CSV UTF-8」で保存したファイルと"
             "一覧の「CSV」のボタンで落としたファイルは UTF-8 を選びます。"
         ),
+        error_messages={"required": "文字コードを選んでください。"},
     )
 
     def __init__(self, *args, **kwargs):
@@ -169,6 +174,8 @@ class CsvImportForm(forms.Form):
         self.import_errors = []
         self.import_counts = None
         self.header_hint = "・".join(csvio.header_labels(self.model))
+        #: CSV にあったが読まなかった見出し (知らせの 1 文に使う)
+        self.unread_headers = []
 
     def clean(self):
         cleaned = super().clean()
@@ -186,11 +193,14 @@ class CsvImportForm(forms.Form):
         else:
             try:
                 _headers, columns, ext_columns, table = csvio.read_table(
-                    text, self.model, required=self.required_headers
+                    text, self.model, required=self.required_headers, skip=self.skip_headers
                 )
             except ValueError as exc:
                 errors.append((None, "", str(exc)))
             else:
+                # 読まない列は見出しの対応から外す (前の見出し FORMER_HEADERS も同じ列として外す)。_read_rows は対応に無い見出しの字を読まない。
+                self.unread_headers = [header for header, field in columns.items() if field.name in self.unread_fields]
+                columns = {header: field for header, field in columns.items() if field.name not in self.unread_fields}
                 rows, skipped = self._read_rows(table, columns, ext_columns, errors)
         if errors:
             self.import_errors = errors
@@ -250,6 +260,19 @@ class ItemCsvImportForm(CsvImportForm):
     list_url_name = "masters:item_list"
     sample_url_name = "masters:item_import_sample"
 
+    def __init__(self, *args, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if hide_money:
+            # 金額の閲覧が無い人 (権限の判定の on) は標準単価の列を読まない (値があっても変えない。精査 A2 の B3。
+            # 部品の編集の画面の ItemForm が欄を外すのと同じ考え)。土台は __init__ に hide_money の引数がある form にだけ渡す。
+            self.unread_fields = ("standard_price",)
+
+    def service_kwargs(self):
+        kwargs = super().service_kwargs()
+        if self.unread_headers:
+            kwargs["price_skipped"] = True
+        return kwargs
+
 
 class PartnerCsvImportForm(CsvImportForm):
     model = Partner
@@ -258,6 +281,9 @@ class PartnerCsvImportForm(CsvImportForm):
     list_url_name = "masters:partner_list"
     sample_url_name = "masters:partner_import_sample"
     cell_readers = {"closing_day": read_closing_day, "payment_day": read_payment_day}
+    #: 取引先の一覧の読むだけの列「注文の入口」(一覧の CSV の書き出しに出る。core の dashboard.annotate_order_inlet の列) は読まない。
+    #: 一覧で落とした CSV をそのまま入れ直せるように。
+    skip_headers = (*csvio.SKIP_HEADERS, "注文の入口")
 
 
 # ---------------------------------------------------------------- 図面を版に戻す (第 3 波)

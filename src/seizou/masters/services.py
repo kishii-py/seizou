@@ -580,10 +580,17 @@ def copy_values(source, current, copied_marks):
     return values, messages
 
 
-def _import_rows(rows, user, model, key, label, create, update):
+class ImportResult(dict):
+    """CSV の取り込みの結果 ({"入れた": n, "更新した": m} の辞書のまま)。saved_note は、入力の土台 (core.views.with_saved_note) が緑の知らせの後ろに付ける字。"""
+
+    saved_note = ""
+
+
+def _import_rows(rows, user, model, key, label, create, update, *, note=""):
     """CSV の行を 1 つのトランザクションで入れる。鍵の列の値が既にあれば update、無ければ create。
 
     どれかの行で services が断ったら、行の番号を付けて ValueError を上げ直す (全部が巻き戻り、1 件も入らない)。
+    note は知らせの後ろに付ける 1 文。
     """
     made = updated = 0
     with transaction.atomic():
@@ -601,16 +608,20 @@ def _import_rows(rows, user, model, key, label, create, update):
                     updated += 1
             except ValueError as exc:
                 raise ValueError(f"{line} 行目: {exc}") from exc
-    return {"入れた": made, "更新した": updated}
+    result = ImportResult({"入れた": made, "更新した": updated})
+    result.saved_note = f"{made} 件入れ、{updated} 件直しました。{note}"
+    return result
 
 
-def import_items(rows, user):
+def import_items(rows, user, *, price_skipped=False):
     """部品の CSV の行を入れる (05 の 8 節)。自社品番が既にあれば update_item、無ければ create_item。
 
     rows の 1 つは {"line": 行の番号, "data": {列の名前: 値}, "ext": {会社ごとの項目の列の名前: 値} か None}。
-    data は CSV にある列だけ (無い列は更新しても今の値のまま)。返す物は {"入れた": n, "更新した": m}。
+    data は CSV にある列だけ (無い列は更新しても今の値のまま)。返す物は ImportResult ({"入れた": n, "更新した": m} の辞書)。
+    price_skipped が真なら (金額の閲覧が無い人の取り込みで標準単価の列を読まなかった)、知らせに 1 文を足す。
     """
-    return _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item)
+    note = "標準単価の列は金額の閲覧の権限が無いので読みませんでした。" if price_skipped else ""
+    return _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item, note=note)
 
 
 def import_partners(rows, user):
