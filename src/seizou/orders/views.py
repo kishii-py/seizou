@@ -32,6 +32,18 @@ def _month(value):
         return None
 
 
+def _customer_choices():
+    """得意先の絞りの候補。取引先の種類が得意先か両方の物だけ (協力企業だけの取引先は出さない)。並びは取引先の ordering。"""
+    partner = Order._meta.get_field("customer").related_model
+    rows = partner._default_manager.filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
+    return [(row.pk, str(row)) for row in rows]
+
+
+def _chosen(view, name):
+    """一覧の絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は、土台の FilterSpec と同じく無いのと同じ。"""
+    return any(spec.values(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
 class OrderListView(BaseListView):
     """受注の一覧。
 
@@ -43,16 +55,28 @@ class OrderListView(BaseListView):
     screen_help = "受けた注文の一覧。既定は出荷の残っている受注 (受注・一部出荷) だけを出します。"
     columns = ("order_no", "customer", "order_date", "customer_order_no", "status", "source")
     search_fields = ("order_no", "customer__name", "customer__code", "customer_order_no")
+    # 一覧の絞り (土台の FilterSpec。決め 11-04 15:0x)。得意先は choice に候補の関数を渡す (lookup の候補は取引先の全部で、協力企業も出るため)。
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "customer", "label": "得意先", "kind": "choice", "field": "customer", "choices": _customer_choices},
+        {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
+        {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
+    )
     ordering = ("-order_date", "-pk")
     template_name = "orders/order_list.html"
 
     def get_queryset(self):
+        # 土台 (super) が検索と絞り (f_) を当てた後に、受注の一覧の既定を足す。
         orders = super().get_queryset().select_related("customer")
+        if _chosen(self, "due"):
+            # 納期は明細の項目 (逆向きの FK)。期間に入る明細が 2 行あると同じ受注が 2 回出るので、1 回にする。
+            orders = orders.distinct()
         month = _month(self.request.GET.get("month"))
         if month is not None:
             # その月の受注日の、取消を除く全部の状態 (ダッシュボードの今月の受注のカードと同じ数え方)
             return orders.filter(order_date__gte=month[0], order_date__lt=month[1]).exclude(status=Order.STATUS_CANCELLED)
-        if self.request.GET.get("all") == "1":
+        if self.request.GET.get("all") == "1" or _chosen(self, "status"):
+            # 状態を選んだときは、選んだ状態の全部を出す (既定の「出荷の残っている受注だけ」を外す)。
             return orders
         return orders.filter(status__in=OPEN_STATUSES)
 
