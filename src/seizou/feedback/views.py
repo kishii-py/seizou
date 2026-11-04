@@ -1,7 +1,7 @@
 """feedback の画面と口 (依頼書 N59)。画面は core の土台を継承する (R15)。
 
 - 画面 4 つ: 一覧・新規登録・詳細・編集。URL の名前は土台の約束 (<app>:<model>_list / _detail / _create / _update)。
-  上書きするのは 12 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
+  上書きするのは 13 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
 - 一覧と詳細は get_queryset で自分の分に絞る (世話役 = アカウント管理の権限は全部)。編集の画面も同じ絞りの中から
   対象を引く (土台の dispatch が部品の get_queryset を読む)。絞りの中で直せない物 (確認済みの後の書いた人) は
   services の update_feedback が断る (赤の知らせ)。
