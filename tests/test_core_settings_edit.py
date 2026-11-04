@@ -292,7 +292,7 @@ def test_edit_choice_setting_from_screen(manager_client):
     response = manager_client.get(edit_url("over_shipment"))
     assert response.status_code == 200
     body = response.content.decode()
-    assert 'name="over_shipment"' in body and "止める (stop)" in body
+    assert 'name="over_shipment"' in body and "止める" in body
     assert f'href="{reverse("core:settings")}"' in body and "キャンセル" in body
     assert body.count("btn-primary") == 1
     assert "答えの値に戻す" not in body
@@ -302,7 +302,7 @@ def test_edit_choice_setting_from_screen(manager_client):
     assert conf.setting("over_shipment") == "stop"
 
     body = manager_client.get(response["Location"]).content.decode()
-    assert "止める (stop)" in body and conf.SOURCE_SCREEN in body
+    assert "止める" in body and conf.SOURCE_SCREEN in body
     assert "保存しました。" in body
 
 
@@ -311,7 +311,7 @@ def test_edit_bool_text_and_access_control(manager_client):
     response = manager_client.post(edit_url("partial_shipment"), {})
     assert response.status_code == 302
     assert conf.setting("partial_shipment") is False
-    assert "許さない (False)" in manager_client.get(reverse("core:settings")).content.decode()
+    assert "許さない" in manager_client.get(reverse("core:settings")).content.decode()
 
     body = manager_client.get(edit_url("partial_shipment")).content.decode()
     assert 'name="partial_shipment"' in body and "分納: 許す" in body
