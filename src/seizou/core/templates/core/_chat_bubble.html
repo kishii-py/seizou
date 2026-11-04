@@ -1,0 +1,10 @@
+{% load seizou_icons %}
+{# 会話の吹き出し 1 つ (フィードバックの聞き取りと AI チャットの窓)。吹き出しの横に丸の印 (自分は人、AI は AI の絵) を置く。字は escape してから改行を br にする (markdown を描かない)。 #}
+{# 受ける物 (include は only で渡す): who ("me" は自分 = 右に主色の吹き出し。ほかは AI = 左に既定の色の吹き出し)・text・pending (真なら AI の吹き出しの中に待つ間の点の動き)・extra (AI の吹き出しの中で字の後に include するテンプレートの名前)・small (真なら丸の印を小さく)。 #}
+{% if who == "me" %}<div class="chat chat-end">
+  <div class="chat-image avatar avatar-placeholder" aria-hidden="true"><div class="rounded-full bg-primary text-primary-content{% if small %} w-8{% else %} w-10{% endif %}">{% icon "user" "size-5" %}</div></div>
+  <div class="chat-bubble chat-bubble-primary break-words">{{ text|linebreaksbr }}</div>
+</div>{% else %}<div class="chat chat-start">
+  <div class="chat-image avatar avatar-placeholder" aria-hidden="true"><div class="rounded-full bg-neutral text-neutral-content{% if small %} w-8{% else %} w-10{% endif %}">{% icon "bot" "size-5" %}</div></div>
+  <div class="chat-bubble break-words">{% if pending %}<span class="loading loading-dots loading-sm" aria-hidden="true"></span>{% else %}{{ text|linebreaksbr }}{% if extra %}{% include extra %}{% endif %}{% endif %}</div>
+</div>{% endif %}

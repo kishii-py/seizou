@@ -1,2 +1,2 @@
-{# 会話の往復 (turns = [{"role": "user" か "assistant", "text": 字}])。利用者は右、AI は左。字は escape してから改行を br にする (markdown を描かない)。 #}
-{% for turn in turns %}{% if turn.role == "user" %}<div class="chat chat-end"><div class="chat-bubble chat-bubble-neutral break-words">{{ turn.text|linebreaksbr }}</div></div>{% else %}<div class="chat chat-start"><div class="chat-bubble break-words">{{ turn.text|linebreaksbr }}</div></div>{% endif %}{% endfor %}
+{# 会話の往復 (turns = [{"role": "user" か "assistant", "text": 字}])。利用者は右、AI は左。吹き出しは core の _chat_bubble.html (丸の印つき)。 #}
+{% for turn in turns %}{% if turn.role == "user" %}{% include "core/_chat_bubble.html" with who="me" text=turn.text only %}{% else %}{% include "core/_chat_bubble.html" with who="ai" text=turn.text only %}{% endif %}{% endfor %}
