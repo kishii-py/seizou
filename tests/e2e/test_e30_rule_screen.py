@@ -13,6 +13,7 @@
 写す文の箱には絶対の道が出るので、押した後は撮らない。
 見ない所 (理由): clipboard の中身 (許さない環境がある)、違反が 20 件を超えるときの「ほか n 件」、htmx への `HX-Redirect`、直す命令 (Claude Code の命令でブラウザの試験の外)。
 `finally` の立て直しが失敗すると、後の E-31・E-32 も落ちる (名前の順で E-30 は先に回る)。
+外の置き場 (`SEIZOU_E2E_BASE_URL_…`) では、置き場にファイルを置けず立て直せないので、始めに理由を付けて skip する。
 """
 
 from pathlib import Path
@@ -20,7 +21,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import login, restart_company, shot
+from .conftest import login, restart_company, shot, skip_if_external
 
 VIOLATION_SOURCE = '''"""E2E の試験が置いて消す違反の見本"""
 
@@ -46,6 +47,7 @@ def _open_orders(page, company):
 
 
 def test_e30_violation_screen_then_back(page_a, company_a):
+    skip_if_external(company_a, "置き場に views.py を置いて立て直せない")
     login(page_a, company_a)
     response = _open_orders(page_a, company_a)
     assert response.status == 200

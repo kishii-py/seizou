@@ -19,6 +19,9 @@
    - `SEIZOU_E2E_PASSWORD_B_PLATING`: B 社の管理者のパスワード
    - `SEIZOU_E2E_PARTNER_SECRET`: 2 社の間の署名の鍵。fixture が起こす runserver に、相手の会社の id から作った名前で渡す
    - `SEIZOU_E2E_PORT_<id の大文字>`: その会社の port を答えの YAML の値から変える (夜のレーンが一時の置き場を別の port で立てて回し、本物のデモに触らないため)
+   - `SEIZOU_E2E_BASE_URL_A_MACHINING`・`SEIZOU_E2E_BASE_URL_B_PLATING`: 外の置き場 (VPS など) で回すときの 2 社の URL
+     (例 `https://a.example.jp`)。2 社とも書くと、runserver を起こさず止めず、その URL を使う。置き場のファイルを読む試験
+     (E-30 と、`restart_company` を呼ぶ物) は理由を付けて skip する。片方だけは誤り (A 社から B 社への送りが外と手元で食い違う)。
    パスワードと鍵の値は、どのファイルにも、絵の名前にも、ログにも書かない。
 5. 期待の文は、仕様書の 6 番の 3 節の「期待」の列をそのまま、試験の docstring に写す。
 6. 作り物のデータだけが映る前提で書く。実在の会社名・人名・品番を試験に書かない。
@@ -73,6 +76,7 @@ class Company:
     site: Path
     base_url: str
     password_env: str
+    external: bool = False  # 外の置き場 (VPS など) の URL で回す = この土台は runserver を起こさない・止めない・置き場のファイルを読まない
 
     @property
     def login_url(self) -> str:
@@ -87,18 +91,35 @@ def _sites_dir() -> Path:
     return Path(os.environ.get("SEIZOU_E2E_SITES_DIR") or "~/seizou-sites").expanduser()
 
 
+def external_url_env(company_id: str) -> str:
+    """その会社を外の置き場 (VPS など) で回すときの URL の環境変数の名前 (`SEIZOU_E2E_BASE_URL_<id の大文字>`)。"""
+    return f"SEIZOU_E2E_BASE_URL_{company_id.upper()}"
+
+
 def _load_company(yaml_name: str) -> Company:
     answers = yaml.safe_load((COMPANIES_DIR / yaml_name).read_text(encoding="utf-8"))
     company_id = str(answers["id"])
     port = int(os.environ.get(f"SEIZOU_E2E_PORT_{company_id.upper()}") or answers["port"])
+    # 外の置き場の URL。末尾の / は落とす (E-26 が page.url と base_url を比べる)。
+    outside = (os.environ.get(external_url_env(company_id)) or "").strip().rstrip("/")
     return Company(
         id=company_id,
         name=str(answers["name"]),
         port=port,
         site=_sites_dir() / company_id,
-        base_url=f"http://127.0.0.1:{port}",
+        base_url=outside or f"http://127.0.0.1:{port}",
         password_env=f"SEIZOU_E2E_PASSWORD_{company_id.upper()}",
+        external=bool(outside),
     )
+
+
+def load_companies() -> dict[str, Company]:
+    """2 社を YAML (と環境変数) から読む。外の置き場の URL が片方だけなら誤りとして止める。"""
+    loaded = (_load_company("a_machining.yaml"), _load_company("b_plating.yaml"))
+    if len({company.external for company in loaded}) != 1:
+        names = "・".join(external_url_env(company.id) for company in loaded)
+        raise RuntimeError(f"外の置き場の URL は 2 社とも書く (片方だけだと A 社から B 社への送りが外と手元で食い違う): {names}")
+    return {company.id: company for company in loaded}
 
 
 # --- 門 -----------------------------------------------------------------
@@ -119,8 +140,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def companies() -> dict[str, Company]:
-    loaded = (_load_company("a_machining.yaml"), _load_company("b_plating.yaml"))
-    return {company.id: company for company in loaded}
+    return load_companies()
 
 
 def _is_listening(port: int) -> bool:
@@ -163,6 +183,10 @@ def _partner_of(company: Company) -> Company:
 
 @contextmanager
 def _running(company: Company) -> Iterator[Company]:
+    if company.external:
+        # 外の置き場 (VPS など) はこの土台が起こす物ではない。起こさず止めず、そのまま使う (開かなければ最初の goto が落ちる)。
+        yield company
+        return
     manage = company.site / "manage.py"
     if not manage.exists():
         pytest.skip(
@@ -463,6 +487,12 @@ def _server_answers(company: Company) -> bool:
         return False
 
 
+def skip_if_external(company: Company, what: str) -> None:
+    """外の置き場 (VPS など) では置き場のファイルに触れないので、what (「立て直せない」など) を理由に skip する。"""
+    if company.external:
+        pytest.skip(f"外の置き場 ({external_url_env(company.id)}) を使っているので{what} (置き場のファイルに触れない)")
+
+
 def _stop_group(process: subprocess.Popen) -> None:
     """process group に SIGTERM → 10 秒 → SIGKILL (`_running` の止め方と同じ)。"""
     if process.poll() is None:
@@ -477,9 +507,10 @@ def _stop_group(process: subprocess.Popen) -> None:
 def restart_company(company: Company) -> None:
     """runserver を止めて、同じ命令と環境で起こし直す。起動の後、`_server_answers` が真になるまで待つ。
 
-    立て直すのは fixture が起こした物だけ。立っていた runserver を使っているときは skip する
+    立て直すのは fixture が起こした物だけ。立っていた runserver を使っているときと、外の置き場のときは skip する
     (その process を止める道が無い)。`--noreload` で起こしているので、置いた・消したファイルは立て直すと反映される。
     """
+    skip_if_external(company, "立て直せない")
     started = _STARTED.get(company.id)
     if started is None:
         pytest.skip("立っていた runserver を使っているので立て直せない (fixture が起こした物だけを立て直す)")

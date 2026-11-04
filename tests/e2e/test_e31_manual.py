@@ -10,7 +10,8 @@
 「印刷用を開く」は新しいタブで開き、道が `/manual/` で `print=1` を持ち、左のメニュー (`aside`) が無く、
 目次の link 先の並びが本文の画面と同じ。
 見ない所 (理由): 目録そのものとの突き合わせ (置き場の命令の出力を読む形になり大きい。目次と本文の並びが同じことで見た)、
-断片の中身 (置き場によって違う)、紙の枚数 (左のメニューの無い 1 つの HTML であることだけを見た)。
+断片の中身 (置き場によって違う)、紙の枚数 (左のメニューの無い 1 つの HTML であることだけを見た)、
+外の置き場 (`SEIZOU_E2E_BASE_URL_…`) での「この会社の説明書はまだありません。」の数 (置き場の `manual/` の有無を読めない。絵で見る)。
 """
 
 import re
@@ -52,8 +53,9 @@ def test_e31_toc_body_and_print(context, page_a, company_a):
     not_yet = [text for text in texts if text.endswith(STILL_NONE.strip())]
     expect(page_a.get_by_text(FRAGMENT_NONE)).to_have_count(len(not_yet))
 
-    folder_exists = (company_a.site / "manual").is_dir()
-    expect(page_a.get_by_text(MANUAL_NONE)).to_have_count(0 if folder_exists else 1)
+    if not company_a.external:  # 外の置き場の manual/ の有無は読めない (案内が出るかは絵で見る)
+        folder_exists = (company_a.site / "manual").is_dir()
+        expect(page_a.get_by_text(MANUAL_NONE)).to_have_count(0 if folder_exists else 1)
     shot(page_a, "E-31", "a-manual")
 
     with context.expect_page() as opened:
