@@ -20,7 +20,7 @@ from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
-from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_unit
+from seizou.core.forms import SubmitLabelMixin, label_number, line_totals, line_unit
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
@@ -149,30 +149,32 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
             return ["{rows} 行で発注する"]
         return ["{rows} 行・合計 ¥{amount} で発注する", "{rows} 行で発注する"]
 
-    def submit_label_values(self) -> dict:
-        # 開いた形は初期値の行 (盤で選んだ明細。単価は空)、送った形は入れた行 (has_changed) の通った値。
-        rows, amount, priced = 0, 0, True
+    def line_pairs(self):
+        """合計の枠と釦の字に数える明細の (数量, 単価)。開いた形は初期値の行 (盤で選んだ明細。単価は空)、送った形は入れた行の通った値。
+        送って止まった形で数量の通らなかった行があれば None (分からない)。"""
+        pairs = []
         for row in self.lines.forms:
             if self.is_bound:
                 if not row.has_changed():
                     continue
-                values = getattr(row, "cleaned_data", {})
+                values = getattr(row, "cleaned_data", None) or {}
+                if values.get("qty") is None:
+                    return None
             else:
                 values = row.initial or {}
-            qty = label_decimal(values.get("qty"))
-            if qty is None:
-                if self.is_bound:
-                    return {}
-                continue
-            price = label_decimal(values.get("unit_price"))
-            rows += 1
-            if price is None:
-                priced = False
-            else:
-                amount += qty * price
-        if not rows:
+                if values.get("qty") is None:
+                    continue
+            pairs.append((values["qty"], values.get("unit_price")))
+        return pairs
+
+    def line_totals(self) -> dict:
+        return line_totals(self.line_pairs(), show_amount=not self.hide_money)
+
+    def submit_label_values(self) -> dict:
+        totals = self.line_totals()
+        if not totals["rows"]:
             return {}
-        return {"rows": str(rows), "amount": label_number(amount) if priced else None}
+        return {"rows": str(totals["rows"]), "amount": totals["amount"]}
 
     def is_valid(self):
         # 発注の欄と明細の行の両方を確かめ、どちらの誤りも画面に出す。

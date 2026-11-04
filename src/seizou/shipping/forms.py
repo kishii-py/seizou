@@ -13,7 +13,7 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 
-from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_unit
+from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_totals, line_unit
 from seizou.core.widgets import RemoteSelect
 from seizou.orders.services import remaining_qty
 
@@ -183,17 +183,28 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
             return [f"{{rows}} 行・合計 {{qty}} {units.pop()}を出荷する", "{rows} 行を出荷する"]
         return ["{rows} 行を出荷する"]
 
-    def submit_label_values(self) -> dict:
-        rows, total = 0, 0
+    def line_pairs(self):
+        """合計の枠と釦の字に数える明細の (数量, 単価)。「この行を出さない」の行は数えない。単価は無い (None)。
+        数量の分からない行があれば None (分からない)。"""
+        pairs = []
         for row in self.rows:
             pk = row["line"].pk
             if self.submit_value(f"{BULK_SKIP_PREFIX}{pk}"):
                 continue
-            qty = label_decimal(self.submit_value(f"{BULK_QTY_PREFIX}{pk}"))
-            if qty is None:
-                return {}
-            rows, total = rows + 1, total + qty
-        return {"rows": str(rows), "qty": label_number(total)} if rows else {}
+            qty = self.submit_value(f"{BULK_QTY_PREFIX}{pk}")
+            if label_decimal(qty) is None:
+                return None
+            pairs.append((qty, None))
+        return pairs
+
+    def line_totals(self) -> dict:
+        return line_totals(self.line_pairs(), show_amount=False)
+
+    def submit_label_values(self) -> dict:
+        totals = self.line_totals()
+        if not totals["rows"]:
+            return {}
+        return {"rows": str(totals["rows"]), "qty": totals["qty"]}
 
     def _picked(self, cleaned):
         return [row for row in self.rows if not cleaned.get(f"{BULK_SKIP_PREFIX}{row['line'].pk}")]
