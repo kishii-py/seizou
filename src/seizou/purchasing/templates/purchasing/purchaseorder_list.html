@@ -3,6 +3,8 @@
 発注の一覧: core の一覧の下に、2 秒ごとの自動の更新で取りに行く要素 (見えない) を 1 つ置く。要素は #rows の外にあり、入れ替わらない。
 - 取りに行く先は同じ URL。query は画面の今の URL (location.search) から付ける。core の検索・並び替え・頁は hx-push-url で URL を
   書き換えるので、今の絞り込み・頁・並び替え・件数がそのまま付く (古い応答が後から届いても、次の 2 秒で今の URL に戻る)。
+  hx-vals の js: の値は、必ず `{` で始まる形 (`{...式}`) で書く。htmx は `{` で始まらない字を `{` `}` で包んでから評価するので、
+  `js:Object.fromEntries(...)` の形だと SyntaxError になり、最初の 2 秒で止まって二度と取りに行かない (11-04 の E-40 で見つけた)。
 - 前の更新で見せた行の状態の字 (#rows の data-live) を、見出し X-Seizou-Live で送る。サーバーは字が違う行の欄に seizou-changed を付ける
   (purchasing_tags の live_state)。見出しなので query に入らず、並び替えと頁と CSV の link に混ざらない。
 - 取りに行かない間: 検索の欄に字を打っている間 (欄にカーソルがある間)・ほかの要求の途中 (#list-loading に htmx-request)・表を下へ動かしている間
@@ -10,5 +12,5 @@
 - 返った行の部分 (purchasing/_rows.html) で #rows の中を入れ替える。件数と CSV は core/_rows.html が oob で直す。
 {% endcomment %}
 {% block content %}{{ block.super }}
-<div id="purchaseorder-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s [document.activeElement !== document.getElementById('list-q') && !document.querySelector('#list-loading.htmx-request') && !document.querySelector('#rows .overflow-auto')?.scrollTop]" hx-vals="js:Object.fromEntries(new URLSearchParams(location.search))" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('#rows [data-live]'), function (e) { return e.dataset.live; }).join(' ')}" hx-target="#rows" hx-swap="innerHTML"></div>
+<div id="purchaseorder-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s [document.activeElement !== document.getElementById('list-q') && !document.querySelector('#list-loading.htmx-request') && !document.querySelector('#rows .overflow-auto')?.scrollTop]" hx-vals="js:{...Object.fromEntries(new URLSearchParams(location.search))}" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('#rows [data-live]'), function (e) { return e.dataset.live; }).join(' ')}" hx-target="#rows" hx-swap="innerHTML"></div>
 {% endblock %}
