@@ -32,8 +32,9 @@
     {% for f in flow.flows %}
     <div>
       <h3 class="font-bold">{{ f.title }}</h3>
+      {# 矢印は前の段の li に入れる (段と矢印が 1 組で折り返すので、折り返した行が矢印で始まらない。本人 11-04 14:3x)。段の字は折らない。 #}
       <ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{{ f.title }}の段">
-        {% for step in f.steps %}<li class="flex items-center gap-2">{% if not forloop.first %}{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}<a class="btn btn-sm btn-outline border-base-300" href="{{ step.url }}">{{ step.label }}{% if step.count %}<span class="badge badge-sm badge-soft badge-primary">{{ step.count|comma }}</span>{% elif step.count == 0 %}<span class="badge badge-sm badge-ghost">0</span>{% endif %}</a></li>{% endfor %}
+        {% for step in f.steps %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ step.url }}">{{ step.label }}{% if step.count %}<span class="badge badge-sm badge-soft badge-primary">{{ step.count|comma }}</span>{% elif step.count == 0 %}<span class="badge badge-sm badge-ghost">0</span>{% endif %}</a>{% if not forloop.last %}{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}</li>{% endfor %}
       </ol>
       {% if f.next %}<p class="mt-2">次にすること: <a class="link link-hover text-primary" href="{{ f.next.url }}">{{ f.next.label }}</a> ({{ f.next.count_label }} {{ f.next.count|comma }} {{ f.next.unit }})。{{ f.next.next_text }}</p>{% else %}<p class="mt-2 text-base-content/70">今は手を動かす物がありません。</p>{% endif %}
     </div>
