@@ -35,13 +35,21 @@ class InvoiceListView(BaseListView):
     screen_help = "得意先ごとに出荷をまとめた請求書。行を押すと詳細へ進み、そこから印刷用の画面を開けます。"
     columns = ("invoice_no", "customer", "issued_on", "period_from", "period_to", "total", ("payment_status_label", "入金"), {"name": "balance", "label": "残", "kind": "money"}, "status")
     search_fields = ("invoice_no", "customer__name", "customer__code")
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
+        {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+    )
     ordering = ("-issued_on", "-id")
     template_name = "billing/invoice_list.html"
 
     def get_queryset(self):
         invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
         if self.request.GET.get("unpaid") == "1":
-            invoices = invoices.filter(status=Invoice.STATUS_ISSUED).exclude(payments__status=Payment.STATUS_RECORDED)
+            # 状態の絞り (f_status) に読める値があれば、状態はそちらを使い、「未入金だけ」は入金の有無だけを見る (N120)。
+            if not any(spec.name == "status" and spec.values(self.request.GET) for spec in self.filter_specs()):
+                invoices = invoices.filter(status=Invoice.STATUS_ISSUED)
+            invoices = invoices.exclude(payments__status=Payment.STATUS_RECORDED)
         return invoices
 
 
