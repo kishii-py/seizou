@@ -3,8 +3,10 @@
 同じ ID と同じ接続元 (REMOTE_ADDR) の組で 5 回続けて失敗すると、15 分の間はその組のログインを受け付けない
 (正しいパスワードでも)。成功で数え直す。数は Django の既定の cache に組の sha256 を鍵にして持つ
 (打たれた ID の字を鍵にしない)。締め出したときに記録 (seizou.login) に 1 行出す (パスワードは出さない)。
-回数と分は固定 (設定の鍵を作らない)。proxy が付ける接続元の見出しは読まない (偽れるため。nginx の後ろでは
-接続元がいつも nginx になり、ID ごとの締め出しになる)。
+回数と分は固定 (設定の鍵を作らない)。接続元は既定では REMOTE_ADDR だけを見る (proxy が付ける見出しは偽れるため)。
+nginx の後ろでは REMOTE_ADDR がいつも nginx (127.0.0.1) になり ID ごとの締め出しになるので、手前の proxy が接続元を
+見出しに入れる置き場だけ、置き場の .env (か settings.py) に SEIZOU_CLIENT_IP_HEADER=X-Real-IP のように見出しの名前を書く。
+書いた見出しの最初の値を接続元にし、見出しが無い要求は REMOTE_ADDR に戻る (nginx が外から来た同じ名前の見出しを上書きする前提)。
 ログインの view (core.views.RememberLoginView) は変えず、core.urls が as_view(authentication_form=…) で渡す。
 """
 
@@ -12,11 +14,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 
+from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.views.decorators.debug import sensitive_variables
+
+#: 手前の proxy が接続元を入れる見出しの名前を書く設定 (settings.py の名前と環境変数の名前は同じ)。空なら REMOTE_ADDR だけを見る。
+HEADER_SETTING = "SEIZOU_CLIENT_IP_HEADER"
 
 #: 続けて失敗してよい回数 (この回数目の失敗で締め出す)
 FAIL_LIMIT = 5
@@ -33,8 +40,22 @@ LOCKED_MESSAGE = f"ログインに続けて失敗したので、{LOCK_MINUTES} �
 logger = logging.getLogger("seizou.login")
 
 
+def client_ip_header() -> str:
+    """接続元を読む見出しの名前 (settings.py → 環境変数 → 空の字)。例 X-Real-IP。"""
+    value = getattr(settings, HEADER_SETTING, None)
+    if value is None:
+        value = os.environ.get(HEADER_SETTING, "")
+    return str(value or "").strip()
+
+
 def client_address(request) -> str:
-    """接続元の IP (REMOTE_ADDR)。無ければ空の字。"""
+    """接続元の IP。既定は REMOTE_ADDR。見出しの名前が設定されていれば、その見出しの最初の値 (無ければ REMOTE_ADDR)。どちらも無ければ空の字。"""
+    header = client_ip_header()
+    if header:
+        meta_key = "HTTP_" + header.upper().replace("-", "_")
+        first = str(request.META.get(meta_key, "")).split(",")[0].strip()
+        if first:
+            return first
     return request.META.get("REMOTE_ADDR", "")
 
 

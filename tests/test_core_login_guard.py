@@ -163,3 +163,41 @@ def test_failure_key_hides_the_username():
     assert len(key) == len(CACHE_PREFIX) + 64
     assert failure_key("GENBA01", "127.0.0.1") == key
     assert failure_key("genba01", "10.0.0.9") != key
+
+
+# ---------------------------------------------------------------- 接続元の見出し (nginx の後ろ。11-04)
+
+
+def test_client_address_reads_header_only_when_configured(settings, monkeypatch, rf):
+    # 既定 (設定が無い): proxy の見出しがあっても REMOTE_ADDR だけを見る (偽れるため)
+    monkeypatch.delenv(login_guard.HEADER_SETTING, raising=False)
+    if hasattr(settings, login_guard.HEADER_SETTING):
+        monkeypatch.delattr(settings, login_guard.HEADER_SETTING)
+    request = rf.get("/login/", REMOTE_ADDR="127.0.0.1", HTTP_X_REAL_IP="203.0.113.5")
+    assert login_guard.client_address(request) == "127.0.0.1"
+
+    # 置き場の .env (環境変数) に見出しの名前があれば、その見出しの最初の値。見出しが無い要求は REMOTE_ADDR に戻る
+    monkeypatch.setenv(login_guard.HEADER_SETTING, "X-Real-IP")
+    assert login_guard.client_address(request) == "203.0.113.5"
+    chained = rf.get("/login/", REMOTE_ADDR="127.0.0.1", HTTP_X_FORWARDED_FOR="203.0.113.7, 10.0.0.1")
+    monkeypatch.setenv(login_guard.HEADER_SETTING, "X-Forwarded-For")
+    assert login_guard.client_address(chained) == "203.0.113.7"
+    assert login_guard.client_address(rf.get("/login/", REMOTE_ADDR="127.0.0.1")) == "127.0.0.1"
+
+    # settings.py の値が環境変数より先。空の字なら既定に戻る
+    monkeypatch.setattr(settings, login_guard.HEADER_SETTING, "", raising=False)
+    assert login_guard.client_address(request) == "127.0.0.1"
+    monkeypatch.setattr(settings, login_guard.HEADER_SETTING, "X-Real-IP", raising=False)
+    assert login_guard.client_address(request) == "203.0.113.5"
+
+
+@pytest.mark.django_db
+def test_lock_behind_proxy_is_per_header_address(client, user, settings):
+    settings.SEIZOU_CLIENT_IP_HEADER = "X-Real-IP"
+
+    assert LOCKED_MESSAGE in body(lock_out(client, HTTP_X_REAL_IP="203.0.113.5"))
+    same = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP="203.0.113.5")
+    assert same.status_code == 200 and LOCKED_MESSAGE in body(same)
+
+    other = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP="203.0.113.6")
+    assert other.status_code == 302, "別の接続元 (見出しの値) は締め出されない"
