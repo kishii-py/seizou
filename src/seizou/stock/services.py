@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.apps import apps
@@ -241,6 +241,116 @@ def stocked_qty(workorder):
         .aggregate(total=Sum("qty"))["total"]
     )
     return _ZERO if total is None else _dec(total)
+
+
+def stock_projection(item, days=56, *, start=None):
+    """その部品の在庫の見込み (日ごと)。生産計画の盤の小窓 (計画の詳細) が図にする。読むだけ。
+
+    start (既定は今日) から days 日の、その日の終わりの見込みの在庫数を返す。
+    - 元の数 = 今の在庫数 (balance)。在庫を数えていない部品 (None) は 0 から数える (counted が偽)。
+    - 足す = その部品の発行の指示書 (受注が取消でない物) の、まだ入庫にしていない数
+      (数量 − その指示書の製造の完了の動きの合計。0 以下は足さない) を、最後の工程 (順が最大) の終了日に。
+    - 引く = その部品の受注の明細 (受注が取消でない物) の出荷の残りを、納期に。
+    - 日が start より前の物 (遅れている物) は start の日に数える。日が期間の後の物は数えない。
+      日の無い物 (最後の工程が未計画・納期が空) は数えず、件数を undated に返す。
+    問い合わせは在庫数の 2 回と、指示書と明細の 1 回ずつ。workorders か orders の部品が無ければ、その分を数えない。
+    返す物 = {"start", "current" (今の在庫数か None), "counted", "days" (1 日 = {"date", "qty"}),
+    "workorders"・"workorder_qty" (足した件数と数), "lines"・"line_qty" (引いた件数と数), "undated"}。
+    """
+    if start is None:
+        start = timezone.localdate()
+    current = balance(item)
+    changes = {}
+    result = {
+        "start": start,
+        "current": current,
+        "counted": current is not None,
+        "workorders": 0,
+        "workorder_qty": _ZERO,
+        "lines": 0,
+        "line_qty": _ZERO,
+        "undated": 0,
+    }
+
+    def offset_of(day):
+        """day を期間の何日目 (0 から) にするか。日が無ければ None、期間の後なら -1。"""
+        if day is None:
+            return None
+        offset = max((day - start).days, 0)
+        return offset if offset < days else -1
+
+    try:
+        workorder_model = apps.get_model("workorders", "WorkOrder")
+        step_model = apps.get_model("workorders", "WorkOrderStep")
+    except LookupError:
+        workorder_model = None
+    if workorder_model is not None:
+        last_end = step_model._default_manager.filter(workorder=OuterRef("pk")).order_by("-seq")
+        finished = (
+            StockMove.objects.filter(
+                kind=KIND_FINISHED,
+                content_type__app_label="workorders",
+                content_type__model="workorder",
+                object_id=OuterRef("pk"),
+            )
+            .order_by()
+            .values("object_id")
+            .annotate(total=Sum("qty"))
+            .values("total")[:1]
+        )
+        rows = (
+            workorder_model._default_manager.filter(
+                order_line__item=_pk(item), status=workorder_model.STATUS_ISSUED
+            )
+            .exclude(order_line__order__status="cancelled")
+            .annotate(
+                finish_on=Subquery(last_end.values("planned_end")[:1]),
+                stocked=Coalesce(Subquery(finished, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
+            )
+            .order_by()
+            .values_list("qty", "stocked", "finish_on")
+        )
+        for qty, stocked, finish_on in rows:
+            rest = _dec(qty) - _dec(stocked)
+            if rest <= 0:
+                continue
+            offset = offset_of(finish_on)
+            if offset is None:
+                result["undated"] += 1
+            elif offset >= 0:
+                changes[offset] = changes.get(offset, _ZERO) + rest
+                result["workorders"] += 1
+                result["workorder_qty"] += rest
+
+    try:
+        line_model = apps.get_model("orders", "OrderLine")
+    except LookupError:
+        line_model = None
+    if line_model is not None:
+        from seizou.orders.services import annotate_remaining
+
+        rows = (
+            annotate_remaining(line_model._default_manager.filter(item=_pk(item)).exclude(order__status="cancelled"))
+            .filter(remaining_total__gt=0)
+            .order_by()
+            .values_list("remaining_total", "due_date")
+        )
+        for remaining, due_date in rows:
+            offset = offset_of(due_date)
+            if offset is None:
+                result["undated"] += 1
+            elif offset >= 0:
+                changes[offset] = changes.get(offset, _ZERO) - _dec(remaining)
+                result["lines"] += 1
+                result["line_qty"] += _dec(remaining)
+
+    running = _ZERO if current is None else current
+    series = []
+    for offset in range(days):
+        running += changes.get(offset, _ZERO)
+        series.append({"date": start + timedelta(days=offset), "qty": running})
+    result["days"] = series
+    return result
 
 
 # --- 書く (在庫の動き) ---

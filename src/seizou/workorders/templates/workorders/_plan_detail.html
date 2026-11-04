@@ -46,6 +46,39 @@
   <a class="btn btn-outline btn-sm border-base-300" href="{% url 'workorders:workorder_tag' plan.workorder.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a>
   <a class="btn btn-outline btn-sm border-base-300" href="{% url 'workorders:workorder_tag_pdf' plan.workorder.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 </div>
+{# 在庫の見込みの図 (今日から 8 週)。数と座標は workorders_plan の plan_projection が plans.item_projection で作る (在庫の部品が無ければ出さない)。 #}
+{# 小窓の幅に合わせた小さな SVG。色は theme の class だけ。0 より大きい棒は主色、0 より下の棒 (足りない数) は fill-current と text-error で赤。系列ごとに for を分ける (class を組み立てない)。 #}
+{% plan_projection plan.item as outlook %}
+{% if outlook %}
+<section class="mt-4" aria-label="在庫の見込み">
+  <p class="text-xs font-medium text-base-content/50">在庫の見込み (今日から 8 週)</p>
+  <ul class="mt-2 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+    <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>見込みの在庫</li>
+    {# 赤の印は図の棒と同じ fill-current と text-error (app.css に bg-error が無いので小さな SVG で描く)。 #}
+    <li class="flex items-center gap-2"><svg class="size-3 fill-current text-error" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2"></rect></svg>足りない数</li>
+  </ul>
+  <svg id="plan-stock-chart" class="mt-2 block h-auto w-full" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
+    <title>在庫の見込み (今日から 8 週)</title>
+    {% for tick in outlook.chart.ticks %}
+    <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+    <text class="fill-base-content/70 text-xs" x="{{ outlook.chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
+    {% endfor %}
+    {% for bar in outlook.chart.up %}
+    <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+    {% endfor %}
+    {% for bar in outlook.chart.down %}
+    <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+    {% endfor %}
+    {% for label in outlook.chart.labels %}
+    <text class="fill-base-content/70 text-xs" x="{{ label.x }}" y="{{ outlook.chart.label_y }}" text-anchor="start">{{ label.label }}</text>
+    {% endfor %}
+  </svg>
+  {% with projection=outlook.projection %}
+  <p class="mt-2 text-xs text-base-content/70">今の在庫 {% if projection.counted %}{{ projection.current|comma }}{% else %}— (数えていないので 0 から){% endif %}・指示書 {{ projection.workorders }} 件 (+{{ projection.workorder_qty|comma }})・受注 {{ projection.lines }} 件 (−{{ projection.line_qty|comma }})</p>
+  {% if projection.undated %}<p class="mt-1 text-xs text-base-content/50">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
+  {% endwith %}
+</section>
+{% endif %}
 <div class="modal-action mt-6">
   <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
   <a class="btn btn-primary" href="{% url 'workorders:workorder_detail' plan.workorder.pk %}">詳細を見る{% icon "chevron-right" "size-4" %}</a>

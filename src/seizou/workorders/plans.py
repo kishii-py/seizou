@@ -14,8 +14,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
+from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import DecimalField, Prefetch, Sum, Value
 from django.db.models.functions import Coalesce
@@ -372,3 +373,110 @@ def plan_detail(step):
         "state_label": state_label,
         "steps": [{"step": other, "current": other.pk == step.pk} for other in steps],
     }
+
+
+# --- 在庫の見込みの図 (計画の詳細の小窓の下。部品の在庫の見込みを日ごとの棒にする) ---
+
+PROJECTION_DAYS = 56  # 在庫の見込みの日の数 (今日から 8 週)
+
+# 図の大きさと余白 (viewBox の単位。小窓の幅に合わせた小さな図。字の大きさは text-xs)
+_CHART_WIDTH = 448
+_CHART_HEIGHT = 168
+_CHART_LEFT = 44
+_CHART_RIGHT = 440
+_CHART_TOP = 8
+_CHART_BOTTOM = 140
+_CHART_LABEL_Y = 160
+_CHART_STEPS = (1, 2, 5)  # 目盛りの刻みは 1・2・5 × 10 の累乗
+_CHART_INTERVALS = 4  # 目盛りの間は 4 つまで
+_ZERO_QTY = Decimal("0")
+
+
+def _num(value) -> str:
+    """図の座標を小数 1 桁の字にする。"""
+    return f"{float(value):.1f}"
+
+
+def _chart_scale(low, high):
+    """目盛りの刻みと下と上の端。刻みは 1・2・5 × 10 の累乗のうち、間が 4 以下になる一番小さい物 (1 より小さくしない)。"""
+    span = max(high - low, Decimal(1))
+    power = Decimal(1)
+    while True:
+        for base in _CHART_STEPS:
+            step = base * power
+            bottom = (low / step).to_integral_value(rounding=ROUND_FLOOR) * step
+            top = (high / step).to_integral_value(rounding=ROUND_CEILING) * step
+            if top == bottom:
+                top = bottom + step
+            if (top - bottom) / step <= _CHART_INTERVALS or step >= span:
+                return step, bottom, top
+        power *= 10
+
+
+def projection_chart(projection):
+    """在庫の見込み (stock.services.stock_projection の返す物) を小さな棒の図の数にする。
+
+    日ごとに 1 本。0 より大きい棒は 0 の線から上 (up)、0 より下の棒は 0 の線から下 (down) に分ける
+    (テンプレートが系列ごとに for を分けて固定の class で塗る。class を組み立てない)。0 の日は棒を置かない。
+    週の始め (7 日ごと) に日付の字を置く。返す物 = 枠と目盛り (0 の線を含む) と棒と日付の字の数。
+    """
+    days = projection["days"]
+    values = [day["qty"] for day in days] or [_ZERO_QTY]
+    low = min(min(values), _ZERO_QTY)
+    high = max(max(values), _ZERO_QTY)
+    step, bottom, top = _chart_scale(low, high)
+    plot_height = _CHART_BOTTOM - _CHART_TOP
+
+    def y_of(value):
+        return _CHART_BOTTOM - float((value - bottom) / (top - bottom)) * plot_height
+
+    zero_y = y_of(_ZERO_QTY)
+    band = (_CHART_RIGHT - _CHART_LEFT) / max(len(days), 1)
+    width = max(band - 1, 1)
+    up, down = [], []
+    for index, day in enumerate(days):
+        qty = day["qty"]
+        if qty == 0:
+            continue
+        x = _CHART_LEFT + band * index + 0.5
+        y = y_of(qty)
+        bar = {"date": day["date"], "qty": qty, "x": _num(x), "width": _num(width)}
+        if qty > 0:
+            up.append({**bar, "y": _num(y), "height": _num(zero_y - y)})
+        else:
+            down.append({**bar, "y": _num(zero_y), "height": _num(y - zero_y)})
+    ticks = []
+    value = bottom
+    while value <= top:
+        ticks.append({"y": _num(y_of(value)), "label": f"{int(value):,}"})
+        value += step
+    labels = [
+        {"x": _num(_CHART_LEFT + band * index), "label": f"{day['date'].month}/{day['date'].day}"}
+        for index, day in enumerate(days)
+        if index % 7 == 0
+    ]
+    return {
+        "width": _CHART_WIDTH,
+        "height": _CHART_HEIGHT,
+        "left": _num(_CHART_LEFT),
+        "right": _num(_CHART_RIGHT),
+        "tick_label_x": _num(_CHART_LEFT - 6),
+        "label_y": _num(_CHART_LABEL_Y),
+        "ticks": ticks,
+        "up": up,
+        "down": down,
+        "labels": labels,
+    }
+
+
+def item_projection(item):
+    """部品の在庫の見込み (stock.services.stock_projection) と、その図の数 (projection_chart)。読むだけ。
+
+    返す物 = {"projection", "chart"}。在庫の部品 (stock) が無い置き場では None (小窓は図を出さない)。
+    """
+    if not apps.is_installed("seizou.stock"):
+        return None
+    from seizou.stock.services import stock_projection
+
+    projection = stock_projection(item, PROJECTION_DAYS)
+    return {"projection": projection, "chart": projection_chart(projection)}
