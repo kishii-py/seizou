@@ -184,3 +184,55 @@ def test_receipt_link_hidden_when_nothing_is_left(client_logged_in, user, subcon
     # 明細の pk だけを渡す「受入を登録」は残る (明細の残 6)
     assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}"' in body
     assert fake_post.calls == 0
+
+
+# ---------------------------------------------------------------- 3 断られた発注と取消の発注の受入
+
+
+@pytest.mark.django_db
+def test_rejected_order_has_no_receipt_links(client_logged_in, user, subcontractor, item, fake_post):
+    po = _order(subcontractor, item, user, send=False)
+    line = po.lines.get()
+    _notice(line, "4", date(2026, 11, 5), "SH-0001")
+    sent = services.mark_sent(po, user)
+    entry = f'href="{reverse("purchasing:receipt_create")}?line={line.pk}"'
+
+    body = _detail(client_logged_in, sent)
+
+    assert entry in body
+    assert "受入を記録する" in _notice_cell(body)
+
+    rejected = services.mark_rejected(sent, user, reason="作り物の断り")
+    assert rejected.status == PurchaseOrder.STATUS_REJECTED
+    body = _detail(client_logged_in, rejected)
+
+    # 「受入を登録」も出荷の知らせの「受入を記録する」も出さない (知らせの行の字は残る)
+    assert entry not in body
+    assert "受入を記録する" not in body
+    assert "2026-11-05" in _notice_cell(body)
+    assert fake_post.calls == 0
+
+
+@pytest.mark.django_db
+def test_cancelled_order_has_no_remaining_in_list(client_logged_in, user, subcontractor, item, fake_post):
+    kept = _order(subcontractor, item, user)
+    dropped = _order(subcontractor, item, user)
+    for po in (kept, dropped):
+        services.receive(po.lines.get(), Decimal("3"), date(2026, 11, 6), user)
+    assert services.cancel_purchase_order(dropped, user).status == PurchaseOrder.STATUS_CANCELLED
+
+    orders = {po.pk: po for po in services.annotate_order_received(PurchaseOrder.objects.all())}
+
+    assert Decimal(str(orders[kept.pk].receive_remaining)) == Decimal("7")
+    assert Decimal(str(orders[dropped.pk].receive_remaining)) == Decimal("0")
+    # 受入の数は取り消しても今のまま
+    assert Decimal(str(orders[kept.pk].received_total)) == Decimal("3")
+    assert Decimal(str(orders[dropped.pk].received_total)) == Decimal("3")
+
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_list"))
+    labels = [col.label for col in response.context["columns"]]
+    remaining = labels.index("受入の残")
+    values = {row["obj"].pk: Decimal(str(row["cells"][remaining]["value"])) for row in response.context["rows"]}
+
+    assert values == {kept.pk: Decimal("7"), dropped.pk: Decimal("0")}
+    assert fake_post.calls == 0
