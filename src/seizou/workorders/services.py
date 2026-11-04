@@ -164,6 +164,8 @@ def cancel_workorder(workorder, user, *, reason=""):
         locked.status = WorkOrder.STATUS_CANCELLED
         locked.cancel_reason = reason
         locked.save(update_fields=["status", "cancel_reason"])
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
         return locked
 
 

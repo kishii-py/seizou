@@ -15,8 +15,11 @@ from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.masters import services as masters_services
+from seizou.masters.models import Process
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
+from seizou.workorders import services as workorders_services
+from seizou.workorders.models import WorkOrder
 
 ORDER_DATE = date(2026, 11, 2)
 CANCELLED = [("success", "取り消しました。")]
@@ -59,3 +62,18 @@ def test_order_cancel_says_cancelled(logged_in, order):
     assert _messages(response) == CANCELLED
     order.refresh_from_db()
     assert order.status == Order.STATUS_CANCELLED
+
+
+def test_workorder_cancel_says_cancelled(logged_in, user, order):
+    cut = Process.objects.create(code="CUT", name="切断", sort_order=1, use_in_plan=True)
+    workorder = workorders_services.issue_workorder(
+        order.lines.get(), Decimal("4"), [{"process": cut, "planned_qty": Decimal("4")}], user
+    )
+
+    response = logged_in.post(reverse("workorders:workorder_cancel", args=[workorder.pk]), {"reason": ""})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("workorders:workorder_detail", args=[workorder.pk])
+    assert _messages(response) == CANCELLED
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_CANCELLED
