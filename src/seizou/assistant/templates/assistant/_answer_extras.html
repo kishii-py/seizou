@@ -1,0 +1,5 @@
+{% load assistant_tags %}
+{# 答えの吹き出しの中の、字の後の物 (core の _chat_bubble.html が extra で include する)。使った道具の名札と、提案のカードと、services が道具の返した URL だけに絞った link。 #}
+{% if exchange.tools %}<div class="mt-2 flex flex-wrap gap-2">{% for name in exchange.tools %}<span class="badge badge-ghost badge-sm">{{ name|tool_label }}</span>{% endfor %}</div>{% endif %}{% for proposal in exchange.proposals %}
+{% include "assistant/_proposal.html" with proposal=proposal %}{% endfor %}{% if exchange.links %}
+<div class="mt-2 flex flex-col gap-2">{% for url in exchange.links %}<a class="link break-all" href="{{ url }}">{{ url }}</a>{% endfor %}</div>{% endif %}

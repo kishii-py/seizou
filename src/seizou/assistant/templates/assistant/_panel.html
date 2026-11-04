@@ -2,6 +2,7 @@
 {# AI チャットの窓 (全部の画面の右下。ログインした人だけ)。core の base.html の 1 行が include する。紙には出さない。 #}
 {# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
 {# 窓 (data-assistant-window) は題の帯 (data-assistant-grip) で動かし、右下の角で大きさを変え、「広げる」で画面の 80% にする。位置と大きさは assistant-window.js が inline の style で置く (class を足し引きしない)。右下の「AI に質問」は動かさない (E-38)。 #}
+{# 吹き出しは core の _chat_bubble.html。待つ間は吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
 <div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">
   <section id="assistant-panel" hidden aria-label="AI チャット">
     <div class="flex max-h-[70vh] w-96 max-w-[calc(100vw-3rem)] flex-col gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-lg" data-assistant-window>
@@ -17,12 +18,12 @@
       </div>
       {% if panel.available %}
       <div id="assistant-messages" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto" aria-live="polite">{% include "assistant/_messages.html" with exchanges=panel.exchanges %}</div>
-      <form id="assistant-form" hx-post="{% url 'assistant:ask' %}" hx-target="#assistant-messages" hx-swap="beforeend" hx-indicator="#assistant-sending" hx-disabled-elt="#assistant-send" hx-on::after-request="if (event.detail.successful) this.reset()">
+      <div id="assistant-pending" class="hidden [&.htmx-request]:block" aria-hidden="true">{% include "core/_chat_bubble.html" with who="ai" pending=True small=True only %}</div>
+      <form id="assistant-form" hx-post="{% url 'assistant:ask' %}" hx-target="#assistant-messages" hx-swap="beforeend" hx-indicator="#assistant-pending" hx-disabled-elt="#assistant-send" hx-on::after-request="if (event.detail.successful) this.reset()">
         <textarea id="assistant-question" name="question" required maxlength="2000" rows="2" class="textarea w-full" aria-label="質問"></textarea>
         <input type="hidden" name="page_url" value="{{ request.get_full_path }}">
         <input type="hidden" name="screen_name" value="{{ screen_name }}">
         <div class="mt-2 flex items-center justify-end gap-2">
-          <span id="assistant-sending" class="loading loading-dots loading-sm htmx-indicator" aria-hidden="true"></span>
           <button type="button" class="btn btn-ghost btn-sm focus-visible:outline-2 focus-visible:outline-offset-2" hx-post="{% url 'assistant:clear' %}" hx-target="#assistant-messages" hx-swap="innerHTML">履歴を消す</button>
           <button id="assistant-send" type="submit" class="btn btn-neutral btn-sm focus-visible:outline-2 focus-visible:outline-offset-2">送信</button>
         </div>
