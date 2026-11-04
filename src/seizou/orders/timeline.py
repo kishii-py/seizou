@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -21,6 +22,8 @@ from django.utils import timezone
 
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.views import model_url
+
+from .board import BoardRow
 
 #: 出来事の種類。並びの順 (同じ日の中の仕事の順) を兼ねる。
 KINDS = (
@@ -182,3 +185,97 @@ def _sort_key(event: Event) -> tuple:
     else:
         day, clock = event.when, time.min
     return (0, day, _RANK[event.kind], clock, event.line_no or 0)
+
+
+# --- 段の帯 (案 4-A。N148) --------------------------------------------------------------
+
+#: 受注の明細 1 行の段の名前 (並びの順)。帯の釦の名詞の表 (決め 11-04 17:4x) に合わせた字。字を変えるときはここだけ。
+STAGES = (
+    "受注",
+    "指示",
+    "着手",
+    "完了",
+    "出荷",
+    "納品",
+    "請求",
+    "入金",
+)
+
+
+@dataclass(frozen=True)
+class Stage:
+    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。"""
+
+    no: int
+    name: str
+    done: bool
+    current: bool
+
+
+@dataclass(frozen=True)
+class StageBand:
+    """受注の段の帯。current は受注の今の段 (明細のうち一番遅れている段。1 から)。
+
+    summary は明細ごとに段が違うときの 1 文 (同じなら None)。
+    """
+
+    current: int
+    stages: tuple[Stage, ...]
+    summary: str | None = None
+
+    @property
+    def current_name(self) -> str:
+        return STAGES[self.current - 1]
+
+
+def stage_of(line) -> int:
+    """受注の明細 1 行の今の段 (1〜8) = 届いている一番先の段 (読むだけ)。
+
+    指示 = 取消でない指示書がある / 着手 = 着手した指示書がある / 完了 = 全部の工程で実績が予定に達した
+    (生産管理ボードの「進捗」の「完了」と同じ読み方 = BoardRow.current_step が None) / 出荷 = 出荷がある /
+    納品 = 出荷が取消でない納品書に入った / 請求 = 出荷が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
+    指示書が無くても出荷があれば「出荷」(在庫から出した明細)。
+    """
+    board = BoardRow(line)
+    reached = 1
+    if board.workorders:
+        reached = 2
+    if board.accepted_count:
+        reached = 3
+    if board.steps and board.current_step is None:
+        reached = 4
+    shipments = _all(line, "shipments")
+    if shipments:
+        reached = 5
+    if any(_is_live(getattr(s, "delivery_note", None)) for s in shipments):
+        reached = 6
+    invoices = {il.invoice_id: il.invoice for s in shipments for il in _all(s, "invoice_lines") if _is_live(il.invoice)}
+    if invoices:
+        reached = 7
+    if any(_is_live(p) for invoice in invoices.values() for p in _all(invoice, "payments")):
+        reached = 8
+    return reached
+
+
+def stage_band(order) -> StageBand | None:
+    """受注の段の帯。取消の受注は None (帯を出さない)。明細が無ければ「受注」の段。"""
+    if order.status == order.STATUS_CANCELLED:
+        return None
+    of_lines = [stage_of(line) for line in _all(order, "lines")]
+    current = min(of_lines, default=1)
+    stages = tuple(Stage(no, name, no < current, no == current) for no, name in enumerate(STAGES, start=1))
+    return StageBand(current, stages, _summary(of_lines))
+
+
+def _is_live(obj) -> bool:
+    """記録があり、取消でないか。"""
+    return obj is not None and getattr(obj, "status", "") != CANCELLED
+
+
+def _summary(of_lines) -> str | None:
+    """明細ごとに段が違うときの 1 文「明細 3 行のうち、出荷 1 行・着手 2 行」(進んだ段から)。同じなら None。"""
+    if len(set(of_lines)) < 2:
+        return None
+    counts = Counter(of_lines)
+    parts = [f"{STAGES[no - 1]} {counts[no]} 行" for no in sorted(counts, reverse=True)]
+    return f"明細 {len(of_lines)} 行のうち、{'・'.join(parts)}"

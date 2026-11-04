@@ -1,0 +1,13 @@
+{% load orders_timeline %}
+{# 受注の段の帯 (案 4-A。N148)。見出しの帯の下・基本情報の tabs の上に、受注 → 指示 → 着手 → 完了 → 出荷 → 納品 → 請求 → 入金 の 8 段を daisyUI の steps で出す。済んだ段は ✓ (data-content) と主色、今の段は主色と aria-current、先の段は薄い。段の読み方は orders の流れの module の stage_of。取消の受注は tag が None を返すので出さない。明細ごとに段が違うときは帯の下に 1 文。 #}
+{% order_stages object as band %}
+{% if band %}
+<div id="order-stages" class="mb-6 overflow-x-auto" data-stage-current="{{ band.current }}">
+  <ul class="steps text-xs" aria-label="段の帯">
+    {% for stage in band.stages %}
+    <li class="step{% if stage.done or stage.current %} step-primary{% endif %}"{% if stage.done %} data-content="✓"{% elif stage.current %} aria-current="step"{% endif %}>{{ stage.name }}</li>
+    {% endfor %}
+  </ul>
+  {% if band.summary %}<p class="mt-1 text-xs text-base-content/70">{{ band.summary }}</p>{% endif %}
+</div>
+{% endif %}
