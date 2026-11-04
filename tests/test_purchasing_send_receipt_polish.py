@@ -4,15 +4,21 @@
 右上の知らせは get_messages(response.wsgi_request) の (level_tag, 字) で見る。取引先と品目は作り物。
 """
 
+from datetime import date
+from decimal import Decimal
+
 import pytest
 import requests
 from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.purchasing.forms import CancelForm, SendForm
+from seizou.purchasing import services
 from seizou.purchasing.models import PurchaseOrder
+from seizou.purchasing.models import PurchaseOrderLine
 from tests import test_purchasing_shipping_notice, test_purchasing_views
 from tests.test_purchasing_shipping_notice import _order
+from tests.test_purchasing_shipping_notice import _detail, _notice, _notice_cell
 from tests.test_purchasing_views import FakePost, _post_data
 
 # 発注の画面の試験の fixture を借りる (pytest は module の名前で fixture を見つける)。
@@ -124,4 +130,57 @@ def test_cancel_and_send_buttons_say_what_they_do(client_logged_in, user, subcon
     assert "保存</button>" not in send
     assert SendForm.submit_label == "送り直す"
     assert CancelForm.submit_label == "取り消す"
+    assert fake_post.calls == 0
+
+
+# ---------------------------------------------------------------- 2 受入の残りの数 (出荷の知らせごと)
+
+
+@pytest.mark.django_db
+def test_receipt_link_qty_is_what_is_left(client_logged_in, user, subcontractor, item, fake_post):
+    po = _order(subcontractor, item, user)
+    line = po.lines.get()
+    _notice(line, "4", date(2026, 11, 5), "SH-0001")
+    services.receive(line, Decimal("3"), date(2026, 11, 6), user)
+    url = reverse("purchasing:receipt_create")
+
+    cell = _notice_cell(_detail(client_logged_in, po))
+
+    # 知らせ 4 のうち 3 を受け入れたので、残りの 1
+    assert f'href="{url}?line={line.pk}&amp;qty=1&amp;received_on=2026-11-05"' in cell
+    assert "qty=4" not in cell
+
+    _notice(line, "6", date(2026, 11, 7), "SH-0002")
+    cell = _notice_cell(_detail(client_logged_in, po))
+
+    assert cell.count("受入を記録する") == 2
+    assert f"?line={line.pk}&amp;qty=1&amp;received_on=2026-11-05" in cell
+    assert f"?line={line.pk}&amp;qty=6&amp;received_on=2026-11-07" in cell
+    # 取り直した明細で呼ぶ (shipping_notice は cached_property で、前に読んだ明細は古い知らせのまま)
+    rests = services.notice_rests(PurchaseOrderLine.objects.get(pk=line.pk))
+    assert [entry["rest"] for entry in rests] == [Decimal("1"), Decimal("6")]
+    assert fake_post.calls == 0
+
+
+@pytest.mark.django_db
+def test_receipt_link_hidden_when_nothing_is_left(client_logged_in, user, subcontractor, item, fake_post):
+    po = _order(subcontractor, item, user)
+    line = po.lines.get()
+    _notice(line, "4", date(2026, 11, 5), "SH-0001")
+    services.receive(line, Decimal("4"), date(2026, 11, 6), user)
+
+    cell = _notice_cell(_detail(client_logged_in, po))
+
+    assert "受入を記録する" not in cell
+    assert "2026-11-05" in cell and "×4" in cell
+
+    _notice(line, "6", date(2026, 11, 7), "SH-0002")
+    body = _detail(client_logged_in, po)
+    cell = _notice_cell(body)
+
+    # 受け入れ終えた古い 4 の行には出さず、6 の行にだけ残りの 6
+    assert cell.count("受入を記録する") == 1
+    assert f"?line={line.pk}&amp;qty=6&amp;received_on=2026-11-07" in cell
+    # 明細の pk だけを渡す「受入を登録」は残る (明細の残 6)
+    assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}"' in body
     assert fake_post.calls == 0

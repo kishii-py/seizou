@@ -453,6 +453,25 @@ def shipping_notice_summary(line):
     return {"rows": items, "count": len(items), "total": total, "total_text": _qty_text(total)}
 
 
+def notice_rests(line):
+    """出荷の知らせの行ごとの、まだ受け入れていない数。返す物は [{"notice", "rest", "rest_text"}, …] (並びは shipping_notice の rows と同じ出荷日の古い順)。
+
+    受入の数の合計 (received_total。無ければ received_qty) を知らせの古い順に当てていき、行の数から当てた数を引いた物をその行の rest にする (0 より小さくしない)。
+    rest の合計は 知らせの合計 − 受入の合計 (受入の方が多ければ 0)。読むだけ。発注の詳細の「受入を記録する」の数量に使う (精査 A7 の 1-1 の S6)。
+    """
+    received = getattr(line, "received_total", None)
+    if received is None:
+        received = received_qty(line)
+    left = _dec(received)
+    rests = []
+    for row in line.shipping_notice["rows"]:
+        used = min(row.qty, max(left, _ZERO))
+        left -= used
+        rest = row.qty - used
+        rests.append({"notice": row, "rest": rest, "rest_text": _qty_text(rest)})
+    return rests
+
+
 def payable_by_partner(today=None):
     """支払の見込み (先月と今月)。受入の金額を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
 

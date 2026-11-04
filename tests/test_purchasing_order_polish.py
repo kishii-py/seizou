@@ -189,8 +189,8 @@ def test_receipt_link_follows_notice_total(client_logged_in, user, subcontractor
     _notice(other_line, "60", date(2026, 11, 6), "SH-0003")
     services.receive(other_line, Decimal("40"), date(2026, 11, 7), user)
 
-    # 知らせ 100 > 受入 40 なので、2 つの行の両方に出る
-    assert _notice_cell(_detail(client_logged_in, other)).count("受入を記録する") == 2
+    # 受入 40 は古い知らせ 40 に当たるので、まだ受け入れていない 60 の行にだけ出る (残りは知らせごと。決め 11-04 13:5x)
+    assert _notice_cell(_detail(client_logged_in, other)).count("受入を記録する") == 1
     assert no_http.calls == 0
 
 
