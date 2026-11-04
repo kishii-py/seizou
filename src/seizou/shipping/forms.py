@@ -21,6 +21,11 @@ _OrderLine = Shipment._meta.get_field("order_line").related_model
 EMPTY_LABEL = "選んでください"
 #: 出荷の入力で受注の明細が決まっていないときの、数量の欄の下の字 (shipping/shipment-form.js も同じ字を出す)
 NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
+#: 出荷日の欄の誤りの文 (出荷の入力と出荷の編集の 2 つの form が読む。空のときと、日付として読めない字のとき)
+SHIPPED_AT_ERRORS = {
+    "required": "出荷日を入れてください。",
+    "invalid": "出荷日は 2026-11-04 の形で入れてください。",
+}
 
 
 class ShipmentForm(forms.Form):
@@ -41,6 +46,7 @@ class ShipmentForm(forms.Form):
         label="出荷日",
         initial=timezone.localdate,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        error_messages=SHIPPED_AT_ERRORS,
     )
     note = forms.CharField(label="備考", max_length=500, required=False)
 
@@ -109,6 +115,7 @@ class ShipmentUpdateForm(forms.Form):
     shipped_at = forms.DateField(
         label="出荷日",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        error_messages=SHIPPED_AT_ERRORS,
     )
     note = forms.CharField(label="備考", max_length=500, required=False)
 
