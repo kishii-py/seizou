@@ -5,9 +5,12 @@
 {% block content %}
 {% can_write "shipping.Shipment" as can_ship %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
 {% if bulk_ship_url and can_ship or bulk_po_url and can_po %}
-{# 選んだ行の操作: 行の頭のチェック (form の属性が board-bulk) の値を、釦が htmx で小窓に読む。1 行も選んでいないときは JS (orders/board-select.js) が隠す。 #}
+{# 選んだ行の操作: 行の選ぶ欄 (見せない欄。form の属性が board-bulk) の値を、釦が htmx で小窓に読む。行の押下で欄を切り替え、1 行も選んでいないときは帯を隠すのは JS (orders/board-select.js)。 #}
+{# 「全部を選ぶ」は今のページの行を全部選び、「選択を外す」は全部外す (決め 11-04 22:4x。見出しの全部を選ぶ欄の代わり)。 #}
 <form id="board-bulk" method="get" action="{{ bulk_ship_url|default:bulk_po_url }}" class="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-base-200 p-2" aria-label="選んだ行の操作" hidden data-board-bulk>
   <span class="text-sm"><span class="tabular-nums" data-board-count>0</span> 行を選んでいます</span>
+  <button type="button" class="link link-hover text-sm" data-board-all>全部を選ぶ</button>
+  <button type="button" class="link link-hover text-sm" data-board-none>選択を外す</button>
   {% if bulk_ship_url and can_ship %}<button type="button" class="btn btn-sm btn-primary" hx-get="{{ bulk_ship_url }}" hx-include="#board-bulk" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()">{% icon "truck" "size-4" %}出荷する</button>{% endif %}
   {% if bulk_po_url and can_po %}<button type="button" class="btn btn-sm btn-outline border-base-300" hx-get="{{ bulk_po_url }}" hx-include="#board-bulk" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()">{% icon "cart" "size-4" %}発注する</button>{% endif %}
 </form>
