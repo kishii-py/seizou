@@ -653,11 +653,15 @@ class BaseListView(ScreenMixin, ListView):
     ページ送りと並び替えの link は GET の残り (query_without_page・query_without_sort) で、絞りの f_ の値を持ち越す。
     集計 (GET view=summary。core/summary.py): 表の代わりに、絞りの軸 (g_by) ごとの件数か数の列の合計 (g_val) の表と横棒の図を出す。
     絞り・検索・部品の get_queryset の後の行を数える。CSV (format=csv) も集計の行になる。軸が 1 つも無い一覧は表のまま。
+    絞りのタブ (presets): 枠の値の組に名前を付けたタブを枠の上に出す (core/_presets.html)。件数は表と同じ条件で数える。先頭に「すべて」を土台が足す。
     """
 
     columns: tuple = ()
     search_fields: tuple = ()
     filters: tuple = ()
+    presets: tuple = ()
+    #: 宣言できるタブの数 (「すべて」を除く)。件数の問い合わせがタブの数だけ増えるため
+    PRESET_LIMIT = 4
     ordering = None
     paginate_by = DEFAULT_PAGE_SIZE
     page_sizes = PAGE_SIZES
@@ -753,18 +757,72 @@ class BaseListView(ScreenMixin, ListView):
     def apply_filters(self, queryset):
         """filters の値 (GET の f_<name>) で絞る。空と読めない値は絞らない。flag は入で disabled_when が真でないときだけ when を掛ける。"""
         specs = self.filter_specs()
-        named = FilterSpec.values_by_name(specs, self.request.GET)
+        named = FilterSpec.values_by_name(specs, self.filter_params)
         for spec in specs:
-            queryset = spec.apply(queryset, self.request.GET, named)
+            queryset = spec.apply(queryset, self.filter_params, named)
         return queryset
 
     def flag_on(self, name: str) -> bool:
         """flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。宣言に無い名前は偽。"""
-        return any(spec.is_on(self.request.GET) for spec in self.filter_specs() if spec.name == name)
+        return any(spec.is_on(self.filter_params) for spec in self.filter_specs() if spec.name == name)
 
     def filter_chosen(self, name: str) -> bool:
         """絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は無いのと同じ。宣言に無い名前は偽。"""
-        return any(spec.values(self.request.GET) for spec in self.filter_specs() if spec.name == name)
+        return any(spec.values(self.filter_params) for spec in self.filter_specs() if spec.name == name)
+
+    # --- 絞りのタブ (presets) ---
+    @property
+    def filter_params(self):
+        """絞りが読む GET (f_ の値)。タブの件数を数える間だけ、組の辞書に差し替える (preset_tabs)。"""
+        params = getattr(self, "_filter_params", None)
+        return self.request.GET if params is None else params
+
+    def preset_specs(self) -> list[dict]:
+        """宣言 (presets) のタブの並び。先頭に「すべて」(既定で入の印を切り、ほかの絞りを外す) を足す。params が関数なら呼んで辞書にする。"""
+        if not self.presets:
+            return []
+        if len(self.presets) > self.PRESET_LIMIT:
+            raise ValueError(f"絞りのタブは「すべて」を除いて {self.PRESET_LIMIT} つまでです ({len(self.presets)} つ)。")
+        specs = self.filter_specs()
+        everything = {spec.param: "0" for spec in specs if spec.kind == "flag" and spec.default}
+        tabs = [{"label": "すべて", "params": everything}]
+        for item in self.presets:
+            unknown = [key for key in item if key not in ("label", "params")]
+            if unknown:
+                raise ValueError(f"絞りのタブに書けない鍵があります: {unknown!r}。label / params のどちらかにしてください。")
+            params = item["params"]() if callable(item["params"]) else item["params"]
+            tabs.append({"label": item["label"], "params": dict(params)})
+        return tabs
+
+    def preset_tabs(self) -> list[dict]:
+        """テンプレート (core/_presets.html) が描くタブ: label・href・count・selected。
+
+        href は今の GET から page・format と絞りの f_ を外し、組の値を足した物 (キーワード・件数・並び替え・集計の軸は残る)。
+        count は表と同じ queryset (検索と部品の get_queryset を含む) に組の絞りだけを当てた件数 (タブの数だけ問い合わせが増える。行の数では増えない)。
+        selected は、今の GET の絞りの読めた値が組と同じとき (組に無い絞りが入っていれば、どのタブも選ばれない)。CSV の要求では空。
+        """
+        tabs = self.preset_specs()
+        if not tabs or self.request.GET.get("format") == "csv":
+            return []
+        specs = self.filter_specs()
+        names = [name for spec in specs for name in spec.params]
+        current = {spec.name: spec.value(self.request.GET) for spec in specs}
+        base = self.request.GET.copy()
+        for key in ("page", "format", *names):
+            base.pop(key, None)
+        rows = []
+        for tab in tabs:
+            query = base.copy()
+            for key, value in tab["params"].items():
+                query[key] = value
+            self._filter_params = tab["params"]
+            try:
+                count = self.get_queryset().count()
+            finally:
+                self._filter_params = None
+            chosen = {spec.name: spec.value(tab["params"]) for spec in specs}
+            rows.append({"label": tab["label"], "href": "?" + query.urlencode(), "count": count, "selected": chosen == current})
+        return rows
 
     # --- 行 ---
     def row_for(self, obj, specs) -> dict:
@@ -845,6 +903,7 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_filters"] = self.query_without(
             "page", "format", *(name for spec in filter_specs for name in spec.params)
         )
+        context["presets"] = self.preset_tabs()
         context["create_url"] = model_url(self.model, "create")
         if context["create_url"] and not access.can_write_model(self.request.user, self.model, "create"):
             context["create_url"] = None

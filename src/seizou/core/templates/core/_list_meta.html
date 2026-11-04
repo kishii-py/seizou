@@ -1,5 +1,5 @@
 {% load seizou_icons seizou_tags %}
-{# 一覧の道具の行の右: 全体の件数と CSV と並び替えの値。htmx の応答では core/_rows.html が oob=True で差し替える (検索した後も件数と CSV の条件が合う)。 #}
+{# 一覧の道具の行の右: 全体の件数と CSV と並び替えの値。htmx の応答では core/_rows.html が oob=True で差し替える (検索した後も件数と CSV の条件が合う)。タブ (presets) も、ここから oob で描き直す。 #}
 {# 「集計」と「表」の切り替え (GET view=summary。軸のある一覧だけ) もここに置く (絞りを変えた後も link の条件が合う)。 #}
 <div id="list-meta" class="ml-auto flex items-center gap-4"{% if oob %} hx-swap-oob="true"{% endif %}>
   <input type="hidden" name="sort" value="{{ sort }}">
@@ -7,3 +7,4 @@
   {% if summary %}<a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_view }}">{% icon "list" "size-4" %}表</a>{% elif summary_axes %}<a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_view }}&view=summary">{% icon "activity" "size-4" %}集計</a>{% endif %}
   <a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_page }}&format=csv" download>{% icon "download" "size-4" %}CSV</a>
 </div>
+{% if oob and presets %}{% include "core/_presets.html" %}{% endif %}
