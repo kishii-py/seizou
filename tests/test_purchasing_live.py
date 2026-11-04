@@ -113,6 +113,8 @@ def test_list_page_has_poll_element(client_logged_in, user, subcontractor, item)
     ):
         assert word in body, word
     assert body.count(f'data-live="po-{po.pk}:sent:0:0"') == 1
+    # hx-vals の js: の値は `{` で始める (htmx は `{` で始まらない字を `{}` で包むので、式のままだと SyntaxError で取りに行かない)
+    assert 'hx-vals="js:{' in body
     assert "seizou-changed" not in body
     # CSRF の見出しは土台の body の 1 か所だけ (R18。purchasing の部分は書かない)
     assert body.lower().count("x-csrftoken") == 1
