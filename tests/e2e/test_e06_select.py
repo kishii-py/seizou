@@ -53,7 +53,8 @@ def test_e06_part_candidates_clickable_outside_table(page_a, company_a):
     """期待 (一部): 一覧が切れない。
 
     見る所: 受注の新規登録の明細の部品の欄の一覧が body の直下に描かれ、候補の真ん中の点の一番上の要素がその候補で、
-    マウスで押すと選ばれること。見ない所: 小窓の中の欄 (今の作品に無い)。
+    マウスで押すと選ばれること。押す候補は品番を打って絞ってから引く (E2E が足す `E2E-` の部品は `WK-` より前に並ぶので、
+    部品が増えると最初のページに WK-1001 が無い)。見ない所: 小窓の中の欄 (今の作品に無い)。
     """
     login(page_a, company_a)
     page_a.goto(f"{company_a.base_url}/orders/new/")
@@ -65,6 +66,13 @@ def test_e06_part_candidates_clickable_outside_table(page_a, company_a):
     assert parent_is_body
     # 画面全体の絵は窓の大きさを一時変えるので、測る前に撮る。
     shot(page_a, "E-06", "a-part-candidates")
+
+    # 品番を打って候補を絞る (打った字の検索の返事を待ってから押す。conftest の choose と同じ待ち方)。
+    control = page_a.locator(f"select[name='{FIELD}']").locator(
+        "xpath=following-sibling::div[contains(@class,'ts-wrapper')][1]//input"
+    )
+    with page_a.expect_response(lambda response: _asked(response, PART_NO), timeout=SELECT_WAIT_MS):
+        control.press_sequentially(PART_NO)
 
     option = options.filter(has_text=PART_NO).first
     option.wait_for(state="visible", timeout=SELECT_WAIT_MS)
