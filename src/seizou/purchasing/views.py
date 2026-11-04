@@ -4,7 +4,6 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 送るのは connect.services.send_order だけ (R17。HTTP は atomic の外)。
 """
 
-from seizou.connect import services as connect_services
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from seizou.core.views import BaseSelectView
@@ -78,12 +77,12 @@ class PurchaseOrderCreateView(BaseFormView):
 class PurchaseOrderSendView(BaseFormView):
     """注文を送り直す確かめの入力。
 
-    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「作成」の発注をもう一度送る / 次にすること: 発注の詳細の送った記録で確かめる
+    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「作成」の発注をもう一度送る / 次にすること: 発注の詳細へ戻る (届けば緑、届かなければ黄の知らせ)
     """
 
     model = PurchaseOrder
     form_class = SendForm
-    service = staticmethod(connect_services.send_order)
+    service = staticmethod(services.resend_purchase_order)
     screen_name = "注文を送り直す"
     screen_help = "「作成」のままの発注を、つながりの相手へもう一度送ります。"
 

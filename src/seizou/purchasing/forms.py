@@ -3,7 +3,7 @@
 - 発注を入れる form は、発注の項目の欄と、明細の行の formset (prefix "lines") を持つ。
   is_valid() は両方を確かめ、service_kwargs() が create_purchase_order の引数
   (partner・lines・order_date・note と、会社ごとの項目があれば ext) を作る。
-- 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が send_order(発注, user=...) を呼ぶ)。
+- 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が resend_purchase_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
 - 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が協力企業か両方の物だけ。
@@ -142,6 +142,7 @@ class PurchaseOrderForm(forms.Form):
 
 class SendForm(forms.Form):
     """送り直す form。欄は無い。"""
+    submit_label = "送り直す"
 
     def service_kwargs(self):
         return {}
@@ -149,6 +150,7 @@ class SendForm(forms.Form):
 
 class CancelForm(forms.Form):
     """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。"""
+    submit_label = "取り消す"
 
     reason = forms.CharField(
         label="取消の理由", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3})

@@ -106,7 +106,8 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     """発注を作る。明細は lines の並びの順に行番号を 1 から付ける。
 
     保存の後、取引先に向き「送る」のつながりがあれば相手の受け口へ送る (送れなくても例外にせず、
-    送った注文の表に返事を残し、発注は「作成」のまま)。つながりが無ければ送らない。
+    送った注文の表に返事を残し、発注は「作成」のまま。届かなければ、返す発注に黄の知らせの字を付ける)。
+    つながりが無ければ送らない。
     send が偽なら、つながりがあっても送らない (作り物のデータの種が、相手に送らずに発注を入れるため)。
     """
     _refuse_non_subcontractor(partner)
@@ -128,7 +129,8 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     if send and _has_send_connection(partner):
         from seizou.connect import services as connect_services
 
-        connect_services.send_order(purchase_order, user)
+        outbox = connect_services.send_order(purchase_order, user)
+        return _with_delivery_notice(PurchaseOrder.objects.get(pk=purchase_order.pk), outbox)
     return PurchaseOrder.objects.get(pk=purchase_order.pk)
 
 
@@ -216,6 +218,38 @@ def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
         return locked
+
+
+# 送った後の知らせの字 (入力の土台 core.views.with_saved_note が、返した発注の saved_message を「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせにする)
+UNDELIVERED_MESSAGE = "注文は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+RESENT_MESSAGE = "相手に送りました。"
+
+
+def _with_delivery_notice(purchase_order, outbox, *, resent=False):
+    """送った注文の行 (Outbox) の返事が「受け取った」でなければ、発注に黄の知らせの字を付けて返す。
+
+    届いていて resent が真なら「相手に送りました。」を付ける。届いていて resent が偽なら何も付けない (「保存しました。」のまま)。
+    属性は画面の知らせのためだけで、表に書かない。
+    """
+    if outbox.response != "受け取った":
+        purchase_order.saved_message = UNDELIVERED_MESSAGE.format(response=outbox.response)
+        purchase_order.saved_level = "warning"
+    elif resent:
+        purchase_order.saved_message = RESENT_MESSAGE
+    return purchase_order
+
+
+def resend_purchase_order(purchase_order, user):
+    """発注を相手へ送り直し (connect.services.send_order)、取り直した発注を返す (画面が発注の詳細へ戻るため)。
+
+    届かなければ返す発注に黄の知らせの字を付け、届けば「相手に送りました。」を付ける。
+    つながりの無い取引先と取消の発注は send_order の ValueError のまま (精査 A7 の 1-1 の S15)。
+    """
+    # 相手への HTTP は send_order の中 (atomic の外。R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    from seizou.connect import services as connect_services
+
+    outbox = connect_services.send_order(purchase_order, user)
+    return _with_delivery_notice(PurchaseOrder.objects.get(pk=purchase_order.pk), outbox, resent=True)
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面。受け入れた数 × 発注の単価が支払の金額) ---
