@@ -8,8 +8,10 @@ fixture は tests/test_core_order_inlets.py を import せず、このファイ�
 """
 
 import json
+import re
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -30,6 +32,7 @@ from tests.test_intake_extract import FAKE_KEY, refuse_api, reply_data, upload
 
 TODAY = date(2026, 11, 3)
 ENV_NAME = "SEIZOU_PARTNER_INLETCO_SECRET"
+CORE = Path(__file__).resolve().parent.parent / "src" / "seizou" / "core"
 
 
 @pytest.fixture(autouse=True)
@@ -183,3 +186,14 @@ def test_order_inlets_one_query(client, user, monkeypatch):
 
     monkeypatch.setattr(dashboard, "apps", _NoParts())
     assert dashboard.order_inlets(TODAY) is None
+
+
+def test_home_frames_can_shrink():
+    # 幅 390 (精査 A7 の 1-2 の不具合 2): grid の中の 4 つの枠は min-w-0 を持ち、表と図の幅で列を押し広げない。
+    # 頁の幅が 390 に収まることは test client では見られない (本体の手の確かめ)。ここは class の字と、作った CSS にその class があることを見る。
+    html = (CORE / "templates" / "core" / "home.html").read_text(encoding="utf-8")
+    for frame in ("shipping", "production", "recent-orders", "due-alerts"):
+        tags = re.findall(rf'<section class="([^"]*)" aria-labelledby="{frame}-title">', html)
+        assert len(tags) == 1, frame
+        assert "min-w-0" in tags[0].split(), frame
+    assert ".min-w-0{" in (CORE / "static" / "css" / "app.css").read_text(encoding="utf-8")
