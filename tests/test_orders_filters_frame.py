@@ -2,6 +2,7 @@
 
 盤: 「出荷の残りがある物だけ」(flag・既定で入)・「納期」(期間)・「納期が過ぎた物だけ」(flag・既定で切)。
 受注の一覧: 「出荷の残っている受注だけ」(flag・既定で入)。状態を選ぶと既定を外す (N118)。
+  状態を選んだ間は、印を切に描いて押せなくする (土台の disabled_when。htmx の応答でも描き直す。N143)。
 古い GET (all・month・due_from・due_to・overdue) は読まない (別名を足さない)。
 """
 
@@ -97,3 +98,46 @@ def test_dashboard_month_card_links_to_frame_filters(user, logged_in, customer, 
     body = listing.content.decode()
     assert f'name="f_ordered_from" value="{first}"' in body and f'name="f_ordered_to" value="{last}"' in body
     assert 'name="f_open" value="1" class="checkbox checkbox-sm" data-list-filter>' in body
+
+
+@pytest.mark.django_db
+def test_order_list_open_flag_is_drawn_off_while_status_chosen(user, logged_in, customer, shaft):  # noqa: F811
+    """状態を選ぶと「出荷の残っている受注だけ」が切に見えて押せず、表は選んだ状態の全部 (N143 = N126 の知らせの 3 の食い違いを無くす)。"""
+    open_order = _order(customer, shaft, user)
+    done = _order(customer, shaft, user, qty="2")
+    shipping_services.ship(done.lines.get(), Decimal("2"), timezone.localdate(), user)
+    cancelled = _order(customer, shaft, user, qty="1")
+    services.cancel_order(cancelled, user)
+    url = reverse("orders:order_list")
+    box_on = 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残っている受注だけ</label>'
+    box_off = 'name="f_open" value="1" class="checkbox checkbox-sm" disabled data-list-filter>出荷の残っている受注だけ</label>'
+
+    # 状態を選ばなければ既定どおり (入で掛かる)
+    body = logged_in.get(url).content.decode()
+    assert box_on in body and box_off not in body
+
+    # 状態を選ぶと、印は切に描かれて押せず、表は選んだ状態の全部。隠しの欄は印の値を持ち越す
+    response = logged_in.get(url, {"f_status": "shipped"})
+    assert _listed(response) == [done]
+    body = response.content.decode()
+    assert box_off in body and box_on not in body
+    assert '<input type="hidden" name="f_open" value="1">' in body
+    assert 'value="0">' not in body.split('id="list-f-open-box"', 1)[1].split("</div>", 1)[0]
+    flag = [item for item in response.context["filters"] if item["name"] == "open"][0]
+    assert (flag["checked"], flag["disabled"], flag["active"]) == (False, True, False)
+
+    # htmx で状態を変えたときも、印の箱を oob で描き直す (チェックと表が合う)
+    oob = '<div id="list-f-open-box" hx-swap-oob="true" hx-get="/orders/" hx-include="closest form" hx-target="#rows" hx-push-url="true" hx-trigger="change">'
+    response = logged_in.get(url, {"f_open": ["0", "1"], "f_status": "cancelled"}, HTTP_HX_REQUEST="true")
+    assert _listed(response) == [cancelled]
+    partial = response.content.decode()
+    assert oob in partial and box_off in partial.split(oob, 1)[1]
+    # 状態を外すと (隠しの欄の 1 が届く)、印は入に戻って掛かる
+    response = logged_in.get(url, {"f_open": "1", "f_status": ""}, HTTP_HX_REQUEST="true")
+    assert _listed(response) == [open_order]
+    partial = response.content.decode()
+    assert oob in partial and box_on in partial.split(oob, 1)[1]
+
+    # 盤の印 (状態の絞りが無い) は従う印でないので、htmx の応答で描き直さない
+    partial = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"}, HTTP_HX_REQUEST="true").content.decode()
+    assert "list-f-open-box" not in partial

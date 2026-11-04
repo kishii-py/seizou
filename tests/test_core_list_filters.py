@@ -377,3 +377,103 @@ def test_list_filter_errors_find_broken_declarations():
     assert list_filter_errors([_OrderList, _ItemList, _FlagOrderList, object]) == []
     # URL の木にある一覧の宣言 (N117〜N121 の絞り) は全部読める
     assert check_list_filters() == []
+
+
+# ---------------------------------------------------------------- N143 印に GET を渡す口 (when の 2 つの引数・disabled_when)
+
+_SEEN = []
+
+
+def _early_seen(queryset, values):
+    """作り物の 2 つの引数の when (受け取った values を残し、受注日が 11-03 より前の受注だけにする)。"""
+    _SEEN.append(values)
+    return queryset.filter(order_date__lt=date(2026, 11, 3))
+
+
+def _status_chosen(values):
+    """作り物の disabled_when (状態の絞りに値がある間は、印を切にして掛けない)。"""
+    return values.get("status") is not None
+
+
+class _FollowOrderList(BaseListView):
+    model = Order
+    screen_name = "作り物の従う印の一覧"
+    columns = ("order_no", "customer", "order_date", "status")
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
+        {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": _open_only, "default": True, "disabled_when": _status_chosen},
+        {"name": "early", "label": "11-03 より前の受注だけ", "kind": "flag", "when": _early_seen},
+    )
+    ordering = ("order_date", "pk")
+    template_name = "core/list.html"
+
+
+def test_flag_when_gets_values_and_disabled_when_draws_it_off(user, orders):
+    made = orders["orders"]
+
+    # 状態を選んでいなければ、従う印は既定のまま入で掛かる (箱は描くが oob にしない)
+    response = call(_FollowOrderList, user)
+    assert listed(response) == [made[0].pk, made[2].pk, made[4].pk]
+    flag_open = response.context_data["filters"][2]
+    assert (flag_open["checked"], flag_open["disabled"], flag_open["follows"], flag_open["kept"]) == (True, False, True, "0")
+    body = response.render().content.decode()
+    assert '<div id="list-f-open-box">' in body and '<div id="list-f-early-box">' in body
+    assert 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残りがある物だけ</label>' in body
+
+    # 状態を選ぶと、印は切に描かれて押せず (disabled)、when を掛けない。隠しの欄は印の値 (入 = 1) を持ち越す
+    response = call(_FollowOrderList, user, f_status="shipped")
+    assert listed(response) == [made[1].pk, made[3].pk]
+    flag_open = response.context_data["filters"][2]
+    assert (flag_open["checked"], flag_open["disabled"], flag_open["active"], flag_open["kept"]) == (False, True, False, "1")
+    body = response.render().content.decode()
+    assert '<input type="hidden" name="f_open" value="1">' in body
+    assert 'name="f_open" value="1" class="checkbox checkbox-sm" disabled data-list-filter>出荷の残りがある物だけ</label>' in body
+    # 印を切にしてから状態を選んだときは、切 (0) を持ち越す。読めない状態の値は選んでいないのと同じ
+    assert call(_FollowOrderList, user, f_status="shipped", f_open="0").context_data["filters"][2]["kept"] == "0"
+    assert listed(call(_FollowOrderList, user, f_status="x")) == [made[0].pk, made[2].pk, made[4].pk]
+    # 状態を外すと、持ち越した値 (1) で印が入に戻る
+    assert listed(call(_FollowOrderList, user, f_open="1", f_status="")) == [made[0].pk, made[2].pk, made[4].pk]
+
+    # 2 つの引数の when は、絞りの名前ごとの読めた値を受ける (範囲は (始め, 終わり)、flag は disabled_when を見る前の入か)
+    _SEEN.clear()
+    response = call(_FollowOrderList, user, f_early="1", f_status="open", f_ordered_to="2026-11-04")
+    assert listed(response) == [made[0].pk]
+    assert _SEEN[-1] == {"status": "open", "ordered": (None, date(2026, 11, 4)), "open": True, "early": True}
+    # 値を受ける印の無い一覧は、値を読まない (空の辞書。lookup の問い合わせを足さない)
+    assert FilterSpec.values_by_name(_FlagOrderList().filter_specs(), {"f_open": "0"}) == {}
+
+    # htmx の行の部分は、従う印だけを oob で描き直す (箱が自分で form の欄を送って #rows を取り直す)。従わない印は描かない
+    request = RequestFactory().get("/", {"f_status": "shipped"}, HTTP_HX_REQUEST="true")
+    request.user = user
+    partial = _FollowOrderList.as_view()(request).content.decode()
+    box = '<div id="list-f-open-box" hx-swap-oob="true" hx-get="/" hx-include="closest form" hx-target="#rows" hx-push-url="true" hx-trigger="change">'
+    assert box in partial
+    assert 'value="1" class="checkbox checkbox-sm" disabled data-list-filter>' in partial.split(box, 1)[1]
+    assert "list-f-early-box" not in partial and "list-f-ordered" not in partial
+    # 従う印の無い一覧の htmx の行の部分には、印の箱を描かない
+    request = RequestFactory().get("/", {"f_open": "0"}, HTTP_HX_REQUEST="true")
+    request.user = user
+    assert "list-f-open-box" not in _FlagOrderList.as_view()(request).content.decode()
+
+
+def test_flag_when_arity_and_disabled_when_mistakes():
+    one = FilterSpec(Order, {"name": "open", "label": "作り物の印", "kind": "flag", "when": _open_only})
+    two = FilterSpec(Order, {"name": "early", "label": "作り物の印", "kind": "flag", "when": _early_seen})
+    optional = FilterSpec(Order, {"name": "x", "label": "作り物の印", "kind": "flag", "when": lambda queryset, values=None: queryset})
+    assert (one.when_takes_values, two.when_takes_values, optional.when_takes_values) == (False, True, True)
+    assert one.disabled_when is None and not one.is_disabled({"status": "open"})
+    assert "disabled_when" in FilterSpec.KEYS and "disabled_when" in FilterSpec.FLAG_KEYS
+
+    with pytest.raises(ValueError, match="disabled_when"):
+        FilterSpec(Order, {"name": "open", "label": "作り物の印", "kind": "flag", "when": _open_only, "disabled_when": True})
+    with pytest.raises(ValueError, match="flag の絞りだけ"):
+        FilterSpec(Order, {"name": "status", "kind": "choice", "field": "status", "disabled_when": _status_chosen})
+    # 起動の検査も同じ誤りを見つけ、正しい宣言は通す
+    class _BrokenFollowList(BaseListView):
+        model = Order
+        screen_name = "作り物の壊れた従う印の一覧"
+        filters = ({"name": "open", "label": "作り物の印", "kind": "flag", "when": _open_only, "disabled_when": "status"},)
+
+    assert [error.id for error in list_filter_errors([_BrokenFollowList])] == ["seizou.E004"]
+    assert list_filter_errors([_FollowOrderList]) == []
