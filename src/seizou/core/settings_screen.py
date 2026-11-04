@@ -83,7 +83,7 @@ DOCTOR_SHOWN = 3
 
 
 def _display(key: str, value) -> str:
-    """値の日本語。選べる値は表から、一覧は「・」で、辞書は「中の鍵: 値」を「・」で、空は「なし」。"""
+    """値の日本語。選べる値は表の日本語だけ (英字の値は添えない。答えの YAML と見比べるのは表の「鍵」の列)、一覧は「・」で、辞書は「中の鍵: 値」を「・」で、空は「なし」。"""
     _label, words = SETTING_LABELS.get(key, (key, {}))
     if isinstance(value, (list, tuple)):
         return "・".join(str(v) for v in value) if value else "なし"
@@ -91,7 +91,7 @@ def _display(key: str, value) -> str:
         # 辞書の設定 (例: 権限の判定 access_control = {"department": "log", ...})。中の値は同じ鍵の表で日本語にする。
         return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, v)}" for k, v in value.items()) if value else "なし"
     if value in words:
-        return f"{words[value]} ({value})"
+        return words[value]
     return str(value)
 
 

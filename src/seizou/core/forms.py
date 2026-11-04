@@ -81,6 +81,7 @@ class SettingForm(forms.Form):
     選べる値 (conf.CHOICES) は select、真偽は checkbox、権限の判定 (access_control) は 3 つの select、
     使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前) は字。
     欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
+    選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (option の value) は英字の値のまま。
     """
 
     #: hidden_fields の欄の名前。鍵の名前のままだと、テンプレートの form.hidden_fields が隠しの欄の並びでなく
@@ -98,7 +99,7 @@ class SettingForm(forms.Form):
         if key in conf.CHOICES:
             self.fields[key] = forms.ChoiceField(
                 label=label,
-                choices=[(v, f"{words.get(v, v)} ({v})") for v in conf.CHOICES[key]],
+                choices=[(v, words.get(v, v)) for v in conf.CHOICES[key]],
                 initial=current,
             )
         elif isinstance(conf.DEFAULTS[key], bool):
@@ -109,7 +110,7 @@ class SettingForm(forms.Form):
                 help_text=f"check を外すと「{words[False]}」。",
             )
         elif key == "access_control":
-            choices = [(m, f"{words.get(m, m)} ({m})") for m in conf.ACCESS_MODES]
+            choices = [(m, words.get(m, m)) for m in conf.ACCESS_MODES]
             for kind in conf.DEFAULTS["access_control"]:
                 self.fields[kind] = forms.ChoiceField(
                     label=SUB_LABELS.get(kind, kind), choices=choices, initial=conf.access_control(kind)

@@ -55,7 +55,7 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
     body = logged_in.get(reverse("core:settings")).content.decode()
 
     assert "設定" in body and "会社の選べる設定" in body
-    assert "止める (stop)" in body and "知らせる (warn)" in body
+    assert "止める" in body and "知らせる" in body
     assert "note" in body
     assert "sample_co / 8010" in body
     assert reverse("connect:connection_list") in body and "取引先との接続" in body
@@ -93,14 +93,14 @@ def test_settings_screen_hides_key_values(logged_in, monkeypatch):
 
 
 def test_display_words():
-    assert settings_screen._display("order_form", "single") == "1 件 1 品 (single)"
-    assert settings_screen._display("partial_shipment", False) == "許さない (False)"
+    assert settings_screen._display("order_form", "single") == "1 件 1 品"
+    assert settings_screen._display("partial_shipment", False) == "許さない"
     assert settings_screen._display("hidden_fields", []) == "なし"
     assert settings_screen._display("hidden_fields", ["a", "b"]) == "a・b"
     # 辞書の設定 (権限の判定。N36 が conf.DEFAULTS に足す) は「中の鍵: 値」を「・」で。知らない鍵はそのまま
     assert (
         settings_screen._display("access_control", {"department": "log", "write": "on", "money": "off"})
-        == "部署: 記録だけ (log)・編集の権限: 有効 (on)・金額の閲覧: 使わない (off)"
+        == "部署: 記録だけ・編集の権限: 有効・金額の閲覧: 使わない"
     )
     assert settings_screen._display("access_control", {}) == "なし"
     assert settings_screen._display("unknown_dict", {"a": 1}) == "a: 1"
