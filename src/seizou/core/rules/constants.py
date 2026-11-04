@@ -23,6 +23,7 @@ OVERRIDABLE_ATTRS = (
     "columns",
     "search_fields",
     "filters",
+    "presets",
     "tabs",
     "form_class",
     "service",

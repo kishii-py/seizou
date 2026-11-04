@@ -110,7 +110,7 @@ def test_base_view_names_match_core_views():
     assert names == BASE_VIEWS
 
 
-# 2 文目: 上書きしてよいのは 12 の属性だけ
+# 2 文目: 上書きしてよいのは 13 の属性だけ
 
 
 def test_override_outside_eleven_is_reported():
@@ -168,4 +168,4 @@ def test_overridable_constants_match_core_views():
     ]
 
     assert ast.literal_eval(value) == OVERRIDABLE_ATTRS
-    assert len(OVERRIDABLE_ATTRS) == 12
+    assert len(OVERRIDABLE_ATTRS) == 13
