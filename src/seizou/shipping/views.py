@@ -4,6 +4,8 @@
 止めるか、知らせて「このまま保存」か、通すかは会社の設定に従う (画面では数を比べない)。
 出荷の編集は services.update_shipment を呼ぶ (数量と出荷日と備考だけ。R01 は検査の層が編集にも当てる)。
 発行の納品書に入った出荷は、先に納品書を取り消してから編集する (R08)。
+一括出荷の入力は、注文残の盤で選んだ明細をまとめて services.ship_lines に渡す (検査の層は一括出荷の R01。N124)。
+model は出荷にする (小窓のテンプレートは model の app の shipping/_form_modal.html から選ばれるため)。
 
 納品書は、出荷を選んでまとめる画面 (services.create_delivery_note) と一覧と詳細を土台の上に置く。
 納品書を取り消す画面は services.cancel_delivery_note を呼び、納品書の詳細の「取り消す」から入る。
@@ -23,7 +25,7 @@ from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentForm, ShipmentUpdateForm
+from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentBulkForm, ShipmentForm, ShipmentUpdateForm
 from .models import DeliveryNote, Shipment
 from .reports import (
     DELIVERY_NOTE_TEMPLATE,
@@ -100,6 +102,23 @@ class ShipmentCreateView(BaseFormView):
     screen_help = (
         "受注の明細と数量と出荷日を入れて、出荷を保存します。"
         "受注の残を超える数は、会社の設定に従って止めるか知らせます。"
+    )
+
+
+class ShipmentBulkCreateView(BaseFormView):
+    """一括出荷の入力 (注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷する)。
+
+    使う人: 生産管理 / いつ: 同じ日に送る明細がいくつもあるとき / 何のために: 選んだ明細の出荷を 1 回の保存で記録する / 次にすること: 納品書を作り、ラベルを印刷する
+    """
+
+    model = Shipment
+    form_class = ShipmentBulkForm
+    service = staticmethod(services.ship_lines)
+    template_name = "shipping/shipment_bulk_form.html"
+    screen_name = "一括出荷"
+    screen_help = (
+        "注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷します。数量の既定は残の数です。"
+        "どれか 1 行が決まりに当たったときは、全部を保存しません。"
     )
 
 

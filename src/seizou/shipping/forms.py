@@ -4,6 +4,8 @@
 出荷の入力の鍵 order_line と qty は、検査の層の受注より多い出荷のポカよけが読む。
 画面の側では数を比べない (止めるか知らせるかは会社の設定に従って検査の層が決める)。
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
+一括出荷の form (ShipmentBulkForm) は、注文残の盤で選んだ明細の行ごとに数量と「この行を出さない」の欄を持ち、
+service_kwargs() の lines (受注の明細と数量の組) を検査の層の一括出荷の R01 と services.ship_lines に渡す (N124)。
 """
 
 from django import forms
@@ -68,6 +70,99 @@ class ShipmentForm(forms.Form):
         return {
             "order_line": data["order_line"],
             "qty": data["qty"],
+            "shipped_at": data["shipped_at"],
+            "note": data.get("note", ""),
+        }
+
+
+#: 一括出荷で出す行が 1 つも無いときの誤りの文
+NO_BULK_LINES = "出荷する明細がありません。注文残の盤で行を選び直してください。"
+#: 一括出荷の行ごとの欄の名前の頭 (数量と「この行を出さない」)
+BULK_QTY_PREFIX = "qty_"
+BULK_SKIP_PREFIX = "skip_"
+
+
+class ShipmentBulkForm(forms.Form):
+    """一括出荷の入力 (注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷する。N124)。
+
+    明細の pk は line の繰り返し。開いたときは土台の get_initial が写した字か字の list (?line=<pk>&line=<pk>)、
+    送ったときは行ごとの隠しの欄 line (並びは選んだ順。数でない字は飛ばし、重なりは 1 つにする)。
+    行ごとの欄は qty_<pk> (数量。初期値は残の数) と skip_<pk> (この行を出さない)。rows がテンプレートの表の行。
+    開いたときは、取消の受注と残の無い明細を行に出さず、その数を dropped に持つ。送ったときは送られた行をそのまま
+    services に渡す (開いた後に取消になった明細は services が R05 で断る。画面で先に断らない)。
+    数を残と比べない (受注より多い出荷は、検査の層の一括出荷の R01 が会社の設定に従って見る)。
+    """
+
+    shipped_at = forms.DateField(
+        label="出荷日",
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        error_messages=SHIPPED_AT_ERRORS,
+    )
+    note = forms.CharField(label="備考", max_length=500, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.is_bound:
+            getlist = getattr(self.data, "getlist", None)
+            raw = getlist("line") if getlist is not None else self.data.get("line")
+        else:
+            raw = self.initial.get("line")
+        values = raw if isinstance(raw, (list, tuple)) else ([] if raw is None else [raw])
+        pks = []
+        for value in values:
+            text = str(value).strip()
+            if text.isdigit() and int(text) not in pks:
+                pks.append(int(text))
+        found = {
+            line.pk: line
+            for line in _OrderLine.objects.select_related("order__customer", "item").filter(pk__in=pks)
+        }
+        self.rows = []
+        self.dropped = 0
+        for pk in pks:
+            line = found.get(pk)
+            if line is None:
+                continue
+            remaining = remaining_qty(line)
+            if not self.is_bound and (line.order.status == "cancelled" or remaining <= 0):
+                self.dropped += 1
+                continue
+            self.fields[f"{BULK_QTY_PREFIX}{pk}"] = forms.DecimalField(
+                label="数量", max_digits=12, decimal_places=2, initial=remaining
+            )
+            self.fields[f"{BULK_SKIP_PREFIX}{pk}"] = forms.BooleanField(label="この行を出さない", required=False)
+            self.rows.append(
+                {
+                    "line": line,
+                    "remaining": remaining,
+                    "qty": self[f"{BULK_QTY_PREFIX}{pk}"],
+                    "skip": self[f"{BULK_SKIP_PREFIX}{pk}"],
+                }
+            )
+
+    @property
+    def head_fields(self):
+        """表の上の欄 (出荷日・備考と、土台が足す会社ごとの項目)。行ごとの欄は表に描くので除く。"""
+        return [
+            field
+            for field in self.visible_fields()
+            if not field.name.startswith((BULK_QTY_PREFIX, BULK_SKIP_PREFIX))
+        ]
+
+    def _picked(self, cleaned):
+        return [row for row in self.rows if not cleaned.get(f"{BULK_SKIP_PREFIX}{row['line'].pk}")]
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self._picked(cleaned):
+            raise forms.ValidationError(NO_BULK_LINES)
+        return cleaned
+
+    def service_kwargs(self) -> dict:
+        data = self.cleaned_data
+        return {
+            "lines": [(row["line"], data[f"{BULK_QTY_PREFIX}{row['line'].pk}"]) for row in self._picked(data)],
             "shipped_at": data["shipped_at"],
             "note": data.get("note", ""),
         }

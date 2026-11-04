@@ -1,0 +1,70 @@
+{% load seizou_icons seizou_tags %}
+{# 一括出荷の入力のカード (shipping/shipment_bulk_form.html の画面の全体と shipping/_form_modal.html の小窓の両方が include する)。 #}
+{# 写した元: core/_form_card.html (N123)。form の開きの tag (小窓の形は htmx で同じ URL へ送る)・誤り・「このまま保存」(confirmed=1) の 2 段・保存のボタン・_enter_guard.html は写した元の字のまま。 #}
+{# 変えた所: 欄の格子は form.head_fields (出荷日・備考と会社ごとの項目) だけにし、その下に選んだ明細の表 (form.rows。行ごとの数量と「この行を出さない」) を置く。 #}
+{# 明細の pk は行ごとの隠しの欄 line で送る (止まって描き直したときも同じ行が出る)。赤と黄の知らせはカードの外 (core/_notices.html)。 #}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
+  {% csrf_token %}
+  {% if form.rows %}
+  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「保存」を押します。入れた値は、止まったときも消えません。</p>{% endif %}
+  {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
+    {% for field in form.head_fields %}
+    {% if field.widget_type == "checkbox" %}
+    <div class="sm:col-span-2">
+      <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% else %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' %} sm:col-span-2{% endif %}">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+      </div>
+      {{ field }}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% if form.dropped %}<p class="mt-6 text-xs text-base-content/50">取消の受注と残の無い明細 {{ form.dropped }} 行は出していません。</p>{% endif %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm [&_input[inputmode=decimal]]:text-right">
+      <thead>
+        <tr>
+          <th>受注番号</th>
+          <th>得意先</th>
+          <th>部品</th>
+          <th class="text-right">残</th>
+          <th>数量 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
+          <th>この行を出さない</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in form.rows %}
+        <tr class="align-top">
+          <td class="whitespace-nowrap font-mono">{{ row.line.order.order_no }}<input type="hidden" name="line" value="{{ row.line.pk }}"></td>
+          <td class="whitespace-nowrap">{{ row.line.order.customer }}</td>
+          <td class="whitespace-nowrap">{{ row.line.item }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
+          <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{{ row.qty }}{% if row.qty.errors %}<p class="mt-2 text-xs text-error">{{ row.qty.errors|join:" " }}</p>{% endif %}</td>
+          <td>{{ row.skip }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}出荷できる明細がありません。注文残の盤で行を選び直してください。</p>
+  {% endif %}
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+  {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
+    {% if form.rows %}{% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>{% endif %}{% endif %}
+  </div>
+</form>
+{% include "core/_enter_guard.html" %}
