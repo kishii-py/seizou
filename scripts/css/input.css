@@ -60,3 +60,18 @@ body > .ts-dropdown .active {
 #seizou-modal-box:has(> .seizou-modal-wide) {
   max-width: min(56rem, calc(100vw - 2rem));
 }
+
+/* ファイルの欄 (core/_file_field.html) の枠の中の素の <input type=file> は見せない (枠の全体が押せる)。
+   display:none にしないのは、キーボードの焦点 (Tab) とブラウザの必須の検査を残すため (sr-only と同じ形)。
+   編集の画面の「現在」の link と「クリア」の欄 (ClearableFileInput の残り) は枠の中に見える。 */
+[data-file-drop] input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

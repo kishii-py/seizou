@@ -2,11 +2,14 @@
 {# ファイルの欄 (決め 11-04 14:4x)。破線の枠の中に <input type=file> を 1 つ置き、枠へドラッグしても入る (core/static/js/seizou-file-drop.js)。 #}
 {# 渡し方: 入力の土台 (core/form.html) は loop の field をそのまま {{ field }} で出す (name・id・accept・multiple と、編集の画面の「現在」の link と「クリア」は widget のまま)。 #}
 {# form の外の欄 (manuals/_images.html) は input_name・input_id・input_accept・input_label を渡し、ここで <input> を描く。 #}
+{# 素の <input type=file> は見せない (scripts/css/input.css の [data-file-drop] input[type=file] = 画面の外に置くだけで、キーボードの焦点は残る)。 #}
+{# 枠の全体を押すか、枠に焦点を置いて Enter か Space を押すと選ぶ画面が開く (JS)。JS が無いときは枠の中の素の input が隠れたままなので、枠の押下で開かない = 本人 11-04 22:1x「素の input は微妙」。 #}
 {# class は今ある物だけ (R19)。ドラッグの間は JS が枠に data-tone="primary" を付ける (data-[tone=primary]:bg-primary/15)。 #}
 <div class="min-w-0 flex-1" data-file-field>
-  <div class="cursor-pointer rounded-lg border-2 border-dashed border-base-300 bg-base-200 p-4 hover:border-primary data-[tone=primary]:bg-primary/15" data-file-drop>
+  <div class="cursor-pointer rounded-lg border-2 border-dashed border-base-300 bg-base-200 p-6 text-center hover:border-primary focus-visible:outline-2 focus-visible:outline-primary data-[tone=primary]:bg-primary/15" tabindex="0" role="button" aria-label="ファイルを選ぶ か、ここへドラッグ" data-file-drop>
     {% if input_name %}<input type="file" name="{{ input_name }}" class="file-input w-full" id="{{ input_id }}" accept="{{ input_accept }}" aria-label="{{ input_label }}">{% else %}{{ field }}{% endif %}
-    <p class="mt-2 flex items-center gap-2 text-xs text-base-content/70">{% icon "paperclip" "size-4" %}ファイルを選ぶ か、ここへドラッグ</p>
+    {% icon "download" "mx-auto size-12 text-base-content/40" %}
+    <p class="mt-2 text-sm text-base-content/70"><span class="font-medium text-primary">ファイルを選ぶ</span> か、ここへドラッグ</p>
   </div>
   {# 選んだファイルの一覧。input の change のたびに JS が template の行を写して名前と大きさを入れ、選んでいなければ hidden にする。 #}
   <ul class="mt-2 divide-y divide-base-200" data-file-drop-list hidden></ul>

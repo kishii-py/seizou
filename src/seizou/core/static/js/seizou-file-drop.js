@@ -8,7 +8,8 @@
  *   (選ぶ画面で 1 つしか選べないのと同じ)。形式・大きさ・枚数は見ない (サーバーの form と services が見て、
  *   超えたら今の赤の知らせ)。押せない欄 (disabled・押せない fieldset の中) には入れない。
  * - 枠の押下: input・link・label・button の外を押したら、input.click() で選ぶ画面を開く
- *   (編集の画面の「現在」の link と「クリア」はそのまま動く)。
+ *   (編集の画面の「現在」の link と「クリア」はそのまま動く)。枠に焦点 (tabindex=0) を置いて Enter か Space を押しても開く
+ *   (素の input は CSS で画面の外に置いてある = core/_file_field.html)。
  * - document に委譲して付ける。htmx で差し替えた欄 (マニュアルの画像) にも効く。
  * - class を足さない (Tailwind が CSS に入れないため)。data- の属性と hidden の付け外しだけで動かす。
  * - 取った字を HTML として差し込まない。通信しない。公開する口は無い。
@@ -136,6 +137,14 @@
     if (box) inputOf(box).click();
   }
 
+  function onKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var box = elementOf(event.target);
+    if (!box || !box.matches(DROP)) return; // 枠そのものに焦点があるときだけ (中の input・link・釦は自分の動き)
+    event.preventDefault();
+    inputOf(box).click();
+  }
+
   function onChange(event) {
     var input = elementOf(event.target);
     if (!input || !input.matches(INPUT) || !input.closest(DROP)) return;
@@ -146,5 +155,6 @@
   document.addEventListener("dragleave", onDragLeave);
   document.addEventListener("drop", onDrop);
   document.addEventListener("click", onClick);
+  document.addEventListener("keydown", onKeydown);
   document.addEventListener("change", onChange);
 })();

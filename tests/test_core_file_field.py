@@ -63,7 +63,8 @@ def test_file_input_sits_in_drop_box(logged_in, user, url_of, name):
     assert html.count("data-file-drop>") == 1
     assert _box_with_input(name).search(html)
     assert html.count(f'type="file" name="{name}"') == 1
-    assert "ファイルを選ぶ か、ここへドラッグ" in html
+    assert "ファイルを選ぶ</span> か、ここへドラッグ" in html  # 枠の中の案内 (選ぶ所だけ主色)
+    assert 'tabindex="0" role="button"' in html  # 枠に焦点を置いて Enter か Space で開ける
 
 
 def test_multiple_input_keeps_multiple_in_box(logged_in):
