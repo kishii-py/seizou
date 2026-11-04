@@ -171,6 +171,8 @@ def cancel_invoice(invoice, user):
             raise ValueError(refusal)
         locked.status = Invoice.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
         return locked
 
 
@@ -215,6 +217,8 @@ def cancel_payment(payment, user):
             raise ValueError("この入金は取り消し済みです。")
         locked.status = Payment.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
         return locked
 
 

@@ -14,6 +14,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.urls import reverse
 
+from seizou.billing import services as billing_services
+from seizou.billing.models import Invoice, Payment
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
@@ -25,6 +27,8 @@ from seizou.workorders.models import WorkOrder
 
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
+ISSUED_ON = date(2026, 11, 30)
+RECEIVED_ON = date(2026, 12, 25)
 CANCELLED = [("success", "取り消しました。")]
 
 
@@ -97,3 +101,31 @@ def test_delivery_note_cancel_says_cancelled(logged_in, note):
     assert _messages(response) == CANCELLED
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_CANCELLED
+
+
+@pytest.fixture
+def invoice(user, order, note):
+    """納品書の出荷 4 の請求書 (入金なし)。"""
+    return billing_services.create_invoice(order.customer, list(note.shipments.all()), user, issued_on=ISSUED_ON)
+
+
+def test_invoice_cancel_says_cancelled(logged_in, invoice):
+    response = logged_in.post(reverse("billing:invoice_cancel", args=[invoice.pk]), {})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("billing:invoice_detail", args=[invoice.pk])
+    assert _messages(response) == CANCELLED
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.STATUS_CANCELLED
+
+
+def test_payment_cancel_says_cancelled(logged_in, user, invoice):
+    payment = billing_services.record_payment(invoice, RECEIVED_ON, Decimal("200"), user)
+
+    response = logged_in.post(reverse("billing:payment_cancel", args=[payment.pk]), {})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("billing:payment_detail", args=[payment.pk])
+    assert _messages(response) == CANCELLED
+    payment.refresh_from_db()
+    assert payment.status == Payment.STATUS_CANCELLED
