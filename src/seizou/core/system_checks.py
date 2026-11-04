@@ -2,6 +2,7 @@
 書き方の決まりの検査 (seizou_check) とは別。
 
 見る物: URL の木にある一覧の画面 (BaseListView の子) の columns の辞書の鍵と値と、ColumnSpec の誤り (知らない kind など)。
+filters の宣言の誤り (FilterSpec が作れない宣言。書けない鍵・知らない kind・無い項目・when の無い flag など)。
 """
 
 from __future__ import annotations
@@ -80,12 +81,40 @@ def list_column_errors(view_classes) -> list:
     return errors
 
 
-@django_checks.register()
-def check_list_columns(app_configs=None, **kwargs):
-    """URL の木にある一覧の画面の columns を見る (同じ class は 1 回)。app_configs があれば、その app の画面だけ。
+def list_filter_errors(view_classes) -> list:
+    """渡された class のうち一覧の画面 (BaseListView の子) の filters を FilterSpec で 1 度作り、誤りを Error で返す。
 
-    試験の中で作った画面は URL の木に無いので見ない (ほかの試験の run_checks() に漏れない)。
+    seizou.E004 = FilterSpec が例外を投げた (1 つの絞りに 1 つ)。見るのは宣言 (filters) だけで、
+    土台が自動で足す会社ごとの項目の絞りは見ない。
     """
+    from seizou.core.views import BaseListView, FilterSpec
+
+    errors = []
+    for view_class in view_classes:
+        if not (isinstance(view_class, type) and issubclass(view_class, BaseListView)):
+            continue
+        model = getattr(view_class, "model", None)
+        if model is None:
+            continue
+        where = f"{view_class.__module__}.{view_class.__name__}"
+        for item in view_class.filters or ():
+            name = str(item["name"]) if isinstance(item, dict) and "name" in item else repr(item)
+            try:
+                FilterSpec(model, item)
+            except Exception as error:  # noqa: BLE001 - どの誤りも起動の検査の文にする (起動は止めない)
+                errors.append(
+                    django_checks.Error(
+                        f"{where} の filters の絞り {name} を読めません ({type(error).__name__}: {error})。",
+                        hint=f"絞りは辞書で書きます。kind は {' / '.join(FilterSpec.KINDS)} のどれかです (書き方は FilterSpec の docstring)。",
+                        obj=view_class,
+                        id="seizou.E004",
+                    )
+                )
+    return errors
+
+
+def _url_view_classes(app_configs) -> list:
+    """URL の木にある画面の class (同じ class は 1 回)。app_configs があれば、その app の画面だけ。"""
     from django.conf import settings
     from django.urls import get_resolver
 
@@ -101,4 +130,19 @@ def check_list_columns(app_configs=None, **kwargs):
             for view_class in view_classes
             if any(view_class.__module__ == name or view_class.__module__.startswith(name + ".") for name in names)
         ]
-    return list_column_errors(view_classes)
+    return view_classes
+
+
+@django_checks.register()
+def check_list_columns(app_configs=None, **kwargs):
+    """URL の木にある一覧の画面の columns を見る (同じ class は 1 回)。app_configs があれば、その app の画面だけ。
+
+    試験の中で作った画面は URL の木に無いので見ない (ほかの試験の run_checks() に漏れない)。
+    """
+    return list_column_errors(_url_view_classes(app_configs))
+
+
+@django_checks.register()
+def check_list_filters(app_configs=None, **kwargs):
+    """URL の木にある一覧の画面の filters を見る (check_list_columns と同じ選び方。N122)。"""
+    return list_filter_errors(_url_view_classes(app_configs))
