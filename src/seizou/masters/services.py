@@ -11,6 +11,8 @@
   作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
 - 部品の図面を新しいファイルに差し替えたら、前の図面を版 (ItemDrawingVersion) に残す (ファイルは写さず名前の字を持つ)。
   版に戻すのは restore_drawing_version。
+- 使用停止 (active が偽。N135): 消さずに候補から外す。候補の母集団は active_items・active_partners、
+  新しい受注と発注を作る所 (orders・purchasing の services) の守りは refuse_inactive。今までの記録はそのまま。
 """
 
 from __future__ import annotations
@@ -516,6 +518,19 @@ def active_partners(*, keep=None):
     取引先の種類の絞り (得意先だけ・協力企業だけ) は呼ぶ側が filter で足す。
     """
     return _active(Partner, keep)
+
+
+def refuse_inactive(partner, items=()):
+    """新しい受注と発注を作る所 (orders・purchasing の services) が呼ぶ守り (N135)。表に書かない。
+
+    取引先か部品のどれかが使用停止なら、日本語の ValueError (入力の土台が赤の知らせにする)。
+    今ある受注と発注の直しと、今ある受注から先の記録 (指示書・出荷・請求書) では呼ばない。
+    """
+    if partner is not None and not partner.active:
+        raise ValueError(f"使用停止の取引先です ({partner})。使用中の取引先を選ぶか、取引先の編集で「使用中」に戻してください。")
+    for item in items:
+        if item is not None and not item.active:
+            raise ValueError(f"使用停止の部品です ({item})。使用中の部品を選ぶか、部品の編集で「使用中」に戻してください。")
 
 
 def candidates(kind, query, page, *, per_page=30):

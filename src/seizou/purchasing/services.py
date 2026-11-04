@@ -23,7 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from seizou.core.services import next_number
-from seizou.masters.services import round_amount
+from seizou.masters.services import refuse_inactive, round_amount
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
@@ -115,6 +115,7 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     if not lines:
         raise ValueError("明細がありません。明細を 1 行以上入れてください。")
     _refuse_bad_lines(lines)
+    refuse_inactive(partner, [line.get("item") for line in lines])
     with transaction.atomic():
         purchase_order = PurchaseOrder.objects.create(
             po_no=next_number("purchase_order"),

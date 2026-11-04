@@ -26,7 +26,7 @@ from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.masters.services import round_amount
+from seizou.masters.services import refuse_inactive, round_amount
 
 from .models import Order, OrderLine
 
@@ -152,6 +152,7 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
     if not lines:
         raise ValueError("明細がありません。明細を 1 行以上入れてください。")
     _refuse_bad_lines(lines, _LINE_KEYS)
+    refuse_inactive(customer, [line.get("item") for line in lines])
     with transaction.atomic():
         order = Order.objects.create(
             order_no=next_number("order"),
