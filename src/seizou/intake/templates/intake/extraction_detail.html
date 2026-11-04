@@ -1,5 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
+{% load seizou_outcome %}
 {# 読み取りの詳細。見出しの右に、状態が「読み取った」のときだけ「受注にする」。 #}
 {% block actions %}{{ block.super }}{% if object.status == "extracted" %}
 <a class="btn btn-primary" href="{% url 'intake:extraction_accept' object.pk %}">{% icon "check" "size-4" %}受注にする</a>
@@ -45,5 +46,8 @@
   </dl>
   <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">明細 (得意先の品番のまま)</p>
   {% include "intake/_lines.html" %}
+  {% reading_match extraction=object as own_match %}{% include "core/_reading_match.html" with match=own_match label="この読み取り" %}
+  {% reading_match customer=object.customer as customer_match %}
+  {% include "core/_reading_match.html" with match=customer_match label="この得意先の読み取り (これまで)" %}
 </div>
 {% endblock %}

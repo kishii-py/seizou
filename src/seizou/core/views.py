@@ -712,7 +712,7 @@ class BaseFormView(ScreenMixin, FormView):
             # 部品の決まり (番号の無い物。品番の一意など) は日本語の文の ValueError。赤の知らせにする。
             return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", str(exc))))
         deleted = self.get_service().__name__.startswith(self.DELETE_SERVICE_PREFIXES)
-        messages.success(self.request, self.delete_message if deleted else self.success_message)
+        messages.success(self.request, with_saved_note(self.delete_message if deleted else self.success_message, result))
         url = self.get_success_url_for(result)
         if self.request.headers.get("HX-Request"):
             response = HttpResponse(status=200)
@@ -995,6 +995,16 @@ def count_or_none(queryset) -> int | None:
         return None
 
 
+def with_saved_note(message: str, result) -> str:
+    """入力の土台の緑の知らせの字。service が返した物に saved_note (1 文の字) があれば、知らせの後ろに付ける。
+
+    例: 届いた注文と読み取りを受注にした直後の「明細 n 行を手で打たずに受注にしました。」(orders.services.create_order が付ける)。
+    部品の画面は知らせの文を上書きできない (R15 の 11 に success_message が無い) ので、文は service の返す物が持つ。
+    """
+    note = getattr(result, "saved_note", "")
+    return f"{message}{note}" if isinstance(note, str) and note else message
+
+
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
@@ -1094,6 +1104,24 @@ def dashboard_stats() -> list[dict]:
                 "icon": "yen",
                 "url": url_or_none("billing:invoice_list"),
                 "money": True,
+            }
+        )
+    # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと届いた注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
+    hands_free = dashboard.hands_free_lines(today)
+    if hands_free is not None:
+        note = f"{today.month} 月に、読み取った注文書と届いた注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
+        accept = dashboard.accept_minutes_this_month(today)
+        if accept is not None:
+            note += f"。受付の平均 {accept} 分"
+        stats.append(
+            {
+                "label": "手で打たずに受けた明細",
+                "value": hands_free,
+                "unit": "行",
+                "detail": f"≒ 転記 {dashboard.transcription_text(dashboard.saved_minutes(hands_free))}",
+                "note": note,
+                "icon": "check",
+                "url": None,
             }
         )
     return [stat for stat in stats if stat["value"] is not None]

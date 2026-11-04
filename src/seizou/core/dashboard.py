@@ -9,8 +9,12 @@
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
+- minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
+- hands_free_lines: 今月、手で打たずに (読み取りと届いた注文から) 受けた明細の行数。
+- accept_minutes_this_month: 今月の受付 (届いた注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
+- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_HALF_UP, InvalidOperation
 
 from django.apps import apps
 from django.db import DatabaseError
@@ -30,6 +35,8 @@ from django.db.models import DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+
+from seizou.core import conf
 
 # 図の枠 (viewBox の大きさ) と描く所。y は下へ増え、_BASELINE が値 0 の基線。
 _WIDTH = 640
@@ -417,6 +424,107 @@ def payments_this_month(today=None) -> Decimal | None:
     return _ZERO if total is None else Decimal(str(total))
 
 
+MAX_MINUTES_PER_LINE = Decimal(60)  # 1 行の転記の分の上限。これを超える値と 0 以下は既定に戻す
+
+
+def minutes_per_line() -> Decimal:
+    """会社の設定 transcription_minutes_per_line (1 行の転記にかかる分) を Decimal で返す。真偽・数でない字・有限でない数・0 以下・MAX_MINUTES_PER_LINE を超える数は既定 (conf.DEFAULTS) に戻す (画面を 500 にしないよう、例外を投げない。core.calendar の定休日と同じ考え)。"""
+    default = Decimal(conf.DEFAULTS["transcription_minutes_per_line"])
+    value = conf.setting("transcription_minutes_per_line")
+    if isinstance(value, bool):
+        return default
+    try:
+        minutes = Decimal(str(value))
+    except InvalidOperation:
+        return default
+    if not minutes.is_finite() or minutes <= 0 or minutes > MAX_MINUTES_PER_LINE:
+        return default
+    return minutes
+
+
+def transcription_text(minutes: int) -> str:
+    """転記の分の字。60 分より少なければ「m 分」、60 分からは「h 時間 m 分」(m が 0 なら「h 時間」)。"""
+    hours, rest = divmod(minutes, 60)
+    if hours == 0:
+        return f"{rest} 分"
+    if rest == 0:
+        return f"{hours:,} 時間"
+    return f"{hours:,} 時間 {rest} 分"
+
+
+def saved_minutes(lines: int) -> int:
+    """lines × 1 行の転記の分 (minutes_per_line) を四捨五入した分の整数 (ROUND_HALF_UP)。"""
+    return int((lines * minutes_per_line()).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def hands_free_lines(today=None) -> int | None:
+    """今月 (受注日が today の月) の、取消でない受注の明細のうち、受注の入口が読み取りか届いた注文の行数。受注の部品が無いか DB が読めなければ None。問い合わせは 1 回 (count)。
+
+    入口は受注の列 (Order.source) で、明細の列ではない。
+    """
+    order_model = _model("orders", "Order")
+    line_model = _model("orders", "OrderLine")
+    if order_model is None or line_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    start = date(today.year, today.month, 1)
+    end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    try:
+        return (
+            line_model._default_manager.filter(
+                order__order_date__gte=start,
+                order__order_date__lt=end,
+                order__source__in=(order_model.SOURCE_INTAKE, order_model.SOURCE_INBOX),
+            )
+            .exclude(order__status=order_model.STATUS_CANCELLED)
+            .count()
+        )
+    except DatabaseError:
+        return None
+
+
+def _average_minutes(pairs) -> int | None:
+    """(届いた日時, 承認の日時) の組の並びから、かかった分の平均を四捨五入した整数。どちらかが None の組と、承認が届いたより前の組は飛ばす。組が 1 つも無ければ None。"""
+    spans = [
+        Decimal(str((accepted - received).total_seconds())) / 60
+        for received, accepted in pairs
+        if received is not None and accepted is not None and accepted >= received
+    ]
+    if not spans:
+        return None
+    return int((sum(spans) / len(spans)).to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def accept_minutes_this_month(today=None) -> int | None:
+    """今月 (承認の日時が today の月。地域の時刻) に承認した届いた注文の、届いてから承認までの分の平均。承認の日時の列 (Inbox.accepted_at。N82 が足す) が無い・受信箱の部品が無い・今月の承認が無い・DB が読めなければ None。列があれば問い合わせは 1 回。"""
+    from django.core.exceptions import FieldDoesNotExist
+
+    inbox_model = _model("connect", "Inbox")
+    if inbox_model is None:
+        return None
+    try:
+        inbox_model._meta.get_field("accepted_at")
+    except FieldDoesNotExist:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    start = date(today.year, today.month, 1)
+    end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    try:
+        pairs = list(
+            inbox_model._default_manager.filter(
+                status=inbox_model.STATUS_ACCEPTED,
+                # 期間の境は地域の時刻の 0 時 (production_trend と同じ)。
+                accepted_at__gte=timezone.make_aware(datetime.combine(start, time.min)),
+                accepted_at__lt=timezone.make_aware(datetime.combine(end, time.min)),
+            ).values_list("received_at", "accepted_at")
+        )
+    except DatabaseError:
+        return None
+    return _average_minutes(pairs)
+
+
 def lines_to_ship():
     """まだ出荷していない明細。注文残の一覧の既定 (orders の OrderLineListView = 残が 0 より大きく、取消でない受注の明細) と
     同じ数え方で、カードの数と押した先の一覧の件数を合わせる。部品が無ければ None。"""
@@ -766,3 +874,25 @@ def flow_neighbors(url_name: str) -> dict | None:
 
 def _neighbor(step):
     return None if step is None else {"label": step["label"], "url": step["url"]}
+
+
+def reading_match(*, customer=None, extraction=None) -> dict | None:
+    """読み取りの一致率 (intake.outcome.match_counts)。extraction を渡せばその 1 枚、customer を渡せばその得意先のこれまでの全部。読み取りの部品が無い・どちらも渡さない・受注にした行が 1 枚も無い (lines が 0)・DB が読めなければ None。
+
+    対象は状態が「受注にした」で受注のある読み取りの行だけ (取消の受注も数える)。問い合わせは 2 回まで。返す物 = {"extractions", "lines", "same", "fixed"}。
+    """
+    extraction_model = _model("intake", "Extraction")
+    if extraction_model is None or (customer is None and extraction is None):
+        return None
+    from seizou.intake.outcome import match_counts
+
+    queryset = extraction_model._default_manager.filter(status=extraction_model.STATUS_ORDERED, order__isnull=False)
+    if extraction is not None:
+        queryset = queryset.filter(pk=extraction.pk)
+    else:
+        queryset = queryset.filter(customer=customer)
+    try:
+        counts = match_counts(queryset)
+    except DatabaseError:
+        return None
+    return counts if counts["lines"] else None
