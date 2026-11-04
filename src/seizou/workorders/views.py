@@ -71,9 +71,7 @@ class WorkOrderListView(BaseListView):
     def get_queryset(self):
         # 工程 (f_process) と今日の計画 (f_today) は、指示書から見て逆向きの FK (工程の行) で絞る。
         # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。N122)。
-        params = self.request.GET
-        specs = {spec.name: spec for spec in self.filter_specs()}
-        joined = bool(specs["process"].values(params)) or specs["today"].is_on(params)
+        joined = self.filter_chosen("process") or self.flag_on("today")
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
         return workorders.distinct() if joined else workorders
 

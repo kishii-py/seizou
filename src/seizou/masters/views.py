@@ -16,7 +16,7 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET
 
 from seizou.core import csvio, dashboard
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, FilterSpec
 
 from . import drawings
 from . import services
@@ -28,23 +28,14 @@ from .models import Item, Partner, Process
 from .models import Holiday
 
 
-def _flag_on(view, name):
-    """一覧の flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。"""
-    return any(spec.is_on(view.request.GET) for spec in view.filter_specs() if spec.name == name)
-
-
-def _as_is(queryset):
-    """印だけを宣言する flag の when (何もしない)。使用中だけに絞るのは画面の get_queryset (印が切のとき)。"""
-    return queryset
-
-
 #: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
-INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": _as_is}
+#: when は何もしない (使用中だけに絞るのは画面の get_queryset。印が切のとき)。
+INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": FilterSpec.as_is}
 
 
 def _hide_inactive(view, queryset):
     """印「使用停止も出す」が切 (既定) なら使用中だけ。件数と CSV も同じ条件になる。"""
-    return queryset if _flag_on(view, "inactive") else queryset.filter(active=True)
+    return queryset if view.flag_on("inactive") else queryset.filter(active=True)
 
 
 class ItemListView(BaseListView):
