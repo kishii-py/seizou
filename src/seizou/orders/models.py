@@ -141,11 +141,15 @@ class OrderLine(models.Model):
 
     def __str__(self):
         text = f"{self.order.order_no}-{self.line_no} {self.item.part_no} {self.item.name}"
-        # 集計 (services.annotate_remaining) を通した明細だけ、末尾に受注の残りを足す (出荷の入力の候補の口の字。
-        # 出荷の画面の JS が「 残り n」を読んで数量の欄の下に写す)。集計の無い明細は今の字のまま。
+        # 集計 (services.annotate_remaining) を通した明細だけ、得意先の名前と得意先の注文番号 (あれば) と受注の残りを足す
+        # (出荷の入力の候補の口の字。得意先の注文書を見ながら選べるように = 初見テスト R4 2-2)。
+        # 残りは必ず末尾 (出荷の画面の JS が「 残り n」を読んで数量の欄の下に写す)。集計の無い明細は今の字のまま。
         remaining = getattr(self, "remaining_total", None)
         if remaining is None:
             return text
+        text = f"{text} / {self.order.customer.name}"
+        if self.order.customer_order_no:
+            text = f"{text} (注文番号 {self.order.customer_order_no})"
         return f"{text} 残り {remaining.normalize():f}"
 
     @property

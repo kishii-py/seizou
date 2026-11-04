@@ -201,11 +201,20 @@ class OrderCancelView(BaseFormView):
 
 class OrderLineSelectView(BaseSelectView):
     model = OrderLine
-    search_fields = ("order__order_no", "item__part_no", "item__name")
+    # 得意先の名前・取引先コード・得意先の注文番号でも探せる (相手の注文書を見ながら選ぶ。初見テスト R4 2-2)。
+    search_fields = (
+        "order__order_no",
+        "item__part_no",
+        "item__name",
+        "order__customer__name",
+        "order__customer__code",
+        "order__customer_order_no",
+    )
 
     def get_queryset(self):
-        # 残が 0 より大きく、受注が取消でない明細だけ。表示の字は OrderLine.__str__ (受注番号-行番号 品番 品名)。
-        lines = OrderLine.objects.select_related("order", "item")
+        # 残が 0 より大きく、受注が取消でない明細だけ。表示の字は OrderLine.__str__
+        # (受注番号-行番号 品番 品名 / 得意先 (注文番号 …) 残り n)。得意先は字に使うので一緒に読む。
+        lines = OrderLine.objects.select_related("order", "order__customer", "item")
         return (
             annotate_remaining(lines)
             .filter(remaining_total__gt=0)
