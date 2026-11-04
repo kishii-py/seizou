@@ -52,12 +52,26 @@ class WorkOrderListView(BaseListView):
         ("accepted_label", "受けた"),
     )
     search_fields = ("wo_no",)
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process"},
+        {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
+        {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+    )
     ordering = ("-issued_on", "-id")
     template_name = "workorders/workorder_list.html"
 
     def get_queryset(self):
+        # 古い GET の process (製造向けの欄) は絞りの f_process と同じ意味。f_process が読めたら古い方は読まない (両方あれば新しい方)。
+        # 工程は指示書から見て逆向きの FK なので、f_process で絞ったときは同じ指示書が重ならないように distinct で外す。
+        params = self.request.GET
+        old = worklist.list_filters(params)
+        new_process = any(spec.values(params) for spec in self.filter_specs() if spec.name == "process")
+        if new_process:
+            old["process"] = None
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
-        return worklist.apply_list_filters(workorders, worklist.list_filters(self.request.GET))
+        workorders = worklist.apply_list_filters(workorders, old)
+        return workorders.distinct() if new_process else workorders
 
 
 class WorkOrderDetailView(BaseDetailView):

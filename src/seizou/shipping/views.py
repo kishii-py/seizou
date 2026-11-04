@@ -60,6 +60,10 @@ class ShipmentListView(BaseListView):
         "order_line__item__part_no",
         "order_line__order__customer__name",
     )
+    filters = (
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "order_line__order__customer"},
+        {"name": "shipped", "label": "出荷日", "kind": "date_range", "field": "shipped_at"},
+    )
     ordering = ("-shipped_at", "-id")
 
     def get_queryset(self):
@@ -126,6 +130,11 @@ class DeliveryNoteListView(BaseListView):
     screen_help = "納品書の一覧。発行日の新しい順に並びます。行を押すと、印刷用の画面と PDF の入口がある詳細へ移ります。"
     columns = ("note_no", "customer", "issued_on", "status")
     search_fields = ("note_no", "customer__name")
+    filters = (
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
+        {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+    )
     ordering = ("-issued_on", "-id")
 
     def get_queryset(self):
