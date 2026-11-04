@@ -1,0 +1,21 @@
+{% load notes_tags seizou_icons %}
+{# メモの枠 (閲覧の形): 記録の詳細の画面の下に出る。本文は掃除した HTML (note_html)。「書く」で記入の形 (notes/note_form.html の #notes) と htmx で入れ替える。 #}
+{# 本文の箱は Quill の字の class (ql-snow・ql-editor) で包み、同梱の Quill の CSS で記入の形と同じ見た目にする (class は Quill の物)。 #}
+{% include "notes/_assets.html" %}
+{% note_for object as note %}{% note_edit_url object as edit_url %}
+<section id="notes" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="notes-heading">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h2 id="notes-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "pencil" "size-5 text-base-content/70" %}メモ</h2>
+    <a class="btn btn-sm btn-outline border-base-300" href="{{ edit_url }}" hx-get="{{ edit_url }}" hx-select="#notes" hx-target="#notes" hx-swap="outerHTML ignoreTitle:true">{% icon "pencil" "size-4" %}書く</a>
+  </div>
+  {% if note.body_html %}
+  <div class="ql-snow mt-4" data-note-view><div class="ql-editor">{{ note.body_html|note_html }}</div></div>
+  <p class="mt-2 text-xs text-base-content/50">更新 {{ note.updated_at|date:"Y-m-d H:i" }}{% if note.updated_by %} {{ note.updated_by }}{% endif %}</p>
+  {% else %}
+  <div class="flex flex-col items-center justify-center p-6 text-center">
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "pencil" "size-6" %}</span>
+    <p class="mt-4 font-medium">メモはまだありません。</p>
+    <p class="mt-2 text-xs text-base-content/50">「書く」から、段取りの注意や現場の写真を残せます。</p>
+  </div>
+  {% endif %}
+</section>
