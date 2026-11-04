@@ -16,7 +16,7 @@
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
-- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。
+- reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (届いた注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
 - 読む部品が無いか DB が読めなければ None を返す (画面は節ごと出さない。偽の 0 を置かない)。
 
@@ -1016,20 +1016,33 @@ def _neighbor(step):
 def reading_match(*, customer=None, extraction=None) -> dict | None:
     """読み取りの一致率 (intake.outcome.match_counts)。extraction を渡せばその 1 枚、customer を渡せばその得意先のこれまでの全部。読み取りの部品が無い・どちらも渡さない・受注にした行が 1 枚も無い (lines が 0)・DB が読めなければ None。
 
-    対象は状態が「受注にした」で受注のある読み取りの行だけ (取消の受注も数える)。問い合わせは 2 回まで。返す物 = {"extractions", "lines", "same", "fixed"}。
+    対象は受注になった読み取りの行 (取消の受注も数える)。画面の道 = 状態が「受注にした」で受注のある行 (得意先は読み取りの行の得意先)。
+    見張りの道 = 状態が「届いた注文へ回した」で、その届いた注文 (connect の Inbox) が受注になった行 (得意先は届いた注文の取引先 =
+    受注の得意先。差出人を後で選んだ行は、読み取りの行の得意先が空のまま)。届いた注文の部品が無ければ画面の道だけ。
+    比べる明細はどちらもその受注の明細。問い合わせは 2 回まで (届いた注文は 1 回目に join で読む)。返す物 = {"extractions", "lines", "same", "fixed"}。
     """
     extraction_model = _model("intake", "Extraction")
     if extraction_model is None or (customer is None and extraction is None):
         return None
     from seizou.intake.outcome import match_counts
 
-    queryset = extraction_model._default_manager.filter(status=extraction_model.STATUS_ORDERED, order__isnull=False)
+    ordered = Q(status=extraction_model.STATUS_ORDERED, order__isnull=False)
+    watched = Q(status=extraction_model.STATUS_INBOX, inbox_messages__order__isnull=False)
     if extraction is not None:
-        queryset = queryset.filter(pk=extraction.pk)
+        ordered &= Q(pk=extraction.pk)
+        watched &= Q(pk=extraction.pk)
     else:
-        queryset = queryset.filter(customer=customer)
+        ordered &= Q(customer=customer)
+        watched &= Q(inbox_messages__partner=customer)
+    if _model("connect", "Inbox") is None:
+        queryset = extraction_model._default_manager.filter(ordered).annotate(order_key=F("order"))
+    else:
+        # 見張りの道の受注は届いた注文の側にある (読み取りの行の order は空)。絞りと同じ join を使う。
+        queryset = extraction_model._default_manager.filter(ordered | watched).annotate(
+            order_key=Coalesce(F("order"), F("inbox_messages__order"))
+        )
     try:
-        counts = match_counts(queryset)
+        counts = match_counts(queryset, order_field="order_key")
     except DatabaseError:
         return None
     return counts if counts["lines"] else None
