@@ -3,13 +3,14 @@
 newest = 受信箱の一番新しい行の番号 (InboxListView.get_queryset の newest_pk)。新しい行が無い応答では、送った after のまま。
 - 行がある: ?after=<newest> を取りに行き、返った行を表 (#rows tbody) の先頭に足す。
 - 一覧が空 (表が無い): ?after=0 を取りに行き、行の部分 (#rows) を丸ごと入れ替える。行が届くと表ごと返る。
+hx-include で一覧の絞りの欄 (core/_filters.html の data-list-filter) の今の値も送る (絞った一覧に、合わない行と絞る前の件数を足さない。N121)。
 oob が真のとき (connect/_rows.html の応答) は、template で包んで hx-swap-oob で同じ id の要素と入れ替える。
 {% endcomment %}
 {% firstof rows.0.obj.newest_pk request.GET.after as newest %}
 {% if oob %}<template>{% endif %}
 {% if newest and newest != "0" %}
-<div id="inbox-poll" hidden hx-get="{{ request.path }}?after={{ newest }}" hx-trigger="{{ trigger }}" hx-target="#rows tbody" hx-swap="afterbegin"{% if oob %} hx-swap-oob="true"{% endif %}></div>
+<div id="inbox-poll" hidden hx-get="{{ request.path }}?after={{ newest }}" hx-include="[data-list-filter]" hx-trigger="{{ trigger }}" hx-target="#rows tbody" hx-swap="afterbegin"{% if oob %} hx-swap-oob="true"{% endif %}></div>
 {% else %}
-<div id="inbox-poll" hidden hx-get="{{ request.path }}?after=0" hx-trigger="{{ trigger }}" hx-target="#rows" hx-swap="innerHTML"{% if oob %} hx-swap-oob="true"{% endif %}></div>
+<div id="inbox-poll" hidden hx-get="{{ request.path }}?after=0" hx-include="[data-list-filter]" hx-trigger="{{ trigger }}" hx-target="#rows" hx-swap="innerHTML"{% if oob %} hx-swap-oob="true"{% endif %}></div>
 {% endif %}
 {% if oob %}</template>{% endif %}

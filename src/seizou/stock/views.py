@@ -12,10 +12,12 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
 from .forms import AdjustForm, FinishedForm, IssueForm
-from .models import StockMove
+from .models import KIND_CHOICES, KIND_SHIPPED, StockMove
 
 #: 部品の表 (masters の Item)。在庫の動きの外部キーの先として引く (読むだけ)
 ItemModel = StockMove._meta.get_field("item").related_model
+#: 動きの一覧の種類の絞りの候補。出荷は動きの表に書かない (出荷の表から集計で引く) ので除く
+MOVE_KIND_CHOICES = tuple(choice for choice in KIND_CHOICES if choice[0] != KIND_SHIPPED)
 
 
 def _pk_or_none(raw):
@@ -69,6 +71,11 @@ class StockMoveListView(BaseListView):
     )
     columns = ("moved_on", "item", "kind", "qty", ("source_label", "元の記録"), "note", "moved_by")
     search_fields = ("item__part_no", "item__name", "note")
+    filters = (
+        {"name": "kind", "label": "種類", "kind": "choice", "field": "kind", "choices": MOVE_KIND_CHOICES},
+        {"name": "item", "label": "部品", "kind": "lookup", "field": "item"},
+        {"name": "moved", "label": "期間", "kind": "date_range", "field": "moved_on"},
+    )
     ordering = ("-moved_on", "-pk")
     template_name = "stock/stockmove_list.html"
 
