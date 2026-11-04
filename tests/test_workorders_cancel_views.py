@@ -118,3 +118,26 @@ def test_plan_board_drops_cancelled(settings, logged_in, user, cut, workorder):
     after = logged_in.get(board_url)
     assert after.status_code == 200
     assert workorder.wo_no not in after.content.decode()
+
+
+@pytest.mark.django_db
+def test_cancel_screen_says_cancel(logged_in, user, workorder):
+    url = reverse("workorders:workorder_cancel", args=[workorder.pk])
+    page = logged_in.get(url)
+    assert page.status_code == 200
+    body = page.content.decode()
+    assert "取り消す</button>" in body
+    assert "保存</button>" not in body
+    # 理由は任意の欄なので、「必須」の欄の案内の行は今までどおり出ない。
+    assert "「必須」の欄を埋めて" not in body
+
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+    response = logged_in.post(url, {"reason": ""})
+
+    assert response.status_code == 200
+    stopped = response.content.decode()
+    assert "alert-error" in stopped
+    assert "取り消す</button>" in stopped
+    assert "保存</button>" not in stopped
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_ISSUED

@@ -95,6 +95,7 @@ class PlanPlaceForm(forms.Form):
 
 class WorkOrderCancelForm(forms.Form):
     """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。"""
+    submit_label = "取り消す"
 
     reason = forms.CharField(
         label="取消の理由",
