@@ -93,7 +93,10 @@ class StockMove(models.Model):
             models.Index(fields=["content_type", "object_id"]),
         ]
         constraints = [
-            models.CheckConstraint(condition=~models.Q(qty=0), name="stock_stockmove_qty_nonzero"),
+            # 数量 0 は棚卸しの調整の行だけ (在庫を数えていない部品に実地 0 を入れ、0 から数え始める行)。ほかの種類の 0 は断る
+            models.CheckConstraint(
+                condition=models.Q(kind=KIND_ADJUSTED) | ~models.Q(qty=0), name="stock_stockmove_qty_nonzero"
+            ),
         ]
 
     def __str__(self):

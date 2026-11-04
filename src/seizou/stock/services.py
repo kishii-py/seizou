@@ -43,6 +43,9 @@ _ZERO = Decimal("0")
 
 _POSITIVE_MESSAGE = "数量は 0 より大きい数にしてください。"
 
+# 在庫を数えていない部品に実地 0 を入れた後の知らせの字 (入力の土台 core.views.with_saved_note が、返した動きの saved_message を「保存しました。」の代わりに出す)
+COUNTED_FROM_ZERO_MESSAGE = "0 から数え始めました。"
+
 
 def _dec(value):
     return value if isinstance(value, Decimal) else Decimal(str(value))
@@ -84,12 +87,15 @@ def _lock(item):
 
 
 def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
-    """在庫の動きを 1 行作る。呼ぶ側の transaction.atomic の中で呼ぶ。符号は種類で合わせ、0 は ValueError。"""
+    """在庫の動きを 1 行作る。呼ぶ側の transaction.atomic の中で呼ぶ。符号は種類で合わせ、0 は ValueError。
+
+    ただし棚卸しの調整の 0 は残す (在庫を数えていない部品に実地 0 を入れ、0 から数え始める行。表の制約も同じ)。
+    """
     qty = _dec(qty)
     sign = kind_sign(kind)
     if sign:
         qty = abs(qty) * sign
-    if qty == 0:
+    if qty == 0 and kind != KIND_ADJUSTED:
         raise ValueError("数量が 0 の動きは残せません。0 でない数にしてください。")
     locked = _lock(item)
     return StockMove.objects.create(
@@ -295,7 +301,9 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
     数え始めの日より前の出荷は在庫数から引かないので、在庫数 = 差 − その日と後の出荷 = 実地の数。
     その日と後の出荷が無ければ、実地の数がそのまま入る。
     動きのある部品は、差 = 実地の数 − 今の在庫数 (数え始めの日は変わらない)。
-    実地の数が負と、差が 0 は ValueError。
+    動きの無い部品に実地 0 を入れたときは断らず、0 から数え始める (その日と後の出荷が無ければ数量 0 の行)。
+    返す行の saved_message を「0 から数え始めました。」にする (入力の土台が「保存しました。」の代わりに出す。表に書かない)。
+    実地の数が負と、動きのある部品で差が 0 (今の在庫数と同じ) は ValueError。
     """
     counted = _dec(counted_qty)
     if counted < 0:
@@ -307,6 +315,9 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
             diff = counted + _shipped_on_or_after(locked, moved_on)
         else:
             diff = counted - current
-        if diff == 0:
+        if diff == 0 and current is not None:
             raise ValueError("今の在庫数と同じです。調整は要りません。")
-        return _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)
+        move = _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)
+        if current is None and counted == 0:
+            move.saved_message = COUNTED_FROM_ZERO_MESSAGE
+        return move
