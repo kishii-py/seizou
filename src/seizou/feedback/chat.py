@@ -63,8 +63,11 @@ DRAFT_SCHEMA = {
         "properties": {
             "kind": {
                 "type": "string",
-                "enum": ["usage", "company", "common", "bug"],
-                "description": "使い方 / 自社の作業 (設定や会社の中の作業で解ける) / 皆の要望 / 不具合",
+                "enum": list(services.KINDS),
+                "description": (
+                    "不具合 (画面が誤って動く) / 決まりの反例 (止まるはずの操作が通った) / 決まりの提案 (止めてほしい操作) / "
+                    "業務の流れの違い (うちの会社ではこう流れる) / 要望 (新しい機能や画面) / 使い方"
+                ),
             },
             "screen": {"type": "string", "description": "主な画面の URL の名前 (list_screens の url_name)。分からなければ空"},
             "title": {"type": "string", "description": "題 (40 字まで)"},
@@ -84,9 +87,11 @@ PROMPT_RULES = (
     "約束:\n"
     "・仕分けが先です。(1) 使い方の問い (「どうやるの」) は、list_screens で画面を選び get_manual で説明書を読んで、その場で答えます。"
     "下書きは出しません (「それでも困るなら下書きにできます」と 1 文添えます)。"
-    "(2) 会社ごとの項目や業務の違いで、設定や会社の中の作業で解ける話は kind を company にします。"
+    "(2) 画面が誤って動く話は bug (不具合)。(3) 止まるはずの操作が通った話は counter (決まりの反例)。"
+    "(4) 止めてほしい操作の提案は proposal (決まりの提案)。"
+    "(5) 「うちの会社ではこう流れる」という業務の流れの違いは company (業務の流れの違い)。"
     "company_info の settings に合う設定があれば、その鍵の名前を伝えます。"
-    "(3) どの会社にも役に立つ要望は common。(4) 画面が誤って動く話は bug。\n"
+    "(6) 新しい機能や画面の要望は common (要望)。\n"
     f"・1 回の返事に質問は 1 つだけ。質問は全部で {MAX_QUESTIONS} つまで。"
     "足りない物 (画面・いつ何をしたとき・望む形) が分かったら、質問を続けずに draft_feedback を呼びます。"
     "draft_feedback は 1 回だけ呼びます。呼ぶと利用者の画面に下書きが出て、利用者が直して保存します。あなたは保存しません。\n"
@@ -185,7 +190,7 @@ def _first_user_text(turns) -> str:
 def _draft_data(arguments, screen, turns=()) -> dict:
     """draft_feedback の引数を services.create_feedback の data にする (辞書でない引数は空の辞書と同じ)。
 
-    種類は KINDS に無ければ皆の要望、題は 100 字まで (空なら困りごとの先頭 40 字)、困りごとは空なら最初の利用者の字、
+    種類は KINDS に無ければ要望、題は 100 字まで (空なら困りごとの先頭 40 字)、困りごとは空なら最初の利用者の字、
     画面は目録にあればそれ (無ければ開いていた画面、それも無ければ空)、影響する画面は目録にある物だけ。
     """
     args = arguments if isinstance(arguments, dict) else {}
@@ -213,7 +218,7 @@ def _draft_data(arguments, screen, turns=()) -> dict:
 
 def _fallback_draft(turns, screen) -> dict:
     """AI が draft_feedback を呼ばなかったときの下書き。最初の利用者の字が困りごと、その先頭 40 字が題、
-    2 つ目からの往復を「AI: 問い」「答え: 字」の行にした物が場面。種類は皆の要望。"""
+    2 つ目からの往復を「AI: 問い」「答え: 字」の行にした物が場面。種類は要望。"""
     kept = [turn for turn in turns if _is_turn(turn)]
     problem = _first_user_text(kept)
     lines = [f"{'AI' if turn['role'] == 'assistant' else '答え'}: {turn['text'].strip()}" for turn in kept[1:] if turn["text"].strip()]

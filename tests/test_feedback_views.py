@@ -149,7 +149,7 @@ def test_detail_for_other_is_404_and_shows_issue_text(client, plain, other, mana
     assert response.status_code == 200
     issue = re.search(r'<textarea id="feedback-issue"[^>]*>(.*?)</textarea>', html, re.S).group(1)
     assert "# 自分の題" in issue
-    assert "## 困りごと" in issue
+    assert "## 実際の動き" in issue
     assert "確認済みにする" not in html
     assert "送ったにする" not in html
     assert 'id="feedback-copy"' in html

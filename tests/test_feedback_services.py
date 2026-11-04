@@ -192,14 +192,14 @@ def test_export_markdown_shape(plain):
     text = services.export_markdown(row)
 
     assert text.startswith("# 〇〇の受注を並べたい\n")
-    assert "- 種類: 皆の要望" in text
+    assert "- 種類: 要望" in text
     assert "- 画面: 受注 (orders:order_list)" in text
     assert "- 影響する画面: orders:order_list masters:item_list" in text
     assert "- 作品の版: seizou " in text
     assert f"- 書いた日: {timezone.localdate(row.created_at).isoformat()}" in text
-    assert "## 困りごと\n〇〇の 〇〇の受注が探しにくい。" in text
-    assert "## 場面\n朝の確認のとき。" in text
-    assert "## 望む形" not in text
+    assert "## 困っている場面\n〇〇の 〇〇の受注が探しにくい。\n\n朝の確認のとき。" in text
+    assert "## 困りごと" not in text and "## 場面" not in text
+    assert "## 欲しい動き" not in text
     for absent in ("会話の中の字", "tester", "作り物の製作所", "作り物の得意先", "5,000"):
         assert absent not in text
 

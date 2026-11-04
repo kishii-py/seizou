@@ -28,7 +28,7 @@ from seizou.core.screens import Screen, all_screens
 
 from .models import Feedback
 
-#: 種類の値の並び (使い方・自社の作業・皆の要望・不具合)
+#: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
 #: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した)
 STATUSES = tuple(value for value, _ in Feedback.STATUS_CHOICES)
@@ -44,7 +44,7 @@ SENT_URL_MAX_CHARS = Feedback._meta.get_field("sent_url").max_length
 #: 直した場所の字数の上限 (表の列の長さ)
 FIXED_NOTE_MAX_CHARS = Feedback._meta.get_field("fixed_note").max_length
 
-MESSAGE_KIND = "種類は 使い方・自社の作業・皆の要望・不具合 のどれかです。"
+MESSAGE_KIND = f"種類は {'・'.join(label for _, label in Feedback.KIND_CHOICES)} のどれかです。"
 MESSAGE_TITLE_EMPTY = "題を入力してください。"
 MESSAGE_TITLE_LONG = f"題は {TITLE_MAX_CHARS} 字までです。短くしてください。"
 MESSAGE_PROBLEM_EMPTY = "困りごとを入力してください。"
@@ -328,7 +328,7 @@ def _author(user):
 def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=0, screenshots=()):
     """フィードバックを 1 件作る (状態は下書き)。作った行を返す。
 
-    data は FIELD_KEYS の鍵の辞書 (知らない鍵は ValueError。無い鍵は種類が皆の要望、ほかは空)。
+    data は FIELD_KEYS の鍵の辞書 (知らない鍵は ValueError。無い鍵は種類が要望、ほかは空)。
     書いた人は user に pk があれば user。会話の記録は形の合う物だけ、token は 0 以上の整数に丸める。
     screenshots は画面の絵のファイルの並び (画像だけ・1 枚 5MB・3 枚まで。外れたら行もファイルも作らずに ValueError)。添付ファイルの部品で行に結ぶ。
     """
@@ -529,9 +529,21 @@ def mask_text(text) -> str:
     return _mask(text, _partner_names())
 
 
-def export_markdown(feedback) -> str:
-    """GitHub の Issue に写す文 (題・種類・画面・影響する画面・作品の版・書いた日・困りごと・場面・望む形)。
+#: Issue の文の本文の見出しと、見出しの下に入れる欄 (CONTRIBUTING.md の Issue の型の見出しと並び。決め 11-04 14:4x の 7)。
+#: 不具合と決まりの反例は、その型の見出しのうち欄で埋まる物だけ (ブラウザ・重さ・選べる設定の値などは世話役が足す)。
+ISSUE_SECTIONS = {
+    "bug": (("再現の手順", ("situation",)), ("期待した動き", ("wish",)), ("実際の動き", ("problem",))),
+    "counter": (("操作の手順", ("situation",)), ("止まるはずの決まりの番号", ("wish",)), ("実際に起きた事", ("problem",))),
+}
+#: ほかの種類は要望の見出し (決まりの提案と業務の流れの違いは、CONTRIBUTING が箇条の見出しを持たない)。
+#: 困りごとと場面は「困っている場面」に空の行で結ぶ。「今はどうしているか」は欄が無いので出さない (世話役が足す)。
+REQUEST_SECTIONS = (("困っている場面", ("problem", "situation")), ("欲しい動き", ("wish",)))
 
+
+def export_markdown(feedback) -> str:
+    """GitHub の Issue に写す文 (題・種類・画面・影響する画面・作品の版・書いた日と、種類ごとの見出しの本文)。
+
+    本文の見出しは CONTRIBUTING.md の Issue の型にそろえる (ISSUE_SECTIONS・REQUEST_SECTIONS。困りごと・場面・望む形の欄を入れる)。
     取引先の名前と金額らしい数は伏せる。会話の記録・書いた人・会社名は入れない。空の節は出さない。
     画面の絵 (画像の添付ファイル) が 1 枚以上なら、末尾に枚数とファイル名 (伏せ字つき) の 1 行。絵そのものは入れない (世話役が Issue に手で付ける)。0 枚なら今までと同じ文。
     """
@@ -547,8 +559,9 @@ def export_markdown(feedback) -> str:
     lines.append(f"- 作品の版: seizou {manual.package_version() or '不明'}")
     if feedback.created_at is not None:
         lines.append(f"- 書いた日: {timezone.localdate(feedback.created_at).isoformat()}")
-    for heading, value in (("困りごと", feedback.problem), ("場面", feedback.situation), ("望む形", feedback.wish)):
-        body = _mask(value, names).strip()
+    for heading, keys in ISSUE_SECTIONS.get(feedback.kind, REQUEST_SECTIONS):
+        # 字のある欄だけを空の行で結ぶ (字の無い見出しは出さない)
+        body = "\n\n".join(text for text in (_mask(getattr(feedback, key), names).strip() for key in keys) if text)
         if body:
             lines.extend(["", f"## {heading}", body])
     shots = screenshots_of(feedback)

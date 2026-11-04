@@ -11,7 +11,16 @@ from django.db import models
 class Feedback(models.Model):
     """現場の人のフィードバックの 1 件。下書きは会社の中に残り、世話役が Issue の文を GitHub に写す。書くのは services の関数だけ (R13)。"""
 
-    KIND_CHOICES = [("usage", "使い方"), ("company", "自社の作業"), ("common", "皆の要望"), ("bug", "不具合")]
+    #: 種類。前の 5 つは CONTRIBUTING.md の Issue の型の名前と並び (決め 11-04 14:4x の 7)。値の英字は既にある 4 つを残し、
+    #: 足りない型 (決まりの反例・決まりの提案) だけ足した。使い方は CONTRIBUTING の型に無い (説明書で答える会社の中の問い) ので最後に置く。
+    KIND_CHOICES = [
+        ("bug", "不具合"),
+        ("counter", "決まりの反例"),
+        ("proposal", "決まりの提案"),
+        ("company", "業務の流れの違い"),
+        ("common", "要望"),
+        ("usage", "使い方"),
+    ]
     STATUS_CHOICES = [("draft", "下書き"), ("confirmed", "確認済み"), ("sent", "送った"), ("fixed", "直した")]
 
     kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES, default="common")
