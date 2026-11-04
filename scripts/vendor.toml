@@ -81,3 +81,19 @@ url = "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/Varia
 license = "OFL-1.1"
 sha256 = "f4b373b226668ee33a6e54b02823dcd2d1209f17159f777421ae8c2275160369"
 path = "src/seizou/core/static/fonts/NotoSansJP-VF.ttf"
+
+[[item]]
+name = "quill-js"
+version = "2.0.3"
+url = "https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"
+license = "BSD-3-Clause"
+sha256 = "f6157c72ac9b3f51cdead426335688a027b12405d9d6a4daadd38a676b2d7ff2"
+path = "src/seizou/core/static/vendor/quill.js"
+
+[[item]]
+name = "quill-css"
+version = "2.0.3"
+url = "https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
+license = "BSD-3-Clause"
+sha256 = "1c7948cd13aa92fac6390319bc1e5e461823da171519d3a768db56164f871636"
+path = "src/seizou/core/static/vendor/quill.snow.css"
