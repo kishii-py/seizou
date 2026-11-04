@@ -74,6 +74,7 @@
 - 会社ごとの項目 (`items.csv` の見出しのうち部品の表に無い物) は、答えの YAML の `item_fields` の見出しと突き合わせて入れる。
 - 鍵の値は種に書かない。つながりが持つのは環境変数の名前だけで、値は 2 社の `.env` に、人が同じ値を置く。A 社が `SEIZOU_PARTNER_B_PLATING_SECRET`、B 社が `SEIZOU_PARTNER_A_MACHINING_SECRET` を持ち、2 つの値は同じにする。
 - 2 社のつながり: A 社は B 社 (取引先コード `S001`、協力企業) へ「送る」。受け口は B 社の `http://127.0.0.1:8002/connect/receive/order/`。B 社は A 社 (取引先コード `C001`、得意先) から「受ける」。B 社の `partner_items.csv` は、A 社の品番のまま届く注文を、B 社の自社品番で受けるための対応 (取引先 = A 社、取引先の品番 = A 社の自社品番)。B 社は A 社へ「送る」も持つ (受け口は A 社の `http://127.0.0.1:8001/connect/receive/order/`)。A 社は B 社から「受ける」も持つ (受け口の URL は空)。注文回答・出荷の知らせ・検収が往復する。種の読み込みは相手に HTTP を送らない (受け入れと出荷は送らない形で入れ、返事の欄に「作り物の種の読み込みなので…」と書く)。
+- 外の置き場 (https) に立てるときは、答えの YAML に `partner_base_urls` (相手の会社の id と、相手の置き場の URL の頭。例 `b_plating: https://b.example.jp`) を書くか、環境変数 `SEIZOU_PARTNER_<相手の id の大文字>_URL` を置く。`seizou new --demo` は、つながりの受け口の URL の頭 (`http://127.0.0.1:800x`) をその頭に置き換えて入れる (環境変数が勝つ。道の `/connect/receive/order/` は種のまま。相手の id は鍵の置き場の名前から取る)。
 
 ## 説明書の断片 (manual/)
 

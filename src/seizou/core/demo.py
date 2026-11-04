@@ -22,17 +22,21 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   受注の後 (つながりの前) に、部品の demo_seed に load_after_orders(seeds_dir, user) があれば先に呼ぶ
   (届いた注文の写しの受注を、出荷と納品書の種が指せるようにするため。数は同じ種類に足し、出力の行は 1 行)。
   部品が入っていないときと、入れた物も飛ばした物も 0 のときは、出力の行を出さない。
+- load(seeds_dir, partner_base_urls=…) に相手の会社の id → 置き場の URL の頭 を渡すと、つながりの受け口の URL の頭
+  (種の http://127.0.0.1:800x) をその頭に置き換えて入れる (外の置き場の https のため。相手の id は鍵の置き場の名前から取る)。
 """
 
 from __future__ import annotations
 
 import csv
 import datetime
+import re
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 import inspect
 from importlib import import_module
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 from django.apps import apps
@@ -57,6 +61,8 @@ YAML_ROOT_KEYS = {"工程": "工程", "受注": "受注", "つながり": "つ�
 ORDER_KEYS = ("得意先の取引先コード", "受注日", "得意先の注文番号", "備考", "明細")
 LINE_KEYS = ("自社品番", "数量", "単位", "単価", "納期", "備考")
 CONNECTION_KEYS = ("取引先コード", "受け口の URL", "鍵の置き場の名前", "向き")
+#: 鍵の置き場の名前の形 (SEIZOU_PARTNER_<相手の会社の id の大文字>_SECRET。examples/companies/README.md の約束)。相手の id を取り出す
+PARTNER_SECRET_ENV = re.compile(r"SEIZOU_PARTNER_([A-Z][A-Z0-9_]*)_SECRET")
 PROCESS_KEYS = ("工程コード", "名前", "協力企業に出すか", "並び順", "計画に使う")
 PARTNER_ITEM_HEADERS = ("取引先コード", "自社品番", "取引先の品番", "取引先の品名")
 
@@ -396,7 +402,21 @@ def _load_orders(seeds_dir, user, notices):
     return made, skipped
 
 
-def _load_connections(seeds_dir, user, notices):
+def _rebase_url(url, secret_env, partner_base_urls):
+    """種の受け口の URL の頭 (scheme と host と port) を、相手の会社の置き場の URL の頭に置き換える。
+
+    相手の会社の id は鍵の置き場の名前 (SEIZOU_PARTNER_<相手の id の大文字>_SECRET) から取る。URL が空のとき・
+    鍵の置き場の名前がこの形でないとき・相手の頭が渡されていないときは、種の URL のまま。道 (/connect/receive/order/) は種の物を残す。
+    """
+    match = PARTNER_SECRET_ENV.fullmatch(secret_env or "")
+    base = (partner_base_urls or {}).get(match.group(1).lower()) if match else None
+    if not url or not base:
+        return url
+    parts = urlsplit(url)
+    return base.rstrip("/") + parts.path + (f"?{parts.query}" if parts.query else "")
+
+
+def _load_connections(seeds_dir, user, notices, partner_base_urls=None):
     from seizou.connect import services
     from seizou.connect.models import Connection
 
@@ -413,6 +433,7 @@ def _load_connections(seeds_dir, user, notices):
                 continue
             url = _coerce(by_label["受け口の URL"], entry.get("受け口の URL"))
             secret_env = _coerce(by_label["鍵の置き場の名前"], entry.get("鍵の置き場の名前"))
+            url = _rebase_url(url, secret_env, partner_base_urls)
             services.register_connection(partner, url, secret_env, direction, user)
             made += 1
     return made, skipped
@@ -745,8 +766,11 @@ def _load_part_seeds_after_orders(seeds_dir, user):
     return found
 
 
-def load(seeds_dir):
-    """種のフォルダ (Path) を読んで入れる。種類ごとの {"入れた": n, "飛ばした": m} と、「注意」の文の並びを返す。"""
+def load(seeds_dir, *, partner_base_urls=None):
+    """種のフォルダ (Path) を読んで入れる。種類ごとの {"入れた": n, "飛ばした": m} と、「注意」の文の並びを返す。
+
+    partner_base_urls (相手の会社の id → 置き場の URL の頭) があれば、つながりの受け口の URL の頭をその頭に置き換える。
+    """
     seeds_dir = Path(seeds_dir)
     if not seeds_dir.is_dir():
         raise FileNotFoundError(
@@ -759,7 +783,10 @@ def load(seeds_dir):
     early: dict = {}
     with transaction.atomic():
         for kind in KINDS:
-            made, skipped = LOADERS[kind](seeds_dir, user, notices)
+            if kind == "つながり":
+                made, skipped = _load_connections(seeds_dir, user, notices, partner_base_urls)
+            else:
+                made, skipped = LOADERS[kind](seeds_dir, user, notices)
             summary[kind] = {"入れた": made, "飛ばした": skipped}
             if kind == "受注":
                 early = _load_part_seeds_after_orders(seeds_dir, user)
