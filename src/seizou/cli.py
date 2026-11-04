@@ -3,6 +3,8 @@
 seizou new <answers.yaml> [--demo]
     答えの YAML から会社のプロジェクト (~/seizou-sites/<id>/) を作り、migrate し、管理者を 1 人作る。
     item_fields があれば会社ごとの項目の app (fields/) も作る。--demo は作り物のデータを入れる口。
+    画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
+    --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
@@ -482,7 +484,24 @@ def copy_manual(seeds: Path, site: Path) -> int:
     写すのは manual/ の直下の .html だけ (絵の images/ は種に置かない)。copyfile なので最終更新は写した時刻
     (使い方の冊子の表紙の日付は写した日になる)。
     """
-    source = seeds / "manual"
+    return _copy_fragments(seeds / "manual", site)
+
+
+def manual_default_dir() -> Path:
+    """画面ごとの説明書の断片の標準の組の置き場 (部品の中。pip で入れた版にも入る)。"""
+    return Path(__file__).parent / "core" / "manual_default"
+
+
+def copy_manual_default(site: Path) -> int:
+    """標準の組 (manual_default_dir の *.html) を、会社の置き場の manual/ に写す。写した数を返す。
+
+    copy_manual と同じく、置き場に同じ名前のファイルがあれば写さない (--demo の種の断片と、人が直した断片が勝つ)。
+    """
+    return _copy_fragments(manual_default_dir(), site)
+
+
+def _copy_fragments(source: Path, site: Path) -> int:
+    """source の直下の *.html を置き場の manual/ に写す。source が無ければ何もせず 0。同じ名前は上書きしない。"""
     if not source.is_dir():
         return 0
     target = site / "manual"
@@ -598,6 +617,7 @@ def command_new(answers_path: Path, demo: bool) -> int:
         return show_failure("会社の設定を作る所", result)
     print(f"会社の設定を作りました: {answers['name']}")
 
+    seed_copied = 0
     if demo:
         # import せずに有無だけを見る (この process で Django の model を読まないため)。
         if importlib.util.find_spec("seizou.core.demo") is None:
@@ -611,9 +631,12 @@ def command_new(answers_path: Path, demo: bool) -> int:
             # 読み込みの出力 (種類ごとの「入れた n 件・飛ばした m 件」と「注意」の行) をそのまま画面に出す
             sys.stdout.write(result.stdout or "")
             print(f"作り物のデータを登録しました: {seeds}")
-            copied = copy_manual(seeds, site)
-            if copied:
-                print(f"説明書の断片を写しました: {copied} 件 ({site / 'manual'})")
+            seed_copied = copy_manual(seeds, site)
+
+    # 説明書の断片の標準の組は --demo の有無に関わらず写す (種の後なので、同じ名前は種の断片が勝つ)
+    default_copied = copy_manual_default(site)
+    if seed_copied or default_copied:
+        print(f"説明書の断片を写しました: {seed_copied + default_copied} 件 (標準 {default_copied}・種 {seed_copied}。{site / 'manual'})")
 
     # 業種の見本の工程は種の後に入れる (工程コードか名前が同じ工程を飛ばすので、種の工程と種の出力の行が勝つ)
     recipe_processes = 0
