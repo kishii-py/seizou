@@ -44,6 +44,16 @@ def _as_is(queryset):
     return queryset
 
 
+def _open_orders(orders):
+    """出荷の残っている受注だけ (受注・一部出荷)。受注の一覧の印の when。"""
+    return orders.filter(status__in=OPEN_STATUSES)
+
+
+def _status_chosen(values):
+    """状態の絞りに値があるか (受注の一覧の印の disabled_when。状態を選んだら印を切にして、その状態の全部を出す = N118)。"""
+    return values.get("status") is not None
+
+
 def _overdue_lines(lines):
     """納期が今日より前の明細だけ (暦の日で比べる。盤の判断の「遅れ」と同じ)。"""
     return lines.filter(due_date__lt=timezone.localdate())
@@ -66,21 +76,18 @@ class OrderListView(BaseListView):
         {"name": "customer", "label": "得意先", "kind": "choice", "field": "customer", "choices": _customer_choices},
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
-        # 既定で入の flag。条件は get_queryset が状態の選びと合わせて掛ける (状態を選んだら外す = N118。when は何もしない)。
-        {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _as_is, "default": True},
+        # 既定で入の flag。状態を選んだら、印を切に描いて掛けない (disabled_when。N118 の「状態を選んだら既定を外す」を土台の形で。N143)。
+        {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _open_orders, "default": True, "disabled_when": _status_chosen},
     )
     ordering = ("-order_date", "-pk")
     template_name = "orders/order_list.html"
 
     def get_queryset(self):
-        # 土台 (super) が検索と絞り (f_) を当てた後に、受注の一覧の既定を足す。
+        # 土台 (super) が検索と絞り (f_。「出荷の残っている受注だけ」の印も) を当てた後に、得意先を一緒に読む。
         orders = super().get_queryset().select_related("customer")
         if _chosen(self, "due"):
             # 納期は明細の項目 (逆向きの FK)。期間に入る明細が 2 行あると同じ受注が 2 回出るので、1 回にする。
             orders = orders.distinct()
-        if _flag_on(self, "open") and not _chosen(self, "status"):
-            # 「出荷の残っている受注だけ」(既定で入) は、状態を選んでいないときだけ掛ける (状態を選んだら、その状態の全部を出す)。
-            return orders.filter(status__in=OPEN_STATUSES)
         return orders
 
 
