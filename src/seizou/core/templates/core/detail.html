@@ -20,12 +20,14 @@
 </div>
 {% endblock %}
 {% block content %}
-<div role="tablist" aria-label="詳細の区分" class="tabs tabs-box gap-2 rounded-xl border border-base-300 bg-base-100 p-2 shadow-xs">
+{# 枠の「?」は箱の右上 (tabs の行の右端) に置く (本人 11-04 14:4x「ちゃんと右上がいい」)。開いている tab の枠の「?」だけが見える (tab-content は選んだ物だけ描く)。右の余白 (pr-12) は tabs が「?」の下に回り込まないため。 #}
+<div role="tablist" aria-label="詳細の区分" class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs">
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
     <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
-    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">基本</p>{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
+    <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
+    <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
     <dl class="grid gap-x-6 sm:grid-cols-2">
       {% for field in fields %}
       <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
@@ -55,7 +57,8 @@
     <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
-    <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-medium text-base-content/50">{{ tab.label }}</p>{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
+    <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
+    <p class="mb-2 text-xs font-medium text-base-content/50">{{ tab.label }}</p>
     {% if tab.rows %}
     {% block tab_rows %}
     <ul class="divide-y divide-base-200">
