@@ -1,0 +1,9 @@
+{# 明細の合計の枠 (N149。案 5-A)。form.line_totals (rows・qty・amount・show_amount) を描き、入力のたびに js/seizou-submit-label.js が同じ数え方で埋め直す。 #}
+{# 見せるだけで、保存の値は services が決める (R13。金額は保存の前の見込み)。金額の閲覧が無い人と単価の無い入力 (show_amount が偽) には「金額」の組を描かない。 #}
+{% with totals=form.line_totals %}
+<p class="flex flex-wrap items-center gap-2 text-sm tabular-nums text-base-content/70" data-line-totals>
+  <span>明細 <span class="font-medium" data-line-totals-rows>{{ totals.rows|default_if_none:"—" }}</span> 行</span>
+  <span>数量 <span class="font-medium" data-line-totals-qty>{{ totals.qty|default_if_none:"—" }}</span></span>
+  {% if totals.show_amount %}<span>金額 <span class="font-medium" data-line-totals-amount>{{ totals.amount|default_if_none:"—" }}</span> 円</span>{% endif %}
+</p>
+{% endwith %}

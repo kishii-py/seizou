@@ -8,6 +8,7 @@ form の検査にそろえる (例: 締日は 1〜31。誤りの文は「1 以�
 SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。値を確かめて整えるのは core の services。
 SubmitLabelMixin: 保存の釦の字に、押した結果の対象と数と金額を書く口 (N138)。字を組むのは部品の form、
 入力のたびに埋め直すのは static の js/seizou-submit-label.js (同じ型を同じ決まりで埋める)。
+line_totals: 明細の合計の枠 (core/_line_totals.html) と保存の釦の字の元 (N149)。
 """
 
 import json
@@ -198,6 +199,39 @@ def label_number(value):
 def line_unit(line) -> str:
     """明細の単位 (明細の単位が空なら部品の単位)。どちらも空なら空の字。"""
     return getattr(line, "unit", "") or getattr(getattr(line, "item", None), "unit", "") or ""
+
+
+def line_totals(pairs, *, show_amount=True) -> dict:
+    """明細の合計の枠 (core/_line_totals.html) と保存の釦の字の元 (N149。案 5-A)。
+
+    pairs は (数量, 単価) の組の並び (単価は None でよい)。form は数えない行 (空・消す印) を外してから渡し、
+    送って止まった形で数量の通らなかった行があれば None を渡す (「分からない」)。
+    返す物: rows = 行の数 (int。分からなければ None)、qty = 数量の合計の字 (label_number) か None、
+    amount = 金額の合計の字か None (show_amount が偽・単価の空か数でない行がある・分からない)、show_amount = 金額の組を描くか。
+    丸めは label_number (小数 2 桁の四捨五入 = 保存の前の見込み。保存の金額は services が取引先の端数の扱いで 1 円に丸める)。
+    JS (static/js/seizou-submit-label.js の values) と同じ数え方。
+    """
+    unknown = {"rows": None, "qty": None, "amount": None, "show_amount": show_amount}
+    if pairs is None:
+        return unknown
+    rows, qty, amount, priced = 0, Decimal("0"), Decimal("0"), True
+    for raw_qty, raw_price in pairs:
+        count = label_decimal(raw_qty)
+        if count is None:
+            return unknown
+        rows += 1
+        qty += count
+        price = label_decimal(raw_price)
+        if price is None:
+            priced = False
+        else:
+            amount += count * price
+    return {
+        "rows": rows,
+        "qty": label_number(qty),
+        "amount": label_number(amount) if show_amount and priced else None,
+        "show_amount": show_amount,
+    }
 
 
 class SubmitLabelMixin:
