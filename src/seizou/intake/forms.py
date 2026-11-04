@@ -6,23 +6,17 @@ services.extract_order(file=..., customer=..., user=...) / services.accept_extra
 """
 
 from django import forms
-from django.apps import apps
 
-from seizou.masters.services import resolve_partner_item
+from seizou.masters.services import active_items, active_partners, resolve_partner_item
 
 from . import services
 from .models import Extraction
 
 
 def _customer_queryset():
-    """得意先の候補 (取引先の種類が得意先か両方)。取引先の表は Extraction の外部キーの先から引く。読むだけ。"""
+    """得意先の候補 (取引先の種類が得意先か両方で、使用中の物。N135)。取引先の表は Extraction の外部キーの先から引く。読むだけ。"""
     partner = Extraction._meta.get_field("customer").related_model
-    return partner._default_manager.filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
-
-
-def _item_model():
-    """自社の品目の表 (masters の Item)。ほかの部品の model を import せず、app の登録から引く。読むだけ。"""
-    return apps.get_model("masters", "Item")
+    return active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
 
 
 def _customer_parts(extraction):
@@ -69,7 +63,7 @@ class AcceptForm(forms.Form):
         self.part_fields = []
         if instance is None:
             return
-        items = _item_model()._default_manager.all()
+        items = active_items()
         for number, (part_no, part_name) in enumerate(_customer_parts(instance), start=1):
             name = f"item_{number}"
             label = f"得意先の品番 {part_no} ({part_name})" if part_name else f"得意先の品番 {part_no}"

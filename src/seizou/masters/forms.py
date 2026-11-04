@@ -19,13 +19,31 @@ from .models import ItemDrawingVersion
 from .models import Holiday
 
 
+#: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
+ACTIVE_HELP = "外すと使用停止にします。受注と発注の候補に出なくなり、今までの受注と発注の記録はそのまま残ります。"
+
+
+def _active_on_edit_only(form):
+    """使用中の欄 (外すと使用停止。N135) は編集の画面だけに出す。新規登録は使用中で作る (表の既定)。
+
+    表の列は editable=False (CSV の見出しに出さない) なので、ModelForm は値を写さない。編集の初期値はここで写す。
+    """
+    if form.instance.pk is None:
+        form.fields.pop("active", None)
+    else:
+        form.fields["active"].initial = form.instance.active
+
+
 class ItemForm(ServiceModelForm):
+    active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
+
     class Meta:
         model = Item
         fields = ["part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"]
 
     def __init__(self, *args, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
+        _active_on_edit_only(self)
         if hide_money:
             # 金額の閲覧が無い人 (権限の判定の on) には標準単価の欄を出さない。土台は cleaned_data を渡し、
             # update_item は渡した鍵だけを直すので、標準単価は保存済みの値のまま。
@@ -33,6 +51,8 @@ class ItemForm(ServiceModelForm):
 
 
 class PartnerForm(ServiceModelForm):
+    active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
+
     class Meta:
         model = Partner
         fields = [
@@ -53,6 +73,10 @@ class PartnerForm(ServiceModelForm):
             "rounding": "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。",
             "tax_mode": "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _active_on_edit_only(self)
 
 
 class ProcessForm(ServiceModelForm):

@@ -74,6 +74,9 @@ class Partner(models.Model):
         "消費税の端数の扱い", max_length=10, choices=Company.TAX_CHOICES, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
+    # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
+    active = models.BooleanField("使用中", default=True, editable=False)
 
     class Meta:
         verbose_name = "取引先"
@@ -121,6 +124,9 @@ class Item(models.Model):
         "標準単価 (円)", max_digits=14, decimal_places=2, null=True, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
+    # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
+    active = models.BooleanField("使用中", default=True, editable=False)
     # 図面の表示用の絵を作れなかった理由の 1 文 (空 = 作れた、か作る必要が無い)。書くのは masters.services だけ。
     # 最後に置く (土台の小窓は先頭の 8 項目を出すので、その外に置き、小窓では黄色の 1 行で出す)。
     drawing_preview_error = models.CharField(

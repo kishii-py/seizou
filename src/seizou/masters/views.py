@@ -28,6 +28,25 @@ from .models import Item, Partner, Process
 from .models import Holiday
 
 
+def _flag_on(view, name):
+    """一覧の flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。"""
+    return any(spec.is_on(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
+def _as_is(queryset):
+    """印だけを宣言する flag の when (何もしない)。使用中だけに絞るのは画面の get_queryset (印が切のとき)。"""
+    return queryset
+
+
+#: 部品と取引先の一覧の絞りの印 (N135)。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
+INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": _as_is}
+
+
+def _hide_inactive(view, queryset):
+    """印「使用停止も出す」が切 (既定) なら使用中だけ。件数と CSV も同じ条件になる。"""
+    return queryset if _flag_on(view, "inactive") else queryset.filter(active=True)
+
+
 class ItemListView(BaseListView):
     """部品マスターの一覧。
 
@@ -39,8 +58,12 @@ class ItemListView(BaseListView):
     screen_help = "部品 (品番・品名・図面) を 1 か所に持つ表。品名を押すと、画面を移らずに中身を見られます。"
     columns = ("part_no", "name", "drawing_no", "unit", "standard_price")
     search_fields = ("part_no", "name", "drawing_no")
+    filters = (INACTIVE_FILTER,)
     ordering = "part_no"
     template_name = "masters/item_list.html"
+
+    def get_queryset(self):
+        return _hide_inactive(self, super().get_queryset())
 
 
 class ItemDetailView(BaseDetailView):
@@ -98,6 +121,10 @@ class ItemSelectView(BaseSelectView):
     model = Item
     search_fields = ("part_no", "name")
 
+    def get_queryset(self):
+        # 候補は使用中だけ (N135。受注と発注の入力の欄が、使用停止の部品を出さない)
+        return services.active_items()
+
 
 class PartnerListView(BaseListView):
     """取引先の一覧。
@@ -110,12 +137,13 @@ class PartnerListView(BaseListView):
     screen_help = "得意先と協力企業。締日・支払日と端数の扱いを取引先ごとに持ちます。"
     columns = ("code", "name", "short_name", "role", "closing_day", "payment_day", {"name": "order_inlet", "label": "注文の入口", "sortable": False})
     search_fields = ("code", "name", "short_name")
+    filters = (INACTIVE_FILTER,)
     ordering = "code"
     template_name = "masters/partner_list.html"
 
     def get_queryset(self):
         # 注文の入口の列 (core.dashboard.annotate_order_inlet の annotate。並び替えと絞り込みはしない。N83 の 6 = N94 の 1b)
-        return dashboard.annotate_order_inlet(super().get_queryset())
+        return dashboard.annotate_order_inlet(_hide_inactive(self, super().get_queryset()))
 
 
 class PartnerDetailView(BaseDetailView):
@@ -172,6 +200,10 @@ class PartnerModalView(BaseModalView):
 class PartnerSelectView(BaseSelectView):
     model = Partner
     search_fields = ("code", "name", "short_name")
+
+    def get_queryset(self):
+        # 候補は使用中だけ (N135。受注の得意先の欄が、使用停止の取引先を出さない)
+        return services.active_partners()
 
 
 class ProcessListView(BaseListView):
