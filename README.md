@@ -343,8 +343,9 @@ Django の部品を直すときの命令。
 | `SEIZOU_E2E_PASSWORD_A_MACHINING` | A 社の管理者のパスワード |
 | `SEIZOU_E2E_PASSWORD_B_PLATING` | B 社の管理者のパスワード |
 | `SEIZOU_E2E_PARTNER_SECRET` | 2 社の間の署名の鍵 |
+| `SEIZOU_E2E_BASE_URL_A_MACHINING`・`SEIZOU_E2E_BASE_URL_B_PLATING` | 外の置き場 (VPS など) で回すときの 2 社の URL (例 `https://a.example.jp`)。2 社とも書くと、runserver を起こさずにその URL で回す。置き場のファイルを読む E-30 は skip |
 
-回し方: `SEIZOU_E2E=1 uv run pytest tests/e2e -q -rs`。画面の絵は `docs/e2e/<日付>/` に番号つきで残る。
+回し方: `SEIZOU_E2E=1 uv run pytest tests/e2e -q -rs`。画面の絵は `docs/e2e/<日付>/` に番号つきで残る。外の置き場で回すと、試験が置いた `E2E-` の印の行 (受注・部品・発注など) がその置き場に残るので、人に見せる前に `--demo` で作り直す。
 
 `docs/` には、`docs/nights/` (夜の無人の仕事の記録。日付のまとめと仕事ごとのファイル) と `docs/e2e/` (E2E の絵) を置く。
 
