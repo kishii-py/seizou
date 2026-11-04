@@ -1,0 +1,24 @@
+{% load seizou_tags %}
+{# 流れの枠 (受注と発注の詳細が、各 app の流れの tag で出来事を読んでから include する)。左に点と縦の線、右に日時と明細の番号と出来事の字を、古い順に並べる。 #}
+{# include するときに flow_id (枠の id) を渡す。events は出来事の並び。出来事の字は、その記録の詳細の画面への link (小窓にしない)。金額は seizou.hide_money のとき出さない。 #}
+<section id="{{ flow_id }}" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="{{ flow_id }}-title">
+  <h2 id="{{ flow_id }}-title" class="text-lg font-bold">流れ</h2>
+  {% if events %}
+  <ol class="mt-4">
+    {% for e in events %}
+    <li class="flex gap-4" data-flow-kind="{{ e.kind }}">
+      <div class="flex flex-col items-center" aria-hidden="true">
+        <span class="mt-1 size-3 shrink-0 rounded-full bg-primary"></span>
+        {% if not forloop.last %}<span class="w-0.5 grow bg-base-200"></span>{% endif %}
+      </div>
+      <div class="min-w-0 pb-6">
+        <p class="flex flex-wrap items-baseline gap-2 text-xs text-base-content/70"><span class="font-mono tabular-nums">{% if e.when is None %}—{% elif e.has_time %}{{ e.when|date:"Y-m-d H:i" }}{% else %}{{ e.when|date:"Y-m-d" }}{% endif %}</span>{% if e.line_no %}<span>明細 {{ e.line_no }}</span>{% endif %}</p>
+        <p class="mt-1">{% if e.url %}<a class="link link-hover" href="{{ e.url }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}{% if e.amount is not None and not seizou.hide_money %} <span class="tabular-nums">({{ e.amount|comma }} 円)</span>{% endif %}</p>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="mt-4 text-base-content/70">まだ動きがありません。</p>
+  {% endif %}
+</section>
