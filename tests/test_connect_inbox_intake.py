@@ -389,3 +389,44 @@ def test_same_order_no_from_other_partner_has_no_notice(client, customer, other_
     assert NOTICE not in _detail(client, waiting_b)
     assert NOTICE not in _detail(client, blank[1])
     assert NOTICE not in _detail(client, blank[3])
+
+
+def _accept_screen(client, inbox):
+    response = client.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def test_accept_screen_shows_same_order_no_notice(client, customer, items, user):
+    first = direct_row(customer, user)  # 注文番号 PO-0001
+    second = direct_row(customer, user)  # 番号 (id) は違い、注文番号は同じ
+    client.force_login(user)
+
+    body = _accept_screen(client, second)
+    assert body.count(f"{NOTICE} (届いた注文 {first.pk}。届いた)") == 1
+    assert reverse("connect:inbox_detail", args=[first.pk]) in body
+    assert NOTICE not in _accept_screen(client, first)
+
+    # 知らせるだけで、保存は止めない (決め 11-04 06:2x)
+    response = client.post(reverse("connect:inbox_accept", args=[second.pk]), {"item_1": items["X-100"].pk})
+    assert response.status_code == 302
+    second.refresh_from_db()
+    assert second.status == Inbox.STATUS_ACCEPTED
+
+    # 一覧の行と詳細も、部分のテンプレートに替えた後も今までと同じ字
+    assert f"{NOTICE} (届いた注文 {first.pk}。届いた)" in _row(_list(client), second.pk)
+    assert f"{NOTICE} (届いた注文 {first.pk}。届いた)" in _detail(client, second)
+
+
+def test_accept_screen_has_no_notice_without_same_order_no(client, customer, other_customer, user):
+    first = direct_row(customer, user)
+    other = direct_row(other_customer, user)  # 同じ注文番号でも取引先が違う
+    blank = []
+    for _ in range(2):
+        data = _payload(str(uuid.uuid4()), [_line(1, "X-100")])
+        data["order_no"] = ""  # 注文番号が空の行どうしは比べない
+        blank.append(services.record_inbox(customer, data, user))
+    client.force_login(user)
+
+    for row in (first, other, *blank):
+        assert NOTICE not in _accept_screen(client, row)
