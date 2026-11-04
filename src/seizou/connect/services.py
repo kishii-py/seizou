@@ -679,7 +679,7 @@ MESSAGE_REPLY_INTAKE = "注文書の読み取りから入った注文なので�
 MESSAGE_SENDER_DIRECT = "受け口から届いた注文の取引先は署名で決まるので、変えられません (R12)。"
 
 
-def accept(inbox, item_mapping, user, *, send=True):
+def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     """受信箱の注文のデータを受け入れて、受注 (入口 = 受信箱) を作る (R10・R11)。
 
     item_mapping は相手の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引く。
@@ -691,9 +691,17 @@ def accept(inbox, item_mapping, user, *, send=True):
     取引先の空の行 (差出人の確認待ち) は、表に書く前に MESSAGE_NO_SENDER の ValueError で断る (choose_sender で選んでから)。
     読み取りの行 (入口 = 読み取り) は、単価の無い明細を品目の標準単価に、注文日が無ければ届いた日にし、受注の入口を「読み取り」にする。
     承認した日時 (accepted_at) を状態と受注と同じトランザクションで書く。
+    accepted_at を渡すと、承認した日時をその値にする (timezone 付きの datetime。作り物の種の「承認した日時」のため。渡さなければ今)。timezone の無い日時と日時でない値は、状態を見る前に日本語の ValueError。
     """
     # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
+    import datetime
+
     from django.utils import timezone
+
+    if accepted_at is not None and (
+        not isinstance(accepted_at, datetime.datetime) or timezone.is_naive(accepted_at)
+    ):
+        raise ValueError("承認した日時は timezone 付きの日時にしてください。")
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
@@ -763,7 +771,7 @@ def accept(inbox, item_mapping, user, *, send=True):
         )
         locked.status = Inbox.STATUS_ACCEPTED
         locked.order = order
-        locked.accepted_at = timezone.now()
+        locked.accepted_at = timezone.now() if accepted_at is None else accepted_at
         if send:
             locked.save(update_fields=["status", "order", "accepted_at"])
         else:

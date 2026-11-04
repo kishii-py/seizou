@@ -227,3 +227,25 @@ def test_menu_has_inbox_entries(client_logged_in):
     # つながりは左のメニューに出さず、設定の画面から開く
     assert reverse("connect:connection_list") not in body
     assert reverse("connect:connection_list") in client_logged_in.get(reverse("core:settings")).content.decode()
+
+
+def test_reject_screen_says_reject(client_logged_in, receive_order):
+    inbox = receive_order([_line(1, "A-100")])
+    url = reverse("connect:inbox_reject", args=[inbox.pk])
+
+    response = client_logged_in.get(url)
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "「必須」の欄を埋めて「断る」を押します。" in body
+    assert "断る</button>" in body
+    assert "「保存」を押します" not in body
+
+    empty = client_logged_in.post(url, {"reason": " "})
+
+    assert empty.status_code == 200
+    body = empty.content.decode()
+    assert "断る</button>" in body
+    assert "「断る」を押します" in body
+    inbox.refresh_from_db()
+    assert inbox.status == Inbox.STATUS_RECEIVED

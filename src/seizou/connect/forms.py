@@ -72,6 +72,7 @@ class AcceptForm(forms.Form):
 
 class RejectForm(forms.Form):
     """断るの form。理由の欄 1 つ。"""
+    submit_label = "断る"
 
     reason = forms.CharField(
         label="断った理由",
