@@ -427,7 +427,7 @@ def test_row_menu_markup_and_links(settings, tmp_path, user, logged_in, customer
     body = logged_in.get(reverse("orders:orderline_list")).content.decode()
 
     tr_html = _tr(body, line.pk)
-    assert re.match(rf'<tr id="row-{line.pk}" class="row-hover h-10" data-row-menu>', tr_html)
+    assert re.match(rf'<tr id="row-{line.pk}" class="row-hover h-10 data-\[tone=primary\]:bg-primary/15" data-row-menu>', tr_html)
     assert "onclick=" not in tr_html.split(">", 1)[0]
     assert '<details class="dropdown dropdown-end row-menu">' in tr_html
     assert '<summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>' in tr_html
