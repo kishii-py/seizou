@@ -140,7 +140,7 @@ seizou の新しい版を入れるときは、次の順に進めます。
 
 1. `<python> manage.py seizou_backup` で控えを取ります。
 2. サーバーを止めます。
-3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。本番の VPS ([docs/vps.md](vps.md) の 5 の形) では `uv sync --locked --no-dev --extra pdf --inexact` です。`--extra pdf` が無いと PDF の部品 (weasyprint) が入らず、`--inexact` が無いと後から入れた gunicorn が消えます。
+3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。本番の VPS ([docs/vps.md](vps.md) の 5 の形) では `uv sync --locked --no-dev --extra pdf --extra server` です。`--extra pdf` が無いと PDF の部品 (weasyprint) が入らず、`--extra server` が無いと本番の Web サーバーの gunicorn が入りません (gunicorn は extra `server` に入っています。この版より前に別に入れた gunicorn を残す置き場は、`--inexact` も付けます)。
 4. `<python> manage.py migrate` を打ちます。
 5. `<python> manage.py seizou_doctor` で点検し、直す物があれば直します。
 6. 本番で nginx が静的ファイルを配る形なら、`<python> manage.py collectstatic --no-input` を打ちます。
@@ -200,6 +200,7 @@ if not DEBUG:
 - 練習のサーバーには、取引先とのつながりの鍵 (`SEIZOU_PARTNER_<相手の id>_SECRET`) を渡しません (空の値にして立てる)。練習の画面で発注を保存する・届いた注文を受け入れる・出荷しても、相手の会社には送られず、「鍵が無い」の知らせになります。相手に送る練習はできません。
 - 注文書の読み取りと AI チャットも、本番と同じ鍵で API を呼びます (費用がかかります)。
 - 練習モードは SQLite の置き場だけで使えます。PostgreSQL の置き場では、控え (`seizou_backup`) を別のデータベースに戻し、別のサーバーとして立ててください。
+- 練習のサーバーは同じ PC の 127.0.0.1 だけで待つので、VPS など nginx の後ろの置き場では、ブラウザから練習の画面に届きません。練習は手元の PC の置き場で行うか、ssh のポートの転送が許されている置き場で、転送した先を開いてください。
 
 ### この版より前に作った置き場
 

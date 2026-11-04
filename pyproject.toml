@@ -28,6 +28,9 @@ seizou = "seizou.cli:main"
 pdf = [
     "weasyprint>=70.0",
 ]
+server = [
+    "gunicorn>=23.0",
+]
 
 [dependency-groups]
 dev = [
