@@ -94,12 +94,18 @@ def axes_for(model, filter_specs) -> list[Axis]:
 
 
 def measures_for(column_specs, *, money_ok: bool) -> list[Measure]:
-    """件数と、渡された列 (表の数の項目) の合計。金額の列は money_ok が真のときだけ。"""
+    """件数と、渡された列 (表の数の項目) の合計。金額の列は money_ok が真のときだけ。
+
+    見出しが「合計」で終わる列 (請求書の一覧の「合計」) は、その字のまま量の名前にする (「合計の合計」にしない)。
+    """
     measures = [Measure(COUNT, "件数", None, False)]
     for spec in column_specs:
         if spec.money and not money_ok:
             continue
-        measures.append(Measure(spec.name, f"{spec.label}の合計", spec.name, spec.money))
+        label = str(spec.label)
+        if not label.endswith("合計"):
+            label = f"{label}の合計"
+        measures.append(Measure(spec.name, label, spec.name, spec.money))
     return measures
 
 

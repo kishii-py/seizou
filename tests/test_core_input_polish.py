@@ -153,9 +153,12 @@ def test_list_date_cells_have_weekday(logged_in, user, holiday):
 
 def test_detail_date_has_weekday(logged_in, holiday):
     body = text(logged_in.get(reverse("masters:holiday_detail", args=[holiday.pk])))
-    assert "2026年11月3日 " + WEEKDAY + "</dd>" in body
+    assert '<span class="font-mono tabular-nums">2026-11-03</span> ' + WEEKDAY + "</dd>" in body
     # 時刻つきの項目 (登録した日時) にも添える (filter が datetime も受ける)。日付でない項目には添えない
     assert body.count('<span class="text-xs text-base-content/50">(') == 2
+    # 時刻つきの項目は 日付 (曜日) 時刻 の順で、帯と一覧と同じ Y-m-d の形 (精査 A9 の 3 節の 3)
+    assert re.search(r'</span> <span class="text-xs text-base-content/50">\(.\)</span> <span class="font-mono tabular-nums">\d\d:\d\d</span></dd>', body)
+    assert "2026年11月3日" not in body
     assert "作り物の会社の休み</dd>" in body
 
 

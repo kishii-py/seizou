@@ -17,7 +17,8 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   標準の工程 (item_processes.csv)・図面 (items.csv の「図面ファイル」の欄と files/)・
   指示書 (workorders.yaml)・出荷 (shipments.yaml)・納品書 (delivery_notes.yaml)・請求書 (invoices.yaml)。
   受注の明細は 得意先の取引先コード × 得意先の注文番号 × 行番号、出荷は 受注の明細 × 出荷日 で指す。
-  納品書と指示書の発行日は、services が今日にするので、読み込みの日になる。
+  指示書の発行日は、services が今日にするので、読み込みの日になる。納品書の発行日は、入れる出荷のいちばん遅い出荷日
+  (流れの枠の並びが日付のとおりになる)。
 - 最後に、部品が持つ種 (部品の demo_seed.load(seeds_dir, user)) を PART_SEEDS の順に呼ぶ。業務マニュアル・権限・在庫・出荷の知らせと検収・入金・休日 の 6 つ。
   受注の後 (つながりの前) に、部品の demo_seed に load_after_orders(seeds_dir, user) があれば先に呼ぶ
   (受信した注文の写しの受注を、出荷と納品書の種が指せるようにするため。数は同じ種類に足し、出力の行は 1 行)。
@@ -666,7 +667,7 @@ def _load_delivery_notes(seeds_dir, user, notices):
             skipped += 1
             continue
         with _guard(path.name, f"{number} 件目の納品書"):
-            services.create_delivery_note(customer, shipments, user)
+            services.create_delivery_note(customer, shipments, user, issued_on=max(s.shipped_at for s in shipments))
             made += 1
     return made, skipped
 

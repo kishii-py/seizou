@@ -138,10 +138,11 @@ def ship_lines(lines, shipped_at, user, *, note=""):
     return ShippedLines(_after_ship(shipment, locked.order, user, True) for shipment, locked in recorded)
 
 
-def create_delivery_note(customer, shipments, user):
+def create_delivery_note(customer, shipments, user, *, issued_on=None):
     """得意先の出荷をまとめて納品書を作る。納品書番号は core の連番が付ける。
 
     納品書は数量の写しを持たない。結ばれた出荷は delivery_note.shipments.all() で引く。
+    issued_on (発行日) は無ければ今日。種の読み込み (core.demo) が出荷日を渡す。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     if not pks:
@@ -165,7 +166,7 @@ def create_delivery_note(customer, shipments, user):
         note = DeliveryNote.objects.create(
             note_no=next_number("delivery_note"),
             customer=customer,
-            issued_on=timezone.localdate(),
+            issued_on=issued_on or timezone.localdate(),
         )
         for shipment in locked:
             shipment.delivery_note = note

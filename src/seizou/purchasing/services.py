@@ -174,10 +174,11 @@ def mark_sent(purchase_order, user):
         return locked
 
 
-def mark_accepted(purchase_order, user, *, reply_message_id=None):
+def mark_accepted(purchase_order, user, *, reply_message_id=None, replied_at=None):
     """「送った」の発注を「相手が受け入れた」にする。それ以外の状態は ValueError。
 
-    注文回答の日時 (こちらに届いて当てた時刻) を書く。reply_message_id は相手の注文回答の番号
+    注文回答の日時 (こちらに届いて当てた時刻。replied_at を渡せばその日時 = 種の読み込みが使う) を書く。
+    reply_message_id は相手の注文回答の番号
     (connect の受け口が渡す。同じ番号の 2 回目は受け口が見分けて呼ばない。DB の一意の制約もある)。
     """
     with transaction.atomic():
@@ -188,7 +189,7 @@ def mark_accepted(purchase_order, user, *, reply_message_id=None):
                 "「送った」の発注だけを進めてください。"
             )
         locked.status = PurchaseOrder.STATUS_ACCEPTED
-        locked.replied_at = timezone.now()
+        locked.replied_at = replied_at or timezone.now()
         fields = ["status", "replied_at"]
         if reply_message_id is not None:
             locked.reply_message_id = reply_message_id

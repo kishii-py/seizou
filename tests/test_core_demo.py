@@ -579,7 +579,7 @@ EXPECTED_SHIPPED_ORDERS = {"a_machining": 10, "b_plating": 11}
 @pytest.mark.django_db
 @pytest.mark.parametrize("company_id", sorted(EXPECTED_MORE_COUNTS))
 def test_examples_load_more_kinds(company_id, no_registration, media):
-    from seizou.shipping.models import Shipment
+    from seizou.shipping.models import DeliveryNote, Shipment
     from seizou.workorders.models import WorkOrderStep
 
     expected = EXPECTED_MORE_COUNTS[company_id]
@@ -593,6 +593,9 @@ def test_examples_load_more_kinds(company_id, no_registration, media):
     assert Order.objects.filter(status=Order.STATUS_SHIPPED).count() == EXPECTED_SHIPPED_ORDERS[company_id]
     assert Shipment.objects.filter(delivery_note__isnull=True).count() == 0
     assert not Shipment.objects.exclude(delivery_note__status="issued").exists()
+    # 納品書の発行日は、入れた出荷のいちばん遅い出荷日 (種を読んだ日ではない。精査 A9 の 3 節の 2)
+    for note in DeliveryNote.objects.all():
+        assert note.issued_on == max(s.shipped_at for s in note.shipments.all())
     # 工程の予定に日のある工程があり、計画に使う工程だけに置いてある
     dated = WorkOrderStep.objects.filter(planned_start__isnull=False)
     assert dated.exists()

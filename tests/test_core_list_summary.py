@@ -131,6 +131,17 @@ def test_status_axis_counts_rows_in_choice_order(user, orders):
     assert "表に戻る" in text and 'id="row-' not in text
 
 
+def test_measure_label_keeps_a_total_heading():
+    """見出しが「合計」で終わる列 (請求書の一覧の「合計」) の量は「合計の合計」にしない (精査 A9 の 3 節の 4)。"""
+    from seizou.core.summary import measures_for
+    from seizou.core.views import ColumnSpec
+
+    total = ColumnSpec(Item, {"name": "standard_price", "label": "合計", "kind": "money"})
+    price = ColumnSpec(Item, {"name": "standard_price", "label": "単価"})
+    assert [m.label for m in measures_for([total, price], money_ok=True)] == ["件数", "合計", "単価の合計"]
+    assert [m.label for m in measures_for([total, price], money_ok=False)] == ["件数"]
+
+
 def test_lookup_axis_sums_a_number_column(user, orders):
     response = call(_LineList, user, view="summary", g_by="customer", g_val="qty")
     summary = response.context_data["summary"]
