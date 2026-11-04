@@ -119,6 +119,32 @@ def prepare_executable(path: Path) -> None:
         )
 
 
+def source_sha_marker(dest: Path) -> Path:
+    """取った直後 (署名の前) の sha256 を控えるファイル (実行ファイルの隣。.tools/ は git の外)。"""
+    return dest.with_name(dest.name + ".source-sha256")
+
+
+def recorded_source_sha(dest: Path) -> str | None:
+    try:
+        return source_sha_marker(dest).read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def record_source_sha(dest: Path, sha256: str) -> None:
+    source_sha_marker(dest).write_text(sha256 + "\n", encoding="utf-8")
+
+
+def is_current(dest: Path, sha256: str) -> bool:
+    """置いてある道具が一覧の版か。macOS は prepare_executable の署名で実行ファイルの sha256 が変わるので、
+    取った直後の sha256 の控え (source_sha_marker) が一覧と合えば同じ版とみなす (毎回 80 MB を取り直さない)。"""
+    if not dest.exists():
+        return False
+    if sha256_of(dest) == sha256:
+        return True
+    return recorded_source_sha(dest) == sha256
+
+
 def ensure_tools(items: list[dict], directory: Path) -> Path:
     """道具の置き場に実行ファイルと mjs 2 つをそろえ、実行ファイルのパスを返す。"""
     plat = current_platform()
@@ -130,8 +156,9 @@ def ensure_tools(items: list[dict], directory: Path) -> Path:
             continue
         dest = directory / item["tool"]
         fresh = False
-        if not dest.exists() or sha256_of(dest) != item["sha256"]:
+        if not is_current(dest, item["sha256"]):
             download(item["url"], dest, item["sha256"])
+            record_source_sha(dest, item["sha256"])
             fresh = True
         if "platform" in item:
             executable = dest
