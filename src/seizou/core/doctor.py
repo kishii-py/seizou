@@ -4,7 +4,7 @@
 本番の条件の行は DEBUG が偽のとき (か --production) だけ見る。
 環境変数は読まない。つながりの鍵の有無は Connection.has_secret() で見て、.env は権限だけを見る (中身は読まない)。
 点検の関数は 1 つにつき 1 つの物を見て、Row の並びを返す。どの関数も例外を外に出さない (run が行にする)。
-部品 (connect など) を import しない。つながりの model は apps.get_model で関数の中で引く。
+部品 (connect など) を module の頭で import しない。つながりの model は apps.get_model で、作り物の利用者の合言葉は accounts の demo_seed を import_module で、関数の中で引く。
 """
 
 from __future__ import annotations
@@ -12,10 +12,12 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth import get_user_model, hashers
 from django.contrib.staticfiles import finders
 from django.core.checks import ERROR, run_checks
 from django.core.checks.security.base import (
@@ -368,6 +370,32 @@ def check_cookies() -> list[Row]:
     return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", COOKIE_FIX)]
 
 
+#: 作り物の利用者が公開の合言葉のままのときの直し方 (決め 11-04 15:0x。依頼書 N116)
+DEMO_PASSWORD_FIX = "アカウント管理で変えてください。"
+
+
+def check_demo_passwords(production: bool) -> list[Row]:
+    """作り物の利用者 (seizou new --demo の genba・jimu・keiri) のうち、公開の合言葉のままの人 (決め 11-04 15:0x)。
+
+    合言葉は README に書いてあるので、外から開ける置き場では誰でもその人で入れる。本番の条件では直す、
+    開発の設定では良いの行に注意の文を書く (点検の行は良い / 直すの 2 つだけ。check_debug と同じ形)。
+    照らし合わせは hashers.check_password に setter を渡さずに呼ぶ (ハッシュを作り直して保存しない = 何も書かない)。
+    """
+    label = "作り物の利用者の合言葉"
+    if not apps.is_installed("seizou.accounts"):
+        return []
+    demo_seed = import_module("seizou.accounts.demo_seed")
+    ids = [login_id for login_id, *_ in demo_seed.ACCOUNTS]
+    users = {user.username: user for user in get_user_model()._default_manager.filter(username__in=ids, is_active=True)}
+    public = [i for i in ids if i in users and hashers.check_password(demo_seed.DEMO_PASSWORD, users[i].password)]
+    if not public:
+        return [_good(label, "公開の合言葉のままの作り物の利用者はいない")]
+    detail = f"作り物の利用者 {'・'.join(public)} が公開の合言葉のままです"
+    if production:
+        return [_bad(label, detail, DEMO_PASSWORD_FIX)]
+    return [_good(label, f"{detail}。外から開ける置き場にする前に、{DEMO_PASSWORD_FIX}")]
+
+
 def _safe(label, check) -> list[Row]:
     """点検の関数を 1 つ呼ぶ。例外は、その関数の行を「直す」にして次へ進む。"""
     try:
@@ -408,6 +436,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),
+        ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
     ]
     rows = []
     for label, check, production_only in checks:
