@@ -109,10 +109,25 @@ class PlanBoardView(BaseListView):
     model = WorkOrderStep
     template_name = "workorders/plan_board.html"
     screen_name = "生産計画"
-    screen_help = "工程ごとの日の計画。右の「未計画」から日へドラッグで置き、棒を押すと指示書を小窓で開きます。"
+    screen_help = "工程ごとの日の計画。右の「未計画」から日へドラッグで置き、棒を押すと計画の詳細を小窓で開きます。"
 
     def get_queryset(self):
         return plans.active_steps(plans.resolve_process(self.kwargs.get("process_pk")))
+
+
+class PlanDetailView(BaseModalView):
+    """計画の詳細の小窓 (決め 11-04 14:5x)。盤の棒と未計画のカードを押すと開く。中身は template tag (workorders_plan) が plans.plan_detail で作る。
+
+    使う人: 生産管理・製造 / いつ: 生産計画の盤で予定を確かめるとき / 何のために: 指示書の要点・部品・受注の明細・工程の並び・部品の在庫の見込みを、画面を移らずに見る / 次にすること: 盤で日を置き直すか、指示書の詳細へ
+    """
+
+    model = WorkOrderStep
+    template_name = "workorders/_plan_detail.html"
+    screen_name = "計画の詳細"
+    screen_help = "生産計画の盤の予定の詳細。指示書の要点と工程の並びと、部品の在庫の見込み (今日から 8 週) を見るだけの小窓です。"
+
+    def get_queryset(self):
+        return plans.detail_steps()
 
 
 class WorkOrderModalView(BaseModalView):

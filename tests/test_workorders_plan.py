@@ -336,7 +336,7 @@ def test_tooltip_has_neighbor_steps(client_logged_in, user, cut, bend, workorder
 @pytest.mark.django_db
 def test_bar_opens_workorder_modal(client_logged_in, user, cut, workorder, step):
     services.plan_step(step, date(2026, 11, 4), date(2026, 11, 4), user)
-    modal_url = reverse("workorders:workorder_modal", args=[workorder.pk])
+    modal_url = reverse("workorders:plan_detail", args=[step.pk])
 
     html = _board(client_logged_in, cut).content.decode()
     assert f'hx-get="{modal_url}"' in html
