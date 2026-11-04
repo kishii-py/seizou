@@ -1,4 +1,4 @@
-"""注残の盤 (注文残の一覧。02 の 8 節) の列の値・絞り込み・合計を作る、読むだけの module。表に書かない。
+"""注残の盤 (注文残の一覧。02 の 8 節) の列の値と合計を作る、読むだけの module。表に書かない。
 
 - 1 行の判断の値は BoardRow。OrderLine.board (読むだけの cached_property) が作り、一覧の columns が board__<名前> で読む。
 - 指示書・工程・実績の合計は prefetch_for で 1 ページ分まとめて読む。annotate_remaining の後に多の join を足さない
@@ -7,11 +7,11 @@
 - 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 - 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。
+- 盤の絞り (出荷の残りがある物だけ・納期・納期が過ぎた物だけ) は views.OrderLineListView.filters の宣言 (決め 11-04 17:3x)。
 """
 
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal
 from functools import cached_property
 
@@ -115,38 +115,6 @@ def prefetch_for(queryset):
 
         queryset = annotate_balance(queryset, "item_id")
     return queryset.prefetch_related(Prefetch("workorders", queryset=workorders))
-
-
-def _date(raw):
-    """YYYY-MM-DD の字を日付にする。空・読めない字は None (画面は 200 のまま)。"""
-    if not raw:
-        return None
-    try:
-        return date.fromisoformat(str(raw))
-    except ValueError:
-        return None
-
-
-def filters(params) -> dict:
-    """GET の値から絞り込みの辞書を作る (納期の期間 due_from・due_to と、納期が過ぎた物だけ overdue)。"""
-    return {
-        "due_from": _date(params.get("due_from")),
-        "due_to": _date(params.get("due_to")),
-        "overdue": params.get("overdue") == "1",
-    }
-
-
-def apply_filters(queryset, filters, today=None):
-    """受注の明細の queryset に絞り込みを当てる。annotate_remaining の前に当てる (WHERE に入る)。"""
-    if filters.get("due_from") is not None:
-        queryset = queryset.filter(due_date__gte=filters["due_from"])
-    if filters.get("due_to") is not None:
-        queryset = queryset.filter(due_date__lte=filters["due_to"])
-    if filters.get("overdue"):
-        if today is None:
-            today = timezone.localdate()
-        queryset = queryset.filter(due_date__lt=today)
-    return queryset
 
 
 def totals_of(queryset) -> dict:

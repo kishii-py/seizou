@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, url_or_none
 
@@ -42,6 +43,21 @@ def _customer_choices():
 def _chosen(view, name):
     """一覧の絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は、土台の FilterSpec と同じく無いのと同じ。"""
     return any(spec.values(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
+def _flag_on(view, name):
+    """一覧の flag の絞り name が入か (GET の f_<name>。鍵が無いか読めない値は宣言の default)。"""
+    return any(spec.is_on(view.request.GET) for spec in view.filter_specs() if spec.name == name)
+
+
+def _as_is(queryset):
+    """印だけを宣言する flag の when (何もしない)。条件は画面の get_queryset が、ほかの条件と合わせて掛ける。"""
+    return queryset
+
+
+def _overdue_lines(lines):
+    """納期が今日より前の明細だけ (暦の日で比べる。盤の判断の「遅れ」と同じ)。"""
+    return lines.filter(due_date__lt=timezone.localdate())
 
 
 class OrderListView(BaseListView):
@@ -118,14 +134,21 @@ class OrderLineListView(BaseListView):
         ("status_label", "状態"),
     )
     search_fields = ("order__customer__name", "item__part_no", "order__order_no", "order__customer_order_no")
+    # 盤の絞り (決め 11-04 17:3x = 絞りは枠の 1 か所)。「出荷の残りがある物だけ」は既定で入の flag で、条件 (残が 0 より大きく、取消でない受注の明細) は
+    # get_queryset が annotate_remaining の後に掛ける (土台は絞りを annotate より前に掛けるので、when では残を読めない)。
+    filters = (
+        {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": _as_is, "default": True},
+        {"name": "due", "label": "納期", "kind": "date_range", "field": "due_date"},
+        {"name": "overdue", "label": "納期が過ぎた物だけ", "kind": "flag", "when": _overdue_lines},
+    )
     ordering = (F("due_date").asc(nulls_last=True), "order__order_no", "line_no")
     template_name = "orders/orderline_list.html"
 
     def get_queryset(self):
-        # 納期の絞り込みは annotate_remaining の前 (WHERE)。指示書と工程と実績は prefetch で読む (多の join を足さない)。
+        # 納期の絞り (f_due・f_overdue) は土台 (super) が annotate_remaining の前 (WHERE) に掛ける。指示書と工程と実績は prefetch で読む (多の join を足さない)。
         lines = super().get_queryset().select_related("order", "order__customer", "item")
-        lines = annotate_remaining(board.apply_filters(lines, board.filters(self.request.GET)))
-        if self.request.GET.get("all") != "1":
+        lines = annotate_remaining(lines)
+        if _flag_on(self, "open"):
             lines = lines.filter(remaining_total__gt=0).exclude(order__status=Order.STATUS_CANCELLED)
         return board.prefetch_for(lines)
 
