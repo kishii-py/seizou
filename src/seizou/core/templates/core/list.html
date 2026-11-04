@@ -6,18 +6,21 @@
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
 {# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
-  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per">
-    {% if search_hint %}
+  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter]">
+    {% if search_hint or filters %}
     <div class="rounded-lg bg-base-200 p-4" role="search">
       <div class="flex items-center justify-between gap-2">
         <p class="text-xs font-medium text-base-content/50">絞り込み</p>
         <a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ request.path }}">{% icon "x" "size-4" %}クリア</a>
       </div>
+      {% if search_hint %}
       <label for="list-q" class="mt-2 block font-medium">キーワード</label>
       <label class="input mt-2 w-full">
         {% icon "search" "size-4 text-base-content/50" %}
         <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で絞り込む" autocomplete="off">
       </label>
+      {% endif %}
+      {% if filters %}{% include "core/_filters.html" %}{% endif %}
     </div>
     {% endif %}
     <div class="mt-4 flex flex-wrap items-center gap-2">

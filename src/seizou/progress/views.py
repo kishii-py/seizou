@@ -37,6 +37,12 @@ class ProgressListView(BaseListView):
     screen_help = "指示書の工程ごとに入れた実績の記録。日時の新しい順に並びます。"
     columns = ({"name": "workorder_step", "sort_key": "workorder_step__workorder__wo_no"}, "qty", "recorded_at", "recorded_by", "note")
     search_fields = ("workorder_step__workorder__wo_no",)
+    filters = (
+        {"name": "recorded", "label": "期間", "kind": "date_range", "field": "recorded_at"},
+        {"name": "process", "label": "工程", "kind": "lookup", "field": "workorder_step__process"},
+        {"name": "item", "label": "部品", "kind": "lookup", "field": "workorder_step__workorder__order_line__item"},
+        {"name": "user", "label": "入れた人", "kind": "lookup", "field": "recorded_by"},
+    )
     ordering = ("-recorded_at", "-id")
 
 
