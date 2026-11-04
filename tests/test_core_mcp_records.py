@@ -530,7 +530,7 @@ def test_list_feedback_and_get_feedback(user, customer, feedback_rows):
     assert body["screens"] == ["orders:order_list"]
     assert (body["input_tokens"], body["output_tokens"]) == (120, 80)
     assert body["issue_text"].startswith("# ")
-    assert "## 困りごと" in body["issue_text"]
+    assert "## 実際の動き" in body["issue_text"]
     whole = json.dumps(body, ensure_ascii=False)
     assert "transcript" not in whole
     assert "role" not in whole
