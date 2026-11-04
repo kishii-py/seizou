@@ -28,7 +28,7 @@ from seizou.core.screens import Screen, all_screens
 
 from .models import Feedback
 
-#: 種類の値の並び (使い方・自社の作業・皆の要望・不具合)
+#: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
 #: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した)
 STATUSES = tuple(value for value, _ in Feedback.STATUS_CHOICES)
@@ -44,7 +44,7 @@ SENT_URL_MAX_CHARS = Feedback._meta.get_field("sent_url").max_length
 #: 直した場所の字数の上限 (表の列の長さ)
 FIXED_NOTE_MAX_CHARS = Feedback._meta.get_field("fixed_note").max_length
 
-MESSAGE_KIND = "種類は 使い方・自社の作業・皆の要望・不具合 のどれかです。"
+MESSAGE_KIND = f"種類は {'・'.join(label for _, label in Feedback.KIND_CHOICES)} のどれかです。"
 MESSAGE_TITLE_EMPTY = "題を入力してください。"
 MESSAGE_TITLE_LONG = f"題は {TITLE_MAX_CHARS} 字までです。短くしてください。"
 MESSAGE_PROBLEM_EMPTY = "困りごとを入力してください。"
@@ -328,7 +328,7 @@ def _author(user):
 def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=0, screenshots=()):
     """フィードバックを 1 件作る (状態は下書き)。作った行を返す。
 
-    data は FIELD_KEYS の鍵の辞書 (知らない鍵は ValueError。無い鍵は種類が皆の要望、ほかは空)。
+    data は FIELD_KEYS の鍵の辞書 (知らない鍵は ValueError。無い鍵は種類が要望、ほかは空)。
     書いた人は user に pk があれば user。会話の記録は形の合う物だけ、token は 0 以上の整数に丸める。
     screenshots は画面の絵のファイルの並び (画像だけ・1 枚 5MB・3 枚まで。外れたら行もファイルも作らずに ValueError)。添付ファイルの部品で行に結ぶ。
     """

@@ -192,7 +192,7 @@ def test_export_markdown_shape(plain):
     text = services.export_markdown(row)
 
     assert text.startswith("# 〇〇の受注を並べたい\n")
-    assert "- 種類: 皆の要望" in text
+    assert "- 種類: 要望" in text
     assert "- 画面: 受注 (orders:order_list)" in text
     assert "- 影響する画面: orders:order_list masters:item_list" in text
     assert "- 作品の版: seizou " in text

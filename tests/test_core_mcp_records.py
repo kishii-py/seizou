@@ -499,7 +499,7 @@ def test_list_feedback_and_get_feedback(user, customer, feedback_rows):
     assert found["ok"] is True
     assert [row["id"] for row in found["items"]] == [wish.pk, bug.pk]
     row = found["items"][0]
-    assert (row["kind"], row["kind_label"]) == ("common", "皆の要望")
+    assert (row["kind"], row["kind_label"]) == ("common", "要望")
     assert row["title"] == "一覧に納期の列がほしい"
     assert (row["screen"], row["screen_label"]) == ("orders:order_list", screen_label)
     assert (row["status"], row["status_label"]) == ("draft", "下書き")
