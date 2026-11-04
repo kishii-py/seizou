@@ -520,6 +520,14 @@ def active_partners(*, keep=None):
     return _active(Partner, keep)
 
 
+def active_processes(*, keep=None):
+    """使用中の工程 (指示書の発行で選ぶ工程の候補の母集団。読むだけ。N140)。並びは工程の表の既定 (並び順 → 工程コード)。
+
+    keep (工程か pk) は使用停止でも残す (active_items と同じ口)。今ある指示書の工程と部品の標準の工程の並びの行は消さない。
+    """
+    return _active(Process, keep)
+
+
 def refuse_inactive(partner, items=()):
     """新しい受注と発注を作る所 (orders・purchasing の services) が呼ぶ守り (N135)。表に書かない。
 
