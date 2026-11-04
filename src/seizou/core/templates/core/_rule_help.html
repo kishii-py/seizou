@@ -1,0 +1,13 @@
+{% load seizou_icons %}
+{# 決まりの番号の「?」の小窓の中身。core.views.rule_help が返す。小窓の枠は base.html の #seizou-modal の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
+<div class="flex items-start justify-between gap-4">
+  <h3 class="min-w-0 truncate text-lg font-bold" title="{{ code }} の決まり">{{ code }} の決まり</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<div class="mt-4 max-h-[70vh] overflow-y-auto">
+  {% if rule %}<p>{{ rule.text }}</p>
+  <p class="mt-2 text-base-content/70">{{ rule.section }}</p>{% else %}<p class="text-base-content/70">決まりの一覧 (RULES.md) に {{ code }} の行が見つかりません。</p>{% endif %}
+</div>
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+</div>

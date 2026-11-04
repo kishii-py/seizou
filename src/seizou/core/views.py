@@ -22,6 +22,7 @@ get_queryset・screen_name・screen_help の 11 だけ (OVERRIDABLE)。
   会社ごとの項目 (一覧に出す物) と、tabs の関係する物も出す。htmx でない要求 (新しいタブ) は詳細へ移す。
 - 画面の応答はブラウザに保存させない (Cache-Control: no-store。ログアウトの後の戻るで中身を見せない)。
 - 候補の口: Tom Select の候補を 1 ページ (per_page 件) JSON で返す。
+- rule_help: 赤の知らせの決まりの番号の「?」が開く小窓 (RULES.md の行)。
 
 URL の名前の約束 (画面どうしの移動に使う。無ければ link を出さない):
   <app>:<model>_list / _detail / _create / _update / _modal
@@ -31,24 +32,30 @@ from __future__ import annotations
 
 import csv
 import inspect
+import re
 import unicodedata
 from decimal import Decimal
 from importlib import import_module
+from pathlib import Path
 from urllib.parse import quote
 
 from django import forms as django_forms
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DatabaseError, models
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.template.loader import select_template
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
+from django.views.decorators.http import require_GET
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
 from seizou.core import access
@@ -1188,3 +1195,43 @@ def decimal_or_none(value) -> Decimal | None:
         return Decimal(str(value))
     except Exception:  # noqa: BLE001
         return None
+
+
+#: 決まりの一覧 (作品のリポジトリの根の RULES.md。src/seizou/core/views.py の 3 つ上。配布の wheel には入らない)
+RULES_MD = Path(__file__).resolve().parents[3] / "RULES.md"
+#: 決まりの番号の形 (R と 2 桁)
+RULE_CODE = re.compile(r"^R[0-9]{2}$")
+
+
+def rule_line(code: str) -> dict | None:
+    """RULES.md の表の、番号が code の行。{"code", "text" (2 つ目の欄。` を外す), "section" (行の上の ## の見出しの字)}。
+
+    番号の形が違う・RULES.md が無いか読めない・行が無ければ None。読むだけ。
+    行の読み方は tests/test_r14_no_raw_sql.py の _rules_md_text と同じ (「| R01 |」で始まる行の 2 つ目の欄)。
+    """
+    if not isinstance(code, str) or not RULE_CODE.match(code):
+        return None
+    try:
+        text = RULES_MD.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    section = ""
+    for line in text.splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+        elif line.startswith(f"| {code} |"):
+            return {"code": code, "text": line.split("|")[2].strip().replace("`", ""), "section": section}
+    return None
+
+
+@login_required
+@require_GET
+def rule_help(request, code):
+    """赤の知らせの決まりの番号の横の「?」が開く小窓の中身 (core/_rule_help.html)。番号の形が違えば 404。
+
+    行が無い (RULES.md が置き場に無い・番号が表に無い) ときも 200 で、無い旨の 1 文を出す (htmx が小窓を開けるように)。
+    htmx でない要求にも同じ中身を返す (移す先の頁が無いため)。読むだけ。
+    """
+    if not RULE_CODE.match(code):
+        raise Http404("決まりの番号の形が違います。")
+    return render(request, "core/_rule_help.html", {"code": code, "rule": rule_line(code)})

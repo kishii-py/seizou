@@ -6,8 +6,10 @@ comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
 can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口の釦を出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
+rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
 """
 
+import re
 from decimal import ROUND_HALF_UP, Decimal
 
 from django import template
@@ -105,3 +107,11 @@ def master_link(obj, label=None):
         url,
         text,
     )
+
+
+@register.filter
+def rule_code(value):
+    """{{ notice.code|rule_code }}。決まりの番号 (R と 2 桁。例 R05) ならその字、字でない物と形の違う字 (「入力」など) は空の字。"""
+    if isinstance(value, str) and re.fullmatch(r"R[0-9]{2}", value):
+        return value
+    return ""
