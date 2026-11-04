@@ -5,6 +5,7 @@
 ダッシュボードのカード「今月の支払の見込み」は core の dashboard_stats() が数字のカードの並びに出す (11-03 の本体の直し)。
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
+- notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
 """
 
 from decimal import Decimal
@@ -104,3 +105,11 @@ def over_receipt_notices(rows):
     if not ids:
         return []
     return [{"line": line, "message": services.over_receipt_message(line)} for line in services.over_receipt_lines(ids)]
+
+
+@register.simple_tag
+def notice_rests(line):
+    """{% notice_rests line as rests %}。purchasing.services.notice_rests の並び。問い合わせをしない (受入の数は lines_with_received の received_total)。"""
+    from .. import services
+
+    return services.notice_rests(line)

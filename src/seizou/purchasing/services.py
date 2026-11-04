@@ -36,6 +36,7 @@ from django.db.models import DecimalField, ExpressionWrapper, F, OuterRef, Subqu
 from django.db.models.functions import Coalesce
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Count, IntegerField
+from django.db.models import Case, When
 
 # 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -368,6 +369,7 @@ def annotate_order_received(queryset):
     """発注の queryset に、明細の数量の合計 (ordered_total)・受入の数の合計 (received_total)・差 (receive_remaining) を足す。
 
     明細と受入の合計は別の Subquery で足す (lines と receipts の 2 つの join を 1 つの問い合わせに置くと、行が重なって数えられる)。
+    取り消した発注の差は 0 (受け入れない発注に残を出さない。精査 A7 の 1-1 の S9)。
     発注の一覧が使う。読むだけ。
     """
     ordered = (
@@ -388,7 +390,11 @@ def annotate_order_received(queryset):
         ordered_total=Coalesce(Subquery(ordered, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
         received_total=Coalesce(Subquery(received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
     ).annotate(
-        receive_remaining=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD)
+        receive_remaining=Case(
+            When(status=PurchaseOrder.STATUS_CANCELLED, then=Value(_ZERO)),
+            default=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD),
+            output_field=_QTY_FIELD,
+        )
     )
 
 
@@ -451,6 +457,25 @@ def shipping_notice_summary(line):
     items = list(rows.all())
     total = sum((row.qty for row in items), _ZERO)
     return {"rows": items, "count": len(items), "total": total, "total_text": _qty_text(total)}
+
+
+def notice_rests(line):
+    """出荷の知らせの行ごとの、まだ受け入れていない数。返す物は [{"notice", "rest", "rest_text"}, …] (並びは shipping_notice の rows と同じ出荷日の古い順)。
+
+    受入の数の合計 (received_total。無ければ received_qty) を知らせの古い順に当てていき、行の数から当てた数を引いた物をその行の rest にする (0 より小さくしない)。
+    rest の合計は 知らせの合計 − 受入の合計 (受入の方が多ければ 0)。読むだけ。発注の詳細の「受入を記録する」の数量に使う (精査 A7 の 1-1 の S6)。
+    """
+    received = getattr(line, "received_total", None)
+    if received is None:
+        received = received_qty(line)
+    left = _dec(received)
+    rests = []
+    for row in line.shipping_notice["rows"]:
+        used = min(row.qty, max(left, _ZERO))
+        left -= used
+        rest = row.qty - used
+        rests.append({"notice": row, "rest": rest, "rest_text": _qty_text(rest)})
+    return rests
 
 
 def payable_by_partner(today=None):
