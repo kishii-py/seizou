@@ -53,7 +53,7 @@ TOURS: dict[str, tuple[dict, ...]] = {
         },
         {
             "selector": '[data-tour="orderline-link"]',
-            "title": "注文残の一覧",
+            "title": "生産管理ボード",
             "text": "明細ごとの残と、指示書や出荷の判断が並ぶ画面へ移ります。",
         },
         _GUIDE_STEP,
@@ -66,7 +66,7 @@ TOURS: dict[str, tuple[dict, ...]] = {
         },
         {
             "selector": '[data-tour="board"]',
-            "title": "注文残の表",
+            "title": "生産管理ボードの表",
             "text": "明細ごとの残と判断の印が並びます。行の「⋮」から指示書を出したり出荷したりできます。",
         },
         {

@@ -98,7 +98,7 @@ def test_protect_hides_actions_and_refuses(client_logged_in, user):
     manual = services.create_manual(None, "保護する手順", "steps", user)
     client_logged_in.post(reverse("manuals:manual_protect", args=[manual.pk]), {"on": "True"})
     detail = client_logged_in.get(reverse("manuals:manual_detail", args=[manual.pk])).content.decode()
-    assert "保護を解除" in detail
+    assert "保護解除" in detail
     assert reverse("manuals:manual_update", args=[manual.pk]) in detail
     assert reverse("manuals:manualversion_list", args=[manual.pk]) in detail
     assert reverse("manuals:manual_move", args=[manual.pk]) not in detail

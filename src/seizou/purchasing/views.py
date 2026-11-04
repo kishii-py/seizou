@@ -78,7 +78,7 @@ class PurchaseOrderDetailView(BaseDetailView):
 class PurchaseOrderCreateView(BaseFormView):
     """発注の新規登録の入力。
 
-    使う人: 生産管理 / いつ: 協力企業に出すと決めたとき / 何のために: 協力企業に注文を送る / 次にすること: 相手の届いた注文に届く。物が届いたら受入
+    使う人: 生産管理 / いつ: 協力企業に出すと決めたとき / 何のために: 協力企業に注文を送る / 次にすること: 相手の受信した注文に届く。物が届いたら受入
     """
 
     model = PurchaseOrder

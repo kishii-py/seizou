@@ -1,7 +1,7 @@
 """受け入れと出荷の send=False (作り物の種の読み込みが相手に送らない口)。
 
 送る向きのつながりがあっても HTTP を呼ばず、番号を付けず、返事の欄に書く。
-届いた注文は受け口を通さずに record_inbox で入れる。つながりの受け口の URL は届かない所 (HTTP を呼んだら落とすので使わない)。
+受信した注文は受け口を通さずに record_inbox で入れる。つながりの受け口の URL は届かない所 (HTTP を呼んだら落とすので使わない)。
 鍵はテストのたびに作り、環境変数に置く。取引先と品目は作り物。日は固定の値を渡す。
 """
 
@@ -81,7 +81,7 @@ def _payload(message_id):
 
 @pytest.fixture
 def seed_order(customer, item, user, send_connection, no_http):
-    """届いた注文を受け入れた受注 (send=False)。"""
+    """受信した注文を受け入れた受注 (send=False)。"""
     message_id = uuid.uuid4()
     inbox = connect_services.record_inbox(customer, _payload(message_id), user, message_id=message_id)
     return connect_services.accept(inbox, {"X-1": item}, user, send=False)

@@ -1,7 +1,7 @@
 """検収 (connect.services.send_acceptance と、受け口が受注の明細に付ける所) のテスト。EDI の 4 段目。
 
 発注した側が受入を入れると、seizou どうしで送った発注なら、その受入を「検収」にして相手の受け口へ署名して送り、
-相手の受け口は元の届いた注文から作った受注の明細に 1 回だけ付ける。届かなくても受入は成立する。
+相手の受け口は元の受信した注文から作った受注の明細に 1 回だけ付ける。届かなくても受入は成立する。
 
 1 つの DB に、注文を送る会社と受ける会社の両方の役を置く (test_connect_reply.py の形)。
 検収は注文と同じ向き (協力企業 S001 への「送る」→ 得意先 C001 からの「受ける」) を通る。
@@ -182,7 +182,7 @@ def test_receipt_sends_acceptance_and_marks_order_line(
     assert receipt.acceptance_sent_at is not None
     assert receipt.acceptance_response == "受け取った"
     assert receipt.acceptance_state().startswith("送った ")
-    # 検収は届いた注文の行にしない。受入と在庫の動きは今までどおり 1 行ずつ。
+    # 検収は受信した注文の行にしない。受入と在庫の動きは今までどおり 1 行ずつ。
     assert Inbox.objects.count() == 1
     assert Receipt.objects.count() == 1
     assert StockMove.objects.filter(kind=KIND_RECEIVED).count() == 1
@@ -262,7 +262,7 @@ def test_acceptance_for_another_partners_order_is_refused(
     _fake, po, _inbox, _order = _accepted(monkeypatch, subcontractor, item, own_item, user)
     msg_id, raw = _acceptance_raw(po)
 
-    # 注文回答の向きの鍵 = 協力企業 S001 の向き「受ける」のつながりで通るが、届いた注文の取引先は C001。
+    # 注文回答の向きの鍵 = 協力企業 S001 の向き「受ける」のつながりで通るが、受信した注文の取引先は C001。
     response = _signed_post(client, raw, msg_id, reply_secret)
 
     assert response.status_code == 400
@@ -304,7 +304,7 @@ def test_acceptance_for_unaccepted_order_is_refused(
     _waiting, rejected = Inbox.objects.order_by("pk")
     services.reject(rejected, "作り物の断りの理由", user)
 
-    # 相手が承認する前 (届いた) と、断った後の届いた注文への検収
+    # 相手が承認する前 (届いた) と、断った後の受信した注文への検収
     receipts = [
         purchasing_services.receive(po.lines.get(), Decimal("4"), DAY, user)
         for po in (waiting_po, rejected_po)
@@ -484,7 +484,7 @@ def test_record_acceptance_refuses_bad_values(
         record(line, Decimal("0"), DAY)
     with pytest.raises(ValueError, match="検収日は日付にしてください。"):
         record(line, Decimal("4"), "2026-11-05")
-    with pytest.raises(ValueError, match="その届いた注文から作った受注の明細ではありません。"):
+    with pytest.raises(ValueError, match="その受信した注文から作った受注の明細ではありません。"):
         record(other_line, Decimal("4"), DAY)
     assert Acceptance.objects.count() == 0
 

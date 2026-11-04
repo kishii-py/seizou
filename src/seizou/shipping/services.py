@@ -13,7 +13,7 @@
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
-- 出荷の後、届いた注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
+- 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
 """
@@ -87,7 +87,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
 
 
 def _after_ship(shipment, order, user, send):
-    """出荷の後の知らせ。届いた注文で作った受注の出荷なら、出荷の知らせを相手へ送る (atomic の外で呼ぶ = R17)。"""
+    """出荷の後の知らせ。受信した注文で作った受注の出荷なら、出荷の知らせを相手へ送る (atomic の外で呼ぶ = R17)。"""
     if _is_edi_order(order):
         if not send:
             return record_notice_response(shipment, MESSAGE_NOTICE_SEED, user)
@@ -100,7 +100,7 @@ def _after_ship(shipment, order, user, send):
 def ship(order_line, qty, shipped_at, user, *, note="", send=True):
     """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
 
-    send が偽なら、届いた注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
+    send が偽なら、受信した注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
     """
     with transaction.atomic():
         shipment, locked = _record_shipment(order_line, qty, shipped_at, user, note)
@@ -124,7 +124,7 @@ def ship_lines(lines, shipped_at, user, *, note=""):
 
     lines は (受注の明細, 数量) の組の list。1 行ずつ ship と同じ決まり (R05・R02・分納) を通し、どれか 1 行が断られたら
     全部を保存しない (1 つの atomic)。断りの文の頭に受注番号と行の番号を付ける。
-    出荷の知らせ (届いた注文で作った受注) は、全部を保存した後に atomic の外で 1 件ずつ送る (R17)。
+    出荷の知らせ (受信した注文で作った受注) は、全部を保存した後に atomic の外で 1 件ずつ送る (R17)。
     """
     if not lines:
         raise ValueError("出荷する明細を 1 行以上選んでください。")
@@ -260,9 +260,9 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
 
 
 def _is_edi_order(order):
-    """受注が届いた注文 (seizou どうし) で作った物か。
+    """受注が受信した注文 (seizou どうし) で作った物か。
 
-    入口 (source) を先に見て、手入力と読み取りの受注では問い合わせを起こさない。届いた注文は 1 対 1 の逆の関係
+    入口 (source) を先に見て、手入力と読み取りの受注では問い合わせを起こさない。受信した注文は 1 対 1 の逆の関係
     inbox_message を読むだけ (connect の model を import しない)。無ければ RelatedObjectDoesNotExist
     (AttributeError の子) なので getattr が None を返す。connect の無い会社では属性が無く偽。
     """

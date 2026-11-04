@@ -60,7 +60,7 @@ class FeedbackForm(ServiceModelForm):
             choices=[("", "指定なし"), *services.screen_choices()],
             help_text="困りごとが起きた画面。左のメニューの「フィードバック」から開くと、開いていた画面が入っています。",
         )
-        self.fields["screens"].help_text = "画面の名前を「、」で区切って書く (例 受注、注文残)。分からなければ空でよい。"
+        self.fields["screens"].help_text = "画面の名前を「、」で区切って書く (例 受注、生産管理ボード)。分からなければ空でよい。"
         if services.screenshots_enabled():
             self.fields["screenshots"] = ScreenshotsField(
                 label="画面の絵",

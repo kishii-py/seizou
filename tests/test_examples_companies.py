@@ -262,7 +262,7 @@ MORE_SEED_YAML_ROOT_KEYS = {
 # 部品の種のファイル (出荷の知らせと検収・入金)。片方の会社にしか無い物があるので、会社ごとに書く
 PART_SEED_YAML_ROOT_KEYS = {
     "a_machining": {"shipping_notices.yaml": "発注", "payments.yaml": "請求書", "holidays.yaml": "休日"},
-    "b_plating": {"acceptances.yaml": "届いた注文", "payments.yaml": "請求書", "holidays.yaml": "休日"},
+    "b_plating": {"acceptances.yaml": "受信した注文", "payments.yaml": "請求書", "holidays.yaml": "休日"},
 }
 MORE_SEED_FILES = ("item_processes.csv", *MORE_SEED_YAML_ROOT_KEYS)
 ITEM_PROCESS_HEADER = ["自社品番", "工程コード", "順"]
@@ -280,9 +280,9 @@ def orders_by_key(company_id):
     for order in load_seed_yaml(company_id, "orders.yaml")["受注"]:
         for line_no, line in enumerate(order["明細"], start=1):
             found[(order["得意先の取引先コード"], order["得意先の注文番号"], line_no)] = line["数量"]
-    # 届いた注文の写し (connect の種) も受注になる。出荷の種はこの受注も 取引先コード × 得意先の注文番号 × 行番号 で指す
+    # 受信した注文の写し (connect の種) も受注になる。出荷の種はこの受注も 取引先コード × 得意先の注文番号 × 行番号 で指す
     if (company_dir(company_id) / "acceptances.yaml").is_file():
-        for entry in load_seed_yaml(company_id, "acceptances.yaml")["届いた注文"]:
+        for entry in load_seed_yaml(company_id, "acceptances.yaml")["受信した注文"]:
             for line_no, line in enumerate(entry["明細"], start=1):
                 found[(entry["取引先コード"], entry["相手の発注番号"], line_no)] = line["数量"]
     return found

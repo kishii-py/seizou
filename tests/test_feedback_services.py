@@ -288,9 +288,9 @@ def test_screen_choices_have_no_url_names(db):
 
 
 def test_normalize_screens_accepts_screen_names(db):
-    assert services.normalize_screens("受注、注文残") == "orders:order_list orders:orderline_list"
+    assert services.normalize_screens("受注、生産管理ボード") == "orders:order_list orders:orderline_list"
     assert services.normalize_screens("受注 orders:order_list") == "orders:order_list"
-    assert services.normalize_screens("注文残,受注\n受注") == "orders:orderline_list orders:order_list"
+    assert services.normalize_screens("生産管理ボード,受注\n受注") == "orders:orderline_list orders:order_list"
 
     # 名前に空白を含む画面は、1 つの名前として引ける (同じ名前の画面があれば目録の順に全部)
     catalog = services.screen_catalog()

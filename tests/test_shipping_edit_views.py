@@ -131,7 +131,7 @@ def test_note_detail_cancel_link_only_when_issued(logged_in, user, note):
     issued = logged_in.get(reverse("shipping:deliverynote_detail", args=[note.pk]))
     assert issued.status_code == 200
     assert f'href="{cancel_url}"' in issued.content.decode()
-    assert "取り消す" in issued.content.decode()
+    assert "取消</a>" in issued.content.decode()
 
     services.cancel_delivery_note(note, user)
     cancelled = logged_in.get(reverse("shipping:deliverynote_detail", args=[note.pk]))

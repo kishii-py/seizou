@@ -1,8 +1,8 @@
 """出荷の知らせの列と、出荷の知らせを送る側の services (shipping)。EDI の 3 段目。
 
 1 段目 = services と出荷の列。2 段目 = 出荷の詳細の「出荷の知らせ」の節と「送り直す」の口 (Django の test client)。
-手入力の受注の出荷は no_http で止める (HTTP を呼ばないことを見る)。届いた注文で作った受注は、入口を「届いた注文」にした受注に
-届いた注文の行を 1 つ置いて作る (受け口を通さない近道。試験だけ)。相手への送信は偽の requests.post に差し替える。
+手入力の受注の出荷は no_http で止める (HTTP を呼ばないことを見る)。受信した注文で作った受注は、入口を「受信した注文」にした受注に
+受信した注文の行を 1 つ置いて作る (受け口を通さない近道。試験だけ)。相手への送信は偽の requests.post に差し替える。
 鍵はテストのたびに作り、環境変数に置く。取引先と品目は作り物。日は固定の値を渡す。
 """
 
@@ -57,7 +57,7 @@ def no_http(monkeypatch):
     """HTTP を呼んだら落とす。手入力の受注の出荷は出荷の知らせを送らないことを見る。"""
 
     def fail(*args, **kwargs):
-        raise AssertionError("届いた注文で作った受注ではないのに HTTP を呼んだ")
+        raise AssertionError("受信した注文で作った受注ではないのに HTTP を呼んだ")
 
     monkeypatch.setattr("requests.post", fail)
 
@@ -73,7 +73,7 @@ def _order(customer, item, user, *, source="manual"):
 
 
 def _inbox_order(customer, item, user):
-    """届いた注文で作った受注 (入口 = 届いた注文。受け入れた届いた注文の行を 1 つ置く)。"""
+    """受信した注文で作った受注 (入口 = 受信した注文。受け入れた受信した注文の行を 1 つ置く)。"""
     order = _order(customer, item, user, source="inbox")
     Inbox.objects.create(
         message_id=uuid.uuid4(),
@@ -224,7 +224,7 @@ def logged_in(client, user):
 
 
 def _ship_with(monkeypatch, fake, customer, item, user):
-    """届いた注文で作った受注に、相手の役を fake にして 4 を出荷する。"""
+    """受信した注文で作った受注に、相手の役を fake にして 4 を出荷する。"""
     monkeypatch.setattr("requests.post", fake)
     order = _inbox_order(customer, item, user)
     return services.ship(order.lines.get(), Decimal("4"), SHIPPED_AT, user)
@@ -351,10 +351,10 @@ def test_resend_port_on_manual_shipment_records_reason(monkeypatch, logged_in, u
     response = logged_in.post(reverse("shipping:shipment_notice_resend", args=[shipment.pk]), follow=True)
 
     assert response.redirect_chain == [(reverse("shipping:shipment_detail", args=[shipment.pk]), 302)]
-    assert any("届いた注文で作った受注ではない" in text for text in _messages(response))
+    assert any("受信した注文で作った受注ではない" in text for text in _messages(response))
     assert fake.calls == []
     shipment.refresh_from_db()
-    assert "届いた注文で作った受注ではない" in shipment.notice_response
+    assert "受信した注文で作った受注ではない" in shipment.notice_response
     assert shipment.notice_message_id is None
 
 

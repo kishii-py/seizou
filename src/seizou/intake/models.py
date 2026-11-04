@@ -3,7 +3,7 @@
 読み取った中身は、Claude の API が返して形を検査した辞書のまま JSON で持つ。
 数と金額の列は持たない (数量と単価は読み取った字のまま。受注にするときに orders の services が数と金額を決める)。
 人が確かめて「受注にする」を押すまで受注にはならない。書くときは intake.services を通す。
-見張るフォルダの読み取り (命令 seizou_intake_watch) は受注にせず、届いた注文 (connect の Inbox) の行にして、状態を「届いた注文へ回した」にする。
+見張るフォルダの読み取り (命令 seizou_intake_watch) は受注にせず、受信した注文 (connect の Inbox) の行にして、状態を「受信した注文へ回した」にする。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -27,10 +27,10 @@ class Extraction(models.Model):
         (STATUS_EXTRACTED, "読み取った"),
         (STATUS_ORDERED, "受注にした"),
         (STATUS_DISCARDED, "捨てた"),
-        (STATUS_INBOX, "届いた注文へ回した"),
+        (STATUS_INBOX, "受信した注文へ回した"),
     ]
 
-    # 見張りの読み取りで差出人の得意先が当たらないときは空 (届いた注文の詳細で差出人を選ぶ)。画面の読み取りはいつも入る。
+    # 見張りの読み取りで差出人の得意先が当たらないときは空 (受信した注文の詳細で差出人を選ぶ)。画面の読み取りはいつも入る。
     customer = models.ForeignKey(
         "masters.Partner",
         verbose_name="得意先",

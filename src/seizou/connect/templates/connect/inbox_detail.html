@@ -1,8 +1,8 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons connect_tags %}
-{# 届いた注文の詳細。見出しの右に、状態が「届いた」のときだけ「断る」と「承認」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
+{# 受信した注文の詳細。見出しの右に、状態が「届いた」のときだけ「却下」と「承認」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
 {% block actions %}{{ block.super }}{% if object.status == "received" %}
-<a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
+<a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}却下</a>
 {% if object.partner_id %}<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}承認</a>{% endif %}
 {% endif %}{% endblock %}
 {% block content %}

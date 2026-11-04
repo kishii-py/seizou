@@ -36,10 +36,10 @@ def test_default_sections_follow_the_decided_order(db):
     assert [group["label"] for group in _group(groups, "製造部")["groups"]] == [""]
     # 受注管理と協力企業管理は生産管理部の中項目
     assert [(group["label"], [item["label"] for item in group["items"]]) for group in _group(groups, "生産管理部")["groups"]] == [
-        ("受注管理", ["注文残", "受注", "届いた注文"]),
+        ("受注管理", ["生産管理ボード", "受注", "受信した注文"]),
         ("協力企業管理", ["発注", "受入"]),
     ]
-    assert _entries(groups, "生産管理部") == ["注文残", "受注", "届いた注文", "発注", "受入"]
+    assert _entries(groups, "生産管理部") == ["生産管理ボード", "受注", "受信した注文", "発注", "受入"]
     assert "出荷" in _entries(groups, "出荷と請求") and "請求書" in _entries(groups, "出荷と請求")
     # アカウント管理は左のメニューに出ない (設定の画面から開く)
     assert "アカウント管理" not in [item["label"] for group in groups for item in group["items"]]
@@ -68,7 +68,7 @@ def test_company_menu_setting_groups_screens(db, settings):
     groups = sections([*core_menu(), *menu()])
 
     assert _labels(groups)[:3] == ["ダッシュボード", "営業", "現場"]
-    assert _entries(groups, "営業") == ["受注", "届いた注文"]
+    assert _entries(groups, "営業") == ["受注", "受信した注文"]
     # 同じ画面 (受注) を 2 つの括りに出せる。app で選んだ入口も並ぶ
     assert "受注" in _entries(groups, "現場") and "指示書" in _entries(groups, "現場")
     # 括りに無い入口は「その他」に残る

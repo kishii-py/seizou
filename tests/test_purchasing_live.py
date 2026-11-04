@@ -319,7 +319,7 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
     assert 'id="po-lines-title"' in live
     assert "x-csrftoken" not in body[body.index('id="purchaseorder-detail-poll"') :].split("</div>")[0].lower()
 
-    # 「作成」の発注: 釦と link の行は今のまま (送り直す 1・受入を登録 1)
+    # 「作成」の発注: 釦と link の行は今のまま (再送 1・受入を登録 1)
     draft = services.create_purchase_order(
         subcontractor,
         [{"item": item, "qty": Decimal("5"), "unit_price": Decimal("100")}],
@@ -328,7 +328,7 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
         send=False,
     )
     body = _detail(client_logged_in, draft)
-    assert body.count("送り直す") == 1
+    assert body.count("再送") == 1
     assert body.count("受入を登録") == 1
     assert f'data-live="po-{draft.pk}:draft:0:0"' in body
 

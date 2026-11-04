@@ -1,13 +1,13 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
 {% load seizou_outcome %}
-{# 読み取りの詳細。見出しの右に、状態が「読み取った」のときだけ「受注にする」。 #}
+{# 読み取りの詳細。見出しの右に、状態が「読み取った」のときだけ「受注登録」。 #}
 {% block actions %}{{ block.super }}{% if object.status == "extracted" %}
-<a class="btn btn-primary" href="{% url 'intake:extraction_accept' object.pk %}">{% icon "check" "size-4" %}受注にする</a>
+<a class="btn btn-primary" href="{% url 'intake:extraction_accept' object.pk %}">{% icon "check" "size-4" %}受注登録</a>
 {% endif %}{% endblock %}
 {% block content %}
 {# core の基本情報の並びは全部の列 (読み取った中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す。 #}
-<div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>AI が読み取った値です。得意先の品番・数量・納期を注文書と見比べてから「受注にする」を押してください。</span></div>
+<div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>AI が読み取った値です。得意先の品番・数量・納期を注文書と見比べてから「受注登録」を押してください。</span></div>
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
   <dl class="grid gap-x-6 sm:grid-cols-2">

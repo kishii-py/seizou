@@ -193,8 +193,8 @@ def test_inbox_and_note_events(user, customer, item):
 
     assert [(e.kind, e.title) for e in events] == [
         ("inbox", "注文が届いた"),
-        ("inbox", "届いた注文を承認"),
-        ("order", "受注を登録 (届いた注文)"),
+        ("inbox", "受信した注文を承認"),
+        ("order", "受注を登録 (受信した注文)"),
         ("note", "メモを更新"),
     ]
     assert events[0].url == reverse("connect:inbox_detail", args=[inbox.pk])

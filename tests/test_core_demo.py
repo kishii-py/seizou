@@ -572,7 +572,7 @@ EXPECTED_MORE_COUNTS = {
     "a_machining": {"標準の工程": 85, "指示書": 10, "指示書の工程": 26, "出荷": 21, "納品書": 6, "請求書": 3, "請求書の明細": 9, "図面": 4},
     "b_plating": {"標準の工程": 120, "指示書": 10, "指示書の工程": 40, "出荷": 24, "納品書": 6, "請求書": 2, "請求書の明細": 5, "図面": 0},
 }
-# 出荷済みの受注の数。B 社は届いた注文の写しの受注 (受注の 21 件目) も出荷済み
+# 出荷済みの受注の数。B 社は受信した注文の写しの受注 (受注の 21 件目) も出荷済み
 EXPECTED_SHIPPED_ORDERS = {"a_machining": 10, "b_plating": 11}
 
 
@@ -589,7 +589,7 @@ def test_examples_load_more_kinds(company_id, no_registration, media):
     assert got == {key: expected[key] for key in got}
     assert summary["指示書"]["入れた"] == 10
     assert summary["図面"]["入れた"] == expected["図面"]
-    # 受注の 10 件 (B 社は届いた注文の写しの受注も入れて 11 件) は出荷済み。出荷は全部が発行の納品書に入っている
+    # 受注の 10 件 (B 社は受信した注文の写しの受注も入れて 11 件) は出荷済み。出荷は全部が発行の納品書に入っている
     assert Order.objects.filter(status=Order.STATUS_SHIPPED).count() == EXPECTED_SHIPPED_ORDERS[company_id]
     assert Shipment.objects.filter(delivery_note__isnull=True).count() == 0
     assert not Shipment.objects.exclude(delivery_note__status="issued").exists()
@@ -633,7 +633,7 @@ def test_examples_new_kinds_go_into_an_existing_site(company_id, tmp_path, no_re
             # 在庫の動きの種は指示書の種を指すので、指示書を外した古い置き場では一緒に外す (受入の種も新しい種類)
             "stock_moves.yaml",
             "receipts.yaml",
-            # 出荷の知らせ・届いた注文の写しと検収・入金の種は、発注と請求書の種を指すので一緒に外す
+            # 出荷の知らせ・受信した注文の写しと検収・入金の種は、発注と請求書の種を指すので一緒に外す
             "shipping_notices.yaml",
             "acceptances.yaml",
             "payments.yaml",

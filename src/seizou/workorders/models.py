@@ -37,11 +37,11 @@ class WorkOrder(models.Model):
     # 書くのは services.cancel_workorder だけ。
     cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
     # 製造部が受けた (着手した) 印。空 = 未着手。書くのは services.accept_workorder だけ。
-    accepted_at = models.DateTimeField("受けた日時", null=True, blank=True)
+    accepted_at = models.DateTimeField("着手日時", null=True, blank=True)
     # 受けた人。書くのは services.accept_workorder だけ (進捗の実績の「人」と同じ形)。
     accepted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        verbose_name="受けた人",
+        verbose_name="着手者",
         null=True,
         blank=True,
         on_delete=models.PROTECT,

@@ -121,7 +121,7 @@ def test_accept_button_and_post(client, user, client_logged_in, workorder):
 
     body = client_logged_in.get(detail_url).content.decode()
     assert f'<form method="post" action="{accept_url}">' in body
-    assert "受けた</button>" in body
+    assert "着手</button>" in body
 
     response = client_logged_in.post(accept_url)
     assert response.status_code == 302
@@ -150,7 +150,7 @@ def test_accept_cancelled_from_screen_is_error_toast(user, client_logged_in, wor
     detail_url = reverse("workorders:workorder_detail", args=[workorder.pk])
     accept_url = reverse("workorders:workorder_accept", args=[workorder.pk])
 
-    # 取消の指示書の詳細には、受けたのボタンも印も出ない。
+    # 取消の指示書の詳細には、着手のボタンも印も出ない。
     assert f'action="{accept_url}"' not in client_logged_in.get(detail_url).content.decode()
 
     response = client_logged_in.post(accept_url)
@@ -175,8 +175,8 @@ def test_list_column_shows_accepted(user, client_logged_in, customer, item, cut)
     response = client_logged_in.get(reverse("workorders:workorder_list"))
     assert response.status_code == 200
     labels = [col.label for col in response.context["columns"]]
-    assert labels[labels.index("状態") + 1] == "受けた"
-    index = labels.index("受けた")
+    assert labels[labels.index("状態") + 1] == "着手日時"
+    index = labels.index("着手日時")
     values = {row["obj"].pk: row["cells"][index]["value"] for row in response.context["rows"]}
     assert values[waiting.pk] == "未"
     assert values[accepted.pk] == timezone.localtime(accepted.accepted_at).strftime("%Y-%m-%d %H:%M")
@@ -185,7 +185,7 @@ def test_list_column_shows_accepted(user, client_logged_in, customer, item, cut)
 
     csv_body = client_logged_in.get(reverse("workorders:workorder_list"), {"format": "csv"}).content.decode()
     header, *rows = csv_body.lstrip("﻿").splitlines()
-    assert header.split(",")[-1] == "受けた"
+    assert header.split(",")[-1] == "着手日時"
     assert any(row.endswith(",未") for row in rows)
 
 
@@ -227,15 +227,15 @@ def test_detail_and_modal_show_accepted_fields(user, client_logged_in, workorder
     services.accept_workorder(workorder, user)
 
     detail = client_logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])).content.decode()
-    assert "受けた日時" in detail and "受けた人" in detail
+    assert "着手日時" in detail and "着手者" in detail
 
     modal = client_logged_in.get(
         reverse("workorders:workorder_modal", args=[workorder.pk]), HTTP_HX_REQUEST="true"
     )
     assert modal.status_code == 200
     body = modal.content.decode()
-    assert "受けた日時" in body and "受けた人" in body
-    assert [field["label"] for field in modal.context["fields"]][-2:] == ["受けた日時", "受けた人"]
+    assert "着手日時" in body and "着手者" in body
+    assert [field["label"] for field in modal.context["fields"]][-2:] == ["着手日時", "着手者"]
 
 
 # --- 2 段目: 一覧の絞り込みの欄 (N128 から土台の絞り込みの枠の中) ---

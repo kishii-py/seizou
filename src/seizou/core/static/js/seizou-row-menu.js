@@ -2,7 +2,7 @@
  * 一覧の行の操作のメニュー (⋮ と右クリック)。読み込みは base.html の seizou-select.js の次の 1 行。
  * 素の JS で書く (外の library を使わない。htmx は読まない)。
  *
- * markup の約束 (orders/_row_menu.html が使う。届いた注文の画面も同じ形):
+ * markup の約束 (orders/_row_menu.html が使う。受信した注文の画面も同じ形):
  *   <tr data-row-menu ...>                                  行。右クリックでこの行のメニューを開く
  *     ... <td class="whitespace-nowrap text-right">
  *       <details class="dropdown dropdown-end row-menu">

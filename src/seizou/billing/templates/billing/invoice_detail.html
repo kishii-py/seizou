@@ -7,7 +7,7 @@
 <a class="btn btn-outline border-base-300" href="{% url 'billing:invoice_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
 <a class="btn btn-outline border-base-300" href="{% url 'billing:invoice_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 {% endif %}
-{% if object.status == "issued" and can_bill %}<a class="btn btn-outline btn-error" href="{% url 'billing:invoice_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}
+{% if object.status == "issued" and can_bill %}<a class="btn btn-outline btn-error" href="{% url 'billing:invoice_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}
 {% endblock %}
 {% block content %}{{ block.super }}
 {# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額は金額の閲覧が無い人には — #}

@@ -1,7 +1,7 @@
-"""注文書の見張り。フォルダに置いた注文書を古い順に読み取り、届いた注文に入口「読み取り」の行で並べる (常駐か 1 周)・見張りが動いているかを見る (--status)・止める合図を置く (--stop)。
+"""注文書の見張り。フォルダに置いた注文書を古い順に読み取り、受信した注文に入口「読み取り」の行で並べる (常駐か 1 周)・見張りが動いているかを見る (--status)・止める合図を置く (--stop)。
 
 処理は seizou.intake.watch に置き、この命令は引数を読んで結果を書くだけ。表を書かない (書くのは intake.services)。
-画面でないので権限の判定は通らない (置き場を預かる人が立てる)。出すのはファイルの名前・届いた注文の番号・取引先の名前・
+画面でないので権限の判定は通らない (置き場を預かる人が立てる)。出すのはファイルの名前・受信した注文の番号・取引先の名前・
 読み取った差出人の字・日本語の理由だけ (鍵の値・注文書の中身・読み取りの JSON は出さない)。
 """
 
@@ -21,7 +21,7 @@ MESSAGE_NOT_RUNNING = "見張りは動いていません。"
 
 class Command(BaseCommand):
     help = (
-        "注文書の見張り: フォルダに置いた注文書 (PDF・PNG・JPEG) を古い順に読み取り、届いた注文に入口「読み取り」の行で並べる。"
+        "注文書の見張り: フォルダに置いた注文書 (PDF・PNG・JPEG) を古い順に読み取り、受信した注文に入口「読み取り」の行で並べる。"
         "読んだ物は done/、読めなかった物は failed/ (理由は .txt) へ動かす。止めるときは --stop か Ctrl+C。"
     )
 
@@ -103,12 +103,12 @@ class Command(BaseCommand):
         inbox = row["inbox"]
         if row["result"] == "inbox":
             if inbox.partner_id:
-                self.stdout.write(f"読んだ: {name} → 届いた注文 {inbox.pk} (取引先 {inbox.partner.name})")
+                self.stdout.write(f"読んだ: {name} → 受信した注文 {inbox.pk} (取引先 {inbox.partner.name})")
             else:
                 sender = inbox.sender_name or "差出人の名前なし"
-                self.stdout.write(f"読んだ: {name} → 届いた注文 {inbox.pk} (差出人の確認待ち: {sender})")
+                self.stdout.write(f"読んだ: {name} → 受信した注文 {inbox.pk} (差出人の確認待ち: {sender})")
         elif row["result"] == "same":
-            self.stdout.write(f"同じ中身: {name} → 届いた注文 {inbox.pk} に入っています")
+            self.stdout.write(f"同じ中身: {name} → 受信した注文 {inbox.pk} に入っています")
         else:
             moved = f"{watch.FAILED_DIR}/{row['moved'].name}" if row["moved"] is not None else "動かせませんでした"
             self.stdout.write(f"読めなかった: {name} → {moved} ({row['reason']})")

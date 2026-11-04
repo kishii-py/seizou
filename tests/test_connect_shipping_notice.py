@@ -1,6 +1,6 @@
 """出荷の知らせ (connect.services.send_shipping_notice と、受け口が発注の明細に付ける所) のテスト。EDI の 3 段目。
 
-注文を受けた側が出荷すると、届いた注文で作った受注の出荷なら、その出荷を「出荷の知らせ」にして相手の受け口へ署名して送り、
+注文を受けた側が出荷すると、受信した注文で作った受注の出荷なら、その出荷を「出荷の知らせ」にして相手の受け口へ署名して送り、
 相手の受け口は元の送った注文の発注の明細に 1 回だけ付ける。届かなくても出荷は成立する。
 
 1 つの DB に、注文を送る会社と受ける会社の両方の役を置く (test_connect_reply.py の形)。
@@ -187,7 +187,7 @@ def test_ship_sends_notice_and_marks_purchase_order_line(
     assert shipment.notice_sent_at is not None
     assert shipment.notice_response == "受け取った"
     assert shipment.notice_state().startswith("送った ")
-    # 出荷の知らせは届いた注文の行にしない。受注の状態は今までどおり進む。
+    # 出荷の知らせは受信した注文の行にしない。受注の状態は今までどおり進む。
     assert Inbox.objects.count() == 1
     order.refresh_from_db()
     assert order.status == Order.STATUS_PARTIAL
@@ -426,7 +426,7 @@ def test_manual_order_shipment_sends_nothing(monkeypatch, user, customer, own_it
 
     saved = services.send_shipping_notice(shipment, user)
 
-    assert "届いた注文で作った受注ではない" in saved.notice_response
+    assert "受信した注文で作った受注ではない" in saved.notice_response
     assert saved.notice_response == services.MESSAGE_SHIPPING_NOT_EDI_ORDER
     assert saved.notice_message_id is None
     assert fake.calls == []

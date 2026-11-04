@@ -1,11 +1,11 @@
 {% comment %}
-connect の一覧 (届いた注文・取引先との接続) の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
-届いた注文の一覧 (inbox_list) は core/_rows.html を include し、1 行を connect/_inbox_row.html (状態の列の書き分けと、
+connect の一覧 (受信した注文・取引先との接続) の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+受信した注文の一覧 (inbox_list) は core/_rows.html を include し、1 行を connect/_inbox_row.html (状態の列の書き分けと、
 最後の「操作」の列) にする (core の row_template と actions_label)。
-届いた注文の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
+受信した注文の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
 after=0 は一覧が空だった時の取りに行きで、行が届いたら表ごと返し、まだ空なら core の空の表示を返す。
 どちらも、次の after を持った取りに行く要素 (connect/_inbox_poll.html) を hx-swap-oob で入れ直す。
-それ以外 (届いた注文の空の一覧と、取引先との接続の一覧) は core/_rows.html をそのまま使う。
+それ以外 (受信した注文の空の一覧と、取引先との接続の一覧) は core/_rows.html をそのまま使う。
 {% endcomment %}
 {% load seizou_tags seizou_icons %}
 {% if request.resolver_match.url_name == "inbox_list" and "after" in request.GET %}

@@ -1,8 +1,8 @@
 """使う人の結果の数字 (N83): 1 行の転記の分の設定と、ダッシュボードの「手で打たずに受けた明細」のカード。
 
 見る所: 設定 transcription_minutes_per_line (既定 1・画面から変えない・点検が良い)、カードの行数 (入口が読み取りか
-届いた注文の、今月の取消でない受注の明細) と ≒ 転記の分の字、設定の値の戻し方、問い合わせの数、
-読み取りと届いた注文を受注にした直後の緑の知らせの 1 文 (手入力の受注には付かない)、受付の平均の分
+受信した注文の、今月の取消でない受注の明細) と ≒ 転記の分の字、設定の値の戻し方、問い合わせの数、
+読み取りと受信した注文を受注にした直後の緑の知らせの 1 文 (手入力の受注には付かない)、受付の平均の分
 (承認の日時の列 Inbox.accepted_at は N82 が足す。列の無い main では無い方の枝だけが通り、ある方の枝は取り込みの後の main で回る)。
 日は TODAY を渡して固定し、dashboard_stats と画面を通す試験だけ今日 (timezone.localdate) で作る。名前は作り物だけ。
 """
@@ -71,7 +71,7 @@ def make_order(user, customer, item, count, *, source, order_date):
 
 
 def make_month(user, customer, item, today):
-    """today の月に、数える明細 5 行 (読み取り 2 + 届いた注文 3) と、数えない明細を作る。"""
+    """today の月に、数える明細 5 行 (読み取り 2 + 受信した注文 3) と、数えない明細を作る。"""
     make_order(user, customer, item, 2, source="intake", order_date=today)
     make_order(user, customer, item, 3, source="inbox", order_date=today)
     make_order(user, customer, item, 4, source="manual", order_date=today)
@@ -177,7 +177,7 @@ def test_accept_message_says_lines_not_typed(client, user, customer, shaft, monk
     response = client.post(url, {"item_1": shaft.pk, "item_2": bracket.pk}, follow=True)
     assert _messages(response) == ["保存しました。明細 2 行を手で打たずに受注にしました。"]
 
-    # 届いた注文 (明細 1 行) を受け入れる。
+    # 受信した注文 (明細 1 行) を受け入れる。
     secret = _new_secret()
     monkeypatch.setenv(ENV_NAME, secret)
     connect_services.register_connection(customer, "", ENV_NAME, "receive", user)
@@ -218,7 +218,7 @@ def test_accept_minutes_needs_column(user, customer, shaft):
         assert len(captured.captured_queries) == 0
         assert "受付の平均" not in views.dashboard_stats()[-1]["note"]
     else:
-        # 列がある main (N82 の後): 今月に届いた注文 2 件を承認し、届いてから承認までを 12 分と 21 分にする。
+        # 列がある main (N82 の後): 今月に受信した注文 2 件を承認し、届いてから承認までを 12 分と 21 分にする。
         today = timezone.localdate()
         received = datetime(today.year, today.month, today.day, 10, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
         for number, minutes in ((1, 12), (2, 21)):

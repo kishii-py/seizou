@@ -33,7 +33,7 @@ def user(db):
 
 @pytest.fixture
 def inbox(user):
-    """相手の品番 T-100 の明細が 1 行の届いた注文 (受け口を通さない近道)。"""
+    """相手の品番 T-100 の明細が 1 行の受信した注文 (受け口を通さない近道)。"""
     customer = masters_services.create_partner(
         {"code": "C001", "name": "作り物の発注元", "role": "customer"}, user
     )

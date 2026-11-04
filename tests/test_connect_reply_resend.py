@@ -1,7 +1,7 @@
-"""届いた注文の詳細の注文回答の「送り直す」の口 (connect/reply.py の resend_reply。精査 A1 の想定外 S8)。
+"""受信した注文の詳細の注文回答の「送り直す」の口 (connect/reply.py の resend_reply。精査 A1 の想定外 S8)。
 
-承認か断りの後に注文回答が届かなかった届いた注文は、詳細の注文回答の枡に「送り直す」が出る。押すと services.send_reply を
-呼び、届いた注文の詳細へ戻る。権限は承認と同じ connect.accept。
+承認か断りの後に注文回答が届かなかった受信した注文は、詳細の注文回答の枡に「送り直す」が出る。押すと services.send_reply を
+呼び、受信した注文の詳細へ戻る。権限は承認と同じ connect.accept。
 1 つの DB に 2 社の役を置く形と、偽の requests.post は test_connect_reply.py と同じ (外へは HTTP を送らない)。
 鍵はテストのたびに作り、環境変数に置く。取引先・品目・会社は作り物。
 """
@@ -73,14 +73,14 @@ def connections(user, subcontractor, customer, order_secret, reply_secret):
 
 
 def _received(monkeypatch, subcontractor, item, user):
-    """注文を送り、相手の役の届いた注文 (状態「届いた」) にするまで。"""
+    """注文を送り、相手の役の受信した注文 (状態「届いた」) にするまで。"""
     monkeypatch.setattr("requests.post", FakePost(inside=_into_receive))
     po = _send_order(subcontractor, item, user)
     return po, Inbox.objects.get()
 
 
 def _unreachable_reply(monkeypatch, subcontractor, item, own_item, user):
-    """承認したが、注文回答が相手に届かなかった届いた注文。"""
+    """承認したが、注文回答が相手に届かなかった受信した注文。"""
     po, inbox = _received(monkeypatch, subcontractor, item, user)
     monkeypatch.setattr("requests.post", FakePost(raises=requests.ConnectionError()))
     services.accept(inbox, {"T-100": own_item}, user)

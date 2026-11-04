@@ -125,7 +125,7 @@ class ShipmentBulkCreateView(BaseFormView):
     template_name = "shipping/shipment_bulk_form.html"
     screen_name = "一括出荷"
     screen_help = (
-        "注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷します。数量の既定は残の数です。"
+        "生産管理ボードで選んだ明細を、同じ出荷日でまとめて出荷します。数量の既定は残の数です。"
         "どれか 1 行が決まりに当たったときは、全部を保存しません。"
     )
 

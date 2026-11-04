@@ -1,6 +1,6 @@
-"""届いた注文の画面 (名前・行の操作・状態の列・並び・自動の更新・詳細の注文回答) のテスト。core の土台の上。
+"""受信した注文の画面 (名前・行の操作・状態の列・並び・自動の更新・詳細の注文回答) のテスト。core の土台の上。
 
-届いた注文の行は、送る側と同じ形の注文のデータを署名して services.receive に渡して作る (test_connect_inbox_views.py と同じ形)。
+受信した注文の行は、送る側と同じ形の注文のデータを署名して services.receive に渡して作る (test_connect_inbox_views.py と同じ形)。
 相手への送信は無い (取引先に送る向きのつながりを置かない)。念のため requests.post を偽の物に差し替え、呼ばれないことを見る。
 鍵はテストのたびに作り、環境変数に置く。固定の鍵の文字列をファイルに書かない。品番と会社名は作り物。
 """
@@ -101,9 +101,9 @@ def test_list_name_and_menu_label(client_logged_in, receive_order):
     home = client_logged_in.get(reverse("core:home")).content.decode()
     connections = client_logged_in.get(reverse("connect:connection_list")).content.decode()
 
-    # 画面の名前は「届いた注文」(題と見出し)。URL の名前と道は変えない。
-    assert "<title>届いた注文" in body
-    assert '<h1 class="truncate text-3xl font-bold tracking-tight">届いた注文</h1>' in body
+    # 画面の名前は「受信した注文」(題と見出し)。URL の名前と道は変えない。
+    assert "<title>受信した注文" in body
+    assert '<h1 class="truncate text-3xl font-bold tracking-tight">受信した注文</h1>' in body
     assert reverse("connect:inbox_list") == "/connect/inbox/"
     assert reverse("connect:inbox_list") in home
     # 取引先との接続は、名前を変えても左のメニューに出さない (設定の画面から開く)
@@ -128,7 +128,7 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
         reverse("masters:partner_modal", args=[waiting.partner_id]),
     ):
         assert f'href="{url}"' in row, url
-    for word in ("承認", "断る", "詳細を見る", "取引先の小窓"):
+    for word in ("承認", "却下", "詳細を見る", "取引先の小窓"):
         assert word in row, word
     assert '<span class="badge badge-soft badge-warning">届いた</span>' in row
 
@@ -143,7 +143,7 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
     assert '<span class="badge badge-ghost text-base-content/50">断った</span>' in row
     assert reverse("connect:inbox_accept", args=[rejected.pk]) not in row
     assert reverse("connect:inbox_detail", args=[rejected.pk]) in row
-    # 表の見出しに「操作」の列、種類の列は無い (届いた注文は注文だけ)
+    # 表の見出しに「操作」の列、種類の列は無い (受信した注文は注文だけ)
     assert '<th class="whitespace-nowrap font-medium">操作</th>' in body
     assert "種類" not in body.split("<tbody>")[0].split("<table")[-1]
 
@@ -188,7 +188,7 @@ def test_detail_shows_reply_state(client_logged_in, receive_order, user):
 
     body = client_logged_in.get(url).content.decode()
 
-    assert re.search(r"<title>[^<]* \| 届いた注文の詳細", body)
+    assert re.search(r"<title>[^<]* \| 受信した注文の詳細", body)
     reply = re.search(r"<dt[^>]*>注文回答</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
     assert reply and "—" in reply.group(1)
 

@@ -95,7 +95,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
 
 
 #: 一括出荷で出す行が 1 つも無いときの誤りの文
-NO_BULK_LINES = "出荷する明細がありません。注文残の盤で行を選び直してください。"
+NO_BULK_LINES = "出荷する明細がありません。生産管理ボードで行を選び直してください。"
 #: 一括出荷の行ごとの欄の名前の頭 (数量と「この行を出さない」)
 BULK_QTY_PREFIX = "qty_"
 BULK_SKIP_PREFIX = "skip_"

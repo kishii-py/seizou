@@ -57,7 +57,7 @@
     </table>
   </div>
   {% else %}
-  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}出荷できる明細がありません。注文残の盤で行を選び直してください。</p>
+  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}出荷できる明細がありません。生産管理ボードで行を選び直してください。</p>
   {% endif %}
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}

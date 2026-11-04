@@ -1,6 +1,6 @@
 """受入・検収・入金・フィードバックの読む道具 (seizou.core.mcp_tools) と、会社の設定の出所と、閲覧の人の差し替えを見る。
 
-道具は MCP を通さずに直に呼ぶ。データは部品の services で作る (検収の元の届いた注文だけ
+道具は MCP を通さずに直に呼ぶ。データは部品の services で作る (検収の元の受信した注文だけ
 tests/test_orders_acceptance.py の形で直に置く)。取引先・部品・題は作り物。
 日数で絞る道具の試験は今日からの相対の日で作る (回す日で結果が変わらないように)。
 """
@@ -144,7 +144,7 @@ def customer(user):
 
 
 def _accept(line, qty, accepted_on):
-    """受注の明細に検収を 1 行付ける。元の届いた注文 (受け入れた物) は受注ごとに 1 行置く
+    """受注の明細に検収を 1 行付ける。元の受信した注文 (受け入れた物) は受注ごとに 1 行置く
     (tests/test_orders_acceptance.py の _accept の形)。"""
     inbox = Inbox.objects.filter(order=line.order).first()
     if inbox is None:

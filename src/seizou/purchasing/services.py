@@ -223,7 +223,7 @@ def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
 
 
 # 送った後の知らせの字 (入力の土台 core.views.with_saved_note が、返した発注の saved_message を「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせにする)
-UNDELIVERED_MESSAGE = "注文は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+UNDELIVERED_MESSAGE = "注文は相手に届いていません。{response} 直したら「再送」を押してください。"
 RESENT_MESSAGE = "相手に送りました。"
 
 

@@ -1,7 +1,7 @@
 """connect の URL。URL の根 (seizou.core.urls) が connect/ の下に含める。
 
 注文の受け口は /connect/receive/order/ になる。
-画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは届いた注文の行ごと。差出人を選ぶも同じ。
+画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは受信した注文の行ごと。差出人を選ぶも同じ。
 注文回答 (承認か断りの結果) も、注文と同じ受け口 (receive) が受ける。
 """
 
@@ -14,9 +14,9 @@ from . import sender
 app_name = "connect"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-#: 左のメニューの字も画面の名前も「届いた注文」(決め 11-03 の候補 3。「受信箱」は使わない)。
+#: 左のメニューの字も画面の名前も「受信した注文」(決め 11-03 の候補 3。「受信箱」は使わない)。
 MENU = [
-    ("届いた注文", "connect:inbox_list"),
+    ("受信した注文", "connect:inbox_list"),
 ]
 # 取引先との接続は普段は触らないので、左のメニューでなく設定の画面 (core:settings) から開く (本人の指摘 11-03 昼)。
 

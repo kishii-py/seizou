@@ -1,4 +1,4 @@
-"""届いた注文の詳細の「差出人を選ぶ」の口。
+"""受信した注文の詳細の「差出人を選ぶ」の口。
 
 画面でない口なので関数の view (R15 は class だけを見る)。書くのは connect.services.choose_sender だけ (R13)。
 権限は access.require_write で、action は承認と同じ connect.accept (差出人を選ぶのは承認の前の手なので、承認できる人が選ぶ。
@@ -27,7 +27,7 @@ ACTION = access.action_name(services.accept)
 @login_required
 @require_POST
 def choose_sender(request, pk):
-    """差出人の取引先を選び、届いた注文の詳細へ戻る。選べたかどうかは知らせ (toast) に出す。"""
+    """差出人の取引先を選び、受信した注文の詳細へ戻る。選べたかどうかは知らせ (toast) に出す。"""
     inbox = get_object_or_404(Inbox, pk=pk)
     back = HttpResponseRedirect(reverse("connect:inbox_detail", args=[inbox.pk]))
     try:

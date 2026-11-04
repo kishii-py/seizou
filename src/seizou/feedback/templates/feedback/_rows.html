@@ -1,3 +1,3 @@
 {# フィードバックの一覧の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す (rows_template_names)。 #}
-{# core/_rows.html を include し、1 行を feedback/_row.html (状態の列の「直した」だけを緑の印にする) にする (connect の届いた注文と同じ row_template の形)。 #}
+{# core/_rows.html を include し、1 行を feedback/_row.html (状態の列の「直した」だけを緑の印にする) にする (connect の受信した注文と同じ row_template の形)。 #}
 {% include "core/_rows.html" with row_template="feedback/_row.html" %}

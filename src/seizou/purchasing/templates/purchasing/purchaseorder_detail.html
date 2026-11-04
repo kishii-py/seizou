@@ -6,14 +6,14 @@
 {% block actions %}{{ block.super }}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if object.status == "draft" and can_po %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
-  <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}送り直す</button>
+  <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}再送</button>
 </form>
 {% endif %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" %}
-<a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取り消す</a>
+<a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>
 {% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
 {% block content %}{% can_write "purchasing.PurchaseOrder" as can_po %}<div id="po-alert">{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「送り直す」を押してください。</span></div>
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「再送」を押してください。</span></div>
 {% endif %}{% endwith %}{% endif %}</div>{{ block.super }}
 <div id="po-live">
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="po-lines-title">

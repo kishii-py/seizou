@@ -428,7 +428,7 @@ def test_words_use_parts_and_new_labels(client_logged_in, partner):
     home = text(client_logged_in.get(reverse("core:home")))
     assert "部品マスターにある部品の数" in home and "品目" not in home
     assert "まだ出荷していない明細" in home and "注残の明細" not in home
-    assert "届いた注文 (未処理)" in home and "受信箱の未処理" not in home
+    assert "受信した注文 (未処理)" in home and "受信箱の未処理" not in home
     detail = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
     assert "部品の詳細" in detail and "標準単価 (円)" in detail
     listing = client_logged_in.get(reverse("masters:item_list"))
