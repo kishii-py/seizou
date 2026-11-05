@@ -281,14 +281,23 @@ def _write_company_icons(row) -> bool:
 
 
 def company_icons(company) -> dict | None:
-    """ロゴから作った印の URL ({"icon": 32 の PNG, "touch": 180 の PNG})。会社にロゴが無いか印のファイルが無ければ None。"""
+    """ロゴから作った印の URL ({"icon": 32 の PNG, "touch": 180 の PNG})。会社にロゴが無いか印のファイルが無ければ None。
+
+    URL の末尾に ?v=<字> を付ける。字は 32 の印の更新時刻 (秒) の 16 進 (storage が時刻を持たなければ大きさの 16 進)。
+    印を作り直すと字が変わるので、ブラウザが古い印を出し続けない (決め 11-06 00:0x。N173。/favicon.ico の口は付けない)。
+    """
     if not getattr(company, "logo", None):
         return None
     storage = company.logo.storage
     icon, touch = COMPANY_ICONS
     if not storage.exists(icon):
         return None
-    return {"icon": storage.url(icon), "touch": storage.url(touch)}
+    try:
+        stamp = int(storage.get_modified_time(icon).timestamp())
+    except NotImplementedError:
+        stamp = storage.size(icon)
+    version = f"?v={stamp:x}"
+    return {"icon": storage.url(icon) + version, "touch": storage.url(touch) + version}
 
 
 __all__ = ["clear_setting", "company", "company_icons", "next_number", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
