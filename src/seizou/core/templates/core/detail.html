@@ -12,7 +12,7 @@
   <div class="min-w-48 flex-1">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
-      {% if status %}{% status_badge object dot=True %}{% endif %}
+      {% block heading_badge %}{% if status %}{% status_badge object dot=True %}{% endif %}{% endblock %}
       {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
       {% for chip in head_chips|slice:":3" %}<span class="badge badge-outline gap-1 border-base-300" data-head-chip><span class="text-base-content/70">{{ chip.label }}</span><span class="font-medium tabular-nums">{{ chip.value }}</span></span>{% endfor %}
     </div>

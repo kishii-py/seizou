@@ -43,6 +43,7 @@ STATUS_MODELS = {
 DOT_INFO = '<span class="badge badge-soft badge-info gap-2"><span class="status status-info" aria-hidden="true"></span>{}</span>'
 DOT_GHOST = '<span class="badge badge-ghost gap-2"><span class="status" aria-hidden="true"></span>{}</span>'
 DOT_OUTLINE = '<span class="badge badge-outline badge-error gap-2"><span class="status status-error" aria-hidden="true"></span>{}</span>'
+DOT_WARNING = '<span class="badge badge-soft badge-warning gap-2"><span class="status status-warning" aria-hidden="true"></span>{}</span>'
 
 
 @pytest.fixture(autouse=True)
@@ -212,7 +213,7 @@ def test_detail_heading_badge_uses_the_meaning_color(user, logged_in, customer, 
         (reverse("orders:order_detail", args=[order.pk]), DOT_INFO.format("未出荷")),
         (reverse("workorders:workorder_detail", args=[workorder.pk]), DOT_INFO.format("発行")),
         (reverse("purchasing:purchaseorder_detail", args=[purchase.pk]), DOT_GHOST.format("下書き")),
-        (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_INFO.format("発行")),
+        (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_WARNING.format("未入金")),
     ]
 
     for url, badge in cases:
@@ -236,7 +237,7 @@ def test_list_status_column_uses_the_meaning_color(user, logged_in, customer, su
         ("orders:order_list", cancelled.pk, '<span class="badge badge-outline badge-error">取消</span>'),
         ("workorders:workorder_list", workorder.pk, '<span class="badge badge-soft badge-info">発行</span>'),
         ("purchasing:purchaseorder_list", purchase.pk, '<span class="badge badge-ghost">下書き</span>'),
-        ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-info">発行</span>'),
+        ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-warning">未入金</span>'),
     ]
 
     for name, pk, badge in cases:
