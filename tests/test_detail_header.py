@@ -9,12 +9,14 @@ import re
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 
+import seizou.core
 import seizou.masters.views
 from seizou.billing import services as billing_services
 from seizou.connect import services as connect_services
@@ -267,3 +269,12 @@ def test_head_chips_on_order_and_purchase_order(logged_in, client, settings, ite
     client.force_login(test_detail_columns._account("genba"))
     body = _get(client, "orders:order_detail", order.pk)[1]
     assert [label for label, _ in _chips(body)] == ["得意先", "一番早い納期"]
+
+
+def test_manual_intro_has_detail_head_section():
+    intro = (Path(seizou.core.__file__).parent / "manual_default" / "index.html").read_text(encoding="utf-8")
+    assert "<h3>詳細の画面</h3>" in intro
+    after = intro[intro.index("<h3>詳細の画面</h3>") :]
+    paragraph = after[after.index("<p>") : after.index("</p>")]
+    for word in ("パンくず", "⋯", "流れ"):
+        assert word in paragraph, word
