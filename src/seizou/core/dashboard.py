@@ -883,7 +883,7 @@ def _received_inbox():
 
 
 def _lines_without_workorder():
-    """受注か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
+    """未出荷か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
     order_model = _model("orders", "Order")
     line_model = _model("orders", "OrderLine")
     workorder_model = _model("workorders", "WorkOrder")
@@ -899,7 +899,7 @@ def _lines_without_workorder():
 
 
 def _orders_to_ship():
-    """出荷の残りがある受注 (状態が受注か一部出荷)。"""
+    """出荷の残りがある受注 (状態が未出荷か一部出荷)。"""
     order_model = _model("orders", "Order")
     if order_model is None:
         return None

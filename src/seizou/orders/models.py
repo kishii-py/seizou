@@ -31,7 +31,7 @@ class Order(models.Model):
     STATUS_SHIPPED = "shipped"
     STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
-        (STATUS_OPEN, "受注"),
+        (STATUS_OPEN, "未出荷"),
         (STATUS_PARTIAL, "一部出荷"),
         (STATUS_SHIPPED, "出荷済"),
         (STATUS_CANCELLED, "取消"),
@@ -59,7 +59,7 @@ class Order(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN
     )
     source = models.CharField(
-        "入口", max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL
+        "注文の入口", max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL
     )
     note = models.CharField("備考", max_length=500, blank=True)
 

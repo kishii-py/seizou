@@ -32,7 +32,7 @@ def _customer_choices():
 
 
 def _open_orders(orders):
-    """出荷の残りがある受注だけ (受注・一部出荷)。受注の一覧の印の when。"""
+    """出荷の残りがある受注だけ (未出荷・一部出荷)。受注の一覧の印の when。"""
     return orders.filter(status__in=OPEN_STATUSES)
 
 
@@ -69,7 +69,7 @@ class OrderListView(BaseListView):
 
     model = Order
     screen_name = "受注"
-    screen_help = "受けた注文の一覧。既定は出荷の残りがある受注 (受注・一部出荷) だけを出します。"
+    screen_help = "受けた注文の一覧。既定は出荷の残りがある受注 (未出荷・一部出荷) だけを出します。"
     columns = ("order_no", "customer", "order_date", "customer_order_no", "status", "source")
     search_fields = ("order_no", "customer__name", "customer__code", "customer_order_no")
     # 一覧の絞り (土台の FilterSpec。決め 11-04 15:0x)。得意先は choice に候補の関数を渡す (lookup の候補は取引先の全部で、協力企業も出るため)。

@@ -114,9 +114,9 @@ def test_status_axis_counts_rows_in_choice_order(user, orders):
     response = call(_OrderList, user, view="summary")
     text = body(response)
     summary = response.context_data["summary"]
-    # 既定は最初の choice の軸 (状態) × 件数。並びは候補の順 (受注 → 出荷済)
+    # 既定は最初の choice の軸 (状態) × 件数。並びは候補の順 (未出荷 → 出荷済)
     assert summary["axis"].key == "status" and summary["measure"].key == "count"
-    assert pairs(response) == [("受注", 3), ("出荷済", 2)]
+    assert pairs(response) == [("未出荷", 3), ("出荷済", 2)]
     assert summary["total"] == 5
     assert [str(row["share"]) for row in summary["rows"]] == ["60.0", "40.0"]
     # 軸の候補: 状態・得意先・受注日の月。納期は明細 (多の側) を辿るので軸にしない
@@ -164,13 +164,13 @@ def test_month_axis_counts_by_order_date_month(user, orders):
 
 def test_summary_follows_filters_and_search(user, orders):
     north = orders["north"]
-    assert pairs(call(_OrderList, user, view="summary", f_customer=north.pk)) == [("受注", 3)]
+    assert pairs(call(_OrderList, user, view="summary", f_customer=north.pk)) == [("未出荷", 3)]
     response = call(_OrderList, user, view="summary", g_by="customer", f_status="shipped")
     assert pairs(response) == [(str(orders["south"]), 2)]
     response = call(_OrderList, user, view="summary", g_by="ordered:month", f_ordered_from="2026-11-01")
     assert pairs(response) == [("2026-11", 3)]
     response = call(_OrderList, user, view="summary", q=orders["orders"][0].order_no)
-    assert pairs(response) == [("受注", 1)]
+    assert pairs(response) == [("未出荷", 1)]
     # 知らない軸と量は既定 (状態 × 件数) に戻す
     response = call(_OrderList, user, view="summary", g_by="nothing", g_val="nothing")
     assert response.context_data["summary"]["axis"].key == "status"
@@ -198,7 +198,7 @@ def test_summary_csv_has_the_same_rows_and_total(user, orders):
     response = call(_OrderList, user, view="summary", format="csv")
     assert csv_rows(response) == [
         ["状態", "件数", "割合 (%)"],
-        ["受注", "3", "60.0"],
+        ["未出荷", "3", "60.0"],
         ["出荷済", "2", "40.0"],
         ["合計", "5", "100.0"],
     ]
@@ -252,7 +252,7 @@ def test_order_screens_offer_the_summary(client, user, orders):
     response = client.get(url, {"view": "summary", "f_open": "0"})
     summary = response.context["summary"]
     assert [axis.key for axis in summary["axes"]] == ["status", "customer", "ordered:month"]
-    assert [(row["label"], row["value"]) for row in summary["rows"]] == [("受注", 3), ("出荷済", 2)]
+    assert [(row["label"], row["value"]) for row in summary["rows"]] == [("未出荷", 3), ("出荷済", 2)]
     # 注文残の盤: 部品の annotate (残) で絞った後の行を、納期の月 × 数量の合計で数える (納期の無い明細は「未設定」)。
     # 北の 10-30 の明細 (数量 1) を全部出荷すると残が 0 になり、既定の「出荷の残りがある物だけ」から外れる (15 − 1)。
     shipping_services.ship(orders["orders"][0].lines.get(), Decimal("1"), date(2026, 11, 4), user)
