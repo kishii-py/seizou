@@ -11,7 +11,8 @@
     <button type="submit" class="btn btn-primary btn-lg">{% icon "search" "size-5" %}検索</button>
   </div>
   {% if kind != "all" %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
-  <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+  {# 種類の印と得意先の選択は同じ行の左に並べる (右端に離すと別の物に見える = 本人の指摘 11-05 11:2x) #}
+  <div class="mt-4 flex flex-wrap items-center gap-4">
     <nav class="flex flex-wrap items-center gap-2" aria-label="探す種類">
       {% for chip in chips %}
       {% if chip.selected %}<a class="badge badge-lg badge-primary rounded-full px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="?{{ chip.query }}" aria-current="true">{{ chip.label }}</a>
