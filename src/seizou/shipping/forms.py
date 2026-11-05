@@ -236,9 +236,10 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         line = obj.order_line
+        # 区切りは「・」(目視の所見 11-05。空白だけだと数量と日付がくっついて読みにくい)
         return (
-            f"{obj.shipment_no} {line.order.customer.name} {line.order.order_no} "
-            f"{line.item.part_no} {line.item.name} 数量 {obj.qty.normalize():f}"
+            f"{obj.shipment_no}・{line.order.customer.name}・{line.order.order_no}"
+            f"・{line.item.part_no} {line.item.name}・数量 {obj.qty.normalize():f}"
         )
 
 
@@ -247,6 +248,8 @@ class DeliveryNoteForm(forms.Form):
 
     得意先の違う出荷が混ざったときは、services の create_delivery_note が R08 で断る (画面で先に断らない)。
     """
+
+    submit_label = "納品書を作る"
 
     shipments = ShipmentChoiceField(
         label="出荷",

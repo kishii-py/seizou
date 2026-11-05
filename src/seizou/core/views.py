@@ -1648,7 +1648,7 @@ def dashboard_stats() -> list[dict]:
         waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
         stats.append(
             {
-                "label": "受信した注文 (未処理)",
+                "label": "受信した注文",
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",

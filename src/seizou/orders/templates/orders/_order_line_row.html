@@ -2,7 +2,7 @@
 {# 明細の 1 行 (row は formset の 1 つの form)。行の誤りは欄の下 (赤)。既にある明細を指す隠しの欄は最後の列に置く。 #}
 <tr class="align-top" data-order-line>
   {% for field in row.visible_fields %}{% if field.name != "DELETE" %}
-  <td class="min-w-32 [&_[aria-invalid=true]]:border-error">
+  <td class="{% if field.name == "item" %}min-w-56{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">
     {{ field }}
     {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
   </td>

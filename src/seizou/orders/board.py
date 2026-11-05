@@ -279,7 +279,8 @@ class BoardRow:
     def days_left(self):
         """納期までの稼働日の数 (core.calendar.workdays_between。休日と定休日を除く)。納期が過ぎていれば -1 以下。納期が無ければ None。"""
         due = self.line.due_date
-        if due is None:
+        if due is None or self.remaining <= 0:
+            # 納期が無い行と、出荷の済んだ行 (残 0) は数を出さない (済んだ行に遅れの赤が付いて見えた。目視の所見 11-05)
             return None
         days = calendar.workdays_between(self.today, due, holidays=self.holidays)
         # 休みの日に盤を見ると、前の休みの日の納期は稼働日の数が 0 になる。遅れの行を 0 に見せない
