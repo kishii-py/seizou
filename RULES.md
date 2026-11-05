@@ -13,7 +13,7 @@
 | R05 | 取消した受注には、出荷も指示書も作れない | `services` | `tests/test_r05_cancelled_order.py` |
 | R08 | 納品書の数量は出荷の数量と一致する。納品書を出した後の出荷は、納品書を取り消してから直す | `services` | `tests/test_r08_delivery_note_qty.py` |
 | R09 | 請求書の明細は、出荷済みの物だけ | `services` | `tests/test_r09_invoice_shipped_only.py` |
-| R10 | 受信箱の注文は、人が受け入れるまで受注にならない | `services` | `tests/test_r10_inbox_accept.py` |
+| R10 | 受信した注文は、人が受け入れるまで受注にならない | `services` | `tests/test_r10_inbox_accept.py` |
 | R11 | 同じ番号の注文のデータは 1 回だけ登録する (2 回届いても 1 件) | DB の一意の制約と `services` | `tests/test_r11_dedupe.py` |
 | R12 | 受け口は、登録した取引先からの、署名の合う物だけを受ける | `services` (署名の検査) | `tests/test_r12_signature.py` |
 | R21 | 取消した請求書には、入金を記録できない | `services` | `tests/test_r21_payment_on_cancelled_invoice.py` |
