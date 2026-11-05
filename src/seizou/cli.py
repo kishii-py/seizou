@@ -49,7 +49,7 @@ ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 FIELD_TYPES = ("text", "number", "date", "choice", "bool")
 FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
-#: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは設定の画面から上げる)
+#: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは根の鍵 logo か設定の画面から上げる)
 COMPANY_KEYS = ("address", "phone", "bank_account")
 #: --demo のつながりの種の受け口の頭を、相手の置き場の URL にする環境変数 (SEIZOU_PARTNER_<相手の会社の id の大文字>_URL)。答えの partner_base_urls より勝つ
 PARTNER_URL_ENV = re.compile(r"SEIZOU_PARTNER_([A-Z][A-Z0-9_]*)_URL")
@@ -94,13 +94,17 @@ CREATE_ADMIN = (
 )
 
 # 会社の設定 (core の Company) の 1 行を、答えの会社名と会社の情報 (company) で作る短い Python。既にあれば触らない。
+# ロゴ (答えの logo。任意) は設定の画面と同じく上げたファイルの形で update_company に渡すので、印 (favicon) も同時にできる。N166
 CREATE_COMPANY = (
-    "import importlib, json, os; "
+    "import importlib, json, os, pathlib; "
     "Company = importlib.import_module('seizou.core.models').Company; "
     "services = importlib.import_module('seizou.core.services'); "
     "made = not Company.objects.exists(); "
     "made and Company.objects.create(name=os.environ['SEIZOU_COMPANY_NAME']); "
-    "made and services.update_company(services.company(), json.loads(os.environ['SEIZOU_COMPANY_FIELDS']), None); "
+    "fields = json.loads(os.environ['SEIZOU_COMPANY_FIELDS']); "
+    "logo = pathlib.Path(os.environ.get('SEIZOU_COMPANY_LOGO') or '.'); "
+    "logo.is_file() and fields.update(logo=importlib.import_module('django.core.files.uploadedfile').SimpleUploadedFile(logo.name, logo.read_bytes())); "
+    "made and services.update_company(services.company(), fields, None); "
     "print('created' if made else 'exists')"
 )
 
@@ -196,6 +200,11 @@ def load_answers(path: Path) -> dict:
                 raise AnswerError(f"company の鍵を知りません: {key}。{' / '.join(COMPANY_KEYS)} のどれかで書きます。")
             if not isinstance(value, str):
                 raise AnswerError(f"company の {key} は字で書きます (数に読める値は引用符で囲む): {value!r}")
+
+    # ロゴ (任意。答えの YAML の横からの道)。無いファイルを黙って飛ばすとロゴと印 (favicon) が入らないので断る。N166
+    logo = answers.get("logo")
+    if logo is not None and not (isinstance(logo, str) and (path.parent / logo).is_file()):
+        raise AnswerError(f"logo のファイルがありません: {logo!r}。答えの YAML の横からの道で、PNG か JPEG の絵のファイルを書きます。")
 
     # 業種の見本を入れない印 (任意)。書き損じを黙って通さないので、none の外の値は断る
     if "recipe" in answers and answers["recipe"] != "none":
@@ -671,7 +680,7 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     admin_lines, failure = _new_admin(site, password_file)
     if failure is not None:
         return failure
-    failure = _new_company(site, answers)
+    failure = _new_company(site, answers, answers_path)
     if failure is not None:
         return failure
     seed_copied, made_passwords, failure = _new_demo(site, demo, answers, answers_path, bases, demo_password)
@@ -759,16 +768,17 @@ def _new_admin(site: Path, password_file: Path | None) -> tuple[list[str], int |
     return admin_lines, None
 
 
-def _new_company(site: Path, answers: dict) -> int | None:
+def _new_company(site: Path, answers: dict, answers_path: Path) -> int | None:
     """seizou new の段 (会社の設定)。画面の上の帯に出る会社名の 1 行を、答えの name で作る。子の process が失敗したら終わりの番号。"""
+    logo = str(answers_path.parent / answers["logo"]) if answers.get("logo") else ""
     result = run_manage(
         site,
         ["shell", "--no-imports", "-c", CREATE_COMPANY],
-        {"SEIZOU_COMPANY_NAME": str(answers["name"]), "SEIZOU_COMPANY_FIELDS": json.dumps(answers.get("company") or {}, ensure_ascii=False)},
+        {"SEIZOU_COMPANY_NAME": str(answers["name"]), "SEIZOU_COMPANY_FIELDS": json.dumps(answers.get("company") or {}, ensure_ascii=False), "SEIZOU_COMPANY_LOGO": logo},
     )
     if result.returncode != 0:
         return show_failure("会社の設定を作る所", result)
-    print(f"会社の設定を作りました: {answers['name']}")
+    print(f"会社の設定を作りました: {answers['name']}" + ("。ロゴと印 (favicon) も入れました" if logo else ""))
     return None
 
 
