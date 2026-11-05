@@ -97,7 +97,7 @@ def test_inbox_list_filters_by_status_and_partner_and_poll_keeps_filters(logged_
     empty = {"f_status": Inbox.STATUS_REJECTED, "f_partner": str(south.pk)}
     assert logged_in.get(url, empty).context["paginator"].count == 0
     poll = logged_in.get(url, {"after": "0", **empty}, HTTP_HX_REQUEST="true").content.decode()
-    assert "<table" not in poll and "絞りの条件に合う物はありません" in poll and "絞りを外す" in poll
+    assert "<table" not in poll and "に合う物はありません。" in poll and "絞りを外す" in poll
 
 
 @pytest.mark.django_db

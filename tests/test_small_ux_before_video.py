@@ -75,14 +75,14 @@ def test_inbox_empty_says_orders_arrive_and_links_connections(logged_in):
 
 
 def test_inbox_filtered_empty_keeps_core_sentence(logged_in):
-    # 絞りで 0 件のときは core の「絞りの条件に合う物はありません。」のまま (取りに行きも同じ)。
+    # 絞りで 0 件のときは core の「に合う物はありません。」のまま (取りに行きも同じ)。
     url = reverse("connect:inbox_list")
     rejected = {"f_status": Inbox.STATUS_REJECTED}
     whole = logged_in.get(url, rejected).content.decode()
     poll = logged_in.get(url, {"after": "0", **rejected}, **HX).content.decode()
 
     for body in (whole, poll):
-        assert "絞りの条件に合う物はありません。" in body
+        assert "に合う物はありません。" in body
         assert EMPTY_LINE not in body
 
 

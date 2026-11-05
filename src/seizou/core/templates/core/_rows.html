@@ -40,12 +40,13 @@
 </div>
 {% else %}
 {# 空の一覧: 絵と 1 文と次の操作 (主色のボタンは見出しの右の 1 つだけなので、ここは枠だけのボタン)。 #}
+{# 検索か札 (BaseListView.filter_chips) があれば、その字を 1 文に入れて「すべて外す」(一覧の枠を取り直す)。無ければ「まだ 1 件もありません。」(app の _rows.html が自分の文を出す一覧も、検索か絞りがある 0 件はここに任せる。N161)。 #}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  {% if search_q or filter_active %}
+  {% if search_q or filter_chips %}
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
-  <p class="mt-4 font-medium">{% if search_q %}「{{ search_q }}」に{% else %}絞りの条件に{% endif %}合う物はありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">言葉を短くするか、絞り込みをクリアしてください。</p>
-  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ request.path }}">{% icon "x" "size-4" %}絞り込みをクリア</a>
+  <p class="mt-4 font-medium">{% if search_q %}「{{ search_q }}」{% if filter_chips %}、{% endif %}{% endif %}{% for chip in filter_chips %}{{ chip.heading }}「{{ chip.text }}」{% if not forloop.last %}、{% endif %}{% endfor %}に合う物はありません。</p>
+  <p class="mt-2 text-xs text-base-content/50">言葉を短くするか、「すべて外す」で条件を全部外してください。</p>
+  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#list-card" hx-select="#list-card" hx-swap="outerHTML ignoreTitle:true" hx-push-url="true">{% icon "x" "size-4" %}すべて外す</a>
   {% else %}
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">まだ 1 件もありません。</p>
