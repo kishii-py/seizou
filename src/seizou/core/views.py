@@ -844,6 +844,8 @@ class BaseListView(ScreenMixin, ListView):
                     "date": spec.is_date,
                     "datetime": spec.is_datetime,
                     "code": spec.is_code,
+                    # 状態の列 (choices を持つ status の項目。status_for と同じ読み方) は core/_rows.html が状態の色の表で印にする (N152)
+                    "status": spec.name == "status" and bool(getattr(spec.field, "choices", None)),
                 }
             )
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}

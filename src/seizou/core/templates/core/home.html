@@ -153,7 +153,7 @@
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
             <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|comma:0 }}<span class="text-xs text-base-content/50"> 円</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
-            <td class="whitespace-nowrap">{% if order.status == "shipped" %}<span class="badge badge-sm badge-soft badge-success">{{ order.obj.get_status_display }}</span>{% elif order.status == "partial" %}<span class="badge badge-sm badge-soft badge-warning">{{ order.obj.get_status_display }}</span>{% elif order.status == "cancelled" %}<span class="badge badge-sm badge-ghost text-base-content/50">{{ order.obj.get_status_display }}</span>{% else %}<span class="badge badge-sm badge-soft badge-primary">{{ order.obj.get_status_display }}</span>{% endif %}</td>
+            <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>
           </tr>
           {% endfor %}
         </tbody>
