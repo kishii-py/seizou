@@ -3,6 +3,7 @@
 {# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
 {# 窓 (data-assistant-window) は題の帯 (data-assistant-grip) で動かし、右下の角で大きさを変え、「広げる」で画面の 80% にする。位置と大きさは assistant-window.js が inline の style で置く (class を足し引きしない)。右下の「AI に質問」は動かさない (E-38)。 #}
 {# 吹き出しは core の _chat_bubble.html。待つ間は吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
+{# 右下の「AI に質問」は絵だけの丸いボタン (btn-circle。幅と高さ 40px)。字は指したときと焦点が来たときに上の吹き出し (daisyUI の tooltip) で出し、読み上げは aria-label。表の右端の列・右のカード・保存のボタンに重なる面を減らすため小さくした (決め 11-05 15:0x。N160)。 #}
 <div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">
   <section id="assistant-panel" hidden aria-label="AI チャット">
     <div class="flex max-h-[70vh] w-96 max-w-[calc(100vw-3rem)] flex-col gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-lg" data-assistant-window>
@@ -34,7 +35,7 @@
       {% endif %}
     </div>
   </section>
-  <button id="assistant-toggle" type="button" class="btn btn-neutral rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel">AI に質問</button>
+  <span class="tooltip" data-tip="AI に質問"><button id="assistant-toggle" type="button" class="btn btn-neutral btn-circle shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">{% icon "bot" "size-5" %}</button></span>
 </div>
 <script>
 (function () {
