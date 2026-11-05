@@ -134,7 +134,7 @@ def test_shipment_detail_has_label_buttons(logged_in, shipment):
     assert f'href="{pdf_url}" target="_blank"' in body
     # 土台の詳細の物は残る
     assert shipment.shipment_no in body
-    assert "一覧に戻る" in body and "編集" in body
+    assert 'aria-label="パンくず"' in body and "編集" in body
     assert reverse("shipping:shipment_update", args=[shipment.pk]) in body
 
 

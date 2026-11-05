@@ -492,7 +492,7 @@ def test_buttons_and_titles_use_general_words(client_logged_in):
     assert "部品の新規登録" in create and "キャンセル" in create and "やめる" not in create
     item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
     detail = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
-    assert "一覧に戻る" in detail and "編集" in detail and "一覧へ</a>" not in detail and "直す</a>" not in detail
+    assert 'aria-label="パンくず"' in detail and "編集" in detail and "一覧へ</a>" not in detail and "直す</a>" not in detail
     update = text(client_logged_in.get(reverse("masters:item_update", args=[item.pk])))
     assert "部品の編集" in update
     modal = text(client_logged_in.get(reverse("masters:item_modal", args=[item.pk]), HTTP_HX_REQUEST="true"))

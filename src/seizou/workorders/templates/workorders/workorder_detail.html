@@ -3,12 +3,11 @@
 {# 指示書の詳細: core の詳細 (項目と「工程」「進捗」のタブ)。発行のときだけ、指示書の権限がある人に「取消」(「着手」は現場の記録なので誰にでも出す)。取消は小窓で開く (data-modal-form)。見出しの帯 (#workorder-heading) と中身 (#workorder-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。 #}
 {% block heading %}<div id="workorder-heading">{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
-{% can_write "workorders.WorkOrder" as can_cancel %}
-{% if object.status == "issued" %}{% if object.accepted_at %}<span class="badge badge-soft badge-success gap-2">{% icon "check" "size-4" %}着手済 {{ object.accepted_at|date:"Y-m-d H:i" }}{% if object.accepted_by %} {{ object.accepted_by }}{% endif %}</span>{% else %}<form method="post" action="{% url 'workorders:workorder_accept' object.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}着手</button></form>{% endif %}{% endif %}
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a>
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
-{% if object.status == "issued" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'workorders:workorder_cancel' object.pk %}" data-modal-form="{% url 'workorders:workorder_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}
 {% endblock %}
+{% block more %}{% can_write "workorders.WorkOrder" as can_cancel %}{% if object.status == "issued" and can_cancel %}{% url 'workorders:workorder_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{% block edit_button %}{% if object.status == "issued" %}{% if object.accepted_at %}<span class="badge badge-soft badge-success gap-2">{% icon "check" "size-4" %}着手済 {{ object.accepted_at|date:"Y-m-d H:i" }}{% if object.accepted_by %} {{ object.accepted_by }}{% endif %}</span>{% else %}<form method="post" action="{% url 'workorders:workorder_accept' object.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}着手</button></form>{% endif %}{% endif %}{% endblock %}
 {% block content %}<div id="workorder-live">{{ block.super }}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}</div>
 <div id="workorder-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#workorder-live" hx-target="#workorder-live" hx-swap="outerHTML" hx-select-oob="#workorder-heading"></div>
 {% endblock %}

@@ -53,7 +53,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
 from django.template.loader import select_template
-from django.urls import NoReverseMatch, reverse
+from django.urls import NoReverseMatch, Resolver404, get_script_prefix, resolve, reverse
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -119,6 +119,24 @@ def url_or_none(name: str, *args) -> str | None:
 def model_url(model, kind: str, *args) -> str | None:
     meta = model._meta
     return url_or_none(f"{meta.app_label}:{meta.model_name}_{kind}", *args)
+
+
+def screen_name_of(url: str | None) -> str:
+    """URL の画面の名前 (画面の class の screen_name)。詳細のパンくずの 1 段目に一覧の名前を出すため (N163)。
+
+    URL が無いか、引けないか、画面の class が名前を持たなければ空。空なら詳細は「一覧に戻る」を出す。
+    reverse は script の頭 (置き場の道) を付けた道を返し、resolve はそれを受けないので、頭を外してから引く。
+    """
+    if not url:
+        return ""
+    prefix = get_script_prefix()
+    if prefix != "/" and url.startswith(prefix):
+        url = "/" + url[len(prefix):]
+    try:
+        match = resolve(url)
+    except Resolver404:
+        return ""
+    return getattr(getattr(match.func, "view_class", None), "screen_name", "") or ""
 
 
 def is_master(value) -> bool:
@@ -1087,6 +1105,7 @@ class BaseDetailView(ScreenMixin, DetailView):
         if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
             context["edit_url"] = None
         context["list_url"] = model_url(obj.__class__, "list")
+        context["list_name"] = screen_name_of(context["list_url"])
         context["status"] = self.status_for(obj)
         return context
 
