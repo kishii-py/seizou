@@ -1,15 +1,11 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
-{# 納品書の詳細: 土台の詳細に、印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。取消は小窓で開く (data-modal-form)。見出しの帯 (#deliverynote-heading) と中身 (#deliverynote-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158)。 #}
-{% block heading %}<div id="deliverynote-heading">{{ block.super }}</div>{% endblock %}
+{# 納品書の詳細: 土台の詳細に、印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。 #}
 {% block actions %}{{ block.super }}
 {% can_write "shipping.DeliveryNote" as can_cancel %}
 {% can_write "billing.Invoice" as can_bill %}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 {% url 'billing:invoice_create' as invoice_url %}{% if invoice_url and can_bill %}{% if object.status == "issued" %}<a class="btn btn-outline border-base-300" href="{{ invoice_url }}?customer={{ object.customer_id }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "yen" "size-4" %}請求書作成</a>{% endif %}{% endif %}
-{% if object.status == "issued" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'shipping:deliverynote_cancel' object.pk %}" data-modal-form="{% url 'shipping:deliverynote_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}
-{% endblock %}
-{% block content %}<div id="deliverynote-live">{{ block.super }}</div>
-<div id="deliverynote-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#deliverynote-live" hx-target="#deliverynote-live" hx-swap="outerHTML" hx-select-oob="#deliverynote-heading"></div>
+{% if object.status == "issued" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'shipping:deliverynote_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}
 {% endblock %}

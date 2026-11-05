@@ -1,13 +1,12 @@
 {% extends "core/detail.html" %}
 {% load seizou_icons %}
-{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。受信した注文で作った受注の出荷だけ、下に出荷の知らせの節 (送った印か、赤の届いていない知らせと「送り直す」)。納品書作成は小窓で開く (data-modal-form)。見出しの帯 (#shipment-heading) と中身 (#shipment-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158)。 #}
-{% block heading %}<div id="shipment-heading">{{ block.super }}</div>{% endblock %}
+{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。受信した注文で作った受注の出荷だけ、下に出荷の知らせの節 (送った印か、赤の届いていない知らせと「送り直す」)。 #}
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}ラベル</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
-{% url 'shipping:deliverynote_create' as note_url %}{% if note_url %}{% if not object.delivery_note or object.delivery_note.status == "cancelled" %}<a class="btn btn-outline border-base-300" href="{{ note_url }}?shipments={{ object.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{{ note_url }}?shipments={{ object.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "file" "size-4" %}納品書作成</a>{% endif %}{% endif %}
+{% url 'shipping:deliverynote_create' as note_url %}{% if note_url %}{% if not object.delivery_note or object.delivery_note.status == "cancelled" %}<a class="btn btn-outline border-base-300" href="{{ note_url }}?shipments={{ object.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "file" "size-4" %}納品書作成</a>{% endif %}{% endif %}
 {% endblock %}
-{% block content %}<div id="shipment-live">{{ block.super }}
+{% block content %}{{ block.super }}
 {% with state=object.notice_state %}{% if state %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipment-notice-title">
   <h2 id="shipment-notice-title" class="text-lg font-bold">出荷の知らせ (相手の seizou へ送った出荷)</h2>
@@ -16,6 +15,4 @@
   <form method="post" action="{% url 'shipping:shipment_notice_resend' object.pk %}" class="mt-4">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}
 </section>
 {% endif %}{% endwith %}
-</div>
-<div id="shipment-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#shipment-live" hx-target="#shipment-live" hx-swap="outerHTML" hx-select-oob="#shipment-heading"></div>
 {% endblock %}
