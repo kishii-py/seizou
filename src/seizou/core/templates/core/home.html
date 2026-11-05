@@ -3,7 +3,7 @@
 {% load seizou_outcome %}
 {% block content %}
 {# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
-{# 並びは、数字のカード (会社の KPI) → 今日やること (個人のタスク。core の dashboard.today_tasks) → 出荷の図と生産の図 → 最近の受注 (左) と納期アラート (右) → よく使う画面 (本人の決め 11-03 11:0x。今日やることは UX の案 2-A 11-05 で足し、本人の決め 11-05 09:4x で数字のカードの直下へ)。 #}
+{# 並びは、数字のカード (会社の KPI) → 今日やること (左。個人のタスク。core の dashboard.today_tasks) と納期アラート (右) → 出荷の図と生産の図 → 最近の受注 (左) と注文の入口の図 (右) → よく使う画面 (本人の決め 11-03 11:0x。今日やることは UX の案 2-A 11-05 で足し、本人の決め 11-05 09:4x で数字のカードの直下へ。本人の決め 11-05 11:0x で今日やることを半分の幅にして納期アラートと並べ、注文の入口を最近の受注の右へ)。 #}
 {# 出荷と生産の図と納期アラート (core の dashboard が読む。部品が無ければ None で、節ごと出さない。金額を見られない人には金額の図を出さない)。受注の行はどこを押しても受注の詳細へ移る (行の中の link はそのまま動く)。 #}
 {# 数字のカードは dashboard_stats() の並び (6 枚目 = 今月の支払の見込み。受入の部品があるとき。7 枚目 = 今月の入金。入金の表があるとき)。6 枚のときは xl で 3 列 × 2 段、2xl で 1 段。7 枚のときは xl 以上で 4 列 × 2 段 (2xl で 7 列に並べると 1 枚が狭い)。 #}
 {# 8 枚目 = 手で打たずに受けた明細 (受注の部品があるとき。N83)。8 枚のときも xl 以上で 4 列 × 2 段。detail のあるカードは数の下に 1 行 (≒ 転記 m 分)。 #}
@@ -29,36 +29,84 @@
 </div>
 {% endif %}
 {% today_tasks as today %}
-{% if today %}
-<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="flow-guide-title" data-tour="flow-guide">
-  {% if today.rows %}
-  <h2 id="flow-guide-title" class="text-lg font-bold">{{ today.title }}</h2>
-  <p class="mt-2 text-base-content/70">手を動かす物のある段だけが並びます。釦を押すと、その物に絞った一覧が開きます。</p>
-  <ul class="mt-4 divide-y" aria-label="{{ today.title }}">
-    {% for row in today.rows %}
-    <li class="flex flex-wrap items-center justify-between gap-2 py-2">
-      <span>{{ row.label }} <span class="font-bold tabular-nums">{{ row.count|comma }}</span> {{ row.unit }}</span>
-      <a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ row.url }}">{{ row.button }}{% icon "chevron-right" "size-4" %}</a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <h2 id="flow-guide-title" class="text-lg font-bold">はじめての方へ</h2>
-  <p class="mt-2 text-base-content/70">今は手を動かす物がありません。業務の流れの段を押すと、その画面が開きます。</p>
-  <div class="mt-4 grid gap-6 2xl:grid-cols-2">
-    {% for f in today.guide.flows %}
-    <div>
-      <h3 class="font-bold">{{ f.title }}</h3>
-      {# 矢印は前の段の li に入れる (段と矢印が 1 組で折り返すので、折り返した行が矢印で始まらない。本人 11-04 14:3x)。段の字は折らない。 #}
-      <ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{{ f.title }}の段">
-        {% for step in f.steps %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ step.url }}">{{ step.label }}</a>{% if not forloop.last %}{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}</li>{% endfor %}
-      </ol>
+{# 今日やること (左) と納期アラート (右) の 1 段。lg から 2 列で、片方だけなら 1 列。幅が狭いときは縦に積む (今日やることが上)。本人の決め 11-05 11:0x「今日やることは col-md-6 的な大きさの方がいい」「余白が多すぎて折角の一等地が勿体無い」。 #}
+{% if today and alerts is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif today or alerts is not None %}<div class="mb-6 grid gap-6">{% endif %}
+  {% if today %}
+  <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="flow-guide-title" data-tour="flow-guide">
+    {% if today.rows %}
+    <h2 id="flow-guide-title" class="text-lg font-bold">{{ today.title }}</h2>
+    <p class="mt-2 text-base-content/70">手を動かす物のある段だけが並びます。釦を押すと、その物に絞った一覧が開きます。</p>
+    <ul class="mt-4 divide-y" aria-label="{{ today.title }}">
+      {% for row in today.rows %}
+      <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span>{{ row.label }} <span class="font-bold tabular-nums">{{ row.count|comma }}</span> {{ row.unit }}</span>
+        <a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ row.url }}">{{ row.button }}{% icon "chevron-right" "size-4" %}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <h2 id="flow-guide-title" class="text-lg font-bold">はじめての方へ</h2>
+    <p class="mt-2 text-base-content/70">今は手を動かす物がありません。業務の流れの段を押すと、その画面が開きます。</p>
+    <div class="mt-4 grid gap-6 2xl:grid-cols-2">
+      {% for f in today.guide.flows %}
+      <div>
+        <h3 class="font-bold">{{ f.title }}</h3>
+        {# 矢印は前の段の li に入れる (段と矢印が 1 組で折り返すので、折り返した行が矢印で始まらない。本人 11-04 14:3x)。段の字は折らない。 #}
+        <ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{{ f.title }}の段">
+          {% for step in f.steps %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ step.url }}">{{ step.label }}</a>{% if not forloop.last %}{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}</li>{% endfor %}
+        </ol>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-  </div>
+    {% endif %}
+  </section>
   {% endif %}
-</section>
-{% endif %}
+  {% if alerts is not None %}
+  <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="due-alerts-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 id="due-alerts-title" class="text-lg font-bold">納期アラート</h2>
+        {% include "core/_screen_help.html" with part="due-alerts" label="納期アラートの説明" %}
+        <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
+        <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
+      </div>
+      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">生産管理ボードを見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+    </div>
+    {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
+    {% if alerts.overdue.count or alerts.soon.count %}
+    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+      <table class="table table-sm">
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">得意先</th><th class="font-medium">品番</th><th class="font-medium">品名</th><th class="text-right font-medium">残</th><th class="font-medium">納期</th><th class="font-medium">状況</th></tr></thead>
+        <tbody>
+          {% for row in alerts.overdue.rows %}
+          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
+            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
+            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap"><span class="badge badge-sm badge-soft badge-error">{{ row.days }} 日遅れ</span></td>
+          </tr>
+          {% endfor %}
+          {% for row in alerts.soon.rows %}
+          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
+            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
+            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
+            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap">{% if row.days == 0 %}<span class="badge badge-sm badge-soft badge-warning">今日</span>{% else %}<span class="badge badge-sm badge-soft badge-warning">あと {{ row.days }} 日</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+{% if today or alerts is not None %}</div>{% endif %}
 {% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}
   {% if shipping is not None %}
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipping-title">
@@ -136,7 +184,9 @@
   </section>
   {% endif %}
 {% if shipping is not None or production is not None %}</div>{% endif %}
-{% if recent_orders is not None and alerts is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif recent_orders is not None or alerts is not None %}<div class="mb-6 grid gap-6">{% endif %}
+{# 最近の受注 (左) と注文の入口の図 (右。core の dashboard.order_inlets。得意先が無ければ節ごと出さない) の 1 段。lg から 2 列で、片方だけなら 1 列 (本人の決め 11-05 11:0x)。 #}
+{% order_inlets as inlets %}
+{% if recent_orders is not None and inlets %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif recent_orders is not None or inlets %}<div class="mb-6 grid gap-6">{% endif %}
   {% if recent_orders is not None %}
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="recent-orders-title">
     <div class="flex items-center justify-between gap-2">
@@ -172,82 +222,35 @@
     {% endif %}
   </section>
   {% endif %}
-  {% if alerts is not None %}
-  <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="due-alerts-title">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex flex-wrap items-center gap-2">
-        <h2 id="due-alerts-title" class="text-lg font-bold">納期アラート</h2>
-        {% include "core/_screen_help.html" with part="due-alerts" label="納期アラートの説明" %}
-        <span class="badge badge-sm badge-soft badge-error">遅れ {{ alerts.overdue.count|comma }} 件</span>
-        <span class="badge badge-sm badge-soft badge-warning">{{ alerts.days }} 日以内 {{ alerts.soon.count|comma }} 件</span>
-      </div>
-      {% if alerts.list_url %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ alerts.list_url }}">生産管理ボードを見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+  {% if inlets %}
+  <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="inlets-title">
+    <div class="flex items-center justify-between gap-2">
+    <h2 id="inlets-title" class="text-lg font-bold">注文の入口 (今月)</h2>
+    {% include "core/_screen_help.html" with part="inlets" label="注文の入口の説明" %}
     </div>
-    {% if not alerts.overdue.count %}<p class="mt-4">遅れている納期はありません。</p>{% endif %}
-    {% if alerts.overdue.count or alerts.soon.count %}
-    <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
-      <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="font-medium">得意先</th><th class="font-medium">品番</th><th class="font-medium">品名</th><th class="text-right font-medium">残</th><th class="font-medium">納期</th><th class="font-medium">状況</th></tr></thead>
-        <tbody>
-          {% for row in alerts.overdue.rows %}
-          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
-            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
-            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
-            <td class="whitespace-nowrap"><span class="badge badge-sm badge-soft badge-error">{{ row.days }} 日遅れ</span></td>
-          </tr>
-          {% endfor %}
-          {% for row in alerts.soon.rows %}
-          {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
-            <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
-            <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
-            <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
-            <td class="whitespace-nowrap">{% if row.days == 0 %}<span class="badge badge-sm badge-soft badge-warning">今日</span>{% else %}<span class="badge badge-sm badge-soft badge-warning">あと {{ row.days }} 日</span>{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <p class="mt-2 text-base-content/70">得意先ごとの注文の入口と、今月の明細の数です。入口が違っても、明細は 1 か所の受注に集まります。</p>
+    <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
+      <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-primary" cx="6" cy="6" r="6"></circle></svg>seizou で直接</li>
+      <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-secondary" cx="6" cy="6" r="6"></circle></svg>注文書の読み取り</li>
+      <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-base-content/70" cx="6" cy="6" r="6"></circle></svg>手入力</li>
+    </ul>
+    <div class="mt-2 overflow-x-auto">
+      <svg id="inlet-chart" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ inlets.width }} {{ inlets.height }}" role="img" aria-label="注文の入口の図。得意先ごとの入口と今月の明細の数">
+        <title>注文の入口 (今月)</title>
+        {% for row in inlets.rows %}
+        <line class="stroke-base-300" x1="{{ row.x1 }}" y1="{{ row.y }}" x2="{{ row.x2 }}" y2="{{ row.y2 }}" vector-effect="non-scaling-stroke"></line>
+        {% if row.inlet == "direct" %}<circle class="fill-primary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% elif row.inlet == "intake" %}<circle class="fill-secondary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% else %}<circle class="fill-base-content/70" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% endif %}
+        <text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ row.y }}" text-anchor="end" dominant-baseline="middle">{{ row.name }} {{ row.lines|comma }} 行</text>
+        {% endfor %}
+        {% if inlets.others %}<text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ inlets.others.y }}" text-anchor="end" dominant-baseline="middle">ほか {{ inlets.others.count|comma }} 社 ({{ inlets.others.lines|comma }} 行)</text>{% endif %}
+        <rect class="stroke-base-300" fill="none" x="{{ inlets.box.x }}" y="{{ inlets.box.y }}" width="{{ inlets.box.width }}" height="{{ inlets.box.height }}" rx="8" vector-effect="non-scaling-stroke"></rect>
+        <text class="fill-base-content/70 text-xs font-medium" x="{{ inlets.box.cx }}" y="{{ inlets.box.label_y }}" text-anchor="middle">受注</text>
+        <text class="fill-base-content/70 text-xs" x="{{ inlets.box.cx }}" y="{{ inlets.box.count_y }}" text-anchor="middle">今月 {{ inlets.total_lines|comma }} 行</text>
+      </svg>
     </div>
-    {% endif %}
   </section>
   {% endif %}
-{% if recent_orders is not None or alerts is not None %}</div>{% endif %}
-{# 注文の入口の図 (core の dashboard.order_inlets。得意先が無ければ節ごと出さない)。最近の受注と納期アラートの後、よく使う画面の前 (本人の決め 11-03 11:0x の並びの間に足す。並びの順は変えない = N93 (N83 の 2817da4 の形))。 #}
-{% order_inlets as inlets %}
-{% if inlets %}
-<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="inlets-title">
-  <div class="flex items-center justify-between gap-2">
-  <h2 id="inlets-title" class="text-lg font-bold">注文の入口 (今月)</h2>
-  {% include "core/_screen_help.html" with part="inlets" label="注文の入口の説明" %}
-  </div>
-  <p class="mt-2 text-base-content/70">得意先ごとの注文の入口と、今月の明細の数です。入口が違っても、明細は 1 か所の受注に集まります。</p>
-  <ul class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
-    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-primary" cx="6" cy="6" r="6"></circle></svg>seizou で直接</li>
-    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-secondary" cx="6" cy="6" r="6"></circle></svg>注文書の読み取り</li>
-    <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-base-content/70" cx="6" cy="6" r="6"></circle></svg>手入力</li>
-  </ul>
-  <div class="mt-2 overflow-x-auto">
-    <svg id="inlet-chart" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ inlets.width }} {{ inlets.height }}" role="img" aria-label="注文の入口の図。得意先ごとの入口と今月の明細の数">
-      <title>注文の入口 (今月)</title>
-      {% for row in inlets.rows %}
-      <line class="stroke-base-300" x1="{{ row.x1 }}" y1="{{ row.y }}" x2="{{ row.x2 }}" y2="{{ row.y2 }}" vector-effect="non-scaling-stroke"></line>
-      {% if row.inlet == "direct" %}<circle class="fill-primary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% elif row.inlet == "intake" %}<circle class="fill-secondary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% else %}<circle class="fill-base-content/70" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% endif %}
-      <text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ row.y }}" text-anchor="end" dominant-baseline="middle">{{ row.name }} {{ row.lines|comma }} 行</text>
-      {% endfor %}
-      {% if inlets.others %}<text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ inlets.others.y }}" text-anchor="end" dominant-baseline="middle">ほか {{ inlets.others.count|comma }} 社 ({{ inlets.others.lines|comma }} 行)</text>{% endif %}
-      <rect class="stroke-base-300" fill="none" x="{{ inlets.box.x }}" y="{{ inlets.box.y }}" width="{{ inlets.box.width }}" height="{{ inlets.box.height }}" rx="8" vector-effect="non-scaling-stroke"></rect>
-      <text class="fill-base-content/70 text-xs font-medium" x="{{ inlets.box.cx }}" y="{{ inlets.box.label_y }}" text-anchor="middle">受注</text>
-      <text class="fill-base-content/70 text-xs" x="{{ inlets.box.cx }}" y="{{ inlets.box.count_y }}" text-anchor="middle">今月 {{ inlets.total_lines|comma }} 行</text>
-    </svg>
-  </div>
-</section>
-{% endif %}
+{% if recent_orders is not None or inlets %}</div>{% endif %}
 {# よく使う画面: 下の段の外の全幅の 1 段。ブックマークの部品 (bookmarks) が入っていればその節 (登録した画面。0 件なら 1 行の案内)、無ければ入口の一覧。 #}
 {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_home.html" %}{% else %}{% include "core/_entrances.html" %}{% endif %}
 {% endblock %}

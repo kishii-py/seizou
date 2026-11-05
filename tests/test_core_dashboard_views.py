@@ -71,6 +71,25 @@ def chart_svg(body, chart_id):
     return body[start : body.index("</svg>", start)]
 
 
+#: 2 つの枠を lg から横に並べる段の包み / 片方だけのときの 1 列の包み (home.html の字のまま)
+ROW_TWO = '<div class="mb-6 grid gap-6 lg:grid-cols-2">'
+ROW_ONE = '<div class="mb-6 grid gap-6">'
+
+
+def row_of(body, title_id):
+    """節の題 (id="<title_id>") を含む段の包みの HTML (包みの開きから、次の段の包みかよく使う画面の手前まで)。"""
+    at = body.index(f'id="{title_id}"')
+    start = max(body.rfind(ROW_TWO, 0, at), body.rfind(ROW_ONE, 0, at))
+    assert start != -1, title_id
+    ends = [found for found in (body.find(ROW_TWO, at), body.find(ROW_ONE, at), body.find('id="entrances-title"', at)) if found != -1]
+    return body[start : min(ends)]
+
+
+def section_of(body, title_id):
+    """節 (<section aria-labelledby="<title_id>">) の HTML。"""
+    return re.search(rf'<section[^>]*aria-labelledby="{title_id}".*?</section>', body, re.S).group(0)
+
+
 class _NoParts:
     def get_model(self, app_label, name):
         raise LookupError(f"{app_label}.{name}")
@@ -110,12 +129,15 @@ def test_home_shows_alerts_and_charts(logged_in, chart_data):
 @pytest.mark.django_db
 def test_sections_are_in_the_decided_order(logged_in, chart_data):
     body = home(logged_in)
+    # 数字のカード → [今日やること | 納期アラート] → [出荷 | 生産] → [最近の受注 | 注文の入口] → よく使う画面 (本人の決め 11-05 11:0x)
     marks = [
         "今月の受注</p>",
+        'id="flow-guide-title"',
+        'id="due-alerts-title"',
         'id="shipping-title"',
         'id="production-title"',
         'id="recent-orders-title"',
-        'id="due-alerts-title"',
+        'id="inlets-title"',
         'id="entrances-title"',
     ]
     positions = [body.index(mark) for mark in marks]
@@ -228,13 +250,49 @@ def test_home_without_orders_part_hides_sections(logged_in, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_bottom_row_is_orders_left_alerts_right(logged_in, user, customer, shaft):
+def test_today_left_alerts_right_in_one_row(logged_in, user, customer, shaft):
+    # 今日やることは半分の幅で、右に納期アラート (本人の決め 11-05 11:0x「今日やることは col-md-6 的な大きさの方がいい」)
     make_order(user, customer, shaft, timezone.localdate() - timedelta(days=3))
     body = home(logged_in)
-    recent = body.index('id="recent-orders-title"')
-    alerts = body.index('id="due-alerts-title"')
-    entrances = body.index('id="entrances-title"')
-    assert recent < alerts < entrances
+    row = row_of(body, "flow-guide-title")
+    assert row.startswith(ROW_TWO)
+    assert row == row_of(body, "due-alerts-title")
+    assert row.index('id="flow-guide-title"') < row.index('id="due-alerts-title"')
+    assert 'id="shipping-title"' not in row and 'id="recent-orders-title"' not in row
+    # 半分の幅の枠: 格子の子が中身の幅で広がらない (min-w-0)。段の余白は包みが持つ。行の字とボタンは折り返す
+    today = section_of(body, "flow-guide-title")
+    assert today.startswith('<section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"')
+    assert '<li class="flex flex-wrap items-center justify-between gap-2 py-2">' in today
+    assert "生産管理ボード" in today
+    assert section_of(body, "due-alerts-title").startswith('<section class="min-w-0 ')
+
+
+@pytest.mark.django_db
+def test_recent_orders_left_inlets_right_in_one_row(logged_in, user, customer, shaft):
+    # 注文の入口の図は最近の受注の右 (本人の決め 11-05 11:0x)。よく使う画面はこの段の外の全幅
+    make_order(user, customer, shaft, timezone.localdate() - timedelta(days=3))
+    body = home(logged_in)
+    row = row_of(body, "recent-orders-title")
+    assert row.startswith(ROW_TWO)
+    assert row == row_of(body, "inlets-title")
+    assert row.index('id="recent-orders-title"') < row.index('id="inlets-title"')
+    assert '<svg id="inlet-chart"' in row
+    assert 'id="due-alerts-title"' not in row and 'id="entrances-title"' not in row
+    assert section_of(body, "inlets-title").startswith('<section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"')
+
+
+@pytest.mark.django_db
+def test_rows_go_one_column_when_one_side_is_missing(logged_in, monkeypatch):
+    # 得意先が無い = 注文の入口の節が無い。最近の受注だけの 1 列 (今日やることと納期アラートは 2 列のまま)
+    body = home(logged_in)
+    assert 'id="inlets-title"' not in body
+    assert row_of(body, "recent-orders-title").startswith(ROW_ONE)
+    assert row_of(body, "flow-guide-title").startswith(ROW_TWO)
+    # 業務の流れが無い = 今日やることの枠が無い。納期アラートだけの 1 列
+    monkeypatch.setattr(dashboard, "flow_guide", lambda: None)
+    body = home(logged_in)
+    assert 'id="flow-guide-title"' not in body
+    assert row_of(body, "due-alerts-title").startswith(ROW_ONE)
 
 
 @pytest.mark.django_db
@@ -248,8 +306,8 @@ def test_rows_open_order_detail_on_click(logged_in, user, customer, shaft):
     )
     # 「最近の受注」の行と、納期アラートの遅れの行の 2 つ。
     assert body.count(row) == 2
-    recent = body[body.index('id="recent-orders-title"') : body.index('id="due-alerts-title"')]
-    alerts = body[body.index('id="due-alerts-title"') : body.index('id="entrances-title"')]
+    recent = section_of(body, "recent-orders-title")
+    alerts = section_of(body, "due-alerts-title")
     for part in (recent, alerts):
         assert row in part
         # 行の中の受注番号の link も残る (キーボードは Tab で link に乗って Enter)。

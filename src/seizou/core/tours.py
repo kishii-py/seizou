@@ -2,6 +2,7 @@
 
 段の字は、部品の無い会社のダッシュボードにも JSON で入る。ダッシュボードの試験が「無いこと」を見る字を書かない。
 ダッシュボードの 2 段目 (数字のカードの次の「今日やること」の枠) の題だけは、枠の題と同じ字を core.dashboard の TODAY_TITLE から読む (題を変えるときは 1 か所)。
+ダッシュボードの段の順は画面の並び (数字のカード → 今日やること (左) → 納期アラート (右) → 出荷と生産の図) に合わせる (本人の決め 11-05 11:0x)。
 """
 
 from __future__ import annotations
@@ -28,14 +29,14 @@ TOURS: dict[str, tuple[dict, ...]] = {
             "text": "手を動かす物のある段が、数と移る先の釦で並びます。釦を押すと、その物に絞った一覧が開きます。",
         },
         {
-            "selector": 'section[aria-labelledby="shipping-title"]',
-            "title": "出荷と生産",
-            "text": "月ごとの出荷と生産の図です。表に月ごとの件数と数量が並びます。",
-        },
-        {
             "selector": 'section[aria-labelledby="due-alerts-title"]',
             "title": "納期の遅れ",
             "text": "納期を過ぎた明細と、近く納期が来る明細です。行を押すと受注の詳細が開きます。",
+        },
+        {
+            "selector": 'section[aria-labelledby="shipping-title"]',
+            "title": "出荷と生産",
+            "text": "月ごとの出荷と生産の図です。表に月ごとの件数と数量が並びます。",
         },
         {
             "selector": '[data-tour="guide"]',
