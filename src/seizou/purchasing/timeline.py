@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -132,3 +133,103 @@ def _sort_key(event: Event) -> tuple:
     else:
         day, clock = event.when, time.min
     return (0, day, _RANK[event.kind], clock, event.line_no or 0)
+
+
+# --- 段の帯 (案 4-A の発注。N151。受注の段の帯 = orders.timeline の STAGES・Stage・StageBand と同じ形) ---------------
+
+#: 発注の段の名前 (並びの順)。流れの出来事の種類 (KINDS の order・sent・reply・shipping_notice・receipt・acceptance) に当たる名詞。
+#: 字を変えるときはここだけ。
+STAGES = (
+    "発注",
+    "送付",
+    "回答",
+    "出荷の知らせ",
+    "受入",
+    "検収",
+)
+
+
+@dataclass(frozen=True)
+class Stage:
+    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。"""
+
+    no: int
+    name: str
+    done: bool
+    current: bool
+
+
+@dataclass(frozen=True)
+class StageBand:
+    """発注の段の帯。current は発注の今の段 (明細のうち一番遅れている段。1 から)。
+
+    summary は明細ごとに段が違うときの 1 文 (同じなら None)。
+    """
+
+    current: int
+    stages: tuple[Stage, ...]
+    summary: str | None = None
+
+    @property
+    def current_name(self) -> str:
+        return STAGES[self.current - 1]
+
+
+def stage_of(line) -> int:
+    """発注の明細 1 行の今の段 (1〜6) = 届いている一番先の段 (読むだけ)。
+
+    送付と回答は発注の全体で決まる段 (_order_reached)、出荷の知らせ・受入・検収は明細ごとの段 (_line_reached)。
+    送付と回答が無くても受入があれば「受入」(相手へ送らずに頼んだ発注)。
+    """
+    return max(_order_reached(line.purchase_order), _line_reached(line))
+
+
+def stage_band(purchase_order) -> StageBand | None:
+    """発注の段の帯。取消の発注は None (帯を出さない)。発注の全体の段は 1 回だけ読む。"""
+    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+        return None
+    head = _order_reached(purchase_order)
+    of_lines = [max(head, _line_reached(line)) for line in _all(purchase_order, "lines")]
+    current = min(of_lines, default=head)
+    stages = tuple(Stage(no, name, no < current, no == current) for no, name in enumerate(STAGES, start=1))
+    return StageBand(current, stages, _summary(of_lines))
+
+
+def _order_reached(purchase_order) -> int:
+    """発注の全体の段 (1〜3)。
+
+    回答 = 注文回答の日時がある (相手が受け入れたも断られたも回答)。送付 = 状態が「送った」か、
+    送った注文を相手の受け口が受け取った (送れなかった物は数えない)。
+    """
+    if purchase_order.replied_at is not None:
+        return 3
+    if purchase_order.status == purchase_order.STATUS_SENT:
+        return 2
+    if any(outbox.response == RECEIVED for outbox in _all(purchase_order, "outbox_messages")):
+        return 2
+    return 1
+
+
+def _line_reached(line) -> int:
+    """明細ごとの段 (1・4〜6)。
+
+    検収 = 相手に届いた検収がある (届いていない物は数えない)。受入 = 受入がある。出荷の知らせ = 相手の出荷の知らせがある。
+    どれも無ければ 1 (発注の全体の段に任せる)。
+    """
+    receipts = _all(line, "receipts")
+    if any(receipt.acceptance_sent_at is not None for receipt in receipts):
+        return 6
+    if receipts:
+        return 5
+    if _all(line, "shipping_notices"):
+        return 4
+    return 1
+
+
+def _summary(of_lines) -> str | None:
+    """明細ごとに段が違うときの 1 文「明細 3 行のうち、受入 1 行・回答 2 行」(進んだ段から)。同じなら None。"""
+    if len(set(of_lines)) < 2:
+        return None
+    counts = Counter(of_lines)
+    parts = [f"{STAGES[no - 1]} {counts[no]} 行" for no in sorted(counts, reverse=True)]
+    return f"明細 {len(of_lines)} 行のうち、{'・'.join(parts)}"

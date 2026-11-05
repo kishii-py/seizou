@@ -7,7 +7,7 @@
 {% block edit_button %}{% if object.status != "cancelled" %}{{ block.super }}{% endif %}{% endblock %}
 {% block actions %}{{ block.super }}{% can_write "orders.Order" as can_cancel %}{% if object.status != "cancelled" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
 {% block content %}
-{% include "orders/_stage_band.html" %}
+{% load orders_timeline %}{% order_stages object as band %}{% include "core/_stage_band.html" with stages_id="order-stages" %}
 {% order_aside object fields seizou.hide_money as aside %}
 {{ block.super }}
 {% endblock %}

@@ -157,7 +157,7 @@ def test_detail_shows_band_between_heading_and_tabs(user, logged_in, customer, i
 
     response, body = _detail(logged_in, order)
 
-    assert "orders/_stage_band.html" in [template.name for template in response.templates]
+    assert "core/_stage_band.html" in [template.name for template in response.templates]
     assert body.index('<h1 class="truncate') < body.index('<div id="order-stages"') < body.index('role="tablist"')
     band = _band(body)
     assert 'data-stage-current="6"' in band
