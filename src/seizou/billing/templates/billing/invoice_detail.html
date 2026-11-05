@@ -19,7 +19,7 @@
       {% elif object.payment_status == "paid" %}<span class="badge badge-soft badge-success">{{ object.payment_status_label }}</span>
       {% elif object.payment_status == "partial" %}<span class="badge badge-soft badge-warning">{{ object.payment_status_label }}</span>
       {% else %}<span class="badge badge-ghost">{{ object.payment_status_label }}</span>{% endif %}</h2>
-    {% if object.status == "issued" and can_bill %}<a class="btn btn-sm btn-primary" href="{% url 'billing:payment_create' object.pk %}">{% icon "plus" "size-4" %}入金を記録する</a>{% endif %}
+    {% if object.status == "issued" and can_bill %}<a class="btn btn-sm btn-primary" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% endif %}
   </div>
   <dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
     <div><dt class="text-xs text-base-content/50">合計</dt><dd class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.total|comma }}{% endif %}</dd></div>

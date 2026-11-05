@@ -103,8 +103,10 @@ def test_stock_list_shows_only_items_with_moves(user, logged_in, customer, items
     assert any(str(value) in ("7", "7.00") for value in cells)
     assert timezone.localdate() in cells
     assert rows[0]["url"] == reverse("masters:item_detail", args=[moved.pk])
-    for name in ("stock:stockmove_list", "stock:issue_create", "stock:adjust_create", "stock:finished_create"):
-        assert f'href="{reverse(name)}"' in body
+    assert f'href="{reverse("stock:stockmove_list")}"' in body
+    # 入力の入口は在庫の一覧の道を ?next= で渡す (「キャンセル」で在庫の一覧へ戻る。初見テスト R4)
+    for name in ("stock:issue_create", "stock:adjust_create", "stock:finished_create"):
+        assert f'href="{reverse(name)}?next={reverse("stock:stock_list")}"' in body
     assert reverse("masters:item_create") not in body
 
     searched = logged_in.get(reverse("stock:stock_list"), {"q": "T-999"})

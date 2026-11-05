@@ -94,7 +94,7 @@ def test_create_from_order_detail_link(user, client_logged_in, subcontractor, it
     po = _order(subcontractor, user, (items[0], "10", "25"))
     line = po.lines.get()
     detail_url = reverse("purchasing:purchaseorder_detail", args=[po.pk])
-    create_url = f'{reverse("purchasing:receipt_create")}?line={line.pk}'
+    create_url = f'{reverse("purchasing:receipt_create")}?line={line.pk}&amp;next={detail_url}'
 
     detail = client_logged_in.get(detail_url).content.decode()
     assert f'href="{create_url}"' in detail

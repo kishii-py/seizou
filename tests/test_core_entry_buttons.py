@@ -238,7 +238,7 @@ def test_delivery_note_hides_cancel_and_invoice(client, on, user, item):
     note = shipping_services.create_delivery_note(buyer, [shipment], user)
     detail_url = reverse("shipping:deliverynote_detail", args=[note.pk])
     cancel_href = f'href="{reverse("shipping:deliverynote_cancel", args=[note.pk])}"'
-    invoice_href = f'href="{reverse("billing:invoice_create")}?customer={buyer.pk}"'
+    invoice_href = f'href="{reverse("billing:invoice_create")}?customer={buyer.pk}&amp;next={detail_url}"'
     documents = (
         f'href="{reverse("shipping:deliverynote_print", args=[note.pk])}"',
         f'href="{reverse("shipping:deliverynote_pdf", args=[note.pk])}"',
@@ -267,7 +267,7 @@ def test_invoice_hides_cancel_payment_and_documents(settings, client, on, user, 
     unpaid_url = reverse("billing:invoice_detail", args=[unpaid.pk])
     writes = (
         f'href="{reverse("billing:invoice_cancel", args=[invoice.pk])}"',
-        f'href="{reverse("billing:payment_create", args=[invoice.pk])}"',
+        f'href="{reverse("billing:payment_create", args=[invoice.pk])}?next={detail_url}"',
         f'href="{reverse("billing:payment_cancel", args=[payment.pk])}"',
     )
     documents = (
@@ -318,7 +318,7 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
     detail_url = reverse("purchasing:purchaseorder_detail", args=[po.pk])
     receipt_url = reverse("purchasing:receipt_create")
     entries = (
-        f'href="{receipt_url}?line={line.pk}"',
+        f'href="{receipt_url}?line={line.pk}&amp;next={detail_url}"',
         f'href="{receipt_url}?line={line.pk}&amp;qty=',
         "受入を登録",
         "受入を記録する",
