@@ -25,6 +25,7 @@ class ExtractionListView(BaseListView):
     columns = ("read_at", "customer", ("summary", "中身の要約"), "status", {"name": "order", "sort_key": "order__order_no"}, "read_by")
     search_fields = ("customer__name", "customer__code")
     ordering = ("-read_at", "-pk")
+    template_name = "intake/extraction_list.html"
 
 
 class ExtractionCreateView(BaseFormView):
