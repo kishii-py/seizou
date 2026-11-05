@@ -1,3 +1,3 @@
 {# purchasing の入力の小窓の中身。入力の土台は小窓のテンプレートを app ごとに選ぶ (purchasing/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
-{# 発注の新規登録は明細の行の表のカード (purchasing/_purchaseorder_card.html) を form_card で渡す。題と閉じるボタンと知らせは core/_form_modal.html の物。ほかの入力 (送り直す・取り消す・受入) は土台の小窓のまま。 #}
-{% if request.resolver_match.url_name == "purchaseorder_create" %}{% include "core/_form_modal.html" with form_card="purchasing/_purchaseorder_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}
+{# 発注の新規登録は明細の行の表のカード (purchasing/_purchaseorder_card.html) を form_card で渡す。題と閉じるボタンと知らせは core/_form_modal.html の物。発注の取消は確かめのカード (purchasing/_purchaseorder_cancel_card.html)。ほかの入力 (送り直す・受入) は土台の小窓のまま。 #}
+{% if request.resolver_match.url_name == "purchaseorder_create" %}{% include "core/_form_modal.html" with form_card="purchasing/_purchaseorder_card.html" %}{% elif request.resolver_match.url_name == "purchaseorder_cancel" %}{% include "core/_form_modal.html" with form_card="purchasing/_purchaseorder_cancel_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}
