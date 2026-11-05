@@ -2,6 +2,7 @@
 
 - 命令 seizou_company_icons がロゴから印の 2 つを作り直して表を書かないこと。ロゴが無いか開けないときは 1 行と終わりの番号 2。
 - 土台の head の印の URL に ?v=<32 の印の更新時刻 (秒) の 16 進> が付き、作り直すと字が変わること (/favicon.ico は付けない)。
+- 点検 (seizou_doctor) の「AI が守る決まり」の行は、CLAUDE.md と AGENTS.md が無くても良いの行のまま (止めない) こと。
 置き場 (MEDIA_ROOT と BASE_DIR) は試験ごとの一時のフォルダ。
 """
 
@@ -20,7 +21,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from PIL import Image
 
-from seizou.core import services
+from seizou.core import doctor, services
 from seizou.core.management.commands.seizou_company_icons import NO_LOGO
 from seizou.core.models import Company
 from tests.test_core_company_favicon import ICON, TOUCH, png_upload
@@ -113,3 +114,19 @@ def test_icon_urls_carry_version_and_remaking_changes_it(media):
     version = f"?v={int((media / ICON).stat().st_mtime):x}"
     assert version != OLD_VERSION
     assert services.company_icons(services.company())["touch"] == "/media/company/apple-touch-icon.png" + version
+
+
+@pytest.mark.django_db
+def test_doctor_ai_docs_row_advises_but_never_stops(settings, tmp_path):
+    settings.BASE_DIR = tmp_path
+    [row] = doctor.check_ai_docs()
+    assert (row.ok, row.label) == (True, "AI が守る決まり")
+    assert row.detail == f"AI が守る決まり (CLAUDE.md・AGENTS.md) がありません。seizou ai-docs {tmp_path} で置けます。"
+    assert any(row.label == "AI が守る決まり" and row.ok for row in doctor.run(production=True))  # 本番の条件でも止めない
+
+    (tmp_path / "CLAUDE.md").write_text("# 作り物の決まり\n", encoding="utf-8")
+    [row] = doctor.check_ai_docs()
+    assert row.ok and row.detail.startswith("AGENTS.md がありません。") and "--force" in row.detail
+
+    (tmp_path / "AGENTS.md").write_text("# 作り物の決まりの短い版\n", encoding="utf-8")
+    assert [(row.ok, row.detail) for row in doctor.check_ai_docs()] == [(True, "CLAUDE.md と AGENTS.md がある")]
