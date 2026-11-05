@@ -100,6 +100,16 @@ class InboxListView(BaseListView):
             return queryset
         return queryset.filter(pk__gt=after)
 
+    def get_context_data(self, **kwargs):
+        # shown_count = 自動の更新で行を足した後に表に出ている行の数 (下の「N 件中 1–M 件」の M。connect/_rows.html が oob で入れ替える)。
+        # 足す前に出ていた行 = 1 ページの大きさと、after までの行の数 (全体の件数 − after より新しい行の数) の小さい方。
+        context = super().get_context_data(**kwargs)
+        if "after" in self.request.GET and context["rows"]:
+            total = context["rows"][0]["obj"].total_count
+            before = min(context["per"], max(total - context["paginator"].count, 0))
+            context["shown_count"] = before + len(context["rows"])
+        return context
+
 
 class InboxDetailView(BaseDetailView):
     """受信した注文の詳細。
