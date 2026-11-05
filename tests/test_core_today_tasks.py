@@ -1,4 +1,4 @@
-"""ダッシュボードの最初の段「今日やること」の枠 (core.dashboard.today_tasks と home.html)。件数は作り物のデータを services で作って数える。
+"""ダッシュボードの数字のカードの下の段「今日やること」の枠 (core.dashboard.today_tasks と home.html。本人の決め 11-05 09:4x で数字のカードの直下)。件数は作り物のデータを services で作って数える。
 
 Django の test client で HTML を見る (本物のブラウザは使わない)。発注はつながりの無い協力企業で作り、相手に送らない。
 名前は作り物だけ。
@@ -216,10 +216,14 @@ def test_today_tasks_adds_no_query(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_home_shows_today_first_with_noun_buttons(logged_in, user, customer, shaft):
+def test_home_shows_today_after_cards_with_noun_buttons(logged_in, user, customer, shaft):
     make_order(user, customer, shaft)
     body, section = home_section(logged_in)
-    assert body.index('aria-labelledby="flow-guide-title"') < body.index('data-tour="stats"')
+    # 並びは 数字のカード (会社の KPI) → 今日やること (個人のタスク) → 出荷と生産の図 (本人の決め 11-05 09:4x)
+    stats = body.index('data-tour="stats"')
+    frame = body.index('aria-labelledby="flow-guide-title"')
+    shipping = body.index('aria-labelledby="shipping-title"')
+    assert stats < frame < shipping
     # 題は h2 の 1 回 (行の並びの aria-label にも同じ字が入るので、見える字で数える)
     assert section.count('<h2 id="flow-guide-title" class="text-lg font-bold">今日やること</h2>') == 1
     assert "はじめての方へ" not in section
@@ -238,10 +242,11 @@ def test_home_shows_flow_picture_when_nothing_to_do(logged_in):
     assert "badge" not in section
 
 
-def test_tour_first_step_is_today():
+def test_tour_second_step_is_today():
     steps = TOURS["core:home"]
-    assert steps[0]["selector"] == '[data-tour="flow-guide"]'
-    assert steps[0]["title"] == dashboard.TODAY_TITLE
+    assert steps[0]["selector"] == '[data-tour="stats"]'
+    assert steps[1]["selector"] == '[data-tour="flow-guide"]'
+    assert steps[1]["title"] == dashboard.TODAY_TITLE
     assert len(steps) == 5
 
 
@@ -250,5 +255,8 @@ def test_manual_fragments_and_readme_say_today():
     assert texts[0] == texts[1] == texts[2]
     assert "今日やること" in texts[0]
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "ダッシュボードの最初の枠「今日やること」には" in readme
+    assert "ダッシュボードの数字のカードの下の枠「今日やること」には" in readme
+    assert "ダッシュボードの最初の枠「今日やること」には" not in readme
+    assert "数字のカードの下の「今日やること」に" in texts[0]
+    assert "一番上の「今日やること」に" not in texts[0]
     assert "ダッシュボードの「はじめての方へ」の枠には" not in readme

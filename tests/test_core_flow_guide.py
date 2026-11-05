@@ -246,13 +246,14 @@ def test_flow_neighbors_prev_and_next():
 
 
 @pytest.mark.django_db
-def test_home_shows_today_tasks_before_cards(logged_in, user, customer, shaft, monkeypatch):
+def test_home_shows_today_tasks_after_cards(logged_in, user, customer, shaft, monkeypatch):
     make_order(user, customer, shaft)
     body = home(logged_in)
     frame = body.index('aria-labelledby="flow-guide-title"')
     stats = body.index('data-tour="stats"')
     shipping = body.index('aria-labelledby="shipping-title"')
-    assert frame < stats < shipping
+    # 数字のカード (会社の KPI) → 今日やること (個人のタスク) → 出荷と生産の図 (本人の決め 11-05 09:4x)
+    assert stats < frame < shipping
     section = re.search(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', body, re.S).group(0)
     # 題は h2 の 1 回 (行の並びの aria-label にも同じ字が入るので、見える字で数える)
     assert section.count('<h2 id="flow-guide-title" class="text-lg font-bold">今日やること</h2>') == 1
