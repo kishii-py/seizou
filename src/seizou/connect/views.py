@@ -98,17 +98,15 @@ class InboxListView(BaseListView):
             after = int(self.request.GET.get("after", ""))
         except ValueError:
             return queryset
-        return queryset.filter(pk__gt=after)
-
-    def get_context_data(self, **kwargs):
         # shown_count = 自動の更新で行を足した後に表に出ている行の数 (下の「N 件中 1–M 件」の M。connect/_rows.html が oob で入れ替える)。
-        # 足す前に出ていた行 = 1 ページの大きさと、after までの行の数 (全体の件数 − after より新しい行の数) の小さい方。
-        context = super().get_context_data(**kwargs)
-        if "after" in self.request.GET and context["rows"]:
-            total = context["rows"][0]["obj"].total_count
-            before = min(context["per"], max(total - context["paginator"].count, 0))
-            context["shown_count"] = before + len(context["rows"])
-        return context
+        # 足す前に出ていた行 = 1 ページの大きさと after までの行の数 (全体の件数 − after より新しい行の数) の小さい方。足す行 = 新しい行の数 (1 ページまで)。
+        # どの行にも同じ値 (total_count と同じ形。get_context_data は R15 で上書きしないので、ここで annotate する)。
+        newer = queryset.filter(pk__gt=after)
+        per = self.get_paginate_by(None)
+        total = super().get_queryset().count()
+        new_count = newer.count()
+        shown = min(per, max(total - new_count, 0)) + min(new_count, per)
+        return newer.annotate(shown_count=Value(shown, output_field=IntegerField()))
 
 
 class InboxDetailView(BaseDetailView):
