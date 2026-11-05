@@ -18,6 +18,7 @@ from django.utils.html import escape
 import seizou.masters.views
 from seizou.billing import services as billing_services
 from seizou.connect import services as connect_services
+from seizou.core.templatetags.seizou_tags import comma
 from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
@@ -231,3 +232,38 @@ def test_manual_detail_rare_actions_in_more(client, settings, user):
     settings.SEIZOU = {"access_control": dict(ALL_ON)}
     body = _get(client, "manuals:manual_detail", pk)[1]
     assert "data-detail-more" not in body
+
+
+def _chips(body):
+    """頭の要点の札の (名, 値) の並び。"""
+    found = re.findall(
+        r'<span class="badge badge-outline gap-1 border-base-300" data-head-chip><span class="text-base-content/70">([^<]+)</span>'
+        r'<span class="font-medium tabular-nums">([^<]+)</span></span>',
+        body,
+    )
+    assert len(found) == body.count("data-head-chip")
+    return found
+
+
+@pytest.mark.django_db
+def test_head_chips_on_order_and_purchase_order(logged_in, client, settings, item, order, purchase_order):
+    body = _get(logged_in, "orders:order_detail", order.pk)[1]
+    assert _chips(body) == [("得意先", "作り物の得意先"), ("一番早い納期", "2026-11-12"), ("合計", f"{comma(Decimal('15600'))} 円")]
+    # 札は状態の印より後ろ (h1 の後の最初の印は状態の印)
+    after_h1 = body[body.index('<h1 class="truncate') :]
+    assert after_h1.index('class="badge') < after_h1.index("data-head-chip")
+    assert not after_h1[after_h1.index('class="badge') :].startswith('class="badge badge-outline gap-1 border-base-300" data-head-chip')
+
+    body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
+    assert [label for label, _ in _chips(body)] == ["協力企業", "一番早い納期", "合計"]
+    heading = body[body.index('<div id="po-heading"') : body.index('id="po-alert"')]
+    assert heading.count("data-head-chip") == 3 and "作り物の協力企業" in heading
+
+    body = _get(logged_in, "masters:item_detail", item.pk)[1]
+    assert "data-head-chip" not in body
+
+    # 金額の閲覧の無い人は「合計」の札が無い
+    settings.SEIZOU = {"access_control": dict(test_detail_columns.MONEY_ON)}
+    client.force_login(test_detail_columns._account("genba"))
+    body = _get(client, "orders:order_detail", order.pk)[1]
+    assert [label for label, _ in _chips(body)] == ["得意先", "一番早い納期"]

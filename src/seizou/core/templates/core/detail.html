@@ -3,7 +3,7 @@
 {% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
 {# 詳細: 頭の型 (パンくず・大きい題と状態の印と「?」・右にボタン。N163)、tabs で基本情報と関係する物、ファイルの節。関係する物の行は block tab_rows (部品と取引先の詳細が、取引先ごとの品番を表に差し替える)。 #}
 {% block heading %}
-{# 詳細の頭の型 (決め 11-05 16:2x。N163)。1 段目にパンくず (一覧の名前 › 題)、2 段目の左に大きい題・状態の印・「?」(要点の札は受注と発注)、右にボタン。小さい画面の名前の行はやめた (発注の 2 段をやめる。画面の名前はタブの題と「?」)。 #}
+{# 詳細の頭の型 (決め 11-05 16:2x。N163)。1 段目にパンくず (一覧の名前 › 題)、2 段目の左に大きい題・状態の印・「?」(要点の札 = head_chips。子が block heading の中で tag の as で置く。3 つまで)、右にボタン。小さい画面の名前の行はやめた (発注の 2 段をやめる。画面の名前はタブの題と「?」)。 #}
 {# パンくずの一覧の名前は、子が with の tag で渡す crumb か、土台の BaseDetailView が一覧の画面の名前から引く list_name。パンくずがあれば「一覧に戻る」は出さない。一覧の名前が引けない詳細だけ、ボタンの左端に「一覧に戻る」。 #}
 {# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
 {% with crumb_name=crumb|default:list_name %}
@@ -14,6 +14,7 @@
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
       {% if status %}{% status_badge object dot=True %}{% endif %}
       {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
+      {% for chip in head_chips|slice:":3" %}<span class="badge badge-outline gap-1 border-base-300" data-head-chip><span class="text-base-content/70">{{ chip.label }}</span><span class="font-medium tabular-nums">{{ chip.value }}</span></span>{% endfor %}
     </div>
     {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x。「?」で説明書の断片を見る)。 #}
   </div>
