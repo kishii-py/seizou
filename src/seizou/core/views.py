@@ -56,6 +56,7 @@ from django.template.loader import select_template
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET
 from django.views.generic import DetailView, FormView, ListView, TemplateView, View
 
@@ -1072,6 +1073,10 @@ class BaseFormView(ScreenMixin, FormView):
     保存したら移らず、本文の無い 204 に HX-Trigger の seizou:saved (知らせの字と色) を付けて返す (messages に残さない)。
     seizou-modal.js が小窓を閉じ、右上の知らせを出し、一覧の行を今の絞りのまま取り直す。
     それ以外の要求 (直の要求・htmx のほかの要求) は今までどおり画面の全体で、保存したら移る。
+
+    開いた元の画面へ戻す口 (11-05。本人の指摘と初見テスト R4): 詳細などの入口が ?next=<開いた画面の道> を付けて開くと、
+    「キャンセル」の先と、保存の後に一覧へ戻る形の移り先 (保存した物の詳細が無い物) をその道にする。保存した物の詳細へ移る形は今のまま。
+    道は同じサイトの「/」で始まる物だけ (外・絶対 URL は捨てて今までどおり)。form の hidden の next で POST にも引き継ぐ。
     """
 
     model = None
@@ -1084,6 +1089,8 @@ class BaseFormView(ScreenMixin, FormView):
     DELETE_SERVICE_PREFIXES = ("delete_", "remove_")
     #: 小窓の形の印 (htmx の要求の見出し HX-Target の値 = base.html の小窓の箱の id)
     MODAL_TARGET = "seizou-modal-box"
+    #: 開いた元の画面の道を受ける GET の鍵 (form の hidden で POST にも同じ名前で送る)
+    NEXT_PARAM = "next"
     object = None
 
     # --- 対象 (直すとき) ---
@@ -1110,6 +1117,20 @@ class BaseFormView(ScreenMixin, FormView):
             return [f"{app}/_form_modal.html", "core/_form_modal.html"]
         return super().get_template_names()
 
+    # --- 開いた元の画面 (?next=) ---
+    @property
+    def next_url(self) -> str | None:
+        """開いた元の画面の道。GET の ?next= か、form の hidden の next。同じサイトの「/」で始まる道だけで、ほかは None。
+
+        外の URL・絶対 URL (http://… は同じ host でも)・「//」で始まる物・「/」で始まらない物は捨てる (開いた元が分からない形 = 今までどおり)。
+        """
+        url = self.request.GET.get(self.NEXT_PARAM) or self.request.POST.get(self.NEXT_PARAM) or ""
+        if not url.startswith("/") or url.startswith("//"):
+            return None
+        if not url_has_allowed_host_and_scheme(url, allowed_hosts={self.request.get_host()}, require_https=self.request.is_secure()):
+            return None
+        return url
+
     def render_to_response(self, context, **response_kwargs):
         response = super().render_to_response(context, **response_kwargs)
         # 同じ URL で小窓の中身と画面の全体を返すので、ブラウザの保存が取り違えないように見出しで分ける (一覧の HX-Request と同じ)。
@@ -1122,14 +1143,14 @@ class BaseFormView(ScreenMixin, FormView):
         受注の明細から出荷の新規登録・指示書の発行へ、明細を選んだ形で移る入口のため (例 ?order_line=<pk>)。
         写すのは GET の鍵の全部 (値は字のまま。同じ鍵が 2 つ以上あれば字の list = 注文残の盤で選んだ明細の ?line=<pk>&line=<pk>。N124)。form の欄に無い鍵も写すので、form の __init__ が
         self.initial.get("from_line") のように読める (注残の盤の「発注する」が明細の pk を渡す入口のため。決め 11-03)。
-        写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・会社ごとの項目 (ext__)。
+        写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・会社ごとの項目 (ext__)・開いた元の画面の道 (next。入力の値でない)。
         値の検査はしない。保存のときに form と検査の層と service が見る (数でない値や無い pk は、選ぶ欄が何も選ばないだけ)。
         """
         initial = super().get_initial()
         if self.request.method != "GET" or self.object is not None:
             return initial
         for name in self.request.GET:
-            if not name.startswith(company_fields.EXT_PREFIX):
+            if not name.startswith(company_fields.EXT_PREFIX) and name != self.NEXT_PARAM:
                 values = self.request.GET.getlist(name)
                 initial[name] = values if len(values) > 1 else values[-1]
         return initial
@@ -1234,12 +1255,18 @@ class BaseFormView(ScreenMixin, FormView):
         return response
 
     def get_success_url_for(self, result) -> str:
+        """保存の後の移り先。success_url → 保存した物の詳細 → 開いた元の画面 (?next=) → 一覧 → /。
+
+        ?next= は一覧へ戻る形 (保存した物の詳細が無い物) にだけ効く。受注の登録のように保存した物の詳細へ移る形は今のまま。
+        """
         if getattr(self, "success_url", None):
             return str(self.success_url)
         if result is not None and hasattr(result, "_meta") and getattr(result, "pk", None) is not None:
             url = model_url(result.__class__, "detail", result.pk)
             if url:
                 return url
+        if self.next_url:
+            return self.next_url
         if self.model is not None:
             url = model_url(self.model, "list")
             if url:
@@ -1252,8 +1279,12 @@ class BaseFormView(ScreenMixin, FormView):
         context.setdefault("warnings", [])
         context["object"] = self.object
         context["in_modal"] = self.in_modal
-        # 小窓では「キャンセル」を出さない (閉じるボタンだけ)。
-        context["cancel_url"] = model_url(self.model, "list") if self.model is not None and not self.in_modal else None
+        # 小窓では「キャンセル」を出さない (閉じるボタンだけ)。開いた元の画面 (?next=) があればそこへ、無ければ一覧へ戻す。
+        context["next_url"] = self.next_url
+        if self.in_modal:
+            context["cancel_url"] = None
+        else:
+            context["cancel_url"] = context["next_url"] or (model_url(self.model, "list") if self.model is not None else None)
         return context
 
 

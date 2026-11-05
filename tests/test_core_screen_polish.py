@@ -279,9 +279,11 @@ def test_shipment_detail_links_to_delivery_note(client, user, order):
 
     shipment = _shipment(user, order)
     client.force_login(user)
-    html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
+    detail_url = reverse("shipping:shipment_detail", args=[shipment.pk])
+    html = client.get(detail_url).content.decode()
     link = f'{reverse("shipping:deliverynote_create")}?shipments={shipment.pk}'
-    assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
+    # 開いた詳細の道を ?next= で渡す (納品書作成の「キャンセル」で出荷の詳細へ戻る)
+    assert f'<a class="btn btn-outline border-base-300" href="{link}&amp;next={detail_url}">' in html
     assert "納品書作成" in html
     assert html.count("btn-primary") == 1  # 主色は「編集」の 1 つのまま
 
@@ -305,7 +307,7 @@ def test_delivery_note_detail_links_to_invoice(client, user, order):
     client.force_login(user)
     detail_url = reverse("shipping:deliverynote_detail", args=[note.pk])
     html = client.get(detail_url).content.decode()
-    link = f'{reverse("billing:invoice_create")}?customer={order.customer_id}'
+    link = f'{reverse("billing:invoice_create")}?customer={order.customer_id}&amp;next={detail_url}'
     assert f'href="{link}"' in html
     assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
     assert "請求書作成" in html

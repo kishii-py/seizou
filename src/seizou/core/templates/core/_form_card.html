@@ -29,6 +29,7 @@
     {% endfor %}
   </div>
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}

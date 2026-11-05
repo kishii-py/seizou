@@ -6,9 +6,9 @@
 在庫数と最終の動きの日は annotate の列。columns の印 (kind・sortable) で土台が右寄せ・赤・等幅の日付・並び替えを出す。
 {% endcomment %}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'stock:stockmove_list' %}">{% icon "list" "size-4" %}動きの一覧</a>
-<a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}">{% icon "truck" "size-4" %}払い出し</a>
-<a class="btn btn-outline border-base-300" href="{% url 'stock:adjust_create' %}">{% icon "check" "size-4" %}棚卸しの調整</a>
-<a class="btn btn-primary" href="{% url 'stock:finished_create' %}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
+<a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}?next={{ request.get_full_path|urlencode }}">{% icon "truck" "size-4" %}払い出し</a>
+<a class="btn btn-outline border-base-300" href="{% url 'stock:adjust_create' %}?next={{ request.get_full_path|urlencode }}">{% icon "check" "size-4" %}棚卸しの調整</a>
+<a class="btn btn-primary" href="{% url 'stock:finished_create' %}?next={{ request.get_full_path|urlencode }}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
 {# 題の下の説明の 1 文は出さない (決め 11-03 15:5x 本人「推奨で」。「?」で説明書の断片を見る)。 #}
 {% block content %}
 {{ block.super }}{% endblock %}

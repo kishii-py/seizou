@@ -62,9 +62,9 @@ def _documents(user, customer, item, cut):
         "ship": f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"',
         "workorder_cancel": f'href="{reverse("workorders:workorder_cancel", args=[workorder.pk])}"',
         "note_cancel": f'href="{reverse("shipping:deliverynote_cancel", args=[note.pk])}"',
-        "note_invoice": f'href="{reverse("billing:invoice_create")}?customer={buyer.pk}"',
+        "note_invoice": f'href="{reverse("billing:invoice_create")}?customer={buyer.pk}&amp;next={reverse("shipping:deliverynote_detail", args=[note.pk])}"',
         "invoice_cancel": f'href="{reverse("billing:invoice_cancel", args=[invoice.pk])}"',
-        "payment_create": f'href="{reverse("billing:payment_create", args=[invoice.pk])}"',
+        "payment_create": f'href="{reverse("billing:payment_create", args=[invoice.pk])}?next={reverse("billing:invoice_detail", args=[invoice.pk])}"',
     }
 
 
