@@ -1,4 +1,4 @@
-"""送れなかった発注の知らせと送り直しの後の画面・受入の残りの数・断られた発注と取消の発注の受入・発注の取消と送り直しの釦の字 (N96。精査 A7 の 1-1 の S2・S15・S6・S9・不具合 7)。
+"""送れなかった発注の知らせと送り直しの後の画面・受入の残りの数・断られた発注と取消の発注の受入・発注の取消と送り直しのボタンの字 (N96。精査 A7 の 1-1 の S2・S15・S6・S9・不具合 7)。
 
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (tests.test_purchasing_views の FakePost)。
 右上の知らせは get_messages(response.wsgi_request) の (level_tag, 字) で見る。取引先と品目は作り物。
@@ -111,7 +111,7 @@ def test_resend_returns_to_detail(monkeypatch, client_logged_in, subcontractor, 
     assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_SENT
 
 
-# ---------------------------------------------------------------- 4 発注の取消と送り直しの釦の字
+# ---------------------------------------------------------------- 4 発注の取消と送り直しのボタンの字
 
 
 @pytest.mark.django_db

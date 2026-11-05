@@ -70,7 +70,7 @@ def test_e42_bulk_ship_and_po_from_board(page_a, company_a):
     for index in range(2):
         qty_inputs.nth(index).fill("2")
     shot(page_a, "E-42", "a-bulk-modal")
-    box.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 釦の字は N138 で対象と数が入るので、字でなく小窓の form の主色の submit で押す (169 回目の conftest と同じ形)
+    box.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # ボタンの字は N138 で対象と数が入るので、字でなく小窓の form の主色の submit で押す (169 回目の conftest と同じ形)
 
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(0)
     expect(page_a.locator(".seizou-toast[role=status]").first).to_contain_text("2 件の出荷")

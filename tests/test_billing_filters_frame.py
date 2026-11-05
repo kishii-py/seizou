@@ -1,7 +1,7 @@
 """請求書の一覧の「残のある物だけ」を、絞り込みの枠の中の印 (flag) にした形 (N127。土台は N122 の flag。本人の決め 11-04 17:3x)。
 
 印の GET は f_unpaid (1 が入、0 が切、無いか読めない値は既定の切)。枠の欄から送ると隠しの欄の 0 とチェックの 1 の両方が届き、土台は後の 1 を読む。
-古い切り替え (「すべて / 残のある物だけ」の釦と ?unpaid=1) は無く、古い GET は読まない (別名を足さない)。
+古い切り替え (「すべて / 残のある物だけ」のボタンと ?unpaid=1) は無く、古い GET は読まない (別名を足さない)。
 入金の有無は印の when が見る (取消でない入金が 1 つも無い請求書)。状態の絞りが空なら状態を発行に絞り、状態の絞りに読める値があれば状態はそちらを使う (N120 の形のまま)。
 取引先と品目は作り物。相手の会社に HTTP を送らない (requests.post は呼んだら落とす物に差し替える)。
 """
@@ -85,7 +85,7 @@ def test_unpaid_flag_is_off_by_default_inside_the_frame(client_logged_in, invoic
     box = f"{BOX} data-list-filter>残のある物だけ</label>"
     assert HIDDEN in body and box in body
     assert body.index('role="search"') < body.index(HIDDEN) < body.index(box) < body.index('id="list-per"')
-    # 古い切り替えの釦と隠しの欄と hx-include は無い
+    # 古い切り替えのボタンと隠しの欄と hx-include は無い
     for old in ('id="invoices-unpaid"', 'hx-include="#invoices-unpaid"', 'aria-label="出す物"', 'aria-current="true">すべて'):
         assert old not in body, old
     # 古い GET は読まない (別名を足さない)

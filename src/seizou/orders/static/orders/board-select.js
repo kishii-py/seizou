@@ -1,7 +1,7 @@
 /*
  * 生産管理ボード (注文残の盤) の行の選択と「選んだ行の操作」の帯 (orders/orderline_list.html の #board-bulk)。
  * 行の押下で選ぶ (決め 11-04 22:4x。行の頭のチェックは見せない。送る値と数え方は N124 のまま)。
- * - 行 tr[data-row-menu] の、link・釦・入力の欄・⋮ のメニューの外を押すと、その行の選ぶ欄 [data-board-pick] の checked を
+ * - 行 tr[data-row-menu] の、link・ボタン・入力の欄・⋮ のメニューの外を押すと、その行の選ぶ欄 [data-board-pick] の checked を
  *   切り替えて change を出す。選ぶ欄の無い行 (取消の受注と残の無い明細) は、押しても何もしない。
  * - Shift を押しながら押すと、前に押した行から押した行までを、押した行と同じ状態にする。
  * - ⋮ か右クリックのメニューが開いている間の押下は、メニューを閉じるだけにする (行を切り替えない)。
@@ -19,7 +19,7 @@
 
   var ROW = "tr[data-row-menu]";
   var PICK = "[data-board-pick]";
-  // 押しても行を切り替えない物 (link・釦・入力の欄・⋮ のメニュー)。
+  // 押しても行を切り替えない物 (link・ボタン・入力の欄・⋮ のメニュー)。
   var OWN = "a, button, input, select, textarea, label, summary, details";
   var MENU_OPEN = "details.row-menu[open]";
   var anchor = null; // 前に押した行の選ぶ欄 (Shift の範囲の起点)

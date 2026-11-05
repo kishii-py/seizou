@@ -140,7 +140,7 @@ def test_cancel_screen_hides_button_while_payment_left(client_logged_in, user, i
     back = reverse("billing:invoice_detail", args=[invoice.pk]) + "#payments"
 
     # 確かめの画面: 「取り消す」と form の文を出さず、黄の知らせと詳細の入金の枠へ戻る link だけ
-    # (ログアウトの form がどの画面にもあるので、<form の字でなく釦の字で見る)
+    # (ログアウトの form がどの画面にもあるので、<form の字でなくボタンの字で見る)
     response = client_logged_in.get(url)
     assert response.status_code == 200
     html = response.content.decode()

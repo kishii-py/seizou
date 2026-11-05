@@ -65,7 +65,7 @@ def test_e41_ship_from_board_row_modal(page_a, company_a):
     shot(page_a, "E-41", "a-modal")
 
     box.locator("input[name=qty]").fill("3")
-    box.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 釦の字は N138 で対象と数が入るので、字でなく小窓の form の主色の submit で押す (169 回目の conftest と同じ形)
+    box.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # ボタンの字は N138 で対象と数が入るので、字でなく小窓の form の主色の submit で押す (169 回目の conftest と同じ形)
 
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(0)
     expect(page_a.locator(".seizou-toast[role=status]").first).to_be_visible()

@@ -1,7 +1,7 @@
 """画面の言葉と見た目の小さな直し (精査 A3・A1・A5 の所見)。Django の test client で HTML を見る。
 
 設定の画面の幅・権限の選択肢の字・説明書が無い時の文・取消の受注の「編集」と R05 の文・マニュアルの最上位の文・
-取消の確かめの画面の案内と釦・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0。
+取消の確かめの画面の案内とボタン・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0。
 品番と会社名は作り物。
 """
 
@@ -197,7 +197,7 @@ def test_manual_search_miss_keeps_core_sentence(client, user):
     assert ROOT_EMPTY not in html
 
 
-# ---------------------------------------------------------------- 2. 取消の確かめの画面の案内と釦
+# ---------------------------------------------------------------- 2. 取消の確かめの画面の案内とボタン
 
 SHIPPED_AT = date(2026, 11, 5)
 ISSUED_ON = date(2026, 11, 30)
@@ -262,7 +262,7 @@ def test_has_required_filter():
     assert has_required(PaymentForm()) is True
 
 
-# ---------------------------------------------------------------- 8. 次の一手の釦
+# ---------------------------------------------------------------- 8. 次の一手のボタン
 
 
 def _selected_option(html, name, value):
@@ -311,7 +311,7 @@ def test_delivery_note_detail_links_to_invoice(client, user, order):
     assert f'href="{link}"' in html
     assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
     assert "請求書作成" in html
-    assert "btn-primary" not in html  # 納品書には「編集」が無い。足した釦も主色にしない
+    assert "btn-primary" not in html  # 納品書には「編集」が無い。足したボタンも主色にしない
 
     form = client.get(link).content.decode()
     assert _selected_option(form, "customer", order.customer_id)

@@ -3,7 +3,7 @@
 - 描く所 = core/base.html の上の帯の次の 1 か所。context に form があり、黄の知らせ (warnings) が無い画面だけ。
 - 帯の出ない所 = 小窓の入力 (core/_form_modal.html は base.html を使わない)・一覧 (BaseListView。絞り込みの枠も)・
   詳細・ダッシュボード・ログイン・黄の知らせの後 (「このまま保存」の画面)。
-- 帯の釦の字の元 = 画面の下の保存の釦と同じ (form.submit_label。無ければ「保存」)。釦の字は span の中 (既にある試験の字の縛り)。
+- 帯のボタンの字の元 = 画面の下の保存のボタンと同じ (form.submit_label。無ければ「保存」)。ボタンの字は span の中 (既にある試験の字の縛り)。
 - static の js/seizou-form-guard.js (出し入れと「破棄」「保存」) と js/seizou-submit-label.js (帯の字を写す) の約束を
   字で見る (ブラウザで動かさない。ブラウザでの確かめは E-50 と本体の手の確かめ)。
 - 前書きの断片 (core/manual_default/index.html) の 1 節。
@@ -100,9 +100,9 @@ def text(response) -> str:
 
 
 def _button(body):
-    """入力のカードの主の保存の釦。(釦の字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
+    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
     match = re.search(r'<button class="btn btn-primary" type="submit"([^>]*)>(.*?)</button>', body, re.S)
-    assert match, "保存の釦が無い"
+    assert match, "保存のボタンが無い"
     attrs, inner = match.group(1), match.group(2)
     label = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
     template = re.search(r'data-submit-label="([^"]*)"', attrs)
@@ -123,9 +123,9 @@ def _bar(body):
 
 
 def _bar_label(body):
-    """保存の帯の釦の字 (html の字の参照を戻した字)。"""
+    """保存の帯のボタンの字 (html の字の参照を戻した字)。"""
     match = re.search(r"<span data-save-bar-label>(.*?)</span>", _bar(body), re.S)
-    assert match, "帯の釦の字が無い"
+    assert match, "帯のボタンの字が無い"
     return html.unescape(match.group(1)).strip()
 
 
@@ -155,7 +155,7 @@ def test_full_page_inputs_have_one_hidden_bar(logged_in):
         assert "保存していない変更があります" in bar, url
         assert "data-save-bar-discard" in bar, url
         assert "data-save-bar-save" in bar, url
-        # 2 つとも送らない釦 (Ctrl+Enter が押す「最後の送る釦」とログアウトの form に混ざらない)。主色は下の保存の釦だけ。
+        # 2 つとも送らないボタン (Ctrl+Enter が押す「最後の送るボタン」とログアウトの form に混ざらない)。主色は下の保存のボタンだけ。
         assert bar.count('type="button"') == 2, url
         assert "btn-primary" not in bar, url
         assert 'type="submit"' not in bar, url
@@ -232,7 +232,7 @@ def test_cancel_screen_bar_keeps_button_words(logged_in, order):
     body = text(logged_in.get(reverse("orders:order_cancel", args=[order.pk])))
     assert _bar_label(body) == _button(body)[0]
     assert order.order_no in _bar_label(body)
-    # 「取り消す</button>」は下の釦の 1 つだけ (帯の釦は </span></button> で閉じる)
+    # 「取り消す</button>」は下のボタンの 1 つだけ (帯のボタンは </span></button> で閉じる)
     assert body.count("取り消す</button>") == 1
     assert "保存</button>" not in body
     assert "btn-primary" not in _bar(body)

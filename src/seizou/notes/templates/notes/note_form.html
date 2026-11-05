@@ -3,7 +3,7 @@
 {% block content %}
 {# 記入の形: メモの枠 (#notes) を Quill の編集の箱にした物。詳細の画面の「書く」は、この画面の #notes だけを htmx で取って枠と入れ替える (hx-select)。 #}
 {# 「保存」は土台の入力 (検査の層と services.save_note) を通り、付けた先の詳細の #notes へ移る。「やめる」は詳細の画面の #notes を入れ直す。 #}
-{# 道具の列の釦と選ぶ欄の class (ql-…) は Quill の物 (Quill が絵を入れる)。「元に戻す」だけは Quill に絵が無いので、Quill の線の class で絵を書く。 #}
+{# 道具の列のボタンと選ぶ欄の class (ql-…) は Quill の物 (Quill が絵を入れる)。「元に戻す」だけは Quill に絵が無いので、Quill の線の class で絵を書く。 #}
 {% include "notes/_assets.html" %}
 {% note_target_url form.target as back_url %}
 <section id="notes" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="notes-heading">

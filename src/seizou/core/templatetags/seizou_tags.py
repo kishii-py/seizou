@@ -4,8 +4,8 @@ master_link: 品目か取引先を渡すと名前を出し、押すと小窓で�
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾の 0 を落とす。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
-can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口の釦を出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
-部署の判定が on のときは、釦の行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
+can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口のボタンを出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
+部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
 weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
@@ -71,10 +71,10 @@ def can_manage_accounts(context):
 
 @register.simple_tag(takes_context=True)
 def can_write(context, label, verb="create", app=None):
-    """{% can_write "workorders.WorkOrder" as can_issue %}。部品の model の書く入口の釦 (新規登録・取消・入金の記録・受入など、その model の新規登録と同じ種類の権限で決まる物) を出すか。
+    """{% can_write "workorders.WorkOrder" as can_issue %}。部品の model の書く入口のボタン (新規登録・取消・入金の記録・受入など、その model の新規登録と同じ種類の権限で決まる物) を出すか。
 
     部品が無ければ偽。編集の判定が on のときだけ権限で偽になる (core.access.can_write_model と同じ判定)。
-    部署の判定が on のときは、釦の行き先の部品 (app。無ければ model の部品) を部署で開けない人にも偽 (決め 11-04 12:5x)。
+    部署の判定が on のときは、ボタンの行き先の部品 (app。無ければ model の部品) を部署で開けない人にも偽 (決め 11-04 12:5x)。
     判定は core.access.can_open (左のメニューの絞り access.visible_menu と同じ関数)。記録は書かない (record=False)。
     """
     from seizou.core import access

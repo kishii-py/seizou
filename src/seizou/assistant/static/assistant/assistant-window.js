@@ -2,7 +2,7 @@
 // 位置と大きさは localStorage の鍵 seizou-assistant-window に覚え、次に開いた時に同じ所と大きさで出す
 // (画面が狭くなって収まらない時は画面の中に寄せる)。覚えるのはブラウザだけ (サーバーに送らない)。
 // 幅 640 未満 (スマホ) は窓を画面いっぱいの板にし、動かす・大きさを変える・広げるを切る (覚えた値を読まず書かない)。
-// 開け閉め・Esc・質問と答え (htmx) は _panel.html の script のまま。右下の「AI に質問」の釦は動かさない (E-38)。
+// 開け閉め・Esc・質問と答え (htmx) は _panel.html の script のまま。右下の「AI に質問」のボタンは動かさない (E-38)。
 // 位置と大きさは窓の箱 [data-assistant-window] の inline の style だけで持つ。class を足し引きしない
 // (CSS はテンプレートだけから作るので)。外の library を使わない。取った字を HTML として差し込まない。
 (function () {
@@ -169,7 +169,7 @@
 
   grip.addEventListener("pointerdown", function (event) {
     if (mode !== "wide" || event.button !== 0) return;
-    if (event.target.closest("button")) return; // 閉じる・広げるの釦は掴まない
+    if (event.target.closest("button")) return; // 閉じる・広げるのボタンは掴まない
     pin();
     var place = current();
     drag = { id: event.pointerId, dx: event.clientX - place.left, dy: event.clientY - place.top };

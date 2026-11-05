@@ -574,7 +574,7 @@ def test_filter_form_and_hx_include(user, logged_in, customer, item):
     _line(user, customer, item, due=timezone.localdate() - timedelta(days=1))
     url = reverse("orders:orderline_list")
 
-    # 盤の絞りは土台の絞り込みの枠の中だけ (決め 11-04 17:3x)。古い form・「すべて」の釦・hx-include は無い。
+    # 盤の絞りは土台の絞り込みの枠の中だけ (決め 11-04 17:3x)。古い form・「すべて」のボタン・hx-include は無い。
     body = logged_in.get(url).content.decode()
     assert 'id="board-filter"' not in body and 'id="orders-all"' not in body and "hx-include=\"#orders-all" not in body
     for name in ('name="f_open"', 'name="f_due_from"', 'name="f_due_to"', 'name="f_overdue"'):

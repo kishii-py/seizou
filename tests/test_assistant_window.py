@@ -1,6 +1,6 @@
 """AI チャットの窓を動かす・大きさを変える・広げる (N110。決め 11-04 14:3x) の試験。
 
-見る所: 窓の帯に掴みの印 (data-assistant-grip) と「広げる」の釦があり、窓を動かす JS (assistant/assistant-window.js) が
+見る所: 窓の帯に掴みの印 (data-assistant-grip) と「広げる」のボタンがあり、窓を動かす JS (assistant/assistant-window.js) が
 画面に読み込まれ、その static のファイルがあること。鍵の無い会社でも同じ (帯は鍵の有無で変わらない)。
 見ない所 (理由): 掴んで動かす・角で大きさを変える・広げる・localStorage に覚える・スマホの板 (ブラウザが要る。本体が画面で見る)。
 """
@@ -32,7 +32,7 @@ def test_window_has_grip_and_expand_button(key, request, client_logged_in):
     assert html.count("data-assistant-grip") == 1
     assert 'id="assistant-expand"' in html
     assert 'aria-label="広げる"' in html
-    # 閉じた時の右下の釦は今のまま (E-38)
+    # 閉じた時の右下のボタンは今のまま (E-38)
     assert 'id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden"' in html
 
 

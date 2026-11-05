@@ -1,7 +1,7 @@
-"""明細の合計の枠 (行の数・数量・金額) と、保存の釦の字を同じ元から出す (N149。案 5-A)。
+"""明細の合計の枠 (行の数・数量・金額) と、保存のボタンの字を同じ元から出す (N149。案 5-A)。
 
 - core の口 = core/forms.py の line_totals と、断片 core/_line_totals.html。
-- 受注の入力 (新規登録と編集) の枠と釦の字。開いた形・送って止まった形・消す印の行・金額の閲覧が無い人。
+- 受注の入力 (新規登録と編集) の枠とボタンの字。開いた形・送って止まった形・消す印の行・金額の閲覧が無い人。
 - 発注の入力と一括出荷の小窓の枠 (一括出荷は単価が無いので「金額」の組が無い)。
 - static の js/seizou-submit-label.js の枠の約束 (ブラウザで動かさず字で見る。ブラウザでの確かめは E-46 と本体の手の確かめ)。
 作り物のデータだけを使う。作り物の作り方と _button・MODAL・NO_MONEY の形は tests/test_core_submit_label.py を写した。
@@ -74,9 +74,9 @@ def _two_line_order(user, customer, item, plate):
 
 
 def _button(body):
-    """入力のカードの主の保存の釦。(釦の字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
+    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
     match = re.search(r'<button class="btn btn-primary" type="submit"([^>]*)>(.*?)</button>', body, re.S)
-    assert match, "保存の釦が無い"
+    assert match, "保存のボタンが無い"
     attrs, inner = match.group(1), match.group(2)
     label = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
     template = re.search(r'data-submit-label="([^"]*)"', attrs)
@@ -163,7 +163,7 @@ def test_line_totals_counts_rows_qty_amount():
         assert (found["rows"], found["qty"], found["amount"]) == (None, None, None), unknown
     assert line_totals([("10", "100")], show_amount=False) == {"rows": 1, "qty": "10", "amount": None, "show_amount": False}
     assert line_totals([]) == {"rows": 0, "qty": "0", "amount": "0", "show_amount": True}
-    # 丸めは釦の字と同じ小数 2 桁の四捨五入 (保存の 1 円の丸めは services)。
+    # 丸めはボタンの字と同じ小数 2 桁の四捨五入 (保存の 1 円の丸めは services)。
     assert line_totals([("1.005", "1")]) == {"rows": 1, "qty": "1.01", "amount": "1.01", "show_amount": True}
 
 
@@ -203,7 +203,7 @@ def test_order_post_stopped_shows_sent_values(logged_in, item):
     assert _frame(body) == {"rows": "1", "qty": "3", "amount": "4,500"}
     assert _button(body)[0] == "1 行・合計 ¥4,500 で受注する"
 
-    # 数量に数でない字を入れて止まった形: 枠は 3 つとも「—」、釦は動詞だけ。
+    # 数量に数でない字を入れて止まった形: 枠は 3 つとも「—」、ボタンは動詞だけ。
     body = logged_in.post(url, _order_post(None, (item, "abc", "1500", False))).content.decode()
     assert _frame(body) == {"rows": "—", "qty": "—", "amount": "—"}
     assert _button(body)[0] == "受注する"
@@ -255,7 +255,7 @@ def test_purchase_order_shows_totals(logged_in, user, customer, maker, item, pla
     assert _frame(body) == {"rows": "2", "qty": "20", "amount": "—"}
     assert _button(body)[0] == "2 行で発注する"
 
-    # 送って止まった形 (取引先が空): 3 × 1,500 と 2 × 2,000 で 8,500。釦の字と同じ数。
+    # 送って止まった形 (取引先が空): 3 × 1,500 と 2 × 2,000 で 8,500。ボタンの字と同じ数。
     body = logged_in.post(url, _po_post(maker, (item, "3", "1500"), (plate, "2", "2000"), partner=False)).content.decode()
     assert _frame(body) == {"rows": "2", "qty": "5", "amount": "8,500"}
     assert _button(body)[0] == "2 行・合計 ¥8,500 で発注する"

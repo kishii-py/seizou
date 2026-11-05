@@ -89,7 +89,7 @@
     true
   );
 
-  // 保存の帯の釦 (N154)。「保存」は Ctrl+Enter と同じ (保存のボタン = type="submit" の最後の物を押す。押したボタンが submitter になる)。
+  // 保存の帯のボタン (N154)。「保存」は Ctrl+Enter と同じ (保存のボタン = type="submit" の最後の物を押す。押したボタンが submitter になる)。
   // 「破棄」は MESSAGE で聞き、OK なら印を外して同じ URL を GET で開き直す (reload は止まった POST を送り直すので使わない)。
   document.addEventListener("click", function (event) {
     var target = event.target instanceof Element ? event.target : null;

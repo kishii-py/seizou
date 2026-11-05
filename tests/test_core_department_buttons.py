@@ -1,7 +1,7 @@
-"""部署の外の画面へ移る釦を出さない (決め 11-04 12:5x。精査 A7 の 4 節の 1。依頼書 N101)。
+"""部署の外の画面へ移るボタンを出さない (決め 11-04 12:5x。精査 A7 の 4 節の 1。依頼書 N101)。
 
-部署の判定が on のとき、釦の行き先の部品を部署で開けない人には、押すと部署の 403 になる釦を出さない。
-釦を出すかは core の tag can_write (編集の権限 = access.can_write_model と、部署 = access.can_open) だけで決める。
+部署の判定が on のとき、ボタンの行き先の部品を部署で開けない人には、押すと部署の 403 になるボタンを出さない。
+ボタンを出すかは core の tag can_write (編集の権限 = access.can_write_model と、部署 = access.can_open) だけで決める。
 部署の判定が off と log のときは、今までどおり編集の権限だけで決まる (log でも記録の行を書かない)。
 部署は作り物の会社の種 (accounts の demo_seed) と同じ部品を、この試験の中で作る。人と名前は作り物。
 """
@@ -41,7 +41,7 @@ def _departments():
 
 
 def _documents(user, customer, item, cut):
-    """盤の明細 (指示書あり = 「実績を入れる」が出る)・指示書・納品書 (請求書の前)・請求書 (入金の前) と、釦の href。"""
+    """盤の明細 (指示書あり = 「実績を入れる」が出る)・指示書・納品書 (請求書の前)・請求書 (入金の前) と、ボタンの href。"""
     line = _line(user, customer, item)
     workorder = _issue(user, line, cut, qty="4")
     step = workorder.steps.get(seq=1)
@@ -134,7 +134,7 @@ def test_department_off_and_log_keep_write_only(settings, client, caplog, user, 
     jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
     keiri = account("keiri", departments=[depts["keiri"]], permissions=["billing"], see_money=True)
 
-    # 今までどおり編集の権限だけで決まる (伝票編集の jimu には部署の外の部品の釦も出る)。
+    # 今までどおり編集の権限だけで決まる (伝票編集の jimu には部署の外の部品のボタンも出る)。
     invoice = _page(client, jimu, docs["urls"]["invoice"])
     assert docs["invoice_cancel"] in invoice and docs["payment_create"] in invoice
     assert docs["workorder_cancel"] in _page(client, jimu, docs["urls"]["workorder"])
@@ -145,5 +145,5 @@ def test_department_off_and_log_keep_write_only(settings, client, caplog, user, 
         assert entry in row, entry
     assert docs["progress"] in _row(client, keiri, docs)
 
-    # 釦の判定は記録の行を書かない (log でも。記録は押した先の画面の門が書く)。
+    # ボタンの判定は記録の行を書かない (log でも。記録は押した先の画面の門が書く)。
     assert [r for r in caplog.records if r.name == "seizou.access" and "(部署)" in r.getMessage()] == []
