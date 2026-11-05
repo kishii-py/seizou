@@ -18,6 +18,7 @@ from django.utils.html import escape
 import seizou.masters.views
 from seizou.billing import services as billing_services
 from seizou.connect import services as connect_services
+from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
@@ -201,3 +202,32 @@ def test_no_more_menu_without_red_action(client, settings, user, customer, item,
     body = _get(client, "orders:order_detail", order.pk)[1]
     assert "data-detail-more" not in body
     assert f'href="{reverse("orders:order_cancel", args=[order.pk])}"' not in body
+
+
+@pytest.mark.django_db
+def test_manual_detail_rare_actions_in_more(client, settings, user):
+    manual = manuals_services.create_manual(None, "作り物の手順", "steps", user)
+    pk = manual.pk
+    move, protect, delete = (reverse(f"manuals:{name}", args=[pk]) for name in ("manual_move", "manual_protect", "manual_delete"))
+    client.force_login(user)
+
+    body = _get(client, "manuals:manual_detail", pk)[1]
+    actions, menu = _actions(body), _more(body)
+    outside = actions[: actions.index(MORE_MENU)]
+    assert f'href="{reverse("manuals:manual_pdf", args=[pk])}"' in outside
+    assert f'href="{reverse("manuals:manualversion_list", args=[pk])}"' in outside
+    for url in (move, protect, delete):
+        assert f'href="{url}"' in menu and body.count(f'href="{url}"') == 1, url
+    last = menu.rsplit("<li>", 1)[1]
+    assert f'href="{delete}"' in last and "text-error" in last and "削除</a>" in last
+
+    manuals_services.protect_manual(manual, True, user)
+    body = _get(client, "manuals:manual_detail", pk)[1]
+    menu = _more(body)
+    assert f'href="{protect}"' in menu and "保護解除</a>" in menu
+    assert move not in body and delete not in body
+
+    # 書く権限の無い人 (編集の判定を効かせた設定の、Access の行の無い利用者) には「⋯」が無い
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    body = _get(client, "manuals:manual_detail", pk)[1]
+    assert "data-detail-more" not in body

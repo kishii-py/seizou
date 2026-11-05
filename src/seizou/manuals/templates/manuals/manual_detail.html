@@ -1,21 +1,25 @@
 {% extends "core/detail.html" %}
 {% load manuals_tags seizou_tags seizou_icons %}
 {# 見る画面: 上に帯 (置き場の道・版・最終更新・形式・保護・紐付け)、その下に左の目次と右の本文、最後に土台の基本情報。 #}
-{# 操作は土台の「一覧に戻る」と主色の「編集」の前。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。保護・移動・削除・保護を解除は、マニュアルの権限がある人だけ (決め 11-04 00:0x)。 #}
+{# 操作は「PDF」「版の履歴」(副)・「⋯」(移動・保護・削除 か 保護解除。削除は最後に赤の字)・主色の「編集」の順 (詳細の頭の型。N163)。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。「⋯」はマニュアルの権限がある人だけ (決め 11-04 00:0x)。 #}
 {% block actions %}
-{% can_write "manuals.Manual" as can_manual %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}PDF</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.pk %}">{% icon "list" "size-4" %}版の履歴</a>
-{% if can_manual %}
-{% if object.protected %}
-<a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護解除</a>
-{% else %}
-<a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_move' object.pk %}">{% icon "chevron-right" "size-4" %}移動</a>
-<a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護</a>
-<a class="btn btn-outline border-base-300 text-error" href="{% url 'manuals:manual_delete' object.pk %}">{% icon "x" "size-4" %}削除</a>
-{% endif %}
-{% endif %}
 {% endblock %}
+{% block more %}{% can_write "manuals.Manual" as can_manual %}{% if can_manual %}
+<details class="dropdown dropdown-end row-menu" data-detail-more>
+  <summary class="btn btn-outline border-base-300" aria-label="その他の操作" title="その他の操作">⋯</summary>
+  <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+    {% if object.protected %}
+    <li><a class="flex items-center gap-2" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護解除</a></li>
+    {% else %}
+    <li><a class="flex items-center gap-2" href="{% url 'manuals:manual_move' object.pk %}">{% icon "chevron-right" "size-4" %}移動</a></li>
+    <li><a class="flex items-center gap-2" href="{% url 'manuals:manual_protect' object.pk %}">{% icon "lock" "size-4" %}保護</a></li>
+    <li><a class="flex items-center gap-2 text-error" href="{% url 'manuals:manual_delete' object.pk %}">{% icon "x" "size-4" %}削除</a></li>
+    {% endif %}
+  </ul>
+</details>
+{% endif %}{% endblock %}
 {% block content %}
 {% manual_body object as rendered %}
 {% manual_link object as link %}
