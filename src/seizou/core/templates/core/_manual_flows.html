@@ -1,0 +1,15 @@
+{% comment %}
+業務の流れの章 (依頼書 N169)。使い方の画面 (core/manual.html)・印刷の 1 枚 (core/manual_print.html)・冊子 (core/manual_booklet.html) の 3 つが同じ字を include する。
+外の箱は include する側が持つ (画面と印刷は箱の子の選び方の class、冊子は booklet-flows の style)。ここには断片と同じ素の HTML だけを書く。
+flows は core.manual.manual_flows() の値。自社の手順の画面の名前は、同じページのその画面の章 (id = 断片の名前) へ飛ぶ。相手の会社の手順は飛ばない。
+{% endcomment %}
+<h2>業務の流れ</h2>
+<p>仕事の順に、使う画面と、することと、終わると変わることを並べました。画面の名前を押すと、その画面の説明へ移ります。「段」は、受注と発注の詳細の上に並ぶ段の名前です。</p>
+{% for flow in flows %}<h3>{{ flow.title }}</h3>
+<table>
+<thead><tr><th>順</th><th>画面</th><th>すること</th><th>段</th><th>終わると</th></tr></thead>
+<tbody>
+{% for step in flow.steps %}<tr><td>{{ forloop.counter }}</td><td>{% if step.remote %}相手の会社の「{{ step.screen }}」{% else %}<a class="link link-hover" href="#{{ step.anchor }}">{{ step.screen }}</a>{% endif %}</td><td>{{ step.do }}</td><td>{{ step.stage }}</td><td>{{ step.note }}</td></tr>
+{% endfor %}</tbody>
+</table>
+{% endfor %}

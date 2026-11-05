@@ -36,6 +36,11 @@
   絵: 断片に <img が無く、manual/images/<名前>.png があれば、その絵 (命令 manage.py seizou_manual_shots が撮る)。
   止まるときの文: 部品の services.py の断りの文のうち REFUSAL_HEADS で始まる物 (refusal_texts)。使い方の画面と印刷と小窓は、その部品の画面ごとに足す。
     冊子は、その部品の最初の章の前に 1 回だけ置く (manual_sections(booklet=True) の app_refusals)。小窓で枠 (?part=) を選んだときは何も足さない。
+
+業務の流れの章 (依頼書 N169。断片は使わず、固定の表 FLOWS から描く):
+  使い方の画面と印刷の 1 枚は画面の箱の並びの前に、冊子は目次 (と前書き) の後で最初の画面の章の前に、同じ core/_manual_flows.html を出す。
+  手順の画面の名前は、同じページのその画面の章 (id = 断片の名前) へ飛ぶ。目次と章の番号と冊子の栞には入れない。
+  手順の画面が目録に無い (部品が入っていない) 手順は落とす。最初の手順が落ちた流れは出さない。流れが 1 つも無ければ章を出さない。
 """
 
 from __future__ import annotations
@@ -108,6 +113,46 @@ FRAGMENT_TEMPLATE = "core/_manual_fragment.html"
 #: 断片の無い画面の 1 文の前半 (テンプレートが /seizou:manual の案内を続ける)
 MISSING_SENTENCE = "この画面の説明書はまだありません。"
 
+#: 業務の流れの章の流れ (依頼書 N169)。1 つの流れ = {"title", "steps"}。1 つの手順 = {"url_name", "do", "stage", "note"} と、相手の会社の手順だけ "remote": True。
+#: url_name は画面の目録の URL の名前 (相手の会社の手順は、相手が使う同じ画面)。do は人がすること、note は終わると変わること (無ければ空)。
+#: stage は受注の段 (orders.timeline.STAGES) か発注の段 (purchasing.timeline.STAGES) の字そのまま (段の変わらない手順は空)。字を変えるときは、その 2 つと合わせる。
+FLOWS = (
+    {
+        "title": "注文を受けてから入金まで",
+        "steps": (
+            {"url_name": "orders:order_create", "do": "注文書や電話で受けた注文を、得意先と明細を入れて登録する。", "stage": "受注", "note": "生産管理ボードに出る。"},
+            {"url_name": "connect:inbox_accept", "do": "seizou でつながった取引先の注文は、受信した注文から受け入れる。", "stage": "受注", "note": "受注ができ、相手に注文回答が送られる。"},
+            {"url_name": "workorders:workorder_create", "do": "生産管理ボードで明細を選び、指示書を発行する。", "stage": "指示", "note": ""},
+            {"url_name": "workorders:workorder_detail", "do": "製造が指示書を受け、「着手」のボタンを押す。", "stage": "着手", "note": "「着手済」の印が出る。"},
+            {"url_name": "progress:progress_create", "do": "工程が終わるたびに、実績の数と日時を入れる。", "stage": "完了", "note": "全部の工程の実績が予定に達すると「完了」になる。"},
+            {"url_name": "shipping:shipment_create", "do": "できた物を送るときに、明細ごとに出荷を記録する。", "stage": "出荷", "note": "受注の状態が「一部出荷」か「出荷済」になる。"},
+            {"url_name": "shipping:deliverynote_create", "do": "同じ得意先の出荷をまとめて、納品書を作る。", "stage": "納品", "note": ""},
+            {"url_name": "billing:invoice_create", "do": "締日の後に、納品書の出た出荷をまとめて請求書を作る。", "stage": "請求", "note": ""},
+            {"url_name": "billing:payment_create", "do": "入金があったら、請求書に入金の日付と金額を記録する。", "stage": "入金", "note": "請求書の残が減る。"},
+        ),
+    },
+    {
+        "title": "発注から受入まで",
+        "steps": (
+            {"url_name": "purchasing:purchaseorder_create", "do": "協力企業と明細を入れて、発注を保存する。", "stage": "発注", "note": "seizou でつながった協力企業には注文が送られ、段が「送付」に進む。"},
+            {"url_name": "purchasing:purchaseorder_detail", "do": "協力企業の注文回答と出荷の知らせを、発注の詳細で確かめる。", "stage": "回答", "note": "seizou でつながった協力企業だけ。出荷の知らせが届くと段が「出荷の知らせ」に進む。"},
+            {"url_name": "purchasing:receipt_create", "do": "物が届いたら、発注の明細ごとに受入日と数を記録する。", "stage": "受入", "note": "seizou でつながった協力企業には検収が送られ、段が「検収」に進む。"},
+        ),
+    },
+    {
+        "title": "取引先とつなぐ",
+        "steps": (
+            {"url_name": "connect:connection_create", "do": "取引先ごとに、向き「送る」と「受ける」の 2 件を、同じ鍵の置き場の名前で登録する。", "stage": "", "note": "「送る」には相手の受け口の URL を入れる。"},
+            {"url_name": "connect:connection_detail", "do": "会社の置き場で manage.py seizou_secret を打って鍵の値を作り、.env に置いて相手に人の手で渡す。", "stage": "", "note": "「鍵の設定」が「済み」になる。"},
+            {"url_name": "connect:connection_create", "remote": True, "do": "相手の会社も、こちらとの接続を 2 件登録し、受け取った鍵の値を .env に置く。", "stage": "", "note": ""},
+            {"url_name": "purchasing:purchaseorder_create", "do": "接続した協力企業に発注を保存する。", "stage": "送付", "note": "注文が相手の「受信した注文」に入る。"},
+            {"url_name": "connect:inbox_accept", "remote": True, "do": "相手が受信した注文を受け入れる。", "stage": "回答", "note": "注文回答が返り、発注の状態が「相手が受け入れた」になる。"},
+            {"url_name": "shipping:shipment_create", "remote": True, "do": "相手が出荷を記録する。", "stage": "出荷の知らせ", "note": "出荷の知らせが届く。"},
+            {"url_name": "purchasing:receipt_create", "do": "届いた物を受入に記録する。", "stage": "検収", "note": "検収が相手に送られ、相手の受注の明細に入る。"},
+        ),
+    },
+)
+
 #: 冊子の主色 (表紙の帯と題・章の頭の帯と番号)。会社の行に色の列が無いので固定の濃い青
 BOOKLET_PRIMARY_COLOR = "#1f3a5f"
 
@@ -146,6 +191,33 @@ def manual_dir() -> Path | None:
 def fragment_name(url_name: str) -> str:
     """断片の名前。URL の名前の : を _ に替えた物 (例 orders:order_list → orders_order_list)。"""
     return url_name.replace(":", "_")
+
+
+def manual_flows() -> list[dict]:
+    """業務の流れの章の材料 (FLOWS の並びのまま)。手順の画面が目録に無い (部品が入っていない) 手順は落とす。
+
+    最初の手順が落ちた流れは入れない (流れの入口の部品が無い)。読むだけ。
+    1 つの流れ = {"title", "steps"}。1 つの手順 = {"anchor" (飛ぶ先の断片の名前), "screen" (画面の名前), "remote", "do", "stage", "note"}。
+    """
+    names = {screen.url_name: screen.name for screen in all_screens()}
+    flows = []
+    for flow in FLOWS:
+        if flow["steps"][0]["url_name"] not in names:
+            continue
+        steps = [
+            {
+                "anchor": fragment_name(step["url_name"]),
+                "screen": names[step["url_name"]],
+                "remote": step.get("remote", False),
+                "do": step["do"],
+                "stage": step["stage"],
+                "note": step["note"],
+            }
+            for step in flow["steps"]
+            if step["url_name"] in names
+        ]
+        flows.append({"title": flow["title"], "steps": steps})
+    return flows
 
 
 def read_fragment(name: str):
@@ -322,6 +394,7 @@ def booklet_context() -> dict:
         "manual_date": manual_date(),
         "sections": manual_sections(booklet=True),
         "intro": None if intro is None or intro is UNREADABLE else mark_safe(intro),
+        "flows": manual_flows(),
         "intro_unreadable": intro is UNREADABLE,
         "has_manual": folder is not None and folder.is_dir(),
         "primary_color": BOOKLET_PRIMARY_COLOR,
@@ -357,6 +430,7 @@ class ManualView(ScreenMixin, TemplateView):
         intro = read_fragment(INTRO_NAME)
         context["sections"] = manual_sections()
         context["intro"] = None if intro is None or intro is UNREADABLE else mark_safe(intro)
+        context["flows"] = manual_flows()
         context["intro_unreadable"] = intro is UNREADABLE
         context["has_manual"] = folder is not None and folder.is_dir()
         context["print_url"] = f"{reverse('core:manual')}?{PRINT_PARAM}=1"
