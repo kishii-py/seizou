@@ -112,7 +112,8 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     assert "4" in [cell.strip() for cell in line.locator("td").all_inner_texts()]
     due_cell = printed.locator("table.report-meta tr").filter(has_text="支払期日").locator("td")
     expected = _expected_due_date(*_terms(company_a.id, CUSTOMER_CODE), shipped)
-    expect(due_cell).to_have_text(expected.isoformat())
+    # 印刷の支払期日は「2026年12月31日」の形 (invoice.html の date:"Y年n月j日")
+    expect(due_cell).to_have_text(f"{expected.year}年{expected.month}月{expected.day}日")
     shot(printed, "E-29", "a-print")
 
     page_a.goto(f"{company_a.base_url}/billing/invoices/new/")
