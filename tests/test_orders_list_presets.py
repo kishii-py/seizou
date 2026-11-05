@@ -1,7 +1,7 @@
 """生産管理ボードと受注の一覧の絞りのタブ (土台の presets の最初の組。N147。UX の案 3-A)。名前は作り物だけ。
 
 盤: すべて・出荷の残りがある (既定の印と同じ組)・納期が過ぎた・今週が納期 (月曜から日曜)。
-受注の一覧: すべて・未出荷がある (既定の印と同じ組)・今月の受注 (状態を問わない)・出荷済 (状態を選ぶので、印は切に描かれる)。
+受注の一覧: すべて・出荷の残りがある (既定の印と同じ組)・今月の受注 (状態を問わない)・出荷済 (状態を選ぶので、印は切に描かれる)。
 """
 
 from datetime import timedelta
@@ -112,8 +112,8 @@ def listed_orders(user, customer, shaft):  # noqa: F811
 def test_order_list_tabs_and_counts(logged_in, listed_orders):  # noqa: F811
     url = reverse("orders:order_list")
     response = logged_in.get(url)
-    assert list(_counts(response)) == ["すべて", "未出荷がある", "今月の受注", "出荷済"]
-    assert _counts(response) == {"すべて": 3, "未出荷がある": 1, "今月の受注": 3, "出荷済": 1}
+    assert list(_counts(response)) == ["すべて", "出荷の残りがある", "今月の受注", "出荷済"]
+    assert _counts(response) == {"すべて": 3, "出荷の残りがある": 1, "今月の受注": 3, "出荷済": 1}
 
     first = timezone.localdate().replace(day=1)
     last = (first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
@@ -127,7 +127,7 @@ def test_order_list_tabs_and_counts(logged_in, listed_orders):  # noqa: F811
 @pytest.mark.django_db
 def test_order_list_selected_tab_follows_status(logged_in, listed_orders):  # noqa: F811
     url = reverse("orders:order_list")
-    assert _selected(logged_in.get(url)) == ["未出荷がある"]
+    assert _selected(logged_in.get(url)) == ["出荷の残りがある"]
 
     response = logged_in.get(url, {"f_status": "shipped"})
     assert _selected(response) == ["出荷済"]
