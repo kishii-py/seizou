@@ -132,3 +132,4 @@ UV_SYSTEM_CERTS=true seizou new ~/seizou-sites/<id>/answers.yaml
 立ち上げた後に、会社の置き場 `~/seizou-sites/<id>/` のフォルダで Claude Code を開くと、プラグインの MCP サーバー `seizou` (Claude Code が会社のシステムの道具を呼ぶ口) が立ち、受注・出荷・指示書・部品・マニュアル・受入・検収・入金・フィードバックを読めます。受注を作る・出荷する・工程の予定を置く道具は、置き場の `.env` に `SEIZOU_MCP_USER=<利用者名>` の 1 行があるときだけ書き、画面と同じポカよけを通ります。プラグインを入れていない Claude Code で使うときは、置き場で `claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利用者名>` を打ちます (`<python>` は置き場の `README.md` の起動の 1 行の python です)。API の鍵は要りません (手元のデータベースを読み書きするだけです)。担当者に伝えるときは、短く平易な文にします。
 
 置き場には、組み立ての命令が書いた `CLAUDE.md` (AI が守る決まり。部品を書き換えない・書き方の決まり・変えたら `seizou_check` → `/simplify` → もう 1 度 `seizou_check` の流れ) と、その短い版の `AGENTS.md` があります。置き場で開いた Claude Code は `CLAUDE.md` を読み、その決まりのとおりに直します。
+組み立ての命令より前に作った置き場や、2 つのファイルを消してしまった置き場には、`seizou ai-docs ~/seizou-sites/<id>` で後から足せます (どちらかが既にあれば何も書かずに止まり、`--force` を付けると 2 つとも書き直します)。

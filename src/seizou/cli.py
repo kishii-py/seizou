@@ -16,6 +16,8 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
     起動はしない。起動の 1 行を最後に出す。
+seizou ai-docs <置き場> [--force]
+    既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
 
 終わりの番号: 0 = できた / 1 = migrate などの子の process が失敗した / 2 = 答えか置き場の誤り。
 
@@ -558,8 +560,7 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         encoding="utf-8",
     )
     # AI が守る決まり (CLAUDE.md) と、Claude 以外の道具向けの短い版 (AGENTS.md)。決め 11-05 17:2x。N165
-    (site / "CLAUDE.md").write_text(render("CLAUDE.md.tmpl", id=company_id, name=str(answers["name"])), encoding="utf-8")
-    (site / "AGENTS.md").write_text(render("AGENTS.md.tmpl", id=company_id, name=str(answers["name"])), encoding="utf-8")
+    write_ai_docs(site, company_id, str(answers["name"]))
     (site / "checks.py").write_text(render("checks.py.tmpl", id=company_id), encoding="utf-8")
     (site / "deploy").mkdir(parents=True, exist_ok=True)
     (site / "deploy" / "nginx-files.conf").write_text(
@@ -568,6 +569,12 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
     )
     for folder in ("templates", "static/css", "manual/images"):
         (site / folder).mkdir(parents=True, exist_ok=True)
+
+
+def write_ai_docs(site: Path, company_id: str, name: str) -> None:
+    """置き場に、AI が守る決まり (CLAUDE.md) と短い版 (AGENTS.md) を書く (seizou new と seizou ai-docs が呼ぶ)。N165・N170"""
+    (site / "CLAUDE.md").write_text(render("CLAUDE.md.tmpl", id=company_id, name=name), encoding="utf-8")
+    (site / "AGENTS.md").write_text(render("AGENTS.md.tmpl", id=company_id, name=name), encoding="utf-8")
 
 
 def copy_manual(seeds: Path, site: Path) -> int:
@@ -856,6 +863,34 @@ def _new_report(
     print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
 
 
+def command_ai_docs(site: Path, force: bool = False) -> int:
+    """seizou ai-docs (決め 11-05 22:5x。N170)。既にある会社の置き場に、CLAUDE.md と AGENTS.md を後から書く。
+
+    置き場は manage.py と answers.yaml があるフォルダ。会社の id と名前は置き場の answers.yaml の id と name
+    (write_project と同じ値)。load_answers は使わない (logo の道は元の答えの YAML の横からなので、置き場の写しでは断られる)。
+    どちらかが既にあれば、--force のときだけ 2 つとも書き直す (人が直した決まりを黙って消さない)。誤りは何も書かずに終わりの番号 2。
+    """
+    answers_path = site / "answers.yaml"
+    if not ((site / "manage.py").is_file() and answers_path.is_file()):
+        print(f"止まりました: 置き場ではありません: {site} (manage.py か answers.yaml がありません)", file=sys.stderr)
+        return EXIT_INPUT
+    try:
+        answers = yaml.safe_load(answers_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        answers = None
+    company_id = answers.get("id") if isinstance(answers, dict) else None
+    if not (isinstance(company_id, str) and ID_PATTERN.match(company_id) and answers.get("name") not in (None, "")):
+        print(f"止まりました: 置き場の answers.yaml から会社の id と name を読めません: {answers_path}", file=sys.stderr)
+        return EXIT_INPUT
+    existing = [name for name in ("CLAUDE.md", "AGENTS.md") if (site / name).exists()]
+    if existing and not force:
+        print(f"止まりました: 既にあります: {'・'.join(existing)} (上書きするなら --force)", file=sys.stderr)
+        return EXIT_INPUT
+    write_ai_docs(site, company_id, str(answers["name"]))
+    print(f"書いた: {site / 'CLAUDE.md'}・AGENTS.md")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -877,6 +912,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="管理者のパスワードを画面に出さず、このファイルに admin:<値> の 1 行で書く (持ち主だけが読める)",
     )
+    ai_docs = commands.add_parser(
+        "ai-docs",
+        help="既にある会社の置き場に、AI が守る決まりの CLAUDE.md と AGENTS.md を書く",
+        description="既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。",
+    )
+    ai_docs.add_argument("site", type=Path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
+    ai_docs.add_argument("--force", action="store_true", help="CLAUDE.md か AGENTS.md が既にあっても、2 つとも書き直す")
     return parser
 
 
@@ -884,6 +926,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "new":
         return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)
+    if args.command == "ai-docs":
+        return command_ai_docs(args.site, args.force)
     return EXIT_INPUT
 
 
