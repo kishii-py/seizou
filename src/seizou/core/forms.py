@@ -56,6 +56,7 @@ def apply_integer_limits(field, low, high) -> None:
 class ServiceModelForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        plain_number_widgets(self)
         model = self._meta.model
         for name, field in self.fields.items():
             if not isinstance(field, forms.IntegerField):
@@ -69,6 +70,25 @@ class ServiceModelForm(forms.ModelForm):
     def validate_unique(self):
         # 一意は services が見る (同じ文を 2 か所に持たない)。
         return
+
+
+class PlainNumberInput(forms.NumberInput):
+    """数の欄。初期値の Decimal が整数なら小数の 0 を出さない (「10.00」でなく「10」。動画の確かめの所見 11-05)。
+
+    使う人が打った字 (bound の値) はそのまま。整数でない Decimal は Django のまま (12.50 は 12.50)。
+    """
+
+    def format_value(self, value):
+        if isinstance(value, Decimal) and value == value.to_integral_value():
+            return str(int(value))
+        return super().format_value(value)
+
+
+def plain_number_widgets(form: forms.BaseForm) -> None:
+    """form の DecimalField のうち、Django が付けた素の NumberInput を PlainNumberInput に替える (attrs は引き継ぐ)。"""
+    for field in form.fields.values():
+        if isinstance(field, forms.DecimalField) and type(field.widget) is forms.NumberInput:
+            field.widget = PlainNumberInput(attrs=field.widget.attrs)
 
 
 #: 複数の checkbox の 1 つずつの見た目 (daisyUI)

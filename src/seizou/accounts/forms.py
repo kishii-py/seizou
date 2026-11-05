@@ -45,7 +45,7 @@ class AccountForm(forms.Form):
         queryset=Department.objects.none(),
         required=False,
         widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
-        help_text="部署に check を入れると、その部署の既定の権限に check が入ります。",
+        help_text="部署に チェックを入れると、その部署の既定の権限に チェックが入ります。",
     )
     permissions = forms.MultipleChoiceField(
         label="権限",
@@ -124,7 +124,7 @@ class AccountDeleteForm(forms.Form):
 def department_app_choices() -> list[tuple[str, str]]:
     """部署の「開ける部品」の欄の選び (app の名前, 左のメニューの入口の字)。並びは services.department_apps() (PARTS の順)。
 
-    画面を 1 つも持たない部品 (bookmarks) は、check しても何も変わらないので出さない。入口の無い部品 (intake) は部品の表示名。
+    画面を 1 つも持たない部品 (bookmarks) は、チェックしても何も変わらないので出さない。入口の無い部品 (intake) は部品の表示名。
     """
     with_screens = {screen.app for screen in all_screens()}
     labels = app_labels()
@@ -142,14 +142,14 @@ class DepartmentForm(forms.Form):
         choices=(),
         required=False,
         widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
-        help_text="check を入れた部品の画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
+        help_text="チェックを入れた部品の画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
     )
     default_permissions = forms.MultipleChoiceField(
         label="既定の権限",
         choices=(),
         required=False,
         widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
-        help_text="アカウントの発行と編集でこの部署に check を入れたときに、自動で check が入る権限。既にいる人の権限は変わりません。",
+        help_text="アカウントの発行と編集でこの部署に チェックを入れたときに、自動で チェックが入る権限。既にいる人の権限は変わりません。",
     )
     sort_order = forms.IntegerField(label="並び順", min_value=0, initial=0, help_text="小さい数が先に並びます。")
 

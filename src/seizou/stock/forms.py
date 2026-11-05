@@ -12,6 +12,8 @@
 """
 
 from django import forms
+
+from seizou.core.forms import PlainNumberInput
 from django.apps import apps
 from django.utils import timezone
 
@@ -30,7 +32,7 @@ def _qty_field(label="数量"):
         label=label,
         max_digits=12,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
 
 

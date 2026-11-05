@@ -16,6 +16,7 @@ IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台�
 from __future__ import annotations
 
 import unicodedata
+from decimal import Decimal
 
 from django import forms
 from django.core.exceptions import ValidationError
@@ -92,6 +93,12 @@ class DecimalInput(forms.TextInput):
 
     def __init__(self, attrs=None):
         super().__init__(attrs={"inputmode": "decimal", **(attrs or {})})
+
+    def format_value(self, value):
+        # 初期値の Decimal が整数なら小数の 0 を出さない (「480.00」でなく「480」。動画の確かめの所見 11-05)。打った字はそのまま。
+        if isinstance(value, Decimal) and value == value.to_integral_value():
+            return str(int(value))
+        return super().format_value(value)
 
     def value_from_datadict(self, data, files, name):
         value = super().value_from_datadict(data, files, name)

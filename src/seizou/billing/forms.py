@@ -16,7 +16,7 @@ from decimal import Decimal
 from django import forms
 from django.utils import timezone
 
-from seizou.core.forms import SubmitLabelMixin, label_number
+from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number
 
 from .models import Invoice
 from .models import Payment
@@ -123,7 +123,7 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
         decimal_places=2,
         min_value=Decimal("0.01"),
         error_messages={"min_value": "入金の金額は 0 より大きい数にしてください。"},
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-amount": True}),
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-amount": True}),
     )
     method = forms.ChoiceField(label="入金の方法", choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_TRANSFER)
     note = forms.CharField(
