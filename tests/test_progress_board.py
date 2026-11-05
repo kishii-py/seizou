@@ -198,7 +198,7 @@ def test_urls_and_menu():
     assert reverse("progress:progress_list") == "/progress/"
     assert reverse("progress:record_list") == "/progress/records/"
     assert reverse("progress:progress_create") == "/progress/new/"
-    assert progress_urls.MENU == [("進捗", "progress:progress_list")]
+    assert progress_urls.MENU == [("進捗", "progress:progress_list"), ("実績", "progress:record_list")]
 
 
 @pytest.mark.django_db

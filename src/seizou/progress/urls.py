@@ -7,7 +7,7 @@ from . import views
 app_name = "progress"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-MENU = [("進捗", "progress:progress_list")]
+MENU = [("進捗", "progress:progress_list"), ("実績", "progress:record_list")]
 
 urlpatterns = [
     path("", views.ProgressBoardView.as_view(), name="progress_list"),
