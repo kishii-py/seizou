@@ -1,6 +1,4 @@
 {% extends "core/form.html" %}
 {# 納品書を取り消す: 欄の無い form。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せる。 #}
-{% block content %}
-<p class="mb-4 text-base-content/70">この納品書を取り消します。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せます。</p>
-{{ block.super }}
+{% block content %}{% include "shipping/_deliverynote_cancel_card.html" %}
 {% endblock %}
