@@ -1,4 +1,4 @@
 {% extends "core/list.html" %}
 {% load seizou_icons %}
 {# 部署の一覧: 土台の一覧 (「新規登録」は block.super) に、アカウント管理へ戻る link を足す。入口は設定の画面 → アカウント管理 → 部署。 #}
-{% block actions %}<a class="btn btn-ghost" href="{% url 'accounts:access_list' %}">{% icon "users" "size-4" %}アカウント管理</a>{{ block.super }}{% endblock %}
+{% block actions %}<a class="btn btn-ghost" href="{% url 'accounts:access_list' %}">{% icon "users" "size-4" %}アカウント管理</a>{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}
