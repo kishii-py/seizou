@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.conf import setting
-from seizou.core.forms import ServiceModelForm
+from seizou.core.forms import ServiceModelForm, SubmitLabelMixin, line_totals
 from seizou.core.views import widget_css
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
@@ -110,6 +110,10 @@ class OrderLineForm(forms.Form):
         if hide_money:
             # 金額の閲覧が無い人には単価の欄を出さない。line() は欄に無い鍵を渡さないので、既にある明細の単価は今のまま。
             self.fields.pop("unit_price", None)
+        # 合計の枠と保存の釦の字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
+        self.fields["qty"].widget.attrs["data-label-qty"] = True
+        if "unit_price" in self.fields:
+            self.fields["unit_price"].widget.attrs["data-label-price"] = True
         # 入力の土台は外側の form の欄にだけ見た目の class を付けるので、行の欄には同じ関数で付ける。
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", widget_css(field.widget))
@@ -139,8 +143,18 @@ class OrderLineForm(forms.Form):
         return line
 
 
-class OrderForm(ServiceModelForm):
-    """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。"""
+class OrderLineFormSet(forms.BaseFormSet):
+    """明細の行の formset。消す印 (DELETE) に、合計の枠と釦の字の JS が行を飛ばす印を付ける (N149)。"""
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if "DELETE" in form.fields:
+            form.fields["DELETE"].widget.attrs["data-label-skip"] = True
+
+
+class OrderForm(SubmitLabelMixin, ServiceModelForm):
+    """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。
+    保存の釦は「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。"""
 
     class Meta:
         model = Order
@@ -154,6 +168,8 @@ class OrderForm(ServiceModelForm):
     def __init__(self, data=None, files=None, *args, instance=None, hide_money=False, **kwargs):
         super().__init__(data, files, *args, instance=instance, **kwargs)
         self.creating = instance is None
+        self.hide_money = hide_money
+        self.submit_label_plain = "受注する" if self.creating else "保存"
         self.fields["customer"].empty_label = EMPTY_LABEL
         # 得意先は使用中だけ。直す受注の今の得意先は使用停止でも残す (N135)。
         self.fields["customer"].queryset = active_partners(keep=None if self.creating else instance.customer_id)
@@ -168,6 +184,7 @@ class OrderForm(ServiceModelForm):
         rows = [] if self.creating else list(instance.lines.order_by("line_no"))
         formset_class = forms.formset_factory(
             OrderLineForm,
+            formset=OrderLineFormSet,
             extra=(0 if rows else 1) if self.single else 1,
             can_delete=not self.single,
             max_num=1 if self.single else 1000,
@@ -178,6 +195,41 @@ class OrderForm(ServiceModelForm):
             initial=[self.line_initial(row) for row in rows],
             form_kwargs={"order": None if self.creating else instance, "hide_money": hide_money},
         )
+
+    def submit_label_templates(self) -> list:
+        verb = "で受注する" if self.creating else "で保存"
+        if self.hide_money:
+            return [f"{{rows}} 行{verb}"]
+        return [f"{{rows}} 行・合計 ¥{{amount}} {verb}", f"{{rows}} 行{verb}"]
+
+    def submit_label_values(self) -> dict:
+        totals = self.line_totals()
+        if not totals["rows"]:
+            return {}
+        return {"rows": str(totals["rows"]), "amount": totals["amount"]}
+
+    def line_pairs(self):
+        """合計の枠と釦の字に数える明細の (数量, 単価)。消す印の行と何も入れていない行は数えない。
+        送って止まった形で数量の通らなかった行があれば None (分からない)。金額の閲覧が無い人には単価を渡さない。"""
+        pairs = []
+        for row in self.lines.forms:
+            if self.is_bound:
+                # 先に誤りを読む (検査がまだなら、ここで走って cleaned_data ができる。土台は is_valid を先に呼ぶ)。
+                qty_failed = "qty" in row.errors
+                values = getattr(row, "cleaned_data", None) or {}
+                if values.get("DELETE"):
+                    continue
+                if qty_failed:
+                    return None
+            else:
+                values = row.initial or {}
+            if values.get("qty") is None:
+                continue
+            pairs.append((values["qty"], None if self.hide_money else values.get("unit_price")))
+        return pairs
+
+    def line_totals(self) -> dict:
+        return line_totals(self.line_pairs(), show_amount=not self.hide_money)
 
     @staticmethod
     def line_initial(row) -> dict:

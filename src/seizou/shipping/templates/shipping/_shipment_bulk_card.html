@@ -30,6 +30,10 @@
     {% endfor %}
   </div>
   {% if form.dropped %}<p class="mt-6 text-xs text-base-content/50">取消の受注と残の無い明細 {{ form.dropped }} 行は出していません。</p>{% endif %}
+  <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="text-lg font-bold">明細</h2>
+    {% include "core/_line_totals.html" %}
+  </div>
   <div class="mt-4 overflow-x-auto">
     <table class="table table-sm [&_input[inputmode=decimal]]:text-right">
       <thead>
