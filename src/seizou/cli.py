@@ -10,6 +10,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
     置き場には、AI が守る決まりの CLAUDE.md (Claude Code が置き場を開いたときに読む) と、その短い版の AGENTS.md も書く。
+    置き場には、git に入れない物 (鍵の .env・DB・上げたファイルの media/ ほか) を並べた .gitignore も書く (既にあれば書き直さない)。
     --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
     (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -18,6 +19,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     起動はしない。起動の 1 行を最後に出す。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
+    .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
 
 終わりの番号: 0 = できた / 1 = migrate などの子の process が失敗した / 2 = 答えか置き場の誤り。
 
@@ -548,6 +550,8 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         encoding="utf-8",
     )
     write_secret_file(site / ".env", render("env.tmpl", secret_key=secrets.token_urlsafe(50)))
+    # git に入れない物 (.env・db.sqlite3・media/ ほか)。既にあれば書き直さない。決め 11-06 00:0x。N172
+    write_gitignore(site)
     (site / "README.md").write_text(
         render(
             "README.md.tmpl",
@@ -575,6 +579,15 @@ def write_ai_docs(site: Path, company_id: str, name: str) -> None:
     """置き場に、AI が守る決まり (CLAUDE.md) と短い版 (AGENTS.md) を書く (seizou new と seizou ai-docs が呼ぶ)。N165・N170"""
     (site / "CLAUDE.md").write_text(render("CLAUDE.md.tmpl", id=company_id, name=name), encoding="utf-8")
     (site / "AGENTS.md").write_text(render("AGENTS.md.tmpl", id=company_id, name=name), encoding="utf-8")
+
+
+def write_gitignore(site: Path) -> bool:
+    """置き場に .gitignore (git に入れない物 = 鍵と DB と上げたファイル) を書く。既にあれば触らない (人が直した物を消さない)。書いたら True。N172"""
+    path = site / ".gitignore"
+    if path.exists():
+        return False
+    path.write_text(render("gitignore.tmpl"), encoding="utf-8")
+    return True
 
 
 def copy_manual(seeds: Path, site: Path) -> int:
@@ -869,6 +882,7 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     置き場は manage.py と answers.yaml があるフォルダ。会社の id と名前は置き場の answers.yaml の id と name
     (write_project と同じ値)。load_answers は使わない (logo の道は元の答えの YAML の横からなので、置き場の写しでは断られる)。
     どちらかが既にあれば、--force のときだけ 2 つとも書き直す (人が直した決まりを黙って消さない)。誤りは何も書かずに終わりの番号 2。
+    .gitignore は無いときだけ書き、書いたときだけ「書いた:」の行に名前を足す (既にある .gitignore は --force でも書き直さない)。
     """
     answers_path = site / "answers.yaml"
     if not ((site / "manage.py").is_file() and answers_path.is_file()):
@@ -887,7 +901,8 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
         print(f"止まりました: 既にあります: {'・'.join(existing)} (上書きするなら --force)", file=sys.stderr)
         return EXIT_INPUT
     write_ai_docs(site, company_id, str(answers["name"]))
-    print(f"書いた: {site / 'CLAUDE.md'}・AGENTS.md")
+    wrote_gitignore = write_gitignore(site)
+    print(f"書いた: {site / 'CLAUDE.md'}・AGENTS.md" + ("・.gitignore" if wrote_gitignore else ""))
     return EXIT_OK
 
 
