@@ -94,3 +94,26 @@ class SettingOverride(models.Model):
 
     def __str__(self):
         return f"{self.key} = {self.value!r}"
+
+
+class UserPreference(models.Model):
+    """人ごとの表示の設定 (決め 11-05 21:2x。N167)。1 人 1 鍵 1 行。書くのは core.services.set_user_preference だけ (R13)。
+
+    鍵と見出しは core.display にある。今の鍵は上の帯の色 (header_color) だけで、ほかの表示の設定も表を変えずに同じ表へ鍵を足す。
+    標準の値は行を持たない (行が無ければ標準)。履歴は持たない。
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+", verbose_name="利用者")
+    key = models.CharField("設定の鍵", max_length=64)
+    value = models.CharField("値", max_length=200)
+    updated_at = models.DateTimeField("変えた日時", auto_now=True)
+
+    class Meta:
+        verbose_name = "表示の設定"
+        verbose_name_plural = "表示の設定"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "key"], name="core_userpreference_user_key"),
+        ]
+
+    def __str__(self):
+        return f"{self.key} = {self.value}"

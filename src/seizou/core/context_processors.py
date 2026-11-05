@@ -203,6 +203,21 @@ def _menu_count(name: str) -> int | None:
         return None
 
 
+def _header_color(user) -> str:
+    """上の帯の色の名前 (人ごとの表示の設定。決め 11-05 21:2x。N167)。テンプレートが読んだ時に 1 回だけ読む。
+
+    標準 (白)・未ログイン・表を読めないときは空の字 (土台の base.html は data-seizou-header を出さない)。名前は core.display.HEADER_COLORS の物だけ。
+    """
+    from seizou.core import display
+    from seizou.core import services
+
+    try:
+        name = services.user_preference(user, display.HEADER_COLOR)
+    except DatabaseError:
+        return ""
+    return name if name in display.HEADER_COLORS and name != display.HEADER_COLOR_DEFAULT else ""
+
+
 def attach_counts(items: list[dict], user) -> None:
     """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit を付ける。
 
@@ -271,6 +286,8 @@ def seizou(request) -> dict:
             "parts": part_names(),
             # 金額の閲覧が無い人 (on) に金額の枡を隠す印。テンプレートが読んだ時に判定し、log では記録に 1 行 (精査 A2 の B4)
             "hide_money": SimpleLazyObject(lambda: _hides_money(user)),
+            # 上の帯の色 (人ごとの表示の設定。N167)。base.html の <html> の data-seizou-header。テンプレートが読んだ時に読む
+            "header_color": SimpleLazyObject(lambda: _header_color(user)),
             "practice": practice.is_practice(),  # 練習モード (seizou_practice start が立てたサーバー) の印。base.html が帯と題の「練習: 」を出す
         }
     }

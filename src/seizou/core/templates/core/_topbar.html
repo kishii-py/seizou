@@ -1,6 +1,7 @@
 {% load seizou_guide seizou_icons %}
 {# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
-<header class="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
+{# 上の帯の色: 固定の class seizou-header。人ごとの表示の設定で色を選んだ人は、<html> の data-seizou-header の名前で scripts/css/input.css の決まりが塗る (N167)。白 (標準) は bg-base-100 のまま。 #}
+<header class="seizou-header sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
   {% if seizou.search_url %}
   <form method="get" action="{{ seizou.search_url }}" role="search" class="min-w-0 flex-1 sm:max-w-md">
@@ -27,6 +28,7 @@
       <ul class="dropdown-content menu z-40 mt-2 w-48 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         <li class="menu-title truncate text-xs">{{ name }}</li>
         <li><a href="{% url 'core:settings' %}" class="flex items-center gap-2">{% icon "settings" "size-4" %}設定</a></li>
+        <li><a href="{% url 'core:display_settings' %}" data-modal-form="{% url 'core:display_settings' %}" class="flex items-center gap-2">{% icon "eye" "size-4" %}表示の設定</a></li>
         <li><form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button type="submit" class="flex w-full items-center gap-2">{% icon "logout" "size-4" %}ログアウト</button></form></li>
       </ul>
     </details>

@@ -16,14 +16,14 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import DatabaseError
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.urls import reverse, reverse_lazy
 from django.utils.cache import add_never_cache_headers
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from seizou.core import access, conf, doctor, services
-from seizou.core.forms import CompanyForm, SettingForm
+from seizou.core import access, conf, display, doctor, services
+from seizou.core.forms import CompanyForm, DisplaySettingsForm, SettingForm
 from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
 from seizou.parts import PARTS
@@ -365,3 +365,34 @@ class CompanyUpdateView(BaseFormView):
         # 土台は model が無いと cancel_url を None にするので、設定の画面へ戻す
         context["cancel_url"] = reverse("core:settings")
         return context
+
+
+class DisplaySettingsView(BaseFormView):
+    """表示の設定 (人ごとの見た目。今は上の帯 = ヘッダーの色だけ。決め 11-05 21:2x。N167)。
+
+    使う人: ログインする全員 / いつ: 使い始めるときと、ほかの人のアカウントでも入る端末を使うとき / 何のために: 上の帯を自分だけの色にし、ほかの人のアカウントで入ったままの画面に目で気づく / 次にすること: 見本を押すと保存され、画面が読み直されて上の帯の色が変わる
+
+    右上の利用者のメニューの「表示の設定」から小窓で開く (data-modal-form)。小窓の中身は見本のカード (core/_display_settings_card.html)。
+    土台の call_service が set_user_preference(user=本人, key=..., value=...) を呼ぶ (本人の行だけ。権限の表では FREE_ACTIONS)。
+    小窓の保存の後は、204 に HX-Refresh を付けて画面の全体を読み直す (上の帯の色は <html> の属性なので、seizou:refresh の取り直しでは変わらない)。
+    """
+
+    screen_name = "表示の設定"
+    screen_help = "上の帯 (ヘッダー) の色を、自分の画面だけで選ぶ。見本を押すとすぐ保存され、画面を読み直す。ほかの人の画面の色は変わらない。"
+    screen_icon = "eye"
+    form_class = DisplaySettingsForm
+    service = staticmethod(services.set_user_preference)
+    success_message = "表示の設定を保存しました。"
+    success_url = reverse_lazy("core:display_settings")
+    extra_context = {"form_card": "core/_display_settings_card.html"}
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial.setdefault(display.HEADER_COLOR, services.user_preference(self.request.user, display.HEADER_COLOR, display.HEADER_COLOR_DEFAULT))
+        return initial
+
+    def saved_in_modal(self, text: str, level: str) -> HttpResponse:
+        """小窓の保存の後: 本文の無い 204 に HX-Refresh を付け、htmx に画面の全体を読み直させる (知らせは出さない。色が変わるのが知らせ)。"""
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response

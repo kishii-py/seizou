@@ -7,6 +7,8 @@
 - validate_setting(key, value): 選べる設定の値を確かめて、整えた値を返す。誤りは日本語の ValueError (知らない鍵は KeyError)。
 - set_setting(key, value, user): 設定の画面からの上書き (SettingOverride) を書く。clear_setting(key, user) は消す。
   どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (履歴の表は持たない)。
+- user_preference(user, key, default): 人ごとの表示の設定 (UserPreference) の値。行が無いか、ログインしていない人は default。
+  set_user_preference(user, key, value) は本人の行を書く (鍵と値は core.display の物だけ。標準の値は行を消す)。
 - update_company(company, data, user): 会社の情報 (住所・電話・振込先・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
 - company_icons(company): ロゴから作った印 (favicon) の URL。無ければ None (土台は static の favicon.svg を出す)。
 """
@@ -20,7 +22,7 @@ from django.utils import timezone
 
 from seizou.core import conf
 from seizou.core.conf import setting
-from seizou.core.models import Company, NumberSequence, SettingOverride
+from seizou.core.models import Company, NumberSequence, SettingOverride, UserPreference
 
 logger = logging.getLogger("seizou.settings")
 
@@ -160,6 +162,37 @@ def clear_setting(key, user):
     logger.info("設定を戻した: %s %r → %r (%s)", key, before, conf.setting(key), _user_name(user))
 
 
+def user_preference(user, key, default=""):
+    """人ごとの表示の設定 key の値 (読むだけ。決め 11-05 21:2x。N167)。行が無いか、ログインしていない人 (表に無い利用者を含む) は default。"""
+    if user is None or not getattr(user, "is_authenticated", False) or getattr(user, "pk", None) is None:
+        return default
+    row = UserPreference.objects.filter(user=user, key=key).first()
+    return default if row is None else row.value
+
+
+def set_user_preference(user, key, value):
+    """人ごとの表示の設定 key を value にし、書いた行を返す (標準の値なら行を消して None)。本人の行だけを書く。
+
+    鍵は core.display の物だけ (今は上の帯の色 = HEADER_COLOR。知らない鍵は KeyError)。
+    上の帯の色は HEADER_COLORS の名前だけを通し、外れた値は日本語の ValueError。標準 (white) は行を消す (既定 = 行なし)。
+    """
+    from seizou.core import display
+
+    if key != display.HEADER_COLOR:
+        raise KeyError(f"知らない表示の設定の鍵: {key}")
+    if not isinstance(value, str) or value not in display.HEADER_COLORS:
+        raise ValueError(
+            f"保存できません。ヘッダーの色は {' / '.join(display.HEADER_COLORS)} のどれかです (入れた値: {value!r})。"
+            "表示の設定の見本から選んでください。"
+        )
+    with transaction.atomic():
+        if value == display.HEADER_COLOR_DEFAULT:
+            UserPreference.objects.filter(user=user, key=key).delete()
+            return None
+        row, _created = UserPreference.objects.update_or_create(user=user, key=key, defaults={"value": value})
+    return row
+
+
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
 COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "logo")
 #: ロゴから作る印 (favicon) の絵 (ロゴと同じ storage の固定の名前 → 一辺の画素。PNG)。決め 11-05 20:1x。N166
@@ -258,4 +291,4 @@ def company_icons(company) -> dict | None:
     return {"icon": storage.url(icon), "touch": storage.url(touch)}
 
 
-__all__ = ["clear_setting", "company", "company_icons", "next_number", "set_setting", "transaction", "update_company", "validate_setting"]
+__all__ = ["clear_setting", "company", "company_icons", "next_number", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
