@@ -109,7 +109,7 @@ def test_icon_urls_carry_version_and_remaking_changes_it(media):
     assert f'<link rel="apple-touch-icon" href="/media/company/apple-touch-icon.png{OLD_VERSION}">' in body
     served = anonymous.get("/media/" + ICON + OLD_VERSION)
     assert served.status_code == 200  # ?v= が付いても、ログインの前に返す
-    served.close()  # 応答が印のファイルを開いたままだと、Windows では作り直し (削除) が WinError 32 で止まる
+    assert b"".join(served.streaming_content)  # 読み切ると試験の client が応答を閉じる (ファイルを閉じないと Windows の作り直しが WinError 32 で止まる。close() を直に呼ぶと postgres では DB の接続まで閉じる)
     assert anonymous.get("/favicon.ico")["Location"] == "/media/company/favicon.png"  # /favicon.ico の口は変えない
 
     assert run_icons()[0] == 0  # 作り直すと、字が今の更新時刻に変わる
