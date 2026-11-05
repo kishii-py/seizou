@@ -9,7 +9,7 @@
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
-- 消費税の計算は _tax の 1 か所、支払期日の計算は payment_due_date の 1 か所。
+- 消費税の計算は _tax の 1 か所、請求の期間 (得意先の締め期間) は closing_period の 1 か所、支払期日の計算は payment_due_date の 1 か所。
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
   取消でない入金の残る請求書は cancel_invoice が断る (先に cancel_payment。文は cancel_refusal の 1 か所。決め 11-04 06:4x)。
@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
@@ -44,6 +44,9 @@ _ZERO = Decimal("0")
 _Shipment = InvoiceLine._meta.get_field("shipment").related_model
 _DeliveryNote = _Shipment._meta.get_field("delivery_note").related_model
 _Partner = Invoice._meta.get_field("customer").related_model
+
+#: 締日の 31 は月末 (masters の締日と支払日と同じ約束)。締日が空の取引先は、請求の期間を月末で締める
+_MONTH_END = 31
 
 #: 支払の月 → 締めの月に足す月の数
 _MONTH_OFFSETS = {
@@ -83,7 +86,8 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    金額は round_amount(customer, 数量 × 単価)。期間は明細の出荷日の最初と最後。
+    金額は round_amount(customer, 数量 × 単価)。期間は得意先の締め期間 = closing_period(customer, 最後の出荷日)
+    (最後の出荷日以降で最初の締日まで。初めはその 1 つ前の締日の翌日)。作るときに決めて表に残す。
     支払期日は payment_due_date(customer, 期間の終わり) (支払の欄が空の取引先では空)。
     """
     shipments = list(shipments)
@@ -109,8 +113,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
         amounts = [amount for _shipment, _price, amount in lines]
         subtotal = sum(amounts, _ZERO)
         tax = _tax(customer, amounts)
-        period_from = locked[0].shipped_at
-        period_to = locked[-1].shipped_at
+        period_from, period_to = closing_period(customer, locked[-1].shipped_at)
 
         invoice = Invoice.objects.create(
             invoice_no=next_number("invoice"),
@@ -234,6 +237,25 @@ def billable_shipments(customer=None):
     if customer is not None:
         queryset = queryset.filter(order_line__order__customer=customer)
     return queryset
+
+
+def closing_period(customer, day):
+    """day を含む得意先の締め期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。
+
+    締日は取引先の closing_day (31 は月末。月の日数より大きければ月末)。空なら月末で締める。
+    (1) 終わり: day の日が、その月の締日までなら day の月の締日、過ぎていれば翌月の締日 (年をまたぐ)。
+        締めの月の決め方は payment_due_date の (1) と同じ。
+    (2) 初め: 終わりの 1 つ前の月の締日の翌日。
+    例: 20 日締めで day が 10/29 → 10/21〜11/20。月末締めで 10/29 → 10/1〜10/31。
+    """
+    closing_day = _MONTH_END if customer.closing_day is None else customer.closing_day
+    year, month = day.year, day.month
+    if day.day > _day_in_month(year, month, closing_day):
+        year, month = _add_months(year, month, 1)
+    period_to = date(year, month, _day_in_month(year, month, closing_day))
+    prev_year, prev_month = _add_months(year, month, -1)
+    period_from = date(prev_year, prev_month, _day_in_month(prev_year, prev_month, closing_day)) + timedelta(days=1)
+    return period_from, period_to
 
 
 def payment_due_date(customer, base_date):

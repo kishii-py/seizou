@@ -131,6 +131,7 @@ def test_blank_partner_tax_mode_uses_company(user, item):
 
 @pytest.mark.django_db
 def test_period_is_first_and_last_ship_date(user, item):
+    """名前は前の決め (出荷日の最初と最後) のまま。今の期間は得意先の締め期間 (決め 11-05 11:1x。締日が空 = 月末で締める)。"""
     customer = _customer(user)
     line = _order_line(user, customer, item)
     middle = _shipped(user, customer, line, "3", date(2026, 11, 5))
@@ -139,8 +140,9 @@ def test_period_is_first_and_last_ship_date(user, item):
 
     invoice = services.create_invoice(customer, [middle, last, first], user, issued_on=ISSUED_ON)
 
-    assert invoice.period_from == date(2026, 11, 3)
-    assert invoice.period_to == date(2026, 11, 10)
+    # 出荷は 11/3〜11/10 でも、期間は最後の出荷日 (11/10) を含む締め期間の 11/1〜11/30。
+    assert invoice.period_from == date(2026, 11, 1)
+    assert invoice.period_to == date(2026, 11, 30)
     # 明細の並びは出荷日の順。
     assert [row.shipment_id for row in invoice.lines.all()] == [first.pk, middle.pk, last.pk]
 
@@ -251,6 +253,8 @@ def test_invoice_due_on_from_last_ship_date(user, item):
     invoice = services.create_invoice(customer, [before, after], user, issued_on=ISSUED_ON)
 
     invoice.refresh_from_db()
+    # 20 日締めで最後の出荷が 11/21 → 期間は 11/21〜12/20。支払期日は期間の終わりから決める (翌月 25 日)。
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 11, 21), date(2026, 12, 20))
     assert invoice.due_on == date(2027, 1, 25)
 
     blank = _customer(user, "C002")
@@ -259,3 +263,71 @@ def test_invoice_due_on_from_last_ship_date(user, item):
     no_terms = services.create_invoice(blank, [shipment], user, issued_on=ISSUED_ON)
     no_terms.refresh_from_db()
     assert no_terms.due_on is None
+
+
+# --- 請求の期間 (closing_period。決め 11-05 11:1x = 得意先の締め日の翌日から次の締め日) ---
+
+
+def _closing(closing_day):
+    """締日だけを持つ取引先 (保存しない)。"""
+    return Partner(closing_day=closing_day)
+
+
+def test_closing_period_day_20_runs_to_next_closing():
+    customer = _closing(20)
+    # 出荷が 10/19〜10/29 なら、最後の 10/29 は 20 日を過ぎているので 10/21〜11/20。
+    assert services.closing_period(customer, date(2026, 10, 29)) == (date(2026, 10, 21), date(2026, 11, 20))
+    # 締日の当日はその期間に入り、翌日から次の期間。
+    assert services.closing_period(customer, date(2026, 10, 20)) == (date(2026, 9, 21), date(2026, 10, 20))
+    assert services.closing_period(customer, date(2026, 10, 21)) == (date(2026, 10, 21), date(2026, 11, 20))
+    assert services.closing_period(customer, date(2026, 10, 19)) == (date(2026, 9, 21), date(2026, 10, 20))
+
+
+def test_closing_period_month_end():
+    customer = _closing(31)
+    assert services.closing_period(customer, date(2026, 10, 19)) == (date(2026, 10, 1), date(2026, 10, 31))
+    assert services.closing_period(customer, date(2026, 10, 29)) == (date(2026, 10, 1), date(2026, 10, 31))
+    # 30 日の月も月末で締める。
+    assert services.closing_period(customer, date(2026, 11, 30)) == (date(2026, 11, 1), date(2026, 11, 30))
+
+
+def test_closing_period_blank_closing_day_is_month_end():
+    customer = _closing(None)
+    assert services.closing_period(customer, date(2026, 10, 29)) == (date(2026, 10, 1), date(2026, 10, 31))
+    assert services.closing_period(customer, date(2026, 11, 1)) == (date(2026, 11, 1), date(2026, 11, 30))
+
+
+def test_closing_period_february_month_end():
+    month_end = _closing(31)
+    assert services.closing_period(month_end, date(2027, 2, 10)) == (date(2027, 2, 1), date(2027, 2, 28))
+    assert services.closing_period(month_end, date(2028, 2, 10)) == (date(2028, 2, 1), date(2028, 2, 29))
+    assert services.closing_period(month_end, date(2027, 3, 1)) == (date(2027, 3, 1), date(2027, 3, 31))
+    # 30 日締めの 2 月は 2/28 で締め、3 月の期間は 3/1 から (期間に隙間も重なりも無い)。
+    day_30 = _closing(30)
+    assert services.closing_period(day_30, date(2027, 2, 28)) == (date(2027, 1, 31), date(2027, 2, 28))
+    assert services.closing_period(day_30, date(2027, 3, 1)) == (date(2027, 3, 1), date(2027, 3, 30))
+    assert services.closing_period(day_30, date(2027, 3, 31)) == (date(2027, 3, 31), date(2027, 4, 30))
+
+
+def test_closing_period_crosses_year():
+    customer = _closing(20)
+    assert services.closing_period(customer, date(2026, 12, 25)) == (date(2026, 12, 21), date(2027, 1, 20))
+    assert services.closing_period(customer, date(2027, 1, 5)) == (date(2026, 12, 21), date(2027, 1, 20))
+    assert services.closing_period(_closing(31), date(2027, 1, 5)) == (date(2027, 1, 1), date(2027, 1, 31))
+
+
+@pytest.mark.django_db
+def test_invoice_period_is_closing_period_of_last_shipment(user, item):
+    customer = _customer(user, closing_day=20, payment_month="next", payment_day=25)
+    line = _order_line(user, customer, item)
+    early = _shipped(user, customer, line, "3", date(2026, 11, 19))
+    late = _shipped(user, customer, line, "7", date(2026, 11, 29))
+
+    invoice = services.create_invoice(customer, [late, early], user, issued_on=date(2026, 12, 21))
+
+    invoice.refresh_from_db()
+    # 出荷が 2 つの締め期間 (10/21〜11/20 と 11/21〜12/20) にまたがるときは、最後の出荷の期間。
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 11, 21), date(2026, 12, 20))
+    # 支払期日は期間の終わりから決め、最後の出荷日から決めた日と同じ。
+    assert invoice.due_on == date(2027, 1, 25)
+    assert invoice.due_on == services.payment_due_date(customer, late.shipped_at)
