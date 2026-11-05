@@ -46,7 +46,7 @@
         {% for line in object.lines_with_received %}
         <tr>
           <td class="text-right tabular-nums">{{ line.line_no }}</td>
-          <td>{% master_link line.item %}</td>
+          <td class="whitespace-nowrap">{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>
           <td>{{ line.unit }}</td>
           {% if not seizou.hide_money %}<td class="text-right tabular-nums">{{ line.unit_price|comma }}</td>

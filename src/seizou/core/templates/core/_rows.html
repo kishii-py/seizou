@@ -29,7 +29,7 @@
 </table>
 </div>
 <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
-  <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
+  <p id="list-range" class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>
   {% if paginator.num_pages > 1 %}
   <nav class="join" aria-label="ページ送り">
     {% if page_obj.has_previous %}<a class="join-item btn btn-sm" href="?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-get="{{ request.path }}?{{ query_without_page }}&page={{ page_obj.previous_page_number }}" hx-target="#rows" hx-push-url="true" aria-label="前のページ">{% icon "chevron-left" "size-4" %}</a>{% else %}<span class="join-item btn btn-sm btn-disabled" aria-hidden="true">{% icon "chevron-left" "size-4" %}</span>{% endif %}

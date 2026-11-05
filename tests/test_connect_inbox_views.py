@@ -109,6 +109,8 @@ def test_poll_returns_only_newer_rows(client_logged_in, receive_order):
     assert 'hx-swap-oob="true"' in body and f"?after={second.pk}" in body
     # 上の「全 N 件」も入れ替える (行だけ増えて件数が古いままにならない。初見テスト 2 回目の所見)
     assert 'id="list-count"' in body and ">2</span>" in body
+    # 下の「N 件中 1–M 件」も入れ替える (M = 表に出ている行の数。動画の確かめの所見 11-05)
+    assert 'id="list-range"' in body and "2</span> 件中 <span class=\"tabular-nums\">1–2</span> 件" in body
     # 足した行の最初の欄は詳細への link (キーボードでも移れる)
     assert f'href="/connect/inbox/{second.pk}/"' in body
 
