@@ -214,7 +214,7 @@ def test_upload_errors_are_shown(client_logged_in, manual):
         upload_url, {"file": SimpleUploadedFile("drawing.svg", b"<svg></svg>")}, HTTP_HX_REQUEST="true"
     )
     assert svg.status_code == 200
-    assert "この形式の画像は追加できません" in svg.content.decode()
+    assert "画像の形式が違います" in svg.content.decode()
     empty = client_logged_in.post(upload_url, {}, HTTP_HX_REQUEST="true")
     assert empty.status_code == 200
     assert "画像を選んでください。" in empty.content.decode()

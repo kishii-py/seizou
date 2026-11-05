@@ -314,7 +314,7 @@ def test_acceptance_for_unaccepted_order_is_refused(
     assert Receipt.objects.count() == 2
     for receipt in receipts:
         assert receipt.acceptance_sent_at is None
-        assert receipt.acceptance_response.startswith("断られた: 検収の元の注文は承認していない")
+        assert receipt.acceptance_response.startswith("断られた: 検収の元の注文は受け入れていない")
         assert receipt.acceptance_response == f"断られた: {services.MESSAGE_ACCEPTANCE_NOT_ACCEPTED}"
         assert receipt.acceptance_state().startswith("断られた: ")
 

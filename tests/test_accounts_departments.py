@@ -425,7 +425,7 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
     assert refused.status_code == 200
     refused_html = refused.content.decode()
     assert "alert-error" in refused_html
-    assert "1 人のアカウントが付いているため削除できません" in refused_html
+    assert "1 人のアカウントが付いています" in refused_html
     assert "先にアカウント管理で" in refused_html
     assert Department.objects.filter(pk=seizou_dept.pk).exists()
 

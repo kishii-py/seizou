@@ -234,18 +234,18 @@ def _superuser(manager, second, admin_row):
 
 
 REFUSED = [
-    (_self_delete, "自分のアカウントは削除できません。別のアカウント管理の担当者に頼んでください。", False),
-    (_self_disable, "自分のアカウントは使用停止にできません。別のアカウント管理の担当者に頼んでください。", False),
-    (_self_unmanage, "自分のアカウントからアカウント管理の権限は外せません。別のアカウント管理の担当者に頼んでください。", False),
+    (_self_delete, "削除できません。自分のアカウントです。別のアカウント管理の担当者に頼んでください。", False),
+    (_self_disable, "保存できません。自分のアカウントを使用停止にしようとしています。別のアカウント管理の担当者に頼んでください。", False),
+    (_self_unmanage, "保存できません。自分のアカウントからアカウント管理の権限を外そうとしています。別のアカウント管理の担当者に頼んでください。", False),
     (
         _last_manager,
-        "アカウント管理を使える使用中のアカウントがこの 1 つだけのため、止められません。"
+        "保存できません。アカウント管理を使える使用中のアカウントが、この 1 つだけです。"
         "先に別のアカウントにアカウント管理の権限を付けてください。",
         True,
     ),
-    (_self_full_control, "自分のアカウントにフルコントロールと金額の閲覧は付けられません。別のアカウント管理の担当者に頼んでください。", False),
-    (_self_money, "自分のアカウントにフルコントロールと金額の閲覧は付けられません。別のアカウント管理の担当者に頼んでください。", False),
-    (_superuser, "システム管理者のアカウントは、この画面から変更も削除もできません。", False),
+    (_self_full_control, "保存できません。自分のアカウントにフルコントロールか金額の閲覧を付けようとしています。別のアカウント管理の担当者に頼んでください。", False),
+    (_self_money, "保存できません。自分のアカウントにフルコントロールか金額の閲覧を付けようとしています。別のアカウント管理の担当者に頼んでください。", False),
+    (_superuser, "保存できません。システム管理者のアカウントは、この画面から変更も削除もできません。", False),
 ]
 
 
@@ -276,7 +276,7 @@ def test_last_manager_cannot_be_deleted_or_disabled(manager):
     before = state()
 
     for change in (services.disable_account, services.delete_account):
-        with pytest.raises(ValueError, match="この 1 つだけのため、止められません"):
+        with pytest.raises(ValueError, match="この 1 つだけです"):
             change(row, admin)
     assert state() == before
 

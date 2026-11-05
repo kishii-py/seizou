@@ -80,14 +80,14 @@ def validate_setting(key, value):
     if key not in conf.DEFAULTS:
         raise KeyError(f"知らない設定の鍵: {key}")
     if key in conf.LOCKED_KEYS:
-        raise ValueError(f"{key} は画面からは変えられません。答えの YAML の settings に書いてください。")
+        raise ValueError(f"保存できません。{key} は画面からは変えられません。答えの YAML の settings に書いてください。")
     if key in conf.CHOICES:
         if not isinstance(value, str) or value not in conf.CHOICES[key]:
-            raise ValueError(f"{key} の値は {' / '.join(conf.CHOICES[key])} のどれかにしてください (入れた値: {value!r})。")
+            raise ValueError(f"保存できません。{key} の値は {' / '.join(conf.CHOICES[key])} のどれかにしてください (入れた値: {value!r})。")
         return value
     if isinstance(conf.DEFAULTS[key], bool):
         if not isinstance(value, bool):
-            raise ValueError(f"{key} の値は真偽 (true / false) にしてください (入れた値: {value!r})。")
+            raise ValueError(f"保存できません。{key} の値は真偽 (true / false) にしてください (入れた値: {value!r})。")
         return value
     if key == "access_control":
         kinds = tuple(conf.DEFAULTS["access_control"])
@@ -97,35 +97,35 @@ def validate_setting(key, value):
             or any(not isinstance(value[kind], str) or value[kind] not in conf.ACCESS_MODES for kind in kinds)
         ):
             raise ValueError(
-                "access_control は department・write・money の 3 つの鍵を持つ辞書で、"
+                "保存できません。access_control は department・write・money の 3 つの鍵を持つ辞書で、"
                 f"値はそれぞれ off / log / on にしてください (入れた値: {value!r})。"
             )
         return {kind: value[kind] for kind in kinds}
     if key == "brand_color":
         text = value.strip() if isinstance(value, str) else None
         if text is None or (text and not conf.BRAND_COLOR_PATTERN.fullmatch(text)):
-            raise ValueError(f"brand_color は # と 16 進の 6 桁 (例 #15803d) にしてください。空なら土台の色です (入れた値: {value!r})。")
+            raise ValueError(f"保存できません。brand_color は # と 16 進の 6 桁 (例 #15803d) にしてください。空なら土台の色です (入れた値: {value!r})。")
         return text.lower()
     if key == "industry":
         text = value.strip() if isinstance(value, str) else None
         if text is None or len(text) > _INDUSTRY_MAX:
-            raise ValueError(f"industry (業種) は {_INDUSTRY_MAX} 字までの字にしてください。空なら左上は seizou です (入れた値: {value!r})。")
+            raise ValueError(f"保存できません。industry (業種) は {_INDUSTRY_MAX} 字までの字にしてください。空なら左上は seizou です (入れた値: {value!r})。")
         return text
     if key in _TEXT_SETTINGS:
         text = value.strip() if isinstance(value, str) else ""
         if not text or len(text) > _TEXT_MAX:
-            raise ValueError(f"{key} は空でない {_TEXT_MAX} 字までの字にしてください。")
+            raise ValueError(f"保存できません。{key} は空でない {_TEXT_MAX} 字までの字にしてください。")
         return text
     if key == "hidden_fields":
         if not isinstance(value, (list, tuple)) or any(not isinstance(name, str) for name in value):
-            raise ValueError(f"hidden_fields は項目の名前の並びにしてください (入れた値: {value!r})。")
+            raise ValueError(f"保存できません。hidden_fields は項目の名前の並びにしてください (入れた値: {value!r})。")
         names = []
         for name in value:
             name = name.strip()
             if name and name not in names:
                 names.append(name)
         return names
-    raise ValueError(f"{key} は画面からは変えられません。")
+    raise ValueError(f"保存できません。{key} は画面からは変えられません。")
 
 
 def _user_name(user) -> str:
@@ -191,7 +191,7 @@ def update_company(company, data, user):
         value = data[name]
         text = "" if value is None else str(value).strip()
         if field.max_length is not None and len(text) > field.max_length:
-            raise ValueError(f"{field.verbose_name}は {field.max_length} 字までにしてください。")
+            raise ValueError(f"保存できません。{field.verbose_name}は {field.max_length} 字までにしてください。")
         values[name] = text
     with transaction.atomic():
         row = Company.objects.select_for_update().get(pk=company.pk)

@@ -96,7 +96,7 @@ def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
     if sign:
         qty = abs(qty) * sign
     if qty == 0 and kind != KIND_ADJUSTED:
-        raise ValueError("数量が 0 の動きは残せません。0 でない数にしてください。")
+        raise ValueError("保存できません。数量が 0 です。0 でない数にしてください。")
     locked = _lock(item)
     return StockMove.objects.create(
         item=locked,
@@ -390,9 +390,9 @@ def record_finished(workorder, qty, user, *, moved_on=None, note=""):
     with transaction.atomic():
         current = type(workorder)._default_manager.select_related("order_line__item").get(pk=workorder.pk)
         if current.status == type(current).STATUS_CANCELLED:
-            raise ValueError("取り消した指示書は入庫にできません。発行の指示書を選んでください。")
+            raise ValueError("保存できません。取り消した指示書です。発行の指示書を選んでください。")
         if not qty > 0:
-            raise ValueError(_POSITIVE_MESSAGE)
+            raise ValueError("保存できません。" + _POSITIVE_MESSAGE)
         return _move(current.order_line.item, KIND_FINISHED, qty, moved_on, user, source=current, note=note)
 
 
@@ -414,7 +414,7 @@ def record_issued(item, qty, moved_on, user, *, note=""):
     """払い出し (検査や社内の使用で在庫から出した数)。0 以下の数量は ValueError。在庫より多くても止めない。"""
     qty = _dec(qty)
     if not qty > 0:
-        raise ValueError(_POSITIVE_MESSAGE)
+        raise ValueError("保存できません。" + _POSITIVE_MESSAGE)
     with transaction.atomic():
         return _move(item, KIND_ISSUED, qty, moved_on, user, note=note)
 
@@ -434,7 +434,7 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
     """
     counted = _dec(counted_qty)
     if counted < 0:
-        raise ValueError("実地の在庫数は 0 以上の数にしてください。")
+        raise ValueError("保存できません。実地の在庫数は 0 以上の数にしてください。")
     with transaction.atomic():
         locked = _lock(item)
         current = balance(locked)
@@ -443,7 +443,7 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
         else:
             diff = counted - current
         if diff == 0 and current is not None:
-            raise ValueError("今の在庫数と同じです。調整は要りません。")
+            raise ValueError("保存できません。今の在庫数と同じです。調整は要りません。")
         move = _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)
         if current is None and counted == 0:
             move.saved_message = COUNTED_FROM_ZERO_MESSAGE

@@ -37,10 +37,10 @@ MAX_NAME_LENGTH = 100
 MAX_BODY_CHARS = 200_000
 
 MESSAGE_NO_TARGET = "メモを付ける先の記録がまだ保存されていません。記録を保存してから、詳細の画面で書いてください。"
-MESSAGE_SELF_TARGET = "メモにはメモを付けられません。付けたい記録の詳細の画面から書いてください。"
+MESSAGE_SELF_TARGET = "付ける先がメモです。付けたい記録の詳細の画面から書いてください。"
 MESSAGE_TOO_LONG = "メモが長すぎます。20 万字より短くしてから保存してください。"
 MESSAGE_NO_IMAGE = "写真のファイルがありません。貼る写真を選び直してください。"
-MESSAGE_BAD_IMAGE = "この形式のファイルは貼れません。PNG・JPEG・WebP・GIF の写真を選んでください。"
+MESSAGE_BAD_IMAGE = "写真の形式が違います。PNG・JPEG・WebP・GIF の写真を選んでください。"
 MESSAGE_EMPTY_IMAGE = "写真のファイルが空です。中身のある写真を選んでください。"
 MESSAGE_IMAGE_TOO_LARGE = "写真が 10MB を超えています。小さくしてから選び直してください。"
 MESSAGE_NAME_TOO_LONG = "ファイル名が 100 字を超えています。名前を短くしてから選び直してください。"
@@ -80,9 +80,9 @@ def is_blank(html) -> bool:
 
 def _refuse_bad_target(target) -> None:
     if getattr(target, "_meta", None) is None or getattr(target, "pk", None) is None:
-        raise ValueError(MESSAGE_NO_TARGET)
+        raise ValueError("保存できません。" + MESSAGE_NO_TARGET)
     if isinstance(target, (Note, NoteImage)):
-        raise ValueError(MESSAGE_SELF_TARGET)
+        raise ValueError("保存できません。" + MESSAGE_SELF_TARGET)
 
 
 def note_for(target) -> Note:
@@ -105,7 +105,7 @@ def save_note(target, html, user) -> Note:
     _refuse_bad_target(target)
     html = str(html or "")
     if len(html) > MAX_BODY_CHARS:
-        raise ValueError(MESSAGE_TOO_LONG)
+        raise ValueError("保存できません。" + MESSAGE_TOO_LONG)
     body = clean_html(html)
     if is_blank(body):
         body = ""
@@ -123,17 +123,17 @@ def save_note(target, html, user) -> Note:
 def _refuse_bad_image(file) -> str:
     """写真を見て元の名前を返す。通らなければ日本語の ValueError。中身は読まない。"""
     if file is None:
-        raise ValueError(MESSAGE_NO_IMAGE)
+        raise ValueError("保存できません。" + MESSAGE_NO_IMAGE)
     original_name = os.path.basename(getattr(file, "name", "") or "")
     if os.path.splitext(original_name)[1].lower() not in IMAGE_EXTENSIONS:
-        raise ValueError(MESSAGE_BAD_IMAGE)
+        raise ValueError("保存できません。" + MESSAGE_BAD_IMAGE)
     size = getattr(file, "size", None) or 0
     if size <= 0:
-        raise ValueError(MESSAGE_EMPTY_IMAGE)
+        raise ValueError("保存できません。" + MESSAGE_EMPTY_IMAGE)
     if size > MAX_IMAGE_BYTES:
-        raise ValueError(MESSAGE_IMAGE_TOO_LARGE)
+        raise ValueError("保存できません。" + MESSAGE_IMAGE_TOO_LARGE)
     if len(original_name) > MAX_NAME_LENGTH:
-        raise ValueError(MESSAGE_NAME_TOO_LONG)
+        raise ValueError("保存できません。" + MESSAGE_NAME_TOO_LONG)
     return original_name
 
 

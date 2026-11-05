@@ -256,7 +256,7 @@ def test_cancelled_order_is_value_error(monkeypatch, user, secret, subcontractor
     services.register_connection(subcontractor, PARTNER_URL, ENV_NAME, "send", user)
     cancelled = purchasing_services.cancel_purchase_order(po, user)
 
-    with pytest.raises(ValueError, match="取り消してある"):
+    with pytest.raises(ValueError, match="取り消してあります"):
         services.send_order(cancelled, user)
     assert fake.calls == []
     assert Outbox.objects.count() == 0

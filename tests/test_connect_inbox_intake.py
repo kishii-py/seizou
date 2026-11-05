@@ -158,7 +158,7 @@ def test_waiting_row_needs_sender_before_accept(customer, items, user):
 
 def test_choose_sender_rules(customer, other_customer, subcontractor, items, user):
     direct = direct_row(customer, user)
-    with pytest.raises(ValueError, match=r"署名で決まる"):
+    with pytest.raises(ValueError, match=r"署名で決まります"):
         services.choose_sender(direct, other_customer, user)
     direct.refresh_from_db()
     assert direct.partner == customer
@@ -177,7 +177,7 @@ def test_choose_sender_rules(customer, other_customer, subcontractor, items, use
     assert matched.partner == other_customer
 
     services.accept(matched, items, user)
-    with pytest.raises(ValueError, match="「届いた」の注文だけ"):
+    with pytest.raises(ValueError, match="「未処理」の注文だけ"):
         services.choose_sender(matched, customer, user)
     matched.refresh_from_db()
     assert matched.partner == other_customer

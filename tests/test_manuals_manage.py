@@ -89,10 +89,10 @@ def test_protect_hides_actions_and_refuses(client_logged_in, user):
         assert reverse(f"manuals:{name}", args=[folder.pk]) not in html
     moved = client_logged_in.post(reverse("manuals:manualfolder_move", args=[folder.pk]), {"parent": other.pk})
     assert moved.status_code == 200
-    assert "保護されたフォルダは移動できません" in moved.content.decode()
+    assert "保護されたフォルダです" in moved.content.decode()
     deleted = client_logged_in.post(reverse("manuals:manualfolder_delete", args=[folder.pk]), {})
     assert deleted.status_code == 200
-    assert "保護されたフォルダは削除できません" in deleted.content.decode()
+    assert "保護されたフォルダです" in deleted.content.decode()
     assert ManualFolder.objects.filter(pk=folder.pk, parent__isnull=True).exists()
     # マニュアルも同じ。保護中は「編集」と「版の履歴」を出し、「移動」と「削除」を出さない。
     manual = services.create_manual(None, "保護する手順", "steps", user)
@@ -104,7 +104,7 @@ def test_protect_hides_actions_and_refuses(client_logged_in, user):
     assert reverse("manuals:manual_move", args=[manual.pk]) not in detail
     assert reverse("manuals:manual_delete", args=[manual.pk]) not in detail
     refused = client_logged_in.post(reverse("manuals:manual_delete", args=[manual.pk]), {})
-    assert refused.status_code == 200 and "保護されたマニュアルは削除できません" in refused.content.decode()
+    assert refused.status_code == 200 and "保護されたマニュアルです" in refused.content.decode()
     # 保護を解除する (隠した欄は今の逆)。
     client_logged_in.post(protect_url, {"on": "False"})
     folder.refresh_from_db()

@@ -38,17 +38,17 @@ def test_create_holiday_refuses_the_same_date(user):
     with pytest.raises(ValueError) as error:
         services.create_holiday(_data(name="作り物の会社の休み", kind=Holiday.KIND_COMPANY), user)
 
-    assert str(error.value) == "2026-11-23 の休日は既にあります (勤労感謝の日)。"
+    assert str(error.value) == "保存できません。2026-11-23 の休日は既にあります (勤労感謝の日)。"
     assert Holiday.objects.count() == 1
 
 
 @pytest.mark.parametrize(
     ("values", "message"),
     [
-        ({"kind": "臨時"}, "休日の種類は 祝日 か 会社の休み です。"),
-        ({"kind": ""}, "休日の種類は 祝日 か 会社の休み です。"),
-        ({"name": "  "}, "休日の名前を入れてください。"),
-        ({"name": ""}, "休日の名前を入れてください。"),
+        ({"kind": "臨時"}, "保存できません。休日の種類は 祝日 か 会社の休み です。"),
+        ({"kind": ""}, "保存できません。休日の種類は 祝日 か 会社の休み です。"),
+        ({"name": "  "}, "保存できません。休日の名前を入れてください。"),
+        ({"name": ""}, "保存できません。休日の名前を入れてください。"),
     ],
 )
 def test_create_holiday_refuses_unknown_kind_and_blank_name(user, values, message):
@@ -74,4 +74,4 @@ def test_delete_holiday_twice_is_refused(user):
     assert not Holiday.objects.exists()
     with pytest.raises(ValueError) as error:
         services.delete_holiday(row, user)
-    assert str(error.value) == "この休日は既に消してあります。"
+    assert str(error.value) == "削除できません。この休日は既に消してあります。"

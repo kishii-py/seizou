@@ -130,7 +130,7 @@ def test_resend_before_decision_is_refused(monkeypatch, client, user, subcontrac
 
     response = client.post(resend_url, follow=True)
 
-    assert ("error", services.MESSAGE_REPLY_BEFORE_DECISION) in _messages(response)
+    assert ("error", "送れません。" + services.MESSAGE_REPLY_BEFORE_DECISION) in _messages(response)
     assert fake.calls == []
     inbox.refresh_from_db()
     assert inbox.status == Inbox.STATUS_RECEIVED

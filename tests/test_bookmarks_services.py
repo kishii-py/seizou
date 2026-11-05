@@ -67,7 +67,7 @@ def test_cannot_add_detail_or_unknown_screen(user):
     assert services.bookmarkable("orders:order_list")
 
     for url_name in ["orders:order_detail", "no:such", ""]:
-        with pytest.raises(ValueError, match="この画面は登録できません。一覧や目録のような、番号の付かない画面だけ登録できます。"):
+        with pytest.raises(ValueError, match="番号の付く画面です。一覧や目録のような、番号の付かない画面だけ登録できます。"):
             services.add_bookmark(user, url_name)
 
     assert Bookmark.objects.count() == 0

@@ -54,10 +54,10 @@ FORMAT_VALUES = frozenset(value for value, _label in FORMAT_CHOICES)
 
 FOLDER_NOT_FOUND = "置き場のフォルダが見つかりません。一覧から開き直してください。"
 MANUAL_NOT_FOUND = "マニュアルが見つかりません。一覧から開き直してください。"
-FOLDER_PROTECTED_MOVE = "保護されたフォルダは移動できません。先に保護を解除してください。"
-FOLDER_PROTECTED_DELETE = "保護されたフォルダは削除できません。先に保護を解除してください。"
-MANUAL_PROTECTED_MOVE = "保護されたマニュアルは移動できません。先に保護を解除してください。"
-MANUAL_PROTECTED_DELETE = "保護されたマニュアルは削除できません。先に保護を解除してください。"
+FOLDER_PROTECTED_MOVE = "保護されたフォルダです。先に保護を解除してください。"
+FOLDER_PROTECTED_DELETE = "保護されたフォルダです。先に保護を解除してください。"
+MANUAL_PROTECTED_MOVE = "保護されたマニュアルです。先に保護を解除してください。"
+MANUAL_PROTECTED_DELETE = "保護されたマニュアルです。先に保護を解除してください。"
 BODY_TOO_LONG = "本文が 100,000 字を超えています。分けて別のマニュアルにしてください。"
 
 
@@ -72,21 +72,21 @@ def _user_or_none(user):
 def _clean_text(value, *, limit: int, label: str) -> str:
     text = str(value or "").strip()
     if not text:
-        raise ValueError(f"{label}を入れてください。")
+        raise ValueError(f"保存できません。{label}を入れてください。")
     if len(text) > limit:
-        raise ValueError(f"{label}は {limit} 字までです。短くしてください。")
+        raise ValueError(f"保存できません。{label}は {limit} 字までです。短くしてください。")
     return text
 
 
 def _clean_color(color) -> str:
     if color not in COLOR_VALUES:
-        raise ValueError("色は一覧の 7 色から選んでください。")
+        raise ValueError("保存できません。色は一覧の 7 色から選んでください。")
     return color
 
 
 def _clean_format(value) -> str:
     if value not in FORMAT_VALUES:
-        raise ValueError("形式はステップ形式かページ形式から選んでください。")
+        raise ValueError("保存できません。形式はステップ形式かページ形式から選んでください。")
     return value
 
 
@@ -95,10 +95,10 @@ def _saved_folder(folder) -> ManualFolder | None:
     if folder is None:
         return None
     if not isinstance(folder, ManualFolder) or folder.pk is None:
-        raise ValueError(FOLDER_NOT_FOUND)
+        raise ValueError("保存できません。" + FOLDER_NOT_FOUND)
     found = ManualFolder.objects.filter(pk=folder.pk).first()
     if found is None:
-        raise ValueError(FOLDER_NOT_FOUND)
+        raise ValueError("保存できません。" + FOLDER_NOT_FOUND)
     return found
 
 
@@ -106,7 +106,7 @@ def _lock_folder(folder) -> ManualFolder:
     pk = getattr(folder, "pk", folder)
     found = ManualFolder.objects.select_for_update().filter(pk=pk).first() if pk is not None else None
     if found is None:
-        raise ValueError("フォルダが見つかりません。一覧から開き直してください。")
+        raise ValueError("保存できません。フォルダが見つかりません。一覧から開き直してください。")
     return found
 
 
@@ -114,7 +114,7 @@ def _lock_manual(manual) -> Manual:
     pk = getattr(manual, "pk", manual)
     found = Manual.objects.select_for_update().filter(pk=pk).first() if pk is not None else None
     if found is None:
-        raise ValueError(MANUAL_NOT_FOUND)
+        raise ValueError("保存できません。" + MANUAL_NOT_FOUND)
     return found
 
 
@@ -169,7 +169,7 @@ def _set_linked(manual: Manual, obj) -> None:
         or not apps.is_installed(meta.app_config.name)
         or not type(obj)._default_manager.filter(pk=pk).exists()
     ):
-        raise ValueError("紐付けられない記録です。部品マスターや取引先などの記録を選び直してください。")
+        raise ValueError("保存できません。紐付けられない記録です。部品マスターや取引先などの記録を選び直してください。")
     manual.linked_type = ContentType.objects.get_for_model(obj)
     manual.linked_id = pk
 
@@ -178,7 +178,7 @@ def _apply(manual: Manual, data: dict) -> None:
     """update_manual と save_as_version が使う、data の検査と当てはめ (表には書かない)。"""
     unknown = sorted(set(data) - MANUAL_KEYS)
     if unknown:
-        raise ValueError(f"知らない項目です: {'・'.join(unknown)}")
+        raise ValueError(f"保存できません。知らない項目です: {'・'.join(unknown)}")
     if "title" in data:
         manual.title = _clean_text(data["title"], limit=MAX_TITLE, label="題")
     if "format" in data:
@@ -186,14 +186,14 @@ def _apply(manual: Manual, data: dict) -> None:
     if "body" in data:
         body = data["body"] or ""
         if len(body) > MAX_BODY_CHARS:
-            raise ValueError(BODY_TOO_LONG)
+            raise ValueError("保存できません。" + BODY_TOO_LONG)
         manual.body = body
     if "folder" in data:
         target = _saved_folder(data["folder"])
         target_id = target.pk if target is not None else None
         if target_id != manual.folder_id:
             if manual.protected:
-                raise ValueError(MANUAL_PROTECTED_MOVE)
+                raise ValueError("保存できません。" + MANUAL_PROTECTED_MOVE)
             manual.folder = target
     if "linked" in data:
         _set_linked(manual, data["linked"])
@@ -228,10 +228,10 @@ def move_folder(folder, parent, user):
     with transaction.atomic():
         current = _lock_folder(folder)
         if current.protected:
-            raise ValueError(FOLDER_PROTECTED_MOVE)
+            raise ValueError("保存できません。" + FOLDER_PROTECTED_MOVE)
         target = _saved_folder(parent)
         if target is not None and (target.pk == current.pk or target.pk in descendant_ids(current)):
-            raise ValueError("フォルダを自分の中へは移動できません。ほかの置き場を選んでください。")
+            raise ValueError("保存できません。移動先がこのフォルダの中です。ほかの置き場を選んでください。")
         current.parent = target
         current.save(update_fields=["parent"])
         return current
@@ -254,17 +254,17 @@ def delete_folder(folder, user, *, with_contents=False):
     with transaction.atomic():
         current = _lock_folder(folder)
         if current.protected:
-            raise ValueError(FOLDER_PROTECTED_DELETE)
+            raise ValueError("削除できません。" + FOLDER_PROTECTED_DELETE)
         levels = _descendant_levels(current)
         below = [pk for level in levels for pk in level]
         folder_ids = [current.pk, *below]
         manuals = Manual.objects.filter(folder_id__in=folder_ids)
         if (below or manuals.exists()) and not with_contents:
             raise ValueError(
-                "フォルダが空ではありません。中を移すか削除するか、「中身も削除する」を選んでください。"
+                "削除できません。フォルダが空ではありません。中を移すか削除するか、「中身も削除する」を選んでください。"
             )
         if ManualFolder.objects.filter(pk__in=below, protected=True).exists() or manuals.filter(protected=True).exists():
-            raise ValueError("中に保護されたフォルダかマニュアルがあるので削除できません。先に保護を解除してください。")
+            raise ValueError("削除できません。中に保護されたフォルダかマニュアルがあります。先に保護を解除してください。")
         names = list(ManualImage.objects.filter(manual__folder_id__in=folder_ids).values_list("file", flat=True))
         parent_id = current.parent_id
         manuals.delete()
@@ -308,7 +308,7 @@ def save_as_version(manual, data, note, user):
     """保存前の中身 (取り直した行の題と本文) を版に残してから data を当て、版の番号を 1 増やす。"""
     clean_note = (note or "").strip()
     if len(clean_note) > MAX_NOTE_CHARS:
-        raise ValueError(f"版のメモは {MAX_NOTE_CHARS} 字までです。短くしてください。")
+        raise ValueError(f"保存できません。版のメモは {MAX_NOTE_CHARS} 字までです。短くしてください。")
     with transaction.atomic():
         current = _lock_manual(manual)
         ManualVersion.objects.create(
@@ -330,7 +330,7 @@ def restore_version(version, user):
     with transaction.atomic():
         target = ManualVersion.objects.filter(pk=getattr(version, "pk", version)).first()
         if target is None:
-            raise ValueError("版が見つかりません。版の履歴から開き直してください。")
+            raise ValueError("保存できません。版が見つかりません。版の履歴から開き直してください。")
         current = _lock_manual(target.manual_id)
         ManualVersion.objects.create(
             manual=current,
@@ -352,7 +352,7 @@ def move_manual(manual, folder, user):
     with transaction.atomic():
         current = _lock_manual(manual)
         if current.protected:
-            raise ValueError(MANUAL_PROTECTED_MOVE)
+            raise ValueError("保存できません。" + MANUAL_PROTECTED_MOVE)
         current.folder = _saved_folder(folder)
         current.save(update_fields=["folder", "updated_at"])
         return current
@@ -371,7 +371,7 @@ def delete_manual(manual, user):
     with transaction.atomic():
         current = _lock_manual(manual)
         if current.protected:
-            raise ValueError(MANUAL_PROTECTED_DELETE)
+            raise ValueError("削除できません。" + MANUAL_PROTECTED_DELETE)
         names = list(current.images.values_list("file", flat=True))
         folder_id = current.folder_id
         current.delete()
@@ -398,24 +398,24 @@ def _check_image_content(file, expected: str) -> None:
     finally:
         file.seek(0)
     if kind != expected:
-        raise ValueError("ファイルの中身が画像の形式と合いません。PNG・JPEG・WebP の画像を選び直してください。")
+        raise ValueError("保存できません。ファイルの中身が画像の形式と合いません。PNG・JPEG・WebP の画像を選び直してください。")
 
 
 def add_image(manual, file, user):
     """マニュアルに画像を 1 つ足す。形式・大きさ・名前・中身を先に見る。"""
     if file is None:
-        raise ValueError("画像を選んでください。")
+        raise ValueError("保存できません。画像を選んでください。")
     original = os.path.basename(getattr(file, "name", "") or "")
     ext = os.path.splitext(original)[1].lower()
     if ext not in IMAGE_TYPES:
-        raise ValueError("この形式の画像は追加できません。PNG・JPEG・WebP を選んでください。")
+        raise ValueError("保存できません。画像の形式が違います。PNG・JPEG・WebP を選んでください。")
     size = getattr(file, "size", 0) or 0
     if size <= 0:
-        raise ValueError("画像のファイルが空です。中身のあるファイルを選び直してください。")
+        raise ValueError("保存できません。画像のファイルが空です。中身のあるファイルを選び直してください。")
     if size > MAX_IMAGE_BYTES:
-        raise ValueError("画像が 10MB を超えています。小さくしてから選び直してください。")
+        raise ValueError("保存できません。画像が 10MB を超えています。小さくしてから選び直してください。")
     if len(original) > MAX_ORIGINAL_NAME:
-        raise ValueError("ファイルの名前が 100 字を超えています。名前を短くしてから選び直してください。")
+        raise ValueError("保存できません。ファイルの名前が 100 字を超えています。名前を短くしてから選び直してください。")
     _check_image_content(file, IMAGE_TYPES[ext][1])
     with transaction.atomic():
         current = _lock_manual(manual)
@@ -429,7 +429,7 @@ def remove_image(image, user):
             ManualImage.objects.select_for_update().select_related("manual").filter(pk=getattr(image, "pk", image)).first()
         )
         if current is None:
-            raise ValueError("画像が見つかりません。画面を開き直してください。")
+            raise ValueError("削除できません。画像が見つかりません。画面を開き直してください。")
         name = current.file.name
         manual = current.manual
         current.delete()
