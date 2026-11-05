@@ -1,0 +1,3 @@
+{% extends "core/list.html" %}
+{# 工程の一覧 (N158b): core の一覧のまま、「新規登録」を小窓で開く (欄 5 の小さい入力)。 #}
+{% block actions %}{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}

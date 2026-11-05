@@ -283,7 +283,7 @@ def test_shipment_detail_links_to_delivery_note(client, user, order):
     html = client.get(detail_url).content.decode()
     link = f'{reverse("shipping:deliverynote_create")}?shipments={shipment.pk}'
     # 開いた詳細の道を ?next= で渡す (納品書作成の「キャンセル」で出荷の詳細へ戻る)
-    assert f'<a class="btn btn-outline border-base-300" href="{link}&amp;next={detail_url}">' in html
+    assert f'<a class="btn btn-outline border-base-300" href="{link}&amp;next={detail_url}" data-modal-form="{link}&amp;next={detail_url}">' in html
     assert "納品書作成" in html
     assert html.count("btn-primary") == 1  # 主色は「編集」の 1 つのまま
 

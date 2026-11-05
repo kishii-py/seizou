@@ -1,7 +1,7 @@
 {% extends "core/list.html" %}
 {% load seizou_icons purchasing_tags %}
 {# 受入の一覧: core の一覧の上に、取引先ごとの先月と今月の支払の見込みの表。主色のボタンは土台の「新規登録」だけ。 #}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_list' %}">{% icon "cart" "size-4" %}発注の一覧</a>{{ block.super }}{% endblock %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_list' %}">{% icon "cart" "size-4" %}発注の一覧</a>{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}
 {# 受けすぎの知らせ: 開いた頁の受入の行の明細のうち、受入の数の合計が明細の数量を超えた物を、表の上に黄の知らせで並べる (over_receipt_notices。集計 1 回。受入は止めない)。 #}
 {% block content %}{% include "purchasing/_payable_table.html" %}{% over_receipt_notices rows as over_receipts %}{% if over_receipts %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<ul>{% for over in over_receipts %}<li>{{ over.line }}: {{ over.message }}</li>{% endfor %}</ul></div>

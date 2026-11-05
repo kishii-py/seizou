@@ -218,6 +218,7 @@ class ProcessListView(BaseListView):
     """
 
     model = Process
+    template_name = "masters/process_list.html"
     screen_name = "工程"
     screen_help = "工程の一覧。「計画に使う」に印を付けた工程ごとに、生産計画の盤が並びます。"
     columns = ("code", "name", "sort_order", "use_in_plan")

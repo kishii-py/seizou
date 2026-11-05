@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons purchasing_tags %}
 {# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む。受入の link は取消と断られた発注には出さず、数量は知らせのまだ受け入れていない数 (purchasing_tags の notice_rests)) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。書く入口 (送り直す・取り消す・受入・検収の送り直す) は発注の権限がある人だけ (決め 11-04 00:0x)。 #}
-{# 見出しの帯 (#po-heading)・黄の知らせ (#po-alert)・明細と検収の節 (#po-live) は 2 秒ごとに同じ URL を取りに行って入れ替え、前の更新と状態が違う発注の見出しの帯に seizou-changed を付ける (purchasing_tags の live_state)。タブは入れ替えない (選んだタブが基本情報に戻らないように)。 #}
+{# 見出しの帯 (#po-heading)・黄の知らせ (#po-alert)・明細と検収の節 (#po-live) は 2 秒ごとに同じ URL を取りに行って入れ替え、前の更新と状態が違う発注の見出しの帯に seizou-changed を付ける (purchasing_tags の live_state)。タブは入れ替えない (選んだタブが基本情報に戻らないように)。取消と受入の入口は小窓で開く (data-modal-form)。小窓で保存した後の seizou:refresh でも 2 秒ごとの取り直しを走らせる (決め 11-05 11:4x。N158b)。 #}
 {# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「発注 › 番号」(見出しの帯の中。土台の block heading に crumb を渡す)。block content で黄の知らせの次に右の列のカード (purchasing_tags の purchase_order_aside) を置いてから土台を呼ぶ。明細・検収・流れ (#po-live) は土台の左の列の block main。右の列 (#detail-aside) も 2 秒ごとに入れ替える。 #}
 {# 段の帯 (N151。core/_stage_band.html) は見出しの帯 (#po-heading) の中の、土台の見出し (パンくずの with の後) に置く。2 秒ごとの入れ替えで段も新しくなる。取消の発注には出さない。 #}
 {% block heading %}{% live_state object as live %}<div id="po-heading" class="rounded-lg{% if live.changed %} seizou-changed{% endif %}" data-live="{{ live.token }}">{% with crumb="発注" %}{{ block.super }}{% endwith %}{% load purchasing_timeline %}{% purchase_order_stages object as band %}{% include "core/_stage_band.html" with stages_id="po-stages" %}</div>{% endblock %}
@@ -11,13 +11,13 @@
   <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}再送</button>
 </form>
 {% endif %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" %}
-<a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>
+<a class="btn btn-outline btn-error" href="{% url 'purchasing:purchaseorder_cancel' object.pk %}" data-modal-form="{% url 'purchasing:purchaseorder_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>
 {% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
 {% block content %}<div id="po-alert">{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「再送」を押してください。</span></div>
 {% endif %}{% endwith %}{% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}
-<div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert,#detail-aside" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
+<div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s, seizou:refresh from:body" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert,#detail-aside" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
 {% endblock %}
 {% block main %}{% can_write "purchasing.PurchaseOrder" as can_po %}
 <div id="po-live">
@@ -53,10 +53,10 @@
           <td class="text-right tabular-nums">{{ line.amount|comma }}</td>{% endif %}
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
-          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}{% notice_rests line as rests %}<ul>{% for entry in rests %}{% with row=entry.notice %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and entry.rest > 0 and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">受入を記録する</a>{% endif %}</li>{% endwith %}{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
+          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}{% notice_rests line as rests %}<ul>{% for entry in rests %}{% with row=entry.notice %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and entry.rest > 0 and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">受入を記録する</a>{% endif %}</li>{% endwith %}{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
-          <td class="whitespace-nowrap">{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
+          <td class="whitespace-nowrap">{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
         </tr>
         {# 受けすぎ (受入の数の合計が明細の数量を超えた) の明細は、行の下に黄の知らせ (purchasing_tags の over_receipt_text。受入は止めない)。 #}
         {% over_receipt_text line as over %}{% if over %}<tr data-over-receipt="{{ line.pk }}"><td colspan="{% if seizou.hide_money %}10{% else %}12{% endif %}"><div class="alert alert-warning alert-soft" role="alert">{% icon "alert" "size-5" %}<span>明細 {{ line.line_no }}: {{ over }}</span></div></td></tr>{% endif %}

@@ -225,7 +225,7 @@ def test_receipt_link_opens_with_today_not_shipped_date(monkeypatch, user, logge
 
     # 相手の出荷日は知らせの行の頭に今までどおり出る
     assert f'<span class="font-mono">{shipped.isoformat()}</span>' in body
-    hrefs = re.findall(r'href="([^"]*)">受入を記録する</a>', body)
+    hrefs = re.findall(r'href="([^"]*)" data-modal-form="[^"]*">受入を記録する</a>', body)
     assert len(hrefs) == 1
     link = html.unescape(hrefs[0])
     assert "received_on=" not in link

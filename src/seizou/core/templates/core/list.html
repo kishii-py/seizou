@@ -1,6 +1,7 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
-{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
+{# 「新規登録」を小窓で開く一覧は、子のテンプレートが with の tag で create_in_modal=True を渡して block.super を呼ぶ (小さい入力だけ。N158b)。空の一覧の「新規登録」(core/_rows.html) は画面へ移るまま。 #}
+{% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}"{% if create_in_modal %} data-modal-form="{{ create_url }}"{% endif %}>{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
 {% block content %}
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
