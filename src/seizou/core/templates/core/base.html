@@ -37,6 +37,8 @@ seizou_tags.master_link の link
   <input id="seizou-drawer" type="checkbox" class="drawer-toggle" aria-label="メニューの開け閉め">
   <div class="drawer-content flex min-h-screen min-w-0 flex-col">
     {% include "core/_topbar.html" %}
+    {# 保存の帯 (N154。案 5-B): 入力の画面 (context に form がある画面) だけに描き、黄の知らせの後 (このまま保存) は描かない。小窓の入力は base.html を使わない。出し入れは js/seizou-form-guard.js。 #}
+    {% if form and not warnings %}{% include "core/_save_bar.html" %}{% endif %}
     {# 右下の「AI に質問」(assistant/_panel.html。下から 24px・高さ 40px) が、画面の最後の行と「保存」を隠さないよう、窓を出す画面だけ下に 96px (pb-24) 空ける。余白の段 (2・4・6) の外の例外。lg:p-6 が下の余白も上書きするので lg:pb-24 も書く。 #}
     {% if "assistant" in seizou.parts and user.is_authenticated %}<main class="flex-1 p-4 pb-24 lg:p-6 lg:pb-24">{% else %}<main class="flex-1 p-4 lg:p-6">{% endif %}
       {% block heading %}{% if screen_name %}
