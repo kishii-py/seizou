@@ -3,10 +3,15 @@
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
-一覧の「入金」と「残」は Invoice の method の列で、「未入金だけ」(絞り込みの枠の印 f_unpaid=1) は取消でない入金が 1 つも無い発行の請求書 (状態の絞りがあれば、状態はそちらを使う)。
+一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は取消でない入金の合計が合計に足りない発行の請求書 = 一部入金も入る
+(ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
 """
 
+from decimal import Decimal
+
 from django.contrib.auth.decorators import login_required
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -25,8 +30,17 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 def _unpaid_only(invoices):
-    """「未入金だけ」の印の条件 (取消でない入金が 1 つも無い請求書)。状態を発行に絞るのは InvoiceListView.get_queryset。"""
-    return invoices.exclude(payments__status=Payment.STATUS_RECORDED)
+    """「残のある物だけ」の印の条件 (取消でない入金の合計が合計に足りない請求書 = 一部入金も入る)。
+
+    core.dashboard の _invoices_to_be_paid と同じ数え方 (保存した入金の金額を足すだけ。掛け算と丸めをしない)。
+    状態を発行に絞るのは InvoiceListView.get_queryset。
+    """
+    paid = Coalesce(
+        Sum("payments__amount", filter=Q(payments__status=Payment.STATUS_RECORDED)),
+        Value(Decimal("0")),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    )
+    return invoices.annotate(paid_sum=paid).filter(paid_sum__lt=F("total"))
 
 
 class InvoiceListView(BaseListView):
@@ -44,7 +58,7 @@ class InvoiceListView(BaseListView):
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
         {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
-        {"name": "unpaid", "label": "未入金だけ", "kind": "flag", "when": _unpaid_only},
+        {"name": "unpaid", "label": "残のある物だけ", "kind": "flag", "when": _unpaid_only},
     )
     ordering = ("-issued_on", "-id")
     template_name = "billing/invoice_list.html"
