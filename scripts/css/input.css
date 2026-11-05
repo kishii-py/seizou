@@ -7,6 +7,17 @@
   themes: light --default;
 }
 
+/* 主色の既定 (会社の brand_color が空のときの土台の色) = 橙 #F57C00、字は白 (本人の決め 11-05 21:0x)。
+   会社の色は base.html が --color-primary を html の style で上書きする。「注意」の色 (warning) は変えない。 */
+@plugin "./daisyui-theme.mjs" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-primary: #F57C00;
+  --color-primary-content: #ffffff;
+}
+
 /* 右上の知らせ (toast) の時間の線。5 秒で左から右へ伸びる (base.html の script が同じ 5 秒で消す)。 */
 @keyframes seizou-toast-bar {
   from { width: 0%; }
