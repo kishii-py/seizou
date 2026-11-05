@@ -1,0 +1,3 @@
+{# orders の入力の小窓の中身 (N158)。入力の土台は小窓のテンプレートを app ごとに選ぶ (orders/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
+{# 受注の取消は、黄の知らせと取消の理由の欄のカード (orders/_order_cancel_card.html) を form_card で渡す。ほかの入力は土台の小窓のまま。 #}
+{% if request.resolver_match.url_name == "order_cancel" %}{% include "core/_form_modal.html" with form_card="orders/_order_cancel_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}
