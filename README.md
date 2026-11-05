@@ -27,7 +27,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 
 - 無人の仕事の回数: 172 本 (11-06 05:2x の main 916fff9 で、`docs/nights/<日付>/` の仕事ごとの記録のファイルを数えた。昼に別の PC で無人で動いた分を含む)
 - commit の数: 1,588 (11-06 05:2x の main 916fff9。うち Claude との共著の印が付いた物 1,568。main への merge の commit は 307)
-- テストの数: 3,085 本 (11-06 05:2x の main 916fff9 の `uv run pytest`。通過 3,034、普段は skip の E2E 51。E2E は、本番の 2 社 (VPS。205 回目の版) で外から回して 45 通過・2 skip・2 xfail = 11-05 14:3x、作者の Mac の 2 社 (231 回目の版) で 46 通過・3 skip・2 xfail = 11-06 未明)
+- テストの数: 3,085 本 (11-06 05:2x の main 916fff9 の `uv run pytest`。通過 3,034、普段は skip の E2E 51。E2E は、本番の 2 社 (VPS。234 回目の版 8a4326a) で外から回して 47 通過・2 skip・2 xfail = 11-06 06:2x)
 - 画面の数: 120 (11-06 05:2x の main 916fff9。土台を継承した画面の目録 `seizou_screens` の画面)
 - 部品の数: 18 (core と 17 の Django の部品。`src/seizou/parts.py`)
 - 決まりの数: 21 (RULES.md の R01〜R21)
