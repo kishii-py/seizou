@@ -151,6 +151,24 @@ def _alert_row(line, days):
     }
 
 
+def _overdue_lines():
+    """納期が過ぎた明細 (左のメニューの生産管理ボードの数。due_alerts の遅れと同じ条件)。受注の部品が無ければ None。
+
+    取消でない受注の明細のうち、納期が今日より前で、残 (受注の数 − 出荷済みの数) が 0 より大きい物。
+    """
+    order_model = _model("orders", "Order")
+    line_model = _model("orders", "OrderLine")
+    if order_model is None or line_model is None:
+        return None
+    from seizou.orders.services import annotate_remaining
+
+    # 日付と取消の絞り込みは残を足す前に置く (due_alerts と同じ。残を足した後に多の join を足さない)。
+    queryset = line_model._default_manager.filter(due_date__isnull=False, due_date__lt=timezone.localdate()).exclude(
+        order__status=order_model.STATUS_CANCELLED
+    )
+    return annotate_remaining(queryset).filter(remaining_total__gt=0)
+
+
 def monthly_trend(today=None, *, months=6) -> dict | None:
     """月次の推移。today の月を含む直近 months か月を古い順に。受注の部品が無いか DB が読めなければ None。
 
