@@ -264,10 +264,10 @@ def test_remaining_stays_last_cell(user, logged_in, customer, item):
 # --- 2 段目: 受注の一覧の状態の色と、注文残の一覧の入口 ---
 
 BADGES = {
-    "open": '<span class="badge badge-soft badge-primary">受注</span>',
+    "open": '<span class="badge badge-soft badge-info">受注</span>',
     "partial": '<span class="badge badge-soft badge-warning">一部出荷</span>',
     "shipped": '<span class="badge badge-soft badge-success">出荷済</span>',
-    "cancelled": '<span class="badge badge-ghost text-base-content/50">取消</span>',
+    "cancelled": '<span class="badge badge-outline text-base-content/50">取消</span>',
 }
 
 

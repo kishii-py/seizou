@@ -130,7 +130,7 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
         assert f'href="{url}"' in row, url
     for word in ("承認", "却下", "詳細を見る", "取引先の小窓"):
         assert word in row, word
-    assert '<span class="badge badge-soft badge-warning">届いた</span>' in row
+    assert '<span class="badge badge-soft badge-info">届いた</span>' in row
 
     row = _row(body, accepted.pk)
     assert reverse("connect:inbox_accept", args=[accepted.pk]) not in row
@@ -140,7 +140,7 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
     assert reverse("connect:inbox_detail", args=[accepted.pk]) in row
 
     row = _row(body, rejected.pk)
-    assert '<span class="badge badge-ghost text-base-content/50">断った</span>' in row
+    assert '<span class="badge badge-outline text-base-content/50">断った</span>' in row
     assert reverse("connect:inbox_accept", args=[rejected.pk]) not in row
     assert reverse("connect:inbox_detail", args=[rejected.pk]) in row
     # 表の見出しに「操作」の列、種類の列は無い (受信した注文は注文だけ)
