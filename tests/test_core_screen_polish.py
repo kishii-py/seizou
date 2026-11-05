@@ -144,7 +144,7 @@ def test_cancelled_order_detail_has_no_edit(client, user, order):
     orders_services.cancel_order(order, user)
     html = client.get(detail_url).content.decode()
     assert edit_href not in html
-    assert "一覧に戻る" in html
+    assert 'aria-label="パンくず"' in html and "一覧に戻る" not in html
 
 
 def test_second_cancel_message(user, order):

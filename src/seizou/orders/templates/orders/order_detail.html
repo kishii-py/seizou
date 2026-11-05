@@ -5,7 +5,7 @@
 {# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「受注 › 番号」(土台の block heading に crumb を渡す)。block content で段の帯の次に右の列のカード (orders_detail の order_aside) を置いてから土台を呼ぶ。明細・流れ・メモは土台の左の列の block main。基本情報は右の列のカードへ移り、タブは関係する物だけ。取消は小窓で開く (data-modal-form)。見出しの帯 (#order-heading) と中身 (#order-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158)。 #}
 {% block heading %}<div id="order-heading">{% with crumb="受注" %}{{ block.super }}{% endwith %}</div>{% endblock %}
 {% block edit_button %}{% if object.status != "cancelled" %}{{ block.super }}{% endif %}{% endblock %}
-{% block actions %}{{ block.super }}{% can_write "orders.Order" as can_cancel %}{% if object.status != "cancelled" and can_cancel %}<a class="btn btn-outline btn-error" href="{% url 'orders:order_cancel' object.pk %}" data-modal-form="{% url 'orders:order_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}{% endblock %}
+{% block more %}{% can_write "orders.Order" as can_cancel %}{% if object.status != "cancelled" and can_cancel %}{% url 'orders:order_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block content %}<div id="order-live">
 {% load orders_timeline %}{% order_stages object as band %}{% include "core/_stage_band.html" with stages_id="order-stages" %}
 {% order_aside object fields seizou.hide_money as aside %}

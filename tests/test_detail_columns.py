@@ -169,7 +169,7 @@ def test_breadcrumb_above_title(logged_in, order, purchase_order):
         assert f'href="{reverse(list_name)}">{word}</a>' in crumb, name
         assert f'aria-current="page">{obj}</span>' in crumb, name
         assert body.index('<nav aria-label="パンくず"') < body.index('<h1 class="truncate'), name
-        assert "一覧に戻る" in body, name
+        assert "一覧に戻る" not in body, name  # パンくずがあれば出さない (N163)
 
 
 @pytest.mark.django_db
@@ -221,7 +221,8 @@ def test_other_details_keep_one_column(logged_in, item, customer, name):
     obj = item if name == "masters:item_detail" else customer
     body = _get(logged_in, name, obj.pk)[1]
 
-    for mark in ('id="detail-columns"', 'id="detail-aside"', 'aria-label="パンくず"'):
+    assert 'aria-label="パンくず"' in body  # 部品と取引先の詳細にもパンくず (N163)。1 列のままは下の 2 つで見る
+    for mark in ('id="detail-columns"', 'id="detail-aside"'):
         assert mark not in body, (name, mark)
     assert '<input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報' in body
     assert ONE_COLUMN_TABS in body

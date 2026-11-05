@@ -183,9 +183,9 @@ def test_order_detail_hides_cancel_ship_and_po(client, on, user, customer, item,
     lines_html = _section(denied, "order-lines-title")
     for entry in entries:
         assert entry not in lines_html, entry
-    # ⋮ は空にならない (部品の小窓はいつも出る)。一覧に戻るは見るだけの口。
+    # ⋮ は空にならない (部品の小窓はいつも出る)。一覧へはパンくずで戻る (見るだけの口)。
     assert "部品の小窓" in lines_html
-    assert list_href in denied and "一覧に戻る" in denied
+    assert list_href in denied and "一覧に戻る" not in denied  # 一覧へはパンくずで戻る (N163)
 
     jimu = account("jimu", permissions=["slip_edit"])
     for person in (jimu, admin):

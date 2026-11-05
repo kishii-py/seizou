@@ -1,4 +1,4 @@
 {% extends "core/detail.html" %}
 {% load seizou_icons %}
 {# 休日の詳細。core の詳細のまま、見出しの帯に「削除」を足す (編集の画面は無い。間違えた日は削除して足し直す)。 #}
-{% block actions %}<a class="btn btn-outline border-base-300 text-error" href="{% url 'masters:holiday_delete' object.pk %}">{% icon "x" "size-4" %}削除</a>{% endblock %}
+{% block more %}{% url 'masters:holiday_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endblock %}
