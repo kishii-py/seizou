@@ -56,6 +56,7 @@ class Event:
 
     when は日時 (datetime) か日付 (date)、取消の発注だけ None。url はその記録の詳細の画面 (無ければ None)。
     line_no は明細の番号 (発注の全体の物は None)。amount は金額 (無ければ None。テンプレートが隠すかを決める)。
+    who は誰が (記録に人の列がある出来事の人の名前。発注では受入だけ)、via は注文の入口 (発注の流れでは使わない。受注の流れと同じ形)。
     """
 
     when: date | datetime | None
@@ -64,6 +65,8 @@ class Event:
     url: str | None = None
     line_no: int | None = None
     amount: Decimal | None = None
+    who: str = ""
+    via: str = ""
 
     @property
     def has_time(self) -> bool:
@@ -105,6 +108,11 @@ def _qty(qty, line) -> str:
     return f"{comma(qty)} {line.unit}".strip()
 
 
+def _person(user) -> str:
+    """記録の人の列の名前 (受注の流れの orders.timeline と同じ字)。人が無ければ空。"""
+    return "" if user is None else str(user)
+
+
 def _sent_event(outbox) -> Event:
     # 送った注文の詳細の画面は無い (送った記録は発注の詳細のタブ)。model_url は None を返す。
     if outbox.response == RECEIVED:
@@ -134,7 +142,8 @@ def _notice_event(line, notice) -> Event:
 def _receipt_events(line, receipt) -> list[Event]:
     url = _url(receipt)
     qty = _qty(receipt.qty, line)
-    events = [Event(receipt.received_on, "receipt", f"受入 ({qty})", url, line.line_no, receipt.amount)]
+    who = _person(receipt.received_by)
+    events = [Event(receipt.received_on, "receipt", f"受入 ({qty})", url, line.line_no, receipt.amount, who=who)]
     if receipt.acceptance_sent_at is not None:
         events.append(Event(receipt.acceptance_sent_at, "acceptance", f"検収を送った (受入 {qty})", url, line.line_no))
     return events

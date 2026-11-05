@@ -14,6 +14,7 @@
       <div class="min-w-0 pb-6">
         <p class="flex flex-wrap items-baseline gap-2 text-xs text-base-content/70"><span class="font-mono tabular-nums">{% if e.when is None %}—{% elif e.has_time %}{{ e.when|date:"Y-m-d H:i" }}{% else %}{{ e.when|date:"Y-m-d" }}{% endif %}</span>{% if e.line_no %}<span>明細 {{ e.line_no }}</span>{% endif %}</p>
         <p class="mt-1">{% if e.url %}<a class="link link-primary" href="{{ e.url }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}{% if e.amount is not None and not seizou.hide_money %} <span class="tabular-nums">({{ e.amount|comma }} 円)</span>{% endif %}</p>
+        {% if e.who or e.via %}<p class="mt-1 text-xs text-base-content/50" data-flow-who>{{ e.who }}{% if e.who and e.via %} · {% endif %}{{ e.via }}</p>{% endif %}
       </div>
     </li>
     {% endfor %}

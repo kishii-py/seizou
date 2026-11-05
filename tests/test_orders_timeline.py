@@ -101,7 +101,7 @@ def test_order_alone_has_one_registered_event(user, customer, item):
     events = events_for(order)
 
     assert [(e.kind, e.title, e.when, e.url, e.line_no, e.amount) for e in events] == [
-        ("order", "受注を登録 (手入力)", today, None, None, None)
+        ("order", "受注を登録", today, None, None, None)
     ]
 
 
@@ -113,7 +113,7 @@ def test_events_from_order_to_payment_line_up_in_order(user, customer, item, cut
 
     assert [e.kind for e in events] == FLOW_KINDS
     assert [e.title for e in events] == [
-        "受注を登録 (手入力)",
+        "受注を登録",
         f"指示書 {workorder.wo_no} を発行 (10 個)",
         f"指示書 {workorder.wo_no} に着手",
         f"実績 切断 10 個 ({workorder.wo_no})",
@@ -173,11 +173,11 @@ def test_cancelled_order_ends_with_cancel_event(user, logged_in, customer, item)
     events = events_for(order)
 
     assert [(e.kind, e.title, e.when) for e in events] == [
-        ("order", "受注を登録 (手入力)", today),
+        ("order", "受注を登録", today),
         ("cancel", "受注を取消", None),
     ]
     section = _flow_section(_detail(logged_in, order)[1])
-    assert section.index("受注を登録 (手入力)") < section.index("受注を取消")
+    assert section.index("受注を登録") < section.index("受注を取消")
     assert '<span class="font-mono tabular-nums">—</span>' in section
 
 
@@ -194,7 +194,7 @@ def test_inbox_and_note_events(user, customer, item):
     assert [(e.kind, e.title) for e in events] == [
         ("inbox", "注文が届いた"),
         ("inbox", "受信した注文を受け入れ"),
-        ("order", "受注を登録 (受信した注文)"),
+        ("order", "受注を登録"),
         ("note", "メモを更新"),
     ]
     assert events[0].url == reverse("connect:inbox_detail", args=[inbox.pk])

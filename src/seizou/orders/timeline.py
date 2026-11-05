@@ -8,6 +8,7 @@
   (受注の詳細の明細の表の単価と金額と同じ形 = access.can_see_money)。
 - 並びは日の昇順。同じ日の中は仕事の順 (KINDS の順)、同じ種類の中は時刻 (日付だけの出来事は 0 時) と明細の番号の順。
   取消の受注は取り消した日時の記録が無いので、「受注を取消」は日時なし (None) で最後に置く。
+- 誰が (who) と入口 (via) は、記録に人の列がある出来事と、受注の登録・受信した注文だけ (N163)。入口の字は受注と受信した注文の表示名と、ダッシュボードの INLETS の「seizou で直接」。
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from decimal import Decimal
 from django.apps import apps
 from django.utils import timezone
 
+from seizou.core.dashboard import INLETS
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.views import model_url
 
@@ -40,6 +42,7 @@ KINDS = (
     "cancel",
 )
 _RANK = {kind: rank for rank, kind in enumerate(KINDS)}
+_DIRECT = dict(INLETS)["direct"]  # 注文の入口「seizou で直接」(ダッシュボードの入口の図と取引先の一覧の列と同じ字)
 
 #: 出来事の種類ごとの絵記号 (core の seizou_icons の PATHS にある名前だけ。流れの枠の点に出す。N163)。種類を足すときはここにも足す。
 KIND_ICONS = {
@@ -65,6 +68,7 @@ class Event:
 
     when は日時 (datetime) か日付 (date)、取消の受注だけ None。url はその記録の詳細の画面 (無ければ None)。
     line_no は明細の番号 (受注の全体の物は None)。amount は金額 (無ければ None。テンプレートが隠すかを決める)。
+    who は誰が (記録に人の列がある出来事の人の名前か、受信した注文の取引先の名前)、via は注文の入口 (受注の登録と受信した注文だけ)。
     """
 
     when: date | datetime | None
@@ -73,6 +77,8 @@ class Event:
     url: str | None = None
     line_no: int | None = None
     amount: Decimal | None = None
+    who: str = ""
+    via: str = ""
 
     @property
     def has_time(self) -> bool:
@@ -128,6 +134,22 @@ def _cancelled(obj) -> str:
     return " (取消)" if getattr(obj, "status", "") == CANCELLED else ""
 
 
+def _person(user) -> str:
+    """記録の人の列の名前 (請求書の入金の行の「記録した人」と同じ字)。人が無ければ空。"""
+    return "" if user is None else str(user)
+
+
+def _inbox_inlet(inbox) -> str:
+    """受信した注文の入口の字。seizou どうしなら「seizou で直接」、ほかは受信した注文の入口の表示名 (読み取り)。"""
+    return _DIRECT if inbox.source == inbox.SOURCE_DIRECT else inbox.get_source_display()
+
+
+def _inlet(order) -> str:
+    """受注の入口の字。受信した注文から作った受注はその入口、ほかは受注の入口の表示名 (手入力・読み取り)。"""
+    inbox = getattr(order, "inbox_message", None) if order.source == order.SOURCE_INBOX else None
+    return _inbox_inlet(inbox) if inbox is not None else order.get_source_display()
+
+
 def _inbox_events(order) -> list[Event]:
     # 受信した注文から作った受注だけ。connect が無いか、手入力の受注なら getattr が None を返す
     # (逆向きの 1 対 1 の「無い」は AttributeError の仲間)。
@@ -135,14 +157,15 @@ def _inbox_events(order) -> list[Event]:
     if inbox is None:
         return []
     url = _url(inbox)
-    events = [Event(inbox.received_at, "inbox", "注文が届いた", url)]
+    sender = inbox.partner.name if inbox.partner_id else inbox.sender_name
+    events = [Event(inbox.received_at, "inbox", "注文が届いた", url, who=sender, via=_inbox_inlet(inbox))]
     if inbox.accepted_at is not None:
         events.append(Event(inbox.accepted_at, "inbox", "受信した注文を受け入れ", url))
     return events
 
 
 def _registered(order) -> Event:
-    return Event(order.order_date, "order", f"受注を登録 ({order.get_source_display()})")
+    return Event(order.order_date, "order", "受注を登録", via=_inlet(order))
 
 
 def _workorder_events(line, workorder) -> list[Event]:
@@ -158,11 +181,12 @@ def _workorder_events(line, workorder) -> list[Event]:
         )
     ]
     if workorder.accepted_at is not None:
-        events.append(Event(workorder.accepted_at, "accepted", f"指示書 {no} に着手", url, line.line_no))
+        who = _person(workorder.accepted_by)
+        events.append(Event(workorder.accepted_at, "accepted", f"指示書 {no} に着手", url, line.line_no, who=who))
     for step in _all(workorder, "steps"):
         for record in _all(step, "progress_records"):
             title = f"実績 {step.process.name} {_qty(record.qty, line)} ({no})"
-            events.append(Event(record.recorded_at, "progress", title, url, line.line_no))
+            events.append(Event(record.recorded_at, "progress", title, url, line.line_no, who=_person(record.recorded_by)))
     return events
 
 
@@ -182,7 +206,7 @@ def _invoice_event(invoice) -> Event:
 
 def _payment_event(invoice, payment) -> Event:
     title = f"請求書 {invoice.invoice_no} に入金{_cancelled(payment)}"
-    return Event(payment.received_on, "payment", title, _url(payment), amount=payment.amount)
+    return Event(payment.received_on, "payment", title, _url(payment), amount=payment.amount, who=_person(payment.recorded_by))
 
 
 def _note_events(order) -> list[Event]:
@@ -193,7 +217,7 @@ def _note_events(order) -> list[Event]:
     note = notes_services.note_for(order)
     if note.pk is None or notes_services.is_blank(note.body_html):
         return []
-    return [Event(note.updated_at, "note", "メモを更新")]
+    return [Event(note.updated_at, "note", "メモを更新", who=_person(note.updated_by))]
 
 
 def _sort_key(event: Event) -> tuple:
