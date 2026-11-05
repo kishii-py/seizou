@@ -52,6 +52,12 @@ class PurchaseOrderListView(BaseListView):
         {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
     )
+    # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
+    presets = (
+        {"label": "作成", "params": {"f_status": PurchaseOrder.STATUS_DRAFT}},
+        {"label": "送った", "params": {"f_status": PurchaseOrder.STATUS_SENT}},
+        {"label": "相手が受け入れた", "params": {"f_status": PurchaseOrder.STATUS_ACCEPTED}},
+    )
     ordering = ("-order_date", "-id")
     template_name = "purchasing/purchaseorder_list.html"
 
