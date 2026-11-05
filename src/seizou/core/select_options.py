@@ -11,6 +11,9 @@
 
 from __future__ import annotations
 
+from django.apps import apps
+from django.db import DatabaseError
+
 from seizou.core import fields as company_fields
 
 #: 下の段の字の区切り
@@ -48,3 +51,43 @@ def with_company_fields(queryset):
     if company_fields.registration_for(queryset.model) is None:
         return queryset
     return queryset.select_related(company_fields.EXT_ACCESSOR)
+
+
+#: 最近使った物の元。model の名前 → (表の名前, 候補の pk を読む lookup, 日付の lookup) の並び。並びの順は、同じ日付のときの順
+RECENT_SOURCES = {
+    "masters.Item": (
+        ("orders.OrderLine", "item", "order__order_date"),
+        ("purchasing.PurchaseOrderLine", "item", "purchase_order__order_date"),
+        ("shipping.Shipment", "order_line__item", "shipped_at"),
+    ),
+    "masters.Partner": (
+        ("orders.Order", "customer", "order_date"),
+        ("purchasing.PurchaseOrder", "partner", "order_date"),
+        ("shipping.Shipment", "order_line__order__customer", "shipped_at"),
+    ),
+}
+#: 出す数と、元ごとに新しい方から読む行の数
+RECENT_LIMIT = 5
+RECENT_SCAN = 50
+
+
+def recent(queryset) -> list:
+    """queryset (候補の母集団。使用中と取引先の種類の絞りの後) の行のうち、最近の受注・発注・出荷で使った物を新しい順に RECENT_LIMIT 件まで。
+
+    「最近」は会社の中の全員の記録で見る (受注・発注・出荷の表に書いた人の列が無いため。N162 の迷った事の 1)。
+    日付の新しい順。同じ日付は RECENT_SOURCES の並びの順と、元の中の新しい行の順。部品の入っていない元と、DB が読めない元は飛ばす。
+    """
+    rows = []
+    for label, value, day in RECENT_SOURCES.get(queryset.model._meta.label, ()):
+        try:
+            model = apps.get_model(label)
+        except LookupError:
+            continue
+        try:
+            rows += list(model._default_manager.order_by(f"-{day}", "-pk").values_list(day, value)[:RECENT_SCAN])
+        except DatabaseError:
+            continue
+    rows.sort(key=lambda row: row[0], reverse=True)
+    pks = list(dict.fromkeys(pk for _day, pk in rows if pk is not None))
+    found = {obj.pk: obj for obj in queryset.filter(pk__in=pks)}
+    return [found[pk] for pk in pks if pk in found][:RECENT_LIMIT]

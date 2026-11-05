@@ -20,6 +20,8 @@ from seizou.core.fields import Column
 from seizou.masters import services as masters_services
 from seizou.masters.models import Partner
 from seizou.orders import services as orders_services
+from seizou.purchasing import services as purchasing_services
+from seizou.shipping import services as shipping_services
 
 SELECT_JS = Path(seizou.core.__file__).resolve().parent / "static" / "js" / "seizou-select.js"
 INPUT_CSS = Path(__file__).resolve().parents[1] / "scripts" / "css" / "input.css"
@@ -126,3 +128,89 @@ def test_select_js_draws_two_lines():
 def test_select_js_passes_node_check():
     result = subprocess.run(["node", "--check", str(SELECT_JS)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+# --- 2. 最近使った ---
+
+
+@pytest.fixture
+def subcontractor(user):
+    return masters_services.create_partner(
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor", "rounding": "round"}, user
+    )
+
+
+def _used_items(user, customer, subcontractor):
+    """部品 T-100〜T-105 を作り、受注・発注・出荷で日付の違う記録を入れる。部品の品番 → 部品を返す。"""
+    items = {
+        f"T-10{n}": masters_services.create_item({"part_no": f"T-10{n}", "name": f"作り物の部品{n}", "unit": "個"}, user)
+        for n in range(6)
+    }
+    for part_no, day in (("T-100", date(2026, 10, 31)), ("T-101", date(2026, 11, 1)), ("T-103", date(2026, 11, 3)), ("T-105", date(2026, 11, 5))):
+        orders_services.create_order(customer, [_line(items[part_no])], user, order_date=day)
+    shipped = orders_services.create_order(customer, [_line(items["T-102"])], user, order_date=date(2026, 11, 2))
+    purchasing_services.create_purchase_order(
+        subcontractor, [_line(items["T-104"])], user, order_date=date(2026, 11, 4), send=False
+    )
+    shipping_services.ship(shipped.lines.get(), Decimal("1"), date(2026, 11, 6), user)
+    return items
+
+
+@pytest.mark.django_db
+def test_recent_lists_used_items_newest_first(user, logged_in, customer, subcontractor):
+    items = _used_items(user, customer, subcontractor)
+
+    data = _get(logged_in, "masters:item_select")
+
+    # 日付の新しい順 (出荷 11-06 の T-102 が先頭)・同じ部品は 1 つ・5 件まで (10-31 の T-100 は出ない)
+    assert [row["id"] for row in data["recent"]] == [
+        items[part_no].pk for part_no in ("T-102", "T-105", "T-104", "T-103", "T-101")
+    ]
+    # 最近使ったの候補は、一覧の候補と同じ形 (単位・標準単価・2 段の字を含む)
+    assert set(data["recent"][0]) == set(data["items"][0])
+    assert {"unit", "standard_price", "title", "sub"} <= set(data["recent"][0])
+    assert data["recent"][0]["title"] == "T-102"
+
+
+@pytest.mark.django_db
+def test_recent_only_on_first_page_before_typing(user, logged_in, customer, subcontractor):
+    # 記録の無い DB では、字を打つ前でも空 (鍵はある)
+    masters_services.create_item({"part_no": "T-900", "name": "作り物の座金", "unit": "袋"}, user)
+    data = _get(logged_in, "masters:item_select")
+    assert "recent" in data
+    assert data["recent"] == []
+
+    _used_items(user, customer, subcontractor)
+    assert _get(logged_in, "masters:item_select")["recent"]
+    # 字を打った後と、続きのページには出さない
+    assert _get(logged_in, "masters:item_select", q="T")["recent"] == []
+    assert _get(logged_in, "masters:item_select", page="2")["recent"] == []
+
+
+@pytest.mark.django_db
+def test_recent_keeps_active_and_role_filters(user, logged_in, shaft, subcontractor):
+    first = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    stopped = masters_services.create_partner({"code": "C002", "name": "作り物の止めた得意先", "role": "customer"}, user)
+    orders_services.create_order(first, [_line(shaft)], user, order_date=date(2026, 11, 1))
+    orders_services.create_order(stopped, [_line(shaft)], user, order_date=date(2026, 11, 2))
+    Partner.objects.filter(pk=stopped.pk).update(active=False)
+    purchasing_services.create_purchase_order(
+        subcontractor, [_line(shaft)], user, order_date=date(2026, 11, 3), send=False
+    )
+
+    def recent_ids(**params):
+        return [row["id"] for row in _get(logged_in, "masters:partner_select", **params)["recent"]]
+
+    # 得意先の欄 (role=customer) には協力企業を出さない。使用停止の取引先はどちらにも出ない
+    assert recent_ids(role="customer") == [first.pk]
+    assert recent_ids() == [subcontractor.pk, first.pk]
+
+
+def test_select_js_puts_recent_under_heading():
+    script = SELECT_JS.read_text(encoding="utf-8")
+    for word in ('var RECENT_LABEL = "最近使った";', "data.recent", "optgroup: RECENT", "self.clearOptionGroups()"):
+        assert word in script, word
+    assert "callback(data.items || []);" not in script
+
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert css.count(".optgroup-header") == 2

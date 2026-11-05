@@ -63,6 +63,14 @@ body > .ts-dropdown [data-selectable] .highlight {
   color: var(--color-primary);
   font-weight: 700;
 }
+/* 「最近使った」の見出し (部品の optgroup-header。N162)。灰の小さい字。 */
+.ts-wrapper .ts-dropdown .optgroup-header,
+body > .ts-dropdown .optgroup-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  background-color: var(--color-base-100);
+}
 
 /* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
    2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */

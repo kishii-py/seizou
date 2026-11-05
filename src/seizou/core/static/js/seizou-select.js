@@ -3,7 +3,7 @@
  * 素の JS で書く (外の library は同梱の Tom Select だけ)。読み込みは base.html の Tom Select の <script> の次の 1 行。
  *
  * 候補は core の候補の口 (BaseSelectView) から q と page を付けて取る。返る形は
- * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽}。1 ページは 30 件 (口の per_page)。
+ * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽, "recent": [...]}。1 ページは 30 件 (口の per_page)。
  *
  * 決まり:
  * - 一覧を下まで読むと次のページを足す (virtual_scroll)。
@@ -27,6 +27,8 @@
  *   -unit_price で終わる欄に写す (05 の 2 節の「選んだら写す」。規則は masters.services.copy_values と同じ:
  *   欄が空か前に写したままの値なら写し、人が打った字は残す)。写したら欄の下に「単位と単価を部品から写しました。」を出す。
  *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
+ * - 字を打つ前の 1 ページ目は、口の返す recent (最近の受注・発注・出荷で使った物。5 件まで) を「最近使った」の見出しの群
+ *   (Tom Select の optgroup) に入れて先頭に出す。同じ id の候補は 1 つにまとまり、最近使ったの群に残る。recent が空なら見出しを出さない (N162)。
  */
 (function () {
   "use strict";
@@ -40,6 +42,9 @@
     { key: "standard_price", suffix: "-unit_price", label: "単価" },
   ];
   var COPIED_TAIL = "を部品から写しました。";
+  // 字を打つ前の 1 ページ目に、口の返す recent を入れる群の名前と見出しの字 (N162)
+  var RECENT = "recent";
+  var RECENT_LABEL = "最近使った";
 
   function pageUrl(base, query, page) {
     var url = new URL(base, window.location.href);
@@ -152,7 +157,16 @@
           .then(function (data) {
             clearError(state);
             if (data.more) self.setNextUrl(query, pageUrl(base, query, pageOf(url) + 1));
-            callback(data.items || []);
+            // 字を打つ前の 1 ページ目だけ、最近使った物 (5 件まで) を見出しの群に入れて先頭に足す (N162)。
+            // 同じ id の候補は部品が 1 つにまとめる (先に足した最近使ったの群に残る)。無ければ見出しを出さない。
+            var recent = query === "" && pageOf(url) === 1 && Array.isArray(data.recent) ? data.recent : [];
+            var options = recent.map(function (option) {
+              return Object.assign({}, option, { optgroup: RECENT });
+            });
+            // 選んだ候補は字を変えても部品が残す (virtual_scroll の clearFilter)。最近使ったから選んだ物が、字を打った後も
+            // 見出しの下に残らないよう、最近使ったの無い 1 ページ目では群を外す (続きのページでは外さない)。
+            if (pageOf(url) === 1 && !recent.length) self.clearOptionGroups();
+            callback(options.concat(data.items || []), recent.length ? [{ value: RECENT, label: RECENT_LABEL }] : []);
           })
           .catch(function () {
             state.failed = true;

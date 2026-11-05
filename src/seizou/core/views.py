@@ -1529,6 +1529,7 @@ class BaseSelectView(ScreenMixin, View):
     選ぶ欄の JS が、同じ行の空の単位と単価の欄に写す = 05 の 2 節の「選んだら写す」)。金額の項目
     (access.is_money_name) は、金額の閲覧が無い人には返さない。
     候補ごとに text (選んだ値の欄の字。今の 1 行) の横に、2 段の字 title と sub (core.select_options.lines) も返す (N162)。
+    字を打つ前の 1 ページ目は recent (core.select_options.recent) も返す。
     """
 
     model = None
@@ -1557,7 +1558,10 @@ class BaseSelectView(ScreenMixin, View):
         more = len(rows) > self.per_page
         names = self.shown_columns()
         items = [self.candidate(obj, names) for obj in rows[: self.per_page]]
-        return JsonResponse({"items": items, "more": more})
+        recent = []
+        if not term and page == 1:  # 字を打つ前の 1 ページ目だけ (N162)
+            recent = [self.candidate(obj, names) for obj in select_options.recent(qs)]
+        return JsonResponse({"items": items, "more": more, "recent": recent})
 
     def candidate(self, obj, names) -> dict:
         """候補の 1 つ。text は今の 1 行の字 (選んだ値の欄の字。変えない)。title と sub は候補の 2 段の字 (N162)。"""
