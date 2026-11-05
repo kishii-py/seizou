@@ -152,7 +152,7 @@ def test_second_cancel_message(user, order):
     with pytest.raises(RuleViolation) as caught:
         orders_services.cancel_order(order, user)
     assert caught.value.code == "R05"
-    assert caught.value.message == "この受注は取り消し済みです。"
+    assert caught.value.message == "取り消せません。この受注は取り消し済みです。受注の詳細を開き直してください。"
 
 
 # ---------------------------------------------------------------- 6. マニュアルの最上位の文

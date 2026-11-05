@@ -93,7 +93,7 @@ def test_update_on_cancelled_order_is_r05(user, line):
     with pytest.raises(RuleViolation) as caught:
         services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
     assert caught.value.code == "R05"
-    assert "取消した受注の出荷は直せません。" in caught.value.message
+    assert "この出荷の受注は取り消してあります。" in caught.value.message
     shipment.refresh_from_db()
     assert shipment.qty == Decimal("4")
 
@@ -106,7 +106,7 @@ def test_update_without_partial_shipment_needs_remaining(settings, user, line):
     with pytest.raises(RuleViolation) as caught:
         services.update_shipment(shipment, Decimal("4"), SHIPPED_AT, user)
     assert caught.value.code == "分納"
-    assert caught.value.message.startswith("この会社は分納を許していません (設定「分納」)。")
+    assert caught.value.message.startswith("保存できません。この会社は分納を許していません (設定「分納」)。")
     assert "10" in caught.value.message
     shipment.refresh_from_db()
     assert shipment.qty == Decimal("10")

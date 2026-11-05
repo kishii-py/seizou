@@ -73,7 +73,7 @@ def test_zero_qty_is_r02(user, step):
         with pytest.raises(RuleViolation) as caught:
             services.record_progress(step, qty, RECORDED_AT, user)
         assert caught.value.code == "R02"
-        assert caught.value.message.startswith("数量と単価は 0 より大きい。")
+        assert caught.value.message.startswith("保存できません。数量と単価は 0 より大きい。")
     assert Progress.objects.count() == 0
 
     # services を通さずに表へ直接書いても、DB の制約が止める。

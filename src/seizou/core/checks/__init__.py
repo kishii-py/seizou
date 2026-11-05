@@ -102,6 +102,7 @@ def run(action: str, data: dict, user) -> list[CheckWarning]:
         if not message:
             continue
         if mode == "stop":
-            raise CheckViolation(check.code, message)
+            # 止めるの赤の知らせは「保存できません。」を頭に付ける (文の型。決め 11-05 09:5x。N156)。知らせるの黄は検査の文のまま。
+            raise CheckViolation(check.code, "保存できません。" + message)
         warnings.append(CheckWarning(check.code, message))
     return warnings

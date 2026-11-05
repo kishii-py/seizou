@@ -50,7 +50,7 @@ def test_zero_or_negative_qty_is_refused(user, customer, item):
                 order_date=ORDER_DATE,
             )
         assert caught.value.code == "R02"
-        assert caught.value.message.startswith("数量と単価は 0 より大きい。")
+        assert caught.value.message.startswith("保存できません。数量と単価は 0 より大きい。")
     assert Order.objects.count() == 0
     assert OrderLine.objects.count() == 0
 

@@ -87,7 +87,7 @@ def test_other_customers_shipment_is_refused(user, customer, item, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_delivery_note(customer, [mine, theirs], user)
     assert caught.value.code == "R08"
-    assert caught.value.message.startswith(R08_RULE)
+    assert caught.value.message.startswith("発行できません。" + R08_RULE)
     assert theirs.shipment_no in caught.value.message
 
     assert DeliveryNote.objects.count() == 0
@@ -106,7 +106,7 @@ def test_shipment_already_on_a_note_is_refused(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_delivery_note(customer, [first, second], user)
     assert caught.value.code == "R08"
-    assert caught.value.message.startswith(R08_RULE)
+    assert caught.value.message.startswith("発行できません。" + R08_RULE)
     assert note.note_no in caught.value.message
 
     assert DeliveryNote.objects.count() == 1
@@ -148,7 +148,7 @@ def test_issued_note_blocks_shipment_update(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
     assert caught.value.code == "R08"
-    assert caught.value.message.startswith(R08_RULE)
+    assert caught.value.message.startswith("保存できません。" + R08_RULE)
     assert note.note_no in caught.value.message
     assert shipment.shipment_no in caught.value.message
 

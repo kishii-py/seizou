@@ -62,7 +62,7 @@ def _refuse_unbillable(shipment, customer):
     if note is None or note.status != _DeliveryNote.STATUS_ISSUED:
         raise RuleViolation(
             "R09",
-            f"{_R09_RULE}出荷 {shipment.shipment_no} は発行の納品書に入っていないので、外してください。",
+            f"発行できません。{_R09_RULE}出荷 {shipment.shipment_no} は発行の納品書に入っていないので、外してください。",
         )
     invoiced = (
         InvoiceLine.objects.select_related("invoice")
@@ -72,13 +72,13 @@ def _refuse_unbillable(shipment, customer):
     if invoiced is not None:
         raise RuleViolation(
             "R09",
-            f"{_R09_RULE}出荷 {shipment.shipment_no} は請求書 {invoiced.invoice.invoice_no} に入っているので、"
+            f"発行できません。{_R09_RULE}出荷 {shipment.shipment_no} は請求書 {invoiced.invoice.invoice_no} に入っているので、"
             "外してください。",
         )
     if shipment.order_line.order.customer_id != customer.pk:
         raise RuleViolation(
             "R09",
-            f"{_R09_RULE}請求書は得意先ごとに作るので、出荷 {shipment.shipment_no} を外してください。",
+            f"発行できません。{_R09_RULE}請求書は得意先ごとに作るので、出荷 {shipment.shipment_no} を外してください。",
         )
 
 
@@ -92,11 +92,11 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """
     shipments = list(shipments)
     if not shipments:
-        raise ValueError("出荷がありません。請求書に入れる出荷を 1 つ以上選んでください。")
+        raise ValueError("発行できません。出荷がありません。請求書に入れる出荷を 1 つ以上選んでください。")
     for obj in shipments:
         if not isinstance(obj, _Shipment):
             raise RuleViolation(
-                "R09", f"{_R09_RULE}出荷でない物 ({obj}) が入っているので、外してください。"
+                "R09", f"発行できません。{_R09_RULE}出荷でない物 ({obj}) が入っているので、外してください。"
             )
     pks = sorted({shipment.pk for shipment in shipments})
     with transaction.atomic():
@@ -155,7 +155,7 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
     left = f"残り {len(rows)} 件"
     if not hide_money:
         left += f"・合計 {_yen(sum((row.amount for row in rows), _ZERO))} 円"
-    return f"入金が残っています。先に入金を取り消してください ({left})。"
+    return f"取り消せません。入金が残っています。先に入金を取り消してください ({left})。"
 
 
 def cancel_invoice(invoice, user):
@@ -168,7 +168,7 @@ def cancel_invoice(invoice, user):
     with transaction.atomic():
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
-            raise ValueError("この請求書は取り消し済みです。")
+            raise ValueError("取り消せません。この請求書は取り消し済みです。請求書の詳細を開き直してください。")
         refusal = cancel_refusal(locked, hide_money=access.hides_money(user))
         if refusal:
             raise ValueError(refusal)
@@ -191,17 +191,17 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
     except (InvalidOperation, ValueError, TypeError):
         readable = False
     if not readable:
-        raise ValueError(f"入金の金額を数として読めません (入れた値: {amount!r})。")
+        raise ValueError(f"記録できません。入金の金額を数として読めません (入れた値: {amount!r})。数を入れてください。")
     if not amount > 0:
-        raise ValueError(f"入金の金額は 0 より大きい数にしてください (入れた値: {amount})。")
+        raise ValueError(f"記録できません。入金の金額が 0 以下です。入金の金額は 0 より大きい数にしてください (入れた値: {amount})。")
     if method not in dict(Payment.METHOD_CHOICES):
-        raise ValueError(f"入金の方法は 振込 / 現金 / 手形 / その他 のどれかにしてください (入れた値: {method!r})。")
+        raise ValueError(f"記録できません。知らない入金の方法です。入金の方法は 振込 / 現金 / 手形 / その他 のどれかにしてください (入れた値: {method!r})。")
     if len(note or "") > PAYMENT_NOTE_MAX:
-        raise ValueError(f"備考は {PAYMENT_NOTE_MAX} 字までにしてください。")
+        raise ValueError(f"記録できません。備考が {PAYMENT_NOTE_MAX} 字を超えています。備考は {PAYMENT_NOTE_MAX} 字までにしてください。")
     with transaction.atomic():
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
-            raise RuleViolation("R21", f"{_R21_RULE}請求書 {locked.invoice_no} は取消なので、発行の請求書を選び直してください。")
+            raise RuleViolation("R21", f"記録できません。{_R21_RULE}請求書 {locked.invoice_no} は取消なので、発行の請求書を選び直してください。")
         return Payment.objects.create(
             invoice=locked,
             received_on=received_on,
@@ -217,7 +217,7 @@ def cancel_payment(payment, user):
     with transaction.atomic():
         locked = Payment.objects.select_for_update().get(pk=payment.pk)
         if locked.status == Payment.STATUS_CANCELLED:
-            raise ValueError("この入金は取り消し済みです。")
+            raise ValueError("取り消せません。この入金は取り消し済みです。請求書の詳細を開き直してください。")
         locked.status = Payment.STATUS_CANCELLED
         locked.save(update_fields=["status"])
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。

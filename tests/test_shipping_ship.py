@@ -72,7 +72,7 @@ def test_zero_or_negative_qty_is_refused(user, line):
         with pytest.raises(RuleViolation) as caught:
             services.ship(line, qty, SHIPPED_AT, user)
         assert caught.value.code == "R02"
-        assert caught.value.message.startswith("数量と単価は 0 より大きい。")
+        assert caught.value.message.startswith("保存できません。数量と単価は 0 より大きい。")
     assert Shipment.objects.count() == 0
 
     # services を通さずに表へ直接書いても、DB の制約が止める。
@@ -89,7 +89,7 @@ def test_cancelled_order_cannot_be_shipped(user, order, line):
     with pytest.raises(RuleViolation) as caught:
         services.ship(line, Decimal("4"), SHIPPED_AT, user)
     assert caught.value.code == "R05"
-    assert caught.value.message.startswith("取消した受注には、出荷も指示書も作れない。")
+    assert caught.value.message.startswith("保存できません。取消した受注には、出荷も指示書も作れない。")
     assert Shipment.objects.count() == 0
 
 

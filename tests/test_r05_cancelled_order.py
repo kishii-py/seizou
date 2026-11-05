@@ -71,7 +71,7 @@ def test_update_after_cancel_is_refused(user, order):
     with pytest.raises(RuleViolation) as caught:
         services.update_order(order, {"note": "直したい"}, [{"id": line.pk, "qty": Decimal("3")}], user)
     assert caught.value.code == "R05"
-    assert caught.value.message == "取消した受注は直せません。直すときは、新しく受注を作ってください。"
+    assert caught.value.message == "保存できません。取消した受注です。直すときは、新しく受注を作ってください。"
 
     order.refresh_from_db()
     line.refresh_from_db()

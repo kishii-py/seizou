@@ -158,7 +158,7 @@ def test_accept_cancelled_from_screen_is_error_toast(user, client_logged_in, wor
     assert response["Location"] == detail_url
     body = client_logged_in.get(detail_url).content.decode()
     assert "失敗しました" in body
-    assert "取り消した指示書は受けられません。" in body
+    assert "取り消した指示書です。" in body
     stored = WorkOrder.objects.get(pk=workorder.pk)
     assert stored.accepted_at is None and stored.accepted_by is None
 

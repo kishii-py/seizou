@@ -186,8 +186,8 @@ def test_connection_list_first_column_links_to_detail(client_logged_in, receive_
 
 # --- 分納を許さない会社の出荷の知らせ (形は tests/test_shipping_partial.py と tests/test_shipping_views.py を写した) ---
 
-PARTIAL_SHIP_MESSAGE = "この会社は分納を許していません (設定「分納」)。残りの数 10 をまとめて出荷してください。"
-PARTIAL_UPDATE_MESSAGE = "この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 10 をまとめて出荷してください。"
+PARTIAL_SHIP_MESSAGE = "保存できません。この会社は分納を許していません (設定「分納」)。残りの数 10 をまとめて出荷してください。"
+PARTIAL_UPDATE_MESSAGE = "保存できません。この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 10 をまとめて出荷してください。"
 
 
 @pytest.fixture
@@ -237,7 +237,7 @@ def test_partial_shipment_screen_has_no_internal_name(settings, client_logged_in
     body = text(response)
     alert = re.search(r'<div class="alert alert-error[^"]*"[^>]*>(.*?)</div>', body, re.S)
     assert alert is not None
-    assert f">分納</span> {PARTIAL_SHIP_MESSAGE}</span>" in alert.group(1)
+    assert f'<span class="font-semibold">保存できません。</span> {PARTIAL_SHIP_MESSAGE.removeprefix("保存できません。")}</span>' in alert.group(1)
     assert "10.00" not in alert.group(1)
     assert "partial_shipment" not in body
     assert Shipment.objects.count() == 0
