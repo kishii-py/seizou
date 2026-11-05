@@ -265,7 +265,9 @@ def test_home_recent_orders_use_the_meaning_color(user, logged_in, customer, ite
     orders_services.cancel_order(_order(user, customer, item), user, reason="作り物の取消")
 
     body = logged_in.get(reverse("core:home")).content.decode()
+    # 見るのは main の中 (ダッシュボードの中身) だけ。左のメニューの入口の横の待っている数の印 (N146) は主色の badge なので除く。
+    main = body.split("<main", 1)[1]
 
-    assert '<span class="badge badge-soft badge-info badge-sm">受注</span>' in body
-    assert '<span class="badge badge-outline text-base-content/50 badge-sm">取消</span>' in body
-    assert "badge-soft badge-primary" not in body
+    assert '<span class="badge badge-soft badge-info badge-sm">受注</span>' in main
+    assert '<span class="badge badge-outline text-base-content/50 badge-sm">取消</span>' in main
+    assert "badge-soft badge-primary" not in main
