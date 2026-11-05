@@ -349,7 +349,14 @@ SELECT_WAIT_MS = 15_000  # 選ぶ欄の候補を待つ上限
 
 
 def seed_name(company: Company, kind: str, code: str) -> str:
-    """種のファイルから、取引先コード (kind="partners") か自社品番 (kind="items") の名前を読む。読むだけ。"""
+    """種のファイルから、取引先コード (kind="partners") か自社品番 (kind="items") の名前を読む。読むだけ。
+
+    外の置き場で種の行の名前を直してある (本番の 2 社で相手の会社の行を実名にした、など) ときは、
+    環境変数 `SEIZOU_E2E_SEED_NAME_<会社の id>_<kind>_<コード>` (全部大文字。例 SEIZOU_E2E_SEED_NAME_A_MACHINING_PARTNERS_S001) で差し替える。
+    """
+    override = (os.environ.get(f"SEIZOU_E2E_SEED_NAME_{company.id}_{kind}_{code}".upper().replace("-", "_")) or "").strip()
+    if override:
+        return override
     path = COMPANIES_DIR / company.id / f"{kind}.csv"
     with path.open(encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):

@@ -75,6 +75,8 @@ def test_e50_order_save_bar(page_a, company_a):
     assert seen == ["confirm"]
 
     page_a.locator(BAR_DISCARD).click()
+    # 「破棄」の OK は同じ URL を開き直す (location.assign)。遠い置き場では開き直しが終わる前に次の入力が走るので、読み込みを待つ
+    page_a.wait_for_load_state("load")
     expect(page_a.locator("input[name=lines-0-qty]")).to_have_value("")
     expect(bar).to_be_hidden()
     assert urlparse(page_a.url).path == path
