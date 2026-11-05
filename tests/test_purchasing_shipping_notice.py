@@ -138,7 +138,7 @@ def test_order_detail_shows_notice_column_and_receipt_link(client_logged_in, use
     assert "2026-11-05" in cell
     assert "×4" in cell
     assert "受入を記録する" in cell
-    link = f'{reverse("purchasing:receipt_create")}?line={line.pk}&amp;qty=4&amp;received_on=2026-11-05'
+    link = f'{reverse("purchasing:receipt_create")}?line={line.pk}&amp;qty=4'
     assert f'href="{link}"' in cell
     assert "合計" not in cell
     # 今までどおり明細の pk だけを渡す「受入を登録」もある

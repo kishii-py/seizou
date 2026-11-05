@@ -6,8 +6,10 @@
 足した後は明細を取り直して渡す (_line)。user と logged_in は tests/conftest.py の物を借りる。
 """
 
+import html
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -205,3 +207,37 @@ def test_stage_band_fragment_is_in_core_only():
     for name in ("orders/_stage_band.html", "purchasing/_stage_band.html"):
         with pytest.raises(TemplateDoesNotExist):
             get_template(name)
+
+
+@pytest.mark.django_db
+def test_receipt_link_opens_with_today_not_shipped_date(monkeypatch, user, logged_in, subcontractor, item, send_connection):
+    """出荷の知らせの「受入を記録する」は受入日を渡さず、受入の画面の受入日は form の初期値の今日 (決め 11-05。初見テスト R4 の 2-1)。"""
+    monkeypatch.setattr("requests.post", FakePost())
+    po = services.mark_accepted(_order(user, subcontractor, item), user)
+    today = timezone.localdate()
+    # 相手の出荷日は今日と違う日にする (同じ日だと、出荷日を渡しても受入日が今日に見えて試験にならない)
+    shipped = today - timedelta(days=3)
+    connect_services.record_shipping_notice(
+        _line(po), Decimal("10"), shipped, None, message_id=uuid.uuid4(), shipment_no="SH-0001"
+    )
+
+    body = _detail(logged_in, po)[1]
+
+    # 相手の出荷日は知らせの行の頭に今までどおり出る
+    assert f'<span class="font-mono">{shipped.isoformat()}</span>' in body
+    hrefs = re.findall(r'href="([^"]*)">受入を記録する</a>', body)
+    assert len(hrefs) == 1
+    link = html.unescape(hrefs[0])
+    assert "received_on=" not in link
+    assert f"?line={_line(po).pk}&" in link
+    assert "qty=10" in link
+
+    response = logged_in.get(link)
+
+    assert response.status_code == 200
+    field = re.search(r'<input\b[^>]*\bname="received_on"[^>]*>', response.content.decode())
+    assert field is not None
+    value = re.search(r'\bvalue="([^"]*)"', field.group())
+    assert value is not None
+    assert value.group(1) == today.isoformat()
+    assert value.group(1) != shipped.isoformat()
