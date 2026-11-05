@@ -25,8 +25,8 @@ def _overlaps(first: dict, second: dict) -> bool:
 def test_e38_button_does_not_cover_save(page_a, company_a):
     """期待 (06 の E-38): 答えに数と link があり、link の先の画面の数と合う。鍵が無い会社では 1 文だけが出て入力の欄が無い。
 
-    見る所: 幅 1280・高さ 720 の窓で、部品・取引先・受注の新規登録を下まで送ると、「保存」と右下の「AI に質問」のボタンが重ならず、
-    「保存」の真ん中の点の一番上が「保存」であること。見ない所: 06 の E-38 の期待そのもの (AI の API の鍵が要る)。
+    見る所: 幅 1280・高さ 720 の窓で、部品・取引先・受注の新規登録を下まで送ると、主の釦 (保存。受注では「… で受注する」) と右下の「AI に質問」のボタンが重ならず、
+    主の釦の真ん中の点の一番上がその釦であること。見ない所: 06 の E-38 の期待そのもの (AI の API の鍵が要る)。
     """
     login(page_a, company_a)
     page_a.set_viewport_size(VIEWPORT)
@@ -34,7 +34,8 @@ def test_e38_button_does_not_cover_save(page_a, company_a):
         page_a.goto(f"{company_a.base_url}{path}")
         page_a.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
         toggle = page_a.locator("#assistant-toggle")
-        save = page_a.get_by_role("button", name="保存", exact=True)
+        # 主の釦は字でなく「入力の form の中の主色の submit」で選ぶ (N138/N149 で字が「n 行・合計 ¥… で受注する」のように変わるため。conftest の _click_save と同じ形)
+        save = page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first
         toggle_box = toggle.bounding_box()
         save_box = save.bounding_box()
         assert toggle_box is not None and save_box is not None, path
