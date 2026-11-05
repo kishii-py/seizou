@@ -25,7 +25,7 @@ from seizou.core.context_processors import MENU_COUNTS, seizou
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 
-BADGE = "ml-auto badge"
+BADGE = '<span class="tooltip tooltip-left ml-auto text-xs" data-tip="'
 INBOX_TABLE = "connect_inbox"
 
 
@@ -84,7 +84,7 @@ def test_inbox_count_appears_next_to_the_entry(logged_in, customer):
 
     aside = _aside(page(logged_in, reverse("core:home")))
     link = _entry_link(aside, inbox_url)
-    assert 'title="未処理の受信した注文 1 件">1</span>' in link
+    assert 'data-tip="未処理の受信した注文 1 件"><span class="badge badge-soft badge-primary badge-sm">1</span></span>' in link
     assert link.index('<span class="truncate">受信した注文</span>') < link.index(BADGE)  # 印は入口の字の後ろ
     assert aside.count(BADGE) == 1  # ほかの入口には印が無い
 
@@ -135,7 +135,7 @@ def test_rows_only_response_does_not_count(logged_in, customer):
     url = reverse("orders:order_list")
 
     # 画面の全体では左のメニューを描いて数える
-    assert 'title="未処理の受信した注文 1 件">1</span>' in _aside(page(logged_in, url))
+    assert 'data-tip="未処理の受信した注文 1 件"><span class="badge badge-soft badge-primary badge-sm">1</span></span>' in _aside(page(logged_in, url))
 
     with CaptureQueriesContext(connection) as rows:
         rows_only = logged_in.get(url, {"sort": "order_no"}, HTTP_HX_REQUEST="true")
