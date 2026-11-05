@@ -267,7 +267,7 @@ BADGES = {
     "open": '<span class="badge badge-soft badge-info">未出荷</span>',
     "partial": '<span class="badge badge-soft badge-warning">一部出荷</span>',
     "shipped": '<span class="badge badge-soft badge-success">出荷済</span>',
-    "cancelled": '<span class="badge badge-outline text-base-content/50">取消</span>',
+    "cancelled": '<span class="badge badge-outline badge-error">取消</span>',
 }
 
 

@@ -24,7 +24,7 @@
         {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/50">{{ group.label }}</p>{% endif %}
         <ul class="flex flex-col">
           {% for item in group.items %}
-          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span>{% if item.count %}<span class="ml-auto badge badge-soft badge-primary badge-sm" title="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}">{{ item.count }}</span>{% endif %}</a></li>
+          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span>{% if item.count %}<span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span>{% endif %}</a></li>
           {% endfor %}
         </ul>
         {% endfor %}
@@ -32,7 +32,7 @@
       {% else %}
       <ul class="mb-1 flex flex-col">
         {% for item in section.items %}
-        <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span>{% if item.count %}<span class="ml-auto badge badge-soft badge-primary badge-sm" title="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}">{{ item.count }}</span>{% endif %}</a></li>
+        <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span>{% if item.count %}<span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span>{% endif %}</a></li>
         {% endfor %}
       </ul>
       {% endif %}

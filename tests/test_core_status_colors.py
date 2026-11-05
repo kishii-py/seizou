@@ -42,7 +42,8 @@ STATUS_MODELS = {
 #: 詳細の見出しの印 (点つき)
 DOT_INFO = '<span class="badge badge-soft badge-info gap-2"><span class="status status-info" aria-hidden="true"></span>{}</span>'
 DOT_GHOST = '<span class="badge badge-ghost gap-2"><span class="status" aria-hidden="true"></span>{}</span>'
-DOT_OUTLINE = '<span class="badge badge-outline text-base-content/50 gap-2"><span class="status" aria-hidden="true"></span>{}</span>'
+DOT_OUTLINE = '<span class="badge badge-outline badge-error gap-2"><span class="status status-error" aria-hidden="true"></span>{}</span>'
+DOT_WARNING = '<span class="badge badge-soft badge-warning gap-2"><span class="status status-warning" aria-hidden="true"></span>{}</span>'
 
 
 @pytest.fixture(autouse=True)
@@ -173,7 +174,7 @@ def test_tones_are_five_meanings_and_the_template_has_a_branch_for_each():
         ("open", "未出荷", '<span class="badge badge-soft badge-info">未出荷</span>'),
         ("partial", "一部出荷", '<span class="badge badge-soft badge-warning">一部出荷</span>'),
         ("shipped", "出荷済", '<span class="badge badge-soft badge-success">出荷済</span>'),
-        ("cancelled", "取消", '<span class="badge badge-outline text-base-content/50">取消</span>'),
+        ("cancelled", "取消", '<span class="badge badge-outline badge-error">取消</span>'),
         ("作り物の値", "作り物の状態", '<span class="badge badge-soft badge-primary">作り物の状態</span>'),
     ],
 )
@@ -193,12 +194,12 @@ def test_tag_dot_and_small():
 
 
 def test_app_key_comes_first_for_accepted():
-    """同じ字で部品により意味が違う値 (accepted): 受信した注文は終わり = 緑、発注は途中 = 黄 (本体の選び 11-05 09:0x)。"""
+    """同じ字で部品により意味が違う値 (accepted): 受信した注文は終わり = 緑、発注は進行中 = 青 (本体の選び 11-05 09:0x・N164)。"""
     assert status_colors.tone_for("accepted", "connect") == "success"
-    assert status_colors.tone_for("accepted", "purchasing") == status_colors.tone_for("accepted") == "warning"
+    assert status_colors.tone_for("accepted", "purchasing") == status_colors.tone_for("accepted") == "info"
     assert _render(_fake("accepted", "受け入れた", "connect")) == '<span class="badge badge-soft badge-success">受け入れた</span>'
     assert _render(_fake("accepted", "相手が受け入れた", "purchasing")) == (
-        '<span class="badge badge-soft badge-warning">相手が受け入れた</span>'
+        '<span class="badge badge-soft badge-info">相手が受け入れた</span>'
     )
 
 
@@ -212,7 +213,7 @@ def test_detail_heading_badge_uses_the_meaning_color(user, logged_in, customer, 
         (reverse("orders:order_detail", args=[order.pk]), DOT_INFO.format("未出荷")),
         (reverse("workorders:workorder_detail", args=[workorder.pk]), DOT_INFO.format("発行")),
         (reverse("purchasing:purchaseorder_detail", args=[purchase.pk]), DOT_GHOST.format("下書き")),
-        (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_INFO.format("発行")),
+        (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_WARNING.format("未入金")),
     ]
 
     for url, badge in cases:
@@ -233,10 +234,10 @@ def test_list_status_column_uses_the_meaning_color(user, logged_in, customer, su
     invoice = _invoice(user, customer, item)
     cases = [
         ("orders:order_list", order.pk, '<span class="badge badge-soft badge-info">未出荷</span>'),
-        ("orders:order_list", cancelled.pk, '<span class="badge badge-outline text-base-content/50">取消</span>'),
+        ("orders:order_list", cancelled.pk, '<span class="badge badge-outline badge-error">取消</span>'),
         ("workorders:workorder_list", workorder.pk, '<span class="badge badge-soft badge-info">発行</span>'),
         ("purchasing:purchaseorder_list", purchase.pk, '<span class="badge badge-ghost">下書き</span>'),
-        ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-info">発行</span>'),
+        ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-warning">未入金</span>'),
     ]
 
     for name, pk, badge in cases:
@@ -270,5 +271,5 @@ def test_home_recent_orders_use_the_meaning_color(user, logged_in, customer, ite
     main = body.split("<main", 1)[1].split("</main>", 1)[0]
 
     assert '<span class="badge badge-soft badge-info badge-sm">未出荷</span>' in main
-    assert '<span class="badge badge-outline text-base-content/50 badge-sm">取消</span>' in main
+    assert '<span class="badge badge-outline badge-error badge-sm">取消</span>' in main
     assert "badge-soft badge-primary" not in main

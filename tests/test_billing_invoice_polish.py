@@ -80,4 +80,4 @@ def test_cancelled_invoice_payment_label_is_dash(client_logged_in, user, item, i
 
     assert fresh.payment_status_label() == "未入金"
     panel = _panel(client_logged_in.get(reverse("billing:invoice_detail", args=[fresh.pk])))
-    assert '<span class="badge badge-ghost">未入金</span>' in panel
+    assert '<span class="badge badge-soft badge-warning">未入金</span>' in panel

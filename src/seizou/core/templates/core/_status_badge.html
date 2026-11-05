@@ -1,8 +1,8 @@
-{# 状態の印 (案 4-C・8-A。N152)。色は core.status_colors の表 (状態の値 → 意味の色) が決める。class は色ごとに要素で書き分ける (R19。manuals/_folder_color.html と同じ形。Tailwind はテンプレートの字だけを読む)。 #}
+{# 状態の印 (案 4-C・8-A。N152)。色は core.status_colors の表 (状態の値 → 意味の色。灰・青・橙・緑・赤の線の 5 つで 1 組 = N164) が決める。class は色ごとに要素で書き分ける (R19。manuals/_folder_color.html と同じ形。Tailwind はテンプレートの字だけを読む)。 #}
 {# context: tone (表の色の名前か primary)・label (状態の表示名)・dot (頭に点。詳細の見出し)・small (小さい印。最初の画面の最近の受注)。 #}
 {% if tone == "ghost" %}<span class="badge badge-ghost{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status" aria-hidden="true"></span>{% endif %}{{ label }}</span>
 {% elif tone == "info" %}<span class="badge badge-soft badge-info{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status status-info" aria-hidden="true"></span>{% endif %}{{ label }}</span>
 {% elif tone == "warning" %}<span class="badge badge-soft badge-warning{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status status-warning" aria-hidden="true"></span>{% endif %}{{ label }}</span>
 {% elif tone == "success" %}<span class="badge badge-soft badge-success{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status status-success" aria-hidden="true"></span>{% endif %}{{ label }}</span>
-{% elif tone == "outline" %}<span class="badge badge-outline text-base-content/50{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status" aria-hidden="true"></span>{% endif %}{{ label }}</span>
+{% elif tone == "error" %}<span class="badge badge-outline badge-error{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status status-error" aria-hidden="true"></span>{% endif %}{{ label }}</span>
 {% else %}<span class="badge badge-soft badge-primary{% if dot %} gap-2{% endif %}{% if small %} badge-sm{% endif %}">{% if dot %}<span class="status status-primary" aria-hidden="true"></span>{% endif %}{{ label }}</span>{% endif %}
