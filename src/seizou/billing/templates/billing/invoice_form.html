@@ -8,13 +8,15 @@
   var customer = document.getElementById("id_customer");
   var box = document.getElementById("id_shipments");
   if (!customer || !box) return;
-  customer.addEventListener("change", function () {
+  function narrow() {
     var chosen = customer.value;
     box.querySelectorAll("input[data-partner]").forEach(function (input) {
       var row = input.closest("div");
       if (row) row.hidden = chosen !== "" && input.dataset.partner !== chosen;
     });
-  });
+  }
+  customer.addEventListener("change", narrow);
+  narrow();  // 得意先が最初から入っているとき (納品書の詳細からの ?customer=) も、その得意先の出荷だけにする
 })();
 </script>
 {% endblock %}

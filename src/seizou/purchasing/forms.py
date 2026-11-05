@@ -20,7 +20,7 @@ from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
-from seizou.core.forms import SubmitLabelMixin, label_number, line_totals, line_unit
+from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
@@ -44,7 +44,7 @@ class PurchaseOrderLineForm(forms.Form):
         label="数量",
         max_digits=12,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-qty": True}),
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-qty": True}),
     )
     unit = forms.CharField(
         label="単位",
@@ -57,7 +57,7 @@ class PurchaseOrderLineForm(forms.Form):
         label="単価",
         max_digits=14,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any", "data-label-price": True}),
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-price": True}),
     )
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(
@@ -260,7 +260,7 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
         label="数量",
         max_digits=12,
         decimal_places=2,
-        widget=forms.NumberInput(attrs={"class": "input w-full", "step": "any"}),
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
     note = forms.CharField(
         label="備考",

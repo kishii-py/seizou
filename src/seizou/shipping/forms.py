@@ -13,7 +13,16 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 
-from seizou.core.forms import SubmitLabelMixin, label_decimal, label_number, line_totals, line_unit
+from seizou.core.forms import (
+    CHECKBOX_CSS,
+    Checkboxes,
+    PlainNumberInput,
+    SubmitLabelMixin,
+    label_decimal,
+    label_number,
+    line_totals,
+    line_unit,
+)
 from seizou.core.widgets import RemoteSelect
 from seizou.orders.services import remaining_qty
 
@@ -151,7 +160,7 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
                 self.dropped += 1
                 continue
             self.fields[f"{BULK_QTY_PREFIX}{pk}"] = forms.DecimalField(
-                label="数量", max_digits=12, decimal_places=2, initial=remaining
+                label="数量", max_digits=12, decimal_places=2, initial=remaining, widget=PlainNumberInput()
             )
             self.fields[f"{BULK_SKIP_PREFIX}{pk}"] = forms.BooleanField(label="この行を出さない", required=False)
             # 保存のボタンの字を JS が埋め直す印 (N138。同じ行の数量と「この行を出さない」)。
@@ -246,7 +255,7 @@ class DeliveryNoteForm(forms.Form):
         )
         .select_related("order_line__order__customer", "order_line__item")
         .order_by("order_line__order__customer__code", "shipped_at", "pk"),
-        widget=forms.CheckboxSelectMultiple(attrs={"class": "checkbox"}),
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
         help_text="同じ得意先の出荷を選びます。納品書に入っていない出荷だけが並びます。",
     )
 
