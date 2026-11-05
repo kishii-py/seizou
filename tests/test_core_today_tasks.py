@@ -219,11 +219,13 @@ def test_today_tasks_adds_no_query(monkeypatch):
 def test_home_shows_today_after_cards_with_noun_buttons(logged_in, user, customer, shaft):
     make_order(user, customer, shaft)
     body, section = home_section(logged_in)
-    # 並びは 数字のカード (会社の KPI) → 今日やること (個人のタスク) → 出荷と生産の図 (本人の決め 11-05 09:4x)
+    # 並びは 数字のカード (会社の KPI) → 今日やること (個人のタスク) → 出荷と生産の図 (本人の決め 11-05 09:4x)。
+    # 今日やることの右に納期アラート (同じ段。本人の決め 11-05 11:0x)
     stats = body.index('data-tour="stats"')
     frame = body.index('aria-labelledby="flow-guide-title"')
+    alerts = body.index('aria-labelledby="due-alerts-title"')
     shipping = body.index('aria-labelledby="shipping-title"')
-    assert stats < frame < shipping
+    assert stats < frame < alerts < shipping
     # 題は h2 の 1 回 (行の並びの aria-label にも同じ字が入るので、見える字で数える)
     assert section.count('<h2 id="flow-guide-title" class="text-lg font-bold">今日やること</h2>') == 1
     assert "はじめての方へ" not in section
@@ -247,6 +249,9 @@ def test_tour_second_step_is_today():
     assert steps[0]["selector"] == '[data-tour="stats"]'
     assert steps[1]["selector"] == '[data-tour="flow-guide"]'
     assert steps[1]["title"] == dashboard.TODAY_TITLE
+    # 3 段目は今日やることの右の納期アラート、4 段目はその下の出荷と生産の図 (画面の並びの順。本人の決め 11-05 11:0x)
+    assert steps[2]["selector"] == 'section[aria-labelledby="due-alerts-title"]'
+    assert steps[3]["selector"] == 'section[aria-labelledby="shipping-title"]'
     assert len(steps) == 5
 
 
