@@ -1,8 +1,8 @@
 """使い方 (画面ごとの説明書) の絵を、手元で動いている会社の画面から撮って manual/images/ に置く (05 の 10 節。依頼書 N168)。
 
 撮るのは画面の目録 (seizou.core.screens.all_screens) の全部。引数の無い道はそのまま開き、<int:pk> の道は画面の表の最初の 1 件で開く。
-1 件も無い・道の引数が pk でない・部品の表が無い・開いて 200 でない画面は飛ばし、理由を 1 行ずつ出す。
-絵の名前は断片と同じ manual/images/<断片の名前>.png (既にあれば上書き)。ブラウザは headless の Chromium 1 つで、画面の全体を撮る。小窓は開かない。
+使い方の画面そのもの・1 件も無い・道の引数が pk でない・部品の表が無い・開いて 200 でない画面は飛ばし、理由を 1 行ずつ出す。
+絵の名前は断片と同じ manual/images/<断片の名前>.png (既にあれば上書き)。ブラウザは headless の Chromium 1 つで、窓 (幅 --width・高さ 800) の最初の 1 画面を撮る (--full-page を付けたときだけ画面の全体)。小窓は開かない。
 Playwright は製品の依存に入れない。無ければ入れ方の 1 行を出して止まる。表に書かない (読むだけ)。パスワードは引数に取らない (環境変数 SEIZOU_SHOTS_PASSWORD)。
 """
 
@@ -27,6 +27,9 @@ PASSWORD_ENV = "SEIZOU_SHOTS_PASSWORD"
 #: 道の引数 (<int:pk> など)
 PATH_ARG = re.compile(r"<(?:\w+:)?\w+>")
 
+#: 撮らない画面 (使い方の画面そのもの。全部の画面の箱を縦に並べた長い 1 枚で、手引きの絵にならない。印刷の 1 枚は同じ道の ?print=1、冊子は目録の外)
+MANUAL_SCREENS = ("core:manual",)
+
 
 def shot_targets(only: str | None = None) -> list[tuple[str, str, str | None, str]]:
     """撮る画面の並び (目録の並びのまま)。1 画面 = (断片の名前, 画面の名前, 開く道 か None, 飛ばす理由 か 空の字)。
@@ -38,6 +41,9 @@ def shot_targets(only: str | None = None) -> list[tuple[str, str, str | None, st
         if only and screen.url_name != only:
             continue
         name = manual.fragment_name(screen.url_name)
+        if screen.url_name in MANUAL_SCREENS:
+            targets.append((name, screen.name, None, "使い方の画面そのもの"))
+            continue
         args = PATH_ARG.findall(screen.path)
         if not args:
             targets.append((name, screen.name, reverse(screen.url_name), ""))
@@ -62,11 +68,12 @@ def shot_targets(only: str | None = None) -> list[tuple[str, str, str | None, st
 
 
 class Command(BaseCommand):
-    help = "使い方 (画面ごとの説明書) の絵を、手元で動いている会社の画面から撮って manual/images/ に置く"
+    help = "使い方 (画面ごとの説明書) の絵を、手元で動いている会社の画面から撮って manual/images/ に置く (既定は最初の 1 画面。--full-page で画面の全体)"
 
     def add_arguments(self, parser):
         parser.add_argument("--base", default="http://127.0.0.1:8000", help="手元で動いている会社の URL (既定 http://127.0.0.1:8000)")
         parser.add_argument("--width", type=int, default=1280, help="画面の幅 (既定 1280)")
+        parser.add_argument("--full-page", action="store_true", help="画面の全体を撮る (既定は窓の高さ 800 の最初の 1 画面)")
         parser.add_argument("--only", help="1 画面だけ撮る (URL の名前。例 orders:order_list)")
         parser.add_argument("--out", help="絵の置き場 (既定は会社の置き場の manual/images/)")
         parser.add_argument("--user", help=f"ログインの ID (自動ログインの無い会社だけ。パスワードは環境変数 {PASSWORD_ENV})")
@@ -101,7 +108,7 @@ class Command(BaseCommand):
                         skipped += 1
                         self.stdout.write(f"飛ばした: {title} ({name}。開くと {status})")
                         continue
-                    page.screenshot(path=str(out / f"{name}.png"), full_page=True)
+                    page.screenshot(path=str(out / f"{name}.png"), full_page=options["full_page"])
                     taken += 1
             finally:
                 browser.close()

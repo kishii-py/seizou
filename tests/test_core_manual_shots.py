@@ -11,6 +11,7 @@ from django.core.management.base import CommandError
 from django.urls import reverse
 
 from seizou.core.management.commands.seizou_manual_shots import PLAYWRIGHT_MISSING, shot_targets
+from seizou.core.management.commands.seizou_manual_shots import Command
 from seizou.core.screens import all_screens
 from seizou.masters.models import Item
 
@@ -47,3 +48,18 @@ def test_command_stops_without_playwright(monkeypatch):
         call_command("seizou_manual_shots")
     assert str(raised.value) == PLAYWRIGHT_MISSING
     assert raised.value.returncode == 1
+
+
+@pytest.mark.django_db
+def test_manual_screen_itself_is_skipped():
+    reason = "使い方の画面そのもの"
+    assert by_name(shot_targets())["core_manual"][2:] == (None, reason)
+    assert [target[0] for target in shot_targets() if target[3] == reason] == ["core_manual"]
+    assert shot_targets("core:manual") == [("core_manual", "使い方", None, reason)]
+
+
+def test_full_page_option_in_help():
+    parser = Command().create_parser("manage.py", "seizou_manual_shots")
+    assert "--full-page" in parser.format_help()
+    assert parser.parse_args([]).full_page is False
+    assert parser.parse_args(["--full-page"]).full_page is True
