@@ -184,7 +184,7 @@ def test_purchase_order_poll_keeps_filters_and_partner_choices(client_logged_in,
     assert f'<tr id="row-{sent.pk}"' not in rows
     assert f'data-live="po-{accepted.pk}:accepted:0:0"' in rows and "seizou-changed" in rows
     assert 'id="list-filter-clear"' in rows  # 「絞りを外す」の link (oob)
-    links = [href for href in re.findall(r'hx-get="([^"]+)"', rows) if "sort=" in href]
+    links = [href for href in re.findall(r'hx-get="([^"]+)" hx-target="#rows"', rows) if "sort=" in href]
     assert links
     for href in links:
         assert "f_status=accepted" in href and "f_due_from=2026-11-01" in href, href

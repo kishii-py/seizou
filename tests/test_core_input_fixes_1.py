@@ -23,7 +23,7 @@ from tests.test_orders_views import customer, logged_in, shaft, user  # noqa: F4
 SRC = Path(__file__).resolve().parents[1] / "src" / "seizou"
 MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 ORDER_DATE = date(2026, 11, 2)
-FILTER_CLEAR_OOB = '<span id="list-filter-clear" class="pb-2" hx-swap-oob="true">'
+FILTER_CLEAR_OOB = '<div id="list-filter-clear" hx-swap-oob="true">'
 FILTER_CLEAR_LINE = '{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}'
 
 
@@ -87,7 +87,7 @@ def test_order_list_partial_has_the_filter_clear_oob(logged_in, customer, shaft,
     plain = logged_in.get(url, HTTP_HX_REQUEST="true").content.decode()
     assert plain.count(FILTER_CLEAR_OOB) == 1
     assert "絞りを外す" not in plain
-    # 画面の全体では oob にしない (core/_filters.html が置く 1 つだけ)
+    # 画面の全体では oob にしない (core/list.html が絞り込みの枠の下に置く 1 つだけ。N161)
     whole = logged_in.get(url, {"f_status": "shipped"}).content.decode()
     assert FILTER_CLEAR_OOB not in whole
     assert whole.count('id="list-filter-clear"') == 1

@@ -165,14 +165,14 @@ def test_page_sort_and_csv_links_keep_filters_and_search(user, orders):
     for mark in ("page=2", "format=csv", "sort=order_no"):
         links = [href for href in hrefs if mark in href]
         assert links and all(kept in href and "q=" in href for href in links), mark
-    (clear,) = [href for href in hrefs if "f_customer" not in href and "q=" in href]
-    assert "sort=-order_date" in clear
+    clears = [href for href in hrefs if "f_customer" not in href and "q=" in href]
+    assert len(clears) == 2 and all("sort=-order_date" in href for href in clears)  # 得意先の札の × と「絞りを外す」(N161)
 
     # htmx の要求 (行の部分) は「絞りを外す」も oob で差し替える
     request = RequestFactory().get("/", params, HTTP_HX_REQUEST="true")
     request.user = user
     partial = _OrderList.as_view()(request).content.decode()
-    assert 'id="list-filter-clear" class="pb-2" hx-swap-oob="true"' in partial
+    assert '<div id="list-filter-clear" hx-swap-oob="true">' in partial
     assert "絞りを外す" in partial
     assert 'id="list-count" class="font-medium tabular-nums text-base-content">3<' in partial
 
@@ -234,11 +234,11 @@ def test_flag_filter_on_off_default_and_clear(user, orders):
     assert 'name="f_early" value="1" class="checkbox checkbox-sm" data-list-filter>' in body
     assert "絞りを外す" not in body
 
-    # 0 で切れる (既定と違うので「絞りを外す」が出る)。欄から送ると 0 と 1 の両方が届き、後の 1 を読む
+    # 0 で切れる (既定と違うが狭める絞りでないので、札と「絞りを外す」は出さない。N161)。欄から送ると 0 と 1 の両方が届き、後の 1 を読む
     response = call(_FlagOrderList, user, f_open="0")
     assert listed(response) == [order.pk for order in made]
     assert response.context_data["filters"][0]["active"]
-    assert "絞りを外す" in response.render().content.decode()
+    assert "絞りを外す" not in response.render().content.decode()
     assert listed(call(_FlagOrderList, user, f_open=["0", "1"])) == opened
     assert listed(call(_FlagOrderList, user, f_open="x")) == opened  # 読めない値は既定
     assert listed(call(_FlagOrderList, user, f_open="0", f_early="1")) == [made[0].pk, made[1].pk]
@@ -257,7 +257,7 @@ def test_flag_filter_on_off_default_and_clear(user, orders):
     request = RequestFactory().get("/", {"f_open": "0"}, HTTP_HX_REQUEST="true")
     request.user = user
     partial = _FlagOrderList.as_view()(request).content.decode()
-    assert 'id="list-filter-clear" class="pb-2" hx-swap-oob="true"' in partial and "絞りを外す" in partial
+    assert '<div id="list-filter-clear" hx-swap-oob="true"></div>' in partial and "絞りを外す" not in partial
     assert 'id="list-count" class="font-medium tabular-nums text-base-content">5<' in partial
 
 

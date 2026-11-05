@@ -1,5 +1,11 @@
 {% load seizou_icons %}
-{# 「絞りを外す」(絞りの値が 1 つでもあるときだけ)。キーワード・件数・並び替えは残す。htmx の応答では core/_rows.html が oob=True で差し替える (欄を変えた後も出し入れと link の条件が合う)。 #}
-{# htmx の応答 (oob) では、ほかの絞りに従う印 (FilterSpec の disabled_when) も core/_filter_flag.html で描き直す (状態を選ぶと印が切になる形と表を合わせる)。 #}
-<span id="list-filter-clear" class="pb-2"{% if oob %} hx-swap-oob="true"{% endif %}>{% if filter_active %}<a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_filters }}">{% icon "x" "size-4" %}絞りを外す</a>{% endif %}</span>
+{# 効いている絞りの札と「絞りを外す」(BaseListView.filter_chips。本人の決め 11-05 16:2x。N161)。core/list.html が絞り込みの枠の下に置く。札が無いときは空の箱だけ (行の部分の応答の oob の行き先)。キーワード・件数・並び替えは札にせず、「絞りを外す」も残す。 #}
+{# 札の × はその絞りだけを、右端の「絞りを外す」は枠の絞りを全部外した GET で、一覧の枠 (#list-card) を取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを入れ替える = 欄・タブ・札・表がそろう)。 #}
+{# 行の部分の応答では core/_rows.html などが oob=True で描き直す。そのとき、ほかの絞りに従う印 (FilterSpec の disabled_when) も core/_filter_flag.html で描き直す (状態を選ぶと印が切になる形と表を合わせる)。 #}
+<div id="list-filter-clear"{% if oob %} hx-swap-oob="true"{% endif %}>{% if filter_chips %}
+<div class="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="効いている絞り込み">
+  {% for chip in filter_chips %}<a class="badge badge-soft badge-primary gap-1 focus-visible:outline-2 focus-visible:outline-primary" href="?{{ chip.query }}" hx-get="{{ request.path }}?{{ chip.query }}" hx-target="#list-card" hx-select="#list-card" hx-swap="outerHTML ignoreTitle:true" hx-push-url="true" aria-label="{% firstof chip.heading chip.text %}の条件を外す">{% if chip.heading %}{{ chip.heading }}: {% endif %}<span class="font-medium">{{ chip.text }}</span>{% icon "x" "size-3" %}</a>
+  {% endfor %}<a class="ml-auto inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_filters }}" hx-get="{{ request.path }}?{{ query_without_filters }}" hx-target="#list-card" hx-select="#list-card" hx-swap="outerHTML ignoreTitle:true" hx-push-url="true">{% icon "x" "size-4" %}絞りを外す</a>
+</div>
+{% endif %}</div>
 {% if oob %}{% for f in filters %}{% if f.follows %}{% include "core/_filter_flag.html" %}{% endif %}{% endfor %}{% endif %}

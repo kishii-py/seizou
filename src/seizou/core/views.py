@@ -375,7 +375,7 @@ class FilterSpec:
     flag: f_<name>=1 が入、f_<name>=0 が切、鍵が無いか読めない値は default (省略は切)。field と choices は書けない。
       欄は hidden の 0 の後にチェックの 1 を置くので、入のときは両方が届き、後の 1 を読む。when の中は .filter()・.exclude()・
       annotate だけにする (services を呼ばない。SQL を書かない)。「クリア」と「絞りを外す」は f_ を外すので default に戻る。
-      default と違う値のときだけ「絞りを外す」を出す (active)。
+      default と違う値のときを active とする。札 (BaseListView.filter_chips) は active のうち狭める物 (flag は入) だけで、「絞りを外す」は札があるときだけ出す (N161)。
       values: 同じ一覧の絞りの名前ごとの読めた値の辞書 (FilterSpec.values_by_name。読めた値の無い絞りは鍵が無い)。
       when が 2 つの引数を受ける関数なら when(queryset, values) で呼ぶ (1 つの関数は今までどおり when(queryset)。inspect.signature で見る)。
       disabled_when が真の間は、隠しの欄が印の値を持ち越す (入なら 1)。従う絞りを外すと、印は元の値に戻る。
@@ -636,6 +636,20 @@ class FilterSpec:
                 item.update(value="1" if on else "", checked=on, active=on != self.default)
         return item
 
+    @staticmethod
+    def chip_text(item: dict) -> str:
+        """札 (core/_filter_clear.html) の値の字。item は context() の 1 つ (flag でない物)。
+
+        choice と lookup は候補の字。期間と数の範囲は「始め〜終わり」(片方だけなら「始め〜」「〜終わり」)。
+        期間の両端が同じ年なら終わりの年を省く (2026-11-01〜11-05。本人の決め 11-05 16:2x の例の形)。
+        """
+        if item["kind"] in ("choice", "lookup"):
+            return dict(item["options"]).get(item["value"], item["value"])
+        start, end = item["value_from"], item["value_to"]
+        if item["kind"] == "date_range" and start and end and start[:4] == end[:4]:
+            end = end[5:]
+        return f"{start}〜{end}"
+
 
 class BaseListView(ScreenMixin, ListView):
     """一覧の土台。サーバーが行を描く。既定は 1 ページ 50 件 (20 / 50 / 100)。
@@ -655,6 +669,7 @@ class BaseListView(ScreenMixin, ListView):
     集計 (GET view=summary。core/summary.py): 表の代わりに、絞りの軸 (g_by) ごとの件数か数の列の合計 (g_val) の表と横棒の図を出す。
     絞り・検索・部品の get_queryset の後の行を数える。CSV (format=csv) も集計の行になる。軸が 1 つも無い一覧は表のまま。
     絞りのタブ (presets): 枠の値の組に名前を付けたタブを枠の上に出す (core/_presets.html)。件数は表と同じ条件で数える。先頭に「すべて」を土台が足す。
+    効いている絞りの札 (filter_chips): 枠の下に「見出し: 値 ×」で並べる (core/_filter_clear.html)。× と「絞りを外す」は一覧の枠 (LIST_TARGET) を取り直す。
     """
 
     columns: tuple = ()
@@ -667,6 +682,9 @@ class BaseListView(ScreenMixin, ListView):
     paginate_by = DEFAULT_PAGE_SIZE
     page_sizes = PAGE_SIZES
     template_name = "core/list.html"
+    #: 札の × と「絞りを外す」と空の枠の「すべて外す」が取り直す一覧の枠の id (core/list.html)。
+    #: この枠を名指しした htmx の要求には画面の全体を返し、htmx が枠だけを選んで入れ替える (欄・タブ・札・表がそろう。N161)
+    LIST_TARGET = "list-card"
 
     # --- 列 ---
     def column_specs(self) -> list[ColumnSpec]:
@@ -774,6 +792,22 @@ class BaseListView(ScreenMixin, ListView):
     def filter_chosen(self, name: str) -> bool:
         """絞り name (GET の f_<name>) に読めた値があるか。空と読めない値は無いのと同じ。宣言に無い名前は偽。"""
         return any(spec.values(self.filter_params) for spec in self.filter_specs() if spec.name == name)
+
+    def filter_chips(self, specs, items) -> list[dict]:
+        """効いている絞りの札 (core/_filter_clear.html。本人の決め 11-05 16:2x。N161)。
+
+        絞りの枠の値のうち狭める物だけ (flag は入のときだけ。既定で入の印を切った物と、ほかの絞りに従って切に描いた印は札にしない)。
+        キーワード・件数・並び替え・集計の軸は札にしない。タブ (presets) は札にしない (タブが入れた値は、その絞りの札になる)。
+        1 つ = name・heading (見出し。flag は空)・text (値の字。flag は印の見出し)・query (その絞りだけを外した GET。page と format も外す)。
+        """
+        chips = []
+        for spec, item in zip(specs, items):
+            if not item["active"] or (spec.kind == "flag" and not item["checked"]):
+                continue
+            heading, text = ("", spec.label) if spec.kind == "flag" else (item["label"], FilterSpec.chip_text(item))
+            query = self.query_without("page", "format", *spec.params)
+            chips.append({"name": spec.name, "heading": heading, "text": text, "query": query})
+        return chips
 
     # --- 絞りのタブ (presets) ---
     @property
@@ -905,6 +939,8 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_filters"] = self.query_without(
             "page", "format", *(name for spec in filter_specs for name in spec.params)
         )
+        # 効いている絞りの札 (core/_filter_clear.html が絞り込みの枠の下に並べる。N161)
+        context["filter_chips"] = self.filter_chips(filter_specs, context["filters"])
         context["presets"] = self.preset_tabs()
         context["create_url"] = model_url(self.model, "create")
         if context["create_url"] and not access.can_write_model(self.request.user, self.model, "create"):
@@ -943,9 +979,14 @@ class BaseListView(ScreenMixin, ListView):
 
     def wants_rows_only(self) -> bool:
         """行の部分だけを返すか。htmx の要求でも、ブラウザの戻る (履歴の復元) には画面の全体を返す
-        (htmx は復元の要求にも HX-Request を付け、応答で body を丸ごと差し替えるため)。"""
+        (htmx は復元の要求にも HX-Request を付け、応答で body を丸ごと差し替えるため)。
+        一覧の枠 (LIST_TARGET) を名指しした要求 (札の × と「絞りを外す」と「すべて外す」) にも画面の全体を返す (htmx が枠だけを選ぶ)。"""
         headers = self.request.headers
-        return bool(headers.get("HX-Request")) and not headers.get("HX-History-Restore-Request")
+        return (
+            bool(headers.get("HX-Request"))
+            and not headers.get("HX-History-Restore-Request")
+            and headers.get("HX-Target") != self.LIST_TARGET
+        )
 
     def render_to_response(self, context, **response_kwargs):
         if self.request.GET.get("format") == "csv":
@@ -960,7 +1001,7 @@ class BaseListView(ScreenMixin, ListView):
         else:
             response = super().render_to_response(context, **response_kwargs)
         # 同じ URL で部分と全体を返すので、ブラウザの保存が取り違えないように見出しで分ける。
-        patch_vary_headers(response, ("HX-Request",))
+        patch_vary_headers(response, ("HX-Request", "HX-Target"))
         return response
 
     def csv_filename(self) -> tuple[str, str]:

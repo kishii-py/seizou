@@ -5,7 +5,8 @@
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
 {# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
-<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
+{# 枠の id は list-card: 札の × と「絞りを外す」と空の枠の「すべて外す」は、この枠を htmx で丸ごと取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを選ぶ。N161)。 #}
+<div id="list-card" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
   {% if presets %}{% include "core/_presets.html" %}{% endif %}
   <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter], seizou:refresh from:body">
     {% if search_hint or filters %}
@@ -24,6 +25,7 @@
       {% if filters %}{% include "core/_filters.html" %}{% endif %}
     </div>
     {% endif %}
+    {% if filters %}{% include "core/_filter_clear.html" %}{% endif %}
     <div class="mt-4 flex flex-wrap items-center gap-2">
       {% if summary %}
       {# 集計 (view=summary) の軸と量。変えると絞りの欄と同じく #rows を取り直す (data-list-filter)。view は隠しの欄で持ち越す。 #}
