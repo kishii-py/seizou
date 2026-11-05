@@ -1,0 +1,12 @@
+{# 段の帯 (案 4-A。受注の詳細 = N148・発注の詳細 = N151)。各 app の詳細が、その app の段の tag で band を読んでから include する。include するときに stages_id (帯の id) を渡す。 #}
+{# daisyUI の steps で段を横に並べる。済んだ段は ✓ (data-content) と主色、今の段は主色と aria-current、先の段は薄い。band が None (取消) なら何も出さない。明細ごとに段が違うときは帯の下に 1 文。 #}
+{% if band %}
+<div id="{{ stages_id }}" class="mb-6 overflow-x-auto" data-stage-current="{{ band.current }}">
+  <ul class="steps text-xs" aria-label="段の帯">
+    {% for stage in band.stages %}
+    <li class="step{% if stage.done or stage.current %} step-primary{% endif %}"{% if stage.done %} data-content="✓"{% elif stage.current %} aria-current="step"{% endif %}>{{ stage.name }}</li>
+    {% endfor %}
+  </ul>
+  {% if band.summary %}<p class="mt-1 text-xs text-base-content/70">{{ band.summary }}</p>{% endif %}
+</div>
+{% endif %}
