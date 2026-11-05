@@ -39,7 +39,7 @@ def _open_import(page, company) -> None:
 
 def _send(page, path) -> None:
     page.set_input_files("input[name=file]", str(path))
-    page.get_by_role("button", name="保存", exact=True).click()
+    page.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
 
 
 def test_e32_round_trip_no_diff(context, page_a, company_a, tmp_path):

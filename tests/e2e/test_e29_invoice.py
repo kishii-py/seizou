@@ -78,7 +78,7 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/shipping/notes/new/$"))
     page_a.get_by_label(re.compile(rf"{re.escape(order_no)}(?!\d)")).check()
-    page_a.get_by_role("button", name="保存", exact=True).click()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_a.wait_for_url(re.compile(r"/shipping/notes/\d+/$"))
     note_no = page_a.locator("h1").inner_text().strip()
 
@@ -95,7 +95,7 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     assert not [text for text in labels if re.search(rf"{re.escape(second_shipment)}(?!\d)", text)]
 
     page_a.get_by_label(re.compile(rf"{re.escape(note_no)}(?!\d)")).check()
-    page_a.get_by_role("button", name="保存", exact=True).click()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_a.wait_for_url(re.compile(r"/billing/invoices/\d+/$"))
     shot(page_a, "E-29", "a-invoice")
 

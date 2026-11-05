@@ -40,7 +40,7 @@ def test_e13_note_and_print(context, page_a, company_a):
     page_a.wait_for_url(re.compile(r"/shipping/notes/new/$"))
 
     page_a.get_by_label(re.compile(rf"{re.escape(order_no)}(?!\d)")).check()
-    page_a.get_by_role("button", name="保存", exact=True).click()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_a.wait_for_url(re.compile(r"/shipping/notes/\d+/$"))
     shot(page_a, "E-13", "a-note")
 

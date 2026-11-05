@@ -42,7 +42,7 @@ def _clear_logo(page, company) -> None:
     clear = page.locator("input[name=logo-clear]")
     if clear.count():
         clear.check()
-        page.get_by_role("button", name="保存", exact=True).click()
+        page.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
         page.wait_for_url(re.compile(r"/settings/$"))
 
 
@@ -55,7 +55,7 @@ def test_e44_logo_on_login_page(page_a, company_a, tmp_path):
         page_a.locator("#company-info-title").locator("xpath=..").get_by_role("link", name="編集").click()
         page_a.wait_for_url(re.compile(r"/settings/company/$"))
         page_a.set_input_files("input[name=logo]", str(logo))
-        page_a.get_by_role("button", name="保存", exact=True).click()
+        page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
         page_a.wait_for_url(re.compile(r"/settings/$"))
 
         _logout(page_a)

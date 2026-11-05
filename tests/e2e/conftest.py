@@ -20,6 +20,7 @@
    - `SEIZOU_E2E_PARTNER_SECRET`: 2 社の間の署名の鍵。fixture が起こす runserver に、相手の会社の id から作った名前で渡す
    - `SEIZOU_E2E_PORT_<id の大文字>`: その会社の port を答えの YAML の値から変える (夜のレーンが一時の置き場を別の port で立てて回し、本物のデモに触らないため)
    - `SEIZOU_E2E_BASE_URL_A_MACHINING`・`SEIZOU_E2E_BASE_URL_B_PLATING`: 外の置き場 (VPS など) で回すときの 2 社の URL
+   - `SEIZOU_E2E_COMPANY_NAME_A_MACHINING`・`SEIZOU_E2E_COMPANY_NAME_B_PLATING`: 外の置き場の会社名が種 (examples) と違うときの差し替え
      (例 `https://a.example.jp`)。2 社とも書くと、runserver を起こさず止めず、その URL を使う。置き場のファイルを読む試験
      (E-30 と、`restart_company` を呼ぶ物) は理由を付けて skip する。片方だけは誤り (A 社から B 社への送りが外と手元で食い違う)。
    パスワードと鍵の値は、どのファイルにも、絵の名前にも、ログにも書かない。
@@ -104,7 +105,8 @@ def _load_company(yaml_name: str) -> Company:
     outside = (os.environ.get(external_url_env(company_id)) or "").strip().rstrip("/")
     return Company(
         id=company_id,
-        name=str(answers["name"]),
+        # 外の置き場の会社名が種と違うとき (本番の 2 社を実名にした VPS など) は、環境変数で差し替える (会社名で見る確かめのため)
+        name=(os.environ.get(f"SEIZOU_E2E_COMPANY_NAME_{company_id.upper()}") or "").strip() or str(answers["name"]),
         port=port,
         site=_sites_dir() / company_id,
         base_url=outside or f"http://127.0.0.1:{port}",
@@ -314,10 +316,17 @@ def menu_link(page: Page, label: str):
     決め 11-03 14:1x: 大項目ごとに開け閉めし、今の画面の大項目だけ開いているので、ほかの大項目の入口は押す前に開く。
     """
     sidebar = page.locator("aside nav")
-    section = sidebar.locator("details", has=page.get_by_role("link", name=label, exact=True, include_hidden=True))
+    # 入口の横に待っている数の印 (N146) が付くと名前が「請求書 19」になるので、頭の字が label で終わるか空白が続く物を探す
+    name = menu_name(label)
+    section = sidebar.locator("details", has=page.get_by_role("link", name=name, include_hidden=True))
     if section.count() and not section.first.evaluate("details => details.open"):
         section.first.locator("summary").click()
-    return sidebar.get_by_role("link", name=label, exact=True)
+    return sidebar.get_by_role("link", name=name)
+
+
+def menu_name(label: str):
+    """左のメニューの入口の名前の照合 (label そのもの、または label の後ろに数の印が付いた物)。"""
+    return re.compile(rf"^{re.escape(label)}(\s|$)")
 
 
 def shot(page: Page, code: str, scene: str) -> Path:

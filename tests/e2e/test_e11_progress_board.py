@@ -43,9 +43,9 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     line = page_a.locator("select[name=order_line] option").filter(has_text=re.compile(rf"{re.escape(order_no)} の 1 行目")).first
     page_a.select_option("select[name=order_line]", value=line.get_attribute("value"))
     page_a.fill("input[name=qty]", "10")
-    process = page_a.locator("select[name=processes] option").filter(has_text=PROCESS_CODE).first
-    page_a.select_option("select[name=processes]", value=[process.get_attribute("value")])
-    page_a.get_by_role("button", name="保存", exact=True).click()
+    # 工程は 1 行 1 工程の checkbox (205 回目から。字は「<工程コード> <名前>」)
+    page_a.get_by_role("checkbox", name=re.compile(rf"^{re.escape(PROCESS_CODE)}\b")).check()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_a.wait_for_url(re.compile(r"/workorders/\d+/$"))
     workorder_no = page_a.locator("h1").inner_text().strip()
 
@@ -64,7 +64,7 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     other.goto(f"{company_a.base_url}/progress/new/")
     other.select_option("select[name=workorder_step]", value=step_pk)
     other.fill("input[name=qty]", "3")
-    other.get_by_role("button", name="保存", exact=True).click()
+    other.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     other.wait_for_url(lambda url: urlparse(url).path != "/progress/new/")
 
     expect(cells.nth(4)).to_have_text(_number("3"), timeout=15_000)
