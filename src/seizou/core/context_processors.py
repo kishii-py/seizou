@@ -35,6 +35,18 @@ OTHER_SECTION = "その他"
 #: core 自身の入口 (部品の MENU と同じ形)
 CORE_MENU = (("ダッシュボード", "core:home"), ("検索", "core:search"))
 
+#: 左のメニューの入口の横に出す待っている数 (決め 11-05 の 1-A)。鍵は入口の URL の名前、値は (説明, 単位, 数える物)。
+#: 数える物は core.dashboard の queryset を返す関数の名前 (部品が無ければ None) で、入口ごとに 1 回ずつ .count() する ((B) の形)。
+#: 受信した注文・指示書・受入・請求書は、N145 の today_tasks が flow_guide で数える関数そのもの (今日やることと同じ数)。
+#: today_tasks を呼ぶと 9 回数えるので呼ばない。納期が過ぎた明細は today_tasks に無いので、due_alerts の遅れと同じ条件の関数。
+MENU_COUNTS = {
+    "connect:inbox_list": ("未処理の受信した注文", "件", "_received_inbox"),
+    "orders:orderline_list": ("納期が過ぎた明細", "行", "_overdue_lines"),
+    "workorders:workorder_list": ("指示書の無い明細", "行", "_lines_without_workorder"),
+    "purchasing:receipt_list": ("受入の残っている出荷の知らせの明細", "行", "_noticed_lines_to_receive"),
+    "billing:invoice_list": ("請求書に入っていない出荷", "件", "_shipments_to_invoice"),
+}
+
 
 def url_or_none(url_name: str) -> str | None:
     try:
@@ -178,6 +190,46 @@ def _hides_money(user) -> bool:
     return bool(getattr(user, "is_authenticated", False)) and not access.can_see_money(user)
 
 
+def _menu_count(name: str) -> int | None:
+    """core.dashboard の関数 name の queryset の件数 (1 回の問い合わせ)。部品が無い・DB が読めなければ None (偽の 0 を置かない)。"""
+    from seizou.core import dashboard
+
+    queryset = getattr(dashboard, name)()
+    if queryset is None:
+        return None
+    try:
+        return queryset.count()
+    except DatabaseError:
+        return None
+
+
+def attach_counts(items: list[dict], user) -> None:
+    """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit を付ける。
+
+    使う人: 現場と事務の全員 / いつ: 朝や手の空いた時に左のメニューを見る / 何のために: 待っている仕事の数から仕事へ入る。
+    数は N145 の「今日やること」と同じ元 (core.dashboard の数える関数)。count は SimpleLazyObject で、テンプレートが読んだ時
+    (左のメニューを描くとき) だけ入口ごとに 1 回数える (htmx の行の取り直しでは数えない)。未ログインには付けない。
+    数えられない時は None、0 は 0 のままで、どちらもテンプレートは印を出さない。items は visible_menu の後の入口 (開ける物だけ)。
+    """
+    if not getattr(user, "is_authenticated", False):
+        return
+    counts: dict[str, int | None] = {}
+
+    def count_of(url_name: str) -> int | None:
+        if url_name not in counts:
+            counts[url_name] = _menu_count(MENU_COUNTS[url_name][2])
+        return counts[url_name]
+
+    for item in items:
+        url_name = item["url_name"]
+        if url_name not in MENU_COUNTS:
+            continue
+        label, unit, _name = MENU_COUNTS[url_name]
+        item["count"] = SimpleLazyObject(lambda url_name=url_name: count_of(url_name))
+        item["count_label"] = label
+        item["count_unit"] = unit
+
+
 def seizou(request) -> dict:
     from seizou.core import access
     from seizou.core import conf
@@ -200,6 +252,7 @@ def seizou(request) -> dict:
         industry = ""
     part_items = menu()
     part_items = access.visible_menu(user, part_items)
+    attach_counts(part_items, user)
     items = [*core_menu(), *part_items]
     mark_active(items, getattr(request, "path", "") or "")
     return {
