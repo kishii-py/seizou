@@ -412,7 +412,8 @@ def test_part_templates_mask_money(on, client, order):
     html = client.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
     assert "1,500" not in html
     assert "15,000" not in html
-    assert "—" in html
+    # 単価と金額の列は見出しごと出ない (「—」も出さない。N155)
+    assert ">単価</th>" not in html and ">金額</th>" not in html
 
     keiri = account("keiri", see_money=True)
     client.force_login(keiri)

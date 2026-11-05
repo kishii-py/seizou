@@ -176,10 +176,10 @@ def test_payable_table_and_money_hidden(user, client_logged_in, subcontractor, i
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
     response = client_logged_in.get(reverse("purchasing:receipt_list"))
     body = response.content.decode()
-    table = body[body.index('id="payable-title"') : body.index("</section>", body.index('id="payable-title"'))]
-    assert ">100<" not in table and ">50<" not in table
-    assert "—" in table
-    assert all(row["cells"][5]["value"] == "—" for row in response.context["rows"])
+    # 支払の見込みの表は表ごと出ず、受入の一覧の金額の列も列ごと出ない (「—」も出さない。N155)
+    assert 'id="payable-title"' not in body
+    assert "amount" not in [spec.name for spec in response.context["columns"]]
+    assert all(cell["value"] != "—" for row in response.context["rows"] for cell in row["cells"])
     csv_text = client_logged_in.get(reverse("purchasing:receipt_list"), {"format": "csv"}).content.decode("utf-8")
     assert "金額" not in csv_text.lstrip("﻿").splitlines()[0]
 

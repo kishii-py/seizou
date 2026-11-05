@@ -27,8 +27,8 @@
       <th class="whitespace-nowrap font-medium">部品</th>
       <th class="whitespace-nowrap text-right font-medium">数量</th>
       <th class="whitespace-nowrap font-medium">単位</th>
-      <th class="whitespace-nowrap text-right font-medium">単価</th>
-      <th class="whitespace-nowrap text-right font-medium">金額</th>
+      {% if not seizou.hide_money %}<th class="whitespace-nowrap text-right font-medium">単価</th>
+      <th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}
       <th class="whitespace-nowrap font-medium">納期</th>
       <th class="whitespace-nowrap text-right font-medium">出荷済み</th>
       <th class="whitespace-nowrap text-right font-medium">検収</th>
@@ -42,8 +42,8 @@
         <td class="whitespace-nowrap">{% master_link line.item %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
         <td class="whitespace-nowrap">{{ line.unit }}</td>
-        <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.unit_price|comma }}{% endif %}</td>
-        <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ line.amount|comma }}{% endif %}</td>
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|comma }}</td>{% endif %}
         <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.shipped_total|comma }}</td>
         {% with acc=line.acceptance %}{% if acc.count %}<td class="whitespace-nowrap text-right tabular-nums">{{ acc.total|comma }} <span class="text-xs text-base-content/70">({{ acc.last_on|date:"Y-m-d" }})</span></td>{% else %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>{% endif %}{% endwith %}

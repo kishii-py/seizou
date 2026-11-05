@@ -10,7 +10,7 @@
 {% if object.status == "issued" and can_bill %}<a class="btn btn-outline btn-error" href="{% url 'billing:invoice_cancel' object.pk %}">{% icon "x" "size-4" %}取消</a>{% endif %}
 {% endblock %}
 {% block content %}{{ block.super }}
-{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額は金額の閲覧が無い人には — #}
+{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
 {% can_write "billing.Invoice" as can_bill %}
 <section id="payments" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
@@ -21,11 +21,11 @@
       {% else %}<span class="badge badge-ghost">{{ object.payment_status_label }}</span>{% endif %}</h2>
     {% if object.status == "issued" and can_bill %}<a class="btn btn-sm btn-primary" href="{% url 'billing:payment_create' object.pk %}">{% icon "plus" "size-4" %}入金を記録する</a>{% endif %}
   </div>
-  <dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
-    <div><dt class="text-xs text-base-content/50">合計</dt><dd class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.total|comma }}{% endif %}</dd></div>
-    <div><dt class="text-xs text-base-content/50">入金済み</dt><dd class="tabular-nums">{% if seizou.hide_money %}—{% else %}{{ object.paid_total|comma }}{% endif %}</dd></div>
-    <div><dt class="text-xs text-base-content/50">残</dt><dd class="tabular-nums">{% if seizou.hide_money %}—{% elif object.balance < 0 %}<span class="text-error">{{ object.balance|comma }}</span>{% else %}{{ object.balance|comma }}{% endif %}</dd></div>
-  </dl>
+  {% if not seizou.hide_money %}<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
+    <div><dt class="text-xs text-base-content/50">合計</dt><dd class="tabular-nums">{{ object.total|comma }}</dd></div>
+    <div><dt class="text-xs text-base-content/50">入金済み</dt><dd class="tabular-nums">{{ object.paid_total|comma }}</dd></div>
+    <div><dt class="text-xs text-base-content/50">残</dt><dd class="tabular-nums">{% if object.balance < 0 %}<span class="text-error">{{ object.balance|comma }}</span>{% else %}{{ object.balance|comma }}{% endif %}</dd></div>
+  </dl>{% endif %}
   {% with payment_rows=object.payments.all %}
   {% if payment_rows %}
   <div class="mt-4 overflow-x-auto">
@@ -33,7 +33,7 @@
       <thead>
         <tr>
           <th>入金日</th>
-          <th class="text-right">金額</th>
+          {% if not seizou.hide_money %}<th class="text-right">金額</th>{% endif %}
           <th>入金の方法</th>
           <th>備考</th>
           <th>記録した人</th>
@@ -46,7 +46,7 @@
         {% for row in payment_rows %}
         <tr class="hover:bg-base-200">
           <td class="whitespace-nowrap font-mono tabular-nums">{{ row.received_on|date:"Y-m-d" }}</td>
-          <td class="whitespace-nowrap text-right tabular-nums">{% if seizou.hide_money %}—{% else %}{{ row.amount|comma }}{% endif %}</td>
+          {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|comma }}</td>{% endif %}
           <td class="whitespace-nowrap">{{ row.get_method_display }}</td>
           <td class="max-w-xs break-words text-base-content/70">{% if row.note %}{{ row.note }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td class="whitespace-nowrap">{% if row.recorded_by %}{{ row.recorded_by }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
