@@ -63,6 +63,7 @@ from django.views.generic import DetailView, FormView, ListView, TemplateView, V
 from seizou.core import access
 from seizou.core import checks
 from seizou.core import dashboard
+from seizou.core import select_options
 from seizou.core import fields as company_fields
 from seizou.core import summary as list_summary
 from seizou.core.exceptions import CheckViolation, RuleError
@@ -1527,6 +1528,7 @@ class BaseSelectView(ScreenMixin, View):
     columns に項目の名前を並べると、候補ごとに id と text の横にその値も返す (例 部品の unit と standard_price。
     選ぶ欄の JS が、同じ行の空の単位と単価の欄に写す = 05 の 2 節の「選んだら写す」)。金額の項目
     (access.is_money_name) は、金額の閲覧が無い人には返さない。
+    候補ごとに text (選んだ値の欄の字。今の 1 行) の横に、2 段の字 title と sub (core.select_options.lines) も返す (N162)。
     """
 
     model = None
@@ -1547,17 +1549,20 @@ class BaseSelectView(ScreenMixin, View):
         qs = self.get_queryset()
         if not qs.ordered:  # 並びが無いとページの境目が DB 次第になる。既定は pk の順。
             qs = qs.order_by("pk")
+        qs = select_options.with_company_fields(qs)
         if term and self.search_fields:
             qs = qs.filter(search_q(self.search_fields, term))
         start = (page - 1) * self.per_page
         rows = list(qs[start : start + self.per_page + 1])
         more = len(rows) > self.per_page
         names = self.shown_columns()
-        items = [
-            {"id": obj.pk, "text": str(obj), **{name: getattr(obj, name) for name in names}}
-            for obj in rows[: self.per_page]
-        ]
+        items = [self.candidate(obj, names) for obj in rows[: self.per_page]]
         return JsonResponse({"items": items, "more": more})
+
+    def candidate(self, obj, names) -> dict:
+        """候補の 1 つ。text は今の 1 行の字 (選んだ値の欄の字。変えない)。title と sub は候補の 2 段の字 (N162)。"""
+        title, sub = select_options.lines(obj)
+        return {"id": obj.pk, "text": str(obj), "title": title, "sub": sub, **{name: getattr(obj, name) for name in names}}
 
     def shown_columns(self) -> tuple:
         """候補に足す項目 (columns)。金額の閲覧が無い人には金額の項目を外す。

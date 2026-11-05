@@ -45,6 +45,25 @@ body > .ts-dropdown .active {
   color: var(--color-base-content);
 }
 
+/* 選ぶ欄の候補の 2 段 (N162。seizou-select.js が data-select-title と data-select-sub の属性で描く)。上の段は太字、
+   下の段は灰の小さい字。打った字に合う所 (部品の highlight が足す span.highlight) は主色の太字にし、部品の CSS の薄い青の地を消す。 */
+.ts-wrapper .ts-dropdown [data-select-title],
+body > .ts-dropdown [data-select-title] {
+  font-weight: 600;
+}
+.ts-wrapper .ts-dropdown [data-select-sub],
+body > .ts-dropdown [data-select-sub] {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+.ts-wrapper .ts-dropdown [data-selectable] .highlight,
+body > .ts-dropdown [data-selectable] .highlight {
+  background: transparent;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
 /* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
    2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */
 @keyframes seizou-changed {

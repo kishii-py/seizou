@@ -3,14 +3,16 @@
  * 素の JS で書く (外の library は同梱の Tom Select だけ)。読み込みは base.html の Tom Select の <script> の次の 1 行。
  *
  * 候補は core の候補の口 (BaseSelectView) から q と page を付けて取る。返る形は
- * {"items": [{"id", "text"}], "more": 真偽}。1 ページは 30 件 (口の per_page)。
+ * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽}。1 ページは 30 件 (口の per_page)。
  *
  * 決まり:
  * - 一覧を下まで読むと次のページを足す (virtual_scroll)。
  * - 打ってから 250ms 待って取りに行く。
  * - 欄に着いたら空の検索で最初のページを取る。打った字を全部消したときも空の検索で取り直す。
  * - 字を変えるたびに前の候補の控えを捨てて取り直す。照合はサーバーに任せ、欄の中では絞らない。
- * - 候補と選んだ値は Tom Select の既定の描き方で描く (字を escape する)。取った字を HTML として差し込まない。
+ * - 選んだ値は Tom Select の既定の描き方 (text の 1 行) で描く。候補は sub (下の段の字) のある物を 2 段 (上 = title、下 = sub。
+ *   属性 data-select-title・data-select-sub。見た目は scripts/css/input.css) で描き、無い物 (受注の明細・発注の明細) は今の 1 行のまま。
+ *   字は escape してから組む。取った字を HTML として差し込まない。打った字に合う所は部品の highlight が印を付ける (N162)。
  * - 通信に失敗したら「該当なし」に見せず、赤の知らせを欄の下に 1 回だけ出す。
  * - 同じ欄に 2 回載せない (載っていれば何もしない)。htmx:afterSettle で、差し替えた中の欄に載せる。
  * - 日本語の変換を確定する Enter (isComposing か keyCode 229) では何もしない。
@@ -159,6 +161,17 @@
           });
       },
       render: {
+        // 下の段の字 (sub) のある候補 (部品・取引先) は 2 段。上の段は title、下の段は sub (N162)。無い物は今の 1 行のまま。
+        option: function (data, escape) {
+          if (!data.sub) return "<div>" + escape(data.text) + "</div>";
+          return (
+            "<div><div data-select-title>" +
+            escape(data.title || data.text) +
+            "</div><div data-select-sub>" +
+            escape(data.sub) +
+            "</div></div>"
+          );
+        },
         no_results: function () {
           if (state.failed) return null;
           return '<div class="no-results">該当なし</div>';
