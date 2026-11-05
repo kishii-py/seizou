@@ -147,15 +147,15 @@ def test_receipt_link_qty_is_what_is_left(client_logged_in, user, subcontractor,
     cell = _notice_cell(_detail(client_logged_in, po))
 
     # 知らせ 4 のうち 3 を受け入れたので、残りの 1
-    assert f'href="{url}?line={line.pk}&amp;qty=1&amp;received_on=2026-11-05"' in cell
+    assert f'href="{url}?line={line.pk}&amp;qty=1"' in cell
     assert "qty=4" not in cell
 
     _notice(line, "6", date(2026, 11, 7), "SH-0002")
     cell = _notice_cell(_detail(client_logged_in, po))
 
     assert cell.count("受入を記録する") == 2
-    assert f"?line={line.pk}&amp;qty=1&amp;received_on=2026-11-05" in cell
-    assert f"?line={line.pk}&amp;qty=6&amp;received_on=2026-11-07" in cell
+    assert f'?line={line.pk}&amp;qty=1"' in cell
+    assert f'?line={line.pk}&amp;qty=6"' in cell
     # 取り直した明細で呼ぶ (shipping_notice は cached_property で、前に読んだ明細は古い知らせのまま)
     rests = services.notice_rests(PurchaseOrderLine.objects.get(pk=line.pk))
     assert [entry["rest"] for entry in rests] == [Decimal("1"), Decimal("6")]
@@ -180,7 +180,7 @@ def test_receipt_link_hidden_when_nothing_is_left(client_logged_in, user, subcon
 
     # 受け入れ終えた古い 4 の行には出さず、6 の行にだけ残りの 6
     assert cell.count("受入を記録する") == 1
-    assert f"?line={line.pk}&amp;qty=6&amp;received_on=2026-11-07" in cell
+    assert f'?line={line.pk}&amp;qty=6"' in cell
     # 明細の pk だけを渡す「受入を登録」は残る (明細の残 6)
     assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}"' in body
     assert fake_post.calls == 0
