@@ -439,7 +439,7 @@ def test_item_candidates_carry_unit_and_standard_price(logged_in, priced, shaft)
     data = logged_in.get(reverse("masters:item_select"), {"q": "T-"}).json()
     rows = {row["id"]: row for row in data["items"]}
 
-    assert rows[priced.pk] == {"id": priced.pk, "text": "T-300 作り物の座金", "unit": "袋", "standard_price": "1234.50"}
+    assert rows[priced.pk] == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋", "standard_price": "1234.50"}
     # 標準単価の無い部品は null (JS は写さない)
     assert rows[shaft.pk]["unit"] == "個"
     assert rows[shaft.pk]["standard_price"] is None
@@ -451,14 +451,14 @@ def test_item_candidates_hide_standard_price_without_money(settings, logged_in, 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
     row = logged_in.get(reverse("masters:item_select"), {"q": "T-300"}).json()["items"][0]
 
-    assert row == {"id": priced.pk, "text": "T-300 作り物の座金", "unit": "袋"}
+    assert row == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋"}
 
 
 @pytest.mark.django_db
 def test_other_candidates_stay_id_and_text(logged_in, customer):
     row = logged_in.get(reverse("masters:partner_select")).json()["items"][0]
 
-    assert set(row) == {"id", "text"}
+    assert set(row) == {"id", "text", "title", "sub"}
 
 
 def test_select_js_copies_unit_and_price_into_same_row():

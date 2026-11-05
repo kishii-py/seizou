@@ -3,14 +3,16 @@
  * 素の JS で書く (外の library は同梱の Tom Select だけ)。読み込みは base.html の Tom Select の <script> の次の 1 行。
  *
  * 候補は core の候補の口 (BaseSelectView) から q と page を付けて取る。返る形は
- * {"items": [{"id", "text"}], "more": 真偽}。1 ページは 30 件 (口の per_page)。
+ * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽, "recent": [...], "create": {"url", "label"} か null}。1 ページは 30 件 (口の per_page)。
  *
  * 決まり:
  * - 一覧を下まで読むと次のページを足す (virtual_scroll)。
  * - 打ってから 250ms 待って取りに行く。
  * - 欄に着いたら空の検索で最初のページを取る。打った字を全部消したときも空の検索で取り直す。
  * - 字を変えるたびに前の候補の控えを捨てて取り直す。照合はサーバーに任せ、欄の中では絞らない。
- * - 候補と選んだ値は Tom Select の既定の描き方で描く (字を escape する)。取った字を HTML として差し込まない。
+ * - 選んだ値は Tom Select の既定の描き方 (text の 1 行) で描く。候補は sub (下の段の字) のある物を 2 段 (上 = title、下 = sub。
+ *   属性 data-select-title・data-select-sub。見た目は scripts/css/input.css) で描き、無い物 (受注の明細・発注の明細) は今の 1 行のまま。
+ *   字は escape してから組む。取った字を HTML として差し込まない。打った字に合う所は部品の highlight が印を付ける (N162)。
  * - 通信に失敗したら「該当なし」に見せず、赤の知らせを欄の下に 1 回だけ出す。
  * - 同じ欄に 2 回載せない (載っていれば何もしない)。htmx:afterSettle で、差し替えた中の欄に載せる。
  * - 日本語の変換を確定する Enter (isComposing か keyCode 229) では何もしない。
@@ -25,6 +27,10 @@
  *   -unit_price で終わる欄に写す (05 の 2 節の「選んだら写す」。規則は masters.services.copy_values と同じ:
  *   欄が空か前に写したままの値なら写し、人が打った字は残す)。写したら欄の下に「単位と単価を部品から写しました。」を出す。
  *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
+ * - 字を打つ前の 1 ページ目は、口の返す recent (最近の受注・発注・出荷で使った物。5 件まで) を「最近使った」の見出しの群
+ *   (Tom Select の optgroup) に入れて先頭に出す。同じ id の候補は 1 つにまとまり、最近使ったの群に残る。recent が空なら見出しを出さない (N162)。
+ * - 候補が 0 件で、口が create (登録の入口) を返したら、「該当なし」の下に登録の行 (data-select-create) を出す。押すと data-modal-form で
+ *   入力の小窓が開く。入力の小窓の中の欄では新しいタブで開く。書けない人には口が null を返し、行を出さない (N162)。
  */
 (function () {
   "use strict";
@@ -38,6 +44,9 @@
     { key: "standard_price", suffix: "-unit_price", label: "単価" },
   ];
   var COPIED_TAIL = "を部品から写しました。";
+  // 字を打つ前の 1 ページ目に、口の返す recent を入れる群の名前と見出しの字 (N162)
+  var RECENT = "recent";
+  var RECENT_LABEL = "最近使った";
 
   function pageUrl(base, query, page) {
     var url = new URL(base, window.location.href);
@@ -98,7 +107,7 @@
     if (!(select instanceof HTMLSelectElement) || select.tomselect) return;
     if (typeof window.TomSelect !== "function") return;
     var base = select.getAttribute("data-select-url");
-    var state = { failed: false, errorShown: false, notice: null };
+    var state = { failed: false, errorShown: false, notice: null, create: null };
     var plugins = { virtual_scroll: {} };
     if (select.multiple) {
       plugins.remove_button = { title: "外す" };
@@ -149,8 +158,18 @@
           })
           .then(function (data) {
             clearError(state);
+            state.create = data.create || null;
             if (data.more) self.setNextUrl(query, pageUrl(base, query, pageOf(url) + 1));
-            callback(data.items || []);
+            // 字を打つ前の 1 ページ目だけ、最近使った物 (5 件まで) を見出しの群に入れて先頭に足す (N162)。
+            // 同じ id の候補は部品が 1 つにまとめる (先に足した最近使ったの群に残る)。無ければ見出しを出さない。
+            var recent = query === "" && pageOf(url) === 1 && Array.isArray(data.recent) ? data.recent : [];
+            var options = recent.map(function (option) {
+              return Object.assign({}, option, { optgroup: RECENT });
+            });
+            // 選んだ候補は字を変えても部品が残す (virtual_scroll の clearFilter)。最近使ったから選んだ物が、字を打った後も
+            // 見出しの下に残らないよう、最近使ったの無い 1 ページ目では群を外す (続きのページでは外さない)。
+            if (pageOf(url) === 1 && !recent.length) self.clearOptionGroups();
+            callback(options.concat(data.items || []), recent.length ? [{ value: RECENT, label: RECENT_LABEL }] : []);
           })
           .catch(function () {
             state.failed = true;
@@ -159,9 +178,34 @@
           });
       },
       render: {
-        no_results: function () {
+        // 下の段の字 (sub) のある候補 (部品・取引先) は 2 段。上の段は title、下の段は sub (N162)。無い物は今の 1 行のまま。
+        option: function (data, escape) {
+          if (!data.sub) return "<div>" + escape(data.text) + "</div>";
+          return (
+            "<div><div data-select-title>" +
+            escape(data.title || data.text) +
+            "</div><div data-select-sub>" +
+            escape(data.sub) +
+            "</div></div>"
+          );
+        },
+        // 0 件で、口が登録の入口 (create) を返したら、「該当なし」の下に登録の行を出す (N162)。部品は根の要素 1 つだけを使う。
+        // 押すと data-modal-form で入力の小窓 (seizou-modal.js) が開く。入力の小窓の中の欄では、同じ箱に読むと入れかけの値が
+        // 消えるので、新しいタブで開く (「詳細を見る」の link と同じ決まり)。
+        no_results: function (data, escape) {
           if (state.failed) return null;
-          return '<div class="no-results">該当なし</div>';
+          if (!state.create) return '<div class="no-results">該当なし</div>';
+          var url = escape(state.create.url);
+          var opener = inDialog ? ' target="_blank" rel="noopener"' : ' data-modal-form="' + url + '"';
+          return (
+            '<div><div class="no-results">該当なし</div><a href="' +
+            url +
+            '"' +
+            opener +
+            " data-select-create>" +
+            escape(state.create.label) +
+            "</a></div>"
+          );
         },
         loading_more: function () {
           return '<div class="loading-more-results">続きを取っています</div>';
@@ -170,6 +214,11 @@
           return null;
         },
       },
+    });
+
+    // 登録の行を押したら候補の一覧を閉じる (小窓は seizou-modal.js が data-modal-form で開く。押下は止めない。N162)。
+    ts.dropdown.addEventListener("click", function (event) {
+      if (event.target.closest && event.target.closest("[data-select-create]")) ts.close();
     });
 
     // 小窓のある候補では、選んだ物の下に「詳細を見る」の link (小窓) を出す。
