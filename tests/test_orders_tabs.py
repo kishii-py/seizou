@@ -176,7 +176,7 @@ def test_tabs_follow_the_order(user, logged_in, customer, item):
     body = response.content.decode()
 
     assert [tab["label"] for tab in response.context["tabs"]] == ["指示書", "出荷", "請求書"]
-    positions = [body.index(f'name="detail-tabs" aria-label="{label}"') for label in ("基本情報", "指示書", "出荷", "請求書")]
+    positions = [body.index(f'name="detail-tabs" aria-label="{label}"') for label in ("指示書", "出荷", "請求書")]
     assert positions == sorted(positions)
 
 

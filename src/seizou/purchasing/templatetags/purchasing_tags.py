@@ -6,6 +6,7 @@
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
 - notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
+- purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
 """
 
 from decimal import Decimal
@@ -113,3 +114,39 @@ def notice_rests(line):
     from .. import services
 
     return services.notice_rests(line)
+
+
+@register.simple_tag
+def purchase_order_aside(purchase_order, fields, hide_money=False):
+    """{% purchase_order_aside object fields seizou.hide_money as aside %}。発注の詳細の右の列 (案 3-D・8-B。N150)。読むだけ。
+
+    協力企業 (名前は小窓を開く字・取引先コード)・日付 (発注日・明細の一番早い納期)・金額 (明細の金額の合計。明細があり、
+    金額を見られる人 = hide_money が偽のときだけ)・基本情報 (土台の項目 fields から取引先と発注日を除いた物)。
+    カードと行の形は orders の orders_detail の order_aside と同じ。金額の閲覧は seizou.hide_money を読むだけ (core の access の判定を呼ばない = 金額の閲覧の記録を増やさない)。
+    """
+    partner = purchase_order.partner
+    lines = list(purchase_order.lines.all())
+    dues = sorted(line.due_date for line in lines if line.due_date)
+
+    def label(name):
+        return str(purchase_order._meta.get_field(name).verbose_name)
+
+    def row(text, value=None, master=None):
+        return {"label": text, "value": value, "master": master, "file": None}
+
+    moved = (label("partner"), label("order_date"))
+    cards = [
+        {"title": "協力企業", "rows": [row("名前", master=partner), row("取引先コード", partner.code)]},
+        {"title": "日付", "rows": [row(label("order_date"), purchase_order.order_date), row("一番早い納期", dues[0] if dues else None)]},
+    ]
+    if lines and not hide_money:
+        cards.append({"title": "金額", "rows": [row("明細の合計", sum((line.amount for line in lines), Decimal("0")))]})
+    cards.append(
+        {
+            "title": "基本情報",
+            "rows": [field for field in fields if field["label"] not in moved],
+            "help": "basic",
+            "help_label": "基本情報の説明",
+        }
+    )
+    return {"cards": cards}

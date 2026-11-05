@@ -305,7 +305,7 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
         'id="po-live"',
         'id="purchaseorder-detail-poll"',
         'hx-select="#po-live"',
-        'hx-select-oob="#po-heading,#po-alert"',
+        'hx-select-oob="#po-heading,#po-alert,#detail-aside"',
         "X-Seizou-Live",
     ):
         assert word in body, word

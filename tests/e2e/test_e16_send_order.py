@@ -41,7 +41,7 @@ def test_e16_send_and_reply(page_a, page_b, company_a, company_b):
     expect(status).not_to_have_text("作成")
 
     page_a.locator("input[aria-label='送った記録']").check()
-    records = page_a.locator(".tab-content").nth(1)
+    records = page_a.locator(".tab-content").nth(0)
     expect(records.locator("li")).to_have_count(1)
     expect(records).to_contain_text("受け取った")
     for failed in ("断られた", "返事が読めません", "届きません", "鍵の置き場"):
