@@ -44,6 +44,9 @@
   {% elif intro_unreadable %}
   <p class="mt-6 text-error">前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
   {% endif %}
+  {% if flows %}
+  <div id="flows" class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{% include "core/_manual_flows.html" %}</div>
+  {% endif %}
   {% for section in sections %}
   <div id="{{ section.anchor }}" class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">
     {% if section.html %}{{ section.html }}

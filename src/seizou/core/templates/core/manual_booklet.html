@@ -10,6 +10,7 @@ PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに�
 主色は booklet_context() の primary_color。章の頭の帯と番号は style で付け、断片の字は書き換えない。
 断片の無い (か読めない) 章 (booklet-stub) は、続く同じ章と同じページに詰める。
 部品ごとの止まるときの文 (booklet-refusals) は、その部品の最初の章の前に 1 回だけ置く (章の番号と目次に入れない。booklet_context() の app_refusals)。
+業務の流れの章 (booklet-flows。core/_manual_flows.html) は、前書きの後で最初の画面の章の前に 1 回だけ置く (章の番号と目次と栞に入れない。手順の画面の名前の後に、その章のページ番号を style で付ける)。
 {% endcomment %}
 <html lang="ja">
 <head>
@@ -80,6 +81,16 @@ body { counter-reset: booklet-chapter; }
 .booklet-refusals { break-before: page; }
 .booklet-refusals h2 { bookmark-level: none; margin: 0 0 5mm; padding: 1mm 0 1.5mm 4mm; border-left: 2.5mm solid {{ primary_color }}; border-bottom: 0.5pt solid #999; font-size: 16pt; font-weight: 700; }
 .booklet-refusals ul { margin: 2mm 0; padding-left: 6mm; }
+.booklet-flows { break-before: page; }
+.booklet-flows h2, .booklet-flows h3 { bookmark-level: none; }
+.booklet-flows h2 { margin: 0 0 5mm; padding: 1mm 0 1.5mm 4mm; border-left: 2.5mm solid {{ primary_color }}; border-bottom: 0.5pt solid #999; font-size: 16pt; font-weight: 700; }
+.booklet-flows h3 { margin: 5mm 0 2mm; font-size: 12pt; font-weight: 700; page-break-after: avoid; }
+.booklet-flows table { width: 100%; margin: 2mm 0; }
+.booklet-flows th, .booklet-flows td { border: 0.5pt solid #000; padding: 1mm 2mm; text-align: left; vertical-align: top; }
+.booklet-flows th { background: #eee; }
+.booklet-flows td:nth-child(1), .booklet-flows td:nth-child(4) { white-space: nowrap; }
+.booklet-flows a { color: inherit; text-decoration: none; }
+.booklet-flows a::after { content: " (" target-counter(attr(href), page) " ページ)"; }
 </style>
 </head>
 <body>
@@ -118,6 +129,10 @@ body { counter-reset: booklet-chapter; }
 </nav>
 {% if intro %}<div id="index" class="booklet-chapter">{{ intro }}</div>
 {% elif intro_unreadable %}<div id="index" class="booklet-chapter"><h2>はじめに</h2><p>前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。/seizou:manual で作り直してください。</p></div>
+{% endif %}
+{% if flows %}<div id="flows" class="booklet-flows">
+{% include "core/_manual_flows.html" %}
+</div>
 {% endif %}
 {% for section in sections %}{% if section.app_refusals %}<div class="booklet-refusals"><h2>この部品で止まるときの文</h2>
 <p>次の章の「{{ section.name }}」から続く画面で、保存や取消を断られたときに出る文です。</p>
