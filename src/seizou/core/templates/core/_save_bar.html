@@ -1,7 +1,7 @@
 {% load seizou_icons %}
 {# 保存の帯 (N154。案 5-B)。画面の全体の入力に書きかけの印 (data-seizou-dirty) がある間だけ、上の帯の下に貼り付けて出す。描くのは base.html の 1 か所 (入力の画面だけ)。 #}
-{# 出し入れと「破棄」「保存」の動きは js/seizou-form-guard.js。釦の字の初めは保存の釦と同じ元 (form.submit_label。無ければ「保存」) で、入力のたびに js/seizou-submit-label.js が保存の釦の字を写す。 #}
-{# 帯の釦は form の外の送らない釦 (Ctrl+Enter が押す釦に入らない)。主色は画面の下の保存の釦だけ。釦の字は span の中。 #}
+{# 出し入れと「破棄」「保存」の動きは js/seizou-form-guard.js。ボタンの字の初めは保存のボタンと同じ元 (form.submit_label。無ければ「保存」) で、入力のたびに js/seizou-submit-label.js が保存のボタンの字を写す。 #}
+{# 帯のボタンは form の外の送らないボタン (Ctrl+Enter が押すボタンに入らない)。主色は画面の下の保存のボタンだけ。ボタンの字は span の中。 #}
 <div class="sticky top-16 z-20 flex items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-2 shadow-xs lg:px-6" role="region" aria-label="保存の帯" data-save-bar hidden>
   <p class="flex min-w-0 flex-1 items-center gap-2 font-medium">{% icon "alert" "size-4 text-warning" %}<span class="truncate">保存していない変更があります</span></p>
   <button class="btn btn-sm btn-outline border-base-300" type="button" data-save-bar-discard>{% icon "x" "size-4" %}破棄</button>

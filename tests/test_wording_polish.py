@@ -88,7 +88,7 @@ def test_partner_create_shows_rounding_help(client_logged_in):
     ("url_name", "label"), [("orders:order_list", "出荷の残っている受注だけ"), ("orders:orderline_list", "出荷の残りがある物だけ")]
 )
 def test_order_lists_toggle_says_shipping_remaining(client_logged_in, url_name, label):
-    # 出し分けは絞り込みの枠の中のチェック 1 つ (決め 11-04 17:3x)。古い「すべて」の釦は無い。
+    # 出し分けは絞り込みの枠の中のチェック 1 つ (決め 11-04 17:3x)。古い「すべて」のボタンは無い。
     response = client_logged_in.get(reverse(url_name))
     assert response.status_code == 200
     body = text(response)

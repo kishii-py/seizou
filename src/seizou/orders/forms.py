@@ -110,7 +110,7 @@ class OrderLineForm(forms.Form):
         if hide_money:
             # 金額の閲覧が無い人には単価の欄を出さない。line() は欄に無い鍵を渡さないので、既にある明細の単価は今のまま。
             self.fields.pop("unit_price", None)
-        # 合計の枠と保存の釦の字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
+        # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if "unit_price" in self.fields:
             self.fields["unit_price"].widget.attrs["data-label-price"] = True
@@ -144,7 +144,7 @@ class OrderLineForm(forms.Form):
 
 
 class OrderLineFormSet(forms.BaseFormSet):
-    """明細の行の formset。消す印 (DELETE) に、合計の枠と釦の字の JS が行を飛ばす印を付ける (N149)。"""
+    """明細の行の formset。消す印 (DELETE) に、合計の枠とボタンの字の JS が行を飛ばす印を付ける (N149)。"""
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
@@ -154,7 +154,7 @@ class OrderLineFormSet(forms.BaseFormSet):
 
 class OrderForm(SubmitLabelMixin, ServiceModelForm):
     """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。
-    保存の釦は「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。"""
+    保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。"""
 
     class Meta:
         model = Order
@@ -209,7 +209,7 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
         return {"rows": str(totals["rows"]), "amount": totals["amount"]}
 
     def line_pairs(self):
-        """合計の枠と釦の字に数える明細の (数量, 単価)。消す印の行と何も入れていない行は数えない。
+        """合計の枠とボタンの字に数える明細の (数量, 単価)。消す印の行と何も入れていない行は数えない。
         送って止まった形で数量の通らなかった行があれば None (分からない)。金額の閲覧が無い人には単価を渡さない。"""
         pairs = []
         for row in self.lines.forms:
@@ -272,7 +272,7 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
 
 
 class OrderCancelForm(forms.Form):
-    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存の釦は「SO-000001 を取り消す」(N138)。"""
+    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存のボタンは「SO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
 
     reason = forms.CharField(

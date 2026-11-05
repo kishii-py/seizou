@@ -7,7 +7,7 @@
 {% block content %}
 {% can_write "shipping.Shipment" as can_ship %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
 {% if bulk_ship_url and can_ship or bulk_po_url and can_po %}
-{# 選んだ行の操作: 行の選ぶ欄 (見せない欄。form の属性が board-bulk) の値を、釦が htmx で小窓に読む。行の押下で欄を切り替え、1 行も選んでいないときは帯を隠すのは JS (orders/board-select.js)。 #}
+{# 選んだ行の操作: 行の選ぶ欄 (見せない欄。form の属性が board-bulk) の値を、ボタンが htmx で小窓に読む。行の押下で欄を切り替え、1 行も選んでいないときは帯を隠すのは JS (orders/board-select.js)。 #}
 {# 「全部を選ぶ」は今のページの行を全部選び、「選択を外す」は全部外す (決め 11-04 22:4x。見出しの全部を選ぶ欄の代わり)。 #}
 <form id="board-bulk" method="get" action="{{ bulk_ship_url|default:bulk_po_url }}" class="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-base-200 p-2" aria-label="選んだ行の操作" hidden data-board-bulk>
   <span class="text-sm"><span class="tabular-nums" data-board-count>0</span> 行を選んでいます</span>

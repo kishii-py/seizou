@@ -5,6 +5,7 @@
 見ない物: migrations (履歴は書き換えない)・docs/ (記録)・CLAUDE.md (決まりそのものが語を名指す)・この試験。
 
 「届いた注文」と書かない。「受信した注文」と書く (本人の決め 11-04 14:4x「受信した注文がいいかな」)。
+「釦」と書かない。「ボタン」と書く (本人の決め 11-05「釦という字はかなり分かりにくい ボタンにして」)。
 見る物は src/・tests/・examples/・README.md・docs/。見ない物は migrations と docs/nights/ (記録) とこの試験。
 """
 
@@ -64,3 +65,17 @@ def test_received_orders_word_is_not_used():
             if RECEIVED_OLD in line:
                 hits.append(f"{file.relative_to(ROOT)}:{number}")
     assert not hits, "「届いた注文」は書かない (「受信した注文」と書く): " + ", ".join(hits)
+
+
+BUTTON_OLD = "釦"
+
+
+def test_button_word_is_not_used():
+    """「釦」と書かない。「ボタン」と書く (本人の決め 11-05「釦という字はかなり分かりにくい ボタンにして」)。"""
+    hits = []
+    for file in _files():
+        text = file.read_text(encoding="utf-8", errors="ignore")
+        for number, line in enumerate(text.splitlines(), 1):
+            if BUTTON_OLD in line:
+                hits.append(f"{file.relative_to(ROOT)}:{number}")
+    assert not hits, "「釦」は書かない (「ボタン」と書く): " + ", ".join(hits)

@@ -1,21 +1,21 @@
 /*
- * 保存の釦の字を、入力のたびに押した結果の数と金額に合わせる (N138。決め 11-04 23:0x)。素の JS (外の library を使わない)。
- * 字の型は部品の form が組み (core/forms.py の SubmitLabelMixin)、釦の data-submit-label に JSON の並びで置く。
+ * 保存のボタンの字を、入力のたびに押した結果の数と金額に合わせる (N138。決め 11-04 23:0x)。素の JS (外の library を使わない)。
+ * 字の型は部品の form が組み (core/forms.py の SubmitLabelMixin)、ボタンの data-submit-label に JSON の並びで置く。
  * 型の置き場は {rows} (行の数)・{qty} (数量の合計)・{amount} (金額の合計)。全部を埋められる最初の型を使い、
  * どれも埋められなければ data-submit-label-plain の字 (例「出荷する」) にする。サーバーが描く初めの字と同じ決まり。
  *
  * 約束:
- * - document に委譲する (小窓の中身が htmx で差し替わっても動く)。input と change のたびに、その form の釦を埋め直す。
+ * - document に委譲する (小窓の中身が htmx で差し替わっても動く)。input と change のたびに、その form のボタンを埋め直す。
  * - 数量の欄は data-label-qty、単価の欄は data-label-price (同じ行 tr の中)、「この行を出さない」は data-label-skip、
  *   金額の欄は data-label-amount。行 tr が無い form は form の全体を 1 行と読む。
  * - 数量の空の行は数えない。数でない字の数量が 1 つでもあれば、数を書かない (plain の字)。
  * - 単価の空か数でない行が 1 つでもあれば {amount} を埋めない (次の型へ)。
  * - 明細の選ぶ欄 (data-label-line) の値が描いたときの値と違えば、単位が分からないので plain の字にする。
  * - 数は全角を半角に、桁の区切りの「,」を外して読み、小数 2 桁で四捨五入して 3 桁ごとに区切る。
- * - 釦の最後の字の node だけを書き換える (前の印の絵は残す)。class を触らない。取った字を HTML として差し込まない。通信しない。
+ * - ボタンの最後の字の node だけを書き換える (前の印の絵は残す)。class を触らない。取った字を HTML として差し込まない。通信しない。
  * - 明細の合計の枠 (core/_line_totals.html の data-line-totals) があれば、同じ数えで rows・qty・amount の字 (data-line-totals-rows・-qty・-amount) を埋め直す (N149)。
  *   0 行でも数を書く。数でない数量があれば 3 つとも「—」。単価の空か数でない行があれば amount は「—」。金額の組が無い枠 (金額の閲覧が無い人・一括出荷) には書かない。
- * - 保存の帯 (core/_save_bar.html の data-save-bar。N154) があれば、input と change のたびに update の後で、帯の釦の字 (data-save-bar-label) を
+ * - 保存の帯 (core/_save_bar.html の data-save-bar。N154) があれば、input と change のたびに update の後で、帯のボタンの字 (data-save-bar-label) を
  *   その form の保存のボタン (type="submit" の最後の物) の字にそろえる。画面の全体の入力 (form[data-enter-guard]) だけで、小窓の中の form とほかの form は写さない。
  */
 (function () {
@@ -126,7 +126,7 @@
     setText(button, text || button.getAttribute("data-submit-label-plain"));
   }
 
-  // 保存の帯 (N154) の釦の字を、この form の保存のボタン (type="submit" の最後の物 = 帯の「保存」が押す物) の字にそろえる。
+  // 保存の帯 (N154) のボタンの字を、この form の保存のボタン (type="submit" の最後の物 = 帯の「保存」が押す物) の字にそろえる。
   // 字の元は保存のボタンの 1 か所 (サーバーの submit_label と、update が書いた字)。検索の欄・小窓の中の form は写さない。
   function setBar(form) {
     var bar = document.querySelector("[data-save-bar]");

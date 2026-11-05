@@ -1,7 +1,7 @@
-"""入口の釦の隠す形 (決め 11-04 00:0x「隠す側でそろえよう」。精査 A2 の S2)。
+"""入口のボタンの隠す形 (決め 11-04 00:0x「隠す側でそろえよう」。精査 A2 の S2)。
 
-編集の判定が on のとき、種類の権限の無い人には押すと断られる釦を出さない (押したときの断りは今のまま)。
-釦を出すかは core の tag can_write (core.access.can_write_model と同じ判定) と、印 seizou.hide_money だけで決める。
+編集の判定が on のとき、種類の権限の無い人には押すと断られるボタンを出さない (押したときの断りは今のまま)。
+ボタンを出すかは core の tag can_write (core.access.can_write_model と同じ判定) と、印 seizou.hide_money だけで決める。
 人は accounts の services で作る。名前は作り物。
 """
 
@@ -42,7 +42,7 @@ fake_post = test_purchasing_receipt_views.fake_post
 
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 
-# 釦の action → tag に渡す model (その model の新規登録の action と同じ種類の権限で決まる)。
+# ボタンの action → tag に渡す model (その model の新規登録の action と同じ種類の権限で決まる)。
 BUTTON_ACTIONS = {
     # 2 注残の盤と受注の詳細
     "shipping.ship": "shipping.Shipment",
@@ -91,7 +91,7 @@ def test_can_write_tag_is_in_core_only():
 
 
 def test_action_kinds_match_create():
-    """釦の action の種類が、tag に渡す model の新規登録の action の種類と同じ (tag の答え = 押したときの答え)。"""
+    """ボタンの action の種類が、tag に渡す model の新規登録の action の種類と同じ (tag の答え = 押したときの答え)。"""
     for action, label in BUTTON_ACTIONS.items():
         assert access.ACTION_KINDS[action] == access.ACTION_KINDS[_create_action(label)], action
         assert action not in access.ACCOUNT_ACTIONS, action

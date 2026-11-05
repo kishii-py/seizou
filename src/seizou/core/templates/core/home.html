@@ -8,7 +8,7 @@
 {# 数字のカードは dashboard_stats() の並び (6 枚目 = 今月の支払の見込み。受入の部品があるとき。7 枚目 = 今月の入金。入金の表があるとき)。6 枚のときは xl で 3 列 × 2 段、2xl で 1 段。7 枚のときは xl 以上で 4 列 × 2 段 (2xl で 7 列に並べると 1 枚が狭い)。 #}
 {# 8 枚目 = 手で打たずに受けた明細 (受注の部品があるとき。N83)。8 枚のときも xl 以上で 4 列 × 2 段。detail のあるカードは数の下に 1 行 (≒ 転記 m 分)。 #}
 {# help のあるカードは題の横に (i) を置き、数え方の 1 文を daisyUI の tooltip で出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。tooltip は中のボタンに focus が来たときも開く (:has(:focus-visible)) ので、キーボードでも読める。カードが link のときに (i) を押しても移らないよう、ボタンの押下は既定の動きを止める (_screen_help.html の「?」と同じ)。 #}
-{# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前の釦で 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。 #}
+{# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前のボタンで 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。 #}
 {% if stats %}
 <div data-tour="stats" class="mb-6 grid gap-4 sm:grid-cols-2 {% if stats|length > 6 %}xl:grid-cols-4{% elif stats|length > 5 %}xl:grid-cols-3 2xl:grid-cols-6{% elif stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
   {% for stat in stats %}
@@ -35,7 +35,7 @@
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="flow-guide-title" data-tour="flow-guide">
     {% if today.rows %}
     <h2 id="flow-guide-title" class="text-lg font-bold">{{ today.title }}</h2>
-    <p class="mt-2 text-base-content/70">手を動かす物のある段だけが並びます。釦を押すと、その物に絞った一覧が開きます。</p>
+    <p class="mt-2 text-base-content/70">手を動かす物のある段だけが並びます。ボタンを押すと、その物に絞った一覧が開きます。</p>
     <ul class="mt-4 divide-y" aria-label="{{ today.title }}">
       {% for row in today.rows %}
       <li class="flex flex-wrap items-center justify-between gap-2 py-2">

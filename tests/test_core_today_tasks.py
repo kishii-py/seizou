@@ -165,7 +165,7 @@ def test_today_tasks_buttons_are_screen_names(user, customer, partner, shaft):
     assert rows
     for row in rows:
         assert row["button"] == names[row["url_name"]], row["key"]
-    # 行にならなかった段 (納品書・請求書・受入) の移る先も、画面の名前の釦
+    # 行にならなかった段 (納品書・請求書・受入) の移る先も、画面の名前のボタン
     for key, (button, url_name, _params) in dashboard._task_targets().items():
         assert button == names[url_name], key
         assert url_name == TARGETS[key][0], key

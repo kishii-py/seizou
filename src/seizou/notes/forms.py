@@ -37,7 +37,7 @@ def target_of(content_type_id, object_id):
 
 
 class NoteForm(forms.Form):
-    """メモを書く。付ける先 (種類と番号) は隠した欄で、メモの枠の「書く」の釦が GET で渡す。
+    """メモを書く。付ける先 (種類と番号) は隠した欄で、メモの枠の「書く」のボタンが GET で渡す。
 
     本文 (body_html) は Quill の編集の箱の HTML を、保存の前に JS が隠した欄へ写す。掃除は services がする。
     """

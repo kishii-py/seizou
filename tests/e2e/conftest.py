@@ -409,7 +409,7 @@ def _go_if_not_there(page: Page, company: Company, path: str) -> None:
 
 
 def _click_save(page: Page) -> None:
-    # 入力の土台の form の主の釦を押す。釦の字は form ごとに違う (N138 で「出荷する」「1 行・合計 ¥500 で発注する」のように
+    # 入力の土台の form の主のボタンを押す。ボタンの字は form ごとに違う (N138 で「出荷する」「1 行・合計 ¥500 で発注する」のように
     # 対象と数と金額が入り、入力のたびに JS が埋め直す) ので、字でなく「入力の form の中の主色の submit」で選ぶ。
     # 黄の「このまま保存」は btn-warning なので、ここでは押さない (押す側が名前で選ぶ)。
     page.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()

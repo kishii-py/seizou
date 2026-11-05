@@ -1015,7 +1015,7 @@ _TASK_KEY_OF_STEP = {"purchase_order": "purchase_draft", "reply": "purchase_sent
 
 
 def _task_targets() -> dict:
-    """行の key → (釦の字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。"""
+    """行の key → (ボタンの字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。"""
     inbox = _model("connect", "Inbox")
     purchase = _model("purchasing", "PurchaseOrder")
     return {

@@ -140,7 +140,7 @@
   function onKeydown(event) {
     if (event.key !== "Enter" && event.key !== " ") return;
     var box = elementOf(event.target);
-    if (!box || !box.matches(DROP)) return; // 枠そのものに焦点があるときだけ (中の input・link・釦は自分の動き)
+    if (!box || !box.matches(DROP)) return; // 枠そのものに焦点があるときだけ (中の input・link・ボタンは自分の動き)
     event.preventDefault();
     inputOf(box).click();
   }

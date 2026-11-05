@@ -141,7 +141,7 @@ def add_image(note, file, user) -> NoteImage:
     """メモ (note) に写真を 1 枚置く。作った NoteImage を返す (URL は image.file.url = /media/notes/…)。
 
     note が保存していない空のメモ (note_for が返す pk の無い物) なら、同じ atomic の中でメモの行を先に作る
-    (本文はまだ空。保存の釦で save_note が書く)。形式と大きさが通らなければ日本語の ValueError (行もファイルも残さない)。
+    (本文はまだ空。保存のボタンで save_note が書く)。形式と大きさが通らなければ日本語の ValueError (行もファイルも残さない)。
     """
     original_name = _refuse_bad_image(file)
     with transaction.atomic():

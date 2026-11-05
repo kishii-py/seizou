@@ -185,7 +185,7 @@ def test_home_flow_links_go_to_inbox_and_orderlines(logged_in, customer):
     section = re.search(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', body, re.S).group(0)
     inbox_url = reverse("connect:inbox_list")
     lines_url = reverse("orders:orderline_list")
-    # 「今日やること」の枠 (N145): 受信した注文の行の釦は、受信した注文の一覧の未処理に絞った形へ移る
+    # 「今日やること」の枠 (N145): 受信した注文の行のボタンは、受信した注文の一覧の未処理に絞った形へ移る
     assert f'href="{inbox_url}?f_status=received">受信した注文<' in section
     # 受注が無いので、生産管理ボードの行 (指示書の無い明細) は出ない。「次にすること」の 1 文も出さない
     assert f'href="{lines_url}"' not in section

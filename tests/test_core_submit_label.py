@@ -1,8 +1,8 @@
-"""保存の釦の字に、押した結果の対象と数と金額を書く (N138。決め 11-04 23:0x「ボタンに金額を入れて、押す前の迷いを減らす」)。
+"""保存のボタンの字に、押した結果の対象と数と金額を書く (N138。決め 11-04 23:0x「ボタンに金額を入れて、押す前の迷いを減らす」)。
 
-- core の口 = core/forms.py の SubmitLabelMixin・label_number と、入力のカードの釦の data-submit-label の印。
-- 出荷・一括出荷・発注・受入・入金の釦の字 (開いた形と、送って止まった形)。金額の閲覧が無い人の発注の字。
-- 取消の確かめの画面 (受注・指示書・納品書・請求書・発注) の釦の字に対象の番号。
+- core の口 = core/forms.py の SubmitLabelMixin・label_number と、入力のカードのボタンの data-submit-label の印。
+- 出荷・一括出荷・発注・受入・入金のボタンの字 (開いた形と、送って止まった形)。金額の閲覧が無い人の発注の字。
+- 取消の確かめの画面 (受注・指示書・納品書・請求書・発注) のボタンの字に対象の番号。
 - static の js/seizou-submit-label.js の約束 (ブラウザで動かさず字で見る。ブラウザでの確かめは本体の手の確かめ) と、
   base.html の読み込みの 1 行。
 作り物のデータだけを使う。作り物の作り方は tests/test_orders_board_bulk.py と tests/test_core_screen_polish.py を写した。
@@ -81,9 +81,9 @@ def _line(user, customer, item, qty="10"):
 
 
 def _button(body):
-    """入力のカードの主の保存の釦。(釦の字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
+    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
     match = re.search(r'<button class="btn btn-primary" type="submit"([^>]*)>(.*?)</button>', body, re.S)
-    assert match, "保存の釦が無い"
+    assert match, "保存のボタンが無い"
     attrs, inner = match.group(1), match.group(2)
     label = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
     template = re.search(r'data-submit-label="([^"]*)"', attrs)
@@ -149,7 +149,7 @@ def test_ship_form_writes_qty_and_unit(logged_in, user, customer, item):
     body = logged_in.post(url, {"order_line": line.pk, "qty": "3", "shipped_at": ""}).content.decode()
     assert _button(body)[0] == "3 個を出荷する"
 
-    # 小窓の形も同じ釦。
+    # 小窓の形も同じボタン。
     body = logged_in.get(url, {"order_line": line.pk, "qty": "4"}, **MODAL).content.decode()
     assert _button(body)[0] == "4 個を出荷する"
 
