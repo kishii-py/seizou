@@ -14,3 +14,9 @@ register = template.Library()
 @register.simple_tag
 def purchase_order_timeline(purchase_order):
     return timeline.events_for(purchase_order)
+
+
+@register.simple_tag
+def purchase_order_stages(purchase_order):
+    """発注の段の帯 (案 4-A の発注。N151)。取消の発注は None (帯を出さない)。"""
+    return timeline.stage_band(purchase_order)
