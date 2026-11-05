@@ -35,6 +35,17 @@ KINDS = (
 )
 _RANK = {kind: rank for rank, kind in enumerate(KINDS)}
 
+#: 出来事の種類ごとの絵記号 (core の seizou_icons の PATHS にある名前だけ。流れの枠の点に出す。N163)。種類を足すときはここにも足す。
+KIND_ICONS = {
+    "order": "pencil",
+    "sent": "external",
+    "reply": "inbox",
+    "shipping_notice": "truck",
+    "receipt": "box",
+    "acceptance": "check",
+    "cancel": "x",
+}
+
 #: 送った注文の相手の返事のうち、相手の受け口が受け取った印 (connect.services._deliver の 200 の字)。
 RECEIVED = "受け取った"
 
@@ -58,6 +69,11 @@ class Event:
     def has_time(self) -> bool:
         """時刻まである出来事か (テンプレートが日時の字の形を選ぶ)。"""
         return isinstance(self.when, datetime)
+
+    @property
+    def icon(self) -> str:
+        """流れの枠の点の絵記号の名前 (KIND_ICONS)。"""
+        return KIND_ICONS[self.kind]
 
 
 def events_for(purchase_order) -> list[Event]:

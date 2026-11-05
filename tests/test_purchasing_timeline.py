@@ -218,7 +218,7 @@ def test_detail_shows_flow_section_in_live_part(monkeypatch, user, logged_in, su
     section = _flow_section(body)
     assert section.count("data-flow-kind=") == len(FLOW_KINDS)
     receipt_url = reverse("purchasing:receipt_detail", args=[receipt.pk])
-    assert f'<a class="link link-hover" href="{receipt_url}">検収を送った (受入 10 個)</a>' in section
+    assert f'<a class="link link-primary" href="{receipt_url}">検収を送った (受入 10 個)</a>' in section
     assert "<span>明細 1</span>" in section
     assert "data-modal-form" not in section
     # 流れは枠で、関係する物のタブは今のまま

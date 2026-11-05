@@ -213,7 +213,7 @@ def test_detail_shows_flow_section_after_lines(user, logged_in, customer, item, 
     section = _flow_section(body)
     assert section.count("data-flow-kind=") == len(FLOW_KINDS)
     workorder_url = reverse("workorders:workorder_detail", args=[workorder.pk])
-    assert f'<a class="link link-hover" href="{workorder_url}">指示書 {workorder.wo_no} を発行 (10 個)</a>' in section
+    assert f'<a class="link link-primary" href="{workorder_url}">指示書 {workorder.wo_no} を発行 (10 個)</a>' in section
     assert "<span>明細 1</span>" in section
     assert "data-modal-form" not in section
     # 流れは枠で、関係する物のタブは今のまま
