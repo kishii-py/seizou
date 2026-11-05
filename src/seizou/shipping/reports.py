@@ -21,7 +21,7 @@ def delivery_note_context(note) -> dict:
     """納品書 1 枚の帳票の context。
 
     company = 出荷元の {"name", "address", "phone", "logo"} (振込先は請求書だけに出すので渡さない。出荷ラベルと同じ形)、note = {"number", "date"}、customer = 得意先、
-    lines = 出荷ごとの {"shipment_no", "item_code", "item_name", "quantity", "unit", "unit_price", "amount"}、
+    lines = 出荷ごとの {"shipment_no", "shipped_at", "item_code", "item_name", "quantity", "unit", "unit_price", "amount"}、
     total = 金額の合計。
     """
     customer = note.customer
@@ -34,6 +34,7 @@ def delivery_note_context(note) -> dict:
         lines.append(
             {
                 "shipment_no": shipment.shipment_no,
+                "shipped_at": shipment.shipped_at,
                 "item_code": order_line.item.part_no,
                 "item_name": order_line.item.name,
                 "quantity": shipment.qty,

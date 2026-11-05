@@ -12,21 +12,21 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
 <p class="report-customer">{{ customer.name }} 御中</p>
 <table class="report-meta">
   <tr><th>請求書番号</th><td>{{ invoice.number }}</td></tr>
-  <tr><th>発行日</th><td>{{ invoice.issued_on|date:"Y-m-d" }}</td></tr>
-  <tr><th>期間</th><td>{{ invoice.period_from|date:"Y-m-d" }} 〜 {{ invoice.period_to|date:"Y-m-d" }}</td></tr>
-  {% if invoice.due_on %}<tr><th>支払期日</th><td>{{ invoice.due_on|date:"Y-m-d" }}</td></tr>{% endif %}
+  <tr><th>発行日</th><td>{{ invoice.issued_on|date:"Y年n月j日" }}</td></tr>
+  <tr><th>期間</th><td>{{ invoice.period_from|date:"Y年n月j日" }} 〜 {{ invoice.period_to|date:"Y年n月j日" }}</td></tr>
+  {% if invoice.due_on %}<tr><th>支払期日</th><td>{{ invoice.due_on|date:"Y年n月j日" }}</td></tr>{% endif %}
 </table>
 <p>下記のとおりご請求申し上げます。</p>
 {% endblock %}
 {% block content %}
 <table class="report-lines">
   <thead>
-    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr>
+    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価 (円)</th><th>金額 (円)</th></tr>
   </thead>
   <tbody>
     {% for line in lines %}
     <tr>
-      <td>{{ line.shipped_at|date:"Y-m-d" }}</td>
+      <td class="date">{{ line.shipped_at|date:"Y年n月j日" }}</td>
       <td>{{ line.shipment_no }}</td>
       <td>{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
@@ -40,7 +40,7 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
   <tfoot>
     <tr><th colspan="7">小計</th><td class="num">{{ subtotal|floatformat:"-2g" }}</td></tr>
     <tr><th colspan="7">消費税 ({{ tax_rate_percent }}%)</th><td class="num">{{ tax|floatformat:"-2g" }}</td></tr>
-    <tr><th colspan="7">合計</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
+    <tr class="report-total"><th colspan="7">合計 (円)</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
   </tfoot>
 </table>
 {% endblock %}
