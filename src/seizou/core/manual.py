@@ -30,10 +30,17 @@
   ?part=<h3 の id> を付けると、断片のその <h3 id="…"> から次の <h3 か </section> の前までだけを出す。無ければ画面の全部を出す。
   htmx でない要求 (新しいタブ・JS の無いとき) は /manual/#<anchor> へ移す。anchor が画面の目録に無ければ 404。
   絵の相対の道 (src="images/…") は、小窓を開いたページの道で解けないように /manual/images/ に直して出す (置き場のファイルは直さない)。
+
+自動の付け足し (依頼書 N168。置き場のファイルは直さず、出すときに断片の字の後に足す。断片の無い画面と読めない画面には足さない):
+  入れる物: 画面の view が form_class を持ち、断片に <h3>入れる物</h3> が無ければ、欄の名前・必須・説明の表 (input_rows)。
+  絵: 断片に <img が無く、manual/images/<名前>.png があれば、その絵 (命令 manage.py seizou_manual_shots が撮る)。
+  止まるときの文: 部品の services.py の断りの文のうち REFUSAL_HEADS で始まる物 (refusal_texts)。使い方の画面と印刷と小窓は、その部品の画面ごとに足す。
+    冊子は、その部品の最初の章の前に 1 回だけ置く (manual_sections(booklet=True) の app_refusals)。小窓で枠 (?part=) を選んだときは何も足さない。
 """
 
 from __future__ import annotations
 
+import ast
 import re
 from datetime import date, datetime
 from datetime import timezone as dt_timezone
@@ -41,6 +48,7 @@ from importlib import metadata
 from pathlib import Path
 from urllib.parse import quote
 
+from django import forms as django_forms
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import DatabaseError
@@ -48,8 +56,9 @@ from django.http import FileResponse, Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
-from django.urls import reverse
+from django.urls import Resolver404, resolve, reverse
 from django.utils import timezone
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
@@ -105,6 +114,26 @@ BOOKLET_PRIMARY_COLOR = "#1f3a5f"
 #: 冊子の表紙の副題
 BOOKLET_SUBTITLE = "画面ごとの操作の手引きと、お金と数の決まり"
 
+#: 止まるときの文の 1 文目の語 (依頼書 N156 の型。tests/test_wording.py の REFUSAL_HEADS と同じ字の組)
+REFUSAL_HEADS = (
+    "保存できません。",
+    "取り消せません。",
+    "削除できません。",
+    "送れません。",
+    "受け入れられません。",
+    "断れません。",
+    "発行できません。",
+    "着手できません。",
+    "記録できません。",
+    "出荷できません。",
+)
+
+#: 断片が自分で持つ「入れる物」の見出し (あれば表を足さない)
+INPUT_HEADING = re.compile(r"<h3\b[^>]*>入れる物</h3>")
+
+#: 道の引数 (<int:pk> など)。画面の view を引くときは 0 に替える
+PATH_ARG = re.compile(r"<(?:\w+:)?\w+>")
+
 
 def manual_dir() -> Path | None:
     """説明書の置き場 (会社の置き場の manual/)。settings に BASE_DIR が無ければ None。"""
@@ -133,17 +162,109 @@ def read_fragment(name: str):
         return UNREADABLE
 
 
-def manual_sections() -> list[dict]:
+def view_class_of(screen):
+    """目録の画面 (Screen) の view の class。道の引数を 0 に替えて URL の木で引く。引けなければ None。"""
+    try:
+        return resolve(PATH_ARG.sub("0", screen.path)).func.view_class
+    except (Resolver404, AttributeError):
+        return None
+
+
+def _literal_text(node) -> str | None:
+    """断りの文の式の字。f-string の {…} は「…」に、足し算の右の名前や呼び出しも「…」にする。字で始まらない式は None。"""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(part.value if isinstance(part, ast.Constant) else "…" for part in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _literal_text(node.left)
+        if left is None:
+            return None
+        right = _literal_text(node.right)
+        return left + ("…" if right is None else right)
+    return None
+
+
+def refusal_texts(app: str) -> list[str]:
+    """部品 (seizou の下の app) の services.py の raise ValueError と raise RuleViolation の文のうち、REFUSAL_HEADS で始まる物。
+
+    ファイルを pathlib で読み、ast で見る (import しない・inspect を使わない)。同じ文は 1 つにし、ファイルの並びのまま返す。
+    services.py の無い部品と、会社が足した app は空の並び。相手の会社への返事の文は頭の語で始まらないので入らない。
+    """
+    path = Path(__file__).resolve().parent.parent / app / "services.py"
+    if not path.is_file():
+        return []
+    texts: list[str] = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
+            continue
+        func = node.exc.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        if name not in ("ValueError", "RuleViolation"):
+            continue
+        for arg in node.exc.args:
+            text = _literal_text(arg)
+            if text and text.startswith(REFUSAL_HEADS) and text not in texts:
+                texts.append(text)
+    return texts
+
+
+def input_rows(form_class) -> list[tuple[str, str, str]]:
+    """入力の画面の「入れる物」の表の行 (欄の名前, 必須 か 空, 説明)。form は作らない (base_fields を読む)。
+
+    説明は help_text。無ければ選ぶ欄の選択肢の字を「・」で並べる (表から引く選ぶ欄は DB を読むので並べない)。隠れた欄は入れない。
+    """
+    rows = []
+    for name, field in form_class.base_fields.items():
+        if field.widget.is_hidden:
+            continue
+        note = str(field.help_text or "")
+        if not note and isinstance(field, django_forms.ChoiceField) and not isinstance(field, django_forms.ModelChoiceField):
+            note = "・".join(str(label) for value, label in field.choices if value not in ("", None))
+        rows.append((str(field.label or name), "必須" if field.required else "", note))
+    return rows
+
+
+def decorate_fragment(screen, html: str, refusals: list[str] | None = None) -> str:
+    """断片の字の後に、入れる物の表・絵・止まるときの文を足した字 (置き場のファイルは直さない)。足す物が無ければそのまま返す。"""
+    extra = []
+    form_class = getattr(view_class_of(screen), "form_class", None)
+    if form_class is not None and not INPUT_HEADING.search(html):
+        rows = input_rows(form_class)
+        if rows:
+            extra.append(
+                format_html(
+                    "<h3>入れる物</h3><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead><tbody>{}</tbody></table>",
+                    format_html_join("", "<tr><td>{}</td><td>{}</td><td>{}</td></tr>", rows),
+                )
+            )
+    name = fragment_name(screen.url_name)
+    folder = manual_dir()
+    if "<img" not in html and folder is not None and (folder / "images" / f"{name}.png").is_file():
+        extra.append(format_html('<figure class="seizou-manual-shot"><img src="images/{}.png" alt="{} の画面"></figure>', name, screen.name))
+    if refusals:
+        extra.append(format_html("<h3>止まるときの文 (この部品)</h3><ul>{}</ul>", format_html_join("", "<li>{}</li>", ((text,) for text in refusals))))
+    return html + "".join(extra)
+
+
+def manual_sections(booklet: bool = False) -> list[dict]:
     """目録の 1 画面ごとの本文の材料。目録の並びのまま返す。
 
-    1 画面 = {"name", "help", "url_name", "anchor", "html", "unreadable"}。
-    anchor は断片の名前 (目次の link の飛び先)。html は断片の字 (mark_safe) か None。
+    1 画面 = {"name", "help", "url_name", "anchor", "html", "unreadable", "app_refusals"}。
+    anchor は断片の名前 (目次の link の飛び先)。html は断片の字に自動の付け足しをした字 (mark_safe) か None。
+    booklet が偽 (使い方の画面と印刷) は止まるときの文を画面ごとに足す。真 (冊子) は足さず、部品の最初の画面の app_refusals に入れる。
     """
     sections = []
+    refusals: dict[str, list[str]] = {}
     for screen in all_screens():
         anchor = fragment_name(screen.url_name)
         fragment = read_fragment(anchor)
         unreadable = fragment is UNREADABLE
+        first_of_app = screen.app not in refusals
+        if first_of_app:
+            refusals[screen.app] = refusal_texts(screen.app)
+        if isinstance(fragment, str):
+            fragment = decorate_fragment(screen, fragment, None if booklet else refusals[screen.app])
         sections.append(
             {
                 "name": screen.name,
@@ -152,6 +273,7 @@ def manual_sections() -> list[dict]:
                 "anchor": anchor,
                 "html": None if fragment is None or unreadable else mark_safe(fragment),
                 "unreadable": unreadable,
+                "app_refusals": refusals[screen.app] if booklet and first_of_app else [],
             }
         )
     return sections
@@ -198,7 +320,7 @@ def booklet_context() -> dict:
         "system_name": "seizou",
         "version": package_version(),
         "manual_date": manual_date(),
-        "sections": manual_sections(),
+        "sections": manual_sections(booklet=True),
         "intro": None if intro is None or intro is UNREADABLE else mark_safe(intro),
         "intro_unreadable": intro is UNREADABLE,
         "has_manual": folder is not None and folder.is_dir(),
@@ -309,11 +431,14 @@ def fragment_part(html: str, part: str | None) -> str | None:
     return html[start.start() : end.start() if end else len(html)]
 
 
-def fragment_for_modal(fragment: str, part: str | None) -> str:
-    """小窓に出す字。枠 (part) が断片にあればその枠だけ、無ければ画面の全部 (最初の <h2> を外す)。絵の道は直す。"""
+def fragment_for_modal(fragment: str, part: str | None, screen=None) -> str:
+    """小窓に出す字。枠 (part) が断片にあればその枠だけ、無ければ画面の全部 (最初の <h2> を外す)。絵の道は直す。
+
+    screen (目録の Screen) を渡すと、画面の全部を出すときだけ自動の付け足し (止まるときの文を含む) をする。
+    """
     piece = fragment_part(fragment, part)
     if piece is None:
-        piece = fragment_body(fragment)
+        piece = fragment_body(fragment if screen is None else decorate_fragment(screen, fragment, refusal_texts(screen.app)))
     return absolute_images(piece)
 
 
@@ -333,7 +458,7 @@ def manual_fragment(request, anchor: str):
         return HttpResponseRedirect(manual_url)
     fragment = read_fragment(anchor)
     unreadable = fragment is UNREADABLE
-    html = None if fragment is None or unreadable else mark_safe(fragment_for_modal(fragment, request.GET.get(PART_PARAM)))
+    html = None if fragment is None or unreadable else mark_safe(fragment_for_modal(fragment, request.GET.get(PART_PARAM), screen))
     return render(
         request,
         FRAGMENT_TEMPLATE,

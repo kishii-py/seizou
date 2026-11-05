@@ -9,6 +9,7 @@ PDF (帳票の部品 core.reports が描く) と、PDF を作れないときに�
 表紙は 1 ページ目の余白を無くして主色の帯を紙の端まで出し、2 ページ目に「この冊子について」(目次に載せない) を置く。
 主色は booklet_context() の primary_color。章の頭の帯と番号は style で付け、断片の字は書き換えない。
 断片の無い (か読めない) 章 (booklet-stub) は、続く同じ章と同じページに詰める。
+部品ごとの止まるときの文 (booklet-refusals) は、その部品の最初の章の前に 1 回だけ置く (章の番号と目次に入れない。booklet_context() の app_refusals)。
 {% endcomment %}
 <html lang="ja">
 <head>
@@ -76,6 +77,9 @@ body { counter-reset: booklet-chapter; }
 .booklet-chapter th { background: #eee; }
 .booklet-empty { color: #999; }
 .booklet-chapter img { display: block; max-width: 100%; height: auto; margin: 2mm 0; border: 0.5pt solid #999; }
+.booklet-refusals { break-before: page; }
+.booklet-refusals h2 { bookmark-level: none; margin: 0 0 5mm; padding: 1mm 0 1.5mm 4mm; border-left: 2.5mm solid {{ primary_color }}; border-bottom: 0.5pt solid #999; font-size: 16pt; font-weight: 700; }
+.booklet-refusals ul { margin: 2mm 0; padding-left: 6mm; }
 </style>
 </head>
 <body>
@@ -115,7 +119,10 @@ body { counter-reset: booklet-chapter; }
 {% if intro %}<div id="index" class="booklet-chapter">{{ intro }}</div>
 {% elif intro_unreadable %}<div id="index" class="booklet-chapter"><h2>はじめに</h2><p>前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。/seizou:manual で作り直してください。</p></div>
 {% endif %}
-{% for section in sections %}{% if section.html %}<div id="{{ section.anchor }}" class="booklet-chapter">
+{% for section in sections %}{% if section.app_refusals %}<div class="booklet-refusals"><h2>この部品で止まるときの文</h2>
+<p>次の章の「{{ section.name }}」から続く画面で、保存や取消を断られたときに出る文です。</p>
+<ul>{% for text in section.app_refusals %}<li>{{ text }}</li>{% endfor %}</ul></div>
+{% endif %}{% if section.html %}<div id="{{ section.anchor }}" class="booklet-chapter">
 {{ section.html }}
 </div>
 {% elif section.unreadable %}<div id="{{ section.anchor }}" class="booklet-chapter booklet-stub">
