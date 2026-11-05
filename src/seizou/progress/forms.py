@@ -16,6 +16,8 @@ _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model
 class ProgressRecordForm(forms.Form):
     """実績の入力。日時の既定は今。予定を超えた実数も入れられる (現物優先)。"""
 
+    submit_label = "記録する"
+
     workorder_step = forms.ModelChoiceField(
         label="指示書の工程",
         queryset=_WorkOrderStep.objects.select_related("workorder", "process"),

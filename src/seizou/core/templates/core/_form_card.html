@@ -15,7 +15,7 @@
       {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
     </div>
     {% else %}
-    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' %} sm:col-span-2{% endif %}">
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}">
       <div class="mb-2 flex items-center gap-2">
         <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
         {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}

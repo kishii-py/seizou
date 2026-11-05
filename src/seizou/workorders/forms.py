@@ -8,6 +8,7 @@ services.issue_workorder(order_line=..., qty=..., steps=..., user=...) を呼ぶ
 from django import forms
 from django.db.models import Q
 
+from seizou.core.forms import CHECKBOX_CSS, Checkboxes
 from seizou.masters.services import active_processes
 
 from .models import WorkOrder, WorkOrderStep
@@ -28,6 +29,8 @@ class ProcessChoiceField(forms.ModelMultipleChoiceField):
 class WorkOrderIssueForm(forms.Form):
     """指示書の発行。工程を選ばなければ、選んだ明細の部品の標準の工程の並びを写す。"""
 
+    submit_label = "発行する"
+
     order_line = OrderLineChoiceField(
         label="受注の明細",
         queryset=_OrderLine.objects.exclude(order__status="cancelled").select_related("order", "item"),
@@ -37,6 +40,7 @@ class WorkOrderIssueForm(forms.Form):
         label="工程",
         queryset=None,
         required=False,
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
         help_text="選ばなければ、部品の標準の工程の並びを写します (使用停止の工程は写しません)。予定の数は工程ごとに数量と同じです。",
     )
 

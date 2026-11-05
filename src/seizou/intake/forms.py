@@ -39,6 +39,8 @@ class UploadForm(forms.Form):
     ready は読み取りが使えるか (鍵があるか)。偽ならテンプレートが黄の知らせを出し、欄とボタンを押せなくする。
     """
 
+    submit_label = "読み取る"
+
     customer = forms.ModelChoiceField(queryset=None, label="得意先")
     file = forms.FileField(label="注文書のファイル", help_text="PDF・PNG・JPEG。20MB まで。")
 

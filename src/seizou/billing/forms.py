@@ -43,32 +43,35 @@ class ShipmentCheckboxes(forms.CheckboxSelectMultiple):
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
-    """出荷を選ぶ欄。字は「出荷番号 得意先 品番 品名 数量 出荷日 納品書番号」。"""
+    """出荷を選ぶ欄。字は「出荷番号・得意先・品番 品名・数量 n・出荷日・納品書番号」(区切りは「・」。目視の所見 11-05)。"""
 
     def label_from_instance(self, obj):
         line = obj.order_line
         qty = f"{obj.qty.normalize():f}"
         note_no = obj.delivery_note.note_no if obj.delivery_note else ""
-        return (
-            f"{obj.shipment_no} {line.order.customer.name} {line.item.part_no} {line.item.name} "
-            f"{qty} {obj.shipped_at:%Y-%m-%d} {note_no}"
+        text = (
+            f"{obj.shipment_no}・{line.order.customer.name}・{line.item.part_no} {line.item.name}"
+            f"・数量 {qty}・{obj.shipped_at:%Y-%m-%d}"
         )
+        return f"{text}・{note_no}" if note_no else text
 
 
 class InvoiceForm(forms.Form):
     """請求書を作る form。"""
 
+    submit_label = "請求書を作る"
+
     customer = forms.ModelChoiceField(label="得意先", queryset=_Partner.objects.none(), widget=forms.Select)
+    issued_on = forms.DateField(
+        label="発行日",
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+    )
     shipments = ShipmentChoiceField(
         label="出荷",
         queryset=billable_shipments().none(),
         widget=ShipmentCheckboxes(attrs={"class": "checkbox"}),
         help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
-    )
-    issued_on = forms.DateField(
-        label="発行日",
-        initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
     )
 
     def __init__(self, *args, **kwargs):

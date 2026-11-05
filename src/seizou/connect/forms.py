@@ -41,6 +41,8 @@ class AcceptForm(forms.Form):
     同じ品番が 2 行にあっても欄は 1 つ (item_mapping は品番 → 品目の 1 対 1 のため)。
     """
 
+    submit_label = "受け入れる"
+
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.part_fields = []

@@ -175,6 +175,8 @@ class CsvImportForm(forms.Form):
     services.import_* に渡す行を置き、import_counts (入れる・更新する・飛ばした の数) を置く。表には書かない。
     """
 
+    submit_label = "取り込む"
+
     #: 取り込む表 (子が決める)
     model = None
     #: 同じ行かどうかを決める鍵の列の名前 (自社品番 = part_no・取引先コード = code)

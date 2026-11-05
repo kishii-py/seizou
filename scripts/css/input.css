@@ -60,7 +60,7 @@ body > .ts-dropdown .active {
    Tailwind の max-w-lg と daisyUI の modal-box より強い)。
    - 既定 (見るだけの小窓 = 部品・計画の詳細・決まりの説明など): 48rem。画面が狭ければ画面の幅から 2rem を引いた幅。
    - 入力の小窓 (core/_form_modal.html の根の箱 .seizou-modal-wide): 64rem (入力の 2 列と明細の表が並ぶ幅)。
-   - 少ない中身の小窓 (根の箱に .seizou-modal-narrow を付けた物。確認の文と釦だけなど): 28rem。
+   - 少ない中身の小窓 (根の箱に .seizou-modal-narrow を付けた物。確認の文とボタンだけなど): 28rem。
    - 高さは画面から上下 2rem ずつ空ける (中身が多いときは箱の中で巻く。上に貼り付かない)。 */
 #seizou-modal-box {
   max-width: min(48rem, calc(100vw - 2rem));
@@ -86,4 +86,26 @@ body > .ts-dropdown .active {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* 横や縦に溢れる箱 (表・図) のスクロールのバーを常に見せる。macOS はバーを触るまで隠すので、右端の列が「切れている」ように見えた
+   (全画面のスクショの目視の所見 11-05)。WebKit と Chromium の擬似要素で細いバーを描く。Firefox は scrollbar-width の細い物。 */
+.overflow-auto,
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-base-content) 30%, transparent) transparent;
+}
+.overflow-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.overflow-auto::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+.overflow-auto::-webkit-scrollbar-track,
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
 }
