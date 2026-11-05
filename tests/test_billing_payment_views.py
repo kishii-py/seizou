@@ -1,4 +1,4 @@
-"""入金の画面 (core の土台の上)。請求書の詳細の「入金」の枠・入金の記録・入金の取消・移るだけの口・一覧の列と「未入金だけ」。
+"""入金の画面 (core の土台の上)。請求書の詳細の「入金」の枠・入金の記録・入金の取消・移るだけの口・一覧の列と「残のある物だけ」。
 
 金額の閲覧 (N36) は 2 つの隠し方を見る: 一覧の「残」の列は土台が名前で隠し、枠と入力の画面の字はテンプレートが隠す。
 入金の記録は金額が主な登録なので、金額の閲覧が無い人は保存で断られる。
@@ -262,8 +262,8 @@ def test_list_has_payment_columns_and_unpaid_filter(client_logged_in, user, item
     assert unpaid_row["payment_status_label"] == "未入金"
     assert unpaid_row["balance"] == Decimal("16500.00")
     body = response.content.decode()
-    # 「未入金だけ」は絞り込みの枠の中の印 (既定は切。N127)。古い「すべて / 未入金だけ」の切り替えは無い
-    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" data-list-filter>未入金だけ</label>' in body
+    # 「残のある物だけ」は絞り込みの枠の中の印 (既定は切。N127)。古い「すべて / 残のある物だけ」の切り替えは無い
+    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" data-list-filter>残のある物だけ</label>' in body
     assert 'id="invoices-unpaid"' not in body
 
     filtered = client_logged_in.get(reverse("billing:invoice_list") + "?f_unpaid=1")
@@ -271,7 +271,7 @@ def test_list_has_payment_columns_and_unpaid_filter(client_logged_in, user, item
     assert invoice.invoice_no in body
     assert paid.invoice_no not in body
     assert cancelled.invoice_no not in body
-    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" checked data-list-filter>未入金だけ</label>' in body
+    assert 'name="f_unpaid" value="1" class="checkbox checkbox-sm" checked data-list-filter>残のある物だけ</label>' in body
     assert 'id="invoices-unpaid"' not in body
     assert 'hx-include="#invoices-unpaid"' not in body
 
