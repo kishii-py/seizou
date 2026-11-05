@@ -18,6 +18,10 @@ SRC = ROOT / "src" / "seizou"
 HX = {"HTTP_HX_REQUEST": "true"}
 EMPTY_LINE = "取引先から注文が届くと、ここに並びます。"
 BUSY = '<template data-intake-busy><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>読み取り中…</template>'
+TOGGLE = (
+    '<span class="tooltip" data-tip="AI に質問"><button id="assistant-toggle" type="button" class="btn btn-neutral btn-circle shadow-lg'
+    ' focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">'
+)
 
 
 @pytest.fixture
@@ -104,3 +108,27 @@ def test_upload_page_without_key_has_no_spinner(logged_in, without_key):
 
     assert "data-intake-busy" not in body
     assert "<fieldset disabled" in body
+
+
+# 1. 「AI に質問」の丸いボタンと本文の下の余白
+
+
+def test_assistant_toggle_is_small_circle_with_tooltip(logged_in):
+    html = logged_in.get(reverse("core:home")).content.decode()
+
+    assert html.count(TOGGLE) == 1
+    inner = re.search(r'<button id="assistant-toggle"[^>]*>(.*?)</button>', html, re.S).group(1)
+    assert "<svg" in inner
+    assert re.sub(r"<svg.*?</svg>", "", inner, flags=re.S).strip() == ""  # 見える字は無い (吹き出しと aria-label だけ)
+    assert ">AI に質問</button>" not in html
+    # 根の div (右下の位置) は今のまま。
+    assert html.count('<div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">') == 1
+
+
+def test_main_bottom_room_is_one_button_taller(logged_in):
+    html = logged_in.get(reverse("core:home")).content.decode()
+
+    assert '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">' in html
+    # Tailwind はテンプレートの注釈の字も拾うので、使わなくなった字を残さない。
+    for path in SRC.rglob("*.html"):
+        assert "pb-24" not in path.read_text(encoding="utf-8"), path

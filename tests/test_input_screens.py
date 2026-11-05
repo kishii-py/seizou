@@ -138,7 +138,7 @@ def test_row_menu_templates_have_no_z40():
 
 # --- 3. 右下の「AI に質問」が保存と最後の行に重ならない ---------------------------------------------
 
-MAIN_WITH_ROOM = '<main class="flex-1 p-4 pb-24 lg:p-6 lg:pb-24">'
+MAIN_WITH_ROOM = '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">'
 MAIN_PLAIN = '<main class="flex-1 p-4 lg:p-6">'
 
 
@@ -167,8 +167,8 @@ def test_main_has_no_room_without_assistant(logged_in, monkeypatch):
 
 def test_app_css_has_bottom_room():
     built = APP_CSS.read_text(encoding="utf-8")
-    assert ".pb-24{" in built
-    assert ".lg\\:pb-24{" in built
+    assert ".pb-34{" in built
+    assert ".lg\\:pb-34{" in built
 
 
 # --- 4-1. 受注の入力の金額 --------------------------------------------------------------------
