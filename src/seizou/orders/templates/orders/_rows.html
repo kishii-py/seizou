@@ -24,7 +24,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
       {% for cell in row.cells %}
       {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
       {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
-      {% if url_name == "order_list" and col.name == "status" %}<td class="whitespace-nowrap">{% if row.obj.status == "open" %}<span class="badge badge-soft badge-primary">{{ cell.value }}</span>{% elif row.obj.status == "partial" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif row.obj.status == "shipped" %}<span class="badge badge-soft badge-success">{{ cell.value }}</span>{% elif row.obj.status == "cancelled" %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</td>
+      {% if url_name == "order_list" and col.name == "status" %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
       {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
       {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
       {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>

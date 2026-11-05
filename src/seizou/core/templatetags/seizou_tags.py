@@ -9,6 +9,7 @@ can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く�
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
 weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
+status_badge: {% status_badge obj %} で、状態 (status) の印を状態の色の表 (core.status_colors) の意味の色で出す (core/_status_badge.html)。dot=True で頭に点 (詳細の見出し)、small=True で小さい印。
 """
 
 import re
@@ -20,6 +21,8 @@ from django.apps import apps
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.html import format_html
+
+from seizou.core.status_colors import tone_for
 
 register = template.Library()
 
@@ -139,3 +142,16 @@ def weekday_ja(value):
     elif not isinstance(value, date):
         return ""
     return WEEKDAYS_JA[value.weekday()]
+
+
+@register.inclusion_tag("core/_status_badge.html")
+def status_badge(obj, dot=False, small=False):
+    """{% status_badge obj %}。obj の状態 (status) の印を、状態の色の表 (core.status_colors) の意味の色で出す (案 4-C・8-A。N152)。
+
+    字は状態の表示名 (get_status_display)。色は obj の部品 (_meta.app_label) と値で読む (部品で意味が分かれる字のため)。
+    dot が真なら頭に点 (詳細の見出し)、small が真なら小さい印 (最初の画面の最近の受注)。表に無い値は今の主色のまま。
+    """
+    value = getattr(obj, "status", None)
+    display = getattr(obj, "get_status_display", None)
+    app_label = getattr(getattr(obj, "_meta", None), "app_label", None)
+    return {"tone": tone_for(value, app_label), "label": display() if callable(display) else value, "dot": dot, "small": small}

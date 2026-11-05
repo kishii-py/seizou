@@ -10,7 +10,7 @@
     <p class="flex items-center gap-2 text-xs text-base-content/50">{% app_icon screen_app "size-4" %}{{ screen_name }}{% include "core/_screen_help.html" with part="" label="この画面の説明" %}</p>
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
-      {% if status %}<span class="badge badge-soft badge-primary gap-2"><span class="status status-primary" aria-hidden="true"></span>{{ status }}</span>{% endif %}
+      {% if status %}{% status_badge object dot=True %}{% endif %}
     </div>
     {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x。「?」で説明書の断片を見る)。 #}
   </div>
