@@ -1549,8 +1549,10 @@ def with_saved_note(message: str, result) -> str:
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
-    1 枚 = {"label", "value", "unit", "note", "icon", "url"}。金額のカード (支払の見込みと入金) は "money" が真で、
+    1 枚 = {"label", "value", "unit", "note", "help", "icon", "url"} (と、数の下の 1 行 "detail" のあるカード)。金額のカード (支払の見込みと入金) は "money" が真で、
     HomeView が金額を見られない人に "hidden" を付け、画面は数を「—」にする (カードは残す)。
+    "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
+    文は下の数え方の式と合わせる (式を変えたら文も直す)。
     """
     today = timezone.localdate()
     stats: list[dict] = []
@@ -1562,6 +1564,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(item_model._default_manager.all()),
                 "unit": "件",
                 "note": "部品マスターにある部品の数",
+                "help": "部品マスターにある部品の数です。使用を止めた部品も数えます。",
                 "icon": "box",
                 "url": url_or_none("masters:item_list"),
             }
@@ -1574,6 +1577,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(partner_model._default_manager.all()),
                 "unit": "社",
                 "note": "得意先と協力企業の数",
+                "help": "登録した取引先 (得意先・協力企業・両方) の数です。使用を止めた取引先も数えます。",
                 "icon": "users",
                 "url": url_or_none("masters:partner_list"),
             }
@@ -1591,6 +1595,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(this_month),
                 "unit": "件",
                 "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
+                "help": "受注日が今月の受注の件数です。取消は数えません。",
                 "icon": "clipboard",
                 "url": f"{order_list_url}?f_open=0&f_ordered_from={today:%Y-%m}-01&f_ordered_to={month_end}" if order_list_url else None,
             }
@@ -1603,6 +1608,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(lines),
                 "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
+                "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
                 "icon": "activity",
                 "url": url_or_none("orders:orderline_list"),
             }
@@ -1616,6 +1622,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
+                "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ承認も却下もしていない物の数です。",
                 "icon": "inbox",
                 "url": url_or_none("connect:inbox_list"),
             }
@@ -1629,6 +1636,7 @@ def dashboard_stats() -> list[dict]:
                 "value": payable,
                 "unit": "円",
                 "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
+                "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
                 "icon": "yen",
                 "url": url_or_none("purchasing:receipt_list"),
                 "money": True,
@@ -1643,6 +1651,7 @@ def dashboard_stats() -> list[dict]:
                 "value": payments,
                 "unit": "円",
                 "note": f"{today.month} 月に入金日のある入金の金額の合計 (取消を除く)",
+                "help": "入金日が今月の入金の金額の合計です。取消は数えません。",
                 "icon": "yen",
                 "url": url_or_none("billing:invoice_list"),
                 "money": True,
@@ -1651,7 +1660,8 @@ def dashboard_stats() -> list[dict]:
     # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
     hands_free = dashboard.hands_free_lines(today)
     if hands_free is not None:
-        note = f"{today.month} 月に、読み取った注文書と受信した注文から受注にした明細の数 (1 行 {dashboard.minutes_per_line().normalize():f} 分で数える)"
+        minutes = f"{dashboard.minutes_per_line().normalize():f}"
+        note = f"{today.month} 月に、読み取った注文書と受信した注文から受注にした明細の数 (1 行 {minutes} 分で数える)"
         accept = dashboard.accept_minutes_this_month(today)
         if accept is not None:
             note += f"。受付の平均 {dashboard.transcription_text(accept)}"
@@ -1662,6 +1672,11 @@ def dashboard_stats() -> list[dict]:
                 "unit": "行",
                 "detail": f"≒ 転記 {dashboard.transcription_text(dashboard.saved_minutes(hands_free))}",
                 "note": note,
+                # 分の数は会社の設定 transcription_minutes_per_line (dashboard.minutes_per_line。既定は conf.DEFAULTS)
+                "help": (
+                    "受注日が今月の受注のうち、読み取った注文書か受信した注文から作った受注の明細の行の数です。取消は数えません。"
+                    f"≒ 転記は、1 行を手で打つ時間を {minutes} 分と置いた目安です。"
+                ),
                 "icon": "check",
                 "url": None,
             }
