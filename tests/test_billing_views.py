@@ -153,7 +153,7 @@ def test_print_html_has_amounts(client_logged_in, user, customer, line):
     assert response.status_code == 200
     assert invoice.invoice_no in body
     assert "作り物の得意先" in body
-    assert "支払期日" in body and "2026-12-25" in body
+    assert "支払期日" in body and "2026年12月25日" in body
     assert "T-100" in body
     assert ">4<" in body and ">6<" in body
     # 小計 15,000・消費税 1,500 (10%)・合計 16,500。

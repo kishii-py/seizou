@@ -32,6 +32,15 @@ body {
   margin: 0;
 }
 
+/* ブラウザで印刷用の画面をそのまま見るとき (PDF でないとき) は、紙と同じ余白を画面にも付ける。印刷と PDF は @page の余白。 */
+@media screen {
+  body {
+    max-width: 180mm;
+    margin: 0 auto;
+    padding: 15mm;
+  }
+}
+
 p {
   margin: 0;
 }
@@ -102,16 +111,38 @@ th {
   text-align: left;
 }
 
-/* 明細の表 */
+/* 明細の表: 縦の線は引かず、行の間の細い横線と見出しの下の太い線だけ (請求書の帳票でよく見る形。目視の所見 11-05) */
 .report-lines th,
 .report-lines td {
-  border: 0.5pt solid #000;
+  border-bottom: 0.3pt solid #888;
   padding: 1.5mm 2mm;
 }
 
 .report-lines thead th {
-  background: #eee;
-  text-align: center;
+  border-bottom: 1pt solid #000;
+  text-align: left;
+}
+
+.report-lines thead th:last-child,
+.report-lines thead th:nth-last-child(2),
+.report-lines thead th:nth-last-child(4) {
+  text-align: right;
+}
+
+.report-lines .date {
+  white-space: nowrap;
+}
+
+.report-lines tfoot th,
+.report-lines tfoot td {
+  border-bottom: 0;
+}
+
+.report-lines tr.report-total th,
+.report-lines tr.report-total td {
+  border-top: 1pt solid #000;
+  font-size: 12pt;
+  font-weight: 700;
 }
 
 .report-lines .num {
