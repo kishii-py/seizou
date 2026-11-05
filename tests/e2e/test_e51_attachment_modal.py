@@ -49,7 +49,7 @@ def test_e51_attach_file_in_detail_modal(page_a, company_a, tmp_path):
     expect(box.locator("[data-file-drop]")).to_be_visible()
     shot(page_a, "E-51", "a-modal")
 
-    # 釦の字で探さず、小窓の form の主色の submit で押す (E-41 と同じ形)。locator は押すたびに引き直す (誤りで小窓の中身が描き直される)。
+    # ボタンの字で探さず、小窓の form の主色の submit で押す (E-41 と同じ形)。locator は押すたびに引き直す (誤りで小窓の中身が描き直される)。
     submit = box.locator("form[data-enter-guard] button.btn-primary[type=submit]").first
     submit.click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
