@@ -10,7 +10,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>使い方 | {{ seizou.company_name }}</title>
+{% company_favicon seizou.company as favicon %}{% if favicon %}
+<link rel="icon" href="{{ favicon.icon }}" type="image/png">
+<link rel="apple-touch-icon" href="{{ favicon.touch }}">
+{% else %}
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+{% endif %}
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body class="bg-base-100 text-sm text-base-content antialiased">
