@@ -15,6 +15,8 @@
  * - 釦の最後の字の node だけを書き換える (前の印の絵は残す)。class を触らない。取った字を HTML として差し込まない。通信しない。
  * - 明細の合計の枠 (core/_line_totals.html の data-line-totals) があれば、同じ数えで rows・qty・amount の字 (data-line-totals-rows・-qty・-amount) を埋め直す (N149)。
  *   0 行でも数を書く。数でない数量があれば 3 つとも「—」。単価の空か数でない行があれば amount は「—」。金額の組が無い枠 (金額の閲覧が無い人・一括出荷) には書かない。
+ * - 保存の帯 (core/_save_bar.html の data-save-bar。N154) があれば、input と change のたびに update の後で、帯の釦の字 (data-save-bar-label) を
+ *   その form の保存のボタン (type="submit" の最後の物) の字にそろえる。画面の全体の入力 (form[data-enter-guard]) だけで、小窓の中の form とほかの form は写さない。
  */
 (function () {
   "use strict";
@@ -124,11 +126,24 @@
     setText(button, text || button.getAttribute("data-submit-label-plain"));
   }
 
+  // 保存の帯 (N154) の釦の字を、この form の保存のボタン (type="submit" の最後の物 = 帯の「保存」が押す物) の字にそろえる。
+  // 字の元は保存のボタンの 1 か所 (サーバーの submit_label と、update が書いた字)。検索の欄・小窓の中の form は写さない。
+  function setBar(form) {
+    var bar = document.querySelector("[data-save-bar]");
+    if (!bar || !form.matches("form[data-enter-guard]") || form.closest("#seizou-modal")) return;
+    var buttons = form.querySelectorAll('button[type="submit"]');
+    var source = buttons.length ? buttons[buttons.length - 1].lastChild : null;
+    if (source && source.nodeType === 3) setNode(bar.querySelector("[data-save-bar-label]"), source.nodeValue);
+  }
+
   function onInput(event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
     var form = target.closest("form");
-    if (form) update(form);
+    if (form) {
+      update(form);
+      setBar(form);
+    }
   }
 
   document.addEventListener("input", onInput);
