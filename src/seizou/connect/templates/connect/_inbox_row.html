@@ -32,9 +32,9 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
       <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         {% if row.obj.status == "received" %}
         {% if row.obj.partner_id %}
-        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}承認</a></li>
+        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}受け入れる</a></li>
         {% endif %}
-        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}却下</a></li>
+        <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}断る</a></li>
         {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_detail' row.obj.pk %}">{% icon "eye" "size-4" %}詳細を見る</a></li>
         {% if row.obj.status == "accepted" and row.obj.order %}{% url 'orders:order_detail' row.obj.order_id as order_detail_url %}{% if order_detail_url %}<li><a class="flex items-center gap-2" href="{{ order_detail_url }}">{% icon "clipboard" "size-4" %}受注の詳細</a></li>{% endif %}{% endif %}

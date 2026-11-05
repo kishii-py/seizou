@@ -74,7 +74,7 @@ class Inbox(models.Model):
     STATUS_ACCEPTED = "accepted"
     STATUS_REJECTED = "rejected"
     STATUS_CHOICES = [
-        (STATUS_RECEIVED, "届いた"),
+        (STATUS_RECEIVED, "未処理"),
         (STATUS_ACCEPTED, "受け入れた"),
         (STATUS_REJECTED, "断った"),
     ]
@@ -98,7 +98,7 @@ class Inbox(models.Model):
     )
     kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES)
     source = models.CharField("入口", max_length=10, choices=SOURCE_CHOICES, default=SOURCE_DIRECT)
-    received_at = models.DateTimeField("届いた日時", default=timezone.now)
+    received_at = models.DateTimeField("受信日時", default=timezone.now)
     payload = models.JSONField("中身")
     # 読み取りの行の元の注文書の読み取り (ファイルと読み取った中身)。直接の行は空。
     extraction = models.ForeignKey(
@@ -164,7 +164,7 @@ class Inbox(models.Model):
         return text
 
     def reply_state(self):
-        """詳細に出す注文回答の字。「届いた」なら空の字 (テンプレートが薄い「—」を出す)。
+        """詳細に出す注文回答の字。「未処理」なら空の字 (テンプレートが薄い「—」を出す)。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、承認か断りの後で届いていなければ
         「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。

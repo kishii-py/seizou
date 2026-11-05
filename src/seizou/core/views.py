@@ -1652,7 +1652,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
-                "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ承認も却下もしていない物の数です。",
+                "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ受け入れも断りもしていない物の数です。",
                 "icon": "inbox",
                 "url": url_or_none("connect:inbox_list"),
             }

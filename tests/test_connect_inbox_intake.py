@@ -271,7 +271,7 @@ def test_sender_post_sets_partner(client, customer, subcontractor, user):
 
     response = client.post(url, {"partner": customer.pk}, follow=True)
     assert response.redirect_chain == [(detail_url, 302)]
-    assert ("success", "差出人を 作り物の得意先 にしました。「承認」で受注にできます。") in _messages(response)
+    assert ("success", "差出人を 作り物の得意先 にしました。「受け入れる」で受注にできます。") in _messages(response)
     waiting.refresh_from_db()
     assert waiting.partner == customer
     assert reverse("connect:inbox_accept", args=[waiting.pk]) in response.content.decode()
@@ -333,7 +333,7 @@ def test_list_shows_entrance_and_waiting_badge(client, customer, user):
     assert "読み取り" in _row(body, matched.pk)
     assert reverse("connect:inbox_accept", args=[matched.pk]) in _row(body, matched.pk)
 
-    # 自動の更新で足した取引先の空の行にも印と色が付き、行の操作に「承認」が無い
+    # 自動の更新で足した取引先の空の行にも印と色が付き、行の操作に「受け入れる」が無い
     waiting = intake_row(None, user, order_no="TEST-PO-011")
     row = _row(_poll(client, matched.pk).content.decode(), waiting.pk)
     assert "差出人の確認待ち" in row
@@ -356,9 +356,9 @@ def test_same_order_no_notice_on_second_row(client, customer, user):
     body = _list(client)
     assert NOTICE not in _row(body, first.pk)
     row = _row(body, second.pk)
-    assert f"{NOTICE} (受信した注文 {first.pk}。届いた)" in row
+    assert f"{NOTICE} (受信した注文 {first.pk}。未処理)" in row
     assert reverse("connect:inbox_detail", args=[first.pk]) in row
-    assert f"{NOTICE} (受信した注文 {first.pk}。届いた)" in _detail(client, second)
+    assert f"{NOTICE} (受信した注文 {first.pk}。未処理)" in _detail(client, second)
     assert NOTICE not in _detail(client, first)
 
     # 知らせるだけで、断らない・状態を変えない。前の行の状態が変われば字も変わる
@@ -403,7 +403,7 @@ def test_accept_screen_shows_same_order_no_notice(client, customer, items, user)
     client.force_login(user)
 
     body = _accept_screen(client, second)
-    assert body.count(f"{NOTICE} (受信した注文 {first.pk}。届いた)") == 1
+    assert body.count(f"{NOTICE} (受信した注文 {first.pk}。未処理)") == 1
     assert reverse("connect:inbox_detail", args=[first.pk]) in body
     assert NOTICE not in _accept_screen(client, first)
 
@@ -414,8 +414,8 @@ def test_accept_screen_shows_same_order_no_notice(client, customer, items, user)
     assert second.status == Inbox.STATUS_ACCEPTED
 
     # 一覧の行と詳細も、部分のテンプレートに替えた後も今までと同じ字
-    assert f"{NOTICE} (受信した注文 {first.pk}。届いた)" in _row(_list(client), second.pk)
-    assert f"{NOTICE} (受信した注文 {first.pk}。届いた)" in _detail(client, second)
+    assert f"{NOTICE} (受信した注文 {first.pk}。未処理)" in _row(_list(client), second.pk)
+    assert f"{NOTICE} (受信した注文 {first.pk}。未処理)" in _detail(client, second)
 
 
 def test_accept_screen_has_no_notice_without_same_order_no(client, customer, other_customer, user):
