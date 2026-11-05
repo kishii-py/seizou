@@ -3,7 +3,7 @@
  * 素の JS で書く (外の library は同梱の Tom Select だけ)。読み込みは base.html の Tom Select の <script> の次の 1 行。
  *
  * 候補は core の候補の口 (BaseSelectView) から q と page を付けて取る。返る形は
- * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽, "recent": [...]}。1 ページは 30 件 (口の per_page)。
+ * {"items": [{"id", "text", "title", "sub", ...}], "more": 真偽, "recent": [...], "create": {"url", "label"} か null}。1 ページは 30 件 (口の per_page)。
  *
  * 決まり:
  * - 一覧を下まで読むと次のページを足す (virtual_scroll)。
@@ -29,6 +29,8 @@
  *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
  * - 字を打つ前の 1 ページ目は、口の返す recent (最近の受注・発注・出荷で使った物。5 件まで) を「最近使った」の見出しの群
  *   (Tom Select の optgroup) に入れて先頭に出す。同じ id の候補は 1 つにまとまり、最近使ったの群に残る。recent が空なら見出しを出さない (N162)。
+ * - 候補が 0 件で、口が create (登録の入口) を返したら、「該当なし」の下に登録の行 (data-select-create) を出す。押すと data-modal-form で
+ *   入力の小窓が開く。入力の小窓の中の欄では新しいタブで開く。書けない人には口が null を返し、行を出さない (N162)。
  */
 (function () {
   "use strict";
@@ -105,7 +107,7 @@
     if (!(select instanceof HTMLSelectElement) || select.tomselect) return;
     if (typeof window.TomSelect !== "function") return;
     var base = select.getAttribute("data-select-url");
-    var state = { failed: false, errorShown: false, notice: null };
+    var state = { failed: false, errorShown: false, notice: null, create: null };
     var plugins = { virtual_scroll: {} };
     if (select.multiple) {
       plugins.remove_button = { title: "外す" };
@@ -156,6 +158,7 @@
           })
           .then(function (data) {
             clearError(state);
+            state.create = data.create || null;
             if (data.more) self.setNextUrl(query, pageUrl(base, query, pageOf(url) + 1));
             // 字を打つ前の 1 ページ目だけ、最近使った物 (5 件まで) を見出しの群に入れて先頭に足す (N162)。
             // 同じ id の候補は部品が 1 つにまとめる (先に足した最近使ったの群に残る)。無ければ見出しを出さない。
@@ -186,9 +189,23 @@
             "</div></div>"
           );
         },
-        no_results: function () {
+        // 0 件で、口が登録の入口 (create) を返したら、「該当なし」の下に登録の行を出す (N162)。部品は根の要素 1 つだけを使う。
+        // 押すと data-modal-form で入力の小窓 (seizou-modal.js) が開く。入力の小窓の中の欄では、同じ箱に読むと入れかけの値が
+        // 消えるので、新しいタブで開く (「詳細を見る」の link と同じ決まり)。
+        no_results: function (data, escape) {
           if (state.failed) return null;
-          return '<div class="no-results">該当なし</div>';
+          if (!state.create) return '<div class="no-results">該当なし</div>';
+          var url = escape(state.create.url);
+          var opener = inDialog ? ' target="_blank" rel="noopener"' : ' data-modal-form="' + url + '"';
+          return (
+            '<div><div class="no-results">該当なし</div><a href="' +
+            url +
+            '"' +
+            opener +
+            " data-select-create>" +
+            escape(state.create.label) +
+            "</a></div>"
+          );
         },
         loading_more: function () {
           return '<div class="loading-more-results">続きを取っています</div>';
@@ -197,6 +214,11 @@
           return null;
         },
       },
+    });
+
+    // 登録の行を押したら候補の一覧を閉じる (小窓は seizou-modal.js が data-modal-form で開く。押下は止めない。N162)。
+    ts.dropdown.addEventListener("click", function (event) {
+      if (event.target.closest && event.target.closest("[data-select-create]")) ts.close();
     });
 
     // 小窓のある候補では、選んだ物の下に「詳細を見る」の link (小窓) を出す。

@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from django.apps import apps
 from django.db import DatabaseError
+from django.urls import NoReverseMatch, reverse
 
+from seizou.core import access
 from seizou.core import fields as company_fields
 
 #: 下の段の字の区切り
@@ -91,3 +93,31 @@ def recent(queryset) -> list:
     pks = list(dict.fromkeys(pk for _day, pk in rows if pk is not None))
     found = {obj.pk: obj for obj in queryset.filter(pk__in=pks)}
     return [found[pk] for pk in pks if pk in found][:RECENT_LIMIT]
+
+
+#: 0 件のときの登録の行。model の名前 → (登録の入力の画面の URL の名前, 行の字)
+CREATE = {
+    "masters.Item": ("masters:item_create", "部品マスターに登録する"),
+    "masters.Partner": ("masters:partner_create", "取引先を登録する"),
+}
+
+
+def create_entry(user, model) -> dict | None:
+    """0 件のときの登録の行 {"url", "label"}。
+
+    書けるかは一覧の「新規登録」のボタンと同じ判定 (access.can_write_model の create) と、部署でその部品を開けるか
+    (access.can_open。tag can_write と同じ 2 つ。記録は書かない)。表 CREATE に無い model・URL が無い・書けない人は None。
+    """
+    spec = CREATE.get(model._meta.label)
+    if spec is None:
+        return None
+    name, label = spec
+    try:
+        url = reverse(name)
+    except NoReverseMatch:
+        return None
+    if not access.can_write_model(user, model, "create"):
+        return None
+    if not access.can_open(user, model._meta.app_label, record=False):
+        return None
+    return {"url": url, "label": label}

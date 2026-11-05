@@ -71,6 +71,19 @@ body > .ts-dropdown .optgroup-header {
   color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   background-color: var(--color-base-100);
 }
+/* 0 件のときの登録の行 (N162。seizou-select.js の data-select-create の a)。「該当なし」の下に線で分けて主色の字。 */
+.ts-wrapper .ts-dropdown [data-select-create],
+body > .ts-dropdown [data-select-create] {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-base-300);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.ts-wrapper .ts-dropdown [data-select-create]:hover,
+body > .ts-dropdown [data-select-create]:hover {
+  background-color: var(--color-base-200);
+}
 
 /* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
    2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */

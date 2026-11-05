@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 import seizou.core
@@ -214,3 +215,51 @@ def test_select_js_puts_recent_under_heading():
 
     css = INPUT_CSS.read_text(encoding="utf-8")
     assert css.count(".optgroup-header") == 2
+
+
+# --- 3. 0 件のときの登録の行 ---
+
+NO_MATCH = "作り物の無い字"
+
+
+@pytest.mark.django_db
+def test_create_entry_for_item_and_partner(logged_in, shaft, customer):
+    data = _get(logged_in, "masters:item_select", q=NO_MATCH)
+    assert data["items"] == []
+    assert data["create"] == {"url": reverse("masters:item_create"), "label": "部品マスターに登録する"}
+
+    data = _get(logged_in, "masters:partner_select", q=NO_MATCH)
+    assert data["items"] == []
+    assert data["create"] == {"url": reverse("masters:partner_create"), "label": "取引先を登録する"}
+
+    # 表 CREATE に無い model (受注の明細) は登録の行を出さない
+    assert _get(logged_in, "orders:orderline_select", q=NO_MATCH)["create"] is None
+
+
+@pytest.mark.django_db
+def test_create_entry_hidden_without_write_permission(settings, client, logged_in):
+    # 編集の判定が on で、Access の行の無い利用者 (部品マスターと取引先の編集の権限なし) には登録の行を出さない
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "on", "money": "off"}}
+    assert _get(logged_in, "masters:item_select", q=NO_MATCH)["create"] is None
+    assert _get(logged_in, "masters:partner_select", q=NO_MATCH)["create"] is None
+
+    admin = get_user_model().objects.create_superuser("作り物の管理者", password="pass-for-tests-only")
+    client.force_login(admin)
+    assert _get(client, "masters:item_select", q=NO_MATCH)["create"]["url"] == reverse("masters:item_create")
+    assert _get(client, "masters:partner_select", q=NO_MATCH)["create"]["url"] == reverse("masters:partner_create")
+
+
+def test_select_js_offers_create_row():
+    script = SELECT_JS.read_text(encoding="utf-8")
+    for word in (
+        "data-select-create",
+        "data-modal-form",
+        'target="_blank"',
+        "state.create",
+        "if (state.failed) return null;",
+        "該当なし",
+    ):
+        assert word in script, word
+
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert css.count("[data-select-create]") >= 2
