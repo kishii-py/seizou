@@ -287,7 +287,8 @@ def test_money_masked_in_payment_screens(on, client, invoice):
     client.force_login(jimu)
 
     listed = client.get(reverse("billing:invoice_list"))
-    assert _cell(listed, "balance") == access.MASK
+    assert not {"total", "balance"} & {spec.name for spec in listed.context["columns"]}  # 列ごと出ない (N155)
+    assert access.MASK not in [cell["value"] for cell in listed.context["rows"][0]["cells"]]
     assert _cell(listed, "payment_status_label") == "未入金"
     header = _csv_header(client.get(reverse("billing:invoice_list") + "?format=csv"))
     assert "入金" in header
@@ -296,7 +297,7 @@ def test_money_masked_in_payment_screens(on, client, invoice):
     detail = client.get(reverse("billing:invoice_detail", args=[invoice.pk]))
     panel = _panel(detail)
     assert "16,500" not in detail.content.decode()
-    assert "—" in panel
+    assert "—" not in panel and "合計" not in panel  # 合計・入金済み・残の行ごと出ない (N155)
     assert "未入金" in panel
 
     form = client.get(reverse("billing:payment_create", args=[invoice.pk]))

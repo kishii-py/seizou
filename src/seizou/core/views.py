@@ -237,7 +237,7 @@ class ColumnSpec:
       {"name": "board__days_left", "label": "納期まで", "kind": "number", "sort_key": "due_date"}   別の鍵で並べる
 
     辞書の鍵:
-      kind      number (右寄せ・負は赤) / money (右寄せ。金額の閲覧が無い人には「—」。CSV から外す) / date (等幅の Y-m-d)。
+      kind      number (右寄せ・負は赤) / money (右寄せ。金額の閲覧が無い人には列ごと出さない。CSV からも外す) / date (等幅の Y-m-d)。
                 書かなければ表の項目の型で決める (会社ごとの項目は型の number / date)。ほかの字は ValueError
       sortable  真なら見出しが並び替えの link になる。書かなければ表の項目と会社ごとの項目だけ並び替える
       total     真なら合計の行に足す
@@ -249,7 +249,7 @@ class ColumnSpec:
 
     印:
       numeric      右寄せと等幅の数字 (表の数の項目・kind が number / money・会社ごとの項目の数)。負は赤
-      money        金額の列 (kind が money か、名前の最後が access.MONEY_FIELDS)。金額の閲覧の判定で欄・合計・CSV を「—」にする
+      money        金額の列 (kind が money か、名前の最後が access.MONEY_FIELDS)。金額の閲覧が無い人には BaseListView.column_specs が列ごと外す
       total        合計の行に足す (表の数の項目と、kind が number / money の annotate の列)
       is_date      等幅の Y-m-d (表の日付の項目・kind が date・会社ごとの項目の日付)
       is_datetime  等幅の Y-m-d H:i (表の日時の項目)
@@ -672,6 +672,10 @@ class BaseListView(ScreenMixin, ListView):
         specs = [ColumnSpec(self.model, item) for item in self.columns]
         for col in company_fields.list_columns_for(self.model):
             specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label), ext_type=col.type))
+        # 金額の列は、金額の閲覧が無い人には列ごと出さない (見出し・欄・合計の行・並び替え・集計の量・CSV から外れ、「—」も出さない。
+        # 本人の決め 11-05 09:4x。N155)。log の形では見せて記録に 1 行 (同じ要求は 1 行)。金額の列の無い一覧は判定しない。
+        if any(spec.money for spec in specs) and not access.can_see_money(self.request.user):
+            specs = [spec for spec in specs if not spec.money]
         return specs
 
     def sort_param(self) -> str:
@@ -829,8 +833,6 @@ class BaseListView(ScreenMixin, ListView):
         cells = []
         for spec in specs:
             value = display_value(obj, spec.name)
-            if spec.money and not access.can_see_money(self.request.user):
-                value = access.MASK
             master = value if is_master(value) else None
             # マスター自身の一覧では、名前の字を押すと自分の小窓が開く (決め 11-02 12:5x)。
             if master is None and spec.name == "name" and is_master(obj):
@@ -866,9 +868,6 @@ class BaseListView(ScreenMixin, ListView):
         aliases = {f"seizou_total_{index}": name for index, name in enumerate(sums)}
         result = queryset.aggregate(**{alias: sums[name] for alias, name in aliases.items()})
         agg = {name: result[alias] for alias, name in aliases.items()}
-        masked = {spec.name for spec in specs if spec.money and spec.name in sums}
-        if masked and not access.can_see_money(self.request.user):
-            agg = {name: access.MASK if name in masked else value for name, value in agg.items()}
         return [{"value": agg.get(spec.name), "numeric": spec.name in sums} for spec in specs]
 
     def search_hint(self) -> str:
@@ -1013,9 +1012,9 @@ class BaseDetailView(ScreenMixin, DetailView):
         for f in obj._meta.concrete_fields:
             if f.primary_key or f.name in ("password",) or f.name in hidden:
                 continue
-            value = display_value(obj, f.name)
             if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
-                value = None
+                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。N155)
+            value = display_value(obj, f.name)
             is_file = isinstance(f, models.FileField)
             items.append(
                 {
@@ -1430,9 +1429,9 @@ class BaseModalView(ScreenMixin, DetailView):
         for f in obj._meta.concrete_fields:
             if f.primary_key or f.name in hidden:
                 continue
-            value = display_value(obj, f.name)
             if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
-                value = None
+                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。N155)
+            value = display_value(obj, f.name)
             if isinstance(f, models.FileField):
                 info = file_info(value)
                 value = info["name"] if info else ""
