@@ -3,6 +3,8 @@
 {% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
 {# 詳細: 見出しの帯 (大きい主の字・副題・状態の印、右に「一覧に戻る」「編集」)、tabs で基本情報と関係する物、ファイルの節。関係する物の行は block tab_rows (部品と取引先の詳細が、取引先ごとの品番を表に差し替える)。 #}
 {% block heading %}
+{# パンくず (案 3-F。N150): 子のテンプレートが block heading で with の tag に crumb (一覧の名) を入れて block.super を呼んだときだけ、帯の上に「一覧の名 › 題」を出す (一覧の名を押すと一覧へ戻る)。渡さない詳細は今のまま。 #}
+{% if crumb %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb }}</a>{% else %}<span>{{ crumb }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <p class="flex items-center gap-2 text-xs text-base-content/50">{% app_icon screen_app "size-4" %}{{ screen_name }}{% include "core/_screen_help.html" with part="" label="この画面の説明" %}</p>
@@ -20,8 +22,33 @@
 </div>
 {% endblock %}
 {% block content %}
+{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)、狭い幅は 1 列で右のカードが先 (見出しの帯の次) に出る。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。左の列は block main (子の明細・流れ・メモ) → 関係する物のタブ → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
+{% if aside %}<div id="detail-columns" class="grid gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+<aside id="detail-aside" class="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:mt-6" aria-label="要点">
+  {% for card in aside.cards %}
+  <section class="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs" aria-label="{{ card.title }}">
+    {% if card.help %}<div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part=card.help label=card.help_label %}</div>{% endif %}
+    <h2 class="text-sm font-bold">{{ card.title }}</h2>
+    <dl class="mt-2 grid gap-2">
+      {% for field in card.rows %}
+      <div>
+        <dt class="text-xs text-base-content/70">{{ field.label }}</dt>
+        <dd class="min-w-0 break-words font-semibold">{% if field.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ field.file.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ field.file.name }}</span></a>
+          {% elif field.master %}{% master_link field.master %}
+          {% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>
+          {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/50">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|comma }}{% endif %}{% endwith %}{% endif %}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endfor %}
+</aside>
+<div class="min-w-0 lg:col-start-1 lg:row-start-1">{% endif %}
+{% block main %}{% endblock %}
+{% if tabs or not aside %}
 {# 枠の「?」は箱の右上 (tabs の行の右端) に置く (本人 11-04 14:4x「ちゃんと右上がいい」)。開いている tab の枠の「?」だけが見える (tab-content は選んだ物だけ描く)。右の余白 (pr-12) は tabs が「?」の下に回り込まないため。 #}
-<div role="tablist" aria-label="詳細の区分" class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs">
+<div role="tablist" aria-label="詳細の区分" class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs{% if aside %} mt-6{% endif %}">
+  {% if not aside %}
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
     <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
   </label>
@@ -52,9 +79,10 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
   {% for tab in tabs %}
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
-    <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
+    <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}"{% if aside and forloop.first %} checked{% endif %}>{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
@@ -79,5 +107,8 @@
   </div>
   {% endfor %}
 </div>
+{% endif %}
 {% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
+{% if aside %}</div>
+</div>{% endif %}
 {% endblock %}
