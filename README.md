@@ -83,6 +83,7 @@ Claude Code のプラグインと、pip で入れる Django の部品を、こ�
 ## Claude Code のプラグイン
 
 Claude Code が使える方は、プラグインの命令で会社のシステムを立てる。`/seizou:build` は問いを 3 つ聞く (会社の名前と業種・部品マスターに足したい項目・生産計画を立てているか)。答えると、上の Python の命令 `seizou new` と同じ会社の置き場ができる。答えの YAML を渡せば、問いは飛ばせる。
+`seizou new` (と `/seizou:build`) は会社の置き場に、Claude Code が置き場を開いたときに読む `CLAUDE.md` (AI が守る決まりと、変えた後に `seizou_check` と `/simplify` を回す流れ) と、その短い版の `AGENTS.md` も書く。
 
 プラグインの入れ方 (会期中は git から): `git clone https://github.com/kishii-py/seizou.git && claude --plugin-dir seizou/plugin` の 1 行で、プラグインを読み込んだ Claude Code の会話が開く (読み込まれるのは、その会話の間だけ。skill 4 つ・hook 1 つ・MCP サーバー 1 つが入る)。開いた会話で `/seizou:build` を打つ。11-05 に作者の Mac で、`claude --plugin-dir seizou/plugin plugin details seizou` の出力にこの 3 種類が並ぶことを確かめた。
 質問に答えてから立つまでの時間: [空欄: 質問に答えてから立つまでの時間・測った後に作者が埋める]
