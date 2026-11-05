@@ -160,3 +160,61 @@ body > .ts-dropdown [data-select-create]:hover {
 .overflow-x-auto::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* 上の帯 (ヘッダー) の色。人ごとの表示の設定 (決め 11-05 21:2x。N167)。名前は core.display.HEADER_COLORS の鍵と同じ字。
+   土台の base.html は、白 (標準) の外を選んだ人の画面だけ <html> に data-seizou-header="<名前>" を出す。上の帯 (core/_topbar.html の header) は
+   固定の class seizou-header を持つ。表示の設定の小窓の見本 (core/_display_settings_card.html) は data-seizou-swatch="<名前>" で同じ色を出す。
+   white は決まりを持たない (今の bg-base-100 のまま)。層の外の決まりなので Tailwind の bg-base-100 より強い。class は組み立てない (R19)。
+   色つきの帯の中は字と絵を白にする (--color-base-content を帯の中だけ白に替える)。帯の中の白い地の物 (検索の欄と、利用者のメニューと
+   ブックマークの中身) は、<html> で控えた元の字の色 (--seizou-ink) に戻す。帯のボタンに指を乗せた間は、薄い地に元の字の色。 */
+[data-seizou-header] {
+  --seizou-ink: var(--color-base-content);
+}
+[data-seizou-header] .seizou-header {
+  --color-base-content: #fff;
+  color: #fff;
+  border-bottom-color: transparent;
+}
+[data-seizou-header] .seizou-header .btn:hover {
+  --btn-fg: var(--seizou-ink);
+}
+[data-seizou-header] .seizou-header .input,
+[data-seizou-header] .seizou-header .dropdown-content {
+  --color-base-content: var(--seizou-ink);
+  color: var(--seizou-ink);
+}
+[data-seizou-header="blue"] .seizou-header,
+[data-seizou-swatch="blue"] {
+  background: #1d4ed8;
+  color: #fff;
+}
+[data-seizou-header="green"] .seizou-header,
+[data-seizou-swatch="green"] {
+  background: #15803d;
+  color: #fff;
+}
+[data-seizou-header="orange"] .seizou-header,
+[data-seizou-swatch="orange"] {
+  background: #c2410c;
+  color: #fff;
+}
+[data-seizou-header="violet"] .seizou-header,
+[data-seizou-swatch="violet"] {
+  background: #6d28d9;
+  color: #fff;
+}
+[data-seizou-header="black"] .seizou-header,
+[data-seizou-swatch="black"] {
+  background: #111827;
+  color: #fff;
+}
+[data-seizou-header="sunset"] .seizou-header,
+[data-seizou-swatch="sunset"] {
+  background: linear-gradient(90deg, #be185d, #c2410c);
+  color: #fff;
+}
+[data-seizou-header="sea"] .seizou-header,
+[data-seizou-swatch="sea"] {
+  background: linear-gradient(90deg, #047857, #1d4ed8);
+  color: #fff;
+}

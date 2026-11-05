@@ -237,7 +237,7 @@ def test_row_menus_open_forms_in_modal(user, logged_in, customer, item, lines):
     detail = logged_in.get(reverse("orders:order_detail", args=[a.order_id])).content.decode()
     for name in ("ship", "issue", "po"):
         assert f'href="{urls[name]}" data-modal-form="{urls[name]}"' in detail, name
-    assert detail.count("data-modal-form=") == 5  # 明細の 3 つと、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157) と、受注の取消の 1 つ (N158)
+    assert detail.count("data-modal-form=") == 6  # 明細の 3 つと、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157) と、受注の取消の 1 つ (N158) と、右上の利用者のメニューの「表示の設定」の 1 つ (N167)
 
 
 # --- 6〜11. 一括出荷 ---

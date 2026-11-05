@@ -18,7 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django import forms
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 
-from seizou.core import conf
+from seizou.core import conf, display
 from seizou.core.models import Company
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.widgets import normalize_number
@@ -167,6 +167,22 @@ class SettingForm(forms.Form):
 
     def service_kwargs(self):
         return {"key": self.key, "value": self.value()}
+
+
+class DisplaySettingsForm(forms.Form):
+    """表示の設定 (人ごとの見た目) の入力。今は上の帯の色 (core.display.HEADER_COLORS) の 1 つだけ。決め 11-05 21:2x。N167
+
+    初期値は本人の今の値 (画面の get_initial)。値を確かめて保存するのは services の set_user_preference (form は選べる名前だけ)。
+    """
+
+    header_color = forms.ChoiceField(
+        label="ヘッダーの色",
+        choices=list(display.HEADER_COLORS.items()),
+        widget=forms.RadioSelect(attrs={"class": "radio"}),
+    )
+
+    def service_kwargs(self):
+        return {"key": display.HEADER_COLOR, "value": self.cleaned_data["header_color"]}
 
 
 class CompanyForm(ServiceModelForm):

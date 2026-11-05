@@ -159,8 +159,8 @@ def test_order_detail_line_menu_offers_note(user, logged_in, customer, item):
 
     assert _note_link(shipment) in detail
     assert detail.count(LABEL) == 1  # 出荷の無い 2 行目には出ない
-    # 出荷・指示書・発注が 2 行ずつと、納品書が 1 行と、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157)。
-    assert detail.count("data-modal-form=") == 9
+    # 出荷・指示書・発注が 2 行ずつと、納品書が 1 行と、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157) と、右上の利用者のメニューの「表示の設定」の 1 つ (N167)。
+    assert detail.count("data-modal-form=") == 10
 
 
 @pytest.mark.django_db
