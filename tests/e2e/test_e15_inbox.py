@@ -63,7 +63,7 @@ def test_e15_arrives_and_accept_makes_order(page_a, page_b, company_a, company_b
     page_b.get_by_role("link", name="承認", exact=True).click()
     page_b.wait_for_url(re.compile(rf"/connect/inbox/{inbox_pk}/accept/$"))
     expect(page_b.locator("select[name=item_1] option:checked")).to_contain_text(OWN_PART_NO)
-    page_b.get_by_role("button", name="保存", exact=True).click()
+    page_b.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_b.wait_for_url(re.compile(r"/orders/\d+/$"))
     expect(page_b.locator("main")).to_contain_text(po_no)
     expect(page_b.locator("main")).to_contain_text(OWN_PART_NO)

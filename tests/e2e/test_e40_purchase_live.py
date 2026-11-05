@@ -72,7 +72,7 @@ def test_e40_accept_updates_purchase_list_without_reload(page_a, page_b, company
     page_b.goto(f"{company_b.base_url}/connect/inbox/{inbox_pk}/")
     page_b.get_by_role("link", name="承認", exact=True).click()
     page_b.wait_for_url(re.compile(rf"/connect/inbox/{inbox_pk}/accept/$"))
-    page_b.get_by_role("button", name="保存", exact=True).click()
+    page_b.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     page_b.wait_for_url(re.compile(r"/orders/\d+/$"))
 
     # A 社: 開き直さずに、その行が「相手が受け入れた」になり、色が付く。

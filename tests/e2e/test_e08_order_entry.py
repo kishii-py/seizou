@@ -87,7 +87,7 @@ def _menu_links_readable(page, row) -> list[str]:
     """開いた行のメニューの項目 (a) が全部、左のメニューの右にあり、真ん中の点の一番上がその項目であることを見る。字を返す。"""
     links = row.locator("details.row-menu[open] ul li a")
     expect(links.first).to_be_visible()
-    sidebar_right = page.locator("aside").first.evaluate("aside => aside.getBoundingClientRect().right")
+    sidebar_right = page.locator("aside", has=page.locator("nav")).first.evaluate("aside => aside.getBoundingClientRect().right")
     texts = []
     for index in range(links.count()):
         link = links.nth(index)

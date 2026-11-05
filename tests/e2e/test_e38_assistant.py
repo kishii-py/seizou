@@ -44,11 +44,11 @@ def test_e38_button_does_not_cover_save(page_a, company_a):
             """([x, y]) => {
                 const element = document.elementFromPoint(x, y);
                 const button = element && element.closest("button");
-                return button ? button.textContent : "";
+                return !!button && button.type === "submit" && button.classList.contains("btn-primary");
             }""",
             [save_box["x"] + save_box["width"] / 2, save_box["y"] + save_box["height"] / 2],
         )
-        assert "保存" in on_top, path
+        assert on_top, path  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit がいちばん上にあることで見る
     shot(page_a, "E-38", "a-order-form-bottom")
 
 
