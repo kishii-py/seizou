@@ -217,11 +217,13 @@ def test_money_kind_masks_cells_totals_and_csv(user, items, settings):
     response = call(_AnnotatedItemList, user)
     text = body(response)
     rows = response.context_data["rows"]
-    assert all(row["cells"][2]["value"] == access.MASK for row in rows)
-    assert all(not row["cells"][2]["negative"] for row in rows)
+    # 金額の列は列ごと出ない (見出し・欄・合計の行。「—」も出さない。並び替えの名前としても読まない。N155)
+    assert [spec.name for spec in response.context_data["columns"]] == ["part_no", "name_len", "moved_on", "no_such_value"]
+    assert all(len(row["cells"]) == 4 and access.MASK not in [cell["value"] for cell in row["cells"]] for row in rows)
+    assert "倍の単価" not in text
     totals = response.context_data["totals"]
-    assert totals[2]["value"] == access.MASK
-    assert ">—<" in tfoot(text)
+    assert len(totals) == 4 and ">—<" not in tfoot(text)
+    assert call(_AnnotatedItemList, user, sort="-price_x2").context_data["sort"] == ""
     # number の列は隠れない
     assert _dec(totals[1]["value"]) == Decimal("1")
     assert sorted(row["cells"][1]["value"] for row in rows) == [-4, 0, 5]

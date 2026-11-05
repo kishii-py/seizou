@@ -246,10 +246,11 @@ def test_anonymous_goes_to_login(on, client):
 @pytest.mark.django_db
 def test_money_masked_everywhere(on, logged_in, user, shaft, invoice):
     item_list = logged_in.get(reverse("masters:item_list"))
-    assert _cell(item_list, "standard_price") == access.MASK
+    # 金額の列と項目は、列ごと・項目ごと出さない (「—」も出さない。N155)
+    assert "standard_price" not in [spec.name for spec in item_list.context["columns"]]
 
     invoice_list = logged_in.get(reverse("billing:invoice_list"))
-    assert _cell(invoice_list, "total") == access.MASK
+    assert not {"total", "balance"} & {spec.name for spec in invoice_list.context["columns"]}
 
     exported = logged_in.get(reverse("masters:item_list") + "?format=csv")
     assert exported.status_code == 200
@@ -258,9 +259,9 @@ def test_money_masked_everywhere(on, logged_in, user, shaft, invoice):
     assert not _has_column(header, "標準単価")
 
     detail = logged_in.get(reverse("masters:item_detail", args=[shaft.pk]))
-    assert _field(detail, "標準単価") is None
+    assert not any(str(item["label"]).startswith("標準単価") for item in detail.context["fields"])
     modal = logged_in.get(reverse("masters:item_modal", args=[shaft.pk]), HTTP_HX_REQUEST="true")
-    assert _field(modal, "標準単価") in (None, "")
+    assert not any(str(item["label"]).startswith("標準単価") for item in modal.context["fields"])
 
     home = logged_in.get(reverse("core:home"))
     assert home.status_code == 200
@@ -268,7 +269,7 @@ def test_money_masked_everywhere(on, logged_in, user, shaft, invoice):
     assert home.context["shipping"]["amount_chart"] is None
     assert 'id="shipping-amount-chart"' not in home.content.decode()
 
-    assert _amount_totals(User.objects.get(pk=user.pk))[0]["value"] == access.MASK
+    assert _amount_totals(User.objects.get(pk=user.pk)) is None
 
 
 @pytest.mark.django_db

@@ -322,7 +322,7 @@ Django の部品を直すときの命令。
 
 ### 一覧の列 (columns) の印
 
-一覧の画面 (`BaseListView`) の `columns` の 1 要素は、項目の名前の字 (`"part_no"`)、名前と見出しの組 (`("item", "部品")`)、辞書のどれかで書く。辞書の `kind` は欄の種類で、`number` は右寄せと負の数の赤、`money` は右寄せで、金額の閲覧が無い人には「—」になり CSV からも外れる。`date` は等幅の年月日になる。`sortable` を真にすると見出しが並び替えの link になり、表の項目でない名前 (部品の `get_queryset` が annotate した列) も並び替える。`total` を真にすると、表の数の項目と、`kind` が number / money の annotate の列を、絞り込みに追従する合計の行に足す。`sort_key` は、Python の値の列 (例 生産管理ボードの `board__days_left`) を、同じ順になる別の列 (表の項目か annotate の列。例 `due_date`) で並べるときに書く。並び替えたときは、同じ値の行を `pk` の順にそろえる。
+一覧の画面 (`BaseListView`) の `columns` の 1 要素は、項目の名前の字 (`"part_no"`)、名前と見出しの組 (`("item", "部品")`)、辞書のどれかで書く。辞書の `kind` は欄の種類で、`number` は右寄せと負の数の赤、`money` は右寄せで、金額の閲覧が無い人には列ごと出ず CSV からも外れる。`date` は等幅の年月日になる。`sortable` を真にすると見出しが並び替えの link になり、表の項目でない名前 (部品の `get_queryset` が annotate した列) も並び替える。`total` を真にすると、表の数の項目と、`kind` が number / money の annotate の列を、絞り込みに追従する合計の行に足す。`sort_key` は、Python の値の列 (例 生産管理ボードの `board__days_left`) を、同じ順になる別の列 (表の項目か annotate の列。例 `due_date`) で並べるときに書く。並び替えたときは、同じ値の行を `pk` の順にそろえる。
 
 ### E2E (ブラウザで画面を通す試験)
 
