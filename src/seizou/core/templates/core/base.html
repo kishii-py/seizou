@@ -1,11 +1,16 @@
-{% load static seizou_icons %}<!doctype html>
+{% load static seizou_icons seizou_tags %}<!doctype html>
 <html lang="ja" data-theme="{{ seizou.theme }}"{% if seizou.brand_color %} style="--color-primary: {{ seizou.brand_color }}; --color-primary-content: #ffffff"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% if seizou.practice %}練習: {% endif %}{% block title %}{{ screen_name|default:"seizou" }}{% endblock %}{% if seizou.company_name %} | {{ seizou.company_name }}{% endif %}</title>
-{# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。 #}
+{# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。ロゴから作った印があればそれ、無ければ部品の favicon.svg (N166)。 #}
+{% company_favicon seizou.company as favicon %}{% if favicon %}
+<link rel="icon" href="{{ favicon.icon }}" type="image/png">
+<link rel="apple-touch-icon" href="{{ favicon.touch }}">
+{% else %}
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+{% endif %}
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
 <link rel="stylesheet" href="{% static 'vendor/tom-select.css' %}">
 <script src="{% static 'vendor/htmx.min.js' %}" defer></script>

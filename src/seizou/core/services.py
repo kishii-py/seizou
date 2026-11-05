@@ -8,6 +8,7 @@
 - set_setting(key, value, user): 設定の画面からの上書き (SettingOverride) を書く。clear_setting(key, user) は消す。
   どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (履歴の表は持たない)。
 - update_company(company, data, user): 会社の情報 (住所・電話・振込先・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
+- company_icons(company): ロゴから作った印 (favicon) の URL。無ければ None (土台は static の favicon.svg を出す)。
 """
 
 from __future__ import annotations
@@ -161,6 +162,8 @@ def clear_setting(key, user):
 
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
 COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "logo")
+#: ロゴから作る印 (favicon) の絵 (ロゴと同じ storage の固定の名前 → 一辺の画素。PNG)。決め 11-05 20:1x。N166
+COMPANY_ICONS = {"company/favicon.png": 32, "company/apple-touch-icon.png": 180}
 
 
 def update_company(company, data, user):
@@ -174,6 +177,7 @@ def update_company(company, data, user):
     logo は、新しく上げたファイル (UploadedFile) なら company/ の下に "logo" + 拡張子 (小文字) で置き、False (「クリア」) なら
     今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
     (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
+    ロゴを上げたら、ロゴから印 (COMPANY_ICONS) を作って同じ storage に置き、外したら印を消す (_write_company_icons)。
     """
     from pathlib import PurePath
 
@@ -206,10 +210,52 @@ def update_company(company, data, user):
             changed.append("logo")
         if changed:
             row.save(update_fields=changed)
+    if "logo" in changed and not _write_company_icons(row):
+        logger.info("印は作らなかった: ロゴを Pillow で絵として開けない (%s)", _user_name(user))
     if changed:
         labels = "・".join(str(Company._meta.get_field(name).verbose_name) for name in changed)
         logger.info("会社の情報を変えた: %s (%s)", labels, _user_name(user))
     return row
 
 
-__all__ = ["clear_setting", "company", "next_number", "set_setting", "transaction", "update_company", "validate_setting"]
+def _write_company_icons(row) -> bool:
+    """今の印 (COMPANY_ICONS) を消し、ロゴがあれば、ロゴから印を作って同じ storage に置く。決め 11-05 20:1x。N166
+
+    正方形になるよう上下か左右に余白を足してから縮める (余白は透明。ロゴが透明を持たなければ白)。
+    ロゴを Pillow で絵として開けない (SVG など) ときは作らず False (ロゴはそのまま)。ロゴが無ければ消すだけで True。
+    """
+    from io import BytesIO
+
+    from django.core.files.base import ContentFile
+    from PIL import Image, ImageOps
+
+    storage = row.logo.storage
+    for name in COMPANY_ICONS:
+        storage.delete(name)
+    if not row.logo:
+        return True
+    try:
+        with storage.open(row.logo.name, "rb") as handle, Image.open(handle) as image:
+            fill = (0, 0, 0, 0) if image.has_transparency_data else (255, 255, 255, 255)
+            logo = image.convert("RGBA")
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return False
+    for name, size in COMPANY_ICONS.items():
+        buffer = BytesIO()
+        ImageOps.pad(logo, (size, size), method=Image.Resampling.LANCZOS, color=fill).save(buffer, format="PNG")
+        storage.save(name, ContentFile(buffer.getvalue()))
+    return True
+
+
+def company_icons(company) -> dict | None:
+    """ロゴから作った印の URL ({"icon": 32 の PNG, "touch": 180 の PNG})。会社にロゴが無いか印のファイルが無ければ None。"""
+    if not getattr(company, "logo", None):
+        return None
+    storage = company.logo.storage
+    icon, touch = COMPANY_ICONS
+    if not storage.exists(icon):
+        return None
+    return {"icon": storage.url(icon), "touch": storage.url(touch)}
+
+
+__all__ = ["clear_setting", "company", "company_icons", "next_number", "set_setting", "transaction", "update_company", "validate_setting"]

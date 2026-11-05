@@ -10,7 +10,7 @@ SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
   503 の画面で止まる (nginx の設定の漏れに、その場で気づくため)。
 
 どの配り方でも同じ事:
-- ログインしていなければログインの画面へ。例外は会社の情報のロゴ (ログインの画面に出す物) だけ (is_public)。
+- ログインしていなければログインの画面へ。例外は会社の情報のロゴ (ログインの画面に出す物) と、ロゴから作った印 (favicon) だけ (is_public)。
 - 断るときは全部 404 (ファイルが「無い」と「見せない」を外から見分けさせない)。MEDIA_ROOT の外は読まない。
 - HTML・SVG・XML・JS のような、ブラウザがスクリプトとして動かしうる型は、必ずダウンロードにする (上げたファイルの
   スクリプトが、同じ origin で動くのを防ぐ)。
@@ -29,8 +29,9 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth.views import redirect_to_login
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
+from django.templatetags.static import static
 from django.utils.cache import add_never_cache_headers
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
@@ -107,12 +108,14 @@ def is_public(relative: PurePosixPath) -> bool:
     """ログインしていなくても返すファイルか = 会社の情報のロゴだけ (ログインの画面と左上に出すので、ログインの前にも要る)。
 
     今の会社の行の logo と同じ道の物だけ。company/ の下のほかのファイルや、外した古いロゴは含めない。
+    例外はロゴから作った印 (core.services.COMPANY_ICONS の 2 つの名前。ロゴがあるときだけ。ブラウザのタブに出す)。N166
     """
     from seizou.core.models import Company
+    from seizou.core.services import COMPANY_ICONS
 
     row = Company.objects.order_by("pk").only("logo").first()
     name = row.logo.name if row is not None and row.logo else ""
-    return bool(name) and PurePosixPath(name) == relative
+    return bool(name) and (PurePosixPath(name) == relative or relative.as_posix() in COMPANY_ICONS)
 
 
 def content_type_of(name: str) -> str:
@@ -137,6 +140,20 @@ def _protect(response):
 def _unavailable(request, reason: str, advice: str):
     logger.error("ファイルを返せません: %s (%s=%s)", reason, SETTING, delivery())
     return render(request, "core/file_delivery_error.html", {"reason": reason, "advice": advice}, status=503)
+
+
+def favicon(request):
+    """印の口 (/favicon.ico。画面でない。ログインを見ない)。ロゴから作った印があればその絵へ、無ければ static の favicon.svg へ移す (302)。
+
+    Django の誤りの画面と、PDF や CSV を開いたタブは <link rel="icon"> を持たず、ブラウザがこの URL を取りに来る。決め 11-05 20:1x。N166
+    表は読まず、ロゴと同じ storage の印のファイルの有無で決める (印はロゴを外すと消える。データベースの無い誤りの画面でも動く)。
+    """
+    from seizou.core.models import Company
+    from seizou.core.services import COMPANY_ICONS
+
+    storage = Company._meta.get_field("logo").storage
+    icon = next(iter(COMPANY_ICONS))
+    return HttpResponseRedirect(storage.url(icon) if storage.exists(icon) else static("favicon.svg"))
 
 
 @require_http_methods(["GET", "HEAD"])
