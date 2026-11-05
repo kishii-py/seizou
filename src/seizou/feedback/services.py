@@ -123,7 +123,7 @@ def normalize_screens(value) -> str:
                 unknown.append(word)
     if unknown:
         raise ValueError(
-            f"影響する画面に、画面の目録に無い名前があります: {'・'.join(dict.fromkeys(unknown))}。"
+            f"保存できません。影響する画面に、画面の目録に無い名前があります: {'・'.join(dict.fromkeys(unknown))}。"
             "画面の名前を「、」で区切って書いてください (例 受注、生産管理ボード)。"
         )
     return " ".join(dict.fromkeys(found))
@@ -209,26 +209,26 @@ def _checked_screenshots(screenshots) -> list:
     名前の字数は添付ファイルの部品の上限と文で先に見る (add_attachment が 2 枚目で断ると、1 枚目のファイルが storage に残るため)。
     """
     if not isinstance(screenshots, (list, tuple)):
-        raise ValueError(MESSAGE_SCREENSHOT_NOT_LIST)
+        raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_NOT_LIST)
     files = [file for file in screenshots if file]
     if not files:
         return []
     attachments_services = _attachments_services()
     if attachments_services is None:
-        raise ValueError(MESSAGE_SCREENSHOT_NO_PART)
+        raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_NO_PART)
     if len(files) > SCREENSHOT_MAX_COUNT:
-        raise ValueError(MESSAGE_SCREENSHOT_COUNT)
+        raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_COUNT)
     for file in files:
         name = os.path.basename(getattr(file, "name", "") or "")
         if attachments_services.extension_of(name) not in SCREENSHOT_EXTENSIONS:
-            raise ValueError(MESSAGE_SCREENSHOT_TYPE)
+            raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_TYPE)
         size = getattr(file, "size", None) or 0
         if size <= 0:
-            raise ValueError(MESSAGE_SCREENSHOT_EMPTY)
+            raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_EMPTY)
         if size > SCREENSHOT_MAX_BYTES:
-            raise ValueError(MESSAGE_SCREENSHOT_SIZE)
+            raise ValueError("保存できません。" + MESSAGE_SCREENSHOT_SIZE)
         if len(name) > attachments_services.MAX_NAME_LENGTH:
-            raise ValueError(attachments_services.MESSAGE_NAME_TOO_LONG)
+            raise ValueError("保存できません。" + attachments_services.MESSAGE_NAME_TOO_LONG)
     return files
 
 
@@ -260,10 +260,10 @@ def screenshots_of(feedback) -> list:
 
 def _refuse_unknown_keys(data) -> None:
     if not isinstance(data, dict):
-        raise ValueError("フィードバックの値は、項目の名前と値の組で渡してください。")
+        raise ValueError("保存できません。フィードバックの値は、項目の名前と値の組で渡してください。")
     unknown = sorted(set(data) - set(FIELD_KEYS))
     if unknown:
-        raise ValueError(f"知らない項目 ({'・'.join(map(str, unknown))}) があります。フィードバックの列の名前だけを渡してください。")
+        raise ValueError(f"保存できません。知らない項目 ({'・'.join(map(str, unknown))}) があります。フィードバックの列の名前だけを渡してください。")
 
 
 def _text(value) -> str:
@@ -275,24 +275,24 @@ def _checked_value(key, value):
     if key == "kind":
         kind = _text(value)
         if kind not in KINDS:
-            raise ValueError(MESSAGE_KIND)
+            raise ValueError("保存できません。" + MESSAGE_KIND)
         return kind
     if key == "title":
         title = _text(value)
         if not title:
-            raise ValueError(MESSAGE_TITLE_EMPTY)
+            raise ValueError("保存できません。" + MESSAGE_TITLE_EMPTY)
         if len(title) > TITLE_MAX_CHARS:
-            raise ValueError(MESSAGE_TITLE_LONG)
+            raise ValueError("保存できません。" + MESSAGE_TITLE_LONG)
         return title
     if key == "problem":
         problem = _text(value)
         if not problem:
-            raise ValueError(MESSAGE_PROBLEM_EMPTY)
+            raise ValueError("保存できません。" + MESSAGE_PROBLEM_EMPTY)
         return problem
     if key == "screen":
         screen = _text(value)
         if screen and screen not in screen_catalog():
-            raise ValueError(f"画面 {screen} は画面の目録にありません。選び直すか、「指定なし」にしてください。")
+            raise ValueError(f"保存できません。画面 {screen} は画面の目録にありません。選び直すか、「指定なし」にしてください。")
         return screen
     if key == "screens":
         return normalize_screens(value)
@@ -355,7 +355,7 @@ def update_feedback(feedback, data, user, *, screenshots=()):
     screenshots は create_feedback と同じ (直せる人だけが付けられる。直せない人は絵も付けない)。
     """
     if not can_edit(feedback, user):
-        raise ValueError(MESSAGE_CANNOT_EDIT)
+        raise ValueError("保存できません。" + MESSAGE_CANNOT_EDIT)
     _refuse_unknown_keys(data)
     values = {key: _checked_value(key, value) for key, value in data.items()}
     files = _checked_screenshots(screenshots)
@@ -369,14 +369,14 @@ def update_feedback(feedback, data, user, *, screenshots=()):
 
 def _refuse_non_manager(user, what) -> None:
     if not can_manage(user):
-        raise ValueError(f"{what}にできるのはアカウント管理の担当者だけです。" + access.CONTACT)
+        raise ValueError(f"保存できません。{what}にできるのはアカウント管理の担当者だけです。" + access.CONTACT)
 
 
 def mark_confirmed(feedback, user):
     """下書き → 確認済み。世話役だけ。下書きでなければ ValueError。"""
     _refuse_non_manager(user, "確認済み")
     if feedback.status != "draft":
-        raise ValueError(f"下書きだけを確認済みにできます (今は {feedback.get_status_display()})。")
+        raise ValueError(f"保存できません。下書きだけを確認済みにできます (今は {feedback.get_status_display()})。")
     with transaction.atomic():
         feedback.status = "confirmed"
         feedback.save(update_fields=["status", "updated_at"])
@@ -391,12 +391,12 @@ def mark_sent(feedback, user, sent_url=""):
     """
     _refuse_non_manager(user, "送った状態")
     if feedback.status == "sent":
-        raise ValueError(MESSAGE_ALREADY_SENT)
+        raise ValueError("送れません。" + MESSAGE_ALREADY_SENT)
     if feedback.status == "fixed":
-        raise ValueError(MESSAGE_ALREADY_FIXED)
+        raise ValueError("送れません。" + MESSAGE_ALREADY_FIXED)
     url = _text(sent_url)
     if url and (not url.startswith(("http://", "https://")) or len(url) > SENT_URL_MAX_CHARS or any(ch.isspace() for ch in url)):
-        raise ValueError(MESSAGE_SENT_URL)
+        raise ValueError("送れません。" + MESSAGE_SENT_URL)
     with transaction.atomic():
         feedback.status = "sent"
         feedback.sent_url = url
@@ -413,10 +413,10 @@ def mark_fixed(feedback, note, user):
     """
     _refuse_non_manager(user, "直した状態")
     if feedback.status == "fixed":
-        raise ValueError(MESSAGE_ALREADY_FIXED)
+        raise ValueError("保存できません。" + MESSAGE_ALREADY_FIXED)
     text = _text(note)
     if len(text) > FIXED_NOTE_MAX_CHARS:
-        raise ValueError(MESSAGE_FIXED_NOTE_LONG)
+        raise ValueError("保存できません。" + MESSAGE_FIXED_NOTE_LONG)
     with transaction.atomic():
         feedback.status = "fixed"
         feedback.fixed_at = timezone.now()
@@ -490,11 +490,11 @@ def delete_feedback(feedback, user) -> None:
     with transaction.atomic():
         row = Feedback.objects.select_for_update().filter(pk=feedback.pk).first()
         if row is None:
-            raise ValueError(MESSAGE_ALREADY_DELETED)
+            raise ValueError("削除できません。" + MESSAGE_ALREADY_DELETED)
         if row.status != "draft":
-            raise ValueError(MESSAGE_DELETE_DRAFT_ONLY.format(status=row.get_status_display()))
+            raise ValueError("削除できません。" + MESSAGE_DELETE_DRAFT_ONLY.format(status=row.get_status_display()))
         if not can_edit(row, user):
-            raise ValueError(MESSAGE_CANNOT_DELETE)
+            raise ValueError("削除できません。" + MESSAGE_CANNOT_DELETE)
         row.delete()
 
 

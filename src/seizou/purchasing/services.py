@@ -44,10 +44,10 @@ _ZERO = Decimal("0")
 
 _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"})
 
-_POSITIVE_MESSAGE = "数量と単価は 0 より大きい数にしてください。"
+_POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
-    "送った後の発注は、この画面から取り消せません。相手に連絡してください。"
-    "取り消せるのは状態が「作成」か「断られた」の発注だけです。"
+    "取り消せません。この発注は相手に送ってあります (取り消せるのは「下書き」か「断られた」の発注だけ)。"
+    "相手に連絡してください。"
 )
 
 
@@ -58,7 +58,7 @@ def _dec(value):
 def _refuse_non_subcontractor(partner):
     if not partner.is_subcontractor:
         raise ValueError(
-            f"取引先 {partner} は協力企業ではありません。取引先の種類が協力企業か両方の取引先を選んでください。"
+            f"保存できません。取引先 {partner} は協力企業ではありません。取引先の種類が協力企業か両方の取引先を選んでください。"
         )
 
 
@@ -67,7 +67,7 @@ def _refuse_bad_lines(lines):
         unknown = sorted(set(line) - _LINE_KEYS)
         if unknown:
             raise ValueError(
-                f"知らない項目 ({'・'.join(unknown)}) があります。発注の明細の列の名前だけを渡してください。"
+                f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。発注の明細の列の名前だけを渡してください。"
             )
         if not (_dec(line["qty"]) > 0 and _dec(line["unit_price"]) > 0):
             raise ValueError(_POSITIVE_MESSAGE)
@@ -113,7 +113,7 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     """
     _refuse_non_subcontractor(partner)
     if not lines:
-        raise ValueError("明細がありません。明細を 1 行以上入れてください。")
+        raise ValueError("保存できません。明細がありません。明細を 1 行以上入れてください。")
     _refuse_bad_lines(lines)
     refuse_inactive(partner, [line.get("item") for line in lines])
     with transaction.atomic():
@@ -151,7 +151,7 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
             limit = PurchaseOrder._meta.get_field("note").max_length
             if len(note) > limit:
                 raise ValueError(
-                    f"取消の理由を足すと備考が {limit} 字を超えます。理由を短くしてください。"
+                    f"取り消せません。取消の理由を足すと備考が {limit} 字を超えます。理由を短くしてください。"
                 )
             locked.note = note
         locked.status = PurchaseOrder.STATUS_CANCELLED
@@ -272,10 +272,10 @@ def receive(line, qty, received_on, user, *, note=""):
         locked = PurchaseOrder.objects.select_for_update().get(pk=line.purchase_order_id)
         if locked.status == PurchaseOrder.STATUS_CANCELLED:
             raise ValueError(
-                "取り消した発注には受入を入れられません。取消していない発注の明細を選んでください。"
+                "受け入れられません。取り消した発注です。取消していない発注の明細を選んでください。"
             )
         if not qty > 0:
-            raise ValueError("数量は 0 より大きい数にしてください。")
+            raise ValueError("受け入れられません。数量が 0 以下です。数量は 0 より大きい数にしてください。")
         current = PurchaseOrderLine.objects.select_related("purchase_order", "item").get(pk=line.pk)
         receipt = Receipt.objects.create(
             line=current,

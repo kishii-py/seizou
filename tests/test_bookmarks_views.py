@@ -142,7 +142,7 @@ def test_detail_screen_cannot_be_registered(client_logged_in, order):
     toast = re.search(r'<div id="seizou-toasts".*?role="alert".*?</div>\s*</div>', html_of(response), re.S)
     assert toast
     assert "bg-error" in toast.group(0)
-    assert "この画面は登録できません。一覧や目録のような、番号の付かない画面だけ登録できます。" in toast.group(0)
+    assert "番号の付く画面です。一覧や目録のような、番号の付かない画面だけ登録できます。" in toast.group(0)
 
 
 def test_next_outside_host_goes_home(client_logged_in):

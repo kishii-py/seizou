@@ -30,12 +30,12 @@ UPDATE_KEYS = ("departments", "permissions", "see_money", "full_control", "manag
 FLAG_KEYS = ("see_money", "full_control", "manage_accounts")
 
 CONTACT_OTHER = "別のアカウント管理の担当者に頼んでください。"
-SELF_DELETE = "自分のアカウントは削除できません。" + CONTACT_OTHER
-SELF_DISABLE = "自分のアカウントは使用停止にできません。" + CONTACT_OTHER
-SELF_MANAGE = "自分のアカウントからアカウント管理の権限は外せません。" + CONTACT_OTHER
-SELF_GRANT = "自分のアカウントにフルコントロールと金額の閲覧は付けられません。" + CONTACT_OTHER
+SELF_DELETE = "自分のアカウントです。" + CONTACT_OTHER
+SELF_DISABLE = "自分のアカウントを使用停止にしようとしています。" + CONTACT_OTHER
+SELF_MANAGE = "自分のアカウントからアカウント管理の権限を外そうとしています。" + CONTACT_OTHER
+SELF_GRANT = "自分のアカウントにフルコントロールか金額の閲覧を付けようとしています。" + CONTACT_OTHER
 LAST_MANAGER = (
-    "アカウント管理を使える使用中のアカウントがこの 1 つだけのため、止められません。"
+    "アカウント管理を使える使用中のアカウントが、この 1 つだけです。"
     "先に別のアカウントにアカウント管理の権限を付けてください。"
 )
 SUPERUSER = "システム管理者のアカウントは、この画面から変更も削除もできません。"
@@ -48,7 +48,7 @@ DEPARTMENT_NAME_USED = "部署「{name}」は既にあります。別の名前�
 DEPARTMENT_APP_UNKNOWN = "部署の開ける部品に選べない名前です: {app}"
 DEPARTMENT_SORT_ORDER = "並び順は 0 以上の整数にしてください。"
 DEPARTMENT_IN_USE = (
-    "部署「{name}」には {count} 人のアカウントが付いているため削除できません。"
+    "部署「{name}」には {count} 人のアカウントが付いています。"
     "先にアカウント管理で、その人の部署を外してください。"
 )
 
@@ -71,17 +71,17 @@ def check_password(password: str, account) -> None:
     try:
         password_validation.validate_password(password or "", user=account, password_validators=password_validators())
     except ValidationError as exc:
-        raise ValueError(PASSWORD_REFUSED + " ".join(exc.messages)) from None
+        raise ValueError("保存できません。" + PASSWORD_REFUSED + " ".join(exc.messages)) from None
 
 
 def clean_login_id(login_id) -> str:
     login_id = (login_id or "").strip()
     if not login_id or len(login_id) > LOGIN_ID_MAX:
-        raise ValueError(LOGIN_ID_FORM)
+        raise ValueError("保存できません。" + LOGIN_ID_FORM)
     try:
         UnicodeUsernameValidator()(login_id)
     except ValidationError:
-        raise ValueError(LOGIN_ID_FORM) from None
+        raise ValueError("保存できません。" + LOGIN_ID_FORM) from None
     return login_id
 
 
@@ -90,7 +90,7 @@ def clean_permissions(names) -> list[str]:
     names = list(names or ())
     for name in names:
         if name not in access.PERMISSION_NAMES:
-            raise ValueError(f"知らない権限の名前です: {name}")
+            raise ValueError(f"保存できません。知らない権限の名前です: {name}")
     return [name for name in access.PERMISSION_NAMES if name in names]
 
 
@@ -103,7 +103,7 @@ def clean_departments(values) -> list:
             continue
         department = Department.objects.filter(pk=value).first()
         if department is None:
-            raise ValueError(f"知らない部署です: {value}")
+            raise ValueError(f"保存できません。知らない部署です: {value}")
         departments.append(department)
     return departments
 
@@ -120,7 +120,7 @@ def clean_apps(apps) -> list[str]:
     apps = list(apps or ())
     for app in apps:
         if app not in allowed:
-            raise ValueError(DEPARTMENT_APP_UNKNOWN.format(app=app))
+            raise ValueError("保存できません。" + DEPARTMENT_APP_UNKNOWN.format(app=app))
     return [name for name in allowed if name in apps]
 
 
@@ -184,9 +184,9 @@ def _locked(target) -> Access:
     """直す前に表から読み直す (渡された物を書き換えない)。削除済みとシステム管理者は断る。"""
     row = Access.objects.select_for_update().select_related("user").get(pk=target.pk)
     if row.deleted_at is not None:
-        raise ValueError(DELETED)
+        raise ValueError("保存できません。" + DELETED)
     if row.user.is_superuser:
-        raise ValueError(SUPERUSER)
+        raise ValueError("保存できません。" + SUPERUSER)
     return row
 
 
@@ -198,14 +198,14 @@ def create_department(name, apps, default_permissions, user, *, sort_order=0) ->
     """部署を作る (種と、部署の新規登録の画面が呼ぶ)。記録の表には残さない。"""
     name = (name or "").strip()
     if not name:
-        raise ValueError("部署の名前を入れてください。")
+        raise ValueError("保存できません。部署の名前を入れてください。")
     if Department.objects.filter(name=name).exists():
-        raise ValueError(f"部署「{name}」は既にあります。別の名前にしてください。")
+        raise ValueError(f"保存できません。部署「{name}」は既にあります。別の名前にしてください。")
     allowed = department_apps()
     apps = list(apps or ())
     for app in apps:
         if app not in allowed:
-            raise ValueError(f"部署の開ける部品に選べない名前です: {app}")
+            raise ValueError(f"保存できません。部署の開ける部品に選べない名前です: {app}")
     return Department.objects.create(
         name=name,
         apps=apps,
@@ -228,9 +228,9 @@ def update_department(target, data, user) -> Department:
     if "name" in data:
         name = (data["name"] or "").strip()
         if not name:
-            raise ValueError(DEPARTMENT_NAME_EMPTY)
+            raise ValueError("保存できません。" + DEPARTMENT_NAME_EMPTY)
         if Department.objects.filter(name=name).exclude(pk=row.pk).exists():
-            raise ValueError(DEPARTMENT_NAME_USED.format(name=name))
+            raise ValueError("保存できません。" + DEPARTMENT_NAME_USED.format(name=name))
         values["name"] = name
     if "apps" in data:
         values["apps"] = clean_apps(data["apps"])
@@ -239,13 +239,13 @@ def update_department(target, data, user) -> Department:
     if "sort_order" in data:
         sort_order = data["sort_order"]
         if isinstance(sort_order, bool):
-            raise ValueError(DEPARTMENT_SORT_ORDER)
+            raise ValueError("保存できません。" + DEPARTMENT_SORT_ORDER)
         try:
             sort_order = int(sort_order)
         except (TypeError, ValueError):
-            raise ValueError(DEPARTMENT_SORT_ORDER) from None
+            raise ValueError("保存できません。" + DEPARTMENT_SORT_ORDER) from None
         if sort_order < 0:
-            raise ValueError(DEPARTMENT_SORT_ORDER)
+            raise ValueError("保存できません。" + DEPARTMENT_SORT_ORDER)
         values["sort_order"] = sort_order
     for key, value in values.items():
         setattr(row, key, value)
@@ -263,7 +263,7 @@ def delete_department(target, user) -> None:
     row = Department.objects.select_for_update().get(pk=target.pk)
     count = row.accesses.filter(deleted_at__isnull=True).count()
     if count:
-        raise ValueError(DEPARTMENT_IN_USE.format(name=row.name, count=count))
+        raise ValueError("削除できません。" + DEPARTMENT_IN_USE.format(name=row.name, count=count))
     row.delete()
 
 
@@ -276,7 +276,7 @@ def issue_account(login_id, password, departments, permissions, flags, user):
     User = get_user_model()
     login_id = clean_login_id(login_id)
     if User._default_manager.filter(username__iexact=login_id).exists():
-        raise ValueError(LOGIN_ID_USED)
+        raise ValueError("発行できません。" + LOGIN_ID_USED)
     permissions = clean_permissions(permissions)
     departments = clean_departments(departments)
     flags = dict(flags or {})
@@ -312,15 +312,15 @@ def update_account(target, data, user, *, password=None):
     )
     if _is_self(row, user):
         if account.is_active and not is_active:
-            raise ValueError(SELF_DISABLE)
+            raise ValueError("保存できません。" + SELF_DISABLE)
         had = row.manage_accounts or row.full_control
         has = flags.get("manage_accounts", row.manage_accounts) or flags.get("full_control", row.full_control)
         if had and not has:
-            raise ValueError(SELF_MANAGE)
+            raise ValueError("保存できません。" + SELF_MANAGE)
         if any(flags.get(key) and not getattr(row, key) for key in ("full_control", "see_money")):
-            raise ValueError(SELF_GRANT)
+            raise ValueError("保存できません。" + SELF_GRANT)
     if before_manager and not after_manager and manager_count() <= 1:
-        raise ValueError(LAST_MANAGER)
+        raise ValueError("保存できません。" + LAST_MANAGER)
     if password:
         check_password(password, account)
 
@@ -360,9 +360,9 @@ def delete_account(target, user):
     """削除 (行は消さない)。deleted_at を入れ、使用停止にし、ログイン ID に印を付けて元の ID を空ける。"""
     row = _locked(target)
     if _is_self(row, user):
-        raise ValueError(SELF_DELETE)
+        raise ValueError("削除できません。" + SELF_DELETE)
     if _counts_as_manager(row) and manager_count() <= 1:
-        raise ValueError(LAST_MANAGER)
+        raise ValueError("削除できません。" + LAST_MANAGER)
     before = snapshot(row)
     account = row.user
     mark = f"{DELETED_MARK}{account.pk}"

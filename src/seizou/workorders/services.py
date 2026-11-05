@@ -29,7 +29,7 @@ from seizou.core.services import next_number
 
 from .models import WorkOrder, WorkOrderStep
 
-_R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
+_R02_MESSAGE = "発行できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 _R05_RULE = "取消した受注には、出荷も指示書も作れない。"
 _STEP_KEYS = frozenset({"process", "planned_qty"})
 
@@ -46,13 +46,13 @@ def _refuse_bad_steps(steps):
         unknown = sorted(set(step) - _STEP_KEYS)
         if unknown:
             raise ValueError(
-                f"知らない項目 ({'・'.join(unknown)}) があります。"
+                f"発行できません。知らない項目 ({'・'.join(unknown)}) があります。"
                 "指示書の工程には process と planned_qty だけを渡してください。"
             )
         missing = sorted(_STEP_KEYS - set(step))
         if missing:
             raise ValueError(
-                f"工程の項目 ({'・'.join(missing)}) がありません。"
+                f"発行できません。工程の項目 ({'・'.join(missing)}) がありません。"
                 "指示書の工程には process と planned_qty を渡してください。"
             )
 
@@ -67,12 +67,12 @@ def issue_workorder(order_line, qty, steps, user):
         locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
         if locked.order.status == "cancelled":
             raise RuleViolation(
-                "R05", f"{_R05_RULE}取消していない受注の明細を選んでください。"
+                "R05", f"発行できません。{_R05_RULE}取消していない受注の明細を選んでください。"
             )
         if not qty > 0:
             raise RuleViolation("R02", _R02_MESSAGE)
         if not steps:
-            raise ValueError("工程がありません。工程を 1 つ以上選んでください。")
+            raise ValueError("発行できません。工程がありません。工程を 1 つ以上選んでください。")
         _refuse_bad_steps(steps)
         planned = [_dec(step["planned_qty"]) for step in steps]
         if not all(value > 0 for value in planned):
@@ -119,13 +119,13 @@ def plan_step(step, start, end, user):
         locked = WorkOrderStep.objects.select_for_update().get(pk=step.pk)
         if locked.workorder.order_line.order.status == "cancelled":
             raise RuleViolation(
-                "R05", f"{_R05_RULE}取消していない受注の指示書を選んでください。"
+                "R05", f"保存できません。{_R05_RULE}取消していない受注の指示書を選んでください。"
             )
         if (start is None) != (end is None):
-            raise ValueError("開始日と終了日は、両方を入れるか両方を空にしてください。")
+            raise ValueError("保存できません。開始日か終了日の片方だけが入っています。開始日と終了日は、両方を入れるか両方を空にしてください。")
         if start is not None and start > end:
             raise ValueError(
-                "開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
+                "保存できません。開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
             )
         locked.planned_start = start
         locked.planned_end = end
@@ -154,13 +154,13 @@ def cancel_workorder(workorder, user, *, reason=""):
         locked = WorkOrder.objects.select_for_update().get(pk=workorder.pk)
         steps = list(WorkOrderStep.objects.select_for_update().filter(workorder=locked).order_by("pk"))
         if locked.status == WorkOrder.STATUS_CANCELLED:
-            raise ValueError("この指示書は取り消し済みです。")
+            raise ValueError("取り消せません。この指示書は取り消し済みです。指示書の詳細を開き直してください。")
         count = _progress_count(steps)
         if count:
-            raise ValueError(f"指示書 {locked.wo_no} には実績が {count} 件入っているので、取り消せません。")
+            raise ValueError(f"取り消せません。指示書 {locked.wo_no} には実績が {count} 件入っています。")
         limit = WorkOrder._meta.get_field("cancel_reason").max_length
         if len(reason) > limit:
-            raise ValueError(f"取消の理由が {limit} 字を超えます。理由を短くしてください。")
+            raise ValueError(f"取り消せません。取消の理由が {limit} 字を超えます。理由を短くしてください。")
         locked.status = WorkOrder.STATUS_CANCELLED
         locked.cancel_reason = reason
         locked.save(update_fields=["status", "cancel_reason"])
@@ -177,7 +177,7 @@ def accept_workorder(workorder, user):
     with transaction.atomic():
         locked = WorkOrder.objects.select_for_update().get(pk=workorder.pk)
         if locked.status == WorkOrder.STATUS_CANCELLED:
-            raise ValueError("取り消した指示書は受けられません。発行の指示書を選んでください。")
+            raise ValueError("着手できません。取り消した指示書です。発行の指示書を選んでください。")
         if locked.accepted_at is not None:
             return locked
         locked.accepted_at = timezone.now()

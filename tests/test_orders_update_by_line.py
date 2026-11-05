@@ -92,7 +92,7 @@ def test_removing_shipped_line_is_japanese_value_error(user, customer, item):
 
     with pytest.raises(ValueError) as caught:
         services.update_order(order, {"note": "消す前の備考"}, [{"order_line": second}], user)
-    assert str(caught.value) == "出荷のある明細は消せません。数量を直すか、明細を残してください。"
+    assert str(caught.value) == "保存できません。消した明細に出荷があります。数量を直すか、明細を残してください。"
 
     # 明細は 2 行とも残り、受注の項目も書き換わらない (同じトランザクションごと戻る)。
     assert OrderLine.objects.filter(order=order).count() == 2

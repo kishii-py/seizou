@@ -328,7 +328,7 @@ def test_accept_refuses_out_of_field_from_record_inbox(user, customer, own_item)
         services.accept(inbox, {"T-100": own_item}, user)
 
     message = str(caught.value)
-    assert message.startswith("注文の 1 行目の数量は")
+    assert message.startswith("受け入れられません。注文の 1 行目の数量は")
     assert message.endswith("この注文は断り、送る側に送り直してもらってください。")
     assert Order.objects.count() == 0
     inbox.refresh_from_db()

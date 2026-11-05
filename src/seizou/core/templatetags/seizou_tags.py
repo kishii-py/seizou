@@ -8,6 +8,7 @@ can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く�
 部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
+split_first_sentence: {% with parts=notice.message|split_first_sentence %} で、知らせの文を 1 文目 (最初の「。」まで) と残りの 2 つに分ける (core/_notices.html が 1 文目を太字にする。N156)。
 weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
 status_badge: {% status_badge obj %} で、状態 (status) の印を状態の色の表 (core.status_colors) の意味の色で出す (core/_status_badge.html)。dot=True で頭に点 (詳細の見出し)、small=True で小さい印。
 """
@@ -128,6 +129,20 @@ def rule_code(value):
     if isinstance(value, str) and re.fullmatch(r"R[0-9]{2}", value):
         return value
     return ""
+
+
+@register.filter
+def split_first_sentence(value):
+    """{% with parts=notice.message|split_first_sentence %}。知らせの文を (1 文目, 残り) の 2 つに分ける (N156)。
+
+    1 文目は最初の「。」までの字 (赤は「保存できません。」のような頭、黄は状況の文)。残りは前後の空白を落とした字。
+    「。」が無ければ全部が 1 文目で、残りは空の字。None は空の字。
+    """
+    text = "" if value is None else str(value)
+    head, mark, rest = text.partition("。")
+    if not mark:
+        return (text, "")
+    return (head + mark, rest.strip())
 
 
 @register.filter

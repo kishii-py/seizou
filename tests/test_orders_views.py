@@ -237,7 +237,7 @@ def test_removing_shipped_line_on_screen_is_red(logged_in, shipped_order):
     response = logged_in.post(reverse("orders:order_update", args=[shipped_order.pk]), data)
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "出荷のある明細は消せません" in body
+    assert "alert-error" in body and "消した明細に出荷があります" in body
     assert shipped_order.lines.count() == 1
 
 

@@ -34,7 +34,7 @@ from seizou.orders.services import refresh_status, remaining_qty
 
 from .models import DeliveryNote, Shipment
 
-_R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
+_R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 _R05_RULE = "取消した受注には、出荷も指示書も作れない。"
 _R08_RULE = "納品書の数量は出荷の数量と一致する。納品書を出した後の出荷は、納品書を取り消してから直す。"
 MESSAGE_NOTICE_SEED = "作り物の種の読み込みなので出荷の知らせを送っていません (相手の記録は相手の種が持つ)。"
@@ -64,7 +64,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
     locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
     if locked.order.status == "cancelled":
         raise RuleViolation(
-            "R05", f"{_R05_RULE}取消していない受注の明細を選んでください。"
+            "R05", f"保存できません。{_R05_RULE}取消していない受注の明細を選んでください。"
         )
     if not qty > 0:
         raise RuleViolation("R02", _R02_MESSAGE)
@@ -73,7 +73,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
         if qty != remaining:
             raise RuleViolation(
                 "分納",
-                f"この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
+                f"保存できません。この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
             )
     shipment = Shipment.objects.create(
         shipment_no=next_number("shipment"),
@@ -127,14 +127,14 @@ def ship_lines(lines, shipped_at, user, *, note=""):
     出荷の知らせ (受信した注文で作った受注) は、全部を保存した後に atomic の外で 1 件ずつ送る (R17)。
     """
     if not lines:
-        raise ValueError("出荷する明細を 1 行以上選んでください。")
+        raise ValueError("出荷できません。出荷する明細がありません。出荷する明細を 1 行以上選んでください。")
     with transaction.atomic():
         recorded = []
         for line, qty in lines:
             try:
                 recorded.append(_record_shipment(line, qty, shipped_at, user, note))
             except RuleViolation as exc:
-                raise RuleViolation(exc.code, f"{line.order.order_no} の {line.line_no} 行目: {exc.message}") from exc
+                raise RuleViolation(exc.code, f"出荷できません。{line.order.order_no} の {line.line_no} 行目: {exc.message.removeprefix('保存できません。')}") from exc
     return ShippedLines(_after_ship(shipment, locked.order, user, True) for shipment, locked in recorded)
 
 
@@ -146,21 +146,21 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
     """
     pks = sorted({shipment.pk for shipment in shipments})
     if not pks:
-        raise ValueError("出荷がありません。納品書にまとめる出荷を 1 つ以上選んでください。")
+        raise ValueError("発行できません。出荷がありません。納品書にまとめる出荷を 1 つ以上選んでください。")
     with transaction.atomic():
         locked = list(Shipment.objects.select_for_update().filter(pk__in=pks).order_by("pk"))
         for shipment in locked:
             if shipment.order_line.order.customer_id != customer.pk:
                 raise RuleViolation(
                     "R08",
-                    f"{_R08_RULE}納品書は得意先ごとに作るので、"
+                    f"発行できません。{_R08_RULE}納品書は得意先ごとに作るので、"
                     f"出荷 {shipment.shipment_no} を外してください。",
                 )
             current = shipment.delivery_note
             if current is not None and current.status == DeliveryNote.STATUS_ISSUED:
                 raise RuleViolation(
                     "R08",
-                    f"{_R08_RULE}出荷 {shipment.shipment_no} は納品書 {current.note_no} に入っているので、"
+                    f"発行できません。{_R08_RULE}出荷 {shipment.shipment_no} は納品書 {current.note_no} に入っているので、"
                     "外してください。",
                 )
         note = DeliveryNote.objects.create(
@@ -203,7 +203,7 @@ def cancel_delivery_note(note, user):
     with transaction.atomic():
         locked = DeliveryNote.objects.select_for_update().get(pk=note.pk)
         if locked.status == DeliveryNote.STATUS_CANCELLED:
-            raise ValueError("この納品書は取り消し済みです。")
+            raise ValueError("取り消せません。この納品書は取り消し済みです。納品書の詳細を開き直してください。")
         shipments = list(
             Shipment.objects.select_for_update().filter(delivery_note=locked).order_by("pk")
         )
@@ -211,7 +211,7 @@ def cancel_delivery_note(note, user):
             invoice = _issued_invoice_of(shipment)
             if invoice is not None:
                 raise ValueError(
-                    f"納品書 {locked.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に"
+                    f"取り消せません。納品書 {locked.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に"
                     "入っています。先に請求書を取り消してから、納品書を取り消してください。"
                 )
         locked.status = DeliveryNote.STATUS_CANCELLED
@@ -232,12 +232,12 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
         line = _OrderLine.objects.select_for_update().get(pk=shipment.order_line_id)
         locked = Shipment.objects.select_for_update().get(pk=shipment.pk)
         if line.order.status == "cancelled":
-            raise RuleViolation("R05", f"{_R05_RULE}取消した受注の出荷は直せません。")
+            raise RuleViolation("R05", f"保存できません。{_R05_RULE}この出荷の受注は取り消してあります。")
         current = locked.delivery_note
         if current is not None and current.status == DeliveryNote.STATUS_ISSUED:
             raise RuleViolation(
                 "R08",
-                f"{_R08_RULE}出荷 {locked.shipment_no} は納品書 {current.note_no} に入っているので、"
+                f"保存できません。{_R08_RULE}出荷 {locked.shipment_no} は納品書 {current.note_no} に入っているので、"
                 "先に納品書を取り消してください。",
             )
         if not qty > 0:
@@ -247,7 +247,7 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
             if qty != remaining:
                 raise RuleViolation(
                     "分納",
-                    f"この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
+                    f"保存できません。この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
         locked.qty = qty
         locked.shipped_at = shipped_at

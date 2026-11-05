@@ -83,10 +83,10 @@ def test_add_without_user_leaves_uploaded_by_empty(item):
 @pytest.mark.parametrize(
     ("name", "content", "kind", "note", "message"),
     [
-        ("tool.exe", PNG_BYTES, "other", "", "この形式のファイルは付けられません"),
-        ("drawing.svg", b"<svg/>", "other", "", "この形式のファイルは付けられません"),
-        ("page.html", b"<p>x</p>", "other", "", "この形式のファイルは付けられません"),
-        ("noextension", PNG_BYTES, "other", "", "この形式のファイルは付けられません"),
+        ("tool.exe", PNG_BYTES, "other", "", "ファイルの形式が違います"),
+        ("drawing.svg", b"<svg/>", "other", "", "ファイルの形式が違います"),
+        ("page.html", b"<p>x</p>", "other", "", "ファイルの形式が違います"),
+        ("noextension", PNG_BYTES, "other", "", "ファイルの形式が違います"),
         ("empty.png", b"", "other", "", "ファイルが空です"),
         ("big.png", b"x" * 65, "other", "", "ファイルが 20MB を超えています"),
         ("n" * 97 + ".png", PNG_BYTES, "other", "", "ファイル名が 100 字を超えています"),
@@ -112,7 +112,7 @@ def test_add_refuses_unsaved_target_and_attachment_itself(item, user, media_root
         services.add_attachment(unsaved, upload("a.png"), user, kind="other")
 
     attachment = services.add_attachment(item, upload("a.png"), user, kind="other")
-    with pytest.raises(ValueError, match="添付ファイルには添付ファイルを付けられません"):
+    with pytest.raises(ValueError, match="付ける先が添付ファイルです"):
         services.add_attachment(attachment, upload("b.png"), user, kind="other")
 
     assert Attachment.objects.count() == 1

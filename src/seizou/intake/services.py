@@ -128,7 +128,7 @@ MESSAGE_BUSY = "読み取りが混んでいます。少し待ってからもう�
 MESSAGE_NO_CREDIT = f"API の残高が足りません。{_NEXT}"
 MESSAGE_TIMEOUT = f"{TIMEOUT_SECONDS} 秒の間に読み取れませんでした。少し待ってからもう一度置くか、{_NEXT}"
 MESSAGE_UNREACHABLE = f"読み取りの API に届きませんでした。少し待ってからもう一度置くか、{_NEXT}"
-MESSAGE_IN_INBOX = "この読み取りは受信した注文に入れてあります。受信した注文の画面で差出人を確かめてから承認してください。"
+MESSAGE_IN_INBOX = "この読み取りは受信した注文に入れてあります。受信した注文の画面で差出人を確かめてから受け入れてください。"
 MESSAGE_NO_CONNECT = "受信した注文の部品 (connect) が入っていないので、見張りの読み取りは使えません。"
 
 #: 見張りの読み取りの受信した注文の番号を作る名前空間 (同じ中身の注文書は同じ番号 = R11)
@@ -201,11 +201,11 @@ def accept_extracted(extraction, item_mapping, user):
         locked = Extraction.objects.select_for_update().get(pk=extraction.pk)
         if locked.status == Extraction.STATUS_ORDERED:
             order_no = locked.order.order_no if locked.order is not None else ""
-            raise ValueError(f"この読み取りは受注 {order_no} にしてあります。受注の詳細を見てください。")
+            raise ValueError(f"受け入れられません。この読み取りは受注 {order_no} にしてあります。受注の詳細を見てください。")
         if locked.status == Extraction.STATUS_DISCARDED:
-            raise ValueError("この読み取りは捨ててあるので、受注にできません。注文書を置き直してください。")
+            raise ValueError("受け入れられません。この読み取りは捨ててあります。注文書を置き直してください。")
         if locked.status == Extraction.STATUS_INBOX:
-            raise ValueError(MESSAGE_IN_INBOX)
+            raise ValueError("受け入れられません。" + MESSAGE_IN_INBOX)
 
         cleaned = _check_reply(locked.extracted)
         customer = locked.customer
@@ -480,7 +480,7 @@ def _item_for(customer, part_no, part_name, item_mapping, user):
     chosen = item_mapping.get(part_no)
     if chosen is None:
         if known is None:
-            raise ValueError(f"品番 {part_no} の自社の品目を選んでください。")
+            raise ValueError(f"受け入れられません。品番 {part_no} の自社の品目を選んでください。")
         return known
     if known is None:
         map_partner_item(customer, chosen, part_no, user, partner_item_name=part_name)
@@ -494,6 +494,6 @@ def _unit_price(raw, item):
     if item.standard_price:
         return item.standard_price
     raise ValueError(
-        f"品番 {raw['part_no']} の単価が、注文書にも部品マスターの標準単価にもありません。"
+        f"受け入れられません。品番 {raw['part_no']} の単価が、注文書にも部品マスターの標準単価にもありません。"
         "部品マスターに標準単価を入れるか、手入力で受けてください。"
     )

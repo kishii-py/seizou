@@ -247,7 +247,7 @@ def test_self_disable_is_red(on, client, manager):
     assert response.status_code == 200
     html = response.content.decode()
     assert "alert-error" in html
-    assert "自分のアカウントは使用停止にできません。" in html
+    assert "自分のアカウントを使用停止にしようとしています。" in html
     assert User.objects.get(pk=manager.pk).is_active is True
 
 

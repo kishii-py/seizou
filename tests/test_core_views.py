@@ -142,7 +142,7 @@ def test_stop_blocks_and_keeps_values(rf_post):
     response = QtyView.as_view()(rf_post({"qty": "11"}))
     assert response.status_code == 200
     body_text = body(response)
-    assert "T10" in body_text and "テストの知らせ" in body_text
+    assert '<span class="font-semibold">保存できません。</span> テストの知らせ' in body_text  # 会社の検査の名前は出さない (N156)
     assert 'value="11"' in body_text
     assert CALLS == []
 

@@ -76,10 +76,10 @@ def test_cancel_refused_while_payment_left(user, invoice):
     services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
     services.record_payment(invoice, RECEIVED_ON, Decimal("1000"), user)
 
-    assert _refusal_of_cancel(invoice, user) == TWO_LEFT
+    assert _refusal_of_cancel(invoice, user) == "取り消せません。" + TWO_LEFT
     assert _status(invoice) == Invoice.STATUS_ISSUED
     assert Payment.objects.filter(invoice=invoice, status=Payment.STATUS_RECORDED).count() == 2
-    assert services.cancel_refusal(invoice) == TWO_LEFT
+    assert services.cancel_refusal(invoice) == "取り消せません。" + TWO_LEFT
 
 
 def test_refusal_counts_without_money(on, client, user, invoice):
@@ -88,7 +88,7 @@ def test_refusal_counts_without_money(on, client, user, invoice):
     # 伝票編集 (請求書を書ける)・金額の閲覧なし = 件数だけ (「円」が無い)
     jimu = account("jimu", permissions=["slip_edit"])
     refusal = _refusal_of_cancel(invoice, jimu)
-    assert refusal == ONE_LEFT_COUNT
+    assert refusal == "取り消せません。" + ONE_LEFT_COUNT
     assert "円" not in refusal
     assert _status(invoice) == Invoice.STATUS_ISSUED
 
@@ -103,10 +103,10 @@ def test_refusal_counts_without_money(on, client, user, invoice):
 
     # 金額の閲覧あり = 件数と合計
     keiri = account("keiri", permissions=["billing"], see_money=True)
-    assert _refusal_of_cancel(invoice, keiri) == ONE_LEFT
+    assert _refusal_of_cancel(invoice, keiri) == "取り消せません。" + ONE_LEFT
     assert _status(invoice) == Invoice.STATUS_ISSUED
 
-    assert services.cancel_refusal(invoice, hide_money=True) == ONE_LEFT_COUNT
+    assert services.cancel_refusal(invoice, hide_money=True) == "取り消せません。" + ONE_LEFT_COUNT
 
 
 def test_cancel_passes_after_payments_cancelled(user, invoice):
@@ -114,7 +114,7 @@ def test_cancel_passes_after_payments_cancelled(user, invoice):
     small = services.record_payment(invoice, RECEIVED_ON, Decimal("1000"), user)
 
     services.cancel_payment(small, user)
-    assert _refusal_of_cancel(invoice, user) == ONE_LEFT
+    assert _refusal_of_cancel(invoice, user) == "取り消せません。" + ONE_LEFT
     assert _status(invoice) == Invoice.STATUS_ISSUED
 
     services.cancel_payment(big, user)

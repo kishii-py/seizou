@@ -57,13 +57,13 @@ def test_move_folder_refuses_self_descendant_and_protected(user):
     other = services.create_folder(None, "ほか", "gray", user)
     assert services.descendant_ids(top) == {child.pk, grandchild.pk}
     for target in (top, child, grandchild):
-        with pytest.raises(ValueError, match="自分の中へは移動できません"):
+        with pytest.raises(ValueError, match="移動先がこのフォルダの中です"):
             services.move_folder(top, target, user)
     moved = services.move_folder(child, other, user)
     assert moved.parent_id == other.pk
     assert services.move_folder(child, None, user).parent_id is None
     services.protect_folder(child, True, user)
-    with pytest.raises(ValueError, match="保護されたフォルダは移動できません"):
+    with pytest.raises(ValueError, match="保護されたフォルダです"):
         services.move_folder(child, other, user)
     child.refresh_from_db()
     assert child.parent_id is None
@@ -95,7 +95,7 @@ def test_delete_folder_rules(user, media_root):
     empty = services.create_folder(parent, "空", "gray", user)
     assert services.delete_folder(empty, user) == parent
     services.protect_folder(parent, True, user)
-    with pytest.raises(ValueError, match="保護されたフォルダは削除できません"):
+    with pytest.raises(ValueError, match="保護されたフォルダです"):
         services.delete_folder(parent, user)
 
 
@@ -128,11 +128,11 @@ def test_protected_manual_allows_body_but_not_move_or_delete(user):
     manual = services.create_manual(None, "保護する手順", "steps", user)
     services.protect_manual(manual, True, user)
     assert services.update_manual(manual, {"body": "本文は変えてよい", "title": "題も変えてよい"}, user).body == "本文は変えてよい"
-    with pytest.raises(ValueError, match="保護されたマニュアルは移動できません"):
+    with pytest.raises(ValueError, match="保護されたマニュアルです"):
         services.update_manual(manual, {"folder": folder}, user)
-    with pytest.raises(ValueError, match="保護されたマニュアルは移動できません"):
+    with pytest.raises(ValueError, match="保護されたマニュアルです"):
         services.move_manual(manual, folder, user)
-    with pytest.raises(ValueError, match="保護されたマニュアルは削除できません"):
+    with pytest.raises(ValueError, match="保護されたマニュアルです"):
         services.delete_manual(manual, user)
     services.protect_manual(manual, False, user)
     assert services.move_manual(manual, folder, user).folder == folder
@@ -172,9 +172,9 @@ def test_restore_version_keeps_current_as_version(user):
 @pytest.mark.parametrize(
     ("name", "content", "message"),
     [
-        ("anim.gif", b"GIF89a", "この形式の画像は追加できません"),
-        ("drawing.svg", b"<svg></svg>", "この形式の画像は追加できません"),
-        ("noext", png_bytes(), "この形式の画像は追加できません"),
+        ("anim.gif", b"GIF89a", "画像の形式が違います"),
+        ("drawing.svg", b"<svg></svg>", "画像の形式が違います"),
+        ("noext", png_bytes(), "画像の形式が違います"),
         ("empty.png", b"", "空です"),
         ("big.png", png_bytes(), "10MB を超えています"),
         ("あ" * 97 + ".png", png_bytes(), "100 字を超えています"),

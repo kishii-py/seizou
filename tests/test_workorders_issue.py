@@ -93,7 +93,7 @@ def test_cancelled_order_is_r05(user, order, line, cut):
         services.issue_workorder(line, Decimal("1"), [{"process": cut, "planned_qty": 1}], user)
     assert caught.value.code == "R05"
     assert caught.value.message == (
-        "取消した受注には、出荷も指示書も作れない。取消していない受注の明細を選んでください。"
+        "発行できません。取消した受注には、出荷も指示書も作れない。取消していない受注の明細を選んでください。"
     )
     assert WorkOrder.objects.count() == 0
 
@@ -104,7 +104,7 @@ def test_zero_qty_is_r02(user, line, cut):
         with pytest.raises(RuleViolation) as caught:
             services.issue_workorder(line, qty, [{"process": cut, "planned_qty": 1}], user)
         assert caught.value.code == "R02"
-        assert caught.value.message.startswith("数量と単価は 0 より大きい。")
+        assert caught.value.message.startswith("発行できません。数量と単価は 0 より大きい。")
     assert WorkOrder.objects.count() == 0
 
 

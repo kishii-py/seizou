@@ -78,7 +78,7 @@ def _refuse_unknown_keys(data, allowed, table_name):
     unknown = sorted(set(data) - allowed)
     if unknown:
         raise ValueError(
-            f"知らない項目 ({'・'.join(unknown)}) があります。"
+            f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。"
             f"{table_name}の列の名前だけを渡してください。"
         )
 
@@ -88,7 +88,7 @@ def _refuse_duplicate_part_no(part_no, *, exclude_pk=None):
     if exclude_pk is not None:
         others = others.exclude(pk=exclude_pk)
     if others.exists():
-        raise ValueError(f"品番 {part_no} は既にあります。別の品番にしてください。")
+        raise ValueError(f"保存できません。品番 {part_no} は既にあります。別の品番にしてください。")
 
 
 def _refuse_duplicate_partner_code(code, *, exclude_pk=None):
@@ -96,13 +96,13 @@ def _refuse_duplicate_partner_code(code, *, exclude_pk=None):
     if exclude_pk is not None:
         others = others.exclude(pk=exclude_pk)
     if others.exists():
-        raise ValueError(f"取引先コード {code} は既にあります。別のコードにしてください。")
+        raise ValueError(f"保存できません。取引先コード {code} は既にあります。別のコードにしてください。")
 
 
 def _refuse_unknown_role(role):
     if role not in _ROLES:
         raise ValueError(
-            f"取引先の種類 {role!r} は使えません。"
+            f"保存できません。取引先の種類 {role!r} は使えません。"
             "得意先 (customer)・協力企業 (subcontractor)・両方 (both) のどれかにしてください。"
         )
 
@@ -117,7 +117,7 @@ def _payment_terms(data):
         month = data["payment_month"] or ""
         if month and month not in _PAYMENT_MONTHS:
             raise ValueError(
-                f"支払の月 {month!r} は使えません。"
+                f"保存できません。支払の月 {month!r} は使えません。"
                 "当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。"
             )
         data["payment_month"] = month
@@ -126,7 +126,7 @@ def _payment_terms(data):
         if day == "":
             day = None
         if day is not None and (isinstance(day, bool) or not isinstance(day, int) or day not in _PAYMENT_DAY_RANGE):
-            raise ValueError(f"支払日 {day!r} は使えません。1〜31 の整数か空にしてください (月末は 31)。")
+            raise ValueError(f"保存できません。支払日 {day!r} は使えません。1〜31 の整数か空にしてください (月末は 31)。")
         data["payment_day"] = day
     return data
 
@@ -136,7 +136,7 @@ def _refuse_duplicate_process_code(code, *, exclude_pk=None):
     if exclude_pk is not None:
         others = others.exclude(pk=exclude_pk)
     if others.exists():
-        raise ValueError(f"工程コード {code} は既にあります。別のコードにしてください。")
+        raise ValueError(f"保存できません。工程コード {code} は既にあります。別のコードにしてください。")
 
 
 #: 図面の画素の上限。A0 を 400dpi で読んだ絵 (約 2.5 億画素) が入る大きさ (00 の案)。
@@ -365,7 +365,7 @@ def restore_drawing_version(item, version, user, *, note=""):
     返す物は部品。user は受けるだけ。
     """
     if version.item_id != item.pk:
-        raise ValueError(f"版 {version.version_no} はこの部品の版ではありません。この部品の版を選んでください。")
+        raise ValueError(f"保存できません。版 {version.version_no} はこの部品の版ではありません。この部品の版を選んでください。")
     with transaction.atomic():
         _keep_drawing_as_version(item, note=note)
         item.drawing = version.drawing.name
@@ -441,7 +441,7 @@ def map_partner_item(partner, item, partner_part_no, user, *, partner_item_name=
         )
         if existing is not None:
             raise ValueError(
-                f"取引先 {partner} の品番 {partner_part_no} は、既に {existing.item} に対応しています。"
+                f"保存できません。取引先 {partner} の品番 {partner_part_no} は、既に {existing.item} に対応しています。"
                 "今の対応を使うか、別の品番にしてください。"
             )
         return PartnerItem.objects.create(
@@ -535,10 +535,10 @@ def refuse_inactive(partner, items=()):
     今ある受注と発注の直しと、今ある受注から先の記録 (指示書・出荷・請求書) では呼ばない。
     """
     if partner is not None and not partner.active:
-        raise ValueError(f"使用停止の取引先です ({partner})。使用中の取引先を選ぶか、取引先の編集で「使用中」に戻してください。")
+        raise ValueError(f"保存できません。使用停止の取引先です ({partner})。使用中の取引先を選ぶか、取引先の編集で「使用中」に戻してください。")
     for item in items:
         if item is not None and not item.active:
-            raise ValueError(f"使用停止の部品です ({item})。使用中の部品を選ぶか、部品の編集で「使用中」に戻してください。")
+            raise ValueError(f"保存できません。使用停止の部品です ({item})。使用中の部品を選ぶか、部品の編集で「使用中」に戻してください。")
 
 
 def candidates(kind, query, page, *, per_page=30):
@@ -646,7 +646,7 @@ def _import_rows(rows, user, model, key, label, create, update, *, note=""):
             line, data, ext = row["line"], row["data"], row.get("ext")
             try:
                 if _is_blank(data.get(key)):
-                    raise ValueError(f"{label}が空です。値を入れてください。")
+                    raise ValueError(f"保存できません。{label}が空です。値を入れてください。")
                 current = model.objects.filter(**{key: data[key]}).first()
                 if current is None:
                     create(data, user, ext=ext)
@@ -655,7 +655,7 @@ def _import_rows(rows, user, model, key, label, create, update, *, note=""):
                     update(current, data, user, ext=ext)
                     updated += 1
             except ValueError as exc:
-                raise ValueError(f"{line} 行目: {exc}") from exc
+                raise ValueError(f"保存できません。{line} 行目: {str(exc).removeprefix('保存できません。')}") from exc
     result = ImportResult({"入れた": made, "更新した": updated})
     result.saved_note = f"{made} 件入れ、{updated} 件直しました。{note}"
     return result
@@ -685,14 +685,14 @@ def set_item_processes(item, processes, user):
     """
     processes = list(processes)
     if not processes:
-        raise ValueError("工程がありません。工程を 1 つ以上渡してください。")
+        raise ValueError("保存できません。工程がありません。工程を 1 つ以上渡してください。")
     for process in processes:
         if not isinstance(process, Process):
-            raise ValueError(f"工程でない物 ({process!r}) が入っています。工程 (Process) だけを渡してください。")
+            raise ValueError(f"保存できません。工程でない物 ({process!r}) が入っています。工程 (Process) だけを渡してください。")
     seen = set()
     for process in processes:
         if process.pk in seen:
-            raise ValueError(f"工程 {process.code} が 2 回あります。同じ工程は 1 回だけにしてください。")
+            raise ValueError(f"保存できません。工程 {process.code} が 2 回あります。同じ工程は 1 回だけにしてください。")
         seen.add(process.pk)
     with transaction.atomic():
         item.item_processes.all().delete()
@@ -713,14 +713,14 @@ def create_holiday(data, user):
     """
     _refuse_unknown_keys(data, _HOLIDAY_KEYS, "休日")
     if data.get("kind") not in _HOLIDAY_KINDS:
-        raise ValueError("休日の種類は 祝日 か 会社の休み です。")
+        raise ValueError("保存できません。休日の種類は 祝日 か 会社の休み です。")
     if not str(data.get("name") or "").strip():
-        raise ValueError("休日の名前を入れてください。")
+        raise ValueError("保存できません。休日の名前を入れてください。")
     with transaction.atomic():
         day = data.get("date")
         existing = Holiday.objects.filter(date=day).first()
         if existing is not None:
-            raise ValueError(f"{day:%Y-%m-%d} の休日は既にあります ({existing.name})。")
+            raise ValueError(f"保存できません。{day:%Y-%m-%d} の休日は既にあります ({existing.name})。")
         row = Holiday.objects.create(**data, created_by=user if getattr(user, "pk", None) is not None else None)
     # 同じ要求のこの後の読みが新しい休日を数えるよう、控えを捨てる (別の process は CACHE_SECONDS 秒で読み直す)
     calendar.reset_cache()
@@ -735,7 +735,7 @@ def delete_holiday(holiday, user):
     with transaction.atomic():
         row = Holiday.objects.select_for_update().filter(pk=holiday.pk).first()
         if row is None:
-            raise ValueError("この休日は既に消してあります。")
+            raise ValueError("削除できません。この休日は既に消してあります。")
         row.delete()
     calendar.reset_cache()
     return None

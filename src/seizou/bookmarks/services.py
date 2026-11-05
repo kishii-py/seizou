@@ -25,7 +25,7 @@ MAX_BOOKMARKS = 50
 #: 並びの間隔 (登録の順。次の行はその人の最大 + この値)
 POSITION_STEP = 10
 
-MESSAGE_NOT_BOOKMARKABLE = "この画面は登録できません。一覧や目録のような、番号の付かない画面だけ登録できます。"
+MESSAGE_NOT_BOOKMARKABLE = "番号の付く画面です。一覧や目録のような、番号の付かない画面だけ登録できます。"
 MESSAGE_LIMIT = "ブックマークは 50 件までです。使わない物を外してから登録してください。"
 
 
@@ -53,7 +53,7 @@ def add_bookmark(user, url_name: str) -> Bookmark:
     50 件を越えるときは日本語の ValueError。並びはその人の最大 + 10 (無ければ 10)。
     """
     if not bookmarkable(url_name):
-        raise ValueError(MESSAGE_NOT_BOOKMARKABLE)
+        raise ValueError("保存できません。" + MESSAGE_NOT_BOOKMARKABLE)
     label = screen_of(url_name).name[: Bookmark._meta.get_field("label").max_length]
     with transaction.atomic():
         rows = Bookmark.objects.filter(user=user)
@@ -64,7 +64,7 @@ def add_bookmark(user, url_name: str) -> Bookmark:
                 row.save(update_fields=["label"])
             return row
         if rows.count() >= MAX_BOOKMARKS:
-            raise ValueError(MESSAGE_LIMIT)
+            raise ValueError("保存できません。" + MESSAGE_LIMIT)
         top = rows.aggregate(top=Max("position"))["top"] or 0
         try:
             # 同じ画面の登録が同時に 2 つ走ったときは、後の方が一意の制約に当たる。そのときは先の行を返す。

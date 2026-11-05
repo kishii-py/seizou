@@ -90,17 +90,17 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
     """
     if direction not in _DIRECTIONS:
         raise ValueError(
-            f"向き {direction!r} は使えません。送る (send) か受ける (receive) にしてください。"
+            f"保存できません。向き {direction!r} は使えません。送る (send) か受ける (receive) にしてください。"
         )
     if not isinstance(secret_env, str) or _ENV_NAME.fullmatch(secret_env) is None:
         # 値が渡されたときに文へ出さないよう、受けた文字列は文に入れない。
         raise ValueError(
-            "鍵の置き場の名前は、環境変数の名前 (英大文字で始まり、英大文字と数字と _ だけ) にしてください。"
+            "保存できません。鍵の置き場の名前は、環境変数の名前 (英大文字で始まり、英大文字と数字と _ だけ) にしてください。"
             "鍵の値は渡さず、.env に置いてください。"
         )
     if direction == Connection.DIRECTION_SEND and url and not _url_is_valid(url):
         raise ValueError(
-            f"受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
+            f"保存できません。受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
         )
     same = Connection.objects.filter(partner=partner, direction=direction)
     if exclude_pk is not None:
@@ -108,7 +108,7 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
     if same.exists():
         label = dict(Connection.DIRECTION_CHOICES)[direction]
         raise ValueError(
-            f"この取引先との「{label}」のつながりは既にあります。つながりの一覧の行から編集してください。"
+            f"保存できません。この取引先との「{label}」のつながりは既にあります。つながりの一覧の行から編集してください。"
         )
 
 
@@ -283,8 +283,8 @@ MESSAGE_ACCEPTANCE_UNKNOWN_ORDER = (
 )
 MESSAGE_ACCEPTANCE_OTHER_PARTNER = "検収の元の注文は、その取引先からの物ではありません。"
 MESSAGE_ACCEPTANCE_NOT_ACCEPTED = (
-    "検収の元の注文は承認していない (受注になっていない) ので、検収を受けられません。"
-    "承認の後に送り直してください。"
+    "検収の元の注文は受け入れていない (受注になっていない) ので、検収を受けられません。"
+    "受け入れの後に送り直してください。"
 )
 MESSAGE_ACCEPTANCE_QTY = "検収の数が 0 より大きい数の形ではありません。"
 MESSAGE_ACCEPTANCE_QTY_DIGITS = "検収の数は、整数の部分 10 桁・小数 2 桁までにしてください。"
@@ -312,7 +312,7 @@ MESSAGE_SHIPPING_CANCELLED = "出荷の知らせの元の発注は取り消し�
 MESSAGE_SHIPPING_DATE = "出荷日が日付 (YYYY-MM-DD) の形ではありません。"
 MESSAGE_SHIPPING_NOT_EDI_ORDER = (
     "受信した注文で作った受注ではないので、出荷の知らせを送っていません。"
-    "seizou どうしで受信した注文を承認した受注の出荷だけが、相手への出荷の知らせになります。"
+    "seizou どうしで受信した注文を受け入れた受注の出荷だけが、相手への出荷の知らせになります。"
 )
 MESSAGE_SHIPPING_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので出荷の知らせを送っていません。"
@@ -666,7 +666,7 @@ MESSAGE_ALREADY_ACCEPTED = (
     "受け入れは済んでいるので、受注の一覧を見てください。"
 )
 MESSAGE_ACCEPT_REJECTED = (
-    "この注文のデータは断り済みなので、受け入れられません。"
+    "この注文のデータは断り済みです。"
     "受け入れるなら、送る側に新しい注文のデータを送ってもらってください。"
 )
 MESSAGE_NO_LINES = (
@@ -674,9 +674,9 @@ MESSAGE_NO_LINES = (
 )
 MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから断ってください。"
 MESSAGE_REPLY_SEED = "作り物の種の読み込みなので注文回答を送っていません (相手の記録は相手の種が持つ)。"
-MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。受信した注文の詳細の「差出人を選ぶ」で得意先を選んでから承認してください。"
+MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。受信した注文の詳細の「差出人を選ぶ」で得意先を選んでから受け入れてください。"
 MESSAGE_REPLY_INTAKE = "注文書の読み取りから入った注文なので、注文回答は送りません。"
-MESSAGE_SENDER_DIRECT = "受け口から受信した注文の取引先は署名で決まるので、変えられません (R12)。"
+MESSAGE_SENDER_DIRECT = "受け口から受信した注文の取引先は署名で決まります (R12)。"
 
 
 def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
@@ -701,25 +701,25 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     if accepted_at is not None and (
         not isinstance(accepted_at, datetime.datetime) or timezone.is_naive(accepted_at)
     ):
-        raise ValueError("承認した日時は timezone 付きの日時にしてください。")
+        raise ValueError("受け入れられません。承認した日時は timezone 付きの日時にしてください。")
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.status == Inbox.STATUS_ACCEPTED:
-            raise RuleViolation("R11", MESSAGE_ALREADY_ACCEPTED)
+            raise RuleViolation("R11", "受け入れられません。" + MESSAGE_ALREADY_ACCEPTED)
         if locked.status == Inbox.STATUS_REJECTED:
-            raise ValueError(MESSAGE_ACCEPT_REJECTED)
+            raise ValueError("受け入れられません。" + MESSAGE_ACCEPT_REJECTED)
         if locked.partner_id is None:
-            raise ValueError(MESSAGE_NO_SENDER)
+            raise ValueError("受け入れられません。" + MESSAGE_NO_SENDER)
         intake_row = locked.source == Inbox.SOURCE_INTAKE
 
         payload = locked.payload if isinstance(locked.payload, dict) else {}
         raw_lines = payload.get("lines")
         if not isinstance(raw_lines, list) or not raw_lines:
-            raise ValueError(MESSAGE_NO_LINES)
+            raise ValueError("受け入れられません。" + MESSAGE_NO_LINES)
         problem = _order_lines_problem(payload)
         if problem:
-            raise ValueError(f"{problem}この注文は断り、送る側に送り直してもらってください。")
+            raise ValueError(f"受け入れられません。{problem}この注文は断り、送る側に送り直してもらってください。")
         mapping = dict(item_mapping or {})
         items = {}
         lines = []
@@ -734,8 +734,8 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
                 # 読み取りの単価の無い明細は品目の標準単価 (intake の _unit_price と同じ扱い。intake の関数は呼ばない)。
                 if not item.standard_price:
                     raise ValueError(
-                        f"品番 {part_no} の単価が、注文書にも部品マスターの標準単価にもありません。"
-                        "部品マスターに標準単価を入れてから承認してください。"
+                        f"受け入れられません。品番 {part_no} の単価が、注文書にも部品マスターの標準単価にもありません。"
+                        "部品マスターに標準単価を入れてから受け入れてください。"
                     )
                 unit_price = item.standard_price
             else:
@@ -758,7 +758,7 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
             order_date = timezone.localtime(locked.received_at).date()
         if order_date is None:
             raise ValueError(
-                "注文のデータに発注日がありません。この注文は断り、送る側に送り直してもらってください。"
+                "受け入れられません。注文のデータに発注日がありません。この注文は断り、送る側に送り直してもらってください。"
             )
         order_no = payload.get("order_no")
         order = create_order(
@@ -790,15 +790,15 @@ def reject(inbox, reason, user):
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.status != Inbox.STATUS_RECEIVED:
             raise ValueError(
-                f"この注文のデータは「{locked.get_status_display()}」なので、断れません。"
-                "断れるのは「届いた」の物だけです。"
+                f"断れません。この注文のデータは「{locked.get_status_display()}」です。"
+                "断れるのは「未処理」の物だけです。"
             )
         text = reason.strip() if isinstance(reason, str) else ""
         if not text:
-            raise ValueError(MESSAGE_NO_REASON)
+            raise ValueError("断れません。" + MESSAGE_NO_REASON)
         limit = Inbox._meta.get_field("reason").max_length
         if len(text) > limit:
-            raise ValueError(f"断る理由が {limit} 字を超えています。{limit} 字までに縮めてください。")
+            raise ValueError(f"断れません。断る理由が {limit} 字を超えています。{limit} 字までに縮めてください。")
         locked.status = Inbox.STATUS_REJECTED
         locked.reason = text
         locked.save(update_fields=["status", "reason"])
@@ -818,14 +818,14 @@ def choose_sender(inbox, partner, user):
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.source == Inbox.SOURCE_DIRECT:
-            raise ValueError(MESSAGE_SENDER_DIRECT)
+            raise ValueError("保存できません。" + MESSAGE_SENDER_DIRECT)
         if locked.status != Inbox.STATUS_RECEIVED:
-            raise ValueError("差出人を選べるのは「届いた」の注文だけです。")
+            raise ValueError("保存できません。差出人を選べるのは「未処理」の注文だけです。")
         if partner is None:
-            raise ValueError("差出人の取引先を選んでください。")
+            raise ValueError("保存できません。差出人の取引先を選んでください。")
         if not partner.is_customer:
             raise ValueError(
-                f"取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
+                f"保存できません。取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
             )
         locked.partner = partner
         locked.save(update_fields=["partner"])
@@ -834,7 +834,7 @@ def choose_sender(inbox, partner, user):
 
 
 MESSAGE_REPLY_BEFORE_DECISION = (
-    "承認か断りをする前の受信した注文には、注文回答を送れません。受け入れるか断ってから送ってください。"
+    "この受信した注文は、まだ受け入れも断りもしていません。受け入れるか断ってから送ってください。"
 )
 MESSAGE_REPLY_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので注文回答を送っていません。"
@@ -863,7 +863,7 @@ def send_reply(inbox, user):
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.kind != Inbox.KIND_ORDER or locked.status == Inbox.STATUS_RECEIVED:
-            raise ValueError(MESSAGE_REPLY_BEFORE_DECISION)
+            raise ValueError("送れません。" + MESSAGE_REPLY_BEFORE_DECISION)
         if locked.reply_message_id is None:
             locked.reply_message_id = uuid.uuid4()
             locked.save(update_fields=["reply_message_id"])
@@ -1054,7 +1054,7 @@ def _part_of(raw, number):
     part_no = raw.get("part_no") if isinstance(raw, dict) else None
     if not isinstance(part_no, str) or not part_no.strip():
         raise ValueError(
-            f"注文のデータの {number} 行目に相手の品番がありません。"
+            f"受け入れられません。注文のデータの {number} 行目に相手の品番がありません。"
             "この注文は断り、送る側に送り直してもらってください。"
         )
     part_name = raw.get("part_name")
@@ -1067,7 +1067,7 @@ def _item_for(partner, part_no, part_name, item_mapping, user):
     chosen = item_mapping.get(part_no)
     if chosen is None:
         if known is None:
-            raise ValueError(f"品番 {part_no} の自社の部品を選んでください。")
+            raise ValueError(f"受け入れられません。品番 {part_no} の自社の部品を選んでください。")
         return known
     if known is None:
         map_partner_item(partner, chosen, part_no, user, partner_item_name=part_name)
@@ -1258,7 +1258,7 @@ def send_order(purchase_order, user):
 
     partner = purchase_order.partner
     if purchase_order.status == purchase_order.STATUS_CANCELLED:
-        raise ValueError(f"発注 {purchase_order.po_no} は取り消してあるので送れません。")
+        raise ValueError(f"送れません。発注 {purchase_order.po_no} は取り消してあります。取消していない発注を選んでください。")
     connection = (
         Connection.objects.filter(partner=partner, direction=Connection.DIRECTION_SEND)
         .order_by("pk")
@@ -1266,7 +1266,7 @@ def send_order(purchase_order, user):
     )
     if connection is None:
         raise ValueError(
-            f"取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
+            f"送れません。取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
         )
 
     first = Outbox.objects.filter(purchase_order=purchase_order).order_by("pk").first()

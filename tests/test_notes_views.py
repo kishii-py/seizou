@@ -137,7 +137,7 @@ def test_image_upload_returns_media_url(client_logged_in, user, order):
         reverse("notes:noteimage_upload"), {**target_data(order), "file": SimpleUploadedFile("x.svg", b"<svg/>")}
     )
     assert bad.status_code == 400
-    assert bad.json() == {"error": services.MESSAGE_BAD_IMAGE}
+    assert bad.json() == {"error": "保存できません。" + services.MESSAGE_BAD_IMAGE}
     missing = client_logged_in.post(reverse("notes:noteimage_upload"), {"content_type": 0, "object_id": 0, "file": png()})
     assert missing.status_code == 404
     assert client_logged_in.get(reverse("notes:noteimage_upload")).status_code == 405

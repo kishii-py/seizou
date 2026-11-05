@@ -38,8 +38,8 @@ _LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line"}
 _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
 _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
-_R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
-_SHIPPED_LINE_MESSAGE = "出荷のある明細は消せません。数量を直すか、明細を残してください。"
+_R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
+_SHIPPED_LINE_MESSAGE = "保存できません。消した明細に出荷があります。数量を直すか、明細を残してください。"
 
 # 出荷済みの数と残の数の型 (OrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -54,7 +54,7 @@ def _refuse_unknown_keys(data, allowed, table_name):
     unknown = sorted(set(data) - allowed)
     if unknown:
         raise ValueError(
-            f"知らない項目 ({'・'.join(unknown)}) があります。"
+            f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。"
             f"{table_name}の列の名前だけを渡してください。"
         )
 
@@ -62,7 +62,7 @@ def _refuse_unknown_keys(data, allowed, table_name):
 def _refuse_non_customer(partner):
     if not partner.is_customer:
         raise ValueError(
-            f"取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
+            f"保存できません。取引先 {partner} は得意先ではありません。取引先の種類が得意先か両方の取引先を選んでください。"
         )
 
 
@@ -119,7 +119,7 @@ def _line_ref(line):
         target_pk = getattr(target, "pk", target)
         if "id" in line and ref != target_pk:
             raise ValueError(
-                f"明細の id ({ref}) と order_line ({target_pk}) が違う明細を指しています。"
+                f"保存できません。明細の id ({ref}) と order_line ({target_pk}) が違う明細を指しています。"
                 "どちらか 1 つにするか、同じ明細を指してください。"
             )
         ref = target_pk
@@ -146,11 +146,11 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
     _refuse_non_customer(customer)
     if source not in _SOURCES:
         raise ValueError(
-            f"入口 {source!r} は使えません。"
+            f"保存できません。入口 {source!r} は使えません。"
             "手入力 (manual)・読み取り (intake)・受信した注文 (inbox) のどれかにしてください。"
         )
     if not lines:
-        raise ValueError("明細がありません。明細を 1 行以上入れてください。")
+        raise ValueError("保存できません。明細がありません。明細を 1 行以上入れてください。")
     _refuse_bad_lines(lines, _LINE_KEYS)
     refuse_inactive(customer, [line.get("item") for line in lines])
     with transaction.atomic():
@@ -185,7 +185,7 @@ def update_order(order, data, lines, user, *, ext=None):
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
-            raise RuleViolation("R05", "取消した受注は直せません。直すときは、新しく受注を作ってください。")
+            raise RuleViolation("R05", "保存できません。取消した受注です。直すときは、新しく受注を作ってください。")
 
         existing = {row.pk: row for row in locked.lines.all()}
         refs = [_line_ref(line) for line in lines]
@@ -195,7 +195,7 @@ def update_order(order, data, lines, user, *, ext=None):
                 continue
             if ref not in existing:
                 raise ValueError(
-                    f"明細 {ref} はこの受注の明細ではありません。この受注の明細を選び直してください。"
+                    f"保存できません。明細 {ref} はこの受注の明細ではありません。この受注の明細を選び直してください。"
                 )
             keep.add(ref)
         next_line_no = max((row.line_no for row in existing.values()), default=0) + 1
@@ -226,14 +226,14 @@ def cancel_order(order, user, *, reason=""):
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
-            raise RuleViolation("R05", "この受注は取り消し済みです。")
+            raise RuleViolation("R05", "取り消せません。この受注は取り消し済みです。受注の詳細を開き直してください。")
         if reason:
             added = f"取消の理由: {reason}"
             note = f"{locked.note}\n{added}" if locked.note else added
             limit = Order._meta.get_field("note").max_length
             if len(note) > limit:
                 raise ValueError(
-                    f"取消の理由を足すと備考が {limit} 字を超えます。理由を短くしてください。"
+                    f"取り消せません。取消の理由を足すと備考が {limit} 字を超えます。理由を短くしてください。"
                 )
             locked.note = note
         locked.status = Order.STATUS_CANCELLED

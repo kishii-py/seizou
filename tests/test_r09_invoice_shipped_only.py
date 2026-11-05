@@ -87,7 +87,7 @@ def test_r09_shipment_without_delivery_note_is_refused(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_invoice(customer, [shipped, no_note], user, issued_on=ISSUED_ON)
     assert caught.value.code == "R09"
-    assert caught.value.message.startswith(R09_RULE)
+    assert caught.value.message.startswith("発行できません。" + R09_RULE)
     assert no_note.shipment_no in caught.value.message
     assert "外してください" in caught.value.message
 
@@ -102,7 +102,7 @@ def test_r09_non_shipment_is_refused(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_invoice(customer, [shipped, line], user, issued_on=ISSUED_ON)
     assert caught.value.code == "R09"
-    assert caught.value.message.startswith(R09_RULE)
+    assert caught.value.message.startswith("発行できません。" + R09_RULE)
 
     assert Invoice.objects.count() == 0
 
@@ -116,7 +116,7 @@ def test_r09_already_invoiced_is_refused(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_invoice(customer, [first, second], user, issued_on=ISSUED_ON)
     assert caught.value.code == "R09"
-    assert caught.value.message.startswith(R09_RULE)
+    assert caught.value.message.startswith("発行できません。" + R09_RULE)
     assert first.shipment_no in caught.value.message
     assert invoice.invoice_no in caught.value.message
 
@@ -134,7 +134,7 @@ def test_r09_other_customer_is_refused(user, customer, item, line):
     with pytest.raises(RuleViolation) as caught:
         services.create_invoice(customer, [mine, theirs], user, issued_on=ISSUED_ON)
     assert caught.value.code == "R09"
-    assert caught.value.message.startswith(R09_RULE)
+    assert caught.value.message.startswith("発行できません。" + R09_RULE)
     assert theirs.shipment_no in caught.value.message
 
     assert Invoice.objects.count() == 0

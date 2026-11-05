@@ -23,7 +23,7 @@ from seizou.core.exceptions import RuleViolation
 
 from .models import Progress
 
-_R02_MESSAGE = "数量と単価は 0 より大きい。0 より大きい数を入れてください。"
+_R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 
 # 指示書の工程の表は、実績の外部キーの先として引く (workorders の models を import しない)。
 _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model

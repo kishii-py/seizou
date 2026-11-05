@@ -472,7 +472,7 @@ def test_send_reply_refuses_received_row(monkeypatch, user, order_secret, custom
     fake = FakePost()
     monkeypatch.setattr("requests.post", fake)
 
-    with pytest.raises(ValueError, match="注文回答を送れません"):
+    with pytest.raises(ValueError, match="まだ受け入れも断りもしていません"):
         services.send_reply(inbox, user)
 
     assert fake.calls == []

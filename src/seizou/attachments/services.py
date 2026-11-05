@@ -35,9 +35,9 @@ MAX_NAME_LENGTH = 100
 MAX_NOTE_LENGTH = 500
 
 MESSAGE_NO_TARGET = "付ける先の記録がまだ保存されていません。記録を保存してから、詳細の画面で付けてください。"
-MESSAGE_SELF_TARGET = "添付ファイルには添付ファイルを付けられません。付けたい記録の詳細の画面から付けてください。"
+MESSAGE_SELF_TARGET = "付ける先が添付ファイルです。付けたい記録の詳細の画面から付けてください。"
 MESSAGE_BAD_EXTENSION = (
-    "この形式のファイルは付けられません。PNG・JPEG・WebP・PDF・TIFF・CSV・テキスト・.xlsx・.docx のファイルを選んでください。"
+    "ファイルの形式が違います。PNG・JPEG・WebP・PDF・TIFF・CSV・テキスト・.xlsx・.docx のファイルを選んでください。"
 )
 MESSAGE_EMPTY = "ファイルが空です。中身のあるファイルを選んでください。"
 MESSAGE_TOO_LARGE = "ファイルが 20MB を超えています。分けるか小さくしてから選び直してください。"
@@ -60,9 +60,9 @@ def opens_inline(name: str) -> bool:
 
 def _refuse_bad_target(target) -> None:
     if getattr(target, "_meta", None) is None or getattr(target, "pk", None) is None:
-        raise ValueError(MESSAGE_NO_TARGET)
+        raise ValueError("保存できません。" + MESSAGE_NO_TARGET)
     if isinstance(target, Attachment):
-        raise ValueError(MESSAGE_SELF_TARGET)
+        raise ValueError("保存できません。" + MESSAGE_SELF_TARGET)
 
 
 def _refuse_bad_file(file) -> tuple[str, str]:
@@ -70,14 +70,14 @@ def _refuse_bad_file(file) -> tuple[str, str]:
     original_name = os.path.basename(getattr(file, "name", "") or "")
     entry = ALLOWED.get(extension_of(original_name))
     if entry is None:
-        raise ValueError(MESSAGE_BAD_EXTENSION)
+        raise ValueError("保存できません。" + MESSAGE_BAD_EXTENSION)
     size = getattr(file, "size", None) or 0
     if size <= 0:
-        raise ValueError(MESSAGE_EMPTY)
+        raise ValueError("保存できません。" + MESSAGE_EMPTY)
     if size > MAX_BYTES:
-        raise ValueError(MESSAGE_TOO_LARGE)
+        raise ValueError("保存できません。" + MESSAGE_TOO_LARGE)
     if len(original_name) > MAX_NAME_LENGTH:
-        raise ValueError(MESSAGE_NAME_TOO_LONG)
+        raise ValueError("保存できません。" + MESSAGE_NAME_TOO_LONG)
     return original_name, entry[0]
 
 
@@ -90,10 +90,10 @@ def add_attachment(target, file, user, *, kind, note=""):
     _refuse_bad_target(target)
     original_name, mime = _refuse_bad_file(file)
     if kind not in dict(KIND_CHOICES):
-        raise ValueError(MESSAGE_BAD_KIND)
+        raise ValueError("保存できません。" + MESSAGE_BAD_KIND)
     note = note or ""
     if len(note) > MAX_NOTE_LENGTH:
-        raise ValueError(MESSAGE_NOTE_TOO_LONG)
+        raise ValueError("保存できません。" + MESSAGE_NOTE_TOO_LONG)
     with transaction.atomic():
         return Attachment.objects.create(
             content_type=ContentType.objects.get_for_model(target),
@@ -117,7 +117,7 @@ def remove_attachment(attachment, user):
     with transaction.atomic():
         row = Attachment.objects.select_for_update().filter(pk=attachment.pk).first()
         if row is None:
-            raise ValueError(MESSAGE_ALREADY_REMOVED)
+            raise ValueError("削除できません。" + MESSAGE_ALREADY_REMOVED)
         target = row.target
         name = row.file.name
         storage = row.file.storage

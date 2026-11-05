@@ -172,7 +172,7 @@ def test_add_errors_are_red(client_logged_in, order, user):
     html = html_of(response)
     assert response.status_code == 200
     assert "alert-error" in html
-    assert "この形式のファイルは付けられません。" in html
+    assert "ファイルの形式が違います。" in html
 
     for content_type, object_id in [(ct_of(order), 9999), (ct_of(user), user.pk)]:
         response = client_logged_in.post(

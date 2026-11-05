@@ -144,7 +144,7 @@ def test_zero_qty_other_kinds_are_refused(user, items):
     item = items[0]
     today = timezone.localdate()
     for kind in (KIND_FINISHED, KIND_RECEIVED, KIND_ISSUED):
-        with transaction.atomic(), pytest.raises(ValueError, match="数量が 0 の動きは残せません"):
+        with transaction.atomic(), pytest.raises(ValueError, match="数量が 0 です"):
             services._move(item, kind, Decimal("0"), today, user)
         with pytest.raises(IntegrityError), transaction.atomic():
             StockMove.objects.create(item=item, kind=kind, qty=Decimal("0"), moved_on=today)

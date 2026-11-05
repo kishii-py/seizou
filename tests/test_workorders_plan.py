@@ -121,7 +121,7 @@ def test_plan_step_start_after_end_is_value_error(user, step):
     with pytest.raises(ValueError) as caught:
         services.plan_step(step, date(2026, 11, 7), date(2026, 11, 6), user)
     assert str(caught.value) == (
-        "開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
+        "保存できません。開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
     )
     assert _dates(step) == (date(2026, 11, 5), date(2026, 11, 6))
 
@@ -131,7 +131,7 @@ def test_plan_step_one_side_none_is_value_error(user, step):
     for start, end in ((date(2026, 11, 5), None), (None, date(2026, 11, 5))):
         with pytest.raises(ValueError) as caught:
             services.plan_step(step, start, end, user)
-        assert str(caught.value) == "開始日と終了日は、両方を入れるか両方を空にしてください。"
+        assert str(caught.value) == "保存できません。開始日か終了日の片方だけが入っています。開始日と終了日は、両方を入れるか両方を空にしてください。"
     assert _dates(step) == (None, None)
 
 
@@ -143,7 +143,7 @@ def test_plan_step_cancelled_order_is_r05(user, order, step):
         services.plan_step(step, date(2026, 11, 9), date(2026, 11, 9), user)
     assert caught.value.code == "R05"
     assert caught.value.message == (
-        "取消した受注には、出荷も指示書も作れない。取消していない受注の指示書を選んでください。"
+        "保存できません。取消した受注には、出荷も指示書も作れない。取消していない受注の指示書を選んでください。"
     )
     assert _dates(step) == (date(2026, 11, 5), date(2026, 11, 5))
 
