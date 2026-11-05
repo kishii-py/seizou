@@ -8,7 +8,7 @@
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
-- lines_to_ship: まだ出荷していない明細 (注文残の一覧の既定と同じ数え方)。
+- lines_to_ship: 出荷の残りがある明細 (注文残の一覧の既定と同じ数え方)。
 - minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
 - hands_free_lines: 今月、手で打たずに (読み取りと受信した注文から) 受けた明細の行数。
 - accept_minutes_this_month: 今月の受付 (受信した注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
@@ -549,7 +549,7 @@ def accept_minutes_this_month(today=None) -> int | None:
 
 
 def lines_to_ship():
-    """まだ出荷していない明細。注文残の一覧の既定 (orders の OrderLineListView = 残が 0 より大きく、取消でない受注の明細) と
+    """出荷の残りがある明細。注文残の一覧の既定 (orders の OrderLineListView = 残が 0 より大きく、取消でない受注の明細) と
     同じ数え方で、カードの数と押した先の一覧の件数を合わせる。部品が無ければ None。"""
     order_model = _model("orders", "Order")
     line_model = _model("orders", "OrderLine")
@@ -814,7 +814,7 @@ FLOWS = (
              "count": "workorder", "count_label": "指示書の無い明細", "unit": "行",
              "next_text": "生産管理ボードから、明細に指示書を出します。"},
             {"key": "shipment", "label": "出荷", "model": ("shipping", "Shipment"), "url_name": "shipping:shipment_list",
-             "count": "shipment", "count_label": "出荷の残っている受注", "unit": "件",
+             "count": "shipment", "count_label": "出荷の残りがある受注", "unit": "件",
              "next_text": "出荷できる明細を出荷します。"},
             {"key": "delivery_note", "label": "納品書", "model": ("shipping", "DeliveryNote"), "url_name": "shipping:deliverynote_list",
              "count": "delivery_note", "count_label": "納品書に入っていない出荷", "unit": "件",
@@ -833,7 +833,7 @@ FLOWS = (
         "steps": (
             {"key": "purchase_order", "label": "発注", "model": ("purchasing", "PurchaseOrder"), "url_name": "purchasing:purchaseorder_list",
              "count": "purchase_draft", "count_label": "まだ送っていない発注", "unit": "件",
-             "next_text": "作成のままの発注を協力企業に送ります。"},
+             "next_text": "下書きのままの発注を協力企業に送ります。"},
             {"key": "reply", "label": "注文回答", "model": ("connect", "Connection"), "url_name": "purchasing:purchaseorder_list",
              "count": "purchase_sent", "count_label": "返事を待つ発注", "unit": "件",
              "next_text": "協力企業の返事を待ちます。断られた発注は直して送り直します。"},
@@ -883,7 +883,7 @@ def _received_inbox():
 
 
 def _lines_without_workorder():
-    """受注か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
+    """未出荷か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
     order_model = _model("orders", "Order")
     line_model = _model("orders", "OrderLine")
     workorder_model = _model("workorders", "WorkOrder")
@@ -899,7 +899,7 @@ def _lines_without_workorder():
 
 
 def _orders_to_ship():
-    """出荷の残っている受注 (状態が受注か一部出荷)。"""
+    """出荷の残りがある受注 (状態が未出荷か一部出荷)。"""
     order_model = _model("orders", "Order")
     if order_model is None:
         return None
@@ -944,7 +944,7 @@ def _invoices_to_be_paid():
 
 
 def _purchase_drafts():
-    """まだ送っていない発注 (状態が作成)。"""
+    """まだ送っていない発注 (状態が下書き)。"""
     purchase_model = _model("purchasing", "PurchaseOrder")
     if purchase_model is None:
         return None

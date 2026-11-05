@@ -63,7 +63,7 @@ def test_partner_detail_shows_order_history_as_table(client_logged_in, partner_i
     assert "受注履歴" in body and '<th class="font-medium">受注番号</th>' in body
     assert reverse("orders:order_detail", args=[order.pk]) in body
     assert "SO-0001" in body and "2026-11-02" in body and "PO-77" in body
-    assert "受注</td>" in body  # 状態は表示名
+    assert "未出荷</td>" in body  # 状態は表示名
 
 
 def test_partner_detail_shows_purchase_history_as_table(client_logged_in, db):

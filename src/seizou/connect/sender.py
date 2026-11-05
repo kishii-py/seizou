@@ -46,8 +46,8 @@ def choose_sender(request, pk):
     try:
         services.choose_sender(inbox, partner, request.user)
     except ValueError as exc:
-        # 直接の行 (R12)・「届いた」でない行・得意先でない取引先。
+        # 直接の行 (R12)・「未処理」でない行・得意先でない取引先。
         messages.error(request, str(exc))
         return back
-    messages.success(request, f"差出人を {partner.name} にしました。「承認」で受注にできます。")
+    messages.success(request, f"差出人を {partner.name} にしました。「受け入れる」で受注にできます。")
     return back

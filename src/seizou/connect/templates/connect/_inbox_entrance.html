@@ -1,11 +1,11 @@
 {% load seizou_icons connect_tags %}{% comment %}
 受注の画面 (orders/order_list.html) の上に出す、受信した注文の入口の段 (1 つの目的に 1 つの画面 = 02 の 8 節の決め 6)。
 受注の画面は connect の無い会社でも開くので、include は "connect" in seizou.parts の条件の中にあり、タグはここで読む。
-件数は未承認 (状態が「届いた」) の受信した注文。0 件でも段と link は出す (link が入口のため)。
+件数は状態が「未処理」の受信した注文。0 件でも段と link は出す (link が入口のため)。
 {% endcomment %}
 {% pending_order_count as waiting %}
 <div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-base-300 bg-base-100 p-4">
   {% icon "inbox" "size-5 text-base-content/70" %}
-  <p>受信した注文 (未承認) <span class="font-medium tabular-nums">{{ waiting }}</span> 件</p>
+  <p>受信した注文 (未処理) <span class="font-medium tabular-nums">{{ waiting }}</span> 件</p>
   <a class="btn btn-sm btn-outline border-base-300 ml-auto" href="{% url 'connect:inbox_list' %}">受信した注文を開く</a>
 </div>

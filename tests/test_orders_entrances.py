@@ -84,7 +84,7 @@ def test_order_list_has_ocr_button(client_logged_in):
 def test_order_list_shows_pending_count_and_link(client_logged_in, receive_order, user):
     # 0 件でも段と link は出す (link が入口のため)
     empty = _entrance(client_logged_in.get(reverse("orders:order_list")).content.decode())
-    assert "受信した注文 (未承認)" in empty
+    assert "受信した注文 (未処理)" in empty
     assert '<span class="font-medium tabular-nums">0</span>' in empty
     assert f'href="{reverse("connect:inbox_list")}"' in empty
 
@@ -93,7 +93,7 @@ def test_order_list_shows_pending_count_and_link(client_logged_in, receive_order
 
     entrance = _entrance(client_logged_in.get(reverse("orders:order_list")).content.decode())
 
-    assert "受信した注文 (未承認)" in entrance
+    assert "受信した注文 (未処理)" in entrance
     assert '<span class="font-medium tabular-nums">1</span>' in entrance
     assert "受信した注文を開く" in entrance
     assert f'href="{reverse("connect:inbox_list")}"' in entrance

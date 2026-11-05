@@ -47,7 +47,7 @@ class _OrderList(BaseListView):
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {
             "name": "open",
-            "label": "出荷の残っている受注だけ",
+            "label": "出荷の残りがある受注だけ",
             "kind": "flag",
             "when": _open_only,
             "default": True,
@@ -55,7 +55,7 @@ class _OrderList(BaseListView):
         },
     )
     presets = (
-        {"label": "未出荷がある", "params": {"f_open": "1"}},
+        {"label": "出荷の残りがある", "params": {"f_open": "1"}},
         {"label": "今月の受注", "params": _this_month},
         {"label": "出荷済", "params": {"f_status": "shipped"}},
     )
@@ -125,7 +125,7 @@ def test_no_presets_renders_no_tabs(user, made):
 def test_all_tab_is_first_and_turns_default_flags_off(user, made):
     response = call(_OrderList, user)
     labels = [tab["label"] for tab in response.context_data["presets"]]
-    assert labels == ["すべて", "未出荷がある", "今月の受注", "出荷済"]
+    assert labels == ["すべて", "出荷の残りがある", "今月の受注", "出荷済"]
     everything = parse_qs(response.context_data["presets"][0]["href"][1:])
     assert everything == {"f_open": ["0"]}
     body = response.render().content.decode()
@@ -138,7 +138,7 @@ def test_all_tab_is_first_and_turns_default_flags_off(user, made):
 def test_tab_counts_match_the_filtered_rows(user, made):
     response = call(_OrderList, user)
     counts = {label: tab["count"] for label, tab in tabs(response).items()}
-    assert counts == {"すべて": 4, "未出荷がある": 2, "今月の受注": 2, "出荷済": 1}
+    assert counts == {"すべて": 4, "出荷の残りがある": 2, "今月の受注": 2, "出荷済": 1}
     for tab in response.context_data["presets"]:
         followed = _OrderList.as_view()(_request(user, "/" + tab["href"]))
         assert followed.context_data["paginator"].count == tab["count"], tab["label"]
@@ -146,21 +146,21 @@ def test_tab_counts_match_the_filtered_rows(user, made):
     # キーワードで絞ると、全部のタブの数がキーワードで絞った中の数になる (キーワードは link にも残る)
     response = call(_OrderList, user, q="北")
     counts = {label: tab["count"] for label, tab in tabs(response).items()}
-    assert counts == {"すべて": 2, "未出荷がある": 2, "今月の受注": 1, "出荷済": 0}
+    assert counts == {"すべて": 2, "出荷の残りがある": 2, "今月の受注": 1, "出荷済": 0}
     for tab in response.context_data["presets"]:
         followed = _OrderList.as_view()(_request(user, "/" + tab["href"]))
         assert followed.context_data["paginator"].count == tab["count"], tab["label"]
 
 
 def test_selected_tab_follows_the_get_values(user, made):
-    assert selected(call(_OrderList, user)) == ["未出荷がある"]
+    assert selected(call(_OrderList, user)) == ["出荷の残りがある"]
     assert selected(call(_OrderList, user, f_status="shipped")) == ["出荷済"]
     assert selected(call(_OrderList, user, f_open="0")) == ["すべて"]
     # 組に無い絞りが入っていれば、どのタブも選ばれない
     assert selected(call(_OrderList, user, f_ordered_from="2020-01-01")) == []
     # 絞りの枠が送る形 (空の欄と、隠しの 0 の後のチェックの 1) でも、読めた値で比べる
     request = _request(user, params={"f_status": "", "f_ordered_from": "", "f_ordered_to": "", "f_open": ["0", "1"]})
-    assert selected(_OrderList.as_view()(request)) == ["未出荷がある"]
+    assert selected(_OrderList.as_view()(request)) == ["出荷の残りがある"]
 
     body = call(_OrderList, user, f_status="shipped").render().content.decode()
     assert body.count("tab-active") == 1

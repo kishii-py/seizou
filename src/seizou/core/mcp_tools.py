@@ -517,7 +517,7 @@ def _list_orders(user, status, customer_code, limit) -> dict[str, Any]:
 def list_orders(status: str | None = None, customer_code: str | None = None, limit: int = 50) -> dict[str, Any]:
     """受注の一覧を、明細ごとの出荷済みと残 (注文残) つきで受注日の新しい順に返す。
 
-    status: 状態 (open 受注・partial 一部出荷・shipped 出荷済・cancelled 取消)。null なら取消の外の全部。
+    status: 状態 (open 未出荷・partial 一部出荷・shipped 出荷済・cancelled 取消)。null なら取消の外の全部。
     customer_code: 得意先の取引先コード。null ならすべての得意先。
     limit: 返す件数 (1〜200。既定 50)。
     返す物: count・money_hidden 金額を隠したか・items (受注ごとの order_no 受注番号・customer_code・customer_name・order_date 受注日・

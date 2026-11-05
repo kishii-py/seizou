@@ -264,7 +264,7 @@ def test_remaining_stays_last_cell(user, logged_in, customer, item):
 # --- 2 段目: 受注の一覧の状態の色と、注文残の一覧の入口 ---
 
 BADGES = {
-    "open": '<span class="badge badge-soft badge-info">受注</span>',
+    "open": '<span class="badge badge-soft badge-info">未出荷</span>',
     "partial": '<span class="badge badge-soft badge-warning">一部出荷</span>',
     "shipped": '<span class="badge badge-soft badge-success">出荷済</span>',
     "cancelled": '<span class="badge badge-outline text-base-content/50">取消</span>',
@@ -272,7 +272,7 @@ BADGES = {
 
 
 def _four_orders(user, customer, item):
-    """状態の違う受注 4 件 (受注・一部出荷・出荷済・取消)。"""
+    """状態の違う受注 4 件 (未出荷・一部出荷・出荷済・取消)。"""
     open_order = _order(user, customer, item)
     partial = _order(user, customer, item)
     shipping_services.ship(partial.lines.get(), Decimal("4"), SHIPPED_AT, user)
@@ -366,7 +366,7 @@ def test_order_list_csv_unchanged(user, logged_in, customer, item):
 
     orders_csv = logged_in.get(reverse("orders:order_list"), {"f_open": "0", "format": "csv"}).content.decode()
     header, *rows = orders_csv.lstrip("﻿").splitlines()
-    assert header == "受注番号,得意先,受注日,得意先の注文番号,状態,入口"
+    assert header == "受注番号,得意先,受注日,得意先の注文番号,状態,注文の入口"
     assert len(rows) == 4
     assert "操作" not in orders_csv
 

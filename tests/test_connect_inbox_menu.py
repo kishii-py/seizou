@@ -128,9 +128,9 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
         reverse("masters:partner_modal", args=[waiting.partner_id]),
     ):
         assert f'href="{url}"' in row, url
-    for word in ("承認", "却下", "詳細を見る", "取引先の小窓"):
+    for word in ("受け入れる", "断る", "詳細を見る", "取引先の小窓"):
         assert word in row, word
-    assert '<span class="badge badge-soft badge-info">届いた</span>' in row
+    assert '<span class="badge badge-soft badge-info">未処理</span>' in row
 
     row = _row(body, accepted.pk)
     assert reverse("connect:inbox_accept", args=[accepted.pk]) not in row
@@ -156,7 +156,7 @@ def test_received_rows_come_first(client_logged_in, receive_order, item, user):
 
     body = client_logged_in.get(reverse("connect:inbox_list")).content.decode()
 
-    # 未承認 (届いた) を上に、その中は新しい順。受け入れた行はその後
+    # 未処理を上に、その中は新しい順。受け入れた行はその後
     assert _row_ids(body) == [new_waiting.pk, old_waiting.pk, accepted.pk]
 
 

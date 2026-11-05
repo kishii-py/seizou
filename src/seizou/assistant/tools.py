@@ -190,7 +190,7 @@ TOOLS = [
                 "status": {
                     "type": "string",
                     "enum": ["open", "partial", "shipped", "cancelled"],
-                    "description": "open は受注・partial は一部出荷・shipped は出荷済・cancelled は取消。省くと取消の外の全部。",
+                    "description": "open は未出荷・partial は一部出荷・shipped は出荷済・cancelled は取消。省くと取消の外の全部。",
                 },
                 "customer_code": {"type": "string", "description": "得意先の取引先コード (完全一致。省ける)。"},
                 "limit": _limit(mcp_tools.MAX_ROWS, 50),

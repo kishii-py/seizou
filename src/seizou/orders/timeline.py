@@ -117,7 +117,7 @@ def _inbox_events(order) -> list[Event]:
     url = _url(inbox)
     events = [Event(inbox.received_at, "inbox", "注文が届いた", url)]
     if inbox.accepted_at is not None:
-        events.append(Event(inbox.accepted_at, "inbox", "受信した注文を承認", url))
+        events.append(Event(inbox.accepted_at, "inbox", "受信した注文を受け入れ", url))
     return events
 
 

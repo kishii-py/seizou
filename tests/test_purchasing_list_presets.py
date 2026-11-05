@@ -79,7 +79,7 @@ def _presets_tag(body):
 
 @pytest.fixture
 def four_orders(user, item):
-    """同じ取引先に、作成・送った・相手が受け入れた・取消の 4 件。"""
+    """同じ取引先に、下書き・送った・相手が受け入れた・取消の 4 件。"""
     partner = _partner(user)
     return {state: _order(user, partner, item, state) for state in ("draft", "sent", "accepted", "cancelled")}
 
@@ -90,7 +90,7 @@ def test_purchase_order_tabs_and_counts(client_logged_in, four_orders):
     assert response.status_code == 200
     assert _tabs(response) == [
         ("すべて", 4, True),
-        ("作成", 1, False),
+        ("下書き", 1, False),
         ("送った", 1, False),
         ("相手が受け入れた", 1, False),
     ]
@@ -128,7 +128,7 @@ def test_tab_counts_follow_keyword_but_not_other_filters(client_logged_in, user,
     response = client_logged_in.get(url, {"q": "S002"})
     assert _tabs(response) == [
         ("すべて", 1, True),
-        ("作成", 0, False),
+        ("下書き", 0, False),
         ("送った", 1, False),
         ("相手が受け入れた", 0, False),
     ]
@@ -138,7 +138,7 @@ def test_tab_counts_follow_keyword_but_not_other_filters(client_logged_in, user,
     response = client_logged_in.get(url, {"f_partner": first.pk, "per": "20", "sort": "-po_no"})
     assert _tabs(response) == [
         ("すべて", 3, False),
-        ("作成", 1, False),
+        ("下書き", 1, False),
         ("送った", 2, False),
         ("相手が受け入れた", 0, False),
     ]
@@ -167,7 +167,7 @@ def test_poll_redraws_tabs_out_of_band(client_logged_in, user, item):
     assert "<html" not in body
     assert _tabs(response) == [
         ("すべて", 2, False),
-        ("作成", 0, False),
+        ("下書き", 0, False),
         ("送った", 2, True),
         ("相手が受け入れた", 0, False),
     ]
@@ -175,7 +175,7 @@ def test_poll_redraws_tabs_out_of_band(client_logged_in, user, item):
     services.mark_accepted(first, user)
     assert _tabs(poll()) == [
         ("すべて", 2, False),
-        ("作成", 0, False),
+        ("下書き", 0, False),
         ("送った", 1, True),
         ("相手が受け入れた", 1, False),
     ]

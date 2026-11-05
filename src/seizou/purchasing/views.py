@@ -54,7 +54,7 @@ class PurchaseOrderListView(BaseListView):
     )
     # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
     presets = (
-        {"label": "作成", "params": {"f_status": PurchaseOrder.STATUS_DRAFT}},
+        {"label": "下書き", "params": {"f_status": PurchaseOrder.STATUS_DRAFT}},
         {"label": "送った", "params": {"f_status": PurchaseOrder.STATUS_SENT}},
         {"label": "相手が受け入れた", "params": {"f_status": PurchaseOrder.STATUS_ACCEPTED}},
     )
@@ -68,12 +68,12 @@ class PurchaseOrderListView(BaseListView):
 class PurchaseOrderDetailView(BaseDetailView):
     """発注の詳細。
 
-    使う人: 生産管理 / いつ: 発注の中身と相手の回答を確かめるとき / 何のために: 明細・送った記録・受入を見る / 次にすること: 「受入を登録」へ。「作成」のままなら送り直しか取消
+    使う人: 生産管理 / いつ: 発注の中身と相手の回答を確かめるとき / 何のために: 明細・送った記録・受入を見る / 次にすること: 「受入を登録」へ。「下書き」のままなら送り直しか取消
     """
 
     model = PurchaseOrder
     screen_name = "発注の詳細"
-    screen_help = "発注の項目と明細、相手へ送った記録。「作成」のときだけ送り直しと取消ができます。"
+    screen_help = "発注の項目と明細、相手へ送った記録。「下書き」のときだけ送り直しと取消ができます。"
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
     template_name = "purchasing/purchaseorder_detail.html"
 
@@ -98,27 +98,27 @@ class PurchaseOrderCreateView(BaseFormView):
 class PurchaseOrderSendView(BaseFormView):
     """注文を送り直す確かめの入力。
 
-    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「作成」の発注をもう一度送る / 次にすること: 発注の詳細へ戻る (届けば緑、届かなければ黄の知らせ)
+    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「下書き」の発注をもう一度送る / 次にすること: 発注の詳細へ戻る (届けば緑、届かなければ黄の知らせ)
     """
 
     model = PurchaseOrder
     form_class = SendForm
     service = staticmethod(services.resend_purchase_order)
     screen_name = "注文を送り直す"
-    screen_help = "「作成」のままの発注を、つながりの相手へもう一度送ります。"
+    screen_help = "「下書き」のままの発注を、つながりの相手へもう一度送ります。"
 
 
 class PurchaseOrderCancelView(BaseFormView):
     """発注を取り消す確かめの入力。
 
-    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「作成」の発注を取り消す / 次にすること: 発注の一覧へ戻る
+    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「下書き」の発注を取り消す / 次にすること: 発注の一覧へ戻る
     """
 
     model = PurchaseOrder
     form_class = CancelForm
     service = staticmethod(services.cancel_purchase_order)
     screen_name = "発注を取り消す"
-    screen_help = "「作成」の発注を取り消します。理由は備考の末尾に残ります。"
+    screen_help = "「下書き」の発注を取り消します。理由は備考の末尾に残ります。"
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面) ---

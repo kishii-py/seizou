@@ -53,7 +53,7 @@ TOURS: dict[str, tuple[dict, ...]] = {
         {
             "selector": "#rows",
             "title": "受注の表",
-            "text": "行を押すと受注の詳細が開きます。既定は出荷の残っている受注だけです。",
+            "text": "行を押すと受注の詳細が開きます。既定は出荷の残りがある受注だけです。",
         },
         {
             "selector": '[data-tour="orderline-link"]',

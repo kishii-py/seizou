@@ -1,4 +1,4 @@
-"""ダッシュボードの 2 枚のカード (N77): 「まだ出荷していない明細」と「今月の受注」の数と、押した先の一覧の件数。
+"""ダッシュボードの 2 枚のカード (N77): 「出荷の残りがある明細」と「今月の受注」の数と、押した先の一覧の件数。
 
 受注と出荷は services で作る (tests/test_core_dashboard.py の make_order の形)。名前は作り物だけ。
 """
@@ -16,7 +16,7 @@ from seizou.masters import services as masters_services
 from seizou.orders import services
 from seizou.shipping import services as shipping_services
 
-LINES_LABEL = "まだ出荷していない明細"
+LINES_LABEL = "出荷の残りがある明細"
 MONTH_LABEL = "今月の受注"
 
 
@@ -109,7 +109,7 @@ def test_this_month_card_links_month_filtered_orders(logged_in, user, customer, 
     url = reverse("orders:order_list")
     everything = logged_in.get(url, {"f_open": "0"}).context["paginator"].count
     default = logged_in.get(url).context["paginator"].count
-    assert everything == 4 and default == 2  # 全部 / 出荷の残っている物 (今月の 1 件と先月の 1 件)
+    assert everything == 4 and default == 2  # 全部 / 出荷の残りがある物 (今月の 1 件と先月の 1 件)
     for params, expected in (({"f_open": "0", "f_ordered_from": "2026-13-01"}, everything), ({"month": "abc"}, default)):
         response = logged_in.get(url, params)
         assert response.status_code == 200, params

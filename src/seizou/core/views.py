@@ -362,7 +362,7 @@ class FilterSpec:
                                                     choices があれば FK の先の全部の代わりに候補にする ((pk, 字) の組の並びか関数)
       {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": open_only, "default": True}
                                                     チェック 1 つ。入のときだけ when (queryset を受けて queryset を返す関数) を掛ける
-      {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": open_only, "default": True,
+      {"name": "open", "label": "出荷の残りがある受注だけ", "kind": "flag", "when": open_only, "default": True,
        "disabled_when": lambda values: values.get("status") is not None}
                                                     disabled_when (values を受けて真か偽を返す関数) が真の間は、印を切に描いて押せなくし、when を掛けない
       {"name": "thickness", "field": "ext__ext02"}  会社ごとの項目 (core/fields.py)。種類と見出しは項目の登録から決める
@@ -1634,7 +1634,7 @@ def dashboard_stats() -> list[dict]:
     if lines is not None:
         stats.append(
             {
-                "label": "まだ出荷していない明細",
+                "label": "出荷の残りがある明細",
                 "value": count_or_none(lines),
                 "unit": "行",
                 "note": "出荷が終わっていない受注の明細の数",
@@ -1652,7 +1652,7 @@ def dashboard_stats() -> list[dict]:
                 "value": count_or_none(waiting),
                 "unit": "件",
                 "note": "人が受け入れるのを待つ注文の数",
-                "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ承認も却下もしていない物の数です。",
+                "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ受け入れも断りもしていない物の数です。",
                 "icon": "inbox",
                 "url": url_or_none("connect:inbox_list"),
             }

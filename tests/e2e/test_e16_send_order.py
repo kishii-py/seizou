@@ -4,7 +4,7 @@
 期待: 送った物が残り、相手の返事 (受け取った) が出る。相手が止まっていれば「届かない」の表示と送り直すボタン。
 
 この試験が見る所: 2 社にログインし、2 社に同じ鍵が渡っていれば、A 社の左のメニューの「発注」→「新規登録」で、取引先 S001・
-`WK-1001`・数量 5 の発注を保存する。発注の詳細の状態が「作成」でなく、「送った記録」のタブに 1 行あって相手の返事
+`WK-1001`・数量 5 の発注を保存する。発注の詳細の状態が「下書き」でなく、「送った記録」のタブに 1 行あって相手の返事
 「受け取った」が出る (「断られた」「返事が読めません」「届きません」でない)。
 見ない所 (理由): 相手を止めた状態で送る (相手を止める手順は本体。E2E の fixture は止めない)、発注の状態の字
 (02 の「相手が受けた」でなく、今の送る口は「送った」にする。違いは要望に書く)。
@@ -38,7 +38,7 @@ def test_e16_send_and_reply(page_a, page_b, company_a, company_b):
     assert po_no
 
     status = page_a.locator("h1 ~ .badge").first
-    expect(status).not_to_have_text("作成")
+    expect(status).not_to_have_text("下書き")
 
     page_a.locator("input[aria-label='送った記録']").check()
     records = page_a.locator(".tab-content").nth(0)

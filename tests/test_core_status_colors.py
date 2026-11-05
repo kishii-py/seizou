@@ -169,8 +169,8 @@ def test_tones_are_five_meanings_and_the_template_has_a_branch_for_each():
 @pytest.mark.parametrize(
     ("value", "label", "html"),
     [
-        ("draft", "作成", '<span class="badge badge-ghost">作成</span>'),
-        ("open", "受注", '<span class="badge badge-soft badge-info">受注</span>'),
+        ("draft", "下書き", '<span class="badge badge-ghost">下書き</span>'),
+        ("open", "未出荷", '<span class="badge badge-soft badge-info">未出荷</span>'),
         ("partial", "一部出荷", '<span class="badge badge-soft badge-warning">一部出荷</span>'),
         ("shipped", "出荷済", '<span class="badge badge-soft badge-success">出荷済</span>'),
         ("cancelled", "取消", '<span class="badge badge-outline text-base-content/50">取消</span>'),
@@ -209,9 +209,9 @@ def test_detail_heading_badge_uses_the_meaning_color(user, logged_in, customer, 
     purchase = _purchase_order(user, supplier, item)
     invoice = _invoice(user, customer, item)
     cases = [
-        (reverse("orders:order_detail", args=[order.pk]), DOT_INFO.format("受注")),
+        (reverse("orders:order_detail", args=[order.pk]), DOT_INFO.format("未出荷")),
         (reverse("workorders:workorder_detail", args=[workorder.pk]), DOT_INFO.format("発行")),
-        (reverse("purchasing:purchaseorder_detail", args=[purchase.pk]), DOT_GHOST.format("作成")),
+        (reverse("purchasing:purchaseorder_detail", args=[purchase.pk]), DOT_GHOST.format("下書き")),
         (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_INFO.format("発行")),
     ]
 
@@ -232,10 +232,10 @@ def test_list_status_column_uses_the_meaning_color(user, logged_in, customer, su
     purchase = _purchase_order(user, supplier, item)
     invoice = _invoice(user, customer, item)
     cases = [
-        ("orders:order_list", order.pk, '<span class="badge badge-soft badge-info">受注</span>'),
+        ("orders:order_list", order.pk, '<span class="badge badge-soft badge-info">未出荷</span>'),
         ("orders:order_list", cancelled.pk, '<span class="badge badge-outline text-base-content/50">取消</span>'),
         ("workorders:workorder_list", workorder.pk, '<span class="badge badge-soft badge-info">発行</span>'),
-        ("purchasing:purchaseorder_list", purchase.pk, '<span class="badge badge-ghost">作成</span>'),
+        ("purchasing:purchaseorder_list", purchase.pk, '<span class="badge badge-ghost">下書き</span>'),
         ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-info">発行</span>'),
     ]
 
@@ -269,6 +269,6 @@ def test_home_recent_orders_use_the_meaning_color(user, logged_in, customer, ite
     # 入口の横の待っている数の印 (N146) が主色の badge なので、</main> で切って除く。
     main = body.split("<main", 1)[1].split("</main>", 1)[0]
 
-    assert '<span class="badge badge-soft badge-info badge-sm">受注</span>' in main
+    assert '<span class="badge badge-soft badge-info badge-sm">未出荷</span>' in main
     assert '<span class="badge badge-outline text-base-content/50 badge-sm">取消</span>' in main
     assert "badge-soft badge-primary" not in main

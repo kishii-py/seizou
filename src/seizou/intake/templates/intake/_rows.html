@@ -1,0 +1,13 @@
+{% load seizou_icons %}{% comment %}
+intake の一覧の行の部分 (N159)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+行が無く、検索の言葉も絞りも無いときだけ、空の枠の 2 行目とボタンの字を「読み取る」にする (決め 11-05 13:3x)。それ以外は core/_rows.html をそのまま使う。
+写した元: core/_rows.html の空の枠 (11-05 の main。manuals/_rows.html と同じ形)。土台の空の枠の形が変わったら、ここも合わせる。
+{% endcomment %}{% if not rows and not search_q and not filter_active %}
+<div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <p class="mt-4 font-medium">まだ 1 件もありません。</p>
+  {% if create_url %}<p class="mt-2 text-xs text-base-content/50">「読み取る」から 1 枚目の注文書を読み取ります。</p>
+  <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ create_url }}">{% icon "file" "size-4" %}読み取る</a>{% endif %}
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
+{% else %}{% include "core/_rows.html" %}{% endif %}

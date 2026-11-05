@@ -245,7 +245,7 @@ def test_list_shows_orders_and_searches(monkeypatch, client_logged_in, user, sub
 
     body = client_logged_in.get(reverse("purchasing:purchaseorder_list")).content.decode()
     assert "PO-000001" in body and "PO-000002" in body
-    assert "作成" in body
+    assert "下書き" in body
     assert reverse("masters:partner_modal", args=[subcontractor.pk]) in body
 
     rows = client_logged_in.get(

@@ -193,7 +193,7 @@ def test_inbox_and_note_events(user, customer, item):
 
     assert [(e.kind, e.title) for e in events] == [
         ("inbox", "注文が届いた"),
-        ("inbox", "受信した注文を承認"),
+        ("inbox", "受信した注文を受け入れ"),
         ("order", "受注を登録 (受信した注文)"),
         ("note", "メモを更新"),
     ]

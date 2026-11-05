@@ -20,7 +20,7 @@ from .forms import OrderCancelForm, OrderForm
 from .models import Order, OrderLine
 from .services import annotate_remaining
 
-#: 既定の一覧に出す受注の状態 (出荷の残っている物)
+#: 既定の一覧に出す受注の状態 (出荷の残りがある物)
 OPEN_STATUSES = (Order.STATUS_OPEN, Order.STATUS_PARTIAL)
 
 
@@ -32,7 +32,7 @@ def _customer_choices():
 
 
 def _open_orders(orders):
-    """出荷の残っている受注だけ (受注・一部出荷)。受注の一覧の印の when。"""
+    """出荷の残りがある受注だけ (未出荷・一部出荷)。受注の一覧の印の when。"""
     return orders.filter(status__in=OPEN_STATUSES)
 
 
@@ -69,7 +69,7 @@ class OrderListView(BaseListView):
 
     model = Order
     screen_name = "受注"
-    screen_help = "受けた注文の一覧。既定は出荷の残っている受注 (受注・一部出荷) だけを出します。"
+    screen_help = "受けた注文の一覧。既定は出荷の残りがある受注 (未出荷・一部出荷) だけを出します。"
     columns = ("order_no", "customer", "order_date", "customer_order_no", "status", "source")
     search_fields = ("order_no", "customer__name", "customer__code", "customer_order_no")
     # 一覧の絞り (土台の FilterSpec。決め 11-04 15:0x)。得意先は choice に候補の関数を渡す (lookup の候補は取引先の全部で、協力企業も出るため)。
@@ -79,11 +79,11 @@ class OrderListView(BaseListView):
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
         # 既定で入の flag。状態を選んだら、印を切に描いて掛けない (disabled_when。N118 の「状態を選んだら既定を外す」を土台の形で。N143)。
-        {"name": "open", "label": "出荷の残っている受注だけ", "kind": "flag", "when": _open_orders, "default": True, "disabled_when": _status_chosen},
+        {"name": "open", "label": "出荷の残りがある受注だけ", "kind": "flag", "when": _open_orders, "default": True, "disabled_when": _status_chosen},
     )
     # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が足す (既定の印を切る)。
     presets = (
-        {"label": "未出荷がある", "params": {"f_open": "1"}},
+        {"label": "出荷の残りがある", "params": {"f_open": "1"}},
         {"label": "今月の受注", "params": _this_month_ordered},
         {"label": "出荷済", "params": {"f_status": Order.STATUS_SHIPPED}},
     )
@@ -91,7 +91,7 @@ class OrderListView(BaseListView):
     template_name = "orders/order_list.html"
 
     def get_queryset(self):
-        # 土台 (super) が検索と絞り (f_。「出荷の残っている受注だけ」の印も) を当てた後に、得意先を一緒に読む。
+        # 土台 (super) が検索と絞り (f_。「出荷の残りがある受注だけ」の印も) を当てた後に、得意先を一緒に読む。
         orders = super().get_queryset().select_related("customer")
         if self.filter_chosen("due"):
             # 納期は明細の項目 (逆向きの FK)。期間に入る明細が 2 行あると同じ受注が 2 回出るので、1 回にする。

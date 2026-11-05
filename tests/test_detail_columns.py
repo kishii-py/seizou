@@ -139,7 +139,7 @@ def test_order_aside_cards(logged_in, order):
     money = _card(aside, "金額")
     assert _labels(money) == ["明細の合計"] and "15,600" in money
     basic = _card(aside, "基本情報")
-    assert {"受注番号", "得意先の注文番号", "状態", "入口", "備考"} <= set(_labels(basic))
+    assert {"受注番号", "得意先の注文番号", "状態", "注文の入口", "備考"} <= set(_labels(basic))
     assert not {"得意先", "受注日"} & set(_labels(basic))
     assert '?part=basic"' in basic
     # 案 8-B: 項目の名は小さい灰の字、値は太い字

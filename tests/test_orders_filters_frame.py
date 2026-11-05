@@ -1,7 +1,7 @@
 """注文残の盤と受注の一覧の絞りを、絞り込みの枠の 1 か所に移した形 (N126。本人の決め 11-04 17:3x)。名前は作り物だけ。
 
 盤: 「出荷の残りがある物だけ」(flag・既定で入)・「納期」(期間)・「納期が過ぎた物だけ」(flag・既定で切)。
-受注の一覧: 「出荷の残っている受注だけ」(flag・既定で入)。状態を選ぶと既定を外す (N118)。
+受注の一覧: 「出荷の残りがある受注だけ」(flag・既定で入)。状態を選ぶと既定を外す (N118)。
   状態を選んだ間は、印を切に描いて押せなくする (土台の disabled_when。htmx の応答でも描き直す。N143)。
 古い GET (all・month・due_from・due_to・overdue) は読まない (別名を足さない)。
 """
@@ -68,7 +68,7 @@ def test_order_list_open_flag_gives_way_to_status(user, logged_in, customer, sha
     response = logged_in.get(url)
     assert _listed(response) == [open_order]
     body = response.content.decode()
-    assert 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残っている受注だけ</label>' in body
+    assert 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残りがある受注だけ</label>' in body
     assert 'id="orders-all"' not in body and 'aria-current="true">すべて</span>' not in body
     assert set(_listed(logged_in.get(url, {"f_open": "0"}))) == {open_order, done, cancelled}
     # 状態を選ぶと、印が入のままでも既定を外す (N118)。印を外して状態を選んでも同じ。
@@ -102,15 +102,15 @@ def test_dashboard_month_card_links_to_frame_filters(user, logged_in, customer, 
 
 @pytest.mark.django_db
 def test_order_list_open_flag_is_drawn_off_while_status_chosen(user, logged_in, customer, shaft):  # noqa: F811
-    """状態を選ぶと「出荷の残っている受注だけ」が切に見えて押せず、表は選んだ状態の全部 (N143 = N126 の知らせの 3 の食い違いを無くす)。"""
+    """状態を選ぶと「出荷の残りがある受注だけ」が切に見えて押せず、表は選んだ状態の全部 (N143 = N126 の知らせの 3 の食い違いを無くす)。"""
     open_order = _order(customer, shaft, user)
     done = _order(customer, shaft, user, qty="2")
     shipping_services.ship(done.lines.get(), Decimal("2"), timezone.localdate(), user)
     cancelled = _order(customer, shaft, user, qty="1")
     services.cancel_order(cancelled, user)
     url = reverse("orders:order_list")
-    box_on = 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残っている受注だけ</label>'
-    box_off = 'name="f_open" value="1" class="checkbox checkbox-sm" disabled data-list-filter>出荷の残っている受注だけ</label>'
+    box_on = 'name="f_open" value="1" class="checkbox checkbox-sm" checked data-list-filter>出荷の残りがある受注だけ</label>'
+    box_off = 'name="f_open" value="1" class="checkbox checkbox-sm" disabled data-list-filter>出荷の残りがある受注だけ</label>'
 
     # 状態を選ばなければ既定どおり (入で掛かる)
     body = logged_in.get(url).content.decode()
