@@ -9,6 +9,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     そのファイルに admin:<値> の 1 行で書く (持ち主だけが読める)。
     画面ごとの説明書の断片は、部品の中の標準の組 (core/manual_default/) を置き場の manual/ に写す。
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
+    置き場には、AI が守る決まりの CLAUDE.md (Claude Code が置き場を開いたときに読む) と、その短い版の AGENTS.md も書く。
     --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
     (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -547,6 +548,9 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         ),
         encoding="utf-8",
     )
+    # AI が守る決まり (CLAUDE.md) と、Claude 以外の道具向けの短い版 (AGENTS.md)。決め 11-05 17:2x。N165
+    (site / "CLAUDE.md").write_text(render("CLAUDE.md.tmpl", id=company_id, name=str(answers["name"])), encoding="utf-8")
+    (site / "AGENTS.md").write_text(render("AGENTS.md.tmpl", id=company_id, name=str(answers["name"])), encoding="utf-8")
     (site / "checks.py").write_text(render("checks.py.tmpl", id=company_id), encoding="utf-8")
     (site / "deploy").mkdir(parents=True, exist_ok=True)
     (site / "deploy" / "nginx-files.conf").write_text(

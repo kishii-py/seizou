@@ -1,0 +1,9 @@
+# AGENTS.md (${name} のシステム。Claude 以外の道具向けの短い版。正は CLAUDE.md)
+
+- この置き場は `seizou new` が作った ${name} のシステム (${id})。部品 seizou は pip で入っている。部品の中身を書き換えない。会社の違いは `fields/`・`templates/`・`checks.py`・`settings.py`・`manual/` と、会社が足した app に書く。
+- 画面は core の土台 (`Base*View`) を継承する。数と金額を変える処理は部品の `services` を通す。SQL を直接書かない。部品の表を変えない (会社ごとの項目は拡張の表)。相手の会社への HTTP は `transaction.atomic` の外。CSRF の見出しは土台の 1 か所。class 名を途中で組み立てない。
+- 画面の言葉は日本語、識別子は英語。画面の class の docstring に「使う人 / いつ / 何のために / 次にすること」を書く。
+- `<python>` は `README.md` の起動の 1 行の python。変えたら `<python> manage.py seizou_check` を打ち、違反を 0 件にする。
+- 変えた後の流れ: 直す → `seizou_check` → 変えたファイルの重複と遠回りを、動きを変えずに直す → もう 1 度 `seizou_check` と `<python> manage.py check` (試験があれば試験も)。担当者はプログラムを書かない人なので、確かめを省かない。
+- 鍵は `.env` だけ。`.env` と `db.sqlite3` を commit しない。
+- 言葉: 取引先の種類は「協力企業」、相手の会社から受けた注文は「受信した注文」、押して操作する所は「ボタン」と書く。
