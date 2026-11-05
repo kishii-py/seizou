@@ -24,7 +24,7 @@ class PurchaseOrder(models.Model):
     STATUS_DELIVERED = "delivered"
     STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
-        (STATUS_DRAFT, "作成"),
+        (STATUS_DRAFT, "下書き"),
         (STATUS_SENT, "送った"),
         (STATUS_ACCEPTED, "相手が受け入れた"),
         (STATUS_REJECTED, "断られた"),

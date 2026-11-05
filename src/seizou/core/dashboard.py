@@ -833,7 +833,7 @@ FLOWS = (
         "steps": (
             {"key": "purchase_order", "label": "発注", "model": ("purchasing", "PurchaseOrder"), "url_name": "purchasing:purchaseorder_list",
              "count": "purchase_draft", "count_label": "まだ送っていない発注", "unit": "件",
-             "next_text": "作成のままの発注を協力企業に送ります。"},
+             "next_text": "下書きのままの発注を協力企業に送ります。"},
             {"key": "reply", "label": "注文回答", "model": ("connect", "Connection"), "url_name": "purchasing:purchaseorder_list",
              "count": "purchase_sent", "count_label": "返事を待つ発注", "unit": "件",
              "next_text": "協力企業の返事を待ちます。断られた発注は直して送り直します。"},
@@ -944,7 +944,7 @@ def _invoices_to_be_paid():
 
 
 def _purchase_drafts():
-    """まだ送っていない発注 (状態が作成)。"""
+    """まだ送っていない発注 (状態が下書き)。"""
     purchase_model = _model("purchasing", "PurchaseOrder")
     if purchase_model is None:
         return None
