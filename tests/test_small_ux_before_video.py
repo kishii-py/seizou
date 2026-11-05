@@ -15,8 +15,10 @@ from django.urls import reverse
 from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
 from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
+from seizou.shipping import services as shipping_services
 from tests.test_intake_extract import FAKE_KEY
-from tests.test_orders_board_menu_more import _tr
+from tests.test_orders_board_menu_more import _board, _line, _ship, _tr
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "seizou"
@@ -34,6 +36,11 @@ DOT = '<span class="status status-info" aria-hidden="true"></span>'
 @pytest.fixture
 def customer(user):
     return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+
+
+@pytest.fixture
+def item(user):
+    return masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
 
 
 @pytest.fixture
@@ -172,3 +179,44 @@ def test_inbox_unprocessed_rows_bold_with_blue_dot(logged_in, user, customer):
     newer_tr = _tr(poll, newer.pk)
     assert 'class="row-hover h-10 cursor-pointer font-bold"' in newer_tr
     assert DOT in re.search(r"<td[^>]*>(.*?)</td>", newer_tr, re.S).group(1)
+
+
+# 3. 生産管理ボードの行のメニューの見出しと線
+
+
+def _labels(tr_html):
+    """行のメニューの li の字の並び (絵を消し、tag を消して前後の空白を落とす。線の li は "")。"""
+    ul = re.search(r'<ul class="menu dropdown-content[^"]*">(.*?)</ul>', tr_html, re.S).group(1)
+    items = re.findall(r"<li[^>]*>(.*?)</li>", ul, re.S)
+    return [re.sub(r"<[^>]+>", "", re.sub(r"<svg.*?</svg>", "", li, flags=re.S)).strip() for li in items]
+
+
+def test_board_menu_heading_and_three_groups(logged_in, user, customer, item):
+    line = _line(user, customer, item)
+    _ship(line, "4", user)  # 納品書の無い出荷がある
+
+    tr_html = _tr(_board(logged_in), line.pk)
+    labels = _labels(tr_html)
+
+    assert labels[:9] == ["T-100 作り物の軸", "出荷する", "指示書を発行する", "", "発注する", "納品書を作る", "", "受注の詳細", "部品の小窓"]
+    assert set(labels[9:]) <= {"添付"}  # 添付の部品が入っていれば「添付」
+    assert '<li class="menu-title text-xs" title="T-100 作り物の軸">' in tr_html
+
+
+def test_board_menu_lines_never_double(logged_in, user, customer, item):
+    cancelled = _line(user, customer, item)
+    _ship(cancelled, "3", user)
+    orders_services.cancel_order(cancelled.order, user)
+    done = _line(user, customer, item, qty="2")
+    shipment = _ship(done, "2", user)
+    shipping_services.create_delivery_note(customer, [shipment], user)
+
+    body = _board(logged_in, f_open="0")
+    cancelled_labels = _labels(_tr(body, cancelled.pk))
+    done_labels = _labels(_tr(body, done.pk))
+
+    assert cancelled_labels[:5] == ["T-100 作り物の軸", "", "納品書を作る", "", "受注の詳細"]
+    assert done_labels[:3] == ["T-100 作り物の軸", "", "受注の詳細"]
+    for labels in (cancelled_labels, done_labels):
+        assert not any(first == "" and second == "" for first, second in zip(labels, labels[1:])), labels
+        assert labels[-1] != "", labels
