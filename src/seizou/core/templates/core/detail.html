@@ -82,7 +82,7 @@
   {% endif %}
   {% for tab in tabs %}
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
-    <input type="radio" name="detail-tabs" aria-label="{{ tab.label }}"{% if aside and forloop.first %} checked{% endif %}>{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
+    <input type="radio"{% if aside and forloop.first %} checked{% endif %} name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
