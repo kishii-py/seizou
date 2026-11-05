@@ -5,16 +5,22 @@
 """
 
 import re
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
 
+from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
+from seizou.masters import services as masters_services
 from tests.test_intake_extract import FAKE_KEY
+from tests.test_orders_board_menu_more import _tr
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "seizou"
+TOKYO = ZoneInfo("Asia/Tokyo")
 HX = {"HTTP_HX_REQUEST": "true"}
 EMPTY_LINE = "取引先から注文が届くと、ここに並びます。"
 BUSY = '<template data-intake-busy><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>読み取り中…</template>'
@@ -22,6 +28,12 @@ TOGGLE = (
     '<span class="tooltip" data-tip="AI に質問"><button id="assistant-toggle" type="button" class="btn btn-neutral btn-circle shadow-lg'
     ' focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">'
 )
+DOT = '<span class="status status-info" aria-hidden="true"></span>'
+
+
+@pytest.fixture
+def customer(user):
+    return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
 
 
 @pytest.fixture
@@ -132,3 +144,31 @@ def test_main_bottom_room_is_one_button_taller(logged_in):
     # Tailwind はテンプレートの注釈の字も拾うので、使わなくなった字を残さない。
     for path in SRC.rglob("*.html"):
         assert "pb-24" not in path.read_text(encoding="utf-8"), path
+
+
+# 4. 受信した注文の未処理の行の太字と点
+
+
+def test_inbox_unprocessed_rows_bold_with_blue_dot(logged_in, user, customer):
+    done = connect_services.record_inbox(customer, {"order_no": "X-1", "lines": []}, user, received_at=datetime(2026, 11, 5, 9, 0, tzinfo=TOKYO))
+    waiting = connect_services.record_inbox(customer, {"order_no": "X-2", "lines": []}, user, received_at=datetime(2026, 11, 5, 10, 0, tzinfo=TOKYO))
+    connect_services.reject(done, "作り物の断りの理由", user)  # 取引先との接続を置かないので、相手への送信は無い
+    url = reverse("connect:inbox_list")
+    body = logged_in.get(url).content.decode()
+
+    waiting_tr = _tr(body, waiting.pk)
+    done_tr = _tr(body, done.pk)
+    assert waiting_tr.startswith(f'<tr id="row-{waiting.pk}" class="row-hover h-10 cursor-pointer font-bold" data-row-menu')
+    assert done_tr.startswith(f'<tr id="row-{done.pk}" class="row-hover h-10 cursor-pointer" data-row-menu')
+    # 最初の欄 (受信日時。東京の時刻で出るので字の形で見る) の字の前に点。断った行には無い。
+    waiting_first = re.search(r"<td[^>]*>(.*?)</td>", waiting_tr, re.S).group(1)
+    done_first = re.search(r"<td[^>]*>(.*?)</td>", done_tr, re.S).group(1)
+    assert re.search(re.escape(DOT) + r" \d{4}-\d{2}-\d{2} \d{2}:\d{2}</a>", waiting_first)
+    assert DOT not in done_first
+
+    # 2 秒ごとに先頭に足す行 (同じ 1 行のテンプレート) も同じ。
+    newer = connect_services.record_inbox(customer, {"order_no": "X-3", "lines": []}, user, received_at=datetime(2026, 11, 5, 11, 0, tzinfo=TOKYO))
+    poll = logged_in.get(url, {"after": str(waiting.pk)}, **HX).content.decode()
+    newer_tr = _tr(poll, newer.pk)
+    assert 'class="row-hover h-10 cursor-pointer font-bold"' in newer_tr
+    assert DOT in re.search(r"<td[^>]*>(.*?)</td>", newer_tr, re.S).group(1)
