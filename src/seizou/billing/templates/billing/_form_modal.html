@@ -1,0 +1,3 @@
+{# billing の入力の小窓の中身 (N158b)。入力の土台は小窓のテンプレートを app ごとに選ぶ (billing/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
+{# 請求書の取消・入金の取消・入金の記録は、全体の画面と同じカード (billing/_<URL の名前>_card.html) を form_card で渡す。ほかの入力 (請求書作成) は土台の小窓のまま。 #}
+{% with url_name=request.resolver_match.url_name %}{% if url_name == "invoice_cancel" %}{% include "core/_form_modal.html" with form_card="billing/_invoice_cancel_card.html" %}{% elif url_name == "payment_cancel" %}{% include "core/_form_modal.html" with form_card="billing/_payment_cancel_card.html" %}{% elif url_name == "payment_create" %}{% include "core/_form_modal.html" with form_card="billing/_payment_create_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}{% endwith %}

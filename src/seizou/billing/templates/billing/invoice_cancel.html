@@ -1,13 +1,5 @@
 {% extends "core/form.html" %}
 {% load billing_tags seizou_icons seizou_tags %}
-{# 請求書を取り消す: 欄の無い form。入っていた出荷は、また請求できる。取消でない入金が残る請求書は、form と「取り消す」を出さず、services と同じ文を黄で出して、詳細の入金の枠へ戻る link だけ (決め 11-04 06:4x。URL を直に打った POST は services が赤の知らせで止める)。 #}
-{% block content %}
-{% invoice_cancel_refusal object seizou.hide_money as refusal %}
-{% if refusal %}
-{% with parts=refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
-<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'billing:invoice_detail' object.pk %}#payments">{% icon "arrow-left" "size-4" %}請求書の入金へ戻る</a></div>
-{% else %}
-<p class="mb-4 text-base-content/70">この請求書を取り消します。入っていた出荷は、また請求できます。</p>
-{{ block.super }}
-{% endif %}
+{# 請求書を取り消す: 欄の無い form。入っていた出荷は、また請求できる。取消でない入金が残る請求書は、form と「取り消す」を出さず、services と同じ文を黄で出して、詳細の入金の枠へ戻る link だけ (決め 11-04 06:4x。URL を直に打った POST は services が赤の知らせで止める)。中身はカード (billing/_invoice_cancel_card.html)。 #}
+{% block content %}{% include "billing/_invoice_cancel_card.html" %}
 {% endblock %}
