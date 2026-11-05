@@ -396,6 +396,28 @@ def check_demo_passwords(production: bool) -> list[Row]:
     return [_good(label, f"{detail}。外から開ける置き場にする前に、{DEMO_PASSWORD_FIX}")]
 
 
+#: 置き場に置く、AI が守る決まり (seizou new と seizou ai-docs が書く 2 つ。N165・N170)
+AI_DOCS = ("CLAUDE.md", "AGENTS.md")
+
+
+def check_ai_docs() -> list[Row]:
+    """置き場の AI が守る決まり (CLAUDE.md・AGENTS.md)。決め 11-06 00:0x。N173
+
+    無くても止めない (良いの行に勧めの文を書く。check_debug の開発の行と同じ形)。片方だけ無いときは、
+    seizou ai-docs が既にある方を見て止まるので、--force を添える。
+    """
+    label = "AI が守る決まり"
+    base = _base_dir()
+    if base is None:
+        return []
+    missing = [name for name in AI_DOCS if not (base / name).is_file()]
+    if not missing:
+        return [_good(label, "CLAUDE.md と AGENTS.md がある")]
+    if len(missing) == len(AI_DOCS):
+        return [_good(label, f"AI が守る決まり (CLAUDE.md・AGENTS.md) がありません。seizou ai-docs {base} で置けます。")]
+    return [_good(label, f"{missing[0]} がありません。seizou ai-docs {base} --force で 2 つとも書き直せます (人が直した方も書き直す)。")]
+
+
 def _safe(label, check) -> list[Row]:
     """点検の関数を 1 つ呼ぶ。例外は、その関数の行を「直す」にして次へ進む。"""
     try:
@@ -437,6 +459,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
+        ("AI が守る決まり", check_ai_docs, False),
     ]
     rows = []
     for label, check, production_only in checks:

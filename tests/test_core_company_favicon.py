@@ -88,8 +88,8 @@ def test_head_points_to_company_icons_or_svg(admin, media):
 
     services.update_company(services.company(), {"logo": png_upload()}, admin)
     body = anonymous.get(reverse("core:login")).content.decode()
-    assert '<link rel="icon" href="/media/company/favicon.png" type="image/png">' in body
-    assert '<link rel="apple-touch-icon" href="/media/company/apple-touch-icon.png">' in body
+    assert '<link rel="icon" href="/media/company/favicon.png?v=' in body  # 字は test_core_company_icons.py が見る (N173)
+    assert '<link rel="apple-touch-icon" href="/media/company/apple-touch-icon.png?v=' in body
     assert body.count('rel="icon"') == 1 and SVG_LINE not in body
     # ログインの前のタブにも出すので、印の 2 つはログインしていなくても返す
     for name in (ICON, TOUCH):
@@ -99,7 +99,7 @@ def test_head_points_to_company_icons_or_svg(admin, media):
     manager = Client()
     manager.force_login(admin)
     printed = manager.get(reverse("core:manual") + "?print=1").content.decode()
-    assert '<link rel="icon" href="/media/company/favicon.png" type="image/png">' in printed
+    assert '<link rel="icon" href="/media/company/favicon.png?v=' in printed
 
 
 def test_favicon_ico_follows_company_icon(admin, media):
