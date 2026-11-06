@@ -93,6 +93,12 @@ def _post_data(partner, items, total=2):
     return data
 
 
+def _open_tag(body, start):
+    """画面の HTML から、start (例 '<select name="partner"') で始まる開きタグを > まで切り出す (tests/test_core_ux_r2.py と同じ見方)。"""
+    begin = body.index(start)
+    return body[begin : body.index(">", begin)]
+
+
 @pytest.mark.django_db
 def test_list_requires_login(client):
     response = client.get(reverse("purchasing:purchaseorder_list"))
@@ -213,7 +219,16 @@ def test_customer_only_partner_is_not_a_choice(client_logged_in, user, subcontra
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "作り物の協力企業" in body and "作り物の両方の取引先" in body
+    # 取引先の欄は字を打って探す欄。候補の口は取引先の口に role=supplier で、daisyUI の select の class は付かない (候補 C01-先 の 3)。
+    tag = _open_tag(body, '<select name="partner"')
+    select_url = reverse("masters:partner_select")
+    assert f'data-select-url="{select_url}?role=supplier"' in tag
+    assert 'class="w-full"' in tag and "select w-full" not in tag
+    # その口の候補は協力企業と両方の取引先で、得意先だけの取引先は無い。
+    texts = [row["text"] for row in client_logged_in.get(select_url, {"role": "supplier"}).json()["items"]]
+    assert any("作り物の協力企業" in text for text in texts)
+    assert any("作り物の両方の取引先" in text for text in texts)
+    assert not any("作り物の得意先だけ" in text for text in texts)
     assert "作り物の得意先だけ" not in body
     assert 'id="po-line-template"' in body and "行を足す" in body
 

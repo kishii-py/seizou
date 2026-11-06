@@ -6,7 +6,8 @@
 - 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が resend_purchase_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
-- 取引先と部品を選ぶ欄は Django の標準の Select。取引先の候補は取引先の種類が協力企業か両方の物だけ。
+- 取引先を選ぶ欄は字を打って探す欄 (RemoteSelect)。取引先の候補の口は masters の取引先の口に role=supplier (協力企業か両方の物だけ。
+  送られた値は __init__ の queryset が同じ絞りで確かめる)。部品を選ぶ欄は Django の標準の Select。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
@@ -114,7 +115,9 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
 
     submit_label_plain = "発注する"
 
-    partner = forms.ModelChoiceField(label="取引先", queryset=None)
+    partner = forms.ModelChoiceField(
+        label="取引先", queryset=None, widget=RemoteSelect("masters:partner_select", query={"role": "supplier"})
+    )
     order_date = forms.DateField(label="発注日", initial=timezone.localdate, widget=_date_input())
     note = forms.CharField(
         label="備考", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 2})
