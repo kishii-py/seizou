@@ -10,6 +10,9 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import FieldDoesNotExist
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 
 from seizou.masters import services as masters_services
@@ -185,3 +188,131 @@ def test_accept_mark_is_not_read(user, workorder):
     services.accept_workorder(workorder, user)
 
     assert _state(workorder) == WorkOrder.PROGRESS_NOT_STARTED
+
+
+# ---------------------------------------------------------------- 4 字と印 (題の横・基本情報・小窓・一覧・絞り・QR を読んだ先)
+
+#: 印の形 (core/_status_badge.html。題の横は点つき)
+DOT = {
+    "未着手": '<span class="badge badge-ghost gap-2"><span class="status" aria-hidden="true"></span>未着手</span>',
+    "着手済": '<span class="badge badge-soft badge-info gap-2"><span class="status status-info" aria-hidden="true"></span>着手済</span>',
+    "完了": '<span class="badge badge-soft badge-success gap-2"><span class="status status-success" aria-hidden="true"></span>完了</span>',
+    "取消": '<span class="badge badge-outline badge-error gap-2"><span class="status status-error" aria-hidden="true"></span>取消</span>',
+}
+PLAIN = {
+    "未着手": '<span class="badge badge-ghost">未着手</span>',
+    "着手済": '<span class="badge badge-soft badge-info">着手済</span>',
+    "完了": '<span class="badge badge-soft badge-success">完了</span>',
+    "取消": '<span class="badge badge-outline badge-error">取消</span>',
+}
+
+
+def _heading(client, workorder):
+    """詳細の見出しの帯の題と印 (<h1 から、題と印を包む div の閉じまで)。"""
+    body = client.get(reverse("workorders:workorder_detail", args=[workorder.pk])).content.decode()
+    start = body.index("<h1")
+    return body[start : body.index("</div>", start)]
+
+
+def _tr(body, pk):
+    start = body.index(f'<tr id="row-{pk}"')
+    return body[start : body.index("</tr>", start)]
+
+
+@pytest.mark.django_db
+def test_heading_badge_follows_progress(logged_in, user, line, cut, bend):
+    not_started = _issue(line, user, cut, bend)
+    started = _issue(line, user, cut, bend)
+    done = _issue(line, user, cut, bend)
+    cancelled = _issue(line, user, cut, bend)
+    _record(started.steps.order_by("seq").first(), "1", user)
+    for step in done.steps.order_by("seq"):
+        _record(step, "4", user)
+    services.cancel_workorder(cancelled, user, reason="作り物の取消")
+
+    for workorder, label in ((not_started, "未着手"), (started, "着手済"), (done, "完了"), (cancelled, "取消")):
+        heading = _heading(logged_in, workorder)
+        assert DOT[label] in heading, label
+        assert "発行" not in heading and "badge-primary" not in heading, label
+
+
+@pytest.mark.django_db
+def test_basic_info_and_modal_have_no_status_field(logged_in, workorder):
+    detail = logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk]))
+    assert "状態" not in [field["label"] for field in detail.context["fields"]]
+
+    modal = logged_in.get(reverse("workorders:workorder_modal", args=[workorder.pk]), HTTP_HX_REQUEST="true")
+    assert "状態" not in [field["label"] for field in modal.context["fields"]]
+    body = modal.content.decode()
+    assert PLAIN["未着手"] in body
+    assert ">発行<" not in body
+
+
+@pytest.mark.django_db
+def test_list_status_column(logged_in, user, line, cut, bend):
+    not_started = _issue(line, user, cut, bend)
+    started = _issue(line, user, cut, bend)
+    _record(started.steps.order_by("seq").first(), "1", user)
+    url = reverse("workorders:workorder_list")
+
+    response = logged_in.get(url)
+    labels = [column.label for column in response.context["columns"]]
+    assert labels[5] == "状態"
+    body = response.content.decode()
+    assert PLAIN["未着手"] in _tr(body, not_started.pk)
+    assert PLAIN["着手済"] in _tr(body, started.pk)
+    assert ">発行<" not in body
+
+    csv_lines = logged_in.get(url, {"format": "csv"}).content.decode("utf-8-sig").splitlines()
+    header = csv_lines[0].split(",")
+    position = header.index("状態")
+    states = {row.split(",")[0]: row.split(",")[position] for row in csv_lines[1:]}
+    assert states == {not_started.wo_no: "未着手", started.wo_no: "着手済"}
+
+
+@pytest.mark.django_db
+def test_list_query_count_does_not_grow_with_rows(logged_in, user, line, cut, bend):
+    url = reverse("workorders:workorder_list")
+
+    def count():
+        assert logged_in.get(url).status_code == 200
+        with CaptureQueriesContext(connection) as ctx:
+            assert logged_in.get(url).status_code == 200
+        return len(ctx.captured_queries)
+
+    for _ in range(2):
+        _record(_issue(line, user, cut, bend).steps.order_by("seq").first(), "1", user)
+    few = count()
+    for _ in range(2):
+        _record(_issue(line, user, cut, bend).steps.order_by("seq").first(), "1", user)
+    assert count() == few
+
+
+@pytest.mark.django_db
+def test_status_filter_choices(logged_in, user, line, cut, bend):
+    issued = _issue(line, user, cut, bend)
+    cancelled = _issue(line, user, cut, bend)
+    services.cancel_workorder(cancelled, user, reason="作り物の取消")
+    url = reverse("workorders:workorder_list")
+
+    response = logged_in.get(url)
+    status = next(spec for spec in response.context["filters"] if spec["param"] == "f_status")
+    assert [label for _, label in status["options"]] == ["未着手・着手済・完了", "取消"]
+    body = response.content.decode()
+    select = body[body.index('name="f_status"') : body.index("</select>", body.index('name="f_status"'))]
+    assert "すべて" in select and "発行" not in select
+
+    listed = logged_in.get(url, {"f_status": WorkOrder.STATUS_ISSUED}).content.decode()
+    assert f'id="row-{issued.pk}"' in listed
+    assert f'id="row-{cancelled.pk}"' not in listed
+
+
+@pytest.mark.django_db
+def test_scan_badge(logged_in, user, workorder):
+    url = reverse("workorders:workorder_scan", args=[workorder.pk])
+    assert PLAIN["未着手"] in logged_in.get(url).content.decode()
+
+    _record(workorder.steps.order_by("seq").first(), "1", user)
+    body = logged_in.get(url).content.decode()
+    assert PLAIN["着手済"] in body
+    assert ">発行<" not in body

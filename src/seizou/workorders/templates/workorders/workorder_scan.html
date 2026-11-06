@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load workorders_tags %}
 {% comment %}
 現品票の QR を読んだ先 (読み取りの着地)。スマホの幅で読める 1 枚にし、横に並べる物は sm: から。
 context は workorders.views.workorder_scan が作る: workorder・rows (1 つ = step と done)・screen_name・screen_help・screen_app。
@@ -8,7 +9,7 @@ context は workorders.views.workorder_scan が作る: workorder・rows (1 つ =
 <section class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs sm:p-6" aria-label="指示書の要点">
   <div class="flex flex-wrap items-center gap-2">
     <p class="font-mono text-3xl font-bold tracking-tight">{{ workorder.wo_no }}</p>
-    {% if workorder.status == "cancelled" %}<span class="badge badge-soft badge-error">{{ workorder.get_status_display }}</span>{% else %}<span class="badge badge-soft badge-primary">{{ workorder.get_status_display }}</span>{% endif %}
+    {% workorder_badge workorder %}
   </div>
   <dl class="mt-4 grid gap-x-6 sm:grid-cols-2">
     <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">品番</dt><dd class="min-w-0 break-words font-mono">{{ workorder.order_line.item.part_no }}</dd></div>

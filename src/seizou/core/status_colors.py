@@ -14,7 +14,8 @@
 sent = 送った・rejected = 断った)。部品で意味が分かれる字は "<app>.<値>" の鍵 (APP_TONES) に置き、tone_for がそちらを先に読む
 (accepted: 発注の「相手が受け入れた」は進行中 = 青、受信した注文の「受け入れた」は終わり = 緑)。
 部品の model に状態の値を足したら、ここにも 1 行足す (tests/test_core_status_colors.py が、表に無い値を見つけると落ちる)。
-状態 (status) の列でない状態の色も同じ 5 つから選ぶ: 請求書の入金の状態は PAYMENT_TONES (billing の tag payment_badge が読む)。
+状態 (status) の列でない状態の色も同じ 5 つから選ぶ: 請求書の入金の状態は PAYMENT_TONES (billing の tag payment_badge が読む)、
+指示書の進みの状態は WORKORDER_TONES (workorders の tag workorder_badge が読む。初見テスト R5 の候補 C27)。
 """
 
 #: 意味の色の名前 (core/_status_badge.html の枝の字と同じ)
@@ -61,6 +62,15 @@ PAYMENT_TONES = {
     "unpaid": "warning",  # 未入金
     "partial": "warning",  # 一部入金
     "paid": "success",  # 入金済み
+}
+
+#: 指示書の進みの状態 (workorders の WorkOrder.progress_state の値。表の列でなく、工程の実績から出す) → 意味の色。
+#: 指示書の印 (workorders の tag workorder_badge) が読む。取消は状態の色と同じ赤の線。C27
+WORKORDER_TONES = {
+    "not_started": "ghost",  # 未着手 (まだ)
+    "started": "info",  # 着手済 (進行中)
+    "done": "success",  # 完了 (済み)
+    "cancelled": "error",  # 取消 (止まった)
 }
 
 

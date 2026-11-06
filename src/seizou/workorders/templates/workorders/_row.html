@@ -1,0 +1,17 @@
+{% load seizou_tags workorders_tags %}
+{# 指示書の一覧の 1 行 (workorders/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は WorkOrder)・columns。 #}
+{# 欄の描き方は core/_rows.html の 1 行と同じ。「状態」の列 (progress_state_label) だけを進みの状態の印 (未着手・着手済・完了・取消。workorders_tags の workorder_badge) にする (C27-1 = a。土台の row_for は名前が status の列だけを印にするため)。 #}
+<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+  {% for cell in row.cells %}
+  {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
+  {% if col.name == "progress_state_label" %}<td class="whitespace-nowrap">{% workorder_badge row.obj %}</td>
+  {% elif forloop.parentloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
+  {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</td>
+  {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% elif cell.status %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
+  {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endif %}{% endfor %}
+  {% endfor %}
+</tr>

@@ -77,6 +77,9 @@ class WorkOrder(models.Model):
         related_name="accepted_workorders",
     )
 
+    # 状態は実績から出す字 (progress_state) を題の横の印で見せるので、基本情報と小窓の項目からは外す (C27-1 = a)。
+    detail_hidden_fields = ("status",)
+
     class Meta:
         verbose_name = "指示書"
         verbose_name_plural = "指示書"
@@ -124,22 +127,13 @@ class WorkOrder(models.Model):
         """(工程の並び, 工程の pk → 実績の合計)。読むだけ。
 
         工程を実績の合計 (recorded_total) 付きで prefetch してあれば (指示書の一覧と生産管理ボード)、問い合わせをしない。
-        無ければ工程を実績の合計付きで 1 回の問い合わせで読む (progress を import せず、工程の逆の関係で集計する)。
-        進捗の部品が無い置き場では、合計は空の辞書。
+        無ければ工程を実績の合計付きで 1 回の問い合わせで読む (with_recorded_total)。進捗の部品が無い置き場では、合計は 0。
         """
         prefetched = getattr(self, "_prefetched_objects_cache", {}).get("steps")
         if prefetched is not None and all(hasattr(step, "recorded_total") for step in prefetched):
             steps = list(prefetched)
             return steps, {step.pk: _dec(step.recorded_total) for step in steps}
-        try:
-            WorkOrderStep._meta.get_field("progress_records")
-        except FieldDoesNotExist:
-            return list(self.steps.all()), {}
-        steps = list(
-            self.steps.order_by().annotate(
-                recorded_total=Coalesce(Sum("progress_records__qty"), Value(_ZERO), output_field=_QTY_FIELD)
-            )
-        )
+        steps = list(with_recorded_total(self.steps.order_by()))
         return steps, {step.pk: _dec(step.recorded_total) for step in steps}
 
     def progress_state(self) -> str:
@@ -205,3 +199,18 @@ class WorkOrderStep(models.Model):
 
     def __str__(self):
         return f"{self.workorder.wo_no} {self.seq} {self.process.name}"
+
+
+def with_recorded_total(steps):
+    """指示書の工程の queryset に、工程ごとの実績の合計 (recorded_total。実績が無ければ 0) を足す。読むだけ。
+
+    progress を import せず、工程の逆の関係 (progress の外部キー) で集計する。進捗の部品が無い置き場では 0。
+    WorkOrder.progress_state と、指示書の一覧の prefetch (views の WorkOrderListView) が使う。
+    """
+    try:
+        WorkOrderStep._meta.get_field("progress_records")
+    except FieldDoesNotExist:
+        return steps.annotate(recorded_total=Value(_ZERO, output_field=_QTY_FIELD))
+    return steps.annotate(
+        recorded_total=Coalesce(Sum("progress_records__qty"), Value(_ZERO), output_field=_QTY_FIELD)
+    )

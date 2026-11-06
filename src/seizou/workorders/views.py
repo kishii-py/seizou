@@ -9,6 +9,7 @@ PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現�
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -22,11 +23,18 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseMo
 
 from . import plans, services, worklist
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
-from .models import WorkOrder, WorkOrderStep
+from .models import WorkOrder, WorkOrderStep, with_recorded_total
 from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
 #: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (05 の 6 節の文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+
+#: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。C27-1 = a)
+STATUS_FILTER_CHOICES = [
+    (WorkOrder.STATUS_ISSUED, "未着手・着手済・完了"),
+    (WorkOrder.STATUS_CANCELLED, "取消"),
+]
 
 
 def _process_choices():
@@ -54,12 +62,14 @@ class WorkOrderListView(BaseListView):
         ("order_line__item", "部品"),
         "qty",
         "issued_on",
-        "status",
+        # 状態は実績から出す字 (未着手・着手済・完了・取消。C27-1 = a)。行は workorders/_row.html が印にする
+        ("progress_state_label", "状態"),
         ("accepted_label", "着手日時"),
     )
     search_fields = ("wo_no",)
     filters = (
-        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        # 状態の選びは表の値 (発行・取消) で絞り、字に「発行」を出さない (計算した 4 つの字で絞る種類は土台に無い。C27)
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status", "choices": STATUS_FILTER_CHOICES},
         {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
@@ -73,6 +83,8 @@ class WorkOrderListView(BaseListView):
         # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。N122)。
         joined = self.filter_chosen("process") or self.flag_on("today")
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
+        # 状態の列 (progress_state_label) は工程と実績の合計を読むので、1 ページ分を 1 回で prefetch する (行ごとに読まない)
+        workorders = workorders.prefetch_related(Prefetch("steps", queryset=with_recorded_total(WorkOrderStep.objects.order_by("seq"))))
         return workorders.distinct() if joined else workorders
 
 

@@ -239,7 +239,7 @@ def test_scan_link_preselects_step(logged_in, workorder):
 @pytest.mark.django_db
 def test_scan_shows_cancelled_status(logged_in, user, workorder):
     issued = logged_in.get(_scan_url(workorder)).content.decode()
-    assert ">発行</span>" in issued
+    assert ">未着手</span>" in issued
 
     services.cancel_workorder(workorder, user, reason="作り物の取消")
     body = logged_in.get(_scan_url(workorder)).content.decode()

@@ -1,7 +1,9 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons workorders_plan %}
+{% load seizou_tags seizou_icons workorders_plan workorders_tags %}
 {# 指示書の詳細: core の詳細 (項目と「工程」「進捗」のタブ)。発行のときだけ、指示書の権限がある人に「取消」(「着手」は現場の記録なので誰にでも出す)。取消は小窓で開く (data-modal-form)。見出しの帯 (#workorder-heading) と中身 (#workorder-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 未着手は「着手」、着手済で全部の工程が予定に届き入庫の残りがあり (workorders_plan の finished_due)、部署で在庫を開ける人には「着手済」の印の右に「製造の完了を入庫にする」(画面の全体へ移る。初見テスト R5 の候補 C93)。 #}
 {% block heading %}<div id="workorder-heading">{{ block.super }}</div>{% endblock %}
+{# 題の横の印は進みの状態 (未着手・着手済・完了・取消。実績から出す。workorders_tags の workorder_badge)。「発行」は印にしない (C27-1 = a。初見テスト R5 の候補 C27)。 #}
+{% block heading_badge %}{% workorder_badge object dot=True %}{% endblock %}
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a>
 <a class="btn btn-outline border-base-300" href="{% url 'workorders:workorder_tag_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
