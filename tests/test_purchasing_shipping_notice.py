@@ -88,7 +88,7 @@ def _lines_table(body):
     """発注の詳細の明細の表 (見出しの並びと、1 行目の枡の並び)。"""
     start = body.index('id="po-lines-title"')
     section = body[start : body.index("</section>", start)]
-    heads = [re.sub(r"<[^>]+>", "", head) for head in re.findall(r"<th[^>]*>(.*?)</th>", section, re.S)]
+    heads = [re.sub(r"<[^>]+>", "", head) for head in re.findall(r"<th\b[^>]*>(.*?)</th>", section, re.S)]
     tbody = section[section.index("<tbody>") : section.index("</tbody>")]
     row = re.search(r"<tr>(.*?)</tr>", tbody, re.S).group(1)
     cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
