@@ -8,6 +8,9 @@
 書くときは shipping.services を通す。
 """
 
+from functools import cached_property
+
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.utils import timezone
 
@@ -41,6 +44,23 @@ class DeliveryNote(models.Model):
 
     def __str__(self):
         return self.note_no
+
+    @cached_property
+    def has_unbilled_shipments(self):
+        """この納品書の出荷のうち、発行の請求書に入っていない物が 1 つでもあるか (読むだけ。問い合わせ 1 回)。
+
+        納品書の詳細の頭の緑の「請求書作成」が読む (全部請求済みの納品書には出さない。初見テスト R5 の候補 C93 と C03-1 a)。
+        請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の
+        STATUS_ISSUED から読む (billing を import しない。shipping.services.invoiced_shipments と同じ読み方)。
+        取消の請求書だけに入った出荷は「入っていない」に数える (billing.services.billable_shipments と同じ数え方)。
+        請求書の部品が無ければ偽。
+        """
+        try:
+            lines = Shipment._meta.get_field("invoice_lines").related_model
+        except FieldDoesNotExist:
+            return False
+        issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
+        return self.shipments.exclude(invoice_lines__invoice__status=issued).exists()
 
 
 class Shipment(models.Model):

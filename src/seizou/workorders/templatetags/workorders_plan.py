@@ -6,6 +6,7 @@ POST の plan_place は view の中で同じ関数を呼ぶので、盤の部分
 {% plan_detail object as plan %}: 計画の詳細の小窓 (_plan_detail.html) の中身を plans.plan_detail で作る
 (小窓の view は土台のまま。R15 で get_context_data を上書きできないので、ここで作る)。
 {% plan_projection plan.item as outlook %}: 小窓の下の在庫の見込みと図の数を plans.item_projection で作る (在庫の部品が無ければ None)。
+{% finished_due object as due %}: 指示書の詳細の頭の右に緑の「製造の完了を入庫にする」を出すかを plans.finished_due で決める。
 """
 
 from django import template
@@ -34,3 +35,8 @@ def plan_detail(step):
 @register.simple_tag
 def plan_projection(item):
     return plans.item_projection(item)
+
+
+@register.simple_tag
+def finished_due(workorder):
+    return plans.finished_due(workorder)

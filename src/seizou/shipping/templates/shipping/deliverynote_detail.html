@@ -1,14 +1,13 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons shipping_tags %}
-{# 納品書の詳細: 土台の詳細に、印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。取消は小窓で開く (data-modal-form)。見出しの帯 (#deliverynote-heading) と中身 (#deliverynote-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。 #}
+{# 納品書の詳細: 土台の詳細に、印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。取消は小窓で開く (data-modal-form)。見出しの帯 (#deliverynote-heading) と中身 (#deliverynote-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 発行の納品書で、請求していない出荷があり (DeliveryNote.has_unbilled_shipments)、請求書の権限がある人に「請求書作成」。全部請求済みの納品書には出さない (C03-1 a。初見テスト R5 の候補 C93)。 #}
 {% block heading %}<div id="deliverynote-heading">{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
-{% can_write "billing.Invoice" as can_bill %}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
-{% url 'billing:invoice_create' as invoice_url %}{% if invoice_url and can_bill %}{% if object.status == "issued" %}<a class="btn btn-outline border-base-300" href="{{ invoice_url }}?customer={{ object.customer_id }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "yen" "size-4" %}請求書作成</a>{% endif %}{% endif %}
 {% endblock %}
 {% block more %}{% can_write "shipping.DeliveryNote" as can_cancel %}{% if object.status == "issued" and can_cancel %}{% url 'shipping:deliverynote_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{% block edit_button %}{% can_write "billing.Invoice" as can_bill %}{% url 'billing:invoice_create' as invoice_url %}{% if invoice_url and can_bill and object.status == "issued" and object.has_unbilled_shipments %}<a class="btn btn-primary" href="{{ invoice_url }}?customer={{ object.customer_id }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "yen" "size-4" %}請求書作成</a>{% else %}{{ block.super }}{% endif %}{% endblock %}
 {# タブの上 (土台の block main) に、出荷が発行の請求書に入っているときだけ、請求書ごとに「請求書 <番号> で請求済みです (出荷 n 件)。」の行を出す (初見テスト R5 の候補 C03。依頼書 N196)。番号は請求書の詳細への link (billing を部署で開けない人と、URL が引けない会社では字だけ)。#deliverynote-live の中なので、小窓で保存した後の取り直しにも入る。 #}
 {% block main %}{% deliverynote_billing object as billing %}{% if billing.invoices %}
 <div id="deliverynote-invoices" class="mb-6 grid gap-1 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xs" aria-label="請求書">
