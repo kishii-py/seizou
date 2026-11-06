@@ -1,8 +1,9 @@
 """ダッシュボードの数字のカードの数え方の 1 文 (help) と、カードの題の横の (i) (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
 
-見る所: 全部のカードに help があり空でない・文が数え方の式と合う (手入力の分は会社の設定の値)・画面のカードの題の横に (i) があり、
-tooltip の data-tip とボタンの aria-label が help と同じ・(i) を押しても link のカードが移らない・help の無いカードには (i) が出ない・
-金額を見られない人でもカードと (i) が崩れない。Django の test client で HTML を見る。名前は作り物だけ。
+見る所: 全部のカードに help があり空でない・文が数え方の式と合う (手入力の分は会社の設定の値)・画面のカードの題のすぐ後ろに (i) のボタンがあり、
+ボタンの名前 (aria-label) が「<題>の数え方」で、小窓に出す字 (data-stat-help) が help と同じ・ボタンに onclick が無く、吹き出し (tooltip) も無い
+(押すと小窓に出す = 候補 C30 の 2)・help の無いカードには (i) が出ない・金額を見られない人でもカードと (i) が崩れない。
+Django の test client で HTML を見る。名前は作り物だけ。
 """
 
 import re
@@ -28,11 +29,8 @@ HELP = {
     ),
 }
 LABEL = '<p class="text-xs font-medium text-base-content/70">{}</p>'
-# 題の横の (i) の 1 組 (tooltip の包みと、その中のボタン)。data-tip と aria-label を取る。
-INFO = re.compile(
-    r'<span class="tooltip tooltip-bottom" data-tip="([^"]*)"><button type="button" class="[^"]*" '
-    r'aria-label="([^"]*)" onclick="event.preventDefault\(\)">'
-)
+# 題の横の (i) のボタン。aria-label の「の数え方」の前 (題) と、data-stat-help (小窓に出す help の 1 文) を取る。
+INFO = re.compile(r'<button type="button" class="[^"]*" aria-label="([^"]*)の数え方" data-stat-help="([^"]*)">')
 
 
 @pytest.fixture
@@ -53,9 +51,14 @@ def home(client):
 
 
 def stats_part(body):
-    """数字のカードの枠 (data-tour="stats" の div) から、次の枠 (今日やること) の手前までの HTML。"""
+    """数字のカードの枠 (data-tour="stats" の div) から、格子の後ろの (i) の小窓の中身 (template) の手前までの HTML。
+
+    template が無ければ次の枠 (今日やること) の手前まで。最後のカード (8 枚目) の切れ端に template と script を入れないため。
+    """
     start = body.index('data-tour="stats"')
-    end = body.find('data-tour="flow-guide"', start)
+    end = body.find('<template id="stat-help-template">', start)
+    if end == -1:
+        end = body.find('data-tour="flow-guide"', start)
     return body[start : end if end != -1 else len(body)]
 
 
@@ -104,11 +107,13 @@ def test_home_puts_info_next_to_each_title(logged_in, settings):
     for label, help_text in HELP.items():
         card = by_label[label]
         # (i) は題の <p> のすぐ後ろ (題の横)
-        assert re.match(re.escape(LABEL.format(label)) + r"\s*<span class=\"tooltip tooltip-bottom\"", card), label
+        assert re.match(re.escape(LABEL.format(label)) + r'\s*<button type="button"', card), label
         (match,) = INFO.findall(card)
-        tip, aria = (unescape(value) for value in match)
-        assert tip == aria == help_text, label
-        assert 'data-tip="' in card and "</button></span>" in card
+        name, tip = (unescape(value) for value in match)
+        assert name == label and tip == help_text, label
+        # 押すと小窓に出す (吹き出しの包みも、押下を止める onclick も無い)
+        assert "tooltip" not in card and 'data-tip="' not in card
+        assert "onclick" not in re.search(r'<button type="button"[^>]*>', card).group(0)
     # 数の下の 1 行 (入力を省けた時間 ≒ m 分) は残る
     assert "入力を省けた時間 ≒ 0 分" in by_label["手入力せずに取り込んだ明細"]
     assert len(INFO.findall(stats_part(body))) == len(HELP)
@@ -122,10 +127,11 @@ def test_card_without_help_has_no_info(logged_in, monkeypatch):
 
     by_label = cards(home(logged_in))
 
-    assert "tooltip" not in by_label["作り物の数"]
+    assert "<button" not in by_label["作り物の数"]
+    assert "data-stat-help" not in by_label["作り物の数"]
     assert "aria-label" not in by_label["作り物の数"]
-    ((tip, aria),) = INFO.findall(by_label["作り物の説明つきの数"])
-    assert unescape(tip) == unescape(aria) == "作り物の数え方の 1 文です。"
+    ((name, tip),) = INFO.findall(by_label["作り物の説明つきの数"])
+    assert (unescape(name), unescape(tip)) == ("作り物の説明つきの数", "作り物の数え方の 1 文です。")
 
 
 @pytest.mark.django_db
@@ -139,6 +145,6 @@ def test_info_stays_for_user_without_money(logged_in, settings):
     for label in ("今月の支払の見込み", "今月の入金"):
         card = by_label[label]
         assert "—" in card, label  # 金額は「—」
-        ((tip, aria),) = INFO.findall(card)
-        assert unescape(tip) == unescape(aria) == HELP[label], label
+        ((name, tip),) = INFO.findall(card)
+        assert (unescape(name), unescape(tip)) == (label, HELP[label]), label
     assert len(INFO.findall(stats_part(body))) == len(HELP)
