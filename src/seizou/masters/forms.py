@@ -15,12 +15,17 @@ from seizou.core.forms import ServiceModelForm
 
 from .models import Item, Partner, Process
 from .models import MONTH_END_DAY
+from .models import company_defaults
 from .models import ItemDrawingVersion
 from .models import Holiday
 
 
 #: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
 ACTIVE_HELP = "外すと使用停止にします。受注と発注の候補に出なくなり、今までの受注と発注の記録はそのまま残ります。"
+
+#: 取引先の端数の 2 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。初見テスト 5 回目の V119)
+ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
+TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定 (今は {current}) に従います。"
 
 
 def _active_on_edit_only(form):
@@ -82,6 +87,11 @@ class PartnerForm(ServiceModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
+        # 端数の 2 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
+        # 「?」の説明書の「入れる物」の表は form を作らずに Meta.help_texts を読むので、今の値の無い字のまま出る。
+        company = company_defaults()
+        self.fields["rounding"].help_text = ROUNDING_HELP.format(current=company.get_rounding_display())
+        self.fields["tax_mode"].help_text = TAX_HELP.format(current=company.get_tax_mode_display())
 
 
 #: 工程の使用中の欄の下の案内 (N140)
