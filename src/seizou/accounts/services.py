@@ -45,7 +45,7 @@ LOGIN_ID_FORM = "ログイン ID は英数字と @ . + - _ で、150 字まで�
 PASSWORD_REFUSED = "パスワードを受け付けられません: "
 DEPARTMENT_NAME_EMPTY = "部署の名前を入れてください。"
 DEPARTMENT_NAME_USED = "部署「{name}」は既にあります。別の名前にしてください。"
-DEPARTMENT_APP_UNKNOWN = "部署の開ける部品に選べない名前です: {app}"
+DEPARTMENT_APP_UNKNOWN = "部署の開ける画面に選べない名前です: {app}"
 DEPARTMENT_SORT_ORDER = "並び順は 0 以上の整数にしてください。"
 DEPARTMENT_IN_USE = (
     "部署「{name}」には {count} 人のアカウントが付いています。"
@@ -205,7 +205,7 @@ def create_department(name, apps, default_permissions, user, *, sort_order=0) ->
     apps = list(apps or ())
     for app in apps:
         if app not in allowed:
-            raise ValueError(f"保存できません。部署の開ける部品に選べない名前です: {app}")
+            raise ValueError("保存できません。" + DEPARTMENT_APP_UNKNOWN.format(app=app))
     return Department.objects.create(
         name=name,
         apps=apps,

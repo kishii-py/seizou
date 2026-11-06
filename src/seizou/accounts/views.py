@@ -102,15 +102,15 @@ class AccessDeleteView(BaseFormView):
 class DepartmentListView(BaseListView):
     """部署の一覧。
 
-    使う人: 総務 / いつ: 部署の分け方を見直すとき / 何のために: 部署ごとの開ける部品と既定の権限と人数を見る / 次にすること: 行を押して詳細を見るか、「新規登録」で部署を足す
+    使う人: 総務 / いつ: 部署の分け方を見直すとき / 何のために: 部署ごとの開ける画面と既定の権限と人数を見る / 次にすること: 行を押して詳細を見るか、「新規登録」で部署を足す
     """
 
     model = Department
     screen_name = "部署"
-    screen_help = "部署の一覧。部署ごとの開ける部品・既定の権限・人数。行を押すと詳細へ移ります。新規登録は右上から。"
+    screen_help = "部署の一覧。部署ごとの開ける画面・既定の権限・人数。行を押すと詳細へ移ります。新規登録は右上から。"
     columns = (
         ("name", "部署"),
-        ("apps", "開ける部品"),
+        ("apps", "開ける画面"),
         ("default_permissions", "既定の権限"),
         {"name": "member_total", "label": "人数", "sortable": True},
         ("sort_order", "並び順"),
@@ -131,7 +131,7 @@ class DepartmentListView(BaseListView):
 class DepartmentCreateView(BaseFormView):
     """部署の新規登録の入力。
 
-    使う人: 総務 / いつ: 新しい部署ができたとき / 何のために: 部署の名前と開ける部品と既定の権限を決める / 次にすること: アカウント管理で、その部署を人に付ける
+    使う人: 総務 / いつ: 新しい部署ができたとき / 何のために: 部署の名前と開ける画面と既定の権限を決める / 次にすること: アカウント管理で、その部署を人に付ける
     """
 
     model = Department
@@ -139,26 +139,26 @@ class DepartmentCreateView(BaseFormView):
     service = staticmethod(services.create_department)
     template_name = "accounts/department_form.html"
     screen_name = "部署の新規登録"
-    screen_help = "部署の名前と、開ける部品と、部署を付けたときに入る既定の権限を決めます。"
+    screen_help = "部署の名前と、開ける画面と、部署を付けたときに入る既定の権限を決めます。"
 
 
 class DepartmentDetailView(BaseDetailView):
     """部署の詳細。
 
-    使う人: 総務 / いつ: 部署の中身と所属する人を確かめるとき / 何のために: 開ける部品と既定の権限と所属する人を見る / 次にすること: 「編集」で直すか、人の行からアカウントの編集へ移る
+    使う人: 総務 / いつ: 部署の中身と所属する人を確かめるとき / 何のために: 開ける画面と既定の権限と所属する人を見る / 次にすること: 「編集」で直すか、人の行からアカウントの編集へ移る
     """
 
     model = Department
     tabs = (("所属する人", "members"),)
     template_name = "accounts/department_detail.html"
     screen_name = "部署の詳細"
-    screen_help = "部署の開ける部品と既定の権限、所属する人の一覧。人の行を押すとアカウントの編集へ移ります。"
+    screen_help = "部署の開ける画面と既定の権限、所属する人の一覧。人の行を押すとアカウントの編集へ移ります。"
 
 
 class DepartmentUpdateView(BaseFormView):
     """部署の編集の入力。
 
-    使う人: 総務 / いつ: 部署の開ける部品や既定の権限を変えるとき / 何のために: 部署の設定を直す (既にいる人の権限は変わらない) / 次にすること: 変えた権限を人にも付けるなら、アカウント管理で 1 人ずつ直す
+    使う人: 総務 / いつ: 部署の開ける画面や既定の権限を変えるとき / 何のために: 部署の設定を直す (既にいる人の権限は変わらない) / 次にすること: 変えた権限を人にも付けるなら、アカウント管理で 1 人ずつ直す
     """
 
     model = Department
@@ -166,7 +166,7 @@ class DepartmentUpdateView(BaseFormView):
     service = staticmethod(services.update_department)
     template_name = "accounts/department_form.html"
     screen_name = "部署の編集"
-    screen_help = "部署の名前と開ける部品と既定の権限を直します。既にいる人の権限は変わりません。"
+    screen_help = "部署の名前と開ける画面と既定の権限を直します。既にいる人の権限は変わりません。"
 
 
 class DepartmentDeleteView(BaseFormView):

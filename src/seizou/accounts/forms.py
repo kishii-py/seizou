@@ -138,11 +138,11 @@ class DepartmentForm(forms.Form):
 
     name = forms.CharField(label="部署", max_length=50)
     apps = forms.MultipleChoiceField(
-        label="開ける部品",
+        label="開ける画面",
         choices=(),
         required=False,
         widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
-        help_text="チェックを入れた部品の画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
+        help_text="チェックを入れた画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
     )
     default_permissions = forms.MultipleChoiceField(
         label="既定の権限",

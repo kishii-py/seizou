@@ -218,6 +218,21 @@ def test_create_department_is_unchanged(seizou_dept):
         services.clean_apps(["bogus"])
 
 
+@pytest.mark.django_db
+def test_unknown_app_refusal_uses_field_name():
+    """選べない名前の断りの字は、欄の名前と同じ「開ける画面」で言う (初見テスト R5。候補 C47 の 1 の (e))。"""
+    expected = "保存できません。部署の開ける画面に選べない名前です: bogus"
+    with pytest.raises(ValueError) as made:
+        services.create_department("総務", ["bogus"], [], None)
+    with pytest.raises(ValueError) as cleaned:
+        services.clean_apps(["bogus"])
+
+    for refused in (made, cleaned):
+        assert str(refused.value) == expected
+        assert "開ける部品" not in str(refused.value)
+    assert not Department.objects.filter(name="総務").exists()
+
+
 # ---------------------------------------------------------------- 画面
 
 
@@ -329,7 +344,7 @@ def test_list_shows_labels_counts_and_entrances(on, client, manager, seizou_dept
 
     csv_text = client.get(url + "?format=csv").content.decode("utf-8-sig")
     header, *lines = csv_text.splitlines()
-    assert "開ける部品" in header
+    assert "開ける画面" in header
     assert any("指示書" in line for line in lines)
 
     accounts_page = client.get(reverse("accounts:access_list")).content.decode()
@@ -397,7 +412,7 @@ def test_detail_lists_living_members(on, client, manager, seizou_dept):
     html = response.content.decode()
     for word in ("基本情報", "所属する人", "genba"):
         assert word in html, word
-    shown = next(field["value"] for field in response.context["fields"] if field["label"] == "開ける部品")
+    shown = next(field["value"] for field in response.context["fields"] if field["label"] == "開ける画面")
     positions = [shown.index(word) for word in ("指示書", "進捗", "部品マスター・取引先・工程")]
     assert positions == sorted(positions), shown
     assert shown in html
@@ -406,6 +421,30 @@ def test_detail_lists_living_members(on, client, manager, seizou_dept):
     assert f'href="{reverse("accounts:department_list")}"' in html
     assert "taishoku" not in html
     assert response.context["tabs"][0]["count"] == 1
+
+
+@pytest.mark.django_db
+def test_department_screens_say_open_screens(on, client, manager, seizou_dept):
+    """部署の一覧・新規登録・詳細・編集は、欄の名前を「開ける画面」で出し、「開ける部品」を出さない (初見テスト R5。候補 C47 の 1)。
+
+    新規登録と編集は、欄の下の注記 (id_apps_helptext) も「部品の」を除いた字。注記の <p> の class は見ない (C49 が替える)。
+    """
+    client.force_login(manager)
+    urls = {
+        "一覧": reverse("accounts:department_list"),
+        "新規登録": reverse("accounts:department_create"),
+        "詳細": reverse("accounts:department_detail", args=[seizou_dept.pk]),
+        "編集": reverse("accounts:department_update", args=[seizou_dept.pk]),
+    }
+    pages = {name: client.get(url).content.decode() for name, url in urls.items()}
+
+    for name, html in pages.items():
+        assert "開ける画面" in html, name
+        assert "開ける部品" not in html, name
+    for name in ("新規登録", "編集"):
+        note = re.search(r'<p id="id_apps_helptext"[^>]*>(.*?)</p>', pages[name], re.S)
+        assert note is not None, name
+        assert "チェックを入れた画面が" in note.group(1), name
 
 
 @pytest.mark.django_db
