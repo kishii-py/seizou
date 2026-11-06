@@ -143,6 +143,7 @@ def display_section(section: SearchSection, *, hide_money=False) -> dict:
                     "master": value if is_master(value) else None,
                     "numeric": column.numeric,
                     "negative": column.numeric and is_negative(value),
+                    "money": column.money,
                     "date": column.is_date and not isinstance(value, datetime.datetime),
                     "datetime": column.is_date and isinstance(value, datetime.datetime),
                     "code": column.is_code,
