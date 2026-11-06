@@ -58,6 +58,7 @@ class ShipmentListView(BaseListView):
     columns = (
         "shipment_no",
         ("order_line__order__order_no", "受注番号"),
+        ("order_line__order__customer_order_no", "得意先の注文番号"),
         ("order_line__order__customer", "得意先"),
         ("order_line__item", "部品"),
         "qty",
@@ -67,6 +68,7 @@ class ShipmentListView(BaseListView):
     search_fields = (
         "shipment_no",
         "order_line__order__order_no",
+        "order_line__order__customer_order_no",
         "order_line__item__part_no",
         "order_line__order__customer__name",
     )
