@@ -857,9 +857,6 @@ def send_reply(inbox, user):
     # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
     from django.utils import timezone
 
-    from seizou.core.conf import company_id
-    from seizou.core.services import company
-
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
         if locked.kind != Inbox.KIND_ORDER or locked.status == Inbox.STATUS_RECEIVED:
@@ -872,11 +869,7 @@ def send_reply(inbox, user):
     # 読み取りの行は相手の seizou とつながっていないので、つながりを引かず HTTP を送らない。
     connection = None
     if locked.source != Inbox.SOURCE_INTAKE:
-        connection = (
-            Connection.objects.filter(partner=locked.partner, direction=Connection.DIRECTION_SEND)
-            .order_by("pk")
-            .first()
-        )
+        connection = _send_connection(locked.partner)
     if locked.source == Inbox.SOURCE_INTAKE:
         reply, kind = MESSAGE_REPLY_INTAKE, "intake"
     elif connection is None:
@@ -894,11 +887,9 @@ def send_reply(inbox, user):
             "result": "accepted" if accepted else "rejected",
             "supplier_order_no": locked.order.order_no if accepted and locked.order else "",
             "reason": "" if accepted else locked.reason,
-            "supplier": {"id": company_id(), "name": company().name},
+            "supplier": _party(),
         }
-        raw = json.dumps(reply_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        raw = _encode(reply_data)
         # R17: ここは atomic の外。
         reply, kind = _deliver(connection, message_id, raw)
 
@@ -931,8 +922,6 @@ def send_acceptance(receipt, user):
     from django.apps import apps
     from django.utils import timezone
 
-    from seizou.core.conf import company_id
-    from seizou.core.services import company
     from seizou.purchasing import services as purchasing_services
 
     from .models import Outbox
@@ -950,11 +939,7 @@ def send_acceptance(receipt, user):
         )
     message_id = purchasing_services.assign_acceptance_number(current, user)
 
-    connection = (
-        Connection.objects.filter(partner=purchase_order.partner, direction=Connection.DIRECTION_SEND)
-        .order_by("pk")
-        .first()
-    )
+    connection = _send_connection(purchase_order.partner)
     if connection is None:
         return purchasing_services.record_acceptance_response(
             current, MESSAGE_ACCEPTANCE_NO_CONNECTION, user
@@ -969,11 +954,9 @@ def send_acceptance(receipt, user):
         "line_no": line.line_no,
         "accepted_on": current.received_on.isoformat(),
         "qty": str(current.qty),
-        "buyer": {"id": company_id(), "name": company().name},
+        "buyer": _party(),
     }
-    raw = json.dumps(acceptance_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    raw = _encode(acceptance_data)
     # R17: ここは atomic の外。送る所は send_order・send_reply と同じ _deliver。
     reply, kind = _deliver(connection, message_id, raw)
 
@@ -998,8 +981,6 @@ def send_shipping_notice(shipment, user):
     from django.apps import apps
     from django.utils import timezone
 
-    from seizou.core.conf import company_id
-    from seizou.core.services import company
     from seizou.shipping import services as shipping_services
 
     # 数量と出荷日は表の値で送る (出荷を作った直後の物は、数量が渡した桁のままのため。send_acceptance と同じ)。
@@ -1036,11 +1017,9 @@ def send_shipping_notice(shipment, user):
         "shipment_no": current.shipment_no,
         "shipped_at": current.shipped_at.isoformat(),
         "qty": str(current.qty),
-        "supplier": {"id": company_id(), "name": company().name},
+        "supplier": _party(),
     }
-    raw = json.dumps(notice_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    raw = _encode(notice_data)
     # R17: ここは atomic の外。送る所は send_order・send_reply・send_acceptance と同じ _deliver。
     reply, kind = _deliver(connection, message_id, raw)
 
@@ -1183,6 +1162,32 @@ def _unreachable_reply(exc) -> str:
     return "届きません: 送る途中で誤りが起きました。もう 1 度送り直してください。"
 
 
+def _send_connection(partner):
+    """取引先 partner の、向き「送る」のつながりを 1 つ引く (pk の小さい物)。無ければ None。
+
+    send_order・send_reply・send_acceptance が呼ぶ。無いときの扱い (例外か返事の欄の文か) は呼び手が決める。
+    """
+    return (
+        Connection.objects.filter(partner=partner, direction=Connection.DIRECTION_SEND)
+        .order_by("pk")
+        .first()
+    )
+
+
+def _party() -> dict:
+    """送り手 (自社) の辞書。鍵の名前 (buyer か supplier) は呼び手が送る物ごとに決める。"""
+    # 冒頭の import の並びを変えないため、送る 4 本と同じく関数の中で import する。
+    from seizou.core.conf import company_id
+    from seizou.core.services import company
+
+    return {"id": company_id(), "name": company().name}
+
+
+def _encode(data) -> bytes:
+    """送る本文の bytes。鍵の並びを固定し、空白を入れず、日本語をそのまま UTF-8 にする。署名はこの bytes のまま。"""
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
 def _deliver(connection, message_id, raw) -> tuple[str, str]:
     """本文の bytes を署名して相手の受け口へ送り、返事を (日本語の文, 種類) にして返す。
 
@@ -1250,8 +1255,6 @@ def send_order(purchase_order, user):
     # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
     from django.utils import timezone
 
-    from seizou.core.conf import company_id
-    from seizou.core.services import company
     from seizou.purchasing import services as purchasing_services
 
     from .models import Outbox
@@ -1259,11 +1262,7 @@ def send_order(purchase_order, user):
     partner = purchase_order.partner
     if purchase_order.status == purchase_order.STATUS_CANCELLED:
         raise ValueError(f"送れません。発注 {purchase_order.po_no} は取り消してあります。取消していない発注を選んでください。")
-    connection = (
-        Connection.objects.filter(partner=partner, direction=Connection.DIRECTION_SEND)
-        .order_by("pk")
-        .first()
-    )
+    connection = _send_connection(partner)
     if connection is None:
         raise ValueError(
             f"送れません。取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
@@ -1290,14 +1289,12 @@ def send_order(purchase_order, user):
         "sent_at": timezone.localtime().isoformat(),
         "order_no": purchase_order.po_no,
         "order_date": purchase_order.order_date.isoformat(),
-        "buyer": {"id": company_id(), "name": company().name},
+        "buyer": _party(),
         "supplier": {"code": partner.code, "name": partner.name},
         "note": purchase_order.note,
         "lines": lines,
     }
-    raw = json.dumps(order_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    raw = _encode(order_data)
 
     with transaction.atomic():
         outbox = Outbox.objects.create(
