@@ -163,5 +163,5 @@ def test_cancel_screen_hides_button_while_payment_left(client_logged_in, user, i
     services.cancel_payment(payment, user)
     html = client_logged_in.get(url).content.decode()
     assert "取り消す</button>" in html
-    assert "この請求書を取り消します。入っていた出荷は、また請求できます。" in html
+    assert "この請求書を取り消します。入っていた出荷は、また請求できます。請求書は消えずに状態が「取消」で残り、元には戻せません。" in html
     assert ONE_LEFT not in html  # 断りの黄が消えた (確かめの文も黄の帯なので、class の字でなく断りの字で見る。N158b)
