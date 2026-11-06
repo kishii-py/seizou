@@ -22,6 +22,7 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
   {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums{% if new %} bg-primary/10{% endif %}">{% if cell.master %}{% master_link cell.master cell.value %}{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
   {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums{% if new %} bg-primary/10{% endif %}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
   {% elif cell.master %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% elif cell.boolean %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}">{% bool_mark cell.value %}</td>
   {% else %}<td class="whitespace-nowrap{% if new %} bg-primary/10{% endif %}{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
   {% endif %}
   {% endif %}{% endfor %}

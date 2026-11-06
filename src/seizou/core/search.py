@@ -35,7 +35,7 @@ from django.db import DatabaseError
 from django.views.generic import TemplateView
 
 from seizou.core import access
-from seizou.core.views import ScreenMixin, is_master, is_negative, load_model, screen_value
+from seizou.core.views import ScreenMixin, is_master, is_negative, load_model
 from seizou.parts import PARTS
 
 #: 1 種類で画面に出す行の上限 (ページ送りは作らない。超えたら絞り込みを頼む)
@@ -129,7 +129,8 @@ def as_column(column) -> SearchColumn:
 
 
 def display_section(section: SearchSection, *, hide_money=False) -> dict:
-    """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url"}、1 枡 = _rows.html と同じ印の辞書。"""
+    """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url"}、1 枡 = _rows.html と同じ印の辞書。
+    枡の boolean は値が真偽なら真で、テンプレートが bool_mark で印にする (C55)。"""
     columns = [as_column(c) for c in section.columns]
     rows = []
     for row in section.rows:
@@ -139,7 +140,8 @@ def display_section(section: SearchSection, *, hide_money=False) -> dict:
                 value = access.MASK
             cells.append(
                 {
-                    "value": screen_value(value),
+                    "value": value,
+                    "boolean": isinstance(value, bool),
                     "master": value if is_master(value) else None,
                     "numeric": column.numeric,
                     "negative": column.numeric and is_negative(value),

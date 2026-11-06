@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+from seizou.core.templatetags.seizou_icons import PATHS
 from seizou.masters.models import Process
 
 
@@ -44,8 +45,8 @@ def test_process_list_shows_use_in_plan_column(client_logged_in, turn, insp):
     assert response.status_code == 200
     html = response.content.decode()
     assert "計画に使う" in html[html.index("<thead") : html.index("</thead>")]
-    assert "はい" in _row(html, turn)
-    assert "いいえ" in _row(html, insp)
+    assert PATHS["check-circle"] in _row(html, turn) and 'aria-label="はい"' in _row(html, turn)
+    assert PATHS["check-circle"] not in _row(html, insp) and "いいえ" not in _row(html, insp)
     assert reverse("masters:process_detail", args=[turn.pk]) in html
 
 

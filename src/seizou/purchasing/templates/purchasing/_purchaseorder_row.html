@@ -9,6 +9,7 @@
   {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums{% if live.changed %} seizou-changed{% endif %}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
   {% elif cell.master %}<td class="whitespace-nowrap{% if live.changed %} seizou-changed{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
   {% elif cell.status %}<td class="whitespace-nowrap{% if live.changed %} seizou-changed{% endif %}">{% status_badge row.obj %}</td>
+  {% elif cell.boolean %}<td class="whitespace-nowrap{% if live.changed %} seizou-changed{% endif %}">{% bool_mark cell.value %}</td>
   {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if live.changed %} seizou-changed{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
   {% endif %}
   {% endfor %}

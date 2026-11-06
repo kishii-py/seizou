@@ -14,6 +14,7 @@ rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) �
 split_first_sentence: {% with parts=notice.message|split_first_sentence %} で、知らせの文を 1 文目 (最初の「。」まで) と残りの 2 つに分ける (core/_notices.html が 1 文目を太字にする。N156)。
 weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
 status_badge: {% status_badge obj %} で、状態 (status) の印を状態の色の表 (core.status_colors) の意味の色で出す (core/_status_badge.html)。dot=True で頭に点 (詳細の見出し)、small=True で小さい印。
+bool_mark: {% bool_mark value %} で、真偽の値の印 (真 = チェックの丸の絵を主色で・偽 = 何も出さない。core/_bool_mark.html)。一覧の枡と詳細と小窓の項目が、値が真偽のとき (boolean が真) に使う。
 company_favicon: {% company_favicon seizou.company as favicon %} で、ロゴから作った印の URL の辞書 (icon・touch) か None (core.services.company_icons。N166)。
 """
 
@@ -174,6 +175,12 @@ def status_badge(obj, dot=False, small=False):
     display = getattr(obj, "get_status_display", None)
     app_label = getattr(getattr(obj, "_meta", None), "app_label", None)
     return {"tone": tone_for(value, app_label), "label": display() if callable(display) else value, "dot": dot, "small": small}
+
+
+@register.inclusion_tag("core/_bool_mark.html")
+def bool_mark(value):
+    """{% bool_mark value %}。真偽の値の印 (本人の決め 11-06 17:1x。C55)。真ならチェックの丸の絵、偽と真偽でない値は何も出さない。"""
+    return {"value": value}
 
 
 @register.simple_tag

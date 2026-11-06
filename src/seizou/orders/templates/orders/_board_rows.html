@@ -54,6 +54,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</td>
       {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
       {% elif cell.code %}<td class="whitespace-nowrap font-mono"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+      {% elif cell.boolean %}<td class="whitespace-nowrap">{% bool_mark cell.value %}</td>
       {% else %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
       {% endif %}
       {% endif %}{% endfor %}

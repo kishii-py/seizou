@@ -136,6 +136,31 @@ def test_edit_screen_turns_partner_off_and_detail_shows_notice(logged_in, user):
 
 
 @pytest.mark.django_db
+def test_item_modal_shows_inactive_notice_above_fields(logged_in, customers, items):
+    """部品の小窓の使用停止の黄色の 1 行 (本人の決め 11-06 17:5x「小窓にも黄色の1行」。C55)。題の下・項目の上に、詳細と同じ字で出す。"""
+    used, stopped = items
+    _, stopped_customer = customers
+
+    body = logged_in.get(reverse("masters:item_modal", args=[stopped.pk]), HTTP_HX_REQUEST="true").content.decode()
+
+    notice = 'class="alert alert-warning alert-soft mb-4" role="status"'
+    words = "使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。"
+    assert notice in body and words in body
+    assert body.index(notice) < body.index("<dl") and body.index(words) < body.index("<dl")
+    # 字が詳細とそろう (詳細の字だけを直して小窓の字が古いまま残るのを止める)
+    detail = logged_in.get(reverse("masters:item_detail", args=[stopped.pk])).content.decode()
+    start = detail.index("使用停止の部品です。")
+    assert detail[start : detail.index("</span>", start)] in body
+
+    used_body = logged_in.get(reverse("masters:item_modal", args=[used.pk]), HTTP_HX_REQUEST="true").content.decode()
+    partner_body = logged_in.get(
+        reverse("masters:partner_modal", args=[stopped_customer.pk]), HTTP_HX_REQUEST="true"
+    ).content.decode()
+    assert "使用停止の部品です。" not in used_body
+    assert "使用停止の部品です。" not in partner_body
+
+
+@pytest.mark.django_db
 def test_create_order_refuses_inactive_customer_or_item(user, customers, items):
     used_customer, stopped_customer = customers
     used_item, stopped_item = items

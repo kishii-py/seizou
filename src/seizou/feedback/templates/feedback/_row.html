@@ -9,6 +9,7 @@
   {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value|yen_if:cell.money }}</td>
   {% elif cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
   {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</td>
+  {% elif cell.boolean %}<td class="whitespace-nowrap">{% bool_mark cell.value %}</td>
   {% else %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
   {% endif %}
   {% endif %}{% endfor %}
