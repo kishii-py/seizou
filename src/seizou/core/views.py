@@ -1799,7 +1799,7 @@ def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
     1 枚 = {"label", "value", "unit", "note", "help", "icon", "url"} (と、数の下の 1 行 "detail" のあるカード)。金額のカード (支払の見込みと入金) は "money" が真で、
-    HomeView が金額を見られない人に "hidden" を付け、画面は数を「—」にする (カードは残す)。
+    HomeView が金額を見られない人には並びから外す (カードごと出さない)。
     "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
     文は下の数え方の式と合わせる (式を変えたら文も直す)。
     """
@@ -1993,9 +1993,8 @@ class HomeView(ScreenMixin, TemplateView):
         if not access.can_see_money(self.request.user):
             context["recent_orders"] = access.without_totals(context["recent_orders"])
             context["shipping"] = dashboard.without_amounts(context["shipping"])
-            for stat in context["stats"]:
-                if stat.get("money"):
-                    stat["hidden"] = True  # 金額のカードの数を「—」にする (カードは残す)
+            # 金額のカードは並びから外す (カードごと出さない。決め 11-05 09:3x)。並びの中の dict は書き換えず、新しい並びを作る。
+            context["stats"] = [stat for stat in context["stats"] if not stat.get("money")]
         return context
 
 

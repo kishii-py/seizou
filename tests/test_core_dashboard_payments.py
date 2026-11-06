@@ -159,6 +159,6 @@ def test_home_hides_payments_without_money(user, logged_in, invoice, settings):
 
     body = home(logged_in)
 
-    card = card_of(body, "今月の入金")
-    assert "—" in card
-    assert "2,400" not in card
+    # 金額のカードはカードごと出さない (並びから外す。決め 11-05 09:3x と C11-1 の a)。
+    assert "今月の入金" not in body
+    assert "2,400" not in body

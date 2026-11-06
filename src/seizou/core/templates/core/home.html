@@ -5,7 +5,7 @@
 {# 最初の画面: 本物の集計だけの数字のカード、最近の受注、入口のカード。部品が無い物は出さない (偽の数字を置かない)。 #}
 {# 並びは、数字のカード (会社の KPI) → 今日やること (左。個人のタスク。core の dashboard.today_tasks) と納期アラート (右) → 出荷の図と生産の図 → 最近の受注 (左) と注文の入口の図 (右) → よく使う画面 (本人の決め 11-03 11:0x。今日やることは UX の案 2-A 11-05 で足し、本人の決め 11-05 09:4x で数字のカードの直下へ。本人の決め 11-05 11:0x で今日やることを半分の幅にして納期アラートと並べ、注文の入口を最近の受注の右へ)。 #}
 {# 出荷と生産の図と納期アラート (core の dashboard が読む。部品が無ければ None で、節ごと出さない。金額を見られない人には金額の図を出さない)。受注の行はどこを押しても受注の詳細へ移る (行の中の link はそのまま動く)。 #}
-{# 数字のカードは dashboard_stats() の並び (6 枚目 = 今月の支払の見込み。受入の部品があるとき。7 枚目 = 今月の入金。入金の表があるとき)。6 枚のときは xl で 3 列 × 2 段、2xl で 1 段。7 枚のときは xl 以上で 4 列 × 2 段 (2xl で 7 列に並べると 1 枚が狭い)。 #}
+{# 数字のカードは dashboard_stats() の並び (6 枚目 = 今月の支払の見込み。受入の部品があるとき。7 枚目 = 今月の入金。入金の表があるとき)。6 枚のときは xl で 3 列 × 2 段、2xl で 1 段。7 枚のときは xl 以上で 4 列 × 2 段 (2xl で 7 列に並べると 1 枚が狭い)。金額を見られない人には 6 枚目と 7 枚目が出ない (HomeView が並びから外す)。 #}
 {# 8 枚目 = 手入力せずに取り込んだ明細 (受注の部品があるとき。N83)。8 枚のときも xl 以上で 4 列 × 2 段。detail のあるカードは数の下に 1 行 (4 枚目は受注の件数、8 枚目は入力を省けた時間 ≒ m 分)。 #}
 {# help のあるカードは題の横に (i) のボタンを置き、押すと数え方の 1 文を小窓 (base.html の #seizou-modal) に出す。中身は格子の後ろの template を写し、字は textContent で入れる (初見ユーザーテスト R4 の 5-3。決め 11-06 22:2x の C30-1 の a。吹き出しは窓の端と左のメニューの下で切れ、閉じていても頁を横に広げ、読み上げで説明が 2 回入ったため = R5 の r5-a-03・V181)。 #}
 {# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前のボタンで 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。 #}
@@ -22,7 +22,7 @@
       </div>
       <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
     </div>
-    {% if stat.hidden %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums text-base-content/50 sm:text-3xl">—</span></p>{% elif stat.money %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
+    {% if stat.money %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
     {% if stat.detail %}<p class="mt-1 text-sm text-base-content/70">{{ stat.detail }}</p>{% endif %}
     {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
     <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p>{% if stat.url %}<div class="mt-2 flex justify-end"><a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ stat.url }}">{{ stat.screen|default:"一覧" }}を見る{% icon "chevron-right" "size-4" %}</a></div>{% endif %}</div>
@@ -166,14 +166,14 @@ if (!window.seizouStatHelp) {
     {% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th><th class="text-right font-medium">金額</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th>{% if not seizou.hide_money %}<th class="text-right font-medium">金額</th>{% endif %}</tr></thead>
         <tbody>
           {% for month in shipping.months %}
           <tr class="row-hover h-10">
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_count|comma }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_qty|floatformat:"-2g" }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -233,14 +233,14 @@ if (!window.seizouStatHelp) {
     {% if recent_orders %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th>{% if not seizou.hide_money %}<th class="text-right font-medium">金額</th>{% endif %}<th class="font-medium">状態</th></tr></thead>
         <tbody>
           {% for order in recent_orders %}
           {% if order.url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ order.url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
             <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>
           </tr>
           {% endfor %}

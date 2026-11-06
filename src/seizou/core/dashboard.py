@@ -398,7 +398,7 @@ def without_amounts(shipping) -> dict | None:
     """出荷の推移 (shipping_trend の結果) から金額を抜いた写しを返す。None はそのまま。
 
     金額の図 (amount_chart) と一番大きい金額 (max_amount) と各月の金額を None にし、数量の側は残す。
-    access の without_totals と同じ考えで、値を None にすると画面が「—」を出す。元の辞書は変えない。
+    access の without_totals と同じ考えで、値を None にし、画面は金額の列を出さない。元の辞書は変えない。
     """
     if shipping is None:
         return None
