@@ -49,12 +49,12 @@ BOX_CLASSES = {
 
 #: ピルの字 → class
 PILL_CLASSES = {
-    "OK": "badge badge-sm badge-success",
-    "NG": "badge badge-sm badge-error",
-    "注意": "badge badge-sm badge-warning",
-    "情報": "badge badge-sm badge-info",
-    "記録": "badge badge-sm badge-neutral",
-    "要確認": "badge badge-sm badge-outline badge-warning",
+    "OK": "badge badge-sm badge-success whitespace-nowrap",
+    "NG": "badge badge-sm badge-error whitespace-nowrap",
+    "注意": "badge badge-sm badge-warning whitespace-nowrap",
+    "情報": "badge badge-sm badge-info whitespace-nowrap",
+    "記録": "badge badge-sm badge-neutral whitespace-nowrap",
+    "要確認": "badge badge-sm badge-outline badge-warning whitespace-nowrap",
 }
 
 #: 経緯の印 → class

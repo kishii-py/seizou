@@ -150,7 +150,7 @@ def test_edit_save_and_preview(client_logged_in, manual):
     preview_url = reverse("manuals:manual_preview", args=[manual.pk])
     preview = client_logged_in.post(preview_url, {"body": "{NG} の時", "format": "steps"}, HTTP_HX_REQUEST="true")
     assert preview.status_code == 200
-    assert '<span class="badge badge-sm badge-error">NG</span>' in preview.content.decode()
+    assert '<span class="badge badge-sm badge-error whitespace-nowrap">NG</span>' in preview.content.decode()
     manual.refresh_from_db()
     assert manual.body == "## 準備\n\n結果は {OK}"
     too_long = client_logged_in.post(preview_url, {"body": "あ" * 100_001, "format": "steps"}, HTTP_HX_REQUEST="true")

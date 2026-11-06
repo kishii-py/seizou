@@ -76,6 +76,11 @@ def test_pills(word):
     assert f'<td><span class="{css}">{word}</span></td>' in text
 
 
+def test_pills_stay_on_one_line():
+    # phone の幅の表の枡で「要確認」の印が 2 行に折れていた (初見テスト R5 の b-flagged-07。候補 C41)。6 つとも同じ部品なので全部に付ける。
+    assert all("whitespace-nowrap" in css.split() for css in manual_markdown.PILL_CLASSES.values())
+
+
 def test_pills_not_in_code_or_unknown():
     text = html_of("`{OK}` と {XYZ}")
     assert "<code>{OK}</code>" in text
