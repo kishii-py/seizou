@@ -10,7 +10,8 @@ get_queryset・screen_name・screen_help の 13 だけ (OVERRIDABLE)。
   (htmx の HX-History-Restore-Request) には画面の全体を返す。部分と全体は同じ URL なので Vary: HX-Request を付ける。
   合計の行は、列が合計を選んだときだけ出す (BaseListView の docstring)。
   画面の全体を描くときも、行の部分は同じ順 (<app>/_rows.html → core/_rows.html) で選ぶ (core/list.html の include)。
-- 詳細: 1 件の項目と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。
+- 詳細: 1 件の項目と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。行の __str__ が FK を読むタブは、
+  3 つ目に FK の名前の並びを書くと行と相手を 1 回で引く ((見出し, related_name, ("FK の名前", ...)))。
 - 入力: form の値が通ったら、まず検査の層 (seizou.core.checks.run) を通し、それから service を呼ぶ。
   ポカよけの止めるは赤の知らせ、知らせるは黄の知らせと「このまま保存」(confirmed=1 で保存)、
   中心の決まり (RuleError) は赤の知らせ。入力の値は消さない。できたら緑の知らせと移動。
@@ -712,9 +713,18 @@ class BaseListView(ScreenMixin, ListView):
             specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label), ext_type=col.type))
         # 金額の列は、金額の閲覧が無い人には列ごと出さない (見出し・欄・合計の行・並び替え・集計の量・CSV から外れ、「—」も出さない。
         # 本人の決め 11-05 09:4x。N155)。log の形では見せて記録に 1 行 (同じ要求は 1 行)。金額の列の無い一覧は判定しない。
-        if any(spec.money for spec in specs) and not access.can_see_money(self.request.user):
+        if any(spec.money for spec in specs) and not self._money_columns_shown():
             specs = [spec for spec in specs if not spec.money]
         return specs
+
+    def _money_columns_shown(self) -> bool:
+        """金額の列を見せるか。判定 (記録つき) は 1 要求で 1 回だけ呼び、答えを画面に控える。
+
+        column_specs は 1 要求で何度も呼ばれる (並び替え・get_queryset・行・合計・CSV) ため。記録の行の数は今までと同じ (N174)。
+        """
+        if not hasattr(self, "_money_ok"):
+            self._money_ok = access.can_see_money(self.request.user)
+        return self._money_ok
 
     def sort_param(self) -> str:
         sort = self.request.GET.get("sort", "")
@@ -778,6 +788,17 @@ class BaseListView(ScreenMixin, ListView):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # 列の FK (前向きの ForeignKey と OneToOneField。annotate の列は除く) の相手を、行と一緒に 1 回の SELECT で引く
+        # (行ごとに相手を読む SELECT が行の数だけ出ないため。N174)。部品の get_queryset が同じ名前を足しても害は無い。
+        related = [
+            spec.name.split("__")[0]
+            for spec in self.column_specs()
+            if getattr(spec.field, "concrete", False)
+            and (spec.field.many_to_one or spec.field.one_to_one)
+            and not spec.annotated
+        ]
+        if related:
+            qs = qs.select_related(*related)
         lookups = self.search_lookups()
         for term in self.search_terms():
             if not lookups:
@@ -1060,7 +1081,7 @@ class BaseListView(ScreenMixin, ListView):
 
 
 class BaseDetailView(ScreenMixin, DetailView):
-    """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...))。"""
+    """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...)。3 つ目の FK の名前の並びは任意。related_tab)。"""
 
     tabs: tuple = ()
     opens_by_department = False
@@ -1100,7 +1121,9 @@ class BaseDetailView(ScreenMixin, DetailView):
         fields = self.field_items(obj)
         context["fields"] = fields
         context["files"] = [item for item in fields if item["file"]]
-        context["tabs"] = [self.tab_for(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
+        context["tabs"] = [
+            self.tab_for(obj, label, related, names) for label, related, names in _tab_specs(self.tabs) if hasattr(obj, related)
+        ]
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
         if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
             context["edit_url"] = None
@@ -1109,8 +1132,8 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["status"] = self.status_for(obj)
         return context
 
-    def tab_for(self, obj, label: str, related: str) -> dict:
-        return related_tab(obj, label, related)
+    def tab_for(self, obj, label: str, related: str, select_related=()) -> dict:
+        return related_tab(obj, label, related, select_related)
 
     def status_for(self, obj) -> str | None:
         """見出しの横の状態の印。choices を持つ status の項目があればその表示名、無ければ None。"""
@@ -1118,10 +1141,25 @@ class BaseDetailView(ScreenMixin, DetailView):
         return display_value(obj, "status") if field is not None else None
 
 
-def related_tab(obj, label: str, related: str) -> dict:
-    """関係する物の 1 つのタブ (詳細と小窓)。{"label", "related", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。"""
+def _tab_specs(tabs) -> list[tuple]:
+    """tabs の要素を (見出し, related_name, select_related の名前の並び) にそろえる (詳細と小窓が読む)。
+
+    要素は 2 つ組 (見出し, related_name) か、3 つ組 (見出し, related_name, ("FK の名前", ...))。2 つ組の名前の並びは空。
+    """
+    return [(tab[0], tab[1], tuple(tab[2]) if len(tab) > 2 else ()) for tab in tabs]
+
+
+def related_tab(obj, label: str, related: str, select_related=()) -> dict:
+    """関係する物の 1 つのタブ (詳細と小窓)。{"label", "related", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。
+
+    select_related は、行の __str__ が読む FK の名前 (tabs の 3 つ目)。名前があれば行と相手を 1 回の SELECT で引く
+    (タブの行の数だけ SELECT が出ないため。N174)。親の get_queryset が prefetch した related には書かない (取り直しになる)。
+    """
     manager = getattr(obj, related)
-    rows = [{"obj": row, "url": model_url(row.__class__, "detail", row.pk)} for row in manager.all()[:100]]
+    queryset = manager.all()
+    if select_related:
+        queryset = queryset.select_related(*select_related)
+    rows = [{"obj": row, "url": model_url(row.__class__, "detail", row.pk)} for row in queryset[:100]]
     return {"label": label, "related": related, "count": manager.count(), "rows": rows}
 
 
@@ -1492,7 +1530,7 @@ class BaseModalView(ScreenMixin, DetailView):
     """小窓の土台。見るだけと、詳細への移動のボタンと、編集の権限のある人には編集の link。template は <app>/_modal.html か core/_modal.html。
 
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
-    tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形)。
+    tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形。3 つ目の FK の名前の並びも同じ)。
     htmx でない要求 (link を新しいタブで開いた時) には、枠の無い中身でなく詳細の画面へ移す。
     """
 
@@ -1533,7 +1571,9 @@ class BaseModalView(ScreenMixin, DetailView):
             for col in company_fields.list_columns_for(obj.__class__)
         ]
         context["fields"] = items[: self.modal_fields] + ext_items
-        context["tabs"] = [related_tab(obj, label, related) for label, related in self.tabs if hasattr(obj, related)]
+        context["tabs"] = [
+            related_tab(obj, label, related, names) for label, related, names in _tab_specs(self.tabs) if hasattr(obj, related)
+        ]
         context["detail_url"] = model_url(obj.__class__, "detail", obj.pk)
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
         if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
