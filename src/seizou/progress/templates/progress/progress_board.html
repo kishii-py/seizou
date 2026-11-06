@@ -17,11 +17,11 @@
     <table class="table table-sm table-zebra table-pin-rows">
       <thead><tr class="bg-base-200 text-base-content/70">
         <th class="whitespace-nowrap font-medium">指示書番号</th>
-        <th class="whitespace-nowrap font-medium">部品</th>
         <th class="whitespace-nowrap font-medium">工程</th>
+        <th class="whitespace-nowrap text-right font-medium">残</th>
         <th class="whitespace-nowrap text-right font-medium">予定の数</th>
         <th class="whitespace-nowrap text-right font-medium">実績の合計</th>
-        <th class="whitespace-nowrap text-right font-medium">残</th>
+        <th class="whitespace-nowrap font-medium">部品</th>
       </tr></thead>
       <tbody id="progress-board-rows">
         {% for row in board.rows %}{% include "progress/_board_row.html" %}{% endfor %}
