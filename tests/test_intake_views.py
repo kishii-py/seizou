@@ -12,9 +12,12 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.intake import services
+from seizou.intake.forms import UploadForm
 from seizou.intake.models import Extraction
 from seizou.masters.services import create_item, create_partner
 from seizou.orders.models import Order
+from tests import test_examples_manual as seed_tests
+from tests.test_core_manual_default import DEFAULT_DIR
 from tests.test_intake_extract import FAKE_KEY, REPLY_PATH, refuse_api, upload
 
 
@@ -239,3 +242,12 @@ def test_menu_has_no_intake_entry_but_url_works(client_logged_in):
     assert "注文書の読み取り" not in body
     assert reverse("intake:extraction_list") not in body
     assert client_logged_in.get(reverse("intake:extraction_list")).status_code == 200
+
+
+def test_manual_names_the_read_button():
+    # 「?」の説明のボタンの字を、画面のボタンの字 (UploadForm.submit_label =「読み取る」) にそろえる (C09 の V121)。
+    raw = (DEFAULT_DIR / "intake_extraction_create.html").read_text(encoding="utf-8")
+    quoted = seed_tests.QUOTED.findall(seed_tests.plain(raw))
+
+    assert UploadForm.submit_label in quoted
+    assert "保存" not in quoted
