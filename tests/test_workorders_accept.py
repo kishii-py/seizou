@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from seizou.progress import services as progress_services
 from seizou.workorders import services
 from seizou.workorders.models import WorkOrder
 
@@ -193,9 +194,9 @@ def test_list_column_shows_accepted(user, client_logged_in, customer, item, cut)
 def test_list_filters_process_unaccepted_today(user, client_logged_in, customer, item, cut, bend):
     today = timezone.localdate()
     line = _line(user, customer, item)
-    # 1 枚目: 切断と曲げ。受けた。曲げの予定は来週 (今日の計画ではない)。
+    # 1 枚目: 切断と曲げ。実績あり (着手済)。曲げの予定は来週 (今日の計画ではない)。
     first = _issue(user, line, cut, bend, qty="4")
-    services.accept_workorder(first, user)
+    progress_services.record_progress(first.steps.get(seq=1), Decimal("1"), timezone.now(), user)
     services.plan_step(first.steps.get(seq=2), today + timedelta(days=7), today + timedelta(days=8), user)
     # 2 枚目: 曲げだけ。未着手。今日を含む予定。
     second = _issue(user, line, bend, qty="6")

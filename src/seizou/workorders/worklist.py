@@ -7,14 +7,26 @@
 
 from __future__ import annotations
 
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
-from .models import WorkOrder
+from .models import WorkOrder, WorkOrderStep
 
 
 def unaccepted_only(queryset):
-    """未着手だけ: 発行のままで、まだ受けていない指示書 (取り消した指示書は入れない)。"""
-    return queryset.filter(status=WorkOrder.STATUS_ISSUED, accepted_at__isnull=True)
+    """未着手だけ: 発行の指示書で、まだ実績の無い指示書 (どの工程にも実績が 1 件も無い。取り消した指示書は入れない)。
+
+    指示書の進みの状態の「未着手」(WorkOrder.progress_state) と同じ物を DB の条件で絞る (行を Python で回さない)。
+    実績の表は progress を import せず、工程の逆の関係の先として引く。進捗の部品が無い置き場では、発行の指示書を全部返す。
+    絞りの名前 (unaccepted)・字 (未着手だけ)・URL の f_unaccepted は、古い URL が効くように変えない (初見テスト R5 の候補 C27)。
+    """
+    issued = queryset.filter(status=WorkOrder.STATUS_ISSUED)
+    try:
+        records = WorkOrderStep._meta.get_field("progress_records").related_model
+    except FieldDoesNotExist:
+        return issued
+    return issued.filter(~Exists(records._default_manager.filter(workorder_step__workorder=OuterRef("pk"))))
 
 
 def planned_today(queryset):

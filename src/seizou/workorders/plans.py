@@ -133,27 +133,24 @@ def part_tone(item_pk) -> str:
     return PART_TONES[item_pk % len(PART_TONES)]
 
 
-def _last_step(step):
-    """同じ指示書の最後の工程 (順が最大。prefetch した並びの最後)。"""
-    steps = list(step.workorder.steps.all())
-    return steps[-1] if steps else step
-
-
-def bar_state(step, recorded_last) -> str:
+def bar_state(step, totals) -> str:
     """棒の状態。上から順に最初に当たった物 (完了 > 遅れ > 着手 > 計画)。
 
-    recorded_last は指示書の最後の工程の実績の合計 (進捗の部品が無ければ None)。
+    totals は指示書の工程の pk → 実績の合計 (_recorded_totals。辞書に無い工程は 0。進捗の部品が無ければ空の辞書)。
+    完了と着手は指示書の進みの状態 (WorkOrder.progress_state_of。詳細の題の横と同じ決め方) で決める:
     - done 完了: 最後の工程の実績の合計が、その工程の予定の数以上。
     - late 遅れ: 終了日が納期より後 (納期が空なら当たらない)。
-    - accepted 着手: 製造部が指示書を受けた (accepted_at がある)。
+    - accepted 着手: その指示書のどれかの工程に実績がある (着手の印は読まない。初見テスト R5 の候補 C27)。
     - planned 計画: ほか。
     """
-    if recorded_last is not None and recorded_last >= _last_step(step).planned_qty:
+    workorder = step.workorder
+    progress = WorkOrder.progress_state_of(workorder.status, workorder.steps.all(), totals)
+    if progress == WorkOrder.PROGRESS_DONE:
         return "done"
-    due_date = step.workorder.order_line.due_date
+    due_date = workorder.order_line.due_date
     if due_date is not None and step.planned_end is not None and step.planned_end > due_date:
         return "late"
-    if step.workorder.accepted_at is not None:
+    if progress == WorkOrder.PROGRESS_STARTED:
         return "accepted"
     return "planned"
 
@@ -291,7 +288,8 @@ def build_board(process, start, weeks):
             steps.filter(planned_start__lte=last, planned_end__gte=first)
         ).order_by("planned_start", "planned_end", "workorder__wo_no")
     )
-    totals = _recorded_totals({_last_step(step).pk for step in placed})
+    # 指示書の全部の工程の実績の合計を 1 回で読む (着手 = どれかの工程に実績、完了 = 最後の工程。棒ごとに読まない)
+    totals = _recorded_totals({other.pk for step in placed for other in step.workorder.steps.all()})
     bars = []
     for step in placed:
         bar = _card(step)
@@ -300,7 +298,7 @@ def build_board(process, start, weeks):
         bar["col"] = (shown_from - first).days + 1
         bar["span"] = (shown_to - shown_from).days + 1
         bar["neighbors"] = _neighbors(step)
-        state = bar_state(step, totals.get(_last_step(step).pk))
+        state = bar_state(step, totals)
         bar["state"] = state
         bar["state_label"] = STATE_LABELS[state]
         # 6 週の盤の 1 日の棒は狭いので 1 行だけにする (切れた字の全部は title で出す)。
@@ -363,8 +361,7 @@ def plan_detail(step):
     if workorder.status == WorkOrder.STATUS_CANCELLED:
         state_label = workorder.get_status_display()
     else:
-        last = steps[-1] if steps else step
-        state_label = STATE_LABELS[bar_state(step, _recorded_totals({last.pk}).get(last.pk))]
+        state_label = STATE_LABELS[bar_state(step, _recorded_totals([other.pk for other in steps]))]
     return {
         "step": step,
         "workorder": workorder,

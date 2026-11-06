@@ -191,9 +191,24 @@ class BoardRow:
         return sum((w.qty for w in self.workorders), _ZERO)
 
     @cached_property
-    def accepted_count(self) -> int:
-        """製造部が受けた指示書の数。"""
-        return sum(1 for w in self.workorders if getattr(w, "accepted_at", None) is not None)
+    def workorder_states(self) -> list[str]:
+        """指示書ごとの進みの状態の値 (workorders の WorkOrder.progress_state_of。指示書の詳細の題の横と同じ決め方)。
+
+        実績の合計は prefetch の recorded_total (_recorded) を渡すので、問い合わせを増やさない。着手の印は読まない。
+        """
+        return [
+            type(w).progress_state_of(w.status, steps, self._recorded)
+            for w, steps in zip(self.workorders, self._steps_by_workorder)
+        ]
+
+    @cached_property
+    def started_count(self) -> int:
+        """実績が 1 件でもある (着手済か完了の) 指示書の数。段の帯の「着手」が読む (C27)。"""
+        return sum(
+            1
+            for w, state in zip(self.workorders, self.workorder_states)
+            if state in (type(w).PROGRESS_STARTED, type(w).PROGRESS_DONE)
+        )
 
     @cached_property
     def workorder_count(self) -> int:
@@ -201,16 +216,23 @@ class BoardRow:
 
     @cached_property
     def workorder_label(self) -> str:
-        """「指示書」の列の字。無ければ「未」。あれば「<数量の合計> <受けた・一部受けた・発行>」。"""
+        """「指示書」の列の字。無ければ「未」。あれば「<数量の合計> <状態>」。
+
+        状態は指示書の進みの状態の字 (WorkOrder.PROGRESS_LABELS) から選ぶ: 全部の指示書が完了なら「完了」、
+        どれにも実績が無ければ「未着手」、ほかは「着手済」(指示書が 1 枚ならその指示書の状態と同じ字。
+        製造部が指示書を受け取った合図の印は作らない = 本人の決め WO-2 = b。初見テスト R5 の候補 C27)。
+        """
         if not self.workorders:
             return "未"
-        if self.accepted_count == self.workorder_count:
-            state = "受けた"
-        elif self.accepted_count:
-            state = "一部受けた"
+        model = type(self.workorders[0])
+        states = self.workorder_states
+        if all(state == model.PROGRESS_DONE for state in states):
+            state = model.PROGRESS_DONE
+        elif self.started_count == 0:
+            state = model.PROGRESS_NOT_STARTED
         else:
-            state = "発行"
-        return f"{_num(self.issued_total)} {state}"
+            state = model.PROGRESS_STARTED
+        return f"{_num(self.issued_total)} {model.PROGRESS_LABELS[state]}"
 
     @cached_property
     def latest_workorder(self):

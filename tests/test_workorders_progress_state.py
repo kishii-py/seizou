@@ -316,3 +316,77 @@ def test_scan_badge(logged_in, user, workorder):
     body = logged_in.get(url).content.decode()
     assert PLAIN["着手済"] in body
     assert ">発行<" not in body
+
+
+# ---------------------------------------------------------------- 7 着手の印を読んでいた所を実績に替える
+
+
+def _board_row(line):
+    from seizou.orders.board import BoardRow
+    from seizou.orders.models import OrderLine
+
+    return BoardRow(OrderLine.objects.get(pk=line.pk))
+
+
+@pytest.mark.django_db
+def test_board_workorder_label_follows_progress(user, line, cut, bend):
+    first = _issue(line, user, cut, bend)
+    assert _board_row(line).workorder_label == "4 未着手"
+
+    for step in first.steps.order_by("seq"):
+        _record(step, "4", user)
+    assert _board_row(line).workorder_label == "4 完了"
+
+    _issue(line, user, cut, bend, qty="3")
+    row = _board_row(line)
+    assert row.workorder_label == "7 着手済"
+    assert row.started_count == 1
+
+
+@pytest.mark.django_db
+def test_board_two_workorders_one_started(user, line, cut, bend):
+    _issue(line, user, cut, bend)
+    started = _issue(line, user, cut, bend, qty="3")
+    _record(started.steps.order_by("seq").first(), "1", user)
+
+    assert _board_row(line).workorder_label == "7 着手済"
+
+
+@pytest.mark.django_db
+def test_progress_without_accept_moves_every_reader(logged_in, user, order, line, workorder):
+    """着手を押さずに切断に実績を入れると: 未着手だけから外れ、段の帯が着手、盤の棒が着手、流れに着手の行が無い。"""
+    from seizou.orders.timeline import events_for, stage_of
+    from seizou.workorders import plans
+
+    url = reverse("workorders:workorder_list")
+    assert f'id="row-{workorder.pk}"' in logged_in.get(url, {"f_unaccepted": "1"}).content.decode()
+    first = workorder.steps.order_by("seq").first()
+    _record(first, "1", user)
+
+    assert f'id="row-{workorder.pk}"' not in logged_in.get(url, {"f_unaccepted": "1"}).content.decode()
+    assert stage_of(line) == 3
+    step = WorkOrderStep.objects.select_related("workorder__order_line").get(pk=first.pk)
+    totals = plans._recorded_totals([other.pk for other in workorder.steps.all()])
+    assert plans.bar_state(step, totals) == "accepted"
+    titles = [event.title for event in events_for(order)]
+    assert not any(title.endswith("に着手") for title in titles)
+    assert any(title.startswith("実績 切断 ") for title in titles)
+
+
+@pytest.mark.django_db
+def test_unaccepted_filter_without_progress_part(monkeypatch, user, line, cut, bend):
+    from seizou.workorders import worklist
+
+    issued = _issue(line, user, cut, bend)
+    cancelled = _issue(line, user, cut, bend)
+    services.cancel_workorder(cancelled, user, reason="作り物の取消")
+    original = WorkOrderStep._meta.get_field
+
+    def get_field(name, *args, **kwargs):
+        if name == "progress_records":
+            raise FieldDoesNotExist(name)
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(WorkOrderStep._meta, "get_field", get_field)
+
+    assert list(worklist.unaccepted_only(WorkOrder.objects.all())) == [issued]

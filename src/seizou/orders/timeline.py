@@ -1,6 +1,6 @@
 """受注の詳細の「流れ」の枠の出来事を集める、読むだけの module (決め 11-04 22:0x。N131)。表に書かない。
 
-- 受注から入金までの出来事 (受信した注文・登録・指示書・着手・実績・出荷・納品書・請求書・入金・メモ・取消) を、
+- 受注から入金までの出来事 (受信した注文・登録・指示書・実績・出荷・納品書・請求書・入金・メモ・取消) を、
   受注の明細から逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
   (メモだけは逆向きの関係が無いので、notes.services.note_for で読む)。
 - 部品が入っていない会社では、その部品の出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
@@ -32,7 +32,6 @@ KINDS = (
     "inbox",
     "order",
     "workorder",
-    "accepted",
     "progress",
     "shipment",
     "delivery_note",
@@ -49,7 +48,6 @@ KIND_ICONS = {
     "inbox": "inbox",
     "order": "pencil",
     "workorder": "factory",
-    "accepted": "check",
     "progress": "activity",
     "shipment": "truck",
     "delivery_note": "clipboard",
@@ -180,9 +178,6 @@ def _workorder_events(line, workorder) -> list[Event]:
             line.line_no,
         )
     ]
-    if workorder.accepted_at is not None:
-        who = _person(workorder.accepted_by)
-        events.append(Event(workorder.accepted_at, "accepted", f"指示書 {no} に着手", url, line.line_no, who=who))
     for step in _all(workorder, "steps"):
         for record in _all(step, "progress_records"):
             title = f"実績 {step.process.name} {_qty(record.qty, line)} ({no})"
@@ -280,7 +275,8 @@ class StageBand:
 def reached_stages(line) -> frozenset[int]:
     """受注の明細 1 行が実際に通った段の集まり (1〜8 の数。読むだけ。C06)。
 
-    受注 = いつも / 指示 = 取消でない指示書がある / 着手 = 着手した指示書がある / 完了 = 全部の工程で実績が予定に達した
+    受注 = いつも / 指示 = 取消でない指示書がある / 着手 = 実績が 1 件でもある取消でない指示書がある
+    (BoardRow.started_count。指示書の進みの状態の着手済か完了。C27) / 完了 = 全部の工程で実績が予定に達した
     (生産管理ボードの「進捗」の「完了」と同じ読み方 = BoardRow.current_step が None) / 出荷 = 出荷がある /
     納品 = 出荷が取消でない納品書に入った / 請求 = 出荷が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
     例: 指示書の無い明細の出荷は {1, 5}、指示書を発行して未着手のまま出荷は {1, 2, 5}。BoardRow は 1 回だけ作る。
@@ -289,7 +285,7 @@ def reached_stages(line) -> frozenset[int]:
     reached = {1}
     if board.workorders:
         reached.add(2)
-    if board.accepted_count:
+    if board.started_count:
         reached.add(3)
     if board.steps and board.current_step is None:
         reached.add(4)
