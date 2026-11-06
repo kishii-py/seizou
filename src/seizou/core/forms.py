@@ -104,14 +104,63 @@ class Checkboxes(forms.CheckboxSelectMultiple):
         return context
 
 
+#: 丸の選択の 1 つずつの丸の見た目 (daisyUI。表示の設定のカードの丸と同じ)
+RADIO_CSS = "radio"
+
+
+class Radios(forms.RadioSelect):
+    """丸の選択。選択肢ごとに、選ぶと何が起きるかの 1 文 (notes = {送る値: 文}) を名前の下に小さな字で出す。
+
+    文の無い値は名前だけ。1 つの選択肢は core/_radio_option.html で描く (Django の radio_option の代わり)。
+    外の枠 (div) には丸の見た目を付けない (Checkboxes と同じ訳)。Django の雛形 (multiple_input.html) は
+    widget の class を外の枠 <div id="id_<鍵>"> にも付けるので、付けたままだと外の枠が大きな丸になる。
+    class を渡さないと土台の get_form (core/views.py の widget_css) が字の欄の見た目を付けるので、
+    RADIO_CSS を渡したうえで外の枠からだけ外す。1 つずつの丸には create_option が class を写す (option_inherits_attrs)。
+    """
+
+    option_template_name = "core/_radio_option.html"
+
+    def __init__(self, attrs=None, choices=(), notes=None):
+        super().__init__(attrs, choices)
+        self.notes = dict(notes or {})
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        option["note"] = self.notes.get(str(value), "")
+        return option
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context["widget"]["attrs"].pop("class", None)
+        return context
+
+
+#: 設定の変更の画面の丸の選択で、選べる値の名前の下に出す、選ぶと何が起きるかの 1 文 ({鍵: {送る値: 文}})。
+#: 字は RULES.md のポカよけの節の段落 (知らせる・止める) と README.md の「選べる設定」の表から写し、新しい言葉を作らない。
+#: 写せる字の無い値は持たない (名前だけ出す)。知らせの出る場所は書かない (C57 で変わるため)。
+#: 真偽の送る値は "true" / "false"。ポカよけの 2 つの鍵は同じ 3 つの文を使う。
+#: 設定の画面の SETTING_LABELS には入れない (値の字は設定の画面の表の「今の値」にも出るので、長い文を入れると表が崩れる)。
+_CHECK_MODE_NOTES = {
+    "warn": "黄色の知らせと「このまま保存」のボタンが出て、もう一度押すと保存される。",
+    "stop": "赤の知らせが出て、保存されない。",
+    "off": "知らせを出さずに保存する。",
+}
+CHOICE_NOTES = {
+    "over_shipment": _CHECK_MODE_NOTES,
+    "over_workorder": _CHECK_MODE_NOTES,
+    "order_form": {"single": "画面が短く、番号が部品と 1 対 1 になる。"},
+    "production_plan": {"false": "メニューに「生産計画」が出ない。"},
+}
+
+
 class SettingForm(forms.Form):
     """選べる設定 key 1 つの入力。欄は鍵の種類で決まる。
 
-    選べる値 (conf.CHOICES) は select、真偽は checkbox、権限の判定 (access_control) は 3 つの select、
+    選べる値 (conf.CHOICES) と真偽は丸の選択 (Radios。名前の下に CHOICE_NOTES の 1 文)、権限の判定 (access_control) は 3 つの select、
     使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前・主色・業種) は字。
     主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。
     欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
-    選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (option の value) は英字の値のまま。
+    選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (丸と option の value) は英字の値のまま (真偽は "true" / "false" で送り、form が真偽に直す)。
     """
 
     #: hidden_fields の欄の名前。鍵の名前のままだと、テンプレートの form.hidden_fields が隠しの欄の並びでなく
@@ -135,13 +184,16 @@ class SettingForm(forms.Form):
                 label=label,
                 choices=[(v, words.get(v, v)) for v in conf.CHOICES[key]],
                 initial=current,
+                widget=Radios(attrs={"class": RADIO_CSS}, notes=CHOICE_NOTES.get(key, {})),
             )
         elif isinstance(conf.DEFAULTS[key], bool):
-            self.fields[key] = forms.BooleanField(
-                label=f"{label}: {words[True]}",
-                required=False,
-                initial=current,
-                help_text=f"check を外すと「{words[False]}」。",
+            # 初期値は字で渡す (真偽のまま渡すと str(True) = "True" になり、送る値の "true" と合わず、どの丸も選ばれない)
+            self.fields[key] = forms.TypedChoiceField(
+                label=label,
+                choices=[("true", words[True]), ("false", words[False])],
+                coerce=lambda text: text == "true",
+                initial="true" if current else "false",
+                widget=Radios(attrs={"class": RADIO_CSS}, notes=CHOICE_NOTES.get(key, {})),
             )
         elif key == "access_control":
             choices = [(m, words.get(m, m)) for m in conf.ACCESS_MODES]
