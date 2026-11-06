@@ -226,13 +226,6 @@ def display_value(obj, name: str):
     return value() if callable(value) else value
 
 
-def screen_value(value):
-    """画面に出す形の値。真偽は「はい」「いいえ」にする (True / False を画面に出さない)。ほかはそのまま。"""
-    if isinstance(value, bool):
-        return "はい" if value else "いいえ"
-    return value
-
-
 def is_negative(value) -> bool:
     return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool) and value < 0
 
@@ -999,7 +992,7 @@ class BaseListView(ScreenMixin, ListView):
                 master = obj
             cells.append(
                 {
-                    "value": screen_value(value),
+                    "value": value,
                     "master": master,
                     "numeric": spec.numeric,
                     "negative": spec.numeric and is_negative(value),
@@ -1009,6 +1002,8 @@ class BaseListView(ScreenMixin, ListView):
                     "code": spec.is_code,
                     # 状態の列 (choices を持つ status の項目。status_for と同じ読み方) は core/_rows.html が状態の色の表で印にする (N152)
                     "status": spec.name == "status" and bool(getattr(spec.field, "choices", None)),
+                    # 真偽の値は、行のテンプレートが bool_mark の印にする (真 = チェックの丸・偽 = 空。本人の決め 11-06 17:1x。C55)
+                    "boolean": isinstance(value, bool),
                 }
             )
         return {"pk": obj.pk, "obj": obj, "cells": cells, "url": model_url(self.model, "detail", obj.pk)}
@@ -1174,8 +1169,9 @@ class BaseDetailView(ScreenMixin, DetailView):
     template_name = "core/detail.html"
 
     def field_items(self, obj) -> list[dict]:
-        """項目の一覧。1 項目 = {"label", "value", "master", "file", "money"} (file はファイルの項目だけ、file_info の形。
-        money は金額の項目なら真で、テンプレートが yen_if で ¥ を付ける。テンプレートの filter の引数に使うので、全部の行が鍵を持つ)。"""
+        """項目の一覧。1 項目 = {"label", "value", "master", "file", "money", "boolean"} (file はファイルの項目だけ、file_info の形。
+        money は金額の項目なら真で、テンプレートが yen_if で ¥ を付ける。テンプレートの filter の引数に使うので、全部の行が鍵を持つ。
+        boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。"""
         items = []
         hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
@@ -1188,7 +1184,8 @@ class BaseDetailView(ScreenMixin, DetailView):
             items.append(
                 {
                     "label": str(f.verbose_name),
-                    "value": "" if is_file else screen_value(value),
+                    "value": "" if is_file else value,
+                    "boolean": isinstance(value, bool),
                     "money": access.is_money_name(f.name),
                     "master": value if is_master(value) else None,
                     "file": file_info(value, file_url_for(obj, f.name)) if is_file else None,
@@ -1197,10 +1194,14 @@ class BaseDetailView(ScreenMixin, DetailView):
             # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (初見テスト 2 回目の E-05)
             linked = getattr(value, "item", None) if value is not None and not is_master(value) else None
             if is_master(linked) and not any(c.name == "item" for c in obj._meta.concrete_fields):
-                items.append({"label": "部品", "value": screen_value(linked), "master": linked, "file": None, "money": False})
+                items.append(
+                    {"label": "部品", "value": linked, "boolean": False, "master": linked, "file": None, "money": False}
+                )
         for col in company_fields.columns_for(obj.__class__):
-            value = screen_value(company_fields.ext_value(obj, col.name))
-            items.append({"label": col.label, "value": value, "master": None, "file": None, "money": False})
+            value = company_fields.ext_value(obj, col.name)
+            items.append(
+                {"label": col.label, "value": value, "boolean": isinstance(value, bool), "master": None, "file": None, "money": False}
+            )
         return items
 
     def get_context_data(self, **kwargs):
@@ -1639,6 +1640,7 @@ class BaseModalView(ScreenMixin, DetailView):
     """小窓の土台。見るだけと、詳細への移動のボタンと、編集の権限のある人には編集の link。template は <app>/_modal.html か core/_modal.html。
 
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
+    1 項目 = {"label", "value", "money", "boolean"} (boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。
     tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形。3 つ目の FK の名前の並びも同じ)。
     htmx でない要求 (link を新しいタブで開いた時) には、枠の無い中身でなく詳細の画面へ移す。
     """
@@ -1674,11 +1676,18 @@ class BaseModalView(ScreenMixin, DetailView):
             if isinstance(f, models.FileField):
                 info = file_info(value)
                 value = info["name"] if info else ""
-            items.append({"label": str(f.verbose_name), "value": screen_value(value), "money": access.is_money_name(f.name)})
-        ext_items = [
-            {"label": col.label, "value": screen_value(company_fields.ext_value(obj, col.name)), "money": False}
-            for col in company_fields.list_columns_for(obj.__class__)
-        ]
+            items.append(
+                {
+                    "label": str(f.verbose_name),
+                    "value": value,
+                    "money": access.is_money_name(f.name),
+                    "boolean": isinstance(value, bool),
+                }
+            )
+        ext_items = []
+        for col in company_fields.list_columns_for(obj.__class__):
+            value = company_fields.ext_value(obj, col.name)
+            ext_items.append({"label": col.label, "value": value, "money": False, "boolean": isinstance(value, bool)})
         context["fields"] = items[: self.modal_fields] + ext_items
         context["tabs"] = [
             related_tab(obj, label, related, names) for label, related, names in _tab_specs(self.tabs) if hasattr(obj, related)

@@ -1,15 +1,16 @@
 {% load seizou_icons seizou_tags %}
 {# 小窓の中身。見るだけと、「編集」(編集の権限のある人 = edit_url) と「詳細を見る」のボタン。小窓の枠 (dialog) は base.html の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
-{# 項目の後に会社ごとの項目 (fields に続けて並ぶ)。関係する物 (tabs) は block related。部品ごとの形は <app>/_modal.html が extends して block を上書きする。 #}
+{# 項目の後に会社ごとの項目 (fields に続けて並ぶ)。関係する物 (tabs) は block related。部品ごとの形は <app>/_modal.html が extends して block を上書きする。題の下・項目の上の知らせは block above_fields (土台は空。部品の小窓の使用停止の黄色の 1 行 = masters/_modal.html。C55)。 #}
 <div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>
   <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
 </div>
+{% block above_fields %}{% endblock %}
 <dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
   {% for field in fields %}
   <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
     <dt class="text-base-content/70">{{ field.label|without_yen_unit }}</dt>
-    <dd class="min-w-0 break-words">{% if field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
+    <dd class="min-w-0 break-words">{% if field.boolean %}{% bool_mark field.value %}{% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
   </div>
   {% endfor %}
 </dl>

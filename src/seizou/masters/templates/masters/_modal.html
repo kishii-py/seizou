@@ -1,7 +1,8 @@
 {% extends "core/_modal.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# masters の小窓。項目と会社ごとの項目は core の形のまま。取引先ごとの品番は、取引先・取引先の品番・取引先の品名の表で出す。 #}
+{# masters の小窓。項目と会社ごとの項目は core の形のまま。取引先ごとの品番は、取引先・取引先の品番・取引先の品名の表で出す。使用停止の部品は、題の下 (項目の上) に詳細と同じ黄色の 1 行 (本人の決め 11-06 17:5x「小窓にも黄色の1行」。C55)。取引先の小窓には出さない。 #}
+{% block above_fields %}{% if request.resolver_match.url_name == "item_modal" and object.active is False %}<div class="mt-4"><div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div></div>{% endif %}{% endblock %}
 {% block related %}
 {# 部品の図面。表示用の絵を作れなかったときは黄色の 1 行 (字は表の列のまま)、絵があれば小さい絵 (ログインした人にだけ返す口の URL。押すと同じタブで図面ビューアへ)。取引先の小窓では 2 つとも出ない。 #}
 {% if object.drawing_preview_error %}
