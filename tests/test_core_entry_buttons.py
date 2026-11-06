@@ -200,6 +200,42 @@ def test_order_detail_hides_cancel_ship_and_po(client, on, user, customer, item,
     assert cancel_href not in _page(client, admin, detail_url)
 
 
+@pytest.mark.django_db
+def test_order_detail_head_ship_button_by_permission(client, on, user, customer, item, admin):
+    """受注の詳細の頭の緑の「出荷登録」(候補 C15 の 4。C15-1 b・UX-2 a) は、出荷の書く権限のある人だけに出す。
+
+    出すときの「編集」は白。受注の書く権限の無い人には「編集」を出さない (今のまま)。止める処理は足さない。
+    """
+    line = _line(user, customer, item)
+    order = line.order
+    detail_url = reverse("orders:order_detail", args=[order.pk])
+    ship_url = f'{reverse("shipping:shipment_create")}?order_line={line.pk}'
+    ship_button = f'<a class="btn btn-primary" href="{ship_url}" data-modal-form="{ship_url}">'
+    edit_href = f'href="{reverse("orders:order_update", args=[order.pk])}'
+    green_edit = f'<a class="btn btn-primary" {edit_href}'
+    white_edit = f'<a class="btn btn-outline border-base-300" {edit_href}'
+
+    # Access の行の無い人と、受注だけの権限の人 (出荷は別の「出荷と納品書」) には無い。受注だけの人の「編集」は緑のまま。
+    assert "出荷登録" not in _page(client, user, detail_url)
+    eigyo = account("eigyo", permissions=["orders"])
+    page = _page(client, eigyo, detail_url)
+    assert "出荷登録" not in page
+    assert green_edit in page and white_edit not in page
+
+    # 伝票編集 (受注と出荷を含む) の人とシステム管理者には緑の「出荷登録」(明細 1 行なので小窓を直に開く) と白の「編集」
+    jimu = account("jimu", permissions=["slip_edit"])
+    for person in (jimu, admin):
+        page = _page(client, person, detail_url)
+        assert ship_button in page and "出荷登録" in page, person.username
+        assert white_edit in page and green_edit not in page, person.username
+
+    # 出荷だけの人には緑の「出荷登録」だけが出て、受注の「編集」は無い
+    shukka = account("shukka", permissions=["shipping"])
+    page = _page(client, shukka, detail_url)
+    assert ship_button in page
+    assert edit_href not in page
+
+
 # ---------------------------------------------------------------- 3 指示書の詳細
 
 

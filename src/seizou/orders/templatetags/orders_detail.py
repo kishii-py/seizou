@@ -9,6 +9,8 @@
 - order_head_chips: 受注の詳細の頭の要点の札 (N163)。受注の詳細の block heading が {% order_head_chips object seizou.hide_money as head_chips %}
   の形で置いてから block.super を呼び、土台の core/detail.html が head_chips を読んで題の横に 3 つまで並べる。
 - order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。N184)。
+- order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x。C15-1 b・UX-2 a)。受注の詳細の block heading が
+  {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
 """
 
 from decimal import Decimal
@@ -109,3 +111,16 @@ def order_line_allocations(order) -> list[tuple]:
         annotate_allocated(OrderLine.objects.filter(order=order).order_by()).values_list("pk", "allocated_total")
     )
     return [(line, totals.get(line.pk) or _ZERO) for line in lines]
+
+
+@register.simple_tag
+def order_ship_lines(order) -> list:
+    """受注の詳細の頭の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x。C15-1 b・UX-2 a)。
+
+    取消の受注は空。ほかは order.lines.all() (画面の prefetch の写し。annotate_remaining の残と行番号の順) のうち、
+    残が 0 より大きい明細を行番号の順のまま返す (問い合わせを増やさない)。出荷の書く権限と出荷の部品の有無はテンプレートが見る。
+    読むだけで、表に書かない。
+    """
+    if order.status == order.STATUS_CANCELLED:
+        return []
+    return [line for line in order.lines.all() if line.remaining_total > 0]
