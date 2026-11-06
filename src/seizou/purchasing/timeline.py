@@ -176,9 +176,10 @@ STAGES = (
 
 @dataclass(frozen=True)
 class Stage:
-    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。
+    """帯の 1 段。no は 1 から (受注の帯 = orders.timeline.Stage と同じ意味。C06)。
 
-    skipped は受注の帯 (orders.timeline.Stage) と同じ形の欄 (core の帯の断片が読む。C06)。発注では今は常に偽。
+    done は今の段より前で全部の明細が通った段、skipped は今の段より前で通っていない明細がある段
+    (発注では、先の段でも届かない検収を含む = _acceptance_unreachable)、current は今の段。
     """
 
     no: int
@@ -204,55 +205,92 @@ class StageBand:
         return STAGES[self.current - 1]
 
 
-def stage_of(line) -> int:
-    """発注の明細 1 行の今の段 (1〜6) = 届いている一番先の段 (読むだけ)。
+#: 検収の段の番号 (届かない検収の横線を付ける段)。
+ACCEPTANCE = STAGES.index("検収") + 1
+
+
+def reached_stages(line) -> frozenset[int]:
+    """発注の明細 1 行が実際に通った段の集まり (1〜6 の数。読むだけ。C06)。
 
     送付と回答は発注の全体で決まる段 (_order_reached)、出荷の知らせ・受入・検収は明細ごとの段 (_line_reached)。
+    例: 相手へ送らずに頼んで注文回答の写しがあり、出荷の知らせと受入がある明細は {1, 3, 4, 5}。
+    """
+    purchase_order = line.purchase_order
+    return _order_reached(purchase_order, _all(purchase_order, "outbox_messages")) | _line_reached(line)
+
+
+def stage_of(line) -> int:
+    """発注の明細 1 行の今の段 (1〜6) = 届いている一番先の段 (読むだけ。reached_stages の最大)。
+
     送付と回答が無くても受入があれば「受入」(相手へ送らずに頼んだ発注)。
     """
-    return max(_order_reached(line.purchase_order), _line_reached(line))
+    return max(reached_stages(line))
 
 
 def stage_band(purchase_order) -> StageBand | None:
-    """発注の段の帯。取消の発注は None (帯を出さない)。発注の全体の段は 1 回だけ読む。"""
+    """発注の段の帯。取消の発注は None (帯を出さない)。発注の全体の段と送った注文の行は 1 回だけ読む。
+
+    今の段 = 明細ごとの今の段の最小 (明細が無ければ発注の全体の段)。今の段より前の段は、全部の明細が通った段だけ done (✓)、
+    通っていない明細が 1 行でもある段は skipped (受注の帯と同じ決まり。C06-4 = b)。
+    先の段の検収は、届かない検収 (_acceptance_unreachable) なら skipped。
+    """
     if purchase_order.status == purchase_order.STATUS_CANCELLED:
         return None
-    head = _order_reached(purchase_order)
-    of_lines = [max(head, _line_reached(line)) for line in _all(purchase_order, "lines")]
-    current = min(of_lines, default=head)
-    stages = tuple(Stage(no, name, no < current, no == current) for no, name in enumerate(STAGES, start=1))
-    return StageBand(current, stages, _summary(of_lines))
+    outbox = _all(purchase_order, "outbox_messages")
+    head = _order_reached(purchase_order, outbox)
+    of_reached = [head | _line_reached(line) for line in _all(purchase_order, "lines")]
+    of_lines = [max(reached) for reached in of_reached]
+    current = min(of_lines, default=max(head))
+    passed = of_reached or [head]
+    unreachable = _acceptance_unreachable(purchase_order, outbox)
+    stages = []
+    for no, name in enumerate(STAGES, start=1):
+        done = no < current and all(no in reached for reached in passed)
+        skipped = (no < current and not done) or (no == ACCEPTANCE and no > current and unreachable)
+        stages.append(Stage(no, name, done, no == current, skipped=skipped))
+    return StageBand(current, tuple(stages), _summary(of_lines))
 
 
-def _order_reached(purchase_order) -> int:
-    """発注の全体の段 (1〜3)。
+def _order_reached(purchase_order, outbox) -> frozenset[int]:
+    """発注の全体で通った段の集まり (1〜3 の数)。outbox は送った注文の行の並び (呼ぶ側が 1 回だけ読む)。
 
-    回答 = 注文回答の日時がある (相手が受け入れたも断られたも回答)。送付 = 状態が「送った」か、
-    送った注文を相手の受け口が受け取った (送れなかった物は数えない)。
+    発注 = いつも。回答 = 注文回答の日時がある (相手が受け入れたも断られたも回答)。送付 = 状態が「送った」か、
+    送った注文を相手の受け口が受け取った (送れなかった物は数えない)。注文回答の後は状態が変わるので、送った注文の行で読む
+    (流れの枠の「注文を送った (相手が受け取った)」と同じ読み)。
     """
+    reached = {1}
+    if purchase_order.status == purchase_order.STATUS_SENT or any(row.response == RECEIVED for row in outbox):
+        reached.add(2)
     if purchase_order.replied_at is not None:
-        return 3
-    if purchase_order.status == purchase_order.STATUS_SENT:
-        return 2
-    if any(outbox.response == RECEIVED for outbox in _all(purchase_order, "outbox_messages")):
-        return 2
-    return 1
+        reached.add(3)
+    return frozenset(reached)
 
 
-def _line_reached(line) -> int:
-    """明細ごとの段 (1・4〜6)。
+def _line_reached(line) -> frozenset[int]:
+    """明細ごとに通った段の集まり (4〜6 の数。どれも無ければ空 = 発注の全体の段に任せる)。
 
-    検収 = 相手に届いた検収がある (届いていない物は数えない)。受入 = 受入がある。出荷の知らせ = 相手の出荷の知らせがある。
-    どれも無ければ 1 (発注の全体の段に任せる)。
+    出荷の知らせ = 相手の出荷の知らせがある。受入 = 受入がある。検収 = 相手に届いた検収がある (届いていない物は数えない)。
     """
     receipts = _all(line, "receipts")
-    if any(receipt.acceptance_sent_at is not None for receipt in receipts):
-        return 6
-    if receipts:
-        return 5
+    reached = set()
     if _all(line, "shipping_notices"):
-        return 4
-    return 1
+        reached.add(4)
+    if receipts:
+        reached.add(5)
+    if any(receipt.acceptance_sent_at is not None for receipt in receipts):
+        reached.add(6)
+    return frozenset(reached)
+
+
+def _acceptance_unreachable(purchase_order, outbox) -> bool:
+    """届かない検収か (C06-4 = b のこの版の読み)。送った注文の行が 1 つも無く、状態が「下書き」でない発注で真。
+
+    受入の後に検収を送るのは送った注文の行がある発注だけ (purchasing.services の receive と _is_sent_order と同じ読み)。
+    作った後に送る道は「下書き」の間だけ出る「再送」なので、「下書き」を過ぎて送った注文の行が無い発注は検収に届かない。
+    「下書き」のままの発注は後で送る見込みが残るので偽 (早すぎる印を避ける)。送れなかった行だけがある発注も、
+    送り直しで届く見込みがあるので偽。
+    """
+    return not outbox and purchase_order.status != purchase_order.STATUS_DRAFT
 
 
 def _summary(of_lines) -> str | None:
