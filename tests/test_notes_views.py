@@ -2,9 +2,11 @@
 
 見る所: 指示書と受注の詳細の下のメモの枠 (閲覧の形と「書く」)、記入の形 (Quill の箱) と保存、写真の口 (JSON)、
 記入と写真の口が編集の権限 (access.require_write) とログインを見ること。
-見ない所 (理由): Quill の動き (打つ・道具の列・写真を落とす・htmx の入れ替え) はブラウザが要る (本体が画面で見る)。
+見ない所 (理由): Quill の動き (打つ・道具の列・写真を落とす・htmx の入れ替え) はブラウザが要る (本体が画面で見る。
+「書く」の後の箱の focus は tests/e2e/test_e54_note_focus.py が見る)。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -23,6 +25,8 @@ from seizou.orders import services as orders_services
 from seizou.workorders import services as workorders_services
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+HINT = "メモは 1 つで、この詳細を開いた人が読めます。書き足すときも直すときも「書く」から保存し、保存すると前の字と置き換わります。"
+EMPTY_HELP = "「書く」から、次に作業する人への申し送り・段取りの注意・現場の写真を残せます。"
 
 
 @pytest.fixture(autouse=True)
@@ -113,6 +117,40 @@ def test_edit_form_and_save_returns_to_detail(client_logged_in, user, order):
     back = client_logged_in.get(response["HX-Redirect"])
     assert back.status_code == 302
     assert back["Location"] == f'{reverse("orders:order_detail", args=[order.pk])}#notes'
+
+
+def _p_class(html: str, text: str) -> str:
+    """text で始まる <p> の class の字 (無ければ空)。"""
+    match = re.search(r'<p class="([^"]*)">' + re.escape(text), html)
+    return match.group(1) if match else ""
+
+
+@pytest.mark.django_db
+def test_note_hint_in_view_and_form(client_logged_in, user, order, workorder):
+    """メモの枠の 3 か所 (空の枠・保存の後の枠・記入の形) に、上書きと読める人を言う 1 文が 1 つずつ出る (初見テスト R5 の V108・V109。候補 C42-先 の 2・3)。
+
+    1 文の class は、空の時の説明の行と「更新 日時 人」の行と同じ字 (字の大きさと色をそろえる。新しい class は使わない)。
+    """
+    for url in (
+        reverse("workorders:workorder_detail", args=[workorder.pk]),
+        reverse("orders:order_detail", args=[order.pk]),
+    ):
+        html = client_logged_in.get(url).content.decode()
+        assert html.count(HINT) == 1, url
+        assert EMPTY_HELP in html, url
+        assert _p_class(html, HINT) == _p_class(html, EMPTY_HELP) != "", url
+
+    services.save_note(order, "<p>前のメモ</p>", user)
+    html = client_logged_in.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+    assert html.count(HINT) == 1
+    assert EMPTY_HELP not in html
+    assert _p_class(html, HINT) == _p_class(html, "更新 ") != ""  # 「更新 日時 人」の行は残る
+
+    edit = client_logged_in.get(reverse("notes:note_edit"), target_data(order), HTTP_HX_REQUEST="true")
+    html = edit.content.decode()
+    assert html.count(HINT) == 1
+    notes = html[html.index('<section id="notes"') :]
+    assert notes.index("data-note-editor") < notes.index(HINT) < notes.index("</form>")  # 箱の下、form の中
 
 
 @pytest.mark.django_db

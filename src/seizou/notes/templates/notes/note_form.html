@@ -44,6 +44,7 @@
       </div>
       <div data-note-box>{{ form.body_html.value|default_if_none:""|note_html }}</div>
     </div>
+    {% include "notes/_note_hint.html" %}
   </form>
 </section>
 {% endblock %}

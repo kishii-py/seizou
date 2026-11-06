@@ -1,5 +1,6 @@
 // 書式つきのメモ (notes/note_form.html の [data-note-editor]) の編集の箱を、同梱の Quill 2 で起こす。
 // 起こすのは、画面を読んだ時 (記入の形の画面を直に開いた時) と、htmx が #notes を入れ替えた時 (詳細の画面の「書く」)。
+// 起こした後は箱に focus を入れ、カーソルを本文の終わりに置く (閲覧の形の枠は起こさないので、詳細を開いただけでは focus を取らない)。
 // 本文は打つたびに Quill の getSemanticHTML (ul と ol の素の HTML) を隠した欄 body_html に写す。掃除は保存の時に services がする。
 // 写真は 1 枚ずつ写真の口 (data-upload-url) へ送り、返った URL (/media/notes/…) を本文に入れる (道具の列の「写真」・落とす・貼り付け)。
 // CSRF は form の csrfmiddlewaretoken の欄の値を送る (見出しは土台の 1 か所 = R18)。class を足し引きしない (Quill の class は Quill の物)。
@@ -78,7 +79,7 @@
     quill = new window.Quill(box, {
       theme: "snow",
       formats: FORMATS,
-      placeholder: "段取りの注意・現場の写真・決めた事などを書きます。",
+      placeholder: "申し送り・段取りの注意・現場の写真・決めた事などを書きます。",
       modules: {
         toolbar: {
           container: toolbar,
@@ -107,6 +108,10 @@
     }
     quill.on("text-change", copy);
     copy();
+    // 起こした箱に focus を入れ、カーソルを本文の終わりに置く (「書く」の後に箱を押さずに書き足せる。初見テスト R5 の U163)。
+    // 先に "silent" の setSelection で終わりへ置き、後の focus() でその位置を画面に送る (逆の順だと focus() が頭へ送る)。
+    quill.setSelection(quill.getLength(), 0, "silent");
+    quill.focus();
   }
 
   function setUpAll(root) {
