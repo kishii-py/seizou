@@ -1,0 +1,364 @@
+"""フィードバックの GitHub の口 (依頼書 N185。決め 11-06 21:2x) の試験。
+
+本物の GitHub へは送らない (requests.get・requests.post を差し替える)。トークンは作り物の短い字 (ghp_test…)。
+.env は試験ごとの一時の置き場 (settings.SEIZOU_ENV_FILE)。os.environ の 3 つの鍵と django の cache は試験の前後で戻す。
+題と名前は作り物。
+"""
+
+import os
+import re
+import stat
+import sys
+
+import pytest
+import requests
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+
+from seizou.feedback import github, services
+from seizou.feedback.models import Feedback
+
+TOKEN = "ghp_test0000fake"
+KEYS = (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV)
+ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
+
+
+class Answer:
+    """requests の返事の代わり (status_code と json だけ)。"""
+
+    def __init__(self, status, data=None):
+        self.status_code = status
+        self._data = data
+
+    def json(self):
+        if self._data is None:
+            raise ValueError("JSON でない")
+        return self._data
+
+
+class FakeGithub:
+    """requests.get・requests.post の代わり。呼ばれた (method, url, kwargs) を控え、答えの表から返す。"""
+
+    def __init__(self):
+        self.calls = []
+        self.user = Answer(200, {"login": "example-feedback-bot"})
+        self.created = Answer(201, {"number": 7, "html_url": ISSUE_URL})
+        self.issues = {}
+        self.listing = Answer(200, [])
+
+    def get(self, url, **kwargs):
+        self.calls.append(("GET", url, kwargs))
+        if url.endswith("/user"):
+            return self.user
+        if url.endswith("/issues"):
+            return self.listing
+        if "/issues/" in url:
+            return self.issues.get(int(url.rsplit("/", 1)[1]), Answer(404, {}))
+        raise AssertionError(f"知らない URL: {url}")
+
+    def post(self, url, **kwargs):
+        self.calls.append(("POST", url, kwargs))
+        return self.created
+
+
+@pytest.fixture(autouse=True)
+def env_file(settings, tmp_path):
+    path = tmp_path / ".env"
+    settings.SEIZOU_ENV_FILE = path
+    saved = {key: os.environ.pop(key) for key in KEYS if key in os.environ}
+    cache.clear()
+    yield path
+    cache.clear()
+    for key in KEYS:
+        os.environ.pop(key, None)
+    os.environ.update(saved)
+
+
+@pytest.fixture
+def fake(monkeypatch):
+    fake = FakeGithub()
+    monkeypatch.setattr(requests, "get", fake.get)
+    monkeypatch.setattr(requests, "post", fake.post)
+    return fake
+
+
+@pytest.fixture
+def no_http(monkeypatch):
+    """呼ばれたら落とす requests (HTTP を呼ばないことを見る)。"""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("HTTP を呼んだ")
+
+    monkeypatch.setattr(requests, "get", refuse)
+    monkeypatch.setattr(requests, "post", refuse)
+
+
+@pytest.fixture
+def manager(db):
+    return get_user_model().objects.create_superuser("admin", password="pass-for-tests-only")
+
+
+@pytest.fixture
+def plain(db):
+    return get_user_model().objects.create_user("tester", password="pass-for-tests-only")
+
+
+def make(user, title="受注の一覧で並びが戻る", status="draft", sent_url=""):
+    row = services.create_feedback(
+        {"kind": "bug", "screen": "", "title": title, "problem": "並び替えた後に戻ると、並びが元に戻る。"}, user
+    )
+    if status != "draft":
+        Feedback.objects.filter(pk=row.pk).update(status=status, sent_url=sent_url)
+        row.refresh_from_db()
+    return row
+
+
+def connect(manager, fake, repo="example-owner/example-repo"):
+    return services.connect_github({"token": TOKEN, "repo": repo}, manager)
+
+
+# ---------------------------------------------------------------- .env の読み書き
+
+
+def test_write_env_value_replaces_and_keeps_other_lines(env_file):
+    env_file.write_text("# 鍵\nSECRET_KEY=plain-words\nSEIZOU_GITHUB_LOGIN=old\nDEBUG=1\n", encoding="utf-8")
+
+    github.write_env_value(github.LOGIN_ENV, "new-name")
+    github.write_env_value(github.REPO_ENV, "example-owner/example-repo")
+
+    assert env_file.read_text(encoding="utf-8").splitlines() == [
+        "# 鍵",
+        "SECRET_KEY=plain-words",
+        "SEIZOU_GITHUB_LOGIN=new-name",
+        "DEBUG=1",
+        "SEIZOU_GITHUB_ISSUES_REPO=example-owner/example-repo",
+    ]
+    assert os.environ[github.LOGIN_ENV] == "new-name"
+    assert github.read_env_value(github.LOGIN_ENV) == "new-name"
+    if sys.platform != "win32":
+        assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+
+    github.remove_env_value(github.LOGIN_ENV)
+    assert "SEIZOU_GITHUB_LOGIN" not in env_file.read_text(encoding="utf-8")
+    assert github.LOGIN_ENV not in os.environ
+    assert github.read_env_value(github.LOGIN_ENV) == ""
+
+
+def test_read_env_value_falls_back_to_environ(env_file, monkeypatch):
+    monkeypatch.setenv(github.REPO_ENV, "example-owner/from-environ")
+    assert github.read_env_value(github.REPO_ENV) == "example-owner/from-environ"
+    env_file.write_text("SEIZOU_GITHUB_ISSUES_REPO=example-owner/from-file\n", encoding="utf-8")
+    assert github.read_env_value(github.REPO_ENV) == "example-owner/from-file"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="フォルダの権限は Windows では見ない")
+def test_write_env_value_refuses_unwritable_folder(tmp_path):
+    folder = tmp_path / "locked"
+    folder.mkdir()
+    folder.chmod(0o500)
+    try:
+        with pytest.raises(github.GithubError) as caught:
+            github.write_env_value(github.TOKEN_ENV, TOKEN, path=folder / ".env")
+    finally:
+        folder.chmod(0o700)
+    assert "seizou github-token" in str(caught.value)
+    assert TOKEN not in str(caught.value)
+
+
+@pytest.mark.parametrize("token", ["", "abc", "ghp_ test", " ghp_test0000fake", None, 123])
+def test_check_token_refuses_bad_shapes(token):
+    with pytest.raises(github.GithubError, match="トークンの形が違います"):
+        github.check_token(token)
+
+
+def test_check_token_and_repo_pass_good_shapes():
+    assert github.check_token(TOKEN) == TOKEN
+    assert github.check_token("github_pat_test0000fake") == "github_pat_test0000fake"
+    assert github.check_repo(" example-owner/example.repo_1 ") == "example-owner/example.repo_1"
+    for repo in ("example-owner", "a/b/c", "owner/na me", "https://github.com/a/b", ""):
+        with pytest.raises(github.GithubError):
+            github.check_repo(repo)
+
+
+def test_api_sends_headers_and_timeout(fake):
+    assert github.whoami(TOKEN) == "example-feedback-bot"
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("GET", "https://api.github.com/user")
+    assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    assert kwargs["headers"]["Accept"] == "application/vnd.github+json"
+    assert kwargs["headers"]["X-GitHub-Api-Version"] == "2022-11-28"
+    assert kwargs["timeout"] == 10
+
+    fake.issues[3] = Answer(200, {"state": "open", "closed_at": None, "html_url": "x"})
+    assert github.issue_state("example-owner/example-repo", 3)["state"] == "open"
+    assert "Authorization" not in fake.calls[-1][2]["headers"]
+
+
+@pytest.mark.parametrize(
+    ("status", "words"),
+    [(401, "トークンが違う"), (403, "権限がありません"), (404, "見つかりません"), (422, "受け付けませんでした"), (500, "HTTP 500")],
+)
+def test_api_errors_are_japanese_without_token(fake, status, words):
+    fake.user = Answer(status, {"message": "x"})
+    with pytest.raises(github.GithubError) as caught:
+        github.whoami(TOKEN)
+    assert words in str(caught.value)
+    assert TOKEN not in str(caught.value)
+
+
+def test_unreachable_is_japanese(monkeypatch):
+    def broken(*args, **kwargs):
+        raise requests.ConnectionError(f"失敗 {TOKEN}")
+
+    monkeypatch.setattr(requests, "get", broken)
+    with pytest.raises(github.GithubError) as caught:
+        github.whoami(TOKEN)
+    assert "つながりませんでした" in str(caught.value)
+    assert TOKEN not in str(caught.value)
+
+
+# ---------------------------------------------------------------- つなぐ・外す
+
+
+def test_connect_writes_three_lines(manager, fake, env_file):
+    result = connect(manager, fake)
+
+    assert result == {"login": "example-feedback-bot", "repo": "example-owner/example-repo"}
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    assert lines == [
+        f"SEIZOU_GITHUB_TOKEN={TOKEN}",
+        "SEIZOU_GITHUB_ISSUES_REPO=example-owner/example-repo",
+        "SEIZOU_GITHUB_LOGIN=example-feedback-bot",
+    ]
+    if sys.platform != "win32":
+        assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    assert os.environ[github.TOKEN_ENV] == TOKEN
+    status = services.github_status()
+    assert status == {"connected": True, "login": "example-feedback-bot", "repo": "example-owner/example-repo"}
+    assert TOKEN not in str(status)
+
+
+def test_connect_empty_repo_is_default(manager, fake):
+    result = services.connect_github({"token": TOKEN, "repo": ""}, manager)
+    assert result["repo"] == github.DEFAULT_REPO == "kishii-py/seizou"
+
+
+def test_connect_refuses_non_manager(plain, no_http, env_file):
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.connect_github({"token": TOKEN, "repo": ""}, plain)
+    assert not env_file.exists()
+
+
+def test_connect_refuses_bad_token_without_http(manager, no_http, env_file):
+    with pytest.raises(ValueError, match="トークンの形が違います"):
+        services.connect_github({"token": "not-a-token", "repo": ""}, manager)
+    with pytest.raises(ValueError, match="owner/name"):
+        services.connect_github({"token": TOKEN, "repo": "only-owner"}, manager)
+    assert not env_file.exists()
+
+
+def test_connect_401_writes_nothing(manager, fake, env_file):
+    fake.user = Answer(401, {"message": "Bad credentials"})
+    with pytest.raises(ValueError) as caught:
+        connect(manager, fake)
+    assert "トークンが違う" in str(caught.value)
+    assert TOKEN not in str(caught.value)
+    assert not env_file.exists()
+    assert github.TOKEN_ENV not in os.environ
+
+
+def test_disconnect_removes_three_lines(manager, plain, fake, env_file):
+    env_file.write_text("SECRET_KEY=plain-words\n", encoding="utf-8")
+    connect(manager, fake)
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.disconnect_github(plain)
+
+    services.disconnect_github(manager)
+
+    assert env_file.read_text(encoding="utf-8") == "SECRET_KEY=plain-words\n"
+    assert not any(key in os.environ for key in KEYS)
+    assert services.github_status() == {"connected": False, "login": "", "repo": github.DEFAULT_REPO}
+
+
+# ---------------------------------------------------------------- 送る
+
+
+def test_send_confirmed_creates_issue_and_marks_sent(manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+
+    url = services.send_to_github(row, manager)
+
+    assert url == ISSUE_URL
+    method, api, kwargs = fake.calls[-1]
+    assert (method, api) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues")
+    body = kwargs["json"]
+    assert body["title"] == "受注の一覧で並びが戻る"
+    assert body["body"] == services.export_markdown(row)
+    assert body["labels"] == ["from-seizou", "不具合"]
+    assert TOKEN not in str(body)
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("sent", ISSUE_URL)
+
+
+def test_send_refuses_draft_without_http(manager, plain, fake, monkeypatch):
+    connect(manager, fake)
+    row = make(plain)
+    calls = len(fake.calls)
+    with pytest.raises(ValueError, match="先に「確認済みにする」を押してください。"):
+        services.send_to_github(row, manager)
+    assert len(fake.calls) == calls
+    row.refresh_from_db()
+    assert row.status == "draft"
+
+
+def test_send_refuses_without_connection_and_non_manager(manager, plain, no_http):
+    row = make(plain, status="confirmed")
+    with pytest.raises(ValueError, match="GitHub とまだつないでいません"):
+        services.send_to_github(row, manager)
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.send_to_github(row, plain)
+    row.refresh_from_db()
+    assert row.status == "confirmed"
+
+
+def test_send_422_keeps_status(manager, plain, fake):
+    connect(manager, fake)
+    fake.created = Answer(422, {"message": "Validation Failed"})
+    row = make(plain, status="confirmed")
+    with pytest.raises(ValueError) as caught:
+        services.send_to_github(row, manager)
+    assert "受け付けませんでした" in str(caught.value)
+    assert TOKEN not in str(caught.value)
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("confirmed", "")
+
+
+# ---------------------------------------------------------------- 取り込む
+
+
+def test_sync_marks_closed_issue_fixed(manager, plain, fake):
+    closed = make(plain, "閉じた件", status="sent", sent_url=ISSUE_URL)
+    still = make(plain, "開いた件", status="sent", sent_url="https://github.com/example-owner/example-repo/issues/8")
+    other = make(plain, "ほかの場所", status="sent", sent_url="https://example.com/issues/9")
+    fake.issues[7] = Answer(200, {"state": "closed", "closed_at": "2026-11-06T03:00:00Z", "html_url": ISSUE_URL})
+    fake.issues[8] = Answer(200, {"state": "open", "closed_at": None, "html_url": "x"})
+
+    counts = services.sync_github(manager)
+
+    assert counts == {"見た": 2, "直した": 1, "読めなかった": 0}
+    closed.refresh_from_db()
+    still.refresh_from_db()
+    other.refresh_from_db()
+    assert closed.status == "fixed"
+    assert closed.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
+    assert closed.fixed_at is not None and closed.fixed_seen_at is None
+    assert still.status == "sent" and other.status == "sent"
+    assert all("example.com" not in url for _, url, _ in fake.calls)
+
+
+def test_sync_counts_unreadable_and_refuses_non_manager(manager, plain, fake):
+    make(plain, status="sent", sent_url="https://github.com/example-owner/example-repo/issues/99")
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.sync_github(plain)
+    assert services.sync_github(manager) == {"見た": 1, "直した": 0, "読めなかった": 1}
