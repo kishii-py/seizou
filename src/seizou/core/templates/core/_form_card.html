@@ -1,13 +1,13 @@
 {% load seizou_icons seizou_tags %}
 {# 入力のカード (core/form.html の画面の全体と core/_form_modal.html の小窓の両方が include する)。小窓の形 (in_modal) の form は htmx で同じ URL へ送り、返った中身で小窓の箱を差し替える。 #}
-{# 入力: 1 枚のカードの中の 2 列の格子。見出しの右に「必須」か「任意」、誤りは欄の下 (赤)、注意は薄い字。 #}
+{# 入力: 1 枚のカードの中の 2 列の格子。見出しの右に「必須」か「任意」、誤りは欄の下 (赤)、注意は薄い字。格子の上の間 (mt-6) は上に案内の行があるときだけ取る (必須の欄の無い form で、カードの上だけ余白が左右の 2 倍の空の帯にならないため。初見テスト R5 の a-flagged-22・b-flagged-13。N266)。 #}
 {# 数の欄は字の欄 (小数は inputmode=decimal、整数は inputmode=numeric)。どちらも右寄せ。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
   {# 見える欄が 0 個の form (欄の無い取消の確かめ・注文を送り直す) は格子を描かない。白い枠に見える物の無い帯を作らないため (初見テスト R5 の U69・a-blind-15。候補 C24) #}
   {% if form.visible_fields %}
-  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
+  <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right{% if form|has_required %} mt-6{% endif %}">
     {% for field in form.visible_fields %}
     {% if field.widget_type == "checkbox" %}
     <div class="sm:col-span-2">
