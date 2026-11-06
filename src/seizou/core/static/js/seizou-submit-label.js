@@ -8,6 +8,9 @@
  * - document に委譲する (小窓の中身が htmx で差し替わっても動く)。input と change のたびに、その form のボタンを埋め直す。
  * - 数量の欄は data-label-qty、単価の欄は data-label-price (同じ行 tr の中)、「この行を出さない」は data-label-skip、
  *   金額の欄は data-label-amount。行 tr が無い form は form の全体を 1 行と読む。
+ * - 印を付けた行だけ数える checkbox は data-label-pick (請求書の新規登録の出荷。候補 C74)。数量は行 tr の data-label-pick-qty、
+ *   金額は行 tr の data-label-pick-amount (サーバーが 1 円に丸めた行の金額。JS は掛け算をしない) の字を読む。
+ *   印の無い行と、隠れた行 (tr の hidden。得意先で絞った行) は数えない。data-label-pick-amount の無い行があれば {amount} を埋めない。
  * - 数量の空の行は数えない。数でない字の数量が 1 つでもあれば、数を書かない (plain の字)。
  * - 単価の空か数でない行が 1 つでもあれば {amount} を埋めない (次の型へ)。
  * - 明細の選ぶ欄 (data-label-line) の値が描いたときの値と違えば、単位が分からないので plain の字にする。
@@ -24,6 +27,14 @@
   function readNumber(input) {
     var text = String(input.value || "").normalize("NFKC").replace(/,/g, "").trim();
     if (text === "") return undefined;
+    if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
+    return Number(text);
+  }
+
+  function readAttribute(element, name) {
+    // 行の data- の属性の素の数の字 (サーバーが書く。区切りの「,」は無い)。属性が無ければ undefined、数でなければ null。
+    if (!element.hasAttribute(name)) return undefined;
+    var text = String(element.getAttribute(name) || "").trim();
     if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
     return Number(text);
   }
@@ -60,13 +71,29 @@
       if (typeof each === "number") amount += count * each;
       else priced = false;
     });
+    form.querySelectorAll("[data-label-pick]").forEach(function (input) {
+      if (!input.checked) return;
+      var row = input.closest("tr") || form;
+      if (row.hidden) return;
+      var count = readAttribute(row, "data-label-pick-qty");
+      if (typeof count !== "number") {
+        bad = true;
+        return;
+      }
+      rows += 1;
+      qty += count;
+      var each = readAttribute(row, "data-label-pick-amount");
+      if (typeof each === "number") amount += each;
+      else priced = false;
+    });
+    var money = form.querySelector("[data-label-price], [data-label-pick-amount]");
     found.totals = bad
       ? null
-      : { rows: String(rows), qty: format(qty), amount: priced && form.querySelector("[data-label-price]") ? format(amount) : null };
+      : { rows: String(rows), qty: format(qty), amount: priced && money ? format(amount) : null };
     if (!bad && rows > 0) {
       found.rows = String(rows);
       found.qty = format(qty);
-      if (priced && form.querySelector("[data-label-price]")) found.amount = format(amount);
+      if (priced && money) found.amount = format(amount);
     }
     var direct = form.querySelector("[data-label-amount]");
     if (direct) {

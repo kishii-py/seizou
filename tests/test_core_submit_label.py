@@ -374,3 +374,10 @@ def test_js_passes_node_check():
         pytest.skip("node が無い (node --check を回せない)")
     result = subprocess.run([node, "--check", str(JS)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
+
+
+def test_js_file_counts_picked_rows():
+    # 請求書の新規登録の出荷 (候補 C74): 印を付けた行だけを、行の data- の字で数え、隠れた行は数えない。
+    text = JS.read_text(encoding="utf-8")
+    for word in ("[data-label-pick]", "data-label-pick-qty", "data-label-pick-amount", ".hidden"):
+        assert word in text, word

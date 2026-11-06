@@ -9,6 +9,7 @@
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
+  出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
 - 消費税の計算は _tax の 1 か所、請求の期間 (得意先の締め期間) は closing_period の 1 か所、支払期日の計算は payment_due_date の 1 か所。
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
@@ -116,7 +117,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
         lines = []
         for shipment in locked:
             unit_price = shipment.order_line.unit_price
-            amount = round_amount(customer, shipment.qty * unit_price)
+            amount = shipment_amount(customer, shipment)
             lines.append((shipment, unit_price, amount))
         amounts = [amount for _shipment, _price, amount in lines]
         subtotal = sum(amounts, _ZERO)
@@ -283,6 +284,16 @@ def billable_shipments(customer=None):
     if customer is not None:
         queryset = queryset.filter(order_line__order__customer=customer)
     return queryset
+
+
+def shipment_amount(customer, shipment):
+    """出荷 1 つの請求の金額 (読むだけ)。round_amount(customer, 出荷の数量 × 受注の明細の単価)。
+
+    create_invoice が明細の金額に使い、請求書の新規登録の画面 (billing.forms.InvoiceForm の rows) が行の金額の見込みに使う。
+    訳: 画面に出す見込みと保存する明細の金額を 1 つの式にするため (頭の注記の「明細の金額は round_amount の 1 か所で丸め」と同じ考え)。出所 = RULES.md R03・AI の案 (依頼書 N248 = 候補 C74 の 1-1)。
+    変えてよい条件 = 金額の式を変えるときは、この関数の 1 か所を変える (画面の見込みと保存が同じ関数を通る)。丸めを round_amount に任せること (R03) は変えない。
+    """
+    return round_amount(customer, shipment.qty * shipment.order_line.unit_price)
 
 
 def unbilled_in_period(customer, period_from, period_to):

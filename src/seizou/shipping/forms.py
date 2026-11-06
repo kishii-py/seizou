@@ -247,6 +247,7 @@ class DeliveryNoteForm(forms.Form):
     """納品書を作る。発行の納品書に入っていない出荷を選び、得意先は選んだ出荷の受注の得意先にする。
 
     得意先の違う出荷が混ざったときは、services の create_delivery_note が R08 で断る (画面で先に断らない)。
+    出荷は列の見出しのある表の行 (rows) で描く (shipping/_deliverynote_create_card.html。候補 C74)。
     """
 
     submit_label = "納品書を作る"
@@ -261,6 +262,24 @@ class DeliveryNoteForm(forms.Form):
         widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
         help_text="同じ得意先の出荷を選びます。納品書に入っていない出荷だけが並びます。",
     )
+
+    @property
+    def head_fields(self):
+        """表の上の欄 (土台が足す会社ごとの項目)。出荷の欄は表に描くので除く。"""
+        return [field for field in self.visible_fields() if field.name != "shipments"]
+
+    @property
+    def rows(self):
+        """出荷の表の行 (shipping/_deliverynote_create_card.html。候補 C74)。1 行 = {box・shipment}。
+
+        最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
+        box は checkbox の subwidget (テンプレートが {{ row.box.tag }} で描く。見えない名前は今の行の字)。
+        """
+        if getattr(self, "_rows", None) is None:
+            self._rows = [
+                {"box": box, "shipment": box.data["value"].instance} for box in self["shipments"].subwidgets
+            ]
+        return self._rows
 
     def service_kwargs(self) -> dict:
         shipments = sorted(self.cleaned_data["shipments"], key=lambda shipment: shipment.pk)

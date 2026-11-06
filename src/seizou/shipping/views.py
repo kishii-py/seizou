@@ -191,6 +191,7 @@ class DeliveryNoteCreateView(BaseFormView):
     model = DeliveryNote
     form_class = DeliveryNoteForm
     service = staticmethod(services.create_delivery_note)
+    template_name = "shipping/deliverynote_form.html"
     screen_name = "納品書を作る"
     screen_help = "同じ得意先の出荷を選んで、1 枚の納品書にまとめます。納品書番号は保存のときに付きます。"
 

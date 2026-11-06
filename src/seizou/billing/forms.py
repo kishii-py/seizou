@@ -4,6 +4,8 @@
   候補は billable_shipments() (発行の納品書に入っていて、取消でない請求書に入っていない出荷) と、その出荷のある得意先。
   得意先と違う出荷を選んだときは、画面で先に断らず services の R09 の赤の知らせに任せる。
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
+  出荷は列の見出しのある表の行 (rows) で描き (billing/_invoice_create_card.html)、印を付けた行の数と税抜の金額の合計を
+  合計の枠 (line_totals) と保存のボタンの字 (SubmitLabelMixin) に出す (候補 C74)。行の金額は保存と同じ services.shipment_amount。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
@@ -21,7 +23,7 @@ from seizou.core.widgets import IsoDateInput
 
 from .models import Invoice
 from .models import Payment
-from .services import billable_shipments
+from .services import billable_shipments, shipment_amount
 
 _Partner = Invoice._meta.get_field("customer").related_model
 
@@ -57,10 +59,14 @@ class ShipmentChoiceField(forms.ModelMultipleChoiceField):
         return f"{text}・納品書 {note_no}" if note_no else text
 
 
-class InvoiceForm(forms.Form):
-    """請求書を作る form。"""
+class InvoiceForm(SubmitLabelMixin, forms.Form):
+    """請求書を作る form。
 
-    submit_label = "請求書を作る"
+    出荷は表の行 (rows) で描き、印を付けた行の数と税抜の金額の合計を、合計の枠 (line_totals) と保存のボタンの字に出す。
+    行の金額は保存と同じ式 (services.shipment_amount)。得意先を選んでいるときは、その得意先の行だけを数える (画面の JS が隠す行を数えない)。
+    """
+
+    submit_label_plain = "請求書を作る"
 
     customer = forms.ModelChoiceField(label="得意先", queryset=_Partner.objects.none(), widget=forms.Select)
     issued_on = forms.DateField(
@@ -76,8 +82,10 @@ class InvoiceForm(forms.Form):
         help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.hide_money = hide_money
+        self._rows = None
         candidates = billable_shipments()
         self.fields["customer"].queryset = _Partner.objects.filter(
             pk__in=candidates.values("order_line__order__customer_id")
@@ -85,6 +93,77 @@ class InvoiceForm(forms.Form):
         self.fields["shipments"].queryset = candidates.select_related(
             "order_line__order__customer", "order_line__item", "delivery_note"
         ).order_by("shipped_at", "shipment_no")
+        # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が、印を付けた行だけを数える印 (全部の checkbox に写る)。
+        self.fields["shipments"].widget.attrs["data-label-pick"] = True
+
+    @property
+    def head_fields(self):
+        """表の上の欄 (得意先・発行日と、土台が足す会社ごとの項目)。出荷の欄は表に描くので除く。"""
+        return [field for field in self.visible_fields() if field.name != "shipments"]
+
+    @property
+    def rows(self):
+        """出荷の表の行。1 行 = {box・shipment・checked・qty_text・amount・amount_text}。
+
+        最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
+        box は checkbox の subwidget (テンプレートが {{ row.box.tag }} で描く)。qty_text と amount_text は JS が読む素の数の字。
+        amount は行の得意先の端数の扱いで 1 円に丸めた金額 (services.shipment_amount)。金額の閲覧が無い人は None。
+        """
+        if self._rows is None:
+            rows = []
+            for box in self["shipments"].subwidgets:
+                shipment = box.data["value"].instance
+                amount = None if self.hide_money else shipment_amount(shipment.order_line.order.customer, shipment)
+                rows.append(
+                    {
+                        "box": box,
+                        "shipment": shipment,
+                        "checked": bool(box.data["selected"]),
+                        "qty_text": f"{shipment.qty.normalize():f}",
+                        "amount": amount,
+                        "amount_text": None if amount is None else f"{amount:f}",
+                    }
+                )
+            self._rows = rows
+        return self._rows
+
+    def _chosen_customer(self) -> str:
+        """選んだ得意先の pk の字。送った form は送った値、開いた form は初期値 (?customer=)。選んでいなければ空の字。"""
+        value = self.data.get("customer") if self.is_bound else self.initial.get("customer")
+        value = getattr(value, "pk", value)
+        return "" if value is None else str(value)
+
+    def line_totals(self) -> dict:
+        """合計の枠 (core/_line_totals.html) の字。印を付けた行のうち、得意先を選んでいればその得意先の行だけを数える。
+
+        画面の JS (seizou-submit-label.js) が隠れた行を数えないのと同じ数え方。金額は 1 円に丸めた行の金額の合計
+        (core の line_totals は数量 × 単価を小数 2 桁で丸めるので使わない)。
+        """
+        chosen = self._chosen_customer()
+        picked = [
+            row
+            for row in self.rows
+            if row["checked"] and (not chosen or str(row["shipment"].order_line.order.customer_id) == chosen)
+        ]
+        qty = sum((row["shipment"].qty for row in picked), Decimal("0"))
+        amount = None if self.hide_money else sum((row["amount"] for row in picked), Decimal("0"))
+        return {
+            "rows": len(picked),
+            "qty": label_number(qty),
+            "amount": None if amount is None else label_number(amount),
+            "show_amount": not self.hide_money,
+        }
+
+    def submit_label_templates(self) -> list:
+        if self.hide_money:
+            return ["{rows} 行の請求書を作る"]
+        return ["{rows} 行・税抜 ¥{amount} の請求書を作る", "{rows} 行の請求書を作る"]
+
+    def submit_label_values(self) -> dict:
+        totals = self.line_totals()
+        if not totals["rows"]:
+            return {}
+        return {"rows": str(totals["rows"]), "amount": totals["amount"]}
 
     def service_kwargs(self):
         data = self.cleaned_data
