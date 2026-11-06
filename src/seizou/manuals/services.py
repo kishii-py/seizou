@@ -327,13 +327,16 @@ def save_as_version(manual, data, note, user):
 
 
 def restore_version(version, user):
-    """版の中身 (題と本文) に戻す。今の中身を版として残してから戻し、版の番号を 1 増やす (履歴は消さない)。"""
+    """版の中身 (題と本文) に戻す。今の中身を版として残してから戻し、版の番号を 1 増やす (履歴は消さない)。
+
+    返すマニュアルに、画面の知らせの字 saved_message (戻した版の番号と、戻す前の中身を残した版の番号) を付ける (表に書かない)。
+    """
     with transaction.atomic():
         target = ManualVersion.objects.filter(pk=getattr(version, "pk", version)).first()
         if target is None:
             raise ValueError("保存できません。版が見つかりません。版の履歴から開き直してください。")
         current = _lock_manual(target.manual_id)
-        ManualVersion.objects.create(
+        kept = ManualVersion.objects.create(
             manual=current,
             number=current.version,
             title=current.title,
@@ -345,6 +348,8 @@ def restore_version(version, user):
         current.body = target.body
         current.version += 1
         current.save()
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        current.saved_message = f"版 {target.number} の中身に戻しました。戻す前の中身は版 {kept.number} として残しました。"
         return current
 
 

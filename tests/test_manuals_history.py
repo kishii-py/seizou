@@ -4,6 +4,7 @@ import re
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.manuals import services
@@ -269,6 +270,9 @@ def test_restore_confirm_then_restore(client_logged_in, manual, user):
     assert reverse("manuals:manualversion_list", args=[manual.pk]) in html
     response = client_logged_in.post(url, {})
     assert response.status_code == 302
+    assert [(m.level_tag, str(m)) for m in get_messages(response.wsgi_request)] == [
+        ("success", "版 1 の中身に戻しました。戻す前の中身は版 2 として残しました。")
+    ]
     assert response["Location"] == reverse("manuals:manual_detail", args=[manual.pk])
     manual.refresh_from_db()
     assert manual.body == "## 準備\n\n古い行\n消す行\n残る行"

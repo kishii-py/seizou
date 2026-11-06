@@ -21,7 +21,7 @@ from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
 
-from .models import Progress
+from .models import Progress, _qty_text
 
 _R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 
@@ -36,6 +36,8 @@ def _dec(value):
 def record_progress(workorder_step, qty, recorded_at, user, *, note=""):
     """指示書の工程に実績を qty だけ記録する。
 
+    返す実績に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> に実績 <数> を記録しました。」) を付ける (表に書かない)。
+
     訳: 0 以下の実績の数を記録しないため。出所 = RULES.md R02。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -44,13 +46,18 @@ def record_progress(workorder_step, qty, recorded_at, user, *, note=""):
         locked = _WorkOrderStep.objects.select_for_update().get(pk=workorder_step.pk)
         if not qty > 0:
             raise RuleViolation("R02", _R02_MESSAGE)
-        return Progress.objects.create(
+        created = Progress.objects.create(
             workorder_step=locked,
             qty=qty,
             recorded_at=recorded_at,
             recorded_by=user if getattr(user, "pk", None) is not None else None,
             note=note,
         )
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        created.saved_message = (
+            f"{locked.workorder.wo_no} の工程 {locked.seq} {locked.process.name} に実績 {_qty_text(qty)} を記録しました。"
+        )
+        return created
 
 
 def recorded_qty(workorder_step):
