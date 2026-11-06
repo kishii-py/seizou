@@ -229,6 +229,7 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
 
     金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
     取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
+    返す入金に、画面の知らせの字 saved_message (「請求書 <番号> に ¥<金額> を入金として記録しました。」) を付ける (表に書かない)。
     訳: 取消した請求書に入金を記録させないため (なぜ要るかは未確認。原則の「記録どうしの矛盾」に当たるかは本人が決める)。出所 = RULES.md R21 (決め 11-03 14:1x。理由の字は仕様 01 の表 (2026-11-01) に無い)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -249,7 +250,7 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
             raise RuleViolation("R21", f"記録できません。{_R21_RULE}請求書 {locked.invoice_no} は取消なので、発行の請求書を選び直してください。")
-        return Payment.objects.create(
+        payment = Payment.objects.create(
             invoice=locked,
             received_on=received_on,
             amount=amount,
@@ -257,6 +258,9 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
             note=note or "",
             recorded_by=user if getattr(user, "pk", None) is not None else None,
         )
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        payment.saved_message = f"請求書 {locked.invoice_no} に ¥{_yen(amount)} を入金として記録しました。"
+        return payment
 
 
 def cancel_payment(payment, user):

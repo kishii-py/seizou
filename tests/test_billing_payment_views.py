@@ -4,11 +4,13 @@
 入金の記録は金額が主な登録なので、金額の閲覧が無い人は保存で断られる。
 """
 
+import json
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
@@ -29,6 +31,7 @@ ISSUED_ON = date(2026, 11, 30)
 RECEIVED_ON = date(2026, 12, 25)
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
 POST = {"received_on": "2026-12-25", "amount": "6500", "method": "transfer", "note": "作り物の入金"}
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 
 
 @pytest.fixture
@@ -176,7 +179,7 @@ def test_create_post_records_and_returns_to_invoice(client_logged_in, user, invo
     assert "tester" in panel
     assert "作り物の入金" in panel
     assert reverse("billing:payment_cancel", args=[payment.pk]) in panel
-    assert "保存しました。" in body
+    assert f"請求書 {invoice.invoice_no} に ¥6,500 を入金として記録しました。" in body
 
 
 @pytest.mark.parametrize("amount", ["0", "-5"])
@@ -324,3 +327,20 @@ def test_new_screens_are_in_catalog():
     for url_name in ("billing:payment_create", "billing:payment_cancel"):
         assert url_name in by_url_name
         assert by_url_name[url_name].usecase.startswith("使う人: 経理")
+
+
+def test_create_in_modal_says_what_was_recorded(client_logged_in, invoice):
+    """小窓で入金を記録すると、保存の後の知らせ (HX-Trigger の seizou:saved) が請求書の番号と金額を書く (候補 C44 の 2)。"""
+    response = client_logged_in.post(reverse("billing:payment_create", args=[invoice.pk]), POST, **MODAL)
+
+    assert response.status_code == 204
+    saved = json.loads(response["HX-Trigger"])["seizou:saved"]
+    assert saved["message"] == f"請求書 {invoice.invoice_no} に ¥6,500 を入金として記録しました。"
+    assert list(get_messages(response.wsgi_request)) == []
+
+
+def test_record_payment_saved_message_has_yen(user, invoice):
+    """service が返す入金の saved_message は、金額を 3 桁の区切りと頭の ¥ で書く (残を超える入金も止めない)。"""
+    payment = services.record_payment(invoice, RECEIVED_ON, Decimal("734900.00"), user)
+
+    assert payment.saved_message == f"請求書 {invoice.invoice_no} に ¥734,900 を入金として記録しました。"
