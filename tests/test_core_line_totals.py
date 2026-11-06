@@ -232,6 +232,8 @@ def test_order_hides_amount_without_money(settings, logged_in, user, customer, i
     assert "金額 ¥<span" not in body
     label, template, plain = _button(body)
     assert (label, template, plain) == ("受注する", ["{rows} 行で受注する"], "受注する")
+    # 明細の上の注記に単価の文 (2 文目) を出さない (初見テスト R5 の候補 C11 の 1。V56・U54)。
+    assert "金額は数量 × 単価で" not in body
 
     # 編集の形: 明細の初期値に単価があっても金額を出さない。
     order = _two_line_order(user, customer, item, plate)
@@ -240,6 +242,9 @@ def test_order_hides_amount_without_money(settings, logged_in, user, customer, i
     assert "金額 ¥<span" not in body
     assert _button(body)[:2] == ("2 行で保存", ["{rows} 行で保存"])
     assert "¥" not in _button(body)[0]
+    # 注記は 1 文目 (行の消し方) だけが残り、単価の文は出ない。
+    assert "金額は数量 × 単価で" not in body
+    assert "行を消すときは、表の右の端の「消す」に印を付けて保存します。" in body
 
 
 # --- 3. 発注 ---
