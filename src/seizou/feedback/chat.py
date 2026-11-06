@@ -15,13 +15,11 @@
 
 from __future__ import annotations
 
-from django.db import DatabaseError
 from django.utils import timezone
 
 from seizou.assistant import services as assistant_services
 from seizou.assistant import tools as assistant_tools
 from seizou.core import ai
-from seizou.core import services as core_services
 
 from . import services
 
@@ -152,10 +150,7 @@ def reset_chat(session) -> None:
 
 
 def _company_name() -> str:
-    try:
-        return core_services.company().name
-    except DatabaseError:
-        return "seizou"
+    return ai.company_name()
 
 
 def _in_catalog(url_name) -> bool:

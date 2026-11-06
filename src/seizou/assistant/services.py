@@ -20,12 +20,10 @@ import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
-from django.db import DatabaseError
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
 from seizou.core import access, ai, mcp_tools
-from seizou.core import services as core_services
 from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
 from . import tools
@@ -220,10 +218,7 @@ def forget(session):
 
 
 def _company_name():
-    try:
-        return core_services.company().name
-    except DatabaseError:
-        return "seizou"
+    return ai.company_name()
 
 
 def _page_path(page_url):

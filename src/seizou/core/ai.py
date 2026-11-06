@@ -13,7 +13,18 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 
+from django.db import DatabaseError
+
 from seizou.core import conf
+from seizou.core import services as core_services
+
+
+def company_name() -> str:
+    """system に入れる会社名。会社の行が読めないとき (DatabaseError) は "seizou"。"""
+    try:
+        return core_services.company().name
+    except DatabaseError:
+        return "seizou"
 
 
 def has_key(api_key_env) -> bool:
