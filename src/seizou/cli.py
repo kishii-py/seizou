@@ -20,6 +20,10 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
+seizou github-token [<置き場>]
+    会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (依頼書 N185)。
+    トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
+    画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
 
 終わりの番号: 0 = できた / 1 = migrate などの子の process が失敗した / 2 = 答えか置き場の誤り。
 
@@ -29,6 +33,7 @@ Django はこの module の中で import しない。Django を使う仕事は�
 from __future__ import annotations
 
 import argparse
+import getpass
 import importlib.util
 import json
 import os
@@ -907,6 +912,41 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     return EXIT_OK
 
 
+def command_github_token(site: Path) -> int:
+    """seizou github-token (依頼書 N185。決め 11-06 21:2x)。会社の置き場の .env に、GitHub のトークン・送り先・口座の名前の 3 行を書く。
+
+    画面の process が置き場の .env に書けない置き場のための道。置き場は manage.py と answers.yaml があるフォルダ。
+    トークンは getpass で聞き (画面に出さない)、送り先を聞き (空なら既定)、GitHub に口座の名前を聞いて確かめてから書く。
+    出すのは「<口座の名前> の口座としてつながりました。」だけ (トークンの値は出さない)。誤りは何も書かずに終わりの番号 2。
+    Django は起こさない (seizou.feedback.github の .env の関数に道を渡す。github が Django の settings を読むのは env_path の中だけ)。
+    """
+    if not ((site / "manage.py").is_file() and (site / "answers.yaml").is_file()):
+        print(f"止まりました: 置き場ではありません: {site} (manage.py か answers.yaml がありません)", file=sys.stderr)
+        return EXIT_INPUT
+    from seizou.feedback import github
+
+    try:
+        token = github.check_token(getpass.getpass("トークン (画面に出ません): ").strip())
+        answer = input(f"送り先のリポジトリ (owner/name。空なら {github.DEFAULT_REPO}): ").strip()
+        repo = github.check_repo(answer or github.DEFAULT_REPO)
+        login = github.whoami(token)
+    except (EOFError, KeyboardInterrupt):
+        print("止まりました: 入力がありませんでした。何も書いていません。", file=sys.stderr)
+        return EXIT_INPUT
+    except github.GithubError as exc:
+        print(f"止まりました: {exc} 何も書いていません。", file=sys.stderr)
+        return EXIT_INPUT
+    path = site / ".env"
+    try:
+        for key, value in ((github.TOKEN_ENV, token), (github.REPO_ENV, repo), (github.LOGIN_ENV, login)):
+            github.write_env_value(key, value, path=path)
+    except github.GithubError:
+        print(f"止まりました: {path} に書けませんでした。置き場の持ち主の口座で打ってください。", file=sys.stderr)
+        return EXIT_INPUT
+    print(f"{login} の口座としてつながりました。")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -935,6 +975,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ai_docs.add_argument("site", type=Path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
     ai_docs.add_argument("--force", action="store_true", help="CLAUDE.md か AGENTS.md が既にあっても、2 つとも書き直す")
+    github_token = commands.add_parser(
+        "github-token",
+        help="会社の置き場の .env に、フィードバックを GitHub に送るトークンを書く (画面に出さずに聞く)",
+        description="会社の置き場の .env に、フィードバックを GitHub に送るトークン・送り先・口座の名前の 3 行を書く。トークンは画面に出さずに聞く。",
+    )
+    github_token.add_argument("site", type=Path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
     return parser
 
 
@@ -944,6 +990,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)
     if args.command == "ai-docs":
         return command_ai_docs(args.site, args.force)
+    if args.command == "github-token":
+        return command_github_token(args.site)
     return EXIT_INPUT
 
 

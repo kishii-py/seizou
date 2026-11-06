@@ -6,7 +6,6 @@
 """
 
 import os
-import re
 import stat
 import sys
 
@@ -618,3 +617,49 @@ def test_sync_command_needs_no_manager(plain, fake):
     row.refresh_from_db()
     assert row.status == "fixed"
     assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
+
+
+# ---------------------------------------------------------------- 端末の seizou github-token
+
+
+def test_cli_github_token_writes_env_without_showing_token(tmp_path, fake, monkeypatch, capsys):
+    from seizou import cli
+
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "manage.py").write_text("", encoding="utf-8")
+    (site / "answers.yaml").write_text("id: example\nname: 作り物の会社\nport: 8009\n", encoding="utf-8")
+    (site / ".env").write_text("SECRET_KEY=plain-words\n", encoding="utf-8")
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt="": TOKEN + "\n")
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+
+    code = cli.main(["github-token", str(site)])
+
+    out, err = capsys.readouterr()
+    assert code == 0, err
+    assert out.strip() == "example-feedback-bot の口座としてつながりました。"
+    assert TOKEN not in out + err
+    assert (site / ".env").read_text(encoding="utf-8").splitlines() == [
+        "SECRET_KEY=plain-words",
+        f"SEIZOU_GITHUB_TOKEN={TOKEN}",
+        "SEIZOU_GITHUB_ISSUES_REPO=kishii-py/seizou",
+        "SEIZOU_GITHUB_LOGIN=example-feedback-bot",
+    ]
+    if sys.platform != "win32":
+        assert stat.S_IMODE((site / ".env").stat().st_mode) == 0o600
+
+
+def test_cli_github_token_refuses_bad_token_and_non_site(tmp_path, no_http, monkeypatch, capsys):
+    from seizou import cli
+
+    assert cli.main(["github-token", str(tmp_path)]) == 2
+    assert "置き場ではありません" in capsys.readouterr().err
+
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "answers.yaml").write_text("id: example\n", encoding="utf-8")
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt="": "not-a-token")
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    assert cli.main(["github-token", str(tmp_path)]) == 2
+    out, err = capsys.readouterr()
+    assert "トークンの形が違います" in err
+    assert not (tmp_path / ".env").exists()
