@@ -154,7 +154,7 @@ def test_print_html_has_note_no_and_quantities(client, user, note, two_shipments
     assert context["total"] == Decimal("5040")
     for shipment in two_shipments:
         assert f'<td class="num">{floatformat(shipment.qty, "g")}</td>' in body
-    assert f'<td class="num">{floatformat(Decimal("5040"), "g")}</td>' in body
+    assert f'<td class="num">¥{floatformat(Decimal("5040"), "g")}</td>' in body
 
 
 @pytest.mark.django_db
