@@ -14,7 +14,7 @@ from django import forms
 from django.utils import timezone
 
 from seizou.core.forms import PlainNumberInput
-from seizou.core.widgets import RemoteSelect
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 
 from . import services
 from .models import SOURCE_CHOICES, SOURCE_CONSIGNED, Allocation, Receiving
@@ -70,7 +70,7 @@ class ReceivingForm(forms.Form):
     received_on = forms.DateField(
         label="入荷日",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
     )
     lot = forms.CharField(
         label="ロット", max_length=50, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})

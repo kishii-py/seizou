@@ -218,3 +218,12 @@ def test_department_with_receiving_sees_menu(settings, client, db):
 
     body = client.get(reverse("receiving:receiving_list")).content.decode()
     assert f'href="{reverse("receiving:receiving_list")}"' in body
+
+
+def test_received_on_input_has_year_limit():
+    """入荷日の欄に年の上限 max="9999-12-31" が付き、class は今までどおり input w-full (C31 の 1 と同じ IsoDateInput。289 回目の要望。本体 11-07)。"""
+    from seizou.receiving.forms import ReceivingForm
+
+    tag = ReceivingForm.base_fields["received_on"].widget.render("received_on", None)
+    assert tag.startswith('<input type="date" name="received_on"')
+    assert 'max="9999-12-31"' in tag and 'class="input w-full"' in tag
