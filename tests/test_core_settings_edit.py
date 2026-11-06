@@ -307,14 +307,14 @@ def test_edit_choice_setting_from_screen(manager_client):
 
 
 def test_edit_bool_text_and_access_control(manager_client):
-    # check を外した真偽は POST に鍵が無く、偽で保存する
-    response = manager_client.post(edit_url("partial_shipment"), {})
+    # 真偽は丸の選択で "false" を送ると偽で保存する
+    response = manager_client.post(edit_url("partial_shipment"), {"partial_shipment": "false"})
     assert response.status_code == 302
     assert conf.setting("partial_shipment") is False
     assert "許さない" in manager_client.get(reverse("core:settings")).content.decode()
 
     body = manager_client.get(edit_url("partial_shipment")).content.decode()
-    assert 'name="partial_shipment"' in body and "分納: 許す" in body
+    assert '<input type="radio" name="partial_shipment" value="true"' in body and "許さない" in body
 
     assert manager_client.post(edit_url("assistant_model"), {"assistant_model": " claude-test "}).status_code == 302
     assert conf.setting("assistant_model") == "claude-test"

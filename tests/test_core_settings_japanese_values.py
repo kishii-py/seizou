@@ -54,14 +54,21 @@ def test_settings_list_and_edit_pages_show_japanese_values_only(manager_client, 
         page = response.content.decode()
         assert ENGLISH_VALUE.findall(page) == [], key
         assert f"<code class=\"font-mono\">{key}</code>" in page
-    # 選べる値はどれも日本語の字を持ち、option の value は英字の値・字は日本語だけ (字の無い値を足すと、ここで落ちる)
-    for key, values in (*conf.CHOICES.items(), ("access_control", conf.ACCESS_MODES)):
+    # 選べる値はどれも日本語の字を持ち、丸の value は英字の値・名前は日本語だけ (字の無い値を足すと、ここで落ちる)。
+    # input の後には改行が入る (Django の input.html の終わりの改行) ので \s* で受ける
+    for key, values in conf.CHOICES.items():
         words = settings_screen.SETTING_LABELS[key][1]
         page = manager_client.get(edit_url(key)).content.decode()
         for value in values:
-            assert re.search(rf'<option value="{value}"( selected)?>{re.escape(words[value])}</option>', page), (key, value)
+            assert re.search(rf'<input type="radio" name="{key}" value="{value}"[^>]*>\s*<span>{re.escape(words[value])}', page), (key, value)
+    # 権限の判定は今の選ぶ欄のまま (option の value は英字の値・字は日本語だけ)
+    words = settings_screen.SETTING_LABELS["access_control"][1]
+    page = manager_client.get(edit_url("access_control")).content.decode()
+    for value in conf.ACCESS_MODES:
+        assert re.search(rf'<option value="{value}"( selected)?>{re.escape(words[value])}</option>', page), ("access_control", value)
     page = manager_client.get(edit_url("partial_shipment")).content.decode()
-    assert "分納: 許す" in page and "許さない" in page
+    assert re.search(r'<input type="radio" name="partial_shipment" value="true"[^>]*>\s*<span>許す</span>', page)
+    assert re.search(r'<input type="radio" name="partial_shipment" value="false"[^>]*>\s*<span>許さない</span>', page)
 
 
 def test_posted_values_stay_english_and_are_saved(manager_client):
