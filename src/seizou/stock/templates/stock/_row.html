@@ -1,0 +1,33 @@
+{% load seizou_tags seizou_icons %}{% comment %}
+在庫の一覧の 1 行 (masters/_rows.html が在庫の一覧 stock_list のときに core/_rows.html の row_template として渡す)。
+写した元: core/_rows.html (6d52628 の main) の 15-25 行。土台の表の行の形が変わったら、ここも合わせる。
+写した元から変えた所: 行に data-row-menu、行の押下で部品の詳細へ移る onclick は link と ⋮ の欄の中の押下では動かない (closest('a, details'))、最後に「操作」の欄。
+行の操作は ⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment。
+「動きを見る」は在庫の動きの一覧を、絞りの「部品」をこの部品にして開く (?f_item=。絞りの枠と札に出る)。
+「棚卸しの調整」「払い出し」は部品を選んだ形 (?item=) で入力を小窓で開く (data-modal-form は href と 1 字も違わない字。決め 11-04 17:5x)。JS が無いときと新しいタブでは href で画面へ移り、「キャンセル」で在庫の一覧へ戻る (?next=)。
+この 2 つは can_move (masters/_rows.html が can_write の tag で 1 回だけ決める) が真の人にだけ出す。
+{% endcomment %}
+<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" data-row-menu {% if row.url %}onclick="if(!event.target.closest('a, details')){window.location='{{ row.url }}'}"{% endif %}>
+  {% for cell in row.cells %}
+  {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
+  {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</td>
+  {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% elif cell.status %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
+  {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endfor %}
+  {% url 'stock:stockmove_list' as moves_url %}{% url 'stock:adjust_create' as adjust_url %}{% url 'stock:issue_create' as issue_url %}
+  <td class="whitespace-nowrap text-right">
+    <details class="dropdown dropdown-end row-menu">
+      <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+        <li><a class="flex items-center gap-2" href="{{ moves_url }}?f_item={{ row.pk }}">{% icon "list" "size-4" %}動きを見る</a></li>
+        {% if can_move %}
+        <li><a class="flex items-center gap-2" href="{{ adjust_url }}?item={{ row.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{{ adjust_url }}?item={{ row.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "check" "size-4" %}棚卸しの調整</a></li>
+        <li><a class="flex items-center gap-2" href="{{ issue_url }}?item={{ row.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{{ issue_url }}?item={{ row.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "truck" "size-4" %}払い出し</a></li>
+        {% endif %}
+      </ul>
+    </details>
+  </td>
+</tr>
