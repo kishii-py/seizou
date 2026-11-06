@@ -32,6 +32,12 @@ body {
   margin: 0;
 }
 
+/* 印刷用の画面の上の「印刷」のボタンの行 (report_base.html の .report-actions)。ふだんは出さず、下の media の screen の中でだけ出す。
+   ブラウザの印刷と WeasyPrint の PDF は print の media なので、紙と PDF には出ない。同じ強さの選び方では後に書いた方が勝つので、この規則は media の screen の塊より前に置く。 */
+.report-actions {
+  display: none;
+}
+
 /* ブラウザで印刷用の画面をそのまま見るとき (PDF でないとき) は、紙と同じ余白を画面にも付ける。印刷と PDF は @page の余白。 */
 @media screen {
   body {
@@ -39,6 +45,28 @@ body {
     margin: 0 auto;
     padding: 15mm;
   }
+
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6mm;
+  }
+}
+
+/* 「印刷」のボタン。形は使い方の印刷 (core/manual_print.html) のボタンにそろえ、色は report.css に既にある黒・灰と白だけ。button は字の形を継がないので font: inherit。 */
+.report-print-button {
+  font: inherit;
+  padding: 1.5mm 5mm;
+  border: 1px solid #888;
+  border-radius: 1.5mm;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
+
+.report-print-button:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
 }
 
 p {
