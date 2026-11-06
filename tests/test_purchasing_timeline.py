@@ -124,7 +124,7 @@ def test_events_from_sending_to_acceptance_line_up_in_order(monkeypatch, user, s
         "発注を登録",
         "注文を送った (相手が受け取った)",
         "相手が受け入れた",
-        "出荷の知らせ SH-0001 (10 個)",
+        "作り物の協力企業 の出荷の知らせ (相手の出荷番号 SH-0001・10 個)",
         "受入 (10 個)",
         "検収を送った (受入 10 個)",
     ]

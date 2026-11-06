@@ -81,12 +81,14 @@ class Event:
 
 def events_for(purchase_order) -> list[Event]:
     """発注の流れの出来事を、日の昇順に並べて返す (読むだけ)。"""
+    # 出荷の知らせの題に出す相手の名前は、ここで 1 回だけ読む (知らせごとに読み直さない。詳細は 2 秒ごとに取り直すため)。
+    partner_name = purchase_order.partner.name
     events = [Event(purchase_order.order_date, "order", "発注を登録")]
     events += [_sent_event(outbox) for outbox in _all(purchase_order, "outbox_messages")]
     if purchase_order.replied_at is not None:
         events.append(_reply_event(purchase_order))
     for line in _all(purchase_order, "lines"):
-        events += [_notice_event(line, notice) for notice in _all(line, "shipping_notices")]
+        events += [_notice_event(line, notice, partner_name) for notice in _all(line, "shipping_notices")]
         for receipt in _all(line, "receipts"):
             events += _receipt_events(line, receipt)
     if purchase_order.status == purchase_order.STATUS_CANCELLED:
@@ -133,9 +135,10 @@ def _reply_event(purchase_order) -> Event:
     return Event(purchase_order.replied_at, "reply", title)
 
 
-def _notice_event(line, notice) -> Event:
-    # 出荷の知らせの詳細の画面は無い (発注の詳細の明細の表の「出荷の知らせ」の列)。model_url は None を返す。
-    title = f"出荷の知らせ {notice.shipment_no} ({_qty(notice.qty, line)})"
+def _notice_event(line, notice, partner_name) -> Event:
+    # 出荷の知らせの詳細の画面は無い (発注の詳細の明細の表の「相手からの出荷の知らせ」の列)。model_url は None を返す。
+    # 題は相手の名前と「相手の出荷番号」で、相手から届いた知らせと相手が付けた番号だと分かるようにする (初見テスト R5 の V107。C45)。
+    title = f"{partner_name} の出荷の知らせ (相手の出荷番号 {notice.shipment_no}・{_qty(notice.qty, line)})"
     return Event(notice.shipped_at, "shipping_notice", title, _url(notice), line.line_no)
 
 

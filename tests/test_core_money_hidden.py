@@ -226,7 +226,7 @@ def test_purchase_order_detail_lines_have_no_price_columns(money_on, jimu, keiri
     body = _get(jimu, url)[1]
 
     heads = _heads(body, 'id="po-lines-title"')
-    assert heads == ["操作", "行番号", "部品", "数量", "単位", "受入の数", "受入の残", "出荷の知らせ", "納期", "備考"]
+    assert heads == ["操作", "行番号", "部品", "数量", "単位", "受入の数", "受入の残", "相手からの出荷の知らせ", "納期", "備考"]
     assert OLD_DASH_CELL not in body
     assert '<td colspan="10">' in body and "2,500" not in body
 
