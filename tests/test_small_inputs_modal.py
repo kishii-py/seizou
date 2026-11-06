@@ -209,7 +209,7 @@ def _deliverynote_cancel(w):
         post={},
         saved=_status_is(DeliveryNote, note.pk, DeliveryNote.STATUS_CANCELLED),
         confirm=True,
-        text="この納品書を取り消します。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せます。",
+        text="この納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。",
         moved=True,
     )
 

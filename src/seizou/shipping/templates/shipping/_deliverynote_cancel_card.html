@@ -10,6 +10,6 @@
 </ul>
 {% if not in_modal %}<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_detail' object.pk %}">{% icon "arrow-left" "size-4" %}納品書へ戻る</a></div>{% endif %}
 {% else %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この納品書を取り消します。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せます。</span></div>
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。</span></div>
 {% include "core/_form_card.html" %}
 {% endif %}

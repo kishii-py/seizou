@@ -205,7 +205,7 @@ class DeliveryNoteCancelView(BaseFormView):
     service = staticmethod(services.cancel_delivery_note)
     template_name = "shipping/deliverynote_cancel.html"
     screen_name = "納品書を取り消す"
-    screen_help = "発行の納品書を取り消します。入っていた出荷は請求できなくなり、直してから新しい納品書にまとめ直せます。"
+    screen_help = "発行の納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。"
 
 
 @login_required
