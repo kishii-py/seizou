@@ -162,11 +162,12 @@ def test_receive_returns_receipt_with_acceptance_columns(monkeypatch, user, subc
 
 
 def test_receipt_hides_number_in_detail_fields():
-    assert Receipt.detail_hidden_fields == ("acceptance_message_id",)
+    # 発注の明細の無い受入は、送った発注でない側 (番号と検収の 2 列を隠す)。DB に問い合わせない。
+    # 送った発注の受入で 2 列が出ることは、test_receipt_detail_shows_state_columns_without_number が見る。
     hidden = hidden_detail_fields(Receipt())
     assert "acceptance_message_id" in hidden
-    assert "acceptance_sent_at" not in hidden
-    assert "acceptance_response" not in hidden
+    assert "acceptance_sent_at" in hidden
+    assert "acceptance_response" in hidden
 
 
 # --- 2 段目: 発注の詳細の「検収」の節と「送り直す」の口・受入の詳細 ---
@@ -346,3 +347,16 @@ def test_receipt_detail_shows_state_columns_without_number(
     assert "受け取った" in body
     assert str(receipt.acceptance_message_id) not in body
     assert "検収の番号" not in body
+
+
+@pytest.mark.django_db
+def test_unsent_receipt_detail_has_no_acceptance_rows(client_logged_in, receipt):
+    # つながりの無い協力企業の発注 (送っていない発注) の受入は、検収を送る物でないので 2 行を出さない
+    # (初見テスト R5 の候補 C18 の A3)
+    assert not receipt.line.purchase_order.outbox_messages.exists()
+
+    body = client_logged_in.get(reverse("purchasing:receipt_detail", args=[receipt.pk])).content.decode()
+
+    assert re.search(r"<dt[^>]*>発注の明細</dt>", body)
+    for label in ("検収を送った日時", "検収の相手の返事"):
+        assert re.search(rf"<dt[^>]*>{label}</dt>", body) is None, label
