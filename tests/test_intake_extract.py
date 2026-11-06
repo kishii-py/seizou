@@ -117,6 +117,19 @@ def test_no_key_is_intake_unavailable(without_key, customer, user):
     assert Extraction.objects.count() == 0
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["MESSAGE_NO_KEY", "MESSAGE_NOT_READ", "MESSAGE_NOT_JSON", "MESSAGE_NO_CREDIT", "MESSAGE_TIMEOUT", "MESSAGE_UNREACHABLE"],
+)
+def test_refusal_points_to_manual_order_only(name):
+    # 読み取れないときの次の手は手入力だけ。受信した注文へ誘うと、紙の PDF を渡す場所を探して迷う (C09 の V10)。
+    # MESSAGE_IN_INBOX と MESSAGE_NO_CONNECT は見張りの読み取りが受信した注文に入れる話なので見ない。
+    message = getattr(services, name)
+
+    assert message.endswith("受注を手で入れてください。")
+    assert "受信した注文" not in message
+
+
 def test_is_available_follows_env(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
     assert services.is_available() is True
@@ -202,7 +215,7 @@ def _refused_reply(monkeypatch, customer, user, text):
     with pytest.raises(ValueError) as caught:
         services.extract_order(upload(), customer, user)
     assert Extraction.objects.count() == 0
-    assert "手入力か受信した注文で受けてください" in str(caught.value)
+    assert "受注を手で入れてください" in str(caught.value)
     return str(caught.value)
 
 

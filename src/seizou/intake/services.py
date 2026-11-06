@@ -117,8 +117,8 @@ _KINDS = (
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # 日本語の文 (何が起きて、何をすればよいか)。返事の本文と鍵の値は文に入れない。
-_NEXT = "手入力か受信した注文で受けてください。"
-MESSAGE_NO_KEY = f"鍵が無いので読み取りは使えません。{_NEXT}"
+_NEXT = "受注を手で入れてください。"
+MESSAGE_NO_KEY = f"AI の鍵が無いので読み取りは使えません。{_NEXT}"
 #: 鍵が無いときに、アカウント管理の権限がある人にだけ黄の帯に出す 1 文 (UploadForm がテンプレートへ渡す。AI チャットの窓の文と同じ形)
 MESSAGE_NO_KEY_MANAGER = (
     "読み取りを使うには、会社の .env に ANTHROPIC_API_KEY を設定します。"
