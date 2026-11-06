@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from seizou.manuals import services
 from seizou.manuals.diff import ADDED, CHANGED, REMOVED, SAME, DiffRow, diff_rows
+from seizou.manuals.markdown import LineMark, line_mark
 from seizou.manuals.models import ManualVersion
 
 
@@ -155,6 +156,49 @@ def test_diff_page_both_bodies_empty_shows_one_notice(client_logged_in, manual, 
     html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
     assert "その版も今の中身も、本文が空です。" in html
     assert "本文に違いはありません。" not in html and "最初の違う所へ" not in html
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("## 見出し", LineMark("heading", "見出し", "##", " 見出し")),
+        ("- [ ] 項目", LineMark("check", "チェック項目", "- [ ]", " 項目")),
+        ("- [x] 項目", LineMark("check", "チェック項目", "- [x]", " 項目")),
+        (":::注意", LineMark("box_start", "注意の枠の始まり", ":::注意", "")),
+        (":::危険", LineMark("box_start", "危険の枠の始まり", ":::危険", "")),
+        (":::", LineMark("box_end", "枠の終わり", ":::", "")),
+        ("- 2026-11-03 [変更] 題 — 1 文", LineMark("event", "経緯", "-", " 2026-11-03 [変更] 題 — 1 文")),
+        ("- 項目", LineMark("bullet", "箇条書き", "-", " 項目")),
+    ],
+)
+def test_line_mark_kinds(line, expected):
+    """差分の行の頭の目印 (C10-4 = a)。記号の部分と残りの字をつなぐと元の行になる。"""
+    mark = line_mark(line)
+    assert mark == expected
+    assert mark.symbol + mark.rest == line
+
+
+@pytest.mark.parametrize("line", ["地の文", "### 小見出し", ":::その他", "", "1. 番号の付いた並び", "![説明](image:1)", "> 説明"])
+def test_line_mark_none_for_plain_lines(line):
+    assert line_mark(line) is None
+
+
+def test_diff_page_marks_format_symbols(client_logged_in, manual, user):
+    """差分の字の欄の頭に目印の札を出し、記号は薄い字で残す。タグを除いた欄の字に本文の 1 行がそのまま並ぶ。"""
+    services.update_manual(manual, {"body": "## 準備\n- [ ] 確かめる\n:::注意\n気を付ける\n:::\n地の文"}, user)
+    services.save_as_version(manual, {"body": "## 準備\n- [ ] 確かめる\n:::注意\n気を付ける\n:::\n地の文\n足した文"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    cells = re.findall(r'<td class="[^"]*whitespace-pre-wrap[^"]*">(.*?)</td>', html, re.S)
+    plain = [re.sub(r"<[^>]+>", "", cell) for cell in cells]
+    assert "見出し## 準備" in plain
+    assert "チェック項目- [ ] 確かめる" in plain
+    assert "注意の枠の始まり:::注意" in plain
+    assert "枠の終わり:::" in plain
+    assert '<span class="badge badge-sm badge-ghost mr-2 align-middle">見出し</span><span class="text-base-content/50">##</span> 準備' in html
+    assert "地の文" in plain and "気を付ける" in plain
+    assert all("badge" not in cell for cell, text in zip(cells, plain) if text in ("地の文", "気を付ける", "足した文"))
+    assert "行の頭の目印は、本文の書式の記号の意味です。" in html
 
 
 def test_restore_confirm_then_restore(client_logged_in, manual, user):

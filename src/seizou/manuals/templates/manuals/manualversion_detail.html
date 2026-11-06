@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load manuals_tags seizou_icons %}
-{# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。 #}
+{# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。字の欄は whitespace-pre-wrap なので、中身 (目印の札・薄い記号・残りの字) を 1 行に書き、間に空白と改行を置かない。 #}
 {% block actions %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.manual_id %}">{% icon "list" "size-4" %}版の履歴</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">版 {{ object.number }} に戻す</a>
@@ -18,16 +18,18 @@
     <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた {{ summary.changed }} 行</span>
     {% if rows %}{% if summary.first_index is None %}<span>本文に違いはありません。</span>{% else %}<a class="link link-primary" href="#first-diff">最初の違う所へ</a>{% endif %}{% endif %}
   </p>
+  <p class="mt-2 text-xs text-base-content/70">行の頭の目印は、本文の書式の記号の意味です。</p>
   <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
     <table class="table table-sm">
       <thead><tr class="bg-base-200 text-base-content/70"><th class="w-12 text-right font-medium">行</th><th class="font-medium">版 {{ object.number }}</th><th class="w-12 text-right font-medium">行</th><th class="font-medium">今の中身</th></tr></thead>
       <tbody class="font-mono">
         {% for row in rows %}
         {% if row.kind == "added" %}<tr class="bg-success/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "removed" %}<tr class="bg-error/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "changed" %}<tr class="bg-warning/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% else %}<tr>{% endif %}
+          {% diff_line row.left as left_line %}{% diff_line row.right as right_line %}
           <td class="text-right tabular-nums text-base-content/50">{{ row.left_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{{ row.left|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all">{% if left_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ left_line.label }}</span>{% endif %}{% if left_line.symbol %}<span class="text-base-content/50">{{ left_line.symbol }}</span>{% endif %}{{ left_line.rest }}</td>
           <td class="text-right tabular-nums text-base-content/50">{{ row.right_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{{ row.right|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all">{% if right_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ right_line.label }}</span>{% endif %}{% if right_line.symbol %}<span class="text-base-content/50">{{ right_line.symbol }}</span>{% endif %}{{ right_line.rest }}</td>
         </tr>
         {% empty %}
         <tr><td colspan="4" class="text-base-content/70">その版も今の中身も、本文が空です。</td></tr>

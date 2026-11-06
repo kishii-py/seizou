@@ -12,7 +12,7 @@ from django.utils.safestring import mark_safe
 
 from seizou.core.views import model_url
 from seizou.manuals import diff, services
-from seizou.manuals.markdown import Rendered
+from seizou.manuals.markdown import LineMark, Rendered, line_mark
 from seizou.manuals.models import Manual, ManualFolder
 
 register = template.Library()
@@ -39,6 +39,17 @@ def diff_summary(rows):
         "changed": kinds.count(diff.CHANGED),
         "first_index": first_index,
     }
+
+
+@register.simple_tag
+def diff_line(line):
+    """{% diff_line row.left as left_line %}。差分の欄の 1 行を、目印の字・記号の部分・残りの字に分ける。
+
+    見分け方は markdown.line_mark (方言の約束はその module の 1 か所)。返す物は LineMark。
+    書式の記号の無い行は label と symbol が空で、rest が行のまま。無い側の行 (None) は全部空。
+    """
+    mark = line_mark(line) if line else None
+    return mark or LineMark(kind="", label="", symbol="", rest=line or "")
 
 
 @register.simple_tag
