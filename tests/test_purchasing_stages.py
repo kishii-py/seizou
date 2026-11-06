@@ -197,8 +197,8 @@ def test_detail_shows_band_inside_the_live_heading(monkeypatch, user, logged_in,
     assert 'data-stage-current="4"' in band
     assert band.count('data-content="✓"') == 3
     assert band.count("step-primary") == 4
-    assert '<li class="step step-primary" aria-current="step">出荷の知らせ</li>' in band
-    assert '<li class="step">受入</li>' in band
+    assert '<li class="step max-sm:min-w-0 step-primary" aria-current="step">出荷の知らせ</li>' in band
+    assert '<li class="step max-sm:min-w-0">受入</li>' in band
     assert "明細 " not in band
 
 

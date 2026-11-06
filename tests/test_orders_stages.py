@@ -166,8 +166,8 @@ def test_detail_shows_band_between_heading_and_tabs(user, logged_in, customer, i
     assert band.count('data-content="✓"') == 2
     assert band.count('data-content="−"') == 3
     assert band.count("step-primary") == 3
-    assert '<li class="step step-primary" aria-current="step">納品</li>' in band
-    assert '<li class="step">請求</li>' in band
+    assert '<li class="step max-sm:min-w-0 step-primary" aria-current="step">納品</li>' in band
+    assert '<li class="step max-sm:min-w-0">請求</li>' in band
     assert "明細 " not in band
 
 
@@ -276,3 +276,18 @@ def test_skipped_stage_shows_a_grey_dash_without_primary(user, logged_in, custom
             assert absent not in li, f"{name} の段に {absent}"
     assert 'data-content="✓"' in _li(band, "受注")
     assert 'aria-current="step"' in _li(band, "出荷")
+
+
+@pytest.mark.django_db
+def test_band_fits_the_phone_width(user, logged_in, customer, item):
+    """phone の幅 (sm より狭い) では段の最小幅を外し、全部の段を帯の幅に収める (C06-3 = a)。sm から上は daisyUI の幅のまま。"""
+    order = _order(user, customer, item)
+
+    band = _band(_detail(logged_in, order)[1])
+
+    assert '<ul class="steps text-xs max-sm:w-full" aria-label="段の帯">' in band
+    lis = re.findall(r"<li [^>]*>", band)
+    assert len(lis) == len(STAGES)
+    assert all(li.startswith('<li class="step max-sm:min-w-0') for li in lis)
+    # 帯の箱 (送る形) はそのまま
+    assert '<div id="order-stages" class="mb-6 overflow-x-auto"' in band
