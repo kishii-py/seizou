@@ -21,7 +21,7 @@ item_fields:
     required: false
     in_list: true
     searchable: true
-  - label: 膜厚
+  - label: 膜厚 (μm)
     type: number
     required: false
     in_list: true

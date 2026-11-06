@@ -4,17 +4,25 @@
     register("masters.Item", "fields.ItemExt", [{"name": "ext01", "label": "材質", "type": "text", ...}, ...])
 と呼ぶ。列の名前は答えた順の連番 ext01・ext02…。拡張の表は部品の表に 1 対 1 (OneToOneField。related_name は "ext")。
 一覧の土台は in_list の列を自動で足し、入力の土台は欄を自動で足して ext= に分けて services に渡し、検索は searchable の列も見る。
+入力の土台が足す字の欄には、拡張の表に既にある値を候補 (HTML の datalist) で付ける (ext_suggestions。C28)。
 """
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 
 from django import forms
+from django.db import DatabaseError
+from django.db.models import Count
+
+from seizou.core.widgets import DatalistInput
 
 TYPES = ("text", "number", "date", "choice", "bool")
 EXT_PREFIX = "ext__"
 EXT_ACCESSOR = "ext"
+#: 字の欄の候補 (既にある値) の数の上限 (推測の目安。2 社の種の値は多くて 8 つ。C28)
+SUGGESTION_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -27,7 +35,11 @@ class Column:
     searchable: bool = False
     choices: tuple = field(default_factory=tuple)
 
-    def form_field(self) -> forms.Field:
+    def form_field(self, values=None) -> forms.Field:
+        """入力の欄。values (候補の字の並びを返す関数) を渡すと、字の欄だけに候補 (HTML の datalist) を付ける。
+
+        widget は作る時に渡す (Django の Field が作る時に maxlength と必須の印を widget に写すため)。
+        """
         kwargs = {"label": self.label, "required": self.required}
         if self.type == "number":
             return forms.DecimalField(max_digits=15, decimal_places=2, **kwargs)
@@ -37,6 +49,8 @@ class Column:
             return forms.ChoiceField(choices=[(c, c) for c in self.choices], **kwargs)
         if self.type == "bool":
             return forms.BooleanField(**{**kwargs, "required": False})
+        if values is not None:
+            return forms.CharField(max_length=100, widget=DatalistInput(values=values), **kwargs)
         return forms.CharField(max_length=100, **kwargs)
 
 
@@ -93,8 +107,11 @@ def list_columns_for(model) -> list[Column]:
 
 
 def form_fields_for(model) -> dict[str, forms.Field]:
-    """入力の土台が足す欄。鍵は ext__<列の名前>。"""
-    return {EXT_PREFIX + c.name: c.form_field() for c in columns_for(model)}
+    """入力の土台が足す欄。鍵は ext__<列の名前>。字の欄の候補は描くときに ext_suggestions で読む (C28)。"""
+    return {
+        EXT_PREFIX + c.name: c.form_field(values=functools.partial(ext_suggestions, model, c.name))
+        for c in columns_for(model)
+    }
 
 
 def search_fields_for(model) -> list[str]:
@@ -144,3 +161,40 @@ def save_ext(obj, ext: dict | None):
         raise ValueError(f"知らない会社ごとの項目 ({'・'.join(unknown)}) があります。")
     row, _created = ext_model.objects.update_or_create(**{link_name: obj}, defaults=ext)
     return row
+
+
+def frequent_values(queryset, field_name: str, limit: int = SUGGESTION_LIMIT) -> list:
+    """queryset の field_name の、空でない値を重なり無しで、多い順 (同じ数は値の順) に limit まで返す (字の欄の候補の元。C28)。
+
+    queryset の絞りのまま数える (部品なら使用停止の物も数える)。
+    """
+    rows = (
+        queryset.exclude(**{f"{field_name}__isnull": True})
+        .exclude(**{field_name: ""})
+        .values(field_name)
+        .annotate(n=Count("pk"))
+        .order_by("-n", field_name)[:limit]
+    )
+    return [row[field_name] for row in rows]
+
+
+def ext_suggestions(model, column_name: str) -> list:
+    """拡張の表の 1 列に既にある値 (frequent_values)。入力の土台が足す字の欄の候補 (HTML の datalist) が描くときに呼ぶ (C28)。
+
+    拡張の表から読む (部品の表から ext__ で読まない。拡張の表の行の無い部品を数えないため)。
+    登録が無い・拡張の表が引けない (LookupError)・読めない (DatabaseError) ときは候補を出さない (空の並び)。
+    先例は選ぶ欄の「最近使った」(core/select_options.py の recent)。候補の読みであって、保存を止める処理ではない。
+    """
+    reg = registration_for(model)
+    if reg is None:
+        return []
+    from django.apps import apps
+
+    try:
+        ext_model = apps.get_model(reg.ext)
+    except LookupError:
+        return []
+    try:
+        return frequent_values(ext_model.objects.all(), column_name)
+    except DatabaseError:
+        return []

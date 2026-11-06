@@ -38,9 +38,9 @@ FIELD_KEYS = {"label", "type", "required", "in_list", "searchable"}
 FIELD_TYPES = {"text", "number", "date", "choice", "bool"}
 EXPECTED_FIELD_LABELS = {
     "a_machining": ["材質", "図面の版"],
-    "b_plating": ["処理の種類", "膜厚"],
+    "b_plating": ["処理の種類", "膜厚 (μm)"],
 }
-NUMBER_FIELDS = {"膜厚"}
+NUMBER_FIELDS = {"膜厚 (μm)"}
 
 SEED_FILES = (
     "items.csv",

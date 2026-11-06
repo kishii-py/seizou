@@ -27,7 +27,7 @@ item_fields:
     in_list: true
     # 検索に使うか (true = 一覧の検索の欄でこの値を探す)
     searchable: true
-  - label: 膜厚
+  - label: 膜厚 (μm)
     type: number
     required: false
     in_list: true

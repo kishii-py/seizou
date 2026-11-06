@@ -13,6 +13,7 @@ DecimalField・FloatField の数の入力をこれに替える。送られた字
 初期値の Decimal は詳細と同じ字 (seizou_tags.comma。「1,200」「12.5」) で出し、印 data-number を付ける
 (js/seizou-number.js が、この印の欄だけを、欄を離れた時に 3 桁ごとの区切りの字にそろえる)。
 IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台が IntegerField の数の入力をこれに替える。
+DatalistInput: 字の欄に、既にある値の候補 (<datalist>) を付ける。候補は描くときに読む。候補に無い字もそのまま送る (断らない)。C28
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from django.core.exceptions import ValidationError
 from urllib.parse import urlencode
 
 from django.urls import NoReverseMatch, reverse
+from django.utils.html import format_html, format_html_join
 
 from seizou.core.templatetags.seizou_tags import comma
 
@@ -120,3 +122,27 @@ class IntegerInput(forms.TextInput):
     def value_from_datadict(self, data, files, name):
         value = super().value_from_datadict(data, files, name)
         return normalize_number(value) if isinstance(value, str) else value
+
+
+class DatalistInput(forms.TextInput):
+    """字の欄に、既にある値の候補を HTML の <datalist> で付ける (初見テスト 5 回目の V83。候補 C28 の 3)。
+
+    欄は自由に打てるまま。候補に無い字もそのまま送り、知らせも出さない (断らない)。
+    values は候補の字の並びを返す関数 (引数無し)。描くとき (render) に 1 回だけ呼び、作る時には呼ばない。
+    widget を class の定義で作る使い方 (Meta.widgets など) で、起動の時に DB を読まないため (RemoteSelect が URL を描くときに引くのと同じ考え)。
+    候補が 0 か、欄に id が無いときは、今の字の欄と同じ HTML (list の属性も <datalist> も出さない)。
+    """
+
+    def __init__(self, attrs=None, *, values):
+        super().__init__(attrs=attrs)
+        self.values = values
+
+    def render(self, name, value, attrs=None, renderer=None):
+        options = [str(option) for option in self.values()]
+        element_id = self.build_attrs(self.attrs, attrs).get("id")
+        if not options or not element_id:
+            return super().render(name, value, attrs, renderer)
+        list_id = f"{element_id}_list"
+        field_html = super().render(name, value, {**(attrs or {}), "list": list_id}, renderer)
+        option_html = format_html_join("", '<option value="{}"></option>', ((option,) for option in options))
+        return format_html('{}<datalist id="{}">{}</datalist>', field_html, list_id, option_html)
