@@ -14,7 +14,7 @@
       </a>
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
     </div>
-    <nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">
+    <nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー">
       {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。戻るの後は末尾の script が今の大項目を開き直す。 #}
       {% for section in seizou.sections %}
       {% if section.collapsible %}
@@ -44,7 +44,7 @@
     <div class="flex shrink-0 items-center gap-2 border-t border-base-300 p-4">
       <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{{ name|first|upper }}</span>
       <span class="min-w-0 flex-1 truncate font-medium" title="{{ name }}">{{ name }}</span>
-      <form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button class="btn btn-ghost btn-square btn-sm" type="submit" title="ログアウト" aria-label="ログアウト">{% icon "logout" "size-4" %}</button></form>
+      <form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">{% icon "logout" "size-4" %}ログアウト</button></form>
     </div>
     {% endwith %}
     {% endif %}

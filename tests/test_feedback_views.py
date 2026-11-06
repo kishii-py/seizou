@@ -61,7 +61,7 @@ def html_of(response) -> str:
 
 
 def nav_of(html: str) -> str:
-    return re.search(r'<nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">(.*?)</nav>', html, re.S).group(1)
+    return re.search(r'<nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー">(.*?)</nav>', html, re.S).group(1)
 
 
 def make(user, title="受注の一覧で並びが戻る", **extra):

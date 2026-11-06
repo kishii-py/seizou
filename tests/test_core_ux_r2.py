@@ -4,10 +4,11 @@
 2. R01・R06・R07 の知らせに残りの数を出し、数の桁をそろえる (「(10.00)」でなく「(10)」)。
 3. 整数の欄 (締日など) を字の欄 (inputmode=numeric) にし、「2e」が空で保存されずに誤りになる。
 4. 受注と発注の入力にも Enter の守り (data-enter-guard) を付ける。
-5. 左のメニューを画面の高さに固定し、入口が多いときは nav の中が送れる。
+5. 左のメニューを画面の高さに固定し、入口が多いときは nav の中が送れる。左下のログアウトのボタンに字を出す。
 6. 全体の検索 (部品マスターの節) が、会社ごとの項目のうち検索に使う物も見る。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -131,7 +132,20 @@ def test_sidebar_is_viewport_high_and_scrolls_inside(logged_in):
     start = body.index("<aside")
     tag = body[start : body.index(">", start)]
     assert "h-screen" in tag and "min-h-full" not in tag
-    assert 'class="flex-1 overflow-y-auto p-4" aria-label="メニュー"' in body
+    assert 'class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー"' in body
+
+
+@pytest.mark.django_db
+def test_sidebar_logout_button_shows_its_label(logged_in):
+    body = logged_in.get(reverse("core:home")).content.decode()
+    start = body.index("<aside")
+    aside = body[start : body.index("</aside>", start)]
+    form = re.search(rf'<form method="post" action="{re.escape(reverse("core:logout"))}">.*?</form>', aside, re.S)
+    assert form, "左のメニューにログアウトの form が無い"
+    button = re.search(r"<button[^>]*>(.*?)</button>", form.group(0), re.S)
+    assert button
+    # 読み上げの名前 (aria-label) だけでなく、絵の後に見える字がある
+    assert "ログアウト" in re.sub(r"<[^>]+>", "", button.group(1))
 
 
 # ---------------------------------------------------------------- 6 全体の検索と会社ごとの項目

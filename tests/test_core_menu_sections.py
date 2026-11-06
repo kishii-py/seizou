@@ -87,7 +87,7 @@ def test_broken_menu_setting_is_ignored(db, settings):
 
 def _nav(client, url):
     body = client.get(url).content.decode()
-    return re.search(r'<nav class="flex-1 overflow-y-auto p-4" aria-label="メニュー">(.*?)</nav>', body, re.S).group(1)
+    return re.search(r'<nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー">(.*?)</nav>', body, re.S).group(1)
 
 
 def _summary_labels(html):

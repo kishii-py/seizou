@@ -8,6 +8,7 @@ import re
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -20,13 +21,15 @@ from django.utils import timezone
 
 from seizou.accounts import services as accounts_services
 from seizou.connect.models import Inbox
-from seizou.core import dashboard
-from seizou.core.context_processors import MENU_COUNTS, seizou
+from seizou.core import dashboard, manual
+from seizou.core.context_processors import MENU_COUNTS, menu, seizou
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 
 BADGE = '<span class="tooltip tooltip-left ml-auto text-xs" data-tip="'
 INBOX_TABLE = "connect_inbox"
+#: 画面ごとの説明書の標準の組 (core/manual_default/)
+MANUAL_DEFAULT = Path(manual.__file__).parent / "manual_default"
 
 
 @pytest.fixture
@@ -174,3 +177,17 @@ def test_department_without_the_app_has_no_count(settings, client, customer):
     assert reverse("connect:inbox_list") not in aside
     assert reverse("workorders:workorder_list") in aside
     assert not _inbox_counts(ctx.captured_queries)
+
+
+def test_manual_tells_what_the_menu_count_counts(user):
+    # 印の移る先の一覧の「?」(画面ごとの説明書の標準の組) に、左のメニューの数が何の数かの 1 行がある。
+    # 2 社の種は、標準の組と同じバイトであることを test_core_manual_default と test_examples_manual が見る。
+    labels = {item["url_name"]: item["label"] for item in menu()}
+    problems = []
+    for url_name, (label, unit, _counter) in MENU_COUNTS.items():
+        raw = (MANUAL_DEFAULT / f"{manual.fragment_name(url_name)}.html").read_text(encoding="utf-8")
+        text = re.sub(r"\s", "", re.sub(r"<[^>]+>", "", raw))
+        for words in (f"左のメニューの「{labels[url_name]}」の横の数", f"{label}の{unit}数"):
+            if words not in text:
+                problems.append(f"{url_name}: {words}")
+    assert problems == [], "\n".join(problems)
