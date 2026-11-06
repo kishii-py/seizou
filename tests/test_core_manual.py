@@ -10,7 +10,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from seizou.core.manual import fragment_name
+from seizou.core.manual import fragment_name, manual_flows
 from seizou.core.screens import all_screens
 
 ITEM_FRAGMENT = "<section><h2>部品マスター</h2><p>作り物の説明の字</p></section>"
@@ -91,12 +91,44 @@ def test_manual_in_screen_catalog():
     assert rows[0].path == "/manual/"
 
 
+def toc_head() -> list[str]:
+    """前書きの無い置き場 (fixture の manual は空) の目次の頭の行 = 業務の流れがあれば flows (依頼書 N265 = 候補 C48 の 1 の 2)。"""
+    return ["flows"] if manual_flows() else []
+
+
 def test_toc_follows_screen_catalog(client_logged_in, manual):
     response = manual_page(client_logged_in)
     assert response.status_code == 200
     expected = [fragment_name(s.url_name) for s in all_screens()]
-    assert toc_anchors(response.content.decode()) == expected
+    assert toc_anchors(response.content.decode()) == [*toc_head(), *expected]
     assert "core_manual" in expected
+
+
+@pytest.mark.parametrize("params", [{}, {"print": "1"}])
+def test_toc_head_has_intro_and_flows(client_logged_in, manual, params):
+    """使い方の画面と印刷の目次の頭は「はじめに」(前書きの箱 id="index") と「業務の流れ」(id="flows")、その後が目録の並び。
+
+    依頼書 N265 (候補 C48 の 1 の 2・1 の 3。決め C48-2 = a)。前書きの箱は目次の nav の後・業務の流れの箱の前。
+    """
+    write_fragment(manual, "index", "<section><h2>作り物の前書き</h2><p>読み方の字</p></section>")
+    html = manual_page(client_logged_in, **params).content.decode()
+    screens = [fragment_name(s.url_name) for s in all_screens()]
+    assert manual_flows()
+    assert toc_anchors(html) == ["index", "flows", *screens]
+    assert toc_line(html, "index") == "はじめに"
+    assert toc_line(html, "flows") == "業務の流れ"
+    assert html.index('<nav aria-label="目次"') < html.index('<div id="index"') < html.index('<div id="flows"')
+    assert html.count('id="index"') == 1
+
+
+@pytest.mark.parametrize("params", [{}, {"print": "1"}])
+def test_toc_has_no_intro_line_when_intro_unreadable(client_logged_in, manual, params):
+    """前書きを UTF-8 で読めないときは、目次に「はじめに」の行も id="index" の箱も出さない (依頼書 N265)。"""
+    (manual / "index.html").write_bytes("<section><h2>作り物の前書き</h2></section>".encode("shift_jis"))
+    html = manual_page(client_logged_in, **params).content.decode()
+    assert "UTF-8 で読めませんでした" in html
+    assert toc_anchors(html) == [*toc_head(), *[fragment_name(s.url_name) for s in all_screens()]]
+    assert 'id="index"' not in html
 
 
 def test_toc_folds_in_details_open_by_default(client_logged_in, manual):
@@ -194,7 +226,7 @@ def test_print_has_all_fragments_without_menu(client_logged_in, manual):
     assert 'aria-label="横断して検索"' not in html
     assert 'aria-label="メニュー"' not in html
     assert "<title>使い方 | " in html
-    assert toc_anchors(html) == [fragment_name(s.url_name) for s in all_screens()]
+    assert toc_anchors(html) == [*toc_head(), *[fragment_name(s.url_name) for s in all_screens()]]
 
 
 @pytest.mark.django_db

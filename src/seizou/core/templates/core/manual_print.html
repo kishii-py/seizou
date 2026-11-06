@@ -3,6 +3,7 @@
 使い方の印刷用の 1 枚 (/manual/?print=1)。画面の土台を継がない 1 枚の HTML で、左のメニューと上の帯と入力の欄を持たない。
 紙に刷るので明るい theme に決める。全部の画面の断片を目録の順に並べ、目次の後は画面ごとに改ページする。
 断片は class を持たない素の HTML なので、画面の箱の子の選び方の class で形を付ける (core/manual.html と同じ字)。
+目次の頭は使い方の画面と同じく「はじめに」(前書きがあるとき。id="index" の箱へ) と「業務の流れ」(流れがあるとき) の行で、その後が目録の並び (依頼書 N265 = 候補 C48 の 1 の 3)。
 押せるのは「印刷」のボタンだけ (印刷のときは隠す)。
 {% endcomment %}
 <html lang="ja" data-theme="light">
@@ -31,7 +32,9 @@
   <nav aria-label="目次" class="mt-6">
     <h2 class="text-lg font-bold">目次</h2>
     <ol class="mt-2 list-decimal pl-6">
-      {% for section in sections %}<li><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}">{{ section.name }}</a></li>
+      {% if intro %}<li><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="#index">はじめに</a></li>
+      {% endif %}{% if flows %}<li><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="#flows">業務の流れ</a></li>
+      {% endif %}{% for section in sections %}<li><a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}">{{ section.name }}</a></li>
       {% endfor %}
     </ol>
   </nav>
@@ -40,7 +43,7 @@
   <p class="mt-6 font-medium">この会社の説明書はまだありません。管理者が作ります。{% if is_manager %}Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。{% endif %}</p>
   {% endif %}
   {% if intro %}
-  <div class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
+  <div id="index" class="mt-6 border-t border-base-300 pt-6 print:break-before-page print:border-0 print:pt-0 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
   {% elif intro_unreadable %}
   <p class="mt-6 text-error">前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>
   {% endif %}
