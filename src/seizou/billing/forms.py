@@ -44,17 +44,17 @@ class ShipmentCheckboxes(forms.CheckboxSelectMultiple):
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
-    """出荷を選ぶ欄。字は「出荷番号・得意先・品番 品名・数量 n・出荷日・納品書番号」(区切りは「・」。目視の所見 11-05)。"""
+    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は R5 の V113)。"""
 
     def label_from_instance(self, obj):
         line = obj.order_line
         qty = f"{obj.qty.normalize():f}"
         note_no = obj.delivery_note.note_no if obj.delivery_note else ""
         text = (
-            f"{obj.shipment_no}・{line.order.customer.name}・{line.item.part_no} {line.item.name}"
-            f"・数量 {qty}・{obj.shipped_at:%Y-%m-%d}"
+            f"出荷 {obj.shipment_no}・{line.order.customer.name}・{line.item.part_no} {line.item.name}"
+            f"・数量 {qty}・出荷日 {obj.shipped_at:%Y-%m-%d}"
         )
-        return f"{text}・{note_no}" if note_no else text
+        return f"{text}・納品書 {note_no}" if note_no else text
 
 
 class InvoiceForm(forms.Form):
