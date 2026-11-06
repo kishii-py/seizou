@@ -107,7 +107,12 @@ class AcceptForm(forms.Form):
 
 
 class RejectForm(forms.Form):
-    """断るの form。理由の欄 1 つ。"""
+    """断るの form。理由の欄 1 つ。
+
+    書いた理由が注文回答として相手へ送られる行だけ、理由の欄の下にそのことを書く (初見テスト R5 の候補 C72 の 3)。
+    説明はこの form の欄 (self.fields) にだけ入れ、class の欄 (base_fields) には書かない
+    (題の横の「?」の「入れる物」の表は base_fields を読むので、表の字は変わらない)。
+    """
     submit_label = "断る"
 
     reason = forms.CharField(
@@ -120,6 +125,18 @@ class RejectForm(forms.Form):
             "max_length": f"断る理由が {Inbox._meta.get_field('reason').max_length} 字を超えています。{Inbox._meta.get_field('reason').max_length} 字までに縮めてください。",
         },
     )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # instance が無い form (言葉の試験など) は DB を読まずに抜ける。
+        if instance is None:
+            return
+        # 送るかの判定は services.send_reply と同じ読み方 (読み取りの行は送らない・向き「送る」のつながりが無ければ送らない)。
+        if instance.source == Inbox.SOURCE_INTAKE or not instance.partner_id:
+            return
+        if not Connection.objects.filter(partner=instance.partner, direction=Connection.DIRECTION_SEND).exists():
+            return
+        self.fields["reason"].help_text = f"書いた理由は、注文回答として {instance.partner.name} へ送ります。"
 
     def service_kwargs(self):
         return {"reason": self.cleaned_data["reason"]}

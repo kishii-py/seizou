@@ -15,10 +15,11 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.connect import services, signing
-from seizou.connect.forms import AcceptForm
+from seizou.connect.forms import AcceptForm, RejectForm
 from seizou.connect.models import Inbox
 from seizou.masters.services import create_item, create_partner, map_partner_item
 from seizou.orders.models import Order
+from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
 from tests.test_r10_inbox_accept import _line, _payload
 
@@ -419,3 +420,38 @@ def test_reject_screen_shows_received_lines(client_logged_in, receive_order):
     assert "作り物の得意先" in body
     assert "A-100" in body and "作り物の部品 A-100" in body
     assert "注文回答として" not in body
+
+
+def test_reject_reason_help_says_reply_goes_to_partner(client_logged_in, receive_order, partner, user, monkeypatch):
+    """向き「送る」のつながりがある取引先の行は、理由の欄の下に、書いた理由が注文回答として相手へ届くことを書く (C72 の 3)。
+
+    理由が空で止まった画面にも同じ字が残る。GET と止まる POST だけなので HTTP は出ない (偽の requests.post が控える)。
+    """
+    fake = FakePost()
+    monkeypatch.setattr("requests.post", fake)
+    inbox = receive_order([_line(1, "A-100")])
+    services.register_connection(partner, "https://buyer.example.test/connect/receive/order/", ENV_NAME, "send", user)
+    url = reverse("connect:inbox_reject", args=[inbox.pk])
+    help_text = "書いた理由は、注文回答として 作り物の得意先 へ送ります。"
+
+    assert help_text in client_logged_in.get(url).content.decode()
+
+    empty = client_logged_in.post(url, {"reason": " "})
+
+    assert empty.status_code == 200
+    assert help_text in empty.content.decode()
+    inbox.refresh_from_db()
+    assert inbox.status == Inbox.STATUS_RECEIVED
+    assert fake.calls == []
+
+
+def test_reject_form_help_stays_on_the_form(receive_order, partner, user):
+    """理由の欄の説明は、受信した注文を渡した form の欄にだけ入り、class の欄 (base_fields) と instance 無しの form は空のまま (C72 の 3)。"""
+    inbox = receive_order([_line(1, "A-100")])
+    services.register_connection(partner, "https://buyer.example.test/connect/receive/order/", ENV_NAME, "send", user)
+
+    form = RejectForm(instance=inbox)
+
+    assert form.fields["reason"].help_text == "書いた理由は、注文回答として 作り物の得意先 へ送ります。"
+    assert RejectForm.base_fields["reason"].help_text == ""
+    assert RejectForm().fields["reason"].help_text == ""

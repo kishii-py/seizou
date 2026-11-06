@@ -452,3 +452,18 @@ def test_reject_screen_for_row_without_partner_shows_waiting_sender(client, user
     assert SENDER in body
     assert "( の品番のまま)" not in body
     assert "注文回答として" not in body
+
+
+def test_reject_screen_for_intake_row_has_no_reply_help(client, monkeypatch, customer, user):
+    """取引先の当たった読み取りの行は、向き「送る」のつながりがあっても相手へ送らないので、理由の欄の下に送る説明は出ない (C72 の 3)。"""
+    monkeypatch.setenv(ENV_NAME, _new_secret())
+    services.register_connection(customer, "http://127.0.0.1:9/connect/receive/order/", ENV_NAME, "send", user)
+    row = intake_row(customer, user)
+    client.force_login(user)
+
+    response = client.get(reverse("connect:inbox_reject", args=[row.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "届いた明細 (" in body and "作り物の得意先" in body
+    assert "注文回答として" not in body
