@@ -37,8 +37,8 @@ class Invoice(models.Model):
         related_name="invoices",
     )
     issued_on = models.DateField("発行日")
-    period_from = models.DateField("期間の初め")
-    period_to = models.DateField("期間の終わり")
+    period_from = models.DateField("締め期間の初め")
+    period_to = models.DateField("締め期間の終わり")
     due_on = models.DateField("支払期日", null=True, blank=True)
     subtotal = models.DecimalField("小計", max_digits=14, decimal_places=2)
     tax = models.DecimalField("消費税", max_digits=14, decimal_places=2)

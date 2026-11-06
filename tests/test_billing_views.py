@@ -310,3 +310,18 @@ def test_create_says_all_billed_in_same_period(client_logged_in, user, customer,
     assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 21), date(2026, 11, 20))
     assert invoice.due_on == date(2026, 12, 25)
     assert {row.shipment_id for row in invoice.lines.all()} == {first.pk, second.pk}
+
+
+@pytest.mark.django_db
+def test_create_form_names_numbers_in_shipment_rows(client_logged_in, user, customer, line):
+    # 出荷の行の番号と日付に名前を付ける (初見テスト R5 の V113。R09 の断りの字の「出荷 SH-…」と同じ形)。
+    shipment = _shipped(user, customer, line, "5")
+
+    response = client_logged_in.get(reverse("billing:invoice_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert (
+        f"出荷 {shipment.shipment_no}・作り物の得意先・T-100 作り物の軸・数量 5・出荷日 2026-11-05"
+        f"・納品書 {shipment.delivery_note.note_no}"
+    ) in body
