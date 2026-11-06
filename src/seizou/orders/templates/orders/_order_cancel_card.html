@@ -1,4 +1,18 @@
-{% load seizou_icons %}
-{# 受注の取消の確かめのカード (全体の画面 orders/order_cancel.html と小窓の両方が include する。N158)。黄の知らせに画面の 1 文 (OrderCancelView.screen_help) を出し、入力のカード (取消の理由の欄と「<受注番号> を取り消す」)。 #}
+{% load seizou_icons orders_timeline %}
+{# 受注の取消の確かめのカード (全体の画面 orders/order_cancel.html と小窓の両方が include する。N158)。黄の知らせに画面の 1 文 (OrderCancelView.screen_help) を出し、その下に読むだけの「この受注に付いている物」(orders.timeline.linked_for。無ければ出さない。初見テスト R5 の候補 C59)、入力のカード (取消の理由の欄と「<受注番号> を取り消す」)。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ screen_help }}</span></div>
+{% order_cancel_linked object as linked %}{% if linked %}
+{# 並びは黄の知らせの外 (後ろ) で、入力のカードの前。番号は詳細の画面への link を新しいタブで開く (小窓と打ちかけの取消の理由を残すため)。部署で開けない部品の番号は link にせず字だけ。 #}
+<section id="order-cancel-linked" class="mb-4 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="order-cancel-linked-title">
+  <h2 id="order-cancel-linked-title" class="text-lg font-bold">この受注に付いている物</h2>
+  <ul class="mt-2 divide-y divide-base-200">
+    {% for group in linked %}
+    <li class="py-2">
+      <p><span class="font-bold">{{ group.label }}</span> {% for doc in group.docs %}{% if doc.url %}<a class="link link-primary font-mono whitespace-nowrap" href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.no }}</a>{% else %}<span class="font-mono whitespace-nowrap">{{ doc.no }}</span>{% endif %}{% if doc.has_progress %} (実績あり){% endif %}{% if not forloop.last %}・{% endif %}{% endfor %} ({{ group.docs|length }} 件)</p>
+      <p class="mt-1 text-sm text-base-content/70">{% if group.kind == "workorder" %}受注を取り消しても、指示書は取消になりません。生産計画と進捗の盤から外れます。指示書も取消にするときは、指示書の詳細から 1 件ずつ取り消してください。{% if group.has_progress %}実績の入った指示書は取り消せません。{% endif %}{% else %}受注を取り消しても、そのまま残ります。{% endif %}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 {% include "core/_form_card.html" %}
