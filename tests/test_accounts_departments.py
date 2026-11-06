@@ -402,7 +402,7 @@ def test_detail_lists_living_members(on, client, manager, seizou_dept):
     assert positions == sorted(positions), shown
     assert shown in html
     assert f'href="{reverse("accounts:access_detail", args=[genba.seizou_access.pk])}"' in html
-    assert f'href="{reverse("accounts:department_update", args=[seizou_dept.pk])}"' in html
+    assert f'href="{reverse("accounts:department_update", args=[seizou_dept.pk])}?next={reverse("accounts:department_detail", args=[seizou_dept.pk])}"' in html
     assert f'href="{reverse("accounts:department_list")}"' in html
     assert "taishoku" not in html
     assert response.context["tabs"][0]["count"] == 1

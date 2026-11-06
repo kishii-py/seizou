@@ -200,7 +200,7 @@ def test_update_screen_saves_and_refuses_others(client, plain, other):
 
     client.force_login(plain)
     detail_html = html_of(client.get(f"/feedback/{row.pk}/"))
-    assert f'href="{edit}"' in detail_html
+    assert f'href="{edit}?next=/feedback/{row.pk}/"' in detail_html
     response = client.get(edit)
     assert response.status_code == 200
     assert 'value="元の題"' in html_of(response)

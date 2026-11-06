@@ -144,7 +144,7 @@ def test_back_to_list_only_when_no_list_name(logged_in, item, monkeypatch):
 def test_head_order_and_one_primary(logged_in, item, order, workorder, purchase_order):
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
     # 明細 2 行とも残がある受注は、主のボタンが緑の「出荷登録」(行を選ぶメニュー) で、「編集」は白 (C15-1 b・UX-2 a)
-    edit = f'<a class="btn btn-outline border-base-300" href="{reverse("orders:order_update", args=[order.pk])}">'
+    edit = f'<a class="btn btn-outline border-base-300" href="{reverse("orders:order_update", args=[order.pk])}?next={reverse("orders:order_detail", args=[order.pk])}">'
     marks = ('<nav aria-label="パンくず"', '<h1 class="truncate', 'aria-label="この画面の説明"', "data-detail-actions")
     positions = [body.index(mark) for mark in marks]
     start = body.index("data-detail-actions")

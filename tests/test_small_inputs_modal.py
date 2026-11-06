@@ -547,7 +547,10 @@ def test_large_inputs_stay_pages(world):
         assert tags, create_name
         assert all("data-modal-form" not in tag for tag in tags), create_name
 
-    edit = _tags(text(client.get(reverse("orders:order_detail", args=[order.pk]))), reverse("orders:order_update", args=[order.pk]))
+    edit = _tags(
+        text(client.get(reverse("orders:order_detail", args=[order.pk]))),
+        f'{reverse("orders:order_update", args=[order.pk])}?next={reverse("orders:order_detail", args=[order.pk])}',
+    )
     assert edit and all("data-modal-form" not in tag for tag in edit)
     delete = _tags(
         text(client.get(reverse("masters:holiday_detail", args=[holiday.pk]))), reverse("masters:holiday_delete", args=[holiday.pk])
