@@ -311,9 +311,9 @@ def test_delivery_note_detail_links_to_invoice(client, user, order):
     html = client.get(detail_url).content.decode()
     link = f'{reverse("billing:invoice_create")}?customer={order.customer_id}&amp;next={detail_url}'
     assert f'href="{link}"' in html
-    assert f'<a class="btn btn-outline border-base-300" href="{link}">' in html
+    assert f'<a class="btn btn-primary" href="{link}">' in html
     assert "請求書作成" in html
-    assert "btn-primary" not in html  # 納品書には「編集」が無い。足したボタンも主色にしない
+    assert html.count("btn-primary") == 1  # 請求していない出荷のある納品書は「請求書作成」が緑
 
     form = client.get(link).content.decode()
     assert _selected_option(form, "customer", order.customer_id)

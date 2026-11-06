@@ -2,13 +2,19 @@
 
 出荷: 納品書が無いか取消の納品書の出荷は、緑の「納品書作成」(納品書の小窓)。そのとき「編集」は白にして副のボタンの終わりに置く。
 納品書の権限が無い人 (編集の判定が on のとき) には「納品書作成」を出さない。
+納品書: 発行の納品書で、発行の請求書に入っていない出荷があれば、「⋯」の右に緑の「請求書作成」(画面の全体へ移る)。
+全部の出荷が請求書に入った納品書には出さない (C03-1 a)。判定は DeliveryNote.has_unbilled_shipments。
 作り物のデータは services で作る (受注と出荷は tests/test_core_screen_polish.py の物を借りる)。
 """
+
+from datetime import date
 
 import pytest
 from django.urls import reverse
 
+from seizou.billing import services as billing_services
 from seizou.shipping import services as shipping_services
+from seizou.shipping.models import DeliveryNote
 from tests import test_core_screen_polish
 from tests.test_core_access import account
 from tests.test_core_screen_polish import _delivery_note, _shipment
@@ -95,3 +101,79 @@ def test_note_button_follows_note_permission(settings, client, user, order):
     # 出荷の権限のある人: 緑で出る
     client.force_login(account("shukka", permissions=["shipping"]))
     _assert_note_green(_shipment_head(client, shipment), shipment)
+
+
+# ---------------------------------------------------------------- 納品書
+
+ISSUED_ON = date(2026, 11, 30)
+
+
+def _note_body(client, note):
+    response = client.get(reverse("shipping:deliverynote_detail", args=[note.pk]))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def _invoice_green(note):
+    detail = reverse("shipping:deliverynote_detail", args=[note.pk])
+    return f'<a class="btn btn-primary" href="{reverse("billing:invoice_create")}?customer={note.customer_id}&amp;next={detail}">'
+
+
+def _unbilled(note):
+    """cached_property なので、読み直した納品書で見る。"""
+    return DeliveryNote.objects.get(pk=note.pk).has_unbilled_shipments
+
+
+def _assert_invoice_green(body, note):
+    head = _actions(body)
+    green = _invoice_green(note)
+    assert green in head and "請求書作成" in head
+    assert head.index("data-detail-more") < head.index(green)
+    assert body.count("btn-primary") == 1
+
+
+@pytest.mark.django_db
+def test_unbilled_note_has_green_invoice_button(client, user, order):
+    note = _delivery_note(user, order, [_shipment(user, order)])
+    client.force_login(user)
+
+    _assert_invoice_green(_note_body(client, note), note)
+    assert _unbilled(note) is True
+
+
+@pytest.mark.django_db
+def test_invoice_button_follows_billed_shipments(client, user, order):
+    first = _shipment(user, order, "4")
+    second = _shipment(user, order, "6")
+    note = _delivery_note(user, order, [first, second])
+    client.force_login(user)
+
+    # 2 つの出荷のうち 1 つだけを請求書に入れた納品書: まだ緑
+    billing_services.create_invoice(order.customer, [first], user, issued_on=ISSUED_ON)
+    _assert_invoice_green(_note_body(client, note), note)
+    assert _unbilled(note) is True
+
+    # 全部を請求書に入れた納品書: 「請求書作成」も請求書の新規登録の道も出さない
+    invoice = billing_services.create_invoice(order.customer, [second], user, issued_on=ISSUED_ON)
+    body = _note_body(client, note)
+    assert "請求書作成" not in body
+    assert reverse("billing:invoice_create") not in body
+    assert body.count("btn-primary") == 0
+    assert _unbilled(note) is False
+
+    # その請求書を取り消すと、入っていた出荷はまた請求できるので緑に戻る
+    billing_services.cancel_invoice(invoice, user)
+    _assert_invoice_green(_note_body(client, note), note)
+    assert _unbilled(note) is True
+
+
+@pytest.mark.django_db
+def test_cancelled_note_has_no_invoice_button(client, user, order):
+    note = _delivery_note(user, order, [_shipment(user, order)])
+    shipping_services.cancel_delivery_note(note, user)
+    client.force_login(user)
+
+    body = _note_body(client, note)
+
+    assert "請求書作成" not in body
+    assert body.count("btn-primary") == 0
