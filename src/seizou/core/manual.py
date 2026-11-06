@@ -122,6 +122,7 @@ FLOWS = (
         "steps": (
             {"url_name": "orders:order_create", "do": "注文書や電話で受けた注文を、得意先と明細を入れて登録する。", "stage": "受注", "note": "生産管理ボードに出る。"},
             {"url_name": "connect:inbox_accept", "do": "seizou でつながった取引先の注文は、受信した注文から受け入れる。", "stage": "受注", "note": "受注ができ、相手に注文回答が送られる。"},
+            {"url_name": "receiving:receiving_create", "do": "得意先からワークや支給材が届いたら「入荷」で記録する (表面処理のように現物が無いと始められない会社向け)。", "stage": "", "note": ""},
             {"url_name": "workorders:workorder_create", "do": "生産管理ボードで明細を選び、指示書を発行する。", "stage": "指示", "note": ""},
             {"url_name": "workorders:workorder_detail", "do": "製造が指示書を受け、「着手」のボタンを押す。", "stage": "着手", "note": "「着手済」の印が出る。"},
             {"url_name": "progress:progress_create", "do": "工程が終わるたびに、実績の数と日時を入れる。", "stage": "完了", "note": "全部の工程の実績が予定に達すると「完了」になる。"},
