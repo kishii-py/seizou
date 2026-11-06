@@ -12,6 +12,28 @@
 {% endif %}
 {% endblock %}
 {% block more %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill %}{% url 'billing:invoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (N155)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (初見テスト R5 の V26。C17) #}
+{% block tab_rows %}{% if tab.related == "lines" %}
+<div class="overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">出荷日</th><th class="font-medium">出荷番号</th><th class="font-medium">品番</th><th class="font-medium">品名</th><th class="text-right font-medium">数量</th><th class="font-medium">単位</th>{% if not seizou.hide_money %}<th class="text-right font-medium">単価</th><th class="text-right font-medium">金額</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for row in tab.rows %}
+      <tr>
+        <td class="whitespace-nowrap font-mono tabular-nums">{{ row.obj.shipment.shipped_at|date:"Y-m-d" }}</td>
+        <td class="whitespace-nowrap font-mono">{{ row.obj.shipment.shipment_no }}</td>
+        <td class="whitespace-nowrap font-mono">{% master_link row.obj.shipment.order_line.item row.obj.shipment.order_line.item.part_no %}</td>
+        <td class="min-w-32">{{ row.obj.shipment.order_line.item.name }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.qty|comma }}</td>
+        <td class="whitespace-nowrap">{{ row.obj.shipment.order_line.item.unit }}</td>
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.unit_price|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.amount|comma }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}<div id="invoice-live">{{ block.super }}
 {# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
 {% can_write "billing.Invoice" as can_bill %}
