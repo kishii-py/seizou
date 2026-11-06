@@ -235,7 +235,7 @@ def test_list_shows_record(client_logged_in, extraction):
 
 
 def test_menu_has_no_intake_entry_but_url_works(client_logged_in):
-    # 左のメニューの入口は外した (受注の画面の「読み取る (OCR)」から入る。02 の 8 節の決め 6)。URL と画面は残る。
+    # 左のメニューの入口は外した (受注の画面の「注文書を読み取る」から入る。02 の 8 節の決め 6)。URL と画面は残る。
     response = client_logged_in.get(reverse("core:home"))
 
     body = response.content.decode()
