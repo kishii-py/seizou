@@ -49,7 +49,7 @@ class WorkOrder(models.Model):
         PROGRESS_CANCELLED: "取消",
     }
 
-    wo_no =models.CharField("指示書番号", max_length=35, unique=True)
+    wo_no = models.CharField("指示書番号", max_length=35, unique=True)
     order_line = models.ForeignKey(
         "orders.OrderLine",
         verbose_name="受注の明細",
