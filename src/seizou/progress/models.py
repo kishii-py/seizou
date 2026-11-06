@@ -6,9 +6,17 @@
 書くときは progress.services を通す。
 """
 
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+
+def _qty_text(value) -> str:
+    """数量の字。末尾の 0 を落とす (500.00 → 500、2.50 → 2.5)。stock・purchasing の models と同じ関数 (ほかの部品の model を import しない)。"""
+    dec = value if isinstance(value, Decimal) else Decimal(str(value))
+    return format(dec.normalize(), "f") if dec != dec.to_integral_value() else str(dec.quantize(Decimal(1)))
 
 
 class Progress(models.Model):
@@ -45,4 +53,4 @@ class Progress(models.Model):
 
     def __str__(self):
         recorded_at = timezone.localtime(self.recorded_at).strftime("%Y-%m-%d %H:%M")
-        return f"{self.workorder_step} 実績 {self.qty} ({recorded_at})"
+        return f"{self.workorder_step} 実績 {_qty_text(self.qty)} ({recorded_at})"

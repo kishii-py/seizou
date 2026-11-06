@@ -331,9 +331,27 @@ def test_workorder_detail_has_progress_tab(client_logged_in, issue, cut, user):
     _record(step, 4, user)
     first.refresh_from_db()
 
-    assert str(first) == f"{step} 実績 3.00 (2026-11-03 10:00)"
+    assert str(first) == f"{step} 実績 3 (2026-11-03 10:00)"
     assert "object (" not in str(first)
 
     body = _body(client_logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])))
     assert re.search(r'aria-label="進捗">進捗<span class="badge badge-sm tabular-nums">2</span>', body)
     assert str(first) in body
+
+
+@pytest.mark.django_db
+def test_progress_text_drops_trailing_zeros(client_logged_in, issue, cut, bend, user):
+    """進捗のタブの実績の字は末尾の 0 を落とす (500.00 → 500・2.50 → 2.5。実績の一覧と進捗の盤と同じ字。C16)。"""
+    workorder = issue(cut, bend)
+    cut_step, bend_step = workorder.steps.order_by("seq")
+    whole = _record(cut_step, 500, user)
+    half = _record(bend_step, "2.5", user)
+    whole.refresh_from_db()
+    half.refresh_from_db()
+
+    assert str(whole) == f"{cut_step} 実績 500 (2026-11-03 10:00)"
+    assert str(half) == f"{bend_step} 実績 2.5 (2026-11-03 10:00)"
+
+    body = _body(client_logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])))
+    assert str(whole) in body and str(half) in body
+    assert "500.00" not in body and "2.50" not in body

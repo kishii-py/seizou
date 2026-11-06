@@ -41,7 +41,10 @@ def _departments():
 
 
 def _documents(user, customer, item, cut):
-    """盤の明細 (指示書あり = 「実績を入れる」が出る)・指示書・納品書 (請求書の前)・請求書 (入金の前) と、ボタンの href。"""
+    """盤の明細 (指示書あり = 「実績を入れる」が出る)・指示書・納品書 (請求書の前)・請求書 (入金の前) と、ボタンの href。
+
+    workorder_progress は指示書の詳細の工程のタブの「実績を入力」(C16) の href の頭 (閉じの " を含めない。&amp;next= が続く)。
+    """
     line = _line(user, customer, item)
     workorder = _issue(user, line, cut, qty="4")
     step = workorder.steps.get(seq=1)
@@ -58,6 +61,7 @@ def _documents(user, customer, item, cut):
             "invoice": reverse("billing:invoice_detail", args=[invoice.pk]),
         },
         "progress": f'href="{reverse("progress:progress_create")}?workorder_step={step.pk}"',
+        "workorder_progress": f'href="{reverse("progress:progress_create")}?workorder_step={step.pk}&amp;next=',
         "issue": f'href="{reverse("workorders:workorder_create")}?order_line={line.pk}"',
         "ship": f'href="{reverse("shipping:shipment_create")}?order_line={line.pk}"',
         "workorder_cancel": f'href="{reverse("workorders:workorder_cancel", args=[workorder.pk])}"',
@@ -86,8 +90,10 @@ def test_department_outsider_buttons_hidden(settings, client, user, customer, it
     assert docs["invoice_cancel"] not in invoice
     assert docs["payment_create"] not in invoice
     assert "「入金を記録する」から" not in invoice
-    # 指示書 (workorders は部署の外): 「取り消す」が無い。
-    assert docs["workorder_cancel"] not in _page(client, jimu, docs["urls"]["workorder"])
+    # 指示書 (workorders は部署の外): 「取り消す」が無い。工程のタブの「実績を入力」(progress も部署の外) も無い (C16)。
+    workorder = _page(client, jimu, docs["urls"]["workorder"])
+    assert docs["workorder_cancel"] not in workorder
+    assert docs["workorder_progress"] not in workorder and "実績を入力" not in workorder
     # 納品書: 「請求書作成」(billing) は無く、「取消」(shipping = 部署の中) は出る。
     note = _page(client, jimu, docs["urls"]["note"])
     assert docs["note_invoice"] not in note and "請求書作成" not in note
@@ -102,6 +108,9 @@ def test_department_outsider_buttons_hidden(settings, client, user, customer, it
     row = _row(client, keiri, docs)
     assert docs["progress"] not in row and "実績を入れる" not in row
     assert "受注の詳細" in row
+    # keiri の指示書の詳細 (詳細は部署を見ないので開ける。progress は部署の外): 「実績を入力」が無い。
+    workorder = _page(client, keiri, docs["urls"]["workorder"])
+    assert docs["workorder_progress"] not in workorder and "実績を入力" not in workorder
 
 
 @pytest.mark.django_db
@@ -119,7 +128,9 @@ def test_department_insider_buttons_shown(settings, client, user, customer, item
     note = _page(client, keiri, docs["urls"]["note"])
     assert docs["note_invoice"] in note and "請求書作成" in note
 
-    assert docs["workorder_cancel"] in _page(client, kenmu, docs["urls"]["workorder"])
+    workorder = _page(client, kenmu, docs["urls"]["workorder"])
+    assert docs["workorder_cancel"] in workorder
+    assert docs["workorder_progress"] in workorder and "実績を入力" in workorder
     row = _row(client, kenmu, docs)
     for entry in (docs["progress"], "実績を入れる", docs["issue"], docs["ship"]):
         assert entry in row, entry

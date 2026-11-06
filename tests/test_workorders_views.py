@@ -172,6 +172,40 @@ def test_list_and_detail_render(client_logged_in, user, line, cut):
 
 
 @pytest.mark.django_db
+def test_detail_steps_offer_progress_entry(client_logged_in, user, line, cut, bend):
+    """工程のタブの行ごとに「実績を入力」(C16)。href と data-modal-form は同じ値 (工程の pk と戻る道)。取消の指示書には無い。"""
+    workorder = services.issue_workorder(line, Decimal("4"), [{"process": cut, "planned_qty": 4}, {"process": bend, "planned_qty": 4}], user)
+    url = reverse("workorders:workorder_detail", args=[workorder.pk])
+    create = reverse("progress:progress_create")
+    steps = list(workorder.steps.order_by("seq"))
+
+    body = client_logged_in.get(url).content.decode()
+    for step in steps:
+        link = f"{create}?workorder_step={step.pk}&amp;next={url}"
+        assert body.count(f'href="{link}" data-modal-form="{link}"') == 1, step
+        # 工程の字は今のまま (左)。ボタンは右
+        assert f'title="{step}">{step}</span>' in body, step
+    assert body.count("実績を入力</a>") == len(steps)
+    # 実績 0 の進捗のタブには、入れる場所の 1 文
+    assert "進捗が入ると、ここに並びます。" in body
+    assert body.count("工程のタブの「実績を入力」から入れます。") == 1
+
+    services.cancel_workorder(workorder, user, reason="作り物の取消")
+    body = client_logged_in.get(url).content.decode()
+    assert "workorder_step=" not in body and "実績を入力" not in body
+    for step in steps:
+        assert str(step) in body, step
+
+
+@pytest.mark.django_db
+def test_order_detail_keeps_empty_tab_text(client_logged_in, order):
+    """空のタブに 1 文を足すのは指示書の詳細の進捗のタブだけ。受注の詳細の空のタブは今のまま (core の block tab_empty の土台の字)。"""
+    body = client_logged_in.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+    assert "指示書が入ると、ここに並びます。" in body
+    assert "実績を入力" not in body
+
+
+@pytest.mark.django_db
 def test_menu_has_workorder_entry(client_logged_in):
     response = client_logged_in.get(reverse("core:home"))
     body = response.content.decode()
