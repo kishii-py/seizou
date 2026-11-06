@@ -14,6 +14,7 @@ from seizou.core.reports import PdfUnavailable
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
+from tests.billing_helpers import shipped as _shipped
 
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
@@ -48,14 +49,6 @@ def _order_line(user, customer, item):
         order_date=ORDER_DATE,
     )
     return order.lines.get()
-
-
-def _shipped(user, customer, line, qty):
-    """納品書の出た出荷 (出荷済み) を 1 つ作る。"""
-    shipment = shipping_services.ship(line, Decimal(qty), SHIPPED_AT, user)
-    shipping_services.create_delivery_note(customer, [shipment], user)
-    shipment.refresh_from_db()
-    return shipment
 
 
 @pytest.fixture
