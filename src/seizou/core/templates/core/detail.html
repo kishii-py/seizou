@@ -10,10 +10,18 @@
 {% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4" data-detail-head>
   <div class="min-w-48 flex-1">
+    {# 状態の印の無い詳細は、題と「?」を折り返さない組 (min-w-0) に入れ、「?」だけが次の行へ落ちないようにする (題は truncate で縮む。初見テスト R5 の r5-a-08・r5-b-10。N266)。block heading_badge は状態の枝にだけ置くので、状態 (choices つきの status) の無い model の子が heading_badge を上書きしても出ない (今上書きする請求書と指示書は status を持つ)。 #}
     <div class="flex flex-wrap items-center gap-2">
+      {% if status %}
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
       {% block heading_badge %}{% if status %}{% status_badge object dot=True %}{% endif %}{% endblock %}
       {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
+      {% else %}
+      <div class="flex min-w-0 items-center gap-2">
+        <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
+        {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
+      </div>
+      {% endif %}
       {% for chip in head_chips|slice:":3" %}<span class="badge badge-outline gap-1 border-base-300" data-head-chip><span class="text-base-content/70">{{ chip.label }}</span><span class="font-medium tabular-nums">{{ chip.value }}</span></span>{% endfor %}
     </div>
     {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x。「?」で説明書の断片を見る)。 #}
