@@ -598,10 +598,17 @@ MESSAGE_GITHUB_NOT_CONNECTED = "GitHub とまだつないでいません。フ�
 MESSAGE_GITHUB_CONFIRM_FIRST = "先に「確認済みにする」を押してください。"
 
 
-def _refuse_github(user, what) -> None:
-    """GitHub の口は世話役だけ (外は日本語の ValueError)。what は「GitHub とつなぐ」のような動きの字。"""
-    if not can_manage(user):
-        raise ValueError(f"{what}のは、アカウント管理の担当者だけです。" + access.CONTACT)
+def _refuse_github(user, what, *, sending=False) -> None:
+    """GitHub の口は世話役だけ (外は日本語の ValueError)。what は「GitHub とつなぐ」のような動きの字。
+
+    文の頭は、送る口 (sending) なら「送れません。」、ほかは「保存できません。」(断りの文の型。tests/test_wording.py)。
+    """
+    if can_manage(user):
+        return
+    reason = f"{what}のは、アカウント管理の担当者だけです。" + access.CONTACT
+    if sending:
+        raise ValueError("送れません。" + reason)
+    raise ValueError("保存できません。" + reason)
 
 
 def github_status() -> dict:
@@ -626,7 +633,7 @@ def connect_github(data, user) -> dict:
     """
     _refuse_github(user, "GitHub とつなぐ")
     if not isinstance(data, dict):
-        raise ValueError("つなげませんでした。トークンと送り先を、項目の名前と値の組で渡してください。")
+        raise ValueError("保存できません。トークンと送り先を、項目の名前と値の組で渡してください。")
     try:
         token = github.check_token(data.get("token"))
         repo = github.check_repo(_text(data.get("repo")) or github.DEFAULT_REPO)
@@ -635,7 +642,7 @@ def connect_github(data, user) -> dict:
         github.write_env_value(github.REPO_ENV, repo)
         github.write_env_value(github.LOGIN_ENV, login)
     except github.GithubError as exc:
-        raise ValueError(f"つなげませんでした。{exc}") from None
+        raise ValueError("保存できません。" + f"GitHub とつなげませんでした。{exc}") from None
     return {"login": login, "repo": repo}
 
 
@@ -646,7 +653,7 @@ def disconnect_github(user) -> None:
         for key in (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV):
             github.remove_env_value(key)
     except github.GithubError as exc:
-        raise ValueError(f"外せませんでした。{exc}") from None
+        raise ValueError("保存できません。" + f"GitHub から外せませんでした。{exc}") from None
 
 
 def send_to_github(feedback, user) -> str:
@@ -656,7 +663,7 @@ def send_to_github(feedback, user) -> str:
     確認済みでない・つないでいないときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
     HTTP は atomic の外 (R17)。送った後に mark_sent (atomic) で URL を残す。
     """
-    _refuse_github(user, "GitHub に送る")
+    _refuse_github(user, "GitHub に送る", sending=True)
     if feedback.status != "confirmed":
         raise ValueError("送れません。" + MESSAGE_GITHUB_CONFIRM_FIRST)
     token = github.read_env_value(github.TOKEN_ENV)
@@ -668,13 +675,14 @@ def send_to_github(feedback, user) -> str:
     try:
         issue = github.create_issue(token, repo, title, text, [GITHUB_LABEL, feedback.get_kind_display()])
     except github.GithubError as exc:
-        raise ValueError(f"送れませんでした。{exc}") from None
+        raise ValueError("送れません。" + str(exc)) from None
     try:
         mark_sent(feedback, user, sent_url=issue["html_url"])
     except ValueError as exc:
         raise ValueError(
-            f"GitHub に Issue はできましたが ({issue['html_url']})、送ったにできませんでした。{exc}"
-            "「送ったにする」の欄に、この URL を貼ってください。"
+            "保存できません。"
+            + f"GitHub に Issue はできました ({issue['html_url']})。ただ、送ったにできませんでした ({exc})。"
+            + "「送ったにする」の欄に、この URL を貼ってください。"
         ) from None
     return issue["html_url"]
 
