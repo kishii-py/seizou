@@ -18,7 +18,7 @@ def workorder_tag_context(workorder) -> dict:
 
     company = {"name"}、tag = 指示書の要点
     ({"number", "issued_on", "part_no", "item_name", "qty", "due_date", "customer", "order_no", "customer_order_no"})、
-    steps = 工程の順の {"seq", "process", "planned_qty", "start", "end"}。
+    steps = 工程の順の {"seq", "process", "planned_qty", "start", "end"}、cancelled = 状態が取消なら真。
     """
     order_line = workorder.order_line
     order = order_line.order
@@ -47,4 +47,5 @@ def workorder_tag_context(workorder) -> dict:
             }
             for step in steps
         ],
+        "cancelled": workorder.status == workorder.STATUS_CANCELLED,
     }
