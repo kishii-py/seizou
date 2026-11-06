@@ -1,4 +1,4 @@
 {% load seizou_tags %}
 {# 入金の記録のカード (全体の画面 billing/payment_form.html と小窓の両方が include する。N158b)。入力の頭に請求書の番号と得意先と 合計・入金済み・残 の 1 行 (確かめでなく入力の頭なので黄の帯にしない)。 #}
-<p class="mb-4 text-sm text-base-content/70">請求書 <span class="font-mono">{{ object.invoice_no }}</span> ({{ object.customer.name }})。{% if not seizou.hide_money %}合計 <span class="tabular-nums">{{ object.total|comma }}</span>・入金済み <span class="tabular-nums">{{ object.paid_total|comma }}</span>・残 <span class="tabular-nums">{{ object.balance|comma }}</span>{% endif %}</p>
+<p class="mb-4 text-sm text-base-content/70">請求書 <span class="font-mono">{{ object.invoice_no }}</span> ({{ object.customer.name }})。{% if not seizou.hide_money %}合計 <span class="tabular-nums">{{ object.total|yen }}</span>・入金済み <span class="tabular-nums">{{ object.paid_total|yen }}</span>・残 <span class="tabular-nums">{{ object.balance|yen }}</span>{% endif %}</p>
 {% include "core/_form_card.html" %}

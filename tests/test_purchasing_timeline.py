@@ -152,12 +152,12 @@ def test_money_is_hidden_without_money_permission(monkeypatch, user, logged_in, 
     receipt_url = reverse("purchasing:receipt_detail", args=[receipt.pk])
 
     shown = _flow_section(_detail(logged_in, po)[1])
-    assert f'href="{receipt_url}">受入 (10 個)</a> <span class="tabular-nums">({comma(receipt.amount)} 円)</span>' in shown
+    assert f'href="{receipt_url}">受入 (10 個)</a> <span class="tabular-nums">(¥{comma(receipt.amount)})</span>' in shown
 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
     hidden = _flow_section(_detail(logged_in, po)[1])
     assert f'href="{receipt_url}">受入 (10 個)</a>' in hidden
-    assert " 円)" not in hidden
+    assert "(¥" not in hidden
 
 
 @pytest.mark.django_db

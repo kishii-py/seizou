@@ -229,7 +229,7 @@ def test_order_hides_amount_without_money(settings, logged_in, user, customer, i
     body = logged_in.get(reverse("orders:order_create")).content.decode()
     assert _frame(body) == {"rows": "0", "qty": "0", "amount": None}
     assert "data-line-totals-amount" not in body
-    assert "金額 <span" not in body
+    assert "金額 ¥<span" not in body
     label, template, plain = _button(body)
     assert (label, template, plain) == ("受注する", ["{rows} 行で受注する"], "受注する")
 
@@ -237,7 +237,7 @@ def test_order_hides_amount_without_money(settings, logged_in, user, customer, i
     order = _two_line_order(user, customer, item, plate)
     body = logged_in.get(reverse("orders:order_update", args=[order.pk])).content.decode()
     assert _frame(body) == {"rows": "2", "qty": "30", "amount": None}
-    assert "金額 <span" not in body
+    assert "金額 ¥<span" not in body
     assert _button(body)[:2] == ("2 行で保存", ["{rows} 行で保存"])
     assert "¥" not in _button(body)[0]
 
@@ -267,7 +267,7 @@ def test_purchase_order_hides_amount_without_money(settings, logged_in, maker, i
 
     body = logged_in.post(url, _po_post(maker, (item, "3", "1500"), (plate, "2", "2000"), partner=False)).content.decode()
     assert _frame(body) == {"rows": "2", "qty": "5", "amount": None}
-    assert "金額 <span" not in body
+    assert "金額 ¥<span" not in body
     assert _button(body)[0] == "2 行で発注する"
 
 
@@ -281,7 +281,7 @@ def test_bulk_ship_shows_rows_and_qty_without_amount(logged_in, user, customer, 
 
     body = logged_in.get(f"{url}?line={a.pk}&line={b.pk}", **MODAL).content.decode()
     assert _frame(body) == {"rows": "2", "qty": "20", "amount": None}
-    assert "金額 <span" not in body
+    assert "金額 ¥<span" not in body
     assert _button(body)[0] == "2 行・合計 20 個を出荷する"
 
 

@@ -1,4 +1,5 @@
 {# 読み取った明細の表 (得意先の品番のまま)。読み取りの詳細と受注にするの画面で使う。object は読み取りの行。 #}
+{% load seizou_tags %}
 <div class="overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm">
   <thead><tr class="bg-base-200 text-base-content/70">
@@ -18,7 +19,7 @@
       <td><span class="block max-w-xs truncate" title="{{ line.part_name }}">{{ line.part_name }}</span></td>
       <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty }}</td>
       <td class="whitespace-nowrap">{{ line.unit }}</td>
-      {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|default_if_none:"" }}</td>{% endif %}
+      {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|default_if_none:""|yen }}</td>{% endif %}
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}</td>
     </tr>
     {% empty %}

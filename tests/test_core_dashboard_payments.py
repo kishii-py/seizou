@@ -108,7 +108,7 @@ def test_stats_put_payments_card_after_payable_with_money_mark():
     labels = [stat["label"] for stat in stats]
 
     card = stats[labels.index("今月の入金")]
-    assert card["unit"] == "円"
+    assert card["unit"] == ""
     assert card["money"] is True
     assert card["url"] == reverse("billing:invoice_list")
     assert card["icon"] == "yen"
@@ -125,7 +125,7 @@ def test_home_shows_payments_card(user, logged_in, invoice):
 
     start = body.index("今月の入金")
     card = body[start : body.index("</p></div>", start)]
-    assert "2,400" in card and "円" in card
+    assert "¥2,400" in card and "円" not in card
     assert f'href="{reverse("billing:invoice_list")}"' in body[body.rindex("<a", 0, start) : start]
     assert f"{timezone.localdate().month} 月に入金日のある入金" in card
     assert body.index("今月の支払の見込み") < start

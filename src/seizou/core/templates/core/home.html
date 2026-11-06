@@ -20,7 +20,7 @@
       </div>
       <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
     </div>
-    {% if stat.hidden %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums text-base-content/50">—</span></p>{% elif stat.money %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma:0 }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% else %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
+    {% if stat.hidden %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums text-base-content/50">—</span></p>{% elif stat.money %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
     {% if stat.detail %}<p class="mt-1 text-sm text-base-content/70">{{ stat.detail }}</p>{% endif %}
     {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
     <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
@@ -132,14 +132,14 @@
     {% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th><th class="text-right font-medium">金額 (円)</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th><th class="text-right font-medium">金額</th></tr></thead>
         <tbody>
           {% for month in shipping.months %}
           <tr class="row-hover h-10">
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_count|comma }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_qty|floatformat:"-2g" }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|comma:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -206,7 +206,7 @@
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|comma:0 }}<span class="text-xs text-base-content/50"> 円</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
             <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>
           </tr>
           {% endfor %}

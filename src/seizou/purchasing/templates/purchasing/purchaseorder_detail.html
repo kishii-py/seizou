@@ -48,8 +48,8 @@
           <td class="whitespace-nowrap">{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>
           <td>{{ line.unit }}</td>
-          {% if not seizou.hide_money %}<td class="text-right tabular-nums">{{ line.unit_price|comma }}</td>
-          <td class="text-right tabular-nums">{{ line.amount|comma }}</td>{% endif %}
+          {% if not seizou.hide_money %}<td class="text-right tabular-nums">{{ line.unit_price|yen }}</td>
+          <td class="text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
           <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}{% notice_rests line as rests %}<ul>{% for entry in rests %}{% with row=entry.notice %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and entry.rest > 0 and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">受入を記録する</a>{% endif %}</li>{% endwith %}{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>

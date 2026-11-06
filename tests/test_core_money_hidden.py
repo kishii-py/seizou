@@ -280,5 +280,5 @@ def test_payload_and_extracted_lines_drop_unit_price(template, attr):
     assert len(heads) == 6 and "単価" not in heads
     heads = re.findall(r"<th[^>]*>([^<]*)</th>", shown)
     assert len(heads) == 7 and "単価" in heads
-    assert ">250<" not in hidden and OLD_DASH_CELL not in hidden and ">250<" in shown
+    assert "¥250" not in hidden and OLD_DASH_CELL not in hidden and ">¥250<" in shown
     assert 'colspan="6"' in render([], True) and 'colspan="7"' in render([], False)

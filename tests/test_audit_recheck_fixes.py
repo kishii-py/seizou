@@ -111,7 +111,7 @@ def test_inbox_detail_and_accept_drop_trailing_zeros(logged_in, customer):
         html = response.content.decode()
         # 明細の表 (_payload_lines.html) の見出しの「行番号」から表の終わりまで
         table = html.split('<th class="whitespace-nowrap text-right font-medium">行番号</th>', 1)[1].split("</table>", 1)[0]
-        for shown in (">50<", ">45<", ">1,234.5<", ">abc<"):
+        for shown in (">50<", ">¥45<", ">1,234.5<", ">abc<"):
             assert shown in table, (name, shown)
         for raw in ("50.00", "45.00", "1234.50", "None"):
             assert raw not in table, (name, raw)

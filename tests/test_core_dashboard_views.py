@@ -201,14 +201,14 @@ def test_chart_svgs_use_theme_classes_only(logged_in, chart_data):
     # 棒の title の数と図の下の表の数が合う。
     key = today.strftime("%Y-%m")
     assert f"{key} 出荷の数量 4</title>" in svgs["shipping-qty-chart"]
-    assert f"{key} 出荷の金額 400 円</title>" in svgs["shipping-amount-chart"]
+    assert f"{key} 出荷の金額 ¥400</title>" in svgs["shipping-amount-chart"]
     assert f"{key} 発行 4</title>" in svgs["production-chart"]
     assert f"{key} 完成 4</title>" in svgs["production-chart"]
     shipping = body[body.index('id="shipping-title"') : body.index('id="production-title"')]
     production = body[body.index('id="production-title"') : body.index('id="recent-orders-title"')]
     shipping_table = shipping[shipping.rindex("</svg>") :]
     production_table = production[production.rindex("</svg>") :]
-    assert ">400</td>" in shipping_table and ">4</td>" in shipping_table
+    assert ">¥400</td>" in shipping_table and ">4</td>" in shipping_table
     assert ">4</td>" in production_table
 
 
@@ -224,9 +224,9 @@ def test_money_hidden_drops_amount_chart(settings, logged_in, chart_data):
     assert response.context["shipping"]["amount_chart"] is None
     # 表の金額の欄は残り、枡は「—」。
     shipping = body[body.index('id="shipping-title"') : body.index('id="production-title"')]
-    assert "金額 (円)</th>" in shipping
+    assert "金額</th>" in shipping
     assert '<span class="text-base-content/50">—</span>' in shipping
-    assert ">400</td>" not in shipping
+    assert ">¥400</td>" not in shipping
     assert 'id="production-chart"' in body
 
 

@@ -4,6 +4,6 @@
 <p class="flex flex-wrap items-center gap-2 text-sm tabular-nums text-base-content/70" data-line-totals>
   <span>明細 <span class="font-medium" data-line-totals-rows>{{ totals.rows|default_if_none:"—" }}</span> 行</span>
   <span>数量 <span class="font-medium" data-line-totals-qty>{{ totals.qty|default_if_none:"—" }}</span></span>
-  {% if totals.show_amount %}<span>金額 <span class="font-medium" data-line-totals-amount>{{ totals.amount|default_if_none:"—" }}</span> 円</span>{% endif %}
+  {% if totals.show_amount %}<span>金額 ¥<span class="font-medium" data-line-totals-amount>{{ totals.amount|default_if_none:"—" }}</span></span>{% endif %}
 </p>
 {% endwith %}

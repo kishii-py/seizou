@@ -1778,7 +1778,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "今月の支払の見込み",
                 "value": payable,
-                "unit": "円",
+                "unit": "",
                 "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
                 "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
                 "icon": "yen",
@@ -1793,7 +1793,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "今月の入金",
                 "value": payments,
-                "unit": "円",
+                "unit": "",
                 "note": f"{today.month} 月に入金日のある入金の金額の合計 (取消を除く)",
                 "help": "入金日が今月の入金の金額の合計です。取消は数えません。",
                 "icon": "yen",
