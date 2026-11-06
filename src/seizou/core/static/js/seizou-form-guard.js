@@ -11,10 +11,10 @@
  *   閉じる道は 3 つ = 閉じるボタンと外側の押下 (どちらも method="dialog" の form の submit) と Esc (dialog の cancel)。
  *   小窓が閉じたら (保存の後の seizou:saved で seizou-modal.js が閉じたときも)、小窓の中の印を外す。
  *   htmx の差し替えで form が消えたときは、印も form と一緒に消える。
- * - 保存の帯 (core/_save_bar.html の data-save-bar。N154。案 5-B): 画面の全体の入力 (小窓の外) に印のある form がある間だけ出す。
- *   出し入れは帯の hidden の属性だけ (syncBar。印を付ける所と外す所で呼ぶ = 書きかけの判定は印の 1 か所)。
- *   帯の「保存」は、その form の保存のボタン (type="submit" の最後の物 = Ctrl+Enter と同じ) を押す。
- *   帯の「破棄」は MESSAGE で聞き、OK なら印を外して同じ URL を GET で開き直す (止まった POST を送り直さない。離れるときの確認も出ない)。
+ * - 書きかけの字 (core/_save_bar.html の data-save-bar。C21。決め C21-1 = e): 画面の全体の入力 (小窓の外) の下の行
+ *   (キャンセルと保存。窓の下の端に貼り付く) の左の字。印のある form がある間だけ出す。
+ *   出し入れは字の hidden の属性だけ (syncBar。印を付ける所と外す所で呼ぶ = 書きかけの判定は印の 1 か所)。
+ *   字はボタンを持たない (保存は下の行の保存のボタン。入れた値を捨てるときは「キャンセル」で離れ、上の beforeunload の確認が出る)。
  */
 (function () {
   "use strict";
@@ -32,7 +32,7 @@
     return !!(root && root.querySelector(DIRTY));
   }
 
-  // 画面の全体の入力 (小窓の外) のうち、印のある form (無ければ null)。保存の帯はこの form のためだけに出る。
+  // 画面の全体の入力 (小窓の外) のうち、印のある form (無ければ null)。書きかけの字はこの form のためだけに出る。
   function dirtyPageForm() {
     var modal = dialog();
     var forms = document.querySelectorAll(DIRTY);
@@ -42,7 +42,7 @@
     return null;
   }
 
-  // 保存の帯 (N154) の出し入れ。印を読むだけ (数えない)。帯の無い画面 (小窓だけの要求・黄の知らせの後) では何もしない。
+  // 書きかけの字 (C21) の出し入れ。印を読むだけ (数えない)。字の無い画面 (小窓だけの要求・黄の知らせの後) では何もしない。
   function syncBar() {
     var bar = document.querySelector(BAR);
     if (bar) bar.hidden = !dirtyPageForm();
@@ -88,25 +88,6 @@
     },
     true
   );
-
-  // 保存の帯のボタン (N154)。「保存」は Ctrl+Enter と同じ (保存のボタン = type="submit" の最後の物を押す。押したボタンが submitter になる)。
-  // 「破棄」は MESSAGE で聞き、OK なら印を外して同じ URL を GET で開き直す (reload は止まった POST を送り直すので使わない)。
-  document.addEventListener("click", function (event) {
-    var target = event.target instanceof Element ? event.target : null;
-    var button = target ? target.closest("[data-save-bar-save], [data-save-bar-discard]") : null;
-    var form = button ? dirtyPageForm() : null;
-    if (!form) return;
-    if (button.hasAttribute("data-save-bar-save")) {
-      var submits = form.querySelectorAll('button[type="submit"]');
-      var save = submits[submits.length - 1];
-      if (save && !save.disabled) save.click();
-      return;
-    }
-    if (!window.confirm(MESSAGE)) return;
-    delete form.dataset.seizouDirty;
-    syncBar();
-    window.location.assign(window.location.pathname + window.location.search);
-  });
 
   window.addEventListener("beforeunload", function (event) {
     if (!hasDirty(document)) return;
