@@ -12,5 +12,5 @@ MENU = [("進捗", "progress:progress_list"), ("実績", "progress:record_list")
 urlpatterns = [
     path("", views.ProgressBoardView.as_view(), name="progress_list"),
     path("records/", views.ProgressListView.as_view(), name="record_list"),
-    path("new/", views.ProgressCreateView.as_view(), name="progress_create"),
+    path("records/new/", views.ProgressCreateView.as_view(), name="progress_create"),
 ]
