@@ -88,10 +88,11 @@ def _lock(item):
     return type(item)._default_manager.select_for_update().get(pk=item.pk)
 
 
-def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
+def _move(item, kind, qty, moved_on, user, *, source=None, note="", before_qty=None, counted_qty=None):
     """在庫の動きを 1 行作る。呼ぶ側の transaction.atomic の中で呼ぶ。符号は種類で合わせ、0 は ValueError。
 
     ただし棚卸しの調整の 0 は残す (在庫を数えていない部品に実地 0 を入れ、0 から数え始める行。表の制約も同じ)。
+    before_qty と counted_qty は棚卸しの調整の控え (adjust だけが渡す。ほかの呼び手は渡さず空のまま)。
     """
     qty = _dec(qty)
     sign = kind_sign(kind)
@@ -104,6 +105,8 @@ def _move(item, kind, qty, moved_on, user, *, source=None, note=""):
         item=locked,
         kind=kind,
         qty=qty,
+        before_qty=before_qty,
+        counted_qty=counted_qty,
         moved_on=moved_on,
         content_type=ContentType.objects.get_for_model(source) if source is not None else None,
         object_id=source.pk if source is not None else None,
@@ -435,6 +438,8 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
     動きのある部品は「在庫数を 190 から 185 にしました (差 -5)。」(正の差は「+」を付ける)。数え始めは
     「5 から数え始めました。」で、数は実地の数 (差はその日と後の出荷を足した数なので、実地の数と違うことがある)。
     実地 0 で数え始めたときは「0 から数え始めました。」。数の字は _qty_text で末尾の 0 を落とす。
+    作る行の「調整の前の在庫数」(before_qty) に今の在庫数 (数え始めは空)、「実地の在庫数」(counted_qty) に実地の数を
+    控えとして入れる (決め C07-1 = a)。在庫数の計算は 2 つの欄を読まず、今までどおり数量の合計から出す。
     実地の数が負と、動きのある部品で差が 0 (今の在庫数と同じ) は ValueError。
     """
     counted = _dec(counted_qty)
@@ -449,7 +454,9 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
             diff = counted - current
         if diff == 0 and current is not None:
             raise ValueError("保存できません。今の在庫数と同じです。調整は要りません。")
-        move = _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)
+        move = _move(
+            locked, KIND_ADJUSTED, diff, moved_on, user, note=note, before_qty=current, counted_qty=counted
+        )
         if current is not None:
             signed = ("+" if diff > 0 else "") + _qty_text(diff)
             move.saved_message = f"在庫数を {_qty_text(current)} から {_qty_text(counted)} にしました (差 {signed})。"
