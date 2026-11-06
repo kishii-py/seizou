@@ -246,6 +246,10 @@ def test_order_form_line_widths_fit_unit_and_fix_item(logged_in):
     template = re.search(r'<template id="order-line-template">(.*?)</template>', body, re.S).group(1)
     assert "min-w-20" in _line_cell_classes(template, "lines-__prefix__-unit")
 
+    # 部品の列を箱の左の端に止める (C35 の 4。C34-1 の a の class)。明細の表 = <tbody id="order-lines"> を持つ表
+    lines_table = body[body.rfind("<table", 0, body.index('<tbody id="order-lines">')) :]
+    assert "seizou-pin-first" in re.match(r'<table class="([^"]*)"', lines_table).group(1).split()
+
 
 @pytest.mark.django_db
 def test_order_form_says_delete_is_at_right_end(logged_in):
