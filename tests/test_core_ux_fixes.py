@@ -499,3 +499,45 @@ def test_buttons_and_titles_use_general_words(client_logged_in):
     assert "詳細を見る" in modal and "詳細を開く" not in modal
     home = text(client_logged_in.get(reverse("core:home")))
     assert "ダッシュボード" in home and "はじめに" not in home
+
+
+# ---------------------------------------------------------------- 初見テスト 5 回目 (R5) の候補 C32: 支払の 2 欄・詳細の二重・端数の既定
+
+PAYMENT_MONTH_HELP = "翌月末払いなら「翌月」と支払日「31」、翌月 25 日払いなら「翌月」と支払日「25」"
+
+
+def _field_box(body, name):
+    """入力のカードの欄の箱 (欄の見出しの label の手前の、箱の div の開きの tag から label まで) の字。"""
+    label = body.index(f'for="id_{name}"')
+    return body[body.rindex('<div class="min-w-0', 0, label) : label]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["masters:partner_create", "masters:partner_update"])
+def test_payment_month_starts_a_row_beside_payment_day(client_logged_in, partner, url_name):
+    """支払の月の欄だけを行の頭から始め、支払日と同じ行の左右に並べる (V42)。締日の右は空く。"""
+    args = [partner.pk] if url_name == "masters:partner_update" else []
+    body = text(client_logged_in.get(reverse(url_name, args=args)))
+    assert body.count("sm:col-start-1") == 1
+    assert "sm:col-start-1" in _field_box(body, "payment_month")
+    for name in ("closing_day", "payment_day", "rounding"):
+        assert "sm:col-start-1" not in _field_box(body, name), name
+    # 1 列 (幅 640 未満) の並びは今と同じ 締日 → 支払の月 → 支払日
+    assert body.index('for="id_closing_day"') < body.index('for="id_payment_month"') < body.index('for="id_payment_day"')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["masters:item_create", "masters:process_create"])
+def test_other_forms_have_no_row_start(client_logged_in, url_name):
+    """row_start_fields を持たない form の入力のカードには、行の頭の class が付かない。"""
+    body = text(client_logged_in.get(reverse(url_name)))
+    assert 'class="min-w-0' in body
+    assert "sm:col-start-1" not in body
+
+
+@pytest.mark.django_db
+def test_payment_month_help_explains_the_pair(client_logged_in):
+    """支払の月の案内に、支払日との組み合わせの例を書く。支払日の案内は今の字のまま。"""
+    body = text(client_logged_in.get(reverse("masters:partner_create")))
+    assert PAYMENT_MONTH_HELP in body
+    assert "1〜31。月末は 31" in body

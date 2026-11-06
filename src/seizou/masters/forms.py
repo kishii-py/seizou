@@ -53,6 +53,10 @@ class ItemForm(ServiceModelForm):
 class PartnerForm(ServiceModelForm):
     active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
 
+    #: 行の頭 (幅 640 以上の 2 列の左) から始める欄 (入力のカード core/_form_card.html が読む)。
+    #: 締日 → 支払の月 → 支払日の順を崩さずに、「支払の月」と「支払日」を同じ行の左右に並べる (初見テスト 5 回目の V42)。
+    row_start_fields = ("payment_month",)
+
     class Meta:
         model = Partner
         fields = [
@@ -69,6 +73,7 @@ class PartnerForm(ServiceModelForm):
         ]
         help_texts = {
             "closing_day": "1〜31。月末締めは 31",
+            "payment_month": "翌月末払いなら「翌月」と支払日「31」、翌月 25 日払いなら「翌月」と支払日「25」",
             "payment_day": "1〜31。月末は 31",
             "rounding": "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。",
             "tax_mode": "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。",
