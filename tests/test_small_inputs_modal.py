@@ -523,9 +523,7 @@ def test_whole_pages_keep_working(world, name):
     case = BUILD[name](world)
     page = text(world.client.get(case.url))
     assert "<html" in page
-    if name != "payment_cancel":
-        # 入金の取消は入金の一覧の URL が無く、入金の枠の link は ?next= を付けないので、前から「キャンセル」を出さない (変えない)
-        assert "キャンセル" in page
+    assert "キャンセル" in page
     if case.moved:
         assert case.text in page
     response = world.client.post(case.url, case.post)
@@ -686,3 +684,25 @@ def test_warned_cancel_keeps_yellow_button(world, cancel_checks):
         assert DANGER_BUTTON not in card
         assert PRIMARY_BUTTON not in card
     assert not case.saved()
+
+
+def _cancel_href(card):
+    """カードの下の行の「キャンセル」の href (無ければ None)。"""
+    match = re.search(r'<a class="btn btn-outline border-base-300" href="([^"]*)">.*?キャンセル</a>', card, re.S)
+    return match.group(1) if match else None
+
+
+def test_payment_cancel_page_goes_back_to_invoice(world):
+    """入金の取消の全体の画面の「キャンセル」は、その入金の請求書の詳細の入金の枠へ戻る (a-blind-14・b-blind-15。C24 の 3)。
+
+    ?next= を付けて開いたときは、その next へ戻る (土台の cancel_url のまま)。小窓は今のまま「キャンセル」を出さない。
+    """
+    case = _payment_cancel(world)
+    invoice_id = Payment.objects.get().invoice_id
+    detail = reverse("billing:invoice_detail", args=[invoice_id])
+
+    assert _cancel_href(_card(text(world.client.get(case.url)))) == f"{detail}#payments"
+    assert _cancel_href(_card(text(world.client.get(f"{case.url}?next={detail}")))) == detail
+    modal = text(world.client.get(case.url, **MODAL))
+    assert _cancel_href(_card(modal)) is None
+    assert "キャンセル" not in modal
