@@ -223,6 +223,37 @@ def test_order_lines_js_shows_amount_as_text():
     assert "innerHTML" not in text
 
 
+def _line_cell_classes(body: str, name: str) -> list[str]:
+    """受注の入力の明細で、name の欄を包む td の class の字 (空白で分けた並び)。"""
+    match = re.search(rf'<td class="([^"]*)">\s*<(?:select|input)[^>]*name="{re.escape(name)}"', body)
+    assert match, f"{name} の欄の td が無い"
+    return match.group(1).split()
+
+
+@pytest.mark.django_db
+def test_order_form_line_widths_fit_unit_and_fix_item(logged_in):
+    """単位の列を 80px に狭め、部品の列の幅を決める (初見テスト R5 の候補 C35 の 1 と 2。C35-3 の a)。"""
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    item = _line_cell_classes(body, "lines-0-item")
+    assert "min-w-56" in item
+    assert "w-56" in item
+    unit = _line_cell_classes(body, "lines-0-unit")
+    assert "min-w-20" in unit
+    assert "min-w-32" not in unit
+    assert "min-w-32" in _line_cell_classes(body, "lines-0-qty")
+
+    thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
+    fixed = [
+        re.sub(r"<span[^>]*>.*?</span>", "", text, flags=re.S).strip()
+        for attrs, text in re.findall(r"<th([^>]*)>(.*?)</th>", thead, re.S)
+        if "w-56" in re.search(r'class="([^"]*)"', attrs).group(1).split()
+    ]
+    assert fixed == ["部品"]
+
+    template = re.search(r'<template id="order-line-template">(.*?)</template>', body, re.S).group(1)
+    assert "min-w-20" in _line_cell_classes(template, "lines-__prefix__-unit")
+
 
 # --- 4-2. 受注の入力の得意先の品番 ---------------------------------------------------------------
 

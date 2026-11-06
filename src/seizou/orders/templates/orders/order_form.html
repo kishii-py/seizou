@@ -31,7 +31,7 @@
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">
       <table class="table table-sm">
         <thead><tr class="bg-base-200 text-base-content/70">
-          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
+          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium{% if field.name == "item" %} w-56{% endif %}">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
           <th class="whitespace-nowrap font-medium"><span class="sr-only">消す</span></th>
         </tr></thead>
         <tbody id="order-lines">
