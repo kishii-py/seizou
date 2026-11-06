@@ -600,7 +600,7 @@ def _url(w, name):
 def test_no_field_cards_have_no_empty_band(world, name):
     """見える欄が 0 個の確かめは、白い枠に欄の格子を描かない。小窓では下の行の上の空きと線も描かない (U69・a-blind-15。C24 の 1)。
 
-    画面の全体の下の行 (seizou-save-row) の上の空きと線は、外し方が決まっていないので見ない (候補の「決めを待つ所」)。
+    画面の全体の下の行の形 (印・上の空き・線) は、外し方が決まっていないので見ない (候補の「決めを待つ所」)。
     """
     url = _url(world, name)
     modal = _card(text(world.client.get(url, **MODAL)))
@@ -610,7 +610,6 @@ def test_no_field_cards_have_no_empty_band(world, name):
     assert NO_FIELD_ROW in modal
     whole = _card(text(world.client.get(url)))
     assert GRID not in whole
-    assert SAVE_ROW in whole
 
 
 @pytest.mark.parametrize("name", ("order_cancel", "payment_create"))
