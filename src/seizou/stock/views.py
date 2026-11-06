@@ -1,4 +1,5 @@
 """stock の画面 (在庫の一覧・動きの一覧と詳細・製造の完了を入庫にする・払い出し・棚卸しの調整)。全部 core の土台を継承する (R15)。
+部品の今の在庫数を返す読むだけの口 (item_balance) は画面でないので関数の view にした。
 
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 - 在庫の一覧は、部品 (masters の Item。外部キーの先として引き、masters を import しない) に在庫数を足した一覧。
@@ -8,11 +9,17 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 - 動きの一覧は GET の item (部品の pk) で絞れる (読めない字は無視)。
 """
 
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.utils.cache import add_never_cache_headers
+from django.views.decorators.http import require_GET
+
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
 from .forms import AdjustForm, FinishedForm, IssueForm
-from .models import KIND_CHOICES, KIND_SHIPPED, StockMove
+from .models import KIND_CHOICES, KIND_SHIPPED, StockMove, _qty_text
 
 #: 部品の表 (masters の Item)。在庫の動きの外部キーの先として引く (読むだけ)
 ItemModel = StockMove._meta.get_field("item").related_model
@@ -124,6 +131,7 @@ class IssueCreateView(BaseFormView):
     form_class = IssueForm
     service = staticmethod(services.record_issued)
     screen_name = "払い出し"
+    template_name = "stock/stockmove_form.html"
     screen_help = "検査や社内の使用などで在庫から出した数を記録します。在庫より多くても止めません (マイナスの在庫として出ます)。"
 
 
@@ -137,4 +145,19 @@ class AdjustCreateView(BaseFormView):
     form_class = AdjustForm
     service = staticmethod(services.adjust)
     screen_name = "棚卸しの調整"
+    template_name = "stock/stockmove_form.html"
     screen_help = "実地の在庫数を入れると、今の在庫数との差を動きとして残し、入れた数がそのまま在庫数になります。在庫を数え始める部品は、この画面で今の数を入れます (数え始めた日より前の出荷は、在庫数から引きません)。"
+
+
+@login_required
+@require_GET
+def item_balance(request, pk):
+    """部品の今の在庫数を {"balance": 字} で返す読むだけの口。払い出しと棚卸しの調整の入力の JS (stock/stock-form.js) が読む。
+
+    字は末尾の 0 を落とした形 (区切りの「,」は付けない)。在庫を数えていない部品 (動きが無い) は null。部署は見ない。
+    """
+    item = get_object_or_404(ItemModel, pk=pk)
+    value = services.balance(item)
+    response = JsonResponse({"balance": None if value is None else _qty_text(value)})
+    add_never_cache_headers(response)
+    return response

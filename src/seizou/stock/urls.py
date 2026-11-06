@@ -20,4 +20,5 @@ urlpatterns = [
     path("finished/new/", views.FinishedCreateView.as_view(), name="finished_create"),
     path("issue/new/", views.IssueCreateView.as_view(), name="issue_create"),
     path("adjust/new/", views.AdjustCreateView.as_view(), name="adjust_create"),
+    path("items/<int:pk>/balance/", views.item_balance, name="item_balance"),
 ]
