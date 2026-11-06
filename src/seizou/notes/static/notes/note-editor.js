@@ -79,7 +79,7 @@
     quill = new window.Quill(box, {
       theme: "snow",
       formats: FORMATS,
-      placeholder: "段取りの注意・現場の写真・決めた事などを書きます。",
+      placeholder: "申し送り・段取りの注意・現場の写真・決めた事などを書きます。",
       modules: {
         toolbar: {
           container: toolbar,
