@@ -3,8 +3,8 @@
 {# 見出しの印は入金の状態 (未入金と一部入金 = 橙、入金済み = 緑)。取消の請求書は状態の印 (赤の線の「取消」)。「発行」は印にしない (決め 11-05 16:2x。N164)。 #}
 {% block heading_badge %}{% if object.status == "cancelled" %}{% status_badge object dot=True %}{% else %}{% payment_badge object dot=True %}{% endif %}{% endblock %}
 {% load seizou_tags seizou_icons %}
-{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。初見テスト R5 の候補 C93)。 #}
-{% block heading %}<div id="invoice-heading">{{ block.super }}</div>{% endblock %}
+{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。初見テスト R5 の候補 C93)。入金の枠は土台の block after_tabs (タブの後・添付ファイルの前) に置く (パソコンの窓で送らずに入金を読んで記録できるように。初見テスト R5 の候補 C26 の 1)。題の横の要点の札は「合計」「残」(billing_tags の invoice_head_chips。取消と金額の閲覧の無い人には出さない。決め 11-06 22:2x の C26-2 a)。 #}
+{% block heading %}<div id="invoice-heading">{% invoice_head_chips object seizou.hide_money as head_chips %}{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
 {% if not seizou.hide_money %}
 <a class="btn btn-outline border-base-300" href="{% url 'billing:invoice_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
@@ -36,7 +36,10 @@
 </div>
 {% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}<div id="invoice-live">{{ block.super }}
-{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
+</div>
+<div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
+{% endblock %}
+{% block after_tabs %}{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
 {% can_write "billing.Invoice" as can_bill %}
 <section id="payments" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
@@ -90,7 +93,4 @@
   </div>
   {% endif %}
   {% endwith %}
-</section>
-</div>
-<div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
-{% endblock %}
+</section>{% endblock %}

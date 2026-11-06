@@ -36,9 +36,11 @@
 {% endwith %}
 {% endblock %}
 {% block content %}
-{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)、狭い幅は 1 列で右のカードが先 (見出しの帯の次) に出る。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。左の列は block main (子の明細・流れ・メモ) → 関係する物のタブ → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
-{% if aside %}<div id="detail-columns" class="grid gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-<aside id="detail-aside" class="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:mt-6" aria-label="要点">
+{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)。狭い幅は 1 列で、block main (子の明細・流れ・メモ) → 右のカード → 関係する物のタブ → block after_tabs (子の枠。請求書の入金の枠) → 添付の順 (カードより先に明細を見せる。決め 11-06 22:2x の C26-1 a。初見テスト R5 の候補 C26 の 5)。lg 以上は 1 段目の左に block main、2 段目の左にタブ・block after_tabs・添付、右のカードは 1・2 段目にまたがる。2 段目は 1fr (右が高いときの空きを左の列の一番下に出す)。block main を aside の閉じと同じ行に置くのは、aside を置かない詳細の HTML の字を変えないため (if の外に出る字は改行 2 つだけ)。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。1 列の詳細は、基本情報と関係する物のタブ → block after_tabs → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
+{% if aside %}<div id="detail-columns" class="grid gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_1fr] lg:items-start">
+<div class="min-w-0 lg:col-start-1 lg:row-start-1">{% endif %}
+{% block main %}{% endblock %}{% if aside %}</div>
+<aside id="detail-aside" class="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:row-span-2 mt-6" aria-label="要点">
   {% for card in aside.cards %}
   <section class="relative rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs" aria-label="{{ card.title }}">
     {% if card.help %}<div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part=card.help label=card.help_label %}</div>{% endif %}
@@ -58,8 +60,7 @@
   </section>
   {% endfor %}
 </aside>
-<div class="min-w-0 lg:col-start-1 lg:row-start-1">{% endif %}
-{% block main %}{% endblock %}
+<div class="min-w-0 lg:col-start-1 lg:row-start-2">{% endif %}
 {% if tabs or not aside %}
 {# 枠の「?」は箱の右上 (tabs の行の右端) に置く (本人 11-04 14:4x「ちゃんと右上がいい」)。開いている tab の枠の「?」だけが見える (tab-content は選んだ物だけ描く)。右の余白 (pr-12) は tabs が「?」の下に回り込まないため。 #}
 <div role="tablist" aria-label="詳細の区分" class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs{% if aside %} mt-6{% endif %}">
@@ -98,7 +99,7 @@
   {% endif %}
   {% for tab in tabs %}
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
-    <input type="radio"{% if aside and forloop.first %} checked{% endif %} name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
+    <input type="radio"{% if aside and tab.selected %} checked{% endif %} name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
   <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
@@ -124,7 +125,7 @@
   {% endfor %}
 </div>
 {% endif %}
-{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
+{% block after_tabs %}{% endblock %}{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
 {% if aside %}</div>
 </div>{% endif %}
 {% endblock %}

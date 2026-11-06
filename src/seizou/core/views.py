@@ -1214,6 +1214,10 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["tabs"] = [
             self.tab_for(obj, label, related, names) for label, related, names in _tab_specs(self.tabs) if hasattr(obj, related)
         ]
+        # 右の列のある詳細は、件数のある最初のタブで開く (無ければ 1 つ目。選ばないと何も出ないため = N150。初見テスト R5 の候補 C26 の 2)
+        chosen = next((tab for tab in context["tabs"] if tab["count"] >= 1), context["tabs"][0] if context["tabs"] else None)
+        for tab in context["tabs"]:
+            tab["selected"] = tab is chosen
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
         if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
             context["edit_url"] = None

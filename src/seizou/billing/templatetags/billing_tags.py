@@ -2,11 +2,14 @@
 
 - invoice_cancel_refusal: 請求書を取り消せない理由の文 (services.cancel_refusal と同じ文。取消の確かめの画面が黄の知らせで出す)。
 - payment_badge: 請求書の入金の状態の印 (core/_status_badge.html。色は core.status_colors の PAYMENT_TONES。N164)。
+- invoice_head_chips: 請求書の詳細の頭の要点の札「合計」「残」。形は orders の orders_detail の order_head_chips と同じ。
+  取消の請求書と金額の閲覧の無い人には出さない (初見テスト R5 の候補 C26 の 6)。
 """
 
 from django import template
 
 from seizou.core.status_colors import PAYMENT_TONES
+from seizou.core.templatetags.seizou_tags import yen
 
 register = template.Library()
 
@@ -31,3 +34,24 @@ def payment_badge(invoice, dot=False, small=False):
     """
     state = invoice.payment_status()
     return {"tone": PAYMENT_TONES[state], "label": invoice.PAYMENT_LABELS[state], "dot": dot, "small": small}
+
+
+@register.simple_tag
+def invoice_head_chips(invoice, hide_money=False) -> list[dict]:
+    """{% invoice_head_chips object seizou.hide_money as head_chips %}。請求書の詳細の頭の要点の札。読むだけ。
+
+    札 = {"label", "value"} (値は字)。「合計」(請求書の合計。名は model の項目の verbose_name) と「残」(合計 − 取消でない入金の合計 =
+    Invoice.balance。名は入金の枠の字と同じ) の 2 つで、値は受注の「合計」の札と同じ yen の字 (頭に ¥。マイナスの残は「-¥1,000」)。
+    取消の請求書と、金額を見られない人 (hide_money が真) には空の並び (札を出さない)。残がマイナスでも札に色を付けない。
+    請求書の詳細 billing/invoice_detail.html の block heading がこの形で置いてから block.super を呼び、土台の core/detail.html が
+    head_chips を読んで題の横 (入金の状態の印と「?」の後) に並べる (受注の order_head_chips と同じ形)。
+    要点の札は受注と発注 (決め 11-05 16:2x。N163) と出荷 (C38-2 a) だけだったのを、決め 11-06 22:2x の C26-2 a (札「合計」「残」を
+    出す) で請求書にも広げた (初見テスト R5 の V40 の前半。上の基本情報に入金の額が無く、phone では入金の枠が窓の外に残るため)。
+    入金は Invoice.balance が self.payments.all() を読むので、詳細の get_queryset が prefetch した物を使う。
+    """
+    if invoice.status == invoice.STATUS_CANCELLED or hide_money:
+        return []
+    return [
+        {"label": invoice._meta.get_field("total").verbose_name, "value": yen(invoice.total)},
+        {"label": "残", "value": yen(invoice.balance())},
+    ]
