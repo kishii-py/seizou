@@ -24,6 +24,9 @@ from tests.test_orders_board import ORDER_DATE, _line
 _TH = re.compile(r"<th(?:\s[^>]*)?>(.*?)</th>", re.S)
 _TD = re.compile(r"<td(?:\s[^>]*)?>(.*?)</td>", re.S)
 
+#: 受注の詳細の明細の見出しの下の 1 文 (候補 C45 の 3)。
+ACCEPTANCE_NOTE = "検収: 得意先が受け入れたと知らせてきた数 (括弧は最後の検収日)。受信した注文から作った受注にだけ届き、届いていない明細は「—」です。"
+
 
 @pytest.fixture
 def user(db):
@@ -121,6 +124,28 @@ def test_order_detail_has_acceptance_column_before_remaining(user, logged_in, cu
     assert plain[heads.index("検収")] == "—"
     # 最後の欄は「残」のまま (E2E が行の最後の td で残を読む)
     assert accepted[-1].replace(".00", "") == "10" and plain[-1].replace(".00", "") == "5"
+    # 明細の見出しと表の間に、列「検収」が誰の何の数かの 1 文 (初見テスト R5 の V93。候補 C45 の 3)
+    assert ACCEPTANCE_NOTE in body[start : body.index("<table", start)]
+
+
+@pytest.mark.django_db
+def test_order_detail_explains_acceptance_column_without_acceptance(user, logged_in, customer, item):
+    """検収の届かない手入力の受注でも、明細の見出しの下に列「検収」の 1 文が出る (初見テスト R5 で迷ったのはこの形の受注)。"""
+    order = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("3"), "unit_price": Decimal("100")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+
+    body = logged_in.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+
+    start = body.index('id="order-lines-title"')
+    assert ACCEPTANCE_NOTE in body[start : body.index("<table", start)]
+    table = body[start : body.index("</table>", start)]
+    heads = [_text(th) for th in _TH.findall(table)]
+    (row,) = [[_text(td) for td in _TD.findall(row)] for row in re.findall(r'<tr class="h-10"[^>]*>(.*?)</tr>', table, re.S)]
+    assert row[heads.index("検収")] == "—"
 
 
 @pytest.mark.django_db

@@ -31,6 +31,7 @@
   {% can_write "purchasing.PurchaseOrder" as can_po %}
   {% can_write "receiving.Receiving" as can_receive %}
   {% url 'receiving:receiving_create' as receiving_url %}{% order_line_allocations object as line_rows %}
+  <p class="mt-2 text-xs text-base-content/70">検収: 得意先が受け入れたと知らせてきた数 (括弧は最後の検収日)。受信した注文から作った受注にだけ届き、届いていない明細は「—」です。</p>
   <div class="mt-4 overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm table-zebra">
     <thead><tr class="bg-base-200 text-base-content/70">
