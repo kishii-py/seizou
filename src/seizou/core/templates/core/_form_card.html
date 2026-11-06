@@ -5,7 +5,6 @@
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
-  {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
     {% for field in form.visible_fields %}
     {% if field.widget_type == "checkbox" %}

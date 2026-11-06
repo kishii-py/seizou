@@ -374,7 +374,7 @@ def test_create_department_from_screen(on, client, manager):
     again = client.post(url, _form_post(name="品質保証", sort_order="1"))
     assert again.status_code == 200
     again_html = again.content.decode()
-    assert "alert-error" in again_html
+    assert 'data-notice="stop"' in again_html
     assert "既にあります" in again_html
     assert Department.objects.filter(name="品質保証").count() == 1
 
@@ -478,7 +478,7 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
     refused = client.post(url, {})
     assert refused.status_code == 200
     refused_html = refused.content.decode()
-    assert "alert-error" in refused_html
+    assert 'data-notice="stop"' in refused_html
     assert "1 人のアカウントが付いています" in refused_html
     assert "先にアカウント管理で" in refused_html
     assert Department.objects.filter(pk=seizou_dept.pk).exists()

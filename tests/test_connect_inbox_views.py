@@ -181,7 +181,7 @@ def test_accept_post_creates_order_and_redirects(client_logged_in, receive_order
 
     assert again.status_code == 200
     body = again.content.decode()
-    assert "alert-error" in body and "R11" in body
+    assert 'data-notice="stop"' in body and "R11" in body
     assert Order.objects.count() == 1
 
 

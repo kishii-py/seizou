@@ -67,7 +67,7 @@ def test_record_over_plan_stop_is_red(settings, client_logged_in, step, recorded
     response = _post(client_logged_in, step, "3")
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R07" in body
+    assert 'data-notice="stop"' in body and "R07" in body
     assert Progress.objects.count() == 1
 
 
@@ -77,7 +77,7 @@ def test_record_over_plan_warn_then_confirm(settings, client_logged_in, step, re
     first = _post(client_logged_in, step, "3")
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R07" in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and "R07" in body and "このまま保存" in body
     assert Progress.objects.count() == 1
 
     second = _post(client_logged_in, step, "3", confirmed="1")

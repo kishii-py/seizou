@@ -5,7 +5,7 @@
 分納を許さない会社は残の数しか入らない (決め 11-02 13:0x。理由の欄は無い)。
 
 この試験が見る所: A 社 (`over_shipment` = `stop`) で数量 10 の受注を入れ、左のメニューの「出荷」→「新規登録」で、その受注の明細に
-数量 11 を入れて「保存」すると、赤の知らせ (`alert-error` と `R01`) が出て道が `/shipping/new/` のまま。数量 4 なら保存できて、
+数量 11 を入れて「保存」すると、右上の赤い知らせ (`#seizou-toasts [data-notice="stop"]` と `R01`) が出て道が `/shipping/new/` のまま。数量 4 なら保存できて、
 受注の詳細の明細の表の「残」が 6 になる。
 見ない所 (理由): 6 の 2 回目と、`warn` の会社の黄の知らせと「このまま保存」・残 -1、分納を許さない会社 (余力の試験。今夜の範囲の外)。
 """
@@ -40,7 +40,7 @@ def test_e12_stop_then_partial(page_a, company_a):
     page_a.wait_for_url(re.compile(r"/shipping/new/$"))
 
     fill_shipment(page_a, company_a, order_no=order_no, qty=11)
-    alert = page_a.locator(".alert-error")
+    alert = page_a.locator('#seizou-toasts [data-notice="stop"]')
     expect(alert).to_have_count(1)
     expect(alert).to_contain_text("R01")
     assert urlparse(page_a.url).path == "/shipping/new/"
@@ -93,7 +93,7 @@ def test_e12_partial_second_and_warn(page_a, page_b, company_a, company_b):
     )
     order_url_b = page_b.url
     fill_shipment(page_b, company_b, order_no=order_no_b, qty=11)
-    warning = page_b.locator(".alert-warning")
+    warning = page_b.locator('#seizou-toasts [data-notice="check"]')
     expect(warning).to_have_count(1)
     shot(page_b, "E-12", "b-warn")
     page_b.get_by_role("button", name="このまま保存").click()

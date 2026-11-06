@@ -30,6 +30,7 @@
 - 字の大きさは 4 段: text-xs (補助) / text-sm (本文。body の既定) / text-lg (カードの題) / text-3xl (画面の題と大きい数)。
 - 字の色は 4 段: 地の字 / text-base-content/70 (説明) / text-base-content/50 (補助) / text-primary (今の場所と link)。
 - 主色のボタンは 1 画面に 1 つ。危ない操作は error、知らせるの後の保存は warning。
+- 知らせは右上 (core/_toasts.html)、種類は色で分ける。段と小窓の例外は CLAUDE.md の「知らせの強さ」。
 Python の側が出す class (Tailwind はテンプレートしか読まないので、ここに書いて CSS に入れる):
 seizou_icons の w-5 h-5 shrink-0 / views.widget_css の input select textarea file-input checkbox w-full /
 seizou_tags.master_link の link
@@ -60,7 +61,6 @@ seizou_tags.master_link の link
         <div class="flex flex-wrap items-center gap-2">{% block actions %}{% endblock %}</div>
       </div>
       {% endif %}{% endblock %}
-      {% include "core/_notices.html" %}
       {% block content %}{% endblock %}
     </main>
   </div>

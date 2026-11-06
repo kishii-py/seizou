@@ -113,7 +113,7 @@ def test_mixed_customers_is_r09_red(client_logged_in, user, customer, item, line
 
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "R09" in body
+    assert 'data-notice="stop"' in body and "R09" in body
     assert theirs.shipment_no in body
     assert Invoice.objects.count() == 0
 

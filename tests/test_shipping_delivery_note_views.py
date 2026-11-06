@@ -119,7 +119,7 @@ def test_mixed_customers_is_r08_red(logged_in, user, item, two_shipments):
     )
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R08" in body
+    assert 'data-notice="stop"' in body and "R08" in body
     assert DeliveryNote.objects.count() == 0
     other_shipment.refresh_from_db()
     assert other_shipment.delivery_note is None

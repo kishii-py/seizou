@@ -203,7 +203,7 @@ def test_issue_from_screen(on, client, manager, seizou_dept):
     weak = client.post(reverse("accounts:access_create"), _form_post(login_id="keiri", password="1234", is_active="on"))
     assert weak.status_code == 200
     html = weak.content.decode()
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert "パスワードを受け付けられません" in html
     assert not User.objects.filter(username="keiri").exists()
 
@@ -248,7 +248,7 @@ def test_self_disable_is_red(on, client, manager):
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert "自分のアカウントを使用停止にしようとしています。" in html
     assert User.objects.get(pk=manager.pk).is_active is True
 

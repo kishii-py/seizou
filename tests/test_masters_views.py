@@ -59,7 +59,7 @@ def test_item_create_duplicate_part_no_is_red_notice(client_logged_in):
     response = client_logged_in.post(reverse("masters:item_create"), {"part_no": "P-1001", "name": "別の物"})
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "既にあります" in body
+    assert 'data-notice="stop"' in body and "既にあります" in body
     assert Item.objects.count() == 1
 
 

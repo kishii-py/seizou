@@ -98,7 +98,7 @@ def test_cancel_with_progress_is_red(logged_in, user, workorder):
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body
+    assert 'data-notice="stop"' in body
     assert workorder.wo_no in body
     workorder.refresh_from_db()
     assert workorder.status == WorkOrder.STATUS_ISSUED
@@ -136,7 +136,7 @@ def test_cancel_screen_says_cancel(logged_in, user, workorder):
 
     assert response.status_code == 200
     stopped = response.content.decode()
-    assert "alert-error" in stopped
+    assert 'data-notice="stop"' in stopped
     assert "取り消す</button>" in stopped
     assert "保存</button>" not in stopped
     workorder.refresh_from_db()

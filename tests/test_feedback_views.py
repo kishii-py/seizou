@@ -117,7 +117,7 @@ def test_create_refuses_bad_screens_with_red_notice(client_logged_in):
     html = html_of(response)
 
     assert response.status_code == 200
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert "画面の目録に無い名前" in html
     assert Feedback.objects.count() == 0
 
@@ -352,7 +352,7 @@ def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager)
     response = client.post(edit, form_data(title="確認済みの後の題"))
     html = html_of(response)
     assert response.status_code == 200
-    assert "alert-error" in html and "書いた人" in html
+    assert 'data-notice="stop"' in html and "書いた人" in html
     row.refresh_from_db()
     assert row.title == "元の題"
 

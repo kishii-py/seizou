@@ -114,7 +114,7 @@ def test_edit_on_issued_note_is_red(logged_in, shipment, note):
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R08" in body
+    assert 'data-notice="stop"' in body and "R08" in body
     assert note.note_no in body
     shipment.refresh_from_db()
     assert shipment.qty == Decimal("4")
@@ -165,7 +165,7 @@ def test_invoiced_note_cancel_is_red(logged_in, user, customer, shipment, note):
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body
+    assert 'data-notice="stop"' in body
     assert invoice.invoice_no in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
@@ -187,7 +187,7 @@ def test_cancel_note_screen_says_cancel(logged_in, user, customer, shipment, not
     response = logged_in.post(url, {})
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body
+    assert 'data-notice="stop"' in body
     assert "取り消す</button>" not in body
     assert "保存</button>" not in body
     note.refresh_from_db()
@@ -234,7 +234,7 @@ def test_invoiced_note_cancel_post_shows_refusal_without_button(logged_in, user,
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body
+    assert 'data-notice="stop"' in body
     assert "alert-warning" in body
     assert "この納品書を取り消します。" not in body
     assert FORM_CARD not in body

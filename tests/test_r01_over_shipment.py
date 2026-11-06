@@ -106,7 +106,7 @@ def test_r01_stop_on_screen_is_red_and_not_saved(settings, logged_in, line):
     response = logged_in.post(reverse("shipping:shipment_create"), _post(line, 11))
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R01" in body
+    assert 'data-notice="stop"' in body and "R01" in body
     assert "このまま保存" not in body
     assert Shipment.objects.count() == 0
     # 入れた値は消えない
@@ -124,9 +124,9 @@ def test_r01_warn_on_screen_then_confirm(settings, logged_in, line):
     first = logged_in.post(reverse("shipping:shipment_create"), _post(line, 11))
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R01" in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and "R01" in body and "このまま保存" in body
     assert 'name="confirmed" value="1"' in body
-    assert "alert-error" not in body
+    assert 'data-notice="stop"' not in body
     assert Shipment.objects.count() == 0
 
     second = logged_in.post(reverse("shipping:shipment_create"), _post(line, 11, confirmed="1"))
@@ -195,7 +195,7 @@ def test_r01_update_on_screen_stop_is_red(settings, logged_in, shipped_four_and_
     response = logged_in.post(url, _edit_post(7))
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R01" in body
+    assert 'data-notice="stop"' in body and "R01" in body
     assert "このまま保存" not in body
     second.refresh_from_db()
     assert second.qty == Decimal("4")
@@ -216,8 +216,8 @@ def test_r01_update_on_screen_warn_then_confirm(settings, logged_in, shipped_fou
     first = logged_in.post(url, _edit_post(7))
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R01" in body and "このまま保存" in body
-    assert "alert-error" not in body
+    assert 'data-notice="check"' in body and "R01" in body and "このまま保存" in body
+    assert 'data-notice="stop"' not in body
     second.refresh_from_db()
     assert second.qty == Decimal("4")
 

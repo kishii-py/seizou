@@ -178,7 +178,7 @@ def test_resend_without_connection_is_red_notice(monkeypatch, client_logged_in, 
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "つながりがありません" in body
+    assert 'data-notice="stop"' in body and "つながりがありません" in body
     assert fake.calls == 0
     assert Outbox.objects.count() == 0
 
@@ -193,7 +193,7 @@ def test_create_without_lines_is_red_notice(client_logged_in, subcontractor, ite
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "明細がありません" in body
+    assert 'data-notice="stop"' in body and "明細がありません" in body
     assert PurchaseOrder.objects.count() == 0
 
 

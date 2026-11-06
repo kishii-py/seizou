@@ -82,7 +82,7 @@ def test_ship_partial_four_and_six_passes(logged_in, order):
     second = logged_in.post(reverse("shipping:shipment_create"), _post(line, 6))
     assert second.status_code == 302
     second_body = logged_in.get(second["Location"]).content.decode()
-    assert "alert-warning" not in second_body  # 合計がちょうど 10 なので知らせない
+    assert 'data-notice="check"' not in second_body  # 合計がちょうど 10 なので知らせない
     order.refresh_from_db()
     assert order.status == Order.STATUS_SHIPPED
     assert orders_services.remaining_qty(line) == Decimal("0")
@@ -96,7 +96,7 @@ def test_ship_to_cancelled_order_is_r05_red(logged_in, user, order):
     response = logged_in.post(reverse("shipping:shipment_create"), _post(line, 4))
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R05" in body
+    assert 'data-notice="stop"' in body and "R05" in body
     assert Shipment.objects.count() == 0
 
 

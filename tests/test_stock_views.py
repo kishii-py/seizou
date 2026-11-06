@@ -165,7 +165,7 @@ def test_finished_form_prefills_from_workorder(user, logged_in, customer, items,
     response = logged_in.post(url, {"workorder": cancelled.pk, "qty": "1", "moved_on": _today(), "note": ""})
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "取り消した指示書" in body
+    assert 'data-notice="stop"' in body and "取り消した指示書" in body
     assert StockMove.objects.count() == count
     # 候補は発行の指示書だけ
     ids = [row["id"] for row in logged_in.get(reverse("workorders:workorder_select")).json()["items"]]
@@ -198,7 +198,7 @@ def test_issue_and_adjust_from_screen(user, logged_in, customer, items, cut):
     )
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "調整は要りません" in body
+    assert 'data-notice="stop"' in body and "調整は要りません" in body
     assert StockMove.objects.count() == count
 
 
@@ -281,5 +281,5 @@ def test_count_from_screen_with_past_shipments(user, logged_in, customer, items)
     response = logged_in.post(url, {"item": item.pk, "counted_qty": "5", "moved_on": _today(), "note": ""})
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "調整は要りません" in body
+    assert 'data-notice="stop"' in body and "調整は要りません" in body
     assert StockMove.objects.count() == count

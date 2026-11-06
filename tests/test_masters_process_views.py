@@ -86,7 +86,7 @@ def test_process_update_duplicate_code_is_red(client_logged_in, turn, insp):
 
     response = client_logged_in.post(url, _form_data(insp, code="TURN", name="検査 (直した)"))
     assert response.status_code == 200
-    assert "alert-error" in response.content.decode()
+    assert 'data-notice="stop"' in response.content.decode()
     insp.refresh_from_db()
     assert insp.code == "INSP"
     assert insp.name == "検査"

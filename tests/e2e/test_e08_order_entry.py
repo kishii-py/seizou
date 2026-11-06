@@ -71,10 +71,10 @@ def test_e08_zero_qty_is_red(page_a, company_a):
     page_a.fill("input[name=lines-0-unit_price]", STANDARD_PRICE)
     page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
 
-    # 止まること (道が変わらない・入れた値が残る・画面の上に赤の知らせ R02) は今の画面で通る。先に見る。
+    # 止まること (道が変わらない・入れた値が残る・右上の赤い知らせ R02) は今の画面で通る。先に見る。
     assert re.search(r"/orders/new/$", page_a.url)
     expect(page_a.locator("input[name=customer_order_no]")).to_have_value(mark)
-    expect(page_a.locator(".alert-error")).to_contain_text("R02")
+    expect(page_a.locator('#seizou-toasts [data-notice="stop"]')).to_contain_text("R02")
     shot(page_a, "E-08", "a-zero-qty")
     # 06 の期待は欄の横の赤の文。明細の行の中 (数量の欄の下) に赤の文があるか。今は無いので、上の印 (期待どおりに動かない理由つき) を付けてある。
     expect(page_a.locator("#order-lines .text-error").first).to_be_visible()
