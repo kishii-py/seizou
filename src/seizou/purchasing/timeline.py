@@ -176,12 +176,16 @@ STAGES = (
 
 @dataclass(frozen=True)
 class Stage:
-    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。"""
+    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。
+
+    skipped は受注の帯 (orders.timeline.Stage) と同じ形の欄 (core の帯の断片が読む。C06)。発注では今は常に偽。
+    """
 
     no: int
     name: str
     done: bool
     current: bool
+    skipped: bool = False
 
 
 @dataclass(frozen=True)
