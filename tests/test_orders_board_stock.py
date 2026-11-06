@@ -9,8 +9,6 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -20,6 +18,7 @@ from seizou.orders import services as orders_services
 from seizou.orders.models import OrderLine
 from seizou.stock import services as stock_services
 from seizou.workorders import services as workorders_services
+from tests.query_helpers import count_queries as _count_queries
 
 ORDER_DATE = date(2026, 11, 2)
 
@@ -145,13 +144,6 @@ def _lines_with_stock(user, customer, cut, count, start):
         item = _item(user, f"T-{number:03d}")
         workorder = _issue(user, _line(user, customer, item), cut)
         stock_services.record_finished(workorder, Decimal("3"), user)
-
-
-def _count_queries(client):
-    with CaptureQueriesContext(connection) as queries:
-        response = client.get(reverse("orders:orderline_list"))
-    assert response.status_code == 200
-    return len(queries), response
 
 
 @pytest.mark.django_db
