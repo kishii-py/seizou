@@ -447,7 +447,7 @@ def test_item_import_post_errors_show_table(client_logged_in, no_registration):
 
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "3 行目" in body and "標準単価 (円)" in body
+    assert 'data-notice="stop"' in body and "3 行目" in body and "標準単価 (円)" in body
     assert "1 件も入れていません" in body
     assert Item.objects.count() == 0
 

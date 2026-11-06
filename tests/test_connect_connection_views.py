@@ -93,7 +93,7 @@ def test_create_duplicate_is_red(client_logged_in, partner):
 
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "既にあります" in body
+    assert 'data-notice="stop"' in body and "既にあります" in body
     assert f'value="{ENV_NAME}"' in body
     assert Connection.objects.count() == 1
 

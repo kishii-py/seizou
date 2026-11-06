@@ -110,6 +110,71 @@ class Notice:
         self.message = message
 
 
+#: 入力の土台が欄の検査で止まった時の赤の知らせ (BaseFormView.form_invalid) の 1 文目。
+#: 決め 11-06 C57-3「保存されなかったら理由が何でも出す。欄の誤りなら 1 (欄の下の赤い字) と 2 (止まった知らせ) の両方」。
+#: service の関数の名前で選ぶ (依頼書 N156 の表のうち入力の土台に当たる行)。字は core.manual.REFUSAL_HEADS の組の中だけ。
+#: 名前が cancel_ で始まる物は「取り消せません。」、BaseFormView.DELETE_SERVICE_PREFIXES で始まる物は「削除できません。」、
+#: 下の表の名前はその字、ほかの全部 (service の無い画面も) は「保存できません。」。
+REFUSAL_HEAD_SAVE = "保存できません。"
+REFUSAL_HEAD_CANCEL = "取り消せません。"
+REFUSAL_HEAD_DELETE = "削除できません。"
+REFUSAL_HEAD_BY_SERVICE = {
+    "create_invoice": "発行できません。",
+    "create_delivery_note": "発行できません。",
+    "issue_workorder": "発行できません。",
+    "issue_account": "発行できません。",
+    "record_payment": "記録できません。",
+    "ship_lines": "出荷できません。",
+    "receive": "受け入れられません。",
+    "accept": "受け入れられません。",
+    "accept_extracted": "受け入れられません。",
+    "reject": "断れません。",
+}
+#: 欄の誤りの知らせに名前を並べる欄の数 (これより多い分は「ほか n つ」)
+INVALID_LABELS_SHOWN = 3
+
+
+def refusal_head(service_name: str, delete_prefixes: tuple[str, ...]) -> str:
+    """service の関数の名前から、止まった知らせの 1 文目 (「<操作>できません。」) を選ぶ。空の名前は「保存できません。」。"""
+    if service_name.startswith("cancel_"):
+        return REFUSAL_HEAD_CANCEL
+    if service_name.startswith(delete_prefixes):
+        return REFUSAL_HEAD_DELETE
+    return REFUSAL_HEAD_BY_SERVICE.get(service_name, REFUSAL_HEAD_SAVE)
+
+
+def invalid_field_labels(form) -> str:
+    """誤りのある見える欄の見出しを、form の欄の順に「」でくくって並べた字 (3 つまで。4 つ目からは「ほか n つ」)。無ければ空の字。
+
+    隠しの欄と、見出しの空の欄は数えない (明細の行の誤りは行の中に出るので、ここには入らない)。
+    """
+    labels = [
+        str(field.label)
+        for name, field in form.fields.items()
+        if name in form.errors and field.label and not form[name].is_hidden
+    ]
+    text = "".join(f"「{label}」" for label in labels[:INVALID_LABELS_SHOWN])
+    if len(labels) > INVALID_LABELS_SHOWN:
+        text += f"ほか {len(labels) - INVALID_LABELS_SHOWN} つ"
+    return text
+
+
+def invalid_form_message(form, head: str) -> str:
+    """欄の検査で止まった時の赤の知らせの文。1 文目は head (refusal_head が選ぶ字)。
+
+    欄の外の誤り (form.non_field_errors) が無い時は、誤りのある欄の名前と直し方。名前が 1 つも取れない時 (明細の行か隠しの欄だけ) は
+    「入れた値に誤りがあります。…」。欄の外の誤りがある時は、その字を " " でつないで続け、名前の取れる欄の誤りもあれば
+    「「品名」の欄も直してください。」を足す (欄の外の誤りの帯はこの知らせに移した。決め 11-06 C57-3)。
+    """
+    labels = invalid_field_labels(form)
+    errors = " ".join(str(error) for error in form.non_field_errors())
+    if errors:
+        return f"{head}{errors} {labels}の欄も直してください。" if labels else f"{head}{errors}"
+    if labels:
+        return f"{head}{labels}の欄に誤りがあります。欄の下の赤い字のとおりに直してから、もう一度押してください。"
+    return f"{head}入れた値に誤りがあります。赤い字のとおりに直してから、もう一度押してください。"
+
+
 def url_or_none(name: str, *args) -> str | None:
     try:
         return reverse(name, args=args)
@@ -1343,6 +1408,19 @@ class BaseFormView(ScreenMixin, FormView):
             response["HX-Redirect"] = url
             return response
         return HttpResponseRedirect(url)
+
+    def form_invalid(self, form):
+        """欄の検査で止まった時も、止まった知らせ (赤) を出す (決め 11-06 C57-3。欄の誤りなら欄の下の赤い字と知らせの両方)。
+
+        画面の全体では右上の赤い知らせ (core/_toasts.html)、小窓では小窓の上の赤い帯 (core/_form_modal.html の core/_notices.html)。
+        番号は「入力」(決まりの番号でない) なので、番号と「?」は出ない (services の ValueError の断りと同じ道)。
+        """
+        try:
+            name = self.get_service().__name__
+        except RuntimeError:
+            name = ""
+        message = invalid_form_message(form, refusal_head(name, self.DELETE_SERVICE_PREFIXES))
+        return self.render_to_response(self.get_context_data(form=form, notice=Notice("入力", message)))
 
     def saved_in_modal(self, text: str, level: str) -> HttpResponse:
         """小窓の形の保存の後: 本文の無い 204 に、HX-Trigger の seizou:saved (知らせの字 message と色 level) を付ける。

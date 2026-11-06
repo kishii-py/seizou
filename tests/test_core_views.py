@@ -152,4 +152,4 @@ def test_rule_violation_from_service_is_red_notice(rf_post):
     response = FailingView.as_view()(rf_post({"qty": "3"}))
     assert response.status_code == 200
     body_text = body(response)
-    assert "R02" in body_text and "alert-error" in body_text
+    assert "R02" in body_text and 'data-notice="stop"' in body_text

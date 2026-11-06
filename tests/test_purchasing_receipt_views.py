@@ -196,7 +196,7 @@ def test_cancelled_order_refused_on_screen(user, client_logged_in, subcontractor
     body = response.content.decode()
 
     assert response.status_code == 200
-    assert "alert-error" in body and "取り消した発注" in body
+    assert 'data-notice="stop"' in body and "取り消した発注" in body
     assert Receipt.objects.count() == 0
     assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_CANCELLED
 

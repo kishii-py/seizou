@@ -101,7 +101,7 @@ def test_counted_item_same_qty_is_still_refused(user, logged_in, items):
     )
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body and "調整は要りません" in body
+    assert 'data-notice="stop"' in body and "調整は要りません" in body
     assert StockMove.objects.count() == count
     assert services.balance(zero) == Decimal("0") and services.balance(five) == Decimal("5")
 

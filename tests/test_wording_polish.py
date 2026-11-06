@@ -235,9 +235,9 @@ def test_partial_shipment_screen_has_no_internal_name(settings, client_logged_in
     )
     assert response.status_code == 200
     body = text(response)
-    alert = re.search(r'<div class="alert alert-error[^"]*"[^>]*>(.*?)</div>', body, re.S)
+    alert = re.search(r'data-notice="stop"[^>]*>.*?<p class="mt-1 break-words">(.*?</p>)', body, re.S)
     assert alert is not None
-    assert f'<span class="font-semibold">保存できません。</span> {PARTIAL_SHIP_MESSAGE.removeprefix("保存できません。")}</span>' in alert.group(1)
+    assert f'<span class="font-semibold">保存できません。</span> {PARTIAL_SHIP_MESSAGE.removeprefix("保存できません。")}</p>' in alert.group(1)
     assert "10.00" not in alert.group(1)
     assert "partial_shipment" not in body
     assert Shipment.objects.count() == 0
@@ -278,7 +278,7 @@ def test_issue_with_cancelled_line_is_r05_red_and_keeps_choice(client_logged_in,
     )
     assert response.status_code == 200
     body = text(response)
-    assert "alert-error" in body and "R05" in body
+    assert 'data-notice="stop"' in body and "R05" in body
     assert "取消していない受注の明細を選んでください。" in body
     assert "正しく選択してください" not in body
     assert f'<option value="{cancelled_line.pk}" selected>' in body

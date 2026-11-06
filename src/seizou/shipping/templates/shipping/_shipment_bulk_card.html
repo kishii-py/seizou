@@ -7,7 +7,6 @@
   {% csrf_token %}
   {% if form.rows %}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>{% endif %}
-  {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
     {% for field in form.head_fields %}
     {% if field.widget_type == "checkbox" %}

@@ -168,7 +168,7 @@ def test_form_refused_without_permission(on, logged_in, line):
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert "権限" in html
     assert "出荷と納品書の編集の権限がありません。" in html
     assert "R01" not in html

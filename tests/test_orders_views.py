@@ -205,7 +205,7 @@ def test_update_below_shipped_stop_is_red(settings, logged_in, shipped_order):
     response = logged_in.post(reverse("orders:order_update", args=[shipped_order.pk]), _update_post(shipped_order, "3"))
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R04" in body
+    assert 'data-notice="stop"' in body and "R04" in body
     assert "このまま保存" not in body
     assert shipped_order.lines.get().qty == Decimal("10")
 
@@ -217,7 +217,7 @@ def test_update_below_shipped_warn_then_confirm(settings, logged_in, shipped_ord
     first = logged_in.post(url, _update_post(shipped_order, "3"))
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R04" in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and "R04" in body and "このまま保存" in body
     assert 'name="confirmed" value="1"' in body
     assert shipped_order.lines.get().qty == Decimal("10")
 
@@ -237,7 +237,7 @@ def test_removing_shipped_line_on_screen_is_red(logged_in, shipped_order):
     response = logged_in.post(reverse("orders:order_update", args=[shipped_order.pk]), data)
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "消した明細に出荷があります" in body
+    assert 'data-notice="stop"' in body and "消した明細に出荷があります" in body
     assert shipped_order.lines.count() == 1
 
 
@@ -257,12 +257,12 @@ def test_cancel_then_update_is_r05(logged_in, shipped_order):
 
     again = logged_in.post(reverse("orders:order_cancel", args=[shipped_order.pk]), {"reason": ""})
     assert again.status_code == 200
-    assert "alert-error" in again.content.decode() and "R05" in again.content.decode()
+    assert 'data-notice="stop"' in again.content.decode() and "R05" in again.content.decode()
 
     update = logged_in.post(reverse("orders:order_update", args=[shipped_order.pk]), _update_post(shipped_order, "12"))
     assert update.status_code == 200
     body = update.content.decode()
-    assert "alert-error" in body and "R05" in body
+    assert 'data-notice="stop"' in body and "R05" in body
     assert shipped_order.lines.get().qty == Decimal("10")
 
 

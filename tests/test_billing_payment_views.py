@@ -200,7 +200,7 @@ def test_create_on_cancelled_invoice_is_refused(client_logged_in, user, invoice)
     response = client_logged_in.post(reverse("billing:payment_create", args=[invoice.pk]), POST)
     body = response.content.decode()
     assert response.status_code == 200
-    assert "alert-error" in body
+    assert 'data-notice="stop"' in body
     assert "R21" in body and "取消した請求書" in body
     assert Payment.objects.count() == 0
 
@@ -232,7 +232,7 @@ def test_cancel_payment_from_screen(client_logged_in, user, invoice):
     again = client_logged_in.post(url, {})
     body = again.content.decode()
     assert again.status_code == 200
-    assert "alert-error" in body and "取り消し済み" in body
+    assert 'data-notice="stop"' in body and "取り消し済み" in body
 
 
 def test_list_has_payment_columns_and_unpaid_filter(client_logged_in, user, item, invoice):
@@ -299,7 +299,7 @@ def test_money_masked_in_payment_screens(on, client, invoice):
     refused = client.post(reverse("billing:payment_create", args=[invoice.pk]), POST)
     body = refused.content.decode()
     assert refused.status_code == 200
-    assert "alert-error" in body and "入金は金額が主な内容" in body
+    assert 'data-notice="stop"' in body and "入金は金額が主な内容" in body
     assert Payment.objects.count() == 0
 
     keiri = account("keiri", permissions=["billing"], see_money=True)

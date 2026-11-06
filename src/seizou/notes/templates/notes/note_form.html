@@ -18,7 +18,6 @@
       </div>
     </div>
     <div class="mt-4">{% include "core/_notices.html" %}</div>
-    {% if form.non_field_errors %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors|join:" " }}</span></div>{% endif %}
     <div class="alert alert-error alert-soft mb-4" role="alert" data-note-error hidden></div>
     <div data-note-editor data-upload-url="{% url 'notes:noteimage_upload' %}">
       <div data-note-toolbar>

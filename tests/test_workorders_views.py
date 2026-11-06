@@ -110,7 +110,7 @@ def test_issue_without_any_process_is_red(client_logged_in, line):
     )
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "工程がありません" in body
+    assert 'data-notice="stop"' in body and "工程がありません" in body
     assert WorkOrder.objects.count() == 0
 
 
@@ -137,7 +137,7 @@ def test_issue_over_order_stop_is_red(settings, client_logged_in, line, cut):
     )
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "R06" in body
+    assert 'data-notice="stop"' in body and "R06" in body
     assert WorkOrder.objects.count() == 0
 
 
@@ -148,7 +148,7 @@ def test_issue_over_order_warn_then_confirm(settings, client_logged_in, line, cu
     first = client_logged_in.post(reverse("workorders:workorder_create"), data)
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R06" in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and "R06" in body and "このまま保存" in body
     assert WorkOrder.objects.count() == 0
 
     second = client_logged_in.post(reverse("workorders:workorder_create"), {**data, "confirmed": "1"})

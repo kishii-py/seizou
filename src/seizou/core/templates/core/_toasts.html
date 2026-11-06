@@ -1,8 +1,20 @@
-{% load seizou_icons %}
-{# 済んだ事の知らせ (Django の messages) は右上の toast で出す。できた = 主色の地に緑の印、失敗 = error、確認 = warning、お知らせ = info。 #}
-{# できたとお知らせは 5 秒で消える (下の線が残り時間)。失敗と確認は閉じるまで残る。閉じると消す処理は base.html の末尾の script。 #}
-{# 置き場は右上で、上の帯に重なる (本人の決め 11-04 09:0x)。箱の地は 80% の濃さにして下を透かし、枠 (#seizou-toasts) と箱は押下を下の物へ通す (pointer-events-none)。押下を受けるのは閉じるボタンだけ (右下に置いていた時は箱が押下を受け、上に置くと「一覧に戻る」「編集」が 5 秒隠れた)。 #}
-{% if messages %}<div id="seizou-toasts" class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4 pointer-events-none" aria-live="polite">
+{% load seizou_icons seizou_tags %}
+{# 右上の知らせ (toast)。済んだ事の知らせ (Django の messages) と、入力の画面の全体の止まった知らせ (notice。赤) と確かめ (warnings。黄) を出す (段は CLAUDE.md の「知らせの強さ」)。できた = 主色の地に緑の印、失敗 = error、確認 = warning、お知らせ = info。 #}
+{# できたとお知らせは 5 秒で消える (下の線が残り時間)。失敗と確認と、入力の止まった知らせと確かめは閉じるまで残る (data-auto を付けない)。閉じると消す処理は base.html の末尾の script。止まった知らせと確かめは messages に積まず、同じ応答の context から描く (積むと次に開いた画面にも古い知らせが出る)。小窓の入力は base.html を使わないので、ここには出ず小窓の上の帯 (core/_form_modal.html) に出る。 #}
+{# 置き場は右上で、上の帯に重なる (本人の決め 11-04 09:0x。11-06 C57 も変えない)。箱の地は 80% の濃さにして下を透かし、枠 (#seizou-toasts) と箱は押下を下の物へ通す (pointer-events-none)。押下を受けるのは閉じるボタンと、止まった知らせの決まりの番号の「?」だけ (どちらも pointer-events-auto。右下に置いていた時は箱が押下を受け、上に置くと「一覧に戻る」「編集」が 5 秒隠れた)。 #}
+{% if messages or notice or warnings %}<div id="seizou-toasts" class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4 pointer-events-none" aria-live="polite">
+{% if notice %}{% with parts=notice.message|split_first_sentence rule=notice.code|rule_code %}
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-error/80 p-4 text-error-content shadow-lg sm:w-96" role="alert" data-notice="stop">
+  <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-error">{% icon "x" "size-7" %}</span>
+  <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">失敗しました。</p><p class="mt-1 break-words"><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}{% if rule %} <span class="font-mono text-xs">{{ rule }}</span><button class="btn btn-ghost btn-square btn-xs pointer-events-auto text-error-content" type="button" hx-get="{% url 'core:rule_help' rule %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" title="{{ rule }} の決まりの説明" aria-label="{{ rule }} の決まりの説明">{% icon "help" "size-4" %}</button>{% endif %}</p></div>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-error-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+</div>{% endwith %}{% endif %}
+{% for warning in warnings %}{% with parts=warning.message|split_first_sentence rule=warning.code|rule_code %}
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning/80 p-4 text-warning-content shadow-lg sm:w-96" role="alert" data-notice="check">
+  <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-warning">{% icon "alert" "size-7" %}</span>
+  <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">確認してください。</p><p class="mt-1 break-words"><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}{% if rule %} <span class="font-mono text-xs">{{ rule }}</span>{% endif %}</p></div>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+</div>{% endwith %}{% endfor %}
 {% for message in messages %}{% if message.level_tag == 'error' %}
 <div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-error/80 p-4 text-error-content shadow-lg sm:w-96" role="alert">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-error">{% icon "x" "size-7" %}</span>

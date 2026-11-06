@@ -225,7 +225,7 @@ def test_create_refuses_bad_screenshots_with_red_notice(client_logged_in, media_
     html = html_of(response)
 
     assert response.status_code == 200
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert "3 枚まで" in html
     assert "ファイルは選び直してください" in html
     assert Feedback.objects.count() == 0

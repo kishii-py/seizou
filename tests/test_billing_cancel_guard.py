@@ -155,7 +155,7 @@ def test_cancel_screen_hides_button_while_payment_left(client_logged_in, user, i
     response = client_logged_in.post(url, {})
     assert response.status_code == 200
     html = response.content.decode()
-    assert "alert-error" in html
+    assert 'data-notice="stop"' in html
     assert ONE_LEFT in html
     assert _status(invoice) == Invoice.STATUS_ISSUED
 

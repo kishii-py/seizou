@@ -109,7 +109,7 @@ def test_create_post_without_key_is_red(client_logged_in, without_key, customer)
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "鍵が無いので読み取りは使えません" in body
+    assert 'data-notice="stop"' in body and "鍵が無いので読み取りは使えません" in body
     assert Extraction.objects.count() == 0
 
 
@@ -118,7 +118,7 @@ def test_create_post_unreadable_is_red(client_logged_in, with_key, customer):
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "alert-error" in body and "読めない形式" in body
+    assert 'data-notice="stop"' in body and "読めない形式" in body
     assert Extraction.objects.count() == 0
 
 
@@ -167,7 +167,7 @@ def test_accept_twice_is_red(client_logged_in, extraction, user):
 
     assert again.status_code == 200
     body = again.content.decode()
-    assert "alert-error" in body and "受注" in body
+    assert 'data-notice="stop"' in body and "受注" in body
     assert Order.objects.count() == 1
 
 
