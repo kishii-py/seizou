@@ -119,10 +119,10 @@ def test_order_detail_has_two_columns_in_order(logged_in, order):
         '<h1 class="truncate',
         '<div id="order-stages"',
         '<div id="detail-columns"',
-        '<aside id="detail-aside"',
         'id="order-lines-title"',
         'id="order-flow-title"',
         'id="notes-heading"',
+        '<aside id="detail-aside"',
         'role="tablist"',
         '<section id="attachments"',
     )
@@ -198,10 +198,10 @@ def test_purchase_order_detail_has_two_columns(logged_in, purchase_order):
         '<div id="po-heading"',
         '<div id="po-alert">',
         '<div id="detail-columns"',
-        '<aside id="detail-aside"',
         '<div id="po-live">',
         'id="po-lines-title"',
         'id="po-flow-title"',
+        '<aside id="detail-aside"',
         'role="tablist"',
         'id="purchaseorder-detail-poll"',
     )
@@ -297,3 +297,29 @@ def test_base_loads_detail_tabs_once_with_defer(logged_in):
     scripts = [src for src in re.findall(r"<script [^>]*src=\"([^\"]+)\"[^>]*>", body) if src.endswith("js/seizou-detail-tabs.js")]
     assert len(scripts) == 1
     assert "defer" in re.search(r"<script [^>]*js/seizou-detail-tabs\.js[^>]*>", body).group(0)
+
+
+def _classes(body, mark):
+    """mark から最初の > までの開きの tag の class の語の集まり。"""
+    start = body.index(mark)
+    return set(re.search(r'class="([^"]+)"', body[start : body.index(">", start)]).group(1).split())
+
+
+@pytest.mark.django_db
+def test_cards_follow_main_and_span_two_rows(logged_in, order, purchase_order):
+    """狭い幅は明細・流れ・メモの後にカード、その後にタブ (決め 11-06 22:2x の C26-1 a。初見テスト R5 の r5-a-06・r5-b-07。候補 C26 の 5)。
+
+    lg 以上は右の列が 2 段にまたがり、2 段目を 1fr にする (右が高いときの空きを左の列の一番下に出す)。
+    右の列の上の余白は狭い幅でもメモの枠の後に間を空けるので mt-6 (lg: を付けない)。
+    """
+    lower_left = '<div class="min-w-0 lg:col-start-1 lg:row-start-2">'
+    for name, obj, before_cards in (
+        ("orders:order_detail", order, 'id="notes-heading"'),
+        ("purchasing:purchaseorder_detail", purchase_order, 'id="po-flow-title"'),
+    ):
+        body = _get(logged_in, name, obj.pk)[1]
+        assert "lg:grid-rows-[auto_1fr]" in _classes(body, '<div id="detail-columns"'), name
+        aside = _classes(body, '<aside id="detail-aside"')
+        assert {"lg:row-span-2", "mt-6", "lg:col-start-2", "lg:row-start-1"} <= aside, name
+        assert "lg:mt-6" not in aside, name
+        assert body.index(before_cards) < body.index('<aside id="detail-aside"') < body.index(lower_left) < body.index('role="tablist"'), name
