@@ -18,6 +18,8 @@ seizou: with one command, a small or mid-sized manufacturer gets a business syst
 The item master sits at the center and connects information across the company, and companies running seizou can exchange orders with each other.
 It is made for the one person in the factory who looks after Excel and the PC, with no programming needed. Work in progress (November 2026); the UI and documents are in Japanese.
 
+作者が製造業で学んだことが 1 つある。業務の決まりは、なぜそうするかが分からないと、引き継いだ人は変えてよいか判断できず、改善が止まる。だから seizou は、止める処理や端数の丸めのような決まりを実装した関数に「訳」(何のためか、法令・商慣習・作者の決めのどれから来たか、変えてよい条件) を書き、変えたい人がその訳に対して Issue で議論できる形にする (書き方の決まり R22 として 11-07 に検査と一緒に入れる)。訳をまだ確かめていない決まりは「未確認」と書いて残し、埋めることも皆で育てる対象にする。
+
 この仕組みを一緒に育てる仲間を探している。次の 1 歩は立場ごとに次のとおり。
 
 - 使う会社の方: 2 社の作り物のデータで触ってみる (下の「触り方」)。
