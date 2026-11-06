@@ -35,7 +35,7 @@ from django.db.models.functions import Coalesce
 from django.db.models.lookups import Exact
 from django.utils import timezone
 
-from .models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, KIND_RECEIVED, StockMove, kind_sign
+from .models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, KIND_RECEIVED, StockMove, _qty_text, kind_sign
 
 # 数の合計の型 (StockMove.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -43,7 +43,9 @@ _ZERO = Decimal("0")
 
 _POSITIVE_MESSAGE = "数量は 0 より大きい数にしてください。"
 
-# 在庫を数えていない部品に実地 0 を入れた後の知らせの字 (入力の土台 core.views.with_saved_note が、返した動きの saved_message を「保存しました。」の代わりに出す)
+# 棚卸しの調整の後の知らせの字 (入力の土台 core.views.with_saved_note が、返した動きの saved_message を「保存しました。」の代わりに出す)。
+# 動きのある部品は「在庫数を 190 から 185 にしました (差 -5)。」、数え始めは「5 から数え始めました。」(adjust が作る)。
+# 在庫を数えていない部品に実地 0 を入れたときは、下の字のまま (A-15)。
 COUNTED_FROM_ZERO_MESSAGE = "0 から数え始めました。"
 
 
@@ -429,7 +431,10 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
     その日と後の出荷が無ければ、実地の数がそのまま入る。
     動きのある部品は、差 = 実地の数 − 今の在庫数 (数え始めの日は変わらない)。
     動きの無い部品に実地 0 を入れたときは断らず、0 から数え始める (その日と後の出荷が無ければ数量 0 の行)。
-    返す行の saved_message を「0 から数え始めました。」にする (入力の土台が「保存しました。」の代わりに出す。表に書かない)。
+    返す行の saved_message に、前と後の在庫数の字を入れる (入力の土台が「保存しました。」の代わりに出す。表に書かない)。
+    動きのある部品は「在庫数を 190 から 185 にしました (差 -5)。」(正の差は「+」を付ける)。数え始めは
+    「5 から数え始めました。」で、数は実地の数 (差はその日と後の出荷を足した数なので、実地の数と違うことがある)。
+    実地 0 で数え始めたときは「0 から数え始めました。」。数の字は _qty_text で末尾の 0 を落とす。
     実地の数が負と、動きのある部品で差が 0 (今の在庫数と同じ) は ValueError。
     """
     counted = _dec(counted_qty)
@@ -445,6 +450,11 @@ def adjust(item, counted_qty, moved_on, user, *, note=""):
         if diff == 0 and current is not None:
             raise ValueError("保存できません。今の在庫数と同じです。調整は要りません。")
         move = _move(locked, KIND_ADJUSTED, diff, moved_on, user, note=note)
-        if current is None and counted == 0:
+        if current is not None:
+            signed = ("+" if diff > 0 else "") + _qty_text(diff)
+            move.saved_message = f"在庫数を {_qty_text(current)} から {_qty_text(counted)} にしました (差 {signed})。"
+        elif counted == 0:
             move.saved_message = COUNTED_FROM_ZERO_MESSAGE
+        else:
+            move.saved_message = f"{_qty_text(counted)} から数え始めました。"
         return move

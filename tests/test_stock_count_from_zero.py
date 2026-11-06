@@ -76,11 +76,11 @@ def test_uncounted_item_starts_from_zero(user, logged_in, items):
     assert _counted_from(zero) == today
     assert _messages(response) == [("success", "0 から数え始めました。")]
 
-    # 0 でない実地は今までどおり (差 = 実地。知らせは「保存しました。」)
+    # 0 でない実地は今までどおり差 = 実地。知らせは実地の数から数え始めた字 (候補 C07 の 3。前は「保存しました。」)
     response = logged_in.post(url, {"item": five.pk, "counted_qty": "5", "moved_on": today.isoformat(), "note": ""})
     assert response.status_code == 302
     assert StockMove.objects.get(item=five).qty == Decimal("5")
-    assert _messages(response)[-1] == ("success", "保存しました。")  # 前の知らせは読み出していないので残る (最後の 1 つを見る)
+    assert _messages(response)[-1] == ("success", "5 から数え始めました。")  # 前の知らせは読み出していないので残る (最後の 1 つを見る)
 
 
 @pytest.mark.django_db
