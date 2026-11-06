@@ -50,6 +50,12 @@ class ItemForm(ServiceModelForm):
     class Meta:
         model = Item
         fields = ["part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"]
+        # 自社品番の欄の下の説明 (初見テスト R5 の V87。C19-2 = a: 見出しは変えず、欄の下に説明)。
+        # 意図: 欄の「自社品番」とゴールの「品番」が同じ物かを、社内の品番と取引先の品番の違いで答える。
+        # 表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
+        help_texts = {
+            "part_no": "社内で部品を呼ぶ品番です (会社の中で同じ品番は 1 つだけ)。得意先や協力企業が別の品番で呼ぶときは、その対応が部品の詳細の「取引先ごとの品番」に並びます。",
+        }
 
     def __init__(self, *args, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
