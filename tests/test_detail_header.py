@@ -250,7 +250,7 @@ def _chips(body):
 @pytest.mark.django_db
 def test_head_chips_on_order_and_purchase_order(logged_in, client, settings, item, order, purchase_order):
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
-    assert _chips(body) == [("得意先", "作り物の得意先"), ("一番早い納期", "2026-11-12"), ("合計", f"{comma(Decimal('15600'))} 円")]
+    assert _chips(body) == [("得意先", "作り物の得意先"), ("一番早い納期", "2026-11-12"), ("合計", f"¥{comma(Decimal('15600'))}")]
     # 札は状態の印より後ろ (h1 の後の最初の印は状態の印)
     after_h1 = body[body.index('<h1 class="truncate') :]
     assert after_h1.index('class="badge') < after_h1.index("data-head-chip")

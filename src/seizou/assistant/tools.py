@@ -16,6 +16,7 @@ import json
 from django.db import DatabaseError
 
 from seizou.core import mcp_tools
+from seizou.core.templatetags.seizou_tags import yen
 
 #: 道具 get_manual が返す説明書の字数の上限
 MANUAL_CHARS = 4000
@@ -86,7 +87,7 @@ def _order_summary(arguments):
         if not isinstance(row, dict):
             lines.append(f"{number}. {_UNREADABLE}")
             continue
-        notes = [f"単価 {_shown(row, 'unit_price')}"]
+        notes = [f"単価 {yen(_shown(row, 'unit_price'))}"]
         for label, key in (("納期", "due_date"), ("備考", "note")):
             value = _shown(row, key, optional=True)
             if value:

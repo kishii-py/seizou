@@ -16,7 +16,7 @@ from decimal import Decimal
 from django import template
 from django.apps import apps
 
-from seizou.core.templatetags.seizou_tags import comma
+from seizou.core.templatetags.seizou_tags import yen
 
 from ..models import OrderLine
 
@@ -72,7 +72,7 @@ def order_aside(order, fields, hide_money=False) -> dict:
 def order_head_chips(order, hide_money=False) -> list[dict]:
     """受注の詳細の頭の要点の札 (N163)。札 = {"label", "value"} (値は字)。土台の core/detail.html が head_chips を読んで題の横に並べる。
 
-    得意先 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・合計 (明細の金額の合計と「円」。明細があり、
+    得意先 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・合計 (明細の金額の合計。頭に ¥。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (order_aside) は残す (札はその要約)。
     """
     lines = list(order.lines.all())
@@ -81,7 +81,7 @@ def order_head_chips(order, hide_money=False) -> list[dict]:
     if dues:
         chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d}"})
     if lines and not hide_money:
-        chips.append({"label": "合計", "value": f"{comma(sum((line.amount for line in lines), Decimal('0')))} 円"})
+        chips.append({"label": "合計", "value": yen(sum((line.amount for line in lines), Decimal("0")))})
     return chips
 
 
