@@ -207,11 +207,12 @@ def test_update_shipment_does_not_send(monkeypatch, user, customer, item, send_c
 
 
 def test_shipment_hides_number_in_detail_fields():
-    assert Shipment.detail_hidden_fields == ("notice_message_id",)
+    # 受注の明細の無い出荷は、送る物でない側 (番号と知らせの 2 列を隠す)。DB に問い合わせない。
+    # 受信した注文で作った受注の出荷で 2 列が出ることは、test_shipment_detail_shows_sent_badge_without_resend が見る。
     hidden = hidden_detail_fields(Shipment())
     assert "notice_message_id" in hidden
-    assert "notice_sent_at" not in hidden
-    assert "notice_response" not in hidden
+    assert "notice_sent_at" in hidden
+    assert "notice_response" in hidden
 
 
 # --- 2 段目: 出荷の詳細の「出荷の知らせ」の節と「送り直す」の口 ---
@@ -291,9 +292,9 @@ def test_manual_shipment_detail_has_no_notice_section(logged_in, user, shipment)
     body = _detail(logged_in, shipment)
 
     assert "shipment-notice-title" not in body
+    # 手入力の受注の出荷は知らせを送る物でないので、知らせの 2 行を出さない (初見テスト R5 の候補 C18 の A2)
     for label in ("出荷の知らせを送った日時", "出荷の知らせの相手の返事"):
-        value = re.search(rf"<dt[^>]*>{label}</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S).group(1)
-        assert "—" in value
+        assert re.search(rf"<dt[^>]*>{label}</dt>", body) is None, label
 
 
 @pytest.mark.django_db

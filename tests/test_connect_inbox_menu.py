@@ -190,8 +190,9 @@ def test_detail_shows_reply_state(client_logged_in, receive_order, user):
     body = client_logged_in.get(url).content.decode()
 
     assert re.search(r"<title>[^<]* \| 受信した注文の詳細", body)
-    reply = re.search(r"<dt[^>]*>注文回答</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
-    assert reply and "—" in reply.group(1)
+    # 未処理の間は、結果の 3 行を出さない (決め C18-1 = a。初見テスト R5 の候補 C18 の A5)
+    for label in ("受け入れて作った受注", "断った理由", "注文回答"):
+        assert re.search(rf"<dt[^>]*>{label}</dt>", body) is None, label
 
     # 断った後。注文回答を返す向き (送る) の接続が無いので、届いていない理由が出る
     services.reject(inbox, "作り物の断りの理由", user)
@@ -199,6 +200,10 @@ def test_detail_shows_reply_state(client_logged_in, receive_order, user):
 
     reply = re.search(r"<dt[^>]*>注文回答</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
     assert reply and "届いていない" in reply.group(1) and "取引先との接続" in reply.group(1)
+    # 断った後は「断った理由」を出し、「受け入れて作った受注」は出さない
+    reason = re.search(r"<dt[^>]*>断った理由</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
+    assert reason and "作り物の断りの理由" in reason.group(1)
+    assert re.search(r"<dt[^>]*>受け入れて作った受注</dt>", body) is None
     # 注文回答の番号 (uuid) は画面に出さない
     inbox.refresh_from_db()
     assert inbox.reply_message_id is not None
@@ -224,3 +229,16 @@ def test_row_menu_markup_follows_core_js(client_logged_in, receive_order):
     assert "closest('a, details')" in js
     # 「取引先の情報を見る」は master_link と同じ小窓を開く
     assert 'hx-target="#seizou-modal-box"' in row and "showModal()" in row
+
+
+def test_accepted_detail_shows_order_and_reply_rows(client_logged_in, receive_order, item, user):
+    # 受け入れた後は「受け入れて作った受注」と「注文回答」を出し、「断った理由」は出さない (初見テスト R5 の候補 C18 の A5)
+    inbox = receive_order([_line(1, "A-100")])
+    order = services.accept(inbox, {"A-100": item}, user)
+
+    body = client_logged_in.get(reverse("connect:inbox_detail", args=[inbox.pk])).content.decode()
+
+    made = re.search(r"<dt[^>]*>受け入れて作った受注</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
+    assert made and order.order_no in made.group(1)
+    assert re.search(r"<dt[^>]*>注文回答</dt>", body)
+    assert re.search(r"<dt[^>]*>断った理由</dt>", body) is None

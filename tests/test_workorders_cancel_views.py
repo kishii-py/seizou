@@ -4,6 +4,7 @@
 実績の入った指示書の取消は赤の知らせで発行のまま。取消の指示書は生産計画の盤から外れる。
 """
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+from seizou.core.views import hidden_detail_fields
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
@@ -141,3 +143,39 @@ def test_cancel_screen_says_cancel(logged_in, user, workorder):
     assert "保存</button>" not in stopped
     workorder.refresh_from_db()
     assert workorder.status == WorkOrder.STATUS_ISSUED
+
+
+# --- 基本情報の「取消の理由」は取り消した指示書だけ (初見テスト R5 の候補 C18 の A1) ---
+
+REASON_DT = re.compile(r"<dt[^>]*>取消の理由</dt>\s*<dd[^>]*>(.*?)</dd>", re.S)
+
+
+def test_cancel_reason_is_hidden_unless_cancelled():
+    assert "cancel_reason" in hidden_detail_fields(WorkOrder())
+    assert "cancel_reason" not in hidden_detail_fields(WorkOrder(status=WorkOrder.STATUS_CANCELLED))
+    # 状態は今までどおり、どちらでも出さない (題の横の印で出す)
+    assert "status" in hidden_detail_fields(WorkOrder())
+    assert "status" in hidden_detail_fields(WorkOrder(status=WorkOrder.STATUS_CANCELLED))
+
+
+@pytest.mark.django_db
+def test_issued_detail_and_modal_have_no_cancel_reason_row(logged_in, workorder):
+    detail = logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk]))
+    assert "取消の理由" not in [field["label"] for field in detail.context["fields"]]
+    assert REASON_DT.search(detail.content.decode()) is None
+
+    modal = logged_in.get(reverse("workorders:workorder_modal", args=[workorder.pk]), HTTP_HX_REQUEST="true")
+    assert modal.status_code == 200
+    assert "取消の理由" not in [field["label"] for field in modal.context["fields"]]
+    assert REASON_DT.search(modal.content.decode()) is None
+
+
+@pytest.mark.django_db
+def test_cancelled_detail_shows_cancel_reason_row_even_if_empty(logged_in, user, workorder):
+    services.cancel_workorder(workorder, user)
+
+    body = logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])).content.decode()
+
+    # 理由を書かずに取り消した指示書も、行を出して「—」
+    reason = REASON_DT.search(body)
+    assert reason and "—" in reason.group(1)

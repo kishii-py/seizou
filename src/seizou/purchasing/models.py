@@ -171,8 +171,21 @@ class Receipt(models.Model):
     acceptance_sent_at = models.DateTimeField("検収を送った日時", null=True, blank=True)
     acceptance_response = models.CharField("検収の相手の返事", max_length=500, blank=True)
 
-    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
-    detail_hidden_fields = ("acceptance_message_id",)
+    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
+    #: 検収を送った日時と相手の返事の 2 列は、seizou どうしで送った発注の受入 (相手へ検収を送る物) だけ出す。
+    #: 送った発注で検収がまだ無い受入は「—」のまま出す (決め 11-05 09:3x の「まだ無い」)。
+    #: 送っていない発注の受入では入らない欄で、「—」の行は何の欄か迷わせる (初見テスト R5 の候補 C18)。
+    #: 送った発注かの判定は、送る側と同じ services._is_sent_order を使う (同じ式を 2 か所に書かない)。
+    #: purchasing.services が頭でこの model を読むので、services は中で import する (頭で読むと輪になる)。
+    @property
+    def detail_hidden_fields(self):
+        hidden = ("acceptance_message_id",)
+        if self.line_id is not None:
+            from . import services
+
+            if services._is_sent_order(self.line.purchase_order):
+                return hidden
+        return (*hidden, "acceptance_sent_at", "acceptance_response")
 
     class Meta:
         verbose_name = "受入"
