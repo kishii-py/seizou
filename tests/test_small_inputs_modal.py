@@ -564,3 +564,64 @@ def test_large_inputs_stay_pages(world):
     _login_manager(world)
     access = _tags(text(client.get(reverse("accounts:access_list"))), reverse("accounts:access_create"))
     assert access and all("data-modal-form" not in tag for tag in access)
+
+
+# ---------------------------------------------------------------- 取消の確かめのカードの形 (初見テスト R5 の候補 C24。依頼書 N258)
+
+#: 欄の格子の字 (格子の行の頭の mt-6 は必須の欄がある form だけに付く形に変わる見込み = 候補 C54 なので、見ない)
+GRID = "grid gap-x-6"
+#: 小窓の下の行 (欄がある form)・小窓の下の行 (見える欄が 0 個の form)・画面の全体の下の行 (C21)
+MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
+NO_FIELD_ROW = '<div class="flex flex-wrap items-center justify-end gap-2">'
+SAVE_ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
+#: 見える欄が 0 個の 4 つの form (納品書の取消・請求書の取消・入金の取消・注文を送り直す)
+NO_FIELDS = ("deliverynote_cancel", "invoice_cancel", "payment_cancel", "purchaseorder_send")
+
+
+def _card(body):
+    """入力のカードの form (data-enter-guard の付いた <form から </form> まで)。
+
+    全体の画面では <main より前の上の帯にログアウトの <form method="post" があるので、最初の form を取らない。
+    """
+    mark = body.index("novalidate data-enter-guard>")
+    start = body.rfind("<form", 0, mark)
+    assert start >= 0, "カードの form が無い"
+    assert "</form>" not in body[start:mark], "カードの form が無い"
+    return body[start : body.index("</form>", mark) + len("</form>")]
+
+
+def _url(w, name):
+    """name の画面の URL (注文を送り直すは BUILD に無いので、ここで「作成」の発注を作る)。"""
+    if name == "purchaseorder_send":
+        return reverse("purchasing:purchaseorder_send", args=[_purchase_order(w.user).pk])
+    return BUILD[name](w).url
+
+
+@pytest.mark.parametrize("name", NO_FIELDS)
+def test_no_field_cards_have_no_empty_band(world, name):
+    """見える欄が 0 個の確かめは、白い枠に欄の格子を描かない。小窓では下の行の上の空きと線も描かない (U69・a-blind-15。C24 の 1)。
+
+    画面の全体の下の行 (seizou-save-row) の上の空きと線は、外し方が決まっていないので見ない (候補の「決めを待つ所」)。
+    """
+    url = _url(world, name)
+    modal = _card(text(world.client.get(url, **MODAL)))
+    assert GRID not in modal
+    assert "border-t" not in modal
+    assert MODAL_ROW not in modal
+    assert NO_FIELD_ROW in modal
+    whole = _card(text(world.client.get(url)))
+    assert GRID not in whole
+    assert SAVE_ROW in whole
+
+
+@pytest.mark.parametrize("name", ("order_cancel", "payment_create"))
+def test_field_cards_keep_grid_and_rows(world, name):
+    """欄がある form (受注の取消・入金の記録) は、格子と、小窓と画面の全体の下の行が今の形のまま (C24 の 1)。"""
+    case = BUILD[name](world)
+    modal = _card(text(world.client.get(case.url, **MODAL)))
+    assert GRID in modal
+    assert MODAL_ROW in modal
+    assert NO_FIELD_ROW not in modal
+    whole = _card(text(world.client.get(case.url)))
+    assert GRID in whole
+    assert SAVE_ROW in whole

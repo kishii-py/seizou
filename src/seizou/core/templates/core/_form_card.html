@@ -5,6 +5,8 @@
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
+  {# 見える欄が 0 個の form (欄の無い取消の確かめ・注文を送り直す) は格子を描かない。白い枠に見える物の無い帯を作らないため (初見テスト R5 の U69・a-blind-15。候補 C24) #}
+  {% if form.visible_fields %}
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
     {% for field in form.visible_fields %}
     {% if field.widget_type == "checkbox" %}
@@ -27,12 +29,18 @@
     {% endif %}
     {% endfor %}
   </div>
+  {% endif %}
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと 2 つ書く (R19)。 #}
+  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと書く (R19)。 #}
+  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (U69・a-blind-15。候補 C24)。画面の全体の欄の無い form の行の上の空きと線は、外し方が決まるまで今のまま #}
   {% if in_modal %}
+  {% if form.visible_fields %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+  {% else %}
+  <div class="flex flex-wrap items-center justify-end gap-2">
+  {% endif %}
   {% else %}
   <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
     <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
