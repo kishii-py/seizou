@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from seizou.masters import services as masters_services
-from seizou.masters.models import Process
+from seizou.masters.models import Holiday, Process
 from seizou.orders import services as orders_services
 from seizou.workorders import plans, services
 
@@ -209,6 +209,25 @@ def test_day_header_has_number_and_weekday_rows(client_logged_in, cut):
 
 
 @pytest.mark.django_db
+def test_board_paints_holiday_list_days_and_weekly_holidays(settings, client_logged_in, user, cut):
+    """盤で灰色に塗る日 (data-weekend) は、凡例の「休日」と同じ日 = 定休日の曜日と休日の一覧の日 (候補 C52 の 2。C52-2 = a)。"""
+    # 休日は最初の GET より前に足す (create_holiday は控えを捨てるので、GET の後に足さない)
+    masters_services.create_holiday({"date": date(2026, 11, 3), "name": "作り物の祝日", "kind": Holiday.KIND_PUBLIC}, user)
+
+    html = _board(client_logged_in, cut).content.decode()
+    assert html.count('data-weekend="true"') == 3
+    assert 'data-date="2026-11-03" data-weekend="true"' in html
+    assert 'data-date="2026-11-04" data-weekend="true"' not in html
+
+    settings.SEIZOU = {"weekly_holidays": [6]}  # 日曜だけ
+    html = _board(client_logged_in, cut).content.decode()
+    assert html.count('data-weekend="true"') == 2
+    assert 'data-date="2026-11-07" data-weekend="true"' not in html
+    assert 'data-date="2026-11-08" data-weekend="true"' in html
+    assert 'data-date="2026-11-03" data-weekend="true"' in html
+
+
+@pytest.mark.django_db
 def test_today_number_is_marked(client_logged_in, cut):
     html = _board(client_logged_in, cut, "").content.decode()
 
@@ -291,6 +310,23 @@ def test_legend_has_holiday_and_today(client_logged_in, cut):
     legend = _legend(_board(client_logged_in, cut).content.decode())
     assert "休日" in legend
     assert "今日" in legend
+
+
+@pytest.mark.django_db
+def test_legend_sits_in_board_card_with_visible_holiday_swatch(client_logged_in, cut):
+    """凡例は盤の白い箱 (日の計画) の中の頭にあり、「休日」の見本は盤の列と同じ塗りに灰の枠を持つ (候補 C52 の 1)。"""
+    html = _board(client_logged_in, cut).content.decode()
+
+    section = html[html.index('aria-label="日の計画"') : html.index('id="plan-unplanned"')]
+    assert 'aria-label="凡例"' in section
+    swatches = [
+        classes.split()
+        for classes in re.findall(r'<span class="([^"]*)"></span>', _legend(html))
+        if "bg-base-200" in classes.split()
+    ]
+    assert len(swatches) == 1
+    assert "border" in swatches[0]
+    assert "border-base-300" in swatches[0]
 
 
 @pytest.mark.django_db
