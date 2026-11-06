@@ -44,7 +44,7 @@
     <div class="flex shrink-0 items-center gap-2 border-t border-base-300 p-4">
       <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{{ name|first|upper }}</span>
       <span class="min-w-0 flex-1 truncate font-medium" title="{{ name }}">{{ name }}</span>
-      <form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button class="btn btn-ghost btn-square btn-sm" type="submit" title="ログアウト" aria-label="ログアウト">{% icon "logout" "size-4" %}</button></form>
+      <form method="post" action="{% url 'core:logout' %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">{% icon "logout" "size-4" %}ログアウト</button></form>
     </div>
     {% endwith %}
     {% endif %}
