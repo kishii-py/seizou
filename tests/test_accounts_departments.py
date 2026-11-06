@@ -484,6 +484,10 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
     assert Department.objects.filter(pk=seizou_dept.pk).exists()
 
     services.update_account(genba.seizou_access, {"departments": []}, manager)
+    # 人を外した後の確かめの画面 (GET) は今までどおり「を削除します。」と赤い「削除」で、黄の知らせは無い
+    cleared = _main(client.get(url).content.decode())
+    assert "を削除します。" in cleared and 'class="btn btn-error"' in cleared
+    assert "alert-warning" not in cleared
     deleted = client.post(url, {})
     assert deleted.status_code == 302
     assert deleted["Location"] == reverse("accounts:department_list")
