@@ -6,6 +6,7 @@
 
 import json
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -251,3 +252,27 @@ def test_reject_screen_says_reject(client_logged_in, receive_order):
     assert "「断る」を押します" in body
     inbox.refresh_from_db()
     assert inbox.status == Inbox.STATUS_RECEIVED
+
+
+# ---------------------------------------------------------------- 相手の発注番号と発注日 (初見テスト R5 の候補 C08)
+
+
+@pytest.mark.parametrize(
+    ("payload", "order_no", "order_date"),
+    [
+        ({"order_no": "PO-000002", "order_date": "2026-11-03"}, "PO-000002", date(2026, 11, 3)),
+        ({"order_no": "", "order_date": ""}, "", None),
+        ({"order_no": None, "order_date": None}, "", None),
+        ({}, "", None),
+        ({"order_no": 12, "order_date": "2026/11/03"}, "", None),
+        ({"order_no": ["PO"], "order_date": 20261103}, "", None),
+        ({"order_no": "PO-1", "order_date": "2026-13-40"}, "PO-1", None),
+        (["PO-000002", "2026-11-03"], "", None),
+    ],
+)
+def test_inbox_buyer_order_no_and_date(payload, order_no, order_date):
+    """payload の形が違っても、表示のための読み方は例外を出さず、空の字か None を返す。"""
+    inbox = Inbox(payload=payload)
+
+    assert inbox.buyer_order_no() == order_no
+    assert inbox.buyer_order_date() == order_date
