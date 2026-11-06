@@ -42,19 +42,25 @@ def _label(order, name) -> str:
 def order_aside(order, fields, hide_money=False) -> dict:
     """受注の詳細の右の列。
 
-    得意先 (名前は小窓を開く字・取引先コード)・日付 (受注日・明細の一番早い納期)・金額 (明細の金額の合計。明細があり、
+    得意先 (名前は小窓を開く字・取引先コード)・日付 (受注日・相手の発注日・明細の一番早い納期)・金額 (明細の金額の合計。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)・基本情報 (土台の項目 fields から得意先と受注日を除いた物)。
+    相手の発注日は、受信した注文から作った受注で、その payload の発注日が読めるときだけ出す (候補 C08 の 4)。
+    受注日は編集で直せるので、行の名「受注日」は変えずに行を分ける (直した後も両方の字が正しい)。
+    受信した注文は逆向きの 1 対 1 (inbox_message) で引き、connect の model を import しない (orders/timeline.py と同じ引き方)。
     """
     customer = order.customer
     lines = list(order.lines.all())
     dues = sorted(line.due_date for line in lines if line.due_date)
     moved = (_label(order, "customer"), _label(order, "order_date"))
+    inbox = getattr(order, "inbox_message", None)
+    buyer_date = inbox.buyer_order_date() if inbox is not None else None
+    date_rows = [_row(_label(order, "order_date"), order.order_date)]
+    if buyer_date is not None:
+        date_rows.append(_row("相手の発注日", buyer_date))
+    date_rows.append(_row("一番早い納期", dues[0] if dues else None))
     cards = [
         {"title": _label(order, "customer"), "rows": [_row("名前", master=customer), _row("取引先コード", customer.code)]},
-        {
-            "title": "日付",
-            "rows": [_row(_label(order, "order_date"), order.order_date), _row("一番早い納期", dues[0] if dues else None)],
-        },
+        {"title": "日付", "rows": date_rows},
     ]
     if lines and not hide_money:
         total = sum((line.amount for line in lines), Decimal("0"))
