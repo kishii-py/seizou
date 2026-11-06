@@ -3,10 +3,13 @@
 主色 (brand_color) と業種 (industry) は空で保存すると既定 (土台の色・左上の seizou) に戻るので、欄を「任意」にする。
 form の必須と services の validate_setting が空を通す鍵が食い違わない事、空で保存して「答えの値に戻す」で戻る行き来、
 形の合わない主色を今と同じく services が断る事を見る。model の名前の 3 つの欄は必須のまま。
+主色の画面だけ、欄の右に今の色で塗った見本の四角を出す (打ち直したときに塗り直すのは画面の JS。ここでは最初の描き方を見る)。
 会社の設定は settings の fixture で SEIZOU を替える。名前と値は作り物だけ。
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 from django.urls import reverse
@@ -109,3 +112,46 @@ def test_bad_brand_color_is_refused_as_before(manager_client, settings):
     assert response.status_code == 200
     assert not SettingOverride.objects.exists()
     assert conf.brand_color() == "#15803d"
+
+
+# ---------------------------------------------------------------- 主色の見本 (欄の右の四角)
+
+#: 見本の四角の頭の tag (JS の getElementById の字は数えない)
+SWATCH_TAG = re.compile(r'<span[^>]*id="brand-color-swatch"[^>]*>')
+#: hidden の属性 (四角は aria-hidden="true" も持つので、字の hidden を含むかでは見ない)
+HIDDEN_ATTR = re.compile(r"\shidden(?=[\s>])")
+
+
+def swatch_tags(client) -> list[str]:
+    response = client.get(edit_url("brand_color"))
+    assert response.status_code == 200
+    return SWATCH_TAG.findall(response.content.decode())
+
+
+def test_brand_color_swatch_is_painted_with_the_current_color(manager_client, settings):
+    settings.SEIZOU = {"brand_color": "#15803D"}
+
+    tags = swatch_tags(manager_client)
+
+    assert len(tags) == 1
+    assert 'style="background-color: #15803d"' in tags[0]
+    assert not HIDDEN_ATTR.search(tags[0])
+
+
+def test_brand_color_swatch_is_hidden_for_a_bad_color(manager_client, settings):
+    # 形の合わない値は conf.brand_color() が空の字にするので、四角を塗らずに隠す (箱の div も hidden なので tag の中だけを見る)
+    settings.SEIZOU = {"brand_color": "red"}
+
+    tags = swatch_tags(manager_client)
+
+    assert len(tags) == 1
+    assert "background-color" not in tags[0]
+    assert HIDDEN_ATTR.search(tags[0])
+
+
+@pytest.mark.parametrize("key", ["industry", "assistant_model", "over_shipment"])
+def test_other_edit_pages_have_no_swatch(manager_client, key):
+    body = manager_client.get(edit_url(key)).content.decode()
+
+    assert 'id="brand-color-swatch"' not in body
+    assert 'id="brand-color-row"' not in body

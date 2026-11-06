@@ -1,8 +1,40 @@
 {% extends "core/form.html" %}
 {% load seizou_icons %}
-{# 設定の変更: 選べる設定 1 つの入力。「答えの値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。 #}
+{# 設定の変更: 選べる設定 1 つの入力。「答えの値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。主色の画面だけ、欄の右に打った字の色の見本を出す (小さな JS。形の合わない字のときは出さない)。 #}
 {% block actions %}{% if can_clear %}<form method="post" action="{% url 'core:setting_clear' setting_key %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}答えの値に戻す</button></form>{% endif %}{% endblock %}
 {% block content %}
 <p class="mb-4 text-sm text-base-content/70">「{{ setting_label }}」(鍵 <code class="font-mono">{{ setting_key }}</code>)。今の値の出所: {{ source }}。保存した値は、置き場の settings.py の SEIZOU と答えの YAML より優先されます。</p>
 {{ block.super }}
+{% if setting_key == "brand_color" %}
+{# 主色の見本: 横並びの箱と、その色で塗った四角 (見るだけ。押しても何も起きない)。下の JS が箱を欄の所へ移し、欄を箱の中の四角の前へ移す。 #}
+{# 箱は JS が移すまで hidden (JS が動かない時に、カードの下に四角だけが残らないように)。class は字のまま書く (R19)。角の丸みと枠は表示の設定の見本 (core/_display_settings_card.html) と同じ。 #}
+{# 最初の色は seizou.brand_color (conf.brand_color() が形を見た小文字の値。形の合わない値と空は空の字なので、四角を hidden にする)。 #}
+<div id="brand-color-row" class="flex items-center gap-2" hidden><span id="brand-color-swatch" class="size-9 shrink-0 rounded-lg border border-base-300" aria-hidden="true"{% if seizou.brand_color %} style="background-color: {{ seizou.brand_color }}"{% else %} hidden{% endif %}></span></div>
+<script>
+(function () {
+  var input = document.getElementById("id_brand_color");
+  var row = document.getElementById("brand-color-row");
+  var swatch = document.getElementById("brand-color-swatch");
+  if (!input || !row || !swatch) return;
+  // 箱を欄のすぐ前に置き、欄を箱の中の四角の前へ移す。欄の id・name・aria-invalid と、箱の下の誤りの字と注記は変えない
+  input.parentNode.insertBefore(row, input);
+  row.insertBefore(input, swatch);
+  row.hidden = false;
+  // # と 16 進の 6 桁 (core/conf.py の BRAND_COLOR_PATTERN と同じ形。services と同じく前後の空白を落としてから見る)
+  var pattern = /^#[0-9A-Fa-f]{6}$/;
+  function paint() {
+    var text = input.value.trim();
+    if (pattern.test(text)) {
+      swatch.style.backgroundColor = text;
+      swatch.hidden = false;
+    } else {
+      swatch.hidden = true;
+    }
+  }
+  // 読み込んだ時に 1 回 (止まって描き直した画面では、欄に入れ直した字の色にそろえる) と、字を打つたびに塗り直す
+  input.addEventListener("input", paint);
+  paint();
+})();
+</script>
+{% endif %}
 {% endblock %}
