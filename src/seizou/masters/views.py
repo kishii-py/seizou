@@ -75,7 +75,8 @@ class ItemDetailView(BaseDetailView):
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
     screen_help = "部品の項目と、取引先ごとの品番、標準の工程の並び。"
-    tabs = (("取引先ごとの品番", "partner_items"), ("標準の工程", "item_processes"))
+    # 標準の工程の行の字 (ItemProcess.__str__) が工程を読むので、工程を行と一緒に 1 回で引く (N174)
+    tabs = (("取引先ごとの品番", "partner_items"), ("標準の工程", "item_processes", ("process",)))
 
 
 class ItemCreateView(BaseFormView):
