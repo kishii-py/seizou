@@ -3,6 +3,7 @@
 判定は settings の fixture で 3 つとも有効にする (tests/settings.py は SEIZOU = {} のまま)。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -237,6 +238,23 @@ def test_edit_keeps_password_and_disables(on, client, manager, seizou_dept):
     back = other.get(reverse("workorders:workorder_list"))
     assert back.status_code == 302
     assert back["Location"].startswith(reverse("core:login"))
+
+
+@pytest.mark.django_db
+def test_full_control_note_on_issue_and_edit(on, client, manager, seizou_dept):
+    """アカウントの発行と編集の「フルコントロール」の欄の下に、範囲の注記を出す (初見テスト R5 の V116。候補 C47 の 2)。
+
+    注記の <p> の class は見ない (C49 が替える)。
+    """
+    target = account("genba", departments=[seizou_dept])
+    client.force_login(manager)
+
+    for url in (reverse("accounts:access_create"), reverse("accounts:access_update", args=[target.seizou_access.pk])):
+        html = client.get(url).content.decode()
+        note = re.search(r'<p id="id_full_control_helptext"[^>]*>(.*?)</p>', html, re.S)
+        assert note is not None, url
+        for word in ("権限の判定", "アカウント管理", "システム管理者だけ"):
+            assert word in note.group(1), (url, word)
 
 
 @pytest.mark.django_db

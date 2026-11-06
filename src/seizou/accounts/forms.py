@@ -55,7 +55,15 @@ class AccountForm(forms.Form):
         help_text="まとめ (マスター編集・伝票編集) を付けると、中の種類が全部付きます。",
     )
     see_money = forms.BooleanField(label="金額の閲覧", required=False)
-    full_control = forms.BooleanField(label="フルコントロール", required=False)
+    full_control = forms.BooleanField(
+        label="フルコントロール",
+        required=False,
+        help_text=(
+            "部署・編集の権限・金額の閲覧の 3 つの制限を受けません"
+            " (部署で開けない画面も開き、権限の無い種類のデータも登録・変更・削除でき、単価と金額が見えます)。"
+            "アカウント管理と設定の変更も使えます。設定の「権限の判定」を変えるのはシステム管理者だけです。"
+        ),
+    )
     manage_accounts = forms.BooleanField(label="アカウント管理", required=False)
     is_active = forms.BooleanField(label="使用中", required=False, initial=True)
 
