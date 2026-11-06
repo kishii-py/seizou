@@ -63,6 +63,7 @@ from django.views.generic import DetailView, FormView, ListView, TemplateView, V
 
 from seizou.core import access
 from seizou.core import checks
+from seizou.core import csvio
 from seizou.core import dashboard
 from seizou.core import select_options
 from seizou.core import fields as company_fields
@@ -1148,7 +1149,7 @@ class BaseListView(ScreenMixin, ListView):
         writer = csv.writer(response)
         writer.writerow([s.label for s in specs])
         for obj in self.order_annotated(self.get_queryset()):
-            writer.writerow(["" if v is None else str(v) for v in (display_value(obj, s.name) for s in specs)])
+            writer.writerow([csvio.to_text(display_value(obj, s.name)) for s in specs])
         return response
 
     def summary_csv_response(self, summary) -> HttpResponse:

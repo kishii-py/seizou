@@ -1,6 +1,7 @@
 """CSV の読み方の共通の関数 (05 の 8 節の「入れる」)。
 
 部品の取り込みの form が使う。core の部品なので、ほかの部品を import しない (model は引数で受ける)。
+一覧の土台の CSV の書き出し (core.views の csv_response) も、真偽の字を to_text で作る (書き出しと取り込みの字を 1 か所にそろえるため)。
 「字 → 値」の決まりは種と CSV の読み方の置き場 (seizou.core.seeds) の関数をそのまま使う (決まりを 2 か所に書かない)。
 
 - 文字コードは人が選ぶ (自動の判定はしない)。読めない字は黙って捨てず、日本語の ValueError にする。
@@ -156,3 +157,16 @@ def to_ext_value(column, raw):
     except ValidationError as exc:
         raise ValueError(f"{column.label}「{str(raw).strip()}」は使えません。{_message(exc)}") from None
     return value
+
+
+def to_text(value):
+    """表の値を、一覧の CSV の書き出しの 1 つの欄の字にする (to_value の逆の向き)。
+
+    None は空の字、真偽は取り込みが読む字の組にある書き出しの字 (seeds.TRUE_TEXT・FALSE_TEXT。決め 11-06 22:0x)、ほかは str。
+    真偽は isinstance で見る (数の 0 と 1 は数の字のまま)。
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return seeds.TRUE_TEXT if value else seeds.FALSE_TEXT
+    return str(value)

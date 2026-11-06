@@ -20,8 +20,11 @@ from django.db import models
 
 from seizou.core.exceptions import RuleViolation
 
-TRUE_WORDS = frozenset({"true", "1", "はい", "yes"})
-FALSE_WORDS = frozenset({"false", "0", "いいえ", "no"})
+#: 一覧の CSV の書き出しが真偽に使う字 (core.csvio.to_text)。取り込みが読む字の組に入れ、書き出しと取り込みで言葉をそろえる (決め 11-06 22:0x)
+TRUE_TEXT = "はい"
+FALSE_TEXT = "いいえ"
+TRUE_WORDS = frozenset({"true", "1", TRUE_TEXT, "yes"})
+FALSE_WORDS = frozenset({"false", "0", FALSE_TEXT, "no"})
 
 
 def is_blank(raw):
