@@ -248,3 +248,65 @@ def test_detail_of_removed_target_goes_to_list(client_logged_in, order, user):
     assert response.status_code == 302
     assert response["Location"] == reverse("attachments:attachment_list")
     assert "(削除された記録)" in html_of(client_logged_in.get(reverse("attachments:attachment_list")))
+
+
+# --- 添付ファイルを付けるの頭の 1 行 (初見テスト R5・候補 C66 の 2) ---
+
+
+@pytest.mark.django_db
+def test_add_form_shows_target_line_above_fields(client_logged_in, order, item):
+    """開いたとき、入力の上に「付ける先: <種類の名前> <記録の字>」の 1 行が出る (種類の欄より前)。
+
+    トップの帯のログアウトの form が先にあるので、<form method="post" の字では比べない。
+    """
+    add_url = reverse("attachments:attachment_add")
+    for target, text in [(order, f"付ける先: 受注 {order.order_no}</p>"), (item, "付ける先: 部品 T-100 作り物の軸</p>")]:
+        response = client_logged_in.get(add_url, {"content_type": ct_of(target), "object_id": target.pk})
+
+        assert response.status_code == 200
+        html = html_of(response)
+        assert text in html
+        assert html.index(text) < html.index('name="kind"')
+        assert "attachments/attachment_form.html" in [t.name for t in response.templates]
+
+
+@pytest.mark.django_db
+def test_add_form_keeps_target_line_when_stopped(client_logged_in, order):
+    """ファイルを付けずに保存して止まった画面でも、送られた値から引いた 1 行が出ている。誤りの字は見ない (誤りの id で見る)。"""
+    response = client_logged_in.post(
+        reverse("attachments:attachment_add"),
+        {"content_type": ct_of(order), "object_id": order.pk, "kind": "other"},
+    )
+
+    assert response.status_code == 200
+    html = html_of(response)
+    assert 'id="id_file_error"' in html
+    assert f"付ける先: 受注 {order.order_no}" in html
+    assert Attachment.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_add_form_has_no_target_line_when_not_found(client_logged_in, order, user):
+    """付ける先が引けないとき (無い番号・付けられない種類・数でない字) は、画面は開き、1 行は出ない。"""
+    add_url = reverse("attachments:attachment_add")
+    for content_type, object_id in [(ct_of(order), 9999), (ct_of(user), user.pk), ("abc", order.pk)]:
+        response = client_logged_in.get(add_url, {"content_type": content_type, "object_id": object_id})
+
+        assert response.status_code == 200
+        assert "付ける先: " not in html_of(response)
+
+
+@pytest.mark.django_db
+def test_add_form_in_modal_has_no_target_line(client_logged_in, order):
+    """詳細の枠から小窓で開くときは、今どおり土台の小窓の中身で、1 行は出ない (後ろに詳細が見えるため)。"""
+    response = client_logged_in.get(
+        reverse("attachments:attachment_add"),
+        {"content_type": ct_of(order), "object_id": order.pk},
+        HTTP_HX_REQUEST="true",
+        HTTP_HX_TARGET="seizou-modal-box",
+    )
+
+    assert response.status_code == 200
+    html = html_of(response)
+    assert "seizou-modal-wide" in html
+    assert "付ける先: " not in html
