@@ -24,7 +24,9 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
 {% can_write "progress.Progress" as can_progress %}
 {% can_write "receiving.Receiving" as can_receive %}
 {% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
-<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に右の端のぼかしを重ねる (C34)。 #}
+<div>
+<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">
   <thead><tr class="bg-base-200 text-base-content/70">
     {% for col in columns %}{% if col.numeric %}<th class="whitespace-nowrap font-medium text-right"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% else %}<th class="whitespace-nowrap font-medium"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% endif %}
@@ -63,6 +65,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
   {% board_totals paginator.object_list as sums %}
   <tfoot><tr class="bg-base-200 font-bold text-base-content">{% for col in columns %}{% if col.name == "qty" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.qty|comma }}</td>{% elif col.name == "shipped_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.shipped|comma }}</td>{% elif col.name == "remaining_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.remaining|comma }}</td>{% elif col.name == "board__acceptance_total" %}<td class="whitespace-nowrap text-right tabular-nums">{{ sums.accepted|comma }}</td>{% elif forloop.first %}<td class="whitespace-nowrap">合計</td>{% else %}<td></td>{% endif %}{% endfor %}<td></td></tr></tfoot>
 </table>
+</div>
 </div>
 <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
   <p class="text-base-content/70"><span class="tabular-nums">{{ paginator.count|comma }}</span> 件中 <span class="tabular-nums">{{ page_obj.start_index|comma }}–{{ page_obj.end_index|comma }}</span> 件</p>

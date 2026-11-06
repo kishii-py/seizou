@@ -238,6 +238,29 @@ body > .ts-dropdown [data-select-create]:hover {
   }
 }
 
+/* 一覧の表の箱の右の端のぼかし (初見テスト R5 の候補 C34。C34-1 = a)。右に続きがあるときだけ、箱の右の端に薄い灰のぼかしを出す。
+   印: 表の箱 (core/_rows.html と、その写しの 3 つ) の data-scroll-hint。js/seizou-scroll-hint.js が、右に続きがあるときだけ
+   箱を包む要素 (箱の親) に data-more-right を付け、右の端まで送ると外す。溢れの無い幅では付かない。
+   箱そのものの ::after は箱の中身と一緒に送られて動くので、包みの ::after で箱の上に重ねる (本人が見て選んだ見本と同じ形)。
+   形 (見本の数): 幅 40px、左の透明から右の灰 (rgba(120,120,120,0.28)) へ移る帯。箱の枠の 1px の内側に置き、右の角は箱の丸み (rounded-lg = 0.5rem) に合わせる。
+   見出しの行 (z-index 3) と止めた欄 (2) より上に重ね (4)、pointer-events: none で下の欄を押せるままにする。
+   バーの有無は CSS では分からないので、バーがあるときはバーの上にも重なる (見本は箱の中の見える所だけに描いた。違いは本体が絵で見る)。 */
+[data-more-right] {
+  position: relative;
+}
+[data-more-right]::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 40px;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(120, 120, 120, 0), rgba(120, 120, 120, 0.28));
+  border-radius: 0 calc(0.5rem - 1px) calc(0.5rem - 1px) 0;
+}
+
 /* 上の帯 (ヘッダー) の色。人ごとの表示の設定 (決め 11-05 21:2x。N167)。名前は core.display.HEADER_COLORS の鍵と同じ字。
    土台の base.html は、白 (標準) の外を選んだ人の画面だけ <html> に data-seizou-header="<名前>" を出す。上の帯 (core/_topbar.html の header) は
    固定の class seizou-header を持つ。表示の設定の小窓の見本 (core/_display_settings_card.html) は data-seizou-swatch="<名前>" で同じ色を出す。

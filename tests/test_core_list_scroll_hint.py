@@ -1,7 +1,8 @@
-"""一覧の表の左の 1 列目を箱の左に止める (初見テスト R5 の候補 C34 の本 B。C34-1 = a)。
+"""一覧の表の左の 1 列目を箱の左に止め、右に続きがあるときだけ箱の右の端にぼかしを出す (初見テスト R5 の候補 C34 の本 B。C34-1 = a)。
 
-表の固定の class (seizou-pin-first) と、scripts/css/input.css の決まりの字を見る。止まり方と色はブラウザで見る物なので、
-ここでは見ない (本体の手の確かめ)。app.css は読まない (レーンは作り直さないので、読むと作り直すまで落ちる)。
+表の固定の class (seizou-pin-first)・箱の印 (data-scroll-hint) と包み・static の js/seizou-scroll-hint.js の字と base.html の読み込み・
+scripts/css/input.css の決まりの字を見る。JS は動かさない。止まり方と色とぼかしの出し入れはブラウザで見る物なので、
+ここでは見ない (本体の手の確かめ)。右に続きがあるときの属性 (data-more-right) は JS が付ける物で、サーバーの HTML には無い。app.css は読まない (レーンは作り直さないので、読むと作り直すまで落ちる)。
 作り物のデータは全部 services で作る。
 """
 
@@ -33,6 +34,11 @@ ROWS_TEMPLATES = [
 ]
 
 PIN_TABLE = '<table class="table table-sm table-zebra table-pin-rows seizou-pin-first">'
+#: 印を付けた箱 (class の字は変えない) と、それを包む要素
+HINT_BOX = '<div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>'
+WRAPPED_BOX = re.compile(r"<div>\s*" + re.escape(HINT_BOX) + r"\s*" + re.escape(PIN_TABLE))
+JS = SRC / "core" / "static" / "js" / "seizou-scroll-hint.js"
+SCRIPT_SRC = re.compile(r"<script [^>]*src=\"([^\"]+)\"[^>]*>")
 
 #: 行がある形で開く一覧 (生産管理ボード・受注・請求書・工程・指示書)
 LISTS = [
@@ -78,6 +84,9 @@ def test_lists_pin_the_first_column(logged_in, listed):
             assert response.context["rows"], (name, headers)
             body = response.content.decode()
             assert body.count(PIN_TABLE) == 1, (name, headers)
+            # 箱に JS が見つける印があり、箱は包みの要素の中にある。右に続きがあるときの属性はサーバーが出さない
+            assert body.count(HINT_BOX) == 1 and WRAPPED_BOX.search(body), (name, headers)
+            assert "data-more-right" not in body, (name, headers)
             # 欄 (td と th) の class の字は変えない (止めるのは表の class の決まり)
             assert "sticky" not in body.split(PIN_TABLE, 1)[1].split("</table>", 1)[0], (name, headers)
 
@@ -88,6 +97,9 @@ def test_every_list_table_carries_the_pin_class():
         text = path.read_text(encoding="utf-8")
         tables = re.findall(r"<table [^>]*>", text)
         assert tables and all(tag == PIN_TABLE for tag in tables), path
+        boxes = re.findall(r'<div class="max-h-\[70vh\][^>]*>', text)
+        assert boxes == [HINT_BOX], path
+        assert len(WRAPPED_BOX.findall(text)) == 1, path
 
 
 def test_pin_rule_is_in_the_css_source():
@@ -99,3 +111,51 @@ def test_pin_rule_is_in_the_css_source():
     assert "z-index: 3;" in _rule(css, ".seizou-pin-first thead,\n.seizou-pin-first tfoot")
     for path in ROWS_TEMPLATES:
         assert "table-pin-cols" not in path.read_text(encoding="utf-8"), path
+
+
+def test_scroll_hint_js_is_plain_and_only_touches_data_attributes():
+    """JS は右に続きがあるかを箱の送りの値で見て、読み込み・送り・窓の大きさ・htmx の差し替えの後に取り直す。class と HTML と通信に触らない。"""
+    text = JS.read_text(encoding="utf-8")
+    for word in (
+        "scrollLeft",
+        "scrollWidth",
+        "clientWidth",
+        "[data-scroll-hint]",
+        "data-more-right",
+        '"DOMContentLoaded"',
+        '"scroll"',
+        '"resize"',
+        '"htmx:afterSettle"',
+        "setAttribute",
+        "removeAttribute",
+    ):
+        assert word in text, word
+    for word in ("classList", "className", "innerHTML", "insertAdjacentHTML", "outerHTML", "fetch(", "XMLHttpRequest"):
+        assert word not in text, word
+
+
+@pytest.mark.django_db
+def test_base_loads_scroll_hint_once_with_defer(logged_in):
+    """base.html は新しい JS を 1 回だけ defer で読む (並びの中の位置は見ない。後から足す 1 行と順が入れ替わっても通るように)。"""
+    body = logged_in.get(reverse("core:home")).content.decode()
+
+    scripts = [src for src in SCRIPT_SRC.findall(body) if src.endswith("js/seizou-scroll-hint.js")]
+    assert len(scripts) == 1
+    tag = re.search(r"<script [^>]*js/seizou-scroll-hint\.js[^>]*>", body).group(0)
+    assert "defer" in tag
+
+
+def test_fade_rule_is_in_the_css_source():
+    """右の端のぼかしは包みの ::after で描き、幅 40px・灰の濃さ 0.28・見出しと止めた欄より上・下の欄を押せるまま。"""
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert "position: relative;" in _rule(css, "[data-more-right]")
+    fade = _rule(css, "[data-more-right]::after")
+    for word in (
+        "position: absolute;",
+        "right: 1px;",
+        "width: 40px;",
+        "z-index: 4;",
+        "pointer-events: none;",
+        "rgba(120, 120, 120, 0.28)",
+    ):
+        assert word in fade, word
