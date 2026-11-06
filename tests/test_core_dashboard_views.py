@@ -71,17 +71,19 @@ def chart_svg(body, chart_id):
     return body[start : body.index("</svg>", start)]
 
 
-#: 2 つの枠を lg から横に並べる段の包み / 片方だけのときの 1 列の包み (home.html の字のまま)
+#: 2 つの枠を lg から横に並べる段の包み (最近の受注と注文の入口) / 同じく横に並べ、枠を中身の高さにする段の包み
+#: (今日やることと納期アラート・出荷と生産。決め C51-2 の a) / 片方だけのときの 1 列の包み (home.html の字のまま)
 ROW_TWO = '<div class="mb-6 grid gap-6 lg:grid-cols-2">'
+ROW_TWO_TOP = '<div class="mb-6 grid gap-6 lg:grid-cols-2 lg:items-start">'
 ROW_ONE = '<div class="mb-6 grid gap-6">'
 
 
 def row_of(body, title_id):
     """節の題 (id="<title_id>") を含む段の包みの HTML (包みの開きから、次の段の包みかよく使う画面の手前まで)。"""
     at = body.index(f'id="{title_id}"')
-    start = max(body.rfind(ROW_TWO, 0, at), body.rfind(ROW_ONE, 0, at))
+    start = max(body.rfind(ROW_TWO, 0, at), body.rfind(ROW_TWO_TOP, 0, at), body.rfind(ROW_ONE, 0, at))
     assert start != -1, title_id
-    ends = [found for found in (body.find(ROW_TWO, at), body.find(ROW_ONE, at), body.find('id="entrances-title"', at)) if found != -1]
+    ends = [found for found in (body.find(ROW_TWO, at), body.find(ROW_TWO_TOP, at), body.find(ROW_ONE, at), body.find('id="entrances-title"', at)) if found != -1]
     return body[start : min(ends)]
 
 
@@ -260,7 +262,7 @@ def test_today_left_alerts_right_in_one_row(logged_in, user, customer, shaft):
     make_order(user, customer, shaft, timezone.localdate() - timedelta(days=3))
     body = home(logged_in)
     row = row_of(body, "flow-guide-title")
-    assert row.startswith(ROW_TWO)
+    assert row.startswith(ROW_TWO_TOP)
     assert row == row_of(body, "due-alerts-title")
     assert row.index('id="flow-guide-title"') < row.index('id="due-alerts-title"')
     assert 'id="shipping-title"' not in row and 'id="recent-orders-title"' not in row
@@ -292,7 +294,7 @@ def test_rows_go_one_column_when_one_side_is_missing(logged_in, monkeypatch):
     body = home(logged_in)
     assert 'id="inlets-title"' not in body
     assert row_of(body, "recent-orders-title").startswith(ROW_ONE)
-    assert row_of(body, "flow-guide-title").startswith(ROW_TWO)
+    assert row_of(body, "flow-guide-title").startswith(ROW_TWO_TOP)
     # 業務の流れが無い = 今日やることの枠が無い。納期アラートだけの 1 列
     monkeypatch.setattr(dashboard, "flow_guide", lambda: None)
     body = home(logged_in)
