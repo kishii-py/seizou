@@ -3,7 +3,7 @@
 {# 見出しの印は入金の状態 (未入金と一部入金 = 橙、入金済み = 緑)。取消の請求書は状態の印 (赤の線の「取消」)。「発行」は印にしない (決め 11-05 16:2x。N164)。 #}
 {% block heading_badge %}{% if object.status == "cancelled" %}{% status_badge object dot=True %}{% else %}{% payment_badge object dot=True %}{% endif %}{% endblock %}
 {% load seizou_tags seizou_icons %}
-{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。 #}
+{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。初見テスト R5 の候補 C93)。 #}
 {% block heading %}<div id="invoice-heading">{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
 {% if not seizou.hide_money %}
@@ -12,6 +12,7 @@
 {% endif %}
 {% endblock %}
 {% block more %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill %}{% url 'billing:invoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{% block edit_button %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill and object.balance > 0 %}<a class="btn btn-primary" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% else %}{{ block.super }}{% endif %}{% endblock %}
 {# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (N155)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (初見テスト R5 の V26。C17) #}
 {% block tab_rows %}{% if tab.related == "lines" %}
 <div class="overflow-auto rounded-lg border border-base-300">
@@ -42,7 +43,7 @@
     <h2 id="payments-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "yen" "size-5 text-base-content/70" %}入金
       {% if object.status == "cancelled" %}<span class="badge badge-ghost">{{ object.payment_status_label }}</span>
       {% else %}{% payment_badge object %}{% endif %}</h2>
-    {% if object.status == "issued" and can_bill %}<a class="btn btn-sm btn-primary" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% endif %}
+    {% if object.status == "issued" and can_bill %}<a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% endif %}
   </div>
   {% if not seizou.hide_money %}<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
     <div><dt class="text-xs text-base-content/50">合計</dt><dd class="tabular-nums">{{ object.total|yen }}</dd></div>
