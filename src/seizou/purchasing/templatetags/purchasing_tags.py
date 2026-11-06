@@ -6,6 +6,7 @@
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
 - notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
+- next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
 - purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
 - purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
 """
@@ -117,6 +118,27 @@ def notice_rests(line):
     from .. import services
 
     return services.notice_rests(line)
+
+
+@register.simple_tag
+def next_receipt(purchase_order):
+    """{% next_receipt object as receipt %}。頭の右の緑の「受入を記録する」の行き先 (UX-2 a。初見テスト R5 の候補 C93)。読むだけ。
+
+    取消と断られた発注は None。ほかは lines_with_received (行番号の順) を回し、受入の残 (remaining_total) が 0 より大きい明細で、
+    notice_rests (出荷日の古い順) の rest が 0 より大きい最初の知らせが見つかったら {"line", "rest_text"} を返す。無ければ None。
+    条件は明細の表の「受入を記録する」と同じなので、表の一番上の「受入を記録する」と同じ行き先になる。権限は見ない (テンプレートが見る)。
+    """
+    from .. import services
+
+    if purchase_order.status in (purchase_order.STATUS_CANCELLED, purchase_order.STATUS_REJECTED):
+        return None
+    for line in purchase_order.lines_with_received:
+        if line.remaining_total <= 0:
+            continue
+        for entry in services.notice_rests(line):
+            if entry["rest"] > 0:
+                return {"line": line, "rest_text": entry["rest_text"]}
+    return None
 
 
 @register.simple_tag
