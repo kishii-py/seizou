@@ -19,6 +19,7 @@ from seizou.connect.models import Inbox
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
+from tests.billing_helpers import shipped
 from tests.test_r10_inbox_accept import _line, _payload
 
 PASSWORD = "kumo-tests-2611"
@@ -265,3 +266,21 @@ def test_order_aside_dates_skip_unreadable_buyer_order_date(logged_in, user, cus
 
     dates = _card(_aside(_get(logged_in, "orders:order_detail", order.pk)[1]), "日付")
     assert _labels(dates) == ["受注日", "一番早い納期"]
+
+
+@pytest.mark.django_db
+def test_order_opens_first_tab_with_rows(logged_in, user, customer, order):
+    """受注の詳細は件数が 1 以上の最初のタブで開く (指示書 0・出荷 1 なら「出荷」。初見テスト R5 の r5-a-05。候補 C26 の 2)。"""
+    shipped(user, customer, order.lines.order_by("line_no").first(), "4")
+
+    body = _get(logged_in, "orders:order_detail", order.pk)[1]
+    assert _radios(body) == [("指示書", False), ("出荷", True), ("請求書", False)]
+
+
+@pytest.mark.django_db
+def test_purchase_order_opens_first_tab_with_rows(logged_in, user, purchase_order):
+    """発注の詳細も同じ (送った記録 0・受入 1 なら「受入」)。「作成」の発注も受け入れられる。"""
+    purchasing_services.receive(purchase_order.lines.get(), Decimal("4"), date(2026, 11, 3), user)
+
+    body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
+    assert _radios(body) == [("送った記録", False), ("受入", True)]
