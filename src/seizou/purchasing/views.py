@@ -7,7 +7,7 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from seizou.core.views import BaseSelectView
-from seizou.masters.services import active_partners
+from seizou.masters.services import active_items, active_partners
 
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
@@ -199,3 +199,14 @@ class PurchaseOrderLineSelectView(BaseSelectView):
             # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
             .order_by("purchase_order__po_no", "line_no", "pk")
         )
+
+
+class PurchaseItemSelectView(BaseSelectView):
+    model = PurchaseOrderLine._meta.get_field("item").related_model
+    search_fields = ("part_no", "name")
+    # 単位だけを返す。部品の標準単価は受注の売りの単価で、協力企業への単価と違うので、発注の明細に写さない (C01-1 = a)。
+    columns = ("unit",)
+
+    def get_queryset(self):
+        # 候補は使用中だけ (N135。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)
+        return active_items()

@@ -93,6 +93,12 @@ def _post_data(partner, items, total=2):
     return data
 
 
+def _open_tag(body, start):
+    """画面の HTML から、start (例 '<select name="partner"') で始まる開きタグを > まで切り出す (tests/test_core_ux_r2.py と同じ見方)。"""
+    begin = body.index(start)
+    return body[begin : body.index(">", begin)]
+
+
 @pytest.mark.django_db
 def test_list_requires_login(client):
     response = client.get(reverse("purchasing:purchaseorder_list"))
@@ -213,7 +219,16 @@ def test_customer_only_partner_is_not_a_choice(client_logged_in, user, subcontra
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "作り物の協力企業" in body and "作り物の両方の取引先" in body
+    # 取引先の欄は字を打って探す欄。候補の口は取引先の口に role=supplier で、daisyUI の select の class は付かない (候補 C01-先 の 3)。
+    tag = _open_tag(body, '<select name="partner"')
+    select_url = reverse("masters:partner_select")
+    assert f'data-select-url="{select_url}?role=supplier"' in tag
+    assert 'class="w-full"' in tag and "select w-full" not in tag
+    # その口の候補は協力企業と両方の取引先で、得意先だけの取引先は無い。
+    texts = [row["text"] for row in client_logged_in.get(select_url, {"role": "supplier"}).json()["items"]]
+    assert any("作り物の協力企業" in text for text in texts)
+    assert any("作り物の両方の取引先" in text for text in texts)
+    assert not any("作り物の得意先だけ" in text for text in texts)
     assert "作り物の得意先だけ" not in body
     assert 'id="po-line-template"' in body and "行を足す" in body
 
@@ -259,3 +274,76 @@ def test_menu_has_purchase_entry(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
     assert reverse("purchasing:purchaseorder_list") in body
     assert "発注" in body
+
+
+# ---------------------------------------------------------------- 押す前の画面に送ることを書く (初見テスト R5 の V08。候補 C01)
+
+HEAD_NOW = "「必須」の欄と明細を 1 行以上入れて「発注する」を押します。"
+HEAD_SEND = "止まったときも消えません。つながりのある取引先には、「発注する」を押すと保存と同時に注文を送ります。"
+
+
+@pytest.mark.django_db
+def test_create_head_says_order_is_sent_on_save(monkeypatch, client_logged_in):
+    monkeypatch.delenv("SEIZOU_PRACTICE", raising=False)
+
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_create"))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert HEAD_NOW in body
+    # 今の 1 文の直後に、要素を挟まずに続く (1 つの段落として折り返す)。
+    assert HEAD_SEND in body
+    assert "送った発注は自分では取り消せません (取り消せるのは「下書き」か「断られた」の発注だけ)。</p>" in body
+
+
+@pytest.mark.django_db
+def test_create_head_hides_send_sentence_in_practice_mode(monkeypatch, client_logged_in):
+    monkeypatch.setenv("SEIZOU_PRACTICE", "1")
+
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_create"))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert HEAD_NOW in body
+    assert "つながりのある取引先には" not in body
+
+
+# ---------------------------------------------------------------- 部品の欄は字を打って探す欄で、単位だけを写す (初見テスト R5 の V50・V140。候補 C01-先 の 4)
+
+
+@pytest.mark.django_db
+def test_create_item_fields_use_purchase_item_select(client_logged_in):
+    body = client_logged_in.get(reverse("purchasing:purchaseorder_create")).content.decode()
+
+    select_url = reverse("purchasing:item_select")
+    # 1 行目の欄と「行を足す」の雛形の欄の両方。daisyUI の select の class と「詳細を見る」の口 (purchasing:item_modal は無い) は付かない。
+    for start in ('<select name="lines-0-item"', '<select name="lines-__prefix__-item"'):
+        tag = _open_tag(body, start)
+        assert f'data-select-url="{select_url}"' in tag
+        assert 'class="w-full"' in tag
+        assert "select w-full" not in tag
+        assert "data-modal-url" not in tag
+    assert "単位が空なら部品の単位を写します。単価は協力企業と決めた値を打ちます (部品の標準単価は写しません)。" in body
+
+
+@pytest.mark.django_db
+def test_purchase_item_select_returns_unit_without_standard_price(client_logged_in, user, items):
+    stopped = masters_services.create_item({"part_no": "T-900", "name": "作り物の古い軸", "unit": "個"}, user)
+    masters_services.update_item(stopped, {"active": False}, user)
+
+    data = client_logged_in.get(reverse("purchasing:item_select")).json()
+
+    # 候補は使用中の部品だけ。どの候補も単位を持ち、標準単価を持たない。
+    assert sorted(row["id"] for row in data["items"]) == sorted(item.pk for item in items)
+    assert all("unit" in row and "standard_price" not in row for row in data["items"])
+    assert {row["id"]: row["unit"] for row in data["items"]} == {items[0].pk: "個", items[1].pk: "枚"}
+    # 同じ人で受注の部品の口を引くと標準単価がある (金額の閲覧がある人でも、発注の口は標準単価を返さない)。
+    masters_data = client_logged_in.get(reverse("masters:item_select")).json()
+    assert masters_data["items"] and all("standard_price" in row for row in masters_data["items"])
+
+
+@pytest.mark.django_db
+def test_purchase_item_select_searches_by_text(client_logged_in, items):
+    data = client_logged_in.get(reverse("purchasing:item_select"), {"q": "T-200"}).json()
+
+    assert [row["id"] for row in data["items"]] == [items[1].pk]

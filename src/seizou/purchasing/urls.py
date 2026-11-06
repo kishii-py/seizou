@@ -24,4 +24,5 @@ urlpatterns = [
     path("receipts/<int:pk>/", views.ReceiptDetailView.as_view(), name="receipt_detail"),
     path("receipts/<int:pk>/acceptance/resend/", acceptance.resend_acceptance, name="receipt_acceptance_resend"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
+    path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]
