@@ -4,6 +4,7 @@ Django の test client で HTML を見る。発注はつながりの無い協力
 日は timezone.localdate() から数える (関数の試験は固定の日を渡す)。名前は作り物だけ。
 """
 
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -59,6 +60,20 @@ def home(client):
     return response.content.decode()
 
 
+#: 数字のカードの題の <p> の開き (core/home.html)
+TITLE_HEAD = '<p class="text-xs font-medium text-base-content/70">'
+
+
+def card_of(body, label):
+    """題が label の数字のカードの HTML (題の <p> から次のカードの題の手前まで。tests/test_core_stat_help.py の cards() と同じ切り方)。
+
+    カードの外側は div で、行き先の link は点線の行の後ろにあるので、点線の行の閉じ (</p></div>) では切らない (候補 C30 の 7)。
+    """
+    start = body.index(f"{TITLE_HEAD}{label}</p>")
+    end = body.find(TITLE_HEAD, start + len(TITLE_HEAD))
+    return body[start : end if end != -1 else body.index('data-tour="flow-guide"', start)]
+
+
 class _NoParts:
     def get_model(self, app_label, name):
         raise LookupError(f"{app_label}.{name}")
@@ -100,9 +115,10 @@ def test_home_shows_payable_card(user, logged_in, partners, shaft, no_http):
     body = home(logged_in)
 
     start = body.index("今月の支払の見込み")
-    card = body[start : body.index("</p></div>", start)]
+    card = card_of(body, "今月の支払の見込み")
     assert "¥2,400" in card and "円" not in card
-    assert f'href="{reverse("purchasing:receipt_list")}"' in body[body.rindex("<a", 0, start) : start]
+    # 行き先の link はカードの中 (点線の下の「<画面の名前>を見る」)
+    assert re.search(rf'<a [^>]*href="{re.escape(reverse("purchasing:receipt_list"))}"', card)
     assert f"{timezone.localdate().month} 月に受け入れた数量" in card
     # 6 枚目のカードとして数字のカードの並びに入る (入金のカードが 7 枚目に続くので、試験の settings では xl 以上で 4 列 × 2 段)
     assert body.index("受信した注文") < start
@@ -119,7 +135,6 @@ def test_home_hides_amount_without_money(user, logged_in, partners, shaft, no_ht
 
     body = home(logged_in)
 
-    start = body.index("今月の支払の見込み")
-    card = body[start : body.index("</p></div>", start)]
+    card = card_of(body, "今月の支払の見込み")
     assert "—" in card
     assert "2,400" not in card

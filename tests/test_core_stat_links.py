@@ -1,14 +1,16 @@
-"""ダッシュボードの数字のカード「出荷の残りがある明細」に添える受注の件数 (初見ユーザーテスト R5 の V78。候補 C30 の 3)。
+"""ダッシュボードの数字のカードの行き先の link と、「出荷の残りがある明細」に添える受注の件数 (初見ユーザーテスト R5 の V38・V181・V78。候補 C30 の 1 と 3)。
 
-見る所: 数の下の 1 行「受注 n 件」の n が、受注の一覧の既定 (タブ「出荷の残りがある」と同じ条件) と、今日やることの
+見る所 (1 = 行き先): url のある 7 枚は外側が div で、onclick がそのカードの url へ移し (中の link とボタンの押下は除く)、
+点線の下に「<画面の名前>を見る」の link がちょうど 1 つある・8 枚目と url の無いカードには link も onclick も無い・
+link の中にボタンが入れ子にならず、link の字に help の 1 文が入らない・画面の名前が引けない url は「一覧を見る」。
+見る所 (3 = 受注の件数): 数の下の 1 行「受注 n 件」の n が、受注の一覧の既定 (タブ「出荷の残りがある」と同じ条件) と、今日やることの
 出荷の行の件数と同じ・大きい数 (明細の行) は今のまま生産管理ボードの件数と同じ・受注の件数を数えられないときは
 1 行ごと出さずカードは出す・今日やることの出荷の段が同じ関数で数える。Django の test client で HTML を見る。名前は作り物だけ。
-行き先の画面の名前の link と (i) の小窓 (候補 C30 の 1 と 2) の試験は、その直しと一緒にこのファイルへ足す。
 """
 
 import re
 from decimal import Decimal
-from html import unescape
+from html import escape, unescape
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -24,6 +26,20 @@ from seizou.shipping import services as shipping_services
 LINES_LABEL = "出荷の残りがある明細"
 TITLE = re.compile(r'<p class="text-xs font-medium text-base-content/70">([^<]*)</p>')
 DETAIL = '<p class="mt-1 text-sm text-base-content/70">'
+# カードの外側の div の開き (url のあるカードは cursor-pointer が付く)
+CARD_OPEN = re.compile(r'<div class="flex (?:cursor-pointer )?flex-col rounded-xl[^"]*"')
+LINK = re.compile(r'<a [^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.S)
+# 7 枚の行き先 (URL の名前) と link の字 (候補 C30 の 1 の表)
+LINKS = {
+    "部品": ("masters:item_list", "部品マスターを見る"),
+    "取引先": ("masters:partner_list", "取引先を見る"),
+    "今月の受注": ("orders:order_list", "受注を見る"),
+    "出荷の残りがある明細": ("orders:orderline_list", "生産管理ボードを見る"),
+    "受信した注文": ("connect:inbox_list", "受信した注文を見る"),
+    "今月の支払の見込み": ("purchasing:receipt_list", "受入を見る"),
+    "今月の入金": ("billing:invoice_list", "請求書を見る"),
+}
+HANDS_FREE_LABEL = "手入力せずに取り込んだ明細"
 
 
 @pytest.fixture
@@ -131,3 +147,96 @@ def test_lines_card_without_order_count(logged_in, user, customer, shaft, monkey
 def test_today_tasks_count_shipment_with_same_function():
     # カードの受注の件数と今日やることの出荷の行は、同じ 1 つの関数で数える
     assert dashboard._FLOW_COUNTS["shipment"] is dashboard.orders_to_ship
+
+
+# --- 行き先の link (候補 C30 の 1。R5 の V38・V181) ---
+
+
+def grid_part(body):
+    """数字のカードの格子 (data-tour="stats") から、今日やることの枠の手前までの HTML。"""
+    start = body.index('data-tour="stats"')
+    end = body.find('data-tour="flow-guide"', start)
+    return body[start : end if end != -1 else len(body)]
+
+
+def outer_cards(body):
+    """カードごとの HTML (外側の div の開きから次のカードの外側の手前まで)。題の字 → HTML。"""
+    part = grid_part(body)
+    found = list(CARD_OPEN.finditer(part))
+    result = {}
+    for index, match in enumerate(found):
+        card = part[match.start() : found[index + 1].start() if index + 1 < len(found) else len(part)]
+        result[unescape(TITLE.search(card).group(1))] = card
+    return result
+
+
+def link_text(html):
+    return re.sub(r"<[^>]+>", "", html).strip()
+
+
+@pytest.mark.django_db
+def test_cards_with_url_have_visible_destination_link(logged_in, settings):
+    settings.SEIZOU = {}
+    urls = {stat["label"]: stat["url"] for stat in views.dashboard_stats()}
+
+    body = logged_in.get(reverse("core:home")).content.decode()
+    by_label = outer_cards(body)
+
+    # 試験の settings は全部の部品が入っているので 8 枚。url のあるのは 8 枚目の外の 7 枚
+    assert list(by_label) == [*LINKS, HANDS_FREE_LABEL]
+    for label, (url_name, words) in LINKS.items():
+        card, url = by_label[label], urls[label]
+        assert url.split("?", 1)[0] == reverse(url_name), label
+        # 外側は div で、押すとそのカードの url へ移る (中の link と (i) のボタンの押下は除く)
+        assert card.startswith("<div "), label
+        opening = card[: card.index(">") + 1]
+        assert "cursor-pointer" in opening and "hover:border-primary" in opening, label
+        onclick = "onclick=\"if(!event.target.closest('a,button')){window.location='" + escape(url) + "'}\""
+        assert onclick in opening, label
+        # 行き先の link がちょうど 1 つで、字は「<画面の名前>を見る」(help の 1 文を含まない)
+        ((href, inner),) = LINK.findall(card)
+        assert href == escape(url), label
+        assert link_text(inner) == words, label
+        assert stat_help(label) not in inner, label
+    # 「今月の受注」の url は絞りの GET つき (HTML では & が &amp;)
+    assert "&amp;f_ordered_from=" in by_label["今月の受注"]
+    # 8 枚目は行き先が無いので、link も onclick も無い
+    hands_free = by_label[HANDS_FREE_LABEL]
+    assert "<a" not in hands_free
+    assert "onclick" not in hands_free[: hands_free.index(">") + 1]
+
+
+def stat_help(label):
+    return next(stat["help"] for stat in views.dashboard_stats() if stat["label"] == label)
+
+
+@pytest.mark.django_db
+def test_no_button_inside_card_links(logged_in, settings):
+    settings.SEIZOU = {}
+
+    part = grid_part(logged_in.get(reverse("core:home")).content.decode())
+
+    links = re.findall(r"<a\b.*?</a>", part, re.S)
+    assert len(links) == len(LINKS)
+    for link in links:
+        assert "<button" not in link
+
+
+@pytest.mark.django_db
+def test_card_without_url_has_no_link_and_unknown_screen_reads_list(logged_in, monkeypatch):
+    closed = {"label": "作り物の開けない数", "value": 3, "unit": "件", "note": "作り物の注", "icon": "box", "url": None}
+    home_card = {**closed, "label": "作り物の行き先つきの数", "url": reverse("core:home")}
+    unknown = {**closed, "label": "作り物の名前の無い行き先の数", "url": "/no-such-screen/"}
+    monkeypatch.setattr(views, "dashboard_stats", lambda: [closed, home_card, unknown])
+
+    by_label = outer_cards(logged_in.get(reverse("core:home")).content.decode())
+
+    # 部署で開けないカード (url が None) には link も onclick も無い
+    assert "<a" not in by_label["作り物の開けない数"]
+    assert "onclick" not in by_label["作り物の開けない数"]
+    assert "cursor-pointer" not in by_label["作り物の開けない数"]
+    # 画面の名前は url から引く (ダッシュボード)。引けない url は「一覧を見る」
+    ((href, inner),) = LINK.findall(by_label["作り物の行き先つきの数"])
+    assert (href, link_text(inner)) == (reverse("core:home"), "ダッシュボードを見る")
+    ((href, inner),) = LINK.findall(by_label["作り物の名前の無い行き先の数"])
+    assert (href, link_text(inner)) == ("/no-such-screen/", "一覧を見る")

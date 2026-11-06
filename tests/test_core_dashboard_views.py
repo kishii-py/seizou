@@ -159,7 +159,9 @@ def test_overdue_row_links_to_order(logged_in, user, customer, shaft):
     assert '<span class="badge badge-sm badge-soft badge-error">3 日遅れ</span>' in body
     assert '<span class="badge badge-sm badge-soft badge-warning">あと 3 日</span>' in body
     assert "遅れ 1 件" in body and "7 日以内 1 件" in body
-    assert f'href="{reverse("orders:orderline_list")}"' in body and "生産管理ボードを見る" in body
+    # 納期アラートの節の中で見る (数字のカード「出荷の残りがある明細」にも同じ字と href の link があるため。候補 C30 の 7)
+    alerts = section_of(body, "due-alerts-title")
+    assert f'href="{reverse("orders:orderline_list")}"' in alerts and "生産管理ボードを見る" in alerts
     assert "遅れている納期はありません。" not in body
 
 

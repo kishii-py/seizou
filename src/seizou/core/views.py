@@ -1980,6 +1980,11 @@ class HomeView(ScreenMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["stats"] = dashboard_stats()
+        for stat in context["stats"]:
+            if stat.get("url"):
+                # カードの行き先の link の字「<画面の名前>を見る」の名前。「?」の後ろ (絞りの GET) を付けたままでは引けないので外す。
+                # 引けなければ空で、画面は「一覧を見る」を出す (詳細のパンくずの「一覧に戻る」と同じ考え)。R5 の V38
+                stat["screen"] = screen_name_of(stat["url"].split("?", 1)[0])
         context["recent_orders"] = recent_orders()
         context["orders_url"] = url_or_none("orders:order_list")
         context["alerts"] = dashboard.due_alerts()

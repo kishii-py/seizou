@@ -9,10 +9,11 @@
 {# 8 枚目 = 手で打たずに受けた明細 (受注の部品があるとき。N83)。8 枚のときも xl 以上で 4 列 × 2 段。detail のあるカードは数の下に 1 行 (≒ 転記 m 分)。 #}
 {# help のあるカードは題の横に (i) を置き、数え方の 1 文を daisyUI の tooltip で出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。tooltip は中のボタンに focus が来たときも開く (:has(:focus-visible)) ので、キーボードでも読める。カードが link のときに (i) を押しても移らないよう、ボタンの押下は既定の動きを止める (_screen_help.html の「?」と同じ)。 #}
 {# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前のボタンで 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。 #}
+{# 行き先 (url) のあるカードは、外側を div にし、点線の下の右に行き先の画面の名前の link (「部品マスターを見る」など。名前は HomeView が url から引いた stat.screen) を置く。外側の押下も同じ url へ移る (受注の行と同じ onclick。中の link と (i) のボタンの押下は除く)。初見ユーザーテスト R5 の V38 (カードを入口と見なかった) と V181 (link の中に (i) のボタンが入れ子) の直し。 #}
 {% if stats %}
 <div data-tour="stats" class="mb-6 grid gap-4 sm:grid-cols-2 {% if stats|length > 6 %}xl:grid-cols-4{% elif stats|length > 5 %}xl:grid-cols-3 2xl:grid-cols-6{% elif stats|length > 4 %}xl:grid-cols-5{% elif stats|length == 4 %}xl:grid-cols-4{% else %}xl:grid-cols-3{% endif %}">
   {% for stat in stats %}
-  {% if stat.url %}<a href="{{ stat.url }}" class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
+  {% if stat.url %}<div class="flex cursor-pointer flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs transition-colors hover:border-primary" onclick="if(!event.target.closest('a,button')){window.location='{{ stat.url }}'}">{% else %}<div class="flex flex-col rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% endif %}
     <div class="flex items-start justify-between gap-2">
       <div class="flex items-center gap-1">
         <p class="text-xs font-medium text-base-content/70">{{ stat.label }}</p>
@@ -23,8 +24,8 @@
     {% if stat.hidden %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums text-base-content/50">—</span></p>{% elif stat.money %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-3xl font-bold tabular-nums">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
     {% if stat.detail %}<p class="mt-1 text-sm text-base-content/70">{{ stat.detail }}</p>{% endif %}
     {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
-    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p></div>
-  {% if stat.url %}</a>{% else %}</div>{% endif %}
+    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p>{% if stat.url %}<div class="mt-2 flex justify-end"><a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ stat.url }}">{{ stat.screen|default:"一覧" }}を見る{% icon "chevron-right" "size-4" %}</a></div>{% endif %}</div>
+  </div>
   {% endfor %}
 </div>
 {% endif %}

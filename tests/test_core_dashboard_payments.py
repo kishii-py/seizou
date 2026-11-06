@@ -4,6 +4,7 @@
 Django の test client で HTML を見る。名前は作り物だけ。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -79,6 +80,20 @@ def home(client):
     return response.content.decode()
 
 
+#: 数字のカードの題の <p> の開き (core/home.html)
+TITLE_HEAD = '<p class="text-xs font-medium text-base-content/70">'
+
+
+def card_of(body, label):
+    """題が label の数字のカードの HTML (題の <p> から次のカードの題の手前まで。tests/test_core_stat_help.py の cards() と同じ切り方)。
+
+    カードの外側は div で、行き先の link は点線の行の後ろにあるので、点線の行の閉じ (</p></div>) では切らない (候補 C30 の 7)。
+    """
+    start = body.index(f"{TITLE_HEAD}{label}</p>")
+    end = body.find(TITLE_HEAD, start + len(TITLE_HEAD))
+    return body[start : end if end != -1 else body.index('data-tour="flow-guide"', start)]
+
+
 class _NoParts:
     def get_model(self, app_label, name):
         raise LookupError(f"{app_label}.{name}")
@@ -124,9 +139,10 @@ def test_home_shows_payments_card(user, logged_in, invoice):
     body = home(logged_in)
 
     start = body.index("今月の入金")
-    card = body[start : body.index("</p></div>", start)]
+    card = card_of(body, "今月の入金")
     assert "¥2,400" in card and "円" not in card
-    assert f'href="{reverse("billing:invoice_list")}"' in body[body.rindex("<a", 0, start) : start]
+    # 行き先の link はカードの中 (点線の下の「<画面の名前>を見る」)
+    assert re.search(rf'<a [^>]*href="{re.escape(reverse("billing:invoice_list"))}"', card)
     assert f"{timezone.localdate().month} 月に入金日のある入金" in card
     assert body.index("今月の支払の見込み") < start
     # 7 枚のときは xl 以上で 4 列 × 2 段 (6 枚の形の class は出ない)
@@ -143,7 +159,6 @@ def test_home_hides_payments_without_money(user, logged_in, invoice, settings):
 
     body = home(logged_in)
 
-    start = body.index("今月の入金")
-    card = body[start : body.index("</p></div>", start)]
+    card = card_of(body, "今月の入金")
     assert "—" in card
     assert "2,400" not in card
