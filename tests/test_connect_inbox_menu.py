@@ -128,8 +128,9 @@ def test_rows_have_menu_items_by_status(client_logged_in, receive_order, item, u
         reverse("masters:partner_modal", args=[waiting.partner_id]),
     ):
         assert f'href="{url}"' in row, url
-    for word in ("受け入れる", "断る", "詳細を見る", "取引先の小窓"):
+    for word in ("受け入れる", "断る", "詳細を見る", "取引先の情報を見る"):
         assert word in row, word
+    assert "小窓" not in "".join(re.findall(r'<ul class="menu dropdown-content[^"]*">(.*?)</ul>', row, re.S))  # ⋮ の項目の字 (枠の aria-label="小窓" は見ない)
     assert '<span class="badge badge-soft badge-info">未処理</span>' in row
 
     row = _row(body, accepted.pk)
@@ -221,5 +222,5 @@ def test_row_menu_markup_follows_core_js(client_logged_in, receive_order):
     # 行の押下で詳細へ移る onclick は、link と ⋮ の欄の中の押下では動かない (JS の頭の comment の約束)
     assert "closest('a, details')" in row
     assert "closest('a, details')" in js
-    # 取引先の小窓は master_link と同じ小窓を開く
+    # 「取引先の情報を見る」は master_link と同じ小窓を開く
     assert 'hx-target="#seizou-modal-box"' in row and "showModal()" in row

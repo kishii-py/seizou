@@ -436,8 +436,9 @@ def test_row_menu_markup_and_links(settings, tmp_path, user, logged_in, customer
         hrefs.append(f'href="{reverse("orders:order_detail", args=[line.order_id])}#attachments"')
     for href in hrefs:
         assert href in tr_html, href
-    for word in ("出荷する", "指示書を発行する", "実績を入れる", "受注の詳細", "部品の小窓", "現品票", "発注する"):
+    for word in ("出荷する", "指示書を発行する", "実績を入れる", "受注の詳細", "部品の情報を見る", "現品票", "発注する"):
         assert word in tr_html, word
+    assert "小窓" not in "".join(re.findall(r'<ul class="menu dropdown-content[^"]*">(.*?)</ul>', tr_html, re.S))  # ⋮ の項目の字 (枠の aria-label="小窓" は見ない)
     assert "item_drawing_viewer" not in tr_html
     assert reverse("masters:item_drawing_viewer", args=[item.pk]) not in tr_html
     assert ">図面<" not in re.sub(r"<svg.*?</svg>", "", tr_html, flags=re.S)
@@ -469,7 +470,7 @@ def test_finished_and_cancelled_rows_have_no_action_links(user, logged_in, custo
         assert "?order_line=" not in tr_html
         assert "from_line=" not in tr_html
         assert "受注の詳細" in tr_html
-        assert "部品の小窓" in tr_html
+        assert "部品の情報を見る" in tr_html
         assert f'hx-get="{reverse("masters:item_modal", args=[item.pk])}"' in tr_html
     # 出荷済みの明細の判断は「出荷済み」、取消は「取消」(薄い印)。
     assert '<span class="badge badge-ghost text-base-content/50">出荷済み</span>' in _tr(body, done.pk)

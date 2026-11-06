@@ -8,7 +8,7 @@ context: row (土台の row_for の 1 行。obj は Inbox)・columns・new (自�
 行の操作は ⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment
 (行に data-row-menu、最後の欄に details.row-menu)。行の押下で詳細へ移る onclick は、link と ⋮ の欄の中の押下では動かない
 (closest('a, details'))。項目は画面へ移る link だけ (承認の小窓は作らない。承認は受け入れの画面へ移る)。
-「取引先の小窓」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、
+「取引先の情報を見る」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、
 hx の属性は master_link の物を写した。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。
 状態が未処理 (値 received) の行は、tr を太字 (font-bold) にし、最初の欄 (受信日時) の字の前に小さい青い点 (daisyUI の status status-info) を出す (決め 11-05 15:0x。N160)。受け入れた行と断った行はそのまま。class の中の if の比べの字は一重の引用符で書く (R19 の検査が class の値を二重の引用符で切るため)。
 {% endcomment %}
@@ -40,7 +40,7 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
         {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_detail' row.obj.pk %}">{% icon "eye" "size-4" %}詳細を見る</a></li>
         {% if row.obj.status == "accepted" and row.obj.order %}{% url 'orders:order_detail' row.obj.order_id as order_detail_url %}{% if order_detail_url %}<li><a class="flex items-center gap-2" href="{{ order_detail_url }}">{% icon "clipboard" "size-4" %}受注の詳細</a></li>{% endif %}{% endif %}
-        {% if partner_url %}<li><a class="flex items-center gap-2" href="{{ partner_url }}" hx-get="{{ partner_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% icon "building" "size-4" %}取引先の小窓</a></li>{% endif %}
+        {% if partner_url %}<li><a class="flex items-center gap-2" href="{{ partner_url }}" hx-get="{{ partner_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% icon "building" "size-4" %}取引先の情報を見る</a></li>{% endif %}
       </ul>
     </details>
   </td>

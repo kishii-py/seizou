@@ -97,7 +97,7 @@ def test_receiving_entry_hidden_on_cancelled_and_finished_lines(logged_in, user,
         lines_html = _lines_html(logged_in, line)
         assert ENTRY not in lines_html
         assert _receiving_href(line) not in lines_html
-        assert "部品の小窓" in lines_html  # ⋮ は空にならない
+        assert "部品の情報を見る" in lines_html  # ⋮ は空にならない
 
 
 @pytest.mark.django_db
@@ -116,7 +116,7 @@ def test_receiving_entry_follows_department(settings, client, user, customer, it
     denied = _section(_page(client, jimu, detail_url), "order-lines-title")
     assert ENTRY not in denied
     assert _receiving_href(line) not in denied
-    assert "部品の小窓" in denied
+    assert "部品の情報を見る" in denied
     for person in (genba, admin):
         allowed = _section(_page(client, person, detail_url), "order-lines-title")
         assert ENTRY in allowed, person.username
