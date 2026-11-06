@@ -226,6 +226,7 @@ class OrderCancelView(BaseFormView):
     model = Order
     form_class = OrderCancelForm
     service = staticmethod(services.cancel_order)
+    template_name = "orders/order_cancel.html"
     screen_name = "受注を取り消す"
     screen_help = "受注を取消にします。取消の後は、出荷も指示書も作れません。"
 

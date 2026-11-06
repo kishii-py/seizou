@@ -1,4 +1,4 @@
 {% load seizou_icons %}
-{# 発注の取消の確かめのカード (小窓。N158b)。黄の知らせに画面の 1 文 (PurchaseOrderCancelView.screen_help) を出し、入力のカード (取消の理由の欄と「<発注番号> を取り消す」)。全体の画面は core/form.html のまま。 #}
+{# 発注の取消の確かめのカード (全体の画面 purchasing/purchaseorder_cancel.html と小窓の両方が include する。N158b)。黄の知らせに画面の 1 文 (PurchaseOrderCancelView.screen_help) を出し、入力のカード (取消の理由の欄と「<発注番号> を取り消す」)。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ screen_help }}</span></div>
 {% include "core/_form_card.html" %}

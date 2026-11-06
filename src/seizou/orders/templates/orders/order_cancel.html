@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 受注を取り消す: 取消の理由の欄だけの form。中身は小窓と同じカード (orders/_order_cancel_card.html)。 #}
+{% block content %}{% include "orders/_order_cancel_card.html" %}
+{% endblock %}
