@@ -9,7 +9,7 @@
   {% for field in fields %}
   <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
     <dt class="text-base-content/70">{{ field.label }}</dt>
-    <dd class="min-w-0 break-words">{% if field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|comma }}{% endif %}</dd>
+    <dd class="min-w-0 break-words">{% if field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
   </div>
   {% endfor %}
 </dl>

@@ -25,7 +25,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
       {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
       {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
       {% if url_name == "order_list" and col.name == "status" %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
-      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
       {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
       {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
       {% elif forloop.parentloop.first and row.url %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>
@@ -37,7 +37,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
     </tr>
     {% endfor %}
   </tbody>
-  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if url_name == "orderline_list" %}<td></td>{% endif %}</tr></tfoot>{% endif %}
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|yen_if:cell.money }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if url_name == "orderline_list" %}<td></td>{% endif %}</tr></tfoot>{% endif %}
 </table>
 </div>
 <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
