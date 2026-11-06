@@ -139,6 +139,7 @@ class ShipmentUpdateView(BaseFormView):
     model = Shipment
     form_class = ShipmentUpdateForm
     service = staticmethod(services.update_shipment)
+    template_name = "shipping/shipment_update_form.html"
     screen_name = "出荷の編集"
     screen_help = (
         "数量と出荷日と備考を直します。発行の納品書に入った出荷は、先に納品書を取り消してから直します。"

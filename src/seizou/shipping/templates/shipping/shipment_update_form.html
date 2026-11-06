@@ -1,0 +1,3 @@
+{% extends "core/form.html" %}
+{# 出荷の編集: 土台の入力の上に、出荷番号と受注の明細と得意先の 1 行 (入金の記録の頭の 1 行 = billing/_payment_create_card.html と同じ形。確かめでなく入力の頭なので黄の帯にしない)。字は出荷 (object) から外部キーでたどれる物だけ。小窓で開く入口は無いので、小窓の形は作らない。 #}
+{% block content %}<p class="mb-4 text-sm text-base-content/70"><span class="font-mono">{{ object.shipment_no }}</span> ({{ object.order_line }}・{{ object.order_line.order.customer.name }})。</p>{{ block.super }}{% endblock %}
