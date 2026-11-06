@@ -779,6 +779,17 @@ class BaseListView(ScreenMixin, ListView):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # 列の FK (前向きの ForeignKey と OneToOneField。annotate の列は除く) の相手を、行と一緒に 1 回の SELECT で引く
+        # (行ごとに相手を読む SELECT が行の数だけ出ないため。N174)。部品の get_queryset が同じ名前を足しても害は無い。
+        related = [
+            spec.name.split("__")[0]
+            for spec in self.column_specs()
+            if getattr(spec.field, "concrete", False)
+            and (spec.field.many_to_one or spec.field.one_to_one)
+            and not spec.annotated
+        ]
+        if related:
+            qs = qs.select_related(*related)
         lookups = self.search_lookups()
         for term in self.search_terms():
             if not lookups:
