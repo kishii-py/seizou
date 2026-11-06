@@ -6,7 +6,7 @@
 この試験が見る所: A 社で数量 10 の受注を入れ、左のメニューの「指示書」→「新規登録」で受注の明細 (字を打って探す欄に受注番号を打って選ぶ)・数量 10・
 工程 (複数選びの `<select>`) に種の `TURN` を選んで「保存」する。発行の後に進捗の盤 (`/progress/`) を開くと、その指示書の行が 1 行あり、
 予定 10・実績の合計 0・残 10 (盤は新しい指示書の行を自動で足さないので、発行の後に開く。N22 の要望)。盤の `window` に印の値を置き、
-同じ文脈の 2 枚目のページで実績の新規登録 (`/progress/new/`) に、指示書番号を打って選んだ指示書の工程 (選んだ値が盤の行の id の数 = 工程の予定の pk と同じ) と実績の数 3 を入れて
+同じ文脈の 2 枚目のページで実績の新規登録 (`/progress/records/new/`) に、指示書番号を打って選んだ指示書の工程 (選んだ値が盤の行の id の数 = 工程の予定の pk と同じ) と実績の数 3 を入れて
 「保存」する。盤を読み直さずに待つと、15 秒以内に同じ行の「実績の合計」が 3、「残」が 7 になる (盤は 10 秒ごとに取りに行く。N22)。
 印の値が残っている (ページ全体を読み直していない)。
 見ない所 (理由): 予定を超える実績の黄の知らせと「このまま保存」・盤の残の赤 (余力の試験。今夜の範囲の外)、盤の工程の pill の絞り込み。
@@ -60,12 +60,12 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     shot(page_a, "E-11", "a-before")
 
     other = context.new_page()
-    other.goto(f"{company_a.base_url}/progress/new/")
+    other.goto(f"{company_a.base_url}/progress/records/new/")
     choose(other, "workorder_step", workorder_no)
     expect(other.locator("select[name=workorder_step]")).to_have_value(step_pk)
     other.fill("input[name=qty]", "3")
     other.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
-    other.wait_for_url(lambda url: urlparse(url).path != "/progress/new/")
+    other.wait_for_url(lambda url: urlparse(url).path != "/progress/records/new/")
 
     expect(cells.nth(5)).to_have_text(_number("3"), timeout=15_000)
     expect(cells.nth(2)).to_have_text(_number("7"), timeout=15_000)

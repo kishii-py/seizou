@@ -28,7 +28,12 @@ class ProgressRecordForm(forms.Form):
         queryset=_WorkOrderStep.objects.select_related("workorder", "process"),
         widget=RemoteSelect("workorders:workorderstep_select"),
     )
-    qty = forms.DecimalField(label="実績の数", max_digits=12, decimal_places=2)
+    qty = forms.DecimalField(
+        label="実績の数",
+        max_digits=12,
+        decimal_places=2,
+        help_text="この工程を終えた良品の数 (不良を除く)。不良の数は備考に書きます。",
+    )
     recorded_at = forms.DateTimeField(
         label="日時",
         initial=timezone.now,
