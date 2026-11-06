@@ -45,8 +45,7 @@ seizou_tags.master_link の link
   <input id="seizou-drawer" type="checkbox" class="drawer-toggle" aria-label="メニューの開け閉め">
   <div class="drawer-content flex min-h-screen min-w-0 flex-col">
     {% include "core/_topbar.html" %}
-    {# 右下の「AI に質問」の丸いボタン (assistant/_panel.html。下から 24px・幅と高さ 40px) が、画面の最後の行と「保存」を隠さないよう、窓を出す画面だけ下に 136px (pb-34 = 前の 96px にボタンの高さの 40px を足した。決め 11-05 15:0x。N160) 空ける。余白の段 (2・4・6) の外の例外。lg:p-6 が下の余白も上書きするので lg:pb-34 も書く。 #}
-    {% if "assistant" in seizou.parts and user.is_authenticated %}<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">{% else %}<main class="flex-1 p-4 lg:p-6">{% endif %}
+    <main class="flex-1 p-4 lg:p-6">
       {% block heading %}{% if screen_name %}
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">

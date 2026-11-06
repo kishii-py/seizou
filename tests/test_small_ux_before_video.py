@@ -1,6 +1,7 @@
 """撮影の前の小さい直し 5 つ (決め 11-05 15:0x。N160) の試験。
 
-1 = 「AI に質問」の丸いボタンと本文の下の余白、2 = 受信した注文の空の枠、3 = 生産管理ボードの行のメニューの見出しと線、
+1 = 「AI に質問」の入口と本文の下の余白 (右下の丸いボタンは決め C37 で左のメニューの下の入口に移し、余白はほかの画面と同じに戻した)、
+2 = 受信した注文の空の枠、3 = 生産管理ボードの行のメニューの見出しと線、
 4 = 受信した注文の未処理の行の太字と点、5 = 読み取りの「読み取る」の回る印。作り物のデータだけを使う。
 """
 
@@ -130,7 +131,7 @@ def test_upload_page_without_key_has_no_spinner(logged_in, without_key):
     assert "<fieldset disabled" not in body
 
 
-# 1. 「AI に質問」の丸いボタンと本文の下の余白
+# 1. 「AI に質問」の入口 (左のメニューの下。決め C37) と本文の下の余白 (ほかの画面と同じ)
 
 
 def test_assistant_entry_is_in_sidebar_above_feedback(logged_in):
@@ -153,10 +154,10 @@ def test_assistant_entry_is_in_sidebar_above_feedback(logged_in):
     assert entry < html.index(root)
 
 
-def test_main_bottom_room_is_one_button_taller(logged_in):
+def test_main_bottom_room_is_same_as_other_screens(logged_in):
     html = logged_in.get(reverse("core:home")).content.decode()
 
-    assert '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">' in html
+    assert '<main class="flex-1 p-4 lg:p-6">' in html
     # Tailwind はテンプレートの注釈の字も拾うので、使わなくなった字を残さない。
     for path in SRC.rglob("*.html"):
         assert "pb-24" not in path.read_text(encoding="utf-8"), path

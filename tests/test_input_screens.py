@@ -136,19 +136,18 @@ def test_row_menu_templates_have_no_z40():
         assert "z-40" not in path.read_text(encoding="utf-8"), path
 
 
-# --- 3. 右下の「AI に質問」が保存と最後の行に重ならない ---------------------------------------------
+# --- 3. 「AI に質問」は左のメニューの入口で、本文の下の余白はほかの画面と同じ (決め C37) ---------------------
 
-MAIN_WITH_ROOM = '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">'
 MAIN_PLAIN = '<main class="flex-1 p-4 lg:p-6">'
 
 
 @pytest.mark.django_db
-def test_main_has_room_for_assistant_button(logged_in):
+def test_main_has_plain_room_with_assistant_entry(logged_in):
     body = logged_in.get(reverse("core:home")).content.decode()
 
     assert 'id="assistant-toggle"' in body
-    assert MAIN_WITH_ROOM in body
-    assert MAIN_PLAIN not in body
+    assert MAIN_PLAIN in body
+    assert "pb-34" not in body
 
 
 @pytest.mark.django_db
@@ -162,13 +161,6 @@ def test_main_has_no_room_without_assistant(logged_in, monkeypatch):
 
     assert 'id="assistant-toggle"' not in body
     assert MAIN_PLAIN in body
-    assert MAIN_WITH_ROOM not in body
-
-
-def test_app_css_has_bottom_room():
-    built = APP_CSS.read_text(encoding="utf-8")
-    assert ".pb-34{" in built
-    assert ".lg\\:pb-34{" in built
 
 
 # --- 4-1. 受注の入力の金額 --------------------------------------------------------------------
