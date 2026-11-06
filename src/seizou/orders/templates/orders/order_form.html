@@ -42,7 +42,7 @@
     </div>
     {% if not form.single %}
     <template id="order-line-template">{% with row=form.lines.empty_form %}{% include "orders/_order_line_row.html" %}{% endwith %}</template>
-    <button type="button" class="btn btn-sm btn-outline mt-4 border-base-300" data-add-order-line>{% icon "plus" "size-4" %}行を足す</button>
+    <div class="mt-4 flex justify-end"><button type="button" class="btn btn-sm btn-outline border-base-300" data-add-order-line>{% icon "plus" "size-4" %}行を足す</button></div>
     {% endif %}
   </div>
 

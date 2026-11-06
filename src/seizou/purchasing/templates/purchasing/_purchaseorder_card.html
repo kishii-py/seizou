@@ -56,7 +56,7 @@
       {% for field in form.lines.empty_form.visible_fields %}<td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %}">{{ field }}</td>{% endfor %}
     </tr>
   </template>
-  <button class="btn btn-outline btn-sm mt-4 border-base-300" type="button" data-add-line>{% icon "plus" "size-4" %}行を足す</button>
+  <div class="mt-4 flex justify-end"><button class="btn btn-outline btn-sm border-base-300" type="button" data-add-line>{% icon "plus" "size-4" %}行を足す</button></div>
 
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
