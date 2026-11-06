@@ -1,6 +1,6 @@
 """ダッシュボードの数字のカードの数え方の 1 文 (help) と、カードの題の横の (i) (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
 
-見る所: 全部のカードに help があり空でない・文が数え方の式と合う (転記の分は会社の設定の値)・画面のカードの題の横に (i) があり、
+見る所: 全部のカードに help があり空でない・文が数え方の式と合う (手入力の分は会社の設定の値)・画面のカードの題の横に (i) があり、
 tooltip の data-tip とボタンの aria-label が help と同じ・(i) を押しても link のカードが移らない・help の無いカードには (i) が出ない・
 金額を見られない人でもカードと (i) が崩れない。Django の test client で HTML を見る。名前は作り物だけ。
 """
@@ -22,9 +22,9 @@ HELP = {
     "受信した注文": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ受け入れも断りもしていない物の数です。",
     "今月の支払の見込み": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
     "今月の入金": "入金日が今月の入金の金額の合計です。取消は数えません。",
-    "手で打たずに受けた明細": (
+    "手入力せずに取り込んだ明細": (
         "受注日が今月の受注のうち、読み取った注文書か受信した注文から作った受注の明細の行の数です。取消は数えません。"
-        "≒ 転記は、1 行を手で打つ時間を 1 分と置いた目安です。"
+        "入力を省けた時間は、1 行を手入力する時間を 1 分と置いた目安です。"
     ),
 }
 LABEL = '<p class="text-xs font-medium text-base-content/70">{}</p>'
@@ -86,11 +86,11 @@ def test_every_card_has_help_matching_how_it_counts(settings):
 def test_hands_free_help_uses_minutes_setting(settings):
     settings.SEIZOU = {"transcription_minutes_per_line": 1.5}
 
-    card = next(stat for stat in views.dashboard_stats() if stat["label"] == "手で打たずに受けた明細")
+    card = next(stat for stat in views.dashboard_stats() if stat["label"] == "手入力せずに取り込んだ明細")
 
-    assert "1 行を手で打つ時間を 1.5 分と置いた目安です。" in card["help"]
+    assert "1 行を手入力する時間を 1.5 分と置いた目安です。" in card["help"]
     assert "(1 行 1.5 分で数える)" in card["note"]
-    assert card["detail"] == "≒ 転記 0 分"  # 数の下の 1 行はそのまま
+    assert card["detail"] == "入力を省けた時間 ≒ 0 分"  # 数の下の 1 行はそのまま
 
 
 @pytest.mark.django_db
@@ -109,8 +109,8 @@ def test_home_puts_info_next_to_each_title(logged_in, settings):
         tip, aria = (unescape(value) for value in match)
         assert tip == aria == help_text, label
         assert 'data-tip="' in card and "</button></span>" in card
-    # 数の下の 1 行 (≒ 転記 m 分) は残る
-    assert "≒ 転記 0 分" in by_label["手で打たずに受けた明細"]
+    # 数の下の 1 行 (入力を省けた時間 ≒ m 分) は残る
+    assert "入力を省けた時間 ≒ 0 分" in by_label["手入力せずに取り込んだ明細"]
     assert len(INFO.findall(stats_part(body))) == len(HELP)
 
 

@@ -1784,7 +1784,7 @@ def with_saved_note(message: str, result) -> str:
     """入力の土台の知らせの字。service が返した物に saved_message (字) があれば「保存しました。」をその字に置き換え、
     saved_note (1 文の字) があれば知らせの後ろに付ける。
 
-    例: 受信した注文と読み取りを受注にした直後の「明細 n 行を手で打たずに受注にしました。」(orders.services.create_order が付ける)。
+    例: 受信した注文と読み取りを受注にした直後の「明細 n 行を手入力せずに受注にしました。」(orders.services.create_order が付ける)。
     部品の画面は知らせの文を上書きできない (R15 の 11 に success_message が無い) ので、文と色は service の返す物が持つ
     (色は saved_level。"warning" なら form_valid が黄 (確認してください) の知らせにする)。
     """
@@ -1851,17 +1851,22 @@ def dashboard_stats() -> list[dict]:
         )
     lines = dashboard.lines_to_ship()
     if lines is not None:
-        stats.append(
-            {
-                "label": "出荷の残りがある明細",
-                "value": count_or_none(lines),
-                "unit": "行",
-                "note": "出荷が終わっていない受注の明細の数",
-                "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
-                "icon": "activity",
-                "url": url_or_none("orders:orderline_list"),
-            }
-        )
+        lines_stat = {
+            "label": "出荷の残りがある明細",
+            "value": count_or_none(lines),
+            "unit": "行",
+            "note": "出荷が終わっていない受注の明細の数",
+            "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
+            "icon": "activity",
+            "url": url_or_none("orders:orderline_list"),
+        }
+        # 数の下の 1 行 = 受注の件数 (受注の一覧のタブ「出荷の残りがある」と今日やることの出荷の行と同じ数え方。R5 の V78 で、
+        # 明細の行の数を受注の件数と読み違えそうと書かれたため)。数えられないときは 1 行ごと出さない (偽の 0 を置かない)。
+        open_orders = dashboard.orders_to_ship()
+        open_count = count_or_none(open_orders) if open_orders is not None else None
+        if open_count is not None:
+            lines_stat["detail"] = f"受注 {open_count:,} 件"
+        stats.append(lines_stat)
     inbox_model = load_model("seizou.connect.models.Inbox")
     if inbox_model is not None:
         waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
@@ -1906,7 +1911,7 @@ def dashboard_stats() -> list[dict]:
                 "money": True,
             }
         )
-    # 8 枚目: 手で打たずに受けた明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、≒ 転記の分 = N83)
+    # 8 枚目: 手入力せずに取り込んだ明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、入力を省けた時間 = N83)
     hands_free = dashboard.hands_free_lines(today)
     if hands_free is not None:
         minutes = f"{dashboard.minutes_per_line().normalize():f}"
@@ -1916,15 +1921,15 @@ def dashboard_stats() -> list[dict]:
             note += f"。受付の平均 {dashboard.transcription_text(accept)}"
         stats.append(
             {
-                "label": "手で打たずに受けた明細",
+                "label": "手入力せずに取り込んだ明細",
                 "value": hands_free,
                 "unit": "行",
-                "detail": f"≒ 転記 {dashboard.transcription_text(dashboard.saved_minutes(hands_free))}",
+                "detail": f"入力を省けた時間 ≒ {dashboard.transcription_text(dashboard.saved_minutes(hands_free))}",
                 "note": note,
                 # 分の数は会社の設定 transcription_minutes_per_line (dashboard.minutes_per_line。既定は conf.DEFAULTS)
                 "help": (
                     "受注日が今月の受注のうち、読み取った注文書か受信した注文から作った受注の明細の行の数です。取消は数えません。"
-                    f"≒ 転記は、1 行を手で打つ時間を {minutes} 分と置いた目安です。"
+                    f"入力を省けた時間は、1 行を手入力する時間を {minutes} 分と置いた目安です。"
                 ),
                 "icon": "check",
                 "url": None,

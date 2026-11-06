@@ -9,8 +9,9 @@
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - lines_to_ship: 出荷の残りがある明細 (注文残の一覧の既定と同じ数え方)。
-- minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
-- hands_free_lines: 今月、手で打たずに (読み取りと受信した注文から) 受けた明細の行数。
+- orders_to_ship: 出荷の残りがある受注 (受注の一覧のタブ「出荷の残りがある」と同じ数え方。カードの受注の件数と今日やることの出荷の行)。
+- minutes_per_line・transcription_text: 1 行の手入力の分の設定と、分の字 (入力を省けた時間と受付の平均)。
+- hands_free_lines: 今月、手入力せずに (読み取りと受信した注文から) 取り込んだ明細の行数。
 - accept_minutes_this_month: 今月の受付 (受信した注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
@@ -453,11 +454,11 @@ def payments_this_month(today=None) -> Decimal | None:
     return _ZERO if total is None else Decimal(str(total))
 
 
-MAX_MINUTES_PER_LINE = Decimal(60)  # 1 行の転記の分の上限。これを超える値と 0 以下は既定に戻す
+MAX_MINUTES_PER_LINE = Decimal(60)  # 1 行の手入力の分の上限。これを超える値と 0 以下は既定に戻す
 
 
 def minutes_per_line() -> Decimal:
-    """会社の設定 transcription_minutes_per_line (1 行の転記にかかる分) を Decimal で返す。真偽・数でない字・有限でない数・0 以下・MAX_MINUTES_PER_LINE を超える数は既定 (conf.DEFAULTS) に戻す (画面を 500 にしないよう、例外を投げない。core.calendar の定休日と同じ考え)。"""
+    """会社の設定 transcription_minutes_per_line (1 行の手入力にかかる分) を Decimal で返す。真偽・数でない字・有限でない数・0 以下・MAX_MINUTES_PER_LINE を超える数は既定 (conf.DEFAULTS) に戻す (画面を 500 にしないよう、例外を投げない。core.calendar の定休日と同じ考え)。"""
     default = Decimal(conf.DEFAULTS["transcription_minutes_per_line"])
     value = conf.setting("transcription_minutes_per_line")
     if isinstance(value, bool):
@@ -472,7 +473,7 @@ def minutes_per_line() -> Decimal:
 
 
 def transcription_text(minutes: int) -> str:
-    """転記の分の字。60 分より少なければ「m 分」、60 分からは「h 時間 m 分」(m が 0 なら「h 時間」)。"""
+    """分の字 (入力を省けた時間と受付の平均)。60 分より少なければ「m 分」、60 分からは「h 時間 m 分」(m が 0 なら「h 時間」)。"""
     hours, rest = divmod(minutes, 60)
     if hours == 0:
         return f"{rest} 分"
@@ -482,7 +483,7 @@ def transcription_text(minutes: int) -> str:
 
 
 def saved_minutes(lines: int) -> int:
-    """lines × 1 行の転記の分 (minutes_per_line) を四捨五入した分の整数 (ROUND_HALF_UP)。"""
+    """lines × 1 行の手入力の分 (minutes_per_line) を四捨五入した分の整数 (ROUND_HALF_UP)。"""
     return int((lines * minutes_per_line()).to_integral_value(rounding=ROUND_HALF_UP))
 
 
@@ -904,8 +905,10 @@ def _lines_without_workorder():
     return annotate_remaining(queryset).filter(remaining_total__gt=0)
 
 
-def _orders_to_ship():
-    """出荷の残りがある受注 (状態が未出荷か一部出荷)。"""
+def orders_to_ship():
+    """出荷の残りがある受注 (状態が未出荷か一部出荷)。受注の一覧のタブ「出荷の残りがある」(orders の OPEN_STATUSES) と
+    同じ数え方。ダッシュボードの「出荷の残りがある明細」のカードの「受注 n 件」と、今日やることの出荷の行の件数は、
+    この 1 つの関数で数える (2 か所の件数を合わせるため。R5 の V78)。部品が無ければ None。"""
     order_model = _model("orders", "Order")
     if order_model is None:
         return None
@@ -985,7 +988,7 @@ def _noticed_lines_to_receive():
 _FLOW_COUNTS = {
     "inbox": _received_inbox,
     "workorder": _lines_without_workorder,
-    "shipment": _orders_to_ship,
+    "shipment": orders_to_ship,
     "delivery_note": _shipments_without_note,
     "invoice": _shipments_to_invoice,
     "payment": _invoices_to_be_paid,
