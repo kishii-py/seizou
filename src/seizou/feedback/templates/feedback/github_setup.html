@@ -1,0 +1,61 @@
+{% extends "core/form.html" %}
+{% load feedback_tags seizou_icons %}
+{# 「GitHub とつなぐ」(依頼書 N185。決め 11-06 21:2x): 上に今の状態 (つないでいれば「外す」)、次にトークンの取得の手順、下に土台の入力の形 (トークンと送り先)。 #}
+{# 世話役でない人には断りの文だけを出す (状態・手順・入力の形を出さない)。部品の画面は R15 で dispatch を上書きできないため。送られても services が断る。 #}
+{# 「外す」の form は土台の入力の form の外に置く (form を入れ子にしない)。トークンの値はどこにも描かない (状態は口座の名前と送り先だけ)。 #}
+{% block content %}{% feedback_github as github %}
+{% if not github.can_manage %}
+<section id="github-denied" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-denied-title">
+  <h2 id="github-denied-title" class="flex items-center gap-2 text-lg font-bold">{% icon "lock" "size-5 text-base-content/70" %}この画面は開けません</h2>
+  <p class="mt-2">「GitHub とつなぐ」は、アカウント管理の担当者だけが使う画面です。要るときはアカウント管理の担当者に頼んでください。</p>
+</section>
+{% else %}
+<section id="github-status" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-status-title">
+  <h2 id="github-status-title" class="text-lg font-bold">今の状態</h2>
+  {% if github.status.connected %}
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+    <p class="flex items-center gap-2">{% icon "check" "size-5 text-success" %}{% if github.status.login %}{{ github.status.login }} の口座として{% endif %}つながっています。送り先 <span class="font-mono">{{ github.status.repo }}</span></p>
+    <form method="post" action="{% url 'feedback:github_disconnect' %}">{% csrf_token %}<button id="github-disconnect" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}外す</button></form>
+  </div>
+  {% else %}
+  <p class="mt-4 text-base-content/70">まだつないでいません。下の手順でトークンを作り、「トークン」の欄に貼ってください。</p>
+  {% endif %}
+</section>
+<section id="github-steps" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-steps-title">
+  <h2 id="github-steps-title" class="text-lg font-bold">取得の手順</h2>
+  <p class="mt-2 text-xs text-base-content/50">GitHub の画面のボタンの字は英語のまま「」で書きます。上から順に進めれば、トークンが取れます。</p>
+  <ol class="mt-4 list-decimal pl-6">
+    <li>
+      <p class="font-medium">GitHub の口座を用意する</p>
+      <p class="mt-2">口座が無ければ github.com で作ります。会社の人の個人の口座でなく、フィードバック専用の口座 (例 会社名-seizou) を勧めます。この口座の鍵が漏れても、Issue を書く以外の害が出ないようにするためです。</p>
+      {# 絵は本体が足す: static/feedback/github/*.png #}
+    </li>
+    <li class="mt-4">
+      <p class="font-medium">トークンを作る (classic)</p>
+      <p class="mt-2">右上の自分の絵 → 「Settings」 → 左の一番下の「Developer settings」 → 「Personal access tokens」 → 「Tokens (classic)」 → 「Generate new token」 → 「Generate new token (classic)」と進みます。</p>
+      <p class="mt-2">「Note」に seizou と書き、「Expiration」(期限) は 90 日などを選びます。期限が切れたら、もう一度作ります。</p>
+      <p class="mt-2">「Select scopes」で「public_repo」だけに印を付けます。送り先が非公開のリポジトリのときは「repo」に印を付けます。</p>
+      <p class="mt-2">一番下の「Generate token」を押し、出た <span class="font-mono">ghp_</span> で始まる字を 1 回だけ写します。その画面を閉じると、二度と見られません。</p>
+      <p class="mt-2 text-xs text-base-content/50">fine-grained のトークンは、ほかの人のリポジトリに書けないので使いません。</p>
+      {# 絵は本体が足す: static/feedback/github/*.png #}
+    </li>
+    <li class="mt-4">
+      <p class="font-medium">貼って「つなぐ」を押す</p>
+      <p class="mt-2">写した字を下の「トークン」の欄に貼り、送り先を確かめて「つなぐ」を押します。上の「今の状態」に口座の名前が出れば完了です。トークンはこの会社の .env にだけ置き、画面にも記録にも AI にも出ません。</p>
+      {# 絵は本体が足す: static/feedback/github/*.png #}
+    </li>
+    <li class="mt-4">
+      <p class="font-medium">送り方</p>
+      <p class="mt-2">下書きの詳細で、世話役が「確認済みにする」を押してから「GitHub に送る」を押します。Issue の URL が詳細に残ります。画面の絵は GitHub の Issue に手で付けます。GitHub で Issue が閉じたら、一覧の「GitHub の状態を取り込む」で直したになります。</p>
+      {# 絵は本体が足す: static/feedback/github/*.png #}
+    </li>
+    <li class="mt-4">
+      <p class="font-medium">やめ方</p>
+      <p class="mt-2">上の「外す」で .env から消し、GitHub の側でも、そのトークンを「Delete」で無効にします。</p>
+      {# 絵は本体が足す: static/feedback/github/*.png #}
+    </li>
+  </ol>
+</section>
+{{ block.super }}
+{% endif %}
+{% endblock %}

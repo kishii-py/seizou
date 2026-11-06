@@ -362,3 +362,239 @@ def test_sync_counts_unreadable_and_refuses_non_manager(manager, plain, fake):
     with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
         services.sync_github(plain)
     assert services.sync_github(manager) == {"見た": 1, "直した": 0, "読めなかった": 1}
+
+
+# ---------------------------------------------------------------- 画面とボタン
+
+
+def html_of(response) -> str:
+    return response.content.decode()
+
+
+def test_setup_screen_connects_and_never_shows_token(client, manager, fake, env_file):
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/github/"))
+    assert "まだつないでいません" in html
+    assert 'type="password"' in html and 'name="token"' in html
+    assert 'value="kishii-py/seizou"' in html
+    assert "Generate new token (classic)" in html and "public_repo" in html
+    assert 'name="next" value="/feedback/github/"' in html
+
+    response = client.post("/feedback/github/", {"token": TOKEN, "repo": "example-owner/example-repo", "next": "/feedback/github/"})
+
+    assert response.status_code == 302 and response["Location"] == "/feedback/github/"
+    assert TOKEN in env_file.read_text(encoding="utf-8")
+    html = html_of(client.get("/feedback/github/"))
+    assert "example-feedback-bot の口座としてつながっています" in html
+    assert "example-owner/example-repo" in html
+    assert 'action="/feedback/github/disconnect/"' in html
+    assert TOKEN not in html
+
+
+def test_setup_screen_bad_token_is_red_and_hidden(client, manager, fake, env_file):
+    client.force_login(manager)
+    fake.user = Answer(401, {"message": "Bad credentials"})
+    response = client.post("/feedback/github/", {"token": TOKEN, "repo": "", "next": "/feedback/github/"})
+    html = html_of(response)
+    assert response.status_code == 200
+    assert "トークンが違う" in html
+    assert TOKEN not in html
+    assert not env_file.exists()
+
+
+def test_setup_screen_is_closed_to_non_manager(client, plain, no_http, env_file):
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/github/"))
+    assert "この画面は開けません" in html
+    assert 'name="token"' not in html and "取得の手順" not in html
+
+    response = client.post("/feedback/github/", {"token": TOKEN, "repo": "", "next": "/feedback/github/"})
+    assert response.status_code == 200
+    assert TOKEN not in html_of(response)
+    assert not env_file.exists()
+
+    client.post("/feedback/github/disconnect/")
+    client.post("/feedback/github/sync/")
+
+
+def test_disconnect_endpoint(client, manager, fake, env_file):
+    connect(manager, fake)
+    client.force_login(manager)
+    response = client.post("/feedback/github/disconnect/")
+    assert response.status_code == 302 and response["Location"] == "/feedback/github/"
+    assert TOKEN not in env_file.read_text(encoding="utf-8")
+    assert "GitHub から外しました" in html_of(client.get("/feedback/github/"))
+    assert client.get("/feedback/github/disconnect/").status_code == 405
+
+
+def test_detail_buttons_depend_on_manager_connection_and_status(client, manager, plain, fake):
+    row = make(plain, status="confirmed")
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(manager)
+    html = html_of(client.get(detail))
+    assert "GitHub に送る</button>" not in html
+    assert 'id="feedback-github-setup"' in html and 'href="/feedback/github/"' in html
+
+    connect(manager, fake)
+    html = html_of(client.get(detail))
+    assert "GitHub に送る</button>" in html and f'action="/feedback/{row.pk}/github/"' in html
+    assert html.index("GitHub に送る</button>") < html.index("送ったにする</button>")
+    assert 'id="feedback-github-setup"' not in html
+
+    draft = make(plain, "下書きのまま")
+    assert "GitHub に送る</button>" not in html_of(client.get(f"/feedback/{draft.pk}/"))
+
+    client.force_login(plain)
+    html = html_of(client.get(detail))
+    assert "GitHub に送る" not in html and 'href="/feedback/github/"' not in html
+
+
+def test_send_endpoint(client, manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(plain)
+    response = client.post(f"/feedback/{row.pk}/github/")
+    assert response.status_code == 302 and response["Location"] == detail
+    row.refresh_from_db()
+    assert row.status == "confirmed"
+
+    client.force_login(manager)
+    response = client.post(f"/feedback/{row.pk}/github/")
+    assert response.status_code == 302 and response["Location"] == detail
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("sent", ISSUE_URL)
+    html = html_of(client.get(detail))
+    assert f"GitHub に送りました: {ISSUE_URL}" in html
+    assert "GitHub に送る</button>" not in html
+    assert client.get(f"/feedback/{row.pk}/github/").status_code == 405
+
+
+def test_list_buttons_and_sync_endpoint(client, manager, plain, fake):
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/"))
+    assert "GitHub の設定" not in html and "GitHub の状態を取り込む" not in html
+    assert "GitHub の Issue を探す" in html and 'name="issue_q"' in html
+
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/"))
+    assert "GitHub の設定" in html and "GitHub の状態を取り込む" not in html
+
+    connect(manager, fake)
+    make(plain, status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "closed", "closed_at": "2026-11-06T03:00:00Z", "html_url": ISSUE_URL})
+    html = html_of(client.get("/feedback/"))
+    assert "GitHub の状態を取り込む" in html and 'action="/feedback/github/sync/"' in html
+
+    response = client.post("/feedback/github/sync/")
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert "GitHub を見ました: 見た 1 件・直した 1 件・読めなかった 0 件" in html_of(client.get("/feedback/"))
+
+
+def test_form_screen_links_to_issue_search(client, plain):
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/new/"))
+    assert 'href="/feedback/#issues"' in html
+    assert "似た困りごとが GitHub に出ていないか探す" in html
+
+
+# ---------------------------------------------------------------- 皆の Issue を探す
+
+
+def issue(number, title, body="", state="open", updated="2026-11-01T00:00:00Z", plus=0, **extra):
+    return {
+        "number": number,
+        "title": title,
+        "body": body,
+        "state": state,
+        "html_url": f"https://github.com/kishii-py/seizou/issues/{number}",
+        "updated_at": updated,
+        "comments": 0,
+        "reactions": {"+1": plus},
+        **extra,
+    }
+
+
+@pytest.fixture
+def listing(fake):
+    fake.listing = Answer(
+        200,
+        [
+            issue(1, "受注の一覧で並びが戻る", "並び替えた後に戻ると元に戻る", updated="2026-11-02T00:00:00Z", plus=3),
+            issue(2, "出荷の画面が重い", "受注を開くと待つ", state="closed", updated="2026-11-05T00:00:00Z"),
+            issue(3, "受注の一覧の CSV", "列を足したい", updated="2026-11-04T00:00:00Z", pull_request={"url": "x"}),
+            issue(4, "Search words", "Upper Case", updated="2026-11-03T00:00:00Z"),
+        ],
+    )
+    return fake
+
+
+def test_search_issues_filters_by_all_words_and_drops_pull_requests(listing):
+    result = services.search_issues("受注 戻る")
+    assert result["error"] == ""
+    assert [row["number"] for row in result["issues"]] == [1]
+    assert result["issues"][0]["thumbs_up"] == 3
+
+    everything = services.search_issues("")
+    assert [row["number"] for row in everything["issues"]] == [2, 4, 1]
+    assert [row["number"] for row in services.search_issues("受注")["issues"]] == [2, 1]
+    assert [row["number"] for row in services.search_issues("upper")["issues"]] == [4]
+
+
+def test_search_issues_is_cached_and_needs_no_token(listing):
+    services.search_issues("受注")
+    gets = [call for call in listing.calls if call[0] == "GET"]
+    assert len(gets) == 1
+    method, url, kwargs = gets[0]
+    assert url == "https://api.github.com/repos/kishii-py/seizou/issues"
+    assert kwargs["params"] == {"state": "all", "per_page": 100, "sort": "updated"}
+    assert "Authorization" not in kwargs["headers"]
+
+    services.search_issues("出荷")
+    assert len([call for call in listing.calls if call[0] == "GET"]) == 1
+
+
+def test_search_issues_uses_token_when_connected(manager, listing):
+    connect(manager, listing)
+    services.search_issues("")
+    method, url, kwargs = listing.calls[-1]
+    assert url == "https://api.github.com/repos/example-owner/example-repo/issues"
+    assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+def test_search_issues_error_does_not_stop(fake):
+    fake.listing = Answer(403, {"message": "rate limit"})
+    result = services.search_issues("受注")
+    assert result["issues"] == []
+    assert "GitHub の Issue を読めませんでした" in result["error"]
+    fake.listing = Answer(200, [issue(1, "受注")])
+    assert [row["number"] for row in services.search_issues("受注")["issues"]] == [1]
+
+
+def test_list_screen_searches_only_when_asked(client, plain, listing):
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/"))
+    assert not listing.calls
+    assert "issues-form" in html
+
+    html = html_of(client.get("/feedback/", {"issue_q": "受注 戻る"}))
+    assert 'href="https://github.com/kishii-py/seizou/issues/1"' in html
+    assert "受注の一覧で並びが戻る" in html and "出荷の画面が重い" not in html
+    assert 'value="受注 戻る"' in html
+    assert "badge badge-soft badge-success" in html
+
+    html = html_of(client.get("/feedback/", {"issue_q": ""}))
+    assert "badge badge-ghost" in html and "受注の一覧の CSV" not in html
+
+
+def test_list_screen_opens_when_github_is_unreadable(client, plain, monkeypatch):
+    def broken(*args, **kwargs):
+        raise requests.ConnectionError("つながらない")
+
+    monkeypatch.setattr(requests, "get", broken)
+    client.force_login(plain)
+    response = client.get("/feedback/", {"issue_q": "受注"})
+    assert response.status_code == 200
+    assert "GitHub の Issue を読めませんでした" in html_of(response)
