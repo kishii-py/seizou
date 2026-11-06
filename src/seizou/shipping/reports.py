@@ -22,7 +22,7 @@ def delivery_note_context(note) -> dict:
 
     company = 出荷元の {"name", "address", "phone", "logo"} (振込先は請求書だけに出すので渡さない。出荷ラベルと同じ形)、note = {"number", "date"}、customer = 得意先、
     lines = 出荷ごとの {"shipment_no", "shipped_at", "item_code", "item_name", "quantity", "unit", "unit_price", "amount"}、
-    total = 金額の合計。
+    total = 金額の合計、cancelled = 状態が取消なら真。
     """
     customer = note.customer
     shipments = note.shipments.select_related("order_line__item").order_by("shipped_at", "pk")
@@ -51,6 +51,7 @@ def delivery_note_context(note) -> dict:
         "customer": customer,
         "lines": lines,
         "total": total,
+        "cancelled": note.status == note.STATUS_CANCELLED,
     }
 
 

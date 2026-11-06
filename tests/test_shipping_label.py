@@ -206,4 +206,4 @@ def test_delivery_note_pdf_fallback_has_qr(monkeypatch, logged_in, note):
 
 @pytest.mark.django_db
 def test_delivery_note_context_has_no_qr_key(note):
-    assert set(delivery_note_context(note)) == {"company", "note", "customer", "lines", "total"}
+    assert set(delivery_note_context(note)) == {"company", "note", "customer", "lines", "total", "cancelled"}

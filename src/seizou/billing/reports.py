@@ -42,4 +42,5 @@ def invoice_context(invoice):
         "tax": invoice.tax,
         "total": invoice.total,
         "tax_rate_percent": int(TAX_RATE * 100),
+        "cancelled": invoice.status == invoice.STATUS_CANCELLED,
     }
