@@ -2,7 +2,7 @@
 {# 一括出荷の入力のカード (shipping/shipment_bulk_form.html の画面の全体と shipping/_form_modal.html の小窓の両方が include する)。 #}
 {# 写した元: core/_form_card.html (N123)。form の開きの tag (小窓の形は htmx で同じ URL へ送る)・誤り・「このまま保存」(confirmed=1) の 2 段・保存のボタン・_enter_guard.html は写した元の字のまま。 #}
 {# 変えた所: 欄の格子は form.head_fields (出荷日・備考と会社ごとの項目) だけにし、その下に選んだ明細の表 (form.rows。行ごとの数量と「この行を出さない」) を置く。 #}
-{# 明細の pk は行ごとの隠しの欄 line で送る (止まって描き直したときも同じ行が出る)。赤と黄の知らせはカードの外 (core/_notices.html)。 #}
+{# 明細の pk は行ごとの隠しの欄 line で送る (止まって描き直したときも同じ行が出る)。赤と黄の知らせは右上の知らせ (core/_toasts.html)。小窓では core/_form_modal.html の帯。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form.rows %}

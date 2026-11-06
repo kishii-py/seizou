@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
-{# 確認の画面 (保護・保護を解除・削除・この版に戻す)。字とボタンの字と戻り先は form が持つ。断った文 (赤の知らせ) は base.html が出す。 #}
+{# 確認の画面 (保護・保護を解除・削除・この版に戻す)。字とボタンの字と戻り先は form が持つ。断った文は右上の赤い知らせ (core/_toasts.html)。 #}
 {% block content %}
 <form method="post" class="max-w-2xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
