@@ -109,7 +109,7 @@ def test_warn_shows_yellow_then_confirm_saves_issue(settings, logged_in, line, c
     first = _issue(logged_in, line, cut)
     body = first.content.decode()
     assert first.status_code == 200
-    assert "alert-warning" in body and WORDS in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and WORDS in body and "このまま保存" in body
     assert WorkOrder.objects.count() == 0
 
     second = _issue(logged_in, line, cut, confirmed="1")
@@ -123,7 +123,7 @@ def test_warn_shows_yellow_then_confirm_saves_ship(settings, logged_in, line):
     first = _ship(logged_in, line)
     body = first.content.decode()
     assert first.status_code == 200
-    assert "alert-warning" in body and WORDS in body
+    assert 'data-notice="check"' in body and WORDS in body
     assert Shipment.objects.count() == 0
 
     assert _ship(logged_in, line, confirmed="1").status_code == 302
@@ -136,13 +136,13 @@ def test_stop_is_red_for_issue_and_ship(settings, logged_in, line, cut):
     issued = _issue(logged_in, line, cut, confirmed="1")
     body = issued.content.decode()
     assert issued.status_code == 200
-    assert "alert-error" in body and "保存できません。" in body and WORDS in body
+    assert 'data-notice="stop"' in body and "保存できません。" in body and WORDS in body
     assert WorkOrder.objects.count() == 0
 
     shipped = _ship(logged_in, line, confirmed="1")
     body = shipped.content.decode()
     assert shipped.status_code == 200
-    assert "alert-error" in body and WORDS in body
+    assert 'data-notice="stop"' in body and WORDS in body
     assert Shipment.objects.count() == 0
 
 
