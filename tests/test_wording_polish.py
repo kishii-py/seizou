@@ -23,10 +23,11 @@ from seizou.connect import services as connect_services
 from seizou.connect import signing
 from seizou.connect.models import Inbox, Outbox
 from seizou.core.exceptions import RuleViolation
+from seizou.core.manual import input_rows
 from seizou.core.screens import all_screens
 from seizou.core.views import hidden_detail_fields
 from seizou.masters import services as masters_services
-from seizou.masters.forms import PartnerForm
+from seizou.masters.forms import ItemForm, PartnerForm
 from seizou.manuals import services as manuals_services
 from seizou.masters.models import Item, Process
 from seizou.orders import services as orders_services
@@ -40,6 +41,8 @@ SHIPPED_AT = date(2026, 11, 5)
 
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は 四捨五入) に従います。"
 TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定 (今は トータル) に従います。"
+#: 部品の自社品番の欄の下の説明 (初見テスト R5 の V87。C19-2 = a)
+PART_NO_HELP = "社内で部品を呼ぶ品番です (会社の中で同じ品番は 1 つだけ)。得意先や協力企業が別の品番で呼ぶときは、その対応が部品の詳細の「取引先ごとの品番」に並びます。"
 
 
 @pytest.fixture
@@ -78,6 +81,40 @@ def test_partner_create_shows_rounding_help(client_logged_in):
     assert ROUNDING_HELP in body and TAX_HELP in body
     # 取引先の種類の字は「協力企業」(古い呼び名は tests/test_wording.py が全部のファイルで見るので、ここには書かない)
     assert "協力企業" in body
+
+
+# --- 部品の自社品番の欄の説明 (初見テスト R5 の V87。C19-2 = a: 見出しは変えず、欄の下に説明) ---
+
+
+def test_item_form_part_no_help_text_and_label():
+    field = ItemForm().fields["part_no"]
+    assert field.help_text == PART_NO_HELP
+    # 見出しは「自社品番」のまま (C19-2 = a)
+    assert field.label == "自社品番"
+
+
+def test_item_part_no_help_text_in_manual_input_rows():
+    # 「?」の説明の「入れる物」の表の「自社品番」の行に、同じ字が出る。
+    rows = {name: note for name, _required, note in input_rows(ItemForm)}
+    assert rows["自社品番"] == PART_NO_HELP
+
+
+@pytest.mark.django_db
+def test_item_create_shows_part_no_help(client_logged_in):
+    response = client_logged_in.get(reverse("masters:item_create"))
+    assert response.status_code == 200
+    body = text(response)
+    assert PART_NO_HELP in body
+    assert 'id="id_part_no_helptext"' in body
+    assert '<label for="id_part_no" class="font-medium">自社品番</label>' in body
+
+
+@pytest.mark.django_db
+def test_item_update_shows_part_no_help(client_logged_in):
+    item = Item.objects.create(part_no="P-7001", name="作り物のカバー", unit="個")
+    response = client_logged_in.get(reverse("masters:item_update", args=[item.pk]))
+    assert response.status_code == 200
+    assert PART_NO_HELP in text(response)
 
 
 # --- 受注と注文残の一覧の切り替えの字 ---
