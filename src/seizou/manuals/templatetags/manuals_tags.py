@@ -25,6 +25,30 @@ def version_diff(version):
 
 
 @register.simple_tag
+def version_rows(manual, versions):
+    """{% version_rows object versions as rows %}。版の履歴の表の行 (頭に今の版の行、続けて前の版の行)。
+
+    行 1 つ = {"number", "is_current", "saved_at", "saved_by", "note", "version"}。
+    今の版の行は番号だけを持ち、日時・保存した人・メモは空で、version は None (差分と戻すの URL を作らない)。
+    形は図面の版の表 (masters_drawing の rows) と同じ。メモは今のまま、変える前の中身の版の行に付く。
+    versions はテンプレートが {% if versions %} で読んだ物を渡す (同じ問い合わせを 2 回送らないため)。
+    """
+    rows = [{"number": manual.version, "is_current": True, "saved_at": None, "saved_by": None, "note": "", "version": None}]
+    for version in versions:
+        rows.append(
+            {
+                "number": version.number,
+                "is_current": False,
+                "saved_at": version.saved_at,
+                "saved_by": version.saved_by,
+                "note": version.note,
+                "version": version,
+            }
+        )
+    return rows
+
+
+@register.simple_tag
 def manual_link(manual):
     """{% manual_link manual as link %}。紐付けの印の材料。紐付けが無ければ None。
 

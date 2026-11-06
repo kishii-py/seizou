@@ -20,7 +20,7 @@ from .models import COLOR_CHOICES, FORMAT_CHOICES, FORMAT_STEPS, Manual, ManualF
 from .services import FOLDER_NOT_FOUND
 
 FORMAT_HELP = "ステップ形式は番号付きの手順、ページ形式は長い文書向けです。後から切り替えられます。"
-NOTE_HELP = "新しい版として保存するときだけ残ります (「保存」ではメモは残りません)。"
+NOTE_HELP = "新しい版として保存するときだけ残ります (「保存」ではメモは残りません)。版の履歴では、変える前の中身の版の行に出ます。"
 LINK_ONE_ONLY = "紐付けは 1 件だけです。部品か取引先のどちらかを選んでください。"
 #: 紐付けの欄 (欄の名前, 部品の app, model, label, 候補の口の URL の名前)
 LINK_FIELDS = (

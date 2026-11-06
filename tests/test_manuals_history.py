@@ -1,5 +1,7 @@
 """業務マニュアルの版 (新しい版として保存・版の履歴・差分・この版に戻す)。"""
 
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -57,6 +59,28 @@ def test_save_as_new_version_from_edit_form(client_logged_in, manual):
 def test_version_list_empty(client_logged_in, manual):
     html = client_logged_in.get(reverse("manuals:manualversion_list", args=[manual.pk])).content.decode()
     assert "版はまだありません。" in html
+
+
+def test_version_list_has_current_row_first(client_logged_in, manual, user):
+    """版の履歴の頭に今の版の行 (「—」で操作の無い行) を置き、メモは変える前の中身の版の行に出る (C10-1 = b)。"""
+    services.save_as_version(manual, {"body": "## 準備\n\n新しい行"}, "手順を直した", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_list", args=[manual.pk])).content.decode()
+    assert "<th class=\"font-medium\">メモ (次の版で変えたこと)</th>" in html
+    rows = re.findall(r'<tr class="h-10">(.*?)</tr>', html, re.S)
+    assert len(rows) == 2
+    current, previous = rows
+    assert "版 2 (今の中身)" in current and current.count("—") == 3 and "href=" not in current
+    assert "版 1</td>" in previous and "手順を直した" in previous
+    # 差分の URL は戻すの URL の頭と同じ字なので、href の引用符まで含めて数える。
+    assert html.count(f'href="{reverse("manuals:manualversion_detail", args=[version.pk])}"') == 1
+    assert html.count(f'href="{reverse("manuals:manualversion_restore", args=[version.pk])}"') == 1
+    assert reverse("manuals:manualversion_detail", args=[version.pk]) in previous
+
+
+def test_note_help_says_which_row_gets_the_note(client_logged_in, manual):
+    html = client_logged_in.get(reverse("manuals:manual_update", args=[manual.pk])).content.decode()
+    assert "版の履歴では、変える前の中身の版の行に出ます。" in html
 
 
 def test_diff_rows_kinds():
