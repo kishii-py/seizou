@@ -3,6 +3,9 @@
 master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾の 0 を落とす。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
+yen: 金額の字。comma の字の頭に「¥」を付ける ({{ x|yen }}・{{ x|yen:0 }}・{{ x|floatformat:"-2g"|yen }}。100450 → ¥100,450、-1000 → -¥1,000)。数の形でない字 (「—」など) はそのまま。
+yen_if: {{ cell.value|yen_if:cell.money }} で、money が真なら yen、偽なら comma (金額の列とほかの数の列を同じ行で描く所)。
+without_yen_unit: {{ col.label|without_yen_unit }} で、見出しの字から単位の「 (円)」を外す (値に ¥ が付く画面の見出し)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
 can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口のボタンを出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
 部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
@@ -179,3 +182,51 @@ def company_favicon(company):
     from seizou.core import services
 
     return services.company_icons(company)
+
+
+#: 頭に「¥」を付けてよい数の形 (comma の返す字・floatformat の字・読み取りの字)
+_NUMBER_TEXT = re.compile(r"-?\d[\d,]*(\.\d+)?")
+
+
+@register.filter
+def yen(value, digits=None):
+    """金額の字。{{ x|yen }}・{{ x|yen:0 }}・{{ x|floatformat:"-2g"|yen }}。100450 → ¥100,450、1234.50 → ¥1,234.5。
+
+    まず comma で字を作り (区切り・末尾の 0 を落とす・digits の四捨五入は comma のまま)、その字が数の形のときだけ頭に
+    「¥」を付ける。字は半角の「¥」(U+00A5。保存のボタンの字の型と同じ字)。数の形でない字 (「—」= access.MASK・読めない字)
+    はそのまま返す。None と空の字は空の字、真偽はそのまま (comma と同じ)。数の字の区切りと小数の桁は渡された字のまま
+    (読み取りの字「1234.50」は「¥1234.50」、floatformat の字「1,234.50」は「¥1,234.50」)。
+    マイナスは符号を一番頭に置いて「-¥1,000」。数の部分が 0 だけ (comma の digits つきの「-0」) なら符号を落として「¥0」。
+    計算と丸めは変えない (画面に出すだけ)。
+    """
+    text = comma(value, digits)
+    if not isinstance(text, str) or not _NUMBER_TEXT.fullmatch(text):
+        return text
+    if text.startswith("-"):
+        number = text[1:]
+        return f"¥{number}" if not number.strip("0,.") else f"-¥{number}"
+    return f"¥{text}"
+
+
+@register.filter
+def yen_if(value, money):
+    """{{ cell.value|yen_if:cell.money }}。money が真なら yen (頭に ¥)、偽なら comma (数のまま)。
+
+    一覧・詳細・小窓・検索・集計の枡のように、金額の列とほかの数の列を同じ行で描く所で使う。
+    注意: 引数の鍵 (cell.money) が dict に無いと、テンプレートは VariableDoesNotExist を投げて画面ごと落ちる
+    ({% if %} の中と違い、filter の引数は無い鍵を偽として読まない)。このため、値を描く dict は金額でない行も "money" の鍵を持つ
+    (core.views の row_for・totals_for・field_items・小窓、core.search の display_section、受注と発注の詳細の右の列の行)。
+    """
+    return yen(value) if money else comma(value)
+
+
+@register.filter
+def without_yen_unit(label):
+    """{{ col.label|without_yen_unit }}。見出しの字から単位「 (円)」(前に空白の無い「(円)」も) を外す。「標準単価 (円)」→「標準単価」。
+
+    値に ¥ が付く画面の見出し (一覧の見出し・詳細と小窓の項目の名) だけで使う。model の verbose_name・CSV の見出し・入力の欄の名は
+    「(円)」のまま (値が数だけで単位が要るため)。None は空の字。
+    """
+    if label is None:
+        return ""
+    return str(label).replace(" (円)", "").replace("(円)", "")

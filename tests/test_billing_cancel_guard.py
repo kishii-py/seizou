@@ -18,8 +18,8 @@ from seizou.core.exceptions import RuleViolation
 from seizou.masters import services as masters_services
 from tests.test_billing_payment_views import ALL_ON, PASSWORD, RECEIVED_ON, _customer, _invoice, _order_line, account
 
-TWO_LEFT = "入金が残っています。先に入金を取り消してください (残り 2 件・合計 7,500 円)。"
-ONE_LEFT = "入金が残っています。先に入金を取り消してください (残り 1 件・合計 6,500 円)。"
+TWO_LEFT = "入金が残っています。先に入金を取り消してください (残り 2 件・合計 ¥7,500)。"
+ONE_LEFT = "入金が残っています。先に入金を取り消してください (残り 1 件・合計 ¥6,500)。"
 ONE_LEFT_COUNT = "入金が残っています。先に入金を取り消してください (残り 1 件)。"
 
 
@@ -85,11 +85,11 @@ def test_cancel_refused_while_payment_left(user, invoice):
 def test_refusal_counts_without_money(on, client, user, invoice):
     services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
 
-    # 伝票編集 (請求書を書ける)・金額の閲覧なし = 件数だけ (「円」が無い)
+    # 伝票編集 (請求書を書ける)・金額の閲覧なし = 件数だけ (「¥」が無い)
     jimu = account("jimu", permissions=["slip_edit"])
     refusal = _refusal_of_cancel(invoice, jimu)
     assert refusal == "取り消せません。" + ONE_LEFT_COUNT
-    assert "円" not in refusal
+    assert "¥" not in refusal
     assert _status(invoice) == Invoice.STATUS_ISSUED
 
     # 取消の確かめの画面の黄の文も件数だけ

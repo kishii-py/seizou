@@ -1,4 +1,5 @@
 {% extends "core/report_base.html" %}
+{% load seizou_tags %}
 {% comment %}
 請求書の帳票。context は billing.reports.invoice_context が作る。
 金額と合計は context に入った値 (明細の写し) をそのまま出し、ここでは計算しない。
@@ -21,7 +22,7 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
 {% block content %}
 <table class="report-lines">
   <thead>
-    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価 (円)</th><th>金額 (円)</th></tr>
+    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr>
   </thead>
   <tbody>
     {% for line in lines %}
@@ -32,15 +33,15 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{{ line.unit_price|floatformat:"-2g" }}</td>
-      <td class="num">{{ line.amount|floatformat:"-2g" }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }}</td>
+      <td class="num">{{ line.amount|floatformat:"-2g"|yen }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th colspan="7">小計</th><td class="num">{{ subtotal|floatformat:"-2g" }}</td></tr>
-    <tr><th colspan="7">消費税 ({{ tax_rate_percent }}%)</th><td class="num">{{ tax|floatformat:"-2g" }}</td></tr>
-    <tr class="report-total"><th colspan="7">合計 (円)</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
+    <tr><th colspan="7">小計</th><td class="num">{{ subtotal|floatformat:"-2g"|yen }}</td></tr>
+    <tr><th colspan="7">消費税 ({{ tax_rate_percent }}%)</th><td class="num">{{ tax|floatformat:"-2g"|yen }}</td></tr>
+    <tr class="report-total"><th colspan="7">合計</th><td class="num">{{ total|floatformat:"-2g"|yen }}</td></tr>
   </tfoot>
 </table>
 {% endblock %}

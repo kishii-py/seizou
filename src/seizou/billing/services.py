@@ -171,7 +171,10 @@ def _in_issued_note(shipment):
 
 
 def _yen(value):
-    """金額の字。core の |comma と同じ形 (3 桁ごとの区切り。小数の末尾の 0 を落とす。7500.00 → 7,500、1234.50 → 1,234.5)。"""
+    """金額の字。core の |comma と同じ形 (3 桁ごとの区切り。小数の末尾の 0 を落とす。7500.00 → 7,500、1234.50 → 1,234.5)。
+
+    頭の ¥ は呼ぶ側の字に書く (「合計 ¥{_yen(…)}」。保存のボタンの字の型「¥{amount}」と同じ置き方)。
+    """
     return f"{value.normalize():,f}"
 
 
@@ -187,7 +190,7 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
         return ""
     left = f"残り {len(rows)} 件"
     if not hide_money:
-        left += f"・合計 {_yen(sum((row.amount for row in rows), _ZERO))} 円"
+        left += f"・合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))}"
     return f"取り消せません。入金が残っています。先に入金を取り消してください ({left})。"
 
 

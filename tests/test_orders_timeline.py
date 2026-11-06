@@ -154,14 +154,14 @@ def test_money_is_hidden_without_money_permission(user, logged_in, customer, ite
     order, workorder, shipment, note, invoice, payment = _flowed(user, customer, item, cut)
 
     shown = _flow_section(_detail(logged_in, order)[1])
-    assert f"請求書 {invoice.invoice_no} を発行</a> <span class=\"tabular-nums\">({comma(invoice.total)} 円)</span>" in shown
-    assert f"請求書 {invoice.invoice_no} に入金</a> <span class=\"tabular-nums\">({comma(payment.amount)} 円)</span>" in shown
+    assert f"請求書 {invoice.invoice_no} を発行</a> <span class=\"tabular-nums\">(¥{comma(invoice.total)})</span>" in shown
+    assert f"請求書 {invoice.invoice_no} に入金</a> <span class=\"tabular-nums\">(¥{comma(payment.amount)})</span>" in shown
 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
     hidden = _flow_section(_detail(logged_in, order)[1])
     assert f"請求書 {invoice.invoice_no} を発行</a>" in hidden
     assert f"請求書 {invoice.invoice_no} に入金</a>" in hidden
-    assert " 円)" not in hidden
+    assert "(¥" not in hidden
     assert comma(invoice.total) not in hidden
 
 

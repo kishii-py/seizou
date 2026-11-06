@@ -6,7 +6,7 @@
 <table class="table table-sm table-zebra table-pin-rows">
   <thead><tr class="bg-base-200 text-base-content/70">
     {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
-      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
+      {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label|without_yen_unit }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label|without_yen_unit }}{% endif %}
     </th>{% endfor %}
     {% if actions_label %}<th class="whitespace-nowrap font-medium">{{ actions_label }}</th>{% endif %}
   </tr></thead>
@@ -15,7 +15,7 @@
     <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
       {% for cell in row.cells %}
       {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
-      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|comma }}</span>{% else %}{{ cell.value|comma }}{% endif %}</td>
+      {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
       {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/50">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</td>
       {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
       {% elif cell.status %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
@@ -25,7 +25,7 @@
     </tr>
     {% endif %}{% endfor %}
   </tbody>
-  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|comma }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if actions_label %}<td></td>{% endif %}</tr></tfoot>{% endif %}
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|yen_if:cell.money }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if actions_label %}<td></td>{% endif %}</tr></tfoot>{% endif %}
 </table>
 </div>
 <div class="mt-4 flex flex-wrap items-center justify-between gap-2">

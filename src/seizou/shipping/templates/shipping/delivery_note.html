@@ -1,5 +1,5 @@
 {% extends "core/report_base.html" %}
-{% load seizou_qr %}
+{% load seizou_qr seizou_tags %}
 {% comment %}
 納品書の帳票。context は shipping.reports.delivery_note_context が作る (表を読むだけ)。
 数量は出荷の数そのまま (R08)。金額と合計は context に入った値をそのまま出し、ここでは計算しない。
@@ -26,7 +26,7 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
 {% endif %}
 <table class="report-lines">
   <thead>
-    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価 (円)</th><th>金額 (円)</th></tr>
+    <tr><th>出荷日</th><th>出荷番号</th><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr>
   </thead>
   <tbody>
     {% for line in lines %}
@@ -37,13 +37,13 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{% if not hide_money %}{{ line.unit_price|floatformat:"-2g" }}{% endif %}</td>
-      <td class="num">{% if not hide_money %}{{ line.amount|floatformat:"-2g" }}{% endif %}</td>
+      <td class="num">{% if not hide_money %}{{ line.unit_price|floatformat:"-2g"|yen }}{% endif %}</td>
+      <td class="num">{% if not hide_money %}{{ line.amount|floatformat:"-2g"|yen }}{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr class="report-total"><th colspan="7">合計 (円)</th><td class="num">{% if not hide_money %}{{ total|floatformat:"-2g" }}{% endif %}</td></tr>
+    <tr class="report-total"><th colspan="7">合計</th><td class="num">{% if not hide_money %}{{ total|floatformat:"-2g"|yen }}{% endif %}</td></tr>
   </tfoot>
 </table>
 {% endblock %}

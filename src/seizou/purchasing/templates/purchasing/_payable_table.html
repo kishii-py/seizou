@@ -4,7 +4,7 @@
 {% endcomment %}{% payable_table as payable %}{% if not payable.hidden %}
 <section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
   <h2 id="payable-title" class="text-lg font-bold">支払の見込み (取引先ごと)</h2>
-  <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計 (円)。受入日の月で数えます。</p>
+  <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計。受入日の月で数えます。</p>
   {% if not payable.rows %}
   <p class="mt-4 text-base-content/70">先月と今月の受入はまだありません。</p>
   {% else %}
@@ -20,16 +20,16 @@
         {% for row in payable.rows %}
         <tr>
           <td>{% master_link row.partner %}</td>
-          <td class="text-right tabular-nums">{{ row.last_month|comma:0 }}</td>
-          <td class="text-right tabular-nums">{{ row.this_month|comma:0 }}</td>
+          <td class="text-right tabular-nums">{{ row.last_month|yen:0 }}</td>
+          <td class="text-right tabular-nums">{{ row.this_month|yen:0 }}</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot>
         <tr class="bg-base-200 font-bold text-base-content">
           <td>合計</td>
-          <td class="text-right tabular-nums">{{ payable.totals.last_month|comma:0 }}</td>
-          <td class="text-right tabular-nums">{{ payable.totals.this_month|comma:0 }}</td>
+          <td class="text-right tabular-nums">{{ payable.totals.last_month|yen:0 }}</td>
+          <td class="text-right tabular-nums">{{ payable.totals.this_month|yen:0 }}</td>
         </tr>
       </tfoot>
     </table>

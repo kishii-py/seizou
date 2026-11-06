@@ -101,7 +101,7 @@ def test_home_shows_payable_card(user, logged_in, partners, shaft, no_http):
 
     start = body.index("今月の支払の見込み")
     card = body[start : body.index("</p></div>", start)]
-    assert "2,400" in card and "円" in card
+    assert "¥2,400" in card and "円" not in card
     assert f'href="{reverse("purchasing:receipt_list")}"' in body[body.rindex("<a", 0, start) : start]
     assert f"{timezone.localdate().month} 月に受け入れた数量" in card
     # 6 枚目のカードとして数字のカードの並びに入る (入金のカードが 7 枚目に続くので、試験の settings では xl 以上で 4 列 × 2 段)

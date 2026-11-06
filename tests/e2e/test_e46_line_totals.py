@@ -5,7 +5,7 @@
 期待: 明細の見出しの右の枠 (明細の行の数・数量・金額) と保存のボタンの字が、打つたびに同じ数に変わる。
 消す印の行は数えない。行の金額の枡と枠の金額が同じ字になる。
 
-この試験が見る所: 1 行目を入れた後の枠「1」「10」「4,800」とボタン「1 行・合計 ¥4,800 で受注する」と行の金額の枡「4,800」、
+この試験が見る所: 1 行目を入れた後の枠「1」「10」「4,800」とボタン「1 行・合計 ¥4,800 で受注する」と行の金額の枡「¥4,800」、
 2 行目を入れた後の「2」「15」「5,300」と「2 行・合計 ¥5,300 で受注する」、消す印の後の「1」「10」「4,800」。
 ボタンは字で探さず、入力の form の主色の submit で引く (E-41 と同じ形)。
 見ない所 (理由): 保存 (E-08 が見る。この試験は受注を増やさない)、金額の閲覧が無い人の枠 (試験 test_core_line_totals が字で見る)、
@@ -40,7 +40,7 @@ def test_e46_order_totals_follow_typing(page_a, company_a):
     page_a.fill("input[name=lines-0-unit_price]", "480")
     _expect_totals(page_a, "1", "10", "4,800")
     expect(submit).to_have_text("1 行・合計 ¥4,800 で受注する")
-    expect(page_a.locator("#order-lines [data-line-amount]").first).to_have_text("4,800")
+    expect(page_a.locator("#order-lines [data-line-amount]").first).to_have_text("¥4,800")
 
     page_a.locator("[data-add-order-line]").click()
     choose(page_a, "lines-1-item", PART_NO)

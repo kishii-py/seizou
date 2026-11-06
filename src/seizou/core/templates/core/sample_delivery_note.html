@@ -1,4 +1,5 @@
 {% extends "core/report_base.html" %}
+{% load seizou_tags %}
 {% comment %}
 見本の納品書。中身は全部作り物の文字で、context は scripts/render_sample_report.py と試験が作る (モデルを読まない)。
 本物の納品書は shipping の帳票で作る。金額と合計は context に入った値をそのまま出し、ここでは計算しない。
@@ -24,13 +25,13 @@
       <td>{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
-      <td class="num">{{ line.unit_price|floatformat:"-2g" }}</td>
-      <td class="num">{{ line.amount|floatformat:"-2g" }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }}</td>
+      <td class="num">{{ line.amount|floatformat:"-2g"|yen }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th colspan="4">合計</th><td class="num">{{ total|floatformat:"-2g" }}</td></tr>
+    <tr><th colspan="4">合計</th><td class="num">{{ total|floatformat:"-2g"|yen }}</td></tr>
   </tfoot>
 </table>
 {% endblock %}

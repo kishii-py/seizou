@@ -170,7 +170,7 @@ def test_payable_table_and_money_hidden(user, client_logged_in, subcontractor, i
     table = body[body.index('id="payable-title"') : body.index("</section>", body.index('id="payable-title"'))]
     assert "作り物の協力企業" in table
     assert f"先月 ({last_month.month} 月)" in table and f"今月 ({today.month} 月)" in table
-    assert ">100<" in table and ">50<" in table
+    assert ">¥100<" in table and ">¥50<" in table
     assert "合計" in table
 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}

@@ -430,7 +430,7 @@ def test_words_use_parts_and_new_labels(client_logged_in, partner):
     assert "出荷の残りがある明細" in home and "注残の明細" not in home
     assert "受信した注文" in home and "受信箱の未処理" not in home
     detail = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
-    assert "部品の詳細" in detail and "標準単価 (円)" in detail
+    assert "部品の詳細" in detail and "標準単価</dt>" in detail and "標準単価 (円)</dt>" not in detail
     listing = client_logged_in.get(reverse("masters:item_list"))
     # 説明の 1 文は題の下に出さず (決め 11-03 14:1x)、目録と説明書が読む screen_help にある
     assert "品名を押すと、画面を移らずに中身を見られます。" in listing.context["screen_help"]

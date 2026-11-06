@@ -14,14 +14,14 @@
         {% for row in summary.rows %}
         <tr class="h-10">
           <td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ row.label }}">{{ row.label }}</span></td>
-          <td class="whitespace-nowrap text-right tabular-nums">{{ row.value|comma }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.value|yen_if:summary.measure.money }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{% if row.share is None %}—{% else %}{{ row.share }}%{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot><tr class="bg-base-200 font-bold text-base-content">
         <td>合計</td>
-        <td class="whitespace-nowrap text-right tabular-nums">{{ summary.total|comma }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ summary.total|yen_if:summary.measure.money }}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{% if summary.total > 0 %}100.0%{% else %}—{% endif %}</td>
       </tr></tfoot>
     </table>

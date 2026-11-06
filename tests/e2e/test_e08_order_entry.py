@@ -152,5 +152,5 @@ def test_e08_amount_before_save(page_a, company_a):
     page_a.fill("input[name=lines-0-unit_price]", STANDARD_PRICE)
     page_a.press("input[name=lines-0-unit_price]", "Tab")
 
-    expect(page_a.locator("#order-lines [data-order-line]").first.locator("[data-line-amount]")).to_have_text("4,800")
+    expect(page_a.locator("#order-lines [data-order-line]").first.locator("[data-line-amount]")).to_have_text("¥4,800")
     shot(page_a, "E-08", "a-amount-before-save")

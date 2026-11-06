@@ -919,6 +919,7 @@ class BaseListView(ScreenMixin, ListView):
                     "master": master,
                     "numeric": spec.numeric,
                     "negative": spec.numeric and is_negative(value),
+                    "money": spec.money,
                     "date": spec.is_date,
                     "datetime": spec.is_datetime,
                     "code": spec.is_code,
@@ -930,7 +931,7 @@ class BaseListView(ScreenMixin, ListView):
 
     def totals_for(self, queryset, specs) -> list | None:
         """絞り込みに追従する合計の行 (合計を選んだ、表の数の項目と、kind が number / money の annotate の列。
-        無ければ出さない)。1 列 = {"value", "numeric"}。annotate の列は queryset の annotate にある名前だけ足す。"""
+        無ければ出さない)。1 列 = {"value", "numeric", "money"} (money は金額の列なら真。テンプレートが yen_if で ¥ を付ける)。annotate の列は queryset の annotate にある名前だけ足す。"""
         sums = {}
         for spec in specs:
             if spec.total and (
@@ -944,7 +945,7 @@ class BaseListView(ScreenMixin, ListView):
         aliases = {f"seizou_total_{index}": name for index, name in enumerate(sums)}
         result = queryset.aggregate(**{alias: sums[name] for alias, name in aliases.items()})
         agg = {name: result[alias] for alias, name in aliases.items()}
-        return [{"value": agg.get(spec.name), "numeric": spec.name in sums} for spec in specs]
+        return [{"value": agg.get(spec.name), "numeric": spec.name in sums, "money": spec.money} for spec in specs]
 
     def search_hint(self) -> str:
         """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。"""
@@ -1089,7 +1090,8 @@ class BaseDetailView(ScreenMixin, DetailView):
     template_name = "core/detail.html"
 
     def field_items(self, obj) -> list[dict]:
-        """項目の一覧。1 項目 = {"label", "value", "master", "file"} (file はファイルの項目だけ、file_info の形)。"""
+        """項目の一覧。1 項目 = {"label", "value", "master", "file", "money"} (file はファイルの項目だけ、file_info の形。
+        money は金額の項目なら真で、テンプレートが yen_if で ¥ を付ける。テンプレートの filter の引数に使うので、全部の行が鍵を持つ)。"""
         items = []
         hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
@@ -1103,6 +1105,7 @@ class BaseDetailView(ScreenMixin, DetailView):
                 {
                     "label": str(f.verbose_name),
                     "value": "" if is_file else screen_value(value),
+                    "money": access.is_money_name(f.name),
                     "master": value if is_master(value) else None,
                     "file": file_info(value, file_url_for(obj, f.name)) if is_file else None,
                 }
@@ -1110,10 +1113,10 @@ class BaseDetailView(ScreenMixin, DetailView):
             # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (初見テスト 2 回目の E-05)
             linked = getattr(value, "item", None) if value is not None and not is_master(value) else None
             if is_master(linked) and not any(c.name == "item" for c in obj._meta.concrete_fields):
-                items.append({"label": "部品", "value": screen_value(linked), "master": linked, "file": None})
+                items.append({"label": "部品", "value": screen_value(linked), "master": linked, "file": None, "money": False})
         for col in company_fields.columns_for(obj.__class__):
             value = screen_value(company_fields.ext_value(obj, col.name))
-            items.append({"label": col.label, "value": value, "master": None, "file": None})
+            items.append({"label": col.label, "value": value, "master": None, "file": None, "money": False})
         return items
 
     def get_context_data(self, **kwargs):
@@ -1566,9 +1569,9 @@ class BaseModalView(ScreenMixin, DetailView):
             if isinstance(f, models.FileField):
                 info = file_info(value)
                 value = info["name"] if info else ""
-            items.append({"label": str(f.verbose_name), "value": screen_value(value)})
+            items.append({"label": str(f.verbose_name), "value": screen_value(value), "money": access.is_money_name(f.name)})
         ext_items = [
-            {"label": col.label, "value": screen_value(company_fields.ext_value(obj, col.name))}
+            {"label": col.label, "value": screen_value(company_fields.ext_value(obj, col.name)), "money": False}
             for col in company_fields.list_columns_for(obj.__class__)
         ]
         context["fields"] = items[: self.modal_fields] + ext_items
@@ -1776,7 +1779,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "今月の支払の見込み",
                 "value": payable,
-                "unit": "円",
+                "unit": "",
                 "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
                 "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
                 "icon": "yen",
@@ -1791,7 +1794,7 @@ def dashboard_stats() -> list[dict]:
             {
                 "label": "今月の入金",
                 "value": payments,
-                "unit": "円",
+                "unit": "",
                 "note": f"{today.month} 月に入金日のある入金の金額の合計 (取消を除く)",
                 "help": "入金日が今月の入金の金額の合計です。取消は数えません。",
                 "icon": "yen",
