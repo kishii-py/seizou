@@ -283,9 +283,10 @@ def test_shipment_detail_links_to_delivery_note(client, user, order):
     html = client.get(detail_url).content.decode()
     link = f'{reverse("shipping:deliverynote_create")}?shipments={shipment.pk}'
     # 開いた詳細の道を ?next= で渡す (納品書作成の「キャンセル」で出荷の詳細へ戻る)
-    assert f'<a class="btn btn-outline border-base-300" href="{link}&amp;next={detail_url}" data-modal-form="{link}&amp;next={detail_url}">' in html
+    assert f'<a class="btn btn-primary" href="{link}&amp;next={detail_url}" data-modal-form="{link}&amp;next={detail_url}">' in html
     assert "納品書作成" in html
-    assert html.count("btn-primary") == 1  # 主色は「編集」の 1 つのまま
+    assert html.count("btn-primary") == 1  # 主色は「納品書作成」の 1 つ
+    assert f'<a class="btn btn-outline border-base-300" href="{reverse("shipping:shipment_update", args=[shipment.pk])}' in html
 
     form = client.get(link).content.decode()
     checkbox = re.search(rf'<input type="checkbox" name="shipments" value="{shipment.pk}"[^>]*>', form)
@@ -298,6 +299,7 @@ def test_shipment_in_issued_note_has_no_delivery_note_button(client, user, order
     client.force_login(user)
     html = client.get(reverse("shipping:shipment_detail", args=[shipment.pk])).content.decode()
     assert "納品書作成" not in html
+    assert f'<a class="btn btn-primary" href="{reverse("shipping:shipment_update", args=[shipment.pk])}' in html
 
 
 def test_delivery_note_detail_links_to_invoice(client, user, order):
