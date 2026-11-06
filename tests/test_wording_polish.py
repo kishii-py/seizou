@@ -217,7 +217,7 @@ def test_connection_list_first_column_links_to_detail(client_logged_in, receive_
     response = client_logged_in.get(reverse("connect:connection_list"))
     assert response.status_code == 200
     detail_url = reverse("connect:connection_detail", args=[receive_connection.pk])
-    links = re.findall(rf'<a class="link link-hover[^"]*" href="{re.escape(detail_url)}"[^>]*>(.*?)</a>', text(response))
+    links = re.findall(rf'<a class="link link-primary[^"]*" href="{re.escape(detail_url)}"[^>]*>(.*?)</a>', text(response))
     assert links == ["受ける"]
 
 

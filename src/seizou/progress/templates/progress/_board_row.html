@@ -5,7 +5,7 @@ oob が真のとき (自動の更新の応答) だけ hx-swap-oob を付け、ht
 残が 0 以下の行 (row.done) は、工程の字の右に「完了」の札を出す (現品票の読み取りの着地 workorders/workorder_scan.html と同じ札・同じ読み方)。
 {% endcomment %}
 <tr id="progress-step-{{ row.step }}" class="h-10"{% if oob %} hx-swap-oob="true"{% endif %}>
-  <td class="whitespace-nowrap font-mono"><a class="link link-hover rounded focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' row.workorder %}">{{ row.wo_no }}</a></td>
+  <td class="whitespace-nowrap font-mono"><a class="link link-primary rounded focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' row.workorder %}">{{ row.wo_no }}</a></td>
   <td class="whitespace-nowrap">{{ row.seq }} {{ row.process_name }}{% if row.done %}<span class="badge badge-success ml-2">完了</span>{% endif %}</td>
   <td class="whitespace-nowrap text-right tabular-nums data-[over=true]:text-error"{% if row.over %} data-over="true"{% endif %}>{{ row.remaining|comma }}</td>
   {% if create_url %}<td class="whitespace-nowrap"><a class="btn btn-xs btn-outline border-base-300" href="{{ create_url }}?workorder_step={{ row.step }}" data-modal-form="{{ create_url }}?workorder_step={{ row.step }}">実績を入力</a></td>{% endif %}

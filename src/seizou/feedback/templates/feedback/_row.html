@@ -4,7 +4,7 @@
 <tr id="row-{{ row.pk }}" class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}">
   {% for cell in row.cells %}
   {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
-  {% if forloop.parentloop.first %}{% if cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}">{{ cell.value|date:"Y-m-d H:i" }}</a></td>{% else %}<td class="whitespace-nowrap"><a class="link link-hover block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>{% endif %}
+  {% if forloop.parentloop.first %}{% if cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}">{{ cell.value|date:"Y-m-d H:i" }}</a></td>{% else %}<td class="whitespace-nowrap"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a></td>{% endif %}
   {% elif col.name == "status" %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
   {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value|yen_if:cell.money }}</td>
   {% elif cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
