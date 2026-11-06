@@ -113,7 +113,7 @@ def test_stats_put_payments_card_after_payable_with_money_mark():
     assert card["url"] == reverse("billing:invoice_list")
     assert card["icon"] == "yen"
     assert labels.index("今月の入金") == labels.index("今月の支払の見込み") + 1
-    # 試験の settings は全部の部品が入っているので、数字のカードは 8 枚 (8 枚目は手で打たずに受けた明細 = N83)
+    # 試験の settings は全部の部品が入っているので、数字のカードは 8 枚 (8 枚目は手入力せずに取り込んだ明細 = N83)
     assert len(stats) == 8
 
 

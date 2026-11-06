@@ -168,7 +168,7 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
         for line_no, line in enumerate(lines, start=1):
             _add_line(order, line, line_no)
         if source != Order.SOURCE_MANUAL:
-            order.saved_note = f"明細 {len(lines)} 行を手で打たずに受注にしました。"
+            order.saved_note = f"明細 {len(lines)} 行を手入力せずに受注にしました。"
         return order
 
 
