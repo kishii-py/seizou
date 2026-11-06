@@ -9,9 +9,19 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from seizou.core.models import Company
+from seizou.core.services import company_or_none
 
 #: 締日と支払日の 31 は月末の印
 MONTH_END_DAY = 31
+
+
+def company_defaults():
+    """取引先の端数の扱いが空のときに従う会社の行 (pk の小さい 1 行)。
+
+    読むだけで、行が無ければ保存しない既定の行 (表の既定 = 四捨五入・トータル) を返す。会社の行は作らない。
+    取引先の入力の案内の字 (masters.forms.PartnerForm) と、詳細と小窓の端数の行の字 (Partner.get_*_display) が読む。
+    """
+    return company_or_none() or Company()
 
 
 def day_label(day):
@@ -78,6 +88,11 @@ class Partner(models.Model):
     # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 
+    #: 詳細と小窓の項目の一覧に出さない列 (core の土台が読む)。支払日の行の字 (get_payment_day_display) が
+    #: 支払の月を含めて「翌月末」「翌月 25 日」と出すので、「支払の月 翌月」の行と二重になる (初見テスト 5 回目の V98)。
+    #: 支払日が空で支払の月だけあるときも、支払日の行が「翌月」と出すので、情報は減らない。一覧の列 (支払日だけ) と同じ見せ方。
+    detail_hidden_fields = ("payment_month",)
+
     class Meta:
         verbose_name = "取引先"
         verbose_name_plural = "取引先"
@@ -98,6 +113,22 @@ class Partner(models.Model):
         if self.payment_day == MONTH_END_DAY:
             return f"{month}末" if month else day_label(self.payment_day)
         return f"{month} {day_label(self.payment_day)}" if month else day_label(self.payment_day)
+
+    # 端数の 2 列の画面の字 (詳細と小窓の土台の display_value が読む)。空の行を「—」でなく「会社の既定 (四捨五入)」と出す
+    # (初見テスト 4 回目の U118)。自分で書いた get_<列>_display があると Django は choices の自動の関数を付けないので、
+    # 値があるときの選択肢の字 (例「切上」) もここで引く。表の値はそのまま。
+
+    def get_rounding_display(self):
+        """金額の端数の扱いの画面の字。空なら「会社の既定 (今の会社の値)」。"""
+        if self.rounding:
+            return dict(Company.ROUNDING_CHOICES).get(self.rounding, self.rounding)
+        return f"会社の既定 ({company_defaults().get_rounding_display()})"
+
+    def get_tax_mode_display(self):
+        """消費税の端数の扱いの画面の字。空なら「会社の既定 (今の会社の値)」。"""
+        if self.tax_mode:
+            return dict(Company.TAX_CHOICES).get(self.tax_mode, self.tax_mode)
+        return f"会社の既定 ({company_defaults().get_tax_mode_display()})"
 
     @property
     def is_customer(self):

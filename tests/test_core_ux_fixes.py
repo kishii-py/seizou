@@ -499,3 +499,140 @@ def test_buttons_and_titles_use_general_words(client_logged_in):
     assert "詳細を見る" in modal and "詳細を開く" not in modal
     home = text(client_logged_in.get(reverse("core:home")))
     assert "ダッシュボード" in home and "はじめに" not in home
+
+
+# ---------------------------------------------------------------- 初見テスト 5 回目 (R5) の候補 C32: 支払の 2 欄・詳細の二重・端数の既定
+
+PAYMENT_MONTH_HELP = "翌月末払いなら「翌月」と支払日「31」、翌月 25 日払いなら「翌月」と支払日「25」"
+
+
+def _field_box(body, name):
+    """入力のカードの欄の箱 (欄の見出しの label の手前の、箱の div の開きの tag から label まで) の字。"""
+    label = body.index(f'for="id_{name}"')
+    return body[body.rindex('<div class="min-w-0', 0, label) : label]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["masters:partner_create", "masters:partner_update"])
+def test_payment_month_starts_a_row_beside_payment_day(client_logged_in, partner, url_name):
+    """支払の月の欄だけを行の頭から始め、支払日と同じ行の左右に並べる (V42)。締日の右は空く。"""
+    args = [partner.pk] if url_name == "masters:partner_update" else []
+    body = text(client_logged_in.get(reverse(url_name, args=args)))
+    assert body.count("sm:col-start-1") == 1
+    assert "sm:col-start-1" in _field_box(body, "payment_month")
+    for name in ("closing_day", "payment_day", "rounding"):
+        assert "sm:col-start-1" not in _field_box(body, name), name
+    # 1 列 (幅 640 未満) の並びは今と同じ 締日 → 支払の月 → 支払日
+    assert body.index('for="id_closing_day"') < body.index('for="id_payment_month"') < body.index('for="id_payment_day"')
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["masters:item_create", "masters:process_create"])
+def test_other_forms_have_no_row_start(client_logged_in, url_name):
+    """row_start_fields を持たない form の入力のカードには、行の頭の class が付かない。"""
+    body = text(client_logged_in.get(reverse(url_name)))
+    assert 'class="min-w-0' in body
+    assert "sm:col-start-1" not in body
+
+
+@pytest.mark.django_db
+def test_payment_month_help_explains_the_pair(client_logged_in):
+    """支払の月の案内に、支払日との組み合わせの例を書く。支払日の案内は今の字のまま。"""
+    body = text(client_logged_in.get(reverse("masters:partner_create")))
+    assert PAYMENT_MONTH_HELP in body
+    assert "1〜31。月末は 31" in body
+
+
+PARTNER_MODAL_LABELS = [
+    "取引先コード", "名前", "略称", "取引先の種類", "締日", "支払日", "金額の端数の扱い", "消費税の端数の扱い",
+]
+
+
+@pytest.mark.django_db
+def test_detail_and_modal_show_payment_terms_once(client_logged_in, partner):
+    """詳細と小窓に「支払の月」の行を出さず、支払日の行の字 (支払の月を含む) だけで見せる (V98)。"""
+    partner.payment_month = Partner.PAYMENT_NEXT
+    partner.payment_day = 25
+    partner.save()
+    detail = client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk]))
+    labels = [row["label"] for row in detail.context["fields"]]
+    values = [row["value"] for row in detail.context["fields"]]
+    assert "支払の月" not in labels and "支払日" in labels
+    assert values.count("翌月 25 日") == 1
+    modal = client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true")
+    labels = [row["label"] for row in modal.context["fields"]]
+    values = [row["value"] for row in modal.context["fields"]]
+    assert "支払の月" not in labels
+    assert labels[:8] == PARTNER_MODAL_LABELS
+    assert labels[7] == "消費税の端数の扱い"
+    assert values.count("翌月 25 日") == 1
+
+
+@pytest.mark.django_db
+def test_detail_keeps_payment_month_when_day_is_empty(client_logged_in, partner):
+    """支払日が空で支払の月だけあるときも、支払日の行が月の字を出す (行を外しても情報は減らない)。"""
+    partner.payment_month = Partner.PAYMENT_AFTER_NEXT
+    partner.save()
+    detail = client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk]))
+    rows = {row["label"]: row["value"] for row in detail.context["fields"]}
+    assert rows["支払日"] == "翌々月"
+    assert "支払の月" not in rows
+
+
+@pytest.mark.django_db
+def test_rounding_help_shows_company_default_now(client_logged_in):
+    """端数の 2 欄の案内に、会社の既定の今の値を出す (V119)。"""
+    from seizou.core.models import Company
+
+    Company.objects.create(name="作り物の会社", rounding="floor", tax_mode="line_floor")
+    body = text(client_logged_in.get(reverse("masters:partner_create")))
+    assert "空なら会社の既定 (今は 切捨) に従います。" in body
+    assert "空なら会社の既定 (今は 各行切捨) に従います。" in body
+
+
+@pytest.mark.django_db
+def test_partner_form_reads_company_without_creating_it():
+    """form を作るときは会社の行を読むだけ。行が無ければ表の既定の字 (四捨五入・トータル) で、行を作らない。"""
+    from seizou.core.models import Company
+    from seizou.masters.forms import PartnerForm
+
+    assert Company.objects.count() == 0
+    fields = PartnerForm().fields
+    assert "空なら会社の既定 (今は 四捨五入) に従います。" in fields["rounding"].help_text
+    assert "空なら会社の既定 (今は トータル) に従います。" in fields["tax_mode"].help_text
+    assert Company.objects.count() == 0
+
+
+def _rows(response):
+    return {row["label"]: row["value"] for row in response.context["fields"]}
+
+
+@pytest.mark.django_db
+def test_detail_and_modal_show_company_default_for_empty_rounding(client_logged_in, partner):
+    """端数の扱いが空の取引先は「会社の既定 (四捨五入)」と出す (R4 の U118)。値があれば選択肢の字。"""
+    detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
+    assert detail["金額の端数の扱い"] == "会社の既定 (四捨五入)"
+    assert detail["消費税の端数の扱い"] == "会社の既定 (トータル)"
+    modal = _rows(client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true"))
+    assert modal["金額の端数の扱い"] == "会社の既定 (四捨五入)"
+    assert modal["消費税の端数の扱い"] == "会社の既定 (トータル)"
+    partner.rounding = "ceil"
+    partner.tax_mode = "line_round"
+    partner.save()
+    detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
+    assert detail["金額の端数の扱い"] == "切上"
+    assert detail["消費税の端数の扱い"] == "各行四捨五入"
+    # 表の値はそのまま
+    partner.refresh_from_db()
+    assert (partner.rounding, partner.tax_mode) == ("ceil", "line_round")
+
+
+@pytest.mark.django_db
+def test_detail_follows_company_default_value(client_logged_in, partner):
+    """会社の行の端数の扱いを変えると、空の取引先の字もその値になる。"""
+    from seizou.core.models import Company
+
+    Company.objects.create(name="作り物の会社", rounding="floor", tax_mode="line_floor")
+    detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
+    assert detail["金額の端数の扱い"] == "会社の既定 (切捨)"
+    assert detail["消費税の端数の扱い"] == "会社の既定 (各行切捨)"

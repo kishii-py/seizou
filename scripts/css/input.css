@@ -218,3 +218,13 @@ body > .ts-dropdown [data-select-create]:hover {
   background: linear-gradient(90deg, #047857, #1d4ed8);
   color: #fff;
 }
+
+/* 選ぶ欄 (daisyUI の select の class。views.widget_css の「select w-full」) の候補の一覧の開く向き (初見テスト 5 回目の U119)。
+   daisyUI は appearance: base-select で customizable select にするので、一覧 (::picker(select)) は chromium の既定
+   (position-try-order: most-block-size = 縦に広い方へ開く) のままだと、下に収まるときも上へ開いて上の欄を隠す
+   (取引先の新規登録の「支払の月」が「取引先の種類」を隠した)。normal にすると、下に収まるときは下へ開く。
+   下に収まらないときは、ブラウザの既定の候補の位置で上へ開く見込み (推測)。字を打って探す欄 (Tom Select) は select の
+   class を持たないので外れる。customizable select は chromium の作りで、WebKit と Firefox の一覧はこの決まりの外 (推測)。 */
+:is(.select, .select select)::picker(select) {
+  position-try-order: normal;
+}

@@ -38,8 +38,8 @@ RECEIVE_ENV = "SEIZOU_PARTNER_POLISHCO_SECRET"
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
 
-ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。"
-TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。"
+ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は 四捨五入) に従います。"
+TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定 (今は トータル) に従います。"
 
 
 @pytest.fixture
