@@ -42,6 +42,22 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+/* 1 行の選ぶ欄 (single) は、開いている間も高さを変えない。
+   部品の CSS は、印の付いた欄の入力の箱を閉じている間は流れの外に出し (input-hidden)、開くと流れに戻す (min-width 7rem) ので、
+   狭い枡では開いている間だけ 2 行になり、候補を押した直後の最初のクリックが、欄の縮みで下のボタンから外れていた (E-53。本体の門 11-07)。
+   印の字は開いている間だけ … で切れ、打った字の分だけ入力の箱が広がる。 */
+.ts-wrapper.single .ts-control {
+  flex-wrap: nowrap;
+}
+.ts-wrapper.single .ts-control > .item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ts-wrapper.single.has-items .ts-control > input {
+  min-width: 2rem;
+}
 .ts-wrapper .ts-dropdown,
 body > .ts-dropdown {
   border: 1px solid var(--color-base-300);
