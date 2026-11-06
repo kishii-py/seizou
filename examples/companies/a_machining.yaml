@@ -42,8 +42,8 @@ settings:
   over_shipment: stop
   # 受注より多い指示書の数量と、予定より多い実績 (warn = 知らせる / stop = 止める / off = 通す)
   over_workorder: warn
-  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷 (warn = 知らせる / stop = 止める / off = 通す)。機械加工は支給材が無い注文もあるので通す
-  receiving_required: off
+  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷 (warn = 知らせる / stop = 止める / off = 通す)。機械加工は支給材が無い注文もあるので通す (off は引用符で囲む。YAML 1.1 は引用符の無い off を真偽で読む)
+  receiving_required: "off"
   # 受注番号の形 (seq = 連番 / ym_seq = 年月 + 連番)
   order_number: seq
   # 使わない注文の項目 (受注と受注の明細の列の名前) の一覧。決まりが見る項目は隠せない
