@@ -73,7 +73,7 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
         label="発行日",
         initial=timezone.localdate,
         widget=IsoDateInput(attrs={"class": "input w-full"}),
-        help_text="請求書に載る日付です。支払期日は発行日でなく、締めの期間の終わりと得意先の支払の決まりから決まります。",
+        help_text="請求書に載る日付です。支払期日は発行日でなく、締め期間の終わりと得意先の支払の決まりから決まります。",
     )
     shipments = ShipmentChoiceField(
         label="出荷",

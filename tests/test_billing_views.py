@@ -242,7 +242,7 @@ def test_menu_has_invoice_entry(client_logged_in):
 
 # --- 発行日の案内の字 (初見テスト R5・候補 C02 の 1。初期値は今日のまま) ---
 
-ISSUED_ON_HELP = "請求書に載る日付です。支払期日は発行日でなく、締めの期間の終わりと得意先の支払の決まりから決まります。"
+ISSUED_ON_HELP = "請求書に載る日付です。支払期日は発行日でなく、締め期間の終わりと得意先の支払の決まりから決まります。"
 
 
 def test_issued_on_help_text_on_form():
