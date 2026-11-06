@@ -9,6 +9,7 @@
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - lines_to_ship: 出荷の残りがある明細 (注文残の一覧の既定と同じ数え方)。
+- orders_to_ship: 出荷の残りがある受注 (受注の一覧のタブ「出荷の残りがある」と同じ数え方。カードの受注の件数と今日やることの出荷の行)。
 - minutes_per_line・transcription_text: 1 行の転記の分の設定と、転記の分の字。
 - hands_free_lines: 今月、手で打たずに (読み取りと受信した注文から) 受けた明細の行数。
 - accept_minutes_this_month: 今月の受付 (受信した注文が届いてから承認まで) の平均の分。承認の日時の列が無ければ None。
@@ -904,8 +905,10 @@ def _lines_without_workorder():
     return annotate_remaining(queryset).filter(remaining_total__gt=0)
 
 
-def _orders_to_ship():
-    """出荷の残りがある受注 (状態が未出荷か一部出荷)。"""
+def orders_to_ship():
+    """出荷の残りがある受注 (状態が未出荷か一部出荷)。受注の一覧のタブ「出荷の残りがある」(orders の OPEN_STATUSES) と
+    同じ数え方。ダッシュボードの「出荷の残りがある明細」のカードの「受注 n 件」と、今日やることの出荷の行の件数は、
+    この 1 つの関数で数える (2 か所の件数を合わせるため。R5 の V78)。部品が無ければ None。"""
     order_model = _model("orders", "Order")
     if order_model is None:
         return None
@@ -985,7 +988,7 @@ def _noticed_lines_to_receive():
 _FLOW_COUNTS = {
     "inbox": _received_inbox,
     "workorder": _lines_without_workorder,
-    "shipment": _orders_to_ship,
+    "shipment": orders_to_ship,
     "delivery_note": _shipments_without_note,
     "invoice": _shipments_to_invoice,
     "payment": _invoices_to_be_paid,

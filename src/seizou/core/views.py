@@ -1833,17 +1833,22 @@ def dashboard_stats() -> list[dict]:
         )
     lines = dashboard.lines_to_ship()
     if lines is not None:
-        stats.append(
-            {
-                "label": "出荷の残りがある明細",
-                "value": count_or_none(lines),
-                "unit": "行",
-                "note": "出荷が終わっていない受注の明細の数",
-                "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
-                "icon": "activity",
-                "url": url_or_none("orders:orderline_list"),
-            }
-        )
+        lines_stat = {
+            "label": "出荷の残りがある明細",
+            "value": count_or_none(lines),
+            "unit": "行",
+            "note": "出荷が終わっていない受注の明細の数",
+            "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
+            "icon": "activity",
+            "url": url_or_none("orders:orderline_list"),
+        }
+        # 数の下の 1 行 = 受注の件数 (受注の一覧のタブ「出荷の残りがある」と今日やることの出荷の行と同じ数え方。R5 の V78 で、
+        # 明細の行の数を受注の件数と読み違えそうと書かれたため)。数えられないときは 1 行ごと出さない (偽の 0 を置かない)。
+        open_orders = dashboard.orders_to_ship()
+        open_count = count_or_none(open_orders) if open_orders is not None else None
+        if open_count is not None:
+            lines_stat["detail"] = f"受注 {open_count:,} 件"
+        stats.append(lines_stat)
     inbox_model = load_model("seizou.connect.models.Inbox")
     if inbox_model is not None:
         waiting = inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
