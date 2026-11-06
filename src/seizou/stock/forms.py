@@ -28,29 +28,39 @@ def _date_input():
     return IsoDateInput(attrs={"class": "input w-full"})
 
 
-def _qty_field(label="数量"):
+# 欄を作る 4 つの関数の help_text (欄の下の説明と、「?」の「入れる物」の表の説明) は既定で空。棚卸しの調整の form だけが渡す
+# (決め C07-2 = a「名前は今のまま、説明で補う」)。「?」の表は form を作らずに base_fields を読むので、欄を作るときに渡す。
+
+
+def _qty_field(label="数量", help_text=""):
     return forms.DecimalField(
         label=label,
         max_digits=12,
         decimal_places=2,
+        help_text=help_text,
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
 
 
-def _date_field():
-    return forms.DateField(label="日付", initial=timezone.localdate, widget=_date_input())
+def _date_field(help_text=""):
+    return forms.DateField(label="日付", initial=timezone.localdate, help_text=help_text, widget=_date_input())
 
 
-def _note_field(label="備考"):
+def _note_field(label="備考", help_text=""):
     return forms.CharField(
-        label=label, max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
+        label=label,
+        max_length=500,
+        required=False,
+        help_text=help_text,
+        widget=forms.TextInput(attrs={"class": "input w-full"}),
     )
 
 
-def _item_field():
+def _item_field(help_text=""):
     return forms.ModelChoiceField(
         label="部品",
         queryset=StockMove._meta.get_field("item").related_model._default_manager.all(),
+        help_text=help_text,
         widget=RemoteSelect("masters:item_select"),
         empty_label="選んでください",
     )
@@ -134,10 +144,10 @@ class IssueForm(forms.Form):
 class AdjustForm(forms.Form):
     """棚卸しの調整の form。実地の在庫数を入れると、services が今の在庫数との差を動きとして残す。"""
 
-    item = _item_field()
-    counted_qty = _qty_field("実地の在庫数")
-    moved_on = _date_field()
-    note = _note_field("備考 (理由)")
+    item = _item_field("在庫を数えていない部品も選べます。この画面で数え始めます。")
+    counted_qty = _qty_field("実地の在庫数", "現場で実際に数えた今の数を入れます。入れた数がそのまま在庫数になります。")
+    moved_on = _date_field("数えた日を入れます。数え始める部品は、この日より前の出荷を在庫数から引きません。")
+    note = _note_field("備考 (理由)", "数え直し・破損など、在庫を合わせた理由を書きます。")
 
     def service_kwargs(self):
         data = self.cleaned_data
