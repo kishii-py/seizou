@@ -99,6 +99,25 @@ def test_toc_follows_screen_catalog(client_logged_in, manual):
     assert "core_manual" in expected
 
 
+def test_toc_folds_in_details_open_by_default(client_logged_in, manual):
+    """目次は details で開け閉めし、HTML は開いた形で描く。狭い窓 (1024px 未満) で閉じるのは nav の中の script。
+
+    依頼書 N256 (候補 C48 の 1)。JS の無い窓と広い画面で全部の行が見えるよう、閉じて描いて広い窓で開く形にしない。
+    """
+    html = manual_page(client_logged_in).content.decode()
+    nav = re.search(r'<nav aria-label="目次"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    details = re.search(r"<details\b([^>]*)>(.*?)</details>", nav, re.S)
+    assert details, "目次の details が無い"
+    assert re.search(r"\sopen\b", details.group(1))
+    summary = re.search(r"<summary\b[^>]*>(.*?)</summary>", details.group(2), re.S)
+    assert summary, "目次の summary が無い"
+    assert f"目次 ({len(all_screens())} 画面)" in summary.group(1)
+    links = re.findall(r'href="#([^"]*)"', nav)
+    assert links
+    assert re.findall(r'href="#([^"]*)"', details.group(2)) == links
+    assert 'window.matchMedia("(min-width: 64rem)")' in nav[details.end() :]
+
+
 def test_fragment_is_shown(client_logged_in, manual):
     write_fragment(manual, "masters_item_list", ITEM_FRAGMENT)
     html = manual_page(client_logged_in).content.decode()
