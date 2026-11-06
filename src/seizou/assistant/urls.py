@@ -1,4 +1,4 @@
-"""AI チャットの口の URL (/assistant/ の下)。入口は全部の画面の右下の窓なので、左のメニューの入口は置かない。"""
+"""AI チャットの口の URL (/assistant/ の下)。入口は左のメニューの下の「AI に質問」で、押すと画面の右下に窓が開く (決め C37)。"""
 
 from django.urls import path
 
