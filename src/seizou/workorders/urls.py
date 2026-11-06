@@ -1,4 +1,4 @@
-"""workorders の URL。名前の約束は <model>_list / _detail / _create (core の土台が使う)。"""
+"""workorders の URL。名前の約束は <model>_list / _detail / _create / _update / _modal / _select (core の土台が使う)。"""
 
 from django.urls import path
 
@@ -29,6 +29,8 @@ urlpatterns = [
     path("new/", views.WorkOrderCreateView.as_view(), name="workorder_create"),
     path("<int:pk>/", views.WorkOrderDetailView.as_view(), name="workorder_detail"),
     path("<int:pk>/modal/", views.WorkOrderModalView.as_view(), name="workorder_modal"),
+    path("select/", views.WorkOrderSelectView.as_view(), name="workorder_select"),
+    path("steps/select/", views.WorkOrderStepSelectView.as_view(), name="workorderstep_select"),
     path("<int:pk>/cancel/", views.WorkOrderCancelView.as_view(), name="workorder_cancel"),
     path("<int:pk>/accept/", views.workorder_accept, name="workorder_accept"),
     path("<int:pk>/tag/", views.workorder_tag, name="workorder_tag"),

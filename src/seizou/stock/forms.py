@@ -4,6 +4,7 @@
 - ほかの部品の model は import しない。指示書は apps.get_model で __init__ の中で引き、部品は StockMove の
   外部キーの先 (related_model) として引く (読むだけ)。
 - 部品を選ぶ欄は字を打って探す欄 (RemoteSelect("masters:item_select"))。
+- 指示書を選ぶ欄も字を打って探す欄 (RemoteSelect("workorders:workorder_select"))。
 - 指示書の欄の候補は発行の指示書だけ。送られた値は全部の指示書で受け、取消の指示書は services が日本語の文で断る
   (出荷の form が全部の明細を受けるのと同じ考え。赤の知らせで理由を出すため)。
 - 製造の完了の form は、初期値の workorder (土台が GET の ?workorder=<pk> を写す) があれば、
@@ -85,7 +86,12 @@ class WorkOrderChoiceField(forms.ModelChoiceField):
 class FinishedForm(forms.Form):
     """製造の完了を入庫にする form。"""
 
-    workorder = WorkOrderChoiceField(label="指示書", queryset=StockMove.objects.none(), empty_label="選んでください")
+    workorder = WorkOrderChoiceField(
+        label="指示書",
+        queryset=StockMove.objects.none(),
+        empty_label="選んでください",
+        widget=RemoteSelect("workorders:workorder_select"),
+    )
     qty = _qty_field()
     moved_on = _date_field()
     note = _note_field()
@@ -97,7 +103,8 @@ class FinishedForm(forms.Form):
             return
         workorders = model._default_manager.select_related("order_line__item").order_by("-issued_on", "-pk")
         issued = workorders.filter(status=model.STATUS_ISSUED)
-        # 候補は発行の指示書だけ。送られた値は全部の指示書で受ける (取消は services が断る)。
+        # 候補は口 (workorders:workorder_select) が発行の指示書だけを返す。ここの queryset は、選んである値の字を描くのと
+        # 送られた値を受けるのに使う (送られた値は全部の指示書で受け、取消は services が断る)。
         self.fields["workorder"].queryset = workorders if self.is_bound else issued
         pk = _pk_or_none(self.initial.get("workorder"))
         workorder = issued.filter(pk=pk).first() if pk is not None else None

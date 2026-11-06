@@ -3,10 +3,10 @@
 手順: 実績を入れる → 別のタブで一覧を開いたまま実績を入れる → 予定を超える実績。
 期待: 一覧が操作なしで更新される。超えると設定どおり (既定は黄の知らせと「このまま保存」。押すと実数が記録される)。
 
-この試験が見る所: A 社で数量 10 の受注を入れ、左のメニューの「指示書」→「新規登録」で受注の明細 (標準の `<select>`)・数量 10・
+この試験が見る所: A 社で数量 10 の受注を入れ、左のメニューの「指示書」→「新規登録」で受注の明細 (字を打って探す欄に受注番号を打って選ぶ)・数量 10・
 工程 (複数選びの `<select>`) に種の `TURN` を選んで「保存」する。発行の後に進捗の盤 (`/progress/`) を開くと、その指示書の行が 1 行あり、
 予定 10・実績の合計 0・残 10 (盤は新しい指示書の行を自動で足さないので、発行の後に開く。N22 の要望)。盤の `window` に印の値を置き、
-同じ文脈の 2 枚目のページで実績の新規登録 (`/progress/new/`) に、盤の行の id の数 (工程の予定の pk) の指示書の工程と実績の数 3 を入れて
+同じ文脈の 2 枚目のページで実績の新規登録 (`/progress/new/`) に、指示書番号を打って選んだ指示書の工程 (選んだ値が盤の行の id の数 = 工程の予定の pk と同じ) と実績の数 3 を入れて
 「保存」する。盤を読み直さずに待つと、15 秒以内に同じ行の「実績の合計」が 3、「残」が 7 になる (盤は 10 秒ごとに取りに行く。N22)。
 印の値が残っている (ページ全体を読み直していない)。
 見ない所 (理由): 予定を超える実績の黄の知らせと「このまま保存」・盤の残の赤 (余力の試験。今夜の範囲の外)、盤の工程の pill の絞り込み。
@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
-from .conftest import login, menu_link, new_order, seed_name, shot, unique_mark
+from .conftest import choose, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 PROCESS_CODE = "TURN"
@@ -40,8 +40,7 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     page_a.wait_for_url(re.compile(r"/workorders/$"))
     page_a.get_by_role("link", name="新規登録").first.click()
     page_a.wait_for_url(re.compile(r"/workorders/new/$"))
-    line = page_a.locator("select[name=order_line] option").filter(has_text=re.compile(rf"{re.escape(order_no)} の 1 行目")).first
-    page_a.select_option("select[name=order_line]", value=line.get_attribute("value"))
+    choose(page_a, "order_line", order_no)
     page_a.fill("input[name=qty]", "10")
     # 工程は 1 行 1 工程の checkbox (205 回目から。字は「<工程コード> <名前>」)
     page_a.get_by_role("checkbox", name=re.compile(rf"^{re.escape(PROCESS_CODE)}\b")).check()
@@ -62,7 +61,8 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
 
     other = context.new_page()
     other.goto(f"{company_a.base_url}/progress/new/")
-    other.select_option("select[name=workorder_step]", value=step_pk)
+    choose(other, "workorder_step", workorder_no)
+    expect(other.locator("select[name=workorder_step]")).to_have_value(step_pk)
     other.fill("input[name=qty]", "3")
     other.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     other.wait_for_url(lambda url: urlparse(url).path != "/progress/new/")
