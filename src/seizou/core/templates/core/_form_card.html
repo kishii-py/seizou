@@ -46,7 +46,9 @@
     <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
   {% endif %}
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
+    {# 実行のボタン: 黄の知らせの後は「このまま保存」(黄)、取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。U125。候補 C24)、ほかは主の色 #}
     {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% elif form.danger %}<button class="btn btn-error" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "x" "size-4" %}{{ form.submit_label|default:"保存" }}</button>
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}
   </div>
 </form>

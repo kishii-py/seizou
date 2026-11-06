@@ -277,6 +277,7 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
 class OrderCancelForm(forms.Form):
     """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存のボタンは「SO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
 
     reason = forms.CharField(
         label="取消の理由",

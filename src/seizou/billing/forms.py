@@ -177,6 +177,7 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
 class InvoiceCancelForm(forms.Form):
     """請求書を取り消す form。欄は無い。保存のボタンは「IV-000001 を取り消す」(土台が対象を instance= で渡す。N138)。"""
     submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,6 +234,7 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
 class PaymentCancelForm(forms.Form):
     """入金を取り消す form。欄は無い。"""
     submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
 
     def service_kwargs(self):
         return {}

@@ -24,6 +24,7 @@ from seizou.accounts import services as accounts_services
 from seizou.accounts.models import Department
 from seizou.billing import services as billing_services
 from seizou.billing.models import Invoice, Payment
+from seizou.core import checks
 from seizou.masters import services as masters_services
 from seizou.masters.models import Holiday, Process
 from seizou.orders import services as orders_services
@@ -625,3 +626,63 @@ def test_field_cards_keep_grid_and_rows(world, name):
     whole = _card(text(world.client.get(case.url)))
     assert GRID in whole
     assert SAVE_ROW in whole
+
+
+#: 6 つの取消の確かめ (受注・指示書・発注・納品書・請求書・入金。どれも取り消せる記録で作る)
+CANCELS = ("order_cancel", "workorder_cancel", "purchaseorder_cancel", "deliverynote_cancel", "invoice_cancel", "payment_cancel")
+DANGER_BUTTON = '<button class="btn btn-error" type="submit"'
+PRIMARY_BUTTON = '<button class="btn btn-primary" type="submit"'
+WARNING_BUTTON = '<button class="btn btn-warning" type="submit">'
+
+
+class _CancelNote(checks.Check):
+    """作り物の知らせる検査 (受注の取消で、いつも黄の知らせ)。形は tests/test_core_save_bar.py の _HolidayNote を写した。"""
+
+    name = "T93"
+    action = "orders.cancel_order"
+    mode = "warn"
+
+    def run(self, data, user):
+        return "作り物の知らせです。確かめてから取り消してください。"
+
+
+@pytest.fixture
+def cancel_checks():
+    before = checks.registered(_CancelNote.action)
+    yield
+    checks.clear(_CancelNote.action)
+    for check in before:
+        checks.register(check)
+
+
+@pytest.mark.parametrize("name", CANCELS)
+def test_cancel_buttons_are_red(world, name):
+    """取消の確かめの実行のボタンは、削除の確かめと同じ赤 (btn btn-error)。全体の画面と小窓の両方 (U125。C24 の 2)。"""
+    url = BUILD[name](world).url
+    for card in (_card(text(world.client.get(url))), _card(text(world.client.get(url, **MODAL)))):
+        assert card.count(DANGER_BUTTON) == 1
+        assert "取り消す</button>" in card
+        assert not re.search(r'<button class="[^"]*\bbtn-primary\b[^"]*" type="submit"', card)
+
+
+@pytest.mark.parametrize("name", ("payment_create", "purchaseorder_send"))
+def test_other_buttons_keep_primary(world, name):
+    """取消でない入力 (入金の記録・注文を送り直す) の保存のボタンは、主の色のまま (C24 の 2)。"""
+    url = _url(world, name)
+    for card in (_card(text(world.client.get(url))), _card(text(world.client.get(url, **MODAL)))):
+        assert card.count(PRIMARY_BUTTON) == 1
+        assert DANGER_BUTTON not in card
+
+
+def test_warned_cancel_keeps_yellow_button(world, cancel_checks):
+    """黄の知らせが出た後は、取消の確かめでも「このまま保存」の黄のボタン (赤にしない。C24 の 2)。"""
+    checks.register(_CancelNote())
+    case = BUILD["order_cancel"](world)
+    for response in (world.client.post(case.url, case.post), world.client.post(case.url, case.post, **MODAL)):
+        assert response.status_code == 200
+        card = _card(text(response))
+        assert card.count(WARNING_BUTTON) == 1
+        assert "このまま保存</button>" in card
+        assert DANGER_BUTTON not in card
+        assert PRIMARY_BUTTON not in card
+    assert not case.saved()

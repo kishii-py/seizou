@@ -80,9 +80,12 @@ def _line(user, customer, item, qty="10"):
     return order.lines.get()
 
 
-def _button(body):
-    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。"""
-    match = re.search(r'<button class="btn btn-primary" type="submit"([^>]*)>(.*?)</button>', body, re.S)
+def _button(body, css="btn btn-primary"):
+    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。
+
+    css はボタンの class の字 (既定は主の色。取消の確かめの実行のボタンは赤の btn btn-error = 候補 C24)。
+    """
+    match = re.search(r'<button class="' + re.escape(css) + r'" type="submit"([^>]*)>(.*?)</button>', body, re.S)
     assert match, "保存のボタンが無い"
     attrs, inner = match.group(1), match.group(2)
     label = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
@@ -327,7 +330,7 @@ def test_cancel_screens_name_the_target(logged_in, user, customer, maker, item):
         (reverse("purchasing:purchaseorder_cancel", args=[po.pk]), po.po_no),
     ):
         body = logged_in.get(url).content.decode()
-        assert _button(body) == (f"{number} を取り消す", None, None), url
+        assert _button(body, "btn btn-error") == (f"{number} を取り消す", None, None), url
         assert f"{number} を取り消す</button>" in body, url
 
 
