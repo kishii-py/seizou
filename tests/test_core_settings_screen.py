@@ -81,6 +81,24 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
         assert "フィードバックの一覧" not in body
 
 
+def test_links_section_comes_before_company_settings(logged_in):
+    """「普段は触らない物」の節 (アカウント管理の入口) を「会社の選べる設定」の表より前に置く (初見テスト R5 の V22。C14-1 = a)。
+
+    入口がページの下の端にあり、開いた直後の窓に入っていなかった。アカウント管理の権限がある人と無い人の両方で、DOM の順を見る。
+    """
+    plain_body = logged_in.get(reverse("core:settings")).content.decode()
+    logged_in.force_login(get_user_model().objects.create_superuser(username="boss", password="tests-only"))
+    boss_body = logged_in.get(reverse("core:settings")).content.decode()
+
+    for body in (plain_body, boss_body):
+        links = body.index('aria-labelledby="links-title"')
+        assert links < body.index('aria-labelledby="company-settings-title"')
+        assert links < body.index('aria-labelledby="company-info-title"') < body.index('aria-labelledby="system-title"')
+    if apps.is_installed("seizou.accounts"):
+        links = boss_body.index('aria-labelledby="links-title"')
+        assert links < boss_body.index(reverse("accounts:access_list")) < boss_body.index('aria-labelledby="company-settings-title"')
+
+
 def test_settings_screen_hides_key_values(logged_in, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key-value-that-must-not-appear")
     monkeypatch.setenv("SEIZOU_MCP_USER", "admin")

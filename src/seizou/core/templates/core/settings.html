@@ -2,8 +2,28 @@
 {% load seizou_icons %}
 {% block content %}
 {# 設定: 会社の選べる設定 (今の値と出所。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
-{# 設定の表は 5 列 (設定・今の値・出所・鍵・編集) なので、幅いっぱいの枠に置く (半分の幅だと出所と編集が横の送りの先に隠れる = 11-03 の本体の手の確かめ)。入口と状態の 2 つはその下に並べる。 #}
+{# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
+{# 4 つとも幅いっぱいに置く。設定の表は 5 列 (設定・今の値・出所・鍵・編集) なので、半分の幅だと出所と編集が横の送りの先に隠れる (11-03 の本体の手の確かめ)。 #}
 <div class="flex flex-col gap-6">
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="links-title">
+    <h2 id="links-title" class="text-lg font-bold">普段は触らない物</h2>
+    <ul class="mt-4 flex flex-col gap-2">
+      {% for link in links %}
+      {% if link.url %}
+      <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ link.url }}">
+        <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon link.icon "size-5" %}</span>
+        <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs text-base-content/70">{{ link.help }}</span></span>
+        {% icon "chevron-right" "size-4 text-base-content/50" %}
+      </a></li>
+      {% else %}
+      <li><div class="flex items-center gap-4 rounded-lg border border-dashed border-base-300 p-4 text-base-content/50">
+        <span class="rounded-lg bg-base-200 p-2">{% icon link.icon "size-5" %}</span>
+        <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs">{{ link.help }} この会社にはまだ入っていない。</span></span>
+      </div></li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </section>
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
     <h2 id="company-settings-title" class="text-lg font-bold">会社の選べる設定</h2>
     <p class="mt-2 text-xs text-base-content/70">今の値と出所 (画面 / 答え (settings.py) / 既定)。アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、行の「編集」から変えられる。画面で保存した値は、置き場の <code class="font-mono">settings.py</code> の <code class="font-mono">SEIZOU</code> と答えの YAML より優先される。左のメニューの括り (<code class="font-mono">menu</code>) は答えの YAML で書く。</p>
@@ -32,49 +52,28 @@
       <dt class="text-base-content/70 sm:whitespace-nowrap">ロゴ</dt><dd class="min-w-0 break-words">{% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="ロゴ" class="size-12 rounded-xl object-contain">{% else %}なし{% endif %}</dd>
     </dl>
   </section>
-  <div class="grid gap-6 lg:grid-cols-2">
-    <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="links-title">
-      <h2 id="links-title" class="text-lg font-bold">普段は触らない物</h2>
-      <ul class="mt-4 flex flex-col gap-2">
-        {% for link in links %}
-        {% if link.url %}
-        <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ link.url }}">
-          <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon link.icon "size-5" %}</span>
-          <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs text-base-content/70">{{ link.help }}</span></span>
-          {% icon "chevron-right" "size-4 text-base-content/50" %}
-        </a></li>
-        {% else %}
-        <li><div class="flex items-center gap-4 rounded-lg border border-dashed border-base-300 p-4 text-base-content/50">
-          <span class="rounded-lg bg-base-200 p-2">{% icon link.icon "size-5" %}</span>
-          <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs">{{ link.help }} この会社にはまだ入っていない。</span></span>
-        </div></li>
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="system-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="system-title" class="text-lg font-bold">システムの状態</h2>
+      {% if can_edit %}<form method="post" action="{% url 'core:settings' %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}点検を走らせる</button></form>{% endif %}
+    </div>
+    <p class="mt-2 text-xs text-base-content/70">鍵の値は出さない (有るか無いかだけ)。変えるのは置き場の <code class="font-mono">.env</code>。</p>
+    <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+      {% for row in system_rows %}
+      <dt class="text-base-content/70 sm:whitespace-nowrap">{{ row.label }}</dt><dd class="min-w-0 break-words">{{ row.value }}</dd>
+      {% endfor %}
+      <dt class="text-base-content/70 sm:whitespace-nowrap">入っている部品</dt><dd class="min-w-0 break-words font-mono text-xs">{{ parts|join:"・" }}</dd>
+      <dt class="text-base-content/70 sm:whitespace-nowrap">点検</dt>
+      <dd id="doctor-result" class="min-w-0 break-words">
+        {% if doctor is None %}まだ走らせていない。アカウント管理の担当者が見出しの右のボタンで、命令 <code class="font-mono">manage.py seizou_doctor</code> と同じ物を見る。
+        {% elif doctor.fixes %}<span class="font-medium text-error">直す物 {{ doctor.fixes|length }} 件</span> ({{ doctor.rows|length }} 件を見た)
+        <ul class="mt-1 flex flex-col gap-1 text-xs">{% for row in doctor.shown %}<li>{{ row.label }}: {{ row.detail }} → 直し方: {{ row.fix }}</li>{% endfor %}</ul>
+        {% if doctor.fixes|length > doctor.shown|length %}<p class="mt-1 text-xs text-base-content/70">残りは <code class="font-mono">manage.py seizou_doctor</code> で見る。</p>{% endif %}
+        {% else %}良い ({{ doctor.rows|length }} 件を見た)
         {% endif %}
-        {% endfor %}
-      </ul>
-    </section>
-    <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="system-title">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="system-title" class="text-lg font-bold">システムの状態</h2>
-        {% if can_edit %}<form method="post" action="{% url 'core:settings' %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}点検を走らせる</button></form>{% endif %}
-      </div>
-      <p class="mt-2 text-xs text-base-content/70">鍵の値は出さない (有るか無いかだけ)。変えるのは置き場の <code class="font-mono">.env</code>。</p>
-      <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-        {% for row in system_rows %}
-        <dt class="text-base-content/70 sm:whitespace-nowrap">{{ row.label }}</dt><dd class="min-w-0 break-words">{{ row.value }}</dd>
-        {% endfor %}
-        <dt class="text-base-content/70 sm:whitespace-nowrap">入っている部品</dt><dd class="min-w-0 break-words font-mono text-xs">{{ parts|join:"・" }}</dd>
-        <dt class="text-base-content/70 sm:whitespace-nowrap">点検</dt>
-        <dd id="doctor-result" class="min-w-0 break-words">
-          {% if doctor is None %}まだ走らせていない。アカウント管理の担当者が見出しの右のボタンで、命令 <code class="font-mono">manage.py seizou_doctor</code> と同じ物を見る。
-          {% elif doctor.fixes %}<span class="font-medium text-error">直す物 {{ doctor.fixes|length }} 件</span> ({{ doctor.rows|length }} 件を見た)
-          <ul class="mt-1 flex flex-col gap-1 text-xs">{% for row in doctor.shown %}<li>{{ row.label }}: {{ row.detail }} → 直し方: {{ row.fix }}</li>{% endfor %}</ul>
-          {% if doctor.fixes|length > doctor.shown|length %}<p class="mt-1 text-xs text-base-content/70">残りは <code class="font-mono">manage.py seizou_doctor</code> で見る。</p>{% endif %}
-          {% else %}良い ({{ doctor.rows|length }} 件を見た)
-          {% endif %}
-          {% if doctor is not None and not doctor.production %}<p class="mt-1 text-xs text-base-content/70">開発の設定 (DEBUG=1) なので、本番の条件の行 (自動ログイン・ALLOWED_HOSTS・https・collectstatic) は見ていない。命令の <code class="font-mono">--production</code> で見る。</p>{% endif %}
-        </dd>
-      </dl>
-    </section>
-  </div>
+        {% if doctor is not None and not doctor.production %}<p class="mt-1 text-xs text-base-content/70">開発の設定 (DEBUG=1) なので、本番の条件の行 (自動ログイン・ALLOWED_HOSTS・https・collectstatic) は見ていない。命令の <code class="font-mono">--production</code> で見る。</p>{% endif %}
+      </dd>
+    </dl>
+  </section>
 </div>
 {% endblock %}
