@@ -1,8 +1,8 @@
 """画面の言葉と見た目の小さな直し (精査 A3・A1・A5 の所見)。Django の test client で HTML を見る。
 
 設定の画面の幅・権限の選択肢の字・説明書が無い時の文・取消の受注の「編集」と R05 の文・マニュアルの最上位の文・
-取消の確かめの画面の案内とボタン・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0。
-品番と会社名は作り物。
+取消の確かめの画面の案内とボタン・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0・
+一覧と入力の題を切らない形 (候補 C54)。品番と会社名は作り物。
 """
 
 from datetime import date
@@ -366,3 +366,26 @@ def test_order_detail_quantity_without_trailing_zeros(client, user, order):
     assert ">10</td>" in html
     assert ">10.00</td>" not in html
     assert ">¥1,200</td>" in html  # 単価 1200.00
+
+
+# ---------------------------------------------------------------- 10. 一覧と入力の題を切らない (初見テスト R5 の a-flagged-05。候補 C54。依頼書 N266)
+
+#: 一覧と入力の画面の題 (core/base.html)。phone で後ろが「…」で切れないよう、truncate を付けず折り返す
+SCREEN_TITLE = '<h1 class="text-3xl font-bold tracking-tight">'
+
+
+@pytest.mark.parametrize(
+    "name, title",
+    [
+        ("connect:inbox_list", "受信した注文"),
+        ("connect:connection_create", "取引先との接続の新規登録"),
+        ("masters:item_import", "部品マスターの CSV 取り込み"),
+    ],
+)
+def test_list_and_form_titles_wrap_instead_of_truncate(client, manager, name, title):
+    client.force_login(manager)
+    response = client.get(reverse(name))
+    assert response.status_code == 200, name
+    html = response.content.decode()
+    assert f"{SCREEN_TITLE}{title}</h1>" in html, name
+    assert '<h1 class="truncate' not in html, name

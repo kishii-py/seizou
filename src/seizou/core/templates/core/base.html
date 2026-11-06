@@ -52,7 +52,7 @@ seizou_tags.master_link の link
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             {% if screen_icon %}{% icon screen_icon "size-7 text-base-content/70" %}{% else %}{% app_icon screen_app "size-7 text-base-content/70" %}{% endif %}
-            <h1 class="truncate text-3xl font-bold tracking-tight">{{ screen_name }}</h1>
+            <h1 class="text-3xl font-bold tracking-tight">{{ screen_name }}</h1>
             {% include "core/_screen_help.html" with part="" label="この画面の説明" %}
           </div>
           {# 題の下に説明の 1 文 (screen_help) は出さない (決め 11-03 14:1x: 画面はシンプルに。「?」で説明書の断片を見る)。1 文は画面の目録と説明書と MCP の一覧が読む。 #}

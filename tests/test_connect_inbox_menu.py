@@ -103,7 +103,7 @@ def test_list_name_and_menu_label(client_logged_in, receive_order):
 
     # 画面の名前は「受信した注文」(題と見出し)。URL の名前と道は変えない。
     assert "<title>受信した注文" in body
-    assert '<h1 class="truncate text-3xl font-bold tracking-tight">受信した注文</h1>' in body
+    assert '<h1 class="text-3xl font-bold tracking-tight">受信した注文</h1>' in body
     assert reverse("connect:inbox_list") == "/connect/inbox/"
     assert reverse("connect:inbox_list") in home
     # 取引先との接続は、名前を変えても左のメニューに出さない (設定の画面から開く)
