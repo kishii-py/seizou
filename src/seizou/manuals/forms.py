@@ -188,9 +188,11 @@ def name_of(obj) -> str:
 
 
 class ConfirmForm(forms.Form):
-    """確認の画面の form の土台。confirm_text・confirm_label・danger・cancel_url を持つ。"""
+    """確認の画面の form の土台。confirm_text・confirm_label・danger・cancel_url・refusal を持つ。"""
 
     danger = False
+    #: 押す前に分かる断りの字。空でなければ manuals/confirm.html は form と送るボタンを出さず、この字を黄で出す
+    refusal = ""
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -238,9 +240,38 @@ class FolderDeleteForm(ConfirmForm):
         label="中身も削除する (中のフォルダとマニュアルと、その版と画像)", required=False
     )
 
+    def __init__(self, *args, instance=None, **kwargs):
+        # instance の名を引数に置く (土台の _accepts_instance が、この名があるかで対象のフォルダを渡すかを決める)。
+        super().__init__(*args, instance=instance, **kwargs)
+        self.contents = services.folder_contents(instance)
+        if not self.contents["folders"] and not self.contents["manuals"]:
+            del self.fields["with_contents"]
+
+    @property
+    def refusal(self) -> str:
+        """中に保護されたフォルダかマニュアルがあれば、押す前に見せる断りの字 (無ければ空の字)。
+
+        字は delete_folder が押した後に断る字と同じ (services.FOLDER_PROTECTED_INSIDE の 1 か所)。
+        訳: 押した後に断られる削除を、押す前の確かめの画面で分かるようにするため (断る条件は delete_folder のまま)。出所 = 押す前に見せることは AI の案 (依頼書 N231 = 候補 C73。UX の見直しの案 confirm_print-06)。中に保護された物があると削除しない決まり自体の出所は未確認。
+        変えてよい条件 = delete_folder の断る条件を変えるときは一緒に変える。ほかは Issue「決まりの提案」でこの訳に対して議論してから。
+        """
+        if self.contents["protected"]:
+            return "削除できません。" + services.FOLDER_PROTECTED_INSIDE
+        return ""
+
     @property
     def confirm_text(self) -> str:
-        return f"フォルダ「{self.instance.name}」を削除します。中が空でなければ「中身も削除する」を選びます。元に戻せません。"
+        head = f"フォルダ「{self.instance.name}」を削除します。"
+        folders, manuals = self.contents["folders"], self.contents["manuals"]
+        if not folders and not manuals:
+            return head + "中は空です。元に戻せません。"
+        parts = []
+        if folders:
+            parts.append(f"フォルダ {folders} 個")
+        if manuals:
+            parts.append(f"マニュアル {manuals} 件")
+        inside = "と".join(parts)
+        return head + f"中に{inside}があります。消すときは「中身も削除する」に印を付けます。元に戻せません。"
 
     def service_kwargs(self):
         return {"with_contents": bool(self.cleaned_data.get("with_contents"))}
