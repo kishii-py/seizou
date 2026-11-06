@@ -160,3 +160,25 @@ def test_access_control_page_keeps_selects(manager_client):
     for kind in ("department", "write", "money"):
         assert f'<select name="{kind}"' in body, kind
     assert 'type="radio"' not in body
+
+
+# ---------------------------------------------------------------- (h) 頭の行
+
+
+#: 設定の変更の画面の頭の行 (settings_form.html の「今の値の出所:」を含む段落。中に tag は無い)
+HEAD_LINE = re.compile(r"<p[^>]*>[^<]*今の値の出所:[^<]*</p>")
+
+
+def test_head_line_has_no_key_or_file_names(manager_client, settings):
+    # 出所が初期値になり、導入の時に決めた値の字 (conf.SOURCE_ANSWER) は文の中にだけ出る
+    settings.SEIZOU = {}
+    for key in ("over_shipment", "partial_shipment", "access_control"):
+        body = manager_client.get(edit_url(key)).content.decode()
+        found = HEAD_LINE.search(body)
+        assert found, key
+        line = found.group(0)
+        for word in ("settings.py", "SEIZOU", "YAML", "<code", "鍵"):
+            assert word not in line, (key, word)
+        assert "ここで保存した値は、" in line, key
+        assert conf.SOURCE_ANSWER in line, key
+        assert f'<code class="font-mono">{key}</code>' not in body, key
