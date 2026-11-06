@@ -25,7 +25,7 @@ from django.db import DatabaseError
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
-from seizou.core import access, conf, mcp_tools
+from seizou.core import access, ai, conf, mcp_tools
 from seizou.core import services as core_services
 from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
@@ -74,6 +74,14 @@ MESSAGE_REFUSED = "この質問には答えられませんでした。聞き方�
 MESSAGE_CUT = "答えが長いので途中で切れました。質問を小さく分けてください。"
 MESSAGE_TOO_MANY_ROUNDS = f"調べる手順が {MAX_TOOL_ROUNDS} 回を超えたので止めました。質問を小さく分けてください。"
 MESSAGE_EMPTY_ANSWER = "答えが空でした。聞き方を変えて、もう一度送信してください。"
+#: SDK の例外を替える文の表 (seizou.core.ai の translate_errors に渡す)
+_API_ERRORS = {
+    "bad_key": MESSAGE_BAD_KEY,
+    "busy": MESSAGE_BUSY,
+    "no_credit": MESSAGE_NO_CREDIT,
+    "unreachable": MESSAGE_UNREACHABLE,
+    "timeout": MESSAGE_TIMEOUT,
+}
 
 #: 提案を承認できる時間の上限 (分。古い提案は断る)
 PROPOSAL_MAX_MINUTES = 60
@@ -392,13 +400,12 @@ def answer(question, *, page_url, screen_name, user, history):
 def _ask_claude(model, system, messages, tools):
     """Claude の API を 1 回呼び、SDK の返事 (stop_reason と content を持つ物) を返す。API を呼ぶのはここ 1 か所。
 
-    SDK は関数の中で import する。鍵は環境変数の値を client に明示して渡す。待ちは TIMEOUT_SECONDS で、再試行しない。
-    SDK の例外は日本語の ValueError に替える (返事の本文と鍵の値を文に入れない)。
+    client と例外の訳は seizou.core.ai (SDK は ai の関数の中で import する)。鍵は環境変数の値を client に明示して渡す。
+    待ちは TIMEOUT_SECONDS で、再試行しない。SDK の例外は _API_ERRORS の日本語の ValueError に替える
+    (返事の本文と鍵の値を文に入れない)。
     """
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=os.environ[API_KEY_ENV], timeout=TIMEOUT_SECONDS, max_retries=0)
-    try:
+    client = ai.client(API_KEY_ENV, TIMEOUT_SECONDS)
+    with ai.translate_errors(_API_ERRORS):
         return client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
@@ -407,18 +414,6 @@ def _ask_claude(model, system, messages, tools):
             tools=tools,
             output_config={"effort": EFFORT},
         )
-    except anthropic.AuthenticationError:
-        raise ValueError(MESSAGE_BAD_KEY) from None
-    except anthropic.RateLimitError:
-        raise ValueError(MESSAGE_BUSY) from None
-    except anthropic.APIStatusError as exc:
-        if exc.status_code == 402:
-            raise ValueError(MESSAGE_NO_CREDIT) from None
-        raise ValueError(f"{MESSAGE_UNREACHABLE} (状態 {exc.status_code})") from None
-    except anthropic.APITimeoutError:
-        raise ValueError(MESSAGE_TIMEOUT) from None
-    except anthropic.APIConnectionError:
-        raise ValueError(MESSAGE_UNREACHABLE) from None
 
 
 # ---- 提案と承認 ----

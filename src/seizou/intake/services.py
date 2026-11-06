@@ -30,7 +30,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import conf
+from seizou.core import ai, conf
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
@@ -130,6 +130,14 @@ MESSAGE_TIMEOUT = f"{TIMEOUT_SECONDS} 秒の間に読み取れませんでした
 MESSAGE_UNREACHABLE = f"読み取りの API に届きませんでした。少し待ってからもう一度置くか、{_NEXT}"
 MESSAGE_IN_INBOX = "この読み取りは受信した注文に入れてあります。受信した注文の画面で差出人を確かめてから受け入れてください。"
 MESSAGE_NO_CONNECT = "受信した注文の部品 (connect) が入っていないので、見張りの読み取りは使えません。"
+#: SDK の例外を替える文の表 (seizou.core.ai の translate_errors に渡す)
+_API_ERRORS = {
+    "bad_key": MESSAGE_BAD_KEY,
+    "busy": MESSAGE_BUSY,
+    "no_credit": MESSAGE_NO_CREDIT,
+    "unreachable": MESSAGE_UNREACHABLE,
+    "timeout": MESSAGE_TIMEOUT,
+}
 
 #: 見張りの読み取りの受信した注文の番号を作る名前空間 (同じ中身の注文書は同じ番号 = R11)
 WATCH_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "seizou:intake:watch")
@@ -352,14 +360,12 @@ def _block_for(data):
 def _ask_claude(model, block):
     """Claude の API に注文書の block を渡し、返事の最初の text の字を返す。API を呼ぶのはここ 1 か所。
 
-    SDK は関数の中で import する (読み取りを使わない会社と試験は SDK が無くても動く)。
+    client と例外の訳は seizou.core.ai (SDK は ai の関数の中で import する。読み取りを使わない会社と試験は SDK が無くても動く)。
     鍵は環境変数の値を client に明示して渡す。待ちは TIMEOUT_SECONDS で、再試行しない。
-    拒否と長さの打ち切りと SDK の例外は、日本語の ValueError に替える (返事の本文と鍵の値を文に入れない)。
+    拒否と長さの打ち切りと SDK の例外 (_API_ERRORS) は、日本語の ValueError に替える (返事の本文と鍵の値を文に入れない)。
     """
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=os.environ[API_KEY_ENV], timeout=TIMEOUT_SECONDS, max_retries=0)
-    try:
+    client = ai.client(API_KEY_ENV, TIMEOUT_SECONDS)
+    with ai.translate_errors(_API_ERRORS):
         response = client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
@@ -367,18 +373,6 @@ def _ask_claude(model, block):
             messages=[{"role": "user", "content": [block, {"type": "text", "text": REQUEST_TEXT}]}],
             output_config={"format": {"type": "json_schema", "schema": ORDER_SCHEMA}},
         )
-    except anthropic.AuthenticationError:
-        raise ValueError(MESSAGE_BAD_KEY) from None
-    except anthropic.RateLimitError:
-        raise ValueError(MESSAGE_BUSY) from None
-    except anthropic.APIStatusError as exc:
-        if exc.status_code == 402:
-            raise ValueError(MESSAGE_NO_CREDIT) from None
-        raise ValueError(f"{MESSAGE_UNREACHABLE} (状態 {exc.status_code})") from None
-    except anthropic.APITimeoutError:
-        raise ValueError(MESSAGE_TIMEOUT) from None
-    except anthropic.APIConnectionError:
-        raise ValueError(MESSAGE_UNREACHABLE) from None
 
     if response.stop_reason in ("refusal", "max_tokens"):
         raise ValueError(MESSAGE_NOT_READ)
