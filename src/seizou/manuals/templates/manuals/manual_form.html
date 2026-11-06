@@ -52,11 +52,14 @@
       <button type="submit" class="btn btn-outline border-base-300" formaction="{% url 'manuals:manual_version_create' object.pk %}">{% icon "plus" "size-4" %}新しい版として保存</button>
       <p class="w-full text-xs text-base-content/50">{{ form.note.help_text }}</p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
-      <button type="button" class="btn btn-outline border-base-300" hx-post="{% url 'manuals:manual_preview' object.pk %}" hx-include="#id_body, #id_format" hx-target="#manual-preview">{% icon "eye" "size-4" %}プレビュー</button>
-      <button type="submit" class="btn btn-primary" formaction="{% url 'manuals:manual_update' object.pk %}">{% icon "check" "size-4" %}保存</button>
-    </div>
+  </div>
+  {# 下の行 (キャンセル・プレビュー・保存)。form の直下に置き、開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html)。 #}
+  {# 版のメモと「新しい版として保存」は上の流れの中に残す (行に入れると窓の下に被さる)。「保存」は form の最後の送るボタンのまま (Ctrl+Enter が押す物)。 #}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
+    <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button type="button" class="btn btn-outline border-base-300" hx-post="{% url 'manuals:manual_preview' object.pk %}" hx-include="#id_body, #id_format" hx-target="#manual-preview">{% icon "eye" "size-4" %}プレビュー</button>
+    <button type="submit" class="btn btn-primary" formaction="{% url 'manuals:manual_update' object.pk %}">{% icon "check" "size-4" %}保存</button>
   </div>
 </form>
 <div class="mt-6 grid gap-6 lg:grid-cols-2 lg:items-start">

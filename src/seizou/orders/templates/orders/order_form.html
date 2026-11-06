@@ -46,7 +46,9 @@
   </div>
 
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+  {# 下の行 (キャンセルと保存)。開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない)。 #}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
     {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label }}</button>{% endif %}

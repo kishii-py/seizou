@@ -1,15 +1,19 @@
-"""保存の帯 (N154。案 5-B)。入力の画面に書きかけの印がある間だけ、上の帯の下に貼り付く 1 行の帯を出す。
+"""入力の画面の下の行と書きかけの字 (C21。決め C21-1 = e。前の形は N154 の保存の帯)。
 
-- 描く所 = core/base.html の上の帯の次の 1 か所。context に form があり、黄の知らせ (warnings) が無い画面だけ。
-- 帯の出ない所 = 小窓の入力 (core/_form_modal.html は base.html を使わない)・一覧 (BaseListView。絞り込みの枠も)・
-  詳細・ダッシュボード・ログイン・黄の知らせの後 (「このまま保存」の画面)。
-- 帯のボタンの字の元 = 画面の下の保存のボタンと同じ (form.submit_label。無ければ「保存」)。ボタンの字は span の中 (既にある試験の字の縛り)。
-- static の js/seizou-form-guard.js (出し入れと「破棄」「保存」) と js/seizou-submit-label.js (帯の字を写す) の約束を
+- 下の行 = 入力の画面 (小窓の外) の form の下の「キャンセル」「保存」の行。印の class seizou-save-row で、開いた時から窓の下の端に
+  貼り付く (scripts/css/input.css の固定の決まり。app.css は取り込みで作り直すので、ここでは input.css の字を見る)。
+  印を付けるのは 6 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集)。小窓の形には付けない。
+- 書きかけの字 = core/_save_bar.html (data-save-bar)。下の行の左の字の置き場 (seizou-save-slot) に描き、ボタンを持たない。
+  出し入れは js/seizou-form-guard.js の syncBar (hidden の属性だけ)。黄の知らせの後 (「このまま保存」の画面) は描かない。
+- 字の出ない所 = 小窓の入力 (core/_form_modal.html は base.html を使わない)・一覧 (BaseListView。絞り込みの枠も)・
+  詳細・ダッシュボード・ログイン・黄の知らせの後。
+- 上の帯の下の保存の帯と、帯の「保存」「破棄」のボタン (data-save-bar-save・-discard・-label) は無い。
+- static の js/seizou-form-guard.js (字の出し入れ) と js/seizou-submit-label.js (帯へ字を写さない) の約束を
   字で見る (ブラウザで動かさない。ブラウザでの確かめは E-50 と本体の手の確かめ)。
 - 前書きの断片 (core/manual_default/index.html) の 1 節。
 作り物のデータだけを使う。user と logged_in は tests/conftest.py の物を借りる。作り物の作り方と _button・MODAL は
 tests/test_core_submit_label.py を、黄の知らせの作り方 (_HolidayNote・holiday_checks・holiday_data) は
-tests/test_core_form_modal.py を写した。
+tests/test_core_form_modal.py を写した。説明書の作り物は tests/test_manuals_views.py と同じ services.create_manual。
 """
 
 import html
@@ -24,8 +28,10 @@ from pathlib import Path
 import pytest
 from django.urls import reverse
 
+import seizou
 import seizou.core
 from seizou.core import checks
+from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.masters.models import Holiday
 from seizou.orders import services as orders_services
@@ -33,13 +39,27 @@ from seizou.orders import services as orders_services
 ORDER_DATE = date(2026, 11, 2)
 MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 ACTION = "masters.create_holiday"
+PACKAGE = Path(seizou.__file__).resolve().parent
 CORE = Path(seizou.core.__file__).resolve().parent
 FORM_GUARD = CORE / "static" / "js" / "seizou-form-guard.js"
 SUBMIT_LABEL = CORE / "static" / "js" / "seizou-submit-label.js"
 SAVE_BAR = CORE / "templates" / "core" / "_save_bar.html"
 MANUAL_INTRO = CORE / "manual_default" / "index.html"
+INPUT_CSS = Path(__file__).resolve().parents[1] / "scripts" / "css" / "input.css"
 HIDDEN_BAR = "data-save-bar hidden>"
-BAR_WORDS = ("保存していない変更があります", "破棄")
+BAR_WORDS = ("保存していない変更があります",)
+ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
+SLOT = '<div class="seizou-save-slot">'
+MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
+#: 下の行を持つ 6 つのテンプレート (受注・発注・確かめ・説明書の編集・core の入力のカードは HTML でも見る。一括出荷は明細の作り物が要るので字で見る)
+ROW_TEMPLATES = (
+    CORE / "templates" / "core" / "_form_card.html",
+    PACKAGE / "orders" / "templates" / "orders" / "order_form.html",
+    PACKAGE / "purchasing" / "templates" / "purchasing" / "_purchaseorder_card.html",
+    PACKAGE / "shipping" / "templates" / "shipping" / "_shipment_bulk_card.html",
+    PACKAGE / "manuals" / "templates" / "manuals" / "confirm.html",
+    PACKAGE / "manuals" / "templates" / "manuals" / "manual_form.html",
+)
 
 
 @pytest.fixture
@@ -69,6 +89,11 @@ def order(user, customer, item, plate):
         user,
         order_date=ORDER_DATE,
     )
+
+
+@pytest.fixture
+def manual(user):
+    return manuals_services.create_manual(None, "作り物の段取りの手順", "steps", user)
 
 
 class _HolidayNote(checks.Check):
@@ -115,18 +140,26 @@ def _button(body):
 
 
 def _bar(body):
-    """保存の帯の HTML (<div class="sticky top-16 から最初の </div> まで)。"""
-    start = body.find('<div class="sticky top-16')
-    assert start >= 0, "保存の帯が無い"
-    end = body.index("</div>", start)
-    return body[start : end + len("</div>")]
+    """書きかけの字の HTML (data-save-bar の付いた <p から </p> まで)。"""
+    match = re.search(r"<p [^>]*\bdata-save-bar\b[^>]*>.*?</p>", body, re.S)
+    assert match, "書きかけの字が無い"
+    return match.group(0)
 
 
-def _bar_label(body):
-    """保存の帯のボタンの字 (html の字の参照を戻した字)。"""
-    match = re.search(r"<span data-save-bar-label>(.*?)</span>", _bar(body), re.S)
-    assert match, "帯のボタンの字が無い"
-    return html.unescape(match.group(1)).strip()
+def _form(body, index):
+    """index の字を囲む form の HTML (<form から </form> まで)。囲む form の開きの tag に data-enter-guard があることも見る。"""
+    start = body.rfind("<form", 0, index)
+    assert start >= 0, "囲む form が無い"
+    assert "</form>" not in body[start:index], "囲む form が無い"
+    assert "data-enter-guard" in body[start : body.index(">", start)], "囲む form に data-enter-guard が無い"
+    return body[start : body.index("</form>", index) + len("</form>")]
+
+
+def _row(body):
+    """下の行の HTML (seizou-save-row の開きの tag から、その form の </form> まで。行は form の最後の子)。"""
+    start = body.find(ROW)
+    assert start >= 0, "下の行が無い"
+    return body[start : body.index("</form>", start)]
 
 
 def _input_urls():
@@ -138,7 +171,7 @@ def _input_urls():
     )
 
 
-# --- 1. 帯を描く所と形 ---
+# --- 1. 下の行と字を描く所と形 ---
 
 
 def test_full_page_inputs_have_one_hidden_bar(logged_in):
@@ -147,33 +180,89 @@ def test_full_page_inputs_have_one_hidden_bar(logged_in):
         assert response.status_code == 200, url
         body = text(response)
         assert body.count(HIDDEN_BAR) == 1, url
-        # 上の帯の次、<main> の前
-        assert body.index("</header>") < body.index("data-save-bar") < body.index("<main"), url
+        # 上の帯の下 (<main> の前) には描かない。字は data-enter-guard の form の中の、下の行の中にある
+        assert body.index("<main") < body.index("data-save-bar"), url
+        assert "sticky top-16" not in body, url
+        form = _form(body, body.index("data-save-bar"))
+        assert form.count(ROW) == 1, url
+        row = _row(body)
+        assert HIDDEN_BAR in row, url
+        # 行の最初の子が字の置き場で、その中に字 (間は部品の注記の行の改行だけ)
+        assert re.match(re.escape(ROW) + r"\s*" + re.escape(SLOT) + r"\s*<p ", row), url
         bar = _bar(body)
-        assert 'role="region"' in bar, url
-        assert 'aria-label="保存の帯"' in bar, url
         assert "保存していない変更があります" in bar, url
-        assert "data-save-bar-discard" in bar, url
-        assert "data-save-bar-save" in bar, url
-        # 2 つとも送らないボタン (Ctrl+Enter が押す「最後の送るボタン」とログアウトの form に混ざらない)。主色は下の保存のボタンだけ。
-        assert bar.count('type="button"') == 2, url
-        assert "btn-primary" not in bar, url
-        assert 'type="submit"' not in bar, url
+        assert 'aria-hidden="true">●</span>' in bar, url
+        # 字はボタンを持たない (保存のボタンは下の行の 1 つだけ)
+        assert "<button" not in bar, url
         assert "<form" not in bar, url
 
 
-def test_bar_label_is_the_submit_label(logged_in, order):
-    for url in _input_urls():
+def test_save_button_is_once_in_the_bottom_row(logged_in, order):
+    for url in (*_input_urls(), reverse("orders:order_update", args=[order.pk])):
         body = text(logged_in.get(url))
-        assert _bar_label(body) == _button(body)[0], url
-    assert _bar_label(text(logged_in.get(reverse("masters:item_create")))) == "保存"
-    # 受注の編集 (明細 2 行 = 合計 2,000): 型の字は本体が変えうるので、金額で見る。
+        form = _form(body, body.index(ROW))
+        row = _row(body)
+        # 主色の保存のボタンは form の中に 1 つで、下の行の中にある。Ctrl+Enter が押す最後の送るボタンも下の行の中
+        assert form.count('class="btn btn-primary" type="submit"') == 1, url
+        assert row.count('class="btn btn-primary" type="submit"') == 1, url
+        assert form.rindex('type="submit"') > form.index(ROW), url
+        assert _button(row)[0], url
+        # 帯のボタンの字は無い
+        for word in ("data-save-bar-save", "data-save-bar-discard", "data-save-bar-label"):
+            assert word not in body, (url, word)
+    # 受注の編集 (明細 2 行 = 合計 2,000): 下の行の保存のボタンの字は今のまま (型の字は本体が変えうるので、金額で見る)
     body = text(logged_in.get(reverse("orders:order_update", args=[order.pk])))
-    assert _bar_label(body) == _button(body)[0]
-    assert "2,000" in _bar_label(body)
+    assert "2,000" in _button(_row(body))[0]
 
 
-# --- 2. 帯の出ない所 ---
+def test_manual_screens_have_bottom_row(logged_in, manual):
+    for url in (
+        reverse("manuals:manual_update", args=[manual.pk]),
+        reverse("manuals:manual_protect", args=[manual.pk]),
+    ):
+        response = logged_in.get(url)
+        assert response.status_code == 200, url
+        body = text(response)
+        assert body.count(HIDDEN_BAR) == 1, url
+        form = _form(body, body.index(ROW))
+        assert form.count(ROW) == 1, url
+        row = _row(body)
+        assert HIDDEN_BAR in row, url
+        assert "キャンセル" in row, url
+        assert form.rindex('type="submit"') > form.index(ROW), url
+    # 説明書の編集: 版のメモと「新しい版として保存」は行の外 (流れの中)、「プレビュー」と「保存」は行の中
+    body = text(logged_in.get(reverse("manuals:manual_update", args=[manual.pk])))
+    row = _row(body)
+    assert "新しい版として保存" not in row
+    assert 'name="note"' not in row
+    assert "新しい版として保存" in body
+    assert "プレビュー</button>" in row
+    assert "保存</button>" in row
+
+
+def test_six_templates_have_bottom_row():
+    for path in ROW_TEMPLATES:
+        source = path.read_text(encoding="utf-8")
+        assert source.count(ROW) == 1, path
+        assert source.count(SLOT + '{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>') == 1, path
+    # 小窓の形を持つ 3 つは、小窓では今の tag のまま (class を組み立てず、tag を丸ごと 2 つ書く。R19)
+    for path in ROW_TEMPLATES[0], ROW_TEMPLATES[2], ROW_TEMPLATES[3]:
+        source = path.read_text(encoding="utf-8")
+        assert "{% if in_modal %}\n  " + MODAL_ROW + "\n  {% else %}\n  " + ROW in source, path
+
+
+def test_input_css_has_sticky_row():
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    start = css.index(".seizou-save-row {")
+    rule = css[start : css.index("}", start)]
+    assert "position: sticky;" in rule
+    assert "bottom: 0;" in rule
+    assert ".seizou-save-slot {" in css
+    assert "html:has(.seizou-save-row) {" in css
+    assert "scroll-padding-bottom" in css
+
+
+# --- 2. 字の出ない所 ---
 
 
 def test_modal_inputs_have_no_bar(logged_in):
@@ -188,6 +277,10 @@ def test_modal_inputs_have_no_bar(logged_in):
         assert "<html" not in body, url
         assert "data-enter-guard" in body, url
         assert "data-save-bar" not in body, url
+        # 小窓の下の行は貼り付けない (今の形のまま)
+        assert "seizou-save-row" not in body, url
+        assert "seizou-save-slot" not in body, url
+        assert MODAL_ROW in body, url
 
 
 def test_pages_without_input_have_no_bar(client, user, order):
@@ -204,6 +297,7 @@ def test_pages_without_input_have_no_bar(client, user, order):
         response = client.get(url)
         assert response.status_code == 200, url
         assert "data-save-bar" not in text(response), url
+        assert "seizou-save-row" not in text(response), url
     client.logout()
     response = client.get(reverse("core:login"))
     assert response.status_code == 200
@@ -220,7 +314,11 @@ def test_warning_page_has_no_bar_and_stopped_page_has_it(logged_in, holiday_chec
     assert "このまま保存" in body
     assert "data-save-bar" not in body
     assert Holiday.objects.count() == 0
-    # 誤りで止まった画面は書きかけと見ない (N132 のまま) = 帯は描くが隠したまま
+    # 黄の知らせの後も下の行は貼り付く (字の置き場は空のまま、「このまま保存」は行の中)
+    row = _row(body)
+    assert re.match(re.escape(ROW) + r"\s*" + re.escape(SLOT) + "</div>", row)
+    assert "このまま保存</button>" in row
+    # 誤りで止まった画面は書きかけと見ない (N132 のまま) = 字は描くが隠したまま
     stopped = logged_in.post(url, {})
     body = text(stopped)
     assert stopped.status_code == 200
@@ -230,12 +328,12 @@ def test_warning_page_has_no_bar_and_stopped_page_has_it(logged_in, holiday_chec
 
 def test_cancel_screen_bar_keeps_button_words(logged_in, order):
     body = text(logged_in.get(reverse("orders:order_cancel", args=[order.pk])))
-    assert _bar_label(body) == _button(body)[0]
-    assert order.order_no in _bar_label(body)
-    # 「取り消す</button>」は下のボタンの 1 つだけ (帯のボタンは </span></button> で閉じる)
+    assert body.count(HIDDEN_BAR) == 1
+    # 「取り消す</button>」は下の行のボタンの 1 つだけ (字はボタンを持たない)
     assert body.count("取り消す</button>") == 1
+    assert "取り消す</button>" in _row(body)
     assert "保存</button>" not in body
-    assert "btn-primary" not in _bar(body)
+    assert "<button" not in _bar(body)
 
 
 # --- 3. JS の約束 (字で見る) ---
@@ -248,36 +346,32 @@ def test_form_guard_js_save_bar_words():
         "function dirtyPageForm()",
         "function syncBar()",
         "bar.hidden = !dirtyPageForm()",
-        '"[data-save-bar-save], [data-save-bar-discard]"',
-        "'button[type=\"submit\"]'",
-        "save.click()",
-        "window.location.assign(window.location.pathname + window.location.search)",
         "入力した内容が消えます。閉じますか？",
     ):
         assert word in script, word
-    # 確かめは小窓の閉じる 2 つの道と帯の「破棄」の 3 か所。帯の出し入れは定義 1 と呼ぶ所 3 (印を付ける・送る・破棄)。
-    assert script.count("window.confirm(MESSAGE)") == 3
-    assert script.count("syncBar()") == 4
+    # 帯の「保存」「破棄」の受けは無い (保存は下の行のボタン、捨てるのは「キャンセル」と beforeunload の確認)
+    for word in (
+        "[data-save-bar-save]",
+        "[data-save-bar-discard]",
+        "save.click()",
+        "window.location.assign(window.location.pathname + window.location.search)",
+    ):
+        assert word not in script, word
+    # 確かめは小窓の閉じる 2 つの道だけ。字の出し入れは定義 1 と呼ぶ所 2 (印を付ける・送る)。
+    assert script.count("window.confirm(MESSAGE)") == 2
+    assert script.count("syncBar()") == 3
     for word in (".classList", ".className", ".innerHTML", "insertAdjacentHTML", "outerHTML", "textContent", "location.reload", "fetch(", "XMLHttpRequest"):
         assert word not in script, word
 
 
 def test_submit_label_js_mirrors_bar():
     script = SUBMIT_LABEL.read_text(encoding="utf-8")
-    for word in (
-        "function setBar(form) {",
-        '"[data-save-bar]"',
-        'form.matches("form[data-enter-guard]")',
-        'form.closest("#seizou-modal")',
-        'setNode(bar.querySelector("[data-save-bar-label]"), source.nodeValue)',
-    ):
-        assert word in script, word
+    # 帯のボタンが無いので、帯へ字を写さない (保存のボタンの字を埋め直す update だけ)
+    for word in ("setBar", "[data-save-bar]", "data-save-bar-label"):
+        assert word not in script, word
     on_input = script[script.index("function onInput(event) {") :]
     on_input = on_input[: on_input.index("\n  }\n")]
-    assert "update(form);" in on_input
-    assert "setBar(form);" in on_input
-    assert on_input.index("update(form);") < on_input.index("setBar(form);")
-    assert "    if (form) update(form);\n" not in script
+    assert on_input.endswith("    if (form) update(form);")
     for word in ("classList", "className", "innerHTML", "insertAdjacentHTML", "textContent", "fetch(", "XMLHttpRequest", "window.htmx"):
         assert word not in script, word
 
@@ -292,6 +386,8 @@ def test_manual_intro_has_bar_sentence():
     for word in BAR_WORDS:
         assert f"「{word}」" in intro, word
         assert word in bar, word
+    assert "破棄" not in intro
+    assert "破棄" not in bar
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node が無い (JS の字の形は本体の門の node --check で見る)")
