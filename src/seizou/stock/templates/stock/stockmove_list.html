@@ -1,13 +1,14 @@
 {% extends "core/list.html" %}
 {% load seizou_icons %}
 {% comment %}
-在庫の動きの一覧: core の一覧の上に、在庫の一覧への link と入力の 3 つの入口 (主色は製造の完了だけ)。
+在庫の動きの一覧: core の一覧の上に、在庫の一覧への link と入力の 3 つの入口。
+4 つとも同じ見た目で、主色のボタンは置かない (在庫の一覧とそろえる。急ぐ人が目立つボタンを先に押して、指示書を選ぶ入庫の画面へ外れたため。初見テスト R5 の rb23)。
 動きの model には「新規登録」の URL の名前が無いので、土台の中身は何も出さない (残しておく)。
 {% endcomment %}
 {% block actions %}{{ block.super }}<a class="btn btn-outline border-base-300" href="{% url 'stock:stock_list' %}">{% icon "box" "size-4" %}在庫の一覧</a>
 <a class="btn btn-outline border-base-300" href="{% url 'stock:issue_create' %}">{% icon "truck" "size-4" %}払い出し</a>
 <a class="btn btn-outline border-base-300" href="{% url 'stock:adjust_create' %}">{% icon "check" "size-4" %}棚卸しの調整</a>
-<a class="btn btn-primary" href="{% url 'stock:finished_create' %}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
+<a class="btn btn-outline border-base-300" href="{% url 'stock:finished_create' %}">{% icon "factory" "size-4" %}製造の完了を入庫にする</a>{% endblock %}
 {# 題の下の説明の 1 文は出さない (決め 11-03 15:5x 本人「推奨で」。「?」で説明書の断片を見る)。 #}
 {% block content %}
 {{ block.super }}{% endblock %}
