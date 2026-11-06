@@ -10,11 +10,14 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from seizou.billing import services as billing_services
 from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
 from seizou.orders.models import Order
 from seizou.orders.timeline import linked_for
 from seizou.orders.views import OrderCancelView
@@ -273,6 +276,36 @@ def test_linked_for_groups_in_flow_order(user, customer, item, cut):
         [note.note_no],
         [invoice.invoice_no],
     ]
+
+
+def test_linked_for_queries_do_not_grow_with_lines(user, customer, item, cut):
+    """付いている物は関係ごとに 1 回だけ読む (明細 2 行・記録 2 件ずつでも、明細 1 行と同じ問い合わせの数)。"""
+    today = timezone.localdate()
+    one, workorder, _, _, _ = _flowed(user, customer, item, cut)
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), timezone.now(), user)
+    two = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")} for _ in range(2)],
+        user,
+        order_date=today - timedelta(days=3),
+    )
+    shipments = []
+    for line in two.lines.all():
+        issued = _issue(user, line, cut)
+        progress_services.record_progress(issued.steps.get(), Decimal("1"), timezone.now(), user)
+        shipments.append(shipping_services.ship(line, Decimal("10"), today, user))
+    shipping_services.create_delivery_note(customer, shipments, user)
+    billing_services.create_invoice(customer, shipments, user, issued_on=today)
+
+    linked_for(Order.objects.get(pk=one.pk), user)  # 利用者の権限の控え (accounts の Access。初回だけ読む) を先に読ませておく
+    counts = []
+    for order in (Order.objects.get(pk=one.pk), Order.objects.get(pk=two.pk)):
+        with CaptureQueriesContext(connection) as queries:
+            groups = linked_for(order, user)
+        counts.append(len(queries))
+        assert [g.kind for g in groups] == ["workorder", "shipment", "delivery_note", "invoice"]
+    assert counts[0] == counts[1]
+    assert [len(g.docs) for g in linked_for(two, user)] == [2, 2, 1, 1]
 
 
 def test_linked_for_sorts_numbers_ascending(logged_in, user, customer, item, cut):

@@ -388,10 +388,10 @@ def linked_for(order, user) -> list[LinkedGroup]:
 
     辿り方は events_for と同じ逆向きの関係だけ (受注の明細 → 指示書・出荷 → 納品書・請求書)。納品書と請求書は pk で重ねない。
     並べるのは取消でない物だけ (出荷は状態の列が無いので全部)。群は指示書 → 出荷 → 納品書 → 請求書、群の中は番号の昇順。
-    全部が 0 件なら空の list。
+    全部が 0 件なら空の list。明細と付いている物は _linked_lines が関係ごとに 1 回だけ読む。
     """
     workorders, shipments, notes, invoices = {}, {}, {}, {}
-    for line in _all(order, "lines"):
+    for line in _linked_lines(order):
         for workorder in _all(line, "workorders"):
             workorders[workorder.pk] = workorder
         for shipment in _all(line, "shipments"):
@@ -412,6 +412,53 @@ def linked_for(order, user) -> list[LinkedGroup]:
         for kind, label in LINKED_KINDS
         if found[kind]
     ]
+
+
+def _linked_lines(order) -> list:
+    """受注の明細を、付いている物と一緒に読む (prefetch。読むだけ)。
+
+    関係ごとに 1 回だけ読み、明細と記録の数で問い合わせを増やさない (受注を取り消す画面の問い合わせの上限 =
+    tests/test_core_screen_queries.py の LIMITS の orders:order_cancel)。出荷は納品書と、請求の明細は請求書と一緒に読む。
+    辿る関係は linked_for と同じ。部品が入っていなくて関係が無ければ、その関係は読まない (_all と同じ扱い)。
+    """
+    from django.db.models import Prefetch  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
+
+    manager = getattr(order, "lines", None)
+    if manager is None:
+        return []
+    lookups = []
+    workorder_path = _reachable(manager.model, ("workorders", "steps", "progress_records"))
+    if workorder_path:
+        lookups.append(workorder_path)
+    shipment = _related_model(manager.model, "shipments")
+    if shipment is not None:
+        lookups.append(Prefetch("shipments", queryset=shipment._default_manager.select_related("delivery_note")))
+        invoice_line = _related_model(shipment, "invoice_lines")
+        if invoice_line is not None:
+            queryset = invoice_line._default_manager.select_related("invoice")
+            lookups.append(Prefetch("shipments__invoice_lines", queryset=queryset))
+    return list(manager.prefetch_related(*lookups))
+
+
+def _related_model(model, name):
+    """model の関係 name の相手の model。部品が入っていなくて関係が無ければ None。"""
+    from django.core.exceptions import FieldDoesNotExist
+
+    try:
+        return model._meta.get_field(name).related_model
+    except FieldDoesNotExist:
+        return None
+
+
+def _reachable(model, names) -> str:
+    """model から names の関係を順に辿れる所までの prefetch の字 (例 workorders__steps)。1 つ目から無ければ空。"""
+    path = []
+    for name in names:
+        model = _related_model(model, name)
+        if model is None:
+            break
+        path.append(name)
+    return "__".join(path)
 
 
 def _linked(obj, no, user, has_progress=False) -> LinkedDoc:
