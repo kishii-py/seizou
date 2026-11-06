@@ -381,3 +381,21 @@ def test_create_post_amount_with_comma_or_wide_digits_is_saved(client_logged_in,
     assert Payment.objects.count() == 1
     assert Payment.objects.get().amount == Decimal("8800")
 
+
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["page", "modal"])
+def test_create_post_empty_amount_names_the_field(client_logged_in, invoice, headers):
+    """金額を空のまま押すと、欄の下の字は「金額を入れてください。」(入力の土台がまとめて替える。C25 の 2)。止まった知らせは C57 の形のまま。"""
+    response = client_logged_in.post(
+        reverse("billing:payment_create", args=[invoice.pk]), {**POST, "amount": ""}, **headers
+    )
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "金額を入れてください。" in body
+    assert "このフィールドは必須です" not in body
+    assert Payment.objects.count() == 0
+    if not headers:
+        start = body.index('data-notice="stop"')
+        stop = body[start : body.index("data-toast-close", start)]
+        assert "記録できません。" in stop
+        assert "「金額」の欄に誤りがあります。" in stop
