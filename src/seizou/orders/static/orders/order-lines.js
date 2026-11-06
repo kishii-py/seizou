@@ -67,7 +67,7 @@
       return;
     }
     var amount = Math.round(qtyValue * priceValue * 100) / 100;
-    // 金額の頭に半角の「¥」(U+00A5。保存のボタンの字の型と同じ字)。style: "currency" は全角の「￥」を出すので使わない。
+    // 金額の頭に半角の「¥」(U+00A5。保存のボタンの字の型と同じ字)。style: "currency" は全角の円の記号 (U+FFE5) を出すので使わない。
     cell.textContent = "¥" + amount.toLocaleString("ja-JP", { maximumFractionDigits: 2 });
   }
 
