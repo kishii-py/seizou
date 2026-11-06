@@ -64,7 +64,7 @@ if (!window.seizouStatHelp) {
 {% endif %}
 {% today_tasks as today %}
 {# 今日やること (左) と納期アラート (右) の 1 段。lg から 2 列で、片方だけなら 1 列。幅が狭いときは縦に積む (今日やることが上)。本人の決め 11-05 11:0x「今日やることは col-md-6 的な大きさの方がいい」「余白が多すぎて折角の一等地が勿体無い」。 #}
-{% if today and alerts is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif today or alerts is not None %}<div class="mb-6 grid gap-6">{% endif %}
+{% if today and alerts is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2 lg:items-start">{% elif today or alerts is not None %}<div class="mb-6 grid gap-6">{% endif %}
   {% if today %}
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="flow-guide-title" data-tour="flow-guide">
     {% if today.rows %}
@@ -141,7 +141,7 @@ if (!window.seizouStatHelp) {
   </section>
   {% endif %}
 {% if today or alerts is not None %}</div>{% endif %}
-{% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}
+{% if shipping is not None and production is not None %}<div class="mb-6 grid gap-6 lg:grid-cols-2 lg:items-start">{% elif shipping is not None or production is not None %}<div class="mb-6 grid gap-6">{% endif %}
   {% if shipping is not None %}
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipping-title">
     <div class="flex items-center justify-between gap-2">
