@@ -36,7 +36,7 @@ def _customer_parts(extraction):
 class UploadForm(forms.Form):
     """注文書を読み取るの form。得意先と注文書のファイル。
 
-    ready は読み取りが使えるか (鍵があるか)。偽ならテンプレートが黄の知らせを出し、欄とボタンを押せなくする。
+    ready は読み取りが使えるか (鍵があるか)。偽ならテンプレートが黄の知らせだけを出し、入力のカード (欄とボタン) は描かない。
     """
 
     submit_label = "読み取る"

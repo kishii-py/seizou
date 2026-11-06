@@ -5,6 +5,8 @@
 品番と会社名は作り物。
 """
 
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -89,8 +91,26 @@ def test_create_page_without_key_is_disabled(client_logged_in, without_key):
     body = response.content.decode()
     assert "鍵が無いので読み取りは使えません" in body
     assert "alert-warning" in body
-    assert "<fieldset disabled" in body
+    assert "<fieldset disabled" not in body
     assert reverse("orders:order_create") in body and reverse("connect:inbox_list") in body
+
+
+def _band(body):
+    """鍵が無いときの黄の帯 (alert-warning の箱) の HTML。帯の中に div は無い (頭の印は svg、中は span と a)。"""
+    match = re.search(r'<div class="alert alert-warning alert-soft mb-4" role="alert">.*?</div>', body, re.S)
+    assert match, "鍵が無いときの黄の帯が無い"
+    return match.group(0)
+
+
+def test_create_page_without_key_has_no_card(client_logged_in, without_key):
+    # 使えない欄とボタンは描かず、黄の帯の文と手入力への link だけで次の手を示す (C09)。
+    body = client_logged_in.get(reverse("intake:extraction_create")).content.decode()
+
+    assert "data-file-drop" not in body
+    assert "<fieldset" not in body
+    assert "「必須」の欄を埋めて" not in body
+    assert 'name="customer"' not in body
+    assert f'href="{reverse("orders:order_create")}"' in _band(body)
 
 
 def test_create_post_reads_and_moves_to_detail(client_logged_in, with_key, fake_reply, customer, user):

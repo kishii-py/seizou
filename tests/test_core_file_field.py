@@ -13,13 +13,17 @@ from django.contrib.staticfiles import finders
 from django.urls import reverse
 
 from seizou.manuals import services as manuals_services
+from tests.test_intake_extract import FAKE_KEY
 
 SCRIPT = '<script src="/static/js/seizou-file-drop.js" defer></script>'
 
 
 @pytest.fixture(autouse=True)
 def no_key(monkeypatch):
-    """鍵を外す (注文書の読み取りと AI の聞き取りの段が本物の API を呼ばない。欄はどちらでも描く)。"""
+    """鍵を外す (注文書の読み取りと AI の聞き取りの段が本物の API を呼ばない)。
+
+    注文書を読み取るの欄は鍵があるときだけ描く (C09) ので、その段だけ試験の中で鍵を置く (GET だけで API は呼ばない)。
+    """
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
 
@@ -43,8 +47,11 @@ def _manual_update(user) -> str:
     ],
     ids=["部品の図面", "フィードバックの画面の絵", "注文書のファイル", "マニュアルの画像"],
 )
-def test_file_input_sits_in_drop_box(logged_in, user, url_of, name):
-    response = logged_in.get(url_of(user))
+def test_file_input_sits_in_drop_box(logged_in, user, monkeypatch, url_of, name):
+    url = url_of(user)
+    if url == reverse("intake:extraction_create"):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)  # 鍵が無いと入力のカードを描かない (C09)
+    response = logged_in.get(url)
     html = response.content.decode()
 
     assert response.status_code == 200
