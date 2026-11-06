@@ -1,6 +1,7 @@
 """撮影の前の小さい直し 5 つ (決め 11-05 15:0x。N160) の試験。
 
-1 = 「AI に質問」の丸いボタンと本文の下の余白、2 = 受信した注文の空の枠、3 = 生産管理ボードの行のメニューの見出しと線、
+1 = 「AI に質問」の入口と本文の下の余白 (右下の丸いボタンは決め C37 で左のメニューの下の入口に移し、余白はほかの画面と同じに戻した)、
+2 = 受信した注文の空の枠、3 = 生産管理ボードの行のメニューの見出しと線、
 4 = 受信した注文の未処理の行の太字と点、5 = 読み取りの「読み取る」の回る印。作り物のデータだけを使う。
 """
 
@@ -27,8 +28,9 @@ HX = {"HTTP_HX_REQUEST": "true"}
 EMPTY_LINE = "取引先から注文が届くと、ここに並びます。"
 BUSY = '<template data-intake-busy><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>読み取り中…</template>'
 TOGGLE = (
-    '<span class="tooltip" data-tip="AI に質問"><button id="assistant-toggle" type="button" class="btn btn-neutral btn-circle shadow-lg'
-    ' focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">'
+    '<button id="assistant-toggle" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2'
+    ' text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary"'
+    ' aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">'
 )
 DOT = '<span class="status status-info" aria-hidden="true"></span>'
 
@@ -129,25 +131,33 @@ def test_upload_page_without_key_has_no_spinner(logged_in, without_key):
     assert "<fieldset disabled" not in body
 
 
-# 1. 「AI に質問」の丸いボタンと本文の下の余白
+# 1. 「AI に質問」の入口 (左のメニューの下。決め C37) と本文の下の余白 (ほかの画面と同じ)
 
 
-def test_assistant_toggle_is_small_circle_with_tooltip(logged_in):
+def test_assistant_entry_is_in_sidebar_above_feedback(logged_in):
     html = logged_in.get(reverse("core:home")).content.decode()
 
     assert html.count(TOGGLE) == 1
+    entry = html.index(TOGGLE)
+    # 左のメニューの並び (nav) の後、フィードバックの入口の前 (決め C37-2 = a)。
+    assert html.index("</nav>") < entry < html.index('id="feedback-entry"')
     inner = re.search(r'<button id="assistant-toggle"[^>]*>(.*?)</button>', html, re.S).group(1)
     assert "<svg" in inner
-    assert re.sub(r"<svg.*?</svg>", "", inner, flags=re.S).strip() == ""  # 見える字は無い (吹き出しと aria-label だけ)
-    assert ">AI に質問</button>" not in html
-    # 根の div (右下の位置) は今のまま。
-    assert html.count('<div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">') == 1
+    assert '<span class="truncate">AI に質問</span>' in inner  # 見える字がある
+    # 右下に浮く丸いボタン (吹き出しの字・丸い形) は戻さない。btn-circle は窓の中の閉じるボタンなども使うので、入口の tag で見る。
+    opening = re.search(r'<button id="assistant-toggle"[^>]*>', html).group(0)
+    assert "btn-circle" not in opening
+    assert 'data-tip="AI に質問"' not in html
+    # 根の div (窓の初めの位置。右下) は今のまま (決め C37-3 = a)。入口は根の div の中に残っていない。
+    root = '<div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">'
+    assert html.count(root) == 1
+    assert entry < html.index(root)
 
 
-def test_main_bottom_room_is_one_button_taller(logged_in):
+def test_main_bottom_room_is_same_as_other_screens(logged_in):
     html = logged_in.get(reverse("core:home")).content.decode()
 
-    assert '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">' in html
+    assert '<main class="flex-1 p-4 lg:p-6">' in html
     # Tailwind はテンプレートの注釈の字も拾うので、使わなくなった字を残さない。
     for path in SRC.rglob("*.html"):
         assert "pb-24" not in path.read_text(encoding="utf-8"), path

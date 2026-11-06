@@ -1,9 +1,10 @@
 """E-38 AI チャット (仕様書の 6 番の 3 節)。
 
-手順: 右下の窓に「今週納期の注文残は」→ 答えの link を押す → 鍵の無い会社で窓を開く。
+手順: 左のメニューの「AI に質問」で右下の窓を開き、「今週納期の注文残は」→ 答えの link を押す → 鍵の無い会社で窓を開く。
 期待: 答えに数と link があり、link の先の画面の数と合う。鍵が無い会社では 1 文だけが出て入力の欄が無い (N34。BYOK)。
 
-この試験は右下のボタンが入力の画面の保存と設定の最後の行を隠さないことだけを見る (初見テスト R3 の「動きが違う」の 1 つ目)。
+この試験は左のメニューの「AI に質問」の入口が入力の画面の保存と設定の最後の行を隠さないことだけを見る (初見テスト R3 の「動きが違う」の 1 つ目。
+入口は右下に浮く丸いボタンから左のメニューの下へ移した。決め C37)。
 見ない所 (理由): 質問と答えと link (AI の API の鍵が要る)、鍵の無い会社の 1 文 (test client の試験が見る)。
 """
 
@@ -25,7 +26,7 @@ def _overlaps(first: dict, second: dict) -> bool:
 def test_e38_button_does_not_cover_save(page_a, company_a):
     """期待 (06 の E-38): 答えに数と link があり、link の先の画面の数と合う。鍵が無い会社では 1 文だけが出て入力の欄が無い。
 
-    見る所: 幅 1280・高さ 720 の窓で、右下の「AI に質問」のボタンが絵だけの丸 (幅と高さ 48px 以下・見える字が無い・aria-label が「AI に質問」。N160) で、部品・取引先・受注の新規登録を下まで送ると、主のボタン (保存。受注では「… で受注する」) とそのボタンが重ならず、
+    見る所: 幅 1280・高さ 720 の窓で、左のメニューの「AI に質問」の入口 (aria-label が「AI に質問」。決め C37) と、部品・取引先・受注の新規登録を下まで送った主のボタン (保存。受注では「… で受注する」) が重ならず、
     主のボタンの真ん中の点の一番上がそのボタンであること。見ない所: 06 の E-38 の期待そのもの (AI の API の鍵が要る)。
     """
     login(page_a, company_a)
@@ -39,9 +40,7 @@ def test_e38_button_does_not_cover_save(page_a, company_a):
         toggle_box = toggle.bounding_box()
         save_box = save.bounding_box()
         assert toggle_box is not None and save_box is not None, path
-        assert toggle_box["width"] <= 48 and toggle_box["height"] <= 48, path  # 絵だけの丸いボタン (N160。幅と高さ 40px)
         assert toggle.get_attribute("aria-label") == "AI に質問", path
-        assert toggle.inner_text().strip() == "", path  # 字は吹き出し (tooltip) と aria-label だけ
         assert not _overlaps(toggle_box, save_box), path
         on_top = page_a.evaluate(
             """([x, y]) => {

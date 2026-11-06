@@ -1,0 +1,8 @@
+{% load seizou_icons %}
+{# 「AI に質問」の入口 (core/_sidebar.html が左のメニューの下、フィードバックの入口の上で include する)。押すと右下に AI チャットの窓 (assistant/_panel.html) が開く。右下に浮いていた丸いボタンを、本文の外のここへ移した (決め C37 11-06 22:2x)。 #}
+{# 全部の画面に出るので、既にある試験が数える字 (主色のボタン・今の画面の印 など) を書かない。窓と開け閉めの script は base.html が部品とログインの 2 つの条件のときだけ描くので、入口も同じ 2 つの条件で出す (入口だけが出ると押しても何も起きない)。字が見えるので説明の吹き出しは付けない。 #}
+{% if user.is_authenticated %}
+<div class="shrink-0 border-t border-base-300 px-4 py-2">
+  <button id="assistant-toggle" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">{% icon "bot" "size-5" %}<span class="truncate">AI に質問</span></button>
+</div>
+{% endif %}

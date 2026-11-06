@@ -1,4 +1,4 @@
-"""AI チャットの窓 (全部の画面の右下) と、質問を受ける口 (assistant:ask・assistant:clear) のテスト。
+"""AI チャットの窓 (左のメニューの「AI に質問」で開き、画面の右下に出る) と、質問を受ける口 (assistant:ask・assistant:clear) のテスト。
 
 本物の API は呼ばない (autouse の fixture が _ask_claude を「呼ばれたら AssertionError」に差し替える)。
 返事が要るテストだけが作り物の返事に差し替える。鍵の有無で窓の中身が変わるので、鍵はテストごとに
