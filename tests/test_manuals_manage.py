@@ -134,6 +134,61 @@ def test_folder_delete_empty_and_with_contents(client_logged_in, user):
     assert response["Location"] == reverse("manuals:manualfolder_list")
 
 
+RED_MARK = "size-5 text-error shrink-0"
+GRAY_MARK = "size-5 text-base-content/70 shrink-0"
+
+
+def test_folder_delete_confirm_counts_and_protected(client_logged_in, user):
+    """フォルダの削除の確かめは中の数を出し、空なら欄を外し、中に保護された物があれば押す前に黄で断る (C73)。"""
+    empty = services.create_folder(None, "空", "gray", user)
+    page = client_logged_in.get(reverse("manuals:manualfolder_delete", args=[empty.pk])).content.decode()
+    assert "フォルダ「空」を削除します。中は空です。元に戻せません。" in page
+    assert 'name="with_contents"' not in page
+    assert "btn btn-error" in page
+    assert RED_MARK in page
+    # 子のフォルダ 1 つと、自分と子にマニュアルを 1 件ずつ。
+    full = services.create_folder(None, "中身あり", "gray", user)
+    child = services.create_folder(full, "子", "gray", user)
+    services.create_manual(full, "上の手順", "steps", user)
+    services.create_manual(child, "子の手順", "steps", user)
+    page = client_logged_in.get(reverse("manuals:manualfolder_delete", args=[full.pk])).content.decode()
+    assert "中にフォルダ 1 個とマニュアル 2 件があります。消すときは「中身も削除する」に印を付けます。" in page
+    assert 'name="with_contents"' in page
+    # マニュアルだけ 1 件。
+    only = services.create_folder(None, "手順だけ", "gray", user)
+    manual = services.create_manual(only, "段取りの手順", "steps", user)
+    url = reverse("manuals:manualfolder_delete", args=[only.pk])
+    page = client_logged_in.get(url).content.decode()
+    assert "中にマニュアル 1 件があります。" in page
+    assert "alert-warning" not in page
+    # 中のマニュアルを保護すると、form を出さずに黄で断り、「キャンセル」はフォルダを開く口へ戻る。
+    services.protect_manual(manual, True, user)
+    page = client_logged_in.get(url).content.decode()
+    assert "alert-warning" in page
+    assert "削除できません。" in page
+    assert "中に保護されたフォルダかマニュアルがあります。先に保護を解除してください。" in page
+    assert "data-enter-guard" not in page
+    assert "btn btn-error" not in page
+    assert 'name="with_contents"' not in page
+    folder_url = reverse("manuals:manualfolder_detail", args=[only.pk])
+    assert f'class="btn btn-outline border-base-300" href="{folder_url}"' in page
+    # 同じ状態で送っても services が断り、赤の知らせの字と黄の断りの両方が出る (赤の場所は見ない)。
+    refused = client_logged_in.post(url, {"with_contents": "on"})
+    assert refused.status_code == 200
+    body = refused.content.decode()
+    assert "中に保護されたフォルダかマニュアルがあります" in body
+    assert "alert-warning" in body
+    assert ManualFolder.objects.filter(pk=only.pk).exists()
+    assert Manual.objects.filter(pk=manual.pk).exists()
+    # 頭の印: 削除は赤の三角、保護は灰色の (i)。
+    loose = services.create_manual(None, "消す手順", "steps", user)
+    page = client_logged_in.get(reverse("manuals:manual_delete", args=[loose.pk])).content.decode()
+    assert RED_MARK in page
+    page = client_logged_in.get(reverse("manuals:manualfolder_protect", args=[empty.pk])).content.decode()
+    assert GRAY_MARK in page
+    assert RED_MARK not in page
+
+
 def test_manual_move_protect_delete(client_logged_in, user):
     folder = services.create_folder(None, "置き場", "gray", user)
     manual = services.create_manual(None, "動かす手順", "steps", user)

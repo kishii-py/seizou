@@ -1,10 +1,18 @@
 {% extends "core/base.html" %}
-{% load seizou_icons %}
-{# 確認の画面 (保護・保護を解除・削除・この版に戻す)。字とボタンの字と戻り先は form が持つ。断った文は右上の赤い知らせ (core/_toasts.html)。 #}
+{% load seizou_icons seizou_tags %}
+{# 確認の画面 (保護・保護を解除・削除・この版に戻す)。字とボタンの字と戻り先は form が持つ。断った文は右上の赤い知らせ (core/_toasts.html)。form.refusal が空でなければ、form と送るボタンを出さず、断りを黄で出して「キャンセル」だけを出す (請求書の取消の確かめ billing/_invoice_cancel_card.html と同じ形。送った後に断られた時は、赤の知らせとこの黄が両方出る)。頭の印は danger なら赤の三角 (休日の削除 masters/holiday_delete.html と同じ)、そうでなければ灰色の (i)。 #}
 {% block content %}
+{% if form.refusal %}
+<div class="max-w-2xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% with parts=form.refusal|split_first_sentence %}<div class="alert alert-warning alert-soft" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{{ form.cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+  </div>
+</div>
+{% else %}
 <form method="post" class="max-w-2xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
-  <p class="flex items-start gap-2">{% icon "info" "size-5 text-base-content/70" %}<span>{{ form.confirm_text }}</span></p>
+  <p class="flex items-start gap-2">{% if form.danger %}{% icon "alert" "size-5 text-error" %}{% else %}{% icon "info" "size-5 text-base-content/70" %}{% endif %}<span>{{ form.confirm_text }}</span></p>
   {% for field in form.visible_fields %}
   <div class="mt-4">
     <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
@@ -21,4 +29,5 @@
   </div>
 </form>
 {% include "core/_enter_guard.html" %}
+{% endif %}
 {% endblock %}
