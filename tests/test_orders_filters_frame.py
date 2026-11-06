@@ -141,3 +141,74 @@ def test_order_list_open_flag_is_drawn_off_while_status_chosen(user, logged_in, 
     # 盤の印 (状態の絞りが無い) は従う印でないので、htmx の応答で描き直さない
     partial = logged_in.get(reverse("orders:orderline_list"), {"f_open": "0"}, HTTP_HX_REQUEST="true").content.decode()
     assert "list-f-open-box" not in partial
+
+
+FRAME = '<details class="group rounded-lg bg-base-200 p-4" open'
+WIDTH = 'window.matchMedia("(min-width: 640px)")'
+
+
+def _frame(body: str) -> str:
+    """絞り込みの枠 (details の開きから閉じまで) の HTML。"""
+    start = body.index(FRAME)
+    return body[start : body.index("</details>", start)]
+
+
+def _script_after_frame(body: str) -> str:
+    """枠のすぐ後の script の中身 (枠の閉じと script の間は空白だけ)。"""
+    after = body[body.index("</details>", body.index(FRAME)) + len("</details>") :]
+    head, rest = after.split("<script>", 1)
+    assert head.strip() == "", head
+    return rest.split("</script>", 1)[0]
+
+
+@pytest.mark.django_db
+def test_order_list_frame_is_details_and_closes_on_phone(user, logged_in, customer, shaft):  # noqa: F811
+    """絞り込みの枠は details。HTML は開いた形で描き、幅が 640px より狭くキーワードが無いときだけ、すぐ後の script が閉じる (C39-2 の a。a-flagged-14)。"""
+    order = _order(customer, shaft, user)
+    url = reverse("orders:order_list")
+
+    body = logged_in.get(url).content.decode()
+    assert body.count(FRAME) == 1
+    frame = _frame(body)
+    # summary の 1 行に「絞り込み」と「クリア」と山形の印 (閉じると右向き、開くと下向き = 左のメニューと同じ字)
+    summary = frame[frame.index("<summary") : frame.index("</summary>")]
+    assert ">絞り込み</span>" in summary and "クリア</a>" in summary
+    assert "-rotate-90" in summary and "group-open:rotate-0" in summary
+    # role="search" とキーワードの欄と絞りの欄は details の中、summary の後
+    assert frame.index("</summary>") < frame.index('<div role="search">') < frame.index('id="list-q"') < frame.index('id="list-f-status"')
+    # 素の GET は開いた形で描き、キーワードの印は無い
+    assert f"{FRAME}>" in body and f"{FRAME} data-list-keyword>" not in body
+
+    script = _script_after_frame(body)
+    assert WIDTH in script and "document.currentScript.previousElementSibling" in script
+    assert 'hasAttribute("data-list-keyword")' in script and "frame.open = false" in script
+    # 出来事を待つ登録はしない (枠と一緒に入り直して走る)。左のメニューの戻るの字も書かない
+    for absent in ("addEventListener", "htmx:", "seizouSidebarReopen", 'role="search"', "list-filter-clear", "list-per"):
+        assert absent not in script, absent
+
+    # キーワードがあるときは、狭い幅でも開いて出す印が付く (空のキーワードには付かない)
+    assert f"{FRAME} data-list-keyword>" in logged_in.get(url, {"q": order.order_no}).content.decode()
+    assert f"{FRAME}>" in logged_in.get(url, {"q": ""}).content.decode()
+
+
+@pytest.mark.django_db
+def test_order_list_chips_stay_outside_closed_frame(user, logged_in, customer, shaft):  # noqa: F811
+    """得意先を選ぶと、札は枠の外 (#list-filter-clear) に出る (閉じた枠でも絞りが見える)。札の × が取り直す #list-card に、枠と script が入る。"""
+    _order(customer, shaft, user)
+    url = reverse("orders:order_list")
+    params = {"f_customer": str(customer.pk)}
+
+    body = logged_in.get(url, params).content.decode()
+    frame_end = body.index("</details>", body.index(FRAME))
+    clear = body.index('<div id="list-filter-clear">')
+    assert frame_end < clear < body.index('id="list-per"')
+    section = body[clear : body.index('id="list-per"')]
+    assert f'得意先: <span class="font-medium">{customer}</span>' in section
+
+    # 札の × の要求 (HX-Target が list-card): 画面の全体が返り、#list-card の中に枠と script がある
+    card = logged_in.get(url, params, HTTP_HX_REQUEST="true", HTTP_HX_TARGET="list-card").content.decode()
+    assert card.index('id="list-card"') < card.index(FRAME) < card.index(WIDTH) < card.index('id="rows"')
+
+    # 表だけの取り直し (#rows) では枠を描き直さない (人が開いた枠はそのまま)
+    rows = logged_in.get(url, params, HTTP_HX_REQUEST="true").content.decode()
+    assert FRAME not in rows and WIDTH not in rows

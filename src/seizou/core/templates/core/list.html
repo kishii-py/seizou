@@ -4,6 +4,7 @@
 {% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}"{% if create_in_modal %} data-modal-form="{{ create_url }}"{% endif %}>{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
 {% block content %}
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
+{# 絞り込みの枠は開け閉めでき、幅が 640px より狭いときは初めは閉じて表を先に見せ、キーワードが入っていれば開いて出す (キーワードは札にならず、閉じると絞っていることが画面に出ないため。初見テスト R5 の C39-2)。 #}
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
 {# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
 {# 枠の id は list-card: 札の × と「絞りを外す」と空の枠の「すべて外す」は、この枠を htmx で丸ごと取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを選ぶ。N161)。 #}
@@ -11,20 +12,29 @@
   {% if presets %}{% include "core/_presets.html" %}{% endif %}
   <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter]:not([type=date]), change delay:800ms from:[data-list-filter][type=date], seizou:refresh from:body">
     {% if search_hint or filters %}
-    <div class="rounded-lg bg-base-200 p-4" role="search">
-      <div class="flex items-center justify-between gap-2">
-        <p class="text-xs font-medium text-base-content/50">絞り込み</p>
+    <details class="group rounded-lg bg-base-200 p-4" open{% if search_q %} data-list-keyword{% endif %}>
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <span class="min-w-0 flex-1 text-xs font-medium text-base-content/50">絞り込み</span>
         <a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ request.path }}{% if summary %}?view=summary{% endif %}">{% icon "x" "size-4" %}クリア</a>
+        {% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}
+      </summary>
+      <div role="search">
+        {% if search_hint %}
+        <label for="list-q" class="mt-2 block font-medium">キーワード</label>
+        <label class="input mt-2 w-full">
+          {% icon "search" "size-4 text-base-content/50" %}
+          <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で絞り込む" autocomplete="off">
+        </label>
+        {% endif %}
+        {% if filters %}{% include "core/_filters.html" %}{% endif %}
       </div>
-      {% if search_hint %}
-      <label for="list-q" class="mt-2 block font-medium">キーワード</label>
-      <label class="input mt-2 w-full">
-        {% icon "search" "size-4 text-base-content/50" %}
-        <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で絞り込む" autocomplete="off">
-      </label>
-      {% endif %}
-      {% if filters %}{% include "core/_filters.html" %}{% endif %}
-    </div>
+    </details>
+    {# 幅が 640px より狭く、キーワードが無いときだけ、すぐ上の枠を閉じる。#list-card の中に置くので、開いた直後・札の × で枠を取り直した後・戻るで画面を取り直した後のどれでも、枠と一緒に入り直して走る。出来事の登録はしない。 #}
+    <script>
+    (function (frame) {
+      if (frame && frame.tagName === "DETAILS" && !frame.hasAttribute("data-list-keyword") && !window.matchMedia("(min-width: 640px)").matches) frame.open = false;
+    })(document.currentScript.previousElementSibling);
+    </script>
     {% endif %}
     {% if filters %}{% include "core/_filter_clear.html" %}{% endif %}
     <div class="mt-4 flex flex-wrap items-center gap-2">

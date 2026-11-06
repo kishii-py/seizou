@@ -212,7 +212,7 @@ def test_htmx_request_returns_the_summary_part(user, orders):
     response = call(_OrderList, user, headers={"HX-Request": "true"}, view="summary", g_by="customer")
     text = body(response)
     assert "<html" not in text and 'id="summary-chart"' in text
-    assert 'id="list-meta" class="ml-auto flex items-center gap-4" hx-swap-oob="true"' in text
+    assert 'id="list-meta" class="ml-auto flex flex-wrap items-center gap-4" hx-swap-oob="true"' in text
     assert "表に戻る" in text and 'id="row-' not in text
 
 

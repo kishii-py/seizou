@@ -147,3 +147,61 @@ def test_manual_fragments_mention_the_tabs():
         # タブの説明は 1 行 (grep -c と同じく行で数える。1 行の中に「タブ」の字は 2 回ある)
         assert sum("タブ" in line for line in text.splitlines()) == 1, path
         assert "すべて・" in text and "を押すと、絞り込みの枠にその条件が入る。" in text, path
+
+
+COUNT = '<span id="list-count" class="font-medium tabular-nums text-base-content">'
+
+
+@pytest.mark.django_db
+def test_order_list_count_adds_everything_unless_everything_tab(logged_in, listed_orders, customer):  # noqa: F811
+    """件数の行: 「すべて」以外のタブのとき (どのタブも選ばれていないときも) は「すべて」の数を括弧で添え、「すべて」では「全 N 件」のまま (C39-1 の a。初見テスト R5 の V65)。"""
+    url = reverse("orders:order_list")
+
+    # 開いた直後 (「出荷の残りがある」が選ばれた形): 表の 1 件と、「すべて」のタブの 3 件
+    response = logged_in.get(url)
+    assert _selected(response) == ["出荷の残りがある"]
+    body = response.content.decode()
+    assert f"{COUNT}1</span> 件 (すべて 3 件)</span>" in body
+    assert f"全 {COUNT}" not in body
+    assert 'id="list-meta" class="ml-auto flex flex-wrap items-center gap-4">' in body
+
+    # 「すべて」のタブ: 今の「全 N 件」のまま、括弧は無い
+    everything = logged_in.get(url + _tabs(response)["すべて"]["href"])
+    assert _selected(everything) == ["すべて"]
+    body = everything.content.decode()
+    assert f"全 {COUNT}3</span> 件</span>" in body and "(すべて" not in body
+
+    # どのタブも選ばれていない (得意先を選んだ) ときも、括弧に「すべて」の数を添える
+    chosen = logged_in.get(url, {"f_customer": str(customer.pk)})
+    assert _selected(chosen) == []
+    assert f"{COUNT}1</span> 件 (すべて 3 件)</span>" in chosen.content.decode()
+
+    # キーワードを打った htmx の応答: 件数と括弧の数とタブの数が、そろって oob で描き直される
+    keyword = listed_orders["done"].order_no
+    partial = logged_in.get(url, {"q": keyword}, HTTP_HX_REQUEST="true").content.decode()
+    assert "<html" not in partial
+    meta = partial.split('id="list-meta" class="ml-auto flex flex-wrap items-center gap-4" hx-swap-oob="true">', 1)[1]
+    assert f"{COUNT}0</span> 件 (すべて 1 件)</span>" in meta
+    assert '<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs tabs-border mb-4" hx-swap-oob="true">' in meta
+
+
+@pytest.mark.django_db
+def test_board_count_adds_everything_on_open(logged_in, board_lines):  # noqa: F811
+    """生産管理ボードも開いた直後は「出荷の残りがある」が選ばれた形なので、件数に「すべて」の数を添える (土台の字)。"""
+    response = logged_in.get(reverse("orders:orderline_list"))
+    assert _selected(response) == ["出荷の残りがある"]
+    assert f"{COUNT}2</span> 件 (すべて 4 件)</span>" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_count_line_unchanged_without_tabs_or_on_everything(logged_in):  # noqa: F811
+    """発注の一覧は開いた直後に「すべて」が選ばれるので「全 N 件」のまま。タブの無い一覧も「全 N 件」のまま。"""
+    purchase = logged_in.get(reverse("purchasing:purchaseorder_list"))
+    assert _selected(purchase) == ["すべて"]
+    body = purchase.content.decode()
+    assert f"全 {COUNT}0</span> 件</span>" in body and "(すべて" not in body
+
+    items = logged_in.get(reverse("masters:item_list"))
+    assert items.context["presets"] == []
+    body = items.content.decode()
+    assert f"全 {COUNT}0</span> 件</span>" in body and "(すべて" not in body
