@@ -44,6 +44,12 @@ def user(db):
 
 
 @pytest.fixture
+def manager(db):
+    """アカウント管理の権限がある人 (システム管理者)。"""
+    return get_user_model().objects.create_superuser("admin", password="pass-for-tests-only")
+
+
+@pytest.fixture
 def client_logged_in(client, user):
     client.force_login(user)
     return client
@@ -92,7 +98,7 @@ def test_create_page_without_key_is_disabled(client_logged_in, without_key):
     assert "鍵が無いので読み取りは使えません" in body
     assert "alert-warning" in body
     assert "<fieldset disabled" not in body
-    assert reverse("orders:order_create") in body and reverse("connect:inbox_list") in body
+    assert reverse("orders:order_create") in body
 
 
 def _band(body):
@@ -111,6 +117,29 @@ def test_create_page_without_key_has_no_card(client_logged_in, without_key):
     assert "「必須」の欄を埋めて" not in body
     assert 'name="customer"' not in body
     assert f'href="{reverse("orders:order_create")}"' in _band(body)
+
+
+NO_KEY_FOR_ALL = "注文書の読み取りは、管理者が AI の鍵を設定すると使えます。"
+
+
+@pytest.mark.parametrize("who", ["user", "manager"])
+def test_create_page_without_key_band(request, client, without_key, who):
+    # 帯は手入力だけを示し、受信した注文へは誘わない。鍵の置き場はアカウント管理の権限がある人にだけ出す (C09)。
+    # 左のメニュー (受信した注文の入口)・上の帯の「設定」・AI チャットの窓 (鍵の字) が body に出るので、帯の中だけを見る。
+    client.force_login(request.getfixturevalue(who))
+    band = _band(client.get(reverse("intake:extraction_create")).content.decode())
+
+    assert "AI の鍵が無いので読み取りは使えません。" in band
+    assert NO_KEY_FOR_ALL in band
+    assert f'href="{reverse("orders:order_create")}"' in band
+    assert "受信した注文" not in band
+    assert reverse("connect:inbox_list") not in band
+    if who == "manager":
+        assert services.MESSAGE_NO_KEY_MANAGER in band
+        assert f'href="{reverse("core:settings")}"' in band
+    else:
+        assert "ANTHROPIC_API_KEY" not in band
+        assert reverse("core:settings") not in band
 
 
 def test_create_post_reads_and_moves_to_detail(client_logged_in, with_key, fake_reply, customer, user):
