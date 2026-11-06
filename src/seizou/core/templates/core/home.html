@@ -166,14 +166,14 @@ if (!window.seizouStatHelp) {
     {% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th><th class="text-right font-medium">金額</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">月</th><th class="text-right font-medium">出荷件数</th><th class="text-right font-medium">数量</th>{% if not seizou.hide_money %}<th class="text-right font-medium">金額</th>{% endif %}</tr></thead>
         <tbody>
           {% for month in shipping.months %}
           <tr class="row-hover h-10">
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_count|comma }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_qty|floatformat:"-2g" }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -233,14 +233,14 @@ if (!window.seizouStatHelp) {
     {% if recent_orders %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th><th class="text-right font-medium">金額</th><th class="font-medium">状態</th></tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">受注番号</th><th class="hidden font-medium xl:table-cell">受注日</th><th class="font-medium">得意先</th>{% if not seizou.hide_money %}<th class="text-right font-medium">金額</th>{% endif %}<th class="font-medium">状態</th></tr></thead>
         <tbody>
           {% for order in recent_orders %}
           {% if order.url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ order.url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
             <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>
           </tr>
           {% endfor %}

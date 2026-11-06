@@ -224,11 +224,14 @@ def test_money_hidden_drops_amount_chart(settings, logged_in, chart_data):
     assert 'id="shipping-qty-chart"' in body and "出荷 (直近 6 か月)" in body
     assert 'id="shipping-amount-chart"' not in body
     assert response.context["shipping"]["amount_chart"] is None
-    # 表の金額の欄は残り、枡は「—」。
+    # 出荷の表と最近の受注の表は、金額の列 (見出しと枡) を出さない (列ごと出さない。決め 11-05 09:3x)。ほかの列は残る。
     shipping = body[body.index('id="shipping-title"') : body.index('id="production-title"')]
-    assert "金額</th>" in shipping
-    assert '<span class="text-base-content/50">—</span>' in shipping
+    assert not re.search(r"<th[^>]*>金額", shipping)
+    assert "数量</th>" in shipping
     assert ">¥400</td>" not in shipping
+    recent = section_of(body, "recent-orders-title")
+    assert not re.search(r"<th[^>]*>金額", recent)
+    assert "受注番号</th>" in recent and "得意先</th>" in recent and "状態</th>" in recent
     assert 'id="production-chart"' in body
 
 
