@@ -45,12 +45,14 @@ def test_modal_shows_edit_link_for_writers(client, admin, shaft, customer):
     item = modal(client, "masters:item_modal", shaft.pk)
     assert f'href="{reverse("masters:item_update", args=[shaft.pk])}"' in item
     assert "編集</a>" in item
-    assert item.count("btn-primary") == 1  # 主色は「詳細を見る」だけ
-    assert item.index("編集</a>") < item.index("詳細を見る")
+    assert item.count("btn-primary") == 1  # 主色は「編集」だけ (詳細の画面の右端の「編集」と同じ)
+    assert f'<a class="btn btn-primary" href="{reverse("masters:item_update", args=[shaft.pk])}"' in item
+    assert item.index("詳細を見る") < item.index("編集</a>")
 
     partner = modal(client, "masters:partner_modal", customer.pk)
     assert f'href="{reverse("masters:partner_update", args=[customer.pk])}"' in partner
     assert partner.count("btn-primary") == 1
+    assert f'<a class="btn btn-primary" href="{reverse("masters:partner_update", args=[customer.pk])}"' in partner
 
 
 @pytest.mark.django_db
@@ -63,3 +65,5 @@ def test_modal_hides_edit_link_without_permission(settings, client, shaft):
     assert reverse("masters:item_update", args=[shaft.pk]) not in item
     assert "編集</a>" not in item
     assert f'href="{reverse("masters:item_detail", args=[shaft.pk])}"' in item  # 詳細を見るは今のまま
+    assert item.count("btn-primary") == 1
+    assert f'<a class="btn btn-primary" href="{reverse("masters:item_detail", args=[shaft.pk])}"' in item
