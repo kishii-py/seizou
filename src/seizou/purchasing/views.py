@@ -117,6 +117,7 @@ class PurchaseOrderCancelView(BaseFormView):
     model = PurchaseOrder
     form_class = CancelForm
     service = staticmethod(services.cancel_purchase_order)
+    template_name = "purchasing/purchaseorder_cancel.html"
     screen_name = "発注を取り消す"
     screen_help = "「下書き」の発注を取り消します。理由は備考の末尾に残ります。"
 

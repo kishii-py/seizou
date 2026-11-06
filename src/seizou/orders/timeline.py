@@ -347,3 +347,139 @@ def _summary(of_lines) -> str | None:
     counts = Counter(of_lines)
     parts = [f"{STAGES[no - 1]} {counts[no]} 行" for no in sorted(counts, reverse=True)]
     return f"明細 {len(of_lines)} 行のうち、{'・'.join(parts)}"
+
+
+# --- 取消の確かめの「この受注に付いている物」(confirm_print-01。初見テスト R5 の候補 C59) ----------------------
+
+#: 付いている物の群の種類と名前。並びの順 (受注の流れの順) を兼ねる。
+LINKED_KINDS = (
+    ("workorder", "指示書"),
+    ("shipment", "出荷"),
+    ("delivery_note", "納品書"),
+    ("invoice", "請求書"),
+)
+
+
+@dataclass(frozen=True)
+class LinkedDoc:
+    """付いている物の 1 件。no は番号の字、url は詳細の画面 (部署でその部品を開けない人には None)。
+
+    has_progress は実績が 1 件でも入っている指示書か (指示書だけ。ほかは偽)。
+    """
+
+    no: str
+    url: str | None = None
+    has_progress: bool = False
+
+
+@dataclass(frozen=True)
+class LinkedGroup:
+    """付いている物の 1 つの群 (指示書・出荷・納品書・請求書)。docs は番号の昇順で、空の群は作らない。"""
+
+    kind: str
+    label: str
+    docs: tuple[LinkedDoc, ...]
+
+    @property
+    def has_progress(self) -> bool:
+        """実績の入った指示書が群の中にあるか (テンプレートが「実績の入った指示書は取り消せません。」を出すかを決める)。"""
+        return any(doc.has_progress for doc in self.docs)
+
+
+def linked_for(order, user) -> list[LinkedGroup]:
+    """受注の取消の確かめに並べる、この受注から作った物の群 (読むだけ。表に書かない)。
+
+    辿り方は events_for と同じ逆向きの関係だけ (受注の明細 → 指示書・出荷 → 納品書・請求書)。納品書と請求書は pk で重ねない。
+    並べるのは取消でない物だけ (出荷は状態の列が無いので全部)。群は指示書 → 出荷 → 納品書 → 請求書、群の中は番号の昇順。
+    全部が 0 件なら空の list。明細と付いている物は _linked_lines が関係ごとに 1 回だけ読む。
+    """
+    workorders, shipments, notes, invoices = {}, {}, {}, {}
+    for line in _linked_lines(order):
+        for workorder in _all(line, "workorders"):
+            workorders[workorder.pk] = workorder
+        for shipment in _all(line, "shipments"):
+            shipments[shipment.pk] = shipment
+            note = getattr(shipment, "delivery_note", None)
+            if note is not None:
+                notes.setdefault(note.pk, note)
+            for invoice_line in _all(shipment, "invoice_lines"):
+                invoices.setdefault(invoice_line.invoice_id, invoice_line.invoice)
+    found = {
+        "workorder": [_linked(w, w.wo_no, user, _has_progress(w)) for w in workorders.values() if _is_live(w)],
+        "shipment": [_linked(s, s.shipment_no, user) for s in shipments.values()],
+        "delivery_note": [_linked(n, n.note_no, user) for n in notes.values() if _is_live(n)],
+        "invoice": [_linked(i, i.invoice_no, user) for i in invoices.values() if _is_live(i)],
+    }
+    return [
+        LinkedGroup(kind, label, tuple(sorted(found[kind], key=lambda doc: doc.no)))
+        for kind, label in LINKED_KINDS
+        if found[kind]
+    ]
+
+
+def _linked_lines(order) -> list:
+    """受注の明細を、付いている物と一緒に読む (prefetch。読むだけ)。
+
+    関係ごとに 1 回だけ読み、明細と記録の数で問い合わせを増やさない (受注を取り消す画面の問い合わせの上限 =
+    tests/test_core_screen_queries.py の LIMITS の orders:order_cancel)。出荷は納品書と、請求の明細は請求書と一緒に読む。
+    辿る関係は linked_for と同じ。部品が入っていなくて関係が無ければ、その関係は読まない (_all と同じ扱い)。
+    """
+    from django.db.models import Prefetch  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
+
+    manager = getattr(order, "lines", None)
+    if manager is None:
+        return []
+    lookups = []
+    workorder_path = _reachable(manager.model, ("workorders", "steps", "progress_records"))
+    if workorder_path:
+        lookups.append(workorder_path)
+    shipment = _related_model(manager.model, "shipments")
+    if shipment is not None:
+        lookups.append(Prefetch("shipments", queryset=shipment._default_manager.select_related("delivery_note")))
+        invoice_line = _related_model(shipment, "invoice_lines")
+        if invoice_line is not None:
+            queryset = invoice_line._default_manager.select_related("invoice")
+            lookups.append(Prefetch("shipments__invoice_lines", queryset=queryset))
+    return list(manager.prefetch_related(*lookups))
+
+
+def _related_model(model, name):
+    """model の関係 name の相手の model。部品が入っていなくて関係が無ければ None。"""
+    from django.core.exceptions import FieldDoesNotExist
+
+    try:
+        return model._meta.get_field(name).related_model
+    except FieldDoesNotExist:
+        return None
+
+
+def _reachable(model, names) -> str:
+    """model から names の関係を順に辿れる所までの prefetch の字 (例 workorders__steps)。1 つ目から無ければ空。"""
+    path = []
+    for name in names:
+        model = _related_model(model, name)
+        if model is None:
+            break
+        path.append(name)
+    return "__".join(path)
+
+
+def _linked(obj, no, user, has_progress=False) -> LinkedDoc:
+    return LinkedDoc(no, _linked_url(obj, user), has_progress)
+
+
+def _linked_url(obj, user) -> str | None:
+    """詳細の画面の URL。部署でその部品を開けない人には None (link にせず番号の字だけを出す)。
+
+    部署で開けない画面へ移るボタンを出さない決め (決め 11-04 12:5x。core の tag can_write と同じ判定 = access.can_open。記録は書かない)。
+    """
+    from seizou.core import access  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
+
+    if not access.can_open(user, obj._meta.app_label, record=False):
+        return None
+    return _url(obj)
+
+
+def _has_progress(workorder) -> bool:
+    """指示書の工程に実績が 1 件でも入っているか (_workorder_events と同じ辿り方。progress の部品が無ければ偽)。"""
+    return any(_all(step, "progress_records") for step in _all(workorder, "steps"))
