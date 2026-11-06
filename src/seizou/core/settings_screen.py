@@ -250,7 +250,7 @@ class SettingsView(ScreenMixin, TemplateView):
             },
             {
                 "label": "アカウント管理",
-                "help": "アカウントと部署と権限。権限管理の部品が入っている会社だけ。",
+                "help": "アカウントと部署と権限。",
                 "url": url_or_none("accounts:access_list"),
                 "icon": "users",
             },

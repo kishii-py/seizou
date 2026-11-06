@@ -28,7 +28,7 @@
   </section>
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
     <h2 id="company-settings-title" class="text-lg font-bold">会社の選べる設定</h2>
-    <p class="mt-2 text-xs text-base-content/70">今の値と、その値をどこで決めたか (この画面で変えた・導入の時に決めた・初期値) を並べています。アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、行の「編集」から変えられます。この画面で変えた値は、導入の時に決めた値より優先されます。</p>
+    <p class="mt-2 text-xs text-base-content/70">今の値と、その値をどこで決めたか (この画面で変えた・導入の時に決めた・初期値) を並べています。アカウント管理の権限がある人 (アカウント管理が入っていない会社ではシステム管理者) は、行の「編集」から変えられます。この画面で変えた値は、導入の時に決めた値より優先されます。</p>
     <div class="mt-4 overflow-auto rounded-lg border border-base-300">
       <table class="table table-sm">
         <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">設定</th><th class="font-medium sm:min-w-36">今の値</th><th class="font-medium">どこで決めたか</th><th class="font-medium">鍵</th>{% if can_edit %}<th class="font-medium">編集</th>{% endif %}</tr></thead>

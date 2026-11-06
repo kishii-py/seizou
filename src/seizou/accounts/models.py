@@ -32,7 +32,7 @@ def app_labels() -> dict[str, str]:
 
 class Department(models.Model):
     name = models.CharField("部署", max_length=50, unique=True)
-    apps = models.JSONField("開ける部品", default=list)
+    apps = models.JSONField("開ける画面", default=list)
     default_permissions = models.JSONField("既定の権限", default=list)
     sort_order = models.PositiveIntegerField("並び順", default=0)
 
