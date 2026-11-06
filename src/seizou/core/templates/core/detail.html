@@ -67,12 +67,12 @@
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
     <input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報
   </label>
-  <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+  <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
     <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
     <dl class="grid gap-x-6 sm:grid-cols-2">
       {% for field in fields %}
-      <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <div class="grid grid-cols-[6rem_1fr] sm:grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
         <dt class="text-base-content/70">{{ field.label|without_yen_unit }}</dt>
         <dd class="min-w-0 break-words">{% if field.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ field.file.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ field.file.name }}</span></a>
           {% elif field.master %}{% master_link field.master %}
@@ -100,7 +100,7 @@
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
     <input type="radio"{% if aside and forloop.first %} checked{% endif %} name="detail-tabs" aria-label="{{ tab.label }}">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span>
   </label>
-  <div class="tab-content mt-2 rounded-lg bg-base-100 p-4" role="tabpanel">
+  <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
     <p class="mb-2 text-xs font-medium text-base-content/50">{{ tab.label }}</p>
     {% if tab.rows %}
