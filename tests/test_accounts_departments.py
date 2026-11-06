@@ -180,6 +180,26 @@ def test_delete_department_refuses_with_members_then_deletes(manager, seizou_dep
     assert not Department.objects.filter(pk=sales_dept.pk).exists()
 
 
+@pytest.mark.django_db
+def test_delete_refusal_is_the_text_delete_department_raises(manager, seizou_dept, sales_dept):
+    assert services.delete_refusal(seizou_dept) == ""
+
+    account("genba", departments=[seizou_dept])
+    refusal = services.delete_refusal(seizou_dept)
+    assert refusal.startswith("削除できません。")
+    for word in ("部署「製造」", "1 人", "先にアカウント管理で"):
+        assert word in refusal, word
+    with pytest.raises(ValueError) as refused:
+        services.delete_department(seizou_dept, manager)
+    assert str(refused.value) == refusal
+    assert Department.objects.filter(pk=seizou_dept.pk).exists()
+
+    # 削除した人だけの部署は消せる (空の字)
+    gone = account("taishoku", departments=[sales_dept])
+    services.delete_account(gone.seizou_access, manager)
+    assert services.delete_refusal(sales_dept) == ""
+
+
 # ---------------------------------------------------------------- 作る (今のまま) と開ける部品の確かめ
 
 
@@ -237,6 +257,21 @@ def _values(html, name):
 
 def _checked(html, name):
     return [value for value, checked in _inputs(html, name) if checked]
+
+
+MORE_MENU = '<details class="dropdown dropdown-end row-menu" data-detail-more>'
+
+
+def _main(html):
+    """土台の本文 (小窓とログアウトの form は外)。"""
+    start = html.index("<main")
+    return html[start : html.index("</main>", start)]
+
+
+def _more(html):
+    """詳細の頭の「⋯」のメニュー (tests/test_detail_header.py と同じ切り出し)。"""
+    start = html.index(MORE_MENU)
+    return html[start : html.index("</details>", start)]
 
 
 @pytest.mark.django_db
@@ -374,6 +409,25 @@ def test_detail_lists_living_members(on, client, manager, seizou_dept):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("with_member", [True, False], ids=["with-member", "no-member"])
+def test_detail_more_menu_ends_with_delete(on, client, manager, seizou_dept, with_member):
+    if with_member:
+        account("genba", departments=[seizou_dept])
+    client.force_login(manager)
+    url = reverse("accounts:department_delete", args=[seizou_dept.pk])
+
+    html = client.get(reverse("accounts:department_detail", args=[seizou_dept.pk])).content.decode()
+
+    menu = _more(html)
+    last = menu.rsplit("<li>", 1)[1]
+    assert f'href="{url}"' in last and "text-error" in last and "削除</a>" in last
+    assert "data-modal-form" not in menu
+    assert "btn-error" not in html
+    # 赤い操作はボタンの列に出さない (「⋯」の外に同じ URL の link が無い)
+    assert html.count(f'href="{url}"') == 1
+
+
+@pytest.mark.django_db
 def test_update_keeps_member_permissions(on, client, manager, seizou_dept):
     genba = account("genba", departments=[seizou_dept], permissions=["workorders"])
     url = reverse("accounts:department_update", args=[seizou_dept.pk])
@@ -415,9 +469,9 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
 
     assert page.status_code == 200
     html = page.content.decode()
-    for word in ("部署「", "製造", "削除します", "1 人", "先にアカウント管理で"):
+    for word in ("部署「", "製造", "1 人", "先にアカウント管理で"):
         assert word in html, word
-    assert 'class="btn btn-error"' in html
+    assert 'class="btn btn-error"' not in html
     detail = reverse("accounts:department_detail", args=[seizou_dept.pk])
     assert re.search(rf'href="{detail}">[^<]*<svg[^>]*>.*?</svg>キャンセル', html, re.S)
 
@@ -435,6 +489,34 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
     assert deleted["Location"] == reverse("accounts:department_list")
     assert not Department.objects.filter(pk=seizou_dept.pk).exists()
     assert client.get(url).status_code == 404
+
+
+@pytest.mark.django_db
+def test_delete_confirm_with_members_shows_refusal_members_and_accounts(on, client, manager, seizou_dept):
+    genba = account("genba", departments=[seizou_dept])
+    gone = account("taishoku", departments=[seizou_dept])
+    services.delete_account(gone.seizou_access, manager)
+    client.force_login(manager)
+
+    page = client.get(reverse("accounts:department_delete", args=[seizou_dept.pk]))
+
+    assert page.status_code == 200
+    main = _main(page.content.decode())
+    assert 'class="btn btn-error"' not in main
+    assert "削除</button>" not in main
+    assert "<form" not in main
+    assert "削除します" not in main
+    alert = re.search(r'<div class="alert alert-warning alert-soft[^"]*" role="alert">.*?</div>', main, re.S).group(0)
+    assert '<span class="font-semibold">削除できません。</span>' in alert
+    for word in ("部署「製造」には 1 人のアカウントが付いています", "先にアカウント管理で"):
+        assert word in alert, word
+    assert "所属する人" in main
+    assert f'href="{reverse("accounts:access_detail", args=[genba.seizou_access.pk])}"' in main
+    assert "genba" in main
+    assert "taishoku" not in main
+    assert re.search(rf'href="{reverse("accounts:access_list")}">[^<]*<svg[^>]*>.*?</svg>アカウント管理', main, re.S)
+    detail = reverse("accounts:department_detail", args=[seizou_dept.pk])
+    assert re.search(rf'href="{detail}">[^<]*<svg[^>]*>.*?</svg>キャンセル', main, re.S)
 
 
 def test_catalog_has_department_screens_with_usecase():

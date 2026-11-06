@@ -253,17 +253,30 @@ def update_department(target, data, user) -> Department:
     return row
 
 
+def delete_refusal(department) -> str:
+    """部署を消せない理由の文 (読むだけ)。消せるなら空の字。
+
+    生きている人 (削除済みでないアカウント) が 1 人でも付いていれば「削除できません。」+ DEPARTMENT_IN_USE (部署の名前と人数)。
+    delete_department と削除の確かめの画面 (accounts_tags の department_delete_refusal) が同じ文を使う (字は 1 か所)。
+    """
+    count = department.accesses.filter(deleted_at__isnull=True).count()
+    if not count:
+        return ""
+    return "削除できません。" + DEPARTMENT_IN_USE.format(name=department.name, count=count)
+
+
 @transaction.atomic
 def delete_department(target, user) -> None:
     """部署を消す。生きている人が 1 人でも付いていれば断る (何も変えない。先にアカウント管理で人の部署を外す)。
 
+    断る文は delete_refusal の 1 か所 (削除の確かめの画面が、押す前に同じ文を黄の知らせで出す)。
     消すときは、削除済みのアカウントとのつながりの行だけを Django が消す (記録の表の前と後は部署の名前の字なので残る)。
     既にいる人の権限には触らない。記録の表には残さない。返すのは None (入力の土台が一覧へ移す)。
     """
     row = Department.objects.select_for_update().get(pk=target.pk)
-    count = row.accesses.filter(deleted_at__isnull=True).count()
-    if count:
-        raise ValueError("削除できません。" + DEPARTMENT_IN_USE.format(name=row.name, count=count))
+    refusal = delete_refusal(row)
+    if refusal:
+        raise ValueError(refusal)
     row.delete()
 
 

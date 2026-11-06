@@ -1,0 +1,4 @@
+{% extends "core/detail.html" %}
+{% load seizou_icons %}
+{# 部署の詳細。core の詳細のまま、「⋯」の最後に赤の字の「削除」を足す (人が付いている部署でも出す。押した先の確かめの画面が断る)。 #}
+{% block more %}{% url 'accounts:department_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endblock %}
