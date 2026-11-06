@@ -50,7 +50,7 @@ class WorkOrderIssueForm(forms.Form):
         # Django の「正しく選択してください」で、選んだ明細が欄から消える形にしない (初見テスト 3 回目)。
         chosen = self.data.get(self.add_prefix("order_line")) if self.is_bound else self.initial.get("order_line")
         pk = str(getattr(chosen, "pk", chosen) or "")
-        if pk.isdigit():
+        if pk.isdecimal():
             field = self.fields["order_line"]
             field.queryset = _OrderLine.objects.filter(~Q(order__status="cancelled") | Q(pk=int(pk))).select_related("order", "item")
 

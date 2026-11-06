@@ -49,7 +49,7 @@ def folder_from_param(value):
     text = (value or "").strip()
     if not text:
         return None
-    if not text.isdigit():
+    if not text.isdecimal():
         raise Http404("フォルダの番号が数ではありません。")
     return get_object_or_404(ManualFolder, pk=int(text))
 

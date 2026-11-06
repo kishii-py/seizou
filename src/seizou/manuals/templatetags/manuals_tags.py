@@ -53,7 +53,7 @@ def folder_tree(folder_pk):
     tree = {"folder", "path", "children"}。子 1 つ = {"folder", "count"} (count は直下のフォルダとマニュアルの数)。
     """
     text = str(folder_pk or "").strip()
-    folder = ManualFolder.objects.filter(pk=int(text)).first() if text.isdigit() else None
+    folder = ManualFolder.objects.filter(pk=int(text)).first() if text.isdecimal() else None
     children = (
         ManualFolder.objects.filter(parent=folder)
         .annotate(folder_count=Count("children", distinct=True), manual_count=Count("manuals", distinct=True))

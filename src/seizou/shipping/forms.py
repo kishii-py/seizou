@@ -72,7 +72,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
         # 受注の明細から移る入口の初期値 (?order_line=<pk>。土台の get_initial が字のまま写す)。数を比べて断ることはしない。
         raw = self.data.get("order_line") if self.is_bound else self.initial.get("order_line")
         line = None
-        if raw is not None and str(raw).isdigit():
+        if raw is not None and str(raw).isdecimal():
             line = _OrderLine.objects.filter(pk=int(raw)).first()
         if line is None:
             self.fields["qty"].help_text = NO_LINE_HELP
@@ -143,7 +143,7 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
         pks = []
         for value in values:
             text = str(value).strip()
-            if text.isdigit() and int(text) not in pks:
+            if text.isdecimal() and int(text) not in pks:
                 pks.append(int(text))
         found = {
             line.pk: line
