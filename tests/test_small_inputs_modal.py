@@ -247,7 +247,7 @@ def _invoice_cancel(w):
         post={},
         saved=_status_is(Invoice, invoice.pk, Invoice.STATUS_CANCELLED),
         confirm=True,
-        text="この請求書を取り消します。入っていた出荷は、また請求できます。",
+        text="この請求書を取り消します。入っていた出荷は、また請求できます。請求書は消えずに状態が「取消」で残り、元には戻せません。",
         moved=True,
         extra={"invoice": invoice},
     )
