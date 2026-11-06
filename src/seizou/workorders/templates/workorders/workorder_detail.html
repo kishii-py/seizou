@@ -27,6 +27,7 @@
   <p class="mt-2 text-xs text-base-content/50">工程のタブの「実績を入力」から入れます。</p>
 </div>
 {% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block content %}<div id="workorder-live">{{ block.super }}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}</div>
+{# 中身の頭 (#workorder-live の中。小窓で保存した後の取り直しでも描き直す) の青の 1 行: 発行の指示書で「取消」が出ない人に、出ない訳と頼む先を出す (初見テスト R5 の V17・U19。候補 C12 の 2。決め C12-1 = a)。出す条件は block more の取消と同じ tag の逆 (block more の can_cancel はこの block から見えないので、もう 1 回引く)。頼む先の字は core/access.py の CONTACT と同じ。CONTACT を直したら、ここも直す。 #}
+{% block content %}<div id="workorder-live">{% can_write "workorders.WorkOrder" as can_cancel %}{% if object.status == "issued" and not can_cancel %}<div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>取消は、指示書の編集の権限があり、部署で指示書を使う人にだけ出ます。要るときはアカウント管理の担当者に頼んでください。</span></div>{% endif %}{{ block.super }}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}</div>
 <div id="workorder-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#workorder-live" hx-target="#workorder-live" hx-swap="outerHTML" hx-select-oob="#workorder-heading"></div>
 {% endblock %}
