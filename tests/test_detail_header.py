@@ -349,6 +349,41 @@ def test_head_chips_on_shipment(logged_in, user, customer, item, shipment):
     assert _chips(body) == [("得意先", "作り物の得意先"), ("得意先の注文番号", "PO-777")]
 
 
+@pytest.mark.django_db
+def test_head_chips_on_invoice(logged_in, user, delivery_note, invoice):
+    """請求書の詳細の題の横に「合計」「残」の札 (決め 11-06 22:2x の C26-2 a。初見テスト R5 の V40 の前半。候補 C26 の 6)。
+
+    札は #invoice-heading の中 (小窓で入金を記録した後の取り直しで新しくなる)。入金を記録すると「残」が減り、取消の請求書には出さない。
+    """
+    body = _get(logged_in, "billing:invoice_detail", invoice.pk)[1]
+    assert _chips(body) == [("合計", f"¥{comma(invoice.total)}"), ("残", f"¥{comma(invoice.total)}")]
+    heading = body[body.index('<div id="invoice-heading">') : body.index('<div id="invoice-live">')]
+    assert heading.count("data-head-chip") == 2
+    # 札は入金の状態の印より後ろ (h1 の後の最初の印は入金の状態の印)
+    after_h1 = body[body.index('<h1 class="truncate') :]
+    assert after_h1.index('class="badge') < after_h1.index("data-head-chip")
+    assert not after_h1[after_h1.index('class="badge') :].startswith('class="badge badge-outline gap-1 border-base-300" data-head-chip')
+
+    payment = billing_services.record_payment(invoice, timezone.localdate(), Decimal("1000"), user)
+    body = _get(logged_in, "billing:invoice_detail", invoice.pk)[1]
+    assert _chips(body) == [("合計", f"¥{comma(invoice.total)}"), ("残", f"¥{comma(invoice.total - Decimal('1000'))}")]
+
+    billing_services.cancel_payment(payment, user)
+    billing_services.cancel_invoice(invoice, user)
+    body = _get(logged_in, "billing:invoice_detail", invoice.pk)[1]
+    assert "data-head-chip" not in body
+
+
+@pytest.mark.django_db
+def test_head_chips_on_invoice_hidden_without_money(client, settings, delivery_note, invoice):
+    """金額の閲覧の無い人には、発行の請求書でも「合計」「残」の札を出さない。"""
+    settings.SEIZOU = {"access_control": dict(test_detail_columns.MONEY_ON)}
+    client.force_login(test_detail_columns._account("genba"))
+
+    body = _get(client, "billing:invoice_detail", invoice.pk)[1]
+    assert "data-head-chip" not in body
+
+
 def test_manual_intro_has_detail_head_section():
     intro = (Path(seizou.core.__file__).parent / "manual_default" / "index.html").read_text(encoding="utf-8")
     assert "<h3>詳細の画面</h3>" in intro
