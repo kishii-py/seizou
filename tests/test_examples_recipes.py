@@ -26,6 +26,7 @@ SETTING_VALUES = {
     "order_form": {"multi", "single"},
     "over_shipment": {"warn", "stop", "off"},
     "over_workorder": {"warn", "stop", "off"},
+    "receiving_required": {"warn", "stop", "off"},
     "order_number": {"seq", "ym_seq"},
 }
 BOOL_SETTINGS = {"partial_shipment", "production_plan"}

@@ -86,7 +86,7 @@ def test_new_with_recipe_adds_fields_processes_settings(tmp_path, monkeypatch):
     assert len(rows) == 3
     assert rows == recipe_processes("plating")
 
-    assert "業種の見本 (表面処理) から入れました: 項目 2・工程 3・設定 2。" in out
+    assert "業種の見本 (表面処理) から入れました: 項目 2・工程 3・設定 3。" in out
     defaults = [line for line in out.splitlines() if line.startswith("答えに無い設定は既定を使いました")]
     assert defaults, out
     assert "over_shipment" not in defaults[0]
@@ -118,7 +118,7 @@ def test_answer_fields_and_settings_win(tmp_path, monkeypatch):
     settings_text = (site / "settings.py").read_text(encoding="utf-8")
     assert "'over_shipment': 'stop'," in settings_text
     assert "'partial_shipment': True," in settings_text
-    assert "業種の見本 (表面処理) から入れました: 項目 1・工程 3・設定 1。" in out
+    assert "業種の見本 (表面処理) から入れました: 項目 1・工程 3・設定 2。" in out
 
 
 @pytest.mark.parametrize("extra", ["industry: 食品\n", "industry: めっき\nrecipe: none\n"])

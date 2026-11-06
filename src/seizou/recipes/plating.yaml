@@ -45,7 +45,9 @@ processes:
     sort_order: 40
     use_in_plan: false
 # 向く設定 (答えの YAML の settings に無い鍵だけを補う。書ける鍵は order_form・partial_shipment・over_shipment・
-# over_workorder・order_number・production_plan)。預かり品の数の揺れを止めずに知らせ、分納を許す
+# over_workorder・receiving_required・order_number・production_plan)。預かり品の数の揺れを止めずに知らせ、分納を許す。
+# 預かり品 (ワーク) が届かないと始められないので、入荷の引当が無い受注の明細の指示書の発行と出荷は止める
 settings:
   over_shipment: warn
   partial_shipment: true
+  receiving_required: stop
