@@ -1,5 +1,5 @@
 {% extends "core/detail.html" %}
-{% load seizou_tags seizou_icons %}
+{% load seizou_tags seizou_icons shipping_tags %}
 {# 納品書の詳細: 土台の詳細に、印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。取消は小窓で開く (data-modal-form)。見出しの帯 (#deliverynote-heading) と中身 (#deliverynote-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。 #}
 {% block heading %}<div id="deliverynote-heading">{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
@@ -9,6 +9,12 @@
 {% url 'billing:invoice_create' as invoice_url %}{% if invoice_url and can_bill %}{% if object.status == "issued" %}<a class="btn btn-outline border-base-300" href="{{ invoice_url }}?customer={{ object.customer_id }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "yen" "size-4" %}請求書作成</a>{% endif %}{% endif %}
 {% endblock %}
 {% block more %}{% can_write "shipping.DeliveryNote" as can_cancel %}{% if object.status == "issued" and can_cancel %}{% url 'shipping:deliverynote_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{# タブの上 (土台の block main) に、出荷が発行の請求書に入っているときだけ、請求書ごとに「請求書 <番号> で請求済みです (出荷 n 件)。」の行を出す (初見テスト R5 の候補 C03。依頼書 N196)。番号は請求書の詳細への link (billing を部署で開けない人と、URL が引けない会社では字だけ)。#deliverynote-live の中なので、小窓で保存した後の取り直しにも入る。 #}
+{% block main %}{% deliverynote_billing object as billing %}{% if billing.invoices %}
+<div id="deliverynote-invoices" class="mb-6 grid gap-1 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xs" aria-label="請求書">
+  {% for row in billing.invoices %}<p class="flex flex-wrap items-center gap-2">{% icon "yen" "size-4" %}<span>請求書 {% if row.invoice_url %}<a class="link link-primary font-mono tabular-nums" href="{{ row.invoice_url }}">{{ row.invoice_no }}</a>{% else %}<span class="font-mono tabular-nums">{{ row.invoice_no }}</span>{% endif %} で請求済みです (出荷 {{ row.count }} 件)。</span></p>
+  {% endfor %}
+</div>{% endif %}{% endblock %}
 {% block content %}<div id="deliverynote-live">{{ block.super }}</div>
 <div id="deliverynote-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#deliverynote-live" hx-target="#deliverynote-live" hx-swap="outerHTML" hx-select-oob="#deliverynote-heading"></div>
 {% endblock %}

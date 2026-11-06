@@ -174,24 +174,43 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
         return note
 
 
-def _issued_invoice_of(shipment):
-    """出荷が入っている発行の請求書 (読むだけ)。無いか、請求書の部品が無ければ None。
+def invoiced_shipments(note):
+    """納品書の出荷のうち、発行の請求書に入っている物の (出荷, 請求書) の並び (出荷の pk の順。読むだけ。問い合わせ 1 回)。
 
-    請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は
+    請求書の部品が無ければ空の並び。請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は
     明細の外部キー invoice の先の表の STATUS_ISSUED から読む (billing を import しない)。
+    1 つの出荷が発行の請求書の明細に 2 行あれば、明細の pk の小さい方の請求書だけを返す。
     """
     try:
         lines = Shipment._meta.get_field("invoice_lines").related_model
     except FieldDoesNotExist:
-        return None
+        return []
     issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
-    line = (
-        lines._default_manager.select_related("invoice")
-        .filter(shipment=shipment, invoice__status=issued)
-        .order_by("pk")
-        .first()
+    found = {}
+    rows = (
+        lines._default_manager.select_related("invoice", "shipment")
+        .filter(shipment__delivery_note=note, invoice__status=issued)
+        .order_by("shipment_id", "pk")
     )
-    return line.invoice if line is not None else None
+    for line in rows:
+        found.setdefault(line.shipment_id, (line.shipment, line.invoice))
+    return list(found.values())
+
+
+def cancel_refusal(note) -> str:
+    """納品書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
+
+    発行の請求書に入った出荷のうち、pk の最も小さい出荷の番号と、その請求書の番号で文を作る (invoiced_shipments)。
+    cancel_delivery_note と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。納品書の状態は見ない。
+    """
+    found = invoiced_shipments(note)
+    if not found:
+        return ""
+    shipment, invoice = found[0]
+    return (
+        f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} で"
+        "請求済みです。先に請求書を取り消してから、納品書を取り消してください。"
+    )
 
 
 def cancel_delivery_note(note, user):
@@ -204,16 +223,11 @@ def cancel_delivery_note(note, user):
         locked = DeliveryNote.objects.select_for_update().get(pk=note.pk)
         if locked.status == DeliveryNote.STATUS_CANCELLED:
             raise ValueError("取り消せません。この納品書は取り消し済みです。納品書の詳細を開き直してください。")
-        shipments = list(
-            Shipment.objects.select_for_update().filter(delivery_note=locked).order_by("pk")
-        )
-        for shipment in shipments:
-            invoice = _issued_invoice_of(shipment)
-            if invoice is not None:
-                raise ValueError(
-                    f"取り消せません。納品書 {locked.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に"
-                    "入っています。先に請求書を取り消してから、納品書を取り消してください。"
-                )
+        # 出荷の行をロックする (請求書の作成と同時に走っても、どちらかが待つ)。文は cancel_refusal の 1 か所。
+        list(Shipment.objects.select_for_update().filter(delivery_note=locked).order_by("pk"))
+        refusal = cancel_refusal(locked)
+        if refusal:
+            raise ValueError(refusal)
         locked.status = DeliveryNote.STATUS_CANCELLED
         locked.save(update_fields=["status"])
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
