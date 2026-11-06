@@ -38,22 +38,22 @@
       <thead>
         <tr>
           <th>受注番号</th>
-          <th>得意先</th>
           <th>部品</th>
           <th class="text-right">残</th>
           <th>数量 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
-          <th>この行を出さない</th>
+          <th>この行を<br>出さない</th>
+          <th>得意先</th>
         </tr>
       </thead>
       <tbody>
         {% for row in form.rows %}
         <tr class="align-top">
           <td class="whitespace-nowrap font-mono">{{ row.line.order.order_no }}<input type="hidden" name="line" value="{{ row.line.pk }}"></td>
-          <td class="whitespace-nowrap">{{ row.line.order.customer }}</td>
-          <td class="whitespace-nowrap">{{ row.line.item }}</td>
+          <td class="break-keep">{{ row.line.item }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.remaining|comma }}</td>
           <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{{ row.qty }}{% if row.qty.errors %}<p class="mt-2 text-xs text-error">{{ row.qty.errors|join:" " }}</p>{% endif %}</td>
           <td>{{ row.skip }}</td>
+          <td class="whitespace-nowrap">{{ row.line.order.customer }}</td>
         </tr>
         {% endfor %}
       </tbody>

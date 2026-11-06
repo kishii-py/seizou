@@ -25,13 +25,13 @@
       <h2 class="text-lg font-bold">明細</h2>
       {% include "core/_line_totals.html" %}
     </div>
-    {% if not form.single %}<p class="mt-2 text-xs text-base-content/50">行を消すときは「消す」に印を付けて保存します。金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。</p>{% endif %}
+    {% if not form.single %}<p class="mt-2 text-xs text-base-content/50">行を消すときは、表の右の端の「消す」に印を付けて保存します。金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。</p>{% endif %}
     {{ form.lines.management_form }}
     {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">
       <table class="table table-sm">
         <thead><tr class="bg-base-200 text-base-content/70">
-          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
+          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium{% if field.name == "item" %} w-56{% endif %}">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
           <th class="whitespace-nowrap font-medium"><span class="sr-only">消す</span></th>
         </tr></thead>
         <tbody id="order-lines">

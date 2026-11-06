@@ -355,6 +355,35 @@ def test_skipped_rows_are_not_shipped(logged_in, lines):
     assert Shipment.objects.count() == before + 1
 
 
+@pytest.mark.django_db
+def test_bulk_table_puts_skip_after_qty_and_wraps_item(logged_in, lines):
+    """「この行を出さない」の見出しを 2 行にして数量の右に残し、得意先を一番右へ移し、部品の名前を空白の所でだけ折る。
+
+    初見テスト R5 の候補 C35 の 6 と 7 (C35-1 の a・C35-2 の a)。画面の全体と小窓は同じカードを include する。
+    """
+    a, b, _c = lines
+    url = _bulk_url(a, b)
+    for body in (logged_in.get(url).content.decode(), logged_in.get(url, **MODAL).content.decode()):
+        assert body.count("<thead>") == 1
+        thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
+        headers = [
+            re.sub(r"<span[^>]*>.*?</span>|<br>", "", cell, flags=re.S).strip()
+            for cell in re.findall(r"<th[^>]*>(.*?)</th>", thead, re.S)
+        ]
+        assert headers == ["受注番号", "部品", "残", "数量", "この行を出さない", "得意先"]
+        assert "<th>この行を<br>出さない</th>" in body
+
+        tbody = re.search(r"</thead>\s*<tbody>(.*?)</tbody>", body, re.S).group(1)
+        row = next(tr for tr in re.findall(r"<tr[^>]*>.*?</tr>", tbody, re.S) if f'name="line" value="{a.pk}"' in tr)
+        cells = re.findall(r"<td[^>]*>.*?</td>", row, re.S)
+        assert f'name="qty_{a.pk}"' in cells[3]
+        assert f'name="skip_{a.pk}"' in cells[4]
+        assert str(a.order.customer) in cells[5]
+        assert cells[1].startswith('<td class="break-keep">')
+        assert str(a.item) in cells[1]
+        assert "whitespace-nowrap" not in cells[1]
+
+
 # --- 12. 発注の入力 ---
 
 
