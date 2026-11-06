@@ -332,6 +332,27 @@ def test_order_detail_item_cell_splits_part_no_and_name(logged_in, order, shaft)
     assert '</a></span> <span class="text-base-content/70">作り物の軸</span>' in section
 
 
+@pytest.mark.django_db
+def test_order_detail_shows_customer_part_no_under_item(user, logged_in, customer, shaft):
+    """初見テスト R5 の V30 (候補 C15 の 2): 得意先の品番のある明細は、部品の欄の 2 行目に「得意先の品番」とその値を出す。"""
+    order = orders_services.create_order(
+        customer,
+        [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100"), "customer_part_no": "RB-3110"}],
+        user,
+        order_date=ORDER_DATE,
+    )
+
+    section = _order_lines_section(logged_in, order)
+
+    assert "得意先の品番" in section and "RB-3110" in section
+
+
+@pytest.mark.django_db
+def test_order_detail_has_no_customer_part_no_line_when_blank(logged_in, order):
+    """得意先の品番が空の明細は 2 行目を出さない (行は今の 1 行の高さのまま)。"""
+    assert "得意先の品番" not in _order_lines_section(logged_in, order)
+
+
 # --- 4-3. 出荷の入力の残り -----------------------------------------------------------------
 
 SHIPMENT_FORM_JS = SHIPPING / "static" / "shipping" / "shipment-form.js"
