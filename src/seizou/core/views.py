@@ -713,9 +713,18 @@ class BaseListView(ScreenMixin, ListView):
             specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label), ext_type=col.type))
         # 金額の列は、金額の閲覧が無い人には列ごと出さない (見出し・欄・合計の行・並び替え・集計の量・CSV から外れ、「—」も出さない。
         # 本人の決め 11-05 09:4x。N155)。log の形では見せて記録に 1 行 (同じ要求は 1 行)。金額の列の無い一覧は判定しない。
-        if any(spec.money for spec in specs) and not access.can_see_money(self.request.user):
+        if any(spec.money for spec in specs) and not self._money_columns_shown():
             specs = [spec for spec in specs if not spec.money]
         return specs
+
+    def _money_columns_shown(self) -> bool:
+        """金額の列を見せるか。判定 (記録つき) は 1 要求で 1 回だけ呼び、答えを画面に控える。
+
+        column_specs は 1 要求で何度も呼ばれる (並び替え・get_queryset・行・合計・CSV) ため。記録の行の数は今までと同じ (N174)。
+        """
+        if not hasattr(self, "_money_ok"):
+            self._money_ok = access.can_see_money(self.request.user)
+        return self._money_ok
 
     def sort_param(self) -> str:
         sort = self.request.GET.get("sort", "")

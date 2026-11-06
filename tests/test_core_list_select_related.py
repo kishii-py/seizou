@@ -17,6 +17,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from seizou.billing import services as billing_services
+from seizou.core import access
 from seizou.core.views import BaseListView
 from seizou.masters import services as masters_services
 from seizou.masters.models import Item
@@ -54,6 +55,16 @@ class _BareOrderList(BaseListView):
     model = Order
     screen_name = "作り物の列の無い一覧"
     ordering = ("pk",)
+    template_name = "core/list.html"
+
+
+class _PriceList(BaseListView):
+    """金額の列 (標準単価) のある、FK の列の無い一覧。"""
+
+    model = Item
+    screen_name = "作り物の単価の一覧"
+    columns = ("part_no", "standard_price")
+    ordering = ("part_no",)
     template_name = "core/list.html"
 
 
@@ -215,3 +226,25 @@ def test_money_record_is_one_line_per_request(settings, caplog, logged_in, user)
 
     assert logged_in.get(reverse("billing:invoice_list"), {"q": "作り物"}).status_code == 200
     assert len(access_records(caplog)) == 2  # 次の要求でまた 1 行
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("state", "shown"), [("log", ["part_no", "standard_price"]), ("on", ["part_no"])])
+def test_money_check_runs_once_per_view(settings, monkeypatch, user, state, shown):
+    """列を何度読んでも、金額の閲覧の判定 (記録つき) は画面 (1 要求) で 1 回だけ。log では見せ、on では列ごと外す。"""
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": state}}
+    calls = []
+    real = access.can_see_money
+
+    def counting(who, **kwargs):
+        calls.append(kwargs.get("record", True))
+        return real(who, **kwargs)
+
+    monkeypatch.setattr(access, "can_see_money", counting)
+    view = view_for(_PriceList, user)
+    for _ in range(3):
+        assert [spec.name for spec in view.column_specs()] == shown
+    view.sort_param()
+    view.get_queryset()
+
+    assert calls == [True]
