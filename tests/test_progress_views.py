@@ -1,5 +1,6 @@
 """進捗の画面 (core の土台の上)。実績の入力は検査の層 (R07) を通ってから services を呼ぶ。"""
 
+import json
 import re
 from datetime import date, datetime
 from decimal import Decimal
@@ -7,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
 
@@ -155,3 +157,38 @@ def test_recorded_at_in_modal(client_logged_in):
     body = response.content.decode()
     assert 'type="datetime-local" name="recorded_at"' in body
     assert "<html" not in body
+
+
+def _saved_text(step, qty_text):
+    """実績を記録した後の知らせの字 (候補 C44 の 1。指示書の番号は fixture が作るので字で決め打ちしない)。"""
+    return f"{step.workorder.wo_no} の工程 1 切断 に実績 {qty_text} を記録しました。"
+
+
+@pytest.mark.django_db
+def test_record_message_says_what_was_recorded(client_logged_in, step):
+    """全体の画面で実績を記録すると、右上の知らせが何をどれだけ記録したかを書く (「保存しました。」の代わり)。"""
+    response = _post(client_logged_in, step, "4")
+    assert response.status_code == 302
+    messages = [(m.level_tag, str(m)) for m in get_messages(response.wsgi_request)]
+    assert messages == [("success", _saved_text(step, "4"))]
+
+
+@pytest.mark.django_db
+def test_record_message_in_modal(client_logged_in, step):
+    """小窓で実績を記録しても、保存の後の知らせ (HX-Trigger の seizou:saved) が同じ字になる。"""
+    data = {"workorder_step": step.pk, "qty": "4", "recorded_at": "2026-11-03 15:00", "note": ""}
+    response = client_logged_in.post(reverse("progress:progress_create"), data, **MODAL)
+    assert response.status_code == 204
+    saved = json.loads(response["HX-Trigger"])["seizou:saved"]
+    assert saved == {"message": _saved_text(step, "4"), "level": "success"}
+    assert list(get_messages(response.wsgi_request)) == []
+
+
+@pytest.mark.django_db
+def test_record_progress_saved_message_drops_trailing_zeros(user, step):
+    """service が返す実績の saved_message は、数の末尾の 0 を落とす (500.00 → 500、2.50 → 2.5)。"""
+    whole = services.record_progress(step, Decimal("500.00"), RECORDED_AT, user).saved_message
+    assert whole == _saved_text(step, "500")
+    assert "500.00" not in whole
+    half = services.record_progress(step, Decimal("2.50"), RECORDED_AT, user).saved_message
+    assert half == _saved_text(step, "2.5")
