@@ -25,6 +25,23 @@ def version_diff(version):
 
 
 @register.simple_tag
+def diff_summary(rows):
+    """{% diff_summary rows as summary %}。差分の行 (diff.DiffRow の並び) の、種類ごとの行の数と最初の違う行の位置。
+
+    summary = {"added", "removed", "changed", "first_index"}。first_index は最初の「同じ」でない行の位置
+    (0 から数える。テンプレートの forloop.counter0 と比べる)。違う行が無ければ None。
+    """
+    kinds = [row.kind for row in rows]
+    first_index = next((index for index, kind in enumerate(kinds) if kind != diff.SAME), None)
+    return {
+        "added": kinds.count(diff.ADDED),
+        "removed": kinds.count(diff.REMOVED),
+        "changed": kinds.count(diff.CHANGED),
+        "first_index": first_index,
+    }
+
+
+@register.simple_tag
 def version_rows(manual, versions):
     """{% version_rows object versions as rows %}。版の履歴の表の行 (頭に今の版の行、続けて前の版の行)。
 

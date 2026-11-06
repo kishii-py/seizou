@@ -22,6 +22,11 @@ def client_logged_in(client, user):
     return client
 
 
+def _rows_with(html, color):
+    """class に color の字 (丸ごとの class 名) を含む <tr> の開きのタグの並び (属性の順と、ほかの class に頼らない)。"""
+    return re.findall(rf'<tr [^>]*class="(?:[^"]* )?{re.escape(color)}(?: [^"]*)?"[^>]*>', html)
+
+
 @pytest.fixture
 def manual(user):
     manual = services.create_manual(None, "段取り替えの手順", "steps", user)
@@ -100,13 +105,45 @@ def test_diff_page_has_four_kinds(client_logged_in, manual, user):
     services.save_as_version(manual, {"body": "## 準備\n\n新しい行\n残る行\n足した行", "title": "新しい題"}, "", user)
     version = ManualVersion.objects.get()
     html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
-    assert html.count('<tr class="bg-success/10">') == 1
-    assert html.count('<tr class="bg-error/10">') == 1
-    assert html.count('<tr class="bg-warning/10">') == 1
+    # 最初の違う行の <tr> には id と scroll-mt-22 も付くので、class に色の字を含む <tr> を数える。
+    assert len(_rows_with(html, "bg-success/10")) == 1
+    assert len(_rows_with(html, "bg-error/10")) == 1
+    assert len(_rows_with(html, "bg-warning/10")) == 1
     assert "<tr>" in html and "残る行" in html
     assert "題: 段取り替えの手順 → 新しい題" in html
     assert reverse("manuals:manualversion_restore", args=[version.pk]) in html
     assert reverse("manuals:manualversion_list", args=[manual.pk]) in html
+
+
+def test_diff_page_counts_and_first_link(client_logged_in, manual, user):
+    """凡例に種類ごとの行の数と「最初の違う所へ」が出て、飛び先の id は最初の違う行 (変えた行) の <tr> に 1 つだけ。"""
+    services.save_as_version(manual, {"body": "## 準備\n\n新しい行\n残る行\n足した行"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    assert "足した 1 行" in html and "消した 1 行" in html and "変えた 1 行" in html
+    assert '<a class="link link-primary" href="#first-diff">最初の違う所へ</a>' in html
+    assert html.count('id="first-diff"') == 1
+    target = re.search(r'<tr [^>]*id="first-diff"[^>]*>', html).group(0)
+    assert target in _rows_with(html, "bg-warning/10") and target in _rows_with(html, "scroll-mt-22")
+    assert "本文に違いはありません。" not in html
+
+
+def test_diff_page_title_only_change_has_no_link(client_logged_in, manual, user):
+    services.save_as_version(manual, {"title": "新しい題"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    assert "本文に違いはありません。" in html
+    assert "最初の違う所へ" not in html and 'id="first-diff"' not in html
+    assert "足した 0 行" in html and "消した 0 行" in html and "変えた 0 行" in html
+
+
+def test_diff_page_both_bodies_empty_shows_one_notice(client_logged_in, manual, user):
+    services.update_manual(manual, {"body": ""}, user)
+    services.save_as_version(manual, {"title": "新しい題"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    assert "その版も今の中身も、本文が空です。" in html
+    assert "本文に違いはありません。" not in html and "最初の違う所へ" not in html
 
 
 def test_restore_confirm_then_restore(client_logged_in, manual, user):

@@ -7,20 +7,23 @@
 {% endblock %}
 {% block content %}
 {% version_diff object as rows %}
+{% diff_summary rows as summary %}
+{# 「最初の違う所へ」は JS を使わないページの中の link。飛び先の id は最初の違う行の <tr> に 1 つだけ置き、scroll-mt-22 で上の帯 (h-16) の下に隠れないようにする。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="text-base-content/70">「{{ object.manual.title }}」の版 {{ object.number }} (<span class="font-mono tabular-nums">{{ object.saved_at|date:"Y-m-d H:i" }}</span>) と、今の中身 (版 {{ object.manual.version }}) を並べます。</p>
   {% if object.title != object.manual.title %}<p class="mt-2 font-medium">題: {{ object.title }} → {{ object.manual.title }}</p>{% endif %}
   <p class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70">
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-success/10" aria-hidden="true"></span>足した</span>
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-error/10" aria-hidden="true"></span>消した</span>
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-success/10" aria-hidden="true"></span>足した {{ summary.added }} 行</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-error/10" aria-hidden="true"></span>消した {{ summary.removed }} 行</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた {{ summary.changed }} 行</span>
+    {% if rows %}{% if summary.first_index is None %}<span>本文に違いはありません。</span>{% else %}<a class="link link-primary" href="#first-diff">最初の違う所へ</a>{% endif %}{% endif %}
   </p>
   <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
     <table class="table table-sm">
       <thead><tr class="bg-base-200 text-base-content/70"><th class="w-12 text-right font-medium">行</th><th class="font-medium">版 {{ object.number }}</th><th class="w-12 text-right font-medium">行</th><th class="font-medium">今の中身</th></tr></thead>
       <tbody class="font-mono">
         {% for row in rows %}
-        {% if row.kind == "added" %}<tr class="bg-success/10">{% elif row.kind == "removed" %}<tr class="bg-error/10">{% elif row.kind == "changed" %}<tr class="bg-warning/10">{% else %}<tr>{% endif %}
+        {% if row.kind == "added" %}<tr class="bg-success/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "removed" %}<tr class="bg-error/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "changed" %}<tr class="bg-warning/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% else %}<tr>{% endif %}
           <td class="text-right tabular-nums text-base-content/50">{{ row.left_no|default_if_none:"" }}</td>
           <td class="whitespace-pre-wrap break-all">{{ row.left|default_if_none:"" }}</td>
           <td class="text-right tabular-nums text-base-content/50">{{ row.right_no|default_if_none:"" }}</td>
