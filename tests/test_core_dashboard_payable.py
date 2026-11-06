@@ -135,6 +135,6 @@ def test_home_hides_amount_without_money(user, logged_in, partners, shaft, no_ht
 
     body = home(logged_in)
 
-    card = card_of(body, "今月の支払の見込み")
-    assert "—" in card
-    assert "2,400" not in card
+    # 金額のカードはカードごと出さない (並びから外す。決め 11-05 09:3x と C11-1 の a)。
+    assert "今月の支払の見込み" not in body
+    assert "2,400" not in body

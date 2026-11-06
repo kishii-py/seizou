@@ -2,7 +2,7 @@
 
 見る所: 全部のカードに help があり空でない・文が数え方の式と合う (手入力の分は会社の設定の値)・画面のカードの題のすぐ後ろに (i) のボタンがあり、
 ボタンの名前 (aria-label) が「<題>の数え方」で、小窓に出す字 (data-stat-help) が help と同じ・ボタンに onclick が無く、吹き出し (tooltip) も無い
-(押すと小窓に出す = 候補 C30 の 2)・help の無いカードには (i) が出ない・金額を見られない人でもカードと (i) が崩れない。
+(押すと小窓に出す = 候補 C30 の 2)・help の無いカードには (i) が出ない・金額を見られない人には金額のカード 2 枚が出ず、残るカードの (i) は崩れない。
 Django の test client で HTML を見る。名前は作り物だけ。
 """
 
@@ -141,10 +141,10 @@ def test_info_stays_for_user_without_money(logged_in, settings):
     body = home(logged_in)
     by_label = cards(body)
 
-    assert list(by_label) == list(HELP)
-    for label in ("今月の支払の見込み", "今月の入金"):
-        card = by_label[label]
-        assert "—" in card, label  # 金額は「—」
-        ((name, tip),) = INFO.findall(card)
+    # 金額のカード 2 枚は並びから外れ (カードごと出さない)、残りは HELP の順のまま。
+    shown = [label for label in HELP if label not in ("今月の支払の見込み", "今月の入金")]
+    assert list(by_label) == shown
+    for label in shown:
+        ((name, tip),) = INFO.findall(by_label[label])
         assert (unescape(name), unescape(tip)) == (label, HELP[label]), label
-    assert len(INFO.findall(stats_part(body))) == len(HELP)
+    assert len(INFO.findall(stats_part(body))) == len(HELP) - 2
