@@ -137,7 +137,7 @@ def test_select_returns_only_open_lines(user, client_logged_in, subcontractor, i
     data = client_logged_in.get(reverse("purchasing:purchaseorderline_select"), {"q": "T-"}).json()
     texts = [item["text"] for item in data["items"]]
 
-    assert texts == [f"{po.po_no}-1 T-100 作り物の軸"]
+    assert texts == [f"{po.po_no}-1 T-100 作り物の軸 / 作り物の協力企業 残り 10"]
     assert all(cancelled.po_no not in text for text in texts)
     narrowed = client_logged_in.get(reverse("purchasing:purchaseorderline_select"), {"q": "T-200"}).json()
     assert narrowed["items"] == []
