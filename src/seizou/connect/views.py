@@ -146,6 +146,7 @@ class InboxRejectView(BaseFormView):
     service = staticmethod(services.reject)
     screen_name = "注文を断る"
     screen_help = "断る理由を書いて保存します。断った注文は受注になりません。"
+    template_name = "connect/inbox_reject.html"
 
 
 # 取引先との接続の一覧。鍵の値は出さず、置き場の名前と、値が置いてあるか (済み / まだ) だけを出す。入力の画面は作らない。

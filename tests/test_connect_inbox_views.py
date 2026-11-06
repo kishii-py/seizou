@@ -399,3 +399,23 @@ def test_accept_form_without_partner_keeps_old_words(client_logged_in, user):
     response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
     assert response.status_code == 200
     assert "相手の品番 A-100 (作り物の部品 A-100)" in response.content.decode()
+
+
+# ---------------------------------------------------------------- 断るの画面の届いた明細と理由の欄の説明 (初見テスト R5 の候補 C72)
+
+
+def test_reject_screen_shows_received_lines(client_logged_in, receive_order):
+    """断るの画面に、受け入れの画面と同じ「届いた明細」の枠 (取引先と明細) が出る (C72 の 1・2)。
+
+    この取引先のつながりは向き「受ける」だけで相手へは送らないので、理由の欄の下に送る説明は出ない。
+    """
+    inbox = receive_order([_line(1, "A-100")])
+
+    response = client_logged_in.get(reverse("connect:inbox_reject", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "届いた明細 (" in body
+    assert "作り物の得意先" in body
+    assert "A-100" in body and "作り物の部品 A-100" in body
+    assert "注文回答として" not in body
