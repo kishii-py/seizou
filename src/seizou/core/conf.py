@@ -48,10 +48,12 @@ CHOICES = {
 CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
 LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line")
-#: 値の出所の字 (設定の画面が出す)
-SOURCE_SCREEN = "画面"
-SOURCE_ANSWER = "答え (settings.py)"
-SOURCE_DEFAULT = "既定"
+#: 値の出所の字 (設定の画面の「どこで決めたか」の列・設定の変更の画面の頭の行・MCP と AI チャットの company_info の sources が出す)。
+#: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (初見テスト R5 の V99・U101。候補 C14)。
+#: 順に、画面の上書き (SettingOverride)・会社の settings.py の SEIZOU (導入の時に答えの YAML から作る)・DEFAULTS
+SOURCE_SCREEN = "この画面で変えた"
+SOURCE_ANSWER = "導入の時に決めた"
+SOURCE_DEFAULT = "初期値"
 
 # 画面の上書きの控え。(上書きの辞書, 読んだ時刻) の組か None。
 # 組を 1 つの名前に入れる (辞書と時刻を 2 つの名前に分けると、別の thread が片方だけ新しい物を見るため)。

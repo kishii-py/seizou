@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -79,6 +81,167 @@ def test_settings_screen_shows_company_settings_and_links(logged_in, settings, m
         assert reverse("feedback:feedback_list") in body and "フィードバックの一覧" in body
     else:
         assert "フィードバックの一覧" not in body
+
+
+def test_links_section_comes_before_company_settings(logged_in):
+    """「普段は触らない物」の節 (アカウント管理の入口) を「会社の選べる設定」の表より前に置く (初見テスト R5 の V22。C14-1 = a)。
+
+    入口がページの下の端にあり、開いた直後の窓に入っていなかった。アカウント管理の権限がある人と無い人の両方で、DOM の順を見る。
+    """
+    plain_body = logged_in.get(reverse("core:settings")).content.decode()
+    logged_in.force_login(get_user_model().objects.create_superuser(username="boss", password="tests-only"))
+    boss_body = logged_in.get(reverse("core:settings")).content.decode()
+
+    for body in (plain_body, boss_body):
+        links = body.index('aria-labelledby="links-title"')
+        assert links < body.index('aria-labelledby="company-settings-title"')
+        assert links < body.index('aria-labelledby="company-info-title"') < body.index('aria-labelledby="system-title"')
+    if apps.is_installed("seizou.accounts"):
+        links = boss_body.index('aria-labelledby="links-title"')
+        assert links < boss_body.index(reverse("accounts:access_list")) < boss_body.index('aria-labelledby="company-settings-title"')
+
+
+def _settings_part(body):
+    """「会社の選べる設定」の節 (表の上の説明と表)。"""
+    start = body.index('aria-labelledby="company-settings-title"')
+    return body[start : body.index("</section>", start)]
+
+
+def test_settings_table_column_widths(manager_client, settings):
+    """表の列の幅 (初見テスト R5 の a-flagged-26・a-blind-08・a-blind-09。C14-2 = a)。
+
+    「設定」の列は折り返す (tablet・1024・1280 で「編集」が箱の外に出ないように)。「今の値」は 640px 以上だけ最小の幅を見出しに付け、
+    権限の判定は塊ごとに出して 640px 以上では塊の途中で折らない。「鍵」の列はスマホの幅でも隠さない。
+    """
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
+    part = _settings_part(manager_client.get(reverse("core:settings")).content.decode())
+
+    assert '<th class="font-medium">設定</th><th class="font-medium sm:min-w-36">今の値</th>' in part
+    for row in settings_screen.company_settings():
+        assert f"<tr><td>{row['label']}" in part, row["key"]
+    assert (
+        '<td><span class="sm:whitespace-nowrap">部署: 有効</span>・<span class="sm:whitespace-nowrap">編集の権限: 有効</span>'
+        '・<span class="sm:whitespace-nowrap">金額の閲覧: 有効</span></td>'
+    ) in part
+    # 鍵の列は全部の幅で出す (幅で隠す class を足さない)
+    assert '<th class="font-medium">鍵</th>' in part
+    assert part.count('<td class="whitespace-nowrap font-mono text-xs text-base-content/70">') == len(settings_screen.company_settings())
+    classes = " ".join(re.findall(r'class="([^"]*)"', part)).split()
+    assert [name for name in classes if name.endswith("hidden")] == []
+
+
+def test_settings_table_value_parts_only_for_dict_values(settings):
+    settings.SEIZOU = {"access_control": {"money": "off", "department": "log"}}
+    rows = {row["key"]: row for row in settings_screen.company_settings()}
+    # 並びは SUB_LABELS の順 (保存した並びに頼らない)。字は _display と同じ
+    assert rows["access_control"]["value_parts"] == ["部署: 記録だけ", "金額の閲覧: 使わない"]
+    assert rows["access_control"]["value"] == "部署: 記録だけ・金額の閲覧: 使わない"
+    assert all(row["value_parts"] == [] for key, row in rows.items() if key != "access_control")
+    settings.SEIZOU = {"access_control": {}}
+    rows = {row["key"]: row for row in settings_screen.company_settings()}
+    assert rows["access_control"]["value_parts"] == [] and rows["access_control"]["value"] == "なし"
+
+
+#: 作る人向けの字。設定の表の節と会社の情報の説明に出さない (大文字と小文字を分けて数える。業種の 2 行目の「空なら seizou」は残す)
+INTERNAL_WORDS = ("settings.py", "SEIZOU", "YAML")
+
+#: 2 社の答えの YAML と同じく、選べる設定の多くを答えに書いた形 (出所の字が 3 つとも出るように、画面の上書きも 1 つ作る)
+ANSWER_SEIZOU = {
+    "id": "sample_co",
+    "port": 8010,
+    "order_form": "multi",
+    "partial_shipment": True,
+    "over_shipment": "warn",
+    "over_workorder": "warn",
+    "receiving_required": "stop",
+    "order_number": "seq",
+    "hidden_fields": [],
+    "production_plan": True,
+    "access_control": {"department": "on", "write": "on", "money": "on"},
+    "brand_color": "#0369a1",
+    "industry": "表面処理",
+}
+
+
+def _text(html):
+    """HTML の tag を除いた字 (属性の中の URL などを数えない)。"""
+    return re.sub(r"<[^>]+>", "", html)
+
+
+def test_settings_section_has_no_internal_words(logged_in, settings):
+    """表と説明の字を画面の言葉にする (初見テスト R5 の V99・U101。候補 C14)。
+
+    「会社の選べる設定」の節と「会社の情報」の説明に settings.py・SEIZOU・YAML を出さない。「model」は鍵の列の 3 つだけ。
+    アカウント管理の権限がある人 (「編集」の列あり) と無い人の両方で見る。
+    """
+    from seizou.core import conf, services
+
+    settings.SEIZOU = ANSWER_SEIZOU
+    services.set_setting("over_shipment", "stop", None)
+    plain_body = logged_in.get(reverse("core:settings")).content.decode()
+    logged_in.force_login(get_user_model().objects.create_superuser(username="boss", password="tests-only"))
+    boss_body = logged_in.get(reverse("core:settings")).content.decode()
+
+    for body in (plain_body, boss_body):
+        part = _settings_part(body)
+        start = body.index('aria-labelledby="company-info-title"')
+        info = body[start : body.index("</dl>", start)]
+        for word in INTERNAL_WORDS:
+            assert word not in part and word not in info, word
+        assert _text(part).count("model") == 3
+        assert "空なら seizou" in part
+        # 出所の 3 つの字が表に出る (この画面で変えた・導入の時に決めた・初期値)
+        assert "<th class=\"font-medium\">どこで決めたか</th>" in part
+        for source in (conf.SOURCE_SCREEN, conf.SOURCE_ANSWER, conf.SOURCE_DEFAULT):
+            assert f">{source}</td>" in part, source
+    for label, _words in settings_screen.SETTING_LABELS.values():
+        assert "model" not in label.lower(), label
+
+
+def test_settings_source_column_follows_screen_edit_and_clear(manager_client, settings):
+    """画面で変えた後と「答えの値に戻す」の後に、「どこで決めたか」の列の字が変わる。"""
+    from seizou.core import conf
+
+    settings.SEIZOU = {"over_shipment": "stop"}
+
+    def source_of(key):
+        part = _settings_part(manager_client.get(reverse("core:settings")).content.decode())
+        row = next(tr for tr in part.split("<tr>") if f">{key}</td>" in tr)
+        return re.search(r'<td class="whitespace-nowrap text-xs text-base-content/70">([^<]*)</td>', row).group(1)
+
+    assert source_of("over_shipment") == conf.SOURCE_ANSWER == "導入の時に決めた"
+    assert source_of("order_form") == conf.SOURCE_DEFAULT == "初期値"
+    manager_client.post(reverse("core:setting_update", args=["over_shipment"]), {"over_shipment": "off"})
+    assert source_of("over_shipment") == conf.SOURCE_SCREEN == "この画面で変えた"
+    manager_client.post(reverse("core:setting_clear", args=["over_shipment"]))
+    assert source_of("over_shipment") == conf.SOURCE_ANSWER
+
+
+def test_locked_note_only_on_locked_rows(manager_client):
+    """「画面からは変えない」の字は、画面から変えない 3 つ (conf.LOCKED_KEYS) の行だけに出る。「編集」の列でなく名前の下の 2 行目に出す。"""
+    from seizou.core import conf
+
+    part = _settings_part(manager_client.get(reverse("core:settings")).content.decode())
+    rows = {key: tr for tr in part.split("<tr>") for key in conf.DEFAULTS if f">{key}</td>" in tr}
+    assert set(rows) == set(conf.DEFAULTS)
+    for key, row in rows.items():
+        assert ("画面からは変えない" in row) == (key in conf.LOCKED_KEYS), key
+    for key in conf.LOCKED_KEYS:
+        note = settings_screen.setting_note(key)
+        assert note.endswith(settings_screen.LOCKED_NOTE)
+        assert f'<span class="block text-xs text-base-content/70">{note}</span></td>' in rows[key]
+        # 「編集」の列は空のまま (折れない列に字を足さない)
+        assert '<td class="whitespace-nowrap"></td></tr>' in rows[key]
+    assert part.count(settings_screen.LOCKED_NOTE) == len(conf.LOCKED_KEYS)
+
+
+def test_brand_color_and_industry_edit_pages_show_the_same_note(manager_client):
+    """主色と業種の変更の画面に、設定の画面の表の 2 行目と同じ字の注記を出す (「# と 16 進の 6 桁」は値を打つ所で要るため)。"""
+    for key in ("brand_color", "industry"):
+        page = manager_client.get(reverse("core:setting_update", args=[key])).content.decode()
+        note = settings_screen.SETTING_NOTES[key]
+        assert f'<p id="id_{key}_helptext" class="mt-2 text-xs text-base-content/50">{note}</p>' in page, key
+        assert note == settings_screen.setting_note(key)
 
 
 def test_settings_screen_hides_key_values(logged_in, monkeypatch):

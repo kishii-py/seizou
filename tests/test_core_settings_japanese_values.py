@@ -28,6 +28,11 @@ ENGLISH_VALUE = re.compile(r"\((True|False|warn|stop|off|log|on|multi|single|seq
 VALUE_KEYS = (*conf.CHOICES, "access_control", "partial_shipment", "production_plan")
 
 
+def access_parts(*parts: str) -> str:
+    """設定の画面の表の「今の値」の、権限の判定の塊の HTML (塊ごとの span を「・」でつなぐ)。"""
+    return "・".join(f'<span class="sm:whitespace-nowrap">{part}</span>' for part in parts)
+
+
 def test_settings_list_and_edit_pages_show_japanese_values_only(manager_client, settings):
     settings.SEIZOU = {
         "id": "sample_co",
@@ -41,8 +46,10 @@ def test_settings_list_and_edit_pages_show_japanese_values_only(manager_client, 
 
     body = manager_client.get(reverse("core:settings")).content.decode()
     assert ENGLISH_VALUE.findall(body) == []
-    for value in ("1 件 1 品", "止める", "知らせる", "年月 + 連番", "許さない", "使う", "部署: 記録だけ・編集の権限: 有効・金額の閲覧: 使わない"):
+    for value in ("1 件 1 品", "止める", "知らせる", "年月 + 連番", "許さない", "使う"):
         assert f"<td>{value}</td>" in body
+    # 権限の判定は「中の鍵: 値」の塊ごとに出す (640px 以上の幅では塊の途中で折らない。初見テスト R5 の a-blind-08。候補 C14)
+    assert f"<td>{access_parts('部署: 記録だけ', '編集の権限: 有効', '金額の閲覧: 使わない')}</td>" in body
     # 表の「鍵」の列 (英字の鍵) とシステムの状態の会社の id とポートは残す (答えの YAML と見比べるため)
     for key in conf.DEFAULTS:
         assert f">{key}</td>" in body
@@ -94,7 +101,7 @@ def test_posted_values_stay_english_and_are_saved(manager_client):
     body = manager_client.get(reverse("core:settings")).content.decode()
     assert ENGLISH_VALUE.findall(body) == []
     assert "<td>止める</td>" in body and "<td>年月 + 連番</td>" in body
-    assert "<td>部署: 有効・編集の権限: 使わない・金額の閲覧: 記録だけ</td>" in body
+    assert f"<td>{access_parts('部署: 有効', '編集の権限: 使わない', '金額の閲覧: 記録だけ')}</td>" in body
     assert body.count(f">{conf.SOURCE_SCREEN}</td>") == 3
 
 

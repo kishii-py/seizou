@@ -158,7 +158,8 @@ class SettingForm(forms.Form):
 
     選べる値 (conf.CHOICES) と真偽は丸の選択 (Radios。名前の下に CHOICE_NOTES の 1 文)、権限の判定 (access_control) は 3 つの select、
     使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前・主色・業種) は字。
-    主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。
+    主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。字の欄の注記 (help_text) は、設定の画面の表で名前の下に出す
+    2 行目と同じ字 (settings_screen.setting_note。「# と 16 進の 6 桁」は値を打つ所で要るため。初見テスト R5 の V99。候補 C14)。
     欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
     選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (丸と option の value) は英字の値のまま (真偽は "true" / "false" で送り、form が真偽に直す)。
     """
@@ -174,7 +175,7 @@ class SettingForm(forms.Form):
     def __init__(self, *args, key, **kwargs):
         super().__init__(*args, **kwargs)
         # 見出しの日本語は設定の画面の表から読む。module の頭で読むと settings_screen → forms の輪になるので、ここで読む
-        from seizou.core.settings_screen import SETTING_LABELS, SUB_LABELS, hideable_fields
+        from seizou.core.settings_screen import SETTING_LABELS, SUB_LABELS, hideable_fields, setting_note
 
         self.key = key
         label, words = SETTING_LABELS.get(key, (key, {}))
@@ -212,7 +213,11 @@ class SettingForm(forms.Form):
             )
         else:
             self.fields[key] = forms.CharField(
-                label=label, max_length=100, initial=current, required=key not in self.OPTIONAL_KEYS
+                label=label,
+                max_length=100,
+                initial=current,
+                required=key not in self.OPTIONAL_KEYS,
+                help_text=setting_note(key),
             )
 
     def value(self):

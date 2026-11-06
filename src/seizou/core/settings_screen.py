@@ -1,8 +1,8 @@
 """設定の画面 (/settings/。右上の利用者のメニューの「設定」から開く)。
 
 普段は触らない物を、左のメニューでなくここにまとめる (本人の指摘 11-03 昼「普段簡単に触らないものは、設定をいじれる所に」):
-会社の選べる設定の今の値と出所 (画面 / 答え (settings.py) / 既定。アカウント管理の権限がある人は行の「編集」から
-1 つずつ変え、「答えの値に戻す」で画面の値を消す。menu は答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、フィードバックの一覧の入口 (入っている会社だけ)、システムの状態 (開発の設定・自動ログイン・
+会社の選べる設定の今の値と出所 (この画面で変えた / 導入の時に決めた / 初期値。アカウント管理の権限がある人は行の「編集」から
+1 つずつ変え、「答えの値に戻す」で画面の値を消す。conf.LOCKED_KEYS の 3 つは画面から変えず、導入の時に答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、フィードバックの一覧の入口 (入っている会社だけ)、システムの状態 (開発の設定・自動ログイン・
 ファイルの配り方・DB・AI の鍵の有無・MCP の利用者の有無・入っている部品・点検 (ボタンで走らせる))。鍵の値は出さない (有るか無いかだけ)。
 """
 
@@ -36,18 +36,32 @@ SETTING_LABELS = {
     "over_workorder": ("受注より多い指示書の数量と予定より多い実績 (R06・R07)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "receiving_required": ("支給品と預かり品の入荷が無い明細の指示書の発行と出荷", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
-    "transcription_minutes_per_line": ("1 行の手入力にかかる分 (手入力せずに取り込んだ明細の「入力を省けた時間 ≒ m 分」。答えの YAML で変える)", {}),
+    "transcription_minutes_per_line": ("1 行の手入力にかかる分", {}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
-    "weekly_holidays": ("定休日の曜日 (0 = 月 … 5 = 土・6 = 日。祝日と会社の休みはマスターの「休日」)", {}),
+    "weekly_holidays": ("定休日の曜日", {}),
     "hidden_fields": ("使わない注文の項目", {}),
     "access_control": ("権限の判定 (部署・編集の権限・金額の閲覧)", {"off": "使わない", "log": "記録だけ", "on": "有効"}),
-    "assistant_model": ("AI チャットが使う model", {}),
-    "intake_model": ("注文書の読み取りが使う model", {}),
-    "feedback_model": ("フィードバックの AI の聞き取りが使う model", {}),
-    "menu": ("左のメニューの括り (空なら既定の並び)", {}),
-    "brand_color": ("画面の主色 (# と 16 進の 6 桁。空なら土台の色)", {}),
-    "industry": ("業種 (左上の会社の名前の下。空なら seizou)", {}),
+    "assistant_model": ("AI チャットが使う AI の種類", {}),
+    "intake_model": ("注文書の読み取りが使う AI の種類", {}),
+    "feedback_model": ("フィードバックの AI の聞き取りが使う AI の種類", {}),
+    "menu": ("左のメニューの括り", {}),
+    "brand_color": ("画面の主色", {}),
+    "industry": ("業種", {}),
 }
+
+#: 設定の名前の下に小さな字で出す 2 行目 (名前の括弧の説明を分けた物。初見テスト R5 の V99・U101。候補 C14)。
+#: 設定の画面の表の「設定」の列と、設定の変更の画面の欄の注記 (forms の SettingForm の help_text) に出す。
+#: SETTING_LABELS の (名前, 値の日本語) の 2 つ組の形は変えない (2 つに分けて読む所がそのまま動くように)
+SETTING_NOTES = {
+    "transcription_minutes_per_line": "手入力せずに取り込んだ明細の「入力を省けた時間 ≒ m 分」",
+    "weekly_holidays": "0 = 月 … 5 = 土・6 = 日。祝日と会社の休みはマスターの「休日」",
+    "menu": "空なら初期の並び",
+    "brand_color": "# と 16 進の 6 桁。空なら土台の色",
+    "industry": "左上の会社の名前の下に出る。空なら seizou",
+}
+
+#: 画面から変えない設定 (conf.LOCKED_KEYS) の 2 行目の終わりに足す字。「編集」の列は空のまま (折れない列に字を足すと列が広がるため)
+LOCKED_NOTE = "画面からは変えない (導入の時に決める)"
 
 #: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
 SUB_LABELS = {"department": "部署", "write": "編集の権限", "money": "金額の閲覧"}
@@ -89,25 +103,50 @@ def _display(key: str, value) -> str:
     if isinstance(value, (list, tuple)):
         return "・".join(str(v) for v in value) if value else "なし"
     if isinstance(value, dict):
-        # 辞書の設定 (例: 権限の判定 access_control = {"department": "log", ...})。中の値は同じ鍵の表で日本語にする。
-        # 並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、保存した並びに頼らない)。知らない鍵はその後ろ。
-        keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
-        return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys) if value else "なし"
+        return "・".join(_dict_parts(key, value)) if value else "なし"
     if value in words:
         return words[value]
     return str(value)
 
 
+def _dict_parts(key: str, value: dict) -> list[str]:
+    """辞書の設定の「中の鍵: 値」の字の並び (例: 権限の判定 access_control = {"department": "log", ...} は「部署: 記録だけ」など 3 つ)。
+
+    中の値は同じ鍵の表で日本語にする。並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、
+    保存した並びに頼らない)。知らない鍵はその後ろ。_display はこれを「・」でつなぎ、設定の画面の表は塊ごとに出す
+    (640px 以上の幅では塊の途中で折らない。初見テスト R5 の a-blind-08。候補 C14)。
+    """
+    keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
+    return [f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys]
+
+
+def setting_note(key: str) -> str:
+    """設定の名前の下の 2 行目の字 (SETTING_NOTES)。画面から変えない鍵 (conf.LOCKED_KEYS) は終わりに LOCKED_NOTE を足す。無ければ空の字。
+
+    画面から変えない鍵は conf.LOCKED_KEYS で分ける (row の editable はシステム管理者でない人の権限の判定の行も偽にするため)。
+    """
+    note = SETTING_NOTES.get(key, "")
+    if key in conf.LOCKED_KEYS:
+        return f"{note}。{LOCKED_NOTE}" if note else LOCKED_NOTE
+    return note
+
+
 def company_settings() -> list[dict]:
-    """選べる設定の今の値の並び (鍵・見出し・値の字・出所の字・画面から変えられるか)。"""
+    """選べる設定の今の値の並び (鍵・見出し・2 行目の字・値の字・値の塊・出所の字・画面から変えられるか)。
+
+    値の塊 (value_parts) は辞書の設定 (権限の判定) だけの「中の鍵: 値」の並び。ほかの設定と空の辞書は空の並びで、表は値の字を出す。
+    """
     rows = []
     for key in conf.DEFAULTS:
         label, _words = SETTING_LABELS.get(key, (key, {}))
+        value = conf.setting(key)
         rows.append(
             {
                 "key": key,
                 "label": label,
-                "value": _display(key, conf.setting(key)),
+                "note": setting_note(key),
+                "value": _display(key, value),
+                "value_parts": _dict_parts(key, value) if isinstance(value, dict) and value else [],
                 "source": conf.setting_source(key),
                 "editable": key not in conf.LOCKED_KEYS,
             }
