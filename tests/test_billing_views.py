@@ -1,5 +1,8 @@
 """請求書の画面と帳票 (core の土台の上)。一覧・作る・詳細・取り消す・印刷用の HTML・PDF。"""
 
+import html
+import json
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -310,3 +313,148 @@ def test_create_says_all_billed_in_same_period(client_logged_in, user, customer,
     assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 21), date(2026, 11, 20))
     assert invoice.due_on == date(2026, 12, 25)
     assert {row.shipment_id for row in invoice.lines.all()} == {first.pk, second.pk}
+
+
+# --- 出荷の表・合計の枠・保存のボタンの字 (初見テスト R5・候補 C74 の 1 晩目。保存の値と決まりは変えない) ---
+
+#: 合計の枠の箱の印 (rows・qty・amount の span の印と分ける。tests/test_core_line_totals.py の FRAME と同じ)
+FRAME = re.compile(r"data-line-totals(?=[\s>])")
+#: 金額の閲覧が無い人の設定 (tests/test_core_line_totals.py の NO_MONEY と同じ)
+NO_MONEY = {"department": "off", "write": "off", "money": "on"}
+INVOICE_HEADERS = ("選ぶ", "出荷番号", "出荷日", "得意先", "部品", "数量", "金額 (税抜)", "納品書")
+INVOICE_TEMPLATES = ["{rows} 行・税抜 ¥{amount} の請求書を作る", "{rows} 行の請求書を作る"]
+
+
+def _button(body):
+    """入力のカードの主の保存のボタン。(ボタンの字, data-submit-label の型の並び か None, data-submit-label-plain の字 か None)。
+    tests/test_core_line_totals.py の _button を写した。"""
+    match = re.search(r'<button class="btn btn-primary" type="submit"([^>]*)>(.*?)</button>', body, re.S)
+    assert match, "保存のボタンが無い"
+    attrs, inner = match.group(1), match.group(2)
+    label = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
+    template = re.search(r'data-submit-label="([^"]*)"', attrs)
+    plain = re.search(r'data-submit-label-plain="([^"]*)"', attrs)
+    return (
+        label,
+        json.loads(html.unescape(template.group(1))) if template else None,
+        html.unescape(plain.group(1)) if plain else None,
+    )
+
+
+def _frame(body):
+    """合計の枠の字。{"rows": 字, "qty": 字, "amount": 字 か None (金額の組が無い)}。枠はちょうど 1 つ。
+    tests/test_core_line_totals.py の _frame を写した。"""
+    assert len(FRAME.findall(body)) == 1, "合計の枠が 1 つでない"
+    found = {}
+    for name in ("rows", "qty", "amount"):
+        match = re.search(rf"data-line-totals-{name}>([^<]*)</span>", body)
+        found[name] = match.group(1) if match else None
+    return found
+
+
+def _box_tag(body, shipment):
+    """出荷の checkbox の tag の字。"""
+    match = re.search(rf'<input type="checkbox" name="shipments" value="{shipment.pk}"[^>]*>', body)
+    assert match, f"{shipment.shipment_no} の checkbox が無い"
+    return match.group(0)
+
+
+@pytest.mark.django_db
+def test_create_form_shows_shipments_as_table(client_logged_in, user, customer, line):
+    shipment = _shipped(user, customer, line, "5")
+
+    response = client_logged_in.get(reverse("billing:invoice_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert '<table id="id_shipments"' in body
+    for header in INVOICE_HEADERS:
+        assert f">{header}</th>" in body, header
+    # 行の数量と金額 (5 × 1,500) は、JS が読む素の数の字。
+    assert 'data-label-pick-qty="5"' in body
+    assert 'data-label-pick-amount="7500"' in body
+    assert re.search(r'<input type="checkbox" name="shipments"[^>]*data-label-pick(?=[\s>])', body)
+    assert f'data-partner="{customer.pk}"' in _box_tag(body, shipment)
+    # checkbox の見えない名前は今の行の字 (出荷番号から始まる)。
+    assert any(shipment.shipment_no in text for text in re.findall(r'<span class="sr-only">([^<]*)</span>', body))
+
+
+@pytest.mark.django_db
+def test_row_amount_is_saved_amount(client_logged_in, user, item):
+    # 3 × 33.4 = 100.2。切上なら 101、四捨五入なら 100 (tests/test_billing_invoice.py の test_amount_uses_round_amount と同じ数)。
+    ceil = _customer(user, "C003", "作り物の切上の得意先", rounding="ceil")
+    order = orders_services.create_order(
+        ceil,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("33.4")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    shipment = _shipped(user, ceil, order.lines.get(), "3")
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+    assert 'data-label-pick-amount="101"' in body
+
+    response = _create_post(client_logged_in, ceil, [shipment])
+
+    assert response.status_code == 302
+    assert Invoice.objects.get().lines.get().amount == Decimal("101")
+
+
+@pytest.mark.django_db
+def test_create_form_frame_and_button_when_opened(client_logged_in, user, customer, line):
+    _shipped(user, customer, line, "5")
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    assert _frame(body) == {"rows": "0", "qty": "0", "amount": "0"}
+    assert _button(body) == ("請求書を作る", INVOICE_TEMPLATES, "請求書を作る")
+
+
+@pytest.mark.django_db
+def test_stopped_form_counts_only_chosen_customer_rows(client_logged_in, user, customer, item, line):
+    # test_mixed_customers_is_r09_red と同じ組。自分の得意先の 4 (6,000) と、別の得意先の 3 (4,500)。
+    other = _customer(user, "C002", "作り物の別の得意先")
+    other_line = _order_line(user, other, item)
+    mine = _shipped(user, customer, line, "4")
+    theirs = _shipped(user, other, other_line, "3")
+
+    response = _create_post(client_logged_in, customer, [mine, theirs])
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    # 画面の JS が隠す別の得意先の行は数えない。
+    assert _frame(body) == {"rows": "1", "qty": "4", "amount": "6,000"}
+    assert _button(body)[0] == "1 行・税抜 ¥6,000 の請求書を作る"
+    # 印は外していない。
+    for shipment in (mine, theirs):
+        assert re.search(r"\schecked(?=[\s>])", _box_tag(body, shipment)), shipment.shipment_no
+
+
+@pytest.mark.django_db
+def test_create_form_without_money(settings, client_logged_in, user, customer, line):
+    settings.SEIZOU = {"access_control": dict(NO_MONEY)}
+    _shipped(user, customer, line, "5")
+
+    response = client_logged_in.get(reverse("billing:invoice_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "金額 (税抜)" not in body
+    assert "data-label-pick-amount" not in body
+    assert _frame(body)["amount"] is None
+    assert _button(body) == ("請求書を作る", ["{rows} 行の請求書を作る"], "請求書を作る")
+
+
+@pytest.mark.django_db
+def test_create_form_narrows_table_rows(client_logged_in, user, customer, line):
+    _shipped(user, customer, line, "5")
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    # 得意先で絞る JS は表の行を隠す (div だと表ごと隠れる)。
+    assert 'input.closest("tr")' in body
+    assert 'input.closest("div")' not in body
+    # 別の得意先の行に残った印の数の 1 行は、ちょうど 1 つで、開いた時は隠れている。
+    tags = re.findall(r"<p [^>]*data-picked-elsewhere(?=[\s>])[^>]*>", body)
+    assert len(tags) == 1
+    assert re.search(r"\shidden(?=[\s>])", tags[0])

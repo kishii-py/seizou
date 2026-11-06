@@ -295,6 +295,7 @@ def test_cards_include_frame_once(logged_in, user, customer, item):
         reverse("orders:order_create"),
         reverse("purchasing:purchaseorder_create"),
         f"{reverse('shipping:shipment_bulk_create')}?line={a.pk}&line={b.pk}",
+        reverse("billing:invoice_create"),  # 請求できる出荷が無いので、行が 0 の形 (候補 C74)
     ):
         body = logged_in.get(url).content.decode()
         assert len(FRAME.findall(body)) == 1, url
