@@ -353,6 +353,18 @@ def test_order_detail_has_no_customer_part_no_line_when_blank(logged_in, order):
     assert "得意先の品番" not in _order_lines_section(logged_in, order)
 
 
+@pytest.mark.django_db
+def test_order_detail_line_menu_button_has_border(logged_in, order):
+    """初見テスト R5 の V19 (候補 C15 の 3): 受注の詳細の明細の ⋮ は枠つき (見出しの「⋯」を小さくした形)。字と aria-label は今のまま。
+
+    生産管理ボードと受信した注文の ⋮ は今の字のまま (tests/test_orders_board.py と tests/test_connect_inbox_menu.py が見る)。
+    """
+    section = _order_lines_section(logged_in, order)
+
+    summary = '<summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary>'
+    assert summary in section
+
+
 # --- 4-3. 出荷の入力の残り -----------------------------------------------------------------
 
 SHIPMENT_FORM_JS = SHIPPING / "static" / "shipping" / "shipment-form.js"

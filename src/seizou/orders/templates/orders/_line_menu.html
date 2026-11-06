@@ -8,7 +8,7 @@ context: line (受注の明細。annotate_remaining の remaining_total と item
 {% endcomment %}
 {% url 'shipping:shipment_create' as ship_url %}{% url 'workorders:workorder_create' as issue_url %}{% url 'purchasing:purchaseorder_create' as po_url %}{% url 'receiving:receiving_create' as receiving_url %}{% url 'shipping:deliverynote_create' as note_url %}{% url 'masters:item_modal' line.item_id as item_modal_url %}
 <details class="dropdown row-menu">
-  <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
+  <summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary>
   <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
     {% if order.status != "cancelled" and line.remaining_total > 0 %}
     {% if ship_url and can_ship %}<li><a class="flex items-center gap-2" href="{{ ship_url }}?order_line={{ line.pk }}" data-modal-form="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷する</a></li>{% endif %}
