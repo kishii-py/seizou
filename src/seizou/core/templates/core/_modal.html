@@ -30,6 +30,6 @@
 {% endblock %}
 <div class="modal-action mt-6">
   <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
-  {% if edit_url %}<a class="btn btn-outline border-base-300" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}
-  {% if detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+  {% if edit_url %}{% if detail_url %}<a class="btn btn-outline border-base-300" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>
+  {% elif detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
 </div>

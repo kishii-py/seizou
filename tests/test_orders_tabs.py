@@ -216,7 +216,8 @@ def test_detail_line_has_two_entrances(user, logged_in, customer, item):
     assert "出荷する" in body and "指示書を発行する" in body
     assert '<th class="whitespace-nowrap font-medium">操作</th>' in body
     # 入口は行の ⋮ のメニュー (右クリックでも同じ。注残の盤と同じ部品の約束 = data-row-menu と details.row-menu)
-    assert "data-row-menu" in body and 'class="dropdown row-menu"' in body and "部品の小窓" in body
+    assert "data-row-menu" in body and 'class="dropdown row-menu"' in body and "部品の情報を見る" in body
+    assert "小窓" not in "".join(re.findall(r'<ul class="menu dropdown-content[^"]*">(.*?)</ul>', body, re.S))  # 明細ごとの ⋮ の項目の字 (枠の aria-label="小窓" は見ない)
 
 
 @pytest.mark.django_db

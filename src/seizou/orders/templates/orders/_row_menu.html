@@ -3,8 +3,8 @@
 context: line (受注の明細。board・remaining_total・order・item を持つ) と can_issue (指示書の発行の入口を出すか。can_write の tag の答え)・can_ship と can_po (出荷と発注の入口を出すか。can_write の tag の答え)・can_progress (実績の入口を出すか。can_write の tag の答え = progress の部品を部署で開けるか)・can_receive (入荷の記録の入口を出すか。can_write "receiving.Receiving" の答え。N184)。
 「納品書を作る」は、行に納品書の無い出荷 (line.board.unnoted_shipment) があるときだけ出し、その出荷を選んだ形で納品書の入力を開く。権限はその行でだけ can_write の tag を呼んで決める (呼ぶ側のテンプレートを変えないため。N130)。
 項目は画面へ移る link だけ (メニューの中で入力しない)。出荷・指示書の発行・入荷の記録・実績・納品書の作成・発注の 6 つは data-modal-form を持ち、core の JS (js/seizou-modal.js) が小窓で開く。JS が無いときは href で画面へ移る (決め 11-04 17:5x)。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。
-「部品の小窓」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、hx の属性は master_link の物を写した。
-最上段は対象の明細の品番と品名の見出し (押せない字。daisyUI の menu-title。全部の字は title にも)。項目は線 (中身の無い li を daisyUI の menu が 1px の線にする) で 3 組に分ける = 社内で進める (出荷する・指示書を発行する・入荷を記録する・実績を入れる) / 外へ出す書類 (発注する・納品書を作る) / 見る (受注の詳細・部品の小窓・図面・添付・現品票)。2 組目の前の線は 2 組目の項目が 1 つでもあるときだけ出す (線が 2 本続かないため)。3 組目は「受注の詳細」がいつもあるので、前の線をいつも出す。近道のキーは無い (決め 11-05 15:0x。N160)。
+「部品の情報を見る」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、hx の属性は master_link の物を写した。
+最上段は対象の明細の品番と品名の見出し (押せない字。daisyUI の menu-title。全部の字は title にも)。項目は線 (中身の無い li を daisyUI の menu が 1px の線にする) で 3 組に分ける = 社内で進める (出荷する・指示書を発行する・入荷を記録する・実績を入れる) / 外へ出す書類 (発注する・納品書を作る) / 見る (受注の詳細・部品の情報を見る・図面・添付・現品票)。2 組目の前の線は 2 組目の項目が 1 つでもあるときだけ出す (線が 2 本続かないため)。3 組目は「受注の詳細」がいつもあるので、前の線をいつも出す。近道のキーは無い (決め 11-05 15:0x。N160)。
 {% endcomment %}
 {% url 'shipping:shipment_create' as ship_url %}{% url 'workorders:workorder_create' as issue_url %}{% url 'progress:progress_create' as progress_url %}{% url 'receiving:receiving_create' as receiving_url %}{% url 'purchasing:purchaseorder_create' as po_url %}{% url 'shipping:deliverynote_create' as note_url %}{% url 'masters:item_modal' line.item_id as item_modal_url %}
 <details class="dropdown dropdown-end row-menu">
@@ -23,7 +23,7 @@ context: line (受注の明細。board・remaining_total・order・item を持�
     {% if note_url and line.board.unnoted_shipment and can_note %}<li><a class="flex items-center gap-2" href="{{ note_url }}?shipments={{ line.board.unnoted_shipment.pk }}" data-modal-form="{{ note_url }}?shipments={{ line.board.unnoted_shipment.pk }}">{% icon "file" "size-4" %}納品書を作る</a></li>{% endif %}
     <li></li>
     <li><a class="flex items-center gap-2" href="{% url 'orders:order_detail' line.order_id %}">{% icon "clipboard" "size-4" %}受注の詳細</a></li>
-    {% if item_modal_url %}<li><a class="flex items-center gap-2" href="{{ item_modal_url }}" hx-get="{{ item_modal_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% icon "box" "size-4" %}部品の小窓</a></li>{% endif %}
+    {% if item_modal_url %}<li><a class="flex items-center gap-2" href="{{ item_modal_url }}" hx-get="{{ item_modal_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()">{% icon "box" "size-4" %}部品の情報を見る</a></li>{% endif %}
     {% if line.item.drawing %}<li><a class="flex items-center gap-2" href="{% url 'masters:item_drawing_viewer' line.item_id %}">{% icon "image" "size-4" %}図面</a></li>{% endif %}
     {% if "attachments" in seizou.parts %}<li><a class="flex items-center gap-2" href="{% url 'orders:order_detail' line.order_id %}#attachments">{% icon "paperclip" "size-4" %}添付</a></li>{% endif %}
     {% if line.board.latest_workorder %}<li><a class="flex items-center gap-2" href="{% url 'workorders:workorder_tag' line.board.latest_workorder.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}現品票</a></li>{% endif %}
