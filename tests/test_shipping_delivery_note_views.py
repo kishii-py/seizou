@@ -4,6 +4,8 @@
 印刷の見た目 (A4 1 枚に収まるか) は朝にブラウザで見る。
 """
 
+import html
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -17,6 +19,7 @@ from seizou.core.services import company
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services
+from seizou.shipping.forms import DeliveryNoteForm
 from seizou.shipping.models import DeliveryNote
 from seizou.shipping.reports import delivery_note_context
 
@@ -187,3 +190,78 @@ def test_menu_has_delivery_note_entry(logged_in):
     body = response.content.decode()
     assert reverse("shipping:deliverynote_list") in body
     assert "納品書" in body
+
+
+# --- 出荷の表と 0 件の 1 行 (初見テスト R5・候補 C74 の 2 晩目。ボタン・合計・金額は足さない) ---
+
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
+NOTE_HEADERS = ("選ぶ", "出荷番号", "出荷日", "得意先", "受注番号", "部品", "数量")
+NO_SHIPMENTS = "納品書に入っていない出荷はありません。"
+
+
+def _primary_button(body):
+    """主の保存のボタンの字。"""
+    match = re.search(r'<button class="btn btn-primary" type="submit"[^>]*>(.*?)</button>', body, re.S)
+    assert match, "保存のボタンが無い"
+    return html.unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip()
+
+
+def _checked_values(body):
+    """印の付いた出荷の checkbox の value の並び。"""
+    tags = re.findall(r'<input type="checkbox" name="shipments" value="(\d+)"([^>]*)>', body)
+    return [int(value) for value, attrs in tags if re.search(r"\schecked(?=\s|$)", attrs)]
+
+
+@pytest.mark.django_db
+def test_create_form_without_shipments_says_none(logged_in):
+    response = logged_in.get(reverse("shipping:deliverynote_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert NO_SHIPMENTS in body
+    assert 'id="id_shipments"' not in body
+    # 止める処理は足さない (0 件でもボタンは出る)。
+    assert _primary_button(body) == "納品書を作る"
+
+
+@pytest.mark.django_db
+def test_create_form_shows_shipments_as_table(logged_in, two_shipments):
+    response = logged_in.get(reverse("shipping:deliverynote_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert '<table id="id_shipments"' in body
+    for header in NOTE_HEADERS:
+        assert f">{header}</th>" in body, header
+    assert NO_SHIPMENTS not in body
+    labels = re.findall(r'<span class="sr-only">([^<]*)</span>', body)
+    field = DeliveryNoteForm().fields["shipments"]
+    for shipment in two_shipments:
+        assert shipment.shipment_no in body
+        # checkbox の見えない名前は今の行の字 (受注番号を含む)。
+        assert field.label_from_instance(shipment) in labels
+        assert shipment.order_line.order.order_no in field.label_from_instance(shipment)
+
+
+@pytest.mark.django_db
+def test_create_modal_shows_table(logged_in, two_shipments):
+    response = logged_in.get(reverse("shipping:deliverynote_create"), **MODAL)
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "<html" not in body
+    assert "hx-post=" in body
+    assert 'id="id_shipments"' in body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["page", "modal"])
+def test_create_form_checks_given_shipment(logged_in, two_shipments, headers):
+    first, second = two_shipments
+
+    response = logged_in.get(f"{reverse('shipping:deliverynote_create')}?shipments={second.pk}", **headers)
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert _checked_values(body) == [second.pk]
+    assert f'value="{first.pk}"' in body
