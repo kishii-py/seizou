@@ -456,16 +456,14 @@ def send_purchase_order(
 ) -> str:
     """発注の新規登録 (`/purchasing/orders/new/`) で明細 1 行の発注を入れて「保存」し、発注番号を返す。
 
-    保存と同時に相手へ送る。取引先と部品は標準の `<select>` なので、種の名前の候補の値で `select_option` する。
+    保存と同時に相手へ送る。取引先と部品は字を打って探す欄なので、受注 (`new_order`) と同じく `choose` で選ぶ。
     単価は画面で必須なので、決まった作り物の値 (unit_price) を入れる。mark は備考に入れる。
     """
     _go_if_not_there(page, company, "/purchasing/orders/new/")
     partner_label = seed_name(company, "partners", partner_code)
-    partner_value = page.locator("select[name=partner] option").filter(has_text=partner_label).first
-    page.select_option("select[name=partner]", value=partner_value.get_attribute("value"))
+    choose(page, "partner", partner_label)
     page.fill("textarea[name=note]", mark)
-    item_value = page.locator("select[name=lines-0-item] option").filter(has_text=part_no).first
-    page.select_option("select[name=lines-0-item]", value=item_value.get_attribute("value"))
+    choose(page, "lines-0-item", part_no)
     page.fill("input[name=lines-0-qty]", str(qty))
     page.fill("input[name=lines-0-unit_price]", str(unit_price))
     _click_save(page)
