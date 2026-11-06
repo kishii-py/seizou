@@ -299,7 +299,10 @@ def input_rows(form_class) -> list[tuple[str, str, str]]:
 
 
 def decorate_fragment(screen, html: str, refusals: list[str] | None = None) -> str:
-    """断片の字の後に、入れる物の表・絵・止まるときの文を足した字 (置き場のファイルは直さない)。足す物が無ければそのまま返す。"""
+    """断片の字の後に、入れる物の表・絵・止まるときの文を足した字 (置き場のファイルは直さない)。足す物が無ければそのまま返す。
+
+    入れる物の表は、phone で画面全体が横に送れないよう、表だけを横に送れる箱 (overflow-x-auto) に包む。
+    """
     extra = []
     form_class = getattr(view_class_of(screen), "form_class", None)
     if form_class is not None and not INPUT_HEADING.search(html):
@@ -307,7 +310,7 @@ def decorate_fragment(screen, html: str, refusals: list[str] | None = None) -> s
         if rows:
             extra.append(
                 format_html(
-                    "<h3>入れる物</h3><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead><tbody>{}</tbody></table>",
+                    '<h3>入れる物</h3><div class="overflow-x-auto"><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead><tbody>{}</tbody></table></div>',
                     format_html_join("", "<tr><td>{}</td><td>{}</td><td>{}</td></tr>", rows),
                 )
             )

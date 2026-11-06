@@ -72,7 +72,7 @@ def test_no_shot_without_file_or_with_own_img(client_logged_in, folder):
 def test_input_table_on_order_create(client_logged_in, folder):
     write(folder, "orders_order_create", "<section><h2>受注の新規登録</h2><p>作り物の説明の字</p></section>")
     box = page_box(client_logged_in, "orders_order_create")
-    assert "<h3>入れる物</h3><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead>" in box
+    assert '<h3>入れる物</h3><div class="overflow-x-auto"><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead>' in box
     assert "<tr><td>得意先</td><td>必須</td><td></td></tr>" in box
     assert "<tr><td>備考</td><td></td><td></td></tr>" in box
 
