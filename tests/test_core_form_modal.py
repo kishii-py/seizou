@@ -194,6 +194,29 @@ def test_modal_box_width_rules_are_in_the_css_source():
     assert "#seizou-modal-box:has(> .seizou-modal-narrow) {\n  max-width: min(28rem, calc(100vw - 2rem));\n}" in css
 
 
+def test_view_modal_action_row_sticks_to_box_bottom_in_css_source():
+    """見るだけの小窓 (根に .modal-action を持つ小窓) の下のボタンの行を箱の下端に留める決まりは scripts/css/input.css に 1 か所 (候補 C52 の 6。C52-1 = b)。
+
+    負の bottom と margin-bottom は箱の余白 p-6 (1.5rem) と組。行の地を箱の下端まで伸ばし、送った中身が下の余白から透けないようにする。
+    テンプレートの modal-action の行は変えない (CSS の決まり 1 つで全部の見るだけの小窓にそろえる)。
+    """
+    from pathlib import Path
+
+    css = Path(__file__).resolve().parents[1].joinpath("scripts", "css", "input.css").read_text(encoding="utf-8")
+    head = "#seizou-modal-box > .modal-action {"
+    assert css.count(head) == 1
+    begin = css.index(head)
+    block = css[begin : css.index("}", begin)]
+    for declaration in (
+        "position: sticky;",
+        "bottom: -1.5rem;",
+        "margin-bottom: -1.5rem;",
+        "padding-bottom: 1.5rem;",
+        "background-color: var(--color-base-100);",
+    ):
+        assert declaration in block, declaration
+
+
 # --- 日付の欄の年の上限 (core の IsoDateInput。候補 C31 の 1。初見テストの V39・U41) ---
 # 受注と発注は tests/test_orders_views.py と tests/test_purchasing_stages.py が画面の GET で見る。ここはほかの部品の欄。
 
