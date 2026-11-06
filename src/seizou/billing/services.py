@@ -13,6 +13,7 @@
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
   取消でない入金の残る請求書は cancel_invoice が断る (先に cancel_payment。文は cancel_refusal の 1 か所。決め 11-04 06:4x)。
+- create_invoice は、返す請求書に画面の知らせの字 saved_note (同じ締めの期間に残った出荷 = unbilled_in_period) を付け、残りがあれば saved_level = "warning" (黄) も付ける (表に書かない。止めない)。
 """
 
 from __future__ import annotations
@@ -89,6 +90,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
     金額は round_amount(customer, 数量 × 単価)。期間は得意先の締め期間 = closing_period(customer, 最後の出荷日)
     (最後の出荷日以降で最初の締日まで。初めはその 1 つ前の締日の翌日)。作るときに決めて表に残す。
     支払期日は payment_due_date(customer, 期間の終わり) (支払の欄が空の取引先では空)。
+    返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
     """
     shipments = list(shipments)
     if not shipments:
@@ -134,7 +136,38 @@ def create_invoice(customer, shipments, user, *, issued_on):
                 unit_price=unit_price,
                 amount=amount,
             )
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の後ろに付ける)。表に書かない。
+        # 今作った明細は取消でない請求書に入っているので、残りに入らない。
+        invoice.saved_note, level = _period_note(customer, period_from, period_to)
+        if level:
+            invoice.saved_level = level
         return invoice
+
+
+def _period_note(customer, period_from, period_to):
+    """請求書を作った後の知らせの字と色 (読むだけ)。(saved_note の字, "warning" か空の字)。
+
+    同じ得意先の同じ締めの期間に、まだ請求書に入っていない出荷 (unbilled_in_period) があれば、件数と出荷番号を並べて黄。
+    発行の納品書に入っていない出荷 (納品書が無いか取消。_refuse_unbillable と同じ分け方) には「(発行の納品書なし)」を付ける。
+    残りが無ければ「全部請求書に入っています」の字で、色は付けない (緑)。金額は書かない。
+    """
+    rows = list(unbilled_in_period(customer, period_from, period_to))
+    if not rows:
+        return f"この期間の{customer.name}の出荷は、全部請求書に入っています。", ""
+    numbers = "・".join(
+        row.shipment_no if _in_issued_note(row) else f"{row.shipment_no} (発行の納品書なし)" for row in rows
+    )
+    return (
+        f"この期間 ({period_from:%Y-%m-%d}〜{period_to:%Y-%m-%d}) の{customer.name}の出荷で、"
+        f"まだ請求書に入っていない物が {len(rows)} 件あります: {numbers}。",
+        "warning",
+    )
+
+
+def _in_issued_note(shipment):
+    """出荷が発行の納品書に入っているか (R09 の「出荷済み」の読み)。"""
+    note = shipment.delivery_note
+    return note is not None and note.status == _DeliveryNote.STATUS_ISSUED
 
 
 def _yen(value):
@@ -237,6 +270,23 @@ def billable_shipments(customer=None):
     if customer is not None:
         queryset = queryset.filter(order_line__order__customer=customer)
     return queryset
+
+
+def unbilled_in_period(customer, period_from, period_to):
+    """得意先の出荷のうち、出荷日が period_from〜period_to (両端を含む) にあり、取消でない請求書に入っていない物 (読むだけ)。
+
+    並びは出荷日・出荷番号。billable_shipments と違い、発行の納品書に入っていない出荷 (納品書が無いか取消) も返す。
+    出荷には状態の列が無いので、出荷の取消は見ない。create_invoice が作った後の知らせ (_period_note) に使う。
+    """
+    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED).values("shipment_id")
+    return (
+        _Shipment.objects.filter(
+            order_line__order__customer=customer, shipped_at__gte=period_from, shipped_at__lte=period_to
+        )
+        .exclude(pk__in=invoiced)
+        .select_related("delivery_note")
+        .order_by("shipped_at", "shipment_no")
+    )
 
 
 def closing_period(customer, day):

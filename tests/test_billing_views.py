@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.billing import services
@@ -260,3 +261,52 @@ def test_create_form_shows_issued_on_help_text(client_logged_in, user, customer,
     body = response.content.decode()
     assert response.status_code == 200
     assert ISSUED_ON_HELP in body
+
+
+# --- 作った後に、同じ締めの期間に残った出荷を右上に知らせる (初見テスト R5・候補 C02 の 2。止めない) ---
+
+
+def _messages(response):
+    """その要求で足した右上の知らせ (level_tag と字) の並び (tests/test_cancel_messages.py と同じ形)。"""
+    return [(m.level_tag, str(m)) for m in get_messages(response.wsgi_request)]
+
+
+@pytest.mark.django_db
+def test_create_warns_unbilled_shipments_in_same_period(client_logged_in, user, customer, line):
+    # 20 日締めなので、11/5 の出荷は 10/21〜11/20 の期間。11/25 の出荷は次の期間 (11/21〜12/20)。
+    first = _shipped(user, customer, line, "4")
+    second = _shipped(user, customer, line, "3")
+    no_note = shipping_services.ship(line, Decimal("2"), SHIPPED_AT, user)
+    later = _shipped(user, customer, line, "1", date(2026, 11, 25))
+
+    response = _create_post(client_logged_in, customer, [first])
+
+    assert response.status_code == 302
+    assert _messages(response) == [
+        (
+            "warning",
+            "保存しました。この期間 (2026-10-21〜2026-11-20) の作り物の得意先の出荷で、まだ請求書に入っていない物が 2 件あります: "
+            f"{second.shipment_no}・{no_note.shipment_no} (発行の納品書なし)。",
+        )
+    ]
+    assert later.shipment_no not in _messages(response)[0][1]
+    invoice = Invoice.objects.get()
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 21), date(2026, 11, 20))
+    assert invoice.due_on == date(2026, 12, 25)
+    assert [row.shipment_id for row in invoice.lines.all()] == [first.pk]
+
+
+@pytest.mark.django_db
+def test_create_says_all_billed_in_same_period(client_logged_in, user, customer, line):
+    first = _shipped(user, customer, line, "4")
+    second = _shipped(user, customer, line, "5")
+    _shipped(user, customer, line, "1", date(2026, 11, 25))  # 次の期間の出荷は残りに数えない
+
+    response = _create_post(client_logged_in, customer, [first, second])
+
+    assert response.status_code == 302
+    assert _messages(response) == [("success", "保存しました。この期間の作り物の得意先の出荷は、全部請求書に入っています。")]
+    invoice = Invoice.objects.get()
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 21), date(2026, 11, 20))
+    assert invoice.due_on == date(2026, 12, 25)
+    assert {row.shipment_id for row in invoice.lines.all()} == {first.pk, second.pk}
