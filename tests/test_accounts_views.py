@@ -8,6 +8,8 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import authenticate, get_user_model
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from seizou.accounts import demo_seed, services
@@ -274,6 +276,40 @@ def test_delete_confirm_then_delete(on, client, manager):
     again = client.post(url, {})
     assert again.status_code == 200
     assert "削除したアカウントは変更も削除もできません。" in again.content.decode()
+
+
+# ---------------------------------------------------------------- 部署の一覧
+
+
+@pytest.mark.django_db
+def test_department_list_queries_do_not_grow(on, client, manager, seizou_dept):
+    """部署の一覧の「人数」は 1 回の SQL で数える (部署が 1 つでも 4 つでも問い合わせの数は同じ。削除した人は数えない)。"""
+    account("genba", departments=[seizou_dept])
+    gone = account("taishoku", departments=[seizou_dept])
+    services.delete_account(gone.seizou_access, manager)
+    client.force_login(manager)
+    url = reverse("accounts:department_list")
+    client.get(url)  # 設定とセッションの控えを温める
+
+    with CaptureQueriesContext(connection) as one:
+        response = client.get(url)
+    assert response.status_code == 200
+    assert [row["cells"][3]["value"] for row in response.context["rows"]] == [1]
+
+    for number in range(2, 5):
+        services.create_department(f"作り物の部署 {number}", ["orders", "shipping"], [], None)
+    with CaptureQueriesContext(connection) as four:
+        response = client.get(url)
+    assert response.status_code == 200
+    assert len(four.captured_queries) == len(one.captured_queries)
+    counts = {row["obj"].name: row["cells"][3]["value"] for row in response.context["rows"]}
+    assert counts == {"製造": 1, "作り物の部署 2": 0, "作り物の部署 3": 0, "作り物の部署 4": 0}
+    assert "人数" in response.content.decode()
+
+    # 「人数」の見出しで並べ替えられる (既定の並びでは先頭の製造が、少ない順では末尾になる)
+    assert response.context["rows"][0]["obj"].name == "製造"
+    ordered = client.get(url + "?sort=member_total")
+    assert ordered.context["rows"][-1]["obj"].name == "製造"
 
 
 # ---------------------------------------------------------------- 金額の閲覧の無い人への断り

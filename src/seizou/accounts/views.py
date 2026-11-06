@@ -7,6 +7,7 @@ URL の名前は model (Access) の約束 (access_list / access_create / access_
 """
 
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
@@ -111,12 +112,20 @@ class DepartmentListView(BaseListView):
         ("name", "部署"),
         ("apps", "開ける部品"),
         ("default_permissions", "既定の権限"),
-        ("member_count", "人数"),
+        {"name": "member_total", "label": "人数", "sortable": True},
         ("sort_order", "並び順"),
     )
     search_fields = ("name",)
     ordering = ("sort_order", "pk")
     template_name = "accounts/department_list.html"
+
+    def get_queryset(self):
+        # 人数 = 所属する生きている人の数 (Department.member_count と同じ数え方)。行ごとに数えず、一覧の SQL で 1 回に数える
+        return (
+            super()
+            .get_queryset()
+            .annotate(member_total=Count("accesses", filter=Q(accesses__deleted_at__isnull=True)))
+        )
 
 
 class DepartmentCreateView(BaseFormView):
