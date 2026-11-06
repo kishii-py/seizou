@@ -72,9 +72,30 @@ def test_no_shot_without_file_or_with_own_img(client_logged_in, folder):
 def test_input_table_on_order_create(client_logged_in, folder):
     write(folder, "orders_order_create", "<section><h2>受注の新規登録</h2><p>作り物の説明の字</p></section>")
     box = page_box(client_logged_in, "orders_order_create")
-    assert "<h3>入れる物</h3><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead>" in box
+    assert '<h3>入れる物</h3><div class="overflow-x-auto"><table><thead><tr><th>欄の名前</th><th>必須</th><th>説明</th></tr></thead>' in box
     assert "<tr><td>得意先</td><td>必須</td><td></td></tr>" in box
     assert "<tr><td>備考</td><td></td><td></td></tr>" in box
+
+
+def test_input_table_in_scroll_box_on_connection_create(client_logged_in, folder):
+    """入れる物の表だけが横に送れる箱に入り、見出しは箱の外 (使い方の画面・印刷用・「?」の小窓)。依頼書 N232 (候補 C68)。"""
+    write(folder, "connect_connection_create", "<section><h2>取引先との接続の新規登録</h2><p>作り物の接続の説明の字</p></section>")
+    url = reverse("core:manual")
+    responses = (
+        client_logged_in.get(url),
+        client_logged_in.get(url, {"print": "1"}),
+        client_logged_in.get(reverse("core:manual_fragment", args=["connect_connection_create"]), HTTP_HX_REQUEST="true"),
+    )
+    for response in responses:
+        assert response.status_code == 200
+        # 箱の閉じの </div> は section_box (最初の </div> で切る) では見えないので、応答の全部で、この断片の字のすぐ後から見る
+        html = response.content.decode()
+        head = '<p>作り物の接続の説明の字</p></section><h3>入れる物</h3><div class="overflow-x-auto"><table><thead>'
+        assert head in html
+        start = html.index(head)
+        end = html.index("</table>", start)
+        assert html[end : end + len("</table></div>")] == "</table></div>"
+        assert "127.0.0.1:8002/connect/receive/order/" in html[start:end]
 
 
 def test_input_table_on_company_update_and_not_twice(client_logged_in, folder):
