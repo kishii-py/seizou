@@ -202,7 +202,8 @@ def file_url_for(obj, field_name: str) -> str | None:
 def hidden_detail_fields(obj) -> frozenset:
     """詳細と小窓に出さない項目の名前。model の detail_hidden_fields (名前の並び) があればそれ、無ければ空。
 
-    表示用の絵や変換の誤りの文のように、仕組みのために持つ列 (入力の画面に無い物) を、
+    表示用の絵や変換の誤りの文のように、仕組みのために持つ列 (入力の画面に無い物) と、
+    取引先の支払の月のように、別の項目の字に含まれて二重になる列を、
     利用者の目に触れる一覧から外すための約束。入力の form と services には関係しない。
     """
     return frozenset(getattr(obj, "detail_hidden_fields", ()) or ())

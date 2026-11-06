@@ -78,6 +78,11 @@ class Partner(models.Model):
     # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 
+    #: 詳細と小窓の項目の一覧に出さない列 (core の土台が読む)。支払日の行の字 (get_payment_day_display) が
+    #: 支払の月を含めて「翌月末」「翌月 25 日」と出すので、「支払の月 翌月」の行と二重になる (初見テスト 5 回目の V98)。
+    #: 支払日が空で支払の月だけあるときも、支払日の行が「翌月」と出すので、情報は減らない。一覧の列 (支払日だけ) と同じ見せ方。
+    detail_hidden_fields = ("payment_month",)
+
     class Meta:
         verbose_name = "取引先"
         verbose_name_plural = "取引先"

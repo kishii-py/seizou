@@ -541,3 +541,39 @@ def test_payment_month_help_explains_the_pair(client_logged_in):
     body = text(client_logged_in.get(reverse("masters:partner_create")))
     assert PAYMENT_MONTH_HELP in body
     assert "1〜31。月末は 31" in body
+
+
+PARTNER_MODAL_LABELS = [
+    "取引先コード", "名前", "略称", "取引先の種類", "締日", "支払日", "金額の端数の扱い", "消費税の端数の扱い",
+]
+
+
+@pytest.mark.django_db
+def test_detail_and_modal_show_payment_terms_once(client_logged_in, partner):
+    """詳細と小窓に「支払の月」の行を出さず、支払日の行の字 (支払の月を含む) だけで見せる (V98)。"""
+    partner.payment_month = Partner.PAYMENT_NEXT
+    partner.payment_day = 25
+    partner.save()
+    detail = client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk]))
+    labels = [row["label"] for row in detail.context["fields"]]
+    values = [row["value"] for row in detail.context["fields"]]
+    assert "支払の月" not in labels and "支払日" in labels
+    assert values.count("翌月 25 日") == 1
+    modal = client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true")
+    labels = [row["label"] for row in modal.context["fields"]]
+    values = [row["value"] for row in modal.context["fields"]]
+    assert "支払の月" not in labels
+    assert labels[:8] == PARTNER_MODAL_LABELS
+    assert labels[7] == "消費税の端数の扱い"
+    assert values.count("翌月 25 日") == 1
+
+
+@pytest.mark.django_db
+def test_detail_keeps_payment_month_when_day_is_empty(client_logged_in, partner):
+    """支払日が空で支払の月だけあるときも、支払日の行が月の字を出す (行を外しても情報は減らない)。"""
+    partner.payment_month = Partner.PAYMENT_AFTER_NEXT
+    partner.save()
+    detail = client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk]))
+    rows = {row["label"]: row["value"] for row in detail.context["fields"]}
+    assert rows["支払日"] == "翌々月"
+    assert "支払の月" not in rows
