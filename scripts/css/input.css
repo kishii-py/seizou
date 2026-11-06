@@ -349,8 +349,7 @@ body > .ts-dropdown [data-select-create]:hover {
 /* 入力の画面の下の行 (キャンセルと保存)。開いた時から窓の下の端に貼り付ける (C21。決め C21-1 = e)。
    印は 6 つの下の行の固定の class seizou-save-row (core/_form_card.html・受注・発注・一括出荷・説明書の確かめと編集。小窓の形には付けない)。
    form が窓より短い画面では、行はカードの下の端にある。一番下まで送ると、行はカードの下の端に戻る。
-   margin の -24px はカードの中の余白 p-6 の分 (行をカードの左右と下の端まで広げる)。右の 64px は右下の「AI に質問」の丸
-   (assistant/_panel.html。右から 24px・幅 40px) と重ねない分で、丸の無い画面でも同じ 64px を空ける (class を分けない)。
+   margin の -24px はカードの中の余白 p-6 の分 (行をカードの左右と下の端まで広げる)。
    左の字の置き場 seizou-save-slot は書きかけの字 (core/_save_bar.html) を置き、幅 640 未満は行の上の 1 段を打つ前から取っておく
    (字が出ても行の高さを変えない)。幅 640 以上は字の置き場がボタンを右へ寄せる。 */
 .seizou-save-row {
@@ -359,7 +358,7 @@ body > .ts-dropdown [data-select-create]:hover {
   z-index: 10;
   background: var(--color-base-100);
   margin: 24px -24px -24px;
-  padding: 12px 64px 12px 24px;
+  padding: 12px 24px;
   border-top: 1px solid var(--color-base-300);
   border-radius: 0 0 0.75rem 0.75rem;
   box-shadow: 0 -8px 12px -10px rgb(0 0 0 / 0.25);
