@@ -131,7 +131,10 @@ REFUSAL_FILES = {
     "src/seizou/core/services.py": (),
 }
 #: raise の外で断りの文を作って返す関数 (raise は変数で渡す)。返す字も頭で始まる
-REFUSAL_RETURNS = {"src/seizou/billing/services.py": ("cancel_refusal",)}
+REFUSAL_RETURNS = {
+    "src/seizou/billing/services.py": ("cancel_refusal",),
+    "src/seizou/shipping/services.py": ("cancel_refusal",),
+}
 #: REFUSAL_RETURNS の関数の文を入れた変数の名前 (raise ValueError(refusal) の形。文は上の関数で見る)
 REFUSAL_LOCALS = ("refusal",)
 
