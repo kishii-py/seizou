@@ -5,7 +5,7 @@
 請求書の詳細から開いた入金) がある。
 約束: ?next=<同じサイトの道> があれば「キャンセル」の先と、一覧へ戻る形の保存の後の移り先をその道にする。保存した物の詳細へ移る形は
 今のまま。外の URL・絶対 URL は捨てて今までどおり。form の hidden の next で POST にも引き継ぐ。
-開く側: 詳細の「添付ファイルを付ける」・請求書の詳細の「入金を記録する」・発注の詳細の「受入を登録」などが ?next= を付ける。
+開く側: 詳細の「編集」・詳細の「添付ファイルを付ける」・請求書の詳細の「入金を記録する」・発注の詳細の「受入を登録」などが ?next= を付ける。
 """
 
 from datetime import date
@@ -26,6 +26,7 @@ from seizou.masters.models import Item
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
 from seizou.shipping import services as shipping_services
+from tests.test_input_screens import _update_post
 
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
@@ -228,3 +229,48 @@ def test_receipt_links_on_purchase_order_detail_pass_next(client_logged_in, user
     assert response.context["cancel_url"] == detail_url
     # 明細の初めの選択 (?line=) は今までどおり form の初期値に入る
     assert str(response.context["form"].initial["line"]) == str(line.pk)
+
+
+def _order(user, item):
+    return orders_services.create_order(
+        _customer(user), [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("1500")}], user, order_date=ORDER_DATE
+    )
+
+
+@pytest.mark.django_db
+def test_edit_link_on_order_detail_passes_next_and_cancel_returns_there(client_logged_in, user, item):
+    # 初見テスト R5 (候補 C63): 受注の詳細の「編集」から開いた編集の「キャンセル」は受注の一覧でなく詳細へ
+    order = _order(user, item)
+    detail_url = reverse("orders:order_detail", args=[order.pk])
+    edit_url = reverse("orders:order_update", args=[order.pk])
+
+    html = client_logged_in.get(detail_url).content.decode()
+    assert f'href="{edit_url}?next={detail_url}"' in html
+    assert client_logged_in.get(edit_url, {"next": detail_url}).context["cancel_url"] == detail_url
+
+
+@pytest.mark.django_db
+def test_order_update_with_next_saves_to_detail_and_keeps_cancel_after_error(client_logged_in, user, item):
+    # 保存の後は今までどおり受注の詳細へ。数量が空で止まって描き直しても「キャンセル」は詳細のまま
+    # (受注の編集の form は hidden の next を持たず、action の無い form が ?next= の付いた同じ URL へ送る形の見張り)
+    order = _order(user, item)
+    detail_url = reverse("orders:order_detail", args=[order.pk])
+    url = f'{reverse("orders:order_update", args=[order.pk])}?next={detail_url}'
+
+    response = client_logged_in.post(url, _update_post(order))
+    assert response.status_code == 302
+    assert response["Location"] == detail_url
+
+    response = client_logged_in.post(url, _update_post(order, qty=""))
+    assert response.status_code == 200
+    assert response.context["cancel_url"] == detail_url
+
+
+@pytest.mark.django_db
+def test_edit_link_on_item_detail_passes_next(client_logged_in, item):
+    # 土台の「編集」をそのまま使う詳細 (block edit_button を上書きしない) の代表 = 部品の詳細
+    detail_url = reverse("masters:item_detail", args=[item.pk])
+    edit_url = reverse("masters:item_update", args=[item.pk])
+
+    html = client_logged_in.get(detail_url).content.decode()
+    assert f'href="{edit_url}?next={detail_url}"' in html
