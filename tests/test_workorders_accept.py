@@ -128,6 +128,43 @@ def test_list_column_shows_progress_state(user, client_logged_in, customer, item
 
 
 @pytest.mark.django_db
+def test_list_order_line_cell_shows_order_no_and_line_no_only(user, client_logged_in, customer, item, cut):
+    """一覧の「受注の明細」の欄の字は「受注番号-行番号」だけで、title に今の全文 (初見テスト R5 の候補 C34 の本 A)。
+    context の値と CSV は今のまま全文。部品の品番と品名は同じ行の「部品」の欄にある。"""
+    line = _line(user, customer, item)
+    workorder = _issue(user, line, cut)
+    full = str(line)
+    short = f"{line.order.order_no}-{line.line_no}"
+    assert full != short and item.part_no in full  # 今の全文は品番と品名を含む
+
+    url = reverse("workorders:workorder_list")
+    for headers in ({}, {"HTTP_HX_REQUEST": "true"}):
+        response = client_logged_in.get(url, **headers)
+        assert response.status_code == 200, headers
+        names = [col.name for col in response.context["columns"]]
+        index = names.index("order_line")
+        assert [str(row["cells"][index]["value"]) for row in response.context["rows"]] == [full], headers
+
+        body = response.content.decode()
+        start = body.index(f'<tr id="row-{workorder.pk}"')
+        cells = re.findall(r"<td\b.*?</td>", body[start : body.index("</tr>", start)], re.S)
+        assert len(cells) == len(names), headers
+        cell = cells[index]
+        span = re.search(r'<span class="block max-w-xs truncate" title="([^"]*)">([^<]*)</span>', cell)
+        assert span is not None, cell
+        assert span.group(1) == full, headers
+        assert span.group(2) == short, headers
+        assert item.part_no not in span.group(2) and item.name not in span.group(2), headers
+        # 部品の欄には品番と品名がある (行の全体で「品番が無い」は見ない)
+        assert item.name in cells[names.index("order_line__item")], headers
+
+    csv_body = client_logged_in.get(url, {"format": "csv"}).content.decode()
+    header, *rows = csv_body.lstrip("\ufeff").splitlines()
+    assert len(rows) == 1
+    assert rows[0].split(",")[header.split(",").index("受注の明細")] == full
+
+
+@pytest.mark.django_db
 def test_list_filters_process_unaccepted_today(user, client_logged_in, customer, item, cut, bend):
     today = timezone.localdate()
     line = _line(user, customer, item)
