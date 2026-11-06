@@ -598,3 +598,23 @@ def test_list_screen_opens_when_github_is_unreadable(client, plain, monkeypatch)
     response = client.get("/feedback/", {"issue_q": "受注"})
     assert response.status_code == 200
     assert "GitHub の Issue を読めませんでした" in html_of(response)
+
+
+# ---------------------------------------------------------------- 管理の命令
+
+
+def test_sync_command_needs_no_manager(plain, fake):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "closed", "closed_at": "2026-11-05T15:30:00Z", "html_url": ISSUE_URL})
+    out = StringIO()
+
+    call_command("seizou_feedback_sync", stdout=out)
+
+    assert out.getvalue().strip() == "GitHub を見ました: 見た 1 件・直した 1 件・読めなかった 0 件"
+    row.refresh_from_db()
+    assert row.status == "fixed"
+    assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
