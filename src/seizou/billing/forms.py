@@ -207,7 +207,11 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
         max_digits=14,
         decimal_places=2,
         min_value=Decimal("0.01"),
-        error_messages={"min_value": "入金の金額は 0 より大きい数にしてください。"},
+        # 数でない字 (「8800円」) は直し方の分かる字にする (初見テスト R5 の V37。候補 C25 の 1)。空の字は入力の土台がまとめて「金額を入れてください。」にする。
+        error_messages={
+            "min_value": "入金の金額は 0 より大きい数にしてください。",
+            "invalid": "金額は 8800 のように数字で入れてください。",
+        },
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-amount": True}),
     )
     method = forms.ChoiceField(label="入金の方法", choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_TRANSFER)

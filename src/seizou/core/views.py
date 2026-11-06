@@ -47,6 +47,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import FieldDoesNotExist, ValidationError
+from django.forms.utils import pretty_name
 from django.db import DatabaseError, models
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
@@ -1367,9 +1368,10 @@ class BaseFormView(ScreenMixin, FormView):
         if last:
             # order_fields は渡した並びを先頭に置くので、全部の欄の並びを渡す。
             form.order_fields([name for name in form.fields if name not in last] + last)
-        for field in form.fields.values():
+        for name, field in form.fields.items():
             use_decimal_input(field)
             field.widget.attrs.setdefault("class", widget_css(field.widget))
+            use_label_required(name, field)
         return form
 
     # --- 検査の層と service ---
@@ -1518,6 +1520,34 @@ def use_decimal_input(field) -> None:
     widget.is_required = old.is_required
     widget.is_localized = old.is_localized
     field.widget = widget
+
+
+def use_label_required(name: str, field) -> None:
+    """空のまま保存したときの字 (required) を、見出し入りの字にする (初見テスト R5 の V37。候補 C25 の 2)。
+
+    決め 11-06 18:3x C25-1 = a「全部の画面の「空のまま」の字を、まとめて「<見出し>を入れてください。」
+    (選ぶ欄は「<見出し>を選んでください。」) に替える」。「このフィールドは必須です。」では何を入れるか分からず、
+    「フィールド」は事務の言葉でない (V37)。欄を見つけるたびに直さずに済むよう、入力の土台でまとめて替える。
+    替えるのは required の字が Django の既定のままの欄だけ。欄ごとに書いた字 (出荷日・休日・文字コード・受信した注文など) は
+    そのまま残す。欄ごとに直したい字は、今までどおり forms.py の error_messages に書く。隠した欄は字が画面に出ないので替えない。
+    字は欄の class で選ぶ (widget では選ばない): 1 つの checkbox (BooleanField) は「<見出し>に チェックを入れてください。」、
+    選ぶ欄 (ChoiceField の子) とファイルの欄 (FileField の子) は「<見出し>を選んでください。」、ほか (字・数・日付) は
+    「<見出し>を入れてください。」。見出しの無い欄は、画面の見出しと同じ pretty_name(name)。
+    form ごとの写しの欄の error_messages を書き換えるので、class の欄 (base_fields) と次の要求には残らない。
+    届かない所: 受注と発注の明細の行 (formset。get_form は親の form の欄だけを回す) と、BaseFormView を使わない form (ログインなど)。
+    """
+    if field.widget.is_hidden:
+        return
+    if str(field.error_messages.get("required", "")) != str(django_forms.Field.default_error_messages["required"]):
+        return
+    label = field.label if field.label is not None else pretty_name(name)
+    if isinstance(field, django_forms.BooleanField):
+        message = f"{label}に チェックを入れてください。"
+    elif isinstance(field, (django_forms.ChoiceField, django_forms.FileField)):
+        message = f"{label}を選んでください。"
+    else:
+        message = f"{label}を入れてください。"
+    field.error_messages["required"] = message
 
 
 def _accepts_instance(form_class) -> bool:

@@ -344,3 +344,58 @@ def test_record_payment_saved_message_has_yen(user, invoice):
     payment = services.record_payment(invoice, RECEIVED_ON, Decimal("734900.00"), user)
 
     assert payment.saved_message == f"請求書 {invoice.invoice_no} に ¥734,900 を入金として記録しました。"
+
+
+# --- 金額の欄の誤りの字 (初見テスト R5 の V37。候補 C25 の 1 と 2) ---
+
+AMOUNT_NOT_A_NUMBER = "金額は 8800 のように数字で入れてください。"
+
+
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["page", "modal"])
+def test_create_post_amount_with_yen_says_how_to_write_it(client_logged_in, invoice, headers):
+    """金額に「8800円」を入れて押すと、欄の下の字が直し方の分かる字になる (Django の既定の「数値を入力してください。」を出さない。C25 の 1)。"""
+    response = client_logged_in.post(
+        reverse("billing:payment_create", args=[invoice.pk]), {**POST, "amount": "8800円"}, **headers
+    )
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert AMOUNT_NOT_A_NUMBER in body
+    assert "数値を入力してください" not in body
+    assert Payment.objects.count() == 0
+
+
+def test_create_post_negative_amount_keeps_the_min_value_message(client_logged_in, invoice):
+    response = client_logged_in.post(reverse("billing:payment_create", args=[invoice.pk]), {**POST, "amount": "-1"})
+
+    assert response.status_code == 200
+    assert "入金の金額は 0 より大きい数にしてください。" in response.content.decode()
+    assert Payment.objects.count() == 0
+
+
+@pytest.mark.parametrize("amount", ["8,800", "８８００"])
+def test_create_post_amount_with_comma_or_wide_digits_is_saved(client_logged_in, invoice, amount):
+    response = client_logged_in.post(reverse("billing:payment_create", args=[invoice.pk]), {**POST, "amount": amount})
+
+    assert response.status_code == 302
+    assert Payment.objects.count() == 1
+    assert Payment.objects.get().amount == Decimal("8800")
+
+
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["page", "modal"])
+def test_create_post_empty_amount_names_the_field(client_logged_in, invoice, headers):
+    """金額を空のまま押すと、欄の下の字は「金額を入れてください。」(入力の土台がまとめて替える。C25 の 2)。止まった知らせは C57 の形のまま。"""
+    response = client_logged_in.post(
+        reverse("billing:payment_create", args=[invoice.pk]), {**POST, "amount": ""}, **headers
+    )
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "金額を入れてください。" in body
+    assert "このフィールドは必須です" not in body
+    assert Payment.objects.count() == 0
+    if not headers:
+        start = body.index('data-notice="stop"')
+        stop = body[start : body.index("data-toast-close", start)]
+        assert "記録できません。" in stop
+        assert "「金額」の欄に誤りがあります。" in stop
