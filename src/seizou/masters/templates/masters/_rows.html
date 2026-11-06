@@ -1,10 +1,10 @@
-{% load seizou_icons %}{% comment %}
+{% load seizou_tags seizou_icons %}{% comment %}
 masters の一覧の行の部分 (N135)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
-部品と取引先 (N135) と工程 (N140) の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。休日の一覧は core/_rows.html のまま。
+部品と取引先 (N135) と工程 (N140) の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。休日の一覧は core/_rows.html のまま。在庫の一覧 (stock の stock_list。model が部品なので土台がこの部分を選ぶ) は、1 行を stock/_row.html (行の ⋮) にし、最後に「操作」の列を出す。⋮ の書く 2 つの項目を出すかは can_write の tag で 1 回だけ決める (can_move)。
 休日の一覧を年 (?year=YYYY。HolidayListView.get_queryset が読む。絞りの枠の外) で絞って 0 件のときだけ、空の枠を「YYYY 年の休日はありません。」と「すべて外す」(年を外した一覧) にする (本人の決め 11-05 16:2x。N161)。
 年のボタンは一覧の枠の外 (見出しの帯) にあるので、「すべて外す」は画面ごと移る link (枠だけを取り直さない)。検索の言葉があるときは core/_rows.html の空の枠のまま。
 {% endcomment %}
-{% if request.resolver_match.url_name == "item_list" or request.resolver_match.url_name == "partner_list" or request.resolver_match.url_name == "process_list" %}{% include "core/_rows.html" with row_template="masters/_row.html" %}{% elif request.resolver_match.url_name == "holiday_list" and not rows and not search_q and request.GET.year|length == 4 %}
+{% if request.resolver_match.url_name == "item_list" or request.resolver_match.url_name == "partner_list" or request.resolver_match.url_name == "process_list" %}{% include "core/_rows.html" with row_template="masters/_row.html" %}{% elif request.resolver_match.url_name == "stock_list" %}{% can_write "stock.StockMove" as can_move %}{% include "core/_rows.html" with row_template="stock/_row.html" actions_label="操作" %}{% elif request.resolver_match.url_name == "holiday_list" and not rows and not search_q and request.GET.year|length == 4 %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
   <p class="mt-4 font-medium">{{ request.GET.year }} 年の休日はありません。</p>
