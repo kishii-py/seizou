@@ -1,0 +1,87 @@
+{% load seizou_icons seizou_tags %}
+{# 請求書の新規登録の入力のカード (billing/invoice_form.html の画面の全体が include する)。小窓の入口は無いが、form の開きの tag は小窓の形も写した元のまま持つ。 #}
+{# 写した元: core/_form_card.html (候補 C74)。form の開きの tag・頭の案内の 1 行・欄の格子の 1 つずつの欄・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存。data-submit-label と data-submit-label-plain)・_enter_guard.html は写した元の字のまま。 #}
+{# 変えた所: 欄の格子は form.head_fields (得意先・発行日と会社ごとの項目) だけにし、その下に出荷の節を置く。見出しの行 (「出荷」「必須」と合計の枠 core/_line_totals.html)・別の得意先の行に残った印の数の黄の 1 行 (invoice_form.html の JS が hidden だけを出し入れする)・出荷の表 (form.rows。行の checkbox の見えない名前は今の行の字)・欄の誤りと案内の字。 #}
+{# 行が 0 のときは表の箱だけを外す。下の行は行の数で包まない (止める処理を足さない)。赤と黄の知らせは右上の知らせ (core/_toasts.html)。 #}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
+  {% csrf_token %}
+  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
+    {% for field in form.head_fields %}
+    {% if field.widget_type == "checkbox" %}
+    <div class="sm:col-span-2">
+      <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% else %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}{% if field.name in form.row_start_fields %} sm:col-start-1{% endif %}">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+      </div>
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% with field=form.shipments %}
+  <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="flex items-center gap-2 font-medium">{{ field.label }}{% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</h2>
+    {% include "core/_line_totals.html" %}
+  </div>
+  <p class="mt-2 flex items-center gap-2 text-xs text-warning" data-picked-elsewhere hidden>{% icon "alert" "size-4" %}<span>別の得意先の出荷 <span data-picked-elsewhere-count>0</span> 件に印が残っています。</span></p>
+  {% if form.rows %}
+  <div class="mt-4 overflow-x-auto">
+    <table id="{{ field.auto_id }}" class="table table-sm">
+      <thead>
+        <tr>
+          <th>選ぶ</th>
+          <th>出荷番号</th>
+          <th>出荷日</th>
+          <th>得意先</th>
+          <th>部品</th>
+          <th class="text-right">数量</th>
+          {% if not form.hide_money %}<th class="text-right">金額 (税抜)</th>{% endif %}
+          <th>納品書</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in form.rows %}
+        <tr class="align-top" data-label-pick-qty="{{ row.qty_text }}"{% if row.amount_text %} data-label-pick-amount="{{ row.amount_text }}"{% endif %}>
+          <td><label class="flex cursor-pointer items-center">{{ row.box.tag }}<span class="sr-only">{{ row.box.choice_label }}</span></label></td>
+          <td class="whitespace-nowrap font-mono">{{ row.shipment.shipment_no }}</td>
+          <td class="whitespace-nowrap">{{ row.shipment.shipped_at|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap">{{ row.shipment.order_line.order.customer }}</td>
+          <td class="whitespace-nowrap">{{ row.shipment.order_line.item }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>
+          {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}</td>{% endif %}
+          <td class="whitespace-nowrap font-mono">{{ row.shipment.delivery_note.note_no }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+  {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+  {% endwith %}
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
+  {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  {# 下の行 (キャンセルと保存)。core/_form_card.html と同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字。小窓は今の形のまま。C21)。 #}
+  {% if in_modal %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+  {% else %}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
+  {% endif %}
+    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
+    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}
+  </div>
+</form>
+{% include "core/_enter_guard.html" %}
