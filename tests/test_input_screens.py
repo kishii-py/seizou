@@ -255,6 +255,15 @@ def test_order_form_line_widths_fit_unit_and_fix_item(logged_in):
     assert "min-w-20" in _line_cell_classes(template, "lines-__prefix__-unit")
 
 
+@pytest.mark.django_db
+def test_order_form_says_delete_is_at_right_end(logged_in):
+    """表の上の説明で「消す」の置き場を言う (初見テスト R5 の候補 C35 の 3。C35-3 の a)。"""
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+
+    assert "行を消すときは、表の右の端の「消す」に印を付けて保存します。" in body
+    assert "行を消すときは「消す」に印を付けて保存します。" not in body
+
+
 # --- 4-2. 受注の入力の得意先の品番 ---------------------------------------------------------------
 
 
