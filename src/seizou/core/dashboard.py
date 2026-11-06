@@ -16,7 +16,7 @@
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
-- today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行は外す)。
+- today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行と段は外し、何も残らなければ None)。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -1063,6 +1063,9 @@ def today_tasks(user=None) -> dict | None:
     返す物 = {"title": TODAY_TITLE, "rows": [行], "guide": flow_guide() の値}。流れが 1 本も無ければ None。
     行 = {"key" (移る先の表の鍵), "flow" (流れの key), "label" (段の count_label), "count", "unit", "button" (移る先の画面の名前), "url_name", "url" (絞りの GET つき)}。
     user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行は外す (core.access.can_open。記録は書かない)。None なら外さない。
+    user を渡すと、guide も部署で開けない段を外した写し (_open_guide。流れが 1 本も残らなければ None) にし、行が 0 で写しも None なら
+    None を返す (「はじめての方へ」の枠ごと出さない。決め C12-2 = a。初見テスト R5 の U159)。行は外す前の guide から作る
+    (行の移る先と段の url_name が違う物があり、段を先に外すと開ける行まで消えるため。例: 出荷の段は出荷の一覧、出荷の行は受注の一覧)。
     移る先に絞りの GET が無い段 (指示書の無い明細・納品書に入っていない出荷・請求書に入っていない出荷・受入の残) は素の一覧へ移る。
     """
     guide = flow_guide()
@@ -1093,7 +1096,28 @@ def today_tasks(user=None) -> dict | None:
                     "url": f"{url}?{urlencode(params)}" if params else url,
                 }
             )
+    if user is None:
+        return {"title": TODAY_TITLE, "rows": rows, "guide": guide}
+    guide = _open_guide(guide, user)
+    if not rows and guide is None:
+        return None
     return {"title": TODAY_TITLE, "rows": rows, "guide": guide}
+
+
+def _open_guide(guide: dict, user) -> dict | None:
+    """flow_guide() の値から、部署で開けない段を外した写し。段の URL の名前の : の前の部品を core.access.can_open で見る (記録は書かない)。
+
+    段の残らない流れは入れず、流れが 1 本も残らなければ None。写しの流れの next は、残した段のうち件数が 1 以上の最初の段
+    (flow_guide と同じ選び方)。元の guide の dict は書き換えない。問い合わせは増えない (can_open は Access の行の控えを読む)。
+    """
+    flows = []
+    for flow in guide["flows"]:
+        steps = [step for step in flow["steps"] if access.can_open(user, step["url_name"].split(":")[0], record=False)]
+        if not steps:
+            continue
+        first = next((step for step in steps if step["count"]), None)
+        flows.append({**flow, "steps": steps, "next": first})
+    return {"flows": flows} if flows else None
 
 
 def flow_neighbors(url_name: str) -> dict | None:
