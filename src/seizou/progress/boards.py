@@ -4,6 +4,7 @@
 
 - 盤の行は指示書の工程 1 つ。予定の数・実績の合計・残 (予定の数 − 実績の合計) を並べる。
 - 盤に出すのは、指示書が取消でなく、受注も取消でない工程だけ。残が 0 の工程も出す。
+  残が 0 以下の工程は done を真にし、盤は工程の字の右に「完了」の札を出す (現品票の読み取りの着地と同じ読み方)。
 - 実績の合計は列に持たず annotate で出す (services.recorded_qty と同じ式)。残は Python で引く。
 - 自動の更新の印 (after) は実績の pk。実績を直す・消す関数は無いので、after より大きい pk の実績が
   「前に見た後に入った実績」になる。
@@ -110,6 +111,7 @@ def _row(step):
         "recorded": recorded,
         "remaining": remaining,
         "over": remaining < 0,
+        "done": remaining <= 0,
     }
 
 

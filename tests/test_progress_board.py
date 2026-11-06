@@ -18,7 +18,7 @@ from django.urls import reverse
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
-from seizou.progress import services
+from seizou.progress import boards, services
 from seizou.progress import urls as progress_urls
 from seizou.workorders import services as workorders_services
 
@@ -114,7 +114,7 @@ def test_board_shows_planned_recorded_remaining(client_logged_in, issue, cut, us
     body = _body(_board(client_logged_in))
     row = _row(body, step)
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["10", "7", "3"]
+    assert cells == ["3", "10", "7"]
     assert reverse("workorders:workorder_detail", args=[workorder.pk]) in row
     assert workorder.wo_no in row
     assert "T-100 作り物の軸" in row and reverse("masters:item_modal", args=[step.workorder.order_line.item.pk]) in row
@@ -262,7 +262,7 @@ def test_poll_returns_only_changed_rows(client_logged_in, issue, cut, bend):
     row = _row(body, changed)
     assert 'hx-swap-oob="true"' in row
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["10", "7", "3"]  # 合計は前からの 3 を含む
+    assert cells == ["3", "10", "7"]  # 合計は前からの 3 を含む
     assert f'id="progress-step-{other.pk}"' not in body
     assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={added.pk}"
     assert re.search(r'<div id="progress-poll"[^>]*hx-swap-oob="true"', body)
@@ -355,3 +355,93 @@ def test_progress_text_drops_trailing_zeros(client_logged_in, issue, cut, bend, 
     body = _body(client_logged_in.get(reverse("workorders:workorder_detail", args=[workorder.pk])))
     assert str(whole) in body and str(half) in body
     assert "500.00" not in body and "2.50" not in body
+
+
+# --- 3 段目: 列の並びと完了の札 ---
+
+DONE_BADGE = '<span class="badge badge-success ml-2">完了</span>'
+
+
+def _cells(row):
+    """盤の 1 行の欄 (<td> から </td> まで) を左から順に。"""
+    return re.findall(r"<td[^>]*>.*?</td>", row, re.S)
+
+
+@pytest.mark.django_db
+def test_board_headers_put_remaining_after_process(client_logged_in, issue, cut):
+    """見出しは左から 指示書番号・工程・残・予定の数・実績の合計・部品 (残を工程のすぐ右、長い部品の名前を右端へ。C71)。"""
+    issue(cut)
+
+    body = _body(_board(client_logged_in))
+    thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
+    headers = re.findall(r'<th class="[^"]*">([^<]*)</th>', thead)
+    assert headers == ["指示書番号", "工程", "残", "予定の数", "実績の合計", "部品"]
+
+
+@pytest.mark.django_db
+def test_board_cells_follow_header_order(client_logged_in, issue, cut, user):
+    workorder = issue(cut)
+    step = workorder.steps.get()
+    _record(step, 3, user)
+
+    cells = _cells(_row(_body(_board(client_logged_in)), step))
+    assert len(cells) == 6
+    assert workorder.wo_no in cells[0]
+    assert reverse("workorders:workorder_detail", args=[workorder.pk]) in cells[0]
+    assert "1 切断" in cells[1]
+    assert cells[2].endswith(">7</td>")
+    item_pk = step.workorder.order_line.item.pk
+    assert "T-100 作り物の軸" in cells[-1]
+    assert reverse("masters:item_modal", args=[item_pk]) in cells[-1]
+
+
+@pytest.mark.django_db
+def test_no_done_badge_while_remaining(client_logged_in, issue, cut, user):
+    step = issue(cut).steps.get()
+    _record(step, 3, user)
+
+    row = _row(_body(_board(client_logged_in)), step)
+    assert "完了" not in row
+
+
+@pytest.mark.django_db
+def test_done_badge_when_remaining_zero_or_below(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    over_step, even_step = workorder.steps.order_by("seq")
+    _record(over_step, 12)  # 残 -2
+    _record(even_step, 10)  # 残 0
+
+    body = _body(_board(client_logged_in))
+    over_row = _row(body, over_step)
+    even_row = _row(body, even_step)
+    assert DONE_BADGE in over_row
+    assert DONE_BADGE in even_row
+    assert 'data-over="true"' in over_row  # 予定を超えた残は今どおり赤
+    assert 'data-over="true"' not in even_row
+
+
+@pytest.mark.django_db
+def test_poll_row_has_done_badge(client_logged_in, issue, cut):
+    step = issue(cut).steps.get()
+    before = _record(step, 3)
+    _record(step, 7)
+
+    row = _row(_body(_poll(client_logged_in, after=before.pk)), step)
+    assert 'hx-swap-oob="true"' in row
+    assert DONE_BADGE in row
+
+
+@pytest.mark.django_db
+def test_build_board_done_key(issue, cut, bend):
+    workorder = issue(cut, bend)
+    over_step, even_step = workorder.steps.order_by("seq")
+    _record(over_step, 12)  # 残 -2
+    _record(even_step, 10)  # 残 0
+    open_step = issue(cut).steps.get()
+    _record(open_step, 7)  # 残 3
+
+    rows = {row["step"]: row for row in boards.build_board(None)["rows"]}
+    assert rows[open_step.pk]["remaining"] == Decimal("3")
+    assert rows[open_step.pk]["done"] is False
+    assert rows[even_step.pk]["done"] is True
+    assert rows[over_step.pk]["done"] is True

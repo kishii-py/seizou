@@ -2,12 +2,13 @@
 進捗の盤の 1 行 (指示書の工程 1 つ)。盤 (progress_board.html) と、自動の更新の応答 (progress/_rows.html) の両方が使う。
 oob が真のとき (自動の更新の応答) だけ hx-swap-oob を付け、htmx が同じ id の行と入れ替える。
 残が負の欄だけ data-over="true" を付け、固定の class data-[over=true]:text-error で赤にする (class を途中で組み立てない = R19)。
+残が 0 以下の行 (row.done) は、工程の字の右に「完了」の札を出す (現品票の読み取りの着地 workorders/workorder_scan.html と同じ札・同じ読み方)。
 {% endcomment %}
 <tr id="progress-step-{{ row.step }}" class="h-10"{% if oob %} hx-swap-oob="true"{% endif %}>
   <td class="whitespace-nowrap font-mono"><a class="link link-hover rounded focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' row.workorder %}">{{ row.wo_no }}</a></td>
-  <td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ row.item }}">{% master_link row.item %}</span></td>
-  <td class="whitespace-nowrap">{{ row.seq }} {{ row.process_name }}</td>
+  <td class="whitespace-nowrap">{{ row.seq }} {{ row.process_name }}{% if row.done %}<span class="badge badge-success ml-2">完了</span>{% endif %}</td>
+  <td class="whitespace-nowrap text-right tabular-nums data-[over=true]:text-error"{% if row.over %} data-over="true"{% endif %}>{{ row.remaining|comma }}</td>
   <td class="whitespace-nowrap text-right tabular-nums">{{ row.planned|comma }}</td>
   <td class="whitespace-nowrap text-right tabular-nums">{{ row.recorded|comma }}</td>
-  <td class="whitespace-nowrap text-right tabular-nums data-[over=true]:text-error"{% if row.over %} data-over="true"{% endif %}>{{ row.remaining|comma }}</td>
+  <td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ row.item }}">{% master_link row.item %}</span></td>
 </tr>
