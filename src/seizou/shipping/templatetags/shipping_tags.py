@@ -1,0 +1,48 @@
+"""shipping のテンプレートの tag。読むだけで、表に書かない。
+
+- deliverynote_billing: 納品書を取り消せない理由の文 (services.cancel_refusal と同じ文) と、請求済みの出荷とその請求書の行
+  (取消の確かめのカード shipping/_deliverynote_cancel_card.html が読む。初見テスト R5 の候補 C03。依頼書 N196)。
+"""
+
+from django import template
+from django.urls import reverse
+
+from seizou.core import access
+from seizou.core.views import model_url
+
+from .. import services
+
+register = template.Library()
+
+
+@register.simple_tag(takes_context=True)
+def deliverynote_billing(context, note):
+    """{% deliverynote_billing object as billing %}。billing.refusal = 取り消せない理由の文 (取り消せるなら空の字)。
+
+    billing.rows = 発行の請求書に入った出荷の行 (出荷の pk の順)。1 行は shipment_no・shipment_url (出荷の詳細)・
+    invoice_no・invoice_url (請求書の詳細)。invoice_url は、billing を部署で開けない人と、請求書の URL が引けない会社では None
+    (押すと部署の 403 になる link を出さない。判定は core の can_write と同じ access.can_open の record=False)。
+    請求書は出荷の逆の関係で引く (shipping は billing を import しない。services._issued_invoice_of)。
+    """
+    rows = []
+    for shipment in note.shipments.order_by("pk"):
+        invoice = services._issued_invoice_of(shipment)
+        if invoice is None:
+            continue
+        rows.append(
+            {
+                "shipment_no": shipment.shipment_no,
+                "shipment_url": reverse("shipping:shipment_detail", args=[shipment.pk]),
+                "invoice_no": invoice.invoice_no,
+                "invoice_url": _invoice_url(context, invoice),
+            }
+        )
+    return {"refusal": services.cancel_refusal(note) if rows else "", "rows": rows}
+
+
+def _invoice_url(context, invoice):
+    """請求書の詳細の URL。billing を部署で開けない人と、URL が引けない会社では None。"""
+    request = context.get("request")
+    if not access.can_open(getattr(request, "user", None), "billing", record=False):
+        return None
+    return model_url(type(invoice), "detail", invoice.pk)
