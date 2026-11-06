@@ -131,7 +131,7 @@ def test_sidebar_is_viewport_high_and_scrolls_inside(logged_in):
     start = body.index("<aside")
     tag = body[start : body.index(">", start)]
     assert "h-screen" in tag and "min-h-full" not in tag
-    assert 'class="flex-1 overflow-y-auto p-4" aria-label="メニュー"' in body
+    assert 'class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー"' in body
 
 
 # ---------------------------------------------------------------- 6 全体の検索と会社ごとの項目
