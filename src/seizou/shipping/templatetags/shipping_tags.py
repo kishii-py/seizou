@@ -25,19 +25,19 @@ def deliverynote_billing(context, note):
     (押すと部署の 403 になる link を出さない。判定は core の can_write と同じ access.can_open の record=False)。
     billing.invoices = 請求書ごとにまとめた並び (rows の並びで最初に出た順)。1 つは invoice_no・invoice_url・count
     (この納品書の出荷のうち、その請求書に入った数)。
-    請求書は出荷の逆の関係で引く (shipping は billing を import しない。services._issued_invoice_of)。
+    請求書は出荷の逆の関係で引く (shipping は billing を import しない。services.invoiced_shipments の 1 回)。
+    文は請求済みの出荷があるときだけ引く (services.cancel_refusal の 1 回)。
     """
+    request = context.get("request")
+    can_bill = access.can_open(getattr(request, "user", None), "billing", record=False)
     rows = []
-    for shipment in note.shipments.order_by("pk"):
-        invoice = services._issued_invoice_of(shipment)
-        if invoice is None:
-            continue
+    for shipment, invoice in services.invoiced_shipments(note):
         rows.append(
             {
                 "shipment_no": shipment.shipment_no,
                 "shipment_url": reverse("shipping:shipment_detail", args=[shipment.pk]),
                 "invoice_no": invoice.invoice_no,
-                "invoice_url": _invoice_url(context, invoice),
+                "invoice_url": model_url(type(invoice), "detail", invoice.pk) if can_bill else None,
             }
         )
     invoices = {}
@@ -47,11 +47,3 @@ def deliverynote_billing(context, note):
         )
         group["count"] += 1
     return {"refusal": services.cancel_refusal(note) if rows else "", "rows": rows, "invoices": list(invoices.values())}
-
-
-def _invoice_url(context, invoice):
-    """請求書の詳細の URL。billing を部署で開けない人と、URL が引けない会社では None。"""
-    request = context.get("request")
-    if not access.can_open(getattr(request, "user", None), "billing", record=False):
-        return None
-    return model_url(type(invoice), "detail", invoice.pk)
