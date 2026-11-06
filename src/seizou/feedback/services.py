@@ -3,7 +3,10 @@
 約束:
 - 書くのはここだけ。書く関数は transaction.atomic の中。番号の無い入力の誤りは日本語の ValueError
   (文は何が起きて何をすればよいか。画面の土台が赤の知らせにし、口は messages.error にする)。
-- HTTP を送らない。GitHub の Issue に出すのは、世話役が Issue の文 (export_markdown) を写す (工場の PC に認証を置かない)。
+- GitHub へは、世話役がトークンを置いた会社 (github.py。鍵は置き場の .env だけ) だけが送る。確認済みの下書きを send_to_github で
+  Issue にし、閉じた Issue を sync_github で直したにする。HTTP は transaction.atomic の外で送る (R17。送る前に書く物は無く、
+  送った後に書く物は mark_sent・mark_fixed の atomic)。トークンが無い会社は今までどおり、世話役が Issue の文 (export_markdown) を手で写す。
+- 皆の Issue を探す search_issues は読むだけ (トークンは無くてよい。返事は django.core.cache に 5 分だけ控える)。
 - 伏せ字は取引先マスターの名前と金額らしい数だけ。品番・数量・会社の自分の名前・人の名前は伏せない。
 - 画面の目録は URL の木を歩いて作るので、process の中で 1 回だけ作って覚える (screen_catalog)。
   試験は screen_catalog.cache_clear() で作り直す。
@@ -17,15 +20,19 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 from functools import lru_cache
 
 from django.apps import apps
+from django.core.cache import cache
 from django.db import DatabaseError, transaction
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 
 from seizou.core import access, manual
 from seizou.core.screens import Screen, all_screens
 
+from . import github
 from .models import Feedback
 
 #: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
@@ -412,6 +419,11 @@ def mark_fixed(feedback, note, user):
     既に直した物は ValueError。直した後は、書いた人は直せず消せない (can_edit・can_delete は書いた人に下書きだけを許すため)。
     """
     _refuse_non_manager(user, "直した状態")
+    return _write_fixed(feedback, note)
+
+
+def _write_fixed(feedback, note):
+    """直した状態を書く (mark_fixed と、置き場の持ち主の取り込み sync_github が呼ぶ。人の確かめは呼び手がする)。"""
     if feedback.status == "fixed":
         raise ValueError("保存できません。" + MESSAGE_ALREADY_FIXED)
     text = _text(note)
@@ -569,3 +581,183 @@ def export_markdown(feedback) -> str:
         files = "・".join(_mask(row.original_name, names).strip() for row in shots)
         lines.extend(["", f"画面の絵: {len(shots)} 枚 ({files}。絵は世話役が Issue に手で付ける)"])
     return "\n".join(lines) + "\n"
+
+
+# ---- GitHub (依頼書 N185。決め 11-06 21:2x) ----
+
+#: Issue に付ける印 (協力者でない口座が付けた印は、GitHub が黙って外す)
+GITHUB_LABEL = "from-seizou"
+#: 皆の Issue を控える秒 (5 分)
+ISSUES_CACHE_SECONDS = 5 * 60
+#: 皆の Issue を探したときに返す件数の上限
+ISSUES_SHOWN = 20
+#: 送った先の URL が GitHub の Issue の形か (owner・name・番号)
+_ISSUE_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/issues/([0-9]+)")
+
+MESSAGE_GITHUB_NOT_CONNECTED = "GitHub とまだつないでいません。フィードバックの一覧の「GitHub の設定」から、トークンを置いてください。"
+MESSAGE_GITHUB_CONFIRM_FIRST = "先に「確認済みにする」を押してください。"
+
+
+def _refuse_github(user, what, *, sending=False) -> None:
+    """GitHub の口は世話役だけ (外は日本語の ValueError)。what は「GitHub とつなぐ」のような動きの字。
+
+    文の頭は、送る口 (sending) なら「送れません。」、ほかは「保存できません。」(断りの文の型。tests/test_wording.py)。
+    """
+    if can_manage(user):
+        return
+    reason = f"{what}のは、アカウント管理の担当者だけです。" + access.CONTACT
+    if sending:
+        raise ValueError("送れません。" + reason)
+    raise ValueError("保存できません。" + reason)
+
+
+def github_status() -> dict:
+    """GitHub とつないだ状態 {"connected": トークンがあるか, "login": 口座の名前, "repo": 送り先}。読むだけ。トークンの値は返さない。
+
+    送り先は .env の SEIZOU_GITHUB_ISSUES_REPO、無ければ既定 (github.DEFAULT_REPO)。
+    """
+    return {
+        "connected": bool(github.read_env_value(github.TOKEN_ENV)),
+        "login": github.read_env_value(github.LOGIN_ENV),
+        "repo": github.read_env_value(github.REPO_ENV) or github.DEFAULT_REPO,
+    }
+
+
+@sensitive_variables("data", "token")  # 開発の設定 (DEBUG) の誤りの画面に、トークンの値を出さない
+def connect_github(data, user) -> dict:
+    """GitHub とつなぐ。世話役だけ。data = {"token": トークン, "repo": 送り先 (owner/name。空なら既定)}。
+
+    形を見て → 口座の名前を GitHub に聞き (HTTP。atomic の外。表には書かない) → .env に 3 行 (トークン・送り先・口座の名前) を書く。
+    返す物は {"login": 口座の名前, "repo": 送り先}。失敗は日本語の ValueError (画面の土台が赤の知らせにする)。
+    トークンの値を、返す物・文・記録に入れない。
+    """
+    _refuse_github(user, "GitHub とつなぐ")
+    if not isinstance(data, dict):
+        raise ValueError("保存できません。トークンと送り先を、項目の名前と値の組で渡してください。")
+    try:
+        token = github.check_token(data.get("token"))
+        repo = github.check_repo(_text(data.get("repo")) or github.DEFAULT_REPO)
+        login = github.whoami(token)
+        github.write_env_value(github.TOKEN_ENV, token)
+        github.write_env_value(github.REPO_ENV, repo)
+        github.write_env_value(github.LOGIN_ENV, login)
+    except github.GithubError as exc:
+        raise ValueError("保存できません。" + f"GitHub とつなげませんでした。{exc}") from None
+    return {"login": login, "repo": repo}
+
+
+def disconnect_github(user) -> None:
+    """GitHub から外す。世話役だけ。.env と os.environ から 3 つの行 (トークン・送り先・口座の名前) を消す。"""
+    _refuse_github(user, "GitHub から外す")
+    try:
+        for key in (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV):
+            github.remove_env_value(key)
+    except github.GithubError as exc:
+        raise ValueError("保存できません。" + f"GitHub から外せませんでした。{exc}") from None
+
+
+def send_to_github(feedback, user) -> str:
+    """確認済みの下書きを GitHub の Issue にし、送ったにする。世話役だけ。作った Issue の URL を返す。
+
+    題は Issue の文 (export_markdown) の 1 行目の「# 」を外した字、本文は Issue の文の全部、印は from-seizou と種類の表示。
+    確認済みでない・つないでいないときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
+    HTTP は atomic の外 (R17)。送った後に mark_sent (atomic) で URL を残す。
+    """
+    _refuse_github(user, "GitHub に送る", sending=True)
+    if feedback.status != "confirmed":
+        raise ValueError("送れません。" + MESSAGE_GITHUB_CONFIRM_FIRST)
+    token = github.read_env_value(github.TOKEN_ENV)
+    if not token:
+        raise ValueError("送れません。" + MESSAGE_GITHUB_NOT_CONNECTED)
+    repo = github_status()["repo"]
+    text = export_markdown(feedback)
+    title = text.splitlines()[0].removeprefix("# ").strip()
+    try:
+        issue = github.create_issue(token, repo, title, text, [GITHUB_LABEL, feedback.get_kind_display()])
+    except github.GithubError as exc:
+        raise ValueError("送れません。" + str(exc)) from None
+    try:
+        mark_sent(feedback, user, sent_url=issue["html_url"])
+    except ValueError as exc:
+        raise ValueError(
+            "保存できません。"
+            + f"GitHub に Issue はできました ({issue['html_url']})。ただ、送ったにできませんでした ({exc})。"
+            + "「送ったにする」の欄に、この URL を貼ってください。"
+        ) from None
+    return issue["html_url"]
+
+
+def _closed_on(text) -> str:
+    """GitHub の閉じた日時 (ISO 8601) を会社の日付 (YYYY-MM-DD) にする。読めなければ頭の 10 字か「不明」。"""
+    raw = str(text or "")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw[:10] or "不明"
+    if timezone.is_naive(moment):
+        return moment.date().isoformat()
+    return timezone.localdate(moment).isoformat()
+
+
+def sync_github(user=None) -> dict:
+    """送った物の GitHub の Issue を 1 件ずつ読み、閉じた物を直したにする。返す物は {"見た": n, "直した": m, "読めなかった": k}。
+
+    見るのは、状態が送ったで、送った先が https://github.com/<owner>/<name>/issues/<番号> の形の物だけ (ほかの URL は飛ばす)。
+    直した場所は「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD)」。読めなかった物は数えて飛ばす (止めない)。
+    HTTP は 1 件ずつ atomic の外 (R17)。トークンがあれば使う (無くても公開のリポジトリは読める)。
+    user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
+    """
+    if user is not None:
+        _refuse_github(user, "GitHub の状態を取り込む")
+    token = github.read_env_value(github.TOKEN_ENV)
+    counts = {"見た": 0, "直した": 0, "読めなかった": 0}
+    for row in list(Feedback.objects.filter(status="sent").order_by("pk")):
+        match = _ISSUE_URL.fullmatch(row.sent_url or "")
+        if match is None:
+            continue
+        owner, name, number = match.groups()
+        counts["見た"] += 1
+        try:
+            state = github.issue_state(f"{owner}/{name}", int(number), token=token)
+        except github.GithubError:
+            counts["読めなかった"] += 1
+            continue
+        if state["state"] != "closed":
+            continue
+        try:
+            _write_fixed(row, f"GitHub の Issue #{number} (閉じた日 {_closed_on(state['closed_at'])})")
+        except ValueError:
+            counts["読めなかった"] += 1
+            continue
+        counts["直した"] += 1
+    return counts
+
+
+def _issues_cache_key(repo) -> str:
+    return f"seizou-feedback-github-issues:{repo}"
+
+
+def search_issues(words) -> dict:
+    """送り先のリポジトリの Issue を言葉で探す。読むだけ (トークンは無くてよい。あれば使う)。
+
+    返す物は {"issues": 並び, "error": 字, "repo": 送り先}。並びは、空白で分けた言葉の全部を題か本文 (先頭 300 字) に含む物を、
+    更新の新しい順に ISSUES_SHOWN 件まで (言葉が空なら新しい順に ISSUES_SHOWN 件)。英字の大小は見ない。
+    GitHub の返事は送り先ごとに django.core.cache に 5 分だけ控える (読めた時だけ)。読めなければ空の並びと日本語の error (止めない)。
+    """
+    repo = github_status()["repo"]
+    key = _issues_cache_key(repo)
+    rows = cache.get(key)
+    if rows is None:
+        try:
+            rows = github.list_issues(repo, token=github.read_env_value(github.TOKEN_ENV))
+        except github.GithubError:
+            return {
+                "issues": [],
+                "error": f"GitHub の Issue を読めませんでした (送り先 {repo})。少し待ってから、もう一度「探す」を押してください。",
+                "repo": repo,
+            }
+        cache.set(key, rows, ISSUES_CACHE_SECONDS)
+    terms = [word.casefold() for word in str(words or "").split()]
+    found = [row for row in rows if all(term in f"{row['title']}\n{row['body']}".casefold() for term in terms)]
+    found.sort(key=lambda row: row["updated_at"], reverse=True)
+    return {"issues": found[:ISSUES_SHOWN], "error": "", "repo": repo}

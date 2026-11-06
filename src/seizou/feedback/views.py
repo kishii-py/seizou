@@ -10,6 +10,8 @@
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
   (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら、中身の無い 200 で編集の画面へ移す (土台の form_valid と同じ形)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
+- GitHub の口 (依頼書 N185): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
+  断るのは services (ValueError を赤の知らせ)。HTTP は services が transaction.atomic の外で送る (R17)。
 """
 
 from django.contrib import messages
@@ -22,7 +24,7 @@ from django.views.decorators.http import require_POST
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import chat, services
-from .forms import FeedbackForm
+from .forms import FeedbackForm, GithubConnectForm
 from .models import Feedback
 
 
@@ -104,6 +106,23 @@ class FeedbackUpdateView(BaseFormView):
         return _visible_to(Feedback.objects.all(), self.request.user)
 
 
+class GithubSetupView(BaseFormView):
+    """GitHub とつなぐ (依頼書 N185。決め 11-06 21:2x)。
+
+    使う人: 世話役 (アカウント管理の担当者) / いつ: フィードバックを GitHub の Issue に直接送れるようにするとき / 何のために: GitHub の口座のトークンを置き、送り先を決める / 次にすること: 確認済みの下書きの詳細で「GitHub に送る」
+
+    世話役だけの画面。部品の画面は R15 で dispatch を上書きできないので、世話役でない人には template が断りの文だけを出し
+    (入力の形を出さない)、送られても services の connect_github が断る (赤の知らせ)。入口 (一覧と詳細の link) も世話役だけに出す。
+    つないだ後は、form の隠しの next で同じ画面へ戻る (土台の next_url。success_url は R15 の 13 の外)。
+    """
+
+    form_class = GithubConnectForm
+    service = staticmethod(services.connect_github)
+    template_name = "feedback/github_setup.html"
+    screen_name = "GitHub とつなぐ"
+    screen_help = "フィードバックを GitHub の Issue に直接送るための設定。トークンの取得の手順を見て、トークンと送り先を入れて「つなぐ」を押す。トークンは会社の .env にだけ置き、画面には二度と出ない。世話役 (アカウント管理の担当者) だけが使う。"
+
+
 def _back_to_detail(pk):
     return HttpResponseRedirect(reverse("feedback:feedback_detail", args=[pk]))
 
@@ -167,6 +186,49 @@ def delete(request, pk):
         messages.error(request, str(exc))
         return _back_to_detail(pk)
     messages.success(request, "下書きを削除しました。")
+    return HttpResponseRedirect(reverse("feedback:feedback_list"))
+
+
+@login_required
+@require_POST
+def github_disconnect(request):
+    """GitHub から外す (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻る。"""
+    try:
+        services.disconnect_github(request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "GitHub から外しました。GitHub の側でも、トークンを「Delete」で無効にしてください。")
+    return HttpResponseRedirect(reverse("feedback:github_setup"))
+
+
+@login_required
+@require_POST
+def github_send(request, pk):
+    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    feedback = get_object_or_404(Feedback, pk=pk)
+    try:
+        url = services.send_to_github(feedback, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, f"GitHub に送りました: {url}")
+    return _back_to_detail(pk)
+
+
+@login_required
+@require_POST
+def github_sync(request):
+    """送った物の GitHub の Issue を読み、閉じた物を直したにする (世話役だけ。断られたら赤の知らせ)。一覧へ戻る。"""
+    try:
+        counts = services.sync_github(request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            f"GitHub を見ました: 見た {counts['見た']} 件・直した {counts['直した']} 件・読めなかった {counts['読めなかった']} 件",
+        )
     return HttpResponseRedirect(reverse("feedback:feedback_list"))
 
 
