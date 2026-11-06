@@ -219,6 +219,7 @@ class SendForm(forms.Form):
 class CancelForm(forms.Form):
     """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。保存のボタンは「PO-000001 を取り消す」(N138)。"""
     submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
 
     reason = forms.CharField(
         label="取消の理由", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3})

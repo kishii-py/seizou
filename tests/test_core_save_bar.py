@@ -246,9 +246,14 @@ def test_six_templates_have_bottom_row():
         assert source.count(ROW) == 1, path
         assert source.count(SLOT + '{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>') == 1, path
     # 小窓の形を持つ 3 つは、小窓では今の tag のまま (class を組み立てず、tag を丸ごと 2 つ書く。R19)
-    for path in ROW_TEMPLATES[0], ROW_TEMPLATES[2], ROW_TEMPLATES[3]:
+    for path in ROW_TEMPLATES[2], ROW_TEMPLATES[3]:
         source = path.read_text(encoding="utf-8")
         assert "{% if in_modal %}\n  " + MODAL_ROW + "\n  {% else %}\n  " + ROW in source, path
+    # core の入力のカードは、小窓の tag を欄の有る無しで 2 つ (欄の無い形は上の空きと線を描かない。候補 C24) と、
+    # 画面の全体の ROW を、それぞれ丸ごと 1 回ずつ書く (class を組み立てず、tag を丸ごと書く。R19)
+    source = ROW_TEMPLATES[0].read_text(encoding="utf-8")
+    for tag in (MODAL_ROW, '<div class="flex flex-wrap items-center justify-end gap-2">', ROW):
+        assert source.count(tag) == 1, tag
 
 
 def test_input_css_has_sticky_row():

@@ -24,6 +24,7 @@ from seizou.accounts import services as accounts_services
 from seizou.accounts.models import Department
 from seizou.billing import services as billing_services
 from seizou.billing.models import Invoice, Payment
+from seizou.core import checks
 from seizou.masters import services as masters_services
 from seizou.masters.models import Holiday, Process
 from seizou.orders import services as orders_services
@@ -522,9 +523,7 @@ def test_whole_pages_keep_working(world, name):
     case = BUILD[name](world)
     page = text(world.client.get(case.url))
     assert "<html" in page
-    if name != "payment_cancel":
-        # 入金の取消は入金の一覧の URL が無く、入金の枠の link は ?next= を付けないので、前から「キャンセル」を出さない (変えない)
-        assert "キャンセル" in page
+    assert "キャンセル" in page
     if case.moved:
         assert case.text in page
     response = world.client.post(case.url, case.post)
@@ -564,3 +563,145 @@ def test_large_inputs_stay_pages(world):
     _login_manager(world)
     access = _tags(text(client.get(reverse("accounts:access_list"))), reverse("accounts:access_create"))
     assert access and all("data-modal-form" not in tag for tag in access)
+
+
+# ---------------------------------------------------------------- 取消の確かめのカードの形 (初見テスト R5 の候補 C24。依頼書 N258)
+
+#: 欄の格子の字 (格子の行の頭の mt-6 は必須の欄がある form だけに付く形に変わる見込み = 候補 C54 なので、見ない)
+GRID = "grid gap-x-6"
+#: 小窓の下の行 (欄がある form)・小窓の下の行 (見える欄が 0 個の form)・画面の全体の下の行 (C21)
+MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
+NO_FIELD_ROW = '<div class="flex flex-wrap items-center justify-end gap-2">'
+SAVE_ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
+#: 見える欄が 0 個の 4 つの form (納品書の取消・請求書の取消・入金の取消・注文を送り直す)
+NO_FIELDS = ("deliverynote_cancel", "invoice_cancel", "payment_cancel", "purchaseorder_send")
+
+
+def _card(body):
+    """入力のカードの form (data-enter-guard の付いた <form から </form> まで)。
+
+    全体の画面では <main より前の上の帯にログアウトの <form method="post" があるので、最初の form を取らない。
+    """
+    mark = body.index("novalidate data-enter-guard>")
+    start = body.rfind("<form", 0, mark)
+    assert start >= 0, "カードの form が無い"
+    assert "</form>" not in body[start:mark], "カードの form が無い"
+    return body[start : body.index("</form>", mark) + len("</form>")]
+
+
+def _url(w, name):
+    """name の画面の URL (注文を送り直すは BUILD に無いので、ここで「作成」の発注を作る)。"""
+    if name == "purchaseorder_send":
+        return reverse("purchasing:purchaseorder_send", args=[_purchase_order(w.user).pk])
+    return BUILD[name](w).url
+
+
+@pytest.mark.parametrize("name", NO_FIELDS)
+def test_no_field_cards_have_no_empty_band(world, name):
+    """見える欄が 0 個の確かめは、白い枠に欄の格子を描かない。小窓では下の行の上の空きと線も描かない (U69・a-blind-15。C24 の 1)。
+
+    画面の全体の下の行の形 (印・上の空き・線) は、外し方が決まっていないので見ない (候補の「決めを待つ所」)。
+    """
+    url = _url(world, name)
+    modal = _card(text(world.client.get(url, **MODAL)))
+    assert GRID not in modal
+    assert "border-t" not in modal
+    assert MODAL_ROW not in modal
+    assert NO_FIELD_ROW in modal
+    whole = _card(text(world.client.get(url)))
+    assert GRID not in whole
+
+
+@pytest.mark.parametrize("name", ("order_cancel", "payment_create"))
+def test_field_cards_keep_grid_and_rows(world, name):
+    """欄がある form (受注の取消・入金の記録) は、格子と、小窓と画面の全体の下の行が今の形のまま (C24 の 1)。"""
+    case = BUILD[name](world)
+    modal = _card(text(world.client.get(case.url, **MODAL)))
+    assert GRID in modal
+    assert MODAL_ROW in modal
+    assert NO_FIELD_ROW not in modal
+    whole = _card(text(world.client.get(case.url)))
+    assert GRID in whole
+    assert SAVE_ROW in whole
+
+
+#: 6 つの取消の確かめ (受注・指示書・発注・納品書・請求書・入金。どれも取り消せる記録で作る)
+CANCELS = ("order_cancel", "workorder_cancel", "purchaseorder_cancel", "deliverynote_cancel", "invoice_cancel", "payment_cancel")
+DANGER_BUTTON = '<button class="btn btn-error" type="submit"'
+PRIMARY_BUTTON = '<button class="btn btn-primary" type="submit"'
+WARNING_BUTTON = '<button class="btn btn-warning" type="submit">'
+
+
+class _CancelNote(checks.Check):
+    """作り物の知らせる検査 (受注の取消で、いつも黄の知らせ)。形は tests/test_core_save_bar.py の _HolidayNote を写した。"""
+
+    name = "T93"
+    action = "orders.cancel_order"
+    mode = "warn"
+
+    def run(self, data, user):
+        return "作り物の知らせです。確かめてから取り消してください。"
+
+
+@pytest.fixture
+def cancel_checks():
+    before = checks.registered(_CancelNote.action)
+    yield
+    checks.clear(_CancelNote.action)
+    for check in before:
+        checks.register(check)
+
+
+@pytest.mark.parametrize("name", CANCELS)
+def test_cancel_buttons_are_red(world, name):
+    """取消の確かめの実行のボタンは、削除の確かめと同じ赤 (btn btn-error)。全体の画面と小窓の両方 (U125。C24 の 2)。"""
+    url = BUILD[name](world).url
+    for card in (_card(text(world.client.get(url))), _card(text(world.client.get(url, **MODAL)))):
+        assert card.count(DANGER_BUTTON) == 1
+        assert "取り消す</button>" in card
+        assert not re.search(r'<button class="[^"]*\bbtn-primary\b[^"]*" type="submit"', card)
+
+
+@pytest.mark.parametrize("name", ("payment_create", "purchaseorder_send"))
+def test_other_buttons_keep_primary(world, name):
+    """取消でない入力 (入金の記録・注文を送り直す) の保存のボタンは、主の色のまま (C24 の 2)。"""
+    url = _url(world, name)
+    for card in (_card(text(world.client.get(url))), _card(text(world.client.get(url, **MODAL)))):
+        assert card.count(PRIMARY_BUTTON) == 1
+        assert DANGER_BUTTON not in card
+
+
+def test_warned_cancel_keeps_yellow_button(world, cancel_checks):
+    """黄の知らせが出た後は、取消の確かめでも「このまま保存」の黄のボタン (赤にしない。C24 の 2)。"""
+    checks.register(_CancelNote())
+    case = BUILD["order_cancel"](world)
+    for response in (world.client.post(case.url, case.post), world.client.post(case.url, case.post, **MODAL)):
+        assert response.status_code == 200
+        card = _card(text(response))
+        assert card.count(WARNING_BUTTON) == 1
+        assert "このまま保存</button>" in card
+        assert DANGER_BUTTON not in card
+        assert PRIMARY_BUTTON not in card
+    assert not case.saved()
+
+
+def _cancel_href(card):
+    """カードの下の行の「キャンセル」の href (無ければ None)。"""
+    match = re.search(r'<a class="btn btn-outline border-base-300" href="([^"]*)">.*?キャンセル</a>', card, re.S)
+    return match.group(1) if match else None
+
+
+def test_payment_cancel_page_goes_back_to_invoice(world):
+    """入金の取消の全体の画面の「キャンセル」は、その入金の請求書の詳細の入金の枠へ戻る (a-blind-14・b-blind-15。C24 の 3)。
+
+    ?next= を付けて開いたときは、その next へ戻る (土台の cancel_url のまま)。小窓は今のまま「キャンセル」を出さない。
+    """
+    case = _payment_cancel(world)
+    invoice_id = Payment.objects.get().invoice_id
+    detail = reverse("billing:invoice_detail", args=[invoice_id])
+
+    assert _cancel_href(_card(text(world.client.get(case.url)))) == f"{detail}#payments"
+    assert _cancel_href(_card(text(world.client.get(f"{case.url}?next={detail}")))) == detail
+    modal = text(world.client.get(case.url, **MODAL))
+    assert _cancel_href(_card(modal)) is None
+    assert "キャンセル" not in modal
