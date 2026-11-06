@@ -17,6 +17,7 @@ from django import forms
 from django.utils import timezone
 
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number
+from seizou.core.widgets import IsoDateInput
 
 from .models import Invoice
 from .models import Payment
@@ -65,7 +66,7 @@ class InvoiceForm(forms.Form):
     issued_on = forms.DateField(
         label="発行日",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
         help_text="請求書に載る日付です。支払期日は発行日でなく、締めの期間の終わりと得意先の支払の決まりから決まります。",
     )
     shipments = ShipmentChoiceField(
@@ -119,7 +120,7 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
     received_on = forms.DateField(
         label="入金日",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
     )
     amount = forms.DecimalField(
         label="金額",

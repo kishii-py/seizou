@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from seizou.core import csvio
 from seizou.core.forms import ServiceModelForm
+from seizou.core.widgets import IsoDateInput
 
 from .models import Item, Partner, Process
 from .models import MONTH_END_DAY
@@ -389,7 +390,7 @@ class HolidayForm(ServiceModelForm):
     class Meta:
         model = Holiday
         fields = ["date", "name", "kind"]
-        widgets = {"date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")}
+        widgets = {"date": IsoDateInput()}
         # required の文は、空の欄の下に出る。名前の文は services.create_holiday と同じ字 (文に % を書かない)。
         error_messages = {
             "date": {"required": "休日の日付を入れてください。"},

@@ -19,7 +19,7 @@ from seizou.core import fields as company_fields
 from seizou.core.conf import setting
 from seizou.core.forms import ServiceModelForm, SubmitLabelMixin, line_totals
 from seizou.core.views import use_decimal_input, widget_css
-from seizou.core.widgets import RemoteSelect
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
 from .models import Order, OrderLine
@@ -60,7 +60,7 @@ def hideable_fields() -> tuple[tuple[str, str], ...]:
 
 
 def _date_input():
-    return forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
+    return IsoDateInput()
 
 
 class OrderLineForm(forms.Form):

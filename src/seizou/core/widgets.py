@@ -14,6 +14,10 @@ DecimalField・FloatField の数の入力をこれに替える。送られた字
 (js/seizou-number.js が、この印の欄だけを、欄を離れた時に 3 桁ごとの区切りの字にそろえる)。
 IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台が IntegerField の数の入力をこれに替える。
 DatalistInput: 字の欄に、既にある値の候補 (<datalist>) を付ける。候補は描くときに読む。候補に無い字もそのまま送る (断らない)。C28
+IsoDateInput: 日付の欄。type="date" と ISO の字 (2026-11-04) に、年の上限 max="9999-12-31" を付ける。C31
+上限が無いと、chromium (Chrome・Edge) の日付の欄は年の区切りに 6 桁 (275760 年) まで受け、4 桁で月へ進まない。
+そのため 8 桁を続けて打つと「202611/02/0」のように崩れる。一覧の絞りの期間の欄 (core/_filters.html) も同じ上限を付ける。
+Safari の系統は、Playwright の webkit (Safari そのものではない) で上限を付けても直らなかった。Mac と iPad の Safari そのものでは試していない。
 """
 
 from __future__ import annotations
@@ -146,3 +150,19 @@ class DatalistInput(forms.TextInput):
         field_html = super().render(name, value, {**(attrs or {}), "list": list_id}, renderer)
         option_html = format_html_join("", '<option value="{}"></option>', ((option,) for option in options))
         return format_html('{}<datalist id="{}">{}</datalist>', field_html, list_id, option_html)
+
+
+class IsoDateInput(forms.DateInput):
+    """日付の欄 (type="date")。値は ISO の字 (2026-11-04) で描き、年の上限 max="9999-12-31" を付ける (初見テストの V39・U41。候補 C31 の 1)。
+
+    上限の理由は頭の注記のとおり (chromium で 8 桁を続けて打てるようにするため)。
+    Django の DateField が受ける年は 9999 年まで (Python の date の上限) なので、上限で入らなくなる日付は無い (断る処理ではない)。
+    渡された attrs (class など) は残し、上限を足す。明細の行の form と雛形 (empty_form) の行も、この widget を使えば同じ上限が付く。
+    """
+
+    input_type = "date"
+    #: 年の上限 (Python の date の上限と同じ日)
+    MAX = "9999-12-31"
+
+    def __init__(self, attrs=None, format="%Y-%m-%d"):
+        super().__init__(attrs={"max": self.MAX, **(attrs or {})}, format=format)

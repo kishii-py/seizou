@@ -349,3 +349,23 @@ def test_hideable_fields_can_all_be_hidden(settings):
     assert {"customer", "order_date"} <= order_fields
     assert {"item", "qty", "unit_price"} <= line_fields
     assert not set(names) & KEPT_FIELDS
+
+
+def _date_tag(body: str, name: str) -> str:
+    """name の日付の欄の <input> の字 (1 つだけあること)。"""
+    tags = re.findall(rf'<input type="date" name="{re.escape(name)}"[^>]*>', body)
+    assert len(tags) == 1, (name, tags)
+    return tags[0]
+
+
+@pytest.mark.django_db
+def test_create_form_date_fields_cap_the_year(logged_in):
+    """受注日と明細の納期 (足す行の雛形の __prefix__ も) に年の上限 max="9999-12-31" が付く (候補 C31 の 1。初見テストの V39・U41)。
+
+    上限が無いと chromium の日付の欄は年に 6 桁まで受け、8 桁を続けて打つと崩れる。土台が付ける class も今のまま残る。
+    """
+    body = logged_in.get(reverse("orders:order_create")).content.decode()
+    for name in ("order_date", "lines-0-due_date", "lines-__prefix__-due_date"):
+        tag = _date_tag(body, name)
+        assert 'max="9999-12-31"' in tag
+        assert 'class="input w-full"' in tag
