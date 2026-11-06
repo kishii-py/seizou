@@ -42,6 +42,10 @@ def _active_on_edit_only(form):
 class ItemForm(ServiceModelForm):
     active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
 
+    #: 土台 (入力の土台の get_form) が会社ごとの項目を足した後も、この欄を最後に置く。
+    #: 使用中の行が会社ごとの項目を押し下げず、編集の並びが新規登録 + 最後に使用中になるように (初見テスト 5 回目の V35)。
+    last_fields = ("active",)
+
     class Meta:
         model = Item
         fields = ["part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"]
@@ -61,6 +65,8 @@ class PartnerForm(ServiceModelForm):
     #: 行の頭 (幅 640 以上の 2 列の左) から始める欄 (入力のカード core/_form_card.html が読む)。
     #: 締日 → 支払の月 → 支払日の順を崩さずに、「支払の月」と「支払日」を同じ行の左右に並べる (初見テスト 5 回目の V42)。
     row_start_fields = ("payment_month",)
+    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。V35)
+    last_fields = ("active",)
 
     class Meta:
         model = Partner
@@ -102,6 +108,9 @@ class ProcessForm(ServiceModelForm):
     """工程を入れる・直す。協力企業に出すか (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
 
     active = forms.BooleanField(label="使用中", required=False, help_text=PROCESS_ACTIVE_HELP)
+
+    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。V35)
+    last_fields = ("active",)
 
     class Meta:
         model = Process

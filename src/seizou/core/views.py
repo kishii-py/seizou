@@ -1339,6 +1339,14 @@ class BaseFormView(ScreenMixin, FormView):
                 form.fields[name] = field
                 if self.object is not None and not form.is_bound:
                     form.initial[name] = company_fields.ext_value(self.object, name[len(company_fields.EXT_PREFIX):])
+        # form の class の属性 last_fields (欄の名前の並び) の欄を、会社ごとの項目を足した後の最後へ回す (V35)。
+        # Django の field_order は form の __init__ の中で並べるので、この後に足す会社ごとの項目より後ろへは回せない。
+        # 土台が form の属性を読む先例は submit_label (core/_form_card.html)。使う所は masters の ItemForm・PartnerForm・ProcessForm。
+        # 属性の無い form と、form に無い名前 (新規登録で外した使用中の欄など) は今の並びのまま。
+        last = [name for name in getattr(form, "last_fields", ()) if name in form.fields]
+        if last:
+            # order_fields は渡した並びを先頭に置くので、全部の欄の並びを渡す。
+            form.order_fields([name for name in form.fields if name not in last] + last)
         for field in form.fields.values():
             use_decimal_input(field)
             field.widget.attrs.setdefault("class", widget_css(field.widget))
