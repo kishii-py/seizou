@@ -373,6 +373,7 @@ class DisplaySettingsView(BaseFormView):
     使う人: ログインする全員 / いつ: 使い始めるときと、ほかの人のアカウントでも入る端末を使うとき / 何のために: 上の帯を自分だけの色にし、ほかの人のアカウントで入ったままの画面に目で気づく / 次にすること: 見本を押すと保存され、画面が読み直されて上の帯の色が変わる
 
     右上の利用者のメニューの「表示の設定」から小窓で開く (data-modal-form)。小窓の中身は見本のカード (core/_display_settings_card.html)。
+    画面の全体 (新しいタブ・URL の直打ち・JS の無い窓。template_name = core/display_settings.html) も同じカードで描き、見本を選んで「保存」で保存して同じ画面へ戻る (C53)。
     土台の call_service が set_user_preference(user=本人, key=..., value=...) を呼ぶ (本人の行だけ。権限の表では FREE_ACTIONS)。
     小窓の保存の後は、204 に HX-Refresh を付けて画面の全体を読み直す (上の帯の色は <html> の属性なので、seizou:refresh の取り直しでは変わらない)。
     """
@@ -384,6 +385,7 @@ class DisplaySettingsView(BaseFormView):
     service = staticmethod(services.set_user_preference)
     success_message = "表示の設定を保存しました。"
     success_url = reverse_lazy("core:display_settings")
+    template_name = "core/display_settings.html"  # 画面の全体も見本のカードで描く (C53)。小窓の形は土台の get_template_names のまま
     extra_context = {"form_card": "core/_display_settings_card.html"}
 
     def get_initial(self):

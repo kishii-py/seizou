@@ -1,24 +1,30 @@
 {% load seizou_icons %}
-{# 表示の設定の小窓の中身 (core.settings_screen.DisplaySettingsView が form_card で渡す。決め 11-05 21:2x。N167)。左に項目 (今は「見た目」の 1 つ)、右に上の帯の色の見本。 #}
-{# 見本を押すと form を htmx で同じ URL へ送る (change)。土台は小窓の形で保存すると 204 と HX-Refresh を返し、htmx が画面の全体を読み直す (JS は足さない)。 #}
+{# 表示の設定の見本のカード (小窓の中身 = core.settings_screen.DisplaySettingsView が form_card で渡す。画面の全体 core/display_settings.html も同じカードを include する。決め 11-05 21:2x。N167・C53)。左に項目 (今は「見た目」の 1 つ)、右に上の帯の色の見本。 #}
+{# 小窓 (in_modal) では見本を押すと form を htmx で同じ URL へ送る (change)。土台は小窓の形で保存すると 204 と HX-Refresh を返し、htmx が画面の全体を読み直す (JS は足さない)。画面の全体では htmx を付けず、見本を選んで「保存」のボタンでふつうに送り、同じ画面へ戻る (Enter では送らない = core/_enter_guard.html)。 #}
 {# 見本の色は scripts/css/input.css の固定の決まり (data-seizou-swatch の名前ごと)。白 (標準) は bg-base-100 のまま。class は組み立てない (R19)。 #}
 <div class="flex flex-col gap-6 sm:flex-row">
-  <ul class="menu w-48 shrink-0 rounded-lg bg-base-200 p-2" aria-label="表示の設定の項目">
+  <ul class="menu w-48 shrink-0 self-start rounded-lg bg-base-200 p-2" aria-label="表示の設定の項目">
     <li><span class="menu-active flex items-center gap-2">{% icon "eye" "size-4" %}見た目</span></li>
   </ul>
-  <form method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-trigger="change" hx-target="#seizou-modal-box" hx-swap="innerHTML" class="min-w-0">
+  <form method="post" action="{{ request.path }}"{% if in_modal %} hx-post="{{ request.path }}" hx-trigger="change" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% else %} data-enter-guard{% endif %} class="min-w-0">
     {% csrf_token %}
     <h4 class="text-lg font-bold">ヘッダーの色</h4>
     <p class="mt-2 text-base-content/70">画面のいちばん上の帯の色です。色は自分の画面だけに出て、ほかの人の画面は変わりません。</p>
     <div class="mt-4 flex flex-wrap gap-4" role="radiogroup" aria-label="ヘッダーの色">
       {% for choice in form.header_color %}
-      <label class="flex cursor-pointer flex-col items-center gap-2">
+      <label class="flex w-20 cursor-pointer flex-col items-center gap-2">
         <span class="flex size-16 items-center justify-center rounded-lg border border-base-300 bg-base-100" data-seizou-swatch="{{ choice.data.value }}">{% if choice.data.selected %}{% icon "check" "size-6" %}{% endif %}</span>
         <span class="flex items-center gap-2 text-xs"><input type="radio" class="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}>{{ choice.choice_label }}</span>
       </label>
       {% endfor %}
     </div>
     {% if form.header_color.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.header_color.errors|join:" " }}</p>{% endif %}
-    <p class="mt-4 flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}見本を押すとすぐ保存し、画面を読み直します。</p>
+    <p class="mt-4 flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}{% if in_modal %}見本を押すとすぐ保存し、画面を読み直します。{% else %}見本を選んで「保存」を押します。{% endif %}</p>
+    {% if not in_modal %}
+    <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+      <button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>
+    </div>
+    {% endif %}
   </form>
 </div>
+{% if not in_modal %}{% include "core/_enter_guard.html" %}{% endif %}
