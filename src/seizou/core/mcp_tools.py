@@ -805,7 +805,7 @@ def list_rules() -> dict[str, Any]:
 
 
 def _manual_dict(row) -> dict[str, Any]:
-    """業務マニュアルの 1 件の見出しの鍵 (横断の検索の列と同じ。題・置き場・形式・最終更新)。"""
+    """業務マニュアルの 1 件の見出しの鍵 (横断の検索の列と同じ。題・フォルダ・形式・最終更新)。"""
     return {
         "id": row.pk,
         "title": row.title,
@@ -822,7 +822,7 @@ def search_manuals(query: str, limit: int = 20) -> dict[str, Any]:
     query: 探す言葉。空白で区切ると、全部の語を題か本文に含むマニュアルだけ。空なら全部。
     limit: 返す件数 (1〜100。既定 20)。
     返す物: count・total 当たった全部の数・items (題の順。マニュアルごとの id 番号・title 題・
-    folder 置き場の道 (ルートなら「ルート」)・format 形式・updated_at 最終更新の日・url 詳細の道)。
+    folder フォルダの道 (フォルダに入っていなければ「トップ」)・format 形式・updated_at 最終更新の日・url 詳細の道)。
     id を get_manual_body の manual_id に渡すと本文を読める。
     ok が偽なら error に、読めなかった引数か、業務マニュアルの部品が入っていないことがある。
     """

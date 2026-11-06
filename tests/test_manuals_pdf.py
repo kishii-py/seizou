@@ -78,7 +78,7 @@ def test_pdf_falls_back_to_html_when_unavailable(client_logged_in, manual, monke
     assert "段取り替えの手順" in html
     assert "版 1" in html
     assert "作った日時 " + timezone.localtime(manual.created_at).strftime("%Y-%m-%d %H:%M") in html
-    assert "置き場 段取り" in html
+    assert "フォルダ 段取り" in html
     image = manual.images.get()
     assert f'src="{reverse("manuals:manualimage_download", args=[image.pk])}"' in html
     assert "/media/" not in html
@@ -90,5 +90,5 @@ def test_print_html_has_page_counter(manual):
     assert "counter(page)" in html and "counter(pages)" in html
     image = manual.images.get()
     assert f'src="/media/{image.file.name}"' in html
-    assert "置き場 ルート" in html
+    assert "フォルダ トップ" in html
     assert "csrf" not in html.lower()

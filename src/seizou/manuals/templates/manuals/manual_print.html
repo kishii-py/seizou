@@ -54,7 +54,7 @@ pdf が真のとき本文の画像は帳票の部品 (fetch_local) が読める 
 <header class="manual-band">
   <h1>{{ manual.title }}</h1>
   <p class="manual-meta"><span>版 {{ manual.version }}</span><span>最終更新 {{ manual.updated_at|date:"Y-m-d H:i" }}</span><span>作った日時 {{ manual.created_at|date:"Y-m-d H:i" }}</span></p>
-  <p class="manual-meta">置き場 {% for folder in path %}{{ folder.name }}{% if not forloop.last %} / {% endif %}{% empty %}ルート{% endfor %}</p>
+  <p class="manual-meta">フォルダ {% for folder in path %}{{ folder.name }}{% if not forloop.last %} / {% endif %}{% empty %}トップ{% endfor %}</p>
 </header>
 {% manual_body manual pdf=pdf as rendered %}
 {% if rendered.toc %}

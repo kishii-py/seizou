@@ -56,7 +56,7 @@ def test_folder_move_choices(client_logged_in, user):
     other = services.create_folder(None, "ほか", "gray", user)
     url = reverse("manuals:manualfolder_move", args=[top.pk])
     html = client_logged_in.get(url).content.decode()
-    assert '<option value="" selected>ルート</option>' in html
+    assert '<option value="" selected>トップ</option>' in html
     assert f'<option value="{other.pk}">ほか</option>' in html
     assert f'value="{top.pk}"' not in html and f'value="{child.pk}"' not in html
     refused = client_logged_in.post(url, {"parent": child.pk})

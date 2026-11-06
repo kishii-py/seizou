@@ -57,12 +57,12 @@ def folder_from_param(value):
 class ManualListView(BaseListView):
     """マニュアルの一覧 (フォルダの木)。
 
-    使う人: 全員 / いつ: 手順を決めたときと、新人に教えるとき (書くのは各部署の担当) / 何のために: 手順書と社内の文書を置き場ごとに持ち、育てる / 次にすること: 読むなら行から、書くなら「新規登録」
+    使う人: 全員 / いつ: 手順を決めたときと、新人に教えるとき (書くのは各部署の担当) / 何のために: 手順書と社内の文書をフォルダごとに持ち、育てる / 次にすること: 読むなら行から、書くなら「新規登録」
     """
 
     model = Manual
     template_name = "manuals/manual_list.html"
-    columns = ("title", ("folder_path_text", "置き場"), "format", "protected", "updated_at")
+    columns = ("title", ("folder_path_text", "フォルダ"), "format", ("protected", "保護 (移動・削除を止める)"), "updated_at")
     search_fields = ("title", "body")
     ordering = ("title", "pk")
     screen_name = "マニュアル"
@@ -71,7 +71,7 @@ class ManualListView(BaseListView):
     def get_queryset(self):
         manuals = super().get_queryset().select_related("folder")
         if self.search_terms():
-            # 検索の言葉があれば全部のフォルダから (横断。行の「置き場」の列で場所が分かる)。
+            # 検索の言葉があれば全部のフォルダから (横断。行の「フォルダ」の列で場所が分かる)。
             return manuals
         folder = folder_from_param(self.request.GET.get("folder"))
         if folder is None:
@@ -82,7 +82,7 @@ class ManualListView(BaseListView):
 class FolderCreateView(BaseFormView):
     """新しいフォルダの入力。
 
-    使う人: 全員 / いつ: マニュアルの置き場を分けるとき / 何のために: フォルダを作る / 次にすること: マニュアルを置く
+    使う人: 全員 / いつ: マニュアルをフォルダに分けるとき / 何のために: フォルダを作る / 次にすること: マニュアルを置く
     """
 
     model = ManualFolder
@@ -95,14 +95,14 @@ class FolderCreateView(BaseFormView):
 class ManualCreateView(BaseFormView):
     """マニュアルの新規登録の入力。
 
-    使う人: 全員 / いつ: 手順を決めたとき (書くのは各部署の担当) / 何のために: 置き場と題と形式を決めて作る / 次にすること: 「編集」で本文を書く
+    使う人: 全員 / いつ: 手順を決めたとき (書くのは各部署の担当) / 何のために: フォルダと題と形式を決めて作る / 次にすること: 「編集」で本文を書く
     """
 
     model = Manual
     form_class = ManualCreateForm
     service = staticmethod(services.create_manual)
     screen_name = "マニュアルの新規登録"
-    screen_help = "置き場と題と形式を決めて作ります。本文は作った後の「編集」で書きます。"
+    screen_help = "フォルダと題と形式を決めて作ります。本文は作った後の「編集」で書きます。"
 
 
 class ManualDetailView(BaseDetailView):
@@ -205,14 +205,14 @@ class FolderUpdateView(BaseFormView):
 class FolderMoveView(BaseFormView):
     """フォルダの移動の入力。
 
-    使う人: 全員 / いつ: 置き場を整理するとき / 何のために: フォルダを中身ごと移す / 次にすること: マニュアルの一覧で確かめる
+    使う人: 全員 / いつ: フォルダを整理するとき / 何のために: フォルダを中身ごと移す / 次にすること: マニュアルの一覧で確かめる
     """
 
     model = ManualFolder
     form_class = FolderMoveForm
     service = staticmethod(services.move_folder)
     screen_name = "フォルダの移動"
-    screen_help = "フォルダを中身ごと、ほかのフォルダの中かルートへ移します。自分と自分の中のフォルダへは移せません。"
+    screen_help = "フォルダを中身ごと、ほかのフォルダの中かトップへ移します。自分と自分の中のフォルダへは移せません。"
 
 
 class FolderProtectView(BaseFormView):
@@ -246,14 +246,14 @@ class FolderDeleteView(BaseFormView):
 class ManualMoveView(BaseFormView):
     """マニュアルの移動の入力。
 
-    使う人: 全員 / いつ: 置き場を整理するとき / 何のために: マニュアルをほかのフォルダへ移す / 次にすること: マニュアルの一覧で確かめる
+    使う人: 全員 / いつ: フォルダを整理するとき / 何のために: マニュアルをほかのフォルダへ移す / 次にすること: マニュアルの一覧で確かめる
     """
 
     model = Manual
     form_class = ManualMoveForm
     service = staticmethod(services.move_manual)
     screen_name = "マニュアルの移動"
-    screen_help = "マニュアルをほかのフォルダかルートへ移します。"
+    screen_help = "マニュアルをほかのフォルダかトップへ移します。"
 
 
 class ManualProtectView(BaseFormView):

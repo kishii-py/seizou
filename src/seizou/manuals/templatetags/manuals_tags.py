@@ -13,7 +13,7 @@ from django.utils.safestring import mark_safe
 from seizou.core.views import model_url
 from seizou.manuals import diff, services
 from seizou.manuals.markdown import Rendered
-from seizou.manuals.models import ManualFolder
+from seizou.manuals.models import Manual, ManualFolder
 
 register = template.Library()
 
@@ -64,3 +64,12 @@ def folder_tree(folder_pk):
         "path": services.folder_path(folder),
         "children": [{"folder": child, "count": child.folder_count + child.manual_count} for child in children],
     }
+
+
+@register.simple_tag
+def manuals_in_folders():
+    """{% manuals_in_folders as in_folders %}。フォルダに入っているマニュアルの数 (どの深さのフォルダの物も数える)。
+
+    一覧のいちばん上は直下の物だけを並べるので、フォルダの中にある数を添えて「マニュアルが無い」と読まれないようにする。
+    """
+    return Manual.objects.filter(folder__isnull=False).count()

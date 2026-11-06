@@ -123,8 +123,8 @@ class Manual(models.Model):
         return self.title
 
     def folder_path_text(self) -> str:
-        """置き場の道 (ルートなら「ルート」)。一覧の「置き場」の列と横断検索が使う。"""
-        return self.folder.path_text() if self.folder_id else "ルート"
+        """フォルダの道 (フォルダに入っていなければ「トップ」)。一覧の「フォルダ」の列と横断検索が使う。"""
+        return self.folder.path_text() if self.folder_id else "トップ"
 
     def linked_object(self):
         """紐付け先の記録。紐付けが無いか、紐付け先が消えていれば None。"""
