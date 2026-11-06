@@ -219,8 +219,10 @@ def test_scan_links_each_step_to_progress_create(logged_in, workorder):
         assert reverse("progress:progress_create") + f"?workorder_step={step.pk}" in body
     buttons = _input_buttons(body)
     assert len(buttons) == len(steps)
-    # 工程の数だけ並ぶので主色にしない (見るのは「実績を入力」のボタンだけ)
-    assert all("btn-primary" not in button for button in buttons)
+    # 主色は今の工程の 1 つだけ (見るのは「実績を入力」のボタンだけ。実績の無い指示書なので今の工程は切断)
+    primary = [button for button in buttons if "btn-primary" in button]
+    assert len(primary) == 1
+    assert f"?workorder_step={steps[0].pk}&amp;" in primary[0]
     assert "no-store" in response["Cache-Control"]
 
 
@@ -263,3 +265,133 @@ def test_scan_marks_done_steps(logged_in, user, workorder):
     assert f"?workorder_step={second.pk}" not in done[0]
     # 完了の工程にもボタンを残す (予定を超えた実数も記録する = 現物優先)
     assert len(_input_buttons(body)) == 2
+
+
+# --- 読み取りの着地の工程ごとの実績・予定・残と今の工程、記録の後に戻る道 (初見テスト R5 の候補 C70) ---
+
+
+def _scan_cards(body):
+    """読み取りの着地の工程の札 (<li …>…</li> のうち「実績を入力」を含む物) を順に返す。"""
+    return [card for card in re.findall(r"<li .*?</li>", body, re.S) if "実績を入力" in card]
+
+
+def _card_text(card):
+    """札の字 (tag を除いた物)。"""
+    return re.sub(r"<[^>]+>", "", card)
+
+
+def _scan_hidden_next(workorder):
+    return f'<input type="hidden" name="next" value="{_scan_url(workorder)}">'
+
+
+def _post_progress(client, step, qty, **extra):
+    data = {"workorder_step": step.pk, "qty": qty, "recorded_at": "2026-11-03 15:00", "note": "", **extra}
+    return client.post(reverse("progress:progress_create"), data)
+
+
+@pytest.mark.django_db
+def test_scan_input_links_carry_next(logged_in, workorder):
+    """(a) どの「実績を入力」の href にも、この画面へ戻る ?next= が付く。"""
+    body = logged_in.get(_scan_url(workorder)).content.decode()
+    for step in workorder.steps.order_by("seq"):
+        assert f"?workorder_step={step.pk}&amp;next={_scan_url(workorder)}" in body
+
+
+@pytest.mark.django_db
+def test_scan_next_reaches_progress_form(logged_in, workorder):
+    """(b) ?next= 付きで開いた実績の新規登録は、「キャンセル」と form の hidden の next がこの画面を指す。"""
+    first = workorder.steps.order_by("seq").first()
+    response = logged_in.get(
+        reverse("progress:progress_create"), {"workorder_step": first.pk, "next": _scan_url(workorder)}
+    )
+    assert response.status_code == 200
+    assert response.context["cancel_url"] == _scan_url(workorder)
+    assert _scan_hidden_next(workorder) in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_scan_record_returns_to_scan(logged_in, workorder):
+    """(c) 記録すると読み取りの着地へ戻り、切断の札に実績と残が出て、今の工程は切断のまま (2 < 4)。"""
+    first = workorder.steps.order_by("seq").first()
+    response = _post_progress(logged_in, first, "2", next=_scan_url(workorder))
+    assert response.status_code == 302
+    assert response["Location"] == _scan_url(workorder)
+
+    cards = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
+    assert "切断" in cards[0]
+    assert "実績 2 / 予定 4・残 2" in _card_text(cards[0])
+    assert 'aria-current="step"' in cards[0]
+
+
+@pytest.mark.django_db
+def test_scan_record_over_plan_confirm_returns_to_scan(settings, logged_in, user, workorder):
+    """(d) 予定を超えて黄の確かめで描き直しても、hidden の next を引き継ぎ、「このまま保存」の後に戻る。"""
+    settings.SEIZOU = {"over_workorder": "warn"}
+    first = workorder.steps.order_by("seq").first()
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+
+    checked = _post_progress(logged_in, first, "1", next=_scan_url(workorder))
+    assert checked.status_code == 200
+    body = checked.content.decode()
+    assert "このまま保存" in body
+    assert _scan_hidden_next(workorder) in body
+
+    confirmed = _post_progress(logged_in, first, "1", next=_scan_url(workorder), confirmed="1")
+    assert confirmed.status_code == 302
+    assert confirmed["Location"] == _scan_url(workorder)
+
+
+@pytest.mark.django_db
+def test_scan_current_moves_to_next_step(logged_in, user, workorder):
+    """(e) 切断が予定に届くと、切断は「完了」で主色が外れ、今の工程と主色は曲げへ移る。"""
+    first, second = workorder.steps.order_by("seq")
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+
+    cut_card, bend_card = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
+    assert "完了" in cut_card
+    assert "実績 4 / 予定 4・残 0" in _card_text(cut_card)
+    assert "aria-current" not in cut_card
+    assert "btn-primary" not in _input_buttons(cut_card)[0]
+    assert 'aria-current="step"' in bend_card
+    assert "実績 0 / 予定 4・残 4" in _card_text(bend_card)
+    assert "btn-primary" in _input_buttons(bend_card)[0]
+
+
+@pytest.mark.django_db
+def test_scan_without_records_marks_first_step(logged_in, workorder):
+    """(f) 実績の無い指示書は、切断の札だけが今の工程 (本文の aria-current="step" はちょうど 1 つ)。"""
+    body = logged_in.get(_scan_url(workorder)).content.decode()
+    cut_card, bend_card = _scan_cards(body)
+    assert 'aria-current="step"' in cut_card
+    assert "実績 0 / 予定 4・残 4" in _card_text(cut_card)
+    assert "aria-current" not in bend_card
+    assert body.count('aria-current="step"') == 1
+
+
+@pytest.mark.django_db
+def test_scan_all_steps_done_has_no_current(logged_in, user, workorder):
+    """(g) 全部の工程が予定に届くと、今の工程は無く、主色のボタンも無い (ボタンは 2 つ残る)。"""
+    for step in workorder.steps.order_by("seq"):
+        progress_services.record_progress(step, Decimal("4"), timezone.now(), user)
+
+    body = logged_in.get(_scan_url(workorder)).content.decode()
+    cards = _scan_cards(body)
+    assert len(cards) == 2
+    assert all("完了" in card for card in cards)
+    assert 'aria-current="step"' not in body
+    buttons = _input_buttons(body)
+    assert len(buttons) == 2
+    assert all("btn-primary" not in button for button in buttons)
+
+
+@pytest.mark.django_db
+def test_scan_over_plan_shows_negative_remaining(logged_in, user, workorder):
+    """(h) 予定を超えた実績は「完了」で残をマイナスのまま出し (現物優先)、今の工程は曲げ。"""
+    first = workorder.steps.order_by("seq").first()
+    progress_services.record_progress(first, Decimal("5"), timezone.now(), user)
+
+    cut_card, bend_card = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
+    assert "完了" in cut_card
+    assert "実績 5 / 予定 4・残 -1" in _card_text(cut_card)
+    assert "aria-current" not in cut_card
+    assert 'aria-current="step"' in bend_card
