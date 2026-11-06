@@ -11,6 +11,7 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   YAML は行の番号が取れないので「N 件目」で示す (明細の変換の誤りは「M 行目の明細」まで。services が断った受注は、受注の位置と注文番号)。CSV は行の番号 (見出しが 1 行目)。
 - CSV の見出しと YAML の鍵は、部品の表の verbose_name (日本語の項目名)。対応の表は手で書かず、model の _meta から引く。
   画面の字を直す前の見出し (FORMER_HEADERS) も読む (種の見出しは別の係が持つので、すぐには変えない)。
+  字 → 値の決まり (FORMER_HEADERS も) は seizou.core.seeds に置く (CSV の取り込みと同じ関数を使う)。
 - 取引先の支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31 の数。31 は月末) の 2 列。
 - 会社ごとの項目 (items.csv の見出しのうち部品の表に無い物) は、core.fields の登録の見出しと突き合わせて ext= にする。
 - 続けて、新しい 6 種類を入れる (種のファイルが無い種類は飛ばし、出力の行も出さない)。
@@ -30,23 +31,27 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
 from __future__ import annotations
 
 import csv
-import datetime
 import re
 from contextlib import contextmanager
-from decimal import Decimal, InvalidOperation
 import inspect
 from importlib import import_module
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files import File
-from django.db import models, transaction
+from django.db import transaction
 
 from seizou.core import fields as company_fields
+from seizou.core import seeds
 from seizou.core.exceptions import RuleViolation
+from seizou.core.seeds import (
+    coerce as _coerce,
+    coerce_ext as _coerce_ext,
+    fields_by_label as _fields_by_label,
+    is_blank as _is_blank,
+)
 
 KINDS = ("品目", "取引先", "品番の対応", "工程", "受注", "つながり")
 SEED_FILES = {
@@ -93,9 +98,6 @@ SHIPMENT_REF_KEYS = ("得意先の注文番号", "行番号", "出荷日")
 DELIVERY_NOTE_KEYS = ("得意先の取引先コード", "出荷")
 INVOICE_KEYS = ("得意先の取引先コード", "発行日", "出荷")
 
-TRUE_WORDS = frozenset({"true", "1", "はい", "yes"})
-FALSE_WORDS = frozenset({"false", "0", "いいえ", "no"})
-
 
 @contextmanager
 def _guard(source, where):
@@ -104,87 +106,6 @@ def _guard(source, where):
         yield
     except (ValueError, RuleViolation) as exc:
         raise ValueError(f"{source} の {where}: {exc}") from exc
-
-
-def _is_blank(raw):
-    return raw is None or (isinstance(raw, str) and raw.strip() == "")
-
-
-#: 画面の字 (verbose_name) を直す前の見出し → 列の名前。種の CSV がこの字のままでも読む。
-FORMER_HEADERS = {
-    "masters.Item": {"標準単価": "standard_price"},
-    "masters.Partner": {"小計の計算方法": "rounding", "消費税の計算方法": "tax_mode"},
-}
-
-
-def _fields_by_label(model):
-    """見出し (verbose_name) → 列。主キーは除く。前の見出し (FORMER_HEADERS) でも引ける。"""
-    fields = {f.verbose_name: f for f in model._meta.concrete_fields if not f.primary_key}
-    by_name = {f.name: f for f in fields.values()}
-    for header, name in FORMER_HEADERS.get(model._meta.label, {}).items():
-        if name in by_name:
-            fields.setdefault(header, by_name[name])
-    return fields
-
-
-def _choice_value(field, raw):
-    text = str(raw).strip()
-    by_label = {str(label): value for value, label in field.flatchoices}
-    if text in by_label:
-        return by_label[text]
-    if text in {value for value, _label in field.flatchoices}:
-        return text
-    raise ValueError(f"{field.verbose_name}「{text}」は使えません。{'・'.join(by_label)} のどれかにしてください。")
-
-
-def _coerce(field, raw):
-    """種の 1 つの値 (CSV の字か YAML の値) を、列の型の値にする。空は、空を許す列なら空 (数と日付は None)。"""
-    if isinstance(field, models.BooleanField):
-        if isinstance(raw, bool):
-            return raw
-        if _is_blank(raw):
-            return field.default if field.has_default() else False
-        word = str(raw).strip().lower()
-        if word in TRUE_WORDS:
-            return True
-        if word in FALSE_WORDS:
-            return False
-        raise ValueError(f"{field.verbose_name}「{raw}」は はい か いいえ にしてください。")
-    if _is_blank(raw):
-        if field.null:
-            return None
-        if field.blank:
-            return ""
-        raise ValueError(f"{field.verbose_name}が空です。値を入れてください。")
-    if field.choices:
-        return _choice_value(field, raw)
-    try:
-        if isinstance(field, models.DecimalField):
-            return Decimal(str(raw).strip())
-        if isinstance(field, models.IntegerField):
-            return int(str(raw).strip())
-        if isinstance(field, models.DateField):
-            if isinstance(raw, datetime.date):
-                return raw
-            return datetime.date.fromisoformat(str(raw).strip())
-    except (InvalidOperation, ValueError):
-        raise ValueError(f"{field.verbose_name}「{raw}」の形が違います。") from None
-    text = str(raw).strip()
-    limit = getattr(field, "max_length", None)
-    if limit and len(text) > limit:
-        raise ValueError(f"{field.verbose_name}は {limit} 字までです ({len(text)} 字ありました)。")
-    return text
-
-
-def _coerce_ext(column, raw):
-    """会社ごとの項目 (登録の列) の値。型は登録の型 (text・number・date・choice・bool)。"""
-    if column.type == "bool":
-        return _coerce(models.BooleanField(column.label), raw)
-    if column.type == "number":
-        return _coerce(models.DecimalField(column.label, null=True, blank=True), raw)
-    if column.type == "date":
-        return _coerce(models.DateField(column.label, null=True, blank=True), raw)
-    return "" if _is_blank(raw) else str(raw).strip()
 
 
 def _open_file(seeds_dir, kind):
@@ -211,25 +132,13 @@ def _read_csv(path, known, required, *, extra_ok=False):
 
 
 def _read_yaml(path, root_key):
-    """YAML を読み、根の鍵の下の並びを返す。"""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
-    if not isinstance(data, dict) or root_key not in data:
-        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
-    entries = data[root_key] or []
-    if not isinstance(entries, list):
-        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
-    return entries
+    """YAML を読み、根の鍵の下の並びを返す (seeds.read)。"""
+    return seeds.read(path, root_key)
 
 
 def _check_entry_keys(path, number, entry, allowed, what):
-    if not isinstance(entry, dict):
-        raise ValueError(f"{path.name} の {number} 件目の{what}の形が違います (鍵と値の並びではありません)。")
-    unknown = [key for key in entry if key not in allowed]
-    if unknown:
-        raise ValueError(f"{path.name} の {number} 件目の{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
+    """鍵の確かめ (seeds.check_keys)。文の頭に「<ファイル> の N 件目の」を付ける。"""
+    seeds.check_keys(entry, allowed, f"{path.name} の {number} 件目の{what}")
 
 
 def _partner_by_code(code):
