@@ -76,6 +76,16 @@ def test_agents_md_is_short_version(site):
     assert len(text.splitlines()) <= 12
 
 
+def test_rule_docs_ask_for_reason_docstring(site):
+    """決まりを足すときは docstring に「訳:」を書く (書き方の決まり R22。N226)。CLAUDE.md は書き方の決まりの節に理由と一緒に、AGENTS.md は番号と 1 句。"""
+    text = _read(site, "CLAUDE.md")
+    rules = text[text.index("## 書き方の決まり") : text.index("## 検査の回し方")]
+    for word in ("訳:", "R22", "未確認", "checks.py", "改善が止まる"):
+        assert word in rules, word
+    agents = _read(site, "AGENTS.md")
+    assert "訳:" in agents and "R22" in agents
+
+
 def test_rule_docs_have_no_secret_and_no_old_words(site):
     secret = secret_value(site)
     for name in RULE_DOCS:
