@@ -36,8 +36,8 @@ from django.utils.html import strip_tags
 
 from seizou.core import access, checks, conf, manual, screens
 from seizou.core.exceptions import CheckViolation, RuleError
-from seizou.core.models import Company
 from seizou.core.rules import RULES
+from seizou.core.services import company_or_none
 from seizou.parts import PARTS
 
 #: 一覧の件数の上限
@@ -380,7 +380,7 @@ def company_info() -> dict[str, Any]:
     sources (鍵ごとの値の出所。画面 = 設定の画面で上書きした値 / 答え (settings.py) = 会社の settings.py の SEIZOU / 既定)、
     parts (入っている部品の短い名前の並び)。
     """
-    company = Company.objects.order_by("pk").first()
+    company = company_or_none()
     return {
         "ok": True,
         "company": {

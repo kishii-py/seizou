@@ -217,8 +217,9 @@ def monthly_trend(today=None, *, months=6) -> dict | None:
         for order_date, amount in lines.values_list("order__order_date", "amount"):
             by_period[(order_date.year, order_date.month)]["order_amount"] += amount
         if has_shipping:
-            from seizou.masters.services import round_amount
+            from seizou.masters.services import company_rounding, round_amount
 
+            rounding = company_rounding()  # 会社の端数の方法は輪の前に 1 回だけ読む (行ごとに会社の行を読まない)
             shipments = shipment_model._default_manager.filter(
                 shipped_at__gte=start, shipped_at__lt=end
             ).select_related("order_line__order__customer")
@@ -226,7 +227,9 @@ def monthly_trend(today=None, *, months=6) -> dict | None:
                 line = shipment.order_line
                 row = by_period[(shipment.shipped_at.year, shipment.shipped_at.month)]
                 row["shipment_count"] += 1
-                row["shipment_amount"] += round_amount(line.order.customer, shipment.qty * line.unit_price)
+                row["shipment_amount"] += round_amount(
+                    line.order.customer, shipment.qty * line.unit_price, rounding=rounding
+                )
     except DatabaseError:
         return None
 
@@ -258,7 +261,7 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
     shipment_model = _model("shipping", "Shipment")
     if shipment_model is None:
         return None
-    from seizou.masters.services import round_amount
+    from seizou.masters.services import company_rounding, round_amount
 
     if today is None:
         today = timezone.localdate()
@@ -276,6 +279,7 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
         for period in periods
     }
     try:
+        rounding = company_rounding()  # 会社の端数の方法は輪の前に 1 回だけ読む (行ごとに会社の行を読まない)
         shipments = shipment_model._default_manager.filter(
             shipped_at__gte=start, shipped_at__lt=end
         ).select_related("order_line__order__customer")
@@ -284,7 +288,9 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
             row = by_period[(shipment.shipped_at.year, shipment.shipped_at.month)]
             row["shipment_count"] += 1
             row["shipment_qty"] += shipment.qty
-            row["shipment_amount"] += round_amount(line.order.customer, shipment.qty * line.unit_price)
+            row["shipment_amount"] += round_amount(
+                line.order.customer, shipment.qty * line.unit_price, rounding=rounding
+            )
     except DatabaseError:
         return None
 
