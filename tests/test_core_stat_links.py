@@ -311,21 +311,25 @@ def test_cards_are_two_columns_on_phone(logged_in, settings, money):
 
     body = logged_in.get(reverse("core:home")).content.decode()
 
-    # phone (640px 未満) から 2 列。xl 以上の枝は今のまま (8 枚で 4 列)
+    # phone (640px 未満) から 2 列。xl 以上の枝は今のまま (8 枚で 4 列、金額を見られない人の 6 枚で 3 列と 6 列)
     grid = re.search(r'<div data-tour="stats" class="([^"]*)"', body).group(1).split()
     assert "grid-cols-2" in grid and "sm:grid-cols-2" not in grid
-    assert "xl:grid-cols-4" in grid
+    if money == "on":
+        # 金額を見られない人は金額のカード 2 枚 (今月の支払の見込み・今月の入金) がカードごと無い (C11 = 318 回目)
+        assert "xl:grid-cols-3" in grid and "2xl:grid-cols-6" in grid
+    else:
+        assert "xl:grid-cols-4" in grid
     by_label = outer_cards(body)
-    assert len(by_label) == 8
+    assert len(by_label) == (6 if money == "on" else 8)
     for label, card in by_label.items():
         # カードの中の余白は phone で p-4、sm から p-6
         outer = re.match(r'<div class="([^"]*)"', card).group(1).split()
         assert "p-4" in outer and "sm:p-6" in outer and "p-6" not in outer, label
-        # 大きい数 (数・金額・金額を見られない人の「—」のどの枝も) は phone で text-2xl、sm から text-3xl
+        # 大きい数 (数・金額のどの枝も) は phone で text-2xl、sm から text-3xl
         number = re.search(r'<p class="mt-2"><span class="([^"]*)"', card).group(1).split()
         assert "text-2xl" in number and "sm:text-3xl" in number and "text-3xl" not in number, label
     if money == "on":
-        assert "—" in by_label["今月の支払の見込み"] and "—" in by_label["今月の入金"]
+        assert "今月の支払の見込み" not in by_label and "今月の入金" not in by_label
 
 
 def test_tour_step_still_points_to_stats():
