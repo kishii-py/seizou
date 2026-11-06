@@ -4,6 +4,7 @@
 context の company は core の Company (か同じ名前の項目を持つ物): name・address・phone・bank_account・logo。
 帳票は入力の欄を持たないので、CSRF の見出しは置かない (画面の土台の 1 か所だけ)。
 押せるのは上の「印刷」のボタンだけ (押すとブラウザの印刷)。画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-actions)。
+cancelled が真なら (取消の書類)、題の横に枠付きの「取消」を出す。請求書・納品書・現品票の context が渡す。渡さない帳票 (出荷ラベル・見本の納品書) には出ない。
 {% endcomment %}
 <html lang="ja">
 <head>
@@ -13,7 +14,7 @@ context の company は core の Company (か同じ名前の項目を持つ物):
 </head>
 <body>
 <div class="report-actions"><button type="button" class="report-print-button" onclick="window.print()">印刷</button></div>
-<h1 class="report-title">{% block report_title %}{% endblock %}</h1>
+<h1 class="report-title">{% block report_title %}{% endblock %}{% if cancelled %}<span class="report-cancelled">取消</span>{% endif %}</h1>
 <table class="report-head">
   <tr>
     <td class="report-head-main">{% block head %}{% endblock %}</td>
