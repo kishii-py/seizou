@@ -22,7 +22,7 @@
   <tbody>
     {% for line in lines %}
     <tr>
-      <td>{{ line.item_code }}</td>
+      <td class="code">{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }}</td>

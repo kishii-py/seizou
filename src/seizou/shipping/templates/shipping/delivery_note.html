@@ -32,8 +32,8 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
     {% for line in lines %}
     <tr>
       <td class="date">{{ line.shipped_at|date:"Y年n月j日" }}</td>
-      <td>{{ line.shipment_no }}</td>
-      <td>{{ line.item_code }}</td>
+      <td class="code">{{ line.shipment_no }}</td>
+      <td class="code">{{ line.item_code }}</td>
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
