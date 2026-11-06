@@ -334,3 +334,28 @@ def test_odd_payload_detail_still_opens_with_dash(client_logged_in, partner, use
     body = response.content.decode()
     assert _head_value(body, "相手の発注番号") == "—"
     assert _head_value(body, "相手の発注日") == "—"
+
+
+def test_accept_screen_shows_buyer_order_no_and_date_above_lines(client_logged_in, partner, user):
+    inbox = _record(partner, user, order_no="PO-000002", order_date="2026-11-03")
+
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "PO-000002"
+    assert _head_value(body, "相手の発注日") == "2026-11-03"
+    # 届いた明細の枠の中、明細の見出しの上に出る
+    assert body.index("相手の発注日</dt>") < body.index("届いた明細 (")
+
+
+@pytest.mark.parametrize("changes", ODD_PAYLOADS)
+def test_odd_payload_accept_still_opens_with_dash(client_logged_in, partner, user, changes):
+    inbox = _record(partner, user, **changes)
+
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "—"
+    assert _head_value(body, "相手の発注日") == "—"
