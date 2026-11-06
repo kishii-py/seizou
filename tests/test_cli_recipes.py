@@ -77,7 +77,7 @@ def test_new_with_recipe_adds_fields_processes_settings(tmp_path, monkeypatch):
 
     models_text = (site / "fields" / "models.py").read_text(encoding="utf-8")
     assert "ext01 = models.CharField('処理の種類'" in models_text
-    assert "ext02 = models.DecimalField('膜厚'" in models_text
+    assert "ext02 = models.DecimalField('膜厚 (μm)'" in models_text
     settings_text = (site / "settings.py").read_text(encoding="utf-8")
     assert "'over_shipment': 'warn'," in settings_text
     assert "'partial_shipment': True," in settings_text
@@ -113,7 +113,7 @@ def test_answer_fields_and_settings_win(tmp_path, monkeypatch):
 
     models_text = (site / "fields" / "models.py").read_text(encoding="utf-8")
     assert re.search(r"ext01 = models\.CharField\('処理の種類', max_length=100, choices=", models_text)
-    assert "ext02 = models.DecimalField('膜厚'" in models_text
+    assert "ext02 = models.DecimalField('膜厚 (μm)'" in models_text
     assert "ext03" not in models_text
     settings_text = (site / "settings.py").read_text(encoding="utf-8")
     assert "'over_shipment': 'stop'," in settings_text

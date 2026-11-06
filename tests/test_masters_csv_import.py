@@ -23,7 +23,7 @@ from seizou.masters.models import Item, Partner
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples" / "companies"
 ITEM_FIELDS = {
     "a_machining": [{"label": "材質"}, {"label": "図面の版"}],
-    "b_plating": [{"label": "処理の種類"}, {"label": "膜厚", "type": "number"}],
+    "b_plating": [{"label": "処理の種類"}, {"label": "膜厚 (μm)", "type": "number"}],
 }
 
 
