@@ -14,7 +14,7 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 {% if rows %}<template><span id="list-count" class="font-medium tabular-nums text-base-content" hx-swap-oob="true">{{ rows.0.obj.total_count|comma }}</span><p id="list-range" class="text-base-content/70" hx-swap-oob="true"><span class="tabular-nums">{{ rows.0.obj.total_count|comma }}</span> 件中 <span class="tabular-nums">1–{{ rows.0.obj.shown_count|comma }}</span> 件</p></template>{% endif %}
 {% elif rows %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
-<table class="table table-sm table-zebra table-pin-rows">
+<table class="table table-sm table-zebra table-pin-rows seizou-pin-first">
   <thead><tr class="bg-base-200 text-base-content/70">{% for col in columns %}<th class="whitespace-nowrap font-medium">{{ col.label }}</th>{% endfor %}<th class="whitespace-nowrap font-medium">操作</th></tr></thead>
   <tbody>{% include "connect/_inbox_new_rows.html" %}</tbody>
 </table>

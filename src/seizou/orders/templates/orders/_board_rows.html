@@ -25,7 +25,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
 {% can_write "receiving.Receiving" as can_receive %}
 {% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
-<table class="table table-sm table-zebra table-pin-rows">
+<table class="table table-sm table-zebra table-pin-rows seizou-pin-first">
   <thead><tr class="bg-base-200 text-base-content/70">
     {% for col in columns %}{% if col.numeric %}<th class="whitespace-nowrap font-medium text-right"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% else %}<th class="whitespace-nowrap font-medium"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>{% endif %}
       {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/50" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
