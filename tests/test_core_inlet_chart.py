@@ -107,9 +107,16 @@ def _order(user, customer, item, count, order_date):
 
 
 def _chart_part(body):
-    """ダッシュボードの本文のうち、注文の入口の図の svg (id="inlet-chart") の中。"""
-    start = body.index('<svg id="inlet-chart"')
-    return body[start : body.index("</svg>", start)]
+    """ダッシュボードの本文のうち、注文の入口の節の凡例 (aria-label="凡例" の ul) の後から、その節の </section> まで。
+
+    図の字 (得意先の名前と行の数・「ほか n 社」・「受注」・「今月 n 行」) と丸は svg の外の HTML にある (C50-1 = a) ので、
+    線の svg (id="inlet-chart") でなく節を切る。凡例の丸 3 つは数えないように、凡例の </ul> の後から切る。
+    出荷と生産の節も同じ aria-label="凡例" を持つので、入口の節の頭 (aria-labelledby="inlets-title") の後から探す。
+    """
+    section = body.index('aria-labelledby="inlets-title"')
+    legend = body.index('aria-label="凡例"', section)
+    start = body.index("</ul>", legend) + len("</ul>")
+    return body[start : body.index("</section>", start)]
 
 
 def test_annotate_order_inlet(partners):
