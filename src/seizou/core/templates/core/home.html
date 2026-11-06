@@ -268,19 +268,33 @@ if (!window.seizouStatHelp) {
       <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-secondary" cx="6" cy="6" r="6"></circle></svg>注文書の読み取り</li>
       <li class="flex items-center gap-2"><svg class="size-3" viewBox="0 0 12 12" aria-hidden="true"><circle class="fill-base-content/70" cx="6" cy="6" r="6"></circle></svg>手入力</li>
     </ul>
+    {# 図 (C50-1 = a): 得意先の行 (名前・行の数・丸) と受注の箱は HTML の字 (凡例と同じ 12px) で、svg は丸と箱の間の線だけ。どの幅でも箱は行の横に収まる。 #}
+    {# 1 行の高さ (row_height)・svg の高さ (height)・箱の最小の高さ (box.height) は dashboard の px の数を style に置き、3 つを縦の中央で揃える (線の端が行の中央と箱の中央に合う)。 #}
+    {# 幅が足りなければ名前を末尾で切る (全文は名前と丸の title)。svg は幅 2rem から伸び、16rem で止まる。 #}
+    {# 線と受注の箱の枠は字と同じ系統の濃さ (base-content の 50%)。白の地との対比が図の部品の目安 3:1 に届くため (C50 の 3。前の base-300 は 1.16:1)。 #}
     <div class="mt-2 overflow-x-auto">
-      <svg id="inlet-chart" class="mx-auto block h-auto w-full min-w-120 max-w-3xl" viewBox="0 0 {{ inlets.width }} {{ inlets.height }}" role="img" aria-label="注文の入口の図。得意先ごとの入口と今月の明細の数">
-        <title>注文の入口 (今月)</title>
-        {% for row in inlets.rows %}
-        <line class="stroke-base-300" x1="{{ row.x1 }}" y1="{{ row.y }}" x2="{{ row.x2 }}" y2="{{ row.y2 }}" vector-effect="non-scaling-stroke"></line>
-        {% if row.inlet == "direct" %}<circle class="fill-primary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% elif row.inlet == "intake" %}<circle class="fill-secondary" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% else %}<circle class="fill-base-content/70" cx="{{ inlets.dot_x }}" cy="{{ row.y }}" r="{{ inlets.dot_r }}"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% endif %}
-        <text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ row.y }}" text-anchor="end" dominant-baseline="middle">{{ row.name }} {{ row.lines|comma }} 行</text>
-        {% endfor %}
-        {% if inlets.others %}<text class="fill-base-content/70 text-xs" x="{{ inlets.label_x }}" y="{{ inlets.others.y }}" text-anchor="end" dominant-baseline="middle">ほか {{ inlets.others.count|comma }} 社 ({{ inlets.others.lines|comma }} 行)</text>{% endif %}
-        <rect class="stroke-base-300" fill="none" x="{{ inlets.box.x }}" y="{{ inlets.box.y }}" width="{{ inlets.box.width }}" height="{{ inlets.box.height }}" rx="8" vector-effect="non-scaling-stroke"></rect>
-        <text class="fill-base-content/70 text-xs font-medium" x="{{ inlets.box.cx }}" y="{{ inlets.box.label_y }}" text-anchor="middle">受注</text>
-        <text class="fill-base-content/70 text-xs" x="{{ inlets.box.cx }}" y="{{ inlets.box.count_y }}" text-anchor="middle">今月 {{ inlets.total_lines|comma }} 行</text>
-      </svg>
+      <div class="mx-auto flex max-w-3xl items-center justify-center text-xs text-base-content/70">
+        <ul class="min-w-0">
+          {% for row in inlets.rows %}
+          <li class="flex items-center justify-end gap-2" style="height: {{ inlets.row_height }}px">
+            <span class="min-w-0 truncate" title="{{ row.name }}">{{ row.name }}</span>
+            <span class="shrink-0 whitespace-nowrap tabular-nums">{{ row.lines|comma }} 行</span>
+            <svg class="size-3 shrink-0" viewBox="0 0 12 12" role="img" aria-label="{{ row.inlet_label }}">{% if row.inlet == "direct" %}<circle class="fill-primary" cx="6" cy="6" r="6"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% elif row.inlet == "intake" %}<circle class="fill-secondary" cx="6" cy="6" r="6"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% else %}<circle class="fill-base-content/70" cx="6" cy="6" r="6"><title>{{ row.name }}: {{ row.inlet_label }}・今月 {{ row.lines|comma }} 行</title></circle>{% endif %}</svg>
+          </li>
+          {% endfor %}
+          {% if inlets.others %}<li class="flex items-center justify-end gap-2" style="height: {{ inlets.row_height }}px"><span class="whitespace-nowrap">ほか {{ inlets.others.count|comma }} 社 ({{ inlets.others.lines|comma }} 行)</span><span class="size-3 shrink-0" aria-hidden="true"></span></li>{% endif %}
+        </ul>
+        <svg id="inlet-chart" class="block w-8 max-w-64 grow" style="height: {{ inlets.height }}px" viewBox="0 0 {{ inlets.width }} {{ inlets.height }}" preserveAspectRatio="none" role="img" aria-label="注文の入口の図。得意先ごとの入口と今月の明細の数">
+          <title>注文の入口 (今月)</title>
+          {% for row in inlets.rows %}
+          <line class="stroke-base-content/50" x1="{{ row.x1 }}" y1="{{ row.y }}" x2="{{ row.x2 }}" y2="{{ row.y2 }}" vector-effect="non-scaling-stroke"></line>
+          {% endfor %}
+        </svg>
+        <div class="flex shrink-0 flex-col items-center justify-center rounded-lg border border-base-content/50 px-4 text-center" style="min-height: {{ inlets.box.height }}px">
+          <span class="font-medium">受注</span>
+          <span class="whitespace-nowrap">今月 {{ inlets.total_lines|comma }} 行</span>
+        </div>
+      </div>
     </div>
   </section>
   {% endif %}

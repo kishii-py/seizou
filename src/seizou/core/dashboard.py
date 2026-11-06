@@ -44,7 +44,8 @@ from django.utils.http import urlencode
 
 from seizou.core import access, conf
 
-# 図の枠 (viewBox の大きさ) と描く所。y は下へ増え、_BASELINE が値 0 の基線。
+# 図の枠 (viewBox の大きさ) と描く所。y は下へ増え、_BASELINE が値 0 の基線。目盛りの字 (右の端 = _TICK_LABEL_X) と
+# 月の字 (_LABEL_Y の辺り) は svg の外の HTML の字で、svg の箱に対する割合の位置に置く (C50-1 = a。図と一緒に縮まない)。
 _WIDTH = 640
 _HEIGHT = 240
 _PLOT_LEFT = 56
@@ -633,6 +634,8 @@ def _chart(rows, max_value, series):
     月の帯の中央に、系列の数だけ棒をまとめて置く (全体の幅 = 本数 × 太さ + (本数 − 1) × 隙間。
     2 本なら中央の左右に隙間の半分ずつ空け、1 本なら中央に 1 本)。値が 0 か None の棒は入れない。
     返す物は枠と目盛りと月の字の数と、棒の並びの名前ごとの棒の並び (1 本 = {"key", "value", "d"})。
+    目盛りと月の字は svg の外の HTML の字なので、svg の箱に対する割合 (0〜100 の字) も返す: 目盛り 1 本の "top" (箱の上の端から y まで)・
+    月 1 つの "left" (箱の左の端から帯の中央まで)・"tick_label_right" (箱の右の端から目盛りの字の右の端 _TICK_LABEL_X まで)。
     """
     step, intervals = _scale(max_value)
     top = step * intervals
@@ -644,14 +647,18 @@ def _chart(rows, max_value, series):
         return _BASELINE - float(value / top) * plot_height
 
     ticks = [
-        {"y": _num(y_of(step * index)), "label": _tick_label(step * index, top)}
+        {
+            "y": _num(y_of(step * index)),
+            "top": _num(y_of(step * index) * 100 / _HEIGHT),
+            "label": _tick_label(step * index, top),
+        }
         for index in range(intervals + 1)
     ]
     bars_by_name = {name: [] for _key, name in series}
     labels = []
     for index, row in enumerate(rows):
         center = _PLOT_LEFT + band * (index + 0.5)
-        labels.append({"x": _num(center), "label": row["label"]})
+        labels.append({"x": _num(center), "left": _num(center * 100 / _WIDTH), "label": row["label"]})
         first_left = center - group_width / 2
         for position, (key, name) in enumerate(series):
             value = row[key]
@@ -664,6 +671,7 @@ def _chart(rows, max_value, series):
         "left": _num(_PLOT_LEFT),
         "right": _num(_PLOT_RIGHT),
         "tick_label_x": _num(_TICK_LABEL_X),
+        "tick_label_right": _num((_WIDTH - _TICK_LABEL_X) * 100 / _WIDTH),
         "label_y": _num(_LABEL_Y),
         "top": top,
         "ticks": ticks,
@@ -699,17 +707,22 @@ def annotate_order_inlet(partners, today=None):
     )
 
 
-# 注文の入口の図の枠と置き場 (y は下へ増える)。1 行の帯の高さ・上下の余白・名前の字の右の端・丸の中心と半径・
-# 受注の箱の左の端と幅と高さ・名前の字数の上限。幅は月次の図と同じ _WIDTH。
+# 注文の入口の図の枠と置き場 (y は下へ増え、単位は画面の px)。得意先の行 (丸・名前・行の数) と受注の箱は home.html の
+# HTML の字で置き、svg は丸と箱の間の線だけを描く (C50-1 = a。字と箱が図と一緒に縮まない)。svg の高さは viewBox の高さと
+# 同じ px にし、幅は月次の図と同じ _WIDTH を丸と箱の間の幅に伸ばす (preserveAspectRatio="none"。線は vector-effect で 1px の
+# まま)。線の左の端 (x = 0) は丸の右の端、右の端 (x = _WIDTH) は箱の左の端。1 行の帯の高さ・上下の余白・受注の箱の高さ・
+# 名前の字数の上限。
 _INLET_ROW = 28
-_INLET_TOP = 24
+_INLET_TOP = 0
+_INLET_BOX_HEIGHT = 56
+_INLET_NAME_MAX = 12
+# svg に字と丸と箱を描いていた時の置き場 (名前の字の右の端・丸の中心と半径・受注の箱の左の端と幅)。今の home.html は使わない。
+# 返す物の鍵 (label_x・dot_x・dot_r と box の x・width・cx・label_y・count_y) を変えないために残す (C50-先「今の座標の鍵は残す」)。
 _INLET_LABEL_X = 232
 _INLET_DOT_X = 248
 _INLET_DOT_R = 7
 _INLET_BOX_LEFT = 448
 _INLET_BOX_WIDTH = 168
-_INLET_BOX_HEIGHT = 56
-_INLET_NAME_MAX = 12
 
 
 def order_inlets(today=None, *, limit=12) -> dict | None:
@@ -761,10 +774,13 @@ def order_inlets(today=None, *, limit=12) -> dict | None:
 
 
 def _inlet_chart(rows, others) -> dict:
-    """注文の入口の図の座標 (字は小数 1 桁 = _num)。1 行 = {"name" (略称か名前を _INLET_NAME_MAX 字まで。長ければ末尾に「…」), "lines", "inlet" (INLETS の鍵), "inlet_label", "y", "x1", "x2", "y2"} (線は丸の右の端から箱の左の端の中央へ)。箱 = {"x", "y", "width", "height", "label_y", "count_y", "cx"}。others = {"count", "lines", "y"} か None。高さは行の数で決め、箱は行の帯の中央に置く。
+    """注文の入口の図の座標 (字は小数 1 桁 = _num)。1 行 = {"name" (略称か名前を _INLET_NAME_MAX 字まで。長ければ末尾に「…」), "lines", "inlet" (INLETS の鍵), "inlet_label", "y", "x1", "x2", "y2"} (線は丸の右の端 = svg の左の端から、箱の左の端 = svg の右の端の中央へ)。箱 = {"x", "y", "width", "height", "label_y", "count_y", "cx"}。others = {"count", "lines", "y"} か None。高さは行の数で決め、箱は行の帯の中央に置く。
 
-    返す物 = {"width", "height", "rows", "others", "box", "total_lines", "dot_x", "dot_r", "label_x"}。
+    返す物 = {"width", "height", "row_height", "rows", "others", "box", "total_lines", "dot_x", "dot_r", "label_x"}。
     行の帯 (others の 1 行を含む) が箱より低いときは、帯を箱の高さの中央に置く。
+    home.html は、svg の高さ (height の px)・HTML の 1 行の高さ (row_height の px)・箱の最小の高さ (box の height の px) を style に置き、
+    行と svg と箱を縦の中央で揃える。y は px なので、HTML の行の中央と線の左の端が合う。
+    dot_x・dot_r・label_x と box の x・width・cx・label_y・count_y は、svg に字と丸と箱を描いていた時の置き場で、今の home.html は使わない。
     """
     bands = len(rows) + (1 if others else 0)
     content = max(_INLET_ROW * bands, _INLET_BOX_HEIGHT)
@@ -775,8 +791,8 @@ def _inlet_chart(rows, others) -> dict:
         {
             **row,
             "y": _num(first_y + _INLET_ROW * index),
-            "x1": _num(_INLET_DOT_X + _INLET_DOT_R),
-            "x2": _num(_INLET_BOX_LEFT),
+            "x1": _num(0),
+            "x2": _num(_WIDTH),
             "y2": _num(box_middle),
         }
         for index, row in enumerate(rows)
@@ -788,6 +804,7 @@ def _inlet_chart(rows, others) -> dict:
     return {
         "width": _WIDTH,
         "height": _INLET_TOP * 2 + content,
+        "row_height": _num(_INLET_ROW),
         "rows": placed,
         "others": placed_others,
         "box": {

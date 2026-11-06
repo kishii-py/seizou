@@ -292,6 +292,51 @@ def _frame_inside(chart):
     assert 0 <= float(chart["label_y"]) <= height
 
 
+def _label_places_inside(chart):
+    """目盛りと月の字は svg の外の HTML の字で、svg の箱に対する割合 (0〜100) の位置に置く (候補 C50 の 2。C50-1 = a)。
+    割合は座標の鍵 (目盛りの y・月の x・tick_label_x) と同じ所を指す (小数 1 桁の字なので 0.1 までずれてよい)。"""
+    width, height = chart["width"], chart["height"]
+    right = float(chart["tick_label_right"])
+    assert 0 <= right <= 100
+    assert abs(right - (width - float(chart["tick_label_x"])) * 100 / width) <= 0.1
+    for tick in chart["ticks"]:
+        assert 0 <= float(tick["top"]) <= 100
+        assert abs(float(tick["top"]) - float(tick["y"]) * 100 / height) <= 0.1
+    for label in chart["labels"]:
+        assert 0 <= float(label["left"]) <= 100
+        assert abs(float(label["left"]) - float(label["x"]) * 100 / width) <= 0.1
+
+
+@pytest.mark.django_db
+def test_shipping_trend_label_places(shipping_data):
+    trend = dashboard.shipping_trend(today=TODAY)
+    for chart in (trend["qty_chart"], trend["amount_chart"]):
+        _label_places_inside(chart)
+
+
+@pytest.mark.django_db
+def test_production_trend_label_places(production_data):
+    _label_places_inside(dashboard.production_trend(today=TODAY)["chart"])
+
+
+@pytest.mark.django_db
+def test_inlet_chart_rows_match_html_rows(customer, floor_customer):
+    # 注文の入口の図 (候補 C50 の 1 と 2): 名前と丸と受注の箱は HTML で、svg は線だけ。svg の y は px で、HTML の 1 行の高さ
+    # (row_height) ごとに並ぶ。線は svg の左の端 (丸の右の端) から右の端 (箱の左の端) の、高さの中央 (箱の中央) へ。
+    inlets = dashboard.order_inlets(TODAY)
+    rows = inlets["rows"]
+    assert len(rows) == 2
+    row_height = float(inlets["row_height"])
+    assert 0 < row_height <= 100
+    assert float(rows[1]["y"]) - float(rows[0]["y"]) == row_height
+    height = inlets["height"]
+    assert height >= row_height * len(rows)
+    for row in rows:
+        assert (float(row["x1"]), float(row["x2"])) == (0, inlets["width"])
+        assert 0 <= float(row["y"]) <= height
+        assert float(row["y2"]) == height / 2
+
+
 def _bar_center(bar):
     xs = [x for x, _y in _points(bar["d"])]
     return (max(xs) + min(xs)) / 2

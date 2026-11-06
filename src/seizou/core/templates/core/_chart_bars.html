@@ -2,21 +2,31 @@
 {# 月ごとの棒の図 (inline SVG。JS を使わない)。数と座標は全部 core の dashboard が出し、ここは置くだけ。 #}
 {# home.html が include の with で渡す物: chart (図の数)・chart_id (svg の id)・chart_title (title の字)・chart_label (読み上げの字)・first と first_label (1 つ目の系列)・second と second_label (2 つ目の系列。渡さなければ描かない)・money (真なら値の頭に ¥ を付ける)。 #}
 {# 色は theme の class だけで、1 つ目は主色、2 つ目は副色の固定の順。系列ごとに for を分ける (class を組み立てない)。値は棒の title と図の下の表で読む。 #}
+{# svg は箱の幅に縮み (最小の幅を持たない)、どの幅でも 6 か月が箱に入る。目盛りと月の字は svg の外の HTML の字 (凡例と同じ 12px) で、svg の箱に対する割合の位置 (dashboard の top・left・tick_label_right) に style で置く (C50-1 = a)。 #}
+{# 左の余白は、幅の狭い画面で目盛りの字 (例「1,500 万」) が svg の左の余白から左へはみ出す分。字は読み上げない (値は図の下の表で読む)。 #}
 <div class="mt-2 overflow-x-auto">
-  <svg id="{{ chart_id }}" class="mx-auto block h-auto w-full min-w-96 max-w-3xl" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart_label }}">
-    <title>{{ chart_title }}</title>
-    {% for tick in chart.ticks %}
-    <line class="stroke-base-300" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
-    <text class="fill-base-content/70 text-sm" x="{{ chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
-    {% endfor %}
-    {% for bar in first %}
-    <path class="fill-primary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ first_label }} {% if money %}{{ bar.value|yen:0 }}{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
-    {% endfor %}
-    {% for bar in second %}
-    <path class="fill-secondary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ second_label }} {% if money %}{{ bar.value|yen:0 }}{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
-    {% endfor %}
-    {% for month in chart.labels %}
-    <text class="fill-base-content/70 text-sm" x="{{ month.x }}" y="{{ chart.label_y }}" text-anchor="middle">{{ month.label }}</text>
-    {% endfor %}
-  </svg>
+  <div class="mx-auto max-w-3xl pt-2 pl-8">
+    <div class="relative">
+      <svg id="{{ chart_id }}" class="block h-auto w-full" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart_label }}">
+        <title>{{ chart_title }}</title>
+        {% for tick in chart.ticks %}
+        <line class="stroke-base-300" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+        {% endfor %}
+        {% for bar in first %}
+        <path class="fill-primary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ first_label }} {% if money %}{{ bar.value|yen:0 }}{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
+        {% endfor %}
+        {% for bar in second %}
+        <path class="fill-secondary transition-opacity hover:opacity-80" d="{{ bar.d }}"><title>{{ bar.key }} {{ second_label }} {% if money %}{{ bar.value|yen:0 }}{% else %}{{ bar.value|floatformat:"-2g" }}{% endif %}</title></path>
+        {% endfor %}
+      </svg>
+      <div class="text-xs text-base-content/70 tabular-nums" aria-hidden="true">
+        {% for tick in chart.ticks %}
+        <span class="absolute whitespace-nowrap" style="top: {{ tick.top }}%; right: {{ chart.tick_label_right }}%; transform: translateY(-50%)">{{ tick.label }}</span>
+        {% endfor %}
+        {% for month in chart.labels %}
+        <span class="absolute bottom-0 whitespace-nowrap" style="left: {{ month.left }}%; transform: translateX(-50%)">{{ month.label }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
 </div>
