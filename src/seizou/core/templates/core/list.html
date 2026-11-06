@@ -41,9 +41,9 @@
       {% if summary %}
       {# 集計 (view=summary) の軸と量。変えると絞りの欄と同じく #rows を取り直す (data-list-filter)。view は隠しの欄で持ち越す。 #}
       <input type="hidden" name="view" value="summary">
-      <label for="list-g-by" class="text-base-content/70">軸</label>
+      <label for="list-g-by" class="text-base-content/70">まとめ方</label>
       <select id="list-g-by" class="select select-sm w-auto" name="g_by" data-list-filter>{% for axis in summary.axes %}<option value="{{ axis.key }}"{% if axis.key == summary.axis.key %} selected{% endif %}>{{ axis.label }}</option>{% endfor %}</select>
-      <label for="list-g-val" class="text-base-content/70">量</label>
+      <label for="list-g-val" class="text-base-content/70">集計する数値</label>
       <select id="list-g-val" class="select select-sm w-auto" name="g_val" data-list-filter>{% for measure in summary.measures %}<option value="{{ measure.key }}"{% if measure.key == summary.measure.key %} selected{% endif %}>{{ measure.label }}</option>{% endfor %}</select>
       {% else %}
       <select id="list-per" class="select select-sm w-auto" name="per" aria-label="1 ページの件数">{% for n in page_sizes %}<option value="{{ n }}" {% if n == per %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>

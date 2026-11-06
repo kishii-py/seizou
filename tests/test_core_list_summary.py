@@ -131,6 +131,14 @@ def test_status_axis_counts_rows_in_choice_order(user, orders):
     assert "表に戻る" in text and 'id="row-' not in text
 
 
+def test_summary_picker_headings_are_plain_words(user, orders):
+    """集計の選ぶ欄の見出しは「まとめ方」と「集計する数値」(決め C38-1 a。初見テスト R5 の V123。候補 C38 の 6)。"""
+    text = body(call(_OrderList, user, view="summary"))
+    assert '<label for="list-g-by" class="text-base-content/70">まとめ方</label>' in text
+    assert '<label for="list-g-val" class="text-base-content/70">集計する数値</label>' in text
+    assert ">軸</label>" not in text and ">量</label>" not in text
+
+
 def test_measure_label_keeps_a_total_heading():
     """見出しが「合計」で終わる列 (請求書の一覧の「合計」) の量は「合計の合計」にしない (精査 A9 の 3 節の 4)。"""
     from seizou.core.summary import measures_for

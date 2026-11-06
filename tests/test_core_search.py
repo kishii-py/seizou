@@ -153,6 +153,19 @@ def test_orders_found_by_order_no_customer_order_no_and_line_part_no(client_logg
     assert section.rows[0].cells[1] == customer
 
 
+def test_orders_result_shows_customer_order_no(client_logged_in, user, bracket, customer):
+    """受注の結果の 3 つ目の列は「得意先の注文番号」(初見テスト R5 の V117。候補 C38 の 5)。探した番号が行に同じ字で出る。"""
+    make_order(user, customer, [bracket], customer_order_no="PO-555")
+    section = orders_search.search("PO-555")
+    assert section.columns[2].label == "得意先の注文番号"
+    assert section.rows[0].cells[2] == "PO-555"
+
+    body = search_page(client_logged_in, q="PO-555", kind="orders").content.decode()
+    thead = body[body.index('id="search-orders"') :]
+    thead = thead[: thead.index("</thead>")]
+    assert re.findall(r"<th [^>]*>([^<]+)</th>", thead) == ["受注番号", "得意先", "得意先の注文番号", "受注日", "品番", "状態"]
+
+
 def test_partner_narrows_orders(client_logged_in, user, bracket, customer, other_customer):
     mine = make_order(user, customer, [bracket])
     theirs = make_order(user, other_customer, [bracket])

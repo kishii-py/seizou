@@ -17,6 +17,7 @@ LABEL = "受注"
 COLUMNS = (
     SearchColumn("受注番号", is_code=True),
     SearchColumn("得意先"),
+    SearchColumn("得意先の注文番号", is_code=True),
     SearchColumn("受注日", is_date=True),
     SearchColumn("品番"),
     SearchColumn("状態"),
@@ -44,7 +45,14 @@ def search(query, *, partner=None, limit=50):
     page = orders.select_related("customer").prefetch_related("lines__item")[:limit]
     rows = tuple(
         SearchRow(
-            cells=(order.order_no, order.customer, order.order_date, part_no_cell(order), order.get_status_display()),
+            cells=(
+                order.order_no,
+                order.customer,
+                order.customer_order_no,
+                order.order_date,
+                part_no_cell(order),
+                order.get_status_display(),
+            ),
             url=url_or_none("orders:order_detail", order.pk),
         )
         for order in page

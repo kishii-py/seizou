@@ -4,17 +4,22 @@
 ブラウザでの確かめ (受注の明細の選ぶ欄の候補) は朝の E2E。
 """
 
+import csv
+import io
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
+from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
+from tests.test_detail_header import _actions
 
 ORDER_DATE = date(2026, 11, 2)
 
@@ -118,6 +123,66 @@ def test_shipment_list_shows_order_and_item(logged_in, order):
     assert [row["obj"] for row in found.context["rows"]] == [shipment]
     missing = logged_in.get(reverse("shipping:shipment_list"), {"q": "作り物でない"})
     assert missing.context["rows"] == []
+
+
+def _numbered_order(order, user):
+    """得意先の注文番号 PO-777 の 2 つ目の受注。得意先と部品は fixture の受注と同じ物を使い回す (取引先コードは重ねられない)。"""
+    return orders_services.create_order(
+        order.customer,
+        [{"item": order.lines.get().item, "qty": Decimal("5"), "unit_price": Decimal("100")}],
+        user,
+        order_date=ORDER_DATE,
+        customer_order_no="PO-777",
+    )
+
+
+@pytest.mark.django_db
+def test_shipment_detail_has_order_detail_button(logged_in, user, order):
+    """出荷の詳細の頭の右に、その出荷の受注の詳細へ移る白の「受注の詳細」が 1 つ (初見テスト R5 の候補 C38 の 2)。
+
+    R5 の起こし直しでは、出荷の詳細に受注へ移る link が 0 だった。並びは PDF の次で、納品書の無い出荷の白の「編集」と
+    緑の「納品書作成」の前 (緑は 1 つのまま)。
+    """
+    shipment = shipping_services.ship(order.lines.get(), Decimal("4"), timezone.localdate(), user)
+    response = logged_in.get(reverse("shipping:shipment_detail", args=[shipment.pk]))
+    assert response.status_code == 200
+    body = response.content.decode()
+
+    href = f'href="{reverse("orders:order_detail", args=[order.pk])}"'
+    assert body.count(href) == 1
+    button = f'<a class="btn btn-outline border-base-300" {href}>'
+    assert button in body
+    assert "受注の詳細" in body[body.index(button) : body.index("</a>", body.index(button))]
+
+    head = _actions(body)
+    white_edit = f'<a class="btn btn-outline border-base-300" href="{reverse("shipping:shipment_update", args=[shipment.pk])}'
+    green = '<a class="btn btn-primary"'
+    assert head.index("PDF</a>") < head.index(button) < head.index(white_edit) < head.index(green)
+    assert "納品書作成" in head[head.index(green) :]
+    assert head.count("btn-primary") == 1
+
+
+@pytest.mark.django_db
+def test_shipment_list_shows_and_finds_customer_order_no(logged_in, user, order):
+    """出荷の一覧に「得意先の注文番号」の列があり、その番号で探せる (初見テスト R5 の V117。候補 C38 の 4)。"""
+    numbered = _numbered_order(order, user)
+    plain_shipment = shipping_services.ship(order.lines.get(), Decimal("4"), timezone.localdate(), user)
+    numbered_shipment = shipping_services.ship(numbered.lines.get(), Decimal("5"), timezone.localdate(), user)
+    url = reverse("shipping:shipment_list")
+
+    response = logged_in.get(url)
+    labels = [col.label for col in response.context["columns"]]
+    assert labels == ["出荷番号", "受注番号", "得意先の注文番号", "得意先", "部品", "数量", "出荷日", "納品書番号"]
+    assert {row["obj"] for row in response.context["rows"]} == {plain_shipment, numbered_shipment}
+    # 検索の欄の案内に入る (前後の字は比べない = 探す項目の並びをほかの直しが変えても、この試験は作り直さない)
+    assert "得意先の注文番号" in response.context["search_hint"].split("・")
+
+    found = logged_in.get(url, {"q": "PO-777"})
+    assert [row["obj"] for row in found.context["rows"]] == [numbered_shipment]
+
+    exported = logged_in.get(url, {"format": "csv"})
+    header = next(csv.reader(io.StringIO(exported.content.decode("utf-8").lstrip("﻿"))))
+    assert "得意先の注文番号" in header
 
 
 @pytest.mark.django_db

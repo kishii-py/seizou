@@ -325,6 +325,30 @@ def test_head_chips_on_order_and_purchase_order(logged_in, client, settings, ite
     assert [label for label, _ in _chips(body)] == ["得意先", "一番早い納期"]
 
 
+@pytest.mark.django_db
+def test_head_chips_on_shipment(logged_in, user, customer, item, shipment):
+    """出荷の詳細の題の横に「得意先」と「得意先の注文番号」の札 (決め C38-2 a。初見テスト R5 の候補 C38 の 1)。
+
+    注文番号の無い受注の出荷は「得意先」の札だけ。札は #shipment-heading の中 (小窓で保存した後の取り直しでも残る)。
+    出荷には状態の印が無いので、受注の「札は状態の印より後ろ」は見ない。
+    """
+    body = _get(logged_in, "shipping:shipment_detail", shipment.pk)[1]
+    assert _chips(body) == [("得意先", "作り物の得意先")]
+    heading = body[body.index('<div id="shipment-heading">') : body.index('<div id="shipment-live">')]
+    assert heading.count("data-head-chip") == 1
+
+    numbered = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("3"), "unit_price": Decimal("100")}],
+        user,
+        order_date=date(2026, 11, 2),
+        customer_order_no="PO-777",
+    )
+    numbered_shipment = shipping_services.ship(numbered.lines.get(), Decimal("3"), timezone.localdate(), user)
+    body = _get(logged_in, "shipping:shipment_detail", numbered_shipment.pk)[1]
+    assert _chips(body) == [("得意先", "作り物の得意先"), ("得意先の注文番号", "PO-777")]
+
+
 def test_manual_intro_has_detail_head_section():
     intro = (Path(seizou.core.__file__).parent / "manual_default" / "index.html").read_text(encoding="utf-8")
     assert "<h3>詳細の画面</h3>" in intro
