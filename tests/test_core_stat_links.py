@@ -1,10 +1,12 @@
-"""ダッシュボードの数字のカードの行き先の link と (i) の小窓と、「出荷の残りがある明細」に添える受注の件数 (初見ユーザーテスト R5 の V38・V181・r5-a-03・V78。候補 C30 の 1・2・3)。
+"""ダッシュボードの数字のカードの行き先の link と (i) の小窓と phone の並びと、「出荷の残りがある明細」に添える受注の件数
+(初見ユーザーテスト R5 の V38・V181・r5-a-03・a-flagged-25・V78。候補 C30 の 1・2・3・5)。
 
 見る所 (1 = 行き先): url のある 7 枚は外側が div で、onclick がそのカードの url へ移し (中の link とボタンの押下は除く)、
 点線の下に「<画面の名前>を見る」の link がちょうど 1 つある・8 枚目と url の無いカードには link も onclick も無い・
 link の中にボタンが入れ子にならず、link の字に help の 1 文が入らない・画面の名前が引けない url は「一覧を見る」。
 見る所 (2 = (i) の小窓): 格子に吹き出し (tooltip・data-tip) が無い・(i) のボタンの名前は「<題>の数え方」で、help の 1 文はどの名前にも入らない・
 頁に小窓の中身の template が 1 つあり、script が template を写して字を textContent で入れる (class を触らず HTML を差し込まない)。
+見る所 (5 = phone の並び): 格子が phone から 2 列 (xl の枝は今のまま)・カードの余白が p-4 (sm から p-6)・大きい数が text-2xl (sm から text-3xl)。
 見る所 (3 = 受注の件数): 数の下の 1 行「受注 n 件」の n が、受注の一覧の既定 (タブ「出荷の残りがある」と同じ条件) と、今日やることの
 出荷の行の件数と同じ・大きい数 (明細の行) は今のまま生産管理ボードの件数と同じ・受注の件数を数えられないときは
 1 行ごと出さずカードは出す・今日やることの出荷の段が同じ関数で数える。Django の test client で HTML を見る。名前は作り物だけ。
@@ -20,7 +22,7 @@ from django.db import DatabaseError
 from django.urls import reverse
 from django.utils import timezone
 
-from seizou.core import dashboard, views
+from seizou.core import dashboard, tours, views
 from seizou.masters import services as masters_services
 from seizou.orders import services
 from seizou.shipping import services as shipping_services
@@ -297,3 +299,37 @@ def test_page_has_one_help_template_and_safe_script(logged_in, settings):
         assert word in script, word
     for word in (".innerHTML", "insertAdjacentHTML", "outerHTML", ".classList", ".className"):
         assert word not in script, word
+
+
+# --- phone の並び (候補 C30 の 5 = C30-3 の a。R5 の a-flagged-25) ---
+
+
+@pytest.mark.parametrize("money", ["off", "on"], ids=["money-shown", "money-hidden"])
+@pytest.mark.django_db
+def test_cards_are_two_columns_on_phone(logged_in, settings, money):
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": money}}
+
+    body = logged_in.get(reverse("core:home")).content.decode()
+
+    # phone (640px 未満) から 2 列。xl 以上の枝は今のまま (8 枚で 4 列)
+    grid = re.search(r'<div data-tour="stats" class="([^"]*)"', body).group(1).split()
+    assert "grid-cols-2" in grid and "sm:grid-cols-2" not in grid
+    assert "xl:grid-cols-4" in grid
+    by_label = outer_cards(body)
+    assert len(by_label) == 8
+    for label, card in by_label.items():
+        # カードの中の余白は phone で p-4、sm から p-6
+        outer = re.match(r'<div class="([^"]*)"', card).group(1).split()
+        assert "p-4" in outer and "sm:p-6" in outer and "p-6" not in outer, label
+        # 大きい数 (数・金額・金額を見られない人の「—」のどの枝も) は phone で text-2xl、sm から text-3xl
+        number = re.search(r'<p class="mt-2"><span class="([^"]*)"', card).group(1).split()
+        assert "text-2xl" in number and "sm:text-3xl" in number and "text-3xl" not in number, label
+    if money == "on":
+        assert "—" in by_label["今月の支払の見込み"] and "—" in by_label["今月の入金"]
+
+
+def test_tour_step_still_points_to_stats():
+    # ガイドツアーの「今日の数字」の段は今までどおり数字のカードの格子を指し、字も変わらない
+    step = tours.TOURS["core:home"][0]
+    assert step["selector"] == '[data-tour="stats"]'
+    assert step["text"] == "部品・取引先・今月の受注などの数です。カードを押すと、その一覧が開きます。"
