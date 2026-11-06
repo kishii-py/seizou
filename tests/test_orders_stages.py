@@ -4,6 +4,7 @@
 指示書や実績や出荷を足した後は、明細を取り直してから段を読む (_line)。
 """
 
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -14,7 +15,7 @@ from django.utils import timezone
 from seizou.billing import services as billing_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
-from seizou.orders.timeline import STAGES, stage_band, stage_of
+from seizou.orders.timeline import STAGES, reached_stages, stage_band, stage_of
 from seizou.progress import services as progress_services
 from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
@@ -161,10 +162,12 @@ def test_detail_shows_band_between_heading_and_tabs(user, logged_in, customer, i
     assert body.index('<h1 class="truncate') < body.index('<div id="order-stages"') < body.index('role="tablist"')
     band = _band(body)
     assert 'data-stage-current="6"' in band
-    assert band.count('data-content="✓"') == 5
-    assert band.count("step-primary") == 6
-    assert '<li class="step step-primary" aria-current="step">納品</li>' in band
-    assert '<li class="step">請求</li>' in band
+    # 指示書なしで出荷したので、✓ は通った受注と出荷だけ。指示・着手・完了は横線 (C06)
+    assert band.count('data-content="✓"') == 2
+    assert band.count('data-content="−"') == 3
+    assert band.count("step-primary") == 3
+    assert '<li class="step max-sm:min-w-0 step-primary" aria-current="step">納品</li>' in band
+    assert '<li class="step max-sm:min-w-0">請求</li>' in band
     assert "明細 " not in band
 
 
@@ -177,3 +180,114 @@ def test_summary_appears_when_lines_differ(user, logged_in, customer, item):
 
     assert 'data-stage-current="1"' in band
     assert '<p class="mt-1 text-xs text-base-content/70">明細 2 行のうち、出荷 1 行・受注 1 行</p>' in band
+
+
+# --- 通っていない段の印 (C06。今の段より前でも、通っていない段は ✓ でなく灰色の丸に横線) ---------------------
+
+
+def _done(band):
+    return [s.done for s in band.stages]
+
+
+def _skipped(band):
+    return [s.skipped for s in band.stages]
+
+
+def _li(band_html, name):
+    """帯の HTML から、段の名前が name の li の字を取る。"""
+    match = re.search(rf"<li [^>]*>{name}</li>", band_html)
+    assert match is not None, f"段 {name} の li が無い"
+    return match.group()
+
+
+@pytest.mark.django_db
+def test_shipment_without_workorder_skips_making_stages(user, customer, item):
+    order = _order(user, customer, item)
+    shipping_services.ship(_line(order), Decimal("4"), timezone.localdate(), user)
+
+    band = stage_band(order)
+
+    assert reached_stages(_line(order)) == {1, 5}
+    assert (band.current, band.current_name) == (5, "出荷")
+    assert _done(band) == [True, False, False, False, False, False, False, False]
+    assert _skipped(band) == [False, True, True, True, False, False, False, False]
+
+
+@pytest.mark.django_db
+def test_unaccepted_workorder_then_shipment_marks_only_the_issue(user, customer, item, cut):
+    order = _order(user, customer, item)
+    _issue(user, _line(order), cut)
+    shipping_services.ship(_line(order), Decimal("1"), timezone.localdate(), user)
+
+    band = stage_band(order)
+
+    assert reached_stages(_line(order)) == {1, 2, 5}
+    assert band.current == 5
+    assert _done(band) == [True, True, False, False, False, False, False, False]
+    assert _skipped(band) == [False, False, True, True, False, False, False, False]
+
+
+@pytest.mark.django_db
+def test_stage_is_done_only_when_every_line_passed_it(user, customer, item, cut):
+    order = _order(user, customer, item, lines=2)
+    workorder = _issue(user, _line(order, 1), cut)
+    workorders_services.accept_workorder(workorder, user)
+    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
+    today = timezone.localdate()
+    shipping_services.ship(_line(order, 1), Decimal("10"), today, user)
+    shipping_services.ship(_line(order, 2), Decimal("10"), today, user)
+
+    band = stage_band(order)
+
+    assert [reached_stages(_line(order, no)) for no in (1, 2)] == [{1, 2, 3, 4, 5}, {1, 5}]
+    assert (band.current, band.summary) == (5, None)
+    # 1 行は指示書から完了まで、1 行は指示書なし → 指示・着手・完了は ✓ を控えて横線
+    assert _done(band) == [True, False, False, False, False, False, False, False]
+    assert _skipped(band) == [False, True, True, True, False, False, False, False]
+
+
+@pytest.mark.django_db
+def test_line_through_every_stage_has_no_skipped(user, customer, item, cut):
+    order = _order(user, customer, item)
+    workorder = _issue(user, _line(order), cut)
+    workorders_services.accept_workorder(workorder, user)
+    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
+    shipping_services.ship(_line(order), Decimal("10"), timezone.localdate(), user)
+
+    band = stage_band(order)
+
+    assert band.current == 5
+    assert _done(band) == [True, True, True, True, False, False, False, False]
+    assert not any(_skipped(band))
+
+
+@pytest.mark.django_db
+def test_skipped_stage_shows_a_grey_dash_without_primary(user, logged_in, customer, item):
+    order = _order(user, customer, item)
+    shipping_services.ship(_line(order), Decimal("4"), timezone.localdate(), user)
+
+    band = _band(_detail(logged_in, order)[1])
+
+    assert band.count('data-content="−"') == 3
+    for name in ("指示", "着手", "完了"):
+        li = _li(band, name)
+        assert 'data-content="−"' in li
+        for absent in ("step-primary", "aria-current", "✓"):
+            assert absent not in li, f"{name} の段に {absent}"
+    assert 'data-content="✓"' in _li(band, "受注")
+    assert 'aria-current="step"' in _li(band, "出荷")
+
+
+@pytest.mark.django_db
+def test_band_fits_the_phone_width(user, logged_in, customer, item):
+    """phone の幅 (sm より狭い) では段の最小幅を外し、全部の段を帯の幅に収める (C06-3 = a)。sm から上は daisyUI の幅のまま。"""
+    order = _order(user, customer, item)
+
+    band = _band(_detail(logged_in, order)[1])
+
+    assert '<ul class="steps text-xs max-sm:w-full" aria-label="段の帯">' in band
+    lis = re.findall(r"<li [^>]*>", band)
+    assert len(lis) == len(STAGES)
+    assert all(li.startswith('<li class="step max-sm:min-w-0') for li in lis)
+    # 帯の箱 (送る形) はそのまま
+    assert '<div id="order-stages" class="mb-6 overflow-x-auto"' in band

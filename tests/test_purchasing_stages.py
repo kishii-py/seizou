@@ -22,7 +22,7 @@ from django.utils import timezone
 from seizou.connect import services as connect_services
 from seizou.masters import services as masters_services
 from seizou.purchasing import services
-from seizou.purchasing.timeline import STAGES, stage_band, stage_of
+from seizou.purchasing.timeline import STAGES, reached_stages, stage_band, stage_of
 from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
 
@@ -142,7 +142,10 @@ def test_failed_send_does_not_count_and_receipt_alone_reaches_received(monkeypat
     services.receive(_line(po), Decimal("4"), timezone.localdate(), user)
 
     assert stage_of(_line(po)) == 5  # 送付・回答・出荷の知らせが無くても、受入があれば「受入」(届いている一番先の段)
-    assert [s.done for s in stage_band(po).stages] == [True, True, True, True, False, False]
+    # 通っていない送付・回答・出荷の知らせは ✓ でなく横線 (C06-4 = b)。送れなかった行があるので、検収は送り直しで届く見込みが残り横線にしない
+    band = stage_band(po)
+    assert [s.done for s in band.stages] == [True, False, False, False, False, False]
+    assert [s.skipped for s in band.stages] == [False, True, True, True, False, False]
 
 
 @pytest.mark.django_db
@@ -197,8 +200,8 @@ def test_detail_shows_band_inside_the_live_heading(monkeypatch, user, logged_in,
     assert 'data-stage-current="4"' in band
     assert band.count('data-content="✓"') == 3
     assert band.count("step-primary") == 4
-    assert '<li class="step step-primary" aria-current="step">出荷の知らせ</li>' in band
-    assert '<li class="step">受入</li>' in band
+    assert '<li class="step max-sm:min-w-0 step-primary" aria-current="step">出荷の知らせ</li>' in band
+    assert '<li class="step max-sm:min-w-0">受入</li>' in band
     assert "明細 " not in band
 
 
@@ -241,3 +244,112 @@ def test_receipt_link_opens_with_today_not_shipped_date(monkeypatch, user, logge
     assert value is not None
     assert value.group(1) == today.isoformat()
     assert value.group(1) != shipped.isoformat()
+
+
+# --- 通っていない段と届かない検収の印 (C06-4 = b。受注の帯と同じ灰色の丸に横線) ---------------------------------
+
+
+def _done(band):
+    return [s.done for s in band.stages]
+
+
+def _skipped(band):
+    return [s.skipped for s in band.stages]
+
+
+def _li(band_html, name):
+    """帯の HTML から、段の名前が name の li の字を取る。"""
+    match = re.search(rf"<li [^>]*>{name}</li>", band_html)
+    assert match is not None, f"段 {name} の li が無い"
+    return match.group()
+
+
+def _unsent_but_replied(user, subcontractor, item):
+    """種の PO-000001 の形: つながりの無い取引先へ発注し、注文回答の写し (demo_seed の _apply_reply と同じ順) と出荷の知らせ。"""
+    po = _order(user, subcontractor, item)
+    po = services.mark_sent(po, user)
+    po = services.mark_accepted(po, user)
+    _notice(_line(po))
+    return po
+
+
+@pytest.mark.django_db
+def test_unsent_order_skips_sending_and_unreachable_acceptance(user, subcontractor, item, no_http):
+    po = _unsent_but_replied(user, subcontractor, item)
+    services.receive(_line(po), Decimal("4"), timezone.localdate(), user)
+    po.refresh_from_db()
+    assert po.status == po.STATUS_ACCEPTED  # 一部だけ受け入れた (種のままの形)
+
+    band = stage_band(po)
+
+    assert reached_stages(_line(po)) == {1, 3, 4, 5}
+    assert (band.current, band.current_name) == (5, "受入")
+    assert _done(band) == [True, False, True, True, False, False]
+    assert _skipped(band) == [False, True, False, False, False, True]
+
+    services.receive(_line(po), Decimal("6"), timezone.localdate(), user)
+    po.refresh_from_db()
+    assert po.status == po.STATUS_DELIVERED  # 残りを受け入れた (ra32 の形)。「下書き」でないので帯は同じ
+
+    band = stage_band(po)
+
+    assert band.current == 5
+    assert _done(band) == [True, False, True, True, False, False]
+    assert _skipped(band) == [False, True, False, False, False, True]
+
+
+@pytest.mark.django_db
+def test_unreachable_acceptance_shows_a_grey_dash(user, logged_in, subcontractor, item, no_http):
+    po = _unsent_but_replied(user, subcontractor, item)
+    services.receive(_line(po), Decimal("10"), timezone.localdate(), user)
+
+    band = _band(_detail(logged_in, po)[1])
+
+    assert 'data-stage-current="5"' in band
+    assert band.count('data-content="✓"') == 3
+    assert band.count("step-primary") == 4
+    assert band.count('data-content="−"') == 2
+    for name in ("送付", "検収"):
+        li = _li(band, name)
+        assert 'data-content="−"' in li
+        for absent in ("step-primary", "aria-current", "✓"):
+            assert absent not in li, f"{name} の段に {absent}"
+    assert 'aria-current="step"' in _li(band, "受入")
+
+
+@pytest.mark.django_db
+def test_draft_order_without_sent_rows_has_no_skipped(user, subcontractor, item, no_http):
+    po = _order(user, subcontractor, item)
+
+    assert not any(_skipped(stage_band(po)))
+
+    # つながりの無い会社で一部だけ受け入れた「下書き」の発注は、検収を後で送る見込みが残るので横線にしない
+    services.receive(_line(po), Decimal("4"), timezone.localdate(), user)
+    band = stage_band(po)
+    assert band.current == 5
+    assert _skipped(band) == [False, True, True, True, False, False]
+
+
+@pytest.mark.django_db
+def test_sent_status_without_sent_rows_skips_only_the_acceptance(user, subcontractor, item, no_http):
+    po = services.mark_sent(_order(user, subcontractor, item), user)
+
+    band = stage_band(po)
+
+    assert band.current == 2
+    assert _done(band) == [True, False, False, False, False, False]
+    assert _skipped(band) == [False, False, False, False, False, True]
+
+
+@pytest.mark.django_db
+def test_sent_order_keeps_the_acceptance_ahead(monkeypatch, user, subcontractor, item, send_connection):
+    """相手へ送って受け入れられ、出荷の知らせのある発注は今のまま (送付は相手が受け取った行で ✓、検収は先の段)。"""
+    monkeypatch.setattr("requests.post", FakePost())
+    po = services.mark_accepted(_order(user, subcontractor, item), user)
+    _notice(_line(po))
+
+    band = stage_band(po)
+
+    assert band.current == 4
+    assert _done(band) == [True, True, True, False, False, False]
+    assert not any(_skipped(band))

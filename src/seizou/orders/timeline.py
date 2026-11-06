@@ -248,12 +248,17 @@ STAGES = (
 
 @dataclass(frozen=True)
 class Stage:
-    """帯の 1 段。no は 1 から。done は今の段より前の段、current は今の段。"""
+    """帯の 1 段。no は 1 から。
+
+    done は今の段より前で全部の明細が通った段、skipped は今の段より前で通っていない明細がある段 (C06)、
+    current は今の段。先の段はどれも偽。
+    """
 
     no: int
     name: str
     done: bool
     current: bool
+    skipped: bool = False
 
 
 @dataclass(frozen=True)
@@ -272,43 +277,59 @@ class StageBand:
         return STAGES[self.current - 1]
 
 
-def stage_of(line) -> int:
-    """受注の明細 1 行の今の段 (1〜8) = 届いている一番先の段 (読むだけ)。
+def reached_stages(line) -> frozenset[int]:
+    """受注の明細 1 行が実際に通った段の集まり (1〜8 の数。読むだけ。C06)。
 
-    指示 = 取消でない指示書がある / 着手 = 着手した指示書がある / 完了 = 全部の工程で実績が予定に達した
+    受注 = いつも / 指示 = 取消でない指示書がある / 着手 = 着手した指示書がある / 完了 = 全部の工程で実績が予定に達した
     (生産管理ボードの「進捗」の「完了」と同じ読み方 = BoardRow.current_step が None) / 出荷 = 出荷がある /
     納品 = 出荷が取消でない納品書に入った / 請求 = 出荷が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
-    指示書が無くても出荷があれば「出荷」(在庫から出した明細)。
+    例: 指示書の無い明細の出荷は {1, 5}、指示書を発行して未着手のまま出荷は {1, 2, 5}。BoardRow は 1 回だけ作る。
     """
     board = BoardRow(line)
-    reached = 1
+    reached = {1}
     if board.workorders:
-        reached = 2
+        reached.add(2)
     if board.accepted_count:
-        reached = 3
+        reached.add(3)
     if board.steps and board.current_step is None:
-        reached = 4
+        reached.add(4)
     shipments = _all(line, "shipments")
     if shipments:
-        reached = 5
+        reached.add(5)
     if any(_is_live(getattr(s, "delivery_note", None)) for s in shipments):
-        reached = 6
+        reached.add(6)
     invoices = {il.invoice_id: il.invoice for s in shipments for il in _all(s, "invoice_lines") if _is_live(il.invoice)}
     if invoices:
-        reached = 7
+        reached.add(7)
     if any(_is_live(p) for invoice in invoices.values() for p in _all(invoice, "payments")):
-        reached = 8
-    return reached
+        reached.add(8)
+    return frozenset(reached)
+
+
+def stage_of(line) -> int:
+    """受注の明細 1 行の今の段 (1〜8) = 届いている一番先の段 (読むだけ。reached_stages の最大)。
+
+    指示書が無くても出荷があれば「出荷」(在庫から出した明細)。段の読み方は reached_stages。
+    """
+    return max(reached_stages(line))
 
 
 def stage_band(order) -> StageBand | None:
-    """受注の段の帯。取消の受注は None (帯を出さない)。明細が無ければ「受注」の段。"""
+    """受注の段の帯。取消の受注は None (帯を出さない)。明細が無ければ「受注」の段。
+
+    今の段 = 明細ごとの今の段の最小。今の段より前の段は、全部の明細が通った段だけ done (✓)、
+    通っていない明細が 1 行でもある段は skipped (C06。行ごとの違いは帯の下の 1 文の外なので、✓ を控える側に倒す)。
+    """
     if order.status == order.STATUS_CANCELLED:
         return None
-    of_lines = [stage_of(line) for line in _all(order, "lines")]
+    of_reached = [reached_stages(line) for line in _all(order, "lines")]
+    of_lines = [max(reached) for reached in of_reached]
     current = min(of_lines, default=1)
-    stages = tuple(Stage(no, name, no < current, no == current) for no, name in enumerate(STAGES, start=1))
-    return StageBand(current, stages, _summary(of_lines))
+    stages = []
+    for no, name in enumerate(STAGES, start=1):
+        done = no < current and all(no in reached for reached in of_reached)
+        stages.append(Stage(no, name, done, no == current, skipped=no < current and not done))
+    return StageBand(current, tuple(stages), _summary(of_lines))
 
 
 def _is_live(obj) -> bool:
