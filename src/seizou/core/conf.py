@@ -21,6 +21,7 @@ DEFAULTS = {
     "partial_shipment": True,  # 分納を許す
     "over_shipment": "warn",  # 受注より多い出荷のポカよけ (R01・R04): warn / stop / off
     "over_workorder": "warn",  # 受注より多い指示書の数量と予定より多い実績 (R06・R07): warn / stop / off
+    "receiving_required": "off",  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷: warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
     "transcription_minutes_per_line": 1,  # 1 行の転記にかかる分 (ダッシュボードの「手で打たずに受けた明細」の ≒ 転記 m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
@@ -39,6 +40,7 @@ CHOICES = {
     "order_form": ("multi", "single"),
     "over_shipment": ("warn", "stop", "off"),
     "over_workorder": ("warn", "stop", "off"),
+    "receiving_required": ("warn", "stop", "off"),
     "order_number": ("seq", "ym_seq"),
 }
 

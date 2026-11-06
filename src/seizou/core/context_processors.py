@@ -22,7 +22,7 @@ from seizou.parts import PARTS
 #: 決め 11-03 14:1x: 製造業なので製造部をダッシュボードのすぐ下に置き、受注管理と協力企業管理は生産管理部の中項目にする。
 SECTIONS = (
     ("ダッシュボード", (("", ("core",)),)),
-    ("製造部", (("", ("workorders", "progress", "stock")),)),
+    ("製造部", (("", ("workorders", "progress", "stock", "receiving")),)),
     ("生産管理部", (("受注管理", ("orders", "intake", "connect")), ("協力企業管理", ("purchasing",)))),
     ("出荷と請求", (("", ("shipping", "billing")),)),
     ("マスター", (("", ("masters", "accounts")),)),

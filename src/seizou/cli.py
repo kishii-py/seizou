@@ -64,6 +64,7 @@ SETTING_DEFAULTS = {
     "partial_shipment": True,
     "over_shipment": "warn",
     "over_workorder": "warn",
+    "receiving_required": "off",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,
@@ -79,7 +80,7 @@ RECIPE_KEYS = ("industry", "item_fields", "processes", "settings")
 #: 見本の工程の 1 件の鍵 (masters.services.create_process の data と同じ)
 RECIPE_PROCESS_KEYS = ("code", "name", "is_outsourced", "sort_order", "use_in_plan")
 #: 見本が補える設定の鍵 (業種で向きが変わる物だけ。権限・model・メニュー・隠す項目は見本に書かない)
-RECIPE_SETTING_KEYS = ("order_form", "partial_shipment", "over_shipment", "over_workorder", "order_number", "production_plan")
+RECIPE_SETTING_KEYS = ("order_form", "partial_shipment", "over_shipment", "over_workorder", "receiving_required", "order_number", "production_plan")
 #: 見本の工程コードの形 (英大文字で始め、英大文字と数字と _ で 10 字まで。工程の表の工程コードは 10 字で一意)
 RECIPE_CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9_]{0,9}")
 

@@ -23,4 +23,5 @@ PARTS = [
     "seizou.stock",
     "seizou.feedback",
     "seizou.notes",
+    "seizou.receiving",
 ]

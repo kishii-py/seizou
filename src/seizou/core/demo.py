@@ -85,7 +85,7 @@ MORE_SEED_FILES = {
 MORE_YAML_ROOT_KEYS = {"指示書": "指示書", "出荷": "出荷", "納品書": "納品書", "請求書": "請求書"}
 
 # 部品が持つ種 (種類の名前, 部品の app)。部品の demo_seed.load(seeds_dir, user) が {"入れた": n, "飛ばした": m} を返す。
-PART_SEEDS = (("業務マニュアル", "seizou.manuals"), ("権限", "seizou.accounts"), ("在庫", "seizou.stock"), ("出荷の知らせと検収", "seizou.connect"), ("入金", "seizou.billing"), ("休日", "seizou.masters"))
+PART_SEEDS = (("業務マニュアル", "seizou.manuals"), ("権限", "seizou.accounts"), ("在庫", "seizou.stock"), ("出荷の知らせと検収", "seizou.connect"), ("入金", "seizou.billing"), ("休日", "seizou.masters"), ("入荷", "seizou.receiving"))
 # 種のフォルダを読まない部品の種は、種のフォルダに印のファイルがあるときだけ入れる (中身は読まない)。
 PART_SEED_MARKERS = {"seizou.accounts": "accounts.yaml"}
 
