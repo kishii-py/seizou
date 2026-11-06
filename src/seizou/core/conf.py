@@ -23,7 +23,7 @@ DEFAULTS = {
     "over_workorder": "warn",  # 受注より多い指示書の数量と予定より多い実績 (R06・R07): warn / stop / off
     "receiving_required": "off",  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷: warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
-    "transcription_minutes_per_line": 1,  # 1 行の転記にかかる分 (ダッシュボードの「手で打たずに受けた明細」の ≒ 転記 m 分。答えの YAML の settings で変える)
+    "transcription_minutes_per_line": 1,  # 1 行の手入力にかかる分 (ダッシュボードの「手入力せずに取り込んだ明細」の入力を省けた時間 ≒ m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
     "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
     "weekly_holidays": [5, 6],  # 定休日の曜日 (0 = 月 〜 6 = 日)。既定は土日。休日の表 (masters の Holiday) と合わせて稼働日を決める (core.calendar)
