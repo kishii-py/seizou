@@ -27,6 +27,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
 
+from seizou.core import calendar
 from seizou.core.conf import setting
 
 from .models import WorkOrder, WorkOrderStep
@@ -268,6 +269,8 @@ def build_board(process, start, weeks):
     length = 7 * weeks
     last = first + timedelta(days=length - 1)
 
+    # 休日の表を 1 回だけ読み、日ごとに渡す (生産管理ボードの BoardRow と同じ形。棒の数で問い合わせを増やさない)
+    holidays = calendar.holiday_dates()
     days = []
     for offset in range(length):
         day = first + timedelta(days=offset)
@@ -276,7 +279,8 @@ def build_board(process, start, weeks):
                 "date": day,
                 "iso": day.isoformat(),
                 "weekday": WEEKDAYS[day.weekday()],
-                "weekend": day.weekday() >= 5,
+                # 稼働日でない日 (定休日の曜日と休日の一覧の日。core.calendar)。鍵の名前は土日だけを塗っていた頃のまま (テンプレートの class が読む)
+                "weekend": not calendar.is_workday(day, holidays=holidays),
                 "today": day == today,
                 "col": offset + 1,
             }

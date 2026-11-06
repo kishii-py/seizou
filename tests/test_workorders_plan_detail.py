@@ -5,6 +5,7 @@
 見ない所 (理由): ドラッグの後の click を飲む script の動き・図の見た目 (ブラウザが要る。本体が画面で見る)。
 """
 
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -62,6 +63,53 @@ def test_plan_detail_modal_shows_summary_steps_and_chart(settings, client_logged
 
     settings.SEIZOU = {"production_plan": False}
     assert client_logged_in.get(_detail_url(step), HTTP_HX_REQUEST="true").status_code == 404
+
+
+ZERO_NOTE = "今日から 8 週、見込みの在庫はずっと 0 です。"
+
+
+@pytest.mark.django_db
+def test_plan_detail_chart_is_capped_at_its_own_width(client_logged_in, user, workorder, step):
+    """在庫の見込みの図は viewBox の幅 (448px = max-w-md) より広げず、左に寄せ、横に滑らせない (候補 C52 の 3)。棒のある図に 0 の 1 行は出ない (4)。"""
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 5), user)
+
+    html = client_logged_in.get(_detail_url(step), HTTP_HX_REQUEST="true").content.decode()
+
+    # 明細 T-100 × 10 (納期 2026-11-20) が今日か納期の日に引かれ、足りない数の棒が出る
+    classes = re.search(r'<svg id="plan-stock-chart" class="([^"]*)"', html).group(1).split()
+    assert "max-w-md" in classes
+    assert "w-full" in classes
+    assert "mx-auto" not in classes
+    assert "overflow-x-auto" not in html
+    assert ZERO_NOTE not in html
+
+
+@pytest.mark.django_db
+def test_plan_detail_zero_only_chart_has_note(client_logged_in, user, cut, bend):
+    """8 週ずっと 0 の見込みでは、図の前に 0 だと書いた 1 行を出し、図も残す (候補 C52 の 4)。今日の日付に左右されない作り物。"""
+    customer = masters_services.create_partner({"code": "C003", "name": "作り物の得意先 3", "role": "customer"}, user)
+    item = masters_services.create_item({"part_no": "T-400", "name": "作り物の棒", "unit": "個"}, user)
+    # 在庫を数えない部品 (adjust を呼ばない = 0 から数える)・納期の無い明細・最後の工程が未計画の指示書 = どれも数えない
+    sold = orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("6"), "unit_price": Decimal("100"), "due_date": None}],
+        user,
+        order_date=START,
+    )
+    made = services.issue_workorder(
+        sold.lines.get(),
+        Decimal("6"),
+        [{"process": cut, "planned_qty": Decimal("6")}, {"process": bend, "planned_qty": Decimal("6")}],
+        user,
+    )
+    first = made.steps.get(process=cut)
+    services.plan_step(first, START, START + timedelta(days=1), user)
+    assert [day["qty"] for day in stock_services.stock_projection(item, 56)["days"]] == [0] * 56
+
+    html = client_logged_in.get(_detail_url(first), HTTP_HX_REQUEST="true").content.decode()
+
+    assert ZERO_NOTE in html
+    assert 'id="plan-stock-chart"' in html
 
 
 @pytest.mark.django_db
