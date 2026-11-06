@@ -74,7 +74,8 @@ def test_shipment_detail_has_edit_link(logged_in, shipment):
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert f'href="/shipping/{shipment.pk}/edit/"' in body
+    # 白い「編集」も ?next= で開いた詳細へ戻す (288 回目 = C63 の土台の「編集」と同じ形。本体 11-07)
+    assert f'href="{reverse("shipping:shipment_update", args=[shipment.pk])}?next={reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
     assert "編集" in body
 
 
