@@ -1,6 +1,6 @@
 """受注の画面 (orders:order_list) の入口 (02 の 8 節の決め 6 = 1 つの目的に 1 つの画面) のテスト。
 
-受注の画面から、手入力の「新規登録」・「読み取る (OCR)」(intake の読み取りの画面へ)・「受信した注文を開く」の 3 つに入る。
+受注の画面から、手入力の「新規登録」・「注文書を読み取る」(intake の読み取りの画面へ)・「受信した注文を開く」の 3 つに入る。
 左のメニューから「注文書の読み取り」の入口を外した (URL は残る)。手入力の受注は保存した時点で注残に入る (承認の段は無い)。
 受信した注文の行は、送る側と同じ形の注文のデータを署名して services.receive に渡して作る。
 鍵はテストのたびに作り、環境変数に置く。固定の鍵の文字列をファイルに書かない。品番と会社名は作り物。
@@ -21,7 +21,9 @@ from seizou.connect import signing
 from seizou.connect.models import Inbox
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from tests import test_examples_manual as seed_tests
 from tests.test_connect_send import FakePost
+from tests.test_core_manual_default import DEFAULT_DIR
 from tests.test_connect_signing import _new_secret
 from tests.test_r10_inbox_accept import _line, _payload
 
@@ -73,12 +75,26 @@ def _entrance(body):
 def test_order_list_has_ocr_button(client_logged_in):
     body = client_logged_in.get(reverse("orders:order_list")).content.decode()
 
-    assert "読み取る (OCR)" in body
+    # ボタンの字は押した先の画面の題と同じ「注文書を読み取る」(C09-1 = a)。ほかの所に同じ字が出ても、ボタンの中で見る。
+    # 無いことは前のボタンの字そのもので見る (data-tour="ocr" と変数の名前 ocr_url は画面に出ない名前で、HTML に残る)。
+    button = re.search(rf'<a [^>]*href="{reverse("intake:extraction_create")}"[^>]*>.*?</a>', body, re.S)
+    assert button and "注文書を読み取る" in button.group(0)
+    assert "読み取る (OCR)" not in body
     assert f'href="{reverse("intake:extraction_create")}"' in body
     # 主色のボタンは土台の「新規登録」の 1 つだけ (読み取るは枠だけ)
     primary = re.findall(r'<a class="btn btn-primary"[^>]*>.*?</a>', body, re.S)
     assert len(primary) == 1 and "新規登録" in primary[0]
     assert 'class="btn btn-outline border-base-300" href="/intake/new/"' in body
+
+
+def test_manual_names_the_read_button():
+    # 「?」の説明のボタンの字も、画面のボタンと同じ「注文書を読み取る」にそろえる (C09-1 = a。断片には data-tour が無いので「OCR」で見てよい)。
+    raw = (DEFAULT_DIR / "orders_order_list.html").read_text(encoding="utf-8")
+    quoted = seed_tests.QUOTED.findall(seed_tests.plain(raw))
+
+    assert "注文書を読み取る" in quoted
+    assert "読み取る (OCR)" not in quoted
+    assert "OCR" not in raw
 
 
 def test_order_list_shows_pending_count_and_link(client_logged_in, receive_order, user):

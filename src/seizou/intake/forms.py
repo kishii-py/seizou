@@ -36,7 +36,8 @@ def _customer_parts(extraction):
 class UploadForm(forms.Form):
     """注文書を読み取るの form。得意先と注文書のファイル。
 
-    ready は読み取りが使えるか (鍵があるか)。偽ならテンプレートが黄の知らせを出し、欄とボタンを押せなくする。
+    ready は読み取りが使えるか (鍵があるか)。偽ならテンプレートが黄の知らせだけを出し、入力のカード (欄とボタン) は描かない。
+    no_key_manager_message は、鍵が無いときにアカウント管理の権限がある人にだけ黄の知らせに出す鍵の置き場の 1 文。
     """
 
     submit_label = "読み取る"
@@ -47,6 +48,7 @@ class UploadForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ready = services.is_available()
+        self.no_key_manager_message = services.MESSAGE_NO_KEY_MANAGER
         self.fields["customer"].queryset = _customer_queryset()
 
     def service_kwargs(self):

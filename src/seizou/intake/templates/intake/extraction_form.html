@@ -1,7 +1,8 @@
 {% extends "core/form.html" %}
-{% load seizou_icons %}
+{% load seizou_icons seizou_tags %}
 {% block content %}
-{# 注文書を読み取る。鍵が無い会社では、上に黄の知らせと手入力・受信した注文への link を出し、土台の入力の欄と保存のボタンをまとめて押せなくする。 #}
+{# 注文書を読み取る。鍵が無い会社では、黄の帯と手入力への link だけを出し、土台の入力のカード (欄と保存のボタン) は描かない (使えない欄を押して空振りしないため。C09)。 #}
+{# 帯は開いた時に出る状態の帯 (CLAUDE.md の「知らせの強さ」の段 5) で、右上の知らせへ移さない。アカウント管理の権限がある人にだけ、同じ帯の 2 行目 (<br> の後。字の色の class は足さない) に鍵の置き場の文 (services.MESSAGE_NO_KEY_MANAGER) と設定の画面への link を出す (AI チャットの窓と同じ形。決め B-16)。 #}
 {% if form.ready %}
 {# 「読み取る」は AI の返事を待つので数秒かかる。押したら core の js/seizou-guard.js が、押したボタンを押せなくして 2 回目の送信を止め、字を「処理中…」にする (form に data-seizou-sent)。 #}
 {# その後で下の script が、押したボタンの中身を下の template (回る印と「読み取り中…」) に入れ替える (決め 11-05 15:0x。N160)。class を足し引きしない。ブラウザの戻るで戻ったときは guard が元の字に戻す。 #}
@@ -26,8 +27,7 @@
 })();
 </script>
 {% else %}
-{% url "orders:order_create" as manual_url %}{% url "connect:inbox_list" as inbox_url %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>鍵が無いので読み取りは使えません。手入力か受信した注文で受けます。{% if manual_url %} <a class="link" href="{{ manual_url }}">受注を手で入れる</a>{% endif %}{% if inbox_url %} <a class="link" href="{{ inbox_url }}">受信した注文</a>{% endif %}</span></div>
-<fieldset disabled>{{ block.super }}</fieldset>
+{% url "orders:order_create" as manual_url %}{% can_manage_accounts as is_manager %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>AI の鍵が無いので読み取りは使えません。注文書の読み取りは、管理者が AI の鍵を設定すると使えます。受注を手で入れてください。{% if manual_url %} <a class="link" href="{{ manual_url }}">受注を手で入れる</a>{% endif %}{% if is_manager %}<br>{{ form.no_key_manager_message }}{% url "core:settings" as settings_url %}{% if settings_url %} <a class="link" href="{{ settings_url }}">設定の画面を開く</a>{% endif %}{% endif %}</span></div>
 {% endif %}
 {% endblock %}

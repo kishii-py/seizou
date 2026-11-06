@@ -10,7 +10,7 @@ from . import views
 app_name = "intake"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-#: 左のメニューの入口は無し。受注の画面 (orders:order_list) の「読み取る (OCR)」から intake:extraction_create へ入る (02 の 8 節の決め 6)。
+#: 左のメニューの入口は無し。受注の画面 (orders:order_list) の「注文書を読み取る」から intake:extraction_create へ入る (02 の 8 節の決め 6)。
 #: URL と画面は残す (画面の目録・使い方・ブックマークからは開ける)。
 MENU = []
 

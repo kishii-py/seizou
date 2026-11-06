@@ -126,7 +126,7 @@ def test_upload_page_without_key_has_no_spinner(logged_in, without_key):
     body = logged_in.get(reverse("intake:extraction_create")).content.decode()
 
     assert "data-intake-busy" not in body
-    assert "<fieldset disabled" in body
+    assert "<fieldset disabled" not in body
 
 
 # 1. 「AI に質問」の丸いボタンと本文の下の余白
