@@ -137,8 +137,8 @@ def test_missing_company_manual_sentence(request, client, settings, tmp_path, wh
 
 def test_cancelled_order_detail_has_no_edit(client, user, order):
     client.force_login(user)
-    edit_href = f'href="{reverse("orders:order_update", args=[order.pk])}"'
     detail_url = reverse("orders:order_detail", args=[order.pk])
+    edit_href = f'href="{reverse("orders:order_update", args=[order.pk])}?next={detail_url}"'
     assert edit_href in client.get(detail_url).content.decode()
 
     orders_services.cancel_order(order, user)

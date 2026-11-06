@@ -132,9 +132,9 @@ def test_buttons_hidden_without_write_permission(settings, client, on, plain):
         order_date=date(2026, 11, 2),
     )
     create_link = f'href="{reverse("workorders:workorder_create")}"'
-    edit_link = f'href="{reverse("orders:order_update", args=[order.pk])}"'
-    workorder_list = reverse("workorders:workorder_list")
     order_detail = reverse("orders:order_detail", args=[order.pk])
+    edit_link = f'href="{reverse("orders:order_update", args=[order.pk])}?next={order_detail}"'
+    workorder_list = reverse("workorders:workorder_list")
 
     def page(user, url):
         client.force_login(user)

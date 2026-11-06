@@ -5,7 +5,7 @@
 {% block heading %}
 {# 詳細の頭の型 (決め 11-05 16:2x。N163)。1 段目にパンくず (一覧の名前 › 題)、2 段目の左に大きい題・状態の印・「?」(要点の札 = head_chips。子が block heading の中で tag の as で置く。3 つまで)、右にボタン。小さい画面の名前の行はやめた (発注の 2 段をやめる。画面の名前はタブの題と「?」)。 #}
 {# パンくずの一覧の名前は、子が with の tag で渡す crumb か、土台の BaseDetailView が一覧の画面の名前から引く list_name。パンくずがあれば「一覧に戻る」は出さない。一覧の名前が引けない詳細だけ、ボタンの左端に「一覧に戻る」。 #}
-{# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
+{# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。土台の「編集」は開いた詳細の道を ?next= で渡す (編集の画面の「キャンセル」で詳細へ戻る)。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
 {% with crumb_name=crumb|default:list_name %}
 {% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4" data-detail-head>
@@ -22,7 +22,7 @@
     {% if list_url and not crumb_name %}<a class="btn btn-outline border-base-300" href="{{ list_url }}">{% icon "arrow-left" "size-4" %}一覧に戻る</a>{% endif %}
     {% block actions %}{% endblock %}
     {% block more %}{% endblock %}
-    {% block edit_button %}{% if edit_url %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}{% endblock %}
+    {% block edit_button %}{% if edit_url %}<a class="btn btn-primary" href="{{ edit_url }}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}{% endblock %}
   </div>
 </div>
 {% endwith %}
