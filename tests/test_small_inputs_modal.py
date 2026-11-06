@@ -461,6 +461,36 @@ def test_invoice_cancel_refusal_in_modal(world):
     assert back in whole
 
 
+def test_deliverynote_cancel_refusal_in_modal(world):
+    """請求済みの納品書の取消の小窓は、押す前に黄の断りと出荷・請求書の link を出し、form と取り消すボタンを出さない。
+
+    全体の画面だけ「納品書へ戻る」を出す (小窓の下は納品書の詳細。初見テスト R5 の候補 C03。依頼書 N196)。
+    """
+    invoice = _invoice(world.user)
+    note = DeliveryNote.objects.get()
+    shipment = note.shipments.get()
+    url = reverse("shipping:deliverynote_cancel", args=[note.pk])
+    back = f'href="{reverse("shipping:deliverynote_detail", args=[note.pk])}"'
+
+    modal = text(world.client.get(url, **MODAL))
+    assert "<html" not in modal
+    alert = modal[modal.index("alert-warning") :]
+    assert shipping_services.cancel_refusal(note).partition("。")[2].strip() in alert[: alert.index("</div>")]
+    assert '<form method="post"' not in modal
+    assert f"{note.note_no} を取り消す</button>" not in modal
+    assert "この納品書を取り消します。" not in modal
+    # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が後で付いても通るように)
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in modal
+    assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in modal
+    assert back not in modal
+
+    whole = text(world.client.get(url))
+    assert "<html" in whole
+    assert back in whole
+    assert "納品書へ戻る" in whole
+    assert DeliveryNote.objects.get().status == DeliveryNote.STATUS_ISSUED
+
+
 @pytest.mark.parametrize(("name", "screen"), DETAILS)
 def test_details_refresh_after_save(world, name, screen):
     case = BUILD[screen](world)

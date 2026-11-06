@@ -158,3 +158,31 @@ def test_department_off_and_log_keep_write_only(settings, client, caplog, user, 
 
     # ボタンの判定は記録の行を書かない (log でも。記録は押した先の画面の門が書く)。
     assert [r for r in caplog.records if r.name == "seizou.access" and "(部署)" in r.getMessage()] == []
+
+
+@pytest.mark.django_db
+def test_department_outsider_sees_invoice_number_without_link_on_note_cancel(settings, client, user, customer, item, cut):
+    """請求済みの納品書の取消の確かめ: billing を部署で開けない人には、請求書の番号を字だけで出し、詳細への link を出さない。
+
+    出荷の詳細 (shipping = 部署の中) への link と、黄の断りは出る (初見テスト R5 の候補 C03。依頼書 N196)。
+    """
+    from seizou.billing.models import Invoice
+
+    settings.SEIZOU = {"access_control": {"department": "on", **WRITE_AND_MONEY_ON}}
+    _documents(user, customer, item, cut)
+    invoice = Invoice.objects.get()
+    shipment = invoice.lines.order_by("pk").first().shipment
+    cancel = reverse("shipping:deliverynote_cancel", args=[shipment.delivery_note_id])
+    invoice_href = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}'
+    depts = _departments()
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+
+    body = _page(client, jimu, cancel)
+    assert "alert-warning" in body and "取り消せません。" in body
+    assert invoice_href not in body
+    assert invoice.invoice_no in body
+    assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
+
+    # 部署の判定が off なら、同じ人にも請求書の詳細への link を出す (今までどおり)
+    settings.SEIZOU = {"access_control": {"department": "off", **WRITE_AND_MONEY_ON}}
+    assert invoice_href in _page(client, jimu, cancel)

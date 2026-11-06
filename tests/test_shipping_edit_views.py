@@ -182,13 +182,63 @@ def test_cancel_note_screen_says_cancel(logged_in, user, customer, shipment, not
     # 欄の無い form なので、土台の「必須」の案内は出ない
     assert "「必須」の欄を埋めて" not in body
 
-    # 請求済みで止まった画面でも、ボタンの字は「取り消す」のまま
+    # 請求済みで止まった画面は、赤の知らせと黄の断りだけで、取り消すボタンを出さない (初見テスト R5 の候補 C03。依頼書 N196)
     billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
     response = logged_in.post(url, {})
     assert response.status_code == 200
     body = response.content.decode()
     assert "alert-error" in body
-    assert "取り消す</button>" in body
+    assert "取り消す</button>" not in body
     assert "保存</button>" not in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+# --- 請求済みの納品書の取消は、押す前に断りの文と link を出す (初見テスト R5 の候補 C03。依頼書 N196) ---
+
+#: 入力のカード (core/_form_card.html) の form の頭 (画面の全体には上の帯のログアウトの form もあるので、class まで見る)
+FORM_CARD = '<form method="post" class="rounded-xl'
+
+
+@pytest.mark.django_db
+def test_invoiced_note_cancel_screen_refuses_before_press(logged_in, user, customer, shipment, note):
+    """全体の画面を GET すると、黄の断りと出荷・請求書の link と「納品書へ戻る」が出て、form と取り消すボタンは出ない。"""
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+
+    page = logged_in.get(reverse("shipping:deliverynote_cancel", args=[note.pk]))
+
+    assert page.status_code == 200
+    body = page.content.decode()
+    warning = body[body.index("alert-warning") :]
+    warning = warning[: warning.index("</div>")]
+    assert '<span class="font-semibold">取り消せません。</span>' in warning
+    assert services.cancel_refusal(note).partition("。")[2].strip() in warning
+    assert "この納品書を取り消します。" not in body
+    assert FORM_CARD not in body
+    assert f"{note.note_no} を取り消す</button>" not in body
+    # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が後で付いても通るように)
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
+    assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
+    assert f'href="{reverse("shipping:deliverynote_detail", args=[note.pk])}"' in body
+    assert "納品書へ戻る" in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_invoiced_note_cancel_post_shows_refusal_without_button(logged_in, user, customer, shipment, note):
+    """URL を直に開いて POST すると、赤の知らせの下に同じ黄の断りが出て、確かめの文と送信のボタンは残らない。"""
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+
+    response = logged_in.post(reverse("shipping:deliverynote_cancel", args=[note.pk]), {})
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "alert-error" in body
+    assert "alert-warning" in body
+    assert "この納品書を取り消します。" not in body
+    assert FORM_CARD not in body
+    assert f"{note.note_no} を取り消す</button>" not in body
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
