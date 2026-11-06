@@ -28,6 +28,20 @@ def _rows_with(html, color):
     return re.findall(rf'<tr [^>]*class="(?:[^"]* )?{re.escape(color)}(?: [^"]*)?"[^>]*>', html)
 
 
+DIFF_COLORS = ("bg-success/10", "bg-error/10", "bg-warning/10")
+
+
+def _body_rows(html):
+    """差分の表の本文 (<tbody>) の <tr> の開きのタグの並び。"""
+    body = re.search(r"<tbody[^>]*>(.*?)</tbody>", html, re.S).group(1)
+    return re.findall(r"<tr(?: [^>]*)?>", body)
+
+
+def _same_rows(html):
+    """本文の <tr> のうち、class に色の字 (丸ごとの class 名) を含まない物 (同じ行)。"""
+    return [tag for tag in _body_rows(html) if not any(_rows_with(tag, color) for color in DIFF_COLORS)]
+
+
 @pytest.fixture
 def manual(user):
     manual = services.create_manual(None, "段取り替えの手順", "steps", user)
@@ -110,7 +124,8 @@ def test_diff_page_has_four_kinds(client_logged_in, manual, user):
     assert len(_rows_with(html, "bg-success/10")) == 1
     assert len(_rows_with(html, "bg-error/10")) == 1
     assert len(_rows_with(html, "bg-warning/10")) == 1
-    assert "<tr>" in html and "残る行" in html
+    # 同じ行の <tr> にもスマホの幅の class が付くので、色の字を含まない本文の <tr> を数える。
+    assert len(_same_rows(html)) >= 1 and "残る行" in html
     assert "題: 段取り替えの手順 → 新しい題" in html
     assert reverse("manuals:manualversion_restore", args=[version.pk]) in html
     assert reverse("manuals:manualversion_list", args=[manual.pk]) in html
@@ -199,6 +214,48 @@ def test_diff_page_marks_format_symbols(client_logged_in, manual, user):
     assert "地の文" in plain and "気を付ける" in plain
     assert all("badge" not in cell for cell, text in zip(cells, plain) if text in ("地の文", "気を付ける", "足した文"))
     assert "行の頭の目印は、本文の書式の記号の意味です。" in html
+
+
+def test_diff_page_one_column_on_phone(client_logged_in, manual, user):
+    """640px 未満は 1 列 (C10-3 = a)。差分の 1 行 = 1 つの <tr> のまま、幅の class で欄の見せ方を変える。
+
+    見た目は app.css を作り直してから変わる。ここでは HTML の形 (行の数・id・見出し・class の字) だけを見る。
+    """
+    services.save_as_version(manual, {"body": "## 準備\n\n新しい行\n残る行\n足した行"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    assert len(_body_rows(html)) == len(diff_rows(version.body, "## 準備\n\n新しい行\n残る行\n足した行")) == 6
+    assert html.count('id="first-diff"') == 1
+    head = re.sub(r"<[^>]+>", "", re.search(r"<thead[^>]*>(.*?)</thead>", html, re.S).group(1))
+    assert "版 1 と今の中身" in head
+    assert re.search(r'<table class="[^"]*\bsm:table-fixed\b[^"]*">', html)
+    assert all("max-sm:grid" in tag for tag in _body_rows(html))
+    # 変えた行: 版の側 (赤の地・札「版 1」) の下に今の側 (黄の地・札「今の中身」)。
+    changed = re.search(r'<tr [^>]*class="bg-warning/10 [^"]*"[^>]*>(.*?)</tr>', html, re.S).group(1)
+    cells = re.findall(r'<td class="([^"]*)">(.*?)</td>', changed, re.S)
+    assert [("max-sm:bg-error/10" in c, "max-sm:bg-warning/10" in c) for c, _ in cells] == [
+        (True, False),
+        (True, False),
+        (False, True),
+        (False, True),
+    ]
+    assert re.sub(r"<[^>]+>", "", cells[1][1]) == "版 1古い行"
+    assert re.sub(r"<[^>]+>", "", cells[3][1]) == "今の中身新しい行"
+    # 同じ行は今の中身の側だけ、消した行は版の側だけを出す。
+    removed = re.search(r'<tr [^>]*class="bg-error/10 [^"]*"[^>]*>(.*?)</tr>', html, re.S).group(1)
+    assert [("max-sm:hidden" in c) for c, _ in re.findall(r'<td class="([^"]*)">(.*?)</td>', removed, re.S)] == [
+        False,
+        False,
+        True,
+        True,
+    ]
+    same = re.search(r'<tr class="max-sm:grid max-sm:grid-cols-\[3rem_1fr\]">(.*?)</tr>', html, re.S).group(1)
+    assert [("max-sm:hidden" in c) for c, _ in re.findall(r'<td class="([^"]*)">(.*?)</td>', same, re.S)] == [
+        True,
+        True,
+        False,
+        False,
+    ]
 
 
 def test_restore_confirm_then_restore(client_logged_in, manual, user):

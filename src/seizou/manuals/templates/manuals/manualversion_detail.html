@@ -20,16 +20,20 @@
   </p>
   <p class="mt-2 text-xs text-base-content/70">行の頭の目印は、本文の書式の記号の意味です。</p>
   <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
-    <table class="table table-sm">
-      <thead><tr class="bg-base-200 text-base-content/70"><th class="w-12 text-right font-medium">行</th><th class="font-medium">版 {{ object.number }}</th><th class="w-12 text-right font-medium">行</th><th class="font-medium">今の中身</th></tr></thead>
-      <tbody class="font-mono">
+    {# 640px 以上は左右に並べる 4 列 (sm:table-fixed で左右の字の列の幅をそろえる)。640px 未満は差分の 1 行 = 1 つの <tr> のまま、<tr> を 2 列の grid (番号と字) にして 1 列に並べる: 同じ行と足した行は今の中身の側だけ、消した行は版の側だけ、変えた行は版の行 (赤の地・札「版 N」) の下に今の行 (黄の地・札「今の中身」)。飛び先の id は 1 つのまま、どちらの幅でも同じ <tr> に着く。 #}
+    <table class="table table-sm sm:table-fixed max-sm:block">
+      <thead class="max-sm:block"><tr class="bg-base-200 text-base-content/70 max-sm:grid max-sm:grid-cols-[3rem_1fr]"><th class="w-12 text-right font-medium">行</th><th class="font-medium max-sm:hidden">版 {{ object.number }}</th><th class="w-12 text-right font-medium max-sm:hidden">行</th><th class="font-medium"><span class="sm:hidden">版 {{ object.number }} と</span>今の中身</th></tr></thead>
+      <tbody class="font-mono max-sm:block">
         {% for row in rows %}
-        {% if row.kind == "added" %}<tr class="bg-success/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "removed" %}<tr class="bg-error/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% elif row.kind == "changed" %}<tr class="bg-warning/10{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>{% else %}<tr>{% endif %}
+        {% if row.kind == "added" %}<tr class="bg-success/10 max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% elif row.kind == "removed" %}<tr class="bg-error/10 max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% elif row.kind == "changed" %}<tr class="bg-warning/10 max-sm:bg-transparent max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% else %}<tr class="max-sm:grid max-sm:grid-cols-[3rem_1fr]">{% endif %}
           {% diff_line row.left as left_line %}{% diff_line row.right as right_line %}
-          <td class="text-right tabular-nums text-base-content/50">{{ row.left_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{% if left_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ left_line.label }}</span>{% endif %}{% if left_line.symbol %}<span class="text-base-content/50">{{ left_line.symbol }}</span>{% endif %}{{ left_line.rest }}</td>
-          <td class="text-right tabular-nums text-base-content/50">{{ row.right_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{% if right_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ right_line.label }}</span>{% endif %}{% if right_line.symbol %}<span class="text-base-content/50">{{ right_line.symbol }}</span>{% endif %}{{ right_line.rest }}</td>
+          <td class="text-right tabular-nums text-base-content/50{% if row.kind == 'changed' %} max-sm:bg-error/10{% elif row.kind != 'removed' %} max-sm:hidden{% endif %}">{{ row.left_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all{% if row.kind == 'changed' %} max-sm:bg-error/10{% elif row.kind != 'removed' %} max-sm:hidden{% endif %}">{% if row.kind == "changed" %}<span class="badge badge-sm badge-outline mr-2 align-middle sm:hidden">版 {{ object.number }}</span>{% endif %}{% if left_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ left_line.label }}</span>{% endif %}{% if left_line.symbol %}<span class="text-base-content/50">{{ left_line.symbol }}</span>{% endif %}{{ left_line.rest }}</td>
+          <td class="text-right tabular-nums text-base-content/50{% if row.kind == 'changed' %} max-sm:bg-warning/10{% elif row.kind == 'removed' %} max-sm:hidden{% endif %}">{{ row.right_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all{% if row.kind == 'changed' %} max-sm:bg-warning/10{% elif row.kind == 'removed' %} max-sm:hidden{% endif %}">{% if row.kind == "changed" %}<span class="badge badge-sm badge-outline mr-2 align-middle sm:hidden">今の中身</span>{% endif %}{% if right_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ right_line.label }}</span>{% endif %}{% if right_line.symbol %}<span class="text-base-content/50">{{ right_line.symbol }}</span>{% endif %}{{ right_line.rest }}</td>
         </tr>
         {% empty %}
         <tr><td colspan="4" class="text-base-content/70">その版も今の中身も、本文が空です。</td></tr>
