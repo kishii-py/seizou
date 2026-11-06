@@ -324,3 +324,62 @@ def test_invoice_period_is_closing_period_of_last_shipment(user, item):
     # 支払期日は期間の終わりから決め、最後の出荷日から決めた日と同じ。
     assert invoice.due_on == date(2027, 1, 25)
     assert invoice.due_on == services.payment_due_date(customer, late.shipped_at)
+
+
+# --- 作った後に、同じ締めの期間に残った出荷を知らせる (初見テスト R5・候補 C02 の 2。止めない) ---
+
+
+@pytest.mark.django_db
+def test_create_notes_unbilled_shipments_in_same_period(user, item):
+    customer = _customer(user, closing_day=31)
+    line = _order_line(user, customer, item)
+    a = _shipped(user, customer, line, "2", date(2026, 11, 5))
+    b = _shipped(user, customer, line, "2", date(2026, 11, 10))
+    c = shipping_services.ship(line, Decimal("2"), date(2026, 11, 20), user)  # 納品書なし
+    d = _shipped(user, customer, line, "2", date(2026, 12, 3))  # 次の期間
+    other = _customer(user, "C002")
+    other_line = _order_line(user, other, item)
+    e = _shipped(user, other, other_line, "2", date(2026, 11, 10))  # 別の得意先
+
+    invoice = services.create_invoice(customer, [a], user, issued_on=ISSUED_ON)
+
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 11, 1), date(2026, 11, 30))
+    assert invoice.saved_level == "warning"
+    assert invoice.saved_note == (
+        f"この期間 (2026-11-01〜2026-11-30) の{customer.name}の出荷で、まだ請求書に入っていない物が 2 件あります: "
+        f"{b.shipment_no}・{c.shipment_no} (発行の納品書なし)。"
+    )
+    assert invoice.saved_note.count("(発行の納品書なし)") == 1
+    assert d.shipment_no not in invoice.saved_note
+    assert e.shipment_no not in invoice.saved_note
+    # 読むだけの関数を直に呼んでも、出荷日の順に B・C。
+    assert list(services.unbilled_in_period(customer, date(2026, 11, 1), date(2026, 11, 30))) == [b, c]
+
+
+@pytest.mark.django_db
+def test_create_notes_all_billed_when_nothing_left(user, item):
+    customer = _customer(user, closing_day=31)
+    line = _order_line(user, customer, item)
+    a = _shipped(user, customer, line, "4", date(2026, 11, 5))
+    b = _shipped(user, customer, line, "6", date(2026, 11, 30))
+
+    invoice = services.create_invoice(customer, [a, b], user, issued_on=ISSUED_ON)
+
+    assert getattr(invoice, "saved_level", "") != "warning"
+    assert invoice.saved_note == f"この期間の{customer.name}の出荷は、全部請求書に入っています。"
+
+
+@pytest.mark.django_db
+def test_unbilled_in_period_counts_shipments_of_cancelled_invoice(user, item):
+    customer = _customer(user, closing_day=31)
+    line = _order_line(user, customer, item)
+    first = _shipped(user, customer, line, "3", date(2026, 11, 1))
+    second = _shipped(user, customer, line, "3", date(2026, 11, 30))
+    invoice = services.create_invoice(customer, [first, second], user, issued_on=ISSUED_ON)
+    period = (date(2026, 11, 1), date(2026, 11, 30))
+    assert list(services.unbilled_in_period(customer, *period)) == []
+
+    services.cancel_invoice(invoice, user)
+
+    # 取消の請求書に入っていた出荷は、また請求できるので残りに入る (期間の両端の日も入る)。
+    assert list(services.unbilled_in_period(customer, *period)) == [first, second]

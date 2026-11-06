@@ -66,6 +66,7 @@ class InvoiceForm(forms.Form):
         label="発行日",
         initial=timezone.localdate,
         widget=forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d"),
+        help_text="請求書に載る日付です。支払期日は発行日でなく、締めの期間の終わりと得意先の支払の決まりから決まります。",
     )
     shipments = ShipmentChoiceField(
         label="出荷",
