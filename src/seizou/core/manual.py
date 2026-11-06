@@ -34,7 +34,9 @@
 自動の付け足し (依頼書 N168。置き場のファイルは直さず、出すときに断片の字の後に足す。断片の無い画面と読めない画面には足さない):
   入れる物: 画面の view が form_class を持ち、断片に <h3>入れる物</h3> が無ければ、欄の名前・必須・説明の表 (input_rows)。
   絵: 断片に <img が無く、manual/images/<名前>.png があれば、その絵 (命令 manage.py seizou_manual_shots が撮る)。
-  止まるときの文: 部品の services.py の断りの文のうち REFUSAL_HEADS で始まる物 (refusal_texts)。使い方の画面と印刷と小窓は、その部品の画面ごとに足す。
+  止まるときの文: 部品の services.py の断りの文のうち REFUSAL_HEADS で始まり、画面から起きない文の表 (NOT_FROM_SCREEN) に無い物 (refusal_texts)。
+    使い方の画面と印刷と小窓は、画面の view の service からたどれる文だけを「この画面で止まるときの文」として画面ごとに足す (screen_refusals。依頼書 N256)。
+    service を持たない画面 (一覧・詳細・ダッシュボードなど) と、たどれる文が無い画面には足さない。
     冊子は、その部品の最初の章の前に 1 回だけ置く (manual_sections(booklet=True) の app_refusals)。小窓で枠 (?part=) を選んだときは何も足さない。
 
 業務の流れの章 (依頼書 N169。断片は使わず、固定の表 FLOWS から描く):
@@ -174,6 +176,73 @@ REFUSAL_HEADS = (
     "出荷できません。",
 )
 
+#: 止まるときの文のうち、画面からは起きない物 (依頼書 N256 = 候補 C48 の 2 の 2)。1 行 = (部品, refusal_texts の字, 画面から起きない訳)。
+#: 画面の form が作らない値 (英字の鍵や選択肢の外の値) への断りで、画面を使う人には起きないので、冊子・使い方の画面・印刷・小窓の全部から除く。
+#: 字は _literal_text の字 (f-string の {…} は「…」)。英字を含むかで一律に除かない (.env・URL・brand_color・industry の文は画面から起きる)。
+#: services.py の文を直して字が合わなくなると tests/test_core_manual_auto.py が落ちる (表が何も言わずに効かなくなるのを防ぐ)。
+NOT_FROM_SCREEN = (
+    (
+        "workorders",
+        "発行できません。知らない項目 (…) があります。指示書の工程には process と planned_qty だけを渡してください。",
+        "指示書の発行の form は、工程を必ず process と planned_qty の 2 つの鍵で作る (workorders/forms.py の service_kwargs)。",
+    ),
+    (
+        "workorders",
+        "発行できません。工程の項目 (…) がありません。指示書の工程には process と planned_qty を渡してください。",
+        "同じ (発行の form が 2 つの鍵を必ず作る)。",
+    ),
+    (
+        "orders",
+        "保存できません。入口 … は使えません。手入力 (manual)・読み取り (intake)・受信した注文 (inbox) のどれかにしてください。",
+        "受注の form は source を渡さない (orders/forms.py に source の欄が無い)。",
+    ),
+    (
+        "orders",
+        "保存できません。明細の id (…) と order_line (…) が違う明細を指しています。どちらか 1 つにするか、同じ明細を指してください。",
+        "明細の form の line() は order_line の鍵だけを渡し、id を渡さない (orders/forms.py の LINE_KEYS に id が無い)。",
+    ),
+    (
+        "connect",
+        "保存できません。向き … は使えません。送る (send) か受ける (receive) にしてください。",
+        "つながりの form は model の選ぶ欄の向きをそのまま使い、選択肢の外の値は form が止める。つながりの CSV の取り込みは無い。",
+    ),
+    (
+        "connect",
+        "受け入れられません。承認した日時は timezone 付きの日時にしてください。",
+        "受け入れの form は item_mapping だけを渡す。accepted_at は作り物の種のための引数。",
+    ),
+    (
+        "core",
+        "保存できません。… は画面からは変えられません。答えの YAML の settings に書いてください。",
+        "設定の変更の画面は、画面から変えない鍵を 404 にする (core/settings_screen.py の SettingUpdateView.dispatch)。",
+    ),
+    (
+        "core",
+        "保存できません。… の値は真偽 (true / false) にしてください (入れた値: …)。",
+        "真偽の鍵は丸の選択で、form が真偽に直して渡す (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。access_control は department・write・money の 3 つの鍵を持つ辞書で、値はそれぞれ off / log / on にしてください (入れた値: …)。",
+        "権限の判定は 3 つの選ぶ欄で、form が 3 つの鍵の辞書を作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。hidden_fields は項目の名前の並びにしてください (入れた値: …)。",
+        "使わない項目は複数の check で、form が字の並びを作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "masters",
+        "保存できません。取引先の種類 … は使えません。得意先 (customer)・協力企業 (subcontractor)・両方 (both) のどれかにしてください。",
+        "取引先の form は model の選ぶ欄をそのまま使う。CSV の取り込みは、選ぶ欄の字を core/seeds.py の _choice_value が services より前に断る。",
+    ),
+    (
+        "masters",
+        "保存できません。支払の月 … は使えません。当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。",
+        "form は model の選ぶ欄。CSV は、支払の月の列があれば _choice_value が断り、無ければ read_payment_day (masters/forms.py) が選択肢の字からだけ月を作る。",
+    ),
+)
+
 #: 断片が自分で持つ「入れる物」の見出し (あれば表を足さない)
 INPUT_HEADING = re.compile(r"<h3\b[^>]*>入れる物</h3>")
 
@@ -258,17 +327,18 @@ def _literal_text(node) -> str | None:
     return None
 
 
-def refusal_texts(app: str) -> list[str]:
-    """部品 (seizou の下の app) の services.py の raise ValueError と raise RuleViolation の文のうち、REFUSAL_HEADS で始まる物。
-
-    ファイルを pathlib で読み、ast で見る (import しない・inspect を使わない)。同じ文は 1 つにし、ファイルの並びのまま返す。
-    services.py の無い部品と、会社が足した app は空の並び。相手の会社への返事の文は頭の語で始まらないので入らない。
-    """
+def _services_tree(app: str):
+    """部品 (seizou の下の app) の services.py を pathlib で読み、ast にした物 (import しない・inspect を使わない)。無ければ None。"""
     path = Path(__file__).resolve().parent.parent / app / "services.py"
     if not path.is_file():
-        return []
+        return None
+    return ast.parse(path.read_text(encoding="utf-8"))
+
+
+def _raised_texts(tree) -> list[str]:
+    """ast の木の中の raise ValueError と raise RuleViolation の文のうち、REFUSAL_HEADS で始まる物。同じ文は 1 つにし、ast.walk の並びで返す。"""
     texts: list[str] = []
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    for node in ast.walk(tree):
         if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
             continue
         func = node.exc.func
@@ -280,6 +350,87 @@ def refusal_texts(app: str) -> list[str]:
             if text and text.startswith(REFUSAL_HEADS) and text not in texts:
                 texts.append(text)
     return texts
+
+
+def _not_from_screen(app: str) -> set[str]:
+    """画面から起きない文の表 (NOT_FROM_SCREEN) のうち、部品 app の字の集合。"""
+    return {text for part, text, _reason in NOT_FROM_SCREEN if part == app}
+
+
+def all_refusal_texts(app: str) -> list[str]:
+    """部品の services.py の断りの文のうち REFUSAL_HEADS で始まる物の全部 (画面から起きない文の表 NOT_FROM_SCREEN を当てる前)。
+
+    services.py の無い部品と、会社が足した app は空の並び。相手の会社への返事の文は頭の語で始まらないので入らない。
+    """
+    tree = _services_tree(app)
+    return [] if tree is None else _raised_texts(tree)
+
+
+def refusal_texts(app: str) -> list[str]:
+    """部品 (seizou の下の app) の services.py の raise ValueError と raise RuleViolation の文のうち、REFUSAL_HEADS で始まる物。
+
+    ファイルを pathlib で読み、ast で見る (import しない・inspect を使わない)。同じ文は 1 つにし、ファイルの並びのまま返す。
+    services.py の無い部品と、会社が足した app は空の並び。相手の会社への返事の文は頭の語で始まらないので入らない。
+    画面から起きない文の表 (NOT_FROM_SCREEN) の文は除く (冊子・使い方の画面・印刷・小窓の全部に効く。依頼書 N256)。
+    """
+    excluded = _not_from_screen(app)
+    return [text for text in all_refusal_texts(app) if text not in excluded]
+
+
+def _refusal_index(app: str) -> dict:
+    """部品 1 つの、画面ごとの止まるときの文をたどる材料。services.py を 1 回だけ読む。
+
+    texts = refusal_texts(app) と同じ並び。owners = {文: その文を raise する services.py の頭の関数の名前の集合}。
+    refs = {頭の関数の名前: その関数の中で名前 (ast.Name) で引いている、同じ services.py の頭の関数の名前の集合}。
+    名前を全部見るので、呼び出しのほかに、関数を引数で渡す形 (例 masters の import_partners が _import_rows に create_partner を渡す) も入る。
+    """
+    tree = _services_tree(app)
+    if tree is None:
+        return {"texts": [], "owners": {}, "refs": {}}
+    excluded = _not_from_screen(app)
+    top = {node.name: node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    owners: dict[str, set[str]] = {}
+    refs: dict[str, set[str]] = {}
+    for name, node in top.items():
+        for text in _raised_texts(node):
+            owners.setdefault(text, set()).add(name)
+        refs[name] = {sub.id for sub in ast.walk(node) if isinstance(sub, ast.Name) and sub.id in top and sub.id != name}
+    texts = [text for text in _raised_texts(tree) if text not in excluded]
+    return {"texts": texts, "owners": owners, "refs": refs}
+
+
+def screen_refusals(screen, indexes: dict[str, dict] | None = None) -> list[str]:
+    """画面 (目録の Screen) 1 つの止まるときの文。その画面の view の service からたどれる文だけを、refusal_texts の並びで返す。
+
+    service は view の class の属性 (土台の BaseFormView の service。前例 core/access.py)。無ければ空の並び (節を出さない)。
+    読む services.py は service.__module__ の部品の名前で決める (前例 core/views.py の get_action)。seizou の部品の services.py の外の関数は空。
+    service の関数から、同じ services.py の頭の関数を名前でたどり、新しい関数が出なくなるまで繰り返す。別の部品の services.py へはたどらない。
+    同じ字の文が 2 つ以上の関数にあるときは、どれか 1 つの関数がたどれれば残す。
+    indexes は部品ごとの材料の入れ物 (1 回の描画で services.py を部品ごとに 1 回だけ読むため)。
+    """
+    service = getattr(view_class_of(screen), "service", None)
+    if service is None:
+        return []
+    module = getattr(service, "__module__", "").split(".")
+    start = getattr(service, "__name__", "")
+    if len(module) != 3 or module[0] != "seizou" or module[2] != "services":
+        return []
+    app = module[1]
+    if indexes is None:
+        indexes = {}
+    if app not in indexes:
+        indexes[app] = _refusal_index(app)
+    index = indexes[app]
+    if start not in index["refs"]:
+        return []
+    reached = {start}
+    todo = [start]
+    while todo:
+        for name in index["refs"][todo.pop()]:
+            if name not in reached:
+                reached.add(name)
+                todo.append(name)
+    return [text for text in index["texts"] if index["owners"].get(text, set()) & reached]
 
 
 def input_rows(form_class) -> list[tuple[str, str, str]]:
@@ -319,7 +470,7 @@ def decorate_fragment(screen, html: str, refusals: list[str] | None = None) -> s
     if "<img" not in html and folder is not None and (folder / "images" / f"{name}.png").is_file():
         extra.append(format_html('<figure class="seizou-manual-shot"><img src="images/{}.png" alt="{} の画面"></figure>', name, screen.name))
     if refusals:
-        extra.append(format_html("<h3>止まるときの文 (この部品)</h3><ul>{}</ul>", format_html_join("", "<li>{}</li>", ((text,) for text in refusals))))
+        extra.append(format_html("<h3>この画面で止まるときの文</h3><ul>{}</ul>", format_html_join("", "<li>{}</li>", ((text,) for text in refusals))))
     return html + "".join(extra)
 
 
@@ -328,19 +479,21 @@ def manual_sections(booklet: bool = False) -> list[dict]:
 
     1 画面 = {"name", "help", "url_name", "anchor", "html", "unreadable", "app_refusals"}。
     anchor は断片の名前 (目次の link の飛び先)。html は断片の字に自動の付け足しをした字 (mark_safe) か None。
-    booklet が偽 (使い方の画面と印刷) は止まるときの文を画面ごとに足す。真 (冊子) は足さず、部品の最初の画面の app_refusals に入れる。
+    booklet が偽 (使い方の画面と印刷) は、その画面の service からたどれる止まるときの文 (screen_refusals) を画面ごとに足す。
+    真 (冊子) は足さず、部品の全部の文 (refusal_texts) を部品の最初の画面の app_refusals に入れる。services.py は部品ごとに 1 回だけ読む。
     """
     sections = []
     refusals: dict[str, list[str]] = {}
+    indexes: dict[str, dict] = {}
     for screen in all_screens():
         anchor = fragment_name(screen.url_name)
         fragment = read_fragment(anchor)
         unreadable = fragment is UNREADABLE
         first_of_app = screen.app not in refusals
         if first_of_app:
-            refusals[screen.app] = refusal_texts(screen.app)
+            refusals[screen.app] = refusal_texts(screen.app) if booklet else []
         if isinstance(fragment, str):
-            fragment = decorate_fragment(screen, fragment, None if booklet else refusals[screen.app])
+            fragment = decorate_fragment(screen, fragment, None if booklet else screen_refusals(screen, indexes))
         sections.append(
             {
                 "name": screen.name,
@@ -512,11 +665,11 @@ def fragment_part(html: str, part: str | None) -> str | None:
 def fragment_for_modal(fragment: str, part: str | None, screen=None) -> str:
     """小窓に出す字。枠 (part) が断片にあればその枠だけ、無ければ画面の全部 (最初の <h2> を外す)。絵の道は直す。
 
-    screen (目録の Screen) を渡すと、画面の全部を出すときだけ自動の付け足し (止まるときの文を含む) をする。
+    screen (目録の Screen) を渡すと、画面の全部を出すときだけ自動の付け足し (その画面の service からたどれる止まるときの文を含む) をする。
     """
     piece = fragment_part(fragment, part)
     if piece is None:
-        piece = fragment_body(fragment if screen is None else decorate_fragment(screen, fragment, refusal_texts(screen.app)))
+        piece = fragment_body(fragment if screen is None else decorate_fragment(screen, fragment, screen_refusals(screen)))
     return absolute_images(piece)
 
 
