@@ -13,6 +13,21 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 
+from seizou.core import conf
+
+
+def has_key(api_key_env) -> bool:
+    """鍵の環境変数 api_key_env に空でない値があるか。値そのものは返さない。"""
+    return bool(os.environ.get(api_key_env, "").strip())
+
+
+def model_for(setting_key, default) -> str:
+    """使う model の名前。会社の設定 setting_key (core の conf.DEFAULTS の鍵) が空でない字なら前後の空白を落とした字、ほかは default。"""
+    value = conf.setting(setting_key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default
+
 
 def client(api_key_env, timeout):
     """環境変数 api_key_env の鍵で SDK の client を作って返す。待ちは timeout 秒で、再試行しない。

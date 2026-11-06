@@ -11,7 +11,7 @@ from types import ModuleType
 import pytest
 
 import seizou.core
-from seizou.core import ai
+from seizou.core import ai, conf
 
 #: 試験だけで使う環境変数の名前 (本物の鍵の環境変数に触らない)
 KEY_ENV = "SEIZOU_TEST_AI_KEY"
@@ -73,6 +73,29 @@ def sdk(monkeypatch):
     module = fake_anthropic()
     monkeypatch.setitem(sys.modules, "anthropic", module)
     return module
+
+
+# ---- has_key と model_for ----
+
+
+def test_has_key_follows_env(monkeypatch):
+    monkeypatch.setenv(KEY_ENV, FAKE_KEY)
+    assert ai.has_key(KEY_ENV) is True
+    monkeypatch.delenv(KEY_ENV)
+    assert ai.has_key(KEY_ENV) is False
+    monkeypatch.setenv(KEY_ENV, "   ")
+    assert ai.has_key(KEY_ENV) is False
+
+
+def test_model_for_reads_setting_then_default(settings):
+    settings.SEIZOU = {}
+    assert ai.model_for("assistant_model", "作り物の既定") == conf.DEFAULTS["assistant_model"]
+    settings.SEIZOU = {"assistant_model": " 作り物の model "}
+    assert ai.model_for("assistant_model", "作り物の既定") == "作り物の model"
+    settings.SEIZOU = {"assistant_model": ""}
+    assert ai.model_for("assistant_model", "作り物の既定") == "作り物の既定"
+    settings.SEIZOU = {"assistant_model": 5}
+    assert ai.model_for("assistant_model", "作り物の既定") == "作り物の既定"
 
 
 # ---- client ----

@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from seizou.assistant import services as assistant_services
 from seizou.assistant import tools as assistant_tools
-from seizou.core import conf
+from seizou.core import ai
 from seizou.core import services as core_services
 
 from . import services
@@ -108,10 +108,7 @@ def is_available() -> bool:
 
 def model_name() -> str:
     """聞き取りに使う model の名前。会社の設定 feedback_model が空でない字ならそれ、ほかは DEFAULT_MODEL。"""
-    value = conf.setting("feedback_model")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return DEFAULT_MODEL
+    return ai.model_for("feedback_model", DEFAULT_MODEL)
 
 
 # ---- 会話 (session) ----

@@ -30,7 +30,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import ai, conf
+from seizou.core import ai
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
@@ -149,15 +149,12 @@ class IntakeUnavailable(ValueError):
 
 def is_available():
     """読み取りが使えるか (鍵の環境変数に空でない値があるか)。値そのものは返さない。"""
-    return bool(os.environ.get(API_KEY_ENV, "").strip())
+    return ai.has_key(API_KEY_ENV)
 
 
 def model_name():
     """読み取りに使う model の名前。会社の設定 intake_model (core の conf.DEFAULTS に既定) が空でない字ならそれ、無ければ DEFAULT_MODEL。"""
-    value = conf.setting("intake_model")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return DEFAULT_MODEL
+    return ai.model_for("intake_model", DEFAULT_MODEL)
 
 
 def extract_order(file, customer, user):

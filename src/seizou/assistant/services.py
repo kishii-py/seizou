@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import json
-import os
 import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
@@ -25,7 +24,7 @@ from django.db import DatabaseError
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
-from seizou.core import access, ai, conf, mcp_tools
+from seizou.core import access, ai, mcp_tools
 from seizou.core import services as core_services
 from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
@@ -118,15 +117,12 @@ PROMPT_RULES = (
 
 def is_available():
     """AI チャットが使えるか (鍵の環境変数に空でない値があるか)。値そのものは返さない。"""
-    return bool(os.environ.get(API_KEY_ENV, "").strip())
+    return ai.has_key(API_KEY_ENV)
 
 
 def model_name():
     """会話に使う model の名前。会社の設定 assistant_model が空でない字ならそれ、ほかは DEFAULT_MODEL。"""
-    value = conf.setting("assistant_model")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return DEFAULT_MODEL
+    return ai.model_for("assistant_model", DEFAULT_MODEL)
 
 
 # ---- 履歴 (session) ----
