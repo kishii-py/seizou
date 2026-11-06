@@ -502,3 +502,58 @@ def test_poll_response_keeps_refresh_trigger(client_logged_in, issue, cut):
     poller = re.search(r'<div id="progress-poll"[^>]*>', body)
     assert poller is not None
     assert REFRESH_TRIGGER in poller.group(0)  # 入れ替わった後も、小窓の保存の後の合図を受け続ける
+
+
+# --- 盤の表の下の行の数 (初見テスト R5 の C23-2 = a) ---
+
+ROW_COUNT_RE = re.compile(r'<p class="mt-4 text-base-content/70"><span class="tabular-nums">(\d+)</span> 行</p>')
+ANY_ROW_COUNT_RE = re.compile(r'<span class="tabular-nums">[\d,]+</span> 行')
+
+
+def _row_count(body):
+    """盤の表の下の「<数> 行」の字の数。字は 1 つだけ。"""
+    found = ROW_COUNT_RE.findall(body)
+    assert len(found) == 1, f"行の数の字が {len(found)} 個あります"
+    return int(found[0])
+
+
+@pytest.mark.django_db
+def test_board_row_count_matches_rows(client_logged_in, issue, cut, bend):
+    issue(cut, bend)
+    issue(cut)
+
+    body = _body(_board(client_logged_in))
+    rows = body.count('<tr id="progress-step-')
+    assert rows == 3
+    assert _row_count(body) == rows  # 数は工程の行の数 (指示書の数の 2 ではない)
+    assert body.index("</table>") < body.index("</span> 行</p>")  # 表の下
+
+
+@pytest.mark.django_db
+def test_board_row_count_follows_process_pill(client_logged_in, issue, cut, bend):
+    issue(cut, bend)
+    issue(cut)
+
+    body = _body(_board(client_logged_in, process=cut.pk))
+    rows = body.count('<tr id="progress-step-')
+    assert rows == 2
+    assert _row_count(body) == rows
+
+
+@pytest.mark.django_db
+def test_poll_response_has_no_row_count(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    changed = workorder.steps.order_by("seq").first()
+    before = _record(changed, 3)
+    _record(changed, 4)
+
+    body = _body(_poll(client_logged_in, after=before.pk))
+    assert f'id="progress-step-{changed.pk}"' in body  # 変わった行は返る
+    assert ANY_ROW_COUNT_RE.search(body) is None  # 更新の応答の数は「変わった行」の数なので出さない
+
+
+@pytest.mark.django_db
+def test_empty_board_has_no_row_count(client_logged_in):
+    body = _body(_board(client_logged_in))
+    assert "指示書を発行すると、工程ごとの予定・実績・残がここに並びます。" in body
+    assert ANY_ROW_COUNT_RE.search(body) is None

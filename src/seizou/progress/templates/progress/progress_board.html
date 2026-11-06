@@ -29,6 +29,8 @@
       </tbody>
     </table>
   </div>
+  {# 行の数 (C23-2 = a): 盤の行 (指示書の工程) の数で、指示書の数ではない。10 秒ごとの更新 (progress/_rows.html) には入れない (更新は行を足さないので、開いたときの数のまま画面の行と合う)。 #}
+  <p class="mt-4 text-base-content/70"><span class="tabular-nums">{{ board.count }}</span> 行</p>
   {% else %}
   <p class="text-base-content/70">指示書を発行すると、工程ごとの予定・実績・残がここに並びます。</p>
   {% endif %}
