@@ -21,6 +21,7 @@ from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
+from seizou.core.views import use_decimal_input
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
@@ -71,6 +72,9 @@ class PurchaseOrderLineForm(forms.Form):
         super().__init__(*args, **kwargs)
         # 部品は使用中だけ (N135。発注は新しく作るだけの form)
         self.fields["item"].queryset = active_items()
+        # 数量と単価を字の欄にする (受注の明細と土台と同じ。初期値は詳細と同じ字で出し、「1,200」も通す。初見テスト 5 回目 a-flagged-12)。
+        for field in self.fields.values():
+            use_decimal_input(field)
 
 
 PurchaseOrderLineFormSet = forms.formset_factory(PurchaseOrderLineForm, extra=1)
