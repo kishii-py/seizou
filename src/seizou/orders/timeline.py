@@ -165,7 +165,14 @@ def _inbox_events(order) -> list[Event]:
 
 
 def _registered(order) -> Event:
-    return Event(order.order_date, "order", "受注を登録", via=_inlet(order))
+    """受注日の点。題は「受注を登録」。受信した注文から作り、受注日がその payload の相手の発注日と同じ受注だけ「受注日 (相手の発注日)」
+    (候補 C08 の 8。C08-2 = a「発注日と同じ日のときだけ変える」)。受注日を編集で別の日に直した後に、違う日を指す字にしないため。
+    手入力の受注と、発注日の読めない受信した注文から作った受注は「受注を登録」のまま。日付と種類と入口 (via) は変えない。
+    """
+    inbox = getattr(order, "inbox_message", None)
+    same_day = inbox is not None and inbox.buyer_order_date() == order.order_date
+    title = "受注日 (相手の発注日)" if same_day else "受注を登録"
+    return Event(order.order_date, "order", title, via=_inlet(order))
 
 
 def _workorder_events(line, workorder) -> list[Event]:
