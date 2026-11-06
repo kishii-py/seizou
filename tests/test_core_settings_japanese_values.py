@@ -60,7 +60,8 @@ def test_settings_list_and_edit_pages_show_japanese_values_only(manager_client, 
         assert response.status_code == 200
         page = response.content.decode()
         assert ENGLISH_VALUE.findall(page) == [], key
-        assert f"<code class=\"font-mono\">{key}</code>" in page
+        # 鍵は設定の画面の表の「鍵」の列と URL に残す。変更の画面の頭の行には出さない (C76)
+        assert f"<code class=\"font-mono\">{key}</code>" not in page
     # 選べる値はどれも日本語の字を持ち、丸の value は英字の値・名前は日本語だけ (字の無い値を足すと、ここで落ちる)。
     # input の後には改行が入る (Django の input.html の終わりの改行) ので \s* で受ける
     for key, values in conf.CHOICES.items():

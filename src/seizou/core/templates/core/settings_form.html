@@ -3,7 +3,7 @@
 {# 設定の変更: 選べる設定 1 つの入力。「答えの値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。主色の画面だけ、欄の右に打った字の色の見本を出す (小さな JS。形の合わない字のときは出さない)。 #}
 {% block actions %}{% if can_clear %}<form method="post" action="{% url 'core:setting_clear' setting_key %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}答えの値に戻す</button></form>{% endif %}{% endblock %}
 {% block content %}
-<p class="mb-4 text-sm text-base-content/70">「{{ setting_label }}」(鍵 <code class="font-mono">{{ setting_key }}</code>)。今の値の出所: {{ source }}。保存した値は、置き場の settings.py の SEIZOU と答えの YAML より優先されます。</p>
+<p class="mb-4 text-sm text-base-content/70">「{{ setting_label }}」。今の値の出所: {{ source }}。ここで保存した値は、導入の時に決めた値より先に使われます。</p>
 {{ block.super }}
 {% if setting_key == "brand_color" %}
 {# 主色の見本: 横並びの箱と、その色で塗った四角 (見るだけ。押しても何も起きない)。下の JS が箱を欄の所へ移し、欄を箱の中の四角の前へ移す。 #}
