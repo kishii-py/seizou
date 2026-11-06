@@ -89,25 +89,38 @@ def _display(key: str, value) -> str:
     if isinstance(value, (list, tuple)):
         return "・".join(str(v) for v in value) if value else "なし"
     if isinstance(value, dict):
-        # 辞書の設定 (例: 権限の判定 access_control = {"department": "log", ...})。中の値は同じ鍵の表で日本語にする。
-        # 並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、保存した並びに頼らない)。知らない鍵はその後ろ。
-        keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
-        return "・".join(f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys) if value else "なし"
+        return "・".join(_dict_parts(key, value)) if value else "なし"
     if value in words:
         return words[value]
     return str(value)
 
 
+def _dict_parts(key: str, value: dict) -> list[str]:
+    """辞書の設定の「中の鍵: 値」の字の並び (例: 権限の判定 access_control = {"department": "log", ...} は「部署: 記録だけ」など 3 つ)。
+
+    中の値は同じ鍵の表で日本語にする。並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、
+    保存した並びに頼らない)。知らない鍵はその後ろ。_display はこれを「・」でつなぎ、設定の画面の表は塊ごとに出す
+    (640px 以上の幅では塊の途中で折らない。初見テスト R5 の a-blind-08。候補 C14)。
+    """
+    keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
+    return [f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys]
+
+
 def company_settings() -> list[dict]:
-    """選べる設定の今の値の並び (鍵・見出し・値の字・出所の字・画面から変えられるか)。"""
+    """選べる設定の今の値の並び (鍵・見出し・値の字・値の塊・出所の字・画面から変えられるか)。
+
+    値の塊 (value_parts) は辞書の設定 (権限の判定) だけの「中の鍵: 値」の並び。ほかの設定と空の辞書は空の並びで、表は値の字を出す。
+    """
     rows = []
     for key in conf.DEFAULTS:
         label, _words = SETTING_LABELS.get(key, (key, {}))
+        value = conf.setting(key)
         rows.append(
             {
                 "key": key,
                 "label": label,
-                "value": _display(key, conf.setting(key)),
+                "value": _display(key, value),
+                "value_parts": _dict_parts(key, value) if isinstance(value, dict) and value else [],
                 "source": conf.setting_source(key),
                 "editable": key not in conf.LOCKED_KEYS,
             }

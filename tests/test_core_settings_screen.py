@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -97,6 +99,47 @@ def test_links_section_comes_before_company_settings(logged_in):
     if apps.is_installed("seizou.accounts"):
         links = boss_body.index('aria-labelledby="links-title"')
         assert links < boss_body.index(reverse("accounts:access_list")) < boss_body.index('aria-labelledby="company-settings-title"')
+
+
+def _settings_part(body):
+    """「会社の選べる設定」の節 (表の上の説明と表)。"""
+    start = body.index('aria-labelledby="company-settings-title"')
+    return body[start : body.index("</section>", start)]
+
+
+def test_settings_table_column_widths(manager_client, settings):
+    """表の列の幅 (初見テスト R5 の a-flagged-26・a-blind-08・a-blind-09。C14-2 = a)。
+
+    「設定」の列は折り返す (tablet・1024・1280 で「編集」が箱の外に出ないように)。「今の値」は 640px 以上だけ最小の幅を見出しに付け、
+    権限の判定は塊ごとに出して 640px 以上では塊の途中で折らない。「鍵」の列はスマホの幅でも隠さない。
+    """
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
+    part = _settings_part(manager_client.get(reverse("core:settings")).content.decode())
+
+    assert '<th class="font-medium">設定</th><th class="font-medium sm:min-w-36">今の値</th>' in part
+    for row in settings_screen.company_settings():
+        assert f"<tr><td>{row['label']}" in part, row["key"]
+    assert (
+        '<td><span class="sm:whitespace-nowrap">部署: 有効</span>・<span class="sm:whitespace-nowrap">編集の権限: 有効</span>'
+        '・<span class="sm:whitespace-nowrap">金額の閲覧: 有効</span></td>'
+    ) in part
+    # 鍵の列は全部の幅で出す (幅で隠す class を足さない)
+    assert '<th class="font-medium">鍵</th>' in part
+    assert part.count('<td class="whitespace-nowrap font-mono text-xs text-base-content/70">') == len(settings_screen.company_settings())
+    classes = " ".join(re.findall(r'class="([^"]*)"', part)).split()
+    assert [name for name in classes if name.endswith("hidden")] == []
+
+
+def test_settings_table_value_parts_only_for_dict_values(settings):
+    settings.SEIZOU = {"access_control": {"money": "off", "department": "log"}}
+    rows = {row["key"]: row for row in settings_screen.company_settings()}
+    # 並びは SUB_LABELS の順 (保存した並びに頼らない)。字は _display と同じ
+    assert rows["access_control"]["value_parts"] == ["部署: 記録だけ", "金額の閲覧: 使わない"]
+    assert rows["access_control"]["value"] == "部署: 記録だけ・金額の閲覧: 使わない"
+    assert all(row["value_parts"] == [] for key, row in rows.items() if key != "access_control")
+    settings.SEIZOU = {"access_control": {}}
+    rows = {row["key"]: row for row in settings_screen.company_settings()}
+    assert rows["access_control"]["value_parts"] == [] and rows["access_control"]["value"] == "なし"
 
 
 def test_settings_screen_hides_key_values(logged_in, monkeypatch):
