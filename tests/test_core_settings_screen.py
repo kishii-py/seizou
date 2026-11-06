@@ -198,6 +198,20 @@ def test_settings_section_has_no_internal_words(logged_in, settings):
         assert "model" not in label.lower(), label
 
 
+def test_settings_screen_does_not_call_accounts_a_part(manager_client):
+    """アカウント管理のカードと表の上の説明で、権限を「部品」と言わない (初見テスト R5 の V100。候補 C47 の 1 の (c)・(d))。
+
+    カードは accounts が入っていてもいなくてもシステム管理者に出る (入っていなければ灰色のカード) ので、どちらの会社でも同じ字で見る。
+    システムの状態の見出し「入っている部品」は C47-2 = a で残るので、body の「部品」の有無は見ない。
+    """
+    body = manager_client.get(reverse("core:settings")).content.decode()
+
+    for word in ("権限管理の部品", "権限の部品"):
+        assert word not in body, word
+    assert "アカウントと部署と権限。" in body
+    assert "アカウント管理が入っていない会社ではシステム管理者" in _settings_part(body)
+
+
 def test_settings_source_column_follows_screen_edit_and_clear(manager_client, settings):
     """画面で変えた後と「答えの値に戻す」の後に、「どこで決めたか」の列の字が変わる。"""
     from seizou.core import conf
