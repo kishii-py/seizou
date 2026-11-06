@@ -30,7 +30,13 @@
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと 2 つ書く (R19)。 #}
+  {% if in_modal %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+  {% else %}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
+  {% endif %}
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
     {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}
