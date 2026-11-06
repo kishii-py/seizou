@@ -8,18 +8,11 @@ from pathlib import Path
 
 import seizou
 from seizou.core.rules import check, r18_csrf_single_place
+from tests.rules_helpers import rules_md_text as _rules_md_text
 
 SEIZOU_DIR = Path(seizou.__file__).parent
-RULES_MD = Path(__file__).parent.parent / "RULES.md"
 
 HEADER_HTML = """<div hx-post="/x/" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>送る</div>\n"""
-
-
-def _rules_md_text(code: str) -> str:
-    for line in RULES_MD.read_text(encoding="utf-8").splitlines():
-        if line.startswith(f"| {code} |"):
-            return line.split("|")[2].strip().replace("`", "")
-    raise AssertionError(f"RULES.md に {code} の行が無い")
 
 
 def _write(path: Path, text: str) -> Path:
