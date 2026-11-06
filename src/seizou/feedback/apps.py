@@ -4,7 +4,8 @@ from django.apps import AppConfig
 class FeedbackConfig(AppConfig):
     """フィードバック。現場の人が困りごと・要望・不具合を伝える窓。
 
-    呼ぶ相手は core と assistant (鍵・API・道具の回し方) だけ。下書きは会社の中に残り、GitHub へは送らない (世話役が写す)。
+    呼ぶ相手は core と assistant (鍵・API・道具の回し方) だけ。下書きは会社の中に残る。世話役がトークンを置いた会社では、
+    確認済みの物を「GitHub に送る」で Issue にする (github.py)。トークンが無い会社は、世話役が Issue の文を手で写す。
     """
 
     name = "seizou.feedback"
