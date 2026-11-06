@@ -1,7 +1,7 @@
 """CSV の読み方の共通の関数 (05 の 8 節の「入れる」)。
 
 部品の取り込みの form が使う。core の部品なので、ほかの部品を import しない (model は引数で受ける)。
-「字 → 値」の決まりは作り物のデータの読み込み (seizou.core.demo) の関数をそのまま使う (決まりを 2 か所に書かない)。
+「字 → 値」の決まりは種と CSV の読み方の置き場 (seizou.core.seeds) の関数をそのまま使う (決まりを 2 か所に書かない)。
 
 - 文字コードは人が選ぶ (自動の判定はしない)。読めない字は黙って捨てず、日本語の ValueError にする。
 - 見出しは表の verbose_name (日本語の項目名)・画面の字を直す前の見出し (FORMER_HEADERS)・会社ごとの項目の名前。
@@ -18,7 +18,7 @@ import io
 from django.core.exceptions import ValidationError
 
 from seizou.core import fields as company_fields
-from seizou.core.demo import _coerce, _coerce_ext, _fields_by_label, _is_blank
+from seizou.core import seeds
 
 #: 文字コードの選択肢 (値, 画面の字)。utf-8-sig は BOM があれば外し、無くても読む。
 ENCODINGS = (("utf-8-sig", "UTF-8 (BOM あり・なし)"), ("cp932", "Shift_JIS (Excel の既定)"))
@@ -47,7 +47,7 @@ def decode(data, encoding):
 
 def is_blank_row(values):
     """全部の欄が空の行か (Excel が残す ,,, の行)。"""
-    return all(_is_blank(value) for value in values)
+    return all(seeds.is_blank(value) for value in values)
 
 
 def _quoted(labels):
@@ -77,7 +77,7 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
     headers += [""] * (width - len(headers))
 
     # 画面で入れられない列 (editable=False。例 図面の表示用) は CSV からも書かせない。
-    by_label = {label: f for label, f in _fields_by_label(model).items() if f.editable}
+    by_label = {label: f for label, f in seeds.fields_by_label(model).items() if f.editable}
     registration = company_fields.registration_for(model)
     ext_by_label = {c.label: c for c in registration.columns} if registration else {}
 
@@ -85,7 +85,7 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
     for index, header in enumerate(headers):
         if header:
             continue
-        line = next((line for line, row in body if index < len(row) and not _is_blank(row[index])), None)
+        line = next((line for line, row in body if index < len(row) and not seeds.is_blank(row[index])), None)
         if line is not None:
             problems.append(
                 f"{index + 1} 列目は見出しが空なのに、{line} 行目に値があります。見出しを書くか、その列を消してください。"
@@ -135,8 +135,8 @@ def _message(exc):
 
 
 def to_value(field, raw):
-    """1 つの欄の字を表の列の値にする。型の変換 (demo._coerce) の後に、列の検査 (例 締日の 1〜31) も通す。"""
-    value = _coerce(field, raw)
+    """1 つの欄の字を表の列の値にする。型の変換 (seeds.coerce) の後に、列の検査 (例 締日の 1〜31) も通す。"""
+    value = seeds.coerce(field, raw)
     try:
         field.run_validators(value)
     except ValidationError as exc:
@@ -145,10 +145,10 @@ def to_value(field, raw):
 
 
 def to_ext_value(column, raw):
-    """1 つの欄の字を会社ごとの項目の値にする。型の変換 (demo._coerce_ext) の後に、入力の欄と同じ検査も通す。"""
-    if column.required and _is_blank(raw):
+    """1 つの欄の字を会社ごとの項目の値にする。型の変換 (seeds.coerce_ext) の後に、入力の欄と同じ検査も通す。"""
+    if column.required and seeds.is_blank(raw):
         raise ValueError(f"{column.label}が空です。値を入れてください。")
-    value = _coerce_ext(column, raw)
+    value = seeds.coerce_ext(column, raw)
     if value in (None, "") or isinstance(value, bool):
         return value
     try:
