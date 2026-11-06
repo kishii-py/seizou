@@ -66,8 +66,8 @@
 </section>
 {% if object.outbox_messages.exists %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="po-acceptance-title">
-  <h2 id="po-acceptance-title" class="text-lg font-bold">検収 (相手の seizou へ送った受入)</h2>
-  <p class="mt-2 text-xs text-base-content/70">受入を登録すると、相手の受注の明細に検収の印として送ります。届いていない物は「送り直す」で送れます。</p>
+  <h2 id="po-acceptance-title" class="text-lg font-bold">検収 ({{ object.partner.name }} へ送った受入の数)</h2>
+  <p class="mt-2 text-xs text-base-content/70">受入を登録すると、受け入れた数を {{ object.partner.name }} の受注に「検収」として送ります。届いていない物は「送り直す」で送れます。</p>
   {% with receipts=object.receipts.all %}{% if receipts %}
   <div class="mt-4 overflow-x-auto">
     <table class="table table-sm">

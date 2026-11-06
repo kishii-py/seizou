@@ -217,6 +217,10 @@ def test_order_detail_shows_acceptance_section_for_sent_orders(
     start = body.index('id="po-acceptance-title"')
     section = body[start : body.index("</section>", start)]
     assert "検収" in section
+    # 見出しと説明の 1 文は、相手を取引先の名前で言う (初見テスト R5 の V92・V93。候補 C45 の 1)
+    assert "検収 (作り物の協力企業 へ送った受入の数)" in section
+    assert "受け入れた数を 作り物の協力企業 の受注に" in section
+    assert "相手の seizou" not in body
     tbody = section[section.index("<tbody>") : section.index("</tbody>")]
     rows = {re.search(r"\d{4}-\d{2}-\d{2}", row).group(0): row for row in re.findall(r"<tr>(.*?)</tr>", tbody, re.S)}
     assert set(rows) == {"2026-11-02", "2026-11-03"}
