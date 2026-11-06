@@ -289,3 +289,42 @@ def test_note_detail_lists_each_invoice_with_its_shipment_count(logged_in, user,
     assert body.count("で請求済みです (出荷 2 件)。") == 1
     assert body.count("で請求済みです (出荷 1 件)。") == 1
     assert body.index(first_link) < body.index(second_link)
+
+
+# --- 出荷の編集の頭の 1 行 (初見テスト R5・候補 C66 の 1) ---
+
+
+def _update_head(shipment) -> str:
+    """出荷の編集の入力の頭の 1 行 (入金の記録の頭と同じ形)。受注の明細の字は OrderLine の短い形 (受注番号-行の番号 品番 品名)。"""
+    order_no = shipment.order_line.order.order_no
+    return (
+        '<p class="mb-4 text-sm text-base-content/70">'
+        f'<span class="font-mono">{shipment.shipment_no}</span> ({order_no}-1 T-100 作り物の軸・作り物の得意先)。</p>'
+    )
+
+
+@pytest.mark.django_db
+def test_update_form_shows_head_line_above_fields(logged_in, shipment):
+    """出荷の編集の入力の上に、出荷番号と受注の明細と得意先の 1 行が出る。
+
+    数量の欄 (name="qty") より前にあることを見る。トップの帯のログアウトの form が先にあるので、<form method="post" の字では比べない。
+    """
+    response = logged_in.get(reverse("shipping:shipment_update", args=[shipment.pk]))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    head = _update_head(shipment)
+    assert head in html
+    assert html.index(head) < html.index('name="qty"')
+    assert "shipping/shipment_update_form.html" in [t.name for t in response.templates]
+
+
+@pytest.mark.django_db
+def test_update_form_keeps_head_line_when_stopped(logged_in, shipment, note):
+    """発行の納品書に入った出荷を直そうとして止まった画面でも、頭の 1 行が出ている (保存はされない)。"""
+    response = logged_in.post(reverse("shipping:shipment_update", args=[shipment.pk]), _edit_post(3))
+
+    assert response.status_code == 200
+    shipment.refresh_from_db()
+    assert shipment.qty == Decimal("4")
+    assert _update_head(shipment) in response.content.decode()

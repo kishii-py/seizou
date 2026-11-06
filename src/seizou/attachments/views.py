@@ -45,6 +45,7 @@ class AttachmentAddView(BaseFormView):
     model = Attachment
     form_class = AttachmentForm
     service = staticmethod(services.add_attachment)
+    template_name = "attachments/attachment_form.html"
     screen_name = "添付ファイルを付ける"
     screen_help = "記録の詳細の「添付ファイル」の枠から開き、写真・検査成績書・作業手順などのファイルを付けます。"
 

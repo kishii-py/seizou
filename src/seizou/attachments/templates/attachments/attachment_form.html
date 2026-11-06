@@ -1,0 +1,3 @@
+{% extends "core/form.html" %}
+{# 添付ファイルを付ける: 土台の入力の上に、付ける先 (種類と番号) の 1 行 (入金の記録の頭の 1 行と同じ形。黄の帯にしない)。付ける先が引けないときは出さない。詳細の枠から開く小窓は土台の小窓のまま (後ろに詳細が見えるため)。 #}
+{% block content %}{% if form.target_text %}<p class="mb-4 text-sm text-base-content/70">付ける先: {{ form.target_text }}</p>{% endif %}{{ block.super }}{% endblock %}
