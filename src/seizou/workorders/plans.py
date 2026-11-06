@@ -9,6 +9,7 @@
   段の数は棒の段の数 + 1 (下に空の段を 1 つ置き、どの日にも落とせる所を残す)。
 - 見た目の材料: 部品の色 (tone。部品の pk で決まる theme の色の名前) と棒の状態 (state。計画・着手・完了・遅れ)。
   class の字は返さない (Tailwind はテンプレートしか読まないので、テンプレートが data- の属性で切り替える)。
+- 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。工程ごとの実績の合計 (_recorded_totals) を使うため。
 """
 
 from __future__ import annotations
@@ -480,3 +481,29 @@ def item_projection(item):
 
     projection = stock_projection(item, PROJECTION_DAYS)
     return {"projection": projection, "chart": projection_chart(projection)}
+
+
+# --- 指示書の詳細の頭の右の緑の「製造の完了を入庫にする」(UX-2 a。11-06 22:1x。初見テスト R5 の候補 C93) ---
+
+
+def finished_due(workorder) -> bool:
+    """指示書の詳細の頭の右に緑の「製造の完了を入庫にする」を出すか。読むだけ。
+
+    真 = 発行の指示書で工程が 1 つ以上あり、全部の工程の実績の合計が予定の数以上 (QR を読んだ先の「完了」と同じ >=。
+    _recorded_totals で 1 回の問い合わせ。辞書に無い工程は 0。進捗の部品が無ければ空の辞書なので偽) で、
+    まだ入庫にしていない完成の数 (stock.services の finished_qty − stocked_qty。入庫の画面が ?workorder= で入れる数と同じ)
+    が 0 より大きい。在庫の部品が無ければ偽。
+    """
+    if workorder.status != WorkOrder.STATUS_ISSUED:
+        return False
+    steps = list(workorder.steps.all())
+    if not steps:
+        return False
+    totals = _recorded_totals([step.pk for step in steps])
+    if any(totals.get(step.pk, Decimal("0")) < step.planned_qty for step in steps):
+        return False
+    if not apps.is_installed("seizou.stock"):
+        return False
+    from seizou.stock.services import finished_qty, stocked_qty
+
+    return finished_qty(workorder) - stocked_qty(workorder) > 0
