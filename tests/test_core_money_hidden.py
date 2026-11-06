@@ -207,7 +207,7 @@ def test_order_detail_lines_have_no_price_columns(money_on, jimu, keiri, order):
     url = reverse("orders:order_detail", args=[order.pk])
     body = _get(jimu, url)[1]
 
-    assert _heads(body, 'id="order-lines-title"') == ["操作", "行番号", "部品", "数量", "単位", "納期", "出荷済み", "検収", "残"]
+    assert _heads(body, 'id="order-lines-title"') == ["操作", "行番号", "部品", "数量", "単位", "納期", "出荷済み", "検収", "預かり", "残"]
     assert OLD_DASH_CELL not in body
     assert "1,500" not in body and "15,000" not in body
     lines = body[body.index('id="order-lines-title"') : body.index("</section>", body.index('id="order-lines-title"'))]

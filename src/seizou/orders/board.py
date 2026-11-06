@@ -5,6 +5,9 @@
   (出荷の Sum と同じ問い合わせに指示書の join を足すと、残が重なって数えられるため)。BoardRow は .all() だけを使う。
 - 部品 (workorders・progress) が無い会社では、指示書と進捗の値は空 (「未」・空の字・None) で、盤は開く。
 - 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
+- 引当の合計 (receiving。「預かり」の列) は receiving.services.annotate_allocated の Subquery で読む (join を足さない)。
+  無ければ None。「預かり待ち」の札は、引当の合計が受注の数より少なく、会社の設定 receiving_required が off (通す) で
+  ないときだけ (本体の決め 11-06 20:1x。通すの会社は支給材の無い注文が多く、全部の行に札が付くため)。N184。
 - 出荷 (shipping) と納品書は、行のメニューの「納品書を作る」の対象を決めるため、prefetch_for が別の問い合わせで読む (join を足さない)。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 - 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。
@@ -22,7 +25,7 @@ from django.db.models import DecimalField, OuterRef, Prefetch, Subquery, Sum, Va
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from seizou.core import calendar
+from seizou.core import calendar, conf
 
 from . import services
 from .models import Order, OrderLine
@@ -103,8 +106,14 @@ def prefetch_for(queryset):
 
     行の数に関わらず、指示書と工程の 2 回の問い合わせで済む。workorders の部品が無ければ queryset をそのまま返す。
     出荷 (納品書つき) も 1 回の問い合わせで読む (BoardRow.unnoted_shipment のため。shipping の部品が無ければ読まない)。
+    引当の合計 (allocated_total) は receiving の部品があれば Subquery で足す (問い合わせを増やさない。N184)。
     """
     queryset = annotate_acceptance(queryset)
+    if apps.is_installed("seizou.receiving"):
+        # 引当の合計は Subquery なので、annotate_remaining の後に当てても残は変わらず、問い合わせの数も増えない。
+        from seizou.receiving.services import annotate_allocated
+
+        queryset = annotate_allocated(queryset)
     shipment_model = _shipment_model()
     if shipment_model is not None:
         # prefetch は別の問い合わせなので、annotate_remaining の出荷の Sum と掛け合わない (N130)。
@@ -315,6 +324,30 @@ class BoardRow:
             value = self.line.__dict__["acceptance_total"]
             return _ZERO if value is None else Decimal(str(value))
         return services.acceptance_summary(self.line)["total"]
+
+    # --- 預かり (入荷の引当) ---
+    @cached_property
+    def allocated(self):
+        """引当の合計 (読むだけ。「預かり」の列)。receiving の部品が無ければ None。
+
+        annotate の allocated_total があればそれ、無ければ receiving.services.allocated_total (関数の試験のため)。
+        """
+        if not apps.is_installed("seizou.receiving"):
+            return None
+        if "allocated_total" in self.line.__dict__:
+            value = self.line.__dict__["allocated_total"]
+            return _ZERO if value is None else Decimal(str(value))
+        from seizou.receiving.services import allocated_total
+
+        return allocated_total(self.line)
+
+    @cached_property
+    def receiving_waiting(self) -> bool:
+        """「預かり待ち」の札を出すか。引当の合計が受注の数より少なく、会社の設定 receiving_required が off でないとき。"""
+        allocated = self.allocated
+        if allocated is None or allocated >= self.line.qty:
+            return False
+        return conf.setting("receiving_required") != "off"
 
     # --- 納品書 ---
     @cached_property

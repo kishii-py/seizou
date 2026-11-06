@@ -232,7 +232,7 @@ def test_row_menus_open_forms_in_modal(user, logged_in, customer, item, lines):
         assert f'href="{url}" data-modal-form="{url}"' in tr_html, url
     # 受注の詳細・部品の小窓は今のまま (小窓の印を付けない)。
     assert f'href="{reverse("orders:order_detail", args=[a.order_id])}" data-modal-form' not in tr_html
-    assert tr_html.count("data-modal-form=") == 4
+    assert tr_html.count("data-modal-form=") == 5  # 盤の行の 5 つ (出荷・指示書・実績・発注と、入荷の記録 (N184))
 
     detail = logged_in.get(reverse("orders:order_detail", args=[a.order_id])).content.decode()
     for name in ("ship", "issue", "po"):
