@@ -48,7 +48,11 @@ def _dec(value):
 
 
 def _qty_text(value) -> str:
-    """知らせに出す数の字。末尾の 0 を落とす (10.00 → 10、4.50 → 4.5)。core.checks.builtin._num と同じ形。"""
+    """知らせに出す数の字。末尾の 0 を落とす (10.00 → 10、4.50 → 4.5)。core.checks.builtin._num と同じ形。
+
+    訳: 知らせに出す数の末尾の 0 を落とし、_num と同じ字にするため。出所 = 未確認 (_num は本人の初見テスト 2 回目の所見の直し = docs/nights/20261103.md。本人の言葉は記録に無い)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
+    """
     dec = _dec(value).normalize()
     if dec == dec.to_integral_value():
         return str(dec.quantize(Decimal(1)))
@@ -59,6 +63,8 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
     """出荷の保存の部分 (ship と ship_lines が atomic の中で呼ぶ)。明細に行の錠を掛け、R05・R02・分納を見て、出荷を作り、受注の状態を直す。
 
     返す物は (出荷, 錠を掛けた明細)。HTTP は送らない (送るのは _after_ship。atomic の外 = R17)。
+    訳: 取消した受注に出荷を作らず (R05)、0 以下の数を出荷にせず (R02)、分納を許さない会社では残りの数と違う出荷を止めるため。出所 = RULES.md R05・R02 と 会社の設定 partial_shipment (既定は許す)。
+    変えてよい条件 = R05・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
     qty = _dec(qty)
     locked = _OrderLine.objects.select_for_update().get(pk=order_line.pk)
@@ -125,6 +131,8 @@ def ship_lines(lines, shipped_at, user, *, note=""):
     lines は (受注の明細, 数量) の組の list。1 行ずつ ship と同じ決まり (R05・R02・分納) を通し、どれか 1 行が断られたら
     全部を保存しない (1 つの atomic)。断りの文の頭に受注番号と行の番号を付ける。
     出荷の知らせ (受信した注文で作った受注) は、全部を保存した後に atomic の外で 1 件ずつ送る (R17)。
+    訳: 一括出荷でも 1 件の出荷と同じ決まり (R05・R02・分納) を 1 行ずつ通すため (どれか 1 行が断られたら全部を保存しない)。出所 = RULES.md R05・R02 と 会社の設定 partial_shipment (1 行ずつの見方は _record_shipment)。
+    変えてよい条件 = R05・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
     if not lines:
         raise ValueError("出荷できません。出荷する明細がありません。出荷する明細を 1 行以上選んでください。")
@@ -143,6 +151,8 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
 
     納品書は数量の写しを持たない。結ばれた出荷は delivery_note.shipments.all() で引く。
     issued_on (発行日) は無ければ今日。種の読み込み (core.demo) が出荷日を渡す。
+    訳: 納品書を得意先ごとに作り、発行の納品書に入っている出荷を別の納品書に入れないため (納品書の数量は出荷の数量と一致する)。出所 = RULES.md R08 (仕様 01 の表 (2026-11-01) の理由の列「伝票の整合」)。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     if not pks:
@@ -202,6 +212,8 @@ def cancel_refusal(note) -> str:
 
     発行の請求書に入った出荷のうち、pk の最も小さい出荷の番号と、その請求書の番号で文を作る (invoiced_shipments)。
     cancel_delivery_note と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。納品書の状態は見ない。
+    訳: 請求済みの出荷 (発行の請求書に入った出荷) のある納品書を取り消さないため (先に請求書を取り消す)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     found = invoiced_shipments(note)
     if not found:
@@ -240,6 +252,8 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
 
     発行の納品書に入った出荷は R08 で断る (先に cancel_delivery_note)。
     受注より多い数はここでは止めない (現物優先。検査の層が services の前に見る)。
+    訳: 取消した受注の出荷を直さず (R05)、発行の納品書に入った出荷は納品書を取り消してから直し (R08)、0 以下の数にせず (R02)、分納を許さない会社では残りの数と違う数を止めるため。出所 = RULES.md R05・R08・R02 と 会社の設定 partial_shipment (既定は許す)。
+    変えてよい条件 = R05・R08・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
     qty = _dec(qty)
     with transaction.atomic():

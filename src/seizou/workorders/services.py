@@ -61,6 +61,8 @@ def issue_workorder(order_line, qty, steps, user):
     """受注の明細に指示書を発行する。指示書番号は core の連番が付ける。
 
     steps の 1 つは {"process": 工程, "planned_qty": 予定の数}。並びの順に順を 1 から付ける。
+    訳: 取消した受注に指示書を作らず (R05)、0 以下の数量と予定の数で指示書を作らないため (R02)。出所 = RULES.md R05・R02。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     qty = _dec(qty)
     with transaction.atomic():
@@ -114,6 +116,8 @@ def plan_step(step, start, end, user):
     start と end は日付。両方 None で未計画に戻す。片方だけ None と start > end は ValueError。
     取消した受注の指示書の工程は R05 で止める。取消の指示書は止めない (盤に出さないだけ)。
     書くのは planned_start・planned_end の 2 列だけ (数は書かない)。user は受けるだけ。
+    訳: 取消した受注の指示書の工程に予定を置かないため。出所 = RULES.md R05。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     with transaction.atomic():
         locked = WorkOrderStep.objects.select_for_update().get(pk=step.pk)

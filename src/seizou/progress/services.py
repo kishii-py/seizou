@@ -34,7 +34,11 @@ def _dec(value):
 
 
 def record_progress(workorder_step, qty, recorded_at, user, *, note=""):
-    """指示書の工程に実績を qty だけ記録する。"""
+    """指示書の工程に実績を qty だけ記録する。
+
+    訳: 0 以下の実績の数を記録しないため。出所 = RULES.md R02。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
     qty = _dec(qty)
     with transaction.atomic():
         locked = _WorkOrderStep.objects.select_for_update().get(pk=workorder_step.pk)
