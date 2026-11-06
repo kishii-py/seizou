@@ -469,6 +469,8 @@ def round_amount(partner, value, *, rounding=None):
     round = 四捨五入、ceil = 切上 (ROUND_CEILING)、floor = 切捨 (ROUND_FLOOR)。
     rounding に会社の既定 (company_rounding() の値) を渡すと、会社の行を読まずにそれを使う
     (多くの行を丸める呼び手が、輪の前に 1 回だけ読んで渡すため)。取引先の方法があれば、そちらが先。
+    訳: 金額 (数量 × 単価) の端数を、取引先 (空なら会社) の小計の計算方法どおりに 1 円に丸める所を 1 か所にするため。出所 = RULES.md R03。
+    変えてよい条件 = 丸め方は取引先と会社の設定で選ぶ。設定どおりに丸めること (R03) は変えない (R は廃止で残す)。
     """
     mode = partner.rounding or rounding or company_rounding()
     return value.quantize(Decimal("1"), rounding=_ROUNDING_MODES[mode])

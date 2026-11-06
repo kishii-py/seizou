@@ -18,7 +18,7 @@ seizou: with one command, a small or mid-sized manufacturer gets a business syst
 The item master sits at the center and connects information across the company, and companies running seizou can exchange orders with each other.
 It is made for the one person in the factory who looks after Excel and the PC, with no programming needed. Work in progress (November 2026); the UI and documents are in Japanese.
 
-作者が製造業で学んだことが 1 つある。業務の決まりは、なぜそうするかが分からないと、引き継いだ人は変えてよいか判断できず、改善が止まる。だから seizou は、止める処理や端数の丸めのような決まりを実装した関数に「訳」(何のためか、法令・商慣習・作者の決めのどれから来たか、変えてよい条件) を書き、変えたい人がその訳に対して Issue で議論できる形にする (書き方の決まり R22 として 11-07 に検査と一緒に入れる)。訳をまだ確かめていない決まりは「未確認」と書いて残し、埋めることも皆で育てる対象にする。
+作者が製造業で学んだことが 1 つある。業務の決まりは、なぜそうするかが分からないと、引き継いだ人は変えてよいか判断できず、改善が止まる。だから seizou は、止める処理や端数の丸めのような決まりを実装した関数に「訳」(何のためか、法令・商慣習・作者の決めのどれから来たか、変えてよい条件) を書き、変えたい人がその訳に対して Issue で議論できる形にする (書き方の決まり R22)。訳をまだ確かめていない決まりは「未確認」と書いて残し、埋めることも皆で育てる対象にする。
 
 この仕組みを一緒に育てる仲間を探している。次の 1 歩は立場ごとに次のとおり。
 
@@ -34,7 +34,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 - テストの数: 3,085 本 (11-06 05:2x の main 916fff9 の `uv run pytest`。通過 3,034、普段は skip の E2E 51。E2E は、本番の 2 社 (VPS。234 回目の版 8a4326a) で外から回して 47 通過・2 skip・2 xfail = 11-06 06:2x)
 - 画面の数: 120 (11-06 05:2x の main 916fff9。土台を継承した画面の目録 `seizou_screens` の画面)
 - 部品の数: 18 (core と 17 の Django の部品。`src/seizou/parts.py`)
-- 決まりの数: 21 (RULES.md の R01〜R21)
+- 決まりの数: 22 (RULES.md の R01〜R22)
 
 Claude Code のプラグインと、pip で入れる Django の部品を、この 1 つのリポジトリに置く (Apache-2.0)。
 

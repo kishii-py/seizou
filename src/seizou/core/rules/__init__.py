@@ -23,6 +23,7 @@ from . import (
     r17_http_outside_atomic,
     r18_csrf_single_place,
     r19_no_dynamic_classnames,
+    r22_reason_docstring,
 )
 from .engine import Result, Violation, run
 
@@ -39,6 +40,7 @@ RULES = (
     r17_http_outside_atomic,
     r18_csrf_single_place,
     r19_no_dynamic_classnames,
+    r22_reason_docstring,
 )
 
 _last_result: Result | None = None

@@ -692,6 +692,8 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     読み取りの行 (入口 = 読み取り) は、単価の無い明細を品目の標準単価に、注文日が無ければ届いた日にし、受注の入口を「読み取り」にする。
     承認した日時 (accepted_at) を状態と受注と同じトランザクションで書く。
     accepted_at を渡すと、承認した日時をその値にする (timezone 付きの datetime。作り物の種の「承認した日時」のため。渡さなければ今)。timezone の無い日時と日時でない値は、状態を見る前に日本語の ValueError。
+    訳: 受信した注文を人が受け入れたときだけ受注にし (R10)、同じ注文を 2 回受け入れても受注を 1 件にするため (R11。2 回届いても 1 件)。出所 = RULES.md R10・R11。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
     import datetime
@@ -1072,6 +1074,8 @@ def _fits_field(number, field):
 
     整数の部分は max_digits − decimal_places 桁まで、小数は decimal_places 桁まで (末尾の 0 は数えない = 10.000 は通す)。
     is_finite() だけでは 1e20 と 0.001 が通り、表に入れた後で読むと 500 になる (精査 A1 の不具合 1・2・3・5)。
+    訳: 受信した注文の数が表の欄の桁に入るかを見て、桁を超える数を表に入れた後で読むと 500 になるのを防ぐため。出所 = AI の案 (docs/nights/20261103/N74.md。精査 A1 の不具合 1・2・3・5)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     if not isinstance(number, Decimal) or not number.is_finite() or number <= 0:
         return False

@@ -58,7 +58,11 @@ _MONTH_OFFSETS = {
 
 
 def _refuse_unbillable(shipment, customer):
-    """出荷が請求書に入れられないなら RuleViolation("R09")。ロックした出荷の行で見る。"""
+    """出荷が請求書に入れられないなら RuleViolation("R09")。ロックした出荷の行で見る。
+
+    訳: 請求書の明細を出荷済みの物 (発行の納品書に入った出荷) だけにするため。出所 = RULES.md R09。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
     note = shipment.delivery_note
     if note is None or note.status != _DeliveryNote.STATUS_ISSUED:
         raise RuleViolation(
@@ -91,6 +95,8 @@ def create_invoice(customer, shipments, user, *, issued_on):
     (最後の出荷日以降で最初の締日まで。初めはその 1 つ前の締日の翌日)。作るときに決めて表に残す。
     支払期日は payment_due_date(customer, 期間の終わり) (支払の欄が空の取引先では空)。
     返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
+    訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable)。出所 = RULES.md R09。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     shipments = list(shipments)
     if not shipments:
@@ -184,6 +190,8 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
     取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (残りの件数と合計) を返す。
     hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人)。
     cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。請求書の状態は見ない。
+    訳: 取消でない入金が残ったまま請求書を取り消さないため (先に入金を取り消す)。出所 = 未確認 (この module と cancel_invoice の docstring に「決め 11-04 06:4x」とあるが、本人の言葉は記録に無い。作った晩の記録は docs/nights/20261104/N89.md)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     rows = [row for row in invoice.payments.all() if row.status == Payment.STATUS_RECORDED]
     if not rows:
@@ -220,6 +228,8 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
 
     金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
     取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
+    訳: 取消した請求書に入金を記録させないため (なぜ要るかは未確認。原則の「記録どうしの矛盾」に当たるかは本人が決める)。出所 = RULES.md R21 (決め 11-03 14:1x。理由の字は仕様 01 の表 (2026-11-01) に無い)。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     try:
         amount = Decimal(str(amount))
@@ -348,6 +358,8 @@ def _tax(customer, amounts):
     total (トータル) = 金額の合計 × 率を round_amount(customer, …) で丸める。
     line_round (各行四捨五入) = 行ごとに 金額 × 率 を 1 円に四捨五入して足す。
     line_floor (各行切捨) = 行ごとに 金額 × 率 を 1 円に切り捨てて足す。
+    訳: 消費税の端数を、取引先 (空なら会社) の消費税の計算方法 (トータル・各行四捨五入・各行切捨) どおりに 1 円に丸めるため。出所 = 未確認 (3 つの計算方法と率の根拠は、法令か商慣習の見込み。本人が書く)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     mode = customer.tax_mode or company().tax_mode
     if mode == "line_round":

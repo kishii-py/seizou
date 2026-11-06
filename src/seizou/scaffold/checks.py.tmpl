@@ -6,11 +6,19 @@
 """
 
 # 書き方の例 (受注の明細の残が 0 以下なのに出荷しようとしたら知らせる):
+# Check を継承した class の docstring には「訳:」の行を書く (何のためか・出所・変えてよい条件。書き方の決まり R22)。
+# 決まりの検査 (manage.py seizou_check) は、この checks.py の class も見る。出所が分からなければ「未確認」と書く。
 #
 # from seizou.core.checks import Check, register, tools
 #
 #
 # class NoRemaining(Check):
+#     """受注の明細の残が 0 以下なのに出荷しようとしたら。
+#
+#     訳: 出荷の済んだ明細をもう一度出荷する間違いに気づかせるため。出所 = 未確認 (根拠が分かったら、決めた人と日付・法令・商慣習のどれかを書く)。
+#     変えてよい条件 = 出荷の担当と話してから。
+#     """
+#
 #     name = "no_remaining"
 #     action = "shipping.ship"
 #     mode = "warn"  # "stop" = 止める / "warn" = 知らせる / "off" = 通す

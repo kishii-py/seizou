@@ -77,7 +77,11 @@ def _dec(value):
 
 
 def _check_positive(qty, unit_price):
-    """R02: 数量と単価は 0 より大きい。"""
+    """R02: 数量と単価は 0 より大きい。
+
+    訳: 0 以下の数量と単価を受注の明細に入れないため。出所 = RULES.md R02。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
     if not (qty > 0 and unit_price > 0):
         raise RuleViolation("R02", _R02_MESSAGE)
 
@@ -176,6 +180,8 @@ def update_order(order, data, lines, user, *, ext=None):
     どちらも無い明細は足す (行番号は今の最大 + 1 から)。lines に無い既存の明細は消す。
     出荷のある明細は消せない (DB の PROTECT が止める物を、日本語の ValueError にして返す)。
     残る明細は全部の金額を計算し直し、終わりに refresh_status で受注の状態を決め直す。
+    訳: 取消した受注を直させないため (直すときは新しく受注を作る)。出所 = RULES.md R05。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     _refuse_ext(ext)
     _refuse_unknown_keys(data, _ORDER_KEYS, "受注")
@@ -222,6 +228,8 @@ def cancel_order(order, user, *, reason=""):
     """受注を取消にする。reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す。
 
     出荷のある受注でも止めない (現物優先)。取消の後に出荷と指示書を作れないのは、作る側の関数が見る。
+    訳: 取り消し済みの受注をもう一度取り消さないため。出所 = RULES.md R05。
+    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
