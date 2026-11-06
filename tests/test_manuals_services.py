@@ -99,6 +99,35 @@ def test_delete_folder_rules(user, media_root):
         services.delete_folder(parent, user)
 
 
+def test_folder_contents_counts(user):
+    """フォルダの削除の確かめが読む中の数は、delete_folder が断る条件と同じ数え方 (C73)。"""
+    top = services.create_folder(None, "上", "gray", user)
+    child = services.create_folder(top, "子", "gray", user)
+    grandchild = services.create_folder(child, "孫", "gray", user)
+    manual = services.create_manual(grandchild, "深い所の手順", "steps", user)
+    assert services.folder_contents(top) == {"folders": 2, "manuals": 1, "protected": False}
+    assert services.folder_contents(grandchild) == {"folders": 0, "manuals": 1, "protected": False}
+    # 自分と子孫のフォルダにあるマニュアルの保護を見る。
+    services.protect_manual(manual, True, user)
+    assert services.folder_contents(top)["protected"] is True
+    assert services.folder_contents(grandchild)["protected"] is True
+    with pytest.raises(ValueError, match="中に保護されたフォルダかマニュアルがあります"):
+        services.delete_folder(top, user, with_contents=True)
+    services.protect_manual(manual, False, user)
+    assert services.folder_contents(top)["protected"] is False
+    # 子孫のフォルダの保護を見る。フォルダ自身の保護は見ない。
+    services.protect_folder(child, True, user)
+    assert services.folder_contents(top)["protected"] is True
+    assert services.folder_contents(child)["protected"] is False
+    with pytest.raises(ValueError, match="中に保護されたフォルダかマニュアルがあります"):
+        services.delete_folder(top, user, with_contents=True)
+    assert ManualFolder.objects.count() == 3 and Manual.objects.count() == 1
+    empty = services.create_folder(None, "空", "gray", user)
+    assert services.folder_contents(empty) == {"folders": 0, "manuals": 0, "protected": False}
+    assert services.folder_contents(None) == {"folders": 0, "manuals": 0, "protected": False}
+    assert services.folder_contents(ManualFolder(name="保存前")) == {"folders": 0, "manuals": 0, "protected": False}
+
+
 def test_create_and_update_manual(user):
     folder = services.create_folder(None, "置き場", "gray", user)
     manual = services.create_manual(None, "  手順書  ", "steps", user)

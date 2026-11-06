@@ -56,6 +56,7 @@ FOLDER_NOT_FOUND = "置き場のフォルダが見つかりません。一覧か
 MANUAL_NOT_FOUND = "マニュアルが見つかりません。一覧から開き直してください。"
 FOLDER_PROTECTED_MOVE = "保護されたフォルダです。先に保護を解除してください。"
 FOLDER_PROTECTED_DELETE = "保護されたフォルダです。先に保護を解除してください。"
+FOLDER_PROTECTED_INSIDE = "中に保護されたフォルダかマニュアルがあります。先に保護を解除してください。"
 MANUAL_PROTECTED_MOVE = "保護されたマニュアルです。先に保護を解除してください。"
 MANUAL_PROTECTED_DELETE = "保護されたマニュアルです。先に保護を解除してください。"
 BODY_TOO_LONG = "本文が 100,000 字を超えています。分けて別のマニュアルにしてください。"
@@ -264,7 +265,7 @@ def delete_folder(folder, user, *, with_contents=False):
                 "削除できません。フォルダが空ではありません。中を移すか削除するか、「中身も削除する」を選んでください。"
             )
         if ManualFolder.objects.filter(pk__in=below, protected=True).exists() or manuals.filter(protected=True).exists():
-            raise ValueError("削除できません。中に保護されたフォルダかマニュアルがあります。先に保護を解除してください。")
+            raise ValueError("削除できません。" + FOLDER_PROTECTED_INSIDE)
         names = list(ManualImage.objects.filter(manual__folder_id__in=folder_ids).values_list("file", flat=True))
         parent_id = current.parent_id
         manuals.delete()
@@ -448,6 +449,22 @@ def folder_path(folder) -> list[ManualFolder]:
 def descendant_ids(folder) -> set[int]:
     """子孫のフォルダの pk の集合 (自分を含まない。段ごとに引く)。"""
     return {pk for level in _descendant_levels(folder) for pk in level}
+
+
+def folder_contents(folder) -> dict:
+    """フォルダの中の数 {"folders": 子孫のフォルダの数, "manuals": 自分と子孫のフォルダにあるマニュアルの数, "protected": 保護された物があるか}。
+
+    delete_folder が断る条件と同じ数え方 (どの深さの物も数える)。フォルダの削除の確かめ (forms.FolderDeleteForm) が読む。
+    protected は子孫のフォルダか、自分と子孫のフォルダにあるマニュアルの保護を見る。フォルダ自身の保護は見ない (delete_folder が別に断る)。
+    None と保存前のフォルダは 0 と False。書かない・ロックしない (押した時は delete_folder がロックして判断し直す)。
+    """
+    if folder is None or getattr(folder, "pk", None) is None:
+        return {"folders": 0, "manuals": 0, "protected": False}
+    levels = _descendant_levels(folder)
+    below = [pk for level in levels for pk in level]
+    manuals = Manual.objects.filter(folder_id__in=[folder.pk, *below])
+    protected = ManualFolder.objects.filter(pk__in=below, protected=True).exists() or manuals.filter(protected=True).exists()
+    return {"folders": len(below), "manuals": manuals.count(), "protected": protected}
 
 
 def search_manuals(query: str):
