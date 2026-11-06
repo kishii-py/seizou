@@ -1808,7 +1808,8 @@ def with_saved_note(message: str, result) -> str:
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
-    1 枚 = {"label", "value", "unit", "note", "help", "icon", "url"} (と、数の下の 1 行 "detail" のあるカード)。金額のカード (支払の見込みと入金) は "money" が真で、
+    1 枚 = {"label", "value", "unit", "note", "help", "icon", "url", "url_name"} (と、数の下の 1 行 "detail" のあるカード)。"url_name" は url を作った URL の名前で、
+    行き先のあるカードだけに付く (HomeView が、部署で開けない画面へ行くカードの url を外すのに使う)。金額のカード (支払の見込みと入金) は "money" が真で、
     HomeView が金額を見られない人には並びから外す (カードごと出さない)。
     "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
     文は下の数え方の式と合わせる (式を変えたら文も直す)。
@@ -1826,6 +1827,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "部品マスターにある部品の数です。使用を止めた部品も数えます。",
                 "icon": "box",
                 "url": url_or_none("masters:item_list"),
+                "url_name": "masters:item_list",
             }
         )
     partner_model = load_model("seizou.masters.models.Partner")
@@ -1839,6 +1841,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "登録した取引先 (得意先・協力企業・両方) の数です。使用を止めた取引先も数えます。",
                 "icon": "users",
                 "url": url_or_none("masters:partner_list"),
+                "url_name": "masters:partner_list",
             }
         )
     order_model = load_model("seizou.orders.models.Order")
@@ -1857,6 +1860,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "受注日が今月の受注の件数です。取消は数えません。",
                 "icon": "clipboard",
                 "url": f"{order_list_url}?f_open=0&f_ordered_from={today:%Y-%m}-01&f_ordered_to={month_end}" if order_list_url else None,
+                "url_name": "orders:order_list",
             }
         )
     lines = dashboard.lines_to_ship()
@@ -1869,6 +1873,7 @@ def dashboard_stats() -> list[dict]:
             "help": "受注の数量から出荷した数を引いた残りがある明細の数です。取消の受注は数えません。",
             "icon": "activity",
             "url": url_or_none("orders:orderline_list"),
+            "url_name": "orders:orderline_list",
         }
         # 数の下の 1 行 = 受注の件数 (受注の一覧のタブ「出荷の残りがある」と今日やることの出荷の行と同じ数え方。R5 の V78 で、
         # 明細の行の数を受注の件数と読み違えそうと書かれたため)。数えられないときは 1 行ごと出さない (偽の 0 を置かない)。
@@ -1889,6 +1894,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "受信した注文 (取引先から直接届いた物と、読み取った注文書から入った物) のうち、まだ受け入れも断りもしていない物の数です。",
                 "icon": "inbox",
                 "url": url_or_none("connect:inbox_list"),
+                "url_name": "connect:inbox_list",
             }
         )
     # 6 枚目: 今月の支払の見込み (受入の部品があるとき。受け入れた数 × 発注の単価の合計 = N42 の要望 4)
@@ -1903,6 +1909,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
                 "icon": "yen",
                 "url": url_or_none("purchasing:receipt_list"),
+                "url_name": "purchasing:receipt_list",
                 "money": True,
             }
         )
@@ -1918,6 +1925,7 @@ def dashboard_stats() -> list[dict]:
                 "help": "入金日が今月の入金の金額の合計です。取消は数えません。",
                 "icon": "yen",
                 "url": url_or_none("billing:invoice_list"),
+                "url_name": "billing:invoice_list",
                 "money": True,
             }
         )
@@ -1989,7 +1997,16 @@ class HomeView(ScreenMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["stats"] = dashboard_stats()
+        user = self.request.user
+        # 部署で開けない画面へ行くカードは、url を外した写しにする (数は出し、押せない div で描く。決め A-03。初見テスト R5 の U159。
+        # 候補 C12 の 3)。判定は今日やることの行を外すのと同じ引き方 (URL の名前の : の前の部品を can_open。記録は書かない)。
+        # 並びの中の dict は書き換えず、新しい並びを作る (試験が同じ dict を返す関数に差し替えるため)。写しは下の画面の名前の枝に入らない。
+        context["stats"] = [
+            {**stat, "url": None}
+            if stat.get("url_name") and not access.can_open(user, stat["url_name"].split(":")[0], record=False)
+            else stat
+            for stat in dashboard_stats()
+        ]
         for stat in context["stats"]:
             if stat.get("url"):
                 # カードの行き先の link の字「<画面の名前>を見る」の名前。「?」の後ろ (絞りの GET) を付けたままでは引けないので外す。
@@ -2000,6 +2017,13 @@ class HomeView(ScreenMixin, TemplateView):
         context["alerts"] = dashboard.due_alerts()
         context["shipping"] = dashboard.shipping_trend()
         context["production"] = dashboard.production_trend()
+        if not access.can_open(user, "orders", record=False):
+            # 受注の部品を部署で開けない人には、納期アラートの「生産管理ボードを見る」と最近の受注の「受注の一覧を見る」を出さない
+            # (テンプレートは値が無ければ link ごと出さない。行の受注番号の link は受注の詳細へ移り、詳細は部署を見ないので残す)。
+            # due_alerts の値は書き換えず、写しの list_url だけを外す (候補 C12 の 3)。
+            context["orders_url"] = None
+            if context["alerts"] is not None:
+                context["alerts"] = {**context["alerts"], "list_url": None}
         if not access.can_see_money(self.request.user):
             context["recent_orders"] = access.without_totals(context["recent_orders"])
             context["shipping"] = dashboard.without_amounts(context["shipping"])
