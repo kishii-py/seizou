@@ -36,7 +36,7 @@
 {% endwith %}
 {% endblock %}
 {% block content %}
-{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)、狭い幅は 1 列で右のカードが先 (見出しの帯の次) に出る。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。左の列は block main (子の明細・流れ・メモ) → 関係する物のタブ → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
+{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)、狭い幅は 1 列で右のカードが先 (見出しの帯の次) に出る。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。左の列は block main (子の明細・流れ・メモ) → 関係する物のタブ → block after_tabs (子の枠。請求書の入金の枠) → 添付の順。1 列の詳細も、基本情報と関係する物のタブ → block after_tabs → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
 {% if aside %}<div id="detail-columns" class="grid gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
 <aside id="detail-aside" class="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:mt-6" aria-label="要点">
   {% for card in aside.cards %}
@@ -124,7 +124,7 @@
   {% endfor %}
 </div>
 {% endif %}
-{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
+{% block after_tabs %}{% endblock %}{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
 {% if aside %}</div>
 </div>{% endif %}
 {% endblock %}

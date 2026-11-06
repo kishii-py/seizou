@@ -399,3 +399,44 @@ def test_create_post_empty_amount_names_the_field(client_logged_in, invoice, hea
         stop = body[start : body.index("data-toast-close", start)]
         assert "記録できません。" in stop
         assert "「金額」の欄に誤りがあります。" in stop
+
+
+def _assert_payments_between_tabs_and_attachments(body):
+    """入金の枠はタブの後・添付ファイルの枠の前で、取り直しの中 (#invoice-live) にある (初見テスト R5 の候補 C26 の 1)。"""
+    assert body.count('<section id="payments"') == 1
+    assert body.index('role="tablist"') < body.index('<section id="payments"') < body.index('<section id="attachments"')
+    assert (
+        body.index('<div id="invoice-live">')
+        < body.index('<section id="payments"')
+        < body.index('<div id="invoice-detail-refresh"')
+    )
+
+
+def test_detail_puts_payments_above_attachments(client_logged_in, user, invoice):
+    """1280×720 で入金の枠が添付ファイルの枠の下 (窓の外) にあった (V40・U35)。枠をタブの直後に出す。取消の請求書でも同じ順。"""
+    url = reverse("billing:invoice_detail", args=[invoice.pk])
+    _assert_payments_between_tabs_and_attachments(client_logged_in.get(url).content.decode())
+
+    services.cancel_invoice(invoice, user)
+    _assert_payments_between_tabs_and_attachments(client_logged_in.get(url).content.decode())
+
+
+@pytest.mark.django_db
+def test_detail_puts_payments_above_attachments_without_money(on, client, invoice):
+    """金額の閲覧の無い人 (合計と残の行が無い枠) でも、入金の枠はタブと添付ファイルの枠の間。"""
+    client.force_login(account("jimu", permissions=["billing"]))
+
+    _assert_payments_between_tabs_and_attachments(client.get(reverse("billing:invoice_detail", args=[invoice.pk])).content.decode())
+
+
+def test_detail_payments_after_tabs_without_attachments_part(client_logged_in, invoice, monkeypatch):
+    """添付ファイルの部品が無い会社でも、入金の枠は 1 つだけで、タブの後ろにある。"""
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "attachments"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+
+    body = client_logged_in.get(reverse("billing:invoice_detail", args=[invoice.pk])).content.decode()
+    assert '<section id="attachments"' not in body
+    assert body.count('<section id="payments"') == 1
+    assert body.index('role="tablist"') < body.index('<section id="payments"')
