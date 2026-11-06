@@ -141,6 +141,7 @@ class DepartmentDetailView(BaseDetailView):
 
     model = Department
     tabs = (("所属する人", "members"),)
+    template_name = "accounts/department_detail.html"
     screen_name = "部署の詳細"
     screen_help = "部署の開ける部品と既定の権限、所属する人の一覧。人の行を押すとアカウントの編集へ移ります。"
 

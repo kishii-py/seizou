@@ -1,7 +1,23 @@
 {% extends "core/base.html" %}
-{% load seizou_icons %}
-{# 部署の削除の確認: 1 枚のカード。人が付いている部署は services が断る (土台の赤の知らせ)。 #}
+{% load accounts_tags seizou_icons seizou_tags %}
+{# 部署の削除の確認: 1 枚のカード。人が付いている部署 (refusal が空でない) は赤い「削除」と form を出さず、黄の知らせと所属する人とアカウント管理への道を出す。字は services の delete_refusal の 1 か所。直に送られた削除は services が断る (土台の赤の知らせ)。 #}
 {% block content %}
+{% department_delete_refusal object as refusal %}
+{% if refusal %}
+<div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% with parts=refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
+  <p class="mb-2 text-xs font-medium text-base-content/50">所属する人</p>
+  <ul class="divide-y divide-base-200">
+    {% for member in object.members %}
+    <li><a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'accounts:access_detail' member.pk %}"><span class="truncate">{{ member }}</span>{% icon "chevron-right" "size-4 text-base-content/50" %}</a></li>
+    {% endfor %}
+  </ul>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'accounts:department_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <a class="btn btn-outline border-base-300" href="{% url 'accounts:access_list' %}">{% icon "users" "size-4" %}アカウント管理</a>
+  </div>
+</div>
+{% else %}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   {% csrf_token %}
   <p class="flex items-center gap-2">{% icon "alert" "size-5 text-error" %}<span>部署「<span class="font-medium">{{ object.name }}</span>」を削除します。</span></p>
@@ -12,4 +28,5 @@
     <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
   </div>
 </form>
+{% endif %}
 {% endblock %}
