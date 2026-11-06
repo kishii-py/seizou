@@ -195,6 +195,50 @@ def test_order_inlets_one_query(client, user, monkeypatch):
     assert dashboard.order_inlets(TODAY) is None
 
 
+def test_inlet_chart_text_outside_and_dark_lines(client, user, partners, shaft):
+    # 候補 C50 の 1〜3 (C50-1 = a): 入口の図の svg は線だけで、最小の幅を持たない。名前・行の数・丸・「受注」・「今月 n 行」は
+    # svg の外の HTML の字 (凡例と同じ text-xs)。線と受注の箱の枠は字と同じ系統の濃さ (base-content の 50%。前の base-300 は白の地と 1.16:1)。
+    today = timezone.localdate()  # 画面を通すので今日
+    _order(user, partners["C1"], shaft, 3, today)
+    _order(user, partners["C2"], shaft, 2, today)
+    inlets = dashboard.order_inlets(today)
+    rows = inlets["rows"]
+
+    client.force_login(user)
+    body = client.get(reverse("core:home")).content.decode()
+    start = body.index('<svg id="inlet-chart"')
+    svg = body[start : body.index("</svg>", start)]
+    for word in ("<text", "min-w-", "stroke-base-300", "<circle", "<rect"):
+        assert word not in svg, word
+    assert svg.count("<line") == len(rows)
+    assert svg.count('<line class="stroke-base-content/50"') == len(rows)
+    assert svg.count('vector-effect="non-scaling-stroke"') == len(rows)  # 線は 1px のまま
+    assert 'role="img"' in svg and "<title>注文の入口 (今月)</title>" in svg
+    # svg の高さは viewBox の高さと同じ px (HTML の行の中央と線の端が合う)
+    assert f'style="height: {inlets["height"]}px"' in svg
+    assert f'viewBox="0 0 {inlets["width"]} {inlets["height"]}"' in svg
+
+    chart = _chart_part(body)
+    wrapper = re.search(r'<div class="([^"]*)">\s*<ul', chart)  # 得意先の行と線の svg と受注の箱を包む要素
+    assert {"text-xs", "text-base-content/70"} <= set(wrapper.group(1).split())
+    assert chart.count(f'style="height: {inlets["row_height"]}px"') == len(rows)
+    for row in rows:
+        assert f">{row['name']}</span>" in chart, row["name"]
+        assert f">{row['lines']} 行</span>" in chart, row["name"]
+    assert ">今月 5 行</span>" in chart
+    boxes = re.findall(r'<div class="([^"]*)" style="min-height: [^"]*">\s*<span class="font-medium">受注</span>', chart)
+    assert len(boxes) == 1
+    assert {"border", "border-base-content/50", "rounded-lg"} <= set(boxes[0].split())
+
+
+def test_app_css_has_chart_classes():
+    # 候補 C50 の 4: ダッシュボードの図が新しく使う class の規則が、作った CSS (app.css) にある。レーンでは app.css を作り直さないので、
+    # 取り込み係が作り直すまでこの 1 本だけが落ちる (作り直さずに出すと、stroke の規則の無い入口の線は描かれない)。
+    css = (CORE / "static" / "css" / "app.css").read_text(encoding="utf-8")
+    for rule in (".stroke-base-content\\/50{", ".border-base-content\\/50{", ".pl-8{"):
+        assert rule in css, rule
+
+
 def test_home_frames_can_shrink():
     # 幅 390 (精査 A7 の 1-2 の不具合 2): grid の中の 4 つの枠は min-w-0 を持ち、表と図の幅で列を押し広げない。
     # 頁の幅が 390 に収まることは test client では見られない (本体の手の確かめ)。ここは class の字と、作った CSS にその class があることを見る。
