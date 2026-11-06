@@ -70,7 +70,7 @@ if (!window.seizouStatHelp) {
     {% if today.rows %}
     <h2 id="flow-guide-title" class="text-lg font-bold">{{ today.title }}</h2>
     <p class="mt-2 text-base-content/70">手を動かす物のある段だけが並びます。ボタンを押すと、その物に絞った一覧が開きます。</p>
-    <ul class="mt-4 divide-y" aria-label="{{ today.title }}">
+    <ul class="mt-4 divide-y divide-base-200" aria-label="{{ today.title }}">
       {% for row in today.rows %}
       <li class="flex flex-wrap items-center justify-between gap-2 py-2">
         <span>{{ row.label }} <span class="font-bold tabular-nums">{{ row.count|comma }}</span> {{ row.unit }}</span>
