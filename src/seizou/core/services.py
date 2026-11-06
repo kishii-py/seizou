@@ -1,6 +1,7 @@
 """core の公開する関数 (01 の 10.3)。
 
 - company(): 会社の設定 (Company) の 1 行。無ければ既定で作る。
+- company_or_none(): 会社の設定 (Company) の 1 行を読むだけ。無ければ作らずに None。
 - next_number(kind): 会社ごとの連番。kind は "order"・"workorder"・"shipment"・"delivery_note"・"invoice"・"purchase_order"。
   形は選べる設定 order_number で決まる (seq = 連番 / ym_seq = 年月 + 連番。月ごとに 1 から)。
   トランザクションの中でだけ呼べる (外で呼ぶと RuntimeError)。行をロックして増やすので、同時に呼んでも重ならない。
@@ -36,9 +37,14 @@ PREFIXES = {
 }
 
 
+def company_or_none() -> Company | None:
+    """会社の設定の 1 行 (pk の小さい物)。読むだけで、無ければ作らずに None を返す。"""
+    return Company.objects.order_by("pk").first()
+
+
 def company() -> Company:
     """会社の設定の 1 行。無ければ既定の 1 行を作って返す。"""
-    row = Company.objects.order_by("pk").first()
+    row = company_or_none()
     if row is None:
         row = Company.objects.create(name="会社")
     return row
@@ -300,4 +306,4 @@ def company_icons(company) -> dict | None:
     return {"icon": storage.url(icon) + version, "touch": storage.url(touch) + version}
 
 
-__all__ = ["clear_setting", "company", "company_icons", "next_number", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
+__all__ = ["clear_setting", "company", "company_icons", "company_or_none", "next_number", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]

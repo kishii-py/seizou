@@ -30,7 +30,7 @@ from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
 from seizou.core import calendar
-from seizou.core.models import Company
+from seizou.core.services import company_or_none
 
 from .drawings import page_name
 from .models import Item, Partner, PartnerItem
@@ -462,19 +462,21 @@ def resolve_partner_item(partner, partner_part_no):
     return mapping.item if mapping is not None else None
 
 
-def round_amount(partner, value):
+def round_amount(partner, value, *, rounding=None):
     """金額 (数量 × 単価) の端数を 1 円の単位に丸める 1 か所の関数。
 
     方法は取引先の小計の計算方法。空なら会社の既定 (Company の 1 行の rounding。行が無ければ round)。
     round = 四捨五入、ceil = 切上 (ROUND_CEILING)、floor = 切捨 (ROUND_FLOOR)。
+    rounding に会社の既定 (company_rounding() の値) を渡すと、会社の行を読まずにそれを使う
+    (多くの行を丸める呼び手が、輪の前に 1 回だけ読んで渡すため)。取引先の方法があれば、そちらが先。
     """
-    mode = partner.rounding or _company_rounding()
+    mode = partner.rounding or rounding or company_rounding()
     return value.quantize(Decimal("1"), rounding=_ROUNDING_MODES[mode])
 
 
-def _company_rounding():
-    # core の services.company() ができたら、それに替える。
-    company = Company.objects.first()
+def company_rounding():
+    """会社の既定の端数の方法 (Company の 1 行の rounding)。行が無ければ "round"。会社の行は作らない。"""
+    company = company_or_none()
     return company.rounding if company is not None else "round"
 
 

@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from seizou.core import conf, mcp_tools
-from seizou.core.models import Company
+from seizou.core.services import company_or_none
 
 #: 利用者の名前を入れる環境変数 (値は会社の置き場の .env に置く)
 USER_ENV = "SEIZOU_MCP_USER"
@@ -48,7 +48,7 @@ def resolve_user(name: str):
 
 def company_name() -> str:
     """会社の名前 (会社の表の 1 行目)。無ければ会社の id、それも無ければ「この会社」。"""
-    company = Company.objects.order_by("pk").first()
+    company = company_or_none()
     if company is not None and company.name:
         return company.name
     return conf.company_id() or "この会社"
