@@ -4,7 +4,7 @@
 """
 
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -194,11 +194,44 @@ def test_inbox_and_note_events(user, customer, item):
     assert [(e.kind, e.title) for e in events] == [
         ("inbox", "注文が届いた"),
         ("inbox", "受信した注文を受け入れ"),
-        ("order", "受注を登録"),
+        ("order", "受注日 (相手の発注日)"),
         ("note", "メモを更新"),
     ]
     assert events[0].url == reverse("connect:inbox_detail", args=[inbox.pk])
     assert events[3].url is None
+
+
+@pytest.mark.django_db
+def test_registered_title_follows_buyer_order_date(user, customer, item):
+    """受注日の点の字は、受注日が相手の発注日と同じときだけ「受注日 (相手の発注日)」(C08-2 = a)。
+
+    受注日を編集で別の日に直すと「受注を登録」に戻り、日付は直した日。入口の添え字は変わらない。
+    """
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload["order_date"] = "2026-11-03"
+    inbox = connect_services.record_inbox(customer, payload, user)
+    order = connect_services.accept(inbox, {"A-100": item}, user, send=False)
+
+    before = [e for e in events_for(order) if e.kind == "order"]
+    assert [(e.title, e.when) for e in before] == [("受注日 (相手の発注日)", date(2026, 11, 3))]
+
+    orders_services.update_order(order, {"order_date": date(2026, 11, 5)}, [{"id": line.pk} for line in order.lines.all()], user)
+    order.refresh_from_db()
+
+    after = [e for e in events_for(order) if e.kind == "order"]
+    assert [(e.title, e.when, e.via) for e in after] == [("受注を登録", date(2026, 11, 5), before[0].via)]
+
+
+@pytest.mark.django_db
+def test_registered_title_without_buyer_order_date(user, customer, item):
+    """発注日の無い読み取りの行から作った受注は、受注日が受信の日でも「受注を登録」のまま。"""
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload["order_date"] = None
+    inbox = connect_services.record_inbox(customer, payload, user, source="intake", sender_name="作り物の差出人")
+    order = connect_services.accept(inbox, {"A-100": item}, user, send=False)
+
+    registered = [e for e in events_for(order) if e.kind == "order"]
+    assert [(e.title, e.when) for e in registered] == [("受注を登録", order.order_date)]
 
 
 @pytest.mark.django_db

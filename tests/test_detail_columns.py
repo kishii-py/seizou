@@ -5,6 +5,7 @@
 """
 
 import re
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -13,9 +14,12 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.connect import services as connect_services
+from seizou.connect.models import Inbox
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
+from tests.test_r10_inbox_accept import _line, _payload
 
 PASSWORD = "kumo-tests-2611"
 #: 金額の閲覧だけを効かせる (部署と書く権限の判定はしない)
@@ -226,3 +230,38 @@ def test_other_details_keep_one_column(logged_in, item, customer, name):
         assert mark not in body, (name, mark)
     assert '<input type="radio" name="detail-tabs" aria-label="基本情報" checked>基本情報' in body
     assert ONE_COLUMN_TABS in body
+
+
+@pytest.mark.django_db
+def test_order_aside_dates_show_buyer_order_date_for_inbox_order(logged_in, user, customer, item):
+    """受信した注文から作った受注の「日付」のカードに「相手の発注日」が出る (初見テスト R5 の候補 C08 の 4)。
+
+    受注日を編集で別の日に直しても、相手の発注日は受信した注文の payload の日のまま。
+    """
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload.update(order_no="PO-000002", order_date="2026-11-03")
+    inbox = connect_services.record_inbox(customer, payload, user)
+    order = connect_services.accept(inbox, {"A-100": item}, user, send=False)
+
+    dates = _card(_aside(_get(logged_in, "orders:order_detail", order.pk)[1]), "日付")
+    assert _labels(dates) == ["受注日", "相手の発注日", "一番早い納期"]
+    assert dates.count("2026-11-03") == 2
+
+    orders_services.update_order(order, {"order_date": date(2026, 11, 5)}, [{"id": line.pk} for line in order.lines.all()], user)
+
+    dates = _card(_aside(_get(logged_in, "orders:order_detail", order.pk)[1]), "日付")
+    assert _labels(dates) == ["受注日", "相手の発注日", "一番早い納期"]
+    assert "2026-11-05" in dates and dates.count("2026-11-03") == 1
+    assert dates.index("2026-11-05") < dates.index("2026-11-03")
+
+
+@pytest.mark.django_db
+def test_order_aside_dates_skip_unreadable_buyer_order_date(logged_in, user, customer, item):
+    """発注日の無い読み取りの行から作った受注は、今までどおり「受注日」「一番早い納期」の 2 行。"""
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload["order_date"] = None
+    inbox = connect_services.record_inbox(customer, payload, user, source=Inbox.SOURCE_INTAKE, sender_name="作り物の差出人")
+    order = connect_services.accept(inbox, {"A-100": item}, user, send=False)
+
+    dates = _card(_aside(_get(logged_in, "orders:order_detail", order.pk)[1]), "日付")
+    assert _labels(dates) == ["受注日", "一番早い納期"]

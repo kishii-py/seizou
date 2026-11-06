@@ -5,7 +5,9 @@
 """
 
 import json
+import re
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -13,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.connect import services, signing
+from seizou.connect.forms import AcceptForm
 from seizou.connect.models import Inbox
 from seizou.masters.services import create_item, create_partner, map_partner_item
 from seizou.orders.models import Order
@@ -160,8 +163,8 @@ def test_accept_screen_shows_partner_part_no_and_initial_item(
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "相手の品番 A-100 (作り物の部品 A-100)" in body
-    assert "相手の品番 A-200 (作り物の部品 A-200)" in body
+    assert "作り物の得意先 の品番 A-100 (作り物の部品 A-100) に当たる自社の部品" in body
+    assert "作り物の得意先 の品番 A-200 (作り物の部品 A-200) に当たる自社の部品" in body
     # 表に対応がある A-100 だけ、自社の品目が初めから選ばれている
     assert body.count(f'<option value="{item.pk}" selected>') == 1
 
@@ -251,3 +254,148 @@ def test_reject_screen_says_reject(client_logged_in, receive_order):
     assert "「断る」を押します" in body
     inbox.refresh_from_db()
     assert inbox.status == Inbox.STATUS_RECEIVED
+
+
+# ---------------------------------------------------------------- 相手の発注番号と発注日 (初見テスト R5 の候補 C08)
+
+
+@pytest.mark.parametrize(
+    ("payload", "order_no", "order_date"),
+    [
+        ({"order_no": "PO-000002", "order_date": "2026-11-03"}, "PO-000002", date(2026, 11, 3)),
+        ({"order_no": "", "order_date": ""}, "", None),
+        ({"order_no": None, "order_date": None}, "", None),
+        ({}, "", None),
+        ({"order_no": 12, "order_date": "2026/11/03"}, "", None),
+        ({"order_no": ["PO"], "order_date": 20261103}, "", None),
+        ({"order_no": "PO-1", "order_date": "2026-13-40"}, "PO-1", None),
+        (["PO-000002", "2026-11-03"], "", None),
+    ],
+)
+def test_inbox_buyer_order_no_and_date(payload, order_no, order_date):
+    """payload の形が違っても、表示のための読み方は例外を出さず、空の字か None を返す。"""
+    inbox = Inbox(payload=payload)
+
+    assert inbox.buyer_order_no() == order_no
+    assert inbox.buyer_order_date() == order_date
+
+
+def _head_value(body, label):
+    """相手の発注番号と発注日の dd の中の字 (タグを除く)。"""
+    match = re.search(rf"<dt[^>]*>{label}</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
+    assert match is not None, label
+    return re.sub(r"<[^>]+>", "", match.group(1)).strip()
+
+
+def _record(partner, user, **changes):
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload.update(changes)
+    return services.record_inbox(partner, payload, user)
+
+
+def test_detail_shows_buyer_order_no_and_date(client_logged_in, partner, user):
+    inbox = _record(partner, user, order_no="PO-000002", order_date="2026-11-03")
+
+    response = client_logged_in.get(reverse("connect:inbox_detail", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "PO-000002"
+    assert _head_value(body, "相手の発注日") == "2026-11-03"
+    # 「基本」の並び: 取引先・受信日時・相手の発注番号・相手の発注日・入口・状態
+    labels = re.findall(r'<dt class="text-base-content/70">([^<]+)</dt>', body)
+    assert labels[:6] == ["取引先", "受信日時", "相手の発注番号", "相手の発注日", "入口", "状態"]
+
+
+def test_intake_row_without_order_date_shows_dash(client_logged_in, partner, user):
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    payload["order_date"] = None
+    inbox = services.record_inbox(partner, payload, user, source=Inbox.SOURCE_INTAKE, sender_name="作り物の差出人")
+
+    body = client_logged_in.get(reverse("connect:inbox_detail", args=[inbox.pk])).content.decode()
+
+    assert _head_value(body, "相手の発注番号") == "PO-0001"
+    assert _head_value(body, "相手の発注日") == "—"
+
+
+ODD_PAYLOADS = (
+    {"order_no": 12, "order_date": "2026/11/03"},
+    {"order_no": ["PO"], "order_date": 20261103},
+    {"order_no": None, "order_date": "not-a-date"},
+)
+
+
+@pytest.mark.parametrize("changes", ODD_PAYLOADS)
+def test_odd_payload_detail_still_opens_with_dash(client_logged_in, partner, user, changes):
+    inbox = _record(partner, user, **changes)
+
+    response = client_logged_in.get(reverse("connect:inbox_detail", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "—"
+    assert _head_value(body, "相手の発注日") == "—"
+
+
+def test_accept_screen_shows_buyer_order_no_and_date_above_lines(client_logged_in, partner, user):
+    inbox = _record(partner, user, order_no="PO-000002", order_date="2026-11-03")
+
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "PO-000002"
+    assert _head_value(body, "相手の発注日") == "2026-11-03"
+    # 届いた明細の枠の中、明細の見出しの上に出る
+    assert body.index("相手の発注日</dt>") < body.index("届いた明細 (")
+
+
+@pytest.mark.parametrize("changes", ODD_PAYLOADS)
+def test_odd_payload_accept_still_opens_with_dash(client_logged_in, partner, user, changes):
+    inbox = _record(partner, user, **changes)
+
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert _head_value(body, "相手の発注番号") == "—"
+    assert _head_value(body, "相手の発注日") == "—"
+
+
+def test_accept_field_help_says_where_initial_item_comes_from(client_logged_in, receive_order, partner, item, user):
+    """欄の説明は、表に対応があれば自社品番と「最初から入れた」こと、無ければ「受け入れると表に足す」こと (C08 の 5)。"""
+    map_partner_item(partner, item, "A-100", user)
+    inbox = receive_order([_line(1, "A-100"), _line(2, "A-200")])
+    inbox.payload["lines"][1]["part_name"] = ""
+    inbox.save(update_fields=["payload"])
+
+    form = AcceptForm(instance=inbox)
+
+    known, unknown = form.fields["item_1"], form.fields["item_2"]
+    assert known.label == "作り物の得意先 の品番 A-100 (作り物の部品 A-100) に当たる自社の部品"
+    assert known.help_text == (
+        "取引先ごとの品番の表で、作り物の得意先 の A-100 は B-200 に当たるので、最初から入れています。"
+        "選び直すと、この受注だけ選んだ部品になります (表は変わりません)。"
+    )
+    # 品名が無い品番は括弧を付けない
+    assert unknown.label == "作り物の得意先 の品番 A-200 に当たる自社の部品"
+    assert unknown.help_text == "取引先ごとの品番の表に、作り物の得意先 の A-200 の対応がまだありません。選んだ部品は、受け入れると表に足します。"
+
+    # 画面にも欄ごとの説明が出る
+    body = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk])).content.decode()
+    assert "作り物の得意先 の A-100 は B-200 に当たるので、最初から入れています。" in body
+    assert "受け入れると表に足します。" in body
+
+
+def test_accept_form_without_partner_keeps_old_words(client_logged_in, user):
+    """取引先が空の読み取りの行 (差出人の確認待ち) は、URL を直に開いても落ちず、見出しと説明は前からの字。"""
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100")])
+    inbox = services.record_inbox(None, payload, user, source=Inbox.SOURCE_INTAKE, sender_name="作り物の差出人")
+
+    form = AcceptForm(instance=inbox)
+
+    assert form.fields["item_1"].label == "相手の品番 A-100 (作り物の部品 A-100)"
+    assert form.fields["item_1"].help_text == "自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。"
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+    assert response.status_code == 200
+    assert "相手の品番 A-100 (作り物の部品 A-100)" in response.content.decode()

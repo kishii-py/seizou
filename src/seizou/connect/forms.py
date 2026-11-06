@@ -34,10 +34,43 @@ def _partner_parts(inbox):
     return list(parts.items())
 
 
+# 取引先が空の行 (読み取りで差出人の確認待ち) の欄の説明。取引先ごとの説明の字が作れないので、前からの固定の字のまま。
+_HELP_WITHOUT_PARTNER = "自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。"
+
+
+def _part_label(partner, part_no, part_name):
+    """受け入れの欄の見出し (初見テスト R5 の候補 C08 の 5)。
+
+    取引先があれば「<取引先の名前> の品番 <相手の品番> (<品名>) に当たる自社の部品」(取引先の名前は、画面の「届いた明細 (<取引先> の品番のまま)」と同じ字)。
+    取引先が空の行は、前からの字「相手の品番 <相手の品番> (<品名>)」のまま (断る処理は足さない)。品名が無ければ括弧を付けない。
+    """
+    shown = f"{part_no} ({part_name})" if part_name else part_no
+    if partner is None:
+        return f"相手の品番 {shown}"
+    return f"{partner.name} の品番 {shown} に当たる自社の部品"
+
+
+def _part_help(partner, part_no, known):
+    """受け入れの欄の説明 (初見テスト R5 の候補 C08 の 5)。services._item_for の今の動きを字にした物で、動きは変えない。
+
+    known = 取引先ごとの品番の表で当たった自社の品目 (resolve_partner_item。無ければ None)。
+    表に対応があれば最初から入れたことと、選び直してもこの受注だけで表は変わらないこと。無ければ、受け入れると表に足すこと。
+    取引先が空の行は、前からの固定の字。
+    """
+    if partner is None:
+        return _HELP_WITHOUT_PARTNER
+    if known is not None:
+        return (
+            f"取引先ごとの品番の表で、{partner.name} の {part_no} は {known.part_no} に当たるので、最初から入れています。"
+            "選び直すと、この受注だけ選んだ部品になります (表は変わりません)。"
+        )
+    return f"取引先ごとの品番の表に、{partner.name} の {part_no} の対応がまだありません。選んだ部品は、受け入れると表に足します。"
+
+
 class AcceptForm(forms.Form):
     """受け入れの form。相手の品番ごとに、自社の品目を選ぶ欄を 1 つ置く。
 
-    欄の見出しに相手の品番と品名を出す。初めの値は取引先ごとの品番の表の対応 (無ければ空)。
+    欄の見出しと説明は欄ごとに作る (_part_label・_part_help)。初めの値は取引先ごとの品番の表の対応 (無ければ空)。
     同じ品番が 2 行にあっても欄は 1 つ (item_mapping は品番 → 品目の 1 対 1 のため)。
     """
 
@@ -49,16 +82,17 @@ class AcceptForm(forms.Form):
         if instance is None:
             return
         items = _item_model()._default_manager.all()
+        partner = instance.partner
         for number, (part_no, part_name) in enumerate(_partner_parts(instance), start=1):
             name = f"item_{number}"
-            label = f"相手の品番 {part_no} ({part_name})" if part_name else f"相手の品番 {part_no}"
+            known = resolve_partner_item(partner, part_no)
             # 字を打って探す欄 (受注の入力と同じ候補の口)。標準の選択欄だと部品が増えたときに探せない (初見テスト 2 回目の所見)。
             self.fields[name] = forms.ModelChoiceField(
                 queryset=items,
                 widget=RemoteSelect("masters:item_select"),
-                label=label,
-                initial=resolve_partner_item(instance.partner, part_no),
-                help_text="自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。",
+                label=_part_label(partner, part_no, part_name),
+                initial=known,
+                help_text=_part_help(partner, part_no, known),
                 # required の文は services._item_for と同じ字。invalid_choice は Django が % で値を差し込むので、品番の % を重ねる。
                 error_messages={
                     "required": f"品番 {part_no} の自社の部品を選んでください。",

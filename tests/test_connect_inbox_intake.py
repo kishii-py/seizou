@@ -249,7 +249,7 @@ def test_detail_shows_waiting_badge_and_sender_form(client, customer, subcontrac
 
     body = _detail(client, direct)
     assert reverse("connect:inbox_sender", args=[direct.pk]) not in body
-    assert re.search(r"入口</dt>\s*<dd[^>]*>直接", body)
+    assert re.search(r"入口</dt>\s*<dd[^>]*>seizou で直接", body)
     assert "読み取った差出人" not in body
     assert reverse("connect:inbox_accept", args=[direct.pk]) in body
 
@@ -329,7 +329,7 @@ def test_list_shows_entrance_and_waiting_badge(client, customer, user):
 
     body = _list(client)
     assert re.search(r">\s*入口\s*<", body)
-    assert "直接" in _row(body, direct.pk)
+    assert "seizou で直接" in _row(body, direct.pk)
     assert "読み取り" in _row(body, matched.pk)
     assert reverse("connect:inbox_accept", args=[matched.pk]) in _row(body, matched.pk)
 

@@ -107,4 +107,4 @@ def test_inbox_order_flow_names_sender_and_inlet(user, customer, item):
     direct = dict(INLETS)["direct"]
     assert (events[0].kind, events[0].who, events[0].via) == ("inbox", customer.name, direct)
     registered = [e for e in events if e.kind == "order"]
-    assert [(e.title, e.via) for e in registered] == [("受注を登録", direct)]
+    assert [(e.title, e.via) for e in registered] == [("受注日 (相手の発注日)", direct)]

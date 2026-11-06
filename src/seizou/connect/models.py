@@ -6,6 +6,7 @@
 """
 
 import os
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import models
@@ -82,7 +83,8 @@ class Inbox(models.Model):
     SOURCE_DIRECT = "direct"
     SOURCE_INTAKE = "intake"
     SOURCE_CHOICES = [
-        (SOURCE_DIRECT, "直接"),
+        # 表示名は取引先の一覧とダッシュボードの図と受注の流れの添え字 (core.dashboard.INLETS) と同じ字 (C08-1 = a)。
+        (SOURCE_DIRECT, "seizou で直接"),
         (SOURCE_INTAKE, "読み取り"),
     ]
 
@@ -162,6 +164,25 @@ class Inbox(models.Model):
         if len(lines) > 1:
             text += f" ほか {len(lines) - 1} 行"
         return text
+
+    def buyer_order_no(self):
+        """詳細と受け入れの画面に出す相手の発注番号 (payload の order_no)。payload の形が違うか、字でなければ空の字。"""
+        value = self.payload.get("order_no") if isinstance(self.payload, dict) else None
+        return value if isinstance(value, str) else ""
+
+    def buyer_order_date(self):
+        """詳細と受け入れの画面と受注の詳細に出す相手の発注日 (payload の order_date)。読めなければ None。
+
+        読み方は受け入れ (services._payload_date) と同じ date.fromisoformat。_payload_date は読めない値で ValueError を投げるので呼ばず、
+        表示で例外を出さないよう、None・空の字・字でない値・日付として読めない字は None にする。
+        """
+        value = self.payload.get("order_date") if isinstance(self.payload, dict) else None
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
 
     def reply_state(self):
         """詳細に出す注文回答の字。「未処理」なら空の字 (テンプレートが薄い「—」を出す)。
