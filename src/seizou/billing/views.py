@@ -81,8 +81,8 @@ class InvoiceDetailView(BaseDetailView):
     model = Invoice
     screen_name = "請求書の詳細"
     screen_help = "請求書の項目と明細。印刷用の画面と PDF は新しいタブで開きます。"
-    # 明細の行の字 (InvoiceLine.__str__) が出荷を読むので、出荷を行と一緒に 1 回で引く (N174)
-    tabs = (("明細", "lines", ("shipment",)),)
+    # 明細のタブの表が出荷と受注の明細と部品を読むので、3 つを行と一緒に 1 回で引く (N174。表は C17)
+    tabs = (("明細", "lines", ("shipment__order_line__item",)),)
     template_name = "billing/invoice_detail.html"
 
     def get_queryset(self):
