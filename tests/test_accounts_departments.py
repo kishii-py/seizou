@@ -200,6 +200,28 @@ def test_delete_refusal_is_the_text_delete_department_raises(manager, seizou_dep
     assert services.delete_refusal(sales_dept) == ""
 
 
+@pytest.mark.django_db
+def test_delete_refusal_names_the_checkbox_to_clear(manager, seizou_dept):
+    """人が所属する部署を消せないときの字は、アカウントの編集の欄「部署」のチェックで言う (初見テスト R5 の V101。候補 C47 の 3)。
+
+    「アカウントが付いています」「部署を外して」は使わない。終わりに、部署が 1 つも無い人は全部の画面が開くことを知らせる (C47 の 3 の (d))。
+    """
+    account("genba", departments=[seizou_dept])
+
+    with pytest.raises(ValueError) as refused:
+        services.delete_department(seizou_dept, manager)
+
+    message = str(refused.value)
+    assert message == (
+        "削除できません。部署「製造」には 1 人が所属しています。"
+        "先にアカウント管理で、その人のアカウントの編集を開き、「部署」の「製造」のチェックを外してください。"
+        "部署が 1 つも無い人は、全部の画面が開きます。"
+    )
+    for word in ("付いています", "部署を外して"):
+        assert word not in message, word
+    assert Department.objects.filter(pk=seizou_dept.pk).exists()
+
+
 # ---------------------------------------------------------------- 作る (今のまま) と開ける部品の確かめ
 
 
@@ -518,7 +540,7 @@ def test_delete_confirm_refuse_then_delete(on, client, manager, seizou_dept):
     assert refused.status_code == 200
     refused_html = refused.content.decode()
     assert 'data-notice="stop"' in refused_html
-    assert "1 人のアカウントが付いています" in refused_html
+    assert "1 人が所属しています" in refused_html
     assert "先にアカウント管理で" in refused_html
     assert Department.objects.filter(pk=seizou_dept.pk).exists()
 
@@ -551,7 +573,7 @@ def test_delete_confirm_with_members_shows_refusal_members_and_accounts(on, clie
     assert "削除します" not in main
     alert = re.search(r'<div class="alert alert-warning alert-soft[^"]*" role="alert">.*?</div>', main, re.S).group(0)
     assert '<span class="font-semibold">削除できません。</span>' in alert
-    for word in ("部署「製造」には 1 人のアカウントが付いています", "先にアカウント管理で"):
+    for word in ("部署「製造」には 1 人が所属しています", "先にアカウント管理で"):
         assert word in alert, word
     assert "所属する人" in main
     assert f'href="{reverse("accounts:access_detail", args=[genba.seizou_access.pk])}"' in main

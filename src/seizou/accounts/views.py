@@ -172,7 +172,7 @@ class DepartmentUpdateView(BaseFormView):
 class DepartmentDeleteView(BaseFormView):
     """部署の削除の確認。
 
-    使う人: 総務 / いつ: 使わなくなった部署を消すとき / 何のために: 人が付いていない部署を一覧から消す / 次にすること: 人が付いていれば、先にアカウント管理で部署を外す
+    使う人: 総務 / いつ: 使わなくなった部署を消すとき / 何のために: 所属する人がいない部署を一覧から消す / 次にすること: 所属する人がいれば、先にアカウント管理でその人の部署のチェックを外す
     """
 
     model = Department
@@ -180,4 +180,4 @@ class DepartmentDeleteView(BaseFormView):
     service = staticmethod(services.delete_department)
     template_name = "accounts/department_delete.html"
     screen_name = "部署の削除"
-    screen_help = "人が付いていない部署を消します。人が付いている部署は、先にアカウント管理でその人の部署を外してください。"
+    screen_help = "所属する人がいない部署を消します。所属する人がいる部署は、先にアカウント管理でその人の「部署」のチェックを外してください。"
