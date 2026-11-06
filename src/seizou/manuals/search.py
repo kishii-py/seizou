@@ -16,7 +16,7 @@ KIND = "manuals"
 LABEL = "マニュアル"
 COLUMNS = (
     SearchColumn("題"),
-    SearchColumn("置き場"),
+    SearchColumn("フォルダ"),
     SearchColumn("形式"),
     SearchColumn("最終更新", is_date=True),
 )

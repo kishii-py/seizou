@@ -59,7 +59,7 @@ def test_search_manuals_finds_by_title_and_body(user):
 
     everything = mcp_tools.search_manuals("")
     assert [row["title"] for row in everything["items"]] == ["刃物の交換の手順", "朝の点検"]
-    assert everything["items"][1]["folder"] == "ルート"
+    assert everything["items"][1]["folder"] == "トップ"
     one = mcp_tools.search_manuals("", limit=1)
     assert (one["count"], one["total"]) == (1, 2)
 
@@ -76,7 +76,7 @@ def test_get_manual_body_returns_text(user):
     assert body["ok"] is True
     assert body["id"] == manual.pk
     assert body["title"] == "刃物の交換の手順"
-    assert body["folder"] == "ルート"
+    assert body["folder"] == "トップ"
     assert body["url"] == reverse("manuals:manual_detail", args=[manual.pk])
     assert "刃物の番号を確かめる" in body["text"]
     assert "手袋をする" in body["text"]

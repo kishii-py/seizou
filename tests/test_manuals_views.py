@@ -81,7 +81,7 @@ def test_list_root_and_folder(client_logged_in, user):
     assert 'href="/manuals/"' in html and "マニュアル" in html  # 左のメニュー
     inside = client_logged_in.get(reverse("manuals:manual_list"), {"folder": top.pk}).content.decode()
     assert "段取りの手順" in inside and "ルートの手順" not in inside
-    assert 'aria-label="置き場"' in inside and "旋盤" in inside and "保護中" in inside
+    assert '<nav aria-label="フォルダ"' in inside and "旋盤" in inside and "保護中" in inside
     assert 'class="status status-info"' in inside and 'class="status status-error"' in inside
     assert f"?parent={top.pk}" in inside and f"?folder={top.pk}" in inside
     assert client_logged_in.get(reverse("manuals:manual_list"), {"folder": "999999"}).status_code == 404
@@ -121,7 +121,8 @@ def test_create_folder_then_manual(client_logged_in, user):
         reverse("manuals:manualfolder_create"), {"parent": 999999, "name": "迷子", "color": "gray"}
     )
     assert missing.status_code == 200
-    assert "置き場のフォルダが見つかりません" in missing.content.decode()
+    assert "フォルダが見つかりません。一覧から開き直してください。" in missing.content.decode()
+    assert "置き場" not in missing.content.decode()
     page = client_logged_in.get(reverse("manuals:manual_create"), {"folder": child.pk}).content.decode()
     assert re.search(rf'<option value="{child.pk}" selected>段取り / 旋盤</option>', page)
     response = client_logged_in.post(

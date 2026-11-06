@@ -24,8 +24,8 @@
 {% manual_body object as rendered %}
 {% manual_link object as link %}
 <div class="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs">
-  <nav aria-label="置き場" class="flex flex-wrap items-center gap-2">
-    <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">ルート</a>
+  <nav aria-label="フォルダ" class="flex flex-wrap items-center gap-2">
+    <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">トップ</a>
     {% for crumb in object.folder.path %}
     {% icon "chevron-right" "size-4 text-base-content/50" %}
     <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' crumb.pk %}">{{ crumb.name }}</a>

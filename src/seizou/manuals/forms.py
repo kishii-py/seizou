@@ -36,7 +36,7 @@ class FolderChoiceField(forms.ModelChoiceField):
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("queryset", None)
-        kwargs.setdefault("empty_label", "ルート")
+        kwargs.setdefault("empty_label", "トップ")
         super().__init__(*args, **kwargs)
 
     def label_from_instance(self, obj):
@@ -50,7 +50,7 @@ def folder_queryset():
 class FolderForm(forms.Form):
     """新しいフォルダ。置き場 (parent) は一覧の今のフォルダ (?parent=<pk>) を隠した欄で持つ。"""
 
-    parent = FolderChoiceField(label="置き場", required=False, widget=forms.HiddenInput)
+    parent = FolderChoiceField(label="フォルダ", required=False, widget=forms.HiddenInput)
     name = forms.CharField(label="名前")
     color = forms.ChoiceField(label="色", choices=COLOR_CHOICES, initial="gray")
 
@@ -74,7 +74,7 @@ class FolderForm(forms.Form):
 class ManualCreateForm(forms.Form):
     """マニュアルの新規登録 (置き場・題・形式)。置き場の初期値は一覧の今のフォルダ (?folder=<pk>)。"""
 
-    folder = FolderChoiceField(label="置き場", required=False)
+    folder = FolderChoiceField(label="フォルダ", required=False)
     title = forms.CharField(label="題")
     format = forms.ChoiceField(label="形式", choices=FORMAT_CHOICES, initial=FORMAT_STEPS, help_text=FORMAT_HELP)
 
@@ -96,7 +96,7 @@ class ManualForm(forms.Form):
 
     title = forms.CharField(label="題")
     format = forms.ChoiceField(label="形式", choices=FORMAT_CHOICES, help_text=FORMAT_HELP)
-    folder = FolderChoiceField(label="置き場", required=False)
+    folder = FolderChoiceField(label="フォルダ", required=False)
     body = forms.CharField(
         label="本文 (Markdown)",
         required=False,

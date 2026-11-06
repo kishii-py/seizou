@@ -108,7 +108,7 @@ def test_create_and_update_manual(user):
     )
     assert (updated.title, updated.format, updated.body, updated.folder) == ("新しい題", "page", "  ## 字下げを残す\n", folder)
     assert updated.folder_path_text() == "置き場"
-    assert services.update_manual(manual, {"folder": None}, user).folder_path_text() == "ルート"
+    assert services.update_manual(manual, {"folder": None}, user).folder_path_text() == "トップ"
     for data, message in (
         ({"body": "あ" * 100_001}, "100,000 字を超えています"),
         ({"color": "red"}, "知らない項目です: color"),

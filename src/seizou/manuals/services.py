@@ -52,7 +52,7 @@ MAX_ORIGINAL_NAME = 100
 COLOR_VALUES = frozenset(value for value, _label in COLOR_CHOICES)
 FORMAT_VALUES = frozenset(value for value, _label in FORMAT_CHOICES)
 
-FOLDER_NOT_FOUND = "置き場のフォルダが見つかりません。一覧から開き直してください。"
+FOLDER_NOT_FOUND = "フォルダが見つかりません。一覧から開き直してください。"
 MANUAL_NOT_FOUND = "マニュアルが見つかりません。一覧から開き直してください。"
 FOLDER_PROTECTED_MOVE = "保護されたフォルダです。先に保護を解除してください。"
 FOLDER_PROTECTED_DELETE = "保護されたフォルダです。先に保護を解除してください。"
@@ -231,7 +231,7 @@ def move_folder(folder, parent, user):
             raise ValueError("保存できません。" + FOLDER_PROTECTED_MOVE)
         target = _saved_folder(parent)
         if target is not None and (target.pk == current.pk or target.pk in descendant_ids(current)):
-            raise ValueError("保存できません。移動先がこのフォルダの中です。ほかの置き場を選んでください。")
+            raise ValueError("保存できません。移動先がこのフォルダの中です。ほかのフォルダを選んでください。")
         current.parent = target
         current.save(update_fields=["parent"])
         return current

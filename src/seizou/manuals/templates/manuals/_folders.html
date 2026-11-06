@@ -3,9 +3,9 @@
 {% can_write "manuals.Manual" as can_manual %}
 {# フォルダの木: パンくず (ルート → 途中のフォルダ → 今のフォルダ)・今のフォルダの色と保護の印・子のフォルダの行 (色・名前・件数・保護)。 #}
 <section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="フォルダ">
-  <nav aria-label="置き場" class="flex flex-wrap items-center gap-2">
-    {% if tree.folder %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">ルート</a>
-    {% else %}<span class="font-medium">ルート</span>{% endif %}
+  <nav aria-label="フォルダ" class="flex flex-wrap items-center gap-2">
+    {% if tree.folder %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">トップ</a>
+    {% else %}<span class="font-medium">トップ</span>{% endif %}
     {% for crumb in tree.path %}
     {% icon "chevron-right" "size-4 text-base-content/50" %}
     {% if forloop.last %}<span class="font-medium">{{ crumb.name }}</span>
