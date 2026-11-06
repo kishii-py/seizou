@@ -4,7 +4,7 @@
 発行は検査の層 (受注より多い指示書のポカよけ) を通ってから services.issue_workorder を呼ぶ。
 現品票の印刷用の HTML と PDF は画面でない口なので、関数の view にした (shipping の納品書と同じ形)。
 PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現品票の印刷用の HTML に知らせを付けて返す。
-現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。
+現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。記録の後はこの画面へ戻る (?next=)。
 """
 
 from django.contrib.auth.decorators import login_required
@@ -272,7 +272,7 @@ def workorder_tag_pdf(request, pk):
 @never_cache
 @login_required
 def workorder_scan(request, pk):
-    """現品票の QR を読んだ先 (読み取りの着地)。工程ごとに、その工程を選んだ実績の新規登録へ移る link を並べる。
+    """現品票の QR を読んだ先 (読み取りの着地)。工程ごとに、その工程を選んだ実績の新規登録へ移る link を並べ、記録の後は ?next= でこの画面へ戻る。
 
     画面の応答は土台の画面と同じくブラウザに保存させない (never_cache)。表に書かない (移るだけの link)。
     見出しと <title> は core/base.html が screen_name を読むので、土台の画面と同じ鍵を context に入れる。
@@ -280,11 +280,12 @@ def workorder_scan(request, pk):
     workorder = get_object_or_404(
         WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
-    # 「完了」の印のために、工程ごとの実績の合計を progress の services で読む (読むだけ。表に書かない)。
-    from seizou.progress.services import recorded_qty
-
-    steps = workorder.steps.select_related("process").order_by("seq")
-    rows = [{"step": step, "done": recorded_qty(step) >= step.planned_qty} for step in steps]
+    # 工程ごとの実績の合計・残・「完了」の印・今の工程のために、工程の行を plans.step_rows で読む (読むだけ。表に書かない)。
+    # 残 = 予定の数 - 実績の合計 (進捗の盤の残と同じ引き算。予定を超えるとマイナス)。
+    rows = plans.step_rows(workorder)
+    for row in rows:
+        recorded = row["recorded"]
+        row["remaining"] = None if recorded is None else row["step"].planned_qty - recorded
     return render(
         request,
         "workorders/workorder_scan.html",
