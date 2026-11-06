@@ -1,9 +1,10 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
 {% block content %}
-{# 設定: 会社の選べる設定 (今の値と出所。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
+{# 設定: 会社の選べる設定 (今の値とどこで決めたか。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
 {# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
-{# 4 つとも幅いっぱいに置く。設定の表は 5 列 (設定・今の値・出所・鍵・編集) なので、半分の幅だと出所と編集が横の送りの先に隠れる (11-03 の本体の手の確かめ)。 #}
+{# 4 つとも幅いっぱいに置く。設定の表は 5 列 (設定・今の値・どこで決めたか・鍵・編集) なので、半分の幅だとどこで決めたかと編集が横の送りの先に隠れる (11-03 の本体の手の確かめ)。 #}
+{# 表と説明の字は事務の人が読める言葉にし、作る人向けの字 (settings.py・SEIZOU・YAML・model) を出さない (初見テスト R5 の V99・U101)。鍵の列だけは答えの YAML と見比べる人のために英字の鍵を残す。名前の括弧の説明は、名前の下の小さな字の 2 行目 (settings_screen.SETTING_NOTES) に分ける。 #}
 {# 表の列の幅 (初見テスト R5 の a-flagged-26・a-blind-08・a-blind-09): 「設定」の列は全部の幅で折り返し、tablet・1024・1280 で「編集」を箱の中に入れる。「今の値」の列は 640px 以上だけ最小の幅 (sm:min-w-36 = 144px。model の名前 claude-sonnet-5-5 が 1 行に入る幅) を見出しに付け、権限の判定は塊の途中で折らない。640px 未満 (スマホ) は今の細さのまま箱の横の送りを受け入れ、鍵の列も隠さない (C14-2 = a)。 #}
 <div class="flex flex-col gap-6">
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="links-title">
@@ -27,13 +28,13 @@
   </section>
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="company-settings-title">
     <h2 id="company-settings-title" class="text-lg font-bold">会社の選べる設定</h2>
-    <p class="mt-2 text-xs text-base-content/70">今の値と出所 (画面 / 答え (settings.py) / 既定)。アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、行の「編集」から変えられる。画面で保存した値は、置き場の <code class="font-mono">settings.py</code> の <code class="font-mono">SEIZOU</code> と答えの YAML より優先される。左のメニューの括り (<code class="font-mono">menu</code>) は答えの YAML で書く。</p>
+    <p class="mt-2 text-xs text-base-content/70">今の値と、その値をどこで決めたか (この画面で変えた・導入の時に決めた・初期値) を並べています。アカウント管理の権限がある人 (権限の部品が無い会社ではシステム管理者) は、行の「編集」から変えられます。この画面で変えた値は、導入の時に決めた値より優先されます。</p>
     <div class="mt-4 overflow-auto rounded-lg border border-base-300">
       <table class="table table-sm">
-        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">設定</th><th class="font-medium sm:min-w-36">今の値</th><th class="font-medium">出所</th><th class="font-medium">鍵</th>{% if can_edit %}<th class="font-medium">編集</th>{% endif %}</tr></thead>
+        <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">設定</th><th class="font-medium sm:min-w-36">今の値</th><th class="font-medium">どこで決めたか</th><th class="font-medium">鍵</th>{% if can_edit %}<th class="font-medium">編集</th>{% endif %}</tr></thead>
         <tbody>
           {% for row in company_settings %}
-          <tr><td>{{ row.label }}</td><td>{% if row.value_parts %}{% for part in row.value_parts %}<span class="sm:whitespace-nowrap">{{ part }}</span>{% if not forloop.last %}・{% endif %}{% endfor %}{% else %}{{ row.value }}{% endif %}</td><td class="whitespace-nowrap text-xs text-base-content/70">{{ row.source }}</td><td class="whitespace-nowrap font-mono text-xs text-base-content/70">{{ row.key }}</td>{% if can_edit %}<td class="whitespace-nowrap">{% if row.editable %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'core:setting_update' row.key %}">編集</a>{% endif %}</td>{% endif %}</tr>
+          <tr><td>{{ row.label }}{% if row.note %}<span class="block text-xs text-base-content/70">{{ row.note }}</span>{% endif %}</td><td>{% if row.value_parts %}{% for part in row.value_parts %}<span class="sm:whitespace-nowrap">{{ part }}</span>{% if not forloop.last %}・{% endif %}{% endfor %}{% else %}{{ row.value }}{% endif %}</td><td class="whitespace-nowrap text-xs text-base-content/70">{{ row.source }}</td><td class="whitespace-nowrap font-mono text-xs text-base-content/70">{{ row.key }}</td>{% if can_edit %}<td class="whitespace-nowrap">{% if row.editable %}<a class="link link-hover focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'core:setting_update' row.key %}">編集</a>{% endif %}</td>{% endif %}</tr>
           {% endfor %}
         </tbody>
       </table>
@@ -44,7 +45,7 @@
       <h2 id="company-info-title" class="text-lg font-bold">会社の情報</h2>
       {% if can_edit %}<a class="btn btn-sm btn-outline border-base-300" href="{% url 'core:company_update' %}">{% icon "pencil" "size-4" %}編集</a>{% endif %}
     </div>
-    <p class="mt-2 text-xs text-base-content/70">納品書と請求書の会社の欄に出す物。振込先は請求書だけに出る。答えの YAML の <code class="font-mono">company</code> で入れた値を、ここの「編集」で直せる。</p>
+    <p class="mt-2 text-xs text-base-content/70">納品書と請求書の会社の欄に出す物。振込先は請求書だけに出る。導入の時に入れた値を、ここの「編集」で直せる。</p>
     <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
       <dt class="text-base-content/70 sm:whitespace-nowrap">会社名</dt><dd class="min-w-0 break-words">{{ seizou.company.name }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">住所</dt><dd class="min-w-0 break-words">{{ seizou.company.address|default:"なし" }}</dd>

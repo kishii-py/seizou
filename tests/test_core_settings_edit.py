@@ -54,13 +54,13 @@ def test_setting_prefers_screen_then_answer_then_default(manager, settings):
 def test_setting_source_names_three_places(manager, settings):
     settings.SEIZOU = {"over_shipment": "stop"}
     services.set_setting("over_shipment", "off", manager)
-    assert conf.setting_source("over_shipment") == "画面" == conf.SOURCE_SCREEN
+    assert conf.setting_source("over_shipment") == "この画面で変えた" == conf.SOURCE_SCREEN
 
     services.clear_setting("over_shipment", manager)
-    assert conf.setting_source("over_shipment") == "答え (settings.py)" == conf.SOURCE_ANSWER
+    assert conf.setting_source("over_shipment") == "導入の時に決めた" == conf.SOURCE_ANSWER
 
     settings.SEIZOU = {}
-    assert conf.setting_source("over_shipment") == "既定" == conf.SOURCE_DEFAULT
+    assert conf.setting_source("over_shipment") == "初期値" == conf.SOURCE_DEFAULT
     with pytest.raises(KeyError):
         conf.setting_source("no_such_key")
 
@@ -97,7 +97,7 @@ def test_setting_without_db_falls_back_to_answer(settings):
     settings.SEIZOU = {"order_number": "ym_seq"}
 
     assert conf.setting("order_number") == "ym_seq"
-    assert conf.setting_source("order_number") == "答え (settings.py)"
+    assert conf.setting_source("order_number") == "導入の時に決めた"
     assert conf.overrides() == {}
     # 読めなかった結果は控えない (migrate の後に読み直せるように)
     assert conf._cache is None
@@ -252,7 +252,7 @@ def test_settings_screen_shows_source_and_edit_links_for_manager(manager_client,
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "出所" in body and "既定" in body and "答え (settings.py)" in body
+    assert "どこで決めたか" in body and "初期値" in body and "導入の時に決めた" in body
     assert edit_url("over_shipment") in body and ">編集<" in body
     # 左のメニューの括り (menu) は画面からは変えない (link を出さない)
     assert edit_url("menu") not in body
