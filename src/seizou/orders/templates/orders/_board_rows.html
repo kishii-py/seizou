@@ -5,6 +5,8 @@ core/_rows.html の「行がある時」の部分 (表の箱・見出し・ペ�
   計画の終了日が納期より後なら印、判断は印の code ごとに色の印 (字は orders.board.JUDGEMENTS)。
 - 数量・出荷済み・検収・残・在庫・納期までは土台の数の欄 (columns の kind = number。右寄せと負の赤は土台)。検収が 0 の行・在庫の無い行・納期の無い行の「—」だけ名前で出す。
 - 在庫: stock の部品の在庫数。合計は出さない (合計の行の枡は空)。
+- 預かり (N184。決め 11-06 18:3x): receiving の引当の合計。0 と部品の無い会社は「—」。合計は出さない (合計の行の枡は空)。
+  引当の合計が受注の数より少ない行には、値の横に「預かり待ち」の札 (会社の設定 receiving_required が off でないときだけ = 本体の決め 11-06 20:1x。判断は orders.board.BoardRow.receiving_waiting)。
 - 行は data-row-menu を持ち、最後に「操作」の列 (orders/_row_menu.html。⋮ と右クリックの同じメニュー)。行に onclick は無い。
 - 合計の行 (数量・出荷済み・検収・残) は tag board_totals が、絞り込みの後の全部の明細から出す (盤の columns に total は書かない)。
 - 「出荷する」「指示書を発行する」「発注する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける (権限の無い人には出さない = 決め 11-04 00:0x)。行ごとでなく 1 回だけ呼ぶ。
@@ -40,6 +42,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {% elif col.name == "board__days_left" and cell.value is None %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>
       {% elif col.name == "board__acceptance_total" and not cell.value %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>
       {% elif col.name == "board__stock_balance" and cell.value is None %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>
+      {% elif col.name == "board__allocated" %}{% if cell.value %}<td class="whitespace-nowrap text-right tabular-nums">{{ cell.value|comma }}{% else %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span>{% endif %}{% if row.obj.board.receiving_waiting %} <span class="badge badge-sm badge-soft badge-warning">預かり待ち</span>{% endif %}</td>
       {% elif col.name == "board__workorder_label" %}{% if cell.value == "未" %}<td class="whitespace-nowrap"><span class="text-base-content/50">{{ cell.value }}</span></td>{% else %}<td class="whitespace-nowrap">{{ cell.value }}</td>{% endif %}
       {% elif col.name == "board__progress_label" %}{% if cell.value %}<td class="whitespace-nowrap">{{ cell.value }}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/50">—</span></td>{% endif %}
       {% elif col.name == "board__judgement" %}<td class="whitespace-nowrap">{% with code=row.obj.board.judgement_code %}{% if code == "late" %}<span class="badge badge-soft badge-error">{{ cell.value }}</span>{% elif code == "ship" %}<span class="badge badge-soft badge-success">{{ cell.value }}</span>{% elif code == "need_workorder" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif code == "making" %}<span class="badge badge-soft badge-primary">{{ cell.value }}</span>{% else %}<span class="badge badge-ghost text-base-content/50">{{ cell.value }}</span>{% endif %}{% endwith %}</td>

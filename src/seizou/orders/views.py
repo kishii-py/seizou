@@ -128,6 +128,8 @@ class OrderLineListView(BaseListView):
         {"name": "board__acceptance_total", "label": "検収", "kind": "number", "sort_key": "acceptance_total"},
         {"name": "remaining_total", "label": "残", "kind": "number", "sortable": True},
         {"name": "board__stock_balance", "label": "在庫", "kind": "number", "sort_key": "stock_balance"},
+        # 預かり = 入荷の引当の合計 (receiving。決め 11-06 18:3x。N184)。並び替えは annotate の allocated_total (board.prefetch_for が足す)
+        {"name": "board__allocated", "label": "預かり", "kind": "number", "sort_key": "allocated_total"},
         ("board__workorder_label", "指示書"),
         ("board__progress_label", "進捗"),
         ("board__plan_end", "計画の終了日"),
