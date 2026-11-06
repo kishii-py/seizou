@@ -28,7 +28,7 @@ from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
 from . import services
-from .models import PurchaseOrder, PurchaseOrderLine
+from .models import PurchaseOrder, PurchaseOrderLine, _qty_text
 
 LINE_KEYS = ("item", "qty", "unit", "unit_price", "due_date", "note")
 
@@ -246,12 +246,17 @@ def _purchase_line(raw):
     return PurchaseOrderLine.objects.filter(pk=pk).first()
 
 
+#: 受入の入力で発注の明細が決まっていないときの、数量の欄の下の字 (purchasing/receipt-form.js も同じ字を出す)
+NO_LINE_HELP = "発注の明細を選ぶと、受入の残が出ます。"
+
+
 class ReceiptForm(SubmitLabelMixin, forms.Form):
     """受入の form。発注の明細は字を打って探す欄 (候補は受入の残がある明細だけ)。
 
     欄の値として受けるのは全部の明細で、取消の発注の明細は services が日本語の文で断る (出荷の form と同じ考え)。
     初期値の line (発注の詳細の「受入を登録」が GET の ?line=<pk> で渡す) があれば、その明細の受入の残を数量の初期値にする
     (受入の残は purchasing.services.remaining_qty。受注の明細の残 = orders の同じ名前の関数とは別)。
+    数量の欄の下に、選んだ明細の受入の残を出す (数を比べて断ることはしない。初見テスト R5 の候補 C64)。
     保存のボタンは「5 個を受け入れる」(明細の決まっている形。決まっていなければ「受け入れる」。N138)。
     """
 
@@ -280,12 +285,22 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         line = _purchase_line(self.initial.get("line"))
+        rest = None
         if line is not None:
             rest = services.remaining_qty(line)
             if rest > 0:
                 self.initial.setdefault("qty", rest)
         # 保存のボタンの字 (N138): 描いたときの明細の単位で「5 個を受け入れる」。明細を選び直したら JS が「受け入れる」に戻す。
         self.label_line = _purchase_line(self.data.get("line")) if self.is_bound else line
+        # 数量の欄の下に、同じ明細 (送った値か ?line= の初期値) の受入の残を出す (出荷の入力の「残り n」と同じ置き場。C64)。
+        # 0 やマイナスもそのまま出す (比べない・断らない)。?qty= (出荷の知らせの残り) で数量が入っていても、欄の下は明細の受入の残。
+        # help_text は欄の宣言でなくここで置く (説明書の「入れる物」の表は宣言 = base_fields を読むので、字を変えない)。
+        if self.label_line is None:
+            self.fields["qty"].help_text = NO_LINE_HELP
+        else:
+            if self.is_bound:
+                rest = services.remaining_qty(self.label_line)
+            self.fields["qty"].help_text = f"受入の残 {_qty_text(rest)}"
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if self.label_line is not None:
             self.fields["line"].widget.attrs["data-label-line"] = str(self.label_line.pk)

@@ -119,7 +119,16 @@ class PurchaseOrderLine(models.Model):
 
     def __str__(self):
         # 受注の明細と同じ形 (候補の口が str(obj) を返す)。発注と部品を読むので、引く側は select_related を付ける。
-        return f"{self.purchase_order.po_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+        text = f"{self.purchase_order.po_no}-{self.line_no} {self.item.part_no} {self.item.name}"
+        # 集計 (services.annotate_received) を通し、受入の残が 0 より大きい明細だけ、取引先の名前と受入の残を足す
+        # (受入の入力の候補の口の字。初見テスト R5 の候補 C64)。取引先も読むので、候補の口は purchase_order__partner も select_related する。
+        # 残りは必ず末尾 (受入の画面の JS purchasing/receipt-form.js が「 残り n」を読んで数量の欄の下に写す)。
+        # 0 以下の明細は今の字のまま: 受入の一覧の受けすぎの知らせ (services.over_receipt_lines。集計を通すが取引先を読まない) が
+        # 同じ字を使い、受けすぎの明細の受入の残はいつもマイナスなので、知らせの字が変わらず問い合わせも増えない。集計の無い明細も今の字のまま。
+        remaining = getattr(self, "remaining_total", None)
+        if remaining is None or remaining <= 0:
+            return text
+        return f"{text} / {self.purchase_order.partner.name} 残り {_qty_text(remaining)}"
 
     @cached_property
     def shipping_notice(self):

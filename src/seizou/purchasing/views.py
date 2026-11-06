@@ -178,6 +178,7 @@ class ReceiptCreateView(BaseFormView):
     model = Receipt
     form_class = ReceiptForm
     service = staticmethod(services.receive)
+    template_name = "purchasing/receipt_form.html"
     screen_name = "受入の新規登録"
     screen_help = (
         "発注の明細を字で探して選び、受入日と数量を入れて保存します。"
@@ -190,8 +191,8 @@ class PurchaseOrderLineSelectView(BaseSelectView):
     search_fields = ("purchase_order__po_no", "purchase_order__partner__name", "item__part_no", "item__name")
 
     def get_queryset(self):
-        # 受入の残が 0 より大きく、発注が取消でない明細だけ。表示の字は PurchaseOrderLine.__str__ (発注番号-行番号 品番 品名)。
-        lines = PurchaseOrderLine.objects.select_related("purchase_order", "item")
+        # 受入の残が 0 より大きく、発注が取消でない明細だけ。表示の字は PurchaseOrderLine.__str__ (発注番号-行番号 品番 品名 / 取引先 残り n)。
+        lines = PurchaseOrderLine.objects.select_related("purchase_order", "purchase_order__partner", "item")
         return (
             services.annotate_received(lines)
             .filter(remaining_total__gt=0)
