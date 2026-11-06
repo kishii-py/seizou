@@ -190,6 +190,77 @@ body > .ts-dropdown [data-select-create]:hover {
   background: transparent;
 }
 
+/* 一覧の表の左の 1 列目 (受注番号・請求書番号・指示書番号など) を箱の左に止め、右へ送っても残す (初見テスト R5 の候補 C34。C34-1 = a)。
+   印は表の固定の class seizou-pin-first (core/_rows.html と、その写しの orders/_rows.html・orders/_board_rows.html・connect/_rows.html の表)。
+   見出しの行・各行・合計の行の最初の欄を止める (上の角の見出しと「合計」の欄も残る)。止めた欄は右の内側に 1px の線を引く。
+   重なり: daisyUI の table-pin-rows は thead と tfoot に z-index 1 を付けるので、そのままでは縦に送ったとき行の止めた欄 (2) が見出しの上に出る。
+   thead と tfoot を 3 に上げる。層の外の決まりなので daisyUI と Tailwind の決まりより強い。
+   止めた欄の地は不透明にする (透けると、下を送られる字が見える)。行の地と同じ色に見えるように、後に書いた物が勝つ順に並べる:
+   奇数の行は base-100 (行は透明で、下のカードの地)・1 行おきの行は base-200 (table-zebra)・生産管理ボードで選んだ行は主色の 15% を base-100 に重ねた色・
+   指を乗せた行は base-200 (app.css では .table tr.row-hover の :hover が table-zebra の :hover より詳しさで勝つ)・見出しの行と合計の行は base-200 (行の class)・
+   受信した注文の自動の更新で足した行 (connect/_inbox_row.html が各欄に bg-primary/10 を付ける) は、主色の 10% を行の地 (奇数は base-100・1 行おきと指を乗せた行は base-200) に重ねた色。
+   欄 (td と th) の class の字は変えない (既にある試験が欄の class の字を見るため)。daisyUI の table-pin-cols は使わない
+   (行の th を全部止めるので、全部が th の見出しの行では、全部の欄が左に重なる)。 */
+.seizou-pin-first :is(thead, tbody, tfoot) > tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: var(--color-base-100);
+  box-shadow: inset -1px 0 0 var(--color-base-300);
+}
+.seizou-pin-first thead,
+.seizou-pin-first tfoot {
+  z-index: 3;
+}
+.seizou-pin-first tbody > tr:nth-child(2n) > :first-child {
+  background-color: var(--color-base-200);
+}
+.seizou-pin-first tbody > tr[data-tone="primary"] > :first-child {
+  background-color: color-mix(in oklab, var(--color-primary) 15%, var(--color-base-100));
+}
+@media (hover: hover) {
+  .seizou-pin-first tbody > tr.row-hover:hover > :first-child {
+    background-color: var(--color-base-200);
+  }
+}
+.seizou-pin-first :is(thead, tfoot) > tr > :first-child {
+  background-color: var(--color-base-200);
+}
+.seizou-pin-first tbody > tr > .bg-primary\/10:first-child {
+  background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+}
+.seizou-pin-first tbody > tr:nth-child(2n) > .bg-primary\/10:first-child {
+  background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-200));
+}
+@media (hover: hover) {
+  .seizou-pin-first tbody > tr.row-hover:hover > .bg-primary\/10:first-child {
+    background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-200));
+  }
+}
+
+/* 一覧の表の箱の右の端のぼかし (初見テスト R5 の候補 C34。C34-1 = a)。右に続きがあるときだけ、箱の右の端に薄い灰のぼかしを出す。
+   印: 表の箱 (core/_rows.html と、その写しの 3 つ) の data-scroll-hint。js/seizou-scroll-hint.js が、右に続きがあるときだけ
+   箱を包む要素 (箱の親) に data-more-right を付け、右の端まで送ると外す。溢れの無い幅では付かない。
+   箱そのものの ::after は箱の中身と一緒に送られて動くので、包みの ::after で箱の上に重ねる (本人が見て選んだ見本と同じ形)。
+   形 (見本の数): 幅 40px、左の透明から右の灰 (rgba(120,120,120,0.28)) へ移る帯。箱の枠の 1px の内側に置き、右の角は箱の丸み (rounded-lg = 0.5rem) に合わせる。
+   見出しの行 (z-index 3) と止めた欄 (2) より上に重ね (4)、pointer-events: none で下の欄を押せるままにする。
+   バーの有無は CSS では分からないので、バーがあるときはバーの上にも重なる (見本は箱の中の見える所だけに描いた。違いは本体が絵で見る)。 */
+[data-more-right] {
+  position: relative;
+}
+[data-more-right]::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 40px;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(120, 120, 120, 0), rgba(120, 120, 120, 0.28));
+  border-radius: 0 calc(0.5rem - 1px) calc(0.5rem - 1px) 0;
+}
+
 /* 上の帯 (ヘッダー) の色。人ごとの表示の設定 (決め 11-05 21:2x。N167)。名前は core.display.HEADER_COLORS の鍵と同じ字。
    土台の base.html は、白 (標準) の外を選んだ人の画面だけ <html> に data-seizou-header="<名前>" を出す。上の帯 (core/_topbar.html の header) は
    固定の class seizou-header を持つ。表示の設定の小窓の見本 (core/_display_settings_card.html) は data-seizou-swatch="<名前>" で同じ色を出す。
