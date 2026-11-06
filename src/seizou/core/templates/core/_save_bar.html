@@ -1,9 +1,4 @@
-{% load seizou_icons %}
-{# 保存の帯 (N154。案 5-B)。画面の全体の入力に書きかけの印 (data-seizou-dirty) がある間だけ、上の帯の下に貼り付けて出す。描くのは base.html の 1 か所 (入力の画面だけ)。 #}
-{# 出し入れと「破棄」「保存」の動きは js/seizou-form-guard.js。ボタンの字の初めは保存のボタンと同じ元 (form.submit_label。無ければ「保存」) で、入力のたびに js/seizou-submit-label.js が保存のボタンの字を写す。 #}
-{# 帯のボタンは form の外の送らないボタン (Ctrl+Enter が押すボタンに入らない)。主色は画面の下の保存のボタンだけ。ボタンの字は span の中。 #}
-<div class="sticky top-16 z-20 flex items-center gap-2 border-b border-base-300 bg-base-100 px-4 py-2 shadow-xs lg:px-6" role="region" aria-label="保存の帯" data-save-bar hidden>
-  <p class="flex min-w-0 flex-1 items-center gap-2 font-medium">{% icon "alert" "size-4 text-warning" %}<span class="truncate">保存していない変更があります</span></p>
-  <button class="btn btn-sm btn-outline border-base-300" type="button" data-save-bar-discard>{% icon "x" "size-4" %}破棄</button>
-  <button class="btn btn-sm btn-neutral" type="button" data-save-bar-save>{% icon "check" "size-4" %}<span data-save-bar-label>{{ form.submit_label|default:"保存" }}</span></button>
-</div>
+{# 書きかけの字 (C21。決め C21-1 = e)。入力の画面の下の行 (キャンセルと保存。scripts/css/input.css の seizou-save-row で窓の下の端に貼り付く) の左の字の置き場 (seizou-save-slot) に描く。 #}
+{# 描くのは 6 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集)。画面の全体の form に書きかけの印 (data-seizou-dirty) がある間だけ出す (出し入れは js/seizou-form-guard.js の syncBar が hidden の属性だけで行う)。 #}
+{# 小窓の入力と、黄の知らせの後 (「このまま保存」の画面) には描かない。ボタンは持たない (保存のボタンは下の行の 1 つだけ。入力を捨てるときは「キャンセル」で画面を離れる)。 #}
+<p class="flex min-w-0 items-center gap-2 font-medium" data-save-bar hidden><span class="text-xs text-warning" aria-hidden="true">●</span><span>保存していない変更があります</span></p>
