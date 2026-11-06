@@ -108,7 +108,8 @@ class SettingForm(forms.Form):
     """選べる設定 key 1 つの入力。欄は鍵の種類で決まる。
 
     選べる値 (conf.CHOICES) は select、真偽は checkbox、権限の判定 (access_control) は 3 つの select、
-    使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前) は字。
+    使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前・主色・業種) は字。
+    主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。
     欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
     選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (option の value) は英字の値のまま。
     """
@@ -116,6 +117,10 @@ class SettingForm(forms.Form):
     #: hidden_fields の欄の名前。鍵の名前のままだと、テンプレートの form.hidden_fields が隠しの欄の並びでなく
     #: この欄を指し、checkbox が 2 度出る (2 度目は見えない所に残り、外した check も送られる) ため別の名前にする
     HIDDEN_FIELDS_FIELD = "names"
+
+    #: 空で保存すると既定に戻る字の設定 (主色 = 土台の色・業種 = seizou)。services の validate_setting が空を通す鍵と同じ
+    #: (core/services.py の brand_color と industry の枝)。欄は「任意」にする
+    OPTIONAL_KEYS = ("brand_color", "industry")
 
     def __init__(self, *args, key, **kwargs):
         super().__init__(*args, **kwargs)
@@ -154,7 +159,9 @@ class SettingForm(forms.Form):
                 help_text="check を入れた項目を受注の入力から外す。決まりが見る項目 (得意先・部品・数量・単価・受注日) は隠せない。",
             )
         else:
-            self.fields[key] = forms.CharField(label=label, max_length=100, initial=current)
+            self.fields[key] = forms.CharField(
+                label=label, max_length=100, initial=current, required=key not in self.OPTIONAL_KEYS
+            )
 
     def value(self):
         """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
