@@ -29,6 +29,7 @@ from seizou.masters.models import Holiday, Process
 from seizou.orders import services as orders_services
 from seizou.orders.models import Order
 from seizou.orders.views import OrderCancelView
+from seizou.progress.models import Progress
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder, Receipt
 from seizou.purchasing.views import PurchaseOrderCancelView
@@ -47,18 +48,18 @@ ALL_ON = {"department": "on", "write": "on", "money": "on"}
 REASON = "作り物の取消の理由"
 TOO_LONG = "あ" * 501  # 取消の理由の欄は 500 字まで (受注・発注・指示書の取消の form の max_length)
 
-#: (b) の画面の名前 (N158・N158b。開く所は依頼書の棚卸しの表)。名前ごとに開く画面・開く URL・POST の値・確かめの画面か、を引く dict を同じ並びで持つ。
+#: (b) の画面の名前 (N158・N158b。開く所は依頼書の棚卸しの表。実績の記録は指示書の詳細の工程のタブの「実績を入力」= C16)。名前ごとに開く画面・開く URL・POST の値・確かめの画面か、を引く dict を同じ並びで持つ。
 SCREENS = ("order_cancel", "deliverynote_create", "deliverynote_cancel", "purchaseorder_cancel", "receipt_create",
-           "invoice_cancel", "payment_create", "payment_cancel", "workorder_cancel",
+           "invoice_cancel", "payment_create", "payment_cancel", "workorder_cancel", "progress_create",
            "receipt_list_create", "holiday_create", "process_create", "department_create")
 #: 受入の一覧の「新規登録」は受入の新規登録 (receipt_create) と同じ画面なので、小窓の中身と保存は 12 画面で見る
 FORMS = tuple(name for name in SCREENS if name != "receipt_list_create")
-#: 欄の誤りを作れる画面 (入金の金額・受入の数量・休日の日付・工程のコード・部署の名前が空、取消の理由が 501 字)。欄の無い取消 3 つと納品書作成は外
-ERRORS = ("order_cancel", "purchaseorder_cancel", "receipt_create", "payment_create", "workorder_cancel",
+#: 欄の誤りを作れる画面 (入金の金額・受入の数量・実績の数・休日の日付・工程のコード・部署の名前が空、取消の理由が 501 字)。欄の無い取消 3 つと納品書作成は外
+ERRORS = ("order_cancel", "purchaseorder_cancel", "receipt_create", "payment_create", "workorder_cancel", "progress_create",
           "holiday_create", "process_create", "department_create")
-#: 全体の画面のまま開ける入口 (確かめの画面 6 つと入金の記録)
+#: 全体の画面のまま開ける入口 (確かめの画面 6 つと入金の記録と実績の記録)
 WHOLE = ("order_cancel", "deliverynote_cancel", "purchaseorder_cancel", "invoice_cancel", "payment_cancel",
-         "workorder_cancel", "payment_create")
+         "workorder_cancel", "payment_create", "progress_create")
 #: 取り直しの要素を持つ詳細 (<名> と、その詳細を開く画面の名前)
 DETAILS = (("order", "order_cancel"), ("shipment", "deliverynote_create"), ("deliverynote", "deliverynote_cancel"),
            ("invoice", "invoice_cancel"), ("workorder", "workorder_cancel"), ("purchaseorder", "purchaseorder_cancel"))
@@ -295,6 +296,20 @@ def _workorder_cancel(w):
     )
 
 
+def _progress_create(w):
+    """指示書の詳細の工程のタブの「実績を入力」(C16)。工程の pk と戻る道を付けて、実績の新規登録を小窓で開く。"""
+    step = _workorder(w.user).steps.get()
+    detail = reverse("workorders:workorder_detail", args=[step.workorder_id])
+    post = {"workorder_step": step.pk, "qty": "4", "recorded_at": "2026-11-06 10:00", "note": ""}
+    return Case(
+        opener=detail,
+        url=f'{reverse("progress:progress_create")}?workorder_step={step.pk}&next={detail}',
+        post=post,
+        bad={**post, "qty": ""},
+        saved=_one_more(Progress),
+    )
+
+
 def _receipt_list_create(w):
     line = _purchase_order(w.user).lines.get()
     return Case(
@@ -356,6 +371,7 @@ BUILD = {
     "payment_create": _payment_create,
     "payment_cancel": _payment_cancel,
     "workorder_cancel": _workorder_cancel,
+    "progress_create": _progress_create,
     "receipt_list_create": _receipt_list_create,
     "holiday_create": _holiday_create,
     "process_create": _process_create,
@@ -415,6 +431,16 @@ def test_modal_post_error_stays_in_modal(world, name):
     assert "hx-post=" in body
     assert "text-error" in body
     assert not case.saved()
+
+
+def test_progress_modal_preselects_step(world):
+    """指示書の詳細から開いた実績の新規登録の小窓は、その工程を選んだ形 (QR の着地と同じ GET の値の道)。"""
+    case = _progress_create(world)
+    step = WorkOrder.objects.get().steps.get()
+    match = re.search(r'<select name="workorder_step".*?</select>', text(world.client.get(case.url, **MODAL)), re.S)
+    assert match, "指示書の工程の選ぶ欄が無い"
+    assert f'<option value="{step.pk}" selected>' in match.group(0)
+    assert match.group(0).count(" selected>") == 1
 
 
 def test_invoice_cancel_refusal_in_modal(world):

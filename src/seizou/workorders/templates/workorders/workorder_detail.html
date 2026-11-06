@@ -8,6 +8,23 @@
 {% endblock %}
 {% block more %}{% can_write "workorders.WorkOrder" as can_cancel %}{% if object.status == "issued" and can_cancel %}{% url 'workorders:workorder_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block edit_button %}{% if object.status == "issued" %}{% if object.accepted_at %}<span class="badge badge-soft badge-success gap-2">{% icon "check" "size-4" %}着手済 {{ object.accepted_at|date:"Y-m-d H:i" }}{% if object.accepted_by %} {{ object.accepted_by }}{% endif %}</span>{% else %}<form method="post" action="{% url 'workorders:workorder_accept' object.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}着手</button></form>{% endif %}{% endif %}{% endblock %}
+{# 工程のタブ (block tab_rows の steps) の行ごとに「実績を入力」のボタン (C16)。href と data-modal-form は同じ値 (progress_url に工程の pk と開いた画面の道を付ける) で、実績の新規登録をその工程を選んだ形で小窓に開く。出す条件 = progress の部品がある (progress_url が空でない)・部署と権限で開ける人 (can_progress)・発行の指示書 (取消には出さない。services に断る処理は足さない)。予定に届いた工程にも出す (予定を超えた数も記録できる作り)。 #}
+{% block tab_rows %}{% if tab.related == "steps" %}{% url 'progress:progress_create' as progress_url %}{% can_write "progress.Progress" as can_progress %}
+<ul class="divide-y divide-base-200">
+  {% for row in tab.rows %}
+  <li class="flex items-center justify-between gap-2 px-2 py-2"><span class="min-w-0 truncate" title="{{ row.obj }}">{{ row.obj }}</span>{% if progress_url and can_progress and object.status == "issued" %}<a class="btn btn-xs btn-outline border-base-300 shrink-0" href="{{ progress_url }}?workorder_step={{ row.obj.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{{ progress_url }}?workorder_step={{ row.obj.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "activity" "size-4" %}実績を入力</a>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% else %}{{ block.super }}{% endif %}{% endblock %}
+{# 空の進捗のタブ (block tab_empty の progress_records) は、ボタンが出る条件と同じときだけ、土台と同じ箱に入れる場所の 1 文を足す (押せない人には案内しない)。ほかのタブとほかの条件は土台のまま。 #}
+{% block tab_empty %}{% url 'progress:progress_create' as progress_url %}{% can_write "progress.Progress" as can_progress %}{% if tab.related == "progress_records" and progress_url and can_progress and object.status == "issued" %}
+<div class="flex flex-col items-center justify-center p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <p class="mt-4 font-medium">まだありません。</p>
+  <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
+  <p class="mt-2 text-xs text-base-content/50">工程のタブの「実績を入力」から入れます。</p>
+</div>
+{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}<div id="workorder-live">{{ block.super }}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}</div>
 <div id="workorder-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#workorder-live" hx-target="#workorder-live" hx-swap="outerHTML" hx-select-oob="#workorder-heading"></div>
 {% endblock %}
