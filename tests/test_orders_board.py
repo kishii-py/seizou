@@ -126,13 +126,13 @@ def test_board_row_values(user, customer, item, cut, bend):
     _record(user, first, "3")
     workorders_services.plan_step(first, TODAY, TODAY + timedelta(days=1), user)
     workorders_services.plan_step(second, TODAY + timedelta(days=2), TODAY + timedelta(days=3), user)
-    workorders_services.accept_workorder(workorder, user)
 
     row = board.BoardRow(_fresh(line), TODAY)
 
     assert row.issued_total == Decimal("10")
-    assert row.workorder_count == 1 and row.accepted_count == 1
-    assert row.workorder_label == "10 受けた"
+    # 状態は実績から出す (切断に 3 の実績 = 着手済。C27)
+    assert row.workorder_count == 1 and row.started_count == 1
+    assert row.workorder_label == "10 着手済"
     assert row.progress_label == "切断 3/10"
     assert row.current_step == first
     assert row.steps == [first, second]
@@ -152,18 +152,18 @@ def test_board_row_labels_follow_accepted_and_plan(user, customer, item, cut):
     line = _line(user, customer, item, due=due)
     accepted = _issue(user, line, cut, qty="4.5")
     waiting = _issue(user, line, cut, qty="5.5")
-    workorders_services.accept_workorder(accepted, user)
+    _record(user, accepted.steps.get(), "1")
     workorders_services.plan_step(waiting.steps.get(), TODAY, TODAY + timedelta(days=3), user)
 
     row = board.BoardRow(_fresh(line), TODAY)
-    assert row.workorder_label == "10 一部受けた"
+    assert row.workorder_label == "10 着手済"
     assert row.plan_late is True
     assert row.latest_workorder == waiting
 
     # 取消の指示書は数えない。
     workorders_services.cancel_workorder(waiting, user)
     row = board.BoardRow(_fresh(line), TODAY)
-    assert row.workorder_label == "4.5 受けた"
+    assert row.workorder_label == "4.5 着手済"
     assert row.plan_end is None
 
     other = _line(user, customer, item, due=due)
@@ -354,8 +354,6 @@ def _lines_with_workorders(user, customer, item, cut, bend, count):
         workorders_services.plan_step(
             workorder.steps.get(seq=2), timezone.localdate(), timezone.localdate() + timedelta(days=1), user
         )
-        if number % 2:
-            workorders_services.accept_workorder(workorder, user)
         shipping_services.ship(line, Decimal("1"), ORDER_DATE, user)
 
 

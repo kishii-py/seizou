@@ -19,6 +19,7 @@ from seizou.billing.models import Invoice
 from seizou.core import status_colors
 from seizou.orders import services as orders_services
 from seizou.shipping import services as shipping_services
+from seizou.workorders.models import WorkOrder
 from tests.test_core_menu_counts import _aside, page
 from tests.test_core_status_colors import DOT_OUTLINE, _fake, _heading, _invoice, _render, _tr, customer, item, no_http  # noqa: F401
 
@@ -29,9 +30,16 @@ RECEIVED_ON = date(2026, 11, 5)
 
 def test_every_value_is_one_of_five_meanings():
     assert status_colors.TONES == ("ghost", "info", "warning", "success", "error")
-    for table in (status_colors.STATUS_TONES, status_colors.APP_TONES, status_colors.PAYMENT_TONES):
+    for table in (
+        status_colors.STATUS_TONES,
+        status_colors.APP_TONES,
+        status_colors.PAYMENT_TONES,
+        status_colors.WORKORDER_TONES,
+    ):
         assert set(table.values()) <= set(status_colors.TONES), table
     assert set(status_colors.PAYMENT_TONES) == set(Invoice.PAYMENT_LABELS)
+    # 指示書の進みの状態の表の鍵は、WorkOrder.PROGRESS_LABELS の鍵と同じ (初見テスト R5 の候補 C27)
+    assert set(status_colors.WORKORDER_TONES) == set(WorkOrder.PROGRESS_LABELS)
     assert status_colors.PAYMENT_TONES == {"unpaid": "warning", "partial": "warning", "paid": "success"}
     for value in ("cancelled", "rejected", "discarded"):
         assert status_colors.tone_for(value) == "error", value

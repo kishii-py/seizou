@@ -240,20 +240,19 @@ def test_order_detail_head_ship_button_by_permission(client, on, user, customer,
 
 
 @pytest.mark.django_db
-def test_workorder_cancel_hidden_accept_kept(settings, client, on, user, customer, item, cut):
+def test_workorder_cancel_hidden_no_accept(settings, client, on, user, customer, item, cut):
     workorder = _issue(user, _line(user, customer, item), cut, qty="4")
     detail_url = reverse("workorders:workorder_detail", args=[workorder.pk])
     cancel_href = f'href="{reverse("workorders:workorder_cancel", args=[workorder.pk])}"'
-    accept_form = f'action="{reverse("workorders:workorder_accept", args=[workorder.pk])}"'
 
     denied = _page(client, user, detail_url)
     assert cancel_href not in denied
-    # 「着手」は現場の記録 (押した先は編集の権限を見ない) なので、権限の無い人にも出す。
-    assert accept_form in denied and "着手" in denied
+    # 「着手」のボタンは誰にも出ない (状態は実績から出す。初見テスト R5 の候補 C27)。
+    assert "着手</button>" not in denied
 
     planner = account("planner", permissions=["workorders"])
     allowed = _page(client, planner, detail_url)
-    assert cancel_href in allowed and accept_form in allowed
+    assert cancel_href in allowed and "着手</button>" not in allowed
 
     settings.SEIZOU = {}
     assert cancel_href in _page(client, user, detail_url)

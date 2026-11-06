@@ -24,7 +24,7 @@ from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
 from tests.test_r10_inbox_accept import _line, _payload
 
-FLOW_KINDS = ["order", "workorder", "accepted", "progress", "shipment", "delivery_note", "invoice", "payment"]
+FLOW_KINDS = ["order", "workorder", "progress", "shipment", "delivery_note", "invoice", "payment"]
 
 
 @pytest.fixture
@@ -69,11 +69,11 @@ def _issue(user, line, process, qty="10"):
 
 
 def _flowed(user, customer, item, process):
-    """受注 → 指示書の発行と着手 → 実績 → 出荷 → 納品書 → 請求書 → 入金 の受注 (受注日は 3 日前、ほかは今日)。"""
+    """受注 → 指示書の発行 → 実績 → 出荷 → 納品書 → 請求書 → 入金 の受注 (受注日は 3 日前、ほかは今日)。"""
     today = timezone.localdate()
     order = _order(user, customer, item, today - timedelta(days=3))
     line = order.lines.get()
-    workorder = workorders_services.accept_workorder(_issue(user, line, process), user)
+    workorder = _issue(user, line, process)
     progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
     shipment = shipping_services.ship(line, Decimal("10"), today, user)
     note = shipping_services.create_delivery_note(customer, [shipment], user)
@@ -115,19 +115,17 @@ def test_events_from_order_to_payment_line_up_in_order(user, customer, item, cut
     assert [e.title for e in events] == [
         "受注を登録",
         f"指示書 {workorder.wo_no} を発行 (10 個)",
-        f"指示書 {workorder.wo_no} に着手",
         f"実績 切断 10 個 ({workorder.wo_no})",
         f"出荷 {shipment.shipment_no} (10 個)",
         f"納品書 {note.note_no} を発行",
         f"請求書 {invoice.invoice_no} を発行",
         f"請求書 {invoice.invoice_no} に入金",
     ]
-    assert [e.line_no for e in events] == [None, 1, 1, 1, 1, None, None, None]
-    assert [e.has_time for e in events] == [False, False, True, True, False, False, False, False]
+    assert [e.line_no for e in events] == [None, 1, 1, 1, None, None, None]
+    assert [e.has_time for e in events] == [False, False, True, False, False, False, False]
     workorder_url = reverse("workorders:workorder_detail", args=[workorder.pk])
     assert [e.url for e in events] == [
         None,
-        workorder_url,
         workorder_url,
         workorder_url,
         reverse("shipping:shipment_detail", args=[shipment.pk]),
@@ -135,7 +133,7 @@ def test_events_from_order_to_payment_line_up_in_order(user, customer, item, cut
         reverse("billing:invoice_detail", args=[invoice.pk]),
         reverse("billing:payment_detail", args=[payment.pk]),
     ]
-    assert [e.amount for e in events] == [None] * 6 + [invoice.total, payment.amount]
+    assert [e.amount for e in events] == [None] * 5 + [invoice.total, payment.amount]
 
 
 @pytest.mark.django_db

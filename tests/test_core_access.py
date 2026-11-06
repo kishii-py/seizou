@@ -232,7 +232,6 @@ POST_FUNCTION_ACTIONS = {
 POST_FUNCTION_WITHOUT_ACTION = {
     "seizou.core.settings_screen.setting_clear": "設定の門 (settings_denied = アカウント管理の権限)",
     "seizou.connect.views.receive_order": "取引先の受け口 (ログインの外。署名の確かめ = R12)",
-    "seizou.workorders.views.workorder_accept": "現場の記録 (02 の 7 節。権限なし)",
     "seizou.assistant.views.ask": "会話の控え (session) だけ",
     "seizou.assistant.views.clear": "会話の控え (session) だけ",
     "seizou.assistant.views.approve": "承認の中の assistant.services._carry_out が require_write を通す",

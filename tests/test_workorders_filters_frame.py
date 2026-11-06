@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from seizou.progress import services as progress_services
 from seizou.workorders import services as workorders_services
 
 HTMX = {"HTTP_HX_REQUEST": "true"}
@@ -23,7 +24,7 @@ def board(user):
     """指示書 4 つ。発行日は全部今日なので、一覧の並びは作った逆の順 (cancelled → later → accepted → waiting)。
 
     waiting: 切断 → 曲げ。未着手。2 つの工程とも今日を含む予定 (今日の計画の join が 2 行になる)。
-    accepted: 切断。受けた。今日の予定。
+    accepted: 切断。実績あり (着手済)。今日の予定。
     later: 曲げ。未着手。予定は来週。
     cancelled: 切断。取り消した (受けていない)。予定なし。
     """
@@ -47,7 +48,7 @@ def board(user):
     waiting, accepted, later, cancelled = issue(cut, bend), issue(cut), issue(bend), issue(cut)
     for step in waiting.steps.all():
         workorders_services.plan_step(step, today - timedelta(days=1), today + timedelta(days=1), user)
-    workorders_services.accept_workorder(accepted, user)
+    progress_services.record_progress(accepted.steps.get(), Decimal("1"), timezone.now(), user)
     workorders_services.plan_step(accepted.steps.get(), today, today, user)
     workorders_services.plan_step(later.steps.get(), today + timedelta(days=7), today + timedelta(days=8), user)
     workorders_services.cancel_workorder(cancelled, user)

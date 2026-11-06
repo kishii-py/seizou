@@ -7,9 +7,9 @@ PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現�
 現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。
 """
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
+from django.db.models import Prefetch
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
@@ -22,11 +22,18 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseMo
 
 from . import plans, services, worklist
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
-from .models import WorkOrder, WorkOrderStep
+from .models import WorkOrder, WorkOrderStep, with_recorded_total
 from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
 #: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (05 の 6 節の文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+
+#: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。C27-1 = a)
+STATUS_FILTER_CHOICES = [
+    (WorkOrder.STATUS_ISSUED, "未着手・着手済・完了"),
+    (WorkOrder.STATUS_CANCELLED, "取消"),
+]
 
 
 def _process_choices():
@@ -46,7 +53,7 @@ class WorkOrderListView(BaseListView):
     screen_name = "指示書"
     screen_help = (
         "発行した指示書の一覧。発行日の新しい順に並びます。工程・未着手・今日の計画で絞り込めます。"
-        "行を押すと詳細で「着手」の印を付けられます。"
+        "行を押すと詳細で工程と実績を見られます。"
     )
     columns = (
         "wo_no",
@@ -54,12 +61,13 @@ class WorkOrderListView(BaseListView):
         ("order_line__item", "部品"),
         "qty",
         "issued_on",
-        "status",
-        ("accepted_label", "着手日時"),
+        # 状態は実績から出す字 (未着手・着手済・完了・取消。C27-1 = a)。行は workorders/_row.html が印にする
+        ("progress_state_label", "状態"),
     )
     search_fields = ("wo_no",)
     filters = (
-        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        # 状態の選びは表の値 (発行・取消) で絞り、字に「発行」を出さない (計算した 4 つの字で絞る種類は土台に無い。C27)
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status", "choices": STATUS_FILTER_CHOICES},
         {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
@@ -72,14 +80,16 @@ class WorkOrderListView(BaseListView):
         # 工程 (f_process) と今日の計画 (f_today) は、指示書から見て逆向きの FK (工程の行) で絞る。
         # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。N122)。
         joined = self.filter_chosen("process") or self.flag_on("today")
-        workorders = super().get_queryset().select_related("order_line__order", "order_line__item", "accepted_by")
+        workorders = super().get_queryset().select_related("order_line__order", "order_line__item")
+        # 状態の列 (progress_state_label) は工程と実績の合計を読むので、1 ページ分を 1 回で prefetch する (行ごとに読まない)
+        workorders = workorders.prefetch_related(Prefetch("steps", queryset=with_recorded_total(WorkOrderStep.objects.order_by("seq"))))
         return workorders.distinct() if joined else workorders
 
 
 class WorkOrderDetailView(BaseDetailView):
     """指示書の詳細。
 
-    使う人: 製造・生産管理 / いつ: 指示書を受けるときと、工程の進みを見るとき / 何のために: 項目と工程の並びと実績を見て「着手」の印を付ける / 次にすること: 現品票を印刷し、工程ごとに実績の新規登録へ
+    使う人: 製造・生産管理 / いつ: 指示書を受けるときと、工程の進みを見るとき / 何のために: 項目と工程の並びと実績を見て、工程の進みと状態を確かめる / 次にすること: 現品票を印刷し、工程ごとに実績の新規登録へ
     """
 
     model = WorkOrder
@@ -225,26 +235,6 @@ def plan_place(request):
     response["HX-Retarget"] = "#plan-notice"
     response["HX-Reswap"] = "innerHTML"
     return response
-
-
-@login_required
-@require_POST
-def workorder_accept(request, pk):
-    """製造部の「受けた」の口 (POST だけ。画面でない口なので関数の view)。
-
-    成功は緑の知らせ、ValueError は赤の知らせ (右下の toast) で、どちらも詳細へ戻る。
-    現場の記録なので編集の権限は見ない (02 の 7 節の「権限が要らない」)。
-    """
-    workorder = get_object_or_404(WorkOrder, pk=pk)
-    try:
-        services.accept_workorder(workorder, request.user)
-    except RuleError as exc:
-        messages.error(request, exc.message)
-    except ValueError as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, "受けました。")
-    return HttpResponseRedirect(reverse("workorders:workorder_detail", args=[pk]))
 
 
 @login_required

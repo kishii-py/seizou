@@ -374,7 +374,8 @@ def test_bar_state_precedence(client_logged_in, user, order, cut, bend, workorde
     html = _board(client_logged_in, cut).content.decode()
     assert _bar_attr(html, step, "data-state") == "planned"
 
-    services.accept_workorder(workorder, user)
+    # 着手 = その指示書のどれかの工程に実績がある (着手の印は読まない。C27)
+    progress_services.record_progress(step, Decimal("1"), timezone.make_aware(datetime(2026, 11, 5, 9, 0)), user)
     html = _board(client_logged_in, cut).content.decode()
     assert _bar_attr(html, step, "data-state") == "accepted"
 

@@ -10,6 +10,7 @@
 - 見た目の材料: 部品の色 (tone。部品の pk で決まる theme の色の名前) と棒の状態 (state。計画・着手・完了・遅れ)。
   class の字は返さない (Tailwind はテンプレートしか読まないので、テンプレートが data- の属性で切り替える)。
 - 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。工程ごとの実績の合計 (_recorded_totals) を使うため。
+- 指示書の詳細の工程のタブの行 (step_rows) もここで作る。工程ごとの実績の合計 (_recorded_totals) を使うため。会社の設定 production_plan は見ない。
 """
 
 from __future__ import annotations
@@ -132,27 +133,24 @@ def part_tone(item_pk) -> str:
     return PART_TONES[item_pk % len(PART_TONES)]
 
 
-def _last_step(step):
-    """同じ指示書の最後の工程 (順が最大。prefetch した並びの最後)。"""
-    steps = list(step.workorder.steps.all())
-    return steps[-1] if steps else step
-
-
-def bar_state(step, recorded_last) -> str:
+def bar_state(step, totals) -> str:
     """棒の状態。上から順に最初に当たった物 (完了 > 遅れ > 着手 > 計画)。
 
-    recorded_last は指示書の最後の工程の実績の合計 (進捗の部品が無ければ None)。
+    totals は指示書の工程の pk → 実績の合計 (_recorded_totals。辞書に無い工程は 0。進捗の部品が無ければ空の辞書)。
+    完了と着手は指示書の進みの状態 (WorkOrder.progress_state_of。詳細の題の横と同じ決め方) で決める:
     - done 完了: 最後の工程の実績の合計が、その工程の予定の数以上。
     - late 遅れ: 終了日が納期より後 (納期が空なら当たらない)。
-    - accepted 着手: 製造部が指示書を受けた (accepted_at がある)。
+    - accepted 着手: その指示書のどれかの工程に実績がある (着手の印は読まない。初見テスト R5 の候補 C27)。
     - planned 計画: ほか。
     """
-    if recorded_last is not None and recorded_last >= _last_step(step).planned_qty:
+    workorder = step.workorder
+    progress = WorkOrder.progress_state_of(workorder.status, workorder.steps.all(), totals)
+    if progress == WorkOrder.PROGRESS_DONE:
         return "done"
-    due_date = step.workorder.order_line.due_date
+    due_date = workorder.order_line.due_date
     if due_date is not None and step.planned_end is not None and step.planned_end > due_date:
         return "late"
-    if step.workorder.accepted_at is not None:
+    if progress == WorkOrder.PROGRESS_STARTED:
         return "accepted"
     return "planned"
 
@@ -290,7 +288,8 @@ def build_board(process, start, weeks):
             steps.filter(planned_start__lte=last, planned_end__gte=first)
         ).order_by("planned_start", "planned_end", "workorder__wo_no")
     )
-    totals = _recorded_totals({_last_step(step).pk for step in placed})
+    # 指示書の全部の工程の実績の合計を 1 回で読む (着手 = どれかの工程に実績、完了 = 最後の工程。棒ごとに読まない)
+    totals = _recorded_totals({other.pk for step in placed for other in step.workorder.steps.all()})
     bars = []
     for step in placed:
         bar = _card(step)
@@ -299,7 +298,7 @@ def build_board(process, start, weeks):
         bar["col"] = (shown_from - first).days + 1
         bar["span"] = (shown_to - shown_from).days + 1
         bar["neighbors"] = _neighbors(step)
-        state = bar_state(step, totals.get(_last_step(step).pk))
+        state = bar_state(step, totals)
         bar["state"] = state
         bar["state_label"] = STATE_LABELS[state]
         # 6 週の盤の 1 日の棒は狭いので 1 行だけにする (切れた字の全部は title で出す)。
@@ -362,8 +361,7 @@ def plan_detail(step):
     if workorder.status == WorkOrder.STATUS_CANCELLED:
         state_label = workorder.get_status_display()
     else:
-        last = steps[-1] if steps else step
-        state_label = STATE_LABELS[bar_state(step, _recorded_totals({last.pk}).get(last.pk))]
+        state_label = STATE_LABELS[bar_state(step, _recorded_totals([other.pk for other in steps]))]
     return {
         "step": step,
         "workorder": workorder,
@@ -507,3 +505,32 @@ def finished_due(workorder) -> bool:
     from seizou.stock.services import finished_qty, stocked_qty
 
     return finished_qty(workorder) - stocked_qty(workorder) > 0
+
+
+# --- 指示書の詳細の工程のタブ (初見テスト R5 の候補 C27 の 1。U58・rb23) ---
+
+
+def step_rows(workorder) -> list[dict]:
+    """指示書の詳細の工程のタブの行 (読むだけ)。1 行 = {"step", "recorded", "done", "current"}。
+
+    工程は順 (seq) の順で、process を select_related で一緒に読む。実績の合計は _recorded_totals を 1 回だけ呼ぶ
+    (工程の数で問い合わせが増えない)。recorded = その工程の実績の合計、done = recorded が予定の数以上
+    (QR を読んだ先の「完了」と同じ >=)、current = 実績の合計が予定の数に満たない最初の工程
+    (生産管理ボードの今の工程 = orders.board の BoardRow.current_step と同じ読み方。全部が予定に達したら、どの行も偽)。
+    進捗の部品が無い置き場 (_recorded_totals が空の辞書) では、recorded は None で done と current は偽。
+    会社の設定 production_plan は見ない (工程のタブは生産計画を使わない会社でも出る)。
+    済みと今の工程は工程ごとに決める。指示書の状態の「完了」(最後の工程だけで決める) とは決め方が違う。
+    """
+    steps = list(workorder.steps.select_related("process").order_by("seq"))
+    totals = _recorded_totals([step.pk for step in steps])
+    if not totals:
+        return [{"step": step, "recorded": None, "done": False, "current": False} for step in steps]
+    rows = []
+    current_found = False
+    for step in steps:
+        recorded = totals.get(step.pk, Decimal("0"))
+        done = recorded >= step.planned_qty
+        current = not done and not current_found
+        current_found = current_found or current
+        rows.append({"step": step, "recorded": recorded, "done": done, "current": current})
+    return rows

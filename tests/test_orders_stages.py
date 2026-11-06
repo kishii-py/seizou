@@ -86,8 +86,6 @@ def test_stages_advance_from_workorder_to_payment(user, customer, item, cut):
 
     workorder = _issue(user, _line(order), cut)
     assert stage_of(_line(order)) == 2
-    workorders_services.accept_workorder(workorder, user)
-    assert stage_of(_line(order)) == 3
     progress_services.record_progress(workorder.steps.get(), Decimal("4"), timezone.now(), user)
     assert stage_of(_line(order)) == 3
     progress_services.record_progress(workorder.steps.get(), Decimal("6"), timezone.now(), user)
@@ -132,7 +130,8 @@ def test_cancelled_invoice_does_not_count(user, customer, item):
 def test_order_stage_is_the_slowest_line_with_a_summary(user, customer, item, cut):
     order = _order(user, customer, item, lines=3)
     shipping_services.ship(_line(order, 1), Decimal("10"), timezone.localdate(), user)
-    workorders_services.accept_workorder(_issue(user, _line(order, 2), cut), user)
+    # 着手 = 実績が 1 件でもある (予定の数に届かない実績。C27)
+    progress_services.record_progress(_issue(user, _line(order, 2), cut).steps.get(), Decimal("4"), timezone.now(), user)
 
     band = stage_band(order)
 
@@ -231,7 +230,6 @@ def test_unaccepted_workorder_then_shipment_marks_only_the_issue(user, customer,
 def test_stage_is_done_only_when_every_line_passed_it(user, customer, item, cut):
     order = _order(user, customer, item, lines=2)
     workorder = _issue(user, _line(order, 1), cut)
-    workorders_services.accept_workorder(workorder, user)
     progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
     today = timezone.localdate()
     shipping_services.ship(_line(order, 1), Decimal("10"), today, user)
@@ -250,7 +248,6 @@ def test_stage_is_done_only_when_every_line_passed_it(user, customer, item, cut)
 def test_line_through_every_stage_has_no_skipped(user, customer, item, cut):
     order = _order(user, customer, item)
     workorder = _issue(user, _line(order), cut)
-    workorders_services.accept_workorder(workorder, user)
     progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
     shipping_services.ship(_line(order), Decimal("10"), timezone.localdate(), user)
 

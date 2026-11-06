@@ -211,7 +211,7 @@ def test_detail_heading_badge_uses_the_meaning_color(user, logged_in, customer, 
     invoice = _invoice(user, customer, item)
     cases = [
         (reverse("orders:order_detail", args=[order.pk]), DOT_INFO.format("未出荷")),
-        (reverse("workorders:workorder_detail", args=[workorder.pk]), DOT_INFO.format("発行")),
+        (reverse("workorders:workorder_detail", args=[workorder.pk]), DOT_GHOST.format("未着手")),
         (reverse("purchasing:purchaseorder_detail", args=[purchase.pk]), DOT_GHOST.format("下書き")),
         (reverse("billing:invoice_detail", args=[invoice.pk]), DOT_WARNING.format("未入金")),
     ]
@@ -235,7 +235,7 @@ def test_list_status_column_uses_the_meaning_color(user, logged_in, customer, su
     cases = [
         ("orders:order_list", order.pk, '<span class="badge badge-soft badge-info">未出荷</span>'),
         ("orders:order_list", cancelled.pk, '<span class="badge badge-outline badge-error">取消</span>'),
-        ("workorders:workorder_list", workorder.pk, '<span class="badge badge-soft badge-info">発行</span>'),
+        ("workorders:workorder_list", workorder.pk, '<span class="badge badge-ghost">未着手</span>'),
         ("purchasing:purchaseorder_list", purchase.pk, '<span class="badge badge-ghost">下書き</span>'),
         ("billing:invoice_list", invoice.pk, '<span class="badge badge-soft badge-warning">未入金</span>'),
     ]
