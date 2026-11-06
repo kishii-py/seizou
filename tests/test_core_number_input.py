@@ -3,15 +3,23 @@
 1. 数の欄 (core の DecimalInput) の開いた時の字を、詳細と一覧と同じ字 (seizou_tags.comma) にする。印 data-number を付ける。
    送って止まった画面は、使う人が打った字のまま (全角と「,」は外れた字)。
 2. 受注と発注の明細の数量と単価の欄を、字の欄 (DecimalInput) にする。type="number" を出さず、「1,732」「１，７３２」も通す。
+3. 欄を離れた時に 3 桁ごとの区切りを付ける JS (core の static の js/seizou-number.js)。base.html の読み込みと、字の整え方
+   (node の vm で format と focusout を動かす。DOM は作り物の小さな物) と、部品の単価を写す JS (js/seizou-select.js) の 1 行を見る。
 作り物のデータだけを使う。ブラウザでの確かめ (離れた時の字・書きかけの知らせ) は本体の手。
 """
 
+import json
+import re
+import shutil
+import subprocess
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.urls import reverse
 
+import seizou.core
 from seizou.core import fields as company_fields
 from seizou.core.widgets import DecimalInput
 from seizou.masters import services as masters_services
@@ -19,6 +27,11 @@ from seizou.orders import services as orders_services
 from seizou.orders.models import Order
 
 ORDER_DATE = date(2026, 11, 2)
+JS_DIR = Path(seizou.core.__file__).resolve().parent / "static" / "js"
+NUMBER_JS = JS_DIR / "seizou-number.js"
+SELECT_JS = JS_DIR / "seizou-select.js"
+SCRIPT_TAG = re.compile(r"<script [^>]*src=\"([^\"]+)\"[^>]*>")
+NO_NODE = "node が無い (JS の字の形は本体の門の node --check で見る)"
 
 
 @pytest.fixture
@@ -168,3 +181,136 @@ def test_order_line_stopped_keeps_typed_text(logged_in, customer, item):
     assert "数量は 0 より大きい数にしてください。" in body
     assert 'value="12.50"' in tag_of(body, "lines-0-unit_price")
     assert not Order.objects.exists()
+
+
+# --- 3. 欄を離れた時に区切りを付ける JS ---
+
+#: node で JS を動かす台。document と window と HTMLInputElement だけの作り物の中で読み、format の結果と focusout の後の字を返す。
+NODE_HARNESS = """
+const fs = require("fs");
+const vm = require("vm");
+const listeners = {};
+class HTMLInputElement {
+  constructor(value, marked) {
+    this.writes = 0;
+    this.current = value;
+    this.marked = marked;
+  }
+  get value() { return this.current; }
+  set value(text) { this.writes += 1; this.current = text; }
+  matches(selector) { return this.marked && selector === "input[data-number]"; }
+}
+const context = { document: { addEventListener(type, fn) { listeners[type] = fn; } }, window: {}, HTMLInputElement };
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);
+const cases = JSON.parse(process.argv[2]);
+const left = cases.map((text) => {
+  const input = new HTMLInputElement(text, true);
+  listeners.focusout({ target: input });
+  return [input.value, input.writes];
+});
+const other = new HTMLInputElement("2500", false);
+listeners.focusout({ target: other });
+listeners.focusout({ target: { value: "2500" } });
+console.log(JSON.stringify({
+  format: cases.map((text) => context.window.seizouNumber.format(text)),
+  left: left,
+  other: [other.value, other.writes],
+  events: Object.keys(listeners),
+}));
+"""
+
+#: (打った字, 離れた後の字)。読めない字は触らない。丸めない。
+FORMAT_CASES = [
+    ("2500", "2,500"),
+    ("8800", "8,800"),
+    ("1234500", "1,234,500"),
+    ("12.50", "12.5"),
+    ("12.345", "12.345"),
+    ("12.3456", "12.3456"),
+    ("760.00", "760"),
+    ("1200.00", "1,200"),
+    ("1,200", "1,200"),
+    ("１，２００", "1,200"),
+    ("１２．５０", "12.5"),
+    (" 480 ", "480"),
+    ("0012", "12"),
+    ("0.50", "0.5"),
+    ("0.00", "0"),
+    ("-0", "0"),
+    ("-1500.25", "-1,500.25"),
+    ("12e", "12e"),
+    ("abc", "abc"),
+    ("12.", "12."),
+    ("", ""),
+]
+
+
+def _run_number_js(cases):
+    result = subprocess.run(
+        ["node", "-e", NODE_HARNESS, str(NUMBER_JS), json.dumps(cases)], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_base_loads_number_js_once_with_defer(logged_in):
+    # 並びの中の位置は見ない (同じ並びの最後に 1 行を足すほかの依頼と、順が入れ替わっても通るように)。
+    body = text(logged_in.get(reverse("core:home")))
+    found = [src for src in SCRIPT_TAG.findall(body) if src.endswith("js/seizou-number.js")]
+    assert len(found) == 1
+    assert "defer" in re.search(r"<script [^>]*js/seizou-number\.js[^>]*>", body).group(0)
+
+
+def test_number_js_words():
+    script = NUMBER_JS.read_text(encoding="utf-8")
+    for word in (
+        'document.addEventListener("focusout"',
+        '"input[data-number]"',
+        'normalize("NFKC")',
+        "replace(/,/g, \"\")",
+        "window.seizouNumber = { format: format };",
+    ):
+        assert word in script, word
+    # event を送らない (書きかけの印と保存のボタンの字を動かさない)。Number に直して丸めない。通信しない。HTML として差し込まない。
+    for word in ("dispatchEvent(", "new Event(", "toLocaleString(", "parseFloat(", "Number(", "fetch(", "innerHTML", "className"):
+        assert word not in script, word
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason=NO_NODE)
+def test_number_js_passes_node_check():
+    result = subprocess.run(["node", "--check", str(NUMBER_JS)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason=NO_NODE)
+def test_number_js_formats_like_detail_when_leaving():
+    typed = [case[0] for case in FORMAT_CASES]
+    found = _run_number_js(typed)
+    assert found["events"] == ["focusout"]
+    assert dict(zip(typed, found["format"])) == dict(FORMAT_CASES)
+    for (before, after), (value, writes) in zip(FORMAT_CASES, found["left"]):
+        assert value == after, before
+        # 字が変わる時だけ書く (触っていない「1,200」の欄を通っても書かない)。
+        assert writes == (0 if before == after else 1), before
+    # 印の無い欄 (一覧の絞りの数・整数の欄) と input でない物は触らない。
+    assert found["other"] == ["2500", 0]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason=NO_NODE)
+def test_number_js_matches_server_text_for_the_same_number():
+    # 部品の候補の口が返す字 (Decimal の「760.00」) を写した字と、詳細と開いた時の字 (comma) が同じ (選び直しの比べ data-copied が合う)。
+    values = ["760.00", "1200.00", "12.50", "0.00", "1234567.89"]
+    found = _run_number_js(values)["format"]
+    assert found == [DecimalInput().format_value(Decimal(value)) for value in values]
+
+
+def test_select_js_formats_copied_number_fields():
+    script = SELECT_JS.read_text(encoding="utf-8")
+    line = 'if (input.hasAttribute("data-number") && window.seizouNumber) value = window.seizouNumber.format(value);'
+    assert line in script
+    # 整えるのは字にした後・比べの前 (写した字と data-copied が、整えた後の字になる)。
+    assert script.index("value = String(value);") < script.index(line) < script.index("if (now === value) return;")
+    assert script.index(line) < script.index('input.setAttribute("data-copied", value);')
+    # 「前に写したままの値か」の比べの字は変えない。
+    assert 'now !== "" && now !== input.getAttribute("data-copied")' in script
