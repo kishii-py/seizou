@@ -8,14 +8,17 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
 
+from seizou.core.manual import input_rows
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.progress import services as progress_services
 from seizou.shipping import services as shipping_services
 from seizou.stock import services
+from seizou.stock.forms import AdjustForm, FinishedForm, IssueForm
 from seizou.stock.models import KIND_ADJUSTED, KIND_FINISHED, KIND_ISSUED, StockMove
 from seizou.workorders import services as workorders_services
 
@@ -283,3 +286,135 @@ def test_count_from_screen_with_past_shipments(user, logged_in, customer, items)
     assert response.status_code == 200
     assert 'data-notice="stop"' in body and "調整は要りません" in body
     assert StockMove.objects.count() == count
+
+
+# --- 候補 C07 (初見テスト R5): 主色のボタン・棚卸しの調整の欄の説明・保存の後の知らせ・調整の控えの 2 項目 ---
+
+#: 棚卸しの調整の 4 欄の説明 (決め C07-2 = a「名前は今のまま、説明で補う」)
+ADJUST_HELP = {
+    "item": "在庫を数えていない部品も選べます。この画面で数え始めます。",
+    "counted_qty": "現場で実際に数えた今の数を入れます。入れた数がそのまま在庫数になります。",
+    "moved_on": "数えた日を入れます。数え始める部品は、この日より前の出荷を在庫数から引きません。",
+    "note": "数え直し・破損など、在庫を合わせた理由を書きます。",
+}
+
+
+def _anchor_class(body, path):
+    """href が path で始まる a (?next= の有る無しの両方) の class の字。"""
+    match = re.search(rf'<a class="([^"]*)" href="{re.escape(path)}(?:\?[^"]*)?"', body)
+    assert match, f"{path} の a が無い"
+    return match.group(1)
+
+
+def _messages(response):
+    return [(m.level_tag, str(m)) for m in get_messages(response.wsgi_request)]
+
+
+def _detail_items(body):
+    """詳細の基本情報の {項目の名前: 値の字}。値はタグを除き、空白を詰めた字。"""
+    pairs = re.findall(r"<dt[^>]*>(.*?)</dt>\s*<dd[^>]*>(.*?)</dd>", body, re.S)
+    return {label.strip(): re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", value)).strip() for label, value in pairs}
+
+
+@pytest.mark.django_db
+def test_finished_entry_is_not_primary_on_stock_lists(logged_in):
+    # 急ぐ人が目立つボタンを先に押して、指示書を選ぶ入庫の画面へ外れた (R5 の rb23)。4 つの入口を同じ見た目にする
+    path = reverse("stock:finished_create")
+    for name in ("stock:stock_list", "stock:stockmove_list"):
+        css = _anchor_class(logged_in.get(reverse(name)).content.decode(), path)
+        assert css == "btn btn-outline border-base-300", name
+        assert "btn-primary" not in css, name
+
+
+def test_adjust_fields_have_help_text_and_others_do_not():
+    assert {name: field.help_text for name, field in AdjustForm.base_fields.items()} == ADJUST_HELP
+    assert AdjustForm.base_fields["counted_qty"].label == "実地の在庫数"  # 名前は変えない (C07-2 = a)
+    rows = input_rows(AdjustForm)
+    assert [row[0] for row in rows] == ["部品", "実地の在庫数", "日付", "備考 (理由)"]
+    assert all(row[2] for row in rows)  # 「?」の「入れる物」の表の説明が 4 行とも埋まる
+    for form_class in (IssueForm, FinishedForm):
+        assert [field.help_text for field in form_class.base_fields.values()] == [""] * 4, form_class.__name__
+
+
+@pytest.mark.django_db
+def test_adjust_screen_shows_help_text_under_fields(logged_in):
+    body = logged_in.get(reverse("stock:adjust_create")).content.decode()
+    for name, text in ADJUST_HELP.items():
+        assert re.search(rf'<p id="id_{name}_helptext"[^>]*>{re.escape(text)}</p>', body), name
+    issue = logged_in.get(reverse("stock:issue_create")).content.decode()
+    for name in ("item", "qty", "moved_on", "note"):
+        assert f'id="id_{name}_helptext"' not in issue, name
+
+
+@pytest.mark.django_db
+def test_adjust_saved_message_shows_before_and_after(user, logged_in, items):
+    down, up = items[0], items[1]
+    services.adjust(down, Decimal("190"), timezone.localdate(), user)
+    services.adjust(up, Decimal("4"), timezone.localdate(), user)
+    url = reverse("stock:adjust_create")
+
+    response = logged_in.post(url, {"item": down.pk, "counted_qty": "185", "moved_on": _today(), "note": "棚卸し"})
+    assert response.status_code == 302
+    assert _messages(response) == [("success", "在庫数を 190 から 185 にしました (差 -5)。")]
+    assert "190.00" not in _messages(response)[-1][1] and "185.00" not in _messages(response)[-1][1]
+
+    response = logged_in.post(url, {"item": up.pk, "counted_qty": "9", "moved_on": _today(), "note": ""})
+    assert response.status_code == 302
+    assert _messages(response)[-1] == ("success", "在庫数を 4 から 9 にしました (差 +5)。")  # 前の知らせは残るので最後を見る
+
+
+@pytest.mark.django_db
+def test_adjust_saved_message_when_counting_starts(user, logged_in, customer, items):
+    plain, shipped = items[0], items[1]
+    shipping_services.ship(_line(user, customer, shipped), Decimal("2"), timezone.localdate(), user)  # 数え始める日と同じ日の出荷
+    url = reverse("stock:adjust_create")
+
+    response = logged_in.post(url, {"item": plain.pk, "counted_qty": "5", "moved_on": _today(), "note": ""})
+    assert response.status_code == 302
+    assert _messages(response)[-1] == ("success", "5 から数え始めました。")
+
+    response = logged_in.post(url, {"item": shipped.pk, "counted_qty": "5", "moved_on": _today(), "note": ""})
+    assert response.status_code == 302
+    assert _messages(response)[-1] == ("success", "5 から数え始めました。")  # 知らせの数は実地の数
+    assert StockMove.objects.get(item=shipped).qty == Decimal("7")  # 行の数量は実地の数より大きい (N80 の形)
+
+
+@pytest.mark.django_db
+def test_adjust_detail_shows_before_and_counted(user, logged_in, customer, items, cut):
+    counted, fresh, other = items
+    today = timezone.localdate()
+    services.adjust(counted, Decimal("190"), today, user)
+    url = reverse("stock:adjust_create")
+
+    response = logged_in.post(url, {"item": counted.pk, "counted_qty": "185", "moved_on": _today(), "note": ""})
+    move = StockMove.objects.filter(item=counted).order_by("-pk").first()
+    assert response["Location"] == reverse("stock:stockmove_detail", args=[move.pk])
+    fields = _detail_items(logged_in.get(response["Location"]).content.decode())
+    assert fields["数量"] == "-5" and fields["調整の前の在庫数"] == "190" and fields["実地の在庫数"] == "185"
+    labels = list(fields)
+    assert labels[labels.index("数量") + 1 : labels.index("数量") + 3] == ["調整の前の在庫数", "実地の在庫数"]
+    # 後で開き直しても同じ (控えは行に残る)
+    again = _detail_items(logged_in.get(reverse("stock:stockmove_detail", args=[move.pk])).content.decode())
+    assert (again["数量"], again["調整の前の在庫数"], again["実地の在庫数"]) == ("-5", "190", "185")
+
+    # 数え始めの行は実地の在庫数だけ
+    response = logged_in.post(url, {"item": fresh.pk, "counted_qty": "5", "moved_on": _today(), "note": ""})
+    start = StockMove.objects.get(item=fresh)
+    fields = _detail_items(logged_in.get(response["Location"]).content.decode())
+    assert fields["実地の在庫数"] == "5" and "調整の前の在庫数" not in fields
+
+    # 製造の完了と払い出しの行は 2 つとも出さない
+    finished = services.record_finished(_issue(user, _line(user, customer, other), cut), Decimal("10"), user)
+    issued = services.record_issued(other, Decimal("3"), today, user)
+    for row in (finished, issued):
+        fields = _detail_items(logged_in.get(reverse("stock:stockmove_detail", args=[row.pk])).content.decode())
+        assert "数量" in fields, row.kind
+        assert "調整の前の在庫数" not in fields and "実地の在庫数" not in fields, row.kind
+
+    # 詳細に出さない列 (物 1 件ずつ読む)
+    for row in (move, start, finished, issued):
+        assert {"content_type", "object_id"} <= set(row.detail_hidden_fields), row.kind
+    assert {"before_qty", "counted_qty"} <= set(finished.detail_hidden_fields)
+    assert {"before_qty", "counted_qty"} <= set(issued.detail_hidden_fields)
+    assert "before_qty" in start.detail_hidden_fields and "counted_qty" not in start.detail_hidden_fields
+    assert "before_qty" not in move.detail_hidden_fields and "counted_qty" not in move.detail_hidden_fields

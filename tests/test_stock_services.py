@@ -470,3 +470,75 @@ def test_annotate_balance_matches_after_count(user, customer, items, processes, 
         assert row.remaining_total == remaining[row.pk]
         assert _same(row.stock_balance, expected.get(row.item_id)), (row.pk, row.stock_balance)
     assert len(remaining) == annotated.count()
+
+
+# --- 候補 C07 の 5 (決め C07-1 = a): 棚卸しの調整の行に「調整の前の在庫数」と「実地の在庫数」を控えとして残す ---
+
+
+@pytest.mark.django_db
+def test_adjust_keeps_before_and_counted(user, customer, items, processes):
+    item, fresh = items
+    zero = masters_services.create_item({"part_no": "T-300", "name": "作り物の環", "unit": "個"}, user)
+    shipped = masters_services.create_item({"part_no": "T-400", "name": "作り物の棒", "unit": "本"}, user)
+    _finished(user, customer, item, processes, "10")
+    services.record_issued(item, Decimal("3"), DAY2, user)
+
+    down = services.adjust(item, Decimal("5"), DAY2, user)
+    start = services.adjust(fresh, Decimal("12"), DAY2, user)
+    from_zero = services.adjust(zero, Decimal("0"), DAY2, user)
+    shipping_services.ship(_line(user, customer, shipped), Decimal("2"), DAY2, user)  # 数え始めの日と同じ日の出荷
+    with_shipment = services.adjust(shipped, Decimal("5"), DAY2, user)
+
+    rows = {move.pk: StockMove.objects.get(pk=move.pk) for move in (down, start, from_zero, with_shipment)}
+    assert (rows[down.pk].qty, rows[down.pk].before_qty, rows[down.pk].counted_qty) == (
+        Decimal("-2"),
+        Decimal("7"),
+        Decimal("5"),
+    )
+    assert (rows[start.pk].before_qty, rows[start.pk].counted_qty) == (None, Decimal("12"))  # 数え始めは前の数が空
+    assert (rows[from_zero.pk].qty, rows[from_zero.pk].before_qty, rows[from_zero.pk].counted_qty) == (
+        Decimal("0"),
+        None,
+        Decimal("0"),
+    )  # 0 から数え始める行 (A-15 のまま)
+    assert rows[with_shipment.pk].counted_qty == Decimal("5")
+    assert rows[with_shipment.pk].qty == Decimal("7")  # 数量は実地の数 + その日の出荷 (N80 の形)
+
+
+@pytest.mark.django_db
+def test_other_moves_leave_adjust_counts_empty(user, customer, subcontractor, items, processes, no_http):
+    item = items[0]
+    finished = _finished(user, customer, item, processes, "10")
+    issued = services.record_issued(item, Decimal("3"), DAY2, user)
+    po = purchasing_services.create_purchase_order(
+        subcontractor,
+        [{"item": item, "qty": Decimal("5"), "unit_price": Decimal("10")}],
+        user,
+        order_date=ORDER_DATE,
+    )
+    purchasing_services.receive(po.lines.get(), Decimal("5"), DAY2, user)
+    received = StockMove.objects.get(kind=KIND_RECEIVED)
+
+    for move in (finished, issued, received):
+        stored = StockMove.objects.get(pk=move.pk)
+        assert stored.before_qty is None and stored.counted_qty is None, stored.kind
+
+
+@pytest.mark.django_db
+def test_adjust_counts_are_not_used_for_balance(user, customer, items, processes):
+    item, fresh = items
+    _finished(user, customer, item, processes, "10")
+    down = services.adjust(item, Decimal("5"), DAY2, user)
+    start = services.adjust(fresh, Decimal("12"), DAY2, user)
+    expected = {item.pk: Decimal("5"), fresh.pk: Decimal("12")}
+    assert services.balances([item, fresh]) == expected
+
+    # 控えの 2 つの欄を別の数に変えても、在庫数は数量の合計から出すので変わらない
+    StockMove.objects.filter(pk=down.pk).update(before_qty=Decimal("999"), counted_qty=Decimal("888"))
+    StockMove.objects.filter(pk=start.pk).update(before_qty=Decimal("-50"), counted_qty=Decimal("1"))
+
+    assert services.balances([item, fresh]) == expected
+    assert services.balance(item) == Decimal("5") and services.balance(fresh) == Decimal("12")
+    rows = _annotated()
+    for pk, value in expected.items():
+        assert _same(rows[pk].stock_balance, value), (pk, rows[pk].stock_balance)
