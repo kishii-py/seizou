@@ -141,7 +141,7 @@ def test_invoice_detail_lines_tab_selects_do_not_grow_with_rows(logged_in, user)
     assert four_selects == one_selects
     html = logged_in.get(reverse("billing:invoice_detail", args=[four.pk])).content.decode()
     for invoice_line in four.lines.all():
-        assert str(invoice_line) in html
+        assert invoice_line.shipment.shipment_no in html
 
 
 # ---------------------------------------------------------------- 2 つ組の tabs は今までどおり
