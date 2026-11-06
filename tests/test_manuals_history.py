@@ -128,6 +128,17 @@ def test_diff_page_counts_and_first_link(client_logged_in, manual, user):
     assert "本文に違いはありません。" not in html
 
 
+def test_diff_page_restore_button_names_the_version(client_logged_in, manual, user):
+    """差分の右上の戻すボタンは、矢印の絵の無い「版 N に戻す」(C10-2 = a)。「復元」の字は出さない。"""
+    services.save_as_version(manual, {"body": "版 2 の本文"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    url = reverse("manuals:manualversion_restore", args=[version.pk])
+    labels = re.findall(rf'<a [^>]*href="{re.escape(url)}"[^>]*>(.*?)</a>', html, re.S)
+    assert labels == ["版 1 に戻す"]
+    assert "復元" not in html
+
+
 def test_diff_page_title_only_change_has_no_link(client_logged_in, manual, user):
     services.save_as_version(manual, {"title": "新しい題"}, "", user)
     version = ManualVersion.objects.get()

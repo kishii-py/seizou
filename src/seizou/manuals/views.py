@@ -163,7 +163,7 @@ class ManualVersionListView(BaseDetailView):
 class ManualVersionDetailView(BaseDetailView):
     """版と今の中身の差分。
 
-    使う人: 全員 / いつ: 何を直したかを確かめるとき / 何のために: 版と今の中身を並べて見る / 次にすること: 要れば「復元」
+    使う人: 全員 / いつ: 何を直したかを確かめるとき / 何のために: 版と今の中身を並べて見る / 次にすること: 要れば「この版に戻す」
     """
 
     model = ManualVersion
