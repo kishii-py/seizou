@@ -284,3 +284,16 @@ def test_purchase_order_opens_first_tab_with_rows(logged_in, user, purchase_orde
 
     body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
     assert _radios(body) == [("送った記録", False), ("受入", True)]
+
+
+@pytest.mark.django_db
+def test_base_loads_detail_tabs_once_with_defer(logged_in):
+    """base.html は取り直しの後も選んだタブを保つ JS を 1 回だけ defer で読む (候補 C26 の 3)。
+
+    並びの中の位置は見ない (後から足す 1 行と順が入れ替わっても通るように。C34 の試験と同じ形)。
+    """
+    body = logged_in.get(reverse("core:home")).content.decode()
+
+    scripts = [src for src in re.findall(r"<script [^>]*src=\"([^\"]+)\"[^>]*>", body) if src.endswith("js/seizou-detail-tabs.js")]
+    assert len(scripts) == 1
+    assert "defer" in re.search(r"<script [^>]*js/seizou-detail-tabs\.js[^>]*>", body).group(0)
