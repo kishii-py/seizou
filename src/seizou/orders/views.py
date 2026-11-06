@@ -2,7 +2,7 @@
 
 一覧は 2 つ: 受注の一覧 (Order。受注の新規登録の画面と詳細へ移る入口) と、注文残の一覧 (OrderLine。明細ごとの残)。
 出荷済みの数と残の数は列に持たず、services.annotate_remaining の同じ式で出す。
-受注の明細の候補の口 (orderline_select) は、出荷の入力が受注の明細を選ぶ欄に使う。
+受注の明細の候補の口 (orderline_select) は、出荷の入力と指示書の発行 (GET の for=workorder) が受注の明細を選ぶ欄に使う。
 """
 
 from datetime import timedelta
@@ -243,6 +243,10 @@ class OrderLineSelectView(BaseSelectView):
     )
 
     def get_queryset(self):
+        # GET の for が workorder なら指示書の発行の欄 (workorders/forms.py の order_line)。今の選ぶ欄と同じく取消でない受注の明細の全部を、新しい受注から返す。
+        # 出荷の残りは足さない (字は「受注番号-行番号 品番 品名」。発行の画面に出荷の残りの数を出さない)。
+        if self.request.GET.get("for") == "workorder":
+            return OrderLine.objects.select_related("order", "item").exclude(order__status=Order.STATUS_CANCELLED)
         # 残が 0 より大きく、受注が取消でない明細だけ。表示の字は OrderLine.__str__
         # (受注番号-行番号 品番 品名 / 得意先 (注文番号 …) 残り n)。得意先は字に使うので一緒に読む。
         lines = OrderLine.objects.select_related("order", "order__customer", "item")

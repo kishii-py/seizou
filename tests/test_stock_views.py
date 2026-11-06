@@ -168,8 +168,8 @@ def test_finished_form_prefills_from_workorder(user, logged_in, customer, items,
     assert "alert-error" in body and "取り消した指示書" in body
     assert StockMove.objects.count() == count
     # 候補は発行の指示書だけ
-    options = logged_in.get(url).content.decode()
-    assert workorder.wo_no in options and cancelled.wo_no not in options
+    ids = [row["id"] for row in logged_in.get(reverse("workorders:workorder_select")).json()["items"]]
+    assert workorder.pk in ids and cancelled.pk not in ids
 
 
 @pytest.mark.django_db

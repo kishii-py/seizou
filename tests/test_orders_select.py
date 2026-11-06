@@ -2,6 +2,7 @@
 
 候補の口は core の BaseSelectView の形 ({"items": [{"id", "text"}], "more": 真偽}) で 1 ページ 30 件を返す。
 残が 0 以下の明細と、取消の受注の明細は出さない。出荷の入力が使う。
+GET の for=workorder (指示書の発行) では、残が 0 以下の明細も出し、字に残りを付けない。
 """
 
 from datetime import date
@@ -90,6 +91,26 @@ def test_orderline_select_excludes_cancelled_and_fully_shipped(user, logged_in, 
 
     data = _select(logged_in)
     assert [row["id"] for row in data["items"]] == [left.lines.get().pk]
+
+
+@pytest.mark.django_db
+def test_orderline_select_for_workorder_keeps_shipped_lines(user, logged_in, customer, shaft, plate):
+    """指示書の発行の欄 (GET の for=workorder) は、出荷し終えた明細も出し、取消の受注の明細は出さない。字に残りを付けない (初見テスト R5 の候補 C92)。"""
+    order = services.create_order(customer, [_line(shaft, "10"), _line(plate, "5")], user, order_date=ORDER_DATE)
+    first, second = order.lines.order_by("line_no")
+    shipping_services.ship(first, Decimal("10"), SHIPPED_AT, user)  # 残 0
+    cancelled = services.create_order(customer, [_line(shaft, "3")], user, order_date=ORDER_DATE)
+    services.cancel_order(cancelled, user)
+
+    rows = _select(logged_in, **{"for": "workorder"})["items"]
+    assert [row["id"] for row in rows] == [first.pk, second.pk]
+    assert cancelled.lines.get().pk not in [row["id"] for row in rows]
+    texts = [row["text"] for row in rows]
+    assert texts == [str(first), str(second)]
+    assert all(" / " not in text and "残り" not in text for text in texts)
+
+    # for を付けない時 (出荷の欄) は今どおり残のある明細だけ
+    assert [row["id"] for row in _select(logged_in)["items"]] == [second.pk]
 
 
 @pytest.mark.django_db

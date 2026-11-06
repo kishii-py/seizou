@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 from seizou.core import access
 from seizou.core import reports
 from seizou.core.exceptions import RuleError
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, Notice
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice
 
 from . import plans, services, worklist
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
@@ -155,6 +155,40 @@ class WorkOrderModalView(BaseModalView):
     model = WorkOrder
     screen_name = "指示書の小窓"
     screen_help = "指示書の要点と工程の並びを見るだけの小窓。詳細へ移れます。"
+
+
+class WorkOrderSelectView(BaseSelectView):
+    """指示書の候補の口。製造の完了を入庫にするの「指示書」の欄 (stock の FinishedForm) が使う。
+
+    候補は発行の指示書だけ (今の選ぶ欄と同じ)。並びは発行日の新しい順。
+    候補の字は 2 段 (上 = 指示書番号、下 = 受注の明細。core/select_options.py の LINES)。
+    """
+
+    model = WorkOrder
+    search_fields = ("wo_no", "order_line__order__order_no", "order_line__item__part_no", "order_line__item__name")
+
+    def get_queryset(self):
+        # select_related は下の段の字 (受注の明細の字) が読む物。1 ページ 30 件で行ごとに読みに行かないため。
+        return (
+            WorkOrder.objects.filter(status=WorkOrder.STATUS_ISSUED)
+            .select_related("order_line__order", "order_line__item")
+            .order_by("-issued_on", "-pk")
+        )
+
+
+class WorkOrderStepSelectView(BaseSelectView):
+    """指示書の工程の候補の口。実績の新規登録の「指示書の工程」の欄 (progress の ProgressRecordForm) が使う。
+
+    候補は全部の指示書の全部の工程 (今の選ぶ欄と同じ)。字は今の「WO-000010 1 前処理」のまま (WorkOrderStep.__str__)。
+    指示書番号と工程の名前で探せる。
+    """
+
+    model = WorkOrderStep
+    search_fields = ("workorder__wo_no", "process__name")
+
+    def get_queryset(self):
+        # 並びは model の ordering のまま (指示書の新しい順・工程の順)
+        return WorkOrderStep.objects.select_related("workorder", "process")
 
 
 @login_required

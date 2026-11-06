@@ -9,16 +9,12 @@ from django import forms
 from django.db.models import Q
 
 from seizou.core.forms import CHECKBOX_CSS, Checkboxes
+from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_processes
 
 from .models import WorkOrder, WorkOrderStep
 
 _OrderLine = WorkOrder._meta.get_field("order_line").related_model
-
-
-class OrderLineChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, obj):
-        return f"{obj.order.order_no} の {obj.line_no} 行目 {obj.item.part_no} {obj.item.name}"
 
 
 class ProcessChoiceField(forms.ModelMultipleChoiceField):
@@ -31,9 +27,10 @@ class WorkOrderIssueForm(forms.Form):
 
     submit_label = "発行する"
 
-    order_line = OrderLineChoiceField(
+    order_line = forms.ModelChoiceField(
         label="受注の明細",
         queryset=_OrderLine.objects.exclude(order__status="cancelled").select_related("order", "item"),
+        widget=RemoteSelect("orders:orderline_select", query={"for": "workorder"}),
     )
     qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
     processes = ProcessChoiceField(

@@ -8,6 +8,8 @@ services.record_progress(workorder_step=..., qty=..., recorded_at=..., user=...,
 from django import forms
 from django.utils import timezone
 
+from seizou.core.widgets import RemoteSelect
+
 from .models import Progress
 
 _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model
@@ -21,6 +23,7 @@ class ProgressRecordForm(forms.Form):
     workorder_step = forms.ModelChoiceField(
         label="指示書の工程",
         queryset=_WorkOrderStep.objects.select_related("workorder", "process"),
+        widget=RemoteSelect("workorders:workorderstep_select"),
     )
     qty = forms.DecimalField(label="実績の数", max_digits=12, decimal_places=2)
     recorded_at = forms.DateTimeField(label="日時", initial=timezone.now)

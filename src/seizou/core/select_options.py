@@ -5,7 +5,7 @@
 - recent(queryset): queryset (候補の母集団) の行のうち、最近の受注・発注・出荷で使った物を新しい順に 5 件まで (2 節)。
 - create_entry(user, model): 0 件のときの登録の行 {"url", "label"}。書けない人と、表 CREATE に無い model は None (3 節)。
 
-部品の画面 (masters の ItemSelectView・PartnerSelectView) は R15 で 13 の属性の外を足せないので、model ごとの字の作り方はここに model の名前で持つ。
+部品の画面 (masters の ItemSelectView・PartnerSelectView・workorders の WorkOrderSelectView) は R15 で 13 の属性の外を足せないので、model ごとの字の作り方はここに model の名前で持つ。
 ほかの部品の model は apps.get_model で名前から引き、import しない (部品の入っていない会社と、DB が読めないときは飛ばす。core.dashboard と同じ形)。
 """
 
@@ -26,6 +26,8 @@ COMPANY_FIELDS = "*company_fields*"
 LINES = {
     "masters.Item": (("part_no",), ("name", COMPANY_FIELDS, "unit")),
     "masters.Partner": (("code", "short_name"), ("name", "role")),
+    # 指示書は上の段に指示書番号、下の段に受注の明細の字 (OrderLine.__str__ の「受注番号-行番号 品番 品名」)
+    "workorders.WorkOrder": (("wo_no",), ("order_line",)),
 }
 
 
