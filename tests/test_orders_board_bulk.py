@@ -237,7 +237,7 @@ def test_row_menus_open_forms_in_modal(user, logged_in, customer, item, lines):
     detail = logged_in.get(reverse("orders:order_detail", args=[a.order_id])).content.decode()
     for name in ("ship", "issue", "po"):
         assert f'href="{urls[name]}" data-modal-form="{urls[name]}"' in detail, name
-    assert detail.count("data-modal-form=") == 7  # 明細の 4 つ (出荷・指示書・発注・入荷の記録 (N183)) と、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157) と、受注の取消の 1 つ (N158) と、右上の利用者のメニューの「表示の設定」の 1 つ (N167)
+    assert detail.count("data-modal-form=") == 8  # 明細の 4 つ (出荷・指示書・発注・入荷の記録 (N183)) と、添付ファイルの枠の「添付ファイルを付ける」の 1 つ (N157) と、受注の取消の 1 つ (N158) と、右上の利用者のメニューの「表示の設定」の 1 つ (N167) と、頭の「出荷登録」の 1 つ (残のある明細が 1 行。C15)
 
 
 # --- 6〜11. 一括出荷 ---

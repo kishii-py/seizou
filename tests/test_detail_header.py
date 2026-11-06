@@ -143,11 +143,12 @@ def test_back_to_list_only_when_no_list_name(logged_in, item, monkeypatch):
 @pytest.mark.django_db
 def test_head_order_and_one_primary(logged_in, item, order, workorder, purchase_order):
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
-    edit = f'<a class="btn btn-primary" href="{reverse("orders:order_update", args=[order.pk])}">'
+    # 明細 2 行とも残がある受注は、主のボタンが緑の「出荷登録」(行を選ぶメニュー) で、「編集」は白 (C15-1 b・UX-2 a)
+    edit = f'<a class="btn btn-outline border-base-300" href="{reverse("orders:order_update", args=[order.pk])}">'
     marks = ('<nav aria-label="パンくず"', '<h1 class="truncate', 'aria-label="この画面の説明"', "data-detail-actions")
     positions = [body.index(mark) for mark in marks]
     start = body.index("data-detail-actions")
-    positions += [body.index("data-detail-more", start), body.index(edit, start)]
+    positions += [body.index(edit, start), body.index("data-detail-more", start), body.index('<summary class="btn btn-primary">', start)]
     assert positions == sorted(positions)
     assert body[start : body.index('id="order-stages"')].count("btn-primary") == 1
 
@@ -162,6 +163,57 @@ def test_head_order_and_one_primary(logged_in, item, order, workorder, purchase_
     actions = _actions(_get(logged_in, "masters:item_detail", item.pk)[1])
     assert actions.count("<a ") == 1 and "編集</a>" in actions
     assert "data-detail-more" not in actions and "<form" not in actions
+
+
+def _ship_link(line):
+    """明細 1 行の出荷の小窓の入口 (明細の ⋮ の「出荷する」と同じ href と data-modal-form)。"""
+    url = f'{reverse("shipping:shipment_create")}?order_line={line.pk}'
+    return f'href="{url}" data-modal-form="{url}"'
+
+
+@pytest.mark.django_db
+def test_order_head_ship_menu_for_open_lines(logged_in, order):
+    """候補 C15 の 4 (C15-1 b・UX-2 a): 残のある明細が 2 行の受注は、頭の右端に緑の「出荷登録」のメニュー (行番号・品番・残) を出し、
+    「編集」は白で「⋯」の左。"""
+    actions = _actions(_get(logged_in, "orders:order_detail", order.pk)[1])
+    lines = list(orders_services.annotate_remaining(order.lines.all()).order_by("line_no"))
+
+    assert '<summary class="btn btn-primary">' in actions and "出荷登録" in actions
+    assert len(lines) == 2
+    for line in lines:
+        assert actions.count(_ship_link(line)) == 1, line.line_no
+        assert f"残 {comma(line.remaining_total)}" in actions, line.line_no
+    edit = f'<a class="btn btn-outline border-base-300" href="{reverse("orders:order_update", args=[order.pk])}'
+    assert actions.index(edit) < actions.index("data-detail-more") < actions.index('<summary class="btn btn-primary">')
+    assert actions.count("btn-primary") == 1
+
+
+@pytest.mark.django_db
+def test_order_head_ship_link_for_one_open_line(logged_in, order, shipment):
+    """残のある明細が 1 行 (1 行目を出し切った) の受注は、緑の「出荷登録」がその行の出荷の小窓を直に開く。"""
+    first, second = order.lines.order_by("line_no")
+    actions = _actions(_get(logged_in, "orders:order_detail", order.pk)[1])
+
+    assert f'<a class="btn btn-primary" {_ship_link(second)}>' in actions
+    assert f'?order_line={first.pk}"' not in actions
+    assert '<summary class="btn btn-primary">' not in actions
+
+
+@pytest.mark.django_db
+def test_order_head_no_ship_when_done_or_cancelled(user, logged_in, customer, item, order, shipment):
+    """全部の明細を出し切った受注と取消の受注には「出荷登録」を出さない。出し切った受注の「編集」は今の緑、取消の受注は「編集」も無い。"""
+    shipping_services.ship(order.lines.get(line_no=2), Decimal("2"), timezone.localdate(), user)
+    actions = _actions(_get(logged_in, "orders:order_detail", order.pk)[1])
+    assert "出荷登録" not in actions and "?order_line=" not in actions
+    assert f'<a class="btn btn-primary" href="{reverse("orders:order_update", args=[order.pk])}' in actions
+
+    # 残のある明細を持つ受注を取り消す (出し切った受注の取消では、残の条件だけで通ってしまうため)
+    lines = [{"item": item, "qty": Decimal("1"), "unit_price": Decimal("1")}]
+    cancelled = orders_services.create_order(customer, lines, user, order_date=date(2026, 11, 2))
+    orders_services.cancel_order(cancelled, user)
+    actions = _actions(_get(logged_in, "orders:order_detail", cancelled.pk)[1])
+    assert "出荷登録" not in actions and "?order_line=" not in actions
+    assert f'href="{reverse("orders:order_update", args=[cancelled.pk])}' not in actions
 
 
 @pytest.mark.django_db
