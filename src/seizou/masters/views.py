@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.cache import add_never_cache_headers
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET
@@ -377,6 +378,27 @@ class ItemDrawingRestoreView(BaseFormView):
 # 編集の画面は持たない (間違えた日は詳細から削除して足し直す)。詳細に「編集」は出ない (土台の edit_url が無い)。
 
 
+def _holiday_year(offset: int) -> dict:
+    """今年に offset を足した年の 1 月 1 日と 12 月 31 日を、休日の一覧の日付の絞り (f_date_from・f_date_to) の組にする。"""
+    year = timezone.localdate().year + offset
+    return {"f_date_from": f"{year:04d}-01-01", "f_date_to": f"{year:04d}-12-31"}
+
+
+def _last_year_holidays():
+    """前の年の休日の組 (休日の一覧のタブ「前の年」)。"""
+    return _holiday_year(-1)
+
+
+def _this_year_holidays():
+    """今年の休日の組 (休日の一覧のタブ「今年」)。"""
+    return _holiday_year(0)
+
+
+def _next_year_holidays():
+    """次の年の休日の組 (休日の一覧のタブ「次の年」)。"""
+    return _holiday_year(1)
+
+
 class HolidayListView(BaseListView):
     """休日の一覧。
 
@@ -388,16 +410,16 @@ class HolidayListView(BaseListView):
     screen_help = "祝日と会社の休みを日付の順に並べる表。生産管理ボードの「納期まで」は、この休日と定休日の曜日を除いた稼働日で数えます。年で絞れます。"
     columns = ("date", "name", "kind", "created_by")
     search_fields = ("name",)
+    # 年の絞りは、受注と発注の一覧と同じく、カードの中の絞りのタブと「絞り込み」の枠の「日付」(土台の FilterSpec と presets。N266)。
+    # 絞りは土台の get_queryset が検索の後に当てるので、キーワードで探しても年が外れない。「すべて」は土台が足す。
+    filters = ({"name": "date", "label": "日付", "kind": "date_range", "field": "date"},)
+    presets = (
+        {"label": "前の年", "params": _last_year_holidays},
+        {"label": "今年", "params": _this_year_holidays},
+        {"label": "次の年", "params": _next_year_holidays},
+    )
     ordering = ("date",)
     template_name = "masters/holiday_list.html"
-
-    def get_queryset(self):
-        # ?year=2026 (4 桁の数の字だけ) で年を絞る。ほかの字は無視して全部を出す。
-        holidays = super().get_queryset()
-        year = self.request.GET.get("year", "")
-        if len(year) == 4 and year.isascii() and year.isdigit():
-            holidays = holidays.filter(date__year=int(year))
-        return holidays
 
 
 class HolidayCreateView(BaseFormView):

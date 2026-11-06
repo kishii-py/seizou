@@ -356,3 +356,43 @@ def test_manual_intro_has_detail_head_section():
     paragraph = after[after.index("<p>") : after.index("</p>")]
     for word in ("パンくず", "⋯", "流れ"):
         assert word in paragraph, word
+
+
+# ---------------------------------------------------------------- 題の行の「?」(初見テスト R5 の r5-a-08・r5-b-10。候補 C54 の 2。依頼書 N266)
+
+#: 状態の印の無い詳細で、題と「?」を入れる折り返さない組 (core/detail.html)
+TITLE_GROUP = '<div class="flex min-w-0 items-center gap-2">'
+HELP = 'aria-label="この画面の説明"'
+
+
+def _head(body):
+    """頭の帯 (data-detail-head から data-detail-actions まで)。"""
+    start = body.index("data-detail-head")
+    return body[start : body.index("data-detail-actions", start)]
+
+
+@pytest.mark.django_db
+def test_help_stays_next_to_title_without_status(logged_in, item, holiday):
+    """状態の印の無い詳細 (部品・休日) は、題と「?」が同じ折り返さない組の中にある (「?」だけが次の行へ落ちない)。"""
+    for name, pk in (("masters:item_detail", item.pk), ("masters:holiday_detail", holiday.pk)):
+        body = _get(logged_in, name, pk)[1]
+        assert body.count(HELP) == 1, name
+        head = _head(body)
+        start = head.index(TITLE_GROUP)
+        group = head[start : head.index("</div>", start)]
+        assert '<h1 class="truncate text-3xl font-bold tracking-tight"' in group, name
+        assert HELP in group, name
+
+
+@pytest.mark.django_db
+def test_status_heading_keeps_title_badge_help_order(logged_in, order, workorder):
+    """状態の印のある詳細 (受注と、heading_badge を上書きする指示書) は今の並び (題 → 状態の印 → 「?」) のまま。題と「?」を組に入れない。"""
+    for name, pk in (("orders:order_detail", order.pk), ("workorders:workorder_detail", workorder.pk)):
+        body = _get(logged_in, name, pk)[1]
+        assert body.count(HELP) == 1, name
+        head = _head(body)
+        assert TITLE_GROUP not in head, name
+        after_h1 = head[head.index('<h1 class="truncate') :]
+        badge = after_h1.index('class="badge')
+        assert badge < after_h1.index(HELP), name
+        assert "data-head-chip" not in after_h1[badge : after_h1.index(">", badge)], name

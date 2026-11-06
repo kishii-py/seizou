@@ -5,7 +5,7 @@
 札の × (その絞りだけを外す)・「絞りを外す」(枠の絞りを全部外す)・0 件の枠の「すべて外す」は、一覧の枠 (#list-card) を htmx で取り直す
 (土台は HX-Target が list-card の要求に画面の全体を返す)。
 0 件の枠は、検索も札も無ければ「まだ 1 件もありません。」、あれば「<効いている条件>に合う物はありません。」と「すべて外す」。
-休日の一覧を年で絞った 0 件は「YYYY 年の休日はありません。」。
+休日の一覧を年 (日付の絞り) で絞った 0 件も、ほかの一覧と同じ文 (N266)。
 作り物と画面は tests/test_core_list_filters.py から借りる。名前は作り物だけ。
 """
 
@@ -192,22 +192,23 @@ def test_filtered_empty_names_the_filters_and_clears_all(user, orders):  # noqa:
     assert EMPTY_OOB in partial
 
 
-def test_holiday_year_without_rows_names_the_year(client_logged_in, user):  # noqa: F811
+def test_holiday_year_without_rows_uses_core_sentence(client_logged_in, user):  # noqa: F811
+    """休日の一覧の年の絞り (日付の 2 欄) の 0 件も、ほかの一覧と同じ core の文と「すべて外す」(N266)。"""
     masters_services.create_holiday({"date": date(2026, 8, 13), "name": "作り物の夏の休み", "kind": Holiday.KIND_COMPANY}, user)
     url = reverse("masters:holiday_list")
+    year_2025 = {"f_date_from": "2025-01-01", "f_date_to": "2025-12-31"}
 
-    body = client_logged_in.get(url, {"year": "2025"}).content.decode()
-    assert "2025 年の休日はありません。" in body
-    # 「すべて外す」は年を外した一覧へ画面ごと移る link (hx-get を持たない。見出しの帯の年のボタンの href と取り違えない)
-    assert f'<a class="btn btn-sm btn-outline mt-4 border-base-300" href="{url}">' in body
+    body = client_logged_in.get(url, year_2025).content.decode()
+    assert "日付「2025-01-01〜12-31」に合う物はありません。" in body
+    # 「すべて外す」は一覧の枠 (#list-card) だけを取り直す (札の × と同じ動き)
+    assert f'href="{url}" hx-get="{url}" {LIST_CARD}>' in body
     assert "すべて外す</a>" in body
+    assert "年の休日はありません" not in body
     assert "まだ 1 件もありません。" not in body
 
-    body = client_logged_in.get(url, {"year": "2026"}).content.decode()
+    body = client_logged_in.get(url, {"f_date_from": "2026-01-01", "f_date_to": "2026-12-31"}).content.decode()
     assert "作り物の夏の休み" in body
-    assert "年の休日はありません" not in body
 
-    # 検索の言葉があれば core の空の枠
-    body = client_logged_in.get(url, {"year": "2025", "q": "作り物"}).content.decode()
-    assert "「作り物」に合う物はありません。" in body
-    assert "年の休日はありません" not in body
+    # キーワードと日付の札が 1 文に並ぶ
+    body = client_logged_in.get(url, {**year_2025, "q": "作り物"}).content.decode()
+    assert "「作り物」、日付「2025-01-01〜12-31」に合う物はありません。" in body

@@ -1,8 +1,8 @@
 """画面の言葉と見た目の小さな直し (精査 A3・A1・A5 の所見)。Django の test client で HTML を見る。
 
 設定の画面の幅・権限の選択肢の字・説明書が無い時の文・取消の受注の「編集」と R05 の文・マニュアルの最上位の文・
-取消の確かめの画面の案内とボタン・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0。
-品番と会社名は作り物。
+取消の確かめの画面の案内とボタン・出荷と納品書の次の一手・AI チャットの鍵なしの文・数の字の末尾の 0・
+一覧と入力の題を切らない形・必須の欄の無い入力の格子の上の間 (候補 C54)。品番と会社名は作り物。
 """
 
 from datetime import date
@@ -366,3 +366,55 @@ def test_order_detail_quantity_without_trailing_zeros(client, user, order):
     assert ">10</td>" in html
     assert ">10.00</td>" not in html
     assert ">¥1,200</td>" in html  # 単価 1200.00
+
+
+# ---------------------------------------------------------------- 10. 一覧と入力の題を切らない (初見テスト R5 の a-flagged-05。候補 C54。依頼書 N266)
+
+#: 一覧と入力の画面の題 (core/base.html)。phone で後ろが「…」で切れないよう、truncate を付けず折り返す
+SCREEN_TITLE = '<h1 class="text-3xl font-bold tracking-tight">'
+
+
+@pytest.mark.parametrize(
+    "name, title",
+    [
+        ("connect:inbox_list", "受信した注文"),
+        ("connect:connection_create", "取引先との接続の新規登録"),
+        ("masters:item_import", "部品マスターの CSV 取り込み"),
+    ],
+)
+def test_list_and_form_titles_wrap_instead_of_truncate(client, manager, name, title):
+    client.force_login(manager)
+    response = client.get(reverse(name))
+    assert response.status_code == 200, name
+    html = response.content.decode()
+    assert f"{SCREEN_TITLE}{title}</h1>" in html, name
+    assert '<h1 class="truncate' not in html, name
+
+
+# ---------------------------------------------------------------- 11. 必須の欄の無い入力の頭の空の帯 (初見テスト R5 の a-flagged-22・b-flagged-13。候補 C54 の 3。依頼書 N266)
+
+#: 入力のカードの欄の格子の class の頭 (core/_form_card.html)
+GRID_HEAD = '<div class="grid gap-x-6'
+
+
+def _grid_class(html):
+    """入力のカードの欄の格子の class の字 (格子は 1 つ)。"""
+    assert html.count(GRID_HEAD) == 1
+    start = html.index(GRID_HEAD)
+    return html[start : html.index('">', start)]
+
+
+def test_grid_gap_only_under_required_guide(client, manager):
+    """格子の上の間 (mt-6) は、上に案内の行があるとき (必須の欄がある form) だけ取る。
+
+    必須の欄の無い会社の情報の変更は、案内の行が出ず、格子の上に間を取らない (カードの上の余白が左右と同じ 24px)。
+    欄の外の誤りは右上の知らせに出る (C57) ので、誤りの枠の下の間は見ない。
+    """
+    client.force_login(manager)
+    company = client.get(reverse("core:company_update")).content.decode()
+    assert REQUIRED_GUIDE not in company
+    assert "mt-6" not in _grid_class(company).split()
+
+    item = client.get(reverse("masters:item_create")).content.decode()
+    assert REQUIRED_GUIDE in item
+    assert "mt-6" in _grid_class(item).split()

@@ -5,6 +5,7 @@
 """
 
 from datetime import date
+from urllib.parse import parse_qs
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -34,10 +35,20 @@ def _names(response):
     return [row["obj"].name for row in response.context["rows"]]
 
 
+def _tab_params(tab):
+    """絞りのタブの href の GET の値 (名前ごとに 1 つ)。"""
+    return {key: values[0] for key, values in parse_qs(tab["href"].lstrip("?")).items()}
+
+
 def test_list_is_in_date_order_and_filters_by_year(user, logged_in):
-    _holiday(user, date(2027, 1, 1), "作り物の元日")
-    _holiday(user, date(2026, 11, 23), "勤労感謝の日")
-    _holiday(user, date(2026, 8, 13), "作り物の夏の休み", Holiday.KIND_COMPANY)
+    """年の絞りは、カードの中の絞りのタブ (すべて・前の年・今年・次の年) と「絞り込み」の枠の「日付」(N266)。
+
+    年は今日の年から作る (年が替わっても落ちない)。題の行に年の組は無く、?year= は読まない。
+    """
+    this_year = timezone.localdate().year
+    _holiday(user, date(this_year + 1, 1, 1), "作り物の元日")
+    _holiday(user, date(this_year, 11, 23), "勤労感謝の日")
+    _holiday(user, date(this_year, 8, 13), "作り物の夏の休み", Holiday.KIND_COMPANY)
     url = reverse("masters:holiday_list")
 
     response = logged_in.get(url)
@@ -45,22 +56,36 @@ def test_list_is_in_date_order_and_filters_by_year(user, logged_in):
     assert _names(response) == ["作り物の夏の休み", "勤労感謝の日", "作り物の元日"]
     body = response.content.decode()
     assert "会社の休み" in body and "祝日" in body
-    this_year = timezone.localdate().year
-    for year in (this_year - 1, this_year, this_year + 1):
-        assert f'href="{url}?year={year}"' in body, year
-    assert '<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">すべて</span>' in body
+    assert 'aria-label="年で絞る"' not in body
+    assert "?year=" not in body
 
-    response = logged_in.get(url, {"year": "2026"})
+    tabs = response.context["presets"]
+    assert [tab["label"] for tab in tabs] == ["すべて", "前の年", "今年", "次の年"]
+    assert [tab["selected"] for tab in tabs] == [True, False, False, False]
+    assert [tab["count"] for tab in tabs] == [3, 0, 2, 1]
+    for tab, year in zip(tabs[1:], (this_year - 1, this_year, this_year + 1)):
+        assert _tab_params(tab) == {"f_date_from": f"{year}-01-01", "f_date_to": f"{year}-12-31"}, tab["label"]
+
+    this_year_range = {"f_date_from": f"{this_year}-01-01", "f_date_to": f"{this_year}-12-31"}
+    response = logged_in.get(url, this_year_range)
     assert response.status_code == 200
     assert _names(response) == ["作り物の夏の休み", "勤労感謝の日"]
-    current = logged_in.get(url, {"year": str(this_year)}).content.decode()
-    assert f'<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">{this_year}</span>' in current
-    assert f'href="{url}"' in current  # 「すべて」は押せる link に戻る
+    assert [tab["label"] for tab in response.context["presets"] if tab["selected"]] == ["今年"]
+    # キーワードで探しても年の絞りは外れない (キーワードの欄と絞りの欄が同じ form。土台の get_queryset が検索の後に絞る)
+    response = logged_in.get(url, {**this_year_range, "q": "作り物"})
+    assert _names(response) == ["作り物の夏の休み"]
 
-    for bad in ("abc", "20266", "２０２６", ""):
-        response = logged_in.get(url, {"year": bad})
-        assert response.status_code == 200, bad
-        assert len(_names(response)) == 3, bad
+    # 読めない値は絞らず全部を出す (土台の決まり)。全角の数字は、読めたら 0 件になる前の年の終わりの日で見る
+    last_year_wide = f"{this_year - 1}-01-01".translate(str.maketrans("0123456789", "０１２３４５６７８９"))
+    for key in ("f_date_from", "f_date_to"):
+        for bad in ("abc", "20266-01-01", last_year_wide, ""):
+            response = logged_in.get(url, {key: bad})
+            assert response.status_code == 200, (key, bad)
+            assert len(_names(response)) == 3, (key, bad)
+    # 前の形の ?year= は読まない (止めずに全部を出す)
+    response = logged_in.get(url, {"year": str(this_year)})
+    assert response.status_code == 200
+    assert len(_names(response)) == 3
 
 
 def test_create_goes_through_service_and_refuses_the_same_date(user, logged_in):
