@@ -11,16 +11,9 @@ import pytest
 import seizou
 from seizou.core.rules import check, r19_no_dynamic_classnames
 from seizou.core.rules.constants import OLD_CLASS_NAMES
+from tests.rules_helpers import rules_md_text as _rules_md_text
 
 SEIZOU_DIR = Path(seizou.__file__).parent
-RULES_MD = Path(__file__).parent.parent / "RULES.md"
-
-
-def _rules_md_text(code: str) -> str:
-    for line in RULES_MD.read_text(encoding="utf-8").splitlines():
-        if line.startswith(f"| {code} |"):
-            return line.split("|")[2].strip().replace("`", "")
-    raise AssertionError(f"RULES.md に {code} の行が無い")
 
 
 def _template(tmp_path: Path, text: str) -> Path:

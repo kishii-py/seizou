@@ -13,8 +13,6 @@ import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
@@ -27,6 +25,7 @@ from seizou.orders.views import OrderLineListView
 from seizou.progress import services as progress_services
 from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
+from tests.query_helpers import count_queries as _count_queries
 
 ORDER_DATE = date(2026, 11, 2)
 TODAY = date(2026, 11, 10)
@@ -357,13 +356,6 @@ def _lines_with_workorders(user, customer, item, cut, bend, count):
         if number % 2:
             workorders_services.accept_workorder(workorder, user)
         shipping_services.ship(line, Decimal("1"), ORDER_DATE, user)
-
-
-def _count_queries(client):
-    with CaptureQueriesContext(connection) as queries:
-        response = client.get(reverse("orders:orderline_list"))
-    assert response.status_code == 200
-    return len(queries), response
 
 
 @pytest.mark.django_db

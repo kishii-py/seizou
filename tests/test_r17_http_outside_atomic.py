@@ -9,16 +9,9 @@ import pytest
 
 import seizou
 from seizou.core.rules import check, r17_http_outside_atomic
+from tests.rules_helpers import line_of as _line_of, rules_md_text as _rules_md_text
 
 SEIZOU_DIR = Path(seizou.__file__).parent
-RULES_MD = Path(__file__).parent.parent / "RULES.md"
-
-
-def _rules_md_text(code: str) -> str:
-    for line in RULES_MD.read_text(encoding="utf-8").splitlines():
-        if line.startswith(f"| {code} |"):
-            return line.split("|")[2].strip().replace("`", "")
-    raise AssertionError(f"RULES.md に {code} の行が無い")
 
 
 def _services(tmp_path: Path, text: str) -> Path:
@@ -26,13 +19,6 @@ def _services(tmp_path: Path, text: str) -> Path:
     path = tmp_path / "services.py"
     path.write_text(text, encoding="utf-8")
     return path
-
-
-def _line_of(path: Path, text: str) -> int:
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if text in line:
-            return number
-    raise AssertionError(f"{path} に {text} が無い")
 
 
 def _r17(result):
