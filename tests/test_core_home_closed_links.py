@@ -22,7 +22,7 @@ from django.utils.html import escape
 
 from seizou.accounts import services as accounts_services
 from seizou.core import dashboard, views
-from seizou.core.templatetags.seizou_tags import comma
+from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from tests.test_core_access import account
@@ -105,8 +105,8 @@ def test_genba_cards_and_links_have_no_closed_hrefs(client, settings, user, with
     assert set(shown) >= {"部品", "取引先", "今月の受注", "出荷の残りがある明細", "受信した注文"}
     for label, card in shown.items():
         stat = values[label]
-        number = f"{stat['value']:,.0f}" if stat.get("money") else str(comma(stat["value"]))
-        assert number in card, label
+        number = yen(stat["value"], 0) if stat.get("money") else comma(stat["value"])
+        assert f'<span class="text-2xl font-bold tabular-nums sm:text-3xl">{escape(number)}</span>' in card, label
     for words in LINK_WORDS:
         assert words not in body, words
     # 納期アラートと最近の受注の節に、一覧の行き先の href が無い (行の受注番号の link は受注の詳細へ移るので残る)
