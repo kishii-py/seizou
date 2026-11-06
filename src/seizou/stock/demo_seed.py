@@ -13,19 +13,23 @@ ValueError で止まる (指示書の種の無いフォルダに在庫の動き�
 - 発注は相手に送らない (create_purchase_order のキーワード send を偽で渡す)。種の取引先に向き「送る」のつながりがあっても送らない。
 - 数える物: 在庫の動き・発注・受入をそれぞれ 1 件と数える (受入が作る入庫の動きは数えない)。
 - ほかの部品の services と model は関数の中で import する。取引先・部品・受注の明細の引き方は core/demo.py の物を写した
-  (core の private な関数を import しない)。
+  (core の private な関数を import しない)。YAML の読み方は core の公開の seeds の関数を使う。
 """
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-import yaml
 from django.contrib.contenttypes.models import ContentType
 
-from seizou.core.exceptions import RuleViolation
+from seizou.core.seeds import (
+    check_keys as _check_keys,
+    date as _date,
+    decimal as _decimal,
+    guard as _guard,
+    read as _read,
+    text as _text,
+)
 
 from . import services
 from .models import KIND_FINISHED, KIND_ISSUED, StockMove
@@ -41,62 +45,6 @@ ISSUED_KEYS = ("種類", "自社品番", "数量", "日付", "備考")
 ORDER_KEYS = ("取引先コード", "発注日", "備考", "明細", "受入")
 ORDER_LINE_KEYS = ("自社品番", "数量", "単価", "納期")
 RECEIPT_KEYS = ("行番号", "受入日", "数量", "備考")
-
-
-@contextmanager
-def _guard(name, number):
-    """services と変換の誤りに、ファイルと位置を付けて ValueError に上げ直す (巻き戻しは呼んだ側の atomic)。"""
-    try:
-        yield
-    except (ValueError, RuleViolation) as exc:
-        raise ValueError(f"{name} の {number} 件目: {exc}") from exc
-
-
-def _read(path, root_key):
-    """YAML を読み、根の鍵の下の並びを返す。"""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
-    if not isinstance(data, dict) or root_key not in data:
-        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
-    entries = data[root_key] or []
-    if not isinstance(entries, list):
-        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
-    return entries
-
-
-def _check_keys(entry, allowed, what):
-    if not isinstance(entry, dict):
-        raise ValueError(f"{what}の形が違います (鍵と値の並びではありません)。")
-    unknown = [key for key in entry if key not in allowed]
-    if unknown:
-        raise ValueError(f"{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
-
-
-def _decimal(raw, label):
-    try:
-        value = Decimal(str(raw).strip())
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"{label}「{raw}」を数として読めません。") from exc
-    if not value.is_finite():
-        raise ValueError(f"{label}「{raw}」を数として読めません。")
-    return value
-
-
-def _date(raw, label):
-    import datetime
-
-    if isinstance(raw, datetime.date):
-        return raw
-    try:
-        return datetime.date.fromisoformat(str(raw).strip())
-    except ValueError as exc:
-        raise ValueError(f"{label}「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
-
-
-def _text(raw):
-    return "" if raw is None else str(raw).strip()
 
 
 # --- 引き方 (core/demo.py の _partner_by_code・_item_by_part_no・_order_line_by_key を写した) ---

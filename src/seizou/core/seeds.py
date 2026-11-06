@@ -5,14 +5,20 @@
 
 - is_blank・fields_by_label・coerce・coerce_ext: 1 つの値 (CSV の字か YAML の値) を列の型の値にする。
   誤りは日本語の ValueError (呼ぶ側がファイルと位置を付ける)。
+- guard・read・check_keys・decimal・date・text: 部品の種 (部品の demo_seed.py) の YAML の読み方。
+  guard が services と変換の誤りに、ファイルと「N 件目」を付ける。
+  yaml は read の中でだけ読む (CSV の取り込みが yaml を読まない)。
 """
 
 from __future__ import annotations
 
 import datetime
+from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 
 from django.db import models
+
+from seizou.core.exceptions import RuleViolation
 
 TRUE_WORDS = frozenset({"true", "1", "はい", "yes"})
 FALSE_WORDS = frozenset({"false", "0", "いいえ", "no"})
@@ -97,3 +103,62 @@ def coerce_ext(column, raw):
     if column.type == "date":
         return coerce(models.DateField(column.label, null=True, blank=True), raw)
     return "" if is_blank(raw) else str(raw).strip()
+
+
+# --- 部品の種の YAML の読み方 (billing・connect・stock の demo_seed.py が同じ物を写していた) ---
+
+
+@contextmanager
+def guard(name, number):
+    """services と変換の誤りに、ファイルと位置を付けて ValueError に上げ直す (巻き戻しは呼んだ側の atomic)。"""
+    try:
+        yield
+    except (ValueError, RuleViolation) as exc:
+        raise ValueError(f"{name} の {number} 件目: {exc}") from exc
+
+
+def read(path, root_key):
+    """YAML を読み、根の鍵の下の並びを返す。"""
+    import yaml
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
+    if not isinstance(data, dict) or root_key not in data:
+        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
+    entries = data[root_key] or []
+    if not isinstance(entries, list):
+        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
+    return entries
+
+
+def check_keys(entry, allowed, what):
+    if not isinstance(entry, dict):
+        raise ValueError(f"{what}の形が違います (鍵と値の並びではありません)。")
+    unknown = [key for key in entry if key not in allowed]
+    if unknown:
+        raise ValueError(f"{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
+
+
+def decimal(raw, label):
+    try:
+        value = Decimal(str(raw).strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{label}「{raw}」を数として読めません。") from exc
+    if not value.is_finite():
+        raise ValueError(f"{label}「{raw}」を数として読めません。")
+    return value
+
+
+def date(raw, label):
+    if isinstance(raw, datetime.date):
+        return raw
+    try:
+        return datetime.date.fromisoformat(str(raw).strip())
+    except ValueError as exc:
+        raise ValueError(f"{label}「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
+
+
+def text(raw):
+    return "" if raw is None else str(raw).strip()

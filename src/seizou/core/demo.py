@@ -38,13 +38,13 @@ from importlib import import_module
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files import File
 from django.db import transaction
 
 from seizou.core import fields as company_fields
+from seizou.core import seeds
 from seizou.core.exceptions import RuleViolation
 from seizou.core.seeds import (
     coerce as _coerce,
@@ -132,25 +132,13 @@ def _read_csv(path, known, required, *, extra_ok=False):
 
 
 def _read_yaml(path, root_key):
-    """YAML を読み、根の鍵の下の並びを返す。"""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
-    if not isinstance(data, dict) or root_key not in data:
-        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
-    entries = data[root_key] or []
-    if not isinstance(entries, list):
-        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
-    return entries
+    """YAML を読み、根の鍵の下の並びを返す (seeds.read)。"""
+    return seeds.read(path, root_key)
 
 
 def _check_entry_keys(path, number, entry, allowed, what):
-    if not isinstance(entry, dict):
-        raise ValueError(f"{path.name} の {number} 件目の{what}の形が違います (鍵と値の並びではありません)。")
-    unknown = [key for key in entry if key not in allowed]
-    if unknown:
-        raise ValueError(f"{path.name} の {number} 件目の{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
+    """鍵の確かめ (seeds.check_keys)。文の頭に「<ファイル> の N 件目の」を付ける。"""
+    seeds.check_keys(entry, allowed, f"{path.name} の {number} 件目の{what}")
 
 
 def _partner_by_code(code):

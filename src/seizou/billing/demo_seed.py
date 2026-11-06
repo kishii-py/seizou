@@ -10,19 +10,22 @@ load(seeds_dir, user) が、種のフォルダの payments.yaml (入金) を読�
   (core の demo.load の transaction.atomic が全体を巻き戻す)。「注意」の文は足さない。
 - 入金の方法は日本語の字 (振込・現金・手形・その他) か値で書く。空なら振込。
 - 数える物: 入金をそれぞれ 1 件と数える。
-- ほかの部品の model は関数の中で import する。取引先の引き方と YAML の読み方は stock/demo_seed.py の物を写した
-  (core の private な関数を import しない)。
+- ほかの部品の model は関数の中で import する。取引先の引き方は stock/demo_seed.py の物を写した
+  (core の private な関数を import しない)。YAML の読み方は core の公開の seeds の関数を使う。
 """
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-import yaml
-
-from seizou.core.exceptions import RuleViolation
+from seizou.core.seeds import (
+    check_keys as _check_keys,
+    date as _date,
+    decimal as _decimal,
+    guard as _guard,
+    read as _read,
+    text as _text,
+)
 
 from . import services
 from .models import Invoice, Payment
@@ -31,62 +34,6 @@ PAYMENTS_FILE = "payments.yaml"
 PAYMENTS_ROOT = "請求書"
 INVOICE_KEYS = ("得意先の取引先コード", "発行日", "入金")
 PAYMENT_KEYS = ("入金日", "金額", "入金の方法", "備考")
-
-
-@contextmanager
-def _guard(name, number):
-    """services と変換の誤りに、ファイルと位置を付けて ValueError に上げ直す (巻き戻しは呼んだ側の atomic)。"""
-    try:
-        yield
-    except (ValueError, RuleViolation) as exc:
-        raise ValueError(f"{name} の {number} 件目: {exc}") from exc
-
-
-def _read(path, root_key):
-    """YAML を読み、根の鍵の下の並びを返す。"""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
-    if not isinstance(data, dict) or root_key not in data:
-        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
-    entries = data[root_key] or []
-    if not isinstance(entries, list):
-        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
-    return entries
-
-
-def _check_keys(entry, allowed, what):
-    if not isinstance(entry, dict):
-        raise ValueError(f"{what}の形が違います (鍵と値の並びではありません)。")
-    unknown = [key for key in entry if key not in allowed]
-    if unknown:
-        raise ValueError(f"{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
-
-
-def _decimal(raw, label):
-    try:
-        value = Decimal(str(raw).strip())
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"{label}「{raw}」を数として読めません。") from exc
-    if not value.is_finite():
-        raise ValueError(f"{label}「{raw}」を数として読めません。")
-    return value
-
-
-def _date(raw, label):
-    import datetime
-
-    if isinstance(raw, datetime.date):
-        return raw
-    try:
-        return datetime.date.fromisoformat(str(raw).strip())
-    except ValueError as exc:
-        raise ValueError(f"{label}「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
-
-
-def _text(raw):
-    return "" if raw is None else str(raw).strip()
 
 
 def _method(raw):
