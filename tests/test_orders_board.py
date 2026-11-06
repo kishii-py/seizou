@@ -168,7 +168,7 @@ def test_board_row_labels_follow_accepted_and_plan(user, customer, item, cut):
 
     other = _line(user, customer, item, due=due)
     _issue(user, other, cut, qty="2")
-    assert board.BoardRow(_fresh(other), TODAY).workorder_label == "2 発行"
+    assert board.BoardRow(_fresh(other), TODAY).workorder_label == "2 未着手"
 
 
 def _judgement_case(case, user, customer, item, cut):
@@ -302,11 +302,11 @@ def test_list_columns_and_csv(user, logged_in, customer, item, cut, settings):
     assert cells[late.pk][COLUMNS.index("指示書")] == "未"
     assert cells[late.pk][COLUMNS.index("判断")] == "遅れ"
     assert cells[issued.pk][COLUMNS.index("納期まで")] == 4
-    assert cells[issued.pk][COLUMNS.index("指示書")] == "4 発行"
+    assert cells[issued.pk][COLUMNS.index("指示書")] == "4 未着手"
     assert cells[issued.pk][COLUMNS.index("進捗")] == "切断 0/4"
     assert cells[issued.pk][COLUMNS.index("判断")] == "指示書が要る"
     body = response.content.decode()
-    for text in ("未", "遅れ", "4 発行", "指示書が要る", "切断 0/4"):
+    for text in ("未", "遅れ", "4 未着手", "指示書が要る", "切断 0/4"):
         assert text in body
 
     csv_body = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode()

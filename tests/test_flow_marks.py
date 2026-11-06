@@ -78,7 +78,6 @@ def test_flow_rows_show_who_and_inlet(monkeypatch, user, logged_in, customer, it
     assert [(e.kind, e.who, e.via) for e in events] == [
         ("order", "", "手入力"),
         ("workorder", "", ""),
-        ("accepted", name, ""),
         ("progress", name, ""),
         ("shipment", "", ""),
         ("delivery_note", "", ""),
@@ -87,7 +86,7 @@ def test_flow_rows_show_who_and_inlet(monkeypatch, user, logged_in, customer, it
     ]
     section = _section(_detail(logged_in, "orders:order_detail", order.pk), "order-flow")
     rows = re.findall(r"<p [^>]*data-flow-who>([^<]*)</p>", section)
-    assert rows == ["手入力", name, name, name]
+    assert rows == ["手入力", name, name]
 
     po = test_purchasing_timeline._flowed(monkeypatch, user, subcontractor, item)[0]
     receipts = [e for e in purchasing_timeline.events_for(po) if e.kind == "receipt"]
