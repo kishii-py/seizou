@@ -1,5 +1,6 @@
 """進捗の画面 (core の土台の上)。実績の入力は検査の層 (R07) を通ってから services を呼ぶ。"""
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -7,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
@@ -108,3 +110,48 @@ def test_menu_has_progress_entry(client_logged_in):
     response = client_logged_in.get(reverse("core:home"))
     body = response.content.decode()
     assert reverse("progress:progress_list") in body and "進捗" in body
+
+
+DATETIME_VALUE = re.compile(r'<input type="datetime-local" name="recorded_at" value="([^"]*)"')
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
+
+
+@pytest.mark.django_db
+def test_recorded_at_is_datetime_local_to_minute(client_logged_in):
+    """日時の欄はブラウザの日付と時刻の選び (分まで)。初期値は今で、秒は出ない (候補 C65)。"""
+    before = timezone.localtime().strftime("%Y-%m-%dT%H:%M")
+    response = client_logged_in.get(reverse("progress:progress_create"))
+    after = timezone.localtime().strftime("%Y-%m-%dT%H:%M")
+    assert response.status_code == 200
+    match = DATETIME_VALUE.search(response.content.decode())
+    assert match is not None
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", match.group(1))
+    assert match.group(1) in {before, after}
+
+
+@pytest.mark.django_db
+def test_recorded_at_reads_browser_format(client_logged_in, step):
+    """ブラウザの日時の欄が送る形 (日付と時刻の間が T) を、会社の時刻の日時として保存する。"""
+    response = _post(client_logged_in, step, "4", recorded_at="2026-11-03T15:00")
+    assert response.status_code == 302
+    assert Progress.objects.get().recorded_at == datetime(2026, 11, 3, 15, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+
+@pytest.mark.django_db
+def test_recorded_at_kept_when_stopped(settings, client_logged_in, step, recorded_eight):
+    """確かめで止まって描き直したときも、入れた日時が欄に残る (知らせの字と class はここで見ない)。"""
+    settings.SEIZOU = {"over_workorder": "warn"}
+    response = _post(client_logged_in, step, "3", recorded_at="2026-11-03T15:00")
+    assert response.status_code == 200
+    assert Progress.objects.count() == 1
+    assert 'type="datetime-local" name="recorded_at" value="2026-11-03T15:00"' in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_recorded_at_in_modal(client_logged_in):
+    """生産管理ボードの「実績を入れる」で開く小窓でも、日時は同じ日付と時刻の選び。"""
+    response = client_logged_in.get(reverse("progress:progress_create"), **MODAL)
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'type="datetime-local" name="recorded_at"' in body
+    assert "<html" not in body

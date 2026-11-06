@@ -16,7 +16,10 @@ _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model
 
 
 class ProgressRecordForm(forms.Form):
-    """実績の入力。日時の既定は今。予定を超えた実数も入れられる (現物優先)。"""
+    """実績の入力。日時の既定は今。予定を超えた実数も入れられる (現物優先)。
+
+    日時はブラウザの日付と時刻の選び (分まで) で、値の形はその欄が受ける「2026-11-06T14:30」(日付と時刻の間が T・秒なし) にする。
+    """
 
     submit_label = "記録する"
 
@@ -26,7 +29,11 @@ class ProgressRecordForm(forms.Form):
         widget=RemoteSelect("workorders:workorderstep_select"),
     )
     qty = forms.DecimalField(label="実績の数", max_digits=12, decimal_places=2)
-    recorded_at = forms.DateTimeField(label="日時", initial=timezone.now)
+    recorded_at = forms.DateTimeField(
+        label="日時",
+        initial=timezone.now,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+    )
     note = forms.CharField(label="備考", max_length=500, required=False)
 
     def service_kwargs(self):
