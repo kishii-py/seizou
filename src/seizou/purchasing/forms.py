@@ -6,8 +6,9 @@
 - 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が resend_purchase_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
-- 取引先を選ぶ欄は字を打って探す欄 (RemoteSelect)。取引先の候補の口は masters の取引先の口に role=supplier (協力企業か両方の物だけ。
-  送られた値は __init__ の queryset が同じ絞りで確かめる)。部品を選ぶ欄は Django の標準の Select。
+- 取引先と部品を選ぶ欄は字を打って探す欄 (RemoteSelect)。取引先の候補の口は masters の取引先の口に role=supplier (協力企業か両方の物だけ)。
+  部品の候補の口は purchasing の部品の口 (purchasing:item_select) で、単位だけを返し標準単価を返さない (協力企業への単価は利用者が打つ。C01-1 = a)。
+  送られた値は、どちらも __init__ の queryset (使用中だけ。取引先は協力企業か両方) が確かめる。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
@@ -40,7 +41,7 @@ class PurchaseOrderLineForm(forms.Form):
     """明細の 1 行。何も入れていない行は formset が飛ばす。"""
 
     item = forms.ModelChoiceField(
-        label="部品", queryset=None, widget=forms.Select(attrs={"class": "select w-full"})
+        label="部品", queryset=None, widget=RemoteSelect("purchasing:item_select", attrs={"class": "w-full"})
     )
     qty = forms.DecimalField(
         label="数量",

@@ -306,3 +306,44 @@ def test_create_head_hides_send_sentence_in_practice_mode(monkeypatch, client_lo
     body = response.content.decode()
     assert HEAD_NOW in body
     assert "つながりのある取引先には" not in body
+
+
+# ---------------------------------------------------------------- 部品の欄は字を打って探す欄で、単位だけを写す (初見テスト R5 の V50・V140。候補 C01-先 の 4)
+
+
+@pytest.mark.django_db
+def test_create_item_fields_use_purchase_item_select(client_logged_in):
+    body = client_logged_in.get(reverse("purchasing:purchaseorder_create")).content.decode()
+
+    select_url = reverse("purchasing:item_select")
+    # 1 行目の欄と「行を足す」の雛形の欄の両方。daisyUI の select の class と「詳細を見る」の口 (purchasing:item_modal は無い) は付かない。
+    for start in ('<select name="lines-0-item"', '<select name="lines-__prefix__-item"'):
+        tag = _open_tag(body, start)
+        assert f'data-select-url="{select_url}"' in tag
+        assert 'class="w-full"' in tag
+        assert "select w-full" not in tag
+        assert "data-modal-url" not in tag
+    assert "単位が空なら部品の単位を写します。単価は協力企業と決めた値を打ちます (部品の標準単価は写しません)。" in body
+
+
+@pytest.mark.django_db
+def test_purchase_item_select_returns_unit_without_standard_price(client_logged_in, user, items):
+    stopped = masters_services.create_item({"part_no": "T-900", "name": "作り物の古い軸", "unit": "個"}, user)
+    masters_services.update_item(stopped, {"active": False}, user)
+
+    data = client_logged_in.get(reverse("purchasing:item_select")).json()
+
+    # 候補は使用中の部品だけ。どの候補も単位を持ち、標準単価を持たない。
+    assert sorted(row["id"] for row in data["items"]) == sorted(item.pk for item in items)
+    assert all("unit" in row and "standard_price" not in row for row in data["items"])
+    assert {row["id"]: row["unit"] for row in data["items"]} == {items[0].pk: "個", items[1].pk: "枚"}
+    # 同じ人で受注の部品の口を引くと標準単価がある (金額の閲覧がある人でも、発注の口は標準単価を返さない)。
+    masters_data = client_logged_in.get(reverse("masters:item_select")).json()
+    assert masters_data["items"] and all("standard_price" in row for row in masters_data["items"])
+
+
+@pytest.mark.django_db
+def test_purchase_item_select_searches_by_text(client_logged_in, items):
+    data = client_logged_in.get(reverse("purchasing:item_select"), {"q": "T-200"}).json()
+
+    assert [row["id"] for row in data["items"]] == [items[1].pk]
