@@ -186,3 +186,25 @@ def test_department_outsider_sees_invoice_number_without_link_on_note_cancel(set
     # 部署の判定が off なら、同じ人にも請求書の詳細への link を出す (今までどおり)
     settings.SEIZOU = {"access_control": {"department": "off", **WRITE_AND_MONEY_ON}}
     assert invoice_href in _page(client, jimu, cancel)
+
+
+@pytest.mark.django_db
+def test_department_outsider_sees_invoice_number_without_link_on_note_detail(settings, client, user, customer, item, cut):
+    """請求済みの納品書の詳細のタブの上の行: billing を部署で開けない人には番号の字だけ (初見テスト R5 の候補 C03 の 2 晩目)。"""
+    from seizou.billing.models import Invoice
+
+    settings.SEIZOU = {"access_control": {"department": "on", **WRITE_AND_MONEY_ON}}
+    _documents(user, customer, item, cut)
+    invoice = Invoice.objects.get()
+    shipment = invoice.lines.order_by("pk").first().shipment
+    detail = reverse("shipping:deliverynote_detail", args=[shipment.delivery_note_id])
+    invoice_href = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}'
+    depts = _departments()
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+    keiri = account("keiri", departments=[depts["keiri"]], permissions=["billing"], see_money=True)
+
+    body = _page(client, jimu, detail)
+    assert "で請求済みです (出荷 1 件)。" in body
+    assert invoice.invoice_no in body
+    assert invoice_href not in body
+    assert invoice_href in _page(client, keiri, detail)

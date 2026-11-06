@@ -242,3 +242,50 @@ def test_invoiced_note_cancel_post_shows_refusal_without_button(logged_in, user,
     assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+# --- 納品書の詳細のタブの上の、請求書の link の行 (初見テスト R5 の候補 C03 の 2 晩目。依頼書 N196) ---
+
+
+@pytest.mark.django_db
+def test_invoiced_note_detail_links_to_invoice(logged_in, user, customer, shipment, note):
+    """請求済みの納品書の詳細には、請求書の番号の link と「で請求済みです (出荷 n 件)。」が出る。主の色のボタンは出ない。"""
+    detail = reverse("shipping:deliverynote_detail", args=[note.pk])
+    plain = logged_in.get(detail).content.decode()
+    assert "請求済み" not in plain
+    assert 'id="deliverynote-invoices"' not in plain
+
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    body = logged_in.get(detail).content.decode()
+
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
+    assert invoice.invoice_no in body
+    assert "で請求済みです (出荷 1 件)。" in body
+    assert "btn-primary" not in body
+    # タブの上 (土台の block main) に出る
+    assert body.index('id="deliverynote-invoices"') < body.index('role="tablist"')
+
+    # 請求書を取り消すと、行は消える
+    billing_services.cancel_invoice(invoice, user)
+    assert "請求済み" not in logged_in.get(detail).content.decode()
+
+
+@pytest.mark.django_db
+def test_note_detail_lists_each_invoice_with_its_shipment_count(logged_in, user, customer, shipment):
+    """出荷が別々の請求書に入っていれば、請求書ごとに 1 行ずつ、その請求書に入った出荷の数で出す。"""
+    second = services.ship(shipment.order_line, Decimal("3"), SHIPPED_AT, user)
+    third = services.ship(shipment.order_line, Decimal("2"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment, second, third], user)
+    for row in (shipment, second, third):
+        row.refresh_from_db()
+    first_invoice = billing_services.create_invoice(customer, [shipment, second], user, issued_on=ISSUED_ON)
+    second_invoice = billing_services.create_invoice(customer, [third], user, issued_on=ISSUED_ON)
+
+    body = logged_in.get(reverse("shipping:deliverynote_detail", args=[note.pk])).content.decode()
+
+    first_link = f'href="{reverse("billing:invoice_detail", args=[first_invoice.pk])}'
+    second_link = f'href="{reverse("billing:invoice_detail", args=[second_invoice.pk])}'
+    assert first_link in body and second_link in body
+    assert body.count("で請求済みです (出荷 2 件)。") == 1
+    assert body.count("で請求済みです (出荷 1 件)。") == 1
+    assert body.index(first_link) < body.index(second_link)
