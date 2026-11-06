@@ -83,7 +83,8 @@ class Inbox(models.Model):
     SOURCE_DIRECT = "direct"
     SOURCE_INTAKE = "intake"
     SOURCE_CHOICES = [
-        (SOURCE_DIRECT, "直接"),
+        # 表示名は取引先の一覧とダッシュボードの図と受注の流れの添え字 (core.dashboard.INLETS) と同じ字 (C08-1 = a)。
+        (SOURCE_DIRECT, "seizou で直接"),
         (SOURCE_INTAKE, "読み取り"),
     ]
 
