@@ -76,6 +76,7 @@ APP_ICONS = {
     "attachments": "paperclip",
     "stock": "archive",
     "feedback": "pencil",
+    "receiving": "download",
 }
 
 

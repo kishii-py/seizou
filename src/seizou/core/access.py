@@ -147,6 +147,7 @@ FREE_ACTIONS = frozenset(
         "stock.record_finished",
         "stock.record_issued",
         "stock.adjust",
+        "receiving.create_receiving",  # 入荷 (支給品と預かり品の現場の記録。在庫の動きと同じ扱い)
         # 書式つきのメモ (N114。現場の記録と同じ扱い = ログインした人なら誰でも書ける。本体が起こす前に入れる前提)
         "notes.save_note",
         "notes.add_image",
