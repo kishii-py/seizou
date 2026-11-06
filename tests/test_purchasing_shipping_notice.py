@@ -98,7 +98,7 @@ def _lines_table(body):
 def _notice_cell(body):
     heads, cells = _lines_table(body)
     assert len(heads) == len(cells)
-    return cells[heads.index("出荷の知らせ")]
+    return cells[heads.index("相手からの出荷の知らせ")]
 
 
 def _detail(client, po):
@@ -133,7 +133,7 @@ def test_order_detail_shows_notice_column_and_receipt_link(client_logged_in, use
 
     heads, _cells = _lines_table(body)
     at = heads.index("受入の残")
-    assert heads[at : at + 3] == ["受入の残", "出荷の知らせ", "納期"]
+    assert heads[at : at + 3] == ["受入の残", "相手からの出荷の知らせ", "納期"]
     cell = _notice_cell(body)
     assert "2026-11-05" in cell
     assert "×4" in cell
