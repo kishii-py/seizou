@@ -16,6 +16,8 @@ from seizou.purchasing import timeline as purchasing_timeline
 
 FLOW_TITLES = ["注文を受けてから入金まで", "発注から受入まで", "取引先とつなぐ"]
 FLOWS_BOX = re.compile(r'<div id="flows"[^>]*>(.*?)</div>', re.S)
+#: 使い方の画面と印刷の 1 枚の目次 (冊子の目次は nav class="booklet-toc" で別)
+TOC_NAV = re.compile(r'<nav aria-label="目次"[^>]*>(.*?)</nav>', re.S)
 #: 使い方の画面 ({}) と印刷の 1 枚 (print=1) の GET
 OUTLETS = [{}, {"print": "1"}]
 
@@ -79,7 +81,11 @@ def test_page_and_print_show_flows_before_screens(client_logged_in, folder, para
     assert html.count("<h2>業務の流れ</h2>") == 1
     assert html.index('<div id="flows"') < html.index(f'<div id="{first}"')
     assert [title for title in FLOW_TITLES if f"<h3>{title}</h3>" in flows_box(html)] == FLOW_TITLES
-    assert 'href="#flows"' not in html
+    # 目次の頭に業務の流れの行が 1 つあり、目次の外には業務の流れへの link が無い (依頼書 N265 = 候補 C48 の 1 の 2・1 の 3)
+    nav = TOC_NAV.search(html)
+    assert nav, "目次の nav が無い"
+    assert nav.group(1).count('href="#flows"') == 1
+    assert 'href="#flows"' not in html[: nav.start()] + html[nav.end() :]
 
 
 def test_step_links_land_on_ids_of_same_page(client_logged_in, folder):
@@ -106,7 +112,9 @@ def test_steps_drop_without_parts(client_logged_in, folder, monkeypatch):
     without(monkeypatch, "orders", "purchasing", "connect")
     assert manual.manual_flows() == []
     for params in OUTLETS:
-        assert "<h2>業務の流れ</h2>" not in client_logged_in.get(reverse("core:manual"), params).content.decode()
+        html = client_logged_in.get(reverse("core:manual"), params).content.decode()
+        assert "<h2>業務の流れ</h2>" not in html
+        assert 'href="#flows"' not in TOC_NAV.search(html).group(1)
     assert "<h2>業務の流れ</h2>" not in booklet_html()
 
 

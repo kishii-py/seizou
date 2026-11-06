@@ -5,12 +5,15 @@
 {# 使い方 (画面ごとの説明書): 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
 {# 断片は class を持たない素の HTML なので、本文の箱の子の選び方の class で形を付ける (Tailwind の preflight が既定の見た目を消すため)。 #}
 {# 目次は details で開け閉めする (summary の形は左のメニューの大項目 core/_sidebar.html と同じ字)。HTML は開いた形で描き、1024px (lg) より狭い窓だけ nav の中の script が初めに閉じる。訳: phone で目次の行が畳めずに長く続き、前書きが窓の何枚も下にあった (依頼書 N256 = 候補 C48 の 1。所見 b-blind-12)。JS の無い窓と広い画面では全部の行が見える。script を nav の中 (details の後) に置くのは、nav の次の要素を本文の列のままにし、本文の節より前で閉じて /manual/#<画面> の飛び先をずらさないため。script に飛び先の link の字と nav の閉じの字を書かない (試験が nav の中の link を数える)。 #}
+{# 目次の頭には、前書きがあれば「はじめに」(前書きの箱 id="index" へ)、業務の流れがあれば「業務の流れ」(id="flows" へ) の行を置き、その後に目録の並びの画面の行を置く。字は固定で、summary の画面の数には入れない。印刷用 core/manual_print.html の目次も同じ 2 行。訳: 目次の 1 つ目を押すと前書きと業務の流れの箱を飛び越え、左の目次から業務の流れへ飛べなかった (依頼書 N265 = 候補 C48 の 1 の 2。所見 b-blind-12)。 #}
 <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
   <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
     <details id="seizou-manual-toc" class="group" open>
     <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden"><h2 class="min-w-0 flex-1 truncate">目次 ({{ sections|length }} 画面)</h2>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}</summary>
     <ul class="mt-4 flex flex-col">
-      {% for section in sections %}
+      {% if intro %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#index" title="はじめに">はじめに</a></li>
+      {% endif %}{% if flows %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#flows" title="業務の流れ">業務の流れ</a></li>
+      {% endif %}{% for section in sections %}
       {% if section.html or section.unreadable %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }}">{{ section.name }}</a></li>
       {% else %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/50 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }} (まだ)">{{ section.name }} (まだ)</a></li>{% endif %}
       {% endfor %}
@@ -29,7 +32,7 @@
     </div>
     {% endif %}
     {% if intro %}
-    <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
+    <div id="index" class="scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:font-bold [&_p]:mt-2 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6 [&_table]:mt-2 [&_table]:table [&_table]:table-sm [&_img]:mt-4 [&_img]:rounded-lg [&_img]:border [&_img]:border-base-300">{{ intro }}</div>
     {% elif intro_unreadable %}
     <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
       <p class="text-error">前書きのファイル (manual/index.html) を UTF-8 で読めませんでした。<code>/seizou:manual</code> で作り直してください。</p>

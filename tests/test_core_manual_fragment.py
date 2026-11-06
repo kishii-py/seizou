@@ -81,10 +81,12 @@ def test_fragment_is_not_a_screen(client_logged_in, manual):
     assert "core_manual_fragment" not in anchors
     assert "core_manual" in anchors
     # 使い方のページの目次の並び (tests/test_core_manual.py の test_toc_follows_screen_catalog の期待) と同じ = 目録に口が混ざっていない
+    # 目次の頭は、業務の流れがあれば flows の 1 行 (置き場の manual/ は空で前書きが無い。依頼書 N265 = 候補 C48 の 1 の 2)
     html = client_logged_in.get(reverse("core:manual")).content.decode()
     nav = re.search(r'<nav aria-label="目次"[^>]*>(.*?)</nav>', html, re.S)
     assert nav, "目次の nav が無い"
-    assert re.findall(r'href="#([^"]*)"', nav.group(1)) == anchors
+    head = ["flows"] if core_manual.manual_flows() else []
+    assert re.findall(r'href="#([^"]*)"', nav.group(1)) == [*head, *anchors]
 
 
 def test_modal_shows_fragment_with_title_and_links(client_logged_in, manual):
