@@ -8,7 +8,9 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.billing import services
+from seizou.billing.forms import InvoiceForm
 from seizou.billing.models import Invoice
+from seizou.core.manual import input_rows
 from seizou.core.models import Company
 from seizou.core.reports import PdfUnavailable
 from seizou.masters import services as masters_services
@@ -232,3 +234,29 @@ def test_menu_has_invoice_entry(client_logged_in):
     assert response.status_code == 200
     assert "請求書" in body
     assert f'href="{reverse("billing:invoice_list")}"' in body
+
+
+# --- 発行日の案内の字 (初見テスト R5・候補 C02 の 1。初期値は今日のまま) ---
+
+ISSUED_ON_HELP = "請求書に載る日付です。支払期日は発行日でなく、締めの期間の終わりと得意先の支払の決まりから決まります。"
+
+
+def test_issued_on_help_text_on_form():
+    assert InvoiceForm.base_fields["issued_on"].help_text == ISSUED_ON_HELP
+
+
+def test_issued_on_help_text_in_manual_input_rows():
+    # 「?」の説明の「入れる物」の表の「発行日」の行に、同じ字が出る。
+    rows = {name: note for name, _required, note in input_rows(InvoiceForm)}
+    assert rows["発行日"] == ISSUED_ON_HELP
+
+
+@pytest.mark.django_db
+def test_create_form_shows_issued_on_help_text(client_logged_in, user, customer, line):
+    _shipped(user, customer, line, "4")
+
+    response = client_logged_in.get(reverse("billing:invoice_create"))
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert ISSUED_ON_HELP in body
