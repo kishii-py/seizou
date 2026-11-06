@@ -1,9 +1,12 @@
 {% load seizou_icons seizou_tags %}
 {# 一覧の道具の行の右: 全体の件数と CSV と並び替えの値。htmx の応答では core/_rows.html が oob=True で差し替える (検索した後も件数と CSV の条件が合う)。タブ (presets) も、ここから oob で描き直す。 #}
 {# 「集計」と「表」の切り替え (GET view=summary。軸のある一覧だけ) もここに置く (絞りを変えた後も link の条件が合う)。 #}
-<div id="list-meta" class="ml-auto flex items-center gap-4"{% if oob %} hx-swap-oob="true"{% endif %}>
+{# 件数: タブ (presets) のある一覧で「すべて」以外を見ているとき (どのタブも選ばれていないときを含む) は「10 件 (すべて 20 件)」と、「すべて」のタブの数を添える (先頭のタブはいつも「すべて」。数は preset_tabs が数えた物で、問い合わせは増えない)。 #}
+{# 括弧の中を「全」でなく「すべて」と書くのは、タブの字と同じにしてどのタブの数か分かるようにし、タブの無い一覧の「全 N 件」(絞った後の数) と意味を分けるため (初見テスト R5 の V65。C39-1)。 #}
+{# phone の幅では件数と道具の行を折り返せるようにする (桁の多い会社で箱が横にはみ出さないため)。 #}
+<div id="list-meta" class="ml-auto flex flex-wrap items-center gap-4"{% if oob %} hx-swap-oob="true"{% endif %}>
   <input type="hidden" name="sort" value="{{ sort }}">
-  <span class="text-base-content/70">全 <span id="list-count" class="font-medium tabular-nums text-base-content">{{ paginator.count|comma }}</span> 件</span>
+  <span class="text-base-content/70">{% if not presets or presets.0.selected %}全 {% endif %}<span id="list-count" class="font-medium tabular-nums text-base-content">{{ paginator.count|comma }}</span> 件{% if presets and not presets.0.selected %} (すべて {{ presets.0.count|comma }} 件){% endif %}</span>
   {% if summary %}<a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_view }}">{% icon "list" "size-4" %}表</a>{% elif summary_axes %}<a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_view }}&view=summary">{% icon "activity" "size-4" %}集計</a>{% endif %}
   <a class="btn btn-sm btn-outline border-base-300" href="?{{ query_without_page }}&format=csv" download>{% icon "download" "size-4" %}CSV</a>
 </div>
