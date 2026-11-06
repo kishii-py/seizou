@@ -10,6 +10,8 @@ js は q と page をこの URL に足すので、query の鍵は残る)。
 
 DecimalInput: 数 (小数) の欄。type="text" と inputmode="decimal" (スマホは数の鍵盤)。入力の土台が
 DecimalField・FloatField の数の入力をこれに替える。送られた字は全角を半角に、桁の区切りの「,」を外してから form に渡す。
+初期値の Decimal は詳細と同じ字 (seizou_tags.comma。「1,200」「12.5」) で出し、印 data-number を付ける
+(js/seizou-number.js が、この印の欄だけを、欄を離れた時に 3 桁ごとの区切りの字にそろえる)。
 IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台が IntegerField の数の入力をこれに替える。
 """
 
@@ -23,6 +25,8 @@ from django.core.exceptions import ValidationError
 from urllib.parse import urlencode
 
 from django.urls import NoReverseMatch, reverse
+
+from seizou.core.templatetags.seizou_tags import comma
 
 
 class RemoteSelect(forms.Select):
@@ -92,12 +96,14 @@ class DecimalInput(forms.TextInput):
     """数 (小数) を入れる字の欄。誤り (「12e」など) はブラウザが空にせず、そのままサーバーへ送る (誤りは form が日本語で出す)。"""
 
     def __init__(self, attrs=None):
-        super().__init__(attrs={"inputmode": "decimal", **(attrs or {})})
+        # data-number: 欄を離れた時に区切りを付ける JS (js/seizou-number.js) と、部品の単価を写す JS (js/seizou-select.js) が見る印。
+        super().__init__(attrs={"inputmode": "decimal", "data-number": True, **(attrs or {})})
 
     def format_value(self, value):
-        # 初期値の Decimal が整数なら小数の 0 を出さない (「480.00」でなく「480」。動画の確かめの所見 11-05)。打った字はそのまま。
-        if isinstance(value, Decimal) and value == value.to_integral_value():
-            return str(int(value))
+        # 初期値の Decimal は詳細と同じ字 (comma。3 桁ごとの区切り・小数の末尾の 0 を落とす) で出す (1200.00 →「1,200」・12.50 →「12.5」)。
+        # 初見テスト 5 回目 U43・a-flagged-12。打った字 (字で来る bound の値) はそのまま。
+        if isinstance(value, Decimal):
+            return comma(value)
         return super().format_value(value)
 
     def value_from_datadict(self, data, files, name):

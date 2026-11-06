@@ -94,6 +94,8 @@
       var now = input.value.trim();
       if (now !== "" && now !== input.getAttribute("data-copied")) return;
       value = String(value);
+      // 数の欄 (印 data-number) には、欄を離れた時と同じ字で写す (「760.00」→「760」・「1200.00」→「1,200」。js/seizou-number.js。候補 C43)。
+      if (input.hasAttribute("data-number") && window.seizouNumber) value = window.seizouNumber.format(value);
       if (now === value) return;
       input.value = value;
       input.setAttribute("data-copied", value);

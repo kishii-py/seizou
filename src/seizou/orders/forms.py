@@ -17,8 +17,8 @@ from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.conf import setting
-from seizou.core.forms import ServiceModelForm, SubmitLabelMixin, line_totals, plain_number_widgets
-from seizou.core.views import widget_css
+from seizou.core.forms import ServiceModelForm, SubmitLabelMixin, line_totals
+from seizou.core.views import use_decimal_input, widget_css
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
@@ -98,7 +98,9 @@ class OrderLineForm(forms.Form):
 
     def __init__(self, *args, order=None, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
-        plain_number_widgets(self)  # 数量と単価の初期値が整数なら「300」で出す (「300.00」でなく)
+        # 数量と単価を字の欄にする (土台と同じ。初期値は詳細と同じ字で出し、「1,732」も通す。初見テスト 5 回目 a-flagged-12)。
+        for field in self.fields.values():
+            use_decimal_input(field)
         self.order = order
         self.hide_money = hide_money
         # 部品は使用中だけ。今ある明細の部品は使用停止でも残す (受注の直しを止めない。N135)。
