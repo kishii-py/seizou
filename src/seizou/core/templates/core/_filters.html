@@ -2,10 +2,12 @@
 {# 選ぶ欄・印・数の範囲は change from:[data-list-filter]:not([type=date]) ですぐ取り直す。期間の日付の欄は change delay:800ms from:[data-list-filter][type=date] で、打ち終わるまで少し待ってから取り直す。 #}
 {# 日付の欄を待つのは、日を 1 桁打った所の途中の日付 (2026-10-01 など) で一覧を取り直さないため (候補 C31 の 4。初見テストの V48)。待つ間にほかの欄を変えると、待ちは消えて 1 回だけ取り直す (時計は form に 1 つ)。 #}
 {# GET の名前は f_<name> (期間と数の範囲は f_<name>_from と f_<name>_to)。値は読めた値だけを出す (読めない字は空の欄)。 #}
+{# 選ぶ欄の幅は、候補と「すべて」のうちいちばん長い字で決める (FilterSpec.select_width の width_ch。候補 C31 の 3。初見テストの V152)。選んだ値で幅が変わらず、隣の欄が動かない。 #}
+{# max-width: 100% と枠の min-w-0 は、phone の幅で長い名前の欄が行からはみ出さないため (はみ出す分は「…」になる)。min-width で決めると max-width より勝ち、はみ出す。 #}
 {# flag は core/_filter_flag.html が描く (値 0 の隠しの欄の後にチェックの 1。ほかの絞りに従う印は htmx の応答で描き直す)。 #}
 <div class="mt-4 flex flex-wrap items-end gap-2">
   {% for f in filters %}
-  <div>
+  <div{% if f.width_ch %} class="min-w-0"{% endif %}>
     {% if f.kind == "date_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
@@ -24,7 +26,7 @@
     {% include "core/_filter_flag.html" %}
     {% else %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
-    <select id="list-f-{{ f.name }}" class="select select-sm mt-2 w-auto" name="{{ f.param }}" data-list-filter>
+    <select id="list-f-{{ f.name }}" style="width: calc({{ f.width_ch }}ch + 2.75rem); max-width: 100%" class="select select-sm mt-2 w-auto" name="{{ f.param }}" data-list-filter>
       <option value="">すべて</option>
       {% for value, text in f.options %}<option value="{{ value }}"{% if value == f.value %} selected{% endif %}>{{ text }}</option>{% endfor %}
     </select>

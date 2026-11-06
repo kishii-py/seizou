@@ -248,7 +248,11 @@ def test_list_filter_form(user, client_logged_in, customer, item, cut, bend):
 
     body = client_logged_in.get(url).content.decode()
     assert 'id="workorder-filter"' not in body
-    assert '<select id="list-f-process" class="select select-sm mt-2 w-auto" name="f_process" data-list-filter>' in body
+    # 幅は候補と「すべて」のうちいちばん長い字 (「すべて」の 6。「切断」と「曲げ」は 4) で決める (候補 C31 の 3)
+    assert (
+        '<select id="list-f-process" style="width: calc(6ch + 2.75rem); max-width: 100%" class="select select-sm mt-2 w-auto" name="f_process" data-list-filter>'
+        in body
+    )
     assert '<option value="">すべて</option>' in body
     assert f'<option value="{cut.pk}">{cut.name}</option>' in body  # 工程の候補の字は名前だけ (N142)
     assert f'<option value="{bend.pk}">{bend.name}</option>' in body

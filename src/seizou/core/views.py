@@ -692,9 +692,10 @@ class FilterSpec:
 
         flag は、named (values_by_name) で disabled_when が真なら、切 (checked が偽)・押せない (disabled)・絞らない (active が偽) に描き、
         隠しの欄の値 (kept) に印の値を持ち越す。follows は disabled_when があるか (htmx の応答で描き直す印)。
+        choice と lookup は width_ch (選ぶ欄の幅。select_width) も入れる。
         """
         values = self.values(params)
-        shown = {name: str(value) for name, value in values.items()}
+        shown ={name: str(value) for name, value in values.items()}
         item = {
             "name": self.name,
             "label": self.label,
@@ -711,8 +712,10 @@ class FilterSpec:
         }
         if self.kind == "choice":
             item["options"] = self.choice_values()
+            item["width_ch"] = self.select_width(item["options"])
         elif self.kind == "lookup":
             item["options"] = self.lookup_values()
+            item["width_ch"] = self.select_width(item["options"])
         elif self.kind == "flag":
             on = self.is_on(params)
             item.update(kept="0", disabled=False, follows=self.disabled_when is not None)
@@ -721,6 +724,21 @@ class FilterSpec:
             else:
                 item.update(value="1" if on else "", checked=on, active=on != self.default)
         return item
+
+    #: 選ぶ欄の頭の選択肢の字 (core/_filters.html の <option value="">。幅を数えるときに候補に足す)
+    ALL_TEXT = "すべて"
+
+    @classmethod
+    def select_width(cls, options) -> int:
+        """選ぶ欄の幅 (ch の数)。候補と「すべて」のうち、いちばん幅の広い字で決める (初見テストの V152。候補 C31 の 3)。
+
+        選んだ値は必ず候補の 1 つなので、欄の幅は選ぶ前と後で変わらず、選んだ名前も切れない。
+        字の幅は全角 (east_asian_width が W か F) を 2、ほかを 1 と数える。core/_filters.html が
+        width: calc(<数>ch + 2.75rem) と max-width: 100% にする (2.75rem は欄の内側の余白 0.75rem と 1.75rem に、枠の分を足した物)。
+        全角の字を 2ch とする見積もりと 2.75rem は推測で、画面で測っていない。少なく見積もると、選んだ名前の末尾が「…」になる。
+        """
+        texts = [cls.ALL_TEXT, *(text for _, text in options)]
+        return max(sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in text) for text in texts)
 
     @staticmethod
     def chip_text(item: dict) -> str:

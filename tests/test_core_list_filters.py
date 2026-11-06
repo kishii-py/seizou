@@ -158,6 +158,36 @@ def test_lookup_filter_lists_all_related_rows_and_ignores_unknown_pk(user, order
     assert listed(response) == [made[2].pk, made[4].pk]
 
 
+def test_select_width_follows_the_widest_option_not_the_chosen_one(user, orders):
+    """選ぶ欄の幅 (width_ch) は、候補と「すべて」のうちいちばん幅の広い字で決まり、選んだ値を変えても同じ (候補 C31 の 3。初見テストの V152)。
+
+    字の幅は全角を 2、ほかを 1 と数える。期間・数の範囲・印の欄には幅を入れない。
+    """
+    spec = FilterSpec(Order, {"name": "size", "label": "作り物の大きさ", "kind": "choice", "field": "status",
+                              "choices": [("s", "S"), ("xl", "作り物の長い名前 XL")]})
+    # 「作り物の長い名前」の 8 字が 16、空白と XL が 3
+    assert [spec.context(params)["width_ch"] for params in ({}, {"f_size": "s"}, {"f_size": "xl"})] == [19, 19, 19]
+    short = FilterSpec(Order, {"name": "size", "label": "作り物の大きさ", "kind": "choice", "field": "status", "choices": [("s", "S")]})
+    assert short.context({"f_size": "s"})["width_ch"] == 6  # 「すべて」
+
+    north, south = orders["north"], orders["south"]
+    widths = []
+    for params in ({}, {"f_status": "shipped", "f_customer": str(south.pk)}, {"f_status": "open", "f_customer": str(north.pk)}):
+        filters = {f["name"]: f for f in call(_OrderList, user, per="20", **params).context_data["filters"]}
+        assert "width_ch" not in filters["ordered"]
+        widths.append((filters["status"]["width_ch"], filters["customer"]["width_ch"]))
+    assert widths[0] == widths[1] == widths[2]
+    assert widths[0][1] == 2 * len(str(north)) == 2 * len(str(south))  # 得意先の名前は全角の字だけ (どちらも 9 字)
+    assert "width_ch" not in call(_ItemList, user).context_data["filters"][0]
+
+    body = call(_OrderList, user, f_customer=str(south.pk), per="20").render().content.decode()
+    assert f'<select id="list-f-customer" style="width: calc({widths[0][1]}ch + 2.75rem); max-width: 100%" class=' in body
+    # 枠の min-w-0 は選ぶ欄 (状態と得意先) の枠だけ。期間の枠には付けない
+    for name in ("status", "customer"):
+        assert re.search(rf'<div class="min-w-0">\s*<label for="list-f-{name}"', body)
+    assert re.search(r'<div>\s*<label for="list-f-ordered"', body)
+
+
 def test_page_sort_and_csv_links_keep_filters_and_search(user, orders):
     params = {"f_customer": str(orders["north"].pk), "q": "作り物", "sort": "-order_date"}
     response = call(_OrderList, user, **params)
