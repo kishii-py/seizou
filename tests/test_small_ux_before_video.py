@@ -198,8 +198,8 @@ def test_board_menu_heading_and_three_groups(logged_in, user, customer, item):
     tr_html = _tr(_board(logged_in), line.pk)
     labels = _labels(tr_html)
 
-    assert labels[:9] == ["T-100 作り物の軸", "出荷する", "指示書を発行する", "", "発注する", "納品書を作る", "", "受注の詳細", "部品の小窓"]
-    assert set(labels[9:]) <= {"添付"}  # 添付の部品が入っていれば「添付」
+    assert labels[:10] == ["T-100 作り物の軸", "出荷する", "指示書を発行する", "入荷を記録する", "", "発注する", "納品書を作る", "", "受注の詳細", "部品の小窓"]
+    assert set(labels[10:]) <= {"添付"}  # 添付の部品が入っていれば「添付」
     assert '<li class="menu-title text-xs" title="T-100 作り物の軸">' in tr_html
 
 
