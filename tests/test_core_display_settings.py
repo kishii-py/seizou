@@ -107,6 +107,28 @@ def test_full_page_and_login(client, user):
     assert html_tag(client) == '<html lang="ja" data-theme="light" data-seizou-header="black">'
 
 
+def test_full_page_uses_swatch_card_and_save_button(client_logged_in, user):
+    """全体の画面 (新しいタブ・URL の直打ち) も見本のカードで描く (C53)。htmx は付けず、見本を選んで「保存」のボタンでふつうに送る。"""
+    url = reverse("core:display_settings")
+    page = client_logged_in.get(url).content.decode()
+    assert "<html" in page and "見た目" in page
+    assert [name for name, _ in SWATCH.findall(page)] == list(display.HEADER_COLORS)  # 見本 8 つ (並びは表の順)
+    assert '<div id="id_header_color" class="radio">' not in page  # 土台の widget の外の箱 (24px の空の丸) は出ない
+    assert f'<form method="post" action="{url}" data-enter-guard class="min-w-0">' in page
+    assert f'hx-post="{url}"' not in page and 'hx-trigger="change"' not in page
+    assert page.count('class="btn btn-primary" type="submit"') == 1  # 「保存」だけ (上の帯と左の欄の submit は数えない)
+    assert len(re.findall(r'<button class="btn btn-primary" type="submit">.*?保存</button>', page, re.S)) == 1
+    assert "見本を選んで「保存」を押します。" in page and "画面を読み直します。" not in page
+
+    modal = client_logged_in.get(url, **MODAL).content.decode()
+    assert "data-enter-guard" not in modal and "保存</button>" not in modal  # 小窓は今のまま (見本を押すとすぐ保存)
+    assert "見本を押すとすぐ保存し、画面を読み直します。" in modal
+
+    response = client_logged_in.post(url, {"header_color": "violet"})  # 全体の画面の保存はふつうの POST で同じ画面へ
+    assert response.status_code == 302 and response["Location"] == url
+    assert services.user_preference(user, display.HEADER_COLOR) == "violet"
+
+
 def test_fixed_rules_in_input_css():
     css = (ROOT / "scripts" / "css" / "input.css").read_text(encoding="utf-8")
     for name in display.HEADER_COLORS:
