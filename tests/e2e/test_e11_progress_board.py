@@ -53,8 +53,8 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     row = page_a.locator("tr[id^=progress-step-]").filter(has_text=re.compile(rf"{re.escape(workorder_no)}(?!\d)"))
     expect(row).to_have_count(1)
     cells = row.locator("td")
-    expect(cells.nth(3)).to_have_text(_number("10"))
-    expect(cells.nth(4)).to_have_text(_number("0"))
+    expect(cells.nth(4)).to_have_text(_number("10"))
+    expect(cells.nth(5)).to_have_text(_number("0"))
     expect(cells.nth(2)).to_have_text(_number("10"))
     step_pk = re.fullmatch(r"progress-step-(\d+)", row.get_attribute("id")).group(1)
     shot(page_a, "E-11", "a-before")
@@ -67,7 +67,7 @@ def test_e11_board_updates_without_reload(context, page_a, company_a):
     other.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
     other.wait_for_url(lambda url: urlparse(url).path != "/progress/new/")
 
-    expect(cells.nth(4)).to_have_text(_number("3"), timeout=15_000)
+    expect(cells.nth(5)).to_have_text(_number("3"), timeout=15_000)
     expect(cells.nth(2)).to_have_text(_number("7"), timeout=15_000)
     assert page_a.evaluate("key => window[key]", MARK_KEY) == MARK_VALUE
     shot(page_a, "E-11", "a-after")
