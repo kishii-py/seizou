@@ -242,7 +242,7 @@ def test_board_has_poller_every_10s(client_logged_in, issue, cut):
 
     body = _body(_board(client_logged_in))
     assert 'id="progress-poll"' in body
-    assert 'hx-trigger="every 10s"' in body
+    assert 'hx-trigger="every 10s, seizou:refresh from:body"' in body
     assert 'hx-swap="none"' in body
     assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={newest.pk}"
     assert "hx-swap-oob" not in body  # 1 枚目は入れ替えの印を付けない
@@ -369,13 +369,13 @@ def _cells(row):
 
 @pytest.mark.django_db
 def test_board_headers_put_remaining_after_process(client_logged_in, issue, cut):
-    """見出しは左から 指示書番号・工程・残・予定の数・実績の合計・部品 (残を工程のすぐ右、長い部品の名前を右端へ。C71)。"""
+    """見出しは左から 指示書番号・工程・残・操作・予定の数・実績の合計・部品 (残を工程のすぐ右、長い部品の名前を右端へ。C71。操作は残のすぐ右。C69)。"""
     issue(cut)
 
     body = _body(_board(client_logged_in))
     thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
     headers = re.findall(r'<th class="[^"]*">([^<]*)</th>', thead)
-    assert headers == ["指示書番号", "工程", "残", "予定の数", "実績の合計", "部品"]
+    assert headers == ["指示書番号", "工程", "残", "操作", "予定の数", "実績の合計", "部品"]
 
 
 @pytest.mark.django_db
@@ -385,11 +385,12 @@ def test_board_cells_follow_header_order(client_logged_in, issue, cut, user):
     _record(step, 3, user)
 
     cells = _cells(_row(_body(_board(client_logged_in)), step))
-    assert len(cells) == 6
+    assert len(cells) == 7
     assert workorder.wo_no in cells[0]
     assert reverse("workorders:workorder_detail", args=[workorder.pk]) in cells[0]
     assert "1 切断" in cells[1]
     assert cells[2].endswith(">7</td>")
+    assert "実績を入力" in cells[3]
     item_pk = step.workorder.order_line.item.pk
     assert "T-100 作り物の軸" in cells[-1]
     assert reverse("masters:item_modal", args=[item_pk]) in cells[-1]
@@ -445,3 +446,59 @@ def test_build_board_done_key(issue, cut, bend):
     assert rows[open_step.pk]["done"] is False
     assert rows[even_step.pk]["done"] is True
     assert rows[over_step.pk]["done"] is True
+
+
+# --- 行の「実績を入力」と、小窓の保存の後の取り直し ---
+
+RECORD_BUTTON_CLASS = 'class="btn btn-xs btn-outline border-base-300"'
+REFRESH_TRIGGER = 'hx-trigger="every 10s, seizou:refresh from:body"'
+
+
+def _record_url(step):
+    return f"{reverse('progress:progress_create')}?workorder_step={step.pk}"
+
+
+def _assert_record_button(row, step):
+    """行の「実績を入力」は、その工程を選んだ実績の新規登録を href と小窓 (data-modal-form) の同じ値で開く。"""
+    assert f'href="{_record_url(step)}"' in row
+    assert f'data-modal-form="{_record_url(step)}"' in row
+    assert "実績を入力" in row
+    assert RECORD_BUTTON_CLASS in row
+
+
+@pytest.mark.django_db
+def test_board_row_has_record_button(client_logged_in, issue, cut, bend):
+    workorder = issue(cut, bend)
+    cut_step, bend_step = workorder.steps.order_by("seq")
+
+    body = _body(_board(client_logged_in))
+    _assert_record_button(_row(body, cut_step), cut_step)
+    _assert_record_button(_row(body, bend_step), bend_step)
+    assert f'?workorder_step={bend_step.pk}"' not in _row(body, cut_step)  # 行ごとに自分の工程だけ
+    assert ">操作</th>" in body
+    assert body.index(">残</th>") < body.index(">操作</th>") < body.index(">予定の数</th>")
+
+
+@pytest.mark.django_db
+def test_poll_row_has_record_button(client_logged_in, issue, cut):
+    step = issue(cut).steps.get()
+    before = _record(step, 3)
+    _record(step, 4)
+
+    body = _body(_poll(client_logged_in, after=before.pk))
+    row = _row(body, step)
+    assert 'hx-swap-oob="true"' in row
+    _assert_record_button(row, step)
+    assert len(_cells(row)) == len(_cells(_row(_body(_board(client_logged_in)), step)))  # 画面の全体と更新の応答で欄の数がそろう
+
+
+@pytest.mark.django_db
+def test_poll_response_keeps_refresh_trigger(client_logged_in, issue, cut):
+    step = issue(cut).steps.get()
+    before = _record(step, 3)
+    _record(step, 4)
+
+    body = _body(_poll(client_logged_in, after=before.pk))
+    poller = re.search(r'<div id="progress-poll"[^>]*>', body)
+    assert poller is not None
+    assert REFRESH_TRIGGER in poller.group(0)  # 入れ替わった後も、小窓の保存の後の合図を受け続ける
