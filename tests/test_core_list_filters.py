@@ -95,6 +95,17 @@ def test_choice_filter_uses_field_choices_and_ignores_unknown_value(user, orders
     assert '<option value="shipped" selected>出荷済</option>' in body
     assert 'name="f_status" data-list-filter' in body
     assert "change from:[data-list-filter]" in body
+    # 日付の欄だけ打ち終わるまで待ってから取り直し、選ぶ欄と印はすぐ取り直す (候補 C31 の 4。初見テストの V48)
+    trigger = re.search(r'<form method="get"[^>]*\bhx-trigger="([^"]*)"', body).group(1)
+    clauses = [clause.strip() for clause in trigger.split(",")]
+    listening = [clause for clause in clauses if "from:[data-list-filter]" in clause]
+    assert listening == [
+        "change from:[data-list-filter]:not([type=date])",
+        "change delay:800ms from:[data-list-filter][type=date]",
+    ]
+    assert re.search(r'<input id="list-f-ordered"[^>]*type="date"[^>]*data-list-filter>', body)
+    select = re.search(r'<select id="list-f-status"[^>]*>', body).group()
+    assert "type=" not in select and "data-list-filter" in select  # 選ぶ欄は :not([type=date]) の側
     assert "絞りを外す" in body
 
     # 候補に無い値と空は絞らない (知らせは出さない)

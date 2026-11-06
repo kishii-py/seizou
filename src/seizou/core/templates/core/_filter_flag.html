@@ -1,7 +1,7 @@
 {# 絞りの印 (flag) の 1 つ。値 0 の隠しの欄の後にチェックの 1 を置く (入のときは両方が届き、土台は後の 1 を読む。切のときは 0 だけが届く)。 #}
 {# ほかの絞りに従う印 (disabled_when) は、従う絞りに値がある間、切に描いて押せなくし、隠しの欄が印の値 (入なら 1) を持ち越す。 #}
 {# htmx の応答では core/_filter_clear.html が従う印だけを oob=True で描き直す (チェックと表を合わせる)。 #}
-{# 描き直したチェックには form の hx-trigger (change from:[data-list-filter]) の聞き手が無いので、箱が自分で form の欄を全部送って #rows を取り直す。 #}
+{# 描き直したチェックには form の hx-trigger (change from:[data-list-filter]:not([type=date])) の聞き手が無いので、箱が自分で form の欄を全部送って #rows を取り直す。 #}
 <div id="list-f-{{ f.name }}-box"{% if oob %} hx-swap-oob="true" hx-get="{{ request.path }}" hx-include="closest form" hx-target="#rows" hx-push-url="true" hx-trigger="change"{% endif %}>
 <input type="hidden" name="{{ f.param }}" value="{{ f.kept }}">
 <label class="flex items-center gap-2 pb-2"><input id="list-f-{{ f.name }}" type="checkbox" name="{{ f.param }}" value="1" class="checkbox checkbox-sm"{% if f.checked %} checked{% endif %}{% if f.disabled %} disabled{% endif %} data-list-filter>{{ f.label }}</label>

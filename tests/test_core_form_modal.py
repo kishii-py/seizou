@@ -168,7 +168,10 @@ def test_plain_htmx_save_still_redirects_with_message(logged_in):
 
 def test_list_and_base_have_the_hooks(logged_in):
     body = text(logged_in.get(reverse("masters:holiday_list")))
-    assert "change from:[data-list-filter], seizou:refresh from:body" in body
+    assert (
+        "change from:[data-list-filter]:not([type=date]), change delay:800ms from:[data-list-filter][type=date], seizou:refresh from:body"
+        in body
+    )
     assert "/static/js/seizou-modal.js" in body
     assert '<template id="seizou-toast-template">' in body
     assert body.count('data-toast-level="success"') == 1
