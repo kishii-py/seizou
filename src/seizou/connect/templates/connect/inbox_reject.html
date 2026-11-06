@@ -1,0 +1,13 @@
+{% extends "core/form.html" %}
+{% load seizou_tags %}
+{% block content %}
+{# 断る: 上に届いた明細 (相手の品番のまま)、下に断った理由の欄。どの取引先のどの品番の注文を断るのかを、理由を書く前に見せる (初見テスト R5 の候補 C72)。 #}
+{# 枠は受け入れの画面 (connect/inbox_accept.html) の「届いた明細」の枠を写した (相手の発注番号と発注日の行 = connect/_order_head.html を含む)。明細の表は受け入れの画面と詳細と同じ断片 connect/_payload_lines.html。 #}
+{# 断るは取引先の空の行 (読み取りの差出人の確認待ち) にも出るので、見出しの字だけを枝で分け、一覧と詳細と同じ黄の札と読み取った差出人の字を出す (master_link は取引先が無いと空の字を返すため)。 #}
+<div class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  <dl class="grid gap-x-6 sm:grid-cols-2">{% include "connect/_order_head.html" %}</dl>
+  <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">{% if object.partner_id %}届いた明細 ({% master_link object.partner %} の品番のまま){% else %}届いた明細 (相手の品番のまま) <span class="badge badge-soft badge-warning">差出人の確認待ち</span>{% if object.sender_name %} <span class="text-base-content/70">{{ object.sender_name }}</span>{% endif %}{% endif %}</p>
+  {% include "connect/_payload_lines.html" %}
+</div>
+{{ block.super }}
+{% endblock %}
