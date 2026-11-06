@@ -157,7 +157,12 @@ th {
   text-align: right;
 }
 
-.report-lines .date {
+/* 日付・番号 (出荷番号と品番)・数・見出しは折らない。折るのは品名だけ
+   (品名の長い B 社で、番号が「SH-」と「000009」に割れ、見出しの「数量」が 1 字ずつ縦に並んだため) */
+.report-lines .date,
+.report-lines .code,
+.report-lines .num,
+.report-lines thead th {
   white-space: nowrap;
 }
 
