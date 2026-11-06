@@ -318,6 +318,11 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
     live = body[body.index('<div id="po-live">') : body.index('id="purchaseorder-detail-poll"')]
     assert 'id="po-lines-title"' in live
     assert "x-csrftoken" not in body[body.index('id="purchaseorder-detail-poll"') :].split("</div>")[0].lower()
+    # 明細の箱を横に送っている間は取り直さない (入れ替えると箱が左の端へ戻る。発注の一覧の scrollTop と同じ形。C22)
+    poll = re.search(r'<div id="purchaseorder-detail-poll"[^>]*>', body)
+    assert poll
+    assert "scrollLeft" in poll.group(0)
+    assert "#po-live section .overflow-x-auto" in poll.group(0)
 
     # 「作成」の発注: ボタンと link の行は今のまま (再送 1・受入を登録 1)
     draft = services.create_purchase_order(

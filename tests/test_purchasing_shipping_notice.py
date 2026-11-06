@@ -145,6 +145,11 @@ def test_order_detail_shows_notice_column_and_receipt_link(client_logged_in, use
     # 今までどおり明細の pk だけを渡す「受入を登録」もある
     assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}{next_part}"' in body
     assert "受入を登録" in body
+    # 「受入を登録」は表の先頭の列 (表が箱より広い幅でも横に送らずに押せる。C22)
+    heads, cells = _lines_table(body)
+    assert heads[0] == "操作"
+    assert "受入を登録" in cells[0]
+    assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}{next_part}"' in cells[0]
 
     _notice(line, "6", date(2026, 11, 7), "SH-0002")
     cell = _notice_cell(_detail(client_logged_in, po))
