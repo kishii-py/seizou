@@ -1,30 +1,39 @@
 {% extends "core/base.html" %}
 {% load manuals_tags seizou_icons %}
-{# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。 #}
+{# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。字の欄は whitespace-pre-wrap なので、中身 (目印の札・薄い記号・残りの字) を 1 行に書き、間に空白と改行を置かない。 #}
 {% block actions %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.manual_id %}">{% icon "list" "size-4" %}版の履歴</a>
-<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">{% icon "arrow-left" "size-4" %}復元</a>
+<a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">版 {{ object.number }} に戻す</a>
 {% endblock %}
 {% block content %}
 {% version_diff object as rows %}
+{% diff_summary rows as summary %}
+{# 「最初の違う所へ」は JS を使わないページの中の link。飛び先の id は最初の違う行の <tr> に 1 つだけ置き、scroll-mt-22 で上の帯 (h-16) の下に隠れないようにする。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="text-base-content/70">「{{ object.manual.title }}」の版 {{ object.number }} (<span class="font-mono tabular-nums">{{ object.saved_at|date:"Y-m-d H:i" }}</span>) と、今の中身 (版 {{ object.manual.version }}) を並べます。</p>
   {% if object.title != object.manual.title %}<p class="mt-2 font-medium">題: {{ object.title }} → {{ object.manual.title }}</p>{% endif %}
   <p class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70">
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-success/10" aria-hidden="true"></span>足した</span>
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-error/10" aria-hidden="true"></span>消した</span>
-    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-success/10" aria-hidden="true"></span>足した {{ summary.added }} 行</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-error/10" aria-hidden="true"></span>消した {{ summary.removed }} 行</span>
+    <span class="inline-flex items-center gap-2"><span class="inline-block size-4 rounded border border-base-300 bg-warning/10" aria-hidden="true"></span>変えた {{ summary.changed }} 行</span>
+    {% if rows %}{% if summary.first_index is None %}<span>本文に違いはありません。</span>{% else %}<a class="link link-primary" href="#first-diff">最初の違う所へ</a>{% endif %}{% endif %}
   </p>
+  <p class="mt-2 text-xs text-base-content/70">行の頭の目印は、本文の書式の記号の意味です。</p>
   <div class="mt-4 overflow-x-auto rounded-lg border border-base-300">
-    <table class="table table-sm">
-      <thead><tr class="bg-base-200 text-base-content/70"><th class="w-12 text-right font-medium">行</th><th class="font-medium">版 {{ object.number }}</th><th class="w-12 text-right font-medium">行</th><th class="font-medium">今の中身</th></tr></thead>
-      <tbody class="font-mono">
+    {# 640px 以上は左右に並べる 4 列 (sm:table-fixed で左右の字の列の幅をそろえる)。640px 未満は差分の 1 行 = 1 つの <tr> のまま、<tr> を 2 列の grid (番号と字) にして 1 列に並べる: 同じ行と足した行は今の中身の側だけ、消した行は版の側だけ、変えた行は版の行 (赤の地・札「版 N」) の下に今の行 (黄の地・札「今の中身」)。飛び先の id は 1 つのまま、どちらの幅でも同じ <tr> に着く。 #}
+    <table class="table table-sm sm:table-fixed max-sm:block">
+      <thead class="max-sm:block"><tr class="bg-base-200 text-base-content/70 max-sm:grid max-sm:grid-cols-[3rem_1fr]"><th class="w-12 text-right font-medium">行</th><th class="font-medium max-sm:hidden">版 {{ object.number }}</th><th class="w-12 text-right font-medium max-sm:hidden">行</th><th class="font-medium"><span class="sm:hidden">版 {{ object.number }} と</span>今の中身</th></tr></thead>
+      <tbody class="font-mono max-sm:block">
         {% for row in rows %}
-        {% if row.kind == "added" %}<tr class="bg-success/10">{% elif row.kind == "removed" %}<tr class="bg-error/10">{% elif row.kind == "changed" %}<tr class="bg-warning/10">{% else %}<tr>{% endif %}
-          <td class="text-right tabular-nums text-base-content/50">{{ row.left_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{{ row.left|default_if_none:"" }}</td>
-          <td class="text-right tabular-nums text-base-content/50">{{ row.right_no|default_if_none:"" }}</td>
-          <td class="whitespace-pre-wrap break-all">{{ row.right|default_if_none:"" }}</td>
+        {% if row.kind == "added" %}<tr class="bg-success/10 max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% elif row.kind == "removed" %}<tr class="bg-error/10 max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% elif row.kind == "changed" %}<tr class="bg-warning/10 max-sm:bg-transparent max-sm:grid max-sm:grid-cols-[3rem_1fr]{% if forloop.counter0 == summary.first_index %} scroll-mt-22{% endif %}"{% if forloop.counter0 == summary.first_index %} id="first-diff"{% endif %}>
+        {% else %}<tr class="max-sm:grid max-sm:grid-cols-[3rem_1fr]">{% endif %}
+          {% diff_line row.left as left_line %}{% diff_line row.right as right_line %}
+          <td class="text-right tabular-nums text-base-content/50{% if row.kind == 'changed' %} max-sm:bg-error/10{% elif row.kind != 'removed' %} max-sm:hidden{% endif %}">{{ row.left_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all{% if row.kind == 'changed' %} max-sm:bg-error/10{% elif row.kind != 'removed' %} max-sm:hidden{% endif %}">{% if row.kind == "changed" %}<span class="badge badge-sm badge-outline mr-2 align-middle sm:hidden">版 {{ object.number }}</span>{% endif %}{% if left_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ left_line.label }}</span>{% endif %}{% if left_line.symbol %}<span class="text-base-content/50">{{ left_line.symbol }}</span>{% endif %}{{ left_line.rest }}</td>
+          <td class="text-right tabular-nums text-base-content/50{% if row.kind == 'changed' %} max-sm:bg-warning/10{% elif row.kind == 'removed' %} max-sm:hidden{% endif %}">{{ row.right_no|default_if_none:"" }}</td>
+          <td class="whitespace-pre-wrap break-all{% if row.kind == 'changed' %} max-sm:bg-warning/10{% elif row.kind == 'removed' %} max-sm:hidden{% endif %}">{% if row.kind == "changed" %}<span class="badge badge-sm badge-outline mr-2 align-middle sm:hidden">今の中身</span>{% endif %}{% if right_line.label %}<span class="badge badge-sm badge-ghost mr-2 align-middle">{{ right_line.label }}</span>{% endif %}{% if right_line.symbol %}<span class="text-base-content/50">{{ right_line.symbol }}</span>{% endif %}{{ right_line.rest }}</td>
         </tr>
         {% empty %}
         <tr><td colspan="4" class="text-base-content/70">その版も今の中身も、本文が空です。</td></tr>

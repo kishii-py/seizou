@@ -9,6 +9,7 @@ site-packages の Python-Markdown を指す (Python 3 の import は絶対)。�
   manual_format: "steps" (ステップ形式。## に 1・2・… の番号) か "page" (ページ形式。## に i・ii・… の番号)。
   Rendered.html は逃がしと許す形を済ませた HTML の字 (画面で印を付けるのは template tag の 1 か所)。
   Rendered.toc は ## の目次 (TocEntry の並び)。
+公開する物: line_mark(line) -> LineMark | None  本文の 1 行の書式の記号と、その意味の目印の字 (差分の画面が行の頭に出す)。
 
 方言:
 - 生の HTML は字として出す (Python-Markdown の生の HTML の 2 つの口を外す)。
@@ -102,6 +103,44 @@ class TocEntry:
     number: str
     title: str
     anchor: str
+
+
+@dataclass(frozen=True)
+class LineMark:
+    """本文の 1 行の書式の記号。kind は種類、label は目印の字、symbol は記号の部分、rest は残りの字。
+
+    symbol と rest をつなぐと、元の行と同じ字になる (差分の画面は行の字を変えずに並べるため)。
+    """
+
+    kind: str
+    label: str
+    symbol: str
+    rest: str
+
+
+def line_mark(line: str) -> LineMark | None:
+    """本文の 1 行の書式の記号と、その意味の目印の字。書式の記号の無い行は None。
+
+    差分の画面は本文の字の行のまま並べるので、`##`・`- [ ]`・`:::注意` の意味を行の頭の目印で読めるようにする。
+    見分け方は描く所と同じ正規表現 (BOX_START_RE・BOX_END・CHECK_RE・EVENT_RE) を使う。
+    目印を付けるのは ## の見出し・チェック項目・枠の始まりと終わり・経緯・ほかの `- ` の箇条書きだけ
+    (地の文・### の小見出し・番号の付いた並び・画像の行・写真カードの `> `・空の行には付けない)。
+    """
+    if line.startswith("## "):
+        return LineMark("heading", "見出し", "##", line[2:])
+    box = BOX_START_RE.match(line)
+    if box is not None:
+        return LineMark("box_start", f"{box.group(1)}の枠の始まり", line, "")
+    if line.strip() == BOX_END:
+        return LineMark("box_end", "枠の終わり", line, "")
+    if line.startswith("- "):
+        item = line[2:]
+        if CHECK_RE.match(item):
+            return LineMark("check", "チェック項目", line[:5], line[5:])
+        if EVENT_RE.match(item.strip()):
+            return LineMark("event", "経緯", "-", line[1:])
+        return LineMark("bullet", "箇条書き", "-", line[1:])
+    return None
 
 
 @dataclass(frozen=True)

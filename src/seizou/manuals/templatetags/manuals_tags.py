@@ -12,7 +12,7 @@ from django.utils.safestring import mark_safe
 
 from seizou.core.views import model_url
 from seizou.manuals import diff, services
-from seizou.manuals.markdown import Rendered
+from seizou.manuals.markdown import LineMark, Rendered, line_mark
 from seizou.manuals.models import Manual, ManualFolder
 
 register = template.Library()
@@ -22,6 +22,58 @@ register = template.Library()
 def version_diff(version):
     """{% version_diff version as rows %}。その版の本文と今の本文の行の差分 (diff.DiffRow の並び)。"""
     return diff.diff_rows(version.body, version.manual.body)
+
+
+@register.simple_tag
+def diff_summary(rows):
+    """{% diff_summary rows as summary %}。差分の行 (diff.DiffRow の並び) の、種類ごとの行の数と最初の違う行の位置。
+
+    summary = {"added", "removed", "changed", "first_index"}。first_index は最初の「同じ」でない行の位置
+    (0 から数える。テンプレートの forloop.counter0 と比べる)。違う行が無ければ None。
+    """
+    kinds = [row.kind for row in rows]
+    first_index = next((index for index, kind in enumerate(kinds) if kind != diff.SAME), None)
+    return {
+        "added": kinds.count(diff.ADDED),
+        "removed": kinds.count(diff.REMOVED),
+        "changed": kinds.count(diff.CHANGED),
+        "first_index": first_index,
+    }
+
+
+@register.simple_tag
+def diff_line(line):
+    """{% diff_line row.left as left_line %}。差分の欄の 1 行を、目印の字・記号の部分・残りの字に分ける。
+
+    見分け方は markdown.line_mark (方言の約束はその module の 1 か所)。返す物は LineMark。
+    書式の記号の無い行は label と symbol が空で、rest が行のまま。無い側の行 (None) は全部空。
+    """
+    mark = line_mark(line) if line else None
+    return mark or LineMark(kind="", label="", symbol="", rest=line or "")
+
+
+@register.simple_tag
+def version_rows(manual, versions):
+    """{% version_rows object versions as rows %}。版の履歴の表の行 (頭に今の版の行、続けて前の版の行)。
+
+    行 1 つ = {"number", "is_current", "saved_at", "saved_by", "note", "version"}。
+    今の版の行は番号だけを持ち、日時・保存した人・メモは空で、version は None (差分と戻すの URL を作らない)。
+    形は図面の版の表 (masters_drawing の rows) と同じ。メモは今のまま、変える前の中身の版の行に付く。
+    versions はテンプレートが {% if versions %} で読んだ物を渡す (同じ問い合わせを 2 回送らないため)。
+    """
+    rows = [{"number": manual.version, "is_current": True, "saved_at": None, "saved_by": None, "note": "", "version": None}]
+    for version in versions:
+        rows.append(
+            {
+                "number": version.number,
+                "is_current": False,
+                "saved_at": version.saved_at,
+                "saved_by": version.saved_by,
+                "note": version.note,
+                "version": version,
+            }
+        )
+    return rows
 
 
 @register.simple_tag

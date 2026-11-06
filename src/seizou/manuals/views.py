@@ -157,13 +157,13 @@ class ManualVersionListView(BaseDetailView):
     model = Manual
     template_name = "manuals/manualversion_list.html"
     screen_name = "版の履歴"
-    screen_help = "新しい版として保存したときに残った、前の中身の一覧です。差分を見て、この版に戻せます。"
+    screen_help = "今の版と、新しい版として保存したときに残った前の中身の一覧です。差分を見て、この版に戻せます。"
 
 
 class ManualVersionDetailView(BaseDetailView):
     """版と今の中身の差分。
 
-    使う人: 全員 / いつ: 何を直したかを確かめるとき / 何のために: 版と今の中身を並べて見る / 次にすること: 要れば「復元」
+    使う人: 全員 / いつ: 何を直したかを確かめるとき / 何のために: 版と今の中身を並べて見る / 次にすること: 要れば「この版に戻す」
     """
 
     model = ManualVersion
