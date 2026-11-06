@@ -259,3 +259,35 @@ def test_menu_has_purchase_entry(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
     assert reverse("purchasing:purchaseorder_list") in body
     assert "発注" in body
+
+
+# ---------------------------------------------------------------- 押す前の画面に送ることを書く (初見テスト R5 の V08。候補 C01)
+
+HEAD_NOW = "「必須」の欄と明細を 1 行以上入れて「発注する」を押します。"
+HEAD_SEND = "止まったときも消えません。つながりのある取引先には、「発注する」を押すと保存と同時に注文を送ります。"
+
+
+@pytest.mark.django_db
+def test_create_head_says_order_is_sent_on_save(monkeypatch, client_logged_in):
+    monkeypatch.delenv("SEIZOU_PRACTICE", raising=False)
+
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_create"))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert HEAD_NOW in body
+    # 今の 1 文の直後に、要素を挟まずに続く (1 つの段落として折り返す)。
+    assert HEAD_SEND in body
+    assert "送った発注は自分では取り消せません (取り消せるのは「下書き」か「断られた」の発注だけ)。</p>" in body
+
+
+@pytest.mark.django_db
+def test_create_head_hides_send_sentence_in_practice_mode(monkeypatch, client_logged_in):
+    monkeypatch.setenv("SEIZOU_PRACTICE", "1")
+
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_create"))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert HEAD_NOW in body
+    assert "つながりのある取引先には" not in body
