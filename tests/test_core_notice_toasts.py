@@ -28,10 +28,8 @@ from seizou.core.views import (
 )
 from seizou.masters.forms import HolidayForm
 from seizou.masters.models import Holiday
-from seizou.workorders import services as workorders_services
 from tests.test_core_form_modal import ACTION, MODAL, _HolidayStop, holiday_checks, holiday_data  # noqa: F401 - fixture を借りる
 from tests.test_masters_csv_import import csv_bytes, no_registration, post_csv  # noqa: F401 - fixture を借りる
-from tests.test_workorders_accept import customer, cut, item, workorder  # noqa: F401 - fixture を借りる
 
 ROOT = Path(__file__).resolve().parent.parent
 STOP = 'data-notice="stop"'
@@ -271,18 +269,21 @@ def test_refusal_heads_are_in_the_shared_set():
 
 
 @pytest.mark.django_db
-def test_button_only_error_toast_is_unchanged(user, client_logged_in, workorder):  # noqa: F811
-    workorders_services.cancel_workorder(workorder, user, reason="作り物の取消")
-    detail_url = reverse("workorders:workorder_detail", args=[workorder.pk])
+def test_button_only_error_toast_is_unchanged(user, client_logged_in):
+    # 押すだけの操作の口は上の帯の ☆ (bookmarks:toggle)。指示書の着手の口は無くなった (初見テスト R5 の候補 C27)。
+    # 番号の付く画面は登録できないので、services が「保存できません。…」の ValueError を出し、view が赤の知らせにする。
+    back_url = reverse("workorders:workorder_list")
 
-    client_logged_in.post(reverse("workorders:workorder_accept", args=[workorder.pk]))
-    body = text(client_logged_in.get(detail_url))
+    client_logged_in.post(
+        reverse("bookmarks:toggle"), {"url_name": "workorders:workorder_detail", "on": "1", "next": back_url}
+    )
+    body = text(client_logged_in.get(back_url))
 
     assert "data-notice" not in body
     start = body.index('id="seizou-toasts"')
     toasts = body[start : body.index("</div>", body.index("data-toast-close", start))]
     assert "失敗しました" in toasts
-    assert '<p class="mt-1 break-words">着手できません。取り消した指示書です。' in toasts
+    assert '<p class="mt-1 break-words">保存できません。番号の付く画面です。' in toasts
 
 
 # --- (h) 文書 ---

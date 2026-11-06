@@ -153,8 +153,10 @@ def test_head_order_and_one_primary(logged_in, item, order, workorder, purchase_
     assert body[start : body.index('id="order-stages"')].count("btn-primary") == 1
 
     actions = _actions(_get(logged_in, "workorders:workorder_detail", workorder.pk)[1])
-    assert actions.index("現品票</a>") < actions.index("data-detail-more") < actions.index("着手</button>")
-    assert actions.count("btn-primary") == 1
+    # 実績の無い指示書の頭には「着手」も緑のボタンも無い (着手のボタンをやめた。初見テスト R5 の候補 C27)
+    assert actions.index("現品票</a>") < actions.index("data-detail-more")
+    assert "着手</button>" not in actions
+    assert actions.count("btn-primary") == 0
 
     actions = _actions(_get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1])
     assert actions.index("data-detail-more") < actions.index("再送</button>")

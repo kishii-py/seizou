@@ -32,7 +32,6 @@ urlpatterns = [
     path("select/", views.WorkOrderSelectView.as_view(), name="workorder_select"),
     path("steps/select/", views.WorkOrderStepSelectView.as_view(), name="workorderstep_select"),
     path("<int:pk>/cancel/", views.WorkOrderCancelView.as_view(), name="workorder_cancel"),
-    path("<int:pk>/accept/", views.workorder_accept, name="workorder_accept"),
     path("<int:pk>/tag/", views.workorder_tag, name="workorder_tag"),
     path("<int:pk>/tag/pdf/", views.workorder_tag_pdf, name="workorder_tag_pdf"),
     path("<int:pk>/scan/", views.workorder_scan, name="workorder_scan"),

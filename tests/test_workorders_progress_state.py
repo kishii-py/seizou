@@ -182,14 +182,6 @@ def test_progress_state_of_reads_only_given_totals():
     assert decide(WorkOrder.STATUS_ISSUED, [], {}) == WorkOrder.PROGRESS_NOT_STARTED
 
 
-@pytest.mark.django_db
-def test_accept_mark_is_not_read(user, workorder):
-    """着手の印を読まない。印を付けただけで実績の無い指示書は未着手のまま。"""
-    services.accept_workorder(workorder, user)
-
-    assert _state(workorder) == WorkOrder.PROGRESS_NOT_STARTED
-
-
 # ---------------------------------------------------------------- 4 字と印 (題の横・基本情報・小窓・一覧・絞り・QR を読んだ先)
 
 #: 印の形 (core/_status_badge.html。題の横は点つき)

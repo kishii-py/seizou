@@ -10,12 +10,10 @@
 
 from decimal import Decimal
 
-from django.conf import settings
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import Sum, Value
 from django.db.models.functions import Coalesce
-from django.utils import timezone
 
 #: 実績の合計の型 (WorkOrderStep.planned_qty と同じ桁)
 _QTY_FIELD = models.DecimalField(max_digits=12, decimal_places=2)
@@ -65,17 +63,6 @@ class WorkOrder(models.Model):
     )
     # 書くのは services.cancel_workorder だけ。
     cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
-    # 製造部が受けた (着手した) 印。空 = 未着手。書くのは services.accept_workorder だけ。
-    accepted_at = models.DateTimeField("着手日時", null=True, blank=True)
-    # 受けた人。書くのは services.accept_workorder だけ (進捗の実績の「人」と同じ形)。
-    accepted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name="着手者",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="accepted_workorders",
-    )
 
     # 状態は実績から出す字 (progress_state) を題の横の印で見せるので、基本情報と小窓の項目からは外す (C27-1 = a)。
     detail_hidden_fields = ("status",)
@@ -93,12 +80,6 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return self.wo_no
-
-    def accepted_label(self) -> str:
-        """一覧の「受けた」の列の字 (表示だけ)。未着手は「未」、受けた物は日時 (YYYY-MM-DD HH:MM)。"""
-        if self.accepted_at is None:
-            return "未"
-        return timezone.localtime(self.accepted_at).strftime("%Y-%m-%d %H:%M")
 
     @classmethod
     def progress_state_of(cls, status, steps, totals) -> str:

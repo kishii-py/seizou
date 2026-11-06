@@ -92,8 +92,6 @@ def _lines_with_workorders(user, customer, item, cut, bend, count):
         workorders_services.plan_step(
             workorder.steps.get(seq=2), timezone.localdate(), timezone.localdate() + timedelta(days=1), user
         )
-        if number % 2:
-            workorders_services.accept_workorder(workorder, user)
         shipping_services.ship(line, Decimal("1"), ORDER_DATE, user)
 
 

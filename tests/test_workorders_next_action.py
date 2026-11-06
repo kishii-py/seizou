@@ -69,14 +69,11 @@ def _due(workorder):
 def _assert_finished_green(head, workorder):
     green = f'<a class="btn btn-primary" href="{_finished_link(workorder)}">'
     assert green in head and "製造の完了を入庫にする" in head
-    # 「着手済」の印の右
-    assert head.index("着手済") < head.index(green)
     assert head.count("btn-primary") == 1
 
 
 @pytest.mark.django_db
 def test_all_steps_done_shows_green_finished(user, logged_in, workorder):
-    workorders_services.accept_workorder(workorder, user)
     _record_all(workorder, user)
 
     _assert_finished_green(_head(logged_in, workorder), workorder)
@@ -85,7 +82,6 @@ def test_all_steps_done_shows_green_finished(user, logged_in, workorder):
 
 @pytest.mark.django_db
 def test_no_green_until_every_step_reaches_plan(user, logged_in, workorder):
-    workorders_services.accept_workorder(workorder, user)
     first = workorder.steps.order_by("seq").first()
     progress_services.record_progress(first, Decimal("10"), timezone.now(), user)
 
@@ -98,7 +94,6 @@ def test_no_green_until_every_step_reaches_plan(user, logged_in, workorder):
 
 @pytest.mark.django_db
 def test_green_follows_stocked_rest(user, logged_in, workorder):
-    workorders_services.accept_workorder(workorder, user)
     _record_all(workorder, user)
 
     # 4 だけ入庫にした後は、残り 6 があるので出る。開いた入力の画面の数量は残りの 6
@@ -118,7 +113,6 @@ def test_green_follows_stocked_rest(user, logged_in, workorder):
 
 @pytest.mark.django_db
 def test_head_link_prefills_rest(user, logged_in, workorder):
-    workorders_services.accept_workorder(workorder, user)
     _record_all(workorder, user)
 
     response = logged_in.get(_finished_link(workorder).replace("&amp;", "&"))
@@ -128,14 +122,14 @@ def test_head_link_prefills_rest(user, logged_in, workorder):
 
 
 @pytest.mark.django_db
-def test_unaccepted_workorder_keeps_accept_only(user, logged_in, workorder):
+def test_green_finished_without_accept_mark(user, logged_in, workorder):
+    """着手の印が無くても (ボタンごと無くなった。初見テスト R5 の候補 C27)、全部の工程の実績がそろい入庫の残りがあれば、緑の入庫が 1 つだけ出る。"""
     _record_all(workorder, user)
 
     head = _head(logged_in, workorder)
 
-    assert "着手</button>" in head
-    assert "製造の完了を入庫にする" not in head
-    assert head.count("btn-primary") == 1
+    assert "着手</button>" not in head
+    _assert_finished_green(head, workorder)
 
 
 @pytest.mark.django_db
@@ -153,7 +147,6 @@ def test_cancelled_workorder_has_neither(user, logged_in, workorder):
 @pytest.mark.django_db
 def test_finished_button_follows_stock_department(settings, client, user, workorder):
     settings.SEIZOU = {"access_control": dict(ALL_ON)}
-    workorders_services.accept_workorder(workorder, user)
     _record_all(workorder, user)
     depts = _departments()
 

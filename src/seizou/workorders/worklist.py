@@ -1,7 +1,7 @@
 """指示書の一覧の製造向けの印 (02 の 8 節)。一覧の絞り (WorkOrderListView.filters) の flag が呼ぶ when の関数。
 
 - 印は 2 つ: 未着手だけ (f_unaccepted=1)・今日の計画だけ (f_today=1)。工程は土台の lookup の絞り (f_process)。
-- 読むだけで、表に書かない (受けた印を書くのは services.accept_workorder)。
+- 読むだけで、表に書かない。未着手は指示書の進みの状態 (実績から出す) と同じ物で、着手の印は無い (初見テスト R5 の候補 C27)。
 - when は filter だけを掛ける。工程の行の join で重なった指示書は、一覧の view の get_queryset が distinct で外す。
 """
 

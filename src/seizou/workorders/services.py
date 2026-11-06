@@ -11,7 +11,6 @@
   書く前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
 - 受注 (Order・OrderLine) は書かない。
 - 指示書の取消は cancel_workorder。実績が 1 件でも入った指示書は取り消せない (実績は progress を import せず、工程の逆の関係で数える)。
-- 受けた印は accept_workorder。取消は受けた後でも今のまま (実績が無ければ取り消せる)。
 """
 
 from __future__ import annotations
@@ -172,19 +171,3 @@ def cancel_workorder(workorder, user, *, reason=""):
         locked.saved_message = "取り消しました。"
         return locked
 
-
-def accept_workorder(workorder, user):
-    """製造部が指示書を受けた (着手した) 印。発行の指示書だけ。2 回目は変えない (最初の日時と人を残す)。
-
-    取消の指示書は ValueError。書くのは accepted_at・accepted_by の 2 列だけ。
-    """
-    with transaction.atomic():
-        locked = WorkOrder.objects.select_for_update().get(pk=workorder.pk)
-        if locked.status == WorkOrder.STATUS_CANCELLED:
-            raise ValueError("着手できません。取り消した指示書です。発行の指示書を選んでください。")
-        if locked.accepted_at is not None:
-            return locked
-        locked.accepted_at = timezone.now()
-        locked.accepted_by = user if getattr(user, "pk", None) is not None else None
-        locked.save(update_fields=["accepted_at", "accepted_by"])
-        return locked
