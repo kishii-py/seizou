@@ -35,12 +35,11 @@
       {% endif %}
     </div>
   </section>
-  <span class="tooltip" data-tip="AI に質問"><button id="assistant-toggle" type="button" class="btn btn-neutral btn-circle shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">{% icon "bot" "size-5" %}</button></span>
 </div>
 <script>
 (function () {
-  // 開くボタンで小窓を開け閉めする。開いたら質問の欄に focus し、吹き出しの並びを下まで送る。
-  // 小窓の中で Esc を押したら閉じて、開くボタンに focus を戻す。htmx の object は呼ばない (DOM の event だけを受ける)。
+  // 左のメニューの「AI に質問」(assistant/_menu.html) で小窓を開け閉めする。開いたら質問の欄に focus し、吹き出しの並びを下まで送る。
+  // 小窓の中で Esc を押したら閉じて、入口に focus を戻す。htmx の object は呼ばない (DOM の event だけを受ける)。
   var toggle = document.getElementById("assistant-toggle");
   var panel = document.getElementById("assistant-panel");
   if (!toggle || !panel) return;
@@ -60,7 +59,13 @@
     setOpen(false);
     toggle.focus();
   }
-  toggle.addEventListener("click", function () { setOpen(panel.hidden); });
+  toggle.addEventListener("click", function () {
+    // phone と tablet (lg 未満) では入口が左のメニューの中にあるので、メニューを閉じてから窓を出す (決め C37。候補の案 1)。
+    // lg 以上ではメニューはいつも出ていて開け閉めの checkbox は隠れているので、閉じても見た目は変わらない。
+    var drawer = document.getElementById("seizou-drawer");
+    if (drawer) drawer.checked = false;
+    setOpen(panel.hidden);
+  });
   var close = document.getElementById("assistant-close");
   if (close) close.addEventListener("click", closeToButton);
   panel.addEventListener("keydown", function (event) {
