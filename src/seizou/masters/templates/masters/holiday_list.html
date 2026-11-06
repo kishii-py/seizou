@@ -1,12 +1,3 @@
 {% extends "core/list.html" %}
-{% load seizou_icons %}
-{# 休日の一覧。core の一覧のまま、上の帯に年の絞り (すべて・前の年・今年・次の年。?year=YYYY) を足す。今の絞りは押せない印にする。 #}
-{# 年の絞りは HolidayListView.get_queryset が読む。検索の欄は year を送らないので、検索すると年の絞りが外れる。 #}
-{% block actions %}{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% now "Y" as this_year %}{% with prev_year=this_year|add:"-1"|stringformat:"d" next_year=this_year|add:"1"|stringformat:"d" current=request.GET.year %}
-<div class="flex flex-wrap items-center gap-2" role="group" aria-label="年で絞る">
-  {% if current %}<a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}">すべて</a>{% else %}<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">すべて</span>{% endif %}
-  {% if current == prev_year %}<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">{{ prev_year }}</span>{% else %}<a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}?year={{ prev_year }}">{{ prev_year }}</a>{% endif %}
-  {% if current == this_year %}<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">{{ this_year }}</span>{% else %}<a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}?year={{ this_year }}">{{ this_year }}</a>{% endif %}
-  {% if current == next_year %}<span class="btn btn-sm btn-active pointer-events-none" aria-current="true">{{ next_year }}</span>{% else %}<a class="btn btn-sm btn-outline border-base-300" href="{{ request.path }}?year={{ next_year }}">{{ next_year }}</a>{% endif %}
-</div>
-{% endwith %}{% endblock %}
+{# 休日の一覧 (N158b): core の一覧のまま、「新規登録」を小窓で開く。年の絞りは HolidayListView の filters (日付) と presets (前の年・今年・次の年) で、カードの中のタブと「絞り込み」の枠に出る (N266)。 #}
+{% block actions %}{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}
