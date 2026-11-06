@@ -9,7 +9,7 @@
 {# 枠の id は list-card: 札の × と「絞りを外す」と空の枠の「すべて外す」は、この枠を htmx で丸ごと取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを選ぶ。N161)。 #}
 <div id="list-card" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
   {% if presets %}{% include "core/_presets.html" %}{% endif %}
-  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter], seizou:refresh from:body">
+  <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter]:not([type=date]), change delay:800ms from:[data-list-filter][type=date], seizou:refresh from:body">
     {% if search_hint or filters %}
     <div class="rounded-lg bg-base-200 p-4" role="search">
       <div class="flex items-center justify-between gap-2">

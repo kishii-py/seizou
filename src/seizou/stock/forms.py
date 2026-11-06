@@ -18,14 +18,14 @@ from seizou.core.forms import PlainNumberInput
 from django.apps import apps
 from django.utils import timezone
 
-from seizou.core.widgets import RemoteSelect
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 
 from . import services
 from .models import StockMove, _qty_text
 
 
 def _date_input():
-    return forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d")
+    return IsoDateInput(attrs={"class": "input w-full"})
 
 
 def _qty_field(label="数量"):

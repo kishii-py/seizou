@@ -4,6 +4,7 @@
 古い GET の process (製造向けの別の form) は、N128 で読まなくなった (絞りは f_process だけ)。名前は作り物だけ。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -120,6 +121,19 @@ def test_shipment_list_filters_customer_and_shipped_date(client_logged_in, user,
     response = client_logged_in.get(url, {"f_customer": str(north.pk), "f_shipped_to": "2026-11-04"})
     assert listed(response) == [early.pk]
     assert Shipment.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_shipment_list_date_filters_cap_the_year(client_logged_in):
+    """出荷日の始めと終わりの欄に年の上限 max="9999-12-31" が付き、data-list-filter も残る (候補 C31 の 2。初見テストの V39・U41)。
+
+    一覧の絞りの期間の欄は core/_filters.html の 1 か所なので、受注・発注・指示書などの一覧も同じ。
+    """
+    body = client_logged_in.get(reverse("shipping:shipment_list"), {"f_shipped_from": "2026-11-04"}).content.decode()
+    for name, value in (("f_shipped_from", "2026-11-04"), ("f_shipped_to", "")):
+        tag = re.search(rf'<input [^>]*type="date" name="{name}"[^>]*>', body).group()
+        assert f'name="{name}" value="{value}" max="9999-12-31" aria-label=' in tag
+        assert tag.endswith(" data-list-filter>")
 
 
 @pytest.mark.django_db

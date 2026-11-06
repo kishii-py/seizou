@@ -23,7 +23,7 @@ from seizou.core.forms import (
     line_totals,
     line_unit,
 )
-from seizou.core.widgets import RemoteSelect
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.orders.services import remaining_qty
 
 from .models import DeliveryNote, Shipment
@@ -61,7 +61,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
     shipped_at = forms.DateField(
         label="出荷日",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(),
         error_messages=SHIPPED_AT_ERRORS,
     )
     note = forms.CharField(label="備考", max_length=500, required=False)
@@ -127,7 +127,7 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
     shipped_at = forms.DateField(
         label="出荷日",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(),
         error_messages=SHIPPED_AT_ERRORS,
     )
     note = forms.CharField(label="備考", max_length=500, required=False)
@@ -277,7 +277,7 @@ class ShipmentUpdateForm(forms.Form):
     qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
     shipped_at = forms.DateField(
         label="出荷日",
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        widget=IsoDateInput(),
         error_messages=SHIPPED_AT_ERRORS,
     )
     note = forms.CharField(label="備考", max_length=500, required=False)

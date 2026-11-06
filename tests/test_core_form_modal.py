@@ -168,7 +168,10 @@ def test_plain_htmx_save_still_redirects_with_message(logged_in):
 
 def test_list_and_base_have_the_hooks(logged_in):
     body = text(logged_in.get(reverse("masters:holiday_list")))
-    assert "change from:[data-list-filter], seizou:refresh from:body" in body
+    assert (
+        "change from:[data-list-filter]:not([type=date]), change delay:800ms from:[data-list-filter][type=date], seizou:refresh from:body"
+        in body
+    )
     assert "/static/js/seizou-modal.js" in body
     assert '<template id="seizou-toast-template">' in body
     assert body.count('data-toast-level="success"') == 1
@@ -189,3 +192,44 @@ def test_modal_box_width_rules_are_in_the_css_source():
     assert "#seizou-modal-box {\n  max-width: min(48rem, calc(100vw - 2rem));\n  max-height: calc(100vh - 4rem);\n}" in css
     assert "#seizou-modal-box:has(> .seizou-modal-wide) {\n  max-width: min(64rem, calc(100vw - 2rem));\n}" in css
     assert "#seizou-modal-box:has(> .seizou-modal-narrow) {\n  max-width: min(28rem, calc(100vw - 2rem));\n}" in css
+
+
+# --- 日付の欄の年の上限 (core の IsoDateInput。候補 C31 の 1。初見テストの V39・U41) ---
+# 受注と発注は tests/test_orders_views.py と tests/test_purchasing_stages.py が画面の GET で見る。ここはほかの部品の欄。
+
+
+def test_holiday_date_field_caps_the_year(logged_in):
+    """休日の日付の欄に年の上限 max="9999-12-31" が付く (class は今と同じく土台が付ける)。"""
+    body = text(logged_in.get(reverse("masters:holiday_create")))
+    tag = body[body.index('<input type="date" name="date"') :].split(">", 1)[0]
+    assert 'max="9999-12-31"' in tag and 'class="input w-full"' in tag
+
+
+@pytest.mark.parametrize(
+    "path, field, has_class",
+    [
+        ("seizou.shipping.forms.ShipmentForm", "shipped_at", False),
+        ("seizou.shipping.forms.ShipmentBulkForm", "shipped_at", False),
+        ("seizou.shipping.forms.ShipmentUpdateForm", "shipped_at", False),
+        ("seizou.stock.forms.FinishedForm", "moved_on", True),
+        ("seizou.stock.forms.IssueForm", "moved_on", True),
+        ("seizou.stock.forms.AdjustForm", "moved_on", True),
+        ("seizou.billing.forms.InvoiceForm", "issued_on", True),
+        ("seizou.billing.forms.PaymentForm", "received_on", True),
+    ],
+)
+def test_input_date_fields_cap_the_year(path, field, has_class):
+    """出荷日 (新規・一括・編集)・在庫の日付・請求書の発行日・入金日の欄に年の上限が付く。form が持つ class は残る。
+
+    form の欄の widget をそのまま描いて見る (class を持たない欄には、画面では土台の widget_css が input w-full を付ける)。
+    """
+    from django.utils.module_loading import import_string
+
+    from seizou.core.widgets import IsoDateInput
+
+    widget = import_string(path).base_fields[field].widget
+    assert isinstance(widget, IsoDateInput)
+    tag = widget.render(field, date(2026, 11, 4))
+    assert tag.startswith(f'<input type="date" name="{field}" value="2026-11-04"')
+    assert 'max="9999-12-31"' in tag
+    assert ('class="input w-full"' in tag) is has_class

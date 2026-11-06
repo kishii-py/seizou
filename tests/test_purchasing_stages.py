@@ -353,3 +353,25 @@ def test_sent_order_keeps_the_acceptance_ahead(monkeypatch, user, subcontractor,
     assert band.current == 4
     assert _done(band) == [True, True, True, False, False, False]
     assert not any(_skipped(band))
+
+
+# --- 日付の欄の年の上限 (候補 C31 の 1。初見テストの V39・U41) ---------------------------------
+
+
+def test_purchase_order_date_fields_cap_the_year(logged_in):
+    """発注日と明細の納期 (足す行の雛形の __prefix__ も) に年の上限 max="9999-12-31" が付き、class input w-full も残る。"""
+    body = logged_in.get(reverse("purchasing:purchaseorder_create")).content.decode()
+    for name in ("order_date", "lines-0-due_date", "lines-__prefix__-due_date"):
+        tags = re.findall(rf'<input type="date" name="{re.escape(name)}"[^>]*>', body)
+        assert len(tags) == 1, (name, tags)
+        assert 'max="9999-12-31"' in tags[0]
+        assert 'class="input w-full"' in tags[0]
+
+
+def test_receipt_date_field_caps_the_year():
+    """受入日の欄にも同じ上限が付き、class input w-full も残る (form の欄をそのまま描いて見る)。"""
+    from seizou.purchasing.forms import ReceiptForm
+
+    tag = ReceiptForm.base_fields["received_on"].widget.render("received_on", None)
+    assert tag.startswith('<input type="date" name="received_on"')
+    assert 'max="9999-12-31"' in tag and 'class="input w-full"' in tag

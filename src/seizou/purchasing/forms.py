@@ -24,7 +24,7 @@ from django.utils import timezone
 from seizou.core import fields as company_fields
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
 from seizou.core.views import use_decimal_input
-from seizou.core.widgets import RemoteSelect
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import active_items, active_partners
 
 from . import services
@@ -34,7 +34,7 @@ LINE_KEYS = ("item", "qty", "unit", "unit_price", "due_date", "note")
 
 
 def _date_input():
-    return forms.DateInput(attrs={"type": "date", "class": "input w-full"}, format="%Y-%m-%d")
+    return IsoDateInput(attrs={"class": "input w-full"})
 
 
 class PurchaseOrderLineForm(forms.Form):
