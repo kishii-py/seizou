@@ -622,6 +622,10 @@ def test_select_js_copies_unit_and_price_into_same_row():
         'now !== "" && now !== input.getAttribute("data-copied")',
         # 明細の金額の目安 (orders/order-lines.js) が数え直す
         'input.dispatchEvent(new Event("input", { bubbles: true }))',
+        # 発注の明細の工程の最初の値 (C100): 同じ決まりで選ぶ欄に写す 1 か所
+        '{ key: "default_process", suffix: "-process", label: "工程" }',
+        "function copyChoice(select, value)",
+        'row.querySelector(\'select[name$="\' + spec.suffix + \'"]\')',
     ):
         assert word in text, word
 

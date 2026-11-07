@@ -29,11 +29,12 @@ from seizou.core.forms import DefaultChoiceField, PlainNumberInput, SubmitLabelM
 from seizou.core.views import use_decimal_input
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
+from seizou.masters.services import active_processes, with_default_process
 
 from . import services
 from .models import PurchaseOrder, PurchaseOrderLine, _qty_text
 
-LINE_KEYS = ("item", "qty", "unit", "price_basis", "unit_price", "due_date", "note")
+LINE_KEYS = ("item", "process", "qty", "unit", "price_basis", "unit_price", "quote_no", "due_date", "note")
 
 
 def _date_input():
@@ -45,6 +46,15 @@ class PurchaseOrderLineForm(forms.Form):
 
     item = forms.ModelChoiceField(
         label="部品", queryset=None, widget=RemoteSelect("purchasing:item_select", attrs={"class": "w-full"})
+    )
+    # 協力企業に出す工程 (決め PRICE-5。空でもよい)。選択肢は使用中で協力企業に出す工程だけ。協力企業に出す工程の無い会社では欄を外す (C100)。
+    process = forms.ModelChoiceField(
+        label="工程",
+        queryset=None,
+        required=False,
+        empty_label="指定しない",
+        widget=forms.Select(attrs={"class": "select w-full"}),
+        help_text="協力企業に出す工程。",
     )
     qty = forms.DecimalField(
         label="数量",
@@ -73,6 +83,13 @@ class PurchaseOrderLineForm(forms.Form):
         decimal_places=2,
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-price": True}),
     )
+    # 単価表から写した見積の番号 (決め PRICE-0)。表の列にせず、単価の枡の中に置く (purchasing/_purchaseorder_card.html)。
+    quote_no = forms.CharField(
+        label="見積の番号",
+        max_length=35,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "input input-sm w-full", "placeholder": "見積の番号", "aria-label": "見積の番号"}),
+    )
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(
         label="備考",
@@ -81,10 +98,19 @@ class PurchaseOrderLineForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "input w-full"}),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, processes=None, has_process=None, **kwargs):
         super().__init__(*args, **kwargs)
         # 部品は使用中だけ (N135。発注は新しく作るだけの form)
         self.fields["item"].queryset = active_items()
+        # 工程の選択肢と「協力企業に出す工程があるか」は、発注の form が form_kwargs で渡す (行の数だけ引かない。C100)
+        if processes is None:
+            processes = active_processes().filter(is_outsourced=True)
+        if has_process is None:
+            has_process = processes.exists()
+        if has_process:
+            self.fields["process"].queryset = processes
+        else:
+            self.fields.pop("process")
         # 数量と単価を字の欄にする (受注の明細と土台と同じ。初期値は詳細と同じ字で出し、「1,200」も通す。初見テスト 5 回目 a-flagged-12)。
         for field in self.fields.values():
             use_decimal_input(field)
@@ -156,11 +182,23 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
             rest = remaining_qty(line)
             if rest > 0:
                 picked.append((line, rest))
+        # 発注の明細の工程の最初の値 (決め PRICE-5): 選んだ明細の部品の分を 1 回の問い合わせで引く (盤は何行も選べるので行ごとに引かない。C100)。
+        defaults = {}
+        if picked:
+            items = with_default_process(active_items()).filter(pk__in=[line.item_id for line, _rest in picked])
+            defaults = {row.pk: row.default_process for row in items}
         line_initial = [
-            {"item": line.item_id, "qty": rest, "unit": line.unit, "due_date": line.due_date} for line, rest in picked
+            {"item": line.item_id, "process": defaults.get(line.item_id), "qty": rest, "unit": line.unit, "due_date": line.due_date}
+            for line, rest in picked
         ] or None
+        # 協力企業に出す工程の選択肢と、あるか (テンプレートが「工程」の見出しの列を出すかに読む)
+        processes = active_processes().filter(is_outsourced=True)
+        self.has_process = processes.exists()
         self.lines = PurchaseOrderLineFormSet(
-            data=self.data if self.is_bound else None, initial=line_initial, prefix="lines"
+            data=self.data if self.is_bound else None,
+            initial=line_initial,
+            prefix="lines",
+            form_kwargs={"processes": processes, "has_process": self.has_process},
         )
 
     def submit_label_templates(self) -> list:
@@ -204,7 +242,8 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
     def service_kwargs(self):
         data, ext = company_fields.split_ext(self.cleaned_data)
         lines = [
-            {key: row.cleaned_data[key] for key in LINE_KEYS}
+            # 工程の欄を外した会社 (協力企業に出す工程が無い) では、無い欄の鍵を services に渡さない (C100)
+            {key: row.cleaned_data[key] for key in LINE_KEYS if key in row.cleaned_data}
             for row in self.lines.forms
             if row.has_changed()
         ]

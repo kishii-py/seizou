@@ -27,6 +27,8 @@
  *   -unit_price で終わる欄に写す (05 の 2 節の「選んだら写す」。規則は masters.services.copy_values と同じ:
  *   欄が空か前に写したままの値なら写し、人が打った字は残す)。写したら欄の下に「単位と単価を部品から写しました。」を出す。
  *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
+ *   部品の候補の口が default_process (発注の明細の工程の最初の値) を返したら、同じ行の -process の選ぶ欄にも写す
+ *   (同じ決まり。選ぶ欄に写すのは copyChoice の 1 か所。C100)。
  * - 字を打つ前の 1 ページ目は、口の返す recent (最近の受注・発注・出荷で使った物。5 件まで) を「最近使った」の見出しの群
  *   (Tom Select の optgroup) に入れて先頭に出す。同じ id の候補は 1 つにまとまり、最近使ったの群に残る。recent が空なら見出しを出さない (N162)。
  * - 候補が 0 件で、口が create (登録の入口) を返したら、「該当なし」の下に登録の行 (data-select-create) を出す。押すと data-modal-form で
@@ -42,6 +44,7 @@
   var COPY_FIELDS = [
     { key: "unit", suffix: "-unit", label: "単位" },
     { key: "standard_price", suffix: "-unit_price", label: "単価" },
+    { key: "default_process", suffix: "-process", label: "工程" },
   ];
   var COPIED_TAIL = "を部品から写しました。";
   // 字を打つ前の 1 ページ目に、口の返す recent を入れる群の名前と見出しの字 (N162)
@@ -80,6 +83,27 @@
     state.errorShown = false;
   }
 
+  // 同じ行の欄が選ぶ欄 (select) のとき、写す値を選び、選んだら真を返す。写す決まりは字の欄と同じ:
+  // 欄が空か前に写したままの値 (data-copied) のときだけ選び、人が選んだ値は残す。
+  // 字を打って探す欄 (Tom Select の載った欄) は Tom Select の口で、素の選ぶ欄 (発注の明細の工程) は value で選ぶ。
+  // どちらも、選ぶ値の候補 (option) が欄に無ければ選ばない。
+  function copyChoice(select, value) {
+    var ts = select.tomselect;
+    var now = ts ? String(ts.getValue()) : select.value;
+    if (now !== "" && now !== select.getAttribute("data-copied")) return false;
+    if (now === value) return false;
+    if (ts) {
+      if (!ts.options[value]) return false;
+      ts.setValue(value);
+    } else {
+      if (!Array.prototype.some.call(select.options, function (each) { return each.value === value; })) return false;
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    select.setAttribute("data-copied", value);
+    return true;
+  }
+
   // 選んだ候補の値を同じ表の行の欄に写し、写した欄の名前 (単位・単価) の並びを返す。
   // 写すのは欄が空か、前に写したままの値 (data-copied と同じ字) のときだけ。人が打った字は残す。
   function copyFromOption(select, option) {
@@ -89,6 +113,11 @@
     COPY_FIELDS.forEach(function (spec) {
       var value = option[spec.key];
       if (value === undefined || value === null || String(value).trim() === "") return;
+      var choice = row.querySelector('select[name$="' + spec.suffix + '"]');
+      if (choice) {
+        if (copyChoice(choice, String(value))) copied.push(spec.label);
+        return;
+      }
       var input = row.querySelector('input[name$="' + spec.suffix + '"]');
       if (!input) return;
       var now = input.value.trim();

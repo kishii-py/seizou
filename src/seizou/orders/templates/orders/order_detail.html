@@ -53,7 +53,7 @@
       <tr class="h-10" data-row-menu>
         <td class="whitespace-nowrap">{% include "orders/_line_menu.html" with line=line order=object can_issue=can_issue can_ship=can_ship can_po=can_po can_receive=can_receive %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no }}</td>
-        <td class="whitespace-nowrap"><span class="font-mono">{% master_link line.item line.item.part_no %}</span> <span class="text-base-content/70">{{ line.item.name }}</span>{% if line.customer_part_no %}<span class="block text-xs text-base-content/70">得意先の品番 <span class="font-mono">{{ line.customer_part_no }}</span></span>{% endif %}</td>
+        <td class="whitespace-nowrap"><span class="font-mono">{% master_link line.item line.item.part_no %}</span> <span class="text-base-content/70">{{ line.item.name }}</span>{% if line.customer_part_no %}<span class="block text-xs text-base-content/70">得意先の品番 <span class="font-mono">{{ line.customer_part_no }}</span></span>{% endif %}{% if line.process_name %}<span class="block text-xs text-base-content/70">工程 {{ line.process_name }}</span>{% endif %}{% if line.quote_no %}<span class="block text-xs text-base-content/70">見積の番号 <span class="font-mono">{{ line.quote_no }}</span></span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
         <td class="whitespace-nowrap">{{ line.unit }}</td>
         {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>

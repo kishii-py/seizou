@@ -31,7 +31,7 @@ ORDER_KEYS = {
 }
 LINE_KEYS = {
     "line_no", "part_no", "part_name", "qty", "unit", "unit_price", "price_basis", "due_date", "note",
-    "line_status_code", "line_status_reason_code",
+    "line_status_code", "line_status_reason_code", "process_name", "quote_no",
 }
 
 
@@ -163,6 +163,8 @@ def test_send_records_outbox_and_marks_sent(monkeypatch, user, secret, subcontra
         "note": "作り物の明細の備考",
         "line_status_code": "39",
         "line_status_reason_code": "",
+        "process_name": "",
+        "quote_no": "",
     }
     # 本文は鍵の並びを固定した JSON の bytes そのまま
     assert call["data"] == json.dumps(

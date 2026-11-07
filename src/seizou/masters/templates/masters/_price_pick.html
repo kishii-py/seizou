@@ -1,0 +1,33 @@
+{% load seizou_tags seizou_icons masters_prices %}
+{# 単価表から選ぶ小窓の中身 (C100)。枠は masters/_price_pick_dialog.html の #price-pick (入力の小窓の枠と別)。開いたらカーソルは右上の閉じるボタン。 #}
+{# 行の「選ぶ」の data の属性 (data-unit-price・data-price-basis・data-quote-no・発注だけ data-process) を masters/price-pick.js が読み、開いた明細の行の欄に写す。 #}
+{# 字は tag の price_pick が組み、Django の自動の escape を通す (字に HTML を組まない)。金額の閲覧が無い人と単価の種類が読めないときは、小窓の上の赤い帯だけを出す。 #}
+<div class="flex items-start justify-between gap-4">
+  <h3 class="min-w-0 truncate text-lg font-bold">単価表から選ぶ</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<p class="text-sm"><span class="font-mono">{{ object.part_no }}</span> {{ object.name }}</p>
+{% price_pick object request.GET seizou.hide_money as pick %}
+{% if pick.notice %}
+<div class="mt-4">{% include "core/_notices.html" with notice=pick.notice in_modal=True %}</div>
+{% else %}
+<p class="mt-1 text-xs text-base-content/70">{{ pick.kind_label }}・{{ pick.partner_label }} {% if pick.partner %}{{ pick.partner.short_name|default:pick.partner.name }}{% else %}まだ選んでいません{% endif %}・{{ pick.on_date|date:"Y-m-d" }} に効く単価{% if pick.qty %}・数量 {{ pick.qty|comma }} {{ pick.qty_unit }}{% endif %}</p>
+{% if not pick.partner %}<p class="mt-1 text-xs text-base-content/70">上の「{{ pick.partner_label }}」を選ぶと、その{{ pick.partner_label }}の単価も出ます。</p>{% endif %}
+{% for section in pick.sections %}
+<h4 class="mt-4 text-sm font-bold">{{ section.label }}</h4>
+<ul class="mt-2 flex flex-col gap-2">
+  {% for row in section.rows %}
+  <li class="flex items-start justify-between gap-2 rounded-lg border border-base-300 p-3">
+    <div class="min-w-0">
+      <p class="font-bold tabular-nums">{{ row.head }}{% if row.fits %} <span class="badge badge-sm badge-soft badge-success">今の数量に合う</span>{% endif %}{% if row.expired %} <span class="badge badge-sm badge-soft badge-warning">期限切れ</span>{% endif %}</p>
+      <p class="text-xs text-base-content/70">{{ row.detail }}</p>
+    </div>
+    <button type="button" class="btn btn-sm btn-primary shrink-0" data-price-choice data-unit-price="{{ row.price.unit_price }}" data-price-basis="{{ row.price.price_basis }}" data-quote-no="{{ row.price.quote_no }}"{% if pick.kind == "purchase" %} data-process="{{ row.price.process_id|default_if_none:"" }}"{% endif %} aria-label="{{ row.head }}を選ぶ">選ぶ</button>
+  </li>
+  {% endfor %}
+</ul>
+{% empty %}
+<p class="mt-4 text-sm">この部品の単価表に、{{ pick.kind_label }}の単価がありません。単価は打って入れるか、部品の詳細の「取引先」のタブで足してください。</p>
+<p class="mt-2"><a class="link link-primary" href="{% url 'masters:item_detail' object.pk %}" target="_blank" rel="noopener">部品の詳細を新しいタブで開く</a></p>
+{% endfor %}
+{% endif %}

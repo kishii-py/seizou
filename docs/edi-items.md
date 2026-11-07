@@ -48,6 +48,8 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `lines[].note` | 明細の備考 | `purchasing.PurchaseOrderLine.note` | 500 字 | `orders.OrderLine.note` | 500 字 | 注文明細注釈内容 (注文 229。備考は明細行注釈 ID 1) | UN01005560 |
 | `lines[].line_status_code` | 注文明細状態コード (変更の版で、取り消した明細の印。下の「コードの値」) | `purchasing.PurchaseOrderLine.line_status_code` | 2 字 | — (受けた中身に残し、受け入れるときに読む) | 決まりなし (受けた中身に残すだけ) | 注文明細状態コード (注文) | UN01006605 |
 | `lines[].line_status_reason_code` | 注文明細状態理由コード (取り消した訳。無ければ空) | `purchasing.PurchaseOrderLine.line_status_reason_code` | 4 字 | — (受けた中身に残すだけ) | 決まりなし (受けた中身に残すだけ) | 注文明細状態理由コード (注文) | UN01006606 |
+| `lines[].process_name` | 協力企業に出す工程の名前 (工程コードでなく名前の字。無ければ空の字。受ける側は自社の工程マスターにつながず字のまま持つ) | `masters.Process.name` | 100 字 | `orders.OrderLine.process_name` | 100 字 | 工程名 (注文の明細。この品目の生産工程の名称。任意の項目) | UN01012678 |
+| `lines[].quote_no` | 単価表から写した見積の番号 (無ければ空の字) | `purchasing.PurchaseOrderLine.quote_no` | 35 字 | `orders.OrderLine.quote_no` | 35 字 | (明細行参照) 見積回答書ID (注文の明細。この明細行が参照する見積回答書に記載の文書ID。任意の項目) | UN01005580 |
 
 ## 注文回答 (kind = order_reply)
 

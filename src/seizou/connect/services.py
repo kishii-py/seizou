@@ -1022,6 +1022,7 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     読み取りの行 (入口 = 読み取り) は、単価の無い明細を品目の標準単価に、注文日が無ければ届いた日にし、受注の入口を「読み取り」にする。
     承認した日時 (accepted_at) を状態と受注と同じトランザクションで書く。
     accepted_at を渡すと、承認した日時をその値にする (timezone 付きの datetime。作り物の種の「承認した日時」のため。渡さなければ今)。timezone の無い日時と日時でない値は、状態を見る前に日本語の ValueError。
+    明細の process_name と quote_no は、受注の明細の工程名と見積の番号に写す (字でなければ空。C100)。
     訳: 受信した注文を人が受け入れたときだけ受注にし (R10)、同じ注文を 2 回受け入れても受注を 1 件にするため (R11。2 回届いても 1 件)。出所 = RULES.md R10・R11。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -1127,6 +1128,9 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
             item = items[part_no]
             unit = raw.get("unit")
             note = raw.get("note")
+            # 工程名と見積の番号 (C100。どちらも任意の項目。字でなければ空の字にし、断らない)
+            process_name = raw.get("process_name")
+            quote_no = raw.get("quote_no")
             if intake_row and raw.get("unit_price") is None:
                 # 読み取りの単価の無い明細は品目の標準単価 (intake の _unit_price と同じ扱い。intake の関数は呼ばない)。
                 if not item.standard_price:
@@ -1169,6 +1173,8 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
                     "due_date": due_date,
                     "note": note if isinstance(note, str) else "",
                     "customer_part_no": part_no,
+                    "process_name": process_name if isinstance(process_name, str) else "",
+                    "quote_no": quote_no if isinstance(quote_no, str) else "",
                 }
             )
 
@@ -1899,6 +1905,8 @@ def send_order(purchase_order, user):
     - 本文は鍵の並びを固定した JSON の bytes。署名はこの bytes のまま (整形し直さない)。
     - 明細の price_basis は単価の単位 (unit = 部品の単位 1 つあたり・lump = 式。金額に数量を掛けない)。中小企業共通 EDI の注文単価は
       1 単位あたりの単価で、式に当たる数量単位コードと単価コードは無いので、seizou の項目として送る。
+    - 明細の process_name は発注の明細の工程の名前 (中小企業共通 EDI の工程名を元にした鍵)、quote_no は単価表から写した見積の番号
+      (同じく (明細行参照) 見積回答書ID を元にした鍵)。どちらも無ければ空の字 (C100)。
     - 相手への HTTP は transaction.atomic の外で送る (R17)。待ちは 10 秒。
     - 相手の返事は日本語の短い文で Outbox.response に書く。200 (受け取った) なら発注を「送った」にする。
       鍵が無い・断られた・届かないときは例外にせず、発注は「作成」のまま (人が「送り直す」を押す)。
@@ -1955,8 +1963,10 @@ def send_order(purchase_order, user):
             "note": line.note,
             "line_status_code": line.line_status_code,
             "line_status_reason_code": line.line_status_reason_code,
+            "process_name": line.process.name if line.process_id else "",
+            "quote_no": line.quote_no,
         }
-        for line in purchase_order.lines.select_related("item").order_by("line_no")
+        for line in purchase_order.lines.select_related("item", "process").order_by("line_no")
     ]
     order_data = {
         "id": str(message_id),

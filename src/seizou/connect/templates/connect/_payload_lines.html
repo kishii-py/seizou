@@ -1,4 +1,4 @@
-{# 注文のデータの明細の表 (相手の品番のまま)。受信箱の詳細と受け入れの画面で使う。object は受信箱の行。 #}
+{# 注文のデータの明細の表 (相手の品番のまま)。受信箱の詳細と受け入れの画面で使う。object は受信箱の行。品名の下に工程名と見積の番号 (あれば。C100)。 #}
 {# 変更と取消の版の行は、行番号の次に「明細状態」の列 (コードの名前と理由の名前) のある表。第 1 版の行の表は今のまま (列の数を変えない)。 #}
 {# 変更の版の表: 受注にある行は、数・単価・納期が注文と違えば値の下に小さな字で「今: …」(受け入れると注文の値で上書きするので、上書きされる前に見せる。rlines = connect_tags の revision_lines)。 #}
 {# 金額の閲覧が無い人には単価の列と単価の「今」を出さない (第 1 版の表と同じ seizou.hide_money)。受注に無い行と取り消した明細には印を出す。断る画面 (connect/inbox_reject.html) にも同じ表が出る。 #}
@@ -48,7 +48,7 @@
     <tr class="h-10">
       <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no|default_if_none:"" }}</td>
       <td class="whitespace-nowrap font-mono">{{ line.part_no }}</td>
-      <td><span class="block max-w-xs truncate" title="{{ line.part_name }}">{{ line.part_name }}</span></td>
+      <td><span class="block max-w-xs truncate" title="{{ line.part_name }}">{{ line.part_name }}</span>{% if line.process_name %}<span class="block text-xs text-base-content/70">工程 {{ line.process_name }}</span>{% endif %}{% if line.quote_no %}<span class="block text-xs text-base-content/70">見積の番号 <span class="font-mono">{{ line.quote_no }}</span></span>{% endif %}</td>
       <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|payload_number|comma }}</td>
       <td class="whitespace-nowrap">{{ line.unit }}</td>
       {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|default_if_none:""|payload_number|yen }}{% if line.unit_price is not None and line.unit_price != "" %}<span class="text-base-content/70"> / {{ line|payload_price_unit }}</span>{% endif %}</td>{% endif %}

@@ -2,6 +2,7 @@
 {% load static seizou_icons %}
 {% block content %}
 {# 受注の入力: 受注の項目 (2 列の格子) と明細の行の表を 1 つの form に。知らせと「このまま保存」は core/form.html と同じ約束。 #}
+{# 明細の単価の枡の中に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外に 1 つ。C100)。見積の番号の列は作らない。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細の行を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>
@@ -31,7 +32,7 @@
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">
       <table class="table table-sm seizou-pin-first">
         <thead><tr class="bg-base-200 text-base-content/70">
-          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" %}<th class="whitespace-nowrap font-medium{% if field.name == "item" %} w-56{% endif %}">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
+          {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "DELETE" and field.name != "quote_no" %}<th class="whitespace-nowrap font-medium{% if field.name == "item" %} w-56{% endif %}">{{ field.label }}{% if field.field.required %} <span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</th>{% if field.name == "unit_price" %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}{% endif %}{% endfor %}
           <th class="whitespace-nowrap font-medium"><span class="sr-only">消す</span></th>
         </tr></thead>
         <tbody id="order-lines">
@@ -54,6 +55,7 @@
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label }}</button>{% endif %}
   </div>
 </form>
+{% include "masters/_price_pick_dialog.html" %}
 <script src="{% static 'orders/order-lines.js' %}" defer></script>
 {% include "core/_enter_guard.html" %}
 {% endblock %}
