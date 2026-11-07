@@ -179,8 +179,8 @@ def test_toasts_let_clicks_through_and_sit_at_the_top_right(client_logged_in):
     assert "toast-bottom" not in frame
     assert 'class="seizou-toast pointer-events-none' in body
     assert "btn-xs pointer-events-auto" in body  # 閉じるボタン
-    # 見た目の形は前のまま (主色の地を透かす・緑の印・下の線)
-    assert "bg-primary/80" in body and "text-success" in body and "seizou-toast-bar" in body
+    # 見た目の形 (主色の地は不透明・緑の印・下の線)。地を透かすのをやめたのは、下の画面の字が最後の行に重なって見えたため
+    assert "rounded-xl bg-primary p-4" in body and "text-success" in body and "seizou-toast-bar" in body
 
 
 # ---------------------------------------------------------------- 7 図面のファイル

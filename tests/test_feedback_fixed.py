@@ -358,7 +358,7 @@ def test_list_marks_fixed_rows(client, plain, manager):
 
 DISMISSED_NOTICE = "あなたの一言は見送りになりました"
 #: お知らせの toast の頭 (core/_toasts.html の info の枝)
-INFO_TOAST = '<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info/80'
+INFO_TOAST = '<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info'
 ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
 
 

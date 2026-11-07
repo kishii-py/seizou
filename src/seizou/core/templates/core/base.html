@@ -77,13 +77,13 @@ seizou_tags.master_link の link / forms.CHECKBOX_COLUMNS_CSS の grid gap-x-6 s
 {# 写すのは data-toast-level の合う 1 つ。右上の箱 (#seizou-toasts) が既にあればその中へ、無ければ箱 (data-toast-box) に id を付けて body へ入れる。元の箱に id を書かない (知らせの無い画面に id を出さない)。 #}
 <template id="seizou-toast-template">
 <div class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4 pointer-events-none" aria-live="polite" data-toast-box>
-<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-primary/80 p-4 text-primary-content shadow-lg sm:w-96" role="status" data-auto data-toast-level="success">
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-primary p-4 text-primary-content shadow-lg sm:w-96" role="status" data-auto data-toast-level="success">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-success">{% icon "check" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">成功しました。</p><p class="mt-1 break-words" data-toast-text></p></div>
   <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-primary-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
   <span class="seizou-toast-bar absolute inset-x-0 bottom-0 h-1 bg-base-100/60" aria-hidden="true"></span>
 </div>
-<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning/80 p-4 text-warning-content shadow-lg sm:w-96" role="alert" data-toast-level="warning">
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning p-4 text-warning-content shadow-lg sm:w-96" role="alert" data-toast-level="warning">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-warning">{% icon "alert" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">確認してください。</p><p class="mt-1 break-words" data-toast-text></p></div>
   <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
