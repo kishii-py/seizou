@@ -1,6 +1,7 @@
 """業務マニュアルの PDF (A4 の帯とページ番号)。本物の WeasyPrint は呼ばない (render_pdf を差し替える)。"""
 
 import io
+import re
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -10,6 +11,7 @@ from django.utils import timezone
 from PIL import Image
 
 from seizou.core import reports
+from seizou.manuals import markdown as manual_markdown
 from seizou.manuals import services
 
 
@@ -83,6 +85,67 @@ def test_pdf_falls_back_to_html_when_unavailable(client_logged_in, manual, monke
     assert f'src="{reverse("manuals:manualimage_download", args=[image.pk])}"' in html
     assert "/media/" not in html
     assert "目次" in html
+
+
+FIVE_BOXES = """## 準備
+
+:::注意
+主軸が止まってから扉を開けます。
+:::
+
+:::危険
+チャックの鍵を差したまま主軸を回しません。
+:::
+
+:::ヒント
+爪の締め付けの力は段取り表の値に合わせます。
+:::
+
+:::こうする
+1 個目は送りを落として削ります。
+:::
+
+:::してはいけない
+測る前に 2 個目を削り始めません。
+:::
+"""
+
+
+def _rules(html, selector):
+    """印刷用の style の、selector で始まる規則の中身 ({ … } の字) の並び。"""
+    return re.findall(re.escape(selector) + r"\s*\{([^}]*)\}", html)
+
+
+def test_print_boxes_differ_by_kind(user, manual):
+    """業務マニュアルの紙で、5 つの枠 (注意・危険・ヒント・こうする・してはいけない) の形が種類ごとに違う (指示書 R9 = print-08)。
+
+    紙の style は種類ごとの規則を持ち (画面の class の border-* と bg-base-200 で選ぶ)、本文の枠の div にその class が付く。
+    危険 と してはいけない は同じ border-error なので、してはいけない だけ地の色の規則を持つ。
+    """
+    manual = services.update_manual(manual, {"body": FIVE_BOXES}, user)
+    html = reports.render_html("manuals/manual_print.html", {"manual": manual, "path": [], "pdf": True})
+    style = html.split("</style>", 1)[0]
+    body = html.split("</style>", 1)[1]
+    for box_class in manual_markdown.BOX_CLASSES.values():
+        assert f'<div class="{box_class}">' in body
+    kinds = {
+        "危険": ".manual-body div.rounded-box.border-error {",
+        "してはいけない": '.manual-body div.rounded-box.border-error[class~="bg-base-200"] {',
+        "注意": ".manual-body div.rounded-box.border-warning {",
+        "ヒント": ".manual-body div.rounded-box.border-info {",
+        "こうする": ".manual-body div.rounded-box.border-success {",
+    }
+    bodies = {}
+    for kind, selector in kinds.items():
+        rules = _rules(style, selector.rstrip(" {"))
+        assert rules, kind
+        bodies[kind] = " ".join(rule.strip() for rule in rules)
+    assert len(set(bodies.values())) == len(bodies), bodies
+    assert "background" in bodies["してはいけない"]
+    assert "double" in bodies["注意"] and "dotted" in bodies["ヒント"]
+    # 危険 (と してはいけない) の題は黒地に白字
+    title_rules = _rules(style, ".manual-body div.rounded-box.border-error > p.font-bold:first-child")
+    assert title_rules and "background: #000" in title_rules[0] and "color: #fff" in title_rules[0]
 
 
 def test_print_html_has_page_counter(manual):
