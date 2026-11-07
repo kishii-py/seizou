@@ -29,6 +29,9 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | 処理日時 (注文 4) | UN01012746 |
 | `order_no` | 発注番号 | `purchasing.PurchaseOrder.po_no` | 35 字 | `orders.Order.customer_order_no` | 35 字 | 注文書ID (注文 30) | UN01006518 |
 | `order_date` | 発注日 | `purchasing.PurchaseOrder.order_date` | 日付 | `orders.Order.order_date` | 日付 | 注文書発効日 (注文 33) | UN01006521 |
+| `order_id` | 元の注文 (第 1 版) の知らせの番号 (変更と取消の版が元の注文を引く。第 1 版は `id` と同じ値) | `connect.Outbox.message_id` | uuid (36 字) | `connect.Inbox.message_id` (元の行を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
+| `order_revision_no` | 注文履歴番号 (第 1 版は 1。変更と取消を送るたびに 1 ずつ増える) | `purchasing.PurchaseOrder.revision_no` | 正の整数 | `connect.Inbox.revision_no` | 正の整数 | 注文履歴ID (注文) | UN01006528 |
+| `purpose_code` | 注文書目的コード (新規・変更・取消。下の「コードの値」) | `purchasing.PurchaseOrder.purpose_code` | 2 字 | `connect.Inbox.purpose_code` | 2 字 | 注文書目的コード (注文) | UN01006524 |
 | `buyer.id` | 発注した会社の id (英小文字で始め、英小文字・数字・_ の字) | — (会社の置き場の設定) | 決まりなし | — (受けた中身に残すだけ) | 決まりなし (受けた中身に残すだけ) | 発注者ID (注文 85) | UN01005757 |
 | `buyer.name` | 発注した会社の名前 | `core.Company.name` | 100 字 | — (受けた中身に残すだけ) | 決まりなし (受けた中身に残すだけ) | 発注者名 (注文 87) | UN01005759 |
 | `supplier.code` | 発注した会社が、受ける会社に付けた取引先コード | `masters.Partner.code` | 10 字 | — (受けた中身に残すだけ) | 決まりなし (受けた中身に残すだけ) | 受注者ID (注文 61) | UN01005757 |
@@ -43,6 +46,8 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `lines[].price_basis` | 単価の単位 (`unit` = 部品の単位 1 つあたり・`lump` = 一式で数量を掛けない。値はこの 2 つだけで、鍵が無ければ `unit`。ほかの値は受ける側が断る) | `purchasing.PurchaseOrderLine.price_basis` | 10 字 | `orders.OrderLine.price_basis` | 10 字 | — (seizou の項目。中小企業共通 EDI の数量単位コードに一式に当たる値は無く、部品の単位のときは単価基準数量が空か 1 のときと同じ意味) | — |
 | `lines[].due_date` | 納期 (無ければ null) | `purchasing.PurchaseOrderLine.due_date` | 日付 | `orders.OrderLine.due_date` | 日付 | 要求納入日 (注文 288) | UN01005628 |
 | `lines[].note` | 明細の備考 | `purchasing.PurchaseOrderLine.note` | 500 字 | `orders.OrderLine.note` | 500 字 | 注文明細注釈内容 (注文 229。備考は明細行注釈 ID 1) | UN01005560 |
+| `lines[].line_status_code` | 注文明細状態コード (変更の版で、取り消した明細の印。下の「コードの値」) | `purchasing.PurchaseOrderLine.line_status_code` | 2 字 | — (受けた中身に残し、受け入れるときに読む) | 決まりなし (受けた中身に残すだけ) | 注文明細状態コード (注文) | UN01006605 |
+| `lines[].line_status_reason_code` | 注文明細状態理由コード (取り消した訳。無ければ空) | `purchasing.PurchaseOrderLine.line_status_reason_code` | 4 字 | — (受けた中身に残すだけ) | 決まりなし (受けた中身に残すだけ) | 注文明細状態理由コード (注文) | UN01006606 |
 
 ## 注文回答 (kind = order_reply)
 
@@ -55,6 +60,7 @@ EDI の文書は注文回答です。受けた会社が受信した注文を受�
 | `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | 処理日時 (注文回答 4) | UN01012746 |
 | `order_id` | 元の注文の知らせの番号 | `connect.Inbox.message_id` | uuid (36 字) | `connect.Outbox.message_id` (元の注文を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
 | `order_no` | 元の発注番号 | — (受信した注文の中身の order_no) | 受けた字のまま | `purchasing.PurchaseOrder.po_no` (元の発注を引くだけ) | 35 字 | （ヘッダ参照）注文書ID (注文回答 107) | UN01005580 |
+| `order_revision_no` | 答えた注文の注文履歴番号 | `connect.Inbox.revision_no` | 正の整数 | — (送った注文の行を引くだけ) | 正の整数 | （ヘッダ参照）注文履歴ID (注文回答) | UN01005588 |
 | `reply_type` | 答え (受諾・条件付受諾・辞退・保留。下の「注文回答の答え」) | `connect.Inbox.reply_type` | 2 字 | `purchasing.PurchaseOrder.reply_type` | 2 字 | 注文回答タイプコード (注文回答 37) | UN01015497 |
 | `lines[].line_no` | 答えた明細の行番号 (条件付受諾のときだけ並ぶ。ほかは空の並び) | — (受信した注文の中身の line_no) | 正の整数 | — (発注の明細の行番号で引く) | 正の整数 | 注文書明細行ID (注文回答) | UN01005585 |
 | `lines[].reply_type` | 明細ごとの答え (受諾・条件付受諾。下の「注文回答の答え」) | — (受け入れの画面で決めた値。JSON の並び) | 2 字 | `purchasing.PurchaseOrderLine.reply_type` | 2 字 | 注文回答明細回答タイプコード (注文回答) | UN01015601 |
@@ -77,6 +83,7 @@ EDI の文書は出荷案内です。受けた会社が受信した注文から�
 | `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | 処理日時 (出荷案内 4) | UN01012746 |
 | `order_id` | 元の注文の知らせの番号 | `connect.Inbox.message_id` | uuid (36 字) | `connect.Outbox.message_id` (元の発注を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
 | `order_no` | 元の発注番号 | — (受信した注文の中身の order_no) | 受けた字のまま | — (読まない) | 読まない | （ヘッダ参照）注文書ID (出荷案内 107) | UN01005580 |
+| `order_revision_no` | 元の注文の注文履歴番号 (受信した注文の今の版) | — (受信した注文の今の版の番号) | 正の整数 | `connect.ShippingNotice.order_revision_no` | 正の整数 | （ヘッダ参照）注文履歴ID (出荷案内) | — |
 | `line_no` | 元の注文の明細の行番号 | `orders.OrderLine.line_no` | 正の整数 | `purchasing.PurchaseOrderLine.line_no` (元の明細を引くだけ) | 正の整数 | （明細行参照）注文明細行ID (出荷案内 218) | UN01005585 |
 | `supplier_order_no` | 受けた会社の受注番号 | `orders.Order.order_no` | 35 字 | `connect.ShippingNotice.supplier_order_no` | 35 字 | （ヘッダ参照）受注書ID (出荷案内 116) | UN01005580 |
 | `shipment_no` | 出荷番号 | `shipping.Shipment.shipment_no` | 35 字 | `connect.ShippingNotice.shipment_no` | 35 字 | 出荷ID (出荷案内 169) | UN01005627 |
@@ -96,6 +103,7 @@ EDI の文書は出荷回答です。発注した会社が受け入れた日と�
 | `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | 処理日時 (出荷回答 4) | UN01012746 |
 | `order_id` | 元の注文の知らせの番号 | `connect.Outbox.message_id` | uuid (36 字) | `connect.Inbox.message_id` (元の受信した注文を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
 | `order_no` | 発注番号 | `purchasing.PurchaseOrder.po_no` | 35 字 | `connect.Acceptance.buyer_order_no` | 35 字 | （ヘッダ参照）注文書ID (出荷回答 108) | UN01005580 |
+| `order_revision_no` | 発注の注文履歴番号 | `purchasing.PurchaseOrder.revision_no` | 正の整数 | `connect.Acceptance.order_revision_no` | 正の整数 | （ヘッダ参照）注文履歴ID (出荷回答) | — |
 | `line_no` | 発注の明細の行番号 | `purchasing.PurchaseOrderLine.line_no` | 正の整数 | `connect.Acceptance.buyer_line_no`・`orders.OrderLine.line_no` (受注の明細を引く) | 正の整数 | （明細行参照）注文明細行ID (出荷回答 235) | UN01005585 |
 | `accepted_on` | 受け入れた日 | `purchasing.Receipt.received_on` | 日付 | `connect.Acceptance.accepted_on` | 日付 | 受領日 (出荷回答 182) | UN01005628 |
 | `qty` | 受け入れた数 | `purchasing.Receipt.qty` | 整数 10 桁・小数 2 桁 | `connect.Acceptance.qty` | 整数 10 桁・小数 2 桁 | 受領数量 (出荷回答 254) | JPS2500009 |
