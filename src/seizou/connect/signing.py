@@ -13,6 +13,7 @@
 - 鍵は公開の仕様の符号化 (接頭辞 `whsec_` + base64) で受け取る。
   ほどいた bytes を HMAC の鍵にする。
   符号化されていない生の文字列は受けない (ValueError)。
+  ほどいた bytes が 24〜64 bytes の外の鍵も受けない (ValueError)。
 - 時刻の幅は既定で ±300 秒 (過去と未来の両側)。幅の外は断る。
 
 同じ番号の 2 回目 (再送) の約束:
@@ -43,6 +44,9 @@ HEADER_SIGNATURE = "webhook-signature"
 
 _SECRET_PREFIX = "whsec_"
 _SIGNATURE_PREFIX = "v1,"
+#: ほどいた鍵の bytes の長さの下限と上限 (`_decode_secret` が見る。`new_secret` は 32 bytes を作る)
+SECRET_MIN_BYTES = 24
+SECRET_MAX_BYTES = 64
 
 
 class SignatureError(Exception):
@@ -65,13 +69,22 @@ class SignatureError(Exception):
 
 
 def _decode_secret(secret: str) -> bytes:
-    """接頭辞つきの base64 の鍵をほどき、HMAC の鍵の bytes を返す。"""
+    """接頭辞つきの base64 の鍵をほどき、HMAC の鍵の bytes を返す。
+
+    ほどいた bytes が `SECRET_MIN_BYTES`〜`SECRET_MAX_BYTES` (24〜64 bytes) の外なら ValueError (`whsec_` だけの空の鍵も)。
+    例外の文に鍵の値を入れない。送る口はこの ValueError で送らず (connect の bad_secret)、受け口はそのつながりを飛ばす。
+    訳: 空や短い鍵は外の誰でも署名を作れるので、鍵として使わない。出所 = Standard Webhooks の形 (この module の頭が名を挙げる。24〜64 bytes の数は指示書の案で、作業場に写しが無く未確認)・エンタープライズ化の調べ 第一弾の指摘 connect-5。
+    変えてよい条件 = 鍵の作り方 (seizou_secret の 32 bytes) を変えるとき。
+    """
     if not secret.startswith(_SECRET_PREFIX):
         raise ValueError("鍵は接頭辞つきの base64 の形で渡す")
     try:
-        return base64.b64decode(secret[len(_SECRET_PREFIX) :], validate=True)
+        key = base64.b64decode(secret[len(_SECRET_PREFIX) :], validate=True)
     except ValueError:
         raise ValueError("鍵の base64 をほどけない") from None
+    if not SECRET_MIN_BYTES <= len(key) <= SECRET_MAX_BYTES:
+        raise ValueError(f"鍵は {SECRET_MIN_BYTES}〜{SECRET_MAX_BYTES} bytes にする")
+    return key
 
 
 def sign(secret: str, msg_id: str, timestamp: int, body: bytes) -> str:
