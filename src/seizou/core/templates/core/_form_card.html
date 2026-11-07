@@ -24,7 +24,8 @@
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endif %}
     {% endfor %}

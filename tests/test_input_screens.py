@@ -473,6 +473,62 @@ def test_shipment_form_js_writes_text_only():
         assert word not in text, word
 
 
+def _qty_input(body: str) -> str:
+    match = re.search(r'<input[^>]*name="qty"[^>]*>', body)
+    assert match, "数量の欄が無い"
+    return match.group(0)
+
+
+@pytest.mark.django_db
+def test_shipment_form_qty_has_setting_and_remaining(settings, logged_in, split_order):
+    """初見テスト R5 の V61 (候補 C20 の 3): 数量の欄に、会社の設定 (いつも) と残りの数 (明細が決まっている時だけ) の data 属性を置く。
+
+    JS (shipping/shipment-form.js) が打った数を残りと比べ、押す前に欄の下の字で知らせるため。明細を決めずに開いて後から選ぶ形でも、
+    設定で字を分けられるように、設定の属性は明細の有無に依らず置く。
+    """
+    settings.SEIZOU = {"over_shipment": "stop"}
+    first = split_order.lines.get(line_no=1)
+    qty = _qty_input(logged_in.get(reverse("shipping:shipment_create"), {"order_line": first.pk}).content.decode())
+    assert 'data-over-shipment="stop"' in qty
+    assert 'data-remaining="6"' in qty
+
+    settings.SEIZOU = {"over_shipment": "warn"}
+    for params in ({}, {"order_line": "abc"}, {"order_line": "999999"}):
+        qty = _qty_input(logged_in.get(reverse("shipping:shipment_create"), params).content.decode())
+        assert 'data-over-shipment="warn"' in qty, params
+        assert "data-remaining" not in qty, params
+
+
+@pytest.mark.django_db
+def test_shipment_form_helptext_turns_yellow_only_by_data_tone(logged_in, split_order):
+    """欄の下の字は data-tone="warning" の間だけ黄 (決まった class。JS は class を触らない = R19)。class を足すのは form の warning_help_fields の欄だけ。"""
+    first = split_order.lines.get(line_no=1)
+    body = logged_in.get(reverse("shipping:shipment_create"), {"order_line": first.pk}).content.decode()
+    assert '<p id="id_qty_helptext" class="mt-2 text-xs text-base-content/50 data-[tone=warning]:text-warning">残り 6</p>' in body
+    assert 'data-tone="warning"' not in body
+    # 黄の class を足すのは数量の欄の下の字だけ (ほかの欄の下の字の class は今のまま)
+    assert body.count("data-[tone=warning]:text-warning") == 1
+
+
+def test_shipment_form_js_compares_qty_with_remaining():
+    text = SHIPMENT_FORM_JS.read_text(encoding="utf-8")
+    for word in (
+        "data-over-shipment",
+        "data-remaining",
+        "data-label-line",
+        "help.dataset.tone = \"warning\"",
+        "delete help.dataset.tone",
+        " 超えています。",
+        "このままでは保存できません。",
+        "保存の時に確かめの知らせが出ます。",
+        'qty.addEventListener("input"',
+    ):
+        assert word in text, word
+    # 聞き手は欄そのものに付ける (小窓の差し替えのたびに document の聞き手が増えないように)
+    assert "document.addEventListener(\"input\"" not in text
+    assert "document.addEventListener(\"change\"" not in text
+
+
 @pytest.mark.django_db
 def test_shipment_post_still_saves(logged_in, split_order):
     second = split_order.lines.get(line_no=2)
