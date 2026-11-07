@@ -134,6 +134,8 @@ _KIND_ACTIONS = {
         # 一括出荷 (N124。注文残の盤で選んだ明細をまとめて出荷)
         "shipping.ship_lines",
         "shipping.update_shipment",
+        # 打ち間違えた出荷を消す (候補 12。決め 11-08 00:23)
+        "shipping.delete_shipment",
         "shipping.create_delivery_note",
         "shipping.cancel_delivery_note",
         # 出荷の知らせを相手に送り直す口 (N55。本体が起こす前に入れる前提)
