@@ -465,7 +465,12 @@ def _saved_notice(tool, result):
 
 
 def _carry_out(proposal, user, confirm):
-    """提案を 1 つ保存してみて、更新した提案を返す。順は 期限 → 権限の判定 → 書く道具 (検査の層 → services)。"""
+    """提案を 1 つ保存してみて、更新した提案を返す。順は 期限 → 権限の判定 (部署 → 編集の権限と金額) → 書く道具 (検査の層 → services)。
+
+    部署の判定は action の頭の部品 (例 shipping.ship → shipping) を access.require_open に渡す (画面の入力の部署の門と同じ判定)。
+    訳: 部署の外の部品に、承認から書かせない (画面なら部署の 403 で止まる操作)。部署の判定が log (既定) なら書いて記録に 1 行だけ。
+    出所 = Claude Security の走査の候補 11-07 (承認が部署の門を通らずに書く)。変えてよい条件は access.require_open の訳と同じ。
+    """
     base = {**proposal, "notice": "", "code": "", "warnings": [], "url": ""}
 
     def refused(notice, code=""):
@@ -478,6 +483,7 @@ def _carry_out(proposal, user, confirm):
     if action is None:
         return refused(MESSAGE_PROPOSAL_ARGS)
     try:
+        access.require_open(user, action.split(".")[0], what=f"{action} を AI に質問の窓から承認した")
         access.require_write(user, action)
     except access.AccessDenied as exc:
         return refused(exc.message, exc.code)
