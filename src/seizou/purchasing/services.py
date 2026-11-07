@@ -48,8 +48,12 @@ _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"}
 
 _POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
-    "取り消せません。この発注は相手に送ってあります (取り消せるのは「下書き」か「断られた」の発注だけ)。"
-    "相手に連絡してください。"
+    "取り消せません。状態が「{status}」の発注は取り消せません。取り消せるのは「下書き」「断られた」の発注と、"
+    "相手がまだ出荷していない「送った」「相手が受け入れた」の発注です。"
+)
+_CANCEL_SHIPPED_MESSAGE = (
+    "取り消せません。相手が一部を出荷済みなので、取消は送れません。"
+    "出していない明細を取り消し、出した明細の数を出荷済みの数に直す変更を「変更」で送ってください。"
 )
 
 
@@ -139,14 +143,30 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
 
 
 def cancel_purchase_order(purchase_order, user, *, reason=""):
-    """発注を取消にする。状態が「作成」か「断られた」のときだけ (断られた発注は相手が受けていないので、連絡なしに取り消せる。精査 A1 の想定外 S9)。
+    """発注を取消にする。状態が「作成」か「断られた」なら送らずに取り消す (断られた発注は相手が受けていないので、連絡なしに取り消せる。精査 A1 の想定外 S9)。
 
+    状態が「送った」「相手が受け入れた」で、相手がどの明細も出荷していない (can_cancel_sent_order) なら、同じ atomic で状態を取消・版を 1 上げ・
+    目的を "1" (打切り)・全部の明細を明細状態コード 2 にし、atomic の外で取消の版を相手へ送る (connect.services.send_order)。届いたかの知らせを付けて返す。
+    一部でも相手が出荷済みの明細があれば、取消は送らず「変更」の道を案内する字で断る。「納品された」「取消」とつながりの無い送った発注も断る。
     reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す (受注の取消と同じ形)。
+    訳: 相手が 1 個も出していない送った発注は、取消 (中小企業共通 EDI の注文書目的コード 1 打切り) を相手へ送れるようにし、出した後は数を直す変更で残りを止めるため。出所 = 決め EDIT-1 (11-06 23:2x)・PRICE-4f (11-06 23:1x)・C96-1 (11-07 06:33。取消を送れるのは相手が 1 個も出していない間だけ)。
+    変えてよい条件 = C96-1 の答えが変わったとき。
     """
+    sent = False
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
-        if locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
-            raise ValueError(_CANCEL_AFTER_SENT_MESSAGE)
+        if locked.status in CHANGEABLE_STATUSES:
+            lines = _live_lines(locked)
+            if any(known_shipped_qty(line) > 0 for line in lines):
+                raise ValueError(_CANCEL_SHIPPED_MESSAGE)
+            if not _has_send_connection(locked.partner):
+                raise ValueError(
+                    f"取り消せません。取引先 {locked.partner.name} へのつながりが無いので、取消を相手へ送れません。"
+                    "設定の画面の「取引先との接続」で登録してください。"
+                )
+            sent = True
+        elif locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
+            raise ValueError(_CANCEL_AFTER_SENT_MESSAGE.format(status=locked.get_status_display()))
         if reason:
             added = f"取消の理由: {reason}"
             note = f"{locked.note}\n{added}" if locked.note else added
@@ -157,7 +177,46 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
                 )
             locked.note = note
         locked.status = PurchaseOrder.STATUS_CANCELLED
+        if sent:
+            # 取消の版 (注文書目的コード 1 打切り)。全部の明細を明細状態コード 2 にする (行は残す)。
+            locked.revision_no += 1
+            locked.purpose_code = edi_codes.PURPOSE_CANCEL
+            locked.lines.update(line_status_code=edi_codes.LINE_DELETED, line_status_reason_code="")
         locked.save()
+        if not sent:
+            return locked
+
+    # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    from seizou.connect import services as connect_services
+
+    outbox = connect_services.send_order(PurchaseOrder.objects.get(pk=locked.pk), user)
+    return _with_delivery_notice(PurchaseOrder.objects.get(pk=locked.pk), outbox)
+
+
+def can_cancel_sent_order(purchase_order):
+    """送った発注の取消を相手へ送れるか (読むだけ)。状態が「送った」「相手が受け入れた」で、相手がどの明細も出荷していず (known_shipped_qty が 0)、
+    取引先に向き「送る」のつながりがある。取消の確かめ (purchasing.checks の LawOrderCancel) が使う。状態の外ならほかを読まずに偽。
+    """
+    if purchase_order.status not in CHANGEABLE_STATUSES:
+        return False
+    lines = _live_lines(purchase_order)
+    if not lines or not getattr(lines[0], "can_send", False):
+        return False
+    return all(known_shipped_qty(line) <= 0 for line in lines)
+
+
+def record_reply_after_cancel(purchase_order, user, *, reason, reply_message_id):
+    """取消を送った後に届いた第 1 版の注文回答を、発注の状態を変えずに第 1 版の答えの列 (replied_at・reply_note・reply_message_id) にだけ書く。
+
+    connect の受け口 (_receive_reply) が呼ぶ。取消の版と第 1 版の答えが行き違っても、相手に誤った断りを返さないため。返す物は取り直した発注。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+        limit = PurchaseOrder._meta.get_field("reply_note").max_length
+        locked.replied_at = timezone.now()
+        locked.reply_note = (reason if isinstance(reason, str) else "")[:limit]
+        locked.reply_message_id = reply_message_id
+        locked.save(update_fields=["replied_at", "reply_note", "reply_message_id"])
         return locked
 
 

@@ -128,9 +128,9 @@ def test_create_posts_and_sends(monkeypatch, client_logged_in, subcontractor, it
     assert "受け取った" in detail
     assert "送った" in detail
     assert "T-100" in detail and "作り物の板" in detail
-    # 「送った」の発注には送り直すと取り消すのボタンを出さない
+    # 「送った」の発注には送り直すボタンを出さず、「⋯」の「取消」は出す (相手がまだ出荷していなければ取消を相手へ送る)
     assert reverse("purchasing:purchaseorder_send", args=[po.pk]) not in detail
-    assert reverse("purchasing:purchaseorder_cancel", args=[po.pk]) not in detail
+    assert reverse("purchasing:purchaseorder_cancel", args=[po.pk]) in detail
 
 
 @pytest.mark.django_db
@@ -293,7 +293,8 @@ def test_create_head_says_order_is_sent_on_save(monkeypatch, client_logged_in):
     assert HEAD_NOW in body
     # 今の 1 文の直後に、要素を挟まずに続く (1 つの段落として折り返す)。
     assert HEAD_SEND in body
-    assert "送った発注は自分では取り消せません (取り消せるのは「下書き」か「断られた」の発注だけ)。</p>" in body
+    assert "送った発注は、相手が出荷し終えるまでは、変更と取消を相手へ送れます。</p>" in body
+    assert "自分では取り消せません" not in body
 
 
 @pytest.mark.django_db

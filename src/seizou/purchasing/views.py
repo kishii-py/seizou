@@ -76,7 +76,7 @@ class PurchaseOrderDetailView(BaseDetailView):
     model = PurchaseOrder
     screen_name = "発注の詳細"
     screen_help = (
-        "発注の項目と明細、相手へ送った記録。「下書き」のときだけ送り直しと取消ができます。"
+        "発注の項目と明細、相手へ送った記録。「下書き」のときは送り直し、「下書き」「断られた」の発注と相手がまだ出荷していない送った発注は取消ができます。"
         "相手が出荷し終えるまでは「変更」で直した中身を送れます。"
     )
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
@@ -116,7 +116,9 @@ class PurchaseOrderSendView(BaseFormView):
 class PurchaseOrderCancelView(BaseFormView):
     """発注を取り消す確かめの入力。
 
-    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「下書き」の発注を取り消す / 次にすること: 発注の一覧へ戻る
+    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「下書き」の発注を取り消す (「断られた」の発注と、相手がまだ出荷していない送った発注も。送った発注は取消を相手へ送る) / 次にすること: 発注の一覧へ戻る
+
+    取適法: 送った発注の取消に黄色の確かめを出す (purchasing.checks の LawOrderCancel)。
     """
 
     model = PurchaseOrder
@@ -124,7 +126,10 @@ class PurchaseOrderCancelView(BaseFormView):
     service = staticmethod(services.cancel_purchase_order)
     template_name = "purchasing/purchaseorder_cancel.html"
     screen_name = "発注を取り消す"
-    screen_help = "「下書き」の発注を取り消します。理由は備考の末尾に残ります。"
+    screen_help = (
+        "「下書き」「断られた」の発注と、相手がまだ出荷していない送った発注を取り消します (送った発注は取消を相手へ送ります)。"
+        "相手が一部を出荷した発注は取り消せないので、「変更」で残りを止めます。理由は備考の末尾に残ります。"
+    )
 
 
 class PurchaseOrderChangeView(BaseFormView):

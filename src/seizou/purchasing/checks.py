@@ -1,4 +1,5 @@
 """発注のポカよけ (取適法の確かめ)。送った発注の単価を下げる・数を減らす・納期を早める・明細を取り消す変更と、送った発注の取消に、黄色の確かめを出す。
+LawPriceDown・LawOrderChange は変更 (purchasing.change_purchase_order)、LawOrderCancel は取消 (purchasing.cancel_purchase_order) を見る。
 
 mode は "warn" (知らせる) で、会社の設定の鍵を持たない (会社の設定で止めるにも通すにもしない。「このまま保存」で通す)。
 法律に関わる作りは適法の側に倒し、当てはめは言い切らず、画面の字は「おそれがあります」にする。
@@ -92,7 +93,29 @@ class LawOrderChange(Check):
         return "".join(texts) + ORDER_CHANGE_TAIL
 
 
-CHECKS = (LawPriceDown(), LawOrderChange())
+class LawOrderCancel(Check):
+    """送った発注の取消 (相手へ取消を送れる発注) に、黄色の確かめを出す (止めない)。
+
+    相手がどの明細も出荷していない「送った」「相手が受け入れた」の発注 (purchasing.services.can_cancel_sent_order が真) だけに出す。
+    一部を出荷済みの発注には出さない (services が「変更」の道を案内する字ですぐ断る。確かめに「このまま保存」を押させてから断らないため)。
+    訳: 送った発注の数を減らす・納期を早める・明細を取り消す保存に気づかせ、取適法の不当な給付内容の変更の禁止 (発注の取消を含む) に当たるおそれを知らせるため。相手と合意した変更は止めない。出所 = 法令 (取適法) と決め LAW-4 (11-07 00:0x)。確かめた資料 = 作り手の知識 (公正取引委員会の文書は未読)。
+    変えてよい条件 = 公正取引委員会の資料で当てはめを確かめた後に、会社の決めで変える。
+    """
+
+    name = "law_order_cancel"
+    action = "purchasing.cancel_purchase_order"
+    mode = "warn"
+
+    def run(self, data, user):
+        from . import services
+
+        purchase_order = data.get("object")
+        if purchase_order is None or not services.can_cancel_sent_order(purchase_order):
+            return None
+        return "送った発注を取り消します。" + ORDER_CHANGE_TAIL
+
+
+CHECKS = (LawPriceDown(), LawOrderChange(), LawOrderCancel())
 
 
 def register_checks() -> None:

@@ -4,9 +4,10 @@
 {# 小窓の形 (in_modal) の form は、core/_form_card.html と同じ属性で同じ URL (GET の from_line と line を含む) へ htmx で送り、返った中身で小窓の箱を差し替える。 #}
 {# 小窓の中の「行を足す」の script は、htmx が差し替えた中身の script を実行するので動く見込み (ブラウザで未確認)。 #}
 {# 頭の 1 文の後ろの「…保存と同時に注文を送ります。」は、練習モードでは出さない (練習のサーバーは相手へ送らず、上の黄の帯と食い違うため。初見テスト R5 の V08)。 #}
+{# 2 文目は、送った発注の変更と取消 (相手が出荷し終えるまで送れる) に合わせた字 (C01-2 = a)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
-  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。{% if not seizou.practice %}つながりのある取引先には、「{{ form.submit_label_plain }}」を押すと保存と同時に注文を送ります。送った発注は自分では取り消せません (取り消せるのは「下書き」か「断られた」の発注だけ)。{% endif %}</p>
+  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。{% if not seizou.practice %}つながりのある取引先には、「{{ form.submit_label_plain }}」を押すと保存と同時に注文を送ります。送った発注は、相手が出荷し終えるまでは、変更と取消を相手へ送れます。{% endif %}</p>
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
     {% for field in form.visible_fields %}
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error">

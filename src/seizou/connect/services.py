@@ -572,6 +572,13 @@ def _receive_reply(message_id, partner, payload):
             return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
         if purchase_order.reply_message_id == message_id:
             return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
+        # 取消の版を送った後に第 1 版の答えが届いた (行き違い): 状態を変えずに第 1 版の答えの列だけを書いて受ける
+        # (取り消した発注は「送った」にできないので、今の道では相手に誤った断りが返り、相手が答えを送り直しても通らないため)。
+        if purchase_order.status == purchase_order.STATUS_CANCELLED and purchase_order.revision_no >= 2:
+            updated = purchasing_services.record_reply_after_cancel(
+                purchase_order, None, reason=reason, reply_message_id=message_id
+            )
+            return ReplyReceipt(message_id=message_id, purchase_order=updated)
         try:
             # 回答が来た = 相手は注文を受け取っている。「作成」なら先に「送った」にする
             # (送った時の返事が落ちた場合の救い)。「取消」は mark_sent が断る。
