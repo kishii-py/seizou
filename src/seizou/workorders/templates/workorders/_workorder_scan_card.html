@@ -4,7 +4,7 @@
 現品票の QR を読んだ先 (読み取りの着地) の中身。画面の全体 (workorders/workorder_scan.html) と、上の帯の「現品票を読む」の小窓 (workorders/_workorder_scan_modal.html) の両方が include する。
 スマホの幅で読める 1 枚にし、横に並べる物は sm: から。
 context は workorders.views の _scan_context が作る: workorder・rows (plans.step_rows の 1 行 = step・recorded・done・current に remaining を足した物)・in_modal (小窓の中だけ真)。
-「実績を入力」は実績の新規登録へ移る link だけ (入力の欄を置かない)。画面の全体では ?next= でこの画面へ戻す。主色は今の工程 (実績が予定の数に届いていない最初の工程) の 1 つだけ (工程の数だけ主色が並ばないように)。
+「実績を入力」は実績の新規登録へ移る link だけ (入力の欄を置かない)。画面の全体では ?next= でこの画面へ戻す。主色は今の工程 (完了の印の無い最初の工程。指示書が完了なら無い) の 1 つだけ (工程の数だけ主色が並ばないように)。
 小窓の中では「実績を入力」が同じ小窓で実績の新規登録を開き (data-modal-form)、next を付けない (小窓の保存は小窓を閉じ、開いていた画面のまま。小窓の中の request の道は読み取りの口で、戻る先の画面でない)。
 {% endcomment %}
 <section class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs sm:p-6" aria-label="指示書の要点">
