@@ -494,7 +494,7 @@ def test_flag_when_gets_values_and_disabled_when_draws_it_off(user, orders):
     assert 'value="1" class="checkbox checkbox-sm" disabled data-list-filter>' in partial.split(box, 1)[1]
     assert "list-f-early-box" not in partial and 'id="list-f-ordered"' not in partial
     # 期間の近道の箱だけは oob で描き直す (欄の値と同じ近道の選んだ印を合わせる。tests/test_core_list_date_presets.py)
-    assert 'id="list-f-ordered-presets" class="mt-2 flex flex-wrap gap-1" role="group" aria-label="受注日の近道" hx-swap-oob="true">' in partial
+    assert 'id="list-f-ordered-presets" class="join" role="group" aria-label="受注日の近道" hx-swap-oob="true">' in partial
     # 従う印の無い一覧の htmx の行の部分には、印の箱を描かない
     request = RequestFactory().get("/", {"f_open": "0"}, HTTP_HX_REQUEST="true")
     request.user = user
