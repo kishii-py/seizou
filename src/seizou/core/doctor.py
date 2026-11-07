@@ -370,6 +370,29 @@ def check_cookies() -> list[Row]:
     return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", COOKIE_FIX)]
 
 
+#: パスワードの決まりが settings に無いときの直し方 (依頼書 N354)
+PASSWORD_VALIDATORS_FIX = (
+    "settings.py の import の並びに from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS を足し、"
+    "サーバーを立て直す (seizou の docs/operations.md の「版を上げる手順」)。"
+)
+
+
+def check_password_validators() -> list[Row]:
+    """settings の AUTH_PASSWORD_VALIDATORS が空でないか (本番の条件のときだけ見る。Cookie の行と同じ扱い)。
+
+    訳: 手引きが勧める manage.py changepassword は settings の AUTH_PASSWORD_VALIDATORS で確かめるので、空だと 1 字のパスワードも通る。
+    この版より前に seizou new で作った置き場は settings.py にこの行が無いので、足りない 1 行を知らせる。
+    出所 = 作者の決め (accounts.services.password_validators の 4 つ) と、エンタープライズ化の調べ 第一弾が挙げた
+    OWASP ASVS 5.0 の 6.2 (作業場に写しが無く、条の中身は未確認)。
+    変えてよい条件 = 点検に中間の段 (注意) ができたとき、本番の外でも見るかを決め直す。
+    """
+    label = "パスワードの決まり"
+    validators = getattr(settings, "AUTH_PASSWORD_VALIDATORS", None)
+    if not validators:
+        return [_bad(label, "AUTH_PASSWORD_VALIDATORS が空 (changepassword で 1 字のパスワードも通る)", PASSWORD_VALIDATORS_FIX)]
+    return [_good(label, f"確かめ {len(validators)} 個")]
+
+
 #: 作り物の利用者が公開の合言葉のままのときの直し方 (決め 11-04 15:0x。依頼書 N116)
 DEMO_PASSWORD_FIX = "アカウント管理で変えてください。"
 
@@ -458,6 +481,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),
+        ("パスワードの決まり", check_password_validators, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
         ("AI が守る決まり", check_ai_docs, False),
     ]

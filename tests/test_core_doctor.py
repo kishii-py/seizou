@@ -16,6 +16,7 @@ from django.core.management.base import CommandError
 
 from seizou.connect.services import register_connection
 from seizou.core import doctor
+from seizou.core.passwords import VALIDATORS
 from seizou.masters.services import create_partner
 
 FAKE_SECRET_KEY = "fake-secret-key-must-not-appear-0123456789-abcdefghijklmnopqrstuvwxyz"
@@ -43,6 +44,7 @@ def site(settings, tmp_path):
     settings.SESSION_COOKIE_SECURE = True
     settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {}
+    settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
     env = site / ".env"
     if os.name == "nt":
         env.write_text("SECRET_KEY=fake-env-value-that-must-not-appear\n", encoding="utf-8")

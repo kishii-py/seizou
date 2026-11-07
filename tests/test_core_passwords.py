@@ -2,6 +2,7 @@
 
 表は Django を読まず、雛形の settings.py の AUTH_PASSWORD_VALIDATORS と、accounts.services の確かめが同じ表を読むこと。
 settings に表を置くと、changepassword が呼ぶのと同じ validate_password が短い字やよくある語を断ること。
+点検の「パスワードの決まり」の行が、表が空なら直すを出し、本番の条件のときだけ出ること。
 利用者とパスワードの字は作り物だけを使う。
 """
 
@@ -14,7 +15,7 @@ from django.core.exceptions import ValidationError
 
 import seizou.scaffold
 from seizou.accounts import services
-from seizou.core import passwords
+from seizou.core import doctor, passwords
 from seizou.core.passwords import VALIDATORS
 
 #: 雛形の settings.py に足す 1 行 (古い置き場に足す手順と点検の直し方と同じ字)
@@ -65,3 +66,25 @@ def test_accounts_validators_follow_table():
 
     assert [_class_path(v) for v in made] == [row["NAME"] for row in VALIDATORS]
     assert made[0].min_length == 8
+
+
+# ---------------------------------------------------------------- 点検の「パスワードの決まり」の行
+
+
+def test_doctor_row_fixes_empty_table(settings):
+    settings.AUTH_PASSWORD_VALIDATORS = []
+    [row] = doctor.check_password_validators()
+
+    assert (row.ok, row.label) == (False, "パスワードの決まり")
+    assert "seizou.core.passwords" in row.fix
+
+    settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
+    assert doctor.check_password_validators() == [doctor.Row(True, "パスワードの決まり", "確かめ 4 個")]
+
+
+@pytest.mark.django_db
+def test_doctor_row_only_in_production(settings):
+    settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
+
+    assert [row.label for row in doctor.run(production=True)].count("パスワードの決まり") == 1
+    assert "パスワードの決まり" not in [row.label for row in doctor.run(production=False)]
