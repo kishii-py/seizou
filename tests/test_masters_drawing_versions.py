@@ -15,6 +15,7 @@ from django.db import models
 from django.urls import reverse
 from PIL import Image, ImageDraw
 
+from seizou.core import fields as company_fields
 from seizou.masters import services
 from seizou.masters.models import Item, ItemDrawingVersion
 
@@ -247,6 +248,40 @@ def test_version_table_follows_masters_rules():
 
 
 # ---------------------------------------------------------------- 詳細と小窓に出さない列
+
+
+@pytest.mark.django_db
+def test_restore_screen_names_item_and_hides_company_fields(client, user, monkeypatch):
+    """図面を版に戻す画面は、どの部品の図面かを頭の文に出し、会社ごとの項目 (直しても保存されない欄) を出さず、ボタンは「図面を版に戻す」(指示書 R7 = GA-04)。
+
+    部品の編集の画面には会社ごとの項目が出たまま (外すのは adds_company_fields = False の form だけ)。
+    """
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質"}, {"label": "図面の版"}])
+    client.force_login(user)
+    item = new_item(user, tiff_upload("first.tif"), part_no="P-9161")
+    services.update_item(item, {"drawing": png_upload("second.png")}, user)
+    assert version_numbers(item) == [1]
+
+    html = client.get(reverse("masters:item_drawing_restore", args=[item.pk])).content.decode()
+    assert "P-9161 作り物の部品</strong> の図面を" in html
+    assert 'name="ext__ext01"' not in html and 'name="ext__ext02"' not in html
+    assert "材質" not in html
+    assert "図面を版に戻す</button>" in html
+    assert "保存</button>" not in html
+
+    edit = client.get(reverse("masters:item_update", args=[item.pk])).content.decode()
+    assert 'name="ext__ext01"' in edit and "材質" in edit
+
+    # 会社ごとの項目の値を送っても、戻す処理はその欄を読まずに版を戻す (欄が無いので捨てる物も無い)
+    version_1 = item.drawing_versions.get(version_no=1)
+    response = client.post(
+        reverse("masters:item_drawing_restore", args=[item.pk]),
+        {"version": version_1.pk, "note": "戻す", "ext__ext01": "S45C"},
+    )
+    assert response.status_code == 302
+    item.refresh_from_db()
+    assert item.drawing.name.endswith(".tif")
 
 
 @pytest.mark.django_db

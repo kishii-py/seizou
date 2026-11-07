@@ -359,8 +359,9 @@ def test_restore_confirm_lists_only_this_items_versions(logged_in, user):
     theirs = other.drawing_versions.get(version_no=1)
     assert f'<option value="{mine.pk}"' in body
     assert f'<option value="{theirs.pk}"' not in body
-    assert "選んだ版の図面を今の図面に戻します。今の図面は新しい版として残り、ファイルは消しません。" in body
-    assert "保存" in body and "戻す版" in body
+    # 頭の文に、どの部品の図面かを出す (指示書 R7 = GA-04)。ボタンは「保存」でなく「図面を版に戻す」
+    assert f'<strong class="text-base-content">{item}</strong> の図面を、選んだ版に戻します。今の図面は新しい版として残り、ファイルは消しません。' in body
+    assert "図面を版に戻す</button>" in body and "戻す版" in body
     assert f'href="{viewer_url(item)}"' in body and "ビューアに戻る" in body
 
 
@@ -408,8 +409,8 @@ def test_restore_without_versions_shows_viewer_message(logged_in, user):
     assert NO_VERSIONS in body
     # 入力の枠は今のまま出る (C40-2 = a。止める形を足さない)
     assert 'id="id_version"' in body
-    assert "保存" in body and "戻す版" in body
-    assert "選んだ版の図面を今の図面に戻します。今の図面は新しい版として残り、ファイルは消しません。" in body
+    assert "図面を版に戻す</button>" in body and "戻す版" in body
+    assert f'<strong class="text-base-content">{item}</strong> の図面を、選んだ版に戻します。今の図面は新しい版として残り、ファイルは消しません。' in body
     assert f'href="{viewer_url(item)}"' in body and "ビューアに戻る" in body
 
 

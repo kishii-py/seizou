@@ -1488,7 +1488,10 @@ class BaseFormView(ScreenMixin, FormView):
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
         model = self.model or getattr(getattr(form, "_meta", None), "model", None)
-        if model is not None:
+        # form の class の属性 adds_company_fields = False の form には、会社ごとの項目を足さない (指示書 R7 = GA-04)。
+        # 自分の欄だけを service_kwargs で渡す確かめの form (図面を版に戻す) に足すと、直しても保存されない欄が出るため。
+        # 土台が form の属性を読む先例は submit_label (core/_form_card.html) と last_fields (下)。
+        if model is not None and getattr(form, "adds_company_fields", True):
             for name, field in company_fields.form_fields_for(model).items():
                 form.fields[name] = field
                 if self.object is not None and not form.is_bound:
