@@ -14,9 +14,11 @@ from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError
 
 import seizou.scaffold
+from seizou import cli
 from seizou.accounts import services
 from seizou.core import doctor, passwords
 from seizou.core.passwords import VALIDATORS
+from tests.test_core_practice import load_settings
 
 #: 雛形の settings.py に足す 1 行 (古い置き場に足す手順と点検の直し方と同じ字)
 IMPORT_LINE = "from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS"
@@ -88,3 +90,16 @@ def test_doctor_row_only_in_production(settings):
 
     assert [row.label for row in doctor.run(production=True)].count("パスワードの決まり") == 1
     assert "パスワードの決まり" not in [row.label for row in doctor.run(production=False)]
+
+
+def test_rendered_scaffold_settings_has_table(tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    site.mkdir()
+    text = cli.render("settings.py.tmpl", id="sample_co", seizou_items="    'id': 'sample_co',\n    'port': 8010,")
+    (site / "settings.py").write_text(text, encoding="utf-8")
+    monkeypatch.setenv("SECRET_KEY", "fake-passwords-test-key")
+    monkeypatch.delenv("SEIZOU_DB", raising=False)
+
+    module = load_settings(site / "settings.py", "passwords_scaffold_settings")
+
+    assert module.AUTH_PASSWORD_VALIDATORS == VALIDATORS
