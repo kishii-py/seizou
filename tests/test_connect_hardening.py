@@ -6,6 +6,7 @@
 - 3 同じ鍵の 2 社: 受ける向きの 2 つ以上の取引先の鍵で署名が合えば断る。
 - 4 送る先を外の名前に絞る鍵 (settings の SEIZOU_CONNECT_PUBLIC_ONLY): 真のときだけ https の URL だけを保存し、送る前に名前を引く。
 - 5 受けた会話の添付の数: 送る側と同じ上限 (MAX_CHAT_FILES = 1) より多い言葉は断る。
+- 6 返事の本文の上限と全体の締切: 送る口は返事の本文を 64KB まで読み、30 秒で読むのをやめる。添付を取りに行く口は 120 秒。
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (外へは出ない)。
 鍵は試験のたびに signing.new_secret() で作って環境変数に置き、ファイルに書かない。取引先・部品・会社は作り物。
 """
@@ -29,6 +30,7 @@ from seizou.masters import services as masters_services
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder, SelfInvoice
 from tests.test_connect_chat import _chat_raw
+from tests.test_connect_chat_files import _received_file, _sent_with_file, media  # noqa: F401 (fixture)
 from tests.test_connect_reply import ORDER_ENV, _into_receive
 from tests.test_connect_self_invoice import (  # noqa: F401 (fixture)
     ISSUED,
@@ -471,3 +473,111 @@ def test_received_chat_with_more_files_than_the_limit_is_refused(
     receipt = services.receive(raw, signing.headers_for(order_secret, msg_id, raw))
     assert isinstance(receipt, services.ChatReceipt)
     assert ChatMessage.objects.count() == 1 and ChatFile.objects.count() == 1
+
+
+# ---------------------------------------------------------------- 6 返事の本文の上限と全体の締切
+
+
+class Clock:
+    """services の time の代わり (services.time だけを差し替える)。monotonic は進めた秒を返す。"""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self):
+        return self.now
+
+
+class SlowReply(Reply):
+    """本文を 10 bytes ずつ返し、1 つ返すたびに時計を step 秒進める偽の返事 (少しずつ終わらずに届く返事の役)。"""
+
+    def __init__(self, status_code, body, clock, step):
+        super().__init__(status_code, body)
+        self.clock = clock
+        self.step = step
+
+    def iter_content(self, chunk_size=1):
+        for start in range(0, len(self.body), 10):
+            self.clock.now += self.step
+            yield self.body[start : start + 10]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("step, received", [(11, False), (1, True)], ids=["over-30s", "inside-30s"])
+def test_deliver_stops_reading_at_the_deadline(monkeypatch, user, subcontractor, item, connections, step, received):  # noqa: F811
+    """送る口は返事を stream=True で受け、送り始めから 30 秒を過ぎたら読むのをやめて届かない字にする (返事は閉じる)。"""
+    clock = Clock()
+    monkeypatch.setattr(services, "time", clock)
+    replies = []
+
+    def answer(headers):
+        replies.append(SlowReply(200, {"status": "received", "id": headers["webhook-id"]}, clock, step))
+        return replies[-1]
+
+    fake = RecordingPost(answer)
+    monkeypatch.setattr("requests.post", fake)
+
+    po = _create(subcontractor, item, user)
+
+    assert fake.calls[0]["stream"] is True and fake.calls[0]["timeout"] == 10
+    assert replies[0].closed
+    if received:
+        assert po.status == PurchaseOrder.STATUS_SENT
+        assert Outbox.objects.get().response == "受け取った"
+    else:
+        assert po.status == PurchaseOrder.STATUS_DRAFT
+        assert Outbox.objects.get().response == (
+            "届きません: 相手の返事が終わらず、時間切れです (30 秒)。相手が立っているかを確かめてください。"
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [200, 400])
+def test_answer_over_64kb_is_unreadable(monkeypatch, user, subcontractor, item, connections, status):  # noqa: F811
+    """64KB を超える 200 と 400 の本文は読めない返事にする (受け取ったにしない)。"""
+    replies = []
+
+    def answer(headers):
+        data = {"status": "received" if status == 200 else "rejected", "id": headers["webhook-id"], "message": "あ"}
+        data["pad"] = "a" * services.ANSWER_MAX_BYTES
+        replies.append(Reply(status, data))
+        return replies[-1]
+
+    monkeypatch.setattr("requests.post", RecordingPost(answer))
+
+    po = _create(subcontractor, item, user)
+
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+    assert Outbox.objects.get().response == f"返事が読めません (HTTP {status}。本文が 64KB を超えています)"
+    assert replies[0].closed
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [302, 500])
+def test_answer_without_body_reading_is_closed(monkeypatch, user, subcontractor, item, connections, status):  # noqa: F811
+    """本文を読まない返事 (3xx・500) も閉じる。"""
+    reply = Reply(status, b"x" * 10)
+    monkeypatch.setattr("requests.post", RecordingPost(lambda headers: reply))
+
+    _create(subcontractor, item, user)
+
+    assert reply.closed
+
+
+@pytest.mark.django_db
+def test_fetch_chat_file_stops_reading_at_the_deadline(monkeypatch, media, user, subcontractor, item, connections):  # noqa: F811
+    """会話の添付を取りに行く口も、要求を送り始めてから 120 秒を過ぎたら読むのをやめる (受け取ったにしない)。"""
+    _po, _inbox, saved, _fake = _sent_with_file(monkeypatch, user, subcontractor, item)
+    clock = Clock()
+    monkeypatch.setattr(services, "time", clock)
+    slow = SlowReply(200, b"x" * 100, clock, 61)
+    monkeypatch.setattr("requests.post", RecordingPost(lambda headers: slow))
+
+    fetched = services.fetch_chat_file(_received_file(saved), user)
+
+    assert fetched.fetched_at is None and not fetched.file
+    assert fetched.fetch_response == (
+        "まだ受け取っていない: 届きません: 相手の返事が終わらず、時間切れです (120 秒)。取り直してください。"
+    )
+    assert slow.closed
+

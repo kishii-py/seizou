@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import socket
+import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -2335,7 +2336,7 @@ def _post_signed(connection, message_id, raw, **options):
 
     返す物は (返事, 送れなかった訳)。送れたら (requests の返事, None)、送れなかったら (None, (日本語の文, 種類))。
     種類は unreachable (届かない) / no_secret / bad_secret。鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
-    options は requests.post に渡す (待ちの timeout と、添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
+    options は requests.post に渡す (待ちの timeout と、返事の本文と添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
     _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
     3xx の転送には付いて行かない (allow_redirects=False)。3xx の返事はそのまま呼び手へ返し、呼び手が受け取ったにしない。
     送る先を外の名前に絞る設定 (_public_only) が真なら、送る前に名前を引き、社内か手元の番地を指すときは送らない (unreachable)。
@@ -2396,40 +2397,102 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
     return result
 
 
+#: 送る口が返事の本文を読む上限 (bytes)。受け口の返事は小さな JSON なので、超える物は読めない返事にする
+ANSWER_MAX_BYTES = 64 * 1024
+#: 送る口の全体の締切 (秒。送り始めから返事の本文を読み終わるまで)。1 回の待ちの timeout=10 とは別
+DELIVER_DEADLINE_SECONDS = 30
+#: 会話の添付を取りに行く口の全体の締切 (秒。要求を送り始めてから中身を読み終わるまで)
+FETCH_DEADLINE_SECONDS = 120
+
+
+class _AnswerTimeout(Exception):
+    """返事の本文を読む途中で、全体の締切を過ぎた (_read_answer が投げ、_deliver_result が届かない字にする)。"""
+
+
+def _read_answer(answer, started):
+    """stream=True で受けた返事の本文を、最初の ANSWER_MAX_BYTES だけ iter_content で読む。
+
+    返す物は読んだ bytes か、上限を超えたら None。started (time.monotonic の値) から DELIVER_DEADLINE_SECONDS を
+    過ぎたら読むのをやめて _AnswerTimeout を投げる。close は呼び手 (_deliver_result) が必ず呼ぶ。
+    """
+    body = bytearray()
+    for chunk in answer.iter_content(chunk_size=8 * 1024):
+        body.extend(chunk)
+        if len(body) > ANSWER_MAX_BYTES:
+            return None
+        if time.monotonic() - started > DELIVER_DEADLINE_SECONDS:
+            raise _AnswerTimeout
+    return bytes(body)
+
+
+def _json_or_none(body: bytes):
+    """返事の本文の bytes を JSON として読む。読めなければ None。"""
+    try:
+        return json.loads(body.decode("utf-8"))
+    except ValueError:
+        return None
+
+
+def _close_answer(answer) -> None:
+    """stream=True で受けた返事を閉じる (つながりを返す)。close の無い物は何もしない。"""
+    close = getattr(answer, "close", None)
+    if callable(close):
+        close()
+
+
 def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
     """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。
 
     3xx は受け取ったにせず unreadable (相手の受け口の URL が変わっている)。200 は本文の JSON が受け取った印
     (_is_received_mark) のときだけ received、ほかは unreadable。新しい種類は作らない (呼び手は received だけを見る)。
+    返事は stream=True で受け、200 と 400 の本文は最初の ANSWER_MAX_BYTES (64KB) だけを読む (_read_answer)。
+    64KB を超える本文は unreadable。送り始めから DELIVER_DEADLINE_SECONDS (30 秒) を過ぎたら読むのをやめて unreachable。
+    1 回の待ちの timeout=10 はそのまま。返事は読み終わりに必ず閉じる。
     訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
     変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
+    訳: 相手の返事の本文がとても大きいか、少しずつ終わらずに届くと、送る口の thread が止まらず保存の画面も返らないので、本文の上限と全体の締切で読むのをやめる。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-3・connect-6。
+    変えてよい条件 = 未確認 (依頼書に書いていない)。
+    限り: gunicorn の gthread の --timeout が遅い thread を止めないことを前提に置く (未確認)。
     """
-    answer, failed = _post_signed(connection, message_id, raw, timeout=10)
+    # 試験が requests.post を差し替えるため、関数の中で import する (_post_signed と同じ)。
+    import requests
+
+    started = time.monotonic()
+    answer, failed = _post_signed(connection, message_id, raw, timeout=10, stream=True)
     if failed is not None:
         return failed
-    if 300 <= answer.status_code < 400:
-        return (
-            f"届きません: 相手の受け口の URL が変わっています (HTTP {answer.status_code})。つながりの URL を直してください。",
-            "unreadable",
-        )
-    if answer.status_code == 200:
+    try:
+        status = answer.status_code
+        if 300 <= status < 400:
+            return (
+                f"届きません: 相手の受け口の URL が変わっています (HTTP {status})。つながりの URL を直してください。",
+                "unreadable",
+            )
+        if status not in (200, 400):
+            return f"返事が読めません (HTTP {status})", "unreadable"
         try:
-            data = answer.json()
-        except ValueError:
-            data = None
-        if _is_received_mark(data, message_id):
-            return "受け取った", "received"
-        return "返事が読めません (HTTP 200。受け取った印が合いません)", "unreadable"
-    if answer.status_code == 400:
-        # 返事の JSON の message (200 字まで)。読めなければ決まった文。
-        try:
-            refused = answer.json().get("message", "")
-        except (ValueError, AttributeError):
-            refused = ""
+            body = _read_answer(answer, started)
+        except _AnswerTimeout:
+            return (
+                f"届きません: 相手の返事が終わらず、時間切れです ({DELIVER_DEADLINE_SECONDS} 秒)。相手が立っているかを確かめてください。",
+                "unreachable",
+            )
+        except requests.RequestException as exc:
+            return _unreachable_reply(exc), "unreachable"
+        if body is None:
+            return f"返事が読めません (HTTP {status}。本文が {ANSWER_MAX_BYTES // 1024}KB を超えています)", "unreadable"
+        data = _json_or_none(body)
+        if status == 200:
+            if _is_received_mark(data, message_id):
+                return "受け取った", "received"
+            return "返事が読めません (HTTP 200。受け取った印が合いません)", "unreadable"
+        # 400 は返事の JSON の message (200 字まで)。読めなければ決まった文。
+        refused = data.get("message", "") if isinstance(data, dict) else ""
         if not isinstance(refused, str) or not refused:
             refused = "理由が読めません"
         return f"断られた: {refused[:200]}", "rejected"
-    return f"返事が読めません (HTTP {answer.status_code})", "unreadable"
+    finally:
+        _close_answer(answer)
 
 
 def _is_received_mark(data, message_id) -> bool:
@@ -3057,10 +3120,13 @@ def fetch_chat_file(chat_file, user):
     - 要求は atomic の外 (R17)。本文は {"id", "kind": "chat_file", "file_id"} を署名して、相手の受け口 (自社が登録した接続の URL) へ POST する
       (取りに行く先は「相手の受け口 + 添付の識別 ID」の組。届いた字に書かれた URL へは行かない = ChatFile の docstring)。
       待ちは、つなぐまで 10 秒・読むのは 60 秒。中身は少しずつ読み、20MB (attachments.services.MAX_BYTES) を超えたら読むのをやめる。
+      要求を送り始めてから FETCH_DEADLINE_SECONDS (120 秒) を過ぎたら読むのをやめ、「まだ受け取っていない: 届きません: …時間切れ…」を書く。
     - 200 で、読んだ大きさと中身の印 (SHA-256) が相手の書いた値と同じときだけファイルを置き「受け取った」を書く。ほかは「まだ受け取っていない: <理由>」。
     - 受け口の中では取りに行かない (送り手は 10 秒で返事を待つのをやめるため)。受け手の画面が開いた時と「取り直す」で呼ぶ。
     訳: 相手の seizou に置いた添付を、署名つきの要求で取りに行って自社の側にも残し、中身が相手の書いた大きさと印に合う時だけ受け取ったとするため。出所 = 本人の決め (CHAT-3 = a「推奨で」11-06 23:5x) と中小企業共通 EDI 本編 6.4.1 の URL 記載方式。
     変えてよい条件 = 本人が添付の方式を決め直したとき。
+    訳: 相手が中身を少しずつ終わらずに送ると、取りに行く画面の thread が止まらないので、全体の締切で読むのをやめる。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-3・connect-6。
+    限り: gunicorn の gthread の --timeout が遅い thread を止めないことを前提に置く (未確認)。
     """
     import hashlib
 
@@ -3086,6 +3152,7 @@ def fetch_chat_file(chat_file, user):
     request_id = uuid.uuid4()
     raw = _encode({"id": str(request_id), "kind": "chat_file", "file_id": str(current.file_id)})
     # R17: ここは atomic の外。requests.post を呼ぶのは _post_signed の 1 か所。
+    started = time.monotonic()
     answer, failed = _post_signed(connection, request_id, raw, timeout=(10, 60), stream=True)
     if failed is not None:
         return _write_fetch(current, f"まだ受け取っていない: {failed[0]}")
@@ -3105,6 +3172,11 @@ def fetch_chat_file(chat_file, user):
             content.extend(chunk)
             if len(content) > attachment_services.MAX_BYTES:
                 break
+            if time.monotonic() - started > FETCH_DEADLINE_SECONDS:
+                return _write_fetch(
+                    current,
+                    f"まだ受け取っていない: 届きません: 相手の返事が終わらず、時間切れです ({FETCH_DEADLINE_SECONDS} 秒)。取り直してください。",
+                )
     finally:
         close = getattr(answer, "close", None)
         if callable(close):
