@@ -1,9 +1,9 @@
 {
-  "description": "AI が部品 (seizou) の中身を書き換えないように、Write と Edit を止める (R20)",
+  "description": "AI が部品 (seizou) の中身を書き換えないように、Write・Edit・NotebookEdit を止める (R20)",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",

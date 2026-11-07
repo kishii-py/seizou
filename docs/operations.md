@@ -149,6 +149,8 @@ seizou の新しい版を入れるときは、次の順に進めます。
 7. サーバーを立てます (runserver の 1 行か、サーバーの service の再起動。手元の 2 社のデモは `uv run python scripts/sites.py restart`)。
 8. 画面を 1 つ開いて、ログインと一覧が出ることを確かめます。
 
+Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) の無い置き場 (この版より前に作った物) は、版を上げた後に `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。settings.json は既にあれば触りません。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、settings.json はその前に書いています。
+
 うまく動かないときは、前の版に戻します。PyPI の版は `pip install seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
 
 `settings.py` に次の行が無い置き場 (この版より前に `seizou new` で作った物) は、版を上げるときに足します。`ALLOWED_HOSTS` の行の後に、次の塊を足します。Cookie の 2 行は、HTTPS で開く置き場だけです (上の「HTTPS と Cookie」)。

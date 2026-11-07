@@ -11,6 +11,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     --demo のときは種の断片を先に写すので、同じ名前は種の断片が勝つ (上書きしない)。
     置き場には、AI が守る決まりの CLAUDE.md (Claude Code が置き場を開いたときに読む) と、その短い版の AGENTS.md も書く。
     置き場には、git に入れない物 (鍵の .env・DB・上げたファイルの media/ ほか) を並べた .gitignore も書く (既にあれば書き直さない)。
+    置き場には、Claude Code に .env・DB・控え (backups/) を読ませない .claude/settings.json も書く (既にあれば書き直さない)。
     --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
     (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -20,6 +21,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
+    .claude/settings.json が無ければ、CLAUDE.md と AGENTS.md が既にあって止まる前に書く (既にある物は --force でも書き直さない)。
 seizou github-token [<置き場>]
     会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (依頼書 N185)。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
@@ -564,6 +566,8 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
     write_secret_file(site / ".env", render("env.tmpl", secret_key=secrets.token_urlsafe(50)))
     # git に入れない物 (.env・db.sqlite3・media/ ほか)。既にあれば書き直さない。決め 11-06 00:0x。N172
     write_gitignore(site)
+    # Claude Code に .env・DB・控えを読ませない設定 (.claude/settings.json)。既にあれば書き直さない。決め 11-08 00:5x
+    write_claude_settings(site)
     (site / "README.md").write_text(
         render(
             "README.md.tmpl",
@@ -599,6 +603,26 @@ def write_gitignore(site: Path) -> bool:
     if path.exists():
         return False
     path.write_text(render("gitignore.tmpl"), encoding="utf-8")
+    return True
+
+
+def write_claude_settings(site: Path) -> bool:
+    """置き場に .claude/settings.json (Claude Code の permissions.deny) を書く。既にあれば触らない。書いたら True。
+
+    訳: 会社の置き場で開いた Claude Code が、注入の字を含む注文書や会話を読んだ後に、.env (SECRET_KEY・取引先の鍵・
+    API の鍵・GitHub のトークン) と db.sqlite3 と backups/ を読んで外へ出す流れを、AI のうっかりの読みの段で止める。
+    道は / で始まる形 (settings.json を置いた置き場の直下から数える)。Write は Read の deny で止まるので書かず、
+    Edit(/.env) は NotebookEdit のために残す。Bash(*seizou_secret*) は、鍵の値を作って画面に出す命令を AI に打たせない。
+    限り: shell (Bash の道具の cat や python)・manage.py diffsettings・grep -r・子の process の読みは止まらない (SECURITY.md)。
+    既にある settings.json は会社か人が直した物なので、--force でも書き直さない (黙って消さない)。
+    出所: 本人の決め 11-08 00:5x (hook に Read は足さず、置き場の deny で止める) と、仕組みの調べの候補 7。
+    変えてよい条件: 本人が決め直したとき、または Claude Code の permissions の書き方が変わったとき。
+    """
+    path = site / ".claude" / "settings.json"
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render("settings.json.tmpl"), encoding="utf-8")
     return True
 
 
@@ -895,6 +919,8 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     (write_project と同じ値)。load_answers は使わない (logo の道は元の答えの YAML の横からなので、置き場の写しでは断られる)。
     どちらかが既にあれば、--force のときだけ 2 つとも書き直す (人が直した決まりを黙って消さない)。誤りは何も書かずに終わりの番号 2。
     .gitignore は無いときだけ書き、書いたときだけ「書いた:」の行に名前を足す (既にある .gitignore は --force でも書き直さない)。
+    .claude/settings.json (write_claude_settings) は、CLAUDE.md と AGENTS.md が既にあって止まる前に、無いときだけ書く
+    (この版より前に作った置き場にも届かせるため。決め 11-08 00:5x)。書いたときは止まる前に「書いた:」の行を 1 行出す。
     """
     answers_path = site / "answers.yaml"
     if not ((site / "manage.py").is_file() and answers_path.is_file()):
@@ -908,6 +934,9 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     if not (isinstance(company_id, str) and ID_PATTERN.match(company_id) and answers.get("name") not in (None, "")):
         print(f"止まりました: 置き場の answers.yaml から会社の id と name を読めません: {answers_path}", file=sys.stderr)
         return EXIT_INPUT
+    # 止まる前に書く (CLAUDE.md が既にある置き場にも届かせる)。既にあれば触らない
+    if write_claude_settings(site):
+        print(f"書いた: {site / '.claude' / 'settings.json'}")
     existing = [name for name in ("CLAUDE.md", "AGENTS.md") if (site / name).exists()]
     if existing and not force:
         print(f"止まりました: 既にあります: {'・'.join(existing)} (上書きするなら --force)", file=sys.stderr)

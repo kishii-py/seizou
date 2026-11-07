@@ -4,7 +4,7 @@
 
 ## 部品と会社の違い
 
-- 部品 seizou の中身 (入れた先の `site-packages/seizou/` と、git から入れたときの `src/seizou/`) を書き換えない。プラグイン seizou の hook も、Write と Edit で部品の中身に書くのを止める。
+- 部品 seizou の中身 (入れた先の `site-packages/seizou/` と、git から入れたときの `src/seizou/`) を書き換えない。プラグイン seizou の hook も、Write・Edit・NotebookEdit で部品の中身に書くのを止める。
 - 会社の違いは、この置き場の `fields/` (部品マスターに足す項目)・`templates/` (画面の上書き)・`checks.py` (会社の検査)・`settings.py` (設定)・`manual/` (画面ごとの説明書) と、会社が足した app に書く。
 
 ## 書き方の決まり (決まりの検査が見る)
@@ -35,6 +35,7 @@
 ## 鍵
 
 - 鍵は `.env` だけに置く。設定ファイルと commit に鍵の値を書かない。
+- AI は `.env` を開かない・中身を出さない (会話・画面・commit のどこにも)。置き場の `.claude/settings.json` も、Claude Code に `.env`・`db.sqlite3`・`backups/` を読ませない。
 - `.env` と `db.sqlite3` を commit しない。
 
 ## 言葉
