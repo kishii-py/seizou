@@ -8,11 +8,13 @@
 import os
 import stat
 import sys
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import requests
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.utils import timezone
 
 from seizou.feedback import github, services
 from seizou.feedback.models import Feedback
@@ -65,12 +67,18 @@ class FakeGithub:
             {"id": 9001, "html_url": f"{ISSUE_URL}#issuecomment-9001", "created_at": "2026-11-07T01:00:00Z", "user": {"login": "example-feedback-bot"}},
         )
         self.reaction = Answer(201, {"id": 1, "content": "+1"})
+        #: みんなの Issue の盤 (依頼書 N325): Issue の並びの params の (state, page) → 答え。無い組は listing を返す (既にある試験の形のまま)
+        self.board = {}
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
         if url.endswith("/user"):
             return self.user
         if url.endswith("/issues"):
+            params = kwargs.get("params") or {}
+            board = self.board.get((params.get("state"), params.get("page", 1)))
+            if board is not None:
+                return board
             return self.listing
         if url.endswith("/comments"):
             return self.comments
@@ -1771,3 +1779,223 @@ def test_list_issues_returns_reason_closed_at_labels_and_milestone(fake):
     )
     for row in rows[1:]:
         assert (row["state_reason"], row["closed_at"], row["labels"], row["milestone"]) == ("", "", [], "")
+
+
+# ---------------------------------------------------------------- Issue の並びのページ送り (依頼書 N325)
+
+
+def test_list_issues_reads_pages_until_short_page(fake):
+    # 1 ページ目は Issue 99 件と pull request 1 件 (外す前で 100 件なので続きを読む)、2 ページ目は 3 件で終わり。
+    first = [issue(number, f"件 {number}") for number in range(1, 100)] + [issue(100, "PR", pull_request={"url": "x"})]
+    fake.board[("open", 1)] = Answer(200, first)
+    fake.board[("open", 2)] = Answer(200, [issue(number, f"件 {number}") for number in range(101, 104)])
+
+    rows = github.list_issues("example-owner/example-repo", state="open", pages=github.BOARD_PAGES)
+
+    assert [row["number"] for row in rows] == [*range(1, 100), 101, 102, 103]
+    gets = listings(fake)
+    assert len(gets) == 2
+    assert gets[0][2]["params"] == {"state": "open", "per_page": 100, "sort": "updated"}
+    assert gets[1][2]["params"] == {"state": "open", "per_page": 100, "sort": "updated", "page": 2}
+
+    fake.calls.clear()
+    assert len(github.list_issues("example-owner/example-repo", state="open")) == 99
+    assert len(listings(fake)) == 1
+
+
+def test_list_issues_sends_state_and_since_and_stops_at_board_pages(fake):
+    github.list_issues("example-owner/example-repo", state="closed", since="2026-10-08T00:00:00Z")
+    assert listings(fake)[-1][2]["params"] == {"state": "closed", "per_page": 100, "sort": "updated", "since": "2026-10-08T00:00:00Z"}
+
+    # どのページも 100 件なら、pages が大きくても BOARD_PAGES (10) ページで止める。
+    fake.calls.clear()
+    fake.listing = Answer(200, [issue(number, f"件 {number}") for number in range(1, 101)])
+    assert len(github.list_issues("example-owner/example-repo", pages=50)) == 100 * github.BOARD_PAGES
+    assert [call[2]["params"].get("page", 1) for call in listings(fake)] == list(range(1, github.BOARD_PAGES + 1))
+
+    fake.board[("all", 3)] = Answer(500, {})
+    with pytest.raises(github.GithubError):
+        github.list_issues("example-owner/example-repo", pages=5)
+
+
+# ---------------------------------------------------------------- みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x)
+
+
+def ago(days, hours=0) -> str:
+    """今から days 日 (と hours 時間) 前の、GitHub の日時の形の字 (UTC)。閉じてから 30 日の絞りは今の時刻で数えるので、日付を決め打ちしない。"""
+    moment = timezone.now() - timedelta(days=days, hours=hours)
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def board_issue(number, title, *, plus=0, updated_days=1, **extra):
+    """盤の作り物の 1 件 (更新は今から updated_days 日前)。"""
+    return issue(number, title, updated=ago(updated_days), plus=plus, **extra)
+
+
+def numbers_by_column(board) -> dict:
+    """盤の列の鍵 → Issue の番号の並び。"""
+    return {column["key"]: [row["number"] for row in column["issues"]] for column in board["columns"]}
+
+
+@pytest.mark.parametrize(
+    "row, column",
+    [
+        ({"state": "closed", "state_reason": "not_planned"}, "dismissed"),
+        ({"state": "closed", "state_reason": "duplicate"}, "dismissed"),
+        ({"state": "closed", "state_reason": "completed", "milestone": "0.1.1"}, "fixed"),
+        ({"state": "closed", "state_reason": ""}, "fixed"),
+        ({"state": "open", "labels": ["不具合", "直している"], "milestone": "0.1.1"}, "working"),
+        ({"state": "open", "state_reason": "reopened", "labels": ["不具合"], "milestone": "0.1.1"}, "planned"),
+        ({"state": "open", "labels": [], "milestone": ""}, "inbox"),
+    ],
+)
+def test_board_column(row, column):
+    assert services.board_column(row) == column
+
+
+def test_board_issues_columns_and_marks_of_cards(db, fake):
+    fake.board[("open", 1)] = Answer(
+        200,
+        [
+            board_issue(1, "受け付けた件", body="- 種類: 決まりの提案\n- 画面: 指定なし"),
+            board_issue(2, "直す予定の件", milestone={"title": "0.1.1"}, labels=[{"name": "要望"}]),
+            board_issue(3, "直している件", labels=[{"name": "直している"}, {"name": "不具合"}]),
+        ],
+    )
+    fake.board[("closed", 1)] = Answer(
+        200,
+        [
+            board_issue(4, "直した件", state="closed", state_reason="completed", closed_at=ago(3)),
+            board_issue(5, "見送った件", state="closed", state_reason="not_planned", closed_at=ago(29, 23)),
+            board_issue(6, "31 日前に閉じた件", state="closed", state_reason="completed", closed_at=ago(31)),
+            board_issue(7, "閉じた日の無い件", state="closed", state_reason="duplicate"),
+            board_issue(1, "重なった件", body="2 回目"),
+        ],
+    )
+
+    board = services.board_issues("")
+
+    assert board["error"] == "" and board["repo"] == "kishii-py/seizou" and board["sort"] == "top"
+    assert [(column["key"], column["label"], column["tone"]) for column in board["columns"]] == list(services.BOARD_COLUMNS)
+    assert numbers_by_column(board) == {"inbox": [1], "planned": [2], "working": [3], "fixed": [4], "dismissed": [5, 7]}
+    assert [column["count"] for column in board["columns"]] == [1, 1, 1, 1, 2]
+    assert board["total"] == 6 and sorted(row["number"] for row in board["issues"]) == [1, 2, 3, 4, 5, 7]
+    cards = {row["number"]: row for row in board["issues"]}
+    assert cards[1]["title"] == "受け付けた件" and cards[1]["kind"] == "決まりの提案"
+    assert (cards[2]["kind"], cards[2]["fix_version"], cards[2]["column_label"], cards[2]["column_tone"]) == ("要望", "0.1.1", "直す予定", "info")
+    assert cards[3]["kind"] == "不具合" and cards[4]["fix_version"] == ""
+    assert cards[1]["days"] == "昨日" and cards[1]["own"] is None and cards[1]["detail_url"] == ""
+
+    # 開いている Issue は全部 (pages=BOARD_PAGES)、閉じた Issue は今から 30 日前より後に更新された物を 1 ページだけ読む。
+    gets = listings(fake)
+    assert [call[2]["params"]["state"] for call in gets] == ["open", "closed"]
+    assert "since" not in gets[0][2]["params"]
+    since = datetime.fromisoformat(gets[1][2]["params"]["since"].replace("Z", "+00:00"))
+    assert abs(since - (timezone.now() - timedelta(days=services.BOARD_CLOSED_DAYS))) < timedelta(minutes=1)
+
+
+def test_board_is_cached_apart_from_search(db, fake):
+    fake.board[("open", 1)] = Answer(200, [board_issue(1, "受注の一覧で並びが戻る")])
+    services.board_issues("")
+    assert len(listings(fake)) == 2
+
+    services.board_issues("受注")
+    services.board_issues("", sort="new")
+    assert len(listings(fake)) == 2
+
+    services.search_issues("")
+    assert len(listings(fake)) == 3
+    assert listings(fake)[-1][2]["params"]["state"] == "all"
+    services.board_issues("")
+    assert len(listings(fake)) == 3
+
+
+def test_board_sorts_by_thumbs_up_then_newest(db, fake):
+    fake.board[("open", 1)] = Answer(
+        200,
+        [
+            board_issue(1, "古くて 👍 が多い", plus=5, updated_days=9),
+            board_issue(2, "新しくて 👍 が無い", plus=0, updated_days=1),
+            board_issue(3, "中ほどで 👍 が多い", plus=5, updated_days=4),
+            board_issue(4, "古くて 👍 が 1", plus=1, updated_days=7),
+        ],
+    )
+
+    assert [row["number"] for row in services.board_issues("")["issues"]] == [3, 1, 4, 2]
+    assert numbers_by_column(services.board_issues("", sort="top"))["inbox"] == [3, 1, 4, 2]
+    newest = services.board_issues("", sort="new")
+    assert newest["sort"] == "new" and [row["number"] for row in newest["issues"]] == [2, 3, 4, 1]
+    assert services.board_issues("", sort="うそ")["sort"] == "top"
+
+
+def test_board_filters_by_words(db, fake):
+    fake.board[("open", 1)] = Answer(
+        200,
+        [
+            board_issue(1, "受注の一覧で並びが戻る", body="並び替えた後に戻ると元に戻る"),
+            board_issue(2, "出荷の画面が重い", body="受注を開くと待つ"),
+            board_issue(3, "Search words", body="Upper Case"),
+        ],
+    )
+
+    assert [row["number"] for row in services.board_issues("受注 戻る")["issues"]] == [1]
+    assert sorted(row["number"] for row in services.board_issues("受注")["issues"]) == [1, 2]
+    assert [row["number"] for row in services.board_issues("upper")["issues"]] == [3]
+    nothing = services.board_issues("当たらない言葉")
+    assert nothing["total"] == 0 and nothing["error"] == "" and len(nothing["columns"]) == 5
+
+
+def test_board_error_keeps_five_empty_columns(db, fake):
+    fake.listing = Answer(403, {"message": "rate limit"})
+
+    board = services.board_issues("受注")
+
+    assert "GitHub の Issue を読めませんでした (送り先 kishii-py/seizou)" in board["error"]
+    assert [column["key"] for column in board["columns"]] == ["inbox", "planned", "working", "fixed", "dismissed"]
+    assert all(column["count"] == 0 and column["issues"] == [] for column in board["columns"])
+    assert board["issues"] == [] and board["total"] == 0
+    # 読めなかった時は控えない (次に開くと読み直す)。
+    fake.listing = Answer(200, [board_issue(1, "受注")])
+    assert services.board_issues("受注")["total"] == 1
+
+
+def test_board_marks_own_issues_and_links_only_openable(manager, plain, fake):
+    fake.board[("open", 1)] = Answer(200, [board_issue(number, f"件 {number}") for number in (1, 2, 3)])
+    sent = make(plain, "自社が送った件", status="sent", sent_url=f"{SEIZOU_ISSUES}1")
+    other = get_user_model().objects.create_user("other", password="pass-for-tests-only")
+    uchimo = make(other, "うちもの件", status="sent", sent_url=f"{SEIZOU_ISSUES}2")
+    Feedback.objects.filter(pk=uchimo.pk).update(problem="同じ困りごとの Issue #2 に「うちも」を付けた")
+
+    cards = {row["number"]: row for row in services.board_issues("", user=plain)["issues"]}
+    assert cards[1]["own"] == {"kind": "sent", "pk": sent.pk} and cards[1]["detail_url"] == f"/feedback/{sent.pk}/"
+    assert cards[2]["own"] == {"kind": "me_too", "pk": uchimo.pk} and cards[2]["detail_url"] == ""
+    assert cards[3]["own"] is None and cards[3]["detail_url"] == ""
+
+    cards = {row["number"]: row for row in services.board_issues("", user=manager)["issues"]}
+    assert cards[2]["detail_url"] == f"/feedback/{uchimo.pk}/"
+    assert all(row["detail_url"] == "" for row in services.board_issues("")["issues"])
+
+
+@pytest.mark.parametrize(
+    "row, kind",
+    [
+        ({"labels": ["from-seizou", "使い方", "不具合"], "body": "- 種類: 要望"}, "使い方"),
+        ({"labels": ["from-seizou"], "body": "- 種類: 業務の流れの違い\n- 画面: 指定なし"}, "業務の流れの違い"),
+        ({"labels": [], "body": "- 種類: 知らない種類"}, ""),
+        ({"labels": [], "body": ""}, ""),
+        ({}, ""),
+    ],
+)
+def test_board_kind(row, kind):
+    assert services.board_kind(row) == kind
+
+
+def test_days_ago():
+    now = datetime(2026, 11, 7, 1, 0, tzinfo=UTC)  # 会社の時刻 (Asia/Tokyo) で 11-07 10:00
+
+    assert services.days_ago("2026-11-06T16:00:00Z", now) == "今日"  # 11-07 01:00 (会社の時刻)
+    assert services.days_ago("2026-11-06T14:59:00Z", now) == "昨日"  # 11-06 23:59
+    assert services.days_ago("2026-11-04T00:00:00Z", now) == "3 日前"
+    assert services.days_ago("2026-11-09T00:00:00Z", now) == "今日"
+    assert services.days_ago("", now) == "" and services.days_ago("読めない字", now) == ""
+    assert services.days_ago(ago(0)) == "今日"

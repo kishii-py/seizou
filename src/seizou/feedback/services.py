@@ -1433,3 +1433,198 @@ def me_too(number, user) -> dict:
             created_by=_author(user),
         )
     return {"feedback": row, "thumbs_up": thumbs_up, "connected": connected}
+
+
+# ---- みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x) ----
+#
+# 「みんなの Issue」のタブ (一覧の ?tab=issues) が、送り先のリポジトリの Issue を 5 つの列に分けて並べる。読むだけ (表に書かない)。
+# 列は Issue の状態・閉じた理由・ラベル・マイルストーンから分ける (GitHub の Projects の盤は読まない。名前と並びは作者の盤と同じ)。
+# 開いている Issue は全部 (100 件ずつ github.BOARD_PAGES ページまで)、閉じた Issue は閉じてから BOARD_CLOSED_DAYS 日の分だけを読み、
+# 送り先ごとに django.core.cache に BOARD_CACHE_SECONDS 秒控える (探す search_issues の控えとは別の鍵)。HTTP は transaction.atomic の外 (R17)。
+
+#: 盤の列 (鍵・表示名・意味の色)。並びは画面の左から。色の名前は core.status_colors の 5 つと同じ字
+#: (「直した」は一覧の fixed と同じ success、「見送った」は dismissed と同じ error、「受け付けた」は「まだ」の ghost)
+BOARD_COLUMNS = (
+    ("inbox", "受け付けた", "ghost"),
+    ("planned", "直す予定", "info"),
+    ("working", "直している", "warning"),
+    ("fixed", "直した", "success"),
+    ("dismissed", "見送った", "error"),
+)
+#: 閉じた Issue を盤に出す日数 (閉じてから)
+BOARD_CLOSED_DAYS = 30
+#: 「直している」の列に入れる Issue のラベル (作者が GitHub で付ける)
+BOARD_WORKING_LABEL = "直している"
+#: 盤の控えの秒 (探すの控えと同じ 5 分。鍵は別)
+BOARD_CACHE_SECONDS = ISSUES_CACHE_SECONDS
+#: 盤の並べ替え (👍 の多い順・更新の新しい順)。初めは top
+BOARD_SORTS = ("top", "new")
+
+
+def board_column(issue) -> str:
+    """Issue (github.list_issues の 1 件) を入れる盤の列の鍵 (BOARD_COLUMNS の鍵)。
+
+    閉じた物は、閉じた理由が対応しない・重複 (DISMISSED_REASONS) なら dismissed、ほか (completed・空) は fixed。
+    開いている物は、ラベルに BOARD_WORKING_LABEL があれば working、マイルストーンがあれば planned、ほかは inbox。
+    訳: 工場の人が GitHub を開かずに、皆の要望がどこまで進んだかを、作者が見る GitHub の盤と同じ言葉で見るため。
+    「見送った」の理由は、取り込み (sync_github) が件を見送ったにする理由と同じ 2 つにそろえる。
+    出所 = 本人の決め 11-07 09:3x〜10:1x (受け渡しの指示書3。列の分け方は Projects を読まず Issue の情報から)。
+    変えてよい条件 = 作者が GitHub の盤の列の名前か「直している」のラベルの名前を変えたとき (BOARD_COLUMNS と BOARD_WORKING_LABEL を一緒に直す)。
+    """
+    if issue.get("state") == "closed":
+        return "dismissed" if issue.get("state_reason") in DISMISSED_REASONS else "fixed"
+    if BOARD_WORKING_LABEL in (issue.get("labels") or []):
+        return "working"
+    if issue.get("milestone"):
+        return "planned"
+    return "inbox"
+
+
+def _board_cache_key(repo) -> str:
+    return f"seizou-feedback-github-board:{repo}"
+
+
+def _board_rows(repo, token) -> list[dict]:
+    """盤に並べる Issue (github.list_issues の形) の並び。読めなければ github.GithubError。
+
+    開いている Issue を全部 (github.BOARD_PAGES ページまで) と、最近 BOARD_CLOSED_DAYS 日に更新された閉じた Issue (1 ページ) を読む。
+    閉じた物は、閉じた日時 (closed_at) が BOARD_CLOSED_DAYS 日より前なら外す (closed_at が空か読めない物は残す。since で最近の物だけを読んでいるため)。
+    番号が重なった物は先に読んだ方を残す。送り先ごとに django.core.cache に BOARD_CACHE_SECONDS 秒控える (読めた時だけ)。
+    """
+    from datetime import timedelta
+
+    key = _board_cache_key(repo)
+    rows = cache.get(key)
+    if rows is not None:
+        return rows
+    since = timezone.now().astimezone(UTC) - timedelta(days=BOARD_CLOSED_DAYS)
+    opened = github.list_issues(repo, token, state="open", pages=github.BOARD_PAGES)
+    closed = github.list_issues(repo, token, state="closed", since=since.strftime("%Y-%m-%dT%H:%M:%SZ"), pages=1)
+    rows, seen = [], set()
+    for row in [*opened, *closed]:
+        if row.get("number") in seen:
+            continue
+        closed_at = _github_time(row.get("closed_at")) if row.get("state") == "closed" else None
+        if closed_at is not None and closed_at < since:
+            continue
+        seen.add(row.get("number"))
+        rows.append(row)
+    cache.set(key, rows, BOARD_CACHE_SECONDS)
+    return rows
+
+
+def board_kind(issue) -> str:
+    """盤のカードの種類の札の字 (Feedback.KIND_CHOICES の表示名)。
+
+    Issue のラベルに表示名と同じ字があればそれ (ラベルの並びの先の物)、無ければ本文の「- 種類: <表示名>」の行 (export_markdown が書く行)、
+    どちらも無いか知らない字なら空の字。種類の値 (bug など) を返す issue_kind (依頼書 N323。「うちも」の件の種類) と違い、画面に出す表示名を返す。
+    """
+    names = [label for _, label in Feedback.KIND_CHOICES]
+    for label in issue.get("labels") or []:
+        if label in names:
+            return label
+    match = _KIND_LINE.search(str(issue.get("body") or ""))
+    if match and match.group(1) in names:
+        return match.group(1)
+    return ""
+
+
+def days_ago(iso, now=None) -> str:
+    """更新の日時 (GitHub の ISO 8601 の字) から今日までの日数の字。「今日」「昨日」「n 日前」(会社の時刻の日付で数え、時刻は見ない)。
+
+    読めない字は空の字。先の日付 (時計のずれ) は「今日」。now は aware な datetime (無ければ今)。
+    """
+    moment = _github_time(iso)
+    if moment is None:
+        return ""
+    days = (timezone.localdate(now or timezone.now()) - timezone.localdate(moment)).days
+    if days <= 0:
+        return "今日"
+    if days == 1:
+        return "昨日"
+    return f"{days} 日前"
+
+
+def _own_mark(mark):
+    """our_issue_marks の 1 件 ({"sent", "me_too"}) を盤の自社の印 {"kind": "sent" か "me_too", "pk": 自社の件の pk} にする。
+
+    両方あれば「自社が送った」(sent) を先に見る (一覧の行の印と同じ)。どちらも無ければ None。
+    """
+    if not mark:
+        return None
+    if mark.get("sent") is not None:
+        return {"kind": "sent", "pk": mark["sent"]}
+    if mark.get("me_too") is not None:
+        return {"kind": "me_too", "pk": mark["me_too"]}
+    return None
+
+
+def _openable_pks(user, marks) -> set:
+    """自社の印の件のうち、user が詳細を開ける件の pk の集まり。読むだけ。
+
+    世話役は全部、ほかの人は自分の書いた件だけ (詳細の画面の絞りと同じ。一覧の tag の feedback_github の openable と同じ見分け方)。
+    """
+    pks = {pk for mark in marks.values() for pk in mark.values() if pk is not None}
+    if not pks or user is None:
+        return set()
+    if can_manage(user):
+        return pks
+    if getattr(user, "pk", None) is None:
+        return set()
+    return set(Feedback.objects.filter(pk__in=pks, created_by_id=user.pk).values_list("pk", flat=True))
+
+
+def board_issues(words, *, sort="top", user=None) -> dict:
+    """みんなの Issue の盤。読むだけ (トークンは無くてよい。あれば使う)。
+
+    返す物は {"columns": 5 つの列 [{"key", "label", "tone", "count", "issues"}] (並びは BOARD_COLUMNS),
+    "issues": 全部の列の Issue を 1 つに並べた物 (一覧の形の表が使う), "error": 字, "repo": 送り先, "sort": "top" か "new", "total": 件数}。
+    言葉 (空白で分ける) があれば search_issues と同じ比べ方 (全部の言葉を題か本文に含む。英字の大小は見ない) で絞る。
+    各 Issue に足す鍵: column (board_column)・column_label と column_tone (列の表示名と意味の色)・kind (board_kind)・
+    fix_version (マイルストーンの名前)・days (days_ago)・own (自社の印。_own_mark)・
+    detail_url (own があり、user が詳細を開ける件なら自社の件の詳細の道、ほかは空の字)。
+    並べ替えは top = 👍 の多い順 (同じなら更新の新しい順)、new = 更新の新しい順 (ほかの値は top)。
+    GitHub を読めなければ 5 つの列は空で、error に日本語の文 (止めない。search_issues と同じ形)。
+    """
+    from django.urls import reverse
+
+    repo = github_status()["repo"]
+    sort = sort if sort in BOARD_SORTS else "top"
+    try:
+        rows = _board_rows(repo, github.read_env_value(github.TOKEN_ENV))
+        error = ""
+    except github.GithubError:
+        rows = []
+        error = f"GitHub の Issue を読めませんでした (送り先 {repo})。少し待ってから、もう一度「みんなの Issue」を開いてください。"
+    terms = [word.casefold() for word in str(words or "").split()]
+    found = [row for row in rows if all(term in f"{row['title']}\n{row['body']}".casefold() for term in terms)]
+    marks = our_issue_marks() if found else {}
+    openable = _openable_pks(user, marks)
+    names = {key: (label, tone) for key, label, tone in BOARD_COLUMNS}
+    now = timezone.now()
+    issues = []
+    for row in found:
+        column = board_column(row)
+        own = _own_mark(marks.get(row["number"]))
+        issues.append(
+            {
+                **row,
+                "column": column,
+                "column_label": names[column][0],
+                "column_tone": names[column][1],
+                "kind": board_kind(row),
+                "fix_version": row.get("milestone") or "",
+                "days": days_ago(row.get("updated_at"), now),
+                "own": own,
+                "detail_url": reverse("feedback:feedback_detail", args=[own["pk"]]) if own and own["pk"] in openable else "",
+            }
+        )
+    issues.sort(key=lambda row: row["updated_at"], reverse=True)
+    if sort == "top":
+        # 並べ替えは安定なので、👍 が同じ物は更新の新しい順のまま残る。
+        issues.sort(key=lambda row: row["thumbs_up"], reverse=True)
+    columns = []
+    for key, label, tone in BOARD_COLUMNS:
+        members = [row for row in issues if row["column"] == key]
+        columns.append({"key": key, "label": label, "tone": tone, "count": len(members), "issues": members})
+    return {"columns": columns, "issues": issues, "error": error, "repo": repo, "sort": sort, "total": len(issues)}

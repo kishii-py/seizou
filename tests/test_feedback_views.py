@@ -38,6 +38,20 @@ def fresh_catalog():
     services.screen_catalog.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def no_real_github(monkeypatch):
+    """本物の GitHub へ送らない (依頼書 N325)。「みんなの Issue」のタブは開くと盤のために GitHub を読むので、
+    作り物の GitHub (gh・github_listing) を使わない試験では、requests をつながらない形にする (盤は読めなかった 1 文を出す)。
+    作り物の fixture は autouse の後に差し替えるので、そちらが勝つ。
+    """
+
+    def unreachable(*args, **kwargs):
+        raise requests.ConnectionError("試験では本物の GitHub につながない")
+
+    monkeypatch.setattr(requests, "get", unreachable)
+    monkeypatch.setattr(requests, "post", unreachable)
+
+
 @pytest.fixture
 def manager(db):
     return get_user_model().objects.create_superuser("admin", password="pass-for-tests-only")
@@ -961,3 +975,170 @@ def test_issue_rows_show_closed_reason_and_milestone(client, plain, gh):
     assert '<span class="badge badge-ghost">閉じた</span>' in rows[4] and "見送った" not in rows[4]
     assert '<span class="badge badge-soft badge-success">開いている</span>' in rows[5]
     assert '<span class="badge badge-soft badge-info">0.1.2 で直る</span>' in rows[5]
+
+
+# ---------------------------------------------------------------- みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x)
+
+
+def board_answers(fake):
+    """盤の作り物の Issue。開いている 3 件 (#7 直す予定・#8 受け付けた・#9 直している) と閉じた 1 件 (#10 直した)。見送ったは 0 件。"""
+    fake.board[("open", 1)] = gh_tests.Answer(
+        200,
+        [
+            gh_tests.board_issue(7, "請求の合計が 1 ずれる", body=gh_tests.ME_TOO_BODY, milestone={"title": "0.1.1"}, plus=2),
+            gh_tests.board_issue(8, "受注の CSV に列を足したい", labels=[{"name": "要望"}], plus=4, updated_days=3),
+            gh_tests.board_issue(9, "出荷の画面が重い", labels=[{"name": "直している"}], updated_days=2),
+        ],
+    )
+    fake.board[("closed", 1)] = gh_tests.Answer(
+        200, [gh_tests.board_issue(10, "直った件", state="closed", state_reason="completed", closed_at=gh_tests.ago(2))]
+    )
+
+
+def board_of(html: str) -> str:
+    """盤 (#issue-board) の HTML。"""
+    return html[html.index('<div id="issue-board"') : html.index("</section>\n</div>", html.index('<div id="issue-board"'))]
+
+
+def card_of(html: str, number: int) -> str:
+    """盤の番号のカードの HTML。"""
+    start = html.index(f'<span class="font-mono text-xs text-base-content/50">#{number}</span>')
+    return html[start : html.index("</article>", start)]
+
+
+def href(params: dict) -> str:
+    """一覧の URL を HTML の属性の字 (& は &amp;) にした物。"""
+    return escape("/feedback/?" + urlencode(params))
+
+
+def test_issues_tab_shows_board_with_five_columns_and_cards(client, plain, manager, gh):
+    board_answers(gh)
+    sent = make(plain, "請求の合計がずれる")
+    services.mark_sent(sent, manager, sent_url=f"{gh_tests.SEIZOU_ISSUES}7")
+    client.force_login(plain)
+
+    response = client.get("/feedback/?tab=issues")
+    html = html_of(response)
+
+    assert response.status_code == 200
+    assert html.count('id="issue-board"') == 1 and 'id="issue-table"' not in html
+    board = board_of(html)
+    # 件数 1 以上の 4 列は左から BOARD_COLUMNS の並び、件数 0 の「見送った」は右端の箱に札だけ。
+    assert board.count('<section class="w-72 shrink-0 rounded-xl border border-base-300 bg-base-200 p-3"') == 4
+    heads = re.findall(r'<h3 id="issue-column-([a-z]+)" class="flex items-center">', board)
+    assert heads == ["inbox", "planned", "working", "fixed"]
+    for badge in (
+        '<span class="badge badge-ghost">受け付けた</span>',
+        '<span class="badge badge-soft badge-info">直す予定</span>',
+        '<span class="badge badge-soft badge-warning">直している</span>',
+        '<span class="badge badge-soft badge-success">直した</span>',
+    ):
+        assert badge in board
+    assert board.count('<span class="badge badge-sm badge-ghost ml-2 tabular-nums">1</span>') == 4
+    empty = board[board.index('id="issue-columns-empty"') :]
+    assert "0 件の列" in empty and '<span class="badge badge-outline badge-error">見送った</span>' in empty
+    assert 'id="issue-column-dismissed"' not in board
+
+    # 自社が送った件のカード (#7): 題は自社の件の詳細へ、種類は本文の行、直る版、自社の印、押せない 👍。
+    mine = card_of(html, 7)
+    assert f'href="/feedback/{sent.pk}/">請求の合計が 1 ずれる</a>' in mine
+    assert '<span class="badge badge-sm badge-ghost">不具合</span>' in mine
+    assert '<span class="badge badge-sm badge-soft badge-info">0.1.1 で直る</span>' in mine
+    assert '<span class="badge badge-sm badge-soft badge-primary">自社が送った</span>' in mine
+    assert '<span class="btn btn-xs btn-outline border-base-300 pointer-events-none" aria-disabled="true">👍 2</span>' in mine
+    assert "/me-too/" not in mine and "昨日" in mine
+
+    # 印の無いカード (#8): 題は GitHub を新しいタブで、👍 は「うちも」の口への POST (GET に issue_q が無いので隠しの issue_q も無い)。
+    other = card_of(html, 8)
+    assert 'href="https://github.com/kishii-py/seizou/issues/8" target="_blank" rel="noopener">受注の CSV に列を足したい</a>' in other
+    assert '<span class="badge badge-sm badge-ghost">要望</span>' in other and "3 日前" in other
+    assert 'action="/feedback/issues/8/me-too/"' in other and 'name="issue_q"' not in other
+    assert 'aria-label="うちも (Issue #8 に 👍 を付ける)" title="うちも (同じ困りごと)">👍 4</button>' in other
+    assert "自社が送った" not in other and "うちも済み" not in other
+
+    # 並べ替えと切り替え (初めは 👍 の多い順と盤)。
+    assert f'<a class="join-item btn btn-sm btn-active" href="{href({"tab": "issues"})}" aria-current="true">👍 の多い順</a>' in html
+    assert f'<a class="join-item btn btn-sm" href="{href({"tab": "issues", "sort": "new"})}">新しい順</a>' in html
+    assert f'<a class="join-item btn btn-sm btn-active" href="{href({"tab": "issues"})}" aria-current="true">盤</a>' in html
+    assert f'<a class="join-item btn btn-sm" href="{href({"tab": "issues", "view": "list"})}">一覧</a>' in html
+    assert 'name="view"' not in html and 'name="sort"' not in html
+
+    # タブの外 (送った一言) は盤を描かず、GitHub も読まない。
+    gh.calls.clear()
+    html = html_of(client.get("/feedback/"))
+    assert 'id="issue-board"' not in html and 'id="issue-sorts"' not in html and not gh.calls
+
+
+def test_issues_tab_list_view_and_links_keep_tab_words_and_choice(client, plain, gh):
+    board_answers(gh)
+    client.force_login(plain)
+
+    html = html_of(client.get("/feedback/", {"tab": "issues", "view": "list", "sort": "new", "issue_q": "受注"}))
+
+    assert 'id="issue-table"' in html and 'id="issue-board"' not in html
+    table = html[html.index('<table id="issue-table"') : html.index("</table>")]
+    assert "受注の CSV に列を足したい" in table and "出荷の画面が重い" not in table
+    row = re.search(r"<tr>\s*<td[^>]*>#8</td>.*?</tr>", table, re.S).group(0)
+    assert '<span class="badge badge-ghost">受け付けた</span>' in row
+    assert '<span class="badge badge-sm badge-ghost">要望</span>' in row
+    assert 'action="/feedback/issues/8/me-too/"' in row and '<input type="hidden" name="issue_q" value="受注">' in row
+    assert "<th>列</th><th>種類</th><th>直る版</th><th>自社</th>" in table
+
+    # 探す form は今の view と sort を隠しで保ち、link は tab と言葉ともう片方の選びを保つ。
+    assert '<input type="hidden" name="view" value="list">' in html and '<input type="hidden" name="sort" value="new">' in html
+    assert 'value="受注"' in html and '<input type="hidden" name="tab" value="issues">' in html
+    keep = {"tab": "issues", "issue_q": "受注"}
+    assert f'href="{href({**keep, "view": "list"})}">👍 の多い順</a>' in html
+    assert f'href="{href({**keep, "view": "list", "sort": "new"})}" aria-current="true">新しい順</a>' in html
+    assert f'href="{href({**keep, "sort": "new"})}">盤</a>' in html
+    assert f'href="{href({**keep, "view": "list", "sort": "new"})}" aria-current="true">一覧</a>' in html
+
+
+def test_issues_tab_says_one_line_when_github_is_unreadable_or_nothing_matches(client, plain, gh):
+    gh.listing = gh_tests.Answer(403, {"message": "rate limit"})
+    client.force_login(plain)
+
+    for params in ({"tab": "issues"}, {"tab": "issues", "view": "list"}):
+        response = client.get("/feedback/", params)
+        html = html_of(response)
+        assert response.status_code == 200
+        assert "GitHub の Issue を読めませんでした (送り先 kishii-py/seizou)。" in html
+        assert 'id="issue-board"' not in html and 'id="issue-table"' not in html
+
+    cache.clear()
+    board_answers(gh)
+    html = html_of(client.get("/feedback/", {"tab": "issues", "issue_q": "当たらない言葉"}))
+    assert "当たる Issue はありませんでした。言葉を減らすか、空にして「探す」を押してください。" in html
+    assert 'id="issue-board"' not in html
+
+
+def test_board_card_me_too_returns_to_board_with_mark(client, plain, gh, monkeypatch):
+    board_answers(gh)
+    connect_env(monkeypatch)
+    client.force_login(plain)
+    gh.listing = gh_tests.Answer(200, [gh_tests.board_issue(8, "受注の CSV に列を足したい", plus=4)])
+
+    response = client.post("/feedback/issues/8/me-too/")
+
+    assert response["Location"] == "/feedback/?tab=issues#issues"
+    html = html_of(client.get(response["Location"]))
+    card = card_of(html, 8)
+    assert '<span class="badge badge-sm badge-soft badge-primary">うちも済み</span>' in card
+    assert 'aria-disabled="true">👍' in card and "/me-too/" not in card
+    row = Feedback.objects.get()
+    assert f'href="/feedback/{row.pk}/">受注の CSV に列を足したい</a>' in card
+
+
+def test_board_tag_without_request_reads_nothing():
+    board = feedback_tags.feedback_board({})
+
+    assert (board["view"], board["sort"], board["q"], board["keep_q"], board["board"]) == ("board", "top", "", False, None)
+    assert board["columns_shown"] == [] and board["columns_empty"] == []
+    assert [(link["label"], link["href"], link["selected"]) for link in board["sorts"]] == [
+        ("👍 の多い順", "/feedback/?tab=issues", True),
+        ("新しい順", "/feedback/?tab=issues&sort=new", False),
+    ]
+    assert [(link["label"], link["href"], link["selected"]) for link in board["views"]] == [
+        ("盤", "/feedback/?tab=issues", True),
+        ("一覧", "/feedback/?tab=issues&view=list", False),
+    ]

@@ -1,0 +1,19 @@
+{# みんなの Issue の一覧の形 (依頼書 N325)。feedback_list.html の「みんなの Issue」のタブが、GET の view が list のときに include する。材料は tag の feedback_board (board)。 #}
+{# 行は盤と同じ Issue を、盤と同じ並べ替えで 1 つに並べる (board.board.issues)。列の札は盤の列の札と同じ core/_status_badge.html。題を押す先と 👍 の形は盤のカード (_issue_card.html) と同じ。 #}
+<div class="mt-4 overflow-x-auto">
+  <table id="issue-table" class="table table-sm">
+    <thead><tr><th>番号</th><th>題</th><th>列</th><th>種類</th><th>直る版</th><th>自社</th><th class="text-right">👍</th><th>最後の更新</th></tr></thead>
+    <tbody>
+      {% for issue in board.board.issues %}<tr>
+        <td class="whitespace-nowrap font-mono tabular-nums">#{{ issue.number }}</td>
+        <td>{% if issue.detail_url %}<a class="link link-hover" href="{{ issue.detail_url }}">{{ issue.title }}</a>{% else %}<a class="link link-hover" href="{{ issue.html_url }}" target="_blank" rel="noopener">{{ issue.title }}</a>{% endif %}</td>
+        <td class="whitespace-nowrap">{% include "core/_status_badge.html" with tone=issue.column_tone label=issue.column_label %}</td>
+        <td class="whitespace-nowrap">{% if issue.kind %}<span class="badge badge-sm badge-ghost">{{ issue.kind }}</span>{% endif %}</td>
+        <td class="whitespace-nowrap">{% if issue.fix_version %}<span class="badge badge-sm badge-soft badge-info">{{ issue.fix_version }} で直る</span>{% endif %}</td>
+        <td class="whitespace-nowrap">{% if issue.own.kind == "sent" %}<span class="badge badge-sm badge-soft badge-primary">自社が送った</span>{% elif issue.own %}<span class="badge badge-sm badge-soft badge-primary">うちも済み</span>{% endif %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{% if issue.own %}{{ issue.thumbs_up }}{% else %}<form method="post" action="{% url 'feedback:me_too' issue.number %}" class="inline">{% csrf_token %}{% if board.keep_q %}<input type="hidden" name="issue_q" value="{{ board.q }}">{% endif %}<button type="submit" class="btn btn-xs btn-outline border-base-300" aria-label="うちも (Issue #{{ issue.number }} に 👍 を付ける)" title="うちも (同じ困りごと)">👍 {{ issue.thumbs_up }}</button></form>{% endif %}</td>
+        <td class="whitespace-nowrap font-mono tabular-nums">{{ issue.updated_at|slice:":10" }}</td>
+      </tr>{% endfor %}
+    </tbody>
+  </table>
+</div>

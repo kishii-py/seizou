@@ -1,0 +1,13 @@
+{# みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x)。feedback_list.html の「みんなの Issue」のタブ (?tab=issues) が、盤の形 (GET の view が list でない) のときに include する。材料は tag の feedback_board (board)。 #}
+{# 件数 1 以上の列を左から並べ、件数 0 の列は右端の 1 つの箱に札だけを縦に並べる (幅を取らない)。狭い幅は横に流して 1 列ずつ見る。 #}
+{# 列の札は core/_status_badge.html (色ごとに class を丸ごと書いた if の枝。R19) を include する。色は services.BOARD_COLUMNS の意味の色 (送った一言の状態の札と同じ表の名前)。 #}
+<div id="issue-board" class="mt-4 flex gap-4 overflow-x-auto">
+  {% for column in board.columns_shown %}<section class="w-72 shrink-0 rounded-xl border border-base-300 bg-base-200 p-3" aria-labelledby="issue-column-{{ column.key }}">
+    <h3 id="issue-column-{{ column.key }}" class="flex items-center">{% include "core/_status_badge.html" with tone=column.tone label=column.label %}<span class="badge badge-sm badge-ghost ml-2 tabular-nums">{{ column.count }}</span></h3>
+    <div class="mt-4 flex flex-col gap-4">{% for issue in column.issues %}{% include "feedback/_issue_card.html" %}{% endfor %}</div>
+  </section>
+  {% endfor %}{% if board.columns_empty %}<section class="w-64 shrink-0 rounded-xl border border-base-300 bg-base-200 p-3" aria-labelledby="issue-columns-empty">
+    <h3 id="issue-columns-empty" class="text-xs font-medium text-base-content/50">0 件の列</h3>
+    <ul class="mt-4 flex flex-col items-start gap-2">{% for column in board.columns_empty %}<li>{% include "core/_status_badge.html" with tone=column.tone label=column.label %}</li>{% endfor %}</ul>
+  </section>{% endif %}
+</div>

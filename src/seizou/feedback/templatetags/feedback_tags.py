@@ -10,6 +10,7 @@
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
 {% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った一言 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
 {% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。依頼書 N324)
+{% feedback_board as board %}          みんなの Issue の盤と一覧の形の材料と、並べ替えと切り替えの link (依頼書 N325。GET の tab が issues のときだけ GitHub を読む)
 info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (依頼書 N324)。
 """
 
@@ -181,3 +182,58 @@ def feedback_tabs(context):
 def feedback_reply_draft(reply):
     """返事の下書きの、世話役が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。依頼書 N324)。"""
     return services.reply_draft_text(reply)
+
+
+#: みんなの Issue の並べ替えの link (鍵と字。依頼書 N325)。初めは 👍 の多い順
+BOARD_SORT_LINKS = (("top", "👍 の多い順"), ("new", "新しい順"))
+#: みんなの Issue の形の切り替えの link (鍵と字)。初めは盤 (選びは覚えない = 毎回盤)
+BOARD_VIEW_LINKS = (("board", "盤"), ("list", "一覧"))
+
+
+def _board_href(q, view, sort) -> str:
+    """みんなの Issue のタブの URL (tab=issues と、q が None でなければ issue_q、初めの値でない view と sort)。"""
+    params = {"tab": "issues"}
+    if q is not None:
+        params["issue_q"] = q
+    if view != "board":
+        params["view"] = view
+    if sort != "top":
+        params["sort"] = sort
+    return reverse("feedback:feedback_list") + "?" + urlencode(params)
+
+
+@register.simple_tag(takes_context=True)
+def feedback_board(context):
+    """みんなの Issue の盤と一覧の形の材料 (依頼書 N325。決め 11-07 09:3x〜10:1x)。
+
+    返す物 {"view": "board" か "list" (GET の view が list なら list。ほかは board), "sort": "top" か "new" (GET の sort。ほかは top),
+    "q": GET の issue_q, "keep_q": GET に issue_q があったか, "board": services.board_issues の結果か None,
+    "columns_shown": 件数 1 以上の列, "columns_empty": 件数 0 の列,
+    "sorts" と "views": 並べ替えと切り替えの link の並び [{"key", "label", "href", "selected"}]}。
+    GitHub を読むのは GET の tab が issues のときだけ。ほかと request が無いときは読まず、board は None で列は空。
+    link の href は tab と、今の issue_q (GET にあったときだけ) と、もう片方の選び (view か sort) を保つ。
+    issue_q を GET にあったときだけ付けるのは、tag の feedback_github が GET に issue_q があると今までの探す (search_issues) も読むため。
+    部品の画面は R15 で get_context_data を上書きできないので、材料をここで渡す。
+    """
+    request = context.get("request")
+    params = getattr(request, "GET", {}) if request is not None else {}
+    view = "list" if params.get("view") == "list" else "board"
+    sort = "new" if params.get("sort") == "new" else "top"
+    keep_q = "issue_q" in params
+    q = params.get("issue_q", "") if keep_q else ""
+    board = None
+    if request is not None and params.get("tab") == "issues":
+        board = services.board_issues(q, sort=sort, user=getattr(request, "user", None))
+    columns = board["columns"] if board is not None else []
+    kept = q if keep_q else None
+    return {
+        "view": view,
+        "sort": sort,
+        "q": q,
+        "keep_q": keep_q,
+        "board": board,
+        "columns_shown": [column for column in columns if column["count"]],
+        "columns_empty": [column for column in columns if not column["count"]],
+        "sorts": [{"key": key, "label": label, "href": _board_href(kept, view, key), "selected": key == sort} for key, label in BOARD_SORT_LINKS],
+        "views": [{"key": key, "label": label, "href": _board_href(kept, key, sort), "selected": key == view} for key, label in BOARD_VIEW_LINKS],
+    }
