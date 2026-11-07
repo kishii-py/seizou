@@ -1143,9 +1143,6 @@ def payable_by_partner(today=None):
 
 # --- 仕入明細 (受入をまとめて相手へ送る書類。中小企業共通 EDI の仕入明細の項目を元にした。候補 C111) ---
 
-#: 支払期日が受領日から何日を超えたら知らせるか (取適法の 60 日)
-SELF_INVOICE_DUE_DAYS = 60
-
 
 def _sent_order_exists():
     """受入の発注に送った注文 (connect の Outbox) の行があるかの式 (Exists)。connect の無い会社では None。"""
@@ -1497,21 +1494,31 @@ def record_self_invoice_reply(self_invoice, user, *, revision_no, reply_type, li
 
 
 def due_date_note(self_invoice):
-    """仕入明細の詳細の上の黄色の 1 行の字 (読むだけ)。支払期日が一番早い受領日から 60 日を超えるときだけ字を返し、ほかは空の字。
+    """仕入明細の詳細の上の黄色の 1 行の字 (読むだけ)。支払期日が一番早い受領日から 2 か月 (60 日) を超えるときだけ字を返し、ほかは空の字。
 
-    取消の仕入明細と支払期日の空の仕入明細には出さない。日数は 2 つの日付の差で数える (月単位の締めの扱いは見ない)。
+    取消の仕入明細と支払期日の空の仕入明細と明細の無い仕入明細には出さない。
+    数え方は 2 か月 (一番早い受領日の 2 か月後の日の前日まで。billing.services.months_later。式を写さない)。
+    例: 受領 7-01 なら 8-31 まで出さず、9-01 から出す (月末締め・翌月末払いでは出ず、翌々月払いのような条件で出る)。
     取適法 (2026-01-01 施行。旧下請法): 代金の支払期日は物を受け取った日から 60 日以内で定める。超えるときに知らせ、止めない (決め C111-2)。
-    確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」(公正取引委員会の一次資料は未読)。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」。
+    訳: 取適法の支払期日の 60 日は 2 か月で数える。よくある月末締め・翌月末払いで知らせが出続けると、本当に危ない条件の知らせが読まれなくなるおそれがあるため。
+    出所 = 本人の決め C111-2b (11-07 08:42) と、公正取引委員会の下請法の時代の講習会テキスト (令和 4 年 11 月) 44 ページの「受領後２か月以内」の運用・
+    支払告示のリーフレットの「60日目まで（２か月以内）」。取適法でも同じ運用かは未確認 (取適法のよくある質問 Q68 と講習会の資料 1 に 2 か月の記載が見つからない)。
+    変えてよい条件 = 公正取引委員会が取適法で別の数え方を示したとき、または本人が決め直したとき。
+    画面の字では法令の当てはめを言い切らない (「…のおそれがあります」「確かめてください」の形)。
     """
+    from seizou.billing.services import months_later
+
     if self_invoice.status == SelfInvoice.STATUS_CANCELLED or self_invoice.due_on is None:
         return ""
     days = [line.received_on for line in self_invoice.lines.all()]
     if not days:
         return ""
     earliest = min(days)
-    if (self_invoice.due_on - earliest).days <= SELF_INVOICE_DUE_DAYS:
+    limit = months_later(earliest, 2) - timedelta(days=1)
+    if self_invoice.due_on <= limit:
         return ""
     return (
-        f"支払期日 ({self_invoice.due_on:%Y-%m-%d}) が受領日 ({earliest:%Y-%m-%d}) から 60 日を超えます。"
+        f"支払期日 ({self_invoice.due_on:%Y-%m-%d}) が受領日 ({earliest:%Y-%m-%d}) から 2 か月 (60 日) を超えます。"
         "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。取引先の支払の条件を確かめてください。"
     )
