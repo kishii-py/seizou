@@ -453,3 +453,109 @@ def test_dismissed_status_in_choices_and_filter():
     assert "dismissed" in services.STATUSES
     assert services.list_filter({"status": "dismissed"}) == {"status": "dismissed", "kind": ""}
     assert {"dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version"} <= set(Feedback.detail_hidden_fields)
+
+
+# ---- Issue の返事の知らせ (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+
+REPLY_NOTICE = "あなたの一言に返事が届きました"
+
+
+@pytest.fixture
+def replies_from_github(monkeypatch):
+    """GitHub の返事の読みを差し替える (本物の GitHub は呼ばない)。会社の口座は example-feedback-bot。返す関数で返事を置く。"""
+    from seizou.feedback import github
+
+    placed = []
+    monkeypatch.setattr(github, "list_comments", lambda repo, number, token="": list(placed))
+    monkeypatch.setattr(services, "company_login", lambda: "example-feedback-bot")
+
+    def place(number, login, body="どの画面で起きましたか", created_at="2026-11-06T04:00:00Z"):
+        placed.append({"id": number, "login": login, "body": body, "created_at": created_at, "html_url": f"{ISSUE_URL}#issuecomment-{number}"})
+
+    return place
+
+
+def sent_row(user, manager, title="受注の一覧で並びが戻る"):
+    row = make(user, title)
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    return row
+
+
+def test_unseen_replies_and_notice_text(plain, other, manager, replies_from_github):
+    first = sent_row(plain, manager, "受注の一覧で並びが戻る")
+    replies_from_github(101, "example-author", created_at="2026-11-06T04:00:00Z")
+    replies_from_github(102, "example-author", created_at="2026-11-06T05:00:00Z")
+    replies_from_github(103, "example-feedback-bot", "会社から")
+    assert services.import_replies(first, "example-owner/example-repo", 7) == 3
+
+    rows = services.unseen_replies(plain)
+    assert [row.github_id for row in rows] == [102, 101]
+    assert services.unseen_replies(other) == [] and services.unseen_replies(AnonymousUser()) == []
+    assert services.reply_notice(rows) == (
+        "あなたの一言に返事が届きました: 「受注の一覧で並びが戻る」(2 件)。"
+        "左のメニューの下の「フィードバック」の「送った一言」から開いて読めます。"
+    )
+    assert services.reply_notice([]) == ""
+
+    second = sent_row(plain, manager, "出荷の画面で日付がずれる")
+    replies_from_github(104, "example-author", created_at="2026-11-07T01:00:00Z")
+    services.import_replies(second, "example-owner/example-repo", 8)
+    assert "「出荷の画面で日付がずれる」ほか (3 件)" in services.reply_notice(services.unseen_replies(plain))
+
+    rows = services.unseen_replies(plain)
+    assert services.mark_replies_seen(rows, other) == 0
+    assert services.mark_replies_seen(rows, plain) == 3
+    assert services.unseen_replies(plain) == []
+    assert services.mark_replies_seen(rows, plain) == 0
+
+
+def test_login_shows_reply_notice_once(client, plain, other, manager, replies_from_github):
+    row = sent_row(plain, manager)
+    replies_from_github(201, "example-author")
+    replies_from_github(202, "example-feedback-bot", "会社から")
+    services.import_replies(row, "example-owner/example-repo", 7)
+
+    assert login(client, "other").status_code == 302
+    assert REPLY_NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    assert login(client, "admin").status_code == 302
+    assert REPLY_NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert html.count(REPLY_NOTICE) == 1
+    assert "「受注の一覧で並びが戻る」(1 件)" in html
+    assert NOTICE not in html and DISMISSED_NOTICE not in html
+
+    assert REPLY_NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert REPLY_NOTICE not in html_of(client.get("/feedback/"))
+
+
+def test_company_replies_are_not_noticed(client, plain, manager, replies_from_github):
+    row = sent_row(plain, manager)
+    replies_from_github(301, "example-feedback-bot", "会社から")
+    services.import_replies(row, "example-owner/example-repo", 7)
+    services.add_reply(row, "書いた人から", plain)
+
+    assert login(client, "tester").status_code == 302
+    assert REPLY_NOTICE not in html_of(client.get("/feedback/"))
+
+
+def test_login_shows_fixed_and_reply_as_two_notices(client, plain, manager, replies_from_github):
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "版 0.1.1 の受注の一覧", manager)
+    row = sent_row(plain, manager, "返事の来た題")
+    replies_from_github(401, "example-author")
+    services.import_replies(row, "example-owner/example-repo", 7)
+
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert NOTICE in html and REPLY_NOTICE in html
+    assert html.count(INFO_TOAST) == 2
+    assert html.index(NOTICE) < html.index(REPLY_NOTICE)
+
+    html = html_of(client.get("/feedback/"))
+    assert NOTICE not in html and REPLY_NOTICE not in html

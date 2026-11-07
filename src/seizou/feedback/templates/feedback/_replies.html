@@ -20,7 +20,7 @@
       {% if info.can_manage %}
       {% feedback_reply_draft reply as draft_text %}
       <form method="post" action="{% if info.github.connected %}{% url 'feedback:reply_send' reply.pk %}{% else %}{% url 'feedback:reply_mark_sent' reply.pk %}{% endif %}" class="mt-4">{% csrf_token %}
-        <textarea id="feedback-reply-body-{{ reply.pk }}" name="body" rows="4" class="textarea w-full text-sm" aria-label="GitHub に送る返事の文">{{ draft_text }}</textarea>
+        <textarea id="feedback-reply-body-{{ reply.pk }}" name="body" rows="4" class="textarea w-full text-sm" aria-label="世話役が直す返事の文">{{ draft_text }}</textarea>
         <p class="mt-2 text-xs text-base-content/50">伏せ字 (〇〇) を確かめ、要るところを直してから送ってください。{% if not info.github.connected %}GitHub とつないでいないので、「写す」で文を写して Issue に貼ってから「送ったにする」を押してください。{% endif %}</p>
         <div class="mt-2 flex flex-wrap items-center justify-end gap-2">
           {% if info.github.connected %}
