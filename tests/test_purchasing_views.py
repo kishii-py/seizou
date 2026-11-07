@@ -33,7 +33,7 @@ class FakePost:
         self.raises = raises
         self.calls = 0
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         self.calls += 1
         if self.raises is not None:
             raise self.raises

@@ -72,7 +72,7 @@ class RoundTrip:
         self.raises = raises
         self.calls = []
 
-    def __call__(self, url, data=None, headers=None, timeout=None, stream=False):
+    def __call__(self, url, data=None, headers=None, timeout=None, stream=False, **kwargs):
         self.calls.append(
             {"url": url, "data": data, "timeout": timeout, "stream": stream, "in_atomic_block": db_connection.in_atomic_block}
         )

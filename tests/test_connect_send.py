@@ -55,7 +55,7 @@ class FakePost:
         self.inside = inside
         self.calls = []
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         self.calls.append(
             {
                 "url": url,

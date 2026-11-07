@@ -446,7 +446,7 @@ class _FakePost:
     def __init__(self, reply):
         self.reply = reply
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         return self.reply
 
 

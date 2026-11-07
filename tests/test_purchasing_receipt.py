@@ -37,7 +37,7 @@ class FakePost:
     def __init__(self):
         self.calls = 0
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         self.calls += 1
         return FakeResponse(200, {"status": "received"})
 

@@ -26,7 +26,7 @@ class FakePost:
     def __init__(self):
         self.calls = 0
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         self.calls += 1
         raise AssertionError("つながりが無いのに HTTP を呼んだ")
 
