@@ -13,6 +13,7 @@
   版に戻すのは restore_drawing_version。
 - 使用停止 (active が偽。N135): 消さずに候補から外す。候補の母集団は active_items・active_partners、
   新しい受注と発注を作る所 (orders・purchasing の services) の守りは refuse_inactive。今までの記録はそのまま。
+- 部品の標準の工程の並び (ItemProcess) を書くのは set_item_processes だけ。画面の足す・順を直す・外す (add_item_processes・move_item_process・remove_item_process) も、直した並びを作ってこれを呼ぶ (変更の履歴を 1 か所で残すため。決め C19-3・HIST-1)。
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from seizou.core.services import company_or_none
 from .drawings import page_name
 from .models import Item, Partner, PartnerItem
 from .models import Process
+from .models import ItemProcess
 from .models import Holiday
 from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
 
@@ -762,12 +764,13 @@ def import_partners(rows, user, *, tax_reread=0):
 def set_item_processes(item, processes, user):
     """部品の標準の工程の並びを置き換える。processes は Process の並びで、並びの順に順を 1 から付ける。
 
-    今の並びは消してから作り直す。空の並び・工程でない物・同じ工程の 2 回は、何も変えずに日本語の ValueError。
+    今の並びは消してから作り直す。空の並びなら全部の行を消して [] を返す (部品を作った直後と同じ形)。工程でない物・同じ工程の 2 回は、何も変えずに日本語の ValueError。
     返す物は作った ItemProcess の並び。user は受けるだけ。
+
+    訳: 空の並びを受けるのは、部品の詳細の「外す」で最後の 1 つも外せるようにするため (選び間違えて足した 1 つ目を、別の工程を足してから外す 2 手なしで外せる)。空の並びは部品を作った直後にもある形で、新しい記録の状態は増えない。出所 = 本人の決め C112-1。前の空の断りは作り物のデータの読み込みのために作った守りで、画面の決めの記録は無かった (出所 = 未確認)。
+    変えてよい条件 = 並びを空にできるかを本人が決め直したとき。
     """
     processes = list(processes)
-    if not processes:
-        raise ValueError("保存できません。工程がありません。工程を 1 つ以上渡してください。")
     for process in processes:
         if not isinstance(process, Process):
             raise ValueError(f"保存できません。工程でない物 ({process!r}) が入っています。工程 (Process) だけを渡してください。")
@@ -779,6 +782,87 @@ def set_item_processes(item, processes, user):
     with transaction.atomic():
         item.item_processes.all().delete()
         return [item.item_processes.create(process=process, seq=seq) for seq, process in enumerate(processes, start=1)]
+
+
+def _current_processes(item):
+    """部品の今の標準の工程の並び (順の並びの Process)。atomic の中で、部品の行を取り直した後に読む。"""
+    return [row.process for row in item.item_processes.select_related("process").order_by("seq")]
+
+
+def _locked_item_process(item_process):
+    """並びの行を atomic の中で取り直す (部品と工程も一緒に)。無ければ None (ほかの人が並びを直して、行が作り直された)。"""
+    return ItemProcess.objects.select_for_update().select_related("item", "process").filter(pk=item_process.pk).first()
+
+
+def add_item_processes(data, user):
+    """部品の標準の工程の並びの最後に工程を足す (決め C19-3。部品の詳細の「工程を足す」)。data の鍵は item・processes。
+
+    processes は Process の並びで、渡した順のまま足す (画面は工程の表の並び順で渡す)。今の並びにある工程は足さずに飛ばし、
+    足す物が無ければ何も書かない。書くのは set_item_processes。部品を返す。
+
+    訳: 標準の工程の並びを種の読み込みでなく画面から入れられるようにし、作り物のデータを使わない会社でも、指示書の発行が写す並びと、発注の明細の工程の最初の値 (決め PRICE-5) が効くようにするため。今ある工程を断らずに飛ばすのは、2 人が同時に同じ工程を足しても止めずに同じ並びになるため。出所 = 本人の決め C19-3 (飛ばす形は作者の決め)。
+    変えてよい条件 = 標準の工程の入れ方を本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, frozenset({"item", "processes"}), "標準の工程")
+    with transaction.atomic():
+        # 2 人が同時に足しても、後の人が先の人の足した並びを読むため (SQLite では select_for_update は効かないが害は無い)
+        item = Item.objects.select_for_update().get(pk=data["item"].pk)
+        current = _current_processes(item)
+        have = {process.pk for process in current}
+        adding = []
+        for process in data.get("processes") or ():
+            if getattr(process, "pk", None) in have:
+                continue
+            have.add(getattr(process, "pk", None))
+            adding.append(process)
+        if adding:
+            set_item_processes(item, current + adding, user)
+    return item
+
+
+def move_item_process(item_process, data, user):
+    """標準の工程の並びの 1 行を、data の seq (1 から) の位置へ動かす (決め C19-3。行の「順を直す」)。ほかの行は 1 つずつずれる。
+
+    seq が 1 より小さければ先頭、行の数より大きければ最後に置く。位置が今と同じなら何も書かない。
+    行は atomic の中で取り直し、無ければ日本語の ValueError。書くのは set_item_processes。部品を返す。
+
+    訳: 工程の順が変わったときに、1 つの工程の位置だけを直すため。行の数の外の順を断らずに端へ置くのは、画面の欄が 1〜行の数に限る (form) ので、ほかの道から来ても並びが崩れないため。出所 = 本人の決め C19-3 (位置の直し方と端へ置く形は作者の決め)。
+    変えてよい条件 = 並べ替えの形を本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, frozenset({"seq"}), "標準の工程")
+    with transaction.atomic():
+        row = _locked_item_process(item_process)
+        if row is None:
+            raise ValueError("保存できません。この工程は、もう標準の工程の並びにありません。部品の詳細を開き直してください。")
+        item = Item.objects.select_for_update().get(pk=row.item_id)
+        current = _current_processes(item)
+        rest = [process for process in current if process.pk != row.process_id]
+        position = min(max(int(data["seq"]), 1), len(current))
+        moved = rest[: position - 1] + [row.process] + rest[position - 1 :]
+        if [process.pk for process in moved] != [process.pk for process in current]:
+            set_item_processes(item, moved, user)
+    return item
+
+
+def remove_item_process(item_process, user):
+    """標準の工程の並びから 1 行を外す (決め C19-3。行の「⋮」の「外す」)。後ろの行の順は 1 つずつ前へ詰める。
+
+    最後の 1 行も外せ、並びは空になる (決め C112-1)。工程の表の行と、発行済みの指示書の工程は消さない。
+    行は atomic の中で取り直し、無ければ日本語の ValueError。書くのは set_item_processes。部品を返し、済んだ知らせの字を saved_message に置く。
+
+    訳: 間違えて足した工程や、もう使わない工程を並びから外し、指示書の発行で写さないようにするため。工程の表と発行済みの指示書を残すのは、並びが部品ごとの写す元で、工程そのものではないため。出所 = 本人の決め C19-3。最後の 1 行も外せて並びが空になるのは、選び間違えて足した 1 つ目を、別の工程を足してから外す 2 手なしで外せるようにするため (出所 = 本人の決め C112-1)。
+    変えてよい条件 = 標準の工程の消し方か、並びを空にできるかを本人が決め直したとき。
+    """
+    with transaction.atomic():
+        row = _locked_item_process(item_process)
+        if row is None:
+            raise ValueError("削除できません。この工程は、もう標準の工程の並びにありません。部品の詳細を開き直してください。")
+        item = Item.objects.select_for_update().get(pk=row.item_id)
+        rest = [process for process in _current_processes(item) if process.pk != row.process_id]
+        set_item_processes(item, rest, user)
+    # 入力の土台の済んだ知らせは関数の名前で「削除しました。」になるので置き換える (工程の表の行は消さないので「削除」と言わない)
+    item.saved_message = f"{row.process} を標準の工程から外しました。"
+    return item
 
 
 # ---------------------------------------------------------------- 会社の休日 (稼働日の数え方は core.calendar)
