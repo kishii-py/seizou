@@ -9,7 +9,13 @@
 {# 送った発注の変更 (C96): 見出しの右の白の「変更」は、発注の権限があり、変更を送れる発注 (purchasing_tags の can_change_order) だけ。画面の全体で開く (小窓にしない = 明細の表が広いため)。 #}
 {# 書く入口の 2 つの答え (決め 11-07 21:0x〜21:2x): 「変更」「取消」は金額に関わる操作なので can_write "purchasing.PurchaseOrder" (発注の権限 + 金額の閲覧)。「再送」「受入を記録する」(頭・明細の ⋮・出荷の知らせの横)・検収の「送り直す」は数だけの操作 (決め 6 と 8) なので、受入の新規登録と同じ答え can_write "purchasing.Receipt" (発注の権限だけ。金額の閲覧を見ない) で出す。 #}
 {# 版が 2 以上で今の版が相手に届いていない間は、頭の右の緑を「再送」にする (取消の版は状態が「取消」でも)。#po-alert に届いていない・相手が断ったの黄色の 1 行 (revision_state の alert)。 #}
-{% block actions %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% can_change_order object as can_change %}{% if can_change %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_change' object.pk %}">{% icon "pencil" "size-4" %}変更</a>{% endif %}{% endif %}{% endblock %}
+{# 印刷用の画面と PDF は協力企業への発注書 (金額が主な書面なので金額の閲覧の無い人には出さない。N356)。新しいタブで開く普通の link (請求書の詳細と同じ字と形)。 #}
+{% block actions %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% can_change_order object as can_change %}{% if can_change %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_change' object.pk %}">{% icon "pencil" "size-4" %}変更</a>{% endif %}{% endif %}
+{% if not seizou.hide_money %}
+<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_print' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}印刷用の画面</a>
+<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+{% endif %}
+{% endblock %}
 {# 「⋯」の「取消」は「下書き」「断られた」と、「送った」「相手が受け入れた」の発注に出す (一部を出荷した発注にも出し、押して保存すると断りの字が「変更」の道を案内する)。 #}
 {% block more %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" or object.status == "sent" or object.status == "accepted" %}{% url 'purchasing:purchaseorder_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endif %}{% endblock %}
 {% block edit_button %}{% can_write "purchasing.Receipt" as can_receipt %}{% if can_receipt %}{% revision_state object as revision %}{% if object.status == "draft" or revision and not revision.delivered %}
