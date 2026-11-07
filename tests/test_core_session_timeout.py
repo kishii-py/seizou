@@ -307,3 +307,21 @@ def test_remember_follows_company_max_hours(client, worker, fresh_login_guard, s
 
     assert 0 < client.session.get_expiry_age() <= 8 * HOUR
     assert client.session.get_expire_at_browser_close() is False
+
+
+# ---------------------------------------------------------------- 4. 手引き
+
+
+def test_operations_doc_has_timeout_section_and_upgrade_line():
+    text = (ROOT / "docs/operations.md").read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    assert lines.count("### ログインの時間切れ") == 1
+    guard = lines.index("## 本番の守り (HTTPS・ログイン・稼働の確認)")
+    section = lines.index("### ログインの時間切れ")
+    upgrade = lines.index("## 版を上げる手順")
+    trouble = lines.index("## 困ったとき")
+    assert guard < section < upgrade < trouble
+    assert "session_idle_minutes" in "\n".join(lines[section:upgrade])
+    assert "session_max_hours" in "\n".join(lines[section:upgrade])
+    assert "SessionTimeoutMiddleware" in "\n".join(lines[upgrade:trouble])
