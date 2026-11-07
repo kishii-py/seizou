@@ -98,6 +98,15 @@ class Order(models.Model):
         """
         return _part_model("billing", "Invoice").objects.filter(lines__shipment__order_line__order=self).distinct()
 
+    @property
+    def chat_messages(self):
+        """この受注の元の受信した注文の会話 (相手の会社と送り合った言葉。古い順)。
+
+        受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は connect の物で、orders は書かない。
+        受信した注文から作っていない受注は空。
+        """
+        return _part_model("connect", "ChatMessage").objects.filter(inbox__order=self)
+
 
 class OrderLine(models.Model):
     """受注の明細。金額は orders.services が数量 × 単価 (単価の単位が式なら単価のまま) を丸めて書く。"""

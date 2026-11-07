@@ -486,3 +486,63 @@ def test_no_write_permission_still_talks(monkeypatch, client, settings, user, su
     _round_trip(monkeypatch)
     response = client.post(reverse("connect:chatmessage_resend", args=[saved.pk]), headers={"HX-Request": "true"})
     assert response.status_code == 204
+
+
+# ---------------------------------------------------------------- (j) 画面
+
+
+@pytest.mark.django_db
+def test_detail_screens_show_the_chat(monkeypatch, client, user, subcontractor, item, own_item, connections):  # noqa: F811
+    po, inbox = _sent_order(monkeypatch, subcontractor, item, user)
+    order = services.accept(inbox, {"T-100": own_item}, user)
+    _round_trip(monkeypatch)
+    services.post_chat_message(po, "発注の側の作り物の言葉", user)
+    client.force_login(user)
+
+    response = client.get(reverse("purchasing:purchaseorder_detail", args=[po.pk]))
+    assert [tab["label"] for tab in response.context["tabs"]] == ["送った記録", "受入", "会話"]
+    html = response.content.decode()
+    assert 'name="body"' in html and "送る</button>" in html
+    assert "発注の側の作り物の言葉" in html and 'id="chat-messages"' in html
+    assert 'id="notes"' in html
+
+    response = client.get(reverse("orders:order_detail", args=[order.pk]))
+    assert [tab["label"] for tab in response.context["tabs"]][-1] == "会話"
+    html = response.content.decode()
+    # 相手から届いた言葉は左の吹き出しで、上に取引先の名前
+    assert "発注の側の作り物の言葉" in html and "作り物の発注元 " in html
+
+    html = client.get(reverse("connect:inbox_detail", args=[inbox.pk])).content.decode()
+    assert 'id="chat-heading"' in html and "発注の側の作り物の言葉" in html
+
+
+@pytest.mark.django_db
+def test_unusable_purchase_order_shows_reason_and_disabled_form(client, user, item):  # noqa: F811
+    lonely = masters_services.create_partner({"code": "S009", "name": "作り物のつながっていない協力企業", "role": "subcontractor"}, user)
+    po = _send_order(lonely, item, user)
+    client.force_login(user)
+
+    html = client.get(reverse("purchasing:purchaseorder_detail", args=[po.pk])).content.decode()
+
+    assert services.CHAT_REASON_NOT_CONNECTED in html
+    assert 'aria-label="言葉" class="textarea w-full" disabled' in html
+    assert 'type="submit" disabled' in html
+    assert "まだ言葉はありません。" not in html
+
+
+@pytest.mark.django_db
+def test_department_without_connect_reads_but_cannot_write(monkeypatch, client, settings, user, subcontractor, item, own_item, connections):  # noqa: F811
+    po, inbox = _sent_order(monkeypatch, subcontractor, item, user)
+    order = services.accept(inbox, {"T-100": own_item}, user)
+    _round_trip(monkeypatch)
+    services.post_chat_message(po, "部署の試験の作り物の言葉", user)
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
+    department = accounts_services.create_department("受注だけ", ["orders"], [], None)
+    accounts_services.issue_account("orders-only", "kumo-tests-2611", [department], [], {}, None)
+    client.force_login(get_user_model().objects.get(username="orders-only"))
+
+    html = client.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
+
+    assert "部署の試験の作り物の言葉" in html
+    assert 'name="body"' not in html
+    assert "会話に書けるのは、受信した注文を開ける部署の人です。" in html

@@ -156,7 +156,7 @@ def test_order_basic_tab_moved_to_aside(logged_in, order):
     response, body = _get(logged_in, "orders:order_detail", order.pk)
 
     assert 'aria-label="基本情報" checked' not in body
-    assert _radios(body) == [("指示書", True), ("出荷", False), ("請求書", False)]
+    assert _radios(body) == [("指示書", True), ("出荷", False), ("請求書", False), ("会話", False)]
     assert ONE_COLUMN_TABS[:-1] + ' mt-6"' in body
     assert body.count('?part=basic"') == 1
     # 土台の項目 (文脈) は今のまま。右の列のカードへ移すのはテンプレートの tag
@@ -216,7 +216,7 @@ def test_purchase_order_detail_has_two_columns(logged_in, purchase_order):
     assert "1,000" in _card(aside, "金額")
     basic = set(_labels(_card(aside, "基本情報")))
     assert {"発注番号", "状態", "備考", "注文回答の日時", "断りの理由"} <= basic and not {"取引先", "発注日"} & basic
-    assert _radios(body) == [("送った記録", True), ("受入", False)]
+    assert _radios(body) == [("送った記録", True), ("受入", False), ("会話", False)]
     assert 'hx-select-oob="#po-heading,#po-alert,#detail-aside,#menu-count-purchasingreceipt_list"' in body
 
 
@@ -274,7 +274,7 @@ def test_order_opens_first_tab_with_rows(logged_in, user, customer, order):
     shipped(user, customer, order.lines.order_by("line_no").first(), "4")
 
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
-    assert _radios(body) == [("指示書", False), ("出荷", True), ("請求書", False)]
+    assert _radios(body) == [("指示書", False), ("出荷", True), ("請求書", False), ("会話", False)]
 
 
 @pytest.mark.django_db
@@ -283,7 +283,7 @@ def test_purchase_order_opens_first_tab_with_rows(logged_in, user, purchase_orde
     purchasing_services.receive(purchase_order.lines.get(), Decimal("4"), date(2026, 11, 3), user)
 
     body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
-    assert _radios(body) == [("送った記録", False), ("受入", True)]
+    assert _radios(body) == [("送った記録", False), ("受入", True), ("会話", False)]
 
 
 @pytest.mark.django_db
