@@ -38,7 +38,23 @@ pdf が真のとき本文の画像は帳票の部品 (fetch_local) が読める 
 .manual-body th { background: #eee; }
 .manual-body blockquote { margin: 2mm 0; padding-left: 3mm; border-left: 2pt solid #999; }
 .manual-body hr { margin: 4mm 0; border: 0; border-top: 0.5pt solid #000; }
-.manual-body div.rounded-box { margin: 3mm 0; padding: 2mm 3mm; border-left: 2pt solid #000; page-break-inside: avoid; }
+/* 枠 (:::注意・:::危険・:::ヒント・:::こうする・:::してはいけない)。白黒の紙でも見分けられるよう、種類ごとに線と地と題の形を分ける (指示書 R9 = print-08)。
+   種類は画面の class (manuals/markdown.py の BOX_CLASSES の border-*) で選ぶ。危険 と してはいけない は同じ border-error なので、地の class (bg-base-200) で分ける。
+   字の印 (⚠ など) は同梱のフォントに字形があるか未確認なので使わない。 */
+.manual-body div.rounded-box { margin: 3mm 0; padding: 2mm 3mm; border: 0.5pt solid #000; page-break-inside: avoid; }
+.manual-body div.rounded-box > p.font-bold:first-child { margin: 0 0 1.5mm; }
+/* 危険: 太い黒の左線と、黒地に白字の題 */
+.manual-body div.rounded-box.border-error { border-left-width: 4pt; }
+.manual-body div.rounded-box.border-error > p.font-bold:first-child { display: inline-block; padding: 0.3mm 2mm; background: #000; color: #fff; }
+/* してはいけない: 危険と同じ線と題に、灰色の地 (画面の bg-base-200 と同じ役) */
+.manual-body div.rounded-box.border-error[class~="bg-base-200"] { background: #e6e6e6; }
+/* 注意: 二重の左線と、枠線で囲んだ題 */
+.manual-body div.rounded-box.border-warning { border-left: 4pt double #000; }
+.manual-body div.rounded-box.border-warning > p.font-bold:first-child { display: inline-block; padding: 0.3mm 2mm; border: 0.75pt solid #000; }
+/* ヒント: 点線の枠 */
+.manual-body div.rounded-box.border-info { border: 0.75pt dotted #000; }
+/* こうする: 実線の左線 (今までの形) */
+.manual-body div.rounded-box.border-success { border-left: 2pt solid #000; }
 .manual-body .font-bold { font-weight: 700; }
 .manual-body .badge { padding: 0 1mm; border: 0.5pt solid #000; border-radius: 1mm; font-size: 8pt; }
 .manual-body .mr-2 { margin-right: 2mm; }

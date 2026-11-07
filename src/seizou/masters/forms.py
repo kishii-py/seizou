@@ -808,7 +808,11 @@ class DrawingRestoreForm(forms.Form):
     """図面を版に戻す確認の form。選べる版はこの部品の版だけ (新しい順)。
 
     土台は instance (部品) を渡し、services.restore_drawing_version(item, user=…, version=…, note=…) を呼ぶ。
+    会社ごとの項目 (材質など) は足さない (adds_company_fields = False。service_kwargs が渡さないので、足すと直しても保存されない欄になる。指示書 R7 = GA-04)。
     """
+
+    submit_label = "図面を版に戻す"
+    adds_company_fields = False
 
     version = _VersionChoiceField(label="戻す版", queryset=ItemDrawingVersion.objects.none(), empty_label=None)
     note = forms.CharField(

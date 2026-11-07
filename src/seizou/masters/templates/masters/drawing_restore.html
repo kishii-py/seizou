@@ -3,7 +3,8 @@
 {# 図面を版に戻す: 戻す版を選ぶ確認の画面。今の図面は新しい版として残り、ファイルは消さない (services.restore_drawing_version)。 #}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_drawing_viewer' object.pk %}">{% icon "arrow-left" "size-4" %}ビューアに戻る</a>{% endblock %}
 {% block content %}
-<p class="mb-4 text-base-content/70">選んだ版の図面を今の図面に戻します。今の図面は新しい版として残り、ファイルは消しません。</p>
+{# どの部品の図面かを頭の文に出す (品番と品名 = Item の __str__。別の部品の画面を開いていても気づけるように。指示書 R7 = GA-04)。 #}
+<p class="mb-4 text-base-content/70"><strong class="text-base-content">{{ object }}</strong> の図面を、選んだ版に戻します。今の図面は新しい版として残り、ファイルは消しません。</p>
 {# 版が 0 件の部品 (図面を差し替えたことが無い) では、選ぶ欄が空になる理由を図面ビューアと同じ文で出す (初見テスト R5 の a-flagged-23。候補 C40 の その 1)。 #}
 {# 文を足すだけ (C40-2 = a)。入力の枠 (block.super) は版の数によらず今のまま出し、止める処理は足さない。版の数は view でなくテンプレートで見る (R15)。 #}
 {% if not object.drawing_versions.exists %}<p class="mb-4 text-base-content/70">前の版はありません。図面を差し替えると、前の図面がここに残ります。</p>{% endif %}

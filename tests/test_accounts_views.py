@@ -258,6 +258,39 @@ def test_full_control_note_on_issue_and_edit(on, client, manager, seizou_dept):
 
 
 @pytest.mark.django_db
+def test_manage_accounts_and_department_notes_on_issue_and_edit(on, client, manager, seizou_dept):
+    """「アカウント管理」と「部署」の欄の下に、付けた結果 (できること・開ける画面) の注記を出し、部署の check の字にその部署の開ける画面を添える (指示書 R6 = ADM-01)。
+
+    注記の <p> の class は見ない (フルコントロールの注記の試験と同じ)。
+    """
+    target = account("genba", departments=[seizou_dept])
+    client.force_login(manager)
+
+    for url in (reverse("accounts:access_create"), reverse("accounts:access_update", args=[target.seizou_access.pk])):
+        html = client.get(url).content.decode()
+        note = re.search(r'<p id="id_manage_accounts_helptext"[^>]*>(.*?)</p>', html, re.S)
+        assert note is not None, url
+        for word in ("アカウントと部署", "会社の情報", "振込先", "点検を走らせる", "GitHub", "アカウント管理の画面が開ける", "ほかの業務の画面を開く範囲と", "増えません"):
+            assert word in note.group(1), (url, word)
+        note = re.search(r'<p id="id_departments_helptext"[^>]*>(.*?)</p>', html, re.S)
+        assert note is not None, url
+        for word in ("部署を外しても、入った権限は残ります", "どの部署でも開ける画面", "部署が 1 つも無い人は全部の画面が開きます", "権限の判定"):
+            assert word in note.group(1), (url, word)
+        # 部署の check の字 = 「製造 (<開ける画面>)」。開ける画面の字は部署の一覧と同じ (get_apps_display)
+        assert f"製造 ({seizou_dept.get_apps_display()})" in html, url
+        assert "指示書" in seizou_dept.get_apps_display()
+
+
+@pytest.mark.django_db
+def test_department_without_apps_is_marked_in_account_form(on, client, manager):
+    """開ける画面を 1 つも持たない部署は、check の字に「(開ける画面なし)」を添える (R6)。"""
+    services.create_department("総務", [], [], None)
+    client.force_login(manager)
+    html = client.get(reverse("accounts:access_create")).content.decode()
+    assert "総務 (開ける画面なし)" in html
+
+
+@pytest.mark.django_db
 def test_self_disable_is_red(on, client, manager):
     row = manager.seizou_access
     client.force_login(manager)
