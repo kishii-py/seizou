@@ -388,6 +388,27 @@ def test_account_gate_ignores_mode(off, plain):
 
 
 @pytest.mark.django_db
+def test_write_allowed_sees_money(settings, on):
+    """入口の判定 write_allowed は、金額の判定が on のとき金額に関わる操作 (MONEY_ACTIONS) を金額の閲覧の無い人に偽にする (決め 11-07 21:0x)。
+
+    編集の判定が off でも金額の判定だけで偽になる。記録だけ (log) では真 (保存のときに記録に 1 行)。数だけの操作 (出荷) は金額を見ない。
+    """
+    clerk = account("clerk", permissions=["slip_edit"])
+    keiri = account("keiri", permissions=["slip_edit"], see_money=True)
+    assert not access.write_allowed(clerk, "orders.create_order")
+    assert not access.write_allowed(clerk, "billing.record_payment")
+    assert access.write_allowed(clerk, "shipping.ship")
+    assert access.write_allowed(keiri, "orders.create_order")
+
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    assert not access.write_allowed(clerk, "orders.create_order")
+    assert access.write_allowed(clerk, "shipping.ship")
+
+    settings.SEIZOU = {}
+    assert access.write_allowed(clerk, "orders.create_order")
+
+
+@pytest.mark.django_db
 def test_reissue_invoice_is_a_money_action(on):
     """請求書の作り直しは請求書を作る操作の別の入口なので、金額を見られない人は作れない (請求書を作るのと同じ扱い)。"""
     assert access.MONEY_ACTIONS["billing.reissue_invoice"] == access.MONEY_ACTIONS["billing.create_invoice"]

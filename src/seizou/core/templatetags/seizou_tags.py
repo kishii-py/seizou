@@ -7,7 +7,8 @@ yen: 金額の字。comma の字の頭に「¥」を付ける ({{ x|yen }}・{{ 
 yen_if: {{ cell.value|yen_if:cell.money }} で、money が真なら yen、偽なら comma (金額の列とほかの数の列を同じ行で描く所)。
 without_yen_unit: {{ col.label|without_yen_unit }} で、見出しの字から単位の「 (円)」を外す (値に ¥ が付く画面の見出し)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
-can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口のボタンを出すか (core.access.can_write_model と同じ判定。押したときの断りは view の require_write)。
+can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口のボタンを出すか (core.access.can_write_model と同じ判定 = 編集の権限と、
+金額に関わる操作の金額の閲覧。押したときの断りは view の require_write)。
 部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
@@ -79,7 +80,8 @@ def can_manage_accounts(context):
 def can_write(context, label, verb="create", app=None):
     """{% can_write "workorders.WorkOrder" as can_issue %}。部品の model の書く入口のボタン (新規登録・取消・入金の記録・受入など、その model の新規登録と同じ種類の権限で決まる物) を出すか。
 
-    部品が無ければ偽。編集の判定が on のときだけ権限で偽になる (core.access.can_write_model と同じ判定)。
+    部品が無ければ偽。編集の判定が on のとき種類の権限で、金額の判定が on のとき金額の閲覧 (金額に関わる操作 = core.access.MONEY_ACTIONS。
+    決め 11-07 21:0x「入口も出さない」) で偽になる (core.access.can_write_model と同じ判定)。
     部署の判定が on のときは、ボタンの行き先の部品 (app。無ければ model の部品) を部署で開けない人にも偽 (決め 11-04 12:5x)。
     判定は core.access.can_open (左のメニューの絞り access.visible_menu と同じ関数)。記録は書かない (record=False)。
     """

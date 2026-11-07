@@ -54,7 +54,8 @@ def sender_form():
 def can_accept_inbox(context):
     """今の利用者が受信した注文を承認できるか ({% can_accept_inbox as can_accept %})。
 
-    差出人を選ぶ form を出すかの判定 (権限の無い人に入口を出さない = 決め 11-04 00:0x)。編集の判定が on のときだけ偽になりうる。
+    差出人を選ぶ form と「受け入れる」の入口を出すかの判定 (権限の無い人に入口を出さない = 決め 11-04 00:0x)。
+    編集の判定が on のとき受注の権限で、金額の判定が on のとき金額の閲覧 (受け入れるは受注を作る操作 = core.access.MONEY_ACTIONS。決め 11-07 21:0x) で偽になりうる。
     """
     return access.write_allowed(context["request"].user, access.action_name(services.accept))
 

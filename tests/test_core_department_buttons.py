@@ -142,7 +142,9 @@ def test_department_off_and_log_keep_write_only(settings, client, caplog, user, 
     settings.SEIZOU = {"access_control": {"department": state, **WRITE_AND_MONEY_ON}}
     docs = _documents(user, customer, item, cut)
     depts = _departments()
-    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+    # jimu に金額の閲覧を付けるのは、この試験が部署の軸だけを見るため (請求書と入金の入口は金額に関わる操作なので、
+    # 金額の閲覧の無い人には部署に依らず出ない = 決め 11-07 21:0x。tests/test_core_entry_buttons.py が見る)。
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"], see_money=True)
     keiri = account("keiri", departments=[depts["keiri"]], permissions=["billing"], see_money=True)
 
     # 今までどおり編集の権限だけで決まる (伝票編集の jimu には部署の外の部品のボタンも出る)。
