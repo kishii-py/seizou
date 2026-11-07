@@ -93,14 +93,21 @@ def plain_number_widgets(form: forms.BaseForm) -> None:
 
 #: 複数の checkbox の 1 つずつの見た目 (daisyUI)
 CHECKBOX_CSS = "checkbox checkbox-sm"
+#: 選択肢に群がある複数の checkbox の外の枠 (群ごとの枠を幅 640 以上で 2 列に並べる。間は入力のカードの格子と同じ)
+CHECKBOX_GROUPS_CSS = "grid gap-x-6 gap-y-4 sm:grid-cols-2"
 
 
 class Checkboxes(forms.CheckboxSelectMultiple):
-    """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。"""
+    """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。
+
+    選択肢に群があるときは、外の枠に CHECKBOX_GROUPS_CSS を付け、群ごとの枠を幅の広い画面で横に並べる。群の無い欄は今のまま。
+    """
 
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
         context["widget"]["attrs"].pop("class", None)
+        if any(group for group, _options, _index in context["widget"]["optgroups"]):
+            context["widget"]["attrs"]["class"] = CHECKBOX_GROUPS_CSS
         return context
 
 
