@@ -328,5 +328,6 @@ def test_export_markdown_screenshot_line(client_logged_in, plain):
 
 
 def test_draft_ready_message_mentions_screenshots():
-    assert chat.DRAFT_READY_MESSAGE.startswith("AI の下書きを作りました。内容を直して「保存」を押してください。")
+    # 下書きは画面を移らずに入力の形へ入る (受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)
+    assert chat.DRAFT_READY_MESSAGE.startswith("AI の下書きを入力の形に入れました。直したい所を直して「保存」を押してください。")
     assert "画面の絵" in chat.DRAFT_READY_MESSAGE

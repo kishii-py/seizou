@@ -149,7 +149,8 @@ def test_list_order_line_cell_shows_order_no_and_line_no_only(user, client_logge
         body = response.content.decode()
         start = body.index(f'<tr id="row-{workorder.pk}"')
         cells = re.findall(r"<td\b.*?</td>", body[start : body.index("</tr>", start)], re.S)
-        assert len(cells) == len(names), headers
+        # 列の数 + 右端の「要点」の欄 (行の「要点を見る」の目の印。core/_row_summary_link.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)
+        assert len(cells) == len(names) + 1, headers
         cell = cells[index]
         span = re.search(r'<span class="block max-w-xs truncate" title="([^"]*)">([^<]*)</span>', cell)
         assert span is not None, cell
