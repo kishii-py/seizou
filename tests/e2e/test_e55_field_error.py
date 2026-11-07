@@ -1,11 +1,11 @@
 """E-55 空のまま保存したときの字と、直した欄の赤枠と誤りの字をその場で消す (初見テスト R5 の V36・V37。候補 C25 の 2 と 3)。
 
 手順: A 社で数量 10 の受注を入れて 4 を出荷し、納品書を出して請求書を作る (E-29 と同じ手順) → 請求書の詳細の「入金を記録する」
-(小窓) で金額を空のまま押す → 金額にキーで 8800 と打つ → Tab で離れる → 金額を空に戻す → 押す → 8800 で押す。
+(小窓) で金額を空のまま押す → 金額にキーで 1000 と打つ → Tab で離れる → 金額を空に戻す → 押す → 1000 で押す。
 同じことを、入金の記録の URL を直に開いた画面の全体でも行う。
 期待: 止まると金額の欄の下に「金額を入れてください。」が出て、金額の欄に aria-invalid="true" が付く。打った直後に aria-invalid が外れ、
 誤りの字は行の高さを残して見えなくなり、「入金の方法」の欄と金額の欄の y の差は打つ前と同じ。Tab で離れても、空に戻しても、
-誤りは出し直さない。もう一度押すとまた止まり、誤りの字が見える。8800 で押すと、小窓は閉じて入金の枠に 1 件増え、
+誤りは出し直さない。もう一度押すとまた止まり、誤りの字が見える。1000 で押すと、小窓は閉じて入金の枠に 1 件増え、
 画面の全体は請求書の詳細へ移ってもう 1 件増える。
 
 この試験が見る所: `#id_amount_error` の字と見え方 (computed style の visibility)・金額の欄の aria-invalid の有り無し・
@@ -76,7 +76,7 @@ def _fix_and_resubmit(page, scope, code: str, where: str) -> None:
     shot(page, code, f"{where}-stopped")
 
     amount.click()
-    amount.press_sequentially("8800")
+    amount.press_sequentially("1000")
     assert not _has_invalid(amount)
     expect(error).to_have_count(1)  # 字は残っている (行の高さを残す)
     expect(error).to_be_hidden()
@@ -109,7 +109,7 @@ def test_e55_fixed_field_clears_its_error(page_a, company_a):
     box = page_a.locator("#seizou-modal-box")
     expect(box.locator("input[name=amount]")).to_have_value("")
     _fix_and_resubmit(page_a, box, "E-55", "modal")
-    box.locator("input[name=amount]").fill("8800")
+    box.locator("input[name=amount]").fill("1000")
     box.locator(SUBMIT).first.click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(0)
     expect(rows).to_have_count(1)
@@ -120,7 +120,7 @@ def test_e55_fixed_field_clears_its_error(page_a, company_a):
     main = page_a.locator("main")
     expect(main.locator("input[name=amount]")).to_have_value("")
     _fix_and_resubmit(page_a, main, "E-55", "page")
-    main.locator("input[name=amount]").fill("8800")
+    main.locator("input[name=amount]").fill("1000")
     main.locator(SUBMIT).first.click()
     page_a.wait_for_url(re.compile(r"/billing/invoices/\d+/$"))
     assert page_a.url.split("?")[0] == invoice_url
