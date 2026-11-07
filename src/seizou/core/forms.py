@@ -18,7 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django import forms
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 
-from seizou.core import conf, display
+from seizou.core import conf, display, services
 from seizou.core.models import Company
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.widgets import normalize_number
@@ -250,7 +250,10 @@ class DisplaySettingsForm(forms.Form):
 
 
 class CompanyForm(ServiceModelForm):
-    """会社の情報 (住所・電話・振込先・ロゴ) の入力。値を確かめて保存するのは services の update_company (form は欄の型と字数だけ)。"""
+    """会社の情報 (住所・電話・振込先・登録番号・ロゴ) の入力。値を確かめて保存するのは services の update_company (form は欄の型と字数だけ)。
+
+    登録番号の形は clean_registration_no が見る (欄の下の赤い字)。
+    """
 
     # ロゴは絵だけ (Pillow で絵かを確かめる)。SVG と HTML は上げたファイルの口がダウンロードにして <img> に出ないので受けない
     logo = forms.ImageField(
@@ -262,12 +265,26 @@ class CompanyForm(ServiceModelForm):
 
     class Meta:
         model = Company
-        fields = ("address", "phone", "bank_account", "logo")
+        fields = ("address", "phone", "bank_account", "registration_no", "logo")
         help_texts = {
             "address": "納品書と請求書の会社の欄に出す。郵便番号から 1 行で (例: 〒000-0000 見本県架空市見本町 1-2-3)。",
             "phone": "例: 00-0000-0000",
             "bank_account": "請求書だけに出す。銀行・支店・口座の種類・番号・名義を 1 行で (例: 作り物銀行 見本支店 普通 0000000 名義 ミホン)。",
+            "registration_no": "インボイス (適格請求書) の登録番号。T と 13 桁の数字を続けて入れる (例: T0000000000000)。請求書だけに、会社の名前の下に出す。登録していなければ空のまま (請求書に行を出さない)。",
         }
+
+    def clean_registration_no(self):
+        """登録番号の形を確かめる (services.check_registration_no と同じ 1 か所)。形が違えば欄の下の赤い字。
+
+        訳: 請求書に形の違う登録番号を刷らないよう、保存の前に欄で止めるため。出所 = 法令 (インボイス制度の登録番号の形。決め LAW-3・C95-2)。
+        変えてよい条件 = 登録番号の形が法令で変わったとき。
+        """
+        value = self.cleaned_data.get("registration_no", "")
+        try:
+            services.check_registration_no(value)
+        except ValueError:
+            raise forms.ValidationError("T と 13 桁の数字で入れてください。") from None
+        return value
 
 
 #: 保存のボタンの字の型の置き場 (行の数・数量の合計・金額の合計。js/seizou-submit-label.js と同じ 3 つ)

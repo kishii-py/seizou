@@ -40,7 +40,8 @@ ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
 
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は 四捨五入) に従います。"
-TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定 (今は トータル) に従います。"
+TAX_HELP = "消費税は、請求書 1 枚の金額の合計に 1 回だけ率をかけて計算します (トータル)。1 円に丸める向きは「消費税の端数の向き」で選びます。空なら会社の既定 (今は トータル) に従います。"
+TAX_ROUNDING_HELP = "請求書の消費税を 1 円に丸める向き (四捨五入・切上・切捨)。空なら会社の既定 (今は 切捨) に従います。"
 #: 部品の自社品番の欄の下の説明 (初見テスト R5 の V87。C19-2 = a)
 PART_NO_HELP = "社内で部品を呼ぶ品番です (会社の中で同じ品番は 1 つだけ)。得意先や協力企業が別の品番で呼ぶときは、その対応が部品の詳細の「取引先ごとの品番」に並びます。"
 
@@ -68,6 +69,7 @@ def test_partner_form_help_texts_for_rounding():
     fields = PartnerForm().fields
     assert fields["rounding"].help_text == ROUNDING_HELP
     assert fields["tax_mode"].help_text == TAX_HELP
+    assert fields["tax_rounding"].help_text == TAX_ROUNDING_HELP
     # 今の 2 行は字のまま
     assert fields["closing_day"].help_text == "1〜31。月末締めは 31"
     assert fields["payment_day"].help_text == "1〜31。月末は 31"
@@ -79,6 +81,7 @@ def test_partner_create_shows_rounding_help(client_logged_in):
     assert response.status_code == 200
     body = text(response)
     assert ROUNDING_HELP in body and TAX_HELP in body
+    assert TAX_ROUNDING_HELP in body
     # 取引先の種類の字は「協力企業」(古い呼び名は tests/test_wording.py が全部のファイルで見るので、ここには書かない)
     assert "協力企業" in body
 

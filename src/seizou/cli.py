@@ -59,7 +59,9 @@ FIELD_TYPES = ("text", "number", "date", "choice", "bool")
 FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
 #: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは根の鍵 logo か設定の画面から上げる)
-COMPANY_KEYS = ("address", "phone", "bank_account")
+COMPANY_KEYS = ("address", "phone", "bank_account", "registration_no")
+#: core.services.REGISTRATION_NO_PATTERN と同じ形 (core は Django を読むので import せずに写す。決め C95-2)
+REGISTRATION_NO = re.compile(r"T[0-9]{13}")
 #: --demo のつながりの種の受け口の頭を、相手の置き場の URL にする環境変数 (SEIZOU_PARTNER_<相手の会社の id の大文字>_URL)。答えの partner_base_urls より勝つ
 PARTNER_URL_ENV = re.compile(r"SEIZOU_PARTNER_([A-Z][A-Z0-9_]*)_URL")
 
@@ -200,7 +202,8 @@ def load_answers(path: Path) -> dict:
                 f"{' / '.join(FIELD_TYPES)} のどれかで書きます。"
             )
 
-    # 会社の情報 (任意)。打ち違えた鍵を黙って捨てると請求書に住所が出ないので、知らない鍵は断る
+    # 会社の情報 (任意)。打ち違えた鍵を黙って捨てると請求書に住所が出ないので、知らない鍵は断る。
+    # 登録番号の形が違うと請求書に違う番号が出るので断る (決め C95-2)
     company = answers.get("company")
     if company is not None:
         if not isinstance(company, dict):
@@ -210,6 +213,8 @@ def load_answers(path: Path) -> dict:
                 raise AnswerError(f"company の鍵を知りません: {key}。{' / '.join(COMPANY_KEYS)} のどれかで書きます。")
             if not isinstance(value, str):
                 raise AnswerError(f"company の {key} は字で書きます (数に読める値は引用符で囲む): {value!r}")
+            if key == "registration_no" and value.strip() and not REGISTRATION_NO.fullmatch(value.strip()):
+                raise AnswerError(f"company の registration_no は T と 13 桁の数字で書きます (例: T0000000000000): {value!r}")
 
     # ロゴ (任意。答えの YAML の横からの道)。無いファイルを黙って飛ばすとロゴと印 (favicon) が入らないので断る。N166
     logo = answers.get("logo")

@@ -10,7 +10,10 @@ from .services import TAX_RATE
 
 
 def invoice_context(invoice):
-    """請求書の帳票の context。company は core の会社の設定の 1 行。"""
+    """請求書の帳票の context。
+
+    company は core の会社の設定の 1 行 (登録番号を含む。インボイス制度の適格請求書の記載事項 = 決め LAW-3。帳票の土台 report_base.html が空でないときだけ出す)。
+    """
     lines = []
     for row in invoice.lines.select_related("shipment__order_line__item"):
         shipment = row.shipment

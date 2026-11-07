@@ -10,7 +10,7 @@ import re
 from django import forms
 from django.utils import timezone
 
-from seizou.core import csvio
+from seizou.core import csvio, seeds
 from seizou.core.forms import ServiceModelForm
 from seizou.core.widgets import IsoDateInput
 
@@ -24,9 +24,10 @@ from .models import Holiday
 #: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
 ACTIVE_HELP = "外すと使用停止にします。受注と発注の候補に出なくなり、今までの受注と発注の記録はそのまま残ります。"
 
-#: 取引先の端数の 2 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。初見テスト 5 回目の V119)
+#: 取引先の端数の 3 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。初見テスト 5 回目の V119)
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
-TAX_HELP = "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定 (今は {current}) に従います。"
+TAX_HELP = "消費税は、請求書 1 枚の金額の合計に 1 回だけ率をかけて計算します (トータル)。1 円に丸める向きは「消費税の端数の向き」で選びます。空なら会社の既定 (今は {current}) に従います。"
+TAX_ROUNDING_HELP = "請求書の消費税を 1 円に丸める向き (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
 
 
 def _active_on_edit_only(form):
@@ -88,6 +89,7 @@ class PartnerForm(ServiceModelForm):
             "payment_day",
             "rounding",
             "tax_mode",
+            "tax_rounding",
             "note",
         ]
         help_texts = {
@@ -99,7 +101,8 @@ class PartnerForm(ServiceModelForm):
             ),
             "payment_day": "1〜31。月末は 31",
             "rounding": "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。",
-            "tax_mode": "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。",
+            "tax_mode": "消費税は、請求書 1 枚の金額の合計に 1 回だけ率をかけて計算します (トータル)。1 円に丸める向きは「消費税の端数の向き」で選びます。空なら会社の既定に従います。",
+            "tax_rounding": "請求書の消費税を 1 円に丸める向き (四捨五入・切上・切捨)。空なら会社の既定に従います。",
         }
 
     def __init__(self, *args, **kwargs):
@@ -112,11 +115,12 @@ class PartnerForm(ServiceModelForm):
             data = self.data.copy()
             data[key] = self.instance.billing_method
             self.data = data
-        # 端数の 2 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
+        # 端数の 3 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
         # 「?」の説明書の「入れる物」の表は form を作らずに Meta.help_texts を読むので、今の値の無い字のまま出る。
         company = company_defaults()
         self.fields["rounding"].help_text = ROUNDING_HELP.format(current=company.get_rounding_display())
         self.fields["tax_mode"].help_text = TAX_HELP.format(current=company.get_tax_mode_display())
+        self.fields["tax_rounding"].help_text = TAX_ROUNDING_HELP.format(current=company.get_tax_rounding_display())
 
 
 #: 工程の使用中の欄の下の案内 (N140)
@@ -363,6 +367,37 @@ class PartnerCsvImportForm(CsvImportForm):
     #: 取引先の一覧の読むだけの列「注文の入口」(一覧の CSV の書き出しに出る。core の dashboard.annotate_order_inlet の列) は読まない。
     #: 一覧で落とした CSV をそのまま入れ直せるように。
     skip_headers = (*csvio.SKIP_HEADERS, "注文の入口")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        #: 消費税の端数の扱いの前の字を読み替えた行の数 (read_tax_mode が数える。知らせの 1 文に使う)
+        self.tax_reread = 0
+        self.cell_readers = {**self.cell_readers, "tax_mode": self.read_tax_mode}
+
+    def read_tax_mode(self, field, raw, present):
+        """消費税の端数の扱いの字を読む。present は CSV にある列の名前の集合。
+
+        前の字 (各行四捨五入・各行切捨。値の line_round・line_floor も) は、トータルと消費税の端数の向きに読み替え、
+        数を tax_reread に足す (決め C95-3。対応は seeds.FORMER_TAX_MODES で、migration が表の値を移したときと同じ)。
+        各行四捨五入 → トータル + 四捨五入、各行切捨 → トータル + 切捨。
+        CSV に消費税の端数の向きの列があるとき (今の形の CSV) は、向きはその列の値を使い、ここでは書かない
+        (人が書いた向きを前の字の向きで上書きしない。read_payment_day が支払の月の列の有無で読み方を変えるのと同じ見方)。
+        前の字でない字は今までどおり読む (選べない字は誤り)。
+        """
+        text = _text_of(raw)
+        direction = seeds.FORMER_TAX_MODES.get(text)
+        if direction is None:
+            return {field.name: csvio.to_value(field, raw)}
+        self.tax_reread += 1
+        if "tax_rounding" in present:
+            return {"tax_mode": "total"}
+        return {"tax_mode": "total", "tax_rounding": direction}
+
+    def service_kwargs(self):
+        kwargs = super().service_kwargs()
+        if self.tax_reread:
+            kwargs["tax_reread"] = self.tax_reread
+        return kwargs
 
 
 # ---------------------------------------------------------------- 図面を版に戻す (第 3 波)

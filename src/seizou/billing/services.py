@@ -13,7 +13,7 @@
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
   出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
-- 消費税の計算は _tax の 1 か所、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
+- 消費税の計算は _tax の 1 か所 (請求書の税率ごとの合計に 1 回。インボイス制度。丸める向きは masters.services.round_tax)、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
   都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
   支払の月か支払日が空 (当日でない) なら空。今ある請求書の支払期日は作った時の値のまま (計算し直さない)。
@@ -30,15 +30,15 @@ from __future__ import annotations
 
 import calendar
 from datetime import date, timedelta
-from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q
 
 from seizou.core import access
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import company, next_number
-from seizou.masters.services import round_amount
+from seizou.core.services import next_number
+from seizou.masters.services import round_amount, round_tax
 
 from .models import Invoice, InvoiceLine, Payment
 
@@ -50,7 +50,6 @@ PAYMENT_NOTE_MAX = 500
 _R09_RULE = "請求書の明細は、出荷済みの物だけ。"
 _R21_RULE = "取消した請求書には、入金を記録できない。"
 _R23_RULE = "同じ得意先の同じ締め期間の請求書は 1 枚だけ。"
-_YEN = Decimal("1")
 _ZERO = Decimal("0")
 
 # ほかの部品の表は、外部キーの先として引く (shipping と masters の models を import しない)。
@@ -111,6 +110,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
     支払期日は payment_due_date(customer, 期間の終わり) (支払の月か支払日が空の取引先では空)。
     同じ得意先の同じ締め期間に取消でない請求書があれば、R09 の後・期間を決めた後に R23 で止める (_refuse_second_in_period)。
     返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
+    消費税は _tax (明細の金額の合計に 1 回)。
     訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable)。出所 = RULES.md R09。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -524,17 +524,15 @@ def _day_in_month(year, month, day):
 
 
 def _tax(customer, amounts):
-    """消費税。方法は取引先の消費税の計算方法 (空なら会社の値)。
+    """消費税。請求書 1 枚の明細の金額を税率ごとに合計し、合計に 1 回だけ率をかけて 1 円に丸める。
 
-    total (トータル) = 金額の合計 × 率を round_amount(customer, …) で丸める。
-    line_round (各行四捨五入) = 行ごとに 金額 × 率 を 1 円に四捨五入して足す。
-    line_floor (各行切捨) = 行ごとに 金額 × 率 を 1 円に切り捨てて足す。
-    訳: 消費税の端数を、取引先 (空なら会社) の消費税の計算方法 (トータル・各行四捨五入・各行切捨) どおりに 1 円に丸めるため。出所 = 未確認 (3 つの計算方法と率の根拠は、法令か商慣習の見込み。本人が書く)。
-    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
+    インボイス制度 (消費税法の適格請求書等保存方式) では、適格請求書の消費税額は、税率ごとに合計した金額に
+    1 回だけ計算して端数を処理する (明細ごとに丸めて足さない)。今の率は TAX_RATE の 1 つだけなので、
+    合計 × TAX_RATE を masters.services.round_tax(customer, …) で丸める。丸める向きは取引先の消費税の端数の向き
+    (空なら会社の値。会社の既定は切捨。決め C95-1b)。金額の端数の扱い (rounding) は読まない。
+    取引先と会社の消費税の端数の扱い (tax_mode) も読まない (選べる値はトータルだけ。決め LAW-2)。
+    確かめた資料: 中小企業共通 EDI ガイドブック 1.1。国税庁の資料と条文は未読。
+    訳: 適格請求書の消費税額を、税率ごとの合計に 1 回だけ計算する法令の決まりに合わせるため。出所 = 法令 (インボイス制度。決め LAW-2。確かめた資料は上の 1 つ)。
+    変えてよい条件 = 率が増えたら、明細の率で分けた合計ごとに同じ計算を足す。明細ごとに丸めて足す形には、法令が変わったときだけ戻す。
     """
-    mode = customer.tax_mode or company().tax_mode
-    if mode == "line_round":
-        return sum(((amount * TAX_RATE).quantize(_YEN, rounding=ROUND_HALF_UP) for amount in amounts), _ZERO)
-    if mode == "line_floor":
-        return sum(((amount * TAX_RATE).quantize(_YEN, rounding=ROUND_FLOOR) for amount in amounts), _ZERO)
-    return round_amount(customer, sum(amounts, _ZERO) * TAX_RATE)
+    return round_tax(customer, sum(amounts, _ZERO) * TAX_RATE)

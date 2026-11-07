@@ -102,7 +102,7 @@ def test_items_roundtrip_with_list_export(client_logged_in, user, no_registratio
 def test_partners_roundtrip_with_list_export(client_logged_in, user, no_registration):
     rows = [
         {"code": "C001", "name": "作り物の得意先", "role": "customer", "closing_day": 31, "payment_month": "next", "payment_day": 31, "rounding": "ceil"},
-        {"code": "C002", "name": "作り物の商会", "role": "both", "closing_day": 20, "payment_month": "next", "payment_day": 25, "tax_mode": "line_floor"},
+        {"code": "C002", "name": "作り物の商会", "role": "both", "closing_day": 20, "payment_month": "next", "payment_day": 25, "tax_mode": "total", "tax_rounding": "floor"},
         {"code": "C003", "name": "作り物の工業", "role": "customer", "payment_month": "current"},
         {"code": "S001", "name": "作り物の協力企業", "short_name": "作り外", "role": "subcontractor", "note": "書き出しに無い列"},
         {"code": "S002", "name": "作り物の塗装", "role": "subcontractor", "closing_day": 25, "payment_month": "after_next", "payment_day": 10},
@@ -371,6 +371,8 @@ def test_examples_csv_import(company, user, no_registration, captured_ext):
     assert Item.objects.count() == 30 and Partner.objects.count() == 5
     assert len(captured_ext) == 30
     assert Partner.objects.exclude(rounding="").exists() and Partner.objects.exclude(tax_mode="").exists()
+    # 2 社の種の取引先は全部の行に消費税の端数の向きがある (masters の移しと同じ値。決め C95-1c)
+    assert not Partner.objects.filter(tax_rounding="").exists()
 
     _form, again = import_valid(ItemCsvImportForm, items, user)
     assert again == {"入れた": 0, "更新した": 30}
@@ -497,7 +499,7 @@ def test_sample_csv_imports_back(client_logged_in, user, no_registration):
     item_values = {"自社品番": "P-1001", "品名": "作り物の軸", "図面番号": "DWG-1001", "単位": "個", "標準単価 (円)": "480", "備考": "見本から"}
     partner_values = {
         "取引先コード": "C001", "名前": "作り物の得意先", "略称": "作り得", "取引先の種類": "得意先", "請求の仕方": "締日でまとめる", "締日": "月末",
-        "支払の月": "翌月", "支払日": "25", "金額の端数の扱い": "切捨", "消費税の端数の扱い": "各行切捨", "備考": "",
+        "支払の月": "翌月", "支払日": "25", "金額の端数の扱い": "切捨", "消費税の端数の扱い": "トータル", "消費税の端数の向き": "切捨", "備考": "",
     }
     for url_name, form_class, values in (
         ("masters:item_import_sample", ItemCsvImportForm, item_values),
@@ -513,7 +515,7 @@ def test_sample_csv_imports_back(client_logged_in, user, no_registration):
     assert (item.part_no, item.unit, item.standard_price, item.note) == ("P-1001", "個", Decimal("480"), "見本から")
     partner = Partner.objects.get()
     assert (partner.closing_day, partner.payment_month, partner.payment_day) == (31, "next", 25)
-    assert (partner.rounding, partner.tax_mode) == ("floor", "line_floor")
+    assert (partner.rounding, partner.tax_mode, partner.tax_rounding) == ("floor", "total", "floor")
 
 
 def test_screens_in_catalog():

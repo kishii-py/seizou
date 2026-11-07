@@ -10,13 +10,15 @@
   どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (履歴の表は持たない)。
 - user_preference(user, key, default): 人ごとの表示の設定 (UserPreference) の値。行が無いか、ログインしていない人は default。
   set_user_preference(user, key, value) は本人の行を書く (鍵と値は core.display の物だけ。標準の値は行を消す)。
-- update_company(company, data, user): 会社の情報 (住所・電話・振込先・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
+- update_company(company, data, user): 会社の情報 (住所・電話・振込先・登録番号・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
+- check_registration_no(text): 適格請求書の登録番号の形 (T と 13 桁の数字) を確かめる。形が違えば日本語の ValueError。
 - company_icons(company): ロゴから作った印 (favicon) の URL。無ければ None (土台は static の favicon.svg を出す)。
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
 from django.db import connection, transaction
 from django.utils import timezone
@@ -200,7 +202,10 @@ def set_user_preference(user, key, value):
 
 
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
-COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "logo")
+COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "registration_no", "logo")
+#: 適格請求書発行事業者の登録番号の形 (T と 13 桁の数字を続けた 14 字。決め LAW-3・C95-2)。
+#: 数字は [0-9] で書く (\d は全角の数字にも当たる)。cli.py の答えの読みは core を import しないので、同じ形を写して持つ
+REGISTRATION_NO_PATTERN = re.compile(r"T[0-9]{13}")
 #: ロゴから作る印 (favicon) の絵 (ロゴと同じ storage の固定の名前 → 一辺の画素。PNG)。決め 11-05 20:1x。N166
 COMPANY_ICONS = {"company/favicon.png": 32, "company/apple-touch-icon.png": 180}
 
@@ -217,6 +222,7 @@ def update_company(company, data, user):
     今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
     (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
     ロゴを上げたら、ロゴから印 (COMPANY_ICONS) を作って同じ storage に置き、外したら印を消す (_write_company_icons)。
+    登録番号はインボイス制度で適格請求書に書く番号 (決め LAW-3)。形 (T と 13 桁の数字) は check_registration_no が見る (決め C95-2)。
     """
     from pathlib import PurePath
 
@@ -235,6 +241,8 @@ def update_company(company, data, user):
         text = "" if value is None else str(value).strip()
         if field.max_length is not None and len(text) > field.max_length:
             raise ValueError(f"保存できません。{field.verbose_name}は {field.max_length} 字までにしてください。")
+        if name == "registration_no":
+            check_registration_no(text)
         values[name] = text
     with transaction.atomic():
         row = Company.objects.select_for_update().get(pk=company.pk)
@@ -255,6 +263,20 @@ def update_company(company, data, user):
         labels = "・".join(str(Company._meta.get_field(name).verbose_name) for name in changed)
         logger.info("会社の情報を変えた: %s (%s)", labels, _user_name(user))
     return row
+
+
+def check_registration_no(text):
+    """登録番号の字 (前後の空白を落とした物) の形を確かめる。空 (登録していない事業者) は通す。形が違えば日本語の ValueError。
+
+    インボイス制度 (消費税法の適格請求書等保存方式) の登録番号は、T と 13 桁の数字。会社の情報の変更の画面 (core.forms.CompanyForm) と
+    update_company が呼ぶ。小文字の t・T の無い 13 桁・桁の足りない値・全角の字は止める (字を直して通すことはしない)。
+    検査の数字 (13 桁の最初の 1 桁) と、国税庁の公表サイトでの登録の有無は見ない。
+    確かめた資料: 中小企業共通 EDI の付表 3 の SIID27 の値の例 (T と 13 桁を続けた 1 つの字)。国税庁の資料は未読。
+    訳: お客様に渡す請求書に形の違う登録番号を刷らないため (形の違う値は打ち間違いしか無い。RULES.md の「止めるのは、あり得ない入力と、記録どうしの矛盾だけ」のあり得ない入力)。出所 = 法令 (インボイス制度の登録番号の形。決め LAW-3・C95-2)。
+    変えてよい条件 = 登録番号の形が法令で変わったとき。
+    """
+    if text and not REGISTRATION_NO_PATTERN.fullmatch(text):
+        raise ValueError("保存できません。登録番号は T と 13 桁の数字で入れてください。")
 
 
 def _write_company_icons(row) -> bool:

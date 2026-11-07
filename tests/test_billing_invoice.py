@@ -45,10 +45,10 @@ def _order_line(user, customer, item, *, qty="10", unit_price="100"):
     return order.lines.get()
 
 
-def _invoice_of_two_15_yen_lines(user, item, tax_mode):
-    """金額 15 の明細 2 行の請求書 (消費税の計算方法の確かめ)。"""
-    customer = _customer(user, tax_mode=tax_mode)
-    line = _order_line(user, customer, item, qty="2", unit_price="15")
+def _invoice_of_two_lines(user, item, unit_price="15", **terms):
+    """金額 unit_price の明細 2 行の請求書 (消費税の計算の確かめ)。terms は取引先の欄 (tax_mode・tax_rounding・rounding)。"""
+    customer = _customer(user, **terms)
+    line = _order_line(user, customer, item, qty="2", unit_price=unit_price)
     first = _shipped(user, customer, line, "1")
     second = _shipped(user, customer, line, "1")
     return services.create_invoice(customer, [first, second], user, issued_on=ISSUED_ON)
@@ -95,31 +95,44 @@ def test_amount_uses_round_amount(user, item):
 
 @pytest.mark.django_db
 def test_tax_total(user, item):
-    invoice = _invoice_of_two_15_yen_lines(user, item, "total")
+    invoice = _invoice_of_two_lines(user, item, tax_mode="total")
     assert invoice.subtotal == Decimal("30")
     assert invoice.tax == Decimal("3")
     assert invoice.total == Decimal("33")
 
 
 @pytest.mark.django_db
-def test_tax_line_round(user, item):
-    invoice = _invoice_of_two_15_yen_lines(user, item, "line_round")
-    assert invoice.tax == Decimal("4")
-    assert invoice.total == Decimal("34")
+def test_tax_ignores_former_line_round_value(user, item):
+    # 表に古い明細ごとの値 (line_round) が残っても、合計に 1 回だけ計算する (決め LAW-2)。services は値を見ない。
+    invoice = _invoice_of_two_lines(user, item, tax_mode="line_round")
+    # 合計 30 × 0.1 = 3。各行四捨五入なら 2 + 2 = 4 だった。
+    assert invoice.tax == Decimal("3")
+    assert invoice.total == Decimal("33")
 
 
 @pytest.mark.django_db
-def test_tax_line_floor(user, item):
-    invoice = _invoice_of_two_15_yen_lines(user, item, "line_floor")
-    assert invoice.tax == Decimal("2")
-    assert invoice.total == Decimal("32")
+@pytest.mark.parametrize(("tax_rounding", "tax"), [("floor", "2"), ("round", "3"), ("ceil", "3")])
+def test_tax_uses_partner_tax_rounding(user, item, tax_rounding, tax):
+    # 明細 13 円の 2 行 = 小計 26。率をかけると 2.6 を、取引先の消費税の端数の向きで丸める (決め C95-1b)。
+    invoice = _invoice_of_two_lines(user, item, unit_price="13", tax_mode="total", tax_rounding=tax_rounding)
+    assert invoice.subtotal == Decimal("26")
+    assert invoice.tax == Decimal(tax)
 
 
 @pytest.mark.django_db
-def test_blank_partner_tax_mode_uses_company(user, item):
-    Company.objects.create(name="作り物の会社", tax_mode="line_floor")
-    invoice = _invoice_of_two_15_yen_lines(user, item, "")
+def test_blank_tax_rounding_without_company_is_floor(user, item):
+    # 取引先の向きが空・会社の行が無い: 会社の既定の切捨。金額の端数の扱い (rounding) は消費税に使わない。
+    invoice = _invoice_of_two_lines(user, item, unit_price="13", rounding="ceil")
+    assert invoice.subtotal == Decimal("26")
     assert invoice.tax == Decimal("2")
+
+
+@pytest.mark.django_db
+def test_blank_tax_rounding_uses_company(user, item):
+    Company.objects.create(name="作り物の会社", tax_mode="line_floor", tax_rounding="round")
+    invoice = _invoice_of_two_lines(user, item, unit_price="13")
+    # 会社の向き (四捨五入) で 2.6 → 3。会社の古い各行切捨は読まない (各行切捨なら 1 + 1 = 2)。
+    assert invoice.tax == Decimal("3")
 
 
 @pytest.mark.django_db

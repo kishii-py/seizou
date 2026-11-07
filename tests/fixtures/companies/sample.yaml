@@ -7,6 +7,7 @@ company:
   address: 〒000-0000 見本県架空市見本町 1-2-3
   phone: 00-0000-0000
   bank_account: 作り物銀行 見本支店 普通 0000000 名義 ミホンノカイシャ
+  registration_no: T0000000000000
 item_fields:
   - label: 材質
     type: text

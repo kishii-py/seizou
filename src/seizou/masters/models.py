@@ -18,7 +18,7 @@ MONTH_END_DAY = 31
 def company_defaults():
     """取引先の端数の扱いが空のときに従う会社の行 (pk の小さい 1 行)。
 
-    読むだけで、行が無ければ保存しない既定の行 (表の既定 = 四捨五入・トータル) を返す。会社の行は作らない。
+    読むだけで、行が無ければ保存しない既定の行 (表の既定 = 四捨五入・トータル・切捨) を返す。会社の行は作らない。
     取引先の入力の案内の字 (masters.forms.PartnerForm) と、詳細と小窓の端数の行の字 (Partner.get_*_display) が読む。
     """
     return company_or_none() or Company()
@@ -96,8 +96,12 @@ class Partner(models.Model):
     tax_mode = models.CharField(
         "消費税の端数の扱い", max_length=10, choices=Company.TAX_CHOICES, blank=True
     )
+    # 消費税を 1 円に丸める向き (決め C95-1b)。空なら会社の既定 (Company.tax_rounding。既定は切捨) に従う。
+    tax_rounding = models.CharField(
+        "消費税の端数の向き", max_length=10, choices=Company.ROUNDING_CHOICES, blank=True
+    )
     # 請求の仕方 (C02-3c)。締日でまとめる = 締め期間ごとに 1 枚、都度 = 納品書ごとに作れる。今ある取引先は既定の締日でまとめるのまま。
-    # 列は端数の 2 列の後に置く (詳細と小窓は列の順に出し、小窓は先頭の 8 項目だけなので、前に置くと小窓から「消費税の端数の扱い」が落ちる)。
+    # 列は端数の 3 列の後に置く (詳細と小窓は列の順に出し、小窓は先頭の 8 項目だけなので、前に置くと小窓から「消費税の端数の扱い」が落ちる)。
     # 入力の欄は締日の前に読む並び (masters.forms.PartnerForm の Meta.fields)。
     billing_method = models.CharField(
         "請求の仕方", max_length=35, choices=BILLING_METHOD_CHOICES, default=BILLING_CLOSING
@@ -138,7 +142,7 @@ class Partner(models.Model):
             return f"{month}末" if month else day_label(self.payment_day)
         return f"{month} {day_label(self.payment_day)}" if month else day_label(self.payment_day)
 
-    # 端数の 2 列の画面の字 (詳細と小窓の土台の display_value が読む)。空の行を「—」でなく「会社の既定 (四捨五入)」と出す
+    # 端数の 3 列の画面の字 (詳細と小窓の土台の display_value が読む)。空の行を「—」でなく「会社の既定 (四捨五入)」と出す
     # (初見テスト 4 回目の U118)。自分で書いた get_<列>_display があると Django は choices の自動の関数を付けないので、
     # 値があるときの選択肢の字 (例「切上」) もここで引く。表の値はそのまま。
 
@@ -153,6 +157,12 @@ class Partner(models.Model):
         if self.tax_mode:
             return dict(Company.TAX_CHOICES).get(self.tax_mode, self.tax_mode)
         return f"会社の既定 ({company_defaults().get_tax_mode_display()})"
+
+    def get_tax_rounding_display(self):
+        """消費税の端数の向きの画面の字。空なら「会社の既定 (今の会社の値)」。"""
+        if self.tax_rounding:
+            return dict(Company.ROUNDING_CHOICES).get(self.tax_rounding, self.tax_rounding)
+        return f"会社の既定 ({company_defaults().get_tax_rounding_display()})"
 
     @property
     def is_customer(self):

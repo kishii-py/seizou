@@ -37,6 +37,11 @@ FORMER_HEADERS = {
     "masters.Partner": {"小計の計算方法": "rounding", "消費税の計算方法": "tax_mode"},
 }
 
+#: 消費税の端数の扱いの前の字と値 → 消費税の端数の向きの値 (決め LAW-2・C95-3)。
+#: 明細ごとに丸める 2 つをやめてトータルだけにしたので、前の CSV と種のこの字は、トータルとこの向きに読み替える。
+#: core と masters の migration (0005_company_tax_mode_total・0013_partner_tax_mode_total) が表の値を移したときと同じ対応。
+FORMER_TAX_MODES = {"各行四捨五入": "round", "line_round": "round", "各行切捨": "floor", "line_floor": "floor"}
+
 
 def fields_by_label(model):
     """見出し (verbose_name) → 列。主キーは除く。前の見出し (FORMER_HEADERS) でも引ける。"""

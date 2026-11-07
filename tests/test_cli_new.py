@@ -312,11 +312,18 @@ def test_company_row_has_answer_company_info(built):
     assert _company_value(site, "address") == "〒000-0000 見本県架空市見本町 1-2-3"
     assert _company_value(site, "phone") == "00-0000-0000"
     assert _company_value(site, "bank_account") == "作り物銀行 見本支店 普通 0000000 名義 ミホンノカイシャ"
+    assert _company_value(site, "registration_no") == "T0000000000000"
 
 
 @pytest.mark.parametrize(
     "text",
-    ["company: [1]", "company: {fax: 00-0000-0000}", "company: {phone: 12345}"],
+    [
+        "company: [1]",
+        "company: {fax: 00-0000-0000}",
+        "company: {phone: 12345}",
+        "company: {registration_no: t0000000000001}",
+        "company: {registration_no: T000000000001}",
+    ],
 )
 def test_bad_company_is_refused(tmp_path, monkeypatch, text):
     sites = tmp_path / "sites"

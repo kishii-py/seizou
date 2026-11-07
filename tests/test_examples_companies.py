@@ -61,6 +61,7 @@ PARTNER_HEADER = [
     "支払日",
     "小計の計算方法",
     "消費税の計算方法",
+    "消費税の端数の向き",
     "備考",
 ]
 PARTNER_ITEM_HEADER = ["取引先コード", "自社品番", "取引先の品番", "取引先の品名"]
@@ -424,8 +425,9 @@ def test_drawing_files_exist_and_are_small(company_id):
 def test_company_is_fake_contact(company_id):
     # 会社の情報 (答えの company) は作り物の形だけ (住所は見本県架空市、電話は 00-0000-000n)
     company = load_answers(company_id)["company"]
-    assert set(company) <= {"address", "phone", "bank_account"}
+    assert set(company) <= {"address", "phone", "bank_account", "registration_no"}
     assert all(isinstance(value, str) for value in company.values())
     assert "見本県架空市" in company["address"]
     assert re.fullmatch(r"0[0-9]-[0-9]{4}-[0-9]{4}", company["phone"])
     assert company["bank_account"].startswith("作り物銀行 ")
+    assert re.fullmatch(r"T0{12}[1-9]", company["registration_no"])
