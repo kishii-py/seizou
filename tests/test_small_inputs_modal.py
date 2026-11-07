@@ -499,7 +499,7 @@ def test_details_refresh_after_save(world, name, screen):
     if name == "purchaseorder":
         # 発注の詳細は 2 秒ごとの取り直しの要素に seizou:refresh を足しただけ (取りに行く要素は 1 つ)
         assert re.search(r'id="purchaseorder-detail-poll"[^>]*hx-trigger="every 2s[^"]*, seizou:refresh from:body"', body)
-        assert body.count('hx-select-oob="#po-heading,#po-alert,#detail-aside"') == 1
+        assert body.count('hx-select-oob="#po-heading,#po-alert,#detail-aside,#menu-count-purchasingreceipt_list"') == 1
         return
     assert body.count(f'id="{name}-heading"') == 1
     assert body.count(f'id="{name}-live"') == 1

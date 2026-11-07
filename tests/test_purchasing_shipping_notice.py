@@ -232,3 +232,49 @@ def test_receipt_create_opens_with_notice_values(client_logged_in, user, subcont
     plain = client_logged_in.get(url, {"line": line.pk})
     assert plain.context["form"].initial["qty"] == Decimal("6")
     assert fake_post.calls == 0
+
+
+@pytest.mark.django_db
+def test_receipt_list_and_order_detail_refresh_the_menu_count(client_logged_in, user, subcontractor, item, fake_post):
+    # 小窓で受入を保存した後に、受入の一覧は支払の見込みの表と左のメニューの「受入」の印を、発注の詳細は印を、
+    # 画面を移らずに取り直す (決め C05-2 = a。初見テスト R5 の候補 C05)。支払の見込みの月の額は日付で変わるので見ない
+    po = _order(subcontractor, item, user)
+    line = po.lines.get()
+    _notice(line, "10", date(2026, 11, 5), "SH-0001")
+    url = reverse("purchasing:receipt_list")
+    box = '<span id="menu-count-purchasingreceipt_list" class="ml-auto">'
+
+    whole = client_logged_in.get(url).content.decode()
+    refresh = re.search(r'<div id="receipt-list-refresh"[^>]*>', whole)
+    assert refresh
+    for word in (
+        'hx-trigger="seizou:refresh from:body"',
+        'hx-target="#list-card"',
+        'hx-swap="none"',
+        'hx-select-oob="#payable-table,#menu-count-purchasingreceipt_list"',
+    ):
+        assert word in refresh.group(0), word
+    assert 'id="payable-table"' in whole
+
+    def list_card():
+        # 取り直しの要素の要求 (htmx は HX-Target に差し替える先の id を入れる)。土台は画面の全体を返す
+        response = client_logged_in.get(url, HTTP_HX_REQUEST="true", HTTP_HX_TARGET="list-card")
+        assert response.status_code == 200
+        return response.content.decode()
+
+    body = list_card()
+    assert 'id="payable-table"' in body
+    start = body.index(box)
+    assert ">1</span>" in body[start : body.index("</a>", start)]
+
+    services.receive(line, Decimal("10"), date(2026, 11, 6), user)  # 残が 0 = 印は消え、空の入れ物が残る
+    body = list_card()
+    assert 'id="payable-table"' in body
+    assert box + "</span>" in body
+
+    # HX-Target の無い htmx の要求 (検索の字・絞り・ページ送り) は今までどおり行の部分だけで、左のメニューを描かない
+    rows_only = client_logged_in.get(url, HTTP_HX_REQUEST="true").content.decode()
+    assert "menu-count" not in rows_only
+
+    assert 'id="menu-count-purchasingreceipt_list"' in _detail(client_logged_in, po)
+    assert fake_post.calls == 0
