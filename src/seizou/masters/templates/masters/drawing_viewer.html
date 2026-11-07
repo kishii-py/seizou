@@ -2,10 +2,11 @@
 {% load static seizou_icons masters_drawing %}
 {# 図面ビューア: 部品の図面を拡大・縮小・原寸・回転・移動 (drawing-viewer.js) して見る。ページ送り・版の選択・見比べるは link と GET の form (JS が無くても動く)。 #}
 {# 絵の URL はログインした人にだけ返す口 (masters:item_drawing)。PDF はブラウザの表示に任せる (iframe)。版の表は枠の下。 #}
+{# 頭: 題の上にパンくず (一覧 › 部品 › この画面。core/detail.html の頭と同じ形)。部品の詳細へはパンくずで戻る (右上に戻るボタンを置かない = core/detail.html の「パンくずがあれば一覧に戻るを出さない」と同じ考え)。 #}
 {% block title %}{{ object.part_no }} の図面 | {{ screen_name }}{% endblock %}
+{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'masters:item_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
 {% block actions %}{% drawing_viewer as viewer %}
 {% if viewer.download_url %}<a class="btn btn-outline border-base-300" href="{{ viewer.download_url }}" download>{% icon "download" "size-4" %}ダウンロード</a>{% endif %}
-<a class="btn btn-outline border-base-300" href="{% url 'masters:item_detail' object.pk %}">{% icon "arrow-left" "size-4" %}詳細に戻る</a>
 {% endblock %}
 {% block content %}{% drawing_viewer as viewer %}
 <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="図面">

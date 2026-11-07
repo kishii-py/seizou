@@ -12,6 +12,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils.html import escape
 from PIL import Image, ImageDraw
 
 from seizou.masters import services
@@ -124,7 +125,7 @@ def test_viewer_requires_login(client, user):
 def test_viewer_shows_tools_and_gated_image(logged_in, user):
     item = tiff_item(user)
     body = html(logged_in.get(viewer_url(item)))
-    for word in ("拡大", "縮小", "原寸", "回転", "図面ビューア", "ダウンロード", "詳細に戻る"):
+    for word in ("拡大", "縮小", "原寸", "回転", "図面ビューア", "ダウンロード"):
         assert word in body, word
     for action in ("zoom-in", "zoom-out", "actual", "rotate"):
         assert f'data-action="{action}"' in body
@@ -428,3 +429,37 @@ def test_restore_without_versions_post_keeps_drawing(logged_in, user):
     assert response.status_code == 200
     item.refresh_from_db()
     assert (item.drawing.name, item.drawing_versions.count()) == before
+
+
+# ---------------------------------------------------------------- 題の上のパンくず (初見テスト R5 の候補 C82 の 1)
+
+
+def crumb(body):
+    """題の上のパンくずの nav (tests/test_detail_header.py の _crumb と同じ拾い方)。"""
+    return re.search(r'<nav aria-label="パンくず"[^>]*>.*?</nav>', body, re.S).group(0)
+
+
+def assert_viewer_crumb(body, item):
+    """パンくずは「部品マスター › 部品 › 図面ビューア」で大きい題の上。右上に詳細へ戻るボタンを出さない。"""
+    nav = crumb(body)
+    assert f'href="{reverse("masters:item_list")}">部品マスター</a>' in nav
+    assert f'href="{reverse("masters:item_detail", args=[item.pk])}">{escape(str(item))}</a>' in nav
+    assert 'aria-current="page">図面ビューア</span>' in nav
+    assert body.index('<nav aria-label="パンくず"') < body.index('<h1 class="text-3xl font-bold tracking-tight">図面ビューア</h1>')
+    assert "詳細に戻る" not in body
+
+
+@pytest.mark.django_db
+def test_viewer_crumb_above_heading_without_back_button(logged_in, user):
+    item = tiff_item(user)
+    body = html(logged_in.get(viewer_url(item)))
+    assert_viewer_crumb(body, item)
+    assert f'href="{gate(item, "original.tif")}" download' in body  # 「ダウンロード」は残る
+
+
+@pytest.mark.django_db
+def test_viewer_crumb_without_drawing_has_no_buttons(logged_in, user):
+    item = new_item(user)
+    body = html(logged_in.get(viewer_url(item)))
+    assert_viewer_crumb(body, item)
+    assert "ダウンロード</a>" not in body

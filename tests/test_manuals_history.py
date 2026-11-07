@@ -278,3 +278,51 @@ def test_restore_confirm_then_restore(client_logged_in, manual, user):
     assert manual.body == "## 準備\n\n古い行\n消す行\n残る行"
     assert manual.version == 3
     assert ManualVersion.objects.get(number=2).note == "版 1 に戻す前の中身"
+
+
+# ---------------------------------------------------------------- 題の上のパンくず (初見テスト R5 の候補 C82 の 4・5)
+
+
+def _crumb(html):
+    """題の上のパンくずの nav (tests/test_detail_header.py の _crumb と同じ拾い方)。"""
+    return re.search(r'<nav aria-label="パンくず"[^>]*>.*?</nav>', html, re.S).group(0)
+
+
+def test_version_list_crumb_above_heading(client_logged_in, manual):
+    """版の履歴の題の上に「マニュアル › 題 › 版の履歴」を出し、右上の詳細へ戻るボタンは出さない。"""
+    html = client_logged_in.get(reverse("manuals:manualversion_list", args=[manual.pk])).content.decode()
+    nav = _crumb(html)
+    assert f'href="{reverse("manuals:manual_list")}">マニュアル</a>' in nav
+    assert f'href="{reverse("manuals:manual_detail", args=[manual.pk])}">段取り替えの手順</a>' in nav
+    assert 'aria-current="page">版の履歴</span>' in nav
+    assert html.index('<nav aria-label="パンくず"') < html.index('<h1 class="text-3xl font-bold tracking-tight">版の履歴</h1>')
+    assert "詳細を見る</a>" not in html
+
+
+def test_diff_page_crumb_names_list_detail_and_history(client_logged_in, manual, user):
+    """差分の view は土台の一覧の URL を引けないので、テンプレートが URL の名前で 4 段を書く。右上の戻すボタンは今どおり。"""
+    services.save_as_version(manual, {"body": "版 2 の本文"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    nav = _crumb(html)
+    parts = [
+        f'href="{reverse("manuals:manual_list")}">マニュアル</a>',
+        f'href="{reverse("manuals:manual_detail", args=[manual.pk])}">段取り替えの手順</a>',
+        f'href="{reverse("manuals:manualversion_list", args=[manual.pk])}">版の履歴</a>',
+        'aria-current="page">差分</span>',
+    ]
+    places = [nav.index(part) for part in parts]
+    assert places == sorted(places)
+    assert html.index('<nav aria-label="パンくず"') < html.index('<h1 class="text-3xl font-bold tracking-tight">差分</h1>')
+    url = reverse("manuals:manualversion_restore", args=[version.pk])
+    labels = re.findall(rf'<a [^>]*href="{re.escape(url)}"[^>]*>(.*?)</a>', html, re.S)
+    assert labels == ["版 1 に戻す"]
+
+
+def test_diff_page_crumb_shows_current_title(client_logged_in, manual, user):
+    """題だけを変えた版の差分でも、パンくずのマニュアルの字は今の題。"""
+    services.save_as_version(manual, {"title": "新しい題"}, "", user)
+    version = ManualVersion.objects.get()
+    html = client_logged_in.get(reverse("manuals:manualversion_detail", args=[version.pk])).content.decode()
+    nav = _crumb(html)
+    assert f'href="{reverse("manuals:manual_detail", args=[manual.pk])}">新しい題</a>' in nav

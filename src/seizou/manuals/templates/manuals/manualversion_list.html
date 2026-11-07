@@ -1,7 +1,8 @@
 {% extends "core/base.html" %}
 {% load manuals_tags seizou_icons %}
 {# 版の履歴: 今の版と、「新しい版として保存」で残った前の中身の一覧。行から差分とこの版に戻すへ。表の頭は今の版の行 (図面の版の表と同じ形。日時・保存した人・メモは「—」で、操作は無い)。メモは変える前の中身の版の行に付く。 #}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_detail' object.pk %}">{% icon "arrow-left" "size-4" %}詳細を見る</a>{% endblock %}
+{# 頭: 題の上にパンくず (マニュアル › 題 › この画面。core/detail.html の頭と同じ形)。マニュアルの詳細へはパンくずで戻る (右上に戻るボタンを置かない)。 #}
+{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
 {% block content %}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <div class="flex flex-wrap items-center gap-4">
