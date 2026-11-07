@@ -51,6 +51,8 @@ REPLY_KEYS = {
     "reason",
     "supplier",
 }
+#: 条件付受諾の明細ごとの答えの鍵 (受諾の明細は line_no と reply_type だけ)
+REPLY_LINE_KEYS = {"line_no", "reply_type", "reply_unit_price", "reply_qty", "reply_due_date"}
 
 
 @pytest.fixture

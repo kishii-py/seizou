@@ -21,7 +21,7 @@ from django.db import models
 
 from seizou.connect import services
 from tests.test_connect_acceptance import ACCEPTANCE_KEYS
-from tests.test_connect_reply import REPLY_KEYS
+from tests.test_connect_reply import REPLY_KEYS, REPLY_LINE_KEYS
 from tests.test_connect_send import LINE_KEYS, ORDER_KEYS
 from tests.test_connect_shipping_notice import NOTICE_KEYS
 from tests.test_docs_phrases import BANNED_PHRASES
@@ -34,7 +34,7 @@ CONNECT = ROOT / "src" / "seizou" / "connect"
 #: 種類 → (頭の鍵の組, {並びの鍵: 並びの 1 つの中の鍵の組})。鍵の組は送る関数の試験の定数をそのまま使う (鍵を変えたら、その試験の定数を直す)
 KIND_KEYS = {
     "order": (ORDER_KEYS, {"lines": LINE_KEYS}),
-    "order_reply": (REPLY_KEYS, {}),
+    "order_reply": (REPLY_KEYS, {"lines": REPLY_LINE_KEYS}),
     "shipping_notice": (NOTICE_KEYS, {}),
     "acceptance": (ACCEPTANCE_KEYS, {}),
 }

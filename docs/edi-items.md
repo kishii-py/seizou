@@ -55,7 +55,12 @@ EDI の文書は注文回答です。受けた会社が受信した注文を受�
 | `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | 処理日時 (注文回答 4) | UN01012746 |
 | `order_id` | 元の注文の知らせの番号 | `connect.Inbox.message_id` | uuid (36 字) | `connect.Outbox.message_id` (元の注文を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
 | `order_no` | 元の発注番号 | — (受信した注文の中身の order_no) | 受けた字のまま | `purchasing.PurchaseOrder.po_no` (元の発注を引くだけ) | 35 字 | （ヘッダ参照）注文書ID (注文回答 107) | UN01005580 |
-| `result` | 答え | — (受信した注文の状態) | 下の「注文回答の答え」 | — (発注の状態を「相手が受け入れた」か「断られた」にする) | 下の「注文回答の答え」 | 注文回答タイプコード (注文回答 37) | UN01015497 |
+| `reply_type` | 答え (受諾・条件付受諾・辞退・保留。下の「注文回答の答え」) | `connect.Inbox.reply_type` | 2 字 | `purchasing.PurchaseOrder.reply_type` | 2 字 | 注文回答タイプコード (注文回答 37) | UN01015497 |
+| `lines[].line_no` | 答えた明細の行番号 (条件付受諾のときだけ並ぶ。ほかは空の並び) | — (受信した注文の中身の line_no) | 正の整数 | — (発注の明細の行番号で引く) | 正の整数 | 注文書明細行ID (注文回答) | UN01005585 |
+| `lines[].reply_type` | 明細ごとの答え (受諾・条件付受諾。下の「注文回答の答え」) | — (受け入れの画面で決めた値。JSON の並び) | 2 字 | `purchasing.PurchaseOrderLine.reply_type` | 2 字 | 注文回答明細回答タイプコード (注文回答) | UN01015601 |
+| `lines[].reply_unit_price` | 相手が直した単価 (条件付受諾のとき) | — (受け入れの画面で入れた値) | 整数 12 桁・小数 2 桁 | `purchasing.PurchaseOrderLine.reply_unit_price` | 整数 12 桁・小数 2 桁 | 注文回答単価 (注文回答) | UN01007305 |
+| `lines[].reply_qty` | 相手が直した数量 (条件付受諾のとき) | — (受け入れの画面で入れた値) | 整数 10 桁・小数 2 桁 | `purchasing.PurchaseOrderLine.reply_qty` | 整数 10 桁・小数 2 桁 | 注文回答数量 (注文回答) | UN01006633 |
+| `lines[].reply_due_date` | 相手が直した納期 (条件付受諾のとき。無ければ null) | — (受け入れの画面で入れた値) | 日付 | `purchasing.PurchaseOrderLine.reply_due_date` | 日付 | 回答納入日 (注文回答) | UN01005628 |
 | `supplier_order_no` | 受けた会社の受注番号 (受け入れた時だけ) | `orders.Order.order_no` | 35 字 | — (読まない) | 読まない | 注文回答書番号 (注文回答 30) | UN01006661 |
 | `reason` | 断った理由 (断った時だけ) | `connect.Inbox.reason` | 500 字 | `purchasing.PurchaseOrder.reply_note` | 500 字 | 注文注釈内容 (注文回答 42) | UN01005560 |
 | `supplier.id` | 受けた会社の id | — (会社の置き場の設定) | 決まりなし | — (読まない) | 読まない | 受注者ID (注文回答 60) | UN01005757 |
@@ -110,12 +115,16 @@ EDI の文書は出荷回答です。発注した会社が受け入れた日と�
 
 取引プロセスID の値は付表 2 と本編の字です (付表 4 の取引プロセスID の表は、出荷回答を SMERecievingAdvice と綴っています)。
 
-### 注文回答の答え (result)
+### 注文回答の答え (reply_type)
 
-| result | 意味 | 注文回答タイプコード (UNCL4343) |
+値は中小企業共通 EDI の注文回答タイプコード (UNCL4343) の字そのもの (`core/edi_codes.py`)。明細ごとの答え (`lines[].reply_type`) は注文回答明細回答タイプコードで、同じ字の AP・CA・RE を使う。
+
+| reply_type | 意味 | 注文回答タイプコード (UNCL4343) |
 |---|---|---|
-| `accepted` | 受け入れた | AP (受諾) |
-| `rejected` | 断った | RE (辞退) |
+| `AP` | 受諾 (受け入れた) | AP |
+| `CA` | 条件付受諾 (単価・数量・納期を直して受け入れた。直した明細は `lines[]`) | CA |
+| `RE` | 辞退 (断った) | RE |
+| `AJ` | 保留 (答えを待たせる) | AJ |
 
 ### 単位 (lines[].unit)
 
