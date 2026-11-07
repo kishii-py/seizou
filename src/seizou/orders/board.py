@@ -10,7 +10,8 @@
   ないときだけ (本体の決め 11-06 20:1x。通すの会社は支給材の無い注文が多く、全部の行に札が付くため)。N184。
 - 出荷 (shipping) と納品書は、行のメニューの「納品書を作る」の対象を決めるため、prefetch_for が別の問い合わせで読む (join を足さない)。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
-- 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。
+- 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。枡の字は days_left_label
+  (「n 日遅れ」「今日」「あと n 日」。ダッシュボードの納期アラートと同じ型。W01 の直し 11-07)。
 - 盤の絞り (出荷の残りがある物だけ・納期・納期が過ぎた物だけ) は views.OrderLineListView.filters の宣言 (決め 11-04 17:3x)。
 """
 
@@ -347,6 +348,24 @@ class BoardRow:
         days = calendar.workdays_between(self.today, due, holidays=self.holidays)
         # 休みの日に盤を見ると、前の休みの日の納期は稼働日の数が 0 になる。遅れの行を 0 に見せない
         return min(days, -1) if due < self.today else days
+
+    @cached_property
+    def days_left_label(self) -> str:
+        """「納期まで」の枡の字。ダッシュボードの納期アラート (core/home.html) と同じ型で、数は days_left (稼働日)。
+
+        納期が過ぎていれば「n 日遅れ」、納期が今日なら「今日」、先なら「あと n 日」。days_left が None (納期が無い行・残 0 の行) は
+        空の字 (枡の「—」はテンプレート)。「今日」は暦の日 (納期 = 今日) で決める。納期が先でも間に稼働日が無い日 (土曜に見る
+        日曜の納期・金曜に見る土曜の納期) は「あと 0 日」。稼働日の 0 を「今日」と書くと、暦の日で数えるダッシュボードの
+        「あと 1 日」と食い違うため (W01 の直し 11-07。0 の字は本人が見て直してよい)。
+        """
+        days = self.days_left
+        if days is None:
+            return ""
+        if days < 0:
+            return f"{-days} 日遅れ"
+        if self.line.due_date == self.today:
+            return "今日"
+        return f"あと {days} 日"
 
     @cached_property
     def is_overdue(self) -> bool:

@@ -122,7 +122,7 @@ class OrderLineListView(BaseListView):
         ("order__customer", "得意先"),
         ("item", "部品"),
         ("due_date", "納期"),
-        {"name": "board__days_left", "label": "納期まで", "kind": "number", "sort_key": "due_date"},
+        {"name": "board__days_left", "label": "納期まで (稼働日)", "kind": "number", "sort_key": "due_date"},
         ("qty", "数量"),
         {"name": "shipped_total", "label": "出荷済み", "kind": "number", "sortable": True},
         {"name": "board__acceptance_total", "label": "検収", "kind": "number", "sort_key": "acceptance_total"},
