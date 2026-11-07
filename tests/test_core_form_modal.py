@@ -219,6 +219,35 @@ def test_view_modal_action_row_sticks_to_box_bottom_in_css_source():
         assert declaration in block, declaration
 
 
+def test_input_modal_save_row_sticks_to_box_bottom_in_css_source():
+    """入力の小窓 (core/_form_card.html の in_modal の、欄がある形) の下のボタンの行も、同じ形で箱の下端に留める (M01。画面の直し 15 件の 10)。
+
+    印は行の固定の class seizou-modal-save-row (class は組み立てず、tag を丸ごと書く = R19)。決まりは scripts/css/input.css に 1 か所で、
+    見るだけの小窓の .modal-action と同じ負の bottom と margin-bottom (箱の余白 p-6 と組)。欄の無い小窓の行には付けない。
+    """
+    from pathlib import Path
+
+    import seizou.core
+
+    card = Path(seizou.core.__file__).resolve().parent.joinpath("templates", "core", "_form_card.html").read_text(encoding="utf-8")
+    assert card.count('<div class="seizou-modal-save-row mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">') == 1
+    assert '<div class="flex flex-wrap items-center justify-end gap-2">' in card  # 欄の無い形は今のまま
+    css = Path(__file__).resolve().parents[1].joinpath("scripts", "css", "input.css").read_text(encoding="utf-8")
+    head = "#seizou-modal-box .seizou-modal-save-row {"
+    assert css.count(head) == 1
+    begin = css.index(head)
+    block = css[begin : css.index("}", begin)]
+    for declaration in (
+        "position: sticky;",
+        "bottom: -1.5rem;",
+        "z-index: 1;",
+        "margin-bottom: -1.5rem;",
+        "padding-bottom: 1.5rem;",
+        "background-color: var(--color-base-100);",
+    ):
+        assert declaration in block, declaration
+
+
 # --- 日付の欄の年の上限 (core の IsoDateInput。候補 C31 の 1。初見テストの V39・U41) ---
 # 受注と発注は tests/test_orders_views.py と tests/test_purchasing_stages.py が画面の GET で見る。ここはほかの部品の欄。
 

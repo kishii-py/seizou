@@ -4,10 +4,14 @@ C49 の 1 = 選んでいない tab の字を地の字の 60% にする (scripts/
 C49 の 2 = マニュアルの手順の check の箱を、読むだけの印 (disabled) のまま縁が見える濃さにする (manuals.markdown の CLASSES)。
 C49 の 6 = 淡い札と淡い知らせの字を、daisyUI が同じ色に組にしている濃い字の色にする (決め C49-1 = a。11-06)。
 C49 の 7 = 黄の知らせの頭の三角の印だけを黄のまま残す (決め C49-2 = a。11-06)。
+画面の直し 15 件 (11-07) の 1 = 字に使う意味の色 (.text-error・.text-warning・.text-success・.text-info と、前に修飾の付いた 2 つ) を、
+同じ色に黒を混ぜた色にする (A11Y-03・V1)。比は WCAG の式で計算して見る (白い地と、1 行おきの行と指を乗せた行の灰の地)。
+画面の直し 15 件の 13 = 主色の既定を濃い橙 #C2410C にし (決め 11-07 20:5x)、主色を字に使う所を主色に黒を混ぜた色にする (A11Y-02)。
 元の字 (input.css と CLASSES) を見る試験と、作り直した app.css を見る試験 (名前に built が付く物) を分ける。
 app.css を作り直さずに input.css を直すと、built の試験だけが落ちる。
 """
 
+import math
 import re
 from pathlib import Path
 
@@ -103,3 +107,178 @@ def test_built_css_has_soft_badge_and_alert_rules():
     for selector, needle in SOFT_RULES:
         assert _has_built_rule(rules, selector, needle), selector
     assert _has_built_rule(rules, ".badge-outline.badge-warning", "color:var(--badge-fg)")
+
+
+# --- 字に使う意味の色 (画面の直し 15 件の 1。A11Y-03・V1) ----------------------------------------------------------
+
+#: 字の色の class と、Tailwind が作る選び方の字 (前に修飾の付いた物は app.css の字と同じ)。(input.css の選び方, 混ぜる元の色の変数)
+TONE_TEXT_RULES = (
+    (".text-error,\n.data-\\[over\\=true\\]\\:text-error[data-over=\"true\"]", "--color-error"),
+    (".text-warning,\n.data-\\[tone\\=warning\\]\\:text-warning[data-tone=\"warning\"]", "--color-warning"),
+    (".text-success", "--color-success"),
+    (".text-info", "--color-info"),
+)
+TONE_MIX_RE = re.compile(r"color: color-mix\(in oklab, var\((--color-[a-z]+)\) (\d+)%, black\);")
+THEME_OKLCH_RE = re.compile(r"(--color-[a-z0-9-]+):oklch\(([\d.]+)% ([\d.]+) ([\d.]+)\)")
+WHITE = (1.0, 1.0, 1.0)
+
+
+def _linear(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _gamma(c: float) -> float:
+    c = min(1.0, max(0.0, c))
+    return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def _oklab_to_srgb(lab: tuple[float, float, float]) -> tuple[float, float, float]:
+    big_l, a, b = lab
+    l_ = (big_l + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (big_l - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (big_l - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (
+        _gamma(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_),
+        _gamma(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_),
+        _gamma(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_),
+    )
+
+
+def _srgb_to_oklab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
+    r, g, b = (_linear(c) for c in rgb)
+    l_ = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m_ = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s_ = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    return (
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    )
+
+
+def _oklch_to_srgb(lightness: float, chroma: float, hue: float) -> tuple[float, float, float]:
+    return _oklab_to_srgb((lightness, chroma * math.cos(math.radians(hue)), chroma * math.sin(math.radians(hue))))
+
+
+def mix_with_black(rgb: tuple[float, float, float], percent: int) -> tuple[float, float, float]:
+    """color-mix(in oklab, rgb percent%, black) と同じ計算 (黒は oklab で (0, 0, 0))。"""
+    lab = _srgb_to_oklab(rgb)
+    return _oklab_to_srgb(tuple(c * percent / 100 for c in lab))
+
+
+def contrast(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    """WCAG 2 の比 (1〜21)。"""
+    def lum(rgb):
+        r, g, b = (_linear(round(c * 255) / 255) for c in rgb)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def theme_colors() -> dict[str, tuple[float, float, float]]:
+    """app.css の daisyUI の light の theme の色 (oklch) を sRGB にした物。"""
+    text = APP_CSS.read_text(encoding="utf-8")
+    return {name: _oklch_to_srgb(float(lightness) / 100, float(chroma), float(hue)) for name, lightness, chroma, hue in THEME_OKLCH_RE.findall(text)}
+
+
+def test_input_css_darkens_tone_text_only():
+    """字の class だけを黒に混ぜた色にし、塗りの色の変数 (--color-error など) は変えない。前に修飾の付いた 2 つは同じ規則の中。"""
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    percents = set()
+    for selector, variable in TONE_TEXT_RULES:
+        body = _block(css, selector)
+        match = TONE_MIX_RE.search(body)
+        assert match and match.group(1) == variable, selector
+        percents.add(int(match.group(2)))
+    assert len(percents) == 1  # 4 色で同じ割合
+    for variable in ("--color-error", "--color-warning", "--color-success", "--color-info"):
+        assert f"{variable}:" not in css, variable  # 塗りの色そのものは theme のまま
+
+
+def test_tone_text_contrast_is_at_least_4_5():
+    """混ぜた色と白い地 (base-100)・1 行おきの行 (base-200)・指を乗せた行 (base-300) との比が、4 色とも字の目安 4.5 以上。"""
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    colors = theme_colors()
+    grounds = {"white": WHITE, "base-200": colors["--color-base-200"], "base-300": colors["--color-base-300"]}
+    for selector, variable in TONE_TEXT_RULES:
+        percent = int(TONE_MIX_RE.search(_block(css, selector)).group(2))
+        original = colors[variable]
+        assert contrast(original, WHITE) < 4.5, variable  # 元の色は字には薄い (前提の確かめ)
+        darkened = mix_with_black(original, percent)
+        for name, ground in grounds.items():
+            assert contrast(darkened, ground) >= 4.5, (variable, name, contrast(darkened, ground))
+
+
+def test_built_css_has_tone_text_rules():
+    rules = _built_rules()
+    for head in (".text-error", ".text-warning", ".text-success", ".text-info"):
+        variable = "--color-" + head[len(".text-") :]
+        assert any(sel.startswith(head + ",") or sel == head for sel, body in rules if f"color-mix(inoklab,var({variable})" in body), head
+    for head in (".data-\\[over\\=true\\]\\:text-error[data-over=true]", ".data-\\[tone\\=warning\\]\\:text-warning[data-tone=warning]"):
+        assert any(head in sel and "color-mix(inoklab,var(--color-" in body for sel, body in rules), head
+
+
+# --- 主色の既定と、主色を字に使う所 (画面の直し 15 件の 13。A11Y-02・決め 1) ----------------------------------------------
+
+#: 主色の既定 (本人の決め 11-07 20:5x)。input.css の theme の 1 か所だけに書く (会社の色は base.html の html の style)
+DEFAULT_PRIMARY = "#C2410C"
+OLD_DEFAULT_PRIMARY = "#F57C00"
+#: 2 社の作り物の主色 (examples/companies の brand_color) と既定。字の色の比は 3 つで見る
+PRIMARIES = (DEFAULT_PRIMARY, "#15803d", "#0369a1")
+INK_SELECTOR = ".text-primary,\n.link-primary,\n.aria-\\[current\\=page\\]\\:text-primary[aria-current=\"page\"]"
+INK_MIX_RE = re.compile(r"--seizou-primary-ink: color-mix\(in oklab, var\(--color-primary\) (\d+)%, black\);")
+SELECTED_TAB_BADGE = '.seizou-tabs > .tab:is(.tab-active, [aria-selected="true"], label:has(> input:checked)) > .badge'
+
+
+def _hex(value: str) -> tuple[float, float, float]:
+    value = value.lstrip("#")
+    return tuple(int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _over_white(rgb: tuple[float, float, float], alpha: float) -> tuple[float, float, float]:
+    """主色を alpha で白に重ねた地 (bg-primary/10・選んだタブの件数の 14%)。"""
+    return tuple(c * alpha + 1.0 * (1 - alpha) for c in rgb)
+
+
+def test_default_primary_is_the_dark_orange():
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    theme = css[css.index('name: "light";') : css.index("}", css.index('name: "light";'))]
+    assert f"--color-primary: {DEFAULT_PRIMARY};" in theme
+    assert "--color-primary-content: #ffffff;" in theme
+    assert OLD_DEFAULT_PRIMARY not in css.replace("橙 #F57C00 (白い字との比 2.7", "")  # 前の値は注記にだけ残す
+    assert contrast(_hex(DEFAULT_PRIMARY), WHITE) >= 4.5  # 主のボタンの白い字
+    assert contrast(_hex(OLD_DEFAULT_PRIMARY), WHITE) < 4.5  # 前の橙は足りなかった (前提の確かめ)
+
+
+def test_input_css_puts_primary_ink_on_text_uses_only():
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert INK_MIX_RE.search(_block(css, ":root"))
+    assert "color: var(--seizou-primary-ink);" in _block(css, INK_SELECTOR)
+    assert "color: var(--seizou-primary-ink);" in _block(css, SELECTED_TAB_BADGE)
+    assert "color: var(--color-primary);" not in _block(css, SELECTED_TAB_BADGE)
+    # 指を乗せた link は字の色よりさらに濃い
+    hover = int(re.search(r"var\(--color-primary\) (\d+)%, black", _block(css, ".link-primary:hover")).group(1))
+    assert hover < int(INK_MIX_RE.search(css).group(1))
+    # 主色の地は変えない (ink は background に使わない)
+    assert "background: var(--seizou-primary-ink)" not in css and "background-color: var(--seizou-primary-ink)" not in css
+
+
+def test_primary_ink_contrast_is_at_least_4_5_for_default_and_example_companies():
+    """既定と 2 社の主色で、字の色 (ink) と、白い地・左のメニューの今の画面の地 (主色 10%)・選んだタブの件数の地 (主色 14%) との比が 4.5 以上。"""
+    percent = int(INK_MIX_RE.search(INPUT_CSS.read_text(encoding="utf-8")).group(1))
+    for primary in PRIMARIES:
+        rgb = _hex(primary)
+        ink = mix_with_black(rgb, percent)
+        for name, ground in (("white", WHITE), ("primary/10", _over_white(rgb, 0.10)), ("primary/14", _over_white(rgb, 0.14))):
+            assert contrast(ink, ground) >= 4.5, (primary, name, contrast(ink, ground))
+
+
+def test_built_css_has_default_primary_and_ink_rules():
+    text = APP_CSS.read_text(encoding="utf-8")
+    assert f"--color-primary:{DEFAULT_PRIMARY.lower()}" in text.replace(" ", "").lower()  # 作り直すと hex は小文字になる
+    assert OLD_DEFAULT_PRIMARY.lower() not in text.lower()
+    rules = _built_rules()
+    assert any(":root" in sel and "--seizou-primary-ink:color-mix(inoklab,var(--color-primary)" in body for sel, body in rules)
+    for head in (".text-primary", ".link-primary", ".aria-\\[current\\=page\\]\\:text-primary[aria-current=page]"):
+        assert any(head in sel and "color:var(--seizou-primary-ink)" in body for sel, body in rules), head
+    assert _has_built_rule(rules, ">.badge", "color:var(--seizou-primary-ink)")

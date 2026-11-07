@@ -599,7 +599,7 @@ def test_large_inputs_stay_pages(world):
 #: 欄の格子の字 (格子の行の頭の mt-6 は必須の欄がある form だけに付く形に変わる見込み = 候補 C54 なので、見ない)
 GRID = "grid gap-x-6"
 #: 小窓の下の行 (欄がある form)・小窓の下の行 (見える欄が 0 個の form)・画面の全体の下の行 (C21)
-MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
+MODAL_ROW = '<div class="seizou-modal-save-row mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
 NO_FIELD_ROW = '<div class="flex flex-wrap items-center justify-end gap-2">'
 SAVE_ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
 #: 見える欄が 0 個の 4 つの form (納品書の取消・請求書の取消・入金の取消・注文を送り直す)

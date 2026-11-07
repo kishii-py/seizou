@@ -7,14 +7,16 @@
   themes: light --default;
 }
 
-/* 主色の既定 (会社の brand_color が空のときの土台の色) = 橙 #F57C00、字は白 (本人の決め 11-05 21:0x)。
-   会社の色は base.html が --color-primary を html の style で上書きする。「注意」の色 (warning) は変えない。 */
+/* 主色の既定 (会社の brand_color が空のときの土台の色) = 濃い橙 #C2410C、字は白 (本人の決め 11-07 20:5x。白い字との比 5.2。
+   11-05 21:0x の橙 #F57C00 (白い字との比 2.7 = 主のボタンの字と link が読みにくい A11Y-02) を置き換えた)。
+   会社の色は base.html が --color-primary を html の style で上書きする。「注意」の色 (warning) は変えない。
+   既定の値を変えるときは、ここと tests/test_core_text_contrast.py の DEFAULT_PRIMARY を一緒に直す (ほかの場所には書いていない)。 */
 @plugin "./daisyui-theme.mjs" {
   name: "light";
   default: true;
   prefersdark: false;
   color-scheme: light;
-  --color-primary: #F57C00;
+  --color-primary: #C2410C;
   --color-primary-content: #ffffff;
 }
 
@@ -112,6 +114,21 @@ body > .ts-dropdown [data-select-create]:hover {
   background-color: var(--color-base-200);
 }
 
+/* スマホの欄の字の大きさ (forms-03。画面の直し 15 件の 9。本人の決め 11-07 21:0x)。iOS の Safari は、字が 16px より小さい欄に
+   焦点が移ると画面を拡大する (WebKit の動き。実機は未確認)。幅 639px 以下では、字の欄・選ぶ欄・複数行の欄 (daisyUI の 14px、
+   input-sm は 12px) と、字を打って探す欄の包みと打つ欄 (Tom Select の 13px) の字を 16px にする。欄の高さ (2.5rem) は変えない。
+   層の外の決まりなので、daisyUI の input-sm と utilities の text-xs より強い。Tom Select は部品の CSS (vendor/tom-select.css の
+   .ts-control と .ts-control input の 13px) が app.css より後に読まれるので、上の包みの決まりと同じく .ts-wrapper を頭に付けて詳しさで勝つ。 */
+@media (max-width: 639px) {
+  .input,
+  .select,
+  .textarea,
+  .ts-wrapper .ts-control,
+  .ts-wrapper .ts-control input {
+    font-size: 16px;
+  }
+}
+
 /* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
    2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */
 @keyframes seizou-changed {
@@ -145,7 +162,7 @@ body > .ts-dropdown [data-select-create]:hover {
    箱の下端に留める (C52-1 = b。11-06 22:2x)。中を送っても「閉じる」「詳細を見る」が見えたまま。
    箱 (#seizou-modal-box) は p-6 の余白を持ち、留めるだけだと下の余白から送った中身が透けるので、bottom と margin-bottom を
    余白と同じ -1.5rem にし、padding-bottom で戻して行の地を箱の下端まで伸ばす (箱の余白 p-6 を変えたら、ここの 3 つの値も一緒に直す)。
-   入力の小窓は .modal-action を持たないので当たらない。 */
+   入力の小窓は .modal-action を持たないので当たらない (下の seizou-modal-save-row の決まりが同じ形で留める)。 */
 #seizou-modal-box > .modal-action {
   position: sticky;
   bottom: -1.5rem;
@@ -154,6 +171,20 @@ body > .ts-dropdown [data-select-create]:hover {
   padding-top: 0.75rem;
   padding-bottom: 1.5rem;
   border-top: 1px solid var(--color-base-200);
+  background-color: var(--color-base-100);
+}
+/* 入力の小窓 (core/_form_card.html の in_modal の、欄がある形) の下のボタンの行 (固定の class seizou-modal-save-row) も、上の .modal-action と
+   同じ形で箱の下端に留める (M01。画面の直し 15 件の 10。本人の決め 11-07 21:0x)。スマホ (390×844) で進捗の盤と「現品票を読む」から開く実績の
+   入力の小窓は、中身の高さが箱の高さ (100vh - 4rem = 780px) を超え、「記録する」が箱の外に出て、中を送らないと押せなかった。
+   行は form のカード (p-6・線つき) の最後の子なので、留まる範囲はカードの中身の箱の中。負の bottom と margin-bottom は箱の余白 p-6 と同じ -1.5rem
+   (上の .modal-action と同じ値。箱の余白を変えたら一緒に直す)。行の上の線と余白 (border-t・pt-6) はテンプレートの class のまま。
+   欄の無い小窓 (取消の確かめ) の行は溢れないので、印を付けない。 */
+#seizou-modal-box .seizou-modal-save-row {
+  position: sticky;
+  bottom: -1.5rem;
+  z-index: 1;
+  margin-bottom: -1.5rem;
+  padding-bottom: 1.5rem;
   background-color: var(--color-base-100);
 }
 
@@ -238,6 +269,13 @@ body > .ts-dropdown [data-select-create]:hover {
 @media (hover: hover) {
   .seizou-pin-first tbody > tr.row-hover:hover > :first-child {
     background-color: var(--color-base-200);
+  }
+  /* 生産管理ボードで選んだ行 (data-tone="primary") に指を乗せている間も、止めた 1 列目は主色の薄い地のまま (本人の報告 11-07 20:5x =
+     行を押した直後、ほかの欄は主色の薄い地なのに 1 列目だけ灰のままだった)。上の指を乗せた行の決まり (詳しさ 0,4,2) が選んだ行の決まり
+     (0,3,2) に勝つので、両方を持つ選び方 (0,5,2) で選んだ行の地に戻す。ほかの欄 (tr の utility の data-[tone=primary]:bg-primary/15) は
+     指を乗せても主色の薄い地なので、それに合わせる。 */
+  .seizou-pin-first tbody > tr[data-tone="primary"].row-hover:hover > :first-child {
+    background-color: color-mix(in oklab, var(--color-primary) 15%, var(--color-base-100));
   }
 }
 .seizou-pin-first :is(thead, tfoot) > tr > :first-child {
@@ -454,9 +492,33 @@ form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {
   background: transparent;
   box-shadow: none;
 }
-/* Tab で進んだ欄を、貼り付けた行の上まで送る (96px は見本の 1280×720 と 390×844 で確かめた値)。 */
+/* キーボードの焦点 (A11Y-01・A11Y-05。画面の直し 15 件の 7。本人の決め 11-07 21:0x)。
+   (1) link の焦点の枠: daisyUI は .link:focus で outline を none にし (--tw-outline-style: none)、一覧の行の link が持つ utility の
+   focus-visible:outline-2 は outline-style をその変数から読むので、Tab で着いても枠が出なかった (左のメニューの link のように utility の
+   無い .link には daisyUI の .link:focus-visible の 2px の線が出る)。層の外で solid を直に書く (utility の class を足しても同じ変数を
+   読むので直らない)。色はほかの焦点の枠と同じ主色。
+   (2) Tab や Shift+Tab で移った欄を、上の帯 (core/_topbar.html の sticky・h-16 = 4rem) の下に隠さない。html の scroll-padding-top に
+   帯の高さ + 8px。下の保存の帯がある画面の scroll-padding-bottom は、幅ごとの帯の高さ (上の main:has(.seizou-save-row) と同じ
+   141px・113px・65px) + 8px (前は 96px の 1 つで、幅 640 未満では帯の分に足りなかった)。 */
+.link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+html {
+  scroll-padding-top: calc(4rem + 8px);
+}
 html:has(.seizou-save-row) {
-  scroll-padding-bottom: 96px;
+  scroll-padding-bottom: calc(141px + 8px);
+}
+@media (min-width: 640px) {
+  html:has(.seizou-save-row) {
+    scroll-padding-bottom: calc(113px + 8px);
+  }
+}
+@media (min-width: 64rem) {
+  html:has(.seizou-save-row) {
+    scroll-padding-bottom: calc(65px + 8px);
+  }
 }
 /* 右下の「AI に質問」の丸 (assistant/_panel.html の #assistant-root。窓に対して下から 24px・右から 24px) は、下の帯がある画面では帯の上へ上げる
    (本人の報告 11-07 20:3x: 帯の「保存」と丸が隣り合い、送っても離れない → 20:4x「進めて」)。上げる高さ = 上の main の下の余白に足した帯の高さ
@@ -511,13 +573,54 @@ html:has(.seizou-save-row) #assistant-root {
   color: var(--color-warning);
 }
 
+/* 字に使う意味の色 (A11Y-03・V1。指示書「画面の直し 15 件」の 1。本人の決め 11-07 21:0x「15 件全部」)。daisyUI の error・warning・success・info は
+   塗り (bg-*) のための色で、そのまま字に使うと白い地との比が 赤 2.88・黄 1.76・緑 1.96・青 2.22 と足りない (字の目安 4.5)。
+   字の class (.text-error など) だけを、同じ色に黒を 40% 混ぜた色 (color-mix の 60%) にする。白い地との比は 赤 8.9・黄 6.3・緑 6.8・青 7.4、
+   灰の地 (base-200 = 1 行おきの行・base-300 = 指を乗せた行) でも 5.4 以上 (tests/test_core_text_contrast.py が計算で見る)。
+   塗りの色 (--color-error など = bg-error・btn-error・淡い札・知らせの地) は変えない (塗りと濃い字の組が崩れるため)。
+   前に修飾の付いた class (data-[tone=warning]:text-warning = 出荷の数量が残りを超えた時の欄の下の字、data-[over=true]:text-error = 進捗の盤の
+   作り過ぎ) は、Tailwind が作る選び方と同じ字で書く。層の外の決まりなので utilities の規則より強い。 */
+.text-error,
+.data-\[over\=true\]\:text-error[data-over="true"] {
+  color: color-mix(in oklab, var(--color-error) 60%, black);
+}
+.text-warning,
+.data-\[tone\=warning\]\:text-warning[data-tone="warning"] {
+  color: color-mix(in oklab, var(--color-warning) 60%, black);
+}
+.text-success {
+  color: color-mix(in oklab, var(--color-success) 60%, black);
+}
+.text-info {
+  color: color-mix(in oklab, var(--color-info) 60%, black);
+}
+
+/* 主色を字に使う所の色 (A11Y-02。画面の直し 15 件の 13。本人の決め 11-07 20:5x)。主色は主のボタンの地 (白い字) に合わせて決めるので、
+   字の色にそのまま使うと、会社の色しだいで比が足りない (緑 #15803d は、左のメニューの今の画面 (主色 10% の地) で 4.37・選んだタブの件数
+   (主色 14% の地) で 4.14。字の目安 4.5)。主色に黒を 25% 混ぜた色 (--seizou-primary-ink) を、字に使う所 (.text-primary・.link-primary・
+   左のメニューの今の画面 aria-[current=page]:text-primary・下の選んだタブの件数) に当てる。既定の濃い橙と 2 社の緑と青では、白い地で 9 前後、
+   主色 10%・14% の地でも 7 以上 (tests/test_core_text_contrast.py が計算で見る)。主色の地 (bg-primary・btn-primary) と枠・下線の色は変えない。
+   link の指を乗せた色は、daisyUI の .link-primary:hover (主色の 80% + 黒) より濃い 60% にし、濃くした字からさらに濃くなる動きを残す。
+   :root に置くので、会社の色 (base.html の html の style の --color-primary) をそのまま混ぜる。層の外の決まりなので utilities と daisyUI の規則より強い。 */
+:root {
+  --seizou-primary-ink: color-mix(in oklab, var(--color-primary) 75%, black);
+}
+.text-primary,
+.link-primary,
+.aria-\[current\=page\]\:text-primary[aria-current="page"] {
+  color: var(--seizou-primary-ink);
+}
+.link-primary:hover {
+  color: color-mix(in oklab, var(--color-primary) 60%, black);
+}
+
 /* タブの形 (本人の決め 11-07 16:5x = 横いっぱいの線の上にタブを置く形。受け渡しの seizou-タブの参考-20261107/指示書.md)。
    タブを地面の字でなく押せる物に見せ、全部の画面 (一覧の絞り core/_presets.html・フィードバック feedback/_tabs.html・詳細の区分 core/detail.html)
    で同じ形にするため。daisyUI の tabs に重ねて付ける (tabs-border・tabs-box の代わり)。選んでいない tab の字の色は上の C49 の規則 (60%) のまま。
    行の下に 1px の線 (base-300): link のタブ (a。中身の箱を持たない) は箱の下の辺に、radio のタブ (label + tab-content) は中身の箱の上の辺に引く。
    選んだタブ (tab-active・aria-selected・checked の radio を持つ label) は濃い字・太さ 700・2px の主色の下線 (margin-bottom: -1px で線に重ねる。
    tab を手前 (z-index) に置くのは、中身の箱の上の線に下線を隠されないため)。指を乗せたタブは濃い字と 2px の base-300 の下線。
-   件数の箱 (badge) は角 6px・地 base-200・字 70%・太さ 600。選んだタブの件数だけ、地を主色の 14%・字を主色にする。狭い幅の並び方 (折り返し) は daisyUI のまま。 */
+   件数の箱 (badge) は角 6px・地 base-200・字 70%・太さ 600。選んだタブの件数だけ、地を主色の 14%・字を主色の濃い色 (上の --seizou-primary-ink。A11Y-02) にする。狭い幅の並び方 (折り返し) は daisyUI のまま。 */
 .seizou-tabs {
   align-items: stretch;
 }
@@ -557,7 +660,7 @@ html:has(.seizou-save-row) #assistant-root {
 }
 .seizou-tabs > .tab:is(.tab-active, [aria-selected="true"], label:has(> input:checked)) > .badge {
   background: color-mix(in oklab, var(--color-primary) 14%, transparent);
-  color: var(--color-primary);
+  color: var(--seizou-primary-ink);
 }
 
 /* 画面の頭の白い帯 (core/base.html の data-screen-head。本人の決め 11-07 17:0x = 形 A)。題の無い画面で帯の中に要素が 1 つも無いときは帯ごと隠す
