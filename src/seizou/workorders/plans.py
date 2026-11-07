@@ -451,19 +451,28 @@ def projection_chart(projection):
     ticks = []
     value = bottom
     while value <= top:
-        ticks.append({"y": _num(y_of(value)), "label": f"{int(value):,}"})
+        tick_y = y_of(value)
+        ticks.append({"y": _num(tick_y), "top": _num(tick_y * 100 / _CHART_HEIGHT), "label": f"{int(value):,}"})
         value += step
-    labels = [
-        {"x": _num(_CHART_LEFT + band * index), "label": f"{day['date'].month}/{day['date'].day}"}
-        for index, day in enumerate(days)
-        if index % 7 == 0
-    ]
+    labels = []
+    for index, day in enumerate(days):
+        if index % 7 == 0:
+            label_x = _CHART_LEFT + band * index
+            labels.append(
+                {
+                    "x": _num(label_x),
+                    "left": _num(label_x * 100 / _CHART_WIDTH),
+                    "label": f"{day['date'].month}/{day['date'].day}",
+                }
+            )
+    tick_label_x = _CHART_LEFT - 6
     return {
         "width": _CHART_WIDTH,
         "height": _CHART_HEIGHT,
         "left": _num(_CHART_LEFT),
         "right": _num(_CHART_RIGHT),
-        "tick_label_x": _num(_CHART_LEFT - 6),
+        "tick_label_x": _num(tick_label_x),
+        "tick_label_right": _num((_CHART_WIDTH - tick_label_x) * 100 / _CHART_WIDTH),
         "label_y": _num(_CHART_LABEL_Y),
         "ticks": ticks,
         "up": up,

@@ -59,22 +59,28 @@
   </ul>
   {# 8 週ずっと 0 のとき、図は薄い線だけの箱になるので、0 だと字で書く (up と down は 0 の日を除いた棒の列。両方が空 = 56 日とも 0)。 #}
   {% if not outlook.chart.up and not outlook.chart.down %}<p class="mt-2 text-xs text-base-content/70">今日から 8 週、見込みの在庫はずっと 0 です。</p>{% endif %}
-  <svg id="plan-stock-chart" class="mt-2 block h-auto w-full max-w-md" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
-    <title>在庫の見込み (今日から 8 週)</title>
-    {% for tick in outlook.chart.ticks %}
-    <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
-    <text class="fill-base-content/70 text-xs" x="{{ outlook.chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
-    {% endfor %}
-    {% for bar in outlook.chart.up %}
-    <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
-    {% endfor %}
-    {% for bar in outlook.chart.down %}
-    <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
-    {% endfor %}
-    {% for label in outlook.chart.labels %}
-    <text class="fill-base-content/70 text-xs" x="{{ label.x }}" y="{{ outlook.chart.label_y }}" text-anchor="start">{{ label.label }}</text>
-    {% endfor %}
-  </svg>
+  <div class="relative mt-2 max-w-md">
+    <svg id="plan-stock-chart" class="block h-auto w-full max-w-md" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
+      <title>在庫の見込み (今日から 8 週)</title>
+      {% for tick in outlook.chart.ticks %}
+      <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+      {% endfor %}
+      {% for bar in outlook.chart.up %}
+      <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+      {% endfor %}
+      {% for bar in outlook.chart.down %}
+      <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+      {% endfor %}
+    </svg>
+    <div class="text-xs text-base-content/70 tabular-nums" aria-hidden="true">
+      {% for tick in outlook.chart.ticks %}
+      <span class="absolute whitespace-nowrap" style="top: {{ tick.top }}%; right: {{ outlook.chart.tick_label_right }}%; transform: translateY(-50%)">{{ tick.label }}</span>
+      {% endfor %}
+      {% for label in outlook.chart.labels %}
+      <span class="absolute bottom-0 whitespace-nowrap" style="left: {{ label.left }}%">{{ label.label }}</span>
+      {% endfor %}
+    </div>
+  </div>
   {% with projection=outlook.projection %}
   <p class="mt-2 text-xs text-base-content/70">今の在庫 {% if projection.counted %}{{ projection.current|comma }}{% else %}— (数えていないので 0 から){% endif %}・指示書 {{ projection.workorders }} 件 (+{{ projection.workorder_qty|comma }})・受注 {{ projection.lines }} 件 (−{{ projection.line_qty|comma }})</p>
   {% if projection.undated %}<p class="mt-1 text-xs text-base-content/50">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
