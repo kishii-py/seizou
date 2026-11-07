@@ -10,7 +10,7 @@
   つながりがあれば connect.services.send_order を呼ぶ。相手への HTTP は atomic の外 (R17)。
 - 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
-- 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
+- 受入は receive。受入の金額は masters.services.delivery_amount (一式は全部を受け入れた回で全額)。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
 - 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
@@ -28,7 +28,8 @@ from django.utils import timezone
 
 from seizou.core import edi_codes
 from seizou.core.services import next_number
-from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis, round_amount
+from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
+from seizou.masters.services import PRICE_BASIS_LUMP, delivery_amount, reaches_line_qty
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
@@ -396,7 +397,8 @@ def resend_purchase_order(purchase_order, user):
 
 
 def receive(line, qty, received_on, user, *, note=""):
-    """発注の明細に受入を 1 件入れる。金額は 受け入れた数 × 明細の単価 を発注の取引先の方法で丸める (R03 の形)。
+    """発注の明細に受入を 1 件入れる。金額は masters.services.delivery_amount (部品の単位は受け入れた数 × 明細の単価を発注の取引先の方法で丸める (R03 の形)。
+    一式の明細は、明細の受入の合計を数量の手前から数量以上にした回で、その明細に金額の載った受入がまだ無ければ一式の全額、ほかの回は 0 = 決め PRICE-1c)。
 
     断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
     受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る。
@@ -406,6 +408,11 @@ def receive(line, qty, received_on, user, *, note=""):
     相手と話す・発注を直す仕事を一覧とタブから消さないため)。
     seizou どうしで送った発注なら、atomic を抜けた後に検収を相手へ送り、送った後の列を持つ受入を返す
     (送れなくても例外にしない。受入は成立する)。
+    金額が 0 の受入も、受入日 (received_on) と受け入れた数は残る (取適法 (2026-01-01 施行。旧下請法) の代金の支払期日は物を受け取った日から
+    数えるので、受け取った記録は金額に依らず残す。分けて受け取った一式の起算の日は未確認。確かめた資料 = 中小企業共通 EDI インボイス仕様編
+    Ⅰ.Ⅲ「インボイス以外の改定」。公正取引委員会の一次資料は未読)。
+    訳: 一式の発注を分けて受け入れたとき、全部を受け入れた回で一式の全額を載せ、それまでの回は 0 円にするため (請求書の出荷と同じ決まり)。出所 = 作者の決め PRICE-1c (発注の受入も同じ)。
+    変えてよい条件 = 作者が一式の金額を載せる時を決め直したとき。前提: 一部でも受け入れた明細の単価の単位は変わらない (発注の変更は一部でも出した明細の単価と単価の単位を直さない = 決め EDIT-2)。この前提が変わるときは、金額の載った受入の見方を印の列に替える。
     """
     qty = _dec(qty)
     with transaction.atomic():
@@ -417,11 +424,16 @@ def receive(line, qty, received_on, user, *, note=""):
         if not qty > 0:
             raise ValueError("受け入れられません。数量が 0 以下です。数量は 0 より大きい数にしてください。")
         current = PurchaseOrderLine.objects.select_related("purchase_order", "item").get(pk=line.pk)
+        # 一式の明細は、全部を受け入れた回で一式の全額、ほかの回は 0 (決め PRICE-1c)。受入は金額を受入の時に残すので、
+        # 金額の載った受入があれば全額は載せ終えている。発注の行の錠の中で数えるので、2 人が同時に受け入れても全額は 1 回。
+        done = received_qty(current)
+        booked = current.price_basis == PRICE_BASIS_LUMP and current.receipts.filter(amount__gt=0).exists()
+        completes = not booked and reaches_line_qty(current.qty, done, qty)
         receipt = Receipt.objects.create(
             line=current,
             received_on=received_on,
             qty=qty,
-            amount=round_amount(locked.partner, qty * current.unit_price),
+            amount=delivery_amount(locked.partner, qty, current.unit_price, current.price_basis, completes=completes),
             note=note or "",
             received_by=user if getattr(user, "pk", None) is not None else None,
         )

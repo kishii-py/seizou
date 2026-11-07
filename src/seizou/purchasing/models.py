@@ -2,7 +2,7 @@
 
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 金額は purchasing.services が数量 × 単価 (単価の単位が式なら単価のまま) を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
-受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
+受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く (一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。決め PRICE-1c)。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 """
@@ -168,7 +168,7 @@ class PurchaseOrderLine(models.Model):
 class Receipt(models.Model):
     """受入。協力企業から受け入れた物の記録。発注の明細ごとに何回でも入れられる (分納)。
 
-    金額は purchasing.services が 受け入れた数 × 明細の単価 を発注の取引先の方法で丸めて書く (DB で計算しない)。
+    金額は purchasing.services が 受け入れた数 × 明細の単価 を発注の取引先の方法で丸めて書く (DB で計算しない。一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。決め PRICE-1c)。
     列の名前を amount にするのは、金額の閲覧の無い人に土台が「—」を出すため (access.is_money_name)。
     """
 
