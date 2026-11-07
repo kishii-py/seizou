@@ -3,6 +3,7 @@
 # 版を出すときに、その版の src/seizou/*/migrations/0*.py を足す。tests/test_released_migrations.py が、一覧の全部がまだあることを確かめる。
 accounts/0001_initial.py
 accounts/0002_wording_20261107.py
+assistant/0001_initial.py
 attachments/0001_initial.py
 billing/0001_initial.py
 billing/0002_payment.py
@@ -10,6 +11,7 @@ billing/0003_wording_20261107.py
 billing/0004_c107_invoiceline_order_line.py
 billing/0005_c107_invoiceline_lump.py
 billing/0006_c107_payment_shipment.py
+billing/0007_n357_invoice_snapshot.py
 bookmarks/0001_initial.py
 connect/0001_initial.py
 connect/0002_inbox_order.py
@@ -47,6 +49,7 @@ feedback/0005_feedbackreply.py
 intake/0001_initial.py
 intake/0002_extraction_watch.py
 intake/0003_wording_received_orders.py
+intake/0004_extraction_order_date_amount.py
 manuals/0001_initial.py
 masters/0001_initial.py
 masters/0002_partner_role_label.py
