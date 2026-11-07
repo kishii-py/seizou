@@ -227,6 +227,16 @@ def test_login_page_after_timeout_is_not_redirected_again(signed_in, clock):
     assert signed_in.get(reverse("core:login")).status_code == 200
 
 
+def test_logout_after_timeout_goes_to_login_without_next(signed_in, clock):
+    """切れた後にログアウトを押すと、ログインの画面へ next 無しで 302 (ログインの後に /logout/ を GET して 405 にならない)。"""
+    clock.advance(2 * HOUR + 1)
+    response = signed_in.post(reverse("core:logout"))
+
+    assert response.status_code == 302
+    assert "next=" not in response["Location"]
+    assert SESSION_KEY not in signed_in.session
+
+
 def test_base_html_marks_polling_requests():
     text = (ROOT / "src/seizou/core/templates/core/base.html").read_text(encoding="utf-8")
 

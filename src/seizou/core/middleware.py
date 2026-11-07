@@ -299,6 +299,7 @@ class SessionTimeoutMiddleware:
       開発機の自動ログイン・session を使わない口)。切れた後の要求も、logout が session を空にしたので何もしない。
     - ログインの時刻と最後の操作の時刻が session に無ければ、今の時刻を書く (ログインの直後の最初の要求と、この版より前の session)。
     - 切れたら logout し、LOGIN_URL へ 302 を返す (next は開いた道)。ログインの画面の要求は、logout だけして先へ通す (302 を重ねない)。
+      ログアウトの要求も同じ (切れた後に押したログアウトを next に持たせると、ログインの後の GET /logout/ が 405 になるため)。
     - 切れていなければ、取り直しの要求 (見出し X-Seizou-Poll が 1) でなく、最後の操作の時刻から TOUCH_SECONDS 以上たっていれば、
       最後の操作の時刻を今にする (書き込みを 5 分に 1 回にする。操作しない間の時間は、最後の本当の操作から最大 5 分早く切れる)。
     - 同じ人がログアウトせずにもう 1 度ログインすると、Django の login は session の中身を残すので、ログインの時刻は前のまま (早く切れる側)。
@@ -328,7 +329,7 @@ class SessionTimeoutMiddleware:
         idle_seconds, max_seconds = conf.session_limits()
         if now - seen_at > idle_seconds or now - login_at > max_seconds:
             logout(request)
-            if urlsplit(request.path).path == urlsplit(_login_url()).path:
+            if urlsplit(request.path).path in (urlsplit(_login_url()).path, resolve_url("core:logout")):
                 return self.get_response(request)
             return redirect_to_login(request.get_full_path())
         if request.headers.get(POLL_HEADER) != "1" and now - seen_at >= TOUCH_SECONDS:
