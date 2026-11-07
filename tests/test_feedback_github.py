@@ -373,7 +373,7 @@ def test_sync_marks_closed_issue_fixed(manager, plain, fake):
 
     counts = services.sync_github(manager)
 
-    assert counts == {"見た": 2, "直した": 1, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 0}
+    assert counts == {"見た": 2, "直した": 1, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 0, "返事": 0}
     closed.refresh_from_db()
     still.refresh_from_db()
     other.refresh_from_db()
@@ -388,7 +388,7 @@ def test_sync_counts_unreadable_and_refuses_non_manager(manager, plain, fake):
     make(plain, status="sent", sent_url="https://github.com/example-owner/example-repo/issues/99")
     with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
         services.sync_github(plain)
-    assert services.sync_github(manager) == {"見た": 1, "直した": 0, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 1}
+    assert services.sync_github(manager) == {"見た": 1, "直した": 0, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 1, "返事": 0}
 
 
 # ---------------------------------------------------------------- 画面とボタン
@@ -641,7 +641,7 @@ def test_sync_command_needs_no_manager(plain, fake):
 
     call_command("seizou_feedback_sync", stdout=out)
 
-    assert out.getvalue().strip() == "GitHub を見ました: 見た 1 件・直した 1 件・見送った 0 件・版待ち 0 件・版の印なし 0 件・読めなかった 0 件"
+    assert out.getvalue().strip() == "GitHub を見ました: 見た 1 件・直した 1 件・見送った 0 件・版待ち 0 件・版の印なし 0 件・読めなかった 0 件・返事 0 件"
     row.refresh_from_db()
     assert row.status == "fixed"
     assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
@@ -964,7 +964,7 @@ def test_device_screen_hides_section_when_connected(client, manager, fake, clien
 # ---------------------------------------------------------------- 閉じた理由と直る版 (依頼書 N322。決め 11-07 09:0x〜09:4x)
 
 #: 取り込みの返す物の鍵 (順もこれ)
-SYNC_KEYS = ["見た", "直した", "見送った", "版待ち", "版の印なし", "読めなかった"]
+SYNC_KEYS = ["見た", "直した", "見送った", "版待ち", "版の印なし", "読めなかった", "返事"]
 
 
 def closed_issue(reason, milestone=None, closed_at="2026-11-06T03:00:00Z", url=ISSUE_URL):
@@ -1129,7 +1129,7 @@ def six_kinds(plain, fake):
     fake.issues[12] = Answer(200, {"state": "open", "closed_at": None, "html_url": f"{base}12"})
 
 
-SIX_LINE = "GitHub を見ました: 見た 6 件・直した 1 件・見送った 1 件・版待ち 1 件・版の印なし 1 件・読めなかった 1 件"
+SIX_LINE = "GitHub を見ました: 見た 6 件・直した 1 件・見送った 1 件・版待ち 1 件・版の印なし 1 件・読めなかった 1 件・返事 0 件"
 
 
 def test_sync_command_writes_six_numbers(plain, fake, version):
