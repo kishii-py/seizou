@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import choose, login, menu_link, new_order, seed_name, shot, unique_mark
+from .conftest import choose, login, menu_link, new_order, seed_name, shot, unique_mark, row_menu_list
 
 PART_NO = "WK-1001"
 CUSTOMER_CODE = "C001"
@@ -85,7 +85,7 @@ NEXT_FRAMES = "() => new Promise(resolve => requestAnimationFrame(() => requestA
 
 def _menu_links_readable(page, row) -> list[str]:
     """開いた行のメニューの項目 (a) が全部、左のメニューの右にあり、真ん中の点の一番上がその項目であることを見る。字を返す。"""
-    links = row.locator("details.row-menu[open] ul li a")
+    links = row_menu_list(page).locator("li a")
     expect(links.first).to_be_visible()
     sidebar_right = page.locator("aside", has=page.locator("nav")).first.evaluate("aside => aside.getBoundingClientRect().right")
     texts = []

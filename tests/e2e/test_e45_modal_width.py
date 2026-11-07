@@ -13,7 +13,7 @@
 
 from playwright.sync_api import expect
 
-from .conftest import login, new_order, seed_name, shot, unique_mark
+from .conftest import login, new_order, seed_name, shot, unique_mark, row_menu_list
 
 PART_NO = "WK-1001"
 NARROW_OLD_PX = 600  # 前の箱の幅 (max-w-lg = 32rem = 512px) より広く、既定の 48rem (768px) より狭い線
@@ -58,7 +58,7 @@ def test_e45_modal_box_width_and_gap(page_a, company_a):
     menu.scroll_into_view_if_needed()
     page_a.evaluate(NEXT_FRAMES)
     menu.click()
-    row.get_by_role("link", name="出荷する").click()
+    row_menu_list(page_a).get_by_role("link", name="出荷する").click()
     box = _open_box(page_a)
     form_width = box.bounding_box()["width"]
     assert form_width > view_width, f"入力の小窓 ({form_width}px) が見るだけの小窓 ({view_width}px) より広くない"

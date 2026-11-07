@@ -14,7 +14,7 @@ import re
 
 from playwright.sync_api import expect
 
-from .conftest import login, shot
+from .conftest import login, shot, row_menu_list
 from .conftest import new_order, seed_name, unique_mark
 
 PART_NO = "WK-1001"
@@ -78,7 +78,7 @@ def test_e05_part_modal_from_shipment_form(page_a, company_a):
     row.scroll_into_view_if_needed()
     page_a.evaluate(NEXT_FRAMES)
     row.locator('summary[aria-label="行の操作"]').click()
-    entry = row.get_by_role("link", name="出荷する")
+    entry = row_menu_list(page_a).get_by_role("link", name="出荷する")
     form_path = entry.get_attribute("href")
     entry.click()
     modal = page_a.locator("#seizou-modal")

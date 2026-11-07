@@ -16,7 +16,7 @@
 
 from playwright.sync_api import expect
 
-from .conftest import login, new_order, seed_name, shot, unique_mark
+from .conftest import login, new_order, seed_name, shot, unique_mark, row_menu_list
 
 CUSTOMER_CODE = "C001"
 PART_NO = "WK-1001"
@@ -49,7 +49,7 @@ def test_e57_tab_kept_after_modal_save(page_a, company_a):
     row.scroll_into_view_if_needed()
     page_a.evaluate(NEXT_FRAMES)
     row.locator('summary[aria-label="行の操作"]').click()
-    row.get_by_role("link", name="出荷する").click()
+    row_menu_list(page_a).get_by_role("link", name="出荷する").click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
     box = page_a.locator("#seizou-modal-box")
     box.locator("input[name=qty]").fill("3")

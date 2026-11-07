@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
-from .conftest import choose
+from .conftest import choose, row_menu_list
 from .conftest import fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
@@ -126,7 +126,7 @@ def test_e12_remaining_beside_qty(page_a, company_a):
     row.scroll_into_view_if_needed()
     page_a.evaluate(NEXT_FRAMES)
     row.locator('summary[aria-label="行の操作"]').click()
-    row.get_by_role("link", name="出荷する").click()
+    row_menu_list(page_a).get_by_role("link", name="出荷する").click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
     box = page_a.locator("#seizou-modal-box")
     help_text = box.locator("#id_qty_helptext")
