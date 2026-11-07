@@ -701,7 +701,7 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
             for pk, (qty, unit_price, due_date, line_note, flags) in changes.items():
                 current = live[pk]
                 current.qty, current.unit_price, current.due_date, current.note = qty, unit_price, due_date, line_note
-                current.amount = round_amount(partner, qty * unit_price)
+                current.amount = line_amount(partner, qty, unit_price, current.price_basis)  # 一式の行は単価のまま (C99 の式)
                 if any(flags):
                     current.line_status_code = edi_codes.LINE_CHANGED
                     current.line_status_reason_code = _reason_code(*flags)
