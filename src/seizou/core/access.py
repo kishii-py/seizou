@@ -61,7 +61,7 @@ KIND_LABELS = {
 #: 種類の中身の注記 (アカウントの入力の画面の check の字に添える)
 KIND_NOTES = {
     "items": "部品・標準の工程・図面・取引先ごとの品番",
-    "orders": "受信した注文の受け入れと断り・注文書の読み取りを含む",
+    "orders": "受信した注文の受け入れ・条件付の受け入れ・保留・断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
 }
@@ -102,6 +102,8 @@ _KIND_ACTIONS = {
         "orders.cancel_order",
         "connect.accept",
         "connect.reject",
+        "connect.accept_with_conditions",
+        "connect.hold",
         "intake.extract_order",
         "intake.accept_extracted",
     ),

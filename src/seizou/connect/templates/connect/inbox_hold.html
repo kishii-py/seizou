@@ -1,0 +1,10 @@
+{% extends "core/form.html" %}
+{% load seizou_tags connect_tags %}
+{% block content %}
+{# 注文を保留する (中小企業共通 EDI の保留の項目を元にした): 上に届いた明細 (相手の品番のまま)、下に欄の無い入力のカード (「保留する」のボタンだけ)。 #}
+{# 入口が直接の行だけ開く (読み取りの行は 404 = connect/views.py の get_queryset)。同じ注文番号の知らせは受け入れの画面と同じ。 #}
+{% same_order_notice object as same %}{% if same %}<div class="mb-6 flex flex-wrap items-center gap-2">{% include "connect/_same_order_notice.html" %}</div>{% endif %}
+{% include "connect/_inbox_order_box.html" %}
+<p class="mb-6 text-sm text-base-content/70">保留すると、受注は作らずに、相手へ「保留」と返します。答えが決まったら、受信した注文の詳細から受け入れるか断ります。</p>
+{{ block.super }}
+{% endblock %}
