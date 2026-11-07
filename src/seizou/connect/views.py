@@ -12,7 +12,7 @@ class の中で上書きするのは、約束の名前 (model・ordering・colum
 
 from django.db.models import Case, IntegerField, OuterRef, Subquery, Value, When
 from django.db.models.fields.json import KT
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -34,10 +34,17 @@ def _sender_choices():
 @csrf_exempt
 @require_POST
 def receive_order(request):
-    """注文のデータを受ける。通れば 200 (同じ番号の 2 回目も同じ 200)、断れば 400。"""
+    """注文のデータを受ける。通れば 200 (同じ番号の 2 回目も同じ 200)、断れば 400。
+
+    会話の添付を取りに来た要求 (kind = chat_file) で、返してよい添付 (services.ChatFileGrant) なら、200 でファイルの中身を返す
+    (アクセス制御は services._receive_chat_file_request。署名の確かめは receive。ファイル名は元の名前、形式は表の値)。
+    """
     result = services.receive(request.body, request.headers)
     if isinstance(result, str):
         return JsonResponse({"status": "rejected", "message": result}, status=400)
+    if isinstance(result, services.ChatFileGrant):
+        chat_file = result.chat_file
+        return FileResponse(chat_file.file.open("rb"), as_attachment=True, filename=chat_file.name, content_type=chat_file.mime)
     return JsonResponse({"status": "received", "id": str(result.message_id)}, status=200)
 
 

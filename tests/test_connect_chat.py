@@ -372,8 +372,8 @@ def test_receive_refuses_unreadable_chat_messages(monkeypatch, user, subcontract
     assert other == services.MESSAGE_CHAT_OTHER_PARTNER
     assert not ChatMessage.objects.exists()
 
-    # 後の版が足す鍵 (attachments など) は読み捨てて、言葉は受ける。author は 100 字で切る
-    msg_id, raw = _chat_raw(order_id, attachments=[{"id": "x"}], author="名" * 120)
+    # 後の版が足す鍵は読み捨てて、言葉は受ける。author は 100 字で切る (添付の鍵 attachments の形は tests/test_connect_chat_files.py)
+    msg_id, raw = _chat_raw(order_id, later_key={"id": "x"}, author="名" * 120)
     receipt = services.receive(raw, signing.headers_for(order_secret, msg_id, raw))
     assert isinstance(receipt, services.ChatReceipt)
     assert receipt.chat_message.inbox == inbox
@@ -401,12 +401,11 @@ def test_add_view_saves_in_modal_and_on_the_full_page(monkeypatch, client, user,
     assert response.status_code == 204
     assert json.loads(response["HX-Trigger"]) == {"seizou:saved": {"message": "相手に送りました。", "level": "success"}}
 
-    # 空の言葉は小窓の形の入力のカードを 200 で返し (小窓の上の赤い帯)、行を作らない
+    # 空の言葉 (添付も無い) は小窓の形の入力のカードを 200 で返し (小窓の上の赤い帯)、行を作らない
     response = client.post(url, _form(po, "   "), headers=MODAL)
     assert response.status_code == 200
     html = response.content.decode()
-    assert "「言葉」の欄に誤りがあります。" in html
-    assert "言葉を書いてください。" in html
+    assert "送れません。" in html and "言葉か添付がありません。" in html
     assert ChatMessage.objects.filter(direction=ChatMessage.DIRECTION_SENT).count() == 1
 
     # 画面の全体の POST は next の詳細へ 302 で、次の GET に右上の知らせ

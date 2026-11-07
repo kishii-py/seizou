@@ -5,22 +5,23 @@
 {# 言葉の並びは 5 秒ごとと seizou:refresh で同じ画面を取り直して入れ替える (attachments/_panel.html と同じ形)。見えている時だけ取り直す (offsetParent。タブを選んでいない間は取りに行かない)。5 秒にしたのは、受注の詳細は 1 回の表示の問い合わせが多いため。 #}
 {# 自社が書いた物は右 (主色)、相手から届いた物は左で丸の印は会社の絵。吹き出しの下 (connect/_chat_footer.html) に届いたか・届いていない訳と「送り直す」。 #}
 {# 書く欄は並びの取り直しの外に置く (書いている字が取り直しで消えないため)。送ると入力の土台 (connect:chatmessage_add) が小窓の形で受け、保存できたら 204 と seizou:saved (右上の知らせ・seizou:refresh で並びを取り直す)・欄を空にする。止まったら入力のカードを小窓に入れて開く (小窓の上の赤い帯と欄の下の赤い字)。JS の無いときは画面の全体で保存して next の詳細へ戻る。 #}
+{# 添付 (その 2) は 1 回に 1 つ。添付のある言葉は吹き出しの中に添付の行 (connect/_chat_files.html → connect/_chat_file.html。受け手は開いた時に取りに行く)。小窓で直すときはファイルを選び直す。 #}
 {# 使えない取引 (CHAT-2) は欄とボタンを押せない形。部署の門で会話に書く画面を開けない人には、欄の代わりに 1 行 (読むのはできる)。 #}
 {% chat_panel chat_target request.user as chat %}
 <div class="flex flex-col gap-4" data-chat-panel>
   {% if chat.reason %}<div class="alert alert-warning alert-soft" role="status">{% icon "alert" "size-5" %}<span>{{ chat.reason }}</span></div>{% endif %}
   <div id="chat-messages" class="flex flex-col gap-1" hx-get="{{ request.path }}" hx-trigger="every 5s [this.offsetParent !== null], seizou:refresh from:body" hx-select="#chat-messages" hx-target="this" hx-swap="outerHTML">
-    {% for row in chat.rows %}{% if row.message.direction == "sent" %}{% include "core/_chat_bubble.html" with who="me" text=row.message.body header=row.header footer="connect/_chat_footer.html" message=row.message only %}{% else %}{% include "core/_chat_bubble.html" with who="partner" icon="building" text=row.message.body header=row.header only %}{% endif %}
+    {% for row in chat.rows %}{% if row.message.direction == "sent" %}{% if row.message.files.all %}{% include "core/_chat_bubble.html" with who="me" text=row.message.body header=row.header footer="connect/_chat_footer.html" extra="connect/_chat_files.html" message=row.message only %}{% else %}{% include "core/_chat_bubble.html" with who="me" text=row.message.body header=row.header footer="connect/_chat_footer.html" message=row.message only %}{% endif %}{% else %}{% if row.message.files.all %}{% include "core/_chat_bubble.html" with who="partner" icon="building" text=row.message.body header=row.header extra="connect/_chat_files.html" message=row.message only %}{% else %}{% include "core/_chat_bubble.html" with who="partner" icon="building" text=row.message.body header=row.header only %}{% endif %}{% endif %}
     {% empty %}{% if not chat.reason %}<p class="text-sm text-base-content/70">まだ言葉はありません。下の欄に書いて「送る」を押すと、相手の seizou に届きます。</p>{% endif %}{% endfor %}
   </div>
   {% if chat.reason or chat.can_write %}
-  <form method="post" action="{% url 'connect:chatmessage_add' %}" novalidate class="flex flex-col gap-2" hx-post="{% url 'connect:chatmessage_add' %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="if (event.detail.xhr.status === 204) { this.reset(); } else if (event.detail.successful) { document.getElementById('seizou-modal').showModal(); }">
+  <form method="post" action="{% url 'connect:chatmessage_add' %}" enctype="multipart/form-data" novalidate class="flex flex-col gap-2" hx-encoding="multipart/form-data" hx-post="{% url 'connect:chatmessage_add' %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="if (event.detail.xhr.status === 204) { this.reset(); } else if (event.detail.successful) { document.getElementById('seizou-modal').showModal(); }">
     {% csrf_token %}
     <input type="hidden" name="target_kind" value="{{ chat.target_kind }}">
     <input type="hidden" name="target_id" value="{{ chat.target_id }}">
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <textarea name="body" rows="3" maxlength="2000" aria-label="言葉" class="textarea w-full"{% if chat.reason %} disabled{% endif %}></textarea>
-    <div class="flex justify-end"><button class="btn btn-primary" type="submit"{% if chat.reason %} disabled{% endif %}>{% icon "external" "size-4" %}送る</button></div>
+    <div class="flex flex-wrap items-center justify-between gap-2"><input type="file" name="file" aria-label="添付" class="file-input w-full max-w-xs"{% if chat.reason %} disabled{% endif %}><button class="btn btn-primary" type="submit"{% if chat.reason %} disabled{% endif %}>{% icon "external" "size-4" %}送る</button></div>
   </form>
   {% else %}<p class="text-sm text-base-content/50">会話に書けるのは、受信した注文を開ける部署の人です。</p>{% endif %}
 </div>

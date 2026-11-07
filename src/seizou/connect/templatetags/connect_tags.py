@@ -291,7 +291,8 @@ def chat_panel(target, user):
     peer = services.chat_peer(target)
     partner_name = peer.partner.name if peer.partner is not None else ""
     rows = []
-    for message in services.chat_messages_for(target):
+    # 添付は言葉の数だけ問い合わせが増えないよう、まとめて引く (吹き出しの中の添付の行 = connect/_chat_files.html)。
+    for message in services.chat_messages_for(target).prefetch_related("files"):
         written = f"{timezone.localtime(message.written_at):%Y-%m-%d %H:%M}"
         if message.direction == message.DIRECTION_RECEIVED:
             names = [partner_name, message.author_name]

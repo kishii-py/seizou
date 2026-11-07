@@ -157,6 +157,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が acceptance (検収) なら受信箱に入れず、受注の明細に当てて AcceptanceReceipt を返す。
     本文の kind が shipping_notice (出荷の知らせ) なら受信箱に入れず、発注の明細に当てて ShippingNoticeReceipt を返す。
     本文の kind が chat_message (会話の言葉) なら受信箱に入れず、元の注文 (受信した注文か発注) に結んで ChatReceipt を返す。
+    本文の kind が chat_file (会話の添付を取りに来た要求) なら何も残さず、返してよい添付なら ChatFileGrant を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
@@ -217,6 +218,9 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     # 会話の言葉 (seizou どうしだけの種類。EDI の文書でない) も受信した注文の行にせず、元の注文 (受信した注文か発注) に結ぶ。
     if payload.get("kind") == "chat_message":
         return _receive_chat_message(message_id, partner, payload)
+    # 会話の添付を取りに来た要求 (seizou どうしだけの種類)。何も残さず、返してよい添付なら ChatFileGrant を返す (受け口の view が中身を返す)。
+    if payload.get("kind") == "chat_file":
+        return _receive_chat_file_request(message_id, partner, payload)
     kind = payload.get("kind")
     if kind is not None and kind != "order":
         # 鍵の値と本文は文に入れない。kind の字だけを 40 字で切って出す。
@@ -483,7 +487,18 @@ class ChatReceipt:
     chat_message: object
 
 
-MESSAGE_REPLY_SHAPE ="注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
+@dataclass(frozen=True)
+class ChatFileGrant:
+    """受け口が、会話の添付を取りに来た相手に返してよいと決めた印 (受け口の view はファイルの中身を返す)。
+
+    message_id は要求の番号 (見出しの webhook-id)。chat_file は返す ChatFile の行 (自社が書いた言葉の添付)。
+    """
+
+    message_id: uuid.UUID
+    chat_file: object
+
+
+MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
 MESSAGE_REPLY_TYPE = "注文回答のタイプ (reply_type) が AP・CA・RE・AJ のどれでもありません。"
 MESSAGE_REPLY_LINES = (
     "条件付受諾 (CA) の注文回答の明細 (lines) が読めません。line_no (数)・reply_type (AP・CA・RE) と、"
@@ -535,7 +550,7 @@ MESSAGE_SHIPPING_NOT_EDI_ORDER = (
 )
 #: 会話の言葉の受け口の断り (送る側へ返す文)
 MESSAGE_CHAT_SHAPE = (
-    "会話の言葉の形が読めません。order_id・sender_role・written_at・body を字で、言葉は 1〜2000 字で送ってください。"
+    "会話の言葉の形が読めません。order_id・sender_role・written_at・body を字で、言葉は 2000 字まで (添付が無いときは 1 字から) で送ってください。"
 )
 MESSAGE_CHAT_UNKNOWN_ORDER = "会話の元の注文がありません。注文のデータの番号を確かめてください。"
 MESSAGE_CHAT_OTHER_PARTNER = "会話の元の注文は、その取引先との物ではありません。"
@@ -543,6 +558,11 @@ MESSAGE_CHAT_OTHER_PARTNER = "会話の元の注文は、その取引先との�
 CHAT_BODY_MAX = 2000
 #: 会話の送り手の立場 (buyer = 発注した側 / supplier = 受けた側)
 CHAT_ROLES = ("buyer", "supplier")
+#: 会話の添付を取りに行く要求の断り (送る側へ返す文。その添付の有る無しを、ほかの取引先に教えない)
+MESSAGE_CHAT_FILE_SHAPE = "添付の要求の形が読めません。file_id を字で送ってください。"
+MESSAGE_CHAT_FILE_UNKNOWN = "その添付はありません。"
+MESSAGE_CHAT_FILE_MISSING = "添付のファイルが見つかりません。書いた会社に確かめてください。"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 MESSAGE_SHIPPING_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので出荷の知らせを送っていません。"
     "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
@@ -977,10 +997,12 @@ def _receive_chat_message(message_id, partner, payload):
     sender_role が buyer (相手が発注した側) なら、自社が受け口で受けた第 1 版の受信した注文。supplier (相手が受けた側) なら、
     自社が送った第 1 版の注文 (同じ発注の送り直しは同じ番号で複数行なので最初の 1 行) の発注。立場を字で持つのは、1 つの DB に 2 社の役を置く試験で
     両方の表に同じ番号があるため。相手の発注番号 (order_no) は引く鍵でも記録する列でもないので読まない。author は字なら 100 字で切り、字でなければ空。
-    知らない鍵は読み捨てる (後の版が足す鍵のため)。同じ番号の 2 回目は 1 回目の行を返す (R11 の考え)。
+    知らない鍵は読み捨てる (後の版が足す鍵のため)。同じ番号の 2 回目は 1 回目の行を返す (R11 の考え。添付の行も作らない)。
+    添付 (attachments) は項目だけを受け、言葉の行と同じ atomic で ChatFile の行を作る (ファイルは空。受け手の画面が開いた時に fetch_chat_file が取りに行く)。
+    言葉は 2000 字まで。空か空白だけの言葉は、添付が 1 つ以上あるときだけ通す (添付だけの言葉のため)。
     相手から会話が届いた知らせ (メール) を足すのは、行を作った後の atomic の外 (同じ番号の 2 回目では呼ばない)。
     断る処理を足さない: 取消した発注・断った受信した注文・出荷し終えた受注への言葉も受ける。
-    訳: 形の読めない言葉と、その取引先と結び付かない注文への言葉を受けないため (同じ番号の 2 回目は 1 件にまとめる = R11 の考え)。出所 = RULES.md R11・R12 と AI の案 (今の受け口の断りと同じ作り = 出荷の知らせ・検収の受け口。記録 = docs/nights/20261106/N311.md)。
+    訳: 形の読めない言葉と、その取引先と結び付かない注文への言葉を受けないため (同じ番号の 2 回目は 1 件にまとめる = R11 の考え)。出所 = RULES.md R11・R12 と AI の案 (今の受け口の断りと同じ作り = 出荷の知らせ・検収の受け口。記録 = docs/nights/20261106/N311.md)。添付は項目だけを受け、形と大きさは今の添付と同じ決まり (attachments.services の ALLOWED・MAX_BYTES) で見る (出所 = 本人の決め CHAT-3 の「上限は今の添付と同じ 20MB」)。
     変えてよい条件 = 送る JSON の形を変える時に、両方の会社の seizou を同じ版にしてから。
     """
     # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
@@ -988,7 +1010,7 @@ def _receive_chat_message(message_id, partner, payload):
 
     from django.utils import timezone
 
-    from .models import ChatMessage, Outbox
+    from .models import ChatFile, ChatMessage, Outbox
 
     msg_id = str(message_id)
     order_id = payload.get("order_id")
@@ -998,7 +1020,10 @@ def _receive_chat_message(message_id, partner, payload):
     # str でない値を uuid と fromisoformat に渡さないよう、先に形を見る。
     if not all(isinstance(value, str) for value in (order_id, sender_role, written_at, body)):
         return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
-    if sender_role not in CHAT_ROLES or not body.strip() or len(body) > CHAT_BODY_MAX:
+    files = _chat_file_items(payload.get("attachments"))
+    if files is None:
+        return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
+    if sender_role not in CHAT_ROLES or len(body) > CHAT_BODY_MAX or (not body.strip() and not files):
         return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
     try:
         order_message_id = uuid.UUID(order_id)
@@ -1044,9 +1069,85 @@ def _receive_chat_message(message_id, partner, payload):
                 received_at=timezone.now(),
                 **target,
             )
+            for item in files:
+                ChatFile.objects.create(message=chat, **item)
     except IntegrityError:
         chat = ChatMessage.objects.get(message_id=message_id, direction=ChatMessage.DIRECTION_RECEIVED)
     return ChatReceipt(message_id=message_id, chat_message=chat)
+
+
+def _chat_file_items(value):
+    """会話の言葉の添付の項目 (attachments) を読む。鍵が無ければ空の並び。読めなければ None (言葉ごと断る)。
+
+    各要素は id (uuid の字)・name (1〜100 字で、拡張子が添付ファイルの形式の表にある)・size (1 から 20MB までの整数。bool は外す)・
+    sha256 (16 進の 64 字) を見る。mime は読まず、自社の表 (attachments.services.ALLOWED) の値を入れる。同じ id が 2 つあれば読めない物にする。
+    返す物は ChatFile の欄の辞書の並び (file_id・name・mime・size・sha256)。
+    """
+    from seizou.attachments import services as attachment_services
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return None
+    items = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            return None
+        file_id, name, size, sha256 = raw.get("id"), raw.get("name"), raw.get("size"), raw.get("sha256")
+        if not isinstance(file_id, str) or not isinstance(name, str) or not isinstance(sha256, str):
+            return None
+        try:
+            number = uuid.UUID(file_id)
+        except ValueError:
+            return None
+        entry = attachment_services.ALLOWED.get(attachment_services.extension_of(name))
+        if entry is None or not name or len(name) > attachment_services.MAX_NAME_LENGTH:
+            return None
+        if isinstance(size, bool) or not isinstance(size, int) or not 1 <= size <= attachment_services.MAX_BYTES:
+            return None
+        if _SHA256.fullmatch(sha256) is None:
+            return None
+        if any(item["file_id"] == number for item in items):
+            return None
+        items.append({"file_id": number, "name": name, "mime": entry[0], "size": size, "sha256": sha256})
+    return items
+
+
+def _receive_chat_file_request(message_id, partner, payload):
+    """会話の添付を取りに来た要求に、返してよい添付かを決める。返す物は ChatFileGrant か、断る理由の文。何も残さない。
+
+    会話の添付の取りに行く先は「送り手 (自社) の受け口 + 添付の識別 ID」の組 (中小企業共通 EDI 本編 6.4.1 (2) の URL 記載方式の項目を元にした。
+    送る JSON と表に URL の字を持たない = ChatFile の docstring)。アクセス制御: 取引先との接続の鍵の署名が通り (receive が確かめる)、
+    その添付が「その取引先との会話」で自社が書いた言葉の物のときだけ返す。無い添付と、ほかの取引先との会話の添付は同じ字で断る
+    (有る無しをほかの取引先に教えない)。有効期限は設けない (添付は消さない。1 回の要求が通る幅は署名の時刻の ±5 分 = signing.verify)。
+    取り直しは受け手の画面の「取り直す」が同じ要求を出し直す (送り手の側で何もしない)。kind = chat_file は EDI の文書の種類でない。
+    訳: 取引先との接続の署名が通った相手に、その相手との会話で自社が書いた添付だけを返すため (EDI 本編 6.4.1 の「アクセス制御」)。出所 = 本人の決め (CHAT-3) と EDI 本編 6.4.1。
+    変えてよい条件 = 変えない (ほかの会社の添付を返さないため)。
+    """
+    from .models import ChatFile, ChatMessage
+
+    msg_id = str(message_id)
+    file_id = payload.get("file_id")
+    if not isinstance(file_id, str):
+        return _refuse(MESSAGE_CHAT_FILE_SHAPE, msg_id)
+    try:
+        number = uuid.UUID(file_id)
+    except ValueError:
+        return _refuse(MESSAGE_CHAT_FILE_SHAPE, msg_id)
+    chat_file = (
+        ChatFile.objects.select_related("message__purchase_order", "message__inbox")
+        .filter(file_id=number, message__direction=ChatMessage.DIRECTION_SENT)
+        .first()
+    )
+    if chat_file is None:
+        return _refuse(MESSAGE_CHAT_FILE_UNKNOWN, msg_id)
+    message = chat_file.message
+    owner = message.purchase_order if message.purchase_order_id is not None else message.inbox
+    if owner is None or owner.partner_id != partner.pk:
+        return _refuse(MESSAGE_CHAT_FILE_UNKNOWN, msg_id)
+    if not chat_file.file or not chat_file.file.storage.exists(chat_file.file.name):
+        return _refuse(MESSAGE_CHAT_FILE_MISSING, msg_id)
+    return ChatFileGrant(message_id=message_id, chat_file=chat_file)
 
 
 def record_inbox(partner, payload, user, *, message_id=None, received_at=None, source=Inbox.SOURCE_DIRECT, extraction=None, sender_name=""):
@@ -1954,14 +2055,13 @@ def _encode(data) -> bytes:
     return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _deliver(connection, message_id, raw) -> tuple[str, str]:
-    """本文の bytes を署名して相手の受け口へ送り、返事を (日本語の文, 種類) にして返す。
+def _post_signed(connection, message_id, raw, **options):
+    """本文の bytes を署名して相手の受け口へ POST する。requests.post を呼ぶのはこの 1 か所だけ。
 
-    send_order と send_reply が呼ぶ。requests.post を呼ぶのはこの 1 か所だけ。
-    send_acceptance (検収) と send_shipping_notice (出荷の知らせ) も、この 1 か所から送る。
-    呼び手は transaction.atomic の外から呼ぶ (R17)。待ちは 10 秒。
-    種類は received (受け取った) / rejected (断られた) / unreadable / unreachable / no_secret / bad_secret。
-    鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
+    返す物は (返事, 送れなかった訳)。送れたら (requests の返事, None)、送れなかったら (None, (日本語の文, 種類))。
+    種類は unreachable (届かない) / no_secret / bad_secret。鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
+    options は requests.post に渡す (待ちの timeout と、添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
+    _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
     """
     # 試験が requests.post を差し替えるため、関数の中で import する。
     import requests
@@ -1971,7 +2071,7 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
         reply = (
             f"鍵の置き場 {connection.secret_env} に値が無いので送っていません。.env に置いてください。"
         )
-        return reply, "no_secret"
+        return None, (reply, "no_secret")
     try:
         signed = signing.headers_for(secret, str(message_id), raw)
     except ValueError:
@@ -1980,17 +2080,32 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
             f"鍵の置き場 {connection.secret_env} の値が鍵の形 (接頭辞つきの base64) でないので"
             "送っていません。.env の値を確かめてください。"
         )
-        return reply, "bad_secret"
+        return None, (reply, "bad_secret")
 
     try:
         answer = requests.post(
             connection.url,
             data=raw,
             headers={**signed, "Content-Type": "application/json"},
-            timeout=10,
+            **options,
         )
     except requests.RequestException as exc:
-        return _unreachable_reply(exc), "unreachable"
+        return None, (_unreachable_reply(exc), "unreachable")
+    return answer, None
+
+
+def _deliver(connection, message_id, raw) -> tuple[str, str]:
+    """本文の bytes を署名して相手の受け口へ送り、返事を (日本語の文, 種類) にして返す。
+
+    send_order と send_reply が呼ぶ。requests.post を呼ぶのは _post_signed の 1 か所だけで、ここはそれを呼ぶ。
+    send_acceptance (検収) と send_shipping_notice (出荷の知らせ) と会話の言葉 (post_chat_message) も、ここから送る。
+    呼び手は transaction.atomic の外から呼ぶ (R17)。待ちは 10 秒。
+    種類は received (受け取った) / rejected (断られた) / unreadable / unreachable / no_secret / bad_secret。
+    鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
+    """
+    answer, failed = _post_signed(connection, message_id, raw, timeout=10)
+    if failed is not None:
+        return failed
     if answer.status_code == 200:
         return "受け取った", "received"
     if answer.status_code == 400:
@@ -2240,10 +2355,13 @@ def _full_name(user) -> str:
 
 
 def _chat_payload(message, peer, author) -> dict:
-    """会話の言葉の送る JSON (seizou だけの種類。EDI の文書でない)。送り手の会社の辞書は立場の名前の鍵 (buyer / supplier) に置く。"""
+    """会話の言葉の送る JSON (seizou だけの種類。EDI の文書でない)。送り手の会社の辞書は立場の名前の鍵 (buyer / supplier) に置く。
+
+    添付があるときだけ attachments の鍵を足す (項目は名前・形式・大きさ・中身の印と識別 ID。取りに行く先の URL は入れない = ChatFile の docstring)。
+    """
     from django.utils import timezone
 
-    return {
+    data = {
         "id": str(message.message_id),
         "kind": "chat_message",
         "sent_at": timezone.localtime().isoformat(),
@@ -2255,6 +2373,36 @@ def _chat_payload(message, peer, author) -> dict:
         "written_at": timezone.localtime(message.written_at).isoformat(),
         "body": message.body,
     }
+    files = [
+        {"id": str(item.file_id), "name": item.name, "mime": item.mime, "size": item.size, "sha256": item.sha256}
+        for item in message.files.order_by("pk")
+    ]
+    if files:
+        data["attachments"] = files
+    return data
+
+
+def _check_chat_file(file):
+    """書くときに付ける添付を見る (今の添付ファイルの決まり = attachments.services の ALLOWED・MAX_BYTES・MAX_NAME_LENGTH と断りの字)。
+
+    返す物は (元の名前, 形式)。通らなければ「送れません。」+ 今の添付の字の ValueError (行もファイルも残さない)。中身の先頭のバイトは見ない。
+    訳: 会話の添付の形式と大きさを、今の添付と同じ決まりで止めるため (決まりを 2 か所に書かない)。出所 = 本人の決め CHAT-3 (11-06 23:5x) の「上限は今の添付と同じ 20MB」。
+    変えてよい条件 = 今の添付の決まり (attachments.services) を変えたとき (ここは同じ表を読むので一緒に変わる)。
+    """
+    from seizou.attachments import services as attachment_services
+
+    name = os.path.basename(getattr(file, "name", "") or "")
+    entry = attachment_services.ALLOWED.get(attachment_services.extension_of(name))
+    if entry is None:
+        raise ValueError("送れません。" + attachment_services.MESSAGE_BAD_EXTENSION)
+    size = getattr(file, "size", None) or 0
+    if size <= 0:
+        raise ValueError("送れません。" + attachment_services.MESSAGE_EMPTY)
+    if size > attachment_services.MAX_BYTES:
+        raise ValueError("送れません。" + attachment_services.MESSAGE_TOO_LARGE)
+    if len(name) > attachment_services.MAX_NAME_LENGTH:
+        raise ValueError("送れません。" + attachment_services.MESSAGE_NAME_TOO_LONG)
+    return name, entry[0]
 
 
 def _send_chat(message, peer, author, delivered_text):
@@ -2289,29 +2437,41 @@ def _send_chat(message, peer, author, delivered_text):
     return saved
 
 
-def post_chat_message(target, body, user):
+def post_chat_message(target, body, user, file=None):
     """会話に言葉を書き、相手の seizou へ送る。target は発注・受注・受信した注文のどれか (受注は元の受信した注文に結ぶ)。
 
     - 会話が使えない取引 (chat_peer の reason) は「送れません。」+ 訳の ValueError で、行を作らず HTTP を送らない。
-    - 言葉が空か空白だけ・2000 字を超えるときも ValueError。受けた字は変えずに残す (送ったとおりに残すため。画面の欄の前後の空白は form が落とす)。
+    - 言葉と添付の両方が空 (言葉は空白だけも空)・言葉が 2000 字を超えるときも ValueError。受けた字は変えずに残す (送ったとおりに残すため。画面の欄の前後の空白は form が落とす)。
+    - 添付 (file) は 1 つまで。形式と大きさは今の添付と同じ決まり (_check_chat_file)。中身の印 (SHA-256) を作り、言葉の行と同じ atomic で
+      ChatFile の行を作ってファイルを storage に置く (attachments.services.add_attachment と同じ形)。送る JSON には項目だけを載せる。
     - 行は atomic の中で作り (返事の欄は「送っています」)、atomic の外で相手へ送る (R17)。返事の字を書き、届いたときだけ相手に届いた日時を書く。
     - 届かなくても例外にしない (書いた言葉は残る)。返す物の saved_message が知らせの字、届かなければ saved_level = "warning"。
     - 鍵の値・本文・見出しの値をログと返す物に出さない。言葉を直す関数と消す関数は作らない (ChatMessage の docstring)。
     訳: 会話が使えない取引と、空の言葉と 2000 字を超える言葉を送らないため。出所 = 本人の決め 11-06 23:4x〜23:5x (CHAT-2) と AI の案 (2000 字。根拠の資料は無い。中小企業共通 EDI に会話は無く、字数の決まりも無い。記録 = docs/nights/20261106/N311.md)。
     変えてよい条件 = 字数は、相手の seizou も同じ字数を受けられる版になってから (受け口が同じ字数で断るため)。
+    添付は形と大きさを今の添付と同じ決まり (attachments.services の ALLOWED・MAX_BYTES) で見る (出所 = 本人の決め CHAT-3 の「上限は今の添付と同じ 20MB」)。
     """
+    import hashlib
+
     from django.utils import timezone
 
-    from .models import ChatMessage
+    from .models import ChatFile, ChatMessage
 
     peer = chat_peer(target)
     if peer.reason:
         raise ValueError("送れません。" + peer.reason)
     text = body if isinstance(body, str) else ""
-    if not text.strip():
-        raise ValueError("送れません。言葉がありません。言葉を書いてから「送る」を押してください。")
+    if not text.strip() and file is None:
+        raise ValueError("送れません。言葉か添付がありません。言葉を書くか添付を付けてから「送る」を押してください。")
     if len(text) > CHAT_BODY_MAX:
         raise ValueError("送れません。言葉が 2000 字を超えています。分けて送ってください。")
+    file_values = None
+    if file is not None:
+        name, mime = _check_chat_file(file)
+        digest = hashlib.sha256()
+        for chunk in file.chunks():
+            digest.update(chunk)
+        file_values = {"file_id": uuid.uuid4(), "name": name, "mime": mime, "size": file.size, "sha256": digest.hexdigest()}
     author = _full_name(user)
     signed_in = getattr(user, "is_authenticated", False)
     login_name = user.get_username() if signed_in else ""
@@ -2327,6 +2487,8 @@ def post_chat_message(target, body, user):
             written_at=timezone.now(),
             response="送っています",
         )
+        if file_values is not None:
+            ChatFile.objects.create(message=message, file=file, **file_values)
     return _send_chat(message, peer, author, "相手に送りました。")
 
 
@@ -2349,3 +2511,99 @@ def resend_chat_message(message, user):
     if peer.reason:
         raise ValueError("送れません。" + peer.reason)
     return _send_chat(current, peer, _full_name(current.author), "送り直しました。相手に届きました。")
+
+
+def _chat_file_partner(chat_file):
+    """添付の言葉が結び付いた注文の取引先 (発注した側は発注の、受けた側は受信した注文の取引先)。"""
+    message = chat_file.message
+    owner = message.purchase_order if message.purchase_order_id is not None else message.inbox
+    return owner.partner if owner is not None else None
+
+
+def _write_fetch(chat_file, response, content=None):
+    """取りに行った結果を添付の行に書く。content (bytes) があればファイルを storage に置き、受け取った日時を書く。返す物は取り直した ChatFile。"""
+    from django.core.files.base import ContentFile
+    from django.utils import timezone
+
+    from .models import ChatFile
+
+    with transaction.atomic():
+        saved = ChatFile.objects.select_for_update().get(pk=chat_file.pk)
+        fields = ["fetch_response"]
+        if content is not None:
+            saved.file.save(saved.name, ContentFile(content), save=False)
+            saved.fetched_at = timezone.now()
+            fields += ["file", "fetched_at"]
+        saved.fetch_response = response[: ChatFile._meta.get_field("fetch_response").max_length]
+        saved.save(update_fields=fields)
+    return saved
+
+
+def fetch_chat_file(chat_file, user):
+    """相手から届いた言葉の添付を、相手の seizou へ署名つきの要求で取りに行き、自社の側にも保存する。返す物は取り直した ChatFile。
+
+    - 相手から届いた言葉の添付で、まだ受け取っていない物だけ。ほかは「保存できません。」の ValueError。
+    - atomic の中で取り直して「受け取っています」を書く (2 つの画面から同時に取りに行くのを減らすため)。
+    - 接続は言葉の取引先の向き「送る」の物。無ければ取りに行かず、理由を書いて返す。
+    - 要求は atomic の外 (R17)。本文は {"id", "kind": "chat_file", "file_id"} を署名して、相手の受け口 (自社が登録した接続の URL) へ POST する
+      (取りに行く先は「相手の受け口 + 添付の識別 ID」の組。届いた字に書かれた URL へは行かない = ChatFile の docstring)。
+      待ちは、つなぐまで 10 秒・読むのは 60 秒。中身は少しずつ読み、20MB (attachments.services.MAX_BYTES) を超えたら読むのをやめる。
+    - 200 で、読んだ大きさと中身の印 (SHA-256) が相手の書いた値と同じときだけファイルを置き「受け取った」を書く。ほかは「まだ受け取っていない: <理由>」。
+    - 受け口の中では取りに行かない (送り手は 10 秒で返事を待つのをやめるため)。受け手の画面が開いた時と「取り直す」で呼ぶ。
+    訳: 相手の seizou に置いた添付を、署名つきの要求で取りに行って自社の側にも残し、中身が相手の書いた大きさと印に合う時だけ受け取ったとするため。出所 = 本人の決め (CHAT-3 = a「推奨で」11-06 23:5x) と中小企業共通 EDI 本編 6.4.1 の URL 記載方式。
+    変えてよい条件 = 本人が添付の方式を決め直したとき。
+    """
+    import hashlib
+
+    from seizou.attachments import services as attachment_services
+
+    from .models import ChatFile, ChatMessage
+
+    with transaction.atomic():
+        locked = ChatFile.objects.select_for_update().select_related("message").get(pk=chat_file.pk)
+        if locked.message.direction != ChatMessage.DIRECTION_RECEIVED or locked.fetched_at is not None:
+            raise ValueError("保存できません。この添付は自社が付けた物か、もう受け取った物です。会話の欄を開き直してください。")
+        locked.fetch_response = ChatFile.FETCHING
+        locked.save(update_fields=["fetch_response"])
+    current = ChatFile.objects.select_related("message__purchase_order__partner", "message__inbox__partner").get(pk=locked.pk)
+    partner = _chat_file_partner(current)
+    connection = _send_connection(partner) if partner is not None else None
+    if connection is None:
+        return _write_fetch(
+            current,
+            "まだ受け取っていない: 取引先との接続 (送る向き) が無いので取りに行けません。設定の画面の「取引先との接続」で登録してください。",
+        )
+
+    request_id = uuid.uuid4()
+    raw = _encode({"id": str(request_id), "kind": "chat_file", "file_id": str(current.file_id)})
+    # R17: ここは atomic の外。requests.post を呼ぶのは _post_signed の 1 か所。
+    answer, failed = _post_signed(connection, request_id, raw, timeout=(10, 60), stream=True)
+    if failed is not None:
+        return _write_fetch(current, f"まだ受け取っていない: {failed[0]}")
+    try:
+        if answer.status_code == 400:
+            try:
+                refused = answer.json().get("message", "")
+            except (ValueError, AttributeError):
+                refused = ""
+            if not isinstance(refused, str) or not refused:
+                refused = "理由が読めません"
+            return _write_fetch(current, f"まだ受け取っていない: 断られた: {refused[:200]}")
+        if answer.status_code != 200:
+            return _write_fetch(current, f"まだ受け取っていない: 返事が読めません (HTTP {answer.status_code})")
+        content = bytearray()
+        for chunk in answer.iter_content(chunk_size=64 * 1024):
+            content.extend(chunk)
+            if len(content) > attachment_services.MAX_BYTES:
+                break
+    finally:
+        close = getattr(answer, "close", None)
+        if callable(close):
+            close()
+    if len(content) != current.size or hashlib.sha256(content).hexdigest() != current.sha256:
+        return _write_fetch(
+            current, "まだ受け取っていない: 届いた中身が、相手の書いた大きさか中身の印と合いません。取り直してください。"
+        )
+    saved = _write_fetch(current, ChatFile.FETCHED, bytes(content))
+    logger.info("会話の添付を受け取った: 添付 %s 識別 %s", saved.pk, saved.file_id)
+    return saved

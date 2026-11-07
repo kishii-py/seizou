@@ -1,0 +1,2 @@
+{# 会話の吹き出しの中の添付の並び (core/_chat_bubble.html の extra で include)。受ける物: message (ChatMessage)。1 つずつ connect/_chat_file.html を include する (取りに行く口が 1 つだけを返す断片と分ける)。 #}
+<ul class="mt-2 flex flex-col gap-1">{% for file in message.files.all %}{% include "connect/_chat_file.html" with file=file message=message only %}{% endfor %}</ul>
