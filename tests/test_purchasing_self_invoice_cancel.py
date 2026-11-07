@@ -8,6 +8,7 @@
 - (e) 行き違い: 取り消した後に相手の前の版への答えが届く
 - (f) 取消が届かない: 黄の知らせと「送り直す」(同じ番号)
 - (g) 受ける側に行の無い仕入明細番号の取消は、行を作って取消で受ける
+- (h) 金額を見られない人は、金額の判定が on のとき取消を保存でも断られる (決め 11-07 23:2x = 作ると取消を同じ扱い)
 相手への HTTP は requests.post を偽の物に差し替え、受けた本文を services.receive に渡す (外へは出ない)。取引先・品目・会社は作り物。
 """
 
@@ -21,6 +22,7 @@ import requests
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+from seizou.accounts import services as accounts_services
 from seizou.connect import services, signing
 from seizou.connect.models import Inbox, ReceivedSelfInvoice
 from seizou.masters import services as masters_services
@@ -252,3 +254,28 @@ def test_cancel_without_earlier_row(monkeypatch, user, order_secret, sent):
     received = ReceivedSelfInvoice.objects.get()
     assert received.status == ReceivedSelfInvoice.STATUS_CANCELLED and received.revision_no == 2
     assert received.lines.count() == 2
+
+
+@pytest.mark.django_db
+def test_money_off_user_cannot_cancel(settings, client, user, sent):
+    """(h) 金額の判定が on のとき、金額を見られない人は取消を保存でも断られ、仕入明細は答え待ちのまま、相手へ何も送らない。
+
+    決め 11-07 23:2x「推奨で」= 作ると取消を同じ扱いにする (納品書の取消 89adf3f3 と同じ形。仕組みの側の追記 11-08)。
+    入口 (詳細の「取消」) も出ない。断りの字は MONEY_ACTIONS の (書面, 操作) から組む。
+    """
+    fake, si, _receipts = sent
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    accounts_services.issue_account("clerk", "pass-for-tests-only", [], [], {}, None)
+    client.force_login(get_user_model().objects.get(username="clerk"))
+    calls_before = len(fake.calls)
+    cancel_url = reverse("purchasing:selfinvoice_cancel", args=[si.pk])
+
+    assert cancel_url not in client.get(reverse("purchasing:selfinvoice_detail", args=[si.pk])).content.decode()
+
+    refused = client.post(cancel_url, follow=True)
+    assert "仕入明細は金額が主な内容のため、金額の閲覧の権限が無い方は取り消せません。" in refused.content.decode()
+    si.refresh_from_db()
+    assert si.status == SelfInvoice.STATUS_SENT and si.revision_no == 1 and si.purpose_code != "1"
+    assert len(fake.calls) == calls_before
+    assert ReceivedSelfInvoice.objects.get().status != ReceivedSelfInvoice.STATUS_CANCELLED
+

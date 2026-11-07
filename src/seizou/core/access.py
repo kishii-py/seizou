@@ -262,6 +262,9 @@ MONEY_ACTIONS = {
     "shipping.create_delivery_note": ("納品書", "作れません"),
     # 納品書の取消も同じ扱い (作者の決め 11-07 23:2x「推奨で」= 作ると取消を同じ扱いにする。入口は tag で隠れていたが、直に開くと保存が通っていた)
     "shipping.cancel_delivery_note": ("納品書", "取り消せません"),
+    # 仕入明細の取消も作るのと同じ扱い (作者の決め 11-07 23:2x「推奨で」= 作ると取消を同じ扱いにする。納品書の取消と同じ。
+    # 取消は相手へも送るので、金額を確かめられない人が送ると誤った取消が外へ出る。仕組みの側の追記 11-08 = 今ある決めの当てはめ漏れ)
+    "purchasing.cancel_self_invoice": ("仕入明細", "取り消せません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

@@ -432,6 +432,8 @@ def test_money_actions_follow_decisions_6_7_8():
         "purchasing.cancel_purchase_order",
         "shipping.create_delivery_note",
         "shipping.cancel_delivery_note",
+        # 仕入明細の取消 (決め 11-07 23:2x = 作ると取消を同じ扱い。納品書の取消と同じ。仕組みの側の追記 11-08)
+        "purchasing.cancel_self_invoice",
     } <= money
     assert not money & {
         "masters.create_item",
