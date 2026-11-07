@@ -367,3 +367,40 @@ def test_form_has_no_preview_fields(client_logged_in, user):
         assert 'name="drawing"' in body
         assert 'name="drawing_preview' not in body
         assert "図面の表示用" not in body
+
+
+# ---------------------------------------------------------------- Pillow の守り (Claude Security の走査の候補 11-07 の 31)
+
+
+@pytest.mark.django_db
+def test_preview_keeps_pillow_bomb_guard_while_reading(user, monkeypatch):
+    """変換の間も Pillow の守り (Image.MAX_IMAGE_PIXELS) を外さない (None にしない)。上限は図面の上限より下げない。"""
+    seen = []
+    real_read = services._read_drawing
+
+    def recording_read(file):
+        seen.append(Image.MAX_IMAGE_PIXELS)
+        return real_read(file)
+
+    monkeypatch.setattr(services, "_read_drawing", recording_read)
+    limit = Image.MAX_IMAGE_PIXELS
+    new_item(user, upload("plan.tif", g4_tiff((80, 60)), "image/tiff"))
+    assert seen and seen[0] is not None
+    assert seen[0] >= services.DRAWING_MAX_PIXELS
+    assert Image.MAX_IMAGE_PIXELS == limit  # 変換の後に元の値へ戻す
+
+
+@pytest.mark.django_db
+def test_bomb_beyond_pillow_guard_saves_item_with_too_large_error(user, monkeypatch):
+    """Pillow の守りが開く所で断る絵 (上限の 2 倍を超える) は、壊れているでなく大きすぎるの文にし、表示用の絵を作らない。"""
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1_000)
+    monkeypatch.setattr(services, "DRAWING_MAX_PIXELS", 1_000)
+    content = g4_tiff((200, 200))
+    item = new_item(user, upload("bomb.tif", content, "image/tiff"))
+    item.refresh_from_db()
+    assert Path(item.drawing.path).read_bytes() == content
+    assert not item.drawing_preview
+    assert item.drawing_preview_error == services.DRAWING_BOMB_MESSAGE
+    assert "大きすぎます" in item.drawing_preview_error
+    assert "元のファイルは保存してあります。" in item.drawing_preview_error
+    assert Image.MAX_IMAGE_PIXELS == 1_000
