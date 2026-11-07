@@ -1,11 +1,15 @@
-"""ログインの記録 (seizou.core.login_log) と、締め出しの間の試しの行 (seizou.core.login_guard)。
+"""ログインの記録 (seizou.core.login_log) と、締め出しの間の試しの行と接続元ごとの上限 (seizou.core.login_guard)。
 
 成功・失敗・ログアウトが記録 (seizou.login) に 1 行ずつ出て、ID と接続元があり、パスワードの字が無い事・
 締め出しの間の試しは認証せずに断るので失敗の行が増えず、締め出しの間の行が 1 行出る事・ID の長さと改行の扱いを見る。
-作り物の利用者 (genba01) と例に使う番地だけを使う。cache は試験の間に残るので、前と後に消す。
+接続元の見出しのある置き場で、1 つの接続元からの失敗が 15 分の窓で 30 回になると、その接続元を ID を問わず 15 分断る事・
+成功で数が消えない事・窓が最初の失敗から始まる事・見出しが無い置き場では効かない事と、手引きの字を見る。
+作り物の利用者 (genba01・nobodyNN) と例に使う番地だけを使う。cache は試験の間に残るので、前と後に消す。
 """
 
 import logging
+import re
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -325,3 +329,31 @@ def test_address_lock_writes_one_warning_line_without_password(client, fast_user
     attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER)
     assert len(lines(caplog, "この接続元を")) == 1
     assert len(lines(caplog, "締め出しの間")) == 1
+
+
+# ---------------------------------------------------------------- 手引きの字 (3)
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _section(text, heading):
+    """見出し heading の行から、次の同じ深さか浅い見出しの前まで。"""
+    start = text.index(heading)
+    rest = text[start + len(heading) :]
+    match = re.search(r"^#{1,3} ", rest, flags=re.MULTILINE)
+    return heading + (rest[: match.start()] if match else rest)
+
+
+def test_docs_describe_address_limit_and_login_log():
+    operations = (ROOT / "docs" / "operations.md").read_text(encoding="utf-8")
+    section = _section(operations, "### ログインの締め出し")
+    assert "15 分に 30 回" in section
+    assert "ログアウト" in section
+    assert "締め出したときは、サーバーの記録 (`seizou.login`) に 1 行出ます" not in operations
+
+    vps = (ROOT / "docs" / "vps.md").read_text(encoding="utf-8")
+    assert "MaxRetentionSec" in vps
+    assert "このため、ログインの締め出しは ID ごとになり" not in vps
+
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    assert "15 分" in security and "30 回" in security
