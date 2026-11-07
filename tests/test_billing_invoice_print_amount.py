@@ -108,12 +108,15 @@ def test_invoice_print_without_due_date_has_amount_box_only(logged_in, invoice_w
 
 
 @pytest.mark.django_db
-def test_bank_box_is_under_totals_and_breaks_only_at_spaces(logged_in, user, invoice):
+def test_bank_box_is_under_totals_and_breaks_only_at_spaces(logged_in, user, item, invoice):
     """(d) 振込先は会社の欄でなく、明細の表の下の「お振込先」の枠に、語ごとの span で出る。無ければ枠ごと出ない。"""
     assert BANK_BOX not in _print(logged_in, invoice)
 
     core_services.update_company(core_services.company(), {"bank_account": BANK}, user)
-    body = _print(logged_in, invoice)
+    # 振込先は発行の時の写しを読む (依頼書 N357。決め 11-08 00:0x)。前に作った請求書の刷り直しには、後で入れた振込先の枠が出ない。
+    assert BANK_BOX not in _print(logged_in, invoice)
+    # 振込先を入れた後に作った請求書で枠を見る (同じ得意先・同じ期間の 2 枚目は R23 で作れないので、別の作り物の得意先で作る)
+    body = _print(logged_in, _invoice(user, _customer(user, "C003", "作り物の二つ目の得意先"), item))
     assert body.index('class="report-lines"') < body.index(BANK_BOX)
     box = body[body.index(BANK_BOX) :]
     assert "お振込先" in box
@@ -134,10 +137,12 @@ def _line_texts(box):
 
 @pytest.mark.pdf
 @pytest.mark.django_db
-def test_pdf_keeps_each_bank_word_on_one_line(user, invoice):
+def test_pdf_keeps_each_bank_word_on_one_line(user, item, invoice):
     """(e) PDF でも、振込先の語 (名義のカタカナを含む) は 1 つの行の中に収まる (途中で割れない)。枠は 1 ページ目の合計の下。"""
     core_services.update_company(core_services.company(), {"bank_account": BANK}, user)
-    document = reports._render_document(INVOICE_TEMPLATE, invoice_context(invoice))
+    # 振込先は発行の時の写しを読む (依頼書 N357。決め 11-08 00:0x)。振込先を入れた後に、別の作り物の得意先で作った請求書の context で PDF を作る
+    after = _invoice(user, _customer(user, "C003", "作り物の二つ目の得意先"), item)
+    document = reports._render_document(INVOICE_TEMPLATE, invoice_context(after))
 
     assert len(document.pages) == 1
     cells = [

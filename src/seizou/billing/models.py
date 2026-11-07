@@ -17,7 +17,21 @@ from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE
 
 
 class Invoice(models.Model):
-    """請求書。請求書番号は core の連番が付ける。"""
+    """請求書。請求書番号は core の連番が付ける。
+
+    発行した時の会社の登録番号・住所・電話・振込先 (issuer_ の 4 列) と、得意先の名前 (customer_name) と、税率 (tax_rate。百分率) を写して持つ。
+    書くのは billing.services._issue_invoice の 1 か所。帳票 (billing.reports.invoice_context) は写しだけを読み、写しが空でも今の値で補わない。
+    会社名は答えの YAML で決まり直せない (core.services.update_company が断る) ので写さない (帳票は今の会社名を出す)。ロゴも写さない。
+    migration (0007) の前に作った請求書の写しは、migration の時の今の値で埋めた (今ある行には今の値しか入れられない。発行の時の値は残っていない)。
+    写しの列は入力の欄と CSV の見出しに出さず (editable=False)、詳細と小窓の項目の一覧にも出さない (detail_hidden_fields)。
+    振込先の写しは、会社の振込先と同じく変更の履歴に値を残さない (history_hidden_values)。
+    訳: 請求書は発行した時の会社の登録番号・住所・電話・振込先と、得意先の名前と、明細の品番・品名・単位 (受注の明細の単位 = 注文で合意した字)・
+    得意先の注文番号と、税率を写して持ち、刷り直しても渡した時と同じ字を出す。インボイス制度の記載事項を持つ書類で、マスターや会社の設定を後から直すと
+    刷り直しの字が変わるため。振込先は消費税法の記載事項でないが、後で変えても渡した時と同じ字で刷り直すため写す。部品の単位は後から直されることが
+    あるため、受注の明細から写す。納品書は会期中は写さない (shipping の migration が増えるため)。インボイス制度と電帳法への当てはめは、
+    国税庁の資料と条文を読んでいないので未確認。出所 = 本人の決め 11-07 23:4x (今回は請求書だけ) と 11-08 00:0x (振込先・単位・注文番号)。
+    変えてよい条件 = 本人が決め直したとき (納品書も写すと決めたとき)。
+    """
 
     STATUS_ISSUED = "issued"
     STATUS_CANCELLED = "cancelled"
@@ -48,9 +62,30 @@ class Invoice(models.Model):
     status = models.CharField(
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
     )
+    # 発行した時の会社の情報の写し (core.Company の同じ名前の列と同じ字数)。帳票の会社の欄と「お振込先」の枠が読む。
+    issuer_registration_no = models.CharField("発行の時の登録番号", max_length=14, blank=True, default="", editable=False)
+    issuer_address = models.CharField("発行の時の住所", max_length=100, blank=True, default="", editable=False)
+    issuer_phone = models.CharField("発行の時の電話", max_length=35, blank=True, default="", editable=False)
+    issuer_bank_account = models.CharField("発行の時の振込先", max_length=100, blank=True, default="", editable=False)
+    # 発行した時の得意先の名前の写し (masters.Partner.name と同じ字数)。帳票の宛名が読む。
+    customer_name = models.CharField("得意先の名前", max_length=100, blank=True, default="", editable=False)
+    # 発行した時の消費税の率の写し (百分率。10.00 = 10%。purchasing.SelfInvoice.tax_rate と同じ形)。
+    # services はいつも billing.services.consumption_tax_rate() を渡す。既定は services を通さずに作る試験のため。
+    tax_rate = models.DecimalField("税率 (%)", max_digits=5, decimal_places=2, default=Decimal("10.00"), editable=False)
 
     #: 変更の履歴 (core.history。決め HIST-1 の伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
+    #: 詳細と小窓の項目の一覧に出さない列 (発行の時の写し。帳票のための列で、入力の欄に無い。core.views.hidden_detail_fields)
+    detail_hidden_fields = (
+        "issuer_registration_no",
+        "issuer_address",
+        "issuer_phone",
+        "issuer_bank_account",
+        "customer_name",
+        "tax_rate",
+    )
+    #: 変更の履歴に値を残さない列 (直したことと見出しだけ。core.models.Company の振込先と同じ)
+    history_hidden_values = ("issuer_bank_account",)
 
     class Meta:
         verbose_name = "請求書"
@@ -94,6 +129,15 @@ class InvoiceLine(models.Model):
     """請求書の明細。出荷の行 (出荷 1 つに 1 行) か、一式の行 (出荷に結び付かない行。決め PRICE-1d)。どちらも受注の明細を指す。
     数量・単価・単価の単位・金額は作ったときの写し。中小企業共通 EDI の明細行類型コードは、どちらも既定の 210 (資産譲渡請求明細行) に
     当たるので列に持たない。
+    発行した時の部品の品番 (part_no)・品名 (item_name)、受注の明細の単位 (unit)、受注の得意先の注文番号 (customer_order_no) も写して持つ
+    (書くのは billing.services._issue_invoice の 1 か所。得意先の注文番号は受注の列だが、明細ごとに受注が違いうるので明細に写す)。
+    帳票 (billing.reports.invoice_context) と単価の後ろの単位の字 (price_unit_text) は写しだけを読み、写しが空でも今の値で補わない。
+    migration (0007) の前に作った明細の写しは、migration の時の今の値で埋めた (今ある行には今の値しか入れられない。発行の時の値は残っていない)。
+    写しの列は入力の欄と CSV の見出しに出さない (editable=False)。
+    訳: 明細の品番・品名・単位 (受注の明細の単位 = 注文で合意した字)・得意先の注文番号を写して持ち、刷り直しても渡した時と同じ字を出すため
+    (請求書の会社の情報・得意先の名前・税率の写しは Invoice の訳のとおり)。マスターや受注を後から直すと刷り直しの字が変わるため。
+    部品の単位は後から直されることがあるため、受注の明細から写す。納品書は会期中は写さない (shipping の migration が増えるため)。
+    出所 = 本人の決め 11-07 23:4x (今回は請求書だけ) と 11-08 00:0x (単位・注文番号)。変えてよい条件 = 本人が決め直したとき (納品書も写すと決めたとき)。
     """
 
     invoice = models.ForeignKey(
@@ -127,6 +171,13 @@ class InvoiceLine(models.Model):
     # 一式の行だけ: その受注の明細の、発行の納品書に入った出荷の最後の出荷日 (中小企業共通 EDI の明細行取引終了日に当たる。
     # インボイス制度の適格請求書に載せる取引の日を行に残す)。出荷の行は空 (出荷の出荷日を読む)。
     last_shipped_at = models.DateField("最後の出荷日", null=True, blank=True)
+    # 発行した時の部品の品番と品名の写し (masters.Item の part_no・name と同じ字数)。
+    part_no = models.CharField("品番", max_length=35, blank=True, default="", editable=False)
+    item_name = models.CharField("品名", max_length=100, blank=True, default="", editable=False)
+    # 発行した時の受注の明細の単位の写し (orders.OrderLine.unit と同じ字数。注文で合意した字。空なら刷る時に price_basis_text が「個」にする)。
+    unit = models.CharField("単位", max_length=10, blank=True, default="", editable=False)
+    # 発行した時の受注の得意先の注文番号の写し (orders.Order.customer_order_no と同じ字数)。
+    customer_order_no = models.CharField("得意先の注文番号", max_length=35, blank=True, default="", editable=False)
 
     #: 変更の履歴は請求書の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「請求書」)
     history_owner = "invoice"
@@ -162,8 +213,8 @@ class InvoiceLine(models.Model):
 
     @property
     def price_unit_text(self):
-        """単価の後ろに添える字 (読むだけ)。式なら「式」、ほかは部品の単位、空なら「個」(masters の price_basis_text)。"""
-        return price_basis_text(self.price_basis, self.order_line.item.unit)
+        """単価の後ろに添える字 (読むだけ)。式なら「式」、ほかは発行の時に受注の明細から写した単位、空なら「個」(masters の price_basis_text)。"""
+        return price_basis_text(self.price_basis, self.unit)
 
     @property
     def shipped_on(self):
