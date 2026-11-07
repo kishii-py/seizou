@@ -37,6 +37,8 @@ DEFAULTS = {
     "brand_color": "",  # 画面の主色 (# と 16 進の 6 桁。空なら土台の色。2 社を並べたときに見分ける)
     "industry": "",  # 業種 (seizou new が答えの YAML の industry を写す。左上の会社の名前の下に出す。空なら seizou)
     "mail": {"host": "", "port": 587, "security": "starttls", "user": "", "from": "", "from_name": "", "site_url": ""},  # 知らせのメールの送り方 (サーバー・ポート・暗号化の方式・アカウント・差出人・差出人の名前・seizou の URL の頭)。パスワードは持たない (.env の EMAIL_HOST_PASSWORD)
+    "ai_limits": {"concurrent": 2, "per_hour": 30, "watch_per_day": 200},  # AI の呼び出しの上限 (process ごとの同時の数・人ごと機能ごとの 1 時間の回数・注文書の見張りの 1 日の枚数)
+    "ai_features": {"assistant": True, "intake": True, "feedback": True},  # AI を使う機能ごとの使う / 止める
 }
 
 #: 知らせのメールの送り方 (mail) の中の鍵の並び (設定の画面の表の塊と、設定の変更の画面の欄の並び)
@@ -59,7 +61,7 @@ CHOICES = {
 #: 画面の上書きの控えの寿命 (秒)。別の process (gunicorn の複数の worker) が、ほかの worker の書いた上書きを読み直すまでの長さ
 CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
-LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line")
+LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line", "ai_limits", "ai_features")
 #: 値の出所の字 (設定の画面の「どこで決めたか」の列・設定の変更の画面の頭の行・MCP と AI チャットの company_info の sources が出す)。
 #: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (初見テスト R5 の V99・U101。候補 C14)。
 #: 順に、画面の上書き (SettingOverride)・会社の settings.py の SEIZOU (導入の時に答えの YAML から作る)・DEFAULTS
@@ -200,6 +202,40 @@ def mail_env_value(key: str):
     if key == "security":
         return text.lower() if text.lower() in MAIL_SECURITY else default
     return text
+
+
+def ai_limits() -> dict:
+    """AI の呼び出しの上限 (ai_limits) を、DEFAULTS の鍵の順の新しい辞書で返す (読むだけ。例外を投げない)。
+
+    鍵は concurrent (process ごとの同時の数)・per_hour (人ごと機能ごとの 1 時間の回数)・watch_per_day (注文書の見張りの 1 日の枚数)。
+    答えの値を既定に重ね、正の整数でない値 (字・0 と負の数・真偽) と無い鍵は既定にする。ai_limits が辞書でなければ全部が既定。
+    答えの YAML の書き損じで画面を 500 にしないための読み方 (access_control() と同じ考え)。画面からは変えない (LOCKED_KEYS)。
+    """
+    defaults = DEFAULTS["ai_limits"]
+    values = setting("ai_limits")
+    if not isinstance(values, dict):
+        values = {}
+    result = {}
+    for key, default in defaults.items():
+        value = values.get(key, default)
+        result[key] = value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else default
+    return result
+
+
+def ai_feature(name: str) -> bool:
+    """AI を使う機能 name (assistant / intake / feedback) を使うか (ai_features。読むだけ)。
+
+    ai_features が辞書でなければ既定、鍵が無いか真偽でない値も既定 (使う)。知らない name は KeyError。
+    画面からは変えない (LOCKED_KEYS)。
+    """
+    defaults = DEFAULTS["ai_features"]
+    if name not in defaults:
+        raise KeyError(f"知らない AI の機能: {name}")
+    values = setting("ai_features")
+    if not isinstance(values, dict):
+        values = {}
+    value = values.get(name, defaults[name])
+    return value if isinstance(value, bool) else defaults[name]
 
 
 def company_id() -> str:
