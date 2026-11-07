@@ -18,9 +18,9 @@ from seizou.core.exceptions import RuleViolation
 from seizou.masters import services as masters_services
 from tests.test_billing_payment_views import ALL_ON, PASSWORD, RECEIVED_ON, _customer, _invoice, _order_line, account
 
-TWO_LEFT = "入金が残っています。先に入金を取り消してください (残り 2 件・合計 ¥7,500)。"
-ONE_LEFT = "入金が残っています。先に入金を取り消してください (残り 1 件・合計 ¥6,500)。"
-ONE_LEFT_COUNT = "入金が残っています。先に入金を取り消してください (残り 1 件)。"
+TWO_LEFT = "この請求書には入金の記録が 2 件あります (合計 ¥7,500)。先に入金を取り消してください。"
+ONE_LEFT = "この請求書には入金の記録が 1 件あります (合計 ¥6,500)。先に入金を取り消してください。"
+ONE_LEFT_COUNT = "この請求書には入金の記録が 1 件あります。先に入金を取り消してください。"
 
 
 @pytest.fixture

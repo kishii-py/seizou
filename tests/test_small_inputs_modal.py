@@ -449,17 +449,21 @@ def test_invoice_cancel_refusal_in_modal(world):
     invoice = case.extra["invoice"]
     billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), world.user)
     back = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}#payments"'
+    close = "onclick=\"document.getElementById('seizou-modal').close()\""
 
     modal = text(world.client.get(case.url, **MODAL))
     assert "<html" not in modal
     assert "alert-warning" in modal
     assert '<form method="post"' not in modal
-    assert back not in modal
+    # 小窓にも詳細の入金の枠へ戻る link を出し、押すと小窓を閉じてから同じ画面の #payments へ移る (決め C04-2 = a)
+    assert back in modal
+    assert close in modal
 
-    # 全体の画面は今のまま、詳細の入金の枠へ戻る link を出す
+    # 全体の画面は今のまま、詳細の入金の枠へ戻る link を出す (閉じる小窓が無いので onclick は付けない)
     whole = text(world.client.get(case.url))
     assert "<html" in whole
     assert back in whole
+    assert close not in whole
 
 
 def test_deliverynote_cancel_refusal_in_modal(world):
