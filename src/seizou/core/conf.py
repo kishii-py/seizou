@@ -35,7 +35,13 @@ DEFAULTS = {
     "menu": [],  # 左のメニューの括り (label・apps・screens の並び)。空なら既定の並び (core.context_processors.SECTIONS)
     "brand_color": "",  # 画面の主色 (# と 16 進の 6 桁。空なら土台の色。2 社を並べたときに見分ける)
     "industry": "",  # 業種 (seizou new が答えの YAML の industry を写す。左上の会社の名前の下に出す。空なら seizou)
+    "mail": {"host": "", "port": 587, "security": "starttls", "user": "", "from": "", "from_name": "", "site_url": ""},  # 知らせのメールの送り方 (サーバー・ポート・暗号化の方式・アカウント・差出人・差出人の名前・seizou の URL の頭)。パスワードは持たない (.env の EMAIL_HOST_PASSWORD)
 }
+
+#: 知らせのメールの送り方 (mail) の中の鍵の並び (設定の画面の表の塊と、設定の変更の画面の欄の並び)
+MAIL_KEYS = ("host", "port", "security", "user", "from", "from_name", "site_url")
+#: 知らせのメールの暗号化の方式 (starttls = つないだ後に暗号化 / ssl = 初めから暗号化 / none = 暗号化しない)
+MAIL_SECURITY = ("starttls", "ssl", "none")
 
 CHOICES = {
     "order_form": ("multi", "single"),
@@ -148,6 +154,35 @@ def access_control(kind: str) -> str:
     if value is False:
         return "off"
     return value if isinstance(value, str) and value in ACCESS_MODES else "log"
+
+
+#: 知らせのメールの送り方 (mail) の中の鍵のうち、字で持つ物
+_MAIL_TEXT_KEYS = ("host", "user", "from", "from_name", "site_url")
+
+
+def mail_settings() -> dict:
+    """知らせのメールの送り方 (mail) を、MAIL_KEYS の順の新しい辞書で返す (読むだけ。例外を投げない)。
+
+    mail が辞書でなければ既定の写し。辞書なら、無い中の鍵と形の違う値を既定で埋める (字でない字の鍵・真偽か整数でないポート・
+    MAIL_SECURITY の外の暗号化の方式)。字は前後の空白を落とす。値を確かめて保存するのは services の validate_setting で、
+    ここは答えの YAML の書き損じで画面と知らせを 500 にしないための読み方 (access_control() と同じ考え)。
+    パスワードは持たない (core.mail が .env の EMAIL_HOST_PASSWORD を読む)。
+    """
+    defaults = DEFAULTS["mail"]
+    values = setting("mail")
+    if not isinstance(values, dict):
+        return dict(defaults)
+    result = {}
+    for key in MAIL_KEYS:
+        value = values.get(key, defaults[key])
+        if key in _MAIL_TEXT_KEYS:
+            value = value.strip() if isinstance(value, str) else defaults[key]
+        elif key == "port":
+            value = value if isinstance(value, int) and not isinstance(value, bool) else defaults[key]
+        elif key == "security":
+            value = value if isinstance(value, str) and value in MAIL_SECURITY else defaults[key]
+        result[key] = value
+    return result
 
 
 def company_id() -> str:

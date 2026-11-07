@@ -22,7 +22,7 @@ from django.utils.cache import add_never_cache_headers
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from seizou.core import access, conf, display, doctor, services
+from seizou.core import access, conf, display, doctor, mail, services
 from seizou.core.forms import CompanyForm, DisplaySettingsForm, SettingForm
 from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
@@ -48,6 +48,7 @@ SETTING_LABELS = {
     "menu": ("左のメニューの括り", {}),
     "brand_color": ("画面の主色", {}),
     "industry": ("業種", {}),
+    "mail": ("メールの送り方", {}),
 }
 
 #: 設定の名前の下に小さな字で出す 2 行目 (名前の括弧の説明を分けた物。初見テスト R5 の V99・U101。候補 C14)。
@@ -59,13 +60,28 @@ SETTING_NOTES = {
     "menu": "空なら初期の並び",
     "brand_color": "# と 16 進の 6 桁。空なら土台の色",
     "industry": "左上の会社の名前の下に出る。空なら seizou",
+    "mail": "取引先から会話が届いたときの知らせのメール。パスワードは画面に入れず .env に置く",
 }
 
 #: 画面から変えない設定 (conf.LOCKED_KEYS) の 2 行目の終わりに足す字。「編集」の列は空のまま (折れない列に字を足すと列が広がるため)
 LOCKED_NOTE = "画面からは変えない (導入の時に決める)"
 
-#: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つ。知らない鍵はそのまま出す)
-SUB_LABELS = {"department": "部署", "write": "編集の権限", "money": "金額の閲覧"}
+#: 辞書の設定の中の鍵の日本語 (権限の判定の 3 つとメールの送り方の 7 つ。知らない鍵はそのまま出す)
+SUB_LABELS = {
+    "department": "部署",
+    "write": "編集の権限",
+    "money": "金額の閲覧",
+    "host": "サーバー",
+    "port": "ポート",
+    "security": "暗号化の方式",
+    "user": "アカウント",
+    "from": "差出人",
+    "from_name": "差出人の名前",
+    "site_url": "seizou の URL の頭",
+}
+
+#: メールの送り方の暗号化の方式 (conf.MAIL_SECURITY) の日本語 (設定の画面の表と、設定の変更の画面の丸の字)
+MAIL_SECURITY_LABELS = {"starttls": "STARTTLS", "ssl": "SSL/TLS", "none": "暗号化しない"}
 
 
 def hideable_fields() -> tuple:
@@ -116,9 +132,22 @@ def _dict_parts(key: str, value: dict) -> list[str]:
     中の値は同じ鍵の表で日本語にする。並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、
     保存した並びに頼らない)。知らない鍵はその後ろ。_display はこれを「・」でつなぎ、設定の画面の表は塊ごとに出す
     (640px 以上の幅では塊の途中で折らない。初見テスト R5 の a-blind-08。候補 C14)。
+    メールの送り方 (mail) の中の値は _display の表を通さない (サーバーの名前やアカウントが選べる値の字に化けないように)。
+    暗号化の方式だけを MAIL_SECURITY_LABELS で引き、ほかは字のまま、空の字は「なし」にする。
     """
     keys = [k for k in SUB_LABELS if k in value] + [k for k in value if k not in SUB_LABELS]
+    if key == "mail":
+        return [f"{SUB_LABELS.get(k, k)}: {_mail_value(k, value[k])}" for k in keys]
     return [f"{SUB_LABELS.get(k, k)}: {_display(key, value[k])}" for k in keys]
+
+
+def _mail_value(sub_key: str, value) -> str:
+    """メールの送り方の中の値 1 つの字。暗号化の方式は日本語の字、空の字は「なし」、ほかは字のまま。"""
+    if sub_key == "security":
+        return MAIL_SECURITY_LABELS.get(value, str(value))
+    if value == "":
+        return "なし"
+    return str(value)
 
 
 def setting_note(key: str) -> str:
@@ -135,12 +164,13 @@ def setting_note(key: str) -> str:
 def company_settings() -> list[dict]:
     """選べる設定の今の値の並び (鍵・見出し・2 行目の字・値の字・値の塊・出所の字・画面から変えられるか)。
 
-    値の塊 (value_parts) は辞書の設定 (権限の判定) だけの「中の鍵: 値」の並び。ほかの設定と空の辞書は空の並びで、表は値の字を出す。
+    値の塊 (value_parts) は辞書の設定 (権限の判定・メールの送り方) だけの「中の鍵: 値」の並び。ほかの設定と空の辞書は空の並びで、表は値の字を出す。
+    メールの送り方は conf.mail_settings() で読む (答えに一部だけ書いた会社でも 7 つの塊で出す)。
     """
     rows = []
     for key in conf.DEFAULTS:
         label, _words = SETTING_LABELS.get(key, (key, {}))
-        value = conf.setting(key)
+        value = conf.mail_settings() if key == "mail" else conf.setting(key)
         rows.append(
             {
                 "key": key,
@@ -273,6 +303,14 @@ class SettingsView(ScreenMixin, TemplateView):
             context["links"] = [link for link in context["links"] if link["label"] != "アカウント管理"]
         context["system_rows"] = system_rows()
         context["parts"] = [part.rsplit(".", 1)[-1] for part in PARTS]
+        # メールの知らせ: パスワードは置いてあるかだけ (値は渡さない)。送り方は 1 回だけ読む
+        mail_values = conf.mail_settings()
+        context["mail"] = {
+            "has_password": mail.has_password(),
+            "missing": mail.missing(),
+            "from": mail_values["from"],
+            "from_name": mail_values["from_name"],
+        }
         return context
 
     def post(self, request, *args, **kwargs):
@@ -352,6 +390,9 @@ class SettingUpdateView(BaseFormView):
         context["can_clear"] = context["source"] == conf.SOURCE_SCREEN
         # 土台は model が無いと cancel_url を None にするので、設定の画面へ戻す
         context["cancel_url"] = reverse("core:settings")
+        if key == "mail":
+            # 入れる人が URL の頭を探さずに済むように、今この画面を開いている URL の頭を見せる (見せるだけで保存しない)
+            context["site_url_hint"] = self.request.build_absolute_uri("/").rstrip("/")
         return context
 
 
@@ -374,6 +415,22 @@ def setting_clear(request, key):
         messages.error(request, str(exc))
     else:
         messages.success(request, "答えの値に戻しました。")
+    return HttpResponseRedirect(reverse("core:settings"))
+
+
+@login_required
+@require_POST
+def mail_test(request):
+    """「試しに送る」の口。差出人のアドレスへ試しのメールを送り、設定の画面へ戻る (何も保存しない)。門は設定の変更と同じ settings_denied (アカウント管理の権限)。"""
+    denied = settings_denied(request)
+    if denied is not None:
+        return denied
+    try:
+        address = mail.send_test()
+    except mail.MailNotSent as exc:
+        messages.error(request, f"試しのメールを送れません。{exc}")
+    else:
+        messages.success(request, f"試しのメールを {address} へ送りました。メールが届いたかを確かめてください。")
     return HttpResponseRedirect(reverse("core:settings"))
 
 

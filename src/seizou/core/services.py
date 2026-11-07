@@ -87,6 +87,8 @@ def validate_setting(key, value):
 
     知らない鍵は KeyError。画面から変えない鍵 (conf.LOCKED_KEYS) と、形の合わない値は日本語の ValueError。
     主色 (brand_color) と業種 (industry) は、空の字を既定 (設定なし) として通す (点検 seizou_doctor が既定の値も確かめるため)。
+    mail (知らせのメールの送り方) は、欠けた中の鍵を既定で埋め、7 つの形を見る。パスワードは受けない (.env の EMAIL_HOST_PASSWORD だけ)。
+    訳: 送れない形の送り方を残さないため。出所 = AI の案 (形は SMTP の名前とポートとメールアドレスと URL の一般の形)。変えてよい条件 = 送り方の項目を足す時。
     """
     if key not in conf.DEFAULTS:
         raise KeyError(f"知らない設定の鍵: {key}")
@@ -112,6 +114,8 @@ def validate_setting(key, value):
                 f"値はそれぞれ off / log / on にしてください (入れた値: {value!r})。"
             )
         return {kind: value[kind] for kind in kinds}
+    if key == "mail":
+        return _validate_mail(value)
     if key == "brand_color":
         text = value.strip() if isinstance(value, str) else None
         if text is None or (text and not conf.BRAND_COLOR_PATTERN.fullmatch(text)):
@@ -137,6 +141,87 @@ def validate_setting(key, value):
                 names.append(name)
         return names
     raise ValueError(f"保存できません。{key} は画面からは変えられません。")
+
+
+#: 知らせのメールの送り方 (mail) の字数の上限 (サーバーの名前 253・アカウントと差出人 254・差出人の名前 100・URL の頭 200)
+_MAIL_HOST_MAX = 253
+_MAIL_ADDRESS_MAX = 254
+_MAIL_FROM_NAME_MAX = 100
+_MAIL_SITE_URL_MAX = 200
+
+
+def _mail_text(value):
+    """mail の中の字の値の前後の空白を落とす。字でなければ None (呼び手が断る)。"""
+    return value.strip() if isinstance(value, str) else None
+
+
+def _mail_site_url_ok(text: str) -> bool:
+    """seizou の URL の頭の形。scheme が http か https・ホストがある・空白が無い・ポートが読める (connect の _url_is_valid と同じ見方)。"""
+    from urllib.parse import urlsplit
+
+    if len(text) > _MAIL_SITE_URL_MAX or any(char.isspace() for char in text):
+        return False
+    try:
+        parts = urlsplit(text)
+        _ = parts.port  # 数でないポートと範囲の外のポートは ValueError になる
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def _validate_mail(value) -> dict:
+    """知らせのメールの送り方 (mail) を確かめて、conf.MAIL_KEYS の順の新しい辞書を返す。誤りは「保存できません。」で始まる ValueError。
+
+    見る順は 辞書と鍵 → サーバー → ポート → 暗号化の方式 → アカウント → 差出人 → 差出人の名前 → seizou の URL の頭。
+    欠けた中の鍵は既定 (conf.DEFAULTS["mail"]) で埋める (答えの YAML に一部だけ書いた会社でも、点検と画面が止まらないように)。
+    サーバーと差出人と URL の頭は空を通す (メールを使わない会社の既定)。字は前後の空白を落とし、URL の頭は末尾の「/」を落とす。
+    入れた値は断りの文に入れない。断りの文は raise ValueError の括弧の中に字のまま書く (使い方の画面が ast で集め、
+    画面から起きない文の表 core/manual.py の NOT_FROM_SCREEN と 1 字ずつ比べるため)。パスワードの鍵は受けない。
+    訳: 送れない形の送り方を残さないため。出所 = AI の案 (形は SMTP の名前とポートとメールアドレスと URL の一般の形)。変えてよい条件 = 送り方の項目を足す時。
+    """
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+
+    if not isinstance(value, dict) or any(key not in conf.MAIL_KEYS for key in value):
+        raise ValueError("保存できません。メールの送り方は、host・port・security・user・from・from_name・site_url の鍵を持つ辞書にしてください。")
+    defaults = conf.DEFAULTS["mail"]
+    values = {key: value.get(key, defaults[key]) for key in conf.MAIL_KEYS}
+
+    host = _mail_text(values["host"])
+    if host is None or len(host) > _MAIL_HOST_MAX or any(char.isspace() for char in host):
+        raise ValueError("保存できません。メールの送り方の「サーバー」は、空白の無い 253 字までの名前にしてください (例 smtp.example.jp)。")
+    port = values["port"]
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError("保存できません。メールの送り方の「ポート」は 1〜65535 の整数にしてください。")
+    security = values["security"]
+    if not isinstance(security, str) or security not in conf.MAIL_SECURITY:
+        raise ValueError("保存できません。メールの送り方の「暗号化の方式」は starttls・ssl・none のどれかにしてください。")
+    user = _mail_text(values["user"])
+    if user is None or len(user) > _MAIL_ADDRESS_MAX:
+        raise ValueError("保存できません。メールの送り方の「アカウント」は 254 字までにしてください。")
+    sender = _mail_text(values["from"])
+    if sender:
+        try:
+            validate_email(sender)
+        except ValidationError:
+            sender = None
+    if sender is None or len(sender) > _MAIL_ADDRESS_MAX:
+        raise ValueError("保存できません。メールの送り方の「差出人」がメールアドレスの形ではありません。例 notice@example.jp の形で入れてください。")
+    from_name = _mail_text(values["from_name"])
+    if from_name is None or len(from_name) > _MAIL_FROM_NAME_MAX or any(ord(char) < 32 or ord(char) == 127 for char in from_name):
+        raise ValueError("保存できません。メールの送り方の「差出人の名前」は、改行の無い 100 字までにしてください。")
+    site_url = _mail_text(values["site_url"])
+    if site_url is None or (site_url and not _mail_site_url_ok(site_url)):
+        raise ValueError("保存できません。メールの送り方の「seizou の URL の頭」は http:// か https:// で始まる URL にしてください (例 https://seizou.example.jp)。")
+    return {
+        "host": host,
+        "port": port,
+        "security": security,
+        "user": user,
+        "from": sender,
+        "from_name": from_name,
+        "site_url": site_url.rstrip("/"),
+    }
 
 
 def _user_name(user) -> str:

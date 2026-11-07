@@ -175,6 +175,7 @@ class SettingForm(forms.Form):
     """選べる設定 key 1 つの入力。欄は鍵の種類で決まる。
 
     選べる値 (conf.CHOICES) と真偽は丸の選択 (Radios。名前の下に CHOICE_NOTES の 1 文)、権限の判定 (access_control) は 3 つの select、
+    メールの送り方 (mail) は 7 つの欄 (暗号化の方式は丸の選択。欄の名前は頭に mail_ を付ける)、
     使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前・主色・業種) は字。
     主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。字の欄の注記 (help_text) は、設定の画面の表で名前の下に出す
     2 行目と同じ字 (settings_screen.setting_note。「# と 16 進の 6 桁」は値を打つ所で要るため。初見テスト R5 の V99。候補 C14)。
@@ -193,7 +194,7 @@ class SettingForm(forms.Form):
     def __init__(self, *args, key, **kwargs):
         super().__init__(*args, **kwargs)
         # 見出しの日本語は設定の画面の表から読む。module の頭で読むと settings_screen → forms の輪になるので、ここで読む
-        from seizou.core.settings_screen import SETTING_LABELS, SUB_LABELS, hideable_fields, setting_note
+        from seizou.core.settings_screen import MAIL_SECURITY_LABELS, SETTING_LABELS, SUB_LABELS, hideable_fields, setting_note
 
         self.key = key
         label, words = SETTING_LABELS.get(key, (key, {}))
@@ -220,6 +221,57 @@ class SettingForm(forms.Form):
                 self.fields[kind] = forms.ChoiceField(
                     label=SUB_LABELS.get(kind, kind), choices=choices, initial=conf.access_control(kind)
                 )
+        elif key == "mail":
+            # 欄の名前は頭に mail_ を付ける (土台が渡す user などの名前と字を重ねないため)。初期値は今の送り方。
+            # 丸の注 (notes) は Radios に直に渡す (CHOICE_NOTES は CHOICES と真偽の鍵だけの表)
+            values = conf.mail_settings()
+            self.fields["mail_host"] = forms.CharField(
+                label="サーバー", max_length=253, required=False, initial=values["host"], help_text="例 smtp.example.jp。空ならメールを送りません。"
+            )
+            self.fields["mail_port"] = forms.IntegerField(
+                label="ポート", min_value=1, max_value=65535, initial=values["port"], help_text="STARTTLS は 587、SSL/TLS は 465 のことが多い。"
+            )
+            self.fields["mail_security"] = forms.ChoiceField(
+                label="暗号化の方式",
+                choices=[(v, MAIL_SECURITY_LABELS[v]) for v in conf.MAIL_SECURITY],
+                initial=values["security"],
+                widget=Radios(
+                    attrs={"class": RADIO_CSS},
+                    notes={
+                        "starttls": "つないだ後に暗号化する (ポート 587 など)。",
+                        "ssl": "初めから暗号化する (ポート 465 など)。",
+                        "none": "暗号化しない。パスワードと本文がそのまま流れるおそれがあるので、社内のサーバーだけで使う。",
+                    },
+                ),
+            )
+            self.fields["mail_user"] = forms.CharField(
+                label="アカウント",
+                max_length=254,
+                required=False,
+                initial=values["user"],
+                help_text="サーバーにログインする名前 (メールアドレスのことが多い)。パスワードはここに入れず、置き場の .env に EMAIL_HOST_PASSWORD= の行で置きます。",
+            )
+            self.fields["mail_from"] = forms.EmailField(
+                label="差出人",
+                max_length=254,
+                required=False,
+                initial=values["from"],
+                help_text="知らせのメールの差出人のアドレス。「試しに送る」もこのアドレスへ送ります。",
+            )
+            self.fields["mail_from_name"] = forms.CharField(
+                label="差出人の名前",
+                max_length=100,
+                required=False,
+                initial=values["from_name"],
+                help_text="メールの差出人の欄に、アドレスと一緒に出す名前 (例 会社名)。空ならアドレスだけを出します。",
+            )
+            self.fields["mail_site_url"] = forms.CharField(
+                label="seizou の URL の頭",
+                max_length=200,
+                required=False,
+                initial=values["site_url"],
+                help_text="メールのリンクの頭。人がこの seizou を開く URL の頭です (例 https://seizou.example.jp)。空ならリンクを付けません。",
+            )
         elif key == "hidden_fields":
             self.fields[self.HIDDEN_FIELDS_FIELD] = forms.MultipleChoiceField(
                 label=label,
@@ -239,10 +291,13 @@ class SettingForm(forms.Form):
             )
 
     def value(self):
-        """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
+        """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、メールの送り方は 7 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
         data = self.cleaned_data
         if self.key == "access_control":
             return {kind: data[kind] for kind in conf.DEFAULTS["access_control"]}
+        if self.key == "mail":
+            # 欄の名前から頭の mail_ を外した 7 つの鍵の辞書。値を整えるのは services (form は欄の型だけ)
+            return {name: data[f"mail_{name}"] for name in conf.MAIL_KEYS}
         if self.key == "hidden_fields":
             return list(data[self.HIDDEN_FIELDS_FIELD])
         return data[self.key]

@@ -241,6 +241,36 @@ NOT_FROM_SCREEN = (
         "使わない項目は複数の check で、form が字の並びを作る (core/forms.py の SettingForm)。",
     ),
     (
+        "core",
+        "保存できません。メールの送り方は、host・port・security・user・from・from_name・site_url の鍵を持つ辞書にしてください。",
+        "メールの送り方の変更の画面は 7 つの欄で、form が 7 つの鍵の辞書を作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「ポート」は 1〜65535 の整数にしてください。",
+        "ポートの欄は整数の欄で、1〜65535 の外は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「暗号化の方式」は starttls・ssl・none のどれかにしてください。",
+        "暗号化の方式は丸の選択で、選べる値の外は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「アカウント」は 254 字までにしてください。",
+        "アカウントの欄は 254 字までで、長い字は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「差出人」がメールアドレスの形ではありません。例 notice@example.jp の形で入れてください。",
+        "差出人の欄はメールアドレスの欄で、形の違う字と長い字は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「差出人の名前」は、改行の無い 100 字までにしてください。",
+        "差出人の名前の欄は 100 字までの 1 行の欄で、長い字は form が止め、改行は打てない (core/forms.py の SettingForm)。",
+    ),
+    (
         "masters",
         "保存できません。取引先の種類 … は使えません。得意先 (customer)・協力企業 (subcontractor)・両方 (both) のどれかにしてください。",
         "取引先の form は model の選ぶ欄をそのまま使う。CSV の取り込みは、選ぶ欄の字を core/seeds.py の _choice_value が services より前に断る。",

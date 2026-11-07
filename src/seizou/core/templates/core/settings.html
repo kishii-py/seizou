@@ -2,7 +2,7 @@
 {% load seizou_icons %}
 {% block content %}
 {# 設定: 会社の選べる設定 (今の値とどこで決めたか。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
-{# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
+{# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・メールの知らせ・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
 {# 4 つとも幅いっぱいに置く。設定の表は 5 列 (設定・今の値・どこで決めたか・鍵・編集) なので、半分の幅だとどこで決めたかと編集が横の送りの先に隠れる (11-03 の本体の手の確かめ)。 #}
 {# 表と説明の字は事務の人が読める言葉にし、作る人向けの字 (settings.py・SEIZOU・YAML・model) を出さない (初見テスト R5 の V99・U101)。鍵の列だけは答えの YAML と見比べる人のために英字の鍵を残す。名前の括弧の説明は、名前の下の小さな字の 2 行目 (settings_screen.SETTING_NOTES) に分ける。 #}
 {# 表の列の幅 (初見テスト R5 の a-flagged-26・a-blind-08・a-blind-09): 「設定」の列は全部の幅で折り返し、tablet・1024・1280 で「編集」を箱の中に入れる。「今の値」の列は 640px 以上だけ最小の幅 (sm:min-w-36 = 144px。model の名前 claude-sonnet-5-5 が 1 行に入る幅) を見出しに付け、権限の判定は塊の途中で折らない。640px 未満 (スマホ) は今の細さのまま箱の横の送りを受け入れ、鍵の列も隠さない (C14-2 = a)。 #}
@@ -53,6 +53,19 @@
       <dt class="text-base-content/70 sm:whitespace-nowrap">振込先</dt><dd class="min-w-0 break-words">{{ seizou.company.bank_account|default:"なし" }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">登録番号</dt><dd class="min-w-0 break-words">{{ seizou.company.registration_no|default:"なし" }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">ロゴ</dt><dd class="min-w-0 break-words">{% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="ロゴ" class="size-12 rounded-xl object-contain">{% else %}なし{% endif %}</dd>
+    </dl>
+  </section>
+  {# メールの知らせ: パスワードは .env に置いてあるかだけを出す (値は出さない)。送り方は「編集」(設定の変更の画面の mail)、「試しに送る」は差出人のアドレスへ送る (POST。何も保存しない)。 #}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="mail-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="mail-title" class="text-lg font-bold">メールの知らせ</h2>
+      {% if can_edit %}<div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-outline border-base-300" href="{% url 'core:setting_update' 'mail' %}">{% icon "pencil" "size-4" %}編集</a><form method="post" action="{% url 'core:mail_test' %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "bell" "size-4" %}試しに送る</button></form></div>{% endif %}
+    </div>
+    <p class="mt-2 text-xs text-base-content/70">取引先から会話が届いたとき、会話の 1 行目と画面へのリンクだけをメールで知らせます。添付は送りません。送り方は「編集」で入れます。パスワードは画面に入れず、置き場の .env に EMAIL_HOST_PASSWORD= の行で置いて、起動し直します。「試しに送る」は差出人のアドレスへ送ります。</p>
+    <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+      <dt class="text-base-content/70 sm:whitespace-nowrap">パスワード</dt><dd class="min-w-0 break-words">{% if mail.has_password %}<span class="badge badge-soft badge-success">置いてある</span>{% else %}<span class="badge badge-soft badge-warning">まだ</span>{% endif %}</dd>
+      <dt class="text-base-content/70 sm:whitespace-nowrap">送り方</dt><dd class="min-w-0 break-words">{% if mail.missing %}まだ (「{{ mail.missing|join:"」「" }}」が空){% else %}入っている (届くかは「試しに送る」で確かめる){% endif %}</dd>
+      <dt class="text-base-content/70 sm:whitespace-nowrap">差出人</dt><dd class="min-w-0 break-words">{{ mail.from|default:"なし" }}{% if mail.from_name %} ({{ mail.from_name }}){% endif %}</dd>
     </dl>
   </section>
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="system-title">
