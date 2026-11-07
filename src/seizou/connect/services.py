@@ -29,7 +29,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from seizou.core.exceptions import RuleViolation
-from seizou.masters.services import map_partner_item, resolve_partner_item
+from seizou.masters.services import PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
 from . import signing
@@ -756,6 +756,7 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
                     "qty": _payload_decimal(raw.get("qty"), f" {number} 行目の数量"),
                     "unit": unit if isinstance(unit, str) and unit else item.unit,
                     "unit_price": unit_price,
+                    "price_basis": _payload_price_basis(raw.get("price_basis"), f" {number} 行目の単価の単位"),
                     "due_date": _payload_date(raw.get("due_date"), f" {number} 行目の納期"),
                     "note": note if isinstance(note, str) else "",
                     "customer_part_no": part_no,
@@ -1077,6 +1078,22 @@ def _payload_decimal(value, label):
     )
 
 
+def _payload_price_basis(value, label):
+    """payload の単価の単位を、部品の単位 (unit) か式 (lump) にして返す。鍵が無い・null・空の字は部品の単位。ほかは日本語の ValueError。
+    読めない値を部品の単位として受けると、式のつもりの明細の金額が数量倍になる。
+
+    訳: 単価の単位を送らない相手 (前の版の seizou) の注文を今と同じ意味で受け、読めない値の注文は数量・単価・納期と同じく断って送り直してもらうため。出所 = 作者の決め PRICE-1b と、今の受け入れの決まり (_payload_decimal・_payload_date)。
+    変えてよい条件 = 単価の単位の種類を足すとき。
+    """
+    if value is None or value == "":
+        return PRICE_BASIS_UNIT
+    if isinstance(value, str) and value in PRICE_BASIS_VALUES:
+        return value
+    raise ValueError(
+        f"注文のデータの{label}が「部品の単位」(unit) か「式」(lump) ではありません。この注文は断り、送る側に送り直してもらってください。"
+    )
+
+
 def _fits_field(number, field):
     """number (Decimal) が 0 より大きく、表の欄 field (DecimalField) の桁に入るか。
 
@@ -1093,7 +1110,7 @@ def _fits_field(number, field):
 
 
 def _order_lines_problem(payload):
-    """注文のデータの明細の数量・単価・金額 (数量 × 単価) が、受注の明細の表の欄に入らないときの日本語の文。入れば None。
+    """注文のデータの明細の数量・単価・金額 (数量 × 単価) (単価の単位が式の行は見ない) が、受注の明細の表の欄に入らないときの日本語の文。入れば None。
 
     見るのは読める数 (字か整数で、有限の数) のうち 0 より大きい物だけ。読めない数・0 と負・明細の無い注文・形の違う行は見ない
     (承認の時に accept と create_order が止める = N39 の決めと R02)。受け口 (receive) と承認 (accept) が呼ぶ。
@@ -1129,7 +1146,11 @@ def _order_lines_problem(payload):
                     f"整数の部分 {whole} 桁・小数 {field.decimal_places} 桁までの数にしてください。"
                 )
             figures[key] = figure
-        if len(figures) == 2 and figures["qty"] * figures["unit_price"] >= Decimal(10) ** amount_whole:
+        if (
+            len(figures) == 2
+            and raw.get("price_basis") != PRICE_BASIS_LUMP
+            and figures["qty"] * figures["unit_price"] >= Decimal(10) ** amount_whole
+        ):
             return f"注文の {number} 行目の金額 (数量 × 単価) が、整数の部分 {amount_whole} 桁を超えます。数量と単価を確かめてください。"
     return None
 
@@ -1305,6 +1326,8 @@ def send_order(purchase_order, user):
 
     - つながりは発注の取引先の、向き「送る」の物。無ければ ValueError。発注が「取消」でも ValueError。
     - 本文は鍵の並びを固定した JSON の bytes。署名はこの bytes のまま (整形し直さない)。
+    - 明細の price_basis は単価の単位 (unit = 部品の単位 1 つあたり・lump = 式。金額に数量を掛けない)。中小企業共通 EDI の注文単価は
+      1 単位あたりの単価で、式に当たる数量単位コードと単価コードは無いので、seizou の項目として送る。
     - 相手への HTTP は transaction.atomic の外で送る (R17)。待ちは 10 秒。
     - 相手の返事は日本語の短い文で Outbox.response に書く。200 (受け取った) なら発注を「送った」にする。
       鍵が無い・断られた・届かないときは例外にせず、発注は「作成」のまま (人が「送り直す」を押す)。
@@ -1339,6 +1362,7 @@ def send_order(purchase_order, user):
             "qty": str(line.qty),
             "unit": line.unit,
             "unit_price": str(line.unit_price),
+            "price_basis": line.price_basis,
             "due_date": line.due_date.isoformat() if line.due_date else None,
             "note": line.note,
         }
