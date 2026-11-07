@@ -4,8 +4,8 @@
 - 書くのはここだけ。書く関数は transaction.atomic の中。番号の無い入力の誤りは日本語の ValueError
   (文は何が起きて何をすればよいか。画面の土台が赤の知らせにし、口は messages.error にする)。
 - GitHub へは、世話役がトークンを置いた会社 (github.py。鍵は置き場の .env だけ) だけが送る。確認済みの下書きを send_to_github で
-  Issue にし、閉じた Issue を sync_github で直したにする。HTTP は transaction.atomic の外で送る (R17。送る前に書く物は無く、
-  送った後に書く物は mark_sent・mark_fixed の atomic)。トークンが無い会社は今までどおり、世話役が Issue の文 (export_markdown) を手で写す。
+  Issue にし、閉じた Issue を sync_github で閉じた理由と直る版で分ける (直した・見送った・版待ち)。HTTP は transaction.atomic の外で
+  送る (R17。送る前に書く物は無く、送った後に書く物は mark_sent・_write_fixed・_write_dismissed・_save_fix_version の atomic)。トークンが無い会社は今までどおり、世話役が Issue の文 (export_markdown) を手で写す。
 - 皆の Issue を探す search_issues は読むだけ (トークンは無くてよい。返事は django.core.cache に 5 分だけ控える)。
 - 伏せ字は取引先マスターの名前と金額らしい数だけ。品番・数量・会社の自分の名前・人の名前は伏せない。
 - 画面の目録は URL の木を歩いて作るので、process の中で 1 回だけ作って覚える (screen_catalog)。
@@ -14,6 +14,8 @@
 - 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
   添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
 - 直した (fixed) は世話役が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
+- 見送った (dismissed) は sync_github だけが付ける (GitHub で対応しない・重複として閉じた Issue)。直したと別の列に日時と知らせた印を持ち、
+  書いた人がログインしたときに 1 回だけ知らせる (依頼書 N322。決め 11-07 09:0x〜09:4x)。
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from .models import Feedback
 
 #: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
-#: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した)
+#: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した と、取り込みが付ける見送った)
 STATUSES = tuple(value for value, _ in Feedback.STATUS_CHOICES)
 #: data に入れてよい鍵
 FIELD_KEYS = ("kind", "screen", "title", "problem", "situation", "wish", "screens")
@@ -60,6 +62,10 @@ MESSAGE_ALREADY_SENT = "この件は送った状態です。"
 MESSAGE_SENT_URL = "送った先は http か https の URL にしてください。"
 MESSAGE_ALREADY_FIXED = "この件は既に直した状態です。"
 MESSAGE_FIXED_NOTE_LONG = f"直した場所は {FIXED_NOTE_MAX_CHARS} 字までです。短くしてください。"
+MESSAGE_ALREADY_DISMISSED = "この件は既に見送った状態です。"
+MESSAGE_DISMISSED_NOTE_LONG = f"見送った理由の場所は {FIXED_NOTE_MAX_CHARS} 字までです。短くしてください。"
+#: 直る版の字数の上限 (表の列の長さ)
+FIX_VERSION_MAX_CHARS = Feedback._meta.get_field("fix_version").max_length
 
 #: 金額らしい数 (¥・￥ の後の数と、円の前の数)
 _MONEY = re.compile(r"[¥￥]\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*円")
@@ -480,6 +486,75 @@ def mark_fixed_seen(rows, user) -> int:
         )
 
 
+def _write_dismissed(feedback, note):
+    """見送った状態を書く (置き場の持ち主の取り込み sync_github が呼ぶ。人の確かめは呼び手がする)。_write_fixed と同じ形。
+
+    note は見送った理由の場所 (例「GitHub の Issue #7 (閉じた日 2026-11-06。理由 対応しない)」。前後の空白を外して 200 字まで)。
+    見送った日時は今にし、知らせた日時は空にする (書いた人が次にログインしたときに 1 回知らせる = signals.py)。
+    直る版は空にする (見送りは版を待たない)。直したと見送った物は ValueError。
+    訳: 対応しないとして閉じた Issue を「直した」と知らせると、直していない物に「直しました」が出て、皆で育てる輪が信用を失うため、
+    直したと別の状態にする。出所 = 本人の決め 11-07 09:0x〜09:4x の 1 と 3 (手元の B 社の通しで not_planned が直したになった)。
+    変えてよい条件 = 見送りを書いた人に知らせない形に変えるときは、本人の決めを取り直してから。
+    """
+    if feedback.status == "fixed":
+        raise ValueError("保存できません。" + MESSAGE_ALREADY_FIXED)
+    if feedback.status == "dismissed":
+        raise ValueError("保存できません。" + MESSAGE_ALREADY_DISMISSED)
+    text = _text(note)
+    if len(text) > FIXED_NOTE_MAX_CHARS:
+        raise ValueError("保存できません。" + MESSAGE_DISMISSED_NOTE_LONG)
+    with transaction.atomic():
+        feedback.status = "dismissed"
+        feedback.dismissed_at = timezone.now()
+        feedback.dismissed_note = text
+        feedback.dismissed_seen_at = None
+        feedback.fix_version = ""
+        feedback.save(update_fields=["status", "dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version", "updated_at"])
+        return feedback
+
+
+def unseen_dismissed(user) -> list:
+    """user が書いたフィードバックのうち、見送った日時があり、まだ知らせていない物の並び (見送った日時の新しい順)。読むだけ。
+
+    pk の無い利用者 (ログインしていない人) は空の並び。unseen_fixed と同じ形。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return []
+    rows = Feedback.objects.filter(created_by_id=user_pk, dismissed_at__isnull=False, dismissed_seen_at__isnull=True)
+    return list(rows.order_by("-dismissed_at", "-pk"))
+
+
+def dismissed_notice(rows) -> str:
+    """ログインのときの見送りの知らせの文 (いちばん新しく見送った物の題と件数)。空の並びなら空の字。
+
+    題は伏せない (書いた本人にだけ出す字のため)。toast は字だけを出すので link は入れず、Issue への行き先を字で書く。
+    """
+    rows = list(rows)
+    if not rows:
+        return ""
+    more = "ほか " if len(rows) > 1 else ""
+    return (
+        f"あなたの一言は見送りになりました: 「{rows[0].title}」{more}({len(rows)} 件)。"
+        "理由は GitHub の Issue に書かれています (詳細の「送った先」から開けます)。"
+    )
+
+
+def mark_dismissed_seen(rows, user) -> int:
+    """見送りを知らせた日時を今にする (user が書いた行で、まだ空の物だけ)。書いた行の数を返す。mark_fixed_seen と同じ形。
+
+    変えた日時 (updated_at) は変えない (知らせは中身の変更でないため。queryset の update は auto_now を動かさない)。
+    """
+    user_pk = getattr(user, "pk", None)
+    pks = [row.pk for row in rows]
+    if user_pk is None or not pks:
+        return 0
+    with transaction.atomic():
+        return Feedback.objects.filter(pk__in=pks, created_by_id=user_pk, dismissed_seen_at__isnull=True).update(
+            dismissed_seen_at=timezone.now()
+        )
+
+
 #: 削除の断りの文 (口は messages.error にする)
 MESSAGE_ALREADY_DELETED = "この下書きは既にありません。一覧を開き直してください。"
 MESSAGE_CANNOT_DELETE = "この下書きは、書いた人かアカウント管理の担当者だけが削除できます。"
@@ -699,18 +774,63 @@ def _closed_on(text) -> str:
     return timezone.localdate(moment).isoformat()
 
 
-def sync_github(user=None) -> dict:
-    """送った物の GitHub の Issue を 1 件ずつ読み、閉じた物を直したにする。返す物は {"見た": n, "直した": m, "読めなかった": k}。
+def _version_parts(text) -> tuple[int, ...]:
+    """版の字を「.」で分け、各段の先頭の数字だけを int にした tuple (数字の無い段は 0。例 "0.1.1rc1" → (0, 1, 1))。"""
+    parts = []
+    for part in str(text or "").strip().split("."):
+        digits = re.match(r"\d*", part.strip()).group()
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
 
+
+def version_at_least(current, needed) -> bool:
+    """会社が入れている版 (current) が、直る版 (needed) と同じか新しいか。
+
+    版の字を「.」で分け、各段の先頭の数字だけを int にして tuple で比べる ("0.1.1" と "0.1.1rc1" は同じ段の 1 と 1)。
+    current が空 (package が入っていない) なら False。needed が空なら True。
+    訳: 会社が直った版を入れる前に「直した」と知らせると、書いた人が画面で直っていないのを見て、知らせが信用を失うため、
+    入れている版が直る版に届いたかを見る。出所 = 本人の決め 11-07 09:0x〜09:4x の 4 と 5 (版の 3 つ目の数を直しを外へ出すときに上げる)。
+    変えてよい条件 = 版の番号の決まり (GOVERNANCE.md の世話役の節) を変えるときに、同じ決めに合わせて変える。
+    """
+    if not str(needed or "").strip():
+        return True
+    if not str(current or "").strip():
+        return False
+    return _version_parts(current) >= _version_parts(needed)
+
+
+#: 閉じた理由のうち「見送った」にする物 → 直した場所の字に入れる理由の字 (GitHub の state_reason)
+DISMISSED_REASONS = {"not_planned": "対応しない", "duplicate": "重複"}
+
+
+def _save_fix_version(feedback, version) -> None:
+    """直る版を書く (sync_github の版待ちの件。状態は送ったのまま。知らせない)。"""
+    with transaction.atomic():
+        feedback.fix_version = version
+        feedback.save(update_fields=["fix_version", "updated_at"])
+
+
+def sync_github(user=None) -> dict:
+    """送った物の GitHub の Issue を 1 件ずつ読み、閉じた物を閉じた理由で分ける (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+
+    返す物は {"見た", "直した", "見送った", "版待ち", "版の印なし", "読めなかった"} の件数 (鍵の順もこれ)。
     見るのは、状態が送ったで、送った先が https://github.com/<owner>/<name>/issues/<番号> の形の物だけ (ほかの URL は飛ばす)。
-    直した場所は「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD)」。読めなかった物は数えて飛ばす (止めない)。
-    HTTP は 1 件ずつ atomic の外 (R17)。トークンがあれば使う (無くても公開のリポジトリは読める)。
+    閉じた物の分け方 (理由は GitHub の state_reason):
+    - not_planned (対応しない)・duplicate (重複) → 見送った。理由の場所は「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD。理由 対応しない)」。
+      版を待たない。
+    - completed でマイルストーン (直る版) あり → 会社が入れている版 (manual.package_version) が同じか新しければ直した
+      (直した場所は「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD。直る版 0.1.1)」)。古ければ送ったのまま直る版を残し、版待ちに数える (知らせない)。
+    - completed でマイルストーン無し → 送ったのまま版の印なしに数える (自動では直したにしない。世話役が版を入れた後に手で「直したと記録する」)。
+    - 理由が空 (古い Issue と理由の無い閉じ方) と知らない字 → 今までどおり直した (「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD)」)。
+    読めなかった物は数えて飛ばす (止めない)。HTTP は 1 件ずつ atomic の外 (R17)。トークンがあれば使う (無くても公開のリポジトリは読める)。
     user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
+    訳: 対応しないとして閉じた物と、直った版がまだ会社に入っていない物に「直しました」と知らせないため。
+    出所 = 本人の決め 11-07 09:0x〜09:4x の 1・2・4。変えてよい条件 = 閉じた理由の分け方か版の決まりを、本人の決めで変えたとき。
     """
     if user is not None:
         _refuse_github(user, "GitHub の状態を取り込む")
     token = github.read_env_value(github.TOKEN_ENV)
-    counts = {"見た": 0, "直した": 0, "読めなかった": 0}
+    counts = {"見た": 0, "直した": 0, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 0}
     for row in list(Feedback.objects.filter(status="sent").order_by("pk")):
         match = _ISSUE_URL.fullmatch(row.sent_url or "")
         if match is None:
@@ -724,8 +844,25 @@ def sync_github(user=None) -> dict:
             continue
         if state["state"] != "closed":
             continue
+        closed = f"GitHub の Issue #{number} (閉じた日 {_closed_on(state['closed_at'])}"
+        reason = state.get("state_reason") or ""
         try:
-            _write_fixed(row, f"GitHub の Issue #{number} (閉じた日 {_closed_on(state['closed_at'])})")
+            if reason in DISMISSED_REASONS:
+                _write_dismissed(row, f"{closed}。理由 {DISMISSED_REASONS[reason]})")
+                counts["見送った"] += 1
+                continue
+            if reason == "completed":
+                milestone = _text(state.get("milestone"))
+                if not milestone:
+                    counts["版の印なし"] += 1
+                    continue
+                if not version_at_least(manual.package_version(), milestone):
+                    _save_fix_version(row, milestone[:FIX_VERSION_MAX_CHARS])
+                    counts["版待ち"] += 1
+                    continue
+                _write_fixed(row, f"{closed}。直る版 {milestone})")
+            else:
+                _write_fixed(row, f"{closed})")
         except ValueError:
             counts["読めなかった"] += 1
             continue
