@@ -15,6 +15,9 @@
      使い方の冊子は自分の @page で会社名つきに上書きし、表紙 (:first) では消す。 */
   @bottom-center {
     content: counter(page) " / " counter(pages);
+    /* 番号の枡 (.report-docno) を持つ帳票 (請求書・納品書) では「書類の番号　n / N」(決め 11-07 21:0x。2 枚目以降がどの書類か分かるように)。
+       string() を読めないブラウザの印刷は上の行の「n / N」を使い、PDF の道具 (WeasyPrint) はこの行を使う。 */
+    content: string(report-docno) counter(page) " / " counter(pages);
     font-family: "NotoSansJP Report", sans-serif;
     font-size: 8pt;
   }
@@ -152,6 +155,12 @@ th {
   text-align: left;
 }
 
+/* 番号の枡 (請求書番号・納品書番号の td)。中の字を覚え、@page の下の端に「番号　n / N」で出す。
+   区切りの全角の空白を値の側に含めるので、この枡の無い帳票 (現品票・出荷ラベル・見本) の下の端は「n / N」のまま。 */
+.report-docno {
+  string-set: report-docno content() "　";
+}
+
 /* 明細の表: 縦の線は引かず、行の間の細い横線と見出しの下の太い線だけ (請求書の帳票でよく見る形。目視の所見 11-05) */
 .report-lines th,
 .report-lines td {
@@ -177,6 +186,13 @@ th {
 .report-lines .num,
 .report-lines thead th {
   white-space: nowrap;
+}
+
+/* 小計・消費税・合計 (tfoot) は最後のページだけに出す。既定の table-footer-group だと WeasyPrint もブラウザの印刷も
+   毎ページの下にくり返し、1 ページ目で終わりと読まれるか、合計を 2 回足されるため (見つけ print-01)。3 行は同じページに置く。 */
+.report-lines tfoot {
+  display: table-row-group;
+  page-break-inside: avoid;
 }
 
 .report-lines tfoot th,

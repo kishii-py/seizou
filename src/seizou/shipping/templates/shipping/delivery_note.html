@@ -12,7 +12,7 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-customer">{{ customer.name }} 御中</p>
 <table class="report-meta">
-  <tr><th>納品書番号</th><td>{{ note.number }}</td></tr>
+  <tr><th>納品書番号</th><td class="report-docno">{{ note.number }}</td></tr>
   <tr><th>発行日</th><td>{{ note.date|date:"Y年n月j日" }}</td></tr>
 </table>
 <p>下記のとおり納品いたします。</p>

@@ -6,6 +6,7 @@ context の company は core の Company (か同じ名前の項目を持つ物):
 帳票は入力の欄を持たないので、CSRF の見出しは置かない (画面の土台の 1 か所だけ)。
 押せるのは上の「印刷」のボタンだけ (押すとブラウザの印刷)。画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-actions)。
 cancelled が真なら (取消の書類)、題の横に枠付きの「取消」を出す。請求書・納品書・現品票の context が渡す。渡さない帳票 (出荷ラベル・見本の納品書) には出ない。
+各ページの下の端は report.css の @page の「n / N」。帳票の番号の枡に class="report-docno" を付けると「番号　n / N」になる (請求書と納品書。決め 11-07 21:0x)。
 {% endcomment %}
 <html lang="ja">
 <head>

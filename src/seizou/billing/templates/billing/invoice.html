@@ -12,7 +12,7 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-customer">{{ customer.name }} 御中</p>
 <table class="report-meta">
-  <tr><th>請求書番号</th><td>{{ invoice.number }}</td></tr>
+  <tr><th>請求書番号</th><td class="report-docno">{{ invoice.number }}</td></tr>
   <tr><th>発行日</th><td>{{ invoice.issued_on|date:"Y年n月j日" }}</td></tr>
   <tr><th>期間</th><td>{{ invoice.period_from|date:"Y年n月j日" }} 〜 {{ invoice.period_to|date:"Y年n月j日" }}</td></tr>
   {% if invoice.due_on %}<tr><th>支払期日</th><td>{{ invoice.due_on|date:"Y年n月j日" }}</td></tr>{% endif %}
