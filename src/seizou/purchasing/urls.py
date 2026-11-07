@@ -18,6 +18,7 @@ urlpatterns = [
     path("orders/", views.PurchaseOrderListView.as_view(), name="purchaseorder_list"),
     path("orders/new/", views.PurchaseOrderCreateView.as_view(), name="purchaseorder_create"),
     path("orders/<int:pk>/", views.PurchaseOrderDetailView.as_view(), name="purchaseorder_detail"),
+    path("orders/<int:pk>/modal/", views.PurchaseOrderModalView.as_view(), name="purchaseorder_modal"),
     path("orders/<int:pk>/send/", views.PurchaseOrderSendView.as_view(), name="purchaseorder_send"),
     path("orders/<int:pk>/cancel/", views.PurchaseOrderCancelView.as_view(), name="purchaseorder_cancel"),
     # 送った発注の変更 (相手が出荷し終えるまで)。_update の名前にしない訳: 土台が _update を全部の発注の「編集」の入口に使うが、変更を送れるのは一部の状態だけのため。

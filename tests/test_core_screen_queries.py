@@ -72,6 +72,7 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_cancel",
         "purchasing:purchaseorder_change",
         "purchasing:purchaseorder_detail",
+        "purchasing:purchaseorder_modal",  # 発注の小窓 (依頼書 N346)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorder_send",
         "purchasing:receipt_detail",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
@@ -140,6 +141,7 @@ LIMITS = {
     # 11-07 の実測 45 + 5。送った発注の変更 (C96) の「変更」のボタンを出すか (can_change_order) に 1 回 (取り消していない明細の受入・出荷の知らせ・つながりを 1 つの問い合わせで読む)。
     # 会話のタブとメモの枠 (C104) で +6 (11-07 の実測 51 + 5)。
     "purchasing:purchaseorder_detail": 56,
+    "purchasing:purchaseorder_modal": 9,  # 発注の小窓 (依頼書 N346)。11-07 の実測 4 (A 社。htmx でない GET = 詳細へ移るだけ) + 5
     "purchasing:purchaseorder_send": 20,
     "purchasing:purchaseorder_cancel": 20,
     "purchasing:receipt_list": 25,

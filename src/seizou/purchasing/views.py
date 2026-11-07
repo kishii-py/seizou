@@ -8,6 +8,9 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from seizou.core import edi_codes
 from seizou.core.views import BaseSelectView
+from django.db.models import Prefetch
+
+from seizou.core.views import BaseModalView
 from seizou.masters.services import active_items, active_partners
 from seizou.masters.services import with_default_process
 
@@ -92,6 +95,26 @@ class PurchaseOrderDetailView(BaseDetailView):
 
     def get_queryset(self):
         return services.annotate_order_notices(services.annotate_order_received(super().get_queryset()))
+
+
+class PurchaseOrderModalView(BaseModalView):
+    """発注の小窓。
+
+    使う人: 生産管理 / いつ: 発注の一覧で行の中身を画面を移らずに確かめたいとき / 何のために: 協力企業・日付・状態・明細の先頭の数行・合計を見る / 次にすること: 要れば「詳細を見る」で発注の詳細へ
+
+    発注の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。
+    本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓。形は受注の小窓 OrderModalView と同じ)。
+    中身は purchasing/_modal.html (頭の札と土台の項目に、明細の先頭の数行を足した物)。読むだけ。
+    """
+
+    model = PurchaseOrder
+    screen_name = "発注の小窓"
+    screen_help = "発注の要点 (協力企業・日付・状態・明細・合計) を見るだけの小窓。発注の一覧の行の目の印から開き、詳細へ移れます。"
+
+    def get_queryset(self):
+        # 明細は受入の数 (annotate_received の received_total) を付けて、行番号の順に 1 回で読む (頭の札と明細の表が同じ明細を読む)。
+        lines = services.annotate_received(PurchaseOrderLine.objects.select_related("item")).order_by("line_no")
+        return PurchaseOrder.objects.select_related("partner").prefetch_related(Prefetch("lines", queryset=lines))
 
 
 class PurchaseOrderCreateView(BaseFormView):

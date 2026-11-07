@@ -9,6 +9,7 @@
 - next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
 - purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
 - purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
+- purchase_order_modal_lines: 発注の小窓の明細の表に出す明細 (取り消した明細を外す。頭の札と同じ数え方)。
 - reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
 - can_change_order・revision_state: 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2) の「変更」のボタンを出すかと、今の版の送った記録と相手の答え。
 - self_invoice_due_note・self_invoice_line_answer: 仕入明細の詳細の 60 日の黄の 1 行の字 (services.due_date_note) と、明細ごとの相手の答えの字 (候補 C111)。
@@ -218,6 +219,16 @@ def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
     if lines and not hide_money:
         chips.append({"label": "合計", "value": yen(sum((line.amount for line in lines), Decimal("0")))})
     return chips
+
+
+@register.simple_tag
+def purchase_order_modal_lines(purchase_order) -> list:
+    """{% purchase_order_modal_lines object as lines %}。発注の小窓 (purchasing/_modal.html) の明細の表に出す明細。読むだけ。
+
+    取り消した明細 (明細状態コード 2) を外す (頭の札 purchase_order_head_chips と同じ数え方 = _counted_lines。状態が「取消」の発注は全部の明細)。
+    明細は小窓の口 (PurchaseOrderModalView.get_queryset) が受入の数を付けて行番号の順に読んである (問い合わせを足さない)。
+    """
+    return _counted_lines(purchase_order)
 
 
 @register.simple_tag

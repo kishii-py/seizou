@@ -1,6 +1,7 @@
 {% load seizou_tags seizou_icons purchasing_tags %}{% live_state row.obj as live %}{% comment %}
 発注の一覧の 1 行。欄の描き方は core/_rows.html の既定と同じ。live.token = 状態の字 (tr の属性に入れる)、live.changed = 前の更新と字が違う (purchasing_tags の live_state)。
 色は表の縞の色より前に出すため、行でなく欄に付ける (connect/_inbox_row.html と同じ)。
+右端の欄は「要点を見る」の目の印 (core/_row_summary_link.html。押すと発注の小窓。受注と指示書の一覧の行と同じ形)。
 {% endcomment %}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" data-live="{{ live.token }}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
@@ -13,4 +14,6 @@
   {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if live.changed %} seizou-changed{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
   {% endif %}
   {% endfor %}
+  {# 右端の「要点」の列 (purchasing/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと発注の小窓 (PurchaseOrderModalView) を開く。前の更新と違う行の欄の色はこの欄に付けない。 #}
+  <td class="whitespace-nowrap text-right">{% url 'purchasing:purchaseorder_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>
 </tr>

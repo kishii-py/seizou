@@ -7,8 +7,9 @@ purchasing の一覧 (発注・受入) の行の部分。土台は画面の全�
 写した元: core/_rows.html の空の枠 (流した日の main。intake/_rows.html と同じ形)。土台の空の枠の形が変わったら、ここも合わせる。
 それ以外 (受入の一覧に行があるとき・検索か絞りで 0 件のとき) は core/_rows.html をそのまま使う。
 この注に、テンプレートに今無い class の字を書かない (Tailwind はテンプレートの注の字も拾う)。
+発注の一覧だけ、土台に actions_label="要点" を渡して最後の列の見出しを出す (行の目の印は purchasing/_purchaseorder_row.html。受入の一覧は今のまま)。
 {% endcomment %}
-{% if request.resolver_match.url_name == "purchaseorder_list" %}{% include "core/_rows.html" with row_template="purchasing/_purchaseorder_row.html" %}
+{% if request.resolver_match.url_name == "purchaseorder_list" %}{% include "core/_rows.html" with row_template="purchasing/_purchaseorder_row.html" actions_label="要点" %}
 {% elif request.resolver_match.url_name == "receipt_list" and not rows and not search_q and not filter_active %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
