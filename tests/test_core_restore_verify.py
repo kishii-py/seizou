@@ -3,10 +3,12 @@
 置き場 (BASE_DIR と MEDIA_ROOT) は tests/test_core_backup.py の site で一時のフォルダに作り、作り物のデータだけを使う。
 控えを壊す試験は、控えの DB の写しの中ほどの page を別の bytes で上書きする (先頭の page は残す)。
 確かめの記録 (控えの置き場の restore-checks.jsonl) は、行の数と成否を見る。
+点検の行「控えから戻せるかの確かめ」の試験は、今の時計から引いた作り物の日時を、控えのフォルダの名前と記録の行に書いて作る。
 """
 
 import io
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -14,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from seizou.core import backup
+from seizou.core import backup, doctor
 from tests.test_core_backup import (  # noqa: F401 - fixture を借りる
     hand_made_backup,
     make_user,
@@ -217,3 +219,98 @@ def test_restore_still_puts_back_a_sound_backup(site, settings):  # noqa: F811
     assert user_exists("before")
     assert not user_exists("after")
     assert len(retreats(parent)) == 1
+
+
+LABEL = "控えから戻せるかの確かめ"
+
+
+def dated_backup(parent: Path, days_ago: int) -> str:
+    """今から days_ago 日前の日時の名前の控え (backup.json と空の DB の写し) を作り、名前を返す。"""
+    name = (datetime.now() - timedelta(days=days_ago)).strftime("%Y%m%d-%H%M%S")
+    hand_made_backup(parent, name)
+    return name
+
+
+def write_checks(parent: Path, *lines) -> None:
+    """restore-checks.jsonl を書く。行は (何日前, 成否) か、そのまま書く字。"""
+    parent.mkdir(parents=True, exist_ok=True)
+    texts = []
+    for line in lines:
+        if isinstance(line, str):
+            texts.append(line)
+            continue
+        days_ago, ok = line
+        when = (datetime.now() - timedelta(days=days_ago)).isoformat(timespec="seconds")
+        texts.append(json.dumps({"checked_at": when, "backup": "20260101-000000", "seconds": 0.5, "ok": ok}))
+    (parent / backup.RESTORE_CHECKS).write_text("\n".join(texts) + "\n", encoding="utf-8")
+
+
+def restore_row(production: bool) -> doctor.Row:
+    rows = doctor.check_restore_checks(production)
+    assert len(rows) == 1
+    assert rows[0].label == LABEL
+    return rows[0]
+
+
+@pytest.mark.django_db
+def test_doctor_is_good_without_backups(site):  # noqa: F811
+    row = restore_row(True)
+    assert row.ok
+    assert row.detail == "控えはまだありません"
+
+    rows = [row for row in doctor.run(production=True) if row.label == LABEL]
+    assert len(rows) == 1
+    assert rows[0].ok
+
+
+def test_doctor_fixes_when_last_good_check_is_old(site):  # noqa: F811
+    parent = site / "backups"
+    name = dated_backup(parent, 120)
+    write_checks(parent, "読めない行", (91, True), (1, False), '{"ok": true, "checked_at": "日時でない"}')
+
+    row = restore_row(True)
+
+    assert not row.ok
+    assert "最後に確かめた日" in row.detail
+    assert "91 日前" in row.detail
+    assert f"manage.py seizou_restore {name} --verify" in row.fix
+    assert "docs/operations.md" in row.fix
+
+    write_checks(parent, (91, True), (10, True))
+
+    row = restore_row(True)
+
+    assert row.ok
+    assert "最後に確かめた日" in row.detail
+    assert "10 日前" in row.detail
+
+
+def test_doctor_counts_from_oldest_backup_without_checks(site):  # noqa: F811
+    parent = site / "backups"
+    dated_backup(parent, 10)
+
+    row = restore_row(True)
+
+    assert row.ok
+    assert "まだ確かめていません" in row.detail
+    assert "一番古い控えから 10 日" in row.detail
+
+    dated_backup(parent, 100)
+
+    row = restore_row(True)
+
+    assert not row.ok
+    assert "まだ確かめていません" in row.detail
+    assert "一番古い控えから 100 日" in row.detail
+
+
+def test_doctor_only_warns_outside_production(site):  # noqa: F811
+    parent = site / "backups"
+    name = dated_backup(parent, 100)
+
+    row = restore_row(False)
+
+    assert row.ok
+    assert "まだ確かめていません" in row.detail
+    assert "90 日を過ぎています" in row.detail
+    assert f"seizou_restore {name} --verify" in row.detail

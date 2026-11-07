@@ -413,6 +413,31 @@ def record_restore_check(parent: Path, folder: Path, result: dict) -> Path:
     return path
 
 
+def last_restore_check(parent: Path) -> datetime | None:
+    """restore-checks.jsonl の成功の行のうち、一番新しい日時 (置き場の時計の現地時刻)。
+
+    ファイルが無いか読めなければ None。JSON でない行・成功でない行・日時の読めない行は飛ばす (例外を外に出さない)。
+    """
+    try:
+        text = (Path(parent) / RESTORE_CHECKS).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    latest = None
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+            if not isinstance(row, dict) or row.get("ok") is not True:
+                continue
+            when = datetime.fromisoformat(str(row.get("checked_at")))
+        except ValueError:
+            continue
+        if when.tzinfo is not None:
+            when = when.astimezone().replace(tzinfo=None)
+        if latest is None or when > latest:
+            latest = when
+    return latest
+
+
 def _refuse_broken_db(db_file: Path) -> None:
     """戻しの頭 (退避を作る前) で呼ぶ。控えの DB の写しを --verify と同じ quick_check で確かめ、壊れていれば BackupError で止める。
 

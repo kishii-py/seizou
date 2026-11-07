@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from importlib import import_module
 from pathlib import Path
 
@@ -229,6 +230,53 @@ def check_backups_dir() -> list[Row]:
         return [_bad(label, "settings.py に BASE_DIR が無い", "settings.py に BASE_DIR を書く (seizou new が書く settings.py にはある)。")]
     fix = f"フォルダ {path} を作って、seizou_backup を打つ利用者が書ける権限にする。"
     return [_writable(label, path, "最初の控えで作られる", fix)]
+
+
+#: 戻せるかを確かめてから (確かめた記録が無ければ一番古い控えから) この日数を過ぎると、本番の条件で直すにする
+RESTORE_CHECK_DAYS = 90
+
+
+def check_restore_checks(production: bool) -> list[Row]:
+    """控えから戻せるかを最後に確かめた日 (seizou_restore --verify の記録 backups/restore-checks.jsonl の最後の成功の行)。
+
+    直すにするのは、本番の条件で、控えが 1 つ以上あり、最後に確かめた日 (確かめた記録が無ければ一番古い控えの日) から
+    90 日より古いときだけ。ほかは良いの行に注意の文を書く (点検の行は良い / 直すの 2 つだけ。check_demo_passwords と同じ形)。
+    作ったばかりの置き場 (控えが無いか、新しい控えだけ) では直すにしない。控えの日は控えのフォルダの名前 (日時) から読む。
+    読めない記録の行は飛ばし、例外を外に出さない (run の _safe も包む)。
+    訳: 控えを取っていても戻せるかを確かめていなければ、壊れた日に戻せないと分かるので、確かめた日を点検で見せるため。出所 = エンタープライズ化の調べ 第一弾の確かめ直しの (c)。変えてよい条件 = 点検に注意の段ができたとき、90 日の前にも注意を出す。
+    """
+    label = "控えから戻せるかの確かめ"
+    try:
+        parent = backup.default_dir()
+    except backup.BackupError:
+        return []
+    names = []
+    if parent.is_dir():
+        for folder in parent.iterdir():
+            if folder.is_dir() and backup.NAME_PATTERN.match(folder.name) and (folder / backup.MANIFEST).is_file():
+                names.append(folder.name)
+    taken = []
+    for name in sorted(names):
+        try:
+            taken.append((datetime.strptime(name[:15], "%Y%m%d-%H%M%S"), name))
+        except ValueError:
+            continue
+    if not taken:
+        return [_good(label, "控えはまだありません")]
+    now = datetime.now()
+    last = backup.last_restore_check(parent)
+    if last is None:
+        days = (now - taken[0][0]).days
+        detail = f"まだ確かめていません (一番古い控えから {days} 日)"
+    else:
+        days = (now - last).days
+        detail = f"最後に確かめた日 {last.date().isoformat()} ({days} 日前)"
+    if days <= RESTORE_CHECK_DAYS:
+        return [_good(label, f"{detail}。{RESTORE_CHECK_DAYS} 日を過ぎると、本番の条件では直すにします")]
+    fix = f"manage.py seizou_restore {taken[-1][1]} --verify を打つ (seizou の docs/operations.md の「戻す (復元)」)。"
+    if production:
+        return [_bad(label, detail, fix)]
+    return [_good(label, f"{detail}。{RESTORE_CHECK_DAYS} 日を過ぎています。本番にする前に、{fix}")]
 
 
 def check_css() -> list[Row]:
@@ -451,6 +499,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("上げたファイルの置き場 (MEDIA_ROOT)", check_media_root, False),
         ("上げたファイルの置き場の場所 (MEDIA_ROOT)", check_media_root_place, False),
         ("控えの置き場 (backups/)", check_backups_dir, False),
+        ("控えから戻せるかの確かめ", lambda: check_restore_checks(production), False),
         ("CSS", check_css, False),
         ("collectstatic", check_collectstatic, True),
         ("上げたファイルの配り方", check_file_delivery, False),
