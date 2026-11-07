@@ -3,6 +3,8 @@
 {# 行は checkbox の data-partner (出荷の受注の得意先) で見分け、合わない表の行 (tr) を hidden にする (class は付け替えない)。隠れた行に残った印の数を、表の上の黄の 1 行 (data-picked-elsewhere) に書く (印は外さない。知らせるだけ)。 #}
 {# 得意先の欄の change は、欄に付けた narrow が先、document の js/seizou-submit-label.js が後に動く (泡立ちの順) ので、合計の枠とボタンの字は隠した後の行で数え直される。この順に頼っている。 #}
 {# JS が動かなくても、得意先と違う出荷は services が R09 で断る。 #}
+{# 締め期間の欄 (候補 C02 の 6・7): 得意先を変えると、選択肢をその得意先の物 (option の data-partner) だけにして空に戻す。期間を選ぶと、data-partner と data-period の両方が合う行に印を付け、同じ得意先のほかの期間の行の印を外す (期間の字だけで合わせると、隠れた別の得意先の行にも付く)。印を変えた行は泡立つ change を送る (合計の枠とボタンの字の数え直し)。期間の外の行は隠さない。 #}
+{# 発行日には期間の終わり (締日) を入れる。締日が今日より後なら今日のまま。「今日」は開いた時の発行日の欄の値 (サーバーの今日)。発行日を手で変えた後 (欄の input) は上書きしない。期間は Python の closing_period が決めた data-period の字を読むだけ (JS で日付を計算しない)。 #}
 {% block content %}{% include "billing/_invoice_create_card.html" %}
 <script>
 (function () {
@@ -25,6 +27,41 @@
   }
   customer.addEventListener("change", narrow);
   narrow();  // 得意先が最初から入っているとき (納品書の詳細からの ?customer=) も、その得意先の出荷だけにする
+
+  var period = document.getElementById("id_period");
+  var issued = document.getElementById("id_issued_on");
+  if (!period) return;
+  var today = issued ? issued.value : "";
+  var issuedTouched = false;
+  if (issued) issued.addEventListener("input", function () { issuedTouched = true; });
+  function narrowPeriods(reset) {
+    var chosen = customer.value;
+    Array.prototype.forEach.call(period.options, function (option) {
+      if (!option.value) return;
+      option.hidden = option.dataset.partner !== chosen;
+      option.disabled = option.hidden;
+    });
+    var current = period.options[period.selectedIndex];
+    if (reset || (current && current.value && current.hidden)) period.value = "";
+  }
+  function pickPeriod() {
+    var option = period.options[period.selectedIndex];
+    if (!option || !option.value) return;
+    var partner = option.dataset.partner;
+    var chosen = option.dataset.period;
+    box.querySelectorAll("input[data-partner]").forEach(function (input) {
+      if (input.dataset.partner !== partner || !input.dataset.period) return;
+      var want = input.dataset.period === chosen;
+      if (input.checked === want) return;
+      input.checked = want;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    var end = chosen.split("〜")[1];
+    if (issued && !issuedTouched && end) issued.value = today && end > today ? today : end;
+  }
+  customer.addEventListener("change", function () { narrowPeriods(true); });
+  period.addEventListener("change", pickPeriod);
+  narrowPeriods(false);
 })();
 </script>
 {% endblock %}
