@@ -29,11 +29,13 @@ from django.db.models import Max, Q
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
-from seizou.core import calendar
+from seizou.core import access, calendar
 from seizou.core.services import company_or_none
+from seizou.core.templatetags.seizou_tags import comma
 
 from .drawings import page_name
-from .models import Item, Partner, PartnerItem
+from .models import Item, ItemPrice, Partner, PartnerItem
+from .models import PRICE_BASIS_UNIT
 from .models import Process
 from .models import Holiday
 
@@ -549,8 +551,9 @@ def update_partner_item(partner_item, data, user):
 def delete_partner_item(partner_item, user):
     """部品の取引先の行を消す。無ければ日本語の ValueError。None を返す (土台は開いた詳細 ?next= へ戻す)。
 
-    行は atomic の中で取り直して消す。付けた見積書の添付ファイルは消さない (付けた先の無い添付ファイルは、一覧の「付けた先」が
-    「(削除された記録)」)。user は受けるだけ。
+    行は atomic の中で取り直して消す。その行の単価の行も一緒に消す (決め C98-1)。金額の閲覧の権限は見ない (決め C98-6 = a。
+    部品の取引先の行は取引先と品番の登録が主で、金額を見ない人も選び間違えた行を消せるようにするため。消える単価の行の数は確かめの小窓に出す)。
+    付けた見積書の添付ファイルは消さない (付けた先の無い添付ファイルは、一覧の「付けた先」が「(削除された記録)」)。user は受けるだけ。
 
     訳: 取引先を選び間違えた行は、直す画面で部品と取引先を直せないので、消して足し直すため。
     間違えた行が残ると、単価表から選ぶときと単価のずれを比べるときに誤った単価を使うおそれがある。出所 = 本人の決め C98-1。
@@ -560,6 +563,8 @@ def delete_partner_item(partner_item, user):
         row = PartnerItem.objects.select_for_update().filter(pk=partner_item.pk).first()
         if row is None:
             raise ValueError("削除できません。この部品の取引先の行は既に消してあります。")
+        # 単価の行は部品の取引先の行を PROTECT で指すので、先に消す (消す道を services の 1 つにする)
+        ItemPrice.objects.filter(partner_item=row).delete()
         row.delete()
     return None
 
@@ -591,6 +596,170 @@ def resolve_partner_item(partner, partner_part_no):
         .first()
     )
     return mapping.item if mapping is not None else None
+
+
+# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-1〜C98-3・C98-5・C98-6)
+
+_ITEM_PRICE_KEYS = frozenset(
+    {
+        "item",
+        "partner_item",
+        "kind",
+        "process",
+        "min_qty",
+        "unit_price",
+        "price_basis",
+        "start_date",
+        "quote_no",
+        "quote_date",
+        "quote_expires",
+        "note",
+    }
+)
+_PRICE_PARTNER_MESSAGE = (
+    "保存できません。選んだ取引先は、この部品の取引先のタブにありません。"
+    "部品の詳細の取引先のタブの「単価を足す」から開き直してください。"
+)
+_PRICE_POSITIVE_MESSAGE = "保存できません。単価は 0 より大きい数にしてください。"
+_MIN_QTY_POSITIVE_MESSAGE = "保存できません。数量の下限は 0 より大きい数にしてください。数量によらないときは空にします。"
+
+
+def _same_band_message(row, user):
+    """同じ条件の単価の行がもうあるときの断りの字 (決め C98-2)。金額を見られる人には今の行の単価を括弧で添える。
+
+    金額の閲覧が無い人 (access.hides_money が真) には括弧の無い字。字は本人に見せた字のまま。
+    """
+    price = "" if access.hides_money(user) else f" (¥{comma(row.unit_price)} / {row.unit_text})"
+    return (
+        f"保存できません。同じ条件の単価の行がもうあります{price}。"
+        "改定なら適用開始日を入れてください。今の単価を直すなら、今の行を編集してください。"
+    )
+
+
+def _check_item_price(item, values, user, *, exclude_pk=None):
+    """単価の行の値を、保存の前に 3 つの順に見る。当たれば日本語の ValueError (行は変えない)。values は保存する値の辞書。
+
+    1. 取引先の行があって、その行の部品が item と違う → 断る。
+       訳: 単価は登録した取引先にしか付けないため (取引先の行は同じ部品の物だけ。記録どうしの矛盾を止める)。出所 = 本人の決め PRICE-2。
+       変えてよい条件 = 単価の持ち方を本人が決め直したとき。
+    2. 単価か数量の下限が 0 以下 → 断る (数量の下限の空は通す)。
+       訳: 単価表は受注と発注の明細の元で、明細は単価 0 以下を止める (受注の R02・発注の表の制約) ので、元の段階で止めて、
+       気づいたその場で直せるようにするため。数量の下限の 0 は空 (数量によらない) と区別できないため。出所 = 本人の決め C98-3。
+       変えてよい条件 = 明細の単価の決まりが変わったとき。
+    3. 同じ条件 (部品・取引先の行か共通・売りか発注か・工程・数量の下限・適用開始日) の行が exclude_pk のほかにある → 断る。
+       訳: 条件がまったく同じで単価だけが違う 2 行があると、単価表から選ぶときと単価のずれを比べるときに、どちらが今の単価か
+       決まらないため。改定は適用開始日を入れた新しい行、同じ日の直しは今の行の編集で足りる。出所 = 本人の決め C98-2。
+       変えてよい条件 = 単価の行を区別する欄を本人が決め直したとき。
+    """
+    partner_item = values.get("partner_item")
+    if partner_item is not None and partner_item.item_id != item.pk:
+        raise ValueError(_PRICE_PARTNER_MESSAGE)
+    unit_price = values.get("unit_price")
+    if unit_price is not None and unit_price <= 0:
+        raise ValueError(_PRICE_POSITIVE_MESSAGE)
+    min_qty = values.get("min_qty")
+    if min_qty is not None and min_qty <= 0:
+        raise ValueError(_MIN_QTY_POSITIVE_MESSAGE)
+    same = ItemPrice.objects.select_related("item").filter(item=item, kind=values.get("kind"))
+    for name in ("partner_item", "process", "min_qty", "start_date"):
+        value = values.get(name)
+        same = same.filter(**{f"{name}__isnull": True}) if value is None else same.filter(**{name: value})
+    if exclude_pk is not None:
+        same = same.exclude(pk=exclude_pk)
+    row = same.order_by("pk").first()
+    if row is not None:
+        raise ValueError(_same_band_message(row, user))
+
+
+def _price_values(values):
+    """保存する値をそろえる: 売りの行は工程を空にする (売りの単価は工程を持たない。断らない)・見積の番号の前後の空白を外す・
+    字の欄の空 (None) を空の字にする。"""
+    values = dict(values)
+    if values.get("kind") == ItemPrice.KIND_SALE:
+        values["process"] = None
+    for name in ("quote_no", "note"):
+        if name in values:
+            values[name] = str(values[name] or "").strip() if name == "quote_no" else (values[name] or "")
+    if "price_basis" in values and not values["price_basis"]:
+        values["price_basis"] = PRICE_BASIS_UNIT
+    return values
+
+
+def add_item_price(data, user):
+    """単価の行を 1 つ足す。data の鍵は _ITEM_PRICE_KEYS (item と kind と unit_price は要る)。作った行を返す。
+
+    売りの行は工程を空にして保存する。部品の行を select_for_update で取ってから _check_item_price を呼ぶ
+    (同じ部品の単価の行の書き込みを順に並べ、同じ条件の行の 2 つの要求が同時に通らないようにする。SQLite では何もしないが、
+    書き込みが 1 つずつなので同じ)。user は受けるだけ (断りの字に金額を出すかの判定には使う)。
+    金額の閲覧の権限が無い人の追加は、入力の土台の金額の門 (core.access の MONEY_ACTIONS) が断る (決め C98-5。この関数は権限を見ない)。
+    """
+    _refuse_unknown_keys(data, _ITEM_PRICE_KEYS, "単価の行")
+    values = _price_values(data)
+    with transaction.atomic():
+        item = Item.objects.select_for_update().get(pk=values["item"].pk)
+        values["item"] = item
+        _check_item_price(item, values, user)
+        return ItemPrice.objects.create(**values)
+
+
+def update_item_price(item_price, data, user):
+    """単価の行の値を直す。鍵は _ITEM_PRICE_KEYS から item を除いた物 (部品は変えない)。渡した鍵だけを直し、直した行を返す。
+
+    今の行の値に渡した鍵の値を重ねた値で、売りなら工程を空にしてから、自分を除いて _check_item_price を呼ぶ。
+    user は受けるだけ。金額の閲覧の権限が無い人の編集は、入力の土台の金額の門が断る (決め C98-5)。
+    """
+    _refuse_unknown_keys(data, _ITEM_PRICE_KEYS - {"item"}, "単価の行")
+    current = {name: getattr(item_price, name) for name in _ITEM_PRICE_KEYS - {"item"}}
+    values = _price_values({**current, **data})
+    with transaction.atomic():
+        item = Item.objects.select_for_update().get(pk=item_price.item_id)
+        _check_item_price(item, values, user, exclude_pk=item_price.pk)
+        changed = set(data) | ({"process"} if values.get("process") != current.get("process") else set())
+        for name in changed:
+            setattr(item_price, name, values[name])
+        item_price.save()
+        return item_price
+
+
+def delete_item_price(item_price, user):
+    """単価の行を消す。無ければ日本語の ValueError。None を返す (土台は開いた部品の詳細 ?next= へ戻す)。
+
+    行は atomic の中で取り直して消す。user は受けるだけ。
+    金額の閲覧の権限が無い人の削除は、入力の土台の金額の門 (core.access の MONEY_ACTIONS) が断る (決め C98-6。この関数は権限を見ない)。
+
+    訳: 打ち間違えた単価の行が残ると、単価表から選ぶときと単価のずれを比べるときに誤った単価を使うおそれがあるため。
+    受注と発注の明細は単価を写して持つので、消しても今までの明細の金額は変わらない。改定の前の単価は消さずに適用開始日で残す (決め PRICE-3)。
+    出所 = 本人の決め C98-1。変えてよい条件 = 消し方を本人が決め直したとき。
+    """
+    with transaction.atomic():
+        row = ItemPrice.objects.select_for_update().filter(pk=item_price.pk).first()
+        if row is None:
+            raise ValueError("削除できません。この単価の行は既に消してあります。")
+        row.delete()
+    return None
+
+
+def _price_sort_key(row):
+    """item_prices の並びの鍵。取引先の行 (取引先コード → 取引先の品番 → 行の pk) が先・共通が後、
+    売り → 協力企業への発注、工程 (空が先 → 並び順 → 工程コード)、適用開始日の新しい順 (空は後)、数量の下限の小さい順 (空が先)、pk。"""
+    partner_item = row.partner_item
+    whose = (1, "", "", 0) if partner_item is None else (0, partner_item.partner.code, partner_item.partner_part_no, partner_item.pk)
+    kind = 0 if row.kind == ItemPrice.KIND_SALE else 1
+    process = (0, 0, "") if row.process is None else (1, row.process.sort_order, row.process.code)
+    start = (1, 0) if row.start_date is None else (0, -row.start_date.toordinal())
+    min_qty = (0, 0) if row.min_qty is None else (1, row.min_qty)
+    return (whose, kind, process, start, min_qty, row.pk)
+
+
+def item_prices(item):
+    """部品の単価の行を全部、1 回の問い合わせで引き、並べた list で返す (読むだけ)。
+
+    並びは取引先の行が先・共通が後 (決め PRICE-2)、その中で 売り → 協力企業への発注、工程、適用開始日の新しい順 (空は後)、
+    数量の下限の小さい順 (空が先)、pk。並べ替えは Python で行う (空の扱いを SQLite と PostgreSQL で同じにするため)。
+    部品の詳細の取引先のタブと、単価表から選ぶ小窓・単価のずれの知らせ (C100・C101) が読む。
+    """
+    rows = ItemPrice.objects.filter(item=item).select_related("item", "partner_item__partner", "process")
+    return sorted(rows, key=_price_sort_key)
 
 
 def round_amount(partner, value, *, rounding=None):

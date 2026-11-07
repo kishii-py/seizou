@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先のタブは masters/_item_partners.html (取引先を足す・直す・消す。行が無いときも同じ中身)。小窓で保存か削除をした後は #item-partners-refresh がタブの中身だけを取り直す (開いているタブは取引先のまま)。空の標準の工程のタブは、土台と同じ箱にその意味の 1 行を足す (block tab_empty)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
+{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先のタブは masters/_item_partners.html (取引先を足す・直す・消す。取引先の行ごとに単価の行 (足す・直す・消す) と見積書、共通の単価の行。行が無いときも同じ中身)。小窓で保存か削除をした後は #item-partners-refresh がタブの中身だけを取り直す (開いているタブは取引先のまま)。空の標準の工程のタブは、土台と同じ箱にその意味の 1 行を足す (block tab_empty)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
 {% block actions %}{% if object.drawing %}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_drawing_viewer' object.pk %}">{% icon "image" "size-4" %}図面ビューア</a>{% endif %}{% endblock %}
 {% block content %}
 {% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div>{% endif %}

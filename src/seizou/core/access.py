@@ -60,7 +60,7 @@ KIND_LABELS = {
 }
 #: 種類の中身の注記 (アカウントの入力の画面の check の字に添える)
 KIND_NOTES = {
-    "items": "部品・標準の工程・図面・部品の取引先",
+    "items": "部品・標準の工程・図面・部品の取引先と単価表",
     "orders": "受信した注文の受け入れと断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
@@ -85,6 +85,10 @@ _KIND_ACTIONS = {
         "masters.add_partner_item",
         "masters.update_partner_item",
         "masters.delete_partner_item",
+        # 単価の行 (C98)。追加と編集と削除は金額が主な登録 (MONEY_ACTIONS) にも入れる (決め C98-5・C98-6 = a)。
+        "masters.add_item_price",
+        "masters.update_item_price",
+        "masters.delete_item_price",
     ),
     "partners": ("masters.create_partner", "masters.update_partner", "masters.import_partners"),
     "processes": ("masters.create_process", "masters.update_process", "masters.create_holiday", "masters.delete_holiday"),
@@ -186,6 +190,11 @@ MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
     "billing.record_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
+    # 単価の行は単価だけを中身に持つ登録 (決め C98-5・C98-6 = a。金額を見られない人が単価を決める形にしない。消すのも単価を決める操作)。
+    # 部品の取引先の行の削除は入れない (金額を見ない人も選び間違えた取引先の行を消すため)。
+    "masters.add_item_price": ("単価表", "単価の行を足せません"),
+    "masters.update_item_price": ("単価表", "単価の行を直せません"),
+    "masters.delete_item_price": ("単価表", "単価の行を消せません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

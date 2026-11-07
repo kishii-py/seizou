@@ -5,9 +5,9 @@ import re
 import pytest
 from django.db import IntegrityError, models, transaction
 
-from seizou.masters.models import Item, ItemProcess, Partner, PartnerItem, Process
+from seizou.masters.models import Item, ItemPrice, ItemProcess, Partner, PartnerItem, Process
 
-MASTER_MODELS = [Partner, Item, PartnerItem, Process, ItemProcess]
+MASTER_MODELS = [Partner, Item, PartnerItem, Process, ItemProcess, ItemPrice]
 JAPANESE = re.compile(r"[぀-ヿ一-鿿]")
 
 

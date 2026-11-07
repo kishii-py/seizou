@@ -1,0 +1,24 @@
+{% load seizou_tags seizou_icons %}
+{# 単価の行の並び (masters/_item_partners.html の「単価」の枡。取引先の行と共通の行で同じ形)。context: prices (単価の行の list)・price_rows (qty_unit を読む)・can_edit_price。 #}
+{# 1 行の字: 売りか発注か・工程 (あれば)・「100 個から」か「数量によらない」・「¥250 / 個」か「¥50,000 / 式」(金額の閲覧が無い人は「—」)・適用開始日 (あれば)・見積の番号と発行日と期限 (あるものだけ)・期限を過ぎていれば「期限切れ」の印 (決め PRICE-3b)・備考。金額を見られる人で単価の行の編集の権限がある人にだけ「直す」と行の「⋮」の赤の「削除」。 #}
+{% if prices %}<ul class="flex flex-col gap-2">
+  {% for price in prices %}
+  <li class="flex flex-wrap items-center gap-2">
+    <span>{{ price.get_kind_display }}</span>
+    {% if price.process %}<span>{{ price.process.name }}</span>{% endif %}
+    <span>{% if price.min_qty is not None %}{{ price.min_qty|comma }} {{ price_rows.qty_unit }}から{% else %}数量によらない{% endif %}</span>
+    <span class="whitespace-nowrap font-mono tabular-nums">{% if seizou.hide_money %}—{% else %}{{ price.unit_price|yen }} / {{ price.unit_text }}{% endif %}</span>
+    {% if price.start_date %}<span class="whitespace-nowrap">{{ price.start_date|date:"Y-m-d" }} から</span>{% endif %}
+    {% if price.quote_no or price.quote_date or price.quote_expires %}<span class="text-xs text-base-content/70">見積{% if price.quote_no %} {{ price.quote_no }}{% endif %}{% if price.quote_date or price.quote_expires %} ({% if price.quote_date %}発行 {{ price.quote_date|date:"Y-m-d" }}{% endif %}{% if price.quote_date and price.quote_expires %}・{% endif %}{% if price.quote_expires %}期限 {{ price.quote_expires|date:"Y-m-d" }}{% endif %}){% endif %}</span>{% endif %}
+    {% if price.quote_expired %}<span class="badge badge-sm badge-soft badge-warning">期限切れ</span>{% endif %}
+    {% if price.note %}<span class="text-xs text-base-content/70">{{ price.note }}</span>{% endif %}
+    {% if can_edit_price and not seizou.hide_money %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'masters:itemprice_update' price.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprice_update' price.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}直す</a>
+    <details class="dropdown dropdown-end row-menu">
+      <summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary>
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+        <li><a class="flex items-center gap-2 text-error" href="{% url 'masters:itemprice_delete' price.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprice_delete' price.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "x" "size-4" %}削除</a></li>
+      </ul>
+    </details>{% endif %}
+  </li>
+  {% endfor %}
+</ul>{% else %}<span class="text-base-content/50">—</span>{% endif %}

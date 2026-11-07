@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 単価の行の削除の確かめ (画面の全体。JS の無いときと Cmd か Ctrl を押したとき)。中身は小窓と同じカード (masters/_itemprice_delete_card.html)。「削除」で消して ?next= (開いた部品の詳細) へ戻る。 #}
+{% block content %}{% include "masters/_itemprice_delete_card.html" %}
+{% endblock %}

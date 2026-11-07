@@ -6,6 +6,7 @@ services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ex
 """
 
 import re
+from decimal import Decimal
 
 from django import forms
 from django.utils import timezone
@@ -14,7 +15,7 @@ from seizou.core import csvio
 from seizou.core.forms import ServiceModelForm
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 
-from .models import Item, Partner, PartnerItem, Process
+from .models import Item, ItemPrice, Partner, PartnerItem, Process
 from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
@@ -205,6 +206,151 @@ class PartnerItemUpdateForm(ServiceModelForm):
 
 class PartnerItemDeleteForm(forms.Form):
     """部品の取引先の削除の確かめ。欄は無い (土台が delete_partner_item(対象, user=…) を呼ぶ)。"""
+
+    submit_label = "削除"
+    danger = True  # 実行のボタンを削除の確かめの赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-3)
+
+#: 部品が見つからないときの欄の外の誤り (添付ファイルの付ける先が無いときと同じ形)
+MESSAGE_PRICE_ITEM_NOT_FOUND = "単価を足す部品が見つかりません。部品の詳細の取引先のタブの「単価を足す」から開き直してください。"
+#: 取引先の選ぶ欄の空の字 (空 = 共通)
+COMMON_PRICE_LABEL = "共通 (どの取引先にも同じ単価)"
+
+
+class _PartnerItemChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        partner = obj.partner.short_name or obj.partner.name
+        return f"{partner} {obj.partner_part_no}" if obj.partner_part_no else f"{partner} (品番なし)"
+
+
+class ItemPriceForm(ServiceModelForm):
+    """単価の行の追加と編集。部品の詳細の取引先の行か共通の「単価を足す」から開き、その部品の取引先の中からだけ選ぶ (決め PRICE-2)。
+
+    部品は足すときだけ隠した欄 (?item=<pk> の初めの値)。直すときは部品の欄を外す (部品は変えない)。
+    単価と数量の下限は 0 より大きい (欄の下限。決め C98-3)。金額の閲覧が無い人 (hide_money) には単価の欄を出さない。
+    """
+
+    item_text = forms.CharField(label="部品", required=False, disabled=True)
+    unit_price = forms.DecimalField(
+        label="単価",
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "単価は 0 より大きい数にしてください。"},
+    )
+    min_qty = forms.DecimalField(
+        label="数量の下限",
+        required=False,
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "数量の下限は 0 より大きい数にしてください。数量によらないときは空にします。"},
+        help_text="この数量から効く単価です。帯の終わりは、次の行の下限の 1 つ手前です。空なら数量によらない単価です。",
+    )
+
+    #: 読むだけの部品の欄を頭に置く (ModelForm は表の欄を先に並べるため)
+    field_order = ["item_text"]
+
+    class Meta:
+        model = ItemPrice
+        fields = [
+            "item",
+            "partner_item",
+            "kind",
+            "process",
+            "min_qty",
+            "unit_price",
+            "price_basis",
+            "start_date",
+            "quote_no",
+            "quote_date",
+            "quote_expires",
+            "note",
+        ]
+        field_classes = {"partner_item": _PartnerItemChoiceField}
+        widgets = {
+            "item": forms.HiddenInput,
+            "start_date": IsoDateInput(),
+            "quote_date": IsoDateInput(),
+            "quote_expires": IsoDateInput(),
+        }
+        labels = {"partner_item": "取引先"}
+        # 「?」の説明書の「入れる物」の表は form を作らずに base_fields を読むので、今の値に依らない字だけを置く。
+        help_texts = {
+            "partner_item": "空なら共通 (どの取引先にも同じ単価)。選べるのは、この部品の取引先のタブにある取引先だけです。",
+            "kind": "売りは受注の単価、協力企業への発注は発注の単価です。",
+            "process": "協力企業への発注の単価のときに、協力企業に出す工程を選びます。空なら工程によらない単価です。売りの単価では残しません。",
+            "price_basis": "「部品の単位」は 1 つあたりの単価、「式」は数量を掛けない一式の金額です。",
+            "start_date": (
+                "空ならいつでも効きます。単価を改定するときは、この行を直さず、新しい適用開始日の行を足します。"
+                "同じ取引先・売りか発注か・工程・数量の下限・適用開始日の行は 1 つだけです。"
+            ),
+            "quote_no": "見積書の番号。見積書のファイルは、取引先の行の「見積書を付ける」で付けます。",
+            "quote_expires": "空なら期限なし。過ぎると、この行に「期限切れ」の印が付きます。",
+        }
+
+    def __init__(self, *args, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.price_item = self._price_item()
+        if self.instance.pk is not None:
+            # 直すときは部品の欄を外す。ModelForm は検査のときに送られた値を instance に写すので、隠した欄を残すと、
+            # 送られた別の部品の番号で単価の行の部品が書き換わるため。
+            self.fields.pop("item", None)
+        if self.price_item is not None:
+            self.fields["item_text"].initial = f"{self.price_item.part_no} {self.price_item.name}"
+            self.fields["partner_item"].queryset = self.price_item.partner_items.select_related("partner").order_by("pk")
+        else:
+            self.fields["partner_item"].queryset = PartnerItem.objects.none()
+        self.fields["partner_item"].empty_label = COMMON_PRICE_LABEL
+        keep = self.instance.process_id if self.instance.pk is not None else None
+        self.fields["process"].queryset = _active_outsourced_processes(keep)
+        self.fields["process"].required = False
+        if hide_money:
+            # 金額の閲覧が無い人 (判定の on) には単価の欄を出さない (部品の編集の標準単価と同じ形)。保存は金額の門が断る。
+            self.fields.pop("unit_price", None)
+
+    def _price_item(self):
+        """単価の行の部品。直すときは今の行の部品、足すときは送られた値か初めの値 (数の字のときだけ引く)。無ければ None。"""
+        if self.instance.pk is not None:
+            return self.instance.item
+        source = self.data if self.is_bound else self.initial
+        raw = source.get(self.add_prefix("item") if self.is_bound else "item")
+        if isinstance(raw, Item):
+            return raw
+        if raw is None or not str(raw).isdecimal():
+            return None
+        return Item.objects.filter(pk=int(raw)).first()
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.price_item is None:
+            raise forms.ValidationError(MESSAGE_PRICE_ITEM_NOT_FOUND)
+        return cleaned
+
+    def validate_constraints(self):
+        # 一意は services が見る (PartnerItemForm と同じ)。訳: 止めないと、同じ条件の行の保存が services の字 (本人の決めの字) でなく
+        # Django の既定の字「制約 “masters_itemprice_same_band_unique” に違反しています。」の赤で止まるため。
+        return
+
+    def service_kwargs(self):
+        data = {name: value for name, value in self.cleaned_data.items() if name != "item_text"}
+        return {"data": data}
+
+
+def _active_outsourced_processes(keep):
+    """単価の行の「協力企業の工程」の選択肢: 使用中で協力企業に出す工程 (keep は直す行の今の工程。使用停止でも残す)。"""
+    from .services import active_processes
+
+    return active_processes(keep=keep).filter(is_outsourced=True)
+
+
+class ItemPriceDeleteForm(forms.Form):
+    """単価の行の削除の確かめ。欄は無い (土台が delete_item_price(対象, user=…) を呼ぶ)。"""
 
     submit_label = "削除"
     danger = True  # 実行のボタンを削除の確かめの赤 (btn btn-error) にする (core/_form_card.html)

@@ -26,9 +26,10 @@ from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
 from .forms import HolidayDeleteForm, HolidayForm
 from .forms import PartnerItemDeleteForm, PartnerItemForm, PartnerItemUpdateForm
+from .forms import ItemPriceDeleteForm, ItemPriceForm
 from .models import Item, Partner, Process
 from .models import Holiday
-from .models import PartnerItem
+from .models import ItemPrice, PartnerItem
 
 
 #: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
@@ -71,13 +72,13 @@ class ItemListView(BaseListView):
 class ItemDetailView(BaseDetailView):
     """部品の詳細。
 
-    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ。取引先は取引先のタブの「取引先を足す」で足す
+    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの単価と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ。取引先は取引先のタブの「取引先を足す」で足す
     """
 
     model = Item
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
-    screen_help = "部品の項目と、取引先、標準の工程の並び。"
+    screen_help = "部品の項目と、取引先と単価、標準の工程の並び。"
     # 取引先の行の字と標準の工程の行の字 (ItemProcess.__str__) が取引先と工程を読むので、行と一緒に 1 回で引く (N174)
     tabs = (("取引先", "partner_items", ("partner",)), ("標準の工程", "item_processes", ("process",)))
 
@@ -248,7 +249,7 @@ class PartnerItemUpdateView(BaseFormView):
 class PartnerItemDeleteView(BaseFormView):
     """部品の取引先の削除の確かめ。
 
-    使う人: 生産管理・営業 / いつ: 取引先を選び間違えて足した行や、もう取引しない取引先の行を消すとき / 何のために: 部品の取引先の行を消す / 次にすること: 部品の詳細の取引先のタブで確かめる
+    使う人: 生産管理・営業 / いつ: 取引先を選び間違えて足した行や、もう取引しない取引先の行を消すとき / 何のために: 部品の取引先の行と、その行の単価の行を消す / 次にすること: 部品の詳細の取引先のタブで確かめる
     """
 
     model = PartnerItem
@@ -256,7 +257,52 @@ class PartnerItemDeleteView(BaseFormView):
     service = staticmethod(services.delete_partner_item)
     template_name = "masters/partneritem_delete.html"
     screen_name = "部品の取引先の削除"
-    screen_help = "部品の取引先の行を 1 つ消します。消すと戻せません。"
+    screen_help = "部品の取引先の行を 1 つ消します。その行の単価の行も一緒に消えます。消すと戻せません。"
+
+
+# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-1〜C98-6)
+# 部品の詳細の「取引先」のタブの取引先の行か共通の「単価を足す」から小窓で開く。単価の行に詳細の画面は無いので、
+# 保存と削除の後の移り先は ?next= (開いた部品の詳細)。金額の閲覧が無い人の保存と削除は、土台の金額の門が断る (MONEY_ACTIONS)。
+
+
+class ItemPriceAddView(BaseFormView):
+    """単価の行の追加の入力。
+
+    使う人: 営業・生産管理 / いつ: 見積を出したときと受け取ったとき、単価を改定するとき / 何のために: 取引先ごと (か共通) の数量の帯の単価を、見積の番号・発行日・有効期限と一緒に持つ / 次にすること: 部品の詳細の取引先のタブで確かめ、見積書は取引先の行の「見積書を付ける」で付ける
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceForm
+    service = staticmethod(services.add_item_price)
+    screen_name = "単価の行の追加"
+    screen_help = "部品の単価表に 1 行を足します。数量の下限が空なら数量によらない単価、適用開始日が空ならいつでも効く単価です。改定は新しい適用開始日の行を足します。"
+
+
+class ItemPriceUpdateView(BaseFormView):
+    """単価の行の編集の入力。
+
+    使う人: 営業・生産管理 / いつ: 単価の行を打ち間違えたとき / 何のために: 単価の行の値を直す (改定は直さず新しい行を足す) / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceForm
+    service = staticmethod(services.update_item_price)
+    screen_name = "単価の行の編集"
+    screen_help = "単価の行の値を直します。単価を改定するときは、この行を直さず、新しい適用開始日の行を足します。"
+
+
+class ItemPriceDeleteView(BaseFormView):
+    """単価の行の削除の確かめ。
+
+    使う人: 営業・生産管理 / いつ: 打ち間違えた単価の行を消すとき / 何のために: 単価の行を消す (改定の前の単価は消さず、適用開始日で残す) / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceDeleteForm
+    service = staticmethod(services.delete_item_price)
+    template_name = "masters/itemprice_delete.html"
+    screen_name = "単価の行の削除"
+    screen_help = "単価の行を 1 つ消します。受注と発注の明細は単価を写して持つので、今までの明細の金額は変わりません。消すと戻せません。"
 
 
 @login_required
