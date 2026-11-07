@@ -37,20 +37,23 @@ def user(db):
 
 @pytest.fixture
 def invoices(user):
-    """発行日の同じ請求書 5 つ (未入金・入金済み・一部入金・入金を取り消して未入金に戻った物・取消)。並びは作った順の逆。"""
+    """発行日の同じ請求書 5 つ (未入金・入金済み・一部入金・入金を取り消して未入金に戻った物・取消)。並びは作った順の逆。
+
+    出荷日は 1 つ目の 10 月から 1 か月ずつ前にする (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。発行日は変えない)。
+    """
     item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
     customer = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
 
-    def invoice():
+    def invoice(month):
         order = orders_services.create_order(
-            customer, [{"item": item, "qty": Decimal("2"), "unit_price": Decimal("1000")}], user, order_date=date(2026, 10, 1)
+            customer, [{"item": item, "qty": Decimal("2"), "unit_price": Decimal("1000")}], user, order_date=date(2026, month, 1)
         )
-        shipment = shipping_services.ship(order.lines.get(), Decimal("2"), date(2026, 10, 2), user)
+        shipment = shipping_services.ship(order.lines.get(), Decimal("2"), date(2026, month, 2), user)
         shipping_services.create_delivery_note(customer, [shipment], user)
         shipment.refresh_from_db()
         return billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 10, 31))
 
-    made = {name: invoice() for name in ("unpaid", "paid", "partial", "refunded", "cancelled")}
+    made = {name: invoice(10 - index) for index, name in enumerate(("unpaid", "paid", "partial", "refunded", "cancelled"))}
     billing_services.record_payment(made["paid"], date(2026, 11, 25), made["paid"].total, user)
     billing_services.record_payment(made["partial"], date(2026, 11, 25), Decimal("1000"), user)
     payment = billing_services.record_payment(made["refunded"], date(2026, 11, 25), made["refunded"].total, user)

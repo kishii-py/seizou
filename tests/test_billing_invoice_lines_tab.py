@@ -176,9 +176,11 @@ def test_lines_tab_queries_do_not_grow_with_rows(money_on, keiri, user):
     five = billing_services.create_invoice(
         customer, [shipped(user, customer, five_line, "2") for _ in range(5)], user, issued_on=ISSUED_ON
     )
-    # 明細 1 行: さらに別の受注の明細から
+    # 明細 1 行: さらに別の受注の明細から。出荷は前の月 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)
     one_line = _order_line(user, customer, item, "800")
-    one = billing_services.create_invoice(customer, [shipped(user, customer, one_line, "2")], user, issued_on=ISSUED_ON)
+    one = billing_services.create_invoice(
+        customer, [shipped(user, customer, one_line, "2", date(2026, 10, 5))], user, issued_on=ISSUED_ON
+    )
     assert one.lines.count() == 1 and five.lines.count() == 5
 
     one_url = reverse("billing:invoice_detail", args=[one.pk])

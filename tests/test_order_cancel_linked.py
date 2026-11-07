@@ -283,8 +283,10 @@ def test_linked_for_queries_do_not_grow_with_lines(user, customer, item, cut):
     today = timezone.localdate()
     one, workorder, _, _, _ = _flowed(user, customer, item, cut)
     progress_services.record_progress(workorder.steps.get(), Decimal("1"), timezone.now(), user)
+    # 2 つ目の受注は別の得意先 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。出荷日は今日のまま)
+    other = masters_services.create_partner({"code": "C002", "name": "作り物の別の得意先", "role": "customer"}, user)
     two = orders_services.create_order(
-        customer,
+        other,
         [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100")} for _ in range(2)],
         user,
         order_date=today - timedelta(days=3),
@@ -294,8 +296,8 @@ def test_linked_for_queries_do_not_grow_with_lines(user, customer, item, cut):
         issued = _issue(user, line, cut)
         progress_services.record_progress(issued.steps.get(), Decimal("1"), timezone.now(), user)
         shipments.append(shipping_services.ship(line, Decimal("10"), today, user))
-    shipping_services.create_delivery_note(customer, shipments, user)
-    billing_services.create_invoice(customer, shipments, user, issued_on=today)
+    shipping_services.create_delivery_note(other, shipments, user)
+    billing_services.create_invoice(other, shipments, user, issued_on=today)
 
     linked_for(Order.objects.get(pk=one.pk), user)  # 利用者の権限の控え (accounts の Access。初回だけ読む) を先に読ませておく
     counts = []

@@ -275,7 +275,8 @@ def test_invoiced_note_detail_links_to_invoice(logged_in, user, customer, shipme
 def test_note_detail_lists_each_invoice_with_its_shipment_count(logged_in, user, customer, shipment):
     """出荷が別々の請求書に入っていれば、請求書ごとに 1 行ずつ、その請求書に入った出荷の数で出す。"""
     second = services.ship(shipment.order_line, Decimal("3"), SHIPPED_AT, user)
-    third = services.ship(shipment.order_line, Decimal("2"), SHIPPED_AT, user)
+    # 3 つ目は前の月の出荷 (別の締め期間。同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)
+    third = services.ship(shipment.order_line, Decimal("2"), date(2026, 10, 5), user)
     note = services.create_delivery_note(customer, [shipment, second, third], user)
     for row in (shipment, second, third):
         row.refresh_from_db()
