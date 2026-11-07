@@ -278,6 +278,31 @@ body > .ts-dropdown [data-select-create]:hover {
   border-radius: 0 calc(0.5rem - 1px) calc(0.5rem - 1px) 0;
 }
 
+/* 一覧の表の箱の下の端のぼかし (初見テスト R5 の候補 C23。決め C23-2 = a)。下に続きがあるときだけ、箱の下の端に薄い灰のぼかしを出し、最後まで送ると消す。
+   印: 右の端と同じ箱の data-scroll-hint (core/_rows.html と、その写しの 3 つ・横断の検索 core/search.html・進捗の盤 progress/progress_board.html)。
+   js/seizou-scroll-hint.js が、下に続きがあるときだけ箱を包む要素 (箱の親) に data-more-below を付け、下の端まで送ると外す。溢れの無い高さでは付かない。
+   包みの ::after は右の端のぼかしが使うので、下の端は包みの ::before に描く (同じ ::after に描くと、右と下の両方に続きがあるときに 1 つしか出ない)。
+   形 (見本の数): 高さ 40px、上の透明から下の灰 (rgba(120,120,120,0.28)) へ移る帯。箱の枠の 1px の内側に置き、下の 2 つの角は箱の丸み (rounded-lg = 0.5rem) に合わせる。
+   重ね方は右の端と同じ (見出しの行 (z-index 3) と止めた欄 (2) より上の 4。pointer-events: none で下の欄を押せるままにする)。
+   見本は箱の中の見える幅だけに描き、左下の角だけを丸めた。CSS ではバーの幅が分からないので、縦のバーと横のバーの上にも重なり、
+   右と下の両方に続きがあるときは右下の角で 2 つのぼかしが重なって少し濃くなる (違いは本体が絵で見る)。
+   右の端の決まりと 1 つの段に並べず、別の段に書く。 */
+[data-more-below] {
+  position: relative;
+}
+[data-more-below]::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 40px;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(120, 120, 120, 0), rgba(120, 120, 120, 0.28));
+  border-radius: 0 0 calc(0.5rem - 1px) calc(0.5rem - 1px);
+}
+
 /* 上の帯 (ヘッダー) の色。人ごとの表示の設定 (決め 11-05 21:2x。N167)。名前は core.display.HEADER_COLORS の鍵と同じ字。
    土台の base.html は、白 (標準) の外を選んだ人の画面だけ <html> に data-seizou-header="<名前>" を出す。上の帯 (core/_topbar.html の header) は
    固定の class seizou-header を持つ。表示の設定の小窓の見本 (core/_display_settings_card.html) は data-seizou-swatch="<名前>" で同じ色を出す。

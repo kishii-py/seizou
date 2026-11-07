@@ -1,4 +1,5 @@
 """一覧の表の左の 1 列目を箱の左に止め、右に続きがあるときだけ箱の右の端にぼかしを出す (初見テスト R5 の候補 C34 の本 B。C34-1 = a)。
+下に続きがあるときだけ箱の下の端にもぼかしを出す (候補 C23。決め C23-2 = a。横断の検索と進捗の盤の箱を含む。試験は末尾)。
 
 表の固定の class (seizou-pin-first)・箱の印 (data-scroll-hint) と包み・static の js/seizou-scroll-hint.js の字と base.html の読み込み・
 scripts/css/input.css の決まりの字を見る。JS は動かさない。止まり方と色とぼかしの出し入れはブラウザで見る物なので、
@@ -159,3 +160,65 @@ def test_fade_rule_is_in_the_css_source():
         "rgba(120, 120, 120, 0.28)",
     ):
         assert word in fade, word
+
+
+# ---------------------------------------------------------------- 下の端のぼかし (初見テスト R5 の候補 C23。決め C23-2 = a)
+
+#: 横断の検索の箱 (前に mt-4 が付く。class の字は変えない) と、進捗の盤の箱 (一覧の箱と同じ字)。どちらも 1 列目を止めない
+SEARCH_HINT_BOX = '<div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>'
+PLAIN_TABLE = '<table class="table table-sm table-zebra table-pin-rows">'
+SEARCH_WRAPPED_BOX = re.compile(r"<div>\s*" + re.escape(SEARCH_HINT_BOX) + r"\s*" + re.escape(PLAIN_TABLE))
+BOARD_WRAPPED_BOX = re.compile(r"<div>\s*" + re.escape(HINT_BOX) + r"\s*" + re.escape(PLAIN_TABLE))
+#: 進捗の盤の行の数の字 (C23 の 2) は、包みの外の後ろにある
+BOARD_COUNT_AFTER_WRAP = re.compile(
+    r"</table>\s*</div>\s*</div>\s*" + re.escape('<p class="mt-4 text-base-content/70"><span class="tabular-nums">')
+)
+
+
+def test_scroll_hint_js_marks_the_bottom_edge():
+    """JS は同じ箱で、下に続きがあるかを縦の送りの値で見て、包みに別の属性 (data-more-below) を付け外しする。"""
+    text = JS.read_text(encoding="utf-8")
+    for word in ("scrollTop", "scrollHeight", "clientHeight", "data-more-below"):
+        assert word in text, word
+
+
+def test_bottom_fade_rule_is_in_the_css_source():
+    """下の端のぼかしは包みの ::before で描き (::after は右の端が使う)、高さ 40px・灰の濃さ 0.28・見出しと止めた欄より上・下の欄を押せるまま。
+    右の端の段の後ろに、別の段として書く。"""
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert "position: relative;" in _rule(css, "[data-more-below]")
+    fade = _rule(css, "[data-more-below]::before")
+    for word in (
+        'content: "";',
+        "position: absolute;",
+        "left: 1px;",
+        "right: 1px;",
+        "bottom: 1px;",
+        "height: 40px;",
+        "z-index: 4;",
+        "pointer-events: none;",
+        "linear-gradient(to bottom,",
+        "rgba(120, 120, 120, 0.28)",
+    ):
+        assert word in fade, word
+    assert css.index("[data-more-below] {") > css.index("[data-more-right]::after {")
+
+
+@pytest.mark.django_db
+def test_search_and_board_boxes_carry_the_hint(logged_in, listed):
+    """横断の検索 (区切りの数だけ) と進捗の盤 (1 つ) の箱に印があり、箱は包みの要素の中にある。端の属性はサーバーが出さない。"""
+    response = logged_in.get(reverse("core:search"), {"q": "T-100"})
+    assert response.status_code == 200
+    sections = response.context["sections"]
+    assert sections
+    body = response.content.decode()
+    assert body.count(SEARCH_HINT_BOX) == len(sections)
+    assert len(SEARCH_WRAPPED_BOX.findall(body)) == len(sections)
+    assert "data-more-below" not in body and "data-more-right" not in body
+
+    response = logged_in.get(reverse("progress:progress_list"))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert body.count(HINT_BOX) == 1 and len(BOARD_WRAPPED_BOX.findall(body)) == 1
+    assert BOARD_COUNT_AFTER_WRAP.search(body)
+    assert "data-more-below" not in body and "data-more-right" not in body
