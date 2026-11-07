@@ -10,9 +10,11 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from django.urls import reverse
 
-from seizou.core.views import lookup_label, search_variants
+from seizou.core import fields as company_fields
+from seizou.core.views import BaseListView, lookup_label, search_variants
 from seizou.masters import services as masters_services
 from seizou.masters.models import Item, Partner
 from seizou.orders import services as orders_services
@@ -73,6 +75,43 @@ def test_lookup_label_uses_the_last_field_and_hint_drops_duplicates(client_logge
     labels = hint.split("・")
     assert len(labels) == len(set(labels)), hint
     assert "受注番号" in labels and "取引先コード" in labels
+
+
+class _CustomerNamedOrderList(BaseListView):
+    """search_fields に (lookup, 見出し) の組を書いた作り物の受注の一覧 (候補 C36 の 7。前例 tests/test_core_list_filters.py の _OrderList)。"""
+
+    model = Order
+    screen_name = "作り物の受注の一覧"
+    columns = ("order_no", "customer", "order_date")
+    search_fields = ("order_no", ("customer__name", "得意先の名前"))
+    ordering = ("order_date", "pk")
+    template_name = "core/list.html"
+
+
+@pytest.mark.django_db
+def test_search_fields_pair_names_the_hint_and_still_filters(user, monkeypatch):
+    """組の見出しは案内にそのまま出て、絞りは組の lookup で行う。字の lookup は今のまま (初見テスト R5 の U162。候補 C36 の 7)。"""
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+    north = masters_services.create_partner({"code": "C001", "name": "作り物の北の得意先", "role": "customer"}, user)
+    south = masters_services.create_partner({"code": "C002", "name": "作り物の南の得意先", "role": "customer"}, user)
+    item = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    line = [{"item": item, "qty": Decimal("1"), "unit_price": Decimal("100")}]
+    north_order = orders_services.create_order(north, line, user, order_date=date(2026, 11, 2))
+    orders_services.create_order(south, line, user, order_date=date(2026, 11, 3))
+
+    def call(**params):
+        request = RequestFactory().get("/", params)
+        request.user = user
+        return _CustomerNamedOrderList.as_view()(request)
+
+    response = call()
+    view = response.context_data["view"]
+    assert view.search_lookups()[:2] == ["order_no", "customer__name"]
+    assert response.context_data["search_hint"].startswith("受注番号・得意先の名前")
+    assert "名前" not in response.context_data["search_hint"].split("・")
+
+    found = call(q="北")
+    assert [row["obj"] for row in found.context_data["rows"]] == [north_order]
 
 
 @pytest.mark.django_db

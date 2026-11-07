@@ -70,7 +70,8 @@ class ShipmentListView(BaseListView):
         "order_line__order__order_no",
         "order_line__order__customer_order_no",
         "order_line__item__part_no",
-        "order_line__order__customer__name",
+        # 案内の字は「得意先の名前」(末尾の欄の名前「名前」では何の名前か分からないため。初見テスト R5 の U162。候補 C36 の 7)
+        ("order_line__order__customer__name", "得意先の名前"),
         # 品名: 表の「部品」の列に出ている品名でも当たる (上の帯の横断の検索と同じ。初見テスト R5 の候補 C36 の 4)
         "order_line__item__name",
     )

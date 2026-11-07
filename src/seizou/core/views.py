@@ -801,6 +801,8 @@ class BaseListView(ScreenMixin, ListView):
     絞り・検索・部品の get_queryset の後の行を数える。CSV (format=csv) も集計の行になる。軸が 1 つも無い一覧は表のまま。
     絞りのタブ (presets): 枠の値の組に名前を付けたタブを枠の上に出す (core/_presets.html)。件数は表と同じ条件で数える。先頭に「すべて」を土台が足す。
     効いている絞りの札 (filter_chips): 枠の下に「見出し: 値 ×」で並べる (core/_filter_clear.html)。× と「絞りを外す」は一覧の枠 (LIST_TARGET) を取り直す。
+    検索 (search_fields): 1 要素は lookup の字か、列と同じ (lookup, 見出し) の組で、組の見出しは検索の欄の案内にそのまま出る
+    (例 ("order_line__order__customer__name", "得意先の名前")。字なら案内は lookup_label の末尾の欄の名前)。
     """
 
     columns: tuple = ()
@@ -895,7 +897,9 @@ class BaseListView(ScreenMixin, ListView):
         return [t for t in self.request.GET.get("q", "").split() if t]
 
     def search_lookups(self) -> list[str]:
-        return [*self.search_fields, *company_fields.search_fields_for(self.model)]
+        """絞る lookup の並び。search_fields の (lookup, 見出し) の組は lookup だけにする (列の書き方と同じ読み方)。"""
+        own = [item[0] if isinstance(item, (tuple, list)) else item for item in self.search_fields]
+        return [*own, *company_fields.search_fields_for(self.model)]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1060,8 +1064,12 @@ class BaseListView(ScreenMixin, ListView):
         return [{"value": agg.get(spec.name), "numeric": spec.name in sums, "money": spec.money} for spec in specs]
 
     def search_hint(self) -> str:
-        """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。"""
-        labels = [lookup_label(self.model, f) for f in self.search_fields]
+        """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。
+
+        search_fields の見出しは、字の lookup なら lookup_label (辿る物は末尾の欄の名前)、(lookup, 見出し) の組なら組の見出し
+        (末尾の欄の名前では何の名前か分からない所に書く。例 出荷の一覧の「得意先の名前」= 初見テスト R5 の候補 C36 の 7)。
+        """
+        labels = [item[1] if isinstance(item, (tuple, list)) else lookup_label(self.model, item) for item in self.search_fields]
         labels += [c.label for c in company_fields.columns_for(self.model) if c.searchable]
         return "・".join(dict.fromkeys(labels))
 
