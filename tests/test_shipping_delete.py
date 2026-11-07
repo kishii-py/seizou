@@ -6,6 +6,7 @@
 作り物の得意先・部品・受注だけを使う。相手への HTTP は偽物 (呼ばれたら落とす) にする。
 """
 
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -27,6 +28,8 @@ from seizou.orders import services as orders_services
 from seizou.shipping import services
 from seizou.shipping.models import Shipment
 from seizou.stock import services as stock_services
+from tests.test_core_access import account
+from tests.test_core_row_summary_lists import HEADER, HTMX, MONEY_ONLY, eye_links
 
 ORDER_DATE = date(2026, 11, 2)
 COUNTED_ON = date(2026, 11, 3)
@@ -331,3 +334,67 @@ def test_refused_shipment_shows_reason_without_form(logged_in, customer, line, u
 
 def test_delete_url():
     assert reverse("shipping:shipment_delete", args=[1]) == "/shipping/1/delete/"
+
+
+# ---------------------------------------------------------------- (j)(k) 出荷の一覧の行の ⋮ と右クリック
+
+#: 行の操作の ⋮ (core/static/js/seizou-row-menu.js の markup の約束)
+MENU = '<details class="dropdown dropdown-end row-menu">'
+WRITE_ONLY = {"access_control": {"department": "off", "write": "on", "money": "off"}}
+
+
+def _row(body, shipment):
+    match = re.search(rf'<tr id="row-{shipment.pk}"[^>]*>.*?</tr>', body, re.S)
+    assert match is not None, "出荷の行が無い"
+    return match.group(0)
+
+
+def _menu_links(row):
+    """⋮ の中の (字 → (href, data-modal-form))。"""
+    return {
+        label: (href, modal)
+        for href, modal, label in re.findall(r'<a[^>]*href="([^"]*)"[^>]*data-modal-form="([^"]*)"[^>]*>.*?(編集|削除)</a>', row, re.S)
+    }
+
+
+@pytest.mark.django_db
+def test_shipment_list_rows_have_edit_and_delete_menu(logged_in, line, user):
+    shipment = _ship(line, "4", user)
+    url = reverse("shipping:shipment_list")
+    eyes = [(f"/shipping/{shipment.pk}/", f"/shipping/{shipment.pk}/modal/")]
+
+    for response in (logged_in.get(url), logged_in.get(url, {"q": ""}, **HTMX)):
+        body = response.content.decode()
+        row = _row(body, shipment)
+        head = re.search(rf'<tr id="row-{shipment.pk}"[^>]*>', row).group(0)
+        assert "data-row-menu" in head
+        assert "closest('a, details')" in head
+        assert MENU in row
+        links = _menu_links(row)
+        assert set(links) == {"編集", "削除"}
+        for label, path in (("編集", f"/shipping/{shipment.pk}/edit/"), ("削除", f"/shipping/{shipment.pk}/delete/")):
+            href, modal = links[label]
+            assert href == modal
+            assert href.startswith(f"{path}?next=/shipping/")
+        # 見出し「要点」は 1 つのまま、目の印の link も今のまま
+        assert body.count(HEADER) == 1
+        assert eye_links(body) == eyes
+
+
+@pytest.mark.django_db
+def test_menu_follows_write_permission_not_money(settings, client, logged_in, line, user):
+    shipment = _ship(line, "4", user)
+    url = reverse("shipping:shipment_list")
+
+    # 編集の判定が on: 出荷の種類の権限の無い人には出さない
+    settings.SEIZOU = WRITE_ONLY
+    row = _row(logged_in.get(url).content.decode(), shipment)
+    assert MENU not in row and _menu_links(row) == {}
+    clerk = account("denpyo", permissions=["slip_edit"])
+    client.force_login(clerk)
+    assert set(_menu_links(_row(client.get(url).content.decode(), shipment))) == {"編集", "削除"}
+
+    # 金額の判定だけが on: 出荷は数の操作なので、金額の閲覧の無い人にも出す (決め 21:0x)
+    settings.SEIZOU = MONEY_ONLY
+    client.force_login(user)
+    assert set(_menu_links(_row(client.get(url).content.decode(), shipment))) == {"編集", "削除"}
