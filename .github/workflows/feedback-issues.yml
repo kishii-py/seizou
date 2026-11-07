@@ -40,15 +40,14 @@ jobs:
   # Issue が開いた・閉じた・開き直した・ラベルとマイルストーンが変わったときに、盤に足して (無ければ) 列 (Status) を決める。
   #   見送った = 対応しない (not_planned) か重複 (duplicate) で閉じた / 直した = それ以外で閉じた / 直している = 開いていてラベル「直している」/
   #   直す予定 = 開いていてマイルストーンがある / 受け付けた = それ以外の開いている物 (seizou の画面の盤の列の分け方と同じ)。
-  # 既定の鍵 (GITHUB_TOKEN) は個人の口座の盤に書けないので、本人が project と repo の権限のトークンを秘密の値 PROJECTS_TOKEN に置く。
-  # 秘密の値が無い間は何もしない (止まらない)。盤・列・選択肢の id は公開の値。
+  # 既定の鍵 (GITHUB_TOKEN) は個人の口座の盤に書けないので、本人が project と public_repo の権限のトークン (classic「seizou-projects-board」。
+  # 期限 2027-02-05) を秘密の値 PROJECTS_TOKEN に置いた (11-07 10:04)。この秘密の値は、盤を動かすこの 1 つの段の github-token にだけ渡す。
+  # Issue の字 (題・本文・ラベル) は script の中で context.payload から受け取り、run: と script: の字に github.event.issue の式を埋め込まない
+  # (Issue の字を式で埋め込むと、本文の字が script として動く穴になる)。盤・列・選択肢の id は公開の値。
   board:
     runs-on: ubuntu-latest
-    env:
-      PROJECTS_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
     steps:
       - name: 盤の列を決める
-        if: env.PROJECTS_TOKEN != ''
         uses: actions/github-script@v7.0.1
         with:
           github-token: ${{ secrets.PROJECTS_TOKEN }}
