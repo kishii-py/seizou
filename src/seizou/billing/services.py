@@ -30,6 +30,8 @@
   人が金額を決めた一式の行は create_invoice の lumps = (受注の明細, 金額) で載せる (R09 の見方は _refuse_unbillable_lump。同じ一式を 2 枚に入れない = 作者の決め C107-2。
   金額は 0 より大きい数 = 作者の決め C107-3)。一式の行だけの請求書の期間は発行日の締め期間 (都度の得意先は発行日の 1 日。作者の決め C107-1)。
   作り直し (reissue_invoice) は取り消した請求書の一式の行を同じ金額で写し、作り直しの画面で足した一式の行も受ける。
+- 受注の明細に「請求しない」の印がある出荷は、請求の候補 (billable_shipments・unbilled_in_period・unbilled_lumps) に出さない。
+  出荷の金額の式 (shipment_amount) は変えない (作者の決め C107-3b・C107-3c)。
 """
 
 from __future__ import annotations
@@ -112,11 +114,14 @@ def _line_ref(order_line):
     return f"受注 {order_line.order.order_no} の {order_line.line_no} 行目"
 
 
-def _refuse_unbillable_lump(order_line, customer):
+def _refuse_unbillable_lump(order_line, customer, *, copying=False):
     """一式の行 (出荷に結び付かない請求書の明細) にできない受注の明細なら断る。ロックした受注の明細の行で見る。
 
     得意先が違う・出荷が無いか発行の納品書に入っていない出荷がある・発行の請求書にこの明細の一式の行がある、の 3 つは
     RuleViolation("R09") (今の _refuse_unbillable の R09 の見方を一式の行に広げる。新しい決まりの番号は足さない)。
+    受注の明細に「請求しない」の印 (no_bill) がある明細は、ValueError「…には「請求しない」の印が付いているので、外してください。」
+    (下の ValueError の字を分けるだけ。画面は印の明細を出さないので、開いた後に印を付けた時と画面の外から呼んだ時だけ)。
+    copying が真 (作り直しで取り消した請求書の一式の行を写す時) は印を見ない (請求書に一度入った物は、印に依らず作り直しで落とさない)。
     そのほかで出し切らずに終えた一式の明細 (unbilled_lumps) でない物 (単価の単位が式でない・明細を出し終えた出荷がある・
     まだ終わっていない) は ValueError (画面は unbilled_lumps の明細しか出さないので、画面の外から呼んだ時と、開いた後に出荷が進んだ時だけ)。
     明細を出し終えた出荷のある明細に一式の行を足すと、出荷の行の全額と二重になる。
@@ -141,7 +146,9 @@ def _refuse_unbillable_lump(order_line, customer):
         raise RuleViolation(
             "R09", f"発行できません。{_R09_RULE}{ref}の一式は請求書 {billed.invoice.invoice_no} に入っているので、外してください。"
         )
-    if order_line not in unbilled_lumps(customer):
+    if order_line.no_bill and not copying:
+        raise ValueError(f"発行できません。{ref}には「請求しない」の印が付いているので、外してください。")
+    if order_line not in unbilled_lumps(customer, include_no_bill=copying):
         raise ValueError(f"発行できません。{ref}は、出し切らずに終えた一式の明細ではありません。出荷の行で請求してください。")
 
 
@@ -296,7 +303,7 @@ def _lump_values(customer, lumps, copies):
     rows = []
     for line, amount, copy in entries:
         current = locked[line.pk]
-        _refuse_unbillable_lump(current, customer)
+        _refuse_unbillable_lump(current, customer, copying=copy is not None)
         if copy is None:
             facts = lump_facts(current)
             value = _lump_amount(customer, current, amount)
@@ -568,11 +575,14 @@ def billable_shipments(customer=None):
     """請求できる出荷 (読むだけ)。発行の納品書に入っていて、取消でない請求書に入っていない出荷。
 
     create_invoice の断る条件の (1) 納品書と (2) 請求済みと同じ。customer を渡せば、その得意先の出荷だけ。
+    受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作者の決め C107-3・C107-3b・C107-3c。受注の明細の列を外部キーの道で読む)。
     """
     # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
-    queryset = _Shipment.objects.filter(delivery_note__status=_DeliveryNote.STATUS_ISSUED).exclude(
-        pk__in=invoiced
+    queryset = (
+        _Shipment.objects.filter(delivery_note__status=_DeliveryNote.STATUS_ISSUED)
+        .exclude(pk__in=invoiced)
+        .exclude(order_line__no_bill=True)
     )
     if customer is not None:
         queryset = queryset.filter(order_line__order__customer=customer)
@@ -594,6 +604,7 @@ def unbilled_in_period(customer, period_from, period_to):
 
     並びは出荷日・出荷番号。billable_shipments と違い、発行の納品書に入っていない出荷 (納品書が無いか取消) も返す。
     出荷には状態の列が無いので、出荷の取消は見ない。create_invoice が作った後の知らせ (_period_note) に使う。
+    受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作った後の知らせに数えると、入れ忘れと読み違えるため。作者の決め C107-3)。
     """
     # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
@@ -602,17 +613,20 @@ def unbilled_in_period(customer, period_from, period_to):
             order_line__order__customer=customer, shipped_at__gte=period_from, shipped_at__lte=period_to
         )
         .exclude(pk__in=invoiced)
+        .exclude(order_line__no_bill=True)
         .select_related("delivery_note")
         .order_by("shipped_at", "shipment_no")
     )
 
 
-def unbilled_lumps(customer=None):
+def unbilled_lumps(customer=None, *, include_no_bill=False):
     """出し切らずに終えた一式の受注の明細の並び (読むだけ。並びは受注番号・行番号)。請求書の新規登録の黄の 1 行が出す物 (決め PRICE-1d)。
 
-    次の 5 つが全部当たる受注の明細: (1) 単価の単位が式 (2) 出荷が 1 つ以上あり、出荷が全部、発行の納品書に入っている
+    次の 6 つが全部当たる受注の明細: (1) 単価の単位が式 (2) 出荷が 1 つ以上あり、出荷が全部、発行の納品書に入っている
     (3) 明細を出し終えた出荷の印 (finishes_line) の付いた出荷が無い (4) 終わっている = 受注が取消か、出荷の合計が数量以上
-    (5) 発行の請求書に、この明細の一式の行 (出荷を指さない明細) がまだ無い。customer を渡せば、その得意先の明細だけ。
+    (5) 発行の請求書に、この明細の一式の行 (出荷を指さない明細) がまだ無い (6) 受注の明細に「請求しない」の印 (no_bill) が無い
+    (人が請求しないと決めた明細を一式の表から外す = 作者の決め C107-3。include_no_bill が真なら (6) を見ない = 作り直しの写しの見方)。
+    customer を渡せば、その得意先の明細だけ。
     (2) は R09 (請求書の明細は、出荷済みの物だけ。「出荷済み」は発行の納品書に入っている出荷) を一式の行にも当てるため。
     出荷の無い取消の一式 (何も納めていない) は請求の元が無いので出さない。(3) は印の付いた出荷が一式の全額を持つので、二重に請求しないため。
     (4) はまだ出荷を続ける明細を出さないため。
@@ -632,6 +646,8 @@ def unbilled_lumps(customer=None):
         .exclude(pk__in=shipments.filter(delivery_note__status=_DeliveryNote.STATUS_CANCELLED))
         .exclude(pk__in=issued_lumps)
     )
+    if not include_no_bill:
+        queryset = queryset.filter(no_bill=False)
     if customer is not None:
         queryset = queryset.filter(order__customer=customer)
     queryset = (

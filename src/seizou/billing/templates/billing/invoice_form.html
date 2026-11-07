@@ -3,6 +3,7 @@
 {# 行は checkbox の data-partner (出荷の受注の得意先) で見分け、合わない表の行 (tr) を hidden にする (class は付け替えない)。隠れた行に残った印の数を、表の上の黄の 1 行 (data-picked-elsewhere) に書く (印は外さない。知らせるだけ)。 #}
 {# 一式の節の行 (data-lump-row) も同じ得意先で隠し、見える行が 0 なら一式の節 (data-lump-notice) ごと隠す。出荷の表が無くても一式の表を絞る (出荷の表は行が 0 だと描かない)。隠れた一式の行の「載せる」の印も、別の得意先の行に残った印に数える。 #}
 {# 一式の表 (#id_lumps) の「請求する金額」の欄 (data-lump-amount) の input で、同じ行の tr の data-label-pick-amount を欄の値 (全角を半角に・区切りを外した整数の字) にし、空か数でなければ属性を外す。値が入ったら「載せる」に印を付けて泡立つ change を送る。 #}
+{# 表の行の「請求しない」(data-row-drop。小窓の入口) を押した時にその行の tr を覚え、document で seizou:saved を受けたら、覚えた行の checkbox の印を外して泡立つ change を送り (core の seizou-submit-label.js が合計の枠と保存のボタンの字を数え直す)、行を表から外して narrow() を呼ぶ。覚えた行は使ったら消す。小窓を保存せずに閉じたときは何もしない (次に押した行で覚え直す)。この画面は小窓の保存の後の seizou:refresh で取り直さない (打ちかけの印と金額を消さないため)。core の JS は触らない。 #}
 {# 受け手は一式の表に置く (document に置かない)。泡立ちは表 → document の順なので、core の seizou-submit-label.js (document で受ける) が数える前に属性が書き換わる。「全額」「出した分」(data-fill) は値を欄に入れて泡立つ input を送る。core の JS は触らない。金額の閲覧の無い人には欄が無いので、この JS も描かない。 #}
 {# 得意先の欄の change は、欄に付けた narrow が先、document の js/seizou-submit-label.js が後に動く (泡立ちの順) ので、合計の枠とボタンの字は隠した後の行で数え直される。この順に頼っている。 #}
 {# JS が動かなくても、得意先と違う出荷は services が R09 で断る。 #}
@@ -69,6 +70,23 @@
     });
   }
 {% endif %}
+  var dropRow = null;
+  document.addEventListener("click", function (event) {
+    var link = event.target instanceof Element ? event.target.closest("[data-row-drop]") : null;
+    if (link) dropRow = link.closest("tr");
+  }, true);
+  document.addEventListener("seizou:saved", function () {
+    var row = dropRow;
+    dropRow = null;
+    if (!row || !row.parentNode) return;
+    row.querySelectorAll("input[type=checkbox]").forEach(function (input) {
+      if (!input.checked) return;
+      input.checked = false;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    row.remove();
+    narrow();
+  });
   var period = document.getElementById("id_period");
   var issued = document.getElementById("id_issued_on");
   if (!period || !box) return;

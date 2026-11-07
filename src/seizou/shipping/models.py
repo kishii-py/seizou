@@ -54,6 +54,7 @@ class DeliveryNote(models.Model):
         請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の
         STATUS_ISSUED から読む (billing を import しない。shipping.services.invoiced_shipments と同じ読み方)。
         取消の請求書だけに入った出荷は「入っていない」に数える (billing.services.billable_shipments と同じ数え方)。
+        受注の明細に「請求しない」の印がある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め C107-3)。
         請求書の部品が無ければ偽。
         """
         try:
@@ -61,7 +62,7 @@ class DeliveryNote(models.Model):
         except FieldDoesNotExist:
             return False
         issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
-        return self.shipments.exclude(invoice_lines__invoice__status=issued).exists()
+        return self.shipments.exclude(invoice_lines__invoice__status=issued).exclude(order_line__no_bill=True).exists()
 
 
 class Shipment(models.Model):
