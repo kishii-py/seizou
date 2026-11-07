@@ -3,6 +3,7 @@
 部品の画面は R15 で get_context_data を上書きできないので、画面に足す物はここで渡す。
 {% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、世話役の印 (info.can_manage) と、削除の印 (info.can_delete) と、GitHub の状態 (info.github)
 {% feedback_github as github %}        GitHub の口の状態と世話役の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。依頼書 N185)
+                                       と、GitHub でログインしてつなぐの待ち・Client ID があるか・入力の形 (依頼書 N320)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_filter as filter %}        一覧の絞り込みの選択肢と今の値
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
@@ -10,8 +11,8 @@
 
 from django import template
 
-from seizou.feedback import chat, services
-from seizou.feedback.forms import SCREENS_LABEL
+from seizou.feedback import chat, github, services
+from seizou.feedback.forms import SCREENS_LABEL, GithubDeviceForm
 from seizou.feedback.models import Feedback
 
 register = template.Library()
@@ -59,14 +60,18 @@ def feedback_detail(context, feedback):
 @register.simple_tag(takes_context=True)
 def feedback_github(context):
     """GitHub の口の状態。{"status": services.github_status() (トークンの値は無い), "can_manage": 世話役か,
-    "searched": 皆の Issue を探したか, "q": 探した言葉, "search": services.search_issues の結果か None}。
+    "searched": 皆の Issue を探したか, "q": 探した言葉, "search": services.search_issues の結果か None,
+    "device": GitHub でログインしてつなぐの待ち (services.github_device_state。device_code は無い) か None,
+    "client_id": 作品の Client ID があるか, "device_form": 「GitHub でログインしてつなぐ」の入力の形 (GithubDeviceForm)}。
 
     皆の Issue を探す (GitHub を読む) のは、GET に issue_q があるときだけ (「探す」を押したとき。空の言葉なら新しい順)。
-    一覧を開くたびには GitHub を読まない。request が無ければ世話役でなく、探さない。
+    一覧を開くたびには GitHub を読まない。request が無ければ世話役でなく、探さず、待ちは None。
+    入力の形をここで渡すのは、部品の画面が R15 で get_context_data を上書きできないため (依頼書 N320)。
     """
     request = context.get("request")
     user = getattr(request, "user", None) if request is not None else None
     params = getattr(request, "GET", {}) if request is not None else {}
+    session = getattr(request, "session", None) if request is not None else None
     searched = "issue_q" in params
     words = params.get("issue_q", "") if searched else ""
     return {
@@ -75,6 +80,9 @@ def feedback_github(context):
         "searched": searched,
         "q": words,
         "search": services.search_issues(words) if searched else None,
+        "device": services.github_device_state(session) if session is not None else None,
+        "client_id": bool(github.client_id()),
+        "device_form": GithubDeviceForm(),
     }
 
 
