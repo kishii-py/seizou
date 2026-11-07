@@ -12,6 +12,7 @@ from django.urls import reverse
 
 from seizou.accounts import services
 from seizou.accounts.models import Access, AccessLog, Department, app_labels
+from seizou.core.forms import CHECKBOX_GROUPS_CSS
 from seizou.core.screens import all_screens
 
 User = get_user_model()
@@ -605,8 +606,8 @@ def test_catalog_has_department_screens_with_usecase():
 def test_open_screens_field_is_in_columns(on, client, manager, seizou_dept):
     """部署の「開ける画面」の check だけ、外の枠に格子を付けて幅の広い画面で 2〜3 列に並べる (初見テスト R5。候補 C83)。
 
-    新規登録 (画面の全体と小窓)・編集の 3 つで見る。部署の「既定の権限」と、アカウントの発行の「権限」「部署」は、
-    外の枠に class の無い 1 列のまま (権限の 2 つの群は別の候補 C90)。選択肢の値は今のまま。
+    新規登録 (画面の全体と小窓)・編集の 3 つで見る。部署の「既定の権限」とアカウントの発行の「権限」は、群の格子
+    (CHECKBOX_GROUPS_CSS。候補 C90。群が columns より先)。アカウントの発行の「部署」は外の枠に class の無い 1 列のまま。選択肢の値は今のまま。
     """
     client.force_login(manager)
     create_url = reverse("accounts:department_create")
@@ -621,8 +622,7 @@ def test_open_screens_field_is_in_columns(on, client, manager, seizou_dept):
         assert response.status_code == 200, name
         html = response.content.decode()
         assert columns in html, name
-        assert '<div id="id_default_permissions">' in html, name
-        assert '<div id="id_default_permissions" class=' not in html, name
+        assert f'<div id="id_default_permissions" class="{CHECKBOX_GROUPS_CSS}">' in html, name
     assert 'hx-target="#seizou-modal-box"' in pages["小窓の新規登録"].content.decode()
 
     apps = _values(pages["新規登録"].content.decode(), "apps")
@@ -632,6 +632,6 @@ def test_open_screens_field_is_in_columns(on, client, manager, seizou_dept):
     issue = client.get(reverse("accounts:access_create"))
     assert issue.status_code == 200
     issue_html = issue.content.decode()
-    for name in ("permissions", "departments"):
-        assert f'<div id="id_{name}">' in issue_html, name
-        assert f'<div id="id_{name}" class=' not in issue_html, name
+    assert f'<div id="id_permissions" class="{CHECKBOX_GROUPS_CSS}">' in issue_html
+    assert '<div id="id_departments">' in issue_html
+    assert '<div id="id_departments" class=' not in issue_html

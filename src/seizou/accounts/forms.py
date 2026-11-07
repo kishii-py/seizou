@@ -15,14 +15,23 @@ from .models import Department, app_labels
 PASSWORD_HELP_NEW = "8 字以上。よくある物・数字だけ・ログイン ID に似た物は使えません。"
 PASSWORD_HELP_EDIT = PASSWORD_HELP_NEW + "空のままなら変わりません。"
 
+#: 権限の欄の群の見出し (まとめの名前 → 見出し。左のメニューの「マスター」と、まとめ「伝票編集」の字から取る)
+PERMISSION_GROUP_HEADINGS = {"master_edit": "マスター", "slip_edit": "伝票"}
 
-def permission_choices() -> list[tuple[str, str]]:
-    """権限の欄の選び (まとめ 2 つ → 種類 10。種類には中身の注記を添える)。"""
+
+def permission_choices() -> list[tuple[str, list[tuple[str, str]]]]:
+    """権限の欄の選び (まとめごとの 2 つの群。群の先頭にまとめ、その下に中の種類 5 つ。種類には中身の注記を添える)。
+
+    画面の並びだけが変わり、保存する並びは services.clean_permissions が access.PERMISSION_NAMES にそろえる。
+    """
     choices = []
-    for name in access.PERMISSION_NAMES:
-        label = access.permission_label(name)
-        note = access.KIND_NOTES.get(name)
-        choices.append((name, f"{label} ({note})" if note else label))
+    for group, (_label, kinds) in access.GROUPS.items():
+        options = []
+        for name in (group, *kinds):
+            label = access.permission_label(name)
+            note = access.KIND_NOTES.get(name)
+            options.append((name, f"{label} ({note})" if note else label))
+        choices.append((PERMISSION_GROUP_HEADINGS[group], options))
     return choices
 
 

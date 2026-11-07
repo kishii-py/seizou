@@ -95,12 +95,16 @@ def plain_number_widgets(form: forms.BaseForm) -> None:
 CHECKBOX_CSS = "checkbox checkbox-sm"
 #: 口 (columns) を開けた複数の checkbox の外の枠の格子 (幅 640 以上で 2 列、1280 以上で 3 列。行の間は 1 列のときのまま)
 CHECKBOX_COLUMNS_CSS = "grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3"
+#: 選択肢に群がある複数の checkbox の外の枠 (群ごとの枠を幅 640 以上で 2 列に並べる。間は入力のカードの格子と同じ)
+CHECKBOX_GROUPS_CSS = "grid gap-x-6 gap-y-4 sm:grid-cols-2"
 
 
 class Checkboxes(forms.CheckboxSelectMultiple):
     """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。
 
-    columns=True の欄だけ、外の枠に格子 (CHECKBOX_COLUMNS_CSS) を付け、幅の広い画面で 2〜3 列に並べる。既定は 1 列 (外の枠に class を付けない)。
+    選択肢に群があるときは、外の枠に CHECKBOX_GROUPS_CSS を付け、群ごとの枠を幅の広い画面で横に並べる (群が先。C90)。
+    群が無く columns=True の欄だけ、外の枠に格子 (CHECKBOX_COLUMNS_CSS) を付け、幅の広い画面で 2〜3 列に並べる (C83)。
+    どちらでもない欄は 1 列 (外の枠に class を付けない)。
     """
 
     def __init__(self, attrs=None, choices=(), columns=False):
@@ -110,7 +114,9 @@ class Checkboxes(forms.CheckboxSelectMultiple):
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
         context["widget"]["attrs"].pop("class", None)
-        if self.columns:
+        if any(group for group, _options, _index in context["widget"]["optgroups"]):
+            context["widget"]["attrs"]["class"] = CHECKBOX_GROUPS_CSS
+        elif self.columns:
             context["widget"]["attrs"]["class"] = CHECKBOX_COLUMNS_CSS
         return context
 
