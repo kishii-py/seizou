@@ -132,6 +132,10 @@ class Partner(models.Model):
     billing_method = models.CharField(
         "請求の仕方", max_length=35, choices=BILLING_METHOD_CHOICES, default=BILLING_CLOSING
     )
+    # 相手の適格請求書発行事業者の登録番号 (中小企業共通 EDI の仕入明細の受注者の登録番号 SIID27 を元にした。インボイス制度)。
+    # 仕入明細 (purchasing.SelfInvoice) に相手の番号として写す。名前と字数は会社の登録番号 (core.Company.registration_no) と同じ。
+    # 形 (T と 13 桁の数字) は masters.services が core.services.check_registration_no で見る (決め C95-2)。空は登録していない相手。
+    registration_no = models.CharField("登録番号", max_length=14, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
     # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
     # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
