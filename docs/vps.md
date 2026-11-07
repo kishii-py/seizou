@@ -361,6 +361,8 @@ certbot は証明書を取り、12 の server に 443 の待ち受けと、http 
 sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py changepassword admin
 ```
 
+この命令は、8 字以上で、よくある語・数字だけ・ID に似た字でないパスワードだけを受けます。変えた後は、アカウント管理で管理する人ごとに名前の付いたアカウント (フルコントロール) を発行し、ふだんはそれでログインします。`admin` は非常用にします (誰が操作したかが記録に名前で残るため)。
+
 nginx の後ろでは、Django から見た接続元が、いつも同じ VPS の nginx になります。このため、ログインの締め出しは ID ごとになり、ほかの人がある ID を 15 分止めることもできます。2 社は別の process なので、片方の締め出しはもう片方に及びません。締め出しの決まりは、[operations.md](operations.md) の「ログインの締め出し」にあります。
 
 ログインの後に、図面か添付を 1 つ上げて開きます。開けなければ、11 の `TMPDIR` と 10 の `media/` の context を見ます。
