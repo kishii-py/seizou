@@ -174,10 +174,11 @@ def openable_by(queryset, user):
     出所 = Claude Security の走査の候補 11-07 (7・8・9)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
     変えてよい条件 = 記録の部品の開ける人の決め (部署の門・フィードバックの絞り) が変わったとき。部品の判定と食い違う形にはしない。
     """
-    type_ids = queryset.values_list("content_type_id", flat=True).distinct()
+    # 種類は副問い合わせで引く (並びを外す。並びの列が SELECT に入ると、種類でなく行ごとの並びになるため)
+    used_types = queryset.order_by().values("content_type_id")
     hidden = [
         kind.pk
-        for kind in ContentType.objects.filter(pk__in=list(type_ids))
+        for kind in ContentType.objects.filter(pk__in=used_types)
         if not access.can_open(user, kind.app_label, record=False)
     ]
     if hidden:
