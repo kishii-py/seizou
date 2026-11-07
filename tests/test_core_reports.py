@@ -52,7 +52,8 @@ def test_render_html_returns_sample_text():
     assert "納品書" in html
     assert context["customer"]["name"] in html
     assert context["company"]["name"] in html
-    assert context["company"]["bank_account"] in html
+    for word in context["company"]["bank_account"].split():  # 振込先は合計の下の枠に語ごとの span で出る
+        assert f"<span>{word}</span>" in html
     for label in ("数量", "単価", "金額", "合計"):
         assert label in html
     for line in context["lines"]:

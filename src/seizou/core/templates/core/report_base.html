@@ -2,10 +2,13 @@
 {% comment %}
 帳票の土台。帳票ごとのテンプレートはこれを継ぎ、title・report_title・head・content を埋める。
 context の company は core の Company (か同じ名前の項目を持つ物): name・address・phone・bank_account・registration_no・logo。
+振込先 (bank_account) は、鍵があって空でないときだけ、明細と合計の下の「お振込先」の枠 (block after_lines) に出す (請求書の context は会社の行をそのまま渡すので出る)。
+会社の欄 (幅 42%・9pt) の中の 1 行だと口座の名義が途中で折れたため (見つけ print-02)。語 (空白の区切り) ごとの span を折らないので、空白の所でだけ折れる。
 登録番号は鍵があって空でないときだけ出す (請求書の context は会社の行をそのまま渡すので出る。納品書・出荷ラベル・現品票・見本の納品書は鍵を選んで渡すので出ない)。インボイス制度の適格請求書の記載事項 (決め LAW-3)。
 帳票は入力の欄を持たないので、CSRF の見出しは置かない (画面の土台の 1 か所だけ)。
 押せるのは上の「印刷」のボタンだけ (押すとブラウザの印刷)。画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-actions)。
 cancelled が真なら (取消の書類)、題の横に枠付きの「取消」を出す。請求書・納品書・現品票の context が渡す。渡さない帳票 (出荷ラベル・見本の納品書) には出ない。
+各ページの下の端は report.css の @page の「n / N」。帳票の番号の枡に class="report-docno" を付けると「番号　n / N」になる (請求書と納品書。決め 11-07 21:0x)。
 {% endcomment %}
 <html lang="ja">
 <head>
@@ -25,10 +28,14 @@ cancelled が真なら (取消の書類)、題の横に枠付きの「取消」�
       {% if company.registration_no %}<p>登録番号 {{ company.registration_no }}</p>{% endif %}
       {% if company.address %}<p>{{ company.address }}</p>{% endif %}
       {% if company.phone %}<p>電話 {{ company.phone }}</p>{% endif %}
-      {% if company.bank_account %}<p>振込先 {{ company.bank_account }}</p>{% endif %}
     </td>
   </tr>
 </table>
 {% block content %}{% endblock %}
+{% block after_lines %}{% if company.bank_account %}
+<table class="report-bank">
+  <tr><th>お振込先</th><td class="report-bank-text">{% for word in company.bank_account.split %}<span>{{ word }}</span> {% endfor %}</td></tr>
+</table>
+{% endif %}{% endblock %}
 </body>
 </html>

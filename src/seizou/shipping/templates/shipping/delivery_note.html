@@ -4,6 +4,7 @@
 納品書の帳票。context は shipping.reports.delivery_note_context が作る (表を読むだけ)。
 数量は出荷の数そのまま (R08)。金額と合計は context に入った値をそのまま出し、ここでは計算しない。
 見た目は core の report.css だけを使う (画面の CSS は使わない)。
+品名の下の「注文番号 …」は得意先の注文番号 (受注の写し。見つけ print-03)。空なら出さない。列は増やさない。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
 {% endcomment %}
 {% block title %}納品書 {{ note.number }}{% endblock %}
@@ -12,7 +13,7 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-customer">{{ customer.name }} 御中</p>
 <table class="report-meta">
-  <tr><th>納品書番号</th><td>{{ note.number }}</td></tr>
+  <tr><th>納品書番号</th><td class="report-docno">{{ note.number }}</td></tr>
   <tr><th>発行日</th><td>{{ note.date|date:"Y年n月j日" }}</td></tr>
 </table>
 <p>下記のとおり納品いたします。</p>
@@ -34,7 +35,7 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
       <td class="date">{{ line.shipped_at|date:"Y年n月j日" }}</td>
       <td class="code">{{ line.shipment_no }}</td>
       <td class="code">{{ line.item_code }}</td>
-      <td>{{ line.item_name }}</td>
+      <td>{{ line.item_name }}{% if line.customer_order_no %}<p class="report-order-no">注文番号 {{ line.customer_order_no }}</p>{% endif %}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
       <td class="num">{% if not hide_money %}{{ line.unit_price|floatformat:"-2g"|yen }} / {{ line.price_unit }}{% endif %}</td>

@@ -15,6 +15,9 @@
      使い方の冊子は自分の @page で会社名つきに上書きし、表紙 (:first) では消す。 */
   @bottom-center {
     content: counter(page) " / " counter(pages);
+    /* 番号の枡 (.report-docno) を持つ帳票 (請求書・納品書) では「書類の番号　n / N」(決め 11-07 21:0x。2 枚目以降がどの書類か分かるように)。
+       string() を読めないブラウザの印刷は上の行の「n / N」を使い、PDF の道具 (WeasyPrint) はこの行を使う。 */
+    content: string(report-docno) counter(page) " / " counter(pages);
     font-family: "NotoSansJP Report", sans-serif;
     font-size: 8pt;
   }
@@ -152,6 +155,65 @@ th {
   text-align: left;
 }
 
+/* 請求書の頭の「ご請求金額 (税込)」と支払期日の枠 (見つけ print-02)。得意先の経理の人が最初に探す「いくらをいつまでに」を、
+   宛名と番号の下に 1pt の黒い枠で出す。幅は左の欄いっぱい。金額は context の合計をそのまま出す (CSS もテンプレートも計算しない) */
+.report-amount {
+  margin-top: 3mm;
+  border: 1pt solid #000;
+}
+
+.report-amount th,
+.report-amount td {
+  padding: 1.5mm 4mm;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.report-amount th {
+  text-align: left;
+}
+
+.report-amount td {
+  text-align: right;
+}
+
+.report-amount-total {
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+/* 振込先の枠 (明細と合計の下。report_base.html の block after_lines)。会社の欄の中の 1 行では口座の名義が途中で折れたので、
+   ここに移して空白の所でだけ折る。折り方は語 (空白の区切り) ごとの span を折らない形。word-break: keep-all は使わない
+   (WeasyPrint 70 は読まず、PDF を作るたびに「invalid value」の警告を出す。@supports も読まない。手元で確かめた)。
+   枠はページの境で割らない */
+.report-bank {
+  width: auto;
+  margin-top: 6mm;
+  border: 1pt solid #000;
+  page-break-inside: avoid;
+}
+
+.report-bank th,
+.report-bank td {
+  padding: 1.5mm 4mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-bank th {
+  white-space: nowrap;
+}
+
+.report-bank-text span {
+  white-space: nowrap;
+}
+
+/* 番号の枡 (請求書番号・納品書番号の td)。中の字を覚え、@page の下の端に「番号　n / N」で出す。
+   区切りの全角の空白を値の側に含めるので、この枡の無い帳票 (現品票・出荷ラベル・見本) の下の端は「n / N」のまま。 */
+.report-docno {
+  string-set: report-docno content() "　";
+}
+
 /* 明細の表: 縦の線は引かず、行の間の細い横線と見出しの下の太い線だけ (請求書の帳票でよく見る形。目視の所見 11-05) */
 .report-lines th,
 .report-lines td {
@@ -177,6 +239,24 @@ th {
 .report-lines .num,
 .report-lines thead th {
   white-space: nowrap;
+}
+
+/* 品名の下の得意先の注文番号 (見つけ print-03)。列を増やさず、品名の枡の 2 行目に小さく出す (得意先が自分の注文番号で照合するため) */
+.report-lines .report-order-no {
+  font-size: 8pt;
+  line-height: 1.3;
+}
+
+/* 明細の 1 行をページの境で割らない (品名が 2 行になる行が、ページの境で上下に分かれたため。2 ページの請求書の目視 11-07) */
+.report-lines tr {
+  page-break-inside: avoid;
+}
+
+/* 小計・消費税・合計 (tfoot) は最後のページだけに出す。既定の table-footer-group だと WeasyPrint もブラウザの印刷も
+   毎ページの下にくり返し、1 ページ目で終わりと読まれるか、合計を 2 回足されるため (見つけ print-01)。3 行は同じページに置く。 */
+.report-lines tfoot {
+  display: table-row-group;
+  page-break-inside: avoid;
 }
 
 .report-lines tfoot th,
