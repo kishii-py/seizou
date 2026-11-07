@@ -639,3 +639,10 @@ def test_select_js_copy_note_matches_copy_values_wording(priced):
     built = APP_CSS.read_text(encoding="utf-8")
     for name in (".mt-2", ".text-xs", "text-base-content\\/50"):
         assert name in built, name
+
+
+@pytest.mark.django_db
+def test_shipment_form_order_line_explains_candidate_head(logged_in, split_order):
+    """初見テスト R5 の V106 (候補 C20 の 5): 受注の明細の欄の下で、候補の頭の「-1」が明細の行の番号だと言う (候補の字そのものは変えない)。"""
+    body = logged_in.get(reverse("shipping:shipment_create")).content.decode()
+    assert '<p id="id_order_line_helptext" class="mt-2 text-xs text-base-content/50">候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。</p>' in body

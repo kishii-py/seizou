@@ -35,6 +35,9 @@ _OrderLine = Shipment._meta.get_field("order_line").related_model
 EMPTY_LABEL = "選んでください"
 #: 出荷の入力で受注の明細が決まっていないときの、数量の欄の下の字 (shipping/shipment-form.js も同じ字を出す)
 NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
+#: 出荷の入力の受注の明細の欄の下の字。候補の頭「SO-000021-1」の末尾が明細の行の番号だと分かるように (初見テスト R5 の V106)。
+#: 受注番号の形は会社の設定 (order_number) で変わるので、決まった番号を例に書かない。「1 行目」は一括出荷の R01 の文と同じ言い方
+ORDER_LINE_HELP = "候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。"
 #: 出荷日の欄の誤りの文 (出荷の入力と出荷の編集の 2 つの form が読む。空のときと、日付として読めない字のとき)
 SHIPPED_AT_ERRORS = {
     "required": "出荷日を入れてください。",
@@ -59,6 +62,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
         queryset=_OrderLine.objects.select_related("order", "item"),
         widget=RemoteSelect("orders:orderline_select"),
         empty_label=EMPTY_LABEL,
+        help_text=ORDER_LINE_HELP,
     )
     qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
     shipped_at = forms.DateField(
