@@ -4,6 +4,7 @@ core の約束 (SearchMatch・SearchRow.match・find_match) と、部品マス�
 検索の画面の 1 列目の下に描く字を見る。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 
 from seizou.core import fields as company_fields
 from seizou.core import search as core_search
@@ -239,3 +241,32 @@ def test_manuals_match_body_line(user):
     match = manuals_search.search("ばいと").rows[0].match
     assert (match.label, match.hit) == ("本文", "バイト")
     assert manuals_search.search("刃物").rows[0].match is None
+
+
+# ---------------------------------------------------------------- (h) 画面 (1 列目の link の下の 1 行)
+
+
+def search_body(client, **params) -> str:
+    return client.get(reverse("core:search"), params).content.decode()
+
+
+def test_page_shows_match_line_under_first_column(client_logged_in, bracket, customer):
+    PartnerItem.objects.create(partner=customer, item=bracket, partner_part_no="X-9001")
+    body = search_body(client_logged_in, q="X-9")
+    assert '取引先の品番: <span class="font-bold text-primary">X-9</span>001' in body
+    # 等幅は td でなく link が持つ (td に付けると、足した 1 行の日本語まで等幅になるため)
+    assert re.search(r'<td class="whitespace-nowrap"><a class="[^"]* font-mono"', body)
+    assert 'font-mono"><a' not in body
+
+
+def test_page_has_no_match_line_when_hit_is_in_columns(client_logged_in, bracket, customer):
+    PartnerItem.objects.create(partner=customer, item=bracket, partner_part_no="X-9001")
+    # 足した 1 行の印 (title) で見る (C36 の「探した項目」の 1 行にも「取引先の品番」の字が出うるため、字だけでは見ない)
+    assert 'title="取引先の品番: ' not in search_body(client_logged_in, q="P-1001")
+
+
+def test_page_escapes_match_line(client_logged_in, bracket, customer):
+    PartnerItem.objects.create(partner=customer, item=bracket, partner_part_no="<b>X-9</b>")
+    body = search_body(client_logged_in, q="X-9")
+    assert "&lt;b&gt;" in body
+    assert "<b>X-9" not in body
