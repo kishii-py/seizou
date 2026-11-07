@@ -11,12 +11,14 @@
 - 書き出しは、表計算の式として動く字 (FORMULA_HEADS で始まる字) の頭に「'」を付ける (neutralize)。取り込みは、
   その「'」を外してから読む (restore)。一覧の CSV をそのまま入れ直しても値が変わらないように。
 - ここは読むだけ。表に書くのは部品の services。
+- 取り込みの上限は MAX_BYTES・MAX_ROWS・MAX_COLUMNS (決め 11-08 00:26)。末尾の空の欄は数える前に落とす。
 """
 
 from __future__ import annotations
 
 import csv
 import io
+from collections import Counter
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -34,14 +36,38 @@ SKIP_HEADERS = ("図面ファイル",)
 FORMULA_HEADS = ("=", "+", "-", "@", "\t", "\r")
 #: 書き出しが式の字の頭に付ける字 (表計算が字として読む印)
 FORMULA_GUARD = "'"
+#: 取り込みの上限。決め 11-08 00:26。ファイルの大きさ (バイト)
+MAX_BYTES = 5 * 1024 * 1024
+#: 取り込みの上限。決め 11-08 00:26。行の数 (見出しを除く。全部の欄が空の行も数える)
+MAX_ROWS = 20_000
+#: 取り込みの上限。決め 11-08 00:26。列の数 (末尾の空の欄を落とした後)
+MAX_COLUMNS = 200
+
+
+def _size_text(size):
+    """バイトの数を断りの字にする。1MB の倍なら「5MB」、ほかは「1,234 バイト」。"""
+    megabytes, rest = divmod(size, 1024 * 1024)
+    return f"{megabytes}MB" if megabytes and not rest else f"{size:,} バイト"
 
 
 def decode(data, encoding):
-    """bytes を選んだ文字コードで読む。読めない字があれば、行の番号を添えた日本語の ValueError。"""
+    """bytes を選んだ文字コードで読む。読めない字があれば、行の番号を添えた日本語の ValueError。
+
+    ファイルが MAX_BYTES を超えたら、読む前に日本語の ValueError で断る (呼ぶ側の form は 1 件も入れない)。
+    訳: CSV の取り込みは 5MB を上限にし、超えたら読む前に日本語の ValueError で断り、1 件も入れない。
+    町工場の部品や取引先の一覧には十分なため (行と列の上限は read_table。同じ決め)。
+    出所 = 本人の決め 11-08 00:26 (5MB・2 万行・200 列 (おすすめ))。
+    変えてよい条件 = 本人が決め直したとき、または上限に当たる会社が出たとき。
+    """
     labels = dict(ENCODINGS)
     if encoding not in labels:
         raise ValueError(
             f"文字コード「{encoding}」は選べません。{'・'.join(labels.values())} のどれかを選んでください。"
+        )
+    size = len(bytes(data))
+    if size > MAX_BYTES:
+        raise ValueError(
+            f"CSV のファイルが {_size_text(MAX_BYTES)} を超えています ({size:,} バイト)。分けてから取り込み直してください。"
         )
     try:
         return bytes(data).decode(encoding)
@@ -63,16 +89,46 @@ def _quoted(labels):
     return "「" + "」「".join(labels) + "」"
 
 
+def _trim(row):
+    """行の後ろの空の欄 (seeds.is_blank が真の欄) を落とす。行の途中の空の欄は残す。"""
+    end = len(row)
+    while end and seeds.is_blank(row[end - 1]):
+        end -= 1
+    return row[:end]
+
+
 def read_table(text, model, *, required, skip=SKIP_HEADERS):
     """CSV の字を読み、見出しを確かめる。
 
     返す物は (見出しの並び, {見出し: 表の列}, {見出し: 会社ごとの項目の列}, [(行の番号, {見出し: 字})])。
     見出しの誤り (必須が無い・同じ見出しが 2 つ・どれにも当たらない・見出しの無い列に値がある) は、
     全部を 1 つの日本語の ValueError にまとめる。skip の見出しは列の対応に入れない (値も読まない)。
+    行 (MAX_ROWS) か列 (MAX_COLUMNS) が上限を超えたら、見出しを確かめる前に、その断りだけの ValueError にする。
+    訳: CSV の取り込みは 5MB・2 万行 (見出しを除く)・200 列 (末尾の空の欄を落とした後) を上限にし、
+    超えたら何行目・何列目からかを書いた日本語の ValueError で断り、1 件も入れない。
+    末尾の空の欄は数える前に落とし、列の上限はその後に掛ける。数え方は Counter にする。
+    町工場の部品や取引先の一覧には十分で、列の多い CSV で手間が列の数の 2 乗に増えるのを止めるため。
+    出所 = 本人の決め 11-08 00:26 (5MB・2 万行・200 列 (おすすめ))。
+    変えてよい条件 = 本人が決め直したとき、または上限に当たる会社が出たとき。
     """
     reader = csv.reader(io.StringIO(text, newline=""))
+    records = []
     try:
-        records = [(reader.line_num, row) for row in reader]
+        # 1 行ずつ読み、後ろの空の欄を落としてから数える。上限を超えたら、そこで読むのをやめて断る。
+        for row in reader:
+            line = reader.line_num
+            if len(records) > MAX_ROWS:
+                raise ValueError(
+                    f"CSV の行が {MAX_ROWS:,} 行 (見出しを除く) を超えています ({line:,} 行目から)。"
+                    "分けてから取り込み直してください。"
+                )
+            cells = _trim(row)
+            if len(cells) > MAX_COLUMNS:
+                raise ValueError(
+                    f"{line:,} 行目に {MAX_COLUMNS + 1} 列目から先の値があります。列は {MAX_COLUMNS} 列までです。"
+                    "列を減らしてから取り込み直してください。"
+                )
+            records.append((line, cells))
     except csv.Error:
         raise ValueError(
             f"{reader.line_num} 行目を CSV として読めません。「\"」の閉じ忘れが無いかを見てください。"
@@ -100,7 +156,8 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
                 f"{index + 1} 列目は見出しが空なのに、{line} 行目に値があります。見出しを書くか、その列を消してください。"
             )
     named = [h for h in headers if h]
-    doubled = sorted({h for h in named if named.count(h) > 1}, key=named.index)
+    counts = Counter(named)
+    doubled = [h for h in dict.fromkeys(named) if counts[h] > 1]
     if doubled:
         problems.append(f"見出し{_quoted(doubled)}が 2 つあります。1 つにしてください。")
     missing = [h for h in required if h not in named]
@@ -186,6 +243,8 @@ def neutralize(text: str) -> str:
 def restore(text: str) -> str:
     """neutralize の逆。「'」の後が式の字 (FORMULA_HEADS) のときだけ「'」を外す。ほかはそのまま (人が入れた「'」は残す)。
 
+    例外: 人が「'=」のように「'」の後に式の字を続けて入れた正しい値は、書き出して取り込み直すと頭の「'」が 1 字欠ける
+    (書き出しが付けた「'」と見分けられないため)。
     訳: 一覧の CSV をそのまま取り込み直したときに、書き出しが付けた「'」が値に入らないようにするため。
     出所 = Claude Security の走査の候補 11-07 の対策 (neutralize) に合わせた AI の案。
     変えてよい条件 = neutralize の付け方を変える時 (1 対で変える)。
