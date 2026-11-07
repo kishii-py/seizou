@@ -18,6 +18,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core import access, history
+from seizou.core.passwords import VALIDATORS
 from seizou.core.services import record_history, record_history_deleted
 from seizou.parts import PARTS
 
@@ -61,13 +62,12 @@ DEPARTMENT_IN_USE = (
 
 
 def password_validators() -> list:
-    """パスワードの 4 つの確かめ (settings の AUTH_PASSWORD_VALIDATORS に頼らず、ここで明示する)。"""
-    return [
-        password_validation.MinimumLengthValidator(8),
-        password_validation.CommonPasswordValidator(),
-        password_validation.NumericPasswordValidator(),
-        password_validation.UserAttributeSimilarityValidator(),
-    ]
+    """パスワードの 4 つの確かめ。core.passwords.VALIDATORS (雛形の AUTH_PASSWORD_VALIDATORS と同じ表) から作る。
+
+    settings に頼らず明示して渡す形は変えない (古い置き場の settings.py に AUTH_PASSWORD_VALIDATORS が無くても、画面は 4 つで断る)。
+    訳と変えてよい条件は core.passwords の頭に書いた (表を 1 か所に置くため)。
+    """
+    return password_validation.get_password_validators(VALIDATORS)
 
 
 def check_password(password: str, account) -> None:
