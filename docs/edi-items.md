@@ -43,6 +43,8 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `lines[].price_basis` | 単価の単位 (`unit` = 部品の単位 1 つあたり・`lump` = 一式で数量を掛けない。値はこの 2 つだけで、鍵が無ければ `unit`。ほかの値は受ける側が断る) | `purchasing.PurchaseOrderLine.price_basis` | 10 字 | `orders.OrderLine.price_basis` | 10 字 | — (seizou の項目。中小企業共通 EDI の数量単位コードに一式に当たる値は無く、部品の単位のときは単価基準数量が空か 1 のときと同じ意味) | — |
 | `lines[].due_date` | 納期 (無ければ null) | `purchasing.PurchaseOrderLine.due_date` | 日付 | `orders.OrderLine.due_date` | 日付 | 要求納入日 (注文 288) | UN01005628 |
 | `lines[].note` | 明細の備考 | `purchasing.PurchaseOrderLine.note` | 500 字 | `orders.OrderLine.note` | 500 字 | 注文明細注釈内容 (注文 229。備考は明細行注釈 ID 1) | UN01005560 |
+| `lines[].process_name` | 協力企業に出す工程の名前 (工程コードでなく名前の字。無ければ空の字。受ける側は自社の工程マスターにつながず字のまま持つ) | `masters.Process.name` | 100 字 | `orders.OrderLine.process_name` | 100 字 | 工程名 (注文の明細。この品目の生産工程の名称。任意の項目) | UN01012678 |
+| `lines[].quote_no` | 単価表から写した見積の番号 (無ければ空の字) | `purchasing.PurchaseOrderLine.quote_no` | 35 字 | `orders.OrderLine.quote_no` | 35 字 | (明細行参照) 見積回答書ID (注文の明細。この明細行が参照する見積回答書に記載の文書ID。任意の項目) | UN01005580 |
 
 ## 注文回答 (kind = order_reply)
 
