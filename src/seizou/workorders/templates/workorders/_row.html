@@ -19,4 +19,6 @@
   {% endif %}
   {% endif %}{% endfor %}
   {% endfor %}
+  {# 右端の「要点」の列 (workorders/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと指示書の小窓 (WorkOrderModalView) を開く。 #}
+  <td class="whitespace-nowrap text-right">{% url 'workorders:workorder_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>
 </tr>

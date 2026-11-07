@@ -1,0 +1,4 @@
+{% load seizou_icons %}
+{# 一覧の行の「要点を見る」(目の印。受け渡しの seizou-部品の6案-20261107/指示書.md の 6。本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓)。行の右の列に置き、押すとその記録の小窓 (<app>:<model>_modal) を #seizou-modal に開く (hx-get → #seizou-modal-box → showModal。seizou_tags の master_link と同じ形)。 #}
+{# include する側が modal_url (小窓の URL) と detail_url (詳細の URL。JS が無いときは href で詳細へ移る) を with で渡す。行の onclick (詳細へ移る) は a を除くので、この link の押下で行は移らない。modal_url が空 (口の無い会社) なら何も出さない。 #}
+{% if modal_url %}<a class="btn btn-ghost btn-xs" href="{{ detail_url }}" hx-get="{{ modal_url }}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" aria-label="要点を見る" title="要点を見る" data-row-summary>{% icon "eye" "size-4" %}</a>{% endif %}

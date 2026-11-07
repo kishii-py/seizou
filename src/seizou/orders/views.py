@@ -13,7 +13,7 @@ from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, FilterSpec, url_or_none
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, FilterSpec, url_or_none
 
 from . import board, services
 from .forms import OrderCancelForm, OrderForm, OrderLineNoBillClearForm, OrderLineNoBillForm
@@ -187,6 +187,25 @@ class OrderDetailView(BaseDetailView):
 
     def get_queryset(self):
         # 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む。
+        lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
+        return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
+
+
+class OrderModalView(BaseModalView):
+    """受注の小窓。
+
+    使う人: 営業・生産管理 / いつ: 受注の一覧で行の中身を画面を移らずに確かめたいとき / 何のために: 得意先・日付・状態・明細の先頭の数行・合計を見る / 次にすること: 要れば「詳細を見る」で受注の詳細へ
+
+    受注の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。
+    本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓)。中身は orders/_modal.html (土台の項目に明細の先頭の数行と合計を足した物)。読むだけ。
+    """
+
+    model = Order
+    screen_name = "受注の小窓"
+    screen_help = "受注の要点 (得意先・日付・状態・明細・合計) を見るだけの小窓。受注の一覧の行の目の印から開き、詳細へ移れます。"
+
+    def get_queryset(self):
+        # 詳細 (OrderDetailView.get_queryset) と同じ読み方: 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む。
         lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
         return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
 
