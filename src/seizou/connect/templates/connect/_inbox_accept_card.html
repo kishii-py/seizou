@@ -1,0 +1,89 @@
+{% load seizou_icons seizou_tags connect_tags %}
+{# 注文を受け入れるの入力のカード (connect/inbox_accept.html が include する)。 #}
+{# 写した元: core/_form_card.html (候補 C91。納品書を作る shipping/_deliverynote_create_card.html と同じ作り)。form の開きの tag・頭の案内の 1 行・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存。黄の知らせの後の「このまま保存」を含む)・_enter_guard.html は写した元の字のまま。 #}
+{# 変えた所: 欄の格子を、相手の品番ごとの欄 1 つに枠 1 つにした (form.part_rows)。枠の左にその品番の届いた明細の行 (行番号・相手の品番・品名・数量と単位・納期・単価)、右に欄。sm 以上は 2 列、phone は縦に重ねる。枠に入らない見える欄 (form.other_fields) は写した元の格子で枠の後ろに出す。 #}
+{# 枠の左の値は connect/_payload_lines.html の同じ枡と同じ filter と字 (単価の「 / 個」「 / 式」を含む)。空の数量・納期・単価は薄い「—」(connect/_order_head.html と同じ字)。単価は金額の閲覧の無い人 (seizou.hide_money) には dt も dd も出さない。 #}
+{# 枠の箱と外の包みに「grid gap-x-6」の字を入れない (試験が入力のカードの欄の格子をその字で探すため。tests/test_core_screen_polish.py・tests/test_small_inputs_modal.py)。data-accept-part は試験が枠を探す印で、見た目に効かない。 #}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
+  {% csrf_token %}
+  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
+  {# 欄の無い form (形の違う明細だけの注文) は枠も格子も描かない (写した元と同じ。候補 C24) #}
+  {% if form.part_rows %}
+  <div class="grid gap-4{% if form|has_required %} mt-6{% endif %}">
+    {% for row in form.part_rows %}{% with field=row.field %}
+    <div class="rounded-lg border border-base-300 p-4 grid gap-4 sm:grid-cols-2" data-accept-part="{{ field.name }}">
+      <div class="min-w-0">
+        {% for line in row.lines %}
+        {% if forloop.first %}<div>{% else %}<div class="mt-4 border-t border-base-200 pt-4">{% endif %}
+          <p class="flex flex-wrap items-baseline gap-x-2"><span class="text-base-content/70">行 {{ line.line_no|default_if_none:"" }}</span><span class="font-mono">{{ line.part_no }}</span><span class="min-w-0 break-words">{{ line.part_name }}</span></p>
+          <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+            <dt class="text-base-content/70">数量</dt><dd class="tabular-nums">{% if line.qty is not None and line.qty != "" %}{{ line.qty|payload_number|comma }}{% if line.unit %} {{ line.unit }}{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+            <dt class="text-base-content/70">納期</dt><dd class="font-mono tabular-nums">{% if line.due_date is not None and line.due_date != "" %}{{ line.due_date|default_if_none:"" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+            {% if not seizou.hide_money %}<dt class="text-base-content/70">単価</dt><dd class="tabular-nums">{% if line.unit_price is not None and line.unit_price != "" %}{{ line.unit_price|default_if_none:""|payload_number|yen }}<span class="text-base-content/70"> / {{ line|payload_price_unit }}</span>{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>{% endif %}
+          </dl>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
+        <div class="mb-2 flex items-center gap-2">
+          <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+          {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+        </div>
+        {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
+        {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+        {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
+        {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
+        {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
+      </div>
+    </div>
+    {% endwith %}{% endfor %}
+  </div>
+  {% endif %}
+  {% if form.other_fields %}
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
+    {% for field in form.other_fields %}
+    {% if field.widget_type == "checkbox" %}
+    <div class="sm:col-span-2">
+      <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% else %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}{% if field.name in form.row_start_fields %} sm:col-start-1{% endif %}">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+      </div>
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
+      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
+  {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと書く (R19)。 #}
+  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (U69・a-blind-15。候補 C24)。画面の全体では行は窓の下の帯になって流れの外に出るので、欄の無い form のカードの中には空きも線も残らない。中身の無いカードの枠は scripts/css/input.css が描かない (C113) #}
+  {% if in_modal %}
+  {% if form.visible_fields %}
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+  {% else %}
+  <div class="flex flex-wrap items-center justify-end gap-2">
+  {% endif %}
+  {% else %}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
+  {% endif %}
+    {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
+    {# 実行のボタン: 黄の知らせの後は「このまま保存」(黄)、取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。U125。候補 C24)、ほかは主の色 #}
+    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% elif form.danger %}<button class="btn btn-error" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "x" "size-4" %}{{ form.submit_label|default:"保存" }}</button>
+    {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}
+  </div>
+</form>
+{% include "core/_enter_guard.html" %}

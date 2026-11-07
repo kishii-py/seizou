@@ -2,7 +2,7 @@
 {% load seizou_tags seizou_icons %}
 {% load seizou_outcome %}
 {% block content %}
-{# 受注にする: 上に AI の知らせと読み取った明細 (得意先の品番のまま)、下に得意先の品番ごとに自社の品目を選ぶ欄。 #}
+{# 受注にする: 上に AI の知らせと読み取った明細 (得意先の品番のまま)、下に得意先の品番ごとの枠 (左にその品番の読み取った明細の行、右に自社の品目を選ぶ欄。intake/_extraction_accept_card.html)。 #}
 <div class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>AI が読み取った値です。得意先の品番・数量・納期を注文書と見比べてから「受注にする」を押してください。</span></div>
   <p class="mb-2 text-xs font-medium text-base-content/50">読み取った明細 ({% master_link object.customer %} の品番のまま)</p>
@@ -10,5 +10,5 @@
   {% reading_match customer=object.customer as customer_match %}
   {% include "core/_reading_match.html" with match=customer_match label="この得意先の読み取り (これまで)" %}
 </div>
-{{ block.super }}
+{% include "intake/_extraction_accept_card.html" %}
 {% endblock %}
