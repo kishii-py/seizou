@@ -122,6 +122,7 @@ def test_full_page_uses_swatch_card_and_save_button(client_logged_in, user):
 
     modal = client_logged_in.get(url, **MODAL).content.decode()
     assert "data-enter-guard" not in modal and "保存</button>" not in modal  # 小窓は今のまま (見本を押すとすぐ保存)
+    assert "data-save-bar" not in modal and "seizou-save-row" not in modal  # 小窓には下の行も書きかけの字も無い (C21)
     assert "見本を押すとすぐ保存し、画面を読み直します。" in modal
 
     response = client_logged_in.post(url, {"header_color": "violet"})  # 全体の画面の保存はふつうの POST で同じ画面へ

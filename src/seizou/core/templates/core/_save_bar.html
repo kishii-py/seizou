@@ -1,4 +1,4 @@
 {# 書きかけの字 (C21。決め C21-1 = e)。入力の画面の下の行 (キャンセルと保存。scripts/css/input.css の seizou-save-row で窓の下の端に貼り付く) の左の字の置き場 (seizou-save-slot) に描く。 #}
-{# 描くのは 6 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集)。画面の全体の form に書きかけの印 (data-seizou-dirty) がある間だけ出す (出し入れは js/seizou-form-guard.js の syncBar が hidden の属性だけで行う)。 #}
+{# 描くのは 9 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集・請求書の新規登録・納品書を作る・表示の設定の画面の全体)。画面の全体の form に書きかけの印 (data-seizou-dirty) がある間だけ出す (出し入れは js/seizou-form-guard.js の syncBar が hidden の属性だけで行う)。 #}
 {# 小窓の入力と、黄の知らせの後 (「このまま保存」の画面) には描かない。ボタンは持たない (保存のボタンは下の行の 1 つだけ。入力を捨てるときは「キャンセル」で画面を離れる)。 #}
 <p class="flex min-w-0 items-center gap-2 font-medium" data-save-bar hidden><span class="text-xs text-warning" aria-hidden="true">●</span><span>保存していない変更があります</span></p>
