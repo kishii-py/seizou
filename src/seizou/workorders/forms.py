@@ -118,3 +118,19 @@ class WorkOrderCancelForm(forms.Form):
 
     def service_kwargs(self) -> dict:
         return {"reason": self.cleaned_data["reason"]}
+
+
+class WorkOrderFindForm(forms.Form):
+    """上の帯の「現品票を読む」の小窓の「指示書」の欄 (カメラの無い端末で、指示書番号か品番を打って選ぶ)。
+
+    保存しない。GET で工程の行を引くだけ (workorders.views.workorder_reader)。入力の土台を通らないので、
+    字を打って探す欄の class (core.views.widget_css と同じ字) は欄に自分で付ける。
+    """
+
+    workorder = forms.ModelChoiceField(
+        label="指示書",
+        queryset=WorkOrder.objects.all(),
+        required=False,
+        widget=RemoteSelect("workorders:workorder_select", attrs={"class": "w-full"}),
+        help_text="カメラが使えないときは、指示書番号か品番を打って選びます。",
+    )

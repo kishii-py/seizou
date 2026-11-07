@@ -1,0 +1,44 @@
+{% load workorders_tags %}
+{% url 'progress:progress_create' as progress_url %}
+{% comment %}
+現品票の QR を読んだ先 (読み取りの着地) の中身。画面の全体 (workorders/workorder_scan.html) と、上の帯の「現品票を読む」の小窓 (workorders/_workorder_scan_modal.html) の両方が include する。
+スマホの幅で読める 1 枚にし、横に並べる物は sm: から。
+context は workorders.views の _scan_context が作る: workorder・rows (plans.step_rows の 1 行 = step・recorded・done・current に remaining を足した物)・in_modal (小窓の中だけ真)。
+「実績を入力」は実績の新規登録へ移る link だけ (入力の欄を置かない)。画面の全体では ?next= でこの画面へ戻す。主色は今の工程 (実績が予定の数に届いていない最初の工程) の 1 つだけ (工程の数だけ主色が並ばないように)。
+小窓の中では「実績を入力」が同じ小窓で実績の新規登録を開き (data-modal-form)、next を付けない (小窓の保存は小窓を閉じ、開いていた画面のまま。小窓の中の request の道は読み取りの口で、戻る先の画面でない)。
+{% endcomment %}
+<section class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs sm:p-6" aria-label="指示書の要点">
+  <div class="flex flex-wrap items-center gap-2">
+    <p class="font-mono text-3xl font-bold tracking-tight">{{ workorder.wo_no }}</p>
+    {% workorder_badge workorder %}
+  </div>
+  <dl class="mt-4 grid gap-x-6 sm:grid-cols-2">
+    <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">品番</dt><dd class="min-w-0 break-words font-mono">{{ workorder.order_line.item.part_no }}</dd></div>
+    <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">品名</dt><dd class="min-w-0 break-words">{{ workorder.order_line.item.name }}</dd></div>
+    <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">数量</dt><dd class="min-w-0 tabular-nums">{{ workorder.qty|floatformat:"-2g" }}</dd></div>
+    <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">納期</dt><dd class="min-w-0 tabular-nums">{{ workorder.order_line.due_date|date:"Y年n月j日"|default:"—" }}</dd></div>
+    <div class="grid grid-cols-[6rem_1fr] gap-4 border-b border-base-200 py-2"><dt class="text-base-content/70">得意先</dt><dd class="min-w-0 break-words">{{ workorder.order_line.order.customer.name }}</dd></div>
+  </dl>
+</section>
+<h2 class="mb-2 mt-6 text-lg font-bold">工程</h2>
+{% if rows %}
+<ol class="grid gap-4 sm:grid-cols-2">
+  {% for row in rows %}
+  <li class="rounded-xl border border-base-300 bg-base-100 p-4 shadow-xs"{% if row.current %} aria-current="step"{% endif %}>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="font-mono text-base-content/70">{{ row.step.seq }}</span>
+      <span class="min-w-0 break-words text-lg font-bold">{{ row.step.process.name }}</span>
+      {% if row.done %}<span class="badge badge-success">完了</span>{% endif %}
+    </div>
+    <p class="mt-1 text-base-content/70">実績 <span class="tabular-nums">{{ row.recorded|floatformat:"-2g" }}</span> / 予定 <span class="tabular-nums">{{ row.step.planned_qty|floatformat:"-2g" }}</span>・残 <span class="tabular-nums">{{ row.remaining|floatformat:"-2g" }}</span></p>
+    {% if in_modal %}
+    <a class="btn btn-lg mt-4 w-full {% if row.current %}btn-primary{% else %}btn-outline{% endif %}" href="{{ progress_url }}?workorder_step={{ row.step.pk }}" data-modal-form="{{ progress_url }}?workorder_step={{ row.step.pk }}">実績を入力</a>
+    {% else %}
+    <a class="btn btn-lg mt-4 w-full {% if row.current %}btn-primary{% else %}btn-outline{% endif %}" href="{{ progress_url }}?workorder_step={{ row.step.pk }}&amp;next={{ request.get_full_path|urlencode }}">実績を入力</a>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="text-base-content/70">工程がありません。</p>
+{% endif %}

@@ -59,6 +59,7 @@ PATHS = {
     "chevrons-up-down": '<path d="m8 9 4-4 4 4"/><path d="m8 15 4 4 4-4"/>',
     "archive": '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>',
     "bot": '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1"/><path d="M9.5 12.5v2M14.5 12.5v2M3 12.5v3M21 12.5v3"/>',
+    "qr": '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/>',
 }
 
 #: 部品の app ごとの絵 (左のメニューで使う)

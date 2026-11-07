@@ -42,6 +42,7 @@ VENDOR_NAMES = {
     "htmx": "htmx",
     "Tom Select": "tom-select",
     "Noto Sans JP": "noto-sans-jp",
+    "jsQR": "jsqr",
 }
 
 

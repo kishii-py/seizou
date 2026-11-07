@@ -1,0 +1,10 @@
+{% load seizou_icons %}
+{# 上の帯の「現品票を読む」の小窓で指示書が決まった後の中身 (workorders.views.workorder_reader が in_modal を真で渡す)。頭は入力の小窓 (core/_form_modal.html) と同じ形 (題と閉じるボタン)。 #}
+{# 中身は読み取りの着地と同じ workorders/_workorder_scan_card.html。工程の「実績を入力」は同じ小窓で実績の新規登録を開く。 #}
+<div>
+  <div class="mb-4 flex items-start justify-between gap-4">
+    <h3 class="min-w-0 truncate text-lg font-bold" title="現品票の読み取り">現品票の読み取り</h3>
+    <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる">{% icon "x" "size-4" %}</button></form>
+  </div>
+  {% include "workorders/_workorder_scan_card.html" %}
+</div>

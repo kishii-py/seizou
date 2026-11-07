@@ -1,0 +1,4 @@
+{% load seizou_icons seizou_tags %}
+{# 上の帯の「現品票を読む」(QR のボタン)。core/_topbar.html の右の組が include する。実績を入れられる人 (左のメニューと同じ部署の判定) だけに出す (押して 403 にならないように)。 #}
+{# 押すと今の画面の上に小窓 (workorders.views.workorder_reader) を開く。開き方は上の帯の「案内」と同じ hx-get の形 (入力の小窓を開く印の属性を付けない。画面の全体でその印の数を数える試験が、全部の画面でずれるため)。 #}
+{% if user.is_authenticated %}{% can_write "progress.Progress" as can_progress %}{% if can_progress %}<button type="button" class="btn btn-square btn-sm btn-outline border-base-300" hx-get="{% url 'workorders:workorder_reader' %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" title="現品票の QR を読んで実績を入れる" aria-label="現品票を読む">{% icon "qr" "size-4" %}</button>{% endif %}{% endif %}

@@ -97,3 +97,13 @@ url = "https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
 license = "BSD-3-Clause"
 sha256 = "1c7948cd13aa92fac6390319bc1e5e461823da171519d3a768db56164f871636"
 path = "src/seizou/core/static/vendor/quill.snow.css"
+
+[[item]]
+name = "jsqr"
+version = "1.4.0"
+# 現品票の QR をカメラの映像から読む部品 (上の帯の「現品票を読む」の小窓)。素の <script> で読むと窓の jsQR 関数ができる形 (UMD)。
+# sha256 は取った物から計算した値で、jsDelivr の配布物の一覧 (data.jsdelivr.com) の値 (base64) と同じことを確かめた (2026-11-07)。
+url = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"
+license = "Apache-2.0"
+sha256 = "bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859"
+path = "src/seizou/core/static/vendor/jsQR.js"
