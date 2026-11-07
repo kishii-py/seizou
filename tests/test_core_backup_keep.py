@@ -9,13 +9,14 @@
 import hashlib
 import json
 import sqlite3
+from datetime import datetime, timedelta
 
 import pytest
 from django.core.management.base import CommandError
 
 from seizou.core import backup
 from tests import test_core_backup
-from tests.test_core_backup import folders, run, sqlite_only
+from tests.test_core_backup import folders, hand_made_backup, run, sqlite_only
 
 # 控えの試験の置き場 (BASE_DIR = 一時のフォルダの site/。media/drawings/a.png と answers.yaml がある)
 site = test_core_backup.site
@@ -117,3 +118,94 @@ def test_retreat_and_practice_copies_stay_as_before(site, monkeypatch, suffix):
     assert "sha256" not in manifest
     assert "migrations" not in manifest
     assert "site_files" not in manifest
+
+
+# ---------------------------------------------------------------- 2. 世代を保つ (--keep)
+
+
+def backup_name(days_ago: float, suffix: str = "") -> str:
+    """名前の日時が days_ago 日前の控えの名前 (置き場の時計の現地時刻)。"""
+    return (datetime.now() - timedelta(days=days_ago)).strftime(backup.NAME_TIME_FORMAT) + suffix
+
+
+@sqlite_only
+@pytest.mark.django_db(transaction=True)
+def test_keep_removes_only_old_backups_after_new_one(site):
+    """(d) --keep 7 は、名前の日時が 7 日より古い控えだけを消す (1 日前・退避・今の控え・控えでない物は残す)。"""
+    parent = site / "backups"
+    old = hand_made_backup(parent, backup_name(8))
+    recent = hand_made_backup(parent, backup_name(1))
+    old_retreat = hand_made_backup(parent, backup_name(8, backup.RETREAT_SUFFIX))
+    not_backup = parent / backup_name(9)
+    not_backup.mkdir()
+    other = parent / "notes"
+    other.mkdir()
+
+    out = run("seizou_backup", "--keep", "7")
+
+    assert not old.exists()
+    assert recent.is_dir()
+    assert old_retreat.is_dir()
+    assert not_backup.is_dir()
+    assert other.is_dir()
+    assert f"古い控えを消しました: {old.name}" in out
+    assert out.count("古い控えを消しました") == 1
+    new = [path for path in folders(parent) if path not in (recent, old_retreat, not_backup, other)]
+    assert len(new) == 1
+    assert (new[0] / backup.SITE_DIR).is_dir()
+
+
+@sqlite_only
+@pytest.mark.django_db(transaction=True)
+def test_keep_removes_nothing_when_new_backup_fails(site, monkeypatch):
+    """(e) 新しい控えの確かめが通らなければ、--keep でも古い控えを消さない。"""
+    parent = site / "backups"
+    old = hand_made_backup(parent, backup_name(8))
+    monkeypatch.setattr(backup, "sqlite_integrity", lambda path: BROKEN_ROWS)
+
+    with pytest.raises(CommandError):
+        run("seizou_backup", "--keep", "7")
+
+    assert old.is_dir()
+    assert folders(parent) == [old]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["0", "-1", "x"])
+def test_keep_needs_positive_days(site, value):
+    with pytest.raises(CommandError) as caught:
+        run("seizou_backup", "--keep", value)
+
+    assert "1 以上" in str(caught.value)
+    assert folders(site / "backups") == []
+
+
+def test_newest_backup_skips_retreat(tmp_path):
+    """(f) newest_backup は退避 (-before-restore) を飛ばし、控えが無ければ None。"""
+    parent = tmp_path / "backups"
+    assert backup.newest_backup(parent) is None
+
+    hand_made_backup(parent, backup_name(0, backup.RETREAT_SUFFIX))
+    assert backup.newest_backup(parent) is None
+
+    hand_made_backup(parent, backup_name(3))
+    second = hand_made_backup(parent, backup_name(2))
+    hand_made_backup(parent, backup_name(1, backup.RETREAT_SUFFIX))
+
+    newest = backup.newest_backup(parent)
+    assert newest is not None
+    assert newest["name"] == second.name
+    assert newest["size"] >= 0
+
+
+def test_prune_keeps_names_passed_in_keep(tmp_path):
+    parent = tmp_path / "backups"
+    old = hand_made_backup(parent, backup_name(10))
+    older = hand_made_backup(parent, backup_name(20))
+
+    removed = backup.prune_backups(parent, 7, keep=(old.name,))
+
+    assert removed == [older.name]
+    assert old.is_dir()
+    assert not older.exists()
+    assert backup.prune_backups(tmp_path / "missing", 7) == []

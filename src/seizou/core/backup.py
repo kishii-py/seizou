@@ -20,7 +20,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -358,6 +358,55 @@ def list_backups(parent: Path) -> list[dict]:
             }
         )
     return rows
+
+
+def name_time(name: str) -> datetime | None:
+    """控えのフォルダの名前の頭の日時 (置き場の時計の現地時刻。tz 無し)。形が合わなければ None。"""
+    if NAME_PATTERN.match(name) is None:
+        return None
+    try:
+        return datetime.strptime(name[:NAME_TIME_LENGTH], NAME_TIME_FORMAT)
+    except ValueError:
+        return None
+
+
+def newest_backup(parent: Path) -> dict | None:
+    """置き場の一番新しい控え (list_backups の行)。戻す前の退避 (-before-restore) は飛ばす。無ければ None。"""
+    rows = [
+        row
+        for row in list_backups(parent)
+        if not row["name"].endswith(RETREAT_SUFFIX) and name_time(row["name"]) is not None
+    ]
+    return max(rows, key=lambda row: name_time(row["name"])) if rows else None
+
+
+def prune_backups(parent: Path, keep_days: int, *, now: datetime | None = None, keep=()) -> list[str]:
+    """名前の日時が now - keep_days 日より古い控えのフォルダを消し、消した名前を名前の順に返す。
+
+    消さない物: 戻す前の退避 (-before-restore)・keep に渡した名前 (今取った控え)・名前の形が合わない物・
+    backup.json を読めない物 (控えでない物には触らない)。日時はフォルダの名前で決め、mtime は見ない (写し直しで動くため)。
+    now は置き場の時計の現地時刻 (tz 無し。new_name と同じ時計)。既定は今。
+    訳: 古い控えを手の find で消さずに済ませ、世代を日数で保つため。退避を消さないのは、戻しを取り消す道を残すため。出所 = エンタープライズ化の調べ 第一弾の候補 4 の作る物 (2) と依頼書 N358。変えてよい条件 = 本人が世代の数え方 (日数・回数) を決め直したとき。
+    """
+    parent = Path(parent)
+    if not parent.is_dir():
+        return []
+    cutoff = (now or datetime.now()) - timedelta(days=keep_days)
+    removed = []
+    for folder in sorted(parent.iterdir(), key=lambda path: path.name):
+        name = folder.name
+        if not folder.is_dir() or folder.is_symlink() or name.endswith(RETREAT_SUFFIX) or name in keep:
+            continue
+        taken = name_time(name)
+        if taken is None or taken >= cutoff:
+            continue
+        try:
+            read_manifest(folder)
+        except BackupError:
+            continue
+        shutil.rmtree(folder)
+        removed.append(name)
+    return removed
 
 
 def resolve_folder(arg: str, parent: Path) -> Path:
