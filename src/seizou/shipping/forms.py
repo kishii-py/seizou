@@ -344,3 +344,13 @@ class DeliveryNoteCancelForm(forms.Form):
 
     def service_kwargs(self) -> dict:
         return {}
+
+
+class ShipmentDeleteForm(forms.Form):
+    """出荷の削除の確かめ (候補 12。決め 11-08 00:23)。欄は無い (土台が delete_shipment(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。"""
+
+    submit_label = "削除"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self) -> dict:
+        return {}

@@ -2,6 +2,7 @@
 
 納品書の印刷用の HTML (deliverynote_print) と PDF (deliverynote_pdf) は関数の view。
 出荷の編集 (shipment_update) は土台が出荷の詳細に「編集」を出し、納品書を取り消す (deliverynote_cancel) は納品書の詳細のボタンから入る。
+出荷の削除は出荷の一覧の行の ⋮ と右クリックから入る。
 """
 
 from django.urls import path
@@ -23,6 +24,7 @@ urlpatterns = [
     path("bulk/", views.ShipmentBulkCreateView.as_view(), name="shipment_bulk_create"),
     path("<int:pk>/", views.ShipmentDetailView.as_view(), name="shipment_detail"),
     path("<int:pk>/edit/", views.ShipmentUpdateView.as_view(), name="shipment_update"),
+    path("<int:pk>/delete/", views.ShipmentDeleteView.as_view(), name="shipment_delete"),
     path("<int:pk>/modal/", views.ShipmentModalView.as_view(), name="shipment_modal"),
     path("<int:pk>/label/", views.shipment_label, name="shipment_label"),
     path("<int:pk>/label/pdf/", views.shipment_label_pdf, name="shipment_label_pdf"),

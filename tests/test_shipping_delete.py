@@ -11,7 +11,9 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 
 from seizou.attachments import services as attachments_services
 from seizou.attachments.models import Attachment
@@ -259,3 +261,73 @@ def test_attachment_row_stays_after_delete(settings, tmp_path, user, line):
 def test_delete_action_is_shipping_kind_and_not_money():
     assert access.ACTION_KINDS["shipping.delete_shipment"] == access.ACTION_KINDS["shipping.update_shipment"] == "shipping"
     assert "shipping.delete_shipment" not in access.MONEY_ACTIONS
+
+
+# ---------------------------------------------------------------- (f)〜(i) 削除の確かめの画面と小窓
+
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
+#: 入力のカード (core/_form_card.html) の form の頭
+FORM_CARD = '<form method="post" class="rounded-xl'
+
+
+def _delete_url(shipment):
+    return reverse("shipping:shipment_delete", args=[shipment.pk])
+
+
+@pytest.mark.django_db
+def test_delete_screen_and_modal_confirm(logged_in, line, user):
+    shipment = _ship(line, "4", user)
+
+    for response in (logged_in.get(_delete_url(shipment)), logged_in.get(_delete_url(shipment), **MODAL)):
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert "この出荷を消すと戻せません。受注の状態と在庫は出荷の前に戻ります。" in body
+        assert shipment.shipment_no in body
+        assert FORM_CARD in body and "btn btn-error" in body and "削除" in body
+    assert "<html" not in body  # 小窓は部分だけ
+
+
+@pytest.mark.django_db
+def test_delete_post_goes_back_to_next_or_list(logged_in, line, user):
+    first = _ship(line, "4", user)
+    second = _ship(line, "3", user)
+    listing = f"{reverse('shipping:shipment_list')}?q=T-100"
+
+    response = logged_in.post(_delete_url(first), {"next": listing})
+
+    assert response.status_code == 302
+    assert response["Location"] == listing
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [f"出荷 {first.shipment_no} を削除しました。"]
+    assert not Shipment.objects.filter(pk=first.pk).exists()
+
+    response = logged_in.post(_delete_url(second), {})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("shipping:shipment_list")
+    assert not Shipment.objects.exists()
+
+
+@pytest.mark.django_db
+def test_refused_shipment_shows_reason_without_form(logged_in, customer, line, user):
+    shipment = _ship(line, "4", user)
+    services.create_delivery_note(customer, [shipment], user)
+    shipment.refresh_from_db()
+    refusal = services.delete_refusal(shipment)
+
+    for response in (logged_in.get(_delete_url(shipment)), logged_in.get(_delete_url(shipment), **MODAL)):
+        body = response.content.decode()
+        assert response.status_code == 200
+        assert refusal in body
+        assert FORM_CARD not in body and "btn btn-error" not in body
+    page = logged_in.get(_delete_url(shipment)).content.decode()
+    assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in page and "出荷へ戻る" in page
+
+    response = logged_in.post(_delete_url(shipment), {})
+
+    assert response.status_code == 200
+    assert refusal in response.content.decode()
+    assert Shipment.objects.filter(pk=shipment.pk).exists()
+
+
+def test_delete_url():
+    assert reverse("shipping:shipment_delete", args=[1]) == "/shipping/1/delete/"
