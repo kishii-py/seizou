@@ -160,7 +160,7 @@ claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利�
 | `ship` | 受注の明細を出荷する | 書く |
 | `plan_step` | 指示書の工程に、生産計画の開始日と終了日を置く | 書く |
 
-API の鍵は要らない。道具は手元のデータベースを読み書きするだけで、外の API を呼ばない。
+API の鍵は要らない。道具は手元のデータベースを読み書きするだけで、外の API を呼ばない。ただし、道具の結果 (業務のデータと社員のログイン ID を含む) は Claude Code の会話に入ります (SECURITY.md の「AI に送るデータ」)。
 
 Claude Desktop から使う: 端末 (shell) を開かずに使う道。主役は Claude Desktop の Code タブで、Claude Code と同じにプラグイン (`/seizou:build`・hook・`plugin/.mcp.json` の MCP) がそのまま使える (Code タブは有料のプランが要る)。Chat から使うときは、`claude_desktop_config.json` (Developer > Edit Config) の `mcpServers` に、上の 1 行と同じ `<python>` と `<置き場>/manage.py seizou_mcp --user <利用者名>` を絶対パスで登録する。Chat は開いたフォルダを持たないので、置き場を今のフォルダから探す起こし役 `plugin/mcp/start.py` は使えない。Chat には Claude Code の hook が無く、道具を呼ぶたびに承認のダイアログ (Allow once / Always allow) が出る。守りは MCP サーバーの側にあり、書く道具は画面と同じ決まりとポカよけを通り、知らせる段は `confirm=true` が要る (上の「利用者と約束」)。この段落は公式の文書で確かめた形で、実機ではまだ通していない。
 
