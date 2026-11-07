@@ -33,7 +33,9 @@ def deliverynote_billing(context, note, hide_money=None):
     件数だけ = 請求書の取消のカードの invoice_cancel_refusal と同じ渡し方)。hide_money を渡さない呼び方 (詳細) では、文と
     入金を読まずに空の字 (詳細は refusal を使わない)。
     billing.rows = 発行の請求書に入った出荷の行 (出荷の pk の順)。1 行は shipment_no・shipment_url (出荷の詳細)・
-    invoice_no・invoice_url (請求書の詳細)・has_payments (その請求書に取消でない入金があるか。詳細の呼び方では偽)。
+    invoice_no・invoice_url (請求書の詳細)・has_payments (その請求書に取消でない入金があるか。詳細の呼び方では偽)・
+    lump (受注の明細に発行の請求書の一式の行がある出荷の行なら真。services.lump_billed_shipments。作者の決め C107-6)。
+    billing.rows には、受注の明細に発行の請求書の一式の行がある出荷の行 (lump が真) も、出荷の行の請求書の行の後に入る。
     invoice_url は、billing を部署で開けない人と、請求書の URL が引けない会社では None
     (押すと部署の 403 になる link を出さない。判定は core の can_write と同じ access.can_open の record=False)。
     billing.invoices = 請求書ごとにまとめた並び (rows の並びで最初に出た順)。1 つは invoice_no・invoice_url・count
@@ -46,13 +48,14 @@ def deliverynote_billing(context, note, hide_money=None):
     request = context.get("request")
     can_bill = access.can_open(getattr(request, "user", None), "billing", record=False)
     found = services.invoiced_shipments(note)
+    lumps = services.lump_billed_shipments(note)
     recorded = None
-    if hide_money is not None and found:
-        bills = [invoice for _shipment, invoice in found]
+    if hide_money is not None and (found or lumps):
+        bills = [invoice for _shipment, invoice in found + lumps]
         prefetch_related_objects(bills, "payments")
         recorded = type(bills[0])._meta.get_field("payments").related_model.STATUS_RECORDED
     rows = []
-    for shipment, invoice in found:
+    for (shipment, invoice), lump in [(pair, False) for pair in found] + [(pair, True) for pair in lumps]:
         rows.append(
             {
                 "shipment_no": shipment.shipment_no,
@@ -60,6 +63,7 @@ def deliverynote_billing(context, note, hide_money=None):
                 "invoice_no": invoice.invoice_no,
                 "invoice_url": model_url(type(invoice), "detail", invoice.pk) if can_bill else None,
                 "has_payments": recorded is not None and any(row.status == recorded for row in invoice.payments.all()),
+                "lump": lump,
             }
         )
     invoices = {}
@@ -68,7 +72,9 @@ def deliverynote_billing(context, note, hide_money=None):
             row["invoice_no"], {"invoice_no": row["invoice_no"], "invoice_url": row["invoice_url"], "count": 0}
         )
         group["count"] += 1
-    refusal = services.cancel_refusal(note, hide_money=bool(hide_money), found=found) if recorded is not None else ""
+    refusal = (
+        services.cancel_refusal(note, hide_money=bool(hide_money), found=found, lumps=lumps) if recorded is not None else ""
+    )
     return {"refusal": refusal, "rows": rows, "invoices": list(invoices.values())}
 
 
