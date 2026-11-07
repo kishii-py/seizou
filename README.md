@@ -116,13 +116,13 @@ Claude Code が使える方は、プラグインの命令で会社のシステ�
 | `/seizou:connect` | 取引先と注文のデータを送り合えるように、取引先とのつながり (相手の窓口の URL・鍵の置き場の名前・向き) を登録する | `tests/test_plugin_skills.py` |
 | `/seizou:fix` | 決まりの検査の違反を、会社の置き場の側だけで直し、違反が 0 件になるまで検査を回し直す | `tests/test_plugin_fix.py` |
 | `/seizou:manual` | 画面ごとの使い方を、日本語の説明書として会社の置き場の `manual/` に書き起こす。PDF の冊子も作る | `tests/test_plugin_skills.py` |
-| hook (`plugin/hooks/guard_core.py`) | 会社の置き場から開いた会話で、AI が部品 (seizou) の中身を Write と Edit で書き換えるのを止める (R20)。Bash の道具での書き込みは見ない | `tests/test_plugin_guard_core.py` |
+| hook (`plugin/hooks/guard_core.py`) | 会社の置き場から開いた会話で、AI が部品 (seizou) の中身を Write・Edit・NotebookEdit で書き換えるのを止める (R20)。Bash の道具での書き込みは見ない | `tests/test_plugin_guard_core.py` |
 
 ## 手元の Claude Code から操作する (MCP)
 
 会社の置き場で `manage.py seizou_mcp` を打つと、MCP サーバー (Claude Code が道具を呼ぶ口。標準入力と標準出力で話す) が立つ。手元の Claude Code に「今週納期の注文残は」「この明細を 5 個出荷して」「めっきの前処理の手順書は」と頼むと、Claude Code が会社のシステムの道具を呼んで読み書きする。業務マニュアルも探して読める。道具は部品の services と読むだけの関数を通るので、画面から入れたときと同じ決まりで書かれる。
 
-立ち方: プラグインの `plugin/.mcp.json` が起こし役 `plugin/mcp/start.py` を `uv run --no-project python` で呼ぶ。起こし役は会社の置き場 (Claude Code を開いたフォルダ) の `README.md` の起動の 1 行から python を読み、その python で `manage.py seizou_mcp` を打つ。プラグインを使わないときは、次の 1 行で登録する (`<python>` は置き場の `README.md` の起動の 1 行の python)。
+立ち方: プラグインの `plugin/.mcp.json` が起こし役 `plugin/mcp/start.py` を `uv run --no-project python` で呼ぶ。起こし役は、`seizou new` と `seizou ai-docs` が `~/.seizou/sites.json` に登録した置き場 (Claude Code を開いたフォルダ) だけで、登録した python で `manage.py seizou_mcp` を打つ。登録の無いフォルダでは起こさず、登録の仕方を 1 行で知らせる (開いただけのフォルダの中の物を動かさないため)。プラグインを使わないときは、次の 1 行で登録する (`<python>` は置き場の `README.md` の起動の 1 行の python)。
 
 ```
 claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利用者名>
