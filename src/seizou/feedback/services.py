@@ -1179,3 +1179,112 @@ def mark_replies_seen(rows, user) -> int:
         return FeedbackReply.objects.filter(pk__in=pks, feedback__created_by_id=user_pk, seen_at__isnull=True).update(
             seen_at=timezone.now()
         )
+
+
+#: 返事の字数の上限
+REPLY_MAX_CHARS = 2000
+MESSAGE_REPLY_EMPTY = "返事を入力してください。"
+MESSAGE_REPLY_LONG = f"返事は {REPLY_MAX_CHARS} 字までです。短くしてください。"
+MESSAGE_CANNOT_REPLY = "この件に返事を書けるのは、書いた人かアカウント管理の担当者だけです。"
+MESSAGE_REPLY_NOT_SENT = "先に GitHub に送るか、送ったにしてください。"
+MESSAGE_REPLY_ALREADY_SENT = "この返事は送った状態です。"
+MESSAGE_REPLY_NOT_ISSUE = "この件は GitHub の Issue に送った物ではありません。"
+
+
+def can_reply(feedback, user) -> bool:
+    """返事を書けるか。件を書いた人か世話役。"""
+    if can_manage(user):
+        return True
+    user_pk = getattr(user, "pk", None)
+    return user_pk is not None and feedback.created_by_id == user_pk
+
+
+def _reply_body(text) -> tuple[str, str]:
+    """返事の文の前後の空白を外して確かめる。返す物は (本文, 断りの理由。通れば空の字)。
+
+    断りの文の頭 (「保存できません。」か「送れません。」) は呼び手が付けて raise する (tests/test_wording.py が頭を見るため)。
+    """
+    body = _text(text)
+    if not body:
+        return body, MESSAGE_REPLY_EMPTY
+    if len(body) > REPLY_MAX_CHARS:
+        return body, MESSAGE_REPLY_LONG
+    return body, ""
+
+
+def add_reply(feedback, text, user):
+    """書いた人か世話役が、送った件に返事の下書きを 1 件書く。作った行を返す。
+
+    状態が送った・直した・見送ったの件だけ (下書きと確認済みはまだ Issue が無いので断る)。文は前後の空白を外して 2000 字まで。
+    書いた人は user、知らせた日時は今 (会社の中で書いた物は知らせない)。GitHub には送らない (送るのは世話役の send_reply)。
+    訳: 返事は書いた人の字のまま公開の Issue に出るので、Issue の文と同じく世話役の確認 (伏せ字) を通してから送るため、
+    ここでは下書きとして残すだけにする。出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D)。
+    変えてよい条件 = 書いた人が直接 Issue に返事を書ける形に変えるときは、本人の決めを取り直してから。
+    """
+    if not can_reply(feedback, user):
+        raise ValueError("保存できません。" + MESSAGE_CANNOT_REPLY)
+    if feedback.status not in REPLY_STATUSES:
+        raise ValueError("送れません。" + MESSAGE_REPLY_NOT_SENT)
+    body, problem = _reply_body(text)
+    if problem:
+        raise ValueError("保存できません。" + problem)
+    with transaction.atomic():
+        return FeedbackReply.objects.create(feedback=feedback, body=body, created_by=_author(user), seen_at=timezone.now())
+
+
+def reply_draft_text(reply) -> str:
+    """世話役が直す前の返事の初めの字 (取引先の名前と金額らしい数を伏せた本文)。読むだけ。"""
+    return mask_text(reply.body)
+
+
+def send_reply(reply, text, user) -> str:
+    """世話役が直した返事の文を、会社のトークンで件の Issue に書き、送ったにする。Issue の返事の URL を返す。
+
+    世話役だけ。送った返事・つないでいない会社・送った先が Issue の形でない件は、HTTP を呼ばずに断る。
+    文は世話役が直した物 (前後の空白を外して 2000 字まで)。GitHub が断ったら ValueError で、返事は下書きのまま。
+    HTTP は atomic の外 (R17)。送った後に atomic で本文・送った日時・GitHub の id・口座・GitHub に出た日時を書く。
+    訳: 書いた人の返事は公開の Issue に出るので、取引先の名前や金額が出ないよう、世話役が伏せ字を確かめた文だけを送るため。
+    出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D。Issue を送るときと同じ確認)。
+    変えてよい条件 = 送る前の確認の形 (N323 の「送る前に直せる」) を本人の決めで変えたとき、同じ形に合わせる。
+    """
+    _refuse_github(user, "返事を GitHub に送る", sending=True)
+    if reply.sent_at is not None:
+        raise ValueError("送れません。" + MESSAGE_REPLY_ALREADY_SENT)
+    token = github.read_env_value(github.TOKEN_ENV)
+    if not token:
+        raise ValueError("送れません。" + MESSAGE_GITHUB_NOT_CONNECTED)
+    match = _ISSUE_URL.fullmatch(reply.feedback.sent_url or "")
+    if match is None:
+        raise ValueError("送れません。" + MESSAGE_REPLY_NOT_ISSUE)
+    body, problem = _reply_body(text)
+    if problem:
+        raise ValueError("送れません。" + problem)
+    owner, name, number = match.groups()
+    try:
+        answer = github.create_comment(token, f"{owner}/{name}", int(number), body)
+    except github.GithubError as exc:
+        raise ValueError("送れません。" + str(exc)) from None
+    now = timezone.now()
+    with transaction.atomic():
+        reply.body = body
+        reply.sent_at = now
+        reply.github_id = answer["id"]
+        reply.login = (company_login() or answer["login"])[: FeedbackReply._meta.get_field("login").max_length]
+        reply.posted_at = _github_time(answer["created_at"]) or now
+        reply.save(update_fields=["body", "sent_at", "github_id", "login", "posted_at"])
+    return answer["html_url"]
+
+
+def mark_reply_sent(reply, user):
+    """つないでいない会社で、世話役が伏せ字の文を GitHub に手で写した後に、返事を送ったにする。世話役だけ。
+
+    送った日時だけを今にする (本文と GitHub の id は変えない)。GitHub の id が空のままなので、次の取り込みで同じ返事が
+    GitHub から読まれると、別の行で入ることがある (依頼書 N324 の記録に書いた)。送った返事は ValueError。
+    """
+    _refuse_non_manager(user, "返事を送った状態")
+    if reply.sent_at is not None:
+        raise ValueError("保存できません。" + MESSAGE_REPLY_ALREADY_SENT)
+    with transaction.atomic():
+        reply.sent_at = timezone.now()
+        reply.save(update_fields=["sent_at"])
+        return reply
