@@ -139,7 +139,7 @@ class GithubSetupView(BaseFormView):
     service = staticmethod(services.connect_github)
     template_name = "feedback/github_setup.html"
     screen_name = "GitHub とつなぐ"
-    screen_help = "フィードバックを GitHub の Issue に直接送るための設定。トークンの取得の手順を見て、トークンと送り先を入れて「つなぐ」を押す。トークンは会社の .env にだけ置き、画面には二度と出ない。世話役 (アカウント管理の担当者) だけが使う。"
+    screen_help = "フィードバックを GitHub の Issue に直接送るための設定。「GitHub でログインしてつなぐ」か「トークンを貼ってつなぐ」の 2 つのタブのどちらかでつなぎ、つないでいる間はもう片方は使えない。トークンは会社の .env にだけ置き、画面には二度と出ない。世話役 (アカウント管理の担当者) だけが使う。"
 
 
 def _back_to_detail(pk):
