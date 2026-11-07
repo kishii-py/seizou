@@ -12,6 +12,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     置き場には、AI が守る決まりの CLAUDE.md (Claude Code が置き場を開いたときに読む) と、その短い版の AGENTS.md も書く。
     置き場には、git に入れない物 (鍵の .env・DB・上げたファイルの media/ ほか) を並べた .gitignore も書く (既にあれば書き直さない)。
     置き場には、Claude Code に .env・DB・控え (backups/) を読ませない .claude/settings.json も書く (既にあれば書き直さない)。
+    置き場は、プラグインの MCP が起こしてよい置き場の一覧 (~/.seizou/sites.json。seizou.site_registry) に、この python で登録する。
     --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
     (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
@@ -22,6 +23,7 @@ seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
     .claude/settings.json が無ければ、CLAUDE.md と AGENTS.md が既にあって止まる前に書く (既にある物は --force でも書き直さない)。
+    置き場を、プラグインの MCP が起こしてよい置き場の一覧に、この python で登録する (これも止まる前。版を上げた後に打つ)。
 seizou github-token [<置き場>]
     会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (依頼書 N185)。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
@@ -51,6 +53,8 @@ from string import Template
 from urllib.parse import urlsplit
 
 import yaml
+
+from seizou import site_registry
 
 EXIT_OK = 0
 EXIT_CHILD = 1
@@ -626,6 +630,26 @@ def write_claude_settings(site: Path) -> bool:
     return True
 
 
+def register_site_for_plugin(site: Path) -> None:
+    """置き場を、プラグインの MCP が起こしてよい置き場の一覧に、この python (sys.executable) で登録し、1 行を出す。
+
+    訳: プラグインの起こし役 (plugin/mcp/start.py) は、開いたフォルダの README.md を読まず、この一覧にある置き場だけを
+    一覧の python で起こす。人から受け取ったフォルダを開いただけで、その中の実行ファイルと manage.py が動くのを止めるため。
+    python は README.md の起動の 1 行 (start_line) と同じ sys.executable。
+    一覧に書けないときと、今の一覧が壊れているときは、置き場づくりを止めずに標準エラーへ 1 行を出す (MCP がこの置き場で立たないだけなので)。
+    出所: 本人の決め 11-08 01:0x と、Claude Security の走査の候補 13。変えてよい条件: 本人が決め直したとき。
+    """
+    try:
+        path = site_registry.register_site(site)
+    except (OSError, ValueError) as exc:
+        print(
+            f"置き場の一覧に登録できませんでした ({exc})。プラグインの MCP はこの置き場で立ちません。直した後に seizou ai-docs {site} を打つと登録します。",
+            file=sys.stderr,
+        )
+        return
+    print(f"登録した: {site_registry.site_key(site)} (プラグインの MCP が起こす置き場の一覧 {path})")
+
+
 def copy_manual(seeds: Path, site: Path) -> int:
     """種のフォルダの manual/ にある画面ごとの説明書の断片 (*.html) を、会社の置き場の manual/ に写す。写した数を返す。
 
@@ -782,6 +806,8 @@ def _new_files(site: Path, answers_path: Path, answers: dict, settings: dict, co
     """seizou new の段 (ファイルを書く)。置き場のファイルと会社ごとの項目の表を書き、migrate する。子の process が失敗したら終わりの番号。"""
     write_project(site, answers_path, answers, settings)
     print(f"ファイルを書きました: {site}")
+    # プラグインの MCP が起こしてよい置き場の一覧に登録する (README の起動の 1 行と同じ python)。決め 11-08 01:0x
+    register_site_for_plugin(site)
 
     if columns:
         write_fields(site, answers["id"], columns)
@@ -921,6 +947,8 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     .gitignore は無いときだけ書き、書いたときだけ「書いた:」の行に名前を足す (既にある .gitignore は --force でも書き直さない)。
     .claude/settings.json (write_claude_settings) は、CLAUDE.md と AGENTS.md が既にあって止まる前に、無いときだけ書く
     (この版より前に作った置き場にも届かせるため。決め 11-08 00:5x)。書いたときは止まる前に「書いた:」の行を 1 行出す。
+    置き場を、プラグインの MCP が起こしてよい置き場の一覧に登録する (register_site_for_plugin)。これも止まる前で、
+    版を上げた後に CLAUDE.md のある置き場で打っても登録だけは済む (決め 11-08 01:0x)。
     """
     answers_path = site / "answers.yaml"
     if not ((site / "manage.py").is_file() and answers_path.is_file()):
@@ -937,6 +965,7 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
     # 止まる前に書く (CLAUDE.md が既にある置き場にも届かせる)。既にあれば触らない
     if write_claude_settings(site):
         print(f"書いた: {site / '.claude' / 'settings.json'}")
+    register_site_for_plugin(site)
     existing = [name for name in ("CLAUDE.md", "AGENTS.md") if (site / name).exists()]
     if existing and not force:
         print(f"止まりました: 既にあります: {'・'.join(existing)} (上書きするなら --force)", file=sys.stderr)

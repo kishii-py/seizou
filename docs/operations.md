@@ -149,7 +149,7 @@ seizou の新しい版を入れるときは、次の順に進めます。
 7. サーバーを立てます (runserver の 1 行か、サーバーの service の再起動。手元の 2 社のデモは `uv run python scripts/sites.py restart`)。
 8. 画面を 1 つ開いて、ログインと一覧が出ることを確かめます。
 
-Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) の無い置き場 (この版より前に作った物) は、版を上げた後に `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。settings.json は既にあれば触りません。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、settings.json はその前に書いています。
+版を上げた後に、置き場ごとに `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。この命令は置き場を、プラグインの MCP が起こしてよい置き場の一覧 (`~/.seizou/sites.json`) に、打った python で登録します (登録の無い置き場では、プラグインの MCP は立ちません)。Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) が無い置き場 (この版より前に作った物) には、それも書きます (既にあれば触りません)。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、登録と settings.json はその前に済んでいます。
 
 うまく動かないときは、前の版に戻します。PyPI の版は `pip install seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
 
