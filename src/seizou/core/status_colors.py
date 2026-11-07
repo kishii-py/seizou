@@ -4,7 +4,7 @@
 最初の画面の最近の受注の印が使う。意味の色は 5 つで 1 組 (決め 11-05 16:2x。N164)。名前は daisyUI の印の色の名前と同じ字:
 - ghost   = 灰 (作成・下書き・まだ)
 - info    = 青 (進行中 = 受注・発行・送った・受信した・読み取った・相手が受け入れた)
-- warning = 橙 (注意 = 一部出荷・遅れ・未入金・一部入金)
+- warning = 橙 (注意 = 一部出荷・一部納品・相手が条件付で受けた・相手が保留した・遅れ・未入金・一部入金)
 - success = 緑 (済み = 出荷済・納品された・入金済み・入金の記録・確認済み・直した・受信した注文の受け入れた・受注にした)
 - error   = 赤の線 (止まった = 取消・断った・断られた・捨てた。塗らずに線と字だけ)
 表に無い値は FALLBACK (primary = 今の主色のまま)。class の丸ごとの字は core/_status_badge.html が色ごとに書く
@@ -35,8 +35,10 @@ STATUS_TONES = {
     "received": "info",  # connect 届いた
     "extracted": "info",  # intake 読み取った
     "accepted": "info",  # purchasing 相手が受け入れた (connect は APP_TONES)
-    # 橙 = 注意 (一部出荷)
-    "partial": "warning",  # orders 一部出荷
+    # 橙 = 注意 (一部出荷・一部納品・相手が条件付で受けた・相手が保留した。発注元に人の手が要る)
+    "partial": "warning",  # orders 一部出荷・purchasing 一部納品
+    "conditional": "warning",  # purchasing 相手が条件付で受けた
+    "on_hold": "warning",  # purchasing 相手が保留した
     # 緑 = 済み (出荷済・納品された・入金の記録・確認済み・直した)
     "shipped": "success",  # orders 出荷済
     "delivered": "success",  # purchasing 納品された

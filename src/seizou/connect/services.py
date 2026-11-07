@@ -5,7 +5,8 @@
   受けるときに os.environ から値を読む。鍵の値を例外の文・ログ・返す物に入れない。
 - 署名の確かめは signing.verify をそのまま呼ぶ。ここで書き直さない。
 - 受け口は受注を作らない (R10)。受け入れて受注にする関数は、受注の部品ができてから足す。
-- 承認 (受け入れ) と断りの後、send_reply が結果を「注文回答」にして相手の受け口へ返す。
+- 受信した注文に答えた後、send_reply が答えを「注文回答」にして相手の受け口へ返す。答えは 4 つ (受諾・条件付受諾・辞退・保留) で、
+  JSON の reply_type に中小企業共通 EDI の注文回答タイプコードの値 (AP・CA・RE・AJ。core.edi_codes) をそのまま持つ。
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
@@ -28,6 +29,7 @@ from urllib.parse import urlsplit
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from seizou.core import edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
@@ -274,11 +276,17 @@ class ShippingNoticeReceipt:
     notice: object
 
 
-MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・result を字で送ってください。"
-MESSAGE_REPLY_RESULT = "注文回答の結果が accepted か rejected ではありません。"
+MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
+MESSAGE_REPLY_TYPE = "注文回答のタイプ (reply_type) が AP・CA・RE・AJ のどれでもありません。"
+MESSAGE_REPLY_LINES = (
+    "条件付受諾 (CA) の注文回答の明細 (lines) が読めません。line_no (数)・reply_type (AP・CA・RE) と、"
+    "CA の明細の reply_unit_price・reply_qty (0 より大きい数の字)・reply_due_date (YYYY-MM-DD か null) を送ってください。"
+)
 MESSAGE_REPLY_OTHER_PARTNER = "注文回答の元の発注は、その取引先への物ではありません。"
 MESSAGE_REPLY_ORDER_ID = "注文回答の元の注文のデータの番号が、送った物と合いません。"
-_REPLY_RESULTS = ("accepted", "rejected")
+#: 注文回答のタイプの値 (中小企業共通 EDI の注文回答タイプコード) と、明細の回答タイプの値 (注文回答明細回答タイプコード。保留 AJ は無い)
+REPLY_TYPES = frozenset(code for code, _label in edi_codes.ORDER_REPLY_TYPES)
+REPLY_LINE_TYPES = frozenset(code for code, _label in edi_codes.ORDER_REPLY_LINE_TYPES)
 
 # 検収 (EDI の 4 段目) の断る理由と、送らなかった理由の日本語。
 MESSAGE_ACCEPTANCE_SHAPE = "検収の形が読めません。order_id・line_no・accepted_on・qty を送ってください。"
@@ -330,7 +338,11 @@ def _receive_reply(message_id, partner, payload):
     引く順は 発注番号 (order_no) → 発注の取引先が署名の通ったつながりの取引先と同じ → その発注の
     送った注文に order_id の番号がある。同じ回答の番号の 2 回目は何もせずに通す (R11 の考え)。
     発注を書くのは purchasing の services だけ (受け口に利用者はいないので user は None)。
+    答えは reply_type の 4 つ: 受諾 AP → mark_accepted・条件付受諾 CA → mark_conditional (明細の答えは lines)・
+    辞退 RE → mark_rejected・保留 AJ → mark_on_hold。CA の明細は atomic に入る前に _reply_lines で形を見る。
     断るときは全部を戻す (作成 → 送った も残さない)。
+    訳: 相手の 4 つの答えを、答えを待っている発注にだけ当て、形の違う答えを当てずに相手へ返すため。出所 = 中小企業共通 EDI の注文回答タイプコードの項目と決め PRICE-4e (11-07 00:0x)・PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 送り合いの形を変えるとき。
     """
     # connect は purchasing の model を頭で import しない (輪になるため)。
     from django.apps import apps
@@ -343,18 +355,23 @@ def _receive_reply(message_id, partner, payload):
     msg_id = str(message_id)
     order_no = payload.get("order_no")
     order_id = payload.get("order_id")
-    result = payload.get("result")
+    reply_type = payload.get("reply_type")
     # str でない値を filter に渡すと TypeError になるので、先に形を見る。
-    if not all(isinstance(value, str) and value for value in (order_no, order_id, result)):
+    if not all(isinstance(value, str) and value for value in (order_no, order_id, reply_type)):
         return _refuse(MESSAGE_REPLY_SHAPE, msg_id)
-    if result not in _REPLY_RESULTS:
-        return _refuse(MESSAGE_REPLY_RESULT, msg_id)
+    if reply_type not in REPLY_TYPES:
+        return _refuse(MESSAGE_REPLY_TYPE, msg_id)
     try:
         order_message_id = uuid.UUID(order_id)
     except ValueError:
         return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
     reason = payload.get("reason")
     reason = reason if isinstance(reason, str) else ""
+    lines = None
+    if reply_type == edi_codes.REPLY_CONDITIONAL:
+        lines = _reply_lines(payload)
+        if lines is None:
+            return _refuse(MESSAGE_REPLY_LINES, msg_id)
 
     with transaction.atomic():
         # 同じ回答が同時に 2 つ届いても、2 つ目は 1 つ目が終わるまで待ち、番号で見分ける。
@@ -378,8 +395,16 @@ def _receive_reply(message_id, partner, payload):
             # (送った時の返事が落ちた場合の救い)。「取消」は mark_sent が断る。
             if purchase_order.status != purchase_order.STATUS_SENT:
                 purchasing_services.mark_sent(purchase_order, None)
-            if result == "accepted":
+            if reply_type == edi_codes.REPLY_ACCEPTED:
                 updated = purchasing_services.mark_accepted(
+                    purchase_order, None, reply_message_id=message_id
+                )
+            elif reply_type == edi_codes.REPLY_CONDITIONAL:
+                updated = purchasing_services.mark_conditional(
+                    purchase_order, None, lines=lines, reply_message_id=message_id
+                )
+            elif reply_type == edi_codes.REPLY_PENDING:
+                updated = purchasing_services.mark_on_hold(
                     purchase_order, None, reply_message_id=message_id
                 )
             else:
@@ -390,6 +415,59 @@ def _receive_reply(message_id, partner, payload):
             transaction.set_rollback(True)
             return _refuse(str(exc), msg_id)
     return ReplyReceipt(message_id=message_id, purchase_order=updated)
+
+
+def _reply_lines(payload):
+    """条件付受諾 (CA) の注文回答の明細 (lines) を読み、purchasing.services.record_line_replies に渡す並びにする。形が違えば None。
+
+    見る事: 空でない並び・どれも dict・line_no は bool でない 1 以上の整数で重ならない・reply_type は明細の回答タイプ (AP・CA・RE)・
+    CA の明細は reply_unit_price と reply_qty が字で、Decimal に読めて 0 より大きく、発注の明細の単価と数量の列の桁に入る (_fits_field)・
+    reply_due_date は null か日付 (YYYY-MM-DD) の字。AP と RE の明細のほかの鍵は読まない。
+    connect は purchasing の model を頭で import しない (app の登録から引く)。
+    訳: 形の違う明細の答えを表に入れる前に断り、桁を超える数を表に入れて後で 500 になるのを防ぐため。出所 = 中小企業共通 EDI の注文回答明細回答タイプコードの項目と決め PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 送り合いの形を変えるとき。
+    """
+    from django.apps import apps
+
+    line_model = apps.get_model("purchasing", "PurchaseOrderLine")
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list) or not raw_lines:
+        return None
+    rows = []
+    seen = set()
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            return None
+        number = raw.get("line_no")
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1 or number in seen:
+            return None
+        seen.add(number)
+        line_type = raw.get("reply_type")
+        if not isinstance(line_type, str) or line_type not in REPLY_LINE_TYPES:
+            return None
+        row = {"line_no": number, "reply_type": line_type, "unit_price": None, "qty": None, "due_date": None}
+        if line_type == edi_codes.REPLY_CONDITIONAL:
+            for key, name in (("reply_unit_price", "unit_price"), ("reply_qty", "qty")):
+                value = raw.get(key)
+                if not isinstance(value, str):
+                    return None
+                try:
+                    figure = Decimal(value.strip())
+                except InvalidOperation:
+                    return None
+                if not _fits_field(figure, line_model._meta.get_field(name)):
+                    return None
+                row[name] = figure
+            due = raw.get("reply_due_date")
+            if due is not None:
+                if not isinstance(due, str):
+                    return None
+                try:
+                    row["due_date"] = date.fromisoformat(due)
+                except ValueError:
+                    return None
+        rows.append(row)
+    return rows
 
 
 def _receive_acceptance(message_id, partner, payload):
@@ -894,7 +972,8 @@ def send_reply(inbox, user):
             "sent_at": timezone.localtime().isoformat(),
             "order_id": str(locked.message_id),
             "order_no": order_no if isinstance(order_no, str) else "",
-            "result": "accepted" if accepted else "rejected",
+            "reply_type": edi_codes.REPLY_ACCEPTED if accepted else edi_codes.REPLY_REJECTED,
+            "lines": [],
             "supplier_order_no": locked.order.order_no if accepted and locked.order else "",
             "reason": "" if accepted else locked.reason,
             "supplier": _party(),

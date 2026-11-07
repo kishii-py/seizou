@@ -4,6 +4,7 @@
 金額は purchasing.services が数量 × 単価を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
 受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
+注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 """
 
 from decimal import Decimal
@@ -13,20 +14,28 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from seizou.core import edi_codes
+
 
 class PurchaseOrder(models.Model):
     """発注。1 件に明細が複数。発注番号は core の連番が付ける。"""
 
     STATUS_DRAFT = "draft"
     STATUS_SENT = "sent"
+    STATUS_ON_HOLD = "on_hold"
+    STATUS_CONDITIONAL = "conditional"
     STATUS_ACCEPTED = "accepted"
+    STATUS_PARTIAL = "partial"
     STATUS_REJECTED = "rejected"
     STATUS_DELIVERED = "delivered"
     STATUS_CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (STATUS_DRAFT, "下書き"),
         (STATUS_SENT, "送った"),
+        (STATUS_ON_HOLD, "相手が保留した"),
+        (STATUS_CONDITIONAL, "相手が条件付で受けた"),
         (STATUS_ACCEPTED, "相手が受け入れた"),
+        (STATUS_PARTIAL, "一部納品"),
         (STATUS_REJECTED, "断られた"),
         (STATUS_DELIVERED, "納品された"),
         (STATUS_CANCELLED, "取消"),
@@ -41,15 +50,17 @@ class PurchaseOrder(models.Model):
     )
     order_date = models.DateField("発注日")
     status = models.CharField(
-        "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_DRAFT
+        "状態", max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT
     )
     note = models.CharField("備考", max_length=500, blank=True)
-    # 注文回答 (相手が承認か断りをした結果)。connect の受け口が purchasing.services の mark_accepted・mark_rejected で書く。
+    # 注文回答 (相手の答え)。connect の受け口が purchasing.services の mark_accepted・mark_rejected・mark_conditional・mark_on_hold で書く。
     # 日時はこちらに届いて当てた時刻 (相手の時計は使わない)。
     replied_at = models.DateTimeField("注文回答の日時", null=True, blank=True)
     reply_note = models.CharField("断りの理由", max_length=500, blank=True)
     # 当てた注文回答の番号。同じ番号が 2 回届いたら 2 回目は何もしない (R11 の考え。DB の一意の制約も)。
     reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
+    # 第 1 版に最後に当てた注文回答の EDI のコード。connect の受け口が purchasing.services の mark_* で書く。版 2 からの答えは connect の送った注文の行 (Outbox.reply_type)。
+    reply_type = models.CharField("注文回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_TYPES, blank=True)
 
     # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
@@ -97,6 +108,12 @@ class PurchaseOrderLine(models.Model):
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
+    # 相手の最後の注文回答の、この明細の答え (EDI の注文回答明細回答タイプコードと、条件付受諾の回答の値)。
+    # connect の受け口が purchasing.services の mark_conditional・record_line_replies で書き、ほかの答えが届くと空に戻す。
+    reply_type = models.CharField("回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_LINE_TYPES, blank=True)
+    reply_unit_price = models.DecimalField("回答単価", max_digits=14, decimal_places=2, null=True, blank=True)
+    reply_qty = models.DecimalField("回答数量", max_digits=12, decimal_places=2, null=True, blank=True)
+    reply_due_date = models.DateField("回答納期", null=True, blank=True)
 
     class Meta:
         verbose_name = "発注の明細"

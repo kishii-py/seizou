@@ -20,6 +20,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from seizou.core import edi_codes
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.views import model_url
 
@@ -124,14 +125,22 @@ def _sent_event(outbox) -> Event:
     return Event(outbox.sent_at, "sent", title, _url(outbox))
 
 
+#: 注文回答のタイプ (中小企業共通 EDI の注文回答タイプコード) → 流れの題。辞退 (RE) は理由を添えるので _reply_event が作る
+_REPLY_TITLES = {
+    edi_codes.REPLY_ACCEPTED: "相手が受け入れた",
+    edi_codes.REPLY_CONDITIONAL: "相手が条件付で受けた",
+    edi_codes.REPLY_PENDING: "相手が保留した",
+}
+
+
 def _reply_event(purchase_order) -> Event:
-    # 注文回答の結果の列は無い。断りは理由が要る (connect の断るの form と services) ので、断りの理由か状態で見分ける。
-    # 断られた後に取り消した発注 (取消) と、断られた後に全部を受け入れた発注 (納品された) も断りとして出す。
-    rejected = purchase_order.status in (purchase_order.STATUS_REJECTED, purchase_order.STATUS_CANCELLED)
-    if rejected or purchase_order.reply_note:
-        title = f"相手に断られた (理由: {purchase_order.reply_note})" if purchase_order.reply_note else "相手に断られた"
+    # 題は発注の注文回答のタイプ (reply_type) で選ぶ。前からある発注も migration が表の値から埋めてある。
+    if purchase_order.reply_type in _REPLY_TITLES:
+        title = _REPLY_TITLES[purchase_order.reply_type]
+    elif purchase_order.reply_note:
+        title = f"相手に断られた (理由: {purchase_order.reply_note})"
     else:
-        title = "相手が受け入れた"
+        title = "相手に断られた"
     return Event(purchase_order.replied_at, "reply", title)
 
 

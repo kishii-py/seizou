@@ -112,7 +112,10 @@ REFUSAL_HEADS = (
 REFUSAL_FILES = {
     "src/seizou/orders/services.py": (),
     "src/seizou/shipping/services.py": (),
-    "src/seizou/purchasing/services.py": ("mark_sent", "mark_accepted", "mark_rejected"),
+    "src/seizou/purchasing/services.py": (
+        "mark_sent", "mark_accepted", "mark_rejected", "mark_conditional", "mark_on_hold", "record_line_replies",
+        "_lock_waiting_order",
+    ),
     "src/seizou/billing/services.py": (),
     "src/seizou/workorders/services.py": (),
     "src/seizou/progress/services.py": (),

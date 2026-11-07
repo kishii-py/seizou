@@ -278,7 +278,7 @@ def test_unsent_order_skips_sending_and_unreachable_acceptance(user, subcontract
     po = _unsent_but_replied(user, subcontractor, item)
     services.receive(_line(po), Decimal("4"), timezone.localdate(), user)
     po.refresh_from_db()
-    assert po.status == po.STATUS_ACCEPTED  # 一部だけ受け入れた (種のままの形)
+    assert po.status == po.STATUS_PARTIAL  # 一部納品
 
     band = stage_band(po)
 

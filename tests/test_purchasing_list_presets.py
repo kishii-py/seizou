@@ -93,6 +93,7 @@ def test_purchase_order_tabs_and_counts(client_logged_in, four_orders):
         ("下書き", 1, False),
         ("送った", 1, False),
         ("相手が受け入れた", 1, False),
+        ("一部納品", 0, False),
     ]
     body = response.content.decode()
     assert body.count('id="list-presets"') == 1
@@ -131,6 +132,7 @@ def test_tab_counts_follow_keyword_but_not_other_filters(client_logged_in, user,
         ("下書き", 0, False),
         ("送った", 1, False),
         ("相手が受け入れた", 0, False),
+        ("一部納品", 0, False),
     ]
     assert all("q=S002" in href for href in _hrefs(response).values())
 
@@ -141,6 +143,7 @@ def test_tab_counts_follow_keyword_but_not_other_filters(client_logged_in, user,
         ("下書き", 1, False),
         ("送った", 2, False),
         ("相手が受け入れた", 0, False),
+        ("一部納品", 0, False),
     ]
     for href in _hrefs(response).values():
         assert "per=20" in href and "sort=-po_no" in href
@@ -170,6 +173,7 @@ def test_poll_redraws_tabs_out_of_band(client_logged_in, user, item):
         ("下書き", 0, False),
         ("送った", 2, True),
         ("相手が受け入れた", 0, False),
+        ("一部納品", 0, False),
     ]
 
     services.mark_accepted(first, user)
@@ -178,6 +182,7 @@ def test_poll_redraws_tabs_out_of_band(client_logged_in, user, item):
         ("下書き", 0, False),
         ("送った", 1, True),
         ("相手が受け入れた", 1, False),
+        ("一部納品", 0, False),
     ]
 
 

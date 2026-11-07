@@ -354,7 +354,7 @@ def test_detail_marks_changed_heading(client_logged_in, user, subcontractor, ite
     services.receive(po.lines.get(), Decimal("4"), date(2026, 11, 3), user)
     body = _detail(client_logged_in, po, live=_live(body))
     assert "seizou-changed" in _heading(body).split(">")[0]
-    assert _live(body) == f"po-{po.pk}:accepted:0:4"
+    assert _live(body) == f"po-{po.pk}:partial:0:4"
 
     again = _detail(client_logged_in, po, live=_live(body))
     assert "seizou-changed" not in again
