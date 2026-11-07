@@ -242,7 +242,7 @@ def update_connection(connection, partner, url, secret_env, direction, user, *, 
         return locked
 
 
-def receive(raw_body: bytes, headers: Mapping[str, str]):
+def receive(raw_body: bytes, headers: Mapping[str, str], *, remote: str = ""):
     """受け口が受けた注文のデータを確かめ、受信箱に入れる (R11・R12)。
 
     raw_body は受けた本文の bytes (整形しない)。headers は見出しの名前 → 値の mapping。
@@ -257,11 +257,14 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が self_invoice_response (仕入明細回答) なら受信箱に入れず、元の仕入明細の明細に答えを書いて SelfInvoiceResponseReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     署名は受ける向きの全部のつながりの鍵で確かめ、署名の合う取引先が 2 つ以上なら断る (_signed_partner)。
+    remote は接続元の IP の字 (受け口の view が core.login_guard.client_address で読んで渡す。名前でだけ渡せる)。
+    結果が決まったら、接続元と結果をログ seizou.connect に 1 行書く (_log_receive)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
     partner, verified_id, refused = _signed_partner(raw_body, headers, msg_id)
     if refused is not None:
+        _log_receive(remote, msg_id, None, refused)
         return refused
 
     # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
@@ -269,7 +272,21 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     exchange = _exchange_received(partner, verified_id, raw_body)
     result = _receive_verified(partner, verified_id, raw_body, msg_id)
     _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
+    _log_receive(remote, msg_id, partner, result)
     return result
+
+
+def _log_receive(remote: str, msg_id, partner, result) -> None:
+    """受け口の結果を 1 行ログ seizou.connect に書く (接続元・webhook-id・取引先の pk・結果)。
+
+    取引先が決まらない (署名の前に断った) ときの pk は「-」、接続元が空なら「-」。結果は「受けた」か「断った: <理由>」。
+    断ったは warning、受けたは info。本文と鍵の値は書かない (webhook-id は見出しの字なので %r で書く)。
+    """
+    who = partner.pk if partner is not None else "-"
+    if isinstance(result, str):
+        logger.warning("受け口の記録: 接続元 %s webhook-id=%r 取引先 %s 結果 断った: %s", remote or "-", msg_id, who, result)
+    else:
+        logger.info("受け口の記録: 接続元 %s webhook-id=%r 取引先 %s 結果 受けた", remote or "-", msg_id, who)
 
 
 def _signed_partner(raw_body: bytes, headers: Mapping[str, str], msg_id):

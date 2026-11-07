@@ -7,6 +7,7 @@
 - 4 送る先を外の名前に絞る鍵 (settings の SEIZOU_CONNECT_PUBLIC_ONLY): 真のときだけ https の URL だけを保存し、送る前に名前を引く。
 - 5 受けた会話の添付の数: 送る側と同じ上限 (MAX_CHAT_FILES = 1) より多い言葉は断る。
 - 6 返事の本文の上限と全体の締切: 送る口は返事の本文を 64KB まで読み、30 秒で読むのをやめる。添付を取りに行く口は 120 秒。
+- 7 受け口の記録: 結果が決まったところで、接続元・webhook-id・取引先の pk・結果の 1 行をログに書く。
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (外へは出ない)。
 鍵は試験のたびに signing.new_secret() で作って環境変数に置き、ファイルに書かない。取引先・部品・会社は作り物。
 """
@@ -23,6 +24,7 @@ import time
 import uuid
 
 import pytest
+from django.urls import reverse
 
 from seizou.connect import services, signing
 from seizou.connect.models import ChatFile, ChatMessage, Connection, Inbox, Outbox
@@ -581,3 +583,53 @@ def test_fetch_chat_file_stops_reading_at_the_deadline(monkeypatch, media, user,
     )
     assert slow.closed
 
+
+# ---------------------------------------------------------------- 7 受け口の記録の 1 行
+
+
+@pytest.mark.django_db
+def test_receive_order_logs_one_line_with_remote(monkeypatch, client, user, customer, caplog):  # noqa: F811
+    """受け口は結果が決まったところで 1 行 (接続元・webhook-id・取引先の pk・結果) を書く。本文の字と鍵の値は書かない。"""
+    caplog.set_level(logging.INFO, logger="seizou.connect")
+    value = signing.new_secret()
+    monkeypatch.setenv(FIRST_ENV, value)
+    services.register_connection(customer, "", FIRST_ENV, "receive", user)
+
+    def post(body, headers, remote):
+        return client.post(
+            reverse("connect:receive"), data=body, content_type="application/json", headers=headers, REMOTE_ADDR=remote
+        )
+
+    good_id, wrong_id, empty_id = (str(uuid.uuid4()) for _ in range(3))
+    good, wrong = _order_body(good_id), _order_body(wrong_id)
+    empty = json.dumps({"id": empty_id, "kind": "order", "lines": []}).encode("utf-8")
+    responses = [
+        post(good, signing.headers_for(value, good_id, good), "198.51.100.7"),
+        post(wrong, signing.headers_for(signing.new_secret(), wrong_id, wrong), "198.51.100.8"),
+        post(empty, signing.headers_for(value, empty_id, empty), "198.51.100.9"),
+    ]
+
+    assert [response.status_code for response in responses] == [200, 400, 400]
+    lines = [record for record in caplog.records if record.getMessage().startswith("受け口の記録:")]
+    assert [record.levelname for record in lines] == ["INFO", "WARNING", "WARNING"]
+    assert [record.getMessage() for record in lines] == [
+        f"受け口の記録: 接続元 198.51.100.7 webhook-id='{good_id}' 取引先 {customer.pk} 結果 受けた",
+        f"受け口の記録: 接続元 198.51.100.8 webhook-id='{wrong_id}' 取引先 - 結果 断った: {services.MESSAGE_SIGNATURE_MISMATCH}",
+        f"受け口の記録: 接続元 198.51.100.9 webhook-id='{empty_id}' 取引先 {customer.pk} 結果 断った: {services.MESSAGE_RECEIVE_NO_LINES}",
+    ]
+    for text in ("作り物の送る会社", "作り物の受ける会社", "TEST-001", value[len("whsec_") :]):
+        assert text not in caplog.text
+
+
+@pytest.mark.django_db
+def test_receive_without_remote_keeps_working(monkeypatch, user, customer, caplog):  # noqa: F811
+    """既にある呼び手 (位置の引数 2 つ) は今のまま。接続元が無ければ「-」と書く。"""
+    caplog.set_level(logging.INFO, logger="seizou.connect")
+    value = signing.new_secret()
+    monkeypatch.setenv(FIRST_ENV, value)
+    services.register_connection(customer, "", FIRST_ENV, "receive", user)
+    msg_id = str(uuid.uuid4())
+    body = _order_body(msg_id)
+
+    assert isinstance(services.receive(body, signing.headers_for(value, msg_id, body)), Inbox)
+    assert f"受け口の記録: 接続元 - webhook-id='{msg_id}' 取引先 {customer.pk} 結果 受けた" in caplog.text
