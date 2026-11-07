@@ -1,4 +1,9 @@
-{% load static %}
-{# progress の入力の小窓の中身。土台の小窓 (core/_form_modal.html) のまま描き、実績の新規登録のときだけ、「指示書の工程」を選び直したときに完了の印の字 (PROG-1c) を出し入れする JS を読む (画面の全体は progress/progress_form.html が読む)。htmx が差し替えの後に script を動かす。 #}
-{% include "core/_form_modal.html" %}
-{% if request.resolver_match.url_name == "progress_create" %}<script src="{% static 'progress/progress-form.js' %}" data-completed-url="{% url 'progress:step_completed' 0 %}"></script>{% endif %}
+{% load static seizou_icons %}
+{# progress の入力の小窓の中身。入力の土台は小窓のテンプレートを app ごとに選ぶ (progress/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける (billing/_form_modal.html と同じ形)。 #}
+{# 実績の削除: 全体の画面と同じ確かめのカード (progress/_progress_delete_card.html) を form_card で渡す。ほかは土台の小窓のまま。 #}
+{# 実績の新規登録: 「指示書の工程」を選び直したときに完了の印の字 (PROG-1c) を出し入れする JS を読む (画面の全体は progress/progress_form.html が読む)。htmx が差し替えの後に script を動かす。 #}
+{# 実績の編集: カードの下に「削除」を置く。押すと同じ小窓の中身が削除の確かめに替わる (data-modal-form。開いた元の道 ?next= を引き継ぐ)。 #}
+{% with url_name=request.resolver_match.url_name %}{% if url_name == "progress_delete" %}{% include "core/_form_modal.html" with form_card="progress/_progress_delete_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}
+{% if url_name == "progress_create" %}<script src="{% static 'progress/progress-form.js' %}" data-completed-url="{% url 'progress:step_completed' 0 %}"></script>
+{% elif url_name == "progress_update" and object %}{% url 'progress:progress_delete' object.pk as delete_url %}<div class="mt-4 flex flex-wrap items-center gap-2"><a class="btn btn-ghost btn-sm text-error" href="{{ delete_url }}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}" data-modal-form="{{ delete_url }}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}">{% icon "x" "size-4" %}この実績を削除</a></div>
+{% endif %}{% endwith %}

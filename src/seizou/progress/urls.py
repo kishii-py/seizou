@@ -13,5 +13,8 @@ urlpatterns = [
     path("", views.ProgressBoardView.as_view(), name="progress_list"),
     path("records/", views.ProgressListView.as_view(), name="record_list"),
     path("records/new/", views.ProgressCreateView.as_view(), name="progress_create"),
+    # 実績を直す・消す画面も実績の一覧 (records/) の下に置く (開いた間は左のメニューの「実績」に印が付く)。
+    path("records/<int:pk>/edit/", views.ProgressUpdateView.as_view(), name="progress_update"),
+    path("records/<int:pk>/delete/", views.ProgressDeleteView.as_view(), name="progress_delete"),
     path("steps/<int:pk>/completed/", views.step_completed, name="step_completed"),
 ]

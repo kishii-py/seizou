@@ -14,7 +14,7 @@ from django.views.decorators.http import require_GET
 from seizou.core.views import BaseFormView, BaseListView, field_at
 
 from . import services
-from .forms import ProgressRecordForm
+from .forms import ProgressDeleteForm, ProgressRecordForm, ProgressUpdateForm
 from .models import Progress
 
 
@@ -79,6 +79,34 @@ class ProgressCreateView(BaseFormView):
     template_name = "progress/progress_form.html"
     screen_name = "実績の新規登録"
     screen_help = "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。"
+
+
+class ProgressUpdateView(BaseFormView):
+    """実績の編集 (実績の一覧の行の ⋮ と右クリックの「編集」から小窓で開く。PROG-1d・1e)。保存の後は ?next= の道 (実績の一覧) へ戻る。
+
+    使う人: 製造・生産管理 / いつ: 入れた実績の数や完了の印を間違えたとき / 何のために: 実績を直す / 次にすること: 実績の一覧で確かめる
+    """
+
+    model = Progress
+    form_class = ProgressUpdateForm
+    service = staticmethod(services.update_progress)
+    template_name = "progress/progress_form.html"
+    screen_name = "実績の編集"
+    screen_help = "入れた実績の良品の数・不良の数・完了の印・日時・備考を直します。工程は直せません。別の工程に入れた実績は消して入れ直します。"
+
+
+class ProgressDeleteView(BaseFormView):
+    """実績の削除の確かめ (実績の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。PROG-1e)。消した後は ?next= の道 (実績の一覧) へ戻る。
+
+    使う人: 製造・生産管理 / いつ: 別の工程や二重に入れた実績を見つけたとき / 何のために: 間違えて入れた実績を消す / 次にすること: 実績の一覧で確かめる
+    """
+
+    model = Progress
+    form_class = ProgressDeleteForm
+    service = staticmethod(services.delete_progress)
+    template_name = "progress/progress_delete.html"
+    screen_name = "実績の削除"
+    screen_help = "間違えて入れた実績を消します。消した実績は戻せません。"
 
 
 @login_required

@@ -84,6 +84,47 @@ def record_progress(workorder_step, qty, recorded_at, user, *, note="", defect_q
         return created
 
 
+def update_progress(progress, qty, recorded_at, user, *, defect_qty=0, completes_step=False, note=""):
+    """実績の良品の数・不良の数・完了の印・日時・備考を直す。工程 (workorder_step) と人 (recorded_by) は変えない (PROG-1d = b)。
+
+    間違えて付けた完了の印も、ここで外す。在庫は動かさない (実績は在庫を動かさない。入庫は stock の「製造の完了を入庫にする」)。
+    返す実績に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> の実績を直しました。」) を付ける (表に書かない)。
+    予定を超えた実績の知らせは検査の層 (R07 の OverProgressOnUpdate) が services の前に見る。ここでは止めない (現物優先)。
+    訳: 良品も不良も無い空の実績と、負の数の実績にしないため (直すときも入れるときと同じ R02 を当てる)。出所 = RULES.md R02 と作者の決め (C103-Q2 = a。11-07 07:08。PROG-1d = b。11-07 07:04)。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
+    qty = _dec(qty)
+    defect_qty = _dec(defect_qty)
+    with transaction.atomic():
+        step = _WorkOrderStep.objects.select_for_update().get(pk=progress.workorder_step_id)
+        locked = Progress.objects.select_for_update().get(pk=progress.pk)
+        _check_r02(qty, defect_qty)
+        locked.qty = qty
+        locked.defect_qty = defect_qty
+        locked.completes_step = bool(completes_step)
+        locked.recorded_at = recorded_at
+        locked.note = note
+        locked.save(update_fields=["qty", "defect_qty", "completes_step", "recorded_at", "note"])
+        locked.saved_message = f"{_step_text(step)} の実績を直しました。"
+        return locked
+
+
+def delete_progress(progress, user):
+    """実績を消す (PROG-1e = a。別の工程や二重に入れた実績を消す)。既に無ければ日本語の ValueError。
+
+    行は atomic の中で取り直して消す。在庫は動かさない (実績は在庫を動かさない)。user は受けるだけ (記録の列が無い)。
+    返す物 (消した実績。pk は None) に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> の実績 <数> を削除しました。」) を付ける。
+    """
+    with transaction.atomic():
+        row = Progress.objects.select_for_update().filter(pk=progress.pk).first()
+        if row is None:
+            raise ValueError("削除できません。この実績は既に消してあります。")
+        text = f"{_step_text(row.workorder_step)} の実績 {_qty_text(row.qty)} を削除しました。"
+        row.delete()
+        row.saved_message = text
+        return row
+
+
 def recorded_qty(workorder_step):
     """指示書の工程に対する実績の合計 (列に持たない)。"""
     return Progress.objects.filter(workorder_step=workorder_step).aggregate(

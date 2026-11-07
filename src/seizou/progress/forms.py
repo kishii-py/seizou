@@ -86,6 +86,70 @@ class ProgressRecordForm(forms.Form):
         }
 
 
+class ProgressUpdateForm(forms.Form):
+    """実績の編集 (PROG-1d = b)。良品の数・不良の数・完了の印・日時・備考を直す。工程の欄は出さない (別の工程に入れた実績は消して入れ直す)。
+
+    欄の名前・説明・誤りの字は実績の入力 (ProgressRecordForm) と同じ。
+    ModelForm にしない。ModelForm は検査の前に新しい値を対象へ書き込み、検査の層 (R07) が直す前の数を読めなくなる。
+    土台は名指しの instance に直す前の実績を渡すので、その値を初期値にだけ使う (instance には書き込まない。出荷の編集と同じ形)。
+    どの工程の実績かは保存のボタンの字に出す (「<指示書の番号> <順> <工程の名前> の実績を直す」)。
+    """
+
+    submit_label = "実績を直す"
+
+    qty = forms.DecimalField(
+        label=ProgressRecordForm.base_fields["qty"].label,
+        max_digits=12,
+        decimal_places=2,
+        help_text=ProgressRecordForm.base_fields["qty"].help_text,
+    )
+    defect_qty = forms.DecimalField(
+        label=ProgressRecordForm.base_fields["defect_qty"].label,
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0"),
+        help_text=ProgressRecordForm.base_fields["defect_qty"].help_text,
+        error_messages={"min_value": ProgressRecordForm.base_fields["defect_qty"].error_messages["min_value"]},
+    )
+    completes_step = forms.BooleanField(
+        label=ProgressRecordForm.base_fields["completes_step"].label,
+        required=False,
+        help_text=ProgressRecordForm.base_fields["completes_step"].help_text,
+    )
+    recorded_at = forms.DateTimeField(
+        label="日時",
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+    )
+    note = forms.CharField(label="備考", max_length=500, required=False)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            for name in ("qty", "defect_qty", "completes_step", "recorded_at", "note"):
+                self.initial.setdefault(name, getattr(instance, name))
+            self.submit_label = f"{instance.workorder_step} の実績を直す"
+
+    def service_kwargs(self):
+        return {
+            "qty": self.cleaned_data["qty"],
+            "defect_qty": self.cleaned_data["defect_qty"] or Decimal("0"),
+            "completes_step": self.cleaned_data["completes_step"],
+            "recorded_at": self.cleaned_data["recorded_at"],
+            "note": self.cleaned_data["note"],
+        }
+
+
+class ProgressDeleteForm(forms.Form):
+    """実績の削除の確かめ (PROG-1e = a)。欄は無い (土台が delete_progress(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。"""
+
+    submit_label = "削除"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self):
+        return {}
+
+
 def _chosen_pk(value):
     """選んである指示書の工程の pk (送った値か初期値。model・pk・pk の字のどれか)。読めなければ None。"""
     pk = str(getattr(value, "pk", value) or "")

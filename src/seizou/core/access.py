@@ -164,6 +164,9 @@ FREE_ACTIONS = frozenset(
         "feedback.create_feedback",
         "feedback.update_feedback",
         "progress.record_progress",
+        # 実績を直す・消す (C103。権限は実績を入れるのと同じ = PROG-1d)
+        "progress.update_progress",
+        "progress.delete_progress",
         "attachments.add_attachment",
         "attachments.remove_attachment",
         "stock.record_finished",
