@@ -9,6 +9,7 @@ import re
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils.timezone import localtime
 
 from seizou.assistant import services as assistant_services
 from seizou.feedback import chat, services
@@ -151,7 +152,7 @@ def test_detail_shows_band_between_head_and_tabs(client_logged_in, plain, manage
     assert band.count('<li class="step step-primary" data-content="✓"') == 1
     assert band.count('<li class="step" data-step=') == 3
     assert band.count("step-success") == 0 and band.count("step-error") == 0
-    assert "tester" in band and row.created_at.strftime("%Y-%m-%d") in band
+    assert "tester" in band and localtime(row.created_at).strftime("%Y-%m-%d") in band
     assert 'id="feedback-fixed"' not in html and 'id="feedback-dismissed"' not in html
 
     services.mark_sent(row, manager, sent_url=ISSUE_URL)
