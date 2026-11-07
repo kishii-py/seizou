@@ -260,15 +260,50 @@ def test_seven_templates_have_bottom_row():
         assert source.count(tag) == 1, tag
 
 
-def test_input_css_has_sticky_row():
+def test_input_css_row_is_bottom_band():
+    """下の行は上の帯と同じ形の下の帯 (C113。決め UX-SAVEBAR-1 = c)。
+
+    窓に対して置き (fixed)、本文の列の左右いっぱい・上に線 1 本・影と角の丸みは無し・地は base-100・左の余白は上の帯と同じ
+    (16px・lg 以上 24px)。右の 64px は右下の「AI に質問」の丸 (右から 24px・幅 40px) と保存のボタンを重ねない分。
+    lg の左の 16rem は左のメニューの幅。メニューの幅・上の帯の余白・丸の置き場を変えるとこの試験が落ちるので、input.css も一緒に直す。
+    """
     css = INPUT_CSS.read_text(encoding="utf-8")
     start = css.index(".seizou-save-row {")
     rule = css[start : css.index("}", start)]
-    assert "position: sticky;" in rule
-    assert "bottom: 0;" in rule
-    assert ".seizou-save-slot {" in css
-    assert "html:has(.seizou-save-row) {" in css
-    assert "scroll-padding-bottom" in css
+    for line in (
+        "position: fixed;",
+        "left: 0;",
+        "right: 0;",
+        "bottom: 0;",
+        "margin: 0;",
+        "padding: 12px 64px 12px 16px;",
+        "border-top: 1px solid var(--color-base-300);",
+        "background: var(--color-base-100);",
+    ):
+        assert line in rule, line
+    for word in ("sticky", "box-shadow", "border-radius", "-24px"):
+        assert word not in rule, word
+    # lg の決まり (2 つ目の「.seizou-save-row {」)。頭は Tailwind の lg と同じ単位の 64rem (px で書かない)
+    second = css.index(".seizou-save-row {", start + 1)
+    lg_rule = css[second : css.index("}", second)]
+    assert css[:second].rstrip().endswith("@media (min-width: 64rem) {")
+    assert "left: 16rem;" in lg_rule
+    assert "padding: 12px 64px 12px 24px;" in lg_rule
+    # 16rem と余白の元の字 (左のメニューの幅・上の帯の左右の余白・右下の丸の置き場)
+    templates = CORE / "templates" / "core"
+    assert '<aside class="flex h-screen w-64 ' in (templates / "_sidebar.html").read_text(encoding="utf-8")
+    assert "border-b border-base-300 bg-base-100 px-4 lg:px-6" in (templates / "_topbar.html").read_text(encoding="utf-8")
+    panel = PACKAGE / "assistant" / "templates" / "assistant" / "_panel.html"
+    assert 'class="fixed bottom-6 right-6 ' in panel.read_text(encoding="utf-8")
+    # 本文の列の下の余白・欄の無い確かめの枠を描かない決まり・字の置き場・Tab の送り
+    for head in (
+        "main:has(.seizou-save-row) {",
+        "form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {",
+        ".seizou-save-slot {",
+        "html:has(.seizou-save-row) {",
+    ):
+        assert head in css, head
+    assert "scroll-padding-bottom: 96px;" in css
 
 
 # --- 2. 字の出ない所 ---

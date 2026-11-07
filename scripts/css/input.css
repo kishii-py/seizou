@@ -346,26 +346,44 @@ body > .ts-dropdown [data-select-create]:hover {
   position-try-order: normal;
 }
 
-/* 入力の画面の下の行 (キャンセルと保存)。開いた時から窓の下の端に貼り付ける (C21。決め C21-1 = e)。
-   印は 9 つの下の行の固定の class seizou-save-row (core/_form_card.html・受注・発注・一括出荷・説明書の確かめと編集・請求書の新規登録・
-   納品書を作る・表示の設定の画面の全体。小窓の形には付けない)。
-   form が窓より短い画面では、行はカードの下の端にある。一番下まで送ると、行はカードの下の端に戻る。
-   margin の -24px はカードの中の余白 p-6 の分 (行をカードの左右と下の端まで広げる)。右の 64px は右下の「AI に質問」の丸
-   (assistant/_panel.html。右から 24px・幅 40px) と重ねない分で、丸の無い画面でも同じ 64px を空ける (class を分けない。決め C37 で
-   一度 24px にしたが、本人の決め 11-07 09:3x で右下の丸を戻したので 64px に戻した)。
-   左の字の置き場 seizou-save-slot は書きかけの字 (core/_save_bar.html) を置き、幅 640 未満は行の上の 1 段を打つ前から取っておく
-   (字が出ても行の高さを変えない)。幅 640 以上は字の置き場がボタンを右へ寄せる。 */
+/* 入力の画面の下の帯 (キャンセルと保存)。上の帯 (core/_topbar.html の header) と同じ形にし、いつも窓の下の端に置く
+   (C21 の形を C113 で変えた。決め C21-1 = e (11-06)・UX-SAVEBAR-1 = c (11-07))。
+   形: 本文の列の左右いっぱい (左のメニューの右の端から窓の右の端まで)・上に線 1 本・影と角の丸みは無し・地は上の帯の標準と同じ base-100
+   (人ごとの表示の設定で上の帯に色を選んだ人でも、下の帯は base-100 のまま。上の [data-seizou-header] の決まりは下の帯に当てない)・
+   左の余白も上の帯と同じ (px-4 lg:px-6 = 16px・24px)。
+   右の 64px は右下の「AI に質問」の丸 (assistant/_panel.html。右から 24px・幅 40px) と保存のボタンを重ねない分で、丸の無い画面でも
+   同じ 64px を空ける (class を分けない。決め C37 で一度 24px にしたが、本人の決め 11-07 09:3x で右下の丸を戻したので 64px に戻した)。
+   印は下の行の固定の class seizou-save-row (core/_form_card.html と、それを写した入力のカード・受注・説明書の確かめと編集・
+   表示の設定の画面の全体。数は git grep で数える)。小窓の形には付けない。
+   行は form の最後の子のまま置く (保存のボタンが form の送るボタンの最後の物で、Ctrl+Enter が押す物 = core/_enter_guard.html)。
+   sticky は親 (form = カード) の箱の外へ出られず、短い画面で窓の下の端に置けないので fixed にする。fixed が窓に対して置かれるのは、
+   本文の列から行までの箱に transform (translate・rotate・scale も)・filter・backdrop-filter・perspective・contain・will-change・
+   container-type が無いため (足すと、窓でなくその箱に対して置かれる)。
+   左の 16rem は左のメニューの幅 (core/_sidebar.html の aside の w-64)。メニューは lg 以上だけ並んで開く (core/base.html の
+   lg:drawer-open) ので、それより狭い幅は 0。lg の決まりは Tailwind の lg と同じ単位の 64rem で書く (px で書くと、ブラウザの字の
+   大きさを変えた人の画面で、メニューが開く幅と帯が動く幅がずれる)。
+   メニューの幅・上の帯の左右の余白・右下の丸の置き場を変えたら、ここの 16rem と余白も一緒に直す (tests/test_core_save_bar.py が 3 つの字を見る)。
+   z-index 10 は、上の帯 (30)・狭い幅で開いたメニュー (40)・AI チャットの窓と右下の丸 (40)・右上の知らせと字で探す欄の候補 (50) の下で、
+   本文の中の表の止めた列 (2〜4) の上。
+   左の字の置き場 seizou-save-slot は書きかけの字 (core/_save_bar.html) を置き、幅 640 未満は帯の上の 1 段を打つ前から取っておく
+   (字が出ても帯の高さを変えない)。幅 640 以上は字の置き場がボタンを右へ寄せる。 */
 .seizou-save-row {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 10;
   background: var(--color-base-100);
-  margin: 24px -24px -24px;
-  padding: 12px 64px 12px 24px;
+  margin: 0;
+  padding: 12px 64px 12px 16px;
   border-top: 1px solid var(--color-base-300);
-  border-radius: 0 0 0.75rem 0.75rem;
-  box-shadow: 0 -8px 12px -10px rgb(0 0 0 / 0.25);
   row-gap: 8px;
+}
+@media (min-width: 64rem) {
+  .seizou-save-row {
+    left: 16rem;
+    padding: 12px 64px 12px 24px;
+  }
 }
 .seizou-save-slot {
   flex-basis: 100%;
@@ -379,6 +397,40 @@ body > .ts-dropdown [data-select-create]:hover {
     flex-basis: auto;
     margin-right: auto;
   }
+}
+/* 本文の列 (core/base.html の main) の下の端に、下の帯の高さの余白を足す (帯は流れの外にあるので、足さないと一番下まで送っても
+   最後の欄が帯に隠れる。C113)。値 = 帯の高さ + main の標準の下の余白 (p-4 = 1rem・lg:p-6 = 1.5rem)。帯の高さは、上下の余白 12px・
+   線 1px・字の置き場 20px・段の間 8px・ボタン 40px から数えた (幅 640 未満 93px・640 以上 65px。C21 の見本で 390×844 と 1280×720 を
+   測った値と同じ)。lg より狭い幅は、保存のボタンの字が長いとき (受注と発注の「1 行・合計 ¥4,800 で受注する」の形) にボタンが 2 段に
+   折り返す分 (段の間 8px + ボタン 40px) を足す。
+   右下の「AI に質問」の丸を出す画面の main の下の余白 (core/base.html の pb-34 lg:pb-34 = 136px) も、入力の画面ではこの決まりが上書きする。
+   丸 (下から 24px・高さ 40px = 窓の下の端から 64px まで) は帯の高さ (65px 以上) の中に入り、帯より上の欄を隠さないため。
+   main の class の字は変えない (tests/test_input_screens.py の MAIN_PLAIN と MAIN_WITH_ROOM)。層の外の決まりなので Tailwind の p-4・lg:p-6・
+   pb-34 より強い。 */
+main:has(.seizou-save-row) {
+  padding-bottom: calc(141px + 1rem);
+}
+@media (min-width: 640px) {
+  main:has(.seizou-save-row) {
+    padding-bottom: calc(113px + 1rem);
+  }
+}
+@media (min-width: 64rem) {
+  main:has(.seizou-save-row) {
+    padding-bottom: calc(65px + 1.5rem);
+  }
+}
+/* 欄の無い確かめ (納品書・請求書・入金の取消と、注文を送り直すの画面の全体。core/_form_card.html) は、下の帯が流れの外に出ると、
+   カードの中に隠しの欄しか残らず、中身の無い白い枠になる。その枠 (余白・線・地・影) を描かない (C113。白い枠に見える物の無い帯を
+   作らない = C24 の U69 と同じ考え)。form の箱は消さず (display: contents にすると、ブラウザによって form の役目が支援技術に
+   伝わらなくなることがある)、高さ 0 の箱にするだけにする。
+   当てる印は「form の直下の子が input と下の帯だけ」(tests/test_small_inputs_modal.py の test_no_field_cards_have_no_empty_band が、
+   4 つの画面の HTML がこの形であることを見る)。 */
+form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {
+  padding: 0;
+  border-width: 0;
+  background: transparent;
+  box-shadow: none;
 }
 /* Tab で進んだ欄を、貼り付けた行の上まで送る (96px は見本の 1280×720 と 390×844 で確かめた値)。 */
 html:has(.seizou-save-row) {
