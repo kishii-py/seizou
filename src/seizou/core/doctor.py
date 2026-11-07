@@ -30,6 +30,7 @@ from django.db import DatabaseError, connection
 from django.db.migrations.executor import MigrationExecutor
 
 from seizou.core import backup, conf, media, middleware, services
+from seizou.core.access import KIND_TITLES as ACCESS_TITLES
 
 #: ほかの PC から開けない名前 (ALLOWED_HOSTS にこれだけなら、本番では直す)
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
@@ -400,6 +401,49 @@ def check_settings_blocks() -> list[Row]:
     return [_bad(label, "・".join(missing), f"settings.py に {'と'.join(adds)}{SETTINGS_BLOCKS_FIX}")]
 
 
+#: 権限の判定が記録だけのままのときの直し方 (決め 11-07 22:3x・23:3x)
+ACCESS_CONTROL_FIX = "断られる人がいないかを seizou.access の記録で確かめ終えたら、設定の画面の「権限の判定」で on にする。"
+
+
+def _access_detail(modes: dict) -> str:
+    """権限の判定の 3 つの状態の字 (記録だけ → 使わない → 有効 の順に、あるものだけ「。」でつなぐ)。"""
+    titles = {mode: [ACCESS_TITLES[kind] for kind, value in modes.items() if value == mode] for mode in conf.ACCESS_MODES}
+    parts = []
+    if titles["log"]:
+        note = " (金額を伏せたつもりの人にも金額が見える)" if modes["money"] == "log" else ""
+        parts.append(f"記録だけ: {'・'.join(titles['log'])}{note}")
+    if titles["off"]:
+        note = " (全員が金額を見る)" if modes["money"] == "off" else ""
+        parts.append(f"使わない: {'・'.join(titles['off'])}{note}")
+    if titles["on"]:
+        parts.append(f"有効: {'・'.join(titles['on'])}")
+    return "。".join(parts)
+
+
+def check_access_control(production: bool) -> list[Row]:
+    """権限の判定 (部署・編集の権限・金額の閲覧) が記録だけのままか。conf.access_control で読む (画面で上書きした値も同じに読む)。
+
+    本番の条件で log が 1 つでもあれば直す。off は 1 人で使う会社が選んだ形として良いにし、detail に注を付ける。全部 on なら良い。
+    開発の条件では良いにして、今の状態を 1 行で出す (check_demo_passwords の開発の行と同じ形)。
+    訳: README の「立ち上げてすぐは記録だけ」の決めは残し、本番の条件 (DEBUG=0) で部署・編集・金額の閲覧の判定が「記録だけ」の
+    ままなら、点検が「直す」を出し、終わりの番号 1 で終わる。記録だけで確かめている間に点検が失敗で終わるのは、確かめ終えたら
+    有効にする合図として受け入れる。直し方の字には「断られる人がいないかを seizou.access の記録で確かめ終えたら on にする」と書き、
+    README の「立ち上げてすぐは記録だけ」の文に「その間、本番の点検は直す 1 件で終わる」の 1 句を足し、試験の fixture
+    (tests/test_core_doctor.py の site の SEIZOU) に access_control の on を足す。記録だけのままでは金額を見られない人の決め
+    (21:0x) が働かないため。欠点として、記録だけの間はほかの「直す」が同じ失敗の番号に埋もれやすい。
+    出所 = 本人の決め (11-07 22:3x・23:3x) と README の「選べる設定」の access_control の行。
+    変えてよい条件 = 本人が既定そのものを「止める」に変えるか、点検に中間の段を作るか失敗にしない形に変えると決めたとき。
+    """
+    label = "権限の判定"
+    modes = {kind: conf.access_control(kind) for kind in conf.DEFAULTS["access_control"]}
+    detail = _access_detail(modes)
+    if "log" not in modes.values():
+        return [_good(label, detail)]
+    if production:
+        return [_bad(label, detail, ACCESS_CONTROL_FIX)]
+    return [_good(label, f"{detail}。本番の条件では直すにします")]
+
+
 #: 作り物の利用者が公開の合言葉のままのときの直し方 (決め 11-04 15:0x。依頼書 N116)
 DEMO_PASSWORD_FIX = "アカウント管理で変えてください。"
 
@@ -485,6 +529,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("collectstatic", check_collectstatic, True),
         ("上げたファイルの配り方", check_file_delivery, False),
         ("会社の選べる設定", check_settings, False),
+        ("権限の判定", lambda: check_access_control(production), False),
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),

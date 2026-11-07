@@ -44,6 +44,7 @@ def site(settings, tmp_path):
     settings.SESSION_COOKIE_SECURE = True
     settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {}
+    settings.SEIZOU["access_control"] = {"department": "on", "write": "on", "money": "on"}
     # LOGGING を変えても Django に記録の形を当て直させない (当て直すと seizou の logger の形が後の試験に残る。点検は LOGGING が空でないかだけを見る)
     settings.LOGGING_CONFIG = None
     settings.LOGGING = default_logging()
