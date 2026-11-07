@@ -339,14 +339,15 @@ class ConnectionForm(ServiceModelForm):
         help_text="送る向きのときだけ入れます。例 http://127.0.0.1:8002/connect/receive/order/ 。PC の名前 (点の無い名前) も使えます。",
     )
 
-    field_order = ["partner", "direction", "url", "secret_env"]
+    field_order = ["partner", "direction", "url", "secret_env", "contact_email"]
 
     class Meta:
         model = Connection
-        fields = ["partner", "direction", "secret_env"]
+        fields = ["partner", "direction", "secret_env", "contact_email"]
         help_texts = {
             "direction": "送る = この会社から相手の seizou へ送る (発注・注文回答・出荷の知らせ・検収)。受ける = 相手から届く物を受ける。往復には 2 社とも両方の向きが要るので、2 行に分けて登録します。",
             "secret_env": "鍵の値ではなく、値を入れる環境変数の名前です (SEIZOU_PARTNER_<相手の会社の id を大文字にした物>_SECRET)。値は .env にだけ置きます。",
+            "contact_email": "この取引先から会話が届いたら、このアドレスへメールで知らせます (会話の 1 行目と画面へのリンクだけ)。送る向きと受ける向きのどちらの行に入れても届きます。両方の行に違うアドレスを入れたときは、受ける向きの行のアドレスへ知らせます。取引先へは送りません。",
         }
 
     def __init__(self, *args, instance=None, **kwargs):
@@ -362,6 +363,7 @@ class ConnectionForm(ServiceModelForm):
             "url": data["url"].strip(),
             "secret_env": data["secret_env"].strip(),
             "direction": data["direction"],
+            "contact_email": (data.get("contact_email") or "").strip(),
         }
 
 

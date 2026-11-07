@@ -221,6 +221,11 @@ NOT_FROM_SCREEN = (
         "会話の書く欄は form の max_length で 2000 字まで。超えた字は form が止める (connect/forms.py の ChatMessageForm)。",
     ),
     (
+        "connect",
+        "保存できません。自社の連絡先のメールアドレスが、メールアドレスの形ではありません。例 info@example.jp の形で入れてください。",
+        "つながりの form の欄は model のメールアドレスの欄 (254 字まで) で、形の違う字と長い字は form が止める (connect/forms.py の ConnectionForm)。",
+    ),
+    (
         "core",
         "保存できません。… は画面からは変えられません。答えの YAML の settings に書いてください。",
         "設定の変更の画面は、画面から変えない鍵を 404 にする (core/settings_screen.py の SettingUpdateView.dispatch)。",
