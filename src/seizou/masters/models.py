@@ -227,6 +227,10 @@ class Item(models.Model):
     drawing_preview_error = models.CharField(
         "図面の表示用の誤り", max_length=500, blank=True, editable=False
     )
+    # 単位の数量単位コード (決め UNIT-1 = a。値は QuantityUnit のコード)。書くのは masters.services だけで、単位の名前 (unit) から引く。
+    # 一覧に無い単位の字 (移す前の字) は空 (unit_unlisted)。入力の画面と CSV の見出しに出さない (editable=False。CSV は「単位」の名前の列で読む)。
+    # 置き場: 小窓の先頭の 8 項目をずらさず (隠す列の drawing_preview_error の後)、最後の列は drawing_page_count のまま。
+    unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
     # 表示用の PNG のページ数 (複数ページの TIFF の 2 ページ目から後も PNG にする。表示用が無ければ 1)。書くのは masters.services だけ。
     # 入力の画面と CSV の見出しに出さない (editable=False)。小窓の先頭の 8 項目をずらさないように最後に置く。
     drawing_page_count = models.PositiveSmallIntegerField("図面のページ数", default=1, editable=False)
@@ -251,6 +255,14 @@ class Item(models.Model):
 
     def __str__(self):
         return f"{self.part_no} {self.name}"
+
+    @property
+    def unit_unlisted(self):
+        """単位の字があるのに数量単位コードが無い (一覧に無い字のまま。決め UNIT-1 の「当たらない字は画面で選んでもらう」)。
+
+        詳細と小窓の黄色の 1 行と、入力の画面の欄の下の案内が読む。一覧の絞りは同じ条件を表の上で見る (masters.views)。
+        """
+        return bool(self.unit) and not self.unit_code
 
     @property
     def display_drawing(self):
@@ -581,3 +593,28 @@ class Holiday(models.Model):
 
     def __str__(self):
         return f"{self.date:%Y-%m-%d} {self.name}"
+
+
+class QuantityUnit(models.Model):
+    """数量の単位の一覧 (読むだけの表。決め UNIT-1 = a)。
+
+    中小企業共通 EDI の付表 4 (識別コード定義表) の「数量単位コード」のシートの、国際サブセット定義表 15 行と
+    ＜参考＞の表 25 行の、コードと日本語の名前の項目を元にした。コードは国連 CEFACT の数量単位コード (UNECE Rec.20) の
+    値のまま、部品と明細の表と会社どうしの JSON に持つ。中小企業共通 EDI では、数量単位コードは課税分類コードと並ぶ
+    実装必須の識別コード (本編 3.1.3 識別コード)。
+    行は migration だけが入れる。画面から足さない・直さない (部品の単位の欄の候補の口 masters:quantityunit_select が読む)。
+    名前の上限は 10 字 (部品と明細の単位の列 (10 字) にそのまま入れるため)。
+    品目数量単位区分 (定貫・不定貫) の列は持たない (今は使う所が無い)。
+    """
+
+    code = models.CharField("数量単位コード", max_length=10, primary_key=True)
+    name = models.CharField("名前", max_length=10, unique=True)
+    sort_order = models.PositiveSmallIntegerField("並び順")
+
+    class Meta:
+        verbose_name = "数量の単位"
+        verbose_name_plural = "数量の単位"
+        ordering = ["sort_order"]
+
+    def __str__(self):
+        return self.name

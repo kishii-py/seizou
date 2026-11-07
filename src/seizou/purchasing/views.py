@@ -244,9 +244,10 @@ class PurchaseItemSelectView(BaseSelectView):
     model = PurchaseOrderLine._meta.get_field("item").related_model
     search_fields = ("part_no", "name")
     # 単位だけを返す。部品の標準単価は受注の売りの単価で、協力企業への単価と違うので、発注の明細に写さない (C01-1 = a)。
+    # 単位のコード (数量単位コード) も返す (選ぶ欄の JS が明細の単位の欄 (一覧から選ぶ欄) に写す。決め UNIT-1)。
     # default_process は部品の標準の工程に協力企業に出す使用中の工程が 1 つだけのときの工程の pk (masters.services.with_default_process)。
     # 選ぶ欄の JS が同じ行の工程の欄に写す (C100)。
-    columns = ("unit", "default_process")
+    columns = ("unit", "unit_code", "default_process")
 
     def get_queryset(self):
         # 候補は使用中だけ (N135。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)

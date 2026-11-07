@@ -215,7 +215,7 @@ def test_existing_order_stays_visible_and_editable_after_stop(logged_in, user):
         "lines-0-order_line": line.pk,
         "lines-0-item": item.pk,
         "lines-0-qty": "12",
-        "lines-0-unit": "個",
+        "lines-0-unit": "H87",
         "lines-0-unit_price": "100",
     }
     response = logged_in.post(reverse("orders:order_update", args=[order.pk]), data)

@@ -14,6 +14,7 @@
 - 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・process・quote_no。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
   process は協力企業に出す工程 (masters.Process か None)、quote_no は単価表から写した見積の番号 (無ければ空の字。C100)。
+  明細の数量単位コード (unit_code。決め UNIT-1) は鍵で受けず、_add_line が単位の字から決めて書く。
 - 受入は receive。受入の金額は masters.services.delivery_amount (一式は全部を受け入れた回で全額)。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
@@ -34,6 +35,7 @@ from seizou.core import edi_codes, history
 from seizou.core.services import next_number, record_history
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 from seizou.masters.services import PRICE_BASIS_LUMP, delivery_amount, reaches_line_qty
+from seizou.masters.services import unit_code_for
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
@@ -121,16 +123,24 @@ def _record_lines(states, user, *, by=""):
 
 
 def _add_line(purchase_order, line, line_no):
+    """発注の明細を 1 行作る。単位が空なら部品の単位を写し、数量単位コードは単位の字が部品の単位と同じなら部品のコード、違えば名前から引く (一覧に無い字はコードを空にし、字はそのまま)。
+
+    訳: 送り合いの数量に、中小企業共通 EDI の数量単位コード (付表 1 の注文数量単位コード。共通必須) を付け、渡された字は変えずに残すため (画面の入力は一覧の名前だけを渡す)。出所 = 作者の決め・中小企業共通 EDI 付表 1。
+    変えてよい条件 = services を呼ぶほかの道でも、一覧に無い字を受けないと決めたとき。
+    """
     item = line["item"]
     qty = _dec(line["qty"])
     unit_price = _dec(line["unit_price"])
     price_basis = line.get("price_basis", PRICE_BASIS_UNIT)
+    unit = line.get("unit") or item.unit
+    unit_code = item.unit_code if unit == item.unit else unit_code_for(unit)
     return PurchaseOrderLine.objects.create(
         purchase_order=purchase_order,
         line_no=line_no,
         item=item,
         qty=qty,
-        unit=line.get("unit") or item.unit,
+        unit=unit,
+        unit_code=unit_code,
         unit_price=unit_price,
         price_basis=price_basis,
         amount=line_amount(purchase_order.partner, qty, unit_price, price_basis),

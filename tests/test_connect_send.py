@@ -30,7 +30,7 @@ ORDER_KEYS = {
     "order_id", "order_revision_no", "purpose_code",
 }
 LINE_KEYS = {
-    "line_no", "part_no", "part_name", "qty", "unit", "unit_price", "price_basis", "due_date", "note",
+    "line_no", "part_no", "part_name", "qty", "unit", "unit_code", "unit_price", "price_basis", "due_date", "note",
     "line_status_code", "line_status_reason_code", "process_name", "quote_no",
 }
 
@@ -157,6 +157,7 @@ def test_send_records_outbox_and_marks_sent(monkeypatch, user, secret, subcontra
         "part_name": "作り物の軸",
         "qty": "10.00",
         "unit": "個",
+        "unit_code": "H87",
         "unit_price": "25.50",
         "price_basis": "unit",
         "due_date": "2026-11-20",

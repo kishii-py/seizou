@@ -2,12 +2,12 @@
 
 手順: A 社で発注の新規登録を開く → 1 行目の部品の欄に「ロッドカバー」を打つ → WK-1010 を押す
 → 「行を足す」で足した 2 行目の部品の欄で WK-1011 を選ぶ。保存しない (発注を増やさない)。
-期待: 「ロッドカバー」を打つと候補が WK-1010 と WK-1011 の 2 件に絞られる。WK-1010 を押すと単位の欄が「個」になり、
-単価の欄は空のまま、欄の下に「単位を部品から写しました。」が出る。足した 2 行目でも選べて、2 行目の単位が「個」になる。
+期待: 「ロッドカバー」を打つと候補が WK-1010 と WK-1011 の 2 件に絞られる。WK-1010 を押すと単位の欄 (選ぶ欄) で「個」(値 H87) が選ばれ、
+単価の欄は空のまま、欄の下に「単位を部品から写しました。」が出る。足した 2 行目でも選べて、2 行目の単位の欄 (選ぶ欄) で「個」(値 H87) が選ばれる。
 
 この試験が見る所: 1 行目の一覧 (`id_lines-0-item-ts-dropdown`) の `.option` が q=ロッドカバー の返事の後に 2 件で、WK-1010 と WK-1011 が 1 件ずつ。
-押した後の `input[name=lines-0-unit]` が「個」、`input[name=lines-0-unit_price]` が空、部品の欄の枡の `p[role=status]` の字。
-`[data-add-line]` で足した行の `select[name=lines-1-item]` が `choose` で選べ、`input[name=lines-1-unit]` が「個」。
+押した後の `select[name=lines-0-unit]` の値が「H87」(単位の欄 (選ぶ欄) で「個」が選ばれる)、`input[name=lines-0-unit_price]` が空、部品の欄の枡の `p[role=status]` の字。
+`[data-add-line]` で足した行の `select[name=lines-1-item]` が `choose` で選べ、`select[name=lines-1-unit]` の値が「H87」。
 見ない所 (理由): 取引先の欄 (E-15・E-16・E-40 が道具の `send_purchase_order` で選ぶ)、保存と送る (E-16・E-40 が見る。この試験は発注を増やさない)、
 2 段の候補と最近使った (E-52 が受注の部品の欄で見る。同じ JS と口の土台)、B 社 (発注の入力のコードは 2 社で同じ)、
 生産管理ボードの「発注する」の小窓の中の候補の一覧 (小窓の中では一覧を欄の包みの中に描く。本体が画面の手で見る)。
@@ -53,12 +53,12 @@ def test_e53_purchase_item_select_copies_unit_only(page_a, company_a):
 
     options.filter(has_text=FIRST).first.click()
     expect(select).not_to_have_value("", timeout=SELECT_WAIT_MS)
-    expect(page_a.locator("input[name=lines-0-unit]")).to_have_value("個")
+    expect(page_a.locator("select[name='lines-0-unit']")).to_have_value("H87")
     expect(page_a.locator("input[name=lines-0-unit_price]")).to_have_value("")
     expect(select.locator("xpath=..").locator("p[role=status]")).to_have_text(COPIED)
 
     page_a.locator("[data-add-line]").click()
     choose(page_a, "lines-1-item", SECOND)
-    expect(page_a.locator("input[name=lines-1-unit]")).to_have_value("個")
+    expect(page_a.locator("select[name='lines-1-unit']")).to_have_value("H87")
     expect(page_a.locator("input[name=lines-1-unit_price]")).to_have_value("")
     shot(page_a, "E-53", "a-po-item-select")

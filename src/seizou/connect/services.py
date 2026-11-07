@@ -39,6 +39,7 @@ from django.urls import reverse
 from seizou.core import access, edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, map_partner_item, resolve_partner_item
+from seizou.masters.services import unit_name_for
 from seizou.orders.services import cancel_order, create_order, shipped_qty, update_order
 
 from . import signing
@@ -1478,6 +1479,7 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
                 items[part_no] = _item_for(locked.partner, part_no, part_name, mapping, user)
             item = items[part_no]
             unit = raw.get("unit")
+            unit_code = _known_unit_code(raw)
             note = raw.get("note")
             # 工程名と見積の番号 (C100。どちらも任意の項目。字でなければ空の字にし、断らない)
             process_name = raw.get("process_name")
@@ -1518,7 +1520,7 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
                 {
                     "item": item,
                     "qty": qty,
-                    "unit": unit if isinstance(unit, str) and unit else item.unit,
+                    "unit": unit if isinstance(unit, str) and unit else ("" if unit_code else item.unit),
                     "unit_price": unit_price,
                     "price_basis": _payload_price_basis(raw.get("price_basis"), f" {number} 行目の単価の単位"),
                     "due_date": due_date,
@@ -1526,6 +1528,8 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
                     "customer_part_no": part_no,
                     "process_name": process_name if isinstance(process_name, str) else "",
                     "quote_no": quote_no if isinstance(quote_no, str) else "",
+                    # 相手が一覧にあるコードを送っていれば、受注の明細に渡す (orders の _line_unit がコードを先に使い、字が空なら一覧の名前を入れる)
+                    **({"unit_code": unit_code} if unit_code else {}),
                 }
             )
 
@@ -1688,16 +1692,29 @@ def _revision_lines(base, payload, item_mapping, user):
             items[part_no] = _item_for(base.partner, part_no, part_name, mapping, user)
         item = items[part_no]
         unit = raw.get("unit")
+        unit_code = _known_unit_code(raw)
         lines.append(
             {
                 "item": item,
-                "unit": unit if isinstance(unit, str) and unit else item.unit,
+                "unit": unit if isinstance(unit, str) and unit else ("" if unit_code else item.unit),
                 "customer_part_no": part_no,
                 "line_no": number,
                 **_revision_values(raw, number),
+                **({"unit_code": unit_code} if unit_code else {}),
             }
         )
     return lines
+
+
+def _known_unit_code(raw):
+    """注文の明細 1 行の unit_code が数量単位の一覧にあるコードなら、そのコード。無い・字でない・一覧に無いコードは ""。
+
+    受け入れは断らない (今の受け入れは単位を見ずに通す。一覧に無いコードは使わず、名前から引く)。
+    相手のコードを先に使う訳: seizou どうしでは名前とコードがそろうが、EDI の基盤から届く注文は日本語の名前がそろわず、
+    コード (国際標準の値) だけが正しいことがあるため (決め UNIT-1)。
+    """
+    code = raw.get("unit_code")
+    return code if isinstance(code, str) and unit_name_for(code) else ""
 
 
 def _revision_values(raw, number):
@@ -2459,6 +2476,8 @@ def send_order(purchase_order, user):
       1 単位あたりの単価で、式に当たる数量単位コードと単価コードは無いので、seizou の項目として送る。
     - 明細の process_name は発注の明細の工程の名前 (中小企業共通 EDI の工程名を元にした鍵)、quote_no は単価表から写した見積の番号
       (同じく (明細行参照) 見積回答書ID を元にした鍵)。どちらも無ければ空の字 (C100)。
+    - 明細の unit_code は中小企業共通 EDI の注文数量単位コード (付表 1。値は数量単位の一覧 = masters.QuantityUnit のコード) の項目を元にした値。
+      空は単位の指定なし (EDI では H87 (個) の既定で読まれる)。決め UNIT-1。
     - 相手への HTTP は transaction.atomic の外で送る (R17)。待ちは 10 秒。
     - 相手の返事は日本語の短い文で Outbox.response に書く。200 (受け取った) なら発注を「送った」にする。
       鍵が無い・断られた・届かないときは例外にせず、発注は「作成」のまま (人が「送り直す」を押す)。
@@ -2509,6 +2528,7 @@ def send_order(purchase_order, user):
             "part_name": line.item.name,
             "qty": str(line.qty),
             "unit": line.unit,
+            "unit_code": line.unit_code,
             "unit_price": str(line.unit_price),
             "price_basis": line.price_basis,
             "due_date": line.due_date.isoformat() if line.due_date else None,

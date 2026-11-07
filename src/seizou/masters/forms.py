@@ -16,7 +16,7 @@ from seizou.core import csvio, seeds
 from seizou.core.forms import CHECKBOX_CSS, Checkboxes, ServiceModelForm
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 
-from .models import Item, ItemPrice, Partner, PartnerItem, Process
+from .models import Item, ItemPrice, Partner, PartnerItem, Process, QuantityUnit
 from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
@@ -26,6 +26,14 @@ from . import services
 
 #: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
 ACTIVE_HELP = "外すと使用停止にします。受注と発注の候補に出なくなり、今までの受注と発注の記録はそのまま残ります。"
+
+#: 部品の単位の欄の下の案内 (決め UNIT-1 = a)
+UNIT_HELP = "数え方の単位を一覧から選びます。字を打つと絞れます (例「kg」「箱」)。会社どうしの注文には、単位のコードも一緒に送ります。"
+#: 単位が一覧に無い字のまま (移す前の字) の部品の、単位の欄の下の案内。{unit} は今の字
+UNIT_UNLISTED_HELP = (
+    "今の単位「{unit}」は一覧にありません。一覧から選んでください。選ばずに保存すると「{unit}」のまま残り、"
+    "会社どうしの注文では単位のコードが空になります (相手に個として読まれるおそれがあります)。"
+)
 
 #: 取引先の端数の 3 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。初見テスト 5 回目の V119)
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
@@ -44,8 +52,31 @@ def _active_on_edit_only(form):
         form.fields["active"].initial = form.instance.active
 
 
+def _unit_on_edit(form):
+    """部品の編集で、単位の欄 (一覧から選ぶ欄) の初めの値を今のコードにし、一覧に無い今の字なら欄の下の案内を替える。
+
+    ModelForm は初めの値に単位の名前の字を入れるので、まだ送っていない form ではコードに替える
+    (選ぶ欄は一覧のコードでしか選んである物を描けない = core.widgets.RemoteSelect.selected_choices)。
+    """
+    if form.instance.pk is None:
+        return
+    if not form.is_bound:
+        form.initial["unit"] = form.instance.unit_code or None
+    if form.instance.unit_unlisted:
+        form.fields["unit"].help_text = UNIT_UNLISTED_HELP.format(unit=form.instance.unit)
+
+
 class ItemForm(ServiceModelForm):
     active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
+    #: 単位は数量単位の一覧から選ぶ (決め UNIT-1 = a。字を打って探す欄 = UX-1)。送る値は一覧のコード、
+    #: cleaned_data は一覧の名前の字 (services が名前からコードを引く)。新規登録の初めの値は空 (個を選んでおかない)。
+    unit = forms.ModelChoiceField(
+        label="単位",
+        queryset=QuantityUnit.objects.all(),
+        required=False,
+        widget=RemoteSelect("masters:quantityunit_select"),
+        help_text=UNIT_HELP,
+    )
 
     #: 土台 (入力の土台の get_form) が会社ごとの項目を足した後も、この欄を最後に置く。
     #: 使用中の行が会社ごとの項目を押し下げず、編集の並びが新規登録 + 最後に使用中になるように (初見テスト 5 回目の V35)。
@@ -64,10 +95,26 @@ class ItemForm(ServiceModelForm):
     def __init__(self, *args, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
+        _unit_on_edit(self)
         if hide_money:
             # 金額の閲覧が無い人 (権限の判定の on) には標準単価の欄を出さない。土台は cleaned_data を渡し、
             # update_item は渡した鍵だけを直すので、標準単価は保存済みの値のまま。
             self.fields.pop("standard_price", None)
+
+    def clean_unit(self):
+        """選んだ一覧の行の名前の字 (services が名前からコードを引く)。選ばなければ空の字。"""
+        chosen = self.cleaned_data.get("unit")
+        return chosen.name if chosen is not None else ""
+
+    def clean(self):
+        """一覧に無い今の単位の字は、選ばなければ鍵を渡さず残す (勝手に個にも空にもしない。決め UNIT-1 の「画面で選んでもらう」)。
+
+        入力の土台は cleaned_data をそのまま data にし、update_item は渡した鍵だけを直す。一覧の単位があった部品で欄を空にして保存したら、単位を空にする。
+        """
+        cleaned = super().clean()
+        if not cleaned.get("unit") and "unit" not in self.errors and self.instance.unit_unlisted:
+            cleaned.pop("unit", None)
+        return cleaned
 
 
 class PartnerForm(ServiceModelForm):

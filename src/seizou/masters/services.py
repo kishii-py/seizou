@@ -16,6 +16,8 @@
   新しい受注と発注を作る所 (orders・purchasing の services) の守りは refuse_inactive。今までの記録はそのまま。
 - 部品の標準の工程の並び (ItemProcess) を書くのは set_item_processes だけ。画面の足す・順を直す・外す (add_item_processes・move_item_process・remove_item_process) も、直した並びを作ってこれを呼ぶ (変更の履歴を 1 か所で残すため。決め C19-3・HIST-1)。
 - 選ぶ小窓の行 (effective_prices・price_choices) と発注の工程の最初の値 (default_process・with_default_process) は読むだけ (C100)。
+- 部品の単位の数量単位コード (unit_code。決め UNIT-1) は、create_item・update_item が単位の名前から引いて書く (_with_unit_code)。
+  呼ぶ側はコードを渡さない。名前とコードを引くのは unit_code_for・unit_name_for (読むだけ。一覧は QuantityUnit)。
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from seizou.core.services import company_or_none, record_history, record_history
 from seizou.core.templatetags.seizou_tags import comma
 
 from .drawings import page_name
-from .models import Item, ItemPrice, Partner, PartnerItem
+from .models import Item, ItemPrice, Partner, PartnerItem, QuantityUnit
 from .models import Process
 from .models import ItemProcess
 from .models import Holiday
@@ -322,12 +324,29 @@ def _save_preview_pages(item, pages):
         item.save(update_fields=["drawing_page_count"])
 
 
+def _with_unit_code(data):
+    """部品の単位の名前とコードを、いつも一覧どおりの組で表に書く (決め UNIT-1 = a)。CSV・作り物の種・入力の画面の全部がここを通る。
+
+    data に単位 (unit) があれば、字の前後の空白を落として一覧の名前から数量単位コードを引き、当たれば字を一覧の名前に、
+    unit_code をそのコードにした写しを返す。当たらなければ字のまま、unit_code を空にする。unit が無ければ data のまま
+    (単位を渡さない更新は、今の単位とコードのまま)。
+    訳: 部品は表の元 (マスター) なので単位の字を一覧の名前にそろえ、会社どうしの注文にコードを渡せるようにするため。出所 = 作者の決め。
+    変えてよい条件 = 部品の単位をコードで受ける道 (EDI の品目の取り込みなど) を作るとき。
+    """
+    if "unit" not in data:
+        return data
+    unit = (data["unit"] or "").strip()
+    code = unit_code_for(unit)
+    return {**data, "unit": unit_name_for(code) if code else unit, "unit_code": code}
+
+
 def create_item(data, user, *, ext=None):
     """品目を作る。data は Item の列の名前を鍵にした辞書 (part_no と name は必須)。
 
     図面に新しいファイルが来たら、表示用の PNG を作る (作れなければ理由を drawing_preview_error に残し、部品は保存する)。
     """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
+    data = _with_unit_code(data)
     data, pages = _with_drawing_preview(data)
     with transaction.atomic():
         _refuse_duplicate_part_no(data["part_no"])
@@ -345,6 +364,7 @@ def update_item(item, data, user, *, ext=None):
     今のファイル (FieldFile) か鍵が無ければ 3 つとも変えない。差し替え・外した古いファイルは置き場に残す。
     """
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
+    data = _with_unit_code(data)
     data, pages = _with_drawing_preview(data)
     with transaction.atomic():
         # 渡された item の値は画面の form が書き換え済みなので、前は DB から取る (core.history.saved_state)
@@ -1031,6 +1051,31 @@ def _fold(text):
     return text.translate(_KATAKANA_TO_HIRAGANA).casefold()
 
 
+def _unit_rows():
+    """数量の単位の一覧の (コード, 名前) を 1 回読む (40 行)。"""
+    return list(QuantityUnit.objects.values_list("code", "name"))
+
+
+def unit_code_for(name):
+    """単位の名前から数量単位コードを引く (読むだけ)。前後の空白を落とし、一覧 (QuantityUnit) の名前と字を畳んで (_fold) 全部が同じときだけ当てる。
+
+    空・一覧に無い字は ""。「本」「枚」「巻」だけの字は一覧に 2〜4 つあって決まらないので当てない。
+    訳: 中小企業共通 EDI は数量単位コードの指定が無い数量を定貫品目 (数えられる品目) と見なす (本編 7.3.2 (4) 数量単位コード) ので、推し量って当てず、当たらない字はコードを空にして人に選んでもらう (決め UNIT-1 = a の「勝手に個にしない」)。出所 = 作者の決め・中小企業共通 EDI 本編。
+    変えてよい条件 = 一覧に別名 (「pcs」「ヶ」など) を足すと決めたとき。
+    """
+    folded = _fold((name or "").strip())
+    if not folded:
+        return ""
+    return next((code for code, unit in _unit_rows() if _fold(unit) == folded), "")
+
+
+def unit_name_for(code):
+    """数量単位コードから一覧の名前を引く (読むだけ)。空・一覧に無いコードは ""。会社どうしの注文の受け入れが、相手の送ったコードを確かめるのに使う。"""
+    if not code:
+        return ""
+    return dict(_unit_rows()).get(code, "")
+
+
 def _page_number(page):
     try:
         number = int(page)
@@ -1069,6 +1114,18 @@ def active_processes(*, keep=None):
     keep (工程か pk) は使用停止でも残す (active_items と同じ口)。今ある指示書の工程と部品の標準の工程の並びの行は消さない。
     """
     return _active(Process, keep)
+
+
+def quantity_units():
+    """数量の単位の一覧 (候補の母集団。読むだけ。並びは付表 4 の並び = 表の ordering)。受注と発注の入力の明細の単位の欄が読む。"""
+    return QuantityUnit.objects.all()
+
+
+#: 受注と発注の入力で、足す明細の部品の単位が数量単位の一覧に無い字のまま (コードが空) で、明細の単位の欄を選ばずに保存したときの欄の誤り。{unit} は部品の単位の字
+UNLISTED_LINE_UNIT = (
+    "部品の単位「{unit}」は単位の一覧にありません。この行の単位を一覧から選んでください "
+    "(部品の編集で部品の単位を選び直すと、次からは部品から写ります)。"
+)
 
 
 def refuse_inactive(partner, items=()):
@@ -1212,7 +1269,16 @@ def import_items(rows, user, *, price_skipped=False):
     price_skipped が真なら (金額の閲覧が無い人の取り込みで標準単価の列を読まなかった)、知らせに 1 文を足す。
     """
     note = "標準単価の列は金額の閲覧の権限が無いので読みませんでした。" if price_skipped else ""
-    return _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item, note=note)
+    result = _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item, note=note)
+    # 単位の列のある行のうち、一覧に無い字のまま入った部品を数え、黄の知らせで選び直す絞りを案内する (取り込みは止めない)
+    part_nos = [row["data"].get("part_no") for row in rows if "unit" in row["data"]]
+    unlisted = Item.objects.filter(part_no__in=part_nos, unit_code="").exclude(unit="").count() if part_nos else 0
+    if unlisted:
+        result.saved_note += (
+            f"単位が一覧に無い部品が {unlisted} 件あります。部品マスターの絞り「単位を選び直す部品だけ」で開き、部品の編集で単位を選んでください。"
+        )
+        result.saved_level = "warning"
+    return result
 
 
 def import_partners(rows, user, *, tax_reread=0):

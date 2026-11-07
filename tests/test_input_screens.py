@@ -305,7 +305,7 @@ def _update_post(order, **line):
         "lines-0-order_line": row.pk,
         "lines-0-item": row.item_id,
         "lines-0-qty": str(row.qty),
-        "lines-0-unit": row.unit,
+        "lines-0-unit": row.unit_code,
         "lines-0-unit_price": str(row.unit_price),
         "lines-0-due_date": "",
         "lines-0-note": "",
@@ -590,9 +590,11 @@ def test_item_candidates_carry_unit_and_standard_price(logged_in, priced, shaft)
     data = logged_in.get(reverse("masters:item_select"), {"q": "T-"}).json()
     rows = {row["id"]: row for row in data["items"]}
 
-    assert rows[priced.pk] == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋", "standard_price": "1234.50"}
+    # 単位のコードは数量単位の一覧の名前に当たる字だけ (「袋」は一覧の「袋（俵）」と字が違うので空。決め UNIT-1)
+    assert rows[priced.pk] == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋", "unit_code": "", "standard_price": "1234.50"}
     # 標準単価の無い部品は null (JS は写さない)
     assert rows[shaft.pk]["unit"] == "個"
+    assert rows[shaft.pk]["unit_code"] == "H87"
     assert rows[shaft.pk]["standard_price"] is None
 
 
@@ -602,7 +604,7 @@ def test_item_candidates_hide_standard_price_without_money(settings, logged_in, 
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
     row = logged_in.get(reverse("masters:item_select"), {"q": "T-300"}).json()["items"][0]
 
-    assert row == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋"}
+    assert row == {"id": priced.pk, "text": "T-300 作り物の座金", "title": "T-300", "sub": "作り物の座金・袋", "unit": "袋", "unit_code": ""}
 
 
 @pytest.mark.django_db
@@ -626,6 +628,20 @@ def test_select_js_copies_unit_and_price_into_same_row():
         '{ key: "default_process", suffix: "-process", label: "工程" }',
         "function copyChoice(select, value)",
         'row.querySelector(\'select[name$="\' + spec.suffix + \'"]\')',
+    ):
+        assert word in text, word
+
+
+def test_select_js_chooses_unit_code_in_unit_select():
+    """明細の単位の欄が選ぶ欄 (数量単位の一覧) のときは、候補の unit_code を値に選ぶ (決め UNIT-1。R5 の候補 C108 の その 5)。"""
+    text = SELECT_JS.read_text(encoding="utf-8")
+    for word in (
+        'var CHOICE_VALUE = { unit: "unit_code" };',
+        # 字を打って探す欄は選んである値の候補しか持たないので、写す値の候補を足してから選ぶ
+        ".addOption(",
+        ".setValue(",
+        # 字の欄の写しの道 (単価の欄と、単位が字の欄のとき) は残る
+        'row.querySelector(\'input[name$="\' + spec.suffix + \'"]\')',
     ):
         assert word in text, word
 

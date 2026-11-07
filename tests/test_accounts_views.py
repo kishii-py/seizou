@@ -391,7 +391,7 @@ def test_order_create_refused_and_edit_keeps_price(on, client, customer, shaft, 
         "lines-0-order_line": line.pk,
         "lines-0-item": shaft.pk,
         "lines-0-qty": "12",
-        "lines-0-unit": line.unit,
+        "lines-0-unit": line.unit_code,
         "lines-0-due_date": "",
         "lines-0-note": "",
     }
@@ -429,7 +429,7 @@ def test_item_edit_hides_standard_price(on, client, shaft):
     assert 'name="standard_price"' not in page
     assert 'value="T-100"' in page
 
-    response = client.post(url, {"part_no": "T-100", "name": "作り物の軸 (改)", "drawing_no": "", "unit": "個", "note": ""})
+    response = client.post(url, {"part_no": "T-100", "name": "作り物の軸 (改)", "drawing_no": "", "unit": "H87", "note": ""})
     assert response.status_code == 302
     item = Item.objects.get(pk=shaft.pk)
     assert item.name == "作り物の軸 (改)"

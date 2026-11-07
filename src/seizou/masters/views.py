@@ -29,7 +29,7 @@ from .forms import HolidayDeleteForm, HolidayForm
 from .forms import ItemPriceDeleteForm, ItemPriceForm
 from .forms import ItemProcessAddForm, ItemProcessMoveForm, ItemProcessRemoveForm
 from .forms import PartnerItemDeleteForm, PartnerItemForm, PartnerItemUpdateForm
-from .models import Item, Partner, Process
+from .models import Item, Partner, Process, QuantityUnit
 from .models import Holiday
 from .models import ItemPrice, PartnerItem
 from .models import ItemProcess
@@ -38,6 +38,15 @@ from .models import ItemProcess
 #: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
 #: when は何もしない (使用中だけに絞るのは画面の get_queryset。印が切のとき)。
 INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": FilterSpec.as_is}
+
+
+def _unit_unlisted(queryset):
+    """単位の字があるのに数量単位コードが無い部品だけ (Item.unit_unlisted と同じ条件)。"""
+    return queryset.exclude(unit="").filter(unit_code="")
+
+
+#: 部品マスターの一覧の絞り「単位を選び直す部品だけ」(決め UNIT-1 の「当たらない字は移す時に一覧にして画面で選んでもらう」)
+UNIT_UNLISTED_FILTER = {"name": "unit_unlisted", "label": "単位を選び直す部品だけ", "kind": "flag", "when": _unit_unlisted}
 
 
 #: 取引先の候補の口の GET の role → 出す取引先の種類 (精査 A9 の 4 節の 1。受注の得意先の欄は customer)。
@@ -64,7 +73,7 @@ class ItemListView(BaseListView):
     screen_help = "部品 (品番・品名・図面) を 1 か所に持つ表。品名を押すと、画面を移らずに中身を見られます。"
     columns = ("part_no", "name", "drawing_no", "unit", "standard_price")
     search_fields = ("part_no", "name", "drawing_no")
-    filters = (INACTIVE_FILTER,)
+    filters = (INACTIVE_FILTER, UNIT_UNLISTED_FILTER)
     ordering = "part_no"
     template_name = "masters/item_list.html"
 
@@ -127,13 +136,19 @@ class ItemModalView(BaseModalView):
 class ItemSelectView(BaseSelectView):
     model = Item
     search_fields = ("part_no", "name")
-    # 候補ごとに単位と標準単価も返す (選ぶ欄の JS が受注の明細の行の空の単位と単価の欄に写す。初見テスト R4 4-3b)。
-    # 標準単価は金額の閲覧が無い人には返さない (土台の BaseSelectView が外す)。
-    columns = ("unit", "standard_price")
+    # 候補ごとに単位と単位のコード (数量単位コード) と標準単価も返す (選ぶ欄の JS が受注の明細の行の空の単位と単価の欄に写す。初見テスト R4 4-3b。
+    # 明細の単位の欄 (一覧から選ぶ欄) には単位のコードで写す)。標準単価は金額の閲覧が無い人には返さない (土台の BaseSelectView が外す)。
+    columns = ("unit", "unit_code", "standard_price")
 
     def get_queryset(self):
         # 候補は使用中だけ (N135。受注と発注の入力の欄が、使用停止の部品を出さない)
         return services.active_items()
+
+
+class QuantityUnitSelectView(BaseSelectView):
+    # 部品と明細の単位の欄の候補 (決め UNIT-1 = a)。名前とコードで探す (「k」で kg・km ほか、「本」で 4 つの本)。並びは付表 4 の並び (表の ordering)。
+    model = QuantityUnit
+    search_fields = ("name", "code")
 
 
 class ItemPricePickView(BaseModalView):

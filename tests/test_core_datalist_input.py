@@ -184,7 +184,7 @@ def test_value_outside_suggestions_is_saved_as_typed(client_logged_in, no_regist
     monkeypatch.setattr(company_fields, "ext_suggestions", lambda model, name: SUGGESTIONS)
     response = client_logged_in.post(
         reverse("masters:item_create"),
-        {"part_no": "P-3003", "name": "作り物のカバー", "unit": "個", "ext__ext01": "亜鉛めっき"},
+        {"part_no": "P-3003", "name": "作り物のカバー", "unit": "H87", "ext__ext01": "亜鉛めっき"},
     )
     item = Item.objects.get(part_no="P-3003")
     assert response.status_code == 302
