@@ -10,12 +10,15 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+import seizou
 from seizou.accounts import services as accounts_services
+from seizou.cli import render
 from seizou.core import media
 from seizou.intake import services as intake_services
 from seizou.masters.services import create_partner
@@ -266,3 +269,24 @@ def test_nginx_mode_sends_sandbox_only_on_downloads(client, kinds, nginx, reader
     png = client.get("/media/drawings/a.png", **nginx)
     assert png["X-Accel-Redirect"] == "/seizou-files/drawings/a.png"
     assert "Content-Security-Policy" not in png
+
+
+# ---------------------------------------------------------------- 4. nginx の断片の雛形 (内部の location で CSP を付け直す)
+
+CSP_LINE = "add_header Content-Security-Policy $upstream_http_content_security_policy always;"
+
+
+def test_nginx_template_passes_csp_through():
+    # 雛形は string.Template で埋めるので、雛形の中の nginx の変数は $$ と書き、書き出した断片で $ 1 つになる。
+    # nginx の上で効くかは、ここでは確かめられない (本体が VPS で curl -I で見る)。
+    text = (Path(seizou.__file__).parent / "scaffold" / "nginx-files.conf.tmpl").read_text(encoding="utf-8")
+    assert text.count(CSP_LINE.replace("$", "$$")) == 1
+    assert "    internal;\n" in text
+    assert "add_header X-Content-Type-Options nosniff always;" in text
+
+    rendered = render("nginx-files.conf.tmpl", id="sample", media_root="/srv/sample/media")
+    assert rendered.count(CSP_LINE) == 1
+    assert "$$" not in rendered
+    assert "    internal;\n" in rendered
+    assert 'alias "/srv/sample/media/";' in rendered
+    assert "add_header X-Content-Type-Options nosniff always;" in rendered

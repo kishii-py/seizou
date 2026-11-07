@@ -11,6 +11,7 @@
 # 仕組み: Django がログインと確かめを済ませ、本文の無い応答に X-Accel-Redirect: /seizou-files/<道> を付けて返す。
 # nginx が、この内部の location からファイルを読んで送る。internal があるので、外から /seizou-files/... は開けない。
 # Cache-Control と Content-Disposition は Django の物が引き継がれる。nosniff は引き継がれないので、ここで付ける。
+# CSP (Content-Security-Policy) も同じ。
 #
 # 注意:
 # - location に add_header を 1 つでも書くと、server { } に書いた add_header は、この location では出なくなる。
@@ -22,4 +23,6 @@ location /seizou-files/ {
     internal;
     alias "${media_root}/";
     add_header X-Content-Type-Options nosniff always;
+    # Django がダウンロードにした応答だけに付けた CSP の sandbox を、ここでも付ける (X-Accel-Redirect では引き継がれないため。値が空の応答には付かない)。
+    add_header Content-Security-Policy $$upstream_http_content_security_policy always;
 }
