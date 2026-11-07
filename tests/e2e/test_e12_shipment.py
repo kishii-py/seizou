@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import expect
 
 from .conftest import choose, row_menu_list
-from .conftest import fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
+from .conftest import fill_receiving, fill_shipment, login, menu_link, new_order, seed_name, shot, unique_mark
 
 CUSTOMER_CODE = "C001"
 
@@ -92,6 +92,9 @@ def test_e12_partial_second_and_warn(page_a, page_b, company_a, company_b):
         mark=unique_mark("e12b"),
     )
     order_url_b = page_b.url
+    # B 社は支給品・預かり品の入荷が無い明細の出荷を止める (受入の決まり = stop) ので、先に入荷を記録する (E-56 と同じ)
+    fill_receiving(page_b, company_b, order_no=order_no_b, part_no="SB-2001", qty=10)
+
     fill_shipment(page_b, company_b, order_no=order_no_b, qty=11)
     warning = page_b.locator('#seizou-toasts [data-notice="check"]')
     expect(warning).to_have_count(1)
