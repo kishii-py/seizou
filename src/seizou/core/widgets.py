@@ -18,6 +18,7 @@ IsoDateInput: 日付の欄。type="date" と ISO の字 (2026-11-04) に、年�
 上限が無いと、chromium (Chrome・Edge) の日付の欄は年の区切りに 6 桁 (275760 年) まで受け、4 桁で月へ進まない。
 そのため 8 桁を続けて打つと「202611/02/0」のように崩れる。一覧の絞りの期間の欄 (core/_filters.html) も同じ上限を付ける。
 Safari の系統は、Playwright の webkit (Safari そのものではない) で上限を付けても直らなかった。Mac と iPad の Safari そのものでは試していない。
+ClearableFileWidget: 今のファイルを「クリア」で外せるファイルの欄。<input type=file> だけを描き、「現在:」の link と「クリア」は core/_file_field.html が枠の上に描く。C40
 """
 
 from __future__ import annotations
@@ -166,3 +167,33 @@ class IsoDateInput(forms.DateInput):
 
     def __init__(self, attrs=None, format="%Y-%m-%d"):
         super().__init__(attrs={"max": self.MAX, **(attrs or {})}, format=format)
+
+
+class ClearableFileWidget(forms.ClearableFileInput):
+    """今のファイルを「クリア」で外せるファイルの欄。描くのは <input type=file> だけにする (初見テスト R5 の a-flagged-13。候補 C40 の その 2)。
+
+    Django の ClearableFileInput は「現在: <link>」「クリア」「変更:」を input と同じ所に描くので、破線の枠
+    (core/_file_field.html) の中に入り、枠の中に字と check が並んでいた。この子は input だけを描き、
+    「現在:」の行 (link と「クリア」の check) は core/_file_field.html が枠の上に描く。
+    名前の末尾を Widget にして、BoundField.widget_type を今と同じ "clearablefile" に保つ
+    (core/_form_card.html の分かれ道がそのまま当たる。先例 = feedback/forms.py の FileWidget)。
+    文脈の値 (checkbox_name・checkbox_id・is_initial・initial_text・clear_checkbox_label・required・attrs.checked) は親のまま。
+    テンプレートからは field.subwidgets.0.data で読む。「クリア」を読むのは親の value_from_datadict で、今と同じ。
+    入力の土台 (BaseFormView.get_form の use_clearable_file_widget) が ClearableFileInput の欄をこれに替える。
+    """
+
+    template_name = "django/forms/widgets/file.html"
+
+    def format_value(self, value):
+        # file の input には今のファイルを value として出さない (FileInput と同じ)。親は今のファイルを返すため、
+        # そのままでは <input type="file" value="drawings/…"> になる。
+        return None
+
+    def get_context(self, name, value, attrs):
+        # 今のファイルの URL と名前だけ (drawings/ を落とした字。切り方は core.views.file_info と同じ) を文脈に足す。
+        # value は format_value を通す前の元の値 (親の is_initial も同じ値で見ている)。
+        context = super().get_context(name, value, attrs)
+        if context["widget"]["is_initial"]:
+            context["widget"]["current_url"] = value.url
+            context["widget"]["current_name"] = value.name.rsplit("/", 1)[-1]
+        return context

@@ -8,7 +8,7 @@
  *   (選ぶ画面で 1 つしか選べないのと同じ)。形式・大きさ・枚数は見ない (サーバーの form と services が見て、
  *   超えたら今の赤の知らせ)。押せない欄 (disabled・押せない fieldset の中) には入れない。
  * - 枠の押下: input・link・label・button の外を押したら、input.click() で選ぶ画面を開く
- *   (編集の画面の「現在」の link と「クリア」はそのまま動く)。枠に焦点 (tabindex=0) を置いて Enter か Space を押しても開く
+ *   (押した物そのものの動きを残す。編集の画面の「現在」の link と「クリア」は枠の上の外 = core/_file_field.html にあり、枠の押下に当たらない)。枠に焦点 (tabindex=0) を置いて Enter か Space を押しても開く
  *   (素の input は CSS で画面の外に置いてある = core/_file_field.html)。
  * - document に委譲して付ける。htmx で差し替えた欄 (マニュアルの画像) にも効く。
  * - class を足さない (Tailwind が CSS に入れないため)。data- の属性と hidden の付け外しだけで動かす。

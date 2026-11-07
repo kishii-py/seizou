@@ -70,7 +70,7 @@ from seizou.core import select_options
 from seizou.core import fields as company_fields
 from seizou.core import summary as list_summary
 from seizou.core.exceptions import CheckViolation, RuleError
-from seizou.core.widgets import DecimalInput, IntegerInput, RemoteSelect
+from seizou.core.widgets import ClearableFileWidget, DecimalInput, IntegerInput, RemoteSelect
 
 #: 継承した画面が上書きしてよい属性 (R15 の 2 文目。決まりの検査が見る)
 OVERRIDABLE = (
@@ -1374,6 +1374,7 @@ class BaseFormView(ScreenMixin, FormView):
             form.order_fields([name for name in form.fields if name not in last] + last)
         for name, field in form.fields.items():
             use_decimal_input(field)
+            use_clearable_file_widget(field)
             field.widget.attrs.setdefault("class", widget_css(field.widget))
             use_label_required(name, field)
         return form
@@ -1521,6 +1522,26 @@ def use_decimal_input(field) -> None:
         return
     attrs = {k: v for k, v in old.attrs.items() if k not in ("step", "min", "max")}
     widget = make(attrs=attrs)
+    widget.is_required = old.is_required
+    widget.is_localized = old.is_localized
+    field.widget = widget
+
+
+def use_clearable_file_widget(field) -> None:
+    """ファイルの欄の ClearableFileInput を、input だけを描く ClearableFileWidget に替える (初見テスト R5 の a-flagged-13。候補 C40 の その 2)。
+
+    Django の ClearableFileInput は「現在: <link>」「クリア」「変更:」を input と同じ所に描き、破線の枠 (core/_file_field.html) の
+    中に並んでいた。替えた後は、枠の中は新規登録と同じ (input・絵・「ファイルを選ぶ か、ここへドラッグ」) で、
+    「現在:」の link と「クリア」の check は枠の上に出る (部品の編集の図面・会社の情報のロゴ)。
+    元の widget の attrs (accept・id など) と is_required を写す (use_decimal_input と同じ形)。is_required を写さないと、
+    必須の欄にも「クリア」が出て、送られた「クリア」を消す (False) と読む。
+    替えるのは ClearableFileInput の欄だけ。FileInput の子 (feedback の FileWidget) は当たらない。
+    新規の入力の欄 (注文書の取り込み・CSV の取り込み・添付ファイル) は今のファイルが無いので、画面は今と同じ。
+    """
+    old = field.widget
+    if not isinstance(old, django_forms.ClearableFileInput) or isinstance(old, ClearableFileWidget):
+        return
+    widget = ClearableFileWidget(attrs=dict(old.attrs))
     widget.is_required = old.is_required
     widget.is_localized = old.is_localized
     field.widget = widget

@@ -159,7 +159,7 @@ body > .ts-dropdown [data-select-create]:hover {
 
 /* ファイルの欄 (core/_file_field.html) の枠の中の素の <input type=file> は見せない (枠の全体が押せる)。
    display:none にしないのは、キーボードの焦点 (Tab) とブラウザの必須の検査を残すため (sr-only と同じ形)。
-   編集の画面の「現在」の link と「クリア」の欄 (ClearableFileInput の残り) は枠の中に見える。 */
+   編集の画面の「現在」の link と「クリア」の欄は枠の外 (枠の上の行。core/_file_field.html) に描くので、ここでは隠れない。 */
 [data-file-drop] input[type="file"] {
   position: absolute;
   width: 1px;
