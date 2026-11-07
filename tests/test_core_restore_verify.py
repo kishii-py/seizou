@@ -173,3 +173,47 @@ def test_verify_refuses_postgres_and_records_nothing(site, monkeypatch):  # noqa
     assert code == 1
     assert "この命令では確かめられません" in out
     assert records(parent) == []
+
+
+@sqlite_only
+@pytest.mark.django_db(transaction=True)
+def test_restore_refuses_broken_backup_and_changes_nothing(site, settings):  # noqa: F811
+    run("seizou_backup")
+    parent = site / "backups"
+    folder = plain_backups(parent)[0]
+    break_db(folder / "db.sqlite3")
+    make_user("after")
+    users_before = user_count()
+    media = Path(settings.MEDIA_ROOT)
+    (media / "drawings" / "b.png").write_bytes(b"new")
+    media_before = files(media)
+
+    code, out = run_code(folder.name, "--yes")
+
+    assert code == 1
+    assert "壊れています" in out
+    assert "何も変えていません" in out
+    assert retreats(parent) == []
+    assert user_exists("after")
+    assert user_count() == users_before
+    assert files(media) == media_before
+
+
+@sqlite_only
+@pytest.mark.django_db(transaction=True)
+def test_restore_still_puts_back_a_sound_backup(site, settings):  # noqa: F811
+    make_user("before")
+    run("seizou_backup")
+    parent = site / "backups"
+    folder = plain_backups(parent)[0]
+    make_user("after")
+
+    code, out = run_code(folder.name, "--verify")
+    assert code == 0, out
+    code, out = run_code(folder.name, "--yes")
+
+    assert code == 0, out
+    assert "戻しました" in out
+    assert user_exists("before")
+    assert not user_exists("after")
+    assert len(retreats(parent)) == 1

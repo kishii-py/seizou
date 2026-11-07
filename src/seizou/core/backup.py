@@ -413,9 +413,30 @@ def record_restore_check(parent: Path, folder: Path, result: dict) -> Path:
     return path
 
 
+def _refuse_broken_db(db_file: Path) -> None:
+    """戻しの頭 (退避を作る前) で呼ぶ。控えの DB の写しを --verify と同じ quick_check で確かめ、壊れていれば BackupError で止める。
+
+    止めるのは quick_check が ok でないときと、写しが開けない (sqlite3.DatabaseError) ときだけ。migration の差では止めない
+    (版の違いは戻した後の migrate で埋める)。止めるときは退避を作らず、本番の DB と上げたファイルに触らない。
+    訳: SQLite の backup API は控えの中身を確かめずに page を写すので、壊れた控えで本番の DB を上書きしないため。出所 = エンタープライズ化の調べ 第一弾の確かめ直しの (d)。変えてよい条件 = 候補 4 の確かめ (控えの sha256・integrity_check) が入ったら、その確かめに寄せる。
+    """
+    try:
+        with _readonly_copy(db_file) as conn:
+            problems = _quick_check(conn)
+    except sqlite3.DatabaseError as exc:
+        problems = [f"開けません。{exc}"]
+    except OSError as exc:
+        raise BackupError(f"控えの DB の写しを読めません: {db_file} ({exc.strerror})。何も変えていません。") from exc
+    if problems:
+        raise BackupError(
+            f"控えの DB が壊れています (quick_check: {'・'.join(problems)})。別の控えを選んでください。何も変えていません。"
+        )
+
+
 def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     """控えから DB と上げたファイルを戻す。戻す前に今の物を retreat_parent に控える (退避が失敗したら戻さない)。
 
+    退避の前に、控えの DB を --verify と同じ quick_check で確かめ、壊れていれば何も変えずに止める (_refuse_broken_db)。
     answers.yaml は戻さない (置き場の settings.py と対の物で、データではない)。
     返す物は {"folder": 控え, "retreat": 退避のフォルダ, "manifest": 控えの backup.json}。
     """
@@ -442,15 +463,22 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     db_file = folder / Path(str(manifest.get("db_file") or "")).name
     if not db_file.is_file():
         raise BackupError(f"控えに DB の写しがありません: {db_file}")
+    _refuse_broken_db(db_file)
 
     retreat = take_backup(retreat_parent, suffix=RETREAT_SUFFIX)
 
-    source = sqlite3.connect(str(db_file))
     try:
-        connection.ensure_connection()
-        source.backup(connection.connection)
-    finally:
-        source.close()
+        source = sqlite3.connect(str(db_file))
+        try:
+            connection.ensure_connection()
+            source.backup(connection.connection)
+        finally:
+            source.close()
+    except sqlite3.DatabaseError as exc:
+        raise BackupError(
+            f"控えの DB を写せませんでした ({exc})。上げたファイルはまだ変えていません。"
+            f"戻す前の物は {retreat['folder']} にあります。"
+        ) from exc
 
     root = _media_root()
     if root is not None:
