@@ -499,14 +499,14 @@ def test_detail_screens_show_the_chat(monkeypatch, client, user, subcontractor, 
     client.force_login(user)
 
     response = client.get(reverse("purchasing:purchaseorder_detail", args=[po.pk]))
-    assert [tab["label"] for tab in response.context["tabs"]] == ["送った記録", "受入", "会話"]
+    assert [tab["label"] for tab in response.context["tabs"]] == ["送った記録", "受入", "会話", "仕入明細"]
     html = response.content.decode()
     assert 'name="body"' in html and "送る</button>" in html
     assert "発注の側の作り物の言葉" in html and 'id="chat-messages"' in html
     assert 'id="notes"' in html
 
     response = client.get(reverse("orders:order_detail", args=[order.pk]))
-    assert [tab["label"] for tab in response.context["tabs"]][-1] == "会話"
+    assert "会話" in [tab["label"] for tab in response.context["tabs"]]  # C111 で「仕入明細」のタブが最後に入った
     html = response.content.decode()
     # 相手から届いた言葉は左の吹き出しで、上に取引先の名前
     assert "発注の側の作り物の言葉" in html and "作り物の発注元 " in html

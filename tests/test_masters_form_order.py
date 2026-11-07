@@ -78,6 +78,7 @@ def test_partner_and_process_update_order_stays(client_logged_in, no_registratio
         "rounding",
         "tax_mode",
         "tax_rounding",
+        "registration_no",
         "note",
         "active",
     ]

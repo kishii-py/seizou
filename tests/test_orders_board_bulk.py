@@ -108,7 +108,7 @@ def test_menu_has_board_entry_first_in_orders_group():
     groups = sections([*core_menu(), *menu()])
     production = next(group for group in groups if group["label"] == "生産管理部")
     orders_group = next(group for group in production["groups"] if group["label"] == "受注管理")
-    assert [entry["label"] for entry in orders_group["items"]] == ["生産管理ボード", "受注", "受信した注文"]
+    assert [entry["label"] for entry in orders_group["items"]] == ["生産管理ボード", "受注", "受信した注文", "受けた仕入明細"]
 
 
 # --- 2〜4. 盤の選ぶ欄と帯 ---

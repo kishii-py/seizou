@@ -24,9 +24,9 @@ def test_models_have_japanese_verbose_names():
 
 
 def test_max_lengths_follow_the_limits():
-    # 識別子 35・名称 100・備考 500・コード 10。15 は取引先の種類の列だけ。
+    # 識別子 35・名称 100・備考 500・コード 10。15 は取引先の種類の列だけ。14 は取引先の登録番号 (T + 13 桁。C111) だけ。
     # 支払日は 1〜31 の数の列 (支払の月と 2 列に分けた。31 は月末) なので、字の上限を持たない。
-    allowed = {35, 100, 500, 10, 15}
+    allowed = {35, 100, 500, 10, 15, 14}
     seen = {}
     for model in MASTER_MODELS:
         for field in _own_fields(model):
