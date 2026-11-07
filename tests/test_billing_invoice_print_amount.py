@@ -94,8 +94,8 @@ def test_invoice_print_shows_amount_and_due_date_box_under_greeting(logged_in, i
     assert '<td class="report-amount-total">¥16,500</td>' in box
     assert "お支払期日" in box and "2026年12月25日" in box
     assert body.index("下記のとおりご請求申し上げます。") < body.index(AMOUNT_BOX) < body.index('class="report-lines"')
-    # 番号などの表の支払期日の行は今のまま (ブラウザで通す試験が見る)
-    assert "<th>支払期日</th><td>2026年12月25日</td>" in body
+    # 番号などの表には支払期日を出さない (枠にだけ。2 か所に出さない = 本人の決め 11-07 23:3x)
+    assert "<th>支払期日</th>" not in body
 
 
 @pytest.mark.django_db

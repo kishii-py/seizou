@@ -4,7 +4,7 @@
 請求書の帳票。context は billing.reports.invoice_context が作る。
 金額と合計は context に入った値 (明細の写し) をそのまま出し、ここでは計算しない。
 頭の「ご請求金額 (税込)」と支払期日の枠 (report-amount) は、得意先の経理の人が最初に探す「いくらをいつまでに」を宛名の下に出す (見つけ print-02)。
-支払期日は、取引先の支払の欄が空の請求書では行ごと出さない (番号などの表と枠の両方)。振込先の枠は土台 (report_base.html) が合計の下に出す。
+支払期日は枠にだけ出す (番号などの表には出さない = 2 か所に出さない。本人の決め 11-07 23:3x)。取引先の支払の欄が空の請求書では行ごと出さない。振込先の枠は土台 (report_base.html) が合計の下に出す。
 品名の下の「注文番号 …」は得意先の注文番号 (受注の写し。見つけ print-03)。空なら出さない。列は増やさない。
 pdf_notice は PDF を作れない環境で、印刷用の HTML に落としたときだけ入る。
 {% endcomment %}
@@ -17,7 +17,6 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
   <tr><th>請求書番号</th><td class="report-docno">{{ invoice.number }}</td></tr>
   <tr><th>発行日</th><td>{{ invoice.issued_on|date:"Y年n月j日" }}</td></tr>
   <tr><th>期間</th><td>{{ invoice.period_from|date:"Y年n月j日" }} 〜 {{ invoice.period_to|date:"Y年n月j日" }}</td></tr>
-  {% if invoice.due_on %}<tr><th>支払期日</th><td>{{ invoice.due_on|date:"Y年n月j日" }}</td></tr>{% endif %}
 </table>
 <p>下記のとおりご請求申し上げます。</p>
 <table class="report-amount">
