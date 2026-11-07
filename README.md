@@ -32,9 +32,9 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 会期中に作った量 (毎朝更新する。元は `docs/nights/`・pytest・画面の目録・`src/seizou/parts.py`・RULES.md・git の履歴)。
 
 - 無人の仕事の回数: 364 本 (11-08 06:3x の main で、`docs/nights/<日付>/` の直下の仕事ごとの記録のファイル (夜の N、昼の D と C) を数えた。昼に別の PC で無人で動いた分を含む)
-- commit の数: 2,917 (11-08 03:5x の main f0522cf8。うち Claude との共著の印が付いた物 2,897。main への merge の commit は 531)
-- テストの数: 5,669 本 (11-08 03:5x の main f0522cf8 の `uv run pytest --collect-only`。E2E を除く全体の `uv run pytest` は通過 5,598、普段は skip の E2E は 71 本 (46 ファイル)。E2E は手元の 2 社で 11-08 に回し、絵は手元の `docs/e2e/20261108/` に残し (リポジトリには 11-02 の分を入れてある)、結果は取り込みの記録に書いた)
-- 画面の数: 159 (11-08 03:5x の main f0522cf8。土台を継承した画面の目録 `seizou_screens` の画面)
+- commit の数: 2,936 (11-08 08:0x の main f6e5366a。うち Claude との共著の印が付いた物 2,916。main への merge の commit は 531)
+- テストの数: 5,688 本 (11-08 08:0x の main f6e5366a の `uv run pytest --collect-only`。E2E を除く全体の `uv run pytest` は通過 5,617、普段は skip の E2E は 71 本 (46 ファイル)。E2E は手元の 2 社で 11-08 に回し、絵は手元の `docs/e2e/20261108/` に残し (リポジトリには 11-02 の分を入れてある)、結果は取り込みの記録に書いた)
+- 画面の数: 159 (11-08 08:0x の main f6e5366a。土台を継承した画面の目録 `seizou_screens` の画面)
 - 部品の数: 19 (core と 18 の Django の部品。`src/seizou/parts.py`)
 - 決まりの数: 24 (RULES.md の R01〜R24)
 
@@ -89,7 +89,7 @@ Claude Code のプラグインと、pip で入れる Django の部品を、こ�
 | 注文書の読み取り | 使う会社だけ、Anthropic の API の鍵 (環境変数 `ANTHROPIC_API_KEY`) が要る。読んだ分だけ API の費用がかかり、製品は Claude Code の契約の枠を使わない。鍵が無い会社では、「注文書を読み取る」の画面に黄の知らせ (「AI の鍵が無いので読み取りは使えません。受注を手で入れてください。」。アカウント管理の権限がある人には鍵の置き場と設定の画面への link も) が出て、入力の欄とボタンは出ない。ほかの画面は鍵が無くても動く。読み取り 1 枚の費用は、まだ測っていない |
 | AI チャット | 使う会社だけ、注文書の読み取りと同じ鍵 (環境変数 `ANTHROPIC_API_KEY`) が要る。鍵が無い会社では、右下の「AI に質問」のボタンで開く窓に 1 文だけが出て、入力の欄は出ない。質問と、画面の説明書と、道具の結果 (部品・受注・指示書・出荷・業務マニュアルの中身。単価と金額を含む) を Anthropic の API へ送り、読んだ分だけ費用がかかる。答えは誤りうるので、数は答えの link の先の画面で確かめる (SECURITY.md)。受注の登録・出荷・計画の置き直しは、AI が保存せず提案のカードになり、人が「承認」を押してから保存される |
 | フィードバックの AI の聞き取り | 使う会社だけ、AI チャットと同じ鍵 (環境変数 `ANTHROPIC_API_KEY`) が要る。鍵が無い会社では、フィードバックの入力の画面に AI の段が出ず、入力の形だけで伝える。利用者が書いた字と、画面の目録・画面ごとの説明書・会社の設定 (会社の名前・選べる設定の今の値・入っている部品) を Anthropic の API へ送り、読んだ分だけ費用がかかる (使う model は設定 `feedback_model`。既定は安い haiku)。受注・部品・出荷のデータを読む道具と、書く道具は渡さない。下書きは会社の中に残る。GitHub に送るのは、世話役がトークンを置いた会社で「GitHub に送る」を押した確認済みの物だけ (下の「フィードバック」) |
-| 所要時間 | 入れてから 2 社が立つまで 49 秒 (11-08 04:2x。作者の Mac。uv のキャッシュを空にして測った = `git clone` 24 秒・`uv sync --locked` 5 秒 (依存を取る。Python 3.12 は入れてある)・`seizou new … --demo` を 2 回で 19 秒・runserver を起こして /health/ が 200 になるまで 1 秒。外のネットの速さで変わる。Claude Code の `/seizou:build` の道の時間は、まだ測っていない) |
+| 所要時間 | 1 社なら、インストールから動き出すまで 50.6 秒 = 約 50 秒 (11-08 07:4x。作者の Mac。uv のキャッシュを空にして測った = `git clone` 32 秒・`uv sync --locked` 7 秒・`seizou new … --demo` 11 秒・runserver を起こして /health/ が 200 になるまで 1 秒。動画の語りの「50 秒」はこの値)。2 社なら 49 秒 (11-08 04:2x。同じ条件 = `git clone` 24 秒・`uv sync --locked` 5 秒 (依存を取る。Python 3.12 は入れてある)・`seizou new … --demo` を 2 回で 19 秒・runserver を起こして /health/ が 200 になるまで 1 秒。外のネットの速さで変わる。Claude Code の `/seizou:build` の道の時間は、まだ測っていない) |
 
 ## 触り方
 
@@ -97,7 +97,7 @@ Claude Code のプラグインと、pip で入れる Django の部品を、こ�
 
 初めて触る方 (審査員の方を含む) に向けた、Claude Code を使わない道。2 社の会社のプロジェクトを作って作り物のデータを入れ、起動してログインし、受注から出荷と納品書までと、A 社から B 社へ注文を送る流れを画面で通せる。鍵 (`ANTHROPIC_API_KEY`) が無くても、注文書の読み取りと AI チャットとフィードバックの AI の聞き取り以外の全部の画面が動く。鍵のある会社でも、AI は受注の登録や出荷を勝手に保存せず、人が提案のカードの「承認」を押すまで保存しない。
 
-1. 入れる (会期中は git から。PyPI の本物の版は提出の tag と同時に出す): `git clone https://github.com/kishii-py/seizou.git && cd seizou && uv sync --locked` (帳票の PDF も使うなら `uv sync --locked --extra pdf`)
+1. 入れる (版 v0.1.0 の tag から): `git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git && cd seizou && uv sync --locked` (帳票の PDF も使うなら `uv sync --locked --extra pdf`)。PyPI の `pip install seizou` でも部品は入るが、例の 2 社の答えと種 (`examples/companies/`) は clone した物を使う
 2. 会社のプロジェクトを作る命令を、`examples/companies/` にある 2 社の答えの YAML で 1 回ずつ打つ: `uv run seizou new examples/companies/a_machining.yaml --demo` と `uv run seizou new examples/companies/b_plating.yaml --demo`。この命令が会社のプロジェクトを `~/seizou-sites/<会社の id>/` に作り、データベースを用意し (migrate)、管理者を 1 人作る。置き場の親は環境変数 `SEIZOU_SITES_DIR` で変えられる。`--demo` は作り物のデータを入れる口で、答えの YAML と同じ場所の `<会社の id>/` (種のフォルダ) から、部品・取引先・部品の取引先・工程・受注・つながりと、標準の工程・図面・指示書・出荷・納品書・請求書と、部品が持つ種 (業務マニュアル・権限 (作り物の部署とアカウント)・在庫・出荷の知らせと検収・入金) を読み込む。読み込んだ種類ごとに「<種類>: 入れた n 件・飛ばした m 件」の行を出し、最後に「作り物のデータを登録しました: <種のフォルダ>」の文を出す。種の中身は `examples/companies/README.md` に書いてある。
    答えの YAML の `industry` が業種の見本 (`src/seizou/recipes/` の 4 本 = 機械加工・表面処理・鋳造・板金) の名前か言い換えに当たると、`seizou new` は部品マスターの項目・工程・向く設定を見本から最初に入れ、「業種の見本 (<業種>) から入れました: …」の行を出す (答えの YAML に書いた項目と設定が勝つ。見本を入れないときは答えの YAML に `recipe: none` と書く)。例の 2 社の答えと種は見本と同じ中身なので、足される物は無い。
    答えの YAML に `logo:` (答えの YAML の横からの道で、PNG か JPEG の絵のファイル) を書くと、`seizou new` は会社のロゴと、ロゴから作った印 (favicon。ブラウザのタブに出る絵) も入れる。後から設定の画面の「会社の情報」でロゴを上げても、印ができる。印は会社の置き場で `manage.py seizou_company_icons` を打つと、ロゴから作り直せる (表は書かない)。
@@ -112,7 +112,7 @@ Claude Code のプラグインと、pip で入れる Django の部品を、こ�
 Claude Code が使える方は、プラグインの命令で会社のシステムを立てる。`/seizou:build` は問いを 3 つ聞く (会社の名前と業種・部品マスターに足したい項目・生産計画を立てているか)。答えると、上の Python の命令 `seizou new` と同じ会社の置き場ができる。答えの YAML を渡せば、問いは飛ばせる。
 `seizou new` (と `/seizou:build`) は会社の置き場に、Claude Code が置き場を開いたときに読む `CLAUDE.md` (AI が守る決まりと、変えた後に `seizou_check` と `/simplify` を回す流れ) と、その短い版の `AGENTS.md` も書く。それより前に作った置き場には、`seizou ai-docs <置き場>` で後から足せる (書き直すときは `--force`)。`seizou new` と `seizou ai-docs` は、置き場に `.gitignore` が無ければ、鍵 (`.env`) とデータベースと上げたファイルと控えを git に入れない `.gitignore` も書く。点検 (`seizou_doctor`) は、CLAUDE.md と AGENTS.md の無い置き場に `seizou ai-docs` を勧める 1 行を出す。
 
-プラグインの入れ方 (会期中は git の main から): `git clone --branch main https://github.com/kishii-py/seizou.git && claude --plugin-dir seizou/plugin` の 1 行で、プラグインを読み込んだ Claude Code の会話が開く (読み込まれるのは、その会話の間だけ。skill 4 つ・hook 1 つ・MCP サーバー 1 つが入る)。開いた会話で `/seizou:build` を打つ。`/seizou:build` は、uv が無ければ公式の版つきの入れ方 (`curl -LsSf https://astral.sh/uv/0.13.5/install.sh | sh`。Windows は `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.ps1 | iex"`) で入れ、uv が 0.11.0 より古ければ `uv self update` を打ち、clone した `seizou` の中で `uv sync --locked` を打って部品を入れる (PATH を変える段は要らない)。11-05 に作者の Mac で、`claude --plugin-dir seizou/plugin plugin details seizou` の出力にこの 3 種類が並ぶことを確かめた。
+プラグインの入れ方: `git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git && claude --plugin-dir seizou/plugin` の 1 行で、プラグインを読み込んだ Claude Code の会話が開く (読み込まれるのは、その会話の間だけ。skill 4 つ・hook 1 つ・MCP サーバー 1 つが入る)。開いた会話で `/seizou:build` を打つ。`/seizou:build` は、uv が無ければ公式の版つきの入れ方 (`curl -LsSf https://astral.sh/uv/0.13.5/install.sh | sh`。Windows は `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.ps1 | iex"`) で入れ、uv が 0.11.0 より古ければ `uv self update` を打ち、clone した `seizou` の中で `uv sync --locked` を打って部品を入れる (PATH を変える段は要らない)。11-05 に作者の Mac で、`claude --plugin-dir seizou/plugin plugin details seizou` の出力にこの 3 種類が並ぶことを確かめた。
 
 | 命令 | 何をするか | 確かめのテスト |
 |---|---|---|
@@ -324,7 +324,7 @@ GitHub とつなぐ: 世話役 (アカウント管理の権限がある人) は�
 3. 本体の Mac が門 (差分の範囲・禁止語・テスト・書き方の検査・決まりの検査・migration・CSS の作り直し) を通った枝だけを main に取り込む。通らない枝は取り込まず、main を戻す。
 4. 作者が朝に、差分と決まりの一覧とテストの結果を見る。
 
-会期中の取り込みは 456 回 (取り込み係の記録 `docs/nights/<日付>.md` の番号。11-08 03:5x の main f0522cf8)、レーンの記録は 348 本、Claude との共著の印が付いた commit は 2,897 (同じ時点)。
+会期中の取り込みは 457 回 (取り込み係の記録 `docs/nights/<日付>.md` の番号。11-08 08:0x の main f6e5366a)、レーンの記録は 364 本、Claude との共著の印が付いた commit は 2,916 (同じ時点)。
 
 | 役 | モデルか機能 | 理由 | 確かめる所 |
 |---|---|---|---|
