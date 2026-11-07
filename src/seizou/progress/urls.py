@@ -13,4 +13,5 @@ urlpatterns = [
     path("", views.ProgressBoardView.as_view(), name="progress_list"),
     path("records/", views.ProgressListView.as_view(), name="record_list"),
     path("records/new/", views.ProgressCreateView.as_view(), name="progress_create"),
+    path("steps/<int:pk>/completed/", views.step_completed, name="step_completed"),
 ]

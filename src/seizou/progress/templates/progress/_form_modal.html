@@ -1,0 +1,4 @@
+{% load static %}
+{# progress の入力の小窓の中身。土台の小窓 (core/_form_modal.html) のまま描き、実績の新規登録のときだけ、「指示書の工程」を選び直したときに完了の印の字 (PROG-1c) を出し入れする JS を読む (画面の全体は progress/progress_form.html が読む)。htmx が差し替えの後に script を動かす。 #}
+{% include "core/_form_modal.html" %}
+{% if request.resolver_match.url_name == "progress_create" %}<script src="{% static 'progress/progress-form.js' %}" data-completed-url="{% url 'progress:step_completed' 0 %}"></script>{% endif %}

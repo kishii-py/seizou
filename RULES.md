@@ -8,7 +8,7 @@
 
 | 番号 | 決まり | 守り方 | テスト |
 |---|---|---|---|
-| R02 | 数量と単価は 0 より大きい (受注の明細の数量と単価、出荷・指示書・実績の数) | `services` と DB の制約 | `tests/test_r02_positive_qty_price.py` |
+| R02 | 数量と単価は 0 より大きい (受注の明細の数量と単価、出荷・指示書の数。実績は良品の数と不良の数がどちらも 0 以上で、合わせて 0 より大きい) | `services` と DB の制約 | `tests/test_r02_positive_qty_price.py` |
 | R03 | 受注の明細の金額は数量 × 単価 (単価の単位が「式」の明細は単価のまま) で、端数は会社の設定どおりに丸める。DB の側で計算しない | `services`。書き方は決まりの検査 | `tests/test_r03_amount.py` |
 | R05 | 取消した受注には、出荷も指示書も作れない | `services` | `tests/test_r05_cancelled_order.py` |
 | R08 | 納品書の数量は出荷の数量と一致する。納品書を出した後の出荷は、納品書を取り消してから直す | `services` | `tests/test_r08_delivery_note_qty.py` |
