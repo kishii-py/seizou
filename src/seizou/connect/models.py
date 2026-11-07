@@ -9,6 +9,7 @@ import os
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -387,6 +388,109 @@ class ShippingNotice(models.Model):
     def qty_text(self):
         """出荷の数の字 (末尾の 0 を落とす)。発注の詳細の枡と、受入の初期値の GET の鍵の値に使う。"""
         return _qty_text(self.qty)
+
+
+class ChatMessage(models.Model):
+    """会話の言葉。受注と発注の 1 件ごとに、相手の会社と送り合った言葉を 1 言 1 行で持つ。
+
+    意図: 受注と発注のそれぞれで相手と話し、両方の会社の seizou に同じ会話を残すため (本人の決め 11-06 23:1x〜23:2x の CHAT-0・CHAT-1)。
+    注文と同じ作りで、同じ注文の番号で結ぶ。発注した側は発注 (purchase_order)、受けた側は受信した注文 (inbox) に結ぶ
+    (受け入れて受注になった後も受信した注文の結びのまま。受注の詳細は受信した注文を通して引く)。
+    会話は中小企業共通 EDI に無い。seizou どうしの送り合い (取引先との接続) だけで送り、送る形は seizou の JSON (kind = chat_message)。
+    EDI の文書の種類ではないので、EDI の電文 (XML) に直す物に入れない。EDI のコードの値を持つ欄も作らない。
+    書くのは connect.services の関数 (post_chat_message・resend_chat_message・受け口の _receive_chat_message) だけ。
+    言葉を直す関数と消す関数は作らない。訳: 電子帳簿保存法 (電子取引のデータの保存)。会話で見積・図面の版・単価の合意など
+    取引の中身を送り合うことがあり、送ったとおり・受けたとおりに残すため。確かめた資料 = 中小企業共通 EDI ガイドブック (ver.4.3) 3.2.2
+    「電帳法の改正により EDI 取引データはすべて保存することが規定された。保存データの修正・削除についてもその履歴が残るシステムが必須」。
+    法令の本文と国税庁の資料は読んでいない。会話が電子取引のデータに当たるかの当てはめは未確認 (適法の側に倒して、直さず消さない形にした)。
+    未確認の所: 取引年月日・取引金額・取引先で探す決まりは、この表では作っていない (送り合った中身を残す仕組みの側で扱う)。
+    番号 (message_id) は送り手が作り、両方の会社で同じ値。1 つの DB に 2 社の役を置く試験では、同じ表に「自社が書いた」行と
+    「相手から届いた」行が同じ番号で並ぶので、一意の制約は番号と向きの組にする。受け口の 2 回目は (番号, 「相手から届いた」) で 1 回目の行を返す (R11 の考え)。
+    """
+
+    DIRECTION_SENT = "sent"
+    DIRECTION_RECEIVED = "received"
+    DIRECTION_CHOICES = [
+        (DIRECTION_SENT, "自社が書いた"),
+        (DIRECTION_RECEIVED, "相手から届いた"),
+    ]
+
+    # 送り手が uuid4 で作り、送る見出しの webhook-id と同じ値。両方の会社で同じ値。
+    message_id = models.UUIDField("番号")
+    # 発注した側の会話。受けた側の会話は inbox。どちらか片方だけが入る (下の制約)。
+    purchase_order = models.ForeignKey(
+        "purchasing.PurchaseOrder",
+        verbose_name="発注",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="chat_messages",
+    )
+    inbox = models.ForeignKey(
+        Inbox,
+        verbose_name="受信した注文",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="chat_messages",
+    )
+    direction = models.CharField("向き", max_length=10, choices=DIRECTION_CHOICES)
+    # 自社が書いた物だけ。
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="書いた人",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    # 自社が書いた物は画面に出す名前 (氏名か、空ならログインの名前)。相手から届いた物は相手が送った氏名で、空でよい。
+    author_name = models.CharField("書いた人の名前", max_length=100, blank=True)
+    # 2000 字までの決まりは services が見る。
+    body = models.TextField("言葉")
+    # 相手から届いた物は、送り手が書いた日時。並びはこの列。
+    written_at = models.DateTimeField("書いた日時", default=timezone.now)
+    # 相手から届いた物だけ。
+    received_at = models.DateTimeField("届いた日時", null=True, blank=True)
+    # 自社が書いた物で、相手の受け口が 200 を返した時だけ入れる。空 = まだ相手に届いていない (Inbox.reply_sent_at と同じ考え)。
+    sent_at = models.DateTimeField("相手に届いた日時", null=True, blank=True)
+    # 自社が書いた物の、最後に送った時の返事の字 (Outbox.response と同じ字)。
+    response = models.CharField("相手の返事", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "会話の言葉"
+        verbose_name_plural = "会話の言葉"
+        # 古い順 (会話は上から下へ読む)。
+        ordering = ["written_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message_id", "direction"],
+                name="connect_chatmessage_message_direction_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(purchase_order__isnull=False, inbox__isnull=True)
+                | models.Q(purchase_order__isnull=True, inbox__isnull=False),
+                name="connect_chatmessage_one_target",
+            ),
+        ]
+
+    def __str__(self):
+        written = timezone.localtime(self.written_at)
+        return f"{written:%Y-%m-%d %H:%M} {self.author_name}: {self.body[:20]}"
+
+    def delivery_state(self):
+        """吹き出しの下に出す字。相手から届いた行は空の字。
+
+        相手に届いた (sent_at がある) なら「届いた <日時>」、届いていなければ「届いていない: <相手の返事>」。
+        返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。Inbox.reply_state と同じ決まり)。
+        """
+        if self.direction == self.DIRECTION_RECEIVED:
+            return ""
+        if self.sent_at is not None:
+            return f"届いた {timezone.localtime(self.sent_at):%Y-%m-%d %H:%M}"
+        if self.response.startswith(("届きません", "断られた")):
+            return self.response
+        return f"届いていない: {self.response}"
 
 
 def _qty_text(value) -> str:
