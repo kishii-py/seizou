@@ -100,8 +100,8 @@ def test_panel_on_order_item_workorder_detail(client_logged_in, order, item, wor
         assert "添付ファイル" in html
         assert add_url_for(obj) in html, url
         assert "添付ファイルを付ける" in html
-        assert "添付ファイルは、まだ付いていません。" in html
-        assert "写真・検査成績書・作業手順などを付けると、ここに並びます。" in html
+        assert "添付ファイルは、まだ付いていません。" not in html
+        assert "写真・検査成績書・作業手順などを付けられます。" in html
 
 
 @pytest.mark.django_db
@@ -310,3 +310,39 @@ def test_add_form_in_modal_has_no_target_line(client_logged_in, order):
     html = html_of(response)
     assert "seizou-modal-wide" in html
     assert "付ける先: " not in html
+
+
+EMPTY_LINE = '<p class="mt-4 text-base-content/70">写真・検査成績書・作業手順などを付けられます。</p>'
+
+
+def attachments_panel_of(html: str) -> str:
+    start = html.index('<section id="attachments"')
+    return html[start : html.index("</section>", start)]
+
+
+@pytest.mark.django_db
+def test_empty_panel_is_one_line(client_logged_in, order, item, workorder):
+    """0 件のときは見出しの下の 1 行だけ (C81)。丸い絵と前の 2 行は戻らない。件数の 0 は見出しの横に出る。"""
+    for url in [
+        reverse("orders:order_detail", args=[order.pk]),
+        reverse("masters:item_detail", args=[item.pk]),
+        reverse("workorders:workorder_detail", args=[workorder.pk]),
+    ]:
+        panel = attachments_panel_of(html_of(client_logged_in.get(url)))
+
+        assert EMPTY_LINE in panel, url
+        assert "rounded-full" not in panel, url
+        assert "size-12" not in panel, url
+        assert "ここに並びます" not in panel, url
+        assert '<span class="badge badge-sm tabular-nums">0</span>' in panel, url
+
+
+@pytest.mark.django_db
+def test_panel_with_file_has_no_empty_line(client_logged_in, order, user):
+    """1 件以上のときは表だけで、0 件の 1 行は出ない ({% if %} の向きの取り違えを捕まえる)。"""
+    services.add_attachment(order, SimpleUploadedFile("受注の写真.png", b"png"), user, kind="photo")
+
+    panel = attachments_panel_of(html_of(client_logged_in.get(reverse("orders:order_detail", args=[order.pk]))))
+
+    assert "受注の写真.png" in panel
+    assert "付けられます。" not in panel

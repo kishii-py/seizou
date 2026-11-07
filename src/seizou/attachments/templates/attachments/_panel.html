@@ -42,10 +42,7 @@
     </table>
   </div>
   {% else %}
-  <div class="flex flex-col items-center justify-center p-6 text-center">
-    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "file" "size-6" %}</span>
-    <p class="mt-4 font-medium">添付ファイルは、まだ付いていません。</p>
-    <p class="mt-2 text-xs text-base-content/50">写真・検査成績書・作業手順などを付けると、ここに並びます。</p>
-  </div>
+  {# 0 件のときは見出しの下に 1 行だけ出す (短い詳細の画面で、空の箱が場所を取らないため)。形は図面の版が 0 件の 1 行 (masters/drawing_viewer.html) と同じ。件数は見出しの横の数が出す。 #}
+  <p class="mt-4 text-base-content/70">写真・検査成績書・作業手順などを付けられます。</p>
   {% endif %}
 </section>
