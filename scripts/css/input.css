@@ -511,6 +511,28 @@ html:has(.seizou-save-row) #assistant-root {
   color: var(--color-warning);
 }
 
+/* 字に使う意味の色 (A11Y-03・V1。指示書「画面の直し 15 件」の 1。本人の決め 11-07 21:0x「15 件全部」)。daisyUI の error・warning・success・info は
+   塗り (bg-*) のための色で、そのまま字に使うと白い地との比が 赤 2.88・黄 1.76・緑 1.96・青 2.22 と足りない (字の目安 4.5)。
+   字の class (.text-error など) だけを、同じ色に黒を 40% 混ぜた色 (color-mix の 60%) にする。白い地との比は 赤 8.9・黄 6.3・緑 6.8・青 7.4、
+   灰の地 (base-200 = 1 行おきの行・base-300 = 指を乗せた行) でも 5.4 以上 (tests/test_core_text_contrast.py が計算で見る)。
+   塗りの色 (--color-error など = bg-error・btn-error・淡い札・知らせの地) は変えない (塗りと濃い字の組が崩れるため)。
+   前に修飾の付いた class (data-[tone=warning]:text-warning = 出荷の数量が残りを超えた時の欄の下の字、data-[over=true]:text-error = 進捗の盤の
+   作り過ぎ) は、Tailwind が作る選び方と同じ字で書く。層の外の決まりなので utilities の規則より強い。 */
+.text-error,
+.data-\[over\=true\]\:text-error[data-over="true"] {
+  color: color-mix(in oklab, var(--color-error) 60%, black);
+}
+.text-warning,
+.data-\[tone\=warning\]\:text-warning[data-tone="warning"] {
+  color: color-mix(in oklab, var(--color-warning) 60%, black);
+}
+.text-success {
+  color: color-mix(in oklab, var(--color-success) 60%, black);
+}
+.text-info {
+  color: color-mix(in oklab, var(--color-info) 60%, black);
+}
+
 /* タブの形 (本人の決め 11-07 16:5x = 横いっぱいの線の上にタブを置く形。受け渡しの seizou-タブの参考-20261107/指示書.md)。
    タブを地面の字でなく押せる物に見せ、全部の画面 (一覧の絞り core/_presets.html・フィードバック feedback/_tabs.html・詳細の区分 core/detail.html)
    で同じ形にするため。daisyUI の tabs に重ねて付ける (tabs-border・tabs-box の代わり)。選んでいない tab の字の色は上の C49 の規則 (60%) のまま。
