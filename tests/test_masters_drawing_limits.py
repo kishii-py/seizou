@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFile
 
 from seizou.masters import services
 from seizou.masters.models import Item, ItemDrawingVersion
@@ -174,3 +174,112 @@ def test_sample_drawings_and_pdf_are_accepted(user):
         item.refresh_from_db()
         assert item.drawing.name.endswith(Path(name).suffix)
         assert item.drawing_preview_error == ""
+
+
+# ---------------------------------------------------------------- 2: 記憶の予算と、形式の判定を読む前に置くこと
+
+
+def too_large_saved(item, size):
+    """部品と元のファイルは保存され、表示用の絵が無く、大きすぎるの文 (画素の数を入れた物) が残っている。"""
+    item.refresh_from_db()
+    assert Item.objects.filter(pk=item.pk).exists()
+    assert item.drawing
+    assert not item.drawing_preview
+    assert "大きすぎます" in item.drawing_preview_error
+    assert f"{size[0]}×{size[1]}" in item.drawing_preview_error
+    assert "元のファイルは保存してあります。" in item.drawing_preview_error
+    assert item.display_drawing is None
+
+
+def test_memory_budget_passes_mono_a0_and_refuses_color_a0():
+    """A0 を 400dpi で読んだ大きさ (13244×18725) で、白黒は予算の内、カラーは予算の外 (実物の絵は作らない)。"""
+    assert services.DRAWING_MEMORY_BUDGET == 600 * 1024 * 1024
+
+    class Header:
+        """Image.open の後に分かる頭 (大きさと形) だけを持つ作り物。"""
+
+        def __init__(self, mode):
+            self.size = (13244, 18725)
+            self.mode = mode
+
+    assert services._drawing_memory(Header("1")) == 13244 * 18725 * (1 + 1)
+    assert services._drawing_memory(Header("1")) <= services.DRAWING_MEMORY_BUDGET
+    for mode in ("RGB", "CMYK"):
+        assert services._drawing_memory(Header(mode)) > services.DRAWING_MEMORY_BUDGET, mode
+
+
+@pytest.mark.django_db
+def test_image_over_memory_budget_is_not_loaded(user, monkeypatch):
+    monkeypatch.setattr(services, "DRAWING_MEMORY_BUDGET", 50_000)
+    loaded = []
+
+    def must_not_load(self, *args, **kwargs):
+        loaded.append(self.size)
+        raise AssertionError("予算を超える絵を読んではいけない")
+
+    content = image_bytes(Image.new("CMYK", (100, 100), (10, 20, 30, 0)), "TIFF")  # 100 × 100 × (4 + 4) = 80,000
+    item = new_item(user, upload("color.tif", content, "image/tiff"), part_no="P-7201")
+    too_large_saved(item, (100, 100))
+
+    monkeypatch.setattr(Image.Image, "load", must_not_load)
+    item = new_item(user, upload("color.tif", content, "image/tiff"), part_no="P-7202")
+    too_large_saved(item, (100, 100))
+    assert loaded == []
+
+
+@pytest.mark.django_db
+def test_images_within_memory_budget_are_read(user, monkeypatch):
+    monkeypatch.setattr(services, "DRAWING_MEMORY_BUDGET", 50_000)
+    rgba = image_bytes(Image.new("RGBA", (100, 100), (200, 30, 30, 255)), "PNG")  # 100 × 100 × 4 = 40,000
+    item = new_item(user, upload("photo.png", rgba, "image/png"), part_no="P-7211")
+    item.refresh_from_db()
+    assert item.drawing_preview_error == ""
+    assert item.display_drawing.name == item.drawing.name
+
+    mono = g4_tiff((100, 100))  # 100 × 100 × (1 + 1) = 20,000
+    item = new_item(user, upload("scan.tif", mono, "image/tiff"), part_no="P-7212")
+    item.refresh_from_db()
+    assert item.drawing_preview_error == ""
+    assert item.drawing_preview.name.endswith(".png")
+
+
+@pytest.mark.django_db
+def test_memory_budget_applies_to_png(user, monkeypatch):
+    monkeypatch.setattr(services, "DRAWING_MEMORY_BUDGET", 30_000)
+    rgba = image_bytes(Image.new("RGBA", (100, 100), (200, 30, 30, 255)), "PNG")
+    item = new_item(user, upload("photo.png", rgba, "image/png"), part_no="P-7221")
+    too_large_saved(item, (100, 100))
+
+
+@pytest.mark.django_db
+def test_truncated_jpeg_and_png_are_broken(user, monkeypatch):
+    # 帳票の PDF の道具 (WeasyPrint) は import のときに途中で切れた絵も読む設定にする。その後でも壊れた図面と分かる。
+    monkeypatch.setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+    whole = jpeg_bytes((400, 300))
+    good = new_item(user, upload("whole.jpg", whole, "image/jpeg"), part_no="P-7230")
+    assert good.drawing_preview_error == ""
+    for number, (name, content) in enumerate((("half.jpg", whole[: len(whole) // 2]), ("half.png", noisy_png()[:4000]))):
+        item = new_item(user, upload(name, content), part_no=f"P-723{number + 1}")
+        item.refresh_from_db()
+        assert item.drawing.name.endswith(Path(name).suffix), name
+        assert not item.drawing_preview, name
+        assert item.drawing_preview_error == services.DRAWING_BROKEN_MESSAGE, name
+    assert ImageFile.LOAD_TRUNCATED_IMAGES is True  # 変換の後に元の値へ戻す
+
+
+@pytest.mark.django_db
+def test_later_page_over_memory_budget_is_not_made(user, monkeypatch):
+    first = line_drawing((100, 100))  # 100 × 100 × (1 + 1) = 20,000
+    second = Image.new("RGB", (200, 200), (30, 30, 200))  # 200 × 200 × 4 = 160,000
+    content = image_bytes(first, "TIFF", save_all=True, append_images=[second])
+
+    item = new_item(user, upload("two.tif", content, "image/tiff"), part_no="P-7241")
+    item.refresh_from_db()
+    assert item.drawing_page_count == 2  # 予算の既定では 2 ページとも作る
+
+    monkeypatch.setattr(services, "DRAWING_MEMORY_BUDGET", 50_000)
+    item = new_item(user, upload("two.tif", content, "image/tiff"), part_no="P-7242")
+    item.refresh_from_db()
+    assert item.drawing_preview_error == ""
+    assert item.drawing_preview.name.endswith(".png")
+    assert item.drawing_page_count == 1

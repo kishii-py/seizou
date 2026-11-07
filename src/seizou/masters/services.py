@@ -215,8 +215,12 @@ DRAWING_BOMB_MESSAGE = (
     "図面の表示用の絵は作れませんでした (絵が大きすぎます)。"
     "元のファイルは保存してあります。解像度を下げて付け直すと絵を作れます。"
 )
+#: 表示用の絵を作るときの記憶の予算 (バイト)。白黒の G4 の A0 400dpi (約 496MB) は通し、カラーの A0 (約 992MB) は断る。
+DRAWING_MEMORY_BUDGET = 600 * 1024 * 1024
 # PNG に保存できる形。白黒 (1) は L にしてから縮める (そのまま縮めると細い線が消える)。
 _PREVIEW_MODES = ("L", "RGB", "RGBA")
+# Pillow が記憶に持つ 1 画素のバイト数 (形 → バイト数)。I;16 系は 2、この表に無い形は 4 (RGB も 4 バイトで持つ)。
+_MODE_BYTES = {"1": 1, "L": 1, "P": 1}
 # Pillow の上限 (Image.MAX_IMAGE_PIXELS) と、途中で切れた絵を読むか (ImageFile.LOAD_TRUNCATED_IMAGES) は
 # module 全体の値なので、変えて戻す間を 1 つずつにする。
 _PIXEL_LIMIT_LOCK = threading.Lock()
@@ -263,6 +267,12 @@ def _drawing_preview(file):
     訳: 小さなファイルが開くと何 GB にもなる絵 (decompression bomb) で、サーバーの記憶を使い切らせないため。
     出所 = Claude Security の走査の候補 11-07 の 31 (守りを None で外していた)。図面の上限の 3 億画素は 00 の案のまま。
     変えてよい条件 = 図面の上限 (DRAWING_MAX_PIXELS) を変える時。守りを None にして外すことはしない。
+    訳: 表示用の絵を作るときは、絵を読む (load) 前に記憶の使う量 (幅 × 高さ × 1 画素のバイト数。変換が要る形は変換の後の
+    1 枚分を足す) を見積もり、DRAWING_MEMORY_BUDGET を超える絵は読まずに大きすぎるの文にする (部品と元のファイルは保存する)。
+    形式の判定も読む前に置く (PNG は verify、JPEG は縮めて読む)。1 枚の図面で同じ VPS の 2 社のサーバーが記憶の不足で落ちるのを
+    止めるため。白黒の G4 の A0 400dpi (約 496MB) は通し、カラーの A0 (約 992MB) は断る。
+    出所 = 本人の決め 11-08 00:16 と 00-matome.md:25 の「A0 400dpi を読む」(作業場の外の計画の文書。字は依頼書 N361 の写し)。
+    変えてよい条件 = 本人が決め直したとき、または VPS のメモリの目安を変えたとき。
     """
     if not (getattr(file, "name", "") or "").lower().endswith(DRAWING_IMAGE_SUFFIXES):
         return None, "", []
@@ -293,16 +303,53 @@ def _drawing_preview(file):
 
 
 def _read_drawing(file):
-    """_drawing_preview の中身。Pillow の上限を図面の上限まで上げた中で呼ぶ。"""
+    """_drawing_preview の中身。Pillow の上限を図面の上限まで上げた中で呼ぶ。
+
+    Image.open は頭 (大きさと形) だけを読む。絵の全部を読む (load) 前に、画素の数 (DRAWING_MAX_PIXELS) と
+    記憶の予算 (DRAWING_MEMORY_BUDGET) を見て、超えたら読まずに大きすぎるの文を返す。
+    形式の判定も読む前に置く。PNG は verify (中身を広げずに切れと検査の値を見る) で、JPEG は 1/8 に縮めて読む
+    (JPEG の verify は切れていても通るため)。どちらもそのまま絵で出すので表示用は None。
+    """
     with Image.open(file) as image:
         width, height = image.size
         if width * height > DRAWING_MAX_PIXELS:
             return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height), []
-        image.load()  # Image.open は頭だけ読む。壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
-        if image.format in ("PNG", "JPEG"):
+        if _drawing_memory(image) > DRAWING_MEMORY_BUDGET:
+            return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height), []
+        if image.format == "PNG":
+            image.verify()  # 切れた PNG は OSError (壊れているの文)
             return None, "", []
+        if image.format == "JPEG":
+            # 縮めて読むと記憶は 1/64。切れた JPEG は縮めても load で OSError (壊れているの文)
+            image.draft(image.mode, (max(1, width // 8), max(1, height // 8)))
+            image.load()
+            return None, "", []
+        image.load()  # 壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
         first = _page_png(image)
         return first, "", _later_pages(image)
+
+
+def _drawing_memory(image):
+    """表示用の絵を作るときに記憶に持つ量の見積もり (バイト)。Image.open の後の大きさと形だけを見る (読まない)。
+
+    幅 × 高さ × (元の 1 画素のバイト数 + 変換の後の 1 画素のバイト数)。変換は _page_png と同じ決め方
+    (白黒 1 → L は 1、_PREVIEW_MODES の外 → RGB か RGBA は 4、_PREVIEW_MODES の中は変換しないので 0)。
+    """
+    width, height = image.size
+    mode = image.mode
+    if mode in _MODE_BYTES:
+        stored = _MODE_BYTES[mode]
+    elif mode.startswith("I;16"):
+        stored = 2
+    else:
+        stored = 4
+    if mode == "1":
+        converted = 1
+    elif mode in _PREVIEW_MODES:
+        converted = 0
+    else:
+        converted = 4
+    return width * height * (stored + converted)
 
 
 def _page_png(page):
@@ -323,7 +370,8 @@ def _page_png(page):
 def _later_pages(image):
     """複数ページの絵の 2 ページ目から後 (DRAWING_MAX_PAGES まで) の PNG の bytes の並び。
 
-    読めない・大きすぎるページがあれば、そのページから後は作らない (誤りの文にしない。1 ページ目は見られる)。
+    読めない・大きすぎる (画素の数か記憶の予算を超える) ページがあれば、そのページから後は作らない
+    (誤りの文にしない。1 ページ目は見られる)。
     """
     pages = []
     for index, page in enumerate(ImageSequence.Iterator(image)):
@@ -334,6 +382,8 @@ def _later_pages(image):
         try:
             width, height = page.size
             if width * height > DRAWING_MAX_PIXELS:
+                break
+            if _drawing_memory(page) > DRAWING_MEMORY_BUDGET:
                 break
             page.load()
             pages.append(_page_png(page))
