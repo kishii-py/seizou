@@ -13,6 +13,7 @@
   版に戻すのは restore_drawing_version。
 - 使用停止 (active が偽。N135): 消さずに候補から外す。候補の母集団は active_items・active_partners、
   新しい受注と発注を作る所 (orders・purchasing の services) の守りは refuse_inactive。今までの記録はそのまま。
+- 選ぶ小窓の行 (effective_prices・price_choices) と発注の工程の最初の値 (default_process・with_default_process) は読むだけ (C100)。
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ from .models import Item, ItemPrice, Partner, PartnerItem
 from .models import Process
 from .models import Holiday
 from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
+from .models import ItemProcess
+from dataclasses import dataclass
+from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, When
+from django.utils import timezone
 
 _ITEM_KEYS = frozenset(
     {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note", "active"}
@@ -762,6 +767,129 @@ def item_prices(item):
     """
     rows = ItemPrice.objects.filter(item=item).select_related("item", "partner_item__partner", "process")
     return sorted(rows, key=_price_sort_key)
+
+
+# ---------------------------------------------------------------- 単価表から選ぶ小窓の行と、発注の明細の工程の最初の値 (C100。読むだけ)
+
+
+def _price_band(price):
+    """適用開始日のほかが同じ条件 (取引先の行か共通・売りか発注か・工程・数量の下限) の行の組の鍵。"""
+    return (price.partner_item_id, price.kind, price.process_id, price.min_qty)
+
+
+def _start_rank(price):
+    """適用開始日の新しさ。空は一番古い扱い (ほかに効く行が無ければ効く)。"""
+    return 0 if price.start_date is None else price.start_date.toordinal()
+
+
+def effective_prices(item, *, kind, partner=None, on_date):
+    """on_date に効いている単価の行の list (読むだけ)。item_prices の 1 回の問い合わせから選び、並びは item_prices のまま。
+
+    kind の行のうち、取引先の行が partner の物 (部品の取引先の行の取引先が partner) と共通の行を取る。partner が None なら共通の行だけ。
+    適用開始日が on_date より後の行は出さない。同じ条件 (取引先の行か共通・売りか発注か・工程・数量の下限) の行は、
+    適用開始日が on_date 以前で一番新しい 1 行だけを残す (適用開始日が空の行は一番古い扱い)。
+
+    訳: その日に効いている単価だけを選ぶ小窓とずれの知らせに使い、改定の前の単価と、まだ効かない単価を出さないため。出所 = 本人の決め PRICE-2・PRICE-3。
+    変えてよい条件 = 単価の行の効く日の決め方を本人が決め直したとき。
+    """
+    partner_pk = getattr(partner, "pk", partner)
+    rows = [
+        price
+        for price in item_prices(item)
+        if price.kind == kind
+        and (price.partner_item_id is None or (partner_pk is not None and price.partner_item.partner_id == partner_pk))
+        and (price.start_date is None or price.start_date <= on_date)
+    ]
+    newest = {}
+    for price in rows:
+        band = _price_band(price)
+        if band not in newest or _start_rank(price) > _start_rank(newest[band]):
+            newest[band] = price
+    kept = {price.pk for price in newest.values()}
+    return [price for price in rows if price.pk in kept]
+
+
+@dataclass(frozen=True)
+class PriceChoice:
+    """選ぶ小窓の 1 行。price = 単価の行・fits = 今の数量に合う・expired = 見積の有効期限を過ぎた (price.quote_expired)。"""
+
+    price: ItemPrice
+    fits: bool
+    expired: bool
+
+
+def _fitting_pks(prices, qty):
+    """今の数量に合う行の pk の集まり。取引先の行か共通 × 工程の組ごとに、数量の下限 (空は 0) が qty 以下で一番大きい 1 行。
+    期限切れの行も数える。qty が None なら空。"""
+    if qty is None:
+        return set()
+    best = {}
+    for price in prices:
+        floor = price.min_qty or 0
+        if floor > qty:
+            continue
+        group = (price.partner_item_id, price.process_id)
+        if group not in best or floor > (best[group].min_qty or 0):
+            best[group] = price
+    return {price.pk for price in best.values()}
+
+
+def _choice_sort_key(choice):
+    """選ぶ小窓の並びの鍵。段 (取引先の行で期限の内 → 共通で期限の内 → 期限切れ (取引先 → 共通))、
+    期限の内の段では今の数量に合う行が先、次に工程 (空 → 並び順 → 工程コード)・数量の下限 (空 → 小さい順)・pk。"""
+    price = choice.price
+    common = price.partner_item_id is None
+    tier = 2 if choice.expired else (1 if common else 0)
+    fits_first = 0 if (choice.fits and not choice.expired) else 1
+    process = (0, 0, "") if price.process is None else (1, price.process.sort_order, price.process.code)
+    min_qty = (0, 0) if price.min_qty is None else (1, price.min_qty)
+    return (tier, 1 if common else 0, fits_first, process, min_qty, price.pk)
+
+
+def price_choices(item, *, kind, partner=None, on_date=None, qty=None):
+    """選ぶ小窓に並べる行 (PriceChoice の list。読むだけ)。on_date が None なら今日。行は effective_prices の行。
+
+    fits は取引先の行か共通 × 工程の組ごとに、数量の下限 (空は 0) が qty 以下で一番大きい行 (期限切れの行も数える。qty が None ならどれも偽)。
+    並びは 3 段 (明細の取引先の行で期限の内 → 共通の行で期限の内 → 見積の有効期限を過ぎた行 (取引先 → 共通))。
+    並べ替えは Python で行う (空の扱いを SQLite と PostgreSQL で同じにするため)。
+    単価のずれの知らせが比べる相手を決めるときも、この関数の fits と expired を使える。
+
+    訳: 明細の取引先の単価を先に、共通を後に、今の数量に合う帯を上に、見積の有効期限を過ぎた単価を下に出し、選び間違いを減らすため。
+    出所 = 本人の決め PRICE-0・PRICE-2・PRICE-3b。変えてよい条件 = 並びの決めを本人が決め直したとき。
+    """
+    if on_date is None:
+        on_date = timezone.localdate()
+    prices = effective_prices(item, kind=kind, partner=partner, on_date=on_date)
+    fitting = _fitting_pks(prices, qty)
+    choices = [PriceChoice(price=price, fits=price.pk in fitting, expired=price.quote_expired) for price in prices]
+    return sorted(choices, key=_choice_sort_key)
+
+
+#: 発注の明細の工程の最初の値に数える、部品の標準の工程の並びの行の絞り (default_process と with_default_process が同じ物を使う)
+_DEFAULT_PROCESS_FILTER = {"process__active": True, "process__is_outsourced": True}
+
+
+def default_process(item):
+    """部品の標準の工程の並びのうち、使用中で協力企業に出す工程がちょうど 1 つならその Process、無いか 2 つ以上なら None (読むだけ)。
+
+    訳: 協力企業に出す工程が 1 つだけの部品は、発注の明細の工程を最初から入れて手間を減らすため。2 つ以上ならどれを出すか分からないので入れない。
+    出所 = 本人の決め PRICE-5。変えてよい条件 = 最初の値の決め方を本人が決め直したとき。
+    """
+    rows = list(item.item_processes.filter(**_DEFAULT_PROCESS_FILTER).select_related("process")[:2])
+    return rows[0].process if len(rows) == 1 else None
+
+
+def with_default_process(items):
+    """部品の queryset に default_process (工程の pk か None) を足して返す (読むだけ)。default_process と同じ決まり。
+    候補の口が 1 ページ分を 1 回で引くため (数と最初の 1 つを Subquery で引く。問い合わせは増えない)。"""
+    outsourced = ItemProcess.objects.filter(item=OuterRef("pk"), **_DEFAULT_PROCESS_FILTER)
+    count = Subquery(
+        outsourced.order_by().values("item").annotate(rows=Count("pk")).values("rows")[:1], output_field=IntegerField()
+    )
+    first = Subquery(outsourced.order_by("seq", "pk").values("process")[:1], output_field=IntegerField())
+    return items.annotate(default_process_count=count).annotate(
+        default_process=Case(When(default_process_count=1, then=first), default=None, output_field=IntegerField())
+    )
 
 
 def round_amount(partner, value, *, rounding=None):

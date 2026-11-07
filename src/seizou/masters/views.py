@@ -2,6 +2,7 @@
 
 一覧は行を押すと詳細、部品の名前の字を押すと小窓 (core の master_link)。会社ごとの項目の列は土台が自動で足す。
 部品の小窓は、部品の取引先 (tabs) と会社ごとの項目も出す (masters/_modal.html)。
+単価表から選ぶ小窓 (ItemPricePickView) は、受注と発注の明細の行から開き、その日に効く単価を並べる (C100)。
 """
 
 import csv
@@ -131,6 +132,20 @@ class ItemSelectView(BaseSelectView):
     def get_queryset(self):
         # 候補は使用中だけ (N135。受注と発注の入力の欄が、使用停止の部品を出さない)
         return services.active_items()
+
+
+class ItemPricePickView(BaseModalView):
+    """単価表から選ぶ小窓。
+
+    使う人: 営業・生産管理 / いつ: 受注か発注の明細の単価を入れるとき / 何のために: 部品の単価表から、取引先と日付と数量に合う単価を選んで明細に入れる / 次にすること: 「選ぶ」で明細の行に単価と見積の番号 (発注は工程も) が入る。小窓を閉じて保存へ
+    """
+
+    # 中身は masters/_price_pick.html (GET の kind・partner・on・qty を tag の price_pick が読む)。小窓の土台は htmx でない要求を部品の詳細へ移し、
+    # 部署で開けるかを見ない (詳細・小窓・候補の口と同じ)。枠は受注と発注の入力が include する masters/_price_pick_dialog.html (C100)。
+    model = Item
+    template_name = "masters/_price_pick.html"
+    screen_name = "単価表から選ぶ"
+    screen_help = "受注と発注の明細の「単価表から選ぶ」から開く小窓。その日に効く単価を、取引先の単価・共通の単価の順に、今の数量に合う帯を上にして出します。"
 
 
 class PartnerListView(BaseListView):

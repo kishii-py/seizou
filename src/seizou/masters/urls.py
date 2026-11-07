@@ -21,6 +21,7 @@ urlpatterns = [
     path("items/<int:pk>/edit/", views.ItemUpdateView.as_view(), name="item_update"),
     path("items/<int:pk>/modal/", views.ItemModalView.as_view(), name="item_modal"),
     path("items/select/", views.ItemSelectView.as_view(), name="item_select"),
+    path("items/<int:pk>/prices/pick/", views.ItemPricePickView.as_view(), name="item_price_pick"),
     path("partners/", views.PartnerListView.as_view(), name="partner_list"),
     path("partners/new/", views.PartnerCreateView.as_view(), name="partner_create"),
     path("partners/<int:pk>/", views.PartnerDetailView.as_view(), name="partner_detail"),
