@@ -48,6 +48,7 @@ NOTICE_KEYS = {
     "sent_at",
     "order_id",
     "order_no",
+    "order_revision_no",
     "line_no",
     "supplier_order_no",
     "shipment_no",

@@ -47,6 +47,7 @@ ACCEPTANCE_KEYS = {
     "sent_at",
     "order_id",
     "order_no",
+    "order_revision_no",
     "line_no",
     "accepted_on",
     "qty",

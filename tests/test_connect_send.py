@@ -25,8 +25,14 @@ from tests.test_connect_signing import _new_secret
 ENV_NAME = "SEIZOU_PARTNER_TESTSUB_SECRET"
 PARTNER_URL = "https://partner.example.test/connect/receive/order/"
 
-ORDER_KEYS = {"id", "kind", "sent_at", "order_no", "order_date", "buyer", "supplier", "note", "lines"}
-LINE_KEYS = {"line_no", "part_no", "part_name", "qty", "unit", "unit_price", "due_date", "note"}
+ORDER_KEYS = {
+    "id", "kind", "sent_at", "order_no", "order_date", "buyer", "supplier", "note", "lines",
+    "order_id", "order_revision_no", "purpose_code",
+}
+LINE_KEYS = {
+    "line_no", "part_no", "part_name", "qty", "unit", "unit_price", "due_date", "note",
+    "line_status_code", "line_status_reason_code",
+}
 
 
 class FakeResponse:
@@ -154,6 +160,8 @@ def test_send_records_outbox_and_marks_sent(monkeypatch, user, secret, subcontra
         "unit_price": "25.50",
         "due_date": "2026-11-20",
         "note": "作り物の明細の備考",
+        "line_status_code": "39",
+        "line_status_reason_code": "",
     }
     # 本文は鍵の並びを固定した JSON の bytes そのまま
     assert call["data"] == json.dumps(

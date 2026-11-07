@@ -45,6 +45,7 @@ REPLY_KEYS = {
     "sent_at",
     "order_id",
     "order_no",
+    "order_revision_no",
     "result",
     "supplier_order_no",
     "reason",

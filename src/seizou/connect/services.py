@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from seizou.core import edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
@@ -226,6 +227,13 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     problem = _order_text_problem(payload)
     if problem:
         return _refuse(problem, msg_id)
+    # 注文の版とコード (中小企業共通 EDI の注文変更の方式 2)。無い鍵は第 1 版の新規 (今までの seizou との送り合いのため)。
+    codes = _order_codes(payload)
+    if isinstance(codes, str):
+        return _refuse(codes, msg_id)
+    revision_no, purpose_code = codes
+    if purpose_code != edi_codes.PURPOSE_NEW:
+        return _refuse(MESSAGE_ORDER_REVISION_NOT_YET, msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
@@ -235,9 +243,58 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
                 payload=payload,
+                revision_no=revision_no,
+                purpose_code=purpose_code,
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
+
+
+#: 注文の版とコードの断り (送る側へ返す文)
+MESSAGE_ORDER_CODES = "注文書目的コードか明細状態コードが読めません。"
+MESSAGE_ORDER_REVISION = "注文履歴番号が読めません。新規の注文は 1、変更と取消は 2 以上の整数で送ってください。"
+MESSAGE_ORDER_REVISION_NOT_YET = "注文の変更と取消は、まだ受けられません。"
+_PURPOSES = frozenset(value for value, _label in edi_codes.PURPOSE_CHOICES)
+_LINE_STATUSES = frozenset(value for value, _label in edi_codes.LINE_STATUS_CHOICES)
+_LINE_REASONS = frozenset(value for value, _label in edi_codes.LINE_REASON_CHOICES) | {""}
+
+
+def _revision_number(value):
+    """知らせの注文履歴番号 (order_revision_no) を読む。無ければ 1。1 以上の整数 (bool でない) でなければ None。"""
+    if value is None:
+        return 1
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _order_codes(payload):
+    """注文の (注文履歴番号, 注文書目的コード) か、断る理由の文。
+
+    無い鍵は第 1 版の新規 (版 1・目的 "9"・明細 "39"・理由 "")。コードの値が core.edi_codes の組の外か、目的が新規 ("9") なのに版が 1 でない
+    (版は 1 以上の整数で bool でない) 物は断る。値は字のまま比べる (数にしない)。
+    """
+    purpose_code = payload.get("purpose_code", edi_codes.PURPOSE_NEW)
+    # 字でない値 (数・list) は組と比べる前に断る (list は frozenset の in で TypeError になる)。
+    if not isinstance(purpose_code, str) or purpose_code not in _PURPOSES:
+        return MESSAGE_ORDER_CODES
+    for raw in payload.get("lines") or ():
+        if not isinstance(raw, dict):
+            continue
+        status = raw.get("line_status_code", edi_codes.LINE_NEW)
+        reason = raw.get("line_status_reason_code", "")
+        if not isinstance(status, str) or status not in _LINE_STATUSES:
+            return MESSAGE_ORDER_CODES
+        if not isinstance(reason, str) or reason not in _LINE_REASONS:
+            return MESSAGE_ORDER_CODES
+    revision_no = _revision_number(payload.get("order_revision_no"))
+    if revision_no is None:
+        return MESSAGE_ORDER_REVISION
+    if purpose_code == edi_codes.PURPOSE_NEW and revision_no != 1:
+        return MESSAGE_ORDER_REVISION
+    if purpose_code != edi_codes.PURPOSE_NEW and revision_no < 2:
+        return MESSAGE_ORDER_REVISION
+    return revision_no, purpose_code
 
 
 @dataclass(frozen=True)
@@ -347,6 +404,9 @@ def _receive_reply(message_id, partner, payload):
     # str でない値を filter に渡すと TypeError になるので、先に形を見る。
     if not all(isinstance(value, str) and value for value in (order_no, order_id, result)):
         return _refuse(MESSAGE_REPLY_SHAPE, msg_id)
+    # 注文履歴番号は形だけ見る (あれば 1 以上の整数)。どの版への答えかは、送った注文の行の版で決める。
+    if _revision_number(payload.get("order_revision_no")) is None:
+        return _refuse(MESSAGE_REPLY_SHAPE, msg_id)
     if result not in _REPLY_RESULTS:
         return _refuse(MESSAGE_REPLY_RESULT, msg_id)
     try:
@@ -367,10 +427,15 @@ def _receive_reply(message_id, partner, payload):
             )
         if purchase_order.partner_id != partner.pk:
             return _refuse(MESSAGE_REPLY_OTHER_PARTNER, msg_id)
-        if not Outbox.objects.filter(
-            purchase_order=purchase_order, message_id=order_message_id
-        ).exists():
+        outbox = (
+            Outbox.objects.filter(purchase_order=purchase_order, message_id=order_message_id).order_by("pk").first()
+        )
+        if outbox is None:
             return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
+        # 版 2 から (変更と取消) の答えは送った注文の行に書き、発注の状態と第 1 版の答えの列は変えない。
+        if outbox.revision_no >= 2:
+            _record_revision_reply(outbox, message_id, _REPLY_TYPES[result], reason)
+            return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
         if purchase_order.reply_message_id == message_id:
             return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
         try:
@@ -392,6 +457,33 @@ def _receive_reply(message_id, partner, payload):
     return ReplyReceipt(message_id=message_id, purchase_order=updated)
 
 
+#: 注文回答の result → EDI の注文回答タイプコード (今の受け入れの画面の 2 つの答え)
+_REPLY_TYPES = {"accepted": edi_codes.REPLY_ACCEPTED, "rejected": edi_codes.REPLY_REJECTED}
+
+
+def _record_revision_reply(outbox, message_id, reply_type, reason):
+    """版 2 から (変更と取消) の注文回答を、その版の最初の送った注文の行 (outbox) に書く。返す物は取り直した行。
+
+    reply_type は EDI の注文回答タイプコードの値 (core.edi_codes)。同じ回答の番号 (reply_message_id) の 2 回目は何もしない。
+    別の番号の答えは上書きする (後から届いた本当の答えを残すため)。断らない (ValueError を投げない)。
+    発注の状態と第 1 版の答えの列 (PurchaseOrder.replied_at ほか) は変えない (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。
+    """
+    from django.utils import timezone
+
+    from .models import Outbox
+
+    locked = Outbox.objects.select_for_update().get(pk=outbox.pk)
+    if locked.reply_message_id == message_id:
+        return locked
+    limit = Outbox._meta.get_field("reply_note").max_length
+    locked.reply_type = reply_type
+    locked.reply_note = (reason if isinstance(reason, str) else "")[:limit]
+    locked.replied_at = timezone.now()
+    locked.reply_message_id = message_id
+    locked.save(update_fields=["reply_type", "reply_note", "replied_at", "reply_message_id"])
+    return locked
+
+
 def _receive_acceptance(message_id, partner, payload):
     """署名の通った検収を、元の受信した注文から作った受注の明細に 1 回だけ付ける。返す物は AcceptanceReceipt か、断る理由の文。
 
@@ -409,6 +501,10 @@ def _receive_acceptance(message_id, partner, payload):
     if not all(isinstance(value, str) and value for value in (order_id, accepted_on, qty)):
         return _refuse(MESSAGE_ACCEPTANCE_SHAPE, msg_id)
     if isinstance(line_no, bool) or not isinstance(line_no, int) or line_no < 1:
+        return _refuse(MESSAGE_ACCEPTANCE_SHAPE, msg_id)
+    # 検収が指す注文の版 (無ければ 1 = 今までの seizou との送り合い)。前の版への検収も止めずに受け、版の番号を残す。
+    order_revision_no = _revision_number(payload.get("order_revision_no"))
+    if order_revision_no is None:
         return _refuse(MESSAGE_ACCEPTANCE_SHAPE, msg_id)
     order_no = order_no if isinstance(order_no, str) else ""
     try:
@@ -450,6 +546,7 @@ def _receive_acceptance(message_id, partner, payload):
                 message_id=message_id,
                 buyer_order_no=order_no,
                 buyer_line_no=line_no,
+                order_revision_no=order_revision_no,
             )
         except ValueError as exc:
             transaction.set_rollback(True)
@@ -457,12 +554,12 @@ def _receive_acceptance(message_id, partner, payload):
     return AcceptanceReceipt(message_id=message_id, acceptance=acceptance)
 
 
-def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, buyer_order_no, buyer_line_no):
+def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, buyer_order_no, buyer_line_no, order_revision_no=1):
     """検収を受注の明細に 1 行で記録する (受ける側の書く関数)。返す物は Acceptance。
 
     数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・検収日が日付でない・その受信した注文から作った受注の明細でないときは日本語の ValueError。
     同じ番号 (message_id) の 2 回目は新しい行を作らず 1 回目の行を返す (R11 の考え。番号の一意の制約に当てる)。
-    user は記録のために受ける (受け口からは None)。
+    user は記録のために受ける (受け口からは None)。order_revision_no は検収が指す注文の版 (相手の発注の注文履歴番号)。
     """
     try:
         number = qty if isinstance(qty, Decimal) else Decimal(str(qty))
@@ -489,6 +586,7 @@ def record_acceptance(inbox, order_line, qty, accepted_on, user, *, message_id, 
                 buyer_line_no=buyer_line_no,
                 accepted_on=accepted_on,
                 qty=number,
+                order_revision_no=order_revision_no,
             )
     except IntegrityError:
         return Acceptance.objects.get(message_id=message_id)
@@ -517,6 +615,10 @@ def _receive_shipping_notice(message_id, partner, payload):
     if not all(isinstance(value, str) and value for value in (order_id, shipment_no, shipped_at, qty)):
         return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
     if isinstance(line_no, bool) or not isinstance(line_no, int) or line_no < 1:
+        return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
+    # 知らせが指す注文の版 (無ければ 1 = 今までの seizou との送り合い)。前の版への知らせも止めずに受け、版の番号を残す。
+    order_revision_no = _revision_number(payload.get("order_revision_no"))
+    if order_revision_no is None:
         return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
     if len(shipment_no) > ShippingNotice._meta.get_field("shipment_no").max_length:
         return _refuse(MESSAGE_SHIPPING_SHAPE, msg_id)
@@ -566,6 +668,7 @@ def _receive_shipping_notice(message_id, partner, payload):
                 message_id=message_id,
                 shipment_no=shipment_no,
                 supplier_order_no=supplier_order_no,
+                order_revision_no=order_revision_no,
             )
         except ValueError as exc:
             transaction.set_rollback(True)
@@ -573,12 +676,13 @@ def _receive_shipping_notice(message_id, partner, payload):
     return ShippingNoticeReceipt(message_id=notice.message_id, notice=notice)
 
 
-def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_no, supplier_order_no=""):
+def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_no, supplier_order_no="", order_revision_no=1):
     """出荷の知らせを発注の明細に 1 行で記録する (受ける側の書く関数)。返す物は ShippingNotice。
 
     数が 0 以下・表の欄の桁 (整数の部分 10 桁・小数 2 桁) に入らない・出荷日が日付でない・相手の出荷番号が 1〜35 字の字でないときは日本語の ValueError。
     同じ番号 (message_id) か、同じ明細 × 同じ相手の出荷番号の 2 回目は新しい行を作らず 1 回目の行を返す
     (R11 の考え。番号の一意の制約と、自然な鍵の一意の制約に当てる)。user は記録のために受ける (受け口からは None)。
+    order_revision_no は知らせが指す注文の版 (相手の受注が合っていた注文履歴番号)。
     """
     try:
         number = qty if isinstance(qty, Decimal) else Decimal(str(qty))
@@ -604,6 +708,7 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
                 supplier_order_no=(supplier_order_no or "")[:limit],
                 shipped_at=shipped_at,
                 qty=number,
+                order_revision_no=order_revision_no,
             )
     except IntegrityError:
         existing = (
@@ -888,14 +993,17 @@ def send_reply(inbox, user):
         accepted = locked.status == Inbox.STATUS_ACCEPTED
         order_data = locked.payload if isinstance(locked.payload, dict) else {}
         order_no = order_data.get("order_no")
+        # 変更の版の行は受注を持たない (第 1 版の行の受注を変える) ので、受注番号は元の行の受注から引く。
+        order = locked.order if locked.order_id else (locked.revises.order if locked.revises_id else None)
         reply_data = {
             "id": str(message_id),
             "kind": "order_reply",
             "sent_at": timezone.localtime().isoformat(),
             "order_id": str(locked.message_id),
             "order_no": order_no if isinstance(order_no, str) else "",
+            "order_revision_no": locked.revision_no,
             "result": "accepted" if accepted else "rejected",
-            "supplier_order_no": locked.order.order_no if accepted and locked.order else "",
+            "supplier_order_no": order.order_no if accepted and order else "",
             "reason": "" if accepted else locked.reason,
             "supplier": _party(),
         }
@@ -942,7 +1050,8 @@ def send_acceptance(receipt, user):
     line = current.line
     purchase_order = line.purchase_order
 
-    first = Outbox.objects.filter(purchase_order=purchase_order).order_by("pk").first()
+    # 元の注文の番号は第 1 版の番号 (相手の受信した注文の第 1 版の行を引く鍵)。版は発注の今の版。
+    first = Outbox.objects.filter(purchase_order=purchase_order, revision_no=1).order_by("pk").first()
     if first is None:
         return purchasing_services.record_acceptance_response(
             current, MESSAGE_ACCEPTANCE_NOT_SENT_ORDER, user
@@ -961,6 +1070,7 @@ def send_acceptance(receipt, user):
         "sent_at": timezone.localtime().isoformat(),
         "order_id": str(first.message_id),
         "order_no": purchase_order.po_no,
+        "order_revision_no": purchase_order.revision_no,
         "line_no": line.line_no,
         "accepted_on": current.received_on.isoformat(),
         "qty": str(current.qty),
@@ -1022,6 +1132,7 @@ def send_shipping_notice(shipment, user):
         "sent_at": timezone.localtime().isoformat(),
         "order_id": str(inbox.message_id),
         "order_no": order_no if isinstance(order_no, str) else "",
+        "order_revision_no": inbox.current_revision_no(),
         "line_no": line.line_no,
         "supplier_order_no": order.order_no,
         "shipment_no": current.shipment_no,
@@ -1312,6 +1423,13 @@ def send_order(purchase_order, user):
       2 つのタブから送り直しても相手の受信箱に 2 行できない (初見テスト 2 回目の所見)。Outbox には送るたびに 1 行足す。
     - 届かないときの返事は日本語 (例外の英語の名前を画面に出さない)。
     - 鍵の値・本文・見出しの値をログと返す物に出さない。
+    - 版 (中小企業共通 EDI の注文変更の方式 2): 番号は同じ発注の同じ版 (revision_no) の最初の行の番号を使い回し、無ければ新しい uuid4
+      (版ごとに新しい番号。同じ版の送り直しは同じ番号)。本文の order_id は第 1 版の番号 (注文キー。第 1 版は id と同じ)、
+      order_revision_no は発注の今の版、purpose_code は注文書目的コード。明細は取り消した明細 (2) も含めて全部の行を行番号の順に載せ、
+      明細状態コードと明細状態理由コードを付ける。届いたときに発注を「送った」にするのは第 1 版だけ (変更の版は発注の状態を変えない)。
+      取消の発注は、取消を送る版 (目的 "1") だけ送れる。
+    訳: 同じ版の送り直しを相手が 1 件にまとめ (R11)、版が変わったら新しい知らせとして届けるため (中小企業共通 EDI のガイドブック 3.2.1 の注文変更方式 2)。出所 = 中小企業共通 EDI と決め PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 方式 1 に替えると決めたとき。
     """
     # connect と purchasing の循環を避け、冒頭の import の並びを変えないため、関数の中で import する。
     from django.utils import timezone
@@ -1321,7 +1439,10 @@ def send_order(purchase_order, user):
     from .models import Outbox
 
     partner = purchase_order.partner
-    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+    if (
+        purchase_order.status == purchase_order.STATUS_CANCELLED
+        and purchase_order.purpose_code != edi_codes.PURPOSE_CANCEL
+    ):
         raise ValueError(f"送れません。発注 {purchase_order.po_no} は取り消してあります。取消していない発注を選んでください。")
     connection = _send_connection(partner)
     if connection is None:
@@ -1329,8 +1450,15 @@ def send_order(purchase_order, user):
             f"送れません。取引先 {partner.name} へのつながりがありません。つながりを登録してください。"
         )
 
-    first = Outbox.objects.filter(purchase_order=purchase_order).order_by("pk").first()
-    message_id = first.message_id if first is not None else uuid.uuid4()
+    revision_no = purchase_order.revision_no
+    same = Outbox.objects.filter(purchase_order=purchase_order, revision_no=revision_no).order_by("pk").first()
+    message_id = same.message_id if same is not None else uuid.uuid4()
+    original = (
+        same
+        if revision_no == 1
+        else Outbox.objects.filter(purchase_order=purchase_order, revision_no=1).order_by("pk").first()
+    )
+    order_id = original.message_id if original is not None else message_id
     lines = [
         {
             "line_no": line.line_no,
@@ -1341,6 +1469,8 @@ def send_order(purchase_order, user):
             "unit_price": str(line.unit_price),
             "due_date": line.due_date.isoformat() if line.due_date else None,
             "note": line.note,
+            "line_status_code": line.line_status_code,
+            "line_status_reason_code": line.line_status_reason_code,
         }
         for line in purchase_order.lines.select_related("item").order_by("line_no")
     ]
@@ -1348,6 +1478,9 @@ def send_order(purchase_order, user):
         "id": str(message_id),
         "kind": "order",
         "sent_at": timezone.localtime().isoformat(),
+        "order_id": str(order_id),
+        "order_revision_no": revision_no,
+        "purpose_code": purchase_order.purpose_code,
         "order_no": purchase_order.po_no,
         "order_date": purchase_order.order_date.isoformat(),
         "buyer": _party(),
@@ -1363,6 +1496,8 @@ def send_order(purchase_order, user):
             connection=connection,
             purchase_order=purchase_order,
             response="送っています",
+            revision_no=revision_no,
+            purpose_code=purchase_order.purpose_code,
         )
 
     # R17: ここは atomic の外。送る所は send_reply と同じ _deliver。
@@ -1371,7 +1506,8 @@ def send_order(purchase_order, user):
     with transaction.atomic():
         outbox.response = reply[: Outbox._meta.get_field("response").max_length]
         outbox.save(update_fields=["response"])
-        if kind == "received":
+        # 変更と取消の版は発注の状態を変えない (取消は送る前に「取消」にしてある)。
+        if kind == "received" and revision_no == 1:
             purchasing_services.mark_sent(purchase_order, user)
 
     logger.info(
