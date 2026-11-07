@@ -1,7 +1,8 @@
 """指示書の進みの状態 (未着手・着手済・完了・取消) を実績から出す (初見テスト R5 の候補 C27 の 3〜4。C27-1 = a・WO-1 = b)。
 
-決め方は WorkOrder.progress_state_of の 1 か所: 取消 → 完了 (最後の工程の実績の合計が予定の数以上) →
-着手済 (どれかの工程に実績がある) → 未着手。状態は列に持たない。名前と品番は作り物だけ。
+決め方は WorkOrder.progress_state_of の 1 か所: 取消 → 完了 (最後の工程に完了の印の付いた実績がある。数は見ない。
+初見テスト R5 の候補 C103 の PROG-1・PROG-1a = a) → 着手済 (どれかの工程に実績がある) → 未着手。状態は列に持たない。
+名前と品番は作り物だけ。
 """
 
 from datetime import date
@@ -20,7 +21,7 @@ from seizou.masters.models import Process
 from seizou.orders import services as orders_services
 from seizou.progress import services as progress_services
 from seizou.workorders import services
-from seizou.workorders.models import WorkOrder, WorkOrderStep
+from seizou.workorders.models import StepTotals, WorkOrder, WorkOrderStep
 
 ORDER_DATE = date(2026, 11, 2)
 DUE_DATE = date(2026, 11, 20)
@@ -89,8 +90,8 @@ def workorder(user, line, cut, bend):
     return _issue(line, user, cut, bend)
 
 
-def _record(step, qty, user):
-    progress_services.record_progress(step, Decimal(qty), timezone.now(), user)
+def _record(step, qty, user, *, completes=False):
+    progress_services.record_progress(step, Decimal(qty), timezone.now(), user, completes_step=completes)
 
 
 def _state(workorder):
@@ -125,13 +126,23 @@ def test_only_first_step_reached_is_started(user, workorder):
 
 @pytest.mark.django_db
 def test_last_step_reached_is_done_even_if_earlier_step_short(user, workorder):
-    """完了は最後の工程だけで決める (WO-1 の決め方)。前の工程が予定に届いていなくても完了。"""
+    """完了は最後の工程の印だけで決める (PROG-1a = a)。前の工程に印が無く、予定に届いていなくても完了。"""
     first, second = workorder.steps.order_by("seq")
     _record(first, "1", user)
-    _record(second, "4", user)
+    _record(second, "4", user, completes=True)
 
     assert _state(workorder) == WorkOrder.PROGRESS_DONE
     assert WorkOrder.objects.get(pk=workorder.pk).progress_state_label() == "完了"
+
+
+@pytest.mark.django_db
+def test_last_step_reached_without_mark_is_started(user, workorder):
+    """数が予定に届いても、最後の工程に印が無ければ完了でない (PROG-1・PROG-1b = a)。"""
+    first, second = workorder.steps.order_by("seq")
+    _record(first, "4", user, completes=True)
+    _record(second, "4", user)
+
+    assert _state(workorder) == WorkOrder.PROGRESS_STARTED
 
 
 @pytest.mark.django_db
@@ -175,10 +186,14 @@ def test_progress_state_of_reads_only_given_totals():
 
     steps = [Step(2, 2, "4"), Step(1, 1, "4")]
     decide = WorkOrder.progress_state_of
+    reached = StepTotals(Decimal("4"), Decimal("0"), False)
+    marked = StepTotals(Decimal("4"), Decimal("0"), True)
     assert decide(WorkOrder.STATUS_ISSUED, steps, {}) == WorkOrder.PROGRESS_NOT_STARTED
-    assert decide(WorkOrder.STATUS_ISSUED, steps, {1: Decimal("4")}) == WorkOrder.PROGRESS_STARTED
-    assert decide(WorkOrder.STATUS_ISSUED, steps, {2: Decimal("4")}) == WorkOrder.PROGRESS_DONE
-    assert decide(WorkOrder.STATUS_CANCELLED, steps, {2: Decimal("4")}) == WorkOrder.PROGRESS_CANCELLED
+    assert decide(WorkOrder.STATUS_ISSUED, steps, {1: reached}) == WorkOrder.PROGRESS_STARTED
+    assert decide(WorkOrder.STATUS_ISSUED, steps, {2: reached}) == WorkOrder.PROGRESS_STARTED
+    assert decide(WorkOrder.STATUS_ISSUED, steps, {2: marked}) == WorkOrder.PROGRESS_DONE
+    assert decide(WorkOrder.STATUS_ISSUED, steps, {1: marked}) == WorkOrder.PROGRESS_STARTED
+    assert decide(WorkOrder.STATUS_CANCELLED, steps, {2: marked}) == WorkOrder.PROGRESS_CANCELLED
     assert decide(WorkOrder.STATUS_ISSUED, [], {}) == WorkOrder.PROGRESS_NOT_STARTED
 
 
@@ -219,7 +234,7 @@ def test_heading_badge_follows_progress(logged_in, user, line, cut, bend):
     cancelled = _issue(line, user, cut, bend)
     _record(started.steps.order_by("seq").first(), "1", user)
     for step in done.steps.order_by("seq"):
-        _record(step, "4", user)
+        _record(step, "4", user, completes=True)
     services.cancel_workorder(cancelled, user, reason="作り物の取消")
 
     for workorder, label in ((not_started, "未着手"), (started, "着手済"), (done, "完了"), (cancelled, "取消")):
@@ -326,7 +341,7 @@ def test_board_workorder_label_follows_progress(user, line, cut, bend):
     assert _board_row(line).workorder_label == "4 未着手"
 
     for step in first.steps.order_by("seq"):
-        _record(step, "4", user)
+        _record(step, "4", user, completes=True)
     assert _board_row(line).workorder_label == "4 完了"
 
     _issue(line, user, cut, bend, qty="3")
@@ -358,7 +373,7 @@ def test_progress_without_accept_moves_every_reader(logged_in, user, order, line
     assert f'id="row-{workorder.pk}"' not in logged_in.get(url, {"f_unaccepted": "1"}).content.decode()
     assert stage_of(line) == 3
     step = WorkOrderStep.objects.select_related("workorder__order_line").get(pk=first.pk)
-    totals = plans._recorded_totals([other.pk for other in workorder.steps.all()])
+    totals = plans._step_totals([other.pk for other in workorder.steps.all()])
     assert plans.bar_state(step, totals) == "accepted"
     titles = [event.title for event in events_for(order)]
     assert not any(title.endswith("に着手") for title in titles)

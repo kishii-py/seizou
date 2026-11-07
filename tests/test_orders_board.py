@@ -100,8 +100,8 @@ def _issue(user, line, *processes, qty="10"):
     )
 
 
-def _record(user, step, qty):
-    return progress_services.record_progress(step, Decimal(qty), timezone.now(), user)
+def _record(user, step, qty, *, completes=False):
+    return progress_services.record_progress(step, Decimal(qty), timezone.now(), user, completes_step=completes)
 
 
 def _fresh(line):
@@ -231,12 +231,12 @@ def test_judgement_late_without_workorder_and_ship_needs_last_step(user, custome
     # 最初の工程だけが終わっても完成ではない (完成の数は最後の工程の実績)。
     line = _line(user, customer, item, due=TODAY + timedelta(days=3))
     workorder = _issue(user, line, cut, bend)
-    _record(user, workorder.steps.get(seq=1), "10")
+    _record(user, workorder.steps.get(seq=1), "10", completes=True)
     row = board.BoardRow(_fresh(line), TODAY)
     assert row.completed_total == Decimal("0")
     assert row.progress_label == "曲げ 0/10"
     assert row.judgement_code == "making"
-    _record(user, workorder.steps.get(seq=2), "10")
+    _record(user, workorder.steps.get(seq=2), "10", completes=True)
     row = board.BoardRow(_fresh(line), TODAY)
     assert row.progress_label == "完了"
     assert row.current_step is None

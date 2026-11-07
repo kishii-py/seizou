@@ -129,7 +129,7 @@ FLOWS = (
             {"url_name": "receiving:receiving_create", "do": "得意先からワークや支給材が届いたら「入荷」で記録する (表面処理のように現物が無いと始められない会社向け)。", "stage": "", "note": ""},
             {"url_name": "workorders:workorder_create", "do": "生産管理ボードで明細を選び、指示書を発行する。", "stage": "指示", "note": ""},
             {"url_name": "progress:progress_create", "do": "最初の工程の実績を入れる。", "stage": "着手", "note": "指示書の状態が「着手済」になる。"},
-            {"url_name": "progress:progress_create", "do": "工程が終わるたびに、実績の数と日時を入れる。", "stage": "完了", "note": "全部の工程の実績が予定に達すると「完了」になる。"},
+            {"url_name": "progress:progress_create", "do": "工程が終わるたびに、実績の数と日時を入れる。", "stage": "完了", "note": "最後の工程の実績に「この工程を完了にする」を付けると「完了」になる。"},
             {"url_name": "shipping:shipment_create", "do": "できた物を送るときに、明細ごとに出荷を記録する。", "stage": "出荷", "note": "受注の状態が「一部出荷」か「出荷済」になる。"},
             {"url_name": "shipping:deliverynote_create", "do": "同じ得意先の出荷をまとめて、納品書を作る。", "stage": "納品", "note": ""},
             {"url_name": "billing:invoice_create", "do": "締日の後に、納品書の出た出荷をまとめて請求書を作る。", "stage": "請求", "note": ""},

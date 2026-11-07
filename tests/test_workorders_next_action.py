@@ -1,7 +1,8 @@
 """指示書の詳細の頭の右の緑のボタン = その伝票で次にする操作 (UX-2 a。11-06 22:1x。初見テスト R5 の候補 C93)。
 
-未着手の指示書は今のまま緑の「着手」。着手済で、全部の工程の実績が予定の数に届き、まだ入庫にしていない完成の数がある指示書は、
-「着手済」の印の右に緑の「製造の完了を入庫にする」(入庫の画面の全体へ移る。?workorder= で指示書と残りの数が入る)。
+未着手の指示書は今のまま緑の「着手」。指示書の状態が完了 (最後の工程に完了の印の付いた実績がある。初見テスト R5 の候補 C103 の
+PROG-1a) で、まだ入庫にしていない完成の数がある指示書は、緑の「製造の完了を入庫にする」(入庫の画面の全体へ移る。
+?workorder= で指示書と残りの数が入る)。
 部署の判定が on のとき、部署で在庫を開けない人には出さない。判定は workorders.plans.finished_due。
 作り物のデータは services で作る (受注は tests/test_detail_columns.py の物を借りる)。
 """
@@ -46,9 +47,10 @@ def workorder(user, order, processes):
     return workorders_services.issue_workorder(line, Decimal("10"), steps, user)
 
 
-def _record_all(workorder, user, qty="10"):
+def _record_all(workorder, user, qty="10", *, completes=True):
+    """全部の工程に実績を入れる (completes が真なら完了の印も付ける。指示書の完了は最後の工程の印で決まる)。"""
     for step in workorder.steps.order_by("seq"):
-        progress_services.record_progress(step, Decimal(qty), timezone.now(), user)
+        progress_services.record_progress(step, Decimal(qty), timezone.now(), user, completes_step=completes)
 
 
 def _head(client, workorder):
@@ -78,6 +80,17 @@ def test_all_steps_done_shows_green_finished(user, logged_in, workorder):
 
     _assert_finished_green(_head(logged_in, workorder), workorder)
     assert _due(workorder) is True
+
+
+@pytest.mark.django_db
+def test_no_green_when_steps_reach_plan_without_mark(user, logged_in, workorder):
+    """全部の工程が予定に届いても、最後の工程に完了の印が無ければ出ない (PROG-1b = a)。"""
+    _record_all(workorder, user, completes=False)
+
+    head = _head(logged_in, workorder)
+
+    assert "製造の完了を入庫にする" not in head
+    assert _due(workorder) is False
 
 
 @pytest.mark.django_db

@@ -252,8 +252,9 @@ def test_scan_shows_cancelled_status(logged_in, user, workorder):
 
 @pytest.mark.django_db
 def test_scan_marks_done_steps(logged_in, user, workorder):
+    """完了の印の付いた実績がある工程に「完了」(初見テスト R5 の候補 C103 の PROG-1)。"""
     first, second = workorder.steps.order_by("seq")
-    progress_services.record_progress(first, first.planned_qty, timezone.now(), user)
+    progress_services.record_progress(first, first.planned_qty, timezone.now(), user, completes_step=True)
 
     body = logged_in.get(_scan_url(workorder)).content.decode()
     cards = [card for card in re.findall(r"<li .*?</li>", body, re.S) if "実績を入力" in card]
@@ -343,9 +344,9 @@ def test_scan_record_over_plan_confirm_returns_to_scan(settings, logged_in, user
 
 @pytest.mark.django_db
 def test_scan_current_moves_to_next_step(logged_in, user, workorder):
-    """(e) 切断が予定に届くと、切断は「完了」で主色が外れ、今の工程と主色は曲げへ移る。"""
+    """(e) 切断に完了の印を付けると、切断は「完了」で主色が外れ、今の工程と主色は曲げへ移る (PROG-1)。"""
     first, second = workorder.steps.order_by("seq")
-    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user, completes_step=True)
 
     cut_card, bend_card = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
     assert "完了" in cut_card
@@ -355,6 +356,19 @@ def test_scan_current_moves_to_next_step(logged_in, user, workorder):
     assert 'aria-current="step"' in bend_card
     assert "実績 0 / 予定 4・残 4" in _card_text(bend_card)
     assert "btn-primary" in _input_buttons(bend_card)[0]
+
+
+@pytest.mark.django_db
+def test_scan_reached_step_without_mark_stays_current(logged_in, user, workorder):
+    """切断が予定に届いても印が無ければ「完了」は出ず、今の工程と主色は切断のまま (PROG-1b = a)。"""
+    first = workorder.steps.order_by("seq").first()
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+
+    cut_card, bend_card = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
+    assert "完了" not in cut_card
+    assert "実績 4 / 予定 4・残 0" in _card_text(cut_card)
+    assert 'aria-current="step"' in cut_card
+    assert "aria-current" not in bend_card
 
 
 @pytest.mark.django_db
@@ -370,9 +384,9 @@ def test_scan_without_records_marks_first_step(logged_in, workorder):
 
 @pytest.mark.django_db
 def test_scan_all_steps_done_has_no_current(logged_in, user, workorder):
-    """(g) 全部の工程が予定に届くと、今の工程は無く、主色のボタンも無い (ボタンは 2 つ残る)。"""
+    """(g) 全部の工程に完了の印を付けると、今の工程は無く、主色のボタンも無い (ボタンは 2 つ残る)。"""
     for step in workorder.steps.order_by("seq"):
-        progress_services.record_progress(step, Decimal("4"), timezone.now(), user)
+        progress_services.record_progress(step, Decimal("4"), timezone.now(), user, completes_step=True)
 
     body = logged_in.get(_scan_url(workorder)).content.decode()
     cards = _scan_cards(body)
@@ -386,9 +400,9 @@ def test_scan_all_steps_done_has_no_current(logged_in, user, workorder):
 
 @pytest.mark.django_db
 def test_scan_over_plan_shows_negative_remaining(logged_in, user, workorder):
-    """(h) 予定を超えた実績は「完了」で残をマイナスのまま出し (現物優先)、今の工程は曲げ。"""
+    """(h) 予定を超えた実績は残をマイナスのまま出し (現物優先)、印を付ければ「完了」で、今の工程は曲げ。"""
     first = workorder.steps.order_by("seq").first()
-    progress_services.record_progress(first, Decimal("5"), timezone.now(), user)
+    progress_services.record_progress(first, Decimal("5"), timezone.now(), user, completes_step=True)
 
     cut_card, bend_card = _scan_cards(logged_in.get(_scan_url(workorder)).content.decode())
     assert "完了" in cut_card
