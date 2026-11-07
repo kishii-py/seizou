@@ -259,3 +259,43 @@ def test_refused_by_permission_can_be_saved_by_admin(settings, user, order):
     assert (row.state, row.code, row.decided_by) == ("saved", "", admin)
     assert row.decided_at is not None
     assert _shipments() == 1
+
+
+# ---- 作る物 4: 書く道具が保存の後に例外を出したとき ----
+
+
+@pytest.mark.django_db
+def test_tool_error_after_save_stays_running(monkeypatch, user, order):
+    """書く道具の中で保存が済んだ後に例外が出ても、承認待ちに戻さない (処理中のまま。二度目は「保存済み」で断る)。"""
+    from django.template.loader import render_to_string
+
+    proposal = services.propose("ship", _ship_arguments(order), user)
+    session = _session_with(proposal)
+    real_write_tools = mcp_tools.write_tools
+
+    def fake_write_tools(who):
+        real = {fn.__name__: fn for fn in real_write_tools(who)}
+
+        def ship(**kwargs):
+            real["ship"](**kwargs)
+            raise RuntimeError("作り物の、保存の後の誤り")
+
+        return (ship,)
+
+    monkeypatch.setattr(mcp_tools, "write_tools", fake_write_tools)
+
+    failed = services.approve(session, proposal["id"], user)
+
+    assert (failed["state"], failed["notice"]) == ("running", services.MESSAGE_PROPOSAL_FAILED)
+    assert _shipments() == 1
+    row = _row(proposal)
+    assert (row.state, row.notice, row.decided_by) == ("running", services.MESSAGE_PROPOSAL_FAILED, user)
+    # カードの字は今の「保存できませんでした」のまま (承認のボタンは出さない)
+    card = render_to_string("assistant/_proposal.html", {"proposal": failed})
+    assert services.MESSAGE_PROPOSAL_FAILED in card
+    assert ">承認<" not in card
+
+    again = services.approve(session, proposal["id"], user)
+
+    assert again["notice"] == services.MESSAGE_PROPOSAL_SAVED
+    assert _shipments() == 1

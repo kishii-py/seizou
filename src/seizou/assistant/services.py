@@ -564,6 +564,9 @@ def _carry_out(proposal, user, confirm):
     部署の判定は action の頭の部品 (例 shipping.ship → shipping) を access.require_open に渡す (画面の入力の部署の門と同じ判定)。
     訳: 部署の外の部品に、承認から書かせない (画面なら部署の 403 で止まる操作)。部署の判定が log (既定) なら書いて記録に 1 行だけ。
     出所 = Claude Security の走査の候補 11-07 (承認が部署の門を通らずに書く)。変えてよい条件は access.require_open の訳と同じ。
+    書く道具が思わぬ例外を出したときは、状態を running (処理中) のまま返し、知らせの字は MESSAGE_PROPOSAL_FAILED にする。
+    訳: 書く道具の中の services が保存を済ませた後にも例外が出うるので、承認できる状態に戻すと同じ出荷や受注が 2 件できるため (出荷は shipping.services.ship の atomic の後に、相手への知らせの番号と返事と送り合った記録の行を書き、mcp_tools._ship は受注を読み直す。受注の登録も mcp_tools._create_order が保存の後に明細を数える)。出所 = 依頼書 N351 の作る物 4 (エンタープライズ化の調べ 第一弾の候補 2 の確かめ直し (e)) を、この作業場の shipping・connect・mcp_tools のコードで読んで決めた。
+    変えてよい条件 = 書く道具が、保存の前の誤りと保存の後の誤りを分けて返すようになったとき。
     """
     base = {**proposal, "notice": "", "code": "", "warnings": [], "url": ""}
 
@@ -587,8 +590,8 @@ def _carry_out(proposal, user, confirm):
     except TypeError:
         result = {"ok": False, "error": MESSAGE_PROPOSAL_ARGS}
     except Exception:
-        # 思わぬ誤りでも窓を落とさない。中身は文に入れない (書く道具の中の services が transaction を戻す)。
-        result = {"ok": False, "error": MESSAGE_PROPOSAL_FAILED}
+        # 思わぬ誤りでも窓を落とさない。中身は文に入れない。保存の後の誤りかもしれないので、承認できる状態に戻さない。
+        return {**base, "state": AssistantProposal.STATE_RUNNING, "notice": MESSAGE_PROPOSAL_FAILED}
     if not isinstance(result, dict):
         return refused(MESSAGE_PROPOSAL_FAILED)
     if result.get("ok"):
@@ -637,7 +640,8 @@ def approve(session, proposal_id, user, *, confirm=False):
     select_for_update で取る。行が無ければ missing。処理中 (running) か保存済み (saved) なら書かずに「保存済み」の知らせで返す。
     古い提案は断った (refused) と書いて返す。ほか (承認待ち・知らせ・断った) は処理中に移す (断った提案も、別の人が承認できる)。
     (3) atomic の外で _carry_out が書く道具を呼ぶ (出荷の道具は相手の会社への HTTP を持つ = R17)。
-    (4) 別の短い atomic で、結果と決めた人と日時を行に書く。session は書かない (表が正。窓は history が表から描く)。
+    (4) 別の短い atomic で、結果と決めた人と日時を行に書く (書く道具の思わぬ例外は処理中のまま = _carry_out の訳)。
+    session は書かない (表が正。窓は history が表から描く)。
     訳: session の書き戻しで状態が戻っても、同じ提案を 2 度保存しない (受注の新規と分納の範囲の出荷が黙って 2 件になるため)。承認待ちを短い atomic と select_for_update で処理中に移してから書く道具を呼ぶ。出所 = 本人の決め (11-07 23:3x。案 A = 表を足す) とエンタープライズ化の調べ 第一弾の指摘 ai-1。
     変えてよい条件 = 提案を DB に持たない形で、process を増やしても二度目を断れる仕組みができたとき。
     """
