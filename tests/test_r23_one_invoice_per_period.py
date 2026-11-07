@@ -179,3 +179,100 @@ def test_r23_refuser_states_its_reason():
     doc = services._refuse_second_in_period.__doc__
     reason = [row.strip() for row in doc.splitlines() if row.strip().startswith("訳:")]
     assert reason and "出所 =" in reason[0] and "R23" in reason[0]
+
+
+# ---------------------------------------------------------------- 作り直し (止めの link の先。services.reissue_invoice)
+
+
+@pytest.mark.django_db
+def test_reissue_merges_first_and_left_shipments(user, customer, item, line):
+    """1 枚目を作り直すと、1 枚目は取消になり、1 枚目の出荷と期間の中で残っていた出荷で 1 枚になる。期間は 1 枚目と同じ。"""
+    first_shipment = _shipped(user, customer, line, "4", date(2026, 11, 5))
+    left = _shipped(user, customer, line, "6", date(2026, 11, 10))
+    december = _shipped(user, customer, line, "1", date(2026, 12, 3))
+    other = _customer(user, "C002", "作り物の別の得意先")
+    theirs = _shipped(user, other, _line(user, other, item), "3", date(2026, 11, 7))
+    first = services.create_invoice(customer, [first_shipment], user, issued_on=ISSUED_ON)
+
+    created = services.reissue_invoice(first, user, issued_on=ISSUED_ON)
+
+    first.refresh_from_db()
+    assert first.status == Invoice.STATUS_CANCELLED
+    assert created.status == Invoice.STATUS_ISSUED
+    assert {row.shipment_id for row in created.lines.all()} == {first_shipment.pk, left.pk}
+    assert december.pk not in {row.shipment_id for row in created.lines.all()}
+    assert theirs.pk not in {row.shipment_id for row in created.lines.all()}
+    assert (created.period_from, created.period_to) == (first.period_from, first.period_to)
+    assert created.saved_message == f"{first.invoice_no} を取り消し、この期間の出荷 2 件で {created.invoice_no} を作りました。"
+    assert Invoice.objects.filter(customer=customer, status=Invoice.STATUS_ISSUED).count() == 1
+
+
+@pytest.mark.django_db
+def test_reissue_keeps_earlier_period_shipment_of_first(user, customer, line):
+    """1 枚目に前の締め期間の日付の出荷が入っていても (31 締めで 10-28 と 11-05 の 11 月分)、作り直しで落ちない。期間は 11 月のまま。"""
+    october = _shipped(user, customer, line, "1", date(2026, 10, 28))
+    november = _shipped(user, customer, line, "1", date(2026, 11, 5))
+    left = _shipped(user, customer, line, "1", date(2026, 11, 10))
+    first = services.create_invoice(customer, [october, november], user, issued_on=ISSUED_ON)
+    assert (first.period_from, first.period_to) == (date(2026, 11, 1), date(2026, 11, 30))
+
+    created = services.reissue_invoice(first, user, issued_on=ISSUED_ON)
+
+    assert {row.shipment_id for row in created.lines.all()} == {october.pk, november.pk, left.pk}
+    assert (created.period_from, created.period_to) == (date(2026, 11, 1), date(2026, 11, 30))
+
+
+@pytest.mark.django_db
+def test_reissue_merges_every_invoice_in_period(user, customer, line):
+    """決まりの前に作った同じ期間の 2 枚 (作り物) は、どちらから作り直しても 2 枚とも取消になり 1 枚にまとまる。"""
+    a = _shipped(user, customer, line, "1", date(2026, 11, 5))
+    b = _shipped(user, customer, line, "1", date(2026, 10, 5))
+    c = _shipped(user, customer, line, "1", date(2026, 11, 20))
+    first = services.create_invoice(customer, [a], user, issued_on=ISSUED_ON)
+    second = services.create_invoice(customer, [b], user, issued_on=ISSUED_ON)
+    Invoice.objects.filter(pk=second.pk).update(period_from=first.period_from, period_to=first.period_to)
+    second.refresh_from_db()
+
+    created = services.reissue_invoice(second, user, issued_on=ISSUED_ON)
+
+    assert set(Invoice.objects.filter(pk__in=[first.pk, second.pk]).values_list("status", flat=True)) == {
+        Invoice.STATUS_CANCELLED
+    }
+    assert {row.shipment_id for row in created.lines.all()} == {a.pk, b.pk, c.pk}
+    assert (created.period_from, created.period_to) == (first.period_from, first.period_to)
+    assert created.saved_message.startswith(f"{first.invoice_no}・{second.invoice_no} を取り消し、この期間の出荷 3 件で ")
+
+
+@pytest.mark.django_db
+def test_reissue_refused_while_payment_remains(user, customer, line):
+    """どれかの請求書に取消でない入金が残っていれば ValueError (字は cancel_refusal と同じ)。何も変わらない。"""
+    first_shipment = _shipped(user, customer, line, "4", date(2026, 11, 5))
+    _shipped(user, customer, line, "6", date(2026, 11, 10))
+    first = services.create_invoice(customer, [first_shipment], user, issued_on=ISSUED_ON)
+    services.record_payment(first, date(2026, 12, 1), Decimal("100"), user)
+
+    with pytest.raises(ValueError) as caught:
+        services.reissue_invoice(first, user, issued_on=ISSUED_ON)
+
+    assert str(caught.value) == services.cancel_refusal(Invoice.objects.get(pk=first.pk))
+    assert Invoice.objects.count() == 1
+    assert Invoice.objects.get(pk=first.pk).status == Invoice.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_reissue_plan_lists_cancelled_and_left_shipments(user, customer, line):
+    """作り直しの中身 (画面が読む): 取り消す請求書・入る出荷 (1 枚目の出荷も)・理由の文。金額の閲覧の無い人の理由は件数だけ。"""
+    first_shipment = _shipped(user, customer, line, "4", date(2026, 11, 5))
+    left = _shipped(user, customer, line, "6", date(2026, 11, 10))
+    first = services.create_invoice(customer, [first_shipment], user, issued_on=ISSUED_ON)
+
+    plan = services.reissue_plan(first)
+    assert [row.pk for row in plan["invoices"]] == [first.pk]
+    assert [row.pk for row in plan["shipments"]] == [first_shipment.pk, left.pk]
+    assert plan["refusal"] == "" and plan["refused"] is None
+
+    services.record_payment(first, date(2026, 12, 1), Decimal("100"), user)
+    hidden = services.reissue_plan(first, hide_money=True)
+    assert hidden["refusal"] == services.cancel_refusal(first, hide_money=True)
+    assert "合計" not in hidden["refusal"]
+    assert hidden["refused"].pk == first.pk

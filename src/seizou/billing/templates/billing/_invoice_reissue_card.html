@@ -1,0 +1,23 @@
+{% load billing_tags seizou_icons seizou_tags %}
+{# 請求書の作り直しのカード (billing/invoice_reissue.html が include する)。写した元: 請求書の取消の確かめのカード (billing/_invoice_cancel_card.html)。 #}
+{# 中身は services.reissue_plan を読むだけ (invoice_reissue_plan の tag)。取り消す請求書の番号・期間・新しい請求書に入る出荷 (出荷番号・出荷日・品番・数量。金額は出さない) を出す。 #}
+{# 取り消す請求書のどれかに取消でない入金が残るときは、form と保存のボタンを出さず、cancel_refusal と同じ文を黄で出して、その請求書の入金の枠へ戻る link だけ。 #}
+{% invoice_reissue_plan object seizou.hide_money as plan %}
+{% if plan.refusal %}
+{% with parts=plan.refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
+<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'billing:invoice_detail' plan.refused.pk %}#payments">{% icon "arrow-left" "size-4" %}請求書の入金へ戻る</a></div>
+{% else %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{% for row in plan.invoices %}{% if not forloop.first %}・{% endif %}{{ row.invoice_no }}{% empty %}この期間の請求書{% endfor %} を取り消し、下の出荷 {{ plan.shipments|length }} 件で新しい請求書を 1 枚作ります。取り消した請求書は消えずに状態が「取消」で残り、元には戻せません。</span></div>
+<p class="mb-2 font-medium">期間 {{ plan.period_from|date:"Y-m-d" }}〜{{ plan.period_to|date:"Y-m-d" }} の出荷</p>
+<div class="mb-4 overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+  <table class="table table-sm" data-reissue-shipments>
+    <thead><tr><th>出荷番号</th><th>出荷日</th><th>品番</th><th>数量</th></tr></thead>
+    <tbody>
+    {% for shipment in plan.shipments %}
+    <tr><td class="font-mono">{{ shipment.shipment_no }}</td><td>{{ shipment.shipped_at|date:"Y-m-d" }}</td><td class="font-mono">{{ shipment.order_line.item.part_no }}</td><td>{{ shipment.qty|comma }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "core/_form_card.html" %}
+{% endif %}

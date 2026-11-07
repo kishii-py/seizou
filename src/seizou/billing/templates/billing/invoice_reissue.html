@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 請求書を作り直す: 欄は発行日だけ。入口は請求書の新規登録で同じ締め期間の 2 枚目が止まったときの右上の知らせのボタン (R23)。全体の画面だけで開く (小窓の link は無い)。中身はカード (billing/_invoice_reissue_card.html)。URL を直に打った POST で入金の残る請求書があれば、services が赤の知らせで止める。 #}
+{% block content %}{% include "billing/_invoice_reissue_card.html" %}
+{% endblock %}

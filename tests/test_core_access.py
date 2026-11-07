@@ -376,3 +376,17 @@ def test_account_gate_ignores_mode(off, plain):
     access.require_write(manager, "accounts.issue_account")
     with pytest.raises(access.AccessDenied):
         access.require_write(plain, "accounts.issue_account")
+
+
+@pytest.mark.django_db
+def test_reissue_invoice_is_a_money_action(on):
+    """請求書の作り直しは請求書を作る操作の別の入口なので、金額を見られない人は作れない (請求書を作るのと同じ扱い)。"""
+    assert access.MONEY_ACTIONS["billing.reissue_invoice"] == access.MONEY_ACTIONS["billing.create_invoice"]
+    assert access.ACTION_KINDS["billing.reissue_invoice"] == "billing"
+    clerk = account("clerk", permissions=["billing"])
+    with pytest.raises(access.AccessDenied) as caught:
+        access.require_write(clerk, "billing.reissue_invoice")
+    assert "請求書は金額が主な内容" in caught.value.message
+
+    keiri = account("keiri", permissions=["billing"], see_money=True)
+    access.require_write(keiri, "billing.reissue_invoice")

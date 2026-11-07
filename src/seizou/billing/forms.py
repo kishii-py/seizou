@@ -11,6 +11,7 @@
   選んだ期間の行に印を付けて発行日に締日を入れる。期間は Python の closing_period の 1 か所で決める (JS で日付を計算しない)。
   欄は service に渡さない補助の欄で、送った値を検査して断らない (空でも、選択肢に無い値でも保存は今のまま)。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
+- 作り直す form は「発行日」だけ。service_kwargs() は {"issued_on": …} (土台が reissue_invoice(請求書, user=..., issued_on=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
@@ -259,6 +260,34 @@ class InvoiceCancelForm(forms.Form):
 
     def service_kwargs(self):
         return {}
+
+
+class InvoiceReissueForm(forms.Form):
+    """請求書を作り直す form。欄は「発行日」だけ。保存のボタンは「IV-000001 を取り消して作り直す」(土台が対象を instance= で渡す)。
+
+    発行日の初めの値は、作り直す請求書の期間の終わり (締日)。それが今日より後なら今日 (請求書の新規登録で締め期間を選んだときと同じ決め)。
+    """
+
+    submit_label = "作り直す"
+    danger = True  # 実行のボタンを取消と同じ赤 (btn btn-error) にする (前の請求書の取消は元に戻せないため。請求書の取消の form と同じ印)
+
+    issued_on = forms.DateField(
+        label="発行日",
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
+        help_text="新しい請求書に載る日付です。初めは締め期間の終わり (今日より後なら今日) が入ります。",
+    )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        today = timezone.localdate()
+        self.fields["issued_on"].initial = today
+        if instance is not None:
+            self.submit_label = f"{instance.invoice_no} を取り消して作り直す"
+            if instance.period_to is not None and instance.period_to < today:
+                self.fields["issued_on"].initial = instance.period_to
+
+    def service_kwargs(self):
+        return {"issued_on": self.cleaned_data["issued_on"]}
 
 
 class PaymentForm(SubmitLabelMixin, forms.Form):

@@ -1,4 +1,4 @@
-"""billing の画面 (02 の請求書)。一覧・詳細・作る・取り消すは core の土台を継承する (R15)。
+"""billing の画面 (02 の請求書)。一覧・詳細・作る・取り消す・作り直すは core の土台を継承する (R15)。
 
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
@@ -21,7 +21,7 @@ from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import InvoiceCancelForm, InvoiceForm, PaymentCancelForm, PaymentForm
+from .forms import InvoiceCancelForm, InvoiceForm, InvoiceReissueForm, PaymentCancelForm, PaymentForm
 from .models import Invoice, Payment
 from .reports import invoice_context
 
@@ -115,6 +115,20 @@ class InvoiceCancelView(BaseFormView):
     template_name = "billing/invoice_cancel.html"
     screen_name = "請求書を取り消す"
     screen_help = "発行の請求書を取り消します。明細は残ります。"
+
+
+class InvoiceReissueView(BaseFormView):
+    """請求書を作り直す入力。入口は、請求書の新規登録で同じ締め期間の 2 枚目が止まったときの右上の知らせのボタンだけ。
+
+    使う人: 経理 / いつ: 同じ締め期間の請求書を作ろうとして止まったとき / 何のために: 前の請求書を取り消し、期間の全部の出荷で 1 枚に作り直す / 次にすること: 請求書の詳細から印刷
+    """
+
+    model = Invoice
+    form_class = InvoiceReissueForm
+    service = staticmethod(services.reissue_invoice)
+    template_name = "billing/invoice_reissue.html"
+    screen_name = "請求書を作り直す"
+    screen_help = "同じ締め期間の請求書を取り消し、入っていた出荷と期間の中で残っていた出荷で 1 枚に作り直します。"
 
 
 class PaymentCreateView(BaseFormView):
