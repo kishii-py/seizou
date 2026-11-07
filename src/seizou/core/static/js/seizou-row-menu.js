@@ -24,7 +24,10 @@
  *   メニューより手前に描かれないため (表の中に居ると先祖の stacking context に閉じ込められ、z-50 でも勝てない。本人の報告 11-07 18:0x。
  *   seizou-select.js の候補の一覧を body の直下に描く dropdownParent と同じ考え)。閉じたら details の中へ戻し、inline の style と印を消す。
  *   body の直下では daisyUI の dropdown の規則 (透明・absolute) が当たらないので、見た目は menu の class だけで決まる。
- * - htmx が画面の一部を差し替える前 (htmx:beforeSwap) に全部閉じる (details が消えた後に ul が body に取り残されないため)。
+ * - htmx が画面の一部を差し替えた後 (htmx:afterSwap) に、body へ移した ul の details がもう document に無ければ閉じる
+ *   (details が消えた後に ul が body に取り残されないため)。details が残っていれば閉じず、置き直す (行が動いた分だけ追う)。
+ *   差し替えの前 (beforeSwap) に全部閉じる形はやめた: 受信した注文の 2 秒ごとの取り直しは表の先頭に行を足すだけ (afterbegin) で
+ *   今の行を消さないのに、開いた ⋮ を 2 秒以内に閉じていた (指示書 11-07 の見つけ GS-01。402 回目の後戻り)。
  * - 画面の右端・下端ではみ出す分は、左か上へずらす。
  * - 左は main の左の端 (左のメニューの右) より左に出さない。summary の下に右端をそろえて出すと左へはみ出すときは、
  *   summary の左端にそろえて右へ開く。
@@ -50,6 +53,10 @@
   var pending = null;
   // body の直下へ移した ul (details → ul)。閉じる時に details の中へ戻す。
   var moved = new WeakMap();
+  // 移した ul の持ち主 (ul → details)。htmx の差し替えの後に、details が document に残っているかを見る。
+  var owner = new WeakMap();
+  // 開いた時に置いた位置 (details → 右クリックの cursor の位置。summary の下なら null)。差し替えの後に同じ形で置き直す。
+  var anchors = new WeakMap();
   var LIST = "[data-row-menu-list]";
 
   function listOf(details) {
@@ -59,6 +66,7 @@
   function moveOut(details, list) {
     if (list.parentNode === document.body) return;
     moved.set(details, list);
+    owner.set(list, details);
     list.setAttribute("data-row-menu-list", "");
     document.body.appendChild(list);
   }
@@ -68,6 +76,7 @@
     list.removeAttribute("data-row-menu-list");
     details.appendChild(list);
     moved.delete(details);
+    owner.delete(list);
   }
 
   function elementOf(node) {
@@ -98,6 +107,7 @@
     var summary = details.querySelector("summary");
     if (!list) return;
     moveOut(details, list);
+    anchors.set(details, point || null);
     var style = list.style;
     style.position = "fixed";
     style.right = "auto";
@@ -212,8 +222,22 @@
     if (document.querySelector(MENU + "[open]")) closeAll(null);
   }
 
-  function onBeforeSwap() {
-    closeAll(null);
+  // htmx の差し替えの後: body に移した ul のうち、details が document から外れた物は閉じる (ul を details の中へ戻し、body に残さない)。
+  // details が残っていて開いたままなら、開いた時と同じ形 (summary の下か cursor の位置) で置き直す (先頭に行が足されて行が動いた時に追う)。
+  function onAfterSwap() {
+    var lists = document.querySelectorAll(LIST);
+    for (var i = 0; i < lists.length; i++) {
+      var details = owner.get(lists[i]);
+      if (!details) {
+        lists[i].remove();
+      } else if (!details.isConnected) {
+        closeMenu(details);
+      } else if (details.open) {
+        place(details, anchors.get(details) || null);
+      } else {
+        clearPlacement(details);
+      }
+    }
   }
 
   document.addEventListener("contextmenu", onContextMenu);
@@ -221,7 +245,7 @@
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("toggle", onToggle, true);
   document.addEventListener("scroll", onScroll, true);
-  document.addEventListener("htmx:beforeSwap", onBeforeSwap);
+  document.addEventListener("htmx:afterSwap", onAfterSwap);
 
   window.seizouRowMenu = { closeAll: closeAll };
 })();

@@ -15,7 +15,12 @@
  *   成功は 5 秒で消える (messages の知らせと同じ)。確認は閉じるボタンで消す (閉じるボタンは base.html の script が受ける)。
  * - 止まった知らせと確かめ (画面の一部の差し替え): 応答の HX-Trigger の seizou:notice (items の level・message・rule・help) を受けて、
  *   template の stop か check の箱を写し、data-notice の印を付けて右上の頭に入れる。同じ段の前の箱は消す。小窓は閉じない。
- *   「?」は htmx.process で動かす (決め 11-07 C57-5)。
+ *   「?」は htmx.process で動かす (決め 11-07 C57-5)。base.html の末尾の script も、htmx の要求の失敗 (500・通信切れ・時間切れ) を
+ *   同じ合図で出す (指示書 11-07 の FB-02)。
+ * - 小窓が開いている間の seizou:notice は、右上でなく小窓の箱 (#seizou-modal-box) の頭に同じ箱を入れる (小窓の中の保存が通信の失敗で
+ *   止まった時)。右上は小窓の後ろに隠れて閉じるボタンも押せないため (CLAUDE.md の小窓の例外と同じ訳)。欄を直すと seizou-field-error.js が消す。
+ * - 開く要求が失敗した時 (FB-01): base.html の末尾の script が取りに行く前に箱を空にし、失敗したら小窓を閉じる。openForm は、
+ *   箱に中身が入った時だけ開く (htmx.ajax の then は失敗でも来るため)。
  */
 (function () {
   "use strict";
@@ -31,6 +36,9 @@
   function openForm(url) {
     if (!window.htmx) return false;
     window.htmx.ajax("GET", url, { target: "#seizou-modal-box", swap: "innerHTML" }).then(function () {
+      // 失敗した要求 (箱は空のまま) では開かない。
+      var box = document.getElementById("seizou-modal-box");
+      if (!box || !box.firstElementChild) return;
       var modal = dialog();
       if (modal && typeof modal.showModal === "function" && !modal.open) modal.showModal();
     });
@@ -154,16 +162,30 @@
     });
     var toasts = stops.concat(checks);
     if (!toasts.length) return;
-    // 同じ段の前の箱を消す (画面の全体の形と同じく、赤は 1 つ・黄はその回の分だけ)。messages の箱 (印の無い物) は残す。
-    var current = document.getElementById("seizou-toasts");
-    if (current) {
-      [stops.length ? "stop" : "", checks.length ? "check" : ""].forEach(function (level) {
+    var levels = [stops.length ? "stop" : "", checks.length ? "check" : ""];
+    // 小窓が開いている間は、右上でなく小窓の箱の頭に入れる (右上は小窓の後ろに隠れるため)。同じ段の前の箱は消す。
+    var modal = dialog();
+    var modalBox = document.getElementById("seizou-modal-box");
+    var box = modal && modal.open && modalBox ? modalBox : null;
+    if (box) {
+      levels.forEach(function (level) {
         if (!level) return;
-        current.querySelectorAll('[data-notice="' + level + '"]').forEach(removeToast);
+        box.querySelectorAll('.seizou-toast[data-notice="' + level + '"]').forEach(function (each) {
+          each.remove();
+        });
       });
+    } else {
+      // 同じ段の前の箱を消す (画面の全体の形と同じく、赤は 1 つ・黄はその回の分だけ)。messages の箱 (印の無い物) は残す。
+      var current = document.getElementById("seizou-toasts");
+      if (current) {
+        levels.forEach(function (level) {
+          if (!level) return;
+          current.querySelectorAll('[data-notice="' + level + '"]').forEach(removeToast);
+        });
+      }
+      box = toastBox(template);
     }
-    // 右上の箱の頭に、赤・黄の順で入れる (止まった → 確かめ → messages の並び。同じ基の前へ順に入れると並びが保たれる)。
-    var box = toastBox(template);
+    // 箱の頭に、赤・黄の順で入れる (止まった → 確かめ → messages の並び。同じ基の前へ順に入れると並びが保たれる)。
     var head = box.firstChild;
     toasts.forEach(function (toast) {
       box.insertBefore(toast, head);
