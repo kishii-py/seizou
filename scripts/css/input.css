@@ -428,18 +428,18 @@ body > .ts-dropdown [data-select-create]:hover {
    右下の「AI に質問」の丸を出す画面の main の下の余白 (core/base.html の pb-34 lg:pb-34 = 136px) も、入力の画面ではこの決まりが上書きする。
    丸 (下から 24px・高さ 40px = 窓の下の端から 64px まで) は帯の高さ (65px 以上) の中に入り、帯より上の欄を隠さないため。
    main の class の字は変えない (tests/test_input_screens.py の MAIN_PLAIN と MAIN_WITH_ROOM)。層の外の決まりなので Tailwind の p-4・lg:p-6・
-   pb-34 より強い。 */
+   pb-34 より強い。帯の上へ上げた右下の丸 (下の決まり。高さ 40px + 間 16px = 56px) の分も足し、最後まで送ったときに本文の右下が丸に隠れないようにする。 */
 main:has(.seizou-save-row) {
-  padding-bottom: calc(141px + 1rem);
+  padding-bottom: calc(141px + 1rem + 56px);
 }
 @media (min-width: 640px) {
   main:has(.seizou-save-row) {
-    padding-bottom: calc(113px + 1rem);
+    padding-bottom: calc(113px + 1rem + 56px);
   }
 }
 @media (min-width: 64rem) {
   main:has(.seizou-save-row) {
-    padding-bottom: calc(65px + 1.5rem);
+    padding-bottom: calc(65px + 1.5rem + 56px);
   }
 }
 /* 欄の無い確かめ (納品書・請求書・入金の取消と、注文を送り直すの画面の全体。core/_form_card.html) は、下の帯が流れの外に出ると、
