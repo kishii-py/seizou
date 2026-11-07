@@ -13,6 +13,7 @@ from importlib import import_module, util
 from django.db import DatabaseError
 from django.urls import NoReverseMatch, reverse
 from django.utils.functional import SimpleLazyObject
+from django.utils.http import urlencode
 
 from seizou.core.templatetags.seizou_icons import menu_icon_name, section_icon_name
 from seizou.parts import PARTS
@@ -35,17 +36,49 @@ OTHER_SECTION = "その他"
 #: core 自身の入口 (部品の MENU と同じ形)
 CORE_MENU = (("ダッシュボード", "core:home"), ("検索", "core:search"))
 
-#: 左のメニューの入口の横に出す待っている数 (決め 11-05 の 1-A)。鍵は入口の URL の名前、値は (説明, 単位, 数える物)。
+def _inbox_received_params() -> dict:
+    """受信した注文の数の移る先の絞り (状態が「届いた」)。状態の値は model の定数から読む (字を直書きしない)。部品が無ければ空。"""
+    from seizou.core import dashboard
+
+    inbox = dashboard._model("connect", "Inbox")
+    return {"f_status": inbox.STATUS_RECEIVED} if inbox is not None else {}
+
+
+#: 左のメニューの入口の横に出す待っている数 (決め 11-05 の 1-A)。鍵は入口の URL の名前、値は (説明, 単位, 数える物, 移る先)。
 #: 数える物は core.dashboard の queryset を返す関数の名前 (部品が無ければ None) で、入口ごとに 1 回ずつ .count() する ((B) の形)。
 #: 受信した注文・指示書・受入・請求書は、N145 の today_tasks が flow_guide で数える関数そのもの (今日やることと同じ数)。
 #: today_tasks を呼ぶと 9 回数えるので呼ばない。納期が過ぎた明細は today_tasks に無いので、due_alerts の遅れと同じ条件の関数。
+#: 移る先は (URL の名前, 絞りの GET の辞書か、それを返す関数) で、数の印を押したときに開く画面 (入口の字を押したときは今までどおり
+#: 絞り無しの入口。数を置く入口は変えず、押した後に移る先だけを変える)。決め 11-07 20:5x の 2 (数を押すとその数で絞った一覧が開く。
+#: N146 の「移り先は変えない」を置き換える。nav-01)。生産管理ボードの数は盤のタブ「納期が過ぎた」と同じ組 (orders の presets の
+#: f_open=1&f_overdue=1。数える関数 _overdue_lines と同じ条件)。受信した注文の数は状態「届いた」の絞り (今日やることの行と同じ)。
+#: 指示書の数は明細の行を数えているので、指示書の一覧でなく生産管理ボードを、数える関数と同じ絞り「指示書の無い明細だけ」
+#: (f_open=1&f_no_workorder=1。dashboard.without_workorder) で開く。合う絞りのまだ無い物 (受入の残・請求書に入っていない出荷) は、
+#: 入口そのもの (絞り無し) に移る。移る先が入口と違う画面のとき、その画面を部署で開けない人 (左のメニューに並ばない) には、
+#: 印の link も入口そのものにする (押すと断られる入口を作らない。attach_counts)。
 MENU_COUNTS = {
-    "connect:inbox_list": ("未処理の受信した注文", "件", "_received_inbox"),
-    "orders:orderline_list": ("納期が過ぎた明細", "行", "_overdue_lines"),
-    "workorders:workorder_list": ("指示書の無い明細", "行", "_lines_without_workorder"),
-    "purchasing:receipt_list": ("受入の残っている出荷の知らせの明細", "行", "_noticed_lines_to_receive"),
-    "billing:invoice_list": ("請求書に入っていない出荷", "件", "_shipments_to_invoice"),
+    "connect:inbox_list": ("未処理の受信した注文", "件", "_received_inbox", ("connect:inbox_list", _inbox_received_params)),
+    "orders:orderline_list": ("納期が過ぎた明細", "行", "_overdue_lines", ("orders:orderline_list", {"f_open": "1", "f_overdue": "1"})),
+    "workorders:workorder_list": (
+        "指示書の無い明細",
+        "行",
+        "_lines_without_workorder",
+        ("orders:orderline_list", {"f_open": "1", "f_no_workorder": "1"}),
+    ),
+    "purchasing:receipt_list": ("受入の残っている出荷の知らせの明細", "行", "_noticed_lines_to_receive", ("purchasing:receipt_list", {})),
+    "billing:invoice_list": ("請求書に入っていない出荷", "件", "_shipments_to_invoice", ("billing:invoice_list", {})),
 }
+
+
+def count_url(url_name: str) -> str | None:
+    """数の印を押したときに開く URL (MENU_COUNTS の移る先に絞りの GET を付けた物)。移る先の URL が引けなければ None。"""
+    target_name, params = MENU_COUNTS[url_name][3]
+    target = url_or_none(target_name)
+    if target is None:
+        return None
+    if callable(params):
+        params = params()
+    return f"{target}?{urlencode(params)}" if params else target
 
 
 def url_or_none(url_name: str) -> str | None:
@@ -228,16 +261,18 @@ def _bell_count(user) -> int:
 
 
 def attach_counts(items: list[dict], user) -> None:
-    """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit を付ける。
+    """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit と、数を押したときに開く URL count_url を付ける。
 
     使う人: 現場と事務の全員 / いつ: 朝や手の空いた時に左のメニューを見る / 何のために: 待っている仕事の数から仕事へ入る。
     数は N145 の「今日やること」と同じ元 (core.dashboard の数える関数)。count は SimpleLazyObject で、テンプレートが読んだ時
     (左のメニューを描くとき) だけ入口ごとに 1 回数える (htmx の行の取り直しでは数えない)。未ログインには付けない。
     数えられない時は None、0 は 0 のままで、どちらもテンプレートは印を出さない。items は visible_menu の後の入口 (開ける物だけ)。
+    count_url は、移る先が入口と違う画面でその画面が items に無い (部署で開けない) ときは入口そのもの (問い合わせを足さずに見る)。
     """
     if not getattr(user, "is_authenticated", False):
         return
     counts: dict[str, int | None] = {}
+    visible = {item["url_name"] for item in items}
 
     def count_of(url_name: str) -> int | None:
         if url_name not in counts:
@@ -248,10 +283,13 @@ def attach_counts(items: list[dict], user) -> None:
         url_name = item["url_name"]
         if url_name not in MENU_COUNTS:
             continue
-        label, unit, _name = MENU_COUNTS[url_name]
+        label, unit, _name, _target = MENU_COUNTS[url_name]
         item["count"] = SimpleLazyObject(lambda url_name=url_name: count_of(url_name))
         item["count_label"] = label
         item["count_unit"] = unit
+        target_name = _target[0]
+        reachable = target_name == url_name or target_name in visible
+        item["count_url"] = (count_url(url_name) if reachable else None) or item["url"]
 
 
 def seizou(request) -> dict:

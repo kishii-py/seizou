@@ -271,7 +271,12 @@ def test_num_drops_trailing_zeros():
 def test_filters_read_dates_and_overdue():
     # 盤の絞りは OrderLineListView.filters の宣言 (決め 11-04 17:3x)。GET は f_<name>。古い名前 (due_from・overdue・all) は読まない。
     specs = {spec.name: spec for spec in OrderLineListView().filter_specs()}
-    assert [(name, spec.kind) for name, spec in specs.items()] == [("open", "flag"), ("due", "date_range"), ("overdue", "flag")]
+    assert [(name, spec.kind) for name, spec in specs.items()] == [
+        ("open", "flag"),
+        ("due", "date_range"),
+        ("overdue", "flag"),
+        ("no_workorder", "flag"),  # 数える関数と同じ絞り (core.dashboard.without_workorder。nav-01)
+    ]
     assert specs["due"].values({"f_due_from": "2026-11-01", "f_due_to": "2026-11-30"}) == {
         "f_due_from": date(2026, 11, 1),
         "f_due_to": date(2026, 11, 30),

@@ -15,6 +15,7 @@
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
     </div>
     <nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー">
+      {# 入口の横の待っている数 (決め 11-05 の 1-A) は、入口の <a> の外 (同じ li の中) の入れ物 (id="menu-count-…"。数が 0 でも残る = 受入の一覧と発注の詳細が hx-select-oob で入れ替える的) に、別の <a> として置く。押すと、その数で絞った一覧 (context_processors の MENU_COUNTS の移る先) が開く (決め 11-07 20:5x の 2。nav-01)。<a> の中に <a> を入れない (HTML として誤り)。 #}
       {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。戻るの後は末尾の script が今の大項目を開き直す。 #}
       {% for section in seizou.sections %}
       {% if section.collapsible %}
@@ -24,7 +25,7 @@
         {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/60">{{ group.label }}</p>{% endif %}
         <ul class="flex flex-col">
           {% for item in group.items %}
-          <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span>{% if item.count_label %}<span id="menu-count-{{ item.url_name|cut:':' }}" class="ml-auto">{% if item.count %}<span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span>{% endif %}</span>{% endif %}</a></li>
+          <li class="flex items-center"><a href="{{ item.url }}" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span></a>{% if item.count_label %}<span id="menu-count-{{ item.url_name|cut:':' }}" class="ml-auto">{% if item.count %}<a href="{{ item.count_url }}" class="flex items-center rounded-lg py-2 pr-2 focus-visible:outline-2 focus-visible:outline-primary" aria-label="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span></a>{% endif %}</span>{% endif %}</li>
           {% endfor %}
         </ul>
         {% endfor %}
@@ -32,7 +33,7 @@
       {% else %}
       <ul class="mb-1 flex flex-col">
         {% for item in section.items %}
-        <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span>{% if item.count_label %}<span id="menu-count-{{ item.url_name|cut:':' }}" class="ml-auto">{% if item.count %}<span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span>{% endif %}</span>{% endif %}</a></li>
+        <li class="flex items-center"><a href="{{ item.url }}" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-5" %}<span class="truncate">{{ item.label }}</span></a>{% if item.count_label %}<span id="menu-count-{{ item.url_name|cut:':' }}" class="ml-auto">{% if item.count %}<a href="{{ item.count_url }}" class="flex items-center rounded-lg py-2 pr-2 focus-visible:outline-2 focus-visible:outline-primary" aria-label="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span></a>{% endif %}</span>{% endif %}</li>
         {% endfor %}
       </ul>
       {% endif %}
