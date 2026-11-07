@@ -388,6 +388,9 @@ def device_code(client_id: str, scope: str) -> dict:
     numbers = {key: _positive_int(data.get(key)) for key in ("expires_in", "interval")}
     if not all(isinstance(value, str) and value for value in texts.values()) or None in numbers.values():
         raise GithubError(MESSAGE_DEVICE_ANSWER)
+    # 画面の「GitHub を開く」の link の先になるので、https の URL だけを受ける。
+    if not texts["verification_uri"].startswith("https://"):
+        raise GithubError(MESSAGE_DEVICE_ANSWER)
     return {**texts, **numbers}
 
 
