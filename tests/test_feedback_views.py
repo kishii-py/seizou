@@ -1026,9 +1026,10 @@ def test_issues_tab_shows_board_with_five_columns_and_cards(client, plain, manag
     assert html.count('id="issue-board"') == 1 and 'id="issue-table"' not in html
     board = board_of(html)
     # 件数 1 以上の 4 列は左から BOARD_COLUMNS の並び、件数 0 の「見送った」は右端の箱に札だけ。
-    assert board.count('<section class="w-72 shrink-0 rounded-xl border border-base-300 bg-base-200 p-3"') == 4
+    assert board.count('<section class="min-w-52 flex-1 shrink-0 rounded-xl border border-base-300 bg-base-200 p-3"') == 5
+    # 5 つの列はいつも services.BOARD_COLUMNS の順に全部出る (本人の決め 11-07 16:4x = 件数で並びが変わらない。0 件の列も出る)
     heads = re.findall(r'<h3 id="issue-column-([a-z]+)" class="flex items-center">', board)
-    assert heads == ["inbox", "planned", "working", "fixed"]
+    assert heads == [key for key, _label, _tone in services.BOARD_COLUMNS] == ["inbox", "planned", "working", "fixed", "dismissed"]
     for badge in (
         '<span class="badge badge-ghost">受け付けた</span>',
         '<span class="badge badge-soft badge-info">直す予定</span>',
@@ -1037,9 +1038,13 @@ def test_issues_tab_shows_board_with_five_columns_and_cards(client, plain, manag
     ):
         assert badge in board
     assert board.count('<span class="badge badge-sm badge-ghost ml-2 tabular-nums">1</span>') == 4
-    empty = board[board.index('id="issue-columns-empty"') :]
-    assert "0 件の列" in empty and '<span class="badge badge-outline badge-error">見送った</span>' in empty
-    assert 'id="issue-column-dismissed"' not in board
+    # 0 件の列も頭 (札と件数 0) を出し、点線の枠に「まだありません」(右端の「0 件の列」の箱は無い)
+    assert 'id="issue-columns-empty"' not in board and "0 件の列" not in board
+    dismissed = board[board.index('id="issue-column-dismissed"') :]
+    assert '<span class="badge badge-outline badge-error">見送った</span>' in dismissed
+    assert '<span class="badge badge-sm badge-ghost ml-2 tabular-nums">0</span>' in dismissed
+    assert '<p class="mt-4 rounded-lg border border-dashed border-base-300 px-3 py-6 text-center text-sm text-base-content/60">まだありません</p>' in dismissed
+    assert board.count("まだありません") == 1
 
     # 自社が送った件のカード (#7): 題は自社の件の詳細へ、種類は本文の行、直る版、自社の印、押せない 👍。
     mine = card_of(html, 7)
@@ -1061,7 +1066,7 @@ def test_issues_tab_shows_board_with_five_columns_and_cards(client, plain, manag
     # 並べ替えと切り替え (初めは 👍 の多い順と盤)。
     assert f'<a class="join-item btn btn-sm btn-active" href="{href({"tab": "issues"})}" aria-current="true">👍 の多い順</a>' in html
     assert f'<a class="join-item btn btn-sm" href="{href({"tab": "issues", "sort": "new"})}">新しい順</a>' in html
-    assert f'<a class="join-item btn btn-sm btn-active" href="{href({"tab": "issues"})}" aria-current="true">盤</a>' in html
+    assert f'<a class="join-item btn btn-sm btn-active" href="{href({"tab": "issues"})}" aria-current="true">カンバン</a>' in html
     assert f'<a class="join-item btn btn-sm" href="{href({"tab": "issues", "view": "list"})}">一覧</a>' in html
     assert 'name="view"' not in html and 'name="sort"' not in html
 
@@ -1092,7 +1097,7 @@ def test_issues_tab_list_view_and_links_keep_tab_words_and_choice(client, plain,
     keep = {"tab": "issues", "issue_q": "受注"}
     assert f'href="{href({**keep, "view": "list"})}">👍 の多い順</a>' in html
     assert f'href="{href({**keep, "view": "list", "sort": "new"})}" aria-current="true">新しい順</a>' in html
-    assert f'href="{href({**keep, "sort": "new"})}">盤</a>' in html
+    assert f'href="{href({**keep, "sort": "new"})}">カンバン</a>' in html
     assert f'href="{href({**keep, "view": "list", "sort": "new"})}" aria-current="true">一覧</a>' in html
 
 
@@ -1135,13 +1140,13 @@ def test_board_tag_without_request_reads_nothing():
     board = feedback_tags.feedback_board({})
 
     assert (board["view"], board["sort"], board["q"], board["keep_q"], board["board"]) == ("board", "top", "", False, None)
-    assert board["columns_shown"] == [] and board["columns_empty"] == []
+    assert board["columns"] == []
     assert [(link["label"], link["href"], link["selected"]) for link in board["sorts"]] == [
         ("👍 の多い順", "/feedback/?tab=issues", True),
         ("新しい順", "/feedback/?tab=issues&sort=new", False),
     ]
     assert [(link["label"], link["href"], link["selected"]) for link in board["views"]] == [
-        ("盤", "/feedback/?tab=issues", True),
+        ("カンバン", "/feedback/?tab=issues", True),
         ("一覧", "/feedback/?tab=issues&view=list", False),
     ]
 

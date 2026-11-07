@@ -187,7 +187,7 @@ def feedback_reply_draft(reply):
 #: みんなの Issue の並べ替えの link (鍵と字。依頼書 N325)。初めは 👍 の多い順
 BOARD_SORT_LINKS = (("top", "👍 の多い順"), ("new", "新しい順"))
 #: みんなの Issue の形の切り替えの link (鍵と字)。初めは盤 (選びは覚えない = 毎回盤)
-BOARD_VIEW_LINKS = (("board", "盤"), ("list", "一覧"))
+BOARD_VIEW_LINKS = (("board", "カンバン"), ("list", "一覧"))
 
 
 def _board_href(q, view, sort) -> str:
@@ -204,11 +204,11 @@ def _board_href(q, view, sort) -> str:
 
 @register.simple_tag(takes_context=True)
 def feedback_board(context):
-    """みんなの Issue の盤と一覧の形の材料 (依頼書 N325。決め 11-07 09:3x〜10:1x)。
+    """みんなの Issue のカンバンと一覧の形の材料 (依頼書 N325。決め 11-07 09:3x〜10:1x。5 つの列をいつも出す形は本人の決め 11-07 16:4x)。
 
     返す物 {"view": "board" か "list" (GET の view が list なら list。ほかは board), "sort": "top" か "new" (GET の sort。ほかは top),
     "q": GET の issue_q, "keep_q": GET に issue_q があったか, "board": services.board_issues の結果か None,
-    "columns_shown": 件数 1 以上の列, "columns_empty": 件数 0 の列,
+    "columns": 5 つの列 (services.BOARD_COLUMNS の順。件数 0 の列も入る。board が None なら空),
     "sorts" と "views": 並べ替えと切り替えの link の並び [{"key", "label", "href", "selected"}]}。
     GitHub を読むのは GET の tab が issues のときだけ。ほかと request が無いときは読まず、board は None で列は空。
     link の href は tab と、今の issue_q (GET にあったときだけ) と、もう片方の選び (view か sort) を保つ。
@@ -232,8 +232,7 @@ def feedback_board(context):
         "q": q,
         "keep_q": keep_q,
         "board": board,
-        "columns_shown": [column for column in columns if column["count"]],
-        "columns_empty": [column for column in columns if not column["count"]],
+        "columns": columns,
         "sorts": [{"key": key, "label": label, "href": _board_href(kept, view, key), "selected": key == sort} for key, label in BOARD_SORT_LINKS],
         "views": [{"key": key, "label": label, "href": _board_href(kept, key, sort), "selected": key == view} for key, label in BOARD_VIEW_LINKS],
     }

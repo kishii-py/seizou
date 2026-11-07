@@ -1,8 +1,8 @@
-"""E-74 フィードバックの「みんなの Issue」のタブの盤と、一覧の形への切り替えと、4 つの幅の見え方 (依頼書 N325。決め 11-07 09:3x〜10:1x)。
+"""E-74 フィードバックの「みんなの Issue」のタブのカンバン (5 つの列) と、一覧の形への切り替えと、4 つの幅の見え方 (依頼書 N325。決め 11-07 09:3x〜10:1x)。
 
-手順: A 社で /feedback/?tab=issues を開く → 右上の「一覧」を押す → 「盤」を押して戻す → 4 つの幅 (390・820・1280・1600) で撮る。
-期待: 盤 (#issue-board) か、GitHub を読めなかったときの 1 文が出る。「一覧」で URL に view=list が付き、盤が無くなる。
-「盤」で URL が ?tab=issues に戻る。どの幅でも、画面の全体は横にはみ出さない (盤の列は盤の中で横に流れる)。
+手順: A 社で /feedback/?tab=issues を開く → 右上の「一覧」を押す → 「カンバン」を押して戻す → 4 つの幅 (390・820・1280・1600) で撮る。
+期待: カンバン (#issue-board) か、GitHub を読めなかったときの 1 文が出る。「一覧」で URL に view=list が付き、カンバンが無くなる。
+「カンバン」で URL が ?tab=issues に戻る。どの幅でも、画面の全体は横にはみ出さない (5 つの列はカンバンの中で横に流れる)。
 
 この試験が見る所: `#issue-board` と `#issue-table` の数・URL・`#issue-views` の選び (`btn-active`)・
 `document.documentElement.scrollWidth` と窓の幅。
@@ -38,7 +38,7 @@ def test_e74_feedback_board(page_a, company_a):
     readable = _board_or_unreadable(page_a)
     views = page_a.locator("#issue-views")
     expect(views.locator("a")).to_have_count(2)
-    expect(views.locator("a.btn-active")).to_have_text("盤")
+    expect(views.locator("a.btn-active")).to_have_text("カンバン")
 
     views.get_by_role("link", name="一覧", exact=True).click()
     expect(page_a).to_have_url(re.compile(r"/feedback/\?tab=issues&view=list$"))
@@ -47,7 +47,7 @@ def test_e74_feedback_board(page_a, company_a):
     expect(page_a.locator("#issue-table")).to_have_count(1 if readable else 0)
     shot(page_a, "E-74", "a-feedback-board-list")
 
-    views.get_by_role("link", name="盤", exact=True).click()
+    views.get_by_role("link", name="カンバン", exact=True).click()
     expect(page_a).to_have_url(re.compile(r"/feedback/\?tab=issues$"))
     for name, width in WIDTHS.items():
         page_a.set_viewport_size({"width": width, "height": HEIGHT})
