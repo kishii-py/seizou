@@ -229,11 +229,44 @@ def test_due_crosses_year():
     assert services.payment_due_date(customer, date(2026, 12, 21)) == date(2027, 3, 25)
 
 
-def test_due_is_none_when_terms_blank():
+def test_due_is_none_when_payment_terms_blank():
+    """支払の月か支払日が空なら None。締日が空の得意先は月末で締めるので、None でなく期日が決まる (C02-3d)。"""
     base = date(2026, 11, 10)
     assert services.payment_due_date(_terms(20, "", 25), base) is None
     assert services.payment_due_date(_terms(20, "next", None), base) is None
-    assert services.payment_due_date(_terms(None, "next", 25), base) is None
+    assert services.payment_due_date(_terms(None, "next", 25), base) == date(2026, 12, 25)
+
+
+def _per_delivery(closing_day, payment_month, payment_day):
+    """請求の仕方が都度で、支払の欄だけを持つ取引先 (保存しない)。"""
+    return Partner(
+        billing_method=Partner.BILLING_PER_DELIVERY,
+        closing_day=closing_day,
+        payment_month=payment_month,
+        payment_day=payment_day,
+    )
+
+
+def test_due_blank_closing_day_closes_at_month_end():
+    """締日が空の得意先は月末で締めて数える (closing_period と同じ。C02-3d)。"""
+    assert services.payment_due_date(_terms(None, "next", 25), date(2026, 11, 10)) == date(2026, 12, 25)
+    assert services.payment_due_date(_terms(None, "next", 31), date(2026, 10, 15)) == date(2026, 11, 30)
+
+
+def test_due_same_day_is_base_date():
+    """支払の月が当日なら期日は基準の日のまま。支払日が空でも同じ (支払日は使わない)。"""
+    assert services.payment_due_date(_terms(20, "same_day", 25), date(2026, 11, 10)) == date(2026, 11, 10)
+    assert services.payment_due_date(_terms(20, "same_day", None), date(2026, 11, 10)) == date(2026, 11, 10)
+    assert services.payment_due_date(_terms(None, "same_day", None), date(2026, 11, 10)) == date(2026, 11, 10)
+
+
+def test_due_per_delivery_uses_delivery_month():
+    """都度の得意先は締日を見ず、納品の日の月を締めの月にする。当日なら納品の日。"""
+    assert services.payment_due_date(_per_delivery(None, "next", 31), date(2026, 10, 15)) == date(2026, 11, 30)
+    assert services.payment_due_date(_per_delivery(None, "same_day", None), date(2026, 10, 15)) == date(2026, 10, 15)
+    assert services.payment_due_date(_per_delivery(20, "next", 25), date(2026, 10, 25)) == date(2026, 11, 25)
+    assert services.payment_due_date(_per_delivery(20, "", 25), date(2026, 10, 25)) is None
+    assert services.payment_due_date(_per_delivery(20, "next", None), date(2026, 10, 25)) is None
 
 
 @pytest.mark.django_db
