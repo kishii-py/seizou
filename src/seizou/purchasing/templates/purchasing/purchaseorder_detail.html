@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons purchasing_tags %}
-{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む。受入の link は取消と断られた発注には出さず、数量は知らせのまだ受け入れていない数 (purchasing_tags の notice_rests)) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。書く入口 (送り直す・取り消す・受入・検収の送り直す) は発注の権限がある人だけ (決め 11-04 00:0x)。明細の操作の列は表の先頭。表が箱より広くなる幅でも横に送らずに押せるように。受注の明細と同じ並び (決め 11-03 17:2x。C22)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 「作成」は「再送」、ほかは受け入れていない出荷の知らせがあれば「受入を記録する」(行き先は表の一番上の「受入を記録する」と同じ。purchasing_tags の next_receipt。初見テスト R5 の候補 C93)。 #}
+{# 発注の詳細: core の詳細 (基本情報と「送った記録」のタブ) の下に明細の表 (相手の出荷の知らせの列と、出荷ごとの「受入を記録する」を含む。受入の link は取消と断られた発注には出さず、数量は知らせのまだ受け入れていない数 (purchasing_tags の notice_rests)) と、seizou どうしで送った発注だけ検収の節。「作成」のときだけ送り直す、「作成」か「断られた」のとき取り消すのボタン。書く入口 (送り直す・取り消す・受入・検収の送り直す) は発注の権限がある人だけ (決め 11-04 00:0x)。明細の表の先頭の「操作」の列は、行ごとの ⋮ のメニュー (受注の明細と同じ形で、右クリックでも同じメニュー。中身は受入の新規登録の 1 項目。出す条件は前のボタンと同じで、出す物が無い行には ⋮ も出さない。表が箱より広い幅でも送らずに押せるように。決め 11-03 17:2x・11-06 22:2x = C22)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 「作成」は「再送」、ほかは受け入れていない出荷の知らせがあれば「受入を記録する」(行き先は表の一番上の「受入を記録する」と同じ。purchasing_tags の next_receipt。初見テスト R5 の候補 C93)。 #}
 {# 見出しの帯 (#po-heading)・黄の知らせ (#po-alert)・明細と検収の節 (#po-live) は 2 秒ごとに同じ URL を取りに行って入れ替え、前の更新と状態が違う発注の見出しの帯に seizou-changed を付ける (purchasing_tags の live_state)。タブは入れ替えない (選んだタブが基本情報に戻らないように)。取消と受入の入口は小窓で開く (data-modal-form)。小窓で保存した後の seizou:refresh でも 2 秒ごとの取り直しを走らせる (決め 11-05 11:4x。N158b)。明細の箱を横に送っている間 (scrollLeft が 0 でない) は 2 秒ごとに取り直さない。入れ替えると箱が左の端へ戻るため (発注の一覧の scrollTop と同じ形。C22)。 #}
 {# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「発注 › 番号」(見出しの帯の中。土台の block heading に crumb を渡す)。block content で黄の知らせの次に右の列のカード (purchasing_tags の purchase_order_aside) を置いてから土台を呼ぶ。明細・検収・流れ (#po-live) は土台の左の列の block main。右の列 (#detail-aside) も 2 秒ごとに入れ替える。 #}
 {# 段の帯 (N151。core/_stage_band.html) は見出しの帯 (#po-heading) の中の、土台の見出し (パンくずの with の後) に置く。2 秒ごとの入れ替えで段も新しくなる。取消の発注には出さない。 #}
@@ -43,8 +43,8 @@
       <tbody>
         {# 明細は受入の数 (received_total) と受入の残 (remaining_total) を足した物 (発注の読むだけの property)。 #}
         {% for line in object.lines_with_received %}
-        <tr>
-          <td class="whitespace-nowrap">{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and can_po %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を登録</a>{% endif %}</td>
+        <tr data-row-menu>
+          <td class="whitespace-nowrap">{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and can_po %}<details class="dropdown row-menu"><summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary><ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm"><li><a class="flex items-center gap-2" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を登録</a></li></ul></details>{% endif %}</td>
           <td class="text-right tabular-nums">{{ line.line_no }}</td>
           <td class="whitespace-nowrap">{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>

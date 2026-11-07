@@ -90,7 +90,7 @@ def _lines_table(body):
     section = body[start : body.index("</section>", start)]
     heads = [re.sub(r"<[^>]+>", "", head) for head in re.findall(r"<th\b[^>]*>(.*?)</th>", section, re.S)]
     tbody = section[section.index("<tbody>") : section.index("</tbody>")]
-    row = re.search(r"<tr>(.*?)</tr>", tbody, re.S).group(1)
+    row = re.search(r"<tr\b[^>]*>(.*?)</tr>", tbody, re.S).group(1)
     cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
     return heads, cells
 
@@ -150,6 +150,10 @@ def test_order_detail_shows_notice_column_and_receipt_link(client_logged_in, use
     assert heads[0] == "操作"
     assert "受入を登録" in cells[0]
     assert f'href="{reverse("purchasing:receipt_create")}?line={line.pk}{next_part}"' in cells[0]
+    # 先頭の欄は受注の明細と同じ枠つきの ⋮ のメニューで、行の右クリックでも開く (決め 11-06 22:2x の C22-2 b・C15-2 a)
+    assert '<details class="dropdown row-menu">' in cells[0]
+    assert '<summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary>' in cells[0]
+    assert "<tr data-row-menu>" in body[body.index('id="po-lines-title"') :]
 
     _notice(line, "6", date(2026, 11, 7), "SH-0002")
     cell = _notice_cell(_detail(client_logged_in, po))

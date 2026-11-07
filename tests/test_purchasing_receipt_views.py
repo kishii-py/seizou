@@ -123,6 +123,7 @@ def test_create_from_order_detail_link(user, client_logged_in, subcontractor, it
     detail = client_logged_in.get(detail_url).content.decode()
     assert "納品された" in detail
     assert "受入を登録" not in detail  # 残 0 の行に入口が無い
+    assert 'aria-label="行の操作"' not in detail  # 受入を登録できない行には ⋮ も出さない (C22)
     assert fake_post.calls == 0
 
 
