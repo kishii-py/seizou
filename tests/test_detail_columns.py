@@ -216,7 +216,7 @@ def test_purchase_order_detail_has_two_columns(logged_in, purchase_order):
     assert "1,000" in _card(aside, "金額")
     basic = set(_labels(_card(aside, "基本情報")))
     assert {"発注番号", "状態", "備考", "注文回答の日時", "断りの理由"} <= basic and not {"取引先", "発注日"} & basic
-    assert _radios(body) == [("送った記録", True), ("受入", False), ("会話", False)]
+    assert _radios(body) == [("送った記録", True), ("受入", False), ("会話", False), ("履歴", False)]
     assert 'hx-select-oob="#po-heading,#po-alert,#detail-aside,#menu-count-purchasingreceipt_list"' in body
 
 
@@ -283,7 +283,7 @@ def test_purchase_order_opens_first_tab_with_rows(logged_in, user, purchase_orde
     purchasing_services.receive(purchase_order.lines.get(), Decimal("4"), date(2026, 11, 3), user)
 
     body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
-    assert _radios(body) == [("送った記録", False), ("受入", True), ("会話", False)]
+    assert _radios(body) == [("送った記録", False), ("受入", True), ("会話", False), ("履歴", False)]
 
 
 @pytest.mark.django_db

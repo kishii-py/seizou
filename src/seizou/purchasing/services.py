@@ -1,7 +1,10 @@
 """purchasing の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して発注を書く。
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「発注」・PRICE-4f) に書く。書く前に core.history.saved_state で前を取り、
+  書いて拡張の表も書いた後に、同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。明細の行は発注の詳細の「履歴」に出る (PurchaseOrderLine.history_owner)。
+  明細をまとめて書く所 (queryset の update と bulk_update) は、書く前に行ごとに前を取り、書いた後に行ごとに残す。
+  相手の注文回答で書く所 (connect の受け口が user を None で呼ぶ) は、人の字を「<発注の取引先の名前> の seizou」にする (_partner_by)。
 - ext (会社ごとの項目) は core の fields.save_ext に渡す。登録が無ければ save_ext が ValueError を投げる。
 - 決まりの番号の無い入力の誤り (協力企業でない・明細が無い・知らない鍵・数量と単価が 0 以下) は日本語の ValueError。
   RULES.md の R02 の対象に発注は入っていないので RuleViolation にしない。DB の制約は付ける。
@@ -27,8 +30,8 @@ import uuid
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import edi_codes
-from seizou.core.services import next_number
+from seizou.core import edi_codes, history
+from seizou.core.services import next_number, record_history
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 from seizou.masters.services import PRICE_BASIS_LUMP, delivery_amount, reaches_line_qty
 
@@ -101,6 +104,22 @@ def _save_ext(obj, ext):
         fields.save_ext(obj, ext)
 
 
+def _partner_by(purchase_order) -> str:
+    """相手の注文回答で書く所の、変更の履歴の人の字 (受け口は人が無く user が None。人があれば core は人の字を使う)。"""
+    return f"{purchase_order.partner.name} の seizou"
+
+
+def _line_states(purchase_order):
+    """明細ごとの変更の履歴の前 (明細, saved_state) の並び。queryset の update と bulk_update は行ごとの save を通らないため、書く前に取る。"""
+    return [(line, history.saved_state(line)) for line in purchase_order.lines.all()]
+
+
+def _record_lines(states, user, *, by=""):
+    """_line_states で取った前と今の値を比べ、変わった明細ごとに変更の履歴を 1 行ずつ残す (変わらない明細は残さない)。"""
+    for line, before in states:
+        record_history(line, user, before=before, by=by)
+
+
 def _add_line(purchase_order, line, line_no):
     item = line["item"]
     qty = _dec(line["qty"])
@@ -149,9 +168,11 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
             order_date=order_date,
             note=note,
         )
-        for line_no, line in enumerate(lines, start=1):
-            _add_line(purchase_order, line, line_no)
+        created = [_add_line(purchase_order, line, line_no) for line_no, line in enumerate(lines, start=1)]
         _save_ext(purchase_order, ext)
+        record_history(purchase_order, user)
+        for row in created:
+            record_history(row, user)
 
     # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
     if send and _has_send_connection(partner):
@@ -187,6 +208,7 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
             sent = True
         elif locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
             raise ValueError(_CANCEL_AFTER_SENT_MESSAGE.format(status=locked.get_status_display()))
+        before = history.saved_state(locked)
         if reason:
             added = f"取消の理由: {reason}"
             note = f"{locked.note}\n{added}" if locked.note else added
@@ -197,12 +219,16 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
                 )
             locked.note = note
         locked.status = PurchaseOrder.STATUS_CANCELLED
+        states = []
         if sent:
             # 取消の版 (注文書目的コード 1 打切り)。全部の明細を明細状態コード 2 にする (行は残す)。
             locked.revision_no += 1
             locked.purpose_code = edi_codes.PURPOSE_CANCEL
+            states = _line_states(locked)
             locked.lines.update(line_status_code=edi_codes.LINE_DELETED, line_status_reason_code="")
         locked.save()
+        record_history(locked, user, before=before)
+        _record_lines(states, user)
         if not sent:
             return locked
 
@@ -232,11 +258,13 @@ def record_reply_after_cancel(purchase_order, user, *, reason, reply_message_id)
     """
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+        before = history.saved_state(locked)
         limit = PurchaseOrder._meta.get_field("reply_note").max_length
         locked.replied_at = timezone.now()
         locked.reply_note = (reason if isinstance(reason, str) else "")[:limit]
         locked.reply_message_id = reply_message_id
         locked.save(update_fields=["replied_at", "reply_note", "reply_message_id"])
+        record_history(locked, user, before=before, by=_partner_by(locked))
         return locked
 
 
@@ -250,8 +278,10 @@ def mark_sent(purchase_order, user):
         if locked.status == PurchaseOrder.STATUS_CANCELLED:
             raise ValueError("取り消した発注は「送った」にできません。新しく発注を入れてください。")
         if locked.status == PurchaseOrder.STATUS_DRAFT:
+            before = history.saved_state(locked)
             locked.status = PurchaseOrder.STATUS_SENT
             locked.save(update_fields=["status"])
+            record_history(locked, user, before=before, by=_partner_by(locked))
         return locked
 
 
@@ -269,6 +299,7 @@ def mark_accepted(purchase_order, user, *, reply_message_id=None, replied_at=Non
     """
     with transaction.atomic():
         locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_ACCEPTED)
+        before = history.saved_state(locked)
         locked.status = PurchaseOrder.STATUS_PARTIAL if locked.receipts.exists() else PurchaseOrder.STATUS_ACCEPTED
         locked.replied_at = replied_at or timezone.now()
         locked.reply_type = edi_codes.REPLY_ACCEPTED
@@ -277,7 +308,9 @@ def mark_accepted(purchase_order, user, *, reply_message_id=None, replied_at=Non
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
-        _clear_line_replies(locked)
+        by = _partner_by(locked)
+        record_history(locked, user, before=before, by=by)
+        _clear_line_replies(locked, user, by=by)
         return locked
 
 
@@ -291,6 +324,7 @@ def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
     """
     with transaction.atomic():
         locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_REJECTED)
+        before = history.saved_state(locked)
         text = reason if isinstance(reason, str) else ""
         limit = PurchaseOrder._meta.get_field("reply_note").max_length
         locked.status = PurchaseOrder.STATUS_REJECTED
@@ -302,7 +336,9 @@ def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
-        _clear_line_replies(locked)
+        by = _partner_by(locked)
+        record_history(locked, user, before=before, by=by)
+        _clear_line_replies(locked, user, by=by)
         return locked
 
 
@@ -321,7 +357,8 @@ def mark_conditional(purchase_order, user, *, lines, reply_message_id=None, repl
     """
     with transaction.atomic():
         locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_CONDITIONAL)
-        record_line_replies(locked, lines)
+        before = history.saved_state(locked)
+        record_line_replies(locked, lines, user)
         locked.status = PurchaseOrder.STATUS_CONDITIONAL
         locked.replied_at = replied_at or timezone.now()
         locked.reply_type = edi_codes.REPLY_CONDITIONAL
@@ -330,6 +367,7 @@ def mark_conditional(purchase_order, user, *, lines, reply_message_id=None, repl
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
+        record_history(locked, user, before=before, by=_partner_by(locked))
         return locked
 
 
@@ -343,6 +381,7 @@ def mark_on_hold(purchase_order, user, *, reply_message_id=None, replied_at=None
     """
     with transaction.atomic():
         locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_ON_HOLD)
+        before = history.saved_state(locked)
         locked.status = PurchaseOrder.STATUS_ON_HOLD
         locked.replied_at = replied_at or timezone.now()
         locked.reply_type = edi_codes.REPLY_PENDING
@@ -351,7 +390,9 @@ def mark_on_hold(purchase_order, user, *, reply_message_id=None, replied_at=None
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
-        _clear_line_replies(locked)
+        by = _partner_by(locked)
+        record_history(locked, user, before=before, by=by)
+        _clear_line_replies(locked, user, by=by)
         return locked
 
 
@@ -368,19 +409,24 @@ def mark_change_accepted(purchase_order, user):
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
         if locked.status != PurchaseOrder.STATUS_CONDITIONAL:
             return locked
+        before = history.saved_state(locked)
         locked.status = PurchaseOrder.STATUS_PARTIAL if locked.receipts.exists() else PurchaseOrder.STATUS_ACCEPTED
         locked.save(update_fields=["status"])
-        _clear_line_replies(locked)
+        by = _partner_by(locked)
+        record_history(locked, user, before=before, by=by)
+        _clear_line_replies(locked, user, by=by)
         return locked
 
 
-def record_line_replies(purchase_order, lines):
+def record_line_replies(purchase_order, lines, user=None):
     """相手の注文回答の明細ごとの答えを、発注の明細に写す。呼ぶ側が発注を select_for_update した atomic の中で呼ぶ。
 
     lines は [{"line_no": int, "reply_type": "AP"|"CA"|"RE", "unit_price": Decimal|None, "qty": Decimal|None, "due_date": date|None}]。
     lines にある明細はその答え (条件付受諾 CA の明細だけ値を入れ、AP と RE は値を空)、lines に無い明細は受諾 (AP。EDI の既定) にして値を空にする。
     発注に無い行番号は ValueError (受け口が相手へ返す文。画面には出ない)。どれかの行番号が無ければ、どの明細も書かない。
     mark_conditional と、connect の版 2 からの答えが呼ぶ (明細の答えの写し方を 1 か所にする)。
+    変わった明細ごとに変更の履歴を 1 行ずつ残す (bulk_update は行ごとの save を通らないので、書く前に前を取る)。人の字は user が無ければ
+    「<発注の取引先の名前> の seizou」(相手の答えのため)。
     訳: 相手の明細ごとの答えを発注の明細に写し、発注に無い行番号の答えを当てずに相手へ返すため。出所 = 中小企業共通 EDI の注文回答明細回答タイプコード (既定 AP) と決め PRICE-4f (11-06 23:1x)。
     変えてよい条件 = 送り合いが行番号でなく明細の識別で明細を指すようになったとき。
     """
@@ -391,6 +437,7 @@ def record_line_replies(purchase_order, lines):
         if number not in by_no:
             raise ValueError(f"注文回答の明細の行番号 {number} が発注 {purchase_order.po_no} にありません。")
         answers[number] = row
+    states = [(line, history.saved_state(line)) for line in by_no.values()]
     for number, line in by_no.items():
         row = answers.get(number, {})
         line.reply_type = row.get("reply_type", edi_codes.REPLY_ACCEPTED)
@@ -401,6 +448,7 @@ def record_line_replies(purchase_order, lines):
     PurchaseOrderLine.objects.bulk_update(
         list(by_no.values()), ["reply_type", "reply_unit_price", "reply_qty", "reply_due_date"]
     )
+    _record_lines(states, user, by=_partner_by(purchase_order))
 
 
 def _lock_waiting_order(purchase_order, target):
@@ -420,9 +468,14 @@ def _lock_waiting_order(purchase_order, target):
     return locked
 
 
-def _clear_line_replies(purchase_order):
-    """発注の明細の答えを空に戻す (前の答えの明細の値が、次の答えの後に残って読み違えられないようにする)。"""
+def _clear_line_replies(purchase_order, user, *, by=""):
+    """発注の明細の答えを空に戻す (前の答えの明細の値が、次の答えの後に残って読み違えられないようにする)。
+
+    queryset の update は行ごとの save を通らないので、書く前に明細ごとに前を取り、書いた後に変わった明細の変更の履歴を残す。
+    """
+    states = _line_states(purchase_order)
     purchase_order.lines.update(reply_type="", reply_unit_price=None, reply_qty=None, reply_due_date=None)
+    _record_lines(states, user, by=by)
 
 
 # 送った後の知らせの字 (入力の土台 core.views.with_saved_note が、返した発注の saved_message を「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせにする)
@@ -697,11 +750,14 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
             changes[pk] = (qty, unit_price, due_date, note, flags)
         note = data.get("note", locked.note) or ""
         changed = bool(added or dropped or note != locked.note or any(any(flags) for *_values, flags in changes.values()))
-        if not changed:
-            if not _revision_refused(locked):
-                locked.saved_message = NO_CHANGE_MESSAGE
-                return locked
-        else:
+        if not changed and not _revision_refused(locked):
+            locked.saved_message = NO_CHANGE_MESSAGE
+            return locked
+        # 変更の履歴の前 (版の番号・目的のコード・明細の値と明細状態コードの前と後。決め PRICE-4f)
+        before = history.saved_state(locked)
+        states = _line_states(locked)
+        created = []
+        if changed:
             for pk, (qty, unit_price, due_date, line_note, flags) in changes.items():
                 current = live[pk]
                 current.qty, current.unit_price, current.due_date, current.note = qty, unit_price, due_date, line_note
@@ -722,6 +778,7 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
                 row = _add_line(locked, line, next_no + offset)
                 row.line_status_code = edi_codes.LINE_ADDED
                 row.save(update_fields=["line_status_code"])
+                created.append(row)
             locked.note = note
         locked.revision_no += 1
         locked.purpose_code = edi_codes.PURPOSE_CHANGE
@@ -730,6 +787,10 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
             locked.status = PurchaseOrder.STATUS_DELIVERED
         locked.save()
         _save_ext(locked, ext)
+        record_history(locked, user, before=before)
+        _record_lines(states, user)
+        for row in created:
+            record_history(row, user)
 
     # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
     from seizou.connect import services as connect_services
@@ -801,11 +862,15 @@ def receive(line, qty, received_on, user, *, note=""):
             # 取り消した明細 (明細状態コード 2) は「納品された」の見方に入れない (受入は断らない = 現物優先。候補に出さないだけ)。
             lines = list(annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
             if lines and all(row.remaining_total <= 0 for row in lines):
+                before = history.saved_state(locked)
                 locked.status = PurchaseOrder.STATUS_DELIVERED
                 locked.save(update_fields=["status"])
+                record_history(locked, user, before=before)
             elif locked.status == PurchaseOrder.STATUS_ACCEPTED:
+                before = history.saved_state(locked)
                 locked.status = PurchaseOrder.STATUS_PARTIAL
                 locked.save(update_fields=["status"])
+                record_history(locked, user, before=before)
 
     # 検収を相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
     if _is_sent_order(locked):
