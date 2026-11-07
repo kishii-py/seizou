@@ -5,3 +5,9 @@ __pycache__/
 .seizou/
 docs/nights/*.allow
 .claude/settings.local.json
+# 鍵 (会社の置き場の .env と同じ扱い。このリポジトリには .env を置かないが、誤って作っても git に入れない)
+.env
+.env.*
+!.env.example
+# Claude Security の結果 (指摘の中身を含むので、入れるときは人が選んで別の場所に写す)
+CLAUDE-SECURITY-*/
