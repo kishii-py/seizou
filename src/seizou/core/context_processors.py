@@ -54,7 +54,8 @@ def _inbox_received_params() -> dict:
 #: f_open=1&f_overdue=1。数える関数 _overdue_lines と同じ条件)。受信した注文の数は状態「届いた」の絞り (今日やることの行と同じ)。
 #: 指示書の数は明細の行を数えているので、指示書の一覧でなく生産管理ボードを、数える関数と同じ絞り「指示書の無い明細だけ」
 #: (f_open=1&f_no_workorder=1。dashboard.without_workorder) で開く。合う絞りのまだ無い物 (受入の残・請求書に入っていない出荷) は、
-#: 入口そのもの (絞り無し) に移る。
+#: 入口そのもの (絞り無し) に移る。移る先が入口と違う画面のとき、その画面を部署で開けない人 (左のメニューに並ばない) には、
+#: 印の link も入口そのものにする (押すと断られる入口を作らない。attach_counts)。
 MENU_COUNTS = {
     "connect:inbox_list": ("未処理の受信した注文", "件", "_received_inbox", ("connect:inbox_list", _inbox_received_params)),
     "orders:orderline_list": ("納期が過ぎた明細", "行", "_overdue_lines", ("orders:orderline_list", {"f_open": "1", "f_overdue": "1"})),
@@ -266,10 +267,12 @@ def attach_counts(items: list[dict], user) -> None:
     数は N145 の「今日やること」と同じ元 (core.dashboard の数える関数)。count は SimpleLazyObject で、テンプレートが読んだ時
     (左のメニューを描くとき) だけ入口ごとに 1 回数える (htmx の行の取り直しでは数えない)。未ログインには付けない。
     数えられない時は None、0 は 0 のままで、どちらもテンプレートは印を出さない。items は visible_menu の後の入口 (開ける物だけ)。
+    count_url は、移る先が入口と違う画面でその画面が items に無い (部署で開けない) ときは入口そのもの (問い合わせを足さずに見る)。
     """
     if not getattr(user, "is_authenticated", False):
         return
     counts: dict[str, int | None] = {}
+    visible = {item["url_name"] for item in items}
 
     def count_of(url_name: str) -> int | None:
         if url_name not in counts:
@@ -284,7 +287,9 @@ def attach_counts(items: list[dict], user) -> None:
         item["count"] = SimpleLazyObject(lambda url_name=url_name: count_of(url_name))
         item["count_label"] = label
         item["count_unit"] = unit
-        item["count_url"] = count_url(url_name) or item["url"]
+        target_name = _target[0]
+        reachable = target_name == url_name or target_name in visible
+        item["count_url"] = (count_url(url_name) if reachable else None) or item["url"]
 
 
 def seizou(request) -> dict:

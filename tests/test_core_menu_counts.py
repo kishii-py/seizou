@@ -202,6 +202,32 @@ def test_department_without_the_app_has_no_count(settings, client, customer):
     assert not _inbox_counts(ctx.captured_queries)
 
 
+def test_count_link_falls_back_to_the_entry_when_the_target_screen_is_closed(settings, client, user, customer):
+    # 「指示書」の数の移る先 (生産管理ボード = orders の画面) を部署で開けない人には、印の link を入口そのもの (指示書の一覧) にする
+    # (押すと断られる入口を作らない)。開けるかは左のメニューに並ぶ入口 (visible_menu の後) で見て、問い合わせを足さない
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
+    factory = accounts_services.create_department("作り物の製造", ["workorders", "progress", "masters"], ["workorders"], None)
+    accounts_services.issue_account("genba", "kumo-tests-2611", [factory], [], {}, None)
+    shaft = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    orders_services.create_order(
+        customer, [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100")}], user, order_date=timezone.localdate()
+    )
+    workorders_url = reverse("workorders:workorder_list")
+    board_url = reverse("orders:orderline_list")
+
+    client.force_login(get_user_model().objects.get(username="genba"))
+    aside = _aside(page(client, workorders_url))
+    assert board_url not in aside
+    link = _count_link(_entry_row(aside, workorders_url))
+    assert link.startswith(f'<a href="{workorders_url}" ')
+    assert 'aria-label="指示書の無い明細 1 行"' in link
+
+    # 生産管理ボードを開ける人には、その絞りで開く
+    client.force_login(user)
+    link = _count_link(_entry_row(_aside(page(client, workorders_url)), workorders_url))
+    assert link.startswith(f'<a href="{board_url}?f_open=1&amp;f_no_workorder=1" ')
+
+
 def test_manual_tells_what_the_menu_count_counts(user):
     # 印の移る先の一覧の「?」(画面ごとの説明書の標準の組) に、左のメニューの数が何の数かの 1 行がある。
     # 2 社の種は、標準の組と同じバイトであることを test_core_manual_default と test_examples_manual が見る。
