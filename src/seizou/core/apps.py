@@ -10,7 +10,7 @@ class CoreConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
-        # 標準のポカよけ (R01・R04・R06・R07) を検査の層に登録する。
+        # 標準のポカよけ (R01・R04・R06・R07・R24) を検査の層に登録する。
         from .checks import builtin  # noqa: F401
         # 一覧の列 (columns) の書き方を、Django の起動の検査 (system check) に登録する。
         from . import system_checks  # noqa: F401

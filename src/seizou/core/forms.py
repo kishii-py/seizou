@@ -155,7 +155,7 @@ class Radios(forms.RadioSelect):
 #: 設定の変更の画面の丸の選択で、選べる値の名前の下に出す、選ぶと何が起きるかの 1 文 ({鍵: {送る値: 文}})。
 #: 字は RULES.md のポカよけの節の段落 (知らせる・止める) と README.md の「選べる設定」の表から写し、新しい言葉を作らない。
 #: 写せる字の無い値は持たない (名前だけ出す)。知らせの出る場所は書かない (C57 で変わるため)。
-#: 真偽の送る値は "true" / "false"。ポカよけの 2 つの鍵は同じ 3 つの文を使う。
+#: 真偽の送る値は "true" / "false"。ポカよけの 3 つの鍵は同じ 3 つの文を使う。
 #: 設定の画面の SETTING_LABELS には入れない (値の字は設定の画面の表の「今の値」にも出るので、長い文を入れると表が崩れる)。
 _CHECK_MODE_NOTES = {
     "warn": "黄色の知らせと「このまま保存」のボタンが出て、もう一度押すと保存される。",
@@ -165,6 +165,7 @@ _CHECK_MODE_NOTES = {
 CHOICE_NOTES = {
     "over_shipment": _CHECK_MODE_NOTES,
     "over_workorder": _CHECK_MODE_NOTES,
+    "over_payment": _CHECK_MODE_NOTES,
     "order_form": {"single": "画面が短く、番号が部品と 1 対 1 になる。"},
     "production_plan": {"false": "メニューに「生産計画」が出ない。"},
 }

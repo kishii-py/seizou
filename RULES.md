@@ -29,6 +29,7 @@
 | R04 | 出荷済みの数より少ない数量に、受注の明細を変えたら | `over_shipment` | `tests/test_r04_order_below_shipped.py` |
 | R06 | 指示書の数量の合計が、受注の明細の数を超えたら | `over_workorder` | `tests/test_r06_over_workorder.py` |
 | R07 | 進捗の実績の数が、その工程の予定の数を超えたら | `over_workorder` | `tests/test_r07_over_progress.py` |
+| R24 | 入金の金額が、請求書の残を超えたら | `over_payment` | `tests/test_r24_over_payment.py` |
 
 ## 書き方の決まり (決まりの検査が止める。自社の画面のコードを、起動のときと CI で検査する)
 
