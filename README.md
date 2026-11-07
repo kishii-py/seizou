@@ -64,6 +64,17 @@ Claude Code のプラグインと、pip で入れる Django の部品を、こ�
 3. 決まり = 「決まり」の節と `RULES.md` (お金と数の決まりを破る変更は本番の前に止まる)。
 4. 毎晩の記録 = `docs/nights/` (無人の仕事の依頼書ごとの記録と、取り込みの門の記録)。
 
+## 画面の絵
+
+作り物の A 社 (若葉精機) を `seizou new --demo` で立て、管理者でログインして 1280 幅で撮った物 (11-08)。データは全部作り物。
+
+| | |
+|---|---|
+| ![ダッシュボード](docs/images/dashboard.png) ダッシュボード (部品・取引先・今月の受注・出荷の残りと、今日やること) | ![受注の詳細](docs/images/order-detail.png) 受注の詳細 (受注から入金までの段・明細・流れ) |
+| ![生産計画の盤](docs/images/plan-board.png) 生産計画の盤 (工程ごとの週の計画と未計画) | ![部品の小窓](docs/images/item-modal.png) どの画面からも小窓で開く部品マスター |
+| ![AI チャットの窓](docs/images/ai-chat.png) AI チャットの窓 (画面と同じ決まりを通して読み書きする) | ![決まりの検査の知らせ](docs/images/rule-notice.png) 会社が足した画面が決まりを外れたときの全面の知らせ (番号・ファイル・行・直し方) |
+
+
 ## 今どこまで
 
 - 2026-11-02 12:3x (JST): Built with Claude: Japan 2026 の開発を始めた。
@@ -419,7 +430,7 @@ Django の部品を直すときの命令。
 
 回し方: `SEIZOU_E2E=1 uv run pytest tests/e2e -q -rs`。画面の絵は `docs/e2e/<日付>/` に番号つきで残る。外の置き場で回すと、試験が置いた `E2E-` の印の行 (受注・部品・発注など) がその置き場に残るので、人に見せる前に `--demo` で作り直す。
 
-`docs/` には [docs/vps.md](docs/vps.md) (VPS に 2 社を立てて https でつなぐ手順)・[docs/operations.md](docs/operations.md) (運用。控え・鍵の入れ替え・版を上げる手順)・[docs/denchoho.md](docs/denchoho.md) (電子取引のデータの保存と seizou)・[docs/edi-items.md](docs/edi-items.md) (会社どうしで送り合う項目の表)・[docs/intake-watch.md](docs/intake-watch.md) (注文書の見張り) と、`docs/nights/` (夜の無人の仕事の記録。日付のまとめと仕事ごとのファイル) と `docs/e2e/` (E2E の絵) を置く。
+`docs/` には [docs/vps.md](docs/vps.md) (VPS に 2 社を立てて https でつなぐ手順)・[docs/operations.md](docs/operations.md) (運用。控え・鍵の入れ替え・版を上げる手順)・[docs/denchoho.md](docs/denchoho.md) (電子取引のデータの保存と seizou)・[docs/edi-items.md](docs/edi-items.md) (会社どうしで送り合う項目の表)・[docs/intake-watch.md](docs/intake-watch.md) (注文書の見張り) と、`docs/images/` (README の画面の絵) と `docs/nights/` (夜の無人の仕事の記録。日付のまとめと仕事ごとのファイル) と `docs/e2e/` (E2E の絵) を置く。
 
 ## 会期後の道筋
 
