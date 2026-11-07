@@ -283,3 +283,25 @@ def test_later_page_over_memory_budget_is_not_made(user, monkeypatch):
     assert item.drawing_preview_error == ""
     assert item.drawing_preview.name.endswith(".png")
     assert item.drawing_page_count == 1
+
+
+# ---------------------------------------------------------------- 3: CAD のファイルは部品の添付で持つ
+
+
+@pytest.mark.parametrize("name", ["shape.dxf", "plan.dwg"])
+@pytest.mark.django_db
+def test_cad_file_can_be_attached_and_downloaded(client, user, name):
+    from django.urls import reverse
+
+    from seizou.attachments import services as attachment_services
+
+    item = new_item(user, part_no="P-7301")
+    content = b"0\nSECTION\n0\nEOF\n"
+    attachment = attachment_services.add_attachment(item, upload(name, content), user, kind="other")
+
+    client.force_login(user)
+    response = client.get(reverse("attachments:attachment_download", args=[attachment.pk]))
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/octet-stream"
+    assert response["Content-Disposition"].startswith("attachment")
+    assert b"".join(response.streaming_content) == content
