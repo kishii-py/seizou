@@ -1,0 +1,25 @@
+{% extends "core/form.html" %}
+{# 仕入明細に答える (候補 C111): core の入力の画面のカード (明細ごとの答え・提案の数・提案の単価・確認できない訳・書いておく字の欄) に、小さな JS を足す。 #}
+{# JS は明細ごとの答えの選ぶ欄 (id_line_<n>_answer) の値で、提案でない明細の数と単価の欄、確認できないでない明細の訳の欄の箱 (欄の外の div) を hidden にする。値は消さない (送っても services が答えの種類で読み分ける)。 #}
+{# JS が動かなくても、全部の欄が見えて答えられる (form の clean が答えの種類ごとに要る欄だけを見る)。承諾した明細は form が欄を作らない (答え直せない)。 #}
+{% block content %}{{ block.super }}
+<script>
+(function () {
+  function box(id) {
+    var input = document.getElementById(id);
+    return input ? input.closest("div.min-w-0") : null;
+  }
+  document.querySelectorAll("select[id$='_answer']").forEach(function (select) {
+    var base = select.id.replace(/_answer$/, "");
+    function apply() {
+      var value = select.value;
+      [box(base + "_qty"), box(base + "_unit_price")].forEach(function (el) { if (el) el.hidden = value !== "propose"; });
+      var reason = box(base + "_reason");
+      if (reason) reason.hidden = value !== "reject";
+    }
+    select.addEventListener("change", apply);
+    apply();
+  });
+})();
+</script>
+{% endblock %}

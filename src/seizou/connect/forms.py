@@ -425,3 +425,88 @@ class ChatMessageForm(forms.Form):
 
     def service_kwargs(self):
         return {"target": self.cleaned_data["target"], "body": self.cleaned_data["body"], "file": self.cleaned_data.get("file")}
+
+
+class SelfInvoiceAnswerForm(forms.Form):
+    """受けた仕入明細に答える form (候補 C111。条件付受諾の form と同じく「明細ごとに欄を足す」形)。
+
+    答える明細 (答えが無い・提案・確認できない明細。承諾した明細は出さない = 決め C111-4) ごとに、答え (承諾 / 提案 / 確認できない。既定は承諾)・
+    提案の数・提案の単価 (初めの値は仕入明細の値。金額の閲覧の無い人には置かない)・確認できない訳・書いておく字の欄を置く。
+    見出しは「明細 n (受注 SO-…-m 品番)」。提案なら数と単価が 0 より大きく、どちらかが仕入明細の値と違うこと、確認できないなら訳を選ぶこと
+    を確かめる (欄の下の赤い字)。テンプレートの小さな JS が、提案でない明細の数と単価、確認できないでない明細の訳を隠す。
+    """
+
+    submit_label = "答えを送る"
+    ANSWER_CHOICES = (("accept", "承諾"), ("propose", "提案"), ("reject", "確認できない"))
+
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        self.hide_money = hide_money
+        self.answer_lines = []
+        self.row_start_fields = []
+        accepted = (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED)
+        lines = instance.lines.select_related("order_line__order", "order_line__item") if instance is not None else []
+        for line in lines:
+            if line.reply_type in accepted:
+                continue
+            number = line.line_no
+            head = f"明細 {number} (受注 {line.order_line.order.order_no}-{line.order_line.line_no} {line.order_line.item.part_no})"
+            names = {"answer": f"line_{number}_answer", "qty": f"line_{number}_qty", "reason": f"line_{number}_reason", "note": f"line_{number}_note"}
+            initial = {"": "accept", edi_codes.SI_REPLY_PROPOSED: "propose", edi_codes.SI_REPLY_REJECTED: "reject"}.get(line.reply_type, "accept")
+            self.fields[names["answer"]] = forms.ChoiceField(
+                label=f"{head} の答え", choices=self.ANSWER_CHOICES, initial=initial,
+                help_text=f"受領日 {line.received_on:%Y-%m-%d}・受領数量 {comma(line.qty)}" + ("" if hide_money else f"・単価 {yen(line.unit_price)}・金額 {yen(line.amount)}"),
+            )
+            self.fields[names["qty"]] = forms.DecimalField(
+                label=f"明細 {number} の提案の数", required=False, max_digits=12, decimal_places=2,
+                initial=line.reply_qty if line.reply_qty is not None else line.qty,
+            )
+            if not hide_money:
+                names["unit_price"] = f"line_{number}_unit_price"
+                self.fields[names["unit_price"]] = forms.DecimalField(
+                    label=f"明細 {number} の提案の単価", required=False, max_digits=14, decimal_places=2,
+                    initial=line.reply_unit_price if line.reply_unit_price is not None else line.unit_price,
+                )
+            self.fields[names["reason"]] = forms.ChoiceField(
+                label=f"明細 {number} の確認できない訳", required=False,
+                choices=(("", "—"), *edi_codes.SI_REASON_CHOICES), initial=line.reply_reason_code,
+            )
+            self.fields[names["note"]] = forms.CharField(
+                label=f"明細 {number} の書いておく字", required=False, max_length=500, initial=line.reply_note,
+            )
+            self.row_start_fields.append(names["answer"])
+            self.answer_lines.append((line, names))
+
+    def clean(self):
+        cleaned = super().clean()
+        for line, names in self.answer_lines:
+            answer = cleaned.get(names["answer"])
+            number = line.line_no
+            if answer == "propose":
+                qty = cleaned.get(names["qty"])
+                price = cleaned.get(names["unit_price"]) if "unit_price" in names else line.unit_price
+                if qty is None or qty <= 0:
+                    self.add_error(names["qty"], f"明細 {number} の提案の数は 0 より大きい数にしてください。")
+                    continue
+                if price is None or price <= 0:
+                    self.add_error(names["unit_price"], f"明細 {number} の提案の単価は 0 より大きい数にしてください。")
+                    continue
+                if qty == line.qty and price == line.unit_price:
+                    self.add_error(names["answer"], f"明細 {number} の提案が仕入明細と同じです。承諾にしてください。")
+            elif answer == "reject" and not cleaned.get(names["reason"]):
+                self.add_error(names["reason"], f"明細 {number} の確認できない訳を選んでください。")
+        return cleaned
+
+    def service_kwargs(self):
+        answers = {}
+        for line, names in self.answer_lines:
+            data = self.cleaned_data
+            answers[line.line_no] = {
+                "answer": data[names["answer"]],
+                "qty": data.get(names["qty"]),
+                "unit_price": data.get(names["unit_price"]) if "unit_price" in names else None,
+                "reason": data.get(names["reason"]) or "",
+                "note": data.get(names["note"]) or "",
+            }
+        return {"answers": answers}

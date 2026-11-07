@@ -35,7 +35,7 @@ from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
 from seizou.core import access, calendar, history
-from seizou.core.services import company_or_none, record_history, record_history_deleted
+from seizou.core.services import check_registration_no, company_or_none, record_history, record_history_deleted
 from seizou.core.templatetags.seizou_tags import comma
 
 from .drawings import page_name
@@ -64,6 +64,7 @@ _PARTNER_KEYS = frozenset(
         "rounding",
         "tax_mode",
         "tax_rounding",
+        "registration_no",
         "note",
         "active",
     }
@@ -152,7 +153,22 @@ def _payment_terms(data):
         if day is not None and (isinstance(day, bool) or not isinstance(day, int) or day not in _PAYMENT_DAY_RANGE):
             raise ValueError(f"保存できません。支払日 {day!r} は使えません。1〜31 の整数か空にしてください (月末は 31)。")
         data["payment_day"] = day
+    if "registration_no" in data:
+        data["registration_no"] = _registration_no(data["registration_no"])
     return data
+
+
+def _registration_no(value):
+    """取引先の登録番号の字 (前後の空白を落とした物)。形 (T と 13 桁の数字) を core.services.check_registration_no で見る。空は通す。
+
+    形が違えば「保存できません。登録番号は T と 13 桁の数字で入れてください。」の ValueError (会社の登録番号と同じ 1 か所の字)。
+    create_partner・update_partner (と、それを呼ぶ取引先の CSV の取り込み) が _payment_terms の中で通る。
+    訳: 形の違う登録番号を仕入明細に載せて相手へ送らないため (形の違う値は打ち間違いしか無い)。出所 = 法令 (インボイス制度の登録番号の形) と決め C95-2。
+    変えてよい条件 = 登録番号の形が法令で変わったとき。
+    """
+    text = "" if value is None else str(value).strip()
+    check_registration_no(text)
+    return text
 
 
 def _refuse_duplicate_process_code(code, *, exclude_pk=None):

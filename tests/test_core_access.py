@@ -224,6 +224,8 @@ POST_FUNCTION_ACTIONS = {
     "seizou.workorders.views.plan_place": "workorders.plan_step",
     "seizou.shipping.shipping_notice.resend_shipping_notice": "connect.send_shipping_notice",
     "seizou.purchasing.acceptance.resend_acceptance": "connect.send_acceptance",
+    "seizou.purchasing.self_invoice.resend_self_invoice": "connect.send_self_invoice",
+    "seizou.connect.self_invoice.resend_self_invoice_reply": "connect.answer_self_invoice",
     "seizou.connect.reply.resend_reply": "connect.accept",
     "seizou.connect.sender.choose_sender": "connect.accept",
     "seizou.connect.chat.resend_chat": "connect.post_chat_message",

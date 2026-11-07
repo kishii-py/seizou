@@ -7,6 +7,7 @@ from django.urls import path
 
 from . import views
 from . import acceptance
+from . import self_invoice
 
 app_name = "purchasing"
 
@@ -25,6 +26,13 @@ urlpatterns = [
     path("receipts/new/", views.ReceiptCreateView.as_view(), name="receipt_create"),
     path("receipts/<int:pk>/", views.ReceiptDetailView.as_view(), name="receipt_detail"),
     path("receipts/<int:pk>/acceptance/resend/", acceptance.resend_acceptance, name="receipt_acceptance_resend"),
+    # 仕入明細 (候補 C111)。入口は受入の一覧の上の「仕入明細」と発注の詳細の「仕入明細」のタブ (左のメニューには足さない)。
+    path("selfinvoices/", views.SelfInvoiceListView.as_view(), name="selfinvoice_list"),
+    path("selfinvoices/new/", views.SelfInvoiceCreateView.as_view(), name="selfinvoice_create"),
+    path("selfinvoices/<int:pk>/", views.SelfInvoiceDetailView.as_view(), name="selfinvoice_detail"),
+    path("selfinvoices/<int:pk>/resend/", self_invoice.resend_self_invoice, name="selfinvoice_resend"),
+    path("selfinvoices/<int:pk>/cancel/", views.SelfInvoiceCancelView.as_view(), name="selfinvoice_cancel"),
+    path("selfinvoices/<int:pk>/accept/", views.SelfInvoiceAcceptProposalsView.as_view(), name="selfinvoice_accept"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
     path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]

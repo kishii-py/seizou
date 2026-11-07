@@ -139,6 +139,9 @@ REFUSAL_HEAD_BY_SERVICE = {
     "accept_with_conditions": "受け入れられません。",
     "hold": "保留できません。",
     "post_chat_message": "送れません。",
+    "create_self_invoice": "発行できません。",
+    "answer_self_invoice": "送れません。",
+    "accept_self_invoice_proposals": "送れません。",
 }
 #: 欄の誤りの知らせに名前を並べる欄の数 (これより多い分は「ほか n つ」)
 INVALID_LABELS_SHOWN = 3
@@ -2097,8 +2100,9 @@ def dashboard_stats() -> list[dict]:
                 "label": "今月の支払の見込み",
                 "value": payable,
                 "unit": "",
-                "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
-                "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。" + (COMPARE_HELP if compare is not None else ""),
+                "note": f"{today.month} 月に受け入れた分の支払の見込み",
+                "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価。相手が仕入明細で承諾した明細は、仕入明細の金額) の合計です。"
+                + (COMPARE_HELP if compare is not None else ""),
                 "icon": "yen",
                 "url": url_or_none("purchasing:receipt_list"),
                 "url_name": "purchasing:receipt_list",

@@ -140,9 +140,14 @@ class PartnerForm(ServiceModelForm):
             "rounding",
             "tax_mode",
             "tax_rounding",
+            "registration_no",
             "note",
         ]
         help_texts = {
+            "registration_no": (
+                "インボイス (適格請求書) の登録番号。協力企業から届いた請求書か仕入明細の答えの番号を、"
+                "T と 13 桁の数字を続けて入れる (例: T0000000000000)。仕入明細に相手の番号として載る。登録していない相手なら空のまま。"
+            ),
             "billing_method": "締日でまとめる = 締日ごとに 1 枚の請求書を作ります。都度 = 納品書ごとに請求書を作れます (現金払いなど)。",
             "closing_day": "1〜31。月末締めは 31",
             "payment_month": (
@@ -171,6 +176,21 @@ class PartnerForm(ServiceModelForm):
         self.fields["rounding"].help_text = ROUNDING_HELP.format(current=company.get_rounding_display())
         self.fields["tax_mode"].help_text = TAX_HELP.format(current=company.get_tax_mode_display())
         self.fields["tax_rounding"].help_text = TAX_ROUNDING_HELP.format(current=company.get_tax_rounding_display())
+
+    def clean_registration_no(self):
+        """登録番号の形を確かめる (core.services.check_registration_no と同じ 1 か所)。形が違えば欄の下の赤い字。
+
+        訳: 形の違う登録番号を仕入明細に載せないため (形の違う値は打ち間違いしか無い)。出所 = 法令 (インボイス制度の登録番号の形) と決め C95-2。
+        変えてよい条件 = 登録番号の形が法令で変わったとき。
+        """
+        from seizou.core.services import check_registration_no
+
+        value = (self.cleaned_data.get("registration_no") or "").strip()
+        try:
+            check_registration_no(value)
+        except ValueError:
+            raise forms.ValidationError("T と 13 桁の数字で入れてください。") from None
+        return value
 
 
 #: 工程の使用中の欄の下の案内 (N140)

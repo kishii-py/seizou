@@ -1,0 +1,61 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons purchasing_tags %}
+{# 仕入明細の詳細 (候補 C111): core の詳細 (基本情報と「明細」のタブ) の上に、記録の今の状態の黄色の 1 行 (知らせの段 5。閉じるボタンと「確認してください」の頭を付けない) を出す: #}
+{# (a) 相手の登録番号が空 (b) 今の版が相手に届いていない (送った結果の字と「送り直す」。発注の権限のある人だけボタン。同じ番号で送り直す) (c) 支払期日が受領日から 60 日を超える (purchasing_tags の self_invoice_due_note。止めない)。 #}
+{# 「明細」のタブは、行番号・発注番号-行番号 (発注の詳細へ link)・品目・受領日・受領数量・単位・単価・金額・相手の答え・直した版の表。タブの後の枠に小計・消費税 (税率)・合計・受入の金額の合計・差。 #}
+{# 金額の閲覧の無い人には単価と金額の列と、金額の枠を見出しごと出さない。画面には EDI のコードの字を出さず、日本語の字を出す。 #}
+{# 確認できない明細 (RE) の答えの横に、発注の詳細 (会話のタブ) への link と次の手の字。合計の枠に確認済の金額 (承諾と直した内容の承諾の明細) と、答え待ち・確かめ中の金額 (小計 − 確認済)。 #}
+{# 「⋯」の「取消」(小窓) は、取消でなく相手の答えが届いていない仕入明細で、発注の権限のある人だけ (決め C111-3)。 #}
+{# 取り消した仕入明細は上に取消の黄の 1 行。取り消した後に相手の前の版への答えが届いたら (行き違い) その黄の 1 行も出す (どちらの記録も消さず、状態を自動で戻さない)。 #}
+{# 頭の右の緑は「提案を受け入れる」(取消でなく、提案の答えの明細があり、発注の権限のある人だけ)。 #}
+{% block edit_button %}{% can_write "purchasing.SelfInvoice" as can_si %}{% if can_si and object.status != "cancelled" and object.has_proposal %}<a class="btn btn-primary" href="{% url 'purchasing:selfinvoice_accept' object.pk %}">{% icon "check" "size-4" %}提案を受け入れる</a>{% endif %}{% endblock %}
+{% block more %}{% can_write "purchasing.SelfInvoice" as can_si %}{% if can_si and object.status != "cancelled" and not object.has_reply %}{% url 'purchasing:selfinvoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
+{% block content %}<div id="selfinvoice-alert">{% if object.status == "cancelled" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-cancelled-alert>{% icon "alert" "size-5" %}<span>この仕入明細は取り消しました (第 {{ object.revision_no }} 版で取消を送りました)。入っていた受入は、また仕入明細に入れられます。</span></div>
+{% if object.reply_message_id %}<div class="alert alert-warning alert-soft mb-4" role="alert" data-crossed-alert>{% icon "alert" "size-5" %}<span>取り消した後に、相手の第 {{ object.revision_no|add:"-1" }} 版への答えが届きました。相手は取消を受けていないことがあります。相手と会話で話してください。</span></div>{% endif %}
+{% endif %}{% if not object.supplier_registration_no and object.status != "cancelled" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-registration-alert>{% icon "alert" "size-5" %}<span>取引先の登録番号が空です。相手が適格請求書発行事業者なら、取引先の詳細で登録番号を入れてください。空のままだと、この仕入明細は仕入税額控除の書類にならないおそれがあります。</span></div>
+{% endif %}{% if object.sent_at is None %}{% can_write "purchasing.SelfInvoice" as can_si %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-delivery-alert>{% icon "alert" "size-5" %}<span>{% if object.response %}{{ object.delivery_state }}{% else %}この仕入明細は、まだ相手に届いていません。{% endif %} 直したら「送り直す」を押してください。</span>{% if can_si %}
+<form method="post" action="{% url 'purchasing:selfinvoice_resend' object.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</div>
+{% endif %}{% self_invoice_due_note object as due_note %}{% if due_note %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-due-alert>{% icon "alert" "size-5" %}<span>{{ due_note }}</span></div>
+{% endif %}</div>{{ block.super }}{% endblock %}
+{% block tab_rows %}{% if tab.related == "lines" %}
+<div class="overflow-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">行</th><th class="font-medium">発注番号</th><th class="font-medium">品目</th><th class="font-medium">受領日</th><th class="text-right font-medium">受領数量</th><th class="font-medium">単位</th>{% if not seizou.hide_money %}<th class="text-right font-medium">単価</th><th class="text-right font-medium">金額</th>{% endif %}<th class="font-medium">相手の答え</th><th class="text-right font-medium">直した版</th></tr></thead>
+    <tbody>
+      {% for row in tab.rows %}{% with line=row.obj %}
+      <tr>
+        <td class="whitespace-nowrap tabular-nums">{{ line.line_no }}</td>
+        <td class="whitespace-nowrap font-mono"><a class="link link-primary" href="{% url 'purchasing:purchaseorder_detail' line.receipt.line.purchase_order_id %}">{{ line.receipt.line.purchase_order.po_no }}-{{ line.receipt.line.line_no }}</a></td>
+        <td class="min-w-32">{{ line.receipt.line.item }}</td>
+        <td class="whitespace-nowrap font-mono tabular-nums">{{ line.received_on|date:"Y-m-d" }}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
+        <td class="whitespace-nowrap">{{ line.unit }}</td>
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
+        <td class="min-w-32">{% self_invoice_line_answer line seizou.hide_money as answer %}{% if answer %}{{ answer }}{% else %}<span class="text-base-content/60">—</span>{% endif %}{% if line.reply_type == "RE" %}<span class="block text-xs text-base-content/70"><a class="link link-primary" href="{% url 'purchasing:purchaseorder_detail' line.receipt.line.purchase_order_id %}">発注の詳細</a> の「会話」で、相手と話して、相手に答え直してもらってください。</span>{% endif %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ line.revised_in }}</td>
+      </tr>
+      {% endwith %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block after_tabs %}{% if not seizou.hide_money %}{# 合計の枠: 小計・消費税 (税率)・合計と、受入の金額の合計・差 (仕入明細の小計 − 受入の金額の合計) #}
+<section id="selfinvoice-totals" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="selfinvoice-totals-heading">
+  <h2 id="selfinvoice-totals-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "yen" "size-5 text-base-content/70" %}合計</h2>
+  {% with receipt_total=object.receipt_total %}
+  <dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
+    <div><dt class="text-xs text-base-content/60">小計</dt><dd class="tabular-nums">{{ object.subtotal|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">消費税 (税率 {{ object.tax_rate|comma }}%)</dt><dd class="tabular-nums">{{ object.tax|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">合計</dt><dd class="tabular-nums">{{ object.total|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">受入の金額の合計</dt><dd class="tabular-nums">{{ receipt_total|yen }}</dd></div>
+    {% with confirmed=object.confirmed_subtotal %}<div><dt class="text-xs text-base-content/60">確認済の金額</dt><dd class="tabular-nums">{{ confirmed|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">答え待ち・確かめ中の金額</dt><dd class="tabular-nums">{{ object.unconfirmed_subtotal|yen }}</dd></div>{% endwith %}
+    <div><dt class="text-xs text-base-content/60">差 (小計 − 受入の金額の合計)</dt><dd class="tabular-nums">{% with difference=object.receipt_difference %}{% if difference == 0 %}差はありません{% else %}{{ difference|yen }}{% endif %}{% endwith %}</dd></div>
+  </dl>
+  {% endwith %}
+</section>{% endif %}{% endblock %}

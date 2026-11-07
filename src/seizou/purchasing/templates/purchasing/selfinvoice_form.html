@@ -1,0 +1,30 @@
+{% extends "core/form.html" %}
+{# 仕入明細を作る: core の入力の画面のカードの代わりに purchasing/_selfinvoice_create_card.html (受入の表と合計の枠) を置き、取引先の欄で受入の行を絞る小さな JS を足す (写した元: billing/invoice_form.html。候補 C111)。 #}
+{# 行は checkbox の data-partner (受入の発注の取引先) で見分け、合わない表の行 (tr) を hidden にする (class は付け替えない)。隠れた行に残った印の数を、表の上の黄の 1 行 (data-picked-elsewhere) に書く (印は外さない。知らせるだけ)。 #}
+{# 取引先の欄の change は、欄に付けた narrow が先、document の js/seizou-submit-label.js が後に動く (泡立ちの順) ので、合計の枠とボタンの字は隠した後の行で数え直される。この順に頼っている。 #}
+{# JS が動かなくても、取引先と違う受入は services が「発行できません。」で断る。 #}
+{% block content %}{% include "purchasing/_selfinvoice_create_card.html" %}
+<script>
+(function () {
+  var partner = document.getElementById("id_partner");
+  var box = document.getElementById("id_receipts");
+  if (!partner || !box) return;
+  var notice = document.querySelector("[data-picked-elsewhere]");
+  var count = document.querySelector("[data-picked-elsewhere-count]");
+  function narrow() {
+    var chosen = partner.value;
+    var elsewhere = 0;
+    box.querySelectorAll("input[data-partner]").forEach(function (input) {
+      var row = input.closest("tr");
+      if (!row) return;
+      row.hidden = chosen !== "" && input.dataset.partner !== chosen;
+      if (row.hidden && input.checked) elsewhere += 1;
+    });
+    if (count && count.firstChild && count.firstChild.nodeType === 3) count.firstChild.nodeValue = String(elsewhere);
+    if (notice) notice.hidden = elsewhere === 0;
+  }
+  partner.addEventListener("change", narrow);
+  narrow();
+})();
+</script>
+{% endblock %}

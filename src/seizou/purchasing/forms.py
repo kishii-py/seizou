@@ -16,6 +16,9 @@
   line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (N124)。
 - 発注・受入・取り消すの保存のボタンの字は、押した結果の数と金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
   金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注のボタンに金額を書かない。
+- 仕入明細を作る form (SelfInvoiceForm。候補 C111) は請求書の新規登録 (billing.forms.InvoiceForm) と同じ形: 取引先・発行日の欄の下に受入の表の行 (rows)、
+  印を付けた行の数と税抜の合計を合計の枠 (line_totals) と保存のボタンの字に出し、行の checkbox の data-partner でテンプレートの JS が取引先で行を絞る。
+  候補は services.self_invoice_receipts() (取消でない仕入明細に入っていない、seizou どうしで送った発注の受入)。金額は受入の金額そのまま。
 """
 
 from decimal import Decimal
@@ -27,6 +30,7 @@ from django.utils import timezone
 from seizou.core import edi_codes
 from seizou.core import fields as company_fields
 from seizou.core.forms import DefaultChoiceField, PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
+from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.core.views import use_decimal_input
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
@@ -35,6 +39,7 @@ from seizou.masters.services import UNLISTED_LINE_UNIT, quantity_units
 
 from . import services
 from .models import PurchaseOrder, PurchaseOrderLine, _qty_text
+from .models import Receipt
 
 LINE_KEYS = ("item", "process", "qty", "unit", "price_basis", "unit_price", "quote_no", "due_date", "note")
 
@@ -566,3 +571,203 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
     def service_kwargs(self):
         data = self.cleaned_data
         return {"line": data["line"], "qty": data["qty"], "received_on": data["received_on"], "note": data["note"]}
+
+
+# --- 仕入明細 (候補 C111) ---
+
+_Partner = PurchaseOrder._meta.get_field("partner").related_model
+
+
+class ReceiptCheckboxes(forms.CheckboxSelectMultiple):
+    """受入の checkbox。行ごとに data-partner (受入の発注の取引先の pk) を付ける (テンプレートの JS が取引先の欄で行を絞る)。"""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        instance = getattr(value, "instance", None)
+        if instance is not None:
+            option["attrs"]["data-partner"] = instance.line.purchase_order.partner_id
+        return option
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        # 外の枠 (div) には checkbox の見た目を付けない (Django の雛形は widget の class を外の枠にも付けるため)。
+        context["widget"]["attrs"].pop("class", None)
+        return context
+
+
+class ReceiptChoiceField(forms.ModelMultipleChoiceField):
+    """受入を選ぶ欄。字は「受入 受入日・発注番号-行番号・品番 品名・数量 n」(区切りは「・」。請求書の出荷の欄と同じ形)。"""
+
+    def label_from_instance(self, obj):
+        line = obj.line
+        return (
+            f"受入 {obj.received_on:%Y-%m-%d}・{line.purchase_order.po_no}-{line.line_no}"
+            f"・{line.item.part_no} {line.item.name}・数量 {_qty_text(obj.qty)}"
+        )
+
+
+class SelfInvoiceForm(SubmitLabelMixin, forms.Form):
+    """仕入明細を作る form (請求書を作る form と同じ形)。
+
+    受入は表の行 (rows) で描き、印を付けた行の数と税抜の金額の合計を、合計の枠 (line_totals) と保存のボタンの字に出す。
+    行の金額は受入の金額そのまま (保存と同じ値)。取引先を選んでいるときは、その取引先の行だけを数える (画面の JS が隠す行を数えない)。
+    """
+
+    submit_label_plain = "仕入明細を作る"
+
+    partner = forms.ModelChoiceField(label="取引先", queryset=_Partner.objects.none(), widget=forms.Select)
+    issued_on = forms.DateField(
+        label="発行日",
+        initial=timezone.localdate,
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
+        help_text="仕入明細に載る日付です。",
+    )
+    receipts = ReceiptChoiceField(
+        label="受入",
+        queryset=Receipt.objects.none(),
+        widget=ReceiptCheckboxes(attrs={"class": "checkbox"}),
+        help_text="seizou どうしで注文を送った発注の受入のうち、まだ仕入明細に入っていない物だけが並びます。",
+    )
+
+    def __init__(self, *args, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hide_money = hide_money
+        self._rows = None
+        candidates = services.self_invoice_receipts()
+        self.fields["partner"].queryset = _Partner.objects.filter(
+            pk__in=candidates.values("line__purchase_order__partner_id")
+        ).order_by("code")
+        self.fields["receipts"].queryset = candidates.select_related(
+            "line__purchase_order__partner", "line__item"
+        )
+        # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が、印を付けた行だけを数える印 (全部の checkbox に写る)。
+        self.fields["receipts"].widget.attrs["data-label-pick"] = True
+
+    @property
+    def head_fields(self):
+        """表の上の欄 (取引先・発行日と、土台が足す会社ごとの項目)。受入の欄は表に描くので除く。"""
+        return [field for field in self.visible_fields() if field.name != "receipts"]
+
+    @property
+    def rows(self):
+        """受入の表の行。1 行 = {box・receipt・checked・qty_text・amount・amount_text}。
+
+        最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
+        box は checkbox の subwidget。qty_text と amount_text は JS が読む素の数の字。amount は受入の金額 (金額の閲覧が無い人は None)。
+        """
+        if self._rows is None:
+            rows = []
+            for box in self["receipts"].subwidgets:
+                receipt = box.data["value"].instance
+                amount = None if self.hide_money else receipt.amount
+                rows.append(
+                    {
+                        "box": box,
+                        "receipt": receipt,
+                        "checked": bool(box.data["selected"]),
+                        "qty_text": f"{receipt.qty.normalize():f}",
+                        "amount": amount,
+                        "amount_text": None if amount is None else f"{amount:f}",
+                    }
+                )
+            self._rows = rows
+        return self._rows
+
+    def _chosen_partner(self) -> str:
+        """選んだ取引先の pk の字。送った form は送った値、開いた form は初期値。選んでいなければ空の字。"""
+        value = self.data.get("partner") if self.is_bound else self.initial.get("partner")
+        value = getattr(value, "pk", value)
+        return "" if value is None else str(value)
+
+    def line_totals(self) -> dict:
+        """合計の枠 (core/_line_totals.html) の字。印を付けた行のうち、取引先を選んでいればその取引先の行だけを数える。"""
+        chosen = self._chosen_partner()
+        picked = [
+            row
+            for row in self.rows
+            if row["checked"] and (not chosen or str(row["receipt"].line.purchase_order.partner_id) == chosen)
+        ]
+        qty = sum((row["receipt"].qty for row in picked), Decimal("0"))
+        amount = None if self.hide_money else sum((row["amount"] for row in picked), Decimal("0"))
+        return {
+            "rows": len(picked),
+            "qty": label_number(qty),
+            "amount": None if amount is None else label_number(amount),
+            "show_amount": not self.hide_money,
+        }
+
+    def submit_label_templates(self) -> list:
+        if self.hide_money:
+            return ["{rows} 行の仕入明細を作る"]
+        return ["{rows} 行・税抜 ¥{amount} の仕入明細を作る", "{rows} 行の仕入明細を作る"]
+
+    def submit_label_values(self) -> dict:
+        totals = self.line_totals()
+        if not totals["rows"]:
+            return {}
+        return {"rows": str(totals["rows"]), "amount": totals["amount"]}
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {
+            "partner": data["partner"],
+            "receipts": list(data["receipts"] or []),
+            "issued_on": data["issued_on"],
+        }
+
+
+class SelfInvoiceCancelForm(forms.Form):
+    """仕入明細を取り消す form。欄は無い。保存のボタンは「SI-000001 を取り消す」(土台が対象を instance= で渡す。請求書の取消と同じ形)。"""
+
+    submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.self_invoice_no} を取り消す"
+
+    def service_kwargs(self):
+        return {}
+
+
+class SelfInvoiceAcceptForm(forms.Form):
+    """相手の提案を受け入れる form (候補 C111)。提案 (UV) の明細ごとに印の欄 (既定は全部に印)。
+
+    字は「明細 n: 数 40 → 38・単価 ¥25.5 → ¥26・金額 ¥1,020 → ¥988」(違う所だけ。金額は保存と同じ services.self_invoice_line_amount。
+    金額の閲覧の無い人には単価と金額を書かない)。service_kwargs は {"line_nos": [印の明細の行番号]}。
+    """
+
+    submit_label = "受け入れて修正仕入明細を送る"
+
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        self.proposal_lines = []
+        if instance is None:
+            return
+        for line in instance.lines.select_related("receipt").order_by("line_no"):
+            if line.reply_type != edi_codes.SI_REPLY_PROPOSED:
+                continue
+            parts = []
+            if line.reply_qty is not None and line.reply_qty != line.qty:
+                parts.append(f"数 {comma(line.qty)} → {comma(line.reply_qty)}")
+            if not hide_money:
+                if line.reply_unit_price is not None and line.reply_unit_price != line.unit_price:
+                    parts.append(f"単価 {yen(line.unit_price)} → {yen(line.reply_unit_price)}")
+                new_amount = services.self_invoice_line_amount(instance, line, line.reply_qty, line.reply_unit_price)
+                parts.append(f"金額 {yen(line.amount)} → {yen(new_amount)}")
+            name = f"line_{line.line_no}"
+            self.fields[name] = forms.BooleanField(
+                label=f"明細 {line.line_no}: " + "・".join(parts), required=False, initial=True,
+            )
+            self.proposal_lines.append((line, name))
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.proposal_lines and not any(cleaned.get(name) for _line, name in self.proposal_lines):
+            raise forms.ValidationError("受け入れる提案に印を付けてください。")
+        return cleaned
+
+    def service_kwargs(self):
+        return {"line_nos": [line.line_no for line, name in self.proposal_lines if self.cleaned_data.get(name)]}

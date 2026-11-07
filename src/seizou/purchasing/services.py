@@ -21,6 +21,8 @@
 - 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
   connect の受け口が mark_accepted・mark_conditional・mark_rejected・mark_on_hold で答えを待っている発注 (送った・相手が保留した) に当てる。
 - 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、全部そろえば「納品された」。受入が先の発注に後から受諾が届いたときも「一部納品」。
+- 仕入明細は create_self_invoice。受入をまとめ、消費税は billing の 1 か所 (consumption_tax) で合計に 1 回、期間と支払期日は billing の closing_period・payment_due_date を呼ぶ (式を写さない)。
+  候補の受入は self_invoice_receipts、詳細の 60 日の黄の 1 行の字は due_date_note (どちらも読むだけ)。
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from seizou.masters.services import unit_code_for
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
+from .models import SelfInvoice, SelfInvoiceLine
 from .models import _qty_text
 
 from datetime import timedelta
@@ -1069,12 +1072,38 @@ def notice_rests(line):
     return rests
 
 
+#: 支払の見込みの金額の型 (受入と仕入明細の明細の金額と同じ桁)
+_MONEY_FIELD = DecimalField(max_digits=14, decimal_places=2)
+
+
+def annotate_payable(receipts):
+    """受入の queryset に、支払の見込みで数える金額の列 2 つを足して返す (読むだけ)。
+
+    payable_amount = 相手が仕入明細で承諾した明細 (承諾と、直した内容の承諾) は仕入明細の明細の金額、まだの明細と仕入明細に入っていない受入は
+    受入の金額 (決め C111-1)。取り消した仕入明細の明細は見ない。checking_amount = 取消でない仕入明細に入っていて、まだ承諾されていない明細の
+    受入の金額 (確かめ中の金額)。ほかは 0。保存した金額を選ぶだけで、DB で掛け算と丸めをしない (R03)。
+    中小企業共通 EDI の請求レス方式は、売り手が確認した仕入明細の金額で支払う (インボイス仕様編 6.1.1)。
+    """
+    accepted = (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED)
+    live = SelfInvoiceLine.objects.filter(receipt=OuterRef("pk")).exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+    confirmed = live.filter(reply_type__in=accepted).values("amount")[:1]
+    return receipts.annotate(
+        payable_amount=Coalesce(Subquery(confirmed, output_field=_MONEY_FIELD), F("amount"), output_field=_MONEY_FIELD),
+        checking_amount=Case(
+            When(Exists(live.exclude(reply_type__in=accepted)), then=F("amount")),
+            default=Value(_ZERO),
+            output_field=_MONEY_FIELD,
+        ),
+    )
+
+
 def payable_by_partner(today=None):
-    """支払の見込み (先月と今月)。受入の金額を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
+    """支払の見込み (先月と今月)。支払の見込みの金額 (annotate_payable) を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
 
     保存した金額の合計 (Sum) で、DB で掛け算をしない。today の既定は今日。行は取引先コードの順で、
     2 か月とも 0 の取引先は入れない。返す物 = {"months": [{"key", "label"} × 2], "rows": [{"partner",
-    "last_month", "this_month"}, …], "totals": {"last_month", "this_month"}}。
+    "last_month", "this_month"}, …], "totals": {"last_month", "this_month"}, "checking": {"last_month", "this_month"}}。
+    checking は仕入明細で確かめ中の金額 (annotate_payable の checking_amount) の月ごとの合計 (取引先ごとには分けない)。
     """
     if today is None:
         today = timezone.localdate()
@@ -1086,16 +1115,18 @@ def payable_by_partner(today=None):
         {"key": f"{this_start:%Y-%m}", "label": f"今月 ({this_start.month} 月)"},
     ]
     sums = {}
+    checking = {"last_month": _ZERO, "this_month": _ZERO}
     for slot, start, end in (("last_month", last_start, this_start), ("this_month", this_start, next_start)):
         rows = (
-            Receipt.objects.filter(received_on__gte=start, received_on__lt=end)
+            annotate_payable(Receipt.objects.filter(received_on__gte=start, received_on__lt=end))
             .order_by()
             .values("line__purchase_order__partner")
-            .annotate(total=Sum("amount"))
+            .annotate(total=Sum("payable_amount"), checking=Sum("checking_amount"))
         )
         for row in rows:
             slots = sums.setdefault(row["line__purchase_order__partner"], {"last_month": _ZERO, "this_month": _ZERO})
             slots[slot] = _dec(row["total"] or _ZERO)
+            checking[slot] += _dec(row["checking"] or _ZERO)
     shown = [pk for pk, slots in sums.items() if slots["last_month"] or slots["this_month"]]
     partner_model = PurchaseOrder._meta.get_field("partner").related_model
     partners = partner_model._default_manager.filter(pk__in=shown).order_by("code", "pk") if shown else []
@@ -1104,4 +1135,380 @@ def payable_by_partner(today=None):
         "last_month": sum((row["last_month"] for row in result_rows), _ZERO),
         "this_month": sum((row["this_month"] for row in result_rows), _ZERO),
     }
-    return {"months": months, "rows": result_rows, "totals": totals}
+    return {"months": months, "rows": result_rows, "totals": totals, "checking": checking}
+
+
+# --- 仕入明細 (受入をまとめて相手へ送る書類。中小企業共通 EDI の仕入明細の項目を元にした。候補 C111) ---
+
+#: 支払期日が受領日から何日を超えたら知らせるか (取適法の 60 日)
+SELF_INVOICE_DUE_DAYS = 60
+
+
+def _sent_order_exists():
+    """受入の発注に送った注文 (connect の Outbox) の行があるかの式 (Exists)。connect の無い会社では None。"""
+    if not apps.is_installed("seizou.connect"):
+        return None
+    outbox = apps.get_model("connect", "Outbox")
+    return Exists(outbox.objects.filter(purchase_order=OuterRef("line__purchase_order")))
+
+
+def _in_live_self_invoice():
+    """受入が取消でない仕入明細に入っているかの式 (Exists)。取り消した仕入明細だけに入っていた受入は偽。"""
+    return Exists(
+        SelfInvoiceLine.objects.filter(receipt=OuterRef("pk")).exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+    )
+
+
+def self_invoice_receipts(partner=None):
+    """仕入明細に入れられる受入 (読むだけ)。取消でない仕入明細に入っていない受入のうち、seizou どうしで送った発注 (送った注文の行がある) の物。
+
+    取り消した仕入明細だけに入っていた受入は並ぶ (取り消した後に直して送り直すため = 決め C111-3)。partner を渡せばその取引先の発注の受入だけ。
+    並びは受入日・発注番号・行番号。connect の無い会社では空 (相手へ送れないため)。
+    """
+    sent = _sent_order_exists()
+    if sent is None:
+        return Receipt.objects.none()
+    rows = Receipt.objects.filter(sent).exclude(_in_live_self_invoice())
+    if partner is not None:
+        rows = rows.filter(line__purchase_order__partner=partner)
+    return rows.order_by("received_on", "line__purchase_order__po_no", "line__line_no", "pk")
+
+
+def _self_invoice_refusal(receipt, partner):
+    """受入を仕入明細に入れられない訳の文 (「発行できません。」から)。入れられれば空の字。create_self_invoice が行をロックした後に呼ぶ。"""
+    purchase_order = receipt.line.purchase_order
+    if purchase_order.partner_id != partner.pk:
+        return f"発行できません。受入 {receipt} は、取引先 {partner.name} の発注の受入ではありません。外してください。"
+    live = (
+        SelfInvoiceLine.objects.filter(receipt=receipt)
+        .exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+        .select_related("self_invoice")
+        .first()
+    )
+    if live is not None:
+        return f"発行できません。受入 {receipt} は、既に仕入明細 {live.self_invoice.self_invoice_no} に入っています。外してください。"
+    if not _is_sent_order(purchase_order):
+        return (
+            f"発行できません。受入 {receipt} は、seizou どうしで送った発注の受入ではないので、仕入明細を相手へ送れません。外してください。"
+        )
+    return ""
+
+
+def create_self_invoice(partner, receipts, user, *, issued_on):
+    """取引先の受入をまとめて仕入明細を作る (まだ送らない)。仕入明細番号は core の連番 (SI) が付ける。請求書の create_invoice と同じ形。
+
+    明細は受入 1 件に 1 行 (並びは受入日・発注番号・行番号。1 から番号を付ける)。受領日・数量・単位・数量単位コード・単価の単位・単価 (発注の明細) と
+    金額 (受入の金額) を写す。小計 = 金額の合計、消費税 = billing.services.consumption_tax (合計に 1 回)、税率 = consumption_tax_rate、
+    期間 = billing.services.closing_period(取引先, 一番遅い受領日)、支払期日 = payment_due_date(取引先, 期間の終わり) (空なら空。決め C111-2)、
+    相手の登録番号 = 取引先の登録番号の写し、状態 = 未送信、目的 = 新規 "9"。billing の関数は関数の中で import する (頭の import の並びを変えない)。
+    断るのは (1) 受入が 1 つも無い (2) 受入でない物 (3) ほかの取引先の受入 (4) 既に取消でない仕入明細に入っている受入
+    (5) seizou どうしで送った発注の受入でない、のどれか (日本語の ValueError。頭は「発行できません。」)。受入の行をロックしてから見る。
+    作った仕入明細と明細は変更の履歴に「作った」で残す。atomic を抜けた後に connect.services.send_self_invoice で相手へ送り (R17)、
+    届かなければ返す物に saved_note (「仕入明細は相手に届いていません。…」) と saved_level = "warning" を付ける (仕入明細は成立する)。
+    インボイス制度: 仕入明細書の記載事項は適格請求書と同じ。消費税は税率ごとの合計に 1 回 (決め LAW-2)。
+    取適法: 受領日 = 支払期日の起算の日。支払期日は取引先の締日・支払の月・支払日から請求書と同じ計算で作る (決め C111-2)。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 6.1.1 と Ⅰ.Ⅲ。
+    訳: 同じ受入を 2 つの取消でない仕入明細に入れて二重に払う記録を作らないため、相手へ送れない受入 (seizou どうしで送っていない発注) を入れないため。出所 = AI の案 (候補 C111。請求書の create_invoice と同じ形)。
+    変えてよい条件 = 1 つの受入を 2 つの仕入明細に分けて入れる決まりを作者が決めたとき。
+    """
+    from seizou.billing.services import closing_period, consumption_tax, consumption_tax_rate, payment_due_date
+
+    receipts = list(receipts)
+    if not receipts:
+        raise ValueError("発行できません。受入がありません。仕入明細に入れる受入を 1 つ以上選んでください。")
+    for obj in receipts:
+        if not isinstance(obj, Receipt):
+            raise ValueError(f"発行できません。受入でない物 ({obj}) が入っているので、外してください。")
+    with transaction.atomic():
+        pks = sorted({receipt.pk for receipt in receipts})
+        locked = list(
+            Receipt.objects.select_for_update()
+            .filter(pk__in=pks)
+            .select_related("line__purchase_order__partner", "line__item")
+            .order_by("pk")
+        )
+        for receipt in locked:
+            refusal = _self_invoice_refusal(receipt, partner)
+            if refusal:
+                raise ValueError(refusal)
+        locked.sort(key=lambda row: (row.received_on, row.line.purchase_order.po_no, row.line.line_no, row.pk))
+        amounts = [receipt.amount for receipt in locked]
+        subtotal = sum(amounts, _ZERO)
+        tax = consumption_tax(partner, amounts)
+        period_from, period_to = closing_period(partner, max(receipt.received_on for receipt in locked))
+        self_invoice = SelfInvoice.objects.create(
+            self_invoice_no=next_number("self_invoice"),
+            partner=partner,
+            issued_on=issued_on,
+            period_from=period_from,
+            period_to=period_to,
+            due_on=payment_due_date(partner, period_to),
+            purpose_code=edi_codes.PURPOSE_NEW,
+            subtotal=subtotal,
+            tax=tax,
+            total=subtotal + tax,
+            tax_rate=consumption_tax_rate(),
+            supplier_registration_no=partner.registration_no,
+            status=SelfInvoice.STATUS_DRAFT,
+        )
+        record_history(self_invoice, user)
+        for number, receipt in enumerate(locked, start=1):
+            line = receipt.line
+            row = SelfInvoiceLine.objects.create(
+                self_invoice=self_invoice,
+                line_no=number,
+                receipt=receipt,
+                received_on=receipt.received_on,
+                qty=receipt.qty,
+                unit=line.unit,
+                unit_code=line.unit_code,
+                price_basis=line.price_basis,
+                unit_price=line.unit_price,
+                amount=receipt.amount,
+            )
+            record_history(row, user)
+    # 相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    return _with_self_invoice_notice(_send_self_invoice(self_invoice, user), SELF_INVOICE_UNDELIVERED)
+
+
+#: 仕入明細が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄。段 3)
+SELF_INVOICE_UNDELIVERED = "仕入明細は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
+def _send_self_invoice(self_invoice, user):
+    """connect.services.send_self_invoice を呼ぶ (関数の中で import する)。返す物は取り直した SelfInvoice。"""
+    from seizou.connect import services as connect_services
+
+    return connect_services.send_self_invoice(self_invoice, user)
+
+
+def _with_self_invoice_notice(self_invoice, template):
+    """送った後の仕入明細に、届かなかったときの知らせの字 (saved_note) と黄 (saved_level = "warning") を付けて返す。届いたら何も付けない。"""
+    if self_invoice.sent_at is None:
+        self_invoice.saved_note = template.format(response=self_invoice.response)
+        self_invoice.saved_level = "warning"
+    return self_invoice
+
+
+def assign_self_invoice_number(self_invoice, user):
+    """仕入明細の今の版に送る番号を付けて返す。既にあればそのまま返す (送り直しは同じ番号を使い回す = R11)。
+
+    connect.services.send_self_invoice が送る前に呼ぶ (届かなくても番号が残る)。返す物は uuid.UUID。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        if locked.message_id is None:
+            locked.message_id = uuid.uuid4()
+            locked.save(update_fields=["message_id"])
+        return locked.message_id
+
+
+def record_self_invoice_delivery(self_invoice, response, user, *, sent=False):
+    """仕入明細を送った相手の返事を書く (500 字で切る)。sent が真なら送った日時を書き、状態が未送信なら答え待ちにする。
+
+    sent が偽なら送った日時は今の値のまま (消さない)。connect.services.send_self_invoice が呼ぶ。返す物は取り直した SelfInvoice。
+    """
+    limit = SelfInvoice._meta.get_field("response").max_length
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        locked.response = response[:limit]
+        fields = ["response"]
+        if sent:
+            locked.sent_at = timezone.now()
+            fields.append("sent_at")
+            if locked.status == SelfInvoice.STATUS_DRAFT:
+                before = history.saved_state(locked)
+                locked.status = SelfInvoice.STATUS_SENT
+                fields.append("status")
+                locked.save(update_fields=fields)
+                record_history(locked, user, before=before)
+                return locked
+        locked.save(update_fields=fields)
+        return locked
+
+
+#: 取消が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄)
+SELF_INVOICE_CANCEL_UNDELIVERED = "取消は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
+def cancel_self_invoice_refusal(self_invoice) -> str:
+    """仕入明細を取り消せない訳の文 (読むだけ)。取り消せるなら空の字。取消の確かめのカード (purchasing_tags) と cancel_self_invoice が同じ字を使う。
+
+    取消済みなら「取り消し済みです」、相手の答えが届いていれば (has_reply) 「相手が答えた明細があります」の文。
+    訳: 相手が答えた後に取り消して、相手と合意した明細と金額を後から動かさないため。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+    """
+    if self_invoice.status == SelfInvoice.STATUS_CANCELLED:
+        return "取り消せません。この仕入明細は取り消し済みです。仕入明細の詳細を開き直してください。"
+    if self_invoice.has_reply():
+        return "取り消せません。相手が答えた明細があります。相手と会話で話し、相手の提案を受け入れて直してください。"
+    return ""
+
+
+def cancel_self_invoice(self_invoice, user):
+    """相手がどの明細にも答える前の仕入明細を取り消し、取消を相手へ送る。
+
+    atomic の中で仕入明細の行をロックし、cancel_self_invoice_refusal の字があれば何も変えずに ValueError。無ければ状態を取消にし、
+    版を 1 上げ、目的を取消 "1" にし、新しい番号を付け、送った日時と返事を空にする。明細は消さず、値も変えない (入っていた受入は、
+    取消でない仕入明細に入っていない受入として、また self_invoice_receipts に並ぶ)。返す物に saved_message = "取り消しました。"。
+    atomic の外で connect.services.send_self_invoice (文書の種類 1C・目的 1)。届かなければ saved_note と saved_level = "warning"。
+    訳: 相手が答えた後に取り消して、相手と合意した明細と金額を後から動かさないため。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+
+    中小企業共通 EDI の取消仕入明細書 (文書タイプ 384・インボイス文書目的コード 1) の形で相手へ送る。電子帳簿保存法: 取り消した仕入明細と明細は
+    消さずに状態「取消」で残し、送った中身は送り合った記録に残る。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        refusal = cancel_self_invoice_refusal(locked)
+        if refusal:
+            raise ValueError(refusal)
+        before = history.saved_state(locked)
+        locked.status = SelfInvoice.STATUS_CANCELLED
+        locked.revision_no += 1
+        locked.purpose_code = edi_codes.PURPOSE_CANCEL
+        locked.message_id = uuid.uuid4()
+        locked.sent_at = None
+        locked.response = ""
+        locked.save(update_fields=["status", "revision_no", "purpose_code", "message_id", "sent_at", "response"])
+        record_history(locked, user, before=before)
+    saved = _with_self_invoice_notice(_send_self_invoice(locked, user), SELF_INVOICE_CANCEL_UNDELIVERED)
+    # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+    saved.saved_message = "取り消しました。"
+    return saved
+
+
+def self_invoice_line_amount(self_invoice, line, qty, unit_price):
+    """仕入明細の明細を数と単価で数え直した金額。受入と同じ 1 か所 (masters.services.delivery_amount) を通す (式を写さない)。
+
+    一式の明細は、全額を載せた受入 (受入の金額が 0 より大きい) の明細だけを一式の全額で数え直し、ほかは 0 (受入と同じ決まり = 決め PRICE-1c)。
+    """
+    return delivery_amount(self_invoice.partner, qty, unit_price, line.price_basis, completes=line.receipt.amount > 0)
+
+
+def accept_self_invoice_proposals(self_invoice, line_nos, user):
+    """相手の提案 (UV) を受け入れて仕入明細を直し、修正仕入明細を相手へ送る。
+
+    選んだ明細は答えが提案の物だけ (ほかは「送れません。明細 n は提案の答えではありません。」)。取消の仕入明細は受けない。
+    atomic の中で版を 1 上げ、目的を変更・修正 "4" にし、選んだ明細の数と単価を提案の値に、金額を受入と同じ 1 か所 (self_invoice_line_amount) で
+    数え直し、直した版を新しい版にし、答えの列を空にする。小計と消費税 (billing の consumption_tax) と合計を計算し直す (税率・締め期間・支払期日は
+    作った時の写しのまま)。新しい番号を付け、送った日時と返事を空にし、状態を未送信にする。受入と受入の金額は変えない (支払の見込みは、
+    相手が直した内容を承諾した後に仕入明細の金額で数える = 決め C111-1)。atomic の外で connect.services.send_self_invoice (文書の種類 1C)。
+    届かなければ saved_note と saved_level = "warning"。
+    中小企業共通 EDI の修正仕入明細の流れ: 発注者は提案回答の内容が適切と判断したら、修正入力して修正仕入明細を送る (インボイス仕様編 6.1.3 の ⑨)。
+    取適法: 単価を下げる明細があれば、保存の前に黄色の確かめを出す (purchasing.checks の LawSelfInvoicePriceDown。止めない)。
+    訳: 相手が提案と答えた明細だけを、提案の値のまま直すため (発注元が金額を手で打たない。取消の仕入明細は動かさない)。出所 = AI の案 (候補 C111。中小企業共通 EDI の修正仕入明細の流れ)。
+    変えてよい条件 = 発注元が仕入明細の金額を直す道を作者が決めたとき。
+    """
+    from seizou.billing.services import consumption_tax
+
+    chosen = sorted(set(line_nos or ()))
+    if not chosen:
+        raise ValueError("送れません。受け入れる提案を選んでください。")
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().select_related("partner").get(pk=self_invoice.pk)
+        if locked.status == SelfInvoice.STATUS_CANCELLED:
+            raise ValueError("送れません。この仕入明細は取り消してあります。")
+        lines = {line.line_no: line for line in locked.lines.select_related("receipt")}
+        for number in chosen:
+            line = lines.get(number)
+            if line is None or line.reply_type != edi_codes.SI_REPLY_PROPOSED:
+                raise ValueError(f"送れません。明細 {number} は提案の答えではありません。")
+        before = history.saved_state(locked)
+        locked.revision_no += 1
+        for number in chosen:
+            line = lines[number]
+            line_before = history.saved_state(line)
+            line.qty = line.reply_qty
+            line.unit_price = line.reply_unit_price
+            line.amount = self_invoice_line_amount(locked, line, line.qty, line.unit_price)
+            line.revised_in = locked.revision_no
+            line.reply_type = ""
+            line.reply_reason_code = ""
+            line.reply_qty = None
+            line.reply_unit_price = None
+            line.reply_note = ""
+            line.save(update_fields=[
+                "qty", "unit_price", "amount", "revised_in", "reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note",
+            ])
+            record_history(line, user, before=line_before)
+        amounts = [line.amount for line in lines.values()]
+        locked.subtotal = sum(amounts, _ZERO)
+        locked.tax = consumption_tax(locked.partner, amounts)
+        locked.total = locked.subtotal + locked.tax
+        locked.purpose_code = edi_codes.PURPOSE_CHANGE
+        locked.message_id = uuid.uuid4()
+        locked.sent_at = None
+        locked.response = ""
+        locked.status = SelfInvoice.STATUS_DRAFT
+        locked.save(update_fields=[
+            "revision_no", "subtotal", "tax", "total", "purpose_code", "message_id", "sent_at", "response", "status",
+        ])
+        record_history(locked, user, before=before)
+    return _with_self_invoice_notice(_send_self_invoice(locked, user), SELF_INVOICE_REVISION_UNDELIVERED)
+
+
+#: 修正仕入明細が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄)
+SELF_INVOICE_REVISION_UNDELIVERED = "修正仕入明細は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
+def _self_invoice_status(self_invoice, lines):
+    """仕入明細の状態を明細の答えから決める。提案か確認できないが 1 つでもあれば確かめ中、全部が承諾 (AP・AC) なら確認済、ほかは答え待ち。"""
+    codes = [line.reply_type for line in lines]
+    if any(code in (edi_codes.SI_REPLY_PROPOSED, edi_codes.SI_REPLY_REJECTED) for code in codes):
+        return SelfInvoice.STATUS_PARTIAL
+    if codes and all(code in (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED) for code in codes):
+        return SelfInvoice.STATUS_CONFIRMED
+    return SelfInvoice.STATUS_SENT
+
+
+def record_self_invoice_reply(self_invoice, user, *, revision_no, reply_type, lines, reply_message_id, by=""):
+    """相手の仕入明細回答を仕入明細に書く (connect の受け口が呼ぶ。user は None)。
+
+    lines = [{line_no・reply_type・reply_reason_code・reply_qty・reply_unit_price・reply_note}]。載っていた明細の答えの列を書き替え、
+    鑑ヘッダの答え (reply_type)・届いた日時・答えの番号を書き、状態を決め直す (提案か確認できないが 1 つでもあれば確かめ中、
+    全部が承諾なら確認済、ほかは答え待ち)。受入と受入の金額は変えない。revision_no は受け口が今の版と比べた後の値。
+    変更の履歴の人の字は by (「<取引先の名前> の seizou」)。返す物は取り直した SelfInvoice。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        current = {line.line_no: line for line in locked.lines.all()}
+        for row in lines:
+            line = current[row["line_no"]]
+            before = history.saved_state(line)
+            for key in ("reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note"):
+                setattr(line, key, row[key])
+            line.save(update_fields=["reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note"])
+            record_history(line, user, before=before, by=by)
+        before = history.saved_state(locked)
+        locked.reply_type = reply_type
+        locked.replied_at = timezone.now()
+        locked.reply_message_id = reply_message_id
+        fields = ["reply_type", "replied_at", "reply_message_id"]
+        if locked.status != SelfInvoice.STATUS_CANCELLED:
+            locked.status = _self_invoice_status(locked, list(current.values()))
+            fields.append("status")
+        locked.save(update_fields=fields)
+        record_history(locked, user, before=before, by=by)
+        return locked
+
+
+def due_date_note(self_invoice):
+    """仕入明細の詳細の上の黄色の 1 行の字 (読むだけ)。支払期日が一番早い受領日から 60 日を超えるときだけ字を返し、ほかは空の字。
+
+    取消の仕入明細と支払期日の空の仕入明細には出さない。日数は 2 つの日付の差で数える (月単位の締めの扱いは見ない)。
+    取適法 (2026-01-01 施行。旧下請法): 代金の支払期日は物を受け取った日から 60 日以内で定める。超えるときに知らせ、止めない (決め C111-2)。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」(公正取引委員会の一次資料は未読)。
+    """
+    if self_invoice.status == SelfInvoice.STATUS_CANCELLED or self_invoice.due_on is None:
+        return ""
+    days = [line.received_on for line in self_invoice.lines.all()]
+    if not days:
+        return ""
+    earliest = min(days)
+    if (self_invoice.due_on - earliest).days <= SELF_INVOICE_DUE_DAYS:
+        return ""
+    return (
+        f"支払期日 ({self_invoice.due_on:%Y-%m-%d}) が受領日 ({earliest:%Y-%m-%d}) から 60 日を超えます。"
+        "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。取引先の支払の条件を確かめてください。"
+    )

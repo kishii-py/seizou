@@ -1,5 +1,6 @@
 """発注のポカよけ (取適法の確かめ)。送った発注の単価を下げる・数を減らす・納期を早める・明細を取り消す変更と、送った発注の取消に、黄色の確かめを出す。
 LawPriceDown・LawOrderChange は変更 (purchasing.change_purchase_order)、LawOrderCancel は取消 (purchasing.cancel_purchase_order) を見る。
+LawSelfInvoicePriceDown は、相手の提案を受け入れて仕入明細の単価を下げる保存 (purchasing.accept_self_invoice_proposals。候補 C111) を見る。
 
 mode は "warn" (知らせる) で、会社の設定の鍵を持たない (会社の設定で止めるにも通すにもしない。「このまま保存」で通す)。
 法律に関わる作りは適法の側に倒し、当てはめは言い切らず、画面の字は「おそれがあります」にする。
@@ -115,7 +116,34 @@ class LawOrderCancel(Check):
         return "送った発注を取り消します。" + ORDER_CHANGE_TAIL
 
 
-CHECKS = (LawPriceDown(), LawOrderChange(), LawOrderCancel())
+class LawSelfInvoicePriceDown(Check):
+    """相手の提案を受け入れて仕入明細の明細の単価を下げる保存に、黄色の確かめを出す (止めない)。数だけを減らす提案には出さない。
+
+    data は入力の土台が渡す物: object = 仕入明細 (表の値)、line_nos = 受け入れる明細の行番号の並び。字の形は LawPriceDown と同じ。
+    訳: 相手の提案を受け入れて仕入明細の単価を下げる保存に気づかせ、取適法 (2026-01-01 施行。旧下請法) の代金の減額の禁止に当たるおそれを知らせるため。打ち間違いの直しは止めない。出所 = 法令 (取適法) と決め LAW-1 (送った発注の単価を下げるときの確かめを、同じ形で仕入明細に当てた AI の案)。確かめた資料 = 法律事務所の解説と報道 (公正取引委員会の一次資料は未読)。
+    変えてよい条件 = 公正取引委員会の資料で当てはめを確かめた後に、LAW-1 と一緒に変える。
+    """
+
+    name = "law_self_invoice_price_down"
+    action = "purchasing.accept_self_invoice_proposals"
+    mode = "warn"
+
+    def run(self, data, user):
+        self_invoice = data.get("object")
+        chosen = set(data.get("line_nos") or ())
+        if self_invoice is None or not chosen:
+            return None
+        texts = []
+        for row in self_invoice.lines.order_by("line_no"):
+            new = row.reply_unit_price
+            if row.line_no in chosen and new is not None and new < row.unit_price:
+                texts.append(f"明細 {row.line_no} の単価を {_price_text(row.unit_price, row.unit)} から {_price_text(new, row.unit)} に")
+        if not texts:
+            return None
+        return "、".join(texts) + "下げます。" + PRICE_DOWN_TAIL
+
+
+CHECKS = (LawPriceDown(), LawOrderChange(), LawOrderCancel(), LawSelfInvoicePriceDown())
 
 
 def register_checks() -> None:

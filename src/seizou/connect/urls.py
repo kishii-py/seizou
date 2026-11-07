@@ -13,6 +13,7 @@ from . import views
 from . import chat
 from . import reply
 from . import sender
+from . import self_invoice
 
 app_name = "connect"
 
@@ -20,6 +21,8 @@ app_name = "connect"
 #: 左のメニューの字も画面の名前も「受信した注文」(決め 11-03 の候補 3。「受信箱」は使わない)。
 MENU = [
     ("受信した注文", "connect:inbox_list"),
+    # 得意先 (seizou どうし) から届いた仕入明細 (候補 C111)。届いた物に気づく入口なので、受信した注文の次に置く。
+    ("受けた仕入明細", "connect:receivedselfinvoice_list"),
 ]
 # 取引先との接続は普段は触らないので、左のメニューでなく設定の画面 (core:settings) から開く (本人の指摘 11-03 昼)。
 
@@ -41,6 +44,10 @@ urlpatterns = [
     path("connections/<int:pk>/edit/", views.ConnectionUpdateView.as_view(), name="connection_update"),
     path("exchanges/", views.ExchangeListView.as_view(), name="exchange_list"),
     path("exchanges/<int:pk>/", views.ExchangeDetailView.as_view(), name="exchange_detail"),
+    path("selfinvoices/", views.ReceivedSelfInvoiceListView.as_view(), name="receivedselfinvoice_list"),
+    path("selfinvoices/<int:pk>/", views.ReceivedSelfInvoiceDetailView.as_view(), name="receivedselfinvoice_detail"),
+    path("selfinvoices/<int:pk>/answer/", views.ReceivedSelfInvoiceAnswerView.as_view(), name="receivedselfinvoice_answer"),
+    path("selfinvoices/<int:pk>/reply/resend/", self_invoice.resend_self_invoice_reply, name="receivedselfinvoice_reply_resend"),
     path("chat/new/", views.ChatMessageAddView.as_view(), name="chatmessage_add"),
     path("chat/<int:pk>/resend/", chat.resend_chat, name="chatmessage_resend"),
     path("chat/files/<int:pk>/", chat.chat_file_download, name="chatfile_download"),

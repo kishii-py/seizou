@@ -190,6 +190,8 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が shipping_notice (出荷の知らせ) なら受信箱に入れず、発注の明細に当てて ShippingNoticeReceipt を返す。
     本文の kind が chat_message (会話の言葉) なら受信箱に入れず、元の注文 (受信した注文か発注) に結んで ChatReceipt を返す。
     本文の kind が chat_file (会話の添付を取りに来た要求) なら何も残さず、返してよい添付なら ChatFileGrant を返す。
+    本文の kind が self_invoice (仕入明細) なら受信箱に入れず、受注の明細に当てて受けた仕入明細にし、SelfInvoiceReceipt を返す。
+    本文の kind が self_invoice_response (仕入明細回答) なら受信箱に入れず、元の仕入明細の明細に答えを書いて SelfInvoiceResponseReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
@@ -263,6 +265,12 @@ def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
     # 会話の添付を取りに来た要求 (seizou どうしだけの種類)。何も残さず、返してよい添付なら ChatFileGrant を返す (受け口の view が中身を返す)。
     if payload.get("kind") == "chat_file":
         return _receive_chat_file_request(message_id, partner, payload)
+    # 仕入明細 (得意先が受け入れた数と金額。中小企業共通 EDI の仕入明細の項目を元にした) も受信した注文の行にせず、受けた仕入明細にする。
+    if payload.get("kind") == "self_invoice":
+        return _receive_self_invoice(message_id, partner, payload)
+    # 仕入明細回答 (相手が明細ごとに返した答え) も受信した注文の行にせず、元の仕入明細の明細に書く。
+    if payload.get("kind") == "self_invoice_response":
+        return _receive_self_invoice_response(message_id, partner, payload)
     kind = payload.get("kind")
     if kind is not None and kind != "order":
         # 鍵の値と本文は文に入れない。kind の字だけを 40 字で切って出す。
@@ -2381,8 +2389,23 @@ def _order_amount(data):
     return total
 
 
+def _self_invoice_amount(data):
+    """仕入明細 (修正と取消の版も) の金額 = 本文の合計 (total) の字を Decimal にした物 (丸めない)。読めなければ None。
+
+    電子帳簿保存法の電子取引のデータを取引金額で探せるようにする (送り合った記録の金額。決め C106-1 の「本文に合計の金額がある物はその値」)。
+    """
+    value = data.get("total")
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    try:
+        number = Decimal(str(value).strip())
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
+
+
 #: 種類 (本文の kind) → 金額を数える関数。無い種類は金額が空。後の依頼が自分の kind の行を足す (本文に合計の金額がある物はその値)
-EXCHANGE_AMOUNT_KINDS = {"order": _order_amount}
+EXCHANGE_AMOUNT_KINDS = {"order": _order_amount, "self_invoice": _self_invoice_amount}
 
 
 def _fits_amount(value) -> bool:
@@ -2995,3 +3018,721 @@ def bell_notices(user, *, limit=10) -> list[dict]:
             }
         )
     return notices
+
+
+# ---------------------------------------------------------------- 仕入明細 (候補 C111。中小企業共通 EDI の仕入明細の項目を元にした)
+
+MESSAGE_SELF_INVOICE_NO_CONNECTION = (
+    "取引先との接続 (送る向き) が無いので仕入明細を送っていません。"
+    "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
+)
+MESSAGE_SELF_INVOICE_SHAPE = "仕入明細の形が読めません。self_invoice_no・revision_no・lines を送ってください。"
+#: 仕入明細の文書の種類 (版 1 は仕入明細、版 2 からは修正仕入明細)
+_SI_DOCUMENTS = frozenset({edi_codes.SI_DOC_NEW, edi_codes.SI_DOC_REVISED})
+
+
+@dataclass(frozen=True)
+class SelfInvoiceReceipt:
+    """受け口が仕入明細を受けた仕入明細にした (か、同じ番号の 2 回目だった) 印。受け口の view は message_id だけを読む。"""
+
+    message_id: uuid.UUID
+    self_invoice: object
+
+
+def _plain_number(value) -> str:
+    """送る数の字 (区切りと ¥ を付けない。末尾の 0 は落とさない = 表の値のまま)。"""
+    return str(value)
+
+
+def _rate_text(value) -> str:
+    """送る税率の字 (百分率。末尾の 0 を落とす。10.00 → "10")。"""
+    return f"{value.normalize():f}"
+
+
+def send_self_invoice(self_invoice, user):
+    """仕入明細 (今の版) を署名して、取引先 (協力企業の seizou) の受け口へ送る。send_acceptance と同じ形。
+
+    - 番号は purchasing.services.assign_self_invoice_number (今の版の番号。無ければ付けて保存。送り直しは同じ番号 = R11)。
+    - つながりは取引先の向き「送る」の物。無ければ HTTP を送らず、返事の欄に MESSAGE_SELF_INVOICE_NO_CONNECTION を書いて返す。
+    - 本文の鍵は id・kind ("self_invoice")・sent_at・self_invoice_no・revision_no・document_code (版 1 は "1"・版 2 からは "1C")・purpose_code・
+      issued_on・period_from・period_to・due_on (空なら null)・subtotal・tax・total・tax_rate (百分率の字)・tax_category_code ("S")・
+      supplier_name (取引先の名前)・supplier_registration_no・buyer・lines。明細の鍵は line_no・order_id (その発注の第 1 版の送った注文の番号)・
+      order_no・order_line_no・order_revision_no (発注の今の版)・part_no・part_name・received_on・qty・unit・unit_code・price_basis・
+      unit_price・amount・revised_in。金額と数は数の字 (¥ もカンマも付けない)。
+    - 相手への HTTP は transaction.atomic の外 (R17)。送る所は send_order・send_acceptance と同じ _deliver。
+    - 届かない・断られた・鍵が無い・つながりが無いのどれでも例外にしない (仕入明細は成立する)。返事と送った日時は
+      purchasing.services.record_self_invoice_delivery が書く。返す物は取り直した SelfInvoice。
+    インボイス制度の記載事項 (相手の名前と登録番号・税率と課税分類) を送る中身そのものに持つ。
+    """
+    from django.apps import apps
+    from django.utils import timezone
+
+    from seizou.purchasing import services as purchasing_services
+
+    from .models import Outbox
+
+    model = apps.get_model("purchasing", "SelfInvoice")
+    current = (
+        model.objects.select_related("partner")
+        .prefetch_related("lines__receipt__line__purchase_order", "lines__receipt__line__item")
+        .get(pk=self_invoice.pk)
+    )
+    message_id = purchasing_services.assign_self_invoice_number(current, user)
+    connection = _send_connection(current.partner)
+    if connection is None:
+        return purchasing_services.record_self_invoice_delivery(current, MESSAGE_SELF_INVOICE_NO_CONNECTION, user)
+
+    lines = []
+    first_orders = {}
+    for row in current.lines.all():
+        order_line = row.receipt.line
+        purchase_order = order_line.purchase_order
+        if purchase_order.pk not in first_orders:
+            first = Outbox.objects.filter(purchase_order=purchase_order, revision_no=1).order_by("pk").first()
+            first_orders[purchase_order.pk] = str(first.message_id) if first else ""
+        lines.append(
+            {
+                "line_no": row.line_no,
+                "order_id": first_orders[purchase_order.pk],
+                "order_no": purchase_order.po_no,
+                "order_line_no": order_line.line_no,
+                "order_revision_no": purchase_order.revision_no,
+                "part_no": order_line.item.part_no,
+                "part_name": order_line.item.name,
+                "received_on": row.received_on.isoformat(),
+                "qty": _plain_number(row.qty),
+                "unit": row.unit,
+                "unit_code": row.unit_code,
+                "price_basis": row.price_basis,
+                "unit_price": _plain_number(row.unit_price),
+                "amount": _plain_number(row.amount),
+                "revised_in": row.revised_in,
+            }
+        )
+    data = {
+        "id": str(message_id),
+        "kind": "self_invoice",
+        "sent_at": timezone.localtime().isoformat(),
+        "self_invoice_no": current.self_invoice_no,
+        "revision_no": current.revision_no,
+        "document_code": edi_codes.SI_DOC_NEW if current.revision_no == 1 else edi_codes.SI_DOC_REVISED,
+        "purpose_code": current.purpose_code,
+        "issued_on": current.issued_on.isoformat(),
+        "period_from": current.period_from.isoformat(),
+        "period_to": current.period_to.isoformat(),
+        "due_on": current.due_on.isoformat() if current.due_on else None,
+        "subtotal": _plain_number(current.subtotal),
+        "tax": _plain_number(current.tax),
+        "total": _plain_number(current.total),
+        "tax_rate": _rate_text(current.tax_rate),
+        "tax_category_code": edi_codes.TAX_CATEGORY_STANDARD,
+        "supplier_name": current.partner.name,
+        "supplier_registration_no": current.supplier_registration_no,
+        "buyer": _party(),
+        "lines": lines,
+    }
+    raw = _encode(data)
+    # R17: ここは atomic の外。
+    reply, kind = _deliver(connection, message_id, raw)
+    saved = purchasing_services.record_self_invoice_delivery(current, reply, user, sent=(kind == "received"))
+    logger.info("仕入明細を送った: 仕入明細 %s 番号 %s 返事の種類 %s", current.pk, message_id, kind)
+    return saved
+
+
+def _receive_self_invoice_revision(message_id, partner, existing, values, payload):
+    """修正仕入明細 (目的 4・版が今より大きい) を、受けた仕入明細に当てる。返す物は SelfInvoiceReceipt か断る文。
+
+    明細を形と受注の明細で確かめてから (_self_invoice_line_values)、1 つの atomic の中で、見出しの列 (版・文書の種類・目的・小計・消費税・合計・番号) を
+    書き替え、明細ごとに数・単価・金額のどれかが違えば値を書き替えて答えの列を空にし、直した版を新しい版にする (同じ明細の答えはそのまま)。
+    状態を明細の答えから決め直す。行番号の無い明細は断る (修正仕入明細は明細を足さない)。
+    中小企業共通 EDI の修正仕入明細の流れ: 問題なければ売り手は修正仕入明細回答で確認回答する (インボイス仕様編 6.1.1 の ④)。
+    """
+    from .models import ReceivedSelfInvoice
+
+    msg_id = str(message_id)
+    rows = []
+    for number, raw in enumerate(payload["lines"], start=1):
+        row = _self_invoice_line_values(partner, raw, number)
+        if isinstance(row, str):
+            return _refuse(row, msg_id)
+        rows.append(row)
+    with transaction.atomic():
+        locked = ReceivedSelfInvoice.objects.select_for_update().get(pk=existing.pk)
+        lines = {line.line_no: line for line in locked.lines.all()}
+        unknown = [row["line_no"] for row in rows if row["line_no"] not in lines]
+        if unknown:
+            return _refuse(f"修正仕入明細の明細の行番号 {unknown[0]} が仕入明細 {locked.self_invoice_no} にありません。", msg_id)
+        by = f"{partner.name} の seizou"
+        for row in rows:
+            line = lines[row["line_no"]]
+            if (line.qty, line.unit_price, line.amount) == (row["qty"], row["unit_price"], row["amount"]):
+                continue
+            before = _saved(line)
+            line.qty = row["qty"]
+            line.unit_price = row["unit_price"]
+            line.amount = row["amount"]
+            line.revised_in = values["revision_no"]
+            line.reply_type = ""
+            line.reply_reason_code = ""
+            line.reply_qty = None
+            line.reply_unit_price = None
+            line.reply_note = ""
+            line.save(update_fields=[
+                "qty", "unit_price", "amount", "revised_in", "reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note",
+            ])
+            _record(line, None, before=before, by=by)
+        before = _saved(locked)
+        for key in ("revision_no", "document_code", "purpose_code", "subtotal", "tax", "total"):
+            setattr(locked, key, values[key])
+        locked.message_id = message_id
+        locked.status = _received_status(list(lines.values()))
+        locked.save(update_fields=["revision_no", "document_code", "purpose_code", "subtotal", "tax", "total", "message_id", "status"])
+        _record(locked, None, before=before, by=by)
+    return SelfInvoiceReceipt(message_id=message_id, self_invoice=locked)
+
+
+def _receive_self_invoice_cancel(message_id, partner, existing, values):
+    """取消仕入明細 (目的 1・版が今より大きい) を、受けた仕入明細に当てる。返す物は SelfInvoiceReceipt か断る文。
+
+    受けた仕入明細に答えを送ってあれば (答えの番号がある)、行を変えずに断る。答えを送っていなければ、1 つの atomic の中で
+    状態を取消にし、版・文書の種類 (1C)・目的 (1)・番号を書く (明細は変えない)。
+    訳: 受ける側が答えを送った後の取消を受けず、答えた明細と金額を動かさないため (送る側は届いた答えしか知らないので、受ける側でも見る)。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+    """
+    from .models import ReceivedSelfInvoice
+
+    msg_id = str(message_id)
+    with transaction.atomic():
+        locked = ReceivedSelfInvoice.objects.select_for_update().get(pk=existing.pk)
+        if locked.reply_message_id is not None:
+            return _refuse(
+                f"取り消せません。仕入明細 {locked.self_invoice_no} には第 {locked.revision_no} 版の答えを送ってあります。"
+                "得意先と会話で話してください。",
+                msg_id,
+            )
+        before = _saved(locked)
+        locked.status = ReceivedSelfInvoice.STATUS_CANCELLED
+        locked.revision_no = values["revision_no"]
+        locked.document_code = values["document_code"]
+        locked.purpose_code = values["purpose_code"]
+        locked.message_id = message_id
+        locked.save(update_fields=["status", "revision_no", "document_code", "purpose_code", "message_id"])
+        _record(locked, None, before=before, by=f"{partner.name} の seizou")
+    return SelfInvoiceReceipt(message_id=message_id, self_invoice=locked)
+
+
+def _self_invoice_text_problem(payload):
+    """仕入明細の字 (仕入明細番号・自社の名前・登録番号・課税分類コード・明細の発注番号・単位・数量単位コード) が、受ける表の欄の字数に入らないときの日本語の文。入れば None。
+
+    上限は受ける欄 (connect.ReceivedSelfInvoice・ReceivedSelfInvoiceLine) の max_length。見る順は頭の鍵 → 明細を上から 1 行ずつ。最初に見つけた 1 つだけを返す。
+    字数は len() で数える (1 字を 1 と数え、バイトで数えない)。字でない値は見ない (形の確かめが断る)。
+    訳: 受けた仕入明細の字を切って入れて、別の値として残すのを防ぎ、送った側に直す所を返すため (受け取れる字数を超えた字は受け口で断る)。出所 = 作者の決め C110-1 (注文の鍵を見る _order_text_problem と同じ形)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。変えたら docs/edi-items.md の「受け取れる字数を超えたとき」も直す。
+    """
+    from .models import ReceivedSelfInvoice, ReceivedSelfInvoiceLine
+
+    if not isinstance(payload, dict):
+        return None
+    heads = (
+        ("self_invoice_no", "仕入明細番号", ReceivedSelfInvoice, "self_invoice_no"),
+        ("supplier_name", "自社の名前", ReceivedSelfInvoice, "supplier_name"),
+        ("supplier_registration_no", "登録番号", ReceivedSelfInvoice, "supplier_registration_no"),
+        ("tax_category_code", "課税分類コード", ReceivedSelfInvoice, "tax_category_code"),
+    )
+    for key, label, model, name in heads:
+        value = payload.get(key)
+        limit = model._meta.get_field(name).max_length
+        if isinstance(value, str) and len(value) > limit:
+            return f"仕入明細の{label}は {limit} 字までにしてください。"
+    checks = (
+        ("order_no", "発注番号", "buyer_order_no"),
+        ("unit", "単位", "unit"),
+        ("unit_code", "数量単位コード", "unit_code"),
+    )
+    lines = payload.get("lines")
+    for number, raw in enumerate(lines if isinstance(lines, list) else [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        for key, label, name in checks:
+            value = raw.get(key)
+            limit = ReceivedSelfInvoiceLine._meta.get_field(name).max_length
+            if isinstance(value, str) and len(value) > limit:
+                return f"仕入明細の {number} 行目の{label}は {limit} 字までにしてください。"
+    return None
+
+
+def _positive_int(value):
+    """1 以上の整数 (bool でない) ならその値、ほかは None。"""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _fits_money(number, field):
+    """number (Decimal) が 0 以上で、表の欄 field (DecimalField) の桁に入るか (0 は入る。一式の途中の受入は 0 円)。"""
+    if not isinstance(number, Decimal) or not number.is_finite() or number < 0:
+        return False
+    return number == 0 or _fits_field(number, field)
+
+
+def _self_invoice_values(payload):
+    """仕入明細の本文の頭の値を読んだ辞書。形が違えば断る文 (str)。_receive_self_invoice が呼ぶ。"""
+    from .models import ReceivedSelfInvoice
+
+    meta = ReceivedSelfInvoice._meta
+    number = payload.get("self_invoice_no")
+    revision_no = _positive_int(payload.get("revision_no"))
+    lines = payload.get("lines")
+    if not (isinstance(number, str) and number.strip()) or revision_no is None:
+        return MESSAGE_SELF_INVOICE_SHAPE
+    if not isinstance(lines, list) or not lines or not all(isinstance(raw, dict) for raw in lines):
+        return MESSAGE_SELF_INVOICE_SHAPE
+    purpose = payload.get("purpose_code", edi_codes.PURPOSE_NEW)
+    if purpose not in _PURPOSES or (purpose == edi_codes.PURPOSE_NEW and revision_no != 1):
+        return "仕入明細の目的コードか版が読めません。新規は目的 9 の第 1 版で送ってください。"
+    document = payload.get("document_code")
+    if document not in _SI_DOCUMENTS:
+        return "仕入明細の文書の種類 (document_code) が 1 か 1C ではありません。"
+    values = {"self_invoice_no": number.strip(), "revision_no": revision_no, "purpose_code": purpose, "document_code": document}
+    try:
+        for key, label in (("issued_on", "発行日"), ("period_from", "締め期間の初め"), ("period_to", "締め期間の終わり")):
+            day = _payload_date(payload.get(key), label)
+            if day is None:
+                return MESSAGE_SELF_INVOICE_SHAPE
+            values[key] = day
+        values["due_on"] = _payload_date(payload.get("due_on"), "支払期日")
+        for key, label in (("subtotal", "小計"), ("tax", "消費税"), ("total", "合計")):
+            amount = _payload_decimal(payload.get(key), label)
+            if not _fits_money(amount, meta.get_field(key)):
+                return f"仕入明細の{label}は、0 以上で整数 12 桁・小数 2 桁までの数にしてください。"
+            values[key] = amount
+        rate = _payload_decimal(payload.get("tax_rate"), "税率")
+        if not _fits_field(rate, meta.get_field("tax_rate")):
+            return "仕入明細の税率は、0 より大きく整数 3 桁・小数 2 桁までの数にしてください。"
+        values["tax_rate"] = rate
+    except ValueError:
+        return MESSAGE_SELF_INVOICE_SHAPE
+    for key in ("tax_category_code", "supplier_name", "supplier_registration_no"):
+        value = payload.get(key, "")
+        if not isinstance(value, str):
+            return MESSAGE_SELF_INVOICE_SHAPE
+        values[key] = value
+    if not values["supplier_name"] or not values["tax_category_code"]:
+        return MESSAGE_SELF_INVOICE_SHAPE
+    return values
+
+
+def _self_invoice_line_values(partner, raw, number):
+    """仕入明細の明細 1 つを読み、受注の明細に当てた辞書。当たらなければ断る文 (str)。_receive_self_invoice が呼ぶ。
+
+    引く順は 形 → 元の注文の番号 (order_id) で受信した注文 → 受信した注文の取引先が署名の取引先と同じ → 受け入れた (受注がある) 物
+    → その受注の order_line_no の明細 (検収の受け口 _receive_acceptance と同じ引き方)。
+    """
+    from .models import ReceivedSelfInvoiceLine
+
+    meta = ReceivedSelfInvoiceLine._meta
+    shape = f"仕入明細の {number} 行目の形が読めません。line_no・order_id・order_line_no・received_on・qty・unit_price・amount を送ってください。"
+    line_no = _positive_int(raw.get("line_no"))
+    order_line_no = _positive_int(raw.get("order_line_no"))
+    order_revision_no = _revision_number(raw.get("order_revision_no"))
+    revised_in = _revision_number(raw.get("revised_in"))
+    order_id = raw.get("order_id")
+    if line_no is None or order_line_no is None or order_revision_no is None or revised_in is None or not isinstance(order_id, str):
+        return shape
+    try:
+        received_on = _payload_date(raw.get("received_on"), "受領日")
+        qty = _payload_decimal(raw.get("qty"), "受領数量")
+        unit_price = _payload_decimal(raw.get("unit_price"), "単価")
+        amount = _payload_decimal(raw.get("amount"), "金額")
+        price_basis = _payload_price_basis(raw.get("price_basis"), "単価の単位")
+    except ValueError:
+        return shape
+    if received_on is None:
+        return shape
+    if not _fits_field(qty, meta.get_field("qty")):
+        return f"仕入明細の {number} 行目の受領数量は、0 より大きく整数 10 桁・小数 2 桁までの数にしてください。"
+    if not _fits_field(unit_price, meta.get_field("unit_price")) or not _fits_money(amount, meta.get_field("amount")):
+        return f"仕入明細の {number} 行目の単価か金額が、表の欄の桁に入りません。"
+    texts = {}
+    for key in ("order_no", "unit", "unit_code"):
+        value = raw.get(key, "")
+        if not isinstance(value, str):
+            return shape
+        texts[key] = value
+    try:
+        order_message_id = uuid.UUID(order_id)
+    except ValueError:
+        order_message_id = None
+    missing = f"仕入明細の明細 {number} の注文が、受け入れた受注の明細にありません。"
+    inbox = (
+        Inbox.objects.select_related("order").filter(message_id=order_message_id).first()
+        if order_message_id is not None
+        else None
+    )
+    if inbox is None or inbox.partner_id != partner.pk or inbox.status != Inbox.STATUS_ACCEPTED or inbox.order is None:
+        return missing
+    order_line = inbox.order.lines.filter(line_no=order_line_no).first()
+    if order_line is None:
+        return missing
+    return {
+        "line_no": line_no,
+        "order_line": order_line,
+        "buyer_order_no": texts["order_no"],
+        "buyer_line_no": order_line_no,
+        "order_revision_no": order_revision_no,
+        "received_on": received_on,
+        "qty": qty,
+        "unit": texts["unit"],
+        "unit_code": texts["unit_code"],
+        "price_basis": price_basis,
+        "unit_price": unit_price,
+        "amount": amount,
+        "revised_in": revised_in,
+    }
+
+
+def _receive_self_invoice(message_id, partner, payload):
+    """署名の通った仕入明細を、受けた仕入明細 (と明細) にする。返す物は SelfInvoiceReceipt か、断る理由の文。
+
+    見る順は 同じ番号 (message_id) の 2 回目 (何もせず 1 回目の行を返す = R11) → 形 (字・数・日付・目的と版・文書の種類)
+    → 受け取れる字数 (_self_invoice_text_problem) → 修正と取消の目的 (今は受けない) → 同じ得意先の同じ仕入明細番号の行があれば
+    版の断り → 明細ごとに受注の明細に当てる (_self_invoice_line_values) → 1 つの atomic の中で作る。断るときは何も残さない。
+    受け口に利用者はいないので、変更の履歴の人の字は「<得意先の名前> の seizou」。
+    訳: 受注の明細に当てられない仕入明細を受けて、どの受注の金額か分からない記録を作らないため (検収と同じ見方)。古い版で新しい版を上書きしないため。出所 = AI の案 (候補 C111。中小企業共通 EDI の修正仕入明細の流れ)。
+    変えてよい条件 = 送り合いが行番号でなく明細の識別で明細を指すようになったとき。
+    """
+    from .models import ReceivedSelfInvoice, ReceivedSelfInvoiceLine
+
+    msg_id = str(message_id)
+    same = ReceivedSelfInvoice.objects.filter(message_id=message_id).first()
+    if same is not None:
+        return SelfInvoiceReceipt(message_id=message_id, self_invoice=same)
+    values = _self_invoice_values(payload)
+    if isinstance(values, str):
+        return _refuse(values, msg_id)
+    problem = _self_invoice_text_problem(payload)
+    if problem:
+        return _refuse(problem, msg_id)
+    existing = ReceivedSelfInvoice.objects.filter(partner=partner, self_invoice_no=values["self_invoice_no"]).first()
+    if existing is not None:
+        if values["revision_no"] <= existing.revision_no:
+            return _refuse(f"仕入明細 {existing.self_invoice_no} は第 {existing.revision_no} 版まで受けてあります。", msg_id)
+        if values["purpose_code"] == edi_codes.PURPOSE_CANCEL:
+            return _receive_self_invoice_cancel(message_id, partner, existing, values)
+        if existing.status == ReceivedSelfInvoice.STATUS_CANCELLED:
+            return _refuse(f"仕入明細 {existing.self_invoice_no} は取り消してあるので、修正を受けられません。", msg_id)
+        return _receive_self_invoice_revision(message_id, partner, existing, values, payload)
+    rows = []
+    for number, raw in enumerate(payload["lines"], start=1):
+        row = _self_invoice_line_values(partner, raw, number)
+        if isinstance(row, str):
+            return _refuse(row, msg_id)
+        rows.append(row)
+    line_numbers = [row["line_no"] for row in rows]
+    if len(set(line_numbers)) != len(line_numbers):
+        return _refuse(MESSAGE_SELF_INVOICE_SHAPE, msg_id)
+    if values["purpose_code"] == edi_codes.PURPOSE_CANCEL:
+        # 前の版が届いていない取消: 新しく受けたときと同じ形で行を作り、状態を取消にする (送った側の取消を断らず、取り消された記録を残す)。
+        values = {**values, "status": ReceivedSelfInvoice.STATUS_CANCELLED}
+    try:
+        with transaction.atomic():
+            received = ReceivedSelfInvoice.objects.create(partner=partner, message_id=message_id, **values)
+            _record(received, None, by=f"{partner.name} の seizou")
+            for row in rows:
+                line = ReceivedSelfInvoiceLine.objects.create(self_invoice=received, **row)
+                _record(line, None, by=f"{partner.name} の seizou")
+    except IntegrityError:
+        same = ReceivedSelfInvoice.objects.filter(message_id=message_id).first()
+        if same is not None:
+            return SelfInvoiceReceipt(message_id=message_id, self_invoice=same)
+        return _refuse(MESSAGE_SELF_INVOICE_SHAPE, msg_id)
+    return SelfInvoiceReceipt(message_id=message_id, self_invoice=received)
+
+
+# ---------------------------------------------------------------- 仕入明細回答 (候補 C111 その 4)
+
+MESSAGE_SI_REPLY_NO_CONNECTION = (
+    "取引先との接続 (送る向き) が無いので仕入明細回答を送っていません。"
+    "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
+)
+MESSAGE_SI_REPLY_SHAPE = "仕入明細回答の形が読めません。self_invoice_no・revision_no・reply_type・lines を送ってください。"
+_SI_REPLY_DOCUMENTS = frozenset({edi_codes.SI_DOC_REPLY, edi_codes.SI_DOC_REVISED_REPLY})
+_SI_REPLY_TYPES = frozenset(code for code, _label in edi_codes.SI_REPLY_TYPES)
+_SI_REPLY_LINE_TYPES = frozenset(code for code, _label in edi_codes.SI_REPLY_LINE_TYPES)
+_SI_REASON_CODES = frozenset(code for code, _label in edi_codes.SI_REASON_CHOICES)
+#: 承諾 (と、直した内容の承諾) の答え。一度送った明細は答え直せない (決め C111-4)
+SI_ACCEPTED_TYPES = frozenset({edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED})
+#: 答える form が渡す明細の答えの種類 (画面の 3 つ)
+ANSWER_ACCEPT = "accept"
+ANSWER_PROPOSE = "propose"
+ANSWER_REJECT = "reject"
+
+
+@dataclass(frozen=True)
+class SelfInvoiceResponseReceipt:
+    """受け口が仕入明細回答を元の仕入明細に書いた (か、同じ番号の 2 回目だった) 印。受け口の view は message_id だけを読む。"""
+
+    message_id: uuid.UUID
+    self_invoice: object
+
+
+def _received_status(lines):
+    """受けた仕入明細の状態を明細の答えから決める。答えの無い明細があれば未回答、提案か確認できないがあれば確かめ中、全部承諾なら確認済。"""
+    from .models import ReceivedSelfInvoice
+
+    codes = [line.reply_type for line in lines]
+    if any(code in (edi_codes.SI_REPLY_PROPOSED, edi_codes.SI_REPLY_REJECTED) for code in codes):
+        return ReceivedSelfInvoice.STATUS_PARTIAL
+    if codes and all(code in SI_ACCEPTED_TYPES for code in codes):
+        return ReceivedSelfInvoice.STATUS_CONFIRMED
+    return ReceivedSelfInvoice.STATUS_RECEIVED
+
+
+def _head_reply_type(lines, revision_no):
+    """鑑ヘッダの仕入明細回答タイプコード。全部の明細が確認できない → RE、提案か確認できないが 1 つでも → CA、ほかで版が 2 以上 → AC、版 1 → AP。"""
+    codes = [line.reply_type for line in lines]
+    if codes and all(code == edi_codes.SI_REPLY_REJECTED for code in codes):
+        return edi_codes.SI_REPLY_REJECTED
+    if any(code in (edi_codes.SI_REPLY_PROPOSED, edi_codes.SI_REPLY_REJECTED) for code in codes):
+        return edi_codes.SI_REPLY_PARTIAL
+    if revision_no >= 2:
+        return edi_codes.SI_REPLY_ACKNOWLEDGED
+    return edi_codes.SI_REPLY_ACCEPTED
+
+
+def answer_self_invoice(received, answers, user):
+    """受けた仕入明細の明細ごとの答え (承諾・提案・確認できない) を書き、得意先へ仕入明細回答を送る。
+
+    answers = {行番号: {"answer": "accept"・"propose"・"reject", "qty", "unit_price", "reason", "note"}}。提案は数と単価 (金額の閲覧の無い人は単価が None =
+    仕入明細の単価のまま)、確認できないは訳のコード (明細行仕入明細回答理由コード)。「承諾」は、修正仕入明細で直した明細 (直した版が 2 以上) なら
+    直した内容の承諾 AC、ほかは AP。状態を決め直し (未回答の明細があれば未回答・提案か確認できないがあれば確かめ中・全部承諾なら確認済)、
+    新しい答えの番号を付け、答えの文書の種類を決めて残す (1 回目の答えは 1R・2 回目からは 1CR)。atomic の外で send_self_invoice_reply。
+    届かなければ返す物に saved_note と saved_level = "warning" を付ける (答えは成立する)。
+    断るのは、受けた仕入明細が取消か、承諾 (AP・AC) を送ってある明細への答えが入っているとき (何も書かず何も送らない。日本語の ValueError)。
+    インボイス制度: 仕入明細書は売り手の確認で得意先の仕入税額控除の書類になる。ここの「承諾」がその確認に当たる (確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8)。
+    訳: 一度承諾した明細の金額を後から動かさないため (支払の見込みが承諾した金額で数える前提)。出所 = 作者の決め C111-4。
+    変えてよい条件 = 作者が承諾の後の答え直しを決めたとき。
+    """
+    from .models import ReceivedSelfInvoice
+
+    with transaction.atomic():
+        locked = ReceivedSelfInvoice.objects.select_for_update().get(pk=received.pk)
+        if locked.status == ReceivedSelfInvoice.STATUS_CANCELLED:
+            raise ValueError("送れません。この仕入明細は得意先が取り消しました。")
+        lines = {line.line_no: line for line in locked.lines.all()}
+        for number in sorted(answers):
+            line = lines.get(number)
+            if line is None:
+                raise ValueError(f"送れません。明細 {number} はこの仕入明細にありません。")
+            if line.reply_type in SI_ACCEPTED_TYPES:
+                raise ValueError(f"送れません。明細 {number} は承諾してあります。承諾した明細は答え直せません。")
+        if not answers:
+            raise ValueError("送れません。答える明細がありません。")
+        before = _saved(locked)
+        for number, answer in answers.items():
+            line = lines[number]
+            line_before = _saved(line)
+            kind = answer.get("answer")
+            line.reply_qty = None
+            line.reply_unit_price = None
+            line.reply_reason_code = ""
+            line.reply_note = (answer.get("note") or "")[: line._meta.get_field("reply_note").max_length]
+            if kind == ANSWER_PROPOSE:
+                line.reply_type = edi_codes.SI_REPLY_PROPOSED
+                line.reply_qty = answer.get("qty") if answer.get("qty") is not None else line.qty
+                line.reply_unit_price = answer.get("unit_price") if answer.get("unit_price") is not None else line.unit_price
+            elif kind == ANSWER_REJECT:
+                line.reply_type = edi_codes.SI_REPLY_REJECTED
+                line.reply_reason_code = answer.get("reason") or ""
+            else:
+                line.reply_type = edi_codes.SI_REPLY_ACKNOWLEDGED if line.revised_in >= 2 else edi_codes.SI_REPLY_ACCEPTED
+            line.save(update_fields=["reply_type", "reply_qty", "reply_unit_price", "reply_reason_code", "reply_note"])
+            _record(line, user, before=line_before)
+        all_lines = list(lines.values())
+        locked.reply_document_code = (
+            edi_codes.SI_DOC_REPLY if locked.reply_message_id is None else edi_codes.SI_DOC_REVISED_REPLY
+        )
+        locked.status = _received_status(all_lines)
+        locked.reply_message_id = uuid.uuid4()
+        locked.reply_sent_at = None
+        locked.reply_response = ""
+        locked.save(update_fields=["reply_document_code", "status", "reply_message_id", "reply_sent_at", "reply_response"])
+        _record(locked, user, before=before)
+    saved = send_self_invoice_reply(locked, user)
+    if saved.reply_sent_at is None:
+        saved.saved_note = f"答えは得意先に届いていません。{saved.reply_response} 直したら「送り直す」を押してください。"
+        saved.saved_level = "warning"
+    return saved
+
+
+def send_self_invoice_reply(received, user):
+    """受けた仕入明細の今の答え (仕入明細回答) を署名して、得意先の受け口へ送る。send_reply と同じ形。
+
+    - 送るのは答えの番号 (reply_message_id) がある行だけ (答えを作る前は日本語の ValueError)。送り直しは同じ番号・同じ文書の種類。
+    - つながりは得意先の向き「送る」の物。無ければ HTTP を送らず、返事の欄に MESSAGE_SI_REPLY_NO_CONNECTION を書く。
+    - 本文の鍵は id・kind ("self_invoice_response")・sent_at・self_invoice_no・revision_no・document_code (1R か 1CR)・reply_type (鑑ヘッダ)・
+      supplier・lines (答えのある全部の明細。1 つは line_no・reply_type・reason_code (確認できない以外は "")・reply_qty・reply_unit_price
+      (提案以外は null)・note)。
+    - 相手への HTTP は transaction.atomic の外 (R17)。届かない・断られたでも例外にしない。返す物は取り直した ReceivedSelfInvoice。
+    """
+    from django.utils import timezone
+
+    from .models import ReceivedSelfInvoice
+
+    current = ReceivedSelfInvoice.objects.select_related("partner").get(pk=received.pk)
+    if current.reply_message_id is None:
+        raise ValueError("送れません。この仕入明細には、まだ答えていません。")
+    message_id = current.reply_message_id
+    connection = _send_connection(current.partner)
+    if connection is None:
+        reply, kind = MESSAGE_SI_REPLY_NO_CONNECTION, "no_connection"
+    else:
+        lines = [line for line in current.lines.order_by("line_no") if line.reply_type]
+        data = {
+            "id": str(message_id),
+            "kind": "self_invoice_response",
+            "sent_at": timezone.localtime().isoformat(),
+            "self_invoice_no": current.self_invoice_no,
+            "revision_no": current.revision_no,
+            "document_code": current.reply_document_code or edi_codes.SI_DOC_REPLY,
+            "reply_type": _head_reply_type(list(current.lines.all()), current.revision_no),
+            "supplier": _party(),
+            "lines": [
+                {
+                    "line_no": line.line_no,
+                    "reply_type": line.reply_type,
+                    "reason_code": line.reply_reason_code if line.reply_type == edi_codes.SI_REPLY_REJECTED else "",
+                    "reply_qty": _plain_number(line.reply_qty) if line.reply_type == edi_codes.SI_REPLY_PROPOSED else None,
+                    "reply_unit_price": (
+                        _plain_number(line.reply_unit_price) if line.reply_type == edi_codes.SI_REPLY_PROPOSED else None
+                    ),
+                    "note": line.reply_note,
+                }
+                for line in lines
+            ],
+        }
+        raw = _encode(data)
+        # R17: ここは atomic の外。
+        reply, kind = _deliver(connection, message_id, raw)
+    with transaction.atomic():
+        saved = ReceivedSelfInvoice.objects.select_for_update().get(pk=current.pk)
+        saved.reply_response = reply[: ReceivedSelfInvoice._meta.get_field("reply_response").max_length]
+        fields = ["reply_response"]
+        if kind == "received":
+            saved.reply_sent_at = timezone.now()
+            fields.append("reply_sent_at")
+        saved.save(update_fields=fields)
+    logger.info("仕入明細回答: 受けた仕入明細 %s 番号 %s 返事の種類 %s", saved.pk, message_id, kind)
+    return saved
+
+
+def _si_reply_line_values(raw, number):
+    """仕入明細回答の明細 1 つを読んだ辞書。形が違えば断る文 (str)。_receive_self_invoice_response が呼ぶ。"""
+    from django.apps import apps
+
+    model = apps.get_model("purchasing", "SelfInvoiceLine")
+    meta = model._meta
+    shape = f"仕入明細回答の {number} 行目の形が読めません。line_no・reply_type を送ってください。"
+    if not isinstance(raw, dict):
+        return shape
+    line_no = _positive_int(raw.get("line_no"))
+    code = raw.get("reply_type")
+    reason = raw.get("reason_code") or ""
+    note = raw.get("note") or ""
+    if line_no is None or code not in _SI_REPLY_LINE_TYPES or not isinstance(reason, str) or not isinstance(note, str):
+        return shape
+    if code == edi_codes.SI_REPLY_REJECTED and reason not in _SI_REASON_CODES:
+        return f"仕入明細回答の {number} 行目の確認できない訳 (reason_code) が読めません。"
+    limit = meta.get_field("reply_note").max_length
+    if len(note) > limit:
+        return f"仕入明細回答の {number} 行目の字 (note) は {limit} 字までにしてください。"
+    values = {"line_no": line_no, "reply_type": code, "reply_reason_code": reason if code == edi_codes.SI_REPLY_REJECTED else "",
+              "reply_note": note, "reply_qty": None, "reply_unit_price": None}
+    if code == edi_codes.SI_REPLY_PROPOSED:
+        try:
+            qty = _payload_decimal(raw.get("reply_qty"), "提案の数")
+            price = _payload_decimal(raw.get("reply_unit_price"), "提案の単価")
+        except ValueError:
+            return shape
+        if not _fits_field(qty, meta.get_field("reply_qty")) or not _fits_field(price, meta.get_field("reply_unit_price")):
+            return f"仕入明細回答の {number} 行目の提案の数か単価が、表の欄の桁に入りません。"
+        values["reply_qty"] = qty
+        values["reply_unit_price"] = price
+    return values
+
+
+def _receive_self_invoice_response(message_id, partner, payload):
+    """署名の通った仕入明細回答を、元の仕入明細の明細に書く。返す物は SelfInvoiceResponseReceipt か、断る理由の文。
+
+    見る順は 同じ答えの番号の 2 回目 (何もせず返す = R11) → 形 (番号・版・文書の種類・鑑ヘッダの答え・明細の答えと訳と提案の数と単価と字数)
+    → 仕入明細番号の仕入明細 → 取引先が署名の取引先 → 答えた版が今の版 → 明細の行番号がある → purchasing.services.record_self_invoice_reply。
+    断るときは何も書かない。受け口に利用者はいないので、変更の履歴の人の字は「<取引先の名前> の seizou」。
+    取り消した仕入明細に、取消の 1 つ前の版への答えが届いたとき (行き違い) は、版の断りを出さずに答えの列を書き、状態は取消のまま
+    (purchasing.services.record_self_invoice_reply が取消の状態を変えない)。仕入明細の詳細に行き違いの黄の 1 行が出る。
+    訳: 古い版への答えで新しい版の明細を書き換えないため。出所 = AI の案 (候補 C111)。
+    変えてよい条件 = 版をまたいで答えを当てる決まりを作者が決めたとき。
+
+    行き違いの扱いの訳: 取消と相手の答えが行き違ったとき、相手に誤った断りを返さず、相手が何と答えたかを発注元にも残すため。
+    出所 = AI の案 (候補 C111。送った発注の取消の行き違いと同じ形)。変えてよい条件 = 作者が行き違いの扱いを決めたとき。
+    """
+    from django.apps import apps
+
+    from seizou.purchasing import services as purchasing_services
+
+    model = apps.get_model("purchasing", "SelfInvoice")
+    msg_id = str(message_id)
+    same = model.objects.filter(reply_message_id=message_id).first()
+    if same is not None:
+        return SelfInvoiceResponseReceipt(message_id=message_id, self_invoice=same)
+    number = payload.get("self_invoice_no")
+    revision_no = _positive_int(payload.get("revision_no"))
+    lines = payload.get("lines")
+    if (
+        not isinstance(number, str)
+        or revision_no is None
+        or payload.get("document_code") not in _SI_REPLY_DOCUMENTS
+        or payload.get("reply_type") not in _SI_REPLY_TYPES
+        or not isinstance(lines, list)
+        or not lines
+    ):
+        return _refuse(MESSAGE_SI_REPLY_SHAPE, msg_id)
+    rows = []
+    for position, raw in enumerate(lines, start=1):
+        row = _si_reply_line_values(raw, position)
+        if isinstance(row, str):
+            return _refuse(row, msg_id)
+        rows.append(row)
+    self_invoice = model.objects.filter(self_invoice_no=number).first()
+    if self_invoice is None:
+        return _refuse(f"仕入明細回答の元の仕入明細 {number[:35]} がありません。", msg_id)
+    if self_invoice.partner_id != partner.pk:
+        return _refuse("仕入明細回答の元の仕入明細は、その取引先への物ではありません。", msg_id)
+    # 行き違い: 取り消した (取消の版を送った) 後に、相手の取消の 1 つ前の版への答えが届いた。断らずに答えを書き、状態は取消のまま (C96 の送った発注の取消と同じ形)。
+    crossed = self_invoice.status == model.STATUS_CANCELLED and revision_no == self_invoice.revision_no - 1
+    if revision_no != self_invoice.revision_no and not crossed:
+        return _refuse(
+            f"仕入明細回答の版 (第 {revision_no} 版) が今の版 (第 {self_invoice.revision_no} 版) と違います。"
+            "新しい版を受けてから答え直してください。",
+            msg_id,
+        )
+    known = set(self_invoice.lines.values_list("line_no", flat=True))
+    unknown = [row["line_no"] for row in rows if row["line_no"] not in known]
+    if unknown:
+        return _refuse(f"仕入明細回答の明細の行番号 {unknown[0]} が仕入明細 {self_invoice.self_invoice_no} にありません。", msg_id)
+    try:
+        with transaction.atomic():
+            saved = purchasing_services.record_self_invoice_reply(
+                self_invoice,
+                None,
+                revision_no=revision_no,
+                reply_type=payload["reply_type"],
+                lines=rows,
+                reply_message_id=message_id,
+                by=f"{partner.name} の seizou",
+            )
+    except IntegrityError:
+        same = model.objects.filter(reply_message_id=message_id).first()
+        if same is not None:
+            return SelfInvoiceResponseReceipt(message_id=message_id, self_invoice=same)
+        return _refuse(MESSAGE_SI_REPLY_SHAPE, msg_id)
+    return SelfInvoiceResponseReceipt(message_id=message_id, self_invoice=saved)

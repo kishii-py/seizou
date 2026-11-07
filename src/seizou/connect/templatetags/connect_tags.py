@@ -10,6 +10,8 @@ reply_line_texts: 受信した注文の詳細の「返した条件」の行 (単
 revision_notice・revision_lines・revision_problem: 変更と取消の版 (中小企業共通 EDI の注文変更の方式 2) の札・明細状態と受注の今の値・受け入れられない訳。
 chat_panel: 受注・発注・受信した注文の「会話」の枠 (connect/_chat.html) の中身 (会話が使えるか・言葉の並び・書く先・書けるか。C104)。
 exchange_body: 送り合った記録の詳細の「中身」の枠の字 (JSON を字下げした字と、送ったとおりの字。金額の閲覧の無い人には金額の鍵を外す)。
+received_self_invoice_rows・received_self_invoice_registration_note: 受けた仕入明細の詳細の明細の表の行 (受注の数と自社の出荷済みの数と答えの字) と、
+登録番号が自社の登録番号と違うときの黄の 1 行の字 (候補 C111)。received_self_invoice_compare: 同じ詳細の「請求書と比べる」の枠の中身。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -347,3 +349,75 @@ def exchange_body(exchange, hide_money=False):
     if hide_money:
         return {"pretty": json.dumps(_without_money(data), ensure_ascii=False, indent=2), "raw": ""}
     return {"pretty": json.dumps(data, ensure_ascii=False, indent=2), "raw": body}
+
+
+def _received_answer_text(line, hide_money=False):
+    """受けた仕入明細の明細の自社の答えの字 (コードは出さない)。答えが無ければ空の字。"""
+    code = line.reply_type
+    if not code:
+        return ""
+    if code == edi_codes.SI_REPLY_PROPOSED:
+        parts = []
+        if line.reply_qty is not None and line.reply_qty != line.qty:
+            parts.append(f"数 {comma(line.qty)} → {comma(line.reply_qty)}")
+        if not hide_money and line.reply_unit_price is not None and line.reply_unit_price != line.unit_price:
+            parts.append(f"単価 {yen(line.unit_price)} → {yen(line.reply_unit_price)}")
+        return "提案" + (": " + "・".join(parts) if parts else "")
+    if code == edi_codes.SI_REPLY_REJECTED:
+        reason = dict(edi_codes.SI_REASON_CHOICES).get(line.reply_reason_code, "")
+        return "確認できない" + (f": {reason}" if reason else "")
+    return dict(edi_codes.SI_REPLY_LINE_TYPES).get(code, code)
+
+
+@register.simple_tag
+def received_self_invoice_rows(received, hide_money=False):
+    """受けた仕入明細の詳細の明細の表の行。1 行 = {line・order_line・shipped・answer}。
+
+    shipped は受注の明細の自社の出荷済みの数 (orders.services.shipped_qty。照らす元)。answer は自社の答えの字。
+    """
+    rows = []
+    for line in received.lines.all():
+        rows.append(
+            {
+                "line": line,
+                "order_line": line.order_line,
+                "shipped": services.shipped_qty(line.order_line),
+                "answer": _received_answer_text(line, hide_money),
+            }
+        )
+    return rows
+
+
+@register.simple_tag
+def received_self_invoice_registration_note(received):
+    """仕入明細の登録番号が自社の登録番号 (core.Company.registration_no) と違うときの黄の 1 行の字。同じか、どちらかが空なら空の字。"""
+    from seizou.core.services import company_or_none
+
+    own = getattr(company_or_none(), "registration_no", "") or ""
+    written = received.supplier_registration_no or ""
+    if not own or not written or own == written:
+        return ""
+    return (
+        f"仕入明細の登録番号 ({written}) が自社の登録番号 ({own}) と違います。"
+        "違っていれば、その明細を「確認できない」(訳は「その他」) で答えてください。"
+    )
+
+
+@register.simple_tag
+def received_self_invoice_compare(received):
+    """受けた仕入明細の詳細の「請求書と比べる」の枠の中身 (読むだけ)。{confirmed・invoices・invoiced・difference}。billing の無い会社では None。
+
+    confirmed = 自社が承諾した明細 (承諾と、直した内容の承諾) の金額の合計 (税抜)。invoices = 期間の重なる取消でない同じ得意先の請求書
+    (billing.services.issued_invoices_overlapping)。invoiced = その請求書の小計の合計。difference = confirmed − invoiced。
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.billing"):
+        return None
+    from seizou.billing.services import issued_invoices_overlapping
+
+    accepted = (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED)
+    confirmed = sum((line.amount for line in received.lines.all() if line.reply_type in accepted), Decimal("0"))
+    invoices = list(issued_invoices_overlapping(received.partner, received.period_from, received.period_to))
+    invoiced = sum((invoice.subtotal for invoice in invoices), Decimal("0"))
+    return {"confirmed": confirmed, "invoices": invoices, "invoiced": invoiced, "difference": confirmed - invoiced}

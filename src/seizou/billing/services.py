@@ -19,7 +19,8 @@
   出荷 1 つの金額の式は shipping.services.amount_of_shipment の 1 か所 (shipment_amount が呼ぶ。create_invoice と、請求書の新規登録の画面の
   行の金額の見込みが同じ関数を使う。一式の明細は明細を出し終えた出荷で一式の全額、ほかは 0 = 決め PRICE-1c)。
 - 消費税の計算は _tax の 1 か所 (請求書の税率ごとの合計に 1 回。インボイス制度。丸める向きは masters.services.round_tax)、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
-  都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
+  都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。仕入明細の期間は closing_period を直に呼ぶ (purchasing の create_self_invoice。
+  消費税と率は consumption_tax・consumption_tax_rate の口を通す。計算を写さない)。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
   支払の月か支払日が空 (当日でない) なら空。今ある請求書の支払期日は作った時の値のまま (計算し直さない)。
 - 入金は record_payment・record_outside_payment・cancel_payment の 3 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
@@ -860,7 +861,7 @@ def invoice_period(customer, shipments, issued_on=None):
 
 
 def closing_period(customer, day):
-    """day を含む得意先の締め期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。
+    """day を含む取引先の締め期間 (得意先の請求書と、協力企業からの仕入明細 = purchasing の create_self_invoice が使う。読むだけ)。(期間の初め, 期間の終わり) の日付の組。
 
     締日は取引先の closing_day (31 は月末。月の日数より大きければ月末)。空なら月末で締める。
     (1) 終わり: day の日が、その月の締日までなら day の月の締日、過ぎていれば翌月の締日 (年をまたぐ)。
@@ -879,7 +880,7 @@ def closing_period(customer, day):
 
 
 def payment_due_date(customer, base_date):
-    """支払期日 (読むだけ)。base_date は期間の終わり (締日でまとめる得意先は締日、都度の得意先は納品の日)。
+    """支払期日 (得意先の請求書と、協力企業からの仕入明細 = purchasing の create_self_invoice が使う。読むだけ)。base_date は期間の終わり (締日でまとめる得意先は締日、都度の得意先は納品の日)。
 
     (0) 支払の月が当日なら base_date をそのまま返す (支払日は見ない。現金払いなど)。
         支払の月か支払日が空なら None (止めない。当日のときは支払日が空でも (0) で返る)。
@@ -931,3 +932,31 @@ def _tax(customer, amounts):
     変えてよい条件 = 率が増えたら、明細の率で分けた合計ごとに同じ計算を足す。明細ごとに丸めて足す形には、法令が変わったときだけ戻す。
     """
     return round_tax(customer, sum(amounts, _ZERO) * TAX_RATE)
+
+
+def issued_invoices_overlapping(customer, period_from, period_to):
+    """取消でない請求書のうち、請求書の期間が period_from〜period_to と重なる物 (読むだけ)。並びは期間の終わり・番号。
+
+    受けた仕入明細の詳細の「請求書と比べる」の枠 (connect) が、仕入明細の期間と同じ得意先の請求書を並べて見るために呼ぶ。止めず、金額を書き換えない。
+    """
+    return (
+        Invoice.objects.filter(customer=customer, period_from__lte=period_to, period_to__gte=period_from)
+        .exclude(status=Invoice.STATUS_CANCELLED)
+        .order_by("period_to", "invoice_no")
+    )
+
+
+def consumption_tax(partner, amounts):
+    """消費税の計算の 1 か所 (_tax) を、ほかの部品 (purchasing の仕入明細) から呼ぶ口。読むだけ。
+
+    インボイス制度では消費税は税率ごとの合計に 1 回だけ計算する (決め LAW-2)。請求書と仕入明細で計算が違うと、同じ取引で相手と金額が合わないため、式を写さない。
+    """
+    return _tax(partner, amounts)
+
+
+def consumption_tax_rate():
+    """消費税の率 (百分率の Decimal。今は 10) を、ほかの部品から読む口。率は TAX_RATE の 1 か所 (写さない)。
+
+    インボイス制度では仕入明細書にも適用税率を書く (仕入明細書の記載事項は適格請求書と同じ)。
+    """
+    return TAX_RATE * 100

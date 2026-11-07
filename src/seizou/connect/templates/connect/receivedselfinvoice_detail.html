@@ -1,0 +1,53 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons connect_tags %}
+{# 受けた仕入明細の詳細 (候補 C111): core の詳細 (基本情報) の上に、記録の今の状態の黄色の 1 行 (知らせの段 5): 仕入明細の登録番号が自社の登録番号と違う・答えが得意先に届いていない。 #}
+{# タブの後に明細の表 (行番号・受注番号-行番号 (受注の詳細へ link)・品目・受領日・受領数量・単位・単価・金額・受注の数と自社の出荷済みの数・自社の答え)。 #}
+{# 金額の閲覧の無い人には単価と金額の列を見出しごと出さない。画面には EDI のコードの字を出さず、日本語の字を出す。 #}
+{# 頭の右の緑は「答える」(未回答・確かめ中のときだけ。受信した注文を受け入れられる人 = 請求書の権限)。答えが届いていなければ黄の 1 行に「送り直す」。 #}
+{# タブの後の「請求書と比べる」の枠 (金額の閲覧の無い人には出さない): 自社が承諾した明細の金額と、期間の重なる同じ得意先の請求書の小計の合計と差。知らせではなく説明の字。 #}
+{% block edit_button %}{% if object.status == "received" or object.status == "partial" %}{% can_write "billing.Invoice" as can_answer %}{% if can_answer %}<a class="btn btn-primary" href="{% url 'connect:receivedselfinvoice_answer' object.pk %}">{% icon "check" "size-4" %}答える</a>{% endif %}{% endif %}{% endblock %}
+{% block content %}<div id="receivedselfinvoice-alert">{% if object.status == "cancelled" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-cancelled-alert>{% icon "alert" "size-5" %}<span>得意先がこの仕入明細を取り消しました (第 {{ object.revision_no }} 版)。答える必要はありません。</span></div>
+{% endif %}{% received_self_invoice_registration_note object as registration_note %}{% if registration_note %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-registration-alert>{% icon "alert" "size-5" %}<span>{{ registration_note }}</span></div>
+{% endif %}{% if object.reply_message_id and not object.reply_sent_at %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-reply-alert>{% icon "alert" "size-5" %}<span>答えは得意先に届いていません。{{ object.reply_state }} 直したら「送り直す」を押してください。</span>{% can_write "billing.Invoice" as can_answer %}{% if can_answer %}
+<form method="post" action="{% url 'connect:receivedselfinvoice_reply_resend' object.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</div>
+{% endif %}</div>{{ block.super }}{% endblock %}
+{% block after_tabs %}{% received_self_invoice_rows object seizou.hide_money as rows %}
+<section id="receivedselfinvoice-lines" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="receivedselfinvoice-lines-heading">
+  <h2 id="receivedselfinvoice-lines-heading" class="text-lg font-bold">明細</h2>
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th>行</th><th>受注番号</th><th>品目</th><th>受領日</th><th class="text-right">受領数量</th><th>単位</th>{% if not seizou.hide_money %}<th class="text-right">単価</th><th class="text-right">金額</th>{% endif %}<th class="text-right">受注の数</th><th class="text-right">出荷済み</th><th>自社の答え</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="whitespace-nowrap tabular-nums">{{ row.line.line_no }}</td>
+          <td class="whitespace-nowrap font-mono"><a class="link link-primary" href="{% url 'orders:order_detail' row.order_line.order_id %}">{{ row.order_line.order.order_no }}-{{ row.order_line.line_no }}</a></td>
+          <td class="min-w-32">{{ row.order_line.item }}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ row.line.received_on|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.line.qty|comma }}</td>
+          <td class="whitespace-nowrap">{{ row.line.unit }}</td>
+          {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.line.unit_price|yen }}<span class="text-base-content/70"> / {{ row.line.price_unit_text }}</span></td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.line.amount|yen }}</td>{% endif %}
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.order_line.qty|comma }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipped|comma }}</td>
+          <td class="min-w-32">{% if row.answer %}{{ row.answer }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>{% if not seizou.hide_money and object.status != "cancelled" %}{% received_self_invoice_compare object as compare %}{% if compare %}
+<section id="receivedselfinvoice-compare" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="receivedselfinvoice-compare-heading">
+  <h2 id="receivedselfinvoice-compare-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "yen" "size-5 text-base-content/70" %}請求書と比べる</h2>
+  <dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
+    <div><dt class="text-xs text-base-content/60">仕入明細の確認済の金額 (税抜)</dt><dd class="tabular-nums">{{ compare.confirmed|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">期間の重なる請求書の小計の合計</dt><dd class="tabular-nums">{{ compare.invoiced|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">差</dt><dd class="tabular-nums">{% if compare.difference == 0 %}差はありません{% else %}{{ compare.difference|yen }}{% endif %}</dd></div>
+  </dl>
+  {% if compare.invoices %}<ul class="mt-4 text-sm">{% for invoice in compare.invoices %}<li><a class="link link-primary font-mono" href="{% url 'billing:invoice_detail' invoice.pk %}">{{ invoice.invoice_no }}</a> <span class="font-mono tabular-nums">{{ invoice.period_from|date:"Y-m-d" }}〜{{ invoice.period_to|date:"Y-m-d" }}</span> 小計 <span class="tabular-nums">{{ invoice.subtotal|yen }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="mt-4 text-sm text-base-content/70">期間の重なる請求書はありません。</p>{% endif %}
+  {% if compare.difference != 0 %}<p class="mt-2 text-xs text-base-content/70">仕入明細の期間 (受領日) と請求書の締め期間 (出荷日) がずれると差が出ます。明細ごとの数は上の表の「出荷済み」と比べてください。</p>{% endif %}
+</section>{% endif %}{% endif %}{% endblock %}

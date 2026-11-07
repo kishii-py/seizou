@@ -6,7 +6,7 @@
 - shipping_trend: 直近の月ごとの出荷の件数と数量と金額と、数量の図と金額の図の座標の字を返す。
 - production_trend: 直近の月ごとの指示書の発行の件数と数量と、完成の数 (最後の工程の実績) と、図の座標の字を返す。
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
-- payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
+- payable_this_month: 今月の支払の見込み (受入日が今月の受入の支払の見込みの金額 (purchasing.services.annotate_payable。相手が仕入明細で承諾した明細は仕入明細の金額) の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
 - orders_month_compare・payable_month_compare・payments_month_compare: 「今月の◯◯」のカードの、先月の同じ日までとの差と、今月の日ごとの数と細い線 (sparkline) の座標
   (本人の決め 11-07 18:2x〜18:4x「2もいい」。受け渡しの seizou-部品の6案-20261107/指示書.md の 3)。同じ日の読み方は same_day_last_month。
@@ -411,9 +411,10 @@ def without_amounts(shipping) -> dict | None:
 
 
 def payable_this_month(today=None) -> Decimal | None:
-    """今月の支払の見込み = 受入日が今月 (1 日から月末まで) の受入の金額の合計。受入が無ければ 0。
+    """今月の支払の見込み = 受入日が今月 (1 日から月末まで) の受入の支払の見込みの金額 (purchasing.services.annotate_payable。
+    相手が仕入明細で承諾した明細は仕入明細の金額) の合計。受入が無ければ 0。受入の一覧の上の表 (payable_by_partner) と同じ数え方。
 
-    保存した金額 (受け入れた数 × 発注の単価を purchasing.services が丸めた物) を足すだけで、DB で掛け算をしない。
+    保存した金額 (受け入れた数 × 発注の単価を purchasing.services が丸めた物と、仕入明細の明細の金額) を選んで足すだけで、DB で掛け算をしない。
     受入の表 (purchasing) が無いか DB が読めなければ None (画面はカードを出さない。偽の 0 を置かない)。
     """
     receipt_model = _model("purchasing", "Receipt")
@@ -423,9 +424,11 @@ def payable_this_month(today=None) -> Decimal | None:
         today = timezone.localdate()
     start = date(today.year, today.month, 1)
     end = _first_of_next_month(today.year, today.month)  # この日は含まない
+    from seizou.purchasing.services import annotate_payable
+
     try:
-        total = receipt_model._default_manager.filter(received_on__gte=start, received_on__lt=end).aggregate(
-            total=Sum("amount")
+        total = annotate_payable(receipt_model._default_manager.filter(received_on__gte=start, received_on__lt=end)).aggregate(
+            total=Sum("payable_amount")
         )["total"]
     except DatabaseError:
         return None
@@ -565,8 +568,10 @@ def payable_month_compare(today=None) -> dict | None:
         return None
     if today is None:
         today = timezone.localdate()
+    from seizou.purchasing.services import annotate_payable
+
     try:
-        return _month_compare(receipt_model._default_manager.all(), "received_on", today, amount_field="amount")
+        return _month_compare(annotate_payable(receipt_model._default_manager.all()), "received_on", today, amount_field="payable_amount")
     except DatabaseError:
         return None
 
