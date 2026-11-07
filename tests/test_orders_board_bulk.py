@@ -307,7 +307,7 @@ def test_r01_stops_or_warns_for_whole_bulk(settings, logged_in, lines):
     settings.SEIZOU = {"over_shipment": "stop"}
     body = logged_in.post(_bulk_url(a, b), _post((a, 10), (b, 7))).content.decode()
     assert Shipment.objects.count() == before
-    assert f"{b.order.order_no} の {b.line_no} 行目: 出荷の数の合計 (11) が受注の数 (10) を超えます。" in body
+    assert f"{b.order.order_no} の {b.line_no} 行目: 出荷済み 4 と今回の 7 で、出荷の数の合計 (11) が受注の数 (10) を超えます。" in body
     assert f"{a.order.order_no} の {a.line_no} 行目:" not in body
 
     settings.SEIZOU = {"over_shipment": "warn"}

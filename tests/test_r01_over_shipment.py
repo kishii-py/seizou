@@ -97,6 +97,30 @@ def test_r01_off_is_silent(settings, user, shipped_four):
     assert checks.run("shipping.ship", {"order_line": shipped_four, "qty": 7}, user) == []
 
 
+@pytest.mark.django_db
+def test_r01_message_breaks_down_total(settings, user, shipped_four):
+    # 初見テスト R5 の V105 (候補 C20 の 4): 出荷済みがあれば、合計の内訳 (出荷済みと今回) を文の頭に書く
+    settings.SEIZOU = {"over_shipment": "warn"}
+    (warning,) = checks.run("shipping.ship", {"order_line": shipped_four, "qty": Decimal("7")}, user)
+    assert warning.message == (
+        "出荷済み 4 と今回の 7 で、出荷の数の合計 (11) が受注の数 (10) を超えます。出荷できる残りは 6 です。数を確かめてください。"
+    )
+    settings.SEIZOU = {"over_shipment": "stop"}
+    with pytest.raises(CheckViolation) as caught:
+        checks.run("shipping.ship", {"order_line": shipped_four, "qty": Decimal("7")}, user)
+    assert caught.value.message.startswith("保存できません。出荷済み 4 と今回の 7 で、出荷の数の合計 (11)")
+
+
+@pytest.mark.django_db
+def test_r01_message_without_shipped_keeps_plain_total(settings, user, line):
+    # 出荷済みが 0 なら合計は今回の数なので、内訳を付けない (今の字のまま)
+    settings.SEIZOU = {"over_shipment": "warn"}
+    (warning,) = checks.run("shipping.ship", {"order_line": line, "qty": Decimal("11")}, user)
+    assert warning.message == (
+        "出荷の数の合計 (11) が受注の数 (10) を超えます。出荷できる残りは 10 です。数を確かめてください。"
+    )
+
+
 # --- 出荷の入力の画面 (動画の場面 4) ---
 
 
