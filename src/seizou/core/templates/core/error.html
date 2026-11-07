@@ -4,7 +4,9 @@
 誤りの画面 (404・500・403・403_csrf) の土台。ログインしていなくても、request の無い 500 でも描ける形にする:
 左のメニューと上の帯を出さず (block body を上書き)、中央のカード 1 枚に題・説明・「最初の画面へ」だけを置く。
 URL は引けなくても止めない (url ... as)。誤りの番号は小さく添えるだけ。
+右下の「AI に質問」の丸 (base.html の block assistant_float) は空にして出さない。訳: 誤りの画面に AI の入口を置かない (作者の決め 11-07 23:4x)。
 {% endcomment %}
+{% block assistant_float %}{% endblock %}
 {% block title %}{% block error_title %}{% endblock %}{% endblock %}
 {% block body %}
 {% url 'core:home' as home_url %}

@@ -79,7 +79,8 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
 {# 小窓の枠はここの 1 か所。中身は <app>/_modal.html か core/_modal.html を htmx で入れる。Esc と外側の押下で閉じ、開いたらカーソルは閉じるボタン (autofocus)。 #}
 <dialog id="seizou-modal" class="modal" aria-label="小窓"><div id="seizou-modal-box" class="modal-box max-w-lg rounded-xl p-6"></div><form method="dialog" class="modal-backdrop"><button tabindex="-1">閉じる</button></form></dialog>
 {# 済んだ事の知らせ (messages) は右上の toast。block body の外に置き、ログインの画面でも出す。 #}
-{% if "assistant" in seizou.parts and user.is_authenticated %}{% include "assistant/_panel.html" %}{% endif %}
+{# 右下の「AI に質問」の丸。block assistant_float は、誤りの画面 (core/error.html) が空にして丸を出さないための名前 (訳: 誤りの画面に AI の入口を置かない = 作者の決め 11-07 23:4x)。 #}
+{% block assistant_float %}{% if "assistant" in seizou.parts and user.is_authenticated %}{% include "assistant/_panel.html" %}{% endif %}{% endblock %}
 {% include "core/_toasts.html" %}
 {# 右上の知らせの写す元 (seizou-modal.js が写して字を入れる。_toasts.html と同じ見た目)。2 種類: 小窓の入力を保存した後の知らせ (success・warning。HX-Trigger の seizou:saved) と、画面の一部だけを差し替える応答の止まった知らせ (stop) と確かめ (check。応答の見出し HX-Trigger の seizou:notice。core.views.add_notice_trigger が付ける)。JS は class を触らない。 #}
 {# 写すのは data-toast-level の合う物。右上の箱 (#seizou-toasts) が既にあればその中へ、無ければ箱 (data-toast-box) に id を付けて body へ入れる。元の箱に id を書かない (知らせの無い画面に id を出さない)。 #}
