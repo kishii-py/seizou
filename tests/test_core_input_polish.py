@@ -3,6 +3,8 @@
 JS は動かさず、字と読み込みの並びと node --check を見る (ブラウザの確かめは本体の手)。
 曜日は filter weekday_ja と、一覧の日付の枡・詳細の日付の項目・CSV (曜日を足さない) を見る。
 試験の画面は部品マスターの休日 (作り物の休日の名前)。
+納期を一番見る画面 (生産管理ボード・受注と発注の一覧・ダッシュボード・詳細の頭の札・出荷を選ぶ表) の曜日は、
+末尾の W04 の段 (決め N132 の当て漏れ。指示書 11-07 の R3)。
 """
 
 import csv
@@ -10,19 +12,27 @@ import io
 import re
 import shutil
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from datetime import timezone as dt_timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 
 import seizou.core
 from seizou.core.templatetags.seizou_tags import weekday_ja
 from seizou.core.views import BaseListView
+from seizou.masters import services as masters_services
 from seizou.masters.models import Holiday
+from seizou.orders import services as orders_services
+from seizou.orders.templatetags.orders_detail import order_head_chips
+from seizou.purchasing import services as purchasing_services
+from seizou.purchasing.templatetags.purchasing_tags import purchase_order_head_chips
+from seizou.shipping import services as shipping_services
 
 CORE = Path(seizou.core.__file__).resolve().parent
 FORM_GUARD = CORE / "static" / "js" / "seizou-form-guard.js"
@@ -167,3 +177,108 @@ def test_csv_has_no_weekday(logged_in, holiday):
     rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
     assert rows[1][0] == "2026-11-03"
     assert "(火)" not in response.content.decode("utf-8-sig")
+
+
+# --- W04: 納期を一番見る画面にも曜日 (決め N132「一覧と盤と詳細の日付に曜日を添える」の当て漏れ。指示書 11-07 の R3) ---
+# 土台 (core/_rows.html) を写した部品ごとの行のテンプレートと、ダッシュボードの表・詳細の頭の札・出荷を選ぶ表に曜日が無かった。
+# 生産管理の人が「2026-11-14」を見て土曜だと気づかず、前の金曜までの段取りを組みそこねないように。CSV と並べ替えは変えない。
+
+DUE = date(2026, 11, 14)  # 土曜
+ORDER_DAY = date(2026, 11, 2)  # 月曜
+SHIPPED = date(2026, 11, 5)  # 木曜
+SAT = '<span class="text-xs text-base-content/60">(土)</span>'
+MON = '<span class="text-xs text-base-content/60">(月)</span>'
+THU = '<span class="text-xs text-base-content/60">(木)</span>'
+
+
+@pytest.fixture
+def customer(user):
+    return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+
+
+@pytest.fixture
+def item(user):
+    return masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+
+
+@pytest.fixture
+def order(user, customer, item):
+    """受注日 11-02 (月)・納期 11-14 (土) の明細 1 行の受注。"""
+    return orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": DUE}],
+        user,
+        order_date=ORDER_DAY,
+    )
+
+
+@pytest.fixture
+def purchase_order(user, item):
+    """発注日 11-02 (月)・納期 11-14 (土) の明細 1 行の発注 (つながりの無い協力企業なので送らない)。"""
+    partner = masters_services.create_partner({"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user)
+    return purchasing_services.create_purchase_order(
+        partner,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": DUE}],
+        user,
+        order_date=ORDER_DAY,
+        send=False,
+    )
+
+
+def _tr(body, pk):
+    """一覧の行 (<tr id="row-<pk>" ...>...</tr>) の HTML。"""
+    match = re.search(rf'<tr id="row-{pk}".*?</tr>', body, re.S)
+    assert match, f"row-{pk} が無い"
+    return match.group(0)
+
+
+def test_board_dates_have_weekday_but_csv_does_not(logged_in, order):
+    line = order.lines.get()
+    row = _tr(text(logged_in.get(reverse("orders:orderline_list"))), line.pk)
+    assert '<span class="font-mono tabular-nums">2026-11-14</span> ' + SAT in row  # 納期
+    assert '<span class="font-mono tabular-nums">2026-11-02</span> ' + MON in row  # 受注日
+    csv_body = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode("utf-8-sig")
+    assert "2026-11-14" in csv_body and "(土)" not in csv_body and "(月)" not in csv_body
+
+
+def test_order_and_purchase_order_lists_have_weekday(logged_in, order, purchase_order):
+    row = _tr(text(logged_in.get(reverse("orders:order_list"))), order.pk)
+    assert '<td class="whitespace-nowrap font-mono tabular-nums">2026-11-02 ' + MON + "</td>" in row
+    row = _tr(text(logged_in.get(reverse("purchasing:purchaseorder_list"))), purchase_order.pk)
+    assert '<td class="whitespace-nowrap font-mono tabular-nums">2026-11-02 ' + MON + "</td>" in row
+
+
+def test_head_chips_earliest_due_has_weekday(logged_in, order, purchase_order):
+    chips = {chip["label"]: chip["value"] for chip in order_head_chips(order)}
+    assert chips["一番早い納期"] == "2026-11-14 (土)"
+    chips = {chip["label"]: chip["value"] for chip in purchase_order_head_chips(purchase_order)}
+    assert chips["一番早い納期"] == "2026-11-14 (土)"
+    # 詳細の画面の札と、右の列の「日付」のカードが同じ日と曜日を出す
+    body = text(logged_in.get(reverse("orders:order_detail", args=[order.pk])))
+    assert "2026-11-14 (土)" in body
+    assert '<span class="font-mono tabular-nums">2026-11-14</span> ' + SAT in body
+
+
+def test_home_due_alert_and_recent_order_dates_have_weekday(logged_in, user, customer, item):
+    today = timezone.localdate()
+    late_due = today - timedelta(days=3)
+    orders_services.create_order(
+        customer,
+        [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": late_due}],
+        user,
+        order_date=today,
+    )
+    body = text(logged_in.get(reverse("core:home")))
+    late_day = f'<span class="text-xs text-base-content/60">({weekday_ja(late_due)})</span>'
+    today_day = f'<span class="text-xs text-base-content/60">({weekday_ja(today)})</span>'
+    assert f"{late_due:%Y-%m-%d} {late_day}</td>" in body  # 納期アラートの納期
+    assert f"{today:%Y-%m-%d} {today_day}</td>" in body  # 最近の受注の受注日
+
+
+def test_shipment_pick_tables_have_weekday(logged_in, user, customer, order):
+    shipment = shipping_services.ship(order.lines.get(), Decimal("4"), SHIPPED, user)
+    cell = '<td class="whitespace-nowrap">2026-11-05 ' + THU + "</td>"
+    assert cell in text(logged_in.get(reverse("shipping:deliverynote_create")))  # 納品書を作る
+    # 請求書の候補は納品書の出た出荷だけなので、納品書を作ってから見る
+    shipping_services.create_delivery_note(customer, [shipment], user)
+    assert cell in text(logged_in.get(reverse("billing:invoice_create")))  # 請求書の新規登録

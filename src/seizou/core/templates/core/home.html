@@ -138,7 +138,7 @@ if (!window.seizouStatHelp) {
           {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
             <td class="whitespace-nowrap"><span class="badge badge-sm badge-soft badge-error">{{ row.days }} 日遅れ</span></td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}{% with day=row.due_date|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
             <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
@@ -149,7 +149,7 @@ if (!window.seizouStatHelp) {
           {% if row.order_url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.order_url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if row.order_url %}<a class="link link-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.order_url }}">{{ row.order_no }}</a>{% else %}{{ row.order_no }}{% endif %}</td>
             <td class="whitespace-nowrap">{% if row.days == 0 %}<span class="badge badge-sm badge-soft badge-warning">今日</span>{% else %}<span class="badge badge-sm badge-soft badge-warning">あと {{ row.days }} 日</span>{% endif %}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.due_date|date:"Y-m-d" }}{% with day=row.due_date|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.customer }}">{% master_link row.customer %}</span></td>
             <td class="whitespace-nowrap font-mono">{% master_link row.item row.item.part_no %}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ row.item.name }}">{{ row.item.name }}</span></td>
@@ -260,7 +260,7 @@ if (!window.seizouStatHelp) {
           {% for order in recent_orders %}
           {% if order.url %}<tr class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ order.url }}'}">{% else %}<tr class="row-hover h-10">{% endif %}
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
-            <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
+            <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}{% with day=order.obj.order_date|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
             {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>{% endif %}
             <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>

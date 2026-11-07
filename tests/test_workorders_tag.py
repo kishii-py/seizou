@@ -409,3 +409,42 @@ def test_scan_over_plan_shows_negative_remaining(logged_in, user, workorder):
     assert "実績 5 / 予定 4・残 -1" in _card_text(cut_card)
     assert "aria-current" not in cut_card
     assert 'aria-current="step"' in bend_card
+
+
+# --- 離れて読む字 (見つけ print-06。指示書 11-07 の予備の束の R8) ---
+
+
+def _meta_row(body, label):
+    """要点の表の行 (<tr …><th>label</th>…</tr>) の HTML。要点の表は外の表の行の中にあるので、別の <tr を含まない行だけを取る。"""
+    rows = [row for row in re.findall(r"<tr[^>]*>(?:(?!<tr\b).)*?</tr>", body, re.S) if f"<th>{label}</th>" in row]
+    assert len(rows) == 1, (label, rows)
+    return rows[0]
+
+
+@pytest.mark.django_db
+def test_tag_key_fields_are_big_and_title_is_compact(logged_in, workorder):
+    """品番・数量・納期は大きい字の行 (report-big)、ほかの行は本文のまま、題は小さい (report-title-compact)。数量には単位。"""
+    body = logged_in.get(reverse("workorders:workorder_tag", args=[workorder.pk])).content.decode()
+    for label in ("品番", "数量", "納期"):
+        assert _meta_row(body, label).startswith('<tr class="report-big">'), label
+    for label in ("発行日", "品名", "得意先", "受注番号", "得意先の注文番号"):
+        assert _meta_row(body, label).startswith("<tr>"), label
+    assert "<td>4 個</td>" in _meta_row(body, "数量")
+    assert "<td>2026年11月20日</td>" in _meta_row(body, "納期")
+    assert '<h1 class="report-title report-title-compact">現品票</h1>' in body
+    assert workorder_tag_context(workorder)["tag"]["unit"] == "個"
+
+
+def test_report_css_makes_key_fields_bigger_than_number_and_title():
+    """report.css の字の大きさの順: 要点の行 (.report-big) > 指示書番号 > 現品票とラベルの題 > 本文。要点は太字。"""
+    body, _ = reports.fetch_local(reports.BASE_URL + "static/css/report.css")
+    css = body.decode("utf-8")
+
+    def size(selector):
+        match = re.search(r"(?m)^" + re.escape(selector) + r" \{[^}]*?font-size: ([\d.]+)pt", css)
+        assert match, selector
+        return float(match.group(1))
+
+    assert size(".report-big td") > size(".report-tag-number") > size(".report-title-compact") > size("html")
+    assert "font-weight: 700" in re.search(r"(?m)^\.report-big td \{[^}]*\}", css).group(0)
+    assert ".report-label-qty" not in css

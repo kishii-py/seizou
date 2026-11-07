@@ -6,6 +6,7 @@ core/_rows.html の「行がある時」の部分 (表の箱・見出し・ペ�
   計画の終了日が納期より後なら印、判断は印の code ごとに色の印 (字は orders.board.JUDGEMENTS)。
 - 数量・出荷済み・検収・残・在庫は土台の数の欄 (columns の kind = number。右寄せと負の赤は土台)。納期までも kind = number のまま
   (CSV と並び替えは稼働日の数のまま) で、枡の字だけ名前で出す。検収が 0 の行・在庫の無い行・納期の無い行の「—」も名前で出す。
+- 日付の枡 (納期・計画の終了日・受注日) は土台と同じく曜日の 1 字を添える (決め N132。W04 の直し 11-07)。CSV は日付のまま。
 - 在庫: stock の部品の在庫数。合計は出さない (合計の行の枡は空)。
 - 預かり (N184。決め 11-06 18:3x): receiving の引当の合計。0 と部品の無い会社は「—」。合計は出さない (合計の行の枡は空)。
   引当の合計が受注の数より少ない行には、値の横に「預かり待ち」の札 (会社の設定 receiving_required が off でないときだけ = 本体の決め 11-06 20:1x。判断は orders.board.BoardRow.receiving_waiting)。
@@ -43,7 +44,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {# 欄の dict に列の名前が無いので、同じ番号の列 (columns) を内側の for で探して名前を見る。内側の forloop.parentloop が欄の for。 #}
       {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
       {% if col.name == "order__order_no" %}<td class="whitespace-nowrap font-mono">{% if bulk_ship_url and can_ship or bulk_po_url and can_po %}{% if row.obj.order.status != "cancelled" and row.obj.remaining_total > 0 %}<input type="checkbox" class="sr-only" name="line" value="{{ row.pk }}" form="board-bulk" aria-label="この行を選ぶ" data-board-pick>{% endif %}{% endif %}<a class="link link-primary focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'orders:order_detail' row.obj.order_id %}">{{ cell.value|default_if_none:"" }}</a></td>
-      {% elif col.name == "due_date" or col.name == "board__plan_end" or col.name == "order__order_date" %}{% if cell.value %}<td class="whitespace-nowrap"><span class="font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</span>{% if col.name == "board__plan_end" and row.obj.board.plan_late %} <span class="badge badge-sm badge-soft badge-warning">納期より後</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/60">—</span></td>{% endif %}
+      {% elif col.name == "due_date" or col.name == "board__plan_end" or col.name == "order__order_date" %}{% if cell.value %}<td class="whitespace-nowrap"><span class="font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</span>{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% if col.name == "board__plan_end" and row.obj.board.plan_late %} <span class="badge badge-sm badge-soft badge-warning">納期より後</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap"><span class="text-base-content/60">—</span></td>{% endif %}
       {% elif col.name == "board__days_left" and cell.value is None %}<td class="whitespace-nowrap text-right"><span class="text-base-content/60">—</span></td>
       {% elif col.name == "board__days_left" %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.negative %}<span class="text-error">{{ row.obj.board.days_left_label }}</span>{% else %}{{ row.obj.board.days_left_label }}{% endif %}</td>
       {% elif col.name == "board__acceptance_total" and not cell.value %}<td class="whitespace-nowrap text-right"><span class="text-base-content/60">—</span></td>
@@ -54,7 +55,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
       {% elif col.name == "board__judgement" %}<td class="whitespace-nowrap">{% with code=row.obj.board.judgement_code %}{% if code == "late" %}<span class="badge badge-soft badge-error">{{ cell.value }}</span>{% elif code == "ship" %}<span class="badge badge-soft badge-success">{{ cell.value }}</span>{% elif code == "need_workorder" %}<span class="badge badge-soft badge-warning">{{ cell.value }}</span>{% elif code == "making" %}<span class="badge badge-soft badge-primary">{{ cell.value }}</span>{% else %}<span class="badge badge-ghost text-base-content/60">{{ cell.value }}</span>{% endif %}{% endwith %}</td>
       {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
       {% elif cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
-      {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}</td>
+      {% elif cell.date %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
       {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
       {% elif cell.code %}<td class="whitespace-nowrap font-mono"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
       {% elif cell.boolean %}<td class="whitespace-nowrap">{% bool_mark cell.value %}</td>

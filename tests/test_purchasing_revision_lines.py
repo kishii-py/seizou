@@ -127,7 +127,7 @@ def test_next_receipt_skips_cancelled_line(order):
 def test_aside_and_head_chips_leave_out_cancelled_line(order):
     po = PurchaseOrder.objects.get(pk=order.pk)
     chips = {chip["label"]: chip["value"] for chip in purchasing_tags.purchase_order_head_chips(po)}
-    assert chips["一番早い納期"] == "2026-11-20"
+    assert chips["一番早い納期"] == "2026-11-20 (金)"  # 曜日を添える (決め N132。W04 の直し 11-07)
     assert chips["合計"] == "¥1,000"
     aside = purchasing_tags.purchase_order_aside(po, [])
     cards = {card["title"]: card for card in aside["cards"]}

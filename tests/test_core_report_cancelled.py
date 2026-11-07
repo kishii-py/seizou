@@ -96,8 +96,8 @@ def _unavailable(template, context):
 
 
 def _title(body):
-    """帳票の題の行 (<h1 class="report-title">…</h1>) の中身を返す。"""
-    found = re.findall(r'<h1 class="report-title">(.*?)</h1>', body, re.S)
+    """帳票の題の行 (<h1 class="report-title">…</h1>。現品票の題は report-title-compact も持つ) の中身を返す。"""
+    found = re.findall(r'<h1 class="report-title[^"]*">(.*?)</h1>', body, re.S)
     assert len(found) == 1, found
     return found[0]
 

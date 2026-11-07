@@ -20,7 +20,7 @@ from decimal import Decimal
 from django import template
 
 from seizou.core import edi_codes
-from seizou.core.templatetags.seizou_tags import comma, yen
+from seizou.core.templatetags.seizou_tags import comma, weekday_ja, yen
 
 register = template.Library()
 
@@ -203,14 +203,14 @@ def purchase_order_aside(purchase_order, fields, hide_money=False):
 def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
     """{% purchase_order_head_chips object seizou.hide_money as head_chips %}。発注の詳細の頭の要点の札 (N163)。読むだけ。
 
-    札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・
+    札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 決め N132。無ければ札を出さない)・
     合計 (明細の金額の合計。頭に ¥。明細があり、金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (purchase_order_aside) は残す (札はその要約)。
     """
     lines = _counted_lines(purchase_order)
     dues = sorted(line.due_date for line in lines if line.due_date)
     chips = [{"label": "協力企業", "value": purchase_order.partner.name}]
     if dues:
-        chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d}"})
+        chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d} ({weekday_ja(dues[0])})"})
     # 版が 2 以上なら「版」の札を「合計」の札の前に入れる (土台は札を 3 つまで出すので、後ろに足すと出ない。押し出された合計は右の列の「金額」のカードに出る)。
     state = revision_state(purchase_order)
     if state is not None:

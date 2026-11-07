@@ -4,6 +4,7 @@ Django の test client で HTML を見る。印 pdf の試験は WeasyPrint と 
 印刷の見た目 (A4 縦の上半分に収まるか・QR の大きさ) とスマホのカメラで読めるかは朝に目で見る。
 """
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -207,3 +208,26 @@ def test_delivery_note_pdf_fallback_has_qr(monkeypatch, logged_in, note):
 @pytest.mark.django_db
 def test_delivery_note_context_has_no_qr_key(note):
     assert set(delivery_note_context(note)) == {"company", "note", "customer", "lines", "total", "cancelled"}
+
+
+# --- 離れて読む字 (見つけ print-06。指示書 11-07 の予備の束の R8) ---
+
+
+def _meta_row(body, label):
+    """要点の表の行 (<tr …><th>label</th>…</tr>) の HTML。要点の表は外の表の行の中にあるので、別の <tr を含まない行だけを取る。"""
+    rows = [row for row in re.findall(r"<tr[^>]*>(?:(?!<tr\b).)*?</tr>", body, re.S) if f"<th>{label}</th>" in row]
+    assert len(rows) == 1, (label, rows)
+    return rows[0]
+
+
+@pytest.mark.django_db
+def test_label_key_fields_are_big_and_title_is_compact(logged_in, company_row, shipment):
+    """品番・数量・得意先の注文番号は大きい字の行 (report-big)、ほかの行は本文のまま、題は小さい (report-title-compact)。"""
+    body = logged_in.get(reverse("shipping:shipment_label", args=[shipment.pk])).content.decode()
+    for label in ("品番", "数量", "得意先の注文番号"):
+        assert _meta_row(body, label).startswith('<tr class="report-big">'), label
+    for label in ("出荷番号", "出荷日", "受注番号", "品名"):
+        assert _meta_row(body, label).startswith("<tr>"), label
+    assert "<td>37 箱</td>" in _meta_row(body, "数量")
+    assert '<h1 class="report-title report-title-compact">出荷ラベル</h1>' in body
+    assert "report-label-qty" not in body

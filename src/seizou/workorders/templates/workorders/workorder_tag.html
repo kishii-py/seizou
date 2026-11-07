@@ -5,10 +5,12 @@
 view が qr_text (読み取りの着地の絶対 URL) を足す。company は会社の名前だけ (社内の札なので住所・電話・振込先・ロゴは出さない)。
 数は context の値をそのまま出し、ここでは計算しない。
 見た目は core の report.css だけを使う (画面の CSS は使わない)。A4 縦の上半分に収める。並べるのは表だけ。
+離れて読む品番・数量・納期の行は report-big (20pt の太字)、題は block report_heading の上書きで小さく (report-title-compact)、
+数量には受注の明細の単位を添える (見つけ print-06。現場の人は棚や台車の上の札を 1〜2 m 離れて読む)。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
 {% endcomment %}
 {% block title %}現品票 {{ tag.number }}{% endblock %}
-{% block report_title %}現品票{% endblock %}
+{% block report_heading %}<h1 class="report-title report-title-compact">現品票{% if cancelled %}<span class="report-cancelled">取消</span>{% endif %}</h1>{% endblock %}
 {% block head %}
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-tag-number">{{ tag.number }}</p>
@@ -21,10 +23,10 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
   <tr>
     <td class="report-tag-summary">
       <table class="report-meta">
-        <tr><th>品番</th><td>{{ tag.part_no }}</td></tr>
+        <tr class="report-big"><th>品番</th><td>{{ tag.part_no }}</td></tr>
         <tr><th>品名</th><td>{{ tag.item_name }}</td></tr>
-        <tr><th>数量</th><td>{{ tag.qty|floatformat:"-2g" }}</td></tr>
-        <tr><th>納期</th><td>{{ tag.due_date|date:"Y年n月j日"|default:"—" }}</td></tr>
+        <tr class="report-big"><th>数量</th><td>{{ tag.qty|floatformat:"-2g" }} {{ tag.unit }}</td></tr>
+        <tr class="report-big"><th>納期</th><td>{{ tag.due_date|date:"Y年n月j日"|default:"—" }}</td></tr>
         <tr><th>得意先</th><td>{{ tag.customer }}</td></tr>
         <tr><th>受注番号</th><td>{{ tag.order_no }}</td></tr>
         <tr><th>得意先の注文番号</th><td>{{ tag.customer_order_no|default:"—" }}</td></tr>
