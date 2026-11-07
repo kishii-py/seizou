@@ -20,17 +20,19 @@ import re
 
 from playwright.sync_api import expect
 
-from .conftest import fill_shipment, login, new_order, seed_name, shot, unique_mark
+from .conftest import fill_shipment, login, new_customer, new_order, shot, unique_mark
 
-CUSTOMER_CODE = "C001"
 PART_NO = "WK-1001"
 SUBMIT = "form[data-enter-guard] button.btn-primary[type=submit]"
 EMPTY_AMOUNT = "金額を入れてください。"
 
 
 def new_invoice(page, company, mark: str) -> str:
-    """数量 10 の受注を入れて 4 を出荷し、納品書を出して請求書を作る (E-29 と同じ手順)。請求書の詳細の URL を返す。"""
-    customer = seed_name(company, "partners", CUSTOMER_CODE)
+    """数量 10 の受注を入れて 4 を出荷し、納品書を出して請求書を作る (E-29 と同じ手順)。請求書の詳細の URL を返す。
+
+    得意先は回すたびに新しく作る (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。この試験は入金を残すので作り直しも通らない)。
+    """
+    customer = new_customer(page, company, mark)
     order_no = new_order(page, company, customer=customer, part_no=PART_NO, qty=10, unit_price=480, mark=mark)
     fill_shipment(page, company, order_no=order_no, qty=4)
     expect(page.locator(".seizou-toast[role=status]")).to_be_visible()

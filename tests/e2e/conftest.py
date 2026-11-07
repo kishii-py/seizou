@@ -451,6 +451,22 @@ def new_order(
     return page.locator("h1").inner_text().strip()
 
 
+def new_customer(page: Page, company: Company, mark: str) -> str:
+    """取引先の新規登録 (`/masters/partners/new/`) で得意先を 1 つ作り、名前を返す。
+
+    請求書を作る E2E が、同じ得意先の同じ締め期間に請求書を 2 枚作ろうとして R23 で止まらないよう、回すたびに新しい
+    得意先を作る (締日・支払・端数は画面の既定のまま)。取引先コードは 10 字以内なので「E」+ 日時分秒にする。
+    """
+    _go_if_not_there(page, company, "/masters/partners/new/")
+    name = f"E2E 得意先 {mark}"
+    page.fill("input[name=code]", f"E{datetime.now():%d%H%M%S}")
+    page.fill("input[name=name]", name)
+    page.select_option("select[name=role]", value="customer")
+    _click_save(page)
+    page.wait_for_url(re.compile(r"/masters/partners/\d+/$"), timeout=SAVE_WAIT_MS)
+    return name
+
+
 def send_purchase_order(
     page: Page, company: Company, *, partner_code: str, part_no: str, qty, mark: str, unit_price=100
 ) -> str:
