@@ -180,6 +180,8 @@ if not DEBUG:
 
 画面ごとの説明書の断片が無い置き場 (この版より前に、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
 
+`settings.py` に `AUTH_PASSWORD_VALIDATORS` の行が無い置き場 (この版より前に `seizou new` で作った物) は、`from seizou.parts import PARTS` の次の行に `from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと `manage.py changepassword` も、アカウント管理の画面と同じ決まり (8 字以上・よくある語でない・数字だけでない・ID に似ていない) で断ります。
+
 ## 困ったとき
 
 `manage.py` が `KeyError: 'SECRET_KEY'` で止まるときは、置き場に `.env` が無いか、`.env` に `SECRET_KEY=` の行がありません。`.env` は控えに入らないので、別に写しておいた `.env` を置き場に戻してください。このときは `settings.py` が先に止まるので、点検も動きません。

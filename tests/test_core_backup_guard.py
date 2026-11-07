@@ -14,6 +14,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from seizou.core import backup
+from seizou.core.passwords import VALIDATORS
 from tests.test_core_backup import hand_made_backup, retreats
 from tests.test_core_doctor import fix_lines, good_lines, run_doctor
 
@@ -37,6 +38,7 @@ def site(settings, tmp_path):
     settings.SESSION_COOKIE_SECURE = True
     settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {"id": "sample_co", "port": 8010}
+    settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
     env = site / ".env"
     if os.name == "nt":
         env.write_text(f"SECRET_KEY={ENV_VALUE}\n", encoding="utf-8")
