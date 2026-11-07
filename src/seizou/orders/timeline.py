@@ -287,8 +287,8 @@ def reached_stages(line) -> frozenset[int]:
     """受注の明細 1 行が実際に通った段の集まり (1〜8 の数。読むだけ。C06)。
 
     受注 = いつも / 指示 = 取消でない指示書がある / 着手 = 実績が 1 件でもある取消でない指示書がある
-    (BoardRow.started_count。指示書の進みの状態の着手済か完了。C27) / 完了 = 全部の工程で実績が予定に達した
-    (生産管理ボードの「進捗」の「完了」と同じ読み方 = BoardRow.current_step が None) / 出荷 = 出荷がある /
+    (BoardRow.started_count。指示書の進みの状態の着手済か完了。C27) / 完了 = 全部の指示書の最後の工程に完了の印の付いた実績がある
+    (生産管理ボードの「進捗」の「完了」と同じ = BoardRow.all_done。PROG-1a) / 出荷 = 出荷がある /
     納品 = 出荷が取消でない納品書に入った / 請求 = 出荷か、この明細の一式の行が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
     例: 指示書の無い明細の出荷は {1, 5}、指示書を発行して未着手のまま出荷は {1, 2, 5}。BoardRow は 1 回だけ作る。
     """
@@ -298,7 +298,7 @@ def reached_stages(line) -> frozenset[int]:
         reached.add(2)
     if board.started_count:
         reached.add(3)
-    if board.steps and board.current_step is None:
+    if board.all_done:
         reached.add(4)
     shipments = _all(line, "shipments")
     if shipments:

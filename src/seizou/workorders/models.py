@@ -5,19 +5,32 @@
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 書くときは workorders.services を通す。
 指示書の進みの状態 (未着手・着手済・完了・取消) は列に持たず、工程の実績から WorkOrder.progress_state で毎回出す
-(初見テスト R5 の候補 C27。本人の決め 11-07 00:36 = WO-1 b)。
+(初見テスト R5 の候補 C27。本人の決め 11-07 00:36 = WO-1 b)。完了は工程の実績の完了の印から出す (PROG-1。初見テスト R5 の候補 C103)。
 """
 
 from decimal import Decimal
+from typing import NamedTuple
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from django.db.models import Sum, Value
+from django.db.models import Exists, OuterRef, Sum, Value
 from django.db.models.functions import Coalesce
 
 #: 実績の合計の型 (WorkOrderStep.planned_qty と同じ桁)
 _QTY_FIELD = models.DecimalField(max_digits=12, decimal_places=2)
 _ZERO = Decimal("0")
+
+
+class StepTotals(NamedTuple):
+    """工程 1 つの実績のまとめ (読むだけ)。recorded = 良品の合計・defect = 不良の合計・completed = 完了の印の付いた実績がある。"""
+
+    recorded: Decimal = Decimal("0")
+    defect: Decimal = Decimal("0")
+    completed: bool = False
+
+
+#: 実績の無い工程 (辞書に無い工程と、進捗の部品が無い置き場)。
+NO_TOTALS = StepTotals()
 
 
 def _dec(value) -> Decimal:
@@ -92,37 +105,41 @@ class WorkOrder(models.Model):
     def progress_state_of(cls, status, steps, totals) -> str:
         """指示書の進みの状態の値 (PROGRESS_LABELS の鍵)。決め方はここの 1 か所 (詳細・一覧・小窓・生産管理ボード・段の帯・生産計画の盤)。
 
-        status は指示書の状態の値、steps は指示書の工程の並び (順は問わない)、totals は工程の pk → 実績の合計
-        (辞書に無い工程は 0。進捗の部品が無ければ空の辞書)。上から順に最初に当たった物:
-        取消 = 指示書が取消 / 完了 = 最後の工程 (順が最大) の実績の合計が、その工程の予定の数以上
-        (生産計画の盤の棒の「完了」= plans.bar_state と同じ) / 着手済 = どれかの工程の実績の合計が 0 より大きい /
-        未着手 = ほか (工程の無い指示書と、進捗の部品が無い置き場を含む)。着手の印は読まない。
-        訳: 状態を記録せずに実績だけから出し、記録した状態と実績が食い違わないようにするため。出所 = 本人の決め 11-07 00:36 (WO-1 = b)「b / 開始の進捗が必要な場合はまた別途だね」と、C27-4 の答え「そもそもstatusは進捗から計算すればいいのでは？」。字の 4 つは C27-1 = a (11-07 00:2x)。
-        変えてよい条件 = 完了の数え方を良品と不良の合計に替える依頼 (C29-2 = b) がこの関数を直すとき。ほかは本人が決め方を変えたとき。
+        status は指示書の状態の値、steps は指示書の工程の並び (順は問わない)、totals は工程の pk → StepTotals
+        (辞書に無い工程は 0・0・印なし。進捗の部品が無ければ空の辞書)。上から順に最初に当たった物:
+        取消 = 指示書が取消 / 完了 = 最後の工程 (順が最大) に完了の印の付いた実績がある (数は見ない。途中の工程の印も見ない。
+        生産計画の盤の棒の「完了」= plans.bar_state と同じ) / 着手済 = どれかの工程の良品と不良の合計が 0 より大きい
+        (実績が 1 件でもある。良品 0・不良だけの実績も着手) / 未着手 = ほか (工程の無い指示書と、進捗の部品が無い置き場を含む)。着手の印は読まない。
+        訳: 状態を記録せずに実績だけから出し、記録した状態と実績が食い違わないようにするため。完了の決め方は会社ごとに違うので、決まりで自動に決めず、人が実績の印で決めるため。
+        出所 = 作者の決め (PROG-1・PROG-1a = a。11-07 06:58・07:01) と WO-1 = b (11-07 00:36)「b / 開始の進捗が必要な場合はまた別途だね」と、C27-4 の答え「そもそもstatusは進捗から計算すればいいのでは？」。着手済を良品と不良の合計で見るのは C103-Q2 = a (11-07 07:08)。字の 4 つは C27-1 = a (11-07 00:2x)。
+        変えてよい条件 = 本人が完了の決め方を変えたとき。
         """
         if status == cls.STATUS_CANCELLED:
             return cls.PROGRESS_CANCELLED
         steps = list(steps)
         if steps:
             last = max(steps, key=lambda step: (step.seq, step.pk))
-            if totals.get(last.pk, _ZERO) >= last.planned_qty:
+            if totals.get(last.pk, NO_TOTALS).completed:
                 return cls.PROGRESS_DONE
-        if any(totals.get(step.pk, _ZERO) > 0 for step in steps):
-            return cls.PROGRESS_STARTED
+        for step in steps:
+            step_totals = totals.get(step.pk, NO_TOTALS)
+            if step_totals.recorded + step_totals.defect > 0:
+                return cls.PROGRESS_STARTED
         return cls.PROGRESS_NOT_STARTED
 
     def _steps_and_totals(self):
-        """(工程の並び, 工程の pk → 実績の合計)。読むだけ。
+        """(工程の並び, 工程の pk → StepTotals)。読むだけ。
 
-        工程を実績の合計 (recorded_total) 付きで prefetch してあれば (指示書の一覧と生産管理ボード)、問い合わせをしない。
-        無ければ工程を実績の合計付きで 1 回の問い合わせで読む (with_recorded_total)。進捗の部品が無い置き場では、合計は 0。
+        工程を実績のまとめ (recorded_total・defect_total・completed_mark) 付きで prefetch してあれば (指示書の一覧と生産管理ボード)、
+        問い合わせをしない。無ければ工程を同じまとめ付きで 1 回の問い合わせで読む (with_recorded_total)。
+        進捗の部品が無い置き場では、0・0・印なし。
         """
         prefetched = getattr(self, "_prefetched_objects_cache", {}).get("steps")
-        if prefetched is not None and all(hasattr(step, "recorded_total") for step in prefetched):
+        if prefetched is not None and all(has_step_totals(step) for step in prefetched):
             steps = list(prefetched)
-            return steps, {step.pk: _dec(step.recorded_total) for step in steps}
-        steps = list(with_recorded_total(self.steps.order_by()))
-        return steps, {step.pk: _dec(step.recorded_total) for step in steps}
+        else:
+            steps = list(with_recorded_total(self.steps.order_by()))
+        return steps, {step.pk: step_totals_of(step) for step in steps}
 
     def progress_state(self) -> str:
         """進みの状態の値 (未着手・着手済・完了・取消の鍵)。決め方は progress_state_of。取消は工程を読まない。"""
@@ -185,20 +202,64 @@ class WorkOrderStep(models.Model):
             ),
         ]
 
+    #: 工程 1 つの実績のまとめの型 (StepTotals)。ほかの部品は workorders を import せず、外部キーの先か apps.get_model で
+    #: 引いた工程の model から読む (type(step).Totals・step_model.total_expressions()・step.annotated_totals())。
+    Totals = StepTotals
+
     def __str__(self):
         return f"{self.workorder.wo_no} {self.seq} {self.process.name}"
 
+    @classmethod
+    def total_expressions(cls) -> dict:
+        """工程の queryset に足す 3 つの式 (step_total_expressions)。生産管理ボードと進捗の盤が annotate に使う。"""
+        return step_total_expressions()
 
-def with_recorded_total(steps):
-    """指示書の工程の queryset に、工程ごとの実績の合計 (recorded_total。実績が無ければ 0) を足す。読むだけ。
+    def annotated_totals(self):
+        """total_expressions の 3 つの annotate がそろっていれば StepTotals、そろっていなければ None。読むだけ。"""
+        if not has_step_totals(self):
+            return None
+        return step_totals_of(self)
 
-    progress を import せず、工程の逆の関係 (progress の外部キー) で集計する。進捗の部品が無い置き場では 0。
-    WorkOrder.progress_state と、指示書の一覧の prefetch (views の WorkOrderListView) が使う。
+
+def step_total_expressions() -> dict:
+    """工程の queryset に足す 3 つの式 {recorded_total, defect_total, completed_mark}。読むだけ。
+
+    recorded_total = 良品の合計・defect_total = 不良の合計 (実績が無ければ 0)・completed_mark = 完了の印の付いた実績があるか。
+    progress を import せず、工程の逆の関係 (progress の外部キー) の先の表として引く。進捗の部品が無い置き場では 0・0・偽。
+    指示書の状態 (with_recorded_total)・生産計画の盤 (plans)・生産管理ボード (orders.board)・進捗の盤 (progress.boards) が同じ式を使う。
+    印は Exists の副問い合わせなので、2 つの Sum と掛け合わない (同じ 1 回の問い合わせで読める)。
     """
     try:
-        WorkOrderStep._meta.get_field("progress_records")
+        records = WorkOrderStep._meta.get_field("progress_records").related_model
     except FieldDoesNotExist:
-        return steps.annotate(recorded_total=Value(_ZERO, output_field=_QTY_FIELD))
-    return steps.annotate(
-        recorded_total=Coalesce(Sum("progress_records__qty"), Value(_ZERO), output_field=_QTY_FIELD)
-    )
+        return {
+            "recorded_total": Value(_ZERO, output_field=_QTY_FIELD),
+            "defect_total": Value(_ZERO, output_field=_QTY_FIELD),
+            "completed_mark": Value(False, output_field=models.BooleanField()),
+        }
+    return {
+        "recorded_total": Coalesce(Sum("progress_records__qty"), Value(_ZERO), output_field=_QTY_FIELD),
+        "defect_total": Coalesce(Sum("progress_records__defect_qty"), Value(_ZERO), output_field=_QTY_FIELD),
+        "completed_mark": Exists(
+            records._default_manager.filter(workorder_step=OuterRef("pk"), completes_step=True)
+        ),
+    }
+
+
+def has_step_totals(step) -> bool:
+    """工程に step_total_expressions の 3 つの annotate が全部あるか。"""
+    return all(hasattr(step, name) for name in ("recorded_total", "defect_total", "completed_mark"))
+
+
+def step_totals_of(step) -> StepTotals:
+    """annotate 済みの工程 1 つから StepTotals を作る (SQLite は集計の値を桁なしや int で返すので Decimal と bool にそろえる)。"""
+    return StepTotals(_dec(step.recorded_total), _dec(step.defect_total), bool(step.completed_mark))
+
+
+def with_recorded_total(steps):
+    """指示書の工程の queryset に、工程ごとの良品の合計 (recorded_total)・不良の合計 (defect_total)・完了の印 (completed_mark) を足す。読むだけ。
+
+    式は step_total_expressions。進捗の部品が無い置き場では 0・0・偽。
+    WorkOrder.progress_state と、指示書の一覧の prefetch (views の WorkOrderListView) が使う。
+    """
+    return steps.annotate(**step_total_expressions())

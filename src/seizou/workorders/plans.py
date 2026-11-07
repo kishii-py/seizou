@@ -9,8 +9,9 @@
   段の数は棒の段の数 + 1 (下に空の段を 1 つ置き、どの日にも落とせる所を残す)。
 - 見た目の材料: 部品の色 (tone。部品の pk で決まる theme の色の名前) と棒の状態 (state。計画・着手・完了・遅れ)。
   class の字は返さない (Tailwind はテンプレートしか読まないので、テンプレートが data- の属性で切り替える)。
-- 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。工程ごとの実績の合計 (_recorded_totals) を使うため。
-- 指示書の詳細の工程のタブの行 (step_rows) もここで作る。工程ごとの実績の合計 (_recorded_totals) を使うため。会社の設定 production_plan は見ない。
+- 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。真 = 発行の指示書で、指示書の状態が完了
+  (最後の工程に完了の印。PROG-1a) で、まだ入庫にしていない完成の数が 0 より大きい。工程ごとの実績のまとめ (_step_totals) を使うため。
+- 指示書の詳細の工程のタブの行 (step_rows) もここで作る。工程ごとの実績のまとめ (_step_totals) を使うため。会社の設定 production_plan は見ない。
 """
 
 from __future__ import annotations
@@ -20,8 +21,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import DecimalField, Prefetch, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Prefetch
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
@@ -30,7 +30,7 @@ from django.utils.http import urlencode
 from seizou.core import calendar
 from seizou.core.conf import setting
 
-from .models import WorkOrder, WorkOrderStep
+from .models import NO_TOTALS, StepTotals, WorkOrder, WorkOrderStep, step_total_expressions, step_totals_of
 
 WEEKDAYS = "月火水木金土日"
 WEEKS_CHOICES = (1, 6)
@@ -137,9 +137,9 @@ def part_tone(item_pk) -> str:
 def bar_state(step, totals) -> str:
     """棒の状態。上から順に最初に当たった物 (完了 > 遅れ > 着手 > 計画)。
 
-    totals は指示書の工程の pk → 実績の合計 (_recorded_totals。辞書に無い工程は 0。進捗の部品が無ければ空の辞書)。
+    totals は指示書の工程の pk → StepTotals (_step_totals。辞書に無い工程は 0・0・印なし。進捗の部品が無ければ空の辞書)。
     完了と着手は指示書の進みの状態 (WorkOrder.progress_state_of。詳細の題の横と同じ決め方) で決める:
-    - done 完了: 最後の工程の実績の合計が、その工程の予定の数以上。
+    - done 完了: 最後の工程に完了の印の付いた実績がある (指示書の状態の完了と同じ)。
     - late 遅れ: 終了日が納期より後 (納期が空なら当たらない)。
     - accepted 着手: その指示書のどれかの工程に実績がある (着手の印は読まない。初見テスト R5 の候補 C27)。
     - planned 計画: ほか。
@@ -156,10 +156,10 @@ def bar_state(step, totals) -> str:
     return "planned"
 
 
-def _recorded_totals(step_pks) -> dict[int, Decimal]:
-    """工程の予定ごとの実績の合計 {pk: 合計}。盤 1 枚で 1 回の query (棒ごとに読まない)。
+def _step_totals(step_pks) -> dict[int, StepTotals]:
+    """工程の予定ごとの実績のまとめ {pk: StepTotals (良品の合計・不良の合計・完了の印)}。盤 1 枚で 1 回の query (棒ごとに読まない)。
 
-    progress を import せず、予定の逆の関係 (progress の外部キー) を通して集計する。
+    progress を import せず、予定の逆の関係 (progress の外部キー) を通して集計する (式は models.step_total_expressions)。
     進捗の部品が無い置き場では空の辞書 (= 「完了」は出ない)。
     """
     try:
@@ -168,19 +168,8 @@ def _recorded_totals(step_pks) -> dict[int, Decimal]:
         return {}
     if not step_pks:
         return {}
-    rows = (
-        WorkOrderStep.objects.filter(pk__in=step_pks)
-        .order_by()
-        .annotate(
-            total=Coalesce(
-                Sum("progress_records__qty"),
-                Value(Decimal("0")),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            )
-        )
-        .values_list("pk", "total")
-    )
-    return {pk: Decimal(str(total)) for pk, total in rows}
+    rows = WorkOrderStep.objects.filter(pk__in=step_pks).order_by().annotate(**step_total_expressions())
+    return {step.pk: step_totals_of(step) for step in rows}
 
 
 def _card(step):
@@ -293,7 +282,7 @@ def build_board(process, start, weeks):
         ).order_by("planned_start", "planned_end", "workorder__wo_no")
     )
     # 指示書の全部の工程の実績の合計を 1 回で読む (着手 = どれかの工程に実績、完了 = 最後の工程。棒ごとに読まない)
-    totals = _recorded_totals({other.pk for step in placed for other in step.workorder.steps.all()})
+    totals = _step_totals({other.pk for step in placed for other in step.workorder.steps.all()})
     bars = []
     for step in placed:
         bar = _card(step)
@@ -365,7 +354,7 @@ def plan_detail(step):
     if workorder.status == WorkOrder.STATUS_CANCELLED:
         state_label = workorder.get_status_display()
     else:
-        state_label = STATE_LABELS[bar_state(step, _recorded_totals([other.pk for other in steps]))]
+        state_label = STATE_LABELS[bar_state(step, _step_totals([other.pk for other in steps]))]
     return {
         "step": step,
         "workorder": workorder,
@@ -504,9 +493,9 @@ def item_projection(item):
 def finished_due(workorder) -> bool:
     """指示書の詳細の頭の右に緑の「製造の完了を入庫にする」を出すか。読むだけ。
 
-    真 = 発行の指示書で工程が 1 つ以上あり、全部の工程の実績の合計が予定の数以上 (QR を読んだ先の「完了」と同じ >=。
-    _recorded_totals で 1 回の問い合わせ。辞書に無い工程は 0。進捗の部品が無ければ空の辞書なので偽) で、
-    まだ入庫にしていない完成の数 (stock.services の finished_qty − stocked_qty。入庫の画面が ?workorder= で入れる数と同じ)
+    真 = 発行の指示書で、指示書の状態が完了 (最後の工程に完了の印。PROG-1a。WorkOrder.progress_state_of と同じ決め方。
+    _step_totals で 1 回の問い合わせ。進捗の部品が無ければ空の辞書なので偽) で、
+    まだ入庫にしていない完成の数 (stock.services の finished_qty − stocked_qty。入庫の画面が ?workorder= で入れる数と同じ。良品だけ)
     が 0 より大きい。在庫の部品が無ければ偽。
     """
     if workorder.status != WorkOrder.STATUS_ISSUED:
@@ -514,8 +503,8 @@ def finished_due(workorder) -> bool:
     steps = list(workorder.steps.all())
     if not steps:
         return False
-    totals = _recorded_totals([step.pk for step in steps])
-    if any(totals.get(step.pk, Decimal("0")) < step.planned_qty for step in steps):
+    totals = _step_totals([step.pk for step in steps])
+    if WorkOrder.progress_state_of(workorder.status, steps, totals) != WorkOrder.PROGRESS_DONE:
         return False
     if not apps.is_installed("seizou.stock"):
         return False
@@ -528,26 +517,36 @@ def finished_due(workorder) -> bool:
 
 
 def step_rows(workorder) -> list[dict]:
-    """指示書の詳細の工程のタブの行 (読むだけ)。1 行 = {"step", "recorded", "done", "current"}。
+    """指示書の詳細の工程のタブの行 (読むだけ)。1 行 = {"step", "recorded", "defect", "done", "current"}。
 
-    工程は順 (seq) の順で、process を select_related で一緒に読む。実績の合計は _recorded_totals を 1 回だけ呼ぶ
-    (工程の数で問い合わせが増えない)。recorded = その工程の実績の合計、done = recorded が予定の数以上
-    (QR を読んだ先の「完了」と同じ >=)、current = 実績の合計が予定の数に満たない最初の工程
-    (生産管理ボードの今の工程 = orders.board の BoardRow.current_step と同じ読み方。全部が予定に達したら、どの行も偽)。
-    進捗の部品が無い置き場 (_recorded_totals が空の辞書) では、recorded は None で done と current は偽。
+    工程は順 (seq) の順で、process を select_related で一緒に読む。実績のまとめは _step_totals を 1 回だけ呼ぶ
+    (工程の数で問い合わせが増えない)。recorded = その工程の良品の合計、defect = 不良の合計、
+    done = その工程に完了の印の付いた実績がある (数は見ない。PROG-1)、current = 指示書が完了でないときの、印の無い最初の工程
+    (生産管理ボードの今の工程 = orders.board の BoardRow.current_step と同じ。指示書が完了なら、どの行も偽)。
+    進捗の部品が無い置き場 (_step_totals が空の辞書) では、recorded と defect は None で done と current は偽。
     会社の設定 production_plan は見ない (工程のタブは生産計画を使わない会社でも出る)。
-    済みと今の工程は工程ごとに決める。指示書の状態の「完了」(最後の工程だけで決める) とは決め方が違う。
+    済みは工程ごとの印。今の工程は、指示書が完了でないときの印の無い最初の工程 (生産管理ボードの今の工程と同じ)。
+    途中の工程の印の抜けは、その行に「完了」が無いことで見える (PROG-1a)。
     """
     steps = list(workorder.steps.select_related("process").order_by("seq"))
-    totals = _recorded_totals([step.pk for step in steps])
+    totals = _step_totals([step.pk for step in steps])
     if not totals:
-        return [{"step": step, "recorded": None, "done": False, "current": False} for step in steps]
+        return [{"step": step, "recorded": None, "defect": None, "done": False, "current": False} for step in steps]
+    workorder_done = WorkOrder.progress_state_of(workorder.status, steps, totals) == WorkOrder.PROGRESS_DONE
     rows = []
-    current_found = False
+    current_found = workorder_done
     for step in steps:
-        recorded = totals.get(step.pk, Decimal("0"))
-        done = recorded >= step.planned_qty
+        step_totals = totals.get(step.pk, NO_TOTALS)
+        done = step_totals.completed
         current = not done and not current_found
         current_found = current_found or current
-        rows.append({"step": step, "recorded": recorded, "done": done, "current": current})
+        rows.append(
+            {
+                "step": step,
+                "recorded": step_totals.recorded,
+                "defect": step_totals.defect,
+                "done": done,
+                "current": current,
+            }
+        )
     return rows

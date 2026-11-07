@@ -1,7 +1,8 @@
 """指示書の詳細の工程のタブ (初見テスト R5 の候補 C27 の 1。U58・rb23)。
 
-各行に「実績の合計/予定の数」、実績が予定の数に達した工程に「完了」の印、まだ達していない最初の工程に太字と
-aria-current="step" を出す。行は plans.step_rows が作り、実績の合計は 1 回の問い合わせで読む (工程の数で問い合わせが増えない)。
+各行に「実績の合計/予定の数」、完了の印の付いた実績がある工程に「完了」の印、指示書が完了でないときの印の無い最初の工程に
+太字と aria-current="step" を出す (初見テスト R5 の候補 C103 の PROG-1・PROG-1a = a。数は見ない)。
+行は plans.step_rows が作り、実績のまとめは 1 回の問い合わせで読む (工程の数で問い合わせが増えない)。
 Django の test client で HTML を見る。名前と品番は作り物だけ。
 """
 
@@ -104,7 +105,7 @@ def _step_items(body, workorder):
 @pytest.mark.django_db
 def test_done_step_and_current_step(logged_in, user, workorder):
     first, _second = workorder.steps.order_by("seq")
-    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user, completes_step=True)
 
     body = logged_in.get(_detail_url(workorder)).content.decode()
     rows = _step_items(body, workorder)
@@ -123,6 +124,35 @@ def test_done_step_and_current_step(logged_in, user, workorder):
 
 
 @pytest.mark.django_db
+def test_reached_step_without_mark_stays_current(logged_in, user, workorder):
+    """数が予定に届いても、印が無ければ「完了」は出ず、その工程が今の工程のまま (PROG-1b = a)。"""
+    first, _second = workorder.steps.order_by("seq")
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+
+    rows = _step_items(logged_in.get(_detail_url(workorder)).content.decode(), workorder)
+
+    assert "完了" not in rows["切断"]
+    assert "4/4" in rows["切断"]
+    assert 'aria-current="step"' in rows["切断"]
+    assert 'aria-current="step"' not in rows["曲げ"]
+
+
+@pytest.mark.django_db
+def test_last_step_mark_without_earlier_mark(logged_in, user, workorder):
+    """最後の工程だけに印 = 指示書は完了。途中の工程の印の抜けは、その行に「完了」が無いことで見え、今の工程は無い (PROG-1a)。"""
+    first, second = workorder.steps.order_by("seq")
+    progress_services.record_progress(first, Decimal("4"), timezone.now(), user)
+    progress_services.record_progress(second, Decimal("4"), timezone.now(), user, completes_step=True)
+
+    body = logged_in.get(_detail_url(workorder)).content.decode()
+    rows = _step_items(body, workorder)
+
+    assert "完了" not in rows["切断"]
+    assert DONE_BADGE in rows["曲げ"]
+    assert body.count('aria-current="step"') == 0
+
+
+@pytest.mark.django_db
 def test_no_progress_marks_first_step(logged_in, workorder):
     body = logged_in.get(_detail_url(workorder)).content.decode()
     rows = _step_items(body, workorder)
@@ -136,7 +166,7 @@ def test_no_progress_marks_first_step(logged_in, workorder):
 @pytest.mark.django_db
 def test_all_steps_done(logged_in, user, workorder):
     for step in workorder.steps.order_by("seq"):
-        progress_services.record_progress(step, Decimal("4"), timezone.now(), user)
+        progress_services.record_progress(step, Decimal("4"), timezone.now(), user, completes_step=True)
 
     body = logged_in.get(_detail_url(workorder)).content.decode()
     rows = _step_items(body, workorder)
@@ -180,8 +210,8 @@ def test_query_count_does_not_grow_with_steps(logged_in, user, line, cut, bend):
 
 @pytest.mark.django_db
 def test_step_rows_without_progress_part(monkeypatch, workorder):
-    """進捗の部品が無い置き場 (_recorded_totals が空の辞書) は、数と印を出さない。"""
-    monkeypatch.setattr(plans, "_recorded_totals", lambda step_pks: {})
+    """進捗の部品が無い置き場 (_step_totals が空の辞書) は、数と印を出さない。"""
+    monkeypatch.setattr(plans, "_step_totals", lambda step_pks: {})
 
     rows = plans.step_rows(workorder)
 

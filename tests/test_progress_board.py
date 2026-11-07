@@ -74,8 +74,8 @@ def issue(user):
     return _issue
 
 
-def _record(step, qty, user=None):
-    return services.record_progress(step, Decimal(str(qty)), RECORDED_AT, user)
+def _record(step, qty, user=None, *, completes=False):
+    return services.record_progress(step, Decimal(str(qty)), RECORDED_AT, user, completes_step=completes)
 
 
 def _body(response):
@@ -406,17 +406,22 @@ def test_no_done_badge_while_remaining(client_logged_in, issue, cut, user):
 
 
 @pytest.mark.django_db
-def test_done_badge_when_remaining_zero_or_below(client_logged_in, issue, cut, bend):
+def test_done_badge_follows_completion_mark(client_logged_in, issue, cut, bend):
+    """「完了」の札は工程の完了の印で出す (数は見ない。PROG-1)。予定を超えた残の赤 (data-over) は数のまま。"""
     workorder = issue(cut, bend)
     over_step, even_step = workorder.steps.order_by("seq")
-    _record(over_step, 12)  # 残 -2
-    _record(even_step, 10)  # 残 0
+    _record(over_step, 12, completes=True)  # 残 -2・印あり
+    _record(even_step, 10)  # 残 0・印なし
+    short_step = issue(cut).steps.get()
+    _record(short_step, 3, completes=True)  # 残 7・印あり
 
     body = _body(_board(client_logged_in))
     over_row = _row(body, over_step)
     even_row = _row(body, even_step)
+    short_row = _row(body, short_step)
     assert DONE_BADGE in over_row
-    assert DONE_BADGE in even_row
+    assert DONE_BADGE not in even_row  # 予定に届いても印が無ければ完了でない
+    assert DONE_BADGE in short_row  # 予定に届かなくても印があれば完了
     assert 'data-over="true"' in over_row  # 予定を超えた残は今どおり赤
     assert 'data-over="true"' not in even_row
 
@@ -425,7 +430,7 @@ def test_done_badge_when_remaining_zero_or_below(client_logged_in, issue, cut, b
 def test_poll_row_has_done_badge(client_logged_in, issue, cut):
     step = issue(cut).steps.get()
     before = _record(step, 3)
-    _record(step, 7)
+    _record(step, 7, completes=True)
 
     row = _row(_body(_poll(client_logged_in, after=before.pk)), step)
     assert 'hx-swap-oob="true"' in row
@@ -436,16 +441,17 @@ def test_poll_row_has_done_badge(client_logged_in, issue, cut):
 def test_build_board_done_key(issue, cut, bend):
     workorder = issue(cut, bend)
     over_step, even_step = workorder.steps.order_by("seq")
-    _record(over_step, 12)  # 残 -2
-    _record(even_step, 10)  # 残 0
+    _record(over_step, 12, completes=True)  # 残 -2・印あり
+    _record(even_step, 10)  # 残 0・印なし
     open_step = issue(cut).steps.get()
-    _record(open_step, 7)  # 残 3
+    _record(open_step, 7, completes=True)  # 残 3・印あり
 
     rows = {row["step"]: row for row in boards.build_board(None)["rows"]}
     assert rows[open_step.pk]["remaining"] == Decimal("3")
-    assert rows[open_step.pk]["done"] is False
-    assert rows[even_step.pk]["done"] is True
+    assert rows[open_step.pk]["done"] is True
+    assert rows[even_step.pk]["done"] is False
     assert rows[over_step.pk]["done"] is True
+    assert rows[open_step.pk]["defect"] == Decimal("0")
 
 
 # --- 行の「実績を入力」と、小窓の保存の後の取り直し ---

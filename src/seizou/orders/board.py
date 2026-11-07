@@ -21,7 +21,7 @@ from functools import cached_property
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import DecimalField, OuterRef, Prefetch, Subquery, Sum, Value
+from django.db.models import Count, DecimalField, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -52,6 +52,13 @@ def _num(value) -> str:
     if dec == dec.to_integral_value():
         return str(dec.quantize(Decimal(1)))
     return format(dec, "f")
+
+
+def _dec(value) -> Decimal:
+    """集計の値を Decimal で受ける (SQLite は集計の値を桁なしで返すことがある)。None は 0。"""
+    if value is None:
+        return _ZERO
+    return value if isinstance(value, Decimal) else Decimal(str(value))
 
 
 def _workorder_models():
@@ -102,7 +109,8 @@ def annotate_acceptance(queryset):
 
 
 def prefetch_for(queryset):
-    """指示書 (取消を除く) と工程と、工程ごとの実績の合計 (recorded_total) を 1 ページ分まとめて読む prefetch を足す。
+    """指示書 (取消を除く) と工程と、工程ごとの実績の合計 (recorded_total) と不良の合計 (defect_total)・完了の印 (completed_mark)
+    を 1 ページ分まとめて読む prefetch を足す。
 
     行の数に関わらず、指示書と工程の 2 回の問い合わせで済む。workorders の部品が無ければ queryset をそのまま返す。
     出荷 (納品書つき) も 1 回の問い合わせで読む (BoardRow.unnoted_shipment のため。shipping の部品が無ければ読まない)。
@@ -122,12 +130,9 @@ def prefetch_for(queryset):
     workorder_model, step_model = _workorder_models()
     if workorder_model is None:
         return queryset
-    if _has_progress(step_model):
-        # progress.boards.with_totals と同じ式 (実績の数の合計、実績が無ければ 0)。
-        recorded = Coalesce(Sum("progress_records__qty"), Value(_ZERO), output_field=_QTY_FIELD)
-    else:
-        recorded = Value(_ZERO, output_field=_QTY_FIELD)
-    steps = step_model.objects.select_related("process").order_by("seq").annotate(recorded_total=recorded)
+    # 指示書の状態・進捗の盤と同じ式 (良品の合計・不良の合計・完了の印。progress の部品が無ければ 0・0・偽の Value)。
+    # 印は Exists の副問い合わせなので、工程の問い合わせは 1 回のまま。
+    steps = step_model.objects.select_related("process").order_by("seq").annotate(**step_model.total_expressions())
     workorders = (
         workorder_model.objects.exclude(status=workorder_model.STATUS_CANCELLED)
         .order_by("issued_on", "pk")
@@ -194,12 +199,19 @@ class BoardRow:
     def workorder_states(self) -> list[str]:
         """指示書ごとの進みの状態の値 (workorders の WorkOrder.progress_state_of。指示書の詳細の題の横と同じ決め方)。
 
-        実績の合計は prefetch の recorded_total (_recorded) を渡すので、問い合わせを増やさない。着手の印は読まない。
+        工程ごとの実績のまとめは prefetch の annotate (_totals) を渡すので、問い合わせを増やさない。着手の印は読まない。
         """
         return [
-            type(w).progress_state_of(w.status, steps, self._recorded)
+            type(w).progress_state_of(w.status, steps, self._totals)
             for w, steps in zip(self.workorders, self._steps_by_workorder)
         ]
+
+    @cached_property
+    def all_done(self) -> bool:
+        """指示書が 1 枚以上あり、全部の指示書の状態が完了 (最後の工程に完了の印。PROG-1a)。「進捗」の「完了」と段の帯の「4 完了」が読む。"""
+        if not self.workorders:
+            return False
+        return all(state == type(w).PROGRESS_DONE for w, state in zip(self.workorders, self.workorder_states))
 
     @cached_property
     def started_count(self) -> int:
@@ -251,32 +263,46 @@ class BoardRow:
         return [step for steps in self._steps_by_workorder for step in steps]
 
     @cached_property
-    def _recorded(self) -> dict:
-        """工程の pk → 実績の合計。prefetch の recorded_total が無ければ progress.services で読む (関数の試験のため)。"""
+    def _totals(self) -> dict:
+        """工程の pk → StepTotals (良品の合計・不良の合計・完了の印)。
+
+        prefetch の annotate (recorded_total・defect_total・completed_mark) があれば問い合わせをしない。無ければ工程ごとに
+        1 回の問い合わせで 3 つを読む (受注の詳細の段の帯は prefetch_for を通らずにこの道を読む。関数の試験も)。
+        """
         totals = {}
         for step in self.steps:
-            total = getattr(step, "recorded_total", None)
-            if total is None:
-                total = self._recorded_qty(step)
-            totals[step.pk] = total if isinstance(total, Decimal) else Decimal(str(total))
+            annotated = step.annotated_totals()
+            totals[step.pk] = annotated if annotated is not None else self._read_totals(step)
         return totals
 
     @staticmethod
-    def _recorded_qty(step):
+    def _read_totals(step):
+        """工程 1 つの StepTotals を 1 回の問い合わせで読む。progress を import せず、工程の逆の関係の先として引く。"""
+        totals_type = type(step).Totals
         if not _has_progress(type(step)):
-            return _ZERO
-        from seizou.progress.services import recorded_qty
-
-        return recorded_qty(step)
+            return totals_type()
+        sums = step.progress_records.order_by().aggregate(
+            recorded=Sum("qty"), defect=Sum("defect_qty"), marks=Count("pk", filter=Q(completes_step=True))
+        )
+        return totals_type(_dec(sums["recorded"]), _dec(sums["defect"]), bool(sums["marks"]))
 
     def recorded_of(self, step) -> Decimal:
-        """工程の実績の合計。"""
-        return self._recorded.get(step.pk, _ZERO)
+        """工程の実績の合計 (良品の合計)。"""
+        totals = self._totals.get(step.pk)
+        return _ZERO if totals is None else totals.recorded
 
     @cached_property
     def current_step(self):
-        """実績の合計が予定の数に満たない最初の工程 (無ければ None)。"""
-        return next((step for step in self.steps if self.recorded_of(step) < step.planned_qty), None)
+        """完了でない指示書の、完了の印の無い最初の工程 (無ければ None)。指示書が全部完了なら None (PROG-1a)。"""
+        model = type(self.workorders[0]) if self.workorders else None
+        for state, steps in zip(self.workorder_states, self._steps_by_workorder):
+            if state == model.PROGRESS_DONE:
+                continue
+            for step in steps:
+                totals = self._totals.get(step.pk)
+                if totals is None or not totals.completed:
+                    return step
+        return None
 
     @cached_property
     def completed_total(self) -> Decimal:
@@ -285,12 +311,17 @@ class BoardRow:
 
     @cached_property
     def progress_label(self) -> str:
-        """「進捗」の列の字。指示書が無ければ空。「<今の工程> <実績>/<予定>」か「完了」。"""
+        """「進捗」の列の字。指示書が無ければ空。全部の指示書が完了なら「完了」、ほかは「<今の工程> <実績>/<予定>」。
+
+        どちらでもなければ空 (工程の無い指示書だけの行)。
+        """
         if not self.workorders:
             return ""
+        if self.all_done:
+            return "完了"
         step = self.current_step
         if step is None:
-            return "完了"
+            return ""
         return f"{step.process.name} {_num(self.recorded_of(step))}/{_num(step.planned_qty)}"
 
     # --- 計画と納期 ---

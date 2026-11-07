@@ -88,7 +88,8 @@ def test_stages_advance_from_workorder_to_payment(user, customer, item, cut):
     assert stage_of(_line(order)) == 2
     progress_services.record_progress(workorder.steps.get(), Decimal("4"), timezone.now(), user)
     assert stage_of(_line(order)) == 3
-    progress_services.record_progress(workorder.steps.get(), Decimal("6"), timezone.now(), user)
+    # 完了 = 最後の工程に完了の印の付いた実績がある (初見テスト R5 の候補 C103 の PROG-1a)
+    progress_services.record_progress(workorder.steps.get(), Decimal("6"), timezone.now(), user, completes_step=True)
     assert stage_of(_line(order)) == 4
     shipment = shipping_services.ship(_line(order), Decimal("10"), today, user)
     assert stage_of(_line(order)) == 5
@@ -230,7 +231,7 @@ def test_unaccepted_workorder_then_shipment_marks_only_the_issue(user, customer,
 def test_stage_is_done_only_when_every_line_passed_it(user, customer, item, cut):
     order = _order(user, customer, item, lines=2)
     workorder = _issue(user, _line(order, 1), cut)
-    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
+    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user, completes_step=True)
     today = timezone.localdate()
     shipping_services.ship(_line(order, 1), Decimal("10"), today, user)
     shipping_services.ship(_line(order, 2), Decimal("10"), today, user)
@@ -248,7 +249,7 @@ def test_stage_is_done_only_when_every_line_passed_it(user, customer, item, cut)
 def test_line_through_every_stage_has_no_skipped(user, customer, item, cut):
     order = _order(user, customer, item)
     workorder = _issue(user, _line(order), cut)
-    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user)
+    progress_services.record_progress(workorder.steps.get(), Decimal("10"), timezone.now(), user, completes_step=True)
     shipping_services.ship(_line(order), Decimal("10"), timezone.localdate(), user)
 
     band = stage_band(order)

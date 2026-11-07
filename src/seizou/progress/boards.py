@@ -2,10 +2,12 @@
 
 盤の template tag (progress_board) と、盤の自動の更新の部分 (progress/_rows.html) の両方がここを呼ぶ。
 
-- 盤の行は指示書の工程 1 つ。予定の数・実績の合計・残 (予定の数 − 実績の合計) を並べる。
+- 盤の行は指示書の工程 1 つ。予定の数・実績の合計・不良の合計・残 (予定の数 − 実績の合計) を作る。
+  残は予定までにまだ要る良品の数で、不良は引かない (不良は別の値 defect)。
 - 盤に出すのは、指示書が取消でなく、受注も取消でない工程だけ。残が 0 の工程も出す。
-  残が 0 以下の工程は done を真にし、盤は工程の字の右に「完了」の札を出す (現品票の読み取りの着地と同じ読み方)。
-- 実績の合計は列に持たず annotate で出す (services.recorded_qty と同じ式)。残は Python で引く。
+  完了の印の付いた実績がある工程は done を真にし、盤は工程の字の右に「完了」の札を出す (現品票の読み取りの着地と同じ読み方。PROG-1)。
+- 実績の合計・不良の合計・完了の印は列に持たず annotate で出す (式は指示書の工程の model の total_expressions。
+  services.recorded_qty・recorded_defect_qty・step_completed と同じ答え)。残は Python で引く。
 - 自動の更新の印 (after) は実績の pk。after より大きい pk の実績が「前に見た後に入った実績」になる。
   直した実績と消した実績は、この印では拾わない (盤を開き直すと出る)。
 """
@@ -14,8 +16,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db.models import DecimalField, Max, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Max
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -41,14 +42,8 @@ def active_steps():
 
 
 def with_totals(steps):
-    """工程ごとの実績の合計 (recorded_total) を足す。"""
-    return steps.annotate(
-        recorded_total=Coalesce(
-            Sum("progress_records__qty"),
-            Value(Decimal("0")),
-            output_field=DecimalField(max_digits=12, decimal_places=2),
-        )
-    )
+    """工程ごとの実績の合計 (recorded_total)・不良の合計 (defect_total)・完了の印 (completed_mark) を足す (1 回の問い合わせ)。"""
+    return steps.annotate(**_WorkOrderStep.total_expressions())
 
 
 def parse_process(raw):
@@ -98,7 +93,8 @@ def _pills():
 
 def _row(step):
     # SQLite は集計の値を小数の桁なしで返す (7.00 が 7)。表の列と同じ小数 2 桁にそろえて、画面の桁を予定の数と合わせる。
-    recorded = step.recorded_total.quantize(TOTAL_PLACES)
+    totals = step.annotated_totals()
+    recorded = totals.recorded.quantize(TOTAL_PLACES)
     remaining = step.planned_qty - recorded
     return {
         "step": step.pk,
@@ -109,9 +105,10 @@ def _row(step):
         "process_name": step.process.name,
         "planned": step.planned_qty,
         "recorded": recorded,
+        "defect": totals.defect.quantize(TOTAL_PLACES),
         "remaining": remaining,
         "over": remaining < 0,
-        "done": remaining <= 0,
+        "done": totals.completed,
     }
 
 

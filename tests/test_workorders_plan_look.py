@@ -421,13 +421,17 @@ def test_bar_state_precedence(client_logged_in, user, order, cut, bend, workorde
     html = _board(client_logged_in, cut, late_week).content.decode()
     assert _bar_attr(html, step, "data-state") == "late"
 
-    # 最後の工程 (曲げ) の実績が予定の数に達すると、遅れていても「完了」。
+    # 最後の工程 (曲げ) に完了の印の付いた実績があると、遅れていても「完了」(PROG-1a)。
+    # 実績が予定の数に達しても、印が無ければ「完了」でない (PROG-1b = a)。
     bend_step = workorder.steps.get(process=bend)
     recorded_at = timezone.make_aware(datetime(2026, 11, 5, 10, 30))
     progress_services.record_progress(bend_step, Decimal("3"), recorded_at, user)
     html = _board(client_logged_in, cut, late_week).content.decode()
     assert _bar_attr(html, step, "data-state") == "late"
-    progress_services.record_progress(bend_step, Decimal("1"), recorded_at, user)
+    last = progress_services.record_progress(bend_step, Decimal("1"), recorded_at, user)
+    html = _board(client_logged_in, cut, late_week).content.decode()
+    assert _bar_attr(html, step, "data-state") == "late"
+    progress_services.update_progress(last, Decimal("1"), recorded_at, user, completes_step=True)
     html = _board(client_logged_in, cut, late_week).content.decode()
     assert _bar_attr(html, step, "data-state") == "done"
 
