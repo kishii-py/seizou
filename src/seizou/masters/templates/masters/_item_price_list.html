@@ -7,7 +7,7 @@
     <span>{{ price.get_kind_display }}</span>
     {% if price.process %}<span>{{ price.process.name }}</span>{% endif %}
     <span>{% if price.min_qty is not None %}{{ price.min_qty|comma }} {{ price_rows.qty_unit }}から{% else %}数量によらない{% endif %}</span>
-    <span class="whitespace-nowrap font-mono tabular-nums">{% if seizou.hide_money %}—{% else %}{{ price.unit_price|yen }} / {{ price.unit_text }}{% endif %}</span>
+    {% if not seizou.hide_money %}<span class="whitespace-nowrap font-mono tabular-nums">{{ price.unit_price|yen }} / {{ price.unit_text }}</span>{% endif %}
     {% if price.start_date %}<span class="whitespace-nowrap">{{ price.start_date|date:"Y-m-d" }} から</span>{% endif %}
     {% if price.quote_no or price.quote_date or price.quote_expires %}<span class="text-xs text-base-content/70">見積{% if price.quote_no %} {{ price.quote_no }}{% endif %}{% if price.quote_date or price.quote_expires %} ({% if price.quote_date %}発行 {{ price.quote_date|date:"Y-m-d" }}{% endif %}{% if price.quote_date and price.quote_expires %}・{% endif %}{% if price.quote_expires %}期限 {{ price.quote_expires|date:"Y-m-d" }}{% endif %}){% endif %}</span>{% endif %}
     {% if price.quote_expired %}<span class="badge badge-sm badge-soft badge-warning">期限切れ</span>{% endif %}

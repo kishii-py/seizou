@@ -337,7 +337,7 @@ def test_delete_screens(client_logged_in, user, item, customer_row):
 
 
 def test_money_hidden(client_logged_in, user, item, customer_row, settings):
-    # (m) 金額の閲覧が無い人 (money = on): 単価は「—」、単価の入口は出ない、単価の行の追加・削除は赤の断り、編集の画面に今の単価が無い
+    # (m) 金額の閲覧が無い人 (money = on): 単価は出ない (「—」も出さない = N155)、単価の入口は出ない、単価の行の追加・削除は赤の断り、編集の画面に今の単価が無い
     price = _price(item, user, partner_item=customer_row, unit_price=Decimal("4321"))
     _price(item, user, partner_item=customer_row, min_qty=Decimal("100"), unit_price=Decimal("4000"))
     settings.SEIZOU = MONEY_ON
