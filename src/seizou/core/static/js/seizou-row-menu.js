@@ -19,9 +19,12 @@
  * - tr[data-row-menu] の contextmenu: 既定のメニューを出さず (preventDefault)、その行の details.row-menu を開き (open)、
  *   ul を cursor の位置 (clientX・clientY) に出す。メニューの中の右クリックは既定のまま (新しいタブで開くなど)。
  * - summary の押下 (details の toggle で open になった時): ul を summary の下 (右端をそろえる) に出す。
- * - 出す時は ul の inline の style で position を fixed にし left・top を置く (right・bottom は auto)。
- *   表の箱 (overflow-auto) の端で切れないため。閉じたら inline の style を消す。
- *   daisyUI の dropdown は中に focus が無いと中身が透明なので、opacity と scale も inline の style で置く。
+ * - 出す時は ul を body の直下へ移し (印 data-row-menu-list)、inline の style で position を fixed にし left・top を置く
+ *   (right・bottom は auto)。表の箱 (overflow-auto) の端で切れないためと、止めた 1 列目の欄 (sticky + z-index) と行の地が
+ *   メニューより手前に描かれないため (表の中に居ると先祖の stacking context に閉じ込められ、z-50 でも勝てない。本人の報告 11-07 18:0x。
+ *   seizou-select.js の候補の一覧を body の直下に描く dropdownParent と同じ考え)。閉じたら details の中へ戻し、inline の style と印を消す。
+ *   body の直下では daisyUI の dropdown の規則 (透明・absolute) が当たらないので、見た目は menu の class だけで決まる。
+ * - htmx が画面の一部を差し替える前 (htmx:beforeSwap) に全部閉じる (details が消えた後に ul が body に取り残されないため)。
  * - 画面の右端・下端ではみ出す分は、左か上へずらす。
  * - 左は main の左の端 (左のメニューの右) より左に出さない。summary の下に右端をそろえて出すと左へはみ出すときは、
  *   summary の左端にそろえて右へ開く。
@@ -45,9 +48,26 @@
 
   // 右クリックで開いた時の cursor の位置。details の toggle は後で (非同期に) 来るので、そこで 1 回だけ使う。
   var pending = null;
+  // body の直下へ移した ul (details → ul)。閉じる時に details の中へ戻す。
+  var moved = new WeakMap();
+  var LIST = "[data-row-menu-list]";
 
   function listOf(details) {
-    return details.querySelector("ul");
+    return moved.get(details) || details.querySelector("ul");
+  }
+
+  function moveOut(details, list) {
+    if (list.parentNode === document.body) return;
+    moved.set(details, list);
+    list.setAttribute("data-row-menu-list", "");
+    document.body.appendChild(list);
+  }
+
+  function moveBack(details, list) {
+    if (list.parentNode !== document.body) return;
+    list.removeAttribute("data-row-menu-list");
+    details.appendChild(list);
+    moved.delete(details);
   }
 
   function elementOf(node) {
@@ -56,7 +76,9 @@
 
   function clearPlacement(details) {
     var list = listOf(details);
-    if (list) list.removeAttribute("style");
+    if (!list) return;
+    moveBack(details, list);
+    list.removeAttribute("style");
   }
 
   function closeMenu(details) {
@@ -75,6 +97,7 @@
     var list = listOf(details);
     var summary = details.querySelector("summary");
     if (!list) return;
+    moveOut(details, list);
     var style = list.style;
     style.position = "fixed";
     style.right = "auto";
@@ -132,7 +155,7 @@
   function onContextMenu(event) {
     var target = elementOf(event.target);
     if (!target) return;
-    if (target.closest(MENU + " ul")) return;
+    if (target.closest(LIST)) return;
     var row = target.closest(ROW);
     if (!row) return;
     var details = row.querySelector(MENU);
@@ -150,6 +173,11 @@
   function onClick(event) {
     var target = elementOf(event.target);
     if (!target) return;
+    if (target.closest(LIST)) {
+      // body へ移したメニューの中。項目 (a) の押下で閉じ、見出しの字の押下では閉じない。
+      if (target.closest("a")) closeAll(null);
+      return;
+    }
     var details = target.closest(MENU);
     if (!details) {
       closeAll(null);
@@ -167,7 +195,6 @@
       }
       return;
     }
-    if (target.closest("ul") && target.closest("a")) closeMenu(details);
   }
 
   function onKeyDown(event) {
@@ -181,8 +208,12 @@
 
   function onScroll(event) {
     var target = elementOf(event.target);
-    if (target && target.closest(MENU)) return;
+    if (target && (target.closest(MENU) || target.closest(LIST))) return;
     if (document.querySelector(MENU + "[open]")) closeAll(null);
+  }
+
+  function onBeforeSwap() {
+    closeAll(null);
   }
 
   document.addEventListener("contextmenu", onContextMenu);
@@ -190,6 +221,7 @@
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("toggle", onToggle, true);
   document.addEventListener("scroll", onScroll, true);
+  document.addEventListener("htmx:beforeSwap", onBeforeSwap);
 
   window.seizouRowMenu = { closeAll: closeAll };
 })();

@@ -30,6 +30,10 @@ def test_js_file_keeps_promises():
     assert "window.seizouRowMenu = { closeAll: closeAll }" in text
     # class を足さない (Tailwind が CSS に入れないため)。
     assert "classList.add" not in text and "className" not in text
+    # 開く時は ul を body の直下へ移し (止めた 1 列目の欄と行の地がメニューより手前に描かれないため。本人の報告 11-07 18:0x)、閉じる時に戻す。
+    # htmx の差し替えの前に全部閉じる (details が消えた後に ul が body に残らないため)。
+    assert "document.body.appendChild(list)" in text and "details.appendChild(list)" in text
+    assert 'data-row-menu-list' in text and 'document.addEventListener("htmx:beforeSwap"' in text
 
 
 @pytest.mark.django_db
