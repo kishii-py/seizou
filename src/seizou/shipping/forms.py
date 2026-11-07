@@ -28,6 +28,7 @@ from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.orders.services import remaining_qty
 
 from .models import DeliveryNote, Shipment
+from .services import delete_refusal
 
 _OrderLine = Shipment._meta.get_field("order_line").related_model
 
@@ -341,6 +342,24 @@ class DeliveryNoteCancelForm(forms.Form):
         super().__init__(*args, **kwargs)
         if instance is not None:
             self.submit_label = f"{instance.note_no} を取り消す"
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+class ShipmentDeleteForm(forms.Form):
+    """出荷の削除の確かめ (候補 12。決め 11-08 00:23)。欄は無い (土台が delete_shipment(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。
+
+    土台が対象を instance= で渡すので、消せない訳 (services.delete_refusal。読むだけ) を refusal に持つ。確かめのカード
+    (shipping/_shipment_delete_card.html) は refusal があれば form を出さず訳だけを出す (画面の class は土台の属性しか上書きしない = R15)。
+    """
+
+    submit_label = "削除"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.refusal = delete_refusal(instance) if instance is not None else ""
 
     def service_kwargs(self) -> dict:
         return {}

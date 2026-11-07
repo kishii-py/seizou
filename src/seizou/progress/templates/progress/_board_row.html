@@ -1,14 +1,24 @@
-{% load seizou_tags %}{% comment %}
+{% load seizou_tags seizou_icons %}{% comment %}
 進捗の盤の 1 行 (指示書の工程 1 つ)。盤 (progress_board.html) と、自動の更新の応答 (progress/_rows.html) の両方が使う。
 oob が真のとき (自動の更新の応答) だけ hx-swap-oob を付け、htmx が同じ id の行と入れ替える。
 残が負の欄だけ data-over="true" を付け、固定の class data-[over=true]:text-error で赤にする (class を途中で組み立てない = R19)。「実績を入力」は create_url (盤の「新規登録」と同じ判定) があるときだけ出し、その工程を選んだ形で実績の入力を小窓で開く。
 完了の印の付いた実績がある行 (row.done) は、工程の字の右に「完了」の札を出す (現品票の読み取りの着地 workorders/workorder_scan.html と同じ札・同じ読み方)。
+行の操作は「操作」の欄の ⋮ のボタンと、同じ中身の右クリック (本人の言葉 11-08 00:25「進捗右クリックで編集、削除はできた方がいい」。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment)。
+盤の 1 行は指示書の工程 1 つで実績の行ではないので、実績の直しと削除は実績の一覧の行で行う。項目は「実績を入力」(ボタンと同じ小窓) と、
+その指示書の番号で絞った実績の一覧へ移る link (小窓にしない。移った先の行の ⋮ と右クリックに「編集」「削除」がある)。⋮ も create_url があるときだけ出す。
 {% endcomment %}
-<tr id="progress-step-{{ row.step }}" class="h-10"{% if oob %} hx-swap-oob="true"{% endif %}>
+<tr id="progress-step-{{ row.step }}" class="h-10" data-row-menu{% if oob %} hx-swap-oob="true"{% endif %}>
   <td class="whitespace-nowrap font-mono"><a class="link link-primary rounded focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'workorders:workorder_detail' row.workorder %}">{{ row.wo_no }}</a></td>
   <td class="whitespace-nowrap">{{ row.seq }} {{ row.process_name }}{% if row.done %}<span class="badge badge-success ml-2">完了</span>{% endif %}</td>
   <td class="whitespace-nowrap text-right tabular-nums data-[over=true]:text-error"{% if row.over %} data-over="true"{% endif %}>{{ row.remaining|comma }}</td>
-  {% if create_url %}<td class="whitespace-nowrap"><a class="btn btn-xs btn-outline border-base-300" href="{{ create_url }}?workorder_step={{ row.step }}" data-modal-form="{{ create_url }}?workorder_step={{ row.step }}">実績を入力</a></td>{% endif %}
+  {% if create_url %}<td class="whitespace-nowrap"><a class="btn btn-xs btn-outline border-base-300" href="{{ create_url }}?workorder_step={{ row.step }}" data-modal-form="{{ create_url }}?workorder_step={{ row.step }}">実績を入力</a>{% url 'progress:record_list' as records_url %}
+    <details class="dropdown dropdown-end row-menu">
+      <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+        <li><a class="flex items-center gap-2" href="{{ create_url }}?workorder_step={{ row.step }}" data-modal-form="{{ create_url }}?workorder_step={{ row.step }}">{% icon "plus" "size-4" %}実績を入力</a></li>
+        <li><a class="flex items-center gap-2" href="{{ records_url }}?q={{ row.wo_no|urlencode }}">{% icon "pencil" "size-4" %}実績を直す・消す</a></li>
+      </ul>
+    </details></td>{% endif %}
   <td class="whitespace-nowrap text-right tabular-nums">{{ row.planned|comma }}</td>
   <td class="whitespace-nowrap text-right tabular-nums">{{ row.recorded|comma }}</td>
   <td class="whitespace-nowrap text-right tabular-nums">{{ row.defect|comma }}</td>

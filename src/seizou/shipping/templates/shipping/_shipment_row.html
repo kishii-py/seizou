@@ -1,7 +1,10 @@
 {% load seizou_tags seizou_icons %}
 {# 出荷の一覧の 1 行 (shipping/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Shipment)・columns。 #}
 {# 欄の描き方は core/_rows.html の既定の 1 行をそのまま写した物 (土台の 1 行の形が変わったら、ここも合わせる)。右端の欄に「要点を見る」の目の印 (土台の目の印の部品を include する。押すと出荷の小窓)。 #}
-<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+{# 行の操作は ⋮ のボタンと、同じ中身の右クリック (候補 12。本人の決め 11-08 00:25)。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment。行の押下で出荷の詳細へ移る onclick は、link と ⋮ の中の押下では動かない (closest('a, details'))。 #}
+{# 「編集」「削除」は can_edit (shipping/_rows.html が can_write の tag で 1 回だけ決める) が真の人にだけ出す。入力を小窓で開き (data-modal-form は href と 1 字も違わない字)、JS が無いときと新しいタブでは href で画面へ移り、保存の後と「キャンセル」で出荷の一覧へ戻る (?next=)。 #}
+{# 出荷は数の操作なので、金額の閲覧では隠さない (決め 21:0x)。発行の納品書に入った出荷の「編集」は入口で隠さず、開くと今のまま R08 の断りが出る。 #}
+<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" data-row-menu {% if row.url %}onclick="if(!event.target.closest('a, details')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
   {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
   {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
@@ -12,6 +15,16 @@
   {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
   {% endif %}
   {% endfor %}
-  {# 右端の「要点」の列 (shipping/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと出荷の小窓 (ShipmentModalView) を開く。 #}
-  <td class="whitespace-nowrap text-right">{% url 'shipping:shipment_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>
+  {# 右端の「要点」の列 (shipping/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと出荷の小窓 (ShipmentModalView) を開く。目の印の後ろに行の操作の ⋮。 #}
+  <td class="whitespace-nowrap text-right">{% url 'shipping:shipment_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}
+    {% if can_edit %}{% url 'shipping:shipment_update' row.pk as edit_url %}{% url 'shipping:shipment_delete' row.pk as delete_url %}
+    <details class="dropdown dropdown-end row-menu">
+      <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+        <li><a class="flex items-center gap-2" href="{{ edit_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ edit_url }}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}編集</a></li>
+        <li><a class="flex items-center gap-2 text-error" href="{{ delete_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ delete_url }}?next={{ request.get_full_path|urlencode }}">{% icon "x" "size-4" %}削除</a></li>
+      </ul>
+    </details>
+    {% endif %}
+  </td>
 </tr>

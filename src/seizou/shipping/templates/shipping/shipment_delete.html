@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 出荷の削除の確かめ (画面の全体): 欄の無い form。中身は小窓と同じカード (shipping/_shipment_delete_card.html)。消した後は開いた元の道 (?next=。出荷の一覧) へ戻る。 #}
+{% block content %}{% include "shipping/_shipment_delete_card.html" %}
+{% endblock %}

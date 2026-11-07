@@ -4,6 +4,7 @@
 止めるか、知らせて「このまま保存」か、通すかは会社の設定に従う (画面では数を比べない)。
 出荷の編集は services.update_shipment を呼ぶ (数量と出荷日と備考だけ。R01 は検査の層が編集にも当てる)。
 発行の納品書に入った出荷は、先に納品書を取り消してから編集する (R08)。
+出荷の削除は services.delete_shipment を呼び、一覧の行の ⋮ と右クリックの「削除」から小窓で開く (消せない出荷は services.delete_refusal の訳だけを出す)。
 一括出荷の入力は、注文残の盤で選んだ明細をまとめて services.ship_lines に渡す (検査の層は一括出荷の R01。N124)。
 model は出荷にする (小窓のテンプレートは model の app の shipping/_form_modal.html から選ばれるため)。
 
@@ -27,7 +28,7 @@ from seizou.core.views import BaseModalView
 from seizou.masters.services import active_partners
 
 from . import services
-from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentBulkForm, ShipmentForm, ShipmentUpdateForm
+from .forms import DeliveryNoteCancelForm, DeliveryNoteForm, ShipmentBulkForm, ShipmentDeleteForm, ShipmentForm, ShipmentUpdateForm
 from .models import DeliveryNote, Shipment
 from .reports import (
     DELIVERY_NOTE_TEMPLATE,
@@ -169,6 +170,23 @@ class ShipmentUpdateView(BaseFormView):
     screen_help = (
         "数量と出荷日と備考を直します。発行の納品書に入った出荷は、先に納品書を取り消してから直します。"
         "受注の残を超える数は、会社の設定に従って止めるか知らせます。"
+    )
+
+
+class ShipmentDeleteView(BaseFormView):
+    """出荷の削除の確かめ (出荷の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。候補 12)。消した後は ?next= の道 (出荷の一覧) へ戻る。
+
+    使う人: 出荷 / いつ: 違う受注へ入れた出荷や二重に入れた出荷を見つけたとき / 何のために: 打ち間違えた出荷を消す / 次にすること: 正しい受注の明細へ出荷し直す
+    """
+
+    model = Shipment
+    form_class = ShipmentDeleteForm
+    service = staticmethod(services.delete_shipment)
+    template_name = "shipping/shipment_delete.html"
+    screen_name = "出荷の削除"
+    screen_help = (
+        "打ち間違えた出荷を消します。消した出荷は戻せません。受注の状態と在庫は出荷の前に戻ります。"
+        "納品書・請求書・入金が指す出荷と、取引先につながる出荷は消せません。"
     )
 
 
