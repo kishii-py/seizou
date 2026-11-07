@@ -91,7 +91,7 @@ def badge_of(html: str) -> str:
 # ---- 1. 数え方 ----
 
 
-def test_count_is_zero_for_new_user_and_counts_three_kinds(user, manager, customer):
+def test_count_is_zero_for_new_user_and_counts_every_kind(user, manager, customer):
     # 登録より前に届いた物は数えない (行が無い人は登録した日時から数える)。
     received(customer, received_at=user.date_joined - timedelta(days=1))
     assert bell.unread_count(user) == 0
