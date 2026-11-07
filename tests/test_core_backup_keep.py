@@ -22,6 +22,7 @@ from django.db import DatabaseError
 from django.utils import timezone
 
 from seizou.core import backup, conf, doctor
+from seizou.core.logging_conf import default_logging
 from seizou.core.passwords import VALIDATORS
 from tests import test_core_backup
 from tests.test_core_backup import folders, hand_made_backup, run, sqlite_only
@@ -247,6 +248,11 @@ def doctor_site(settings, tmp_path):
     settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {}
     settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS  # N354 (439 回目) の点検の行は本番の条件のときだけ見る
+    # N362 (454 回目) の点検の 2 行 (settings.py の塊・権限の判定) も本番の条件のときだけ見る。tests/test_core_doctor.py の fixture と同じ
+    settings.SEIZOU["access_control"] = {"department": "on", "write": "on", "money": "on"}
+    settings.LOGGING_CONFIG = None
+    settings.LOGGING = default_logging()
+    settings.MIDDLEWARE = [*settings.MIDDLEWARE, "seizou.core.middleware.HtmxLoginMiddleware"]
     return site
 
 

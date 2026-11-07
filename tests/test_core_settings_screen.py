@@ -136,7 +136,7 @@ def test_settings_table_value_parts_only_for_dict_values(settings):
     # 並びは SUB_LABELS の順 (保存した並びに頼らない)。字は _display と同じ
     assert rows["access_control"]["value_parts"] == ["部署: 記録だけ", "金額の閲覧: 使わない"]
     assert rows["access_control"]["value"] == "部署: 記録だけ・金額の閲覧: 使わない"
-    assert all(row["value_parts"] == [] for key, row in rows.items() if key not in ("access_control", "mail"))
+    assert all(row["value_parts"] == [] for key, row in rows.items() if key not in ("access_control", "mail", "ai_limits", "ai_features"))  # N365 (455 回目) の辞書の設定 2 つ
     settings.SEIZOU = {"access_control": {}}
     rows = {row["key"]: row for row in settings_screen.company_settings()}
     assert rows["access_control"]["value_parts"] == [] and rows["access_control"]["value"] == "なし"
