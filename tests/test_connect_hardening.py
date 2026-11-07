@@ -4,6 +4,7 @@
 - 1 送る口: 3xx の転送を追わず、200 の返事は受け取った印 (status と送った番号) が合うときだけ受け取ったにする。
 - 2 鍵の長さ: ほどいた鍵が 24〜64 bytes の外なら使わない (送らない・受け口はそのつながりを飛ばす)。
 - 3 同じ鍵の 2 社: 受ける向きの 2 つ以上の取引先の鍵で署名が合えば断る。
+- 4 送る先を外の名前に絞る鍵 (settings の SEIZOU_CONNECT_PUBLIC_ONLY): 真のときだけ https の URL だけを保存し、送る前に名前を引く。
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (外へは出ない)。
 鍵は試験のたびに signing.new_secret() で作って環境変数に置き、ファイルに書かない。取引先・部品・会社は作り物。
 """
@@ -11,16 +12,18 @@
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import secrets
+import socket
 import time
 import uuid
 
 import pytest
 
 from seizou.connect import services, signing
-from seizou.connect.models import Inbox, Outbox
+from seizou.connect.models import Connection, Inbox, Outbox
 from seizou.masters import services as masters_services
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder, SelfInvoice
@@ -317,4 +320,123 @@ def test_same_secret_name_for_two_send_connections_is_saved(user, two_customers)
     """送る向きどうしの同じ置き場の名前は、今のまま保存できる。"""
     for partner in two_customers:
         services.register_connection(partner, "https://buyer.example.test/connect/receive/order/", FIRST_ENV, "send", user)
-    assert services.Connection.objects.filter(secret_env=FIRST_ENV).count() == 2
+    assert Connection.objects.filter(secret_env=FIRST_ENV).count() == 2
+
+
+# ---------------------------------------------------------------- 4 送る先を外の名前に絞る鍵 (SEIZOU_CONNECT_PUBLIC_ONLY)
+
+LOCAL_URL = "http://127.0.0.1:8002/connect/receive/order/"
+#: 外の番地 (is_global が真)。文書用の 192.0.2.0/24・198.51.100.0/24・203.0.113.0/24 は is_global が偽なので使わない
+PUBLIC_ADDRESS = "93.184.215.14"
+#: 名前が引けないときの返事の欄の字 (今の届かない字)
+UNREACHABLE = "届きません: 相手につながりません。つながりの URL と、相手が立っているかを確かめてください。"
+
+
+def _resolved(*addresses):
+    """socket.getaddrinfo の代わり。決めた番地を返し、引いた名前と番号を控える。"""
+    asked = []
+
+    def lookup(host, port, *args, **kwargs):
+        asked.append((host, port))
+        return [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", (address, port, 0, 0))
+            if ":" in address
+            else (socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))
+            for address in addresses
+        ]
+
+    lookup.asked = asked
+    return lookup
+
+
+def _no_lookup(*args, **kwargs):
+    raise AssertionError("送る先を絞らない設定で名前を引いた")
+
+
+@pytest.mark.django_db
+def test_public_only_off_keeps_local_http(monkeypatch, settings, user, subcontractor, item, connections):  # noqa: F811
+    """鍵が偽 (既定) のとき、http://127.0.0.1 の URL を保存でき、送るときに名前を引かない (今のまま)。"""
+    assert getattr(settings, "SEIZOU_CONNECT_PUBLIC_ONLY", False) is False
+    connection = Connection.objects.get(partner=subcontractor, direction=Connection.DIRECTION_SEND)
+    services.update_connection(connection, subcontractor, LOCAL_URL, ORDER_ENV, "send", user)
+    monkeypatch.setattr("socket.getaddrinfo", _no_lookup)
+    fake = RecordingPost(_received_with())
+    monkeypatch.setattr("requests.post", fake)
+
+    po = _create(subcontractor, item, user)
+
+    assert [call["url"] for call in fake.calls] == [LOCAL_URL]
+    assert po.status == PurchaseOrder.STATUS_SENT
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "addresses",
+    [("10.0.0.5",), ("169.254.169.254",), ("127.0.0.1",), ("::1",), ("fe80::1%eth0",), ("192.0.2.10",), (PUBLIC_ADDRESS, "10.0.0.5")],
+)
+def test_public_only_does_not_send_to_private_address(
+    monkeypatch, settings, user, subcontractor, item, connections, addresses  # noqa: F811
+):
+    """鍵が真のとき、名前の番地のどれか 1 つでも外の番地でなければ送らず (偽物の呼び出し 0)、返事の欄に番地の字。"""
+    settings.SEIZOU_CONNECT_PUBLIC_ONLY = True
+    lookup = _resolved(*addresses)
+    monkeypatch.setattr("socket.getaddrinfo", lookup)
+    fake = RecordingPost(_received_with())
+    monkeypatch.setattr("requests.post", fake)
+
+    po = _create(subcontractor, item, user)
+
+    assert fake.calls == []
+    assert lookup.asked == [("supplier.example.test", 443)]
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+    shown = addresses[-1].split("%")[0]
+    assert Outbox.objects.get().response == (
+        f"送っていません: 受け口の URL の名前が社内か手元の番地 ({shown}) を指しています。つながりの URL を確かめてください。"
+    )
+
+
+@pytest.mark.django_db
+def test_public_only_sends_to_public_address(monkeypatch, settings, user, subcontractor, item, connections):  # noqa: F811
+    """鍵が真でも、名前の番地が全部外の番地なら今のまま送る。"""
+    assert ipaddress.ip_address(PUBLIC_ADDRESS).is_global
+    settings.SEIZOU_CONNECT_PUBLIC_ONLY = True
+    monkeypatch.setattr("socket.getaddrinfo", _resolved(PUBLIC_ADDRESS))
+    fake = RecordingPost(_received_with())
+    monkeypatch.setattr("requests.post", fake)
+
+    po = _create(subcontractor, item, user)
+
+    assert len(fake.calls) == 1 and fake.calls[0]["allow_redirects"] is False
+    assert po.status == PurchaseOrder.STATUS_SENT
+
+
+@pytest.mark.django_db
+def test_public_only_does_not_send_when_name_is_not_found(monkeypatch, settings, user, subcontractor, item, connections):  # noqa: F811
+    """鍵が真で名前が引けなければ、今の届かない字で送らない。"""
+    settings.SEIZOU_CONNECT_PUBLIC_ONLY = True
+
+    def missing(*args, **kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "作り物の引けない名前")
+
+    monkeypatch.setattr("socket.getaddrinfo", missing)
+    fake = RecordingPost(_received_with())
+    monkeypatch.setattr("requests.post", fake)
+
+    po = _create(subcontractor, item, user)
+
+    assert fake.calls == []
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+    assert Outbox.objects.get().response == UNREACHABLE
+
+
+@pytest.mark.django_db
+def test_public_only_saves_https_only(settings, user, two_customers):  # noqa: F811
+    """鍵が真のとき、送る向きの http の URL の保存は ValueError (http://127.0.0.1 も)。https と受ける向きの空の URL は通る。"""
+    settings.SEIZOU_CONNECT_PUBLIC_ONLY = True
+    first, second = two_customers
+    for url in ("http://buyer.example.test/connect/receive/order/", LOCAL_URL, "http://localhost:8002/connect/receive/order/"):
+        with pytest.raises(ValueError, match="https:// で始まる URL にしてください"):
+            services.register_connection(first, url, FIRST_ENV, "send", user)
+    saved = services.register_connection(first, "https://buyer.example.test/connect/receive/order/", FIRST_ENV, "send", user)
+    assert saved.url == "https://buyer.example.test/connect/receive/order/"
+    assert services.register_connection(second, "", SECOND_ENV, "receive", user).url == ""

@@ -21,10 +21,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -99,6 +101,7 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
     """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL → 自社の連絡先のメールアドレス → 2 行目。
 
     送る向きで url が空でなければ、URL の形を確かめる。受ける向きの url は空でよい。
+    settings の SEIZOU_CONNECT_PUBLIC_ONLY が真なら、送る向きの URL は https だけを保存できる (訳は _public_only)。
     contact_email (自社の連絡先のメールアドレス) は空でよい。空でなければ 254 字までのメールアドレスの形を見る (受けた字は文に入れない)。
     同じ取引先と向きのつながりが既にあれば断る。exclude_pk は、直すときに自分の行を除くための引数。
     DB の一意の制約は持たない (表を変えないため)。誤りは日本語の文の ValueError。
@@ -118,6 +121,11 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
         raise ValueError(
             f"保存できません。受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
         )
+    if direction == Connection.DIRECTION_SEND and url and _public_only() and urlsplit(url).scheme != "https":
+        # 送る先を外の名前に絞る設定 (_public_only) では、送る向きの URL は https だけ (127.0.0.1・localhost も外さない)。
+        raise ValueError(
+            "保存できません。この置き場は送る先を外の名前に絞る設定なので、受け口の URL は https:// で始まる URL にしてください。"
+        )
     if contact_email and not _email_is_valid(contact_email):
         # 字は括弧の中にそのまま書く (使い方の画面が ast で集め、画面から起きない文の表 core/manual.py の NOT_FROM_SCREEN と比べるため)
         raise ValueError("保存できません。自社の連絡先のメールアドレスが、メールアドレスの形ではありません。例 info@example.jp の形で入れてください。")
@@ -129,6 +137,58 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
         raise ValueError(
             f"保存できません。この取引先との「{label}」のつながりは既にあります。つながりの一覧の行から編集してください。"
         )
+
+
+def _public_only() -> bool:
+    """送る先を外の名前に絞るか。Django の settings の SEIZOU_CONNECT_PUBLIC_ONLY を読む (既定は偽)。
+
+    会社の設定の画面で変えられる SEIZOU の辞書には入れない (画面から守りを外させないため)。
+    真のとき: _check_connection は送る向きの URL を https だけ保存し、_post_signed は送る前に名前を引いて
+    全部の番地が外の番地 (_private_destination) のときだけ送る。偽のときは今のまま (名前を引かない・http を通す)。
+    訳: ログインした人が送る向きの URL を社内の機械や同じ VPS のもう 1 社 (127.0.0.1) に向け、署名つきの本文を POST させないため。既定は今のまま (LAN の中だけで http で開く置き場と社内の PC の名前を通す決め N15・N19 を破らない)。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-5 と確かめ直しの (a)(b)。
+    変えてよい条件 = 本人が既定を真にすると決めたとき。
+    限り: 名前を確かめた後に requests がもう 1 度名前を引くので、その間に名前の向きを変える攻撃 (DNS rebinding) は止めない ((c)。番地を固定する adapter は作らない)。
+    """
+    from django.conf import settings
+
+    return bool(getattr(settings, "SEIZOU_CONNECT_PUBLIC_ONLY", False))
+
+
+def _private_destination(url):
+    """送る先の URL の名前を引き、外の番地でない番地が 1 つでもあれば返事の欄の文を返す。全部が外の番地なら None。
+
+    名前は socket.getaddrinfo で引き、全部の番地を ipaddress の is_global で見る (IPv6 の %scope は外して読む)。
+    名前が無い・引けない・番地が 1 つも無いときは、今の届かない字 (相手につながりません) を返す。
+    番地の値は文に出すが、鍵と本文は出さない。呼び手 (_post_signed) は atomic の外から呼ぶ (R17)。
+    訳: 送る先を外の名前に絞る設定 (_public_only) のとき、社内か手元の番地へ署名つきの本文を送らないため。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-5 と確かめ直しの (a)(b)。
+    変えてよい条件 = 本人が既定を真にすると決めたとき (_public_only と同じ)。
+    """
+    unreachable = "届きません: 相手につながりません。つながりの URL と、相手が立っているかを確かめてください。"
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return unreachable
+    if not parts.hostname:
+        return unreachable
+    try:
+        found = socket.getaddrinfo(parts.hostname, port or 443, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return unreachable
+    if not found:
+        return unreachable
+    for _family, _type, _proto, _name, address in found:
+        text = str(address[0]).split("%", 1)[0]
+        try:
+            public = ipaddress.ip_address(text).is_global
+        except ValueError:
+            public = False
+        if not public:
+            return (
+                f"送っていません: 受け口の URL の名前が社内か手元の番地 ({text}) を指しています。"
+                "つながりの URL を確かめてください。"
+            )
+    return None
 
 
 def _email_is_valid(text):
@@ -2271,6 +2331,7 @@ def _post_signed(connection, message_id, raw, **options):
     options は requests.post に渡す (待ちの timeout と、添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
     _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
     3xx の転送には付いて行かない (allow_redirects=False)。3xx の返事はそのまま呼び手へ返し、呼び手が受け取ったにしない。
+    送る先を外の名前に絞る設定 (_public_only) が真なら、送る前に名前を引き、社内か手元の番地を指すときは送らない (unreachable)。
     訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
     変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
     """
@@ -2292,6 +2353,12 @@ def _post_signed(connection, message_id, raw, **options):
             "送っていません。.env の値を確かめてください。"
         )
         return None, (reply, "bad_secret")
+
+    if _public_only():
+        # 送る先を外の名前に絞る設定のときだけ、送る前に名前を引く (偽のときは引かない = 今のまま)。
+        private = _private_destination(connection.url)
+        if private is not None:
+            return None, (private, "unreachable")
 
     try:
         answer = requests.post(
