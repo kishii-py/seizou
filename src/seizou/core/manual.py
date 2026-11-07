@@ -248,17 +248,22 @@ NOT_FROM_SCREEN = (
     (
         "core",
         "保存できません。メールの送り方は、host・port・security・user・from・from_name・site_url の鍵を持つ辞書にしてください。",
-        "メールの送り方の変更の画面は 7 つの欄で、form が 7 つの鍵の辞書を作る (core/forms.py の SettingForm)。",
+        "メールの送り方の変更の画面は 7 つの欄で、form が .env で決めない 4 つの鍵の辞書を作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「サーバー」は、空白の無い 253 字までの名前にしてください (例 smtp.example.jp)。",
+        "サーバーは置き場の .env の EMAIL_HOST で決め、画面の欄は読むだけ (core/forms.py の SettingForm。core/conf.py の MAIL_ENV)。",
     ),
     (
         "core",
         "保存できません。メールの送り方の「ポート」は 1〜65535 の整数にしてください。",
-        "ポートの欄は整数の欄で、1〜65535 の外は form が止める (core/forms.py の SettingForm)。",
+        "ポートは置き場の .env の EMAIL_PORT で決め、画面の欄は読むだけ (core/forms.py の SettingForm。core/conf.py の MAIL_ENV)。",
     ),
     (
         "core",
         "保存できません。メールの送り方の「暗号化の方式」は starttls・ssl・none のどれかにしてください。",
-        "暗号化の方式は丸の選択で、選べる値の外は form が止める (core/forms.py の SettingForm)。",
+        "暗号化の方式は置き場の .env の EMAIL_SECURITY で決め、画面の欄は読むだけ (core/forms.py の SettingForm。core/conf.py の MAIL_ENV)。",
     ),
     (
         "core",

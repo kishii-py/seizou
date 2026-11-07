@@ -8,6 +8,7 @@
 - guard・read・check_keys・decimal・date・text: 部品の種 (部品の demo_seed.py) の YAML の読み方。
   guard が services と変換の誤りに、ファイルと「N 件目」を付ける。
   yaml は read の中でだけ読む (CSV の取り込みが yaml を読まない)。
+- decimal_fits: 外から来た数の字を読んだ Decimal が、表の列に入り得る桁 (指数) の中か。
 """
 
 from __future__ import annotations
@@ -29,6 +30,28 @@ FALSE_WORDS = frozenset({"false", "0", FALSE_TEXT, "no"})
 
 def is_blank(raw):
     return raw is None or (isinstance(raw, str) and raw.strip() == "")
+
+
+#: 外から来た数の整数の部分の桁の上限。表の数と金額の列で一番広い整数の桁 (connect の Exchange.amount の
+#: max_digits=20・decimal_places=4 = 整数 16 桁)。これより大きい数は、どの列にも入らない
+DECIMAL_MAX_INT_DIGITS = 16
+#: 外から来た数の小数の部分の桁の上限。表の列は小数 4 桁まで。末尾の 0 を書いた字 (480.000000) も受けるように余りを持たせる
+DECIMAL_MAX_PLACES = 10
+
+
+def decimal_fits(number) -> bool:
+    """number が有限の Decimal で、整数の部分が DECIMAL_MAX_INT_DIGITS 桁まで・小数の部分が DECIMAL_MAX_PLACES 桁までか。
+
+    指数 (adjusted と as_tuple の exponent) だけを見るので、桁の大きな数でも字にせずにすぐ答える (normalize と f"{n:f}" を呼ばない)。
+    外から来た数の字 (AI の読み取りの答え・GET の値) を Decimal にした後、字にする前と比べる前に呼ぶ。
+    訳: 「1E+999999999」のような短い字は Decimal には読めるが、小数点の形の字にすると 10 億桁になり、1 回の要求や
+    1 枚の注文書で記憶を使い切るため、表の列に入り得る桁の外の数を受けない。
+    出所 = Claude Security の走査の候補 (11-07 の 17・30)。桁は表の列の max_digits と decimal_places から決めた AI の案。
+    変えてよい条件 = 表に、もっと広い桁の数と金額の列を足す時 (その列の桁に合わせて広げる)。
+    """
+    if not isinstance(number, Decimal) or not number.is_finite():
+        return False
+    return number.adjusted() < DECIMAL_MAX_INT_DIGITS and number.as_tuple().exponent >= -DECIMAL_MAX_PLACES
 
 
 #: 画面の字 (verbose_name) を直す前の見出し → 列の名前。種の CSV がこの字のままでも読む。

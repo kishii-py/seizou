@@ -224,17 +224,32 @@ class SettingForm(forms.Form):
         elif key == "mail":
             # 欄の名前は頭に mail_ を付ける (土台が渡す user などの名前と字を重ねないため)。初期値は今の送り方。
             # 丸の注 (notes) は Radios に直に渡す (CHOICE_NOTES は CHOICES と真偽の鍵だけの表)
+            # サーバー・ポート・暗号化の方式は .env だけで決める (conf.MAIL_ENV)。画面では読むだけの欄 (disabled) にし、送られた値は使わない
             values = conf.mail_settings()
             self.fields["mail_host"] = forms.CharField(
-                label="サーバー", max_length=253, required=False, initial=values["host"], help_text="例 smtp.example.jp。空ならメールを送りません。"
+                label="サーバー",
+                max_length=253,
+                required=False,
+                disabled=True,
+                initial=values["host"],
+                help_text="置き場の .env の EMAIL_HOST= の行で決めます (画面では変えません)。例 smtp.example.jp。空ならメールを送りません。",
             )
             self.fields["mail_port"] = forms.IntegerField(
-                label="ポート", min_value=1, max_value=65535, initial=values["port"], help_text="STARTTLS は 587、SSL/TLS は 465 のことが多い。"
+                label="ポート",
+                min_value=1,
+                max_value=65535,
+                required=False,
+                disabled=True,
+                initial=values["port"],
+                help_text="置き場の .env の EMAIL_PORT= の行で決めます (無ければ 587)。STARTTLS は 587、SSL/TLS は 465 のことが多い。",
             )
             self.fields["mail_security"] = forms.ChoiceField(
                 label="暗号化の方式",
                 choices=[(v, MAIL_SECURITY_LABELS[v]) for v in conf.MAIL_SECURITY],
+                required=False,
+                disabled=True,
                 initial=values["security"],
+                help_text="置き場の .env の EMAIL_SECURITY= の行 (starttls・ssl・none) で決めます (無ければ starttls)。",
                 widget=Radios(
                     attrs={"class": RADIO_CSS},
                     notes={
@@ -291,13 +306,14 @@ class SettingForm(forms.Form):
             )
 
     def value(self):
-        """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、メールの送り方は 7 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
+        """services に渡す値 (真偽はそのまま、権限の判定は 3 つの欄の辞書、メールの送り方は .env で決めない 4 つの欄の辞書、使わない項目は並び、字はそのまま)。"""
         data = self.cleaned_data
         if self.key == "access_control":
             return {kind: data[kind] for kind in conf.DEFAULTS["access_control"]}
         if self.key == "mail":
-            # 欄の名前から頭の mail_ を外した 7 つの鍵の辞書。値を整えるのは services (form は欄の型だけ)
-            return {name: data[f"mail_{name}"] for name in conf.MAIL_KEYS}
+            # 欄の名前から頭の mail_ を外した辞書。.env だけで決める鍵 (conf.MAIL_ENV) は渡さない (services が既定で埋める)。
+            # 値を整えるのは services (form は欄の型だけ)
+            return {name: data[f"mail_{name}"] for name in conf.MAIL_KEYS if name not in conf.MAIL_ENV}
         if self.key == "hidden_fields":
             return list(data[self.HIDDEN_FIELDS_FIELD])
         return data[self.key]

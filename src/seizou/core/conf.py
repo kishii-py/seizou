@@ -9,6 +9,7 @@
 表の読みは savepoint (transaction.atomic) で包み、読めない読みが外の transaction (services の atomic の中) を壊さないようにする。
 """
 
+import os
 import re
 import time
 
@@ -42,6 +43,9 @@ DEFAULTS = {
 MAIL_KEYS = ("host", "port", "security", "user", "from", "from_name", "site_url")
 #: 知らせのメールの暗号化の方式 (starttls = つないだ後に暗号化 / ssl = 初めから暗号化 / none = 暗号化しない)
 MAIL_SECURITY = ("starttls", "ssl", "none")
+#: 知らせのメールの送り方のうち、置き場の .env (環境変数) だけで決める物 (サーバー・ポート・暗号化の方式) と、環境変数の名前。
+#: 画面の上書きと答えの YAML の値は読まない (.env のパスワード EMAIL_HOST_PASSWORD を渡す先を、画面から変えられないように)
+MAIL_ENV = {"host": "EMAIL_HOST", "port": "EMAIL_PORT", "security": "EMAIL_SECURITY"}
 
 CHOICES = {
     "order_form": ("multi", "single"),
@@ -156,33 +160,46 @@ def access_control(kind: str) -> str:
     return value if isinstance(value, str) and value in ACCESS_MODES else "log"
 
 
-#: 知らせのメールの送り方 (mail) の中の鍵のうち、字で持つ物
-_MAIL_TEXT_KEYS = ("host", "user", "from", "from_name", "site_url")
-
 
 def mail_settings() -> dict:
     """知らせのメールの送り方 (mail) を、MAIL_KEYS の順の新しい辞書で返す (読むだけ。例外を投げない)。
 
-    mail が辞書でなければ既定の写し。辞書なら、無い中の鍵と形の違う値を既定で埋める (字でない字の鍵・真偽か整数でないポート・
-    MAIL_SECURITY の外の暗号化の方式)。字は前後の空白を落とす。値を確かめて保存するのは services の validate_setting で、
+    mail が辞書でなければ既定で埋める。辞書なら、無い中の鍵と字でない値を既定で埋める。字は前後の空白を落とす。値を確かめて保存するのは services の validate_setting で、
     ここは答えの YAML の書き損じで画面と知らせを 500 にしないための読み方 (access_control() と同じ考え)。
     パスワードは持たない (core.mail が .env の EMAIL_HOST_PASSWORD を読む)。
+    サーバー・ポート・暗号化の方式 (MAIL_ENV の鍵) は、画面の上書きと SEIZOU を読まず、mail_env_value で環境変数だけから読む。
     """
     defaults = DEFAULTS["mail"]
     values = setting("mail")
     if not isinstance(values, dict):
-        return dict(defaults)
+        values = {}
     result = {}
     for key in MAIL_KEYS:
+        if key in MAIL_ENV:
+            result[key] = mail_env_value(key)
+            continue
         value = values.get(key, defaults[key])
-        if key in _MAIL_TEXT_KEYS:
-            value = value.strip() if isinstance(value, str) else defaults[key]
-        elif key == "port":
-            value = value if isinstance(value, int) and not isinstance(value, bool) else defaults[key]
-        elif key == "security":
-            value = value if isinstance(value, str) and value in MAIL_SECURITY else defaults[key]
-        result[key] = value
+        result[key] = value.strip() if isinstance(value, str) else defaults[key]
     return result
+
+
+def mail_env_value(key: str):
+    """知らせのメールのサーバー・ポート・暗号化の方式 (MAIL_ENV の鍵) を、環境変数 (置き場の .env の行) だけから読む (例外を投げない)。
+
+    サーバーは前後の空白を落とした字 (無ければ空の字 = 送らない)。ポートは 1〜65535 の整数の字なら整数、ほかは既定の 587。
+    暗号化の方式は MAIL_SECURITY のどれか (大小を問わない)、ほかは既定の starttls。
+    訳: パスワード (.env の EMAIL_HOST_PASSWORD) を渡す先を、.env を書ける人 (置き場を預かる人) だけが決めるため。
+    画面から変えられると、アカウント管理の権限の人が自分のサーバーを入れて「試しに送る」を押すだけで、パスワードを受け取れる。
+    出所 = Claude Security の走査の候補 (11-07 の 11・23・25・26)。
+    変えてよい条件 = 画面で送り先を変えられる人を、.env を書ける人と同じ人 (システム管理者) に限ると決めた時。
+    """
+    default = DEFAULTS["mail"][key]
+    text = os.environ.get(MAIL_ENV[key], "").strip()
+    if key == "port":
+        return int(text) if text.isascii() and text.isdigit() and 1 <= int(text) <= 65535 else default
+    if key == "security":
+        return text.lower() if text.lower() in MAIL_SECURITY else default
+    return text
 
 
 def company_id() -> str:

@@ -193,6 +193,11 @@ DRAWING_TOO_LARGE_MESSAGE = (
     "図面の表示用の絵は作れませんでした (絵が大きすぎます。{width}×{height} 画素)。"
     "元のファイルは保存してあります。解像度を下げて付け直すと絵を作れます。"
 )
+#: Pillow の守り (decompression bomb) が開く所で断った絵の文。画素の数は Pillow が開く前に断るので出せない。
+DRAWING_BOMB_MESSAGE = (
+    "図面の表示用の絵は作れませんでした (絵が大きすぎます)。"
+    "元のファイルは保存してあります。解像度を下げて付け直すと絵を作れます。"
+)
 # PNG に保存できる形。白黒 (1) は L にしてから縮める (そのまま縮めると細い線が消える)。
 _PREVIEW_MODES = ("L", "RGB", "RGBA")
 # Pillow の上限 (Image.MAX_IMAGE_PIXELS) と、途中で切れた絵を読むか (ImageFile.LOAD_TRUNCATED_IMAGES) は
@@ -214,26 +219,35 @@ def _drawing_preview(file):
     (DRAWING_MAX_PAGES まで) も同じ形の PNG にする。
     壊れている・大きすぎるときは None と誤りの文。読んだ後は (誤りのときも) 読む位置を先頭に戻す
     (戻さないと元のファイルの保存が空になる)。
+    Pillow の守り (Image.MAX_IMAGE_PIXELS) は外さない。変換の間の上限は、今の上限と DRAWING_MAX_PIXELS の大きい方
+    (Pillow の既定は約 8,900 万画素で A0 を 400dpi で読んだ図面が入らないので、図面の上限までは上げる)。
+    上限の 2 倍を超える絵は Pillow が開く所で DecompressionBombError にするので、表示用の絵を作らずに DRAWING_BOMB_MESSAGE を返す。
+    訳: 小さなファイルが開くと何 GB にもなる絵 (decompression bomb) で、サーバーの記憶を使い切らせないため。
+    出所 = Claude Security の走査の候補 11-07 の 31 (守りを None で外していた)。図面の上限の 3 億画素は 00 の案のまま。
+    変えてよい条件 = 図面の上限 (DRAWING_MAX_PIXELS) を変える時。守りを None にして外すことはしない。
     """
     if not (getattr(file, "name", "") or "").lower().endswith(DRAWING_IMAGE_SUFFIXES):
         return None, "", []
     try:
         file.seek(0)
         with _PIXEL_LIMIT_LOCK:
-            # Pillow の既定の上限では A0 の図面が読めないので、変換の間だけ外し、上限は DRAWING_MAX_PIXELS で見る。
+            # Pillow の既定の上限では A0 の図面が読めないので、変換の間だけ図面の上限まで上げる (外さない)。
             # 帳票の PDF の道具 (WeasyPrint) は import のときに途中で切れた絵も読む設定にするので、
             # 変換の間だけ切れた絵を誤りにする (そのままだと壊れた図面に知らせが出ない)。
             saved_limit = Image.MAX_IMAGE_PIXELS
             saved_truncated = ImageFile.LOAD_TRUNCATED_IMAGES
-            Image.MAX_IMAGE_PIXELS = None
+            Image.MAX_IMAGE_PIXELS = max(saved_limit or 0, DRAWING_MAX_PIXELS)
             ImageFile.LOAD_TRUNCATED_IMAGES = False
             try:
                 return _read_drawing(file)
             finally:
                 Image.MAX_IMAGE_PIXELS = saved_limit
                 ImageFile.LOAD_TRUNCATED_IMAGES = saved_truncated
-    # 壊れた中身で Pillow が出す例外 (UnidentifiedImageError・OSError・SyntaxError・ValueError・EOFError・
-    # DecompressionBombError など) は全部、壊れているの文にする。部品の保存を止めず、例外の文も出さない。
+    # Pillow の守りが断った絵は、壊れているでなく大きすぎるの文にする (部品の保存は止めない)。
+    except Image.DecompressionBombError:
+        return None, DRAWING_BOMB_MESSAGE, []
+    # 壊れた中身で Pillow が出す例外 (UnidentifiedImageError・OSError・SyntaxError・ValueError・EOFError など) は全部、
+    # 壊れているの文にする。部品の保存を止めず、例外の文も出さない。
     except Exception:  # noqa: BLE001
         return None, DRAWING_BROKEN_MESSAGE, []
     finally:
@@ -241,7 +255,7 @@ def _drawing_preview(file):
 
 
 def _read_drawing(file):
-    """_drawing_preview の中身。Pillow の上限を外した中で呼ぶ。"""
+    """_drawing_preview の中身。Pillow の上限を図面の上限まで上げた中で呼ぶ。"""
     with Image.open(file) as image:
         width, height = image.size
         if width * height > DRAWING_MAX_PIXELS:

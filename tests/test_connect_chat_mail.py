@@ -17,7 +17,7 @@ from django.urls import reverse
 
 from seizou.connect import services
 from seizou.connect.models import ChatMessage, Connection, Inbox
-from seizou.core import mail
+from seizou.core import conf, mail
 from tests import test_core_manual_auto
 from tests.test_connect_reply import (  # noqa: F401 (fixture)
     _into_receive,
@@ -54,8 +54,11 @@ A_ADDRESS = "a-contact@example.test"
 
 
 @pytest.fixture
-def mail_settings(settings):
+def mail_settings(settings, monkeypatch):
+    # サーバー・ポート・暗号化の方式は .env (環境変数) だけで決める (core.conf.MAIL_ENV)。ほかの送り方は会社の設定
     settings.SEIZOU = {"mail": dict(MAIL)}
+    for key, name in conf.MAIL_ENV.items():
+        monkeypatch.setenv(name, str(MAIL[key]))
     return settings
 
 
@@ -208,6 +211,7 @@ def test_no_mail_settings_sends_nothing_but_keeps_message(
     monkeypatch, settings, mailoutbox, caplog, user, subcontractor, customer, item, connections  # noqa: F811
 ):
     settings.SEIZOU = {"mail": {**MAIL, "host": ""}}
+    monkeypatch.delenv(conf.MAIL_ENV["host"], raising=False)
     po, _inbox = _sent_order(monkeypatch, subcontractor, item, user)
     _set_address(customer, Connection.DIRECTION_RECEIVE, B_ADDRESS)
     _round_trip(monkeypatch)
@@ -351,6 +355,7 @@ def test_mail_without_site_url_has_no_link(
     monkeypatch, settings, mailoutbox, user, subcontractor, customer, item, connections  # noqa: F811
 ):
     settings.SEIZOU = {"mail": {**MAIL, "site_url": ""}}
+    monkeypatch.setenv(conf.MAIL_ENV["host"], MAIL["host"])
     po, _inbox = _sent_order(monkeypatch, subcontractor, item, user)
     _set_address(customer, Connection.DIRECTION_RECEIVE, B_ADDRESS)
     _round_trip(monkeypatch)

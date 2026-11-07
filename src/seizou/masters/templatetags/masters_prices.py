@@ -19,6 +19,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 
+from seizou.core import seeds
 from seizou.core.templatetags.seizou_tags import comma, yen
 
 from ..models import ItemPrice, Partner
@@ -69,13 +70,18 @@ def _pick_date(raw):
 
 
 def _pick_qty(raw):
-    """GET の qty を数に読む。NFKC にそろえて「,」を外し、0 より大きい数ならその値、ほかは None (受注の明細の数の欄と同じそろえ方)。"""
+    """GET の qty を数に読む。NFKC にそろえて「,」を外し、桁の中 (core.seeds.decimal_fits) の 0 より大きい数ならその値、ほかは None (受注の明細の数の欄と同じそろえ方)。
+
+    訳: GET の値は誰でも書けるので、「1E+999999999」のような桁の外の数を数量の行 (comma で小数点の形の字にする) に出さない
+    (字にすると 10 億桁になり、1 回の要求で記憶を使い切る)。出所 = Claude Security の走査の候補 11-07 の 30。
+    変えてよい条件 = core.seeds.decimal_fits の桁を変える時 (ここは呼ぶだけ)。
+    """
     text = unicodedata.normalize("NFKC", raw or "").replace(",", "").strip()
     try:
         value = Decimal(text)
     except InvalidOperation:
         return None
-    return value if value.is_finite() and value > 0 else None
+    return value if seeds.decimal_fits(value) and value > 0 else None
 
 
 def _pick_row(choice, item, qty_unit, kind):

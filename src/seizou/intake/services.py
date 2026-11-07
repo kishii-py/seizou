@@ -30,7 +30,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import ai
+from seizou.core import ai, seeds
 from seizou.masters.services import map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
 
@@ -445,7 +445,12 @@ def _text(value, where, label, limit):
 
 
 def _number_text(value, where, label):
-    """数の項目。null と空は None。Decimal に直せて有限な字か整数なら、正規化した字。ほかは日本語の ValueError。"""
+    """数の項目。null と空は None。Decimal に直せて桁の中 (core.seeds.decimal_fits) の字か整数なら、正規化した字。ほかは日本語の ValueError。
+
+    訳: 読み取った答えの数の字は注文書を書いた人が決められるので、「1E+999999999」のような桁の外の数を字にする前に断る
+    (字にすると 10 億桁になり、記憶を使い切る)。断りの文は数の形でない字と同じ。
+    出所 = Claude Security の走査の候補 11-07 の 17。変えてよい条件 = core.seeds.decimal_fits の桁を変える時 (ここは呼ぶだけ)。
+    """
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     if isinstance(value, (str, int)) and not isinstance(value, bool):
@@ -453,7 +458,7 @@ def _number_text(value, where, label):
             number = Decimal(str(value).strip())
         except InvalidOperation:
             number = None
-        if number is not None and number.is_finite():
+        if number is not None and seeds.decimal_fits(number):
             return f"{number:f}"
     raise ValueError(f"読み取った{where}{label}が数の形ではありません。{_NEXT}")
 

@@ -1,4 +1,4 @@
-"""知らせのメールを送る口。送り方は会社の設定 mail (設定の画面の「メールの知らせ」の「編集」で入れる)、パスワードは .env の EMAIL_HOST_PASSWORD だけ (画面と表と記録に値を出さない)。送るのはこの module だけ。
+"""知らせのメールを送る口。サーバー・ポート・暗号化の方式は .env の EMAIL_HOST・EMAIL_PORT・EMAIL_SECURITY だけ (core.conf.MAIL_ENV。画面では読むだけ)、アカウント・差出人などは会社の設定 mail (設定の画面の「メールの知らせ」の「編集」で入れる)、パスワードは .env の EMAIL_HOST_PASSWORD だけ (画面と表と記録に値を出さない)。送るのはこの module だけ。
 
 - has_password(): パスワードが .env に置いてあるか (値は返さない)。
 - missing() / ready(): 送り方のうち空の要る物 (サーバー・差出人) の見出しと、送れる形か。
@@ -29,6 +29,11 @@ SUBJECT_MAX = 200
 
 #: 送り方のうち、空だと送れない物の見出し (設定の変更の画面の欄の名前と同じ字)
 _REQUIRED = (("host", "サーバー"), ("from", "差出人"))
+#: 空のときの入れ方 (サーバーは .env だけで決め、差出人は画面で入れる)
+_REQUIRED_HINTS = {
+    "サーバー": "「サーバー」は置き場の .env に EMAIL_HOST= の行で置き、起動し直してください。",
+    "差出人": "「差出人」は設定の画面の「メールの知らせ」の「編集」で入れてください。",
+}
 
 logger = logging.getLogger("seizou.mail")
 
@@ -72,16 +77,17 @@ def _clean_subject(subject: str) -> str:
 def send(to, subject: str, body: str) -> None:
     """字だけのメールを送る (HTML にしない・添付を付けない)。送れなければ MailNotSent。
 
-    送り方は conf.mail_settings()、パスワードは環境変数 EMAIL_HOST_PASSWORD。django.core.mail の get_connection に渡す
+    送り方は conf.mail_settings() (サーバー・ポート・暗号化の方式は環境変数だけから読む)、パスワードは環境変数 EMAIL_HOST_PASSWORD。django.core.mail の get_connection に渡す
     (backend は渡さない。会社では Django の既定の SMTP で送り、試験では pytest-django が既定を locmem に替える)。
     件名の改行と制御の字は空白にする (Django は改行のある件名を断る。件名に入る相手の注文番号は相手の字なので、ここで消す)。
     記録には宛先の数と例外の class の名前だけを書き、宛先のアドレス・件名・本文・パスワードは書かない。
-    訳: 設定の欠けたメールを送らず、送れなかった訳を設定の画面で直せる字で返すため (パスワードの値は字にも記録にも出さない)。待ちを 5 秒にしたのは、会話の受け口の中で送るとき、送り手が 10 秒で待つのをやめるより前に返すため。出所 = 作者の決め (送り方は設定の画面で入れ、パスワードは .env に置く) と AI の案 (字と 5 秒)。変えてよい条件 = 後で送る仕組み (待ち行列など) を足す時。
+    訳: 設定の欠けたメールを送らず、送れなかった訳を設定の画面で直せる字で返すため (パスワードの値は字にも記録にも出さない)。待ちを 5 秒にしたのは、会話の受け口の中で送るとき、送り手が 10 秒で待つのをやめるより前に返すため。出所 = 作者の決め (送り方は設定の画面で入れ、パスワードは .env に置く) と AI の案 (字と 5 秒)。パスワードを渡すサーバー・ポート・暗号化の方式を .env だけにしたのは Claude Security の走査の候補 11-07 の 11・23・25・26。変えてよい条件 = 後で送る仕組み (待ち行列など) を足す時。
     """
     empty = missing()
     if empty:
         names = "".join(f"「{label}」" for label in empty)
-        raise MailNotSent(f"{names}がまだ入っていません。設定の画面の「メールの知らせ」の「編集」で入れてください。")
+        hints = "".join(_REQUIRED_HINTS[label] for label in empty)
+        raise MailNotSent(f"{names}がまだ入っていません。{hints}")
     recipients = [address for address in (to or ()) if address]
     if not recipients:
         raise MailNotSent("送り先のアドレスがありません。")

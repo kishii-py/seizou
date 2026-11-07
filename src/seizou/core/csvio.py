@@ -8,6 +8,8 @@
 - 見出しは表の verbose_name (日本語の項目名)・画面の字を直す前の見出し (FORMER_HEADERS)・会社ごとの項目の名前。
   対応の表は手で書かず、model の _meta と会社ごとの項目の登録から引く。
 - 行の番号は見出しを 1 行目に数える。全部の欄が空の行 (Excel が残す ,,, の行) は誤りにせず、呼ぶ側が「飛ばした」に数える。
+- 書き出しは、表計算の式として動く字 (FORMULA_HEADS で始まる字) の頭に「'」を付ける (neutralize)。取り込みは、
+  その「'」を外してから読む (restore)。一覧の CSV をそのまま入れ直しても値が変わらないように。
 - ここは読むだけ。表に書くのは部品の services。
 """
 
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import csv
 import io
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 
@@ -26,6 +29,11 @@ ENCODINGS = (("utf-8-sig", "UTF-8 (BOM あり・なし)"), ("cp932", "Shift_JIS 
 DEFAULT_ENCODING = "utf-8-sig"
 #: 読まない見出し (値があっても入れない。図面は部品の編集の画面で上げる)。
 SKIP_HEADERS = ("図面ファイル",)
+#: 表計算 (Excel・LibreOffice など) が、欄の頭にあると式として読む字 (OWASP の CSV injection の一覧)。
+#: 「=」「+」「-」「@」と、その前に置いて式を隠せるタブと改行 (CR)。
+FORMULA_HEADS = ("=", "+", "-", "@", "\t", "\r")
+#: 書き出しが式の字の頭に付ける字 (表計算が字として読む印)
+FORMULA_GUARD = "'"
 
 
 def decode(data, encoding):
@@ -119,7 +127,7 @@ def read_table(text, model, *, required, skip=SKIP_HEADERS):
     rows = []
     for line, row in body:
         cells = list(row) + [""] * (width - len(row))
-        rows.append((line, {h: cells[i] for i, h in enumerate(headers) if h}))
+        rows.append((line, {h: restore(cells[i]) for i, h in enumerate(headers) if h}))
     return named, columns, ext_columns, rows
 
 
@@ -159,14 +167,45 @@ def to_ext_value(column, raw):
     return value
 
 
+def neutralize(text: str) -> str:
+    """CSV の 1 つの欄の字が式の字 (FORMULA_HEADS) で始まれば、頭に「'」を付ける。ほかはそのまま。
+
+    書き出しの欄の字は全部ここを通す (一覧の csv_response は to_text から、集計の CSV は core.summary の csv_rows から)。
+    数の値 (Decimal・int・float) は呼ぶ側 (to_text) が通さない (負の数「-5」を字にしないため)。
+    訳: 人や取引先が入れた字 (取引先の名前・部署・ロット・相手の注文番号など) が「=」などで始まると、書き出した CSV を
+    表計算で開いたときに式として動き、別のサイトへのリンクや外の命令を起こせるため、字として読ませる。
+    出所 = Claude Security の走査の候補 (11-07 の 1・14・15・16・36・41・44・45) と OWASP の CSV injection の対策。
+    変えてよい条件 = 書き出しの形を表計算で開かない形 (JSON など) に替える時か、式の字の一覧 (FORMULA_HEADS) を表計算の変化に合わせる時。
+    取り込みの restore と 1 対で変える。
+    """
+    if text.startswith(FORMULA_HEADS):
+        return FORMULA_GUARD + text
+    return text
+
+
+def restore(text: str) -> str:
+    """neutralize の逆。「'」の後が式の字 (FORMULA_HEADS) のときだけ「'」を外す。ほかはそのまま (人が入れた「'」は残す)。
+
+    訳: 一覧の CSV をそのまま取り込み直したときに、書き出しが付けた「'」が値に入らないようにするため。
+    出所 = Claude Security の走査の候補 11-07 の対策 (neutralize) に合わせた AI の案。
+    変えてよい条件 = neutralize の付け方を変える時 (1 対で変える)。
+    """
+    if text.startswith(FORMULA_GUARD) and text[len(FORMULA_GUARD):].startswith(FORMULA_HEADS):
+        return text[len(FORMULA_GUARD):]
+    return text
+
+
 def to_text(value):
     """表の値を、一覧の CSV の書き出しの 1 つの欄の字にする (to_value の逆の向き)。
 
     None は空の字、真偽は取り込みが読む字の組にある書き出しの字 (seeds.TRUE_TEXT・FALSE_TEXT。決め 11-06 22:0x)、ほかは str。
     真偽は isinstance で見る (数の 0 と 1 は数の字のまま)。
+    数 (Decimal・int・float) は str のまま。ほかの字は neutralize を通す (式の字で始まる字の頭に「'」)。
     """
     if value is None:
         return ""
     if isinstance(value, bool):
         return seeds.TRUE_TEXT if value else seeds.FALSE_TEXT
-    return str(value)
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
+    return neutralize(str(value))
