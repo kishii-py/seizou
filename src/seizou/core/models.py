@@ -16,6 +16,7 @@ class Company(models.Model):
 
     連番の形と選べる設定は settings の SEIZOU (seizou.core.conf) が持つ。
     端数と税の既定は会社で持ち、取引先ごとの値 (取引先マスター) が優先する。
+    消費税は請求書の税率ごとの合計に 1 回だけ計算し (インボイス制度。billing.services._tax)、丸める向きは tax_rounding (既定は切捨)。
     """
 
     ROUNDING_CHOICES = [
@@ -23,10 +24,10 @@ class Company(models.Model):
         ("ceil", "切上"),
         ("floor", "切捨"),
     ]
+    # 消費税の扱いは、請求書の税率ごとの合計に 1 回だけ計算するトータルだけ (決め LAW-2。インボイス制度)。
+    # 明細ごとに丸めて足す 2 つの扱いは外し、今の値は core と masters の migration がトータルと消費税の端数の向きに移した。
     TAX_CHOICES = [
         ("total", "トータル"),
-        ("line_round", "各行四捨五入"),
-        ("line_floor", "各行切捨"),
     ]
 
     name = models.CharField("会社名", max_length=100)
@@ -34,6 +35,9 @@ class Company(models.Model):
     theme = models.CharField("画面の色", max_length=35, default="light")
     rounding = models.CharField("端数の扱い", max_length=10, choices=ROUNDING_CHOICES, default="round")
     tax_mode = models.CharField("税の扱い", max_length=10, choices=TAX_CHOICES, default="total")
+    # 消費税 (請求書の金額の合計 × 率) を 1 円に丸める向き (決め C95-1b)。既定は切捨。
+    # 取引先の同じ名前の欄が空なら、この値に従う。会社の値を変える画面は作らない (会社の端数と同じ。決め C32-1)。
+    tax_rounding = models.CharField("消費税の端数の向き", max_length=10, choices=ROUNDING_CHOICES, default="floor")
     address = models.CharField("住所", max_length=100, blank=True)
     phone = models.CharField("電話", max_length=35, blank=True)
     bank_account = models.CharField("振込先", max_length=100, blank=True)

@@ -436,7 +436,7 @@ def test_words_use_parts_and_new_labels(client_logged_in, partner):
     assert "品名を押すと、画面を移らずに中身を見られます。" in listing.context["screen_help"]
     assert "小窓で開けます" not in text(listing) and "小窓で開けます" not in listing.context["screen_help"]
     form = text(client_logged_in.get(reverse("masters:partner_create")))
-    for label in ("金額の端数の扱い", "消費税の端数の扱い", "取引先の種類", "支払の月"):
+    for label in ("金額の端数の扱い", "消費税の端数の扱い", "消費税の端数の向き", "取引先の種類", "支払の月"):
         assert label in form, label
     assert "小計の計算方法" not in form and "消費税の計算方法" not in form
 
@@ -584,10 +584,11 @@ def test_rounding_help_shows_company_default_now(client_logged_in):
     """端数の 2 欄の案内に、会社の既定の今の値を出す (V119)。"""
     from seizou.core.models import Company
 
-    Company.objects.create(name="作り物の会社", rounding="floor", tax_mode="line_floor")
+    Company.objects.create(name="作り物の会社", rounding="floor", tax_rounding="ceil")
     body = text(client_logged_in.get(reverse("masters:partner_create")))
     assert "空なら会社の既定 (今は 切捨) に従います。" in body
-    assert "空なら会社の既定 (今は 各行切捨) に従います。" in body
+    assert "空なら会社の既定 (今は トータル) に従います。" in body
+    assert "空なら会社の既定 (今は 切上) に従います。" in body
 
 
 @pytest.mark.django_db
@@ -600,6 +601,8 @@ def test_partner_form_reads_company_without_creating_it():
     fields = PartnerForm().fields
     assert "空なら会社の既定 (今は 四捨五入) に従います。" in fields["rounding"].help_text
     assert "空なら会社の既定 (今は トータル) に従います。" in fields["tax_mode"].help_text
+    # 消費税の端数の向きは、会社の行が無ければ表の既定の切捨 (決め C95-1b)
+    assert "空なら会社の既定 (今は 切捨) に従います。" in fields["tax_rounding"].help_text
     assert Company.objects.count() == 0
 
 
@@ -613,18 +616,22 @@ def test_detail_and_modal_show_company_default_for_empty_rounding(client_logged_
     detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
     assert detail["金額の端数の扱い"] == "会社の既定 (四捨五入)"
     assert detail["消費税の端数の扱い"] == "会社の既定 (トータル)"
+    assert detail["消費税の端数の向き"] == "会社の既定 (切捨)"
     modal = _rows(client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true"))
     assert modal["金額の端数の扱い"] == "会社の既定 (四捨五入)"
     assert modal["消費税の端数の扱い"] == "会社の既定 (トータル)"
+    # 消費税の端数の向きは 9 つ目の項目で、小窓 (先頭の 8 項目) には出ないので、詳細だけで見る
     partner.rounding = "ceil"
-    partner.tax_mode = "line_round"
+    partner.tax_mode = "total"
+    partner.tax_rounding = "round"
     partner.save()
     detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
     assert detail["金額の端数の扱い"] == "切上"
-    assert detail["消費税の端数の扱い"] == "各行四捨五入"
+    assert detail["消費税の端数の扱い"] == "トータル"
+    assert detail["消費税の端数の向き"] == "四捨五入"
     # 表の値はそのまま
     partner.refresh_from_db()
-    assert (partner.rounding, partner.tax_mode) == ("ceil", "line_round")
+    assert (partner.rounding, partner.tax_mode, partner.tax_rounding) == ("ceil", "total", "round")
 
 
 @pytest.mark.django_db
@@ -632,7 +639,8 @@ def test_detail_follows_company_default_value(client_logged_in, partner):
     """会社の行の端数の扱いを変えると、空の取引先の字もその値になる。"""
     from seizou.core.models import Company
 
-    Company.objects.create(name="作り物の会社", rounding="floor", tax_mode="line_floor")
+    Company.objects.create(name="作り物の会社", rounding="floor", tax_rounding="round")
     detail = _rows(client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])))
     assert detail["金額の端数の扱い"] == "会社の既定 (切捨)"
-    assert detail["消費税の端数の扱い"] == "会社の既定 (各行切捨)"
+    assert detail["消費税の端数の扱い"] == "会社の既定 (トータル)"
+    assert detail["消費税の端数の向き"] == "会社の既定 (四捨五入)"

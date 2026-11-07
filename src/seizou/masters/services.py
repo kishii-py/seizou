@@ -52,6 +52,7 @@ _PARTNER_KEYS = frozenset(
         "payment_day",
         "rounding",
         "tax_mode",
+        "tax_rounding",
         "note",
         "active",
     }
@@ -496,6 +497,26 @@ def company_rounding():
     """会社の既定の端数の方法 (Company の 1 行の rounding)。行が無ければ "round"。会社の行は作らない。"""
     company = company_or_none()
     return company.rounding if company is not None else "round"
+
+
+def round_tax(partner, value):
+    """消費税 (請求書の金額の合計 × 率) の端数を 1 円の単位に丸める 1 か所の関数。
+
+    向きは取引先の消費税の端数の向き (tax_rounding)。空なら会社の既定 (company_tax_rounding()。行が無ければ切捨)。
+    round = 四捨五入、ceil = 切上、floor = 切捨 (金額の round_amount と同じ表)。金額の端数の扱い (rounding) は読まない。
+    インボイス制度は、消費税の端数の処理を請求書の税率ごとの合計に 1 回と決めている (確かめた資料 = 中小企業共通 EDI ガイドブック 1.1)。
+    向き (四捨五入・切上・切捨) の決まりは確かめた資料に無い (国税庁の資料は未読)。
+    訳: 請求書の消費税の端数を、取引先 (空なら会社) の消費税の端数の向きどおりに 1 円に丸める所を 1 か所にするため。出所 = 本人の決め (C95-1b。会社の既定は切捨)。
+    変えてよい条件 = 向きは取引先と会社の設定で選ぶ。合計に 1 回だけ丸めること (決め LAW-2) は変えない。
+    """
+    mode = partner.tax_rounding or company_tax_rounding()
+    return value.quantize(Decimal("1"), rounding=_ROUNDING_MODES[mode])
+
+
+def company_tax_rounding():
+    """会社の既定の消費税の端数の向き (Company の 1 行の tax_rounding)。行が無ければ "floor" (切捨)。会社の行は作らない。"""
+    company = company_or_none()
+    return company.tax_rounding if company is not None else "floor"
 
 
 # カタカナ (ァ〜ヶ) をひらがなに写す表。

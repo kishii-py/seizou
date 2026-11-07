@@ -194,8 +194,8 @@ def test_ext_columns_without_registration_are_reported(tmp_path, no_registration
 @pytest.mark.django_db
 def test_labels_map_to_choices(tmp_path):
     rows = [
-        ["C001", "得意先の社", "", "得意先", "", "", "", "切上", "各行四捨五入", ""],
-        ["S001", "協力企業の社", "", "協力企業", "", "", "", "切捨", "各行切捨", ""],
+        ["C001", "得意先の社", "", "得意先", "", "", "", "切上", "トータル", ""],
+        ["S001", "協力企業の社", "", "協力企業", "", "", "", "切捨", "トータル", ""],
         ["B001", "両方の社", "", "両方", "", "", "", "", "", ""],
     ]
     seeds = write_seeds(tmp_path / "seeds", orders=[])
@@ -210,8 +210,8 @@ def test_labels_map_to_choices(tmp_path):
 
     roles = {p.code: (p.role, p.rounding, p.tax_mode) for p in Partner.objects.all()}
     assert roles == {
-        "C001": ("customer", "ceil", "line_round"),
-        "S001": ("subcontractor", "floor", "line_floor"),
+        "C001": ("customer", "ceil", "total"),
+        "S001": ("subcontractor", "floor", "total"),
         "B001": ("both", "", ""),
     }
     directions = {(c.partner.code, c.direction, c.url) for c in Connection.objects.all()}
