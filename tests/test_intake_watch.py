@@ -7,7 +7,9 @@ autouse の fixture が _ask_claude を「呼ばれたら AssertionError」に�
 """
 
 import json
+import re
 from datetime import timedelta
+from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
@@ -19,10 +21,11 @@ from django.core.management.base import CommandError
 from django.urls import reverse
 from django.utils import timezone
 
+from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
 from seizou.intake import services, watch
 from seizou.intake.models import Extraction
-from seizou.masters.services import create_partner
+from seizou.masters.services import create_item, create_partner
 from seizou.orders.models import Order
 from tests.test_connect_send import FakePost
 from tests.test_intake_extract import FAKE_KEY, PDF_BYTES, PNG_BYTES, refuse_api, reply_data
@@ -191,6 +194,66 @@ def test_watched_extraction_is_not_ordered_from_intake_screen(with_key, monkeypa
     body = response.content.decode()
     assert "受信した注文へ回した" in body
     assert reverse("intake:extraction_accept", args=[extraction.pk]) not in body
+
+
+ACCEPT_NOTE = "「受注登録」を押してください"
+DASH = '<span class="text-base-content/60">—</span>'
+
+
+def _made_order_cell(body):
+    """読み取りの詳細の「作った受注」の欄の中身の字。"""
+    match = re.search(r'<dt class="text-base-content/70">作った受注</dt>\s*<dd class="min-w-0 break-words">(.*?)</dd>', body, re.S)
+    assert match, "「作った受注」の欄が無い"
+    return match.group(1)
+
+
+def test_watched_extraction_detail_links_inbox_and_order(with_key, monkeypatch, client, customer, user):
+    """受信した注文へ回した読み取りの詳細は、押すボタンの無い「「受注登録」を押してください」の青の 1 行を出さず、受信した注文の詳細への link を出す。
+    受け入れた後は、受け入れて作った受注の link を、同じ 1 行と「作った受注」の欄に出す (flow-06。受注は受信した注文の行が持ち、読み取りの order は空のまま)。"""
+    answer_with(monkeypatch, "作り物の得意先")
+    inbox, _created = services.extract_to_inbox(upload(), user)
+    extraction = Extraction.objects.get()
+    client.force_login(user)
+    url = reverse("intake:extraction_detail", args=[extraction.pk])
+    inbox_link = f'href="{reverse("connect:inbox_detail", args=[inbox.pk])}">受信した注文を見る</a>'
+
+    body = client.get(url).content.decode()
+
+    assert ACCEPT_NOTE not in body
+    assert reverse("intake:extraction_accept", args=[extraction.pk]) not in body
+    assert "受信した注文へ回しました。受け入れるかどうかは受信した注文の画面で決めます。" in body
+    assert inbox_link in body
+    assert _made_order_cell(body) == DASH
+
+    shaft = create_item({"part_no": "X-100", "name": "作り物のシャフト", "unit": "個", "standard_price": Decimal("130")}, user)
+    bracket = create_item({"part_no": "X-200", "name": "作り物のブラケット", "unit": "個", "standard_price": Decimal("240")}, user)
+    order = connect_services.accept(inbox, {"X-100": shaft, "X-200": bracket}, user)
+    extraction.refresh_from_db()
+    assert extraction.order is None and extraction.status == Extraction.STATUS_INBOX
+
+    body = client.get(url).content.decode()
+
+    order_link = f'<a class="link link-primary font-mono" href="{reverse("orders:order_detail", args=[order.pk])}">{order.order_no}</a>'
+    assert ACCEPT_NOTE not in body
+    assert "受信した注文で受け入れて、受注を作りました。" in body
+    assert inbox_link in body
+    assert body.count(order_link) == 2  # 青の 1 行と「作った受注」の欄
+    assert _made_order_cell(body) == order_link
+
+
+def test_watched_extraction_detail_after_reject(with_key, monkeypatch, client, customer, user):
+    """受信した注文で断った後の読み取りの詳細は、断った旨と受信した注文への link を出し、「作った受注」は「—」のまま (flow-06)。"""
+    answer_with(monkeypatch, "作り物の得意先")
+    inbox, _created = services.extract_to_inbox(upload(), user)
+    connect_services.reject(inbox, "作り物の理由で断る", user)
+    client.force_login(user)
+
+    body = client.get(reverse("intake:extraction_detail", args=[Extraction.objects.get().pk])).content.decode()
+
+    assert ACCEPT_NOTE not in body
+    assert "受信した注文で断りました。" in body
+    assert f'href="{reverse("connect:inbox_detail", args=[inbox.pk])}">受信した注文を見る</a>' in body
+    assert _made_order_cell(body) == DASH
 
 
 # ここから命令 (seizou_intake_watch)。見張るフォルダは tmp_path/scan、見張りの記録の置き場 (BASE_DIR) は tmp_path/site。

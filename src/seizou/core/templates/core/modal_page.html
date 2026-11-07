@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{# 小窓の中身を土台の画面の中に置いた画面の全体。小窓の土台 (core.views.BaseModalView) が、htmx でない要求 (画面の目録・履歴・AI に質問の窓から小窓の道を直に開いた時) で、詳細の画面の無い表 (計画の詳細の指示書の工程) のときに返す (見つけ FB-12)。 #}
+{# 題は土台の題の段 (screen_name と app の絵)。中身は小窓と同じテンプレート (view が渡す modal_template) を whole_page で include し、字を 2 か所に書かない。小窓の題と「閉じる」は出さない (閉じる小窓が無い)。決まりの番号の説明 core/rule_help.html と同じ形。 #}
+{% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% include modal_template with whole_page=True %}
+</div>
+{% endblock %}

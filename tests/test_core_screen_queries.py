@@ -151,7 +151,7 @@ LIMITS = {
     "workorders:workorder_modal": 8,
     "workorders:workorder_cancel": 20,
     "workorders:plan_index": 29,
-    "workorders:plan_detail": 20,
+    "workorders:plan_detail": 27,  # 小窓の道を htmx でなく直に開くと土台の画面の全体 (左のメニューの数など) を返すようになった (見つけ FB-12)。11-07 の実測 25 (鈴の 3 を含む。2 社で大きい方) − 3 + 5
     "progress:progress_list": 23,
     "progress:record_list": 23,
     "progress:progress_create": 20,

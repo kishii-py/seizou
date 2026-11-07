@@ -1,10 +1,11 @@
 {% load seizou_icons seizou_tags %}
 {# 小窓の中身。見るだけと、「編集」(編集の権限のある人 = edit_url) と「詳細を見る」のボタン。小窓の枠 (dialog) は base.html の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
 {# 項目の後に会社ごとの項目 (fields に続けて並ぶ)。関係する物 (tabs) は block related。部品ごとの形は <app>/_modal.html が extends して block を上書きする。題の下・項目の上の知らせは block above_fields (土台は空。部品の小窓の使用停止の黄色の 1 行 = masters/_modal.html。C55)。 #}
-<div class="flex items-start justify-between gap-4">
+{# 詳細の画面の無い表の小窓の道を htmx でなく直に開いたときは、土台が core/modal_page.html から whole_page で include する (題は土台の題の段に出し、小窓の題と「閉じる」は描かない。見つけ FB-12)。 #}
+{% if not whole_page %}<div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>
   <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
-</div>
+</div>{% endif %}
 {% block above_fields %}{% endblock %}
 <dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
   {% for field in fields %}
@@ -28,8 +29,8 @@
 </section>
 {% endfor %}
 {% endblock %}
-<div class="modal-action mt-6">
-  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+{% if whole_page %}<div class="mt-6 flex flex-wrap justify-end gap-2">{% else %}<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>{% endif %}
   {% if edit_url %}{% if detail_url %}<a class="btn btn-outline border-base-300" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>
   {% elif detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
 </div>

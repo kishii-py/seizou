@@ -210,6 +210,7 @@ def test_accept_creates_order_and_moves(client_logged_in, extraction, user):
     detail = client_logged_in.get(reverse("intake:extraction_detail", args=[extraction.pk])).content.decode()
     assert url not in detail
     assert order.order_no in detail
+    assert "「受注登録」を押してください" not in detail  # 受注にした後は、押すボタンの無い青の 1 行を出さない (flow-06)
 
 
 def test_accept_twice_is_red(client_logged_in, extraction, user):
