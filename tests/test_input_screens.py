@@ -641,7 +641,7 @@ def test_select_js_copy_note_matches_copy_values_wording(priced):
     assert 'copyNote.className = "mt-2 text-xs text-base-content/60";' in text
     assert 'copyNote.setAttribute("role", "status");' in text
     built = APP_CSS.read_text(encoding="utf-8")
-    for name in (".mt-2", ".text-xs", "text-base-content\\/50"):
+    for name in (".mt-2", ".text-xs", "text-base-content\\/60"):
         assert name in built, name
 
 
