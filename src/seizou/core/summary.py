@@ -20,6 +20,8 @@ from django.db import models
 from django.db.models import Count, F, Sum
 from django.db.models.functions import TruncMonth
 
+from seizou.core import csvio
+
 #: GET の view の値 (集計の形)
 VIEW = "summary"
 #: 集計が使う GET の名前 (表に戻る link はこれを外す)
@@ -174,9 +176,9 @@ def _share(value, total):
 
 
 def csv_rows(summary: dict) -> list[list[str]]:
-    """CSV の行 (見出し・軸ごとの行・合計の行)。画面の表と同じ行。"""
+    """CSV の行 (見出し・軸ごとの行・合計の行)。画面の表と同じ行。軸の字 (表の行の名前) は csvio.neutralize を通す (式の字で始まる名前を式にしない)。"""
     head = [summary["axis"].label, summary["measure"].label, "割合 (%)"]
-    body = [[row["label"], str(row["value"]), "" if row["share"] is None else str(row["share"])] for row in summary["rows"]]
+    body = [[csvio.neutralize(str(row["label"])), str(row["value"]), "" if row["share"] is None else str(row["share"])] for row in summary["rows"]]
     total = summary["total"]
     foot = ["合計", str(total), "100.0" if total and total > 0 else ""]
     return [head, *body, foot]
