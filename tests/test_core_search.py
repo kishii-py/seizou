@@ -90,7 +90,8 @@ def test_empty_query_searches_nothing_and_shows_hint(client_logged_in, bracket, 
     # 題と説明、chip (全て・部品マスター・受注) と得意先の選択。説明の 1 文は題の下に出さず (決め 11-03 14:1x)、
     # 目録と説明書が読む screen_help にある
     assert "<h1" in body and "検索</h1>" in body
-    assert "品番・品名・注文番号などで横断して探し" in response.context["screen_help"]
+    # 探す種類が分かる字 (初見テスト R5 の候補 C36 の 3。探す種類は providers() の 3 つで、取引先は探さない)
+    assert "部品マスター・受注・マニュアルを横断して探し" in response.context["screen_help"]
     assert "全て" in body and "部品マスター" in body and "受注" in body
     assert "全得意先" in body
 
@@ -373,3 +374,23 @@ def test_items_search_labels_follow_company_fields(no_registration, monkeypatch)
     company_fields.register("masters.Item", "fields.ItemExt", [{"label": "処理の種類", "searchable": True}])
     labels = masters_search.search_labels()
     assert labels[-1] == "処理の種類" and "材質" not in labels
+
+
+def search_page_placeholder(body: str) -> str:
+    """検索の画面の欄 (id="search-q" の input) の placeholder の字。"""
+    tag = re.search(r'<input id="search-q"[^>]*>', body).group()
+    return re.search(r'placeholder="([^"]*)"', tag).group(1)
+
+
+def test_search_page_placeholder_matches_topbar(client_logged_in, monkeypatch):
+    """検索の画面の欄の案内は、上の帯の欄と同じ字と同じ書き分け (初見テスト R5 の候補 C36 の 3)。"""
+    body = search_page(client_logged_in).content.decode()
+    assert search_page_placeholder(body) == topbar_placeholder(body) == "品番・品名・マニュアルなど"
+
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "manuals"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+    placeholder = search_page_placeholder(search_page(client_logged_in).content.decode())
+    assert placeholder == "品番・品名・図面番号・注文番号など"
+    assert "マニュアル" not in placeholder
