@@ -1,6 +1,6 @@
 {% load seizou_tags seizou_icons %}
 {# 出荷の一覧の 1 行 (shipping/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Shipment)・columns。 #}
-{# 欄の描き方は core/_rows.html の既定の 1 行をそのまま写した物 (土台の 1 行の形が変わったら、ここも合わせる)。右端の欄に「要点を見る」の目の印 (core/_row_summary_link.html。押すと出荷の小窓)。 #}
+{# 欄の描き方は core/_rows.html の既定の 1 行をそのまま写した物 (土台の 1 行の形が変わったら、ここも合わせる)。右端の欄に「要点を見る」の目の印 (土台の目の印の部品を include する。押すと出荷の小窓)。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
   {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
