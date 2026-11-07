@@ -24,7 +24,7 @@ from .conftest import SELECT_WAIT_MS, choose, login, shot
 WORD = "ロッドカバー"
 FIRST = "WK-1010"
 SECOND = "WK-1011"
-COPIED = "単位を部品から写しました。"
+COPIED = "単位と工程を部品から写しました。"  # 発注の明細は工程の最初の値も写す (C100 = 373 回目。A 社の種の部品は協力企業に出す工程が 1 つ)
 
 
 def _asked(response, expected: str) -> bool:
