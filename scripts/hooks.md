@@ -4,7 +4,7 @@
 
 設定は、レーンの作業場ごとに `.claude/settings.local.json` に置く。このファイルは git に入れない。公開の `.claude/settings.json` には置かない。外の人がこのリポジトリを clone して Claude Code を開いたときに、作り手の hook が動かないようにするためである。
 
-禁止語の pre-push (`.githooks/pre-push`) は git の hook なので、この文書の対象に入らない。pre-push は `git config core.hooksPath .githooks` を打った手元だけで動く。
+禁止語の pre-push (`.githooks/pre-push`) と鍵の検査の pre-commit (`.githooks/pre-commit`。gitleaks でステージした差分を見る) は git の hook なので、この文書の対象に入らない。どちらも `git config core.hooksPath .githooks` を打った手元だけで動く (pre-commit は gitleaks が無い端末では知らせだけ出して通す)。
 
 ## 置く順
 

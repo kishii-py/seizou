@@ -1,0 +1,13 @@
+#!/bin/sh
+# git の pre-commit の hook。commit の前に、ステージした差分に鍵 (API キー・秘密鍵・トークン) が混ざっていないかを gitleaks で見る (作り手の運用。11-07)。
+# 有効になるのは `git config core.hooksPath .githooks` を打った手元だけ。gitleaks が無い端末では検査をせずに通し、知らせだけ出す
+# (無人のレーンを止めないため。push の前には GitHub の push protection も見る)。
+# 偽陽性は .gitleaksignore に指紋 (commit:ファイル:規則:行) を足して除く。値は出さない (--redact)。
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks が無いので鍵の検査をしていない (brew install gitleaks で入る)。" >&2
+  exit 0
+fi
+if ! gitleaks git --pre-commit --staged --redact --no-banner -v "$(git rev-parse --show-toplevel)"; then
+  echo "commit を止めた: ステージした差分に鍵に見える字がある。本物なら取り除く (鍵は .env にだけ置く)。偽陽性なら上の Fingerprint を .gitleaksignore に足す。" >&2
+  exit 1
+fi
