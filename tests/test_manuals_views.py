@@ -11,6 +11,7 @@ from PIL import Image
 
 from seizou.manuals import services
 from seizou.manuals.models import Manual, ManualFolder, ManualImage
+from tests.test_core_notice_trigger import notice_items
 
 DANGEROUS = "<script>alert(1)</script>\n\n[x](javascript:alert(1))"
 
@@ -184,6 +185,7 @@ def test_image_upload_download_delete(client, client_logged_in, manual, media_ro
     html = response.content.decode()
     assert f"image:{image.pk}" in html and "本文に入れる" in html
     assert 'id="manual-images"' in html
+    assert "HX-Trigger" not in response
     download_url = reverse("manuals:manualimage_download", args=[image.pk])
     got = client_logged_in.get(download_url)
     assert got.status_code == 200
@@ -214,9 +216,19 @@ def test_upload_errors_are_shown(client_logged_in, manual):
     svg = client_logged_in.post(
         upload_url, {"file": SimpleUploadedFile("drawing.svg", b"<svg></svg>")}, HTTP_HX_REQUEST="true"
     )
+    # 断った時も枠を返し直し、断りは枠の中でなく右上の赤い知らせ (合図 seizou:notice) に出す (決め 11-07 C57-5)
     assert svg.status_code == 200
-    assert "画像の形式が違います" in svg.content.decode()
+    assert 'id="manual-images"' in svg.content.decode()
+    [item] = notice_items(svg)
+    assert item["level"] == "stop"
+    assert "画像の形式が違います" in item["message"]
+    assert "画像の形式が違います" not in svg.content.decode()
+    assert 'role="alert"' not in svg.content.decode()
     empty = client_logged_in.post(upload_url, {}, HTTP_HX_REQUEST="true")
     assert empty.status_code == 200
-    assert "画像を選んでください。" in empty.content.decode()
+    assert 'id="manual-images"' in empty.content.decode()
+    [item] = notice_items(empty)
+    assert "画像を選んでください。" in item["message"]
+    assert "画像を選んでください。" not in empty.content.decode()
+    assert 'role="alert"' not in empty.content.decode()
     assert ManualImage.objects.count() == 0

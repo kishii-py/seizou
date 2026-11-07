@@ -27,6 +27,7 @@ from seizou.manuals.models import ManualImage
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from tests.test_core_settings_edit import clear_url, edit_url
+from tests.test_core_notice_trigger import notice_items
 from tests.test_manuals_views import png_upload
 
 User = get_user_model()
@@ -86,15 +87,16 @@ def test_manual_images_refused_without_permission(on, client, manual):
     genba = account("genba")
     client.force_login(genba)
 
+    # 断りは枠を返し直した応答の合図 seizou:notice で右上の赤い知らせに出す (決め 11-07 C57-5)
     added = _upload(client, manual)
     assert added.status_code == 200
-    assert NO_MANUAL_WRITE in added.content.decode()
+    assert NO_MANUAL_WRITE in notice_items(added)[0]["message"]
     assert ManualImage.objects.count() == 0
 
     image = manuals_services.add_image(manual, png_upload(), None)
     removed = _delete(client, image)
     assert removed.status_code == 200
-    assert NO_MANUAL_WRITE in removed.content.decode()
+    assert NO_MANUAL_WRITE in notice_items(removed)[0]["message"]
     assert ManualImage.objects.filter(pk=image.pk).exists()
 
     writer = account("tejun", permissions=["manuals"])
@@ -103,7 +105,7 @@ def test_manual_images_refused_without_permission(on, client, manual):
     assert ManualImage.objects.count() == 2
     deleted = _delete(client, image)
     assert deleted.status_code == 200
-    assert NO_MANUAL_WRITE not in deleted.content.decode()
+    assert "HX-Trigger" not in deleted
     assert not ManualImage.objects.filter(pk=image.pk).exists()
 
 

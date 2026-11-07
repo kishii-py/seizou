@@ -17,7 +17,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from seizou.core import access, reports
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, Notice, add_notice_trigger
 
 from . import services
 from .forms import (
@@ -333,38 +333,44 @@ def manual_preview(request, pk):
 @login_required
 @require_POST
 def image_upload(request, pk):
-    """画像を追加する口 (htmx の部分)。画像の並びを返す (編集の画面の打ちかけの本文を消さないため、画面を移さない)。"""
+    """画像を追加する口 (htmx の部分)。画像の並びを返す (編集の画面の打ちかけの本文を消さないため、画面を移さない)。
+
+    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07 C57-5)。
+    """
     manual = get_object_or_404(Manual, pk=pk)
     try:
         access.require_write(request.user, ADD_IMAGE_ACTION)
     except access.AccessDenied as exc:
-        # str(exc) は「権限: …」の形なので、文 (message) だけを出す。
-        return render(request, "manuals/_images.html", {"manual": manual, "error": exc.message})
-    error = None
+        # 権限の断りはそのまま渡す (add_notice_trigger が文 = message だけを出す)。
+        return add_notice_trigger(render(request, "manuals/_images.html", {"manual": manual}), exc)
+    notice = None
     try:
         services.add_image(manual, request.FILES.get("file"), request.user)
     except ValueError as exc:
-        error = str(exc)
-    return render(request, "manuals/_images.html", {"manual": manual, "error": error})
+        notice = Notice("入力", str(exc))
+    return add_notice_trigger(render(request, "manuals/_images.html", {"manual": manual}), notice)
 
 
 @login_required
 @require_POST
 def image_delete(request, pk):
-    """画像を削除する口 (htmx の部分)。画像の並びを返す。"""
+    """画像を削除する口 (htmx の部分)。画像の並びを返す。
+
+    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07 C57-5)。
+    """
     image = get_object_or_404(ManualImage.objects.select_related("manual"), pk=pk)
     manual = image.manual
     try:
         access.require_write(request.user, REMOVE_IMAGE_ACTION)
     except access.AccessDenied as exc:
-        # str(exc) は「権限: …」の形なので、文 (message) だけを出す。
-        return render(request, "manuals/_images.html", {"manual": manual, "error": exc.message})
-    error = None
+        # 権限の断りはそのまま渡す (add_notice_trigger が文 = message だけを出す)。
+        return add_notice_trigger(render(request, "manuals/_images.html", {"manual": manual}), exc)
+    notice = None
     try:
         manual = services.remove_image(image, request.user)
     except ValueError as exc:
-        error = str(exc)
-    return render(request, "manuals/_images.html", {"manual": manual, "error": error})
+        notice = Notice("入力", str(exc))
+    return add_notice_trigger(render(request, "manuals/_images.html", {"manual": manual}), notice)
 
 
 @login_required
