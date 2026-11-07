@@ -26,6 +26,7 @@ import os
 import re
 import time
 from datetime import datetime
+from datetime import UTC
 from functools import lru_cache
 
 from django.apps import apps
@@ -39,6 +40,7 @@ from seizou.core.screens import Screen, all_screens
 
 from . import github
 from .models import Feedback
+from .models import FeedbackReply
 
 #: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
@@ -977,6 +979,8 @@ def sync_github(user=None) -> dict:
     user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
     訳: 対応しないとして閉じた物と、直った版がまだ会社に入っていない物に「直しました」と知らせないため。
     出所 = 本人の決め 11-07 09:0x〜09:4x の 1・2・4。変えてよい条件 = 閉じた理由の分け方か版の決まりを、本人の決めで変えたとき。
+    返事 (依頼書 N324。決め 11-07 09:1x〜09:4x): 最後に、送った・直した・見送ったの件の Issue の返事を読み (_sync_replies)、
+    新しく表に入れた数を "返事" の鍵 (鍵の順は最後) にする。返事を読めなかった件も読めなかったに数える。
     """
     if user is not None:
         _refuse_github(user, "GitHub の状態を取り込む")
@@ -1018,6 +1022,7 @@ def sync_github(user=None) -> dict:
             counts["読めなかった"] += 1
             continue
         counts["直した"] += 1
+    counts["返事"] = _sync_replies(token, counts)
     return counts
 
 
@@ -1049,3 +1054,128 @@ def search_issues(words) -> dict:
     found = [row for row in rows if all(term in f"{row['title']}\n{row['body']}".casefold() for term in terms)]
     found.sort(key=lambda row: row["updated_at"], reverse=True)
     return {"issues": found[:ISSUES_SHOWN], "error": "", "repo": repo}
+
+
+# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+#
+# 世話役 (作者) が Issue に書いた返事を、取り込みで読んで表 (FeedbackReply) に残し、送った件の詳細に出す。
+# 書いた人には、ログインの画面からログインしたときに 1 回だけ知らせる (直したと同じ形。signals.py)。
+# 会社の口座 (.env の SEIZOU_GITHUB_LOGIN) が書いた返事は表に残すが知らせない。
+# 書いた人が詳細で書いた返事は下書きで残し、世話役が伏せ字を直してから会社のトークンで Issue に送る (送る前の確認は Issue と同じ)。
+# HTTP は transaction.atomic の外 (R17)。
+
+#: 返事を読む件の状態 (送った・直した・見送った)
+REPLY_STATUSES = ("sent", "fixed", "dismissed")
+
+
+def company_login() -> str:
+    """会社の口座の名前 (.env の SEIZOU_GITHUB_LOGIN。つないでいなければ空の字)。読むだけ。"""
+    return github.read_env_value(github.LOGIN_ENV)
+
+
+def _github_time(text):
+    """GitHub の日時 (ISO 8601。例 2026-11-06T03:00:00Z) を aware な datetime にする。読めなければ None。"""
+    raw = str(text or "")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timezone.is_naive(moment):
+        return moment.replace(tzinfo=UTC)
+    return moment
+
+
+def import_replies(row, repo, number, token="") -> int:
+    """件 (row) の Issue の返事を GitHub から読み、表に無い返事を足す。新しく入れた数を返す。
+
+    返事の id (github_id) が表にある物は飛ばす (前の取り込みで読んだ物と、会社から送った返事)。
+    1 件 = login・本文・GitHub に出た日時 (posted_at。送った日時 sent_at も同じ。読めない日時は今)。
+    会社の口座 (company_login) が書いた返事は、知らせた日時 (seen_at) を今にして知らせない。ほかは空 (次のログインで知らせる)。
+    読めなければ github.GithubError (呼び手が数える)。HTTP は atomic の外 (R17)。表に書くのは後の atomic の中だけ。
+    """
+    comments = github.list_comments(repo, number, token=token)
+    if not comments:
+        return 0
+    known = set(FeedbackReply.objects.filter(github_id__in=[item["id"] for item in comments]).values_list("github_id", flat=True))
+    own = company_login()
+    now = timezone.now()
+    new = []
+    for item in comments:
+        if item["id"] in known:
+            continue
+        known.add(item["id"])
+        posted = _github_time(item["created_at"]) or now
+        new.append(
+            FeedbackReply(
+                feedback=row,
+                github_id=item["id"],
+                login=item["login"][: FeedbackReply._meta.get_field("login").max_length],
+                body=item["body"],
+                posted_at=posted,
+                sent_at=posted,
+                seen_at=now if own and item["login"] == own else None,
+            )
+        )
+    if not new:
+        return 0
+    with transaction.atomic():
+        FeedbackReply.objects.bulk_create(new)
+    return len(new)
+
+
+def _sync_replies(token, counts) -> int:
+    """sync_github の最後に呼ぶ。送った・直した・見送ったの件で、送った先が Issue の形の物の返事を 1 件ずつ読む。
+
+    新しく入れた返事の数を返す。読めなかった件は counts["読めなかった"] に足して飛ばす (止めない)。
+    """
+    total = 0
+    for row in list(Feedback.objects.filter(status__in=REPLY_STATUSES).order_by("pk")):
+        match = _ISSUE_URL.fullmatch(row.sent_url or "")
+        if match is None:
+            continue
+        owner, name, number = match.groups()
+        try:
+            total += import_replies(row, f"{owner}/{name}", int(number), token)
+        except github.GithubError:
+            counts["読めなかった"] += 1
+    return total
+
+
+def unseen_replies(user) -> list:
+    """user が書いた件の返事のうち、GitHub から来た (書いた人が空) まだ知らせていない物の並び (GitHub に出た日時の新しい順)。読むだけ。
+
+    pk の無い利用者 (ログインしていない人) は空の並び。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return []
+    rows = FeedbackReply.objects.filter(feedback__created_by_id=user_pk, seen_at__isnull=True, created_by__isnull=True)
+    return list(rows.select_related("feedback").order_by("-posted_at", "-pk"))
+
+
+def reply_notice(rows) -> str:
+    """ログインのときの返事の知らせの文 (いちばん新しい返事の件の題と返事の数)。空の並びなら空の字。
+
+    「ほか」は返事が 2 件以上の件にまたがるときに付ける。題は伏せない (書いた本人にだけ出す字のため)。
+    toast は字だけを出すので link は入れず、行き先を字で書く。
+    """
+    rows = list(rows)
+    if not rows:
+        return ""
+    more = "ほか " if len({row.feedback_id for row in rows}) > 1 else ""
+    return (
+        f"あなたの一言に返事が届きました: 「{rows[0].feedback.title}」{more}({len(rows)} 件)。"
+        "左のメニューの下の「フィードバック」の「送った一言」から開いて読めます。"
+    )
+
+
+def mark_replies_seen(rows, user) -> int:
+    """返事を知らせた日時を今にする (user が書いた件の返事で、まだ空の物だけ)。書いた行の数を返す。"""
+    user_pk = getattr(user, "pk", None)
+    pks = [row.pk for row in rows]
+    if user_pk is None or not pks:
+        return 0
+    with transaction.atomic():
+        return FeedbackReply.objects.filter(pk__in=pks, feedback__created_by_id=user_pk, seen_at__isnull=True).update(
+            seen_at=timezone.now()
+        )

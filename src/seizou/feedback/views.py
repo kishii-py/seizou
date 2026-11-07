@@ -231,7 +231,8 @@ def github_sync(request):
         messages.success(
             request,
             f"GitHub を見ました: 見た {counts['見た']} 件・直した {counts['直した']} 件・見送った {counts['見送った']} 件・"
-            f"版待ち {counts['版待ち']} 件・版の印なし {counts['版の印なし']} 件・読めなかった {counts['読めなかった']} 件",
+            f"版待ち {counts['版待ち']} 件・版の印なし {counts['版の印なし']} 件・読めなかった {counts['読めなかった']} 件"
+            f"・返事 {counts['返事']} 件",
         )
     return HttpResponseRedirect(reverse("feedback:feedback_list"))
 

@@ -58,6 +58,12 @@ class FakeGithub:
         self.listing = Answer(200, [])
         self.device = Answer(200, dict(DEVICE_ANSWER))
         self.token = Answer(200, {"error": "authorization_pending"})
+        #: Issue の返事 (依頼書 N324): 読む並びと、書いたときの返事
+        self.comments = Answer(200, [])
+        self.comment_created = Answer(
+            201,
+            {"id": 9001, "html_url": f"{ISSUE_URL}#issuecomment-9001", "created_at": "2026-11-07T01:00:00Z", "user": {"login": "example-feedback-bot"}},
+        )
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
@@ -65,6 +71,8 @@ class FakeGithub:
             return self.user
         if url.endswith("/issues"):
             return self.listing
+        if url.endswith("/comments"):
+            return self.comments
         if "/issues/" in url:
             return self.issues.get(int(url.rsplit("/", 1)[1]), Answer(404, {}))
         raise AssertionError(f"知らない URL: {url}")
@@ -75,6 +83,8 @@ class FakeGithub:
             return self.device
         if url == github.DEVICE_TOKEN_URL:
             return self.token
+        if url.endswith("/comments"):
+            return self.comment_created
         return self.created
 
 
