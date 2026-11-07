@@ -227,7 +227,7 @@ def test_receive_self_invoice(monkeypatch, user, order_secret, subcontractor, cu
 
 @pytest.mark.django_db
 def test_receive_refuses(monkeypatch, user, order_secret, subcontractor, customer, item, own_item, connections):
-    """(c) 断る形は文を返し (受け口は 400)、受けた側に行が残らない。修正と取消の目的は、まだ受けない。"""
+    """(c) 断る形は文を返し (受け口は 400)、受けた側に行が残らない。修正の目的は、まだ受けない。"""
     fake, _po, _order, receipts = _accepted(monkeypatch, subcontractor, item, own_item, user)
     purchasing_services.create_self_invoice(subcontractor, receipts, user, issued_on=ISSUED)
     sent, _call = _sent(fake)
@@ -253,9 +253,9 @@ def test_receive_refuses(monkeypatch, user, order_secret, subcontractor, custome
     assert "2 行目" not in _receive(order_secret, line(unit="単" * 11)) and "単位は 10 字まで" in _receive(order_secret, line(unit="単" * 11))
     same_number = _receive(order_secret, sent)
     assert same_number == f"仕入明細 {sent['self_invoice_no']} は第 1 版まで受けてあります。"
-    for purpose in ("4", "1"):
-        result = _receive(order_secret, {**sent, "revision_no": 2, "document_code": "1C", "purpose_code": purpose})
-        assert result == "仕入明細の修正と取消は、まだ受けられません。"
+    # 取消 ("1") はその 6 で受ける形にした (tests/test_purchasing_self_invoice_cancel.py)。修正 ("4") はその 5 まで受けない。
+    result = _receive(order_secret, {**sent, "revision_no": 2, "document_code": "1C", "purpose_code": "4"})
+    assert result == "仕入明細の修正は、まだ受けられません。"
     assert ReceivedSelfInvoice.objects.count() == 1
     assert ReceivedSelfInvoiceLine.objects.count() == 2
 

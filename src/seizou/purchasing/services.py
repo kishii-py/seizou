@@ -1299,6 +1299,57 @@ def record_self_invoice_delivery(self_invoice, response, user, *, sent=False):
         return locked
 
 
+#: 取消が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄)
+SELF_INVOICE_CANCEL_UNDELIVERED = "取消は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
+def cancel_self_invoice_refusal(self_invoice) -> str:
+    """仕入明細を取り消せない訳の文 (読むだけ)。取り消せるなら空の字。取消の確かめのカード (purchasing_tags) と cancel_self_invoice が同じ字を使う。
+
+    取消済みなら「取り消し済みです」、相手の答えが届いていれば (has_reply) 「相手が答えた明細があります」の文。
+    訳: 相手が答えた後に取り消して、相手と合意した明細と金額を後から動かさないため。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+    """
+    if self_invoice.status == SelfInvoice.STATUS_CANCELLED:
+        return "取り消せません。この仕入明細は取り消し済みです。仕入明細の詳細を開き直してください。"
+    if self_invoice.has_reply():
+        return "取り消せません。相手が答えた明細があります。相手と会話で話し、相手の提案を受け入れて直してください。"
+    return ""
+
+
+def cancel_self_invoice(self_invoice, user):
+    """相手がどの明細にも答える前の仕入明細を取り消し、取消を相手へ送る。
+
+    atomic の中で仕入明細の行をロックし、cancel_self_invoice_refusal の字があれば何も変えずに ValueError。無ければ状態を取消にし、
+    版を 1 上げ、目的を取消 "1" にし、新しい番号を付け、送った日時と返事を空にする。明細は消さず、値も変えない (入っていた受入は、
+    取消でない仕入明細に入っていない受入として、また self_invoice_receipts に並ぶ)。返す物に saved_message = "取り消しました。"。
+    atomic の外で connect.services.send_self_invoice (文書の種類 1C・目的 1)。届かなければ saved_note と saved_level = "warning"。
+    訳: 相手が答えた後に取り消して、相手と合意した明細と金額を後から動かさないため。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+
+    中小企業共通 EDI の取消仕入明細書 (文書タイプ 384・インボイス文書目的コード 1) の形で相手へ送る。電子帳簿保存法: 取り消した仕入明細と明細は
+    消さずに状態「取消」で残し、送った中身は送り合った記録に残る。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        refusal = cancel_self_invoice_refusal(locked)
+        if refusal:
+            raise ValueError(refusal)
+        before = history.saved_state(locked)
+        locked.status = SelfInvoice.STATUS_CANCELLED
+        locked.revision_no += 1
+        locked.purpose_code = edi_codes.PURPOSE_CANCEL
+        locked.message_id = uuid.uuid4()
+        locked.sent_at = None
+        locked.response = ""
+        locked.save(update_fields=["status", "revision_no", "purpose_code", "message_id", "sent_at", "response"])
+        record_history(locked, user, before=before)
+    saved = _with_self_invoice_notice(_send_self_invoice(locked, user), SELF_INVOICE_CANCEL_UNDELIVERED)
+    # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+    saved.saved_message = "取り消しました。"
+    return saved
+
+
 def _self_invoice_status(self_invoice, lines):
     """仕入明細の状態を明細の答えから決める。提案か確認できないが 1 つでもあれば確かめ中、全部が承諾 (AP・AC) なら確認済、ほかは答え待ち。"""
     codes = [line.reply_type for line in lines]

@@ -713,3 +713,18 @@ class SelfInvoiceForm(SubmitLabelMixin, forms.Form):
             "receipts": list(data["receipts"] or []),
             "issued_on": data["issued_on"],
         }
+
+
+class SelfInvoiceCancelForm(forms.Form):
+    """仕入明細を取り消す form。欄は無い。保存のボタンは「SI-000001 を取り消す」(土台が対象を instance= で渡す。請求書の取消と同じ形)。"""
+
+    submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.self_invoice_no} を取り消す"
+
+    def service_kwargs(self):
+        return {}

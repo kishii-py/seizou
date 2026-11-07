@@ -31,6 +31,7 @@ urlpatterns = [
     path("selfinvoices/new/", views.SelfInvoiceCreateView.as_view(), name="selfinvoice_create"),
     path("selfinvoices/<int:pk>/", views.SelfInvoiceDetailView.as_view(), name="selfinvoice_detail"),
     path("selfinvoices/<int:pk>/resend/", self_invoice.resend_self_invoice, name="selfinvoice_resend"),
+    path("selfinvoices/<int:pk>/cancel/", views.SelfInvoiceCancelView.as_view(), name="selfinvoice_cancel"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
     path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]

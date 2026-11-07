@@ -3027,7 +3027,7 @@ MESSAGE_SELF_INVOICE_NO_CONNECTION = (
     "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
 )
 MESSAGE_SELF_INVOICE_SHAPE = "仕入明細の形が読めません。self_invoice_no・revision_no・lines を送ってください。"
-MESSAGE_SELF_INVOICE_NOT_YET = "仕入明細の修正と取消は、まだ受けられません。"
+MESSAGE_SELF_INVOICE_NOT_YET = "仕入明細の修正は、まだ受けられません。"
 #: 仕入明細の文書の種類 (版 1 は仕入明細、版 2 からは修正仕入明細)
 _SI_DOCUMENTS = frozenset({edi_codes.SI_DOC_NEW, edi_codes.SI_DOC_REVISED})
 
@@ -3138,6 +3138,36 @@ def send_self_invoice(self_invoice, user):
     saved = purchasing_services.record_self_invoice_delivery(current, reply, user, sent=(kind == "received"))
     logger.info("仕入明細を送った: 仕入明細 %s 番号 %s 返事の種類 %s", current.pk, message_id, kind)
     return saved
+
+
+def _receive_self_invoice_cancel(message_id, partner, existing, values):
+    """取消仕入明細 (目的 1・版が今より大きい) を、受けた仕入明細に当てる。返す物は SelfInvoiceReceipt か断る文。
+
+    受けた仕入明細に答えを送ってあれば (答えの番号がある)、行を変えずに断る。答えを送っていなければ、1 つの atomic の中で
+    状態を取消にし、版・文書の種類 (1C)・目的 (1)・番号を書く (明細は変えない)。
+    訳: 受ける側が答えを送った後の取消を受けず、答えた明細と金額を動かさないため (送る側は届いた答えしか知らないので、受ける側でも見る)。出所 = 作者の決め C111-3。
+    変えてよい条件 = 作者が答えた後の取消を決めたとき。
+    """
+    from .models import ReceivedSelfInvoice
+
+    msg_id = str(message_id)
+    with transaction.atomic():
+        locked = ReceivedSelfInvoice.objects.select_for_update().get(pk=existing.pk)
+        if locked.reply_message_id is not None:
+            return _refuse(
+                f"取り消せません。仕入明細 {locked.self_invoice_no} には第 {locked.revision_no} 版の答えを送ってあります。"
+                "得意先と会話で話してください。",
+                msg_id,
+            )
+        before = _saved(locked)
+        locked.status = ReceivedSelfInvoice.STATUS_CANCELLED
+        locked.revision_no = values["revision_no"]
+        locked.document_code = values["document_code"]
+        locked.purpose_code = values["purpose_code"]
+        locked.message_id = message_id
+        locked.save(update_fields=["status", "revision_no", "document_code", "purpose_code", "message_id"])
+        _record(locked, None, before=before, by=f"{partner.name} の seizou")
+    return SelfInvoiceReceipt(message_id=message_id, self_invoice=locked)
 
 
 def _self_invoice_text_problem(payload):
@@ -3332,11 +3362,15 @@ def _receive_self_invoice(message_id, partner, payload):
     problem = _self_invoice_text_problem(payload)
     if problem:
         return _refuse(problem, msg_id)
-    if values["purpose_code"] != edi_codes.PURPOSE_NEW:
+    if values["purpose_code"] == edi_codes.PURPOSE_CHANGE:
         return _refuse(MESSAGE_SELF_INVOICE_NOT_YET, msg_id)
     existing = ReceivedSelfInvoice.objects.filter(partner=partner, self_invoice_no=values["self_invoice_no"]).first()
     if existing is not None:
-        return _refuse(f"仕入明細 {existing.self_invoice_no} は第 {existing.revision_no} 版まで受けてあります。", msg_id)
+        if values["revision_no"] <= existing.revision_no:
+            return _refuse(f"仕入明細 {existing.self_invoice_no} は第 {existing.revision_no} 版まで受けてあります。", msg_id)
+        if values["purpose_code"] == edi_codes.PURPOSE_CANCEL:
+            return _receive_self_invoice_cancel(message_id, partner, existing, values)
+        return _refuse(MESSAGE_SELF_INVOICE_NOT_YET, msg_id)
     rows = []
     for number, raw in enumerate(payload["lines"], start=1):
         row = _self_invoice_line_values(partner, raw, number)
@@ -3346,6 +3380,9 @@ def _receive_self_invoice(message_id, partner, payload):
     line_numbers = [row["line_no"] for row in rows]
     if len(set(line_numbers)) != len(line_numbers):
         return _refuse(MESSAGE_SELF_INVOICE_SHAPE, msg_id)
+    if values["purpose_code"] == edi_codes.PURPOSE_CANCEL:
+        # 前の版が届いていない取消: 新しく受けたときと同じ形で行を作り、状態を取消にする (送った側の取消を断らず、取り消された記録を残す)。
+        values = {**values, "status": ReceivedSelfInvoice.STATUS_CANCELLED}
     try:
         with transaction.atomic():
             received = ReceivedSelfInvoice.objects.create(partner=partner, message_id=message_id, **values)
@@ -3579,8 +3616,13 @@ def _receive_self_invoice_response(message_id, partner, payload):
     見る順は 同じ答えの番号の 2 回目 (何もせず返す = R11) → 形 (番号・版・文書の種類・鑑ヘッダの答え・明細の答えと訳と提案の数と単価と字数)
     → 仕入明細番号の仕入明細 → 取引先が署名の取引先 → 答えた版が今の版 → 明細の行番号がある → purchasing.services.record_self_invoice_reply。
     断るときは何も書かない。受け口に利用者はいないので、変更の履歴の人の字は「<取引先の名前> の seizou」。
+    取り消した仕入明細に、取消の 1 つ前の版への答えが届いたとき (行き違い) は、版の断りを出さずに答えの列を書き、状態は取消のまま
+    (purchasing.services.record_self_invoice_reply が取消の状態を変えない)。仕入明細の詳細に行き違いの黄の 1 行が出る。
     訳: 古い版への答えで新しい版の明細を書き換えないため。出所 = AI の案 (候補 C111)。
     変えてよい条件 = 版をまたいで答えを当てる決まりを作者が決めたとき。
+
+    行き違いの扱いの訳: 取消と相手の答えが行き違ったとき、相手に誤った断りを返さず、相手が何と答えたかを発注元にも残すため。
+    出所 = AI の案 (候補 C111。送った発注の取消の行き違いと同じ形)。変えてよい条件 = 作者が行き違いの扱いを決めたとき。
     """
     from django.apps import apps
 
@@ -3614,7 +3656,9 @@ def _receive_self_invoice_response(message_id, partner, payload):
         return _refuse(f"仕入明細回答の元の仕入明細 {number[:35]} がありません。", msg_id)
     if self_invoice.partner_id != partner.pk:
         return _refuse("仕入明細回答の元の仕入明細は、その取引先への物ではありません。", msg_id)
-    if revision_no != self_invoice.revision_no:
+    # 行き違い: 取り消した (取消の版を送った) 後に、相手の取消の 1 つ前の版への答えが届いた。断らずに答えを書き、状態は取消のまま (C96 の送った発注の取消と同じ形)。
+    crossed = self_invoice.status == model.STATUS_CANCELLED and revision_no == self_invoice.revision_no - 1
+    if revision_no != self_invoice.revision_no and not crossed:
         return _refuse(
             f"仕入明細回答の版 (第 {revision_no} 版) が今の版 (第 {self_invoice.revision_no} 版) と違います。"
             "新しい版を受けてから答え直してください。",

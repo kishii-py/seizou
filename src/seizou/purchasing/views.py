@@ -15,7 +15,7 @@ from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
 from .forms import PurchaseOrderChangeForm
 from .forms import ReceiptForm
-from .forms import SelfInvoiceForm
+from .forms import SelfInvoiceCancelForm, SelfInvoiceForm
 from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
 from .models import SelfInvoice
@@ -300,6 +300,20 @@ class SelfInvoiceCreateView(BaseFormView):
         "取引先を選び、まだ仕入明細に入っていない受入に印を付けてまとめます。"
         "相手 (seizou どうしで注文を送った協力企業) に送ると、相手が明細ごとに承諾か提案か確認できないかを答えます。"
     )
+
+
+class SelfInvoiceCancelView(BaseFormView):
+    """仕入明細を取り消す確かめの入力。
+
+    使う人: 経理・生産管理 / いつ: 受入を入れ間違えた仕入明細を、相手が答える前に直すとき / 何のために: 仕入明細を取り消し、取消を相手へ送る / 次にすること: 受入を選び直して仕入明細を作り直す
+    """
+
+    model = SelfInvoice
+    form_class = SelfInvoiceCancelForm
+    service = staticmethod(services.cancel_self_invoice)
+    template_name = "purchasing/selfinvoice_cancel.html"
+    screen_name = "仕入明細を取り消す"
+    screen_help = "相手がまだどの明細にも答えていない仕入明細を取り消し、取消を相手へ送ります。入っていた受入は、また仕入明細に入れられます。"
 
 
 class PurchaseOrderLineSelectView(BaseSelectView):

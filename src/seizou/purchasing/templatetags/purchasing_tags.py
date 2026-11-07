@@ -12,6 +12,7 @@
 - reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
 - can_change_order・revision_state: 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2) の「変更」のボタンを出すかと、今の版の送った記録と相手の答え。
 - self_invoice_due_note・self_invoice_line_answer: 仕入明細の詳細の 60 日の黄の 1 行の字 (services.due_date_note) と、明細ごとの相手の答えの字 (候補 C111)。
+- self_invoice_cancel_refusal: 仕入明細を取り消せない訳の文 (services.cancel_self_invoice_refusal と同じ文。取消の確かめのカードが黄で出す)。
 """
 
 from decimal import Decimal
@@ -332,3 +333,11 @@ def self_invoice_line_answer(line, hide_money=False):
     if line.reply_note:
         text += f" ({line.reply_note})"
     return text
+
+
+@register.simple_tag
+def self_invoice_cancel_refusal(self_invoice):
+    """{% self_invoice_cancel_refusal object as refusal %}。仕入明細を取り消せない訳の文 (取り消せるなら空の字)。"""
+    from .. import services
+
+    return services.cancel_self_invoice_refusal(self_invoice)

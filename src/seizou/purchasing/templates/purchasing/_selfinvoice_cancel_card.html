@@ -1,0 +1,11 @@
+{% load purchasing_tags seizou_icons seizou_tags %}
+{# 仕入明細の取消の確かめのカード (全体の画面 purchasing/selfinvoice_cancel.html と小窓の両方が include する。写した元: billing/_invoice_cancel_card.html。候補 C111)。 #}
+{# 取り消せない (取消済み・相手が答えた明細がある) ときは form を出さず、services と同じ文の黄の 1 行と、小窓でないときは「仕入明細の詳細へ戻る」だけ。 #}
+{% self_invoice_cancel_refusal object as refusal %}
+{% if refusal %}
+{% with parts=refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
+{% if not in_modal %}<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'purchasing:selfinvoice_detail' object.pk %}">{% icon "arrow-left" "size-4" %}仕入明細の詳細へ戻る</a></div>{% endif %}
+{% else %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この仕入明細を取り消します。相手にも取消を送ります。入っていた受入は、また仕入明細に入れられます。仕入明細は消えずに状態が「取消」で残り、元には戻せません。</span></div>
+{% include "core/_form_card.html" %}
+{% endif %}

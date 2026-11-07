@@ -6,7 +6,9 @@
 {# 頭の右の緑は「答える」(未回答・確かめ中のときだけ。受信した注文を受け入れられる人 = 請求書の権限)。答えが届いていなければ黄の 1 行に「送り直す」。 #}
 {# タブの後の「請求書と比べる」の枠 (金額の閲覧の無い人には出さない): 自社が承諾した明細の金額と、期間の重なる同じ得意先の請求書の小計の合計と差。知らせではなく説明の字。 #}
 {% block edit_button %}{% if object.status == "received" or object.status == "partial" %}{% can_write "billing.Invoice" as can_answer %}{% if can_answer %}<a class="btn btn-primary" href="{% url 'connect:receivedselfinvoice_answer' object.pk %}">{% icon "check" "size-4" %}答える</a>{% endif %}{% endif %}{% endblock %}
-{% block content %}<div id="receivedselfinvoice-alert">{% received_self_invoice_registration_note object as registration_note %}{% if registration_note %}
+{% block content %}<div id="receivedselfinvoice-alert">{% if object.status == "cancelled" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-cancelled-alert>{% icon "alert" "size-5" %}<span>得意先がこの仕入明細を取り消しました (第 {{ object.revision_no }} 版)。答える必要はありません。</span></div>
+{% endif %}{% received_self_invoice_registration_note object as registration_note %}{% if registration_note %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-registration-alert>{% icon "alert" "size-5" %}<span>{{ registration_note }}</span></div>
 {% endif %}{% if object.reply_message_id and not object.reply_sent_at %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-reply-alert>{% icon "alert" "size-5" %}<span>答えは得意先に届いていません。{{ object.reply_state }} 直したら「送り直す」を押してください。</span>{% can_write "billing.Invoice" as can_answer %}{% if can_answer %}
