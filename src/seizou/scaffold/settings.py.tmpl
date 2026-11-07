@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from seizou.parts import PARTS
+from seizou.core.logging_conf import default_logging
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -138,6 +139,9 @@ else:
 USE_TZ = True
 TIME_ZONE = "Asia/Tokyo"
 LANGUAGE_CODE = "ja"
+
+# 記録: 誤りと seizou の記録を stderr (gunicorn → journald) に出す (seizou の docs/operations.md)。
+LOGGING = default_logging()
 
 LOGIN_URL = "core:login"
 LOGIN_REDIRECT_URL = "core:home"
