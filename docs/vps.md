@@ -296,6 +296,8 @@ sudo systemctl enable --now seizou-a_machining seizou-b_plating
 - `.env` は `settings.py` が自分で読むので、unit に `EnvironmentFile` は書きません。
 - gunicorn 26 以降は、既定で制御の socket (`/run/user/<uid>/gunicorn.ctl`) を作ろうとします。unit に `ProtectHome=yes` のような守りを足すと `Permission denied` の記録が出るので、そのときは `ExecStart` に `--no-control-socket` を足します (この版の unit は守りを足していないので、そのままで動きます)。
 
+AI の呼び出し (注文書の読み取り・AI チャット・フィードバックの聞き取り) は、1 つの質問を 75 秒で打ち切り (`--timeout 90` と nginx の 90 秒より短くします)、1 つの process の中で同時に 2 つまでにします (4 本の thread のうち 2 本を画面に残します。worker を増やすと worker ごとに 2 つです)。人ごと・機能ごとの 1 時間の回数 (既定 30 回) と注文書の見張りの 1 日の枚数 (既定 200 枚) は、置き場の `cache/ai/` のファイルで数え、答えの YAML の settings の `ai_limits` で下げられます。機能ごとに止めるのは `ai_features` です。使った記録 (ログイン ID・機能・model・token の数) は、サーバーの記録 (`seizou.ai`) に 1 回ごとに 1 行出します。
+
 確かめ方: `systemctl is-active seizou-a_machining` → `active`・`curl -fsS -H 'Host: a.example.jp' http://127.0.0.1:8001/health/` → `{"ok": true}` (作者の手元では、gunicorn と同じ形で Django の app を作り、`/health/` が `200 OK` と `{"ok": true}` を返すのを見た。gunicorn の上の答えは VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。gunicorn が動かず `comm="gunicorn"` か `comm="(gunicorn)"` の記録が出たら、10 の `bin_t` の行を見る)
 
