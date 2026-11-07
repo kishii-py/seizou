@@ -126,6 +126,73 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
     setTimeout(function () { remove(toast); }, 5000);
   });
 })();
+(function () {
+  // 画面の一部を取りに行く要求 (htmx) の失敗を知らせる (指示書 11-07 の見つけ FB-02 と FB-01)。受ける所はここの 1 か所。
+  // - 失敗 (4xx・5xx の応答 = htmx:responseError、通信切れ = htmx:sendError、時間切れ = htmx:timeout) は右上の赤い知らせ (段 2) で出す。
+  //   出し方は、画面の一部の差し替えの止まった知らせと同じ seizou:notice の合図 (level stop。seizou-modal.js が写す元の赤い箱を写す)。
+  //   新しい知らせの部品を作らない。字は「<操作>できません。<理由>。<次にすること>。」(操作は GET なら「読み込めません」、ほかは「送れません」)。
+  // - 取り直し (hx-trigger に every がある要素) は、失敗が続く間は 1 回だけ知らせる (要素の印 data-seizou-failed。成功したら印を消す)。
+  //   毎回出すと、同じ段の前の箱 (入力の本物の止まった知らせ) を消してしまうため。
+  // - 小窓の箱 (#seizou-modal-box) を先とする GET は、取りに行く前に箱を空にし、失敗したら小窓を閉じる (前に開いた別の記録や入力を出さない)。
+  //   閉じるのは htmx:after-request (htmx は htmx:afterRequest の後に同じ中身の kebab の名前の出来事も出し、要素の hx-on::after-request の
+  //   showModal() はそちらで動く。document で受ける kebab の方が、要素の showModal() より後に来る)。小窓の中の保存 (POST) の失敗では閉じない
+  //   (打った値が消えるため)。小窓が開いている間の知らせは、seizou-modal.js が小窓の箱の頭に入れる。
+  // - htmx の時間切れ (htmx.config.timeout) はここでは決めない (AI の口は長くかかる)。決めた時に htmx:timeout の字が出る。
+  var MODAL_BOX = "seizou-modal-box";
+  var MODAL = "seizou-modal";
+  var FAILED = "data-seizou-failed";
+  function verb(detail) {
+    return String((detail.requestConfig || {}).verb || "get").toLowerCase();
+  }
+  function toModalBox(detail) {
+    var box = document.getElementById(MODAL_BOX);
+    return !!box && detail.target === box;
+  }
+  function requester(event) {
+    var detail = event.detail || {};
+    return (detail.requestConfig || {}).elt || event.target;
+  }
+  function polling(elt) {
+    return !!elt && typeof elt.getAttribute === "function" && /\bevery\b/.test(elt.getAttribute("hx-trigger") || "");
+  }
+  function reason(kind, xhr) {
+    if (kind === "send") return "通信が切れています。電波か LAN を確かめてから、もう一度押してください。";
+    if (kind === "timeout") return "時間切れです。少し待ってから、もう一度押してください。";
+    var status = xhr && xhr.status ? xhr.status : 0;
+    if (status === 403) return "この操作の権限がありません (誤りの番号 403)。管理者に確かめてください。";
+    if (status === 404) return "記録が見つかりません (誤りの番号 404)。消されたか、移されたかもしれません。画面を読み直してください。";
+    if (status >= 500) return "サーバーが応えません (誤りの番号 " + status + ")。少し待ってから、もう一度押してください。";
+    return "要求が受け付けられません (誤りの番号 " + status + ")。画面を読み直してから、もう一度押してください。";
+  }
+  function failed(kind, event) {
+    var detail = event.detail || {};
+    var elt = requester(event);
+    if (polling(elt)) {
+      if (elt.hasAttribute(FAILED)) return;
+      elt.setAttribute(FAILED, "");
+    }
+    var head = verb(detail) === "get" ? "読み込めません。" : "送れません。";
+    document.dispatchEvent(new CustomEvent("seizou:notice", { detail: { items: [{ level: "stop", message: head + reason(kind, detail.xhr) }] } }));
+  }
+  document.addEventListener("htmx:beforeRequest", function (event) {
+    var detail = event.detail || {};
+    if (verb(detail) === "get" && toModalBox(detail)) detail.target.replaceChildren();
+  });
+  document.addEventListener("htmx:after-request", function (event) {
+    var detail = event.detail || {};
+    if (detail.successful) {
+      var elt = requester(event);
+      if (elt && typeof elt.removeAttribute === "function") elt.removeAttribute(FAILED);
+      return;
+    }
+    if (verb(detail) !== "get" || !toModalBox(detail)) return;
+    var modal = document.getElementById(MODAL);
+    if (modal && modal.open) modal.close();
+  });
+  document.addEventListener("htmx:responseError", function (event) { failed("response", event); });
+  document.addEventListener("htmx:sendError", function (event) { failed("send", event); });
+  document.addEventListener("htmx:timeout", function (event) { failed("timeout", event); });
+})();
 </script>
 </body>
 </html>
