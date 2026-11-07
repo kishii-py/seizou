@@ -14,6 +14,8 @@ class CoreConfig(AppConfig):
         from .checks import builtin  # noqa: F401
         # 一覧の列 (columns) の書き方を、Django の起動の検査 (system check) に登録する。
         from . import system_checks  # noqa: F401
+        # ログインの成功・失敗・ログアウトを記録 (seizou.login) に 1 行ずつ書く signal の受け手をつなぐ。
+        from . import login_log  # noqa: F401
 
         # 選ぶ欄の空の選択肢の字 (Django の既定は英語の「- Select an option -」)。Django 6.1 は ready() での置き換えを認める。
         # 表の choices の欄・ModelChoiceField・RemoteSelect の空の選択肢が、この字になる (form の class を作る前に置く)。

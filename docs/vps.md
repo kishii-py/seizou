@@ -99,7 +99,16 @@ sudo systemctl enable --now dnf-automatic-install.timer
 timedatectl
 ```
 
+ログインの記録 (成功・失敗・ログアウト・締め出し) と、サーバーの誤りの記録は、journald に残ります。再起動で消えないようにディスクに残し、残す期間を決める設定を置きます。期間は会社で決めます (例は 6 か月)。
+
+```
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nStorage=persistent\nMaxRetentionSec=6month\n' | sudo tee /etc/systemd/journald.conf.d/00-seizou.conf
+sudo systemctl restart systemd-journald
+```
+
 確かめ方: `grep '^SELINUX=' /etc/selinux/config` → `SELINUX=enforcing`・`sudo sshd -T | grep -i '^passwordauthentication'` → `passwordauthentication no`・`sudo firewall-cmd --list-services` → `dhcpv6-client http https ssh` (dhcpv6-client は IPv6 の住所を受け取る口で、初めからある)・`systemctl is-active dnf-automatic-install.timer` → `active`・`timedatectl` → `System clock synchronized: yes` (VPS で確かめる)
+確かめ方: `sudo systemd-analyze cat-config systemd/journald.conf | grep -E '^(Storage|MaxRetentionSec)='` → `Storage=persistent` と `MaxRetentionSec=6month` (VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 3. 道具を入れる
@@ -364,7 +373,7 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 
 この命令は、8 字以上で、よくある語・数字だけ・ID に似た字でないパスワードだけを受けます。変えた後は、アカウント管理で管理する人ごとに名前の付いたアカウント (フルコントロール) を発行し、ふだんはそれでログインします。`admin` は非常用にします (誰が操作したかが記録に名前で残るため)。
 
-nginx の後ろでは、Django から見た接続元が、いつも同じ VPS の nginx になります。このため、ログインの締め出しは ID ごとになり、ほかの人がある ID を 15 分止めることもできます。2 社は別の process なので、片方の締め出しはもう片方に及びません。締め出しの決まりは、[operations.md](operations.md) の「ログインの締め出し」にあります。
+8 で `.env` に `SEIZOU_CLIENT_IP_HEADER=X-Real-IP` を入れたので、ログインの締め出しは、本当の接続元と ID の組で数えます。同じ接続元からのログインの失敗が 15 分に 30 回になると、その接続元からのログインを ID を問わず 15 分止めます。この行が無いと、Django から見た接続元はいつも同じ VPS の nginx になり、締め出しは ID ごとだけになります (接続元の上限は効かせません)。2 社は別の process なので、片方の締め出しはもう片方に及びません。締め出しの決まりは、[operations.md](operations.md) の「ログインの締め出し」にあります。
 
 ログインの後に、図面か添付を 1 つ上げて開きます。開けなければ、11 の `TMPDIR` と 10 の `media/` の context を見ます。
 
