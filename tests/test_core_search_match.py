@@ -4,6 +4,7 @@ core の約束 (SearchMatch・SearchRow.match・find_match) と、部品マス�
 検索の画面の 1 列目の下に描く字を見る。
 """
 
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -17,6 +18,8 @@ from seizou.core import search as core_search
 from seizou.core.search import MATCH_BEFORE, MATCH_CHARS, SearchMatch, SearchRow, SearchSection, find_match
 from seizou.masters import search as masters_search
 from seizou.masters.models import Item, Partner, PartnerItem
+from seizou.orders import search as orders_search
+from seizou.orders import services as orders_services
 
 ITEM_CELLS = ("P-1001", "ブラケット", "DW-501", "個")
 PARTNER_NO = [("取引先の品番", "X-9001")]
@@ -54,6 +57,13 @@ def bracket(db):
 @pytest.fixture
 def shaft(db):
     return Item.objects.create(part_no="P-2002", name="シャフト", drawing_no="DW-777", unit="本")
+
+
+def make_order(user, customer, items, customer_order_no=""):
+    lines = [{"item": item, "qty": Decimal("2"), "unit_price": Decimal("100")} for item in items]
+    return orders_services.create_order(
+        customer, lines, user, order_date=date(2026, 11, 2), customer_order_no=customer_order_no
+    )
 
 
 # ---------------------------------------------------------------- (a) 約束の形
@@ -187,3 +197,30 @@ def test_items_search_reads_partner_part_nos_once(bracket, customer):
     with CaptureQueriesContext(connection) as three:
         assert len(masters_search.search("P-").rows) == 3
     assert len(three.captured_queries) == len(one.captured_queries)
+
+
+# ---------------------------------------------------------------- (f) 受注
+
+
+def test_orders_match_later_line_part_no_and_name(user, customer, bracket, shaft):
+    order = make_order(user, customer, [bracket, shaft], customer_order_no="PO-555")
+    for word in ("シャフト", "しゃふと"):
+        match = orders_search.search(word).rows[0].match
+        assert (match.label, match.hit) == ("品名", "シャフト"), word
+    match = orders_search.search("P-2002").rows[0].match
+    assert (match.label, match.hit) == ("自社品番", "P-2002")
+    # 1 行目の品番は「品番」の列 (「P-1001 ほか 1 件」) に、受注番号は 1 列目に出ている
+    assert orders_search.search("P-1001").rows[0].match is None
+    assert orders_search.search(order.order_no).rows[0].match is None
+
+
+def test_orders_match_customer_order_no_only_when_not_in_columns(user, customer, bracket, shaft):
+    make_order(user, customer, [bracket, shaft], customer_order_no="PO-555")
+    row = orders_search.search("PO-555").rows[0]
+    # C38 (受注の結果に「得意先の注文番号」の列を足す) が入った main では番号が列に出るので 1 行は出さず、
+    # C38 の前の main では列に無いので「得意先の注文番号」の 1 行を出す。どちらの main でも通るように試験の中で分ける
+    # (この試験を書いた main は C38 の後なので、上の枝を通る)。
+    if "PO-555" in [str(cell) for cell in row.cells]:
+        assert row.match is None
+    else:
+        assert (row.match.label, row.match.hit) == ("得意先の注文番号", "PO-555")
