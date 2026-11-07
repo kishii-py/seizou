@@ -1,5 +1,5 @@
 {% load manuals_tags seizou_icons %}
-{# 画像の並び (編集の画面の本文の form の外)。追加と削除は htmx で、この箱ごと差し替える (打ちかけの本文を消さないため)。 #}
+{# 画像の並び (編集の画面の本文の form の外)。追加と削除は htmx で、この箱ごと差し替える (打ちかけの本文を消さないため)。断りは右上の赤い知らせ (応答の HX-Trigger の seizou:notice)。 #}
 <section id="manual-images" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="画像">
   <h2 class="flex items-center gap-2 text-lg font-bold">{% icon "image" "size-5" %}画像</h2>
   <form class="mt-4 flex flex-wrap items-center gap-2" hx-post="{% url 'manuals:manualimage_upload' manual.pk %}" hx-encoding="multipart/form-data" hx-target="#manual-images" hx-swap="outerHTML">
@@ -7,7 +7,6 @@
     {% include "core/_file_field.html" with input_name="file" input_id="manual-image-file" input_accept=".png,.jpg,.jpeg,.webp" input_label="追加する画像" %}
     <button class="btn btn-outline border-base-300" type="submit">{% icon "plus" "size-4" %}画像を追加</button>
   </form>
-  {% if error %}<p class="mt-2 flex items-center gap-2 text-error" role="alert">{% icon "alert" "size-4" %}{{ error }}</p>{% endif %}
   {% with images=manual.images.all %}
   {% if images %}
   <ul class="mt-4 divide-y divide-base-200">

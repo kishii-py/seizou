@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import csv
 import inspect
+import json
 import re
 import unicodedata
 from datetime import date
@@ -71,6 +72,7 @@ from seizou.core import select_options
 from seizou.core import fields as company_fields
 from seizou.core import summary as list_summary
 from seizou.core.exceptions import CheckViolation, RuleError
+from seizou.core.templatetags.seizou_tags import rule_code
 from seizou.core.widgets import ClearableFileWidget, DecimalInput, IntegerInput, RemoteSelect
 
 #: 継承した画面が上書きしてよい属性 (R15 の 2 文目。決まりの検査が見る)
@@ -179,6 +181,32 @@ def invalid_form_message(form, head: str) -> str:
     if labels:
         return f"{head}{labels}の欄に誤りがあります。欄の下の赤い字のとおりに直してから、もう一度押してください。"
     return f"{head}入れた値に誤りがあります。赤い字のとおりに直してから、もう一度押してください。"
+
+
+#: 画面の一部だけを差し替える応答で、止まった知らせ (赤) と確かめ (黄) を右上に出す合図の名前 (core/static/js/seizou-modal.js が受ける。決め 11-07 C57-5)
+NOTICE_EVENT = "seizou:notice"
+
+
+def add_notice_trigger(response, notice=None, warnings=()):
+    """応答に、止まった知らせと確かめを右上の知らせに出す合図 (見出し HX-Trigger の seizou:notice) を付けて返す (決め 11-07 C57-5)。
+
+    画面の一部だけを差し替える応答では、右上の知らせ (core/_toasts.html) が差し替えに入らない。合図を受けた seizou-modal.js が、
+    base.html の template#seizou-toast-template の赤 (stop) と黄 (check) の箱を写す (見た目と印は _toasts.html と同じ。段は CLAUDE.md の「知らせの強さ」)。
+    中身は {"items": [...]}。1 つは level (stop / check)・message (文の全部。1 文目の太字は JS が最初の「。」で分ける)・
+    rule (決まりの番号。R と 2 桁でなければ空)・help (赤で番号がある時だけ決まりの説明の道。ほかは空)。並びは赤が先、黄は warnings の順。
+    notice も warnings も無ければ何も付けない。鍵に target を使わない (htmx は detail.target を合図を出す要素と読むため)。
+    JSON は既定の ensure_ascii のまま (見出しは latin-1 の字だけ。saved_in_modal と同じ訳)。
+    """
+    items = []
+    if notice is not None:
+        rule = rule_code(notice.code)
+        help_url = (url_or_none("core:rule_help", rule) or "") if rule else ""
+        items.append({"level": "stop", "message": str(notice.message), "rule": rule, "help": help_url})
+    for warning in warnings or ():
+        items.append({"level": "check", "message": str(warning.message), "rule": rule_code(warning.code), "help": ""})
+    if items:
+        response["HX-Trigger"] = json.dumps({NOTICE_EVENT: {"items": items}})
+    return response
 
 
 def url_or_none(name: str, *args) -> str | None:
@@ -1354,6 +1382,11 @@ class BaseFormView(ScreenMixin, FormView):
         response = super().render_to_response(context, **response_kwargs)
         # 同じ URL で小窓の中身と画面の全体を返すので、ブラウザの保存が取り違えないように見出しで分ける (一覧の HX-Request と同じ)。
         patch_vary_headers(response, ("HX-Target",))
+        # htmx が画面の一部 (HX-Target の箱) だけを差し替える要求 (今はメモの書く枠 = notes/note_form.html の hx-select="#notes")。
+        # 右上の知らせ (_toasts.html) が差し替えに入らないので、合図でも返す (決め 11-07 C57-5)。小窓と画面の全体には付けない。
+        headers = self.request.headers
+        if headers.get("HX-Request") and headers.get("HX-Target") and not self.in_modal:
+            add_notice_trigger(response, context.get("notice"), context.get("warnings") or ())
         return response
 
     def get_initial(self):

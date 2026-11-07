@@ -26,6 +26,7 @@ from seizou.orders.models import OrderLine
 from seizou.shipping import services as shipping_services
 from seizou.shipping.models import Shipment
 from seizou.workorders import services as workorders_services
+from tests.test_core_notice_trigger import notice_items
 
 User = get_user_model()
 
@@ -189,10 +190,12 @@ def test_plan_place_refused_without_permission(on, logged_in, user, line):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert "alert-error" in html
-    assert "指示書の編集の権限がありません。" in html
+    # 盤の権限の断りは本文の無い 204 に合図 seizou:notice を付け、右上の赤い知らせに出す (決め 11-07 C57-5)
+    assert response.status_code == 204
+    [item] = notice_items(response)
+    assert item["level"] == "stop"
+    assert "指示書の編集の権限がありません。" in item["message"]
+    assert item["rule"] == ""
     step.refresh_from_db()
     assert (step.planned_start, step.planned_end) == (None, None)
 

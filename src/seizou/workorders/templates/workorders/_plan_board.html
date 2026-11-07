@@ -3,7 +3,6 @@
 {# style に書くのは grid の列の数・段の数と、日と棒の位置だけ (吹き出しの位置は script が入れる)。色と余白は固定の class で書く。 #}
 {# 盤の 1 列目は段の見出し、上の 3 段は月・日・曜日の見出し。plans の col と row は 1 から数えるので、ここで 1 列と 3 段を足す。 #}
 <div id="plan-board" data-place-url="{{ board.place_url }}" data-process="{{ board.process.pk }}" data-board-start="{{ board.board_start }}" data-weeks="{{ board.weeks }}">
-  <div id="plan-notice"></div>
   {# 頭: 工程の名前・期間の字・期間の切り替え・未計画の欄への link。盤と一緒に差し替わるので件数は POST のたびに新しくなる。 #}
   <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
     <h2 class="text-lg font-bold">{{ board.process.name }}</h2>

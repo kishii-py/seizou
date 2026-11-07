@@ -18,6 +18,8 @@ from seizou.masters.models import Process
 from seizou.orders import services as orders_services
 from seizou.workorders import services
 from seizou.workorders.models import WorkOrderStep
+from seizou.workorders.views import PLAN_FORM_RETRY
+from tests.test_core_notice_trigger import notice_items
 
 ORDER_DATE = date(2026, 11, 2)
 DUE_DATE = date(2026, 11, 20)
@@ -293,13 +295,16 @@ def test_place_cancelled_order_shows_r05(client_logged_in, user, order, cut, ste
 
     response = _place(client_logged_in, step, "2026-11-06", cut)
 
-    assert response.status_code == 200
-    assert response["HX-Retarget"] == "#plan-notice"
-    assert response["HX-Reswap"] == "innerHTML"
-    html = response.content.decode()
-    assert "alert-error" in html
-    assert "R05" in html
-    assert 'id="plan-board"' not in html
+    # 止まったら本文の無い 204 に合図 seizou:notice を付け、右上の赤い知らせに出す (盤は差し替えない。決め 11-07 C57-5)
+    assert response.status_code == 204
+    assert response.content == b""
+    assert "HX-Retarget" not in response
+    items = notice_items(response)
+    assert len(items) == 1
+    assert items[0]["level"] == "stop"
+    assert items[0]["message"].startswith("保存できません。")
+    assert items[0]["rule"] == "R05"
+    assert items[0]["help"] == "/rules/R05/"
     assert _dates(step) == (date(2026, 11, 4), date(2026, 11, 4))
 
 
@@ -307,9 +312,25 @@ def test_place_cancelled_order_shows_r05(client_logged_in, user, order, cut, ste
 def test_place_bad_date_shows_form_error(client_logged_in, cut, step):
     response = _place(client_logged_in, step, "2026-13-40", cut)
 
-    assert response.status_code == 200
-    assert response["HX-Retarget"] == "#plan-notice"
-    assert "alert-error" in response.content.decode()
+    assert response.status_code == 204
+    [item] = notice_items(response)
+    assert item["level"] == "stop"
+    assert item["message"].startswith("保存できません。")
+    assert "開始日: " in item["message"]
+    assert item["message"].endswith(PLAN_FORM_RETRY)
+    assert _dates(step) == (None, None)
+
+
+@pytest.mark.django_db
+def test_place_service_value_error_is_notice(client_logged_in, cut, step):
+    # 終了日だけを送ると form は開始日から終了日を決めず (forms.PlanPlaceForm.clean)、services.plan_step の「片方だけ」の断りになる
+    response = _place(client_logged_in, step, "", cut, end="2026-11-06")
+
+    assert response.status_code == 204
+    [item] = notice_items(response)
+    assert item["level"] == "stop"
+    assert item["message"] == "保存できません。開始日か終了日の片方だけが入っています。開始日と終了日は、両方を入れるか両方を空にしてください。"
+    assert item["rule"] == ""
     assert _dates(step) == (None, None)
 
 

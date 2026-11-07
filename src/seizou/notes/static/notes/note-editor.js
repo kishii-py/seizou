@@ -4,6 +4,7 @@
 // 本文は打つたびに Quill の getSemanticHTML (ul と ol の素の HTML) を隠した欄 body_html に写す。掃除は保存の時に services がする。
 // 写真は 1 枚ずつ写真の口 (data-upload-url) へ送り、返った URL (/media/notes/…) を本文に入れる (道具の列の「写真」・落とす・貼り付け)。
 // CSRF は form の csrfmiddlewaretoken の欄の値を送る (見出しは土台の 1 か所 = R18)。class を足し引きしない (Quill の class は Quill の物)。
+// 写真を送れなかった時は、合図 seizou:notice を出して右上の赤い知らせに出す (core の seizou-modal.js が写す。決め 11-07 C57-5)。
 (function () {
   "use strict";
 
@@ -12,12 +13,14 @@
   var SEND_ERROR = "写真を送れませんでした。通信を確かめて、もう一度貼ってください。";
   var ready = typeof WeakSet === "function" ? new WeakSet() : null;
 
-  function showError(editor, text) {
-    var form = editor.closest("form");
-    var box = form && form.querySelector("[data-note-error]");
-    if (!box) return;
-    box.textContent = text || "";
-    box.hidden = !text;
+  // 止まった知らせを右上に出す合図 (応答の HX-Trigger の seizou:notice と同じ形。body まで泡立つ)。
+  function stopNotice(editor, text) {
+    editor.dispatchEvent(
+      new CustomEvent("seizou:notice", {
+        bubbles: true,
+        detail: { items: [{ level: "stop", message: text, rule: "", help: "" }] },
+      })
+    );
   }
 
   function field(form, name) {
@@ -31,7 +34,6 @@
     data.append("content_type", field(form, "content_type").value);
     data.append("object_id", field(form, "object_id").value);
     data.append("csrfmiddlewaretoken", field(form, "csrfmiddlewaretoken").value);
-    showError(editor, "");
     return fetch(editor.getAttribute("data-upload-url"), {
       method: "POST",
       body: data,
@@ -45,7 +47,7 @@
       })
       .then(function (result) {
         if (!result.ok || !result.body || typeof result.body.url !== "string") {
-          showError(editor, (result.body && result.body.error) || SEND_ERROR);
+          stopNotice(editor, (result.body && result.body.error) || SEND_ERROR);
           return;
         }
         var range = quill.getSelection(true);
@@ -54,7 +56,7 @@
         quill.setSelection(index + 1, 0, "silent");
       })
       .catch(function () {
-        showError(editor, SEND_ERROR);
+        stopNotice(editor, SEND_ERROR);
       });
   }
 
