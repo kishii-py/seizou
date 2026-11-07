@@ -154,7 +154,7 @@ def test_assistant_float_is_small_circle_with_tooltip(logged_in):
     assert re.sub(r"<svg.*?</svg>", "", inner, flags=re.S).strip() == ""  # 見える字は無い (吹き出しと aria-label だけ)
     root = html.index('<div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">')
     assert root < html.index(FLOAT) < html.index("<script>", root)  # 丸は根の div の中 (窓の section の後)
-    assert html.count('aria-controls="assistant-panel"') == 2  # 入口は 2 つ (メニューと丸)
+    assert html.count('aria-controls="assistant-panel"') == 1  # 入口は右下の丸 1 つ (本人の決め 11-07 16:5x)  # 入口は 2 つ (メニューと丸)
 
 
 def test_main_bottom_room_is_one_button_taller(logged_in):
