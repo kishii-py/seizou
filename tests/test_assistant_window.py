@@ -32,7 +32,7 @@ def test_window_has_grip_and_expand_button(key, request, client_logged_in):
     assert html.count("data-assistant-grip") == 1
     assert 'id="assistant-expand"' in html
     assert 'aria-label="広げる"' in html
-    # 窓の初めの位置 (根の div。右下) は今のまま (決め C37-3 = a)。入口は左のメニューの「AI に質問」
+    # 窓の初めの位置 (根の div。右下) は今のまま (決め C37-3 = a)。入口は左のメニューの「AI に質問」と右下の丸 (決め 11-07 09:3x)
     assert 'id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden"' in html
 
 

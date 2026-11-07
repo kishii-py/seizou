@@ -1,5 +1,5 @@
 {% load seizou_icons %}
-{# 「AI に質問」の入口 (core/_sidebar.html が左のメニューの下、フィードバックの入口の上で include する)。押すと右下に AI チャットの窓 (assistant/_panel.html) が開く。右下に浮いていた丸いボタンを、本文の外のここへ移した (決め C37 11-06 22:2x)。 #}
+{# 「AI に質問」の入口 (core/_sidebar.html が左のメニューの下、フィードバックの入口の上で include する)。押すと右下に AI チャットの窓 (assistant/_panel.html) が開く。決め C37 (11-06 22:2x) で右下の丸いボタンをここへ移したが、本人の決め 11-07 09:3x で右下の丸も戻した (入口は 2 つ。開け閉めの script は _panel.html の 1 つ)。 #}
 {# 全部の画面に出るので、既にある試験が数える字 (主色のボタン・今の画面の印 など) を書かない。窓と開け閉めの script は base.html が部品とログインの 2 つの条件のときだけ描くので、入口も同じ 2 つの条件で出す (入口だけが出ると押しても何も起きない)。字が見えるので説明の吹き出しは付けない。 #}
 {% if user.is_authenticated %}
 <div class="shrink-0 border-t border-base-300 px-4 py-2">
