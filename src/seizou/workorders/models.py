@@ -87,6 +87,10 @@ class WorkOrder(models.Model):
             return ("status",)
         return ("status", "cancel_reason")
 
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「指示書」「実績」・PROG-1d・PROG-1e) を残し、詳細に「履歴」のタブを出す。
+    #: 状態 (status) は詳細に出さないが、履歴には残す (取消の時に状態の前と後が残り、題の「取り消した」も状態から決まるため)
+    keeps_history = True
+
     class Meta:
         verbose_name = "指示書"
         verbose_name_plural = "指示書"
@@ -186,6 +190,9 @@ class WorkOrderStep(models.Model):
     # 生産計画の盤で置く日。空 = 未計画。書くのは services.plan_step だけ。
     planned_start = models.DateField("開始日", null=True, blank=True)
     planned_end = models.DateField("終了日", null=True, blank=True)
+
+    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「指示書」)
+    history_owner = "workorder"
 
     class Meta:
         verbose_name = "指示書の工程"

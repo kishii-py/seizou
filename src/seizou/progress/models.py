@@ -45,6 +45,10 @@ class Progress(models.Model):
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
+    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history が指示書の工程 → 指示書と辿る。決め HIST-1 の伝票の「実績」・PROG-1d・PROG-1e)。
+    #: 実績は指示書の詳細の「進捗」のタブに出る物で、誰がいつ直したか・消したかも同じ詳細で追えるようにするため
+    history_owner = "workorder_step.workorder"
+
     class Meta:
         verbose_name = "進捗の実績"
         verbose_name_plural = "進捗の実績"
