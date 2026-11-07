@@ -18,7 +18,7 @@ seizou は 1 つの命令で自社専用のシステムを持つための道具�
 
 seizou: with one command, a small or mid-sized manufacturer gets a business system built for its own way of working.
 The item master sits at the center and connects information across the company, and companies running seizou can exchange orders with each other.
-It is made for the one person in the factory who looks after Excel and the PC, with no programming needed. Work in progress (November 2026); the UI and documents are in Japanese.
+It is made for the one person in the factory who looks after Excel and the PC, with no programming needed. First release v0.1.0 (November 2026); the UI and documents are in Japanese.
 
 作者が製造業で学んだことが 1 つある。業務の決まりは、なぜそうするかが分からないと、引き継いだ人は変えてよいか判断できず、改善が止まる。だから seizou は、止める処理や端数の丸めのような決まりを実装した関数に「訳」(何のためか、法令・商慣習・作者の決めのどれから来たか、変えてよい条件) を書き、変えたい人がその訳に対して Issue で議論できる形にする (書き方の決まり R22)。訳をまだ確かめていない決まりは「未確認」と書いて残し、埋めることも皆で育てる対象にする。
 
