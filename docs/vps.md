@@ -471,3 +471,106 @@ VPS の外へ暗号で写す例は、[operations.md](operations.md) の「外へ
 
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py seizou_restore --list` → 控えの名前 (`20` で始まる日時) の行が並ぶ (作者の手元では、`seizou_backup` の後に `20261104-060125  2026-11-04T06:01:25  sqlite  seizou 0.1.0  0.7 MB` の形の 1 行を見た)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
+
+## 19. 2 社を OS の利用者で分け、受け口に上限を置く (後から)
+
+この段は、1 から 18 で立てた後に、2 社の守りを固めるときに打ちます。本番の 2 社をこの形にするのは、会社の担当が決めてからです。
+
+1 から 18 の形では、2 社が同じ OS の利用者 `seizou` で動きます。片方の会社の process でコードが動くと、もう片方の会社の DB・`.env`・図面も読めます。この段では、会社ごとに OS の利用者を分けます。あわせて、誰でも送れる受け口 (`/connect/receive/order/`) に、nginx で回数の上限を置きます。
+
+### 会社ごとの OS の利用者
+
+会社の利用者を作り、置き場の持ち主をその利用者にします。
+
+```
+sudo useradd --system --user-group --no-create-home --home-dir /srv/seizou-sites/a_machining --shell /sbin/nologin seizou-a_machining
+sudo chown -R seizou-a_machining:seizou-a_machining /srv/seizou-sites/a_machining
+sudo chgrp nginx /srv/seizou-sites/a_machining
+sudo chmod 750 /srv/seizou-sites/a_machining
+sudo chmod 600 /srv/seizou-sites/a_machining/db.sqlite3 /srv/seizou-sites/a_machining/.env
+sudo chmod 700 /srv/seizou-sites/a_machining/backups /srv/seizou-sites/a_machining/practice
+```
+
+B 社は、`seizou-b_plating` と `/srv/seizou-sites/b_plating` で同じ命令を打ちます。
+
+- `chown -R` は置き場のフォルダの組も会社の利用者の組に替えるので、10 と同じ `chgrp nginx` と `chmod 750` を打ち直します。
+- `db.sqlite3` と `.env` は持ち主だけが読み書きする 600、控え (`backups/`) と練習モードの写し (`practice/`) は持ち主だけが入れる 700 にします。
+- seizou の置き場 `/srv/seizou/src` は、利用者 `seizou` の物のままにし、会社の利用者からは読めるだけにします。4 の `useradd --create-home` が作った `/srv/seizou` が `ls -ld /srv/seizou` で `drwx------` なら、会社の利用者が中の python と gunicorn に届かないので、`sudo chmod 711 /srv/seizou` で通るだけを許します (答えの YAML は 6 で 600 にしてあるので、読めません)。
+
+毎日の控えの cron は、会社の利用者の cron に移します。18 で利用者 `seizou` の cron に足した行のうち、その会社の行を写し、`seizou` の cron からは消します。
+
+```
+sudo crontab -u seizou-a_machining -e
+sudo crontab -u seizou -e
+```
+
+この後の seizou の命令 (点検・`migrate`・控え・戻しなど) は、`sudo -u seizou-a_machining -H <命令>` の形で、会社の利用者として打ちます。18 の版を上げる手順の 4〜6 段目も同じです (3 段目の `git pull` と `uv sync` は、今までどおり利用者 `seizou` で打ちます)。
+
+### unit の利用者と守りの行
+
+11 の unit (`/etc/systemd/system/seizou-a_machining.service`) の `User=` と `Group=` を会社の利用者にし、守りの 4 行を足します。守りを足すと gunicorn の制御の socket が作れないので、`ExecStart` に `--no-control-socket` を足します (11 の最後の箇条と同じ)。`[Service]` は次の形になります。
+
+```
+[Service]
+User=seizou-a_machining
+Group=seizou-a_machining
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/seizou-sites/a_machining
+WorkingDirectory=/srv/seizou-sites/a_machining
+Environment=DJANGO_SETTINGS_MODULE=settings
+Environment=TMPDIR=/srv/seizou-sites/a_machining/upload-tmp
+ExecStart=/srv/seizou/src/.venv/bin/gunicorn --no-control-socket --chdir /srv/seizou-sites/a_machining --pythonpath /srv/seizou-sites/a_machining --bind 127.0.0.1:8001 --workers 1 --threads 4 --timeout 90 'django.core.wsgi:get_wsgi_application()'
+Restart=on-failure
+```
+
+```
+sudo systemctl daemon-reload
+sudo systemctl restart seizou-a_machining seizou-b_plating
+```
+
+- `NoNewPrivileges=yes` は、gunicorn とその子の process が、権限を上げるプログラムで権限を上げられないようにする行です。
+- `PrivateTmp=yes` は、`/tmp` をこの service だけの物にする行です。
+- `ProtectSystem=strict` は、OS のファイルの全体を読むだけにする行で、`ReadWritePaths=` で書けるのを会社の置き場の中だけにします。
+
+### 受け口の nginx の上限
+
+12 の conf (`/etc/nginx/conf.d/seizou-a_machining.conf`) の頭 (server の外) に `limit_req_zone` の 1 行を足します。server の中 (13 で certbot が `listen 443 ssl` を足した server の、`location /` の前) には、受け口の location を足します。上限の名前 (`seizou_receive_a`) は会社ごとに分けます (B 社は `seizou_receive_b` で、ポートは `8002`)。
+
+```
+limit_req_zone $binary_remote_addr zone=seizou_receive_a:10m rate=30r/m;
+
+server {
+    (今の行はそのまま)
+
+    location = /connect/receive/order/ {
+        limit_req zone=seizou_receive_a burst=20 nodelay;
+        client_max_body_size 3m;
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Seizou-Proxy nginx;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 90s;
+    }
+
+    location / {
+        (今の行はそのまま)
+    }
+}
+```
+
+```
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+- `limit_req_zone` は、送り元の IP ごとに回数を数える場所 (10MB) と、速さ (1 分に 30 回) を決める行です。server の外にしか書けません。
+- `burst=20 nodelay` は、続けて来た 20 回までは待たせずに通し、それを超えた分を断る印です。nginx は断った要求に 503 を返します。
+- 数 (1 分に 30 回・burst 20) は、2 社の送り合いに十分な目安で、会社が変えてかまいません。相手が会話の添付を取りに来る要求も同じ受け口を通るので、同じ数に入ります。
+- `client_max_body_size 3m` は、受け口の本文が JSON だけ (会話の添付の中身は後で取りに行く) なので、Django の本文の既定の上限 (2.5MB) を少し超える値にしました。
+- `proxy_set_header` の 4 行と `proxy_read_timeout 90s` は、12 の `location /` の物を写します。`location /` に書いた行は、ほかの location には効かないためです。
+
+確かめ方: `sudo -u seizou-a_machining test -r /srv/seizou-sites/b_plating/.env || echo 読めない` → `読めない`・`systemctl show seizou-a_machining -p User` → `User=seizou-a_machining`・`sudo nginx -t` → `syntax is ok` と `test is successful`・`for i in $(seq 30); do curl -s -o /dev/null -w '%{http_code} ' -X POST https://a.example.jp/connect/receive/order/; done` → 署名の無い要求を断る `400` が並び、途中から `503` になる (VPS で確かめる)
+確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
