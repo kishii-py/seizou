@@ -1,4 +1,4 @@
-"""受け口と承認が、表の欄に入らない数と取り消した発注への出荷の知らせを断るテスト (精査 A1 の不具合 1〜5)。
+"""受け口と承認が、表の欄に入らない数と字数・取り消した発注への出荷の知らせを断るテスト (精査 A1 の不具合 1〜5 と docs/edi-items.md の受け取れる字数)。
 
 出荷の知らせ・検収・注文の数が、表の欄の桁 (整数の部分と小数の桁) に入らなければ、受け口は日本語の理由で 400 を返し、
 表に何も入れない (入れた後で画面を開くと 500 になるため)。受け口を通らない受信した注文 (record_inbox の道) は承認で止まる。
@@ -360,3 +360,92 @@ def test_notice_for_cancelled_order_is_refused(
 
     assert response.status_code == 200
     assert ShippingNotice.objects.count() == 1
+
+
+#: 注文の字の鍵と、断る文の中の字 (受け取れる字数は docs/edi-items.md の注文の表)
+ORDER_TEXT_KEYS = [("order_no", "発注番号"), ("part_no", "品番"), ("part_name", "品名"), ("unit", "単位"), ("note", "備考")]
+
+
+def _text_limit(key):
+    """注文の字の鍵の、受ける欄の字数の上限を model から引く (品番は受注の明細と取引先の品番の表の小さい方)。"""
+    from seizou.orders.models import OrderLine
+
+    if key == "order_no":
+        return Order._meta.get_field("customer_order_no").max_length
+    if key == "part_no":
+        return min(
+            OrderLine._meta.get_field("customer_part_no").max_length,
+            PartnerItem._meta.get_field("partner_part_no").max_length,
+        )
+    if key == "part_name":
+        return PartnerItem._meta.get_field("partner_item_name").max_length
+    return OrderLine._meta.get_field(key).max_length
+
+
+@pytest.mark.parametrize(("key", "label"), ORDER_TEXT_KEYS)
+@pytest.mark.django_db
+def test_order_text_over_field_is_refused_at_receive(client, order_secret, connections, key, label):
+    limit = _text_limit(key)
+    too_long = "x" * (limit + 1)
+    if key == "order_no":
+        msg_id, data = _order_data()
+        data["order_no"] = too_long
+        expected = f"注文の発注番号は {limit} 字までにしてください。"
+    else:
+        msg_id, data = _order_data(**{key: too_long})
+        expected = f"注文の 1 行目の{label}は {limit} 字までにしてください。"
+
+    response = _signed_post(client, _raw(data), msg_id, order_secret)
+
+    assert response.status_code == 400
+    assert response.json()["message"] == expected
+    assert Inbox.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_order_text_at_field_limit_is_received(client, order_secret, connections):
+    # 品名と単位は日本語の字で上限ちょうど (1 字を 1 と数え、バイトで数えない)
+    msg_id, data = _order_data(
+        part_no="P" * _text_limit("part_no"),
+        part_name="軸" * _text_limit("part_name"),
+        unit="個" * _text_limit("unit"),
+        note="x" * _text_limit("note"),
+    )
+    data["order_no"] = "N" * _text_limit("order_no")
+
+    response = _signed_post(client, _raw(data), msg_id, order_secret)
+
+    assert response.status_code == 200
+    assert Inbox.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_order_part_no_spaces_around_are_not_counted(client, order_secret, connections):
+    # 受け入れは品番の前後の空白を外して表に入れるので、外した字で数える
+    msg_id, data = _order_data(part_no=" " + "P" * _text_limit("part_no") + " ")
+
+    response = _signed_post(client, _raw(data), msg_id, order_secret)
+
+    assert response.status_code == 200
+    assert Inbox.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_accept_refuses_text_over_field_from_record_inbox(user, customer, own_item):
+    limit = _text_limit("part_no")
+    too_long = "x" * (limit + 1)
+    _msg_id, data = _order_data(part_no=too_long)
+    inbox = services.record_inbox(customer, data, user)
+    mapped = PartnerItem.objects.count()
+
+    with pytest.raises(ValueError) as caught:
+        services.accept(inbox, {too_long: own_item}, user)
+
+    assert str(caught.value) == (
+        f"受け入れられません。注文の 1 行目の品番は {limit} 字までにしてください。"
+        "この注文は断り、送る側に送り直してもらってください。"
+    )
+    assert Order.objects.count() == 0
+    inbox.refresh_from_db()
+    assert inbox.status == Inbox.STATUS_RECEIVED
+    assert PartnerItem.objects.count() == mapped
