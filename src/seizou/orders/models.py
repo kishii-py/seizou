@@ -67,6 +67,9 @@ class Order(models.Model):
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「受注」) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+
     class Meta:
         verbose_name = "受注"
         verbose_name_plural = "受注"
@@ -143,6 +146,9 @@ class OrderLine(models.Model):
     # 請求しない明細の印 (作者の決め C107-3)。出し切らずに終えた一式を請求しないと決めた明細に、請求書の新規登録の一式の表から付ける。
     # 付けた明細は一式の表に出ず、その出荷も請求書の新規登録の候補と「請求書に入っていない出荷」の数に出さない。出荷の数と出荷の金額は今までどおり数える。書くのは orders.services.mark_no_bill と clear_no_bill だけ。
     no_bill = models.BooleanField("請求しない", default=False, editable=False)
+
+    #: 変更の履歴は受注の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「受注」)
+    history_owner = "order"
 
     class Meta:
         verbose_name = "受注の明細"

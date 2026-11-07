@@ -1,7 +1,9 @@
 """shipping の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して出荷と納品書を書く。
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「出荷」「納品書」) に書く。書く前に core.history.saved_state で前を取り、
+  書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。納品書にまとめた出荷は、出荷の詳細の「履歴」にも納品書の前と後が残る。
+  出荷の知らせの列 (番号の uuid・送った日時・相手の返事) は core が残さない列なので、assign_notice_number と record_notice_response は残さない。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
 - 分納を許さない設定 (partial_shipment が偽) の違反も RuleViolation で、code は設定の画面の名前「分納」。
 - 決まりの番号の無い入力の誤り (出荷の一覧が空) は日本語の ValueError。
@@ -32,10 +34,10 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import access
+from seizou.core import access, history
 from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import next_number
+from seizou.core.services import next_number, record_history
 from seizou.masters.services import delivery_amount, reaches_line_qty
 from seizou.orders.services import refresh_status, remaining_qty, shipped_qty
 
@@ -109,6 +111,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
         note=note,
         finishes_line=not finished and reaches_line_qty(locked.qty, done, qty),
     )
+    record_history(shipment, user)
     refresh_status(locked.order, user)
     return shipment, locked
 
@@ -199,9 +202,12 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
             customer=customer,
             issued_on=issued_on or timezone.localdate(),
         )
+        record_history(note, user)
         for shipment in locked:
+            before = history.saved_state(shipment)
             shipment.delivery_note = note
             shipment.save(update_fields=["delivery_note"])
+            record_history(shipment, user, before=before)
         return note
 
 
@@ -367,8 +373,10 @@ def cancel_delivery_note(note, user):
         refusal = cancel_refusal(locked, hide_money=access.hides_money(user))
         if refusal:
             raise ValueError(refusal)
+        before = history.saved_state(locked)
         locked.status = DeliveryNote.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
@@ -406,6 +414,7 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
                     "分納",
                     f"保存できません。この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
+        before = history.saved_state(locked)
         # 明細を出し終えた出荷の印を、直した出荷の分だけ数え直す (決め PRICE-1c。ほかの出荷の印は触らない)。
         others = shipped_qty(line) - locked.qty
         finished = (
@@ -417,6 +426,7 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
         locked.shipped_at = shipped_at
         locked.note = note
         locked.save(update_fields=["qty", "shipped_at", "note", "finishes_line"])
+        record_history(locked, user, before=before)
         refresh_status(line.order, user)
         return locked
 

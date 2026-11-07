@@ -4,6 +4,8 @@
 返す物は利用者 (User)。core に利用者の詳細の画面が無いので、入力の土台の保存の後の移り先は一覧になる。
 断る変更は日本語の ValueError (何も変えず、記録も残さない)。入力の土台が赤の知らせにする。
 部署 (Department) の作る・直す・消すもここ。部署を直しても既にいる人の権限は変えない (N36 の約束)。
+部署の変更は AccessLog でなく変更の履歴 (core.services.record_history。決め HIST-1) に残す。アカウントの変更は今の AccessLog のまま書き、
+変更の履歴には二重に書かない (決め C106-2 = a)。
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from seizou.core import access
+from seizou.core import access, history
+from seizou.core.services import record_history, record_history_deleted
 from seizou.parts import PARTS
 
 from .models import Access, AccessLog, Department
@@ -196,7 +199,7 @@ def _locked(target) -> Access:
 
 @transaction.atomic
 def create_department(name, apps, default_permissions, user, *, sort_order=0) -> Department:
-    """部署を作る (種と、部署の新規登録の画面が呼ぶ)。記録の表には残さない。"""
+    """部署を作る (種と、部署の新規登録の画面が呼ぶ)。アカウントの記録の表 (AccessLog) には残さず、変更の履歴に「作った」を残す。"""
     name = (name or "").strip()
     if not name:
         raise ValueError("保存できません。部署の名前を入れてください。")
@@ -207,12 +210,14 @@ def create_department(name, apps, default_permissions, user, *, sort_order=0) ->
     for app in apps:
         if app not in allowed:
             raise ValueError("保存できません。" + DEPARTMENT_APP_UNKNOWN.format(app=app))
-    return Department.objects.create(
+    row = Department.objects.create(
         name=name,
         apps=apps,
         default_permissions=clean_permissions(default_permissions),
         sort_order=sort_order,
     )
+    record_history(row, user)
+    return row
 
 
 @transaction.atomic
@@ -220,10 +225,11 @@ def update_department(target, data, user) -> Department:
     """部署を直す。data の鍵は name・apps・default_permissions・sort_order (無い鍵は今のまま)。
 
     表から読み直して直す (渡された物を書き換えない)。既にいる人の権限と部署の付け外しには触らない
-    (N36 の約束「部署と権限は別々に付け外しする」)。記録の表には残さない (create_department と同じ)。
-    user は変えた人 (今は使わない。引数の形は入力の土台のため)。返すのは直した部署 (土台が詳細へ移す)。
+    (N36 の約束「部署と権限は別々に付け外しする」)。アカウントの記録の表 (AccessLog) には残さない (create_department と同じ)。
+    user は変えた人で、変えた項目の前と後を変更の履歴に残す (開ける部品と既定の権限は画面の字)。返すのは直した部署 (土台が詳細へ移す)。
     """
     row = Department.objects.select_for_update().get(pk=target.pk)
+    before = history.saved_state(row)
     data = dict(data or {})
     values = {}
     if "name" in data:
@@ -251,6 +257,7 @@ def update_department(target, data, user) -> Department:
     for key, value in values.items():
         setattr(row, key, value)
     row.save()
+    record_history(row, user, before=before)
     return row
 
 
@@ -272,12 +279,14 @@ def delete_department(target, user) -> None:
 
     断る文は delete_refusal の 1 か所 (削除の確かめの画面が、押す前に同じ文を黄の知らせで出す)。
     消すときは、削除済みのアカウントとのつながりの行だけを Django が消す (記録の表の前と後は部署の名前の字なので残る)。
-    既にいる人の権限には触らない。記録の表には残さない。返すのは None (入力の土台が一覧へ移す)。
+    既にいる人の権限には触らない。アカウントの記録の表 (AccessLog) には残さず、消す前にその時の値を変更の履歴に「消した」で残す。
+    返すのは None (入力の土台が一覧へ移す)。
     """
     row = Department.objects.select_for_update().get(pk=target.pk)
     refusal = delete_refusal(row)
     if refusal:
         raise ValueError(refusal)
+    record_history_deleted(row, user)
     row.delete()
 
 

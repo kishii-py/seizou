@@ -1,7 +1,8 @@
 """orders の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して受注を書く。
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「受注」) に書く。書く前に core.history.saved_state で前を取り、
+  書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。明細の行は受注の詳細の「履歴」に出る (OrderLine.history_owner)。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
@@ -27,8 +28,9 @@ from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError,
 from django.db.models import Count, Max, Min
 from django.db.models.functions import Coalesce
 
+from seizou.core import history
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import next_number
+from seizou.core.services import next_number, record_history, record_history_deleted
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 
 from .models import Order, OrderLine
@@ -180,8 +182,9 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
             customer_order_no=customer_order_no,
             source=source,
         )
+        record_history(order, user)
         for line_no, line in enumerate(lines, start=1):
-            _add_line(order, line, line_no)
+            record_history(_add_line(order, line, line_no), user)
         if source != Order.SOURCE_MANUAL:
             order.saved_note = f"明細 {len(lines)} 行を手入力せずに受注にしました。"
         return order
@@ -223,10 +226,19 @@ def update_order(order, data, lines, user, *, ext=None):
             keep.add(ref)
         next_line_no = max((row.line_no for row in existing.values()), default=0) + 1
 
+        # 変更の履歴の前 (DB から取り直した値)。明細は残す物も消す物も、書く前に取る
+        before = history.saved_state(locked)
+        line_before = {pk: history.saved_state(row) for pk, row in existing.items()}
         for key, value in data.items():
             setattr(locked, key, value)
         locked.save()
+        record_history(locked, user, before=before)
 
+        # 消す明細は消す前に 1 行ずつ「消した」を残す (queryset の delete は行ごとの save を通らないため)。
+        # 出荷が指していて消せなければ、同じ atomic が戻るので履歴も残らない。
+        for pk, row in existing.items():
+            if pk not in keep:
+                record_history_deleted(row, user)
         try:
             locked.lines.exclude(pk__in=keep).delete()
         except ProtectedError as exc:
@@ -234,10 +246,10 @@ def update_order(order, data, lines, user, *, ext=None):
             raise ValueError(_SHIPPED_LINE_MESSAGE) from exc
         for line, ref in zip(lines, refs, strict=True):
             if ref is not _NEW_LINE:
-                _change_line(existing[ref], line, locked.customer)
+                record_history(_change_line(existing[ref], line, locked.customer), user, before=line_before[ref])
             else:
                 line_no = line.get("line_no") or next_line_no
-                _add_line(locked, line, line_no)
+                record_history(_add_line(locked, line, line_no), user)
                 next_line_no = max(next_line_no, line_no + 1)
         return refresh_status(locked, user)
 
@@ -253,6 +265,7 @@ def cancel_order(order, user, *, reason=""):
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
             raise RuleViolation("R05", "取り消せません。この受注は取り消し済みです。受注の詳細を開き直してください。")
+        before = history.saved_state(locked)
         if reason:
             added = f"取消の理由: {reason}"
             note = f"{locked.note}\n{added}" if locked.note else added
@@ -264,6 +277,7 @@ def cancel_order(order, user, *, reason=""):
             locked.note = note
         locked.status = Order.STATUS_CANCELLED
         locked.save()
+        record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
@@ -280,8 +294,10 @@ def mark_no_bill(order_line, user):
     with transaction.atomic():
         locked = OrderLine.objects.select_for_update().get(pk=order_line.pk)
         if not locked.no_bill:
+            before = history.saved_state(locked)
             locked.no_bill = True
             locked.save(update_fields=["no_bill"])
+            record_history(locked, user, before=before)
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
     locked.saved_message = "請求しないにしました。"
     return locked
@@ -297,8 +313,10 @@ def clear_no_bill(order_line, user):
     with transaction.atomic():
         locked = OrderLine.objects.select_for_update().get(pk=order_line.pk)
         if locked.no_bill:
+            before = history.saved_state(locked)
             locked.no_bill = False
             locked.save(update_fields=["no_bill"])
+            record_history(locked, user, before=before)
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
     locked.saved_message = "請求しないを外しました。"
     return locked
@@ -396,6 +414,8 @@ def refresh_status(order, user):
         else:
             status = Order.STATUS_OPEN
         if locked.status != status:
+            before = history.saved_state(locked)
             locked.status = status
             locked.save(update_fields=["status"])
+            record_history(locked, user, before=before)
         return locked

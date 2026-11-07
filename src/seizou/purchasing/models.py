@@ -71,6 +71,8 @@ class PurchaseOrder(models.Model):
 
     # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「発注」・PRICE-4f) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
 
     class Meta:
         verbose_name = "発注"
@@ -138,6 +140,9 @@ class PurchaseOrderLine(models.Model):
     line_status_reason_code = models.CharField(
         "明細状態理由コード", max_length=4, choices=edi_codes.LINE_REASON_CHOICES, blank=True, default=""
     )
+
+    #: 変更の履歴は発注の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「発注」)
+    history_owner = "purchase_order"
 
     class Meta:
         verbose_name = "発注の明細"

@@ -1,7 +1,8 @@
 """workorders の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して指示書を書く。
 
 - 引数の順は 対象 → 値 → user (01 の 10.1)。
-- user は記録のために受ける。記録の列が無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「指示書」) に書く。書く前に core.history.saved_state で前を取り、
+  書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。工程の行は指示書の詳細の「履歴」に出る (WorkOrderStep.history_owner)。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
 - 決まりの番号の無い入力の誤り (工程が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
@@ -24,8 +25,9 @@ from django.db.models import DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from seizou.core import history
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import next_number
+from seizou.core.services import next_number, record_history
 
 from .models import WorkOrder, WorkOrderStep
 
@@ -85,13 +87,15 @@ def issue_workorder(order_line, qty, steps, user):
             qty=qty,
             issued_on=timezone.localdate(),
         )
+        record_history(workorder, user)
         for seq, (step, planned_qty) in enumerate(zip(steps, planned), start=1):
-            WorkOrderStep.objects.create(
+            created = WorkOrderStep.objects.create(
                 workorder=workorder,
                 process=step["process"],
                 seq=seq,
                 planned_qty=planned_qty,
             )
+            record_history(created, user)
         return workorder
 
 
@@ -115,7 +119,7 @@ def plan_step(step, start, end, user):
 
     start と end は日付。両方 None で未計画に戻す。片方だけ None と start > end は ValueError。
     取消した受注の指示書の工程は R05 で止める。取消の指示書は止めない (盤に出さないだけ)。
-    書くのは planned_start・planned_end の 2 列だけ (数は書かない)。user は受けるだけ。
+    書くのは planned_start・planned_end の 2 列だけ (数は書かない)。開始日と終了日の前と後は、変更の履歴に user で残す (変わった時だけ)。
     訳: 取消した受注の指示書の工程に予定を置かないため。出所 = RULES.md R05。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -131,9 +135,11 @@ def plan_step(step, start, end, user):
             raise ValueError(
                 "保存できません。開始日が終了日より後です。開始日を終了日と同じ日か前の日にしてください。"
             )
+        before = history.saved_state(locked)
         locked.planned_start = start
         locked.planned_end = end
         locked.save(update_fields=["planned_start", "planned_end"])
+        record_history(locked, user, before=before)
         return locked
 
 
@@ -180,9 +186,11 @@ def cancel_workorder(workorder, user, *, reason=""):
         limit = WorkOrder._meta.get_field("cancel_reason").max_length
         if len(reason) > limit:
             raise ValueError(f"取り消せません。取消の理由が {limit} 字を超えます。理由を短くしてください。")
+        before = history.saved_state(locked)
         locked.status = WorkOrder.STATUS_CANCELLED
         locked.cancel_reason = reason
         locked.save(update_fields=["status", "cancel_reason"])
+        record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked

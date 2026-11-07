@@ -38,6 +38,9 @@ class DeliveryNote(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
     )
 
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「納品書」) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+
     class Meta:
         verbose_name = "納品書"
         verbose_name_plural = "納品書"
@@ -121,6 +124,10 @@ class Shipment(models.Model):
             if services._is_edi_order(self.order_line.order):
                 return hidden
         return (*hidden, "notice_sent_at", "notice_response")
+
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「出荷」) を残し、詳細に「履歴」のタブを出す。
+    #: 出荷の知らせの番号 (uuid)・送った日時・相手の返事は core が残さない (番号の uuid と、名前が _sent_at・_response で終わる列)
+    keeps_history = True
 
     class Meta:
         verbose_name = "出荷"

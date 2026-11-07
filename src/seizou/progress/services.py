@@ -2,6 +2,9 @@
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
 - user は実績の「人」(recorded_by) に書く。無ければ空。
+- 実績を入れた・直した・消した事は、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「実績」・PROG-1d・PROG-1e) にも user で残す。
+  書く前に core.history.saved_state で前を取り、書いた後に同じ transaction.atomic の中で残す。履歴は指示書の詳細の「履歴」に出る
+  (Progress.history_owner)。実績の人 (recorded_by) は入れた人のまま変わらないので、直した人と消した人は変更の履歴の人だけに残る。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 予定より多い実績のポカよけは検査の層 (seizou.core.checks) が services の前に見る。
@@ -20,7 +23,9 @@ from django.db import transaction
 from django.db.models import DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
 
+from seizou.core import history
 from seizou.core.exceptions import RuleViolation
+from seizou.core.services import record_history, record_history_deleted
 
 from .models import Progress, _qty_text
 
@@ -75,6 +80,7 @@ def record_progress(workorder_step, qty, recorded_at, user, *, note="", defect_q
             recorded_by=user if getattr(user, "pk", None) is not None else None,
             note=note,
         )
+        record_history(created, user)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         # 何をどれだけ記録したかを書く (C44-1 = a)。不良は 0 より大きいときだけ、印は付けたときだけ足す。
         defect_text = f"・不良 {_qty_text(defect_qty)}" if defect_qty > 0 else ""
@@ -99,12 +105,14 @@ def update_progress(progress, qty, recorded_at, user, *, defect_qty=0, completes
         step = _WorkOrderStep.objects.select_for_update().get(pk=progress.workorder_step_id)
         locked = Progress.objects.select_for_update().get(pk=progress.pk)
         _check_r02(qty, defect_qty)
+        before = history.saved_state(locked)
         locked.qty = qty
         locked.defect_qty = defect_qty
         locked.completes_step = bool(completes_step)
         locked.recorded_at = recorded_at
         locked.note = note
         locked.save(update_fields=["qty", "defect_qty", "completes_step", "recorded_at", "note"])
+        record_history(locked, user, before=before)
         locked.saved_message = f"{_step_text(step)} の実績を直しました。"
         return locked
 
@@ -112,7 +120,7 @@ def update_progress(progress, qty, recorded_at, user, *, defect_qty=0, completes
 def delete_progress(progress, user):
     """実績を消す (PROG-1e = a。別の工程や二重に入れた実績を消す)。既に無ければ日本語の ValueError。
 
-    行は atomic の中で取り直して消す。在庫は動かさない (実績は在庫を動かさない)。user は受けるだけ (記録の列が無い)。
+    行は atomic の中で取り直して消す。在庫は動かさない (実績は在庫を動かさない)。消す前に、その時の値を変更の履歴に「消した」で user で残す。
     返す物 (消した実績。pk は None) に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> の実績 <数> を削除しました。」) を付ける。
     """
     with transaction.atomic():
@@ -120,6 +128,7 @@ def delete_progress(progress, user):
         if row is None:
             raise ValueError("削除できません。この実績は既に消してあります。")
         text = f"{_step_text(row.workorder_step)} の実績 {_qty_text(row.qty)} を削除しました。"
+        record_history_deleted(row, user)
         row.delete()
         row.saved_message = text
         return row

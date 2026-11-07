@@ -241,6 +241,9 @@ class Timeline:
     BaseDetailView) は履歴を描かないので、問い合わせを増やさないため。
     金額の項目 (型 money) は、金額の閲覧の無い人には前と後の両方を MASKED_VALUE にする。判定 (access.can_see_money) は
     money の項目を描く行がある時だけ 1 回呼ぶ (記録だけの状態では記録に 1 行。money の項目が無ければ記録しない)。
+    記録の字は画面の印 (seizou.hide_money) と同じ「単価と金額を見た」にする。訳: 記録だけの状態の記録は同じ要求の同じ字を
+    1 行にまとめる (access.log_only) ので、金額の出る詳細を 1 回開いた記録が、履歴の金額の分で 2 行にならないため
+    (tests/test_core_access_hardening.py の「印を何度読んでも 1 行」)。
     訳: 決め (権限の作り方 11-03・金額の閲覧の行) が「変更の履歴の単価は (非表示)」と決めている。一覧と詳細の列と項目を
     出さない形 (決め 11-05 09:4x) と別に、変更の履歴だけは「(非表示)」と書かれているため。
     """
@@ -267,7 +270,7 @@ class Timeline:
         entries = self._entries
         hide_money = False
         if any(item.get("type") == "money" for entry in entries for item in (entry.changes or ())):
-            hide_money = not access.can_see_money(self.user, what="変更の履歴の単価と金額を見た")
+            hide_money = not access.can_see_money(self.user)
         return [self._row(entry, hide_money) for entry in entries]
 
     @cached_property
