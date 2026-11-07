@@ -191,7 +191,12 @@ def test_invoice_shows_bank_and_delivery_note_does_not(manager_client, admin):
 
     invoice_body, note_body = _print_bodies(manager_client, invoice, note)
 
-    assert f"振込先 {BANK}" in invoice_body
+    # 振込先は合計の下の「お振込先」の枠 (語ごとの span。会社の欄の中には出ない)
+    assert 'class="report-bank"' in invoice_body and "お振込先" in invoice_body
+    for word in BANK.split():
+        assert f"<span>{word}</span>" in invoice_body, word
+    assert invoice_body.index('class="report-bank"') > invoice_body.index("</table>", invoice_body.index('class="report-lines"'))
+    assert "振込先" not in invoice_body[: invoice_body.index('class="report-lines"')]
     assert "振込先" not in note_body and BANK not in note_body
     assert ADDRESS in note_body and f"電話 {PHONE}" in note_body
     company = delivery_note_context(note)["company"]

@@ -155,6 +155,59 @@ th {
   text-align: left;
 }
 
+/* 請求書の頭の「ご請求金額 (税込)」と支払期日の枠 (見つけ print-02)。得意先の経理の人が最初に探す「いくらをいつまでに」を、
+   宛名と番号の下に 1pt の黒い枠で出す。幅は左の欄いっぱい。金額は context の合計をそのまま出す (CSS もテンプレートも計算しない) */
+.report-amount {
+  margin-top: 3mm;
+  border: 1pt solid #000;
+}
+
+.report-amount th,
+.report-amount td {
+  padding: 1.5mm 4mm;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.report-amount th {
+  text-align: left;
+}
+
+.report-amount td {
+  text-align: right;
+}
+
+.report-amount-total {
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+/* 振込先の枠 (明細と合計の下。report_base.html の block after_lines)。会社の欄の中の 1 行では口座の名義が途中で折れたので、
+   ここに移して空白の所でだけ折る。折り方は語 (空白の区切り) ごとの span を折らない形。word-break: keep-all は使わない
+   (WeasyPrint 70 は読まず、PDF を作るたびに「invalid value」の警告を出す。@supports も読まない。手元で確かめた)。
+   枠はページの境で割らない */
+.report-bank {
+  width: auto;
+  margin-top: 6mm;
+  border: 1pt solid #000;
+  page-break-inside: avoid;
+}
+
+.report-bank th,
+.report-bank td {
+  padding: 1.5mm 4mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-bank th {
+  white-space: nowrap;
+}
+
+.report-bank-text span {
+  white-space: nowrap;
+}
+
 /* 番号の枡 (請求書番号・納品書番号の td)。中の字を覚え、@page の下の端に「番号　n / N」で出す。
    区切りの全角の空白を値の側に含めるので、この枡の無い帳票 (現品票・出荷ラベル・見本) の下の端は「n / N」のまま。 */
 .report-docno {
