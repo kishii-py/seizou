@@ -45,6 +45,14 @@ class FakeResponse:
             raise ValueError("JSON ではない")
         return self._data
 
+    def iter_content(self, chunk_size=1):
+        body = b"" if self._data is None else json.dumps(self._data, ensure_ascii=False).encode("utf-8")
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
+
+    def close(self):
+        pass
+
 
 class FakePost:
     """requests.post の代わり。受けた引数を控え、決めた返事を返す (か、例外を投げる)。"""

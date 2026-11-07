@@ -32,6 +32,16 @@ class FakeResponse:
     def json(self):
         return self._data
 
+    def iter_content(self, chunk_size=1):
+        import json
+
+        body = json.dumps(self._data, ensure_ascii=False).encode("utf-8")
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
+
+    def close(self):
+        pass
+
 
 class FakePost:
     def __init__(self):

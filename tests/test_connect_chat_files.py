@@ -52,8 +52,9 @@ class FakeResponse:
         self.closed = False
 
     def iter_content(self, chunk_size=1):
-        for start in range(0, len(self.content), chunk_size):
-            yield self.content[start : start + chunk_size]
+        body = self.content or (b"" if self._data is None else json.dumps(self._data, ensure_ascii=False).encode("utf-8"))
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
 
     def json(self):
         if self._data is None:
