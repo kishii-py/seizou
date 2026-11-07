@@ -33,7 +33,14 @@ from seizou.masters.services import PRICE_BASIS_LUMP
 
 from .models import Invoice
 from .models import Payment
-from .services import billable_shipments, closing_period, lump_facts, shipment_amount, unbilled_lumps
+from .services import (
+    billable_shipments,
+    closing_period,
+    lump_facts,
+    lumps_shipped_after,
+    shipment_amount,
+    unbilled_lumps,
+)
 
 _Partner = Invoice._meta.get_field("customer").related_model
 
@@ -239,6 +246,8 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         candidates = billable_shipments()
         # 一式の表の明細は 1 回だけ読む (lump_rows と得意先の候補が同じ並びを使う)。
         self._add_lump_fields(unbilled_lumps())
+        # 一式の行の後に出荷が続いた明細 (読むだけの行。欄は無く、得意先の候補にも足さない = 作者の決め C107-7)。
+        self._lumps_after = lumps_shipped_after()
         chosen = Q(pk__in=candidates.values("order_line__order__customer_id"))
         if not self.hide_money and self._lumps:
             # 請求できる出荷が無く、出し切らずに終えた一式だけが残った得意先も選べるようにする (一式の行だけの請求書を作るため)。
@@ -315,8 +324,10 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         1 行 = {line (受注の明細)・partner (得意先の pk)・qty_text (数量の字)・shipped_text (出荷の合計の字)・unit (明細の単位)・
         cancelled (受注が取消か)・full_amount (一式の全額)・shipped_amount (出した分)・shipped_qty (出荷の合計)・
         pick (載せる印の欄)・amount (請求する金額の欄)・qty_plain (出荷の合計の素の数の字)・amount_plain (送った金額の素の数の字)・
-        full_plain・shipped_plain (「全額」「出した分」のボタンが欄に入れる素の数の字)}。金額と欄は金額の閲覧が無い人は None
+        full_plain・shipped_plain (「全額」「出した分」のボタンが欄に入れる素の数の字)・after (偽)}。金額と欄は金額の閲覧が無い人は None
         (金額を見られない人に金額を見せず、決めさせない)。得意先を選んでいても全部を描き、テンプレートの JS が data-partner で絞る (出荷の表と同じ)。
+        その後に、一式の行の後に出荷が続いた明細 (services.lumps_shipped_after。作者の決め C107-7) の行を足す: after が真・invoice (一式の行の請求書)・
+        billed_qty_text (一式の行の数量の字)。金額・欄・「請求しない」は無い (読むだけ)。line_totals と service_kwargs は欄のある行だけを数える。
         最初に読んだ時に作って持つ (rows と同じ)。
         """
         if self._lump_rows is None:
@@ -342,10 +353,40 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
                         "amount_plain": _plain(typed) if typed is not None and typed > 0 else "",
                         "full_plain": _plain(facts["full_amount"]) if money else "",
                         "shipped_plain": _plain(facts["shipped_amount"]) if money else "",
+                        "after": False,
+                    }
+                )
+            for line, billed in self._lumps_after:
+                facts = lump_facts(line)
+                rows.append(
+                    {
+                        "line": line,
+                        "partner": line.order.customer_id,
+                        "qty_text": comma(line.qty),
+                        "shipped_text": comma(facts["shipped_qty"]),
+                        "shipped_qty": facts["shipped_qty"],
+                        "unit": line.unit,
+                        "cancelled": line.order.status == line.order.STATUS_CANCELLED,
+                        "full_amount": None,
+                        "shipped_amount": None,
+                        "pick": None,
+                        "amount": None,
+                        "qty_plain": "",
+                        "amount_plain": "",
+                        "full_plain": "",
+                        "shipped_plain": "",
+                        "after": True,
+                        "invoice": billed.invoice,
+                        "billed_qty_text": comma(billed.qty),
                     }
                 )
             self._lump_rows = rows
         return self._lump_rows
+
+    @property
+    def lump_has_after(self) -> bool:
+        """一式の表に「一式の行の後に出荷あり」の行があるか (黄の 1 行の頭の字を選ぶ)。"""
+        return any(row["after"] for row in self.lump_rows)
 
     def _chosen_customer(self) -> str:
         """選んだ得意先の pk の字。送った form は送った値、開いた form は初期値 (?customer=)。選んでいなければ空の字。"""
@@ -369,7 +410,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         lumps = [
             row
             for row in self.lump_rows
-            if self._lump_marked(row["line"]) and (not chosen or str(row["partner"]) == chosen)
+            if not row["after"] and self._lump_marked(row["line"]) and (not chosen or str(row["partner"]) == chosen)
         ]
         qty = sum((row["shipment"].qty for row in picked), Decimal("0")) + sum(
             (row["shipped_qty"] for row in lumps), Decimal("0")

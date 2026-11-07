@@ -660,6 +660,39 @@ def unbilled_lumps(customer=None, *, include_no_bill=False):
     ]
 
 
+def lumps_shipped_after(customer=None):
+    """発行の請求書に一式の行がある受注の明細のうち、出荷の合計がその一式の行の数量より多い物の (受注の明細, その一式の行) の並び
+    (読むだけ。並びは受注番号・行番号。問い合わせ 2 回)。請求書の新規登録の黄の表が「一式の行 IV-… の後に出荷あり」の行で出す (作者の決め C107-7)。
+
+    受注の明細に「請求しない」の印 (no_bill) がある明細は除く。customer を渡せば、その得意先の明細だけ。
+    1 つの明細に発行の一式の行が 2 行あれば (R09 で止まるので無い見込み)、pk の小さい方。
+    「後の出荷」を、一式の行の数量より出荷の合計が多いことで見る訳: 一式の行を作る時は明細の出荷が全部、発行の納品書に入っている (R09) ので、
+    その時の出荷の合計 = 一式の行の数量 (写し) で、後に増えた分だけが後の出荷になる。一式の行で請求した明細の納品書は取り消せない
+    (shipping.services.cancel_refusal) ので、その後に前の出荷が減ることも無い。列を足さずに見られる。
+    読むだけで断らない。止めない (作者の決め C107-7)。一式の行の請求書を取り消すと、この並びから外れ、明細は終わっていれば unbilled_lumps の並びに戻る (金額を決め直して載せる)。
+    """
+    rows = InvoiceLine.objects.filter(
+        invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=True, order_line__no_bill=False
+    ).select_related("invoice", "order_line__order__customer", "order_line__item")
+    if customer is not None:
+        rows = rows.filter(order_line__order__customer=customer)
+    first = {}
+    for row in rows.order_by("pk"):
+        first.setdefault(row.order_line_id, row)
+    if not first:
+        return []
+    totals = dict(
+        _Shipment.objects.filter(order_line_id__in=list(first))
+        .order_by()
+        .values("order_line_id")
+        .annotate(total=Sum("qty"))
+        .values_list("order_line_id", "total")
+    )
+    found = [(row.order_line, row) for pk, row in first.items() if (totals.get(pk) or _ZERO) > row.qty]
+    found.sort(key=lambda pair: (pair[0].order.order_no, pair[0].line_no))
+    return found
+
+
 def lump_facts(order_line):
     """一式の受注の明細の請求の材料 (読むだけ)。{"shipped_qty", "last_shipped_at", "full_amount", "shipped_amount"}。
 
