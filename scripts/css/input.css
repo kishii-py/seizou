@@ -362,7 +362,7 @@ body > .ts-dropdown [data-select-create]:hover {
    左の 16rem は左のメニューの幅 (core/_sidebar.html の aside の w-64)。メニューは lg 以上だけ並んで開く (core/base.html の
    lg:drawer-open) ので、それより狭い幅は 0。lg の決まりは Tailwind の lg と同じ単位の 64rem で書く (px で書くと、ブラウザの字の
    大きさを変えた人の画面で、メニューが開く幅と帯が動く幅がずれる)。
-   メニューの幅か上の帯の左右の余白を変えたら、ここの 16rem と余白も一緒に直す (tests/test_core_save_bar.py が両方の字を見る)。
+   メニューの幅・上の帯の左右の余白・右下の丸の置き場を変えたら、ここの 16rem と余白も一緒に直す (tests/test_core_save_bar.py が 3 つの字を見る)。
    z-index 10 は、上の帯 (30)・狭い幅で開いたメニュー (40)・AI チャットの窓と右下の丸 (40)・右上の知らせと字で探す欄の候補 (50) の下で、
    本文の中の表の止めた列 (2〜4) の上。
    左の字の置き場 seizou-save-slot は書きかけの字 (core/_save_bar.html) を置き、幅 640 未満は帯の上の 1 段を打つ前から取っておく
