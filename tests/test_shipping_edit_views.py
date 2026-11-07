@@ -16,6 +16,7 @@ from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services
 from seizou.shipping.models import DeliveryNote, Shipment
+from tests.test_billing_payment_views import ALL_ON, RECEIVED_ON, account
 
 ORDER_DATE = date(2026, 11, 2)
 SHIPPED_AT = date(2026, 11, 5)
@@ -329,3 +330,95 @@ def test_update_form_keeps_head_line_when_stopped(logged_in, shipment, note):
     shipment.refresh_from_db()
     assert shipment.qty == Decimal("4")
     assert _update_head(shipment) in response.content.decode()
+
+
+# --- 取消のカードの請求書の link を、入金があれば入金の枠へ向ける (初見テスト R5 の候補 C03。決め C03-2 a。依頼書 N296) ---
+
+#: 取消のカードの断りの後半 (請求書に入金 6,500 が 1 件)
+PAID_ONE = "先に請求書の入金を取り消し (入金の記録 1 件・合計 ¥6,500)、次に請求書を、最後に納品書を取り消してください。"
+
+
+def _warning(body):
+    """取消のカードの黄の断りの帯の中身 (最初の alert-warning から閉じの </div> まで)。"""
+    warning = body[body.index("alert-warning") :]
+    return warning[: warning.index("</div>")]
+
+
+@pytest.mark.django_db
+def test_cancel_card_links_paid_invoice_to_payments(logged_in, user, customer, shipment, note):
+    """入金の無い請求書の link は請求書の詳細のまま。入金を 1 件記録すると、link は入金の枠 (#payments) へ向き、断りは入金の文になる。
+
+    入金を取り消すと、link は請求書の詳細へ戻る。どの形でも納品書は発行のまま。
+    """
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    url = reverse("shipping:deliverynote_cancel", args=[note.pk])
+    plain = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}"'
+    paid = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}#payments"'
+
+    body = logged_in.get(url).content.decode()
+    assert plain in body
+    assert paid not in body
+    assert "入金" not in _warning(body)
+
+    payment = billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
+    body = logged_in.get(url).content.decode()
+    assert paid in body
+    assert plain not in body
+    assert PAID_ONE in _warning(body)
+
+    billing_services.cancel_payment(payment, user)
+    body = logged_in.get(url).content.decode()
+    assert plain in body
+    assert paid not in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_cancel_card_links_every_row_of_paid_invoice(logged_in, user, customer, shipment):
+    """1 枚の請求書に出荷が 2 つ入っていれば、入金のある請求書の link は 2 行とも入金の枠へ向く。入金の無い請求書の行は詳細のまま。"""
+    second = services.ship(shipment.order_line, Decimal("3"), SHIPPED_AT, user)
+    third = services.ship(shipment.order_line, Decimal("2"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment, second, third], user)
+    for row in (shipment, second, third):
+        row.refresh_from_db()
+    paid_invoice = billing_services.create_invoice(customer, [shipment, second], user, issued_on=ISSUED_ON)
+    unpaid_invoice = billing_services.create_invoice(customer, [third], user, issued_on=ISSUED_ON)
+    billing_services.record_payment(paid_invoice, RECEIVED_ON, Decimal("6500"), user)
+
+    body = logged_in.get(reverse("shipping:deliverynote_cancel", args=[note.pk])).content.decode()
+
+    assert body.count(f'href="{reverse("billing:invoice_detail", args=[paid_invoice.pk])}#payments"') == 2
+    assert body.count(f'href="{reverse("billing:invoice_detail", args=[unpaid_invoice.pk])}"') == 1
+    assert PAID_ONE in _warning(body)
+
+
+@pytest.mark.django_db
+def test_cancel_card_counts_payments_without_money(settings, client, user, customer, shipment, note):
+    """金額の閲覧の判定を on にした会社で、金額を見られない人の取消の画面の断りは件数だけ (合計の入った文が無い)。"""
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
+    client.force_login(account("jimu", permissions=["slip_edit"]))
+
+    response = client.get(reverse("shipping:deliverynote_cancel", args=[note.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "(入金の記録 1 件)、次に請求書を" in body
+    assert "・合計 ¥6,500)" not in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_note_detail_links_paid_invoice_to_detail(logged_in, user, customer, shipment, note):
+    """入金のある請求書でも、納品書の詳細の請求済みの行の link は請求書の詳細のまま (入金の枠へ向けるのは取消のカードだけ)。"""
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
+
+    body = logged_in.get(reverse("shipping:deliverynote_detail", args=[note.pk])).content.decode()
+
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}"' in body
+    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}#payments"' not in body
+    assert "で請求済みです (出荷 1 件)。" in body
