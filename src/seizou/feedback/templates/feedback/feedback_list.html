@@ -25,7 +25,7 @@
 <div hx-include="#feedback-filter">{{ block.super }}</div>
 <section id="issues" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="issues-title">
   <h2 id="issues-title" class="text-lg font-bold">GitHub の Issue を探す</h2>
-  <p class="mt-2 text-xs text-base-content/50">今の困りごとが既に出ていないか、送った要望がどうなったかを、送り先のリポジトリ ({{ github.status.repo }}) の Issue から探します。同じ困りごとなら、その Issue に「うちも」の 👍 を付けてください。</p>
+  <p class="mt-2 text-xs text-base-content/50">今の困りごとが既に出ていないか、送った要望がどうなったかを、送り先のリポジトリ ({{ github.status.repo }}) の Issue から探します。同じ困りごとなら「うちも」を押してください (会社のトークンで 👍 が付き、あなたの件として残ります)。</p>
   <form id="issues-form" method="get" action="{{ request.path }}#issues" class="mt-4 flex flex-wrap items-center gap-2" role="search" aria-label="GitHub の Issue を探す">
     <input type="search" name="issue_q" value="{{ github.q }}" class="input input-sm w-72" placeholder="言葉 (空白で区切る。空なら新しい順)" aria-label="探す言葉">
     <button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "search" "size-4" %}探す</button>
@@ -36,13 +36,13 @@
     <table class="table table-sm">
       <thead><tr><th>番号</th><th>題</th><th>状態</th><th class="text-right">👍</th><th>最後の更新</th></tr></thead>
       <tbody>
-        {% for issue in github.search.issues %}<tr>
+        {% for issue in github.search.issues %}<tr>{% with mark=github.marks|issue_mark:issue.number %}
           <td class="whitespace-nowrap font-mono tabular-nums"><a class="link link-hover" href="{{ issue.html_url }}" target="_blank" rel="noopener">#{{ issue.number }}</a></td>
-          <td><span class="block max-w-md truncate" title="{{ issue.title }}">{{ issue.title }}</span></td>
+          <td><span class="block max-w-md truncate" title="{{ issue.title }}">{{ issue.title }}</span>{% if mark.sent %}<div class="mt-1">{% if mark.sent in github.openable %}<a class="badge badge-soft badge-info" href="{% url 'feedback:feedback_detail' mark.sent %}">自社が送った</a>{% else %}<span class="badge badge-soft badge-info">自社が送った</span>{% endif %}</div>{% elif mark.me_too %}<div class="mt-1">{% if mark.me_too in github.openable %}<a class="badge badge-soft badge-info" href="{% url 'feedback:feedback_detail' mark.me_too %}">うちも済み</a>{% else %}<span class="badge badge-soft badge-info">うちも済み</span>{% endif %}</div>{% endif %}</td>
           <td class="whitespace-nowrap">{% if issue.state == "open" %}<span class="badge badge-soft badge-success">開いている</span>{% else %}<span class="badge badge-ghost">閉じた</span>{% endif %}</td>
-          <td class="text-right tabular-nums">{{ issue.thumbs_up }}</td>
+          <td class="text-right tabular-nums">{% if mark %}{{ issue.thumbs_up }}{% else %}<form method="post" action="{% url 'feedback:me_too' issue.number %}" class="inline">{% csrf_token %}<input type="hidden" name="issue_q" value="{{ github.q }}"><button type="submit" class="btn btn-xs btn-outline border-base-300" aria-label="うちも (Issue #{{ issue.number }})">👍 {{ issue.thumbs_up }} うちも</button></form>{% endif %}</td>
           <td class="whitespace-nowrap font-mono tabular-nums">{{ issue.updated_at|slice:":10" }}</td>
-        </tr>{% endfor %}
+        {% endwith %}</tr>{% endfor %}
       </tbody>
     </table>
   </div>
