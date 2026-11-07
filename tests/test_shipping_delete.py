@@ -10,6 +10,7 @@ import re
 import uuid
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.contrib.messages import get_messages
@@ -398,3 +399,18 @@ def test_menu_follows_write_permission_not_money(settings, client, logged_in, li
     settings.SEIZOU = MONEY_ONLY
     client.force_login(user)
     assert set(_menu_links(_row(client.get(url).content.decode(), shipment))) == {"編集", "削除"}
+
+
+# ---------------------------------------------------------------- (l) 手引きの「打ち間違えたとき」
+
+
+def test_operations_has_typo_section_between_trouble_and_practice():
+    text = (Path(__file__).resolve().parent.parent / "docs" / "operations.md").read_text(encoding="utf-8")
+    head = "## 打ち間違えたとき (出荷・受入・在庫)\n"
+
+    assert text.count(head) == 1
+    start = text.index(head)
+    assert text.index("## 困ったとき\n") < start < text.index("## 練習モード")
+    section = text[start : text.index("\n## ", start + 1)]
+    for word in ("棚卸しの調整", "会話", "削除", "金額を見られる人", "受入は、保存した後に画面から直せません。"):
+        assert word in section, word
