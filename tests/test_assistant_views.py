@@ -260,7 +260,7 @@ def _ask_ship(client, monkeypatch, order, qty="3"):
     arguments = {"order_no": order.order_no, "line_no": 1, "qty": qty, "shipped_at": "2026-11-05"}
     script(monkeypatch, [tool_reply("ship", arguments), text_reply("出荷の提案を出しました。")])
     body = ask(client, f"{order.order_no} の 1 行目を {qty} 個出荷して").content.decode()
-    (proposal,) = saved_history(client)[-1]["proposals"]
+    (proposal,) = services.history(client.session)[-1]["proposals"]
     return body, proposal
 
 
