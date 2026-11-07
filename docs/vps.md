@@ -225,7 +225,7 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 
 `check --deploy` は、2 件の注意を出します。`security.W008` (http を https へ移す設定) は、13 で certbot が足す nginx の移しが受け持ちます。`security.W004` (HSTS = ブラウザに https だけで開かせる見出し) を足すかは、会社が決めます。この手順では足しません。
 
-確かめ方: `… manage.py seizou_doctor --production` → 最後の方に `点検の結果: 良い 22 件・直す 0 件`・`… manage.py check --deploy` → `security.W004` と `security.W008` の 2 件だけ (`System check identified 2 issues (0 silenced).`)
+確かめ方: `… manage.py seizou_doctor --production` → 最後の方に `点検の結果: 良い 22 件・直す 0 件` (良い の数は、つながりの行などで置き場の状態により変わる)・`… manage.py check --deploy` → `security.W004` と `security.W008` の 2 件だけ (`System check identified 2 issues (0 silenced).`)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 10. 置き場の権限と SELinux の context
@@ -388,7 +388,7 @@ sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining
 sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py seizou_doctor --production
 ```
 
-確かめ方: `… manage.py seizou_doctor --production` → `点検の結果: 良い 22 件・直す 0 件`
+確かめ方: `… manage.py seizou_doctor --production` → `点検の結果: 良い 22 件・直す 0 件` (良い の数は、つながりの行などで置き場の状態により変わる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 16. 2 社をつなぐ
@@ -426,7 +426,7 @@ SEIZOU_PARTNER_A_MACHINING_SECRET=<値>
 sudo systemctl restart seizou-a_machining seizou-b_plating
 ```
 
-確かめ方: 2 社の「取引先との接続」の詳細 → 「鍵の設定」が `済み` (VPS で確かめる)・A 社の `… manage.py seizou_doctor --production` → `良い  つながり 白樺めっき工業 (送る) の受け口の URL: https` と `良い  つながり 白樺めっき工業 (送る) の鍵: ある (SEIZOU_PARTNER_B_PLATING_SECRET)` の行と、`点検の結果: 良い 24 件・直す 0 件`
+確かめ方: 2 社の「取引先との接続」の詳細 → 「鍵の設定」が `済み` (VPS で確かめる)・A 社の `… manage.py seizou_doctor --production` → `良い  つながり 白樺めっき工業 (送る) の受け口の URL: https` と `良い  つながり 白樺めっき工業 (送る) の鍵: ある (SEIZOU_PARTNER_B_PLATING_SECRET)` の行と、`点検の結果: 良い 24 件・直す 0 件` (良い の数は置き場の状態により変わる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 
 ## 17. A 社から発注して、B 社の受信した注文に出るまで

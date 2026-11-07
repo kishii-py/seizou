@@ -69,7 +69,7 @@
 
 - 送る先の国: 相手の会社 (Anthropic) は米国の会社。処理する国は特定しない。
 - 保持: Anthropic の Privacy Center の頁 (`https://privacy.claude.com/`。保持を書いた頁の道は未確認。2026-07-01 更新) に「within 30 days」とある。2026-11-07 に見た字で、この節を書いた時には開き直していない。
-- 学習と ZDR (送った物を相手が残さない取り決め): 全部の口で未確認。公式の頁 (Commercial Terms) を読み直してから、読んだ日を添えて書く。
+- 学習: Anthropic の Commercial Terms (Effective 2025-06-17。2026-11-08 に読んだ) に「Anthropic may not train models on Customer Content from Services」とあり、API で送った物 (入力と出力) を model の学習に使わない。ZDR (送った物を相手が残さない取り決め): Commercial Terms の本文には無く、別の取り決め (Data Processing Addendum) の話。seizou の口は ZDR の取り決めを結んでいない (保持の期間は Anthropic の規約のとおり)。
 - 法令と契約に当てはまるかは、使う会社が確かめる。
 
 ### MCP で金額を会話に出さない
