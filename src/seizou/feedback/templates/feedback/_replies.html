@@ -1,0 +1,67 @@
+{% load feedback_tags seizou_icons %}
+{# 「返事」の節 (依頼書 N324。決め 11-07 09:1x〜09:4x)。詳細の「Issue の文」の節の次に include する (object と info は詳細の物)。 #}
+{# 状態が送った・直した・見送ったの件にだけ出す。返事の本文は公開の場の誰でも書けるので字のまま出す (自動の escape を外さない)。 #}
+{# 下書き (送った日時が空) は書いた人と世話役にだけ並ぶ (tag が外す)。世話役は伏せ字の入った初めの字を直して「GitHub に送る」、 #}
+{# つないでいない会社では「写す」で文を写して GitHub に手で貼り、「送ったにする」を押す。 #}
+{% if object.status == "sent" or object.status == "fixed" or object.status == "dismissed" %}
+<section id="feedback-replies" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-replies-title">
+  <h2 id="feedback-replies-title" class="flex items-center gap-2 text-lg font-bold">返事<span class="badge badge-sm tabular-nums">{{ info.replies|length }}</span></h2>
+  <p class="mt-2 text-xs text-base-content/50">GitHub の Issue に作者や皆が書いた返事と、この会社で書いた返事です。新しい返事は「GitHub の状態を取り込む」で読みます。</p>
+  {% if info.replies %}
+  <ol class="mt-4 flex flex-col gap-4">
+    {% for reply in info.replies %}
+    <li id="feedback-reply-{{ reply.pk }}" class="rounded-lg border border-base-300 p-4">
+      <p class="flex flex-wrap items-center gap-2 text-xs text-base-content/70">
+        {% if reply.created_by_id %}<span>{{ reply.created_by }}</span>{% if reply.sent_at %}<span class="badge badge-sm">送った</span>{% else %}<span class="badge badge-sm">下書き</span>{% endif %}{% else %}<span class="font-mono">{{ reply.login }}</span>{% if info.company_login and reply.login == info.company_login %}<span class="badge badge-sm">この会社</span>{% endif %}{% endif %}
+        <span class="font-mono tabular-nums">{{ reply.posted_at|default:reply.created_at|date:"Y-m-d H:i" }}</span>
+      </p>
+      <p class="mt-2 whitespace-pre-wrap break-words">{{ reply.body }}</p>
+      {% if not reply.sent_at %}
+      {% if info.can_manage %}
+      {% feedback_reply_draft reply as draft_text %}
+      <form method="post" action="{% if info.github.connected %}{% url 'feedback:reply_send' reply.pk %}{% else %}{% url 'feedback:reply_mark_sent' reply.pk %}{% endif %}" class="mt-4">{% csrf_token %}
+        <textarea id="feedback-reply-body-{{ reply.pk }}" name="body" rows="4" class="textarea w-full text-sm" aria-label="GitHub に送る返事の文">{{ draft_text }}</textarea>
+        <p class="mt-2 text-xs text-base-content/50">伏せ字 (〇〇) を確かめ、要るところを直してから送ってください。{% if not info.github.connected %}GitHub とつないでいないので、「写す」で文を写して Issue に貼ってから「送ったにする」を押してください。{% endif %}</p>
+        <div class="mt-2 flex flex-wrap items-center justify-end gap-2">
+          {% if info.github.connected %}
+          <button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}GitHub に送る</button>
+          {% else %}
+          <button type="button" class="btn btn-sm btn-outline border-base-300" data-reply-copy="feedback-reply-body-{{ reply.pk }}" data-done="写しました">{% icon "check" "size-4" %}写す</button>
+          <button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button>
+          {% endif %}
+        </div>
+      </form>
+      {% else %}
+      <p class="mt-2 text-xs text-base-content/50">世話役の確認を待っています。</p>
+      {% endif %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="mt-4 text-sm text-base-content/70">まだ返事はありません。</p>
+  {% endif %}
+  {% if info.can_reply %}
+  <form method="post" action="{% url 'feedback:reply_add' object.pk %}" class="mt-6">{% csrf_token %}
+    <textarea id="feedback-reply-new" name="body" rows="3" class="textarea w-full text-sm" aria-label="返事"></textarea>
+    <p class="mt-2 text-xs text-base-content/50">作者からの返事に答えます。送るのは世話役です。</p>
+    <div class="mt-2 flex justify-end">
+      <button id="feedback-reply-add" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "pencil" "size-4" %}返事を書く</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{# 「写す」: 押したら data-reply-copy の textarea の字 (世話役が直した後の字) をクリップボードに写し、ボタンの字を data-done にする。クリップボードの無いブラウザでは何もしない。 #}
+<script>
+(function () {
+  if (!navigator.clipboard) return;
+  document.querySelectorAll("[data-reply-copy]").forEach(function (button) {
+    var area = document.getElementById(button.dataset.replyCopy);
+    if (!area) return;
+    button.addEventListener("click", function () {
+      navigator.clipboard.writeText(area.value).then(function () { button.textContent = button.dataset.done; });
+    });
+  });
+})();
+</script>
+{% endif %}

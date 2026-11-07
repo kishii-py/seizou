@@ -32,6 +32,7 @@ from functools import lru_cache
 from django.apps import apps
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
+from django.db.models import F
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
@@ -1288,3 +1289,14 @@ def mark_reply_sent(reply, user):
         reply.sent_at = timezone.now()
         reply.save(update_fields=["sent_at"])
         return reply
+
+
+def replies_of(feedback) -> list:
+    """件の返事の並び (GitHub に出た日時の古い順。日時の無い物 = 下書きと手で写した物は後ろで、書いた日時の順)。読むだけ。
+
+    保存前の行は空の並び。書いた人は select_related で一緒に読む (詳細で名前を出すため)。
+    """
+    if getattr(feedback, "pk", None) is None:
+        return []
+    rows = FeedbackReply.objects.filter(feedback=feedback).select_related("created_by")
+    return list(rows.order_by(F("posted_at").asc(nulls_last=True), "created_at", "pk"))

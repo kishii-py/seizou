@@ -57,6 +57,8 @@
     <button id="feedback-copy" type="button" class="btn btn-sm btn-outline border-base-300" data-done="写しました">{% icon "check" "size-4" %}Issue の文を写す</button>
   </div>
 </section>
+{# 「返事」の節 (依頼書 N324): 送った・直した・見送ったの件の Issue の返事と、返事を書く形。 #}
+{% include "feedback/_replies.html" %}
 {% if info.can_manage %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">
   <h2 id="feedback-status-title" class="text-lg font-bold">状態</h2>
