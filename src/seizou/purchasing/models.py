@@ -5,6 +5,7 @@
 受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
+注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
 """
 
 from decimal import Decimal
@@ -62,6 +63,11 @@ class PurchaseOrder(models.Model):
     reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
     # 第 1 版に最後に当てた注文回答の EDI のコード。connect の受け口が purchasing.services の mark_* で書く。版 2 からの答えは connect の送った注文の行 (Outbox.reply_type)。
     reply_type = models.CharField("注文回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_TYPES, blank=True)
+    # 今の版の番号 (注文履歴番号) と目的 (注文書目的コード)。変更と取消を相手へ送るたびに版を 1 上げる (EDI の注文変更の方式 2)。
+    revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
+    purpose_code = models.CharField(
+        "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
 
     # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
@@ -118,6 +124,13 @@ class PurchaseOrderLine(models.Model):
     reply_unit_price = models.DecimalField("回答単価", max_digits=14, decimal_places=2, null=True, blank=True)
     reply_qty = models.DecimalField("回答数量", max_digits=12, decimal_places=2, null=True, blank=True)
     reply_due_date = models.DateField("回答納期", null=True, blank=True)
+    # 今の版でこの明細に何をしたか (明細状態コード) と、変えた訳 (明細状態理由コード)。取り消した明細は行を残して 2 にする。
+    line_status_code = models.CharField(
+        "明細状態コード", max_length=2, choices=edi_codes.LINE_STATUS_CHOICES, default=edi_codes.LINE_NEW
+    )
+    line_status_reason_code = models.CharField(
+        "明細状態理由コード", max_length=4, choices=edi_codes.LINE_REASON_CHOICES, blank=True, default=""
+    )
 
     class Meta:
         verbose_name = "発注の明細"
@@ -156,6 +169,11 @@ class PurchaseOrderLine(models.Model):
         """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
         式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
         return price_basis_text(self.price_basis, self.unit)
+
+    @property
+    def is_cancelled(self):
+        """取り消した明細か (明細状態コード 2 = 明細行取消)。行は残し、受入の候補と数と金額の合計に入れない。"""
+        return self.line_status_code == edi_codes.LINE_DELETED
 
     @cached_property
     def shipping_notice(self):

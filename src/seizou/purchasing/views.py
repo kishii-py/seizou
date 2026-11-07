@@ -6,11 +6,13 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
+from seizou.core import edi_codes
 from seizou.core.views import BaseSelectView
 from seizou.masters.services import active_items, active_partners
 
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
+from .forms import PurchaseOrderChangeForm
 from .forms import ReceiptForm
 from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
@@ -70,12 +72,15 @@ class PurchaseOrderListView(BaseListView):
 class PurchaseOrderDetailView(BaseDetailView):
     """発注の詳細。
 
-    使う人: 生産管理 / いつ: 発注の中身と相手の回答を確かめるとき / 何のために: 明細・送った記録・受入を見る / 次にすること: 「受入を登録」へ。「下書き」のままなら送り直しか取消
+    使う人: 生産管理 / いつ: 発注の中身と相手の回答を確かめるとき / 何のために: 明細・送った記録・受入を見る / 次にすること: 「受入を登録」へ。「下書き」のままなら送り直しか取消。相手が出荷し終えるまでは「変更」で直した中身を送れる
     """
 
     model = PurchaseOrder
     screen_name = "発注の詳細"
-    screen_help = "発注の項目と明細、相手へ送った記録。「下書き」のときだけ送り直しと取消ができます。"
+    screen_help = (
+        "発注の項目と明細、相手へ送った記録。「下書き」のときは送り直し、「下書き」「断られた」の発注と相手がまだ出荷していない送った発注は取消ができます。"
+        "相手が出荷し終えるまでは「変更」で直した中身を送れます。"
+    )
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
     template_name = "purchasing/purchaseorder_detail.html"
 
@@ -100,20 +105,22 @@ class PurchaseOrderCreateView(BaseFormView):
 class PurchaseOrderSendView(BaseFormView):
     """注文を送り直す確かめの入力。
 
-    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「下書き」の発注をもう一度送る / 次にすること: 発注の詳細へ戻る (届けば緑、届かなければ黄の知らせ)
+    使う人: 生産管理 / いつ: 相手に届いていないとき / 何のために: 「下書き」の発注をもう一度送る (届いていない変更と取消も同じ) / 次にすること: 発注の詳細へ戻る (届けば緑、届かなければ黄の知らせ)
     """
 
     model = PurchaseOrder
     form_class = SendForm
     service = staticmethod(services.resend_purchase_order)
     screen_name = "注文を送り直す"
-    screen_help = "「下書き」のままの発注を、つながりの相手へもう一度送ります。"
+    screen_help = "「下書き」のままの発注と、相手に届いていない変更と取消を、つながりの相手へもう一度送ります。"
 
 
 class PurchaseOrderCancelView(BaseFormView):
     """発注を取り消す確かめの入力。
 
-    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「下書き」の発注を取り消す / 次にすること: 発注の一覧へ戻る
+    使う人: 生産管理 / いつ: 発注が要らなくなったとき / 何のために: 「下書き」の発注を取り消す (「断られた」の発注と、相手がまだ出荷していない送った発注も。送った発注は取消を相手へ送る) / 次にすること: 発注の一覧へ戻る
+
+    取適法: 送った発注の取消に黄色の確かめを出す (purchasing.checks の LawOrderCancel)。
     """
 
     model = PurchaseOrder
@@ -121,7 +128,30 @@ class PurchaseOrderCancelView(BaseFormView):
     service = staticmethod(services.cancel_purchase_order)
     template_name = "purchasing/purchaseorder_cancel.html"
     screen_name = "発注を取り消す"
-    screen_help = "「下書き」の発注を取り消します。理由は備考の末尾に残ります。"
+    screen_help = (
+        "「下書き」「断られた」の発注と、相手がまだ出荷していない送った発注を取り消します (送った発注は取消を相手へ送ります)。"
+        "相手が一部を出荷した発注は取り消せないので、「変更」で残りを止めます。理由は備考の末尾に残ります。"
+    )
+
+
+class PurchaseOrderChangeView(BaseFormView):
+    """送った発注の変更の入力。
+
+    使う人: 生産管理 / いつ: 送った発注の数・納期・単価を直したいとき (相手が出荷し終えるまで) / 何のために: 直した中身を第 n 版の変更として相手へ送る / 次にすること: 発注の詳細で相手の答えを見る
+
+    取適法: 単価を下げる・数を減らす・納期を早める・明細を取り消す変更に黄色の確かめを出す (purchasing.checks)。
+    """
+
+    model = PurchaseOrder
+    form_class = PurchaseOrderChangeForm
+    service = staticmethod(services.change_purchase_order)
+    template_name = "purchasing/purchaseorder_change.html"
+    screen_name = "発注の変更"
+    screen_help = "送った発注の数・納期・単価・備考を直し、保存と同時に相手へ「第 n 版の変更」として送ります。相手が出荷した明細は直せる所が限られます。"
+
+    def get_queryset(self):
+        # 変更を送れる状態 (「送った」「相手が受け入れた」) の発注だけ (外は 404)。
+        return PurchaseOrder.objects.filter(status__in=services.CHANGEABLE_STATUSES)
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面) ---
@@ -200,6 +230,8 @@ class PurchaseOrderLineSelectView(BaseSelectView):
             services.annotate_received(lines)
             .filter(remaining_total__gt=0)
             .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+            # 取り消した明細 (明細状態コード 2) は候補に出さない (受入は断らない = services.receive の現物優先)。
+            .exclude(line_status_code=edi_codes.LINE_DELETED)
             # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
             .order_by("purchase_order__po_no", "line_no", "pk")
         )

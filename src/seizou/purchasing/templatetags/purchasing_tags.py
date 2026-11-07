@@ -10,6 +10,7 @@
 - purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
 - purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
 - reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
+- can_change_order・revision_state: 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2) の「変更」のボタンを出すかと、今の版の送った記録と相手の答え。
 """
 
 from decimal import Decimal
@@ -78,6 +79,9 @@ def live_state(context, obj):
         value = (
             f"{obj.status}:{_num_text(getattr(obj, 'notice_count', 0))}:{_num_text(getattr(obj, 'received_total', 0))}"
         )
+        # 版が 2 以上 (変更と取消) なら末尾に版を足す (2 秒ごとの取り直しで版が変わったことに気づくため。第 1 版の字は今のまま)。
+        if obj.revision_no >= 2:
+            value += f":r{obj.revision_no}"
     elif isinstance(obj, PurchaseOrderLine):
         key = f"line-{obj.pk}"
         value = f"{_num_text(obj.shipping_notice['count'])}:{_num_text(getattr(obj, 'received_total', 0))}"
@@ -135,12 +139,25 @@ def next_receipt(purchase_order):
     if purchase_order.status in (purchase_order.STATUS_CANCELLED, purchase_order.STATUS_REJECTED):
         return None
     for line in purchase_order.lines_with_received:
-        if line.remaining_total <= 0:
+        # 取り消した明細 (明細状態コード 2) は受入の行き先にしない。
+        if line.remaining_total <= 0 or line.is_cancelled:
             continue
         for entry in services.notice_rests(line):
             if entry["rest"] > 0:
                 return {"line": line, "rest_text": entry["rest_text"]}
     return None
+
+
+def _counted_lines(purchase_order) -> list:
+    """納期と金額の合計に数える明細。取り消した明細 (明細状態コード 2) を外す。
+
+    状態が「取消」の発注は全部の明細を数える (取消を送った発注は全部の明細が 2 になるので、外すと金額のカードと合計の札が消える。
+    下書きを取り消した発注も今のまま金額を出す)。
+    """
+    lines = list(purchase_order.lines.all())
+    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+        return lines
+    return [line for line in lines if not line.is_cancelled]
 
 
 @register.simple_tag
@@ -152,7 +169,7 @@ def purchase_order_aside(purchase_order, fields, hide_money=False):
     カードと行の形は orders の orders_detail の order_aside と同じ。金額の閲覧は seizou.hide_money を読むだけ (core の access の判定を呼ばない = 金額の閲覧の記録を増やさない)。
     """
     partner = purchase_order.partner
-    lines = list(purchase_order.lines.all())
+    lines = _counted_lines(purchase_order)
     dues = sorted(line.due_date for line in lines if line.due_date)
 
     def label(name):
@@ -187,11 +204,15 @@ def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
     札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・
     合計 (明細の金額の合計。頭に ¥。明細があり、金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (purchase_order_aside) は残す (札はその要約)。
     """
-    lines = list(purchase_order.lines.all())
+    lines = _counted_lines(purchase_order)
     dues = sorted(line.due_date for line in lines if line.due_date)
     chips = [{"label": "協力企業", "value": purchase_order.partner.name}]
     if dues:
         chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d}"})
+    # 版が 2 以上なら「版」の札を「合計」の札の前に入れる (土台は札を 3 つまで出すので、後ろに足すと出ない。押し出された合計は右の列の「金額」のカードに出る)。
+    state = revision_state(purchase_order)
+    if state is not None:
+        chips.append({"label": "版", "value": f"{state['label']}・{state['answer']}"})
     if lines and not hide_money:
         chips.append({"label": "合計", "value": yen(sum((line.amount for line in lines), Decimal("0")))})
     return chips
@@ -230,3 +251,48 @@ def reply_line_text(line, hide_money=False):
 def _date_text(value) -> str:
     """日付の字 (YYYY-MM-DD)。空なら「—」。"""
     return f"{value:%Y-%m-%d}" if value else "—"
+
+
+@register.simple_tag
+def can_change_order(purchase_order):
+    """{% can_change_order object as can_change %}。発注の詳細の「変更」のボタンを出すか (purchasing.services.can_change_order)。読むだけ。"""
+    from .. import services
+
+    return services.can_change_order(purchase_order)
+
+
+#: 版 2 からの相手の答え (EDI の注文回答タイプコード) の字。答えが無ければ「相手の答え待ち」
+_REPLY_WORDS = {"AP": "相手が受け入れた", "RE": "相手が断った"}
+
+
+@register.simple_tag
+def revision_state(purchase_order):
+    """{% revision_state object as revision %}。版が 2 以上の発注の今の版の送った記録と相手の答え。版 1 は None。
+
+    返す物 = {"label": 「第 n 版 (変更)」か「第 n 版 (取消)」, "kind": 「変更」か「取消」, "delivered": その版の送った注文に「受け取った」の行があるか,
+    "response": その版の最後の返事, "reply": 最初の行の reply_type, "reply_note", "replied_at", "answer": 頭の札の答えの字,
+    "alert": 詳細の黄色の 1 行の字 (purchasing.services.revision_alert)}。
+    逆の関係 outbox_messages を読むだけ (purchasing は connect を import しない)。1 回の問い合わせ。
+    """
+    if purchase_order.revision_no < 2:
+        return None
+    outbox = getattr(purchase_order, "outbox_messages", None)
+    rows = list(outbox.filter(revision_no=purchase_order.revision_no).order_by("pk")) if outbox is not None else []
+    from .. import services
+
+    kind = "取消" if purchase_order.purpose_code == "1" else "変更"
+    first = rows[0] if rows else None
+    reply = first.reply_type if first is not None else ""
+    state = {
+        "label": f"第 {purchase_order.revision_no} 版 ({kind})",
+        "kind": kind,
+        "delivered": any(row.response == "受け取った" for row in rows),
+        "response": rows[-1].response if rows else "",
+        "reply": reply,
+        "reply_note": first.reply_note if first is not None else "",
+        "replied_at": first.replied_at if first is not None else None,
+        "answer": _REPLY_WORDS.get(reply, "相手の答え待ち"),
+    }
+    # 詳細の黄色の 1 行の字 (届いていない・相手が断った。無ければ空の字)
+    state["alert"] = services.revision_alert(purchase_order, state)
+    return state

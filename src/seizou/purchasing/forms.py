@@ -17,10 +17,13 @@
   金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注のボタンに金額を書かない。
 """
 
+from decimal import Decimal
+
 from django import forms
 from django.apps import apps
 from django.utils import timezone
 
+from seizou.core import edi_codes
 from seizou.core import fields as company_fields
 from seizou.core.forms import DefaultChoiceField, PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
 from seizou.core.views import use_decimal_input
@@ -216,6 +219,157 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
         return kwargs
 
 
+#: 変更の form で、金額の閲覧が無い人が行を足したときの欄の誤り (単価が無いと新しい明細を送れないため。受注の直しの form と同じ形)
+CHANGE_NEW_LINE_WITHOUT_MONEY = "単価を入れられないので、行を足せません。行を足すときは、金額を見られる人に頼んでください。"
+
+
+class PurchaseOrderChangeLineForm(forms.Form):
+    """送った発注の変更の明細の 1 行。line は既にある明細を指す隠しの欄 (足す行は空)。
+
+    既にある明細の行は部品と単位を直せない (欄を出さず、字で出す。部品を変えるときは取り消して行を足す)。
+    相手が出荷済み (purchasing.services.known_shipped_qty が 0 より大きい) の行は単価の欄と消す印を出さない (欄の横に「出荷済み s」)。
+    金額の閲覧が無い人には単価の欄を出さない (既にある明細の単価は今のまま送る)。
+    """
+
+    line = forms.ModelChoiceField(queryset=PurchaseOrderLine.objects.none(), required=False, widget=forms.HiddenInput)
+    item = forms.ModelChoiceField(
+        label="部品", queryset=None, required=False, widget=RemoteSelect("purchasing:item_select", attrs={"class": "w-full"})
+    )
+    qty = forms.DecimalField(
+        label="数量",
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
+    )
+    unit = forms.CharField(label="単位", max_length=10, required=False, widget=forms.TextInput(attrs={"class": "input w-full"}))
+    unit_price = forms.DecimalField(
+        label="単価",
+        max_digits=14,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0.01"),
+        error_messages={"min_value": "単価は 0 より大きい数にしてください。"},
+        widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
+    )
+    due_date = forms.DateField(label="納期", required=False, widget=_date_input())
+    note = forms.CharField(label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"}))
+
+    def __init__(self, *args, purchase_order=None, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hide_money = hide_money
+        for field in self.fields.values():
+            use_decimal_input(field)
+        self.fields["item"].queryset = active_items()
+        if purchase_order is not None:
+            self.fields["line"].queryset = purchase_order.lines.exclude(line_status_code=edi_codes.LINE_DELETED)
+        self.existing = self.initial.get("line_obj")
+        self.shipped = services.known_shipped_qty(self.existing) if self.existing is not None else Decimal("0")
+        self.shipped_text = _qty_text(self.shipped)
+        if self.existing is not None:
+            self.fields.pop("item")
+            self.fields.pop("unit")
+        if hide_money or self.shipped > 0:
+            self.fields.pop("unit_price")
+
+    def clean(self):
+        data = super().clean()
+        if data.get("DELETE"):
+            return data
+        if self.existing is not None:
+            if data.get("qty") is None and "qty" not in self.errors:
+                self.add_error("qty", "数量を入れてください。")
+            return data
+        if not self.has_changed():
+            return data
+        if self.hide_money:
+            raise forms.ValidationError(CHANGE_NEW_LINE_WITHOUT_MONEY)
+        for name, message in (("item", "部品を選んでください。"), ("qty", "数量を入れてください。"), ("unit_price", "単価を入れてください。")):
+            if data.get(name) is None and name not in self.errors:
+                self.add_error(name, message)
+        return data
+
+    def line_dict(self) -> dict | None:
+        """services.change_purchase_order に渡す明細の辞書。消す印の行と、何も入れていない足す行は None。"""
+        data = getattr(self, "cleaned_data", None) or {}
+        if not data or data.get("DELETE"):
+            return None
+        if self.existing is not None:
+            line = {"line": self.existing, "qty": data["qty"], "due_date": data.get("due_date"), "note": data.get("note", "")}
+            if "unit_price" in self.fields:
+                line["unit_price"] = data["unit_price"]
+            return line
+        if not self.has_changed():
+            return None
+        return {key: data.get(key) if key != "note" else data.get(key, "") for key in LINE_KEYS}
+
+
+class PurchaseOrderChangeLineFormSet(forms.BaseFormSet):
+    """変更の明細の formset。相手が出荷済みの行には消す印を出さない (取り消せないため)。"""
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        if getattr(form, "shipped", 0) > 0:
+            form.fields.pop("DELETE", None)
+
+
+class PurchaseOrderChangeForm(SubmitLabelMixin, forms.Form):
+    """送った発注の変更の form (備考と明細の formset)。保存と同時に第 n 版の変更として送るのは services (change_purchase_order) の中。
+
+    形は受注の直しの form (orders.forms.OrderForm と OrderLineForm) にそろえる: 既にある明細は隠しの欄 line で指し、消す印 (DELETE) で取り消す。
+    取り消した明細 (明細状態コード 2) は form に出さない。協力企業と発注日は直せない (字で出す)。
+    保存のボタンは「第 n 版の変更を送る」(n は今の版 + 1)。金額の閲覧が無い人は単価の欄が無く、行も足せない。
+    """
+
+    note = forms.CharField(label="備考", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, data=None, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(data, *args, **kwargs)
+        self.instance = instance
+        self.hide_money = hide_money
+        if instance is None:
+            self.lines = PurchaseOrderChangeLineFormSet(data=data, prefix="lines")
+            return
+        self.submit_label_plain = f"第 {instance.revision_no + 1} 版の変更を送る"
+        if not self.is_bound:
+            self.initial.setdefault("note", instance.note)
+        rows = list(
+            services.annotate_received(instance.lines.exclude(line_status_code=edi_codes.LINE_DELETED).select_related("item"))
+            .order_by("line_no")
+        )
+        formset_class = forms.formset_factory(
+            PurchaseOrderChangeLineForm, formset=PurchaseOrderChangeLineFormSet, extra=0 if hide_money else 1, can_delete=True
+        )
+        self.lines = formset_class(
+            data=data,
+            prefix="lines",
+            initial=[self.line_initial(row) for row in rows],
+            form_kwargs={"purchase_order": instance, "hide_money": hide_money},
+        )
+
+    @staticmethod
+    def line_initial(row) -> dict:
+        return {
+            "line": row.pk,
+            "line_obj": row,
+            "qty": row.qty,
+            "unit_price": row.unit_price,
+            "due_date": row.due_date,
+            "note": row.note,
+        }
+
+    def is_valid(self):
+        header = super().is_valid()
+        rows = self.lines.is_valid()
+        return header and rows
+
+    def service_kwargs(self):
+        lines = [line for line in (row.line_dict() for row in self.lines.forms) if line is not None]
+        return {"data": {"note": self.cleaned_data.get("note", "")}, "lines": lines}
+
+
 class SendForm(forms.Form):
     """送り直す form。欄は無い。"""
     submit_label = "送り直す"
@@ -253,6 +407,19 @@ def _purchase_line(raw):
     if pk < 1:
         return None
     return PurchaseOrderLine.objects.filter(pk=pk).first()
+
+
+def _old_revision_notice(line):
+    """明細のまだ受け入れていない出荷の知らせ (services.notice_rests) のうち、今の版より前の版の注文への知らせの版の一番小さい値。無ければ None。"""
+    current = line.purchase_order.revision_no
+    if current < 2:
+        return None
+    olds = [
+        entry["notice"].order_revision_no
+        for entry in services.notice_rests(line)
+        if entry["rest"] > 0 and getattr(entry["notice"], "order_revision_no", current) < current
+    ]
+    return min(olds) if olds else None
 
 
 #: 受入の入力で発注の明細が決まっていないときの、数量の欄の下の字 (purchasing/receipt-form.js も同じ字を出す)
@@ -313,6 +480,11 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if self.label_line is not None:
             self.fields["line"].widget.attrs["data-label-line"] = str(self.label_line.pk)
+            # まだ受け入れていない出荷の知らせに前の版の注文への知らせがあれば、明細の欄の下に印を出す (止めない。押す手は増えない)。
+            # 明細を選び直しても、この字は描いた時の明細の物のまま (purchasing/receipt-form.js は数量の欄の下だけを書き替える)。
+            old = _old_revision_notice(self.label_line)
+            if old is not None:
+                self.fields["line"].help_text = f"第 {old} 版の注文への出荷の知らせです (今は第 {self.label_line.purchase_order.revision_no} 版)。"
 
     def submit_label_templates(self) -> list:
         if self.label_line is None:

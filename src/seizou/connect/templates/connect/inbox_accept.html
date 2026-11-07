@@ -4,6 +4,8 @@
 {# 受け入れ: 上に届いた明細 (相手の品番のまま)、下に相手の品番ごとに自社の部品を選ぶ欄。「相手の品番のまま届き、自社の品番で受ける」所。 #}
 {# 同じ取引先から同じ注文番号で前に届いた行があれば、届いた明細の上に詳細と同じ黄の知らせ (知らせるだけで、保存は止めない = 決め 11-04 06:2x)。 #}
 {% same_order_notice object as same %}{% if same %}<div class="mb-6 flex flex-wrap items-center gap-2">{% include "connect/_same_order_notice.html" %}</div>{% endif %}
+{# 変更と取消の版で受け入れられない物は、詳細と同じ黄色の 1 行 (保存は services が同じ字で断る)。 #}
+{% revision_problem object as problem %}{% if problem %}<div class="alert alert-warning alert-soft mb-6" role="alert">{% icon "alert" "size-5" %}<span>この変更は受け入れられません。{{ problem }}断る理由を書いて断ってください。</span></div>{% endif %}
 {# 受け入れる前に、相手の発注番号と発注日を詳細と同じ行の形で見せる (C08)。枠は 4 つの答えの画面が include する断片。 #}
 {% include "connect/_inbox_order_box.html" %}
 {# ほかの答え方 (決め PRICE-4e)。「受け入れる」は下の入力のカード。読み取りの行は相手に答えを送れないので「断る」だけ。保留した行は「保留する」を出さない。 #}

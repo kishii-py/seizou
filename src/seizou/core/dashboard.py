@@ -998,6 +998,10 @@ def _noticed_lines_to_receive():
     queryset = line_model._default_manager.filter(
         pk__in=notice_model._default_manager.values("line_id")
     ).exclude(purchase_order__status=purchase_model.STATUS_CANCELLED)
+    # 取り消した明細 (明細状態コード 2。core.edi_codes の LINE_DELETED) は受け入れる明細に数えない。
+    from seizou.core.edi_codes import LINE_DELETED
+
+    queryset = queryset.exclude(line_status_code=LINE_DELETED)
     return annotate_received(queryset).filter(remaining_total__gt=0)
 
 

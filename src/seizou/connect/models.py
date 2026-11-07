@@ -140,6 +140,20 @@ class Inbox(models.Model):
     reply_type = models.CharField("注文回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_TYPES, blank=True)
     # 条件付受諾 (CA) で相手へ返した明細の答え (送ったとおりの形 = 注文回答の JSON の lines)。ほかの答えは空の並び。送り直しもこの値を送る。
     reply_lines = models.JSONField("注文回答の明細", default=list, blank=True)
+    # 注文の版 (中小企業共通 EDI の注文変更の方式 2)。変更と取消は新しい知らせとして届き、上書きせず版を重ねる。
+    # 変更の版の行は受注 (order) を持たず、revises で第 1 版の行を指す (受注は第 1 版の行の order = 1 対 1)。
+    revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
+    purpose_code = models.CharField(
+        "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
+    revises = models.ForeignKey(
+        "self",
+        verbose_name="元の注文 (第 1 版)",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="revisions",
+    )
 
     class Meta:
         verbose_name = "受信した注文"
@@ -207,6 +221,17 @@ class Inbox(models.Model):
             return self.reply_response
         return f"届いていない: {self.reply_response}"
 
+    def current_revision_no(self):
+        """受注が今どの版の注文に合っているか。出荷の知らせ (send_shipping_notice) と受注の詳細の検収の印 (orders.services.acceptance_summary) が読む。
+
+        第 1 版の行 (revises が空) で呼ぶと、自分と変更の版 (revisions) のうち状態が「受け入れた」の行の revision_no の一番大きい物 (無ければ自分の値)。
+        変更の版の行で呼ぶと、元の行の値。
+        """
+        if self.revises_id is not None:
+            return self.revises.current_revision_no()
+        numbers = self.revisions.filter(status=self.STATUS_ACCEPTED).values_list("revision_no", flat=True)
+        return max([self.revision_no, *numbers])
+
 
 class Outbox(models.Model):
     """送った注文。connect.services.send_order が 1 回送るごとに 1 行を作る。
@@ -215,6 +240,8 @@ class Outbox(models.Model):
     (相手の受け口は同じ番号を 1 件にまとめる = R11。2 つのタブから送り直しても相手に 2 行できない)。
     相手の返事は日本語の短い文で持つ。
     鍵の値と本文は持たない。
+    版 (revision_no) ごとに番号を分ける。版 1 の注文回答は今までどおり発注の列に書く。版 2 から (変更と取消) の注文回答は、
+    その版の最初の送った注文の行 (pk の一番小さい行) の reply_* に書く。答えは EDI の注文回答タイプコードの値 (core.edi_codes)。
     """
 
     message_id = models.UUIDField("番号", db_index=True)
@@ -232,6 +259,19 @@ class Outbox(models.Model):
     )
     sent_at = models.DateTimeField("送った日時", default=timezone.now)
     response = models.CharField("相手の返事", max_length=500, blank=True)
+    # 送った版の番号と目的 (送った時の発注の revision_no と purpose_code)。
+    revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
+    purpose_code = models.CharField(
+        "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
+    # 版 2 からの注文回答 (connect.services._record_revision_reply が書く)。版 1 の答えは発注の列 (purchasing.PurchaseOrder.reply_*)。
+    reply_type = models.CharField("注文回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_TYPES, blank=True)
+    reply_note = models.CharField("断りの理由", max_length=500, blank=True)
+    replied_at = models.DateTimeField("注文回答の日時", null=True, blank=True)
+    reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
+
+    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    detail_hidden_fields = ("reply_message_id",)
 
     class Meta:
         verbose_name = "送った注文"
@@ -242,8 +282,21 @@ class Outbox(models.Model):
         sent = timezone.localtime(self.sent_at)
         # 相手が受け取った行は、誰が受け取ったかを添える (発注の詳細の「送った記録」のタブの行の字。初見テスト 3 回目)。
         if self.response == "受け取った":
-            return f"{sent:%Y-%m-%d %H:%M} {self.connection.partner.name} が受け取った"
-        return f"{sent:%Y-%m-%d %H:%M} {self.response}"
+            text = f"{sent:%Y-%m-%d %H:%M} {self.connection.partner.name} が受け取った"
+        else:
+            text = f"{sent:%Y-%m-%d %H:%M} {self.response}"
+        # 版 2 から (変更と取消) は頭に版を、答えがあれば末尾に答えを付ける。第 1 版の行の字は今のまま。
+        if self.revision_no >= 2:
+            kind = "取消" if self.purpose_code == edi_codes.PURPOSE_CANCEL else "変更"
+            text = f"第 {self.revision_no} 版の{kind} {text}"
+        reply = _REPLY_TEXTS.get(self.reply_type)
+        if reply:
+            text = f"{text}・{reply}"
+        return text
+
+
+#: 版 2 からの注文回答の字 (送った記録の行の末尾)
+_REPLY_TEXTS = {edi_codes.REPLY_ACCEPTED: "相手が受け入れた", edi_codes.REPLY_REJECTED: "相手が断った"}
 
 
 class Acceptance(models.Model):
@@ -271,6 +324,8 @@ class Acceptance(models.Model):
     accepted_on = models.DateField("検収日")
     qty = models.DecimalField("検収の数", max_digits=12, decimal_places=2)
     received_at = models.DateTimeField("届いた日時", default=timezone.now)
+    # 検収が指す注文の版 (相手の発注の注文履歴番号。無い知らせは 1)
+    order_revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
 
     class Meta:
         verbose_name = "検収"
@@ -307,6 +362,8 @@ class ShippingNotice(models.Model):
     shipped_at = models.DateField("出荷日")
     qty = models.DecimalField("出荷の数", max_digits=12, decimal_places=2)
     received_at = models.DateTimeField("届いた日時", default=timezone.now)
+    # 知らせが指す注文の版 (相手の受注が合っていた注文履歴番号。無い知らせは 1)
+    order_revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
 
     class Meta:
         verbose_name = "出荷の知らせ"

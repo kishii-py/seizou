@@ -14,6 +14,7 @@ from decimal import Decimal
 from django import forms
 from django.apps import apps
 
+from seizou.core import edi_codes
 from seizou.core.forms import ServiceModelForm
 from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.core.widgets import IsoDateInput, RemoteSelect
@@ -28,9 +29,21 @@ def _item_model():
 
 
 def _partner_parts(inbox):
-    """注文のデータの明細にある相手の品番と品名の組を、出てきた順に重ねずに返す。形の違う行は飛ばす。"""
+    """注文のデータの明細にある相手の品番と品名の組を、出てきた順に重ねずに返す。形の違う行は飛ばす。
+
+    変更と取消の版の行 (元の行 revises がある行) は、受注に無い行番号の明細 (取り消した明細 = 明細状態コード 2 を除く) の品番だけを返す
+    (受注にある明細の部品は聞かない。聞くのは受け入れると新しく足す明細の部品だけ)。
+    """
     payload = inbox.payload if inbox is not None and isinstance(inbox.payload, dict) else {}
     lines = payload.get("lines")
+    if inbox is not None and inbox.revises_id is not None and isinstance(lines, list):
+        order = inbox.revises.order
+        known = set(order.lines.values_list("line_no", flat=True)) if order is not None else set()
+        lines = [
+            line
+            for line in lines
+            if isinstance(line, dict) and line.get("line_status_code") != edi_codes.LINE_DELETED and line.get("line_no") not in known
+        ]
     parts = {}
     for line in lines if isinstance(lines, list) else []:
         part_no = line.get("part_no") if isinstance(line, dict) else None
@@ -88,6 +101,9 @@ class AcceptForm(forms.Form):
         self.part_fields = []
         if instance is None:
             return
+        # 変更と取消の版は、押した結果が分かる字にする (受注を新しく作らず、元の受注を変える)。
+        if instance.revises_id is not None:
+            self.submit_label = "取消を受け入れる" if instance.purpose_code == edi_codes.PURPOSE_CANCEL else "変更を受け入れる"
         items = _item_model()._default_manager.all()
         partner = instance.partner
         for number, (part_no, part_name) in enumerate(_partner_parts(instance), start=1):

@@ -33,7 +33,8 @@ def po(user):
 @pytest.mark.django_db
 def test_cancel_only_in_draft(user, po):
     sent = services.mark_sent(po, user)
-    with pytest.raises(ValueError, match="相手に連絡してください"):
+    # 送った発注は、相手へ取消を送れるときだけ取り消せる (この取引先にはつながりが無いので断る)
+    with pytest.raises(ValueError, match="^取り消せません。取引先 .* へのつながりが無いので、取消を相手へ送れません。"):
         services.cancel_purchase_order(sent, user)
     assert PurchaseOrder.objects.get(pk=po.pk).status == PurchaseOrder.STATUS_SENT
 
@@ -47,7 +48,7 @@ def test_cancel_only_in_draft(user, po):
     )
     cancelled = services.cancel_purchase_order(draft, user)
     assert cancelled.status == PurchaseOrder.STATUS_CANCELLED
-    with pytest.raises(ValueError, match="相手に連絡してください"):
+    with pytest.raises(ValueError, match="^取り消せません。状態が「取消」の発注は取り消せません。"):
         services.cancel_purchase_order(cancelled, user)
 
 
