@@ -115,7 +115,8 @@ def test_list_column_shows_progress_state(user, client_logged_in, customer, item
     assert response.status_code == 200
     labels = [col.label for col in response.context["columns"]]
     assert "着手日時" not in labels
-    assert labels[-1] == "状態"
+    # 「状態」の右に「工程の進み」の列 (本人の決め 11-07 18:2x〜18:4x。tests/test_workorders_list_progress.py)
+    assert labels[-2:] == ["状態", "工程の進み"]
     index = labels.index("状態")
     values = {row["obj"].pk: row["cells"][index]["value"] for row in response.context["rows"]}
     assert values == {waiting.pk: "未着手", started.pk: "着手済"}
@@ -123,8 +124,8 @@ def test_list_column_shows_progress_state(user, client_logged_in, customer, item
     csv_body = client_logged_in.get(reverse("workorders:workorder_list"), {"format": "csv"}).content.decode()
     header, *rows = csv_body.lstrip("\ufeff").splitlines()
     assert "着手日時" not in header
-    assert header.split(",")[-1] == "状態"
-    assert sorted(row.split(",")[-1] for row in rows) == ["未着手", "着手済"]
+    assert header.split(",")[-2:] == ["状態", "工程の進み"]
+    assert sorted(row.split(",")[-2] for row in rows) == ["未着手", "着手済"]
 
 
 @pytest.mark.django_db
