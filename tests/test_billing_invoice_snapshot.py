@@ -312,3 +312,36 @@ def test_detail_price_unit_text_reads_snapshot(logged_in, user, item):
     assert " / 箱</span>" in body
     assert " / 本</span>" not in body
     assert " / 個</span>" not in body
+
+
+# ---------------------------------------------------------------- 4 作り直し (任意)
+
+
+@pytest.mark.django_db
+def test_reissue_copies_values_at_reissue_and_keeps_cancelled_snapshot(user, item):
+    """(4) 作り直し (reissue_invoice) で作った新しい請求書は作り直した時の値を写し、取り消した前の請求書の写しは変わらない。"""
+    core_services.update_company(core_services.company(), COMPANY_AT_ISSUE, user)
+    customer = _customer(user, name="作り物の得意先 発行の時")
+    first = _invoice(user, customer, item, customer_order_no="PO-SN-41")
+    before = _snapshot(first)
+
+    core_services.update_company(core_services.company(), COMPANY_LATER, user)
+    masters_services.update_partner(customer, {"name": "作り物の得意先 直した後"}, user)
+    masters_services.update_item(item, {"name": "作り物の直した軸"}, user)
+    second = billing_services.reissue_invoice(first, user, issued_on=ISSUED_ON)
+
+    first.refresh_from_db()
+    assert first.status == Invoice.STATUS_CANCELLED
+    assert _snapshot(first) == before
+    assert _snapshot(second) == (
+        "T0000000000022",
+        "作り物県別見本市2-2",
+        "000-0000-0022",
+        "作り物信用金庫 別支店 当座 0000022",
+        "作り物の得意先 直した後",
+        Decimal("10.00"),
+        "SN-100",
+        "作り物の直した軸",
+        "個",
+        "PO-SN-41",
+    )
