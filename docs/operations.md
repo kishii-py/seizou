@@ -336,6 +336,24 @@ cron は OS の時刻で動きます。VPS の OS が世界の標準の時刻 (U
 CRON_TZ=Asia/Tokyo
 ```
 
+## 土台の寿命 (Django と Python)
+
+seizou は、Django と Python の上で動きます。どちらも版ごとに、セキュリティの直しを出す期間 (手当て) の終わりがあります。手当ての終わった版のままでは、見つかった穴が直りません。
+
+| 土台 | 今の版 | 手当ての終わりの見込み | 出典の URL | 見た日 |
+|---|---|---|---|---|
+| Django 6.1 | 6.1 (`uv.lock` の版) | 2027-12 | https://www.djangoproject.com/download/ (版ごとの手当ての表。未確認 = 開いていない) | 未確認 |
+| Django 5.2 LTS | 依存の下限 (`pyproject.toml` の `Django>=5.2.18`) | 2028-04 | https://www.djangoproject.com/download/ (版ごとの手当ての表。未確認 = 開いていない) | 未確認 |
+| Python 3.12 (AlmaLinux 9 の AppStream) | 3.12 (`pyproject.toml` の `requires-python`・[vps.md](vps.md) の 3 の段の `python3.12`) | 2027-04 | https://access.redhat.com/support/policy/updates/rhel-app-streams-life-cycle (Red Hat の Application Streams の寿命の頁。未確認 = 開いていない) | 未確認 |
+
+日付は、この節を書いた時の見込みです。作者は出典の頁を開いて確かめていません (見た日は未確認)。AlmaLinux の日程は未確認です (RHEL に合わせるかを確かめていません)。版を上げる前に、出典の頁で今の日付を確かめてください。
+
+移る順は次のとおりです。
+
+- Django: 6.1 の手当てが終わる前に、次の版へ上げます。5.2 LTS へは下げません (依存の下限は `pyproject.toml`)。
+- Python: AppStream の 3.12 の手当てが終わる前に、AppStream の次の版の Python へ移るか、OS の版上げを決めます。
+- 版を上げる手順は、上の「版を上げる手順」の節のとおりです。
+
 ## 練習モード (本番に残らない練習用のサーバー)
 
 練習モードは、新しく入った人の練習や、手順の確かめに使います。今のデータベースと上げたファイルの写しを使うサーバーを、本番のサーバーを止めずに、別のポートで立てます。練習の画面での登録・変更・削除は写しにだけ入り、本番には残りません。練習のサーバーでは、全部の画面の上に黄色の帯「練習モード」が出て、ブラウザの題の頭に「練習:」が付きます。
