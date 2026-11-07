@@ -144,12 +144,13 @@ def test_count_uses_a_few_count_queries(user, customer):
     received(customer)
     with CaptureQueriesContext(connection) as captured:
         assert bell.unread_count(user) == 1
-    # 知らせの表は件数だけ読む (行は読まない): 受信した注文 1 + フィードバック 3 (直した・見送った・返事)。
+    # 知らせの表は件数だけ読む (行は読まない): 受信した注文 1 + フィードバック 1 (直した・見送った・返事を 1 つの集計で)。
     # ほかは開いた日時 1 と、部署の判定 (access.can_open) の設定と権限の行 (要求の中では控えが効く)。
+    # 上の帯は全画面で描くので、画面ごとの問い合わせの上限 (tests/test_core_screen_queries.py の BELL_QUERIES = 3) に収める。
     notice_queries = [query["sql"] for query in captured if "connect_inbox" in query["sql"] or "feedback_" in query["sql"]]
-    assert len(notice_queries) == 4
+    assert len(notice_queries) == 2
     assert all("COUNT(" in sql for sql in notice_queries)
-    assert len(captured) <= 9
+    assert len(captured) <= 7
 
 
 # ---- 2. 開くと印が消える ----

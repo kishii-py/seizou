@@ -32,7 +32,7 @@ from functools import lru_cache
 from django.apps import apps
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
-from django.db.models import F
+from django.db.models import Count, F, Q
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
@@ -1646,16 +1646,25 @@ def _bell_replies(user_pk):
 
 
 def bell_count(user, since) -> int:
-    """since より後に起きた、user が書いた件の直した・見送った・返事の数 (鈴の赤い数。件数だけ 3 回数える)。未ログインは 0。読むだけ。"""
+    """since より後に起きた、user が書いた件の直した・見送った・返事の数 (鈴の赤い数)。未ログインは 0。読むだけ。
+
+    問い合わせは 1 回 (件の表に返事を結んだ 1 つの集計。直したと見送ったは件の pk を distinct で数え、返事は結んだ行を数える)。
+    訳: 上の帯は全画面で描くので、画面ごとの問い合わせの数 (tests/test_core_screen_queries.py の上限) を 3 回分増やさないため。
+    返事の絞りは _bell_replies と同じ (GitHub から来た物だけ。この会社の口座の返事は除く)。
+    """
     user_pk = getattr(user, "pk", None)
     if user_pk is None:
         return 0
-    mine = Feedback.objects.filter(created_by_id=user_pk)
-    return (
-        mine.filter(fixed_at__gt=since).count()
-        + mine.filter(dismissed_at__gt=since).count()
-        + _bell_replies(user_pk).filter(posted_at__gt=since).count()
+    replies = Q(replies__posted_at__gt=since, replies__created_by__isnull=True)
+    login = company_login()
+    if login:
+        replies &= ~Q(replies__login=login)
+    totals = Feedback.objects.filter(created_by_id=user_pk).aggregate(
+        fixed=Count("pk", filter=Q(fixed_at__gt=since), distinct=True),
+        dismissed=Count("pk", filter=Q(dismissed_at__gt=since), distinct=True),
+        replies=Count("replies", filter=replies),
     )
+    return totals["fixed"] + totals["dismissed"] + totals["replies"]
 
 
 def bell_notices(user, *, limit=10) -> list[dict]:
