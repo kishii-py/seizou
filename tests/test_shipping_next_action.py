@@ -144,7 +144,8 @@ def test_unbilled_note_has_green_invoice_button(client, user, order):
 @pytest.mark.django_db
 def test_invoice_button_follows_billed_shipments(client, user, order):
     first = _shipment(user, order, "4")
-    second = _shipment(user, order, "6")
+    # 2 つ目は前の月の出荷 (別の締め期間。同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)
+    second = _shipment(user, order, "6", shipped_at=date(2026, 10, 5))
     note = _delivery_note(user, order, [first, second])
     client.force_login(user)
 

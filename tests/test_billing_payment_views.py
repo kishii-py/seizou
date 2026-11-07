@@ -15,7 +15,7 @@ from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
 from seizou.billing import services
-from seizou.billing.models import Payment
+from seizou.billing.models import Invoice, Payment
 from seizou.core import access
 from seizou.core.screens import all_screens
 from seizou.masters import services as masters_services
@@ -70,9 +70,15 @@ def _order_line(user, customer, item):
 
 
 def _invoice(user, customer, line):
-    """出荷 4 と 6 の請求書 (小計 15,000・消費税 1,500・合計 16,500)。"""
-    first = _shipped(user, customer, line, "4")
-    second = _shipped(user, customer, line, "6")
+    """出荷 4 と 6 の請求書 (小計 15,000・消費税 1,500・合計 16,500)。
+
+    出荷日は、その得意先の 1 枚目が SHIPPED_AT で、2 枚目から 1 か月ずつ前 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。
+    ほかの試験のファイルもこの道具で同じ得意先に 2 枚作る)。
+    """
+    earlier = Invoice.objects.filter(customer=customer).count()
+    shipped_at = SHIPPED_AT.replace(month=SHIPPED_AT.month - earlier)
+    first = _shipped(user, customer, line, "4", shipped_at)
+    second = _shipped(user, customer, line, "6", shipped_at)
     return services.create_invoice(customer, [first, second], user, issued_on=ISSUED_ON)
 
 

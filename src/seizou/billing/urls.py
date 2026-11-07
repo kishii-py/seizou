@@ -1,6 +1,7 @@
 """billing の URL。名前の約束は <model>_list / _detail / _create (core の土台が使う)。
 
 取り消す (_cancel)・印刷用の画面 (_print)・PDF (_pdf) は請求書の詳細のボタンから入る。
+作り直す (_reissue) は、請求書の新規登録で同じ締め期間の 2 枚目が止まったときの右上の知らせのボタンから入る (R23)。
 入金の記録 (payment_create) は請求書の詳細の「入金」の枠から入り、保存の後は payment_detail (移るだけの口) が請求書の詳細へ戻す。
 """
 
@@ -18,6 +19,7 @@ urlpatterns = [
     path("invoices/new/", views.InvoiceCreateView.as_view(), name="invoice_create"),
     path("invoices/<int:pk>/", views.InvoiceDetailView.as_view(), name="invoice_detail"),
     path("invoices/<int:pk>/cancel/", views.InvoiceCancelView.as_view(), name="invoice_cancel"),
+    path("invoices/<int:pk>/reissue/", views.InvoiceReissueView.as_view(), name="invoice_reissue"),
     path("invoices/<int:pk>/print/", views.invoice_print, name="invoice_print"),
     path("invoices/<int:pk>/pdf/", views.invoice_pdf, name="invoice_pdf"),
     path("invoices/<int:pk>/payments/new/", views.PaymentCreateView.as_view(), name="payment_create"),

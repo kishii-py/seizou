@@ -596,3 +596,120 @@ def test_create_form_script_picks_period_rows(client_logged_in, user, customer, 
     assert 'new Event("change", { bubbles: true })' in body
     assert 'issued.addEventListener("input"' in body
 
+
+
+# ---------------------------------------------------------------- 同じ締め期間の 2 枚目の止め (R23) と作り直しの画面
+
+
+def _two_in_period(user, customer, line):
+    """20 日締めの得意先に、同じ締め期間 (10-21〜11-20) の出荷 2 つ (11-05 と 11-10)。1 つ目だけで請求書を作る。"""
+    first_shipment = _shipped(user, customer, line, "4")
+    left = _shipped(user, customer, line, "6", date(2026, 11, 10))
+    first = services.create_invoice(customer, [first_shipment], user, issued_on=ISSUED_ON)
+    return first, first_shipment, left
+
+
+@pytest.mark.django_db
+def test_second_in_period_stops_with_reissue_button(client_logged_in, user, customer, line):
+    first, _first_shipment, left = _two_in_period(user, customer, line)
+    reissue_url = reverse("billing:invoice_reissue", args=[first.pk])
+
+    response = _create_post(client_logged_in, customer, [left])
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert response.context["notice"].code == "R23"
+    assert 'data-notice="stop"' in body
+    assert f'href="{reissue_url}" data-notice-link' in body
+    assert f"{first.invoice_no} を取り消して、この期間の全部の出荷で作り直す" in body
+    assert Invoice.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_stop_without_rule_link_has_no_reissue_button(client_logged_in, user, customer, line):
+    _two_in_period(user, customer, line)
+
+    response = client_logged_in.post(reverse("billing:invoice_create"), {"customer": customer.pk, "issued_on": "2026-11-30"})
+
+    body = response.content.decode()
+    assert 'data-notice="stop"' in body
+    assert "/reissue/" not in body and "data-notice-link" not in body
+
+
+@pytest.mark.django_db
+def test_reissue_screen_lists_and_reissues(client_logged_in, user, customer, line):
+    from django.utils import timezone
+
+    first, first_shipment, left = _two_in_period(user, customer, line)
+    url = reverse("billing:invoice_reissue", args=[first.pk])
+
+    page = client_logged_in.get(url)
+    body = page.content.decode()
+    assert page.status_code == 200
+    assert first.invoice_no in body
+    assert first_shipment.shipment_no in body and left.shipment_no in body
+    assert f"{first.invoice_no} を取り消して作り直す" in body
+    # 発行日の初めの値は締日 (期間の終わり)。締日が今日より後なら今日
+    assert page.context["form"]["issued_on"].value() == min(date(2026, 11, 20), timezone.localdate())
+
+    response = client_logged_in.post(url, {"issued_on": "2026-11-20"})
+
+    created = Invoice.objects.get(status=Invoice.STATUS_ISSUED)
+    assert response.status_code == 302
+    assert response["Location"] == reverse("billing:invoice_detail", args=[created.pk])
+    assert Invoice.objects.get(pk=first.pk).status == Invoice.STATUS_CANCELLED
+    assert created.issued_on == date(2026, 11, 20)
+    assert _messages(response) == [
+        (
+            "success",
+            f"{first.invoice_no} を取り消し、この期間の出荷 2 件で {created.invoice_no} を作りました。"
+            f"この期間の{customer.name}の出荷は、全部請求書に入っています。",
+        )
+    ]
+
+
+@pytest.mark.django_db
+def test_reissue_screen_with_payment_offers_only_back_link(client_logged_in, user, customer, line):
+    first, _first_shipment, _left = _two_in_period(user, customer, line)
+    services.record_payment(first, date(2026, 12, 1), Decimal("100"), user)
+    url = reverse("billing:invoice_reissue", args=[first.pk])
+    refusal = services.cancel_refusal(Invoice.objects.get(pk=first.pk))
+
+    body = html.unescape(client_logged_in.get(url).content.decode())
+    assert refusal.split("。", 1)[1].strip() in body
+    assert "請求書の入金へ戻る" in body
+    assert f"{first.invoice_no} を取り消して作り直す" not in body
+
+    response = client_logged_in.post(url, {"issued_on": "2026-11-20"})
+    assert response.status_code == 200
+    assert 'data-notice="stop"' in response.content.decode()
+    assert Invoice.objects.count() == 1
+    assert Invoice.objects.get(pk=first.pk).status == Invoice.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_reissue_screen_hides_payment_total_without_money(client, settings, user, customer, line):
+    from tests.test_core_access import ALL_ON, account
+
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    first, _first_shipment, _left = _two_in_period(user, customer, line)
+    services.record_payment(first, date(2026, 12, 1), Decimal("100"), user)
+    client.force_login(account("clerk", permissions=["billing"]))
+
+    body = html.unescape(client.get(reverse("billing:invoice_reissue", args=[first.pk])).content.decode())
+
+    assert "残り 1 件" in body
+    assert "合計 ¥" not in body
+
+
+def test_reissue_form_issued_on_starts_at_period_end_or_today():
+    from django.utils import timezone
+
+    from seizou.billing.forms import InvoiceReissueForm
+
+    today = timezone.localdate()
+    past = InvoiceReissueForm(instance=Invoice(invoice_no="IV-900001", period_to=date(2020, 1, 31)))
+    assert past["issued_on"].value() == date(2020, 1, 31)
+    assert past.submit_label == "IV-900001 を取り消して作り直す"
+    future = InvoiceReissueForm(instance=Invoice(invoice_no="IV-900002", period_to=today.replace(year=today.year + 1)))
+    assert future["issued_on"].value() == today

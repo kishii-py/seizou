@@ -6,8 +6,11 @@
 この試験が見る所 (HTML だけ): A 社で数量 10 の受注を入れ、4 を出荷して納品書を出す。同じ受注にもう 1 回 2 を出荷する (納品書に入れない)。
 左のメニューの「請求書」→「新規登録」で得意先 (標準の `<select>`) を選ぶと、出荷の欄 (checkbox) に 1 回目の出荷 (納品書番号の入った行) が
 あり、2 回目の出荷 (納品書なし) の出荷番号が無い。納品書番号の行に印を付けて「請求書を作る」を押すと、請求書の詳細 (道が `/billing/invoices/<pk>/`) へ移る。
-「印刷用の画面」(新しいタブ) に「請求書」・得意先の名前・`WK-1001`・数量 4 の行があり、「支払期日」の行の日付 (`Y-m-d`) が、
-種の得意先の締日・支払の月・支払日と出荷日から試験の中で出した日と同じ。請求書に入れた出荷は、もう一度「新規登録」を開いた出荷の欄に無い。
+同じ置き場で回すたびに今日の出荷で請求書を作るので、同じ締め期間の 2 回目からは同じ得意先の同じ締め期間の 2 枚目として右上の赤の知らせで止まる (R23)。
+そのときは知らせの「… を取り消して、この期間の全部の出荷で作り直す」のボタンで作り直しの画面へ進み、「… を取り消して作り直す」を押して詳細へ移る。
+「印刷用の画面」(新しいタブ) に「請求書」・得意先の名前・`WK-1001`・この回の出荷番号で数量 4 の行が 1 つあり (作り直した請求書には前の回の出荷も入る)、
+「支払期日」の行の日付 (`Y-m-d`) が、種の得意先の締日・支払の月・支払日と出荷日から試験の中で出した日と同じ。
+請求書に入れた出荷は、もう一度「新規登録」を開いた出荷の欄に無い。
 見ない所 (理由): PDF (本文は HTML だけと決めた)、金額と消費税の値 (部品の試験が見る)、0 時をまたぐ回し (出荷日がずれて期日を比べられない)。
 """
 
@@ -95,7 +98,14 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     assert not [text for text in labels if re.search(rf"{re.escape(second_shipment)}(?!\d)", text)]
 
     page_a.get_by_label(re.compile(rf"{re.escape(note_no)}(?!\d)")).check()
-    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
+    with page_a.expect_navigation():
+        page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()  # 主のボタンの字は画面ごとの動詞 (205 回目から) なので、字でなく主色の submit で押す
+    stop = page_a.locator("[data-notice=stop]")
+    if stop.count():
+        # 前の回の請求書が同じ締め期間にある (R23)。知らせのボタンで作り直す (前の回の請求書を取り消し、この回の出荷も入れて 1 枚にする)
+        stop.locator("[data-notice-link]").click()
+        page_a.wait_for_url(re.compile(r"/billing/invoices/\d+/reissue/$"))
+        page_a.get_by_role("button", name=re.compile("を取り消して作り直す")).click()
     page_a.wait_for_url(re.compile(r"/billing/invoices/\d+/$"))
     shot(page_a, "E-29", "a-invoice")
 
@@ -107,7 +117,7 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     expect(body).to_contain_text("請求書")
     expect(body).to_contain_text(customer)
     expect(body).to_contain_text("WK-1001")
-    line = printed.locator("table.report-lines tbody tr").filter(has_text="WK-1001")
+    line = printed.locator("table.report-lines tbody tr").filter(has_text=first_shipment).filter(has_text="WK-1001")
     expect(line).to_have_count(1)
     assert "4" in [cell.strip() for cell in line.locator("td").all_inner_texts()]
     due_cell = printed.locator("table.report-meta tr").filter(has_text="支払期日").locator("td")

@@ -1,6 +1,7 @@
 """billing のテンプレートの tag。読むだけで、表に書かない。
 
 - invoice_cancel_refusal: 請求書を取り消せない理由の文 (services.cancel_refusal と同じ文。取消の確かめの画面が黄の知らせで出す)。
+- invoice_reissue_plan: 請求書の作り直しの中身 (services.reissue_plan と同じ物。作り直しの画面が取り消す請求書と入る出荷を出す)。
 - payment_badge: 請求書の入金の状態の印 (core/_status_badge.html。色は core.status_colors の PAYMENT_TONES。N164)。
 - invoice_head_chips: 請求書の詳細の頭の要点の札「合計」「残」。形は orders の orders_detail の order_head_chips と同じ。
   取消の請求書と金額の閲覧の無い人には出さない (初見テスト R5 の候補 C26 の 6)。
@@ -23,6 +24,17 @@ def invoice_cancel_refusal(invoice, hide_money=False):
     from .. import services
 
     return services.cancel_refusal(invoice, hide_money=bool(hide_money))
+
+
+@register.simple_tag
+def invoice_reissue_plan(invoice, hide_money=False):
+    """{% invoice_reissue_plan object seizou.hide_money as plan %}。作り直しの中身 (取り消す請求書・入る出荷・作り直せない理由の文)。
+
+    services.reissue_invoice と同じ reissue_plan を読む (画面を開いた時は、取り消す請求書の出荷がまだ請求済みなので、合わせた並びをここで出す)。
+    """
+    from .. import services
+
+    return services.reissue_plan(invoice, hide_money=bool(hide_money))
 
 
 @register.inclusion_tag("core/_status_badge.html")

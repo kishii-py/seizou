@@ -204,10 +204,10 @@ ISSUED_ON = date(2026, 11, 30)
 REQUIRED_GUIDE = "「必須」の欄を埋めて"
 
 
-def _shipment(user, order, qty="4"):
+def _shipment(user, order, qty="4", shipped_at=SHIPPED_AT):
     from seizou.shipping import services as shipping_services
 
-    return shipping_services.ship(order.lines.get(), Decimal(qty), SHIPPED_AT, user)
+    return shipping_services.ship(order.lines.get(), Decimal(qty), shipped_at, user)
 
 
 def _delivery_note(user, order, shipments):
@@ -217,9 +217,13 @@ def _delivery_note(user, order, shipments):
 
 
 def _invoice(user, order):
+    """出荷 1 つ (数量 4) の請求書。出荷日は、その得意先の 1 枚目が SHIPPED_AT で、2 枚目は前の月
+    (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。発行日は変えない)。"""
     from seizou.billing import services as billing_services
+    from seizou.billing.models import Invoice
 
-    shipment = _shipment(user, order)
+    earlier = Invoice.objects.filter(customer=order.customer).count()
+    shipment = _shipment(user, order, shipped_at=SHIPPED_AT.replace(month=SHIPPED_AT.month - earlier))
     _delivery_note(user, order, [shipment])
     shipment.refresh_from_db()
     return billing_services.create_invoice(order.customer, [shipment], user, issued_on=ISSUED_ON)

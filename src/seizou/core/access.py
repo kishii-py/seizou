@@ -119,6 +119,8 @@ _KIND_ACTIONS = {
     "billing": (
         "billing.create_invoice",
         "billing.cancel_invoice",
+        # 請求書の作り直し (同じ締め期間の請求書を取り消して 1 枚に作る。R23)
+        "billing.reissue_invoice",
         # 入金 (N56。本体が起こす前に入れる前提)
         "billing.record_payment",
         "billing.cancel_payment",
@@ -177,6 +179,8 @@ MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
     "billing.record_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
+    # 作り直しは請求書を作る操作の別の入口なので、請求書を作るのと同じ扱い
+    "billing.reissue_invoice": ("請求書", "作れません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

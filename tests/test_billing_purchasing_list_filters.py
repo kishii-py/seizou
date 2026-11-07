@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.billing import services as billing_services
+from seizou.billing.models import Invoice
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
@@ -44,11 +45,15 @@ def _partner(user, code, role):
 
 
 def _invoice(user, customer, item, issued_on):
-    """出荷 1 つ (数量 2・単価 1,000) の請求書。"""
+    """出荷 1 つ (数量 2・単価 1,000) の請求書。
+
+    出荷日は、その得意先の 1 枚目が 10 月 2 日で、2 枚目から 1 か月ずつ前 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)。
+    """
+    month = 10 - Invoice.objects.filter(customer=customer).count()
     order = orders_services.create_order(
-        customer, [{"item": item, "qty": Decimal("2"), "unit_price": Decimal("1000")}], user, order_date=date(2026, 10, 1)
+        customer, [{"item": item, "qty": Decimal("2"), "unit_price": Decimal("1000")}], user, order_date=date(2026, month, 1)
     )
-    shipment = shipping_services.ship(order.lines.get(), Decimal("2"), date(2026, 10, 2), user)
+    shipment = shipping_services.ship(order.lines.get(), Decimal("2"), date(2026, month, 2), user)
     shipping_services.create_delivery_note(customer, [shipment], user)
     shipment.refresh_from_db()
     return billing_services.create_invoice(customer, [shipment], user, issued_on=issued_on)
