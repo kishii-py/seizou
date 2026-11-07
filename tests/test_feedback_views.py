@@ -614,7 +614,8 @@ def test_issues_tab_shows_only_search_and_keeps_tab(client, plain, manager, gith
     assert "自分の題" not in html
     assert 'action="/feedback/?tab=issues#issues"' in html
     assert HIDDEN_TAB in html
-    assert not github_listing.calls
+    # 「みんなの Issue」のタブは盤が GitHub を読む (開いている物と閉じた物の 2 回。N325 = 367 回目)
+    assert [call[2]["params"]["state"] for call in github_listing.calls] == ["open", "closed"]
 
     html = html_of(client.get("/feedback/", {"tab": "issues", "issue_q": "受注 戻る"}))
     assert selected_tabs(html) == ["feedback-tab-issues"]
@@ -623,7 +624,8 @@ def test_issues_tab_shows_only_search_and_keeps_tab(client, plain, manager, gith
     assert 'value="受注 戻る"' in html
     assert HIDDEN_TAB in html
     assert 'id="rows"' not in html and 'id="list-f-status"' not in html
-    assert [call[0] for call in github_listing.calls] == ["GET"]
+    # 盤は控えから読み、tag の feedback_github が今までの探す (state=all) を 1 回読む (N325)
+    assert [call[2]["params"]["state"] for call in github_listing.calls] == ["open", "closed", "all"]
 
     html = html_of(client.get("/feedback/"))
     assert 'id="rows"' in html and 'id="list-f-status"' in html and 'id="issues"' in html
