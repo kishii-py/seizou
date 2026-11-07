@@ -573,7 +573,7 @@ def test_tabs_are_the_same_on_three_screens(client_logged_in, url, chosen, below
     assert response.status_code == 200
     assert html.count('id="feedback-tabs"') == 1
     bar = tabs_of(html)
-    assert 'role="tablist" aria-label="フィードバックの区分" class="tabs tabs-border mb-4"' in bar
+    assert 'role="tablist" aria-label="フィードバックの区分" class="tabs seizou-tabs mb-4"' in bar
     assert re.findall(r'id="(feedback-tab-[a-z]+)"', bar) == TAB_IDS
     assert bar.count('role="tab"') == 3
     assert ">送る</a>" in bar and ">送った一言<span" in bar and ">みんなの Issue</a>" in bar

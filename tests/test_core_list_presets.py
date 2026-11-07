@@ -129,7 +129,7 @@ def test_all_tab_is_first_and_turns_default_flags_off(user, made):
     everything = parse_qs(response.context_data["presets"][0]["href"][1:])
     assert everything == {"f_open": ["0"]}
     body = response.render().content.decode()
-    assert 'id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs tabs-border mb-4">' in body
+    assert 'id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs seizou-tabs mb-4">' in body
     # タブは絞り込みの枠 (form) の前に 1 回だけ描く
     assert body.count('id="list-presets"') == 1
     assert body.index('id="list-presets"') < body.index("from:#list-q")
