@@ -1,0 +1,17 @@
+{% load seizou_tags seizou_icons %}
+{# 出荷の一覧の 1 行 (shipping/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Shipment)・columns。 #}
+{# 欄の描き方は core/_rows.html の既定の 1 行をそのまま写した物 (土台の 1 行の形が変わったら、ここも合わせる)。右端の欄に「要点を見る」の目の印 (core/_row_summary_link.html。押すと出荷の小窓)。 #}
+<tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
+  {% for cell in row.cells %}
+  {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
+  {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</td>
+  {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% elif cell.boolean %}<td class="whitespace-nowrap">{% bool_mark cell.value %}</td>
+  {% elif cell.status %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
+  {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endfor %}
+  {# 右端の「要点」の列 (shipping/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと出荷の小窓 (ShipmentModalView) を開く。 #}
+  <td class="whitespace-nowrap text-right">{% url 'shipping:shipment_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>
+</tr>

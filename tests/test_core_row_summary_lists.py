@@ -15,8 +15,10 @@ from django.urls import reverse
 
 from seizou.core import edi_codes
 from seizou.masters import services as masters_services
+from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrderLine
+from seizou.shipping import services as shipping_services
 
 HTMX = {"HTTP_HX_REQUEST": "true"}
 HEADER = '<th class="whitespace-nowrap font-medium">要点</th>'
@@ -168,3 +170,80 @@ def test_purchaseorder_modal_url_and_screen():
     assert reverse("purchasing:purchaseorder_modal", args=[1]) == "/purchasing/orders/1/modal/"
     found = screen("purchasing:purchaseorder_modal")
     assert found.name == "発注の小窓" and "協力企業・日付・状態" in found.usecase
+
+
+# ---- 出荷の一覧と小窓 ----
+
+
+@pytest.fixture
+def customer(user):
+    return masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+
+
+@pytest.fixture
+def order(user, customer, shaft):
+    lines = [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": date(2026, 11, 20)}]
+    return orders_services.create_order(customer, lines, user, order_date=date(2026, 11, 2), customer_order_no="PO-77")
+
+
+@pytest.fixture
+def shipment(user, order):
+    return shipping_services.ship(order.lines.get(), Decimal("4"), date(2026, 11, 5), user)
+
+
+def shipment_modal(client, shipment):
+    return client.get(reverse("shipping:shipment_modal", args=[shipment.pk]), **HTMX)
+
+
+def test_shipment_list_rows_have_summary_link(logged_in, shipment):
+    html = logged_in.get(reverse("shipping:shipment_list")).content.decode()
+
+    assert html.count(HEADER) == 1
+    expected = [(f"/shipping/{shipment.pk}/", f"/shipping/{shipment.pk}/modal/")]
+    assert eye_links(html) == expected
+    assert f'href="/shipping/{shipment.pk}/" title="{shipment.shipment_no}"' in html
+    # htmx の行の取り直しでも同じ
+    partial = logged_in.get(reverse("shipping:shipment_list"), **HTMX).content.decode()
+    assert partial.count(HEADER) == 1 and eye_links(partial) == expected
+
+
+def test_deliverynote_list_is_unchanged(logged_in, user, customer, shipment):
+    note = shipping_services.create_delivery_note(customer, [shipment], user)
+
+    html = logged_in.get(reverse("shipping:deliverynote_list")).content.decode()
+
+    assert note.note_no in html  # 納品書の行は出ている
+    assert HEADER not in html and eye_links(html) == []
+
+
+def test_shipment_modal_shows_summary_and_detail_link(logged_in, order, shipment):
+    response = shipment_modal(logged_in, shipment)
+    html = response.content.decode()
+
+    assert response.status_code == 200 and "<html" not in html
+    for word in (shipment.shipment_no, "作り物の得意先", "PO-77", f"{order.order_no}-1 T-100", "2026年11月5日"):
+        assert word in html, word
+    # 頭の札 (得意先・得意先の注文番号) を土台の項目の上に並べる
+    assert html.index(dt("得意先")) < html.index(dt("得意先の注文番号")) < html.index(dt("出荷番号"))
+    assert dt("数量") in html and dt("出荷日") in html and dt("納品書") in html
+    # 金額は出さない
+    assert "¥" not in html
+    assert f'href="/shipping/{shipment.pk}/">詳細を見る' in html
+    # 出荷には編集の口がある (書く権限のある人に「編集」)
+    assert f'href="/shipping/{shipment.pk}/edit/">' in html and html.count("btn-primary") == 1
+
+
+def test_shipment_modal_without_htmx_goes_to_detail(client, logged_in, shipment):
+    response = logged_in.get(reverse("shipping:shipment_modal", args=[shipment.pk]))
+    assert response.status_code == 302 and response["Location"] == f"/shipping/{shipment.pk}/"
+
+    assert logged_in.get("/shipping/999999/modal/", **HTMX).status_code == 404
+    client.logout()
+    response = client.get(reverse("shipping:shipment_modal", args=[shipment.pk]), **HTMX)
+    assert response.status_code == 302 and "/login/" in response["Location"]
+
+
+def test_shipment_modal_url_and_screen():
+    assert reverse("shipping:shipment_modal", args=[1]) == "/shipping/1/modal/"
+    found = screen("shipping:shipment_modal")
+    assert found.name == "出荷の小窓" and "得意先・得意先の注文番号" in found.usecase

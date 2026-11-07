@@ -132,6 +132,7 @@ LIMITS = {
     "shipping:shipment_bulk_create": 19,
     "shipping:shipment_detail": 26,
     "shipping:shipment_update": 20,
+    "shipping:shipment_modal": 8,  # 出荷の小窓 (依頼書 N346)。11-07 の実測 3 (2 社とも。htmx でない GET = 詳細へ移るだけ) + 5
     "shipping:deliverynote_list": 22,
     "shipping:deliverynote_create": 20,
     "shipping:deliverynote_detail": 25,

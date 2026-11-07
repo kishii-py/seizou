@@ -23,6 +23,7 @@ from django.urls import reverse
 from seizou.core import access
 from seizou.core import reports
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.core.views import BaseModalView
 from seizou.masters.services import active_partners
 
 from . import services
@@ -99,6 +100,25 @@ class ShipmentDetailView(BaseDetailView):
     screen_name = "出荷の詳細"
     screen_help = "出荷の項目。右上の「編集」で数量と出荷日と備考を直せます。発行の納品書に入った出荷は、先に納品書を取り消してから編集します。"
     template_name = "shipping/shipment_detail.html"
+
+
+class ShipmentModalView(BaseModalView):
+    """出荷の小窓。
+
+    使う人: 出荷 / いつ: 出荷の一覧で行の中身を画面を移らずに確かめたいとき / 何のために: 得意先・得意先の注文番号・受注の明細・数量・出荷日・納品書を見る / 次にすること: 要れば「詳細を見る」で出荷の詳細へ
+
+    出荷の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。
+    本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」。形は受注の小窓 OrderModalView と同じ)。
+    中身は shipping/_modal.html (土台の小窓 core/_modal.html に、詳細の頭の札 = 得意先と得意先の注文番号を足した物)。読むだけ。金額は出さない (出荷の表に金額の列が無い)。
+    """
+
+    model = Shipment
+    screen_name = "出荷の小窓"
+    screen_help = "出荷の要点 (得意先・受注の明細・数量・出荷日・納品書) を見るだけの小窓。出荷の一覧の行の目の印から開き、詳細へ移れます。"
+
+    def get_queryset(self):
+        # 一覧 (ShipmentListView.get_queryset) と同じ読み方: 受注と得意先・部品・納品書を 1 回で読む (頭の札と項目の字が読む)。
+        return Shipment.objects.select_related("order_line__order__customer", "order_line__item", "delivery_note")
 
 
 class ShipmentCreateView(BaseFormView):

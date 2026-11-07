@@ -1,0 +1,10 @@
+{% comment %}
+shipping の一覧 (出荷・納品書) の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+出荷の一覧 (shipment_list) は core/_rows.html を include し、1 行を shipping/_shipment_row.html にして、土台に actions_label="要点" を渡して最後の列の見出しを出す
+(行の右端の「要点を見る」の目の印。押すと出荷の小窓。受け渡しの seizou-部品の6案-20261107/指示書.md の 6。受注と指示書の一覧と同じ形)。
+納品書の一覧 (deliverynote_list) は core/_rows.html をそのまま使う (目の印を付けない)。
+この注に、テンプレートに今無い class の字を書かない (Tailwind はテンプレートの注の字も拾う)。
+{% endcomment %}
+{% if request.resolver_match.url_name == "shipment_list" %}{% include "core/_rows.html" with row_template="shipping/_shipment_row.html" actions_label="要点" %}
+{% else %}{% include "core/_rows.html" %}
+{% endif %}
