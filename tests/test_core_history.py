@@ -49,8 +49,9 @@ def item(user):
 
 @pytest.fixture
 def tracked_item(monkeypatch, item):
-    """部品の model に印 (keeps_history) を付けた部品 (その 1 では masters に印が無いため、試験の中だけで付ける)。"""
+    """部品の model に印 (keeps_history) を付けた部品。作った時の行は消して、空の履歴から始める (試験の行の数をそろえるため)。"""
     monkeypatch.setattr(Item, "keeps_history", True, raising=False)
+    ChangeLog.objects.all().delete()
     return item
 
 
@@ -129,12 +130,12 @@ def test_settings_screen_shows_settings_history(logged_in, user):
 
 
 @pytest.mark.django_db
-def test_rollback_leaves_no_history(user, item):
-    before = history.saved_state(item)
+def test_rollback_leaves_no_history(user, tracked_item):
+    before = history.saved_state(tracked_item)
     with pytest.raises(RuntimeError):
         with transaction.atomic():
-            Item.objects.filter(pk=item.pk).update(name="作り物の軸 (直し)")
-            core_services.record_history(item, user, before=before)
+            Item.objects.filter(pk=tracked_item.pk).update(name="作り物の軸 (直し)")
+            core_services.record_history(tracked_item, user, before=before)
             assert ChangeLog.objects.count() == 1
             raise RuntimeError("止まった")
     assert ChangeLog.objects.count() == 0
@@ -173,7 +174,8 @@ def test_history_money_masked_for_people_without_money(settings, client, user, t
 
 
 @pytest.mark.django_db
-def test_detail_without_mark_has_no_history(logged_in, item):
+def test_detail_without_mark_has_no_history(monkeypatch, logged_in, item):
+    monkeypatch.setattr(Item, "keeps_history", False)
     body = logged_in.get(reverse("masters:item_detail", args=[item.pk])).content.decode()
 
     assert 'aria-label="履歴"' not in body
@@ -232,11 +234,11 @@ def test_created_values_are_folded_in_details(logged_in, tracked_item):
 
 
 @pytest.mark.django_db
-def test_unsaved_object_values_do_not_make_rows(user, item):
-    before = history.saved_state(item)
-    item.name = "保存していない名前"
+def test_unsaved_object_values_do_not_make_rows(user, tracked_item):
+    before = history.saved_state(tracked_item)
+    tracked_item.name = "保存していない名前"
 
-    assert core_services.record_history(item, user, before=before) is None
+    assert core_services.record_history(tracked_item, user, before=before) is None
     assert ChangeLog.objects.count() == 0
 
 

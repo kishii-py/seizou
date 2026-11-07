@@ -141,6 +141,8 @@ class Partner(models.Model):
     #: 支払の月を含めて「翌月末」「翌月 25 日」と出すので、「支払の月 翌月」の行と二重になる (初見テスト 5 回目の V98)。
     #: 支払日が空で支払の月だけあるときも、支払日の行が「翌月」と出すので、情報は減らない。一覧の列 (支払日だけ) と同じ見せ方。
     detail_hidden_fields = ("payment_month",)
+    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
 
     class Meta:
         verbose_name = "取引先"
@@ -237,6 +239,11 @@ class Item(models.Model):
         hidden = ("drawing_preview_error", "drawing_page_count")
         return hidden if self.drawing_preview else (*hidden, "drawing_preview")
 
+    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+    #: 変更の履歴に残さない列 (表示用の図面の 3 列。仕組みのための列で、利用者の欄でない。detail_hidden_fields と同じ列)
+    history_skip = ("drawing_preview", "drawing_preview_error", "drawing_page_count")
+
     class Meta:
         verbose_name = "部品"
         verbose_name_plural = "部品"
@@ -321,6 +328,9 @@ class PartnerItem(models.Model):
     partner_part_no = models.CharField("取引先の品番", max_length=35, blank=True, default="")
     partner_item_name = models.CharField("取引先の品名", max_length=100, blank=True)
 
+    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。決め HIST-1 の「部品の取引先と単価」)
+    history_owner = "item"
+
     class Meta:
         verbose_name = "部品の取引先"
         verbose_name_plural = "部品の取引先"
@@ -364,6 +374,9 @@ class Process(models.Model):
     # 使用停止 (N140。部品と取引先の N135 と同じ形): 外すと指示書の発行の候補に出ず、部品の標準の工程の並びからも写さない。
     # 消さないので、今までの指示書の工程はそのまま残る。編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
+
+    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
 
     class Meta:
         verbose_name = "工程"
@@ -445,6 +458,9 @@ class ItemPrice(models.Model):
     quote_date = models.DateField("見積の発行日", null=True, blank=True)
     quote_expires = models.DateField("見積の有効期限", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
+
+    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。決め HIST-1 の「部品の取引先と単価」・C98-1・C98-6)
+    history_owner = "item"
 
     class Meta:
         verbose_name = "単価の行"
@@ -554,6 +570,9 @@ class Holiday(models.Model):
         editable=False,
     )
     created_at = models.DateTimeField("登録した日時", auto_now_add=True)
+
+    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
 
     class Meta:
         verbose_name = "休日"
