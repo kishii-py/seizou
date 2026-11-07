@@ -2,4 +2,5 @@
 同じ取引先から同じ注文番号で前に届いた行の黄の知らせと、その行への link (本体の追記 11。N95 で字を 1 か所にまとめた)。
 include するのは、受信した注文の一覧の行 (connect/_inbox_row.html)・詳細 (connect/inbox_detail.html)・承認の画面 (connect/inbox_accept.html)。
 context: same (connect_tags の same_order_notice が返す辞書 = pk・status・url)。same が無いときは呼ぶ側が include しない。外側の枠と前の空白は呼ぶ側が書く。
-{% endcomment %}<a class="link link-primary" href="{{ same.url }}"><span class="badge badge-soft badge-warning">同じ注文番号の注文が既に届いています (受信した注文 {{ same.pk }}。{{ same.status }})</span></a>
+変更と取消の版の札 (connect_tags の revision_notice が返す辞書 = label・pk・status・url) も同じ形なので、same に渡して同じ断片で出す。字は label があればその字。
+{% endcomment %}<a class="link link-primary" href="{{ same.url }}"><span class="badge badge-soft badge-warning">{% if same.label %}{{ same.label }}{% else %}同じ注文番号の注文が既に届いています{% endif %} (受信した注文 {{ same.pk }}。{{ same.status }})</span></a>

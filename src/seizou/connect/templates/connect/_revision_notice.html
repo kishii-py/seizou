@@ -1,6 +1,0 @@
-{% comment %}
-変更と取消の版 (中小企業共通 EDI の注文変更の方式 2) の黄の札と、その行への link。形は connect/_same_order_notice.html と同じ。
-include するのは、受信した注文の一覧の行 (connect/_inbox_row.html) と詳細 (connect/inbox_detail.html)。
-context: revision (connect_tags の revision_notice が返す辞書 = label・pk・status・url)。変更の版の行は元の行 (第 1 版)、第 1 版の行は未処理の後の版を指す。
-revision が無いときは呼ぶ側が include しない。外側の枠と前の空白は呼ぶ側が書く。
-{% endcomment %}<a class="link link-primary" href="{{ revision.url }}"><span class="badge badge-soft badge-warning">{{ revision.label }} (受信した注文 {{ revision.pk }}。{{ revision.status }})</span></a>
