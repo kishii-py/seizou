@@ -431,6 +431,7 @@ def test_money_actions_follow_decisions_6_7_8():
         "purchasing.change_purchase_order",
         "purchasing.cancel_purchase_order",
         "shipping.create_delivery_note",
+        "shipping.cancel_delivery_note",
     } <= money
     assert not money & {
         "masters.create_item",
