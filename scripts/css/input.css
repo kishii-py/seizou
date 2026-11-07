@@ -546,3 +546,9 @@ html:has(.seizou-save-row) {
   background: color-mix(in oklab, var(--color-primary) 14%, transparent);
   color: var(--color-primary);
 }
+
+/* 画面の頭の白い帯 (core/base.html の data-screen-head。本人の決め 11-07 17:0x = 形 A)。題の無い画面で帯の中に要素が 1 つも無いときは帯ごと隠す
+   (block heading が空でも白い帯の余白と線だけが出ないようにする)。中身の無い帯は :has(*) で見分ける (空白の字は数えない)。 */
+[data-screen-head]:not(:has(*)) {
+  display: none;
+}

@@ -8,7 +8,7 @@
 {# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。土台の「編集」は開いた詳細の道を ?next= で渡す (編集の画面の「キャンセル」で詳細へ戻る)。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
 {% with crumb_name=crumb|default:list_name %}
 {% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/60" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/60" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
-<div class="mb-6 flex flex-wrap items-start justify-between gap-4" data-detail-head>
+<div class="mb-4 flex flex-wrap items-start justify-between gap-4" data-detail-head>
   <div class="min-w-48 flex-1">
     {# 状態の印の無い詳細は、題と「?」を折り返さない組 (min-w-0) に入れ、「?」だけが次の行へ落ちないようにする (題は truncate で縮む。初見テスト R5 の r5-a-08・r5-b-10。N266)。block heading_badge は状態の枝にだけ置くので、状態 (choices つきの status) の無い model の子が heading_badge を上書きしても出ない (今上書きする請求書と指示書は status を持つ)。 #}
     <div class="flex flex-wrap items-center gap-2">

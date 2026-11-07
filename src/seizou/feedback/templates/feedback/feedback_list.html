@@ -6,8 +6,8 @@
 {# タブの帯 (依頼書 N321。feedback/_tabs.html): いちばん上に出す。GET の tab が issues (「みんなの Issue」のタブ) のときは、見出しの行の GitHub のボタンと土台の一覧 (絞り込みと表) を描かず、#issues の節だけを描く。 #}
 {# そのときは探す form に隠しの tab を足し、探した後もタブを保つ (GET の form は action の ? の後ろを欄の値で置き換えるので、隠しの欄が要る)。tab が無いときは今までどおり (表の下に #issues の節)。 #}
 {% block actions %}{% if request.GET.tab != "issues" %}{% feedback_github search=False as github %}{% if github.can_manage %}{% if github.status.connected %}<form method="post" action="{% url 'feedback:github_sync' %}">{% csrf_token %}<button id="feedback-github-sync" type="submit" class="btn btn-outline border-base-300">{% icon "download" "size-4" %}GitHub の状態を取り込む</button></form>{% endif %}<a id="feedback-github-settings" class="btn btn-outline border-base-300" href="{% url 'feedback:github_setup' %}">{% icon "settings" "size-4" %}GitHub の設定</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
+{% block heading_tabs %}{% include "feedback/_tabs.html" %}{% endblock %}
 {% block content %}{% feedback_github as github %}
-{% include "feedback/_tabs.html" %}
 {% if request.GET.tab != "issues" %}{{ block.super }}{% endif %}
 <section id="issues" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="issues-title">
   <h2 id="issues-title" class="text-lg font-bold">GitHub の Issue を探す</h2>
