@@ -21,6 +21,8 @@ from django.db import models
 
 from seizou.connect import services
 from tests.test_connect_acceptance import ACCEPTANCE_KEYS
+from tests.test_connect_chat import CHAT_KEYS
+from tests.test_connect_chat_files import CHAT_FILE_KEYS
 from tests.test_connect_reply import REPLY_KEYS, REPLY_LINE_KEYS
 from tests.test_connect_send import LINE_KEYS, ORDER_KEYS
 from tests.test_connect_shipping_notice import NOTICE_KEYS
@@ -37,6 +39,7 @@ KIND_KEYS = {
     "order_reply": (REPLY_KEYS, {"lines": REPLY_LINE_KEYS}),
     "shipping_notice": (NOTICE_KEYS, {}),
     "acceptance": (ACCEPTANCE_KEYS, {}),
+    "chat_message": (CHAT_KEYS | {"supplier", "attachments"}, {"attachments": CHAT_FILE_KEYS}),
 }
 #: 送り手の会社の辞書の鍵 (buyer か supplier)。注文の supplier だけは取引先マスターの {code, name} (tests/test_connect_send.py と同じ)
 PARTY_KEYS = ("buyer", "supplier")
