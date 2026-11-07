@@ -4,6 +4,8 @@
 {% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、世話役の印 (info.can_manage) と、削除の印 (info.can_delete) と、GitHub の状態 (info.github)
 {% feedback_github as github %}        GitHub の口の状態と世話役の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。依頼書 N185)
                                        と、GitHub でログインしてつなぐの待ち・Client ID があるか・入力の形 (依頼書 N320)
+                                       と、みんなの Issue の行の自社の印 (marks と、詳細へ移れる件の pk の openable。依頼書 N323)
+{{ github.marks|issue_mark:issue.number }}  みんなの Issue の行の自社の印 ({"sent", "me_too"} か None。依頼書 N323)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_filter as filter %}        一覧の絞り込みの選択肢と今の値
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
@@ -76,11 +78,15 @@ def feedback_github(context):
     """GitHub の口の状態。{"status": services.github_status() (トークンの値は無い), "can_manage": 世話役か,
     "searched": 皆の Issue を探したか, "q": 探した言葉, "search": services.search_issues の結果か None,
     "device": GitHub でログインしてつなぐの待ち (services.github_device_state。device_code は無い) か None,
-    "client_id": 作品の Client ID があるか, "device_form": 「GitHub でログインしてつなぐ」の入力の形 (GithubDeviceForm)}。
+    "client_id": 作品の Client ID があるか, "device_form": 「GitHub でログインしてつなぐ」の入力の形 (GithubDeviceForm),
+    "marks": みんなの Issue の行の自社の印 (services.our_issue_marks。探したときだけ。ほかは空の辞書),
+    "openable": 自社の印の件のうち、見ている人が詳細を開ける件の pk の集まり (世話役は全部、ほかの人は自分の書いた件)}。
 
     皆の Issue を探す (GitHub を読む) のは、GET に issue_q があるときだけ (「探す」を押したとき。空の言葉なら新しい順)。
     一覧を開くたびには GitHub を読まない。request が無ければ世話役でなく、探さず、待ちは None。
     入力の形をここで渡すのは、部品の画面が R15 で get_context_data を上書きできないため (依頼書 N320)。
+    自社の印 (依頼書 N323) は世話役でない人にも出す (印は会社の物)。詳細へ移る link は openable の件だけにする
+    (詳細の画面は世話役でない人に自分の書いた件だけを開くので、ほかの人の件の link は 404 になるため)。
     """
     request = context.get("request")
     user = getattr(request, "user", None) if request is not None else None
@@ -97,7 +103,29 @@ def feedback_github(context):
         "device": services.github_device_state(session) if session is not None else None,
         "client_id": bool(github.client_id()),
         "device_form": GithubDeviceForm(),
+        **_issue_marks(user, searched),
     }
+
+
+def _issue_marks(user, searched) -> dict:
+    """みんなの Issue の行の自社の印と、見ている人が詳細を開ける件の pk (依頼書 N323)。探していなければ両方とも空。読むだけ。"""
+    if not searched:
+        return {"marks": {}, "openable": set()}
+    marks = services.our_issue_marks()
+    pks = {pk for mark in marks.values() for pk in mark.values() if pk is not None}
+    if user is not None and services.can_manage(user):
+        openable = pks
+    elif getattr(user, "pk", None) is not None and pks:
+        openable = set(Feedback.objects.filter(pk__in=pks, created_by_id=user.pk).values_list("pk", flat=True))
+    else:
+        openable = set()
+    return {"marks": marks, "openable": openable}
+
+
+@register.filter
+def issue_mark(marks, number):
+    """みんなの Issue の行の自社の印 ({"sent": pk か None, "me_too": pk か None})。marks に番号が無ければ None (依頼書 N323)。"""
+    return marks.get(number) if isinstance(marks, dict) else None
 
 
 @register.simple_tag(takes_context=True)

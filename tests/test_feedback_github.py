@@ -64,6 +64,7 @@ class FakeGithub:
             201,
             {"id": 9001, "html_url": f"{ISSUE_URL}#issuecomment-9001", "created_at": "2026-11-07T01:00:00Z", "user": {"login": "example-feedback-bot"}},
         )
+        self.reaction = Answer(201, {"id": 1, "content": "+1"})
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
@@ -85,6 +86,8 @@ class FakeGithub:
             return self.token
         if url.endswith("/comments"):
             return self.comment_created
+        if url.endswith("/reactions"):
+            return self.reaction
         return self.created
 
 
@@ -1481,3 +1484,278 @@ def test_mark_reply_sent_sets_only_sent_at(client, manager, plain, no_http):
     assert "返事を送った状態にしました。" in html_of(client.get(f"/feedback/{row.pk}/"))
     second.refresh_from_db()
     assert second.sent_at is not None and second.github_id is None
+
+
+# ---------------------------------------------------------------- 送る前に直せる (依頼書 N323)
+
+#: 世話役が伏せ字の「〇〇」のうち「1円」だけを戻した Issue の文 (単価は伏せたまま)
+EDITED = "# 合計が 1円 ずれる\n\n- 種類: 不具合\n\n## 実際の動き\n請求の合計が 1円 ずれる。単価は 〇〇。\n"
+
+
+def test_send_edited_text_as_is(manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+
+    url = services.send_to_github(row, manager, text=f"  {EDITED}  ")
+
+    assert url == ISSUE_URL
+    method, api, kwargs = fake.calls[-1]
+    assert (method, api) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues")
+    assert kwargs["json"]["title"] == "合計が 1円 ずれる"
+    assert kwargs["json"]["body"] == EDITED.strip()
+    assert "請求の合計が 1円 ずれる。" in kwargs["json"]["body"]
+    assert kwargs["json"]["labels"] == ["from-seizou", "不具合"]
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("sent", ISSUE_URL)
+
+
+@pytest.mark.parametrize(
+    "text, words",
+    [("", "Issue の文が空です。"), (" \n \n", "Issue の文が空です。"), ("# \n本文だけ", "1 行目に、題を")],
+)
+def test_send_refuses_empty_or_titleless_text_without_http(manager, plain, fake, text, words):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+    calls = len(fake.calls)
+
+    with pytest.raises(ValueError, match=words) as caught:
+        services.send_to_github(row, manager, text=text)
+
+    assert str(caught.value).startswith("送れません。")
+    assert len(fake.calls) == calls
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("confirmed", "")
+
+
+def test_send_endpoint_sends_edited_text(client, manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+    client.force_login(manager)
+
+    response = client.post(f"/feedback/{row.pk}/github/", {"issue_text": EDITED})
+
+    assert response.status_code == 302 and response["Location"] == f"/feedback/{row.pk}/"
+    assert fake.calls[-1][2]["json"]["body"] == EDITED.strip()
+    row.refresh_from_db()
+    assert row.status == "sent"
+
+    empty = make(plain, "空の文", status="confirmed")
+    calls = len(fake.calls)
+    response = client.post(f"/feedback/{empty.pk}/github/", {"issue_text": " "})
+    assert response.status_code == 302 and len(fake.calls) == calls
+    assert "送れません。Issue の文が空です。" in html_of(client.get(f"/feedback/{empty.pk}/"))
+    empty.refresh_from_db()
+    assert empty.status == "confirmed"
+
+
+# ---------------------------------------------------------------- うちもと自社の印 (依頼書 N323)
+
+#: みんなの Issue の作り物の本文 (export_markdown の形。種類は不具合)
+ME_TOO_BODY = "- 種類: 不具合\n- 画面: 受注 (orders:order_list)\n\n## 実際の動き\n請求の合計が 〇〇 ずれる。"
+#: 既定の送り先 (kishii-py/seizou) の Issue の URL の頭
+SEIZOU_ISSUES = "https://github.com/kishii-py/seizou/issues/"
+
+
+@pytest.fixture
+def uchimo(fake):
+    """みんなの Issue の作り物 (送り先は既定の kishii-py/seizou)。
+
+    #1 は不具合、#2 は種類の行が無い物、#10〜#30 は古い物 (#10〜#12 は新しい順の 20 件の外)。
+    """
+    rows = [
+        issue(1, "請求の合計が 1 ずれる", ME_TOO_BODY, updated="2026-11-06T00:00:00Z", plus=2),
+        issue(2, "受注の CSV に列を足したい", "列を足したい", updated="2026-11-05T00:00:00Z"),
+    ]
+    rows += [issue(number, f"古い件 {number}", updated=f"2026-10-{number - 9:02d}T00:00:00Z") for number in range(10, 31)]
+    fake.listing = Answer(200, rows)
+    return fake
+
+
+def reactions(fake):
+    """👍 を付けた POST の控え。"""
+    return [call for call in fake.calls if call[0] == "POST" and call[1].endswith("/reactions")]
+
+
+def listings(fake):
+    """Issue の並びを読んだ GET の控え。"""
+    return [call for call in fake.calls if call[0] == "GET" and call[1].endswith("/issues")]
+
+
+def test_add_thumbs_up_posts_plus_one(fake):
+    assert github.add_thumbs_up(TOKEN, "example-owner/example-repo", 7) == {"created": True}
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues/7/reactions")
+    assert kwargs["json"] == {"content": "+1"}
+    assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    assert kwargs["timeout"] == github.TIMEOUT
+
+    fake.reaction = Answer(200, {"id": 1, "content": "+1"})
+    assert github.add_thumbs_up(TOKEN, "example-owner/example-repo", 7) == {"created": False}
+
+    fake.reaction = Answer(403, {"message": "Forbidden"})
+    with pytest.raises(github.GithubError) as caught:
+        github.add_thumbs_up(TOKEN, "example-owner/example-repo", 7)
+    assert str(caught.value) == github.MESSAGE_FORBIDDEN
+    assert TOKEN not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "body, kind",
+    [
+        ("- 種類: 不具合\n- 画面: 指定なし", "bug"),
+        ("前の行\r\n- 種類: 決まりの反例\r\n", "counter"),
+        ("- 種類: 知らない種類", "common"),
+        ("種類の行が無い", "common"),
+        (None, "common"),
+    ],
+)
+def test_issue_kind(body, kind):
+    assert services.issue_kind(body) == kind
+
+
+def test_me_too_first_person_adds_thumbs_up_and_sent_row(manager, plain, uchimo):
+    connect(manager, uchimo, repo="kishii-py/seizou")
+    services.search_issues("")
+    assert len(listings(uchimo)) == 1
+
+    result = services.me_too(1, plain)
+
+    assert (result["thumbs_up"], result["connected"]) == (True, True)
+    assert [call[1] for call in reactions(uchimo)] == ["https://api.github.com/repos/kishii-py/seizou/issues/1/reactions"]
+    assert len(listings(uchimo)) == 1
+    row = result["feedback"]
+    row.refresh_from_db()
+    assert (row.status, row.sent_url, row.kind, row.title) == ("sent", f"{SEIZOU_ISSUES}1", "bug", "請求の合計が 1 ずれる")
+    assert row.problem == "同じ困りごとの Issue #1 に「うちも」を付けた"
+    assert row.created_by == plain
+    # 👍 を付けた後は控えを消す (次に探すと GitHub を読み直す)。
+    services.search_issues("")
+    assert len(listings(uchimo)) == 2
+
+
+def test_me_too_second_person_in_company_keeps_one_thumbs_up(manager, plain, uchimo):
+    connect(manager, uchimo, repo="kishii-py/seizou")
+    services.me_too(1, plain)
+    other = get_user_model().objects.create_user("other", password="pass-for-tests-only")
+    thumbs = len(reactions(uchimo))
+
+    result = services.me_too(1, other)
+
+    assert len(reactions(uchimo)) == thumbs == 1
+    assert (result["thumbs_up"], result["connected"]) == (False, True)
+    assert (result["feedback"].status, result["feedback"].created_by) == ("sent", other)
+
+    # 自社が送った件のある Issue も、👍 を付けずに件だけ残す。種類の行が無い本文は要望。
+    make(plain, "自社が送った件", status="sent", sent_url=f"{SEIZOU_ISSUES}2")
+    result = services.me_too(2, other)
+    assert len(reactions(uchimo)) == thumbs and result["thumbs_up"] is False
+    assert (result["feedback"].kind, result["feedback"].sent_url) == ("common", f"{SEIZOU_ISSUES}2")
+
+
+def test_me_too_same_person_twice_is_refused(manager, plain, uchimo):
+    connect(manager, uchimo, repo="kishii-py/seizou")
+    services.me_too(1, plain)
+    thumbs = len(reactions(uchimo))
+
+    with pytest.raises(ValueError, match="保存できません。この Issue には、あなたの「うちも」が既にあります。"):
+        services.me_too(1, plain)
+
+    assert len(reactions(uchimo)) == thumbs == 1
+    assert Feedback.objects.count() == 1
+
+
+def test_me_too_without_connection_leaves_draft_without_thumbs_up(plain, uchimo):
+    result = services.me_too(10, plain)
+
+    assert not reactions(uchimo)
+    assert (result["thumbs_up"], result["connected"]) == (False, False)
+    row = result["feedback"]
+    assert (row.status, row.sent_url, row.title) == ("draft", "", "古い件 10")
+    assert row.problem == (
+        f"同じ困りごとの Issue #10 がある ({SEIZOU_ISSUES}10)。GitHub とつないでいないので 👍 は付けていない。世話役がつないだ後に付ける"
+    )
+    with pytest.raises(ValueError, match="既にあります"):
+        services.me_too(10, plain)
+    assert services.our_issue_marks() == {}
+
+
+def test_me_too_refuses_unknown_number_and_anonymous(plain, uchimo):
+    from django.contrib.auth.models import AnonymousUser
+
+    with pytest.raises(ValueError, match="保存できません。ログインしてから押してください。"):
+        services.me_too(1, AnonymousUser())
+    with pytest.raises(ValueError, match="保存できません。Issue #99 が送り先に見つかりません。"):
+        services.me_too(99, plain)
+    for bad in (0, -1, "1", True, None):
+        with pytest.raises(ValueError, match="保存できません。Issue の番号は 1 以上の整数です。"):
+            services.me_too(bad, plain)
+    assert Feedback.objects.count() == 0
+    assert not reactions(uchimo)
+
+
+def test_me_too_github_refusal_and_unreadable_list_make_no_row(manager, plain, uchimo):
+    connect(manager, uchimo, repo="kishii-py/seizou")
+    uchimo.reaction = Answer(403, {"message": "Forbidden"})
+    with pytest.raises(ValueError) as caught:
+        services.me_too(1, plain)
+    assert str(caught.value) == "送れません。" + github.MESSAGE_FORBIDDEN
+    assert TOKEN not in str(caught.value)
+
+    cache.clear()
+    uchimo.listing = Answer(500, {})
+    with pytest.raises(ValueError, match="保存できません。GitHub の Issue を読めませんでした"):
+        services.me_too(2, plain)
+    assert Feedback.objects.count() == 0
+
+
+def test_our_issue_marks_shape(manager, plain, uchimo):
+    connect(manager, uchimo, repo="kishii-py/seizou")
+    sent = make(plain, "自社が送った件", status="sent", sent_url=f"{SEIZOU_ISSUES}1")
+    fixed = make(plain, "直した件", status="fixed", sent_url=f"{SEIZOU_ISSUES}2")
+    first = services.me_too(1, manager)["feedback"]
+    services.me_too(1, get_user_model().objects.create_user("other", password="pass-for-tests-only"))
+    only = services.me_too(10, plain)["feedback"]
+    make(plain, "ほかの送り先", status="sent", sent_url="https://github.com/example-owner/example-repo/issues/1")
+    make(plain, "下書き")
+
+    assert services.our_issue_marks() == {
+        1: {"sent": sent.pk, "me_too": first.pk},
+        2: {"sent": fixed.pk, "me_too": None},
+        10: {"sent": None, "me_too": only.pk},
+    }
+
+
+# ---------------------------------------------------------------- 閉じた理由 (依頼書 N323)
+
+
+def test_list_issues_returns_reason_closed_at_labels_and_milestone(fake):
+    fake.listing = Answer(
+        200,
+        [
+            issue(
+                5,
+                "直った件",
+                state="closed",
+                state_reason="completed",
+                closed_at="2026-11-06T03:00:00Z",
+                labels=[{"name": "from-seizou"}, {"name": "不具合"}, "形の違う印"],
+                milestone={"title": "0.1.1"},
+            ),
+            issue(6, "開いた件", state_reason=None, closed_at=None, labels=[], milestone=None),
+            issue(7, "鍵の無い件"),
+        ],
+    )
+
+    rows = github.list_issues("example-owner/example-repo")
+
+    keys = {"number", "title", "body", "state", "html_url", "updated_at", "comments", "thumbs_up"}
+    assert all(set(row) == keys | {"state_reason", "closed_at", "labels", "milestone"} for row in rows)
+    first = rows[0]
+    assert (first["state_reason"], first["closed_at"], first["labels"], first["milestone"]) == (
+        "completed",
+        "2026-11-06T03:00:00Z",
+        ["from-seizou", "不具合"],
+        "0.1.1",
+    )
+    for row in rows[1:]:
+        assert (row["state_reason"], row["closed_at"], row["labels"], row["milestone"]) == ("", "", [], "")

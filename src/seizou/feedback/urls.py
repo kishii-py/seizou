@@ -6,6 +6,7 @@ GitHub の口 (依頼書 N185): 画面 github_setup (GitHub とつなぐ) と、
 github_setup は sensitive_post_parameters で包み、開発の設定 (DEBUG) の誤りの画面と誤りの記録に、トークンの欄の値を出さない。
 GitHub でログインしてつなぐ (依頼書 N320): 口 github_device_start (始める)・github_device_poll (待ちの札が聞く)・github_device_cancel (やめる)。
 Issue の返事 (依頼書 N324): 口 reply_add (書く)・reply_send (GitHub に送る)・reply_mark_sent (手で写した後に送ったにする)。
+「うちも」(依頼書 N323): 口 me_too (みんなの Issue の番号。ログインした全員が押せる)。
 """
 
 from django.urls import path
@@ -33,6 +34,7 @@ urlpatterns = [
     path("github/device/", views.github_device_start, name="github_device_start"),
     path("github/device/poll/", views.github_device_poll, name="github_device_poll"),
     path("github/device/cancel/", views.github_device_cancel, name="github_device_cancel"),
+    path("issues/<int:number>/me-too/", views.me_too, name="me_too"),
     path("<int:pk>/github/", views.github_send, name="github_send"),
     path("ask/", views.ask, name="ask"),
     path("reset/", views.reset, name="reset"),

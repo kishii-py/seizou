@@ -17,7 +17,11 @@
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
 - タブの帯 (依頼書 N321): 送る画面と一覧の上に「送る」「送った一言」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
   新しい URL は足さず、「みんなの Issue」は一覧の ?tab=issues で、表を描かないので一覧の get_queryset は空を返す。
+- 「うちも」の口 (依頼書 N323): me_too。GitHub の口の中でこの口だけはログインした全員が押せる (👍 には文が入らないため)。
+  通ると、services が会社のトークンで Issue に 👍 を付け、押した人の件を残す。
 """
+
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -214,10 +218,13 @@ def github_disconnect(request):
 @login_required
 @require_POST
 def github_send(request, pk):
-    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。
+
+    POST の issue_text は、世話役が詳細の欄で伏せ字を戻した Issue の文 (依頼書 N323)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
+    """
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
-        url = services.send_to_github(feedback, request.user)
+        url = services.send_to_github(feedback, request.user, text=request.POST.get("issue_text"))
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
@@ -310,10 +317,42 @@ def github_device_cancel(request):
     return _back_to_github_setup()
 
 
+def _me_too_notice(request, number, result, *, chat_text="") -> None:
+    """「うちも」が通った後の知らせ。つないだ会社は緑、つないでいない会社は黄 (下書きで残り、世話役の手が要るため。CLAUDE.md の知らせの強さの 3)。"""
+    if result["connected"]:
+        messages.success(request, f"Issue #{number} に「うちも」を付けました。{chat_text}")
+    else:
+        messages.warning(request, f"Issue #{number} を同じ困りごととして下書きに残しました (GitHub とつないでいないので 👍 は付けていません)。")
+
+
+@login_required
+@require_POST
+def me_too(request, number):
+    """みんなの Issue の 1 件に「うちも」を付ける (ログインした全員。依頼書 N323)。通れば知らせ、断られたら赤の知らせで、一覧の Issue の節へ戻る。
+
+    GitHub の口の中でこの口だけは世話役でなくても押せる。訳: 👍 には文が入らず、取引先の名前や金額が外へ出ないため。
+    書くのは services の me_too だけ (押した本人の件を 1 つ作る。HTTP は services が transaction.atomic の外で送る)。
+    戻り先は一覧の ?tab=issues と、POST の隠しの issue_q (あれば。探した結果を出し直し、行の「うちも済み」を見せる) と #issues。
+    """
+    try:
+        result = services.me_too(number, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        _me_too_notice(request, number, result)
+    params = {"tab": "issues"}
+    if "issue_q" in request.POST:
+        params["issue_q"] = request.POST["issue_q"]
+    return HttpResponseRedirect(f"{reverse('feedback:feedback_list')}?{urlencode(params)}#issues")
+
+
 @login_required
 @require_POST
 def ask(request):
-    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。"""
+    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。
+
+    AI が似た Issue に「うちも」を付けたら (me_too_issue の横取り。依頼書 N323)、知らせを積んでその件の詳細へ移す。
+    """
     if not request.headers.get("HX-Request"):
         return HttpResponseBadRequest(_HTMX_ONLY)
     result = chat.answer(
@@ -322,6 +361,12 @@ def ask(request):
         user=request.user,
         screen=request.POST.get("screen", ""),
     )
+    if result.get("me_too"):
+        # AI の聞き取りで「うちも」を付けた (依頼書 N323): 知らせを積み、中身の無い 200 でその件の詳細へ移す (下書きでないので編集の画面へは移さない)。
+        _me_too_notice(request, result["number"], result, chat_text="あなたの件として残しました。")
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = reverse("feedback:feedback_detail", args=[result["feedback"].pk])
+        return response
     feedback = result["feedback"]
     if feedback is not None:
         messages.info(request, chat.DRAFT_READY_MESSAGE)

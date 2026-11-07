@@ -33,6 +33,7 @@ __all__ = [
     "LOGIN_ENV",
     "REPO_ENV",
     "TOKEN_ENV",
+    "add_thumbs_up",
     "check_repo",
     "check_token",
     "client_id",
@@ -321,6 +322,8 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
 
     pull request の行 (pull_request の鍵がある物) は外す。1 件 = {"number", "title", "body" (先頭 BODY_CHARS 字), "state",
     "html_url", "updated_at", "comments", "thumbs_up" (reactions の +1)}。
+    依頼書 N323 で 4 つを足した: "state_reason" (閉じた理由 completed・not_planned・duplicate・reopened。無ければ空の字)・
+    "closed_at" (閉じた日時の字か空の字)・"labels" (印の名前の並び)・"milestone" (マイルストーンの名前 = 直る版。無ければ空の字)。
     """
     import requests
 
@@ -343,6 +346,9 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
         if not isinstance(item, dict) or "pull_request" in item:
             continue
         reactions = item.get("reactions") if isinstance(item.get("reactions"), dict) else {}
+        labels = item.get("labels") if isinstance(item.get("labels"), list) else []
+        milestone = item.get("milestone")
+        milestone_title = milestone.get("title") if isinstance(milestone, dict) else ""
         rows.append(
             {
                 "number": item.get("number"),
@@ -353,6 +359,10 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
                 "updated_at": item.get("updated_at") or "",
                 "comments": item.get("comments") or 0,
                 "thumbs_up": reactions.get("+1") or 0,
+                "state_reason": item.get("state_reason") or "",
+                "closed_at": item.get("closed_at") or "",
+                "labels": [label["name"] for label in labels if isinstance(label, dict) and isinstance(label.get("name"), str)],
+                "milestone": milestone_title if isinstance(milestone_title, str) else "",
             }
         )
     return rows
@@ -428,6 +438,30 @@ def create_comment(token: str, repo: str, number: int, body: str) -> dict:
         raise GithubError("GitHub の返事に返事の番号と URL がありませんでした。GitHub の Issue に返事が出たかを確かめてください。")
     user = data.get("user") if isinstance(data.get("user"), dict) else {}
     return {"id": number_id, "html_url": url, "created_at": data.get("created_at") or "", "login": user.get("login") or ""}
+
+
+def add_thumbs_up(token: str, repo: str, number: int) -> dict:
+    """Issue に 👍 を付ける (POST /repos/{owner}/{repo}/issues/{number}/reactions に {"content": "+1"}。依頼書 N323)。
+
+    返す物は {"created": 初めて付けたか}。GitHub は初めてなら 201、同じ口座の 👍 が既にあれば 200 で既にある物を返す (どちらも成功)。
+    ほかの番号は日本語の GithubError (_refused)。つながらなければ MESSAGE_UNREACHABLE。呼び手は transaction.atomic の外から呼ぶ (R17)。
+    """
+    import requests
+
+    try:
+        answer = requests.post(
+            f"{API}/repos/{check_repo(repo)}/issues/{int(number)}/reactions",
+            json={"content": "+1"},
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    if answer.status_code == 201:
+        return {"created": True}
+    if answer.status_code == 200:
+        return {"created": False}
+    raise _refused(answer.status_code)
 
 
 # ---- OAuth のデバイスの認証 (依頼書 N320) ----

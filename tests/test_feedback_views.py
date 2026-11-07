@@ -5,6 +5,7 @@ _ask_claude を「呼ばれたら AssertionError」に差し替える)。画面�
 """
 
 import re
+from urllib.parse import urlencode
 
 import pytest
 import requests
@@ -12,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.urls import reverse
+from django.utils.html import escape
 
 from seizou.assistant import services as assistant_services
 from seizou.core import access
@@ -19,6 +21,7 @@ from seizou.feedback import services
 from seizou.feedback import github
 from seizou.feedback.models import Feedback
 from seizou.feedback.templatetags import feedback_tags
+from tests import test_feedback_github as gh_tests
 from tests.test_assistant_services import refuse_api
 from tests.test_feedback_github import Answer, FakeGithub, issue
 
@@ -739,3 +742,182 @@ def test_reply_urls():
     assert reverse("feedback:reply_add", args=[1]) == "/feedback/1/replies/"
     assert reverse("feedback:reply_send", args=[2]) == "/feedback/replies/2/send/"
     assert reverse("feedback:reply_mark_sent", args=[2]) == "/feedback/replies/2/sent/"
+
+
+# ---- 送る前に直せる・うちも・自社の印・閉じた理由 (依頼書 N323。決め 11-07 09:0x〜10:1x) ----
+
+GH_KEYS = (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV)
+
+
+@pytest.fixture
+def gh(settings, tmp_path, monkeypatch):
+    """GitHub の作り物 (requests.get・requests.post を差し替える。本物へは送らない)。
+
+    .env は一時の置き場で、3 つの鍵と django の cache は前後で戻す。つないだ形は connect_env が os.environ に置く (.env が無ければ os.environ を読む)。
+    """
+    settings.SEIZOU_ENV_FILE = tmp_path / ".env"
+    for key in GH_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    cache.clear()
+    fake = gh_tests.FakeGithub()
+    monkeypatch.setattr(requests, "get", fake.get)
+    monkeypatch.setattr(requests, "post", fake.post)
+    yield fake
+    cache.clear()
+
+
+def connect_env(monkeypatch, repo="kishii-py/seizou"):
+    """つないだ会社にする (作り物のトークンと送り先)。"""
+    monkeypatch.setenv(github.TOKEN_ENV, gh_tests.TOKEN)
+    monkeypatch.setenv(github.REPO_ENV, repo)
+
+
+def test_detail_send_form_has_issue_text_only_for_manager_connected_confirmed(client, plain, manager, gh, monkeypatch):
+    row = make(plain)
+    services.mark_confirmed(row, manager)
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(manager)
+    assert 'name="issue_text"' not in html_of(client.get(detail))
+
+    connect_env(monkeypatch)
+    html = html_of(client.get(detail))
+    assert html.count('name="issue_text"') == 1
+    area = re.search(r'<textarea id="feedback-issue-edit" name="issue_text"[^>]*>(.*?)</textarea>', html, re.S)
+    assert area is not None and area.group(1) == escape(services.export_markdown(row))
+    assert "伏せ字 (〇〇) のうち、外に出してよい数や名前だけを戻してから送ります。単価や取引先の名前は伏せたままにします。" in html
+    assert html.index('id="feedback-issue-edit"') < html.index("GitHub に送る</button>") < html.index("送ったにする</button>")
+    assert 'id="feedback-issue" readonly' in html
+
+    draft = make(plain, "下書きのまま")
+    assert 'name="issue_text"' not in html_of(client.get(f"/feedback/{draft.pk}/"))
+
+    client.force_login(plain)
+    assert 'name="issue_text"' not in html_of(client.get(detail))
+
+
+ME_TOO_URL = "/feedback/issues/1/me-too/"
+
+
+def one_issue(fake):
+    """みんなの Issue の作り物の 1 件 (#1。本文は不具合)。"""
+    fake.listing = gh_tests.Answer(200, [gh_tests.issue(1, "請求の合計が 1 ずれる", gh_tests.ME_TOO_BODY, plus=2)])
+
+
+def test_me_too_endpoint_returns_to_issues_with_green_notice(client, plain, gh, monkeypatch):
+    one_issue(gh)
+    connect_env(monkeypatch)
+    client.force_login(plain)
+
+    response = client.post(ME_TOO_URL, {"issue_q": "請求 ずれる"})
+
+    assert response.status_code == 302
+    assert response["Location"] == "/feedback/?" + urlencode({"tab": "issues", "issue_q": "請求 ずれる"}) + "#issues"
+    row = Feedback.objects.get()
+    assert (row.status, row.created_by, row.sent_url) == ("sent", plain, "https://github.com/kishii-py/seizou/issues/1")
+    assert len(gh_tests.reactions(gh)) == 1
+    html = html_of(client.get(response["Location"]))
+    assert "成功しました。" in html and "Issue #1 に「うちも」を付けました。" in html
+
+    response = client.post(ME_TOO_URL)
+    assert response["Location"] == "/feedback/?tab=issues#issues"
+    html = html_of(client.get(response["Location"]))
+    assert "失敗しました。" in html and "保存できません。この Issue には、あなたの「うちも」が既にあります。" in html
+    assert Feedback.objects.count() == 1
+    assert client.get(ME_TOO_URL).status_code == 405
+
+
+def test_me_too_endpoint_without_connection_leaves_draft_with_yellow_notice(client, plain, gh):
+    one_issue(gh)
+    client.force_login(plain)
+
+    response = client.post(ME_TOO_URL, {"issue_q": ""})
+
+    assert response["Location"] == "/feedback/?tab=issues&issue_q=#issues"
+    assert not gh_tests.reactions(gh)
+    assert Feedback.objects.get().status == "draft"
+    html = html_of(client.get(response["Location"]))
+    assert "確認してください。" in html
+    assert "Issue #1 を同じ困りごととして下書きに残しました (GitHub とつないでいないので 👍 は付けていません)。" in html
+
+    client.logout()
+    response = client.post(ME_TOO_URL)
+    assert response.status_code == 302 and "/login/" in response["Location"]
+    assert Feedback.objects.count() == 1
+
+
+def issue_rows(html) -> dict:
+    """みんなの Issue の節の行を {番号: 行の HTML} にする。"""
+    section = html[html.index('<section id="issues"') :]
+    rows = re.findall(r"<tr>.*?</tr>", section, re.S)
+    return {int(number): row for row in rows for number in re.findall(r'href="https://github.com/kishii-py/seizou/issues/(\d+)"', row)}
+
+
+def three_issues(fake):
+    """みんなの Issue の作り物の 3 件 (#1 は自社が送った件の Issue、#2 は「うちも」を押す Issue、#3 は印の無い Issue)。"""
+    fake.listing = gh_tests.Answer(
+        200,
+        [
+            gh_tests.issue(1, "請求の合計が 1 ずれる", gh_tests.ME_TOO_BODY, updated="2026-11-06T00:00:00Z", plus=2),
+            gh_tests.issue(2, "受注の CSV に列を足したい", "列を足したい", updated="2026-11-05T00:00:00Z", plus=1),
+            gh_tests.issue(3, "出荷の画面が重い", "待つ", updated="2026-11-04T00:00:00Z"),
+        ],
+    )
+
+
+def test_issue_rows_show_our_marks_and_me_too_button(client, plain, other, manager, gh, monkeypatch):
+    three_issues(gh)
+    connect_env(monkeypatch)
+    sent = make(other, "自社が送った件")
+    services.mark_sent(sent, manager, sent_url="https://github.com/kishii-py/seizou/issues/1")
+    services.me_too(1, plain)
+    mine = services.me_too(2, plain)["feedback"]
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/", {"issue_q": ""}))
+    assert "同じ困りごとなら「うちも」を押してください (会社のトークンで 👍 が付き、あなたの件として残ります)。" in html
+    rows = issue_rows(html)
+    assert sorted(rows) == [1, 2, 3]
+
+    # 自社が送った件とうちもの両方がある行は「自社が送った」だけ。ほかの人の件なので link にしない (詳細は 404 のため)。
+    assert '<span class="badge badge-soft badge-info">自社が送った</span>' in rows[1]
+    assert "うちも済み" not in rows[1] and f'href="/feedback/{sent.pk}/"' not in rows[1]
+    assert "/me-too/" not in rows[1] and '<td class="text-right tabular-nums">2</td>' in rows[1]
+
+    assert f'<a class="badge badge-soft badge-info" href="/feedback/{mine.pk}/">うちも済み</a>' in rows[2]
+    assert "/me-too/" not in rows[2] and '<td class="text-right tabular-nums">1</td>' in rows[2]
+
+    assert "自社が送った" not in rows[3] and "うちも済み" not in rows[3]
+    assert 'action="/feedback/issues/3/me-too/"' in rows[3]
+    assert '<input type="hidden" name="issue_q" value="">' in rows[3]
+    assert 'aria-label="うちも (Issue #3)">👍 0 うちも</button>' in rows[3]
+
+    client.force_login(manager)
+    rows = issue_rows(html_of(client.get("/feedback/", {"issue_q": "請求"})))
+    assert sorted(rows) == [1]
+    assert f'<a class="badge badge-soft badge-info" href="/feedback/{sent.pk}/">自社が送った</a>' in rows[1]
+
+    assert "うちも済み" not in html_of(client.get("/feedback/"))
+
+
+def test_issue_rows_show_closed_reason_and_milestone(client, plain, gh):
+    gh.listing = gh_tests.Answer(
+        200,
+        [
+            gh_tests.issue(1, "直った件", state="closed", state_reason="completed", milestone={"title": "0.1.1"}),
+            gh_tests.issue(2, "対応しない件", state="closed", state_reason="not_planned"),
+            gh_tests.issue(3, "重複の件", state="closed", state_reason="duplicate"),
+            gh_tests.issue(4, "理由の無い件", state="closed"),
+            gh_tests.issue(5, "版待ちの件", milestone={"title": "0.1.2"}),
+        ],
+    )
+    client.force_login(plain)
+
+    rows = issue_rows(html_of(client.get("/feedback/", {"issue_q": ""})))
+
+    assert '<span class="badge badge-soft badge-success">直した</span>' in rows[1] and "で直る" not in rows[1]
+    assert '<span class="badge badge-ghost">見送った</span>' in rows[2]
+    assert '<span class="badge badge-ghost">見送った</span>' in rows[3]
+    assert '<span class="badge badge-ghost">閉じた</span>' in rows[4] and "見送った" not in rows[4]
+    assert '<span class="badge badge-soft badge-success">開いている</span>' in rows[5]
+    assert '<span class="badge badge-soft badge-info">0.1.2 で直る</span>' in rows[5]
