@@ -492,6 +492,31 @@ def test_deliverynote_cancel_refusal_in_modal(world):
     assert DeliveryNote.objects.get().status == DeliveryNote.STATUS_ISSUED
 
 
+def test_deliverynote_cancel_links_payments_in_modal(world):
+    """請求書に入金があれば、納品書の取消の小窓と全体の画面の両方で、断りは入金の文になり、請求書の link は入金の枠へ向く。
+
+    入金の無い請求書の link は請求書の詳細のまま (閉じの " まで見る。初見テスト R5 の候補 C03。決め C03-2 a。依頼書 N296)。
+    """
+    invoice = _invoice(world.user)
+    note = DeliveryNote.objects.get()
+    url = reverse("shipping:deliverynote_cancel", args=[note.pk])
+    plain = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}"'
+    paid = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}#payments"'
+
+    modal = text(world.client.get(url, **MODAL))
+    assert plain in modal
+    assert paid not in modal
+
+    billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), world.user)
+    for body in (text(world.client.get(url, **MODAL)), text(world.client.get(url))):
+        alert = body[body.index("alert-warning") :]
+        assert "(入金の記録 1 件・合計 ¥6,500)" in alert[: alert.index("</div>")]
+        assert paid in body
+        assert plain not in body
+        assert f"{note.note_no} を取り消す</button>" not in body
+    assert DeliveryNote.objects.get().status == DeliveryNote.STATUS_ISSUED
+
+
 @pytest.mark.parametrize(("name", "screen"), DETAILS)
 def test_details_refresh_after_save(world, name, screen):
     case = BUILD[screen](world)
