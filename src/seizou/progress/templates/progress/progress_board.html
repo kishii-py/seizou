@@ -13,7 +13,9 @@
 </nav>
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   {% if board.rows %}
-  <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に端のぼかしを重ねる (右の端は C34、下の端は C23)。 #}
+  <div>
+  <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
     <table class="table table-sm table-zebra table-pin-rows">
       <thead><tr class="bg-base-200 text-base-content/70">
         <th class="whitespace-nowrap font-medium">指示書番号</th>
@@ -28,6 +30,7 @@
         {% for row in board.rows %}{% include "progress/_board_row.html" %}{% endfor %}
       </tbody>
     </table>
+  </div>
   </div>
   {# 行の数 (C23-2 = a): 盤の行 (指示書の工程) の数で、指示書の数ではない。10 秒ごとの更新 (progress/_rows.html) には入れない (更新は行を足さないので、開いたときの数のまま画面の行と合う)。 #}
   <p class="mt-4 text-base-content/70"><span class="tabular-nums">{{ board.count }}</span> 行</p>

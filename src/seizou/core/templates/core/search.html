@@ -47,7 +47,9 @@
 {% for section in sections %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="search-{{ section.kind }}">
   <h2 id="search-{{ section.kind }}" class="text-lg font-bold">{{ section.label }} <span class="tabular-nums">({{ section.total|comma }})</span></h2>
-  <div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300">
+  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に端のぼかしを重ねる (右の端は C34、下の端は C23)。 #}
+  <div>
+  <div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
   <table class="table table-sm table-zebra table-pin-rows">
     <thead><tr class="bg-base-200 text-base-content/70">
       {% for col in section.columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}">{{ col.label }}</th>{% endfor %}
@@ -68,6 +70,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   </div>
   <p class="mt-4 text-base-content/70"><span class="tabular-nums">{{ section.total|comma }}</span> 件中 <span class="tabular-nums">1–{{ section.shown|comma }}</span> 件{% if section.more %}。絞り込んでください (1 種類 {{ limit }} 件まで出します){% endif %}</p>
 </section>

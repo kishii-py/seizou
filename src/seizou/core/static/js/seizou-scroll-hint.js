@@ -1,20 +1,23 @@
 /*
- * 一覧の表の箱の端のぼかしの印 (初見テスト R5 の候補 C34。C34-1 = a)。読み込みは base.html の script の並びの最後の 1 行。
- * 素の JS で書く (外の library を使わない。htmx は読まない)。
+ * 一覧の表の箱の端のぼかしの印 (初見テスト R5 の候補 C34 の右の端 = C34-1 = a と、候補 C23 の下の端 = 決め C23-2 = a)。
+ * 読み込みは base.html の script の並びの最後の 1 行。素の JS で書く (外の library を使わない。htmx は読まない)。
  *
- * markup の約束 (core/_rows.html と、その写しの orders/_rows.html・orders/_board_rows.html・connect/_rows.html):
- *   <div>                                              包み。ぼかしは scripts/css/input.css がこの包みの ::after で箱の上に重ねる
+ * markup の約束 (core/_rows.html と、その写しの orders/_rows.html・orders/_board_rows.html・connect/_rows.html と、
+ * 横断の検索の core/search.html・進捗の盤の progress/progress_board.html):
+ *   <div>                                              包み。ぼかしは scripts/css/input.css がこの包みの上に重ねる
+ *                                                      (右の端は ::after、下の端は ::before)
  *     <div class="max-h-[70vh] overflow-auto ..." data-scroll-hint>   表の箱 (送る物)
  *       <table ...>
  *
  * 決まり:
  * - 印 [data-scroll-hint] の箱ごとに、右に続きがあるとき (scrollLeft + clientWidth < scrollWidth - 1) だけ、
  *   包み (箱の親) に data-more-right を付け、無ければ外す。右の端まで送ると外れ、左へ戻すと付き直す。溢れの無い幅では付かない。
- * - 取り直す時: 読み込み (DOMContentLoaded)・箱の中の送り (scroll は泡立たないので、document の capture の段で受ける)・
- *   窓の大きさの変化 (window の resize)・htmx が中身を差し替えた後 (htmx:afterSettle。並び替え・絞り・ページ送り・
- *   小窓で保存した後の取り直し・受信した注文の一覧で行が足された後)。
- * - 箱の下の端のぼかし (C23-2 = a) は、同じ関数 (mark) で scrollTop・scrollHeight・clientHeight を見て、
- *   別の data の属性を包みに付ける形で足す (この版は右の端だけ)。
+ * - 同じ箱で、下に続きがあるとき (scrollTop + clientHeight < scrollHeight - 1) だけ、包みに data-more-below を付け、
+ *   無ければ外す (決め C23-2 = a)。下の端まで送ると外れ、上へ戻すと付き直す。溢れの無い高さでは付かない。
+ * - 右と下は別々に比べ、変わった方の属性だけを書く (右が前と同じでも、下は取り直す)。
+ * - 取り直す時: 読み込み (DOMContentLoaded)・箱の中の送り (scroll は泡立たないので、document の capture の段で受ける。
+ *   縦に送っても同じ出来事が来る)・窓の大きさの変化 (window の resize)・htmx が中身を差し替えた後 (htmx:afterSettle。
+ *   並び替え・絞り・ページ送り・小窓で保存した後の取り直し・受信した注文の一覧で行が足された後・進捗の盤の 10 秒ごとの更新)。
  * - 触るのは包みの data の属性だけ。class を触らない (R19)。取った字を HTML として差し込まない。通信しない。
  */
 (function () {
@@ -22,18 +25,23 @@
 
   var BOX = "[data-scroll-hint]";
   var MORE_RIGHT = "data-more-right";
+  var MORE_BELOW = "data-more-below";
+
+  // 包みの属性 name を、続きがあるか (more) に合わせる。同じ状態のときは書かない (送るたびに属性を書き直さない)
+  function setMore(wrap, name, more) {
+    if (more === wrap.hasAttribute(name)) return;
+    if (more) {
+      wrap.setAttribute(name, "");
+    } else {
+      wrap.removeAttribute(name);
+    }
+  }
 
   function mark(box) {
     var wrap = box.parentElement;
     if (!wrap) return;
-    var more = box.scrollLeft + box.clientWidth < box.scrollWidth - 1;
-    // 同じ状態のときは書かない (送るたびに属性を書き直さない)
-    if (more === wrap.hasAttribute(MORE_RIGHT)) return;
-    if (more) {
-      wrap.setAttribute(MORE_RIGHT, "");
-    } else {
-      wrap.removeAttribute(MORE_RIGHT);
-    }
+    setMore(wrap, MORE_RIGHT, box.scrollLeft + box.clientWidth < box.scrollWidth - 1);
+    setMore(wrap, MORE_BELOW, box.scrollTop + box.clientHeight < box.scrollHeight - 1);
   }
 
   function markAll() {
