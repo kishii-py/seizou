@@ -103,6 +103,7 @@ class StockMoveDetailView(BaseDetailView):
     model = StockMove
     screen_name = "在庫の動きの詳細"
     screen_help = "在庫の動き 1 件の部品・種類・数量・日付・備考と、入れた人と日時。入庫は正、出庫は負の数です。"
+    template_name = "stock/stockmove_detail.html"
 
 
 class FinishedCreateView(BaseFormView):
