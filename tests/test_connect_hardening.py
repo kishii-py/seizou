@@ -5,6 +5,7 @@
 - 2 鍵の長さ: ほどいた鍵が 24〜64 bytes の外なら使わない (送らない・受け口はそのつながりを飛ばす)。
 - 3 同じ鍵の 2 社: 受ける向きの 2 つ以上の取引先の鍵で署名が合えば断る。
 - 4 送る先を外の名前に絞る鍵 (settings の SEIZOU_CONNECT_PUBLIC_ONLY): 真のときだけ https の URL だけを保存し、送る前に名前を引く。
+- 5 受けた会話の添付の数: 送る側と同じ上限 (MAX_CHAT_FILES = 1) より多い言葉は断る。
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (外へは出ない)。
 鍵は試験のたびに signing.new_secret() で作って環境変数に置き、ファイルに書かない。取引先・部品・会社は作り物。
 """
@@ -23,11 +24,12 @@ import uuid
 import pytest
 
 from seizou.connect import services, signing
-from seizou.connect.models import Connection, Inbox, Outbox
+from seizou.connect.models import ChatFile, ChatMessage, Connection, Inbox, Outbox
 from seizou.masters import services as masters_services
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder, SelfInvoice
-from tests.test_connect_reply import ORDER_ENV
+from tests.test_connect_chat import _chat_raw
+from tests.test_connect_reply import ORDER_ENV, _into_receive
 from tests.test_connect_self_invoice import (  # noqa: F401 (fixture)
     ISSUED,
     _accepted,
@@ -40,7 +42,7 @@ from tests.test_connect_self_invoice import (  # noqa: F401 (fixture)
     subcontractor,
     user,
 )
-from tests.test_connect_send import _create
+from tests.test_connect_send import FakePost, _create
 from tests.test_r12_signature import _order_body
 
 #: 試験だけの鍵の置き場の名前 (値は試験の中で作って環境変数に置く)
@@ -440,3 +442,32 @@ def test_public_only_saves_https_only(settings, user, two_customers):  # noqa: F
     saved = services.register_connection(first, "https://buyer.example.test/connect/receive/order/", FIRST_ENV, "send", user)
     assert saved.url == "https://buyer.example.test/connect/receive/order/"
     assert services.register_connection(second, "", SECOND_ENV, "receive", user).url == ""
+
+
+# ---------------------------------------------------------------- 5 受けた会話の添付の数
+
+
+def _chat_file_item():
+    """受けた会話の言葉の添付の項目 1 つ (作り物の名前と印)。"""
+    return {"id": str(uuid.uuid4()), "name": "作り物の図面.pdf", "mime": "application/pdf", "size": 10, "sha256": "c" * 64}
+
+
+@pytest.mark.django_db
+def test_received_chat_with_more_files_than_the_limit_is_refused(
+    monkeypatch, user, subcontractor, item, order_secret, connections  # noqa: F811
+):
+    """添付 2 件以上の会話の言葉は断られ、会話の行と添付の行は増えない。1 件は今のまま通る。"""
+    assert services.MAX_CHAT_FILES == 1
+    monkeypatch.setattr("requests.post", FakePost(inside=_into_receive))
+    _create(subcontractor, item, user)
+    order_id = str(Inbox.objects.get().message_id)
+
+    for count in (2, 50):
+        msg_id, raw = _chat_raw(order_id, body="", attachments=[_chat_file_item() for _ in range(count)])
+        assert services.receive(raw, signing.headers_for(order_secret, msg_id, raw)) == services.MESSAGE_CHAT_SHAPE
+    assert not ChatMessage.objects.exists() and not ChatFile.objects.exists()
+
+    msg_id, raw = _chat_raw(order_id, body="", attachments=[_chat_file_item()])
+    receipt = services.receive(raw, signing.headers_for(order_secret, msg_id, raw))
+    assert isinstance(receipt, services.ChatReceipt)
+    assert ChatMessage.objects.count() == 1 and ChatFile.objects.count() == 1

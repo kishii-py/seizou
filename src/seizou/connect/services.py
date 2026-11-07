@@ -701,6 +701,8 @@ MESSAGE_CHAT_OTHER_PARTNER = "会話の元の注文は、その取引先との�
 CHAT_BODY_MAX = 2000
 #: 会話の送り手の立場 (buyer = 発注した側 / supplier = 受けた側)
 CHAT_ROLES = ("buyer", "supplier")
+#: 会話の言葉 1 つに付けられる添付の数の上限 (送る post_chat_message と受ける _chat_file_items で同じ数を使う。本人の決め CHAT-3)
+MAX_CHAT_FILES = 1
 #: 会話の添付を取りに行く要求の断り (送る側へ返す文。その添付の有る無しを、ほかの取引先に教えない)
 MESSAGE_CHAT_FILE_SHAPE = "添付の要求の形が読めません。file_id を字で送ってください。"
 MESSAGE_CHAT_FILE_UNKNOWN = "その添付はありません。"
@@ -1320,13 +1322,18 @@ def _chat_file_items(value):
 
     各要素は id (uuid の字)・name (1〜100 字で、拡張子が添付ファイルの形式の表にある)・size (1 から 20MB までの整数。bool は外す)・
     sha256 (16 進の 64 字) を見る。mime は読まず、自社の表 (attachments.services.ALLOWED) の値を入れる。同じ id が 2 つあれば読めない物にする。
+    並びが MAX_CHAT_FILES (送る側の上限と同じ 1 つ) より長ければ、要素を見る前に読めない物にする。
     返す物は ChatFile の欄の辞書の並び (file_id・name・mime・size・sha256)。
+    訳: 送る側は添付を 1 つまでしか付けないので、それより多い並びを受けて行と比べる手間 (同じ id の確かめは数の 2 乗) を増やさないため。出所 = 本人の決め CHAT-3 (送る側の 1 つまで) とエンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-4。
+    変えてよい条件 = 送る側の上限を変えるとき (同じ定数 MAX_CHAT_FILES を使う)。
     """
     from seizou.attachments import services as attachment_services
 
     if value is None:
         return []
     if not isinstance(value, list):
+        return None
+    if len(value) > MAX_CHAT_FILES:
         return None
     items = []
     for raw in value:
@@ -2944,7 +2951,7 @@ def post_chat_message(target, body, user, file=None):
 
     - 会話が使えない取引 (chat_peer の reason) は「送れません。」+ 訳の ValueError で、行を作らず HTTP を送らない。
     - 言葉と添付の両方が空 (言葉は空白だけも空)・言葉が 2000 字を超えるときも ValueError。受けた字は変えずに残す (送ったとおりに残すため。画面の欄の前後の空白は form が落とす)。
-    - 添付 (file) は 1 つまで。形式と大きさは今の添付と同じ決まり (_check_chat_file)。中身の印 (SHA-256) を作り、言葉の行と同じ atomic で
+    - 添付 (file) は 1 つまで (MAX_CHAT_FILES。受け口も同じ数で断る)。形式と大きさは今の添付と同じ決まり (_check_chat_file)。中身の印 (SHA-256) を作り、言葉の行と同じ atomic で
       ChatFile の行を作ってファイルを storage に置く (attachments.services.add_attachment と同じ形)。送る JSON には項目だけを載せる。
     - 行は atomic の中で作り (返事の欄は「送っています」)、atomic の外で相手へ送る (R17)。返事の字を書き、届いたときだけ相手に届いた日時を書く。
     - 届かなくても例外にしない (書いた言葉は残る)。返す物の saved_message が知らせの字、届かなければ saved_level = "warning"。
