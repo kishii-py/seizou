@@ -7,14 +7,16 @@
   themes: light --default;
 }
 
-/* 主色の既定 (会社の brand_color が空のときの土台の色) = 橙 #F57C00、字は白 (本人の決め 11-05 21:0x)。
-   会社の色は base.html が --color-primary を html の style で上書きする。「注意」の色 (warning) は変えない。 */
+/* 主色の既定 (会社の brand_color が空のときの土台の色) = 濃い橙 #C2410C、字は白 (本人の決め 11-07 20:5x。白い字との比 5.2。
+   11-05 21:0x の橙 #F57C00 (白い字との比 2.7 = 主のボタンの字と link が読みにくい A11Y-02) を置き換えた)。
+   会社の色は base.html が --color-primary を html の style で上書きする。「注意」の色 (warning) は変えない。
+   既定の値を変えるときは、ここと tests/test_core_text_contrast.py の DEFAULT_PRIMARY を一緒に直す (ほかの場所には書いていない)。 */
 @plugin "./daisyui-theme.mjs" {
   name: "light";
   default: true;
   prefersdark: false;
   color-scheme: light;
-  --color-primary: #F57C00;
+  --color-primary: #C2410C;
   --color-primary-content: #ffffff;
 }
 
@@ -557,13 +559,32 @@ html:has(.seizou-save-row) #assistant-root {
   color: color-mix(in oklab, var(--color-info) 60%, black);
 }
 
+/* 主色を字に使う所の色 (A11Y-02。画面の直し 15 件の 13。本人の決め 11-07 20:5x)。主色は主のボタンの地 (白い字) に合わせて決めるので、
+   字の色にそのまま使うと、会社の色しだいで比が足りない (緑 #15803d は、左のメニューの今の画面 (主色 10% の地) で 4.37・選んだタブの件数
+   (主色 14% の地) で 4.14。字の目安 4.5)。主色に黒を 25% 混ぜた色 (--seizou-primary-ink) を、字に使う所 (.text-primary・.link-primary・
+   左のメニューの今の画面 aria-[current=page]:text-primary・下の選んだタブの件数) に当てる。既定の濃い橙と 2 社の緑と青では、白い地で 9 前後、
+   主色 10%・14% の地でも 7 以上 (tests/test_core_text_contrast.py が計算で見る)。主色の地 (bg-primary・btn-primary) と枠・下線の色は変えない。
+   link の指を乗せた色は、daisyUI の .link-primary:hover (主色の 80% + 黒) より濃い 60% にし、濃くした字からさらに濃くなる動きを残す。
+   :root に置くので、会社の色 (base.html の html の style の --color-primary) をそのまま混ぜる。層の外の決まりなので utilities と daisyUI の規則より強い。 */
+:root {
+  --seizou-primary-ink: color-mix(in oklab, var(--color-primary) 75%, black);
+}
+.text-primary,
+.link-primary,
+.aria-\[current\=page\]\:text-primary[aria-current="page"] {
+  color: var(--seizou-primary-ink);
+}
+.link-primary:hover {
+  color: color-mix(in oklab, var(--color-primary) 60%, black);
+}
+
 /* タブの形 (本人の決め 11-07 16:5x = 横いっぱいの線の上にタブを置く形。受け渡しの seizou-タブの参考-20261107/指示書.md)。
    タブを地面の字でなく押せる物に見せ、全部の画面 (一覧の絞り core/_presets.html・フィードバック feedback/_tabs.html・詳細の区分 core/detail.html)
    で同じ形にするため。daisyUI の tabs に重ねて付ける (tabs-border・tabs-box の代わり)。選んでいない tab の字の色は上の C49 の規則 (60%) のまま。
    行の下に 1px の線 (base-300): link のタブ (a。中身の箱を持たない) は箱の下の辺に、radio のタブ (label + tab-content) は中身の箱の上の辺に引く。
    選んだタブ (tab-active・aria-selected・checked の radio を持つ label) は濃い字・太さ 700・2px の主色の下線 (margin-bottom: -1px で線に重ねる。
    tab を手前 (z-index) に置くのは、中身の箱の上の線に下線を隠されないため)。指を乗せたタブは濃い字と 2px の base-300 の下線。
-   件数の箱 (badge) は角 6px・地 base-200・字 70%・太さ 600。選んだタブの件数だけ、地を主色の 14%・字を主色にする。狭い幅の並び方 (折り返し) は daisyUI のまま。 */
+   件数の箱 (badge) は角 6px・地 base-200・字 70%・太さ 600。選んだタブの件数だけ、地を主色の 14%・字を主色の濃い色 (上の --seizou-primary-ink。A11Y-02) にする。狭い幅の並び方 (折り返し) は daisyUI のまま。 */
 .seizou-tabs {
   align-items: stretch;
 }
@@ -603,7 +624,7 @@ html:has(.seizou-save-row) #assistant-root {
 }
 .seizou-tabs > .tab:is(.tab-active, [aria-selected="true"], label:has(> input:checked)) > .badge {
   background: color-mix(in oklab, var(--color-primary) 14%, transparent);
-  color: var(--color-primary);
+  color: var(--seizou-primary-ink);
 }
 
 /* 画面の頭の白い帯 (core/base.html の data-screen-head。本人の決め 11-07 17:0x = 形 A)。題の無い画面で帯の中に要素が 1 つも無いときは帯ごと隠す

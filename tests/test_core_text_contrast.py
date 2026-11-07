@@ -6,6 +6,7 @@ C49 の 6 = 淡い札と淡い知らせの字を、daisyUI が同じ色に組に
 C49 の 7 = 黄の知らせの頭の三角の印だけを黄のまま残す (決め C49-2 = a。11-06)。
 画面の直し 15 件 (11-07) の 1 = 字に使う意味の色 (.text-error・.text-warning・.text-success・.text-info と、前に修飾の付いた 2 つ) を、
 同じ色に黒を混ぜた色にする (A11Y-03・V1)。比は WCAG の式で計算して見る (白い地と、1 行おきの行と指を乗せた行の灰の地)。
+画面の直し 15 件の 13 = 主色の既定を濃い橙 #C2410C にし (決め 11-07 20:5x)、主色を字に使う所を主色に黒を混ぜた色にする (A11Y-02)。
 元の字 (input.css と CLASSES) を見る試験と、作り直した app.css を見る試験 (名前に built が付く物) を分ける。
 app.css を作り直さずに input.css を直すと、built の試験だけが落ちる。
 """
@@ -215,3 +216,69 @@ def test_built_css_has_tone_text_rules():
         assert any(sel.startswith(head + ",") or sel == head for sel, body in rules if f"color-mix(inoklab,var({variable})" in body), head
     for head in (".data-\\[over\\=true\\]\\:text-error[data-over=true]", ".data-\\[tone\\=warning\\]\\:text-warning[data-tone=warning]"):
         assert any(head in sel and "color-mix(inoklab,var(--color-" in body for sel, body in rules), head
+
+
+# --- 主色の既定と、主色を字に使う所 (画面の直し 15 件の 13。A11Y-02・決め 1) ----------------------------------------------
+
+#: 主色の既定 (本人の決め 11-07 20:5x)。input.css の theme の 1 か所だけに書く (会社の色は base.html の html の style)
+DEFAULT_PRIMARY = "#C2410C"
+OLD_DEFAULT_PRIMARY = "#F57C00"
+#: 2 社の作り物の主色 (examples/companies の brand_color) と既定。字の色の比は 3 つで見る
+PRIMARIES = (DEFAULT_PRIMARY, "#15803d", "#0369a1")
+INK_SELECTOR = ".text-primary,\n.link-primary,\n.aria-\\[current\\=page\\]\\:text-primary[aria-current=\"page\"]"
+INK_MIX_RE = re.compile(r"--seizou-primary-ink: color-mix\(in oklab, var\(--color-primary\) (\d+)%, black\);")
+SELECTED_TAB_BADGE = '.seizou-tabs > .tab:is(.tab-active, [aria-selected="true"], label:has(> input:checked)) > .badge'
+
+
+def _hex(value: str) -> tuple[float, float, float]:
+    value = value.lstrip("#")
+    return tuple(int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _over_white(rgb: tuple[float, float, float], alpha: float) -> tuple[float, float, float]:
+    """主色を alpha で白に重ねた地 (bg-primary/10・選んだタブの件数の 14%)。"""
+    return tuple(c * alpha + 1.0 * (1 - alpha) for c in rgb)
+
+
+def test_default_primary_is_the_dark_orange():
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    theme = css[css.index('name: "light";') : css.index("}", css.index('name: "light";'))]
+    assert f"--color-primary: {DEFAULT_PRIMARY};" in theme
+    assert "--color-primary-content: #ffffff;" in theme
+    assert OLD_DEFAULT_PRIMARY not in css.replace("橙 #F57C00 (白い字との比 2.7", "")  # 前の値は注記にだけ残す
+    assert contrast(_hex(DEFAULT_PRIMARY), WHITE) >= 4.5  # 主のボタンの白い字
+    assert contrast(_hex(OLD_DEFAULT_PRIMARY), WHITE) < 4.5  # 前の橙は足りなかった (前提の確かめ)
+
+
+def test_input_css_puts_primary_ink_on_text_uses_only():
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    assert INK_MIX_RE.search(_block(css, ":root"))
+    assert "color: var(--seizou-primary-ink);" in _block(css, INK_SELECTOR)
+    assert "color: var(--seizou-primary-ink);" in _block(css, SELECTED_TAB_BADGE)
+    assert "color: var(--color-primary);" not in _block(css, SELECTED_TAB_BADGE)
+    # 指を乗せた link は字の色よりさらに濃い
+    hover = int(re.search(r"var\(--color-primary\) (\d+)%, black", _block(css, ".link-primary:hover")).group(1))
+    assert hover < int(INK_MIX_RE.search(css).group(1))
+    # 主色の地は変えない (ink は background に使わない)
+    assert "background: var(--seizou-primary-ink)" not in css and "background-color: var(--seizou-primary-ink)" not in css
+
+
+def test_primary_ink_contrast_is_at_least_4_5_for_default_and_example_companies():
+    """既定と 2 社の主色で、字の色 (ink) と、白い地・左のメニューの今の画面の地 (主色 10%)・選んだタブの件数の地 (主色 14%) との比が 4.5 以上。"""
+    percent = int(INK_MIX_RE.search(INPUT_CSS.read_text(encoding="utf-8")).group(1))
+    for primary in PRIMARIES:
+        rgb = _hex(primary)
+        ink = mix_with_black(rgb, percent)
+        for name, ground in (("white", WHITE), ("primary/10", _over_white(rgb, 0.10)), ("primary/14", _over_white(rgb, 0.14))):
+            assert contrast(ink, ground) >= 4.5, (primary, name, contrast(ink, ground))
+
+
+def test_built_css_has_default_primary_and_ink_rules():
+    text = APP_CSS.read_text(encoding="utf-8")
+    assert f"--color-primary:{DEFAULT_PRIMARY.lower()}" in text.replace(" ", "").lower()  # 作り直すと hex は小文字になる
+    assert OLD_DEFAULT_PRIMARY.lower() not in text.lower()
+    rules = _built_rules()
+    assert any(":root" in sel and "--seizou-primary-ink:color-mix(inoklab,var(--color-primary)" in body for sel, body in rules)
+    for head in (".text-primary", ".link-primary", ".aria-\\[current\\=page\\]\\:text-primary[aria-current=page]"):
+        assert any(head in sel and "color:var(--seizou-primary-ink)" in body for sel, body in rules), head
+    assert _has_built_rule(rules, ">.badge", "color:var(--seizou-primary-ink)")
