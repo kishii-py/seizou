@@ -76,7 +76,7 @@ CLASSES = {
     "box_title": "mb-2 font-bold",
     "event_item": "list-none",
     "check_item": "list-none",
-    "check_box": "checkbox checkbox-sm mr-2 align-middle",
+    "check_box": "checkbox checkbox-sm mr-2 align-middle disabled:opacity-100 border-base-content/50",
     "figure": "my-4 overflow-hidden rounded-box border border-base-300",
     "figcaption": "p-2 text-xs text-base-content/50",
 }
