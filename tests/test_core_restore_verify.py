@@ -164,6 +164,22 @@ def test_verify_says_backup_has_no_sha256(site):  # noqa: F811
     assert "sha256 無し (中身の印を比べていない)" in out
 
 
+@sqlite_only
+@pytest.mark.django_db(transaction=True)
+def test_verify_says_seizou_version_differs(site):  # noqa: F811
+    run("seizou_backup")
+    folder = plain_backups(site / "backups")[0]
+    manifest_path = folder / backup.MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["seizou_version"] = "0.0.0-fake"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    code, out = run_code(folder.name, "--verify")
+
+    assert code == 0, out
+    assert f"控えの seizou の版 (0.0.0-fake) と今の版 ({backup.current_version()}) が違います。" in out
+
+
 @pytest.mark.django_db
 def test_verify_refuses_postgres_and_records_nothing(site, monkeypatch):  # noqa: F811
     monkeypatch.setattr(backup, "database_kind", lambda: "postgresql")

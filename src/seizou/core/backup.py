@@ -343,7 +343,7 @@ def verify_backup(folder: Path) -> dict:
     見る物は、控えの DB の写しが開けるか (PRAGMA quick_check)・控えと今の DB の当てた migration の差・
     控えの media/ のファイルの数と backup.json の media_files・backup.json の sha256 の有無。
     成否を偽にするのは、DB の写しが無いか開けないか quick_check が ok でないときと、上げたファイルの数が違うとき。
-    migration の差と sha256 の無いことは行に書くだけで、成否を変えない。
+    migration の差と sha256 の無いことと seizou の版の違いは行に書くだけで、成否を変えない。
     表ごとの行の数は比べない。本番の DB に書かず、MEDIA_ROOT に触らず、控えのフォルダの中身を変えない。
     返す物は {"ok": 成否, "lines": 行の並び (字), "seconds": かかった秒}。
     控えのフォルダでない・SQLite でない (控えか今の DB) は BackupError (確かめられない)。
@@ -389,6 +389,10 @@ def verify_backup(folder: Path) -> dict:
         lines.append(f"上げたファイルの数が違います: 控えの media/ に {files} 個、backup.json は {saved_files} 個")
     if "sha256" not in manifest:
         lines.append("sha256 無し (中身の印を比べていない)")
+    saved_version = str(manifest.get("seizou_version") or "")
+    version = current_version()
+    if saved_version != version:
+        lines.append(f"控えの seizou の版 ({saved_version}) と今の版 ({version}) が違います。")
     return {"ok": ok, "lines": lines, "seconds": round(time.monotonic() - started, 2)}
 
 
