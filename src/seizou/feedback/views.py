@@ -7,6 +7,7 @@
   services の update_feedback が断る (赤の知らせ)。
 - 口 (状態の変更と削除) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
   断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る (削除が通ったときだけ一覧へ)。
+- 画面の欄の候補の口 screen_select は GET の関数の view (login_required・require_GET)。画面の目録は表でないので BaseSelectView の子にせず、同じ形の JSON を返す (候補 C85)。
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
   (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら、中身の無い 200 で編集の画面へ移す (土台の form_valid と同じ形)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
@@ -25,12 +26,12 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, search_variants
 
 from . import chat, services
 from .forms import FeedbackForm, GithubConnectForm, GithubDeviceForm
@@ -441,3 +442,33 @@ def reply_mark_sent(request, reply_pk):
     else:
         messages.success(request, "返事を送った状態にしました。")
     return _back_to_detail(reply.feedback_id)
+
+
+@login_required
+@require_GET
+def screen_select(request):
+    """「画面」の欄 (字を打って探す欄) の候補の口。画面の目録から、打った字を含む画面を 1 ページずつ返す (GET だけ。候補 C85)。
+
+    返す形は core の候補の口 (BaseSelectView.get) と同じ {"items": [{"id", "text"}], "more", "recent": [], "create": None}。
+    id は URL の名前、text は選ぶ欄の字 (services.screen_choices。同じ名前の 2 つ目からは「名前 (2)」)。並びは目録の順。
+    当て方も BaseSelectView と同じで、打った字の揺れ (search_variants) のどれかを大文字と小文字を分けずに含む物。
+    URL の名前では当てない (画面に URL の名前を出さない)。1 ページの数は BaseSelectView.per_page。
+    BaseSelectView の子にしない訳: 画面の目録は表 (model) でなく、BaseSelectView は表を引くため (get_queryset)。
+    最近使った物 (recent) は持たず、登録の入口 (create) も無い。feedback は部署で閉じない部品なので、ログインした人なら誰でも引ける。
+    """
+    term = request.GET.get("q", "").strip()
+    try:
+        page = max(int(request.GET.get("page", "1")), 1)
+    except ValueError:
+        page = 1
+    variants = [variant.casefold() for variant in search_variants(term)] if term else []
+    hits = [
+        {"id": url_name, "text": label}
+        for url_name, label in services.screen_choices()
+        if not variants or any(variant in label.casefold() for variant in variants)
+    ]
+    per_page = BaseSelectView.per_page
+    start = (page - 1) * per_page
+    return JsonResponse(
+        {"items": hits[start : start + per_page], "more": len(hits) > start + per_page, "recent": [], "create": None}
+    )
