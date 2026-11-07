@@ -1,8 +1,10 @@
 """上げたファイルの口 (seizou.core.media) の守りのテスト。N360 (指示書の候補 6 の (A)(B))。
 
 見る所: 読み取りの元のファイル (intake/ の道。単価入りの注文書) を、金額の閲覧の判定 (access.can_see_money) で絞ること
-(on は 404・log は返して記録に 1 行・off は今のまま。django と nginx の両方の配り方)。
-利用者とファイルは作り物だけ。置き場 (MEDIA_ROOT) は試験ごとの一時のフォルダ (tmp_path)。
+(on は 404・log は返して記録に 1 行・off は今のまま。django と nginx の両方の配り方)。読み取りの詳細の「元のファイル」の行を、
+金額の閲覧の無い人 (seizou.hide_money) に出さないこと。
+利用者とファイルと得意先は作り物だけ。置き場 (MEDIA_ROOT) は試験ごとの一時のフォルダ (tmp_path)。
+本物の API は呼ばない (読み取りの fixture が作り物の返事に差し替え、作った後は「呼ばれたら AssertionError」に戻す)。
 """
 
 from __future__ import annotations
@@ -11,8 +13,12 @@ import logging
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.intake import services as intake_services
+from seizou.masters.services import create_partner
+from tests.test_intake_extract import FAKE_KEY, REPLY_PATH, refuse_api, upload
 
 User = get_user_model()
 
@@ -135,3 +141,60 @@ def test_money_on_hides_order_file_in_nginx_mode(client, settings, root, nginx, 
     served = signed_in(client, keiri).get(ORDER_PDF, **nginx)
     assert served.status_code == 200
     assert served["X-Accel-Redirect"] == "/seizou-files/intake/2026/11/order.pdf"
+
+
+# ---------------------------------------------------------------- 2. 読み取りの詳細の「元のファイル」の行 (tests/test_intake_views.py の fixture の形を写した物)
+
+
+@pytest.fixture
+def no_real_api(monkeypatch):
+    monkeypatch.setattr(intake_services, "_ask_claude", refuse_api)
+
+
+@pytest.fixture
+def fake_reply(no_real_api, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.setattr(intake_services, "_ask_claude", lambda model, block: REPLY_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def reader(db):
+    return User.objects.create_user("tester", password=PASSWORD)
+
+
+@pytest.fixture
+def extraction(root, fake_reply, reader, monkeypatch):
+    customer = create_partner({"code": "IV01", "name": "作り物の得意先", "role": "customer"}, reader)
+    record = intake_services.extract_order(upload(), customer, reader)
+    monkeypatch.setattr(intake_services, "_ask_claude", refuse_api)
+    return record
+
+
+def detail_body(client, extraction) -> str:
+    response = client.get(reverse("intake:extraction_detail", args=[extraction.pk]))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def test_detail_hides_source_file_from_clerk_when_money_on(client, settings, extraction, clerk):
+    money(settings, MONEY_ON)
+    signed_in(client, clerk)
+    body = detail_body(client, extraction)
+    assert "元のファイル" not in body
+    assert extraction.file.url not in body
+    # 行を隠すだけでなく、URL を直に開いても返さない (1 と同じ口)。
+    assert client.get(extraction.file.url).status_code == 404
+
+
+def test_detail_shows_source_file_to_admin_when_money_on(client, settings, extraction, admin):
+    money(settings, MONEY_ON)
+    body = detail_body(signed_in(client, admin), extraction)
+    assert "元のファイル" in body
+    assert extraction.file.url in body
+
+
+def test_detail_shows_source_file_in_default_log_mode(client, extraction, clerk):
+    # tests/settings.py の SEIZOU = {} (= 金額の閲覧は記録だけ)。tests/test_intake_views.py の詳細と同じ見え方。
+    body = detail_body(signed_in(client, clerk), extraction)
+    assert "元のファイル" in body
+    assert extraction.file.url in body
