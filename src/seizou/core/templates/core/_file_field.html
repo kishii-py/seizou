@@ -1,11 +1,20 @@
 {% load seizou_icons %}
 {# ファイルの欄 (決め 11-04 14:4x)。破線の枠の中に <input type=file> を 1 つ置き、枠へドラッグしても入る (core/static/js/seizou-file-drop.js)。 #}
-{# 渡し方: 入力の土台 (core/form.html) は loop の field をそのまま {{ field }} で出す (name・id・accept・multiple と、編集の画面の「現在」の link と「クリア」は widget のまま)。 #}
+{# 渡し方: 入力の土台 (core/form.html) は loop の field をそのまま {{ field }} で出す (name・id・accept・multiple は widget のまま)。 #}
+{# 編集の画面の今のファイル: 土台が欄の widget を core.widgets.ClearableFileWidget (input だけを描く) に替え、「現在:」の link と「クリア」の check は、ここで枠の上に描く (初見テスト R5 の a-flagged-13。候補 C40)。 #}
+{# 字・check の name と id・必須かどうか・描き直しの check の印は widget の文脈 (field.subwidgets.0.data) の値をそのまま出す (name は drawing-clear・logo-clear のまま。services と E2E が読む)。 #}
 {# form の外の欄 (manuals/_images.html) は input_name・input_id・input_accept・input_label を渡し、ここで <input> を描く。 #}
 {# 素の <input type=file> は見せない (scripts/css/input.css の [data-file-drop] input[type=file] = 画面の外に置くだけで、キーボードの焦点は残る)。 #}
 {# 枠の全体を押すか、枠に焦点を置いて Enter か Space を押すと選ぶ画面が開く (JS)。JS が無いときは枠の中の素の input が隠れたままなので、枠の押下で開かない = 本人 11-04 22:1x「素の input は微妙」。 #}
 {# class は今ある物だけ (R19)。ドラッグの間は JS が枠に data-tone="primary" を付ける (data-[tone=primary]:bg-primary/15)。 #}
 <div class="min-w-0 flex-1" data-file-field>
+  {# current_url は ClearableFileWidget だけが文脈に入れる。土台を通らず widget が Django の素のままの欄では、Django が枠の中に描くので、ここでは描かない (二重に出さない)。 #}
+  {% if not input_name %}{% with current=field.subwidgets.0.data %}{% if current.is_initial and current.current_url %}
+  <div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <span class="inline-flex min-w-0 items-center gap-2">{{ current.initial_text }}: <a class="link link-primary inline-flex min-w-0 items-center gap-2" href="{{ current.current_url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ current.current_name }}</span></a></span>
+    {% if not current.required %}<label class="flex cursor-pointer items-center gap-2" for="{{ current.checkbox_id }}"><input type="checkbox" class="checkbox" name="{{ current.checkbox_name }}" id="{{ current.checkbox_id }}"{% if current.attrs.disabled %} disabled{% endif %}{% if current.attrs.checked %} checked{% endif %}><span>{{ current.clear_checkbox_label }}</span></label>{% endif %}
+  </div>
+  {% endif %}{% endwith %}{% endif %}
   <div class="cursor-pointer rounded-lg border-2 border-dashed border-base-300 bg-base-200 p-6 text-center hover:border-primary focus-visible:outline-2 focus-visible:outline-primary data-[tone=primary]:bg-primary/15" tabindex="0" role="button" aria-label="ファイルを選ぶ か、ここへドラッグ" data-file-drop>
     {% if input_name %}<input type="file" name="{{ input_name }}" class="file-input w-full" id="{{ input_id }}" accept="{{ input_accept }}" aria-label="{{ input_label }}">{% else %}{{ field }}{% endif %}
     {% icon "download" "mx-auto size-12 text-base-content/40" %}
