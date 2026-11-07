@@ -10,6 +10,19 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0 AND MIT AND 0BSD AND OFL-1.1 AND BSD-3-Clause"
 license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Intended Audience :: Manufacturing",
+    "Natural Language :: Japanese",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+]
 dependencies = [
     "Django>=5.2.19,<6.2",
     "Pillow>=13.0.0",
@@ -24,6 +37,12 @@ dependencies = [
 
 [project.scripts]
 seizou = "seizou.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/kishii-py/seizou"
+Repository = "https://github.com/kishii-py/seizou"
+Changelog = "https://github.com/kishii-py/seizou/blob/main/CHANGELOG.md"
+Issues = "https://github.com/kishii-py/seizou/issues"
 
 [project.optional-dependencies]
 pdf = [
@@ -44,6 +63,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/seizou"]
+
+[tool.hatch.build.targets.sdist]
+# 配布の sdist に入れない物 (夜の記録・E2E の絵・試験・開発の道具)。src と examples と plugin と README・LICENSE・NOTICE は入る
+exclude = ["/docs", "/tests", "/scripts", "/.github", "/.githooks", "/.gitleaksignore", "/uv.lock", "/.python-version", "/AGENTS.md", "/CLAUDE.md", "/RULES.md", "/GOVERNANCE.md", "/CONTRIBUTING.md"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
