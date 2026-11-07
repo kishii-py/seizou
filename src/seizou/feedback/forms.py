@@ -128,6 +128,7 @@ class GithubDeviceForm(forms.Form):
 
     「GitHub とつなぐ」の画面にトークンを貼る形 (GithubConnectForm) と並んで描くので、欄の id の頭を id_device_ にする
     (同じ画面に id_repo が 2 つ出ないように。送る名前は repo と private のまま)。
+    画面の土台の form でなく feedback_tags が渡して template が描くので、欄の見た目の class (土台の widget_css と同じ字) をここで付ける。
     送り先の初期値は、今の送り先 (.env) か既定。class の initial でなく __init__ で読む (起動の後に .env が変わるため)。
     """
 
@@ -136,11 +137,13 @@ class GithubDeviceForm(forms.Form):
         required=False,
         max_length=200,
         help_text=GithubConnectForm.base_fields["repo"].help_text,
+        widget=forms.TextInput(attrs={"class": "input w-full"}),
     )
     private = forms.BooleanField(
         required=False,
         label="送り先は非公開のリポジトリ",
         help_text="印を付けると repo の権限で、付けなければ public_repo の権限で承認を求めます。",
+        widget=forms.CheckboxInput(attrs={"class": "checkbox"}),
     )
 
     def __init__(self, *args, **kwargs):
