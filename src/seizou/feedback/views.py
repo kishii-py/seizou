@@ -12,6 +12,9 @@
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
 - GitHub の口 (依頼書 N185): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
   断るのは services (ValueError を赤の知らせ)。HTTP は services が transaction.atomic の外で送る (R17)。
+- GitHub でログインしてつなぐ (依頼書 N320): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
+  断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
+  interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
 """
 
 from django.contrib import messages
@@ -24,7 +27,7 @@ from django.views.decorators.http import require_POST
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import chat, services
-from .forms import FeedbackForm, GithubConnectForm
+from .forms import FeedbackForm, GithubConnectForm, GithubDeviceForm
 from .models import Feedback
 
 
@@ -233,6 +236,70 @@ def github_sync(request):
 
 
 _HTMX_ONLY = "フィードバックの画面からの要求だけを受けます。"
+
+
+def _back_to_github_setup():
+    return HttpResponseRedirect(reverse("feedback:github_setup"))
+
+
+def _device_form_message(form) -> str:
+    """「GitHub でログインしてつなぐ」の欄の誤りの赤の知らせの文 (画面へ戻すと欄の下の字は消えるので、欄の名前と誤りの字を入れる)。"""
+    problems = " ".join(f"「{form.fields[name].label}」: {' '.join(str(error) for error in errors)}" for name, errors in form.errors.items())
+    return f"保存できません。{problems} 直してから、もう一度「GitHub でログインしてつなぐ」を押してください。"
+
+
+@login_required
+@require_POST
+def github_device_start(request):
+    """GitHub でログインしてつなぐを始める (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す。
+
+    戻った画面が session の待ちを見て、8 文字の符号と「GitHub を開く」の札を出す。
+    """
+    form = GithubDeviceForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, _device_form_message(form))
+        return _back_to_github_setup()
+    try:
+        services.start_github_device(request.session, form.cleaned_data, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    return _back_to_github_setup()
+
+
+@login_required
+@require_POST
+def github_device_poll(request):
+    """待ちの札が interval 秒ごとに呼ぶ口 (htmx だけ)。承認を 1 回聞き、札を描き直して返す。
+
+    つながったら緑の知らせを積み、中身の無い 200 の HX-Redirect で「GitHub とつなぐ」の画面の全体を読み直させる。
+    待ちが無い (ほかの窓でやめた・つないだ) ときも、画面の全体を読み直させる (札を空のまま残さない)。
+    """
+    if not request.headers.get("HX-Request"):
+        return HttpResponseBadRequest(_HTMX_ONLY)
+    result = services.poll_github_device(request.session, request.user)
+    if result["state"] in ("connected", "none"):
+        if result["state"] == "connected":
+            messages.success(request, f"{result['login']} の口座としてつながりました。")
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = reverse("feedback:github_setup")
+        return response
+    context = {
+        "device": services.github_device_state(request.session),
+        "state": result["state"],
+        "message": result.get("message", ""),
+    }
+    return render(request, "feedback/_github_device_card.html", context)
+
+
+@login_required
+@require_POST
+def github_device_cancel(request):
+    """GitHub でログインしてつなぐの待ちをやめる (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す (知らせは無し)。"""
+    try:
+        services.cancel_github_device(request.session, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    return _back_to_github_setup()
 
 
 @login_required

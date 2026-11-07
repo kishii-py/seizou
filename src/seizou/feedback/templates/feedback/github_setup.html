@@ -3,6 +3,9 @@
 {# 「GitHub とつなぐ」(依頼書 N185。決め 11-06 21:2x): 上に今の状態 (つないでいれば「外す」)、次にトークンの取得の手順、下に土台の入力の形 (トークンと送り先)。 #}
 {# 世話役でない人には断りの文だけを出す (状態・手順・入力の形を出さない)。部品の画面は R15 で dispatch を上書きできないため。送られても services が断る。 #}
 {# 「外す」の form は土台の入力の form の外に置く (form を入れ子にしない)。トークンの値はどこにも描かない (状態は口座の名前と送り先だけ)。 #}
+{# 「GitHub でログインしてつなぐ」(依頼書 N320。決め 11-07 09:2x) の段は、今の状態の次・トークンを貼る手順の前に、つないでいないときだけ出す。 #}
+{# 待ちがあれば待ちの札 (_github_device_card.html)、無くて Client ID があれば送り先と非公開の印とボタン (feedback_tags の device_form)、Client ID が無ければ薄い字の 1 文。 #}
+{# この段の form も土台の入力の form の外に置く (form を入れ子にしない)。device_code はどこにも描かない。 #}
 {% block content %}{% feedback_github as github %}
 {% if not github.can_manage %}
 <section id="github-denied" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-denied-title">
@@ -21,8 +24,40 @@
   <p class="mt-4 text-base-content/70">まだつないでいません。下の手順でトークンを作り、「トークン」の欄に貼ってください。</p>
   {% endif %}
 </section>
+{% if not github.status.connected %}
+<section id="github-device" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-device-title">
+  <h2 id="github-device-title" class="text-lg font-bold">GitHub でログインしてつなぐ</h2>
+  {% if github.device %}
+  <div class="mt-4">{% include "feedback/_github_device_card.html" with device=github.device state="pending" message="" %}</div>
+  {% elif github.client_id %}
+  <p class="mt-2">押すと 8 文字の符号が出ます。GitHub の画面にその符号を打って「Authorize」を押すだけで、トークンを手で作らずにつながります。</p>
+  {% with form=github.device_form %}
+  <form method="post" action="{% url 'feedback:github_device_start' %}" class="mt-4">
+    {% csrf_token %}
+    <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      <div class="min-w-0">
+        <div class="mb-2 flex items-center gap-2">
+          <label for="{{ form.repo.id_for_label }}" class="font-medium">{{ form.repo.label }}</label>
+          <span class="badge badge-xs badge-ghost text-base-content/50">任意</span>
+        </div>
+        {{ form.repo }}
+        <p class="mt-2 text-xs text-base-content/50">{{ form.repo.help_text }}</p>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="flex cursor-pointer items-center gap-2">{{ form.private }}<span class="font-medium">{{ form.private.label }}</span></label>
+        <p class="mt-2 text-xs text-base-content/50">{{ form.private.help_text }}</p>
+      </div>
+    </div>
+    <div class="mt-4"><button id="github-device-start" type="submit" class="btn btn-primary">{% icon "login" "size-4" %}GitHub でログインしてつなぐ</button></div>
+  </form>
+  {% endwith %}
+  {% else %}
+  <p class="mt-2 text-base-content/50">この置き場には作品の Client ID が入っていないので、下の手順でトークンを貼ってつなぎます。</p>
+  {% endif %}
+</section>
+{% endif %}
 <section id="github-steps" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-steps-title">
-  <h2 id="github-steps-title" class="text-lg font-bold">取得の手順</h2>
+  <h2 id="github-steps-title" class="text-lg font-bold">トークンを貼ってつなぐ (別の方法)</h2>
   <p class="mt-2 text-xs text-base-content/50">GitHub の画面のボタンの字は英語のまま「」で書きます。上から順に進めれば、トークンが取れます。</p>
   <ol class="mt-4 list-decimal pl-6">
     <li>
@@ -52,6 +87,7 @@
     <li class="mt-4">
       <p class="font-medium">やめ方</p>
       <p class="mt-2">上の「外す」で .env から消し、GitHub の側でも、そのトークンを「Delete」で無効にします。</p>
+      <p class="mt-2">GitHub でログインしてつないだときは、GitHub の「Settings」→「Applications」→「Authorized OAuth Apps」で seizou を「Revoke」します。</p>
       {# 絵は本体が足す: static/feedback/github/*.png #}
     </li>
   </ol>

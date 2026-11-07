@@ -20,6 +20,18 @@ from seizou.feedback.models import Feedback
 TOKEN = "ghp_test0000fake"
 KEYS = (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV)
 ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
+#: デバイスの認証の作り物の値 (依頼書 N320)
+OAUTH_TOKEN = "gho_test0000fake"
+CLIENT_ID = "client-id-test0000fake"
+DEVICE_CODE = "device-code-test0000fake"
+USER_CODE = "WDJB-MJHT"
+DEVICE_ANSWER = {
+    "device_code": DEVICE_CODE,
+    "user_code": USER_CODE,
+    "verification_uri": "https://github.com/login/device",
+    "expires_in": 900,
+    "interval": 5,
+}
 
 
 class Answer:
@@ -44,6 +56,8 @@ class FakeGithub:
         self.created = Answer(201, {"number": 7, "html_url": ISSUE_URL})
         self.issues = {}
         self.listing = Answer(200, [])
+        self.device = Answer(200, dict(DEVICE_ANSWER))
+        self.token = Answer(200, {"error": "authorization_pending"})
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
@@ -57,6 +71,10 @@ class FakeGithub:
 
     def post(self, url, **kwargs):
         self.calls.append(("POST", url, kwargs))
+        if url == github.DEVICE_CODE_URL:
+            return self.device
+        if url == github.DEVICE_TOKEN_URL:
+            return self.token
         return self.created
 
 
@@ -663,3 +681,273 @@ def test_cli_github_token_refuses_bad_token_and_non_site(tmp_path, no_http, monk
     out, err = capsys.readouterr()
     assert "トークンの形が違います" in err
     assert not (tmp_path / ".env").exists()
+
+
+# ---------------------------------------------------------------- GitHub でログインしてつなぐ (依頼書 N320)
+
+SETUP = "/feedback/github/"
+START = "/feedback/github/device/"
+POLL = "/feedback/github/device/poll/"
+CANCEL = "/feedback/github/device/cancel/"
+HTMX = {"HTTP_HX_REQUEST": "true"}
+
+
+class Session(dict):
+    """利用者の session の代わり (services の試験用。modified だけを持つ)。"""
+
+    modified = False
+
+
+@pytest.fixture
+def client_id(env_file, monkeypatch):
+    """作品の Client ID を置き場の .env に置く (os.environ と既定には頼らない)。"""
+    monkeypatch.delenv(github.CLIENT_ID_ENV, raising=False)
+    monkeypatch.setattr(github, "DEFAULT_CLIENT_ID", "")
+    env_file.write_text(f"{github.CLIENT_ID_ENV}={CLIENT_ID}\n", encoding="utf-8")
+    return CLIENT_ID
+
+
+@pytest.fixture
+def no_client_id(monkeypatch):
+    monkeypatch.delenv(github.CLIENT_ID_ENV, raising=False)
+    monkeypatch.setattr(github, "DEFAULT_CLIENT_ID", "")
+
+
+def device_calls(fake, url):
+    return [call for call in fake.calls if call[1] == url]
+
+
+def start(client, **extra):
+    return client.post(START, {"repo": "example-owner/example-repo", **extra})
+
+
+def test_check_token_passes_oauth_app_token():
+    assert github.check_token(OAUTH_TOKEN) == OAUTH_TOKEN
+
+
+def test_client_id_reads_env_then_default(env_file, no_client_id, monkeypatch):
+    assert github.client_id() == ""
+    monkeypatch.setattr(github, "DEFAULT_CLIENT_ID", "client-id-default-fake")
+    assert github.client_id() == "client-id-default-fake"
+    env_file.write_text(f"{github.CLIENT_ID_ENV}={CLIENT_ID}\n", encoding="utf-8")
+    assert github.client_id() == CLIENT_ID
+
+
+def test_device_start_shows_code_and_link_without_device_code(client, manager, fake, client_id):
+    client.force_login(manager)
+    html = html_of(client.get(SETUP))
+    assert "GitHub でログインしてつなぐ</button>" in html and f'action="{START}"' in html
+    assert 'id="id_device_repo"' in html and 'name="private"' in html
+    assert html.index("GitHub でログインしてつなぐ</button>") < html.index("トークンを貼ってつなぐ (別の方法)")
+
+    response = start(client)
+
+    assert response.status_code == 302 and response["Location"] == SETUP
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("POST", "https://github.com/login/device/code")
+    assert kwargs["data"] == {"client_id": CLIENT_ID, "scope": "public_repo"}
+    assert kwargs["headers"] == {"Accept": "application/json"}
+    assert kwargs["timeout"] == 10
+    stored = client.session[services.DEVICE_KEY]
+    assert stored["device_code"] == DEVICE_CODE and stored["repo"] == "example-owner/example-repo"
+    assert stored["scope"] == "public_repo" and stored["interval"] == 5
+
+    html = html_of(client.get(SETUP))
+    assert USER_CODE in html
+    assert 'href="https://github.com/login/device"' in html and 'target="_blank"' in html
+    assert f'hx-post="{POLL}"' in html and 'hx-trigger="every 5s"' in html
+    assert f'action="{CANCEL}"' in html
+    assert "GitHub でログインしてつなぐ</button>" not in html
+    assert DEVICE_CODE not in html
+
+
+def test_device_start_private_asks_repo_scope(client, manager, fake, client_id):
+    client.force_login(manager)
+    start(client, private="on")
+    assert device_calls(fake, github.DEVICE_CODE_URL)[-1][2]["data"]["scope"] == "repo"
+    assert client.session[services.DEVICE_KEY]["scope"] == "repo"
+
+
+def test_device_start_without_client_id_is_red_without_http(client, manager, no_http, no_client_id):
+    client.force_login(manager)
+    html = html_of(client.get(SETUP))
+    assert "この置き場には作品の Client ID が入っていないので" in html
+    assert "GitHub でログインしてつなぐ</button>" not in html
+
+    response = start(client)
+
+    assert response.status_code == 302 and response["Location"] == SETUP
+    assert services.DEVICE_KEY not in client.session
+    assert "Client ID が入っていません" in html_of(client.get(SETUP))
+
+
+def test_device_start_refuses_non_manager_without_http(client, plain, no_http, client_id):
+    client.force_login(plain)
+    start(client)
+    assert services.DEVICE_KEY not in client.session
+    assert "アカウント管理の担当者だけ" in html_of(client.get("/feedback/"))
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.start_github_device(Session(), {"repo": ""}, plain)
+
+
+def test_device_start_reports_disabled_device_flow(client, manager, fake, client_id):
+    fake.device = Answer(400, {"error": "device_flow_disabled"})
+    client.force_login(manager)
+    start(client)
+    assert services.DEVICE_KEY not in client.session
+    assert "作品の Client ID が GitHub の OAuth App と合いません" in html_of(client.get(SETUP))
+
+
+def test_device_start_service_returns_no_device_code(manager, fake, client_id):
+    session = Session()
+    result = services.start_github_device(session, {"repo": "", "private": False}, manager)
+    assert set(result) == {"user_code", "verification_uri", "interval", "expires_at"}
+    assert DEVICE_CODE not in str(result)
+    assert session.modified and session[services.DEVICE_KEY]["repo"] == github.DEFAULT_REPO
+    state = services.github_device_state(session)
+    assert set(state) == {"user_code", "verification_uri", "interval", "expires_at", "repo"}
+    assert DEVICE_CODE not in str(state)
+
+
+def test_device_poll_pending_keeps_card(client, manager, fake, client_id):
+    client.force_login(manager)
+    start(client)
+
+    response = client.post(POLL, **HTMX)
+
+    html = html_of(response)
+    assert response.status_code == 200
+    assert USER_CODE in html and 'hx-trigger="every 5s"' in html
+    assert DEVICE_CODE not in html
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("POST", "https://github.com/login/oauth/access_token")
+    assert kwargs["data"] == {
+        "client_id": CLIENT_ID,
+        "device_code": DEVICE_CODE,
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+    }
+    assert kwargs["headers"] == {"Accept": "application/json"}
+    assert services.DEVICE_KEY in client.session
+
+
+def test_device_poll_slow_down_widens_interval(client, manager, fake, client_id):
+    client.force_login(manager)
+    start(client)
+
+    fake.token = Answer(200, {"error": "slow_down", "interval": 10})
+    html = html_of(client.post(POLL, **HTMX))
+    assert client.session[services.DEVICE_KEY]["interval"] == 10
+    assert 'hx-trigger="every 10s"' in html
+
+    fake.token = Answer(200, {"error": "slow_down"})
+    html = html_of(client.post(POLL, **HTMX))
+    assert client.session[services.DEVICE_KEY]["interval"] == 15
+    assert 'hx-trigger="every 15s"' in html
+
+
+def test_device_poll_ok_writes_env_and_redirects(client, manager, fake, client_id, env_file):
+    client.force_login(manager)
+    start(client)
+    fake.token = Answer(200, {"access_token": OAUTH_TOKEN, "token_type": "bearer", "scope": "public_repo"})
+
+    response = client.post(POLL, **HTMX)
+
+    assert response.status_code == 200
+    assert response["HX-Redirect"] == SETUP
+    assert response.content == b""
+    assert OAUTH_TOKEN not in str(response.headers)
+    assert env_file.read_text(encoding="utf-8").splitlines() == [
+        f"{github.CLIENT_ID_ENV}={CLIENT_ID}",
+        f"SEIZOU_GITHUB_TOKEN={OAUTH_TOKEN}",
+        "SEIZOU_GITHUB_ISSUES_REPO=example-owner/example-repo",
+        "SEIZOU_GITHUB_LOGIN=example-feedback-bot",
+    ]
+    assert fake.calls[-1][0] == "GET" and fake.calls[-1][2]["headers"]["Authorization"] == f"Bearer {OAUTH_TOKEN}"
+    assert services.DEVICE_KEY not in client.session
+
+    html = html_of(client.get(SETUP))
+    assert "example-feedback-bot の口座としてつながりました。" in html
+    assert "example-feedback-bot の口座としてつながっています" in html
+    assert 'id="github-device"' not in html
+    assert OAUTH_TOKEN not in html
+
+
+@pytest.mark.parametrize(
+    ("answer", "words"),
+    [
+        ({"error": "expired_token"}, "符号の期限が切れました。"),
+        ({"error": "access_denied"}, "GitHub で承認されませんでした。"),
+        ({"error": "incorrect_device_code"}, "符号が GitHub と合いません。"),
+        ({"error": "incorrect_client_credentials"}, "作品の Client ID が GitHub の OAuth App と合いません。"),
+    ],
+)
+def test_device_poll_end_states_drop_session_and_stop(client, manager, fake, client_id, answer, words):
+    client.force_login(manager)
+    start(client)
+    fake.token = Answer(200, answer)
+
+    html = html_of(client.post(POLL, **HTMX))
+
+    assert words in html and "text-error" in html
+    assert "hx-trigger" not in html and USER_CODE not in html
+    assert services.DEVICE_KEY not in client.session
+    assert DEVICE_CODE not in html
+
+
+def test_device_poll_refuses_non_manager_without_http(client, plain, no_http):
+    client.force_login(plain)
+    response = client.post(POLL, **HTMX)
+    html = html_of(response)
+    assert response.status_code == 200
+    assert "アカウント管理の担当者だけ" in html and "hx-trigger" not in html
+
+
+def test_device_poll_needs_htmx(client, manager, no_http):
+    client.force_login(manager)
+    assert client.post(POLL).status_code == 400
+    assert client.get(POLL, **HTMX).status_code == 405
+
+
+def test_device_poll_without_wait_reloads_screen(client, manager, no_http):
+    client.force_login(manager)
+    response = client.post(POLL, **HTMX)
+    assert response.status_code == 200 and response["HX-Redirect"] == SETUP
+
+
+def test_device_cancel_drops_session(client, manager, plain, fake, client_id):
+    client.force_login(manager)
+    start(client)
+    calls = len(fake.calls)
+
+    response = client.post(CANCEL)
+
+    assert response.status_code == 302 and response["Location"] == SETUP
+    assert services.DEVICE_KEY not in client.session
+    assert len(fake.calls) == calls
+    html = html_of(client.get(SETUP))
+    assert USER_CODE not in html and "GitHub でログインしてつなぐ</button>" in html
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.cancel_github_device(Session(), plain)
+
+
+def test_device_wait_expires(manager, no_http, client_id):
+    session = Session({services.DEVICE_KEY: {
+        "device_code": DEVICE_CODE,
+        "user_code": USER_CODE,
+        "verification_uri": "https://github.com/login/device",
+        "interval": 5,
+        "expires_at": 0,
+        "repo": github.DEFAULT_REPO,
+        "scope": "public_repo",
+    }})
+    assert services.poll_github_device(Session(session), manager) == {"state": "expired"}
+    assert services.github_device_state(session) is None
+    assert services.DEVICE_KEY not in session and session.modified
+
+
+def test_device_screen_hides_section_when_connected(client, manager, fake, client_id):
+    connect(manager, fake)
+    client.force_login(manager)
+    html = html_of(client.get(SETUP))
+    assert 'id="github-device"' not in html
+    assert "Authorized OAuth Apps" in html and "Revoke" in html
