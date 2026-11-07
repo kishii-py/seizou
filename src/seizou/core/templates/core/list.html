@@ -21,6 +21,8 @@
       <div role="search">
         {% if search_hint %}
         <label for="list-q" class="mt-2 block font-medium">キーワード</label>
+        {# 幅が 640px より狭いときだけ、欄の案内と同じ字を見出しの下に折り返して出す (欄の幅で案内が切れ、何で絞れるかが読めないため。初見テスト R5 の候補 C36 の 5)。欄の id は付けない。 #}
+        <p class="mt-1 text-xs text-base-content/50 sm:hidden">{{ search_hint }}で絞り込む</p>
         <label class="input mt-2 w-full">
           {% icon "search" "size-4 text-base-content/50" %}
           <input id="list-q" class="grow" type="search" name="q" value="{{ search_q }}" placeholder="{{ search_hint }}で絞り込む" autocomplete="off">
