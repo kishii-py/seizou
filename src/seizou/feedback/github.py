@@ -22,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 __all__ = [
+    "BOARD_PAGES",
     "BODY_CHARS",
     "CLIENT_ID_ENV",
     "DEFAULT_CLIENT_ID",
@@ -78,6 +79,10 @@ DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 TOKEN_PREFIXES = ("ghp_", "github_pat_", "gho_")
 #: 皆の Issue を探すときの本文の字数 (先頭から)
 BODY_CHARS = 300
+#: Issue の並びの 1 ページの件数 (GitHub の per_page の上限)
+PER_PAGE = 100
+#: Issue の並びを読み進めるページの上限 (みんなの Issue の盤が開いている Issue を読む。100 件 × 10 = 1000 件。依頼書 N325)
+BOARD_PAGES = 10
 
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
@@ -317,55 +322,64 @@ def issue_state(repo: str, number: int, token: str = "") -> dict:
     }
 
 
-def list_issues(repo: str, token: str = "") -> list[dict]:
+def list_issues(repo: str, token: str = "", *, state: str = "all", since: str = "", pages: int = 1) -> list[dict]:
     """リポジトリの Issue の並び (GET /repos/{owner}/{repo}/issues?state=all&per_page=100&sort=updated を 1 回)。トークンは任意。
 
     pull request の行 (pull_request の鍵がある物) は外す。1 件 = {"number", "title", "body" (先頭 BODY_CHARS 字), "state",
     "html_url", "updated_at", "comments", "thumbs_up" (reactions の +1)}。
     依頼書 N323 で 4 つを足した: "state_reason" (閉じた理由 completed・not_planned・duplicate・reopened。無ければ空の字)・
     "closed_at" (閉じた日時の字か空の字)・"labels" (印の名前の並び)・"milestone" (マイルストーンの名前 = 直る版。無ければ空の字)。
+    依頼書 N325 で鍵語の引数を足した (みんなの Issue の盤が使う。既にある呼び方 list_issues(repo, token=…) は今までどおり 1 回だけ読み、params も同じ):
+    state は all・open・closed、since は ISO 8601 の字 (空でなければ params に入れ、GitHub は「その日時より後に更新された物」だけを返す)、
+    pages は読むページの数 (2 以上なら page=2, 3, … と読み進め、返事の件数が PER_PAGE より少ないか、pages (上限 BOARD_PAGES) に達したら止める)。
+    どのページで失敗しても GithubError (読めた分も返さない)。
     """
     import requests
 
-    try:
-        answer = requests.get(
-            f"{API}/repos/{check_repo(repo)}/issues",
-            params={"state": "all", "per_page": 100, "sort": "updated"},
-            headers=_headers(token),
-            timeout=TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise GithubError(MESSAGE_UNREACHABLE) from exc
-    if answer.status_code != 200:
-        raise _refused(answer.status_code)
-    data = _json(answer)
-    if not isinstance(data, list):
-        raise GithubError("GitHub の返事が読めませんでした。少し待ってからもう一度押してください。")
+    target = check_repo(repo)
     rows = []
-    for item in data:
-        if not isinstance(item, dict) or "pull_request" in item:
-            continue
-        reactions = item.get("reactions") if isinstance(item.get("reactions"), dict) else {}
-        labels = item.get("labels") if isinstance(item.get("labels"), list) else []
-        milestone = item.get("milestone")
-        milestone_title = milestone.get("title") if isinstance(milestone, dict) else ""
-        rows.append(
-            {
-                "number": item.get("number"),
-                "title": item.get("title") or "",
-                "body": (item.get("body") or "")[:BODY_CHARS],
-                "state": item.get("state") or "",
-                "html_url": item.get("html_url") or "",
-                "updated_at": item.get("updated_at") or "",
-                "comments": item.get("comments") or 0,
-                "thumbs_up": reactions.get("+1") or 0,
-                "state_reason": item.get("state_reason") or "",
-                "closed_at": item.get("closed_at") or "",
-                "labels": [label["name"] for label in labels if isinstance(label, dict) and isinstance(label.get("name"), str)],
-                "milestone": milestone_title if isinstance(milestone_title, str) else "",
-            }
-        )
+    for page in range(1, max(1, min(pages, BOARD_PAGES)) + 1):
+        params = {"state": state, "per_page": PER_PAGE, "sort": "updated"}
+        if since:
+            params["since"] = since
+        if page > 1:
+            params["page"] = page
+        try:
+            answer = requests.get(f"{API}/repos/{target}/issues", params=params, headers=_headers(token), timeout=TIMEOUT)
+        except requests.RequestException as exc:
+            raise GithubError(MESSAGE_UNREACHABLE) from exc
+        if answer.status_code != 200:
+            raise _refused(answer.status_code)
+        data = _json(answer)
+        if not isinstance(data, list):
+            raise GithubError("GitHub の返事が読めませんでした。少し待ってからもう一度押してください。")
+        rows.extend(_issue_row(item) for item in data if isinstance(item, dict) and "pull_request" not in item)
+        # 続きの有無は pull request を外す前の件数で見る (外した後で見ると、途中のページで止まる)。
+        if len(data) < PER_PAGE:
+            break
     return rows
+
+
+def _issue_row(item: dict) -> dict:
+    """Issue の並びの 1 件 (GitHub の JSON) を list_issues の 1 件の形にする。"""
+    reactions = item.get("reactions") if isinstance(item.get("reactions"), dict) else {}
+    labels = item.get("labels") if isinstance(item.get("labels"), list) else []
+    milestone = item.get("milestone")
+    milestone_title = milestone.get("title") if isinstance(milestone, dict) else ""
+    return {
+        "number": item.get("number"),
+        "title": item.get("title") or "",
+        "body": (item.get("body") or "")[:BODY_CHARS],
+        "state": item.get("state") or "",
+        "html_url": item.get("html_url") or "",
+        "updated_at": item.get("updated_at") or "",
+        "comments": item.get("comments") or 0,
+        "thumbs_up": reactions.get("+1") or 0,
+        "state_reason": item.get("state_reason") or "",
+        "closed_at": item.get("closed_at") or "",
+        "labels": [label["name"] for label in labels if isinstance(label, dict) and isinstance(label.get("name"), str)],
+        "milestone": milestone_title if isinstance(milestone_title, str) else "",
+    }
 
 
 # ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----

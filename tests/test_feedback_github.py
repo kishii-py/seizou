@@ -65,12 +65,18 @@ class FakeGithub:
             {"id": 9001, "html_url": f"{ISSUE_URL}#issuecomment-9001", "created_at": "2026-11-07T01:00:00Z", "user": {"login": "example-feedback-bot"}},
         )
         self.reaction = Answer(201, {"id": 1, "content": "+1"})
+        #: みんなの Issue の盤 (依頼書 N325): Issue の並びの params の (state, page) → 答え。無い組は listing を返す (既にある試験の形のまま)
+        self.board = {}
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
         if url.endswith("/user"):
             return self.user
         if url.endswith("/issues"):
+            params = kwargs.get("params") or {}
+            board = self.board.get((params.get("state"), params.get("page", 1)))
+            if board is not None:
+                return board
             return self.listing
         if url.endswith("/comments"):
             return self.comments
@@ -1759,3 +1765,40 @@ def test_list_issues_returns_reason_closed_at_labels_and_milestone(fake):
     )
     for row in rows[1:]:
         assert (row["state_reason"], row["closed_at"], row["labels"], row["milestone"]) == ("", "", [], "")
+
+
+# ---------------------------------------------------------------- Issue の並びのページ送り (依頼書 N325)
+
+
+def test_list_issues_reads_pages_until_short_page(fake):
+    # 1 ページ目は Issue 99 件と pull request 1 件 (外す前で 100 件なので続きを読む)、2 ページ目は 3 件で終わり。
+    first = [issue(number, f"件 {number}") for number in range(1, 100)] + [issue(100, "PR", pull_request={"url": "x"})]
+    fake.board[("open", 1)] = Answer(200, first)
+    fake.board[("open", 2)] = Answer(200, [issue(number, f"件 {number}") for number in range(101, 104)])
+
+    rows = github.list_issues("example-owner/example-repo", state="open", pages=github.BOARD_PAGES)
+
+    assert [row["number"] for row in rows] == [*range(1, 100), 101, 102, 103]
+    gets = listings(fake)
+    assert len(gets) == 2
+    assert gets[0][2]["params"] == {"state": "open", "per_page": 100, "sort": "updated"}
+    assert gets[1][2]["params"] == {"state": "open", "per_page": 100, "sort": "updated", "page": 2}
+
+    fake.calls.clear()
+    assert len(github.list_issues("example-owner/example-repo", state="open")) == 99
+    assert len(listings(fake)) == 1
+
+
+def test_list_issues_sends_state_and_since_and_stops_at_board_pages(fake):
+    github.list_issues("example-owner/example-repo", state="closed", since="2026-10-08T00:00:00Z")
+    assert listings(fake)[-1][2]["params"] == {"state": "closed", "per_page": 100, "sort": "updated", "since": "2026-10-08T00:00:00Z"}
+
+    # どのページも 100 件なら、pages が大きくても BOARD_PAGES (10) ページで止める。
+    fake.calls.clear()
+    fake.listing = Answer(200, [issue(number, f"件 {number}") for number in range(1, 101)])
+    assert len(github.list_issues("example-owner/example-repo", pages=50)) == 100 * github.BOARD_PAGES
+    assert [call[2]["params"].get("page", 1) for call in listings(fake)] == list(range(1, github.BOARD_PAGES + 1))
+
+    fake.board[("all", 3)] = Answer(500, {})
+    with pytest.raises(github.GithubError):
+        github.list_issues("example-owner/example-repo", pages=5)
