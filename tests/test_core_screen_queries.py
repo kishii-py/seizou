@@ -137,7 +137,7 @@ LIMITS = {
     "progress:record_list": 23,
     "progress:progress_create": 20,
     "billing:invoice_list": 23,
-    "billing:invoice_create": 21,
+    "billing:invoice_create": 22,  # 一式の節 (出し切らずに終えた一式の受注の明細を 1 回で読む問い合わせ) で +1 (11-07 の実測 21 → 22)
     "billing:invoice_detail": 31,
     "billing:invoice_cancel": 21,
     "billing:payment_create": 23,

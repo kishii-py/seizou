@@ -10,6 +10,7 @@
   選択肢ごとに data-partner と data-period を持つ。締日でまとめる得意先の出荷の行にも同じ data-period を付け、テンプレートの JS が
   選んだ期間の行に印を付けて発行日に締日を入れる。期間は Python の closing_period の 1 か所で決める (JS で日付を計算しない)。
   欄は service に渡さない補助の欄で、送った値を検査して断らない (空でも、選択肢に無い値でも保存は今のまま)。
+  出し切らずに終えた一式の受注の明細 (services.unbilled_lumps。決め PRICE-1d) は、一式の節の表の行 (lump_rows) で描く (知らせるだけで欄は無い)。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - 作り直す form は「発行日」だけ。service_kwargs() は {"issued_on": …} (土台が reissue_invoice(請求書, user=..., issued_on=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
@@ -24,12 +25,13 @@ from django import forms
 from django.utils import timezone
 
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number
+from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.widgets import IsoDateInput
 from seizou.masters.services import PRICE_BASIS_LUMP
 
 from .models import Invoice
 from .models import Payment
-from .services import billable_shipments, closing_period, shipment_amount
+from .services import billable_shipments, closing_period, lump_facts, shipment_amount, unbilled_lumps
 
 _Partner = Invoice._meta.get_field("customer").related_model
 
@@ -137,6 +139,7 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.hide_money = hide_money
         self._rows = None
+        self._lump_rows = None
         candidates = billable_shipments()
         self.fields["customer"].queryset = _Partner.objects.filter(
             pk__in=candidates.values("order_line__order__customer_id")
@@ -203,6 +206,34 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
                 )
             self._rows = rows
         return self._rows
+
+    @property
+    def lump_rows(self):
+        """一式の節の表の行 (出し切らずに終えた一式の受注の明細。services.unbilled_lumps の並びのまま)。
+
+        1 行 = {line (受注の明細)・partner (得意先の pk)・qty_text (数量の字)・shipped_text (出荷の合計の字)・unit (明細の単位)・
+        cancelled (受注が取消か)・full_amount (一式の全額)・shipped_amount (出した分)}。金額の 2 つは金額の閲覧が無い人は None
+        (金額を見られない人に金額を見せない)。得意先を選んでいても全部を描き、テンプレートの JS が data-partner で絞る (出荷の表と同じ)。
+        最初に読んだ時に作って持つ (rows と同じ)。
+        """
+        if self._lump_rows is None:
+            rows = []
+            for line in unbilled_lumps():
+                facts = lump_facts(line)
+                rows.append(
+                    {
+                        "line": line,
+                        "partner": line.order.customer_id,
+                        "qty_text": comma(line.qty),
+                        "shipped_text": comma(facts["shipped_qty"]),
+                        "unit": line.unit,
+                        "cancelled": line.order.status == line.order.STATUS_CANCELLED,
+                        "full_amount": None if self.hide_money else facts["full_amount"],
+                        "shipped_amount": None if self.hide_money else facts["shipped_amount"],
+                    }
+                )
+            self._lump_rows = rows
+        return self._lump_rows
 
     def _chosen_customer(self) -> str:
         """選んだ得意先の pk の字。送った form は送った値、開いた form は初期値 (?customer=)。選んでいなければ空の字。"""

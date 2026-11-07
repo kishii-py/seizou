@@ -2,6 +2,7 @@
 {# 請求書の新規登録の入力のカード (billing/invoice_form.html の画面の全体が include する)。小窓の入口は無いが、form の開きの tag は小窓の形も写した元のまま持つ。 #}
 {# 写した元: core/_form_card.html (候補 C74)。form の開きの tag・頭の案内の 1 行・欄の格子の 1 つずつの欄・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存。data-submit-label と data-submit-label-plain)・_enter_guard.html は写した元の字のまま。 #}
 {# 変えた所: 欄の格子は form.head_fields (得意先・発行日と会社ごとの項目) だけにし、その下に出荷の節を置く。見出しの行 (「出荷」「必須」と合計の枠 core/_line_totals.html)・別の得意先の行に残った印の数の黄の 1 行 (invoice_form.html の JS が hidden だけを出し入れする)・出荷の表 (form.rows。行の checkbox の見えない名前は今の行の字)・欄の誤りと案内の字。 #}
+{# 一式の節 (form.lump_rows。出し切らずに終えた一式の受注の明細の段 5 の黄の 1 行と表。決め PRICE-1d): 欄の格子の後・出荷の節の前に置く。行が 0 なら何も出さない。知らせではない (段 5) ので、閉じるボタンと「確認してください」の頭を付けない。行の data-partner で invoice_form.html の JS が得意先ごとに絞る。金額の閲覧が無い人には金額の 2 列を見出しごと出さない。 #}
 {# 行が 0 のときは表の箱だけを外す。下の行は行の数で包まない (止める処理を足さない)。赤と黄の知らせは右上の知らせ (core/_toasts.html)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
@@ -28,6 +29,29 @@
     {% endif %}
     {% endfor %}
   </div>
+  {% if form.lump_rows %}
+  <div class="mt-6" data-lump-notice>
+    <p class="flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}<span>全部を出し終える出荷が無いまま終わった一式の受注の明細があります。一式の金額は、まだ請求に載っていません。</span></p>
+    <div class="mt-2 overflow-x-auto">
+      <table class="table table-sm" id="id_lumps">
+        <thead><tr><th>受注</th><th>部品</th><th class="text-right">出荷</th><th class="text-right">数量</th><th>終わり方</th>{% if not form.hide_money %}<th class="text-right">一式の金額</th><th class="text-right">出した分</th>{% endif %}</tr></thead>
+        <tbody>
+          {% for row in form.lump_rows %}
+          <tr class="align-top" data-lump-row data-partner="{{ row.partner }}">
+            <td class="whitespace-nowrap font-mono"><a class="link link-primary" href="{% url 'orders:order_detail' row.line.order_id %}">{{ row.line.order.order_no }}-{{ row.line.line_no }}</a></td>
+            <td class="whitespace-nowrap">{{ row.line.item }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipped_text }} {{ row.unit }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.qty_text }} {{ row.unit }}</td>
+            <td class="whitespace-nowrap">{% if row.cancelled %}受注を取消{% else %}数量まで出荷 (全部を出し終えた出荷なし){% endif %}</td>
+            {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.full_amount|yen }}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipped_amount|yen }}</td>{% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
   {% with field=form.shipments %}
   <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
     <h2 class="flex items-center gap-2 font-medium">{{ field.label }}{% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% endif %}</h2>
