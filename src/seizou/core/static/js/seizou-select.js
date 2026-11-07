@@ -29,6 +29,8 @@
  *   写した欄には input の event を送る (明細の金額の目安が数え直す)。単価の欄の無い人 (金額の閲覧なし) には口が単価を返さない。
  *   部品の候補の口が default_process (発注の明細の工程の最初の値) を返したら、同じ行の -process の選ぶ欄にも写す
  *   (同じ決まり。選ぶ欄に写すのは copyChoice の 1 か所。C100)。
+ *   同じ行の単位の欄が選ぶ欄 (数量単位の一覧) なら、候補の unit_code を値に選ぶ (CHOICE_VALUE。写す決まりは字の欄と同じ。
+ *   コードの無い部品の単位 (一覧に無い字) は写さない。決め UNIT-1)。
  * - 字を打つ前の 1 ページ目は、口の返す recent (最近の受注・発注・出荷で使った物。5 件まで) を「最近使った」の見出しの群
  *   (Tom Select の optgroup) に入れて先頭に出す。同じ id の候補は 1 つにまとまり、最近使ったの群に残る。recent が空なら見出しを出さない (N162)。
  * - 候補が 0 件で、口が create (登録の入口) を返したら、「該当なし」の下に登録の行 (data-select-create) を出す。押すと data-modal-form で
@@ -46,6 +48,8 @@
     { key: "standard_price", suffix: "-unit_price", label: "単価" },
     { key: "default_process", suffix: "-process", label: "工程" },
   ];
+  // 同じ行の欄が選ぶ欄 (select) のときに、候補のどの鍵を選ぶ値にするか (単位は数量単位の一覧のコード。作者の決め)
+  var CHOICE_VALUE = { unit: "unit_code" };
   var COPIED_TAIL = "を部品から写しました。";
   // 字を打つ前の 1 ページ目に、口の返す recent を入れる群の名前と見出しの字 (N162)
   var RECENT = "recent";
@@ -111,11 +115,20 @@
     var row = select.closest("tr");
     if (!option || !row) return copied;
     COPY_FIELDS.forEach(function (spec) {
-      var value = option[spec.key];
-      if (value === undefined || value === null || String(value).trim() === "") return;
       var choice = row.querySelector('select[name$="' + spec.suffix + '"]');
+      // 選ぶ欄に写すときは CHOICE_VALUE の鍵の値 (単位なら unit_code) を選ぶ。字の欄には今までどおり spec.key の値を写す
+      var key = choice && CHOICE_VALUE[spec.key] ? CHOICE_VALUE[spec.key] : spec.key;
+      var value = option[key];
+      if (value === undefined || value === null || String(value).trim() === "") return;
       if (choice) {
-        if (copyChoice(choice, String(value))) copied.push(spec.label);
+        value = String(value);
+        // 字を打って探す欄 (単位の欄) は選んである値の候補しか持たないので、写す値の候補を名前の字で先に足す
+        var ts = choice.tomselect;
+        if (key !== spec.key && ts && !ts.options[value]) {
+          var label = String(option[spec.key]);
+          ts.addOption({ id: value, text: label, title: label, sub: value });
+        }
+        if (copyChoice(choice, value)) copied.push(spec.label);
         return;
       }
       var input = row.querySelector('input[name$="' + spec.suffix + '"]');

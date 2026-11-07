@@ -632,6 +632,20 @@ def test_select_js_copies_unit_and_price_into_same_row():
         assert word in text, word
 
 
+def test_select_js_chooses_unit_code_in_unit_select():
+    """明細の単位の欄が選ぶ欄 (数量単位の一覧) のときは、候補の unit_code を値に選ぶ (決め UNIT-1。R5 の候補 C108 の その 5)。"""
+    text = SELECT_JS.read_text(encoding="utf-8")
+    for word in (
+        'var CHOICE_VALUE = { unit: "unit_code" };',
+        # 字を打って探す欄は選んである値の候補しか持たないので、写す値の候補を足してから選ぶ
+        ".addOption(",
+        ".setValue(",
+        # 字の欄の写しの道 (単価の欄と、単位が字の欄のとき) は残る
+        'row.querySelector(\'input[name$="\' + spec.suffix + \'"]\')',
+    ):
+        assert word in text, word
+
+
 def test_select_js_copy_note_matches_copy_values_wording(priced):
     text = SELECT_JS.read_text(encoding="utf-8")
     # 知らせの字は masters.services.copy_values の「写した」の文と同じ形 (単位と単価を部品から写しました。)
