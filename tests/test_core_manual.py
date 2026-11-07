@@ -4,12 +4,14 @@
 """
 
 import re
+from pathlib import Path
 from urllib.parse import urljoin
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
+import seizou.core
 from seizou.core.manual import fragment_name, manual_flows
 from seizou.core.screens import all_screens
 
@@ -82,6 +84,40 @@ def test_topbar_has_manual_button(client_logged_in, site):
     html = client_logged_in.get(reverse("core:home")).content.decode()
     assert 'href="/manual/"' in html
     assert 'aria-label="使い方"' in html
+
+
+def topbar_manual_hrefs(html: str) -> list[str]:
+    """上の帯の「?」(aria-label="使い方" を持つ link。src の中で 1 つだけ) の href の並び。class の字に寄らない。"""
+    return re.findall(r'<a [^>]*href="([^"]*)"[^>]*aria-label="使い方"', html)
+
+
+@pytest.mark.parametrize(
+    ("url_name", "expected"),
+    [
+        ("core:home", "/manual/"),
+        ("core:manual", "/manual/"),
+        ("masters:item_list", "/manual/#masters_item_list"),
+        ("core:settings", "/manual/#core_settings"),
+    ],
+)
+def test_topbar_manual_button_opens_current_screen(client_logged_in, site, url_name, expected):
+    """上の帯の「?」は、ダッシュボードと使い方の画面では頭、ほかでは今の画面の説明の所 (/manual/#<画面の名前>) で開く (候補 C86 の 1)。"""
+    response = client_logged_in.get(reverse(url_name))
+    assert response.status_code == 200
+    assert topbar_manual_hrefs(response.content.decode()) == [expected]
+
+
+CORE_MANUAL_DEFAULT = Path(seizou.core.__file__).resolve().parent / "manual_default" / "core_manual.html"
+
+
+def test_core_manual_fragment_explains_topbar_button():
+    """標準の組の使い方の画面の節の「できること」に、上の帯の「使い方」の開き方の 1 行がある (候補 C86 の 2)。
+
+    2 社の種は、標準の組と A 社の種のバイトの比べと、2 社の種どうしの比べが同じ字を見る。
+    """
+    text = CORE_MANUAL_DEFAULT.read_text(encoding="utf-8")
+    can_do = text[text.index("<h3>できること</h3>") :]
+    assert "<li>ダッシュボードとこの画面のほかで上の帯の「使い方」を押すと、その画面の説明の所から開く。</li>" in can_do
 
 
 def test_manual_in_screen_catalog():
