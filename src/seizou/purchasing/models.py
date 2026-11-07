@@ -1,7 +1,7 @@
 """発注の表 (01 の 4 節)。協力企業管理の最小の形。
 
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
-金額は purchasing.services が数量 × 単価を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
+金額は purchasing.services が数量 × 単価 (単価の単位が式なら単価のまま) を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
 受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 """
@@ -12,6 +12,8 @@ from functools import cached_property
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_UNIT, price_basis_text
 
 
 class PurchaseOrder(models.Model):
@@ -76,7 +78,7 @@ class PurchaseOrder(models.Model):
 
 
 class PurchaseOrderLine(models.Model):
-    """発注の明細。金額は purchasing.services が数量 × 単価を丸めて書く。"""
+    """発注の明細。金額は purchasing.services が数量 × 単価 (単価の単位が式なら単価のまま) を丸めて書く。"""
 
     purchase_order = models.ForeignKey(
         PurchaseOrder,
@@ -94,6 +96,9 @@ class PurchaseOrderLine(models.Model):
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit = models.CharField("単位", max_length=10, blank=True)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
+    # 単価の単位 (決め PRICE-1b)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは purchasing.services だけ。
+    # 数量の単位の列 (unit) とは別。式は数量の単位でないので unit に入れない (数量は実際の個数のまま)。
+    price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
@@ -129,6 +134,12 @@ class PurchaseOrderLine(models.Model):
         if remaining is None or remaining <= 0:
             return text
         return f"{text} / {self.purchase_order.partner.name} 残り {_qty_text(remaining)}"
+
+    @property
+    def price_unit_text(self):
+        """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
+        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
+        return price_basis_text(self.price_basis, self.unit)
 
     @cached_property
     def shipping_notice(self):

@@ -22,15 +22,15 @@ from django.apps import apps
 from django.utils import timezone
 
 from seizou.core import fields as company_fields
-from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
+from seizou.core.forms import DefaultChoiceField, PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
 from seizou.core.views import use_decimal_input
 from seizou.core.widgets import IsoDateInput, RemoteSelect
-from seizou.masters.services import active_items, active_partners
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
 
 from . import services
 from .models import PurchaseOrder, PurchaseOrderLine, _qty_text
 
-LINE_KEYS = ("item", "qty", "unit", "unit_price", "due_date", "note")
+LINE_KEYS = ("item", "qty", "unit", "price_basis", "unit_price", "due_date", "note")
 
 
 def _date_input():
@@ -55,6 +55,14 @@ class PurchaseOrderLineForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"class": "input w-full"}),
         help_text="空なら部品の単位を写します。",
+    )
+    # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
+    # data-label-lump は、合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が式の行を数量倍しない印。
+    price_basis = DefaultChoiceField(
+        label="単価の単位",
+        choices=PRICE_BASIS_CHOICES,
+        default=PRICE_BASIS_UNIT,
+        widget=forms.Select(attrs={"class": "select w-full", "data-label-lump": PRICE_BASIS_LUMP}),
     )
     unit_price = forms.DecimalField(
         label="単価",
@@ -172,7 +180,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
                 values = row.initial or {}
                 if values.get("qty") is None:
                     continue
-            pairs.append((values["qty"], values.get("unit_price")))
+            pairs.append((values["qty"], values.get("unit_price"), values.get("price_basis") == PRICE_BASIS_LUMP))
         return pairs
 
     def line_totals(self) -> dict:

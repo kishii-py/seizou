@@ -8,7 +8,8 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 保存と同時に送る (02)。発注を保存したトランザクションを抜けた後で、取引先に向き「送る」の
   つながりがあれば connect.services.send_order を呼ぶ。相手への HTTP は atomic の外 (R17)。
-- 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note。
+- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note。
+  price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
 - 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
@@ -23,7 +24,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from seizou.core.services import next_number
-from seizou.masters.services import refuse_inactive, round_amount
+from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis, round_amount
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
@@ -42,7 +43,7 @@ from django.db.models import Case, When
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 _ZERO = Decimal("0")
 
-_LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "due_date", "note"})
+_LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note"})
 
 _POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
 _CANCEL_AFTER_SENT_MESSAGE = (
@@ -69,6 +70,8 @@ def _refuse_bad_lines(lines):
             raise ValueError(
                 f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。発注の明細の列の名前だけを渡してください。"
             )
+        if "price_basis" in line:
+            refuse_unknown_price_basis(line["price_basis"])
         if not (_dec(line["qty"]) > 0 and _dec(line["unit_price"]) > 0):
             raise ValueError(_POSITIVE_MESSAGE)
 
@@ -84,6 +87,7 @@ def _add_line(purchase_order, line, line_no):
     item = line["item"]
     qty = _dec(line["qty"])
     unit_price = _dec(line["unit_price"])
+    price_basis = line.get("price_basis", PRICE_BASIS_UNIT)
     return PurchaseOrderLine.objects.create(
         purchase_order=purchase_order,
         line_no=line_no,
@@ -91,7 +95,8 @@ def _add_line(purchase_order, line, line_no):
         qty=qty,
         unit=line.get("unit") or item.unit,
         unit_price=unit_price,
-        amount=round_amount(purchase_order.partner, qty * unit_price),
+        price_basis=price_basis,
+        amount=line_amount(purchase_order.partner, qty, unit_price, price_basis),
         due_date=line.get("due_date"),
         note=line.get("note", ""),
     )
