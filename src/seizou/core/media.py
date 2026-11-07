@@ -18,6 +18,7 @@ SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
   nginx は X-Accel-Redirect のとき Cache-Control と Content-Disposition は引き継ぐが nosniff は落とすので、
   deploy/nginx-files.conf の側でも nosniff を付ける。
 - Django から見えない漏れ (内部の location の internal の付け忘れ、alias の誤り) を外から確かめる命令は会期後。
+- 読み取りの元のファイル (intake/ の道) は、金額の閲覧の判定 (access.can_see_money) を通す (MONEY_PREFIXES)。
 """
 
 from __future__ import annotations
@@ -67,6 +68,10 @@ DOWNLOAD_ONLY_TYPES = frozenset(
         "application/ecmascript",
     }
 )
+
+#: 道の最初の部分 → 金額の閲覧の判定 (access.can_see_money) に渡す「何を」の字。
+#: 金額の入ったファイルを置く道の頭だけ。会話の添付 (connect) と添付 (attachments) はそれぞれの口で見る。
+MONEY_PREFIXES = {"intake": "読み取りの元のファイル (注文書) を開いた"}
 
 ADVICE_NO_PROXY = (
     f"このシステムは、上げたファイルを nginx が送る設定 ({SETTING}=nginx) です。システムを預かる人は、"
@@ -161,6 +166,10 @@ def protected_file(request, name: str):
     """上げたファイルを、ログインした人にだけ返す (画面でない口)。URL の <path> は MEDIA_ROOT からの相対の道。
 
     会社の情報のロゴ (is_public) だけは、ログインの画面に出すので、ログインしていなくても返す。
+    道の頭が MONEY_PREFIXES にあるファイルは、金額の閲覧の判定 (access.can_see_money) を通す。django と nginx の
+    どちらの配り方でも同じ所で見る。
+
+    訳: 金額を見られない人には、単価の入った読み取りの元のファイル (注文書) を返さない (on は 404、log は返して seizou.access に 1 行、off は今のまま)。読み取りからの受注登録が金額の操作になり (416 回目)、金額の無い人が注文書と見比べる理由が無くなったため。会社どうしの会話の添付は入れない (会話は現場も使い、添付に金額があるかを仕組みが判定できないため)。出所 = 本人の決め 11-08 00:13 (見せない・会話の添付は今回は入れない) と決め 11-07 21:0x (金額を見られない人は金額に関わる操作をしない)。変えてよい条件 = 本人が決め直したとき。
     """
     relative = relative_path(name)
     if not request.user.is_authenticated and not (relative is not None and is_public(relative)):
@@ -175,6 +184,12 @@ def protected_file(request, name: str):
     target = local_file(relative) if relative is not None else None
     if target is None:
         raise Http404("ファイルがありません。")
+    what = MONEY_PREFIXES.get(relative.parts[0])
+    if what is not None:
+        from seizou.core import access
+
+        if not access.can_see_money(request.user, what=what):
+            raise Http404("ファイルがありません。")
     content_type = content_type_of(target.name)
     download = must_download(target.name, content_type)
     if mode == DELIVERY_NGINX:
