@@ -2,7 +2,7 @@
 {% load manuals_tags seizou_icons %}
 {# 版の履歴: 今の版と、「新しい版として保存」で残った前の中身の一覧。行から差分とこの版に戻すへ。表の頭は今の版の行 (図面の版の表と同じ形。日時・保存した人・メモは「—」で、操作は無い)。メモは変える前の中身の版の行に付く。 #}
 {# 頭: 題の上にパンくず (マニュアル › 題 › この画面。core/detail.html の頭と同じ形)。マニュアルの詳細へはパンくずで戻る (右上に戻るボタンを置かない)。 #}
-{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
+{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/60" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/60" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/60" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
 {% block content %}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <div class="flex flex-wrap items-center gap-4">
@@ -20,9 +20,9 @@
         {% for row in rows %}
         <tr class="h-10">
           <td class="whitespace-nowrap tabular-nums">{% if row.is_current %}版 {{ row.number }} (今の中身){% else %}版 {{ row.number }}{% endif %}</td>
-          <td class="whitespace-nowrap font-mono tabular-nums">{% if row.is_current %}<span class="text-base-content/50">—</span>{% else %}{{ row.saved_at|date:"Y-m-d H:i" }}{% endif %}</td>
-          <td class="whitespace-nowrap">{% if row.is_current %}<span class="text-base-content/50">—</span>{% else %}{{ row.saved_by|default_if_none:"—" }}{% endif %}</td>
-          <td>{% if row.is_current %}<span class="text-base-content/50">—</span>{% else %}<span class="block max-w-md truncate" title="{{ row.note }}">{{ row.note|default:"—" }}</span>{% endif %}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{% if row.is_current %}<span class="text-base-content/60">—</span>{% else %}{{ row.saved_at|date:"Y-m-d H:i" }}{% endif %}</td>
+          <td class="whitespace-nowrap">{% if row.is_current %}<span class="text-base-content/60">—</span>{% else %}{{ row.saved_by|default_if_none:"—" }}{% endif %}</td>
+          <td>{% if row.is_current %}<span class="text-base-content/60">—</span>{% else %}<span class="block max-w-md truncate" title="{{ row.note }}">{{ row.note|default:"—" }}</span>{% endif %}</td>
           <td class="whitespace-nowrap">
             {% if row.version %}
             <a class="btn btn-sm btn-outline border-base-300" href="{% url 'manuals:manualversion_detail' row.version.pk %}">差分</a>
@@ -36,7 +36,7 @@
   </div>
   {% else %}
   <div class="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "list" "size-6" %}</span>
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "list" "size-6" %}</span>
     <p class="mt-4 font-medium">版はまだありません。編集の画面の「新しい版として保存」で、保存前の中身が版として残ります。</p>
   </div>
   {% endif %}

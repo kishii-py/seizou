@@ -19,7 +19,7 @@ from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.forms import PurchaseOrderForm, PurchaseOrderLineForm
 from seizou.purchasing.models import PurchaseOrder
 
-DIMMED = " text-base-content/50"
+DIMMED = " text-base-content/60"
 
 
 @pytest.fixture

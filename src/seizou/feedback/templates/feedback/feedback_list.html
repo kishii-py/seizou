@@ -11,7 +11,7 @@
 {% if request.GET.tab != "issues" %}{{ block.super }}{% endif %}
 <section id="issues" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="issues-title">
   <h2 id="issues-title" class="text-lg font-bold">GitHub の Issue を探す</h2>
-  <p class="mt-2 text-xs text-base-content/50">今の困りごとが既に出ていないか、送った要望がどうなったかを、送り先のリポジトリ ({{ github.status.repo }}) の Issue から探します。同じ困りごとなら「うちも」を押してください (会社のトークンで 👍 が付き、あなたの件として残ります)。</p>
+  <p class="mt-2 text-xs text-base-content/60">今の困りごとが既に出ていないか、送った要望がどうなったかを、送り先のリポジトリ ({{ github.status.repo }}) の Issue から探します。同じ困りごとなら「うちも」を押してください (会社のトークンで 👍 が付き、あなたの件として残ります)。</p>
   <form id="issues-form" method="get" action="{{ request.path }}{% if request.GET.tab == "issues" %}?tab=issues{% endif %}#issues" class="mt-4 flex flex-wrap items-center gap-2" role="search" aria-label="GitHub の Issue を探す">
     {% if request.GET.tab == "issues" %}<input type="hidden" name="tab" value="issues">{% endif %}
     <input type="search" name="issue_q" value="{{ github.q }}" class="input input-sm w-72" placeholder="言葉 (空白で区切る。空なら新しい順)" aria-label="探す言葉">
@@ -22,12 +22,12 @@
     <div id="issue-views" class="join ml-auto" role="group" aria-label="カンバンと一覧の切り替え">{% for link in board.views %}<a class="join-item btn btn-sm{% if link.selected %} btn-active{% endif %}" href="{{ link.href }}"{% if link.selected %} aria-current="true"{% endif %}>{{ link.label }}</a>{% endfor %}</div>{% endif %}
   </form>
   {# 「みんなの Issue」のタブは、探した結果の表の代わりに盤 (_issue_board.html) か一覧の形 (_issue_table.html) を描く。読めなかったときは 1 文だけ。タブの外 (送った一言の下) の節は今までどおり。 #}
-  {% if request.GET.tab == "issues" %}{% if board.board.error %}<p class="mt-4 text-sm text-base-content/50">{{ board.board.error }}</p>
-  {% elif board.q and not board.board.total %}<p class="mt-4 text-sm text-base-content/50">当たる Issue はありませんでした。言葉を減らすか、空にして「探す」を押してください。</p>
+  {% if request.GET.tab == "issues" %}{% if board.board.error %}<p class="mt-4 text-sm text-base-content/60">{{ board.board.error }}</p>
+  {% elif board.q and not board.board.total %}<p class="mt-4 text-sm text-base-content/60">当たる Issue はありませんでした。言葉を減らすか、空にして「探す」を押してください。</p>
   {% elif board.view == "list" %}{% include "feedback/_issue_table.html" %}
   {% else %}{% include "feedback/_issue_board.html" %}{% endif %}
   {% else %}
-  {% if github.search %}{% if github.search.error %}<p class="mt-4 text-sm text-base-content/50">{{ github.search.error }}</p>
+  {% if github.search %}{% if github.search.error %}<p class="mt-4 text-sm text-base-content/60">{{ github.search.error }}</p>
   {% elif github.search.issues %}
   <div class="mt-4 overflow-x-auto">
     <table class="table table-sm">
@@ -43,7 +43,7 @@
       </tbody>
     </table>
   </div>
-  {% else %}<p class="mt-4 text-sm text-base-content/50">当たる Issue はありませんでした。言葉を減らすか、空にして「探す」を押してください。</p>{% endif %}{% endif %}
+  {% else %}<p class="mt-4 text-sm text-base-content/60">当たる Issue はありませんでした。言葉を減らすか、空にして「探す」を押してください。</p>{% endif %}{% endif %}
   {% endif %}
 </section>
 {% endblock %}

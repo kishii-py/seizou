@@ -23,7 +23,7 @@
   <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
     <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="日の計画">
       <ul class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70" aria-label="凡例">
-        <li class="text-base-content/50">枠線 = 状態</li>
+        <li class="text-base-content/60">枠線 = 状態</li>
         <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-warning"></span>計画</li>
         <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-info"></span>着手</li>
         <li class="flex items-center gap-2"><span class="inline-block size-3 rounded border-2 border-success"></span>完了</li>
@@ -68,10 +68,10 @@
                   <dt class="text-base-content/70">状態</dt><dd>{{ bar.state_label }}</dd>
                 </dl>
                 {% if bar.neighbors %}
-                <p class="mt-2 text-xs text-base-content/50">前後の工程</p>
+                <p class="mt-2 text-xs text-base-content/60">前後の工程</p>
                 <ul class="text-xs">
                   {% for other in bar.neighbors %}
-                  <li class="flex justify-between gap-2"><span class="truncate">{{ other.name }}</span>{% if other.start %}<span>{{ other.start|date:"n/j" }} → {{ other.end|date:"n/j" }}</span>{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</li>
+                  <li class="flex justify-between gap-2"><span class="truncate">{{ other.name }}</span>{% if other.start %}<span>{{ other.start|date:"n/j" }} → {{ other.end|date:"n/j" }}</span>{% else %}<span class="text-base-content/60">未計画</span>{% endif %}</li>
                   {% endfor %}
                 </ul>
                 {% endif %}

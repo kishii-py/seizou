@@ -226,7 +226,7 @@ def test_accept_twice_is_red(client_logged_in, extraction, user):
 
 # ---------------------------------------------------------------- 受注にする画面の品番ごとの枠 (初見テスト R5 の候補 C91 の その 2)
 
-DASH = '<span class="text-base-content/50">—</span>'
+DASH = '<span class="text-base-content/60">—</span>'
 
 
 def _frame(body, name):

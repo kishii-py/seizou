@@ -32,7 +32,7 @@ manager_client = test_core_settings_edit.manager_client
 BOOL_KEYS = ("partial_shipment", "production_plan")
 
 #: 名前の下の 1 文の span の頭 (_radio_option.html の字と同じ)
-NOTE_SPAN = '<span class="block text-xs text-base-content/50">'
+NOTE_SPAN = '<span class="block text-xs text-base-content/60">'
 
 #: 丸の 1 つずつの label (_radio_option.html の字と同じ)
 RADIO_LABEL = re.compile(r'<label class="flex cursor-pointer items-start gap-2 py-1"[^>]*>.*?</label>', re.S)

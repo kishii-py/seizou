@@ -8,7 +8,7 @@
     {% if object.has_secret %}<span class="badge badge-soft badge-success">{{ object.secret_state }}</span>
     {% else %}<span class="badge badge-soft badge-warning">{{ object.secret_state }}</span>{% endif %}
   </div>
-  <p class="mt-2 text-xs text-base-content/50">鍵の置き場の名前 <span class="font-mono">{{ object.secret_env }}</span></p>
+  <p class="mt-2 text-xs text-base-content/60">鍵の置き場の名前 <span class="font-mono">{{ object.secret_env }}</span></p>
   {% if object.has_secret %}
   <p class="mt-4">鍵の値は .env にあります。値は画面に出しません。</p>
   {% else %}

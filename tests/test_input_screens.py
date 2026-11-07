@@ -504,7 +504,7 @@ def test_shipment_form_helptext_turns_yellow_only_by_data_tone(logged_in, split_
     """欄の下の字は data-tone="warning" の間だけ黄 (決まった class。JS は class を触らない = R19)。class を足すのは form の warning_help_fields の欄だけ。"""
     first = split_order.lines.get(line_no=1)
     body = logged_in.get(reverse("shipping:shipment_create"), {"order_line": first.pk}).content.decode()
-    assert '<p id="id_qty_helptext" class="mt-2 text-xs text-base-content/50 data-[tone=warning]:text-warning">残り 6</p>' in body
+    assert '<p id="id_qty_helptext" class="mt-2 text-xs text-base-content/60 data-[tone=warning]:text-warning">残り 6</p>' in body
     assert 'data-tone="warning"' not in body
     # 黄の class を足すのは数量の欄の下の字だけ (ほかの欄の下の字の class は今のまま)
     assert body.count("data-[tone=warning]:text-warning") == 1
@@ -638,7 +638,7 @@ def test_select_js_copy_note_matches_copy_values_wording(priced):
     assert 'var COPIED_TAIL = "を部品から写しました。";' in text
     assert 'copied.join("と") + COPIED_TAIL' in text
     # 知らせは字だけ (textContent) で、class は固定の字 (app.css に入っている物)
-    assert 'copyNote.className = "mt-2 text-xs text-base-content/50";' in text
+    assert 'copyNote.className = "mt-2 text-xs text-base-content/60";' in text
     assert 'copyNote.setAttribute("role", "status");' in text
     built = APP_CSS.read_text(encoding="utf-8")
     for name in (".mt-2", ".text-xs", "text-base-content\\/50"):
@@ -649,4 +649,4 @@ def test_select_js_copy_note_matches_copy_values_wording(priced):
 def test_shipment_form_order_line_explains_candidate_head(logged_in, split_order):
     """初見テスト R5 の V106 (候補 C20 の 5): 受注の明細の欄の下で、候補の頭の「-1」が明細の行の番号だと言う (候補の字そのものは変えない)。"""
     body = logged_in.get(reverse("shipping:shipment_create")).content.decode()
-    assert '<p id="id_order_line_helptext" class="mt-2 text-xs text-base-content/50">候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。</p>' in body
+    assert '<p id="id_order_line_helptext" class="mt-2 text-xs text-base-content/60">候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。</p>' in body

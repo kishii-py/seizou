@@ -254,7 +254,7 @@ def test_brand_color_and_industry_edit_pages_show_the_same_note(manager_client):
     for key in ("brand_color", "industry"):
         page = manager_client.get(reverse("core:setting_update", args=[key])).content.decode()
         note = settings_screen.SETTING_NOTES[key]
-        assert f'<p id="id_{key}_helptext" class="mt-2 text-xs text-base-content/50">{note}</p>' in page, key
+        assert f'<p id="id_{key}_helptext" class="mt-2 text-xs text-base-content/60">{note}</p>' in page, key
         assert note == settings_screen.setting_note(key)
 
 

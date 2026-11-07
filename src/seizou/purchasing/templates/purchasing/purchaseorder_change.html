@@ -7,7 +7,7 @@
 {# 取り消した明細 (明細状態コード 2) は form に出さない。黄の確かめ (取適法) は右上の知らせに出て、ボタンが「このまま保存」になる。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
-  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}直した明細は、保存と同時に相手へ「第 {{ form.instance.revision_no|add:1 }} 版の変更」として送ります。相手が出荷した明細は、数を出荷済みの数より減らせず、単価は変えられず、取り消せません。</p>
+  <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}直した明細は、保存と同時に相手へ「第 {{ form.instance.revision_no|add:1 }} 版の変更」として送ります。相手が出荷した明細は、数を出荷済みの数より減らせず、単価は変えられず、取り消せません。</p>
   <dl class="mt-6 grid gap-x-6 gap-y-2 sm:grid-cols-2">
     <div class="flex gap-4"><dt class="text-base-content/70">協力企業</dt><dd>{% master_link form.instance.partner %}</dd></div>
     <div class="flex gap-4"><dt class="text-base-content/70">発注日</dt><dd class="font-mono tabular-nums">{{ form.instance.order_date|date:"Y-m-d" }}</dd></div>
@@ -15,7 +15,7 @@
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
     {% for field in form.visible_fields %}
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
-      <div class="mb-2 flex items-center gap-2"><label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label><span class="badge badge-xs badge-ghost text-base-content/50">任意</span></div>
+      <div class="mb-2 flex items-center gap-2"><label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label><span class="badge badge-xs badge-ghost text-base-content/60">任意</span></div>
       {{ field }}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
     </div>
@@ -24,7 +24,7 @@
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
 
   <h2 class="mt-6 text-lg font-bold">明細</h2>
-  <p class="mt-2 text-xs text-base-content/50">「取り消す」に印を付けた明細は、行を残して取り消します。何も入れていない足す行は送りません。</p>
+  <p class="mt-2 text-xs text-base-content/60">「取り消す」に印を付けた明細は、行を残して取り消します。何も入れていない足す行は送りません。</p>
   {{ form.lines.management_form }}
   {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
   <div class="mt-4 overflow-x-auto">

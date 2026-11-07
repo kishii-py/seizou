@@ -116,7 +116,7 @@ def test_toast_template_has_stop_and_check_boxes(logged_in):
     assert "data-toast-help" not in check
     for box in (stop, check):
         assert "data-auto" not in box
-        assert "text-base-content/50" not in box
+        assert "text-base-content/60" not in box
         assert "data-toast-close" in box
     assert "data-notice" not in BASE.read_text(encoding="utf-8")
 

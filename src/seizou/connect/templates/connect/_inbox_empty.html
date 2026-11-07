@@ -5,9 +5,9 @@ core/_rows.html の空の枠 (絵と「まだ 1 件もありません。」) を
 最後の行は core/_rows.html の最後の行の写し (行の部分を返すとき、上の件数と絞りのクリアも入れ替える)。写した元: core/_rows.html の 43〜55 行目と 57 行目 (N160 を起こした main)。
 {% endcomment %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">まだ 1 件もありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">取引先から注文が届くと、ここに並びます。</p>
+  <p class="mt-2 text-xs text-base-content/60">取引先から注文が届くと、ここに並びます。</p>
   <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{% url 'connect:connection_list' %}">{% icon "building" "size-4" %}取引先との接続を開く</a>
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}

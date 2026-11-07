@@ -188,7 +188,7 @@ def test_step_numbers_and_toc():
     assert '<h2 id="step-2"><span class="mr-2 badge badge-primary">2</span>片付け</h2>' in steps.html
     assert steps.toc == (TocEntry("1", "準備", "step-1"), TocEntry("2", "片付け", "step-2"))
     page = render(body, images={}, manual_format="page")
-    assert '<h2 id="section-1"><span class="mr-2 text-base-content/50">i</span>準備</h2>' in page.html
+    assert '<h2 id="section-1"><span class="mr-2 text-base-content/60">i</span>準備</h2>' in page.html
     assert [(e.number, e.anchor) for e in page.toc] == [("i", "section-1"), ("ii", "section-2")]
     assert [roman(n) for n in (1, 2, 3, 4, 5, 9, 14, 40)] == ["i", "ii", "iii", "iv", "v", "ix", "xiv", "xl"]
 

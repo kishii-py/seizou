@@ -211,7 +211,7 @@ def test_order_detail_lines_have_no_price_columns(money_on, jimu, keiri, order):
     assert OLD_DASH_CELL not in body
     assert "1,500" not in body and "15,000" not in body
     lines = body[body.index('id="order-lines-title"') : body.index("</section>", body.index('id="order-lines-title"'))]
-    assert '<span class="text-base-content/50">—</span></td>' in lines
+    assert '<span class="text-base-content/60">—</span></td>' in lines
 
     shown = _get(keiri, url)[1]
     assert _heads(shown, 'id="order-lines-title"')[5:7] == ["単価", "金額"]

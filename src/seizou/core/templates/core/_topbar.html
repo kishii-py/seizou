@@ -8,7 +8,7 @@
   {# 決め方: この form の中の focus だけで決める (header の全体の focus で決めると、☆や利用者のメニューを押したときも右の組が消え、押したボタンが指の下から消えるため)。初見テスト R5 の候補 C36 の 6 (決め C36-1 = a)。 #}
   <form method="get" action="{{ seizou.search_url }}" role="search" class="peer min-w-0 flex-1 sm:max-w-md">
     <label class="input w-full rounded-lg">
-      {% icon "search" "size-4 text-base-content/50" %}
+      {% icon "search" "size-4 text-base-content/60" %}
       <input type="search" name="q" class="grow" placeholder="{% if "manuals" in seizou.parts %}品番・品名・マニュアルなど{% else %}品番・品名・注文番号で検索{% endif %}" aria-label="横断して検索">
     </label>
   </form>
@@ -28,7 +28,7 @@
       <summary class="btn btn-sm btn-outline list-none gap-2 border-base-300 px-2 [&::-webkit-details-marker]:hidden" aria-label="利用者のメニュー">
         <span class="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary" aria-hidden="true">{{ name|first|upper }}</span>
         <span class="hidden max-w-32 truncate sm:inline">{{ name }}</span>
-        {% icon "chevron-down" "size-4 text-base-content/50" %}
+        {% icon "chevron-down" "size-4 text-base-content/60" %}
       </summary>
       <ul class="dropdown-content menu z-40 mt-2 w-48 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         <li class="menu-title truncate text-xs">{{ name }}</li>

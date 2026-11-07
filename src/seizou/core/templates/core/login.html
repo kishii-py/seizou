@@ -10,7 +10,7 @@
         {% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="" class="size-12 rounded-xl object-contain">
         {% else %}<span class="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first|upper }}</span>{% endif %}
         <p class="mt-4 text-lg font-bold">{{ seizou.company_name }}</p>
-        <p class="mt-2 text-xs text-base-content/50">生産管理システム</p>
+        <p class="mt-2 text-xs text-base-content/60">生産管理システム</p>
       </div>
       <h1 class="sr-only">ログイン</h1>
       {% if form.non_field_errors %}<div class="alert alert-error alert-soft mt-6" role="alert">{% icon "alert" "size-5" %}<span>{{ form.non_field_errors.0 }}</span></div>{% endif %}
@@ -19,14 +19,14 @@
         <div>
           <label for="id_username" class="mb-2 block font-medium">ID</label>
           <label class="input w-full">
-            {% icon "user" "size-4 text-base-content/50" %}
+            {% icon "user" "size-4 text-base-content/60" %}
             <input id="id_username" class="grow" type="text" name="username" value="{{ form.username.value|default:'' }}" placeholder="例: genba01" autocomplete="username" autocapitalize="none" autofocus required>
           </label>
         </div>
         <div>
           <label for="id_password" class="mb-2 block font-medium">パスワード</label>
           <label class="input w-full">
-            {% icon "lock" "size-4 text-base-content/50" %}
+            {% icon "lock" "size-4 text-base-content/60" %}
             <input id="id_password" class="grow" type="password" name="password" placeholder="パスワードを入れる" autocomplete="current-password" required>
           </label>
         </div>
@@ -38,7 +38,7 @@
         <button class="btn btn-primary w-full" type="submit">{% icon "login" "size-4" %}ログイン</button>
       </form>
     </div>
-    <p class="mt-6 text-center text-xs text-base-content/50">© {{ seizou.company_name }}</p>
+    <p class="mt-6 text-center text-xs text-base-content/60">© {{ seizou.company_name }}</p>
   </div>
 </main>
 {% endblock %}

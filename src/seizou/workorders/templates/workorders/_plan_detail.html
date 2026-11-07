@@ -29,16 +29,16 @@
   </div>
   <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
     <dt class="text-base-content/70">納期</dt>
-    <dd class="min-w-0 break-words">{% if plan.line.due_date %}{{ plan.line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+    <dd class="min-w-0 break-words">{% if plan.line.due_date %}{{ plan.line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
   </div>
 </dl>
-<p class="mt-4 text-xs font-medium text-base-content/50">工程の並び</p>
+<p class="mt-4 text-xs font-medium text-base-content/60">工程の並び</p>
 <table class="table table-sm mt-2">
   <thead><tr><th class="w-12">順</th><th>工程</th><th>開始 → 終了</th></tr></thead>
   <tbody>
     {% for row in plan.steps %}
     {# 押した棒の工程を太字にする (aria-current で読み上げにも伝える)。 #}
-    <tr{% if row.current %} class="font-bold" aria-current="step"{% endif %}><td class="font-mono">{{ row.step.seq }}</td><td>{{ row.step.process.name }}</td><td>{% if row.step.planned_start %}{{ row.step.planned_start|date:"n/j" }} → {{ row.step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</td></tr>
+    <tr{% if row.current %} class="font-bold" aria-current="step"{% endif %}><td class="font-mono">{{ row.step.seq }}</td><td>{{ row.step.process.name }}</td><td>{% if row.step.planned_start %}{{ row.step.planned_start|date:"n/j" }} → {{ row.step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/60">未計画</span>{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -54,7 +54,7 @@
 {% plan_projection plan.item as outlook %}
 {% if outlook %}
 <section class="mt-4" aria-label="在庫の見込み">
-  <p class="text-xs font-medium text-base-content/50">在庫の見込み (今日から 8 週)</p>
+  <p class="text-xs font-medium text-base-content/60">在庫の見込み (今日から 8 週)</p>
   <ul class="mt-2 flex flex-wrap items-center gap-4 text-xs text-base-content/70" aria-label="凡例">
     <li class="flex items-center gap-2"><span class="size-3 rounded-sm bg-primary" aria-hidden="true"></span>見込みの在庫</li>
     {# 赤の印は図の棒と同じ fill-current と text-error (app.css に bg-error が無いので小さな SVG で描く)。 #}
@@ -86,7 +86,7 @@
   </div>
   {% with projection=outlook.projection %}
   <p class="mt-2 text-xs text-base-content/70">今の在庫 {% if projection.counted %}{{ projection.current|comma }}{% else %}— (数えていないので 0 から){% endif %}・指示書 {{ projection.workorders }} 件 (+{{ projection.workorder_qty|comma }})・受注 {{ projection.lines }} 件 (−{{ projection.line_qty|comma }})</p>
-  {% if projection.undated %}<p class="mt-1 text-xs text-base-content/50">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
+  {% if projection.undated %}<p class="mt-1 text-xs text-base-content/60">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
   {% endwith %}
 </section>
 {% endif %}

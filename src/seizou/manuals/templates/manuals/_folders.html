@@ -7,7 +7,7 @@
     {% if tree.folder %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">トップ</a>
     {% else %}<span class="font-medium">トップ</span>{% endif %}
     {% for crumb in tree.path %}
-    {% icon "chevron-right" "size-4 text-base-content/50" %}
+    {% icon "chevron-right" "size-4 text-base-content/60" %}
     {% if forloop.last %}<span class="font-medium">{{ crumb.name }}</span>
     {% else %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' crumb.pk %}">{{ crumb.name }}</a>{% endif %}
     {% endfor %}
@@ -41,7 +41,7 @@
       {% include "manuals/_folder_color.html" with folder=child.folder %}
       <a class="rounded font-medium hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' child.folder.pk %}">{{ child.folder.name }}</a>
       <span class="badge badge-sm tabular-nums" title="中のフォルダとマニュアルの数">{{ child.count }}</span>
-      {% if child.folder.protected %}<span class="inline-flex items-center gap-2 text-xs text-base-content/50">{% icon "lock" "size-4" %}保護中</span>{% endif %}
+      {% if child.folder.protected %}<span class="inline-flex items-center gap-2 text-xs text-base-content/60">{% icon "lock" "size-4" %}保護中</span>{% endif %}
     </li>
     {% endfor %}
   </ul>

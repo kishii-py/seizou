@@ -6,7 +6,7 @@
 <form id="search-form" method="get" action="{{ request.path }}" role="search" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <div class="flex flex-col gap-2 sm:flex-row">
     <label class="input input-lg w-full">
-      {% icon "search" "size-5 text-base-content/50" %}
+      {% icon "search" "size-5 text-base-content/60" %}
       <input id="search-q" class="grow" type="search" name="q" value="{{ query }}" placeholder="{% if "manuals" in seizou.parts %}品番・品名・マニュアルなど{% else %}品番・品名・図面番号・注文番号など{% endif %}" aria-label="検索の言葉" autocomplete="off"{% if not query %} autofocus{% endif %}>
     </label>
     <button type="submit" class="btn btn-primary btn-lg">{% icon "search" "size-5" %}検索</button>
@@ -33,20 +33,20 @@
 </form>
 {% if query and searched_fields %}
 {# 探した項目: 種類ごとに、探した項目の見出し (部品の search_labels)。結果の表の上にも、0 件の箱の上にも出す (初見テスト R5 の候補 C36 の 2)。 #}
-<p class="mt-4 text-xs text-base-content/50"><span class="mr-2 font-medium">探した項目</span>{% for scope in searched_fields %}{% if not forloop.first %} / {% endif %}{{ scope.label }}: {{ scope.fields }}{% endfor %}</p>
+<p class="mt-4 text-xs text-base-content/60"><span class="mr-2 font-medium">探した項目</span>{% for scope in searched_fields %}{% if not forloop.first %} / {% endif %}{{ scope.label }}: {{ scope.fields }}{% endfor %}</p>
 {% endif %}
 {% if not query %}
 {# 何も入れていない: 絵と 1 文と補足 (core/list.html の空の一覧と同じ書き方)。 #}
 <div class="mt-6 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "search" "size-6" %}</span>
   <p class="mt-4 font-medium">キーワードを入れて検索してください</p>
-  <p class="mt-2 text-xs text-base-content/50">{% if kind_labels %}{{ kind_labels }}をまとめて探します。{% endif %}言葉の一部だけでも見つかります。</p>
+  <p class="mt-2 text-xs text-base-content/60">{% if kind_labels %}{{ kind_labels }}をまとめて探します。{% endif %}言葉の一部だけでも見つかります。</p>
 </div>
 {% elif not sections %}
 <div class="mt-6 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "search" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "search" "size-6" %}</span>
   <p class="mt-4 font-medium">該当する物はありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">「{{ query }}」で探しました。言葉を短くするか、種類と得意先の絞り込みを外してください。</p>
+  <p class="mt-2 text-xs text-base-content/60">「{{ query }}」で探しました。言葉を短くするか、種類と得意先の絞り込みを外してください。</p>
 </div>
 {% else %}
 {% for section in sections %}
@@ -63,7 +63,7 @@
       {% for row in section.rows %}
       <tr class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}"{% if row.url %} data-href="{{ row.url }}"{% endif %}>
         {% for cell in row.cells %}
-        {% if forloop.first and row.url %}<td class="whitespace-nowrap"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary{% if cell.code %} font-mono{% endif %}" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a>{% if row.match %}<span class="block max-w-xs truncate text-xs text-base-content/50" title="{{ row.match.label }}: {{ row.match.text }}">{{ row.match.label }}: {{ row.match.before }}<span class="font-bold text-primary">{{ row.match.hit }}</span>{{ row.match.after }}</span>{% endif %}</td>
+        {% if forloop.first and row.url %}<td class="whitespace-nowrap"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary{% if cell.code %} font-mono{% endif %}" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</a>{% if row.match %}<span class="block max-w-xs truncate text-xs text-base-content/60" title="{{ row.match.label }}: {{ row.match.text }}">{{ row.match.label }}: {{ row.match.before }}<span class="font-bold text-primary">{{ row.match.hit }}</span>{{ row.match.after }}</span>{% endif %}</td>
         {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
         {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% endif %}</td>
         {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master %}</span></td>

@@ -15,7 +15,7 @@
       <label for="{{ form.format.id_for_label }}" class="mb-2 block font-medium">{{ form.format.label }}</label>
       {{ form.format }}
       {% if form.format.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.format.errors|join:" " }}</p>{% endif %}
-      {% if form.format.help_text %}<p class="mt-2 text-xs text-base-content/50">{{ form.format.help_text }}</p>{% endif %}
+      {% if form.format.help_text %}<p class="mt-2 text-xs text-base-content/60">{{ form.format.help_text }}</p>{% endif %}
     </div>
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
       <label for="{{ form.folder.id_for_label }}" class="mb-2 block font-medium">{{ form.folder.label }}</label>
@@ -32,7 +32,7 @@
       {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
     </div>
     {% endif %}{% endfor %}
-    <p class="text-xs text-base-content/50 sm:col-span-2">紐付けは部品か取引先の 1 件だけです。見る画面の帯に印が出ます。</p>
+    <p class="text-xs text-base-content/60 sm:col-span-2">紐付けは部品か取引先の 1 件だけです。見る画面の帯に印が出ます。</p>
   </div>
   {% endif %}
   <div class="mt-6 min-w-0 [&_[aria-invalid=true]]:border-error">
@@ -50,7 +50,7 @@
         {% if form.note.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.note.errors|join:" " }}</p>{% endif %}
       </div>
       <button type="submit" class="btn btn-outline border-base-300" formaction="{% url 'manuals:manual_version_create' object.pk %}">{% icon "plus" "size-4" %}新しい版として保存</button>
-      <p class="w-full text-xs text-base-content/50">{{ form.note.help_text }}</p>
+      <p class="w-full text-xs text-base-content/60">{{ form.note.help_text }}</p>
     </div>
   </div>
   {# 下の行 (キャンセル・プレビュー・保存)。form の直下に置き、開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html)。 #}
@@ -65,7 +65,7 @@
 <div class="mt-6 grid gap-6 lg:grid-cols-2 lg:items-start">
   <section class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="プレビュー">
     <h2 class="flex items-center gap-2 text-lg font-bold">{% icon "eye" "size-5" %}プレビュー</h2>
-    <div id="manual-preview" class="mt-4" aria-live="polite"><p class="text-base-content/50">「プレビュー」を押すと、描いた本文がここに出ます (保存はされません)。</p></div>
+    <div id="manual-preview" class="mt-4" aria-live="polite"><p class="text-base-content/60">「プレビュー」を押すと、描いた本文がここに出ます (保存はされません)。</p></div>
   </section>
   {% include "manuals/_images.html" with manual=object %}
 </div>

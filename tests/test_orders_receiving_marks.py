@@ -295,7 +295,7 @@ def test_board_consigned_column_between_stock_and_workorder(logged_in, user, cus
     head = re.search(r'<th class="([^"]*)"[^>]*>\s*<a[^>]*sort=board__allocated"', body)
     assert head and "text-right" in head.group(1)
     assert _cells(_tr(body, empty.pk))[at] == "—"
-    assert '<span class="text-base-content/50">—</span>' in _TD.findall(_tr(body, empty.pk))[at]
+    assert '<span class="text-base-content/60">—</span>' in _TD.findall(_tr(body, empty.pk))[at]
     assert _cells(_tr(body, held.pk))[at] == "3"
     assert _cells(_tfoot(body))[at] == ""  # 合計は出さない
 

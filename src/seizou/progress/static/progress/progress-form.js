@@ -47,7 +47,7 @@
       if (!line) {
         line = document.createElement("p");
         line.id = "id_workorder_step_helptext";
-        line.className = "mt-2 text-xs text-base-content/50";
+        line.className = "mt-2 text-xs text-base-content/60";
         select.parentNode.appendChild(line);
       }
       line.textContent = TEXT;

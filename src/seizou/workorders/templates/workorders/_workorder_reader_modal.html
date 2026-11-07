@@ -14,7 +14,7 @@
   {% include "core/_notices.html" %}
   <section data-qr-reader data-reader-url="{% url 'workorders:workorder_reader' %}" aria-label="カメラ">
     <video autoplay playsinline muted hidden class="w-full max-h-96 rounded-lg bg-base-200 object-contain"></video>
-    <p hidden data-qr-hint class="mb-4 mt-2 text-xs text-base-content/50">現品票の QR をカメラに写してください。</p>
+    <p hidden data-qr-hint class="mb-4 mt-2 text-xs text-base-content/60">現品票の QR をカメラに写してください。</p>
     <div hidden data-qr-message="insecure">{% include "core/_notices.html" with notice=camera_notices.insecure %}</div>
     <div hidden data-qr-message="denied">{% include "core/_notices.html" with notice=camera_notices.denied %}</div>
     <div hidden data-qr-message="nocamera">{% include "core/_notices.html" with notice=camera_notices.nocamera %}</div>
@@ -27,7 +27,7 @@
         <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
       </div>
       {{ field }}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
   </form>
   {% endwith %}

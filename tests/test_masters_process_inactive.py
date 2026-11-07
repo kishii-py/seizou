@@ -17,7 +17,7 @@ from seizou.workorders import services as workorders_services
 from seizou.workorders.forms import WorkOrderIssueForm
 from seizou.workorders.models import WorkOrder
 
-DIMMED = " text-base-content/50"
+DIMMED = " text-base-content/60"
 
 
 @pytest.fixture

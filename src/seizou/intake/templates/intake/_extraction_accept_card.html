@@ -6,7 +6,7 @@
 {# 枠の箱と外の包みに「grid gap-x-6」の字を入れない (試験が入力のカードの欄の格子をその字で探すため。tests/test_core_screen_polish.py・tests/test_small_inputs_modal.py)。data-accept-part は試験が枠を探す印で、見た目に効かない。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
-  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
+  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
   {# 欄の無い form (形の違う明細だけの読み取り) は枠も格子も描かない (写した元と同じ。候補 C24) #}
   {% if form.part_rows %}
   <div class="grid gap-4{% if form|has_required %} mt-6{% endif %}">
@@ -17,9 +17,9 @@
         {% if forloop.first %}<div>{% else %}<div class="mt-4 border-t border-base-200 pt-4">{% endif %}
           <p class="flex flex-wrap items-baseline gap-x-2"><span class="text-base-content/70">行 {{ line.line_no|default_if_none:"" }}</span><span class="font-mono">{{ line.part_no }}</span><span class="min-w-0 break-words">{{ line.part_name }}</span></p>
           <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-            <dt class="text-base-content/70">数量</dt><dd class="tabular-nums">{% if line.qty is not None and line.qty != "" %}{{ line.qty }}{% if line.unit %} {{ line.unit }}{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
-            <dt class="text-base-content/70">納期</dt><dd class="font-mono tabular-nums">{% if line.due_date is not None and line.due_date != "" %}{{ line.due_date|default_if_none:"" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
-            {% if not seizou.hide_money %}<dt class="text-base-content/70">単価</dt><dd class="tabular-nums">{% if line.unit_price is not None and line.unit_price != "" %}{{ line.unit_price|default_if_none:""|yen }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>{% endif %}
+            <dt class="text-base-content/70">数量</dt><dd class="tabular-nums">{% if line.qty is not None and line.qty != "" %}{{ line.qty }}{% if line.unit %} {{ line.unit }}{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
+            <dt class="text-base-content/70">納期</dt><dd class="font-mono tabular-nums">{% if line.due_date is not None and line.due_date != "" %}{{ line.due_date|default_if_none:"" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
+            {% if not seizou.hide_money %}<dt class="text-base-content/70">単価</dt><dd class="tabular-nums">{% if line.unit_price is not None and line.unit_price != "" %}{{ line.unit_price|default_if_none:""|yen }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>{% endif %}
           </dl>
         </div>
         {% endfor %}
@@ -27,13 +27,13 @@
       <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
         <div class="mb-2 flex items-center gap-2">
           <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
-          {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+          {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
         </div>
         {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
         {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
         {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
         {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
-        {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
+        {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
       </div>
     </div>
     {% endwith %}{% endfor %}
@@ -46,19 +46,19 @@
     <div class="sm:col-span-2">
       <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
     {% else %}
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}{% if field.name in form.row_start_fields %} sm:col-start-1{% endif %}">
       <div class="mb-2 flex items-center gap-2">
         <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
-        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
       </div>
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
       {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endif %}
     {% endfor %}

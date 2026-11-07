@@ -187,7 +187,7 @@ def test_stop_check_shows_rule_and_help_button(client_logged_in, holiday_checks)
     box = stops[0]
     assert "作り物の止めです。" in box
     assert '<span class="font-mono text-xs">R13</span>' in box
-    assert "text-base-content/50" not in box
+    assert "text-base-content/60" not in box
     help_buttons = re.findall(r'<button[^>]*hx-get="/rules/R13/"[^>]*>', box)
     assert len(help_buttons) == 1
     assert 'aria-label="R13 の決まりの説明"' in help_buttons[0]

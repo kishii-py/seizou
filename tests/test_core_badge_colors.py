@@ -55,7 +55,7 @@ def test_stopped_states_are_a_red_line():
     for obj, label in cases:
         html = _render(obj)
         assert html == f'<span class="badge badge-outline badge-error">{label}</span>', label
-        assert "text-base-content/50" not in html, label
+        assert "text-base-content/60" not in html, label
     assert _render(_fake("cancelled", "取消"), dot=True) == DOT_OUTLINE.format("取消")
 
 

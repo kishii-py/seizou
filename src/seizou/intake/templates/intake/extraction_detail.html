@@ -9,7 +9,7 @@
 {# core の基本情報の並びは全部の列 (読み取った中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す。 #}
 <div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>AI が読み取った値です。得意先の品番・数量・納期を注文書と見比べてから「受注登録」を押してください。</span></div>
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
-  <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+  <p class="mb-2 text-xs font-medium text-base-content/60">基本</p>
   <dl class="grid gap-x-6 sm:grid-cols-2">
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">得意先</dt>
@@ -29,22 +29,22 @@
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">作った受注</dt>
-      <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+      <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">元のファイル</dt>
-      <dd class="min-w-0 break-words">{% if files %}{% with source=files.0.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ source.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ source.name }}</span></a>{% endwith %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+      <dd class="min-w-0 break-words">{% if files %}{% with source=files.0.file %}<a class="link link-primary inline-flex items-center gap-2" href="{{ source.url }}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="truncate">{{ source.name }}</span></a>{% endwith %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">得意先の注文番号</dt>
-      <dd class="min-w-0 break-words font-mono">{% if object.extracted.order_no %}{{ object.extracted.order_no }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+      <dd class="min-w-0 break-words font-mono">{% if object.extracted.order_no %}{{ object.extracted.order_no }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">注文日</dt>
-      <dd class="min-w-0 font-mono tabular-nums">{% if object.extracted.order_date %}{{ object.extracted.order_date }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+      <dd class="min-w-0 font-mono tabular-nums">{% if object.extracted.order_date %}{{ object.extracted.order_date }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
   </dl>
-  <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">明細 (得意先の品番のまま)</p>
+  <p class="mb-2 mt-6 text-xs font-medium text-base-content/60">明細 (得意先の品番のまま)</p>
   {% include "intake/_lines.html" %}
   {% reading_match extraction=object as own_match %}{% include "core/_reading_match.html" with match=own_match label="この読み取り" %}
   {% reading_match customer=object.customer as customer_match %}

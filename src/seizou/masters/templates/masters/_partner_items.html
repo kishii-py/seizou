@@ -13,8 +13,8 @@
         <tr>
           <td class="whitespace-nowrap font-mono">{% master_link row.obj.item row.obj.item.part_no %}</td>
           <td>{{ row.obj.item.name }}</td>
-          <td class="whitespace-nowrap font-mono">{% if row.obj.partner_part_no %}{{ row.obj.partner_part_no }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
-          <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td class="whitespace-nowrap font-mono">{% if row.obj.partner_part_no %}{{ row.obj.partner_part_no }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+          <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           {% if can_edit_partner %}<td class="whitespace-nowrap">
             <div class="flex items-center gap-2">
               <a class="btn btn-xs btn-outline border-base-300" href="{% url 'masters:partneritem_update' row.obj.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:partneritem_update' row.obj.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}直す</a>
@@ -33,11 +33,11 @@
   </div>
   {% else %}
   <div class="flex flex-col items-center justify-center p-6 text-center">
-    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
     <p class="mt-4 font-medium">まだありません。</p>
-    <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
-    {% if can_add_partner %}<p class="mt-2 text-xs text-base-content/50">「部品を足す」で、この取引先と取引する部品を足せます。取引先の品番は空のままでも足せます。</p>{% endif %}
-    {% if "connect" in seizou.parts and "intake" in seizou.parts %}<p class="mt-2 text-xs text-base-content/50">「注文を受け入れる」か「読み取りを受注にする」で相手の品番に自社の部品を選ぶと、その対応もここに足します。</p>{% endif %}
+    <p class="mt-2 text-xs text-base-content/60">{{ tab.label }}が入ると、ここに並びます。</p>
+    {% if can_add_partner %}<p class="mt-2 text-xs text-base-content/60">「部品を足す」で、この取引先と取引する部品を足せます。取引先の品番は空のままでも足せます。</p>{% endif %}
+    {% if "connect" in seizou.parts and "intake" in seizou.parts %}<p class="mt-2 text-xs text-base-content/60">「注文を受け入れる」か「読み取りを受注にする」で相手の品番に自社の部品を選ぶと、その対応もここに足します。</p>{% endif %}
   </div>
   {% endif %}
 </div>

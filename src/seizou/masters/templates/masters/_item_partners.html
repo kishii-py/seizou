@@ -18,8 +18,8 @@
         {% for row in price_rows.rows %}
         <tr>
           <td class="whitespace-nowrap">{% master_link row.obj.partner %}</td>
-          <td class="whitespace-nowrap font-mono">{% if row.obj.partner_part_no %}{{ row.obj.partner_part_no }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
-          <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td class="whitespace-nowrap font-mono">{% if row.obj.partner_part_no %}{{ row.obj.partner_part_no }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+          <td>{% if row.obj.partner_item_name %}{{ row.obj.partner_item_name }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td>{% include "masters/_item_price_list.html" with prices=row.prices %}</td>
           {% if "attachments" in seizou.parts %}<td>{% include "masters/_partner_quotes.html" %}</td>{% endif %}
           {% if can_edit_partner or can_add_price and not seizou.hide_money %}<td class="whitespace-nowrap">
@@ -39,8 +39,8 @@
         {% if price_rows.common %}
         <tr>
           <td class="whitespace-nowrap">共通 (どの取引先にも同じ単価)</td>
-          <td><span class="text-base-content/50">—</span></td>
-          <td><span class="text-base-content/50">—</span></td>
+          <td><span class="text-base-content/60">—</span></td>
+          <td><span class="text-base-content/60">—</span></td>
           <td>{% include "masters/_item_price_list.html" with prices=price_rows.common %}</td>
           {% if "attachments" in seizou.parts %}<td class="text-xs text-base-content/70">下の「添付ファイル」の枠に付けます。</td>{% endif %}
           {% if can_edit_partner or can_add_price and not seizou.hide_money %}<td class="whitespace-nowrap">{% if can_add_price and not seizou.hide_money %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'masters:itemprice_add' %}?item={{ object.pk }}&amp;kind=sale&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprice_add' %}?item={{ object.pk }}&amp;kind=sale&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}単価を足す</a>{% endif %}</td>{% endif %}
@@ -52,11 +52,11 @@
   {% endif %}
   {% if not price_rows.rows %}
   <div class="flex flex-col items-center justify-center p-6 text-center">
-    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
     <p class="mt-4 font-medium">まだありません。</p>
-    <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
-    {% if can_add_partner %}<p class="mt-2 text-xs text-base-content/50">「取引先を足す」で、得意先や協力企業を何社でも足せます。取引先の品番は空のままでも足せます。</p>{% endif %}
-    {% if "connect" in seizou.parts and "intake" in seizou.parts %}<p class="mt-2 text-xs text-base-content/50">「注文を受け入れる」か「読み取りを受注にする」で相手の品番に自社の部品を選ぶと、その対応もここに足します。</p>{% endif %}
+    <p class="mt-2 text-xs text-base-content/60">{{ tab.label }}が入ると、ここに並びます。</p>
+    {% if can_add_partner %}<p class="mt-2 text-xs text-base-content/60">「取引先を足す」で、得意先や協力企業を何社でも足せます。取引先の品番は空のままでも足せます。</p>{% endif %}
+    {% if "connect" in seizou.parts and "intake" in seizou.parts %}<p class="mt-2 text-xs text-base-content/60">「注文を受け入れる」か「読み取りを受注にする」で相手の品番に自社の部品を選ぶと、その対応もここに足します。</p>{% endif %}
   </div>
   {% endif %}
 </div>

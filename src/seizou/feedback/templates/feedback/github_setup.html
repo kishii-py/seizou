@@ -38,27 +38,27 @@
       <div class="min-w-0">
         <div class="mb-2 flex items-center gap-2">
           <label for="{{ form.repo.id_for_label }}" class="font-medium">{{ form.repo.label }}</label>
-          <span class="badge badge-xs badge-ghost text-base-content/50">任意</span>
+          <span class="badge badge-xs badge-ghost text-base-content/60">任意</span>
         </div>
         {{ form.repo }}
-        <p class="mt-2 text-xs text-base-content/50">{{ form.repo.help_text }}</p>
+        <p class="mt-2 text-xs text-base-content/60">{{ form.repo.help_text }}</p>
       </div>
       <div class="sm:col-span-2">
         <label class="flex cursor-pointer items-center gap-2">{{ form.private }}<span class="font-medium">{{ form.private.label }}</span></label>
-        <p class="mt-2 text-xs text-base-content/50">{{ form.private.help_text }}</p>
+        <p class="mt-2 text-xs text-base-content/60">{{ form.private.help_text }}</p>
       </div>
     </div>
     <div class="mt-4"><button id="github-device-start" type="submit" class="btn btn-primary">{% icon "login" "size-4" %}GitHub でログインしてつなぐ</button></div>
   </form>
   {% endwith %}
   {% else %}
-  <p class="mt-2 text-base-content/50">この置き場には作品の Client ID が入っていないので、下の手順でトークンを貼ってつなぎます。</p>
+  <p class="mt-2 text-base-content/60">この置き場には作品の Client ID が入っていないので、下の手順でトークンを貼ってつなぎます。</p>
   {% endif %}
 </section>
 {% endif %}
 <section id="github-steps" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="github-steps-title">
   <h2 id="github-steps-title" class="text-lg font-bold">トークンを貼ってつなぐ (別の方法)</h2>
-  <p class="mt-2 text-xs text-base-content/50">GitHub の画面のボタンの字は英語のまま「」で書きます。上から順に進めれば、トークンが取れます。</p>
+  <p class="mt-2 text-xs text-base-content/60">GitHub の画面のボタンの字は英語のまま「」で書きます。上から順に進めれば、トークンが取れます。</p>
   <ol class="mt-4 list-decimal pl-6">
     <li>
       <p class="font-medium">GitHub の口座を用意する</p>
@@ -71,7 +71,7 @@
       <p class="mt-2">「Note」に seizou と書き、「Expiration」(期限) は 90 日などを選びます。期限が切れたら、もう一度作ります。</p>
       <p class="mt-2">「Select scopes」で「public_repo」だけに印を付けます。送り先が非公開のリポジトリのときは「repo」に印を付けます。</p>
       <p class="mt-2">一番下の「Generate token」を押し、出た <span class="font-mono">ghp_</span> で始まる字を 1 回だけ写します。その画面を閉じると、二度と見られません。</p>
-      <p class="mt-2 text-xs text-base-content/50">fine-grained のトークンは、ほかの人のリポジトリに書けないので使いません。</p>
+      <p class="mt-2 text-xs text-base-content/60">fine-grained のトークンは、ほかの人のリポジトリに書けないので使いません。</p>
       {# 絵は本体が足す: static/feedback/github/*.png #}
     </li>
     <li class="mt-4">

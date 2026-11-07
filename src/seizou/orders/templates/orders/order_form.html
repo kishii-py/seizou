@@ -5,17 +5,17 @@
 {# 明細の単価の枡の中に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外に 1 つ。C100)。見積の番号の列は作らない。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
-  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細の行を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>
+  <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄と明細の行を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
     {% for field in form.visible_fields %}
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
       <div class="mb-2 flex items-center gap-2">
         <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
-        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
       </div>
       {{ field }}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -26,7 +26,7 @@
       <h2 class="text-lg font-bold">明細</h2>
       {% include "core/_line_totals.html" %}
     </div>
-    {% if not form.single %}<p class="mt-2 text-xs text-base-content/50">行を消すときは、表の右の端の「消す」に印を付けて保存します。{% if not form.hide_money %}金額は数量 × 単価で (単価の単位が「式」の行は単価のまま)、保存のときに得意先の端数の扱いで 1 円に丸めます。{% endif %}</p>{% endif %}
+    {% if not form.single %}<p class="mt-2 text-xs text-base-content/60">行を消すときは、表の右の端の「消す」に印を付けて保存します。{% if not form.hide_money %}金額は数量 × 単価で (単価の単位が「式」の行は単価のまま)、保存のときに得意先の端数の扱いで 1 円に丸めます。{% endif %}</p>{% endif %}
     {{ form.lines.management_form }}
     {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
     <div class="mt-4 overflow-x-auto rounded-lg border border-base-300 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">

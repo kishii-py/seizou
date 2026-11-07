@@ -215,7 +215,7 @@ def test_refusal_messages_start_with_head():
 
 def test_notice_puts_head_first_and_rule_number_last():
     """知らせの描き方 (core/_notices.html。N156): 1 文目を太字で先頭に、見出しの語は出さず、決まりの番号は末尾に小さく出す。"""
-    number = '<span class="font-mono text-xs text-base-content/50">{}</span>'
+    number = '<span class="font-mono text-xs text-base-content/60">{}</span>'
     html = render_to_string(
         "core/_notices.html",
         {"notice": RuleViolation("R05", "保存できません。作り物の理由です。作り物の先にすることです。"), "warnings": []},

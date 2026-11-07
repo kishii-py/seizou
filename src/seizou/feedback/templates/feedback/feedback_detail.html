@@ -7,7 +7,7 @@
 {% if object.fixed_at %}
 <section id="feedback-fixed" class="mt-6 rounded-xl border border-success bg-success/10 p-6 shadow-xs" aria-labelledby="feedback-fixed-title">
   <h2 id="feedback-fixed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "check" "size-5 text-success" %}直しました</h2>
-  <p class="mt-2 text-xs text-base-content/50">この一言から直しました。書いた人には、直した後に初めてログインしたときに 1 回だけ知らせます。</p>
+  <p class="mt-2 text-xs text-base-content/60">この一言から直しました。書いた人には、直した後に初めてログインしたときに 1 回だけ知らせます。</p>
   <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
     <dt class="text-base-content/70">直した日時</dt><dd class="font-mono tabular-nums">{{ object.fixed_at|date:"Y-m-d H:i" }}</dd>
     <dt class="text-base-content/70">直した場所</dt><dd class="break-words">{% if object.fixed_note %}{{ object.fixed_note }}{% else %}書いていません{% endif %}</dd>
@@ -18,7 +18,7 @@
 {% if object.dismissed_at %}
 <section id="feedback-dismissed" class="mt-6 rounded-xl border border-base-300 bg-base-200 p-6 shadow-xs" aria-labelledby="feedback-dismissed-title">
   <h2 id="feedback-dismissed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "x" "size-5 text-base-content/70" %}見送りました</h2>
-  <p class="mt-2 text-xs text-base-content/50">この一言は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。書いた人には、見送った後に初めてログインしたときに 1 回だけ知らせます。</p>
+  <p class="mt-2 text-xs text-base-content/60">この一言は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。書いた人には、見送った後に初めてログインしたときに 1 回だけ知らせます。</p>
   <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
     <dt class="text-base-content/70">見送った日時</dt><dd class="font-mono tabular-nums">{{ object.dismissed_at|date:"Y-m-d H:i" }}</dd>
     <dt class="text-base-content/70">理由の場所</dt><dd class="break-words">{% if object.dismissed_note %}{{ object.dismissed_note }}{% else %}書いていません{% endif %}</dd>
@@ -30,7 +30,7 @@
 {% if object.transcript %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-transcript-title">
   <h2 id="feedback-transcript-title" class="text-lg font-bold">会話の記録</h2>
-  <p class="mt-2 text-xs text-base-content/50">AI の聞き取りの往復。使った token: 入力 {{ object.input_tokens }} / 出力 {{ object.output_tokens }}。</p>
+  <p class="mt-2 text-xs text-base-content/60">AI の聞き取りの往復。使った token: 入力 {{ object.input_tokens }} / 出力 {{ object.output_tokens }}。</p>
   <div class="mt-4 flex flex-col gap-2">{% include "feedback/_chat_messages.html" with turns=object.transcript %}</div>
 </section>
 {% endif %}
@@ -38,7 +38,7 @@
 {% if info.screenshots %}
 <section id="feedback-screenshots" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-screenshots-title">
   <h2 id="feedback-screenshots-title" class="flex items-center gap-2 text-lg font-bold">{% icon "image" "size-5 text-base-content/70" %}画面の絵<span class="badge badge-sm tabular-nums">{{ info.screenshots|length }}</span></h2>
-  <p class="mt-2 text-xs text-base-content/50">入力の形と添付ファイルの枠から付けた画像です。押すと別の画面で開きます。Issue の文には枚数とファイル名だけが入るので、絵は GitHub の Issue に手で付けてください。</p>
+  <p class="mt-2 text-xs text-base-content/60">入力の形と添付ファイルの枠から付けた画像です。押すと別の画面で開きます。Issue の文には枚数とファイル名だけが入るので、絵は GitHub の Issue に手で付けてください。</p>
   <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for row in info.screenshots %}
     <a class="group block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'attachments:attachment_download' row.pk %}" target="_blank" rel="noopener">
@@ -51,7 +51,7 @@
 {% endif %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-issue-title">
   <h2 id="feedback-issue-title" class="text-lg font-bold">Issue の文</h2>
-  <p class="mt-2 text-xs text-base-content/50">GitHub の Issue に写す文。取引先の名前と金額らしい数は「〇〇」に伏せてあります。貼る前に見直してください。会話の記録は入りません。</p>
+  <p class="mt-2 text-xs text-base-content/60">GitHub の Issue に写す文。取引先の名前と金額らしい数は「〇〇」に伏せてあります。貼る前に見直してください。会話の記録は入りません。</p>
   <textarea id="feedback-issue" readonly rows="16" class="textarea mt-4 w-full font-mono text-xs" aria-label="Issue の文">{{ info.issue_text }}</textarea>
   <div class="mt-4 flex justify-end">
     <button id="feedback-copy" type="button" class="btn btn-sm btn-outline border-base-300" data-done="写しました">{% icon "check" "size-4" %}Issue の文を写す</button>
@@ -62,13 +62,13 @@
 {% if info.can_manage %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">
   <h2 id="feedback-status-title" class="text-lg font-bold">状態</h2>
-  <p class="mt-2 text-xs text-base-content/50">今の状態: {{ object.get_status_display }}。世話役が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
-  {% if object.fix_version and object.status == "sent" %}<p id="feedback-fix-version" class="mt-2 text-xs text-base-content/50">直る版 {{ object.fix_version }} が出ています。{% if info.version %}この会社は {{ info.version }} です。{% else %}この会社の版が分かりません。{% endif %}版を入れた後の取り込みで「直した」になります。</p>{% endif %}
-  {% if object.status != "fixed" and object.status != "dismissed" %}<p class="mt-2 text-xs text-base-content/50">直した版を入れたら「直したと記録する」で、直した場所と版 (任意) を残します。書いた人が次にログインしたときに、1 回だけ知らせが出ます。</p>{% endif %}
-  {% if object.status == "draft" or object.status == "confirmed" %}<p class="mt-2 text-xs text-base-content/50">{% if info.github.connected %}GitHub とつないであるので、確認済みの物は「GitHub に送る」で Issue にできます (送り先 {{ info.github.repo }})。送った Issue の URL が残ります。{% else %}「GitHub とつなぐ」でトークンを置くと、確認済みの物を手で写さずに GitHub に送れます。{% endif %}</p>{% endif %}
+  <p class="mt-2 text-xs text-base-content/60">今の状態: {{ object.get_status_display }}。世話役が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
+  {% if object.fix_version and object.status == "sent" %}<p id="feedback-fix-version" class="mt-2 text-xs text-base-content/60">直る版 {{ object.fix_version }} が出ています。{% if info.version %}この会社は {{ info.version }} です。{% else %}この会社の版が分かりません。{% endif %}版を入れた後の取り込みで「直した」になります。</p>{% endif %}
+  {% if object.status != "fixed" and object.status != "dismissed" %}<p class="mt-2 text-xs text-base-content/60">直した版を入れたら「直したと記録する」で、直した場所と版 (任意) を残します。書いた人が次にログインしたときに、1 回だけ知らせが出ます。</p>{% endif %}
+  {% if object.status == "draft" or object.status == "confirmed" %}<p class="mt-2 text-xs text-base-content/60">{% if info.github.connected %}GitHub とつないであるので、確認済みの物は「GitHub に送る」で Issue にできます (送り先 {{ info.github.repo }})。送った Issue の URL が残ります。{% else %}「GitHub とつなぐ」でトークンを置くと、確認済みの物を手で写さずに GitHub に送れます。{% endif %}</p>{% endif %}
   <div class="mt-4 flex flex-wrap items-center gap-4">
     {% if object.status == "draft" %}<form method="post" action="{% url 'feedback:confirm' object.pk %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}確認済みにする</button></form>{% endif %}
-    {% if object.status == "confirmed" and info.github.connected %}<form method="post" action="{% url 'feedback:github_send' object.pk %}" class="w-full">{% csrf_token %}<textarea id="feedback-issue-edit" name="issue_text" rows="16" class="textarea mt-2 w-full font-mono text-xs" aria-label="送る Issue の文">{{ info.issue_text }}</textarea><p class="mt-2 text-xs text-base-content/50">伏せ字 (〇〇) のうち、外に出してよい数や名前だけを戻してから送ります。単価や取引先の名前は伏せたままにします。</p><div class="mt-2"><button id="feedback-github-send" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}GitHub に送る</button></div></form>{% endif %}
+    {% if object.status == "confirmed" and info.github.connected %}<form method="post" action="{% url 'feedback:github_send' object.pk %}" class="w-full">{% csrf_token %}<textarea id="feedback-issue-edit" name="issue_text" rows="16" class="textarea mt-2 w-full font-mono text-xs" aria-label="送る Issue の文">{{ info.issue_text }}</textarea><p class="mt-2 text-xs text-base-content/60">伏せ字 (〇〇) のうち、外に出してよい数や名前だけを戻してから送ります。単価や取引先の名前は伏せたままにします。</p><div class="mt-2"><button id="feedback-github-send" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}GitHub に送る</button></div></form>{% endif %}
     {% if not info.github.connected %}{% if object.status == "draft" or object.status == "confirmed" %}<a id="feedback-github-setup" class="link link-hover flex items-center gap-2 text-sm" href="{% url 'feedback:github_setup' %}">{% icon "settings" "size-4" %}GitHub とつなぐ</a>{% endif %}{% endif %}
     {% if object.status == "draft" or object.status == "confirmed" %}<form method="post" action="{% url 'feedback:sent' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="url" name="sent_url" class="input input-sm w-72" placeholder="送った先の URL (任意)" aria-label="送った先の URL"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "external" "size-4" %}送ったにする</button></form>{% endif %}
     {% if object.status != "fixed" and object.status != "dismissed" %}<form method="post" action="{% url 'feedback:fixed' object.pk %}" class="flex flex-wrap items-center gap-2">{% csrf_token %}<input type="text" name="fixed_note" maxlength="200" class="input input-sm w-72" placeholder="直した場所と版 (任意)" aria-label="直した場所と版"><button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "check" "size-4" %}直したと記録する</button></form>{% endif %}
@@ -78,7 +78,7 @@
 {% if info.can_delete %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-delete-title">
   <h2 id="feedback-delete-title" class="text-lg font-bold">下書きの削除</h2>
-  <p class="mt-2 text-xs text-base-content/50">要らなくなった下書きを消します。消した下書きは元に戻せません。確認済みと送った物は消せません。</p>
+  <p class="mt-2 text-xs text-base-content/60">要らなくなった下書きを消します。消した下書きは元に戻せません。確認済みと送った物は消せません。</p>
   <form method="post" action="{% url 'feedback:delete' object.pk %}" class="mt-4 flex justify-end">{% csrf_token %}<button id="feedback-delete" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}削除</button></form>
 </section>
 {% endif %}

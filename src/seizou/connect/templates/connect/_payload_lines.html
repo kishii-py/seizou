@@ -27,7 +27,7 @@
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}{% if entry.now_due is not None %}<span class="block text-xs text-base-content/70">今: {{ entry.now_due }}</span>{% endif %}</td>
     </tr>
     {% endwith %}{% empty %}
-    <tr><td colspan="{% if seizou.hide_money %}7{% else %}8{% endif %}" class="text-base-content/50">明細がありません。</td></tr>
+    <tr><td colspan="{% if seizou.hide_money %}7{% else %}8{% endif %}" class="text-base-content/60">明細がありません。</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -55,7 +55,7 @@
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="{% if seizou.hide_money %}6{% else %}7{% endif %}" class="text-base-content/50">明細がありません。</td></tr>
+    <tr><td colspan="{% if seizou.hide_money %}6{% else %}7{% endif %}" class="text-base-content/60">明細がありません。</td></tr>
     {% endfor %}
   </tbody>
 </table>

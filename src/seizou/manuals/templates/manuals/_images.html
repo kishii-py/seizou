@@ -15,7 +15,7 @@
       <img src="{% url 'manuals:manualimage_download' image.pk %}" alt="{{ image.original_name }}" class="size-16 shrink-0 rounded-lg border border-base-300 bg-base-200 object-contain" loading="lazy">
       <div class="min-w-0 flex-1">
         <p class="truncate font-medium" title="{{ image.original_name }}">{{ image.original_name }}</p>
-        <p class="mt-2 text-xs text-base-content/50"><span class="tabular-nums">{{ image.size|filesizeformat }}</span> <code class="rounded bg-base-200 px-2 font-mono">![{{ image.original_name }}](image:{{ image.pk }})</code></p>
+        <p class="mt-2 text-xs text-base-content/60"><span class="tabular-nums">{{ image.size|filesizeformat }}</span> <code class="rounded bg-base-200 px-2 font-mono">![{{ image.original_name }}](image:{{ image.pk }})</code></p>
       </div>
       <button type="button" class="btn btn-sm btn-outline border-base-300" data-insert="![{{ image.original_name }}](image:{{ image.pk }})">{% icon "plus" "size-4" %}本文に入れる</button>
       <button type="button" class="btn btn-sm btn-ghost text-error" hx-post="{% url 'manuals:manualimage_delete' image.pk %}" hx-confirm="この画像を削除します。本文の参照は「[画像: …]」の字になります。" hx-target="#manual-images" hx-swap="outerHTML">{% icon "x" "size-4" %}削除</button>

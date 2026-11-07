@@ -9,13 +9,13 @@
 <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
   <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
     <details id="seizou-manual-toc" class="group" open>
-    <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden"><h2 class="min-w-0 flex-1 truncate">目次 ({{ sections|length }} 画面)</h2>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}</summary>
+    <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden"><h2 class="min-w-0 flex-1 truncate">目次 ({{ sections|length }} 画面)</h2>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/60 transition-transform group-open:rotate-0" %}</summary>
     <ul class="mt-4 flex flex-col">
       {% if intro %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#index" title="はじめに">はじめに</a></li>
       {% endif %}{% if flows %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#flows" title="業務の流れ">業務の流れ</a></li>
       {% endif %}{% for section in sections %}
       {% if section.html or section.unreadable %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }}">{{ section.name }}</a></li>
-      {% else %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/50 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }} (まだ)">{{ section.name }} (まだ)</a></li>{% endif %}
+      {% else %}<li><a class="block truncate rounded-lg px-2 py-2 text-base-content/60 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ section.anchor }}" title="{{ section.name }} (まだ)">{{ section.name }} (まだ)</a></li>{% endif %}
       {% endfor %}
     </ul>
     </details>
@@ -27,7 +27,7 @@
     {% can_manage_accounts as is_manager %}
     {% if not has_manual %}
     <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "book" "size-6" %}</span>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "book" "size-6" %}</span>
       <p class="mt-4 font-medium">この会社の説明書はまだありません。管理者が作ります。{% if is_manager %}Claude Code で <code>/seizou:manual</code> を打つと、画面ごとの説明書を作れます。{% endif %}</p>
     </div>
     {% endif %}

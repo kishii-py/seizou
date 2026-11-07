@@ -23,5 +23,5 @@
   {# 選んだファイルの一覧。input の change のたびに JS が template の行を写して名前と大きさを入れ、選んでいなければ hidden にする。 #}
   <ul class="mt-2 divide-y divide-base-200" data-file-drop-list hidden></ul>
   {# 絵 (PNG・JPEG・WebP・GIF) は行の頭の img にサムネを出す (JS が URL.createObjectURL の URL を入れて hidden を外す)。 #}
-  <template data-file-drop-item><li class="flex items-center gap-4 py-2"><img class="size-16 shrink-0 rounded-lg border border-base-300 bg-base-100 object-contain" alt="" hidden data-file-drop-thumb><span class="min-w-0 flex-1 truncate font-medium" data-file-drop-name></span><span class="shrink-0 text-xs text-base-content/50 tabular-nums" data-file-drop-size></span></li></template>
+  <template data-file-drop-item><li class="flex items-center gap-4 py-2"><img class="size-16 shrink-0 rounded-lg border border-base-300 bg-base-100 object-contain" alt="" hidden data-file-drop-thumb><span class="min-w-0 flex-1 truncate font-medium" data-file-drop-name></span><span class="shrink-0 text-xs text-base-content/60 tabular-nums" data-file-drop-size></span></li></template>
 </div>

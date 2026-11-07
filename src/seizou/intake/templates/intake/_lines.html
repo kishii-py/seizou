@@ -23,7 +23,7 @@
       <td class="whitespace-nowrap font-mono tabular-nums">{{ line.due_date|default_if_none:"" }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="{% if seizou.hide_money %}6{% else %}7{% endif %}" class="text-base-content/50">明細がありません。</td></tr>
+    <tr><td colspan="{% if seizou.hide_money %}6{% else %}7{% endif %}" class="text-base-content/60">明細がありません。</td></tr>
     {% endfor %}
   </tbody>
 </table>

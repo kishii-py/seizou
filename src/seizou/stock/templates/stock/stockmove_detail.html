@@ -12,6 +12,6 @@ link の a に truncate と whitespace-nowrap を付けない (狭い幅で受�
 {% block basic_extra %}{% move_source object as source %}
       <div class="grid grid-cols-[6rem_1fr] sm:grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2" data-move-source>
         <dt class="text-base-content/70">元の記録</dt>
-        <dd class="min-w-0 break-words">{% if source.url %}<a class="link link-primary" href="{{ source.url }}">{{ source.label }}</a>{% elif source.label %}{{ source.label }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+        <dd class="min-w-0 break-words">{% if source.url %}<a class="link link-primary" href="{{ source.url }}">{{ source.label }}</a>{% elif source.label %}{{ source.label }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
       </div>
     {% endblock %}

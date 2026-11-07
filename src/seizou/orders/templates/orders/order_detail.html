@@ -59,9 +59,9 @@
         <td class="whitespace-nowrap">{{ line.unit }}</td>
         {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
-        <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+        <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.shipped_total|comma }}</td>
-        {% with acc=line.acceptance %}{% if acc.count %}<td class="whitespace-nowrap text-right tabular-nums">{{ acc.total|comma }} <span class="text-xs text-base-content/70">({{ acc.last_on|date:"Y-m-d" }})</span>{% if acc.old_revision %} <span class="badge badge-soft badge-warning">第 {{ acc.old_revision }} 版の注文への検収 (今は第 {{ acc.current_revision }} 版)</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap text-right"><span class="text-base-content/50">—</span></td>{% endif %}{% endwith %}
+        {% with acc=line.acceptance %}{% if acc.count %}<td class="whitespace-nowrap text-right tabular-nums">{{ acc.total|comma }} <span class="text-xs text-base-content/70">({{ acc.last_on|date:"Y-m-d" }})</span>{% if acc.old_revision %} <span class="badge badge-soft badge-warning">第 {{ acc.old_revision }} 版の注文への検収 (今は第 {{ acc.current_revision }} 版)</span>{% endif %}</td>{% else %}<td class="whitespace-nowrap text-right"><span class="text-base-content/60">—</span></td>{% endif %}{% endwith %}
         {% if receiving_url %}<td class="whitespace-nowrap text-right tabular-nums">{{ allocated|comma }} / {{ line.qty|comma }}</td>{% endif %}
         <td class="whitespace-nowrap text-right tabular-nums">{% if line.remaining_total < 0 %}<span class="text-error">{{ line.remaining_total|comma }}</span>{% else %}{{ line.remaining_total|comma }}{% endif %}</td>
       </tr>

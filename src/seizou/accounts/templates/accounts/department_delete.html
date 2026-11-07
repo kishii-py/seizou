@@ -6,10 +6,10 @@
 {% if refusal %}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   {% with parts=refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
-  <p class="mb-2 text-xs font-medium text-base-content/50">所属する人</p>
+  <p class="mb-2 text-xs font-medium text-base-content/60">所属する人</p>
   <ul class="divide-y divide-base-200">
     {% for member in object.members %}
-    <li><a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'accounts:access_detail' member.pk %}"><span class="truncate">{{ member }}</span>{% icon "chevron-right" "size-4 text-base-content/50" %}</a></li>
+    <li><a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'accounts:access_detail' member.pk %}"><span class="truncate">{{ member }}</span>{% icon "chevron-right" "size-4 text-base-content/60" %}</a></li>
     {% endfor %}
   </ul>
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">

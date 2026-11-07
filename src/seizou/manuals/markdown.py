@@ -68,7 +68,7 @@ EVENT_CLASSES = {
 #: ## の番号の class (形式 → class)
 NUMBER_CLASSES = {
     "steps": "mr-2 badge badge-primary",
-    "page": "mr-2 text-base-content/50",
+    "page": "mr-2 text-base-content/60",
 }
 
 #: ほかの部品の class
@@ -78,7 +78,7 @@ CLASSES = {
     "check_item": "list-none",
     "check_box": "checkbox checkbox-sm mr-2 align-middle disabled:opacity-100 border-base-content/50",
     "figure": "my-4 overflow-hidden rounded-box border border-base-300",
-    "figcaption": "p-2 text-xs text-base-content/50",
+    "figcaption": "p-2 text-xs text-base-content/60",
 }
 
 #: class の辞書の全部 (試験が _body.html の comment と突き合わせる)

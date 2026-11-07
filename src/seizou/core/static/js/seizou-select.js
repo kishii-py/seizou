@@ -321,7 +321,7 @@
         var copied = value ? copyFromOption(select, ts.options[value]) : [];
         if (!copied.length) return;
         copyNote = document.createElement("p");
-        copyNote.className = "mt-2 text-xs text-base-content/50";
+        copyNote.className = "mt-2 text-xs text-base-content/60";
         copyNote.setAttribute("role", "status");
         copyNote.textContent = copied.join("と") + COPIED_TAIL;
         ts.wrapper.parentNode.appendChild(copyNote);

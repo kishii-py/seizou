@@ -1004,7 +1004,7 @@ def board_of(html: str) -> str:
 
 def card_of(html: str, number: int) -> str:
     """盤の番号のカードの HTML。"""
-    start = html.index(f'<span class="font-mono text-xs text-base-content/50">#{number}</span>')
+    start = html.index(f'<span class="font-mono text-xs text-base-content/60">#{number}</span>')
     return html[start : html.index("</article>", start)]
 
 

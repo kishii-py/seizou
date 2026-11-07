@@ -66,7 +66,7 @@
     if (!line) {
       line = document.createElement("p");
       line.id = "payment-readback";
-      line.className = "mt-2 text-xs text-base-content/50";
+      line.className = "mt-2 text-xs text-base-content/60";
       line.setAttribute("role", "status");
       line.hidden = true;
       input.parentNode.appendChild(line);

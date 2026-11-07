@@ -8,16 +8,16 @@
   {% for field in fields %}
   <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
     <dt class="text-base-content/70">{{ field.label }}</dt>
-    <dd class="min-w-0 break-words">{% if field.boolean %}{% bool_mark field.value %}{% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
+    <dd class="min-w-0 break-words">{% if field.boolean %}{% bool_mark field.value %}{% elif field.value is None or field.value == "" %}<span class="text-base-content/60">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
   </div>
   {% endfor %}
 </dl>
-<p class="mt-4 text-xs font-medium text-base-content/50">工程の並び</p>
+<p class="mt-4 text-xs font-medium text-base-content/60">工程の並び</p>
 <table class="table table-sm mt-2">
   <thead><tr><th class="w-12">順</th><th>工程</th><th>開始 → 終了</th></tr></thead>
   <tbody>
     {% for step in object.steps.all %}
-    <tr><td class="font-mono">{{ step.seq }}</td><td>{{ step.process.name }}</td><td>{% if step.planned_start %}{{ step.planned_start|date:"n/j" }} → {{ step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/50">未計画</span>{% endif %}</td></tr>
+    <tr><td class="font-mono">{{ step.seq }}</td><td>{{ step.process.name }}</td><td>{% if step.planned_start %}{{ step.planned_start|date:"n/j" }} → {{ step.planned_end|date:"n/j" }}{% else %}<span class="text-base-content/60">未計画</span>{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>

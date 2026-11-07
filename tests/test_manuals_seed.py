@@ -56,4 +56,4 @@ def test_seed_bodies_render_numbered(user, tmp_path):
         if manual.format == "steps":
             assert '<span class="mr-2 badge badge-primary">1</span>' in rendered.html
         else:
-            assert '<span class="mr-2 text-base-content/50">i</span>' in rendered.html
+            assert '<span class="mr-2 text-base-content/60">i</span>' in rendered.html

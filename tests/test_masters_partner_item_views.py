@@ -54,7 +54,7 @@ def test_item_detail_partner_tab(client_logged_in, user, item, partner, supplier
     assert 'aria-label="取引先"' in html
     add = f'{reverse("masters:partneritem_add")}?item={item.pk}&amp;next='
     assert f'href="{add}' in html and f'data-modal-form="{add}' in html
-    assert '<td class="whitespace-nowrap font-mono"><span class="text-base-content/50">—</span></td>' in html
+    assert '<td class="whitespace-nowrap font-mono"><span class="text-base-content/60">—</span></td>' in html
     assert f'{reverse("masters:partneritem_update", args=[blank.pk])}?next=' in html
     assert 'aria-label="行の操作"' in html
     delete = reverse("masters:partneritem_delete", args=[blank.pk])

@@ -473,8 +473,8 @@ def test_finished_and_cancelled_rows_have_no_action_links(user, logged_in, custo
         assert "部品の情報を見る" in tr_html
         assert f'hx-get="{reverse("masters:item_modal", args=[item.pk])}"' in tr_html
     # 出荷済みの明細の判断は「出荷済み」、取消は「取消」(薄い印)。
-    assert '<span class="badge badge-ghost text-base-content/50">出荷済み</span>' in _tr(body, done.pk)
-    assert '<span class="badge badge-ghost text-base-content/50">取消</span>' in _tr(body, cancelled.pk)
+    assert '<span class="badge badge-ghost text-base-content/60">出荷済み</span>' in _tr(body, done.pk)
+    assert '<span class="badge badge-ghost text-base-content/60">取消</span>' in _tr(body, cancelled.pk)
 
 
 @pytest.mark.django_db
@@ -517,7 +517,7 @@ def test_judgement_badges_and_marks(settings, user, logged_in, customer, item, c
     late_html = _tr(body, late.pk)
     assert '<span class="badge badge-soft badge-error">遅れ</span>' in late_html
     assert '<span class="text-error">-3</span>' in late_html
-    assert '<span class="text-base-content/50">未</span>' in late_html
+    assert '<span class="text-base-content/60">未</span>' in late_html
     assert '<span class="badge badge-soft badge-success">出荷できる</span>' in _tr(body, ready.pk)
     assert '<span class="badge badge-soft badge-warning">指示書が要る</span>' in _tr(body, needed.pk)
     planned_html = _tr(body, planned.pk)

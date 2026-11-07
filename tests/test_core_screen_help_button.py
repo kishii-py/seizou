@@ -24,7 +24,7 @@ from seizou.orders import services as orders_services
 
 HELP_TEMPLATE = Path(seizou.core.__file__).parent / "templates" / "core" / "_screen_help.html"
 
-HELP_CLASS = "btn btn-ghost btn-square btn-sm text-base-content/50 hover:text-base-content"
+HELP_CLASS = "btn btn-ghost btn-square btn-sm text-base-content/60 hover:text-base-content"
 
 SCREEN_LABEL = 'aria-label="この画面の説明"'
 

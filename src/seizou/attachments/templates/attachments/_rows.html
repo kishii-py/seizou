@@ -6,9 +6,9 @@ attachments の一覧の行の部分 (初見テスト R5 の UX の見直しの�
 この注に、テンプレートに今無い class の字を書かない (Tailwind はテンプレートの注の字も拾う)。
 {% endcomment %}{% if not rows and not search_q and not filter_active %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">まだ 1 件もありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">添付ファイルは、受注や部品などの詳細の「添付ファイル」の枠から付けます。</p>
+  <p class="mt-2 text-xs text-base-content/60">添付ファイルは、受注や部品などの詳細の「添付ファイル」の枠から付けます。</p>
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
 {% else %}{% include "core/_rows.html" %}{% endif %}

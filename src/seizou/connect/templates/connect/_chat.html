@@ -25,5 +25,5 @@
     <textarea name="body" rows="3" maxlength="2000" aria-label="言葉" class="textarea w-full"{% if chat.reason %} disabled{% endif %}></textarea>
     <div class="flex flex-wrap items-center justify-between gap-2"><input type="file" name="file" aria-label="添付" class="file-input w-full max-w-xs"{% if chat.reason %} disabled{% endif %}><button class="btn btn-outline border-base-300" type="submit"{% if chat.reason %} disabled{% endif %}>{% icon "external" "size-4" %}送る</button></div>
   </form>
-  {% else %}<p class="text-sm text-base-content/50">会話に書けるのは、受信した注文を開ける部署の人です。</p>{% endif %}
+  {% else %}<p class="text-sm text-base-content/60">会話に書けるのは、受信した注文を開ける部署の人です。</p>{% endif %}
 </div>

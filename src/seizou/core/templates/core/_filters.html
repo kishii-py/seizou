@@ -12,14 +12,14 @@
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
       <input id="list-f-{{ f.name }}" class="input input-sm w-auto" type="date" name="{{ f.param_from }}" value="{{ f.value_from }}" max="9999-12-31" aria-label="{{ f.label }}の始め" data-list-filter>
-      <span class="text-base-content/50">〜</span>
+      <span class="text-base-content/60">〜</span>
       <input class="input input-sm w-auto" type="date" name="{{ f.param_to }}" value="{{ f.value_to }}" max="9999-12-31" aria-label="{{ f.label }}の終わり" data-list-filter>
     </div>
     {% elif f.kind == "number_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
       <input id="list-f-{{ f.name }}" class="input input-sm w-auto" type="text" inputmode="decimal" size="8" name="{{ f.param_from }}" value="{{ f.value_from }}" aria-label="{{ f.label }}の最小" autocomplete="off" data-list-filter>
-      <span class="text-base-content/50">〜</span>
+      <span class="text-base-content/60">〜</span>
       <input class="input input-sm w-auto" type="text" inputmode="decimal" size="8" name="{{ f.param_to }}" value="{{ f.value_to }}" aria-label="{{ f.label }}の最大" autocomplete="off" data-list-filter>
     </div>
     {% elif f.kind == "flag" %}

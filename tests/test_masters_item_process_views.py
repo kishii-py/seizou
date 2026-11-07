@@ -80,7 +80,7 @@ def test_detail_tab_has_entry_rows_and_badges(client_logged_in, user, item, proc
     assert body.count("data-row-menu") == 3
     assert body.count(OUTSOURCED_BADGE) == 1
     assert body.count(INACTIVE_BADGE) == 1
-    assert '<tr class="h-10 text-base-content/50" data-row-menu>' in body
+    assert '<tr class="h-10 text-base-content/60" data-row-menu>' in body
     assert body.count('<tr class="h-10" data-row-menu>') == 2
     assert ">操作</th>" in body
     refresh = re.search(r'<div id="item-processes-refresh"[^>]*>', body)

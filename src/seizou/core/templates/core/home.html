@@ -18,14 +18,14 @@
     <div class="flex items-start justify-between gap-2">
       <div class="flex items-center gap-1">
         <p class="text-xs font-medium text-base-content/70">{{ stat.label }}</p>
-        {% if stat.help %}<button type="button" class="flex rounded-full text-base-content/50 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-label="{{ stat.label }}の数え方" data-stat-help="{{ stat.help }}">{% icon "info" "size-4" %}</button>{% endif %}
+        {% if stat.help %}<button type="button" class="flex rounded-full text-base-content/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-label="{{ stat.label }}の数え方" data-stat-help="{{ stat.help }}">{% icon "info" "size-4" %}</button>{% endif %}
       </div>
       <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon stat.icon "size-5" %}</span>
     </div>
-    {% if stat.money %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|comma }}</span> <span class="text-base-content/50">{{ stat.unit }}</span></p>{% endif %}
+    {% if stat.money %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|yen:0 }}</span></p>{% else %}<p class="mt-2"><span class="text-2xl font-bold tabular-nums sm:text-3xl">{{ stat.value|comma }}</span> <span class="text-base-content/60">{{ stat.unit }}</span></p>{% endif %}
     {% if stat.detail %}<p class="mt-1 text-sm text-base-content/70">{{ stat.detail }}</p>{% endif %}
     {# mt-auto: 横に並ぶカードで、補助の 1 行の点線の高さをそろえる (見出しや補助が折り返しても)。 #}
-    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/50">{{ stat.note }}</p>{% if stat.url %}<div class="mt-2 flex justify-end"><a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ stat.url }}">{{ stat.screen|default:"一覧" }}を見る{% icon "chevron-right" "size-4" %}</a></div>{% endif %}</div>
+    <div class="mt-auto pt-4"><p class="border-t border-dashed border-base-300 pt-4 text-xs text-base-content/60">{{ stat.note }}</p>{% if stat.url %}<div class="mt-2 flex justify-end"><a class="inline-flex items-center gap-2 rounded text-xs text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ stat.url }}">{{ stat.screen|default:"一覧" }}を見る{% icon "chevron-right" "size-4" %}</a></div>{% endif %}</div>
   </div>
   {% endfor %}
 </div>
@@ -87,7 +87,7 @@ if (!window.seizouStatHelp) {
         <h3 class="font-bold">{{ f.title }}</h3>
         {# 矢印は前の段の li に入れる (段と矢印が 1 組で折り返すので、折り返した行が矢印で始まらない。本人 11-04 14:3x)。段の字は折らない。 #}
         <ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{{ f.title }}の段">
-          {% for step in f.steps %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ step.url }}">{{ step.label }}</a>{% if not forloop.last %}{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}</li>{% endfor %}
+          {% for step in f.steps %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ step.url }}">{{ step.label }}</a>{% if not forloop.last %}{% icon "chevron-right" "size-4 text-base-content/60" %}{% endif %}</li>{% endfor %}
         </ol>
       </div>
       {% endfor %}
@@ -150,7 +150,7 @@ if (!window.seizouStatHelp) {
     </div>
     {% if shipping.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "truck" "size-6" %}</span>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "truck" "size-6" %}</span>
       <p class="mt-4 font-medium">直近 6 か月の出荷はまだありません。</p>
     </div>
     {% else %}
@@ -173,7 +173,7 @@ if (!window.seizouStatHelp) {
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_count|comma }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.shipment_qty|floatformat:"-2g" }}</td>
-            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if month.shipment_amount is not None %}{{ month.shipment_amount|yen:0 }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -190,7 +190,7 @@ if (!window.seizouStatHelp) {
     </div>
     {% if production.is_empty %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "factory" "size-6" %}</span>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "factory" "size-6" %}</span>
       <p class="mt-4 font-medium">直近 6 か月の指示書と実績はまだありません。</p>
     </div>
     {% else %}
@@ -208,7 +208,7 @@ if (!window.seizouStatHelp) {
             <td class="whitespace-nowrap font-mono tabular-nums">{{ month.key }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.issued_count|comma }}</td>
             <td class="whitespace-nowrap text-right tabular-nums">{{ month.issued_qty|floatformat:"-2g" }}</td>
-            <td class="whitespace-nowrap text-right tabular-nums">{% if month.completed_qty is not None %}{{ month.completed_qty|floatformat:"-2g" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+            <td class="whitespace-nowrap text-right tabular-nums">{% if month.completed_qty is not None %}{{ month.completed_qty|floatformat:"-2g" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -240,7 +240,7 @@ if (!window.seizouStatHelp) {
             <td class="whitespace-nowrap font-mono">{% if order.url %}<a class="link link-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ order.url }}">{{ order.obj.order_no }}</a>{% else %}{{ order.obj.order_no }}{% endif %}</td>
             <td class="hidden whitespace-nowrap font-mono tabular-nums xl:table-cell">{{ order.obj.order_date|date:"Y-m-d" }}</td>
             <td class="whitespace-nowrap"><span class="block max-w-32 truncate xl:max-w-48" title="{{ order.obj.customer }}">{% master_link order.obj.customer %}</span></td>
-            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>{% endif %}
+            {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{% if order.total is not None %}{{ order.total|yen:0 }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>{% endif %}
             <td class="whitespace-nowrap">{% status_badge order.obj small=True %}</td>
           </tr>
           {% endfor %}
@@ -249,9 +249,9 @@ if (!window.seizouStatHelp) {
     </div>
     {% else %}
     <div class="mt-4 flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "clipboard" "size-6" %}</span>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "clipboard" "size-6" %}</span>
       <p class="mt-4 font-medium">受注はまだありません。</p>
-      <p class="mt-2 text-xs text-base-content/50">受注を入れると、新しい順に 5 件ここに並びます。</p>
+      <p class="mt-2 text-xs text-base-content/60">受注を入れると、新しい順に 5 件ここに並びます。</p>
     </div>
     {% endif %}
   </section>

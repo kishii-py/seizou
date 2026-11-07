@@ -19,7 +19,7 @@ from seizou.core import services
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
 COMPANY_IDS = ("a_machining", "b_plating")
-SUBTITLE = '<span class="block text-xs text-base-content/50">'
+SUBTITLE = '<span class="block text-xs text-base-content/60">'
 
 
 @pytest.fixture

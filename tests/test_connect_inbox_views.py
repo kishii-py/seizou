@@ -409,7 +409,7 @@ def test_accept_form_without_partner_keeps_old_words(client_logged_in, user):
 
 # ---------------------------------------------------------------- 受け入れの画面の品番ごとの枠 (初見テスト R5 の候補 C91)
 
-DASH = '<span class="text-base-content/50">—</span>'
+DASH = '<span class="text-base-content/60">—</span>'
 
 
 def _frame(body, name):

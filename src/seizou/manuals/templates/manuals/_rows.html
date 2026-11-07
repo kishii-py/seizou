@@ -10,16 +10,16 @@ manuals の一覧の行の部分。土台はこの部分を core/_rows.html よ�
 {% endcomment %}{% if request.resolver_match.url_name == "manual_list" and not rows and not search_q %}{% folder_tree request.GET.folder as tree %}{% endif %}
 {% if tree and not tree.folder and tree.children %}
 <div class="flex flex-col items-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">このフォルダの直下にはマニュアルがありません。フォルダを開いてください。</p>
   {% manuals_in_folders as in_folders %}{% if in_folders %}<p class="mt-2 text-base-content/70">マニュアルはフォルダの中に {{ in_folders }} 件あります。</p>{% endif %}
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}
 {% elif tree and tree.folder %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">このフォルダの直下にはまだ 1 件もありません。</p>
-  {% if create_url %}<p class="mt-2 text-xs text-base-content/50">「新規登録」で、このフォルダの中に 1 件目を作ります。</p>
+  {% if create_url %}<p class="mt-2 text-xs text-base-content/60">「新規登録」で、このフォルダの中に 1 件目を作ります。</p>
   <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ create_url }}?folder={{ tree.folder.pk }}">{% icon "plus" "size-4" %}新規登録</a>{% endif %}
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% endif %}

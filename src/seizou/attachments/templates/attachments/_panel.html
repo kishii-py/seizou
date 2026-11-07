@@ -30,7 +30,7 @@
           <td class="max-w-xs"><span class="block truncate" title="{{ row.original_name }}">{{ row.original_name }}</span></td>
           <td class="whitespace-nowrap text-right font-mono tabular-nums">{{ row.size|filesizeformat }}</td>
           <td class="whitespace-nowrap font-mono tabular-nums">{{ row.uploaded_at|date:"Y-m-d H:i" }}</td>
-          <td class="whitespace-nowrap">{% if row.uploaded_by %}{{ row.uploaded_by }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td class="whitespace-nowrap">{% if row.uploaded_by %}{{ row.uploaded_by }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td class="max-w-xs break-words text-base-content/70">{{ row.note }}</td>
           <td class="whitespace-nowrap text-right">
             <a class="btn btn-ghost btn-sm" href="{% url 'attachments:attachment_download' row.pk %}" target="_blank" rel="noopener">{% icon "external" "size-4" %}開く</a>

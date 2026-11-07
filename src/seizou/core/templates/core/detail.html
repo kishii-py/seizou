@@ -7,7 +7,7 @@
 {# パンくずの一覧の名前は、子が with の tag で渡す crumb か、土台の BaseDetailView が一覧の画面の名前から引く list_name。パンくずがあれば「一覧に戻る」は出さない。一覧の名前が引けない詳細だけ、ボタンの左端に「一覧に戻る」。 #}
 {# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。土台の「編集」は開いた詳細の道を ?next= で渡す (編集の画面の「キャンセル」で詳細へ戻る)。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
 {% with crumb_name=crumb|default:list_name %}
-{% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
+{% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/60" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/60" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4" data-detail-head>
   <div class="min-w-48 flex-1">
     {# 状態の印の無い詳細は、題と「?」を折り返さない組 (min-w-0) に入れ、「?」だけが次の行へ落ちないようにする (題は truncate で縮む。初見テスト R5 の r5-a-08・r5-b-10。N266)。block heading_badge は状態の枝にだけ置くので、状態 (choices つきの status) の無い model の子が heading_badge を上書きしても出ない (今上書きする請求書と指示書は status を持つ)。 #}
@@ -54,8 +54,8 @@
           {% elif field.master %}{% master_link field.master %}
           {% elif field.url %}<a class="link link-primary" href="{{ field.url }}">{{ field.value }}</a>
           {% elif field.boolean %}{% bool_mark field.value %}
-          {% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>
-          {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/50">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
+          {% elif field.value is None or field.value == "" %}<span class="text-base-content/60">—</span>
+          {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/60">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
       </div>
       {% endfor %}
     </dl>
@@ -72,7 +72,7 @@
   </label>
   <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
-    <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
+    <p class="mb-2 text-xs font-medium text-base-content/60">基本</p>
     <dl class="grid gap-x-6 sm:grid-cols-2">
       {# マスターでない相手に詳細の画面があれば、値をその詳細への link にする (field.url。明細は親の伝票。部署でその部品を使わない人には字のまま。同じタブで移る。右の列のカードの値も同じ。候補 C80)。 #}
       {% for field in fields %}
@@ -82,19 +82,19 @@
           {% elif field.master %}{% master_link field.master %}
           {% elif field.url %}<a class="link link-primary" href="{{ field.url }}">{{ field.value }}</a>
           {% elif field.boolean %}{% bool_mark field.value %}
-          {% elif field.value is None or field.value == "" %}<span class="text-base-content/50">—</span>
-          {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/50">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
+          {% elif field.value is None or field.value == "" %}<span class="text-base-content/60">—</span>
+          {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/60">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
       </div>
       {% endfor %}
     {# block basic_extra: 子のテンプレートが基本の表の最後に行を足す所 (在庫の動きの詳細の「元の記録」の行。候補 C89) #}{% block basic_extra %}{% endblock %}</dl>
     {% if files %}
-    <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">ファイル</p>
+    <p class="mb-2 mt-6 text-xs font-medium text-base-content/60">ファイル</p>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {% for field in files %}
       <a class="group block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{{ field.file.url }}" target="_blank" rel="noopener">
         {% if field.file.is_image %}<img src="{{ field.file.url }}" alt="{{ field.label }}" class="h-40 w-full bg-base-200 object-contain">
-        {% else %}<span class="flex h-40 items-center justify-center bg-base-200 text-base-content/50">{% icon "file" "size-6" %}</span>{% endif %}
-        <span class="flex items-center justify-between gap-2 p-2 text-xs"><span class="font-medium">{{ field.label }}</span><span class="truncate text-base-content/50" title="{{ field.file.name }}">{{ field.file.name }}</span></span>
+        {% else %}<span class="flex h-40 items-center justify-center bg-base-200 text-base-content/60">{% icon "file" "size-6" %}</span>{% endif %}
+        <span class="flex items-center justify-between gap-2 p-2 text-xs"><span class="font-medium">{{ field.label }}</span><span class="truncate text-base-content/60" title="{{ field.file.name }}">{{ field.file.name }}</span></span>
       </a>
       {% endfor %}
     </div>
@@ -107,22 +107,22 @@
   </label>
   <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="related" label="関係する物の説明" %}</div>
-    <p class="mb-2 text-xs font-medium text-base-content/50">{{ tab.label }}</p>
+    <p class="mb-2 text-xs font-medium text-base-content/60">{{ tab.label }}</p>
     {% if tab.rows %}
     {% block tab_rows %}
     <ul class="divide-y divide-base-200">
       {% for row in tab.rows %}
-      <li>{% if row.url %}<a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}"><span class="truncate">{{ row.obj }}</span>{% icon "chevron-right" "size-4 text-base-content/50" %}</a>
+      <li>{% if row.url %}<a class="flex items-center justify-between gap-2 rounded-lg px-2 py-2 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}"><span class="truncate">{{ row.obj }}</span>{% icon "chevron-right" "size-4 text-base-content/60" %}</a>
         {% else %}<span class="block truncate px-2 py-2" title="{{ row.obj }}">{{ row.obj }}</span>{% endif %}</li>
       {% endfor %}
     </ul>
     {% endblock %}
-    {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/50">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
+    {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/60">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
     {% else %}{% block tab_empty %}
     <div class="flex flex-col items-center justify-center p-6 text-center">
-      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+      <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
       <p class="mt-4 font-medium">まだありません。</p>
-      <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
+      <p class="mt-2 text-xs text-base-content/60">{{ tab.label }}が入ると、ここに並びます。</p>
     </div>
     {% endblock %}{% endif %}
   </div>

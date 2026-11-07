@@ -27,7 +27,7 @@
   <nav aria-label="フォルダ" class="flex flex-wrap items-center gap-2">
     <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">トップ</a>
     {% for crumb in object.folder.path %}
-    {% icon "chevron-right" "size-4 text-base-content/50" %}
+    {% icon "chevron-right" "size-4 text-base-content/60" %}
     <a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualfolder_detail' crumb.pk %}">{{ crumb.name }}</a>
     {% endfor %}
   </nav>
@@ -44,7 +44,7 @@
     <h2 class="text-lg font-bold">目次</h2>
     <ol class="mt-4 flex flex-col">
       {% for entry in rendered.toc %}
-      <li><a class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ entry.anchor }}" title="{{ entry.title }}"><span class="shrink-0 font-mono tabular-nums text-base-content/50">{{ entry.number }}</span><span class="truncate">{{ entry.title }}</span></a></li>
+      <li><a class="flex items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="#{{ entry.anchor }}" title="{{ entry.title }}"><span class="shrink-0 font-mono tabular-nums text-base-content/60">{{ entry.number }}</span><span class="truncate">{{ entry.title }}</span></a></li>
       {% endfor %}
     </ol>
   </nav>

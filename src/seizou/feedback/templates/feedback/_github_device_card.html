@@ -14,7 +14,7 @@
   <p class="text-base-content/70">GitHub の画面で打つ符号</p>
   <p id="github-device-code" class="mt-2 font-mono text-2xl font-bold">{{ device.user_code }}</p>
   <p class="mt-4">開いた GitHub の画面にこの符号を打ち、「Continue」→「Authorize」を押してください。この画面はそのまま待ちます (符号は 15 分で切れます)。</p>
-  <p class="mt-2 text-xs text-base-content/50">送り先 <span class="font-mono">{{ device.repo }}</span></p>
+  <p class="mt-2 text-xs text-base-content/60">送り先 <span class="font-mono">{{ device.repo }}</span></p>
   <div class="mt-4 flex flex-wrap items-center gap-2">
     <a id="github-device-open" class="btn btn-primary" href="{{ device.verification_uri }}" target="_blank" rel="noopener">{% icon "external" "size-4" %}GitHub を開く</a>
     <form method="post" action="{% url 'feedback:github_device_cancel' %}">{% csrf_token %}<button id="github-device-cancel" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}やめる</button></form>

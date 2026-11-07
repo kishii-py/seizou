@@ -21,10 +21,10 @@
 {# 空の進捗のタブ (block tab_empty の progress_records) は、ボタンが出る条件と同じときだけ、土台と同じ箱に入れる場所の 1 文を足す (押せない人には案内しない)。ほかのタブとほかの条件は土台のまま。 #}
 {% block tab_empty %}{% url 'progress:progress_create' as progress_url %}{% can_write "progress.Progress" as can_progress %}{% if tab.related == "progress_records" and progress_url and can_progress and object.status == "issued" %}
 <div class="flex flex-col items-center justify-center p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">まだありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
-  <p class="mt-2 text-xs text-base-content/50">工程のタブの「実績を入力」から入れます。</p>
+  <p class="mt-2 text-xs text-base-content/60">{{ tab.label }}が入ると、ここに並びます。</p>
+  <p class="mt-2 text-xs text-base-content/60">工程のタブの「実績を入力」から入れます。</p>
 </div>
 {% else %}{{ block.super }}{% endif %}{% endblock %}
 {# 中身の頭 (#workorder-live の中。小窓で保存した後の取り直しでも描き直す) の青の 1 行: 発行の指示書で「取消」が出ない人に、出ない訳と頼む先を出す (初見テスト R5 の V17・U19。候補 C12 の 2。決め C12-1 = a)。出す条件は block more の取消と同じ tag の逆 (block more の can_cancel はこの block から見えないので、もう 1 回引く)。頼む先の字は core/access.py の CONTACT と同じ。CONTACT を直したら、ここも直す。 #}

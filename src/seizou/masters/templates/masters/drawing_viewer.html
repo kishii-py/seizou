@@ -4,7 +4,7 @@
 {# 絵の URL はログインした人にだけ返す口 (masters:item_drawing)。PDF はブラウザの表示に任せる (iframe)。版の表は枠の下。 #}
 {# 頭: 題の上にパンくず (一覧 › 部品 › この画面。core/detail.html の頭と同じ形)。部品の詳細へはパンくずで戻る (右上に戻るボタンを置かない = core/detail.html の「パンくずがあれば一覧に戻るを出さない」と同じ考え)。 #}
 {% block title %}{{ object.part_no }} の図面 | {{ screen_name }}{% endblock %}
-{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'masters:item_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
+{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/60" %}{% if list_url and list_name %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ list_name }}</a>{% icon "chevron-right" "size-4 text-base-content/60" %}{% endif %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'masters:item_detail' object.pk %}">{{ object }}</a>{% icon "chevron-right" "size-4 text-base-content/60" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
 {% block actions %}{% drawing_viewer as viewer %}
 {% if viewer.download_url %}<a class="btn btn-outline border-base-300" href="{{ viewer.download_url }}" download>{% icon "download" "size-4" %}ダウンロード</a>{% endif %}
 {% endblock %}
@@ -59,10 +59,10 @@
     <img data-drawing-image src="{{ viewer.image_url }}" alt="図面" draggable="false" class="h-full w-full select-none object-contain">
   </div>
   {% endif %}
-  <p class="mt-2 text-xs text-base-content/50">絵の上で押したまま動かすと移動し、ホイールで拡大・縮小します。</p>
+  <p class="mt-2 text-xs text-base-content/60">絵の上で押したまま動かすと移動し、ホイールで拡大・縮小します。</p>
   {% elif viewer.mode == "pdf" %}
   <iframe src="{{ viewer.download_url }}" title="図面 (PDF)" class="mt-4 h-[70vh] w-full rounded-lg border border-base-300 bg-base-100"></iframe>
-  <p class="mt-2 text-xs text-base-content/50">PDF はブラウザの表示を使います。</p>
+  <p class="mt-2 text-xs text-base-content/60">PDF はブラウザの表示を使います。</p>
   {% else %}
   {% if viewer.error %}<div class="alert alert-warning alert-soft mt-4" role="status">{% icon "alert" "size-5" %}<span>{{ viewer.error }}</span></div>{% endif %}
   <p class="mt-4 text-base-content/70">この図面は画面の中で絵にできません。「ダウンロード」で元のファイルを開けます。</p>
@@ -80,7 +80,7 @@
         {% for row in viewer.rows %}
         <tr class="aria-[current=true]:bg-primary/10"{% if row.viewing %} aria-current="true"{% endif %}>
           <td class="whitespace-nowrap tabular-nums">{% if row.is_current %}版 {{ row.no }} (今の図面){% else %}版 {{ row.no }}{% endif %}</td>
-          <td class="whitespace-nowrap tabular-nums">{% if row.created_at %}{{ row.created_at|date:"Y-m-d H:i" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+          <td class="whitespace-nowrap tabular-nums">{% if row.created_at %}{{ row.created_at|date:"Y-m-d H:i" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td><span class="block max-w-80 truncate" title="{{ row.note }}">{{ row.note|default:"—" }}</span></td>
           <td class="text-right"><a class="btn btn-xs btn-ghost focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.link }}">{% icon "eye" "size-4" %}見る</a></td>
         </tr>

@@ -13,7 +13,7 @@
       <tr>
         <td class="whitespace-nowrap font-mono">{% if row.url %}<a class="link link-primary" href="{{ row.url }}">{{ row.obj.order_no }}</a>{% else %}{{ row.obj.order_no }}{% endif %}</td>
         <td class="whitespace-nowrap">{{ row.obj.order_date|date:"Y-m-d" }}</td>
-        <td class="whitespace-nowrap font-mono">{% if row.obj.customer_order_no %}{{ row.obj.customer_order_no }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+        <td class="whitespace-nowrap font-mono">{% if row.obj.customer_order_no %}{{ row.obj.customer_order_no }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
         <td class="whitespace-nowrap">{{ row.obj.get_status_display }}</td>
       </tr>
       {% endfor %}
@@ -30,7 +30,7 @@
         <td class="whitespace-nowrap font-mono">{% if row.url %}<a class="link link-primary" href="{{ row.url }}">{{ row.obj.po_no }}</a>{% else %}{{ row.obj.po_no }}{% endif %}</td>
         <td class="whitespace-nowrap">{{ row.obj.order_date|date:"Y-m-d" }}</td>
         <td class="whitespace-nowrap">{{ row.obj.get_status_display }}</td>
-        <td>{% if row.obj.note %}{{ row.obj.note }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
+        <td>{% if row.obj.note %}{{ row.obj.note }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

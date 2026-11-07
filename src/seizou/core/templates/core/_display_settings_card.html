@@ -19,7 +19,7 @@
       {% endfor %}
     </div>
     {% if form.header_color.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.header_color.errors|join:" " }}</p>{% endif %}
-    <p class="mt-4 flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}{% if in_modal %}見本を押すとすぐ保存し、画面を読み直します。{% else %}見本を選んで「保存」を押します。{% endif %}</p>
+    <p class="mt-4 flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}{% if in_modal %}見本を押すとすぐ保存し、画面を読み直します。{% else %}見本を選んで「保存」を押します。{% endif %}</p>
     {% if not in_modal %}
     {# 下の行 (保存)。ほかの入力の画面と同じく、開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html)。小窓には行も字も描かない。 #}
     <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">

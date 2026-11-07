@@ -42,7 +42,7 @@ def user(db):
 def test_red_rule_notice_has_help_button():
     for notice, code in ((RuleViolation("R05", "作り物の文"), "R05"), (CheckViolation("R01", "作り物の文"), "R01")):
         html = render_to_string("core/_notices.html", {"notice": notice, "warnings": []})
-        assert f'<span class="font-mono text-xs text-base-content/50">{code}</span>' in html, code  # 番号は残す (決め。N156 から文の末尾)
+        assert f'<span class="font-mono text-xs text-base-content/60">{code}</span>' in html, code  # 番号は残す (決め。N156 から文の末尾)
         assert f'hx-get="/rules/{code}/"' in html, code
         assert f'aria-label="{code} の決まりの説明"' in html, code
         assert 'hx-target="#seizou-modal-box"' in html, code
@@ -55,7 +55,7 @@ def test_red_rule_notice_in_modal_opens_help_in_new_tab():
     html = render_to_string(
         "core/_notices.html", {"notice": CheckViolation("R01", "作り物の文"), "warnings": [], "in_modal": True}
     )
-    assert '<span class="font-mono text-xs text-base-content/50">R01</span>' in html
+    assert '<span class="font-mono text-xs text-base-content/60">R01</span>' in html
     assert 'href="/rules/R01/" target="_blank" rel="noopener"' in html
     assert 'aria-label="R01 の決まりの説明"' in html
     assert "<button" not in html
@@ -74,7 +74,7 @@ def test_notice_without_rule_number_has_no_button():
     html = render_to_string(
         "core/_notices.html", {"notice": None, "warnings": [SimpleNamespace(code="R01", message="作り物の文")]}
     )
-    assert '<span class="font-mono text-xs text-base-content/50">R01</span>' in html
+    assert '<span class="font-mono text-xs text-base-content/60">R01</span>' in html
     assert "/rules/" not in html
     assert "<button" not in html
 

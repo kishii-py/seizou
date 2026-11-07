@@ -211,7 +211,7 @@ def test_diff_page_marks_format_symbols(client_logged_in, manual, user):
     assert "チェック項目- [ ] 確かめる" in plain
     assert "注意の枠の始まり:::注意" in plain
     assert "枠の終わり:::" in plain
-    assert '<span class="badge badge-sm badge-ghost mr-2 align-middle">見出し</span><span class="text-base-content/50">##</span> 準備' in html
+    assert '<span class="badge badge-sm badge-ghost mr-2 align-middle">見出し</span><span class="text-base-content/60">##</span> 準備' in html
     assert "地の文" in plain and "気を付ける" in plain
     assert all("badge" not in cell for cell, text in zip(cells, plain) if text in ("地の文", "気を付ける", "足した文"))
     assert "行の頭の目印は、本文の書式の記号の意味です。" in html

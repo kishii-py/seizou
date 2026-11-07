@@ -7,7 +7,7 @@
     {% if bookmarked %}{% icon "star" "size-4 fill-current" %}{% else %}{% icon "star" "size-4" %}{% endif %}
   </summary>
   <div class="dropdown-content z-40 mt-2 w-72 rounded-lg border border-base-300 bg-base-100 p-3 shadow-sm">
-    <p class="text-xs font-bold text-base-content/50">このページ</p>
+    <p class="text-xs font-bold text-base-content/60">このページ</p>
     <div class="mt-2 flex items-center gap-2">
       <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ current_label|default:"—" }}</span>
       {% if bookmarked %}<span class="badge badge-sm badge-ghost">登録済み</span>{% endif %}
@@ -30,14 +30,14 @@
     <p class="mt-2 text-xs text-base-content/70">一覧や目録の画面だけ登録できます。</p>
     {% endif %}
     <div class="mt-4 border-t border-base-300 pt-2">
-      <p class="text-xs font-bold text-base-content/50">ブックマーク ({{ bookmarks|length }})</p>
+      <p class="text-xs font-bold text-base-content/60">ブックマーク ({{ bookmarks|length }})</p>
       {% if bookmarks %}
       <ul class="menu mt-2 w-full p-0">
         {% for item in bookmarks %}
         {% if item.lost %}
         <li><div class="flex items-center gap-2">
-          {% icon "list" "size-4 text-base-content/50" %}
-          <span class="min-w-0 flex-1 truncate text-base-content/50">{{ item.label }} (見つかりません)</span>
+          {% icon "list" "size-4 text-base-content/60" %}
+          <span class="min-w-0 flex-1 truncate text-base-content/60">{{ item.label }} (見つかりません)</span>
           <form method="post" action="{% url 'bookmarks:toggle' %}">{% csrf_token %}
             <input type="hidden" name="url_name" value="{{ item.url_name }}">
             <input type="hidden" name="on" value="0">

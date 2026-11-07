@@ -10,13 +10,13 @@
 {% endif %}
 {% with drawing_url=object.display_drawing_url %}{% if drawing_url %}
 <section class="mt-4" aria-label="図面">
-  <p class="text-xs font-medium text-base-content/50">図面</p>
+  <p class="text-xs font-medium text-base-content/60">図面</p>
   <a class="mt-2 block overflow-hidden rounded-lg border border-base-300 hover:border-primary focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'masters:item_drawing_viewer' object.pk %}"><img src="{{ drawing_url }}" alt="図面" class="h-40 w-full bg-base-200 object-contain"></a>
 </section>
 {% endif %}{% endwith %}
 {% for tab in tabs %}
 <section class="mt-4" aria-label="{{ tab.label }}">
-  <p class="flex items-center gap-2 text-xs font-medium text-base-content/50">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span></p>
+  <p class="flex items-center gap-2 text-xs font-medium text-base-content/60">{{ tab.label }}<span class="badge badge-sm tabular-nums">{{ tab.count|comma }}</span></p>
   {% if tab.rows %}
   {% if tab.related == "partner_items" %}
   <div class="mt-2 max-h-60 overflow-auto rounded-lg border border-base-300">
@@ -38,9 +38,9 @@
     {% for row in tab.rows %}<li class="truncate px-2 py-2" title="{{ row.obj }}">{{ row.obj }}</li>{% endfor %}
   </ul>
   {% endif %}
-  {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/50">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
+  {% if tab.count > tab.rows|length %}<p class="mt-2 text-xs text-base-content/60">先頭の {{ tab.rows|length }} 件を出しています (全 {{ tab.count|comma }} 件)。</p>{% endif %}
   {% else %}
-  <p class="mt-2 text-base-content/50">{{ tab.label }}はまだありません。</p>
+  <p class="mt-2 text-base-content/60">{{ tab.label }}はまだありません。</p>
   {% endif %}
 </section>
 {% endfor %}

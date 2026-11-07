@@ -11,9 +11,9 @@ purchasing の一覧 (発注・受入) の行の部分。土台は画面の全�
 {% if request.resolver_match.url_name == "purchaseorder_list" %}{% include "core/_rows.html" with row_template="purchasing/_purchaseorder_row.html" %}
 {% elif request.resolver_match.url_name == "receipt_list" and not rows and not search_q and not filter_active %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
   <p class="mt-4 font-medium">まだ 1 件もありません。</p>
-  {% if create_url %}<p class="mt-2 text-xs text-base-content/50">受入は発注の明細ごとに記録します。受け入れる発注が無ければ、先に発注の一覧で作ります。</p>
+  {% if create_url %}<p class="mt-2 text-xs text-base-content/60">受入は発注の明細ごとに記録します。受け入れる発注が無ければ、先に発注の一覧で作ります。</p>
   <a class="btn btn-sm btn-outline mt-4 border-base-300" href="{% url 'purchasing:purchaseorder_list' %}">{% icon "cart" "size-4" %}発注の一覧</a>{% endif %}
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}

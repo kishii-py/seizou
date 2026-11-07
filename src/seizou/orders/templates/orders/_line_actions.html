@@ -3,7 +3,7 @@
 {# 出荷の新規登録と指示書の発行は、土台の get_initial が ?order_line=<pk> をその明細の初めの選択にする。部品が入っていない会社では URL が空なので、その入口を出さない。 #}
 {% url 'shipping:shipment_create' as ship_url %}
 {% url 'workorders:workorder_create' as issue_url %}
-{% if order.status == "cancelled" or not line.remaining_total > 0 or not ship_url and not issue_url %}<span class="text-base-content/50">—</span>
+{% if order.status == "cancelled" or not line.remaining_total > 0 or not ship_url and not issue_url %}<span class="text-base-content/60">—</span>
 {% else %}<div class="flex flex-nowrap items-center gap-2">
   {% if ship_url %}<a class="btn btn-xs btn-outline border-base-300" href="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷する</a>{% endif %}
   {% if issue_url %}<a class="btn btn-xs btn-outline border-base-300" href="{{ issue_url }}?order_line={{ line.pk }}">{% icon "factory" "size-4" %}指示書を発行する</a>{% endif %}

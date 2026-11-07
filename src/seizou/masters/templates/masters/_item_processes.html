@@ -13,7 +13,7 @@
       <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">順</th><th class="font-medium">工程</th>{% if can_edit_process %}<th class="font-medium">操作</th>{% endif %}</tr></thead>
       <tbody>
         {% for row in tab.rows %}
-        <tr class="h-10{% if row.obj.process.active is False %} text-base-content/50{% endif %}"{% if can_edit_process %} data-row-menu{% endif %}>
+        <tr class="h-10{% if row.obj.process.active is False %} text-base-content/60{% endif %}"{% if can_edit_process %} data-row-menu{% endif %}>
           <td class="whitespace-nowrap tabular-nums">{{ row.obj.seq }}</td>
           <td><a class="link link-primary" href="{% url 'masters:process_detail' row.obj.process_id %}"><span class="font-mono">{{ row.obj.process.code }}</span> {{ row.obj.process.name }}</a>{% if row.obj.process.is_outsourced %} <span class="badge badge-sm badge-outline border-base-300">協力企業に出す</span>{% endif %}{% if row.obj.process.active is False %} <span class="badge badge-sm badge-soft badge-warning">使用停止</span>{% endif %}</td>
           {% if can_edit_process %}<td class="whitespace-nowrap">
@@ -35,11 +35,11 @@
   {% else %}
   {# 空のタブ: 土台の空の箱 (core/detail.html の block tab_empty) と同じ箱と 2 行に、何の並びかの 1 行 (C19。押せない人にも出す) と、押せる人にだけ入れ方の 1 行 #}
   <div class="flex flex-col items-center justify-center p-6 text-center">
-    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
     <p class="mt-4 font-medium">まだありません。</p>
-    <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
-    <p class="mt-2 text-xs text-base-content/50">指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。協力企業に出す工程が 1 つだけなら、発注の明細の工程にも最初から入ります。</p>
-    {% if can_add_process %}<p class="mt-2 text-xs text-base-content/50">「工程を足す」で、工程の一覧にある工程を選んで足せます。</p>{% endif %}
+    <p class="mt-2 text-xs text-base-content/60">{{ tab.label }}が入ると、ここに並びます。</p>
+    <p class="mt-2 text-xs text-base-content/60">指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。協力企業に出す工程が 1 つだけなら、発注の明細の工程にも最初から入ります。</p>
+    {% if can_add_process %}<p class="mt-2 text-xs text-base-content/60">「工程を足す」で、工程の一覧にある工程を選んで足せます。</p>{% endif %}
   </div>
   {% endif %}
 </div>

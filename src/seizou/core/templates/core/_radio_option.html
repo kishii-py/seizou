@@ -1,2 +1,2 @@
 {# 丸の選択の 1 つ (core/forms.py の Radios が使う。Django の radio_option の代わり)。名前の下に、選ぶと何が起きるかの 1 文 (note) を小さな薄い字で出す。文の無い値は名前だけ。 #}
-<label class="flex cursor-pointer items-start gap-2 py-1"{% if widget.attrs.id %} for="{{ widget.attrs.id }}"{% endif %}>{% include "django/forms/widgets/input.html" %}<span>{{ widget.label }}{% if widget.note %}<span class="block text-xs text-base-content/50">{{ widget.note }}</span>{% endif %}</span></label>
+<label class="flex cursor-pointer items-start gap-2 py-1"{% if widget.attrs.id %} for="{{ widget.attrs.id }}"{% endif %}>{% include "django/forms/widgets/input.html" %}<span>{{ widget.label }}{% if widget.note %}<span class="block text-xs text-base-content/60">{{ widget.note }}</span>{% endif %}</span></label>

@@ -15,10 +15,10 @@
       <li><a class="flex items-center gap-4 rounded-lg border border-base-300 p-4 transition-colors hover:border-primary hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ link.url }}">
         <span class="rounded-lg bg-primary/10 p-2 text-primary">{% icon link.icon "size-5" %}</span>
         <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs text-base-content/70">{{ link.help }}</span></span>
-        {% icon "chevron-right" "size-4 text-base-content/50" %}
+        {% icon "chevron-right" "size-4 text-base-content/60" %}
       </a></li>
       {% else %}
-      <li><div class="flex items-center gap-4 rounded-lg border border-dashed border-base-300 p-4 text-base-content/50">
+      <li><div class="flex items-center gap-4 rounded-lg border border-dashed border-base-300 p-4 text-base-content/60">
         <span class="rounded-lg bg-base-200 p-2">{% icon link.icon "size-5" %}</span>
         <span class="min-w-0 flex-1"><span class="block font-medium">{{ link.label }}</span><span class="block text-xs">{{ link.help }} この会社にはまだ入っていない。</span></span>
       </div></li>

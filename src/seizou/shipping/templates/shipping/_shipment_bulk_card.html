@@ -6,29 +6,29 @@
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form.rows %}
-  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>{% endif %}
+  {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>{% endif %}
   <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right">
     {% for field in form.head_fields %}
     {% if field.widget_type == "checkbox" %}
     <div class="sm:col-span-2">
       <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
     {% else %}
     <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' %} sm:col-span-2{% endif %}">
       <div class="mb-2 flex items-center gap-2">
         <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
-        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/50">任意</span>{% endif %}
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
       </div>
       {{ field }}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endif %}
     {% endfor %}
   </div>
-  {% if form.dropped %}<p class="mt-6 text-xs text-base-content/50">取消の受注と残の無い明細 {{ form.dropped }} 行は出していません。</p>{% endif %}
+  {% if form.dropped %}<p class="mt-6 text-xs text-base-content/60">取消の受注と残の無い明細 {{ form.dropped }} 行は出していません。</p>{% endif %}
   <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
     <h2 class="text-lg font-bold">明細</h2>
     {% include "core/_line_totals.html" %}
@@ -60,7 +60,7 @@
     </table>
   </div>
   {% else %}
-  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}出荷できる明細がありません。生産管理ボードで行を選び直してください。</p>
+  <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}出荷できる明細がありません。生産管理ボードで行を選び直してください。</p>
   {% endif %}
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}

@@ -13,7 +13,7 @@
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
       <h2 id="feedback-chat-title" class="text-lg font-bold">AI に聞き取ってもらう</h2>
-      <p class="mt-2 text-xs text-base-content/50">困りごとを 1 文で書くと、AI が 1 問ずつ (最大 {{ panel.max_questions }} 問) 聞いて、下の入力の形の下書きを作ります。使い方の問いには説明書で答えます。AI はコードと受注や部品のデータを読みません (読むのは画面の目録・画面ごとの説明書・会社の設定だけ)。</p>
+      <p class="mt-2 text-xs text-base-content/60">困りごとを 1 文で書くと、AI が 1 問ずつ (最大 {{ panel.max_questions }} 問) 聞いて、下の入力の形の下書きを作ります。使い方の問いには説明書で答えます。AI はコードと受注や部品のデータを読みません (読むのは画面の目録・画面ごとの説明書・会社の設定だけ)。</p>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" hx-post="{% url 'feedback:reset' %}" hx-target="#feedback-chat-messages" hx-swap="innerHTML">{% icon "x" "size-4" %}最初から</button>
   </div>

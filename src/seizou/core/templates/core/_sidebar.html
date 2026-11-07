@@ -9,7 +9,7 @@
         {% else %}<span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-content" aria-hidden="true">{{ seizou.company_name|first|upper }}</span>{% endif %}
         <span class="min-w-0">
           <span class="block truncate font-bold" title="{{ seizou.company_name }}">{{ seizou.company_name }}</span>
-          <span class="block text-xs text-base-content/50">{{ seizou.industry|default:"seizou" }}</span>
+          <span class="block text-xs text-base-content/60">{{ seizou.industry|default:"seizou" }}</span>
         </span>
       </a>
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
@@ -19,9 +19,9 @@
       {% for section in seizou.sections %}
       {% if section.collapsible %}
       <details class="group mb-1" name="seizou-menu-section"{% if section.active %} data-seizou-active open{% endif %}>
-        <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden">{% icon section.icon "size-5" %}<span class="min-w-0 flex-1 truncate">{{ section.label }}</span>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/50 transition-transform group-open:rotate-0" %}</summary>
+        <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden">{% icon section.icon "size-5" %}<span class="min-w-0 flex-1 truncate">{{ section.label }}</span>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/60 transition-transform group-open:rotate-0" %}</summary>
         {% for group in section.groups %}
-        {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/50">{{ group.label }}</p>{% endif %}
+        {% if group.label %}<p class="mt-2 mb-1 pl-9 text-xs font-medium text-base-content/60">{{ group.label }}</p>{% endif %}
         <ul class="flex flex-col">
           {% for item in group.items %}
           <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span>{% if item.count_label %}<span id="menu-count-{{ item.url_name|cut:':' }}" class="ml-auto">{% if item.count %}<span class="tooltip tooltip-left ml-auto text-xs" data-tip="{{ item.count_label }} {{ item.count }} {{ item.count_unit }}"><span class="badge badge-soft badge-primary badge-sm">{{ item.count }}</span></span>{% endif %}</span>{% endif %}</a></li>
