@@ -389,3 +389,42 @@ def test_restore_other_items_version_is_form_error(logged_in, user):
     after = (item.drawing.name, other.drawing.name, item.drawing_versions.count(), other.drawing_versions.count())
     assert after == before
     assert Item.objects.count() == 2
+
+
+# 版が 0 件の「図面を版に戻す」(初見テスト R5 の a-flagged-23。候補 C40 の その 1。C40-2 = a「文を足すだけ」)
+
+NO_VERSIONS = "前の版はありません。図面を差し替えると、前の図面がここに残ります。"
+
+
+@pytest.mark.django_db
+def test_restore_without_versions_shows_viewer_message(logged_in, user):
+    item = tiff_item(user)
+    assert item.drawing_versions.count() == 0
+    body = html(logged_in.get(restore_url(item)))
+    # 図面ビューアと 1 字も同じ文
+    viewer = html(logged_in.get(viewer_url(item)))
+    assert NO_VERSIONS in viewer
+    assert NO_VERSIONS in body
+    # 入力の枠は今のまま出る (C40-2 = a。止める形を足さない)
+    assert 'id="id_version"' in body
+    assert "保存" in body and "戻す版" in body
+    assert "選んだ版の図面を今の図面に戻します。今の図面は新しい版として残り、ファイルは消しません。" in body
+    assert f'href="{viewer_url(item)}"' in body and "ビューアに戻る" in body
+
+
+@pytest.mark.django_db
+def test_restore_with_versions_has_no_message(logged_in, user):
+    item = item_with_versions(user)
+    body = html(logged_in.get(restore_url(item)))
+    assert NO_VERSIONS not in body
+
+
+@pytest.mark.django_db
+def test_restore_without_versions_post_keeps_drawing(logged_in, user):
+    item = tiff_item(user)
+    before = (item.drawing.name, item.drawing_versions.count())
+    response = logged_in.post(restore_url(item), {"note": "版を付けずに保存"})
+    # 詳細へ移らない (誤りの字は見ない。字と出し方は C25 と C57 が替える)
+    assert response.status_code == 200
+    item.refresh_from_db()
+    assert (item.drawing.name, item.drawing_versions.count()) == before
