@@ -2,7 +2,8 @@
 
 - 下の行 = 入力の画面 (小窓の外) の form の下の「キャンセル」「保存」の行。印の class seizou-save-row で、開いた時から窓の下の端に
   貼り付く (scripts/css/input.css の固定の決まり。app.css は取り込みで作り直すので、ここでは input.css の字を見る)。
-  印を付けるのは 6 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集)。小窓の形には付けない。
+  印を付けるのは 9 つの下の行 (core/_form_card.html・受注・発注・一括出荷・説明書の確かめ・説明書の編集・請求書の新規登録・
+  納品書を作る・表示の設定の画面の全体)。ここで見るのは請求書と納品書を除く 7 つ。小窓の形には付けない。
 - 書きかけの字 = core/_save_bar.html (data-save-bar)。下の行の左の字の置き場 (seizou-save-slot) に描き、ボタンを持たない。
   出し入れは js/seizou-form-guard.js の syncBar (hidden の属性だけ)。黄の知らせの後 (「このまま保存」の画面) は描かない。
 - 字の出ない所 = 小窓の入力 (core/_form_modal.html は base.html を使わない)・一覧 (BaseListView。絞り込みの枠も)・
@@ -51,7 +52,8 @@ BAR_WORDS = ("保存していない変更があります",)
 ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
 SLOT = '<div class="seizou-save-slot">'
 MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
-#: 下の行を持つ 6 つのテンプレート (受注・発注・確かめ・説明書の編集・core の入力のカードは HTML でも見る。一括出荷は明細の作り物が要るので字で見る)
+#: 下の行を持つ 7 つのテンプレート (受注・発注・確かめ・説明書の編集・core の入力のカード・表示の設定の画面の全体は HTML でも見る。
+#: 一括出荷は明細の作り物が要るので字で見る)。小窓の形の見方が並びの 0・2・3 を名指しするので、足すときは最後に足す
 ROW_TEMPLATES = (
     CORE / "templates" / "core" / "_form_card.html",
     PACKAGE / "orders" / "templates" / "orders" / "order_form.html",
@@ -59,6 +61,7 @@ ROW_TEMPLATES = (
     PACKAGE / "shipping" / "templates" / "shipping" / "_shipment_bulk_card.html",
     PACKAGE / "manuals" / "templates" / "manuals" / "confirm.html",
     PACKAGE / "manuals" / "templates" / "manuals" / "manual_form.html",
+    CORE / "templates" / "core" / "_display_settings_card.html",
 )
 
 
@@ -168,6 +171,7 @@ def _input_urls():
         reverse("masters:holiday_create"),
         reverse("orders:order_create"),
         reverse("purchasing:purchaseorder_create"),
+        reverse("core:display_settings"),
     )
 
 
@@ -240,7 +244,7 @@ def test_manual_screens_have_bottom_row(logged_in, manual):
     assert "保存</button>" in row
 
 
-def test_six_templates_have_bottom_row():
+def test_seven_templates_have_bottom_row():
     for path in ROW_TEMPLATES:
         source = path.read_text(encoding="utf-8")
         assert source.count(ROW) == 1, path
