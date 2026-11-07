@@ -1,5 +1,5 @@
 {% load seizou_icons %}
-{# 左のメニュー: 会社の印と名前、大項目ごとの入口 (大項目は開け閉めし、今の画面の大項目だけ開く。今の画面は主色の薄い地)、下に利用者とログアウト。高さは画面いっぱいで固定し、入口が多いときは nav の中が送れる (下が切れて見える所見の直し)。 #}
+{# 左のメニュー: 会社の印と名前、大項目ごとの入口 (大項目は開け閉めし、今の画面の大項目だけ開く。今の画面は主色の薄い地)、大項目の後に ☆ で登録した画面の「ブックマーク」の組 (bookmarks/_menu.html。部品が入っている会社で 1 件以上あるときだけ)、下に利用者とログアウト。高さは画面いっぱいで固定し、入口が多いときは nav の中が送れる (下が切れて見える所見の直し)。 #}
 <div class="drawer-side z-40">
   <label for="seizou-drawer" aria-label="メニューを閉じる" class="drawer-overlay"></label>
   <aside class="flex h-screen w-64 flex-col border-r border-base-300 bg-base-100">
@@ -37,6 +37,7 @@
       </ul>
       {% endif %}
       {% endfor %}
+      {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_menu.html" %}{% endif %}
     </nav>
 {% if "feedback" in seizou.parts %}{% include "feedback/_menu.html" %}{% endif %}
     {% if user.is_authenticated %}
