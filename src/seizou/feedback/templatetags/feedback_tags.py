@@ -8,6 +8,8 @@
 {% feedback_filter as filter %}        一覧の絞り込みの選択肢と今の値
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
 {% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った一言 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
+{% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。依頼書 N324)
+info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (依頼書 N324)。
 """
 
 from django import template
@@ -62,6 +64,10 @@ def feedback_detail(context, feedback):
         "can_delete": user is not None and services.can_delete(feedback, user),
         "github": services.github_status(),
         "version": manual.package_version(),
+        # 「返事」の節 (依頼書 N324): 下書き (送った日時が空) は返事を書ける人 (書いた人か世話役) にだけ並べる
+        "replies": [reply for reply in services.replies_of(feedback) if reply.sent_at or (user is not None and services.can_reply(feedback, user))],
+        "can_reply": user is not None and services.can_reply(feedback, user),
+        "company_login": services.company_login(),
     }
 
 
@@ -152,3 +158,9 @@ def feedback_tabs(context):
         {"key": key, "label": label, "href": hrefs[key], "count": count if key == "sent" else None, "selected": key == chosen}
         for key, label in TABS
     ]
+
+
+@register.simple_tag
+def feedback_reply_draft(reply):
+    """返事の下書きの、世話役が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。依頼書 N324)。"""
+    return services.reply_draft_text(reply)

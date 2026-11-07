@@ -31,6 +31,7 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 from . import chat, services
 from .forms import FeedbackForm, GithubConnectForm, GithubDeviceForm
 from .models import Feedback
+from .models import FeedbackReply
 
 
 def _visible_to(queryset, user):
@@ -236,7 +237,8 @@ def github_sync(request):
         messages.success(
             request,
             f"GitHub を見ました: 見た {counts['見た']} 件・直した {counts['直した']} 件・見送った {counts['見送った']} 件・"
-            f"版待ち {counts['版待ち']} 件・版の印なし {counts['版の印なし']} 件・読めなかった {counts['読めなかった']} 件",
+            f"版待ち {counts['版待ち']} 件・版の印なし {counts['版の印なし']} 件・読めなかった {counts['読めなかった']} 件"
+            f"・返事 {counts['返事']} 件",
         )
     return HttpResponseRedirect(reverse("feedback:feedback_list"))
 
@@ -338,3 +340,57 @@ def reset(request):
         return HttpResponseBadRequest(_HTMX_ONLY)
     chat.reset_chat(request.session)
     return HttpResponse("")
+
+
+# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+
+
+def _visible_reply(request, reply_pk):
+    """返事を、一覧と同じ絞り (_visible_to) の中の件から引く (ほかの人の件の返事は 404)。"""
+    visible = _visible_to(Feedback.objects.all(), request.user)
+    return get_object_or_404(FeedbackReply.objects.select_related("feedback"), pk=reply_pk, feedback__in=visible)
+
+
+@login_required
+@require_POST
+def reply_add(request, pk):
+    """送った件に返事の下書きを書く (書いた人か世話役。断られたら赤の知らせ)。詳細へ戻る。
+
+    対象は一覧と同じ絞り (_visible_to) の中から引く (ほかの人の件は 404)。GitHub には送らない (送るのは世話役)。
+    """
+    feedback = get_object_or_404(_visible_to(Feedback.objects.all(), request.user), pk=pk)
+    try:
+        services.add_reply(feedback, request.POST.get("body", ""), request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "返事を書きました。世話役が伏せ字を確かめてから GitHub に送ります。")
+    return _back_to_detail(pk)
+
+
+@login_required
+@require_POST
+def reply_send(request, reply_pk):
+    """世話役が直した返事の文 (POST の body) を、会社のトークンで Issue に送る (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    reply = _visible_reply(request, reply_pk)
+    try:
+        url = services.send_reply(reply, request.POST.get("body", ""), request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, f"返事を GitHub に送りました: {url}")
+    return _back_to_detail(reply.feedback_id)
+
+
+@login_required
+@require_POST
+def reply_mark_sent(request, reply_pk):
+    """つないでいない会社で、世話役が返事を GitHub に手で写した後に送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    reply = _visible_reply(request, reply_pk)
+    try:
+        services.mark_reply_sent(reply, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "返事を送った状態にしました。")
+    return _back_to_detail(reply.feedback_id)

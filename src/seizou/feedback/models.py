@@ -3,6 +3,7 @@
 現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあれば世話役が「GitHub に送る」で送り、無ければ Issue の文を
 GitHub に手で写す。送った先の URL は sent_url に残す。書くのは services の関数だけ (R13)。
 画面は URL の名前 (例 orders:order_list) で覚える。会話の記録は JSON の並びで持ち、詳細のテンプレートが吹き出しで描く。
+送った件の Issue の返事は FeedbackReply に 1 件ずつ持つ (依頼書 N324)。
 """
 
 from django.conf import settings
@@ -89,3 +90,40 @@ class Feedback(models.Model):
 
         name = screen_name(self.screen)
         return f"{name} ({self.screen})" if name else self.screen
+
+
+class FeedbackReply(models.Model):
+    """送ったフィードバックの Issue の返事の 1 件 (依頼書 N324。決め 11-07 09:1x〜09:4x)。書くのは services の関数だけ (R13)。
+
+    誰が何を書くか:
+    - GitHub から読んだ返事 (作者や皆が Issue に書いた物): login あり・created_by 無し。取り込み (services.import_replies) が書き、
+      github_id・posted_at・sent_at (posted_at と同じ) が入る。この会社の口座が書いた返事は、知らせた日時 (seen_at) も入れて知らせない。
+    - 会社の中で書いた下書き (書いた人か世話役が詳細で書いた返事): created_by あり・sent_at 無し。github_id は空。
+    - 送った返事 (世話役が伏せ字を直して GitHub に送った下書き): created_by と sent_at の両方あり。GitHub に送ったなら github_id と login も入る。
+      手で写して「送ったにする」を押した物は sent_at だけが入る。
+    """
+
+    feedback = models.ForeignKey(Feedback, on_delete=models.CASCADE, related_name="replies", verbose_name="フィードバック")
+    github_id = models.BigIntegerField("GitHub の id", null=True, blank=True, unique=True)
+    login = models.CharField("書いた口座", max_length=100, blank=True)
+    body = models.TextField("本文")
+    posted_at = models.DateTimeField("GitHub に出た日時", null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="書いた人",
+    )
+    created_at = models.DateTimeField("書いた日時", auto_now_add=True)
+    sent_at = models.DateTimeField("送った日時", null=True, blank=True)
+    seen_at = models.DateTimeField("知らせた日時", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "フィードバックの返事"
+        verbose_name_plural = "フィードバックの返事"
+        ordering = ("posted_at", "created_at", "pk")
+
+    def __str__(self) -> str:
+        return self.body[:40]

@@ -26,11 +26,13 @@ import os
 import re
 import time
 from datetime import datetime
+from datetime import UTC
 from functools import lru_cache
 
 from django.apps import apps
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
+from django.db.models import F
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
@@ -39,6 +41,7 @@ from seizou.core.screens import Screen, all_screens
 
 from . import github
 from .models import Feedback
+from .models import FeedbackReply
 
 #: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
@@ -977,6 +980,8 @@ def sync_github(user=None) -> dict:
     user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
     訳: 対応しないとして閉じた物と、直った版がまだ会社に入っていない物に「直しました」と知らせないため。
     出所 = 本人の決め 11-07 09:0x〜09:4x の 1・2・4。変えてよい条件 = 閉じた理由の分け方か版の決まりを、本人の決めで変えたとき。
+    返事 (依頼書 N324。決め 11-07 09:1x〜09:4x): 最後に、送った・直した・見送ったの件の Issue の返事を読み (_sync_replies)、
+    新しく表に入れた数を "返事" の鍵 (鍵の順は最後) にする。返事を読めなかった件も読めなかったに数える。
     """
     if user is not None:
         _refuse_github(user, "GitHub の状態を取り込む")
@@ -1018,6 +1023,7 @@ def sync_github(user=None) -> dict:
             counts["読めなかった"] += 1
             continue
         counts["直した"] += 1
+    counts["返事"] = _sync_replies(token, counts)
     return counts
 
 
@@ -1066,3 +1072,248 @@ def visible_count(user) -> int:
     if can_manage(user):
         return Feedback.objects.count()
     return Feedback.objects.filter(created_by_id=user_pk).count()
+
+
+# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+#
+# 世話役 (作者) が Issue に書いた返事を、取り込みで読んで表 (FeedbackReply) に残し、送った件の詳細に出す。
+# 書いた人には、ログインの画面からログインしたときに 1 回だけ知らせる (直したと同じ形。signals.py)。
+# 会社の口座 (.env の SEIZOU_GITHUB_LOGIN) が書いた返事は表に残すが知らせない。
+# 書いた人が詳細で書いた返事は下書きで残し、世話役が伏せ字を直してから会社のトークンで Issue に送る (送る前の確認は Issue と同じ)。
+# HTTP は transaction.atomic の外 (R17)。
+
+#: 返事を読む件の状態 (送った・直した・見送った)
+REPLY_STATUSES = ("sent", "fixed", "dismissed")
+
+
+def company_login() -> str:
+    """会社の口座の名前 (.env の SEIZOU_GITHUB_LOGIN。つないでいなければ空の字)。読むだけ。"""
+    return github.read_env_value(github.LOGIN_ENV)
+
+
+def _github_time(text):
+    """GitHub の日時 (ISO 8601。例 2026-11-06T03:00:00Z) を aware な datetime にする。読めなければ None。"""
+    raw = str(text or "")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timezone.is_naive(moment):
+        return moment.replace(tzinfo=UTC)
+    return moment
+
+
+def import_replies(row, repo, number, token="") -> int:
+    """件 (row) の Issue の返事を GitHub から読み、表に無い返事を足す。新しく入れた数を返す。
+
+    返事の id (github_id) が表にある物は飛ばす (前の取り込みで読んだ物と、会社から送った返事)。
+    1 件 = login・本文・GitHub に出た日時 (posted_at。送った日時 sent_at も同じ。読めない日時は今)。
+    会社の口座 (company_login) が書いた返事は、知らせた日時 (seen_at) を今にして知らせない。ほかは空 (次のログインで知らせる)。
+    読めなければ github.GithubError (呼び手が数える)。HTTP は atomic の外 (R17)。表に書くのは後の atomic の中だけ。
+    """
+    comments = github.list_comments(repo, number, token=token)
+    if not comments:
+        return 0
+    known = set(FeedbackReply.objects.filter(github_id__in=[item["id"] for item in comments]).values_list("github_id", flat=True))
+    own = company_login()
+    now = timezone.now()
+    new = []
+    for item in comments:
+        if item["id"] in known:
+            continue
+        known.add(item["id"])
+        posted = _github_time(item["created_at"]) or now
+        new.append(
+            FeedbackReply(
+                feedback=row,
+                github_id=item["id"],
+                login=item["login"][: FeedbackReply._meta.get_field("login").max_length],
+                body=item["body"],
+                posted_at=posted,
+                sent_at=posted,
+                seen_at=now if own and item["login"] == own else None,
+            )
+        )
+    if not new:
+        return 0
+    with transaction.atomic():
+        FeedbackReply.objects.bulk_create(new)
+    return len(new)
+
+
+def _sync_replies(token, counts) -> int:
+    """sync_github の最後に呼ぶ。送った・直した・見送ったの件で、送った先が Issue の形の物の返事を 1 件ずつ読む。
+
+    新しく入れた返事の数を返す。読めなかった件は counts["読めなかった"] に足して飛ばす (止めない)。
+    """
+    total = 0
+    for row in list(Feedback.objects.filter(status__in=REPLY_STATUSES).order_by("pk")):
+        match = _ISSUE_URL.fullmatch(row.sent_url or "")
+        if match is None:
+            continue
+        owner, name, number = match.groups()
+        try:
+            total += import_replies(row, f"{owner}/{name}", int(number), token)
+        except github.GithubError:
+            counts["読めなかった"] += 1
+    return total
+
+
+def unseen_replies(user) -> list:
+    """user が書いた件の返事のうち、GitHub から来た (書いた人が空) まだ知らせていない物の並び (GitHub に出た日時の新しい順)。読むだけ。
+
+    pk の無い利用者 (ログインしていない人) は空の並び。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return []
+    rows = FeedbackReply.objects.filter(feedback__created_by_id=user_pk, seen_at__isnull=True, created_by__isnull=True)
+    return list(rows.select_related("feedback").order_by("-posted_at", "-pk"))
+
+
+def reply_notice(rows) -> str:
+    """ログインのときの返事の知らせの文 (いちばん新しい返事の件の題と返事の数)。空の並びなら空の字。
+
+    「ほか」は返事が 2 件以上の件にまたがるときに付ける。題は伏せない (書いた本人にだけ出す字のため)。
+    toast は字だけを出すので link は入れず、行き先を字で書く。
+    """
+    rows = list(rows)
+    if not rows:
+        return ""
+    more = "ほか " if len({row.feedback_id for row in rows}) > 1 else ""
+    return (
+        f"あなたの一言に返事が届きました: 「{rows[0].feedback.title}」{more}({len(rows)} 件)。"
+        "左のメニューの下の「フィードバック」の「送った一言」から開いて読めます。"
+    )
+
+
+def mark_replies_seen(rows, user) -> int:
+    """返事を知らせた日時を今にする (user が書いた件の返事で、まだ空の物だけ)。書いた行の数を返す。"""
+    user_pk = getattr(user, "pk", None)
+    pks = [row.pk for row in rows]
+    if user_pk is None or not pks:
+        return 0
+    with transaction.atomic():
+        return FeedbackReply.objects.filter(pk__in=pks, feedback__created_by_id=user_pk, seen_at__isnull=True).update(
+            seen_at=timezone.now()
+        )
+
+
+#: 返事の字数の上限
+REPLY_MAX_CHARS = 2000
+MESSAGE_REPLY_EMPTY = "返事を入力してください。"
+MESSAGE_REPLY_LONG = f"返事は {REPLY_MAX_CHARS} 字までです。短くしてください。"
+MESSAGE_CANNOT_REPLY = "この件に返事を書けるのは、書いた人かアカウント管理の担当者だけです。"
+MESSAGE_REPLY_NOT_SENT = "先に GitHub に送るか、送ったにしてください。"
+MESSAGE_REPLY_ALREADY_SENT = "この返事は送った状態です。"
+MESSAGE_REPLY_NOT_ISSUE = "この件は GitHub の Issue に送った物ではありません。"
+
+
+def can_reply(feedback, user) -> bool:
+    """返事を書けるか。件を書いた人か世話役。"""
+    if can_manage(user):
+        return True
+    user_pk = getattr(user, "pk", None)
+    return user_pk is not None and feedback.created_by_id == user_pk
+
+
+def _reply_body(text) -> tuple[str, str]:
+    """返事の文の前後の空白を外して確かめる。返す物は (本文, 断りの理由。通れば空の字)。
+
+    断りの文の頭 (「保存できません。」か「送れません。」) は呼び手が付けて raise する (tests/test_wording.py が頭を見るため)。
+    """
+    body = _text(text)
+    if not body:
+        return body, MESSAGE_REPLY_EMPTY
+    if len(body) > REPLY_MAX_CHARS:
+        return body, MESSAGE_REPLY_LONG
+    return body, ""
+
+
+def add_reply(feedback, text, user):
+    """書いた人か世話役が、送った件に返事の下書きを 1 件書く。作った行を返す。
+
+    状態が送った・直した・見送ったの件だけ (下書きと確認済みはまだ Issue が無いので断る)。文は前後の空白を外して 2000 字まで。
+    書いた人は user、知らせた日時は今 (会社の中で書いた物は知らせない)。GitHub には送らない (送るのは世話役の send_reply)。
+    訳: 返事は書いた人の字のまま公開の Issue に出るので、Issue の文と同じく世話役の確認 (伏せ字) を通してから送るため、
+    ここでは下書きとして残すだけにする。出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D)。
+    変えてよい条件 = 書いた人が直接 Issue に返事を書ける形に変えるときは、本人の決めを取り直してから。
+    """
+    if not can_reply(feedback, user):
+        raise ValueError("保存できません。" + MESSAGE_CANNOT_REPLY)
+    if feedback.status not in REPLY_STATUSES:
+        raise ValueError("送れません。" + MESSAGE_REPLY_NOT_SENT)
+    body, problem = _reply_body(text)
+    if problem:
+        raise ValueError("保存できません。" + problem)
+    with transaction.atomic():
+        return FeedbackReply.objects.create(feedback=feedback, body=body, created_by=_author(user), seen_at=timezone.now())
+
+
+def reply_draft_text(reply) -> str:
+    """世話役が直す前の返事の初めの字 (取引先の名前と金額らしい数を伏せた本文)。読むだけ。"""
+    return mask_text(reply.body)
+
+
+def send_reply(reply, text, user) -> str:
+    """世話役が直した返事の文を、会社のトークンで件の Issue に書き、送ったにする。Issue の返事の URL を返す。
+
+    世話役だけ。送った返事・つないでいない会社・送った先が Issue の形でない件は、HTTP を呼ばずに断る。
+    文は世話役が直した物 (前後の空白を外して 2000 字まで)。GitHub が断ったら ValueError で、返事は下書きのまま。
+    HTTP は atomic の外 (R17)。送った後に atomic で本文・送った日時・GitHub の id・口座・GitHub に出た日時を書く。
+    訳: 書いた人の返事は公開の Issue に出るので、取引先の名前や金額が出ないよう、世話役が伏せ字を確かめた文だけを送るため。
+    出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D。Issue を送るときと同じ確認)。
+    変えてよい条件 = 送る前の確認の形 (N323 の「送る前に直せる」) を本人の決めで変えたとき、同じ形に合わせる。
+    """
+    _refuse_github(user, "返事を GitHub に送る", sending=True)
+    if reply.sent_at is not None:
+        raise ValueError("送れません。" + MESSAGE_REPLY_ALREADY_SENT)
+    token = github.read_env_value(github.TOKEN_ENV)
+    if not token:
+        raise ValueError("送れません。" + MESSAGE_GITHUB_NOT_CONNECTED)
+    match = _ISSUE_URL.fullmatch(reply.feedback.sent_url or "")
+    if match is None:
+        raise ValueError("送れません。" + MESSAGE_REPLY_NOT_ISSUE)
+    body, problem = _reply_body(text)
+    if problem:
+        raise ValueError("送れません。" + problem)
+    owner, name, number = match.groups()
+    try:
+        answer = github.create_comment(token, f"{owner}/{name}", int(number), body)
+    except github.GithubError as exc:
+        raise ValueError("送れません。" + str(exc)) from None
+    now = timezone.now()
+    with transaction.atomic():
+        reply.body = body
+        reply.sent_at = now
+        reply.github_id = answer["id"]
+        reply.login = (company_login() or answer["login"])[: FeedbackReply._meta.get_field("login").max_length]
+        reply.posted_at = _github_time(answer["created_at"]) or now
+        reply.save(update_fields=["body", "sent_at", "github_id", "login", "posted_at"])
+    return answer["html_url"]
+
+
+def mark_reply_sent(reply, user):
+    """つないでいない会社で、世話役が伏せ字の文を GitHub に手で写した後に、返事を送ったにする。世話役だけ。
+
+    送った日時だけを今にする (本文と GitHub の id は変えない)。GitHub の id が空のままなので、次の取り込みで同じ返事が
+    GitHub から読まれると、別の行で入ることがある (依頼書 N324 の記録に書いた)。送った返事は ValueError。
+    """
+    _refuse_non_manager(user, "返事を送った状態")
+    if reply.sent_at is not None:
+        raise ValueError("保存できません。" + MESSAGE_REPLY_ALREADY_SENT)
+    with transaction.atomic():
+        reply.sent_at = timezone.now()
+        reply.save(update_fields=["sent_at"])
+        return reply
+
+
+def replies_of(feedback) -> list:
+    """件の返事の並び (GitHub に出た日時の古い順。日時の無い物 = 下書きと手で写した物は後ろで、書いた日時の順)。読むだけ。
+
+    保存前の行は空の並び。書いた人は select_related で一緒に読む (詳細で名前を出すため)。
+    """
+    if getattr(feedback, "pk", None) is None:
+        return []
+    rows = FeedbackReply.objects.filter(feedback=feedback).select_related("created_by")
+    return list(rows.order_by(F("posted_at").asc(nulls_last=True), "created_at", "pk"))

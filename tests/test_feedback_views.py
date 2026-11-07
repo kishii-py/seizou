@@ -607,3 +607,135 @@ def test_tabs_tag_without_request_selects_nothing():
     assert [tab["href"] for tab in tabs] == ["/feedback/new/", "/feedback/", "/feedback/?tab=issues"]
     assert [tab["count"] for tab in tabs] == [None, 0, None]
     assert not any(tab["selected"] for tab in tabs)
+
+
+# ---- 詳細の「返事」の節 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+
+
+@pytest.fixture
+def reply_env(settings, tmp_path, monkeypatch):
+    """GitHub の置き場 (.env) を試験ごとの一時の物にする (つないでいない会社から始める)。返す関数でつなぐ。"""
+    from seizou.feedback import github
+
+    settings.SEIZOU_ENV_FILE = tmp_path / ".env"
+    for key in (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV):
+        monkeypatch.delenv(key, raising=False)
+
+    def connected():
+        github.write_env_value(github.TOKEN_ENV, "ghp_test0000fake")
+        github.write_env_value(github.LOGIN_ENV, "example-feedback-bot")
+        monkeypatch.setenv(github.TOKEN_ENV, "ghp_test0000fake")
+        monkeypatch.setenv(github.LOGIN_ENV, "example-feedback-bot")
+
+    return connected
+
+
+def github_replies(row, monkeypatch, *items):
+    """GitHub の返事 (id, login, 本文) を取り込みと同じ関数で表に入れる (本物の GitHub は呼ばない)。"""
+    from seizou.feedback import github
+
+    placed = [
+        {"id": number, "login": login, "body": body, "created_at": "2026-11-06T04:00:00Z", "html_url": f"{ISSUE_URL}#issuecomment-{number}"}
+        for number, login, body in items
+    ]
+    monkeypatch.setattr(github, "list_comments", lambda repo, number, token="": placed)
+    return services.import_replies(row, "example-owner/example-repo", 7)
+
+
+def replies_section(html: str) -> str:
+    return re.search(r'<section id="feedback-replies".*?</section>', html, re.S).group(0)
+
+
+def test_replies_section_only_for_sent_fixed_dismissed(client, plain, manager, reply_env):
+    draft = make(plain, "下書きの題")
+    confirmed = make(plain, "確認済みの題")
+    services.mark_confirmed(confirmed, manager)
+    sent = make(plain, "送った題")
+    services.mark_sent(sent, manager, sent_url=ISSUE_URL)
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "", manager)
+    dismissed = make(plain, "見送った題")
+    services.mark_sent(dismissed, manager, sent_url=ISSUE_URL)
+    services._write_dismissed(dismissed, "GitHub の Issue #7")
+
+    client.force_login(plain)
+    for row in (draft, confirmed):
+        assert 'id="feedback-replies"' not in html_of(client.get(f"/feedback/{row.pk}/"))
+    for row in (sent, fixed, dismissed):
+        html = html_of(client.get(f"/feedback/{row.pk}/"))
+        section = replies_section(html)
+        assert '<h2 id="feedback-replies-title"' in section and "返事" in section
+        assert "まだ返事はありません。" in section
+        assert f'action="/feedback/{row.pk}/replies/"' in section and "返事を書く" in section
+        assert "作者からの返事に答えます。送るのは世話役です。" in section
+        # 返事の節は「Issue の文」の節の次
+        assert html.index('id="feedback-issue-title"') < html.index('id="feedback-replies"')
+
+
+def test_replies_show_github_and_drafts(client, plain, manager, reply_env, monkeypatch):
+    reply_env()
+    row = make(plain, "返事の来た題")
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    github_replies(row, monkeypatch, (101, "example-author", "どの画面で起きましたか"), (102, "example-feedback-bot", "会社から"))
+    services.add_reply(row, "受注の一覧の画面です。", plain)
+
+    client.force_login(plain)
+    section = replies_section(html_of(client.get(f"/feedback/{row.pk}/")))
+    assert '<span class="badge badge-sm tabular-nums">3</span>' in section
+    assert "example-author" in section and "どの画面で起きましたか" in section
+    assert '<span class="badge badge-sm">この会社</span>' in section
+    assert "受注の一覧の画面です。" in section and '<span class="badge badge-sm">下書き</span>' in section
+    assert "世話役の確認を待っています。" in section
+    assert "/send/" not in section and "/sent/" not in section
+    assert section.index("どの画面で起きましたか") < section.index("受注の一覧の画面です。")
+    assert "html_url" not in section and "issuecomment" not in section
+
+
+def test_manager_form_starts_with_masked_text(client, plain, manager, reply_env):
+    from seizou.masters import services as masters_services
+
+    masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "short_name": "作り物", "role": "customer"}, plain)
+    row = make(plain, "伏せ字の題")
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    reply = services.add_reply(row, "作り物の得意先の 1,200 円の件です。", plain)
+
+    client.force_login(manager)
+    section = replies_section(html_of(client.get(f"/feedback/{row.pk}/")))
+    area = re.search(rf'<textarea id="feedback-reply-body-{reply.pk}" name="body" rows="4"[^>]*>(.*?)</textarea>', section, re.S).group(1)
+    assert area == "〇〇の 〇〇の件です。"
+    assert "伏せ字 (〇〇) を確かめ、要るところを直してから送ってください。" in section
+    # つないでいない会社: 写す と 送ったにする
+    assert f'action="/feedback/replies/{reply.pk}/sent/"' in section
+    assert f'data-reply-copy="feedback-reply-body-{reply.pk}"' in section and "送ったにする" in section
+    assert "GitHub に送る" not in section
+    assert "世話役の確認を待っています。" not in section
+
+    # つないだ会社: GitHub に送る
+    reply_env()
+    section = replies_section(html_of(client.get(f"/feedback/{row.pk}/")))
+    assert f'action="/feedback/replies/{reply.pk}/send/"' in section and "GitHub に送る" in section
+    assert "data-reply-copy" not in section and "送ったにする" not in section
+
+    # 送った返事には形を出さない
+    services.mark_reply_sent(reply, manager)
+    section = replies_section(html_of(client.get(f"/feedback/{row.pk}/")))
+    assert f"feedback-reply-body-{reply.pk}" not in section
+    assert '<span class="badge badge-sm">送った</span>' in section
+
+
+def test_reply_body_is_plain_text(client, plain, manager, reply_env, monkeypatch):
+    row = make(plain, "字のままの題")
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    github_replies(row, monkeypatch, (201, "example-author", '<script>alert("x")</script>\n**太字** <b>b</b>'))
+
+    client.force_login(plain)
+    section = replies_section(html_of(client.get(f"/feedback/{row.pk}/")))
+    assert "<script>alert" not in section and "<b>b</b>" not in section
+    assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;\n**太字** &lt;b&gt;b&lt;/b&gt;" in section
+    assert '<p class="mt-2 whitespace-pre-wrap break-words">&lt;script&gt;' in section
+
+
+def test_reply_urls():
+    assert reverse("feedback:reply_add", args=[1]) == "/feedback/1/replies/"
+    assert reverse("feedback:reply_send", args=[2]) == "/feedback/replies/2/send/"
+    assert reverse("feedback:reply_mark_sent", args=[2]) == "/feedback/replies/2/sent/"

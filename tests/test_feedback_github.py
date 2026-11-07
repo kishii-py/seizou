@@ -58,6 +58,12 @@ class FakeGithub:
         self.listing = Answer(200, [])
         self.device = Answer(200, dict(DEVICE_ANSWER))
         self.token = Answer(200, {"error": "authorization_pending"})
+        #: Issue の返事 (依頼書 N324): 読む並びと、書いたときの返事
+        self.comments = Answer(200, [])
+        self.comment_created = Answer(
+            201,
+            {"id": 9001, "html_url": f"{ISSUE_URL}#issuecomment-9001", "created_at": "2026-11-07T01:00:00Z", "user": {"login": "example-feedback-bot"}},
+        )
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
@@ -65,6 +71,8 @@ class FakeGithub:
             return self.user
         if url.endswith("/issues"):
             return self.listing
+        if url.endswith("/comments"):
+            return self.comments
         if "/issues/" in url:
             return self.issues.get(int(url.rsplit("/", 1)[1]), Answer(404, {}))
         raise AssertionError(f"知らない URL: {url}")
@@ -75,6 +83,8 @@ class FakeGithub:
             return self.device
         if url == github.DEVICE_TOKEN_URL:
             return self.token
+        if url.endswith("/comments"):
+            return self.comment_created
         return self.created
 
 
@@ -1146,3 +1156,328 @@ def test_sync_endpoint_shows_six_numbers(client, manager, plain, fake, version):
 
     assert response.status_code == 302 and response["Location"] == "/feedback/"
     assert SIX_LINE in html_of(client.get("/feedback/"))
+
+
+# ---------------------------------------------------------------- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x)
+
+
+def comment(number, login, body, created_at="2026-11-06T04:00:00Z"):
+    """GitHub の Issue の返事の 1 件 (作り物)。"""
+    return {
+        "id": number,
+        "user": {"login": login},
+        "body": body,
+        "created_at": created_at,
+        "updated_at": created_at,
+        "html_url": f"{ISSUE_URL}#issuecomment-{number}",
+    }
+
+
+def comments_calls(fake):
+    return [call for call in fake.calls if call[1].endswith("/comments")]
+
+
+def test_list_comments_shape_and_errors(fake):
+    fake.comments = Answer(200, [comment(101, "example-author", "どの画面で起きましたか"), {"id": "x"}, "x"])
+
+    rows = github.list_comments("example-owner/example-repo", 7)
+
+    assert rows == [
+        {
+            "id": 101,
+            "login": "example-author",
+            "body": "どの画面で起きましたか",
+            "created_at": "2026-11-06T04:00:00Z",
+            "html_url": f"{ISSUE_URL}#issuecomment-101",
+        }
+    ]
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("GET", "https://api.github.com/repos/example-owner/example-repo/issues/7/comments")
+    assert kwargs["params"] == {"per_page": 100}
+    assert kwargs["timeout"] == 10
+    assert "Authorization" not in kwargs["headers"]
+
+    github.list_comments("example-owner/example-repo", 7, token=TOKEN)
+    assert fake.calls[-1][2]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+    fake.comments = Answer(200, {"message": "並びでない"})
+    with pytest.raises(github.GithubError, match="読めませんでした"):
+        github.list_comments("example-owner/example-repo", 7)
+    fake.comments = Answer(404, {})
+    with pytest.raises(github.GithubError, match="見つかりません"):
+        github.list_comments("example-owner/example-repo", 7)
+
+
+def test_create_comment_posts_body_and_returns_shape(fake):
+    answer = github.create_comment(TOKEN, "example-owner/example-repo", 7, "受注の一覧の画面です。")
+
+    assert answer == {
+        "id": 9001,
+        "html_url": f"{ISSUE_URL}#issuecomment-9001",
+        "created_at": "2026-11-07T01:00:00Z",
+        "login": "example-feedback-bot",
+    }
+    method, url, kwargs = fake.calls[-1]
+    assert (method, url) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues/7/comments")
+    assert kwargs["json"] == {"body": "受注の一覧の画面です。"}
+    assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+    fake.comment_created = Answer(403, {})
+    with pytest.raises(github.GithubError, match="権限がありません") as caught:
+        github.create_comment(TOKEN, "example-owner/example-repo", 7, "文")
+    assert TOKEN not in str(caught.value)
+
+
+def test_sync_imports_replies_once(manager, plain, fake):
+    from datetime import UTC, datetime
+
+    from seizou.feedback.models import FeedbackReply
+
+    row = make(plain, "返事の来る件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
+    fake.comments = Answer(200, [comment(101, "example-author", "どの画面で起きましたか")])
+
+    counts = services.sync_github(manager)
+
+    assert counts["返事"] == 1 and list(counts)[-1] == "返事"
+    reply = FeedbackReply.objects.get()
+    assert reply.feedback_id == row.pk
+    assert (reply.github_id, reply.login, reply.body) == (101, "example-author", "どの画面で起きましたか")
+    assert reply.posted_at == datetime(2026, 11, 6, 4, 0, tzinfo=UTC)
+    assert reply.sent_at == reply.posted_at
+    assert reply.seen_at is None and reply.created_by is None
+
+    # 同じ id は二重に入らない。新しい返事だけが入る
+    fake.comments = Answer(200, [comment(101, "example-author", "どの画面で起きましたか"), comment(102, "example-author", "版を教えてください")])
+    assert services.sync_github(manager)["返事"] == 1
+    assert list(FeedbackReply.objects.values_list("github_id", flat=True)) == [101, 102]
+    assert services.sync_github(manager)["返事"] == 0
+
+
+def test_sync_reads_replies_of_fixed_and_dismissed_but_not_drafts(manager, plain, fake):
+    base = "https://github.com/example-owner/example-repo/issues/"
+    make(plain, "直した件", status="fixed", sent_url=f"{base}21")
+    make(plain, "見送った件", status="dismissed", sent_url=f"{base}22")
+    make(plain, "確認済みの件", status="confirmed", sent_url=f"{base}23")
+    make(plain, "ほかの場所の件", status="sent", sent_url="https://example.com/issues/24")
+
+    services.sync_github(manager)
+
+    assert [url.rsplit("/", 2)[1] for _, url, _ in comments_calls(fake)] == ["21", "22"]
+
+
+def test_sync_marks_company_replies_seen(manager, plain, fake):
+    from seizou.feedback.models import FeedbackReply
+
+    connect(manager, fake)  # 会社の口座 = example-feedback-bot
+    make(plain, status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
+    fake.comments = Answer(200, [comment(201, "example-feedback-bot", "会社から"), comment(202, "example-author", "作者から")])
+
+    assert services.sync_github(manager)["返事"] == 2
+    own = FeedbackReply.objects.get(github_id=201)
+    theirs = FeedbackReply.objects.get(github_id=202)
+    assert own.seen_at is not None and theirs.seen_at is None
+    assert [reply.pk for reply in services.unseen_replies(plain)] == [theirs.pk]
+    # トークンがあれば返事の読みにも使う
+    assert comments_calls(fake)[-1][2]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+def test_sync_counts_unreadable_replies_and_goes_on(manager, plain, fake):
+    from seizou.feedback.models import FeedbackReply
+
+    make(plain, status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
+    fake.comments = Answer(500, {})
+
+    counts = services.sync_github(manager)
+
+    assert (counts["見た"], counts["読めなかった"], counts["返事"]) == (1, 1, 0)
+    assert FeedbackReply.objects.count() == 0
+
+
+def test_sync_line_ends_with_replies(client, manager, plain, fake):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    make(plain, status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
+    fake.comments = Answer(200, [comment(301, "example-author", "どの画面で起きましたか")])
+    out = StringIO()
+
+    call_command("seizou_feedback_sync", stdout=out)
+
+    assert out.getvalue().strip().endswith("・読めなかった 0 件・返事 1 件")
+
+    connect(manager, fake)
+    client.force_login(manager)
+    fake.comments = Answer(200, [comment(301, "example-author", "どの画面で起きましたか"), comment(302, "example-author", "版は")])
+    client.post("/feedback/github/sync/")
+    assert "読めなかった 0 件・返事 1 件" in html_of(client.get("/feedback/"))
+
+
+# ---- 書く (返事の下書き)
+
+
+def test_add_reply_by_author_and_manager(manager, plain, no_http):
+    other = get_user_model().objects.create_user("other", password="pass-for-tests-only")
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+
+    reply = services.add_reply(row, "  画面は受注の一覧です。\n並びが戻ります。 ", plain)
+
+    assert reply.body == "画面は受注の一覧です。\n並びが戻ります。"
+    assert reply.created_by == plain and reply.feedback_id == row.pk
+    assert reply.sent_at is None and reply.github_id is None and reply.login == ""
+    assert reply.seen_at is not None
+    assert services.unseen_replies(plain) == []
+    assert services.add_reply(row, "世話役から", manager).created_by == manager
+    with pytest.raises(ValueError, match="書いた人かアカウント管理の担当者だけ"):
+        services.add_reply(row, "ほかの人から", other)
+
+
+@pytest.mark.parametrize("status", ["draft", "confirmed"])
+def test_add_reply_refuses_unsent_feedback(plain, status):
+    row = make(plain, status=status)
+    with pytest.raises(ValueError, match="^送れません。先に GitHub に送るか、送ったにしてください。$"):
+        services.add_reply(row, "返事", plain)
+
+
+def test_add_reply_refuses_empty_and_long(plain):
+    row = make(plain, status="fixed", sent_url=ISSUE_URL)
+    with pytest.raises(ValueError, match="^保存できません。返事を入力してください。$"):
+        services.add_reply(row, "  \n ", plain)
+    with pytest.raises(ValueError, match="^保存できません。返事は 2000 字までです。短くしてください。$"):
+        services.add_reply(row, "あ" * 2001, plain)
+    assert len(services.add_reply(row, "あ" * 2000, plain).body) == 2000
+
+
+def test_reply_add_endpoint_and_404_for_others(client, plain, fake):
+    from seizou.feedback.models import FeedbackReply
+
+    other = get_user_model().objects.create_user("other", password="pass-for-tests-only")
+    mine = make(plain, "自分の件", status="sent", sent_url=ISSUE_URL)
+    theirs = make(other, "ほかの人の件", status="sent", sent_url=ISSUE_URL)
+    draft = make(plain, "下書きの件")
+    client.force_login(plain)
+
+    response = client.post(f"/feedback/{mine.pk}/replies/", {"body": "受注の一覧の画面です。"})
+    assert response.status_code == 302 and response["Location"] == f"/feedback/{mine.pk}/"
+    assert "返事を書きました。" in html_of(client.get(f"/feedback/{mine.pk}/"))
+    assert client.post(f"/feedback/{theirs.pk}/replies/", {"body": "返事"}).status_code == 404
+    assert client.get(f"/feedback/{mine.pk}/replies/").status_code == 405
+
+    client.post(f"/feedback/{draft.pk}/replies/", {"body": "返事"})
+    html = html_of(client.get(f"/feedback/{draft.pk}/"))
+    assert "bg-error" in html and "先に GitHub に送るか" in html
+    assert FeedbackReply.objects.count() == 1
+    assert fake.calls == []
+
+
+# ---- 送る (世話役が直して会社のトークンで)
+
+
+def test_send_reply_posts_edited_text(manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+    reply = services.add_reply(row, "作り物の文", plain)
+
+    url = services.send_reply(reply, "  世話役が直した文  ", manager)
+
+    assert url == f"{ISSUE_URL}#issuecomment-9001"
+    method, api, kwargs = fake.calls[-1]
+    assert (method, api) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues/7/comments")
+    assert kwargs["json"] == {"body": "世話役が直した文"}
+    assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    reply.refresh_from_db()
+    assert reply.body == "世話役が直した文"
+    assert reply.sent_at is not None and reply.github_id == 9001
+    assert reply.login == "example-feedback-bot"
+    assert reply.posted_at is not None and reply.created_by == plain
+
+    with pytest.raises(ValueError, match="^送れません。この返事は送った状態です。$"):
+        services.send_reply(reply, "もう一度", manager)
+
+    # 送った返事は、次の取り込みで GitHub から読んでも二重に入らない
+    from seizou.feedback.models import FeedbackReply
+
+    fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
+    fake.comments = Answer(200, [comment(9001, "example-feedback-bot", "世話役が直した文")])
+    assert services.sync_github(manager)["返事"] == 0
+    assert FeedbackReply.objects.count() == 1
+
+
+def test_send_reply_refusals_without_http(manager, plain, no_http):
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+    reply = services.add_reply(row, "作り物の文", plain)
+
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.send_reply(reply, "文", plain)
+    with pytest.raises(ValueError, match="^送れません。GitHub とまだつないでいません。"):
+        services.send_reply(reply, "文", manager)
+
+    github.write_env_value(github.TOKEN_ENV, TOKEN)
+    with pytest.raises(ValueError, match="^送れません。返事を入力してください。$"):
+        services.send_reply(reply, " ", manager)
+    other_place = make(plain, "ほかの場所", status="sent", sent_url="https://example.com/issues/9")
+    with pytest.raises(ValueError, match="Issue に送った物ではありません"):
+        services.send_reply(services.add_reply(other_place, "文", plain), "文", manager)
+    reply.refresh_from_db()
+    assert reply.sent_at is None
+
+
+def test_send_reply_github_refusal_keeps_draft(manager, plain, fake):
+    connect(manager, fake)
+    reply = services.add_reply(make(plain, status="sent", sent_url=ISSUE_URL), "作り物の文", plain)
+    fake.comment_created = Answer(422, {})
+
+    with pytest.raises(ValueError, match="^送れません。GitHub が内容を受け付けませんでした"):
+        services.send_reply(reply, "文", manager)
+    reply.refresh_from_db()
+    assert reply.sent_at is None and reply.github_id is None and reply.body == "作り物の文"
+
+
+def test_reply_send_endpoint(client, manager, plain, fake):
+    connect(manager, fake)
+    other = get_user_model().objects.create_user("other", password="pass-for-tests-only")
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+    reply = services.add_reply(row, "作り物の文", plain)
+    theirs = services.add_reply(make(other, "ほかの人の件", status="sent", sent_url=ISSUE_URL), "文", other)
+
+    client.force_login(plain)
+    response = client.post(f"/feedback/replies/{reply.pk}/send/", {"body": "文"})
+    assert response.status_code == 302 and response["Location"] == f"/feedback/{row.pk}/"
+    assert "アカウント管理の担当者だけ" in html_of(client.get(f"/feedback/{row.pk}/"))
+    assert client.post(f"/feedback/replies/{theirs.pk}/send/", {"body": "文"}).status_code == 404
+    assert comments_calls(fake) == []
+
+    client.force_login(manager)
+    response = client.post(f"/feedback/replies/{reply.pk}/send/", {"body": "世話役が直した文"})
+    assert response["Location"] == f"/feedback/{row.pk}/"
+    assert f"返事を GitHub に送りました: {ISSUE_URL}#issuecomment-9001" in html_of(client.get(f"/feedback/{row.pk}/"))
+    assert fake.calls[-1][2]["json"] == {"body": "世話役が直した文"}
+
+
+# ---- 手で写した印 (つないでいない会社)
+
+
+def test_mark_reply_sent_sets_only_sent_at(client, manager, plain, no_http):
+    row = make(plain, status="sent", sent_url=ISSUE_URL)
+    reply = services.add_reply(row, "作り物の文", plain)
+
+    with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
+        services.mark_reply_sent(reply, plain)
+    services.mark_reply_sent(reply, manager)
+    reply.refresh_from_db()
+    assert reply.sent_at is not None
+    assert (reply.github_id, reply.login, reply.posted_at, reply.body) == (None, "", None, "作り物の文")
+    with pytest.raises(ValueError, match="^保存できません。この返事は送った状態です。$"):
+        services.mark_reply_sent(reply, manager)
+
+    second = services.add_reply(row, "二つ目", plain)
+    client.force_login(manager)
+    response = client.post(f"/feedback/replies/{second.pk}/sent/")
+    assert response.status_code == 302 and response["Location"] == f"/feedback/{row.pk}/"
+    assert "返事を送った状態にしました。" in html_of(client.get(f"/feedback/{row.pk}/"))
+    second.refresh_from_db()
+    assert second.sent_at is not None and second.github_id is None

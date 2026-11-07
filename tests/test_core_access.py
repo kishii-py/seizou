@@ -249,6 +249,9 @@ POST_FUNCTION_WITHOUT_ACTION = {
     "seizou.feedback.views.delete": "feedback の services が書いた人と世話役に絞る (対象は一覧と同じ絞りの中から引く)",
     "seizou.feedback.views.ask": "会話の控え (session) だけ",
     "seizou.feedback.views.reset": "会話の控え (session) だけ",
+    "seizou.feedback.views.reply_add": "feedback の services が書いた人と世話役に絞る (N324)",
+    "seizou.feedback.views.reply_send": "feedback の services が世話役だけに絞る (N324)",
+    "seizou.feedback.views.reply_mark_sent": "feedback の services が世話役だけに絞る (N324)",
 }
 
 

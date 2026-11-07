@@ -3,6 +3,7 @@
 書いた本人がログインしたとき (django.contrib.auth.login が user_logged_in を送る)、まだ知らせていない「直した」と「見送った」を
 右上の toast (messages の info) で 1 回ずつ知らせ、知らせた日時を services で書く (両方あれば toast は 2 つ。直したが先)。
 - 直したと見送ったは別の受け手 (notify_fixed・notify_dismissed)。直したが無い人にも見送りを知らせるため (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) も別の受け手 (notify_replies)。toast は直した・見送った・返事の順。
 - 知らせを出せない要求 (MessageMiddleware を通らない要求。試験の force_login など) では、知らせた印を付けない
   (次に画面からログインしたときに出す)。
 - 開発機の自動ログイン (core の DevAutoLoginMiddleware) は login を呼ばないので、この知らせは出ない
@@ -44,3 +45,21 @@ def notify_dismissed(sender, request=None, user=None, **kwargs):
     except messages.MessageFailure:
         return
     services.mark_dismissed_seen(rows, user)
+
+
+@receiver(user_logged_in, dispatch_uid="seizou.feedback.notify_replies")
+def notify_replies(sender, request=None, user=None, **kwargs):
+    """ログインした人が書いたフィードバックの Issue に、まだ知らせていない返事があれば 1 回知らせる (notify_fixed と同じ形)。
+
+    会社の口座が書いた返事と、会社の中で書いた返事は知らせない (services.unseen_replies が外す。依頼書 N324)。
+    """
+    if request is None:
+        return
+    rows = services.unseen_replies(user)
+    if not rows:
+        return
+    try:
+        messages.info(request, services.reply_notice(rows))
+    except messages.MessageFailure:
+        return
+    services.mark_replies_seen(rows, user)
