@@ -416,3 +416,55 @@ def test_unbilled_in_period_counts_shipments_of_cancelled_invoice(user, item):
 
     # 取消の請求書に入っていた出荷は、また請求できるので残りに入る (期間の両端の日も入る)。
     assert list(services.unbilled_in_period(customer, *period)) == [first, second]
+
+
+# --- 都度の得意先の請求書の期間と支払期日 (invoice_period。候補 C02 の 3 = C02-3c・C02-3d) ---
+
+
+@pytest.mark.django_db
+def test_per_delivery_invoice_period_is_shipment_days(user, item):
+    """都度の得意先の請求書の期間は最初の出荷日〜最後の出荷日。支払期日は期間の終わり (納品の日) から決める。"""
+    customer = _customer(user, billing_method="per_delivery", payment_month="next", payment_day=31)
+    line = _order_line(user, customer, item)
+    first = _shipped(user, customer, line, "4", date(2026, 10, 15))
+    second = _shipped(user, customer, line, "3", date(2026, 10, 20))
+
+    invoice = services.create_invoice(customer, [second, first], user, issued_on=ISSUED_ON)
+
+    invoice.refresh_from_db()
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 15), date(2026, 10, 20))
+    assert invoice.due_on == date(2026, 11, 30)
+    assert services.invoice_period(customer, [first]) == (date(2026, 10, 15), date(2026, 10, 15))
+
+
+@pytest.mark.django_db
+def test_per_delivery_same_day_is_paid_on_delivery(user, item):
+    """都度・当日 (現金払い) の得意先は、期間も支払期日も出荷の日。同じ日の 2 枚目も作れる。"""
+    customer = _customer(user, billing_method="per_delivery", payment_month="same_day")
+    line = _order_line(user, customer, item)
+    first = _shipped(user, customer, line, "4", date(2026, 10, 15))
+    second = _shipped(user, customer, line, "3", date(2026, 10, 15))
+
+    one = services.create_invoice(customer, [first], user, issued_on=date(2026, 10, 15))
+    two = services.create_invoice(customer, [second], user, issued_on=date(2026, 10, 15))
+
+    for invoice in (one, two):
+        invoice.refresh_from_db()
+        assert (invoice.period_from, invoice.period_to, invoice.due_on) == (
+            date(2026, 10, 15),
+            date(2026, 10, 15),
+            date(2026, 10, 15),
+        )
+    assert Invoice.objects.filter(customer=customer, status=Invoice.STATUS_ISSUED).count() == 2
+
+
+def test_invoice_period_closing_customer_uses_closing_period():
+    """締日でまとめる得意先の期間は、最後の出荷日の締め期間 (closing_period のまま)。"""
+
+    class _Row:
+        def __init__(self, day):
+            self.shipped_at = day
+
+    customer = _closing(20)
+    rows = [_Row(date(2026, 10, 19)), _Row(date(2026, 10, 29))]
+    assert services.invoice_period(customer, rows) == services.closing_period(customer, date(2026, 10, 29))

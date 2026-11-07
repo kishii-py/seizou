@@ -10,7 +10,8 @@
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
   出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
-- 消費税の計算は _tax の 1 か所、請求の期間 (得意先の締め期間) は closing_period の 1 か所、支払期日の計算は payment_due_date の 1 か所。
+- 消費税の計算は _tax の 1 か所、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
+  都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
   支払の月か支払日が空 (当日でない) なら空。今ある請求書の支払期日は作った時の値のまま (計算し直さない)。
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
@@ -94,8 +95,11 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    金額は round_amount(customer, 数量 × 単価)。期間は得意先の締め期間 = closing_period(customer, 最後の出荷日)
-    (最後の出荷日以降で最初の締日まで。初めはその 1 つ前の締日の翌日)。作るときに決めて表に残す。
+    金額は round_amount(customer, 数量 × 単価)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
+    締日でまとめる得意先は締め期間 = closing_period(customer, 最後の出荷日) (最後の出荷日以降で最初の締日まで。
+    初めはその 1 つ前の締日の翌日)。都度の得意先は、最初の出荷日から最後の出荷日まで (納品書 1 枚なら、その出荷の日)。
+    期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI の付表では
+    法的必須の印が付いている (どの法令の印かは未確認)。都度の請求書でも期間を空にしない。
     支払期日は payment_due_date(customer, 期間の終わり) (支払の月か支払日が空の取引先では空)。
     返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
     訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable)。出所 = RULES.md R09。
@@ -124,7 +128,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
         amounts = [amount for _shipment, _price, amount in lines]
         subtotal = sum(amounts, _ZERO)
         tax = _tax(customer, amounts)
-        period_from, period_to = closing_period(customer, locked[-1].shipped_at)
+        period_from, period_to = invoice_period(customer, locked)
 
         invoice = Invoice.objects.create(
             invoice_no=next_number("invoice"),
@@ -317,6 +321,19 @@ def unbilled_in_period(customer, period_from, period_to):
         .select_related("delivery_note")
         .order_by("shipped_at", "shipment_no")
     )
+
+
+def invoice_period(customer, shipments):
+    """請求書の期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。shipments は請求書に入れる出荷 (1 つ以上)。
+
+    締日でまとめる得意先: 最後の出荷日を含む締め期間 = closing_period(customer, 最後の出荷日)。
+    都度の得意先: 最初の出荷日〜最後の出荷日 (都度は締めないので、期間は出荷の日)。
+    create_invoice と作り直し (reissue_invoice) が同じ関数を通る (期間を決める所を 2 か所に持たない)。
+    """
+    days = [shipment.shipped_at for shipment in shipments]
+    if customer.billing_method == _Partner.BILLING_PER_DELIVERY:
+        return min(days), max(days)
+    return closing_period(customer, max(days))
 
 
 def closing_period(customer, day):
