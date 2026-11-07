@@ -8,6 +8,8 @@
 - without_amounts: shipping_trend の結果から金額を抜いた写しを返す (金額を見られない人の画面に使う)。
 - payable_this_month: 今月の支払の見込み (受入日が今月の受入の金額の合計)。金額の閲覧の判定は呼ぶ側 (purchasing の tag)。
 - payments_this_month: 今月の入金 (入金日が今月の、取消でない入金の金額の合計)。金額の閲覧の判定は呼ぶ側 (core の views の dashboard_stats と HomeView)。
+- orders_month_compare・payable_month_compare・payments_month_compare: 「今月の◯◯」のカードの、先月の同じ日までとの差と、今月の日ごとの数と細い線 (sparkline) の座標
+  (本人の決め 11-07 18:2x〜18:4x「2もいい」。受け渡しの seizou-部品の6案-20261107/指示書.md の 3)。同じ日の読み方は same_day_last_month。
 - lines_to_ship: 出荷の残りがある明細 (注文残の一覧の既定と同じ数え方)。
 - orders_to_ship: 出荷の残りがある受注 (受注の一覧のタブ「出荷の残りがある」と同じ数え方。カードの受注の件数と今日やることの出荷の行)。
 - minutes_per_line・transcription_text: 1 行の手入力の分の設定と、分の字 (入力を省けた時間と受付の平均)。
@@ -450,6 +452,141 @@ def payments_this_month(today=None) -> Decimal | None:
     except DatabaseError:
         return None
     return _ZERO if total is None else Decimal(str(total))
+
+
+# ---- 「今月」のカードの、先月の同じ日までとの差と、日ごとの細い線 (本人の決め 11-07 18:2x〜18:4x「2もいい」。受け渡しの seizou-部品の6案-20261107/指示書.md の 3) ----
+
+#: 細い線 (sparkline) の枠 (viewBox) と内側の余白。線は箱の幅に伸び縮みする (preserveAspectRatio="none") ので、縦横の比は持たない
+_SPARK_WIDTH = 100
+_SPARK_HEIGHT = 24
+_SPARK_PAD = 2
+
+
+def same_day_last_month(today) -> date:
+    """先月の、今日と同じ日。先月にその日が無ければ先月の末日 (3/31 → 2/28 か 2/29、5/31 → 4/30)。
+
+    訳: 「今月の◯◯」のカードの差は、月の初めに今月の数が小さく見えないよう、先月の 1 日から同じ日までと比べる (指示書の 3)。
+    """
+    last_month_end = date(today.year, today.month, 1) - timedelta(days=1)
+    return date(last_month_end.year, last_month_end.month, min(today.day, last_month_end.day))
+
+
+def _per_day(queryset, date_field, start, end, amount_field=None) -> list:
+    """start から end (含まない) までの日ごとの数の並び。amount_field が無ければ件数、あれば保存した金額の合計 (Python で足す = R03。DB で掛け算をしない)。
+
+    問い合わせは 1 回 (values_list)。記録の無い日は 0。
+    """
+    rows = queryset.filter(**{f"{date_field}__gte": start, f"{date_field}__lt": end})
+    totals = {}
+    if amount_field is None:
+        zero = 0
+        for day in rows.values_list(date_field, flat=True):
+            totals[day] = totals.get(day, 0) + 1
+    else:
+        zero = _ZERO
+        for day, amount in rows.values_list(date_field, amount_field):
+            totals[day] = totals.get(day, _ZERO) + Decimal(str(amount))
+    return [totals.get(start + timedelta(days=offset), zero) for offset in range((end - start).days)]
+
+
+def sparkline(values) -> dict:
+    """細い線の座標。{"width", "height", "points" (polyline の points の字 "x,y x,y …")}。
+
+    値を枠の高さに収めて左から右へ等間隔に並べる (一番大きい値が上の端)。値が全部 0 なら下の端の平らな線。
+    日が 1 つ (月の 1 日) なら、その値の高さで左から右への平らな線。座標は小数 1 桁の字 (_num)。
+    """
+    top = max(values, default=0)
+    inner_width = _SPARK_WIDTH - 2 * _SPARK_PAD
+    inner_height = _SPARK_HEIGHT - 2 * _SPARK_PAD
+
+    def y_of(value):
+        ratio = float(value) / float(top) if top else 0.0
+        return _SPARK_PAD + inner_height * (1 - ratio)
+
+    if len(values) <= 1:
+        y = _num(y_of(values[0]) if values else _SPARK_PAD + inner_height)
+        points = [(_num(_SPARK_PAD), y), (_num(_SPARK_PAD + inner_width), y)]
+    else:
+        step = inner_width / (len(values) - 1)
+        points = [(_num(_SPARK_PAD + step * index), _num(y_of(value))) for index, value in enumerate(values)]
+    return {"width": _SPARK_WIDTH, "height": _SPARK_HEIGHT, "points": " ".join(f"{x},{y}" for x, y in points)}
+
+
+def _month_compare(queryset, date_field, today, amount_field=None) -> dict:
+    """今月の 1 日から今日までの日ごとの数と合計、先月の 1 日から同じ日までの合計、その差。読むだけ (問い合わせは 2 回)。
+
+    返す物 = {"this": 今月 (1 日〜今日) の合計, "last": 先月 (1 日〜同じ日) の合計, "delta": this − last, "delta_abs": 差の大きさ,
+    "direction": "up" (増えた) / "down" (減った) / "same", "until": 先月の比べる最後の日, "days": 今月の日ごとの数の並び (1 日〜今日), "spark": sparkline(days)}。
+    今月の側は今日までで数える (今日より後の日付の記録はカードの数には入るが差には入らない = 比べる期間を同じ長さにするため)。
+    """
+    this_start = date(today.year, today.month, 1)
+    days = _per_day(queryset, date_field, this_start, today + timedelta(days=1), amount_field)
+    until = same_day_last_month(today)
+    last_days = _per_day(queryset, date_field, date(until.year, until.month, 1), until + timedelta(days=1), amount_field)
+    zero = _ZERO if amount_field else 0
+    this_total = sum(days, zero)
+    last_total = sum(last_days, zero)
+    delta = this_total - last_total
+    return {
+        "this": this_total,
+        "last": last_total,
+        "delta": delta,
+        "delta_abs": abs(delta),
+        "direction": "up" if delta > 0 else "down" if delta < 0 else "same",
+        "until": until,
+        "days": days,
+        "spark": sparkline(days),
+    }
+
+
+def orders_month_compare(today=None) -> dict | None:
+    """「今月の受注」の、先月の同じ日までとの差と今月の日ごとの件数 (_month_compare。受注日で数え、取消を除く = カードと同じ数え方)。
+
+    受注の部品が無いか DB が読めなければ None (カードは差と線を出さない)。
+    """
+    order_model = _model("orders", "Order")
+    if order_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    try:
+        return _month_compare(order_model._default_manager.exclude(status=order_model.STATUS_CANCELLED), "order_date", today)
+    except DatabaseError:
+        return None
+
+
+def payable_month_compare(today=None) -> dict | None:
+    """「今月の支払の見込み」の、先月の同じ日までとの差と今月の日ごとの金額 (受入日。保存した受入の金額を足す = payable_this_month と同じ数え方)。
+
+    受入の表 (purchasing) が無いか DB が読めなければ None。
+    """
+    receipt_model = _model("purchasing", "Receipt")
+    if receipt_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    try:
+        return _month_compare(receipt_model._default_manager.all(), "received_on", today, amount_field="amount")
+    except DatabaseError:
+        return None
+
+
+def payments_month_compare(today=None) -> dict | None:
+    """「今月の入金」の、先月の同じ日までとの差と今月の日ごとの金額 (入金日。取消でない入金 = payments_this_month と同じ数え方)。
+
+    入金の表 (billing の Payment) が無いか DB が読めなければ None。
+    """
+    payment_model = _model("billing", "Payment")
+    if payment_model is None:
+        return None
+    if today is None:
+        today = timezone.localdate()
+    try:
+        return _month_compare(
+            payment_model._default_manager.filter(status=payment_model.STATUS_RECORDED), "received_on", today, amount_field="amount"
+        )
+    except DatabaseError:
+        return None
 
 
 MAX_MINUTES_PER_LINE = Decimal(60)  # 1 行の手入力の分の上限。これを超える値と 0 以下は既定に戻す
