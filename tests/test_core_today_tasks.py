@@ -36,13 +36,13 @@ FRAGMENTS = (
 )
 # 流れの順 (受注から入金まで → 発注から検収まで) の行の key
 ROW_ORDER = ["order", "workorder", "shipment", "delivery_note", "invoice", "payment", "purchase_draft", "purchase_sent", "receipt"]
-# 行の key → 移る先の URL の名前と絞りの GET (無い物は素の一覧)
+# 行の key → 移る先の URL の名前と絞りの GET (納品書と請求書は、その出荷だけが並ぶ作る画面。決め 11-07 20:5x の 2。flow-02。ほかの無い物は素の一覧)
 TARGETS = {
     "order": ("connect:inbox_list", "?f_status=received"),
     "workorder": ("orders:orderline_list", ""),
     "shipment": ("orders:order_list", ""),
-    "delivery_note": ("shipping:deliverynote_list", ""),
-    "invoice": ("billing:invoice_list", ""),
+    "delivery_note": ("shipping:deliverynote_create", ""),
+    "invoice": ("billing:invoice_create", ""),
     "payment": ("billing:invoice_list", "?f_unpaid=1"),
     "purchase_draft": ("purchasing:purchaseorder_list", "?f_status=draft"),
     "purchase_sent": ("purchasing:purchaseorder_list", "?f_status=sent"),
@@ -169,6 +169,33 @@ def test_today_tasks_buttons_are_screen_names(user, customer, partner, shaft):
     for key, (button, url_name, _params) in dashboard._task_targets().items():
         assert button == names[url_name], key
         assert url_name == TARGETS[key][0], key
+
+
+@pytest.mark.django_db
+def test_note_and_invoice_rows_open_the_screens_that_list_those_shipments(logged_in, user, customer, shaft):
+    # 納品書に入っていない出荷の行は「納品書を作る」へ、請求書に入っていない出荷の行は「請求書の新規登録」へ移り、
+    # どちらの画面にも数えた出荷だけが並ぶ (決め 11-07 20:5x の 2。flow-02。一覧へ移ると数えた物と違う物が並んでいた)
+    unnoted = shipping_services.ship(make_order(user, customer, shaft).lines.get(), Decimal("10"), timezone.localdate(), user)
+    noted = shipping_services.ship(make_order(user, customer, shaft).lines.get(), Decimal("10"), timezone.localdate(), user)
+    shipping_services.create_delivery_note(customer, [noted], user)
+
+    rows = {row["key"]: row for row in dashboard.today_tasks(user)["rows"]}
+    assert (rows["delivery_note"]["count"], rows["delivery_note"]["button"]) == (1, "納品書を作る")
+    assert (rows["invoice"]["count"], rows["invoice"]["button"]) == (1, "請求書の新規登録")
+    assert rows["delivery_note"]["url"] == reverse("shipping:deliverynote_create")
+    assert rows["invoice"]["url"] == reverse("billing:invoice_create")
+
+    note_screen = logged_in.get(rows["delivery_note"]["url"])
+    assert note_screen.status_code == 200
+    assert list(note_screen.context["form"].fields["shipments"].queryset) == [unnoted]
+    invoice_screen = logged_in.get(rows["invoice"]["url"])
+    assert invoice_screen.status_code == 200
+    assert list(invoice_screen.context["form"].fields["shipments"].queryset) == [noted]
+
+    body, section = home_section(logged_in)
+    assert f'href="{rows["delivery_note"]["url"]}">納品書を作る<' in section
+    assert f'href="{rows["invoice"]["url"]}">請求書の新規登録<' in section
+    assert "その物に絞った一覧が開きます" not in body  # 枠の中の説明の文は出さない (決め 11-03 14:3x)
 
 
 @pytest.mark.django_db

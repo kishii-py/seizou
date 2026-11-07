@@ -26,7 +26,7 @@ TOURS: dict[str, tuple[dict, ...]] = {
         {
             "selector": '[data-tour="flow-guide"]',
             "title": TODAY_TITLE,
-            "text": "手を動かす物のある段が、数と移る先のボタンで並びます。ボタンを押すと、その物に絞った一覧が開きます。",
+            "text": "手を動かす物のある段が、数と移る先のボタンで並びます。ボタンを押すと、その物を扱う画面が開きます。",
         },
         {
             "selector": 'section[aria-labelledby="due-alerts-title"]',

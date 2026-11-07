@@ -1184,15 +1184,19 @@ _TASK_KEY_OF_STEP = {"purchase_order": "purchase_draft", "reply": "purchase_sent
 
 
 def _task_targets() -> dict:
-    """行の key → (ボタンの字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。"""
+    """行の key → (ボタンの字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。
+
+    納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面 (納品書を作る・請求書の新規登録) へ移る
+    (一覧には合う絞りが無く、数えた物と違う物が並ぶため。決め 11-07 20:5x の 2 = 数を押すとその数で絞った画面が開く。flow-02)。
+    """
     inbox = _model("connect", "Inbox")
     purchase = _model("purchasing", "PurchaseOrder")
     return {
         "order": ("受信した注文", "connect:inbox_list", {"f_status": inbox.STATUS_RECEIVED} if inbox else {}),
         "workorder": ("生産管理ボード", "orders:orderline_list", {}),
         "shipment": ("受注", "orders:order_list", {}),
-        "delivery_note": ("納品書", "shipping:deliverynote_list", {}),
-        "invoice": ("請求書", "billing:invoice_list", {}),
+        "delivery_note": ("納品書を作る", "shipping:deliverynote_create", {}),
+        "invoice": ("請求書の新規登録", "billing:invoice_create", {}),
         "payment": ("請求書", "billing:invoice_list", {"f_unpaid": "1"}),
         "purchase_draft": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_DRAFT} if purchase else {}),
         "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}),
@@ -1209,7 +1213,8 @@ def today_tasks(user=None) -> dict | None:
     user を渡すと、guide も部署で開けない段を外した写し (_open_guide。流れが 1 本も残らなければ None) にし、行が 0 で写しも None なら
     None を返す (「はじめての方へ」の枠ごと出さない。決め C12-2 = a。初見テスト R5 の U159)。行は外す前の guide から作る
     (行の移る先と段の url_name が違う物があり、段を先に外すと開ける行まで消えるため。例: 出荷の段は出荷の一覧、出荷の行は受注の一覧)。
-    移る先に絞りの GET が無い段 (指示書の無い明細・納品書に入っていない出荷・請求書に入っていない出荷・受入の残) は素の一覧へ移る。
+    納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面へ移る (_task_targets)。移る先に合う絞りが無い段
+    (指示書の無い明細・受入の残) は素の一覧へ移る。
     """
     guide = flow_guide()
     if guide is None:
