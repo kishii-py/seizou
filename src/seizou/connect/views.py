@@ -231,8 +231,21 @@ class ExchangeListView(BaseListView):
         {"name": "direction", "label": "向き", "kind": "choice", "field": "direction"},
         {"name": "amount", "label": "金額", "kind": "number_range", "field": "amount"},
     )
-    search_fields = ("body",)
     ordering = ("-created_at", "-pk")
+
+    @property
+    def search_fields(self):
+        """中身 (本文の字) の検索。金額の閲覧が無い人 (on) には検索の項目を持たせない (検索の欄が出ず、GET の q を書いても絞らない)。
+
+        訳: 本文には単価と金額の鍵 (unit_price・amount・total など) が送ったとおりの字で入っているので、金額を見られない人が
+        本文を検索すると、行が出るか出ないかで金額が分かってしまうため (金額の範囲の絞りを外したのと同じ訳 = 決め C106-1)。
+        出所 = Claude Security の走査の候補 11-07 (38)。判定は金額の列と同じ控え (土台の _money_columns_shown。log の形では検索も効く)。
+        変えてよい条件 = 本文から金額の鍵を除いた字だけを検索する形にできたとき (そのときは金額の閲覧の無い人にも検索を戻してよい)。
+        要求の無い画面の物 (宣言だけを読む所) には本文の検索を返す。
+        """
+        if getattr(self, "request", None) is not None and not self._money_columns_shown():
+            return ()
+        return ("body",)
 
     def get_queryset(self):
         return super().get_queryset().select_related("partner")

@@ -399,3 +399,29 @@ def test_amount_column_and_filter_only_for_money(settings, client, user, subcont
     detail = client.get(reverse("connect:exchange_detail", args=[edge.pk])).content.decode()
     basic = detail[detail.index('aria-label="基本情報"') :]
     assert ">金額<" not in basic
+
+
+@pytest.mark.django_db
+def test_body_search_only_for_money(settings, client, user, subcontractor):
+    """中身の検索 (本文の字) は金額の閲覧のある人だけ。無い人 (on) には検索の欄を出さず、q を書いても行の出方が変わらない。
+
+    本文には単価と金額の鍵がそのまま入っているので、検索で行が出るか出ないかを見ると金額が分かってしまうため
+    (金額の範囲の絞りを外したのと同じ訳。Claude Security の走査の候補 11-07 の 38)。
+    """
+    cheap = _exchange(subcontractor, day=date(2026, 11, 5), body=json.dumps({"kind": "order", "lines": [{"qty": "2", "unit_price": "1500"}]}))
+    dear = _exchange(subcontractor, day=date(2026, 11, 5), body=json.dumps({"kind": "order", "lines": [{"qty": "2", "unit_price": "2500"}]}))
+    settings.SEIZOU = {"access_control": dict(MONEY_ON)}
+    url = reverse("connect:exchange_list")
+    term = '"unit_price": "15'
+
+    client.force_login(user)
+    response = client.get(url, {"q": term})
+    assert list(response.context["object_list"]) == [cheap]
+    assert 'id="list-q"' in response.content.decode()  # 一覧の検索の欄 (上の帯の横断の検索は別)
+
+    client.force_login(_account("genba"))
+    response = client.get(url, {"q": term})
+    assert set(response.context["object_list"]) == {cheap, dear}
+    assert 'id="list-q"' not in response.content.decode()
+    rows = list(csv.reader(io.StringIO(client.get(url, {"q": term, "format": "csv"}).content.decode("utf-8-sig"))))
+    assert len(rows) == 3
