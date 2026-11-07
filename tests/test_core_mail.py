@@ -49,6 +49,13 @@ FILLED = {
 STOP = 'data-notice="stop"'
 
 
+@pytest.fixture(autouse=True)
+def no_transport_env(monkeypatch):
+    """サーバー・ポート・暗号化の方式の環境変数 (conf.MAIL_ENV) を外して始める (試験を回す機械の環境に左右されないように)。"""
+    for name in conf.MAIL_ENV.values():
+        monkeypatch.delenv(name, raising=False)
+
+
 def mail_section(body: str) -> str:
     """設定の画面の「メールの知らせ」の節の HTML。"""
     start = body.index('aria-labelledby="mail-title"')
@@ -90,7 +97,7 @@ def test_mail_settings_fills_missing_and_wrong_shapes(settings):
     settings.SEIZOU = {"mail": {"host": " smtp.example.test ", "port": "x", "security": "tls", "from": 5}}
     values = conf.mail_settings()
     assert list(values) == list(conf.MAIL_KEYS)
-    assert values["host"] == "smtp.example.test"
+    assert values["host"] == ""  # サーバーは .env (EMAIL_HOST) だけで決める。SEIZOU の値は読まない
     assert values["port"] == 587 and values["security"] == "starttls" and values["from"] == ""
     settings.SEIZOU = {"mail": {"port": True}}
     assert conf.mail_settings()["port"] == 587
@@ -201,6 +208,7 @@ def test_settings_screen_shows_mail_row_and_section(manager_client, settings, mo
     assert "btn-primary" not in section
 
     monkeypatch.setenv(mail.PASSWORD_ENV, PASSWORD)
+    set_transport_env(monkeypatch)
     settings.SEIZOU = {"mail": {**FILLED, "from_name": "作り物の知らせ"}}
     body = manager_client.get(reverse("core:settings")).content.decode()
     section = mail_section(body)
@@ -260,10 +268,11 @@ def test_mail_edit_saves_seven_values(manager_client, settings):
     assert response.status_code == 302
     assert response["Location"] == reverse("core:settings")
     # 辞書が等しいかで見る (PostgreSQL の jsonb は鍵を並べ替えて返すので、並びは見ない)
+    # サーバー・ポート・暗号化の方式は画面から送っても使わない (.env だけで決める。保存は既定の値)
     assert SettingOverride.objects.get(key="mail").value == {
-        "host": "smtp.example.test",
-        "port": 465,
-        "security": "ssl",
+        "host": "",
+        "port": 587,
+        "security": "starttls",
         "user": "notice-account@example.test",
         "from": "notice@example.test",
         "from_name": "作り物の知らせ",
@@ -284,11 +293,6 @@ def test_mail_edit_refuses_bad_port_and_site_url(manager_client, settings):
         "mail_from_name": "",
         "mail_site_url": "",
     }
-    response = manager_client.post(edit_url("mail"), data)
-    assert response.status_code == 200
-    assert STOP in toasts(response.content.decode())
-    assert not SettingOverride.objects.filter(key="mail").exists()
-
     # http で始まらない URL の頭は画面から起きる (services の断りが止まった知らせになる)
     response = manager_client.post(edit_url("mail"), {**data, "mail_port": "587", "mail_site_url": "seizou.example.test"})
     assert response.status_code == 200
@@ -297,6 +301,11 @@ def test_mail_edit_refuses_bad_port_and_site_url(manager_client, settings):
     assert "保存できません。" in box and "seizou の URL の頭" in box
     assert not SettingOverride.objects.filter(key="mail").exists()
 
+    # ポートは画面では読むだけの欄 (.env の EMAIL_PORT で決める)。送られた範囲の外のポートは使わず、保存もしない
+    response = manager_client.post(edit_url("mail"), data)
+    assert response.status_code == 302
+    assert SettingOverride.objects.get(key="mail").value["port"] == 587
+
 
 # ---------------------------------------------------------------- (e) 試しに送る
 
@@ -304,6 +313,7 @@ def test_mail_edit_refuses_bad_port_and_site_url(manager_client, settings):
 @pytest.mark.django_db
 def test_mail_test_sends_to_sender_with_password_from_env(manager_client, settings, monkeypatch, mailoutbox):
     settings.SEIZOU = {"mail": FILLED}
+    set_transport_env(monkeypatch)
     monkeypatch.setenv(mail.PASSWORD_ENV, PASSWORD)
     calls = []
 
@@ -342,8 +352,9 @@ def test_mail_test_sends_to_sender_with_password_from_env(manager_client, settin
 
 
 @pytest.mark.django_db
-def test_mail_test_uses_sender_name_and_ssl(manager_client, settings, mailoutbox):
-    settings.SEIZOU = {"mail": {**FILLED, "security": "ssl", "port": 465, "from_name": "作り物の知らせ", "site_url": ""}}
+def test_mail_test_uses_sender_name_and_ssl(manager_client, settings, monkeypatch, mailoutbox):
+    settings.SEIZOU = {"mail": {**FILLED, "from_name": "作り物の知らせ", "site_url": ""}}
+    set_transport_env(monkeypatch, port="465", security="ssl")
 
     manager_client.post(reverse("core:mail_test"))
 
@@ -395,6 +406,7 @@ def test_mail_test_without_server_shows_red_toast(manager_client, settings, mail
 @pytest.mark.django_db
 def test_mail_test_turns_errors_into_words(manager_client, settings, monkeypatch, caplog, error, expected):
     settings.SEIZOU = {"mail": FILLED}
+    set_transport_env(monkeypatch)
     monkeypatch.setenv(mail.PASSWORD_ENV, PASSWORD)
     monkeypatch.setattr("seizou.core.mail.get_connection", lambda **kwargs: RaisingConnection(error))
     caplog.set_level(logging.DEBUG)
@@ -442,8 +454,9 @@ def test_mail_test_sends_anonymous_to_login(client, settings, mailoutbox):
 
 
 @pytest.mark.django_db
-def test_send_turns_newlines_in_subject_into_spaces(settings, mailoutbox, caplog):
+def test_send_turns_newlines_in_subject_into_spaces(settings, monkeypatch, mailoutbox, caplog):
     settings.SEIZOU = {"mail": FILLED}
+    set_transport_env(monkeypatch)
     caplog.set_level(logging.INFO)
 
     mail.send(["someone@example.test"], "1 行目\r\n2 行目\t" + "あ" * 300, "作り物の本文")
@@ -458,8 +471,9 @@ def test_send_turns_newlines_in_subject_into_spaces(settings, mailoutbox, caplog
 
 
 @pytest.mark.django_db
-def test_send_refuses_empty_recipients(settings, mailoutbox):
+def test_send_refuses_empty_recipients(settings, monkeypatch, mailoutbox):
     settings.SEIZOU = {"mail": FILLED}
+    set_transport_env(monkeypatch)
     with pytest.raises(mail.MailNotSent, match="送り先のアドレスがありません。"):
         mail.send([], "件名", "本文")
     with pytest.raises(mail.MailNotSent, match="送り先のアドレスがありません。"):
@@ -473,8 +487,91 @@ def test_send_refuses_empty_recipients(settings, mailoutbox):
 def test_setting_update_help_shows_mail_refusals_from_screen_only(client_logged_in, folder):
     test_core_manual_auto.write_screen(folder, "core_setting_update")
     html = test_core_manual_auto.modal_html(client_logged_in, "core_setting_update")
-    assert "保存できません。メールの送り方の「サーバー」は" in html
+    # サーバー・ポート・暗号化の方式は .env だけで決める (画面の欄は読むだけ) ので、その断りは画面から起きない
+    assert "保存できません。メールの送り方の「サーバー」は" not in html
     assert "seizou の URL の頭" in html
     assert "host・port・security" not in html
     assert "starttls・ssl・none" not in html
     assert "「アカウント」は 254 字まで" not in html
+
+
+# ---------------------------------------------------------------- (j) 送り先は .env だけ (Claude Security の走査の候補 11-07 の 11・23・25・26)
+
+
+def set_transport_env(monkeypatch, host="smtp.example.test", port="587", security="starttls"):
+    """サーバー・ポート・暗号化の方式を環境変数 (置き場の .env の行) に置く。"""
+    monkeypatch.setenv(conf.MAIL_ENV["host"], host)
+    monkeypatch.setenv(conf.MAIL_ENV["port"], port)
+    monkeypatch.setenv(conf.MAIL_ENV["security"], security)
+
+
+@pytest.mark.django_db
+def test_screen_cannot_redirect_password_to_another_server(manager_client, settings, monkeypatch, mailoutbox):
+    """画面 (アカウント管理の権限) からサーバー・ポート・暗号化の方式を変えても、パスワードは .env のサーバーへだけ渡る。"""
+    settings.SEIZOU = {}
+    monkeypatch.setenv(mail.PASSWORD_ENV, PASSWORD)
+    set_transport_env(monkeypatch)
+    data = {
+        "mail_host": "attacker.example.test",
+        "mail_port": "25",
+        "mail_security": "none",
+        "mail_user": "notice-account@example.test",
+        "mail_from": "notice@example.test",
+        "mail_from_name": "",
+        "mail_site_url": "",
+    }
+    assert manager_client.post(edit_url("mail"), data).status_code == 302
+    saved = SettingOverride.objects.get(key="mail").value
+    assert "attacker.example.test" not in str(saved)
+    assert saved["user"] == "notice-account@example.test" and saved["from"] == "notice@example.test"
+
+    calls = []
+
+    def recording_get_connection(*args, **kwargs):
+        calls.append(kwargs)
+        return django_mail.get_connection(*args, **kwargs)
+
+    monkeypatch.setattr("seizou.core.mail.get_connection", recording_get_connection)
+    manager_client.post(reverse("core:mail_test"))
+
+    assert len(mailoutbox) == 1
+    assert calls[0]["host"] == "smtp.example.test"
+    assert calls[0]["port"] == 587
+    assert calls[0]["use_tls"] is True and calls[0]["use_ssl"] is False
+    assert calls[0]["password"] == PASSWORD
+
+
+@pytest.mark.django_db
+def test_answer_and_override_transport_values_are_ignored(settings, monkeypatch):
+    """答えの YAML (SEIZOU) と画面の上書きのサーバー・ポート・暗号化の方式は読まない。.env の値だけ。"""
+    for key in conf.MAIL_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    settings.SEIZOU = {"mail": {**FILLED, "security": "none", "port": 25}}
+    values = conf.mail_settings()
+    assert (values["host"], values["port"], values["security"]) == ("", 587, "starttls")
+    assert values["from"] == "notice@example.test"
+    assert mail.missing() == ["サーバー"]
+
+    set_transport_env(monkeypatch, host=" smtp.example.test ", port="465", security="SSL")
+    values = conf.mail_settings()
+    assert (values["host"], values["port"], values["security"]) == ("smtp.example.test", 465, "ssl")
+
+    set_transport_env(monkeypatch, port="x", security="tls")
+    values = conf.mail_settings()
+    assert (values["port"], values["security"]) == (587, "starttls")
+    set_transport_env(monkeypatch, port="70000")
+    assert conf.mail_settings()["port"] == 587
+
+
+@pytest.mark.django_db
+def test_mail_edit_page_shows_transport_read_only(manager_client, settings, monkeypatch):
+    settings.SEIZOU = {}
+    set_transport_env(monkeypatch, host="smtp.example.test", port="465", security="ssl")
+    body = manager_client.get(edit_url("mail")).content.decode()
+    form = forms.SettingForm(key="mail")
+    for name in ("mail_host", "mail_port", "mail_security"):
+        assert form.fields[name].disabled, name
+    for name in ("mail_user", "mail_from", "mail_from_name", "mail_site_url"):
+        assert not form.fields[name].disabled, name
+    assert 'value="smtp.example.test"' in body
+    assert "EMAIL_HOST=" in body
