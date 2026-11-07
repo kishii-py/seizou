@@ -6,6 +6,7 @@
   カードは金額の閲覧 (seizou.hide_money) を渡す。そのときだけ請求書の入金を読み、文は入金があれば取り消す順と入金の記録の件数と
   合計 (金額の閲覧の無い人には件数だけ) を書き、行ごとに入金の有無を返す (決め C03-2 a。依頼書 N296)。
   詳細は渡さず、文と入金を読まない (詳細は請求書ごとの並びだけを使う。問い合わせを増やさない)。
+- shipment_outside_payments: 出荷の詳細の「請求書の外で受け取った入金」の枠の行 (決め C107-3c。入金の表は出荷の逆の関係 payments の先)。
 - shipment_head_chips: 出荷の詳細の頭の要点の札 (得意先と得意先の注文番号。初見テスト R5 の候補 C38。決め C38-2 a)。
   出荷の詳細 shipping/shipment_detail.html の block heading が {% shipment_head_chips object as head_chips %} の形で置いてから
   block.super を呼び、土台の core/detail.html が head_chips を読んで題の横に並べる (受注の order_head_chips と同じ形)。
@@ -13,7 +14,7 @@
 
 from django import template
 from django.db.models import prefetch_related_objects
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from seizou.core import access
 from seizou.core.views import model_url
@@ -76,6 +77,40 @@ def deliverynote_billing(context, note, hide_money=None):
         services.cancel_refusal(note, hide_money=bool(hide_money), found=found, lumps=lumps) if recorded is not None else ""
     )
     return {"refusal": refusal, "rows": rows, "invoices": list(invoices.values())}
+
+
+@register.simple_tag(takes_context=True)
+def shipment_outside_payments(context, shipment) -> list[dict]:
+    """{% shipment_outside_payments object as outside_payments %}。出荷の詳細の「請求書の外で受け取った入金」の枠の行 (読むだけ。決め C107-3c)。
+
+    入金の表は出荷の逆の関係 payments の先として引く (billing を import しない。関係が無ければ空の並び = services.invoiced_shipments と同じ読み方)。
+    並びは入金日の新しい順 (入金の表の既定の並び)。1 行 = received_on・amount・method_label・cancelled (取消か)・cancel_url
+    (取消でない入金で、billing:payment_cancel が引け、billing を部署で開ける人だけ。deliverynote_billing の invoice_url と同じ判定)。
+    """
+    manager = getattr(shipment, "payments", None)
+    if manager is None:
+        return []
+    request = context.get("request")
+    can_bill = access.can_open(getattr(request, "user", None), "billing", record=False)
+    rows = []
+    for payment in manager.all():
+        cancelled = payment.status != type(payment).STATUS_RECORDED
+        cancel_url = None
+        if not cancelled and can_bill:
+            try:
+                cancel_url = reverse("billing:payment_cancel", args=[payment.pk])
+            except NoReverseMatch:
+                cancel_url = None
+        rows.append(
+            {
+                "received_on": payment.received_on,
+                "amount": payment.amount,
+                "method_label": payment.get_method_display(),
+                "cancelled": cancelled,
+                "cancel_url": cancel_url,
+            }
+        )
+    return rows
 
 
 @register.simple_tag
