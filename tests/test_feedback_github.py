@@ -1146,3 +1146,65 @@ def test_sync_endpoint_shows_six_numbers(client, manager, plain, fake, version):
 
     assert response.status_code == 302 and response["Location"] == "/feedback/"
     assert SIX_LINE in html_of(client.get("/feedback/"))
+
+
+# ---------------------------------------------------------------- 送る前に直せる (依頼書 N323)
+
+#: 世話役が伏せ字の「〇〇」のうち「1円」だけを戻した Issue の文 (単価は伏せたまま)
+EDITED = "# 合計が 1円 ずれる\n\n- 種類: 不具合\n\n## 実際の動き\n請求の合計が 1円 ずれる。単価は 〇〇。\n"
+
+
+def test_send_edited_text_as_is(manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+
+    url = services.send_to_github(row, manager, text=f"  {EDITED}  ")
+
+    assert url == ISSUE_URL
+    method, api, kwargs = fake.calls[-1]
+    assert (method, api) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues")
+    assert kwargs["json"]["title"] == "合計が 1円 ずれる"
+    assert kwargs["json"]["body"] == EDITED.strip()
+    assert "請求の合計が 1円 ずれる。" in kwargs["json"]["body"]
+    assert kwargs["json"]["labels"] == ["from-seizou", "不具合"]
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("sent", ISSUE_URL)
+
+
+@pytest.mark.parametrize(
+    "text, words",
+    [("", "Issue の文が空です。"), (" \n \n", "Issue の文が空です。"), ("# \n本文だけ", "1 行目に、題を")],
+)
+def test_send_refuses_empty_or_titleless_text_without_http(manager, plain, fake, text, words):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+    calls = len(fake.calls)
+
+    with pytest.raises(ValueError, match=words) as caught:
+        services.send_to_github(row, manager, text=text)
+
+    assert str(caught.value).startswith("送れません。")
+    assert len(fake.calls) == calls
+    row.refresh_from_db()
+    assert (row.status, row.sent_url) == ("confirmed", "")
+
+
+def test_send_endpoint_sends_edited_text(client, manager, plain, fake):
+    connect(manager, fake)
+    row = make(plain, status="confirmed")
+    client.force_login(manager)
+
+    response = client.post(f"/feedback/{row.pk}/github/", {"issue_text": EDITED})
+
+    assert response.status_code == 302 and response["Location"] == f"/feedback/{row.pk}/"
+    assert fake.calls[-1][2]["json"]["body"] == EDITED.strip()
+    row.refresh_from_db()
+    assert row.status == "sent"
+
+    empty = make(plain, "空の文", status="confirmed")
+    calls = len(fake.calls)
+    response = client.post(f"/feedback/{empty.pk}/github/", {"issue_text": " "})
+    assert response.status_code == 302 and len(fake.calls) == calls
+    assert "送れません。Issue の文が空です。" in html_of(client.get(f"/feedback/{empty.pk}/"))
+    empty.refresh_from_db()
+    assert empty.status == "confirmed"

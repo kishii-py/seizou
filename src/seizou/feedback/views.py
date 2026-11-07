@@ -208,10 +208,13 @@ def github_disconnect(request):
 @login_required
 @require_POST
 def github_send(request, pk):
-    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。
+
+    POST の issue_text は、世話役が詳細の欄で伏せ字を戻した Issue の文 (依頼書 N323)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
+    """
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
-        url = services.send_to_github(feedback, request.user)
+        url = services.send_to_github(feedback, request.user, text=request.POST.get("issue_text"))
     except ValueError as exc:
         messages.error(request, str(exc))
     else:

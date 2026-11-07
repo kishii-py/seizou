@@ -7,13 +7,18 @@ _ask_claude を「呼ばれたら AssertionError」に差し替える)。画面�
 import re
 
 import pytest
+import requests
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.urls import reverse
+from django.utils.html import escape
 
 from seizou.assistant import services as assistant_services
 from seizou.core import access
 from seizou.feedback import services
 from seizou.feedback.models import Feedback
+from seizou.feedback import github
+from tests import test_feedback_github as gh_tests
 from tests.test_assistant_services import refuse_api
 
 
@@ -448,3 +453,55 @@ def test_list_has_fix_version_column_and_dismissed_filter(client, plain, manager
     html = html_of(client.get("/feedback/?status=dismissed"))
     assert "見送った題" in html and "版待ちの題" not in html
     assert '<option value="dismissed" selected>' in html
+
+
+# ---- 送る前に直せる・うちも・自社の印・閉じた理由 (依頼書 N323。決め 11-07 09:0x〜10:1x) ----
+
+GH_KEYS = (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV)
+
+
+@pytest.fixture
+def gh(settings, tmp_path, monkeypatch):
+    """GitHub の作り物 (requests.get・requests.post を差し替える。本物へは送らない)。
+
+    .env は一時の置き場で、3 つの鍵と django の cache は前後で戻す。つないだ形は connect_env が os.environ に置く (.env が無ければ os.environ を読む)。
+    """
+    settings.SEIZOU_ENV_FILE = tmp_path / ".env"
+    for key in GH_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    cache.clear()
+    fake = gh_tests.FakeGithub()
+    monkeypatch.setattr(requests, "get", fake.get)
+    monkeypatch.setattr(requests, "post", fake.post)
+    yield fake
+    cache.clear()
+
+
+def connect_env(monkeypatch, repo="kishii-py/seizou"):
+    """つないだ会社にする (作り物のトークンと送り先)。"""
+    monkeypatch.setenv(github.TOKEN_ENV, gh_tests.TOKEN)
+    monkeypatch.setenv(github.REPO_ENV, repo)
+
+
+def test_detail_send_form_has_issue_text_only_for_manager_connected_confirmed(client, plain, manager, gh, monkeypatch):
+    row = make(plain)
+    services.mark_confirmed(row, manager)
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(manager)
+    assert 'name="issue_text"' not in html_of(client.get(detail))
+
+    connect_env(monkeypatch)
+    html = html_of(client.get(detail))
+    assert html.count('name="issue_text"') == 1
+    area = re.search(r'<textarea id="feedback-issue-edit" name="issue_text"[^>]*>(.*?)</textarea>', html, re.S)
+    assert area is not None and area.group(1) == escape(services.export_markdown(row))
+    assert "伏せ字 (〇〇) のうち、外に出してよい数や名前だけを戻してから送ります。単価や取引先の名前は伏せたままにします。" in html
+    assert html.index('id="feedback-issue-edit"') < html.index("GitHub に送る</button>") < html.index("送ったにする</button>")
+    assert 'id="feedback-issue" readonly' in html
+
+    draft = make(plain, "下書きのまま")
+    assert 'name="issue_text"' not in html_of(client.get(f"/feedback/{draft.pk}/"))
+
+    client.force_login(plain)
+    assert 'name="issue_text"' not in html_of(client.get(detail))

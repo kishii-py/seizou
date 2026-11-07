@@ -882,12 +882,20 @@ def disconnect_github(user) -> None:
         raise ValueError("保存できません。" + f"GitHub から外せませんでした。{exc}") from None
 
 
-def send_to_github(feedback, user) -> str:
+MESSAGE_GITHUB_TEXT_EMPTY = "Issue の文が空です。1 行目に「# 題」、その下に本文を書いてください。"
+MESSAGE_GITHUB_TEXT_NO_TITLE = "Issue の文の 1 行目に、題を「# 題」の形で書いてください。"
+
+
+def send_to_github(feedback, user, text=None) -> str:
     """確認済みの下書きを GitHub の Issue にし、送ったにする。世話役だけ。作った Issue の URL を返す。
 
-    題は Issue の文 (export_markdown) の 1 行目の「# 」を外した字、本文は Issue の文の全部、印は from-seizou と種類の表示。
-    確認済みでない・つないでいないときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
+    題は Issue の文の 1 行目の「# 」を外した字、本文は Issue の文の全部、印は from-seizou と種類の表示。
+    Issue の文は、text が None なら export_markdown (伏せ字の入った文)、字なら世話役が詳細の欄で直した文 (前後の空白を外す。依頼書 N323)。
+    確認済みでない・つないでいない・直した文が空か題が無いときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
     HTTP は atomic の外 (R17)。送った後に mark_sent (atomic) で URL を残す。
+    訳: 世話役の直した文は、もう一度伏せずにそのまま送る。伏せ字の初めの形 (mask_text・_MONEY) は単価のように外へ出したくない数を
+    伏せたままにしておくための物で、「1円ずれる」のように伏せると不具合の要点が読めなくなる数だけを、世話役が判断して戻すため。
+    出所 = 本人の決め 11-07 09:0x〜10:1x (11-07 朝の通しで「1円」が伏せ字になった)。変えてよい条件 = 送る前の確かめの形を本人の決めで変えたとき。
     """
     _refuse_github(user, "GitHub に送る", sending=True)
     if feedback.status != "confirmed":
@@ -896,8 +904,12 @@ def send_to_github(feedback, user) -> str:
     if not token:
         raise ValueError("送れません。" + MESSAGE_GITHUB_NOT_CONNECTED)
     repo = github_status()["repo"]
-    text = export_markdown(feedback)
+    text = export_markdown(feedback) if text is None else _text(text)
+    if not text:
+        raise ValueError("送れません。" + MESSAGE_GITHUB_TEXT_EMPTY)
     title = text.splitlines()[0].removeprefix("# ").strip()
+    if not title:
+        raise ValueError("送れません。" + MESSAGE_GITHUB_TEXT_NO_TITLE)
     try:
         issue = github.create_issue(token, repo, title, text, [GITHUB_LABEL, feedback.get_kind_display()])
     except github.GithubError as exc:
