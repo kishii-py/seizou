@@ -302,3 +302,16 @@ def test_stale_save_after_accepting_change_that_removed_a_line_is_refused(fake, 
     assert rows[1].qty == Decimal("200")
     order.refresh_from_db()
     assert "古い画面で書いた備考" not in order.note
+
+
+# ---------------------------------------------------------------- 3 金額の閲覧の無い人
+
+
+@pytest.mark.django_db
+def test_token_for_user_without_money_is_the_same_keyed_value(settings, logged_in, order):
+    """金額の閲覧の無い人の編集の画面にも同じ字 (鍵のある hmac の 16 進 64 字) を置く。単価の欄は無い。"""
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    token = _token(logged_in, order)
+    assert HEX64.fullmatch(token)
+    assert token == services.order_state_token(order)
+    assert 'name="lines-0-unit_price"' not in logged_in.get(reverse("orders:order_update", args=[order.pk])).content.decode()
