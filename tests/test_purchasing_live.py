@@ -112,6 +112,16 @@ def test_list_page_has_poll_element(client_logged_in, user, subcontractor, item)
         "scrollTop",
     ):
         assert word in body, word
+    # 取り直しで利用者の操作を消さない (指示書 11-07 の GS-01): 横の送り・開いた ⋮・表の中のキーボードの位置・字の選びの間は取りに行かない
+    poll = re.search(r'<div id="purchaseorder-poll"[^>]*>', body)
+    assert poll
+    for word in (
+        "!document.querySelector('#rows .overflow-auto')?.scrollLeft",
+        "!document.querySelector('#rows details.row-menu[open]')",
+        "!document.getElementById('rows')?.contains(document.activeElement)",
+        "!String(window.getSelection())",
+    ):
+        assert word in poll.group(0), word
     assert body.count(f'data-live="po-{po.pk}:sent:0:0"') == 1
     # hx-vals の js: の値は `{` で始める (htmx は `{` で始まらない字を `{}` で包むので、式のままだと SyntaxError で取りに行かない)
     assert 'hx-vals="js:{' in body
@@ -325,6 +335,8 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
     assert "#po-live section .overflow-x-auto" in poll.group(0)
     # 明細の ⋮ のメニューを開いている間も取り直さない (入れ替えると開いたメニューが閉じる。C22-2 b)
     assert "#po-live details.row-menu[open]" in poll.group(0)
+    # 字を選んでいる間も取り直さない (入れ替えると選びが消える。指示書 11-07 の GS-01)
+    assert "!String(window.getSelection())" in poll.group(0)
 
     # 「作成」の発注: ボタンと link の行は今のまま (再送 1・受入を登録 1)
     draft = services.create_purchase_order(
