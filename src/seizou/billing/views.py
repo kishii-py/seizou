@@ -3,6 +3,7 @@
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
+請求書の外で受け取った入金 (出荷を指す入金。決め C107-3c) の記録は ShipmentPaymentCreateView で、payment_detail は出荷の詳細へ移す。
 一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は取消でない入金の合計が合計に足りない発行の請求書 = 一部入金も入る
 (ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
 """
@@ -21,7 +22,14 @@ from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from . import services
-from .forms import InvoiceCancelForm, InvoiceForm, InvoiceReissueForm, PaymentCancelForm, PaymentForm
+from .forms import (
+    InvoiceCancelForm,
+    InvoiceForm,
+    InvoiceReissueForm,
+    PaymentCancelForm,
+    PaymentForm,
+    ShipmentPaymentForm,
+)
 from .models import Invoice, Payment
 from .reports import invoice_context
 
@@ -148,6 +156,23 @@ class PaymentCreateView(BaseFormView):
     screen_help = "請求書に対する入金の日付・金額・方法を記録します。請求額との差は残として残り、多い入金も記録できます。"
 
 
+class ShipmentPaymentCreateView(BaseFormView):
+    """請求書の外で受け取った入金の記録の入力。
+
+    使う人: 経理 / いつ: 出荷の代金を請求書の外で受け取ったとき (現金など) / 何のために: 受け取った入金を残し、その出荷を請求書の候補から外す / 次にすること: 請求書の新規登録で残りの出荷を請求する
+
+    対象は URL の pk の出荷 (出荷の表は入金の外部キーの先として引く。shipping の model を import しない)。入口は請求書の新規登録の出荷の行の
+    「請求しない (別に受け取った)」(小窓)。テンプレートは土台の入力の画面と小窓のまま (billing/payment_form.html は請求書の残の 1 行を出すので使わない)。
+    保存の後は services が返す入金の _detail (payment_detail) が出荷の詳細へ移す。
+    """
+
+    model = Payment._meta.get_field("shipment").related_model
+    form_class = ShipmentPaymentForm
+    service = staticmethod(services.record_outside_payment)
+    screen_name = "請求書の外で受け取った入金の記録"
+    screen_help = "請求書を作らずに受け取った出荷の代金 (現金など) の日付・金額・方法を記録します。記録した出荷は請求書の新規登録に並ばなくなり、ダッシュボードの今月の入金に入ります。"
+
+
 class PaymentCancelView(BaseFormView):
     """入金を取り消す入力。
 
@@ -164,8 +189,13 @@ class PaymentCancelView(BaseFormView):
 
 @login_required
 def payment_detail(request, pk):
-    """保存と取消の後に請求書の詳細へ移るだけの口 (土台は保存の後に、services が返す Payment の _detail へ移す)。"""
+    """保存と取消の後に請求書の詳細へ移るだけの口 (土台は保存の後に、services が返す Payment の _detail へ移す)。
+
+    請求書の外で受け取った入金 (請求書が空。決め C107-3c) は、その出荷の詳細へ移す (請求書の無い入金で落ちないため)。
+    """
     payment = get_object_or_404(Payment, pk=pk)
+    if payment.invoice_id is None:
+        return HttpResponseRedirect(reverse("shipping:shipment_detail", args=[payment.shipment_id]))
     return HttpResponseRedirect(reverse("billing:invoice_detail", args=[payment.invoice_id]))
 
 

@@ -981,12 +981,26 @@ def list_acceptances(order_no: str | None = None, days: int = 30, limit: int = 5
 
 
 def _payment_dict(payment, shown: bool) -> dict[str, Any]:
-    """入金の 1 件 (請求書と得意先は引いてある物)。"""
+    """入金の 1 件 (請求書と得意先は引いてある物)。
+
+    請求書の外で受け取った入金 (請求書が空・出荷を指す。決め C107-3c) は、invoice_no が None、得意先は出荷の受注の得意先、
+    url は出荷の詳細。どちらの入金にも shipment_no (請求書の入金は None) を入れる。
+    """
     invoice = payment.invoice
+    if invoice is None:
+        shipment = payment.shipment
+        customer = shipment.order_line.order.customer
+        invoice_no, shipment_no = None, shipment.shipment_no
+        url = _url("shipping:shipment_detail", payment.shipment_id)
+    else:
+        customer = invoice.customer
+        invoice_no, shipment_no = invoice.invoice_no, None
+        url = _url("billing:invoice_detail", payment.invoice_id)
     return {
-        "invoice_no": invoice.invoice_no,
-        "customer_code": invoice.customer.code,
-        "customer_name": invoice.customer.name,
+        "invoice_no": invoice_no,
+        "shipment_no": shipment_no,
+        "customer_code": customer.code,
+        "customer_name": customer.name,
         "received_on": _day(payment.received_on),
         "amount": _money(payment.amount, shown),
         "method": payment.method,
@@ -996,7 +1010,7 @@ def _payment_dict(payment, shown: bool) -> dict[str, Any]:
         "status_label": payment.get_status_display(),
         "recorded_by": _username(payment.recorded_by),
         "recorded_at": _when(payment.recorded_at),
-        "url": _url("billing:invoice_detail", payment.invoice_id),
+        "url": url,
     }
 
 
@@ -1018,7 +1032,7 @@ def _list_payments(user, invoice_no, days, limit) -> dict[str, Any]:
         Payment = apps.get_model("billing", "Payment")
         payments = (
             Payment.objects.filter(received_on__gte=timezone.localdate() - timedelta(days=span))
-            .select_related("invoice__customer", "recorded_by")
+            .select_related("invoice__customer", "shipment__order_line__order__customer", "recorded_by")
             .order_by("-received_on", "-pk")[:count]
         )
     items = [_payment_dict(payment, shown) for payment in payments]
@@ -1043,7 +1057,7 @@ def _list_payments(user, invoice_no, days, limit) -> dict[str, Any]:
 
 
 def list_payments(invoice_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
-    """入金 (請求書に対する入金の記録。経理が記録する) の一覧を入金日の新しい順に返す。invoice_no を渡すと、その請求書の残 (合計・入金済み・残・入金の状態) と、その請求書の入金の全部 (取消も) を返す。
+    """入金 (請求書に対する入金と、請求書の外で受け取った出荷の入金の記録。経理が記録する) の一覧を入金日の新しい順に返す。invoice_no を渡すと、その請求書の残 (合計・入金済み・残・入金の状態) と、その請求書の入金の全部 (取消も) を返す。
 
     invoice_no: 請求書番号 (完全一致)。渡すと、その請求書の入金の全部 (日数を見ない) と invoice。null なら全部の請求書の入金。
     days: 今日から何日前の入金までを出すか (1〜366。既定 30)。

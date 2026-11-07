@@ -55,6 +55,8 @@ class DeliveryNote(models.Model):
         STATUS_ISSUED から読む (billing を import しない。shipping.services.invoiced_shipments と同じ読み方)。
         取消の請求書だけに入った出荷は「入っていない」に数える (billing.services.billable_shipments と同じ数え方)。
         受注の明細に「請求しない」の印がある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め C107-3)。
+        請求書の外で受け取った入金 (取消でない) のある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め C107-3c)。
+        入金の表は出荷の逆の関係 payments の先として引き、「記録」の値はその表の STATUS_RECORDED から読む。
         請求書の部品が無ければ偽。
         """
         try:
@@ -62,7 +64,14 @@ class DeliveryNote(models.Model):
         except FieldDoesNotExist:
             return False
         issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
-        return self.shipments.exclude(invoice_lines__invoice__status=issued).exclude(order_line__no_bill=True).exists()
+        shipments = self.shipments.exclude(invoice_lines__invoice__status=issued).exclude(order_line__no_bill=True)
+        try:
+            payments = Shipment._meta.get_field("payments").related_model
+        except FieldDoesNotExist:
+            payments = None
+        if payments is not None:
+            shipments = shipments.exclude(payments__status=payments.STATUS_RECORDED)
+        return shipments.exists()
 
 
 class Shipment(models.Model):

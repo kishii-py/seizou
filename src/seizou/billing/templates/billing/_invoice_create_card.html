@@ -6,6 +6,7 @@
 {# 一式の表の末の「操作」の列 (金額を見られる人で受注の書く権限のある人だけ) の「請求しない」は、受注の明細に「請求しない」の印を付ける確かめの画面 (orders:orderline_no_bill) を小窓で開く <a> (行は請求書の form の中なので、<button> だと請求書の保存に送られる。作者の決め C107-3)。小窓で保存した後は invoice_form.html の JS (data-row-drop) がその行を表から外す。JS の無いときは href で画面の全体へ移り、保存の後に ?next= で戻る。 #}
 {# 一式の行の後に出荷が続いた明細の行 (row.after。作者の決め C107-7) は読むだけ: 「終わり方」の枡に「一式の行 <請求書への link> の後に出荷あり」と小さな字「IV-… を取り消すと、金額を決め直して載せられます。」、「出荷」の枡に請求した数。欄と「請求しない」は出さない。この行があるときは黄の 1 行の頭の字を両方に合う字にする。 #}
 {# 一式の表の「載せる」(data-label-pick) に印を付けた行は、行の tr の data-label-pick-qty (出荷の合計) と data-label-pick-amount (請求する金額の欄の値。invoice_form.html の JS が書き換える) で、合計の枠と保存のボタンの字に数えられる。「全額」「出した分」は type="button" で、押すと data-fill の値を金額の欄に入れる。 #}
+{# 出荷の表の「操作」の列 (金額を見られる人で請求書の書く権限のある人だけ): 一式でない行の「請求しない (別に受け取った)」は、請求書の外で受け取った入金の記録 (billing:shipment_payment_create) を小窓で開く (決め C107-3c)。一式の行の枡は空 (一式の明細は一式の表の「請求しない」)。小窓で保存した行は invoice_form.html の JS (data-row-drop) が表から外す。 #}
 {# 行が 0 のときは表の箱だけを外す。下の行は行の数で包まない (止める処理を足さない)。赤と黄の知らせは右上の知らせ (core/_toasts.html)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
@@ -81,6 +82,7 @@
   </div>
   <p class="mt-2 flex items-center gap-2 text-xs text-warning" data-picked-elsewhere hidden>{% icon "alert" "size-4" %}<span>別の得意先の行 <span data-picked-elsewhere-count>0</span> 件に印が残っています。</span></p>
   {% if form.rows %}
+  {% can_write "billing.Invoice" as can_bill %}
   <div class="mt-4 overflow-x-auto">
     <table id="{{ field.auto_id }}" class="table table-sm">
       <thead>
@@ -93,6 +95,7 @@
           <th class="text-right">数量</th>
           {% if not form.hide_money %}<th class="text-right">金額 (税抜)</th>{% endif %}
           <th>納品書</th>
+          {% if can_bill and not form.hide_money %}<th>操作</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -106,6 +109,7 @@
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>
           {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}{% if row.lump %}<span class="text-base-content/70"> (一式)</span>{% endif %}</td>{% endif %}
           <td class="whitespace-nowrap font-mono">{{ row.shipment.delivery_note.note_no }}</td>
+          {% if can_bill and not form.hide_money %}<td class="whitespace-nowrap">{% if not row.lump %}{% url 'billing:shipment_payment_create' row.shipment.pk as outside_url %}<a class="btn btn-ghost btn-xs" href="{{ outside_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ outside_url }}" data-row-drop>請求しない (別に受け取った)</a>{% endif %}</td>{% endif %}
         </tr>
         {% endfor %}
       </tbody>

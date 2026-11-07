@@ -19,7 +19,8 @@
   都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
   支払の月か支払日が空 (当日でない) なら空。今ある請求書の支払期日は作った時の値のまま (計算し直さない)。
-- 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
+- 入金は record_payment・record_outside_payment・cancel_payment の 3 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
+  請求書の外で受け取った入金は record_outside_payment が出荷に書く (請求書は空。作者の決め C107-3c)。今月の入金に入り、その出荷は請求の候補に出ない。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
   取消でない入金の残る請求書は cancel_invoice が断る (先に cancel_payment。文は cancel_refusal の 1 か所。決め 11-04 06:4x)。
 - 作り直しは reissue_invoice (同じ得意先・同じ期間の取消でない請求書を全部取り消し、入っていた出荷と期間の中で残っていた出荷で 1 枚に作る)。
@@ -519,14 +520,10 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
         return created
 
 
-def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_TRANSFER, note=""):
-    """請求書に入金を 1 件記録する。記録した人は user (pk が無ければ空)。
+def _payment_values(amount, method, note):
+    """入金の金額・方法・備考の値を見て、Decimal に直した金額を返す (読むだけ)。record_payment と record_outside_payment が同じ検査を使う。
 
     金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
-    取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
-    返す入金に、画面の知らせの字 saved_message (「請求書 <番号> に ¥<金額> を入金として記録しました。」) を付ける (表に書かない)。
-    訳: 取消した請求書に入金を記録させないため (なぜ要るかは未確認。原則の「記録どうしの矛盾」に当たるかは本人が決める)。出所 = RULES.md R21 (決め 11-03 14:1x。理由の字は仕様 01 の表 (2026-11-01) に無い)。
-    変えてよい条件 = 変えない (R は廃止で残す)。
     """
     try:
         amount = Decimal(str(amount))
@@ -541,6 +538,19 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
         raise ValueError(f"記録できません。知らない入金の方法です。入金の方法は 振込 / 現金 / 手形 / その他 のどれかにしてください (入れた値: {method!r})。")
     if len(note or "") > PAYMENT_NOTE_MAX:
         raise ValueError(f"記録できません。備考が {PAYMENT_NOTE_MAX} 字を超えています。備考は {PAYMENT_NOTE_MAX} 字までにしてください。")
+    return amount
+
+
+def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_TRANSFER, note=""):
+    """請求書に入金を 1 件記録する。記録した人は user (pk が無ければ空)。
+
+    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
+    返す入金に、画面の知らせの字 saved_message (「請求書 <番号> に ¥<金額> を入金として記録しました。」) を付ける (表に書かない)。
+    訳: 取消した請求書に入金を記録させないため (なぜ要るかは未確認。原則の「記録どうしの矛盾」に当たるかは本人が決める)。出所 = RULES.md R21 (決め 11-03 14:1x。理由の字は仕様 01 の表 (2026-11-01) に無い)。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
+    amount = _payment_values(amount, method, note)
     with transaction.atomic():
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
@@ -558,8 +568,38 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
         return payment
 
 
+def record_outside_payment(shipment, received_on, amount, user, *, method=Payment.METHOD_CASH, note=""):
+    """請求書の外で受け取った入金 (現金など) を出荷に 1 件記録する。記録した人は user (pk が無ければ空)。
+
+    記録した出荷は、請求の候補 (billable_shipments・unbilled_in_period) と納品書の詳細の緑の「請求書作成」に出ない。
+    出荷の金額 (ダッシュボードの出荷の金額と売上の数え方) は変えない。ダッシュボードの今月の入金 (core.dashboard.payments_this_month) に入る。
+    入金を取り消す (cancel_payment) と、その出荷は請求の候補に戻る。金額・方法・備考の値の検査は record_payment と同じ (_payment_values)。
+    金額は人が入れた値で、出荷の金額と比べない (多い入金も少ない入金も止めない = 現物優先)。方法の既定は現金 (請求書の外で受け取る場面の多くのため)。
+    出荷の行をロックしてから書く (請求書の作成 = create_invoice と納品書の取消 = cancel_delivery_note も出荷の行をロックするので、同時に走ってもどちらかが待つ)。
+    返す入金に、画面の知らせの字 saved_message (「出荷 <番号> の ¥<金額> を、請求書の外で受け取った入金として記録しました。」) を付ける (表に書かない)。
+    使う場面: 一式でない明細の出荷の代金を、請求書を作らずに受け取ったとき (作者の決め C107-3c)。
+    """
+    amount = _payment_values(amount, method, note)
+    with transaction.atomic():
+        locked = _Shipment.objects.select_for_update().get(pk=shipment.pk)
+        payment = Payment.objects.create(
+            shipment=locked,
+            received_on=received_on,
+            amount=amount,
+            method=method,
+            note=note or "",
+            recorded_by=user if getattr(user, "pk", None) is not None else None,
+        )
+    # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+    payment.saved_message = f"出荷 {locked.shipment_no} の ¥{_yen(amount)} を、請求書の外で受け取った入金として記録しました。"
+    return payment
+
+
 def cancel_payment(payment, user):
-    """記録した入金を取消にする。行は消さない (履歴)。請求書の状態は見ない (取消の請求書に残った入金も取り消せる)。"""
+    """記録した入金を取消にする。行は消さない (履歴)。請求書の状態は見ない (取消の請求書に残った入金も取り消せる)。
+
+    請求書の外で受け取った入金を取り消すと、その出荷は請求の候補に戻る。
+    """
     with transaction.atomic():
         locked = Payment.objects.select_for_update().get(pk=payment.pk)
         if locked.status == Payment.STATUS_CANCELLED:
@@ -576,6 +616,7 @@ def billable_shipments(customer=None):
 
     create_invoice の断る条件の (1) 納品書と (2) 請求済みと同じ。customer を渡せば、その得意先の出荷だけ。
     受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作者の決め C107-3・C107-3b・C107-3c。受注の明細の列を外部キーの道で読む)。
+    請求書の外で受け取った入金 (取消でない) のある出荷は除く (作者の決め C107-3c。出荷の逆の関係 payments)。
     """
     # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
@@ -583,6 +624,7 @@ def billable_shipments(customer=None):
         _Shipment.objects.filter(delivery_note__status=_DeliveryNote.STATUS_ISSUED)
         .exclude(pk__in=invoiced)
         .exclude(order_line__no_bill=True)
+        .exclude(payments__status=Payment.STATUS_RECORDED)
     )
     if customer is not None:
         queryset = queryset.filter(order_line__order__customer=customer)
@@ -605,6 +647,7 @@ def unbilled_in_period(customer, period_from, period_to):
     並びは出荷日・出荷番号。billable_shipments と違い、発行の納品書に入っていない出荷 (納品書が無いか取消) も返す。
     出荷には状態の列が無いので、出荷の取消は見ない。create_invoice が作った後の知らせ (_period_note) に使う。
     受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作った後の知らせに数えると、入れ忘れと読み違えるため。作者の決め C107-3)。
+    請求書の外で受け取った入金 (取消でない) のある出荷も除く (作者の決め C107-3c。訳は同じ)。
     """
     # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
@@ -614,6 +657,7 @@ def unbilled_in_period(customer, period_from, period_to):
         )
         .exclude(pk__in=invoiced)
         .exclude(order_line__no_bill=True)
+        .exclude(payments__status=Payment.STATUS_RECORDED)
         .select_related("delivery_note")
         .order_by("shipped_at", "shipment_no")
     )
