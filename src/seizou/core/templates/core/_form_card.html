@@ -35,7 +35,7 @@
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
   {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと書く (R19)。 #}
-  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (U69・a-blind-15。候補 C24)。画面の全体の欄の無い form の行の上の空きと線は、外し方が決まるまで今のまま #}
+  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (U69・a-blind-15。候補 C24)。画面の全体では行は窓の下の帯になって流れの外に出るので、欄の無い form のカードの中には空きも線も残らない。中身の無いカードの枠は scripts/css/input.css が描かない (C113) #}
   {% if in_modal %}
   {% if form.visible_fields %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
