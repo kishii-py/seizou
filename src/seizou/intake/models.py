@@ -68,6 +68,17 @@ class Extraction(models.Model):
         name = self.customer.name if self.customer_id else "差出人の確認待ち"
         return f"{name} {read:%Y-%m-%d %H:%M}"
 
+    def inbox_message(self):
+        """受信した注文へ回した読み取りの、受信した注文 (connect の Inbox) の行。無ければ None。読むだけ。
+
+        詳細の画面が、受信した注文の詳細と、受け入れて作った受注への link を出すために読む (受注は select_related で一緒に読む)。
+        状態が「受信した注文へ回した」でない物と、connect が入っていない (逆向きの関係 inbox_messages が無い) ときは None。
+        同じ番号が同時に入って結ばれなかった読み取り (services.extract_to_inbox の注記) も None。
+        """
+        if self.status != self.STATUS_INBOX or not hasattr(self, "inbox_messages"):
+            return None
+        return self.inbox_messages.select_related("order").first()
+
     def summary(self):
         """一覧に出す中身の要約 (例「X-100 ×10 ほか 1 行」)。extracted の lines の形が違えば空の字。"""
         lines = self.extracted.get("lines") if isinstance(self.extracted, dict) else None

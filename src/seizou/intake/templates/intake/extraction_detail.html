@@ -7,7 +7,14 @@
 {% endif %}{% endblock %}
 {% block content %}
 {# core の基本情報の並びは全部の列 (読み取った中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す。 #}
+{# 上の青の 1 行は、状態が「読み取った」(頭に「受注登録」のボタンがある) のときだけ。受信した注文へ回した物には、受信した注文の詳細と、受け入れて作った受注への link を 1 行で出す (flow-06)。 #}
+{# 受信した注文の行 (inbox) は model の inbox_message が読む (回していない物と connect の無い会社では None)。「作った受注」の欄も、受信した注文から作った受注を読む。 #}
+{% with inbox=object.inbox_message %}
+{% if object.status == "extracted" %}
 <div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>AI が読み取った値です。得意先の品番・数量・納期を注文書と見比べてから「受注登録」を押してください。</span></div>
+{% elif object.status == "inbox" %}
+<div class="alert alert-info alert-soft mb-4" role="note">{% icon "info" "size-5" %}<span>{% if inbox.order %}受信した注文で受け入れて、受注を作りました。{% elif inbox.status == "rejected" %}受信した注文で断りました。{% else %}受信した注文へ回しました。受け入れるかどうかは受信した注文の画面で決めます。{% endif %}{% if inbox %}{% url "connect:inbox_detail" inbox.pk as inbox_url %}{% if inbox_url %} <a class="link link-primary" href="{{ inbox_url }}">受信した注文を見る</a>{% endif %}{% if inbox.order %}{% url "orders:order_detail" inbox.order.pk as inbox_order_url %}{% if inbox_order_url %}・受注 <a class="link link-primary font-mono" href="{{ inbox_order_url }}">{{ inbox.order.order_no }}</a>{% endif %}{% endif %}{% endif %}</span></div>
+{% endif %}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="mb-2 text-xs font-medium text-base-content/60">基本</p>
   <dl class="grid gap-x-6 sm:grid-cols-2">
@@ -29,7 +36,7 @@
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">作った受注</dt>
-      <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
+      <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% elif inbox.order %}{% url "orders:order_detail" inbox.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ inbox.order.order_no }}</a>{% else %}<span class="font-mono">{{ inbox.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">元のファイル</dt>
@@ -50,4 +57,5 @@
   {% reading_match customer=object.customer as customer_match %}
   {% include "core/_reading_match.html" with match=customer_match label="この得意先の読み取り (これまで)" %}
 </div>
+{% endwith %}
 {% endblock %}
