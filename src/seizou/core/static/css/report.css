@@ -93,6 +93,12 @@ th {
   letter-spacing: 0.5em;
 }
 
+/* 離れて読む札 (現品票・出荷ラベル) の題。要点の字 (.report-big) と番号より目立たないように小さくする (見つけ print-06)。
+   .report-title は 4 つの帳票で共通なので、2 つの帳票が report_base.html の block report_heading を上書きしてこの class を足す */
+.report-title-compact {
+  font-size: 14pt;
+}
+
 /* 取消の書類の印: 題の横に黒い枠の「取消」。白黒の印刷でも読めるように色は黒だけ。題の字の間隔 (letter-spacing) を受け継がない */
 .report-cancelled {
   display: inline-block;
@@ -153,6 +159,15 @@ th {
 .report-meta td {
   padding: 0.5mm 4mm 0.5mm 0;
   text-align: left;
+}
+
+/* 離れて読む要点の行 (現品票の品番・数量・納期、出荷ラベルの品番・数量・得意先の注文番号。見つけ print-06)。
+   現場の人は棚や台車の上の札を 1〜2 m 離れた所から見るので、題 (14pt) と番号 (16pt) より大きい太字にする
+   (かんばんと一般の現品票は品番と収容数を一番大きく書く)。見出しの字は本文のまま。行の間は詰める (A4 の上半分に収める) */
+.report-big td {
+  font-size: 20pt;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 /* 請求書の頭の「ご請求金額 (税込)」と支払期日の枠 (見つけ print-02)。得意先の経理の人が最初に探す「いくらをいつまでに」を、
@@ -283,10 +298,11 @@ th {
   font-weight: 700;
 }
 
-/* 現品票: 上の段に指示書番号を大きく出し、その下に要点と QR の 1 行 2 列の表を置く */
+/* 現品票: 上の段に指示書番号を太字で出し、その下に要点と QR の 1 行 2 列の表を置く。
+   番号は要点の字 (.report-big の 20pt) より小さくする (離れて読むのは品番・数量・納期。見つけ print-06) */
 .report-tag-number {
   margin-bottom: 2mm;
-  font-size: 24pt;
+  font-size: 16pt;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -305,6 +321,13 @@ th {
 .report-tag-summary td {
   padding-top: 0;
   padding-bottom: 0;
+}
+
+/* 要点の見出し (品番・得意先の注文番号 など) は折らない。大きい字の値 (.report-big) に押されて「得意先の注文番
+   号」と 2 行に割れたため (長い品番の目視 11-07)。折るのは値の側 (品名など) だけ */
+.report-tag-summary th,
+.report-label-summary th {
+  white-space: nowrap;
 }
 
 .report-tag-steps th,
@@ -337,7 +360,7 @@ th {
   word-break: break-all;
 }
 
-/* 出荷ラベル: 得意先の名前 (上の段) の下に、要点と QR の 1 行 2 列の表を置く。数量は大きく */
+/* 出荷ラベル: 得意先の名前 (上の段) の下に、要点と QR の 1 行 2 列の表を置く。品番・数量・得意先の注文番号は .report-big */
 .report-label-main {
   margin-bottom: 4mm;
 }
@@ -345,11 +368,6 @@ th {
 .report-label-summary {
   vertical-align: top;
   padding: 0 4mm 0 0;
-}
-
-.report-label-qty {
-  font-size: 16pt;
-  font-weight: 700;
 }
 
 /* 納品書の QR: 明細の表の上の右に 20mm 角で置く (中身の字は出さない) */
