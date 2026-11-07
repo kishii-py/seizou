@@ -8,6 +8,9 @@
   呼び手 (feedback の services) は transaction.atomic の外から呼ぶ (R17)。
 - Django の settings を読むのは env_path の中だけ。端末の seizou github-token は Django を起こさず、.env の道を path で渡して呼ぶ。
 - 表に書かない (表に書くのは feedback の services だけ = R13)。
+- OAuth のデバイスの認証 (依頼書 N320。決め 11-07 09:2x): device_code で 8 文字の符号をもらい、device_token で承認を待つ。
+  Client ID は公開の値 (鍵ではない) で、client secret は使わない (持たない)。戻り先の URL も要らない。
+  device_code の値とトークンの値を、返す字・例外の文・記録に入れない。
 """
 
 from __future__ import annotations
@@ -19,14 +22,22 @@ from pathlib import Path
 
 __all__ = [
     "BODY_CHARS",
+    "CLIENT_ID_ENV",
+    "DEFAULT_CLIENT_ID",
     "DEFAULT_REPO",
+    "DEVICE_CODE_URL",
+    "DEVICE_GRANT",
+    "DEVICE_TOKEN_URL",
     "GithubError",
     "LOGIN_ENV",
     "REPO_ENV",
     "TOKEN_ENV",
     "check_repo",
     "check_token",
+    "client_id",
     "create_issue",
+    "device_code",
+    "device_token",
     "env_path",
     "issue_state",
     "list_issues",
@@ -44,13 +55,23 @@ REPO_ENV = "SEIZOU_GITHUB_ISSUES_REPO"
 LOGIN_ENV = "SEIZOU_GITHUB_LOGIN"
 #: 送り先の既定 (作品の公開のリポジトリ)
 DEFAULT_REPO = "kishii-py/seizou"
+#: 作品の OAuth App の Client ID の置き場 (.env の鍵の名前。デバイスの認証で使う)
+CLIENT_ID_ENV = "SEIZOU_GITHUB_CLIENT_ID"
+#: 作品の OAuth App の Client ID の既定。本体が本人の OAuth App の Client ID を入れる。公開の値。鍵ではない
+DEFAULT_CLIENT_ID = ""
 
 #: API の頭
 API = "https://api.github.com"
 #: 待ちの秒
 TIMEOUT = 10
-#: トークンの頭 (classic と fine-grained)
-TOKEN_PREFIXES = ("ghp_", "github_pat_")
+#: デバイスの認証の 8 文字の符号をもらう口
+DEVICE_CODE_URL = "https://github.com/login/device/code"
+#: デバイスの認証の承認を待ってトークンをもらう口
+DEVICE_TOKEN_URL = "https://github.com/login/oauth/access_token"
+#: デバイスの認証の grant_type
+DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
+#: トークンの頭 (classic と fine-grained と、OAuth App のデバイスの認証で取った物)
+TOKEN_PREFIXES = ("ghp_", "github_pat_", "gho_")
 #: 皆の Issue を探すときの本文の字数 (先頭から)
 BODY_CHARS = 300
 
@@ -69,6 +90,14 @@ MESSAGE_FORBIDDEN = "このトークンには権限がありません。送り�
 MESSAGE_NOT_FOUND = "送り先のリポジトリが見つかりません。owner/name の綴りと、非公開のリポジトリなら repo の権限を確かめてください。"
 MESSAGE_UNPROCESSABLE = "GitHub が内容を受け付けませんでした。題と本文を確かめて、もう一度押してください。"
 MESSAGE_UNREACHABLE = "GitHub につながりませんでした。ネットにつながっているかを確かめて、少し待ってからもう一度押してください。"
+MESSAGE_CLIENT_ID = (
+    "作品の Client ID が GitHub の OAuth App と合いません。"
+    "OAuth App の Device Flow が有効か、置き場の .env の SEIZOU_GITHUB_CLIENT_ID を確かめてください。"
+)
+MESSAGE_DEVICE_CODE = "符号が GitHub と合いません。もう一度「GitHub でログインしてつなぐ」を押してください。"
+MESSAGE_DEVICE_ANSWER = "GitHub の返事が読めませんでした。少し待ってから、もう一度「GitHub でログインしてつなぐ」を押してください。"
+#: Client ID の誤りを表す GitHub の error の値
+_CLIENT_ID_ERRORS = ("device_flow_disabled", "incorrect_client_credentials")
 
 
 class GithubError(Exception):
@@ -157,11 +186,16 @@ def remove_env_value(key: str, path: Path | None = None) -> None:
     os.environ.pop(key, None)
 
 
+def client_id() -> str:
+    """作品の OAuth App の Client ID。.env (無ければ os.environ) の SEIZOU_GITHUB_CLIENT_ID、無ければ DEFAULT_CLIENT_ID。空ならデバイスの認証は使えない。"""
+    return read_env_value(CLIENT_ID_ENV) or DEFAULT_CLIENT_ID
+
+
 # ---- 形の確かめ ----
 
 
 def check_token(token) -> str:
-    """トークンの形を見る (空でなく、空白を含まず、ghp_ か github_pat_ で始まる)。通れば字のまま返し、違えば GithubError。"""
+    """トークンの形を見る (空でなく、空白を含まず、TOKEN_PREFIXES のどれかで始まる)。通れば字のまま返し、違えば GithubError。"""
     text = token if isinstance(token, str) else ""
     if not text or any(ch.isspace() for ch in text) or not text.startswith(TOKEN_PREFIXES):
         raise GithubError(MESSAGE_TOKEN_SHAPE)
@@ -306,3 +340,99 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
             }
         )
     return rows
+
+
+# ---- OAuth のデバイスの認証 (依頼書 N320) ----
+
+#: デバイスの認証の口に付ける見出し (JSON で返してもらう。Authorization は付けない)
+_DEVICE_HEADERS = {"Accept": "application/json"}
+
+
+def _device_error(data) -> str:
+    """GitHub の返事の error の値 (無ければ空の字)。"""
+    error = data.get("error") if isinstance(data, dict) else None
+    return error if isinstance(error, str) else ""
+
+
+def _positive_int(value):
+    """正の整数ならその値、ほかは None (bool は数えない)。"""
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def device_code(client_id: str, scope: str) -> dict:
+    """8 文字の符号をもらう (POST https://github.com/login/device/code)。scope は public_repo か repo。
+
+    返す物は {"device_code", "user_code" (XXXX-XXXX), "verification_uri", "expires_in" (秒), "interval" (秒)}。
+    どれかが欠けた返事・200 以外・つながらないときは日本語の GithubError (Device Flow が無効か Client ID が違うときは MESSAGE_CLIENT_ID)。
+    """
+    # 試験が requests.post を差し替えるため、関数の中で import する。
+    import requests
+
+    try:
+        answer = requests.post(DEVICE_CODE_URL, data={"client_id": client_id, "scope": scope}, headers=_DEVICE_HEADERS, timeout=TIMEOUT)
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    try:
+        data = answer.json()
+    except ValueError:
+        data = None
+    if _device_error(data) in _CLIENT_ID_ERRORS:
+        raise GithubError(MESSAGE_CLIENT_ID)
+    if answer.status_code != 200:
+        raise GithubError(f"GitHub が受け付けませんでした (HTTP {answer.status_code})。少し待ってから、もう一度押してください。")
+    if not isinstance(data, dict):
+        raise GithubError(MESSAGE_DEVICE_ANSWER)
+    texts = {key: data.get(key) for key in ("device_code", "user_code", "verification_uri")}
+    numbers = {key: _positive_int(data.get(key)) for key in ("expires_in", "interval")}
+    if not all(isinstance(value, str) and value for value in texts.values()) or None in numbers.values():
+        raise GithubError(MESSAGE_DEVICE_ANSWER)
+    return {**texts, **numbers}
+
+
+def device_token(client_id: str, device_code: str) -> dict:
+    """承認を待つ間に 1 回聞く (POST https://github.com/login/oauth/access_token)。
+
+    返す物は {"state": "ok", "token": トークン} / {"state": "pending"} / {"state": "slow_down", "interval": 秒か None} /
+    {"state": "expired"} / {"state": "denied"}。ほかの error・200 以外・つながらないときは日本語の GithubError。
+    トークンの値と device_code の値を、例外の文と記録に入れない。
+    """
+    import requests
+
+    try:
+        answer = requests.post(
+            DEVICE_TOKEN_URL,
+            data={"client_id": client_id, "device_code": device_code, "grant_type": DEVICE_GRANT},
+            headers=_DEVICE_HEADERS,
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    try:
+        data = answer.json()
+    except ValueError:
+        data = None
+    error = _device_error(data)
+    if error in _CLIENT_ID_ERRORS:
+        raise GithubError(MESSAGE_CLIENT_ID)
+    if answer.status_code != 200:
+        raise GithubError(f"GitHub が受け付けませんでした (HTTP {answer.status_code})。少し待ってから、もう一度押してください。")
+    if not isinstance(data, dict):
+        raise GithubError(MESSAGE_DEVICE_ANSWER)
+    if error == "authorization_pending":
+        return {"state": "pending"}
+    if error == "slow_down":
+        return {"state": "slow_down", "interval": _positive_int(data.get("interval"))}
+    if error == "expired_token":
+        return {"state": "expired"}
+    if error == "access_denied":
+        return {"state": "denied"}
+    if error == "incorrect_device_code":
+        raise GithubError(MESSAGE_DEVICE_CODE)
+    if error:
+        raise GithubError("GitHub が承認を受け付けませんでした。もう一度「GitHub でログインしてつなぐ」を押してください。")
+    token = data.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise GithubError(MESSAGE_DEVICE_ANSWER)
+    return {"state": "ok", "token": token}
