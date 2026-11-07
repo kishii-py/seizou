@@ -164,6 +164,12 @@ class OrderLine(models.Model):
         return self.order.get_status_display()
 
     @property
+    def detail_link_target(self):
+        """詳細の基本の表でこの明細の値を押した時の行き先 (読むだけ)。親の受注。
+        明細には詳細の画面が無いので、core の field_items が getattr で読み、受注の詳細への link にする (初見テスト R5 の V69。候補 C80)。"""
+        return self.order
+
+    @property
     def price_unit_text(self):
         """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
         式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""

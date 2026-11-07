@@ -157,6 +157,12 @@ class PurchaseOrderLine(models.Model):
         式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
         return price_basis_text(self.price_basis, self.unit)
 
+    @property
+    def detail_link_target(self):
+        """詳細の基本の表でこの明細の値を押した時の行き先 (読むだけ)。親の発注。
+        明細には詳細の画面が無いので、core の field_items が getattr で読み、発注の詳細への link にする (初見テスト R5 の V69。候補 C80)。"""
+        return self.purchase_order
+
     @cached_property
     def shipping_notice(self):
         """出荷の知らせの要約 (読むだけ)。発注の詳細の明細の表が読む。"""
