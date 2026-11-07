@@ -548,7 +548,7 @@ def github_listing(monkeypatch, settings, tmp_path):
     ("url", "chosen", "below"),
     [
         ("/feedback/new/", "feedback-tab-send", 'id="feedback-issues-link"'),
-        ("/feedback/", "feedback-tab-sent", 'id="feedback-filter"'),
+        ("/feedback/", "feedback-tab-sent", 'id="list-card"'),
         ("/feedback/?tab=issues", "feedback-tab-issues", 'id="issues"'),
     ],
 )
@@ -596,7 +596,7 @@ def test_issues_tab_shows_only_search_and_keeps_tab(client, plain, manager, gith
     html = html_of(client.get("/feedback/?tab=issues"))
 
     assert 'id="issues"' in html and 'id="issues-form"' in html
-    assert 'id="rows"' not in html and 'id="feedback-filter"' not in html
+    assert 'id="rows"' not in html and 'id="list-f-status"' not in html
     assert "自分の題" not in html
     assert 'action="/feedback/?tab=issues#issues"' in html
     assert HIDDEN_TAB in html
@@ -608,16 +608,16 @@ def test_issues_tab_shows_only_search_and_keeps_tab(client, plain, manager, gith
     assert "受注の一覧で並びが戻る" in html and "出荷の画面が重い" not in html
     assert 'value="受注 戻る"' in html
     assert HIDDEN_TAB in html
-    assert 'id="rows"' not in html and 'id="feedback-filter"' not in html
+    assert 'id="rows"' not in html and 'id="list-f-status"' not in html
     assert [call[0] for call in github_listing.calls] == ["GET"]
 
     html = html_of(client.get("/feedback/"))
-    assert 'id="rows"' in html and 'id="feedback-filter"' in html and 'id="issues"' in html
+    assert 'id="rows"' in html and 'id="list-f-status"' in html and 'id="issues"' in html
     assert 'action="/feedback/#issues"' in html and HIDDEN_TAB not in html
 
     client.force_login(manager)
-    assert 'id="feedback-github"' in html_of(client.get("/feedback/"))
-    assert 'id="feedback-github"' not in html_of(client.get("/feedback/?tab=issues"))
+    assert 'id="feedback-github-settings"' in html_of(client.get("/feedback/"))
+    assert 'id="feedback-github-settings"' not in html_of(client.get("/feedback/?tab=issues"))
 
 
 def test_send_tab_keeps_screen_and_issue_link_opens_issues_tab(client_logged_in):

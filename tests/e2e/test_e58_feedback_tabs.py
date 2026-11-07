@@ -4,7 +4,7 @@
 期待: 送る画面では帯があり「送る」が選ばれている。「送った一言」で /feedback/ に移り、表 (#rows) が出て「送った一言」が選ばれる。
 「みんなの Issue」で /feedback/?tab=issues に移り、Issue を探す節 (#issues) が出て、表と絞り込みが無く、「みんなの Issue」が選ばれる。
 
-この試験が見る所: `#feedback-tabs` の数・3 つのタブの `aria-selected`・URL・`#rows` と `#feedback-filter` と `#issues` の数と見え方。
+この試験が見る所: `#feedback-tabs` の数・3 つのタブの `aria-selected`・URL・`#rows` と `#list-card` と `#issues` の数と見え方。
 見ない所 (理由): 「探す」を押す形 (GitHub を読むので押さない。探した後もタブが保たれることは tests/test_feedback_views.py が
 requests を差し替えて見る)、「送った一言」の件数の値 (A 社の DB に残るフィードバックの数で変わる。件数の絞りは
 tests/test_feedback_views.py が見る)、B 社 (帯は 2 社で同じ)、左のメニューの入口 (この依頼では変えない)。
@@ -37,7 +37,7 @@ def test_e58_feedback_tabs(page_a, company_a):
     expect(page_a).to_have_url(f"{company_a.base_url}/feedback/?tab=issues")
     expect(page_a.locator("#issues")).to_be_visible()
     expect(page_a.locator("#rows")).to_have_count(0)
-    expect(page_a.locator("#feedback-filter")).to_have_count(0)
+    expect(page_a.locator("#list-card")).to_have_count(0)
     expect(issues).to_have_attribute("aria-selected", "true")
     expect(sent).not_to_have_attribute("aria-selected", "true")
     shot(page_a, "E-58", "a-feedback-tabs")

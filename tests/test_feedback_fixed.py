@@ -454,7 +454,11 @@ def test_login_shows_fixed_and_dismissed_as_two_notices(client, plain, manager):
 def test_dismissed_status_in_choices_and_filter():
     assert ("dismissed", "見送った") in Feedback.STATUS_CHOICES
     assert "dismissed" in services.STATUSES
-    assert services.list_filter({"status": "dismissed"}) == {"status": "dismissed", "kind": ""}
+    from seizou.core.views import FilterSpec
+    from seizou.feedback.views import FeedbackListView
+
+    # 絞りは土台の「絞り込み」の枠に (C114 = 364 回目)。上の test_dismissed_status と同じ形
+    assert FilterSpec(Feedback, FeedbackListView.filters[0]).value({"f_status": "dismissed"}) == "dismissed"
     assert {"dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version"} <= set(Feedback.detail_hidden_fields)
 
 
