@@ -9,10 +9,11 @@ import re
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
 from django.urls import reverse
 
 from seizou.intake import services
-from seizou.intake.forms import UploadForm
+from seizou.intake.forms import AcceptForm, UploadForm
 from seizou.intake.models import Extraction
 from seizou.masters.services import create_item, create_partner
 from seizou.orders.models import Order
@@ -221,6 +222,49 @@ def test_accept_twice_is_red(client_logged_in, extraction, user):
     body = again.content.decode()
     assert 'data-notice="stop"' in body and "受注" in body
     assert Order.objects.count() == 1
+
+
+# ---------------------------------------------------------------- 受注にする画面の品番ごとの枠 (初見テスト R5 の候補 C91 の その 2)
+
+DASH = '<span class="text-base-content/50">—</span>'
+
+
+def _frame(body, name):
+    """受注にする画面の data-accept-part="<name>" の枠の字 (その印から、次の枠の印か </form> まで)。"""
+    start = body.index(f'data-accept-part="{name}"')
+    ends = [at for at in (body.find("data-accept-part=", start + 1), body.find("</form>", start)) if at != -1]
+    return body[start : min(ends)]
+
+
+def test_accept_screen_puts_line_values_beside_each_part_field(client_logged_in, extraction):
+    """受注にする画面で、欄 1 つの枠に、その品番の読み取った明細の数量・単位・納期・単価が並ぶ (受信した注文の受け入れと同じ形)。"""
+    response = client_logged_in.get(reverse("intake:extraction_accept", args=[extraction.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    first, second = _frame(body, "item_1"), _frame(body, "item_2")
+    assert "X-100" in first and ">10 個<" in first and "2026-11-20" in first and ">¥120<" in first
+    assert 'name="item_1"' in first
+    assert "2026-11-27" not in first and 'name="item_2"' not in first
+    # 単価が null の行は、単価の dd に薄い「—」
+    assert "X-200" in second and ">5 個<" in second and "2026-11-27" in second and 'name="item_2"' in second
+    assert f'単価</dt><dd class="tabular-nums">{DASH}</dd>' in second
+    assert "None" not in second
+    # 上の AI の知らせと読み取った明細の表は今のまま、枠より上に出る
+    assert body.index("AI が読み取った値です") < body.index("読み取った明細 (") < body.index('data-accept-part="item_1"')
+
+
+def test_accept_card_hides_unit_price_without_money(extraction):
+    """金額の閲覧の無い人 (seizou.hide_money) には、枠に単価の行を dt も dd も出さない (上の表の単価の列と同じ)。"""
+
+    def render(hide):
+        return render_to_string(
+            "intake/_extraction_accept_card.html", {"form": AcceptForm(instance=extraction), "seizou": {"hide_money": hide}}
+        )
+
+    hidden, shown = render(True), render(False)
+    assert "単価</dt>" not in hidden and "¥120" not in hidden
+    assert "単価</dt>" in shown and "¥120" in shown
 
 
 def test_list_shows_record(client_logged_in, extraction):
