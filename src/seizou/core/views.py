@@ -1175,7 +1175,9 @@ class BaseDetailView(ScreenMixin, DetailView):
     def field_items(self, obj) -> list[dict]:
         """項目の一覧。1 項目 = {"label", "value", "master", "file", "money", "boolean"} (file はファイルの項目だけ、file_info の形。
         money は金額の項目なら真で、テンプレートが yen_if で ¥ を付ける。テンプレートの filter の引数に使うので、全部の行が鍵を持つ。
-        boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。"""
+        boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。
+        url は、マスターでない相手に詳細の画面があり、部署でその部品を使える人のときだけ、その詳細の URL (無ければ None。全部の行が鍵を持つ)。
+        明細は親の伝票 (model の detail_link_target)。テンプレートが link にする (record_url。候補 C80)。"""
         items = []
         hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
@@ -1193,18 +1195,19 @@ class BaseDetailView(ScreenMixin, DetailView):
                     "money": access.is_money_name(f.name),
                     "master": value if is_master(value) else None,
                     "file": file_info(value, file_url_for(obj, f.name)) if is_file else None,
+                    "url": None if is_file else self.record_url(value),
                 }
             )
             # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (初見テスト 2 回目の E-05)
             linked = getattr(value, "item", None) if value is not None and not is_master(value) else None
             if is_master(linked) and not any(c.name == "item" for c in obj._meta.concrete_fields):
                 items.append(
-                    {"label": "部品", "value": linked, "boolean": False, "master": linked, "file": None, "money": False}
+                    {"label": "部品", "value": linked, "boolean": False, "master": linked, "file": None, "money": False, "url": None}
                 )
         for col in company_fields.columns_for(obj.__class__):
             value = company_fields.ext_value(obj, col.name)
             items.append(
-                {"label": col.label, "value": value, "boolean": isinstance(value, bool), "master": None, "file": None, "money": False}
+                {"label": col.label, "value": value, "boolean": isinstance(value, bool), "master": None, "file": None, "money": False, "url": None}
             )
         return items
 
@@ -1236,6 +1239,25 @@ class BaseDetailView(ScreenMixin, DetailView):
         """見出しの横の状態の印。choices を持つ status の項目があればその表示名、無ければ None。"""
         field = next((f for f in obj._meta.concrete_fields if f.name == "status" and f.choices), None)
         return display_value(obj, "status") if field is not None else None
+
+    def record_url(self, value) -> str | None:
+        """基本の表の値を押した時に移る詳細の URL (field_items の url)。移れなければ None (テンプレートは今の字のまま出す)。
+
+        マスターでない相手 (_meta を持つ物) で、その詳細の画面が引けるときだけ URL。明細は model の detail_link_target
+        (親の受注・発注。明細に詳細の画面が無いため) を読む。core は受注と発注の model を知らない (detail_hidden_fields と同じ約束)。
+        マスターは小窓 (master_link)、人と ContentType は詳細の URL が引けないので None。
+        URL が引けたときだけ、部署でその部品を開けるかを access.can_open の record=False で見る (関わる記録の link の
+        orders/timeline.py の _linked_url と同じ判定。log の時に、開いていない画面を開いたと記録に書かない)。
+        URL の無い値では self.request を読まない (request の無い BaseDetailView() でも field_items が通る)。
+        初見テスト R5 の V69。候補 C80。
+        """
+        if value is None or getattr(value, "_meta", None) is None or is_master(value):
+            return None
+        target = getattr(value, "detail_link_target", value)
+        url = model_url(target.__class__, "detail", target.pk)
+        if url is None or not access.can_open(self.request.user, target._meta.app_label, record=False):
+            return None
+        return url
 
 
 def _tab_specs(tabs) -> list[tuple]:
