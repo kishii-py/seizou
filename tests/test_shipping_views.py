@@ -142,6 +142,7 @@ def test_shipment_detail_has_order_detail_button(logged_in, user, order):
 
     R5 の起こし直しでは、出荷の詳細に受注へ移る link が 0 だった。並びは PDF の次で、納品書の無い出荷の白の「編集」と
     緑の「納品書作成」の前 (緑は 1 つのまま)。
+    基本情報の「受注の明細」も同じ受注へ移る link (候補 C80)。
     """
     shipment = shipping_services.ship(order.lines.get(), Decimal("4"), timezone.localdate(), user)
     response = logged_in.get(reverse("shipping:shipment_detail", args=[shipment.pk]))
@@ -149,8 +150,9 @@ def test_shipment_detail_has_order_detail_button(logged_in, user, order):
     body = response.content.decode()
 
     href = f'href="{reverse("orders:order_detail", args=[order.pk])}"'
-    assert body.count(href) == 1
     button = f'<a class="btn btn-outline border-base-300" {href}>'
+    assert body.count(button) == 1
+    assert body.count(href) == 2
     assert button in body
     assert "受注の詳細" in body[body.index(button) : body.index("</a>", body.index(button))]
 
