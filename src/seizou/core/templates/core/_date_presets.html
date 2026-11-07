@@ -1,0 +1,6 @@
+{# 期間の絞りの近道「今日・今週・今月・先月」(受け渡しの seizou-部品の6案-20261107/指示書.md の 1。本人の決め 11-07 18:2x「いつからいつまでは良くあるパーツなので」)。core/_filters.html が期間の 2 つの欄の下に include する。全部の一覧の期間の欄に同じ形で出る。 #}
+{# 始めと終わりはサーバーが会社の時刻で決めて data 属性に書く (FilterSpec.date_presets。訳: ブラウザの時刻の差で 1 日ずれないため)。押すと js/seizou-date-presets.js が 2 つの欄に入れて change を出し、form の hx-trigger (change delay:800ms from:[data-list-filter][type=date]。core/list.html) が今の絞りと同じく #rows を取り直す。 #}
+{# 今の欄の値と同じ近道は選んだ印 (主色の薄い地と aria-pressed)。印はサーバーが描き、行の部分の応答では core/_filter_clear.html がこの箱を oob=True で描き直す (JS は class を触らない。class は丸ごと書く = R19)。 #}
+<div id="list-f-{{ f.name }}-presets" class="mt-2 flex flex-wrap gap-1" role="group" aria-label="{{ f.label }}の近道"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for p in f.presets %}{% if p.selected %}<button type="button" class="btn btn-xs btn-soft btn-primary" aria-pressed="true" data-preset-start="{{ p.start }}" data-preset-end="{{ p.end }}">{{ p.label }}</button>{% else %}<button type="button" class="btn btn-xs btn-ghost text-base-content/70" aria-pressed="false" data-preset-start="{{ p.start }}" data-preset-end="{{ p.end }}">{{ p.label }}</button>{% endif %}{% endfor %}
+</div>
