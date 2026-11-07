@@ -3,11 +3,14 @@
 会社の設定の 2 つの時間の読み方と、画面から変えない事を見る。
 middleware は試験の settings に入れていないので、試験ごとに MIDDLEWARE に HtmxLoginMiddleware とこの middleware を足す。
 時計は core.middleware._now を monkeypatch で差し替え、時間を進めて切れる所を見る。
-取り直しの見出しを付ける base.html と、雛形の MIDDLEWARE の 1 行は字で見る。利用者は作り物だけを使う。
+取り直しの見出しを付ける base.html と、雛形の MIDDLEWARE の 1 行は字で見る。
+ログインの画面の「ログイン状態を保存する」の印の既定と、印を付けた人の cookie の長さも見る。利用者は作り物だけを使う。
 """
 
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+
+import re
 
 import pytest
 from django.contrib.auth import SESSION_KEY, get_user_model
@@ -17,7 +20,7 @@ from django.test import RequestFactory
 from django.urls import reverse
 
 import seizou.scaffold
-from seizou.core import conf, doctor, middleware, services
+from seizou.core import conf, doctor, login_guard, middleware, services
 from seizou.core.middleware import LOGIN_AT_KEY, POLL_HEADER, SEEN_AT_KEY, TOUCH_SECONDS, SessionTimeoutMiddleware
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +30,8 @@ HTMX_LOGIN_PATH = "seizou.core.middleware.HtmxLoginMiddleware"
 START = 1_800_000_000
 MINUTE = 60
 HOUR = 60 * MINUTE
+#: 作り物の利用者のパスワード (試験だけの平文。ログインの締め出しの数がほかの試験と混ざらないよう、利用者の名前もこのファイルだけの物にする)
+WORKER_PASSWORD = "tests-only-pass-1108"
 
 
 # ---------------------------------------------------------------- 1. 会社の設定の 2 つの時間
@@ -97,7 +102,7 @@ def timeout_chain(settings):
 
 @pytest.fixture
 def worker(db):
-    return get_user_model().objects.create_user("jikangire01", password="tests-only-pass-1108")
+    return get_user_model().objects.create_user("jikangire01", password=WORKER_PASSWORD)
 
 
 @pytest.fixture
@@ -245,3 +250,60 @@ def test_scaffold_places_timeout_after_htmx_login_and_before_messages():
     messages = lines.index('"django.contrib.messages.middleware.MessageMiddleware",')
     assert htmx < timeout < messages
     assert "SESSION_COOKIE_AGE" not in text
+
+
+# ---------------------------------------------------------------- 3. ログインの画面と印の既定
+
+
+@pytest.fixture
+def fresh_login_guard():
+    # 締め出しの数 (core.login_guard) は試験の間に残るので、前と後に消す (test_core_login_guard.py と同じ)。
+    store = login_guard.cache
+    store.clear()
+    yield
+    store.clear()
+
+
+def remember_input(html: str) -> str:
+    match = re.search(r'<input type="checkbox" name="remember"[^>]*>', html)
+    assert match, "ログイン状態を保存するの印が無い"
+    return match.group(0)
+
+
+@pytest.mark.django_db
+def test_remember_is_unchecked_at_first_and_kept_on_redraw(client, worker, fresh_login_guard):
+    first = client.get(reverse("core:login"))
+    assert first.status_code == 200
+    assert "checked" not in remember_input(first.content.decode())
+
+    redraw = client.post(reverse("core:login"), {"username": "jikangire01", "password": "tests-only-wrong-1108", "remember": "1"})
+    assert redraw.status_code == 200
+    assert "checked" in remember_input(redraw.content.decode())
+
+    redraw = client.post(reverse("core:login"), {"username": "jikangire01", "password": "tests-only-wrong-1108"})
+    assert "checked" not in remember_input(redraw.content.decode())
+
+
+@pytest.mark.django_db
+def test_remember_sets_cookie_to_max_hours_and_unchecked_ends_with_browser(client, worker, fresh_login_guard):
+    response = client.post(reverse("core:login"), {"username": "jikangire01", "password": WORKER_PASSWORD, "remember": "1"})
+    assert response.status_code == 302
+    assert SESSION_KEY in client.session
+    assert 0 < client.session.get_expiry_age() <= 43200
+    assert client.session.get_expire_at_browser_close() is False
+
+    client.logout()
+    response = client.post(reverse("core:login"), {"username": "jikangire01", "password": WORKER_PASSWORD})
+    assert response.status_code == 302
+    assert SESSION_KEY in client.session
+    assert client.session.get_expire_at_browser_close() is True
+
+
+@pytest.mark.django_db
+def test_remember_follows_company_max_hours(client, worker, fresh_login_guard, settings):
+    settings.SEIZOU = {"session_max_hours": 8}
+
+    client.post(reverse("core:login"), {"username": "jikangire01", "password": WORKER_PASSWORD, "remember": "1"})
+
+    assert 0 < client.session.get_expiry_age() <= 8 * HOUR
+    assert client.session.get_expire_at_browser_close() is False
