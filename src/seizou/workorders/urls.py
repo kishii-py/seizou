@@ -35,6 +35,7 @@ urlpatterns = [
     path("<int:pk>/tag/", views.workorder_tag, name="workorder_tag"),
     path("<int:pk>/tag/pdf/", views.workorder_tag_pdf, name="workorder_tag_pdf"),
     path("<int:pk>/scan/", views.workorder_scan, name="workorder_scan"),
+    path("reader/", views.workorder_reader, name="workorder_reader"),
     path("plans/", views.PlanBoardView.as_view(), name="plan_index"),
     path("plans/place/", views.plan_place, name="plan_place"),
     path("plans/steps/<int:pk>/", views.PlanDetailView.as_view(), name="plan_detail"),

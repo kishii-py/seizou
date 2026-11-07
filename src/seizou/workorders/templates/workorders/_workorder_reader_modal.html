@@ -1,0 +1,24 @@
+{% load seizou_icons %}
+{# 上の帯の「現品票を読む」の小窓の中身 (workorders.views.workorder_reader)。頭は入力の小窓 (core/_form_modal.html) と同じ形 (題と閉じるボタン)。 #}
+{# 止まった知らせ (読み取れない QR・見つからない指示書) は小窓の上の赤い帯 (core/_notices.html。CLAUDE.md の知らせの強さの小窓の例外)。 #}
+{# 「指示書」の欄 (カメラの無い端末で、指示書番号か品番を打って選ぶ): 選ぶと GET で同じ口へ送り、返った中身で小窓の箱を差し替える。 #}
+{# 送る合図は元の select の change だけで、空の値では送らない。保存のボタンが無いので、欄の中の Enter は core/_enter_guard.html で止める (止めないと、ブラウザが form をふつうに送り、開いていた画面ごと移る)。 #}
+<div>
+  <div class="mb-4 flex items-start justify-between gap-4">
+    <h3 class="min-w-0 truncate text-lg font-bold" title="現品票を読む">現品票を読む</h3>
+    <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる">{% icon "x" "size-4" %}</button></form>
+  </div>
+  {% include "core/_notices.html" %}
+  {% with field=form.workorder %}
+  <form hx-get="{% url 'workorders:workorder_reader' %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-trigger="change[target.value] from:#{{ field.auto_id }}" data-enter-guard>
+    <div class="min-w-0">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+      </div>
+      {{ field }}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/50">{{ field.help_text }}</p>{% endif %}
+    </div>
+  </form>
+  {% endwith %}
+  {% include "core/_enter_guard.html" %}
+</div>

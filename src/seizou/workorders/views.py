@@ -5,13 +5,17 @@
 現品票の印刷用の HTML と PDF は画面でない口なので、関数の view にした (shipping の納品書と同じ形)。
 PDF を作れない環境 (WeasyPrint か OS の pango が無い) では、現品票の印刷用の HTML に知らせを付けて返す。
 現品票の QR を読んだ先 (読み取りの着地) は関数の view で、工程ごとに実績の新規登録へ移る link を並べる。記録の後はこの画面へ戻る (?next=)。
+上の帯の「現品票を読む」の小窓 (workorder_reader) は、QR の字か「指示書」の欄から指示書を引き、着地と同じ工程の行を小窓に出す。別の住所で刷った現品票の QR は開かない。
 """
+
+from urllib.parse import urlsplit
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseBadRequest
-from django.shortcuts import get_object_or_404, render
-from django.urls import reverse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import Resolver404, get_script_prefix, resolve, reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
@@ -21,12 +25,21 @@ from seizou.core.exceptions import RuleError
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice
 
 from . import plans, services, worklist
-from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderIssueForm
+from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderFindForm, WorkOrderIssueForm
 from .models import WorkOrder, WorkOrderStep, with_recorded_total
 from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
 #: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (05 の 6 節の文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+
+#: 上の帯の「現品票を読む」の小窓の赤い帯 (段 2 の止まった。小窓の中なので core/_notices.html の帯)。
+#: QR の字が、この住所で刷った現品票の QR でない (別の住所・別の画面の QR・URL でない字)。
+READER_NOT_TAG = (
+    "読み取れません。この QR は、このシステムの現品票の QR ではありません。"
+    "現品票の QR を写すか、「指示書」の欄で探してください。"
+)
+#: 現品票の QR か「指示書」の欄の番号の指示書が無い (消えた・数字でない)。
+READER_NOT_FOUND = "読み取れません。その指示書が見つかりません。「指示書」の欄で探し直してください。"
 
 
 #: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。C27-1 = a)
@@ -168,7 +181,7 @@ class WorkOrderModalView(BaseModalView):
 
 
 class WorkOrderSelectView(BaseSelectView):
-    """指示書の候補の口。製造の完了を入庫にするの「指示書」の欄 (stock の FinishedForm) が使う。
+    """指示書の候補の口。製造の完了を入庫にするの「指示書」の欄 (stock の FinishedForm) と、上の帯の「現品票を読む」の「指示書」の欄 (WorkOrderFindForm) が使う。
 
     候補は発行の指示書だけ (今の選ぶ欄と同じ)。並びは発行日の新しい順。
     候補の字は 2 段 (上 = 指示書番号、下 = 受注の明細。core/select_options.py の LINES)。
@@ -269,6 +282,22 @@ def workorder_tag_pdf(request, pk):
     return response
 
 
+def _scan_workorders():
+    """読み取りの着地と上の帯の小窓が指示書を引く形 (要点の品番・品名・納期・得意先を 1 回で読む)。"""
+    return WorkOrder.objects.select_related("order_line__order__customer", "order_line__item")
+
+
+def _scan_context(workorder) -> dict:
+    """読み取りの着地と上の帯の小窓が同じ工程の行を描く context (workorder と rows)。表に書かない。"""
+    # 工程ごとの実績の合計・残・「完了」の印・今の工程のために、工程の行を plans.step_rows で読む (読むだけ。表に書かない)。
+    # 残 = 予定の数 - 実績の合計 (進捗の盤の残と同じ引き算。予定を超えるとマイナス)。
+    rows = plans.step_rows(workorder)
+    for row in rows:
+        recorded = row["recorded"]
+        row["remaining"] = None if recorded is None else row["step"].planned_qty - recorded
+    return {"workorder": workorder, "rows": rows}
+
+
 @never_cache
 @login_required
 def workorder_scan(request, pk):
@@ -277,21 +306,12 @@ def workorder_scan(request, pk):
     画面の応答は土台の画面と同じくブラウザに保存させない (never_cache)。表に書かない (移るだけの link)。
     見出しと <title> は core/base.html が screen_name を読むので、土台の画面と同じ鍵を context に入れる。
     """
-    workorder = get_object_or_404(
-        WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
-    )
-    # 工程ごとの実績の合計・残・「完了」の印・今の工程のために、工程の行を plans.step_rows で読む (読むだけ。表に書かない)。
-    # 残 = 予定の数 - 実績の合計 (進捗の盤の残と同じ引き算。予定を超えるとマイナス)。
-    rows = plans.step_rows(workorder)
-    for row in rows:
-        recorded = row["recorded"]
-        row["remaining"] = None if recorded is None else row["step"].planned_qty - recorded
+    workorder = get_object_or_404(_scan_workorders(), pk=pk)
     return render(
         request,
         "workorders/workorder_scan.html",
         {
-            "workorder": workorder,
-            "rows": rows,
+            **_scan_context(workorder),
             "screen_name": "現品票の読み取り",
             "screen_help": (
                 "現品票の QR から開く画面です。"
@@ -299,4 +319,70 @@ def workorder_scan(request, pk):
             ),
             "screen_app": "workorders",
         },
+    )
+
+
+def _scan_pk_from_qr(text: str, request) -> int | None:
+    """カメラが読んだ QR の字から、読み取りの着地の指示書の pk を出す。この住所で刷った現品票の QR でなければ None。
+
+    通すのは、開いている住所 (名前とポート) と同じ住所の URL で、道が読み取りの着地 (workorders:workorder_scan) の物だけ。
+    別の住所・javascript: などの URL・別の画面の道 (出荷ラベルや納品書の QR)・URL でない字は None。
+    scheme (http か https か) の違いは見ない。http の置き場の時に刷り、https に移った後に読む札を止めないため。
+    道の頭 (script prefix) が「/」でない置き場では、頭を外して「/」から始まる形にしてから引く。
+    訳: 協力企業や取引先の seizou で刷った現品票を、この会社の同じ番号の指示書と取り違えて実績を入れないため (別の住所の札は開かず、「指示書」の欄で探す)。出所 = 作者の決め (2026-11-07)。
+    変えてよい条件 = 同じ会社が 2 つ以上の住所で開くことになったとき (通す住所の並びを会社の設定に持つ形にする)。
+    """
+    if not url_has_allowed_host_and_scheme(text, allowed_hosts={request.get_host()}, require_https=False):
+        return None
+    path = urlsplit(text).path
+    prefix = get_script_prefix()
+    if prefix != "/" and path.startswith(prefix):
+        path = "/" + path[len(prefix):]
+    try:
+        match = resolve(path)
+    except Resolver404:
+        return None
+    if match.view_name != "workorders:workorder_scan":
+        return None
+    return match.kwargs["pk"]
+
+
+@never_cache
+@login_required
+def workorder_reader(request):
+    """上の帯の「現品票を読む」の小窓。QR の字か「指示書」の欄から指示書を引き、読み取りの着地と同じ工程の行を小窓に出す。
+
+    使う人: 製造 / いつ: 工程を終えたとき、どの画面を開いていても / 何のために: 現品票の QR か指示書番号から工程を選び、画面を移らずに実績を入れる / 次にすること: 工程の「実績を入力」
+    QR を読む・小窓を開くだけでは何も記録しない (指示書の状態は実績だけから出す決め)。表に書かない GET だけの口。
+    小窓の見出し (HX-Target が小窓の箱) の要求にだけ小窓の中身を返し、ほかの要求 (直に開いた・新しいタブ) は指示書の一覧へ移す。
+    GET の code (カメラが読んだ QR の字) があれば QR の字で、無くて workorder (「指示書」の欄の pk) があればその番号で引く。
+    どちらも無ければ (空の字も) 帯の無い読み取りの小窓を返す。部署は見ない (実績の新規登録が部署の門を持つ)。
+    """
+    headers = request.headers
+    if not (headers.get("HX-Request") and headers.get("HX-Target") == BaseFormView.MODAL_TARGET):
+        return redirect("workorders:workorder_list")
+    code = request.GET.get("code", "")
+    raw = request.GET.get("workorder", "")
+    workorder = None
+    notice = None
+    if code:
+        pk = _scan_pk_from_qr(code, request)
+        if pk is None:
+            notice = Notice("入力", READER_NOT_TAG)
+        else:
+            workorder = _scan_workorders().filter(pk=pk).first()
+    elif raw:
+        # isdigit でなく isdecimal で見る (上付きの「²」は isdigit が真で int が落ちる)。
+        if raw.isdecimal():
+            workorder = _scan_workorders().filter(pk=int(raw)).first()
+    if workorder is not None:
+        return render(
+            request, "workorders/_workorder_scan_modal.html", {**_scan_context(workorder), "in_modal": True}
+        )
+    if notice is None and (code or raw):
+        notice = Notice("入力", READER_NOT_FOUND)
+    return render(
+        request,
+        "workorders/_workorder_reader_modal.html",
+        {"form": WorkOrderFindForm(), "notice": notice, "in_modal": True},
     )
