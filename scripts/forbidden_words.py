@@ -17,7 +17,8 @@
   python scripts/forbidden_words.py            標準入力の文を見る (- でも同じ)
 終わりの番号: 0 = 当たり無し、1 = 当たりあり、2 = 一覧が読めない・道が無い・見た物が 0。
 
-.githooks/pre-push と CI と取り込みの確かめが、この 1 本を使う。標準の library だけで書く。
+.githooks/pre-push (手元) と取り込みの確かめが、この 1 本を使う。CI ではまだ回していない
+(一覧を GitHub の secret に入れた後に、CI の job を足す)。標準の library だけで書く。
 """
 
 from __future__ import annotations
