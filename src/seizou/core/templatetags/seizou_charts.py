@@ -83,6 +83,9 @@ def chart_for(rows, *, limit: int = MAX_BARS) -> dict:
         "bottom": _num(height - PAD),
         "bars": bars,
         "rest": max(len(rows) - len(shown), 0),
+        "row_height": ROW,
+        "plot_left": _num(LABEL_X),
+        "plot_width": _num(BAR_LEFT + BAR_MAX + VALUE_GAP - LABEL_X),
     }
 
 
