@@ -6,6 +6,7 @@
 書くときは workorders.services を通す。
 指示書の進みの状態 (未着手・着手済・完了・取消) は列に持たず、工程の実績から WorkOrder.progress_state で毎回出す
 (初見テスト R5 の候補 C27。本人の決め 11-07 00:36 = WO-1 b)。完了は工程の実績の完了の印から出す (PROG-1。初見テスト R5 の候補 C103)。
+工程ごとの進み (一覧の「工程の進み」の列の棒) も列に持たず、同じ実績のまとめから WorkOrder.step_progress で毎回出す (本人の決め 11-07 18:2x〜18:4x)。
 """
 
 from decimal import Decimal
@@ -31,6 +32,32 @@ class StepTotals(NamedTuple):
 
 #: 実績の無い工程 (辞書に無い工程と、進捗の部品が無い置き場)。
 NO_TOTALS = StepTotals()
+
+
+class StepProgressRow(NamedTuple):
+    """工程 1 つの進み (一覧の「工程の進み」の列の 1 行。読むだけ)。seq = 順・name = 工程の名前・planned = 予定の数・
+    recorded = 良品の合計・pct = 棒の長さ (0〜100 の整数。実績 ÷ 予定を 100% で止めて切り捨て)・full = 予定の数に届いた (100%)。"""
+
+    seq: int
+    name: str
+    planned: Decimal
+    recorded: Decimal
+    pct: int
+    full: bool
+
+
+class StepProgress(list):
+    """指示書の工程ごとの進みの並び (StepProgressRow を工程の順に)。一覧の行 (workorders/_row.html) は for で回し、
+    CSV と title は str (「切断 3/10・曲げ 0/10」。工程が無ければ空の字) を使う。"""
+
+    def __str__(self):
+        return "・".join(f"{row.name} {_qty_text(row.recorded)}/{_qty_text(row.planned)}" for row in self)
+
+
+def _qty_text(value) -> str:
+    """数量の字。末尾の 0 を落とす (10.00 → 10、2.50 → 2.5)。progress・stock・purchasing の models と同じ関数 (ほかの部品の model を import しない)。"""
+    dec = value if isinstance(value, Decimal) else Decimal(str(value))
+    return format(dec.normalize(), "f") if dec != dec.to_integral_value() else str(dec.quantize(Decimal(1)))
 
 
 def _dec(value) -> Decimal:
@@ -142,7 +169,8 @@ class WorkOrder(models.Model):
         if prefetched is not None and all(has_step_totals(step) for step in prefetched):
             steps = list(prefetched)
         else:
-            steps = list(with_recorded_total(self.steps.order_by()))
+            # 工程の名前 (step_progress) も同じ 1 回で読む (select_related)。
+            steps = list(with_recorded_total(self.steps.select_related("process").order_by()))
         return steps, {step.pk: step_totals_of(step) for step in steps}
 
     def progress_state(self) -> str:
@@ -155,6 +183,33 @@ class WorkOrder(models.Model):
     def progress_state_label(self) -> str:
         """進みの状態の字 (一覧の「状態」の列と CSV。印は workorders_tags の workorder_badge)。"""
         return self.PROGRESS_LABELS[self.progress_state()]
+
+    def step_progress(self) -> StepProgress:
+        """工程ごとの進み (StepProgress = 工程の順の StepProgressRow の並び)。一覧の「工程の進み」の列 (workorders/_row.html の棒) と CSV が使う。読むだけ。
+
+        数は進捗の盤 (progress.boards) と同じ: 予定の数 = planned_qty、実績 = 良品の合計 (recorded_total。不良は数えない)。
+        棒の長さ (pct) は 実績 ÷ 予定 を 100% で止めて切り捨てた整数。予定の数に届いた工程は full (一覧は棒と数を緑にする)。
+        工程を実績のまとめ付きで prefetch してあれば (指示書の一覧) 問い合わせをしない (_steps_and_totals)。取消の指示書も工程があれば出す
+        (取消は「状態」の列の印で分かる)。工程の無い指示書は空の並び。
+        訳: 指示書の一覧で、どの工程がどこまで進んだかを行の中で見られるようにするため (本人の決め 11-07 18:2x〜18:4x「4はありだね」)。
+        """
+        steps, totals = self._steps_and_totals()
+        rows = StepProgress()
+        for step in sorted(steps, key=lambda step: (step.seq, step.pk)):
+            recorded = totals.get(step.pk, NO_TOTALS).recorded
+            planned = _dec(step.planned_qty)
+            ratio = recorded / planned if planned > 0 else _ZERO
+            rows.append(
+                StepProgressRow(
+                    seq=step.seq,
+                    name=step.process.name,
+                    planned=planned,
+                    recorded=recorded,
+                    pct=int(min(ratio, 1) * 100),
+                    full=planned > 0 and recorded >= planned,
+                )
+            )
+        return rows
 
     @property
     def progress_records(self):
