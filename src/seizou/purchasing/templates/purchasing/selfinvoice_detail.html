@@ -7,6 +7,8 @@
 {# 確認できない明細 (RE) の答えの横に、発注の詳細 (会話のタブ) への link と次の手の字。合計の枠に確認済の金額 (承諾と直した内容の承諾の明細) と、答え待ち・確かめ中の金額 (小計 − 確認済)。 #}
 {# 「⋯」の「取消」(小窓) は、取消でなく相手の答えが届いていない仕入明細で、発注の権限のある人だけ (決め C111-3)。 #}
 {# 取り消した仕入明細は上に取消の黄の 1 行。取り消した後に相手の前の版への答えが届いたら (行き違い) その黄の 1 行も出す (どちらの記録も消さず、状態を自動で戻さない)。 #}
+{# 頭の右の緑は「提案を受け入れる」(取消でなく、提案の答えの明細があり、発注の権限のある人だけ)。 #}
+{% block edit_button %}{% can_write "purchasing.SelfInvoice" as can_si %}{% if can_si and object.status != "cancelled" and object.has_proposal %}<a class="btn btn-primary" href="{% url 'purchasing:selfinvoice_accept' object.pk %}">{% icon "check" "size-4" %}提案を受け入れる</a>{% endif %}{% endblock %}
 {% block more %}{% can_write "purchasing.SelfInvoice" as can_si %}{% if can_si and object.status != "cancelled" and not object.has_reply %}{% url 'purchasing:selfinvoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block content %}<div id="selfinvoice-alert">{% if object.status == "cancelled" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-cancelled-alert>{% icon "alert" "size-5" %}<span>この仕入明細は取り消しました (第 {{ object.revision_no }} 版で取消を送りました)。入っていた受入は、また仕入明細に入れられます。</span></div>

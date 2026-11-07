@@ -15,7 +15,7 @@ from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
 from .forms import PurchaseOrderChangeForm
 from .forms import ReceiptForm
-from .forms import SelfInvoiceCancelForm, SelfInvoiceForm
+from .forms import SelfInvoiceAcceptForm, SelfInvoiceCancelForm, SelfInvoiceForm
 from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
 from .models import SelfInvoice
@@ -315,6 +315,25 @@ class SelfInvoiceCancelView(BaseFormView):
     template_name = "purchasing/selfinvoice_cancel.html"
     screen_name = "仕入明細を取り消す"
     screen_help = "相手がまだどの明細にも答えていない仕入明細を取り消し、取消を相手へ送ります。入っていた受入は、また仕入明細に入れられます。"
+
+
+class SelfInvoiceAcceptProposalsView(BaseFormView):
+    """相手の提案を受け入れる入力。
+
+    使う人: 経理・生産管理 / いつ: 相手から提案の答えが届き、内容が合っていると分かったとき / 何のために: 提案のとおりに仕入明細を直して相手へ送る / 次にすること: 相手の修正の承諾を待つ
+
+    取適法: 提案を受け入れて単価が下がる明細があれば、保存の前に黄色の確かめを出す (purchasing.checks の LawSelfInvoicePriceDown。止めない)。
+    """
+
+    model = SelfInvoice
+    form_class = SelfInvoiceAcceptForm
+    service = staticmethod(services.accept_self_invoice_proposals)
+    screen_name = "提案を受け入れる"
+    screen_help = "相手が提案と答えた明細のうち、印を付けた明細を提案の数と単価に直し、修正仕入明細として相手へ送ります。"
+
+    def get_queryset(self):
+        # 取消でない仕入明細だけ (取消は 404)。
+        return SelfInvoice.objects.exclude(status=SelfInvoice.STATUS_CANCELLED)
 
 
 class PurchaseOrderLineSelectView(BaseSelectView):

@@ -3027,7 +3027,6 @@ MESSAGE_SELF_INVOICE_NO_CONNECTION = (
     "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
 )
 MESSAGE_SELF_INVOICE_SHAPE = "仕入明細の形が読めません。self_invoice_no・revision_no・lines を送ってください。"
-MESSAGE_SELF_INVOICE_NOT_YET = "仕入明細の修正は、まだ受けられません。"
 #: 仕入明細の文書の種類 (版 1 は仕入明細、版 2 からは修正仕入明細)
 _SI_DOCUMENTS = frozenset({edi_codes.SI_DOC_NEW, edi_codes.SI_DOC_REVISED})
 
@@ -3138,6 +3137,58 @@ def send_self_invoice(self_invoice, user):
     saved = purchasing_services.record_self_invoice_delivery(current, reply, user, sent=(kind == "received"))
     logger.info("仕入明細を送った: 仕入明細 %s 番号 %s 返事の種類 %s", current.pk, message_id, kind)
     return saved
+
+
+def _receive_self_invoice_revision(message_id, partner, existing, values, payload):
+    """修正仕入明細 (目的 4・版が今より大きい) を、受けた仕入明細に当てる。返す物は SelfInvoiceReceipt か断る文。
+
+    明細を形と受注の明細で確かめてから (_self_invoice_line_values)、1 つの atomic の中で、見出しの列 (版・文書の種類・目的・小計・消費税・合計・番号) を
+    書き替え、明細ごとに数・単価・金額のどれかが違えば値を書き替えて答えの列を空にし、直した版を新しい版にする (同じ明細の答えはそのまま)。
+    状態を明細の答えから決め直す。行番号の無い明細は断る (修正仕入明細は明細を足さない)。
+    中小企業共通 EDI の修正仕入明細の流れ: 問題なければ売り手は修正仕入明細回答で確認回答する (インボイス仕様編 6.1.1 の ④)。
+    """
+    from .models import ReceivedSelfInvoice
+
+    msg_id = str(message_id)
+    rows = []
+    for number, raw in enumerate(payload["lines"], start=1):
+        row = _self_invoice_line_values(partner, raw, number)
+        if isinstance(row, str):
+            return _refuse(row, msg_id)
+        rows.append(row)
+    with transaction.atomic():
+        locked = ReceivedSelfInvoice.objects.select_for_update().get(pk=existing.pk)
+        lines = {line.line_no: line for line in locked.lines.all()}
+        unknown = [row["line_no"] for row in rows if row["line_no"] not in lines]
+        if unknown:
+            return _refuse(f"修正仕入明細の明細の行番号 {unknown[0]} が仕入明細 {locked.self_invoice_no} にありません。", msg_id)
+        by = f"{partner.name} の seizou"
+        for row in rows:
+            line = lines[row["line_no"]]
+            if (line.qty, line.unit_price, line.amount) == (row["qty"], row["unit_price"], row["amount"]):
+                continue
+            before = _saved(line)
+            line.qty = row["qty"]
+            line.unit_price = row["unit_price"]
+            line.amount = row["amount"]
+            line.revised_in = values["revision_no"]
+            line.reply_type = ""
+            line.reply_reason_code = ""
+            line.reply_qty = None
+            line.reply_unit_price = None
+            line.reply_note = ""
+            line.save(update_fields=[
+                "qty", "unit_price", "amount", "revised_in", "reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note",
+            ])
+            _record(line, None, before=before, by=by)
+        before = _saved(locked)
+        for key in ("revision_no", "document_code", "purpose_code", "subtotal", "tax", "total"):
+            setattr(locked, key, values[key])
+        locked.message_id = message_id
+        locked.status = _received_status(list(lines.values()))
+        locked.save(update_fields=["revision_no", "document_code", "purpose_code", "subtotal", "tax", "total", "message_id", "status"])
+        _record(locked, None, before=before, by=by)
+    return SelfInvoiceReceipt(message_id=message_id, self_invoice=locked)
 
 
 def _receive_self_invoice_cancel(message_id, partner, existing, values):
@@ -3362,15 +3413,15 @@ def _receive_self_invoice(message_id, partner, payload):
     problem = _self_invoice_text_problem(payload)
     if problem:
         return _refuse(problem, msg_id)
-    if values["purpose_code"] == edi_codes.PURPOSE_CHANGE:
-        return _refuse(MESSAGE_SELF_INVOICE_NOT_YET, msg_id)
     existing = ReceivedSelfInvoice.objects.filter(partner=partner, self_invoice_no=values["self_invoice_no"]).first()
     if existing is not None:
         if values["revision_no"] <= existing.revision_no:
             return _refuse(f"仕入明細 {existing.self_invoice_no} は第 {existing.revision_no} 版まで受けてあります。", msg_id)
         if values["purpose_code"] == edi_codes.PURPOSE_CANCEL:
             return _receive_self_invoice_cancel(message_id, partner, existing, values)
-        return _refuse(MESSAGE_SELF_INVOICE_NOT_YET, msg_id)
+        if existing.status == ReceivedSelfInvoice.STATUS_CANCELLED:
+            return _refuse(f"仕入明細 {existing.self_invoice_no} は取り消してあるので、修正を受けられません。", msg_id)
+        return _receive_self_invoice_revision(message_id, partner, existing, values, payload)
     rows = []
     for number, raw in enumerate(payload["lines"], start=1):
         row = _self_invoice_line_values(partner, raw, number)

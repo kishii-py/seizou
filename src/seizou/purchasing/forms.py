@@ -30,6 +30,7 @@ from django.utils import timezone
 from seizou.core import edi_codes
 from seizou.core import fields as company_fields
 from seizou.core.forms import DefaultChoiceField, PlainNumberInput, SubmitLabelMixin, label_number, line_totals, line_unit
+from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.core.views import use_decimal_input
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
@@ -728,3 +729,45 @@ class SelfInvoiceCancelForm(forms.Form):
 
     def service_kwargs(self):
         return {}
+
+
+class SelfInvoiceAcceptForm(forms.Form):
+    """相手の提案を受け入れる form (候補 C111)。提案 (UV) の明細ごとに印の欄 (既定は全部に印)。
+
+    字は「明細 n: 数 40 → 38・単価 ¥25.5 → ¥26・金額 ¥1,020 → ¥988」(違う所だけ。金額は保存と同じ services.self_invoice_line_amount。
+    金額の閲覧の無い人には単価と金額を書かない)。service_kwargs は {"line_nos": [印の明細の行番号]}。
+    """
+
+    submit_label = "受け入れて修正仕入明細を送る"
+
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        self.proposal_lines = []
+        if instance is None:
+            return
+        for line in instance.lines.select_related("receipt").order_by("line_no"):
+            if line.reply_type != edi_codes.SI_REPLY_PROPOSED:
+                continue
+            parts = []
+            if line.reply_qty is not None and line.reply_qty != line.qty:
+                parts.append(f"数 {comma(line.qty)} → {comma(line.reply_qty)}")
+            if not hide_money:
+                if line.reply_unit_price is not None and line.reply_unit_price != line.unit_price:
+                    parts.append(f"単価 {yen(line.unit_price)} → {yen(line.reply_unit_price)}")
+                new_amount = services.self_invoice_line_amount(instance, line, line.reply_qty, line.reply_unit_price)
+                parts.append(f"金額 {yen(line.amount)} → {yen(new_amount)}")
+            name = f"line_{line.line_no}"
+            self.fields[name] = forms.BooleanField(
+                label=f"明細 {line.line_no}: " + "・".join(parts), required=False, initial=True,
+            )
+            self.proposal_lines.append((line, name))
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.proposal_lines and not any(cleaned.get(name) for _line, name in self.proposal_lines):
+            raise forms.ValidationError("受け入れる提案に印を付けてください。")
+        return cleaned
+
+    def service_kwargs(self):
+        return {"line_nos": [line.line_no for line, name in self.proposal_lines if self.cleaned_data.get(name)]}

@@ -1378,6 +1378,80 @@ def cancel_self_invoice(self_invoice, user):
     return saved
 
 
+def self_invoice_line_amount(self_invoice, line, qty, unit_price):
+    """仕入明細の明細を数と単価で数え直した金額。受入と同じ 1 か所 (masters.services.delivery_amount) を通す (式を写さない)。
+
+    一式の明細は、全額を載せた受入 (受入の金額が 0 より大きい) の明細だけを一式の全額で数え直し、ほかは 0 (受入と同じ決まり = 決め PRICE-1c)。
+    """
+    return delivery_amount(self_invoice.partner, qty, unit_price, line.price_basis, completes=line.receipt.amount > 0)
+
+
+def accept_self_invoice_proposals(self_invoice, line_nos, user):
+    """相手の提案 (UV) を受け入れて仕入明細を直し、修正仕入明細を相手へ送る。
+
+    選んだ明細は答えが提案の物だけ (ほかは「送れません。明細 n は提案の答えではありません。」)。取消の仕入明細は受けない。
+    atomic の中で版を 1 上げ、目的を変更・修正 "4" にし、選んだ明細の数と単価を提案の値に、金額を受入と同じ 1 か所 (self_invoice_line_amount) で
+    数え直し、直した版を新しい版にし、答えの列を空にする。小計と消費税 (billing の consumption_tax) と合計を計算し直す (税率・締め期間・支払期日は
+    作った時の写しのまま)。新しい番号を付け、送った日時と返事を空にし、状態を未送信にする。受入と受入の金額は変えない (支払の見込みは、
+    相手が直した内容を承諾した後に仕入明細の金額で数える = 決め C111-1)。atomic の外で connect.services.send_self_invoice (文書の種類 1C)。
+    届かなければ saved_note と saved_level = "warning"。
+    中小企業共通 EDI の修正仕入明細の流れ: 発注者は提案回答の内容が適切と判断したら、修正入力して修正仕入明細を送る (インボイス仕様編 6.1.3 の ⑨)。
+    取適法: 単価を下げる明細があれば、保存の前に黄色の確かめを出す (purchasing.checks の LawSelfInvoicePriceDown。止めない)。
+    訳: 相手が提案と答えた明細だけを、提案の値のまま直すため (発注元が金額を手で打たない。取消の仕入明細は動かさない)。出所 = AI の案 (候補 C111。中小企業共通 EDI の修正仕入明細の流れ)。
+    変えてよい条件 = 発注元が仕入明細の金額を直す道を作者が決めたとき。
+    """
+    from seizou.billing.services import consumption_tax
+
+    chosen = sorted(set(line_nos or ()))
+    if not chosen:
+        raise ValueError("送れません。受け入れる提案を選んでください。")
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().select_related("partner").get(pk=self_invoice.pk)
+        if locked.status == SelfInvoice.STATUS_CANCELLED:
+            raise ValueError("送れません。この仕入明細は取り消してあります。")
+        lines = {line.line_no: line for line in locked.lines.select_related("receipt")}
+        for number in chosen:
+            line = lines.get(number)
+            if line is None or line.reply_type != edi_codes.SI_REPLY_PROPOSED:
+                raise ValueError(f"送れません。明細 {number} は提案の答えではありません。")
+        before = history.saved_state(locked)
+        locked.revision_no += 1
+        for number in chosen:
+            line = lines[number]
+            line_before = history.saved_state(line)
+            line.qty = line.reply_qty
+            line.unit_price = line.reply_unit_price
+            line.amount = self_invoice_line_amount(locked, line, line.qty, line.unit_price)
+            line.revised_in = locked.revision_no
+            line.reply_type = ""
+            line.reply_reason_code = ""
+            line.reply_qty = None
+            line.reply_unit_price = None
+            line.reply_note = ""
+            line.save(update_fields=[
+                "qty", "unit_price", "amount", "revised_in", "reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note",
+            ])
+            record_history(line, user, before=line_before)
+        amounts = [line.amount for line in lines.values()]
+        locked.subtotal = sum(amounts, _ZERO)
+        locked.tax = consumption_tax(locked.partner, amounts)
+        locked.total = locked.subtotal + locked.tax
+        locked.purpose_code = edi_codes.PURPOSE_CHANGE
+        locked.message_id = uuid.uuid4()
+        locked.sent_at = None
+        locked.response = ""
+        locked.status = SelfInvoice.STATUS_DRAFT
+        locked.save(update_fields=[
+            "revision_no", "subtotal", "tax", "total", "purpose_code", "message_id", "sent_at", "response", "status",
+        ])
+        record_history(locked, user, before=before)
+    return _with_self_invoice_notice(_send_self_invoice(locked, user), SELF_INVOICE_REVISION_UNDELIVERED)
+
+
+#: 修正仕入明細が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄)
+SELF_INVOICE_REVISION_UNDELIVERED = "修正仕入明細は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
 def _self_invoice_status(self_invoice, lines):
     """仕入明細の状態を明細の答えから決める。提案か確認できないが 1 つでもあれば確かめ中、全部が承諾 (AP・AC) なら確認済、ほかは答え待ち。"""
     codes = [line.reply_type for line in lines]

@@ -162,6 +162,7 @@ _KIND_ACTIONS = {
         "purchasing.create_self_invoice",  # 仕入明細を作る (C111。受入をまとめて相手へ送る書類)
         "connect.send_self_invoice",  # 仕入明細を相手に送り直す口 (C111)
         "purchasing.cancel_self_invoice",  # 相手が答える前の仕入明細の取消 (C111。取消も相手へ送る)
+        "purchasing.accept_self_invoice_proposals",  # 相手の提案を受け入れて修正仕入明細を送る (C111)
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)
@@ -226,6 +227,8 @@ MONEY_ACTIONS = {
     # 仕入明細 (C111) は金額が主な書類なので、請求書を作るのと同じ扱い
     "purchasing.create_self_invoice": ("仕入明細", "作れません"),
     "connect.answer_self_invoice": ("仕入明細", "答えられません"),
+    # 提案を受け入れるのは仕入明細の金額を直す登録
+    "purchasing.accept_self_invoice_proposals": ("仕入明細", "直せません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

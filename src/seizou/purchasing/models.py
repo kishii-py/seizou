@@ -398,6 +398,10 @@ class SelfInvoice(models.Model):
         """答え待ち・確かめ中の金額 (小計 − 確認済の金額)。"""
         return self.subtotal - self.confirmed_subtotal()
 
+    def has_proposal(self):
+        """相手が提案 (UV) と答えた明細があるか (詳細の「提案を受け入れる」のボタンが読む)。"""
+        return any(line.reply_type == edi_codes.SI_REPLY_PROPOSED for line in self.lines.all())
+
     def has_reply(self):
         """相手の答えが届いているか (答えの番号があるか、明細のどれかに答えがある)。取消の見方と詳細の「取消」のボタンが読む。"""
         if self.reply_message_id is not None:
