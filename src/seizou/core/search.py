@@ -12,6 +12,11 @@
       読むだけ。表に書かない。SQL を直接書かない (R14)。行は search() の中で list にして返す
       (表が無いときの DatabaseError を search() の中で起こし、core が飛ばせるように)。
   module が無い部品は飛ばす。search() が DatabaseError を投げた部品も飛ばす (HomeView の数字のカードと同じ)。
+  module は次の 1 つを持ってもよい (持たなくてもよい。持たない部品も今までどおり探せ、「探した項目」の 1 行に出ないだけ)。
+  - search_labels() -> list[str]: search() が探す項目の見出しの並び (例 ["題", "本文"])。検索の画面が、言葉があるときに
+      「探した項目」の 1 行へ「LABEL: 見出し・見出し」の形で出す (初見テスト R5 の候補 C36 の 2)。見出しは一覧の案内
+      (BaseListView.search_hint) と同じく、表の項目は lookup_label、会社ごとの項目は列の label。search() と同じ lookup の並び
+      (module の定数) から作り、字の 1 行と実際に探す所をずらさない。読むだけ。表を読まない。
 
 返す物の形:
   SearchSection(kind, label, columns, rows, total)
@@ -133,6 +138,25 @@ def run_search(query: str, *, kind: str = ALL, partner: int | None = None, limit
         if section is not None and section.total:
             sections.append(section)
     return sections
+
+
+def searched_fields(modules, kind: str = ALL) -> list[dict]:
+    """「探した項目」の 1 行の並び。modules (providers() の返す物) の順に {"label": LABEL, "fields": 見出しを「・」でつないだ字}。
+
+    kind が ALL でなければ、その種類だけにする (探していない種類を書かないため)。search_labels() を持たない部品と、
+    見出しの無い部品は並べない (約束の「持たなくてもよい物」)。表を読まない。
+    """
+    found = []
+    for module in modules:
+        if kind != ALL and module.KIND != kind:
+            continue
+        labels = getattr(module, "search_labels", None)
+        if not callable(labels):
+            continue
+        names = labels()
+        if names:
+            found.append({"label": module.LABEL, "fields": "・".join(names)})
+    return found
 
 
 def _contains(variant: str, value: str):
@@ -259,7 +283,7 @@ class SearchView(ScreenMixin, TemplateView):
     """
 
     screen_name = "検索"
-    screen_help = "品番・品名・注文番号などで横断して探し、行を押すと詳細へ移る。"
+    screen_help = "部品マスター・受注・マニュアルを横断して探し、行を押すと詳細へ移る。"
     screen_icon = "search"
     template_name = "core/search.html"
 
@@ -288,6 +312,8 @@ class SearchView(ScreenMixin, TemplateView):
                 "customers": customers,
                 "partner": partner_value,
                 "sections": [display_section(s, hide_money=not access.can_see_money(self.request.user, record=False)) for s in sections],
+                # 「探した項目」の 1 行 (言葉があるときだけ。初見テスト R5 の候補 C36 の 2)
+                "searched_fields": searched_fields(modules, kind) if query else [],
                 "limit": LIMIT,
             }
         )

@@ -23,6 +23,17 @@ COLUMNS = (
     SearchColumn("品番"),
     SearchColumn("状態"),
 )
+#: 受注の表で探す項目。search() と search_labels() がここから作る (「探した項目」の 1 行と実際に探す所をずらさないため)
+ORDER_LOOKUPS = ("order_no", "customer_order_no")
+#: 明細の表で探す項目 (明細の品目の品番と品名)
+LINE_LOOKUPS = ("item__part_no", "item__name")
+
+
+def search_labels() -> list[str]:
+    """search() が探す項目の見出し (約束は seizou.core.search)。受注番号・得意先の注文番号・自社品番・品名。"""
+    labels = [lookup_label(Order, lookup) for lookup in ORDER_LOOKUPS]
+    labels += [lookup_label(OrderLine, lookup) for lookup in LINE_LOOKUPS]
+    return list(dict.fromkeys(labels))
 
 
 def part_no_cell(order) -> str:
@@ -42,8 +53,8 @@ def search(query, *, partner=None, limit=50):
     if partner is not None:
         orders = orders.filter(customer_id=partner)
     for term in query.split():
-        lines = OrderLine.objects.filter(search_q(["item__part_no", "item__name"], term))
-        orders = orders.filter(search_q(["order_no", "customer_order_no"], term) | Q(pk__in=lines.values("order_id")))
+        lines = OrderLine.objects.filter(search_q(LINE_LOOKUPS, term))
+        orders = orders.filter(search_q(ORDER_LOOKUPS, term) | Q(pk__in=lines.values("order_id")))
     orders = orders.order_by("-order_date", "-pk")
     total = orders.count()
     page = orders.select_related("customer").prefetch_related("lines__item")[:limit]

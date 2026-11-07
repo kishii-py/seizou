@@ -90,7 +90,8 @@ def test_empty_query_searches_nothing_and_shows_hint(client_logged_in, bracket, 
     # 題と説明、chip (全て・部品マスター・受注) と得意先の選択。説明の 1 文は題の下に出さず (決め 11-03 14:1x)、
     # 目録と説明書が読む screen_help にある
     assert "<h1" in body and "検索</h1>" in body
-    assert "品番・品名・注文番号などで横断して探し" in response.context["screen_help"]
+    # 探す種類が分かる字 (初見テスト R5 の候補 C36 の 3。探す種類は providers() の 3 つで、取引先は探さない)
+    assert "部品マスター・受注・マニュアルを横断して探し" in response.context["screen_help"]
     assert "全て" in body and "部品マスター" in body and "受注" in body
     assert "全得意先" in body
 
@@ -213,12 +214,36 @@ def test_contract_shapes_and_numbers_stay_numbers():
     assert section["columns"][0].label == "番号" and section["more"] is False
 
 
+def topbar_placeholder(body: str) -> str:
+    """上の帯の検索の欄 (aria-label="横断して検索" の input) の placeholder の字。"""
+    tag = re.search(r'<input[^>]*aria-label="横断して検索"[^>]*>', body).group()
+    return re.search(r'placeholder="([^"]*)"', tag).group(1)
+
+
 def test_topbar_search_goes_to_search_page_and_menu_has_search(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
     search_url = reverse("core:search")
     assert f'action="{search_url}"' in body
-    assert 'aria-label="横断して検索"' in body and "品番・品名・注文番号で検索" in body
+    # 上の帯の欄の案内は、マニュアルも探すと分かる字で、13 字を超えない (初見テスト R5 の候補 C36 の 1。V120)
+    placeholder = topbar_placeholder(body)
+    assert placeholder == "品番・品名・マニュアルなど"
+    assert len(placeholder) <= 13
     assert f'href="{search_url}"' in body and ">検索</span>" in body
+
+
+def test_topbar_placeholder_without_manuals_part_keeps_order_no(client_logged_in, monkeypatch):
+    """部品 manuals が入っていない会社では、上の帯の欄の案内は今までの字のまま (マニュアルを探さないため。候補 C36 の 1)。
+
+    本文の全体では「マニュアル」を探さない (左のメニューの入口と検索の画面の種類の札は、部品の名前を差し替えても出るため)。
+    """
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "manuals"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+
+    placeholder = topbar_placeholder(client_logged_in.get(reverse("core:home")).content.decode())
+    assert placeholder == "品番・品名・注文番号で検索"
+    assert "マニュアル" not in placeholder
 
 
 def test_search_menu_entry_is_active_on_search_page(client_logged_in):
@@ -274,3 +299,98 @@ def test_cross_search_agrees_with_list_search(client_logged_in, bracket, shaft):
         assert "P-1001" in listed_body and "P-2002" not in listed_body, word
         found_body = search_page(client_logged_in, q=word, kind="items").content.decode()
         assert detail in found_body and "P-2002" not in found_body, word
+
+
+# --- 探した項目の 1 行 (初見テスト R5 の候補 C36 の 2。V120: 材質で部品が出た人が「ほかの部品が漏れていないか不安」と書いた) ---
+
+
+@pytest.fixture
+def no_registration(monkeypatch):
+    """会社ごとの項目の登録を空から始める (ほかの試験の登録を残さない。tests/test_core_ux_fixes.py と同じ)。"""
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+
+
+def test_search_page_shows_searched_fields_in_provider_order(client_logged_in, bracket, no_registration):
+    """言葉があれば、探した種類ごとの項目の見出しが providers() の順に並び、結果の上に「探した項目」の 1 行が出る。"""
+    response = search_page(client_logged_in, q="P-1001")
+    fields = response.context["searched_fields"]
+    assert [scope["label"] for scope in fields] == [module.LABEL for module in core_search.providers()]
+    by_label = {scope["label"]: scope["fields"] for scope in fields}
+    assert by_label == {
+        "部品マスター": "自社品番・品名・図面番号・取引先の品番",
+        "受注": "受注番号・得意先の注文番号・自社品番・品名",
+        "マニュアル": "題・本文",
+    }
+    body = response.content.decode()
+    assert "探した項目" in body
+    assert "部品マスター: 自社品番・品名・図面番号・取引先の品番 / 受注: " in body
+    # 0 件の箱の上にも出る
+    missing = search_page(client_logged_in, q="作り物でない")
+    assert missing.context["sections"] == []
+    assert "探した項目" in missing.content.decode()
+
+
+def test_searched_fields_follow_the_selected_kind(client_logged_in, bracket, no_registration):
+    """種類の札で 1 つに絞ったら、その種類の分だけ (探していない種類を書かない)。本文の種類の名前は札とメニューにもあるので見ない。"""
+    response = search_page(client_logged_in, q="P-1001", kind="items")
+    assert response.context["searched_fields"] == [{"label": "部品マスター", "fields": "自社品番・品名・図面番号・取引先の品番"}]
+
+
+def test_searched_fields_hidden_without_query(client_logged_in):
+    response = search_page(client_logged_in, q="   ")
+    assert response.context["searched_fields"] == []
+    assert "探した項目" not in response.content.decode()
+
+
+def test_searched_fields_skip_modules_without_search_labels(monkeypatch):
+    """search_labels() は約束の「持たなくてもよい物」。持たない部品は 1 行に出ない (探すのは今までどおり)。"""
+
+    class Plain:
+        KIND = "plain"
+        LABEL = "作り物の種類"
+
+        @staticmethod
+        def search(query, *, partner=None, limit=50):
+            return None
+
+    assert core_search.searched_fields([Plain, orders_search]) == [
+        {"label": "受注", "fields": "受注番号・得意先の注文番号・自社品番・品名"}
+    ]
+
+
+def test_items_search_labels_follow_company_fields(no_registration, monkeypatch):
+    """会社ごとの項目は、company_lookups() が探す物の列の label だけ (拡張の表が無ければ探さないので書かない)。
+
+    画面を通さない: 差し替えたまま検索の画面で探すと、search() が試験の DB に無い ext の lookup で絞るため。
+    """
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質", "searchable": True}])
+    # 試験の DB には拡張の表が無いので、company_lookups() は ext の lookup を外し、材質は探さない
+    assert masters_search.company_lookups() == []
+    assert masters_search.search_labels() == ["自社品番", "品名", "図面番号", "取引先の品番"]
+
+    monkeypatch.setattr(masters_search, "company_lookups", lambda: ["ext__ext01"])
+    assert masters_search.search_labels() == ["自社品番", "品名", "図面番号", "取引先の品番", "材質"]
+
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "処理の種類", "searchable": True}])
+    labels = masters_search.search_labels()
+    assert labels[-1] == "処理の種類" and "材質" not in labels
+
+
+def search_page_placeholder(body: str) -> str:
+    """検索の画面の欄 (id="search-q" の input) の placeholder の字。"""
+    tag = re.search(r'<input id="search-q"[^>]*>', body).group()
+    return re.search(r'placeholder="([^"]*)"', tag).group(1)
+
+
+def test_search_page_placeholder_matches_topbar(client_logged_in, monkeypatch):
+    """検索の画面の欄の案内は、上の帯の欄と同じ字と同じ書き分け (初見テスト R5 の候補 C36 の 3)。"""
+    body = search_page(client_logged_in).content.decode()
+    assert search_page_placeholder(body) == topbar_placeholder(body) == "品番・品名・マニュアルなど"
+
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "manuals"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+    placeholder = search_page_placeholder(search_page(client_logged_in).content.decode())
+    assert placeholder == "品番・品名・図面番号・注文番号など"
+    assert "マニュアル" not in placeholder

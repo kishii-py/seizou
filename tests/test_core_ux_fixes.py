@@ -4,6 +4,7 @@
 朝の E2E で見る。ここでは、それを決める応答の見出しとテンプレートの字を見る。
 """
 
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -372,6 +373,25 @@ def test_search_hint_has_company_searchable_fields(client_logged_in, no_registra
     company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質", "searchable": True, "in_list": False}])
     body = text(client_logged_in.get(reverse("masters:item_list")))
     assert 'placeholder="自社品番・品名・図面番号・材質で絞り込む"' in body
+
+
+@pytest.mark.django_db
+def test_search_hint_wraps_under_keyword_label_on_phone(client_logged_in, no_registration):
+    """幅が 640px より狭いときだけ出す要素 (sm:hidden) に、欄の案内と同じ字を折り返して出す (初見テスト R5 の候補 C36 の 5)。
+
+    phone では欄の幅で案内が切れ、項目の名前まで隠れる一覧があった (b-flagged-11)。placeholder にも同じ字があるので、
+    本文の全体では探さず、sm:hidden の付いた要素の中の字で見る。placeholder は今のまま。
+    """
+    body = text(client_logged_in.get(reverse("masters:item_list")))
+    phone_hints = re.findall(r'<p class="[^"]*\bsm:hidden\b[^"]*">([^<]*)</p>', body)
+    assert phone_hints == ["自社品番・品名・図面番号で絞り込む"]
+    assert 'placeholder="自社品番・品名・図面番号で絞り込む"' in body
+    # 見出し「キーワード」の下、欄の前に置く
+    assert body.index(">キーワード</label>") < body.index("自社品番・品名・図面番号で絞り込む</p>") < body.index('id="list-q"')
+
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質", "searchable": True, "in_list": False}])
+    body = text(client_logged_in.get(reverse("masters:item_list")))
+    assert re.findall(r'<p class="[^"]*\bsm:hidden\b[^"]*">([^<]*)</p>', body) == ["自社品番・品名・図面番号・材質で絞り込む"]
 
 
 # ---------------------------------------------------------------- 17 合計の行

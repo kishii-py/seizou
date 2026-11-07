@@ -125,6 +125,36 @@ def test_shipment_list_shows_order_and_item(logged_in, order):
     assert missing.context["rows"] == []
 
 
+@pytest.mark.django_db
+def test_shipment_list_finds_item_name(logged_in, user, order):
+    """出荷の一覧の「部品」の列に出ている品名の一部でも当たる (初見テスト R5 の U162。候補 C36 の 4)。
+
+    品名で 0 件になり、同じ画面の上の帯の横断の検索では当たる食い違いがあった。
+    """
+    shipment = shipping_services.ship(order.lines.get(), Decimal("4"), timezone.localdate(), user)
+    url = reverse("shipping:shipment_list")
+
+    for word in ("軸", "T-100", "作り物の得意先"):
+        found = logged_in.get(url, {"q": word})
+        assert [row["obj"] for row in found.context["rows"]] == [shipment], word
+    assert logged_in.get(url, {"q": "作り物でない"}).context["rows"] == []
+    # 検索の欄の案内に入る (前後の字は比べない = 探す項目の並びをほかの直しが変えても、この試験は作り直さない)
+    assert "品名" in logged_in.get(url).context["search_hint"].split("・")
+
+
+@pytest.mark.django_db
+def test_shipment_list_hint_says_customer_name(logged_in, user, order):
+    """出荷の一覧の案内は「名前」でなく「得意先の名前」と書き、その名前で今と同じく当たる (初見テスト R5 の U162。候補 C36 の 7)。"""
+    shipment = shipping_services.ship(order.lines.get(), Decimal("4"), timezone.localdate(), user)
+    url = reverse("shipping:shipment_list")
+
+    labels = logged_in.get(url).context["search_hint"].split("・")
+    assert "得意先の名前" in labels
+    assert "名前" not in labels
+    found = logged_in.get(url, {"q": "作り物の得意先"})
+    assert [row["obj"] for row in found.context["rows"]] == [shipment]
+
+
 def _numbered_order(order, user):
     """得意先の注文番号 PO-777 の 2 つ目の受注。得意先と部品は fixture の受注と同じ物を使い回す (取引先コードは重ねられない)。"""
     return orders_services.create_order(
