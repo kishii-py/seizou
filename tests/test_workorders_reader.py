@@ -9,6 +9,7 @@ fixture は tests/test_workorders_tag.py の形 (工程 2 つで予定の数 4 �
 import re
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -371,3 +372,59 @@ def test_reader_refusals_follow_heads():
     for text in (workorders_views.READER_NOT_TAG, workorders_views.READER_NOT_FOUND):
         assert text.startswith(manual.REFUSAL_HEADS)
         assert text.startswith("読み取れません。")
+
+
+# --- (l) カメラの節 (読み取りの小窓だけ) ---
+
+CAMERA_TEXTS = {
+    "insecure": "読み取れません。カメラは https の住所で開いたときだけ使えます。",
+    "denied": "読み取れません。ブラウザがカメラを使うことを許していません。",
+    "nocamera": "読み取れません。この端末でカメラを開けませんでした。",
+}
+
+
+@pytest.mark.django_db
+def test_reader_modal_has_camera_section(logged_in):
+    body = logged_in.get(_reader(), **MODAL).content.decode()
+    assert "data-qr-reader" in body
+    assert f'data-reader-url="{_reader()}"' in body
+    video = re.search(r"<video [^>]*>", body).group(0)
+    for word in ("autoplay", "playsinline", "muted", "hidden"):
+        assert word in video, word
+    assert body.count("data-qr-message=") == 3
+    for key, words in CAMERA_TEXTS.items():
+        # 包みの中身 = 次の包みか script の前まで (帯は _notices.html が描く 1 つの div)
+        wrap = re.search(rf'<div hidden data-qr-message="{key}">(.*?)(?=<div hidden data-qr-message=|<script)', body, re.S)
+        assert wrap, key
+        assert _has_stop(wrap.group(1), words), key
+    jsqr = body.index("vendor/jsQR.js")
+    reader = body.index("workorders/qr-reader.js")
+    assert jsqr < reader
+    # カメラの帯は hidden の包みの中だけ (止まった帯は出ていない)
+    assert not _has_stop(body, NOT_TAG)
+    assert not _has_stop(body, NOT_FOUND)
+
+
+# --- (m) 工程の行の小窓にはカメラが無い ---
+
+
+@pytest.mark.django_db
+def test_step_rows_modal_has_no_camera(logged_in, workorder):
+    body = _read(logged_in, code="http://testserver" + _scan_path(workorder.pk)).content.decode()
+    assert "<video" not in body
+    assert "<script" not in body
+    assert "data-qr-reader" not in body
+
+
+# --- (n) 同梱の JS と読み取りの JS ---
+
+
+def test_reader_scripts_are_served():
+    from django.contrib.staticfiles import finders
+
+    reader = finders.find("workorders/qr-reader.js")
+    assert reader
+    assert finders.find("vendor/jsQR.js")
+    text = Path(reader).read_text(encoding="utf-8")
+    for word in ("classList", "className", "innerHTML"):
+        assert word not in text, word

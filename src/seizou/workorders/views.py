@@ -40,6 +40,16 @@ READER_NOT_TAG = (
 )
 #: 現品票の QR か「指示書」の欄の番号の指示書が無い (消えた・数字でない)。
 READER_NOT_FOUND = "読み取れません。その指示書が見つかりません。「指示書」の欄で探し直してください。"
+#: カメラを使えないときの赤い帯 (小窓の中に hidden の包みで前もって描き、workorders/qr-reader.js が hidden を外すだけ)。
+#: 鍵は data-qr-message の値 (insecure = https でない住所・denied = ブラウザがカメラを許していない・nocamera = カメラを開けない)。
+READER_CAMERA_MESSAGES = {
+    "insecure": "読み取れません。カメラは https の住所で開いたときだけ使えます。「指示書」の欄で探してください。",
+    "denied": (
+        "読み取れません。ブラウザがカメラを使うことを許していません。"
+        "ブラウザの設定でこのサイトにカメラを許すか、「指示書」の欄で探してください。"
+    ),
+    "nocamera": "読み取れません。この端末でカメラを開けませんでした。「指示書」の欄で探してください。",
+}
 
 
 #: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。C27-1 = a)
@@ -381,8 +391,10 @@ def workorder_reader(request):
         )
     if notice is None and (code or raw):
         notice = Notice("入力", READER_NOT_FOUND)
+    # warnings は入れない (core/_notices.html は warnings も回すので、hidden のカメラの帯の包みにも描かれるため)。
+    camera_notices = {key: Notice("入力", text) for key, text in READER_CAMERA_MESSAGES.items()}
     return render(
         request,
         "workorders/_workorder_reader_modal.html",
-        {"form": WorkOrderFindForm(), "notice": notice, "in_modal": True},
+        {"form": WorkOrderFindForm(), "notice": notice, "camera_notices": camera_notices, "in_modal": True},
     )
