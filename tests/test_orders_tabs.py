@@ -74,13 +74,13 @@ def _invoiced(user, customer, shipments):
     return billing_services.create_invoice(customer, shipments, user, issued_on=ISSUED_ON)
 
 
-def _full_order(user, customer, item, process):
-    """指示書 1・出荷 2・請求書 1 の受注。"""
+def _full_order(user, customer, item, process, shipped_at=SHIPPED_AT):
+    """指示書 1・出荷 2・請求書 1 の受注 (同じ得意先に 2 つ目を作るときは出荷日を前の月にする = R23)。"""
     order = _order(user, customer, item)
     line = order.lines.get()
     workorder = _workorder(user, line, process)
-    first = shipping_services.ship(line, Decimal("3"), SHIPPED_AT, user)
-    second = shipping_services.ship(line, Decimal("2"), SHIPPED_AT, user)
+    first = shipping_services.ship(line, Decimal("3"), shipped_at, user)
+    second = shipping_services.ship(line, Decimal("2"), shipped_at, user)
     invoice = _invoiced(user, customer, [first, second])
     return order, workorder, [first, second], invoice
 
@@ -156,7 +156,8 @@ def test_invoice_tab_counts_each_invoice_once(user, logged_in, customer, item, c
 @pytest.mark.django_db
 def test_other_orders_rows_are_not_mixed(user, logged_in, customer, item, cut):
     order, workorder, shipments, invoice = _full_order(user, customer, item, cut)
-    other, other_workorder, other_shipments, other_invoice = _full_order(user, customer, item, cut)
+    # 2 つ目の受注の出荷は前の月 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)
+    other, other_workorder, other_shipments, other_invoice = _full_order(user, customer, item, cut, shipped_at=date(2026, 10, 5))
 
     tabs = _tabs(_detail(logged_in, order))
     assert [row["obj"] for row in tabs["指示書"]["rows"]] == [workorder]

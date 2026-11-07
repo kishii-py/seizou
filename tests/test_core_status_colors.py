@@ -17,6 +17,7 @@ from django.template import Context, Template
 from django.urls import reverse
 
 from seizou.billing import services as billing_services
+from seizou.billing.models import Invoice
 from seizou.core import status_colors
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
@@ -114,9 +115,13 @@ def _workorder(user, order, process):
 
 
 def _invoice(user, customer, item):
-    """出荷 1 つ (数量 10) の請求書 (納品書を先に作る = 発行の納品書に入った出荷だけが請求書に入る)。"""
+    """出荷 1 つ (数量 10) の請求書 (納品書を先に作る = 発行の納品書に入った出荷だけが請求書に入る)。
+
+    出荷日は、その得意先の 1 枚目が 11 月 3 日で、2 枚目から 1 か月ずつ前 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23)。
+    """
     order = _order(user, customer, item)
-    shipment = shipping_services.ship(order.lines.get(), Decimal("10"), date(2026, 11, 3), user)
+    earlier = Invoice.objects.filter(customer=customer).count()
+    shipment = shipping_services.ship(order.lines.get(), Decimal("10"), date(2026, 11 - earlier, 3), user)
     shipping_services.create_delivery_note(customer, [shipment], user)
     shipment.refresh_from_db()
     return billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 4))
