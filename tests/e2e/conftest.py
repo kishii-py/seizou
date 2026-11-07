@@ -510,6 +510,18 @@ def fill_shipment(page: Page, company: Company, *, order_no: str, qty) -> None:
     _click_save(page)
 
 
+def fill_receiving(page: Page, company: Company, *, order_no: str, part_no: str, qty) -> None:
+    """入荷の新規登録 (`/receiving/new/`) に、受注番号で選んだ明細と部品と数量を入れて「保存」を押す (結果は待たない)。
+
+    支給品・預かり品の入荷が無い明細の出荷を止める会社 (B 社の種 = stop。11-06 の受入の決まり) で、出荷の試験の前に打つ。
+    """
+    page.goto(f"{company.base_url}/receiving/new/")
+    choose(page, "order_line", order_no)
+    choose(page, "item", part_no)
+    page.fill("input[name=qty]", str(qty))
+    _click_save(page)
+
+
 # --- 立て直しと図面と部品の登録 (N28) ---------------------------------------------
 
 

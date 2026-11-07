@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect
 
-from .conftest import fill_shipment, login, new_order, seed_name, shot, unique_mark
+from .conftest import fill_receiving, fill_shipment, login, new_order, seed_name, shot, unique_mark
 from .test_e55_field_error import SUBMIT, new_invoice
 
 CUSTOMER_CODE = "C001"
@@ -134,6 +134,8 @@ def test_e56_warning_stays_when_qty_is_fixed(page_b, company_b):
         unit_price=45,
         mark=unique_mark("e56b"),
     )
+    # B 社は支給品・預かり品の入荷が無い明細の出荷を止める (受入の決まり = stop) ので、先に入荷を記録する
+    fill_receiving(page_b, company_b, order_no=order_no, part_no="SB-2001", qty=10)
 
     fill_shipment(page_b, company_b, order_no=order_no, qty=11)
     warning = page_b.locator(CHECK)
