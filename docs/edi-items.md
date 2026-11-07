@@ -40,6 +40,7 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `lines[].qty` | 数量 | `purchasing.PurchaseOrderLine.qty` | 整数 10 桁・小数 2 桁 | `orders.OrderLine.qty` | 整数 10 桁・小数 2 桁 | 注文数量 (注文 253) | UN01006632 |
 | `lines[].unit` | 単位の名前の字 (例「個」) | `purchasing.PurchaseOrderLine.unit` | 10 字 | `orders.OrderLine.unit` | 10 字 | — (単位の名前。EDI は注文数量の数量単位属性 (注文 254) を UNECE Rec.20 のコードで持つ。下の「単位」) | — |
 | `lines[].unit_price` | 単価 (税抜き) | `purchasing.PurchaseOrderLine.unit_price` | 整数 12 桁・小数 2 桁 | `orders.OrderLine.unit_price` | 整数 12 桁・小数 2 桁 | 注文単価 (注文 245) | UN01005792 |
+| `lines[].price_basis` | 単価の単位 (`unit` = 部品の単位 1 つあたり・`lump` = 一式で数量を掛けない。値はこの 2 つだけで、鍵が無ければ `unit`。ほかの値は受ける側が断る) | `purchasing.PurchaseOrderLine.price_basis` | 10 字 | `orders.OrderLine.price_basis` | 10 字 | — (seizou の項目。中小企業共通 EDI の数量単位コードに一式に当たる値は無く、部品の単位のときは単価基準数量が空か 1 のときと同じ意味) | — |
 | `lines[].due_date` | 納期 (無ければ null) | `purchasing.PurchaseOrderLine.due_date` | 日付 | `orders.OrderLine.due_date` | 日付 | 要求納入日 (注文 288) | UN01005628 |
 | `lines[].note` | 明細の備考 | `purchasing.PurchaseOrderLine.note` | 500 字 | `orders.OrderLine.note` | 500 字 | 注文明細注釈内容 (注文 229。備考は明細行注釈 ID 1) | UN01005560 |
 

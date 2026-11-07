@@ -125,7 +125,7 @@ REFUSAL_FILES = {
     "src/seizou/accounts/services.py": (),
     "src/seizou/feedback/services.py": (),
     "src/seizou/manuals/services.py": (),
-    "src/seizou/connect/services.py": ("record_inbox", "record_acceptance", "record_shipping_notice", "_payload_date", "_payload_decimal"),
+    "src/seizou/connect/services.py": ("record_inbox", "record_acceptance", "record_shipping_notice", "_payload_date", "_payload_decimal", "_payload_price_basis"),
     "src/seizou/intake/services.py": (
         "extract_order", "extract_to_inbox", "_block_for", "_ask_claude", "_check_reply", "_text", "_number_text", "_date_text",
     ),
