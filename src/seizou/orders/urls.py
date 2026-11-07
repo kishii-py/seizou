@@ -22,4 +22,5 @@ urlpatterns = [
     path("lines/select/", views.OrderLineSelectView.as_view(), name="orderline_select"),
     path("lines/<int:pk>/modal/", views.orderline_modal, name="orderline_modal"),
     path("lines/<int:pk>/no-bill/", views.OrderLineNoBillView.as_view(), name="orderline_no_bill"),
+    path("lines/<int:pk>/clear-no-bill/", views.OrderLineNoBillClearView.as_view(), name="orderline_no_bill_clear"),
 ]

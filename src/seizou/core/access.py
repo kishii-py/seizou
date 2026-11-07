@@ -118,6 +118,7 @@ _KIND_ACTIONS = {
         "orders.update_order",
         "orders.cancel_order",
         "orders.mark_no_bill",
+        "orders.clear_no_bill",
         "connect.accept",
         "connect.reject",
         "connect.accept_with_conditions",
