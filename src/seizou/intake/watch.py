@@ -11,7 +11,7 @@
 読んだ物 (同じ中身で読まなかった物も) は <フォルダ>/done/ へ、読めなかった物は <フォルダ>/failed/ へ動かし、
 理由を failed/<動かした名前>.txt に 1 行で書く。同じ名前があれば <名前の幹>-2<拡張子>・-3… の空いている名前にする。
 ファイルは with を抜けてから動かす (Windows は開いたままのファイルを動かせない)。外の library (watchdog) を使わず、
-見回りの間 (interval) ごとに os.scandir で見る。
+見回りの間 (interval) ごとに os.scandir で見る。1 日の上限 (設定 ai_limits の watch_per_day) を超えた物は読まずに置いたまま (動かさない)。次の日に読む。
 
 見張りの記録: 置き場 (settings の BASE_DIR) に intake_watch.json を 1 本だけ置く。中身は pid・フォルダ・間・始めた日時・最後の見回り。
 動いているかは最後の見回りの時刻で見る (max(3 × 間, STALE_SECONDS) 秒より新しい)。process の生き死には見ない
@@ -87,15 +87,21 @@ def pending(folder) -> list[Path]:
 def handle(path, user) -> dict:
     """ファイル 1 つを読み取って受信した注文に入れ、done/ か failed/ へ動かす。返す物は結果の辞書。
 
-    result は inbox (新しく入れた)・same (同じ中身が入っている)・failed (読めなかった)。読み取りの断り
+    result は inbox (新しく入れた)・same (同じ中身が入っている)・failed (読めなかった)・held (1 日の上限で読まずに置いた)。読み取りの断り
     (鍵が無い・形式・大きさ・API の失敗・返事の形・connect が無い) と開けない・読めないは failed/ へ動かし、
-    理由を failed/<動かした名前>.txt に書く。動かすのにも失敗したら動かさずに理由だけを返す。ほかの例外は上へ出す。
+    理由を failed/<動かした名前>.txt に書く。動かすのにも失敗したら動かさずに理由だけを返す。1 日の上限 (services.WatchLimitReached) は
+    ファイルを動かさず、理由だけを返す (次の日の見回りで読む)。ほかの例外は上へ出す。
     """
     path = Path(path)
     row = {"result": "failed", "name": path.name, "moved": None, "inbox": None, "reason": ""}
     try:
         with open(path, "rb") as stream:
             inbox, created = services.extract_to_inbox(File(stream, name=path.name), user)
+    except services.WatchLimitReached as exc:
+        # 上限で読まなかった物は動かさない (読んでいないので done/ でも failed/ でもない)。
+        row["result"] = "held"
+        row["reason"] = str(exc)
+        return row
     except ValueError as exc:
         # IntakeUnavailable は ValueError の子。文に鍵の値と読み取りの中身は入っていない。
         return _fail(path, row, str(exc))

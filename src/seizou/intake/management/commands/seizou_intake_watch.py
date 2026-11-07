@@ -63,10 +63,12 @@ class Command(BaseCommand):
             rows = watch.once(folder, user)
             for row in rows:
                 self._write_row(row)
-            counts = {key: sum(1 for row in rows if row["result"] == key) for key in ("inbox", "same", "failed")}
-            self.stdout.write(
-                f"1 周見ました: 読んだ {counts['inbox']} 件・同じ中身 {counts['same']} 件・読めなかった {counts['failed']} 件"
-            )
+            counts = {key: sum(1 for row in rows if row["result"] == key) for key in ("inbox", "same", "failed", "held")}
+            line = f"1 周見ました: 読んだ {counts['inbox']} 件・同じ中身 {counts['same']} 件・読めなかった {counts['failed']} 件"
+            if counts["held"]:
+                # 1 日の上限で読まずに置いた物があるときだけ、後ろに足す (無いときの字は今までと同じ)。
+                line += f"・置いた {counts['held']} 件"
+            self.stdout.write(line)
             return
         watch.ensure_idle()
         self.stdout.write(
@@ -109,6 +111,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"読んだ: {name} → 受信した注文 {inbox.pk} (差出人の確認待ち: {sender})")
         elif row["result"] == "same":
             self.stdout.write(f"同じ中身: {name} → 受信した注文 {inbox.pk} に入っています")
+        elif row["result"] == "held":
+            self.stdout.write(f"読まずに置いた: {name} ({row['reason']})")
         else:
             moved = f"{watch.FAILED_DIR}/{row['moved'].name}" if row["moved"] is not None else "動かせませんでした"
             self.stdout.write(f"読めなかった: {name} → {moved} ({row['reason']})")
