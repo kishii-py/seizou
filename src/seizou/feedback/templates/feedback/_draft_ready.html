@@ -1,0 +1,5 @@
+{# 口 ask の返事 (AI の下書きができたとき。画面を移らない。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md の作る物 2)。 #}
+{# 先頭は会話の吹き出し 2 つ (利用者の字と、AI の「入力の形に入れました」の 1 文 = chat.DRAFT_READY_MESSAGE)。送る画面の form の hx-target (#feedback-chat-messages) に beforeend で足される。 #}
+{# 続く #feedback-form-column は hx-swap-oob で、送る画面の右の欄 (新規登録の形) を、できた下書きの編集の形 (feedback_update と同じ欄と送り先 = form_action) に丸ごと差し替える。保存は編集の画面と同じ POST で詳細へ移る (新規登録の形のまま保存すると同じ件が 2 つできるため)。 #}
+{% include "feedback/_chat_messages.html" with turns=turns %}
+<div id="feedback-form-column" class="min-w-0" hx-swap-oob="true">{% include "core/_form_card.html" %}</div>

@@ -360,7 +360,7 @@ def test_form_page_shows_chat_only_with_key(with_key, client_logged_in, plain, m
     assert 'name="title"' in html
 
 
-def test_ask_returns_bubbles_and_redirects_on_draft(with_key, client_logged_in, monkeypatch):
+def test_ask_returns_bubbles_and_fills_form_on_draft(with_key, client_logged_in, monkeypatch):
     script(monkeypatch, [text_reply("どの画面で起きましたか？")])
 
     response = client_logged_in.post(ASK_URL, {"message": "出荷の数を直したい", "screen": "orders:order_list"}, **HTMX)
@@ -372,14 +372,14 @@ def test_ask_returns_bubbles_and_redirects_on_draft(with_key, client_logged_in, 
     script(monkeypatch, [tool_reply("draft_feedback", DRAFT)])
     response = client_logged_in.post(ASK_URL, {"message": "受注の一覧です", "screen": "orders:order_list"}, **HTMX)
     row = Feedback.objects.get()
+    html = response.content.decode()
+    # 下書きができても画面を移らない: 吹き出しと、右の欄に差し替える編集の形 (hx-swap-oob) を返す (tests/test_feedback_steps.py が中身を見る)。
     assert response.status_code == 200
-    assert response.content == b""
-    assert response["HX-Redirect"] == f"/feedback/{row.pk}/edit/"
-    assert chat.CHAT_KEY not in client_logged_in.session
-
-    html = client_logged_in.get(response["HX-Redirect"]).content.decode()
+    assert "HX-Redirect" not in response
+    assert f'action="/feedback/{row.pk}/edit/"' in html and 'hx-swap-oob="true"' in html
     assert chat.DRAFT_READY_MESSAGE in html
     assert 'value="受注の一覧で並びが戻る"' in html
+    assert chat.CHAT_KEY not in client_logged_in.session
 
 
 def test_ask_guards(with_key, client, plain):

@@ -8,9 +8,10 @@
 {{ github.marks|issue_mark:issue.number }}  みんなの Issue の行の自社の印 ({"sent", "me_too"} か None。依頼書 N323)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
-{% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った一言 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
+{% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った件 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
 {% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。依頼書 N324)
 {% feedback_board as board %}          みんなの Issue の盤と一覧の形の材料と、並べ替えと切り替えの link (依頼書 N325。GET の tab が issues のときだけ GitHub を読む)
+{% feedback_steps object as steps %}   詳細の「この件の進み具合」の段の帯の材料 (feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)
 info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (依頼書 N324)。
 """
 
@@ -18,6 +19,7 @@ from django import template
 from django.urls import reverse
 from django.utils.http import urlencode
 
+from seizou.core.status_colors import tone_for
 from seizou.feedback import chat, github, services
 from seizou.feedback.forms import SCREENS_LABEL, GithubDeviceForm
 from seizou.feedback.models import Feedback
@@ -142,7 +144,7 @@ def feedback_fields(fields):
 
 
 #: タブの帯の 3 つ (鍵と字)。並びは画面の左から (依頼書 N321。決め 11-07 09:1x〜09:2x)
-TABS = (("send", "送る"), ("sent", "送った一言"), ("issues", "みんなの Issue"))
+TABS = (("send", "送る"), ("sent", "送った件"), ("issues", "みんなの Issue"))
 
 
 @register.simple_tag(takes_context=True)
@@ -150,9 +152,9 @@ def feedback_tabs(context):
     """送る画面と一覧の上のタブの帯 (依頼書 N321)。並び 3 つ [{"key", "label", "href", "count", "selected"}]。例外を出さない。
 
     href: 送る = 送る画面 (今の GET に screen があれば ?screen= で引き継ぐ。左のメニューの入口が渡した、開いていた画面を失わない)、
-    送った一言 = 一覧、みんなの Issue = 一覧の ?tab=issues (新しい URL は足さない。部品の画面は R15 で土台の 4 つのまま)。
-    count: 送った一言だけ見える件数 (services.visible_count。一覧と同じ絞り)、ほかは None。
-    selected: 送る画面なら送る、一覧で GET の tab が issues ならみんなの Issue、ほかの一覧なら送った一言 (詳細と編集の画面は帯を出さない)。
+    送った件 = 一覧、みんなの Issue = 一覧の ?tab=issues (新しい URL は足さない。部品の画面は R15 で土台の 4 つのまま)。
+    count: 送った件だけ見える件数 (services.visible_count。一覧と同じ絞り)、ほかは None。
+    selected: 送る画面なら送る、一覧で GET の tab が issues ならみんなの Issue、ほかの一覧なら送った件 (詳細と編集の画面は帯を出さない)。
     GitHub は読まない (帯を描くたびに HTTP を送らない)。request が無ければ全部 False で、count は 0。
     """
     request = context.get("request")
@@ -176,6 +178,55 @@ def feedback_tabs(context):
         {"key": key, "label": label, "href": hrefs[key], "count": count if key == "sent" else None, "selected": key == chosen}
         for key, label in TABS
     ]
+
+
+# ---- 詳細の「この件の進み具合」の段の帯 (受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md の作る物 1。本人の決め 11-07 17:2x〜18:1x) ----
+
+#: 段の帯の 4 つ (鍵と字。並びは画面の左から)。最後の段の字は状態で替わる (STEP_LAST_LABELS)
+STEPS = (("written", "書いた"), ("confirmed", "確認済み"), ("sent", "GitHub に送った"), ("fixed", "直した"))
+#: 最後の段の字を替える状態 (状態の値 → 字)。見送った件は最後の段を赤の「見送った」にする
+STEP_LAST_LABELS = {"dismissed": "見送った"}
+#: 状態の値 → 済んだ段の数 (下書き = 書いたまで、確認済み = 2 つ、送った = 3 つ、直した・見送った = 4 つ全部)
+STEPS_DONE = {"draft": 1, "confirmed": 2, "sent": 3, "fixed": 4, "dismissed": 4}
+
+
+@register.simple_tag
+def feedback_steps(feedback):
+    """詳細の「この件の進み具合」の段の帯の材料 (feedback/_steps.html)。並び 4 つ [{"key", "label", "done", "tone", "when", "note"}]。読むだけ。
+
+    done: 済んだ段か。状態より前の段は全部済んだ印にする (世話役が確認せずに送った件でも「確認済み」は済んだ印 = 指示書の「決めを待つ所」1 の勧め。
+          下書きから直接「直した」にした件も、間の段は済んだ印)。
+    tone: 済んだ段は "primary"、最後の段だけ状態の色の表 (core.status_colors.tone_for) の意味の色 (直した = success、見送った = error)。済んでいない段は空の字。
+    when と note: 記録にある物だけ (書いた = 書いた日時と書いた人、GitHub に送った = Issue の番号 (sent_url の末尾。無ければ空)、直した = 直した日時、
+          見送った = 見送った日時、直る版を待つ件 (送ったで fix_version がある) = 最後の段に「<版> で直る」)。確認済みと送ったの日時は表に無いので出さない
+          (新しい項目と migration は足さない = 指示書の勧め)。Issue の番号の読み方は services の URL の形 (_ISSUE_URL) を借りる (同じ部品の中)。
+    段の名前は GitHub につないでいない会社 (手で写して「送った」にした件) でも「GitHub に送った」のまま (指示書の「迷ったら」の勧め)。
+    """
+    done_count = STEPS_DONE.get(feedback.status, 1)
+    issue = services._ISSUE_URL.fullmatch(feedback.sent_url or "")
+    steps = []
+    for index, (key, label) in enumerate(STEPS, start=1):
+        done = index <= done_count
+        last = index == len(STEPS)
+        step = {"key": key, "label": label, "done": done, "tone": "primary" if done else "", "when": None, "note": ""}
+        if last:
+            step["label"] = STEP_LAST_LABELS.get(feedback.status, label)
+            if done:
+                step["tone"] = tone_for(feedback.status, "feedback")
+        if key == "written":
+            step["when"] = feedback.created_at
+            step["note"] = str(feedback.created_by) if feedback.created_by_id else ""
+        elif key == "sent" and done and issue is not None:
+            step["note"] = f"Issue #{issue.group(3)}"
+        elif last:
+            if feedback.status == "fixed":
+                step["when"] = feedback.fixed_at
+            elif feedback.status == "dismissed":
+                step["when"] = feedback.dismissed_at
+            elif feedback.status == "sent" and feedback.fix_version:
+                step["note"] = f"{feedback.fix_version} で直る"
+        steps.append(step)
+    return steps
 
 
 @register.simple_tag

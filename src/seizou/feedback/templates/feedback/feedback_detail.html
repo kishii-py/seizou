@@ -1,13 +1,14 @@
 {% extends "core/detail.html" %}
 {% load feedback_tags seizou_icons %}
-{# フィードバックの詳細: 土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
+{# フィードバックの詳細: 題の行の下に「この件の進み具合」の段の帯 (block main。feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)、土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
 {# 状態の節の GitHub (依頼書 N185): つないでいて確認済みなら「GitHub に送る」(送ったにするの左)、つないでいなければ「GitHub とつなぐ」への link。 #}
 {# 見送った (依頼書 N322): 「直しました」の次に「見送りました」の節。状態の節に、版待ちの件の直る版と会社の版 (世話役だけ)。見送った物は直したと同じく記録と送るの形を出さない。 #}
+{% block main %}{% feedback_steps object as steps %}{% include "feedback/_steps.html" with steps_done=object.status %}{% endblock %}
 {% block content %}{% feedback_fields fields as fields %}{{ block.super }}
 {% if object.fixed_at %}
 <section id="feedback-fixed" class="mt-6 rounded-xl border border-success bg-success/10 p-6 shadow-xs" aria-labelledby="feedback-fixed-title">
   <h2 id="feedback-fixed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "check" "size-5 text-success" %}直しました</h2>
-  <p class="mt-2 text-xs text-base-content/60">この一言から直しました。書いた人には、直した後に初めてログインしたときに 1 回だけ知らせます。</p>
+  <p class="mt-2 text-xs text-base-content/60">この件から直しました。書いた人には、直した後に初めてログインしたときに 1 回だけ知らせます。</p>
   <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
     <dt class="text-base-content/70">直した日時</dt><dd class="font-mono tabular-nums">{{ object.fixed_at|date:"Y-m-d H:i" }}</dd>
     <dt class="text-base-content/70">直した場所</dt><dd class="break-words">{% if object.fixed_note %}{{ object.fixed_note }}{% else %}書いていません{% endif %}</dd>
@@ -18,7 +19,7 @@
 {% if object.dismissed_at %}
 <section id="feedback-dismissed" class="mt-6 rounded-xl border border-base-300 bg-base-200 p-6 shadow-xs" aria-labelledby="feedback-dismissed-title">
   <h2 id="feedback-dismissed-title" class="flex items-center gap-2 text-lg font-bold">{% icon "x" "size-5 text-base-content/70" %}見送りました</h2>
-  <p class="mt-2 text-xs text-base-content/60">この一言は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。書いた人には、見送った後に初めてログインしたときに 1 回だけ知らせます。</p>
+  <p class="mt-2 text-xs text-base-content/60">この件は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。書いた人には、見送った後に初めてログインしたときに 1 回だけ知らせます。</p>
   <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
     <dt class="text-base-content/70">見送った日時</dt><dd class="font-mono tabular-nums">{{ object.dismissed_at|date:"Y-m-d H:i" }}</dd>
     <dt class="text-base-content/70">理由の場所</dt><dd class="break-words">{% if object.dismissed_note %}{{ object.dismissed_note }}{% else %}書いていません{% endif %}</dd>

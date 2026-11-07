@@ -234,7 +234,7 @@ def test_list_filter_shows_fixed(client, plain, manager):
 
 # ---- 3. ログインのときの知らせ ----
 
-NOTICE = "あなたの一言から直しました"
+NOTICE = "あなたのフィードバックから直しました"
 
 
 def test_unseen_fixed_and_notice_text(plain, other, manager):
@@ -249,8 +249,8 @@ def test_unseen_fixed_and_notice_text(plain, other, manager):
     assert [r.title for r in rows] == ["出荷の画面で日付がずれる", "受注の一覧で並びが戻る"]
     assert services.unseen_fixed(AnonymousUser()) == []
     assert services.fixed_notice([rows[0]]) == (
-        "あなたの一言から直しました: 「出荷の画面で日付がずれる」(1 件)。"
-        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った一言」のタブで見られます。"
+        "あなたのフィードバックから直しました: 「出荷の画面で日付がずれる」(1 件)。"
+        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った件」のタブで見られます。"
     )
     assert "「出荷の画面で日付がずれる」ほか (2 件)" in services.fixed_notice(rows)
     assert services.fixed_notice([]) == ""
@@ -356,7 +356,7 @@ def test_list_marks_fixed_rows(client, plain, manager):
 
 # ---- 5. 見送った (依頼書 N322。決め 11-07 09:0x〜09:4x) のログインのときの知らせ ----
 
-DISMISSED_NOTICE = "あなたの一言は見送りになりました"
+DISMISSED_NOTICE = "あなたのフィードバックは見送りになりました"
 #: お知らせの toast の頭 (core/_toasts.html の info の枝)
 INFO_TOAST = '<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info'
 ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
@@ -379,7 +379,7 @@ def test_unseen_dismissed_and_notice_text(plain, other, manager):
     assert [r.pk for r in rows] == [second.pk, first.pk]
     assert services.unseen_dismissed(AnonymousUser()) == []
     assert services.dismissed_notice([rows[0]]) == (
-        "あなたの一言は見送りになりました: 「出荷の画面で日付がずれる」(1 件)。"
+        "あなたのフィードバックは見送りになりました: 「出荷の画面で日付がずれる」(1 件)。"
         "理由は GitHub の Issue に書かれています (詳細の「送った先」から開けます)。"
     )
     assert "「出荷の画面で日付がずれる」ほか (2 件)" in services.dismissed_notice(rows)
@@ -464,7 +464,7 @@ def test_dismissed_status_in_choices_and_filter():
 
 # ---- Issue の返事の知らせ (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
 
-REPLY_NOTICE = "あなたの一言に返事が届きました"
+REPLY_NOTICE = "あなたのフィードバックに返事が届きました"
 
 
 @pytest.fixture
@@ -499,8 +499,8 @@ def test_unseen_replies_and_notice_text(plain, other, manager, replies_from_gith
     assert [row.github_id for row in rows] == [102, 101]
     assert services.unseen_replies(other) == [] and services.unseen_replies(AnonymousUser()) == []
     assert services.reply_notice(rows) == (
-        "あなたの一言に返事が届きました: 「受注の一覧で並びが戻る」(2 件)。"
-        "左のメニューの下の「フィードバック」の「送った一言」から開いて読めます。"
+        "あなたのフィードバックに返事が届きました: 「受注の一覧で並びが戻る」(2 件)。"
+        "左のメニューの下の「フィードバック」の「送った件」から開いて読めます。"
     )
     assert services.reply_notice([]) == ""
 

@@ -9,19 +9,22 @@
   断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る (削除が通ったときだけ一覧へ)。
 - 画面の欄の候補の口 screen_select は GET の関数の view (login_required・require_GET)。画面の目録は表でないので BaseSelectView の子にせず、同じ形の JSON を返す (候補 C85)。
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
-  (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら、中身の無い 200 で編集の画面へ移す (土台の form_valid と同じ形)。
+  (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら画面を移らず、吹き出しと右の欄の編集の形 (hx-swap-oob) を 200 で返す
+  (_draft_ready。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
 - GitHub の口 (依頼書 N185): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
   断るのは services (ValueError を赤の知らせ)。HTTP は services が transaction.atomic の外で送る (R17)。
 - GitHub でログインしてつなぐ (依頼書 N320): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
   断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
-- タブの帯 (依頼書 N321): 送る画面と一覧の上に「送る」「送った一言」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
+- タブの帯 (依頼書 N321): 送る画面と一覧の上に「送る」「送った件」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
   新しい URL は足さず、「みんなの Issue」は一覧の ?tab=issues で、表を描かないので一覧の get_queryset は空を返す。
 - 「うちも」の口 (依頼書 N323): me_too。GitHub の口の中でこの口だけはログインした全員が押せる (👍 には文が入らないため)。
   通ると、services が会社のトークンで Issue に 👍 を付け、押した人の件を残す。
 """
 
+import copy
+import json
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -349,10 +352,45 @@ def me_too(request, number):
     return HttpResponseRedirect(f"{reverse('feedback:feedback_list')}?{urlencode(params)}#issues")
 
 
+def _draft_form_context(request, feedback) -> dict:
+    """右の欄に差し替える編集の形の context (編集の画面 FeedbackUpdateView の GET と同じ作り = 欄の class・会社ごとの項目・初期値・キャンセルの先)。
+
+    ask の要求は POST (message と screen) なので、form が送られた字を欄の値と読まないよう、method を GET にした浅い写しの要求で view を組む
+    (FormMixin は POST のときだけ form に data を渡す。写しの session と user は元と同じ物)。
+    form の送り先は編集の画面 (form_action。core/_form_card.html が action に書く)。送る画面の URL へ送ると同じ件が 2 つできるため。
+    """
+    get_request = copy.copy(request)
+    get_request.method = "GET"
+    view = FeedbackUpdateView()
+    view.setup(get_request, pk=feedback.pk)
+    view.object = feedback
+    context = view.get_context_data(form=view.get_form())
+    context["form_action"] = reverse("feedback:feedback_update", args=[feedback.pk])
+    return context
+
+
+def _draft_ready(request, feedback):
+    """下書きができたときの返事 (画面を移らない。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md の作る物 2)。
+
+    200 の HTML (feedback/_draft_ready.html): 先頭は会話の吹き出し 2 つ (利用者の字と chat.DRAFT_READY_MESSAGE。hx-target の #feedback-chat-messages に
+    beforeend で足される)、続いて hx-swap-oob で右の欄 (#feedback-form-column) を、できた下書きの編集の形に差し替える物。
+    見出し HX-Trigger の seizou:saved (seizou-modal.js が右上の知らせを写す。CLAUDE.md の知らせの強さの 4 = 済んだ) で知らせる。
+    messages には積まない (画面を移らないので、積むと次に開いた画面に古い知らせが出る = 土台の saved_in_modal と同じ訳)。JSON は既定の ensure_ascii のまま (同じ訳)。
+    """
+    context = _draft_form_context(request, feedback)
+    context["turns"] = [
+        {"role": "user", "text": request.POST.get("message", "").strip()},
+        {"role": "assistant", "text": chat.DRAFT_READY_MESSAGE},
+    ]
+    response = render(request, "feedback/_draft_ready.html", context)
+    response["HX-Trigger"] = json.dumps({"seizou:saved": {"message": chat.DRAFT_READY_MESSAGE, "level": "success"}})
+    return response
+
+
 @login_required
 @require_POST
 def ask(request):
-    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。
+    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら画面を移らずに右の欄を編集の形に差し替える (_draft_ready)。
 
     AI が似た Issue に「うちも」を付けたら (me_too_issue の横取り。依頼書 N323)、知らせを積んでその件の詳細へ移す。
     """
@@ -372,10 +410,7 @@ def ask(request):
         return response
     feedback = result["feedback"]
     if feedback is not None:
-        messages.info(request, chat.DRAFT_READY_MESSAGE)
-        response = HttpResponse(status=200)
-        response["HX-Redirect"] = reverse("feedback:feedback_update", args=[feedback.pk])
-        return response
+        return _draft_ready(request, feedback)
     turns = result["turns"] or [{"role": "assistant", "text": result["text"]}]
     return render(request, "feedback/_chat_messages.html", {"turns": turns})
 
