@@ -63,6 +63,8 @@ MESSAGE_OUT_OF_TOLERANCE = "送った時刻が 5 分の幅の外です。時計�
 MESSAGE_SIGNATURE_MISMATCH = (
     "登録した取引先の署名と合いません。つながりの登録と鍵を確かめてください。"
 )
+#: 受ける向きの 2 つ以上の取引先の鍵で署名が合った (同じ鍵を 2 社に使っている設定の誤り。どの取引先かは出さない)
+MESSAGE_SAME_SECRET = "同じ鍵で署名の合う取引先が 2 つ以上あります。つながりの鍵を取引先ごとに分けてください。"
 MESSAGE_INVALID_ID = "番号 (webhook-id) が uuid の形ではありません。"
 MESSAGE_INVALID_BODY = "本文が JSON の形ではありません。"
 #: 知らない種類の通知 ({kind} は本文の kind の字を 40 字で切った物。字でなければ決まった字)
@@ -193,10 +195,33 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が self_invoice (仕入明細) なら受信箱に入れず、受注の明細に当てて受けた仕入明細にし、SelfInvoiceReceipt を返す。
     本文の kind が self_invoice_response (仕入明細回答) なら受信箱に入れず、元の仕入明細の明細に答えを書いて SelfInvoiceResponseReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
+    署名は受ける向きの全部のつながりの鍵で確かめ、署名の合う取引先が 2 つ以上なら断る (_signed_partner)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
-    partner = None
+    partner, verified_id, refused = _signed_partner(raw_body, headers, msg_id)
+    if refused is not None:
+        return refused
+
+    # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
+    # 返る時に結果を「受けた」か「断った: <理由>」にする。添付を取りに来た要求 (chat_file) は取引の文書でないので残さない。
+    exchange = _exchange_received(partner, verified_id, raw_body)
+    result = _receive_verified(partner, verified_id, raw_body, msg_id)
+    _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
+    return result
+
+
+def _signed_partner(raw_body: bytes, headers: Mapping[str, str], msg_id):
+    """受ける向きの全部のつながりの鍵で署名を確かめ、署名の合う取引先を決める (receive が呼ぶ)。
+
+    返す物は (取引先, 確かめた番号, None) か、断ったとき (None, None, 断る理由の文)。
+    鍵が未設定のつながりと、鍵の形が読めない (短い鍵を含む) つながりは、名前だけをログに出して飛ばす。
+    鍵の見出しの誤り (_HEADER_ERRORS) は鍵と関係なく決まるので、1 つ目に出たところで断る (今までの形のまま)。
+    署名の合う取引先が無ければ MESSAGE_SIGNATURE_MISMATCH、2 つ以上なら MESSAGE_SAME_SECRET で断る (どの取引先かは文に出さない)。
+    訳: 1 つの鍵を 2 社の受ける向きに使うと、注文が別の取引先の物として入るため (後から来る種類は元の注文と取引先を比べるので断られる)。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-2 と確かめ直しの (d)(f)。
+    変えてよい条件 = 1 つの取引先に複数の受ける向きのつながりを持たせると決めたとき。
+    """
+    matched = {}
     verified_id = None
     for connection in Connection.objects.filter(
         direction=Connection.DIRECTION_RECEIVE
@@ -211,27 +236,24 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
             verified_id = signing.verify(secret, headers, raw_body)
         except signing.SignatureError as exc:
             if exc.reason in _HEADER_ERRORS:
-                return _refuse(_HEADER_ERRORS[exc.reason], msg_id)
+                return None, None, _refuse(_HEADER_ERRORS[exc.reason], msg_id)
             continue
         except ValueError:
-            # 鍵の符号化が壊れている。送り手でなく設定の誤りなので、名前だけを出して次へ。
+            # 鍵の符号化が壊れているか、長さが外れている。送り手でなく設定の誤りなので、名前だけを出して次へ。
             logger.warning(
                 "受け口: 鍵の形が読めないつながりを飛ばした (環境変数 %s。設定の誤り)",
                 connection.secret_env,
             )
             continue
-        partner = connection.partner
-        break
+        # 最初に合った物で止めず、全部のつながりを確かめる (同じ鍵の 2 社を見つけるため)。
+        matched.setdefault(connection.partner_id, connection.partner)
 
-    if partner is None:
-        return _refuse(MESSAGE_SIGNATURE_MISMATCH, msg_id)
-
-    # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
-    # 返る時に結果を「受けた」か「断った: <理由>」にする。添付を取りに来た要求 (chat_file) は取引の文書でないので残さない。
-    exchange = _exchange_received(partner, verified_id, raw_body)
-    result = _receive_verified(partner, verified_id, raw_body, msg_id)
-    _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
-    return result
+    if not matched:
+        return None, None, _refuse(MESSAGE_SIGNATURE_MISMATCH, msg_id)
+    if len(matched) > 1:
+        return None, None, _refuse(MESSAGE_SAME_SECRET, msg_id)
+    (partner,) = matched.values()
+    return partner, verified_id, None
 
 
 def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):

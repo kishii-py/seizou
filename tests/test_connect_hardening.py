@@ -3,6 +3,7 @@
 1 つの DB に、注文を送る会社と受ける会社の両方の役を置く (tests/test_connect_reply.py の _connect の形)。
 - 1 送る口: 3xx の転送を追わず、200 の返事は受け取った印 (status と送った番号) が合うときだけ受け取ったにする。
 - 2 鍵の長さ: ほどいた鍵が 24〜64 bytes の外なら使わない (送らない・受け口はそのつながりを飛ばす)。
+- 3 同じ鍵の 2 社: 受ける向きの 2 つ以上の取引先の鍵で署名が合えば断る。
 相手の受け口への HTTP は requests.post を偽の物に差し替えて見る (外へは出ない)。
 鍵は試験のたびに signing.new_secret() で作って環境変数に置き、ファイルに書かない。取引先・部品・会社は作り物。
 """
@@ -20,6 +21,7 @@ import pytest
 
 from seizou.connect import services, signing
 from seizou.connect.models import Inbox, Outbox
+from seizou.masters import services as masters_services
 from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder, SelfInvoice
 from tests.test_connect_reply import ORDER_ENV
@@ -40,6 +42,8 @@ from tests.test_r12_signature import _order_body
 
 #: 試験だけの鍵の置き場の名前 (値は試験の中で作って環境変数に置く)
 SHORT_ENV = "SEIZOU_PARTNER_HARDSHORT_SECRET"
+FIRST_ENV = "SEIZOU_PARTNER_HARDFIRST_SECRET"
+SECOND_ENV = "SEIZOU_PARTNER_HARDSECOND_SECRET"
 #: 3xx の返事の欄の頭の字
 REDIRECT_HEAD = "届きません: 相手の受け口の URL が変わっています (HTTP "
 #: 200 でも受け取った印が合わない返事の欄の字
@@ -247,3 +251,70 @@ def test_short_secret_receive_connection_is_skipped(monkeypatch, user, customer,
     assert any(SHORT_ENV in record.getMessage() and "鍵の形が読めない" in record.getMessage() for record in caplog.records)
     assert value[len("whsec_") :] not in caplog.text
 
+
+# ---------------------------------------------------------------- 3 同じ鍵の 2 社
+
+
+@pytest.fixture
+def two_customers(user):  # noqa: F811
+    return [
+        masters_services.create_partner({"code": code, "name": name, "role": "customer"}, user)
+        for code, name in (("C101", "作り物の得意先 1"), ("C102", "作り物の得意先 2"))
+    ]
+
+
+@pytest.mark.django_db
+def test_same_secret_value_for_two_partners_is_refused(monkeypatch, user, two_customers):  # noqa: F811
+    """受ける向きの 2 つのつながり (別の取引先・別の置き場の名前) に同じ値の鍵を置くと、署名つきの注文を断る。"""
+    value = signing.new_secret()
+    monkeypatch.setenv(FIRST_ENV, value)
+    monkeypatch.setenv(SECOND_ENV, value)
+    services.register_connection(two_customers[0], "", FIRST_ENV, "receive", user)
+    services.register_connection(two_customers[1], "", SECOND_ENV, "receive", user)
+    msg_id = str(uuid.uuid4())
+    body = _order_body(msg_id)
+
+    result = services.receive(body, signing.headers_for(value, msg_id, body))
+
+    assert result == services.MESSAGE_SAME_SECRET
+    assert Inbox.objects.count() == 0
+    assert "作り物の得意先" not in result
+
+
+@pytest.mark.django_db
+def test_same_secret_name_for_two_partners_is_refused_on_receive(monkeypatch, user, two_customers):  # noqa: F811
+    """2 社の受ける向きに同じ置き場の名前を使っても (保存の時には止めていない)、受けるときに断る。"""
+    value = signing.new_secret()
+    monkeypatch.setenv(FIRST_ENV, value)
+    for partner in two_customers:
+        services.register_connection(partner, "", FIRST_ENV, "receive", user)
+    msg_id = str(uuid.uuid4())
+    body = _order_body(msg_id)
+
+    assert services.receive(body, signing.headers_for(value, msg_id, body)) == services.MESSAGE_SAME_SECRET
+    assert Inbox.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_one_matching_partner_is_received(monkeypatch, user, two_customers):  # noqa: F811
+    """鍵が取引先ごとに分かれていれば、今のまま署名の合う 1 社の注文として受ける。"""
+    first, second = signing.new_secret(), signing.new_secret()
+    monkeypatch.setenv(FIRST_ENV, first)
+    monkeypatch.setenv(SECOND_ENV, second)
+    services.register_connection(two_customers[0], "", FIRST_ENV, "receive", user)
+    services.register_connection(two_customers[1], "", SECOND_ENV, "receive", user)
+    msg_id = str(uuid.uuid4())
+    body = _order_body(msg_id)
+
+    result = services.receive(body, signing.headers_for(second, msg_id, body))
+
+    assert isinstance(result, Inbox)
+    assert result.partner == two_customers[1]
+
+
+@pytest.mark.django_db
+def test_same_secret_name_for_two_send_connections_is_saved(user, two_customers):  # noqa: F811
+    """送る向きどうしの同じ置き場の名前は、今のまま保存できる。"""
+    for partner in two_customers:
+        services.register_connection(partner, "https://buyer.example.test/connect/receive/order/", FIRST_ENV, "send", user)
+    assert services.Connection.objects.filter(secret_env=FIRST_ENV).count() == 2
