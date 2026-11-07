@@ -22,7 +22,7 @@ from django.views.decorators.http import require_POST
 from seizou.core import access
 from seizou.core import reports
 from seizou.core.exceptions import RuleError
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice
+from seizou.core.views import REFUSAL_HEAD_SAVE, BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice, add_notice_trigger
 
 from . import plans, services, worklist
 from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderFindForm, WorkOrderIssueForm
@@ -224,14 +224,28 @@ class WorkOrderStepSelectView(BaseSelectView):
         return WorkOrderStep.objects.select_related("workorder", "process")
 
 
+#: 盤の置き直しの form の誤りの文の終わり。盤には欄が無い (値はドラッグとボタンが送る) ので、直し方でなく次にすることを書く (決め 11-07 C57-5)
+PLAN_FORM_RETRY = "盤を開き直してから、もう一度置いてください。"
+
+
+def _plan_form_notice(form):
+    """盤の置き直しの form の誤りを、止まった知らせ 1 つにする (前の盤の中の帯の「<欄の名前>: <誤り>」の並びを 1 つの文にした)。
+
+    core.views.invalid_form_message は使わない (その字の「欄の下の赤い字のとおりに直してから」は、欄の無い盤には当たらない)。
+    """
+    errors = [str(error) for error in form.non_field_errors()]
+    errors += [f"{form.fields[name].label}: {error}" for name in form.fields if name in form.errors for error in form.errors[name]]
+    return Notice("入力", f"{REFUSAL_HEAD_SAVE}{' '.join(errors)} {PLAN_FORM_RETRY}")
+
+
 @login_required
 @require_POST
 def plan_place(request):
     """生産計画の盤で日を置く・動かす・戻す口 (htmx の POST だけ。画面でない口なので関数の view)。
 
     成功は盤の部分 (workorders/_plan_board.html) を返し、htmx が盤の箱ごと入れ替える。
-    失敗 (R05・ValueError・form の誤り) は知らせ (workorders/_plan_notice.html) を 200 で返し、
-    返事の見出し HX-Retarget・HX-Reswap で盤の中の知らせの置き場に入れる (盤は変わらない)。
+    失敗 (R05・ValueError・form の誤り・権限) は本文の無い 204 に、見出し HX-Trigger の seizou:notice (core.views.add_notice_trigger) を付けて返す。
+    右上の赤い知らせに出し、盤は変わらない (決め 11-07 C57-5)。
     """
     if not request.headers.get("HX-Request"):
         return HttpResponseBadRequest("生産計画の盤からの要求だけを受けます。")
@@ -254,10 +268,9 @@ def plan_place(request):
                 plans.parse_weeks(request.POST.get("weeks")),
             )
             return render(request, "workorders/_plan_board.html", {"board": board})
-    response = render(request, "workorders/_plan_notice.html", {"notice": notice, "form": form})
-    response["HX-Retarget"] = "#plan-notice"
-    response["HX-Reswap"] = "innerHTML"
-    return response
+    else:
+        notice = _plan_form_notice(form)
+    return add_notice_trigger(HttpResponse(status=204), notice)
 
 
 @login_required

@@ -13,6 +13,9 @@
  * - 知らせ: base.html の template#seizou-toast-template から level の合う 1 つを写し、字は textContent で入れる。
  *   class を触らない (classList・className を使わない)。取った字を HTML として差し込まない。
  *   成功は 5 秒で消える (messages の知らせと同じ)。確認は閉じるボタンで消す (閉じるボタンは base.html の script が受ける)。
+ * - 止まった知らせと確かめ (画面の一部の差し替え): 応答の HX-Trigger の seizou:notice (items の level・message・rule・help) を受けて、
+ *   template の stop か check の箱を写し、data-notice の印を付けて右上の頭に入れる。同じ段の前の箱は消す。小窓は閉じない。
+ *   「?」は htmx.process で動かす (決め 11-07 C57-5)。
  */
 (function () {
   "use strict";
@@ -83,5 +86,93 @@
     if (modal && modal.open) modal.close();
     showToast(typeof detail.message === "string" ? detail.message : "", detail.level);
     document.body.dispatchEvent(new CustomEvent("seizou:refresh"));
+  });
+
+  // 知らせの文を 1 文目 (最初の「。」まで) と残り (前後の空白を落とす) に分ける (seizou_tags.split_first_sentence と同じ分け方)。
+  function splitFirstSentence(text) {
+    var at = text.indexOf("。");
+    if (at < 0) return [text, ""];
+    return [text.slice(0, at + 1), text.slice(at + 1).trim()];
+  }
+
+  // 止まった知らせ (stop) か確かめ (check) の箱を 1 つ写し、字を textContent で入れる。写す元に無ければ null。
+  // level が check でなければ stop と読む。使わない字の入れ所と「?」は remove() する (hidden は .btn の display に負けることがあるため)。
+  function noticeToast(template, item) {
+    var level = item.level === "check" ? "check" : "stop";
+    var source = template.content.querySelector('[data-toast-level="' + level + '"]');
+    if (!source) return null;
+    var toast = source.cloneNode(true);
+    toast.setAttribute("data-notice", level);
+    var parts = splitFirstSentence(typeof item.message === "string" ? item.message : "");
+    toast.querySelector("[data-toast-head]").textContent = parts[0];
+    var rest = toast.querySelector("[data-toast-rest]");
+    if (parts[1]) rest.textContent = parts[1];
+    else rest.remove();
+    var rule = typeof item.rule === "string" ? item.rule : "";
+    var help = typeof item.help === "string" ? item.help : "";
+    var ruleText = toast.querySelector("[data-toast-rule]");
+    if (rule) ruleText.textContent = rule;
+    else ruleText.remove();
+    var helpButton = toast.querySelector("[data-toast-help]");
+    if (helpButton) {
+      if (rule && help) {
+        helpButton.setAttribute("hx-get", help);
+        helpButton.setAttribute("title", rule + " の決まりの説明");
+        helpButton.setAttribute("aria-label", rule + " の決まりの説明");
+      } else {
+        helpButton.remove();
+      }
+    }
+    return toast;
+  }
+
+  // 右上の箱 (#seizou-toasts)。無ければ写す元の箱 (data-toast-box) を中を空にして写し、id を付けて body へ入れる (showToast と同じ形)。
+  function toastBox(template) {
+    var current = document.getElementById("seizou-toasts");
+    if (current) return current;
+    var box = template.content.cloneNode(true).querySelector("[data-toast-box]");
+    box.querySelectorAll("[data-toast-level]").forEach(function (each) {
+      each.remove();
+    });
+    box.id = "seizou-toasts";
+    document.body.appendChild(box);
+    return box;
+  }
+
+  document.addEventListener("seizou:notice", function (event) {
+    var template = document.getElementById("seizou-toast-template");
+    if (!template) return;
+    var detail = event.detail || {};
+    var items = Array.isArray(detail.items) ? detail.items : [];
+    var stops = [];
+    var checks = [];
+    items.forEach(function (item) {
+      var toast = noticeToast(template, item || {});
+      if (!toast) return;
+      if (toast.getAttribute("data-notice") === "check") checks.push(toast);
+      else stops.push(toast);
+    });
+    var toasts = stops.concat(checks);
+    if (!toasts.length) return;
+    // 同じ段の前の箱を消す (画面の全体の形と同じく、赤は 1 つ・黄はその回の分だけ)。messages の箱 (印の無い物) は残す。
+    var current = document.getElementById("seizou-toasts");
+    if (current) {
+      [stops.length ? "stop" : "", checks.length ? "check" : ""].forEach(function (level) {
+        if (!level) return;
+        current.querySelectorAll('[data-notice="' + level + '"]').forEach(removeToast);
+      });
+    }
+    // 右上の箱の頭に、赤・黄の順で入れる (止まった → 確かめ → messages の並び。同じ基の前へ順に入れると並びが保たれる)。
+    var box = toastBox(template);
+    var head = box.firstChild;
+    toasts.forEach(function (toast) {
+      box.insertBefore(toast, head);
+    });
+    // htmx は後から入れた要素の hx-get と hx-on を読まないので、「?」を動かすために読ませる。
+    if (window.htmx) {
+      toasts.forEach(function (toast) {
+        window.htmx.process(toast);
+      });
+    }
   });
 })();

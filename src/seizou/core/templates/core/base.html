@@ -73,8 +73,9 @@ seizou_tags.master_link の link / forms.CHECKBOX_COLUMNS_CSS の grid gap-x-6 s
 {# 済んだ事の知らせ (messages) は右上の toast。block body の外に置き、ログインの画面でも出す。 #}
 {% if "assistant" in seizou.parts and user.is_authenticated %}{% include "assistant/_panel.html" %}{% endif %}
 {% include "core/_toasts.html" %}
-{# 小窓の入力を保存した後の知らせの元 (seizou-modal.js が写して字を入れる。_toasts.html の成功と確認と同じ見た目)。JS は class を触らない。 #}
-{# 写すのは data-toast-level の合う 1 つ。右上の箱 (#seizou-toasts) が既にあればその中へ、無ければ箱 (data-toast-box) に id を付けて body へ入れる。元の箱に id を書かない (知らせの無い画面に id を出さない)。 #}
+{# 右上の知らせの写す元 (seizou-modal.js が写して字を入れる。_toasts.html と同じ見た目)。2 種類: 小窓の入力を保存した後の知らせ (success・warning。HX-Trigger の seizou:saved) と、画面の一部だけを差し替える応答の止まった知らせ (stop) と確かめ (check。応答の見出し HX-Trigger の seizou:notice。core.views.add_notice_trigger が付ける)。JS は class を触らない。 #}
+{# 写すのは data-toast-level の合う物。右上の箱 (#seizou-toasts) が既にあればその中へ、無ければ箱 (data-toast-box) に id を付けて body へ入れる。元の箱に id を書かない (知らせの無い画面に id を出さない)。 #}
+{# stop と check の箱には止まった知らせと確かめの印を書かず、写した後に JS が付ける (この元はどの画面の本文にも入るので、書くと画面の全体で印を数える試験の数が狂う)。字を入れる所は 1 文目の太字・残り・番号・「?」に分ける (成功と確認の箱の字の入れ所と別の名前)。 #}
 <template id="seizou-toast-template">
 <div class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal p-4 pointer-events-none" aria-live="polite" data-toast-box>
 <div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-primary/80 p-4 text-primary-content shadow-lg sm:w-96" role="status" data-auto data-toast-level="success">
@@ -86,6 +87,16 @@ seizou_tags.master_link の link / forms.CHECKBOX_COLUMNS_CSS の grid gap-x-6 s
 <div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning/80 p-4 text-warning-content shadow-lg sm:w-96" role="alert" data-toast-level="warning">
   <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-warning">{% icon "alert" "size-7" %}</span>
   <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">確認してください。</p><p class="mt-1 break-words" data-toast-text></p></div>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+</div>
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-error/80 p-4 text-error-content shadow-lg sm:w-96" role="alert" data-toast-level="stop">
+  <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-error">{% icon "x" "size-7" %}</span>
+  <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">失敗しました。</p><p class="mt-1 break-words"><span class="font-semibold" data-toast-head></span> <span data-toast-rest></span> <span class="font-mono text-xs" data-toast-rule></span><button class="btn btn-ghost btn-square btn-xs pointer-events-auto text-error-content" type="button" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" data-toast-help>{% icon "help" "size-4" %}</button></p></div>
+  <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-error-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
+</div>
+<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-warning/80 p-4 text-warning-content shadow-lg sm:w-96" role="alert" data-toast-level="check">
+  <span class="grid size-12 shrink-0 place-items-center rounded-full bg-base-100 text-warning">{% icon "alert" "size-7" %}</span>
+  <div class="min-w-0 flex-1 pt-1"><p class="text-lg font-bold">確認してください。</p><p class="mt-1 break-words"><span class="font-semibold" data-toast-head></span> <span data-toast-rest></span> <span class="font-mono text-xs" data-toast-rule></span></p></div>
   <button type="button" class="btn btn-ghost btn-circle btn-xs pointer-events-auto text-warning-content" aria-label="閉じる" data-toast-close>{% icon "x" "size-4" %}</button>
 </div>
 </div>

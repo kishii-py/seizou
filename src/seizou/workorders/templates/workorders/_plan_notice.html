@@ -1,5 +1,0 @@
-{% load seizou_icons %}
-{# 盤の知らせ。plan_place の失敗 (R05・ValueError・form の誤り) を、盤の中の知らせの置き場に赤の知らせで出す。 #}
-{% include "core/_notices.html" %}
-{% for error in form.non_field_errors %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-mono font-medium">入力</span> {{ error }}</span></div>{% endfor %}
-{% for field in form %}{% for error in field.errors %}<div class="alert alert-error alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-mono font-medium">入力</span> {{ field.label }}: {{ error }}</span></div>{% endfor %}{% endfor %}
