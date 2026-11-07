@@ -22,6 +22,7 @@ import uuid
 from django.db import transaction
 from django.utils import timezone
 
+from seizou.core import edi_codes
 from seizou.core.services import next_number
 from seizou.masters.services import refuse_inactive, round_amount
 
@@ -290,7 +291,8 @@ def receive(line, qty, received_on, user, *, note=""):
 
             stock_services.record_received(receipt, user)
         if locked.status != PurchaseOrder.STATUS_DELIVERED:
-            lines = list(annotate_received(locked.lines.all()))
+            # 取り消した明細 (明細状態コード 2) は「納品された」の見方に入れない (受入は断らない = 現物優先。候補に出さないだけ)。
+            lines = list(annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
             if lines and all(row.remaining_total <= 0 for row in lines):
                 locked.status = PurchaseOrder.STATUS_DELIVERED
                 locked.save(update_fields=["status"])
@@ -376,6 +378,8 @@ def annotate_order_received(queryset):
     """
     ordered = (
         PurchaseOrderLine.objects.filter(purchase_order=OuterRef("pk"))
+        # 取り消した明細 (明細状態コード 2) の数は明細の数量の合計に入れない。受入の数の合計は外さない (受け入れた現物は数える)。
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
         .order_by()
         .values("purchase_order")
         .annotate(total=Sum("qty"))

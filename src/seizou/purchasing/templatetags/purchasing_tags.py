@@ -133,12 +133,25 @@ def next_receipt(purchase_order):
     if purchase_order.status in (purchase_order.STATUS_CANCELLED, purchase_order.STATUS_REJECTED):
         return None
     for line in purchase_order.lines_with_received:
-        if line.remaining_total <= 0:
+        # 取り消した明細 (明細状態コード 2) は受入の行き先にしない。
+        if line.remaining_total <= 0 or line.is_cancelled:
             continue
         for entry in services.notice_rests(line):
             if entry["rest"] > 0:
                 return {"line": line, "rest_text": entry["rest_text"]}
     return None
+
+
+def _counted_lines(purchase_order) -> list:
+    """納期と金額の合計に数える明細。取り消した明細 (明細状態コード 2) を外す。
+
+    状態が「取消」の発注は全部の明細を数える (取消を送った発注は全部の明細が 2 になるので、外すと金額のカードと合計の札が消える。
+    下書きを取り消した発注も今のまま金額を出す)。
+    """
+    lines = list(purchase_order.lines.all())
+    if purchase_order.status == purchase_order.STATUS_CANCELLED:
+        return lines
+    return [line for line in lines if not line.is_cancelled]
 
 
 @register.simple_tag
@@ -150,7 +163,7 @@ def purchase_order_aside(purchase_order, fields, hide_money=False):
     カードと行の形は orders の orders_detail の order_aside と同じ。金額の閲覧は seizou.hide_money を読むだけ (core の access の判定を呼ばない = 金額の閲覧の記録を増やさない)。
     """
     partner = purchase_order.partner
-    lines = list(purchase_order.lines.all())
+    lines = _counted_lines(purchase_order)
     dues = sorted(line.due_date for line in lines if line.due_date)
 
     def label(name):
@@ -185,7 +198,7 @@ def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
     札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・
     合計 (明細の金額の合計。頭に ¥。明細があり、金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (purchase_order_aside) は残す (札はその要約)。
     """
-    lines = list(purchase_order.lines.all())
+    lines = _counted_lines(purchase_order)
     dues = sorted(line.due_date for line in lines if line.due_date)
     chips = [{"label": "協力企業", "value": purchase_order.partner.name}]
     if dues:

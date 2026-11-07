@@ -241,7 +241,8 @@ def stage_band(purchase_order) -> StageBand | None:
         return None
     outbox = _all(purchase_order, "outbox_messages")
     head = _order_reached(purchase_order, outbox)
-    of_reached = [head | _line_reached(line) for line in _all(purchase_order, "lines")]
+    # 取り消した明細 (明細状態コード 2) は段を見ない (残る明細が無ければ発注の全体の段)。
+    of_reached = [head | _line_reached(line) for line in _all(purchase_order, "lines") if not line.is_cancelled]
     of_lines = [max(reached) for reached in of_reached]
     current = min(of_lines, default=max(head))
     passed = of_reached or [head]

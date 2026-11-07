@@ -4,6 +4,7 @@
 金額は purchasing.services が数量 × 単価を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
 受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は会期後。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
+注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
 """
 
 from decimal import Decimal
@@ -12,6 +13,8 @@ from functools import cached_property
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+from seizou.core import edi_codes
 
 
 class PurchaseOrder(models.Model):
@@ -50,6 +53,11 @@ class PurchaseOrder(models.Model):
     reply_note = models.CharField("断りの理由", max_length=500, blank=True)
     # 当てた注文回答の番号。同じ番号が 2 回届いたら 2 回目は何もしない (R11 の考え。DB の一意の制約も)。
     reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
+    # 今の版の番号 (注文履歴番号) と目的 (注文書目的コード)。変更と取消を相手へ送るたびに版を 1 上げる (EDI の注文変更の方式 2)。
+    revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
+    purpose_code = models.CharField(
+        "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
 
     # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
@@ -97,6 +105,13 @@ class PurchaseOrderLine(models.Model):
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
+    # 今の版でこの明細に何をしたか (明細状態コード) と、変えた訳 (明細状態理由コード)。取り消した明細は行を残して 2 にする。
+    line_status_code = models.CharField(
+        "明細状態コード", max_length=2, choices=edi_codes.LINE_STATUS_CHOICES, default=edi_codes.LINE_NEW
+    )
+    line_status_reason_code = models.CharField(
+        "明細状態理由コード", max_length=4, choices=edi_codes.LINE_REASON_CHOICES, blank=True, default=""
+    )
 
     class Meta:
         verbose_name = "発注の明細"
@@ -129,6 +144,11 @@ class PurchaseOrderLine(models.Model):
         if remaining is None or remaining <= 0:
             return text
         return f"{text} / {self.purchase_order.partner.name} 残り {_qty_text(remaining)}"
+
+    @property
+    def is_cancelled(self):
+        """取り消した明細か (明細状態コード 2 = 明細行取消)。行は残し、受入の候補と数と金額の合計に入れない。"""
+        return self.line_status_code == edi_codes.LINE_DELETED
 
     @cached_property
     def shipping_notice(self):

@@ -6,6 +6,7 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
+from seizou.core import edi_codes
 from seizou.core.views import BaseSelectView
 from seizou.masters.services import active_items, active_partners
 
@@ -198,6 +199,8 @@ class PurchaseOrderLineSelectView(BaseSelectView):
             services.annotate_received(lines)
             .filter(remaining_total__gt=0)
             .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+            # 取り消した明細 (明細状態コード 2) は候補に出さない (受入は断らない = services.receive の現物優先)。
+            .exclude(line_status_code=edi_codes.LINE_DELETED)
             # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
             .order_by("purchase_order__po_no", "line_no", "pk")
         )
