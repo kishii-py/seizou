@@ -195,6 +195,8 @@ def test_detail_shows_source_file_to_admin_when_money_on(client, settings, extra
     body = detail_body(signed_in(client, admin), extraction)
     assert "元のファイル" in body
     assert extraction.file.url in body
+    # 同じ URL が管理者には開ける (隣の試験の 404 が、ファイルが無いからでないことの確かめ)。
+    assert client.get(extraction.file.url).status_code == 200
 
 
 def test_detail_shows_source_file_in_default_log_mode(client, extraction, clerk):
