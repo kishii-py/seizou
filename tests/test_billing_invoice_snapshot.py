@@ -15,6 +15,7 @@ from django.urls import reverse
 
 from seizou.billing import services as billing_services
 from seizou.billing.models import Invoice, InvoiceLine
+from seizou.billing.reports import invoice_context
 from seizou.core import services as core_services
 from seizou.masters import services as masters_services
 from seizou.masters.services import PRICE_BASIS_LUMP
@@ -230,3 +231,84 @@ def test_tax_rate_is_copied_from_consumption_tax_rate(monkeypatch, user, item):
     assert after.subtotal == Decimal("15000") and after.tax == Decimal("1800")
     assert before.tax_rate == Decimal("10.00")
     assert before.tax == Decimal("1500")
+
+
+# ---------------------------------------------------------------- 3 刷り直しは写しだけを読む
+
+
+def _print(client, invoice):
+    response = client.get(reverse("billing:invoice_print", args=[invoice.pk]))
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+@pytest.mark.django_db
+def test_reprint_shows_values_at_issue(logged_in, changed_later):
+    """(g) (d) の後の刷り直し (帳票の context と印刷用の HTML) は、作った時の会社の情報・得意先の名前・品番・品名・単位・注文番号・税率の字のまま。
+    直した後の新しい字は出ない。"""
+    context = invoice_context(changed_later)
+    assert {key: context["company"][key] for key in ("registration_no", "address", "phone", "bank_account")} == COMPANY_AT_ISSUE
+    assert context["customer"] == {"name": "作り物の得意先 発行の時"}
+    line = context["lines"][0]
+    assert (line["item_code"], line["item_name"], line["unit"], line["price_unit"], line["customer_order_no"]) == (
+        "SN-100",
+        "作り物の軸",
+        "個",
+        "個",
+        "PO-SN-21",
+    )
+    assert context["tax_rate_percent"] == "10"
+
+    body = _print(logged_in, changed_later)
+    for text in (
+        "登録番号 T0000000000021",
+        "作り物県見本市2-1",
+        "電話 000-0000-0021",
+        "作り物の得意先 発行の時 御中",
+        "SN-100",
+        "作り物の軸",
+        "<td>個</td>",
+        "注文番号 PO-SN-21",
+        "消費税 (10%)",
+    ):
+        assert text in body, text
+    for word in COMPANY_AT_ISSUE["bank_account"].split():
+        assert f"<span>{word}</span>" in body, word
+    for text in (
+        "T0000000000022",
+        "作り物県別見本市2-2",
+        "000-0000-0022",
+        "作り物信用金庫",
+        "作り物の得意先 直した後",
+        "SN-200",
+        "作り物の直した軸",
+        "<td>本</td>",
+        "PO-SN-22",
+    ):
+        assert text not in body, text
+
+
+@pytest.mark.django_db
+def test_registration_no_added_later_is_not_printed_on_earlier_invoice(logged_in, user, item):
+    """(h) 登録番号を入れる前に作った請求書は、後で登録番号を入れても、刷り直しに登録番号の行が出ない (写しが空でも今の値で補わない)。"""
+    invoice = _invoice(user, _customer(user), item)
+    core_services.update_company(core_services.company(), {"registration_no": "T0000000000031"}, user)
+
+    assert invoice_context(invoice)["company"]["registration_no"] == ""
+    body = _print(logged_in, invoice)
+    assert "<p>登録番号" not in body
+    assert "T0000000000031" not in body
+
+
+@pytest.mark.django_db
+def test_detail_price_unit_text_reads_snapshot(logged_in, user, item):
+    """(i) 請求書の詳細の画面の明細の単価の後ろの単位の字 (price_unit_text) も写しの字 (受注の明細から写した単位)。後で部品の単位を直しても変わらない。"""
+    invoice = _invoice(user, _customer(user), item, unit="箱")
+    masters_services.update_item(item, {"unit": "本"}, user)
+
+    response = logged_in.get(reverse("billing:invoice_detail", args=[invoice.pk]))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert " / 箱</span>" in body
+    assert " / 本</span>" not in body
+    assert " / 個</span>" not in body
