@@ -115,6 +115,22 @@ def test_pin_rule_is_in_the_css_source():
         assert "table-pin-cols" not in path.read_text(encoding="utf-8"), path
 
 
+def test_pinned_cell_of_selected_board_row_stays_tinted_while_hovered():
+    """生産管理ボードで選んだ行 (board-select.js が data-tone="primary" を付ける) に指を乗せている間も、止めた 1 列目は主色の薄い地のまま
+    (本人の報告 11-07 20:5x)。指を乗せた行の灰の決まりの後に、選んだ行と指を乗せた行の両方を持つ選び方で、選んだ行の地と同じ値を書く。"""
+    css = INPUT_CSS.read_text(encoding="utf-8")
+    tinted = "background-color: color-mix(in oklab, var(--color-primary) 15%, var(--color-base-100));"
+    selected = _rule(css, '.seizou-pin-first tbody > tr[data-tone="primary"] > :first-child')
+    assert tinted in selected
+    hover = css.index(".seizou-pin-first tbody > tr.row-hover:hover > :first-child {")
+    both = css.index('.seizou-pin-first tbody > tr[data-tone="primary"].row-hover:hover > :first-child {')
+    assert hover < both  # 灰の決まりの後
+    assert tinted in _rule(css, '.seizou-pin-first tbody > tr[data-tone="primary"].row-hover:hover > :first-child')
+    # 盤の行は data-tone の印で主色の薄い地になる (utility の字は変えない)
+    board_rows = SRC / "orders" / "templates" / "orders" / "_board_rows.html"
+    assert 'class="row-hover h-10 data-[tone=primary]:bg-primary/15" data-row-menu>' in board_rows.read_text(encoding="utf-8")
+
+
 def test_scroll_hint_js_is_plain_and_only_touches_data_attributes():
     """JS は右に続きがあるかを箱の送りの値で見て、読み込み・送り・窓の大きさ・htmx の差し替えの後に取り直す。class と HTML と通信に触らない。"""
     text = JS.read_text(encoding="utf-8")

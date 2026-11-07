@@ -270,6 +270,13 @@ body > .ts-dropdown [data-select-create]:hover {
   .seizou-pin-first tbody > tr.row-hover:hover > :first-child {
     background-color: var(--color-base-200);
   }
+  /* 生産管理ボードで選んだ行 (data-tone="primary") に指を乗せている間も、止めた 1 列目は主色の薄い地のまま (本人の報告 11-07 20:5x =
+     行を押した直後、ほかの欄は主色の薄い地なのに 1 列目だけ灰のままだった)。上の指を乗せた行の決まり (詳しさ 0,4,2) が選んだ行の決まり
+     (0,3,2) に勝つので、両方を持つ選び方 (0,5,2) で選んだ行の地に戻す。ほかの欄 (tr の utility の data-[tone=primary]:bg-primary/15) は
+     指を乗せても主色の薄い地なので、それに合わせる。 */
+  .seizou-pin-first tbody > tr[data-tone="primary"].row-hover:hover > :first-child {
+    background-color: color-mix(in oklab, var(--color-primary) 15%, var(--color-base-100));
+  }
 }
 .seizou-pin-first :is(thead, tfoot) > tr > :first-child {
   background-color: var(--color-base-200);
