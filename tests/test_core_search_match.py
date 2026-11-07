@@ -16,6 +16,8 @@ from django.test.utils import CaptureQueriesContext
 from seizou.core import fields as company_fields
 from seizou.core import search as core_search
 from seizou.core.search import MATCH_BEFORE, MATCH_CHARS, SearchMatch, SearchRow, SearchSection, find_match
+from seizou.manuals import search as manuals_search
+from seizou.manuals import services as manuals_services
 from seizou.masters import search as masters_search
 from seizou.masters.models import Item, Partner, PartnerItem
 from seizou.orders import search as orders_search
@@ -224,3 +226,16 @@ def test_orders_match_customer_order_no_only_when_not_in_columns(user, customer,
         assert row.match is None
     else:
         assert (row.match.label, row.match.hit) == ("得意先の注文番号", "PO-555")
+
+
+# ---------------------------------------------------------------- (g) マニュアル
+
+
+def test_manuals_match_body_line(user):
+    # 作り方は tests/test_manuals_search.py と同じ (作った後に update_manual で本文を入れる)
+    manual = manuals_services.create_manual(None, "刃物の交換の手順", "steps", user)
+    manuals_services.update_manual(manual, {"body": "バイトの番号を確かめる。\n\n- 図面 WK-1001 を見る"}, user)
+    assert manuals_search.search("WK-1001").rows[0].match == SearchMatch("本文", "図面 ", "WK-1001", " を見る")
+    match = manuals_search.search("ばいと").rows[0].match
+    assert (match.label, match.hit) == ("本文", "バイト")
+    assert manuals_search.search("刃物").rows[0].match is None
