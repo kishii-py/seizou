@@ -102,12 +102,12 @@ LIMITS = {
     "masters:holiday_delete": 20,
     "orders:order_list": 27,
     "orders:order_create": 19,
-    "orders:order_detail": 68,
+    "orders:order_detail": 74,  # 会話のタブ (C104。タブの件数と行・会話の枠の判定と言葉・部署の判定) で +6 (11-07 の実測 69 + 5)
     "orders:order_update": 24,
     "orders:order_cancel": 20,
     "orders:orderline_list": 32,
     "connect:inbox_list": 24,
-    "connect:inbox_detail": 23,
+    "connect:inbox_detail": 26,  # 会話の節 (C104) (11-07 の実測 21 + 5。種に行があるのは b_plating だけ)
     "connect:inbox_accept": 28,
     "connect:inbox_reject": 20,
     "connect:connection_list": 23,
@@ -126,7 +126,8 @@ LIMITS = {
     "purchasing:purchaseorder_list": 27,
     "purchasing:purchaseorder_create": 22,
     # 11-07 の実測 45 + 5。送った発注の変更 (C96) の「変更」のボタンを出すか (can_change_order) に 1 回 (取り消していない明細の受入・出荷の知らせ・つながりを 1 つの問い合わせで読む)。
-    "purchasing:purchaseorder_detail": 50,
+    # 会話のタブとメモの枠 (C104) で +6 (11-07 の実測 51 + 5)。
+    "purchasing:purchaseorder_detail": 56,
     "purchasing:purchaseorder_send": 20,
     "purchasing:purchaseorder_cancel": 20,
     "purchasing:receipt_list": 25,

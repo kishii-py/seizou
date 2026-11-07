@@ -176,6 +176,8 @@ FREE_ACTIONS = frozenset(
         # 書式つきのメモ (N114。現場の記録と同じ扱い = ログインした人なら誰でも書ける。本体が起こす前に入れる前提)
         "notes.save_note",
         "notes.add_image",
+        # 会話 (C104。受注と発注の 1 件ごとの相手とのやり取り。メモ・添付と同じく編集の権限を問わない = 決め C104-1 (11-07 06:26)。書く画面は connect の部署の門だけが効く)
+        "connect.post_chat_message",
         # 人ごとの表示の設定 (N167。本人の画面の見た目だけを変える = ログインした人なら誰でも変えられる)
         "core.set_user_preference",
     }

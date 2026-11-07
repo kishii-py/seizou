@@ -248,4 +248,4 @@ def test_detail_shows_flow_section_after_lines(user, logged_in, customer, item, 
     assert "<span>明細 1</span>" in section
     assert "data-modal-form" not in section
     # 流れは枠で、関係する物のタブは今のまま
-    assert [tab["label"] for tab in response.context["tabs"]] == ["指示書", "出荷", "請求書"]
+    assert [tab["label"] for tab in response.context["tabs"]] == ["指示書", "出荷", "請求書", "会話"]

@@ -226,6 +226,8 @@ POST_FUNCTION_ACTIONS = {
     "seizou.purchasing.acceptance.resend_acceptance": "connect.send_acceptance",
     "seizou.connect.reply.resend_reply": "connect.accept",
     "seizou.connect.sender.choose_sender": "connect.accept",
+    "seizou.connect.chat.resend_chat": "connect.post_chat_message",
+    "seizou.connect.chat.fetch_chat_file": "connect.post_chat_message",
     "seizou.notes.views.image_upload": "notes.add_image",
 }
 #: POST の関数の view のうち、権限の表の action を通さない口 → 理由

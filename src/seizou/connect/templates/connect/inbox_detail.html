@@ -1,6 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons connect_tags %}
 {# 受信した注文の詳細。見出しの右に、状態が「未処理」のときだけ「断る」と「受け入れる」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
+{# 中身の最後に「会話」の節 (connect/_chat.html。相手の会社とのやり取り = C104)。受け入れる前・保留の間・断った後にも相手の言葉が届くので、受け入れるかを決めるこの画面でも読んで書ける。この画面はタブを使わないので節で出す。 #}
 {# 変更と取消の版で受け入れられない物 (connect_tags の revision_problem) は「受け入れる」を出さず、詳細の上に黄色の 1 行 (状態の知らせ)。「断る」は今のまま出す。 #}
 {% block actions %}{{ block.super }}{% if object.status == "received" %}{% revision_problem object as problem %}
 <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
@@ -79,4 +80,5 @@
   <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">明細 (相手の品番のまま)</p>
   {% include "connect/_payload_lines.html" %}
 </div>
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="chat-heading"><h2 id="chat-heading" class="text-lg font-bold">会話</h2><div class="mt-4">{% include "connect/_chat.html" with chat_target=object %}</div></section>
 {% endblock %}

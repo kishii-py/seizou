@@ -4,6 +4,7 @@
 {# 見出しの帯 (#po-heading)・黄の知らせ (#po-alert)・明細と検収の節 (#po-live)・左のメニューの「受入」の印 (#menu-count-purchasingreceipt_list。小窓で受入を保存した後も印が古いまま残らないように。決め C05-2 = a) は 2 秒ごとに同じ URL を取りに行って入れ替え、前の更新と状態が違う発注の見出しの帯に seizou-changed を付ける (purchasing_tags の live_state)。タブは入れ替えない (選んだタブが基本情報に戻らないように)。取消と受入の入口は小窓で開く (data-modal-form)。小窓で保存した後の seizou:refresh でも 2 秒ごとの取り直しを走らせる (決め 11-05 11:4x。N158b)。明細の箱を横に送っている間 (scrollLeft が 0 でない) と、明細の ⋮ のメニューを開いている間は 2 秒ごとに取り直さない。入れ替えると箱が左の端へ戻り、開いたメニューが閉じるため (発注の一覧の scrollTop と同じ形。C22)。 #}
 {# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「発注 › 番号」(見出しの帯の中。土台の block heading に crumb を渡す)。block content で黄の知らせの次に右の列のカード (purchasing_tags の purchase_order_aside) を置いてから土台を呼ぶ。明細・検収・流れ (#po-live) は土台の全幅の口 block wide (lg 以上は 2 列の上に全幅。C22)。右の列 (#detail-aside) も 2 秒ごとに入れ替える。 #}
 {# 段の帯 (N151。core/_stage_band.html) は見出しの帯 (#po-heading) の中の、土台の見出し (パンくずの with の後) に置く。2 秒ごとの入れ替えで段も新しくなる。取消の発注には出さない。 #}
+{# タブの最後の「会話」は connect の会話の枠 (connect/_chat.html。相手の会社とのやり取り = C104。0 件でも書く欄と使えない訳を出すので block tab_empty にも置く)。block main にメモの枠 (#po-live の外。#po-live は 2 秒ごとに入れ替わるので、中に置くとメモの書く枠が消える。社内の書き込みはメモ = 本人の決め CHAT-2・CHAT-4)。 #}
 {% block heading %}{% live_state object as live %}<div id="po-heading" class="rounded-lg{% if live.changed %} seizou-changed{% endif %}" data-live="{{ live.token }}">{% purchase_order_head_chips object seizou.hide_money as head_chips %}{% with crumb="発注" %}{{ block.super }}{% endwith %}{% load purchasing_timeline %}{% purchase_order_stages object as band %}{% include "core/_stage_band.html" with stages_id="po-stages" %}</div>{% endblock %}
 {# 送った発注の変更 (C96): 見出しの右の白の「変更」は、発注の権限があり、変更を送れる発注 (purchasing_tags の can_change_order) だけ。画面の全体で開く (小窓にしない = 明細の表が広いため)。 #}
 {# 版が 2 以上で今の版が相手に届いていない間は、頭の右の緑を「再送」にする (取消の版は状態が「取消」でも)。#po-alert に届いていない・相手が断ったの黄色の 1 行 (revision_state の alert)。 #}
@@ -104,3 +105,6 @@
 {% include "purchasing/_timeline.html" %}
 </div>
 {% endblock %}
+{% block main %}{% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}{% endblock %}
+{% block tab_rows %}{% if tab.related == "chat_messages" %}{% include "connect/_chat.html" with chat_target=object %}{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block tab_empty %}{% if tab.related == "chat_messages" %}{% include "connect/_chat.html" with chat_target=object %}{% else %}{{ block.super }}{% endif %}{% endblock %}

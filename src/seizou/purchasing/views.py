@@ -82,7 +82,9 @@ class PurchaseOrderDetailView(BaseDetailView):
         "発注の項目と明細、相手へ送った記録。「下書き」のときは送り直し、「下書き」「断られた」の発注と相手がまだ出荷していない送った発注は取消ができます。"
         "相手が出荷し終えるまでは「変更」で直した中身を送れます。"
     )
-    tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"))
+    # 「会話」は connect の会話の言葉 (ChatMessage の related_name。相手の会社とのやり取り = C104)。最後に置く (件数のある最初のタブで開くので、送った発注は「送った記録」で開く)。
+    # 中身は connect/_chat.html (purchaseorder_detail.html の block tab_rows・tab_empty)。connect の無い会社では、そのタブを出さない。
+    tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"), ("会話", "chat_messages"))
     template_name = "purchasing/purchaseorder_detail.html"
 
     def get_queryset(self):
