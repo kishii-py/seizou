@@ -191,3 +191,28 @@ def test_manual_tells_what_the_menu_count_counts(user):
             if words not in text:
                 problems.append(f"{url_name}: {words}")
     assert problems == [], "\n".join(problems)
+
+
+def test_menu_count_box_stays_when_the_count_is_zero(logged_in, customer):
+    # 印の入れ物 (id = menu-count-<URL の名前から : を除いた字>) は数が 0 でも残る。受入の一覧と発注の詳細は、
+    # 小窓で保存した後と 2 秒ごとの取り直しで、この入れ物を hx-select-oob で入れ替える (決め C05-2 = a。初見テスト R5 の候補 C05)
+    inbox_url = reverse("connect:inbox_list")
+    box = '<span id="menu-count-connectinbox_list" class="ml-auto">'
+
+    aside = _aside(page(logged_in, reverse("core:home")))
+    for url_name in MENU_COUNTS:
+        assert f'id="menu-count-{url_name.replace(":", "")}"' in aside, url_name
+    assert aside.count('id="menu-count-') == len(MENU_COUNTS)  # ダッシュボードと検索の入口には入れ物が無い
+    assert aside.count(BADGE) == 0
+
+    message = received(customer)
+    aside = _aside(page(logged_in, reverse("core:home")))
+    link = _entry_link(aside, inbox_url)
+    inside = link[link.index(box) : link.rindex("</a>")]
+    assert BADGE in inside and ">1</span>" in inside
+    assert aside.count(BADGE) == 1
+
+    Inbox.objects.filter(pk=message.pk).update(status=Inbox.STATUS_ACCEPTED)
+    link = _entry_link(_aside(page(logged_in, reverse("core:home"))), inbox_url)
+    assert box + "</span>" in link  # 空の入れ物が残る
+    assert BADGE not in link

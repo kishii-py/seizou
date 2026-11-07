@@ -217,7 +217,7 @@ def test_purchase_order_detail_has_two_columns(logged_in, purchase_order):
     basic = set(_labels(_card(aside, "基本情報")))
     assert {"発注番号", "状態", "備考", "注文回答の日時", "断りの理由"} <= basic and not {"取引先", "発注日"} & basic
     assert _radios(body) == [("送った記録", True), ("受入", False)]
-    assert 'hx-select-oob="#po-heading,#po-alert,#detail-aside"' in body
+    assert 'hx-select-oob="#po-heading,#po-alert,#detail-aside,#menu-count-purchasingreceipt_list"' in body
 
 
 @pytest.mark.django_db

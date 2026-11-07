@@ -2,7 +2,7 @@
 支払の見込み (取引先ごと。先月と今月)。受入の一覧の上に置く。中身は tag payable_table (purchasing.services.payable_by_partner)。
 金額を見られない人 (payable.hidden) には表ごと出さない (中身が全部金額のため。「—」も出さない。N155)。class の中に {{ }} と {% if %} を書かない (R19)。
 {% endcomment %}{% payable_table as payable %}{% if not payable.hidden %}
-<section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
+<section id="payable-table" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
   <h2 id="payable-title" class="text-lg font-bold">支払の見込み (取引先ごと)</h2>
   <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計。受入日の月で数えます。</p>
   {% if not payable.rows %}
