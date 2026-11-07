@@ -56,6 +56,8 @@ FALLBACK_TITLE_CHARS = 40
 MESSAGE_NO_KEY = "AI の聞き取りを使うには、会社の .env に ANTHROPIC_API_KEY を設定します。入力の形はそのまま使えます。"
 MESSAGE_EMPTY = "困りごとを入力してください。"
 MESSAGE_TOO_LONG = f"{MAX_MESSAGE_CHARS} 字を超えています。短くしてから送信してください。"
+#: 1 つの質問の締め切り (core の ai.DEADLINE_SECONDS) までの残りが 1 回の待ちより短く、次の回を始められなかったときの 1 文
+MESSAGE_DEADLINE = f"聞き取りの答えをまとめる時間 ({ai.DEADLINE_SECONDS} 秒) が足りなくなったので止めました。短く分けて送信してください。"
 #: 質問を使い切った後の利用者の字の末尾に足す 1 文 (session には足さない)
 FORCE_DRAFT_NOTE = f"(質問は {MAX_QUESTIONS} 回までです。これ以上は聞かず、draft_feedback で下書きを出してください。)"
 #: 下書きができたときの知らせ (口 ask が会話の吹き出しと右上の知らせ (HX-Trigger の seizou:saved) に出す。画面は移らず、入力の形が下書きの編集の形になる)
@@ -138,8 +140,11 @@ PROMPT_RULES = (
 
 
 def is_available() -> bool:
-    """AI の聞き取りが使えるか (鍵は AI チャットと同じ 1 つ)。"""
-    return assistant_services.is_available()
+    """AI の聞き取りが使えるか (鍵は AI チャットと同じ 1 つ。機能ごとの設定 ai_features の feedback で止めた会社は偽)。
+
+    AI チャット (ai_features の assistant) を止めても、こちらは止まらない。
+    """
+    return ai.has_key(assistant_services.API_KEY_ENV) and ai.feature_enabled("feedback")
 
 
 def model_name() -> str:
@@ -323,7 +328,8 @@ def answer(session, message, *, user, screen) -> dict:
     """利用者の 1 回の字に答える。返す物は {"text": AI の字, "turns": [この往復で増えた turn...], "feedback": 行か None}。
 
     例外を外に投げない (API の失敗は日本語の文を text に入れて返し、session に残さない)。
-    空の字・長すぎる字・鍵が無いときは API を呼ばず、session も変えない。
+    空の字・長すぎる字・鍵が無いときは API を呼ばず、session も変えない。上限 (同時の数・人ごとの 1 時間の回数。core の ai.guard) で
+    入れないときも同じ。1 つの質問の締め切り (ai.has_time) までの残りが 1 回の待ちより短ければ、次の回を始めずに MESSAGE_DEADLINE を返す。
     draft_feedback が呼ばれたら下書きの行を作って会話を消す。質問を使い切った後に字の返事が来たら、会話から下書きを作る。
     """
     message = message.strip() if isinstance(message, str) else ""
@@ -346,57 +352,65 @@ def answer(session, message, *, user, screen) -> dict:
     system = build_system(screen)
     input_tokens = state["input_tokens"]
     output_tokens = state["output_tokens"]
-    for round_no in range(assistant_services.MAX_TOOL_ROUNDS + 1):
-        # ここは atomic の外 (API を呼ぶ)。
-        try:
-            response = assistant_services._ask_claude(model, system, conversation, TOOLS)
-        except ValueError as exc:
-            return _result(str(exc))
-        input_tokens += _usage(response, "input_tokens")
-        output_tokens += _usage(response, "output_tokens")
-        uses = [block for block in (getattr(response, "content", None) or []) if getattr(block, "type", None) == "tool_use"]
-        draft = next((block for block in uses if getattr(block, "name", None) == DRAFT_TOOL), None)
-        if draft is not None:
-            # 下書きは回さずに横取りする (同じ返事のほかの道具は回さず、API をもう一度呼ばない)。
-            data = _draft_data(getattr(draft, "input", None), screen, transcript)
-            return _save_draft(session, data, user, transcript, input_tokens, output_tokens)
-        me_too = next((block for block in uses if getattr(block, "name", None) == ME_TOO_TOOL), None)
-        if me_too is not None:
-            # 「うちも」も回さずに横取りする (API をもう一度呼ばない。HTTP は services が atomic の外で送る)。
-            return _save_me_too(session, getattr(me_too, "input", None), user)
-        if getattr(response, "stop_reason", None) != "tool_use" or not uses:
-            text = assistant_services._final_text(response)
-            if forced:
-                return _save_draft(session, _fallback_draft(transcript, screen), user, transcript, input_tokens, output_tokens)
-            assistant_turn = {"role": "assistant", "text": text}
-            if session is not None:
-                session[CHAT_KEY] = {
-                    "turns": [*transcript, assistant_turn],
-                    "questions": state["questions"] + 1,
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "screen": screen if _in_catalog(screen) else "",
-                }
-            return _result(text, (user_turn, assistant_turn))
-        if round_no == assistant_services.MAX_TOOL_ROUNDS:
-            break
-        # 返事の block は作り直さず、思考の block ごとそのまま渡す。
-        conversation.append({"role": "assistant", "content": response.content})
-        results = []
-        for block in uses:
-            if block.name == SEARCH_TOOL:
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": _search_result(block.input)})
-                continue
-            if block.name not in TOOL_NAMES:
-                results.append(
-                    {"type": "tool_result", "tool_use_id": block.id, "content": f"道具 {block.name} はこの窓では使えません。", "is_error": True}
-                )
-                continue
-            outcome = assistant_tools.run_tool(block.name, block.input)
-            result = {"type": "tool_result", "tool_use_id": block.id, "content": outcome["content"]}
-            if outcome["is_error"]:
-                result = {**result, "is_error": True}
-            results.append(result)
-        # 1 回の返事の道具の結果は、1 つの user の turn にまとめる。
-        conversation.append({"role": "user", "content": results})
-    return _result(assistant_services.MESSAGE_TOO_MANY_ROUNDS)
+    try:
+        # 上限 (同時の数・人ごとの 1 時間の回数) は core の ai.guard の 1 か所で見る。入れなければ API を呼ばずに文を返す (session は変えない)。
+        with ai.guard("feedback", user, busy=assistant_services.MESSAGE_BUSY):
+            started = ai.clock()
+            for round_no in range(assistant_services.MAX_TOOL_ROUNDS + 1):
+                if not ai.has_time(started):
+                    return _result(MESSAGE_DEADLINE)
+                # ここは atomic の外 (API を呼ぶ)。
+                try:
+                    response = assistant_services._ask_claude(model, system, conversation, TOOLS)
+                except ValueError as exc:
+                    return _result(str(exc))
+                input_tokens += _usage(response, "input_tokens")
+                output_tokens += _usage(response, "output_tokens")
+                uses = [block for block in (getattr(response, "content", None) or []) if getattr(block, "type", None) == "tool_use"]
+                draft = next((block for block in uses if getattr(block, "name", None) == DRAFT_TOOL), None)
+                if draft is not None:
+                    # 下書きは回さずに横取りする (同じ返事のほかの道具は回さず、API をもう一度呼ばない)。
+                    data = _draft_data(getattr(draft, "input", None), screen, transcript)
+                    return _save_draft(session, data, user, transcript, input_tokens, output_tokens)
+                me_too = next((block for block in uses if getattr(block, "name", None) == ME_TOO_TOOL), None)
+                if me_too is not None:
+                    # 「うちも」も回さずに横取りする (API をもう一度呼ばない。HTTP は services が atomic の外で送る)。
+                    return _save_me_too(session, getattr(me_too, "input", None), user)
+                if getattr(response, "stop_reason", None) != "tool_use" or not uses:
+                    text = assistant_services._final_text(response)
+                    if forced:
+                        return _save_draft(session, _fallback_draft(transcript, screen), user, transcript, input_tokens, output_tokens)
+                    assistant_turn = {"role": "assistant", "text": text}
+                    if session is not None:
+                        session[CHAT_KEY] = {
+                            "turns": [*transcript, assistant_turn],
+                            "questions": state["questions"] + 1,
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "screen": screen if _in_catalog(screen) else "",
+                        }
+                    return _result(text, (user_turn, assistant_turn))
+                if round_no == assistant_services.MAX_TOOL_ROUNDS:
+                    break
+                # 返事の block は作り直さず、思考の block ごとそのまま渡す。
+                conversation.append({"role": "assistant", "content": response.content})
+                results = []
+                for block in uses:
+                    if block.name == SEARCH_TOOL:
+                        results.append({"type": "tool_result", "tool_use_id": block.id, "content": _search_result(block.input)})
+                        continue
+                    if block.name not in TOOL_NAMES:
+                        results.append(
+                            {"type": "tool_result", "tool_use_id": block.id, "content": f"道具 {block.name} はこの窓では使えません。", "is_error": True}
+                        )
+                        continue
+                    outcome = assistant_tools.run_tool(block.name, block.input)
+                    result = {"type": "tool_result", "tool_use_id": block.id, "content": outcome["content"]}
+                    if outcome["is_error"]:
+                        result = {**result, "is_error": True}
+                    results.append(result)
+                # 1 回の返事の道具の結果は、1 つの user の turn にまとめる。
+                conversation.append({"role": "user", "content": results})
+            return _result(assistant_services.MESSAGE_TOO_MANY_ROUNDS)
+    except ai.LimitReached as exc:
+        return _result(str(exc))

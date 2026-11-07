@@ -74,6 +74,8 @@ MESSAGE_UNREACHABLE = f"AI チャットの API に届きませんでした。{_A
 MESSAGE_REFUSED = "この質問には答えられませんでした。聞き方を変えてください。"
 MESSAGE_CUT = "答えが長いので途中で切れました。質問を小さく分けてください。"
 MESSAGE_TOO_MANY_ROUNDS = f"調べる手順が {MAX_TOOL_ROUNDS} 回を超えたので止めました。質問を小さく分けてください。"
+#: 1 つの質問の締め切り (core の ai.DEADLINE_SECONDS) までの残りが 1 回の待ちより短く、次の回を始められなかったときの 1 文
+MESSAGE_DEADLINE = f"答えをまとめる時間 ({ai.DEADLINE_SECONDS} 秒) が足りなくなったので止めました。質問を小さく分けてください。"
 MESSAGE_EMPTY_ANSWER = "答えが空でした。聞き方を変えて、もう一度送信してください。"
 #: SDK の例外を替える文の表 (seizou.core.ai の translate_errors に渡す)
 _API_ERRORS = {
@@ -118,8 +120,11 @@ PROMPT_RULES = (
 
 
 def is_available():
-    """AI チャットが使えるか (鍵の環境変数に空でない値があるか)。値そのものは返さない。"""
-    return ai.has_key(API_KEY_ENV)
+    """AI チャットが使えるか (鍵の環境変数に空でない値があり、機能ごとの設定 ai_features の assistant で止めていないか)。
+
+    値そのものは返さない。機能ごとの設定 ai_features で止めた会社も偽 (窓は鍵が無いときと同じ字を出す)。
+    """
+    return ai.has_key(API_KEY_ENV) and ai.feature_enabled("assistant")
 
 
 def model_name():
@@ -399,6 +404,8 @@ def answer(question, *, page_url, screen_name, user, history):
 
     例外を外に投げない (API の失敗は日本語の文を text に入れて返す)。user は読む道具に渡し、提案を作った人として表に書く。
     空の質問・長すぎる質問・鍵が無いときは API を呼ばない。道具の往復は MAX_TOOL_ROUNDS 回まで。
+    上限 (process ごとの同時の数・人ごとの 1 時間の回数。core の ai.guard) で入れないときも API を呼ばずに断りの文を返し、
+    1 つの質問の締め切り (ai.has_time。合計 75 秒) までの残りが 1 回の待ちより短ければ次の回を始めずに MESSAGE_DEADLINE を返す。
     書く道具 (tools.WRITE_TOOL_NAMES) は回さずに提案にし、Claude には「提案のカードを出した」と返す。
     """
     question = question.strip() if isinstance(question, str) else ""
@@ -415,52 +422,60 @@ def answer(question, *, page_url, screen_name, user, history):
     tool_calls = []
     urls = []
     proposals = []
-    for round_no in range(MAX_TOOL_ROUNDS + 1):
-        # ここは atomic の外。
-        try:
-            response = _ask_claude(model, system, messages, tools.TOOLS)
-        except ValueError as exc:
-            return _reply(str(exc), tool_calls, (), proposals)
-        uses = [block for block in response.content if getattr(block, "type", None) == "tool_use"]
-        if response.stop_reason != "tool_use" or not uses:
-            text = _final_text(response)
-            return _reply(text, tool_calls, _links(urls, text), proposals)
-        if round_no == MAX_TOOL_ROUNDS:
-            break
-        # 返事の block は作り直さず、思考の block ごとそのまま渡す。
-        messages.append({"role": "assistant", "content": response.content})
-        results = []
-        for block in uses:
-            tool_calls.append(block.name)
-            if block.name in tools.WRITE_TOOL_NAMES:
-                # 書く道具は呼ばない。提案のカードにして、保存は人の承認に任せる。
-                proposal = propose(block.name, block.input, user)
-                if proposal is None:
-                    content = f"道具 {block.name} の引数が違います。"
-                    results.append({"type": "tool_result", "tool_use_id": block.id, "content": content, "is_error": True})
-                    continue
-                proposals.append(proposal)
-                content = json.dumps(
-                    {
-                        "ok": True,
-                        "proposed": True,
-                        "proposal_id": proposal["id"],
-                        "summary": proposal["summary"],
-                        "message": PROPOSAL_MESSAGE,
-                    },
-                    ensure_ascii=False,
-                )
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
-                continue
-            outcome = tools.run_tool(block.name, block.input, user=user)
-            urls.extend(url for url in outcome["urls"] if url not in urls)
-            result = {"type": "tool_result", "tool_use_id": block.id, "content": outcome["content"]}
-            if outcome["is_error"]:
-                result = {**result, "is_error": True}
-            results.append(result)
-        # 1 回の返事の道具の結果は、1 つの user の turn にまとめる。
-        messages.append({"role": "user", "content": results})
-    return _reply(MESSAGE_TOO_MANY_ROUNDS, tool_calls, (), proposals)
+    try:
+        # 上限 (同時の数・人ごとの 1 時間の回数) は core の ai.guard の 1 か所で見る。入れなければ API を呼ばずに文を返す。
+        with ai.guard("assistant", user, busy=MESSAGE_BUSY):
+            started = ai.clock()
+            for round_no in range(MAX_TOOL_ROUNDS + 1):
+                if not ai.has_time(started):
+                    return _reply(MESSAGE_DEADLINE, tool_calls, (), proposals)
+                # ここは atomic の外。
+                try:
+                    response = _ask_claude(model, system, messages, tools.TOOLS)
+                except ValueError as exc:
+                    return _reply(str(exc), tool_calls, (), proposals)
+                uses = [block for block in response.content if getattr(block, "type", None) == "tool_use"]
+                if response.stop_reason != "tool_use" or not uses:
+                    text = _final_text(response)
+                    return _reply(text, tool_calls, _links(urls, text), proposals)
+                if round_no == MAX_TOOL_ROUNDS:
+                    break
+                # 返事の block は作り直さず、思考の block ごとそのまま渡す。
+                messages.append({"role": "assistant", "content": response.content})
+                results = []
+                for block in uses:
+                    tool_calls.append(block.name)
+                    if block.name in tools.WRITE_TOOL_NAMES:
+                        # 書く道具は呼ばない。提案のカードにして、保存は人の承認に任せる。
+                        proposal = propose(block.name, block.input, user)
+                        if proposal is None:
+                            content = f"道具 {block.name} の引数が違います。"
+                            results.append({"type": "tool_result", "tool_use_id": block.id, "content": content, "is_error": True})
+                            continue
+                        proposals.append(proposal)
+                        content = json.dumps(
+                            {
+                                "ok": True,
+                                "proposed": True,
+                                "proposal_id": proposal["id"],
+                                "summary": proposal["summary"],
+                                "message": PROPOSAL_MESSAGE,
+                            },
+                            ensure_ascii=False,
+                        )
+                        results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
+                        continue
+                    outcome = tools.run_tool(block.name, block.input, user=user)
+                    urls.extend(url for url in outcome["urls"] if url not in urls)
+                    result = {"type": "tool_result", "tool_use_id": block.id, "content": outcome["content"]}
+                    if outcome["is_error"]:
+                        result = {**result, "is_error": True}
+                    results.append(result)
+                # 1 回の返事の道具の結果は、1 つの user の turn にまとめる。
+                messages.append({"role": "user", "content": results})
+            return _reply(MESSAGE_TOO_MANY_ROUNDS, tool_calls, (), proposals)
+    except ai.LimitReached as exc:
+        return _reply(str(exc))
 
 
 def _ask_claude(model, system, messages, tools):
@@ -468,11 +483,12 @@ def _ask_claude(model, system, messages, tools):
 
     client と例外の訳は seizou.core.ai (SDK は ai の関数の中で import する)。鍵は環境変数の値を client に明示して渡す。
     待ちは TIMEOUT_SECONDS で、再試行しない。SDK の例外は _API_ERRORS の日本語の ValueError に替える
-    (返事の本文と鍵の値を文に入れない)。
+    (返事の本文と鍵の値を文に入れない。状態 404 は guard の中なら設定の鍵と model の名前を入れた文)。
+    返事を受けた直後に使った記録 (ai.record_use。記録 seizou.ai に 1 行) を出す。
     """
     client = ai.client(API_KEY_ENV, TIMEOUT_SECONDS)
-    with ai.translate_errors(_API_ERRORS):
-        return client.messages.create(
+    with ai.translate_errors(_API_ERRORS, model=model):
+        response = client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
             system=system,
@@ -480,6 +496,8 @@ def _ask_claude(model, system, messages, tools):
             tools=tools,
             output_config={"effort": EFFORT},
         )
+    ai.record_use(model, response)
+    return response
 
 
 # ---- 提案と承認 ----
