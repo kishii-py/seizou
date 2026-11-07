@@ -17,7 +17,7 @@ from seizou.orders.models import Order
 from seizou.purchasing.models import PurchaseOrder
 
 #: 空の標準の工程のタブの意味の 1 行 (初見テスト R5 の V29。C19)
-PROCESSES_MEANING = "指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。"
+PROCESSES_MEANING = "指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。協力企業に出す工程が 1 つだけなら、発注の明細の工程にも最初から入ります。"
 
 
 @pytest.fixture

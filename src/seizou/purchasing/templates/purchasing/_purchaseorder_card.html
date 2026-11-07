@@ -4,6 +4,7 @@
 {# 小窓の形 (in_modal) の form は、core/_form_card.html と同じ属性で同じ URL (GET の from_line と line を含む) へ htmx で送り、返った中身で小窓の箱を差し替える。 #}
 {# 小窓の中の「行を足す」の script は、htmx が差し替えた中身の script を実行するので動く見込み (ブラウザで未確認)。 #}
 {# 頭の 1 文の後ろの「…保存と同時に注文を送ります。」は、練習モードでは出さない (練習のサーバーは相手へ送らず、上の黄の帯と食い違うため。初見テスト R5 の V08)。 #}
+{# 工程の列は協力企業に出す工程のある会社だけ (form.has_process)。単価の枡の中に見積の番号と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外。部品が空の行は押せない形。C100)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。{% if not seizou.practice %}つながりのある取引先には、「{{ form.submit_label_plain }}」を押すと保存と同時に注文を送ります。送った発注は自分では取り消せません (取り消せるのは「下書き」か「断られた」の発注だけ)。{% endif %}</p>
@@ -33,6 +34,7 @@
       <thead>
         <tr>
           <th>部品 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
+          {% if form.has_process %}<th>工程</th>{% endif %}
           <th>数量 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>単位</th>
           <th>単価の単位</th>
@@ -44,9 +46,12 @@
       <tbody id="po-lines">
         {% for row in form.lines %}
         <tr class="align-top">
-          {% for field in row.visible_fields %}
-          <td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">{{ field }}{% if field.errors %}<p class="mt-2 text-xs text-error">{{ field.errors|join:" " }}</p>{% endif %}</td>
-          {% endfor %}
+          {% for field in row.visible_fields %}{% if field.name != "quote_no" %}
+          <td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">{{ field }}{% if field.errors %}<p class="mt-2 text-xs text-error">{{ field.errors|join:" " }}</p>{% endif %}{% if field.name == "unit_price" %}
+            {% if row.quote_no %}<div class="mt-1">{{ row.quote_no }}{% if row.quote_no.errors %}<p class="mt-2 text-xs text-error">{{ row.quote_no.errors|join:" " }}</p>{% endif %}</div>{% endif %}
+            {% if not seizou.hide_money %}<button type="button" class="btn btn-xs btn-outline border-base-300 mt-1" data-price-pick="{% url 'masters:item_price_pick' 0 %}" data-price-kind="purchase" data-price-partner-field="partner" data-price-date-field="order_date"{% if not row.item.value %} disabled{% endif %}>{% icon "yen" "size-4" %}単価表から選ぶ</button>{% endif %}
+          {% endif %}</td>
+          {% endif %}{% endfor %}
         </tr>
         {% endfor %}
       </tbody>
@@ -54,7 +59,10 @@
   </div>
   <template id="po-line-template">
     <tr class="align-top">
-      {% for field in form.lines.empty_form.visible_fields %}<td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %}">{{ field }}</td>{% endfor %}
+      {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "quote_no" %}<td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %}">{{ field }}{% if field.name == "unit_price" %}
+        <div class="mt-1">{{ form.lines.empty_form.quote_no }}</div>
+        {% if not seizou.hide_money %}<button type="button" class="btn btn-xs btn-outline border-base-300 mt-1" data-price-pick="{% url 'masters:item_price_pick' 0 %}" data-price-kind="purchase" data-price-partner-field="partner" data-price-date-field="order_date"{% if not form.lines.empty_form.item.value %} disabled{% endif %}>{% icon "yen" "size-4" %}単価表から選ぶ</button>{% endif %}
+      {% endif %}</td>{% endif %}{% endfor %}
     </tr>
   </template>
   <div class="mt-4 flex justify-end"><button class="btn btn-outline btn-sm border-base-300" type="button" data-add-line>{% icon "plus" "size-4" %}行を足す</button></div>
@@ -72,6 +80,7 @@
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label }}</button>{% endif %}
   </div>
 </form>
+{% include "masters/_price_pick_dialog.html" %}
 <script>
 (function () {
   // 明細の行を足す: 空の行の雛形の __prefix__ を次の番号に替えて表の末尾に足し、行の数 (TOTAL_FORMS) を 1 増やす。

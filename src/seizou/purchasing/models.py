@@ -84,7 +84,7 @@ class PurchaseOrder(models.Model):
         """明細に受入の数 (received_total) と受入の残 (remaining_total) を足した物 (読むだけ。詳細の明細の表が回す)。"""
         from . import services
 
-        return services.annotate_received(self.lines.select_related("item").order_by("line_no", "pk"))
+        return services.annotate_received(self.lines.select_related("item", "process").order_by("line_no", "pk"))
 
 
 class PurchaseOrderLine(models.Model):
@@ -112,6 +112,13 @@ class PurchaseOrderLine(models.Model):
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
+    # 協力企業に出す工程 (決め PRICE-5。空でもよい)。入力の欄は工程マスターの使用中で協力企業に出す工程から選ぶ。中小企業共通 EDI の工程名を元に、送る注文の明細に工程の名前を載せる。書くのは purchasing.services だけ。
+    # PROTECT の訳: 工程は消さずに使用停止にする作りで、発注に使った工程を消せないようにするため (指示書の工程と同じ)。
+    process = models.ForeignKey(
+        "masters.Process", verbose_name="工程", on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_order_lines"
+    )
+    # 単価表から写した見積の番号 (決め PRICE-0)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。
+    quote_no = models.CharField("見積の番号", max_length=35, blank=True, default="")
     # 相手の最後の注文回答の、この明細の答え (EDI の注文回答明細回答タイプコードと、条件付受諾の回答の値)。
     # connect の受け口が purchasing.services の mark_conditional・record_line_replies で書き、ほかの答えが届くと空に戻す。
     reply_type = models.CharField("回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_LINE_TYPES, blank=True)

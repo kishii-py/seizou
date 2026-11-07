@@ -8,6 +8,7 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 
 from seizou.core.views import BaseSelectView
 from seizou.masters.services import active_items, active_partners
+from seizou.masters.services import with_default_process
 
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
@@ -209,8 +210,10 @@ class PurchaseItemSelectView(BaseSelectView):
     model = PurchaseOrderLine._meta.get_field("item").related_model
     search_fields = ("part_no", "name")
     # 単位だけを返す。部品の標準単価は受注の売りの単価で、協力企業への単価と違うので、発注の明細に写さない (C01-1 = a)。
-    columns = ("unit",)
+    # default_process は部品の標準の工程に協力企業に出す使用中の工程が 1 つだけのときの工程の pk (masters.services.with_default_process)。
+    # 選ぶ欄の JS が同じ行の工程の欄に写す (C100)。
+    columns = ("unit", "default_process")
 
     def get_queryset(self):
         # 候補は使用中だけ (N135。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)
-        return active_items()
+        return with_default_process(active_items())

@@ -8,8 +8,9 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 保存と同時に送る (02)。発注を保存したトランザクションを抜けた後で、取引先に向き「送る」の
   つながりがあれば connect.services.send_order を呼ぶ。相手への HTTP は atomic の外 (R17)。
-- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note。
+- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・process・quote_no。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
+  process は協力企業に出す工程 (masters.Process か None)、quote_no は単価表から写した見積の番号 (無ければ空の字。C100)。
 - 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
@@ -47,7 +48,7 @@ from django.db.models import Case, When
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 _ZERO = Decimal("0")
 
-_LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note"})
+_LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "process", "quote_no"})
 
 _POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
 #: 第 1 版の注文回答を当てられる発注の状態 (答えを待っている状態)。保留の後は、もう一度答えが届く
@@ -110,6 +111,9 @@ def _add_line(purchase_order, line, line_no):
         amount=line_amount(purchase_order.partner, qty, unit_price, price_basis),
         due_date=line.get("due_date"),
         note=line.get("note", ""),
+        # 工程の種類 (協力企業に出すか) は services で断らない (入力の欄の選択肢が絞る。C100)
+        process=line.get("process"),
+        quote_no=line.get("quote_no", ""),
     )
 
 
