@@ -283,6 +283,14 @@ VPS の置き場で勧めます。入れる前に、VPS の中で相手の名前
 
 限り: 名前を確かめた後に、送る道具がもう 1 度名前を引きます。その間に名前の向きを変える攻撃 (DNS rebinding) は止めません。
 
+### ログインの時間切れ
+
+操作しない間が 2 時間を過ぎるか、ログインから 12 時間を過ぎると、次に画面を開いた時にログインの画面へ戻ります。ログインの後は、元の画面へ戻ります (`settings.py` の `MIDDLEWARE` の `SessionTimeoutMiddleware`)。受信した注文の 2 秒ごとの取り直しのような、画面が自分で読み直す動きは「操作」に数えません。開いたまま席を離れると、画面が読み直していても 2 時間で切れます。
+
+時間は、答えの YAML の `settings` の `session_idle_minutes` (操作しない間。分) と `session_max_hours` (ログインからの最長。時間) で変えます。設定の画面からは変えません。
+
+ログインの画面の「ログイン状態を保存する」は、初めは外れています。外れたままログインすると、ブラウザを閉じた時にログインが切れます。付けた人だけ、ブラウザを閉じてもログインが残ります (残るのはログインからの最長の時間までです)。共用の PC では付けません。
+
 ## 鍵を入れ替えるとき・漏れたとき・取引をやめるとき
 
 置き場の `.env` の鍵とパスワードは、2 年以内に 1 度と、鍵を知る担当が替わった時に入れ替えます。漏れたときは、すぐ入れ替えます。どの値も、会話・チャット・commit・画面に貼りません (SECURITY.md の「取引先の鍵の作り方」と同じ)。下の例の `<…>` は、自分の値に置き換える所です。
@@ -368,6 +376,8 @@ if not DEBUG:
 画面ごとの説明書の断片が無い置き場 (この版より前に、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
 
 `settings.py` に `AUTH_PASSWORD_VALIDATORS` の行が無い置き場 (この版より前に `seizou new` で作った物) は、`from seizou.parts import PARTS` の次の行に `from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと `manage.py changepassword` も、アカウント管理の画面と同じ決まり (8 字以上・よくある語でない・数字だけでない・ID に似ていない) で断ります。
+
+ログインの時間切れ (上の「ログインの時間切れ」) は、`settings.py` の `MIDDLEWARE` の 1 行で動きます。この版より前に作った置き場は、`"seizou.core.middleware.HtmxLoginMiddleware",` の次の行に `"seizou.core.middleware.SessionTimeoutMiddleware",` を足します。この行が無いと、時間切れは働きません。足すのは seizou の版を上げた後で、足したらサーバーを立て直します。先に足すと、古い seizou にはこの名前が無いので、サーバーが起動しません。
 
 ## 困ったとき
 

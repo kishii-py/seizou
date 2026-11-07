@@ -66,6 +66,7 @@ from django.views.generic import DetailView, FormView, ListView, TemplateView, V
 
 from seizou.core import access
 from seizou.core import checks
+from seizou.core import conf
 from seizou.core import csvio
 from seizou.core import dashboard
 from seizou.core import select_options
@@ -1982,7 +1983,7 @@ class BaseSelectView(ScreenMixin, View):
 class RememberLoginView(LoginView):
     """ログイン。「ログイン状態を保存する」が外れていたら、ブラウザを閉じたときに切れる session にする。
 
-    check が入っていれば session の長さは設定の既定 (SESSION_COOKIE_AGE) のまま。
+    check が入っていれば、cookie の長さはログインからの最長 (会社の設定 session_max_hours) にする。操作しない間の時間切れと最長で切るのは core.middleware.SessionTimeoutMiddleware。
     """
 
     template_name = "core/login.html"
@@ -1992,6 +1993,8 @@ class RememberLoginView(LoginView):
         response = super().form_valid(form)
         if not self.request.POST.get("remember"):
             self.request.session.set_expiry(0)
+        else:
+            self.request.session.set_expiry(conf.session_limits()[1])
         return response
 
 

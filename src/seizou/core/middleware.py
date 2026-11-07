@@ -13,16 +13,22 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.contrib.auth import REDIRECT_FIELD_NAME
+from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import logout
+from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse
 from django.http import QueryDict
 from django.shortcuts import resolve_url
 from django.template.loader import render_to_string
+
+from seizou.core import conf
 
 logger = logging.getLogger(__name__)
 
@@ -259,3 +265,72 @@ class HtmxLoginMiddleware:
         replaced = HttpResponse(LOGIN_GONE_TEXT, status=401, content_type="text/plain; charset=utf-8")
         replaced["HX-Redirect"] = _back_to(request, location)
         return replaced
+
+
+# ---------------------------------------------------------------- ログインの時間切れ (N369。エンタープライズ化の調べ 第一弾の候補 24)
+
+#: ログインの時刻 (秒の整数) を持つ session の鍵
+LOGIN_AT_KEY = "seizou_login_at"
+#: 最後の人の操作の時刻 (秒の整数) を持つ session の鍵
+SEEN_AT_KEY = "seizou_seen_at"
+#: 最後の操作の時刻を書き直す間隔 (秒。5 分)。要求のたびに書くと、session の保存と cookie の書き直しが要求の数だけ増えるため
+TOUCH_SECONDS = 300
+#: 自動の取り直しの要求に base.html が付ける見出し (値は "1")
+POLL_HEADER = "X-Seizou-Poll"
+
+
+def _now() -> int:
+    """時間切れの時計 (秒の整数)。試験は monkeypatch でこの関数を差し替えて時計を進める。"""
+    return int(time.time())
+
+
+def _stamp(value) -> int | None:
+    """session に持った時刻。秒の整数でなければ None (真偽は int の仲間なので外す)。"""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+class SessionTimeoutMiddleware:
+    """ログインしてから、操作しない間の時間 (既定 2 時間) か、ログインからの最長 (既定 12 時間) を過ぎたら、ログアウトしてログインの画面へ移す。
+
+    - 時間は conf.session_limits() で読む (会社の設定 session_idle_minutes・session_max_hours)。
+    - session に認証の鍵 (django.contrib.auth.SESSION_KEY) が無い要求には何もしない (ログインしていない要求・
+      開発機の自動ログイン・session を使わない口)。切れた後の要求も、logout が session を空にしたので何もしない。
+    - ログインの時刻と最後の操作の時刻が session に無ければ、今の時刻を書く (ログインの直後の最初の要求と、この版より前の session)。
+    - 切れたら logout し、LOGIN_URL へ 302 を返す (next は開いた道)。ログインの画面の要求は、logout だけして先へ通す (302 を重ねない)。
+    - 切れていなければ、取り直しの要求 (見出し X-Seizou-Poll が 1) でなく、最後の操作の時刻から TOUCH_SECONDS 以上たっていれば、
+      最後の操作の時刻を今にする (書き込みを 5 分に 1 回にする。操作しない間の時間は、最後の本当の操作から最大 5 分早く切れる)。
+    - 同じ人がログアウトせずにもう 1 度ログインすると、Django の login は session の中身を残すので、ログインの時刻は前のまま (早く切れる側)。
+    訳: 操作しない間の時間切れとログインからの最長を、session の時刻で決めるため。最長は cookie の長さ (SESSION_COOKIE_AGE や
+    set_expiry の秒) では作れない (保存のたびに延びる) ので、ログインの時刻を session に持って比べる。自動の取り直し (受信箱の 2 秒ごとなど) は
+    人の操作でないので時刻を進めない (見分けは base.html が付ける見出し X-Seizou-Poll)。開発機の自動ログインは session に書かないので切らない。
+    settings の MIDDLEWARE の HtmxLoginMiddleware より後ろに置く (切れた時の 302 を、htmx の要求では 401 と HX-Redirect にしてもらうため)。
+    出所 = 本人の決め 11-08 00:40 と、エンタープライズ化の調べ 第一弾の候補 24 の直し方の直し (a)(b)(c)(d)。
+    変えてよい条件 = 本人が決め直したとき、または会社が設定 (session_idle_minutes・session_max_hours) で変えたとき。
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        session = getattr(request, "session", None)
+        # 認証の鍵を先に見る (ログインしていない要求では、会社の設定の表を読まない)。
+        if session is None or SESSION_KEY not in session:
+            return self.get_response(request)
+        now = _now()
+        login_at = _stamp(session.get(LOGIN_AT_KEY))
+        seen_at = _stamp(session.get(SEEN_AT_KEY))
+        if login_at is None:
+            login_at = session[LOGIN_AT_KEY] = now
+        if seen_at is None:
+            seen_at = session[SEEN_AT_KEY] = now
+        idle_seconds, max_seconds = conf.session_limits()
+        if now - seen_at > idle_seconds or now - login_at > max_seconds:
+            logout(request)
+            if urlsplit(request.path).path == urlsplit(_login_url()).path:
+                return self.get_response(request)
+            return redirect_to_login(request.get_full_path())
+        if request.headers.get(POLL_HEADER) != "1" and now - seen_at >= TOUCH_SECONDS:
+            session[SEEN_AT_KEY] = now
+        return self.get_response(request)

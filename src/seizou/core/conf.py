@@ -37,6 +37,8 @@ DEFAULTS = {
     "brand_color": "",  # 画面の主色 (# と 16 進の 6 桁。空なら土台の色。2 社を並べたときに見分ける)
     "industry": "",  # 業種 (seizou new が答えの YAML の industry を写す。左上の会社の名前の下に出す。空なら seizou)
     "mail": {"host": "", "port": 587, "security": "starttls", "user": "", "from": "", "from_name": "", "site_url": ""},  # 知らせのメールの送り方 (サーバー・ポート・暗号化の方式・アカウント・差出人・差出人の名前・seizou の URL の頭)。パスワードは持たない (.env の EMAIL_HOST_PASSWORD)
+    "session_idle_minutes": 120,  # 操作しない間のログインの時間切れ (分)。答えの YAML の settings で変える
+    "session_max_hours": 12,  # ログインからの最長の時間 (時間)。答えの YAML の settings で変える
 }
 
 #: 知らせのメールの送り方 (mail) の中の鍵の並び (設定の画面の表の塊と、設定の変更の画面の欄の並び)
@@ -59,7 +61,7 @@ CHOICES = {
 #: 画面の上書きの控えの寿命 (秒)。別の process (gunicorn の複数の worker) が、ほかの worker の書いた上書きを読み直すまでの長さ
 CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
-LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line")
+LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line", "session_idle_minutes", "session_max_hours")
 #: 値の出所の字 (設定の画面の「どこで決めたか」の列・設定の変更の画面の頭の行・MCP と AI チャットの company_info の sources が出す)。
 #: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (初見テスト R5 の V99・U101。候補 C14)。
 #: 順に、画面の上書き (SettingOverride)・会社の settings.py の SEIZOU (導入の時に答えの YAML から作る)・DEFAULTS
@@ -221,3 +223,24 @@ def brand_color() -> str:
     if isinstance(value, str) and BRAND_COLOR_PATTERN.fullmatch(value):
         return value.lower()
     return ""
+
+
+def session_limits() -> tuple[int, int]:
+    """ログインの時間切れの 2 つの時間を (操作しない間の秒, ログインからの最長の秒) で返す (読むだけ。例外を投げない)。
+
+    値は session_idle_minutes (分) と session_max_hours (時間) を setting() で読む。真偽 (True / False)・整数でない値・0 以下は
+    既定 (DEFAULTS) に戻す (access_control() と mail_settings() と同じ考え。答えの YAML の書き損じで全部の画面を 500 にしない)。
+    core.middleware.SessionTimeoutMiddleware と、ログインの画面 (core.views.RememberLoginView) が読む。
+    訳: 共用の PC が多い町工場の事務所で、離れた席の開いたままの画面から伝票を直されないため。既定は審査と現場で切れすぎない緩めの値
+    (操作しない間 2 時間・ログインから最長 12 時間) にし、会社が答えの YAML で縮められる。出所 = 本人の決め 11-08 00:40 (エンタープライズ化の調べ 第一弾の候補 24)。
+    変えてよい条件 = 本人が決め直したとき、または会社が設定 (session_idle_minutes・session_max_hours) で変えたとき。
+    """
+
+    def whole(key: str) -> int:
+        value = setting(key)
+        # 真偽は int の仲間なので先に外す (True を 1 分と読まない)。
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return DEFAULTS[key]
+        return value
+
+    return whole("session_idle_minutes") * 60, whole("session_max_hours") * 60 * 60
