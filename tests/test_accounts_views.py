@@ -270,7 +270,7 @@ def test_manage_accounts_and_department_notes_on_issue_and_edit(on, client, mana
         html = client.get(url).content.decode()
         note = re.search(r'<p id="id_manage_accounts_helptext"[^>]*>(.*?)</p>', html, re.S)
         assert note is not None, url
-        for word in ("アカウントと部署", "会社の情報", "振込先", "点検を走らせる", "GitHub", "開ける画面の範囲と", "増えません"):
+        for word in ("アカウントと部署", "会社の情報", "振込先", "点検を走らせる", "GitHub", "アカウント管理の画面が開ける", "ほかの業務の画面を開く範囲と", "増えません"):
             assert word in note.group(1), (url, word)
         note = re.search(r'<p id="id_departments_helptext"[^>]*>(.*?)</p>', html, re.S)
         assert note is not None, url
