@@ -1,6 +1,7 @@
 """注残の盤の「納期まで」を稼働日で数える (orders.board.BoardRow.days_left と core.calendar)。
 
 「納期まで」は休日の表の日と定休日の曜日 (既定は土日) を除いた稼働日の数。遅れの判断は暦の日 (納期が今日より前)。
+枡の字 (days_left_label) はダッシュボードの納期アラートと同じ型「n 日遅れ」「今日」「あと n 日」(W01 の直し 11-07)。
 関数の試験は today を渡す (2026 年 11 月の決まった日。11-20 は金曜、11-23 は勤労感謝の日の月曜)。
 休日は masters の services で書く。fixture は tests/test_orders_board.py の形を写した (import して使わない)。作り物のデータだけを使う。
 """
@@ -133,6 +134,34 @@ def test_same_day_and_no_due_date(user, customer, item):
     no_due = board.BoardRow(_line(user, customer, item), FRI)
     assert no_due.days_left is None
     assert no_due.is_overdue is False
+
+
+def test_days_left_label_matches_dashboard_wording(user, customer, item, labor_day):
+    # 枡の字はダッシュボードの納期アラート (core/home.html の「n 日遅れ」「今日」「あと n 日」) と同じ型。数は稼働日 (W01)
+    fri_due = _line(user, customer, item, due=FRI)
+    sat_due = _line(user, customer, item, due=SAT)
+    sun_due = _line(user, customer, item, due=SUN)
+    labor_day_due = _line(user, customer, item, due=LABOR_DAY)
+    tue_due = _line(user, customer, item, due=TUE)
+
+    # 過ぎた納期: 稼働日の数で「n 日遅れ」(金曜の納期を火曜に見ると、11-23 は休日なので 1)
+    assert board.BoardRow(fri_due, SUN).days_left_label == "1 日遅れ"
+    assert board.BoardRow(fri_due, TUE).days_left_label == "1 日遅れ"
+    assert board.BoardRow(fri_due, date(2026, 11, 26)).days_left_label == "3 日遅れ"
+    # 「今日」は暦の日 (納期 = 今日) で決める。ダッシュボードも納期 = 今日のときだけ「今日」と出す
+    assert board.BoardRow(fri_due, FRI).days_left_label == "今日"
+    assert board.BoardRow(sun_due, SUN).days_left_label == "今日"
+    # 先の納期: 「あと n 日」(金曜に見る火曜の納期は、土日と 11-23 を除いて 1)
+    assert board.BoardRow(tue_due, FRI).days_left_label == "あと 1 日"
+    assert board.BoardRow(tue_due, date(2026, 11, 18)).days_left_label == "あと 3 日"
+    # 納期が先でも間に稼働日が無い日は「あと 0 日」(「今日」と書くと、暦の日で数えるダッシュボードの「あと 1 日」と食い違う)
+    assert board.BoardRow(sun_due, SAT).days_left_label == "あと 0 日"
+    assert board.BoardRow(sat_due, FRI).days_left_label == "あと 0 日"
+    assert board.BoardRow(labor_day_due, SUN).days_left_label == "あと 0 日"
+    # 納期が無い行と、出荷の済んだ行 (残 0) は空の字 (枡の「—」はテンプレート)
+    assert board.BoardRow(_line(user, customer, item), FRI).days_left_label == ""
+    shipping_services.ship(tue_due, Decimal("10"), ORDER_DATE, user)
+    assert board.BoardRow(OrderLine.objects.get(pk=tue_due.pk), FRI).days_left_label == ""
 
 
 def test_weekly_holidays_setting_counts_saturday(settings, user, customer, item, labor_day):

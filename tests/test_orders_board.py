@@ -35,7 +35,7 @@ COLUMNS = [
     "得意先",
     "部品",
     "納期",
-    "納期まで",
+    "納期まで (稼働日)",
     "数量",
     "出荷済み",
     "検収",
@@ -303,16 +303,20 @@ def test_list_columns_and_csv(user, logged_in, customer, item, cut, settings):
     assert response.status_code == 200
     assert [col.label for col in response.context["columns"]] == COLUMNS
     cells = {row["obj"].pk: [cell["value"] for cell in row["cells"]] for row in response.context["rows"]}
-    assert cells[late.pk][COLUMNS.index("納期まで")] == -2
+    assert cells[late.pk][COLUMNS.index("納期まで (稼働日)")] == -2
     assert cells[late.pk][COLUMNS.index("指示書")] == "未"
     assert cells[late.pk][COLUMNS.index("判断")] == "遅れ"
-    assert cells[issued.pk][COLUMNS.index("納期まで")] == 4
+    assert cells[issued.pk][COLUMNS.index("納期まで (稼働日)")] == 4
     assert cells[issued.pk][COLUMNS.index("指示書")] == "4 未着手"
     assert cells[issued.pk][COLUMNS.index("進捗")] == "切断 0/4"
     assert cells[issued.pk][COLUMNS.index("判断")] == "指示書が要る"
     body = response.content.decode()
     for text in ("未", "遅れ", "4 未着手", "指示書が要る", "切断 0/4"):
         assert text in body
+    # 「納期まで」の枡はダッシュボードの納期アラートと同じ字の型 (W01)。CSV は稼働日の数のまま (下の ",-2,")
+    assert '<span class="text-error">2 日遅れ</span>' in _tr(body, late.pk)
+    assert "あと 4 日" in _tr(body, issued.pk)
+    assert ">-2<" not in _tr(body, late.pk)
 
     csv_body = logged_in.get(reverse("orders:orderline_list"), {"format": "csv"}).content.decode()
     header, *rows = csv_body.lstrip("﻿").splitlines()
@@ -521,7 +525,8 @@ def test_judgement_badges_and_marks(settings, user, logged_in, customer, item, c
 
     late_html = _tr(body, late.pk)
     assert '<span class="badge badge-soft badge-error">遅れ</span>' in late_html
-    assert '<span class="text-error">-3</span>' in late_html
+    assert '<span class="text-error">3 日遅れ</span>' in late_html
+    assert "あと 2 日" in _tr(body, ready.pk) and "text-error" not in _tr(body, ready.pk)
     assert '<span class="text-base-content/60">未</span>' in late_html
     assert '<span class="badge badge-soft badge-success">出荷できる</span>' in _tr(body, ready.pk)
     assert '<span class="badge badge-soft badge-warning">指示書が要る</span>' in _tr(body, needed.pk)
@@ -632,13 +637,13 @@ def test_board_sorts_by_annotated_columns_only(user, logged_in, customer, item):
 
     body = logged_in.get(url).content.decode()
     heads = _heads(body)
-    for label in ("納期まで", "数量", "出荷済み", "検収", "残", "在庫"):
+    for label in ("納期まで (稼働日)", "数量", "出荷済み", "検収", "残", "在庫"):
         assert "text-right" in heads[label][0], label
     for label in ("指示書", "判断"):
         assert "text-right" not in heads[label][0], label
     assert "sort=shipped_total" in heads["出荷済み"][1]
     assert "sort=remaining_total" in heads["残"][1]
-    assert "sort=board__days_left" in heads["納期まで"][1]
+    assert "sort=board__days_left" in heads["納期まで (稼働日)"][1]
     assert len(_totals(body)) == len(COLUMNS) + 1
 
 
@@ -663,7 +668,7 @@ def test_board_sorts_python_values_by_sort_key(user, logged_in, customer, item):
 
     body = logged_in.get(url).content.decode()
     heads = _heads(body)
-    for label, sort in (("納期まで", "board__days_left"), ("検収", "board__acceptance_total"), ("在庫", "board__stock_balance")):
+    for label, sort in (("納期まで (稼働日)", "board__days_left"), ("検収", "board__acceptance_total"), ("在庫", "board__stock_balance")):
         assert f"sort={sort}" in heads[label][1], label
     for label in ("指示書", "進捗", "計画の終了日", "判断"):
         assert "<a " not in heads[label][1], label

@@ -2,9 +2,11 @@
 
 - 一覧の「残」は 3 桁区切りの金額の列 (kind が money。Python の値なので並び替えと合計は無い)。
 - 取消の請求書の入金の状態の字は「—」(payment_status は請求書の状態を見ないまま)。
+- 取消の請求書の行の「残」は「—」(T03 の直し 11-07。列の値と CSV の残は数のまま。数え方はもう一方の報告の担当)。
 fixture と、一覧の行を読む関数は tests/test_billing_payment_views.py の形。得意先・品目は作り物。
 """
 
+import re
 from decimal import Decimal
 
 import pytest
@@ -81,3 +83,36 @@ def test_cancelled_invoice_payment_label_is_dash(client_logged_in, user, item, i
     assert fresh.payment_status_label() == "未入金"
     panel = _panel(client_logged_in.get(reverse("billing:invoice_detail", args=[fresh.pk])))
     assert '<span class="badge badge-soft badge-warning">未入金</span>' in panel
+
+
+#: 一覧の枡の「—」(盤の「—」と同じ形。右寄せの薄い字)
+DASH_CELL = '<td class="whitespace-nowrap text-right"><span class="text-base-content/60">—</span></td>'
+
+
+def _row_html(body, pk):
+    """一覧の行 (<tr id="row-<pk>" ...>...</tr>) の HTML。"""
+    match = re.search(rf'<tr id="row-{pk}".*?</tr>', body, re.S)
+    assert match, f"row-{pk} が無い"
+    return match.group(0)
+
+
+def test_cancelled_invoice_balance_cell_is_dash(client_logged_in, user, item, invoice):
+    # 取消の請求書の行の「残」は「—」(同じ行の「入金」と同じ)。残の金額が出ると、残の列を縦に読む人に入金待ちに見える (T03)
+    billing_services.record_payment(invoice, RECEIVED_ON, Decimal("500"), user)
+    Invoice.objects.filter(pk=invoice.pk).update(status=Invoice.STATUS_CANCELLED)
+    other = _customer(user, "C002", "作り物の別の得意先")
+    fresh = _invoice(user, other, _order_line(user, other, item))
+
+    response = client_logged_in.get(reverse("billing:invoice_list"))
+    body = response.content.decode()
+
+    cancelled_row = _row_html(body, invoice.pk)
+    assert cancelled_row.count(DASH_CELL) == 1  # 残の枡だけ (入金の「—」は印の無い字)
+    assert "16,000" not in cancelled_row  # 残 (16,500 − 500) は出さない
+    assert "16,500" in cancelled_row  # 合計はそのまま
+    # 取り消していない請求書の残は今までどおり (合計と残の 2 か所に 16,500)
+    fresh_row = _row_html(body, fresh.pk)
+    assert DASH_CELL not in fresh_row
+    assert fresh_row.count("16,500") == 2
+    # 列の値 (CSV と集計が読む物) は数のまま。数え方はもう一方の報告の担当なので、ここでは変えない
+    assert _cells(response, invoice.invoice_no)["balance"] == Decimal("16000.00")
