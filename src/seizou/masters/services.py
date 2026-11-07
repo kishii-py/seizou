@@ -625,13 +625,14 @@ _MIN_QTY_POSITIVE_MESSAGE = "保存できません。数量の下限は 0 より
 
 
 def _same_band_message(row, user):
-    """同じ条件の単価の行がもうあるときの断りの字 (決め C98-2)。金額を見られる人には今の行の単価を括弧で添える。
+    """同じ条件の単価の行がもうあるときの断りの字 (決め C98-2) の、頭の「保存できません。」の後ろ。
 
-    金額の閲覧が無い人 (access.hides_money が真) には括弧の無い字。字は本人に見せた字のまま。
+    金額を見られる人には今の行の単価を括弧で添え、金額の閲覧が無い人 (access.hides_money が真) には括弧の無い字。
+    字は本人に見せた字のまま。頭の「保存できません。」は raise の側に書く (断りの字の頭を試験が辿れるように)。
     """
     price = "" if access.hides_money(user) else f" (¥{comma(row.unit_price)} / {row.unit_text})"
     return (
-        f"保存できません。同じ条件の単価の行がもうあります{price}。"
+        f"同じ条件の単価の行がもうあります{price}。"
         "改定なら適用開始日を入れてください。今の単価を直すなら、今の行を編集してください。"
     )
 
@@ -668,7 +669,7 @@ def _check_item_price(item, values, user, *, exclude_pk=None):
         same = same.exclude(pk=exclude_pk)
     row = same.order_by("pk").first()
     if row is not None:
-        raise ValueError(_same_band_message(row, user))
+        raise ValueError(f"保存できません。{_same_band_message(row, user)}")
 
 
 def _price_values(values):
