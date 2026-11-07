@@ -8,13 +8,18 @@
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.core.management.base import CommandError
+from django.db import DatabaseError
+from django.utils import timezone
 
-from seizou.core import backup
+from seizou.core import backup, doctor
 from tests import test_core_backup
 from tests.test_core_backup import folders, hand_made_backup, run, sqlite_only
 
@@ -209,3 +214,143 @@ def test_prune_keeps_names_passed_in_keep(tmp_path):
     assert old.is_dir()
     assert not older.exists()
     assert backup.prune_backups(tmp_path / "missing", 7) == []
+
+
+# ---------------------------------------------------------------- 3. 点検の「最後の控え」「ディスクの空き」
+
+LAST = "最後の控え"
+DISK = "ディスクの空き"
+GB = 1024**3
+
+
+@pytest.fixture
+def doctor_site(settings, tmp_path):
+    """控えの無い置き場 (tests/test_core_doctor.py の fixture と同じ形。本番の条件でも直すが 0 件)。"""
+    site = tmp_path / "site"
+    (site / "media").mkdir(parents=True)
+    css = site / "staticfiles" / "css"
+    css.mkdir(parents=True)
+    (css / "app.css").write_text("/* 試験の偽の CSS */\n", encoding="utf-8")
+    settings.BASE_DIR = site
+    settings.MEDIA_ROOT = site / "media"
+    settings.STATIC_ROOT = site / "staticfiles"
+    settings.SECRET_KEY = "fake-" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_aBcDeFgHiJkLmNoPqRsTu"
+    settings.SEIZOU_DEV_AUTO_LOGIN = False
+    settings.SEIZOU_FILE_DELIVERY = "django"
+    settings.ALLOWED_HOSTS = ["testserver", "example.test"]
+    settings.SESSION_COOKIE_SECURE = True
+    settings.CSRF_COOKIE_SECURE = True
+    settings.SEIZOU = {}
+    return site
+
+
+@pytest.fixture
+def free_disk(monkeypatch):
+    """shutil.disk_usage を差し替える (既定は空き 50GB)。値を替えるときは返した辞書の free を書き換える。"""
+    state = {"free": 50 * GB, "places": []}
+
+    def fake_disk_usage(path):
+        state["places"].append(Path(path))
+        return SimpleNamespace(total=100 * GB, used=100 * GB - state["free"], free=state["free"])
+
+    monkeypatch.setattr(doctor.shutil, "disk_usage", fake_disk_usage)
+    return state
+
+
+def hours_ago(hours: float):
+    return timezone.now() - timedelta(hours=hours)
+
+
+def row_of(rows, label):
+    found = [row for row in rows if row.label == label]
+    assert len(found) == 1, [row.label for row in rows]
+    return found[0]
+
+
+@pytest.mark.django_db
+def test_doctor_new_site_without_backup_is_good(doctor_site, free_disk):
+    """(g) 控えの無い作ったばかりの置き場は、本番の条件で「最後の控え」も「ディスクの空き」も良い。"""
+    rows = doctor.run(production=True)
+
+    last = row_of(rows, LAST)
+    assert last.ok
+    assert "まだ最初の控えの前" in last.detail
+    disk = row_of(rows, DISK)
+    assert disk.ok
+    assert "空き 50.0 GB (要る目安 1.0 GB)" == disk.detail
+    assert free_disk["places"] == [doctor_site]
+    assert [row.label for row in rows if not row.ok] == []
+
+
+@pytest.mark.django_db
+def test_doctor_no_backup_after_36_hours_is_fix(doctor_site, free_disk, monkeypatch):
+    """(h) 控えが無く、置き場を作ってから 40 時間たつと「最後の控え」は直す。起点が読めなくても直す。"""
+    monkeypatch.setattr(doctor, "site_created_at", lambda: hours_ago(40))
+
+    last = row_of(doctor.run(production=True), LAST)
+
+    assert not last.ok
+    assert "40 時間" in last.detail
+    assert last.fix == doctor.LAST_BACKUP_FIX
+
+    def unreadable():
+        raise DatabaseError("作り物の DB の誤り")
+
+    monkeypatch.setattr(doctor, "site_created_at", unreadable)
+    last = row_of(doctor.run(production=True), LAST)
+    assert not last.ok
+    assert "読めない" in last.detail
+
+    monkeypatch.setattr(doctor, "site_created_at", lambda: None)
+    assert not row_of(doctor.run(production=True), LAST).ok
+
+
+@pytest.mark.django_db
+def test_doctor_last_backup_age(doctor_site, free_disk, monkeypatch):
+    """(i) 名前の日時が 37 時間前の控えだけなら直す、1 時間前の控えがあれば良い。退避だけなら控えが無いのと同じ。"""
+    monkeypatch.setattr(doctor, "site_created_at", lambda: hours_ago(40))
+    parent = doctor_site / "backups"
+    retreat = hand_made_backup(parent, backup_name(1 / 24, backup.RETREAT_SUFFIX))
+
+    last = row_of(doctor.run(production=True), LAST)
+    assert not last.ok
+    assert "控えが無い" in last.detail
+
+    old = hand_made_backup(parent, backup_name(37 / 24))
+    last = row_of(doctor.run(production=True), LAST)
+    assert not last.ok
+    assert old.name in last.detail
+    assert "36 時間より古い" in last.detail
+
+    shutil.rmtree(retreat)
+    fresh = hand_made_backup(parent, backup_name(1 / 24))
+    last = row_of(doctor.run(production=True), LAST)
+    assert last.ok
+    assert last.detail == f"{fresh.name} (1 時間前)"
+    assert free_disk["places"][-1] == parent
+
+
+@pytest.mark.django_db
+def test_doctor_disk_free_too_small(doctor_site, free_disk, monkeypatch):
+    """(j) 空きが 1GB を切るか、一番新しい控えの 2 倍を切ると「ディスクの空き」は直す。"""
+    free_disk["free"] = GB // 2
+
+    disk = row_of(doctor.run(production=True), DISK)
+    assert not disk.ok
+    assert disk.detail == "空き 0.5 GB (要る目安 1.0 GB)"
+    assert disk.fix == doctor.DISK_FREE_FIX
+
+    free_disk["free"] = 3 * GB
+    monkeypatch.setattr(backup, "newest_backup", lambda parent: {"name": backup_name(0), "size": 2 * GB})
+    disk = row_of(doctor.run(production=True), DISK)
+    assert not disk.ok
+    assert disk.detail == "空き 3.0 GB (要る目安 4.0 GB)"
+
+
+@pytest.mark.django_db
+def test_doctor_rows_only_in_production(doctor_site, free_disk):
+    """(k) 開発の条件の点検には、2 つの行が出ない (手元の開発の置き場で直すを増やさない)。"""
+    labels = [row.label for row in doctor.run(production=False)]
+
+    assert LAST not in labels
+    assert DISK not in labels

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from dataclasses import dataclass
+from datetime import datetime
 from importlib import import_module
 from pathlib import Path
 
@@ -28,6 +30,8 @@ from django.core.checks.security.base import (
 from django.core.exceptions import ImproperlyConfigured
 from django.db import DatabaseError, connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db.migrations.recorder import MigrationRecorder
+from django.utils import timezone
 
 from seizou.core import backup, conf, media, middleware, services
 
@@ -229,6 +233,85 @@ def check_backups_dir() -> list[Row]:
         return [_bad(label, "settings.py に BASE_DIR が無い", "settings.py に BASE_DIR を書く (seizou new が書く settings.py にはある)。")]
     fix = f"フォルダ {path} を作って、seizou_backup を打つ利用者が書ける権限にする。"
     return [_writable(label, path, "最初の控えで作られる", fix)]
+
+
+#: 最後の控えが古いとみなす時間・ディスクの空きの下限 (バイト)・一番新しい控えの大きさの何倍の空きを要るとみなすか
+BACKUP_MAX_AGE_HOURS = 36
+DISK_FREE_MIN_BYTES = 1024**3
+DISK_FREE_BACKUP_TIMES = 2
+#: 最後の控えとディスクの空きの直し方
+LAST_BACKUP_FIX = "manage.py seizou_backup を打ち、cron の行を確かめる (seizou の docs/operations.md の「毎日の控え」)。"
+DISK_FREE_FIX = "古い控えを seizou_backup --keep で消すか、ディスクを広げる (seizou の docs/operations.md の「毎日の控え」)。"
+#: GB の字にするときの 1 GB のバイト数
+_GB = 1024**3
+
+
+def site_created_at() -> datetime | None:
+    """置き場を作った時刻の代わり = django_migrations の一番早い applied (seizou new が migrate を打った時刻)。
+
+    表が無ければ None。ORM で読むだけ。DB の誤りは外に出す (check_last_backup が直すにする)。試験が差し替える。
+    """
+    recorder = MigrationRecorder(connection)
+    if not recorder.has_table():
+        return None
+    return recorder.migration_qs.order_by("applied").values_list("applied", flat=True).first()
+
+
+def _hours_since(moment: datetime) -> float:
+    """moment から今までの時間。tz の有る時刻 (django_migrations) は timezone.now() と、無い時刻 (控えの名前) は置き場の時計と比べる。"""
+    now = timezone.now() if timezone.is_aware(moment) else datetime.now()
+    return (now - moment).total_seconds() / 3600
+
+
+def check_last_backup() -> list[Row]:
+    """最後の控え (置き場の backups/ の、退避でない一番新しい控え) が BACKUP_MAX_AGE_HOURS より新しいか。本番の条件だけ。
+
+    控えが無いときは、置き場を作った時刻 (site_created_at) から BACKUP_MAX_AGE_HOURS の内なら良い。起点が読めなければ直す。
+    訳: 毎晩の控えの失敗・古さとディスクの空きの足りなさを、点検が知らせるため。36 時間は毎晩 2 時の控えが 1 回抜けても朝の点検で気づく幅、作ったばかりの置き場 (審査用に作り直す置き場を含む) で直すにしないため、起点は置き場を作った時の migrate の時刻 (作った日時を持つ所が無いので、版を上げても動かない一番早い行を使う)。1GB と 2 倍は、次の控えを 1 つ取れる目安。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-ops-sre-2・chk-ops-sre-6 と確かめ直しの (d)。変えてよい条件 = 置き場に作った日時を持つ所ができたとき (起点を替える)、または毎晩の控えの時刻と回数を変えたとき (幅を替える)。
+    """
+    label = "最後の控え"
+    try:
+        parent = backup.default_dir()
+    except backup.BackupError:
+        return []
+    newest = backup.newest_backup(parent)
+    if newest is not None:
+        hours = _hours_since(backup.name_time(newest["name"]))
+        shown = f"{newest['name']} ({max(0, int(hours))} 時間前)"
+        if hours < BACKUP_MAX_AGE_HOURS:
+            return [_good(label, shown)]
+        return [_bad(label, f"{shown}。{BACKUP_MAX_AGE_HOURS} 時間より古い", LAST_BACKUP_FIX)]
+    try:
+        created = site_created_at()
+    except DatabaseError:
+        created = None
+    if created is None:
+        return [_bad(label, "控えが無い (置き場を作った時刻も読めない)", LAST_BACKUP_FIX)]
+    hours = _hours_since(created)
+    if hours < BACKUP_MAX_AGE_HOURS:
+        return [_good(label, f"まだ最初の控えの前 (置き場を作ってから {max(0, int(hours))} 時間)")]
+    return [_bad(label, f"控えが無い (置き場を作ってから {int(hours)} 時間)", LAST_BACKUP_FIX)]
+
+
+def check_disk_free() -> list[Row]:
+    """控えの置き場 (無ければ置き場) のディスクの空きが、DISK_FREE_MIN_BYTES と一番新しい控えの DISK_FREE_BACKUP_TIMES 倍の大きい方以上か。本番の条件だけ。
+
+    訳: 毎晩の控えの失敗・古さとディスクの空きの足りなさを、点検が知らせるため。36 時間は毎晩 2 時の控えが 1 回抜けても朝の点検で気づく幅、作ったばかりの置き場 (審査用に作り直す置き場を含む) で直すにしないため、起点は置き場を作った時の migrate の時刻 (作った日時を持つ所が無いので、版を上げても動かない一番早い行を使う)。1GB と 2 倍は、次の控えを 1 つ取れる目安。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-ops-sre-2・chk-ops-sre-6 と確かめ直しの (d)。変えてよい条件 = 置き場に作った日時を持つ所ができたとき (起点を替える)、または毎晩の控えの時刻と回数を変えたとき (幅を替える)。
+    """
+    label = "ディスクの空き"
+    try:
+        parent = backup.default_dir()
+    except backup.BackupError:
+        return []
+    place = parent if parent.is_dir() else parent.parent
+    free = shutil.disk_usage(place).free
+    newest = backup.newest_backup(parent)
+    size = newest["size"] if newest is not None else 0
+    need = max(DISK_FREE_MIN_BYTES, size * DISK_FREE_BACKUP_TIMES)
+    detail = f"空き {free / _GB:.1f} GB (要る目安 {need / _GB:.1f} GB)"
+    if free < need:
+        return [_bad(label, detail, DISK_FREE_FIX)]
+    return [_good(label, detail)]
 
 
 def check_css() -> list[Row]:
@@ -451,6 +534,8 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("上げたファイルの置き場 (MEDIA_ROOT)", check_media_root, False),
         ("上げたファイルの置き場の場所 (MEDIA_ROOT)", check_media_root_place, False),
         ("控えの置き場 (backups/)", check_backups_dir, False),
+        ("最後の控え", check_last_backup, True),
+        ("ディスクの空き", check_disk_free, True),
         ("CSS", check_css, False),
         ("collectstatic", check_collectstatic, True),
         ("上げたファイルの配り方", check_file_delivery, False),
