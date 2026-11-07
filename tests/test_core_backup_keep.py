@@ -374,7 +374,7 @@ def test_doctor_rows_only_in_production(doctor_site, free_disk):
 @pytest.fixture
 def mail_ready(doctor_site, settings, monkeypatch):
     """作り物の送り方 (tests/test_core_mail.py の形)。サーバーは環境変数、差出人は会社の設定 mail。"""
-    settings.SEIZOU = {"id": "sample_co", "mail": FILLED}
+    settings.SEIZOU = {"id": "sample_co", "mail": FILLED, "access_control": {"department": "on", "write": "on", "money": "on"}}  # 権限の判定の点検 (N362) を直すにしない
     set_transport_env(monkeypatch)
     return doctor_site
 
