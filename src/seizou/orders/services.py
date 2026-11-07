@@ -8,7 +8,8 @@
 - 決まりの番号の無い入力の誤り (取引先の種類が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
-- 明細の辞書の鍵は item・qty・unit・unit_price・due_date・note・customer_part_no・ext。
+- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・customer_part_no・ext。
+  price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
   update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
 - 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
   shipping.services.ship と update_order の終わりに呼ぶ。止めない (現物優先)。
@@ -26,13 +27,13 @@ from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.masters.services import refuse_inactive, round_amount
+from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 
 from .models import Order, OrderLine
 
 _ORDER_KEYS = frozenset({"order_date", "customer_order_no", "note", "customer"})
 _LINE_KEYS = frozenset(
-    {"item", "qty", "unit", "unit_price", "due_date", "note", "customer_part_no", "ext"}
+    {"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "customer_part_no", "ext"}
 )
 _LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line"}
 _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
@@ -70,6 +71,8 @@ def _refuse_bad_lines(lines, allowed):
     for line in lines:
         _refuse_unknown_keys(line, allowed, "受注の明細")
         _refuse_ext(line.get("ext"))
+        if "price_basis" in line:
+            refuse_unknown_price_basis(line["price_basis"])
 
 
 def _dec(value):
@@ -86,15 +89,20 @@ def _check_positive(qty, unit_price):
         raise RuleViolation("R02", _R02_MESSAGE)
 
 
-def _amount(customer, qty, unit_price):
-    """R03: 金額は数量 × 単価で、端数は取引先 (空なら会社) の小計の計算方法で丸める。"""
-    return round_amount(customer, qty * unit_price)
+def _amount(customer, qty, unit_price, price_basis):
+    """R03: 金額は数量 × 単価 (単価の単位が式なら単価のまま) で、端数は取引先 (空なら会社) の小計の計算方法で丸める。
+
+    訳: 一式の明細は数量を掛けずに単価を金額にするため (式は masters.services.line_amount の 1 か所)。出所 = RULES.md R03 と作者の決め PRICE-1b。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
+    return line_amount(customer, qty, unit_price, price_basis)
 
 
 def _add_line(order, line, line_no):
     item = line["item"]
     qty = _dec(line["qty"])
     unit_price = _dec(line["unit_price"])
+    price_basis = line.get("price_basis", PRICE_BASIS_UNIT)
     _check_positive(qty, unit_price)
     return OrderLine.objects.create(
         order=order,
@@ -104,7 +112,8 @@ def _add_line(order, line, line_no):
         qty=qty,
         unit=line["unit"] if "unit" in line else item.unit,
         unit_price=unit_price,
-        amount=_amount(order.customer, qty, unit_price),
+        price_basis=price_basis,
+        amount=_amount(order.customer, qty, unit_price, price_basis),
         due_date=line.get("due_date"),
         note=line.get("note", ""),
     )
@@ -138,8 +147,10 @@ def _change_line(row, line, customer):
         row.qty = _dec(line["qty"])
     if "unit_price" in line:
         row.unit_price = _dec(line["unit_price"])
+    if "price_basis" in line:
+        row.price_basis = line["price_basis"]
     _check_positive(row.qty, row.unit_price)
-    row.amount = _amount(customer, row.qty, row.unit_price)
+    row.amount = _amount(customer, row.qty, row.unit_price, row.price_basis)
     row.save()
     return row
 

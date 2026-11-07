@@ -318,10 +318,32 @@ def line_unit(line) -> str:
     return getattr(line, "unit", "") or getattr(getattr(line, "item", None), "unit", "") or ""
 
 
+class DefaultChoiceField(forms.ChoiceField):
+    """選ぶ欄。送られなかった (空の) ときは default の値とみなす (clean と has_changed の両方)。
+
+    明細の行の formset は、何も変えていない行 (has_changed が偽) を飛ばすので、送られなかった欄を初めの値と同じとみなし、
+    空の足す行を「変えた行」にしない。受注と発注の明細の「単価の単位」が使う。core は部品の値を持たないので、default は部品の form が渡す。
+    """
+
+    def __init__(self, *args, default, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("initial", default)
+        self.default = default
+        super().__init__(*args, **kwargs)
+
+    def clean(self, value):
+        return super().clean(value) or self.default
+
+    def has_changed(self, initial, data):
+        return (data or self.default) != (initial or self.default)
+
+
 def line_totals(pairs, *, show_amount=True) -> dict:
     """明細の合計の枠 (core/_line_totals.html) と保存のボタンの字の元 (N149。案 5-A)。
 
-    pairs は (数量, 単価) の組の並び (単価は None でよい)。form は数えない行 (空・消す印) を外してから渡し、
+    pairs は (数量, 単価) か (数量, 単価, 一式か) の組の並び (単価は None でよい)。一式か が真の行は数量を掛けずに単価を金額に足す
+    (受注と発注の明細の単価の単位が式の行。core は部品を import しないので、一式かどうかは部品の form が決めて渡す)。
+    form は数えない行 (空・消す印) を外してから渡し、
     送って止まった形で数量の通らなかった行があれば None を渡す (「分からない」)。
     返す物: rows = 行の数 (int。分からなければ None)、qty = 数量の合計の字 (label_number) か None、
     amount = 金額の合計の字か None (show_amount が偽・単価の空か数でない行がある・分からない)、show_amount = 金額の組を描くか。
@@ -332,7 +354,9 @@ def line_totals(pairs, *, show_amount=True) -> dict:
     if pairs is None:
         return unknown
     rows, qty, amount, priced = 0, Decimal("0"), Decimal("0"), True
-    for raw_qty, raw_price in pairs:
+    for entry in pairs:
+        raw_qty, raw_price = entry[0], entry[1]
+        lump = len(entry) > 2 and bool(entry[2])
         count = label_decimal(raw_qty)
         if count is None:
             return unknown
@@ -342,7 +366,7 @@ def line_totals(pairs, *, show_amount=True) -> dict:
         if price is None:
             priced = False
         else:
-            amount += count * price
+            amount += price if lump else count * price
     return {
         "rows": rows,
         "qty": label_number(qty),

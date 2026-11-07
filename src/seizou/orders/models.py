@@ -1,6 +1,7 @@
 """受注の表 (01 の 4 節)。
 
 項目の名前は中小企業共通 EDI の注文の必須の項目を元にした (得意先の注文番号・受注日・行番号・単価・数量・単位・納期)。
+単価の単位 (price_basis) は中小企業共通 EDI に当たる値の無い seizou の項目 (式に当たる数量単位コードと単価コードは無い。EDI の注文単価は 1 単位あたりの単価)。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 出荷済みの数と残の数は列に持たず、orders.services の shipped_qty・remaining_qty で毎回出す。
 書くときは orders.services を通す。
@@ -10,6 +11,8 @@ from functools import cached_property
 
 from django.apps import apps
 from django.db import models
+
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_UNIT, price_basis_text
 
 
 def _part_model(app_label, name):
@@ -97,7 +100,7 @@ class Order(models.Model):
 
 
 class OrderLine(models.Model):
-    """受注の明細。金額は orders.services が数量 × 単価を丸めて書く。"""
+    """受注の明細。金額は orders.services が数量 × 単価 (単価の単位が式なら単価のまま) を丸めて書く。"""
 
     order = models.ForeignKey(
         Order,
@@ -116,6 +119,9 @@ class OrderLine(models.Model):
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit = models.CharField("単位", max_length=10, blank=True)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
+    # 単価の単位 (決め PRICE-1b)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは orders.services だけ。
+    # 数量の単位の列 (unit) とは別。式は数量の単位でないので unit に入れない (数量は実際の個数のまま)。
+    price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
@@ -156,6 +162,12 @@ class OrderLine(models.Model):
     def status_label(self):
         """受注の状態の表示名 (注文残の一覧の列に使う。表示だけ)。"""
         return self.order.get_status_display()
+
+    @property
+    def price_unit_text(self):
+        """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
+        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
+        return price_basis_text(self.price_basis, self.unit)
 
     @cached_property
     def board(self):

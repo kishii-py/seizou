@@ -194,7 +194,7 @@ def test_order_form_shows_amount_after_unit_price(logged_in):
     assert body.count("data-line-amount") >= 1
     assert "orders/order-lines.js" in body
     assert "金額は保存のときに計算します" not in body
-    assert "金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。" in body
+    assert "金額は数量 × 単価で (単価の単位が「式」の行は単価のまま)、保存のときに得意先の端数の扱いで 1 円に丸めます。" in body
 
 
 @pytest.mark.django_db

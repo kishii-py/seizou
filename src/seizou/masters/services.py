@@ -36,6 +36,7 @@ from .drawings import page_name
 from .models import Item, Partner, PartnerItem
 from .models import Process
 from .models import Holiday
+from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
 
 _ITEM_KEYS = frozenset(
     {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note", "active"}
@@ -491,6 +492,37 @@ def round_amount(partner, value, *, rounding=None):
     """
     mode = partner.rounding or rounding or company_rounding()
     return value.quantize(Decimal("1"), rounding=_ROUNDING_MODES[mode])
+
+
+#: 単価の単位の値の組 (決め PRICE-1b)。受注と発注の明細と会社どうしの注文が受ける値。
+PRICE_BASIS_VALUES = frozenset(value for value, _label in PRICE_BASIS_CHOICES)
+
+
+def refuse_unknown_price_basis(value):
+    """単価の単位の値を確かめて返す。部品の単位 (unit) と式 (lump) のほかは日本語の ValueError。
+    あり得ない入力を表に書く前に断る (画面の欄は選ぶ欄なので、ここに来るのは画面の外から呼ぶ時だけ)。
+
+    訳: 金額の式 (line_amount) が知らない値を部品の単位として数え、式のつもりの明細の金額が数量倍になるのを止めるため。出所 = 作者の決め PRICE-1b と AI の案。
+    変えてよい条件 = 単価の単位の種類を足すとき (masters.models の PRICE_BASIS_CHOICES と一緒に直す)。
+    """
+    if value not in PRICE_BASIS_VALUES:
+        raise ValueError(
+            f"保存できません。単価の単位 {value!r} は使えません。部品の単位 (unit) か式 (lump) にしてください。"
+        )
+    return value
+
+
+def line_amount(partner, qty, unit_price, price_basis=PRICE_BASIS_UNIT, *, rounding=None):
+    """受注と発注の明細の金額 (読むだけ)。単価の単位が式 (lump) なら単価のまま、ほかは数量 × 単価。
+    端数は round_amount で取引先 (空なら会社) の小計の計算方法どおりに 1 円に丸める (rounding は round_amount と同じ)。
+    受注 (orders.services) と発注 (purchasing.services) の金額をこの 1 つの式にそろえる。
+
+    訳: 一式の明細は数量を掛けずに単価を金額にし、式の行も端数をほかの金額と同じ 1 か所で丸めるため。出所 = 作者の決め PRICE-1b と RULES.md R03。
+    変えてよい条件 = 単価の単位の種類を足すとき (例 中小企業共通 EDI の単価基準数量で数える不定貫の品物) と、作者が一式の金額の決め方を決め直したとき。
+    """
+    if price_basis == PRICE_BASIS_LUMP:
+        return round_amount(partner, unit_price, rounding=rounding)
+    return round_amount(partner, qty * unit_price, rounding=rounding)
 
 
 def company_rounding():

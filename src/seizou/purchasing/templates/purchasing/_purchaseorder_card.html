@@ -25,7 +25,7 @@
     <h2 class="text-lg font-bold">明細</h2>
     {% include "core/_line_totals.html" %}
   </div>
-  <p class="mt-2 text-xs text-base-content/50">何も入れていない行は保存しません。単位が空なら部品の単位を写します。単価は協力企業と決めた値を打ちます (部品の標準単価は写しません)。</p>
+  <p class="mt-2 text-xs text-base-content/50">何も入れていない行は保存しません。単位が空なら部品の単位を写します。単価は協力企業と決めた値を打ちます (部品の標準単価は写しません)。「単価の単位」を「式」にした行は、数量を掛けずに単価を金額にします。</p>
   {{ form.lines.management_form }}
   {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
   <div class="mt-4 overflow-x-auto">
@@ -35,6 +35,7 @@
           <th>部品 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>数量 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>単位</th>
+          <th>単価の単位</th>
           <th>単価 <span class="badge badge-xs badge-soft badge-error">必須</span></th>
           <th>納期</th>
           <th>備考</th>

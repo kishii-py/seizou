@@ -49,7 +49,7 @@
           <td class="whitespace-nowrap">{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>
           <td>{{ line.unit }}</td>
-          {% if not seizou.hide_money %}<td class="text-right tabular-nums">{{ line.unit_price|yen }}</td>
+          {% if not seizou.hide_money %}<td class="text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>
           <td class="text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}

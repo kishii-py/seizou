@@ -14,6 +14,25 @@ from seizou.core.services import company_or_none
 #: 締日と支払日の 31 は月末の印
 MONTH_END_DAY = 31
 
+#: 単価の単位 (決め PRICE-1b)。部品の数量の単位 1 つあたり (unit) か、一式 (lump。金額に数量を掛けない) か。
+#: 受注と発注の明細の単価の単位 (C99) も同じ値と字を使う。中小企業共通 EDI の数量単位コード (付表 4) に一式に当たる値は無い (SET「セット」は数える組の数で、数量を掛けない一式とは違う) ので、
+#: 会社どうしの JSON では seizou の項目として送る (PRICE-1b の edi)。部品の単位のときは、EDI の単価基準数量が空か 1 (定貫品目) のときと同じ意味。
+PRICE_BASIS_UNIT = "unit"
+PRICE_BASIS_LUMP = "lump"
+PRICE_BASIS_CHOICES = [(PRICE_BASIS_UNIT, "部品の単位"), (PRICE_BASIS_LUMP, "式")]
+
+
+def price_basis_text(price_basis, unit):
+    """単価の後ろに添える単位の字 (読むだけ)。式なら「式」、部品の単位なら unit の字、unit が空なら「個」。
+
+    画面の「¥250 / 個」「¥50,000 / 式」の後ろの字。単位が空の部品は個で数える (中小企業共通 EDI は数量単位コードを指定しない品物を
+    定貫品目 = 数えられる品目と見なす = 本編 7.3.2 (4) 数量単位コード。付表 4 の H87 の名前は「個<デフォルト>」)。
+    C99 の明細の単価の字と、同じ条件の行の断りの字 (C98 の 2-3) も使う。
+    """
+    if price_basis == PRICE_BASIS_LUMP:
+        return "式"
+    return unit or "個"
+
 
 def company_defaults():
     """取引先の端数の扱いが空のときに従う会社の行 (pk の小さい 1 行)。

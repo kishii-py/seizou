@@ -6,7 +6,7 @@ service_kwargs() が services.create_order / update_order の引数を作る (01
 
 選べる設定 (seizou.core.conf):
 - order_form が single のときは明細を 1 行に固定する (表は同じ。01 の 9 節)。
-- hidden_fields に名前が並んだ欄を外す。決まりが見る欄 (得意先・品目・数量・単価) と、
+- hidden_fields に名前が並んだ欄を外す。決まりが見る欄 (得意先・品目・数量・単価・単価の単位) と、
   services が要る受注日は外さない。外した欄の鍵は services に渡さない (直すときは今の値のまま)。
 """
 
@@ -17,17 +17,17 @@ from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core.conf import setting
-from seizou.core.forms import ServiceModelForm, SubmitLabelMixin, line_totals
+from seizou.core.forms import DefaultChoiceField, ServiceModelForm, SubmitLabelMixin, line_totals
 from seizou.core.views import use_decimal_input, widget_css
 from seizou.core.widgets import IsoDateInput, RemoteSelect
-from seizou.masters.services import active_items, active_partners
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
 
 from .models import Order, OrderLine
 
-#: hidden_fields に並んでも外さない欄
-KEPT_FIELDS = frozenset({"customer", "item", "qty", "unit_price", "order_date"})
+#: hidden_fields に並んでも外さない欄 (price_basis は金額の決まり R03 が読む欄なので外さない)
+KEPT_FIELDS = frozenset({"customer", "item", "qty", "unit_price", "price_basis", "order_date"})
 #: 明細の行から services に渡す鍵
-LINE_KEYS = ("item", "customer_part_no", "qty", "unit", "unit_price", "due_date", "note")
+LINE_KEYS = ("item", "customer_part_no", "qty", "unit", "price_basis", "unit_price", "due_date", "note")
 #: 直すときに data に入れる受注の鍵
 ORDER_KEYS = ("customer", "order_date", "customer_order_no", "note")
 #: 明細の行の formset の prefix (テンプレートと行を足す JS が使う)
@@ -86,6 +86,8 @@ class OrderLineForm(forms.Form):
         error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
     )
     unit = forms.CharField(label="単位", max_length=10, required=False)
+    # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
+    price_basis = DefaultChoiceField(label="単価の単位", choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     unit_price = forms.DecimalField(
         label="単価",
         max_digits=14,
@@ -112,11 +114,16 @@ class OrderLineForm(forms.Form):
             self.fields.pop(name, None)
         if hide_money:
             # 金額の閲覧が無い人には単価の欄を出さない。line() は欄に無い鍵を渡さないので、既にある明細の単価は今のまま。
+            # 単価の単位も金額を変えるので、単価の欄と組で外す (直す保存では鍵を渡さず、今の値のまま)。
             self.fields.pop("unit_price", None)
+            self.fields.pop("price_basis", None)
         # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if "unit_price" in self.fields:
             self.fields["unit_price"].widget.attrs["data-label-price"] = True
+        # 単価の単位が式の行は数量を掛けない印 (seizou-submit-label.js と orders/order-lines.js が欄の値と比べる)。
+        if "price_basis" in self.fields:
+            self.fields["price_basis"].widget.attrs["data-label-lump"] = PRICE_BASIS_LUMP
         # 入力の土台は外側の form の欄にだけ見た目の class を付けるので、行の欄には同じ関数で付ける。
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", widget_css(field.widget))
@@ -228,7 +235,13 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
                 values = row.initial or {}
             if values.get("qty") is None:
                 continue
-            pairs.append((values["qty"], None if self.hide_money else values.get("unit_price")))
+            pairs.append(
+                (
+                    values["qty"],
+                    None if self.hide_money else values.get("unit_price"),
+                    values.get("price_basis") == PRICE_BASIS_LUMP,
+                )
+            )
         return pairs
 
     def line_totals(self) -> dict:
@@ -243,6 +256,7 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
             "qty": row.qty,
             "unit": row.unit,
             "unit_price": row.unit_price,
+            "price_basis": row.price_basis,
             "due_date": row.due_date,
             "note": row.note,
         }

@@ -5,6 +5,7 @@ connect/_inbox_entrance.html の中だけ (order_list.html には {% load %} を
 受信した注文の詳細 (connect/inbox_detail.html) の「差出人を選ぶ」の form と、その form を出すか (承認できる人か) の判定も置く。
 受信した注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (本体の追記 11)。
 payload_number: 届いた本文の数の字を Decimal に読む filter。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す (読めない字はそのまま)。
+payload_price_unit: 届いた明細の単価の後ろに添える単価の単位の字 (「 / 式」「 / 個」の「式」「個」)。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -14,6 +15,7 @@ from django.db import DatabaseError
 from django.urls import reverse
 
 from seizou.core import access
+from seizou.masters.services import PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, price_basis_text
 
 from .. import services
 from ..forms import SenderForm
@@ -93,3 +95,20 @@ def payload_number(value):
     except InvalidOperation:
         return value
     return number if number.is_finite() else value
+
+
+@register.filter
+def payload_price_unit(line):
+    """受信した注文の明細の単価の後ろに添える字 (読むだけ)。「¥50,000 / 式」の「式」、「¥250 / 個」の「個」(決め PRICE-1b)。
+
+    明細の price_basis が部品の単位 (unit) か式 (lump) ならその値、鍵が無いか読めない値なら部品の単位として、
+    masters の price_basis_text (式なら「式」、ほかは明細の単位の字、空なら「個」) を返す。辞書でなければ空の字。
+    読めない値の注文は受け入れの時に断る (connect.services の _payload_price_basis)。ここは見せるだけ。
+    """
+    if not isinstance(line, dict):
+        return ""
+    basis = line.get("price_basis")
+    if not (isinstance(basis, str) and basis in PRICE_BASIS_VALUES):
+        basis = PRICE_BASIS_UNIT
+    unit = line.get("unit")
+    return price_basis_text(basis, unit if isinstance(unit, str) else "")

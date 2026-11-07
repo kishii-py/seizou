@@ -56,7 +56,7 @@
         <td class="whitespace-nowrap"><span class="font-mono">{% master_link line.item line.item.part_no %}</span> <span class="text-base-content/70">{{ line.item.name }}</span>{% if line.customer_part_no %}<span class="block text-xs text-base-content/70">得意先の品番 <span class="font-mono">{{ line.customer_part_no }}</span></span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }}</td>
         <td class="whitespace-nowrap">{{ line.unit }}</td>
-        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}</td>
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
         <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.shipped_total|comma }}</td>

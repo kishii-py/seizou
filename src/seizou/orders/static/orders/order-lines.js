@@ -5,6 +5,7 @@
  * 行を消すのは「消す」の印 (formset の DELETE) で、保存のときに services が明細を外す。
  * 明細の行の金額 (数量 × 単価) を、数量か単価の欄が変わるたびに data-line-amount の枡に出す
  * (保存の前に見るための目安。保存の値は services が得意先の端数の扱いで丸める = R03)。字は textContent で出す。
+ * 単価の単位が式の行は数量を掛けない (同じ行の単価の単位の選ぶ欄の値が、その欄の属性 data-label-lump の値と同じとき)。
  * 明細 1 行の会社 (「行を足す」のボタンが無い) でも読む。ボタンが無ければ「行を足す」の動きは何もしない。
  */
 (function () {
@@ -60,13 +61,15 @@
     if (!cell) return;
     var qty = row.querySelector('input[name$="-qty"]');
     var price = row.querySelector('input[name$="-unit_price"]');
+    var basis = row.querySelector('select[name$="-price_basis"]');
+    var lump = !!basis && basis.value === basis.getAttribute("data-label-lump");
     var qtyValue = qty ? parseNumber(qty.value) : null;
     var priceValue = price ? parseNumber(price.value) : null;
     if (qtyValue === null || priceValue === null) {
       cell.textContent = "";
       return;
     }
-    var amount = Math.round(qtyValue * priceValue * 100) / 100;
+    var amount = Math.round((lump ? priceValue : qtyValue * priceValue) * 100) / 100;
     // 金額の頭に半角の「¥」(U+00A5。保存のボタンの字の型と同じ字)。style: "currency" は全角の円の記号 (U+FFE5) を出すので使わない。
     cell.textContent = "¥" + amount.toLocaleString("ja-JP", { maximumFractionDigits: 2 });
   }
