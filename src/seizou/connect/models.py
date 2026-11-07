@@ -6,6 +6,7 @@
 """
 
 import os
+import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -491,6 +492,75 @@ class ChatMessage(models.Model):
         if self.response.startswith(("届きません", "断られた")):
             return self.response
         return f"届いていない: {self.response}"
+
+
+def chat_file_upload_to(instance, filename):
+    """会話の添付の保存の名前。chat/<年>/<月>/<乱数 32 字><元の拡張子の小文字> (添付ファイルの attachment_upload_to と同じ形)。
+
+    元の名前は保存の名前に使わない (media の道から名前を当てて開けないように)。元の名前は name に残し、開く口が返すときのファイル名にする。
+    """
+    extension = os.path.splitext(filename)[1].lower()
+    today = timezone.localdate()
+    return f"chat/{today:%Y}/{today:%m}/{uuid.uuid4().hex}{extension}"
+
+
+class ChatFile(models.Model):
+    """会話の添付。会話の言葉 1 つに付けたファイルを 1 つ 1 行で持つ (1 回に付けられるのは 1 つ)。
+
+    意図: 会話に添付も付けて話せるようにし (本人の決め CHAT-0)、添付は URL の方式で持つ (CHAT-3 = a「推奨で」11-06 23:5x):
+    会話の言葉には名前と大きさと中身の印だけを載せて送り、受け手の seizou が署名つきの要求で取りに行って自分の側にも保存する。
+    項目は中小企業共通 EDI の添付の 2 つの方式のうち URL 記載方式 (本編 6.4.1 (2)) の項目を元にした:
+    file_id = 添付バイナリファイル識別ID (UN01006015)・name = 添付バイナリファイル名 (UN01006019)・
+    mime = 添付バイナリファイルの MIME コード (UN01006021)・size = 添付バイナリファイルサイズ (UN01006027)。sha256 は EDI に無い
+    (受け手が取りに行った中身を確かめるため)。会話は EDI に無い seizou どうしだけの種類なので、EDI の電文に直す物に入れない。
+    取りに行く先: URL の字は送る JSON にも表にも持たない。EDI の URL の情報項目 (参照文書の URI = UN01005581) に当たるのは
+    「送り手の受け口 (受け手が自分で登録した向き「送る」の接続の URL) + 添付の識別 ID」の組 (送り手の seizou は外から見える自分の URL を持たず、
+    受け手は自分が登録した相手にだけ取りに行くので、届いた字に書かれた宛先へ要求を向けることが無い)。
+    アクセス制御: 送り手の受け口は、取引先との接続の鍵の署名が通り、その添付が「その取引先との会話」で自社が書いた言葉の物のときだけ返す。
+    有効期限: 添付は消さないので期限を設けない。1 回の要求が通る幅は署名の時刻の ±5 分 (connect.signing.verify の tolerance)。
+    取り直し: 受け手が取れなかったときは、受け手の画面の「取り直す」で同じ要求を出し直す (送り手の側で何もしない)。
+    直す口と消す口を作らない (会話の言葉と同じく電子帳簿保存法の訳 = ChatMessage の docstring)。書くのは connect.services の関数だけ。
+    一意の制約は言葉と添付の識別 ID の組 (ChatMessage と同じ訳で、番号だけの一意にしない = 1 つの DB に 2 社の役を置く試験で同じ値が 2 行並ぶ)。
+    """
+
+    #: 取りに行っている途中の印 (fetch_response)
+    FETCHING = "受け取っています"
+    #: 受け取った印 (fetch_response)
+    FETCHED = "受け取った"
+
+    message = models.ForeignKey(
+        ChatMessage,
+        verbose_name="会話の言葉",
+        on_delete=models.PROTECT,
+        related_name="files",
+    )
+    # 送り手が uuid4 で作る。両方の会社で同じ値。
+    file_id = models.UUIDField("添付の識別 ID", db_index=True)
+    name = models.CharField("ファイル名", max_length=100)
+    # 値は添付ファイルの形式の表 (attachments.services.ALLOWED) の値。
+    mime = models.CharField("形式", max_length=100)
+    size = models.PositiveBigIntegerField("大きさ (バイト)")
+    sha256 = models.CharField("中身の印 (SHA-256)", max_length=64)
+    # 受け手は取りに行くまで空。
+    file = models.FileField("ファイル", upload_to=chat_file_upload_to, blank=True)
+    # 受け手の行だけ。
+    fetched_at = models.DateTimeField("受け取った日時", null=True, blank=True)
+    # 受け手の行だけ。空 = まだ取りに行っていない・「受け取っています」= 取りに行っている途中・「受け取った」・ほかは理由の字。
+    fetch_response = models.CharField("取りに行った結果", max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "会話の添付"
+        verbose_name_plural = "会話の添付"
+        ordering = ["message", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "file_id"],
+                name="connect_chatfile_message_file_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
 
 
 def _qty_text(value) -> str:
