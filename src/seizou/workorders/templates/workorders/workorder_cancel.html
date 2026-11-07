@@ -1,4 +1,4 @@
 {% extends "core/form.html" %}
-{# 指示書を取り消す: 取消の理由の欄だけの form。実績の入った指示書は取り消せない。取消の指示書は生産計画と進捗の盤から外れる。 #}
+{# 指示書を取り消す: 取消の理由の欄だけの form。実績の入った指示書は取り消せない。取消の指示書は生産計画と進捗の盤から外れる。実績の入った指示書は、form と「取り消す」を出さず、services と同じ文を黄で出して、指示書の詳細へ戻る link だけ (URL を直に打った POST は services が赤の知らせで止める)。 #}
 {% block content %}{% include "workorders/_workorder_cancel_card.html" %}
 {% endblock %}

@@ -139,6 +139,7 @@ REFUSAL_FILES = {
 REFUSAL_RETURNS = {
     "src/seizou/billing/services.py": ("cancel_refusal",),
     "src/seizou/shipping/services.py": ("cancel_refusal",),
+    "src/seizou/workorders/services.py": ("cancel_refusal",),
 }
 #: REFUSAL_RETURNS の関数の文を入れた変数の名前 (raise ValueError(refusal) の形。文は上の関数で見る)
 REFUSAL_LOCALS = ("refusal",)

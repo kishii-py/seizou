@@ -170,9 +170,9 @@ def test_workorder_cancel_shows_cancel_refusals(client_logged_in, folder):
     write_screen(folder, "workorders_workorder_cancel")
     html = modal_html(client_logged_in, "workorders_workorder_cancel")
     assert SCREEN_HEADING in html
+    # 実績の文は cancel_refusal の返す字で raise の字でないので、止まるときの文に集まらない (納品書と請求書の取消と同じ。初見テスト R5 の候補 C79)
     for text in (
         "取り消せません。この指示書は取り消し済みです。指示書の詳細を開き直してください。",
-        "取り消せません。指示書 … には実績が … 件入っています。",
         "取り消せません。取消の理由が … 字を超えます。理由を短くしてください。",
     ):
         assert text in html

@@ -123,3 +123,32 @@ def test_cancelled_steps_leave_both_boards(user, cut, workorder):
 
     assert step not in plans.active_steps(cut)
     assert step not in boards.active_steps()
+
+
+# --- 取り消せない理由の文は cancel_refusal の 1 か所 (初見テスト R5 の候補 C79) ---
+
+
+@pytest.mark.django_db
+def test_cancel_refusal_counts_progress(user, workorder):
+    """実績が無ければ空の字。実績が入ると、件数を入れた断りの文 (取消の確かめのカードと同じ文)。"""
+    assert services.cancel_refusal(workorder) == ""
+
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+    assert services.cancel_refusal(workorder) == f"取り消せません。指示書 {workorder.wo_no} には実績が 1 件入っています。"
+
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+    assert services.cancel_refusal(workorder) == f"取り消せません。指示書 {workorder.wo_no} には実績が 2 件入っています。"
+
+
+@pytest.mark.django_db
+def test_cancel_workorder_raises_the_same_refusal(user, workorder):
+    """cancel_workorder の ValueError の字は cancel_refusal の字と同じ (文は 1 か所)。状態は発行のまま。"""
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+
+    with pytest.raises(ValueError) as caught:
+        services.cancel_workorder(workorder, user, reason="作り物の理由")
+
+    assert str(caught.value) == services.cancel_refusal(workorder)
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_ISSUED
+    assert workorder.cancel_reason == ""
