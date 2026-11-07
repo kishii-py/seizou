@@ -147,6 +147,7 @@ def test_base_script_notifies_failures(tmp_path):
         "click",
         "htmx:after-request",
         "htmx:beforeRequest",
+        "htmx:configRequest",
         "htmx:responseError",
         "htmx:sendError",
         "htmx:timeout",
