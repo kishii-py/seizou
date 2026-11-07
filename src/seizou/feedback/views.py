@@ -43,7 +43,7 @@ class FeedbackListView(BaseListView):
     """
 
     model = Feedback
-    columns = ("created_at", "kind", "title", "screen", "status", "created_by", "input_tokens", "output_tokens")
+    columns = ("created_at", "kind", "title", "screen", "status", "fix_version", "created_by", "input_tokens", "output_tokens")
     search_fields = ("title", "problem", "situation", "wish")
     ordering = ("-created_at", "-pk")
     screen_name = "フィードバック"

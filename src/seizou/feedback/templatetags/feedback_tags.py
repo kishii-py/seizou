@@ -41,10 +41,14 @@ def feedback_panel(context):
 @register.simple_tag(takes_context=True)
 def feedback_detail(context, feedback):
     """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": 世話役か, "can_delete": 下書きを消せるか, "screenshots": 画面の絵 (画像の添付ファイル。付けた順),
-    "github": GitHub とつないだ状態 (services.github_status。トークンの値は無い)}。
+    "github": GitHub とつないだ状態 (services.github_status。トークンの値は無い),
+    "version": 会社が入れている版 (manual.package_version。入っていなければ空の字。版待ちの件の直る版と並べて世話役に見せる。依頼書 N322)}。
 
     request が無ければ世話役でなく、消せない。
     """
+    # 版の口 (core の manual) はこの tag だけが使うので、ここで import する。
+    from seizou.core import manual
+
     request = context.get("request")
     user = getattr(request, "user", None) if request is not None else None
     return {
@@ -53,6 +57,7 @@ def feedback_detail(context, feedback):
         "can_manage": user is not None and services.can_manage(user),
         "can_delete": user is not None and services.can_delete(feedback, user),
         "github": services.github_status(),
+        "version": manual.package_version(),
     }
 
 
