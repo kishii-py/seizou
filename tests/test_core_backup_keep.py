@@ -19,9 +19,11 @@ from django.core.management.base import CommandError
 from django.db import DatabaseError
 from django.utils import timezone
 
-from seizou.core import backup, doctor
+from seizou.core import backup, conf, doctor
 from tests import test_core_backup
 from tests.test_core_backup import folders, hand_made_backup, run, sqlite_only
+from tests.test_core_doctor import fix_lines, run_doctor
+from tests.test_core_mail import FILLED, set_transport_env
 
 # 控えの試験の置き場 (BASE_DIR = 一時のフォルダの site/。media/drawings/a.png と answers.yaml がある)
 site = test_core_backup.site
@@ -354,3 +356,59 @@ def test_doctor_rows_only_in_production(doctor_site, free_disk):
 
     assert LAST not in labels
     assert DISK not in labels
+
+
+# ---------------------------------------------------------------- 5. 点検の直すをメールで届ける (--mail)
+
+
+@pytest.fixture
+def mail_ready(doctor_site, settings, monkeypatch):
+    """作り物の送り方 (tests/test_core_mail.py の形)。サーバーは環境変数、差出人は会社の設定 mail。"""
+    settings.SEIZOU = {"id": "sample_co", "mail": FILLED}
+    set_transport_env(monkeypatch)
+    return doctor_site
+
+
+@pytest.mark.django_db
+def test_doctor_mail_sends_fix_lines(mail_ready, free_disk, monkeypatch, mailoutbox):
+    """(l) 直すが 1 件 (控えが無く起点が 40 時間前) のとき、--mail は差出人のアドレスへ 1 通送り、終わりの番号は 1。"""
+    monkeypatch.setattr(doctor, "site_created_at", lambda: hours_ago(40))
+
+    code, out = run_doctor("--production", "--mail")
+
+    assert code == 1
+    assert len(fix_lines(out)) == 1
+    assert len(mailoutbox) == 1
+    sent = mailoutbox[0]
+    assert sent.to == [FILLED["from"]]
+    assert sent.subject == "seizou の点検: 直す 1 件 (sample_co)"
+    assert "直す" in sent.subject
+    assert sent.body == fix_lines(out)[0] + "\n"
+    assert LAST in sent.body
+    assert "メールで送りました" in out
+
+
+@pytest.mark.django_db
+def test_doctor_mail_not_sent_when_all_good(mail_ready, free_disk, mailoutbox):
+    """(m) 直すが 0 件なら、--mail でも送らない。"""
+    code, out = run_doctor("--production", "--mail")
+
+    assert code == 0, fix_lines(out)
+    assert mailoutbox == []
+    assert "メール" not in out
+
+
+@pytest.mark.django_db
+def test_doctor_mail_without_sender_keeps_exit_code(doctor_site, free_disk, monkeypatch, mailoutbox):
+    """(n) 送り方が欠けている (差出人が空) と送らず、訳を 1 行書き、終わりの番号は直すの数のとおり 1。"""
+    for name in conf.MAIL_ENV.values():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(doctor, "site_created_at", lambda: hours_ago(40))
+
+    code, out = run_doctor("--production", "--mail")
+
+    assert code == 1
+    assert mailoutbox == []
+    sent_lines = [line for line in out.splitlines() if "メールで送れませんでした" in line]
+    assert len(sent_lines) == 1
+    assert "差出人" in sent_lines[0]

@@ -447,6 +447,13 @@ sudo crontab -u seizou -e
 10 2 * * * cd /srv/seizou-sites/b_plating && /srv/seizou/src/.venv/bin/python manage.py seizou_backup --keep 30 >> backups/backup.log 2>&1
 ```
 
+毎朝の点検をメールで届けるには、[operations.md](operations.md) の「毎日の控え」の点検の 1 行を、同じ cron に 2 社分足します。
+
+```
+0 6 * * * cd /srv/seizou-sites/a_machining && /srv/seizou/src/.venv/bin/python manage.py seizou_doctor --mail >> backups/doctor.log 2>&1
+10 6 * * * cd /srv/seizou-sites/b_plating && /srv/seizou/src/.venv/bin/python manage.py seizou_doctor --mail >> backups/doctor.log 2>&1
+```
+
 `.env` は控えに入らないので、2 社の `.env` を VPS の外の安全な所に写します。控えのフォルダも、VPS の外に写します。
 
 版を上げるときは、[operations.md](operations.md) の「版を上げる手順」の 8 段のとおりに進めます。VPS では、次の段を読み替えます。

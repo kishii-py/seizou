@@ -46,6 +46,14 @@ VPS を 1 台借りて、2 社分の置き場を https で立て、取引先と�
 find /path/to/site/backups -maxdepth 1 -type d -name '20??????-??????*' -mtime +30 -exec rm -r {} +
 ```
 
+毎朝 6 時に点検し、直す物があればメールで届けるには、cron に次の 1 行を足します (道は上と同じく例です)。
+
+```
+0 6 * * * cd /path/to/site && /path/to/.venv/bin/python manage.py seizou_doctor --mail >> backups/doctor.log 2>&1
+```
+
+メールを送るには、設定の画面の「メールの知らせ」の送り方が要ります。宛先は、「試しに送る」と同じ差出人のアドレスです。良い行だけの朝は、メールを送りません。送れなかったときは、その訳を `backups/doctor.log` に 1 行書きます。外の見張りの道具を使う会社は、命令の終わりの番号 1 (直す物がある) を拾えば足ります。
+
 PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります。`pg_dump` が見つからないとき、命令は何も書かずに止まり、手で取るための 1 行を出します。
 
 `settings.py` の `MEDIA_ROOT` が置き場そのものかその親のフォルダを指しているときは、控えに置き場の全部 (`.env` を含む) が入り、戻しが置き場ごと消すのを防ぐため、控えと戻しは何も書かず何も消さずに止まります (`seizou new` が書く `MEDIA_ROOT = BASE_DIR / "media"` では起きません)。
