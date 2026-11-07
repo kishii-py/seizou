@@ -1,9 +1,9 @@
 {% load seizou_icons seizou_tags %}
 {# 出荷の削除の確かめのカード (全体の画面 shipping/shipment_delete.html と小窓 shipping/_form_modal.html の両方が include する。候補 12。本人の決め 11-08 00:23・00:25)。 #}
-{# 消せない訳 (refusal。字は services.delete_refusal の 1 か所) があれば form を出さず、黄の断りだけを出す (納品書の取消のカード shipping/_deliverynote_cancel_card.html と同じ形)。全体の画面だけ「出荷へ戻る」を出す (小窓の下は出荷の一覧)。 #}
+{# 消せない訳 (form.refusal。ShipmentDeleteForm が対象から読む。字は services.delete_refusal の 1 か所) があれば form を出さず、黄の断りだけを出す (納品書の取消のカード shipping/_deliverynote_cancel_card.html と同じ形)。全体の画面だけ「出荷へ戻る」を出す (小窓の下は出荷の一覧)。 #}
 {# 消せるときの黄の枠は確かめの画面の本文で、知らせ (段 2・3) ではない。消す出荷の番号・受注の明細・得意先・数量・出荷日を 1 行で添え、どの出荷かを見て確かめる。続けて土台の入力のカード (欄は無く、実行のボタンは赤の「削除」)。 #}
-{% if refusal %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ refusal }}</span></div>
+{% if form.refusal %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.refusal }}</span></div>
 {% if not in_modal %}<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_detail' object.pk %}">{% icon "arrow-left" "size-4" %}出荷へ戻る</a></div>{% endif %}
 {% else %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この出荷を消すと戻せません。受注の状態と在庫は出荷の前に戻ります。</span></div>

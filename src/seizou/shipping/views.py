@@ -189,12 +189,6 @@ class ShipmentDeleteView(BaseFormView):
         "納品書・請求書・入金が指す出荷と、取引先につながる出荷は消せません。"
     )
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # 消せない訳 (読むだけ)。あれば確かめのカードは form を出さず、訳だけを出す (shipping/_shipment_delete_card.html)。
-        context["refusal"] = services.delete_refusal(self.object) if self.object is not None else ""
-        return context
-
 
 class DeliveryNoteListView(BaseListView):
     """納品書の一覧。
