@@ -72,6 +72,8 @@ MIDDLEWARE = [
     "seizou.core.middleware.DevAutoLoginMiddleware",
     # htmx の部分の要求でログインが切れていたら、画面の全体をログインの画面へ移す (302 の代わりに 401 と HX-Redirect)。
     "seizou.core.middleware.HtmxLoginMiddleware",
+    # ログインの時間切れ (操作しない間と、ログインからの最長。時間は seizou の会社の設定 session_idle_minutes・session_max_hours)。HtmxLoginMiddleware より後ろに置く。
+    "seizou.core.middleware.SessionTimeoutMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "seizou.core.middleware.RuleNoticeMiddleware",

@@ -139,6 +139,7 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
   //   showModal() はそちらで動く。document で受ける kebab の方が、要素の showModal() より後に来る)。小窓の中の保存 (POST) の失敗では閉じない
   //   (打った値が消えるため)。小窓が開いている間の知らせは、seizou-modal.js が小窓の箱の頭に入れる。
   // - htmx の時間切れ (htmx.config.timeout) はここでは決めない (AI の口は長くかかる)。決めた時に htmx:timeout の字が出る。
+  // - 取り直しの要求 (hx-trigger に every がある要素) には見出し X-Seizou-Poll を付ける (ログインの時間切れの「最後の操作の時刻」を進めない。core.middleware.SessionTimeoutMiddleware)。
   var MODAL_BOX = "seizou-modal-box";
   var MODAL = "seizou-modal";
   var FAILED = "data-seizou-failed";
@@ -193,6 +194,10 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
   document.addEventListener("htmx:responseError", function (event) { failed("response", event); });
   document.addEventListener("htmx:sendError", function (event) { failed("send", event); });
   document.addEventListener("htmx:timeout", function (event) { failed("timeout", event); });
+  document.addEventListener("htmx:configRequest", function (event) {
+    var detail = event.detail || {};
+    if (polling(detail.elt) && detail.headers) detail.headers["X-Seizou-Poll"] = "1";
+  });
 })();
 </script>
 </body>
