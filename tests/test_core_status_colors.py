@@ -38,6 +38,7 @@ STATUS_MODELS = {
     "billing.Payment",
     "intake.Extraction",
     "feedback.Feedback",
+    "purchasing.SelfInvoice",
 }
 
 #: 詳細の見出しの印 (点つき)

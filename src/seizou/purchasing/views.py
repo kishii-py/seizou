@@ -15,8 +15,10 @@ from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
 from .forms import PurchaseOrderChangeForm
 from .forms import ReceiptForm
+from .forms import SelfInvoiceForm
 from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
+from .models import SelfInvoice
 
 
 def _subcontractor_choices():
@@ -84,7 +86,8 @@ class PurchaseOrderDetailView(BaseDetailView):
     )
     # 「会話」は connect の会話の言葉 (ChatMessage の related_name。相手の会社とのやり取り = C104)。最後に置く (件数のある最初のタブで開くので、送った発注は「送った記録」で開く)。
     # 中身は connect/_chat.html (purchaseorder_detail.html の block tab_rows・tab_empty)。connect の無い会社では、そのタブを出さない。
-    tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"), ("会話", "chat_messages"))
+    # 「仕入明細」は、この発注の受入が入った仕入明細 (PurchaseOrder.self_invoices。取消も含む。行の字は番号・版・締め期間・状態。C111)。「会話」の後に置く。
+    tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"), ("会話", "chat_messages"), ("仕入明細", "self_invoices"))
     template_name = "purchasing/purchaseorder_detail.html"
 
     def get_queryset(self):
@@ -179,6 +182,8 @@ class ReceiptListView(BaseListView):
         ("line__item", "部品"),
         "qty",
         "amount",
+        # 取消でない仕入明細の番号 (Receipt.self_invoice_no。入っていなければ空。C111)
+        ("self_invoice_no", "仕入明細"),
         "note",
     )
     search_fields = (
@@ -191,7 +196,13 @@ class ReceiptListView(BaseListView):
     template_name = "purchasing/receipt_list.html"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("line__purchase_order__partner", "line__item")
+        # 「仕入明細」の列は受入の仕入明細の明細 (外部キーの逆) を読むので、行ごとに問い合わせないよう prefetch する。
+        return (
+            super()
+            .get_queryset()
+            .select_related("line__purchase_order__partner", "line__item")
+            .prefetch_related("self_invoice_lines__self_invoice")
+        )
 
 
 class ReceiptDetailView(BaseDetailView):
@@ -219,6 +230,75 @@ class ReceiptCreateView(BaseFormView):
     screen_help = (
         "発注の明細を字で探して選び、受入日と数量を入れて保存します。"
         "発注の詳細の「受入を登録」から開くと、明細と残の数が入っています。"
+    )
+
+
+# --- 仕入明細 (受入をまとめて相手へ送る書類。候補 C111) ---
+
+
+class SelfInvoiceListView(BaseListView):
+    """仕入明細の一覧。
+
+    使う人: 経理・生産管理 / いつ: 仕入明細の相手の答えを確かめるとき / 何のために: 送った仕入明細と答えの状態を一覧で見る / 次にすること: 行から詳細へ。新しくまとめるなら「新規登録」
+    """
+
+    model = SelfInvoice
+    screen_name = "仕入明細"
+    screen_help = "受入をまとめて協力企業へ送る仕入明細。行を押すと、明細ごとの相手の答えが見られます。"
+    columns = ("self_invoice_no", "partner", "issued_on", "period_to", "due_on", "total", "status", "revision_no")
+    search_fields = ("self_invoice_no", "partner__name", "partner__code")
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
+        {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
+    )
+    presets = (
+        {"label": "答え待ち", "params": {"f_status": SelfInvoice.STATUS_SENT}},
+        {"label": "確かめ中", "params": {"f_status": SelfInvoice.STATUS_PARTIAL}},
+    )
+    ordering = ("-issued_on", "-id")
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("partner")
+
+
+class SelfInvoiceDetailView(BaseDetailView):
+    """仕入明細の詳細。
+
+    使う人: 経理・生産管理 / いつ: 相手の答えを確かめるとき / 何のために: 明細ごとの受領日・数・金額と相手の答え、受入の金額との差を見る / 次にすること: 提案があれば受け入れて直す。確認できない明細は会話で相手と話す
+
+    インボイス制度: 仕入明細書は売り手 (相手) の確認で適格請求書と同じ扱いになる (確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8)。
+    取適法: 受領日から 60 日を超える支払期日を黄の 1 行で知らせる (止めない。決め C111-2)。
+    電子帳簿保存法: 送った中身は送り合った記録に残る。
+    """
+
+    model = SelfInvoice
+    screen_name = "仕入明細の詳細"
+    screen_help = "仕入明細の項目と明細ごとの受領日・数・金額・相手の答え。下の枠で、仕入明細の小計と受入の金額の合計の差を見られます。"
+    # 明細のタブの表が受入の発注と部品を読むので、行と一緒に 1 回で引く (請求書の詳細と同じ形)
+    tabs = (("明細", "lines", ("receipt__line__purchase_order", "receipt__line__item")),)
+    template_name = "purchasing/selfinvoice_detail.html"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("partner").prefetch_related("lines__receipt")
+
+
+class SelfInvoiceCreateView(BaseFormView):
+    """仕入明細の新規登録の入力。
+
+    使う人: 経理・生産管理 / いつ: 協力企業の締日の後 / 何のために: 受け入れた数と金額を仕入明細にまとめて相手に確かめてもらう / 次にすること: 仕入明細の詳細で相手の答えを待つ
+
+    消費税は billing の 1 か所 (consumption_tax) が、仕入明細の合計に 1 回だけ計算する (インボイス制度。この画面は計算しない)。
+    """
+
+    model = SelfInvoice
+    form_class = SelfInvoiceForm
+    service = staticmethod(services.create_self_invoice)
+    template_name = "purchasing/selfinvoice_form.html"
+    screen_name = "仕入明細を作る"
+    screen_help = (
+        "取引先を選び、まだ仕入明細に入っていない受入に印を付けてまとめます。"
+        "相手 (seizou どうしで注文を送った協力企業) に送ると、相手が明細ごとに承諾か提案か確認できないかを答えます。"
     )
 
 

@@ -64,6 +64,7 @@ KIND_NOTES = {
     "orders": "受信した注文の受け入れ・条件付の受け入れ・保留・断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
+    "purchasing": "仕入明細を作る・送る・取り消す・相手の提案を受け入れるを含む",
 }
 #: まとめの名前 → (表示名, 中の種類)
 GROUPS = {
@@ -155,6 +156,7 @@ _KIND_ACTIONS = {
         "connect.send_acceptance",  # 検収を相手に送り直す口 (N54。本体が起こす前に入れる前提)
         "purchasing.receive",  # 受入 (N42。協力企業管理の 2 つ目の画面)
         "purchasing.change_purchase_order",  # 送った発注の変更 (C96。相手が出荷し終えるまで変更を送る)
+        "purchasing.create_self_invoice",  # 仕入明細を作る (C111。受入をまとめて相手へ送る書類)
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)
@@ -216,6 +218,8 @@ MONEY_ACTIONS = {
     "masters.add_item_price": ("単価表", "単価の行を足せません"),
     "masters.update_item_price": ("単価表", "単価の行を直せません"),
     "masters.delete_item_price": ("単価表", "単価の行を消せません"),
+    # 仕入明細 (C111) は金額が主な書類なので、請求書を作るのと同じ扱い
+    "purchasing.create_self_invoice": ("仕入明細", "作れません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

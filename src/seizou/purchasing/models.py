@@ -6,6 +6,7 @@
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
+仕入明細 (SelfInvoice・SelfInvoiceLine) は、受入をまとめて相手へ送る書類 (中小企業共通 EDI の仕入明細の項目を元にした。候補 C111)。書くのは purchasing.services だけ。
 """
 
 from decimal import Decimal
@@ -86,6 +87,14 @@ class PurchaseOrder(models.Model):
     def receipts(self):
         """この発注の受入 (読むだけ。詳細の「受入」のタブが .all() と .count() を読む)。"""
         return Receipt.objects.filter(line__purchase_order=self).select_related("line__purchase_order", "line__item")
+
+    @property
+    def self_invoices(self):
+        """この発注の受入が入った仕入明細 (読むだけ。取消も含む。1 枚に同じ発注の受入が 2 つあっても 1 行)。
+
+        発注の詳細の「仕入明細」のタブのための入口 (土台の tabs は名前で引く)。行の字は SelfInvoice.__str__ (番号・版・締め期間・状態)。
+        """
+        return SelfInvoice.objects.filter(lines__receipt__line__purchase_order=self).distinct()
 
     @property
     def lines_with_received(self):
@@ -267,6 +276,17 @@ class Receipt(models.Model):
         line = self.line
         return f"{self.received_on:%Y-%m-%d} {line.purchase_order.po_no}-{line.line_no} {line.item.part_no} {_qty_text(self.qty)}"
 
+    @property
+    def self_invoice_no(self):
+        """この受入が入った取消でない仕入明細の番号 (読むだけ)。入っていなければ空の字。
+
+        受入の一覧の「仕入明細」の列が読む。self_invoice_lines.all() を Python で見るので、一覧の prefetch_related ("self_invoice_lines__self_invoice") が効く。
+        """
+        for line in self.self_invoice_lines.all():
+            if line.self_invoice.status != SelfInvoice.STATUS_CANCELLED:
+                return line.self_invoice.self_invoice_no
+        return ""
+
     def acceptance_state(self):
         """発注の詳細の「検収」の節に出す字。送る物でない受入は空の字 (テンプレートが薄い「—」を出す)。
 
@@ -280,6 +300,192 @@ class Receipt(models.Model):
                 return self.acceptance_response
             return f"届いていない: {self.acceptance_response}"
         return ""
+
+
+class SelfInvoice(models.Model):
+    """仕入明細 (中小企業共通 EDI の仕入明細の項目を元にした)。発注元が受入をまとめて作り、相手 (協力企業の seizou) へ送り、相手が明細ごとに答える。
+
+    インボイス制度では、仕入明細書は売り手 (相手) の確認を得ると適格請求書と同じ扱いになり、記載事項 (相手の名前と登録番号・取引の日・品目・
+    税率ごとの合計と税額と税率) は適格請求書と同じ。確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8「請求レスユースケース」と 6.1.1。
+    国税庁の資料と条文は未読。
+    取適法 (2026-01-01 施行。旧下請法) では、代金の支払期日は物を受け取った日から 60 日以内で定める。支払期日 (due_on) は取引先の締日・
+    支払の月・支払日から作り (請求書と同じ計算)、一番早い受領日から 60 日を超えると詳細に知らせる (止めない。決め C111-2。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」。公正取引委員会の一次資料は未読)。
+    金額・消費税・税率・期間・支払期日は作った時の写しで、受入や取引先を後で直しても変わらない (請求書と同じ)。
+    取り消した仕入明細は消さずに状態「取消」で残す (決め C111-3)。書くのは purchasing.services だけ。
+    状態と答えのコードは core.edi_codes の値 (目的は PURPOSE_*、答えは SI_REPLY_TYPES)。画面にはコードを出さず日本語の字を出す。
+    """
+
+    STATUS_DRAFT = "draft"
+    STATUS_SENT = "sent"
+    STATUS_PARTIAL = "partial"
+    STATUS_CONFIRMED = "confirmed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "未送信"),
+        (STATUS_SENT, "答え待ち"),
+        (STATUS_PARTIAL, "確かめ中"),
+        (STATUS_CONFIRMED, "確認済"),
+        (STATUS_CANCELLED, "取消"),
+    ]
+
+    self_invoice_no = models.CharField("仕入明細番号", max_length=35, unique=True)
+    partner = models.ForeignKey(
+        "masters.Partner",
+        verbose_name="取引先",
+        on_delete=models.PROTECT,
+        related_name="self_invoices",
+    )
+    issued_on = models.DateField("発行日")
+    period_from = models.DateField("締め期間の初め")
+    period_to = models.DateField("締め期間の終わり")
+    due_on = models.DateField("支払期日", null=True, blank=True)
+    # 目的 (インボイス文書目的コード)。版 1 は新規 "9"、提案を受け入れた版は "4"、取消の版は "1"。画面には出さない (状態の「取消」で分かる)。
+    purpose_code = models.CharField(
+        "目的", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
+    subtotal = models.DecimalField("小計", max_digits=14, decimal_places=2)
+    tax = models.DecimalField("消費税", max_digits=14, decimal_places=2)
+    total = models.DecimalField("合計", max_digits=14, decimal_places=2)
+    # 作った時の消費税の率の写し (百分率。10.00 = 10%)。率は billing.services.consumption_tax_rate の 1 か所から読む。
+    tax_rate = models.DecimalField("税率 (%)", max_digits=5, decimal_places=2)
+    # 作った時の取引先の登録番号の写し (インボイス制度の受注者の登録番号 = 付表 1 の SIID27)。
+    supplier_registration_no = models.CharField("相手の登録番号", max_length=14, blank=True)
+    status = models.CharField("状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    revision_no = models.PositiveIntegerField("版", default=1)
+    # 今の版を送る番号 (webhook-id)。送り直すときは同じ番号 (相手は同じ番号を 1 件にまとめる = R11)。版を上げると新しい番号。画面に出さない。
+    message_id = models.UUIDField("仕入明細の番号", null=True, blank=True, unique=True)
+    # 相手の受け口が 200 を返したときだけ入れる。空 = まだ相手に届いていない。
+    sent_at = models.DateTimeField("送った日時", null=True, blank=True)
+    response = models.CharField("相手の返事", max_length=500, blank=True)
+    # 相手の答え (鑑ヘッダ仕入明細回答タイプコード)・届いた日時・答えの番号 (同じ番号の 2 回目は何もしない = R11)。
+    reply_type = models.CharField("相手の答え", max_length=2, choices=edi_codes.SI_REPLY_TYPES, blank=True)
+    replied_at = models.DateTimeField("答えが届いた日時", null=True, blank=True)
+    reply_message_id = models.UUIDField("仕入明細回答の番号", null=True, blank=True, unique=True)
+
+    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    detail_hidden_fields = ("message_id", "reply_message_id")
+    #: 変更の履歴 (core.history) を残し、詳細に「履歴」のタブを出す。送った日時と返事と答えの日時は送り直しのたびに動くので残さない。
+    keeps_history = True
+    history_skip = ("sent_at", "response", "replied_at")
+
+    class Meta:
+        verbose_name = "仕入明細"
+        verbose_name_plural = "仕入明細"
+        ordering = ["-issued_on", "-id"]
+
+    def __str__(self):
+        # 発注の詳細の「仕入明細」のタブの行の字 (状態を含める)。
+        return (
+            f"{self.self_invoice_no} 第 {self.revision_no} 版 "
+            f"({self.period_from:%Y-%m-%d}〜{self.period_to:%Y-%m-%d}) {self.get_status_display()}"
+        )
+
+    def receipt_total(self):
+        """明細の受入の金額の合計 (Python で足す。明細の受入は select_related か prefetch_related で引いておく)。"""
+        return sum((line.receipt.amount for line in self.lines.all()), Decimal("0"))
+
+    def receipt_difference(self):
+        """仕入明細の小計 − 明細の受入の金額の合計 (詳細の合計の枠の「差」。0 なら「差はありません」)。"""
+        return self.subtotal - self.receipt_total()
+
+    def confirmed_subtotal(self):
+        """相手が承諾した明細 (承諾と、直した内容の承諾) の金額の合計 (Python で足す)。"""
+        accepted = (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED)
+        return sum((line.amount for line in self.lines.all() if line.reply_type in accepted), Decimal("0"))
+
+    def has_reply(self):
+        """相手の答えが届いているか (答えの番号があるか、明細のどれかに答えがある)。取消の見方と詳細の「取消」のボタンが読む。"""
+        if self.reply_message_id is not None:
+            return True
+        return any(line.reply_type for line in self.lines.all())
+
+    def delivery_state(self):
+        """今の版を送った結果の字 (詳細の黄の 1 行)。Receipt.acceptance_state と同じ形。送っていなければ空の字。
+
+        送れた (相手の受け口が 200) なら「送った <日時>」、送れていなくて返事があれば「届いていない: <相手の返事>」。
+        返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない)。
+        """
+        if self.sent_at is not None:
+            return f"送った {timezone.localtime(self.sent_at):%Y-%m-%d %H:%M}"
+        if self.response:
+            if self.response.startswith(("届きません", "断られた")):
+                return self.response
+            return f"届いていない: {self.response}"
+        return ""
+
+
+class SelfInvoiceLine(models.Model):
+    """仕入明細の明細。受入 1 件に 1 行 (中小企業共通 EDI の明細行受領日・受領数量が 1 行に 1 つのため)。
+
+    受領日は発注元が物を受け取った日 (受入日の写し)。取適法 (2026-01-01 施行。旧下請法) では、代金の支払期日は物を受け取った日から 60 日以内で定め、
+    受け取った日がその起算の日になる。中小企業共通 EDI ver.4.3 は取適法に合わせて仕入明細に受領日と受領数量を足した。
+    確かめた資料 = 中小企業共通 EDI 標準仕様書 本編の改定履歴とインボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」(公正取引委員会の一次資料は未読)。
+    数量・単位・数量単位コード・単価の単位・単価・金額は作った時の写し (金額は受入の金額)。答えの列は相手の仕入明細回答の明細の値。
+    受入は外部キー (1 つの受入を取消でない仕入明細 2 つに入れない約束は services が見る。取り消した仕入明細の受入は、また入れられる)。
+    """
+
+    self_invoice = models.ForeignKey(
+        SelfInvoice,
+        verbose_name="仕入明細",
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    line_no = models.PositiveIntegerField("行番号")
+    receipt = models.ForeignKey(
+        Receipt,
+        verbose_name="受入",
+        on_delete=models.PROTECT,
+        related_name="self_invoice_lines",
+    )
+    # 受領日 (受入日の写し)。取適法の支払期日の起算の日。
+    received_on = models.DateField("受領日")
+    qty = models.DecimalField("受領数量", max_digits=12, decimal_places=2)
+    unit = models.CharField("単位", max_length=10, blank=True)
+    unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
+    price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
+    unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
+    amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
+    # 相手の答え (明細行仕入明細回答タイプコード)・確認できない訳 (明細行仕入明細回答理由コード)・提案の数と単価・相手の書いた字。
+    reply_type = models.CharField("相手の答え", max_length=2, choices=edi_codes.SI_REPLY_LINE_TYPES, blank=True)
+    reply_reason_code = models.CharField("確認できない訳", max_length=3, choices=edi_codes.SI_REASON_CHOICES, blank=True)
+    reply_qty = models.DecimalField("提案の数", max_digits=12, decimal_places=2, null=True, blank=True)
+    reply_unit_price = models.DecimalField("提案の単価", max_digits=14, decimal_places=2, null=True, blank=True)
+    reply_note = models.CharField("相手の書いた字", max_length=500, blank=True)
+    # この明細を最後に直した版 (修正仕入明細で直した明細は、その版の番号)。
+    revised_in = models.PositiveIntegerField("直した版", default=1)
+
+    #: 変更の履歴は仕入明細の詳細の「履歴」に出す (core.history)
+    history_owner = "self_invoice"
+
+    class Meta:
+        verbose_name = "仕入明細の明細"
+        verbose_name_plural = "仕入明細の明細"
+        ordering = ["self_invoice", "line_no"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="purchasing_selfinvoiceline_qty_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["self_invoice", "line_no"],
+                name="purchasing_selfinvoiceline_line_no_unique",
+            ),
+            # 1 つの受入を取消でない仕入明細 2 つに入れない約束は DB の制約にしない
+            # (取り消した仕入明細の受入は、また仕入明細に入れられるため)。services が行をロックして見る。
+            models.UniqueConstraint(
+                fields=["self_invoice", "receipt"],
+                name="purchasing_selfinvoiceline_receipt_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.self_invoice.self_invoice_no}-{self.line_no}"
+
+    @property
+    def price_unit_text(self):
+        """単価の後ろに添える字 (「¥250 / 個」の「個」。式なら「式」)。"""
+        return price_basis_text(self.price_basis, self.unit)
 
 
 def _qty_text(value) -> str:

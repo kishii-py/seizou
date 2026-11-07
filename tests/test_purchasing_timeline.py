@@ -222,4 +222,4 @@ def test_detail_shows_flow_section_in_live_part(monkeypatch, user, logged_in, su
     assert "<span>明細 1</span>" in section
     assert "data-modal-form" not in section
     # 流れは枠で、関係する物のタブは今のまま
-    assert [tab["label"] for tab in response.context["tabs"]] == ["送った記録", "受入", "会話"]
+    assert [tab["label"] for tab in response.context["tabs"]] == ["送った記録", "受入", "会話", "仕入明細"]

@@ -139,6 +139,7 @@ REFUSAL_HEAD_BY_SERVICE = {
     "accept_with_conditions": "受け入れられません。",
     "hold": "保留できません。",
     "post_chat_message": "送れません。",
+    "create_self_invoice": "発行できません。",
 }
 #: 欄の誤りの知らせに名前を並べる欄の数 (これより多い分は「ほか n つ」)
 INVALID_LABELS_SHOWN = 3

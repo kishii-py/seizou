@@ -50,6 +50,7 @@ SKIPPED_NO_ROW = {
         "masters:itemprice_update",
         "progress:progress_delete",  # 種に実績の行が無い (C103)
         "progress:progress_update",
+        "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
     },
     "b_plating": {
         "attachments:attachment_delete",
@@ -69,6 +70,7 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_detail",
         "purchasing:purchaseorder_send",
         "purchasing:receipt_detail",
+        "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
     },
 }
 

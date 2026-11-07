@@ -21,6 +21,8 @@
 - 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
   connect の受け口が mark_accepted・mark_conditional・mark_rejected・mark_on_hold で答えを待っている発注 (送った・相手が保留した) に当てる。
 - 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、全部そろえば「納品された」。受入が先の発注に後から受諾が届いたときも「一部納品」。
+- 仕入明細は create_self_invoice。受入をまとめ、消費税は billing の 1 か所 (consumption_tax) で合計に 1 回、期間と支払期日は billing の closing_period・payment_due_date を呼ぶ (式を写さない)。
+  候補の受入は self_invoice_receipts、詳細の 60 日の黄の 1 行の字は due_date_note (どちらも読むだけ)。
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from seizou.masters.services import unit_code_for
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
+from .models import SelfInvoice, SelfInvoiceLine
 from .models import _qty_text
 
 from datetime import timedelta
@@ -1105,3 +1108,155 @@ def payable_by_partner(today=None):
         "this_month": sum((row["this_month"] for row in result_rows), _ZERO),
     }
     return {"months": months, "rows": result_rows, "totals": totals}
+
+
+# --- 仕入明細 (受入をまとめて相手へ送る書類。中小企業共通 EDI の仕入明細の項目を元にした。候補 C111) ---
+
+#: 支払期日が受領日から何日を超えたら知らせるか (取適法の 60 日)
+SELF_INVOICE_DUE_DAYS = 60
+
+
+def _sent_order_exists():
+    """受入の発注に送った注文 (connect の Outbox) の行があるかの式 (Exists)。connect の無い会社では None。"""
+    if not apps.is_installed("seizou.connect"):
+        return None
+    outbox = apps.get_model("connect", "Outbox")
+    return Exists(outbox.objects.filter(purchase_order=OuterRef("line__purchase_order")))
+
+
+def _in_live_self_invoice():
+    """受入が取消でない仕入明細に入っているかの式 (Exists)。取り消した仕入明細だけに入っていた受入は偽。"""
+    return Exists(
+        SelfInvoiceLine.objects.filter(receipt=OuterRef("pk")).exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+    )
+
+
+def self_invoice_receipts(partner=None):
+    """仕入明細に入れられる受入 (読むだけ)。取消でない仕入明細に入っていない受入のうち、seizou どうしで送った発注 (送った注文の行がある) の物。
+
+    取り消した仕入明細だけに入っていた受入は並ぶ (取り消した後に直して送り直すため = 決め C111-3)。partner を渡せばその取引先の発注の受入だけ。
+    並びは受入日・発注番号・行番号。connect の無い会社では空 (相手へ送れないため)。
+    """
+    sent = _sent_order_exists()
+    if sent is None:
+        return Receipt.objects.none()
+    rows = Receipt.objects.filter(sent).exclude(_in_live_self_invoice())
+    if partner is not None:
+        rows = rows.filter(line__purchase_order__partner=partner)
+    return rows.order_by("received_on", "line__purchase_order__po_no", "line__line_no", "pk")
+
+
+def _self_invoice_refusal(receipt, partner):
+    """受入を仕入明細に入れられない訳の文 (「発行できません。」から)。入れられれば空の字。create_self_invoice が行をロックした後に呼ぶ。"""
+    purchase_order = receipt.line.purchase_order
+    if purchase_order.partner_id != partner.pk:
+        return f"発行できません。受入 {receipt} は、取引先 {partner.name} の発注の受入ではありません。外してください。"
+    live = (
+        SelfInvoiceLine.objects.filter(receipt=receipt)
+        .exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+        .select_related("self_invoice")
+        .first()
+    )
+    if live is not None:
+        return f"発行できません。受入 {receipt} は、既に仕入明細 {live.self_invoice.self_invoice_no} に入っています。外してください。"
+    if not _is_sent_order(purchase_order):
+        return (
+            f"発行できません。受入 {receipt} は、seizou どうしで送った発注の受入ではないので、仕入明細を相手へ送れません。外してください。"
+        )
+    return ""
+
+
+def create_self_invoice(partner, receipts, user, *, issued_on):
+    """取引先の受入をまとめて仕入明細を作る (まだ送らない)。仕入明細番号は core の連番 (SI) が付ける。請求書の create_invoice と同じ形。
+
+    明細は受入 1 件に 1 行 (並びは受入日・発注番号・行番号。1 から番号を付ける)。受領日・数量・単位・数量単位コード・単価の単位・単価 (発注の明細) と
+    金額 (受入の金額) を写す。小計 = 金額の合計、消費税 = billing.services.consumption_tax (合計に 1 回)、税率 = consumption_tax_rate、
+    期間 = billing.services.closing_period(取引先, 一番遅い受領日)、支払期日 = payment_due_date(取引先, 期間の終わり) (空なら空。決め C111-2)、
+    相手の登録番号 = 取引先の登録番号の写し、状態 = 未送信、目的 = 新規 "9"。billing の関数は関数の中で import する (頭の import の並びを変えない)。
+    断るのは (1) 受入が 1 つも無い (2) 受入でない物 (3) ほかの取引先の受入 (4) 既に取消でない仕入明細に入っている受入
+    (5) seizou どうしで送った発注の受入でない、のどれか (日本語の ValueError。頭は「発行できません。」)。受入の行をロックしてから見る。
+    作った仕入明細と明細は変更の履歴に「作った」で残す。
+    インボイス制度: 仕入明細書の記載事項は適格請求書と同じ。消費税は税率ごとの合計に 1 回 (決め LAW-2)。
+    取適法: 受領日 = 支払期日の起算の日。支払期日は取引先の締日・支払の月・支払日から請求書と同じ計算で作る (決め C111-2)。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 6.1.1 と Ⅰ.Ⅲ。
+    訳: 同じ受入を 2 つの取消でない仕入明細に入れて二重に払う記録を作らないため、相手へ送れない受入 (seizou どうしで送っていない発注) を入れないため。出所 = AI の案 (候補 C111。請求書の create_invoice と同じ形)。
+    変えてよい条件 = 1 つの受入を 2 つの仕入明細に分けて入れる決まりを作者が決めたとき。
+    """
+    from seizou.billing.services import closing_period, consumption_tax, consumption_tax_rate, payment_due_date
+
+    receipts = list(receipts)
+    if not receipts:
+        raise ValueError("発行できません。受入がありません。仕入明細に入れる受入を 1 つ以上選んでください。")
+    for obj in receipts:
+        if not isinstance(obj, Receipt):
+            raise ValueError(f"発行できません。受入でない物 ({obj}) が入っているので、外してください。")
+    with transaction.atomic():
+        pks = sorted({receipt.pk for receipt in receipts})
+        locked = list(
+            Receipt.objects.select_for_update()
+            .filter(pk__in=pks)
+            .select_related("line__purchase_order__partner", "line__item")
+            .order_by("pk")
+        )
+        for receipt in locked:
+            refusal = _self_invoice_refusal(receipt, partner)
+            if refusal:
+                raise ValueError(refusal)
+        locked.sort(key=lambda row: (row.received_on, row.line.purchase_order.po_no, row.line.line_no, row.pk))
+        amounts = [receipt.amount for receipt in locked]
+        subtotal = sum(amounts, _ZERO)
+        tax = consumption_tax(partner, amounts)
+        period_from, period_to = closing_period(partner, max(receipt.received_on for receipt in locked))
+        self_invoice = SelfInvoice.objects.create(
+            self_invoice_no=next_number("self_invoice"),
+            partner=partner,
+            issued_on=issued_on,
+            period_from=period_from,
+            period_to=period_to,
+            due_on=payment_due_date(partner, period_to),
+            purpose_code=edi_codes.PURPOSE_NEW,
+            subtotal=subtotal,
+            tax=tax,
+            total=subtotal + tax,
+            tax_rate=consumption_tax_rate(),
+            supplier_registration_no=partner.registration_no,
+            status=SelfInvoice.STATUS_DRAFT,
+        )
+        record_history(self_invoice, user)
+        for number, receipt in enumerate(locked, start=1):
+            line = receipt.line
+            row = SelfInvoiceLine.objects.create(
+                self_invoice=self_invoice,
+                line_no=number,
+                receipt=receipt,
+                received_on=receipt.received_on,
+                qty=receipt.qty,
+                unit=line.unit,
+                unit_code=line.unit_code,
+                price_basis=line.price_basis,
+                unit_price=line.unit_price,
+                amount=receipt.amount,
+            )
+            record_history(row, user)
+    return self_invoice
+
+
+def due_date_note(self_invoice):
+    """仕入明細の詳細の上の黄色の 1 行の字 (読むだけ)。支払期日が一番早い受領日から 60 日を超えるときだけ字を返し、ほかは空の字。
+
+    取消の仕入明細と支払期日の空の仕入明細には出さない。日数は 2 つの日付の差で数える (月単位の締めの扱いは見ない)。
+    取適法 (2026-01-01 施行。旧下請法): 代金の支払期日は物を受け取った日から 60 日以内で定める。超えるときに知らせ、止めない (決め C111-2)。
+    確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」(公正取引委員会の一次資料は未読)。
+    """
+    if self_invoice.status == SelfInvoice.STATUS_CANCELLED or self_invoice.due_on is None:
+        return ""
+    days = [line.received_on for line in self_invoice.lines.all()]
+    if not days:
+        return ""
+    earliest = min(days)
+    if (self_invoice.due_on - earliest).days <= SELF_INVOICE_DUE_DAYS:
+        return ""
+    return (
+        f"支払期日 ({self_invoice.due_on:%Y-%m-%d}) が受領日 ({earliest:%Y-%m-%d}) から 60 日を超えます。"
+        "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。取引先の支払の条件を確かめてください。"
+    )

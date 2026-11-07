@@ -11,6 +11,7 @@
 - purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
 - reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
 - can_change_order・revision_state: 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2) の「変更」のボタンを出すかと、今の版の送った記録と相手の答え。
+- self_invoice_due_note・self_invoice_line_answer: 仕入明細の詳細の 60 日の黄の 1 行の字 (services.due_date_note) と、明細ごとの相手の答えの字 (候補 C111)。
 """
 
 from decimal import Decimal
@@ -296,3 +297,38 @@ def revision_state(purchase_order):
     # 詳細の黄色の 1 行の字 (届いていない・相手が断った。無ければ空の字)
     state["alert"] = services.revision_alert(purchase_order, state)
     return state
+
+
+@register.simple_tag
+def self_invoice_due_note(self_invoice):
+    """{% self_invoice_due_note object as due_note %}。支払期日が受領日から 60 日を超えるときの黄の 1 行の字 (services.due_date_note)。ほかは空の字。"""
+    from .. import services
+
+    return services.due_date_note(self_invoice)
+
+
+@register.simple_tag
+def self_invoice_line_answer(line, hide_money=False):
+    """仕入明細の明細の相手の答えの字 (コードは出さない)。答えが無ければ空の字。
+
+    承諾 (AP) は「承諾」、直した内容の承諾 (AC) は「直した内容を承諾」、提案 (UV) は「提案: 数 40 → 38・単価 ¥25.5 → ¥26」
+    (違う所だけ。金額の閲覧が無い人には単価を出さない)、確認できない (RE) は「確認できない: 単価が違う (相手の字)」。
+    """
+    code = line.reply_type
+    if not code:
+        return ""
+    if code == edi_codes.SI_REPLY_PROPOSED:
+        parts = []
+        if line.reply_qty is not None and line.reply_qty != line.qty:
+            parts.append(f"数 {comma(line.qty)} → {comma(line.reply_qty)}")
+        if not hide_money and line.reply_unit_price is not None and line.reply_unit_price != line.unit_price:
+            parts.append(f"単価 {yen(line.unit_price)} → {yen(line.reply_unit_price)}")
+        text = "提案" + (": " + "・".join(parts) if parts else "")
+    elif code == edi_codes.SI_REPLY_REJECTED:
+        reason = dict(edi_codes.SI_REASON_CHOICES).get(line.reply_reason_code, "")
+        text = "確認できない" + (f": {reason}" if reason else "")
+    else:
+        text = dict(edi_codes.SI_REPLY_LINE_TYPES).get(code, code)
+    if line.reply_note:
+        text += f" ({line.reply_note})"
+    return text

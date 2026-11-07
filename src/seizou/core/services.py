@@ -39,6 +39,7 @@ PREFIXES = {
     "delivery_note": "DN",
     "invoice": "IV",
     "purchase_order": "PO",
+    "self_invoice": "SI",
 }
 
 
