@@ -22,8 +22,14 @@ class ExtractionListView(BaseListView):
     model = Extraction
     screen_name = "注文書の読み取り"
     screen_help = "置いた注文書と、AI が読み取った中身。人が確かめて「受注登録」を押すまで、受注にはなりません。"
-    columns = ("read_at", "customer", ("summary", "中身の要約"), "status", {"name": "order", "sort_key": "order__order_no"}, "read_by")
+    columns = ("read_at", "order_date", "customer", "amount", ("summary", "中身の要約"), "status", {"name": "order", "sort_key": "order__order_no"}, "read_by")
     search_fields = ("customer__name", "customer__code")
+    # 読み取った注文書を取引年月日・金額・取引先で探す (本人の決め 11-08 00:37。依頼書 N367 の 2)。金額の絞りは金額の閲覧の無い人に出さない (土台)
+    filters = (
+        {"name": "order_date", "label": "注文日", "kind": "date_range", "field": "order_date"},
+        {"name": "amount", "label": "金額", "kind": "number_range", "field": "amount"},
+        {"name": "customer", "label": "得意先", "kind": "lookup", "field": "customer"},
+    )
     ordering = ("-read_at", "-pk")
     template_name = "intake/extraction_list.html"
 

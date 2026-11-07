@@ -16,6 +16,7 @@ from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
 
+from seizou.core import access
 from seizou.core.views import BaseFormView, BaseListView, model_url, url_or_none
 
 from . import services
@@ -97,8 +98,12 @@ def attachment_download(request, pk):
     訳: 記録を開けない人に、番号を順に変えるだけで付けたファイルを開かせないため。「無い」と「見せない」は外から見分けさせない
     (上げたファイルの口 core.media と同じ 404)。出所 = Claude Security の走査の候補 11-07 (7)。
     変えてよい条件 = 記録の部品の開ける人の決めが変わったとき (services.openable_by を直す)。
+    金額が主な記録 (services.MONEY_TARGETS) に付けたファイルは、金額の閲覧が log の会社では返して seizou.access に 1 行残す
+    (on の会社の金額を見られない人には openable_by が外すので 404。本人の決め 11-08 00:13)。
     """
     attachment = get_object_or_404(services.openable_by(Attachment.objects.all(), request.user), pk=pk)
+    if services.is_money_target(attachment):
+        access.can_see_money(request.user, what="金額が主な記録の添付を開いた")
     try:
         handle = attachment.file.open("rb")
     except FileNotFoundError:

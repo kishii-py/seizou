@@ -24,6 +24,7 @@ import unicodedata
 import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from decimal import MAX_PREC, localcontext
 
 from django.apps import apps
 from django.core.files.base import ContentFile
@@ -162,6 +163,36 @@ def model_name():
     return ai.model_for("intake_model", DEFAULT_MODEL)
 
 
+#: 読み取りの金額の列 (Extraction.amount = max_digits 14・decimal_places 2) に入る整数の部分の桁と小数の桁
+_AMOUNT_INT_DIGITS = 12
+_AMOUNT_PLACES = 2
+
+
+def _order_date_and_amount(cleaned):
+    """検査した読み取りの辞書 (_check_reply の返す物) から、探すための (注文日, 金額) を返す。読むだけ。
+
+    注文日は読み取った注文日の字 (YYYY-MM-DD) の日付で、空なら None。金額は明細ごとの「読み取った数量の字 × 読み取った単価の字」の合計で、
+    単価が 1 つでも空なら None。合計が列に入らないとき (小数 3 位以下が残る・整数の部分が 12 桁を超える) は丸めずに None。
+    掛け算と足し算は桁を落とさない精度で行う (Python の既定の 28 桁で丸めないため)。
+    訳: 読み取った注文書を取引年月日と金額で探せるようにするため。金額は読み取った字のままの数量 × 単価にし、受注の金額の式
+    (masters の line_amount の取引先の丸めと単価の単位) では計算しない。丸めの決まりを新しく作らず、入らない金額は空にする。
+    出所 = 本人の決め 11-08 00:37 (読み取りの金額は読み取った字のまま。単価が空なら空) と、エンタープライズ化の調べ 第一弾の
+    候補 22 の直し方の直し (b) と依頼書 N367 の 2。電帳法の検索の要件への当てはめは未確認。
+    変えてよい条件 = 本人が決め直したとき、または読み取りの形 (ORDER_SCHEMA) に合計の金額の項目を足したとき。
+    """
+    order_date = date.fromisoformat(cleaned["order_date"]) if cleaned.get("order_date") else None
+    lines = cleaned.get("lines") or []
+    if not lines or any(line.get("unit_price") is None for line in lines):
+        return order_date, None
+    with localcontext() as context:
+        context.prec = MAX_PREC
+        total = sum((Decimal(line["qty"]) * Decimal(line["unit_price"]) for line in lines), Decimal("0"))
+        reduced = total.normalize()
+    if reduced.adjusted() >= _AMOUNT_INT_DIGITS or reduced.as_tuple().exponent < -_AMOUNT_PLACES:
+        return order_date, None
+    return order_date, total
+
+
 def extract_order(file, customer, user):
     """注文書のファイルを読み取り、形を検査して Extraction に 1 行残す。返す物は Extraction。
 
@@ -191,11 +222,14 @@ def extract_order(file, customer, user):
     cleaned = _check_reply(parsed)
 
     name = os.path.basename(getattr(file, "name", "") or "") or f"order{extension}"
+    order_date, amount = _order_date_and_amount(cleaned)
     with transaction.atomic():
         return Extraction.objects.create(
             customer=customer,
             file=ContentFile(data, name=name),
             extracted=cleaned,
+            order_date=order_date,
+            amount=amount,
             read_by=user,
         )
 

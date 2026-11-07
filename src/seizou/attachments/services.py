@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from seizou.core import access
+from seizou.core.services import record_history_deleted
 
 from .models import KIND_CHOICES, Attachment
 
@@ -125,7 +126,12 @@ def remove_attachment(attachment, user):
     """添付ファイルを消す。付けていた先の記録を返す (付けた先が無ければ None)。
 
     行は atomic の中で取り直して消す (無ければ日本語の ValueError)。storage のファイルは atomic を抜けた後に消す
-    (行が戻ったときにファイルだけが消えないように)。無いファイルは飛ばす。user は受けるだけ (記録の列が無い)。
+    (行が戻ったときにファイルだけが消えないように)。無いファイルは飛ばす。user は消した人として付けた先の記録の履歴に残す
+    (消す前に core.services.record_history_deleted で「消した」の 1 行。付けた先が無い添付は添付そのものが持ち主になり、表に残るだけ)。
+    訳: 検査成績書や写真を消したことを、誰が・いつ・何を消したかと一緒に付けた先の記録の履歴に残すため
+    (電帳法と取適法の訂正削除の見方への当てはめは未確認)。出所 = 本人の決め 11-08 00:37 (残す) と、
+    エンタープライズ化の調べ 第一弾の候補 22 の直し方の直し (a)。
+    変えてよい条件 = 本人が決め直したとき、または添付を消さずに残す形 (論理削除) に変えたとき。
     """
     with transaction.atomic():
         row = Attachment.objects.select_for_update().filter(pk=attachment.pk).first()
@@ -134,6 +140,7 @@ def remove_attachment(attachment, user):
         target = row.target
         name = row.file.name
         storage = row.file.storage
+        record_history_deleted(row, user)
         row.delete()
     if name:
         try:
@@ -156,6 +163,35 @@ def attachments_for(target):
 
 #: 書いた本人と世話役だけが開ける記録の種類 (app の名前, model の名前)。フィードバックは一覧と詳細を自分の分に絞る (feedback.views._visible_to)
 FEEDBACK_TYPE = ("feedback", "feedback")
+
+#: 金額が主な記録の種類 (app の名前, model の名前)。金額を見られない人には、これらに付けた添付を開かせない (openable_by の 3)。
+#: 請求書・入金・発注・仕入明細・受けた仕入明細。受注は現場も使う記録なので入れない。入っていない部品の組は飛ばす
+MONEY_TARGETS = (
+    ("billing", "invoice"),
+    ("billing", "payment"),
+    ("purchasing", "purchaseorder"),
+    ("purchasing", "selfinvoice"),
+    ("connect", "receivedselfinvoice"),
+)
+
+
+def _money_target_type_ids() -> list[int]:
+    """MONEY_TARGETS のうち入っている部品の model の種類の番号 (ContentType の控えから引く。入っていない組は飛ばす)。"""
+    classes = []
+    for app_label, model_name in MONEY_TARGETS:
+        try:
+            classes.append(apps.get_model(app_label, model_name))
+        except LookupError:
+            continue
+    if not classes:
+        return []
+    return [kind.pk for kind in ContentType.objects.get_for_models(*classes).values()]
+
+
+def is_money_target(attachment) -> bool:
+    """添付の付けた先の種類が、金額が主な記録 (MONEY_TARGETS) か。読むだけ (種類は ContentType の控えから引く)。"""
+    kind = ContentType.objects.get_for_id(attachment.content_type_id)
+    return (kind.app_label, kind.model) in MONEY_TARGETS
 
 
 def _feedback_manager(user) -> bool:
@@ -182,6 +218,12 @@ def openable_by(queryset, user):
     一覧で題とファイル名を見せないため。添付は番号を順に変えるだけで開けたので、記録の側の絞りが添付の口で抜けていた。
     出所 = Claude Security の走査の候補 11-07 (7・8・9)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
     変えてよい条件 = 記録の部品の開ける人の決め (部署の門・フィードバックの絞り) が変わったとき。部品の判定と食い違う形にはしない。
+    3) 金額を見られない人 (access.can_see_money が偽 = 金額の閲覧が on で閲覧の無い人。記録は書かない) には、付けた先が
+       金額が主な記録 (MONEY_TARGETS) の種類の行を外す。付けた先が消えた行も種類で見る。
+    訳: 金額を伏せた人に、請求書・発注などに付けた単価や金額の入ったファイルを開かせず、消させず、一覧で名前を見せないため
+    (log の会社では見せて、開いた時に seizou.access に 1 行)。会社どうしの会話の添付 (connect/chat.py) は今回は入れない。
+    出所 = 本人の決め 11-08 00:13 と 11-07 21:0x (金額を見られない人は金額に関わる操作をしない)・11-05 09:4x (無い物に見せる)。
+    変えてよい条件 = 本人が決め直したとき、または金額が主な記録の種類が増えたとき (表に足す)。
     """
     # 種類は副問い合わせで引く (並びを外す。並びの列が SELECT に入ると、種類でなく行ごとの並びになるため)
     used_types = queryset.order_by().values("content_type_id")
@@ -198,6 +240,11 @@ def openable_by(queryset, user):
         user_pk = getattr(user, "pk", None)
         own = model._default_manager.filter(created_by_id=user_pk).values("pk") if user_pk is not None else model._default_manager.none().values("pk")
         queryset = queryset.filter(~Q(content_type=feedback_type) | Q(object_id__in=own))
+    # 3) 金額を見られない人には、金額が主な記録に付けた行を外す (金額を見られる人には種類を引かない)
+    if not access.can_see_money(user, record=False):
+        money_types = _money_target_type_ids()
+        if money_types:
+            queryset = queryset.exclude(content_type_id__in=money_types)
     return queryset
 
 

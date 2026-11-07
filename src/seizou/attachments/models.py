@@ -39,6 +39,16 @@ def attachment_upload_to(instance, filename):
 
 
 class Attachment(models.Model):
+    """添付ファイル 1 つ。
+
+    消した添付は、付けた先の記録の履歴に名前・種類・大きさ・付けた人を残す (services.remove_attachment が消す前に core.services.record_history_deleted を呼ぶ)。
+    """
+
+    #: 履歴を出す詳細 = 付けた先の記録 (core.history.owner_of が GenericForeignKey を辿る。付けた先が無ければ添付そのもの)
+    history_owner = "target"
+    #: 履歴に残さない列 (乱数の保存の名前と、付けた先の種類と番号と形式。保存の名前は画面に出さない決まり)
+    history_skip = ("file", "content_type", "object_id", "mime")
+
     content_type = models.ForeignKey(ContentType, verbose_name="付けた先の種類", on_delete=models.CASCADE)
     object_id = models.PositiveBigIntegerField("付けた先の番号")
     target = GenericForeignKey("content_type", "object_id")
