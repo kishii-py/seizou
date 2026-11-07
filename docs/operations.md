@@ -97,6 +97,7 @@ PostgreSQL の置き場では、命令は戻さずに、`pg_restore` で戻す 1
 - つながりの鍵 (取引先ごとの鍵の置き場の名前が `.env` にあるか)
 - つながりの受け口の URL (`https://` か。本番の条件だけ)
 - Cookie が HTTPS だけ (セッションと CSRF の Cookie。本番の条件だけ)
+- settings.py の塊 (`LOGGING` と `HtmxLoginMiddleware` の行があるか。本番の条件だけ)
 
 「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
 

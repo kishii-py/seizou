@@ -370,6 +370,36 @@ def check_cookies() -> list[Row]:
     return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", COOKIE_FIX)]
 
 
+#: 雛形の MIDDLEWARE の、htmx の部分の要求でログインが切れたときの 1 行 (点検の「settings.py の塊」が見る)
+HTMX_LOGIN_MIDDLEWARE = "seizou.core.middleware.HtmxLoginMiddleware"
+#: settings.py の塊が足りないときの直し方の後ろ半分
+SETTINGS_BLOCKS_FIX = "を足し、サーバーを立て直す (seizou の docs/operations.md の「版を上げる手順」)。"
+
+
+def check_settings_blocks() -> list[Row]:
+    """settings.py の塊のうち、この版より前に作った置き場に無いことがある 2 つ (LOGGING と HtmxLoginMiddleware の行)。
+
+    LOGGING は Django の既定が空の辞書なので、空なら無いと見る (中身の形は見ない)。run の表で本番の条件の行だけにする。
+    AUTH_PASSWORD_VALIDATORS は見ない (別の行が見る)。
+    訳: 版を上げても置き場の settings.py は書き換わらないので、雛形に足した塊が無いままの置き場を点検で見つけるため。
+    LOGGING が無いと本番の 500 の誤りと seizou の記録が残らず、HtmxLoginMiddleware が無いと、ログインが切れた後の
+    部分の要求で画面の一部にログインの画面が入る。出所 = エンタープライズ化の調べ 第一弾の指示書の候補 9 の確かめ直しの (a)
+    (依頼書 N362)。変えてよい条件 = 雛形の塊が増えたら見る物を足す。
+    """
+    label = "settings.py の塊"
+    missing = []
+    adds = []
+    if not getattr(settings, "LOGGING", None):
+        missing.append("LOGGING が無い (500 の誤りの記録が残らない)")
+        adds.append("LOGGING の 2 行 (import と LOGGING = default_logging())")
+    if HTMX_LOGIN_MIDDLEWARE not in list(getattr(settings, "MIDDLEWARE", None) or ()):
+        missing.append("HtmxLoginMiddleware が無い (ログインが切れた後の部分の要求で、画面の一部がログインの画面になる)")
+        adds.append("MIDDLEWARE の HtmxLoginMiddleware の 1 行")
+    if not missing:
+        return [_good(label, "LOGGING と HtmxLoginMiddleware の行がある")]
+    return [_bad(label, "・".join(missing), f"settings.py に {'と'.join(adds)}{SETTINGS_BLOCKS_FIX}")]
+
+
 #: 作り物の利用者が公開の合言葉のままのときの直し方 (決め 11-04 15:0x。依頼書 N116)
 DEMO_PASSWORD_FIX = "アカウント管理で変えてください。"
 
@@ -458,6 +488,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),
+        ("settings.py の塊", check_settings_blocks, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
         ("AI が守る決まり", check_ai_docs, False),
     ]
