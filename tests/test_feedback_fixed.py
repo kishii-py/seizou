@@ -134,11 +134,14 @@ def test_fixed_from_any_state_and_locks_author(plain, manager):
 
 
 def test_fixed_status_in_choices_and_filter():
-    assert Feedback.STATUS_CHOICES[-1] == ("fixed", "直した")
-    assert services.STATUSES == ("draft", "confirmed", "sent", "fixed")
+    assert Feedback.STATUS_CHOICES[-2] == ("fixed", "直した")
+    assert Feedback.STATUS_CHOICES[-1] == ("dismissed", "見送った")  # N322 (決め 11-07 09:4x)
+    assert services.STATUSES == ("draft", "confirmed", "sent", "fixed", "dismissed")
     assert services.list_filter({"status": "fixed"}) == {"status": "fixed", "kind": ""}
     assert services.FIXED_NOTE_MAX_CHARS == 200
-    assert Feedback.detail_hidden_fields == ("transcript", "fixed_at", "fixed_note", "fixed_seen_at")
+    assert Feedback.detail_hidden_fields == (
+        "transcript", "fixed_at", "fixed_note", "fixed_seen_at", "dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version"
+    )
 
 
 # ---- 2. 詳細の「直したと記録する」と「直しました」の節 ----

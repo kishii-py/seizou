@@ -46,6 +46,7 @@ STATUS_TONES = {
     "ordered": "success",  # intake 受注にした
     "inbox": "success",  # intake 受信した注文へ回した
     # 赤の線 = 止まった (取消・断った・捨てた)
+    "dismissed": "error",  # feedback 見送った (GitHub で対応しない・重複として閉じた。N322)
     "cancelled": "error",  # orders・purchasing・shipping・workorders・billing 取消
     "rejected": "error",  # purchasing 断られた・connect 断った
     "discarded": "error",  # intake 捨てた

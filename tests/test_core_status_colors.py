@@ -146,7 +146,7 @@ def test_table_covers_every_status_choice():
     assert missing == [], f"状態の色の表に無い値: {missing} (core/status_colors.py の STATUS_TONES に足す)"
     stale = sorted(set(status_colors.STATUS_TONES) - values)
     assert stale == [], f"どの model にも無い値: {stale}"
-    assert len(values) == 18
+    assert len(values) == 19  # N322 で feedback に dismissed (見送った) が増えた
     by_app = {}
     for label, app_values in found.items():
         by_app.setdefault(label.split(".")[0], set()).update(app_values)

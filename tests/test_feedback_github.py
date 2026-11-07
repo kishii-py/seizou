@@ -363,7 +363,7 @@ def test_sync_marks_closed_issue_fixed(manager, plain, fake):
 
     counts = services.sync_github(manager)
 
-    assert counts == {"見た": 2, "直した": 1, "読めなかった": 0}
+    assert counts == {"見た": 2, "直した": 1, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 0}
     closed.refresh_from_db()
     still.refresh_from_db()
     other.refresh_from_db()
@@ -378,7 +378,7 @@ def test_sync_counts_unreadable_and_refuses_non_manager(manager, plain, fake):
     make(plain, status="sent", sent_url="https://github.com/example-owner/example-repo/issues/99")
     with pytest.raises(ValueError, match="アカウント管理の担当者だけ"):
         services.sync_github(plain)
-    assert services.sync_github(manager) == {"見た": 1, "直した": 0, "読めなかった": 1}
+    assert services.sync_github(manager) == {"見た": 1, "直した": 0, "見送った": 0, "版待ち": 0, "版の印なし": 0, "読めなかった": 1}
 
 
 # ---------------------------------------------------------------- 画面とボタン
@@ -507,7 +507,7 @@ def test_list_buttons_and_sync_endpoint(client, manager, plain, fake):
 
     response = client.post("/feedback/github/sync/")
     assert response.status_code == 302 and response["Location"] == "/feedback/"
-    assert "GitHub を見ました: 見た 1 件・直した 1 件・読めなかった 0 件" in html_of(client.get("/feedback/"))
+    assert "GitHub を見ました: 見た 1 件・直した 1 件・見送った 0 件・版待ち 0 件・版の印なし 0 件・読めなかった 0 件" in html_of(client.get("/feedback/"))
 
 
 def test_form_screen_links_to_issue_search(client, plain):
@@ -631,7 +631,7 @@ def test_sync_command_needs_no_manager(plain, fake):
 
     call_command("seizou_feedback_sync", stdout=out)
 
-    assert out.getvalue().strip() == "GitHub を見ました: 見た 1 件・直した 1 件・読めなかった 0 件"
+    assert out.getvalue().strip() == "GitHub を見ました: 見た 1 件・直した 1 件・見送った 0 件・版待ち 0 件・版の印なし 0 件・読めなかった 0 件"
     row.refresh_from_db()
     assert row.status == "fixed"
     assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
