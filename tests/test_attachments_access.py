@@ -1,4 +1,4 @@
-"""添付ファイルを、付けた先の記録を開ける人にだけ開かせる・消させる・一覧に出す (Claude Security の走査の候補 11-07 の 7・8・9)。
+"""添付ファイルを、付けた先の記録を開ける人にだけ開かせる・消させる・一覧に出す・付ける先の字を見せる (Claude Security の走査の候補 11-07 の 7・8・9・10)。
 
 - フィードバックの画面の絵は、書いた本人と世話役 (アカウント管理の権限) だけ (feedback の一覧と詳細の絞りと同じ)。ほかの人には 404。
 - 部署の判定が on の会社では、付けた先の部品を部署で開けない人には、開く・消す・一覧に出すをしない (404)。
@@ -10,11 +10,13 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.accounts.models import Access
 from seizou.attachments import services
 from seizou.attachments.models import Attachment
 from seizou.feedback import services as feedback_services
@@ -182,3 +184,42 @@ def test_department_off_keeps_files_open_to_everyone(order_file, other):
     """部署の判定が off (試験の既定) なら、今までどおりログインした人は誰でも受注の添付を開ける。"""
     assert _client(other).get(_download(order_file)).status_code == 200
     assert "juchu-shiyou.pdf" in _list_body(other)
+
+
+# ---------------------------------------------------------------- 候補 10: 付ける先の下見の 1 行
+
+
+def _add_body(person, target) -> str:
+    query = {"content_type": ContentType.objects.get_for_model(target).pk, "object_id": target.pk}
+    response = _client(person).get(reverse("attachments:attachment_add"), query)
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+@pytest.mark.django_db
+def test_add_form_target_line_only_for_people_who_can_open_feedback(screenshot, author, other, manager):
+    feedback = screenshot.target
+    hidden = _add_body(other, feedback)
+    assert "付ける先: " not in hidden
+    assert SECRET_TITLE not in hidden
+    for person in (author, manager):
+        assert f"付ける先: フィードバック {SECRET_TITLE}</p>" in _add_body(person, feedback)
+
+
+@pytest.mark.django_db
+def test_add_form_target_line_for_account_rows_only_for_account_managers(manager, other):
+    """アカウントの権限の行 (アカウント管理の部品) は、アカウント管理の権限の無い人にはログイン ID を出さない。"""
+    row = Access.objects.get(user=manager)
+    assert "付ける先: " not in _add_body(other, row)
+    assert "付ける先: アカウントの権限 sewa</p>" in _add_body(manager, row)
+
+
+@pytest.mark.django_db
+def test_add_form_target_line_hidden_from_department_outsider(settings, order_file):
+    settings.SEIZOU = {"access_control": dict(DEPARTMENT_ON)}
+    seizo = accounts_services.create_department("製造", ["workorders", "progress", "stock", "masters"], [], None)
+    sales = accounts_services.create_department("受注と出荷", ["orders", "shipping", "masters"], [], None)
+    order = order_file.target
+
+    assert "付ける先: " not in _add_body(_account("seizo-hito", departments=[seizo]), order)
+    assert f"付ける先: 受注 {order.order_no}</p>" in _add_body(_account("eigyo-hito", departments=[sales]), order)

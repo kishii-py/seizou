@@ -189,3 +189,20 @@ def openable_by(queryset, user):
         own = model._default_manager.filter(created_by_id=user_pk).values("pk") if user_pk is not None else model._default_manager.none().values("pk")
         queryset = queryset.filter(~Q(content_type=feedback_type) | Q(object_id__in=own))
     return queryset
+
+
+def can_open_target(target, user) -> bool:
+    """user が記録 (target) を開けるか (読むだけ)。付ける入力の頭の「付ける先」の 1 行を出すかの判定。
+
+    openable_by の 1 件の形: 付けた先の部品を部署で開けるか (access.can_open。記録は書かない) と、フィードバックは書いた本人か世話役か。
+    訳: 開けない記録 (ほかの人のフィードバック・アカウント管理の部品の行・部署の外の記録) の題やログイン ID を、
+    付ける入力の頭の 1 行で、種類と番号を変えるだけで読ませないため。出所 = Claude Security の走査の候補 11-07 (10)。
+    変えてよい条件 = openable_by と同じ (2 つは同じ判定にそろえる)。
+    """
+    meta = getattr(target, "_meta", None)
+    if meta is None or not access.can_open(user, meta.app_label, record=False):
+        return False
+    if (meta.app_label, meta.model_name) == FEEDBACK_TYPE and not _feedback_manager(user):
+        user_pk = getattr(user, "pk", None)
+        return user_pk is not None and getattr(target, "created_by_id", None) == user_pk
+    return True
