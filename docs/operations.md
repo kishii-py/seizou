@@ -171,6 +171,8 @@ if not DEBUG:
 
 画面ごとの説明書の断片が無い置き場 (この版より前に、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
 
+`settings.py` に `LOGGING` の行が無い置き場 (この版より前に `seizou new` で作った物) は、import の並び (`from seizou.parts import PARTS` の次) に `from seizou.core.logging_conf import default_logging` を、`LANGUAGE_CODE` の行の後に `LOGGING = default_logging()` を足します。`SECRET_KEY` の行の次に `SECRET_KEY_FALLBACKS = [key.strip() for key in os.environ.get("SECRET_KEY_FALLBACKS", "").split(",") if key.strip()]` の 1 行 (雛形と同じ字) も足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと、500 の誤りと seizou の記録がサーバーの記録 (journald) に残ります。
+
 ## 困ったとき
 
 `manage.py` が `KeyError: 'SECRET_KEY'` で止まるときは、置き場に `.env` が無いか、`.env` に `SECRET_KEY=` の行がありません。`.env` は控えに入らないので、別に写しておいた `.env` を置き場に戻してください。このときは `settings.py` が先に止まるので、点検も動きません。
@@ -178,6 +180,8 @@ if not DEBUG:
 上げたファイルの画面が 503 で止まるときは、nginx の設定が足りません。画面の案内のとおりに直し、点検の「上げたファイルの配り方」の行を見てください。
 
 どの画面も「決まりに沿っていません」になるときは、開発の設定 (`DEBUG` が 1) で、会社の側のコードが決まりを破っています。画面の文を写して、Claude Code の `/seizou:fix` で直してください。
+
+画面が 500 (サーバーの誤り) になったときは、サーバーの記録に誤りの行が残っています。VPS では `sudo journalctl -u seizou-<会社の id> -n 100`、手元では runserver の窓で見ます。
 
 ## 練習モード (本番に残らない練習用のサーバー)
 
