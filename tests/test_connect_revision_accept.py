@@ -273,7 +273,8 @@ def test_cancel_to_partly_shipped_order_is_refused(fake, user, subcontractor, it
 @pytest.mark.parametrize(
     "line_no, change, message",
     [
-        (1, {"unit_price": Decimal("900"), "amount": Decimal("180000")}, "明細 1 は出荷済みの物があるので単価は変えられません (注文の単価 ¥900・受注の単価 ¥1,000)。"),
+        # 受け口の断りの文は相手へ返り、送り合った記録の結果の列に残るので、単価の値を入れない (Claude Security の走査の候補 11-07 の 39)
+        (1, {"unit_price": Decimal("900"), "amount": Decimal("180000")}, "明細 1 は出荷済みの物があるので単価は変えられません (注文の単価が受注の単価と違います)。"),
         (1, {"qty": Decimal("5"), "amount": Decimal("5000")}, "明細 1 の数 (5) が出荷済みの数 (10) より少なくなります。"),
         (3, None, "明細 3 は出荷済みの物があるので取り消せません。"),
     ],
@@ -415,3 +416,54 @@ def test_update_order_adds_line_with_given_number(user, customer, items):
         user,
     )
     assert sorted(_rows(order)) == [1, 7, 8]
+
+
+def _price_change_waiting(subcontractor, items, user):
+    """明細 1 の単価を 1000 → 900 にした第 2 版を出荷の前に受けて待たせ、その後に明細 1 を 10 出荷する。返す物は第 2 版の行。"""
+    po = _send_first(subcontractor, items, user)
+    _base, order = _accept_first(items, user)
+    po = _revise(po, items)
+    PurchaseOrderLine.objects.filter(purchase_order=po, line_no=1).update(unit_price=Decimal("900"), amount=Decimal("180000"))
+    _send(po, user)
+    revision = Inbox.objects.get(revision_no=2)
+    shipping_services.ship(_rows(order)[1], Decimal("10"), DAY, user)
+    return revision
+
+
+@pytest.mark.django_db
+def test_price_refusal_keeps_no_price_in_exchange_and_reply(fake, user, subcontractor, items):
+    """受け口が単価の違う変更を断ったとき、送り合った記録の結果の列と、相手の返事の欄に単価の値が残らない (候補 11-07 の 39)。"""
+    from seizou.connect.models import Exchange
+
+    po = _send_first(subcontractor, items, user)
+    _base, order = _accept_first(items, user)
+    shipping_services.ship(_rows(order)[1], Decimal("10"), DAY, user)
+    po = _revise(po, items)
+    PurchaseOrderLine.objects.filter(purchase_order=po, line_no=1).update(unit_price=Decimal("900"), amount=Decimal("180000"))
+    outbox = _send(po, user)
+
+    assert "単価は変えられません" in outbox.response
+    assert "¥" not in outbox.response
+    results = list(Exchange.objects.values_list("result", flat=True))
+    assert any("単価は変えられません" in text for text in results)
+    assert not any("¥" in text for text in results)
+
+
+@pytest.mark.django_db
+def test_revision_banner_hides_prices_from_people_without_money(settings, client, fake, user, subcontractor, items):
+    """受信した注文の詳細の黄色の 1 行は、金額の閲覧のある人には両方の単価を、無い人 (on) には単価の値の無い字を出す (候補 11-07 の 39)。"""
+    from seizou.accounts import services as accounts_services
+
+    revision = _price_change_waiting(subcontractor, items, user)
+    url = reverse("connect:inbox_detail", args=[revision.pk])
+
+    client.force_login(user)
+    shown = client.get(url).content.decode()
+    assert "(注文の単価 ¥900・受注の単価 ¥1,000)" in shown
+
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    accounts_services.issue_account("genba", "kumo-tests-2611", [], [], {}, None)
+    client.force_login(get_user_model().objects.get(username="genba"))
+    hidden = client.get(url).content.decode()
+    assert "単価は変えられません (注文の単価が受注の単価と違います)。" in hidden
+    assert "注文の単価 ¥" not in hidden and "受注の単価 ¥" not in hidden

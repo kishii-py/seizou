@@ -304,7 +304,8 @@ def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
         revises = _revision_base(partner, payload)
         if revises is None:
             return _refuse(MESSAGE_REVISION_NO_BASE, msg_id)
-        problem = _revision_problem(revises, payload, revision_no, purpose_code)
+        # 断りの文は相手へ返り、送り合った記録の結果の列 (金額の列でない) に残るので、単価の値を入れない (候補 11-07 の 39)
+        problem = _revision_problem(revises, payload, revision_no, purpose_code, hide_money=True)
         if problem:
             return _refuse(f"注文の変更を受けられません。{problem}", msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
@@ -431,7 +432,7 @@ def _referenced(row) -> bool:
     return False
 
 
-def _revision_problem(base, payload, revision_no, purpose_code):
+def _revision_problem(base, payload, revision_no, purpose_code, *, hide_money=False):
     """変更と取消の版 (payload) を元の行 (base = 第 1 版の受信した注文) の受注に当てられない訳の字。当てられれば None。
 
     受け口 (receive)・受け入れ (_accept_revision)・受信した注文の画面 (connect_tags.revision_problem) が同じ見方で呼ぶ。
@@ -440,6 +441,11 @@ def _revision_problem(base, payload, revision_no, purpose_code):
     取り消す明細を指示書か入荷の引当か検収が指す・出荷済みのある明細の単価が違う・数が出荷済みより少ない。受注に無い行番号の明細は断らない (受け入れの時に足す)。
     訳: 出荷し終えた受注と、出した物の記録 (納品書・請求書) と食い違う変更を受注に当てず、作り始めた物の記録 (指示書・入荷の引当) と届いた検収が指す受注の明細を消さないため。出所 = 決め EDIT-1 (11-06 23:2x)・中小企業共通 EDI に合わせた決め EDIT-2 (11-06 23:2x)・決め C96-1 (11-07 06:33。一部を出荷した受注への取消を受けない)・決め C96-4 (11-07 06:37。指示書・入荷の引当・検収・出荷のある受注の明細を消す変更を受けない)。
     変えてよい条件 = EDIT-1・EDIT-2・C96-1・C96-4 の答えが変わったとき。
+    hide_money が真なら、単価の違いの字に単価の値を入れない (「注文の単価が受注の単価と違います」)。受け口 (receive) はいつも真
+    (文は相手へ返り、送り合った記録の結果の列に残る = 金額の列でないので、金額の閲覧の無い人にも出る)。受け入れと画面は
+    金額の閲覧の無い人 (access.hides_money) のとき真 (請求書の取消の断り cancel_refusal の hide_money と同じ形)。
+    訳: 金額を見られない人に、断りの文の中の単価を見せないため。出所 = Claude Security の走査の候補 11-07 (39)。
+    変えてよい条件 = 結果の列と相手の返事の欄を金額の閲覧で伏せる形ができたとき (そのときは受け口でも値を出してよい)。
     """
     if base.status == Inbox.STATUS_REJECTED:
         return "第 1 版の注文は断ってあるので、変える受注がありません。"
@@ -485,6 +491,8 @@ def _revision_problem(base, payload, revision_no, purpose_code):
             continue
         unit_price = _decimal_or_none(raw.get("unit_price"))
         if unit_price is not None and unit_price != row.unit_price:
+            if hide_money:
+                return f"明細 {number} は出荷済みの物があるので単価は変えられません (注文の単価が受注の単価と違います)。"
             return (
                 f"明細 {number} は出荷済みの物があるので単価は変えられません "
                 f"(注文の単価 {yen(unit_price)}・受注の単価 {yen(row.unit_price)})。"
@@ -1651,7 +1659,7 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
         if base.status == Inbox.STATUS_RECEIVED:
             raise ValueError(f"受け入れられません。先に第 1 版の注文 (受信した注文 {base.pk}) を受け入れてください。")
         payload = locked.payload if isinstance(locked.payload, dict) else {}
-        problem = _revision_problem(base, payload, locked.revision_no, locked.purpose_code)
+        problem = _revision_problem(base, payload, locked.revision_no, locked.purpose_code, hide_money=access.hides_money(user))
         if problem:
             raise ValueError(f"受け入れられません。{problem}この変更は断ってください。")
         if locked.purpose_code == edi_codes.PURPOSE_CANCEL:
