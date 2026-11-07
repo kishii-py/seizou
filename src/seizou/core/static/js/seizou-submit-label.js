@@ -8,6 +8,8 @@
  * - document に委譲する (小窓の中身が htmx で差し替わっても動く)。input と change のたびに、その form のボタンを埋め直す。
  * - 数量の欄は data-label-qty、単価の欄は data-label-price (同じ行 tr の中)、「この行を出さない」は data-label-skip、
  *   金額の欄は data-label-amount。行 tr が無い form は form の全体を 1 行と読む。
+ * - 一式の行は、同じ行の data-label-lump の欄の値が属性の値と同じとき (単価の単位の「式」)。その行は数量を掛けずに単価を金額に足す。
+ *   core の JS は部品の値の字を書かず、属性の値と比べる (core は部品の値を持たないため)。
  * - 印を付けた行だけ数える checkbox は data-label-pick (請求書の新規登録の出荷。候補 C74)。数量は行 tr の data-label-pick-qty、
  *   金額は行 tr の data-label-pick-amount (サーバーが 1 円に丸めた行の金額。JS は掛け算をしない) の字を読む。
  *   印の無い行と、隠れた行 (tr の hidden。得意先で絞った行) は数えない。data-label-pick-amount の無い行があれば {amount} を埋めない。
@@ -68,7 +70,9 @@
       var price = row.querySelector("[data-label-price]");
       if (!price) return;
       var each = readNumber(price);
-      if (typeof each === "number") amount += count * each;
+      var lump = row.querySelector("[data-label-lump]");
+      var once = !!lump && lump.value === lump.getAttribute("data-label-lump");
+      if (typeof each === "number") amount += once ? each : count * each;
       else priced = false;
     });
     form.querySelectorAll("[data-label-pick]").forEach(function (input) {

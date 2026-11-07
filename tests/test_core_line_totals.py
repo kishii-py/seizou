@@ -167,6 +167,24 @@ def test_line_totals_counts_rows_qty_amount():
     assert line_totals([("1.005", "1")]) == {"rows": 1, "qty": "1.01", "amount": "1.01", "show_amount": True}
 
 
+def test_line_totals_counts_lump_rows_without_qty():
+    # 3 つ目が真の行 (単価の単位が式) は数量を掛けずに単価を金額に足す。行の数と数量の合計は今と同じに数える。
+    assert line_totals([("300", "50000", True), ("10", "100", False)]) == {
+        "rows": 2,
+        "qty": "310",
+        "amount": "51,000",
+        "show_amount": True,
+    }
+    assert line_totals([("300", None, True)])["amount"] is None
+    # 2 つ組と 3 つ組が混ざっても数える (2 つ組は一式でない)。
+    assert line_totals([("10", "100"), ("300", "50000", True)]) == {
+        "rows": 2,
+        "qty": "310",
+        "amount": "51,000",
+        "show_amount": True,
+    }
+
+
 # --- 2. 受注の入力 ---
 
 
@@ -319,6 +337,8 @@ def test_js_file_keeps_totals_promises():
         "found.totals",
         "setTotals(form, found.totals)",
         "fill(templates, found)",
+        "[data-label-lump]",
+        'getAttribute("data-label-lump")',
     ):
         assert word in text, word
     for word in ("textContent", "innerHTML", "classList", "className", "insertAdjacentHTML", "fetch(", "XMLHttpRequest", "window.htmx"):
