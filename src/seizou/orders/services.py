@@ -14,6 +14,7 @@
   update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
 - 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
   shipping.services.ship と update_order の終わりに呼ぶ。止めない (現物優先)。
+- 請求しない明細の印は mark_no_bill が付ける。
 """
 
 from __future__ import annotations
@@ -266,6 +267,24 @@ def cancel_order(order, user, *, reason=""):
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
+
+
+def mark_no_bill(order_line, user):
+    """受注の明細に「請求しない」の印を付ける。印の付いた明細の出荷は、請求書の新規登録の候補 (billing.services.billable_shipments)・
+    「請求書に入っていない出荷」の数 (ダッシュボードと左のメニュー)・出し切らずに終えた一式の黄の表に出ない。
+    出荷の数と出荷の金額 (ダッシュボードの出荷の金額と売上の数え方) と、発行した請求書は変えない。
+    印は明細ごとで、受注の状態と単価の単位を見ない (入口は請求書の新規登録の一式の表だけ。一式でない明細の出荷は billing.services.record_outside_payment で請求の候補から外す)。もう付いていれば何も書かずに同じ字を返す (断らない)。
+    訳: 出し切らずに終えた一式を請求しないと決めた明細を、一式の表と請求の候補から外すため。出所 = 作者の決め C107-3・C107-3b・C107-3c。
+    変えてよい条件 = 作者が請求しない明細の扱いを決め直したとき。
+    """
+    with transaction.atomic():
+        locked = OrderLine.objects.select_for_update().get(pk=order_line.pk)
+        if not locked.no_bill:
+            locked.no_bill = True
+            locked.save(update_fields=["no_bill"])
+    # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+    locked.saved_message = "請求しないにしました。"
+    return locked
 
 
 def shipped_qty(order_line):
