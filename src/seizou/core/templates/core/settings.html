@@ -2,7 +2,7 @@
 {% load seizou_icons %}
 {% block content %}
 {# 設定: 会社の選べる設定 (今の値とどこで決めたか。変えられる人には行の「編集」)、普段は触らない物の入口、システムの状態。右上の利用者のメニューの「設定」から開く。鍵の値は出さない。システムの状態の点検はアカウント管理の担当者が見出しの右のボタン (POST) で走らせ、結果は同じ画面に出す (保存しない)。 #}
-{# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・メールの知らせ・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
+{# 並びは上から、普段は触らない物 (アカウント管理などの入口)・会社の選べる設定・会社の情報・設定の履歴・メールの知らせ・システムの状態。アカウント管理の入口を、開いた直後の窓 (1280×720) に入れるため (初見テスト R5 の V22。入口がページの下の端にあり、探す人が左のメニューを開いて空振りした)。左のメニューには足さない (決め 11-03 昼「普段簡単に触らないものは通常のメニューよりも設定をいじれる所に」と C14-1 = a)。 #}
 {# 4 つとも幅いっぱいに置く。設定の表は 5 列 (設定・今の値・どこで決めたか・鍵・編集) なので、半分の幅だとどこで決めたかと編集が横の送りの先に隠れる (11-03 の本体の手の確かめ)。 #}
 {# 表と説明の字は事務の人が読める言葉にし、作る人向けの字 (settings.py・SEIZOU・YAML・model) を出さない (初見テスト R5 の V99・U101)。鍵の列だけは答えの YAML と見比べる人のために英字の鍵を残す。名前の括弧の説明は、名前の下の小さな字の 2 行目 (settings_screen.SETTING_NOTES) に分ける。 #}
 {# 表の列の幅 (初見テスト R5 の a-flagged-26・a-blind-08・a-blind-09): 「設定」の列は全部の幅で折り返し、tablet・1024・1280 で「編集」を箱の中に入れる。「今の値」の列は 640px 以上だけ最小の幅 (sm:min-w-36 = 144px。model の名前 claude-sonnet-5-5 が 1 行に入る幅) を見出しに付け、権限の判定は塊の途中で折らない。640px 未満 (スマホ) は今の細さのまま箱の横の送りを受け入れ、鍵の列も隠さない (C14-2 = a)。 #}
@@ -54,6 +54,11 @@
       <dt class="text-base-content/70 sm:whitespace-nowrap">登録番号</dt><dd class="min-w-0 break-words">{{ seizou.company.registration_no|default:"なし" }}</dd>
       <dt class="text-base-content/70 sm:whitespace-nowrap">ロゴ</dt><dd class="min-w-0 break-words">{% if seizou.company.logo %}<img src="{{ seizou.company.logo.url }}" alt="ロゴ" class="size-12 rounded-xl object-contain">{% else %}なし{% endif %}</dd>
     </dl>
+  </section>
+  {# 設定の履歴 (決め HIST-1 の「会社の設定」): 会社の情報と選べる設定を、誰が・いつ・前の値 → 後の値に直したか。新しい順。部品は詳細の「履歴」のタブと同じ core/_history.html。振込先は直したことだけで、値は残さない。 #}
+  <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="settings-history-title">
+    <h2 id="settings-history-title" class="text-lg font-bold">設定の履歴</h2>
+    {% include "core/_history.html" with timeline=settings_history %}
   </section>
   {# メールの知らせ: パスワードは .env に置いてあるかだけを出す (値は出さない)。送り方は「編集」(設定の変更の画面の mail)、「試しに送る」は差出人のアドレスへ送る (POST。何も保存しない)。 #}
   <section class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="mail-title">

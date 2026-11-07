@@ -70,6 +70,7 @@ from seizou.core import csvio
 from seizou.core import dashboard
 from seizou.core import select_options
 from seizou.core import fields as company_fields
+from seizou.core import history
 from seizou.core import summary as list_summary
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.templatetags.seizou_tags import rule_code
@@ -497,6 +498,7 @@ class FilterSpec:
     会社ごとの項目: field に ext__<列の名前> を書く。型が choice なら choice (候補は項目の choices)、date なら date_range、
       number なら number_range。text と bool は絞れない (ValueError)。kind は省ける (書くなら同じ種類)。
       BaseListView は一覧に出す会社ごとの項目のうち絞れる物を、宣言の後ろに自動で足す (GET の名前は f_<列の名前>)。
+    金額の名前 (access.is_money_name) の絞りは、金額の閲覧の無い人には出さず効かせない (列と同じ。決め 11-05 09:4x)。印は money。
     """
 
     #: kind に書ける値
@@ -539,6 +541,8 @@ class FilterSpec:
                 raise ValueError(f"知らない絞りの種類: {self.kind!r} ({self.name})。{' / '.join(self.KINDS)} のどれかにしてください。")
             else:
                 self.field = field_at(model, self.field_name)
+        # 金額の名前の絞り (ColumnSpec の money と同じ判定)。flag は field_name が None なので偽
+        self.money = self.field_name is not None and access.is_money_name(self.field_name)
         if self.column is not None:
             label = self.column.label
         else:
@@ -931,6 +935,12 @@ class BaseListView(ScreenMixin, ListView):
             field = company_fields.EXT_PREFIX + col.name
             if col.type in FilterSpec.EXT_KINDS and field not in declared:
                 specs.append(FilterSpec(self.model, {"name": col.name, "field": field}))
+        # 金額の名前の絞りは、金額の閲覧が無い人には出さず効かせない (絞りの欄・札・apply_filters・flag_on・filter_chosen・集計の軸の全部から外れる。
+        # 列と同じ = 本人の決め 11-05 09:4x。N155。決め C106-1「金額を見られない人には列と絞りを出さない」)。範囲の欄が残ると、
+        # 行が出るか出ないかで金額が分かってしまうため。URL に f_<名前>_from を書いても無い欄と同じ扱い (断る処理ではない)。
+        # 判定は column_specs と同じ控え (1 要求で 1 回)。金額の絞りの無い一覧と、要求の無い画面の物 (起動の検査と試験が宣言だけを読む) は判定しない。
+        if any(spec.money for spec in specs) and getattr(self, "request", None) is not None and not self._money_columns_shown():
+            specs = [spec for spec in specs if not spec.money]
         return specs
 
     def apply_filters(self, queryset):
@@ -1204,7 +1214,11 @@ class BaseListView(ScreenMixin, ListView):
 
 
 class BaseDetailView(ScreenMixin, DetailView):
-    """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...)。3 つ目の FK の名前の並びは任意。related_tab)。"""
+    """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...)。3 つ目の FK の名前の並びは任意。related_tab)。
+
+    履歴のタブと「最後に直した」の 1 行は core.history (決め HIST-1・C40-1)。model に印 (keeps_history か history_owner) が
+    あるときだけ context の history に core.history.timeline を置く (tabs には入れない。開くまで問い合わせない)。
+    """
 
     tabs: tuple = ()
     opens_by_department = False
@@ -1268,6 +1282,7 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["list_url"] = model_url(obj.__class__, "list")
         context["list_name"] = screen_name_of(context["list_url"])
         context["status"] = self.status_for(obj)
+        context["history"] = history.timeline(obj, self.request.user) if history.keeps_history(obj.__class__) else None
         return context
 
     def tab_for(self, obj, label: str, related: str, select_related=()) -> dict:
