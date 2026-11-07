@@ -1,9 +1,9 @@
 {% load assistant_tags seizou_icons seizou_tags static %}{% assistant_panel as panel %}
-{# AI チャットの窓 (画面の右下に開く。ログインした人だけ)。入口は左のメニューの下の「AI に質問」(assistant/_menu.html)。core の base.html の 1 行が include する。紙には出さない。 #}
+{# AI チャットの窓 (画面の右下に開く。ログインした人だけ)。入口は 2 つ = 左のメニューの下の「AI に質問」(assistant/_menu.html) と、右下の絵だけの丸いボタン (この file)。core の base.html の 1 行が include する。紙には出さない。 #}
 {# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
-{# 窓 (data-assistant-window) は題の帯 (data-assistant-grip) で動かし、右下の角で大きさを変え、「広げる」で画面の 80% にする。位置と大きさは assistant-window.js が inline の style で置く (class を足し引きしない)。 #}
+{# 窓 (data-assistant-window) は題の帯 (data-assistant-grip) で動かし、右下の角で大きさを変え、「広げる」で画面の 80% にする。位置と大きさは assistant-window.js が inline の style で置く (class を足し引きしない)。右下の「AI に質問」の丸いボタンは動かさない (E-38)。 #}
 {# 吹き出しは core の _chat_bubble.html。待つ間は吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
-{# 開け閉めの入口は、左のメニューの下 (フィードバックの上) の「AI に質問」(assistant/_menu.html)。右下に浮いていた丸いボタンは本文の保存や数の字を隠したので、本文の外の左のメニューへ移した (決め C37 11-06 22:2x)。窓は今と同じ右下に開く。 #}
+{# 右下の「AI に質問」は絵だけの丸いボタン (btn-circle。幅と高さ 40px)。字は指したときと焦点が来たときに上の吹き出し (daisyUI の tooltip) で出し、読み上げは aria-label。表の右端の列・右のカード・保存のボタンに重なる面を減らすため小さくした (決め 11-05 15:0x。N160)。決め C37 (11-06 22:2x) で左のメニューの下の入口 (assistant/_menu.html) へ移して丸を消したが、本人の決め 11-07 09:3x「推奨で右下に戻したい」で丸を戻し、メニューの入口も残した (入口は 2 つ)。本文の下の余白 (base.html の pb-34) と入力の画面の下の行の右の 64px (input.css の seizou-save-row) も N160 の形に戻した。 #}
 <div id="assistant-root" class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 print:hidden">
   <section id="assistant-panel" hidden aria-label="AI チャット">
     <div class="flex max-h-[70vh] w-96 max-w-[calc(100vw-3rem)] flex-col gap-4 rounded-xl border border-base-300 bg-base-100 p-4 shadow-lg" data-assistant-window>
@@ -35,21 +35,24 @@
       {% endif %}
     </div>
   </section>
+  <span class="tooltip" data-tip="AI に質問"><button id="assistant-float" type="button" class="btn btn-neutral btn-circle shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2" aria-expanded="false" aria-controls="assistant-panel" aria-label="AI に質問">{% icon "bot" "size-5" %}</button></span>
 </div>
 <script>
 (function () {
-  // 左のメニューの「AI に質問」(assistant/_menu.html) で小窓を開け閉めする。開いたら質問の欄に focus し、吹き出しの並びを下まで送る。
-  // 小窓の中で Esc を押したら閉じて、入口に focus を戻す。htmx の object は呼ばない (DOM の event だけを受ける)。
-  var toggle = document.getElementById("assistant-toggle");
+  // 入口は 2 つ: 左のメニューの「AI に質問」(assistant/_menu.html。#assistant-toggle) と右下の丸いボタン (#assistant-float)。どちらでも小窓を開け閉めする。
+  // 開いたら質問の欄に focus し、吹き出しの並びを下まで送る。小窓の中で Esc を押したら閉じて、最後に押した入口に focus を戻す (初めは右下の丸)。
+  // htmx の object は呼ばない (DOM の event だけを受ける)。
+  var toggles = [document.getElementById("assistant-toggle"), document.getElementById("assistant-float")].filter(Boolean);
   var panel = document.getElementById("assistant-panel");
-  if (!toggle || !panel) return;
+  if (!toggles.length || !panel) return;
+  var last = toggles[toggles.length - 1];
   function toBottom() {
     var list = document.getElementById("assistant-messages");
     if (list) list.scrollTop = list.scrollHeight;
   }
   function setOpen(open) {
     panel.hidden = !open;
-    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggles.forEach(function (entry) { entry.setAttribute("aria-expanded", open ? "true" : "false"); });
     if (!open) return;
     toBottom();
     var field = document.getElementById("assistant-question");
@@ -57,14 +60,17 @@
   }
   function closeToButton() {
     setOpen(false);
-    toggle.focus();
+    last.focus();
   }
-  toggle.addEventListener("click", function () {
-    // phone と tablet (lg 未満) では入口が左のメニューの中にあるので、メニューを閉じてから窓を出す (決め C37。候補の案 1)。
-    // lg 以上ではメニューはいつも出ていて開け閉めの checkbox は隠れているので、閉じても見た目は変わらない。
-    var drawer = document.getElementById("seizou-drawer");
-    if (drawer) drawer.checked = false;
-    setOpen(panel.hidden);
+  toggles.forEach(function (entry) {
+    entry.addEventListener("click", function () {
+      last = entry;
+      // phone と tablet (lg 未満) ではメニューの入口が左のメニューの中にあるので、メニューを閉じてから窓を出す (決め C37。候補の案 1)。
+      // lg 以上ではメニューはいつも出ていて開け閉めの checkbox は隠れているので、閉じても見た目は変わらない。右下の丸から開くときも同じ 1 行で害は無い。
+      var drawer = document.getElementById("seizou-drawer");
+      if (drawer) drawer.checked = false;
+      setOpen(panel.hidden);
+    });
   });
   var close = document.getElementById("assistant-close");
   if (close) close.addEventListener("click", closeToButton);
