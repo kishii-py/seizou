@@ -132,7 +132,7 @@ def test_lock_writes_one_log_line_without_password(client, user, caplog):
     caplog.set_level(logging.WARNING, logger="seizou.login")
 
     def lines():
-        return [record.getMessage() for record in caplog.records if record.name == "seizou.login"]
+        return [record.getMessage() for record in caplog.records if record.name == "seizou.login" and "続けて失敗したので" in record.getMessage()]
 
     for _ in range(4):
         attempt(client, "genba01", WRONG)

@@ -42,6 +42,8 @@ CACHE_PREFIX = "seizou:login-fail:"
 INVALID_MESSAGE = "ID かパスワードが違います。確かめてもう一度入れてください。"
 #: 締め出しの間の文
 LOCKED_MESSAGE = f"ログインに続けて失敗したので、{LOCK_MINUTES} 分の間は受け付けません。"
+#: 記録 (seizou.login) に書く ID の長さの上限 (利用者の ID の欄の長さ = Django の AbstractUser の username と同じ)
+USERNAME_LOG_LENGTH = 150
 
 logger = logging.getLogger("seizou.login")
 
@@ -120,9 +122,16 @@ class LockoutAuthenticationForm(AuthenticationForm):
 
     @sensitive_variables()
     def clean(self):
+        """締め出しの間は認証せずに断り (その試しも記録に 1 行書く)、失敗を数え、成功で数え直す。
+
+        訳: 総当たりを止め、締め出しの間に断った試しも記録に残すため (締め出しの間は認証の前に断るので user_login_failed が飛ばず、login_log の失敗の行が出ない)。出所 = ID と接続元の組の 5 回と 15 分は未確認 (この module の頭のとおり)・締め出しの間の行はエンタープライズ化の調べ 第一弾の候補 23 の直し方の直し (a) (11-07)。変えてよい条件 = 本人が決め直したとき。
+        """
         username = self.cleaned_data.get("username") or ""
         address = client_address(self.request) if self.request is not None else ""
         if username and is_locked(username, address):
+            logger.warning(
+                "締め出しの間のログインを断りました (ID: %r・接続元: %r)。", username[:USERNAME_LOG_LENGTH], address
+            )
             raise ValidationError(self.error_messages["locked"], code="locked")
         try:
             cleaned = super().clean()
