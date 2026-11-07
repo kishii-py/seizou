@@ -18,13 +18,15 @@ from django.test import RequestFactory
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 
 from seizou.accounts import services as accounts_services
 from seizou.connect.models import Inbox
 from seizou.core import dashboard, manual
-from seizou.core.context_processors import MENU_COUNTS, menu, seizou
+from seizou.core.context_processors import MENU_COUNTS, count_url, menu, seizou
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
+from seizou.orders.views import OrderLineListView
 
 BADGE = '<span class="tooltip tooltip-left ml-auto text-xs" data-tip="'
 INBOX_TABLE = "connect_inbox"
@@ -64,9 +66,24 @@ def page(client, url) -> str:
 
 
 def _entry_link(aside: str, url: str) -> str:
-    """左のメニューの入口 (href が url の <a>) の字。"""
+    """左のメニューの入口 (href が url の <a>) の字。数の印は入口の <a> の外なので入らない。"""
     match = re.search(rf'<a href="{re.escape(url)}"[^>]*>.*?</a>', aside, re.S)
     assert match, url
+    return match.group(0)
+
+
+def _entry_row(aside: str, url: str) -> str:
+    """左のメニューの入口の li (入口の <a> と、その横の数の印の入れ物) の字。"""
+    match = re.search(rf'<li[^>]*><a href="{re.escape(url)}"[^>]*>.*?</li>', aside, re.S)
+    assert match, url
+    return match.group(0)
+
+
+def _count_link(row: str) -> str:
+    """入口の li の中の、数の印の <a> (入口の <a> の後ろ)。"""
+    entry_end = row.index("</a>") + len("</a>")
+    match = re.search(r'<a href="[^"]*"[^>]*>.*?</a>', row[entry_end:], re.S)
+    assert match, row
     return match.group(0)
 
 
@@ -86,14 +103,19 @@ def test_inbox_count_appears_next_to_the_entry(logged_in, customer):
     inbox_url = reverse("connect:inbox_list")
 
     aside = _aside(page(logged_in, reverse("core:home")))
-    link = _entry_link(aside, inbox_url)
-    assert 'data-tip="未処理の受信した注文 1 件"><span class="badge badge-soft badge-primary badge-sm">1</span></span>' in link
-    assert link.index('<span class="truncate">受信した注文</span>') < link.index(BADGE)  # 印は入口の字の後ろ
+    row = _entry_row(aside, inbox_url)
+    assert 'data-tip="未処理の受信した注文 1 件"><span class="badge badge-soft badge-primary badge-sm">1</span></span>' in row
+    assert row.index('<span class="truncate">受信した注文</span>') < row.index(BADGE)  # 印は入口の字の後ろ
+    assert BADGE not in _entry_link(aside, inbox_url)  # 印は入口の <a> の外 (<a> の中に <a> を入れない)
     assert aside.count(BADGE) == 1  # ほかの入口には印が無い
+    # 印を押すと、未処理 (状態が「届いた」) に絞った受信した注文が開く (決め 11-07 20:5x の 2。今日やることの行と同じ移る先)
+    link = _count_link(row)
+    assert link.startswith(f'<a href="{inbox_url}?f_status=received" ')
+    assert 'aria-label="未処理の受信した注文 1 件"' in link
 
     Inbox.objects.filter(pk=message.pk).update(status=Inbox.STATUS_ACCEPTED)
     aside = _aside(page(logged_in, reverse("core:home")))
-    assert BADGE not in _entry_link(aside, inbox_url)
+    assert BADGE not in _entry_row(aside, inbox_url)
     assert aside.count(BADGE) == 0
 
 
@@ -184,7 +206,7 @@ def test_manual_tells_what_the_menu_count_counts(user):
     # 2 社の種は、標準の組と同じバイトであることを test_core_manual_default と test_examples_manual が見る。
     labels = {item["url_name"]: item["label"] for item in menu()}
     problems = []
-    for url_name, (label, unit, _counter) in MENU_COUNTS.items():
+    for url_name, (label, unit, _counter, _target) in MENU_COUNTS.items():
         raw = (MANUAL_DEFAULT / f"{manual.fragment_name(url_name)}.html").read_text(encoding="utf-8")
         text = re.sub(r"\s", "", re.sub(r"<[^>]+>", "", raw))
         for words in (f"左のメニューの「{labels[url_name]}」の横の数", f"{label}の{unit}数"):
@@ -207,12 +229,54 @@ def test_menu_count_box_stays_when_the_count_is_zero(logged_in, customer):
 
     message = received(customer)
     aside = _aside(page(logged_in, reverse("core:home")))
-    link = _entry_link(aside, inbox_url)
-    inside = link[link.index(box) : link.rindex("</a>")]
+    row = _entry_row(aside, inbox_url)
+    inside = row[row.index(box) : row.rindex("</span></li>")]
     assert BADGE in inside and ">1</span>" in inside
     assert aside.count(BADGE) == 1
 
     Inbox.objects.filter(pk=message.pk).update(status=Inbox.STATUS_ACCEPTED)
-    link = _entry_link(_aside(page(logged_in, reverse("core:home"))), inbox_url)
-    assert box + "</span>" in link  # 空の入れ物が残る
-    assert BADGE not in link
+    row = _entry_row(_aside(page(logged_in, reverse("core:home"))), inbox_url)
+    assert box + "</span>" in row  # 空の入れ物が残る (印の <a> は無い)
+    assert BADGE not in row and row.count("<a ") == 1
+
+
+def test_board_count_opens_the_overdue_tab(user, logged_in, customer):
+    # 生産管理ボードの数 (納期が過ぎた明細) を押すと、盤のタブ「納期が過ぎた」と同じ組 (f_open=1&f_overdue=1) で開き、
+    # 同じ行数が並ぶ (決め 11-07 20:5x の 2。N146 の「移り先は変えない」を置き換える。nav-01)。入口の字は今までどおり絞り無し
+    shaft = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    today = timezone.localdate()
+    for days in (-3, -1, 2):
+        orders_services.create_order(
+            customer,
+            [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100"), "due_date": today + timedelta(days=days)}],
+            user,
+            order_date=today - timedelta(days=5),
+        )
+    board_url = reverse("orders:orderline_list")
+    overdue_tab = next(tab["params"] for tab in OrderLineListView.presets if tab["label"] == "納期が過ぎた")
+    assert overdue_tab == {"f_open": "1", "f_overdue": "1"}
+    assert count_url("orders:orderline_list") == board_url + "?" + urlencode(overdue_tab)
+
+    aside = _aside(page(logged_in, reverse("core:home")))
+    row = _entry_row(aside, board_url)
+    assert _entry_link(aside, board_url).startswith(f'<a href="{board_url}" ')
+    link = _count_link(row)
+    assert link.startswith(f'<a href="{board_url}?f_open=1&amp;f_overdue=1" ')
+    assert 'aria-label="納期が過ぎた明細 2 行"' in link and ">2</span>" in link
+    assert not re.search(r"<a [^>]*>(?:(?!</a>).)*<a ", aside, re.S)  # <a> の中に <a> が無い
+
+    response = logged_in.get(board_url, overdue_tab)
+    assert response.status_code == 200
+    assert [tab["label"] for tab in response.context["presets"] if tab["selected"]] == ["納期が過ぎた"]
+    assert len(response.context["object_list"]) == 2 == dashboard._overdue_lines().count()
+
+
+def test_count_targets_resolve_and_fall_back_to_the_entry():
+    # 移る先の URL は全部引ける。合う絞りのまだ無い物 (指示書・受入・請求書) は入口そのもの (絞り無し) に移る
+    entries = {item["url_name"]: item["url"] for item in menu()}
+    for url_name, (_label, _unit, _counter, (target_name, params)) in MENU_COUNTS.items():
+        url = count_url(url_name)
+        assert url is not None and url.startswith(reverse(target_name)), url_name
+        if not params:
+            assert url == entries[url_name], url_name
+    assert count_url("workorders:workorder_list") == reverse("workorders:workorder_list")
