@@ -8,6 +8,7 @@ payload_number: 届いた本文の数の字を Decimal に読む filter。{{ lin
 payload_price_unit: 届いた明細の単価の後ろに添える単価の単位の字 (「 / 式」「 / 個」の「式」「個」)。
 reply_line_texts: 受信した注文の詳細の「返した条件」の行 (単価を直して受け入れたときに相手へ返した明細ごとの答え)。
 revision_notice・revision_lines・revision_problem: 変更と取消の版 (中小企業共通 EDI の注文変更の方式 2) の札・明細状態と受注の今の値・受け入れられない訳。
+chat_panel: 受注・発注・受信した注文の「会話」の枠 (connect/_chat.html) の中身 (会話が使えるか・言葉の並び・書く先・書けるか。C104)。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -15,6 +16,7 @@ from decimal import Decimal, InvalidOperation
 from django import template
 from django.db import DatabaseError
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.core import access, edi_codes
 from seizou.core.templatetags.seizou_tags import comma, yen
@@ -275,3 +277,38 @@ def revision_problem(inbox):
         return f"先に第 1 版の注文 (受信した注文 {base.pk}) を受け入れてください。"
     payload = inbox.payload if isinstance(inbox.payload, dict) else {}
     return services._revision_problem(base, payload, inbox.revision_no, inbox.purpose_code)
+
+
+@register.simple_tag
+def chat_panel(target, user):
+    """会話の枠の中身 (読むだけ)。target は発注・受注・受信した注文のどれか。
+
+    返す物は {"reason": 使えない訳の字 (空 = 使える), "rows": [{"message", "header"}] (古い順), "target_kind", "target_id", "can_write"}。
+    受注は元の受信した注文を書く先にする (受信した注文の無い受注は reason が「結び付いていない」の字なので欄は押せない)。
+    header は吹き出しの上の字: 相手から届いた物は「<取引先の名前> <書いた人の名前 (空なら出さない)> <書いた日時>」、自社が書いた物は「<書いた人の名前> <書いた日時>」。
+    can_write は会話に書く画面の部署の門と同じ判定 (access.can_open の connect。記録の行は書かない = record=False)。
+    """
+    peer = services.chat_peer(target)
+    partner_name = peer.partner.name if peer.partner is not None else ""
+    rows = []
+    for message in services.chat_messages_for(target):
+        written = f"{timezone.localtime(message.written_at):%Y-%m-%d %H:%M}"
+        if message.direction == message.DIRECTION_RECEIVED:
+            names = [partner_name, message.author_name]
+        else:
+            names = [message.author_name]
+        header = " ".join([name for name in names if name] + [written])
+        rows.append({"message": message, "header": header})
+    if peer.purchase_order is not None:
+        target_kind, target_id = "purchase_order", peer.purchase_order.pk
+    elif peer.inbox is not None:
+        target_kind, target_id = "inbox", peer.inbox.pk
+    else:
+        target_kind, target_id = "", ""
+    return {
+        "reason": peer.reason,
+        "rows": rows,
+        "target_kind": target_kind,
+        "target_id": target_id,
+        "can_write": access.can_open(user, "connect", record=False),
+    }
