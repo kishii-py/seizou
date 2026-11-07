@@ -41,6 +41,11 @@ class Company(models.Model):
     address = models.CharField("住所", max_length=100, blank=True)
     phone = models.CharField("電話", max_length=35, blank=True)
     bank_account = models.CharField("振込先", max_length=100, blank=True)
+    # 適格請求書発行事業者の登録番号 (決め LAW-3)。インボイス制度 (消費税法の適格請求書等保存方式) では、
+    # 適格請求書に、発行する事業者の名前と登録番号を書く。形は T と 13 桁の数字を続けた 14 字 (中小企業共通 EDI の
+    # 付表 3 の SIID27「受注者適格請求書発行事業者登録番号」と同じ形)。空 = 登録していない事業者で、請求書に行を出さない。
+    # 形の確かめは core.services.check_registration_no (決め C95-2)。出すのは請求書の印刷だけ (core/report_base.html。納品書などの context は鍵を選んで渡すので出ない)。
+    registration_no = models.CharField("登録番号", max_length=14, blank=True)
     logo = models.FileField("ロゴ", upload_to="company/", blank=True)
 
     class Meta:

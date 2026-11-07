@@ -1,4 +1,4 @@
-"""会社の情報 (住所・電話・振込先・ロゴ) の services・画面・帳票。作り物の値だけ。
+"""会社の情報 (住所・電話・振込先・登録番号・ロゴ) の services・画面・帳票。作り物の値だけ。
 
 services の update_company (値の整え・字数・記録の 1 行)、設定の画面の「会社の情報」の枠と変更の画面 (門はアカウント管理の権限)、
 請求書と納品書の印刷用の HTML の会社の欄を見る。
@@ -275,3 +275,102 @@ def test_reports_show_logo_only_when_set(manager_client, admin, media):
         assert 'src="/media/company/' in body
     settings_body = manager_client.get(reverse("core:settings")).content.decode()
     assert '<img src="/media/company/' in settings_body
+
+
+# ---------------------------------------------------------------- 2d: 登録番号 (請求書だけ・形の違う番号は止める)
+
+REGISTRATION_NO = "T0000000000001"
+
+
+def test_update_company_writes_registration_no_and_logs_label_only(admin, caplog):
+    caplog.set_level(logging.INFO, logger="seizou.settings")
+
+    row = services.update_company(services.company(), {"registration_no": f" {REGISTRATION_NO} "}, admin)
+
+    assert row.registration_no == REGISTRATION_NO
+    assert Company.objects.get().registration_no == REGISTRATION_NO
+    message = settings_records(caplog)[-1].getMessage()
+    assert "会社の情報を変えた: 登録番号 (admin)" in message
+    assert REGISTRATION_NO not in message
+
+
+def test_update_company_refuses_too_long_registration_no(admin):
+    services.update_company(services.company(), {"registration_no": REGISTRATION_NO}, admin)
+    with pytest.raises(ValueError, match="登録番号は 14 字までにしてください。"):
+        services.update_company(services.company(), {"registration_no": "T" + "1" * 14}, admin)
+    assert Company.objects.get().registration_no == REGISTRATION_NO
+
+
+# 全角は T0000000000001 を全角にした 14 字 (字数の誤りでなく、形の誤りで止まることを見る)
+@pytest.mark.parametrize("text", ["t0000000000001", "0000000000001", "T000000000001", "Ｔ" + "０" * 12 + "１"])
+def test_update_company_refuses_wrong_registration_no(admin, text):
+    services.update_company(services.company(), {"registration_no": REGISTRATION_NO}, admin)
+    with pytest.raises(ValueError, match="登録番号は T と 13 桁の数字で入れてください。"):
+        services.update_company(services.company(), {"registration_no": text}, admin)
+    assert Company.objects.get().registration_no == REGISTRATION_NO
+
+
+def test_update_company_clears_registration_no_with_empty_text(admin):
+    services.update_company(services.company(), {"registration_no": REGISTRATION_NO}, admin)
+    services.update_company(services.company(), {"registration_no": ""}, admin)
+    assert Company.objects.get().registration_no == ""
+
+
+@pytest.mark.parametrize("text", ["T" + "０" * 13, REGISTRATION_NO + "\n"])
+def test_check_registration_no_uses_ascii_digits_and_fullmatch(text):
+    with pytest.raises(ValueError):
+        services.check_registration_no(text)
+    services.check_registration_no(REGISTRATION_NO)
+    services.check_registration_no("")
+
+
+def test_invoice_shows_registration_no_under_name_and_delivery_note_does_not(manager_client, admin):
+    services.update_company(services.company(), {"address": ADDRESS, "phone": PHONE, "registration_no": REGISTRATION_NO}, admin)
+    invoice, note = _invoice_and_note(admin)
+
+    invoice_body, note_body = _print_bodies(manager_client, invoice, note)
+
+    line = f"登録番号 {REGISTRATION_NO}"
+    assert line in invoice_body
+    assert invoice_body.index('class="report-company-name"') < invoice_body.index(line) < invoice_body.index(ADDRESS)
+    assert "登録番号" not in note_body and REGISTRATION_NO not in note_body
+    assert "registration_no" not in delivery_note_context(note)["company"]
+
+
+def test_invoice_without_registration_no_has_no_line(manager_client, admin):
+    services.update_company(services.company(), {"address": ADDRESS, "phone": PHONE}, admin)
+    invoice, note = _invoice_and_note(admin)
+
+    invoice_body, _note_body = _print_bodies(manager_client, invoice, note)
+
+    assert "登録番号" not in invoice_body
+
+
+def _registration_dd(body):
+    """設定の画面の「登録番号」の dt の直後の dd の字。"""
+    rest = body.split(">登録番号</dt>", 1)[1]
+    return rest.split(">", 1)[1].split("</dd>", 1)[0]
+
+
+def test_settings_screen_shows_registration_no_or_none(manager_client):
+    services.company()
+    assert _registration_dd(manager_client.get(reverse("core:settings")).content.decode()) == "なし"
+
+    services.update_company(services.company(), {"registration_no": REGISTRATION_NO}, None)
+    assert _registration_dd(manager_client.get(reverse("core:settings")).content.decode()) == REGISTRATION_NO
+
+
+def test_company_screen_saves_and_refuses_registration_no(manager_client):
+    url = reverse("core:company_update")
+    body = manager_client.get(url).content.decode()
+    assert 'name="registration_no"' in body and 'maxlength="14"' in body
+
+    response = manager_client.post(url, {"address": ADDRESS, "phone": PHONE, "registration_no": REGISTRATION_NO})
+    assert response.status_code == 302
+    assert response["Location"] == reverse("core:settings")
+    assert Company.objects.get().registration_no == REGISTRATION_NO
+
+    response = manager_client.post(url, {"address": ADDRESS, "phone": PHONE, "registration_no": "t0000000000001"})
+    assert response.status_code == 200
+    assert "T と 13 桁の数字で入れてください。" in response.content.decode()
+    assert Company.objects.get().registration_no == REGISTRATION_NO
