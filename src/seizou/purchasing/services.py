@@ -334,7 +334,12 @@ def record_line_replies(purchase_order, lines):
 
 
 def _lock_waiting_order(purchase_order, target):
-    """発注を select_for_update で引き、答えを待っている状態 (REPLY_WAITING) でなければ ValueError。target は行き先の状態の値。"""
+    """発注を select_for_update で引き、答えを待っている状態 (REPLY_WAITING) でなければ ValueError。target は行き先の状態の値。
+
+    mark_accepted・mark_rejected・mark_conditional・mark_on_hold が使う 1 つの門 (断りの字の形をそろえるため)。
+    訳: 注文回答は答えを待っている発注 (送った・相手が保留した) にだけ当て、届く順が前後しても記録を戻さないため。保留の後は本当の答えが届く (中小企業共通 EDI の注文回答タイプコードの保留 AJ)。出所 = 決め PRICE-4e (11-07 00:0x) と中小企業共通 EDI の注文回答の項目。
+    変えてよい条件 = 答えを当てる状態の決めが変わったとき。
+    """
     locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
     if locked.status not in REPLY_WAITING:
         raise ValueError(
