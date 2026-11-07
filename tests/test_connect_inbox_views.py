@@ -12,15 +12,20 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connection as db_connection
+from django.template.loader import render_to_string
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from seizou.connect import services, signing
 from seizou.connect.forms import AcceptForm, RejectForm
 from seizou.connect.models import Inbox
+from seizou.core import edi_codes
 from seizou.masters.services import create_item, create_partner, map_partner_item
 from seizou.orders.models import Order
 from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
+from tests.test_core_save_bar import ROW as SAVE_ROW
 from tests.test_r10_inbox_accept import _line, _payload
 
 ENV_NAME = "SEIZOU_PARTNER_VIEWCO_SECRET"
@@ -400,6 +405,148 @@ def test_accept_form_without_partner_keeps_old_words(client_logged_in, user):
     response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
     assert response.status_code == 200
     assert "相手の品番 A-100 (作り物の部品 A-100)" in response.content.decode()
+
+
+# ---------------------------------------------------------------- 受け入れの画面の品番ごとの枠 (初見テスト R5 の候補 C91)
+
+DASH = '<span class="text-base-content/50">—</span>'
+
+
+def _frame(body, name):
+    """受け入れの画面の data-accept-part="<name>" の枠の字 (その印から、次の枠の印か </form> まで)。"""
+    start = body.index(f'data-accept-part="{name}"')
+    ends = [at for at in (body.find("data-accept-part=", start + 1), body.find("</form>", start)) if at != -1]
+    return body[start : min(ends)]
+
+
+def _receive_change(secret, base, lines):
+    """第 1 版 (base) の第 2 版の変更を、相手の受け口の役で署名して受ける。返す物は受信した注文の行。"""
+    msg_id = str(uuid.uuid4())
+    data = _payload(msg_id, lines)
+    data.update(order_id=str(base.message_id), order_revision_no=2, purpose_code=edi_codes.PURPOSE_CHANGE)
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    result = services.receive(body, signing.headers_for(secret, msg_id, body))
+    assert isinstance(result, Inbox), result
+    return result
+
+
+def test_accept_screen_puts_line_values_beside_each_part_field(client_logged_in, receive_order):
+    """受け入れの画面で、欄 1 つの枠に、その品番の届いた明細の数量・単位・納期・単価が並ぶ (phone で欄を選ぶ時に数量と納期が見える)。"""
+    inbox = receive_order(
+        [_line(1, "A-100", qty="200.00", due_date="2026-11-06"), _line(2, "A-200", qty="100.00", due_date="2026-11-13")]
+    )
+
+    response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    first, second = _frame(body, "item_1"), _frame(body, "item_2")
+    assert "行 1<" in first and "A-100" in first and ">200 個<" in first and "2026-11-06" in first and ">¥250<" in first
+    assert 'name="item_1"' in first
+    assert "2026-11-13" not in first and 'name="item_2"' not in first
+    assert "行 2<" in second and ">100 個<" in second and "2026-11-13" in second and 'name="item_2"' in second
+    assert "2026-11-06" not in second and 'name="item_1"' not in second
+    assert body.index('data-accept-part="item_1"') < body.index('data-accept-part="item_2"')
+    # 上の表 (届いた明細) も今のまま、枠より上に出る
+    assert "届いた明細 (" in body and body.index("届いた明細 (") < body.index('data-accept-part="item_1"')
+
+
+def test_accept_screen_groups_lines_with_same_part_no(client_logged_in, receive_order, item, user):
+    """同じ品番の明細が 2 行あれば、欄は 1 つのまま、その欄の枠の左に 2 行とも並ぶ (受け入れの動きは変わらない)。"""
+    other = create_item({"part_no": "B-300", "name": "作り物のシャフト", "unit": "個"}, user)
+    inbox = receive_order([_line(1, "A-100"), _line(2, "A-200"), _line(3, "A-100", qty="5.00", due_date="2026-12-01")])
+    url = reverse("connect:inbox_accept", args=[inbox.pk])
+
+    body = client_logged_in.get(url).content.decode()
+
+    assert body.count("data-accept-part=") == 2
+    first = _frame(body, "item_1")
+    assert "行 1<" in first and "行 3<" in first and "2026-12-01" in first and ">5 個<" in first
+    assert "行 2<" not in first
+    assert len(AcceptForm(instance=inbox).part_fields) == 2
+    response = client_logged_in.post(url, {"item_1": item.pk, "item_2": other.pk})
+    assert response.status_code == 302
+    assert Order.objects.get().lines.count() == 3
+
+
+def test_accept_card_hides_unit_price_without_money(receive_order):
+    """金額の閲覧の無い人 (seizou.hide_money) には、枠に単価の行を dt も dd も出さない (上の表の単価の列と同じ)。"""
+    inbox = receive_order([_line(1, "A-100")])
+
+    def render(hide):
+        return render_to_string("connect/_inbox_accept_card.html", {"form": AcceptForm(instance=inbox), "seizou": {"hide_money": hide}})
+
+    hidden, shown = render(True), render(False)
+    assert "単価</dt>" not in hidden and "¥250" not in hidden
+    assert "単価</dt>" in shown and "¥250" in shown
+
+
+def test_accept_card_shows_dash_for_missing_values(partner, user):
+    """単価と納期の無い明細は、枠の dd に薄い「—」を出す (「None」の字を出さない)。"""
+    payload = _payload(str(uuid.uuid4()), [_line(1, "A-100", unit_price=None, due_date=None)])
+    inbox = services.record_inbox(partner, payload, user)
+
+    body = render_to_string("connect/_inbox_accept_card.html", {"form": AcceptForm(instance=inbox), "seizou": {"hide_money": False}})
+
+    frame = _frame(body, "item_1")
+    assert f'納期</dt><dd class="font-mono tabular-nums">{DASH}</dd>' in frame
+    assert f'単価</dt><dd class="tabular-nums">{DASH}</dd>' in frame
+    assert ">10 個<" in frame
+    assert "None" not in body
+
+
+def test_accept_field_error_stays_in_its_frame(client_logged_in, receive_order):
+    """欄を空のまま押すと、その欄の枠の中に欄の下の赤い字と赤枠の印が出る。右上の赤い知らせも今と同じく出る。"""
+    inbox = receive_order([_line(1, "A-100"), _line(2, "A-200")])
+
+    response = client_logged_in.post(reverse("connect:inbox_accept", args=[inbox.pk]), {})
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    first = _frame(body, "item_1")
+    assert 'id="id_item_1_error"' in first and 'aria-invalid="true"' in first
+    assert 'id="id_item_2_error"' not in first
+    assert 'data-notice="stop"' in body
+    assert Order.objects.count() == 0
+
+
+def test_accept_screen_has_one_save_row(client_logged_in, receive_order):
+    """受け入れの画面の下の行 (キャンセルと受け入れる) は、写したカードで 1 つだけ出る (欠けたり 2 つになったりしない)。"""
+    inbox = receive_order([_line(1, "A-100")])
+
+    body = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk])).content.decode()
+
+    assert body.count(SAVE_ROW) == 1
+    assert "受け入れる</button>" in body and "キャンセル</a>" in body
+
+
+def test_change_frame_lists_only_new_lines_of_the_part(client_logged_in, receive_order, secret, item, user):
+    """変更の版で、受注に既にある行と新しく足した行が同じ相手の品番のとき、その品番の枠には新しい行だけが並ぶ (欄を作った行と同じ行。C96)。"""
+    other = create_item({"part_no": "B-300", "name": "作り物のシャフト", "unit": "個"}, user)
+    base = receive_order([_line(1, "A-100"), _line(2, "A-200")])
+    services.accept(base, {"A-100": item, "A-200": other}, user)
+    revision = _receive_change(
+        secret,
+        Inbox.objects.get(pk=base.pk),
+        [
+            {**_line(1, "A-100"), "line_status_code": edi_codes.LINE_NEW},
+            {**_line(2, "A-200"), "line_status_code": edi_codes.LINE_NEW},
+            {**_line(3, "A-100", qty="5.00", due_date="2026-12-01"), "line_status_code": edi_codes.LINE_ADDED},
+        ],
+    )
+
+    # 欄と枠の行は同じ行から作り、受注の行番号を引くのは 1 回だけ
+    with CaptureQueriesContext(db_connection) as queries:
+        form = AcceptForm(instance=revision)
+    assert form.part_fields == [("item_1", "A-100")]
+    assert [line["line_no"] for line in form.part_rows[0]["lines"]] == [3]
+    assert sum('"line_no" FROM "orders_orderline"' in query["sql"] for query in queries.captured_queries) == 1
+
+    body = client_logged_in.get(reverse("connect:inbox_accept", args=[revision.pk])).content.decode()
+    assert body.count("data-accept-part=") == 1
+    frame = _frame(body, "item_1")
+    assert "行 3<" in frame and ">5 個<" in frame and "2026-12-01" in frame
+    assert "行 1<" not in frame and ">10 個<" not in frame
 
 
 # ---------------------------------------------------------------- 断るの画面の届いた明細と理由の欄の説明 (初見テスト R5 の候補 C72)

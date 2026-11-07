@@ -28,15 +28,20 @@ def _item_model():
     return apps.get_model("masters", "Item")
 
 
-def _partner_parts(inbox):
-    """注文のデータの明細にある相手の品番と品名の組を、出てきた順に重ねずに返す。形の違う行は飛ばす。
+def _asked_lines(inbox):
+    """受け入れの欄を作る明細の行 (dict) を、届いた順のまま返す。読むだけ。
 
-    変更と取消の版の行 (元の行 revises がある行) は、受注に無い行番号の明細 (取り消した明細 = 明細状態コード 2 を除く) の品番だけを返す
+    形の違う行 (dict でない行・品番が字でない行・品番が空の字の行) は飛ばす。
+    変更と取消の版の行 (元の行 revises がある行) は、受注に無い行番号の明細 (取り消した明細 = 明細状態コード 2 を除く) だけを返す
     (受注にある明細の部品は聞かない。聞くのは受け入れると新しく足す明細の部品だけ)。
+    欄 (_partner_parts) と受け入れの画面の枠の左の行 (_lines_by_part) の両方がこの行を読む (枠に、欄の当たらない行を並べないため。候補 C91)。
+    変更の版は受注の行番号を 1 回引くので、受け入れの form は __init__ で 1 回だけ呼んで両方に渡す。
     """
     payload = inbox.payload if inbox is not None and isinstance(inbox.payload, dict) else {}
     lines = payload.get("lines")
-    if inbox is not None and inbox.revises_id is not None and isinstance(lines, list):
+    if not isinstance(lines, list):
+        return []
+    if inbox.revises_id is not None:
         order = inbox.revises.order
         known = set(order.lines.values_list("line_no", flat=True)) if order is not None else set()
         lines = [
@@ -44,14 +49,39 @@ def _partner_parts(inbox):
             for line in lines
             if isinstance(line, dict) and line.get("line_status_code") != edi_codes.LINE_DELETED and line.get("line_no") not in known
         ]
+    return [
+        line
+        for line in lines
+        if isinstance(line, dict) and isinstance(line.get("part_no"), str) and line.get("part_no").strip()
+    ]
+
+
+def _partner_parts(inbox, lines=None):
+    """注文のデータの明細にある相手の品番と品名の組を、出てきた順に重ねずに返す。形の違う行は飛ばす。
+
+    拾う行は _asked_lines の行 (変更と取消の版は、受注に無い行番号の明細の品番だけ)。
+    lines = _asked_lines(inbox) を既に引いてあれば、それを渡す (変更の版の受注の行番号を 2 回引かないため)。
+    """
     parts = {}
-    for line in lines if isinstance(lines, list) else []:
-        part_no = line.get("part_no") if isinstance(line, dict) else None
-        if not isinstance(part_no, str) or not part_no.strip() or part_no.strip() in parts:
+    for line in _asked_lines(inbox) if lines is None else lines:
+        part_no = line["part_no"].strip()
+        if part_no in parts:
             continue
         part_name = line.get("part_name")
-        parts[part_no.strip()] = part_name if isinstance(part_name, str) else ""
+        parts[part_no] = part_name if isinstance(part_name, str) else ""
     return list(parts.items())
+
+
+def _lines_by_part(inbox, lines=None):
+    """受け入れの画面の枠の左に並べる行 (connect/_inbox_accept_card.html)。読むだけ。
+
+    _asked_lines の行 (欄を作った行と同じ行) を、相手の品番 (前後の空白を落とした字) ごとに、届いた順のまま並べた辞書で返す。
+    payload が dict でなければ空の辞書。lines は _partner_parts と同じ (引いてあれば渡す)。
+    """
+    grouped = {}
+    for line in _asked_lines(inbox) if lines is None else lines:
+        grouped.setdefault(line["part_no"].strip(), []).append(line)
+    return grouped
 
 
 # 取引先が空の行 (読み取りで差出人の確認待ち) の欄の説明。取引先ごとの説明の字が作れないので、前からの固定の字のまま。
@@ -92,6 +122,7 @@ class AcceptForm(forms.Form):
 
     欄の見出しと説明は欄ごとに作る (_part_label・_part_help)。初めの値は部品の取引先の表の対応 (無ければ空)。
     同じ品番が 2 行にあっても欄は 1 つ (item_mapping は品番 → 品目の 1 対 1 のため)。
+    受け入れの画面は欄 1 つに枠 1 つで描き、枠の左にその品番の届いた明細の行を並べる (part_rows。connect/_inbox_accept_card.html)。
     """
 
     submit_label = "受け入れる"
@@ -99,14 +130,19 @@ class AcceptForm(forms.Form):
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.part_fields = []
+        # instance の無い form (言葉の試験など) でも part_rows が落ちないよう、早く抜ける前に置く (候補 C91)。
+        self._lines_by_part = {}
         if instance is None:
             return
+        # 欄と枠の左の行は同じ行から作る (変更の版の受注の行番号を引くのは 1 回だけ)。
+        asked = _asked_lines(instance)
+        self._lines_by_part = _lines_by_part(instance, asked)
         # 変更と取消の版は、押した結果が分かる字にする (受注を新しく作らず、元の受注を変える)。
         if instance.revises_id is not None:
             self.submit_label = "取消を受け入れる" if instance.purpose_code == edi_codes.PURPOSE_CANCEL else "変更を受け入れる"
         items = _item_model()._default_manager.all()
         partner = instance.partner
-        for number, (part_no, part_name) in enumerate(_partner_parts(instance), start=1):
+        for number, (part_no, part_name) in enumerate(_partner_parts(instance, asked), start=1):
             name = f"item_{number}"
             known = resolve_partner_item(partner, part_no)
             # 字を打って探す欄 (受注の入力と同じ候補の口)。標準の選択欄だと部品が増えたときに探せない (初見テスト 2 回目の所見)。
@@ -123,6 +159,25 @@ class AcceptForm(forms.Form):
                 },
             )
             self.part_fields.append((name, part_no))
+
+    @property
+    def part_rows(self):
+        """受け入れの画面の枠の並び (connect/_inbox_accept_card.html。候補 C91)。1 つ = {field・lines}。
+
+        part_fields の並びで、field は欄 (self[name])、lines はその品番の届いた明細の行 (_lines_by_part。ふつうは 1 行)。
+        最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget と見出しを触るので、__init__ の中で作らない)。
+        """
+        if getattr(self, "_part_rows", None) is None:
+            self._part_rows = [
+                {"field": self[name], "lines": self._lines_by_part.get(part_no, [])} for name, part_no in self.part_fields
+            ]
+        return self._part_rows
+
+    @property
+    def other_fields(self):
+        """枠に入らない見える欄 (土台の get_form が足す会社ごとの項目)。受け入れの画面は枠の後ろに今の格子で出す (候補 C91)。"""
+        names = {name for name, _part_no in self.part_fields}
+        return [field for field in self.visible_fields() if field.name not in names]
 
     def service_kwargs(self):
         mapping = {part_no: self.cleaned_data[name] for name, part_no in self.part_fields}
