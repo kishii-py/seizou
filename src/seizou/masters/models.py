@@ -100,7 +100,7 @@ class Partner(models.Model):
     # 列は端数の 2 列の後に置く (詳細と小窓は列の順に出し、小窓は先頭の 8 項目だけなので、前に置くと小窓から「消費税の端数の扱い」が落ちる)。
     # 入力の欄は締日の前に読む並び (masters.forms.PartnerForm の Meta.fields)。
     billing_method = models.CharField(
-        "請求の仕方", max_length=15, choices=BILLING_METHOD_CHOICES, default=BILLING_CLOSING
+        "請求の仕方", max_length=35, choices=BILLING_METHOD_CHOICES, default=BILLING_CLOSING
     )
     note = models.CharField("備考", max_length=500, blank=True)
     # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。

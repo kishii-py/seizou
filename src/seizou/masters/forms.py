@@ -105,6 +105,13 @@ class PartnerForm(ServiceModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
+        # 請求の仕方の欄の無い送信 (欄を足す前の形) は、今の値のまま (新規は既定の締日でまとめる) として読む。
+        # 画面の選ぶ欄は空を出さないので、画面から送るときは変わらない。
+        key = self.add_prefix("billing_method")
+        if self.is_bound and key not in self.data:
+            data = self.data.copy()
+            data[key] = self.instance.billing_method
+            self.data = data
         # 端数の 2 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
         # 「?」の説明書の「入れる物」の表は form を作らずに Meta.help_texts を読むので、今の値の無い字のまま出る。
         company = company_defaults()

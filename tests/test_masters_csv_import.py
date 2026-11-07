@@ -640,3 +640,20 @@ def test_partner_form_shows_billing_method_and_same_day_help(client_logged_in):
     rows = {label: note for label, _required, note in input_rows(PartnerForm)}
     assert rows["請求の仕方"] == billing_help
     assert rows["支払の月"] == month_help
+
+
+@pytest.mark.django_db
+def test_partner_edit_without_billing_method_field_keeps_value(client_logged_in, user):
+    """請求の仕方の欄の無い送信 (欄を足す前の形) は、今の値のまま保存する。"""
+    cash = services.create_partner(
+        {"code": "C001", "name": "作り物の現金の得意先", "role": "customer", "billing_method": "per_delivery"}, user
+    )
+
+    response = client_logged_in.post(
+        reverse("masters:partner_update", args=[cash.pk]),
+        {"code": "C001", "name": "作り物の現金の得意先 (改)", "role": "customer", "active": "on"},
+    )
+
+    assert response.status_code == 302
+    cash.refresh_from_db()
+    assert (cash.name, cash.billing_method) == ("作り物の現金の得意先 (改)", "per_delivery")

@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='partner',
             name='billing_method',
-            field=models.CharField(choices=[('closing', '締日でまとめる'), ('per_delivery', '都度')], default='closing', max_length=15, verbose_name='請求の仕方'),
+            field=models.CharField(choices=[('closing', '締日でまとめる'), ('per_delivery', '都度')], default='closing', max_length=35, verbose_name='請求の仕方'),
         ),
         migrations.AlterField(
             model_name='partner',

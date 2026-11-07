@@ -240,7 +240,7 @@ NOT_FROM_SCREEN = (
     ),
     (
         "masters",
-        "保存できません。支払の月 … は使えません。当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。",
+        "保存できません。支払の月 … は使えません。当日 (same_day)・当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。",
         "form は model の選ぶ欄。CSV は、支払の月の列があれば _choice_value が断り、無ければ read_payment_day (masters/forms.py) が選択肢の字からだけ月を作る。",
     ),
 )
