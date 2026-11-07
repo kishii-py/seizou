@@ -13,6 +13,7 @@ from . import views
 from . import chat
 from . import reply
 from . import sender
+from . import self_invoice
 
 app_name = "connect"
 
@@ -45,6 +46,8 @@ urlpatterns = [
     path("exchanges/<int:pk>/", views.ExchangeDetailView.as_view(), name="exchange_detail"),
     path("selfinvoices/", views.ReceivedSelfInvoiceListView.as_view(), name="receivedselfinvoice_list"),
     path("selfinvoices/<int:pk>/", views.ReceivedSelfInvoiceDetailView.as_view(), name="receivedselfinvoice_detail"),
+    path("selfinvoices/<int:pk>/answer/", views.ReceivedSelfInvoiceAnswerView.as_view(), name="receivedselfinvoice_answer"),
+    path("selfinvoices/<int:pk>/reply/resend/", self_invoice.resend_self_invoice_reply, name="receivedselfinvoice_reply_resend"),
     path("chat/new/", views.ChatMessageAddView.as_view(), name="chatmessage_add"),
     path("chat/<int:pk>/resend/", chat.resend_chat, name="chatmessage_resend"),
     path("chat/files/<int:pk>/", chat.chat_file_download, name="chatfile_download"),

@@ -65,6 +65,7 @@ KIND_NOTES = {
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
     "purchasing": "仕入明細を作る・送る・取り消す・相手の提案を受け入れるを含む",
+    "billing": "受けた仕入明細に答えるを含む",
 }
 #: まとめの名前 → (表示名, 中の種類)
 GROUPS = {
@@ -147,6 +148,8 @@ _KIND_ACTIONS = {
         "billing.record_payment",
         "billing.cancel_payment",
         "billing.record_outside_payment",
+        # 受けた仕入明細に答える (C111。金額を確かめて得意先へ返すのは、請求書と入金を扱う人の仕事)
+        "connect.answer_self_invoice",
     ),
     "purchasing": (
         "purchasing.create_purchase_order",
@@ -221,6 +224,7 @@ MONEY_ACTIONS = {
     "masters.delete_item_price": ("単価表", "単価の行を消せません"),
     # 仕入明細 (C111) は金額が主な書類なので、請求書を作るのと同じ扱い
     "purchasing.create_self_invoice": ("仕入明細", "作れません"),
+    "connect.answer_self_invoice": ("仕入明細", "答えられません"),
 }
 # 3 つの表のどれにも無い action は権限が要らない扱い (止めない)。新しい書く画面の足し忘れは
 # tests/test_core_access.py の test_every_form_action_is_classified が落とす。

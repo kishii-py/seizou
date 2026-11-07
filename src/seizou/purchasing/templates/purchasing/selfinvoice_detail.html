@@ -4,6 +4,7 @@
 {# (a) 相手の登録番号が空 (b) 今の版が相手に届いていない (送った結果の字と「送り直す」。発注の権限のある人だけボタン。同じ番号で送り直す) (c) 支払期日が受領日から 60 日を超える (purchasing_tags の self_invoice_due_note。止めない)。 #}
 {# 「明細」のタブは、行番号・発注番号-行番号 (発注の詳細へ link)・品目・受領日・受領数量・単位・単価・金額・相手の答え・直した版の表。タブの後の枠に小計・消費税 (税率)・合計・受入の金額の合計・差。 #}
 {# 金額の閲覧の無い人には単価と金額の列と、金額の枠を見出しごと出さない。画面には EDI のコードの字を出さず、日本語の字を出す。 #}
+{# 確認できない明細 (RE) の答えの横に、発注の詳細 (会話のタブ) への link と次の手の字。合計の枠に確認済の金額 (承諾と直した内容の承諾の明細) と、答え待ち・確かめ中の金額 (小計 − 確認済)。 #}
 {% block content %}<div id="selfinvoice-alert">{% if not object.supplier_registration_no and object.status != "cancelled" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-registration-alert>{% icon "alert" "size-5" %}<span>取引先の登録番号が空です。相手が適格請求書発行事業者なら、取引先の詳細で登録番号を入れてください。空のままだと、この仕入明細は仕入税額控除の書類にならないおそれがあります。</span></div>
 {% endif %}{% if object.sent_at is None %}{% can_write "purchasing.SelfInvoice" as can_si %}
@@ -27,7 +28,7 @@
         <td class="whitespace-nowrap">{{ line.unit }}</td>
         {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.unit_price|yen }}<span class="text-base-content/70"> / {{ line.price_unit_text }}</span></td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
-        <td class="min-w-32">{% self_invoice_line_answer line seizou.hide_money as answer %}{% if answer %}{{ answer }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+        <td class="min-w-32">{% self_invoice_line_answer line seizou.hide_money as answer %}{% if answer %}{{ answer }}{% else %}<span class="text-base-content/60">—</span>{% endif %}{% if line.reply_type == "RE" %}<span class="block text-xs text-base-content/70"><a class="link link-primary" href="{% url 'purchasing:purchaseorder_detail' line.receipt.line.purchase_order_id %}">発注の詳細</a> の「会話」で、相手と話して、相手に答え直してもらってください。</span>{% endif %}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ line.revised_in }}</td>
       </tr>
       {% endwith %}{% endfor %}
@@ -44,6 +45,8 @@
     <div><dt class="text-xs text-base-content/60">消費税 (税率 {{ object.tax_rate|comma }}%)</dt><dd class="tabular-nums">{{ object.tax|yen }}</dd></div>
     <div><dt class="text-xs text-base-content/60">合計</dt><dd class="tabular-nums">{{ object.total|yen }}</dd></div>
     <div><dt class="text-xs text-base-content/60">受入の金額の合計</dt><dd class="tabular-nums">{{ receipt_total|yen }}</dd></div>
+    {% with confirmed=object.confirmed_subtotal %}<div><dt class="text-xs text-base-content/60">確認済の金額</dt><dd class="tabular-nums">{{ confirmed|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">答え待ち・確かめ中の金額</dt><dd class="tabular-nums">{{ object.unconfirmed_subtotal|yen }}</dd></div>{% endwith %}
     <div><dt class="text-xs text-base-content/60">差 (小計 − 受入の金額の合計)</dt><dd class="tabular-nums">{% with difference=object.receipt_difference %}{% if difference == 0 %}差はありません{% else %}{{ difference|yen }}{% endif %}{% endwith %}</dd></div>
   </dl>
   {% endwith %}

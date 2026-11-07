@@ -21,6 +21,7 @@ from seizou.masters.services import active_partners
 
 from . import services
 from .forms import AcceptForm, ChatMessageForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
+from .forms import SelfInvoiceAnswerForm
 from .models import ChatMessage, Connection, Exchange, Inbox
 from .models import ReceivedSelfInvoice
 
@@ -368,4 +369,26 @@ class ReceivedSelfInvoiceDetailView(BaseDetailView):
     def get_queryset(self):
         return super().get_queryset().select_related("partner").prefetch_related(
             "lines__order_line__order", "lines__order_line__item"
+        )
+
+
+class ReceivedSelfInvoiceAnswerView(BaseFormView):
+    """受けた仕入明細に答える入力。
+
+    使う人: 経理・営業 / いつ: 受けた仕入明細を確かめたとき / 何のために: 明細ごとに承諾・提案 (違う数か単価)・確認できない (訳つき) を得意先へ返す / 次にすること: 受けた仕入明細の詳細で答えが届いたかを見る。確認できない明細は受注の詳細の会話で話す
+
+    インボイス制度では、仕入明細書は売り手の確認で得意先の仕入税額控除の書類になる (確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8)。この画面の「承諾」がその確認に当たる。
+    """
+
+    model = ReceivedSelfInvoice
+    form_class = SelfInvoiceAnswerForm
+    service = staticmethod(services.answer_self_invoice)
+    template_name = "connect/receivedselfinvoice_answer.html"
+    screen_name = "仕入明細に答える"
+    screen_help = "明細ごとに、承諾か提案 (違う数か単価) か確認できない (訳を選ぶ) かを選んで得意先へ返します。全部が合っていれば、そのまま送ります。"
+
+    def get_queryset(self):
+        # 答えられる状態 (未回答・確かめ中) の受けた仕入明細だけ (確認済と取消は 404)。
+        return ReceivedSelfInvoice.objects.filter(
+            status__in=(ReceivedSelfInvoice.STATUS_RECEIVED, ReceivedSelfInvoice.STATUS_PARTIAL)
         )

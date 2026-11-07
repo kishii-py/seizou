@@ -180,6 +180,28 @@ EDI の文書は仕入明細です (文書タイプコード 389 仕入明細書
 | `lines[].amount` | 金額 (税抜き。受入の金額) | `purchasing.SelfInvoiceLine.amount` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoiceLine.amount` | 整数 12 桁・小数 2 桁 | — (当て先を確かめていない) | — |
 | `lines[].revised_in` | この明細を最後に直した版 | `purchasing.SelfInvoiceLine.revised_in` | 正の整数 | `connect.ReceivedSelfInvoiceLine.revised_in` | 正の整数 | — (当て先を確かめていない) | — |
 
+## 仕入明細回答 (kind = self_invoice_response)
+
+EDI の文書は仕入明細回答です (文書タイプコード 389)。仕入明細を受けた会社が、明細ごとに承諾・提案 (違う数か単価)・確認できない (訳のコード) を発注した会社へ返します。その仕入明細番号への 1 回目の答えは仕入明細回答 (1R)、2 回目からの答えは修正仕入明細回答 (1CR) です。一度承諾した明細は答え直せません。
+
+| JSON の鍵 | 意味 | 送る側の元の欄 | 送る字数・桁 | 受ける側が入れる欄 | 受け取れる字数・桁 | EDI の項目 (付表 2) | 共通辞書の ID |
+|---|---|---|---|---|---|---|---|
+| `id` | この知らせの番号 (見出しの webhook-id と同じ値。同じ答えの送り直しも同じ値) | `connect.ReceivedSelfInvoice.reply_message_id` | uuid (36 字) | `purchasing.SelfInvoice.reply_message_id` (見出しの webhook-id から) | uuid (36 字) | — (当て先を確かめていない) | — |
+| `kind` | 知らせの種類 | — | 下の「知らせの種類」 | — (種類を見分けるだけ) | 下の「知らせの種類」 | — (当て先を確かめていない) | — |
+| `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | — (当て先を確かめていない) | — |
+| `self_invoice_no` | 元の仕入明細番号 | `connect.ReceivedSelfInvoice.self_invoice_no` | 35 字 | `purchasing.SelfInvoice.self_invoice_no` (元の仕入明細を引くだけ) | 35 字 | インボイス文書ID (仕入明細 SIID1) | UN01005862 |
+| `revision_no` | 答えた仕入明細の版 | `connect.ReceivedSelfInvoice.revision_no` | 正の整数 | `purchasing.SelfInvoice.revision_no` (今の版と比べるだけ) | 正の整数 | インボイス文書履歴ID (仕入明細 SIID6) | UN01005874 |
+| `document_code` | インボイス文書類型コード (1R = 仕入明細回答・1CR = 修正仕入明細回答) | `connect.ReceivedSelfInvoice.reply_document_code` | 3 字 | — (読まない) | 3 字 | インボイス文書類型コード (仕入明細 SIID7) | UN01005875 |
+| `reply_type` | 鑑ヘッダの答え (AP = 一括承諾・CA = 部分承諾・RE = 一括確認不可・AC = 修正承諾。明細の答えから決める) | — (明細の答えから決める) | 2 字 | `purchasing.SelfInvoice.reply_type` | 2 字 | 鑑ヘッダ仕入明細回答タイプコード | UN01015491 |
+| `supplier.id` | 受けた会社の id | — (会社の置き場の設定) | 決まりなし | — (読まない) | 読まない | — (当て先を確かめていない) | — |
+| `supplier.name` | 受けた会社の名前 | `core.Company.name` | 100 字 | — (読まない) | 読まない | — (当て先を確かめていない) | — |
+| `lines[].line_no` | 答えた明細の行番号 | `connect.ReceivedSelfInvoiceLine.line_no` | 正の整数 | `purchasing.SelfInvoiceLine.line_no` (明細を引くだけ) | 正の整数 | 明細行ID (仕入明細 SIID313) | UN01009648 |
+| `lines[].reply_type` | 明細の答え (AP = 承諾・UV = 提案・RE = 確認できない・AC = 直した内容を承諾) | `connect.ReceivedSelfInvoiceLine.reply_type` | 2 字 | `purchasing.SelfInvoiceLine.reply_type` | 2 字 | 明細行回答タイプコード (仕入明細 SIID803) | UN01015599 |
+| `lines[].reason_code` | 確認できない訳 (101〜105・191・199。確認できない以外は空の字) | `connect.ReceivedSelfInvoiceLine.reply_reason_code` | 3 字 | `purchasing.SelfInvoiceLine.reply_reason_code` | 3 字 | 明細行回答理由コード (仕入明細 SIID806) | JPS2500015 |
+| `lines[].reply_qty` | 提案の数 (提案以外は null) | `connect.ReceivedSelfInvoiceLine.reply_qty` | 整数 10 桁・小数 2 桁 | `purchasing.SelfInvoiceLine.reply_qty` | 整数 10 桁・小数 2 桁 | — (当て先を確かめていない) | — |
+| `lines[].reply_unit_price` | 提案の単価 (提案以外は null) | `connect.ReceivedSelfInvoiceLine.reply_unit_price` | 整数 12 桁・小数 2 桁 | `purchasing.SelfInvoiceLine.reply_unit_price` | 整数 12 桁・小数 2 桁 | — (当て先を確かめていない) | — |
+| `lines[].note` | 書いておく字 | `connect.ReceivedSelfInvoiceLine.reply_note` | 500 字 | `purchasing.SelfInvoiceLine.reply_note` | 500 字 | 明細行回答理由 (仕入明細 SIID807) | JPS2500016 |
+
 ## コードの値
 
 ### 知らせの種類 (kind)
@@ -192,6 +214,7 @@ EDI の文書は仕入明細です (文書タイプコード 389 仕入明細書
 | `acceptance` | 検収 | 出荷回答 | SMEReceivingAdvice | 632 | 63201 (出荷回答書) |
 | `chat_message` | 会話の言葉 | — (EDI に無い。seizou どうしだけの種類) | — | — | — |
 | `self_invoice` | 仕入明細 | 仕入明細 | — (確かめていない) | 389 (版 2 からは 384 修正仕入明細書、目的 1 は 384 取消仕入明細書) | — |
+| `self_invoice_response` | 仕入明細回答 | 仕入明細回答 | — (確かめていない) | 389 | — |
 
 取引プロセスID の値は付表 2 と本編の字です (付表 4 の取引プロセスID の表は、出荷回答を SMERecievingAdvice と綴っています)。
 
@@ -224,7 +247,7 @@ EDI の文書は仕入明細です (文書タイプコード 389 仕入明細書
 
 ## 受け取れる字数を超えたとき
 
-- 受け口で断る物: 注文の発注番号・品番・品名・単位・明細の備考で、上の表の受け取れる字数を超える字 (品番は前後の空白を外して数えます)、注文の明細の数量・単価・金額 (数量 × 単価)、出荷の知らせの数と出荷番号、検収の数。会話の言葉 (2000 字。空白だけの言葉も断る)。仕入明細の仕入明細番号・受けた会社の名前・登録番号・課税分類コード・明細の発注番号・単位・数量単位コードで、上の表の受け取れる字数を超える字と、仕入明細の数と金額 (例「仕入明細の 2 行目の単位は 10 字までにしてください。」)。断った注文は「受信した注文」に入りません。断った理由は日本語の文 (例「注文の 2 行目の品番は 35 字までにしてください。」) で送った側に返り、送った側の相手の返事の欄に「断られた: <理由>」の形で残ります。字や数を直して送り直してください。
+- 受け口で断る物: 注文の発注番号・品番・品名・単位・明細の備考で、上の表の受け取れる字数を超える字 (品番は前後の空白を外して数えます)、注文の明細の数量・単価・金額 (数量 × 単価)、出荷の知らせの数と出荷番号、検収の数。会話の言葉 (2000 字。空白だけの言葉も断る)。仕入明細の仕入明細番号・受けた会社の名前・登録番号・課税分類コード・明細の発注番号・単位・数量単位コードで、上の表の受け取れる字数を超える字と、仕入明細の数と金額 (例「仕入明細の 2 行目の単位は 10 字までにしてください。」)。仕入明細回答の明細の字 (note。500 字) と提案の数と単価。断った注文は「受信した注文」に入りません。断った理由は日本語の文 (例「注文の 2 行目の品番は 35 字までにしてください。」) で送った側に返り、送った側の相手の返事の欄に「断られた: <理由>」の形で残ります。字や数を直して送り直してください。
 - 欄の字数で切って残す物: 検収の発注番号 (35 字)、出荷の知らせの受注番号 (35 字)、注文回答の断った理由 (500 字)、会話の書いた人の氏名 (100 字)。
 - 受けた中身に残すだけの物 (発注した会社の名前・取引先コード・発注の備考など): 字数を見ず、受注の表には入れません。
 

@@ -1299,6 +1299,47 @@ def record_self_invoice_delivery(self_invoice, response, user, *, sent=False):
         return locked
 
 
+def _self_invoice_status(self_invoice, lines):
+    """仕入明細の状態を明細の答えから決める。提案か確認できないが 1 つでもあれば確かめ中、全部が承諾 (AP・AC) なら確認済、ほかは答え待ち。"""
+    codes = [line.reply_type for line in lines]
+    if any(code in (edi_codes.SI_REPLY_PROPOSED, edi_codes.SI_REPLY_REJECTED) for code in codes):
+        return SelfInvoice.STATUS_PARTIAL
+    if codes and all(code in (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED) for code in codes):
+        return SelfInvoice.STATUS_CONFIRMED
+    return SelfInvoice.STATUS_SENT
+
+
+def record_self_invoice_reply(self_invoice, user, *, revision_no, reply_type, lines, reply_message_id, by=""):
+    """相手の仕入明細回答を仕入明細に書く (connect の受け口が呼ぶ。user は None)。
+
+    lines = [{line_no・reply_type・reply_reason_code・reply_qty・reply_unit_price・reply_note}]。載っていた明細の答えの列を書き替え、
+    鑑ヘッダの答え (reply_type)・届いた日時・答えの番号を書き、状態を決め直す (提案か確認できないが 1 つでもあれば確かめ中、
+    全部が承諾なら確認済、ほかは答え待ち)。受入と受入の金額は変えない。revision_no は受け口が今の版と比べた後の値。
+    変更の履歴の人の字は by (「<取引先の名前> の seizou」)。返す物は取り直した SelfInvoice。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        current = {line.line_no: line for line in locked.lines.all()}
+        for row in lines:
+            line = current[row["line_no"]]
+            before = history.saved_state(line)
+            for key in ("reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note"):
+                setattr(line, key, row[key])
+            line.save(update_fields=["reply_type", "reply_reason_code", "reply_qty", "reply_unit_price", "reply_note"])
+            record_history(line, user, before=before, by=by)
+        before = history.saved_state(locked)
+        locked.reply_type = reply_type
+        locked.replied_at = timezone.now()
+        locked.reply_message_id = reply_message_id
+        fields = ["reply_type", "replied_at", "reply_message_id"]
+        if locked.status != SelfInvoice.STATUS_CANCELLED:
+            locked.status = _self_invoice_status(locked, list(current.values()))
+            fields.append("status")
+        locked.save(update_fields=fields)
+        record_history(locked, user, before=before, by=by)
+        return locked
+
+
 def due_date_note(self_invoice):
     """仕入明細の詳細の上の黄色の 1 行の字 (読むだけ)。支払期日が一番早い受領日から 60 日を超えるときだけ字を返し、ほかは空の字。
 

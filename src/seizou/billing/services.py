@@ -934,6 +934,18 @@ def _tax(customer, amounts):
     return round_tax(customer, sum(amounts, _ZERO) * TAX_RATE)
 
 
+def issued_invoices_overlapping(customer, period_from, period_to):
+    """取消でない請求書のうち、請求書の期間が period_from〜period_to と重なる物 (読むだけ)。並びは期間の終わり・番号。
+
+    受けた仕入明細の詳細の「請求書と比べる」の枠 (connect) が、仕入明細の期間と同じ得意先の請求書を並べて見るために呼ぶ。止めず、金額を書き換えない。
+    """
+    return (
+        Invoice.objects.filter(customer=customer, period_from__lte=period_to, period_to__gte=period_from)
+        .exclude(status=Invoice.STATUS_CANCELLED)
+        .order_by("period_to", "invoice_no")
+    )
+
+
 def consumption_tax(partner, amounts):
     """消費税の計算の 1 か所 (_tax) を、ほかの部品 (purchasing の仕入明細) から呼ぶ口。読むだけ。
 

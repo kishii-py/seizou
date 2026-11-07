@@ -723,6 +723,11 @@ class ReceivedSelfInvoice(models.Model):
     received_at = models.DateTimeField("届いた日時", default=timezone.now)
     # 答え (仕入明細回答) を送る番号。答えるたびに新しい番号。相手の受け口が 200 を返したときだけ送った日時を入れる。
     reply_message_id = models.UUIDField("仕入明細回答の番号", null=True, blank=True, unique=True)
+    # 今の答えの文書の種類 (インボイス文書類型コード)。その仕入明細番号への 1 回目の答えは仕入明細回答 "1R"、2 回目からは修正仕入明細回答 "1CR"。
+    # 答えを作る時に決めて残す (同じ答えの送り直しは同じ本文で送るため)。
+    reply_document_code = models.CharField(
+        "答えの文書の種類", max_length=3, choices=edi_codes.SI_DOC_CHOICES[2:], blank=True
+    )
     reply_sent_at = models.DateTimeField("答えを送った日時", null=True, blank=True)
     reply_response = models.CharField("答えの相手の返事", max_length=500, blank=True)
 

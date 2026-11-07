@@ -52,6 +52,7 @@ SKIPPED_NO_ROW = {
         "progress:progress_update",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
         "connect:receivedselfinvoice_detail",  # 種に受けた仕入明細の行が無い (C111。種を足すなら外す)
+        "connect:receivedselfinvoice_answer",
     },
     "b_plating": {
         "attachments:attachment_delete",
@@ -73,6 +74,7 @@ SKIPPED_NO_ROW = {
         "purchasing:receipt_detail",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
         "connect:receivedselfinvoice_detail",  # 種に受けた仕入明細の行が無い (C111。種を足すなら外す)
+        "connect:receivedselfinvoice_answer",
     },
 }
 
