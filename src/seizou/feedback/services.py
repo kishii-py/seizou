@@ -470,7 +470,7 @@ def fixed_notice(rows) -> str:
     more = "ほか " if len(rows) > 1 else ""
     return (
         f"あなたの一言から直しました: 「{rows[0].title}」{more}({len(rows)} 件)。"
-        "詳細は左のメニューの下の「フィードバック」の一覧で見られます。"
+        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った一言」のタブで見られます。"
     )
 
 
@@ -1049,3 +1049,20 @@ def search_issues(words) -> dict:
     found = [row for row in rows if all(term in f"{row['title']}\n{row['body']}".casefold() for term in terms)]
     found.sort(key=lambda row: row["updated_at"], reverse=True)
     return {"issues": found[:ISSUES_SHOWN], "error": "", "repo": repo}
+
+
+# ---- タブの帯の件数 (依頼書 N321) ----
+
+
+def visible_count(user) -> int:
+    """user に見えるフィードバックの件数 (送る画面と一覧の上のタブの帯の「送った一言」の札)。読むだけ。
+
+    絞りは一覧の画面 (views._visible_to) と同じ: 世話役 (can_manage) には全部、ほかの人には自分の書いた分だけ。
+    pk の無い利用者 (ログインしていない人) は 0。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return 0
+    if can_manage(user):
+        return Feedback.objects.count()
+    return Feedback.objects.filter(created_by_id=user_pk).count()

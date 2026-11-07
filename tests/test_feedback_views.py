@@ -7,14 +7,20 @@ _ask_claude を「呼ばれたら AssertionError」に差し替える)。画面�
 import re
 
 import pytest
+import requests
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.core.cache import cache
 from django.urls import reverse
 
 from seizou.assistant import services as assistant_services
 from seizou.core import access
 from seizou.feedback import services
+from seizou.feedback import github
 from seizou.feedback.models import Feedback
+from seizou.feedback.templatetags import feedback_tags
 from tests.test_assistant_services import refuse_api
+from tests.test_feedback_github import Answer, FakeGithub, issue
 
 
 @pytest.fixture(autouse=True)
@@ -448,3 +454,156 @@ def test_list_has_fix_version_column_and_dismissed_filter(client, plain, manager
     html = html_of(client.get("/feedback/?status=dismissed"))
     assert "見送った題" in html and "版待ちの題" not in html
     assert '<option value="dismissed" selected>' in html
+
+
+# ---------------------------------------------------------------- タブの帯 (依頼書 N321。決め 11-07 09:1x〜09:2x)
+
+TAB_IDS = ["feedback-tab-send", "feedback-tab-sent", "feedback-tab-issues"]
+HIDDEN_TAB = '<input type="hidden" name="tab" value="issues">'
+
+
+def tabs_of(html: str) -> str:
+    """タブの帯 (#feedback-tabs) の HTML。"""
+    return re.search(r'<div id="feedback-tabs".*?</div>', html, re.S).group(0)
+
+
+def selected_tabs(html: str) -> list[str]:
+    """帯の中で tab-active の付いたタブの id の並び。"""
+    return re.findall(r'<a id="(feedback-tab-[a-z]+)" role="tab" class="tab tab-active"', tabs_of(html))
+
+
+def sent_count(html: str) -> int:
+    """帯の「送った一言」の件数の札の数。"""
+    return int(re.search(r'id="feedback-tab-sent"[^>]*>送った一言<span class="badge[^"]*">(\d+)</span>', html).group(1))
+
+
+@pytest.fixture
+def github_listing(monkeypatch, settings, tmp_path):
+    """皆の Issue の一覧を返す作り物の GitHub (requests.get・requests.post を差し替える。本物の GitHub へは送らない)。
+
+    .env は一時の置き場、GitHub の鍵の環境変数は外し、django の cache は前後で捨てる (test_feedback_github.py の env_file と同じ)。
+    """
+    settings.SEIZOU_ENV_FILE = tmp_path / ".env"
+    for key in (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV):
+        monkeypatch.delenv(key, raising=False)
+    fake = FakeGithub()
+    fake.listing = Answer(
+        200,
+        [
+            issue(1, "受注の一覧で並びが戻る", "並び替えた後に戻ると元に戻る", updated="2026-11-02T00:00:00Z", plus=3),
+            issue(2, "出荷の画面が重い", "受注を開くと待つ", state="closed", updated="2026-11-05T00:00:00Z"),
+        ],
+    )
+    monkeypatch.setattr(requests, "get", fake.get)
+    monkeypatch.setattr(requests, "post", fake.post)
+    cache.clear()
+    yield fake
+    cache.clear()
+
+
+@pytest.mark.parametrize(
+    ("url", "chosen", "below"),
+    [
+        ("/feedback/new/", "feedback-tab-send", 'id="feedback-issues-link"'),
+        ("/feedback/", "feedback-tab-sent", 'id="feedback-filter"'),
+        ("/feedback/?tab=issues", "feedback-tab-issues", 'id="issues"'),
+    ],
+)
+def test_tabs_are_the_same_on_three_screens(client_logged_in, url, chosen, below):
+    response = client_logged_in.get(url)
+    html = html_of(response)
+
+    assert response.status_code == 200
+    assert html.count('id="feedback-tabs"') == 1
+    bar = tabs_of(html)
+    assert 'role="tablist" aria-label="フィードバックの区分" class="tabs tabs-border mb-4"' in bar
+    assert re.findall(r'id="(feedback-tab-[a-z]+)"', bar) == TAB_IDS
+    assert bar.count('role="tab"') == 3
+    assert ">送る</a>" in bar and ">送った一言<span" in bar and ">みんなの Issue</a>" in bar
+    assert selected_tabs(html) == [chosen]
+    assert bar.count("tab-active") == 1 and bar.count('aria-selected="true"') == 1
+    assert bar.count('<span class="badge') == 1
+    assert 'href="/feedback/"' in bar and 'href="/feedback/?tab=issues"' in bar
+    assert html.index('id="feedback-tabs"') < html.index(below)
+
+
+def test_sent_tab_counts_own_and_manager_counts_all(client, plain, other, manager):
+    make(plain, "自分の題")
+    make(plain, "自分の 2 つ目の題")
+    make(other, "ほかの人の題")
+
+    client.force_login(plain)
+    for url in ("/feedback/new/", "/feedback/", "/feedback/?tab=issues"):
+        assert sent_count(html_of(client.get(url))) == 2
+
+    client.force_login(manager)
+    assert sent_count(html_of(client.get("/feedback/new/"))) == 3
+    assert sent_count(html_of(client.get("/feedback/"))) == 3
+
+    assert services.visible_count(plain) == 2
+    assert services.visible_count(other) == 1
+    assert services.visible_count(manager) == 3
+    assert services.visible_count(AnonymousUser()) == 0
+    assert services.visible_count(None) == 0
+
+
+def test_issues_tab_shows_only_search_and_keeps_tab(client, plain, manager, github_listing):
+    make(plain, "自分の題")
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/?tab=issues"))
+
+    assert 'id="issues"' in html and 'id="issues-form"' in html
+    assert 'id="rows"' not in html and 'id="feedback-filter"' not in html
+    assert "自分の題" not in html
+    assert 'action="/feedback/?tab=issues#issues"' in html
+    assert HIDDEN_TAB in html
+    assert not github_listing.calls
+
+    html = html_of(client.get("/feedback/", {"tab": "issues", "issue_q": "受注 戻る"}))
+    assert selected_tabs(html) == ["feedback-tab-issues"]
+    assert 'href="https://github.com/kishii-py/seizou/issues/1"' in html
+    assert "受注の一覧で並びが戻る" in html and "出荷の画面が重い" not in html
+    assert 'value="受注 戻る"' in html
+    assert HIDDEN_TAB in html
+    assert 'id="rows"' not in html and 'id="feedback-filter"' not in html
+    assert [call[0] for call in github_listing.calls] == ["GET"]
+
+    html = html_of(client.get("/feedback/"))
+    assert 'id="rows"' in html and 'id="feedback-filter"' in html and 'id="issues"' in html
+    assert 'action="/feedback/#issues"' in html and HIDDEN_TAB not in html
+
+    client.force_login(manager)
+    assert 'id="feedback-github"' in html_of(client.get("/feedback/"))
+    assert 'id="feedback-github"' not in html_of(client.get("/feedback/?tab=issues"))
+
+
+def test_send_tab_keeps_screen_and_issue_link_opens_issues_tab(client_logged_in):
+    html = html_of(client_logged_in.get("/feedback/new/?screen=orders%3Aorder_list"))
+    bar = tabs_of(html)
+
+    assert 'id="feedback-tab-send" role="tab" class="tab tab-active" href="/feedback/new/?screen=orders%3Aorder_list"' in bar
+    link = re.search(r'<p id="feedback-issues-link".*?</p>', html, re.S).group(0)
+    assert 'href="/feedback/?tab=issues#issues"' in link
+    assert "似た困りごとが GitHub に出ていないか探す" in link
+    assert html.index('id="feedback-tabs"') < html.index('id="feedback-issues-link"')
+
+    assert 'id="feedback-tab-send" role="tab" class="tab" href="/feedback/new/"' in tabs_of(html_of(client_logged_in.get("/feedback/")))
+
+
+def test_detail_and_update_screens_have_no_tabs(client_logged_in, plain):
+    row = make(plain)
+
+    for url in (f"/feedback/{row.pk}/", f"/feedback/{row.pk}/edit/"):
+        response = client_logged_in.get(url)
+        assert response.status_code == 200
+        assert 'id="feedback-tabs"' not in html_of(response)
+
+
+def test_tabs_tag_without_request_selects_nothing():
+    tabs = feedback_tags.feedback_tabs({})
+
+    assert [tab["key"] for tab in tabs] == ["send", "sent", "issues"]
+    assert [tab["label"] for tab in tabs] == ["送る", "送った一言", "みんなの Issue"]
+    assert [tab["href"] for tab in tabs] == ["/feedback/new/", "/feedback/", "/feedback/?tab=issues"]
+    assert [tab["count"] for tab in tabs] == [None, 0, None]
+    assert not any(tab["selected"] for tab in tabs)

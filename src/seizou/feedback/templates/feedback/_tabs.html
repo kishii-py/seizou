@@ -1,0 +1,7 @@
+{% load feedback_tags %}
+{# フィードバックのタブの帯 (依頼書 N321。決め 11-07 09:1x〜09:2x)。送る画面 (feedback_form.html) と一覧 (feedback_list.html) が block content の頭で include する。詳細と編集の画面には出さない。 #}
+{# 「送る」は送る画面、「送った一言」は一覧 (見える件数の札つき)、「みんなの Issue」は一覧の ?tab=issues。新しい URL は足さない。並びと href と選びは tag の feedback_tabs が決める (GitHub は読まない)。作りは絞りのタブ (core/_presets.html) と同じ。 #}
+{% feedback_tabs as tabs %}
+<div id="feedback-tabs" role="tablist" aria-label="フィードバックの区分" class="tabs tabs-border mb-4">
+  {% for t in tabs %}<a id="feedback-tab-{{ t.key }}" role="tab" class="tab{% if t.selected %} tab-active{% endif %}" href="{{ t.href }}"{% if t.selected %} aria-selected="true"{% endif %}>{{ t.label }}{% if t.count is not None %}<span class="badge badge-sm badge-ghost ml-2 tabular-nums">{{ t.count }}</span>{% endif %}</a>{% endfor %}
+</div>

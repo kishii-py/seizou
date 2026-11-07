@@ -3,9 +3,11 @@
 {# フィードバックの新規登録: 鍵のある会社では、上に AI の聞き取りの段 (1 問ずつ。下書きができると編集の画面へ移る)、下に土台の入力の形。鍵が無ければ入力の形だけ。 #}
 {# AI の段の form は htmx の POST (CSRF の見出しは base.html が付ける)。送信のボタンは主色にしない (主色は入力の形の「保存」だけ)。 #}
 {# 待つ間は、吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
-{# 上の案内 (依頼書 N185): 似た困りごとが GitHub に出ていないかを、一覧の「GitHub の Issue を探す」で先に探せる link。 #}
+{# 上の案内 (依頼書 N185): 似た困りごとが GitHub に出ていないかを、一覧の「GitHub の Issue を探す」で先に探せる link。先は「みんなの Issue」のタブ (一覧の ?tab=issues。依頼書 N321)。 #}
+{# いちばん上はタブの帯 (依頼書 N321。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
 {% block content %}{% feedback_panel as panel %}
-<p id="feedback-issues-link" class="mb-4 flex items-center gap-2 text-sm text-base-content/70">{% icon "search" "size-4" %}<a class="link link-hover" href="{% url 'feedback:feedback_list' %}#issues">似た困りごとが GitHub に出ていないか探す</a></p>
+{% include "feedback/_tabs.html" %}
+<p id="feedback-issues-link" class="mb-4 flex items-center gap-2 text-sm text-base-content/70">{% icon "search" "size-4" %}<a class="link link-hover" href="{% url 'feedback:feedback_list' %}?tab=issues#issues">似た困りごとが GitHub に出ていないか探す</a></p>
 {% if panel.available %}
 <section id="feedback-chat" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-chat-title">
   <div class="flex items-start justify-between gap-4">

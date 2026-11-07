@@ -247,7 +247,7 @@ def test_unseen_fixed_and_notice_text(plain, other, manager):
     assert services.unseen_fixed(AnonymousUser()) == []
     assert services.fixed_notice([rows[0]]) == (
         "あなたの一言から直しました: 「出荷の画面で日付がずれる」(1 件)。"
-        "詳細は左のメニューの下の「フィードバック」の一覧で見られます。"
+        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った一言」のタブで見られます。"
     )
     assert "「出荷の画面で日付がずれる」ほか (2 件)" in services.fixed_notice(rows)
     assert services.fixed_notice([]) == ""

@@ -513,7 +513,7 @@ def test_list_buttons_and_sync_endpoint(client, manager, plain, fake):
 def test_form_screen_links_to_issue_search(client, plain):
     client.force_login(plain)
     html = html_of(client.get("/feedback/new/"))
-    assert 'href="/feedback/#issues"' in html
+    assert 'href="/feedback/?tab=issues#issues"' in html
     assert "似た困りごとが GitHub に出ていないか探す" in html
 
 

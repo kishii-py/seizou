@@ -7,9 +7,12 @@
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_filter as filter %}        一覧の絞り込みの選択肢と今の値
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
+{% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った一言 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
 """
 
 from django import template
+from django.urls import reverse
+from django.utils.http import urlencode
 
 from seizou.feedback import chat, github, services
 from seizou.feedback.forms import SCREENS_LABEL, GithubDeviceForm
@@ -112,3 +115,40 @@ def feedback_fields(fields):
     """
     stored = str(Feedback._meta.get_field("screens").verbose_name)
     return [{**item, "label": SCREENS_LABEL} if item["label"] == stored else item for item in fields or []]
+
+
+#: タブの帯の 3 つ (鍵と字)。並びは画面の左から (依頼書 N321。決め 11-07 09:1x〜09:2x)
+TABS = (("send", "送る"), ("sent", "送った一言"), ("issues", "みんなの Issue"))
+
+
+@register.simple_tag(takes_context=True)
+def feedback_tabs(context):
+    """送る画面と一覧の上のタブの帯 (依頼書 N321)。並び 3 つ [{"key", "label", "href", "count", "selected"}]。例外を出さない。
+
+    href: 送る = 送る画面 (今の GET に screen があれば ?screen= で引き継ぐ。左のメニューの入口が渡した、開いていた画面を失わない)、
+    送った一言 = 一覧、みんなの Issue = 一覧の ?tab=issues (新しい URL は足さない。部品の画面は R15 で土台の 4 つのまま)。
+    count: 送った一言だけ見える件数 (services.visible_count。一覧と同じ絞り)、ほかは None。
+    selected: 送る画面なら送る、一覧で GET の tab が issues ならみんなの Issue、ほかの一覧なら送った一言 (詳細と編集の画面は帯を出さない)。
+    GitHub は読まない (帯を描くたびに HTTP を送らない)。request が無ければ全部 False で、count は 0。
+    """
+    request = context.get("request")
+    params = getattr(request, "GET", {}) if request is not None else {}
+    user = getattr(request, "user", None) if request is not None else None
+    match = getattr(request, "resolver_match", None) if request is not None else None
+    view_name = getattr(match, "view_name", "") or ""
+    send_href = reverse("feedback:feedback_create")
+    screen = params.get("screen", "")
+    if screen:
+        send_href += "?" + urlencode({"screen": screen})
+    list_href = reverse("feedback:feedback_list")
+    hrefs = {"send": send_href, "sent": list_href, "issues": f"{list_href}?tab=issues"}
+    chosen = ""
+    if view_name == "feedback:feedback_create":
+        chosen = "send"
+    elif view_name == "feedback:feedback_list":
+        chosen = "issues" if params.get("tab") == "issues" else "sent"
+    count = services.visible_count(user) if user is not None else 0
+    return [
+        {"key": key, "label": label, "href": hrefs[key], "count": count if key == "sent" else None, "selected": key == chosen}
+        for key, label in TABS
+    ]
