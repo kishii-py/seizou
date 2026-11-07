@@ -50,7 +50,7 @@ from django.db.models import Max, Q, Sum
 
 from seizou.core import access, history
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import next_number, record_history
+from seizou.core.services import company, next_number, record_history
 from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
 from seizou.shipping.services import amount_of_shipment
 
@@ -230,6 +230,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     period = 期間を渡すときの (初め, 終わり) (作り直しで出荷の行が無いとき、取り消した請求書と同じ期間にするため)。空なら invoice_period で決める。
     返す請求書に saved_note と、残りがあれば saved_level = "warning" を付ける。
     書いた請求書と明細は、変更の履歴に「作った」で残す (人は user)。
+    発行した時の会社の登録番号・住所・電話・振込先と得意先の名前と税率、明細の品番・品名・単位 (受注の明細から)・得意先の注文番号を写す
+    (刷り直しても渡した時と同じ字。決め 11-07 23:4x・11-08 00:0x。訳は billing.models の Invoice と InvoiceLine)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     locked = list(_Shipment.objects.select_for_update().filter(pk__in=pks).order_by("pk"))
@@ -252,6 +254,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
         period_from, period_to = invoice_period(customer, locked, issued_on)
     _refuse_second_in_period(customer, period_from, period_to)
 
+    # 発行した時の会社の情報 (1 回だけ読む)。帳票の刷り直しは、この写しだけを読む (billing.reports.invoice_context)。
+    issuer = company()
     invoice = Invoice.objects.create(
         invoice_no=next_number("invoice"),
         customer=customer,
@@ -262,6 +266,12 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
         subtotal=subtotal,
         tax=tax,
         total=subtotal + tax,
+        issuer_registration_no=issuer.registration_no,
+        issuer_address=issuer.address,
+        issuer_phone=issuer.phone,
+        issuer_bank_account=issuer.bank_account,
+        customer_name=customer.name,
+        tax_rate=consumption_tax_rate(),
     )
     record_history(invoice, user)
     created = []
@@ -274,6 +284,7 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
             unit_price=unit_price,
             price_basis=shipment.order_line.price_basis,
             amount=amount,
+            **_line_snapshot(shipment.order_line),
         ))
     for row in lump_lines:
         created.append(InvoiceLine.objects.create(
@@ -285,6 +296,7 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
             price_basis=PRICE_BASIS_LUMP,
             amount=row["amount"],
             last_shipped_at=row["last_shipped_at"],
+            **_line_snapshot(row["order_line"]),
         ))
     for invoice_line in created:
         record_history(invoice_line, user)
@@ -294,6 +306,17 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     if level:
         invoice.saved_level = level
     return invoice
+
+
+def _line_snapshot(order_line):
+    """明細に写す字 (_issue_invoice の出荷の行と一式の行が使う)。部品の品番・品名、受注の明細の単位 (注文で合意した字。空なら空のまま)、
+    受注の得意先の注文番号。"""
+    return {
+        "part_no": order_line.item.part_no,
+        "item_name": order_line.item.name,
+        "unit": order_line.unit,
+        "customer_order_no": order_line.order.customer_order_no,
+    }
 
 
 def _lump_values(customer, lumps, copies):

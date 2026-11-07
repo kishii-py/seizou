@@ -130,3 +130,103 @@ def test_detail_and_modal_do_not_list_snapshot_columns(logged_in, user, item):
         assert "得意先" in labels, name
         for label in SNAPSHOT_LABELS:
             assert label not in labels, (name, label)
+
+
+# ---------------------------------------------------------------- 2 発行の時に写す
+
+#: 発行の時の会社の情報 (作り物)
+COMPANY_AT_ISSUE = {
+    "registration_no": "T0000000000021",
+    "address": "作り物県見本市2-1",
+    "phone": "000-0000-0021",
+    "bank_account": "作り物銀行 見本支店 普通 0000021",
+}
+#: 後で直した会社の情報 (作り物)
+COMPANY_LATER = {
+    "registration_no": "T0000000000022",
+    "address": "作り物県別見本市2-2",
+    "phone": "000-0000-0022",
+    "bank_account": "作り物信用金庫 別支店 当座 0000022",
+}
+
+
+def _snapshot(invoice):
+    invoice.refresh_from_db()
+    row = invoice.lines.get()
+    return (
+        invoice.issuer_registration_no,
+        invoice.issuer_address,
+        invoice.issuer_phone,
+        invoice.issuer_bank_account,
+        invoice.customer_name,
+        invoice.tax_rate,
+        row.part_no,
+        row.item_name,
+        row.unit,
+        row.customer_order_no,
+    )
+
+
+@pytest.fixture
+def changed_later(user, item):
+    """会社の情報を入れてから請求書を作り、その後に会社の情報・得意先の名前・部品の品番と品名と単位・得意先の注文番号を直した請求書。"""
+    core_services.update_company(core_services.company(), COMPANY_AT_ISSUE, user)
+    customer = _customer(user, name="作り物の得意先 発行の時")
+    invoice = _invoice(user, customer, item, customer_order_no="PO-SN-21")
+    order = invoice.lines.get().order_line.order
+
+    core_services.update_company(core_services.company(), COMPANY_LATER, user)
+    masters_services.update_partner(customer, {"name": "作り物の得意先 直した後"}, user)
+    masters_services.update_item(item, {"part_no": "SN-200", "name": "作り物の直した軸", "unit": "本"}, user)
+    orders_services.update_order(order, {"customer_order_no": "PO-SN-22"}, [{"id": order.lines.get().pk}], user)
+    return invoice
+
+
+@pytest.mark.django_db
+def test_snapshot_keeps_values_at_issue_after_masters_change(changed_later):
+    """(d) 請求書を作った後に会社の情報・得意先の名前・部品・得意先の注文番号を直しても、請求書と明細の写しは作った時の値のまま。"""
+    # 直した値が今のマスターと会社の設定に入っている (直しが空振りでない)
+    order_line = changed_later.lines.get().order_line
+    customer = changed_later.customer
+    customer.refresh_from_db()
+    assert core_services.company().registration_no == "T0000000000022"
+    assert customer.name == "作り物の得意先 直した後"
+    assert (order_line.item.part_no, order_line.item.name, order_line.item.unit) == ("SN-200", "作り物の直した軸", "本")
+    assert order_line.order.customer_order_no == "PO-SN-22"
+    assert _snapshot(changed_later) == (
+        "T0000000000021",
+        "作り物県見本市2-1",
+        "000-0000-0021",
+        "作り物銀行 見本支店 普通 0000021",
+        "作り物の得意先 発行の時",
+        Decimal("10.00"),
+        "SN-100",
+        "作り物の軸",
+        "個",
+        "PO-SN-21",
+    )
+
+
+@pytest.mark.django_db
+def test_unit_is_copied_from_order_line(user, item):
+    """(e) 明細の単位の写しは、部品の単位でなく受注の明細の単位 (注文で合意した字)。"""
+    invoice = _invoice(user, _customer(user), item, unit="箱")
+    row = invoice.lines.get()
+    assert item.unit == "個"
+    assert row.unit == "箱"
+    assert row.price_unit_text == "箱"
+
+
+@pytest.mark.django_db
+def test_tax_rate_is_copied_from_consumption_tax_rate(monkeypatch, user, item):
+    """(f) 税率の写しは consumption_tax_rate() (TAX_RATE の 1 か所) から。率を変えた後に作った請求書だけが新しい率で、前の請求書は 10.00 のまま。"""
+    before = _invoice(user, _customer(user, "C001", "作り物の得意先 一"), item)
+    monkeypatch.setattr(billing_services, "TAX_RATE", Decimal("0.12"))
+    after = _invoice(user, _customer(user, "C002", "作り物の得意先 二"), item)
+
+    before.refresh_from_db()
+    after.refresh_from_db()
+    assert after.tax_rate == Decimal("12.00")
+    assert after.subtotal == Decimal("15000") and after.tax == Decimal("1800")
+    assert before.tax_rate == Decimal("10.00")
+    assert before.tax == Decimal("1500")
