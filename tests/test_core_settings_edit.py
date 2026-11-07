@@ -332,7 +332,7 @@ def test_edit_hidden_fields_with_checkboxes(manager_client):
     for name in ("customer_order_no", "due_date", "unit", "note"):
         assert f'value="{name}"' in body
     # 欄の名前は form.hidden_fields と重ならない名前 (重なると checkbox が 2 度出る)
-    assert body.count('type="checkbox" name="names"') == 5
+    assert body.count('type="checkbox" name="names"') == 6  # 使わない項目の候補に見積の番号 (C100 = 373 回目)
     assert 'name="hidden_fields"' not in body
     assert "checkbox checkbox-sm" in body
 
