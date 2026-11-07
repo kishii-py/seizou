@@ -21,7 +21,7 @@ from django.urls import reverse
 from seizou.accounts import services as accounts_services
 from seizou.billing import services as billing_services
 from seizou.billing.reports import invoice_context
-from seizou.core.templatetags.seizou_tags import comma
+from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from tests.billing_helpers import shipped
@@ -112,7 +112,7 @@ def test_lines_tab_is_table_in_print_order(money_on, keiri, invoice):
     assert _headings(panel) == HEADINGS
     printed = invoice_context(invoice)["lines"]
     assert len(printed) == 2
-    # 行の並びと字は印刷用の画面の表と同じ (数量・単価・金額は明細の写しを comma で出した字)
+    # 行の並びと字は印刷用の画面の表と同じ (数量は明細の写しを comma で、単価と金額は yen (頭に ¥) で出した字)
     assert _rows(panel) == [
         [
             f"{row['shipped_at']:%Y-%m-%d}",
@@ -121,8 +121,8 @@ def test_lines_tab_is_table_in_print_order(money_on, keiri, invoice):
             row["item_name"],
             comma(row["quantity"]),
             row["unit"],
-            f"{comma(row['unit_price'])} / {row['price_unit']}",
-            comma(row["amount"]),
+            f"{yen(row['unit_price'])} / {row['price_unit']}",
+            yen(row["amount"]),
         ]
         for row in printed
     ]

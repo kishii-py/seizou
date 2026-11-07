@@ -27,8 +27,8 @@
         <td class="min-w-32">{{ row.obj.order_line.item.name }}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.qty|comma }}</td>
         <td class="whitespace-nowrap">{{ row.obj.order_line.item.unit }}</td>
-        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.unit_price|comma }}<span class="text-base-content/70"> / {{ row.obj.price_unit_text }}</span></td>
-        <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.amount|comma }}</td>{% endif %}
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.unit_price|yen }}<span class="text-base-content/70"> / {{ row.obj.price_unit_text }}</span></td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.amount|yen }}</td>{% endif %}
       </tr>
       {% endfor %}
     </tbody>
