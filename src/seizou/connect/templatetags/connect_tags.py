@@ -283,7 +283,7 @@ def revision_problem(inbox):
 def chat_panel(target, user):
     """会話の枠の中身 (読むだけ)。target は発注・受注・受信した注文のどれか。
 
-    返す物は {"reason": 使えない訳の字 (空 = 使える), "rows": [{"message", "header"}] (古い順), "target_kind", "target_id", "can_write"}。
+    返す物は {"reason": 使えない訳の字 (空 = 使える), "partner_name": 取引先の名前, "rows": [{"message", "header"}] (古い順), "target_kind", "target_id", "can_write"}。
     受注は元の受信した注文を書く先にする (受信した注文の無い受注は reason が「結び付いていない」の字なので欄は押せない)。
     header は吹き出しの上の字: 相手から届いた物は「<取引先の名前> <書いた人の名前 (空なら出さない)> <書いた日時>」、自社が書いた物は「<書いた人の名前> <書いた日時>」。
     can_write は会話に書く画面の部署の門と同じ判定 (access.can_open の connect。記録の行は書かない = record=False)。
@@ -308,6 +308,7 @@ def chat_panel(target, user):
         target_kind, target_id = "", ""
     return {
         "reason": peer.reason,
+        "partner_name": partner_name,
         "rows": rows,
         "target_kind": target_kind,
         "target_id": target_id,
