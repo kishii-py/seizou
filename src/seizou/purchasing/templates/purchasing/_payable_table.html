@@ -1,10 +1,11 @@
 {% load purchasing_tags seizou_tags seizou_icons %}{% comment %}
 支払の見込み (取引先ごと。先月と今月)。受入の一覧の上に置く。中身は tag payable_table (purchasing.services.payable_by_partner)。
 金額を見られない人 (payable.hidden) には表ごと出さない (中身が全部金額のため。「—」も出さない。N155)。class の中に {{ }} と {% if %} を書かない (R19)。
+合計の行の下に「仕入明細で確かめ中の金額」の行 (payable.checking。仕入明細に入れてまだ相手が承諾していない明細の受入の金額。2 か月とも 0 なら出さない。C111-1)。
 {% endcomment %}{% payable_table as payable %}{% if not payable.hidden %}
 <section id="payable-table" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
   <h2 id="payable-title" class="text-lg font-bold">支払の見込み (取引先ごと)</h2>
-  <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計。受入日の月で数えます。</p>
+  <p class="mt-2 text-xs text-base-content/70">受け入れた数量 × 発注の単価の合計 (相手が仕入明細で承諾した明細は、仕入明細の金額)。受入日の月で数えます。</p>
   {% if not payable.rows %}
   <p class="mt-4 text-base-content/70">先月と今月の受入はまだありません。</p>
   {% else %}
@@ -31,6 +32,11 @@
           <td class="text-right tabular-nums">{{ payable.totals.last_month|yen:0 }}</td>
           <td class="text-right tabular-nums">{{ payable.totals.this_month|yen:0 }}</td>
         </tr>
+        {% if payable.checking.last_month or payable.checking.this_month %}<tr class="text-base-content/70" data-payable-checking>
+          <td>仕入明細で確かめ中の金額</td>
+          <td class="text-right tabular-nums">{{ payable.checking.last_month|yen:0 }}</td>
+          <td class="text-right tabular-nums">{{ payable.checking.this_month|yen:0 }}</td>
+        </tr>{% endif %}
       </tfoot>
     </table>
   </div>

@@ -915,7 +915,7 @@ def _list_receipts(user, po_no, days, limit) -> dict[str, Any]:
 
 
 def list_receipts(po_no: str | None = None, days: int = 30, limit: int = 50) -> dict[str, Any]:
-    """受入 (協力企業から受け入れた物の記録。発注側。受け入れた数 × 発注の単価が支払の金額) の一覧を、受入日の新しい順に返す。検収 (得意先の seizou からの受け入れた数の知らせ = list_acceptances) とは別。
+    """受入 (協力企業から受け入れた物の記録。発注側。金額は受け入れた数 × 発注の単価。支払の見込みは、相手が仕入明細で承諾した明細なら仕入明細の金額) の一覧を、受入日の新しい順に返す。検収 (得意先の seizou からの受け入れた数の知らせ = list_acceptances) とは別。
 
     po_no: 発注番号 (完全一致)。渡すと、その発注の受入の全部 (日数を見ない)。null なら全部の発注。
     days: 今日から何日前の受入までを出すか (1〜366。既定 30)。

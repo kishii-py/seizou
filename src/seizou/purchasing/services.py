@@ -1072,12 +1072,38 @@ def notice_rests(line):
     return rests
 
 
+#: 支払の見込みの金額の型 (受入と仕入明細の明細の金額と同じ桁)
+_MONEY_FIELD = DecimalField(max_digits=14, decimal_places=2)
+
+
+def annotate_payable(receipts):
+    """受入の queryset に、支払の見込みで数える金額の列 2 つを足して返す (読むだけ)。
+
+    payable_amount = 相手が仕入明細で承諾した明細 (承諾と、直した内容の承諾) は仕入明細の明細の金額、まだの明細と仕入明細に入っていない受入は
+    受入の金額 (決め C111-1)。取り消した仕入明細の明細は見ない。checking_amount = 取消でない仕入明細に入っていて、まだ承諾されていない明細の
+    受入の金額 (確かめ中の金額)。ほかは 0。保存した金額を選ぶだけで、DB で掛け算と丸めをしない (R03)。
+    中小企業共通 EDI の請求レス方式は、売り手が確認した仕入明細の金額で支払う (インボイス仕様編 6.1.1)。
+    """
+    accepted = (edi_codes.SI_REPLY_ACCEPTED, edi_codes.SI_REPLY_ACKNOWLEDGED)
+    live = SelfInvoiceLine.objects.filter(receipt=OuterRef("pk")).exclude(self_invoice__status=SelfInvoice.STATUS_CANCELLED)
+    confirmed = live.filter(reply_type__in=accepted).values("amount")[:1]
+    return receipts.annotate(
+        payable_amount=Coalesce(Subquery(confirmed, output_field=_MONEY_FIELD), F("amount"), output_field=_MONEY_FIELD),
+        checking_amount=Case(
+            When(Exists(live.exclude(reply_type__in=accepted)), then=F("amount")),
+            default=Value(_ZERO),
+            output_field=_MONEY_FIELD,
+        ),
+    )
+
+
 def payable_by_partner(today=None):
-    """支払の見込み (先月と今月)。受入の金額を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
+    """支払の見込み (先月と今月)。支払の見込みの金額 (annotate_payable) を取引先ごと・月ごと (受入日の月) に足す。読むだけ。
 
     保存した金額の合計 (Sum) で、DB で掛け算をしない。today の既定は今日。行は取引先コードの順で、
     2 か月とも 0 の取引先は入れない。返す物 = {"months": [{"key", "label"} × 2], "rows": [{"partner",
-    "last_month", "this_month"}, …], "totals": {"last_month", "this_month"}}。
+    "last_month", "this_month"}, …], "totals": {"last_month", "this_month"}, "checking": {"last_month", "this_month"}}。
+    checking は仕入明細で確かめ中の金額 (annotate_payable の checking_amount) の月ごとの合計 (取引先ごとには分けない)。
     """
     if today is None:
         today = timezone.localdate()
@@ -1089,16 +1115,18 @@ def payable_by_partner(today=None):
         {"key": f"{this_start:%Y-%m}", "label": f"今月 ({this_start.month} 月)"},
     ]
     sums = {}
+    checking = {"last_month": _ZERO, "this_month": _ZERO}
     for slot, start, end in (("last_month", last_start, this_start), ("this_month", this_start, next_start)):
         rows = (
-            Receipt.objects.filter(received_on__gte=start, received_on__lt=end)
+            annotate_payable(Receipt.objects.filter(received_on__gte=start, received_on__lt=end))
             .order_by()
             .values("line__purchase_order__partner")
-            .annotate(total=Sum("amount"))
+            .annotate(total=Sum("payable_amount"), checking=Sum("checking_amount"))
         )
         for row in rows:
             slots = sums.setdefault(row["line__purchase_order__partner"], {"last_month": _ZERO, "this_month": _ZERO})
             slots[slot] = _dec(row["total"] or _ZERO)
+            checking[slot] += _dec(row["checking"] or _ZERO)
     shown = [pk for pk, slots in sums.items() if slots["last_month"] or slots["this_month"]]
     partner_model = PurchaseOrder._meta.get_field("partner").related_model
     partners = partner_model._default_manager.filter(pk__in=shown).order_by("code", "pk") if shown else []
@@ -1107,7 +1135,7 @@ def payable_by_partner(today=None):
         "last_month": sum((row["last_month"] for row in result_rows), _ZERO),
         "this_month": sum((row["this_month"] for row in result_rows), _ZERO),
     }
-    return {"months": months, "rows": result_rows, "totals": totals}
+    return {"months": months, "rows": result_rows, "totals": totals, "checking": checking}
 
 
 # --- 仕入明細 (受入をまとめて相手へ送る書類。中小企業共通 EDI の仕入明細の項目を元にした。候補 C111) ---

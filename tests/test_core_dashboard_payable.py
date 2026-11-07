@@ -119,7 +119,7 @@ def test_home_shows_payable_card(user, logged_in, partners, shaft, no_http):
     assert "¥2,400" in card and "円" not in card
     # 行き先の link はカードの中 (点線の下の「<画面の名前>を見る」)
     assert re.search(rf'<a [^>]*href="{re.escape(reverse("purchasing:receipt_list"))}"', card)
-    assert f"{timezone.localdate().month} 月に受け入れた数量" in card
+    assert f"{timezone.localdate().month} 月に受け入れた分の支払の見込み" in card
     # 6 枚目のカードとして数字のカードの並びに入る (入金のカードが 7 枚目に続くので、試験の settings では xl 以上で 4 列 × 2 段)
     assert body.index("受信した注文") < start
     assert "xl:grid-cols-4" in body

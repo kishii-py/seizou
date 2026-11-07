@@ -173,6 +173,7 @@ class ReceiptListView(BaseListView):
     screen_name = "受入"
     screen_help = (
         "協力企業から受け入れた物の記録。受け入れた数 × 発注の単価が支払の金額になります。"
+        "相手が仕入明細で承諾した明細は、仕入明細の金額で数えます。"
         "上の表は取引先ごとの先月と今月の支払の見込みです。"
     )
     columns = (
