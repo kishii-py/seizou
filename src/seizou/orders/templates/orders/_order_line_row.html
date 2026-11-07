@@ -1,10 +1,15 @@
 {% load seizou_icons %}
 {# 明細の 1 行 (row は formset の 1 つの form)。行の誤りは欄の下 (赤)。既にある明細を指す隠しの欄は最後の列に置く。 #}
+{# 単価の枡の中に、単価の欄の下に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。部品が空の行は押せない形。C100)。 #}
 <tr class="align-top" data-order-line>
-  {% for field in row.visible_fields %}{% if field.name != "DELETE" %}
+  {% for field in row.visible_fields %}{% if field.name != "DELETE" and field.name != "quote_no" %}
   <td class="{% if field.name == "item" %}min-w-56 w-56{% elif field.name == "unit" %}min-w-20{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">
     {{ field }}
     {% if field.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+    {% if field.name == "unit_price" %}
+    {% if row.quote_no %}<div class="mt-1">{{ row.quote_no }}{% if row.quote_no.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ row.quote_no.errors|join:" " }}</p>{% endif %}</div>{% endif %}
+    <button type="button" class="btn btn-xs btn-outline border-base-300 mt-1" data-price-pick="{% url 'masters:item_price_pick' 0 %}" data-price-kind="sale" data-price-partner-field="customer" data-price-date-field="order_date"{% if not row.item.value %} disabled{% endif %}>{% icon "yen" "size-4" %}単価表から選ぶ</button>
+    {% endif %}
   </td>
   {% if field.name == "unit_price" %}<td class="whitespace-nowrap text-right tabular-nums" data-line-amount></td>{% endif %}
   {% endif %}{% endfor %}

@@ -125,6 +125,10 @@ class OrderLine(models.Model):
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
+    # 単価表から写した見積の番号 (決め PRICE-0)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。書くのは orders.services だけ。
+    quote_no = models.CharField("見積の番号", max_length=35, blank=True, default="")
+    # 受信した注文の明細の工程名 (決め PRICE-5)。中小企業共通 EDI の工程名を元にした列。相手の工程の名前の字のまま持つ (自社の工程マスターにつながない)。受け入れ (connect) だけが入れる。
+    process_name = models.CharField("工程名", max_length=100, blank=True, default="")
 
     class Meta:
         verbose_name = "受注の明細"

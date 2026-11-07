@@ -8,8 +8,9 @@
 - 決まりの番号の無い入力の誤り (取引先の種類が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
-- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・customer_part_no・ext。
+- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・customer_part_no・quote_no・process_name・ext。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
+  quote_no は単価表から写した見積の番号、process_name は受信した注文の明細の工程名 (どちらも無ければ空の字。C100)。
   update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
 - 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
   shipping.services.ship と update_order の終わりに呼ぶ。止めない (現物優先)。
@@ -33,10 +34,10 @@ from .models import Order, OrderLine
 
 _ORDER_KEYS = frozenset({"order_date", "customer_order_no", "note", "customer"})
 _LINE_KEYS = frozenset(
-    {"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "customer_part_no", "ext"}
+    {"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "customer_part_no", "ext", "quote_no", "process_name"}
 )
 _LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line"}
-_LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
+_LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note", "quote_no", "process_name")
 _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
 _R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
@@ -116,6 +117,8 @@ def _add_line(order, line, line_no):
         amount=_amount(order.customer, qty, unit_price, price_basis),
         due_date=line.get("due_date"),
         note=line.get("note", ""),
+        quote_no=line.get("quote_no", ""),
+        process_name=line.get("process_name", ""),
     )
 
 

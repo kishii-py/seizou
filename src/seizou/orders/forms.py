@@ -27,7 +27,7 @@ from .models import Order, OrderLine
 #: hidden_fields に並んでも外さない欄 (price_basis は金額の決まり R03 が読む欄なので外さない)
 KEPT_FIELDS = frozenset({"customer", "item", "qty", "unit_price", "price_basis", "order_date"})
 #: 明細の行から services に渡す鍵
-LINE_KEYS = ("item", "customer_part_no", "qty", "unit", "price_basis", "unit_price", "due_date", "note")
+LINE_KEYS = ("item", "customer_part_no", "qty", "unit", "price_basis", "unit_price", "quote_no", "due_date", "note")
 #: 直すときに data に入れる受注の鍵
 ORDER_KEYS = ("customer", "order_date", "customer_order_no", "note")
 #: 明細の行の formset の prefix (テンプレートと行を足す JS が使う)
@@ -55,6 +55,7 @@ def hideable_fields() -> tuple[tuple[str, str], ...]:
         ("customer_part_no", "得意先の品番"),
         ("due_date", "納期"),
         ("unit", "単位"),
+        ("quote_no", "見積の番号"),
         ("note", "備考"),
     )
 
@@ -95,6 +96,13 @@ class OrderLineForm(forms.Form):
         min_value=Decimal("0.01"),
         error_messages={"min_value": "単価は 0 より大きい数にしてください。"},
     )
+    # 単価表から写した見積の番号 (決め PRICE-0)。表の列にせず、単価の枡の中に置く (orders/_order_line_row.html)。
+    quote_no = forms.CharField(
+        label="見積の番号",
+        max_length=35,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "input input-sm w-full", "placeholder": "見積の番号", "aria-label": "見積の番号"}),
+    )
     due_date = forms.DateField(label="納期", required=False, widget=_date_input())
     note = forms.CharField(label="備考", max_length=500, required=False)
 
@@ -117,6 +125,8 @@ class OrderLineForm(forms.Form):
             # 単価の単位も金額を変えるので、単価の欄と組で外す (直す保存では鍵を渡さず、今の値のまま)。
             self.fields.pop("unit_price", None)
             self.fields.pop("price_basis", None)
+            # 見積の番号も単価の元なので、単価の欄と組で外す (C100。直す保存では鍵を渡さず、今の値のまま)。
+            self.fields.pop("quote_no", None)
         # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if "unit_price" in self.fields:
@@ -257,6 +267,7 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
             "unit": row.unit,
             "unit_price": row.unit_price,
             "price_basis": row.price_basis,
+            "quote_no": row.quote_no,
             "due_date": row.due_date,
             "note": row.note,
         }
