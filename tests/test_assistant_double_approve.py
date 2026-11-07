@@ -299,3 +299,35 @@ def test_tool_error_after_save_stays_running(monkeypatch, user, order):
 
     assert again["notice"] == services.MESSAGE_PROPOSAL_SAVED
     assert _shipments() == 1
+
+
+# ---- 作る物 5: 画面の口で承認を 2 回送る (2 回目の前に session を承認の前の写しに戻す) ----
+
+APPROVE_URL = "/assistant/approve/"
+HTMX = {"HTTP_HX_REQUEST": "true"}
+
+
+@pytest.mark.django_db
+def test_view_double_post_with_restored_session_ships_once(monkeypatch, client, user, order):
+    from tests.test_assistant_services import FAKE_KEY, script, text_reply, tool_reply
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    client.force_login(user)
+    # tests/test_assistant_views.py の _ask_ship と同じ形: ship の偽の往復で質問する
+    script(monkeypatch, [tool_reply("ship", _ship_arguments(order)), text_reply("出荷の提案を出しました。")])
+    question = {"question": f"{order.order_no} の 1 行目を 3 個出荷して", "page_url": "/", "screen_name": "ダッシュボード"}
+    client.post("/assistant/ask/", question, **HTMX)
+    (proposal,) = services.history(client.session)[-1]["proposals"]
+    copied = copy.deepcopy(client.session[services.HISTORY_KEY])
+
+    first = client.post(APPROVE_URL, {"proposal_id": proposal["id"]}, **HTMX).content.decode()
+    assert "保存しました" in first
+    assert _shipments() == 1
+
+    session = client.session
+    session[services.HISTORY_KEY] = copied
+    session.save()
+    second = client.post(APPROVE_URL, {"proposal_id": proposal["id"]}, **HTMX).content.decode()
+
+    assert "保存済み" in second
+    assert _shipments() == 1
