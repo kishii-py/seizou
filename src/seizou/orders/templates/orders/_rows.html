@@ -3,6 +3,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
 受注の一覧 (order_list) と注文残の一覧 (orderline_list) に行があるときだけ、core/_rows.html の「行がある時」の部分
 (表・ページ送り・partial のときの _list_meta.html の oob) を写して、次の 2 つを変える。
 - 受注の一覧: 状態の列 (列の名前 status) の欄を色の印にする。字は欄の値 (状態の表示名) のまま。列の並びは変えない。
+  右端に「要点」の列 (行の「要点を見る」の目の印 = core/_row_summary_link.html。押すと受注の小窓 orders:order_modal を開く。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 - 注文残の一覧 (注残の盤): orders/_board_rows.html (判断の列の印・合計の行・行のメニュー)。
 それ以外 (空の一覧と、ほかの画面) は core/_rows.html をそのまま使う。
 写した元: core/_rows.html (11-02 夜の main)。土台の表の形が変わったら、ここも合わせる。
@@ -18,7 +19,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
     {% for col in columns %}<th class="whitespace-nowrap font-medium{% if col.numeric %} text-right{% endif %}"{% if sort == col.name %} aria-sort="ascending"{% elif sort == col.desc_name %} aria-sort="descending"{% endif %}>
       {% if col.sortable %}<a class="inline-flex items-center gap-2 rounded hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary" href="?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-get="{{ request.path }}?{{ query_without_sort }}&sort={% if sort == col.name %}-{% endif %}{{ col.name }}" hx-target="#rows" hx-push-url="true">{{ col.label }}{% if sort == col.name %}{% icon "chevron-up" "size-4 text-primary" %}{% elif sort == col.desc_name %}{% icon "chevron-down" "size-4 text-primary" %}{% else %}{% icon "chevrons-up-down" "size-4 text-base-content/60" %}{% endif %}</a>{% else %}{{ col.label }}{% endif %}
     </th>{% endfor %}
-    {% if url_name == "orderline_list" %}<th class="whitespace-nowrap font-medium">操作</th>{% endif %}
+    {% if url_name == "orderline_list" %}<th class="whitespace-nowrap font-medium">操作</th>{% elif url_name == "order_list" %}<th class="whitespace-nowrap font-medium">要点</th>{% endif %}
   </tr></thead>
   <tbody>
     {% for row in rows %}
@@ -36,11 +37,11 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
       {% endif %}
       {% endif %}{% endfor %}
       {% endfor %}
-      {% if url_name == "orderline_list" %}<td class="whitespace-nowrap">{% include "orders/_line_actions.html" with line=row.obj order=row.obj.order %}</td>{% endif %}
+      {% if url_name == "orderline_list" %}<td class="whitespace-nowrap">{% include "orders/_line_actions.html" with line=row.obj order=row.obj.order %}</td>{% elif url_name == "order_list" %}<td class="whitespace-nowrap text-right">{% url 'orders:order_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>{% endif %}
     </tr>
     {% endfor %}
   </tbody>
-  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|yen_if:cell.money }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if url_name == "orderline_list" %}<td></td>{% endif %}</tr></tfoot>{% endif %}
+  {% if totals %}<tfoot><tr class="bg-base-200 font-bold text-base-content">{% for cell in totals %}<td class="whitespace-nowrap{% if cell.numeric %} text-right tabular-nums{% endif %}">{% if cell.numeric %}{{ cell.value|yen_if:cell.money }}{% elif forloop.first %}合計{% endif %}</td>{% endfor %}{% if url_name == "orderline_list" or url_name == "order_list" %}<td></td>{% endif %}</tr></tfoot>{% endif %}
 </table>
 </div>
 </div>

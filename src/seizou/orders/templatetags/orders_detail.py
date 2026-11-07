@@ -11,6 +11,7 @@
 - order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。N184)。
 - order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x。C15-1 b・UX-2 a)。受注の詳細の block heading が
   {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
+- order_total: 明細の金額の合計 (受注の小窓 orders/_modal.html の「明細の合計」。order_aside の金額のカードと同じ式。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 """
 
 from decimal import Decimal
@@ -74,6 +75,12 @@ def order_aside(order, fields, hide_money=False) -> dict:
         }
     )
     return {"cards": cards}
+
+
+@register.simple_tag
+def order_total(order) -> Decimal:
+    """明細の金額の合計 ({% order_total object as total %})。order_aside の金額のカードと同じ式 (読むだけ)。金額を見せるかは呼ぶ側 (seizou.hide_money) が決める。"""
+    return sum((line.amount for line in order.lines.all()), _ZERO)
 
 
 @register.simple_tag
