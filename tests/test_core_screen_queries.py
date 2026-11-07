@@ -171,8 +171,8 @@ LIMITS = {
     "stock:finished_create": 20,
     "stock:issue_create": 19,
     "stock:adjust_create": 19,
-    "feedback:feedback_list": 20,
-    "feedback:feedback_create": 19,
+    "feedback:feedback_list": 21,  # タブの帯の件数で +1 (依頼書 N321。11-07 の実測 15 → 16)
+    "feedback:feedback_create": 20,  # タブの帯の件数で +1 (依頼書 N321。11-07 の実測 14 → 15)
     "notes:note_edit": 19,
 }
 # 上限の表に無い画面 (後から足した画面) の上限 (11-06 の実測の最大 63 + 10)
