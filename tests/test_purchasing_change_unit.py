@@ -175,3 +175,13 @@ def test_form_without_money_has_no_new_row_and_no_unit_field(order):
     form = PurchaseOrderChangeForm(instance=order, hide_money=True)
     assert len(form.lines.forms) == 3
     assert all("unit" not in row.fields for row in form.lines.forms)
+
+
+@pytest.mark.django_db
+def test_unlisted_unit_error_shows_under_unit_select(client_logged_in, order, rod):
+    response = client_logged_in.post(_url(order), _form_data(order, add=_add(rod, "")))
+    assert response.status_code == 200
+    body = response.content.decode()
+    cell = body[body.index('<select name="lines-3-unit"') :]
+    cell = cell[: cell.index("</td>")]
+    assert cell.count(UNLISTED_LINE_UNIT.format(unit="本")) == 1

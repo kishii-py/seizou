@@ -3,7 +3,7 @@
 {% block content %}{{ block.super }}
 {# 送った発注の変更: core の入力の画面と同じ形のカードに、備考の欄と明細の行の表。保存すると services が発注を直し、第 n 版の変更として相手へ送る。 #}
 {# 画面の全体で開く (小窓にしない = 明細の表が広いため)。形は発注の入力のカード (purchasing/_purchaseorder_card.html)。協力企業と発注日は字で出す (欄にしない)。 #}
-{# 既にある明細の行は部品と単位を字で出し (直せない)、相手が出荷した行は単価の欄と消す印を出さず「出荷済み s」を出す。明細の表に「出荷の知らせ」「受入の数」の列を足す (直せる限りが見えるように)。 #}
+{# 既にある明細の行は部品と単位を字で出し (直せない)、足す行の単位は数量単位の一覧から選ぶ欄 (部品を選ぶと JS が部品の単位のコードを写す。N349)。相手が出荷した行は単価の欄と消す印を出さず「出荷済み s」を出す。明細の表に「出荷の知らせ」「受入の数」の列を足す (直せる限りが見えるように)。 #}
 {# 取り消した明細 (明細状態コード 2) は form に出さない。黄の確かめ (取適法) は右上の知らせに出て、ボタンが「このまま保存」になる。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
@@ -49,7 +49,7 @@
           <td class="whitespace-nowrap text-right tabular-nums">{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% if row.existing %}{{ row.existing.line_no }}{% endif %}{% if row.non_field_errors %}<p class="mt-2 text-xs text-error">{{ row.non_field_errors|join:" " }}</p>{% endif %}</td>
           <td class="min-w-48 [&_[aria-invalid=true]]:border-error">{% if row.existing %}{% master_link row.existing.item %}{% else %}{{ row.item }}{% if row.item.errors %}<p class="mt-2 text-xs text-error">{{ row.item.errors|join:" " }}</p>{% endif %}{% endif %}</td>
           <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{{ row.qty }}{% if row.qty.errors %}<p class="mt-2 text-xs text-error">{{ row.qty.errors|join:" " }}</p>{% endif %}{% if row.shipped > 0 %}<span class="mt-1 block text-xs text-base-content/70">出荷済み {{ row.shipped_text }}</span>{% endif %}</td>
-          <td class="min-w-32">{% if row.existing %}{{ row.existing.unit }}{% else %}{{ row.unit }}{% endif %}</td>
+          <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{% if row.existing %}{{ row.existing.unit }}{% else %}{{ row.unit }}{% if row.unit.errors %}<p class="mt-2 text-xs text-error">{{ row.unit.errors|join:" " }}</p>{% endif %}{% endif %}</td>
           {% if not form.hide_money %}<td class="min-w-32 [&_[aria-invalid=true]]:border-error">{% if row.existing and row.shipped > 0 %}<span class="tabular-nums">{{ row.existing.unit_price|yen }}</span>{% else %}{{ row.unit_price }}{% if row.unit_price.errors %}<p class="mt-2 text-xs text-error">{{ row.unit_price.errors|join:" " }}</p>{% endif %}{% endif %}</td>{% endif %}
           <td class="min-w-32">{{ row.due_date }}</td>
           <td class="min-w-32">{{ row.note }}</td>
