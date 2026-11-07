@@ -1,7 +1,13 @@
 """注文書の読み取りの表 (05 の 9 節)。
 
 読み取った中身は、Claude の API が返して形を検査した辞書のまま JSON で持つ。
-数と金額の列は持たない (数量と単価は読み取った字のまま。受注にするときに orders の services が数と金額を決める)。
+数と単価は読み取った字のまま JSON に持ち、探すための注文日と金額だけを列に持つ (金額は読み取った字の数量 × 単価の合計で、
+受注の金額の式 = masters の line_amount の取引先の丸めと単価の単位では計算しない。単価が 1 つでも空なら空)。
+受注にするときに orders の services が数と金額を決める。
+訳: 読み取った注文書 (電子取引で受けた物を含む) を、取引年月日・金額・取引先で探せるようにするため。金額は読み取った字のままにし、
+seizou の式で作った値を注文書の金額のように見せない。出所 = 本人の決め 11-08 00:37 (残す・読み取った字のまま・一覧に列を足す) と、
+エンタープライズ化の調べ 第一弾の候補 22 の直し方の直し (b)。電帳法の検索の要件への当てはめは未確認。
+変えてよい条件 = 本人が決め直したとき、または読み取りの形に合計の金額の項目を足したとき。
 人が確かめて「受注にする」を押すまで受注にはならない。書くときは intake.services を通す。
 見張るフォルダの読み取り (命令 seizou_intake_watch) は受注にせず、受信した注文 (connect の Inbox) の行にして、状態を「受信した注文へ回した」にする。
 """
@@ -41,6 +47,9 @@ class Extraction(models.Model):
     )
     file = models.FileField("元のファイル", upload_to="intake/%Y/%m/")
     extracted = models.JSONField("読み取った中身")
+    # 読み取った字から extract_order が書く (注文日 = 読み取った注文日の字、金額 = 読み取った数量の字 × 単価の字の合計。単価が 1 つでも空なら空)。受注の金額とはずれうる
+    order_date = models.DateField("注文日", null=True, blank=True, editable=False)
+    amount = models.DecimalField("金額", max_digits=14, decimal_places=2, null=True, blank=True, editable=False)
     status = models.CharField("状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_EXTRACTED)
     order = models.OneToOneField(
         "orders.Order",
