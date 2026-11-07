@@ -2,6 +2,7 @@
 
 指示書の詳細には、発行のときだけ「取り消す」が出る。理由は「取消の理由」に残る。
 実績の入った指示書の取消は赤の知らせで発行のまま。取消の指示書は生産計画の盤から外れる。
+実績の入った指示書の取消の画面は、押す前に黄の断りを出し、理由の欄と取り消すボタンを出さない。
 """
 
 import re
@@ -139,7 +140,8 @@ def test_cancel_screen_says_cancel(logged_in, user, workorder):
     assert response.status_code == 200
     stopped = response.content.decode()
     assert 'data-notice="stop"' in stopped
-    assert "取り消す</button>" in stopped
+    # 実績の入った指示書で止まった画面は、赤の知らせと黄の断りだけで、取り消すボタンを出さない (初見テスト R5 の候補 C79)
+    assert "取り消す</button>" not in stopped
     assert "保存</button>" not in stopped
     workorder.refresh_from_db()
     assert workorder.status == WorkOrder.STATUS_ISSUED
@@ -179,3 +181,91 @@ def test_cancelled_detail_shows_cancel_reason_row_even_if_empty(logged_in, user,
     # 理由を書かずに取り消した指示書も、行を出して「—」
     reason = REASON_DT.search(body)
     assert reason and "—" in reason.group(1)
+
+
+# --- 実績の入った指示書の取消は、押す前に断りの文を出す (初見テスト R5 の候補 C79) ---
+
+#: 小窓の頭 (tests/test_small_inputs_modal.py の MODAL と同じ字)
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
+#: 入力のカード (core/_form_card.html) の form の頭 (画面の全体には上の帯のログアウトの form もあるので、class まで見る)
+FORM_CARD = '<form method="post" class="rounded-xl'
+
+
+def _warning(body):
+    """最初の alert-warning の箱 (次の </div> まで)。"""
+    warning = body[body.index("alert-warning") :]
+    return warning[: warning.index("</div>")]
+
+
+@pytest.mark.django_db
+def test_progress_cancel_screen_refuses_before_press(logged_in, user, workorder):
+    """全体の画面を GET すると、黄の断りと「指示書へ戻る」が出て、確かめの文と理由の欄と取り消すボタンは出ない。"""
+    url = reverse("workorders:workorder_cancel", args=[workorder.pk])
+    back = f'href="{reverse("workorders:workorder_detail", args=[workorder.pk])}"'
+
+    # 実績が無い時は、今のまま form と理由の欄があり、「指示書へ戻る」は無い
+    fresh = logged_in.get(url).content.decode()
+    assert FORM_CARD in fresh
+    assert 'name="reason"' in fresh
+    assert f"{workorder.wo_no} を取り消す</button>" in fresh
+    assert "指示書へ戻る" not in fresh
+
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+    page = logged_in.get(url)
+
+    assert page.status_code == 200
+    body = page.content.decode()
+    warning = _warning(body)
+    assert '<span class="font-semibold">取り消せません。</span>' in warning
+    assert services.cancel_refusal(workorder).partition("。")[2].strip() in warning
+    assert "この指示書を取り消します。" not in body
+    assert FORM_CARD not in body
+    assert 'name="reason"' not in body
+    assert f"{workorder.wo_no} を取り消す</button>" not in body
+    assert back in body
+    assert "指示書へ戻る" in body
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_progress_cancel_post_shows_refusal_without_button(logged_in, user, workorder):
+    """URL を直に開いて POST すると、赤の知らせの下に同じ黄の断りが出て、確かめの文と理由の欄と取り消すボタンは残らない。"""
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+
+    response = logged_in.post(reverse("workorders:workorder_cancel", args=[workorder.pk]), {"reason": "作り物の理由"})
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'data-notice="stop"' in body
+    assert "alert-warning" in body
+    assert "この指示書を取り消します。" not in body
+    assert FORM_CARD not in body
+    assert 'name="reason"' not in body
+    assert f"{workorder.wo_no} を取り消す</button>" not in body
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_progress_cancel_refusal_in_modal(logged_in, user, workorder):
+    """小窓は黄の断りだけで、form と取り消すボタンと「指示書へ戻る」を出さない (小窓の下は指示書の詳細)。全体の画面は「指示書へ戻る」を出す。"""
+    progress_services.record_progress(workorder.steps.get(), Decimal("1"), RECORDED_AT, user)
+    url = reverse("workorders:workorder_cancel", args=[workorder.pk])
+    back = f'href="{reverse("workorders:workorder_detail", args=[workorder.pk])}"'
+
+    modal = logged_in.get(url, **MODAL).content.decode()
+    assert "<html" not in modal
+    warning = _warning(modal)
+    assert '<span class="font-semibold">取り消せません。</span>' in warning
+    assert services.cancel_refusal(workorder).partition("。")[2].strip() in warning
+    assert '<form method="post"' not in modal
+    assert f"{workorder.wo_no} を取り消す</button>" not in modal
+    assert "指示書へ戻る" not in modal
+
+    whole = logged_in.get(url).content.decode()
+    assert "<html" in whole
+    assert back in whole
+    assert "指示書へ戻る" in whole
+    workorder.refresh_from_db()
+    assert workorder.status == WorkOrder.STATUS_ISSUED

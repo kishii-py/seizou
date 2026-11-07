@@ -11,6 +11,7 @@
   書く前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
 - 受注 (Order・OrderLine) は書かない。
 - 指示書の取消は cancel_workorder。実績が 1 件でも入った指示書は取り消せない (実績は progress を import せず、工程の逆の関係で数える)。
+  取り消せない理由の文は cancel_refusal の 1 か所 (取消の確かめのカードも同じ文を出す)。
 """
 
 from __future__ import annotations
@@ -148,19 +149,34 @@ def _progress_count(steps):
     return records._default_manager.filter(workorder_step__in=steps).count()
 
 
+def cancel_refusal(workorder) -> str:
+    """指示書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
+
+    指示書の工程に入った実績の件数 (_progress_count) で文を作る。cancel_workorder と取消の確かめのカード
+    (workorders_tags の workorder_cancel_refusal) が同じ文を使う。指示書の状態は見ない。
+    訳: 実績の入った指示書を取り消さないため (取り消すと、生産計画と進捗の盤から実績ごと外れる)。出所 = AI の案 (docs/nights/20261102/N26.md)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
+    """
+    count = _progress_count(workorder.steps.all())
+    if not count:
+        return ""
+    return f"取り消せません。指示書 {workorder.wo_no} には実績が {count} 件入っています。"
+
+
 def cancel_workorder(workorder, user, *, reason=""):
     """実績の無い指示書を取消にする。reason は「取消の理由」の列に残す。
 
     取消の指示書は issued_qty に数えず、生産計画と進捗の盤にも出ない。取消した受注の指示書も取り消せる。
+    実績が入っていれば、何も変えずに ValueError (文は cancel_refusal の 1 か所)。
     """
     with transaction.atomic():
         locked = WorkOrder.objects.select_for_update().get(pk=workorder.pk)
-        steps = list(WorkOrderStep.objects.select_for_update().filter(workorder=locked).order_by("pk"))
+        list(WorkOrderStep.objects.select_for_update().filter(workorder=locked).order_by("pk"))
         if locked.status == WorkOrder.STATUS_CANCELLED:
             raise ValueError("取り消せません。この指示書は取り消し済みです。指示書の詳細を開き直してください。")
-        count = _progress_count(steps)
-        if count:
-            raise ValueError(f"取り消せません。指示書 {locked.wo_no} には実績が {count} 件入っています。")
+        refusal = cancel_refusal(locked)
+        if refusal:
+            raise ValueError(refusal)
         limit = WorkOrder._meta.get_field("cancel_reason").max_length
         if len(reason) > limit:
             raise ValueError(f"取り消せません。取消の理由が {limit} 字を超えます。理由を短くしてください。")
