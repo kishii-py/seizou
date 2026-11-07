@@ -1,6 +1,8 @@
 {% extends "core/base.html" %}
 {% load manuals_tags seizou_icons %}
 {# 差分: 左にその版、右に今の中身。Markdown の字の行のまま並べる。行の色は種類ごとに要素で書き分ける (R19)。字の欄は whitespace-pre-wrap なので、中身 (目印の札・薄い記号・残りの字) を 1 行に書き、間に空白と改行を置かない。 #}
+{# 頭: 題の上にパンくず (マニュアル › 題 › 版の履歴 › この画面。core/detail.html の頭と同じ形)。この view の model は ManualVersion で土台の一覧の URL と名前が引けないので、URL の名前を書く。 #}
+{% block heading %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/50" %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_list' %}">マニュアル</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manual_detail' object.manual_id %}">{{ object.manual }}</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{% url 'manuals:manualversion_list' object.manual_id %}">版の履歴</a>{% icon "chevron-right" "size-4 text-base-content/50" %}<span class="font-medium" aria-current="page">{{ screen_name }}</span></nav>{{ block.super }}{% endblock %}
 {% block actions %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.manual_id %}">{% icon "list" "size-4" %}版の履歴</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_restore' object.pk %}">版 {{ object.number }} に戻す</a>
