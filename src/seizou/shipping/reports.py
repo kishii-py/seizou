@@ -23,11 +23,12 @@ def delivery_note_context(note) -> dict:
     """納品書 1 枚の帳票の context。
 
     company = 出荷元の {"name", "address", "phone", "logo"} (振込先は請求書だけに出すので渡さない。出荷ラベルと同じ形)、note = {"number", "date"}、customer = 得意先、
-    lines = 出荷ごとの {"shipment_no", "shipped_at", "item_code", "item_name", "quantity", "unit", "unit_price", "price_unit", "amount"}、
+    lines = 出荷ごとの {"shipment_no", "shipped_at", "item_code", "item_name", "customer_order_no", "quantity", "unit", "unit_price", "price_unit", "amount"}
+    (customer_order_no は受注の「得意先の注文番号」の写し。得意先が自分の注文番号で照合するため = 見つけ print-03。空なら帳票に出ない)、
     total = 金額の合計、cancelled = 状態が取消なら真。
     """
     customer = note.customer
-    shipments = note.shipments.select_related("order_line__item").order_by("shipped_at", "pk")
+    shipments = note.shipments.select_related("order_line__item", "order_line__order").order_by("shipped_at", "pk")
     lines = []
     total = Decimal("0")
     for shipment in shipments:
@@ -39,6 +40,7 @@ def delivery_note_context(note) -> dict:
                 "shipped_at": shipment.shipped_at,
                 "item_code": order_line.item.part_no,
                 "item_name": order_line.item.name,
+                "customer_order_no": order_line.order.customer_order_no,
                 "quantity": shipment.qty,
                 "unit": order_line.unit,
                 "unit_price": order_line.unit_price,

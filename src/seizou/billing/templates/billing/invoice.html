@@ -5,6 +5,7 @@
 金額と合計は context に入った値 (明細の写し) をそのまま出し、ここでは計算しない。
 頭の「ご請求金額 (税込)」と支払期日の枠 (report-amount) は、得意先の経理の人が最初に探す「いくらをいつまでに」を宛名の下に出す (見つけ print-02)。
 支払期日は、取引先の支払の欄が空の請求書では行ごと出さない (番号などの表と枠の両方)。振込先の枠は土台 (report_base.html) が合計の下に出す。
+品名の下の「注文番号 …」は得意先の注文番号 (受注の写し。見つけ print-03)。空なら出さない。列は増やさない。
 pdf_notice は PDF を作れない環境で、印刷用の HTML に落としたときだけ入る。
 {% endcomment %}
 {% block title %}請求書 {{ invoice.number }}{% endblock %}
@@ -35,7 +36,7 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
       <td class="date">{{ line.shipped_at|date:"Y年n月j日" }}</td>
       <td class="code">{{ line.shipment_no }}</td>
       <td class="code">{{ line.item_code }}</td>
-      <td>{{ line.item_name }}</td>
+      <td>{{ line.item_name }}{% if line.customer_order_no %}<p class="report-order-no">注文番号 {{ line.customer_order_no }}</p>{% endif %}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
       <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }} / {{ line.price_unit }}</td>

@@ -241,6 +241,12 @@ th {
   white-space: nowrap;
 }
 
+/* 品名の下の得意先の注文番号 (見つけ print-03)。列を増やさず、品名の枡の 2 行目に小さく出す (得意先が自分の注文番号で照合するため) */
+.report-lines .report-order-no {
+  font-size: 8pt;
+  line-height: 1.3;
+}
+
 /* 明細の 1 行をページの境で割らない (品名が 2 行になる行が、ページの境で上下に分かれたため。2 ページの請求書の目視 11-07) */
 .report-lines tr {
   page-break-inside: avoid;
