@@ -148,19 +148,6 @@ def normalize_screens(value) -> str:
     return " ".join(dict.fromkeys(found))
 
 
-def list_filter(params) -> dict:
-    """一覧の絞り込みの今の値 {"status": 字, "kind": 字}。画面の get_queryset と tag の feedback_filter が読む。
-
-    params は GET の QueryDict か辞書 (.get で読む)。値が STATUSES・KINDS の中なら字のまま、
-    外の値・空・無い鍵は空の字 (絞らない)。
-    """
-    if not hasattr(params, "get"):
-        params = {}
-    status = params.get("status")
-    kind = params.get("kind")
-    return {"status": status if status in STATUSES else "", "kind": kind if kind in KINDS else ""}
-
-
 # ---- 権限 ----
 
 

@@ -55,21 +55,23 @@ class FeedbackListView(BaseListView):
     model = Feedback
     columns = ("created_at", "kind", "title", "screen", "status", "fix_version", "created_by", "input_tokens", "output_tokens")
     search_fields = ("title", "problem", "situation", "wish")
+    # 一覧の絞り (土台の FilterSpec。受注の一覧 OrderListView と同じ形。決め UX-FEEDBACK-1 11-07 09:0x「filterの部分が二箇所あって統一感がない」)。
+    # 候補は表の choices の並びのまま (状態 = 下書き・確認済み・送った・直した・見送った、種類 = 6 つ)。GET の名前は土台の f_status・f_kind。
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "kind", "label": "種類", "kind": "choice", "field": "kind"},
+    )
     ordering = ("-created_at", "-pk")
     screen_name = "フィードバック"
     screen_help = "伝えた困りごと・要望・不具合の下書きと状態の一覧。自分の分が並び、アカウント管理の担当者には全部が並びます。"
     template_name = "feedback/feedback_list.html"
 
     def get_queryset(self):
+        # 土台 (super) が検索と絞り (f_status・f_kind) を当てた後に、自分の分に絞る (世話役は全部)。
         queryset = _visible_to(super().get_queryset(), self.request.user)
         if self.request.GET.get("tab") == "issues":
             # 「みんなの Issue」のタブは表を描かないので数えない (依頼書 N321)
             return queryset.none()
-        chosen = services.list_filter(self.request.GET)
-        if chosen["status"]:
-            queryset = queryset.filter(status=chosen["status"])
-        if chosen["kind"]:
-            queryset = queryset.filter(kind=chosen["kind"])
         return queryset
 
 
