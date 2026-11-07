@@ -8,8 +8,10 @@
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
+import stat
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -412,3 +414,23 @@ def test_doctor_mail_without_sender_keeps_exit_code(doctor_site, free_disk, monk
     sent_lines = [line for line in out.splitlines() if "メールで送れませんでした" in line]
     assert len(sent_lines) == 1
     assert "差出人" in sent_lines[0]
+
+
+# ---------------------------------------------------------------- 6. 控えの権限
+
+
+@sqlite_only
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="Windows と root では、権限で読めなくする形を見られない")
+@pytest.mark.django_db(transaction=True)
+def test_command_backup_is_private(site):
+    """(o) 命令の控えのフォルダは 0o700、DB の写しは 0o600 (持ち主だけが読める)。中のフォルダとファイルも同じ。"""
+    put_site_files(site)
+
+    run("seizou_backup")
+
+    folder = folders(site / "backups")[0]
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+    assert stat.S_IMODE((folder / "db.sqlite3").stat().st_mode) == 0o600
+    assert stat.S_IMODE((folder / backup.MANIFEST).stat().st_mode) == 0o600
+    assert stat.S_IMODE((folder / backup.SITE_DIR / "fields").stat().st_mode) == 0o700
+    assert stat.S_IMODE((folder / "media" / "drawings" / "a.png").stat().st_mode) == 0o600

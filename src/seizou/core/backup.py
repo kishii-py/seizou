@@ -52,6 +52,9 @@ SITE_DIRS = ("fields", "templates", "static", "manual", "deploy")
 SITE_IGNORE = ("__pycache__",)
 #: integrity_check が通らないときに断りの文に添える行の数
 INTEGRITY_LINES = 3
+#: 命令 seizou_backup の控えの権限 (フォルダと、中のファイル。Windows では変えない)
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_FILE_MODE = 0o600
 
 ENV_NOTICE = ".env (鍵) は控えに入れていません。別の安全な場所に写してください。"
 #: pg_dump が無いときの案内 ({name} = DB の名前、{path} = 写しの道)。接続の鍵は入れない
@@ -152,8 +155,8 @@ def take_backup(parent: Path, *, suffix: str = "", full: bool = False) -> dict:
 
     途中で失敗したら、作りかけのフォルダを消してから例外を上げ直す (半端な控えを残さない)。
     full が真 (命令 seizou_backup だけ) のときは、写した SQLite の DB を integrity_check で確かめ (通らなければ BackupError)、
-    会社の作り込みの許しの一覧 (SITE_FILES・SITE_DIRS) を site/ に写し、backup.json に sha256・migrations・site_files の鍵を足す。
-    戻す前の退避と練習モードの写しは full を渡さない (今のまま)。
+    会社の作り込みの許しの一覧 (SITE_FILES・SITE_DIRS) を site/ に写し、backup.json に sha256・migrations・site_files の鍵を足し、
+    控えのフォルダを持ち主だけが読める権限にする。戻す前の退避と練習モードの写しは full を渡さない (今のまま)。
     PostgreSQL の写し (db.pgdump) は確かめない。
     訳: 壊れた控えを黙って残さず、戻した時に会社ごとの項目や帳票の形も一緒に戻せるようにするため。作り込みを入れるのは本人の決め (11-08 00:0x)。確かめと写しを命令の道だけにしたのは、生きた DB が壊れたときに戻す前の退避と練習モードが止まらないように (確かめ直しの (b))。.env は控えない決まり (backup.py の docstring・docs/operations.md の「毎日の控え」) のまま。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-3・ops-4・chk-ops-sre-5 と確かめ直しの (b)(f)。変えてよい条件 = 本人が控えの範囲を決め直したとき、または戻す前の退避にも確かめを掛けると決めたとき。
     """
@@ -176,6 +179,8 @@ def take_backup(parent: Path, *, suffix: str = "", full: bool = False) -> dict:
     except OSError as exc:
         raise BackupError(f"控えのフォルダを作れません: {folder} ({exc.strerror})") from exc
     try:
+        if full:
+            _make_private(folder)
         target = folder / DB_FILES[kind]
         if kind == "postgresql":
             _dump_postgres(target, pg_dump)
@@ -194,6 +199,8 @@ def take_backup(parent: Path, *, suffix: str = "", full: bool = False) -> dict:
         manifest = manifest_for(kind, folder, full=full)
         text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
         (folder / MANIFEST).write_text(text, encoding="utf-8")
+        if full:
+            _make_private(folder)
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
@@ -248,6 +255,20 @@ def _copy_site(base: Path, target: Path) -> None:
         source = base / name
         if source.is_dir():
             shutil.copytree(source, target / name, ignore=shutil.ignore_patterns(*SITE_IGNORE))
+
+
+def _make_private(folder: Path) -> None:
+    """控えのフォルダと中のフォルダを 0o700、中のファイルを 0o600 にする (持ち主だけが読める)。Windows では何もしない。
+
+    symlink は辿らない (写しの外の物の権限を変えない)。
+    """
+    if os.name == "nt":
+        return
+    for path in folder.rglob("*"):
+        if path.is_symlink():
+            continue
+        path.chmod(PRIVATE_DIR_MODE if path.is_dir() else PRIVATE_FILE_MODE)
+    folder.chmod(PRIVATE_DIR_MODE)
 
 
 def _dump_postgres(path: Path, pg_dump: str):
