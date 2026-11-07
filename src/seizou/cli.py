@@ -72,6 +72,7 @@ SETTING_DEFAULTS = {
     "over_shipment": "warn",
     "over_workorder": "warn",
     "receiving_required": "off",
+    "over_payment": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

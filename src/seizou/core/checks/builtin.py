@@ -1,6 +1,6 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24)。
 
-mode は会社の設定 (over_shipment・over_workorder) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (01 の 10.4 の引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は N124)。
@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from seizou.core.checks import Check, register
 from seizou.core.checks import tools
+from seizou.core.templatetags.seizou_tags import yen
 
 
 def _dec(value) -> Decimal:
@@ -194,7 +195,39 @@ class OverProgress(Check):
         return None
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress())
+class OverPayment(Check):
+    """R24: 入金の金額が、請求書の残を超えたら (入金の記録)。
+
+    data の object は入金を記録する請求書 (土台の入力の画面が URL の pk の請求書を渡す)、amount は今回の入金の金額。
+    請求書は渡された物の属性 (total・status・paid_total()・balance()) で読み、billing の model を import しない。
+    残と同じ額 (「残の全額を入れる」で入れた額) は知らせない。残が 0 以下 (入金済み・多い入金の後) なら、どの額でも知らせる。
+    取消の請求書は見ない (service の R21 が先に赤で止める。黄の後に赤を出さないため)。
+    訳: 残を超える入金 (同じ入金の 2 重の記録など) に、保存の前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。残はマイナスも見せる)。出所 = 会社の設定 over_payment (RULES.md R24・決め 11-07 00:38)。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R24"
+    action = "billing.record_payment"
+    setting_key = "over_payment"
+
+    def run(self, data, user):
+        invoice = data.get("object")
+        amount = data.get("amount")
+        if invoice is None or amount is None:
+            return None
+        if getattr(invoice, "status", None) == "cancelled":
+            return None
+        balance = invoice.balance()
+        if _dec(amount) > balance:
+            total = invoice.paid_total() + _dec(amount)
+            return (
+                f"入金の合計 ({yen(total)}) が請求書の合計 ({yen(invoice.total)}) を超えます。"
+                f"この請求書の残は {yen(balance)} です。同じ入金を 2 回記録していないか、金額を確かめてください。"
+            )
+        return None
+
+
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverPayment())
 
 for _check in BUILTIN:
     register(_check)

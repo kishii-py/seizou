@@ -26,6 +26,7 @@ SETTING_KEYS = [
     "partial_shipment",
     "over_shipment",
     "over_workorder",
+    "over_payment",
     "order_number",
     "production_plan",
     "assistant_model",

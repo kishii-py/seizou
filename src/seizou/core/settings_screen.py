@@ -35,6 +35,7 @@ SETTING_LABELS = {
     "over_shipment": ("受注より多い出荷 (R01・R04)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "over_workorder": ("受注より多い指示書の数量と予定より多い実績 (R06・R07)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "receiving_required": ("支給品と預かり品の入荷が無い明細の指示書の発行と出荷", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
+    "over_payment": ("請求書の残を超える入金 (R24)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
     "transcription_minutes_per_line": ("1 行の手入力にかかる分", {}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),
