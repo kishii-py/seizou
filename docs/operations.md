@@ -231,6 +231,10 @@ PostgreSQL の置き場では、この確かめは使えません。
 - Cookie が HTTPS だけ (セッションと CSRF の Cookie。本番の条件だけ)
 - 最後の控え (36 時間より古いか、置き場を作って 36 時間を過ぎても控えが無ければ直す。本番の条件だけ)
 - ディスクの空き (1GB か最後の控えの 2 倍を切ったら直す。本番の条件だけ)
+- 作り物の利用者の合言葉 (公開の合言葉のままの人がいないか。本番の条件では直す)
+- AI が守る決まり (置き場の CLAUDE.md と AGENTS.md。無くても止めない)
+- 権限の判定 (部署・編集の権限・金額の閲覧が記録だけのままなら、本番の条件では直す。断られる人がいないかを `seizou.access` の記録で確かめ終えたら on にする)
+- settings.py の塊 (`LOGGING` と `HtmxLoginMiddleware` の行があるか。本番の条件だけ)
 
 「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
 
@@ -379,6 +383,8 @@ if not DEBUG:
 
 ログインの時間切れ (上の「ログインの時間切れ」) は、`settings.py` の `MIDDLEWARE` の 1 行で動きます。この版より前に作った置き場は、`"seizou.core.middleware.HtmxLoginMiddleware",` の次の行に `"seizou.core.middleware.SessionTimeoutMiddleware",` を足します。この行が無いと、時間切れは働きません。足すのは seizou の版を上げた後で、足したらサーバーを立て直します。先に足すと、古い seizou にはこの名前が無いので、サーバーが起動しません。
 
+`settings.py` に `LOGGING` の行が無い置き場 (この版より前に `seizou new` で作った物) は、import の並び (`from seizou.parts import PARTS` の次) に `from seizou.core.logging_conf import default_logging` を、`LANGUAGE_CODE` の行の後に `LOGGING = default_logging()` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと、500 の誤りと seizou の記録がサーバーの記録 (journald) に残ります。
+
 ## 困ったとき
 
 `manage.py` が `KeyError: 'SECRET_KEY'` で止まるときは、置き場に `.env` が無いか、`.env` に `SECRET_KEY=` の行がありません。`.env` は控えに入らないので、別に写しておいた `.env` を置き場に戻してください。このときは `settings.py` が先に止まるので、点検も動きません。
@@ -386,6 +392,8 @@ if not DEBUG:
 上げたファイルの画面が 503 で止まるときは、nginx の設定が足りません。画面の案内のとおりに直し、点検の「上げたファイルの配り方」の行を見てください。
 
 どの画面も「決まりに沿っていません」になるときは、開発の設定 (`DEBUG` が 1) で、会社の側のコードが決まりを破っています。画面の文を写して、Claude Code の `/seizou:fix` で直してください。
+
+画面が 500 (サーバーの誤り) になったときは、サーバーの記録に誤りの行が残っています。VPS では `sudo journalctl -u seizou-<会社の id> -n 100`、手元では runserver の窓で見ます。
 
 ## 止まったとき (初動)
 

@@ -16,6 +16,7 @@ from django.core.management.base import CommandError
 
 from seizou.connect.services import register_connection
 from seizou.core import doctor
+from seizou.core.logging_conf import default_logging
 from seizou.core.passwords import VALIDATORS
 from seizou.masters.services import create_partner
 
@@ -45,6 +46,11 @@ def site(settings, tmp_path):
     settings.CSRF_COOKIE_SECURE = True
     settings.SEIZOU = {}
     settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
+    settings.SEIZOU["access_control"] = {"department": "on", "write": "on", "money": "on"}
+    # LOGGING を変えても Django に記録の形を当て直させない (当て直すと seizou の logger の形が後の試験に残る。点検は LOGGING が空でないかだけを見る)
+    settings.LOGGING_CONFIG = None
+    settings.LOGGING = default_logging()
+    settings.MIDDLEWARE = [*settings.MIDDLEWARE, "seizou.core.middleware.HtmxLoginMiddleware"]
     env = site / ".env"
     if os.name == "nt":
         env.write_text("SECRET_KEY=fake-env-value-that-must-not-appear\n", encoding="utf-8")

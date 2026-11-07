@@ -34,6 +34,7 @@ from django.db.migrations.recorder import MigrationRecorder
 from django.utils import timezone
 
 from seizou.core import backup, conf, media, middleware, services
+from seizou.core.access import KIND_TITLES as ACCESS_TITLES
 
 #: ほかの PC から開けない名前 (ALLOWED_HOSTS にこれだけなら、本番では直す)
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
@@ -522,6 +523,78 @@ def check_password_validators() -> list[Row]:
         return [_bad(label, "AUTH_PASSWORD_VALIDATORS が空 (changepassword で 1 字のパスワードも通る)", PASSWORD_VALIDATORS_FIX)]
     return [_good(label, f"確かめ {len(validators)} 個")]
 
+#: 雛形の MIDDLEWARE の、htmx の部分の要求でログインが切れたときの 1 行 (点検の「settings.py の塊」が見る)
+HTMX_LOGIN_MIDDLEWARE = "seizou.core.middleware.HtmxLoginMiddleware"
+#: settings.py の塊が足りないときの直し方の後ろ半分
+SETTINGS_BLOCKS_FIX = "を足し、サーバーを立て直す (seizou の docs/operations.md の「版を上げる手順」)。"
+
+
+def check_settings_blocks() -> list[Row]:
+    """settings.py の塊のうち、この版より前に作った置き場に無いことがある 2 つ (LOGGING と HtmxLoginMiddleware の行)。
+
+    LOGGING は Django の既定が空の辞書なので、空なら無いと見る (中身の形は見ない)。run の表で本番の条件の行だけにする。
+    AUTH_PASSWORD_VALIDATORS は見ない (別の行が見る)。
+    訳: 版を上げても置き場の settings.py は書き換わらないので、雛形に足した塊が無いままの置き場を点検で見つけるため。
+    LOGGING が無いと本番の 500 の誤りと seizou の記録が残らず、HtmxLoginMiddleware が無いと、ログインが切れた後の
+    部分の要求で画面の一部にログインの画面が入る。出所 = エンタープライズ化の調べ 第一弾の指示書の候補 9 の確かめ直しの (a)
+    (依頼書 N362)。変えてよい条件 = 雛形の塊が増えたら見る物を足す。
+    """
+    label = "settings.py の塊"
+    missing = []
+    adds = []
+    if not getattr(settings, "LOGGING", None):
+        missing.append("LOGGING が無い (500 の誤りの記録が残らない)")
+        adds.append("LOGGING の 2 行 (import と LOGGING = default_logging())")
+    if HTMX_LOGIN_MIDDLEWARE not in list(getattr(settings, "MIDDLEWARE", None) or ()):
+        missing.append("HtmxLoginMiddleware が無い (ログインが切れた後の部分の要求で、画面の一部がログインの画面になる)")
+        adds.append("MIDDLEWARE の HtmxLoginMiddleware の 1 行")
+    if not missing:
+        return [_good(label, "LOGGING と HtmxLoginMiddleware の行がある")]
+    return [_bad(label, "・".join(missing), f"settings.py に {'と'.join(adds)}{SETTINGS_BLOCKS_FIX}")]
+
+
+#: 権限の判定が記録だけのままのときの直し方 (決め 11-07 22:3x・23:3x)
+ACCESS_CONTROL_FIX = "断られる人がいないかを seizou.access の記録で確かめ終えたら、設定の画面の「権限の判定」で on にする。"
+
+
+def _access_detail(modes: dict) -> str:
+    """権限の判定の 3 つの状態の字 (記録だけ → 使わない → 有効 の順に、あるものだけ「。」でつなぐ)。"""
+    titles = {mode: [ACCESS_TITLES[kind] for kind, value in modes.items() if value == mode] for mode in conf.ACCESS_MODES}
+    parts = []
+    if titles["log"]:
+        note = " (金額を伏せたつもりの人にも金額が見える)" if modes["money"] == "log" else ""
+        parts.append(f"記録だけ: {'・'.join(titles['log'])}{note}")
+    if titles["off"]:
+        note = " (全員が金額を見る)" if modes["money"] == "off" else ""
+        parts.append(f"使わない: {'・'.join(titles['off'])}{note}")
+    if titles["on"]:
+        parts.append(f"有効: {'・'.join(titles['on'])}")
+    return "。".join(parts)
+
+
+def check_access_control(production: bool) -> list[Row]:
+    """権限の判定 (部署・編集の権限・金額の閲覧) が記録だけのままか。conf.access_control で読む (画面で上書きした値も同じに読む)。
+
+    本番の条件で log が 1 つでもあれば直す。off は 1 人で使う会社が選んだ形として良いにし、detail に注を付ける。全部 on なら良い。
+    開発の条件では良いにして、今の状態を 1 行で出す (check_demo_passwords の開発の行と同じ形)。
+    訳: README の「立ち上げてすぐは記録だけ」の決めは残し、本番の条件 (DEBUG=0) で部署・編集・金額の閲覧の判定が「記録だけ」の
+    ままなら、点検が「直す」を出し、終わりの番号 1 で終わる。記録だけで確かめている間に点検が失敗で終わるのは、確かめ終えたら
+    有効にする合図として受け入れる。直し方の字には「断られる人がいないかを seizou.access の記録で確かめ終えたら on にする」と書き、
+    README の「立ち上げてすぐは記録だけ」の文に「その間、本番の点検は直す 1 件で終わる」の 1 句を足し、試験の fixture
+    (tests/test_core_doctor.py の site の SEIZOU) に access_control の on を足す。記録だけのままでは金額を見られない人の決め
+    (21:0x) が働かないため。欠点として、記録だけの間はほかの「直す」が同じ失敗の番号に埋もれやすい。
+    出所 = 本人の決め (11-07 22:3x・23:3x) と README の「選べる設定」の access_control の行。
+    変えてよい条件 = 本人が既定そのものを「止める」に変えるか、点検に中間の段を作るか失敗にしない形に変えると決めたとき。
+    """
+    label = "権限の判定"
+    modes = {kind: conf.access_control(kind) for kind in conf.DEFAULTS["access_control"]}
+    detail = _access_detail(modes)
+    if "log" not in modes.values():
+        return [_good(label, detail)]
+    if production:
+        return [_bad(label, detail, ACCESS_CONTROL_FIX)]
+    return [_good(label, f"{detail}。本番の条件では直すにします")]
+
 
 #: 作り物の利用者が公開の合言葉のままのときの直し方 (決め 11-04 15:0x。依頼書 N116)
 DEMO_PASSWORD_FIX = "アカウント管理で変えてください。"
@@ -611,10 +684,12 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("collectstatic", check_collectstatic, True),
         ("上げたファイルの配り方", check_file_delivery, False),
         ("会社の選べる設定", check_settings, False),
+        ("権限の判定", lambda: check_access_control(production), False),
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
         ("Cookie が HTTPS だけ", check_cookies, True),
         ("パスワードの決まり", check_password_validators, True),
+        ("settings.py の塊", check_settings_blocks, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
         ("AI が守る決まり", check_ai_docs, False),
     ]
