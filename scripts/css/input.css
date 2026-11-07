@@ -466,3 +466,9 @@ html:has(.seizou-save-row) {
   color: var(--badge-fg);
   border-color: var(--badge-color);
 }
+/* 黄の知らせ (alert-warning alert-soft) の頭の三角の印だけは、上で字を濃くした後も黄に残す (C49 の 7。決め C49-2 = a。11-06)。
+   淡い知らせの縁は地とほぼ同じ色で見えないので、黄の知らせと分かる手がかりを残すため。意味は字が持つ。
+   選び方は知らせの直下の印だけ (> svg)。知らせの中の link やボタンに後で足す印は黄にしない。赤と青の知らせの印は字と同じ色のまま。 */
+.alert-soft.alert-warning > svg {
+  color: var(--color-warning);
+}
