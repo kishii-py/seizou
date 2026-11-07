@@ -1,0 +1,15 @@
+{% extends "core/_modal.html" %}
+{% load shipping_tags %}
+{# 出荷の小窓 (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓 #seizou-modal)。出荷の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (口は ShipmentModalView)。 #}
+{# 土台の小窓 core/_modal.html (題・項目・「閉じる」・「詳細を見る」・編集の権限のある人には「編集」) の block above_fields に、出荷の詳細の頭の札 (shipping_tags の shipment_head_chips = 得意先・得意先の注文番号) を項目と同じ行の形で足す。読むだけ。 #}
+{# 金額は出さない (出荷の表に金額の列が無く、詳細の頭の札にも金額が無い)。 #}
+{% block above_fields %}{% shipment_head_chips object as head_chips %}
+<dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  {% for chip in head_chips %}
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">{{ chip.label }}</dt>
+    <dd class="min-w-0 break-words">{{ chip.value }}</dd>
+  </div>
+  {% endfor %}
+</dl>
+{% endblock %}

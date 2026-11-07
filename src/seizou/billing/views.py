@@ -20,6 +20,9 @@ from django.urls import reverse
 from seizou.core import access
 from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from django.db.models import Prefetch
+
+from seizou.core.views import BaseModalView
 
 from . import services
 from .forms import (
@@ -31,6 +34,7 @@ from .forms import (
     ShipmentPaymentForm,
 )
 from .models import Invoice, Payment
+from .models import InvoiceLine
 from .reports import invoice_context
 
 REPORT_TEMPLATE = "billing/invoice.html"
@@ -96,6 +100,27 @@ class InvoiceDetailView(BaseDetailView):
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related("payments")
+
+
+class InvoiceModalView(BaseModalView):
+    """請求書の小窓。
+
+    使う人: 経理 / いつ: 請求書の一覧で行の中身を画面を移らずに確かめたいとき / 何のために: 得意先・発行日・締め期間・合計・残・入金の状態・明細の先頭の数行を見る / 次にすること: 要れば「詳細を見る」で請求書の詳細へ
+
+    請求書の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。
+    本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」。形は受注の小窓 OrderModalView と同じ)。
+    中身は billing/_modal.html (項目を手で描く。土台の先頭の 8 項目では「合計」と「状態」が切れるため)。読むだけ。
+    """
+
+    model = Invoice
+    screen_name = "請求書の小窓"
+    screen_help = "請求書の要点 (得意先・発行日・締め期間・合計・残・入金の状態・明細) を見るだけの小窓。請求書の一覧の行の目の印から開き、詳細へ移れます。"
+
+    def get_queryset(self):
+        # 入金は残と入金の状態 (Invoice.balance・payment_status) が読む。明細は詳細の「明細」のタブと同じ 3 つ (出荷・部品・受注) を一緒に 1 回で読む
+        # (一式の行は出荷が空)。並びは InvoiceLine の Meta の ordering のまま。
+        lines = InvoiceLine.objects.select_related("shipment", "order_line__item", "order_line__order")
+        return Invoice.objects.select_related("customer").prefetch_related("payments", Prefetch("lines", queryset=lines))
 
 
 class InvoiceCreateView(BaseFormView):

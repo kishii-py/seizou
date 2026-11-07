@@ -2,6 +2,7 @@
 {# 請求書の一覧の 1 行 (billing/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Invoice)・columns。 #}
 {# 欄の描き方は core/_rows.html と同じ。「入金」の列は入金の状態の印 (取消の請求書は「—」の字)、「状態」の列は「発行」を印の無い字にし、取消だけを状態の印 (赤の線) にする (決め 11-05 16:2x。N164)。
    「残」の列は、取消の請求書では「—」(同じ行の「入金」と同じ。残の金額が出ると入金待ちに見えるため = T03 の直し 11-07。列の値と CSV の残は数のまま)。 #}
+{# 右端の欄は「要点を見る」の目の印 (土台の目の印の部品を include する。押すと請求書の小窓。受注と指示書の一覧の行と同じ形)。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
   {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}
@@ -17,4 +18,6 @@
   {% endif %}
   {% endif %}{% endfor %}
   {% endfor %}
+  {# 右端の「要点」の列 (billing/_rows.html が土台に actions_label を渡して見出しを出す)。目の印を押すと請求書の小窓 (InvoiceModalView) を開く。 #}
+  <td class="whitespace-nowrap text-right">{% url 'billing:invoice_modal' row.pk as modal_url %}{% include "core/_row_summary_link.html" with modal_url=modal_url detail_url=row.url %}</td>
 </tr>

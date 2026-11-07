@@ -23,6 +23,7 @@ urlpatterns = [
     path("bulk/", views.ShipmentBulkCreateView.as_view(), name="shipment_bulk_create"),
     path("<int:pk>/", views.ShipmentDetailView.as_view(), name="shipment_detail"),
     path("<int:pk>/edit/", views.ShipmentUpdateView.as_view(), name="shipment_update"),
+    path("<int:pk>/modal/", views.ShipmentModalView.as_view(), name="shipment_modal"),
     path("<int:pk>/label/", views.shipment_label, name="shipment_label"),
     path("<int:pk>/label/pdf/", views.shipment_label_pdf, name="shipment_label_pdf"),
     path("<int:pk>/notice/resend/", shipping_notice.resend_shipping_notice, name="shipment_notice_resend"),

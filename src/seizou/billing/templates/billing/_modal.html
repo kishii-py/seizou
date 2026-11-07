@@ -1,0 +1,69 @@
+{% load seizou_icons seizou_tags billing_tags %}
+{# 請求書の小窓 (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓 #seizou-modal)。請求書の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (口は InvoiceModalView)。 #}
+{# 形は受注の小窓 orders/_modal.html と同じ (題の横の印・項目・明細の先頭の数行・「閉じる」・「詳細を見る」)。読むだけ (小窓の中で保存しない)。請求書には編集の口 (_update) が無いので「編集」は出ない。 #}
+{# 題の横の印は請求書の詳細の見出しと同じ (取消なら状態の印、ほかは「入金」と入金の状態の印)。項目は土台の fields を使わずに手で描く (土台の先頭の 8 項目では「合計」と「状態」が切れるため)。見出しの字は model の verbose_name と同じ。 #}
+{# 「合計」と「残」は詳細の頭の札 (invoice_head_chips) と同じく、取消の請求書と金額の閲覧の権限が無い人 (seizou.hide_money) には出さない。明細の金額の列も金額の閲覧の権限が無い人には出さない。 #}
+<div class="flex items-start justify-between gap-4">
+  <div class="flex min-w-0 items-center gap-2"><h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>{% if object.status == "cancelled" %}{% status_badge object dot=True %}{% else %}<span class="inline-flex items-center gap-2"><span class="text-base-content/70">入金</span>{% payment_badge object dot=True %}</span>{% endif %}</div>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">得意先</dt>
+    <dd class="min-w-0 break-words">{{ object.customer.name }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">発行日</dt>
+    <dd class="min-w-0 break-words">{{ object.issued_on }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">締め期間の初め</dt>
+    <dd class="min-w-0 break-words">{{ object.period_from }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">締め期間の終わり</dt>
+    <dd class="min-w-0 break-words">{{ object.period_to }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">支払期日</dt>
+    <dd class="min-w-0 break-words">{% if object.due_on %}{{ object.due_on }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
+  </div>
+  {% if not seizou.hide_money and object.status != "cancelled" %}
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">合計</dt>
+    <dd class="min-w-0 break-words tabular-nums">{{ object.total|yen }}</dd>
+  </div>
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">残</dt>
+    <dd class="min-w-0 break-words tabular-nums">{{ object.balance|yen }}</dd>
+  </div>
+  {% endif %}
+</dl>
+{% with lines=object.lines.all %}
+<p class="mt-4 flex items-center gap-2 text-xs font-medium text-base-content/60">明細<span class="badge badge-sm tabular-nums">{{ lines|length }}</span></p>
+{% if lines %}
+<div class="mt-2 overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm">
+  <thead><tr class="bg-base-200 text-base-content/70"><th class="whitespace-nowrap font-medium">出荷番号</th><th class="whitespace-nowrap font-medium">部品</th><th class="whitespace-nowrap text-right font-medium">数量</th>{% if not seizou.hide_money %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}</tr></thead>
+  <tbody>
+    {% for line in lines|slice:":5" %}
+    <tr>
+      <td class="whitespace-nowrap font-mono">{% if line.shipment %}{{ line.shipment.shipment_no }}{% else %}一式{% endif %}</td>
+      <td class="whitespace-nowrap"><span class="font-mono">{{ line.order_line.item.part_no }}</span> <span class="text-base-content/70">{{ line.order_line.item.name }}</span></td>
+      <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }} {{ line.order_line.unit }}</td>
+      {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if lines|length > 5 %}<p class="mt-2 text-xs text-base-content/60">先頭の 5 行を出しています (全 {{ lines|length }} 行)。残りは詳細で見られます。</p>{% endif %}
+{% else %}
+<p class="mt-2 text-base-content/60">明細はまだありません。</p>
+{% endif %}
+{% endwith %}
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  {% if edit_url %}{% if detail_url %}<a class="btn btn-outline border-base-300" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>
+  {% elif detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+</div>

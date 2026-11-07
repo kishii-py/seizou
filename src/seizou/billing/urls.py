@@ -19,6 +19,7 @@ urlpatterns = [
     path("invoices/", views.InvoiceListView.as_view(), name="invoice_list"),
     path("invoices/new/", views.InvoiceCreateView.as_view(), name="invoice_create"),
     path("invoices/<int:pk>/", views.InvoiceDetailView.as_view(), name="invoice_detail"),
+    path("invoices/<int:pk>/modal/", views.InvoiceModalView.as_view(), name="invoice_modal"),
     path("invoices/<int:pk>/cancel/", views.InvoiceCancelView.as_view(), name="invoice_cancel"),
     path("invoices/<int:pk>/reissue/", views.InvoiceReissueView.as_view(), name="invoice_reissue"),
     path("invoices/<int:pk>/print/", views.invoice_print, name="invoice_print"),

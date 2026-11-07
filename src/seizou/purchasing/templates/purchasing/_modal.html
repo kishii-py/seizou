@@ -1,0 +1,53 @@
+{% load seizou_icons seizou_tags purchasing_tags %}
+{# 発注の小窓 (受け渡しの seizou-部品の6案-20261107/指示書.md の 6。本人の決め 11-07 18:2x〜18:4x「5はmodalでいいかな」= 右の覗き窓でなく今の小窓 #seizou-modal)。発注の一覧の行の「要点を見る」(目の印。core/_row_summary_link.html) が開く (口は PurchaseOrderModalView)。 #}
+{# 形は受注の小窓 orders/_modal.html と同じ (題の横の状態の印・項目・明細の先頭の数行・「閉じる」・「詳細を見る」)。読むだけ (小窓の中で保存しない)。発注には編集の口 (_update) が無いので「編集」は出ない (土台が edit_url を空にする)。 #}
+{# 項目の先頭に詳細の頭の札 (purchasing_tags の purchase_order_head_chips = 協力企業・一番早い納期・版・合計) を並べ、続けて土台の項目を並べる。「状態」(題の横の印) と「取引先」(partner の verbose_name。札の「協力企業」と同じ物) は出さない。 #}
+{# 明細の表は取り消した明細を外す (purchase_order_modal_lines = 頭の札と同じ数え方)。合計は札の「合計」に出るので表の下には置かない。金額は閲覧の権限が無い人 (seizou.hide_money) に出さない (札の合計も出ない。項目の金額は土台 BaseModalView が外す)。 #}
+<div class="flex items-start justify-between gap-4">
+  <div class="flex min-w-0 items-center gap-2"><h3 class="min-w-0 truncate text-lg font-bold" title="{{ object }}">{{ object }}</h3>{% status_badge object dot=True %}</div>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+{% purchase_order_head_chips object seizou.hide_money as chips %}
+<dl class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  {% for chip in chips %}
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">{{ chip.label }}</dt>
+    <dd class="min-w-0 break-words tabular-nums">{{ chip.value }}</dd>
+  </div>
+  {% endfor %}
+  {% for field in fields %}{% if field.label != "状態" and field.label != "取引先" %}
+  <div class="grid grid-cols-[8rem_1fr] gap-4 py-2">
+    <dt class="text-base-content/70">{{ field.label|without_yen_unit }}</dt>
+    <dd class="min-w-0 break-words">{% if field.boolean %}{% bool_mark field.value %}{% elif field.value is None or field.value == "" %}<span class="text-base-content/60">—</span>{% else %}{{ field.value|yen_if:field.money }}{% endif %}</dd>
+  </div>
+  {% endif %}{% endfor %}
+</dl>
+{% purchase_order_modal_lines object as lines %}
+<p class="mt-4 flex items-center gap-2 text-xs font-medium text-base-content/60">明細<span class="badge badge-sm tabular-nums">{{ lines|length }}</span></p>
+{% if lines %}
+<div class="mt-2 overflow-auto rounded-lg border border-base-300">
+<table class="table table-sm">
+  <thead><tr class="bg-base-200 text-base-content/70"><th class="whitespace-nowrap text-right font-medium">行番号</th><th class="whitespace-nowrap font-medium">部品</th><th class="whitespace-nowrap text-right font-medium">数量</th>{% if not seizou.hide_money %}<th class="whitespace-nowrap text-right font-medium">金額</th>{% endif %}<th class="whitespace-nowrap font-medium">納期</th><th class="whitespace-nowrap text-right font-medium">受入の数</th></tr></thead>
+  <tbody>
+    {% for line in lines|slice:":5" %}
+    <tr>
+      <td class="whitespace-nowrap text-right tabular-nums">{{ line.line_no }}</td>
+      <td class="whitespace-nowrap"><span class="font-mono">{{ line.item.part_no }}</span> <span class="text-base-content/70">{{ line.item.name }}</span></td>
+      <td class="whitespace-nowrap text-right tabular-nums">{{ line.qty|comma }} {{ line.unit }}</td>
+      {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
+      <td class="whitespace-nowrap font-mono tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+      <td class="whitespace-nowrap text-right tabular-nums">{{ line.received_total|comma }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if lines|length > 5 %}<p class="mt-2 text-xs text-base-content/60">先頭の 5 行を出しています (全 {{ lines|length }} 行)。残りは詳細で見られます。</p>{% endif %}
+{% else %}
+<p class="mt-2 text-base-content/60">明細はまだありません。</p>
+{% endif %}
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+  {% if edit_url %}{% if detail_url %}<a class="btn btn-outline border-base-300" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}<a class="btn btn-primary" href="{{ edit_url }}">{% icon "pencil" "size-4" %}編集</a>
+  {% elif detail_url %}<a class="btn btn-primary" href="{{ detail_url }}">詳細を見る{% icon "chevron-right" "size-4" %}</a>{% endif %}
+</div>

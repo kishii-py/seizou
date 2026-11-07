@@ -72,6 +72,7 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_cancel",
         "purchasing:purchaseorder_change",
         "purchasing:purchaseorder_detail",
+        "purchasing:purchaseorder_modal",  # 発注の小窓 (依頼書 N346)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorder_send",
         "purchasing:receipt_detail",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
@@ -131,6 +132,7 @@ LIMITS = {
     "shipping:shipment_bulk_create": 19,
     "shipping:shipment_detail": 26,
     "shipping:shipment_update": 20,
+    "shipping:shipment_modal": 8,  # 出荷の小窓 (依頼書 N346)。11-07 の実測 3 (2 社とも。htmx でない GET = 詳細へ移るだけ) + 5
     "shipping:deliverynote_list": 22,
     "shipping:deliverynote_create": 20,
     "shipping:deliverynote_detail": 25,
@@ -140,6 +142,7 @@ LIMITS = {
     # 11-07 の実測 45 + 5。送った発注の変更 (C96) の「変更」のボタンを出すか (can_change_order) に 1 回 (取り消していない明細の受入・出荷の知らせ・つながりを 1 つの問い合わせで読む)。
     # 会話のタブとメモの枠 (C104) で +6 (11-07 の実測 51 + 5)。
     "purchasing:purchaseorder_detail": 56,
+    "purchasing:purchaseorder_modal": 9,  # 発注の小窓 (依頼書 N346)。11-07 の実測 4 (A 社。htmx でない GET = 詳細へ移るだけ) + 5
     "purchasing:purchaseorder_send": 20,
     "purchasing:purchaseorder_cancel": 20,
     "purchasing:receipt_list": 25,
@@ -158,6 +161,7 @@ LIMITS = {
     "billing:invoice_list": 23,
     "billing:invoice_create": 23,  # 一式の節 (出し切らずに終えた一式の受注の明細を 1 回で読む問い合わせ) で +1 (11-07 の実測 21 → 22)。一式の行の後に出荷が続いた明細 (発行の請求書の一式の行を 1 回で読む。作者の決め C107-7) で +1 (11-07 の実測 22 → 23。一式の行がある会社では出荷の合計を読む 1 回がさらに足る)
     "billing:invoice_detail": 31,
+    "billing:invoice_modal": 10,  # 請求書の小窓 (依頼書 N346)。11-07 の実測 5 (2 社とも。htmx でない GET = 詳細へ移るだけ) + 5
     "billing:invoice_cancel": 21,
     "billing:payment_create": 23,
     "billing:payment_cancel": 21,
