@@ -49,6 +49,9 @@ class Invoice(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
     )
 
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+
     class Meta:
         verbose_name = "請求書"
         verbose_name_plural = "請求書"
@@ -124,6 +127,9 @@ class InvoiceLine(models.Model):
     # 一式の行だけ: その受注の明細の、発行の納品書に入った出荷の最後の出荷日 (中小企業共通 EDI の明細行取引終了日に当たる。
     # インボイス制度の適格請求書に載せる取引の日を行に残す)。出荷の行は空 (出荷の出荷日を読む)。
     last_shipped_at = models.DateField("最後の出荷日", null=True, blank=True)
+
+    #: 変更の履歴は請求書の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「請求書」)
+    history_owner = "invoice"
 
     class Meta:
         verbose_name = "請求書の明細"
@@ -238,6 +244,12 @@ class Payment(models.Model):
     status = models.CharField(
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_RECORDED
     )
+
+    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「入金」) を出す詳細。請求書の入金は請求書の詳細の「履歴」に、
+    #: 請求書の外で受け取った入金 (請求書が空。決め C107-3c) は出荷の詳細の「履歴」に出す (値の入った最初の外部キーの先)。
+    #: 訳: 請求書の無い入金の持ち主が空のまま履歴を書いて止まらないため。出荷にするのは、その入金が出荷に記録され、
+    #: 出荷の詳細の「請求書の外で受け取った入金」の枠に出る物だから
+    history_owner = ("invoice", "shipment")
 
     class Meta:
         verbose_name = "入金"

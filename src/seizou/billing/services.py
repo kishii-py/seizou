@@ -1,7 +1,9 @@
 """billing の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して請求書を書く。
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「請求書」「入金」) に書く。書く前に core.history.saved_state で前を取り、
+  書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。明細と入金の行は請求書の詳細の「履歴」に出る
+  (InvoiceLine.history_owner・Payment.history_owner)。請求書の外で受け取った入金は出荷の詳細の「履歴」に出る。
 - 中心の決まり (R09 = 請求書の明細は、出荷済みの物だけ) に当たったら RuleViolation("R09", message)。
   message は RULES.md の R09 の文と、外す出荷の番号と「外してください」。
   「出荷済み」は、発行の納品書に入っている出荷と読む。
@@ -45,9 +47,9 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import Max, Q, Sum
 
-from seizou.core import access
+from seizou.core import access, history
 from seizou.core.exceptions import RuleViolation
-from seizou.core.services import next_number
+from seizou.core.services import next_number, record_history
 from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
 from seizou.shipping.services import amount_of_shipment
 
@@ -213,10 +215,10 @@ def create_invoice(customer, shipments, user, *, issued_on, lumps=()):
     with transaction.atomic():
         # 得意先の行 → 出荷の行 → 一式の受注の明細の行の順にロックする (R23。違う出荷を選んだ 2 人が同じ得意先の請求書を同時に作っても 2 枚にしない)。
         _Partner.objects.select_for_update().get(pk=customer.pk)
-        return _issue_invoice(customer, shipments, issued_on, lumps=lumps)
+        return _issue_invoice(customer, shipments, issued_on, user, lumps=lumps)
 
 
-def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), period=None):
+def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(), period=None):
     """請求書と明細を書く中身。create_invoice と reissue_invoice が、得意先の行をロックした transaction の中から呼ぶ。
 
     出荷の行をロックして R09 (_refuse_unbillable) を見て、金額 (shipment_amount)・消費税 (_tax)・期間 (invoice_period)・
@@ -226,6 +228,7 @@ def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), perio
     _refuse_unbillable_lump で見る (2 人が同じ一式を同時に載せても 1 枚にしか入らない。一式の行を作る間に、同じ明細の出荷の納品書を取り消させない)。
     period = 期間を渡すときの (初め, 終わり) (作り直しで出荷の行が無いとき、取り消した請求書と同じ期間にするため)。空なら invoice_period で決める。
     返す請求書に saved_note と、残りがあれば saved_level = "warning" を付ける。
+    書いた請求書と明細は、変更の履歴に「作った」で残す (人は user)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     locked = list(_Shipment.objects.select_for_update().filter(pk__in=pks).order_by("pk"))
@@ -259,8 +262,10 @@ def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), perio
         tax=tax,
         total=subtotal + tax,
     )
+    record_history(invoice, user)
+    created = []
     for shipment, unit_price, amount in lines:
-        InvoiceLine.objects.create(
+        created.append(InvoiceLine.objects.create(
             invoice=invoice,
             shipment=shipment,
             order_line=shipment.order_line,
@@ -268,9 +273,9 @@ def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), perio
             unit_price=unit_price,
             price_basis=shipment.order_line.price_basis,
             amount=amount,
-        )
+        ))
     for row in lump_lines:
-        InvoiceLine.objects.create(
+        created.append(InvoiceLine.objects.create(
             invoice=invoice,
             shipment=None,
             order_line=row["order_line"],
@@ -279,7 +284,9 @@ def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), perio
             price_basis=PRICE_BASIS_LUMP,
             amount=row["amount"],
             last_shipped_at=row["last_shipped_at"],
-        )
+        ))
+    for invoice_line in created:
+        record_history(invoice_line, user)
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の後ろに付ける)。表に書かない。
     # 今作った明細は取消でない請求書に入っているので、残りに入らない。
     invoice.saved_note, level = _period_note(customer, period_from, period_to)
@@ -413,8 +420,10 @@ def cancel_invoice(invoice, user):
         refusal = cancel_refusal(locked, hide_money=access.hides_money(user))
         if refusal:
             raise ValueError(refusal)
+        before = history.saved_state(locked)
         locked.status = Invoice.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
@@ -515,12 +524,15 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
         if not plan["shipments"] and not plan["lumps"] and not extra:
             raise ValueError("発行できません。出荷がありません。請求書に入れる出荷を 1 つ以上選んでください。")
         for row in plan["invoices"]:
+            before = history.saved_state(row)
             row.status = Invoice.STATUS_CANCELLED
             row.save(update_fields=["status"])
+            record_history(row, user, before=before)
         created = _issue_invoice(
             customer,
             plan["shipments"],
             issued_on,
+            user,
             lumps=extra,
             copies=plan["lumps"],
             period=(plan["period_from"], plan["period_to"]),
@@ -582,6 +594,7 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
             note=note or "",
             recorded_by=user if getattr(user, "pk", None) is not None else None,
         )
+        record_history(payment, user)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         payment.saved_message = f"請求書 {locked.invoice_no} に ¥{_yen(amount)} を入金として記録しました。"
         return payment
@@ -615,6 +628,7 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
             note=note or "",
             recorded_by=user if getattr(user, "pk", None) is not None else None,
         )
+        record_history(payment, user)
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
     payment.saved_message = f"出荷 {locked.shipment_no} の ¥{_yen(amount)} を、請求書の外で受け取った入金として記録しました。"
     return payment
@@ -659,8 +673,10 @@ def cancel_payment(payment, user):
         locked = Payment.objects.select_for_update().get(pk=payment.pk)
         if locked.status == Payment.STATUS_CANCELLED:
             raise ValueError("取り消せません。この入金は取り消し済みです。請求書の詳細を開き直してください。")
+        before = history.saved_state(locked)
         locked.status = Payment.STATUS_CANCELLED
         locked.save(update_fields=["status"])
+        record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
