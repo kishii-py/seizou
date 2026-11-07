@@ -8,7 +8,8 @@
 - 中心の決まり (R23 = 同じ得意先の同じ締め期間の請求書は 1 枚だけ。請求の仕方が都度の得意先は除く) に当たったら
   RuleViolation("R23", message, link=(作り直しの画面の URL の名前, 1 枚目の pk, ボタンの字))。見るのは R09 の後、期間を決めた後
   (同じ出荷を 2 回入れたときは R09 で断る)。同時に 2 人が作っても 2 枚にならないよう、transaction の頭で得意先の行をロックする。
-- 決まりの番号の無い入力の誤り (出荷の一覧が空・取り消し済みの請求書を取り消す・取消でない入金の残る請求書を取り消す) は日本語の ValueError。
+- 決まりの番号の無い入力の誤り (出荷の一覧が空・取り消し済みの請求書を取り消す・取消でない入金の残る請求書を取り消す・
+  請求の候補でない出荷に請求書の外の入金を記録する) は日本語の ValueError。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
@@ -435,7 +436,10 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
     返す辞書 = {"invoices": 取り消す請求書 (同じ得意先・同じ期間の取消でない請求書の全部。pk の順),
     "shipments": 新しい請求書に入る出荷 (出荷日・出荷番号の順), "refusal": 作り直せない理由の文 (作り直せるなら空の字),
     "refused": 理由の文の請求書 (無ければ None), "period_from", "period_to": 渡した請求書の期間,
-    "lumps": 取り消す請求書に入っていた一式の行 (InvoiceLine。受注の明細・数量・金額・最後の出荷日を同じ値で新しい請求書に写す。受注番号・行番号の順)}。
+    "lumps": 取り消す請求書に入っていた一式の行 (InvoiceLine。受注の明細・数量・金額・最後の出荷日を同じ値で新しい請求書に写す。受注番号・行番号の順),
+    "outside_paid": 取り消す請求書に入っていた出荷のうち、請求書の外で受け取った入金 (取消でない) のある物の (出荷, 入金) の並び (出荷日・出荷番号の順。
+    1 つの出荷に 2 件あれば入金の pk の小さい方)}。
+    請求書の外で受け取った入金 (取消でない) のある出荷は写さず、outside_paid に並べる (作者の決め C107-10。代金を受け取った出荷をもう一度請求しない)。
     入る出荷 = 取り消す請求書に入っていた出荷の全部 + その得意先の請求できる出荷 (billable_shipments) のうち出荷日が期間の中 (両端を含む) の物。
     一式の行 (出荷が空) は出荷の集まりに入れず、lumps に並べる (空の値を出荷の pk__in に渡さない。作り直しで一式の行も落とさない)。
     理由の文は、取り消す請求書のどれかに取消でない入金が残っていれば、その請求書の cancel_refusal の文 (hide_money なら件数だけ)。
@@ -462,6 +466,13 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
         .select_related("order_line__item", "delivery_note")
         .order_by("shipped_at", "shipment_no")
     )
+    # 取り消す請求書に入っていた出荷のうち、請求書の外で受け取った入金 (取消でない) のある物は写さない (作者の決め C107-10)。
+    paid = {}
+    if taken:
+        for payment in Payment.objects.filter(shipment_id__in=taken, status=Payment.STATUS_RECORDED).order_by("pk"):
+            paid.setdefault(payment.shipment_id, payment)
+    outside_paid = [(shipment, paid[shipment.pk]) for shipment in shipments if shipment.pk in paid]
+    shipments = [shipment for shipment in shipments if shipment.pk not in paid]
     return {
         "invoices": invoices,
         "shipments": shipments,
@@ -470,6 +481,7 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
         "period_from": invoice.period_from,
         "period_to": invoice.period_to,
         "lumps": lumps,
+        "outside_paid": outside_paid,
     }
 
 
@@ -486,6 +498,8 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
     取り消した請求書と同じ期間にする (発行日で決めると、発行日の月によって期間が変わるため)。
     返す請求書に saved_message (「IV-000001 を取り消し、この期間の出荷 9 件で IV-000003 を作りました。」。一式の行があれば「出荷 9 件と一式の行 1 件」) と、
     _period_note の saved_note・saved_level を付ける (表に書かない)。
+    請求書の外で受け取った入金 (取消でない) のある出荷は写さず (reissue_plan の outside_paid。作者の決め C107-10)、saved_message の末に
+    「別に受け取った入金があるので入れない出荷: S-…。」を足して saved_level を "warning" にする (閉じるまで残す黄。黙って落とさない)。
     訳: 同じ得意先の同じ締め期間の請求書を、前の請求書を取り消して 1 枚に作り直すため (入金の残る請求書は取り消さない = cancel_refusal と同じ決まり。取り消した請求書に入っていた出荷は全部入れ、期間の中で残っていた出荷を足すので、作り直しで請求から落ちる出荷は無い)。出所 = RULES.md R23・本人の決め 11-07 00:2x (本人が選んだ案「同じ期間の 2 枚目は赤の知らせで止め、1 枚目を取り消して期間の全部の出荷で作り直すボタンへ案内する」) と 11-07 06:11 (入れる出荷の決め)。入金を先に取り消す順は cancel_refusal の訳のとおり未確認。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
@@ -514,6 +528,11 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
         lump_count = len(plan["lumps"]) + len(extra)
         parts = f"出荷 {len(plan['shipments'])} 件" + (f"と一式の行 {lump_count} 件" if lump_count else "")
         made = f"この期間の{parts}で {created.invoice_no} を作りました。"
+        if plan["outside_paid"]:
+            # 写さなかった出荷を、保存の後の知らせに並べて人の目に入れる (黙って落とさない。閉じるまで残す黄)。
+            numbers = "・".join(shipment.shipment_no for shipment, _payment in plan["outside_paid"])
+            made += f"別に受け取った入金があるので入れない出荷: {numbers}。"
+            created.saved_level = "warning"
         cancelled = "・".join(row.invoice_no for row in plan["invoices"])
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_note を後ろに付ける)。表に書かない。
         created.saved_message = f"{cancelled} を取り消し、{made}" if cancelled else made
@@ -571,6 +590,9 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
 def record_outside_payment(shipment, received_on, amount, user, *, method=Payment.METHOD_CASH, note=""):
     """請求書の外で受け取った入金 (現金など) を出荷に 1 件記録する。記録した人は user (pk が無ければ空)。
 
+    請求の候補 (billable_shipments) と同じ出荷にだけ記録する: 発行の請求書に入った出荷・取消でない請求書の外の入金がもうある出荷・
+    発行の納品書に入っていない出荷には記録せず、この順に見て ValueError (頭は「記録できません。」。作者の決め C107-10)。
+    一式の明細の出荷と、受注の明細に「請求しない」の印がある出荷は見ない (断りはこの 3 つだけ)。
     記録した出荷は、請求の候補 (billable_shipments・unbilled_in_period) と納品書の詳細の緑の「請求書作成」に出ない。
     出荷の金額 (ダッシュボードの出荷の金額と売上の数え方) は変えない。ダッシュボードの今月の入金 (core.dashboard.payments_this_month) に入る。
     入金を取り消す (cancel_payment) と、その出荷は請求の候補に戻る。金額・方法・備考の値の検査は record_payment と同じ (_payment_values)。
@@ -578,10 +600,13 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
     出荷の行をロックしてから書く (請求書の作成 = create_invoice と納品書の取消 = cancel_delivery_note も出荷の行をロックするので、同時に走ってもどちらかが待つ)。
     返す入金に、画面の知らせの字 saved_message (「出荷 <番号> の ¥<金額> を、請求書の外で受け取った入金として記録しました。」) を付ける (表に書かない)。
     使う場面: 一式でない明細の出荷の代金を、請求書を作らずに受け取ったとき (作者の決め C107-3c)。
+    訳: 同じ代金を 2 回受け取った記録 (請求書の入金と請求書の外の入金、または請求書の外の入金の 2 件) を作らないため (二重の記録はダッシュボードの今月の入金を誤らせ、後で直す手が大きい)。出所 = 作者の決め C107-3c・C107-10。
+    変えてよい条件 = 作者が請求書の外で受け取った入金の扱いを決め直したとき。
     """
     amount = _payment_values(amount, method, note)
     with transaction.atomic():
         locked = _Shipment.objects.select_for_update().get(pk=shipment.pk)
+        _refuse_outside_payment(locked)
         payment = Payment.objects.create(
             shipment=locked,
             received_on=received_on,
@@ -593,6 +618,36 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
     payment.saved_message = f"出荷 {locked.shipment_no} の ¥{_yen(amount)} を、請求書の外で受け取った入金として記録しました。"
     return payment
+
+
+def _refuse_outside_payment(shipment):
+    """請求書の外の入金を記録できない出荷なら ValueError (ロックした出荷の行で見る。順は 発行の請求書 → 外の入金 → 発行の納品書)。
+
+    字は段 2 の型「記録できません。<理由>。<次にすること>。」。外の入金の字に金額は入れない (金額を見られない人にも同じ字を出すため)。
+    訳: 請求の候補でない出荷に請求書の外の入金を記録させず、同じ代金を 2 回受け取った記録を作らないため。出所 = 作者の決め C107-10。
+    変えてよい条件 = 作者が請求書の外で受け取った入金の扱いを決め直したとき。
+    """
+    invoiced = (
+        InvoiceLine.objects.select_related("invoice")
+        .filter(shipment=shipment, invoice__status=Invoice.STATUS_ISSUED)
+        .order_by("pk")
+        .first()
+    )
+    if invoiced is not None:
+        raise ValueError(
+            f"記録できません。出荷 {shipment.shipment_no} は請求書 {invoiced.invoice.invoice_no} に入っています。"
+            "代金は請求書の入金として記録してください。"
+        )
+    paid = Payment.objects.filter(shipment=shipment, status=Payment.STATUS_RECORDED).order_by("pk").first()
+    if paid is not None:
+        raise ValueError(
+            f"記録できません。出荷 {shipment.shipment_no} には、請求書の外で受け取った入金 ({paid.received_on:%Y-%m-%d}) が"
+            "もう記録されています。直すときは、出荷の詳細でその入金を取り消してから記録し直してください。"
+        )
+    if not _in_issued_note(shipment):
+        raise ValueError(
+            f"記録できません。出荷 {shipment.shipment_no} は発行の納品書に入っていません。納品書を発行してから記録してください。"
+        )
 
 
 def cancel_payment(payment, user):
