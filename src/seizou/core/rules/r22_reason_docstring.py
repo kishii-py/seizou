@@ -4,7 +4,7 @@
 訳は「訳: <何のためか>。出所 = <どこから来たか>。変えてよい条件 = <1 文>。」の形。出所が分からなければ「未確認」と書く。
 
 対象のファイルは services.py (部品の src/seizou/<app>/services.py と、会社が足した app の services.py)・
-checks.py (会社のポカよけ)・seizou/core/checks/builtin.py (同梱のポカよけ)。
+checks.py (会社のポカよけ)・seizou/core/checks/builtin.py (標準のポカよけ)。
 tests と migrations の下は歩かない (engine の SKIP_DIRS)。
 
 対象の関数と class (ファイルの中の全部。入れ子の関数も 1 つずつ見る):
@@ -54,7 +54,7 @@ _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 def applies(path: Path) -> bool:
     if path.name in _FILE_NAMES:
         return True
-    # 同梱のポカよけ (seizou/core/checks/builtin.py)
+    # 標準のポカよけ (seizou/core/checks/builtin.py)
     return path.name == "builtin.py" and path.parent.name == "checks" and path.parent.parent.name == "core"
 
 

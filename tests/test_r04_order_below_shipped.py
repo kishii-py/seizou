@@ -1,4 +1,4 @@
-"""R04: 出荷済みより少ない数量に、受注の明細を変えたら知らせる (同梱のポカよけ。RULES.md)。
+"""R04: 出荷済みより少ない数量に、受注の明細を変えたら知らせる (標準のポカよけ。RULES.md)。
 
 検査の層 (seizou.core.checks) の action "orders.update_order" が data["lines"] の order_line と qty を読む。
 mode は会社の設定 over_shipment (stop / warn / off)。services は止めない (中心の決まりでなくポカよけ)。

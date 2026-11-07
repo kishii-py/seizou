@@ -1,4 +1,4 @@
-"""同梱のポカよけ (RULES.md の「同梱のポカよけ」。R01・R04・R06・R07)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07)。
 
 mode は会社の設定 (over_shipment・over_workorder) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
@@ -33,6 +33,8 @@ def _num(value) -> str:
 class OverShipment(Check):
     """R01: 出荷の数の合計が、受注の明細の数を超えたら。
 
+    出荷済みが 0 より多いときは、文の頭に合計の内訳 (「出荷済み 4 と今回の 7 で、」) を付ける。合計が何の足し算か分からない、
+    の声があったため (初見テスト R5 の V105)。出荷済みが 0 なら合計は今回の数なので付けない。一括出荷の R01 も同じ文を使う。
     訳: 出荷の数の合計が受注の明細の数を超えた間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。残はマイナスも見せる)。出所 = 会社の設定 over_shipment (RULES.md R01・仕様 01 の表 (2026-11-01))。
     変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
@@ -49,8 +51,9 @@ class OverShipment(Check):
         shipped = tools.shipped_qty(line)
         total = shipped + _dec(qty)
         if total > _dec(line.qty):
+            breakdown = f"出荷済み {_num(shipped)} と今回の {_num(qty)} で、" if shipped > 0 else ""
             return (
-                f"出荷の数の合計 ({_num(total)}) が受注の数 ({_num(line.qty)}) を超えます。"
+                f"{breakdown}出荷の数の合計 ({_num(total)}) が受注の数 ({_num(line.qty)}) を超えます。"
                 f"出荷できる残りは {_num(_dec(line.qty) - shipped)} です。数を確かめてください。"
             )
         return None

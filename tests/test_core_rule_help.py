@@ -1,8 +1,10 @@
-"""決まりの番号の「?」(N93。N88 の追記 11 = 北極星の決め 11-04 06:3x): 赤の知らせの番号の横のボタンと、RULES.md の行を出す小窓。
+"""決まりの番号の「?」(N93。N88 の追記 11 = 北極星の決め 11-04 06:3x): 赤の知らせの番号の横のボタンと、RULES.md の行を出す説明。
 
-見る所: 赤の知らせ (core/_notices.html) の番号は残り、番号が決まりの形 (R と 2 桁) のときだけ横に「?」のボタンが出る。
-番号の無い赤の知らせ (「入力」) と黄の知らせには出ない。ボタンが開く口 (core:rule_help) は RULES.md の表のその番号の行の文と、
-行の上の見出し (中心の決まりか同梱のポカよけか) を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
+見る所: 赤の知らせ (core/_notices.html) の番号は残り、番号が決まりの形 (R と 2 桁) のときだけ横に「?」が出る。
+小窓の外では同じタブの小窓で開くボタン、小窓の入力 (in_modal) では説明を新しいタブで開く link (決め C20-1 = a。候補 C20 の 7)。
+番号の無い赤の知らせ (「入力」) と黄の知らせには出ない。「?」が開く口 (core:rule_help) は RULES.md の表のその番号の行の文と、
+この会社の今の設定の行 (設定の鍵のある番号だけ。候補 C20 の 1) と、行の上の見出し (中心の決まりか標準のポカよけか) を返す。
+htmx の要求には小窓の中身、htmx でない要求 (新しいタブ) には画面の全体を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
 文は作り物だけ。本物の API と HTTP は呼ばない。
 """
 
@@ -20,6 +22,8 @@ from seizou.core.views import Notice
 
 ROOT_RULES_MD = Path(__file__).resolve().parent.parent / "RULES.md"
 NOT_FOUND = "決まりの一覧 (RULES.md) に R99 の行が見つかりません。"
+#: R01・R04 の「?」の説明に出る、この会社の設定の行の頭 (候補 C20 の 1)
+SETTING_HEAD = "この会社の設定「受注より多い出荷 (R01・R04)」は"
 
 
 def _rules_md_text(code: str) -> str:
@@ -44,6 +48,20 @@ def test_red_rule_notice_has_help_button():
         assert 'hx-target="#seizou-modal-box"' in html, code
         assert html.count("<button") == 1, code
         assert "作り物の文" in html, code
+
+
+def test_red_rule_notice_in_modal_opens_help_in_new_tab():
+    # 小窓の入力 (in_modal) の赤い帯の「?」は、説明を新しいタブで開く link (決め C20-1 = a。同じ小窓に入れると入れた値が消えるため)
+    html = render_to_string(
+        "core/_notices.html", {"notice": CheckViolation("R01", "作り物の文"), "warnings": [], "in_modal": True}
+    )
+    assert '<span class="font-mono text-xs text-base-content/50">R01</span>' in html
+    assert 'href="/rules/R01/" target="_blank" rel="noopener"' in html
+    assert 'aria-label="R01 の決まりの説明"' in html
+    assert "<button" not in html
+    assert "hx-get" not in html
+    assert 'data-notice="stop"' in html  # 欄を直すと帯を消す印 (js/seizou-field-error.js) は残す
+    assert "作り物の文" in html
 
 
 def test_notice_without_rule_number_has_no_button():
@@ -77,7 +95,7 @@ def test_rule_help_shows_rules_md_line(client, user):
     body = response.content.decode()
     assert "R01 の決まり" in body
     assert _rules_md_text("R01") in body
-    assert "同梱のポカよけ" in body
+    assert "標準のポカよけ" in body
 
     body = client.get("/rules/R02/", HTTP_HX_REQUEST="true").content.decode()
     assert _rules_md_text("R02") in body
@@ -88,8 +106,9 @@ def test_rule_help_shows_rules_md_line(client, user):
     assert NOT_FOUND in response.content.decode()
 
     assert client.get("/rules/X1/", HTTP_HX_REQUEST="true").status_code == 404
-    # htmx でない要求にも同じ中身を返す (移す先の頁が無い)
-    assert _rules_md_text("R05") in client.get("/rules/R05/").content.decode()
+    # htmx でない要求 (新しいタブ) には画面の全体を返す (test_rule_help_whole_page_for_new_tab)
+    assert "<html" in client.get("/rules/R05/").content.decode()
+    assert client.get("/rules/X1/").status_code == 404
 
 
 def test_rule_help_without_rules_md(client, user, monkeypatch, tmp_path):
@@ -101,3 +120,90 @@ def test_rule_help_without_rules_md(client, user, monkeypatch, tmp_path):
     response = client.get("/rules/R99/", HTTP_HX_REQUEST="true")
     assert response.status_code == 200
     assert NOT_FOUND in response.content.decode()
+    # RULES.md が無くても、設定の鍵のある番号は会社の設定の行を出す
+    body = client.get("/rules/R01/", HTTP_HX_REQUEST="true").content.decode()
+    assert "決まりの一覧 (RULES.md) に R01 の行が見つかりません。" in body
+    assert SETTING_HEAD in body
+
+
+@pytest.mark.parametrize(
+    ("value", "line"),
+    (
+        ("stop", "この会社の設定「受注より多い出荷 (R01・R04)」は「止める」です。この決まりに当たると保存しません。"),
+        ("warn", "この会社の設定「受注より多い出荷 (R01・R04)」は「知らせる」です。黄の知らせと「このまま保存」のボタンが出ます。"),
+        ("off", "この会社の設定「受注より多い出荷 (R01・R04)」は「通す」です。知らせずに保存します。"),
+    ),
+)
+def test_rule_help_shows_company_setting(client, user, settings, value, line):
+    # 初見テスト R5 の V31 (候補 C20 の 1): 「?」の説明に、この会社の今の設定の行を出す。並びは行の文 → 設定の行 → 節の見出し。
+    settings.SEIZOU = {"over_shipment": value}
+    client.force_login(user)
+    body = client.get("/rules/R01/", HTTP_HX_REQUEST="true").content.decode()
+    assert line in body
+    section = views.rule_line("R01")["section"]
+    assert body.index(_rules_md_text("R01")) < body.index(line) < body.index(section)
+    # R04 も同じ鍵 (over_shipment) なので同じ行が出る
+    assert line in client.get("/rules/R04/", HTTP_HX_REQUEST="true").content.decode()
+
+
+def test_rule_help_setting_line_only_for_rules_with_setting(client, user, settings):
+    client.force_login(user)
+    # 設定の鍵の無い番号 (中心の決まり) には出さない
+    body = client.get("/rules/R02/", HTTP_HX_REQUEST="true").content.decode()
+    assert _rules_md_text("R02") in body
+    assert "この会社の設定" not in body
+    # 設定の値が表に無い字のときも 200 で、行を出さない (Check.current_mode の ValueError を出さない)
+    settings.SEIZOU = {"over_shipment": "maybe"}
+    response = client.get("/rules/R01/", HTTP_HX_REQUEST="true")
+    assert response.status_code == 200
+    assert "この会社の設定" not in response.content.decode()
+    # R06・R07 は over_workorder の見出しで出す
+    settings.SEIZOU = {"over_workorder": "warn"}
+    body = client.get("/rules/R06/", HTTP_HX_REQUEST="true").content.decode()
+    assert "この会社の設定「受注より多い指示書の数量と予定より多い実績 (R06・R07)」は「知らせる」です。" in body
+
+
+def test_rule_setting_line_skips_unknown_keys(monkeypatch):
+    # 鍵が設定の画面の表に無ければ値を読まない (conf.setting は知らない鍵で KeyError)
+    monkeypatch.setattr(views.checks, "setting_key_for", lambda code: "no_such_key")
+    assert views.rule_setting_line("R01") == ""
+    monkeypatch.setattr(views.checks, "setting_key_for", lambda code: None)
+    assert views.rule_setting_line("R01") == ""
+
+
+#: 小窓の閉じるボタンの 2 つ (右上の × と下の「閉じる」)。aria-label="閉じる" だけでは土台の知らせの元と見分けられない
+CLOSE_X = 'aria-label="閉じる" autofocus'
+CLOSE_BUTTON = '<button class="btn btn-ghost" type="submit">閉じる</button>'
+
+
+def test_rule_help_whole_page_for_new_tab(client, user, settings):
+    # 小窓の入力の赤い帯の「?」が新しいタブで開く画面の全体 (候補 C20 の 7)。左のメニューと上の帯の中に、小窓と同じ中身の箱を出す
+    response = client.get("/rules/R05/")
+    assert response.status_code == 302
+    assert response["Location"].startswith(reverse("core:login"))
+
+    client.force_login(user)
+    response = client.get("/rules/R05/")
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "<html" in body
+    assert "R05 の決まり" in body
+    assert _rules_md_text("R05") in body
+    assert CLOSE_X not in body
+    assert CLOSE_BUTTON not in body
+    assert "HX-Request" in response["Vary"]
+    assert "core/rule_help.html" in [template.name for template in response.templates]
+
+    # R01 の画面の全体にも、行の文 → 設定の行 → 「標準のポカよけ」の順に出る
+    settings.SEIZOU = {"over_shipment": "stop"}
+    body = client.get("/rules/R01/").content.decode()
+    line = "この会社の設定「受注より多い出荷 (R01・R04)」は「止める」です。この決まりに当たると保存しません。"
+    assert body.index(_rules_md_text("R01")) < body.index(line) < body.index("標準のポカよけ (")
+
+    # htmx の要求は今のまま小窓の中身 (閉じるボタンの 2 つがあり、<html は無い)
+    response = client.get("/rules/R05/", HTTP_HX_REQUEST="true")
+    body = response.content.decode()
+    assert "<html" not in body
+    assert CLOSE_X in body
+    assert CLOSE_BUTTON in body
+    assert "HX-Request" in response["Vary"]

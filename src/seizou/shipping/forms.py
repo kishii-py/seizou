@@ -2,7 +2,7 @@
 
 土台は service_kwargs() の辞書を検査の層の data に使い、同じ辞書で services の関数を呼ぶ (01 の 10.4)。
 出荷の入力の鍵 order_line と qty は、検査の層の受注より多い出荷のポカよけが読む。
-画面の側では数を比べない (止めるか知らせるかは会社の設定に従って検査の層が決める)。
+画面は残りと比べて知らせるだけ (数量の欄の下の字。shipping/shipment-form.js)。止めるか知らせるかは会社の設定に従って検査の層が決める。
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
 一括出荷の form (ShipmentBulkForm) は、注文残の盤で選んだ明細の行ごとに数量と「この行を出さない」の欄を持ち、
 service_kwargs() の lines (受注の明細と数量の組) を検査の層の一括出荷の R01 と services.ship_lines に渡す (N124)。
@@ -13,6 +13,7 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 
+from seizou.core import conf
 from seizou.core.forms import (
     CHECKBOX_CSS,
     Checkboxes,
@@ -34,6 +35,9 @@ _OrderLine = Shipment._meta.get_field("order_line").related_model
 EMPTY_LABEL = "選んでください"
 #: 出荷の入力で受注の明細が決まっていないときの、数量の欄の下の字 (shipping/shipment-form.js も同じ字を出す)
 NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
+#: 出荷の入力の受注の明細の欄の下の字。候補の頭「SO-000021-1」の末尾が明細の行の番号だと分かるように (初見テスト R5 の V106)。
+#: 受注番号の形は会社の設定 (order_number) で変わるので、決まった番号を例に書かない。「1 行目」は一括出荷の R01 の文と同じ言い方
+ORDER_LINE_HELP = "候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。"
 #: 出荷日の欄の誤りの文 (出荷の入力と出荷の編集の 2 つの form が読む。空のときと、日付として読めない字のとき)
 SHIPPED_AT_ERRORS = {
     "required": "出荷日を入れてください。",
@@ -50,12 +54,15 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
     """
 
     submit_label_plain = "出荷する"
+    # 欄の下の字を、JS が data-tone="warning" を付けた間だけ黄の字にする欄 (core/_form_card.html。数量が残りを超えた時。shipping/shipment-form.js)
+    warning_help_fields = ("qty",)
 
     order_line = forms.ModelChoiceField(
         label="受注の明細",
         queryset=_OrderLine.objects.select_related("order", "item"),
         widget=RemoteSelect("orders:orderline_select"),
         empty_label=EMPTY_LABEL,
+        help_text=ORDER_LINE_HELP,
     )
     qty = forms.DecimalField(label="数量", max_digits=12, decimal_places=2)
     shipped_at = forms.DateField(
@@ -69,15 +76,24 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 数量の欄の下に、選んだ受注の明細の残り (受注の数 − 出荷済みの数) を出す。明細の pk は送られた値か、
-        # 受注の明細から移る入口の初期値 (?order_line=<pk>。土台の get_initial が字のまま写す)。数を比べて断ることはしない。
+        # 受注の明細から移る入口の初期値 (?order_line=<pk>。土台の get_initial が字のまま写す)。
+        # 画面は残りと比べて知らせるだけで、数を比べて断ることはしない (止めるか知らせるかは会社の設定に従って検査の層が決める)。
         raw = self.data.get("order_line") if self.is_bound else self.initial.get("order_line")
         line = None
         if raw is not None and str(raw).isdecimal():
             line = _OrderLine.objects.filter(pk=int(raw)).first()
+        # 打った数量が残りを超えたら、押す前に欄の下の字で知らせる (shipping/shipment-form.js。初見テスト R5 の V61。止めない)。
+        # 会社の設定 (stop・warn・off) はいつも置く (明細を決めずに開き、後から選ぶ画面の全体でも JS が字を分けられるように)。
+        # 残りの数は明細が決まっているときだけ置く (描いたときの明細の数。JS は選び直した後は候補の字の「 残り n」を読む)。
+        # 土台の use_decimal_input が数量の欄を字の欄に替えても、attrs は写るので残る (data-label-qty と同じ)。
+        qty_attrs = self.fields["qty"].widget.attrs
+        qty_attrs["data-over-shipment"] = str(conf.setting("over_shipment"))
         if line is None:
             self.fields["qty"].help_text = NO_LINE_HELP
         else:
-            self.fields["qty"].help_text = f"残り {remaining_qty(line).normalize():f}"
+            remaining = f"{remaining_qty(line).normalize():f}"
+            self.fields["qty"].help_text = f"残り {remaining}"
+            qty_attrs["data-remaining"] = remaining
         # 保存のボタンの字 (N138): 描いたときの明細の単位で「10 個を出荷する」。明細を選び直したら JS が「出荷する」に戻す (data-label-line)。
         self.label_line = line
         self.fields["qty"].widget.attrs["data-label-qty"] = True
