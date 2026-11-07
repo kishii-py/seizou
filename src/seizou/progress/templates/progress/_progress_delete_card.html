@@ -1,0 +1,7 @@
+{% load seizou_icons seizou_tags %}
+{# 実績の削除の確かめのカード (全体の画面 progress/progress_delete.html と小窓 progress/_form_modal.html の両方が include する。PROG-1e = a)。 #}
+{# 黄の枠は確かめの画面の本文で、知らせ (段 2・3) ではない (請求書の取消の billing/_invoice_cancel_card.html と同じ形)。消す実績の工程・数・日時を 1 行で添え、どの実績かを見て確かめる。 #}
+{# 完了の印の付いた実績なら、消すと工程が完了でなくなりうることを 1 文足す。続けて土台の入力のカード (欄は無く、実行のボタンは赤の「削除」)。 #}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この実績を消すと戻せません。工程の合計から、この実績の数だけ減ります。{% if object.completes_step %}この実績には完了の印が付いています。ほかに印の付いた実績が無ければ、この工程は完了でなくなります。{% endif %}</span></div>
+<p class="mb-4 break-words">{{ object.workorder_step }}・実績の数 <span class="tabular-nums">{{ object.qty|comma }}</span>・不良の数 <span class="tabular-nums">{{ object.defect_qty|comma }}</span>・日時 <span class="font-mono tabular-nums">{{ object.recorded_at|date:"Y-m-d H:i" }}</span>{% if object.completes_step %}・完了の印あり{% endif %}</p>
+{% include "core/_form_card.html" %}

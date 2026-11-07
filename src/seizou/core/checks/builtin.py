@@ -4,6 +4,7 @@ mode は会社の設定 (over_shipment・over_workorder・over_payment) の値�
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (01 の 10.4 の引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は N124)。
+R07 は実績の入力と実績の編集の 2 つの action に掛ける。
 """
 
 from __future__ import annotations
@@ -195,6 +196,35 @@ class OverProgress(Check):
         return None
 
 
+class OverProgressOnUpdate(Check):
+    """R07: 実績を直した数で、その工程の実績の合計が予定の数を超えたら (実績の編集)。
+
+    data の object は直す前の実績 (土台の入力の画面が渡す)。合計は、工程の実績の合計から直す前の数を引き、新しい数を足す。
+    数は良品の数 (実績の数) だけを比べ、不良の数は比べない (OverProgress と同じ。C103-Q3 = b)。
+    訳: 実績を直した数が工程の予定の数を超えた間違いに気づかせるため (R07 を実績の編集にも掛ける。歩留まりで超える実数は記録する = 現物優先)。出所 = 会社の設定 over_workorder (RULES.md R07・仕様 01 の表 (2026-11-01)) と AI の案 (実績を直す画面 = 作者の決め PROG-1d = b (11-07 07:04) に、入れるときと同じ R07 も当てる形。11-07)。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R07"
+    action = "progress.update_progress"
+    setting_key = "over_workorder"
+
+    def run(self, data, user):
+        progress = data.get("object")
+        qty = data.get("qty")
+        if progress is None or qty is None:
+            return None
+        step = progress.workorder_step
+        others = tools.recorded_qty(step) - _dec(progress.qty)
+        total = others + _dec(qty)
+        if total > _dec(step.planned_qty):
+            return (
+                f"実績の合計 ({_num(total)}) が予定の数 ({_num(step.planned_qty)}) を超えます。"
+                f"この実績に入れられる数は {_num(_dec(step.planned_qty) - others)} までです。数を確かめてください。"
+            )
+        return None
+
+
 class OverPayment(Check):
     """R24: 入金の金額が、請求書の残を超えたら (入金の記録)。
 
@@ -227,7 +257,7 @@ class OverPayment(Check):
         return None
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverPayment())
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment())
 
 for _check in BUILTIN:
     register(_check)
