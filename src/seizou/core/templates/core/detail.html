@@ -83,7 +83,7 @@
           {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/50">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
       </div>
       {% endfor %}
-    </dl>
+    {# block basic_extra: 子のテンプレートが基本の表の最後に行を足す所 (在庫の動きの詳細の「元の記録」の行。候補 C89) #}{% block basic_extra %}{% endblock %}</dl>
     {% if files %}
     <p class="mb-2 mt-6 text-xs font-medium text-base-content/50">ファイル</p>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
