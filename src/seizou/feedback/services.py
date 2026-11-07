@@ -464,7 +464,7 @@ def fixed_notice(rows) -> str:
     more = "ほか " if len(rows) > 1 else ""
     return (
         f"あなたの一言から直しました: 「{rows[0].title}」{more}({len(rows)} 件)。"
-        "詳細は左のメニューの下の「フィードバック」の一覧で見られます。"
+        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った一言」のタブで見られます。"
     )
 
 
