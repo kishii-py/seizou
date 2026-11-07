@@ -2,12 +2,15 @@
 
 一時のフォルダに、会社の置き場・入れた部品 (site-packages)・部品のソースの置き場・置き場の中の部品の写しを作り、
 標準入力に PreToolUse の JSON を渡して回す (tests/test_hooks_night_guard.py と同じ形)。
+試験を回す Claude Code の環境に CLAUDE_PROJECT_DIR があるかもしれないので、subprocess の環境変数から外してから回し、
+要る試験だけが渡す (tests/test_core_mcp_plugin.py と同じ形)。
 """
 
 from __future__ import annotations
 
 import ast
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -44,10 +47,13 @@ def touch(path: Path) -> None:
     path.write_text("", encoding="utf-8")
 
 
-def run_guard(cwd: Path, tool: str, file_path: Path | str | None):
+def run_guard(cwd: Path, tool: str, file_path: Path | str | None, *, key: str = "file_path", project_dir: Path | None = None):
     tool_input = {"content": "作り物の中身"}
     if file_path is not None:
-        tool_input["file_path"] = str(file_path)
+        tool_input[key] = str(file_path)
+    env = {name: value for name, value in os.environ.items() if name != "CLAUDE_PROJECT_DIR"}
+    if project_dir is not None:
+        env["CLAUDE_PROJECT_DIR"] = str(project_dir)
     payload = {
         "session_id": "test",
         "transcript_path": "",
@@ -63,6 +69,7 @@ def run_guard(cwd: Path, tool: str, file_path: Path | str | None):
         text=True,
         encoding="utf-8",
         cwd=cwd,
+        env=env,
         check=False,
     )
 
@@ -106,6 +113,35 @@ def test_blocks_copied_parts_in_site(places, tool, relative):
     assert_blocked(run_guard(site, tool, target))
 
 
+def test_blocks_notebook_edit_by_notebook_path(places):
+    site = places["site"]
+
+    assert_blocked(run_guard(site, "NotebookEdit", site / SITE_PACKAGES_FILE, key="notebook_path"))
+    assert_blocked(run_guard(site, "NotebookEdit", places["source"] / "src" / "seizou" / "core" / "a.ipynb", key="notebook_path"))
+    assert_allowed(run_guard(site, "NotebookEdit", site / "manual" / "a.ipynb", key="notebook_path"))
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_blocks_when_project_dir_is_site_and_cwd_is_parts(places, tool):
+    # 会話の中で cd して、今のフォルダが部品のソースに移っても、開いたフォルダ (CLAUDE_PROJECT_DIR) が置き場なら止める
+    source = places["source"]
+    target = source / "src" / "seizou" / "core" / "views.py"
+
+    assert_blocked(run_guard(source / "src" / "seizou", tool, target, project_dir=places["site"]))
+    assert_blocked(run_guard(source, tool, "src/seizou/core/views.py", project_dir=places["site"]))
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+@pytest.mark.parametrize(
+    "rel", [".venv/lib/python3.12/SITE-PACKAGES/SEIZOU/core/views.py", ".venv/lib/python3.12/Site-Packages/Seizou/new.py"]
+)
+def test_blocks_upper_case_path(places, tool, rel):
+    # 道の名前は小文字にそろえて比べる (macOS と Windows では同じ部品を指す)
+    site = places["site"]
+
+    assert_blocked(run_guard(site, tool, site / rel))
+
+
 # 通す物
 
 
@@ -133,9 +169,11 @@ def test_does_nothing_outside_company_project(places, tool):
 
     assert_allowed(run_guard(source, tool, source / "src" / "seizou" / "core" / "views.py"))
     assert_allowed(run_guard(source, tool, places["site"] / SITE_PACKAGES_FILE))
+    # 開いたフォルダ (CLAUDE_PROJECT_DIR) も置き場でなければ、何もしない
+    assert_allowed(run_guard(source, tool, source / "src" / "seizou" / "core" / "views.py", project_dir=source))
 
 
-@pytest.mark.parametrize("tool", ["Read", "Bash", "NotebookEdit", None])
+@pytest.mark.parametrize("tool", ["Read", "Bash", None])
 def test_other_tools_pass(places, tool):
     site = places["site"]
 
@@ -187,7 +225,7 @@ def test_hooks_json_shape():
     assert data["description"].strip()
     groups = data["hooks"]["PreToolUse"]
     assert len(groups) == 1
-    assert groups[0]["matcher"] == "Write|Edit"
+    assert groups[0]["matcher"] == "Write|Edit|NotebookEdit"
     hook = groups[0]["hooks"][0]
     assert hook["type"] == "command"
     assert hook["command"] == "uv"

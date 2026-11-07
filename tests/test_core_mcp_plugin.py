@@ -2,13 +2,15 @@
 
 標準の library だけを使い、Django と DB を読まない。起こし役は subprocess で回す (tests/test_plugin_guard_core.py と同じ形)。
 一時のフォルダに作り物の会社の置き場 (受けた引数と今のフォルダをファイルに書くだけの manage.py・answers.yaml・
-起動の 1 行の python をこの試験の python にした README.md) を作る。
+起動の 1 行の python を無い道にした README.md) を作り、置き場の一覧 (seizou.site_registry。一時のフォルダの SEIZOU_HOME) に
+この試験の python で登録する。起こし役が README.md でなく一覧の python を使うことは、README の python が無い道なのに子が動くことで見る。
 試験を回す Claude Code の環境に CLAUDE_PROJECT_DIR があるかもしれないので、subprocess の環境変数から外してから回す。
 """
 
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
 import subprocess
@@ -16,6 +18,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from seizou import site_registry
 
 REPO = Path(__file__).resolve().parent.parent
 PLUGIN = REPO / "plugin"
@@ -38,23 +42,41 @@ if "--echo" in sys.argv:
 """
 
 
-def _python_in_start_line() -> str:
-    """seizou new の起動の 1 行と同じ書き方 (空白があれば " で囲む)。"""
-    python = sys.executable
-    return f'"{python}"' if " " in python else python
+#: README.md の起動の 1 行に書く、無い python の道 (起こし役が README を読めば、子は動かない)
+README_PYTHON = "/no/such/folder/python"
 
 
 @pytest.fixture
-def site(tmp_path: Path) -> Path:
-    folder = (tmp_path / "seizou-sites" / "sample_co").resolve()
+def home(tmp_path: Path, monkeypatch) -> Path:
+    """置き場の一覧の置き場 (SEIZOU_HOME)。この試験の process と子の process (_env) の両方が使う。"""
+    folder = tmp_path / "seizou-home"
+    monkeypatch.setenv("SEIZOU_HOME", str(folder))
+    return folder
+
+
+def _make_site(folder: Path) -> Path:
     folder.mkdir(parents=True)
     (folder / "manage.py").write_text(FAKE_MANAGE, encoding="utf-8")
     (folder / "answers.yaml").write_text("id: sample_co\n", encoding="utf-8")
     (folder / "README.md").write_text(
         "# 作り物の会社のシステム (sample_co)\n\n## 起動\n\n```\n"
-        f"cd {folder} && {_python_in_start_line()} manage.py runserver 8001\n```\n",
+        f"cd {folder} && {README_PYTHON} manage.py runserver 8001\n```\n",
         encoding="utf-8",
     )
+    return folder
+
+
+@pytest.fixture
+def unregistered_site(tmp_path: Path, home: Path) -> Path:
+    """印 (manage.py と answers.yaml) はあるが、一覧に登録していない置き場 (人から受け取ったフォルダの形)。"""
+    return _make_site((tmp_path / "received" / "sample_co").resolve())
+
+
+@pytest.fixture
+def site(tmp_path: Path, home: Path) -> Path:
+    """一覧にこの試験の python で登録した置き場。"""
+    folder = _make_site((tmp_path / "seizou-sites" / "sample_co").resolve())
+    site_registry.register_site(folder, sys.executable)
     return folder
 
 
@@ -106,7 +128,8 @@ def test_start_uses_only_standard_library():
     assert modules <= set(sys.stdlib_module_names) | {"__future__"}, modules
 
 
-def test_start_runs_site_python(site: Path):
+def test_start_runs_registered_python_without_reading_readme(site: Path):
+    # README.md の起動の 1 行の python は無い道。一覧の python で起こすので、子は動く
     result = run_start(site, "--read-only")
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
@@ -144,9 +167,50 @@ def test_start_outside_site_exits_1(site: Path, tmp_path: Path):
     assert len(lines) == 1
     assert "会社の置き場" in lines[0]
 
-    (site / "README.md").write_text("# 起動の 1 行の無い README\n", encoding="utf-8")
-    broken = run_start(site)
-    assert broken.returncode == 1
-    assert broken.stdout == ""
-    assert "seizou new" in broken.stderr
+
+def test_start_does_not_run_unregistered_site(unregistered_site: Path, site: Path):
+    # 人から受け取ったフォルダ: README.md の起動の 1 行をこの試験の python にしても、一覧に無ければ起こさない
+    (unregistered_site / "README.md").write_text(
+        f"```\ncd {unregistered_site} && {sys.executable} manage.py runserver 8001\n```\n", encoding="utf-8"
+    )
+    for result in (run_start(unregistered_site), run_start(site, env=_env(CLAUDE_PROJECT_DIR=str(unregistered_site)))):
+        assert result.returncode == 1
+        assert result.stdout == ""
+        lines = result.stderr.splitlines()
+        assert lines == ["この置き場は登録されていません。`seizou ai-docs <置き場>` で登録してください。"]
+    assert not (unregistered_site / "record.json").exists()
     assert not (site / "record.json").exists()
+
+
+def test_start_unreadable_registry_runs_nothing(site: Path, home: Path):
+    (home / "sites.json").write_text("{壊れた JSON", encoding="utf-8")
+    result = run_start(site)
+    assert result.returncode == 1
+    assert "登録されていません" in result.stderr
+    assert not (site / "record.json").exists()
+
+
+def _load_start():
+    spec = importlib.util.spec_from_file_location("seizou_plugin_mcp_start", START)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_start_uses_python_from_registry(tmp_path: Path, home: Path, monkeypatch):
+    # subprocess.run を作り物に差し替え、一覧の python で manage.py seizou_mcp を打つことを見る
+    folder = _make_site((tmp_path / "seizou-sites" / "sample_co").resolve())
+    registered = str(tmp_path / "作り物の venv" / "bin" / "python")
+    site_registry.register_site(folder, registered)
+    start = _load_start()
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 7)
+
+    monkeypatch.setattr(start.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(folder))
+
+    assert start.main(["--read-only"]) == 7
+    assert calls == [([registered, "manage.py", "seizou_mcp", "--read-only"], {"cwd": folder, "check": False})]

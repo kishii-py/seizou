@@ -5,5 +5,5 @@
 - 画面の言葉は日本語、識別子は英語。画面の class の docstring に「使う人 / いつ / 何のために / 次にすること」を書く。決まりを足す関数と `checks.py` の class の docstring には「訳:」を書く (R22)。
 - `<python>` は `README.md` の起動の 1 行の python。変えたら `<python> manage.py seizou_check` を打ち、違反を 0 件にする。
 - 変えた後の流れ: 直す → `seizou_check` → 変えたファイルの重複と遠回りを、動きを変えずに直す → もう 1 度 `seizou_check` と `<python> manage.py check` (試験があれば試験も)。担当者はプログラムを書かない人なので、確かめを省かない。
-- 鍵は `.env` だけ。`.env` と `db.sqlite3` を commit しない。
+- 鍵は `.env` だけ。AI は `.env` を開かない・中身を出さない。`.env` と `db.sqlite3` を commit しない。
 - 言葉: 取引先の種類は「協力企業」、相手の会社から受けた注文は「受信した注文」、押して操作する所は「ボタン」と書く。

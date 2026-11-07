@@ -1,6 +1,7 @@
 """プラグインの目録と /seizou:build の本文を確かめる (標準の library だけ。Django を読まない)。"""
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,5 +81,48 @@ def test_skill_has_no_html_comment():
 
 def test_skill_demo_uses_the_given_answers_path():
     # --demo の種は答えの YAML の横の <id>/ にある。写した後の answers.yaml の道では見つからない。
+    # cd しないので、例の答えは clone した seizou のフォルダ (${CLAUDE_PLUGIN_ROOT}/..) から数える。
     _, body = _split_frontmatter(_read_skill())
-    assert "seizou new examples/companies/<id>.yaml --demo" in body
+    assert (
+        'seizou new "${CLAUDE_PLUGIN_ROOT}/../examples/companies/<id>.yaml" --demo --password-file ~/seizou-<id>-admin.txt'
+        in body
+    )
+
+
+def test_skill_prepares_seizou_from_plugin_root_with_lock():
+    # seizou の命令が PATH に無くても通るように、clone した seizou で lock のとおりに入れ、uv run --project で打つ (決め 11-08 00:5x)。
+    _, body = _split_frontmatter(_read_skill())
+    prepare = body[body.index("## 2. 前提を確かめる") : body.index("## 3. 答えを集める")]
+    assert 'uv sync --locked --extra pdf --project "${CLAUDE_PLUGIN_ROOT}/.."' in prepare
+    assert "uvx" not in body
+    commands = _new_commands(body)
+    assert len(commands) >= 2
+    for line in commands:
+        assert 'uv run --project "${CLAUDE_PLUGIN_ROOT}/.." seizou new ' in line, line
+
+
+def _new_commands(body):
+    """seizou new を打つ行 (5 の段の命令の行と、作り物の会社の --demo の行)。"""
+    return [line for line in body.splitlines() if "seizou new " in line and ("UV_SYSTEM_CERTS" in line or "--demo" in line)]
+
+
+def test_skill_keeps_admin_password_out_of_the_conversation():
+    _, body = _split_frontmatter(_read_skill())
+    commands = _new_commands(body)
+    assert len(commands) >= 2
+    for line in commands:
+        assert "--password-file ~/seizou-<id>-admin.txt" in line, line
+    assert "出力のとおりに伝えます" not in body
+    assert "読みません・cat しません" in body
+
+
+def test_skill_installs_uv_with_versioned_url():
+    # uv の入れ方は版つきの公式の URL と、古ければ uv self update (案 A。brew と winget は書かない。決め 11-08 00:5x)
+    _, body = _split_frontmatter(_read_skill())
+    urls = re.findall(r"https://astral\.sh/uv/[^\s`\"|]+", body)
+    assert urls
+    for url in urls:
+        assert re.fullmatch(r"https://astral\.sh/uv/\d+\.\d+\.\d+/install\.(sh|ps1)", url), url
+    assert "uv self update" in body and "0.11.0" in body
+    for word in ("brew", "winget"):
+        assert word not in body, word

@@ -20,14 +20,23 @@ description: 質問に 3 つ答えると、その会社専用の業務システ�
 ## 2. 前提を確かめる
 
 1. uv (Python とその部品を入れて動かす道具) が入っているかを、`uv --version` で確かめます。
-   - 入っていなければ、公式の入れ方を shell で打ちます。macOS と Linux は `curl -LsSf https://astral.sh/uv/install.sh | sh` です。Windows は PowerShell で `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` です。
+   - 入っていなければ、公式の版つきの入れ方を shell で打ちます (入れる uv の版を決めておくため)。macOS と Linux は `curl -LsSf https://astral.sh/uv/0.13.5/install.sh | sh` です。Windows は PowerShell で `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.ps1 | iex"` です。
    - 入れ終わったら、「uv を入れました。Claude Code をいったん閉じて開き直してから、もう一度 `/seizou:build` を打ってください」の趣旨を伝えて止まります。開き直すまで、新しく入れた uv が見つからないためです。
+   - 入っていて、`uv --version` の版が 0.11.0 より古いときは、`uv self update` を打って新しくします。断られたとき (公式の入れ方の外で入れた uv など) は、出力をそのまま担当者に見せて止まります。
 2. git (ファイルの変更を記録する道具) が入っているかを、`git --version` で確かめます。入っていなければ、そのことを伝えて止まります。
 3. この後に打つ uv と組み立ての命令には、いつも環境変数 `UV_SYSTEM_CERTS=true` を付けます。会社の proxy (社内と外のネットの間の中継) を通るときに、uv が PC の証明書を使えるようにするためです。
+4. seizou (組み立ての命令と、会社のシステムの部品) を用意します。seizou は、このプラグインのフォルダ `${CLAUDE_PLUGIN_ROOT}` (この SKILL.md のある `skills/build/` の 2 つ上の `plugin/`) の 1 つ上の、clone した seizou のフォルダにあります。shell で `${CLAUDE_PLUGIN_ROOT}` が空になるときは、そのフォルダの絶対の道に置き換えて打ちます。次の 1 行を打ちます。入っていれば何もせずに終わり、無ければ `uv.lock` のとおりの版で入れます。PATH を変える段も、Claude Code の開き直しも要りません。
+
+   ```
+   UV_SYSTEM_CERTS=true uv sync --locked --extra pdf --project "${CLAUDE_PLUGIN_ROOT}/.."
+   ```
+
+   - 以後、組み立ての命令は `uv run --project "${CLAUDE_PLUGIN_ROOT}/.." seizou …` の形で打ちます。今のフォルダは変えません (cd しません)。
+   - 失敗したときは、出力をそのまま担当者に見せて止まります。
 
 ## 3. 答えを集める
 
-答えの YAML (質問の答えを書いたファイル) の場所が命令に添えて渡されたときは、質問を全部飛ばし、その YAML を答えとして使います。たとえば `/seizou:build examples/companies/a_machining.yaml` です。`examples/companies/` の YAML は、作り物の会社の答えです。
+答えの YAML (質問の答えを書いたファイル) の場所が命令に添えて渡されたときは、質問を全部飛ばし、その YAML を答えとして使います。たとえば `/seizou:build examples/companies/a_machining.yaml` です。`examples/companies/` の YAML は、作り物の会社の答えで、clone した seizou のフォルダの中 (`${CLAUDE_PLUGIN_ROOT}/../examples/companies/`) にあります。渡された道が今のフォルダから見つからず、`examples/companies/` で始まるときは、`${CLAUDE_PLUGIN_ROOT}/../examples/companies/<名前>.yaml` を使います。
 
 渡されなかったときは、次の 3 問を 1 問ずつ聞きます。1 問を聞いたら答えを待ち、答えを読んでから次の問いを出します。
 
@@ -89,10 +98,11 @@ port: <会社のシステムを開くポートの番号>
 組み立ての命令 (答えの YAML から会社のシステムを作る Python の命令) を shell で打ちます。会社のシステムは Django のプロジェクトで、置き場は `~/seizou-sites/<id>/` です。
 
 ```
-UV_SYSTEM_CERTS=true seizou new ~/seizou-sites/<id>/answers.yaml
+UV_SYSTEM_CERTS=true uv run --project "${CLAUDE_PLUGIN_ROOT}/.." seizou new ~/seizou-sites/<id>/answers.yaml --password-file ~/seizou-<id>-admin.txt
 ```
 
-- 答えが `examples/companies/` の作り物の会社のときは、上の `answers.yaml` の道ではなく、渡された答えの YAML の道のまま `seizou new examples/companies/<id>.yaml --demo` を打ちます。種は、その YAML の横の `<id>/` から入ります。命令が置き場の `answers.yaml` に答えを写します (`write_project`)。
+- 答えが `examples/companies/` の作り物の会社のときは、上の `answers.yaml` の道ではなく、渡された答えの YAML の道 (3 の段で見つけた道) のまま `uv run --project "${CLAUDE_PLUGIN_ROOT}/.." seizou new "${CLAUDE_PLUGIN_ROOT}/../examples/companies/<id>.yaml" --demo --password-file ~/seizou-<id>-admin.txt` を打ちます。種は、その YAML の横の `<id>/` から入ります。命令が置き場の `answers.yaml` に答えを写します (`write_project`)。
+- `--password-file` は、管理者のパスワードを出力に出さず、持ち主だけが読めるファイルに書かせる口です。パスワードを会話に残さないために、いつも付けます。
 - この命令が、置き場を作り、要る物を入れ、データベースを用意し (`migrate`)、管理者を 1 人作り、画面の見た目のファイル (CSS) を作ります。
 - 命令が見つからないときや失敗したときは、出力をそのまま担当者に見せて止まります。命令の代わりに `manage.py` や `settings.py` を書いたり、手で作業を補ったりしません。
 
@@ -105,7 +115,7 @@ UV_SYSTEM_CERTS=true seizou new ~/seizou-sites/<id>/answers.yaml
 会社のシステムの置き場で、`manage.py runserver` を答えのファイルの `port` の番号で起動します。起動した後も動き続けるので、後ろで動かします。
 
 - 2 社目を同じ PC で立てるときは、別のポートで立ちます。同じブラウザで両方にログインできます。cookie (ブラウザがログインを覚えておくための小さな記録) の名前は、組み立ての命令が会社ごとに分けて書くので、この命令では何もしません。
-- 担当者に、ログインの画面の URL と管理者の ID を伝えます。パスワードは、組み立ての命令の出力のとおりに伝えます。
+- 担当者に、ログインの画面の URL と管理者の ID を伝えます。パスワードは会話に出さず、「パスワードはファイル `<絶対の道>` に書きました。ご自分で開き、ログインしたらファイルを消してください」の趣旨を伝えます。`<絶対の道>` は、5 の段の `--password-file` の道の `~` をホームのフォルダに広げた物です。Claude はこのファイルを読みません・cat しません。
 - `.env` (鍵を置くファイル) の中身と鍵は、画面に出しません。
 
 ## 8. 説明書を書き起こす
