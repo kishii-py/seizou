@@ -1636,6 +1636,7 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
     atomic の外で注文回答を返す。send が偽なら注文回答を送らず、返事の欄に MESSAGE_REPLY_SEED を書く (accept と同じ)。
     訳: 受信した注文を人が受け入れたときだけ受注を変え (R10)、同じ版を 2 回受け入れないため (R11)。受ける側が手で直した明細も注文の値で上書きするのは、中小企業共通 EDI の注文変更 (方式 2) が変更の後の注文の全体を送るため。出所 = RULES.md R10・R11 と決め C96-3 (11-07 06:35。受け入れる前の画面で受注と違う値を全部出す)。
     変えてよい条件 = C96-3 の答えが変わったとき (R10・R11 は変えない)。
+    元の行の鍵は受信した注文の行だけにかける (select_for_update の of=("self",))。受注の行の鍵は orders.services の update_order・cancel_order が取る。order は空になれる列で、PostgreSQL は外部結合の空になれる側に FOR UPDATE をかけられないため (postgres の CI が落ちた。11-07)。
     """
     from django.utils import timezone
 
@@ -1646,7 +1647,7 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
             raise RuleViolation("R11", "受け入れられません。" + MESSAGE_ALREADY_ACCEPTED)
         if locked.status == Inbox.STATUS_REJECTED:
             raise ValueError("受け入れられません。" + MESSAGE_ACCEPT_REJECTED)
-        base = Inbox.objects.select_for_update().select_related("order").get(pk=locked.revises_id)
+        base = Inbox.objects.select_for_update(of=("self",)).select_related("order").get(pk=locked.revises_id)
         if base.status == Inbox.STATUS_RECEIVED:
             raise ValueError(f"受け入れられません。先に第 1 版の注文 (受信した注文 {base.pk}) を受け入れてください。")
         payload = locked.payload if isinstance(locked.payload, dict) else {}
