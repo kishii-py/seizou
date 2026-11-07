@@ -41,7 +41,7 @@
 {% endblock %}
 {% block after_tabs %}{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
 {% can_write "billing.Invoice" as can_bill %}
-<section id="payments" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
+<section id="payments" class="mt-6 scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
     <h2 id="payments-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "yen" "size-5 text-base-content/70" %}入金
       {% if object.status == "cancelled" %}<span class="badge badge-ghost">{{ object.payment_status_label }}</span>
