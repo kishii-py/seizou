@@ -379,7 +379,8 @@ def test_cancel_card_links_paid_invoice_to_payments(logged_in, user, customer, s
 def test_cancel_card_links_every_row_of_paid_invoice(logged_in, user, customer, shipment):
     """1 枚の請求書に出荷が 2 つ入っていれば、入金のある請求書の link は 2 行とも入金の枠へ向く。入金の無い請求書の行は詳細のまま。"""
     second = services.ship(shipment.order_line, Decimal("3"), SHIPPED_AT, user)
-    third = services.ship(shipment.order_line, Decimal("2"), SHIPPED_AT, user)
+    # 3 つ目の出荷は前の月 (同じ得意先の同じ締め期間の請求書は 1 枚だけ = R23。2 枚目の請求書を別の期間にする)
+    third = services.ship(shipment.order_line, Decimal("2"), SHIPPED_AT.replace(month=SHIPPED_AT.month - 1), user)
     note = services.create_delivery_note(customer, [shipment, second, third], user)
     for row in (shipment, second, third):
         row.refresh_from_db()
