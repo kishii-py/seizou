@@ -3,7 +3,11 @@
 {# フィードバックの一覧: 土台の一覧の上に、状態と種類の絞り込みの欄を足す (絞るのは FeedbackListView.get_queryset。外の値は絞らない)。 #}
 {# 土台の検索の form の外の別の form で、同じ #rows を差し替える。検索の欄 (q・per・sort) の値は hx-include で一緒に送る (注残の盤と同じ形)。 #}
 {# GitHub (依頼書 N185): 上の右に世話役だけ「GitHub の設定」と、つないでいるとき「GitHub の状態を取り込む」。下に皆の「GitHub の Issue を探す」(GET の issue_q。押したときだけ GitHub を読む)。 #}
+{# タブの帯 (依頼書 N321。feedback/_tabs.html): いちばん上に出す。GET の tab が issues (「みんなの Issue」のタブ) のときは、GitHub のボタンの行と絞り込みと表を描かず、#issues の節だけを描く。 #}
+{# そのときは探す form に隠しの tab を足し、探した後もタブを保つ (GET の form は action の ? の後ろを欄の値で置き換えるので、隠しの欄が要る)。tab が無いときは今までどおり (表の下に #issues の節)。 #}
 {% block content %}{% feedback_filter as filter %}{% feedback_github as github %}
+{% include "feedback/_tabs.html" %}
+{% if request.GET.tab != "issues" %}
 {% if github.can_manage %}
 <div id="feedback-github" class="mb-4 flex flex-wrap items-center justify-end gap-2">
   {% if github.status.connected %}<form method="post" action="{% url 'feedback:github_sync' %}">{% csrf_token %}<button id="feedback-github-sync" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "download" "size-4" %}GitHub の状態を取り込む</button></form>{% endif %}
@@ -23,10 +27,12 @@
 </form>
 {# 土台の検索とページ送りの要求に、絞り込みの欄の値を足す。 #}
 <div hx-include="#feedback-filter">{{ block.super }}</div>
+{% endif %}
 <section id="issues" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="issues-title">
   <h2 id="issues-title" class="text-lg font-bold">GitHub の Issue を探す</h2>
   <p class="mt-2 text-xs text-base-content/50">今の困りごとが既に出ていないか、送った要望がどうなったかを、送り先のリポジトリ ({{ github.status.repo }}) の Issue から探します。同じ困りごとなら、その Issue に「うちも」の 👍 を付けてください。</p>
-  <form id="issues-form" method="get" action="{{ request.path }}#issues" class="mt-4 flex flex-wrap items-center gap-2" role="search" aria-label="GitHub の Issue を探す">
+  <form id="issues-form" method="get" action="{{ request.path }}{% if request.GET.tab == "issues" %}?tab=issues{% endif %}#issues" class="mt-4 flex flex-wrap items-center gap-2" role="search" aria-label="GitHub の Issue を探す">
+    {% if request.GET.tab == "issues" %}<input type="hidden" name="tab" value="issues">{% endif %}
     <input type="search" name="issue_q" value="{{ github.q }}" class="input input-sm w-72" placeholder="言葉 (空白で区切る。空なら新しい順)" aria-label="探す言葉">
     <button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "search" "size-4" %}探す</button>
   </form>

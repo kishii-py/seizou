@@ -15,6 +15,8 @@
 - GitHub でログインしてつなぐ (依頼書 N320): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
   断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
+- タブの帯 (依頼書 N321): 送る画面と一覧の上に「送る」「送った一言」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
+  新しい URL は足さず、「みんなの Issue」は一覧の ?tab=issues で、表を描かないので一覧の get_queryset は空を返す。
 """
 
 from django.contrib import messages
@@ -55,6 +57,9 @@ class FeedbackListView(BaseListView):
 
     def get_queryset(self):
         queryset = _visible_to(super().get_queryset(), self.request.user)
+        if self.request.GET.get("tab") == "issues":
+            # 「みんなの Issue」のタブは表を描かないので数えない (依頼書 N321)
+            return queryset.none()
         chosen = services.list_filter(self.request.GET)
         if chosen["status"]:
             queryset = queryset.filter(status=chosen["status"])
