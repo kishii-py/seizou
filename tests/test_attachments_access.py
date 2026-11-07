@@ -223,3 +223,14 @@ def test_add_form_target_line_hidden_from_department_outsider(settings, order_fi
 
     assert "付ける先: " not in _add_body(_account("seizo-hito", departments=[seizo]), order)
     assert f"付ける先: 受注 {order.order_no}</p>" in _add_body(_account("eigyo-hito", departments=[sales]), order)
+
+
+def test_add_attachment_refuses_targets_the_user_cannot_open(screenshot, author, other, manager):
+    """付ける (保存) も開ける人だけ: ほかの人のフィードバックには付けられず、書いた本人と世話役は付けられる (候補 10 の保存の側)。"""
+    feedback = screenshot.target
+    with pytest.raises(ValueError, match="付ける先の記録を開けません"):
+        services.add_attachment(feedback, SimpleUploadedFile("hoka.png", PNG_BYTES), other, kind="photo")
+    assert Attachment.objects.filter(object_id=feedback.pk, original_name="hoka.png").count() == 0
+    for person, name in ((author, "honnin.png"), (manager, "sewa.png")):
+        row = services.add_attachment(feedback, SimpleUploadedFile(name, PNG_BYTES), person, kind="photo")
+        assert row.original_name == name

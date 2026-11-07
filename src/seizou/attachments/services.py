@@ -48,6 +48,7 @@ MESSAGE_TOO_LARGE = "ファイルが 20MB を超えています。分けるか�
 MESSAGE_NAME_TOO_LONG = "ファイル名が 100 字を超えています。名前を短くしてから選び直してください。"
 MESSAGE_BAD_KIND = "種類は写真・検査成績書・作業手順・その他のどれかを選んでください。"
 MESSAGE_NOTE_TOO_LONG = "備考が 500 字を超えています。短くしてから保存してください。"
+MESSAGE_CANNOT_OPEN_TARGET = "付ける先の記録を開けません。付けたい記録の詳細の画面から付けてください。"
 MESSAGE_ALREADY_REMOVED = "この添付ファイルは既に削除されています。付けた先の記録の詳細の画面を開き直してください。"
 
 
@@ -92,6 +93,11 @@ def add_attachment(target, file, user, *, kind, note=""):
     (行もファイルも残さない)。通れば 1 行を作り、ファイルを storage に置く (保存の名前は乱数)。
     """
     _refuse_bad_target(target)
+    if getattr(user, "is_authenticated", False) and not can_open_target(target, user):
+        # 訳: 付ける (保存) も、読む・消す・一覧 (openable_by) と同じ人だけにする。何のため = 部署の外の記録やほかの人の
+        # フィードバックにファイルを付けられると、開けない記録を外から変えられるため。出所 = Claude Security の走査の候補 10
+        # (11-07。係 sB は下見だけを直し、保存は本体が門で足した)。変えてよい条件 = 付ける先を開けない人に付けさせる業務の理由が出たとき。
+        raise ValueError("保存できません。" + MESSAGE_CANNOT_OPEN_TARGET)
     original_name, mime = _refuse_bad_file(file)
     if kind not in dict(KIND_CHOICES):
         raise ValueError("保存できません。" + MESSAGE_BAD_KIND)
