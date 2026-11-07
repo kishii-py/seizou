@@ -2,6 +2,7 @@
 
 処理は seizou.core.backup に置き、この命令は引数を読んで結果を書くだけ。表を変えない。
 .env (鍵) は控えず、その案内の 1 行を出す。
+写した DB の確かめ (integrity_check) と会社の作り込みの写し (site/) と backup.json の sha256 は、この命令の道だけで行う (backup.take_backup の full)。
 """
 
 from pathlib import Path
@@ -25,7 +26,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         try:
             parent = Path(options["to"]) if options["to"] else backup.default_dir()
-            result = backup.take_backup(parent)
+            result = backup.take_backup(parent, full=True)
         except backup.BackupError as exc:
             raise CommandError(str(exc)) from exc
         kind = DB_LABELS.get(result["database"], result["database"])

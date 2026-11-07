@@ -1,6 +1,7 @@
 """控え (バックアップ) と戻し (復元)。命令 seizou_backup・seizou_restore の中身。
 
 控えは日時の名前のフォルダ 1 つ = DB の写し + media/ + answers.yaml + backup.json。.env (鍵) は控えない。
+命令 seizou_backup の控えだけは、写した DB を integrity_check で確かめ、会社の作り込みの許しの一覧を site/ に写し、各ファイルの sha256 と当てた migration を backup.json に足す (戻す前の退避と練習モードの写しは遅くしない)。
 DB の写しは SQLite の backup API (Django の生きている接続から。WAL でも整合が取れる)。
 PostgreSQL は pg_dump を呼ぶ (無ければ案内して止まる)。
 戻す前に同じ置き場に今の物を控える (戻しの戻し)。
@@ -11,6 +12,7 @@ ORM で表に書く処理は無い。部品 (connect など) を import しな�
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -23,6 +25,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import connection
+from django.db.migrations.recorder import MigrationRecorder
 
 from seizou.core import conf
 
@@ -38,6 +41,17 @@ BACKUPS_DIR = "backups"
 #: 戻す前の退避の名前の尻尾と、控えのフォルダの名前の形 (一覧はこの形の名前だけを拾う)
 RETREAT_SUFFIX = "-before-restore"
 NAME_PATTERN = re.compile(r"^\d{8}-\d{6}(-before-restore)?$")
+#: 名前の頭の日時の形と字数 (new_name と同じ形。古さは名前で決め、mtime は見ない)
+NAME_TIME_FORMAT = "%Y%m%d-%H%M%S"
+NAME_TIME_LENGTH = 15
+#: 命令 seizou_backup の控えだけが持つ、会社の作り込みの写しのフォルダと、写す物の許しの一覧 (置き場の直下。無い物は飛ばす。一覧の外は写さない)
+SITE_DIR = "site"
+SITE_FILES = ("settings.py", "manage.py", "CLAUDE.md", "AGENTS.md", "README.md")
+SITE_DIRS = ("fields", "templates", "static", "manual", "deploy")
+#: 作り込みのフォルダを写すときに外す物
+SITE_IGNORE = ("__pycache__",)
+#: integrity_check が通らないときに断りの文に添える行の数
+INTEGRITY_LINES = 3
 
 ENV_NOTICE = ".env (鍵) は控えに入れていません。別の安全な場所に写してください。"
 #: pg_dump が無いときの案内 ({name} = DB の名前、{path} = 写しの道)。接続の鍵は入れない
@@ -133,10 +147,15 @@ def current_version() -> str:
         return ""
 
 
-def take_backup(parent: Path, *, suffix: str = "") -> dict:
+def take_backup(parent: Path, *, suffix: str = "", full: bool = False) -> dict:
     """控えを 1 つ取り、backup.json の中身に folder (控えのフォルダの Path) を足した辞書を返す。
 
     途中で失敗したら、作りかけのフォルダを消してから例外を上げ直す (半端な控えを残さない)。
+    full が真 (命令 seizou_backup だけ) のときは、写した SQLite の DB を integrity_check で確かめ (通らなければ BackupError)、
+    会社の作り込みの許しの一覧 (SITE_FILES・SITE_DIRS) を site/ に写し、backup.json に sha256・migrations・site_files の鍵を足す。
+    戻す前の退避と練習モードの写しは full を渡さない (今のまま)。
+    PostgreSQL の写し (db.pgdump) は確かめない。
+    訳: 壊れた控えを黙って残さず、戻した時に会社ごとの項目や帳票の形も一緒に戻せるようにするため。作り込みを入れるのは本人の決め (11-08 00:0x)。確かめと写しを命令の道だけにしたのは、生きた DB が壊れたときに戻す前の退避と練習モードが止まらないように (確かめ直しの (b))。.env は控えない決まり (backup.py の docstring・docs/operations.md の「毎日の控え」) のまま。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-3・ops-4・chk-ops-sre-5 と確かめ直しの (b)(f)。変えてよい条件 = 本人が控えの範囲を決め直したとき、または戻す前の退避にも確かめを掛けると決めたとき。
     """
     _refuse_bad_media_root()
     kind = database_kind()
@@ -162,13 +181,17 @@ def take_backup(parent: Path, *, suffix: str = "") -> dict:
             _dump_postgres(target, pg_dump)
         else:
             _dump_sqlite(target)
+            if full:
+                _verify_sqlite_copy(target)
         media_root = _media_root()
         if media_root is not None and media_root.is_dir():
             shutil.copytree(media_root, folder / MEDIA_DIR)
         base = _base_dir()
         if base is not None and (base / ANSWERS).is_file():
             shutil.copyfile(base / ANSWERS, folder / ANSWERS)
-        manifest = manifest_for(kind, folder)
+        if full and base is not None:
+            _copy_site(base, folder / SITE_DIR)
+        manifest = manifest_for(kind, folder, full=full)
         text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
         (folder / MANIFEST).write_text(text, encoding="utf-8")
     except BaseException:
@@ -185,6 +208,46 @@ def _dump_sqlite(path: Path):
         connection.connection.backup(target)
     finally:
         target.close()
+
+
+def sqlite_integrity(path: Path) -> list[str]:
+    """写した SQLite の DB を Python の標準の sqlite3 で開き、PRAGMA integrity_check の行を返す (表に書かない)。
+
+    壊れていなければ ["ok"] の 1 行。開けない・DB でないときは sqlite3.DatabaseError が出る。試験が差し替える。
+    標準の sqlite3 の接続の execute だけを使う (cursor を呼ばない。生きた DB には触らない)。
+    """
+    con = sqlite3.connect(str(path))
+    try:
+        return [str(row[0]) for row in con.execute("PRAGMA integrity_check")]
+    finally:
+        con.close()
+
+
+def _verify_sqlite_copy(path: Path) -> None:
+    """写した DB の確かめ。integrity_check が ok の 1 行でないか、開けなければ BackupError (呼び手が作りかけのフォルダを消す)。
+
+    訳: 壊れた写しを控えとして黙って残さないため。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-3 と確かめ直しの (b)(g)。変えてよい条件 = 戻す前の退避にも確かめを掛けると本人が決めたとき (呼び手を増やす)。
+    """
+    try:
+        rows = sqlite_integrity(path)
+    except sqlite3.DatabaseError as exc:
+        raise BackupError(f"控えの DB の確かめ (integrity_check) が通りません: {exc}。控えは残していません。") from exc
+    if rows != ["ok"]:
+        shown = " / ".join(rows[:INTEGRITY_LINES]) or "結果が空"
+        raise BackupError(f"控えの DB の確かめ (integrity_check) が通りません: {shown}。控えは残していません。")
+
+
+def _copy_site(base: Path, target: Path) -> None:
+    """会社の作り込みの許しの一覧 (SITE_FILES・SITE_DIRS) のうち置き場にある物を target に写す。一覧の外 (.env・DB・media/ など) は写さない。"""
+    target.mkdir()
+    for name in SITE_FILES:
+        source = base / name
+        if source.is_file():
+            shutil.copy2(source, target / name)
+    for name in SITE_DIRS:
+        source = base / name
+        if source.is_dir():
+            shutil.copytree(source, target / name, ignore=shutil.ignore_patterns(*SITE_IGNORE))
 
 
 def _dump_postgres(path: Path, pg_dump: str):
@@ -208,10 +271,39 @@ def _count_files(folder: Path) -> int:
     return sum(1 for path in folder.rglob("*") if path.is_file())
 
 
-def manifest_for(kind, folder) -> dict:
-    """backup.json の中身。"""
+def _sha256(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def file_hashes(folder: Path) -> dict:
+    """控えのフォルダの下の全部のファイル (backup.json を除く) の sha256。鍵はフォルダからの相対の道 (/ 区切り)。"""
     folder = Path(folder)
-    return {
+    hashes = {}
+    for path in sorted(folder.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(folder).as_posix()
+        if relative == MANIFEST:
+            continue
+        hashes[relative] = _sha256(path)
+    return hashes
+
+
+def applied_migrations() -> dict:
+    """app ごとの、一番新しく当てた migration の名前 (当てた時刻の順。同じ時刻なら名前の順)。ORM で django_migrations を読むだけ。"""
+    newest = {}
+    for (app, name), record in MigrationRecorder(connection).applied_migrations().items():
+        key = (record.applied, name)
+        if app not in newest or key > newest[app][0]:
+            newest[app] = (key, name)
+    return {app: newest[app][1] for app in sorted(newest)}
+
+
+def manifest_for(kind, folder, *, full: bool = False) -> dict:
+    """backup.json の中身。full (命令 seizou_backup の控え) のときだけ sha256・migrations・site_files の鍵を足す (FORMAT は同じ)。"""
+    folder = Path(folder)
+    manifest = {
         "format": FORMAT,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "database": kind,
@@ -221,6 +313,11 @@ def manifest_for(kind, folder) -> dict:
         "media_files": _count_files(folder / MEDIA_DIR),
         "answers": (folder / ANSWERS).is_file(),
     }
+    if full:
+        manifest["sha256"] = file_hashes(folder)
+        manifest["migrations"] = applied_migrations()
+        manifest["site_files"] = _count_files(folder / SITE_DIR)
+    return manifest
 
 
 def read_manifest(folder: Path) -> dict:
@@ -278,6 +375,7 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     """控えから DB と上げたファイルを戻す。戻す前に今の物を retreat_parent に控える (退避が失敗したら戻さない)。
 
     answers.yaml は戻さない (置き場の settings.py と対の物で、データではない)。
+    site/ (会社の作り込み。命令 seizou_backup の控えだけ) は控えに入るが、この関数は戻さない (置き場のコードを控えの古い物で上書きしないため。置き場ごと失ったときは手引きのとおり手で写す)。
     返す物は {"folder": 控え, "retreat": 退避のフォルダ, "manifest": 控えの backup.json}。
     """
     _refuse_bad_media_root()
