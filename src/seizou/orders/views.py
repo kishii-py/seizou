@@ -13,6 +13,7 @@ from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from seizou.core import dashboard
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, FilterSpec, url_or_none
 
 from . import board, services
@@ -140,10 +141,13 @@ class OrderLineListView(BaseListView):
     search_fields = ("order__customer__name", "item__part_no", "order__order_no", "order__customer_order_no")
     # 盤の絞り (決め 11-04 17:3x = 絞りは枠の 1 か所)。「出荷の残りがある物だけ」は既定で入の flag で、条件 (残が 0 より大きく、取消でない受注の明細) は
     # get_queryset が annotate_remaining の後に掛ける (土台は絞りを annotate より前に掛けるので、when では残を読めない)。
+    # 「指示書の無い明細だけ」の when は、左のメニューの「指示書」の横の数と今日やることの「指示書の無い明細」を数える関数と同じ物
+    # (core.dashboard.without_workorder。数と表が食い違わないため。決め 11-07 20:5x の 2。nav-01)。
     filters = (
         {"name": "open", "label": "出荷の残りがある物だけ", "kind": "flag", "when": FilterSpec.as_is, "default": True},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "due_date"},
         {"name": "overdue", "label": "納期が過ぎた物だけ", "kind": "flag", "when": _overdue_lines},
+        {"name": "no_workorder", "label": "指示書の無い明細だけ", "kind": "flag", "when": dashboard.without_workorder},
     )
     # 絞りのタブ (土台の presets。UX の案 3-A)。「出荷の残りがある」は既定の印と同じ組 (開いた直後に選ばれた見た目になる)。
     presets = (

@@ -52,11 +52,18 @@ def _inbox_received_params() -> dict:
 #: 絞り無しの入口。数を置く入口は変えず、押した後に移る先だけを変える)。決め 11-07 20:5x の 2 (数を押すとその数で絞った一覧が開く。
 #: N146 の「移り先は変えない」を置き換える。nav-01)。生産管理ボードの数は盤のタブ「納期が過ぎた」と同じ組 (orders の presets の
 #: f_open=1&f_overdue=1。数える関数 _overdue_lines と同じ条件)。受信した注文の数は状態「届いた」の絞り (今日やることの行と同じ)。
-#: 合う絞りのまだ無い物 (指示書の無い明細・受入の残・請求書に入っていない出荷) は、入口そのもの (絞り無し) に移る。
+#: 指示書の数は明細の行を数えているので、指示書の一覧でなく生産管理ボードを、数える関数と同じ絞り「指示書の無い明細だけ」
+#: (f_open=1&f_no_workorder=1。dashboard.without_workorder) で開く。合う絞りのまだ無い物 (受入の残・請求書に入っていない出荷) は、
+#: 入口そのもの (絞り無し) に移る。
 MENU_COUNTS = {
     "connect:inbox_list": ("未処理の受信した注文", "件", "_received_inbox", ("connect:inbox_list", _inbox_received_params)),
     "orders:orderline_list": ("納期が過ぎた明細", "行", "_overdue_lines", ("orders:orderline_list", {"f_open": "1", "f_overdue": "1"})),
-    "workorders:workorder_list": ("指示書の無い明細", "行", "_lines_without_workorder", ("workorders:workorder_list", {})),
+    "workorders:workorder_list": (
+        "指示書の無い明細",
+        "行",
+        "_lines_without_workorder",
+        ("orders:orderline_list", {"f_open": "1", "f_no_workorder": "1"}),
+    ),
     "purchasing:receipt_list": ("受入の残っている出荷の知らせの明細", "行", "_noticed_lines_to_receive", ("purchasing:receipt_list", {})),
     "billing:invoice_list": ("請求書に入っていない出荷", "件", "_shipments_to_invoice", ("billing:invoice_list", {})),
 }

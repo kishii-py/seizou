@@ -1045,8 +1045,26 @@ def _received_inbox():
     return inbox_model._default_manager.filter(status=inbox_model.STATUS_RECEIVED)
 
 
+def without_workorder(queryset):
+    """受注の明細の queryset を、未出荷か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無い物に狭める (読むだけ)。
+
+    生産管理ボードの絞り「指示書の無い明細だけ」の when (orders.views) と、左のメニューと今日やることの「指示書の無い明細」の数
+    (_lines_without_workorder) が、この 1 つの関数を使う (数と表が食い違わないため。決め 11-07 20:5x の 2。nav-01)。
+    指示書の絞り込み (副問い合わせ) は残を足す前に置く (残を足した後に多の join を足さない。出荷の数が重なるため)。
+    workorders の部品が無ければ、受注の状態の絞りだけ。
+    """
+    order_model = _model("orders", "Order")
+    workorder_model = _model("workorders", "WorkOrder")
+    if order_model is None:
+        return queryset
+    queryset = queryset.filter(order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL))
+    if workorder_model is not None:
+        queryset = queryset.exclude(workorders__status=workorder_model.STATUS_ISSUED)
+    return queryset
+
+
 def _lines_without_workorder():
-    """未出荷か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く、残が 0 より大きい物。"""
+    """未出荷か一部出荷の受注の明細のうち、取消でない指示書が 1 枚も無く (without_workorder)、残が 0 より大きい物。"""
     order_model = _model("orders", "Order")
     line_model = _model("orders", "OrderLine")
     workorder_model = _model("workorders", "WorkOrder")
@@ -1054,11 +1072,7 @@ def _lines_without_workorder():
         return None
     from seizou.orders.services import annotate_remaining
 
-    # 指示書の絞り込み (副問い合わせ) は残を足す前に置く。残を足した後に多の join を足さない (出荷の数が重なるため)。
-    queryset = line_model._default_manager.filter(
-        order__status__in=(order_model.STATUS_OPEN, order_model.STATUS_PARTIAL)
-    ).exclude(workorders__status=workorder_model.STATUS_ISSUED)
-    return annotate_remaining(queryset).filter(remaining_total__gt=0)
+    return annotate_remaining(without_workorder(line_model._default_manager.all())).filter(remaining_total__gt=0)
 
 
 def orders_to_ship():
@@ -1188,12 +1202,13 @@ def _task_targets() -> dict:
 
     納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面 (納品書を作る・請求書の新規登録) へ移る
     (一覧には合う絞りが無く、数えた物と違う物が並ぶため。決め 11-07 20:5x の 2 = 数を押すとその数で絞った画面が開く。flow-02)。
+    指示書の無い明細の行は、生産管理ボードを同じ関数 (without_workorder) の絞り「指示書の無い明細だけ」で開く (nav-01 の (b))。
     """
     inbox = _model("connect", "Inbox")
     purchase = _model("purchasing", "PurchaseOrder")
     return {
         "order": ("受信した注文", "connect:inbox_list", {"f_status": inbox.STATUS_RECEIVED} if inbox else {}),
-        "workorder": ("生産管理ボード", "orders:orderline_list", {}),
+        "workorder": ("生産管理ボード", "orders:orderline_list", {"f_open": "1", "f_no_workorder": "1"}),
         "shipment": ("受注", "orders:order_list", {}),
         "delivery_note": ("納品書を作る", "shipping:deliverynote_create", {}),
         "invoice": ("請求書の新規登録", "billing:invoice_create", {}),
@@ -1214,7 +1229,7 @@ def today_tasks(user=None) -> dict | None:
     None を返す (「はじめての方へ」の枠ごと出さない。決め C12-2 = a。初見テスト R5 の U159)。行は外す前の guide から作る
     (行の移る先と段の url_name が違う物があり、段を先に外すと開ける行まで消えるため。例: 出荷の段は出荷の一覧、出荷の行は受注の一覧)。
     納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面へ移る (_task_targets)。移る先に合う絞りが無い段
-    (指示書の無い明細・受入の残) は素の一覧へ移る。
+    (受入の残) は素の一覧へ移る。
     """
     guide = flow_guide()
     if guide is None:

@@ -27,6 +27,7 @@ from seizou.core.context_processors import MENU_COUNTS, count_url, menu, seizou
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.views import OrderLineListView
+from seizou.workorders import services as workorders_services
 
 BADGE = '<span class="tooltip tooltip-left ml-auto text-xs" data-tip="'
 INBOX_TABLE = "connect_inbox"
@@ -272,11 +273,38 @@ def test_board_count_opens_the_overdue_tab(user, logged_in, customer):
 
 
 def test_count_targets_resolve_and_fall_back_to_the_entry():
-    # 移る先の URL は全部引ける。合う絞りのまだ無い物 (指示書・受入・請求書) は入口そのもの (絞り無し) に移る
+    # 移る先の URL は全部引ける。合う絞りのまだ無い物 (受入・請求書) は入口そのもの (絞り無し) に移る
     entries = {item["url_name"]: item["url"] for item in menu()}
     for url_name, (_label, _unit, _counter, (target_name, params)) in MENU_COUNTS.items():
         url = count_url(url_name)
         assert url is not None and url.startswith(reverse(target_name)), url_name
         if not params:
             assert url == entries[url_name], url_name
-    assert count_url("workorders:workorder_list") == reverse("workorders:workorder_list")
+    assert count_url("purchasing:receipt_list") == reverse("purchasing:receipt_list")
+    assert count_url("billing:invoice_list") == reverse("billing:invoice_list")
+
+
+def test_workorder_count_opens_the_board_narrowed_to_lines_without_workorder(user, logged_in, customer):
+    # 「指示書」の横の数は明細の行を数えているので、指示書の一覧でなく生産管理ボードを、数える関数と同じ絞り
+    # 「指示書の無い明細だけ」で開く (nav-01 の (b))。指示書のある明細は数にも表にも入らない
+    shaft = masters_services.create_item({"part_no": "T-100", "name": "作り物の軸", "unit": "個"}, user)
+    cut = masters_services.create_process({"code": "CUT", "name": "切断", "sort_order": 1}, user)
+    lines = [
+        orders_services.create_order(
+            customer, [{"item": shaft, "qty": Decimal("10"), "unit_price": Decimal("100")}], user, order_date=timezone.localdate()
+        ).lines.get()
+        for _ in range(3)
+    ]
+    workorders_services.issue_workorder(lines[0], Decimal("10"), [{"process": cut, "planned_qty": Decimal("10")}], user)
+    board_url = reverse("orders:orderline_list")
+    assert count_url("workorders:workorder_list") == board_url + "?f_open=1&f_no_workorder=1"
+
+    aside = _aside(page(logged_in, reverse("core:home")))
+    link = _count_link(_entry_row(aside, reverse("workorders:workorder_list")))
+    assert link.startswith(f'<a href="{board_url}?f_open=1&amp;f_no_workorder=1" ')
+    assert 'aria-label="指示書の無い明細 2 行"' in link
+
+    response = logged_in.get(board_url, {"f_open": "1", "f_no_workorder": "1"})
+    assert response.status_code == 200
+    assert [item["obj"] for item in response.context["rows"]] == lines[1:]
+    assert len(response.context["rows"]) == 2 == dashboard._lines_without_workorder().count()
