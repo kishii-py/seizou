@@ -342,7 +342,10 @@ def me_too(request, number):
 @login_required
 @require_POST
 def ask(request):
-    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。"""
+    """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら編集の画面へ移す。
+
+    AI が似た Issue に「うちも」を付けたら (me_too_issue の横取り。依頼書 N323)、知らせを積んでその件の詳細へ移す。
+    """
     if not request.headers.get("HX-Request"):
         return HttpResponseBadRequest(_HTMX_ONLY)
     result = chat.answer(
@@ -351,6 +354,12 @@ def ask(request):
         user=request.user,
         screen=request.POST.get("screen", ""),
     )
+    if result.get("me_too"):
+        # AI の聞き取りで「うちも」を付けた (依頼書 N323): 知らせを積み、中身の無い 200 でその件の詳細へ移す (下書きでないので編集の画面へは移さない)。
+        _me_too_notice(request, result["number"], result, chat_text="あなたの件として残しました。")
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = reverse("feedback:feedback_detail", args=[result["feedback"].pk])
+        return response
     feedback = result["feedback"]
     if feedback is not None:
         messages.info(request, chat.DRAFT_READY_MESSAGE)
