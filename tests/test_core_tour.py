@@ -127,3 +127,14 @@ def test_tour_js_rules():
     assert "Escape" in text
     assert "textContent" in text
     assert "window.seizouTour" in text
+
+
+def test_board_step_tells_row_pick_for_bulk_ship_and_po():
+    """生産管理ボードのツアーの 2 段目が、行を押して選ぶとまとめて出荷・発注できることを書く (帯は出荷か発注を書ける人にだけ出るので「できる人は」を付ける)。"""
+    steps = TOURS["orders:orderline_list"]
+    assert len(steps) == 4
+    board = [step for step in steps if step["selector"] == '[data-tour="board"]']
+    assert len(board) == 1
+    text = board[0]["text"]
+    for words in ("行の「⋮」から", "行を押して選ぶ", "「出荷する」「発注する」", "ができる人は"):
+        assert words in text, words
