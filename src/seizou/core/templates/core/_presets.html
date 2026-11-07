@@ -1,6 +1,6 @@
 {% load seizou_tags %}
 {# 絞りのタブ (BaseListView.presets)。押すと絞り込みの枠にその組の値が入る (GET の link。枠は 1 か所のまま = 決め 11-04 17:3x)。 #}
 {# 件数は表と同じ条件 (キーワードを含む) で数えた物。htmx の応答では core/_list_meta.html が oob=True で描き直す (選びと件数を表に合わせる)。 #}
-<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs tabs-border mb-4"{% if oob %} hx-swap-oob="true"{% endif %}>
+<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs seizou-tabs mb-4"{% if oob %} hx-swap-oob="true"{% endif %}>
   {% for p in presets %}<a role="tab" class="tab{% if p.selected %} tab-active{% endif %}" href="{{ p.href }}"{% if p.selected %} aria-selected="true"{% endif %}>{{ p.label }}<span class="badge badge-sm badge-ghost ml-2 tabular-nums">{{ p.count|comma }}</span></a>{% endfor %}
 </div>

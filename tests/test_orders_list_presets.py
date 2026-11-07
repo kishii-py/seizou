@@ -138,7 +138,7 @@ def test_order_list_selected_tab_follows_status(logged_in, listed_orders):  # no
     # 枠が送る形 (隠しの欄が印の 1 を持ち越す) でも「出荷済」のまま
     response = logged_in.get(url, {"f_open": "1", "f_status": "shipped"}, HTTP_HX_REQUEST="true")
     assert _selected(response) == ["出荷済"]
-    assert '<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs tabs-border mb-4" hx-swap-oob="true">' in response.content.decode()
+    assert '<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs seizou-tabs mb-4" hx-swap-oob="true">' in response.content.decode()
 
 
 def test_manual_fragments_mention_the_tabs():
@@ -182,7 +182,7 @@ def test_order_list_count_adds_everything_unless_everything_tab(logged_in, liste
     assert "<html" not in partial
     meta = partial.split('id="list-meta" class="ml-auto flex flex-wrap items-center gap-4" hx-swap-oob="true">', 1)[1]
     assert f"{COUNT}0</span> 件 (すべて 1 件)</span>" in meta
-    assert '<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs tabs-border mb-4" hx-swap-oob="true">' in meta
+    assert '<div id="list-presets" role="tablist" aria-label="絞りのタブ" class="tabs seizou-tabs mb-4" hx-swap-oob="true">' in meta
 
 
 @pytest.mark.django_db

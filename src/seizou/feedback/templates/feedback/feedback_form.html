@@ -5,8 +5,8 @@
 {# 待つ間は、吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
 {# 上の案内 (依頼書 N185): 似た困りごとが GitHub に出ていないかを、一覧の「GitHub の Issue を探す」で先に探せる link。先は「みんなの Issue」のタブ (一覧の ?tab=issues。依頼書 N321)。 #}
 {# いちばん上はタブの帯 (依頼書 N321。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
+{% block heading_tabs %}{% include "feedback/_tabs.html" %}{% endblock %}
 {% block content %}{% feedback_panel as panel %}
-{% include "feedback/_tabs.html" %}
 <p id="feedback-issues-link" class="mb-4 flex items-center gap-2 text-sm text-base-content/70">{% icon "search" "size-4" %}<a class="link link-hover" href="{% url 'feedback:feedback_list' %}?tab=issues#issues">似た困りごとが GitHub に出ていないか探す</a></p>
 {% if panel.available %}
 <section id="feedback-chat" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-chat-title">

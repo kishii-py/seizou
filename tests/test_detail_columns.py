@@ -26,7 +26,7 @@ PASSWORD = "kumo-tests-2611"
 #: 金額の閲覧だけを効かせる (部署と書く権限の判定はしない)
 MONEY_ON = {"department": "off", "write": "off", "money": "on"}
 #: 1 列の詳細の tabs の箱 (上の余白を足さない = 今のまま)
-ONE_COLUMN_TABS = 'class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs"'
+ONE_COLUMN_TABS = 'class="tabs seizou-tabs relative rounded-xl border border-base-300 bg-base-100 pr-12 shadow-xs"'
 
 
 @pytest.fixture

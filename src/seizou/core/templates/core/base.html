@@ -50,8 +50,12 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
     {% include "core/_topbar.html" %}
     {# 右下の「AI に質問」の丸いボタン (assistant/_panel.html。下から 24px・幅と高さ 40px) が、画面の最後の行と「保存」を隠さないよう、窓を出す画面だけ下に 136px (pb-34 = 前の 96px にボタンの高さの 40px を足した。決め 11-05 15:0x。N160) 空ける。余白の段 (2・4・6) の外の例外。lg:p-6 が下の余白も上書きするので lg:pb-34 も書く。決め C37 で一度外し、本人の決め 11-07 09:3x (右下の丸を戻す) で戻した。 #}
     {% if "assistant" in seizou.parts and user.is_authenticated %}<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">{% else %}<main class="flex-1 p-4 lg:p-6">{% endif %}
+      {% comment %}画面の頭の白い帯 (本人の決め 11-07 17:0x = 形 A)。灰色の地 (bg-base-200) に直接置くのは場所を表す面だけ: 題・「?」・ボタン (block heading。詳細などは子が上書きする) と、
+         画面を切り替えるタブ (block heading_tabs。フィードバックのタブ) を 1 つの白い帯に載せ、帯は上の帯から続け (main の余白の外まで広げる)、下の端に 1px の線を引く。
+         帯の中のタブは -mb-px で線に重なる (タブの下線が帯の線を兼ねる)。中に何も無い帯 (題の無い画面) は CSS が隠す (scripts/css/input.css の [data-screen-head])。{% endcomment %}
+      <div class="-mx-4 -mt-4 mb-6 border-b border-base-300 bg-base-100 px-4 pt-4 lg:-mx-6 lg:-mt-6 lg:px-6 lg:pt-6" data-screen-head>
       {% block heading %}{% if screen_name %}
-      <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             {% if screen_icon %}{% icon screen_icon "size-7 text-base-content/70" %}{% else %}{% app_icon screen_app "size-7 text-base-content/70" %}{% endif %}
@@ -63,6 +67,8 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
         <div class="flex flex-wrap items-center gap-2">{% block actions %}{% endblock %}</div>
       </div>
       {% endif %}{% endblock %}
+      {% block heading_tabs %}{% endblock %}
+      </div>
       {% block content %}{% endblock %}
     </main>
   </div>
