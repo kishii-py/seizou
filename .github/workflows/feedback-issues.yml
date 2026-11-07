@@ -1,0 +1,37 @@
+# seizou のフィードバックの画面から送られた Issue にラベルを付ける (本人の決め 11-07 09:1x。受け渡しの指示書の「Actions でラベル」)。
+# 訳: 工場の口座はこのリポジトリに書き込む権限を持たないので、送るときに付けたラベル (from-seizou と種類) を GitHub が黙って外す。
+#     Actions はリポジトリの権限でラベルを付けるので、送ったのが誰の口座でも付く。
+# 見る物: 本文に「- 作品の版: seizou …」の行があれば「from-seizou」、「- 種類: <種類>」の行があればその種類のラベル
+#         (どちらの行も feedback の services.export_markdown が必ず書く)。種類のラベルは 6 つ (feedback の KIND_CHOICES の表示名) だけ。
+# ラベルは先に作ってある (gh label create。11-07 09:4x)。無いラベルは付けない (addLabels は無いラベルを作るが、作らせない)。
+name: feedback-issues
+
+on:
+  issues:
+    types: [opened, reopened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7.0.1
+        with:
+          script: |
+            const body = context.payload.issue.body || "";
+            const kinds = ["不具合", "決まりの反例", "決まりの提案", "業務の流れの違い", "要望", "使い方"];
+            const labels = [];
+            if (/^- 作品の版: seizou/m.test(body)) labels.push("from-seizou");
+            const kind = body.match(/^- 種類: (.+)$/m);
+            if (kind && kinds.includes(kind[1].trim())) labels.push(kind[1].trim());
+            const current = (context.payload.issue.labels || []).map((label) => label.name);
+            const missing = labels.filter((name) => !current.includes(name));
+            if (missing.length === 0) return;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: missing,
+            });
