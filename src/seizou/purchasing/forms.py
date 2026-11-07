@@ -293,6 +293,7 @@ class PurchaseOrderChangeLineForm(forms.Form):
     """送った発注の変更の明細の 1 行。line は既にある明細を指す隠しの欄 (足す行は空)。
 
     既にある明細の行は部品と単位を直せない (欄を出さず、字で出す。部品を変えるときは取り消して行を足す)。
+    足す行の単位は数量単位の一覧から選ぶ (空なら部品の単位を写す。C108 の発注の明細と同じ)。
     相手が出荷済み (purchasing.services.known_shipped_qty が 0 より大きい) の行は単価の欄と消す印を出さない (欄の横に「出荷済み s」)。
     金額の閲覧が無い人には単価の欄を出さない (既にある明細の単価は今のまま送る)。
     """
@@ -310,7 +311,14 @@ class PurchaseOrderChangeLineForm(forms.Form):
         error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
-    unit = forms.CharField(label="単位", max_length=10, required=False, widget=forms.TextInput(attrs={"class": "input w-full"}))
+    # 足す行の単位は数量単位の一覧から選ぶ (発注の明細の行 PurchaseOrderLineForm と同じ欄。N349)。送る値は一覧のコード、clean_unit が一覧の名前の字にする。
+    unit = forms.ModelChoiceField(
+        label="単位",
+        queryset=None,
+        required=False,
+        widget=RemoteSelect("masters:quantityunit_select", attrs={"class": "w-full"}),
+        help_text="空なら部品の単位を写します。",
+    )
     unit_price = forms.DecimalField(
         label="単価",
         max_digits=14,
@@ -329,6 +337,7 @@ class PurchaseOrderChangeLineForm(forms.Form):
         for field in self.fields.values():
             use_decimal_input(field)
         self.fields["item"].queryset = active_items()
+        self.fields["unit"].queryset = quantity_units()
         if purchase_order is not None:
             self.fields["line"].queryset = purchase_order.lines.exclude(line_status_code=edi_codes.LINE_DELETED)
         self.existing = self.initial.get("line_obj")
@@ -340,7 +349,17 @@ class PurchaseOrderChangeLineForm(forms.Form):
         if hide_money or self.shipped > 0:
             self.fields.pop("unit_price")
 
+    def clean_unit(self):
+        """選んだ一覧の行の名前の字。選ばなければ空の字 (services が部品の単位とコードを写す)。既にある明細の行は欄が無いので呼ばれない。"""
+        chosen = self.cleaned_data.get("unit")
+        return chosen.name if chosen is not None else ""
+
     def clean(self):
+        """行の検査。既にある明細の行は数量を要る。足す行は部品・数量・単価を要り、部品の単位が数量単位の一覧に無い字で、単位を選んでいなければ、単位の欄の誤りにする。
+
+        訳: 一覧に無い単位の字は、相手の会社に個として読まれるおそれがあるので、変更の版の足す明細にも入れない (選び直してもらう)。出所 = PurchaseOrderLineForm.clean と同じ (作者の決め・中小企業共通 EDI 本編 7.3.2 (4) 数量単位コード)。
+        変えてよい条件 = 一覧に無い字も明細に入れてよいと決めたとき。
+        """
         data = super().clean()
         if data.get("DELETE"):
             return data
@@ -355,6 +374,9 @@ class PurchaseOrderChangeLineForm(forms.Form):
         for name, message in (("item", "部品を選んでください。"), ("qty", "数量を入れてください。"), ("unit_price", "単価を入れてください。")):
             if data.get(name) is None and name not in self.errors:
                 self.add_error(name, message)
+        item = data.get("item")
+        if not data.get("unit") and not self.has_error("unit") and getattr(item, "unit_unlisted", False):
+            self.add_error("unit", UNLISTED_LINE_UNIT.format(unit=item.unit))
         return data
 
     def line_dict(self) -> dict | None:
