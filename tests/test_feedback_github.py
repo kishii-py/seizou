@@ -507,16 +507,23 @@ def test_list_buttons_and_sync_endpoint(client, manager, plain, fake):
     html = html_of(client.get("/feedback/"))
     assert "GitHub の設定" not in html and "GitHub の状態を取り込む" not in html
     assert "GitHub の Issue を探す" in html and 'name="issue_q"' in html
+    assert 'id="feedback-github"' not in html
 
     client.force_login(manager)
     html = html_of(client.get("/feedback/"))
     assert "GitHub の設定" in html and "GitHub の状態を取り込む" not in html
+    # 世話役のボタンは見出しの行の「新規登録」の左 (カードの外の別の行は無い。候補 C114)
+    assert 'id="feedback-github-settings" class="btn btn-outline border-base-300"' in html
+    assert html.index('id="feedback-github-settings"') < html.index('class="btn btn-primary" href="/feedback/new/"') < html.index('id="list-card"')
 
     connect(manager, fake)
     make(plain, status="sent", sent_url=ISSUE_URL)
     fake.issues[7] = Answer(200, {"state": "closed", "closed_at": "2026-11-06T03:00:00Z", "html_url": ISSUE_URL})
     html = html_of(client.get("/feedback/"))
     assert "GitHub の状態を取り込む" in html and 'action="/feedback/github/sync/"' in html
+    assert html.index('id="feedback-github-sync"') < html.index('id="feedback-github-settings"')
+    assert 'id="feedback-github-sync" type="submit" class="btn btn-outline border-base-300"' in html
+    assert 'id="feedback-github"' not in html
 
     response = client.post("/feedback/github/sync/")
     assert response.status_code == 302 and response["Location"] == "/feedback/"
@@ -620,7 +627,10 @@ def test_list_screen_searches_only_when_asked(client, plain, listing):
 
 
 def test_list_screen_opens_when_github_is_unreadable(client, plain, monkeypatch):
+    calls = []
+
     def broken(*args, **kwargs):
+        calls.append(args)
         raise requests.ConnectionError("つながらない")
 
     monkeypatch.setattr(requests, "get", broken)
@@ -628,6 +638,8 @@ def test_list_screen_opens_when_github_is_unreadable(client, plain, monkeypatch)
     response = client.get("/feedback/", {"issue_q": "受注"})
     assert response.status_code == 200
     assert "GitHub の Issue を読めませんでした" in html_of(response)
+    # 見出しの行の tag は search=False で探さないので、1 回の表示で GitHub を読むのは 1 回 (候補 C114)
+    assert len(calls) == 1
 
 
 # ---------------------------------------------------------------- 管理の命令

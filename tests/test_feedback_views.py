@@ -312,30 +312,70 @@ def test_list_filters_by_status_and_kind(client, plain, other, manager):
     make(other, "ほかの人の下書き")
 
     client.force_login(plain)
-    html = html_of(client.get("/feedback/?status=draft"))
+    html = html_of(client.get("/feedback/?f_status=draft"))
     assert "下書きの不具合" in html
     assert "確認済みの要望" not in html and "ほかの人の下書き" not in html
-    assert 'id="feedback-filter"' in html
-    assert 'name="status"' in html and 'name="kind"' in html
+    # 絞りの置き場は一覧のカードの中の「絞り込み」の枠 1 つ (決め UX-FEEDBACK-1。候補 C114)
+    assert 'id="feedback-filter"' not in html
+    assert '<select name="status"' not in html and '<select name="kind"' not in html
+    assert "絞り込み</button>" not in html
+    assert html.index('id="list-card"') < html.index('id="list-f-status"') < html.index('id="list-f-kind"') < html.index('id="rows"')
+    assert 'name="f_status"' in html and 'name="f_kind"' in html
     assert '<option value="draft" selected>' in html
+    assert '状態: <span class="font-medium">下書き</span>' in html and "絞りを外す" in html
 
-    html = html_of(client.get("/feedback/?kind=common"))
+    html = html_of(client.get("/feedback/?f_kind=common"))
     assert "確認済みの要望" in html and "下書きの不具合" not in html
 
-    html = html_of(client.get("/feedback/?status=draft&kind=common"))
+    html = html_of(client.get("/feedback/?f_status=draft&f_kind=common"))
     assert "確認済みの要望" not in html and "下書きの不具合" not in html
 
-    html = html_of(client.get("/feedback/?status=nonsense&kind="))
+    html = html_of(client.get("/feedback/?f_status=nonsense&f_kind="))
+    assert "確認済みの要望" in html and "下書きの不具合" in html
+    assert "絞りを外す" not in html
+
+    # 古い GET の名前 (status・kind) は土台が見ない (読み替えない。候補 C114 の「作らない物」)
+    html = html_of(client.get("/feedback/?status=draft"))
     assert "確認済みの要望" in html and "下書きの不具合" in html
 
-    html = html_of(client.get("/feedback/?status=confirmed", HTTP_HX_REQUEST="true"))
+    html = html_of(client.get("/feedback/?f_status=confirmed", HTTP_HX_REQUEST="true"))
     assert "<html" not in html
     assert "確認済みの要望" in html and "下書きの不具合" not in html
+    assert 'id="list-filter-clear" hx-swap-oob="true"' in html
 
     client.force_login(manager)
-    html = html_of(client.get("/feedback/?status=draft"))
+    html = html_of(client.get("/feedback/?f_status=draft"))
     assert "下書きの不具合" in html and "ほかの人の下書き" in html
     assert "確認済みの要望" not in html
+
+
+def test_list_filter_specs_accept_known_values_only(db):
+    from django.http import QueryDict
+
+    from seizou.feedback.views import FeedbackListView
+
+    specs = {spec.name: spec for spec in FeedbackListView().filter_specs()}
+    assert (specs["status"].param, specs["kind"].param) == ("f_status", "f_kind")
+    assert specs["status"].value({"f_status": "draft"}) == "draft"
+    assert specs["kind"].value({"f_kind": "bug"}) == "bug"
+    assert specs["status"].value({"f_status": "x"}) is None
+    assert specs["kind"].value({"f_kind": ""}) is None
+    assert specs["status"].value({}) is None
+    both = QueryDict("f_status=sent&f_kind=common")
+    assert (specs["status"].value(both), specs["kind"].value(both)) == ("sent", "common")
+    assert specs["status"].choice_values() == [(value, str(label)) for value, label in Feedback.STATUS_CHOICES]
+
+
+def test_list_summary_opens(client, plain):
+    # 土台の集計 (状態と種類の軸) がこの表で初めて動くので、落ちないことだけを見る (候補 C114 の (h))
+    make(plain, "下書きの不具合", data={"kind": "bug"})
+    client.force_login(plain)
+    assert "集計</a>" in html_of(client.get("/feedback/"))
+
+    response = client.get("/feedback/", {"view": "summary"})
+    html = html_of(response)
+    assert response.status_code == 200
+    assert 'id="list-g-by"' in html and "表</a>" in html
 
 
 def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager):
@@ -454,7 +494,7 @@ def test_list_has_fix_version_column_and_dismissed_filter(client, plain, manager
     assert "0.1.1" in html
     assert '<option value="dismissed"' in html and "見送った" in html
 
-    html = html_of(client.get("/feedback/?status=dismissed"))
+    html = html_of(client.get("/feedback/?f_status=dismissed"))
     assert "見送った題" in html and "版待ちの題" not in html
     assert '<option value="dismissed" selected>' in html
 

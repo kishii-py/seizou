@@ -256,17 +256,6 @@ def test_delete_feedback_draft_only_by_owner_or_manager(plain, other, manager):
     assert not Feedback.objects.filter(pk=theirs.pk).exists()
 
 
-def test_list_filter_accepts_known_values_only():
-    from django.http import QueryDict
-
-    empty = {"status": "", "kind": ""}
-    assert services.list_filter({"status": "draft", "kind": "bug"}) == {"status": "draft", "kind": "bug"}
-    assert services.list_filter({"status": "x", "kind": ""}) == empty
-    assert services.list_filter({}) == empty
-    assert services.list_filter(None) == empty
-    assert services.list_filter(QueryDict("status=sent&kind=common")) == {"status": "sent", "kind": "common"}
-
-
 # ---- 画面の字に URL の名前を出さない (N77 の 9) ----
 
 

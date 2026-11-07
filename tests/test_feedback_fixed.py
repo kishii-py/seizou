@@ -134,10 +134,13 @@ def test_fixed_from_any_state_and_locks_author(plain, manager):
 
 
 def test_fixed_status_in_choices_and_filter():
+    from seizou.core.views import FilterSpec
+    from seizou.feedback.views import FeedbackListView
+
     assert Feedback.STATUS_CHOICES[-2] == ("fixed", "直した")
     assert Feedback.STATUS_CHOICES[-1] == ("dismissed", "見送った")  # N322 (決め 11-07 09:4x)
     assert services.STATUSES == ("draft", "confirmed", "sent", "fixed", "dismissed")
-    assert services.list_filter({"status": "fixed"}) == {"status": "fixed", "kind": ""}
+    assert FilterSpec(Feedback, FeedbackListView.filters[0]).value({"f_status": "fixed"}) == "fixed"
     assert services.FIXED_NOTE_MAX_CHARS == 200
     assert Feedback.detail_hidden_fields == (
         "transcript", "fixed_at", "fixed_note", "fixed_seen_at", "dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version"
@@ -221,11 +224,11 @@ def test_list_filter_shows_fixed(client, plain, manager):
     html = html_of(client.get("/feedback/"))
     assert '<option value="fixed"' in html and "直した" in html
 
-    html = html_of(client.get("/feedback/?status=fixed"))
+    html = html_of(client.get("/feedback/?f_status=fixed"))
     assert "直した題" in html and "下書きの題" not in html
     assert '<option value="fixed" selected>' in html
 
-    html = html_of(client.get("/feedback/?status=draft"))
+    html = html_of(client.get("/feedback/?f_status=draft"))
     assert "下書きの題" in html and "直した題" not in html
 
 
@@ -345,7 +348,7 @@ def test_list_marks_fixed_rows(client, plain, manager):
     assert html.count('<tr id="row-') == 2
     assert f'href="/feedback/{fixed.pk}/"' in html
 
-    html = html_of(client.get("/feedback/?status=fixed", HTTP_HX_REQUEST="true"))
+    html = html_of(client.get("/feedback/?f_status=fixed", HTTP_HX_REQUEST="true"))
     assert "<html" not in html
     assert html.count('<tr id="row-') == 1
     assert html.count("badge badge-soft badge-success") == 1

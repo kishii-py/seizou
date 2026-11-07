@@ -114,11 +114,11 @@ def test_existing_values_show_new_names_in_list(client, writer):
         row_html = re.search(rf'<tr id="row-{rows[value].pk}".*?</tr>', html, re.S).group(0)
         assert f'title="{label}">{label}</span>' in row_html, value
     # 一覧の絞りの種類の選択肢も、表の並びと新しい名前。古い名前は画面に出ない。
-    kind_select = re.search(r'<select name="kind".*?</select>', html, re.S).group(0)
+    kind_select = re.search(r'<select[^>]*name="f_kind"[^>]*>.*?</select>', html, re.S).group(0)
     assert re.findall(r'<option value="(\w+)"[^>]*>([^<]+)</option>', kind_select) == Feedback.KIND_CHOICES
     assert "自社の作業" not in html and "皆の要望" not in html
 
     # 既にある値で絞っても、その行だけが新しい名前で出る。
-    html = client.get(reverse("feedback:feedback_list"), {"kind": "company"}).content.decode()
+    html = client.get(reverse("feedback:feedback_list"), {"f_kind": "company"}).content.decode()
     assert re.findall(r'<tr id="row-(\d+)"', html) == [str(rows["company"].pk)]
     assert 'title="業務の流れの違い">業務の流れの違い</span>' in html
