@@ -13,6 +13,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
+from seizou.billing import services as billing_services
 from seizou.core import edi_codes
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
@@ -247,3 +248,96 @@ def test_shipment_modal_url_and_screen():
     assert reverse("shipping:shipment_modal", args=[1]) == "/shipping/1/modal/"
     found = screen("shipping:shipment_modal")
     assert found.name == "出荷の小窓" and "得意先・得意先の注文番号" in found.usecase
+
+
+# ---- 請求書の一覧と小窓 ----
+
+
+@pytest.fixture
+def invoice(user, customer, shipment):
+    # 請求書に入れる出荷は発行の納品書に入った物だけ (R09)
+    shipping_services.create_delivery_note(customer, [shipment], user)
+    shipment.refresh_from_db()
+    return billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
+
+
+def invoice_modal(client, invoice):
+    return client.get(reverse("billing:invoice_modal", args=[invoice.pk]), **HTMX)
+
+
+def test_invoice_list_rows_have_summary_link(logged_in, invoice):
+    html = logged_in.get(reverse("billing:invoice_list")).content.decode()
+
+    assert html.count(HEADER) == 1
+    expected = [(f"/billing/invoices/{invoice.pk}/", f"/billing/invoices/{invoice.pk}/modal/")]
+    assert eye_links(html) == expected
+    assert f'href="/billing/invoices/{invoice.pk}/" title="{invoice.invoice_no}"' in html
+    # htmx の行の取り直しでも同じ
+    partial = logged_in.get(reverse("billing:invoice_list"), **HTMX).content.decode()
+    assert partial.count(HEADER) == 1 and eye_links(partial) == expected
+
+
+def test_invoice_modal_shows_summary_and_detail_link(logged_in, invoice, shipment):
+    response = invoice_modal(logged_in, invoice)
+    html = response.content.decode()
+
+    assert response.status_code == 200 and "<html" not in html
+    for word in (invoice.invoice_no, "作り物の得意先", "2026年11月30日", shipment.shipment_no, "T-100", "4 個"):
+        assert word in html, word
+    for label in ("得意先", "発行日", "締め期間の初め", "締め期間の終わり", "支払期日", "合計", "残"):
+        assert dt(label) in html, label
+    total = f"¥{int(invoice.total):,}"
+    assert f'<dd class="min-w-0 break-words tabular-nums">{total}</dd>' in html
+    # 題の横は「入金」と入金の状態の印 (項目の「状態」は出さない)
+    assert "未入金</span>" in html and dt("状態") not in html
+    assert f'href="/billing/invoices/{invoice.pk}/">詳細を見る' in html
+    # 請求書には編集の口が無い (「編集」は出ない)
+    assert html.count("btn-primary") == 1 and "編集</a>" not in html
+
+
+def test_invoice_modal_cancelled_shows_cancel_badge_without_total(logged_in, user, invoice):
+    billing_services.cancel_invoice(invoice, user)
+
+    html = invoice_modal(logged_in, invoice).content.decode()
+
+    assert "取消</span>" in html and "未入金" not in html
+    assert dt("合計") not in html and dt("残") not in html
+    assert invoice.invoice_no in html and "作り物の得意先" in html
+
+
+def test_invoice_modal_lists_first_five_lines(logged_in, user, customer, shaft):
+    lines = [{"item": shaft, "qty": Decimal("1"), "unit_price": Decimal("10")} for _ in range(7)]
+    order = orders_services.create_order(customer, lines, user, order_date=date(2026, 11, 2))
+    shipments = [shipping_services.ship(line, Decimal("1"), date(2026, 11, 5), user) for line in order.lines.all()]
+    shipping_services.create_delivery_note(customer, shipments, user)
+    invoice = billing_services.create_invoice(customer, shipments, user, issued_on=date(2026, 11, 30))
+
+    html = invoice_modal(logged_in, invoice).content.decode()
+
+    assert html.count("<tr>") == 5
+    assert "先頭の 5 行を出しています (全 7 行)" in html
+
+
+def test_invoice_modal_hides_money_without_permission(settings, logged_in, invoice):
+    settings.SEIZOU = MONEY_ONLY
+
+    html = invoice_modal(logged_in, invoice).content.decode()
+
+    assert "¥" not in html and "合計" not in html and "金額" not in html and dt("残") not in html
+    assert "作り物の得意先" in html and "T-100" in html and "4 個" in html
+
+
+def test_invoice_modal_without_htmx_goes_to_detail(client, logged_in, invoice):
+    response = logged_in.get(reverse("billing:invoice_modal", args=[invoice.pk]))
+    assert response.status_code == 302 and response["Location"] == f"/billing/invoices/{invoice.pk}/"
+
+    assert logged_in.get("/billing/invoices/999999/modal/", **HTMX).status_code == 404
+    client.logout()
+    response = client.get(reverse("billing:invoice_modal", args=[invoice.pk]), **HTMX)
+    assert response.status_code == 302 and "/login/" in response["Location"]
+
+
+def test_invoice_modal_url_and_screen():
+    assert reverse("billing:invoice_modal", args=[1]) == "/billing/invoices/1/modal/"
+    found = screen("billing:invoice_modal")
+    assert found.name == "請求書の小窓" and "合計・残・入金の状態" in found.usecase
