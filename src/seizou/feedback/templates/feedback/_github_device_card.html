@@ -3,7 +3,7 @@
 {# 入力: device (services.github_device_state。user_code・verification_uri・interval・expires_at・repo だけ。device_code は無い) と state (pending・expired・denied・error) と message (error の文)。 #}
 {# 待ちの間は札の根が interval 秒ごとに github_device_poll を htmx で呼び、返った札で自分を差し替える。CSRF の見出しは土台の base.html が付ける (R18)。 #}
 {# 期限切れ・断られた・誤りのときは符号を出さず、赤い字だけを出して、取り直しを止める (hx-trigger を付けない)。「画面を読み直す」で「GitHub でログインしてつなぐ」のボタンに戻る。 #}
-{# 字の間を広げる class (tracking-widest) は app.css に無いので使わない (依頼書 N320 の記録)。 #}
+{# 字の間を広げる class は app.css に無いので使わない (依頼書 N320 の記録)。class の名前をここに書くと、CSS を作る道具がこの注釈から拾うので書かない。 #}
 {% if state == "expired" or state == "denied" or state == "error" %}
 <div id="github-device-card" class="rounded-lg border border-base-300 bg-base-100 p-6">
   <p class="flex items-center gap-2 text-error">{% icon "alert" "size-5" %}<span>{% if state == "expired" %}符号の期限が切れました。もう一度「GitHub でログインしてつなぐ」を押してください。{% elif state == "denied" %}GitHub で承認されませんでした。もう一度押すか、下の手順でトークンを貼ってください。{% else %}{{ message }}{% endif %}</span></p>
