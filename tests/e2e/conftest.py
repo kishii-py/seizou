@@ -287,6 +287,15 @@ def page_b(context, company_b) -> Page:
 # --- 助けの関数 ------------------------------------------------------------
 
 
+def row_menu_list(page: Page):
+    """開いている行の操作のメニューの項目の並び (ul)。
+
+    402 回目 (fix-row-menu-layer。本人の報告 11-07 18:0x) から、js/seizou-row-menu.js は開く時に ul を body の直下へ移す
+    (止めた 1 列目の欄と行の地がメニューに透けないため) ので、項目は行 (tr) の中から探せない。印 data-row-menu-list で引く。
+    """
+    return page.locator("ul[data-row-menu-list]")
+
+
 def login(page: Page, company: Company, user: str | None = None, password: str | None = None) -> None:
     """会社の `/login/` を開き、ID とパスワードを入れて送る。
 
