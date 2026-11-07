@@ -1986,6 +1986,10 @@ def with_saved_note(message: str, result) -> str:
     return f"{message}{note}" if isinstance(note, str) and note else message
 
 
+#: 「今月の◯◯」のカードの (i) の 1 文に足す、先月との比べ方と細い線の説明 (dashboard_stats。カードの札と線は core/home.html)
+COMPARE_HELP = "「先月より」は、今月の 1 日から今日までの数と、先月の 1 日から同じ日までの数との差です。細い線は今月の 1 日から今日までの日ごとの数です。"
+
+
 def dashboard_stats() -> list[dict]:
     """最初の画面の数字のカード。部品が無い物は出さず、数は本物の集計だけ (DB が読めない物も出さない)。
 
@@ -1994,6 +1998,10 @@ def dashboard_stats() -> list[dict]:
     HomeView が金額を見られない人には並びから外す (カードごと出さない)。
     "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
     文は下の数え方の式と合わせる (式を変えたら文も直す)。
+    「今月の◯◯」のカード (今月の受注・今月の支払の見込み・今月の入金) は "compare" に、先月の同じ日までとの差と今月の日ごとの数の細い線
+    (core.dashboard の *_month_compare。読めなければ None) を持ち、help に比べ方の 1 文 (COMPARE_HELP) を足す。画面は札 (core/_stat_delta.html) と
+    線 (svg) を数の横と下に出す (本人の決め 11-07 18:2x〜18:4x「2もいい」。受け渡しの seizou-部品の6案-20261107/指示書.md の 3)。
+    今月でないカード (部品・取引先など) と、題に「今月」の無い 8 枚目 (手入力せずに取り込んだ明細) には付けない (指示書の「迷ったら出さない」)。
     """
     today = timezone.localdate()
     stats: list[dict] = []
@@ -2032,16 +2040,18 @@ def dashboard_stats() -> list[dict]:
         ).exclude(status=order_model.STATUS_CANCELLED)
         order_list_url = url_or_none("orders:order_list")
         month_end = date.fromordinal(date(today.year + today.month // 12, today.month % 12 + 1, 1).toordinal() - 1)
+        compare = dashboard.orders_month_compare(today)
         stats.append(
             {
                 "label": "今月の受注",
                 "value": count_or_none(this_month),
                 "unit": "件",
                 "note": f"{today.month} 月に受けた受注の件数 (取消を除く)",
-                "help": "受注日が今月の受注の件数です。取消は数えません。",
+                "help": "受注日が今月の受注の件数です。取消は数えません。" + (COMPARE_HELP if compare is not None else ""),
                 "icon": "clipboard",
                 "url": f"{order_list_url}?f_open=0&f_ordered_from={today:%Y-%m}-01&f_ordered_to={month_end}" if order_list_url else None,
                 "url_name": "orders:order_list",
+                "compare": compare,
             }
         )
     lines = dashboard.lines_to_ship()
@@ -2081,33 +2091,37 @@ def dashboard_stats() -> list[dict]:
     # 6 枚目: 今月の支払の見込み (受入の部品があるとき。受け入れた数 × 発注の単価の合計 = N42 の要望 4)
     payable = dashboard.payable_this_month(today)
     if payable is not None:
+        compare = dashboard.payable_month_compare(today)
         stats.append(
             {
                 "label": "今月の支払の見込み",
                 "value": payable,
                 "unit": "",
                 "note": f"{today.month} 月に受け入れた数量 × 発注の単価の合計",
-                "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。",
+                "help": "受入日が今月の受入の金額 (受け入れた数量 × 発注の単価) の合計です。" + (COMPARE_HELP if compare is not None else ""),
                 "icon": "yen",
                 "url": url_or_none("purchasing:receipt_list"),
                 "url_name": "purchasing:receipt_list",
                 "money": True,
+                "compare": compare,
             }
         )
     # 7 枚目: 入金 (入金の表 = billing の Payment があるとき。入金日が今月の、取消でない入金の金額の合計 = N56 の要望)
     payments = dashboard.payments_this_month(today)
     if payments is not None:
+        compare = dashboard.payments_month_compare(today)
         stats.append(
             {
                 "label": "今月の入金",
                 "value": payments,
                 "unit": "",
                 "note": f"{today.month} 月に入金日のある入金の金額の合計 (取消を除く)",
-                "help": "入金日が今月の入金の金額の合計です。取消は数えません。",
+                "help": "入金日が今月の入金の金額の合計です。取消は数えません。" + (COMPARE_HELP if compare is not None else ""),
                 "icon": "yen",
                 "url": url_or_none("billing:invoice_list"),
                 "url_name": "billing:invoice_list",
                 "money": True,
+                "compare": compare,
             }
         )
     # 8 枚目: 手入力せずに取り込んだ明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、入力を省けた時間 = N83)
