@@ -3,7 +3,7 @@
 {# 受注の詳細: 土台の詳細に、明細の表 (出荷済みと残つき) と「取消」のボタン (取消でなく、受注の権限がある人だけ) を足す。取消の受注は「編集」も出さない (取消の受注は直せない = R05)。頭の主のボタン (決め 11-06 22:1x。C15-1 b・UX-2 a): 残のある明細があり出荷の書く権限がある人には緑の「出荷登録」(残のある明細が 1 行なら出荷の小窓を直に開き、2 行以上なら行を選ぶメニュー。orders_detail の order_ship_lines が行を選ぶ) を右端に置き、そのときの「編集」は白で「⋯」の左。 #}
 {# 明細の表の先頭の「操作」の列は、行ごとの ⋮ のメニュー (orders/_line_menu.html。右クリックでも同じメニュー。出荷する・指示書を発行する・入荷を記録する・発注する・部品の小窓・図面)。ボタンを並べる形は表が枠より広くなったのでやめた (決め 11-03 17:2x)。最後の欄は「残」のまま (E2E が行の最後の td で残を読む)。「検収」の列 (検収の数の合計と最後の検収日) は「出荷済み」と「残」の間。 #}
 {# 「預かり」の列 (決め 11-06 18:3x。N184) は「検収」と「残」の間。値は「引当の合計 / 受注の数」で、引当の合計は orders_detail の order_line_allocations が 1 回の問い合わせで読む (読むだけ)。入荷の部品が無い会社 (receiving_url が空) では見出しも枡も出さない。 #}
-{# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「受注 › 番号」(土台の block heading に crumb を渡す)。block content で段の帯の次に右の列のカード (orders_detail の order_aside) を置いてから土台を呼ぶ。明細・流れ・メモは土台の左の列の block main。基本情報は右の列のカードへ移り、タブは関係する物だけ。取消は小窓で開く (data-modal-form)。見出しの帯 (#order-heading) と中身 (#order-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158)。 #}
+{# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「受注 › 番号」(土台の block heading に crumb を渡す)。block content で段の帯の次に右の列のカード (orders_detail の order_aside) を置いてから土台を呼ぶ。明細は土台の全幅の口 block wide (lg 以上は 2 列の上に全幅。C22)、流れ・メモは左の列の block main。基本情報は右の列のカードへ移り、タブは関係する物だけ。取消は小窓で開く (data-modal-form)。見出しの帯 (#order-heading) と中身 (#order-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158)。 #}
 {% block heading %}<div id="order-heading">{% order_head_chips object seizou.hide_money as head_chips %}{% order_ship_lines object as ship_lines %}{% can_write "shipping.Shipment" as can_ship %}{% url 'shipping:shipment_create' as ship_url %}{% with crumb="受注" %}{{ block.super }}{% endwith %}</div>{% endblock %}
 {% block actions %}{% if ship_url and can_ship and ship_lines and edit_url %}<a class="btn btn-outline border-base-300" href="{{ edit_url }}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}編集</a>{% endif %}{% endblock %}
 {% block edit_button %}{% if ship_url and can_ship and ship_lines %}{% if ship_lines|length == 1 %}{% with line=ship_lines.0 %}<a class="btn btn-primary" href="{{ ship_url }}?order_line={{ line.pk }}" data-modal-form="{{ ship_url }}?order_line={{ line.pk }}">{% icon "truck" "size-4" %}出荷登録</a>{% endwith %}{% else %}<details class="dropdown dropdown-end row-menu">
@@ -21,7 +21,7 @@
 </div>
 <div id="order-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#order-live" hx-target="#order-live" hx-swap="outerHTML" hx-select-oob="#order-heading"></div>
 {% endblock %}
-{% block main %}
+{% block wide %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="order-lines-title">
   <h2 id="order-lines-title" class="text-lg font-bold">明細</h2>
   {% with lines=object.lines.all %}
@@ -73,6 +73,8 @@
   {% endif %}
   {% endwith %}
 </section>
+{% endblock %}
+{% block main %}
 {% include "orders/_timeline.html" %}
 {% if "notes" in seizou.parts %}{% include "notes/_note.html" %}{% endif %}
 {% endblock %}

@@ -323,6 +323,8 @@ def test_detail_has_live_parts(client_logged_in, user, subcontractor, item):
     assert poll
     assert "scrollLeft" in poll.group(0)
     assert "#po-live section .overflow-x-auto" in poll.group(0)
+    # 明細の ⋮ のメニューを開いている間も取り直さない (入れ替えると開いたメニューが閉じる。C22-2 b)
+    assert "#po-live details.row-menu[open]" in poll.group(0)
 
     # 「作成」の発注: ボタンと link の行は今のまま (再送 1・受入を登録 1)
     draft = services.create_purchase_order(

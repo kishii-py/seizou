@@ -309,17 +309,49 @@ def _classes(body, mark):
 def test_cards_follow_main_and_span_two_rows(logged_in, order, purchase_order):
     """狭い幅は明細・流れ・メモの後にカード、その後にタブ (決め 11-06 22:2x の C26-1 a。初見テスト R5 の r5-a-06・r5-b-07。候補 C26 の 5)。
 
-    lg 以上は右の列が 2 段にまたがり、2 段目を 1fr にする (右が高いときの空きを左の列の一番下に出す)。
+    lg 以上は右の列が 2 段にまたがり、一番下の段 (C22 の全幅の口の後は 3 段目) を 1fr にする (右が高いときの空きを左の列の一番下に出す)。
     右の列の上の余白は狭い幅でもメモの枠の後に間を空けるので mt-6 (lg: を付けない)。
     """
-    lower_left = '<div class="min-w-0 lg:col-start-1 lg:row-start-2">'
+    lower_left = '<div class="min-w-0 lg:col-start-1 lg:row-start-3">'
     for name, obj, before_cards in (
         ("orders:order_detail", order, 'id="notes-heading"'),
         ("purchasing:purchaseorder_detail", purchase_order, 'id="po-flow-title"'),
     ):
         body = _get(logged_in, name, obj.pk)[1]
-        assert "lg:grid-rows-[auto_1fr]" in _classes(body, '<div id="detail-columns"'), name
+        assert "lg:grid-rows-[auto_auto_1fr]" in _classes(body, '<div id="detail-columns"'), name
         aside = _classes(body, '<aside id="detail-aside"')
-        assert {"lg:row-span-2", "mt-6", "lg:col-start-2", "lg:row-start-1"} <= aside, name
+        assert {"lg:row-span-2", "mt-6", "lg:col-start-2", "lg:row-start-2"} <= aside, name
         assert "lg:mt-6" not in aside, name
         assert body.index(before_cards) < body.index('<aside id="detail-aside"') < body.index(lower_left) < body.index('role="tablist"'), name
+
+
+@pytest.mark.django_db
+def test_lines_sit_in_wide_slot_above_columns(logged_in, order, purchase_order, item):
+    """lg 以上は明細の節だけを 2 列の上に全幅で置く (決め 11-06 22:2x の C22-1 a。初見テスト R5 の V47・r5-b-02。候補 C22 の 3)。
+
+    受注は明細の節、発注は #po-live (明細・検収・流れ) を全幅の口 (#detail-wide) に置き、流れ・メモは左の列の block main。
+    右のカードは 2・3 段目にまたがり、タブと添付は 3 段目の左。右の列を置かない詳細には全幅の口を出さない。
+    """
+    wide_slot = '<div id="detail-wide" class="min-w-0 lg:col-span-2 lg:row-start-1">'
+    upper_left = '<div class="min-w-0 lg:col-start-1 lg:row-start-2">'
+    lower_left = '<div class="min-w-0 lg:col-start-1 lg:row-start-3">'
+
+    body = _get(logged_in, "orders:order_detail", order.pk)[1]
+    wide, left = body.index(wide_slot), body.index(upper_left)
+    assert wide < body.index('id="order-lines-title"') < left < body.index('id="order-flow-title"')
+    assert body.index('id="order-flow-title"') < body.index('id="notes-heading"') < body.index('role="tablist"')
+    assert "lg:grid-rows-[auto_auto_1fr]" in _classes(body, '<div id="detail-columns"')
+    assert {"lg:col-start-2", "lg:row-start-2"} <= _classes(body, '<aside id="detail-aside"')
+    aside, lower = body.index('<aside id="detail-aside"'), body.index(lower_left)
+    assert body.index('id="notes-heading"') < aside < lower < body.index('role="tablist"')
+
+    body = _get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1]
+    wide, left = body.index(wide_slot), body.index(upper_left)
+    assert wide < body.index('<div id="po-live">') < body.index('id="po-flow-title"') < left < body.index('role="tablist"')
+    assert "lg:grid-rows-[auto_auto_1fr]" in _classes(body, '<div id="detail-columns"')
+    assert {"lg:col-start-2", "lg:row-start-2"} <= _classes(body, '<aside id="detail-aside"')
+    aside, lower = body.index('<aside id="detail-aside"'), body.index(lower_left)
+    assert left < aside < lower < body.index('role="tablist"')
+
+    body = _get(logged_in, "masters:item_detail", item.pk)[1]
+    assert 'id="detail-wide"' not in body
