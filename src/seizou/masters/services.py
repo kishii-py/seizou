@@ -809,6 +809,29 @@ def line_amount(partner, qty, unit_price, price_basis=PRICE_BASIS_UNIT, *, round
     return round_amount(partner, qty * unit_price, rounding=rounding)
 
 
+def reaches_line_qty(line_qty, done_qty, qty):
+    """この 1 回 (出荷か受入) で明細の数量に初めて届くか (読むだけ)。前の回までの合計 done_qty が数量に届いておらず、qty を足すと数量以上になれば真。
+
+    訳: 一式の明細の全額を、全部を出し終えた 1 回にだけ付けるため (前の回は 0 円)。出所 = 作者の決め PRICE-1c。
+    変えてよい条件 = 作者が一式の金額を請求に載せる時を決め直したとき。
+    """
+    return done_qty < line_qty <= done_qty + qty
+
+
+def delivery_amount(partner, qty, unit_price, price_basis, *, completes, rounding=None):
+    """出荷か受入の 1 回分の金額 (読むだけ)。単価の単位が式 (lump) なら、明細を出し終えた回 (completes が真) は一式の全額 (line_amount)、ほかの回は 0。
+    部品の単位 (unit) は今と同じく line_amount (数量 × 単価を取引先 (空なら会社) の小計の計算方法で丸める)。completes は式のときだけ効く。
+    出荷 (shipping.services.amount_of_shipment) と受入 (purchasing.services.receive) がこの 1 つの式を通す。
+    price_basis と completes に既定の値を置かない (渡し忘れると一式の全額が黙って 0 になるか数量倍になるので、TypeError で止める)。
+
+    訳: 一式の明細を分けて出荷・受入したとき、全部を出し終えた回で一式の全額を載せ、それまでの回は 0 円にするため。出所 = 作者の決め PRICE-1c (発注の受入も同じ) と PRICE-1b。
+    変えてよい条件 = 作者が一式の金額を請求に載せる時を決め直したとき。
+    """
+    if price_basis == PRICE_BASIS_LUMP and not completes:
+        return Decimal("0")
+    return line_amount(partner, qty, unit_price, price_basis, rounding=rounding)
+
+
 def company_rounding():
     """会社の既定の端数の方法 (Company の 1 行の rounding)。行が無ければ "round"。会社の行は作らない。"""
     company = company_or_none()
