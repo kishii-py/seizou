@@ -5,8 +5,11 @@
 {# 2 列 (案 3-D・3-F。N150): 題の上にパンくず「発注 › 番号」(見出しの帯の中。土台の block heading に crumb を渡す)。block content で黄の知らせの次に右の列のカード (purchasing_tags の purchase_order_aside) を置いてから土台を呼ぶ。明細・検収・流れ (#po-live) は土台の全幅の口 block wide (lg 以上は 2 列の上に全幅。C22)。右の列 (#detail-aside) も 2 秒ごとに入れ替える。 #}
 {# 段の帯 (N151。core/_stage_band.html) は見出しの帯 (#po-heading) の中の、土台の見出し (パンくずの with の後) に置く。2 秒ごとの入れ替えで段も新しくなる。取消の発注には出さない。 #}
 {% block heading %}{% live_state object as live %}<div id="po-heading" class="rounded-lg{% if live.changed %} seizou-changed{% endif %}" data-live="{{ live.token }}">{% purchase_order_head_chips object seizou.hide_money as head_chips %}{% with crumb="発注" %}{{ block.super }}{% endwith %}{% load purchasing_timeline %}{% purchase_order_stages object as band %}{% include "core/_stage_band.html" with stages_id="po-stages" %}</div>{% endblock %}
+{# 送った発注の変更 (C96): 見出しの右の白の「変更」は、発注の権限があり、変更を送れる発注 (purchasing_tags の can_change_order) だけ。画面の全体で開く (小窓にしない = 明細の表が広いため)。 #}
+{# 版が 2 以上で今の版が相手に届いていない間は、頭の右の緑を「再送」にする (取消の版は状態が「取消」でも)。#po-alert に届いていない・相手が断ったの黄色の 1 行 (revision_state の alert)。 #}
+{% block actions %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% can_change_order object as can_change %}{% if can_change %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_change' object.pk %}">{% icon "pencil" "size-4" %}変更</a>{% endif %}{% endif %}{% endblock %}
 {% block more %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" %}{% url 'purchasing:purchaseorder_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endif %}{% endblock %}
-{% block edit_button %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% if object.status == "draft" %}
+{% block edit_button %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% revision_state object as revision %}{% if object.status == "draft" or revision and not revision.delivered %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
   <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}再送</button>
@@ -15,7 +18,9 @@
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
 {% block content %}<div id="po-alert">{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「再送」を押してください。</span></div>
-{% endif %}{% endwith %}{% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}
+{% endif %}{% endwith %}{% endif %}{% revision_state object as revision %}{% if revision.alert %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-alert>{% icon "alert" "size-5" %}<span>{{ revision.alert }}</span></div>
+{% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}
 <div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s [!document.querySelector('#po-heading [data-detail-more][open]') && !document.querySelector('#po-live details.row-menu[open]') && !document.querySelector('#po-live section .overflow-x-auto')?.scrollLeft], seizou:refresh from:body" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert,#detail-aside" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
 {% endblock %}
 {% block wide %}{% can_write "purchasing.PurchaseOrder" as can_po %}
@@ -45,7 +50,7 @@
         {% for line in object.lines_with_received %}
         <tr data-row-menu>
           <td class="whitespace-nowrap">{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and not line.is_cancelled and can_po %}<details class="dropdown row-menu"><summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary><ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm"><li><a class="flex items-center gap-2" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を登録</a></li></ul></details>{% endif %}</td>
-          <td class="text-right tabular-nums">{{ line.line_no }}{% if line.is_cancelled %} <span class="badge badge-soft badge-ghost">取消</span>{% endif %}</td>
+          <td class="text-right tabular-nums">{{ line.line_no }}{% if line.is_cancelled %} <span class="badge badge-soft badge-ghost">取消</span>{% elif line.line_status_code == "1" %} <span class="badge badge-soft badge-info">追加</span>{% elif line.line_status_code == "3" %} <span class="badge badge-soft badge-info">変更 ({{ line.get_line_status_reason_code_display }})</span>{% endif %}</td>
           <td class="whitespace-nowrap">{% master_link line.item %}</td>
           <td class="text-right tabular-nums">{{ line.qty|comma }}</td>
           <td>{{ line.unit }}</td>
@@ -53,7 +58,7 @@
           <td class="text-right tabular-nums">{{ line.amount|yen }}</td>{% endif %}
           <td class="text-right tabular-nums">{{ line.received_total|comma }}</td>
           {% if line.remaining_total < 0 %}<td class="text-right tabular-nums"><span class="text-error">{{ line.remaining_total|comma }}</span></td>{% else %}<td class="text-right tabular-nums">{{ line.remaining_total|comma }}</td>{% endif %}
-          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}{% notice_rests line as rests %}<ul>{% for entry in rests %}{% with row=entry.notice %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and entry.rest > 0 and not line.is_cancelled and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">受入を記録する</a>{% endif %}</li>{% endwith %}{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
+          <td class="whitespace-nowrap">{% with notice=line.shipping_notice %}{% if notice.rows %}{% notice_rests line as rests %}<ul>{% for entry in rests %}{% with row=entry.notice %}<li class="tabular-nums"><span class="font-mono">{{ row.shipped_at|date:"Y-m-d" }}</span> ×{{ row.qty_text }}{% if row.order_revision_no < object.revision_no %} <span class="badge badge-soft badge-warning">第 {{ row.order_revision_no }} 版の注文への知らせ (今は第 {{ object.revision_no }} 版)</span>{% endif %}{% if object.status != "cancelled" and object.status != "rejected" and line.remaining_total > 0 and entry.rest > 0 and not line.is_cancelled and can_po %} <a class="link link-primary" href="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ line.pk }}&amp;qty={{ entry.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">受入を記録する</a>{% endif %}</li>{% endwith %}{% endfor %}</ul>{% if notice.count > 1 %}<p class="text-xs text-base-content/70">合計 {{ notice.total_text }}</p>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap tabular-nums">{% if line.due_date %}{{ line.due_date|date:"Y-m-d" }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</td>
           <td>{{ line.note }}</td>
         </tr>

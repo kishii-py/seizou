@@ -59,6 +59,7 @@ BUTTON_ACTIONS = {
     # 5 発注の詳細
     "connect.send_order": "purchasing.PurchaseOrder",
     "purchasing.cancel_purchase_order": "purchasing.PurchaseOrder",
+    "purchasing.change_purchase_order": "purchasing.PurchaseOrder",
     "purchasing.receive": "purchasing.PurchaseOrder",
     "connect.send_acceptance": "purchasing.PurchaseOrder",
     # 6 マニュアル

@@ -38,6 +38,7 @@ from django.db.models.functions import Coalesce
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Count, IntegerField
 from django.db.models import Case, When
+from django.db.models import Exists
 
 # 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -233,8 +234,13 @@ def _with_delivery_notice(purchase_order, outbox, *, resent=False):
     """送った注文の行 (Outbox) の返事が「受け取った」でなければ、発注に黄の知らせの字を付けて返す。
 
     届いていて resent が真なら「相手に送りました。」を付ける。届いていて resent が偽なら何も付けない (「保存しました。」のまま)。
+    版が 2 以上 (変更と取消) の発注は、版と目的を見て字を選ぶ (変更の画面の保存も、詳細の「再送」も同じ字): 届かなければ
+    「第 n 版の変更 (取消) は相手に届いていません。<返事> 直したら「再送」を押してください。」(返事が「断られた」で始まるときは「相手と話して決めてください。」)、
+    届けば resent に依らず「相手に第 n 版の変更を送りました。」か「相手に取消を送りました。」。
     属性は画面の知らせのためだけで、表に書かない。
     """
+    if purchase_order.revision_no >= 2:
+        return _with_revision_notice(purchase_order, outbox)
     if outbox.response != "受け取った":
         purchase_order.saved_message = UNDELIVERED_MESSAGE.format(response=outbox.response)
         purchase_order.saved_level = "warning"
@@ -243,9 +249,64 @@ def _with_delivery_notice(purchase_order, outbox, *, resent=False):
     return purchase_order
 
 
+# 変更と取消の版 (版 2 から) を送った後の知らせの字
+REVISION_UNDELIVERED_MESSAGE = "第 {revision_no} 版の{kind}は相手に届いていません。{response} {next_step}"
+REVISION_RESEND_STEP = "直したら「再送」を押してください。"
+REVISION_REFUSED_STEP = "相手と話して決めてください。"
+REVISION_SENT_MESSAGE = "相手に第 {revision_no} 版の変更を送りました。"
+CANCEL_SENT_MESSAGE = "相手に取消を送りました。"
+NO_CHANGE_MESSAGE = "変えた所が無いので、変更を送っていません。"
+#: 相手が版 2 からの変更 (取消) を断ったときの、発注の詳細の黄色の 1 行 (発注は前の版へ戻さない)
+REVISION_REFUSED_ALERT = "相手は第 {revision_no} 版の{kind}を断りました。理由: {reason}。相手の受注は前の版の中身のままです。{next_step}"
+REVISION_REFUSED_CHANGE_STEP = "同じ中身をもう一度送るときは「変更」から保存してください。"
+
+
+def revision_alert(purchase_order, state):
+    """版 2 からの発注の詳細の黄色の 1 行の字 (届いていない・相手が断った)。無ければ空の字。state は purchasing_tags.revision_state の辞書。"""
+    if state is None:
+        return ""
+    cancel = purchase_order.purpose_code == edi_codes.PURPOSE_CANCEL
+    if not state["delivered"]:
+        refused = state["response"].startswith("断られた")
+        return REVISION_UNDELIVERED_MESSAGE.format(
+            revision_no=purchase_order.revision_no,
+            kind=state["kind"],
+            response=state["response"],
+            next_step=REVISION_REFUSED_STEP if refused else REVISION_RESEND_STEP,
+        )
+    if state["reply"] == edi_codes.REPLY_REJECTED:
+        return REVISION_REFUSED_ALERT.format(
+            revision_no=purchase_order.revision_no,
+            kind=state["kind"],
+            reason=state["reply_note"] or "書いてありません",
+            next_step=REVISION_REFUSED_STEP if cancel else REVISION_REFUSED_CHANGE_STEP,
+        )
+    return ""
+
+
+def _with_revision_notice(purchase_order, outbox):
+    """版 2 から (変更と取消) の発注に、送った後の知らせの字を付けて返す (_with_delivery_notice が呼ぶ)。"""
+    cancel = purchase_order.purpose_code == edi_codes.PURPOSE_CANCEL
+    if outbox.response != "受け取った":
+        refused = outbox.response.startswith("断られた")
+        purchase_order.saved_message = REVISION_UNDELIVERED_MESSAGE.format(
+            revision_no=purchase_order.revision_no,
+            kind="取消" if cancel else "変更",
+            response=outbox.response,
+            next_step=REVISION_REFUSED_STEP if refused else REVISION_RESEND_STEP,
+        )
+        purchase_order.saved_level = "warning"
+    else:
+        purchase_order.saved_message = (
+            CANCEL_SENT_MESSAGE if cancel else REVISION_SENT_MESSAGE.format(revision_no=purchase_order.revision_no)
+        )
+    return purchase_order
+
+
 def resend_purchase_order(purchase_order, user):
     """発注を相手へ送り直し (connect.services.send_order)、取り直した発注を返す (画面が発注の詳細へ戻るため)。
 
+    「下書き」の発注と、届いていない変更と取消の版 (版 2 から。同じ版の番号で送り直す) を送る。
     届かなければ返す発注に黄の知らせの字を付け、届けば「相手に送りました。」を付ける。
     つながりの無い取引先と取消の発注は send_order の ValueError のまま (精査 A7 の 1-1 の S15)。
     """
@@ -254,6 +315,230 @@ def resend_purchase_order(purchase_order, user):
 
     outbox = connect_services.send_order(purchase_order, user)
     return _with_delivery_notice(PurchaseOrder.objects.get(pk=purchase_order.pk), outbox, resent=True)
+
+
+# --- 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2。相手が出荷し終えるまで) ---
+
+#: 変更を送れる発注の状態
+CHANGEABLE_STATUSES = (PurchaseOrder.STATUS_SENT, PurchaseOrder.STATUS_ACCEPTED)
+#: 変更の明細の辞書の鍵 (既にある明細は line に PurchaseOrderLine、足す明細は新規登録と同じ鍵)
+_LINE_KEYS_ON_CHANGE = _LINE_KEYS | {"line"}
+
+
+def known_shipped_qty(line):
+    """発注元から見える、相手が出した数 = 出荷の知らせの数の合計と受入の数の大きい方。読むだけ。
+
+    訳: 発注元から見えるのは知らせと受入だけで、知らせは遅れることがあるため (受入の方が多ければ受入の数)。
+    """
+    received = getattr(line, "received_total", None)
+    if received is None:
+        received = received_qty(line)
+    notices = getattr(line, "notice_total", None)
+    if notices is None:
+        notices = line.shipping_notice["total"]
+    return max(_dec(notices), _dec(received))
+
+
+def _live_lines(purchase_order):
+    """取り消していない明細 (明細状態コード 2 でない)。行番号の順。1 回の問い合わせで、受入の数 (received_total)・
+    出荷の知らせの数の合計 (notice_total)・取引先に向き「送る」のつながりがあるか (can_send) を足す (発注の詳細の問い合わせの数を増やさない)。
+    connect の無い会社では知らせの数は 0、つながりは無い。
+    """
+    lines = annotate_received(purchase_order.lines.exclude(line_status_code=edi_codes.LINE_DELETED))
+    try:
+        notice_model = PurchaseOrderLine._meta.get_field("shipping_notices").related_model
+        connection_model = purchase_order.partner.connections.model
+    except (FieldDoesNotExist, AttributeError):
+        return list(lines.annotate(notice_total=Value(_ZERO, output_field=_QTY_FIELD)).order_by("line_no"))
+    notices = (
+        notice_model.objects.filter(line=OuterRef("pk")).order_by().values("line").annotate(total=Sum("qty")).values("total")[:1]
+    )
+    sendable = connection_model.objects.filter(
+        partner_id=OuterRef("purchase_order__partner_id"), direction=connection_model.DIRECTION_SEND
+    )
+    return list(
+        lines.annotate(
+            notice_total=Coalesce(Subquery(notices, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
+            can_send=Exists(sendable),
+        ).order_by("line_no")
+    )
+
+
+def can_change_order(purchase_order):
+    """送った発注を変更として送れるか (読むだけ)。詳細の「変更」のボタンと変更の画面が使う。
+
+    状態が「送った」か「相手が受け入れた」・取り消していない明細のどれかで相手が出した数 (known_shipped_qty) が数量より少ない・
+    取引先に向き「送る」のつながりがある。状態を先に見て、外ならつながり・出荷の知らせ・受入を読まずに偽を返す。
+    """
+    if purchase_order.status not in CHANGEABLE_STATUSES:
+        return False
+    lines = _live_lines(purchase_order)
+    if not lines or not getattr(lines[0], "can_send", False):
+        return False
+    return any(known_shipped_qty(line) < line.qty for line in lines)
+
+
+def _reason_code(qty_changed, price_changed, due_changed, note_changed):
+    """変えた明細の明細状態理由コード。単価が変われば 3006 (ほかも変わっていても)、納期と数は 3003、納期だけ 3001、数だけ 3002、備考だけ 3099。"""
+    if price_changed:
+        return edi_codes.REASON_PRICE
+    if qty_changed and due_changed:
+        return edi_codes.REASON_DUE_QTY
+    if due_changed:
+        return edi_codes.REASON_DUE
+    if qty_changed:
+        return edi_codes.REASON_QTY
+    if note_changed:
+        return edi_codes.REASON_OTHER
+    return ""
+
+
+def _refuse_bad_change_lines(partner, lines):
+    """変更の明細の形を見る (鍵・line と item のどちらか 1 つ・数量と単価が 0 より大きい・足す明細の部品が使用中)。"""
+    for line in lines:
+        unknown = sorted(set(line) - _LINE_KEYS_ON_CHANGE)
+        if unknown:
+            raise ValueError(
+                f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。発注の明細の列の名前だけを渡してください。"
+            )
+        if ("line" in line) == ("item" in line):
+            raise ValueError("保存できません。明細の行に line と item の両方があるか、どちらもありません。どちらか 1 つにしてください。")
+        if "qty" in line and not _dec(line["qty"]) > 0:
+            raise ValueError(_POSITIVE_MESSAGE)
+        if "unit_price" in line and not _dec(line["unit_price"]) > 0:
+            raise ValueError(_POSITIVE_MESSAGE)
+        if "item" in line and not ("qty" in line and "unit_price" in line):
+            raise ValueError(_POSITIVE_MESSAGE)
+    refuse_inactive(partner, [line["item"] for line in lines if "item" in line])
+
+
+def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
+    """送った発注を直し、第 n 版の変更として相手へ送る (中小企業共通 EDI の注文変更の方式 2)。返す物は取り直した発注。
+
+    data は note だけ。lines は直した後の明細の全部 (既にある明細は鍵 line に PurchaseOrderLine と qty・unit_price・due_date・note。
+    足す明細は新規登録と同じ鍵)。lines に無い既にある明細のうち、取り消していない明細は取り消す (行は残して明細状態コード 2)。既に 2 の明細は 2 のまま。
+    明細状態コードは前の版と比べてこの版でしたこと (足した = 1・変えた = 3・触っていない = 39・取り消した = 2)、理由コードは _reason_code。
+    足す明細の行番号は、取消の行も含めた今の行の一番大きい番号 + 1 から。
+    変えた所が無いときは版を上げず送らず、返す発注に「変えた所が無いので、変更を送っていません。」を付ける。ただし今の版 (版 2 から) を相手が断っていれば
+    (今の版の最初の送った注文の行の reply_type が "RE")、コードを表のまま版を 1 上げて送る (相手と話した後に同じ中身をもう一度送るため)。
+    送るときは同じ atomic の中で版を 1 上げ、目的を "4" にし、取り消していない明細の全部の受入が数以上なら「納品された」にする。状態はほかに変えない
+    (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。atomic の外で connect.services.send_order を呼び、届いたかの知らせを付けて返す。
+    断る (頭は「保存できません。」): 状態が「送った」「相手が受け入れた」の外・相手が全部の明細を出荷し終えている・相手が出荷済みの明細の単価の変更と、
+    出荷済みの数より少ない数と取消・取り消していない明細が 0 行・つながりが無い・数量と単価が 0 以下・知らない鍵・使用停止の部品。
+    訳: 相手が出荷し終えるまでは発注を直して変更として送れるようにし、出した物の記録と食い違う直し (出荷済みの明細の単価・数・取消) を止めるため。出所 = 決め PRICE-4f (11-06 23:1x)・EDIT-1 (11-06 23:2x)・中小企業共通 EDI に合わせた決め EDIT-2 (受注者が出した物の金額は仕入明細の流れで確かめる)。
+    変えてよい条件 = PRICE-4f・EDIT-1・EDIT-2 の答えが変わったとき。
+    """
+    partner = purchase_order.partner
+    _refuse_bad_change_lines(partner, lines)
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+        if locked.status not in CHANGEABLE_STATUSES:
+            raise ValueError(
+                f"保存できません。状態が「{locked.get_status_display()}」の発注は、変更を送れません。"
+                "変更を送れるのは「送った」か「相手が受け入れた」の発注です。"
+            )
+        live = annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)).order_by("line_no")
+        live = {line.pk: line for line in live}
+        shipped = {pk: known_shipped_qty(line) for pk, line in live.items()}
+        if live and all(shipped[pk] >= line.qty for pk, line in live.items()):
+            raise ValueError(
+                "保存できません。相手が全部の明細を出荷し終えているので、変更は送れません "
+                "(送った発注を直せるのは、相手が出荷し終えるまで)。相手と話して決めてください。"
+            )
+        kept = {}
+        for line in lines:
+            if "line" not in line:
+                continue
+            target = line["line"]
+            current = live.get(getattr(target, "pk", None))
+            if current is None:
+                raise ValueError("保存できません。明細の行が、この発注の取り消していない明細ではありません。発注の詳細を開き直してください。")
+            kept[current.pk] = line
+            done = shipped[current.pk]
+            if done > 0 and "unit_price" in line and _dec(line["unit_price"]) != current.unit_price:
+                raise ValueError(
+                    f"保存できません。明細 {current.line_no} は相手が出荷済みなので、単価は変えられません。"
+                    "出した後の単価の違いは相手と話して決めてください。"
+                )
+            if "qty" in line and _dec(line["qty"]) < done:
+                raise ValueError(
+                    f"保存できません。明細 {current.line_no} の数を、相手が出荷済みの数 ({_qty_text(done)}) より少なくはできません。"
+                )
+        dropped = [line for pk, line in live.items() if pk not in kept]
+        for line in dropped:
+            if shipped[line.pk] > 0:
+                raise ValueError(
+                    f"保存できません。明細 {line.line_no} は相手が出荷済みなので取り消せません。数を出荷済みの数に直してください。"
+                )
+        added = [line for line in lines if "item" in line]
+        if not kept and not added:
+            raise ValueError("保存できません。明細が無くなります。全部を止めるときは「取消」を使ってください。")
+        if not _has_send_connection(partner):
+            raise ValueError(
+                f"保存できません。取引先 {partner.name} へのつながりがありません。設定の画面の「取引先との接続」で登録してください。"
+            )
+
+        changes = {}
+        for pk, line in kept.items():
+            current = live[pk]
+            qty = _dec(line.get("qty", current.qty))
+            unit_price = _dec(line.get("unit_price", current.unit_price))
+            due_date = line.get("due_date", current.due_date)
+            note = line.get("note", current.note) or ""
+            flags = (qty != current.qty, unit_price != current.unit_price, due_date != current.due_date, note != current.note)
+            changes[pk] = (qty, unit_price, due_date, note, flags)
+        note = data.get("note", locked.note) or ""
+        changed = bool(added or dropped or note != locked.note or any(any(flags) for *_values, flags in changes.values()))
+        if not changed:
+            if not _revision_refused(locked):
+                locked.saved_message = NO_CHANGE_MESSAGE
+                return locked
+        else:
+            for pk, (qty, unit_price, due_date, line_note, flags) in changes.items():
+                current = live[pk]
+                current.qty, current.unit_price, current.due_date, current.note = qty, unit_price, due_date, line_note
+                current.amount = round_amount(partner, qty * unit_price)
+                if any(flags):
+                    current.line_status_code = edi_codes.LINE_CHANGED
+                    current.line_status_reason_code = _reason_code(*flags)
+                else:
+                    current.line_status_code, current.line_status_reason_code = edi_codes.LINE_NEW, ""
+                current.save(
+                    update_fields=["qty", "unit_price", "due_date", "note", "amount", "line_status_code", "line_status_reason_code"]
+                )
+            for line in dropped:
+                line.line_status_code, line.line_status_reason_code = edi_codes.LINE_DELETED, ""
+                line.save(update_fields=["line_status_code", "line_status_reason_code"])
+            next_no = max((row.line_no for row in locked.lines.all()), default=0) + 1
+            for offset, line in enumerate(added):
+                row = _add_line(locked, line, next_no + offset)
+                row.line_status_code = edi_codes.LINE_ADDED
+                row.save(update_fields=["line_status_code"])
+            locked.note = note
+        locked.revision_no += 1
+        locked.purpose_code = edi_codes.PURPOSE_CHANGE
+        rows = list(annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
+        if rows and all(row.remaining_total <= 0 for row in rows):
+            locked.status = PurchaseOrder.STATUS_DELIVERED
+        locked.save()
+        _save_ext(locked, ext)
+
+    # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    from seizou.connect import services as connect_services
+
+    outbox = connect_services.send_order(PurchaseOrder.objects.get(pk=locked.pk), user)
+    return _with_delivery_notice(PurchaseOrder.objects.get(pk=locked.pk), outbox)
+
+
+def _revision_refused(purchase_order):
+    """今の版 (版 2 から) を相手が断ったか (今の版の最初の送った注文の行の reply_type が "RE")。逆の関係 outbox_messages を読むだけ。"""
+    if purchase_order.revision_no < 2:
+        return False
+    outbox = getattr(purchase_order, "outbox_messages", None)
+    if outbox is None:
+        return False
+    first = outbox.filter(revision_no=purchase_order.revision_no).order_by("pk").first()
+    return first is not None and first.reply_type == edi_codes.REPLY_REJECTED
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面。受け入れた数 × 発注の単価が支払の金額) ---

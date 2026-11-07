@@ -53,6 +53,7 @@ SKIPPED_NO_ROW = {
         "manuals:manualversion_detail",
         "manuals:manualversion_restore",
         "purchasing:purchaseorder_cancel",
+        "purchasing:purchaseorder_change",
         "purchasing:purchaseorder_detail",
         "purchasing:purchaseorder_send",
         "purchasing:receipt_detail",
@@ -114,7 +115,8 @@ LIMITS = {
     "shipping:deliverynote_cancel": 20,
     "purchasing:purchaseorder_list": 27,
     "purchasing:purchaseorder_create": 22,
-    "purchasing:purchaseorder_detail": 44,
+    # 11-07 の実測 45 + 5。送った発注の変更 (C96) の「変更」のボタンを出すか (can_change_order) に 1 回 (取り消していない明細の受入・出荷の知らせ・つながりを 1 つの問い合わせで読む)。
+    "purchasing:purchaseorder_detail": 50,
     "purchasing:purchaseorder_send": 20,
     "purchasing:purchaseorder_cancel": 20,
     "purchasing:receipt_list": 25,
