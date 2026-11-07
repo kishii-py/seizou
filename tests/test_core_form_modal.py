@@ -128,18 +128,20 @@ def test_modal_warning_waits_for_confirmation(logged_in, holiday_checks):
     assert Holiday.objects.filter(name="作り物の会社の休み").count() == 1
 
 
-def test_modal_stop_shows_red_notice_without_rule_help(logged_in, holiday_checks):
+def test_modal_stop_opens_rule_help_in_new_tab(logged_in, holiday_checks):
     checks.register(_HolidayStop())
     url = reverse("masters:holiday_create")
     modal = text(logged_in.post(url, holiday_data("作り物の止め"), **MODAL))
     assert "作り物の止めです。" in modal
     assert "R13" in modal
-    # 小窓の中では「?」(決まりの説明を同じ小窓の箱に入れる) を出さない。画面の全体では出す
+    # 小窓の中の「?」は説明を新しいタブで開く link (同じ小窓の箱に入れると入れた値が消えるため。決め C20-1 = a。候補 C20 の 7)。
+    # 画面の全体では今のまま同じタブの小窓で開く (右上の知らせの「?」)。小窓の form も hx-target="#seizou-modal-box" を持つので、その字の有無は見ない
     help_url = reverse("core:rule_help", args=["R13"])
-    assert help_url not in modal
-    assert "R13 の決まりの説明" not in modal
+    assert f'href="{help_url}" target="_blank" rel="noopener"' in modal
+    assert "R13 の決まりの説明" in modal
+    assert f'hx-get="{help_url}"' not in modal
     whole = text(logged_in.post(url, holiday_data("作り物の止め"), HTTP_HX_REQUEST="true"))
-    assert help_url in whole
+    assert f'hx-get="{help_url}"' in whole
     assert "R13 の決まりの説明" in whole
     assert Holiday.objects.count() == 0
 

@@ -1,15 +1,15 @@
 {% load seizou_icons %}
-{# 決まりの番号の「?」の小窓の中身。core.views.rule_help が返す。小窓の枠は base.html の #seizou-modal の 1 か所。開いたらカーソルは右上の閉じるボタン。 #}
-<div class="flex items-start justify-between gap-4">
+{# 決まりの番号の「?」の説明の中身。core.views.rule_help が返す。2 つの形で使う: 同じタブの小窓の中身 (htmx の要求。小窓の枠は base.html の #seizou-modal の 1 か所。開いたらカーソルは右上の閉じるボタン) と、新しいタブの画面の全体 (core/rule_help.html が whole_page を付けて include する。題は土台の題の段に出し、ここの題と閉じるボタンの 2 つは描かない)。中身の箱 (行の文・設定の行・節の見出し) は 2 つの形で同じ字にし、2 か所に書かない。 #}
+{% if not whole_page %}<div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold" title="{{ code }} の決まり">{{ code }} の決まり</h3>
   <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
-</div>
-<div class="mt-4 max-h-[70vh] overflow-y-auto">
+</div>{% endif %}
+{% if whole_page %}<div>{% else %}<div class="mt-4 max-h-[70vh] overflow-y-auto">{% endif %}
   {# 並びは RULES.md の行の文 → この会社の今の設定の行 (設定の鍵のある番号だけ) → 節の見出し。設定の行は「既定は知らせる」の見出しより前に置き、動きと食い違って見えないようにする (初見テスト R5 の V31)。RULES.md の行が無くても設定の行は出す。 #}
   {% if rule %}<p>{{ rule.text }}</p>{% else %}<p class="text-base-content/70">決まりの一覧 (RULES.md) に {{ code }} の行が見つかりません。</p>{% endif %}
   {% if setting_line %}<p class="mt-2">{{ setting_line }}</p>{% endif %}
   {% if rule %}<p class="mt-2 text-base-content/70">{{ rule.section }}</p>{% endif %}
 </div>
-<div class="modal-action mt-6">
+{% if not whole_page %}<div class="modal-action mt-6">
   <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
-</div>
+</div>{% endif %}

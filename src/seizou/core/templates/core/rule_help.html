@@ -1,0 +1,10 @@
+{% extends "core/base.html" %}
+{# 決まりの番号の「?」の説明の画面の全体。core.views.rule_help が htmx でない要求に返す (小窓の入力の赤い帯の「?」が新しいタブで開く。決め C20-1 = a)。 #}
+{# 左のメニューと上の帯の中に置く (error.html のように block body を上書きしない)。題は土台の題の段 (view が screen_name と screen_icon を渡す)。 #}
+{# 中身の箱は小窓と同じ core/_rule_help.html を whole_page で include する (字を 2 か所に書かない)。小窓の閉じるボタンは出さない (新しいタブには閉じる小窓が無い)。 #}
+{% block title %}{{ code }} の決まり{% endblock %}
+{% block content %}
+<div class="max-w-3xl rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% include "core/_rule_help.html" with whole_page=True %}
+</div>
+{% endblock %}

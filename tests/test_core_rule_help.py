@@ -1,8 +1,10 @@
-"""決まりの番号の「?」(N93。N88 の追記 11 = 北極星の決め 11-04 06:3x): 赤の知らせの番号の横のボタンと、RULES.md の行を出す小窓。
+"""決まりの番号の「?」(N93。N88 の追記 11 = 北極星の決め 11-04 06:3x): 赤の知らせの番号の横のボタンと、RULES.md の行を出す説明。
 
-見る所: 赤の知らせ (core/_notices.html) の番号は残り、番号が決まりの形 (R と 2 桁) のときだけ横に「?」のボタンが出る。
-番号の無い赤の知らせ (「入力」) と黄の知らせには出ない。ボタンが開く口 (core:rule_help) は RULES.md の表のその番号の行の文と、
-行の上の見出し (中心の決まりか標準のポカよけか) を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
+見る所: 赤の知らせ (core/_notices.html) の番号は残り、番号が決まりの形 (R と 2 桁) のときだけ横に「?」が出る。
+小窓の外では同じタブの小窓で開くボタン、小窓の入力 (in_modal) では説明を新しいタブで開く link (決め C20-1 = a。候補 C20 の 7)。
+番号の無い赤の知らせ (「入力」) と黄の知らせには出ない。「?」が開く口 (core:rule_help) は RULES.md の表のその番号の行の文と、
+この会社の今の設定の行 (設定の鍵のある番号だけ。候補 C20 の 1) と、行の上の見出し (中心の決まりか標準のポカよけか) を返す。
+htmx の要求には小窓の中身、htmx でない要求 (新しいタブ) には画面の全体を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
 文は作り物だけ。本物の API と HTTP は呼ばない。
 """
 
@@ -48,6 +50,20 @@ def test_red_rule_notice_has_help_button():
         assert "作り物の文" in html, code
 
 
+def test_red_rule_notice_in_modal_opens_help_in_new_tab():
+    # 小窓の入力 (in_modal) の赤い帯の「?」は、説明を新しいタブで開く link (決め C20-1 = a。同じ小窓に入れると入れた値が消えるため)
+    html = render_to_string(
+        "core/_notices.html", {"notice": CheckViolation("R01", "作り物の文"), "warnings": [], "in_modal": True}
+    )
+    assert '<span class="font-mono text-xs text-base-content/50">R01</span>' in html
+    assert 'href="/rules/R01/" target="_blank" rel="noopener"' in html
+    assert 'aria-label="R01 の決まりの説明"' in html
+    assert "<button" not in html
+    assert "hx-get" not in html
+    assert 'data-notice="stop"' in html  # 欄を直すと帯を消す印 (js/seizou-field-error.js) は残す
+    assert "作り物の文" in html
+
+
 def test_notice_without_rule_number_has_no_button():
     html = render_to_string("core/_notices.html", {"notice": Notice("入力", "作り物の文"), "warnings": []})
     assert "入力" not in html  # 見出しの語は出さない (N156)
@@ -90,8 +106,9 @@ def test_rule_help_shows_rules_md_line(client, user):
     assert NOT_FOUND in response.content.decode()
 
     assert client.get("/rules/X1/", HTTP_HX_REQUEST="true").status_code == 404
-    # htmx でない要求にも同じ中身を返す (移す先の頁が無い)
-    assert _rules_md_text("R05") in client.get("/rules/R05/").content.decode()
+    # htmx でない要求 (新しいタブ) には画面の全体を返す (test_rule_help_whole_page_for_new_tab)
+    assert "<html" in client.get("/rules/R05/").content.decode()
+    assert client.get("/rules/X1/").status_code == 404
 
 
 def test_rule_help_without_rules_md(client, user, monkeypatch, tmp_path):
@@ -152,3 +169,41 @@ def test_rule_setting_line_skips_unknown_keys(monkeypatch):
     assert views.rule_setting_line("R01") == ""
     monkeypatch.setattr(views.checks, "setting_key_for", lambda code: None)
     assert views.rule_setting_line("R01") == ""
+
+
+#: 小窓の閉じるボタンの 2 つ (右上の × と下の「閉じる」)。aria-label="閉じる" だけでは土台の知らせの元と見分けられない
+CLOSE_X = 'aria-label="閉じる" autofocus'
+CLOSE_BUTTON = '<button class="btn btn-ghost" type="submit">閉じる</button>'
+
+
+def test_rule_help_whole_page_for_new_tab(client, user, settings):
+    # 小窓の入力の赤い帯の「?」が新しいタブで開く画面の全体 (候補 C20 の 7)。左のメニューと上の帯の中に、小窓と同じ中身の箱を出す
+    response = client.get("/rules/R05/")
+    assert response.status_code == 302
+    assert response["Location"].startswith(reverse("core:login"))
+
+    client.force_login(user)
+    response = client.get("/rules/R05/")
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "<html" in body
+    assert "R05 の決まり" in body
+    assert _rules_md_text("R05") in body
+    assert CLOSE_X not in body
+    assert CLOSE_BUTTON not in body
+    assert "HX-Request" in response["Vary"]
+    assert "core/rule_help.html" in [template.name for template in response.templates]
+
+    # R01 の画面の全体にも、行の文 → 設定の行 → 「標準のポカよけ」の順に出る
+    settings.SEIZOU = {"over_shipment": "stop"}
+    body = client.get("/rules/R01/").content.decode()
+    line = "この会社の設定「受注より多い出荷 (R01・R04)」は「止める」です。この決まりに当たると保存しません。"
+    assert body.index(_rules_md_text("R01")) < body.index(line) < body.index("標準のポカよけ (")
+
+    # htmx の要求は今のまま小窓の中身 (閉じるボタンの 2 つがあり、<html は無い)
+    response = client.get("/rules/R05/", HTTP_HX_REQUEST="true")
+    body = response.content.decode()
+    assert "<html" not in body
+    assert CLOSE_X in body
+    assert CLOSE_BUTTON in body
+    assert "HX-Request" in response["Vary"]

@@ -23,7 +23,8 @@ get_queryset・screen_name・screen_help の 13 だけ (OVERRIDABLE)。
   会社ごとの項目 (一覧に出す物) と、tabs の関係する物も出す。htmx でない要求 (新しいタブ) は詳細へ移す。
 - 画面の応答はブラウザに保存させない (Cache-Control: no-store。ログアウトの後の戻るで中身を見せない)。
 - 候補の口: Tom Select の候補を 1 ページ (per_page 件) JSON で返す。
-- rule_help: 赤の知らせの決まりの番号の「?」が開く小窓 (RULES.md の行)。
+- rule_help: 赤の知らせの決まりの番号の「?」が開く説明 (RULES.md の行)。htmx の要求には小窓の中身、htmx でない要求
+  (小窓の入力の赤い帯の「?」が開く新しいタブ) には画面の全体を返す。同じ URL なので Vary: HX-Request を付ける。
 
 URL の名前の約束 (画面どうしの移動に使う。無ければ link を出さない):
   <app>:<model>_list / _detail / _create / _update / _modal
@@ -2157,13 +2158,23 @@ def rule_setting_line(code: str) -> str:
 @login_required
 @require_GET
 def rule_help(request, code):
-    """赤の知らせの決まりの番号の横の「?」が開く小窓の中身 (core/_rule_help.html)。番号の形が違えば 404。
+    """赤の知らせの決まりの番号の横の「?」が開く説明。番号の形が違えば 404。
 
+    htmx の要求 (画面の全体の右上の知らせと、盤やメモの書く枠の帯の「?」。同じタブの小窓で開く) には小窓の中身
+    (core/_rule_help.html) を返す。htmx でない要求 (小窓の入力の赤い帯の「?」が開く新しいタブ。決め C20-1 = a。
+    同じ小窓に説明を入れると入れた値が消えるため) には画面の全体 (core/rule_help.html。土台の画面の中に同じ中身の箱を置き、
+    小窓の閉じるボタンは出さない) を返す。同じ URL で中身と全体を返すので Vary: HX-Request を付ける。
     行が無い (RULES.md が置き場に無い・番号が表に無い) ときも 200 で、無い旨の 1 文を出す (htmx が小窓を開けるように)。
-    設定の鍵のある番号 (R01・R04・R06・R07) は、この会社の今の設定の行も出す (rule_setting_line)。
-    htmx でない要求にも同じ中身を返す (移す先の頁が無いため)。読むだけ。
+    設定の鍵のある番号 (R01・R04・R06・R07) は、この会社の今の設定の行も出す (rule_setting_line)。読むだけ。
     """
     if not RULE_CODE.match(code):
         raise Http404("決まりの番号の形が違います。")
     context = {"code": code, "rule": rule_line(code), "setting_line": rule_setting_line(code)}
-    return render(request, "core/_rule_help.html", context)
+    if request.headers.get("HX-Request"):
+        response = render(request, "core/_rule_help.html", context)
+    else:
+        # 題の段は土台の物 (screen_name と絵)。screen_app は無いので絵を渡す (app_icon に空の app を渡さない)
+        context.update(screen_name=f"{code} の決まり", screen_icon="help")
+        response = render(request, "core/rule_help.html", context)
+    patch_vary_headers(response, ("HX-Request",))
+    return response
