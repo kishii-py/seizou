@@ -28,7 +28,7 @@ from django.utils import timezone
 
 from seizou.core import conf
 from seizou.core.conf import setting
-from seizou.core.models import ChangeLog, Company, NumberSequence, SettingOverride, UserPreference
+from seizou.core.models import BellOpened, ChangeLog, Company, NumberSequence, SettingOverride, UserPreference
 
 logger = logging.getLogger("seizou.settings")
 
@@ -563,4 +563,27 @@ def record_history_deleted(obj, user, *, by=""):
     return _write_history(obj, user, ChangeLog.ACTION_DELETED, items, by=by)
 
 
-__all__ = ["clear_setting", "company", "company_icons", "company_or_none", "next_number", "record_history", "record_history_deleted", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
+# ---- 上の帯の知らせの鈴 (core.bell が読む。受け渡しの seizou-部品の6案-20261107/指示書.md の 4) ----
+
+
+def bell_opened_at(user):
+    """鈴を最後に開いた日時。行が無ければ登録した日時 (date_joined = それより前の知らせは数えない)。pk の無い利用者 (未ログイン) は None。読むだけ。"""
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return None
+    row = BellOpened.objects.filter(user_id=user_pk).only("opened_at").first()
+    return row.opened_at if row is not None else getattr(user, "date_joined", None)
+
+
+def open_bell(user):
+    """鈴を開いた日時を今にし、その行を返す (本人の行だけ。無ければ作る)。
+
+    訳: 鈴は「見たら印が消える」物 (本人の決め 11-07 18:4x)。開いた日時を 1 人 1 行で持ち、それより後の知らせだけを赤い数にする。
+    知らせの 1 件ごとの既読は持たない (表を増やさず、数え方を 1 つにするため)。
+    """
+    with transaction.atomic():
+        row, _created = BellOpened.objects.update_or_create(user=user, defaults={"opened_at": timezone.now()})
+    return row
+
+
+__all__ = ["bell_opened_at", "clear_setting", "company", "company_icons", "company_or_none", "next_number", "open_bell", "record_history", "record_history_deleted", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]

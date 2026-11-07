@@ -32,7 +32,8 @@ from functools import lru_cache
 from django.apps import apps
 from django.core.cache import cache
 from django.db import DatabaseError, transaction
-from django.db.models import F
+from django.db.models import Count, F, Q
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
@@ -1628,3 +1629,66 @@ def board_issues(words, *, sort="top", user=None) -> dict:
         members = [row for row in issues if row["column"] == key]
         columns.append({"key": key, "label": label, "tone": tone, "count": len(members), "issues": members})
     return {"columns": columns, "issues": issues, "error": error, "repo": repo, "sort": sort, "total": len(issues)}
+
+
+# ---- 上の帯の知らせの鈴 (core.bell が呼ぶ読むだけの 2 つ。受け渡しの seizou-部品の6案-20261107/指示書.md の 4) ----
+
+BELL_FIXED = "フィードバックが直りました"
+BELL_DISMISSED = "フィードバックが見送りになりました"
+BELL_REPLY = "フィードバックに返事が届きました"
+
+
+def _bell_replies(user_pk):
+    """user が書いた件に GitHub から来た返事 (書いた人が空)。この会社の口座が書いた物は除く (unseen_replies と import_replies の扱いと同じ)。"""
+    rows = FeedbackReply.objects.filter(feedback__created_by_id=user_pk, created_by__isnull=True, posted_at__isnull=False)
+    login = company_login()
+    return rows.exclude(login=login) if login else rows
+
+
+def bell_count(user, since) -> int:
+    """since より後に起きた、user が書いた件の直した・見送った・返事の数 (鈴の赤い数)。未ログインは 0。読むだけ。
+
+    問い合わせは 1 回 (件の表に返事を結んだ 1 つの集計。直したと見送ったは件の pk を distinct で数え、返事は結んだ行を数える)。
+    訳: 上の帯は全画面で描くので、画面ごとの問い合わせの数 (tests/test_core_screen_queries.py の上限) を 3 回分増やさないため。
+    返事の絞りは _bell_replies と同じ (GitHub から来た物だけ。この会社の口座の返事は除く)。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return 0
+    replies = Q(replies__posted_at__gt=since, replies__created_by__isnull=True)
+    login = company_login()
+    if login:
+        replies &= ~Q(replies__login=login)
+    totals = Feedback.objects.filter(created_by_id=user_pk).aggregate(
+        fixed=Count("pk", filter=Q(fixed_at__gt=since), distinct=True),
+        dismissed=Count("pk", filter=Q(dismissed_at__gt=since), distinct=True),
+        replies=Count("replies", filter=replies),
+    )
+    return totals["fixed"] + totals["dismissed"] + totals["replies"]
+
+
+def bell_notices(user, *, limit=10) -> list[dict]:
+    """鈴の箱に並べる、user が書いた件の直した・見送った・返事 (種類ごとに新しい順に limit 件。並べ直すのは core.bell)。
+
+    1 件 = {"when", "title", "text", "url", "icon"}。見えるのは自分が書いた件だけ (ほかの人の件は出さない)。未ログインは空の並び。読むだけ。
+    """
+    user_pk = getattr(user, "pk", None)
+    if user_pk is None:
+        return []
+    mine = Feedback.objects.filter(created_by_id=user_pk)
+    notices = []
+    for row in mine.filter(fixed_at__isnull=False).order_by("-fixed_at", "-pk")[:limit]:
+        notices.append({"when": row.fixed_at, "title": BELL_FIXED, "text": row.title, "url": reverse("feedback:feedback_detail", args=[row.pk]), "icon": "check"})
+    for row in mine.filter(dismissed_at__isnull=False).order_by("-dismissed_at", "-pk")[:limit]:
+        notices.append({"when": row.dismissed_at, "title": BELL_DISMISSED, "text": row.title, "url": reverse("feedback:feedback_detail", args=[row.pk]), "icon": "x"})
+    for reply in _bell_replies(user_pk).select_related("feedback").order_by("-posted_at", "-pk")[:limit]:
+        notices.append(
+            {
+                "when": reply.posted_at,
+                "title": BELL_REPLY,
+                "text": reply.feedback.title,
+                "url": reverse("feedback:feedback_detail", args=[reply.feedback_id]),
+                "icon": "bot",
+            }
+        )
+    return notices

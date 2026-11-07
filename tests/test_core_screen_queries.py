@@ -192,6 +192,9 @@ LIMITS = {
 }
 # 上限の表に無い画面 (後から足した画面) の上限 (11-06 の実測の最大 63 + 10)
 DEFAULT_LIMIT = 73
+# 上の帯の知らせの鈴 (core/_bell.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 4) がログインした人の全画面で数える分
+# (鈴を開いた日時 1 + 受信した注文の件数 1 + フィードバックの直した・見送った・返事の集計 1)。11-06 の実測の後に足した物なので、上限に足す。
+BELL_QUERIES = 3
 
 
 @pytest.fixture
@@ -248,7 +251,7 @@ def test_every_screen_stays_under_query_limit(company_id, client, no_registratio
             response = client.get(url)
         count = len(queries)
         opened[screen.url_name] = count
-        limit = LIMITS.get(screen.url_name, DEFAULT_LIMIT)
+        limit = LIMITS.get(screen.url_name, DEFAULT_LIMIT) + BELL_QUERIES
         if response.status_code not in OK_STATUS or count > limit:
             failures.append((screen.url_name, url, response.status_code, count, limit))
 

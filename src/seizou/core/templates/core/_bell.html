@@ -1,0 +1,6 @@
+{% load seizou_icons %}
+{# 上の帯の知らせの鈴 (core/_topbar.html が ☆ の左で include する。受け渡しの seizou-部品の6案-20261107/指示書.md の 4。本人の決め 11-07 18:2x〜18:4x)。 #}
+{# 押すと小窓 (base.html の #seizou-modal) に最近の知らせを並べる (core.views.bell。「案内」のボタンと同じ htmx の形)。赤い数 (core/_bell_badge.html) は鈴を開いた日時より後の知らせの数で、箱の返事が hx-swap-oob で消す。数は context processor の seizou.bell_count (読んだ時に数える)。 #}
+{% if user.is_authenticated %}
+<button type="button" id="seizou-bell" class="btn btn-square btn-sm btn-outline relative border-base-300" hx-get="{% url 'core:bell' %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" title="知らせ" aria-label="知らせ">{% icon "bell" "size-4" %}{% include "core/_bell_badge.html" with count=seizou.bell_count %}</button>
+{% endif %}

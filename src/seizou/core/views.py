@@ -52,7 +52,7 @@ from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.forms.utils import pretty_name
 from django.db import DatabaseError, models
 from django.db.models import Count, Q, Sum
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
@@ -2317,3 +2317,29 @@ def rule_help(request, code):
         response = render(request, "core/rule_help.html", context)
     patch_vary_headers(response, ("HX-Request",))
     return response
+
+
+# ---- 上の帯の知らせの鈴 (受け渡しの seizou-部品の6案-20261107/指示書.md の 4。本人の決め 11-07 18:2x〜18:4x) ----
+
+BELL_NOT_HTMX = "上の帯の鈴からの要求だけを受けます。"
+
+
+@login_required
+@require_GET
+def bell(request):
+    """上の帯の鈴が開く小窓の中身 (core/_bell_modal.html。htmx の要求だけで、見出しが無ければ 400)。
+
+    最近の知らせ (core.bell.notices。新しい順に 10 件) を並べ、鈴を開いた日時を今にして印を消す (書くのは services.open_bell = R13)。
+    「新」の印は開く前の日時と比べる (開いた後の日時で比べると全部が古い扱いになる)。返す HTML の先頭に hx-swap-oob の印の箱
+    (#seizou-bell-badge。数 0) を含め、上の帯の赤い数をその場で消す。
+    GET で書く訳: 鈴を開いた = 見た、なので押した口の中で書き、別の POST を増やさない (指示書の「迷ったら開く口の中で書く」)。
+    """
+    from seizou.core import bell as bell_box
+    from seizou.core import services as core_services
+
+    if not request.headers.get("HX-Request"):
+        return HttpResponseBadRequest(BELL_NOT_HTMX)
+    since = core_services.bell_opened_at(request.user)
+    notices = bell_box.notices(request.user, since=since)
+    core_services.open_bell(request.user)
+    return render(request, "core/_bell_modal.html", {"notices": notices})

@@ -1,0 +1,29 @@
+{% load seizou_icons %}
+{# 鈴の小窓の中身 (core.views.bell が返す。枠は base.html の #seizou-modal)。先頭の印の箱は hx-swap-oob で上の帯の赤い数を消す (開いた = 見た)。 #}
+{# 並びは core.bell.notices (新しい順に 10 件)。開く前の日時より後の物に「新」。押すとその物の画面へ移る。1 件も無ければ 1 文。 #}
+{% include "core/_bell_badge.html" with count=0 oob=True %}
+<div class="flex items-start justify-between gap-4">
+  <h3 id="seizou-bell-title" class="text-lg font-bold">知らせ</h3>
+  <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
+</div>
+<p class="mt-2 text-xs text-base-content/60">受信した注文と、自分が送ったフィードバックの直した・見送った・返事を、新しい順に並べます。まだ見ていない物に「新」が付き、開くと上の帯の印が消えます。</p>
+{% if notices %}
+<ul id="seizou-bell-list" class="mt-4 divide-y divide-base-200 border-y border-base-200">
+  {% for item in notices %}
+  <li><a class="flex items-start gap-3 rounded-lg px-2 py-3 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary" href="{{ item.url }}"{% if item.new %} data-new{% endif %}>
+    <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-base-200 text-base-content/70" aria-hidden="true">{% icon item.icon "size-4" %}</span>
+    <span class="min-w-0 flex-1">
+      <span class="flex items-center gap-2"><span class="font-medium">{{ item.title }}</span>{% if item.new %}<span class="badge badge-sm badge-soft badge-error">新</span>{% endif %}</span>
+      <span class="block truncate text-base-content/70">{{ item.text }}</span>
+      <span class="block font-mono text-xs tabular-nums text-base-content/60">{{ item.when|date:"Y-m-d H:i" }}</span>
+    </span>
+    {% icon "chevron-right" "size-4 shrink-0 text-base-content/60" %}
+  </a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p id="seizou-bell-empty" class="mt-4 text-base-content/60">新しい知らせはありません。</p>
+{% endif %}
+<div class="modal-action mt-6">
+  <form method="dialog"><button class="btn btn-ghost" type="submit">閉じる</button></form>
+</div>

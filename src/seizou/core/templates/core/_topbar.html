@@ -1,5 +1,5 @@
 {% load seizou_guide seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る。欄の案内は、部品 manuals が入っていればマニュアルも探すと分かる字にし、13 字を超えない = tablet の欄の幅で切れないため。初見テスト R5 の候補 C36 の 1)、今日の日付、現品票を読む (QR のボタン)、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る。欄の案内は、部品 manuals が入っていればマニュアルも探すと分かる字にし、13 字を超えない = tablet の欄の幅で切れないため。初見テスト R5 の候補 C36 の 1)、今日の日付、現品票を読む (QR のボタン)、知らせの鈴、ブックマークの ☆、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
 {# 上の帯の色: 固定の class seizou-header。人ごとの表示の設定で色を選んだ人は、<html> の data-seizou-header の名前で scripts/css/input.css の決まりが塗る (N167)。白 (標準) は bg-base-100 のまま。 #}
 <header class="seizou-header sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
@@ -17,6 +17,8 @@
     <span class="hidden items-center gap-2 text-base-content/70 md:flex">{% icon "calendar" "size-4" %}<time datetime="{% now 'Y-m-d' %}">{% now "Y年n月j日 (D)" %}</time></span>
     {# 現品票を読む (QR のボタン): 部品 workorders と progress があり、実績を入れられる人だけ。小窓で現品票を読み、工程を選んで実績を入れる (workorders/_reader_button.html)。 #}
     {% if "workorders" in seizou.parts and "progress" in seizou.parts %}{% include "workorders/_reader_button.html" %}{% endif %}
+    {# 知らせの鈴: まだ見ていない知らせ (受信した注文・自分のフィードバックの直した・見送った・返事) の数を赤い数で出し、押すと小窓に並べる (core/_bell.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 4)。 #}
+    {% include "core/_bell.html" %}
     {# ブックマーク (☆): 部品 bookmarks が入っていれば、その部品の帯の部品を出す (登録と一覧の小窓)。 #}
     {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_star.html" %}{% endif %}
     {% if screen_anchor %}{% screen_has_guide as has_guide %}{% if has_guide %}<a class="btn btn-sm btn-outline border-base-300" href="{% url 'core:manual' %}#{{ screen_anchor }}" hx-get="{% url 'core:screen_guide' screen_anchor %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()" title="この画面でできること" aria-label="この画面の案内" data-tour="guide">{% icon "info" "size-4" %}<span class="hidden sm:inline">案内</span></a>{% endif %}{% endif %}
