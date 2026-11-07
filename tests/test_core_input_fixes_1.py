@@ -108,5 +108,6 @@ def test_flow_guide_goes_two_columns_from_2xl(logged_in):  # noqa: F811
     section = re.search(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', body, re.S).group(0)
     assert '<div class="mt-4 grid gap-6 2xl:grid-cols-2">' in section
     assert "lg:grid-cols-2" not in section
-    # 折り返しの形 (矢印を前の段の li に入れる。120 回目) はそのまま
-    assert section.count('<ol class="mt-2 flex flex-wrap items-center gap-2"') == 2
+    # 折り返しの形 (矢印を前の段の li に入れる。120 回目) はそのまま。空の会社なので「最初にすること」の段 (ONB-02) も同じ形で 1 つ
+    for title in ("最初にすること", "受注から入金まで", "発注から検収まで"):
+        assert section.count(f'<ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{title}の段"') == 1, title

@@ -205,7 +205,7 @@ def test_genba_has_no_frame_and_alerts_take_the_row(client, settings, user, with
 
 
 @pytest.mark.django_db
-def test_orders_only_clerk_sees_only_the_workorder_step(client, settings):
+def test_orders_only_clerk_sees_only_the_orders_steps(client, settings):
     settings.SEIZOU = {"access_control": dict(ON)}
     person = clerk()
     frame = FRAME.search(home(client, person)).group(0)
@@ -215,13 +215,14 @@ def test_orders_only_clerk_sees_only_the_workorder_step(client, settings):
     assert "<h3 class=\"font-bold\">受注から入金まで</h3>" in frame
     assert "発注から検収まで" not in frame
     steps = re.findall(r'<a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="([^"]*)">([^<]*)</a>', frame)
-    assert steps == [(reverse("orders:orderline_list"), "指示書")]
+    # 受注の段は受注の一覧 (受注の部品) へ移るので、受注だけの部署の人にも残る (ONB-01)。受信した注文 (connect) の段は無い
+    assert steps == [(reverse("orders:order_list"), "受注"), (reverse("orders:orderline_list"), "指示書")]
     for head in OUTSIDE_ORDERS:
         assert f'href="{head}' not in frame, head
 
     guide = dashboard.today_tasks(get_user_model().objects.get(pk=person.pk))["guide"]
     assert [flow["key"] for flow in guide["flows"]] == ["sales"]
-    assert [step["key"] for step in guide["flows"][0]["steps"]] == ["workorder"]
+    assert [step["key"] for step in guide["flows"][0]["steps"]] == ["order", "workorder"]
     # 元の流れの値は書き換えない
     assert len(dashboard.flow_guide()["flows"]) == 2
 
@@ -231,9 +232,11 @@ def test_admin_and_jimu_frames_stay(client, settings, user):
     settings.SEIZOU = {"access_control": dict(ON)}
     person = admin()
     frame = FRAME.search(home(client, person)).group(0)
-    # フルコントロールの人の枠は今のまま (2 つの流れの段を全部出す。test_core_today_tasks の test_home_shows_flow_picture_when_nothing_to_do と同じ形)
+    # フルコントロールの人の枠は今のまま (2 つの流れの段を全部出す。test_core_today_tasks の test_home_shows_flow_picture_when_nothing_to_do と同じ形)。
+    # 部品も取引先も無い会社なので、その上に「最初にすること」の段 (ONB-02) も出る
     assert frame.count("はじめての方へ") == 1
-    assert frame.count('<ol class="mt-2 flex flex-wrap items-center gap-2"') == 2
+    for title in ("最初にすること", "受注から入金まで", "発注から検収まで"):
+        assert frame.count(f'<ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{title}の段"') == 1, title
     assert dashboard.today_tasks(get_user_model().objects.get(pk=person.pk))["guide"] == dashboard.flow_guide()
     # 利用者を渡さない値も今のまま
     assert dashboard.today_tasks()["guide"] == dashboard.flow_guide()

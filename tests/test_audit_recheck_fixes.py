@@ -154,28 +154,31 @@ def sales_step(key):
 
 
 @pytest.mark.django_db
-def test_flow_steps_go_to_counted_screens():
-    assert sales_step("order")["url_name"] == "connect:inbox_list"
+def test_flow_steps_go_to_order_list_and_board():
+    # 「受注」の段の移る先は受注の一覧 (3 つの入口のそろう画面。ONB-01)。数える物 (受信した注文の未処理) は変えない
+    assert sales_step("order")["url_name"] == "orders:order_list"
+    assert sales_step("order")["count"] == "inbox"
     assert sales_step("workorder")["url_name"] == "orders:orderline_list"
     guide = dashboard.flow_guide()
     flows = {flow["key"]: flow for flow in guide["flows"]}
     steps = {step["label"]: step for step in flows["sales"]["steps"]}
-    assert steps["受注"]["url"] == reverse("connect:inbox_list")
+    assert steps["受注"]["url"] == reverse("orders:order_list")
     assert steps["指示書"]["url"] == reverse("orders:orderline_list")
     assert [step["label"] for step in flows["sales"]["steps"]] == SALES_LABELS
     assert [step["label"] for step in flows["purchase"]["steps"]] == PURCHASE_LABELS
 
 
 def test_flow_neighbors_follow_new_targets():
-    inbox = dashboard.flow_neighbors("connect:inbox_list")
-    assert inbox["label"] == "受注"
-    assert inbox["prev"] is None
-    assert inbox["next"] == {"label": "指示書", "url": reverse("orders:orderline_list")}
+    orders = dashboard.flow_neighbors("orders:order_list")
+    assert orders["label"] == "受注"
+    assert orders["prev"] is None
+    assert orders["next"] == {"label": "指示書", "url": reverse("orders:orderline_list")}
     lines = dashboard.flow_neighbors("orders:orderline_list")
     assert lines["label"] == "指示書"
-    assert lines["prev"] == {"label": "受注", "url": reverse("connect:inbox_list")}
+    assert lines["prev"] == {"label": "受注", "url": reverse("orders:order_list")}
     assert lines["next"]["label"] == "出荷"
-    assert dashboard.flow_neighbors("orders:order_list") is None
+    # 受信した注文の画面は段でなくなった (受注の一覧の帯から 1 手で開く)。案内の小窓に前後の段は出ない (ONB-01)
+    assert dashboard.flow_neighbors("connect:inbox_list") is None
     assert dashboard.flow_neighbors("workorders:workorder_list") is None
 
 
