@@ -568,3 +568,48 @@ def test_watch_count_line_is_unchanged_without_held(with_key, monkeypatch, scan,
 
     assert "1 周見ました: 読んだ 1 件・同じ中身 0 件・読めなかった 0 件\n" in out
     assert "置いた" not in out
+
+
+# ---- 5. failed/ へ動かせない読めないファイルを見張りが読み直さない ----
+
+
+def test_watch_does_not_reread_unmovable_failed_file(with_key, monkeypatch, scan, customer, user):
+    calls = []
+
+    def _bad_reply(model, block):
+        calls.append(model)
+        return "作り物の JSON でない返事"
+
+    monkeypatch.setattr(intake_services, "_ask_claude", _bad_reply)
+    real_move = watch._move
+
+    def _move(path, sub):
+        if sub == watch.FAILED_DIR:
+            raise OSError("作り物: failed/ へ動かせない")
+        return real_move(path, sub)
+
+    monkeypatch.setattr(watch, "_move", _move)
+    monkeypatch.setattr(watch, "close_old_connections", lambda: None)
+    rounds = []
+
+    def _sleep(seconds):
+        rounds.append(seconds)
+        if len(rounds) == 2:
+            (scan / "bad.pdf").write_bytes(pdf("bad-placed-again"))  # 置き直す (大きさと時刻が変わる)
+        if len(rounds) == 3:
+            assert watch.request_stop() is True
+
+    monkeypatch.setattr(watch, "_sleep", _sleep)
+    (scan / "bad.pdf").write_bytes(pdf("bad"))
+    rows = []
+
+    watch.run(scan, user, 1, rows.append)
+
+    assert len(rounds) == 3
+    assert len(calls) == 2  # 1 周目と、置き直した後の 3 周目だけ (2 周目は同じ印なので読まない)
+    assert [row["result"] for row in rows] == ["failed", "failed"]
+    assert all(row["moved"] is None for row in rows)
+    assert rows[0]["reason"] == intake_services.MESSAGE_NOT_JSON
+    assert (scan / "bad.pdf").exists()
+    assert not (scan / "failed").exists()
+    assert Extraction.objects.count() == 0

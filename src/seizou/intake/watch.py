@@ -246,11 +246,23 @@ def _write_record(record) -> None:
     os.replace(temporary, path)
 
 
+def _signature(path) -> tuple | None:
+    """ファイルが置き直されたかを見る印 (最後に書いた時刻, 大きさ)。stat できなければ None。"""
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return (stat.st_mtime, stat.st_size)
+
+
 def run(folder, user, interval, write) -> None:
     """常駐。合図のファイルが置かれるまで、interval 秒ごとに 1 周見て、1 つごとに write(結果の辞書) を呼ぶ。
 
     動いている見張りがあれば WatchError。古い記録と残った合図のファイルは置き直す。終わるとき (Ctrl+C の
     KeyboardInterrupt でも) 記録と合図のファイルを消す。周の頭で close_old_connections を呼ぶ (長く立てておくため)。
+    読めなかった (failed) のに failed/ へ動かせなかったファイルは、道と印 (最後に書いた時刻・大きさ) を process の中で覚え、
+    次の見回りからは読まない (置き直されて印が変われば読む。run_once と --once は今までどおり毎回読む)。
+    訳: failed/ へ動かせない読めないファイルを 10 秒ごとに読み直し、そのたびに API を呼ぶのを止めるため。出所 = エンタープライズ化の調べ 第一弾の候補 18 の確かめ直しの直し方の直し (f) (11-07)。変えてよい条件 = 読めなかった物の置き場を変えるとき。
     """
     ensure_idle()
     stop = stop_path()
@@ -258,12 +270,22 @@ def run(folder, user, interval, write) -> None:
     started = timezone.now().isoformat()
     record = {"pid": os.getpid(), "folder": str(folder), "interval": interval, "started_at": started, "seen_at": started}
     _write_record(record)
+    # failed/ へ動かせなかった読めないファイル (道 → 印)。同じ印のままの物は読み直さない。
+    unmovable = {}
     try:
         while not stop.exists():
             close_old_connections()
             # 1 つ読むごとに書き、見回りの時刻も書き直す (読み取りの待ちが長くても、動いている見張りに見える)。
             for path in pending(folder):
-                write(handle(path, user))
+                signature = _signature(path)
+                if signature is not None and unmovable.get(path) == signature:
+                    continue
+                row = handle(path, user)
+                if row["result"] == "failed" and row["moved"] is None:
+                    unmovable[path] = signature
+                else:
+                    unmovable.pop(path, None)
+                write(row)
                 record["seen_at"] = timezone.now().isoformat()
                 _write_record(record)
             record["seen_at"] = timezone.now().isoformat()
