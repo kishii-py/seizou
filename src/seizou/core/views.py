@@ -1826,29 +1826,46 @@ class BaseModalView(ScreenMixin, DetailView):
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
     1 項目 = {"label", "value", "money", "boolean"} (boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。
     tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形。3 つ目の FK の名前の並びも同じ)。
-    htmx でない要求 (link を新しいタブで開いた時) には、枠の無い中身でなく詳細の画面へ移す。
+    htmx でない要求 (link を新しいタブで開いた時・画面の目録や履歴や AI に質問の窓から小窓の道を直に開いた時) には、枠の無い中身でなく詳細の画面へ移す。
+    詳細の画面が無い表 (計画の詳細の指示書の工程) は、土台の画面の中に小窓と同じ中身を置いた画面の全体 (core/modal_page.html) を返す
+    (決まりの番号の説明 rule_help と同じ形。見つけ FB-12)。同じ URL で中身と全体を返すので Vary: HX-Request を付ける。
     """
 
     modal_fields: int = 8
     tabs: tuple = ()
     opens_by_department = False
+    #: 画面の全体の形 (htmx でない要求で、詳細の画面が無いとき)。小窓のテンプレートを whole_page で include する
+    whole_page_template = "core/modal_page.html"
 
     def get(self, request, *args, **kwargs):
-        if not request.headers.get("HX-Request"):
-            obj = self.get_object()
-            url = model_url(obj.__class__, "detail", obj.pk)
-            if url:
-                return HttpResponseRedirect(url)
-        return super().get(request, *args, **kwargs)
+        self.whole_page = not request.headers.get("HX-Request")
+        self.object = self.get_object()
+        url = model_url(self.object.__class__, "detail", self.object.pk) if self.whole_page else None
+        if url:
+            response = HttpResponseRedirect(url)
+        else:
+            response = self.render_to_response(self.get_context_data(object=self.object))
+        patch_vary_headers(response, ("HX-Request",))
+        return response
 
-    def get_template_names(self):
+    def modal_template_names(self) -> list[str]:
+        """小窓の中身のテンプレートの候補 (template_name か、<app>/_modal.html → core/_modal.html の順)。"""
         if self.template_name:
             return [self.template_name]
         return [f"{self.model._meta.app_label}/_modal.html", "core/_modal.html"]
 
+    def get_template_names(self):
+        if getattr(self, "whole_page", False):
+            return [self.whole_page_template]
+        return self.modal_template_names()
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         obj = context["object"]
+        if getattr(self, "whole_page", False):
+            # 画面の全体は小窓と同じテンプレートを include する (字を 2 か所に書かない)。候補の並びから、実在する 1 つの名前に決めて渡す
+            context["whole_page"] = True
+            context["modal_template"] = select_template(self.modal_template_names()).template.name
         items = []
         hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:

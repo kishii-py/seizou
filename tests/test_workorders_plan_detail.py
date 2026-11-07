@@ -65,6 +65,41 @@ def test_plan_detail_modal_shows_summary_steps_and_chart(settings, client_logged
     assert client_logged_in.get(_detail_url(step), HTTP_HX_REQUEST="true").status_code == 404
 
 
+@pytest.mark.django_db
+def test_plan_detail_opened_directly_is_a_whole_page(client_logged_in, user, order, workorder, step):
+    """小窓の道を htmx でなく直に開いた (画面の目録・履歴・AI に質問の窓から) ときは、土台の画面の中に小窓と同じ中身を置いた画面の全体を返す
+    (見つけ FB-12。指示書の工程には詳細の画面が無いので、ほかの小窓のように詳細へは移せない)。題は土台の題の段 (h1)。閉じる小窓が無いので、
+    小窓の題と「閉じる」(method="dialog") は中身に出さない。「詳細を見る」と現品票の link は残す。同じ URL で中身と全体を返すので Vary: HX-Request。"""
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 5), user)
+
+    response = client_logged_in.get(_detail_url(step))
+
+    assert response.status_code == 200
+    assert "HX-Request" in response["Vary"]
+    html = response.content.decode()
+    assert "<html" in html
+    assert "<h1 class=\"text-3xl font-bold tracking-tight\">計画の詳細</h1>" in html
+    main = html[html.index("<main") : html.index("</main>")]
+    assert 'method="dialog"' not in main
+    assert "閉じる" not in main
+    assert "modal-action" not in main
+    assert main.count("計画の詳細") == 1  # 土台の題だけ (小窓の h3 は描かない)
+    assert f'href="{reverse("workorders:workorder_detail", args=[workorder.pk])}">{workorder.wo_no}</a>' in main
+    assert f'href="{reverse("orders:order_detail", args=[order.pk])}">{order.order_no}</a>' in main
+    assert "工程の並び" in main and "切断" in main
+    assert reverse("workorders:workorder_tag", args=[workorder.pk]) in main
+    assert 'id="plan-stock-chart"' in main
+    assert "詳細を見る" in main
+
+    # htmx の要求は今までどおり枠の無い中身 (題と「閉じる」つき)。詳細の画面のある表の小窓 (指示書) は今までどおり詳細へ移す
+    modal = client_logged_in.get(_detail_url(step), HTTP_HX_REQUEST="true")
+    assert "HX-Request" in modal["Vary"]
+    assert "<html" not in modal.content.decode() and 'method="dialog"' in modal.content.decode()
+    moved = client_logged_in.get(reverse("workorders:workorder_modal", args=[workorder.pk]))
+    assert moved.status_code == 302
+    assert moved["Location"] == reverse("workorders:workorder_detail", args=[workorder.pk])
+
+
 ZERO_NOTE = "今日から 8 週、見込みの在庫はずっと 0 です。"
 
 
