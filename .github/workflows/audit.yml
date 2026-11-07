@@ -85,19 +85,20 @@ jobs:
 
           with open("scripts/vendor.toml", "rb") as file:
               items = tomllib.load(file)["item"]
-          packages = set()
+          # 受け入れた問題 (scripts/vendor.toml の項目の osv_accepted。訳はその項目の注) は警告だけにして落とさない
+          packages = {}
           skipped = []
           for item in items:
               if "path" not in item:
                   continue
               match = NPM_URL.match(item["url"])
               if match and match.group(2) == item["version"]:
-                  packages.add((match.group(1), item["version"]))
+                  packages.setdefault((match.group(1), item["version"]), set()).update(item.get("osv_accepted", []))
               else:
                   skipped.append(item["name"])
 
           found = False
-          for name, version in sorted(packages):
+          for (name, version), accepted in sorted(packages.items()):
               body = json.dumps({"package": {"name": name, "ecosystem": "npm"}, "version": version}).encode()
               request = urllib.request.Request(
                   "https://api.osv.dev/v1/query",
@@ -106,11 +107,15 @@ jobs:
               )
               with urllib.request.urlopen(request, timeout=30) as response:
                   vulns = json.load(response).get("vulns", [])
-              if vulns:
+              known = [v for v in vulns if v["id"] in accepted or set(v.get("aliases", [])) & accepted]
+              rest = [v for v in vulns if v not in known]
+              for vuln in known:
+                  print(f"::warning::{name} {version} の {vuln['id']} は受け入れ済み (scripts/vendor.toml の osv_accepted と、その項目の注の訳)")
+              if rest:
                   found = True
-                  ids = ", ".join(vuln["id"] for vuln in vulns)
+                  ids = ", ".join(vuln["id"] for vuln in rest)
                   print(f"::error::{name} {version} に知られた問題がある: {ids}")
-              else:
+              elif not known:
                   print(f"{name} {version}: 知られた問題は無い")
           if skipped:
               print(f"OSV の package の名前に当てられないので飛ばした: {', '.join(skipped)}")

@@ -89,6 +89,9 @@ url = "https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"
 license = "BSD-3-Clause"
 sha256 = "f6157c72ac9b3f51cdead426335688a027b12405d9d6a4daadd38a676b2d7ff2"
 path = "src/seizou/core/static/vendor/quill.js"
+# OSV の GHSA-v3m3-f69x-jf25 (HTML の書き出し getSemanticHTML の XSS。重さ LOW。2026-11-08 時点で直した版は無い) は受け入れ、audit の見張りでは警告だけにする。
+# 訳: seizou はメモの本文を保存の時に services の clean_html (nh3。許す tag と属性の一覧) で掃除し、画面はその掃除した HTML だけを出す。直した版が出たら上げて、この 2 行と下の行を消す。
+osv_accepted = ["GHSA-v3m3-f69x-jf25"]
 
 [[item]]
 name = "quill-css"
