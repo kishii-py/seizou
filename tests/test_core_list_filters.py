@@ -185,7 +185,8 @@ def test_select_width_follows_the_widest_option_not_the_chosen_one(user, orders)
     # 枠の min-w-0 は選ぶ欄 (状態と得意先) の枠だけ。期間の枠には付けない
     for name in ("status", "customer"):
         assert re.search(rf'<div class="min-w-0">\s*<label for="list-f-{name}"', body)
-    assert re.search(r'<div>\s*<label for="list-f-ordered"', body)
+    # 期間の絞りの箱は近道の JS が引く印 (data-date-range) を持つ (tests/test_core_list_date_presets.py)
+    assert re.search(r'<div data-date-range="ordered">\s*<label for="list-f-ordered"', body)
 
 
 def test_page_sort_and_csv_links_keep_filters_and_search(user, orders):
@@ -491,7 +492,9 @@ def test_flag_when_gets_values_and_disabled_when_draws_it_off(user, orders):
     box = '<div id="list-f-open-box" hx-swap-oob="true" hx-get="/" hx-include="closest form" hx-target="#rows" hx-push-url="true" hx-trigger="change">'
     assert box in partial
     assert 'value="1" class="checkbox checkbox-sm" disabled data-list-filter>' in partial.split(box, 1)[1]
-    assert "list-f-early-box" not in partial and "list-f-ordered" not in partial
+    assert "list-f-early-box" not in partial and 'id="list-f-ordered"' not in partial
+    # 期間の近道の箱だけは oob で描き直す (欄の値と同じ近道の選んだ印を合わせる。tests/test_core_list_date_presets.py)
+    assert 'id="list-f-ordered-presets" class="mt-2 flex flex-wrap gap-1" role="group" aria-label="受注日の近道" hx-swap-oob="true">' in partial
     # 従う印の無い一覧の htmx の行の部分には、印の箱を描かない
     request = RequestFactory().get("/", {"f_open": "0"}, HTTP_HX_REQUEST="true")
     request.user = user

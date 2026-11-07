@@ -37,7 +37,7 @@ import inspect
 import json
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from importlib import import_module
 from pathlib import Path
@@ -503,6 +503,8 @@ class FilterSpec:
 
     #: kind に書ける値
     KINDS = ("choice", "date_range", "number_range", "lookup", "flag")
+    #: 期間の絞りの近道 (鍵と字。並びは画面の左から。受け渡しの seizou-部品の6案-20261107/指示書.md の 1。本人の決め 11-07 18:2x「いつからいつまでは良くあるパーツ」)
+    DATE_PRESETS = (("today", "今日"), ("week", "今週"), ("month", "今月"), ("last_month", "先月"))
     #: 辞書に書ける鍵
     KEYS = ("name", "label", "kind", "field", "choices", "when", "default", "disabled_when")
     #: flag に書ける鍵 (when と default と disabled_when は flag だけ)
@@ -745,6 +747,8 @@ class FilterSpec:
         if self.kind == "choice":
             item["options"] = self.choice_values()
             item["width_ch"] = self.select_width(item["options"])
+        elif self.kind == "date_range":
+            item["presets"] = self.date_presets(item["value_from"], item["value_to"])
         elif self.kind == "lookup":
             item["options"] = self.lookup_values()
             item["width_ch"] = self.select_width(item["options"])
@@ -756,6 +760,45 @@ class FilterSpec:
             else:
                 item.update(value="1" if on else "", checked=on, active=on != self.default)
         return item
+
+    @staticmethod
+    def preset_range(key: str, today: date) -> tuple[date, date]:
+        """期間の近道 key の始めと終わり (両端を含む)。今日 = その日、今週 = 月曜から日曜、今月 = 1 日から末日、先月 = 先月の 1 日から末日。
+
+        日付は呼び手が会社の時刻 (timezone.localdate) で渡す。訳: ブラウザの時刻の差で 1 日ずれないように、サーバーで決めて
+        ボタンの data 属性に書くため (受け渡しの seizou-部品の6案-20261107/指示書.md の 1)。知らない鍵は ValueError。
+        """
+        if key == "today":
+            return today, today
+        if key == "week":
+            start = today - timedelta(days=today.weekday())
+            return start, start + timedelta(days=6)
+        if key == "month":
+            start = today.replace(day=1)
+            # 末日 = 次の月の 1 日の前の日 (32 日足すと必ず次の月に入る)
+            return start, (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        if key == "last_month":
+            end = today.replace(day=1) - timedelta(days=1)
+            return end.replace(day=1), end
+        raise ValueError(f"知らない期間の近道: {key!r}。{' / '.join(k for k, _ in FilterSpec.DATE_PRESETS)} のどれかにしてください。")
+
+    @classmethod
+    def date_presets(cls, value_from: str, value_to: str, today: date | None = None) -> list[dict]:
+        """期間の欄の下の近道のボタンの材料 [{"key", "label", "start", "end", "selected"}] (core/_date_presets.html)。
+
+        start と end は ISO の字 (欄の value と同じ形。JS がそのまま欄に入れる)。selected は今の欄の読めた値の字が始めも終わりも
+        近道と同じとき (選んだ印はサーバーが描く。行の部分の応答では core/_filter_clear.html が oob で描き直す)。
+        today を省くと会社の時刻の今日 (timezone.localdate)。
+        """
+        today = today or timezone.localdate()
+        presets = []
+        for key, label in cls.DATE_PRESETS:
+            start, end = cls.preset_range(key, today)
+            start_text, end_text = start.isoformat(), end.isoformat()
+            presets.append(
+                {"key": key, "label": label, "start": start_text, "end": end_text, "selected": value_from == start_text and value_to == end_text}
+            )
+        return presets
 
     #: 選ぶ欄の頭の選択肢の字 (core/_filters.html の <option value="">。幅を数えるときに候補に足す)
     ALL_TEXT = "すべて"

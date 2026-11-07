@@ -5,9 +5,10 @@
 {# 選ぶ欄の幅は、候補と「すべて」のうちいちばん長い字で決める (FilterSpec.select_width の width_ch。候補 C31 の 3。初見テストの V152)。選んだ値で幅が変わらず、隣の欄が動かない。 #}
 {# max-width: 100% と枠の min-w-0 は、phone の幅で長い名前の欄が行からはみ出さないため (はみ出す分は「…」になる)。min-width で決めると max-width より勝ち、はみ出す。 #}
 {# flag は core/_filter_flag.html が描く (値 0 の隠しの欄の後にチェックの 1。ほかの絞りに従う印は htmx の応答で描き直す)。 #}
+{# 期間の欄の下には近道「今日・今週・今月・先月」(core/_date_presets.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 1)。箱の data-date-range は js/seizou-date-presets.js が 2 つの日付の欄を引く印。 #}
 <div class="mt-4 flex flex-wrap items-end gap-2">
   {% for f in filters %}
-  <div{% if f.width_ch %} class="min-w-0"{% endif %}>
+  <div{% if f.width_ch %} class="min-w-0"{% endif %}{% if f.kind == "date_range" %} data-date-range="{{ f.name }}"{% endif %}>
     {% if f.kind == "date_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
@@ -15,6 +16,7 @@
       <span class="text-base-content/60">〜</span>
       <input class="input input-sm w-auto" type="date" name="{{ f.param_to }}" value="{{ f.value_to }}" max="9999-12-31" aria-label="{{ f.label }}の終わり" data-list-filter>
     </div>
+    {% include "core/_date_presets.html" %}
     {% elif f.kind == "number_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
