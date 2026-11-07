@@ -187,3 +187,141 @@ def test_newline_in_username_does_not_split_the_line(client, caplog):
     message = found[0].getMessage()
     assert "\n" not in message and "\r" not in message
     assert "\\n" in message
+
+
+# ---------------------------------------------------------------- 接続元ごとの上限 (2。見出しのある置き場だけ。本人の決め 11-08 00:38)
+
+HEADER = "X-Real-IP"
+ATTACKER = "203.0.113.7"
+NEIGHBOR = "203.0.113.8"
+
+
+@pytest.fixture
+def fast_hashers(settings):
+    # 接続元の上限の試験は 30 回を超えて打つので、試験の間だけ速いハッシュにする (既定の PBKDF2 は 1 回が重い)。
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
+@pytest.fixture
+def fast_user(fast_hashers):
+    return get_user_model().objects.create_user("genba01", password=PASSWORD)
+
+
+@pytest.fixture
+def behind_proxy(settings, fast_hashers):
+    settings.SEIZOU_CLIENT_IP_HEADER = HEADER
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """login_guard._now を差し替える時計。clock["now"] を進めて使う。"""
+    state = {"now": 1_800_000_000.0}
+    monkeypatch.setattr(login_guard, "_now", lambda: state["now"])
+    return state
+
+
+def fail_from(client, address, count, start=0):
+    """接続元 address から、作り物の違う ID (nobody00, nobody01, …) で count 回失敗する。"""
+    return [attempt(client, f"nobody{start + i:02d}", WRONG, HTTP_X_REAL_IP=address) for i in range(count)]
+
+
+@pytest.mark.django_db
+def test_thirty_failures_from_one_address_lock_every_id(client, fast_user, behind_proxy):
+    responses = fail_from(client, ATTACKER, login_guard.ADDRESS_FAIL_LIMIT)
+    assert all(INVALID_MESSAGE in body(response) for response in responses[:-1])
+    assert LOCKED_MESSAGE in body(responses[-1])
+
+    right = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER)
+    assert right.status_code == 200 and LOCKED_MESSAGE in body(right), "正しい ID とパスワードでも、その接続元は断る"
+    assert "_auth_user_id" not in client.session
+
+    neighbor = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=NEIGHBOR)
+    assert neighbor.status_code == 302, "別の接続元は締め出されない"
+
+
+@pytest.mark.django_db
+def test_success_does_not_clear_the_address_count(client, fast_user, behind_proxy):
+    fail_from(client, ATTACKER, login_guard.ADDRESS_FAIL_LIMIT - 1)
+
+    assert attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER).status_code == 302
+    client.logout()
+
+    last = attempt(client, "nobody99", WRONG, HTTP_X_REAL_IP=ATTACKER)
+    assert LOCKED_MESSAGE in body(last), "成功を挟んでも、窓の中の 30 回目で締め出す"
+    again = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER)
+    assert again.status_code == 200 and LOCKED_MESSAGE in body(again)
+
+
+@pytest.mark.django_db
+def test_window_starts_at_first_failure_and_does_not_extend(client, fast_user, behind_proxy, clock):
+    fail_from(client, ATTACKER, 1)
+    clock["now"] += login_guard.ADDRESS_WINDOW_SECONDS - 60
+    fail_from(client, ATTACKER, login_guard.ADDRESS_FAIL_LIMIT - 2, start=1)
+
+    clock["now"] += 61  # 最初の失敗から 15 分と 1 秒
+    late = attempt(client, "nobody98", WRONG, HTTP_X_REAL_IP=ATTACKER)
+    assert INVALID_MESSAGE in body(late) and LOCKED_MESSAGE not in body(late), "窓が過ぎたので、30 回目にならない"
+    assert login_guard.cache.get(login_guard.address_key(ATTACKER))["count"] == 1, "窓が新しくなり、数え直す"
+
+    assert attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER).status_code == 302
+
+
+@pytest.mark.django_db
+def test_address_lock_ends_after_fifteen_minutes(client, fast_user, behind_proxy, clock):
+    fail_from(client, ATTACKER, login_guard.ADDRESS_FAIL_LIMIT)
+
+    clock["now"] += login_guard.LOCK_SECONDS - 1
+    still = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER)
+    assert still.status_code == 200 and LOCKED_MESSAGE in body(still)
+
+    clock["now"] += 2  # 締め出してから 15 分と 1 秒
+    assert attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER).status_code == 302
+
+
+@pytest.mark.django_db
+def test_no_header_setting_means_no_address_limit(client, fast_user, settings, monkeypatch):
+    # 見出しが無い置き場 (nginx の後ろでは全員が 127.0.0.1 に見える) では、接続元の上限を効かせない
+    monkeypatch.delenv(login_guard.HEADER_SETTING, raising=False)
+    if hasattr(settings, login_guard.HEADER_SETTING):
+        monkeypatch.delattr(settings, login_guard.HEADER_SETTING)
+
+    for i in range(login_guard.ADDRESS_FAIL_LIMIT + 1):
+        attempt(client, f"nobody{i:02d}", WRONG)
+
+    assert attempt(client, "genba01", PASSWORD).status_code == 302
+    assert login_guard.cache.get(login_guard.address_key("127.0.0.1")) is None
+    assert login_guard.is_address_locked("127.0.0.1") is False
+    assert login_guard.record_address_failure("127.0.0.1") == 0
+
+
+def test_empty_address_is_not_counted(behind_proxy):
+    assert login_guard.record_address_failure("") == 0
+    assert login_guard.is_address_locked("") is False
+
+
+def test_address_key_hides_the_address():
+    key = login_guard.address_key(ATTACKER)
+
+    assert ATTACKER not in key
+    assert key.startswith(login_guard.ADDRESS_PREFIX)
+    assert len(key) == len(login_guard.ADDRESS_PREFIX) + 64
+    assert login_guard.address_key(NEIGHBOR) != key
+
+
+@pytest.mark.django_db
+def test_address_lock_writes_one_warning_line_without_password(client, fast_user, behind_proxy, caplog):
+    caplog.set_level(logging.INFO, logger=LOGGER)
+
+    fail_from(client, ATTACKER, login_guard.ADDRESS_FAIL_LIMIT)
+
+    found = lines(caplog, "この接続元を")
+    assert len(found) == 1
+    assert found[0].levelno == logging.WARNING
+    message = found[0].getMessage()
+    assert ATTACKER in message and "15 分に 30 回" in message
+    assert "続けて失敗したので" not in message, "ID と接続元の組の締め出しの行と字で分ける"
+    assert not has_password(found[0])
+
+    attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=ATTACKER)
+    assert len(lines(caplog, "この接続元を")) == 1
+    assert len(lines(caplog, "締め出しの間")) == 1
