@@ -3,7 +3,7 @@
 form の service_kwargs() が、表の欄を data= (会社ごとの項目は土台と同じく ext=) に、画面の絵を screenshots= に分けて
 services.create_feedback(data, user, screenshots=…) / update_feedback(feedback, data, user, screenshots=…) に渡す
 (画面の絵は選んだときだけ渡す)。form が見るのは欄の型と必須だけ (値の決まりと画面の絵の形式・大きさ・枚数は services)。
-「画面」の欄は画面の目録から選ぶ。左のメニューの「フィードバック」から開くと、土台の get_initial が GET の screen を初期値にする。
+「画面」の欄は画面の目録から選ぶ字を打って探す欄 (RemoteSelect。候補の口は feedback:screen_select。候補 C85)。左のメニューの「フィードバック」から開くと、土台の get_initial が GET の screen を初期値にする。
 「影響する画面」の欄の見出しは SCREENS_LABEL (表の verbose_name は内部の字を含み、変えると migration が要るので変えない。詳細も同じ字)。
 GithubConnectForm は「GitHub とつなぐ」の画面の入力 (トークンと送り先。依頼書 N185)。保存は services.connect_github。
 GithubDeviceForm は同じ画面の「GitHub でログインしてつなぐ」の入力 (送り先と非公開の印。依頼書 N320)。始めるのは services.start_github_device。
@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from seizou.core import fields as company_fields
 from seizou.core.forms import ServiceModelForm
+from seizou.core.widgets import RemoteSelect
 
 from . import services
 from .models import Feedback
@@ -61,6 +62,7 @@ class FeedbackForm(ServiceModelForm):
             label="画面",
             required=False,
             choices=[("", "指定なし"), *services.screen_choices()],
+            widget=RemoteSelect("feedback:screen_select"),
             help_text="困りごとが起きた画面。左のメニューの「フィードバック」から開くと、開いていた画面が入っています。",
         )
         self.fields["screens"].help_text = "画面の名前を「、」で区切って書く (例 受注、生産管理ボード)。分からなければ空でよい。"

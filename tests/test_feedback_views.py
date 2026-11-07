@@ -921,3 +921,60 @@ def test_issue_rows_show_closed_reason_and_milestone(client, plain, gh):
     assert '<span class="badge badge-ghost">閉じた</span>' in rows[4] and "見送った" not in rows[4]
     assert '<span class="badge badge-soft badge-success">開いている</span>' in rows[5]
     assert '<span class="badge badge-soft badge-info">0.1.2 で直る</span>' in rows[5]
+
+
+# ---------------------------------------------------------------- 「画面」の欄の字を打って探す欄 (候補 C85)
+
+
+def test_screen_select_needs_login(client, db):
+    assert client.get(reverse("feedback:screen_select")).status_code == 302
+
+
+def test_screen_select_returns_catalog_pages_and_matches_label(client_logged_in):
+    from seizou.core.views import BaseSelectView
+
+    url = reverse("feedback:screen_select")
+    choices = services.screen_choices()
+    per_page = BaseSelectView.per_page
+    assert len(choices) > per_page
+
+    first = client_logged_in.get(url).json()
+    assert first["items"] == [{"id": v, "text": t} for v, t in choices[:per_page]]
+    assert first["more"] is True
+    assert first["recent"] == []
+    assert first["create"] is None
+
+    last_page = (len(choices) - 1) // per_page + 1
+    last = client_logged_in.get(url, {"page": last_page}).json()
+    assert last["items"] == [{"id": v, "text": t} for v, t in choices[(last_page - 1) * per_page :]]
+    assert last["more"] is False
+    assert client_logged_in.get(url, {"page": "x"}).json() == first
+
+    orders = client_logged_in.get(url, {"q": "受注"}).json()["items"]
+    assert {"id": "orders:order_list", "text": dict(choices)["orders:order_list"]} in orders
+    assert all("受注" in item["text"] for item in orders)
+
+    manuals = client_logged_in.get(url, {"q": "まにゅある"}).json()["items"]
+    assert manuals
+    assert all("マニュアル" in item["text"] for item in manuals)
+
+    assert client_logged_in.get(url, {"q": "order_list"}).json()["items"] == []
+
+
+def test_screen_field_is_remote_select_with_selected_option_only(client_logged_in, plain):
+    def screen_field(html: str) -> tuple[str, str]:
+        found = re.search(r'(<select name="screen"[^>]*>)(.*?)</select>', html, re.S)
+        return found.group(1), found.group(2)
+
+    head, inner = screen_field(html_of(client_logged_in.get("/feedback/new/")))
+    assert f'data-select-url="{reverse("feedback:screen_select")}"' in head
+    assert inner.count("<option") == 1
+    assert 'value=""' in inner and "指定なし" in inner
+
+    head, inner = screen_field(html_of(client_logged_in.get("/feedback/new/?screen=orders:order_list")))
+    assert inner.count("<option") == 2
+    assert '<option value="orders:order_list" selected>' in inner
+
+    row = make(plain)
+    head, inner = screen_field(html_of(client_logged_in.get(f"/feedback/{row.pk}/edit/")))
+    assert '<option value="orders:order_list" selected>' in inner
