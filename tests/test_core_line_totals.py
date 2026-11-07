@@ -200,7 +200,7 @@ def test_order_create_shows_zero_frame_and_label(logged_in):
     assert re.search(r'name="lines-__prefix__-DELETE"[^>]* data-label-skip', body)
     assert re.search(r'name="lines-__prefix__-qty"[^>]* data-label-qty', body)
     # 端数の 1 文は枠の下に残る。
-    assert "金額は数量 × 単価で、保存のときに得意先の端数の扱いで 1 円に丸めます。" in body
+    assert "金額は数量 × 単価で (単価の単位が「式」の行は単価のまま)、保存のときに得意先の端数の扱いで 1 円に丸めます。" in body
 
 
 def test_order_update_shows_totals_from_lines(logged_in, user, customer, item, plate):

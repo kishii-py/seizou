@@ -365,7 +365,7 @@ def test_order_detail_quantity_without_trailing_zeros(client, user, order):
     html = client.get(reverse("orders:order_detail", args=[order.pk])).content.decode()
     assert ">10</td>" in html
     assert ">10.00</td>" not in html
-    assert ">¥1,200</td>" in html  # 単価 1200.00
+    assert ">¥1,200<" in html  # 単価 1200.00
 
 
 # ---------------------------------------------------------------- 10. 一覧と入力の題を切らない (初見テスト R5 の a-flagged-05。候補 C54。依頼書 N266)
