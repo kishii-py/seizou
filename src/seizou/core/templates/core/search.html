@@ -30,6 +30,10 @@
     {% endif %}
   </div>
 </form>
+{% if query and searched_fields %}
+{# 探した項目: 種類ごとに、探した項目の見出し (部品の search_labels)。結果の表の上にも、0 件の箱の上にも出す (初見テスト R5 の候補 C36 の 2)。 #}
+<p class="mt-4 text-xs text-base-content/50"><span class="mr-2 font-medium">探した項目</span>{% for scope in searched_fields %}{% if not forloop.first %} / {% endif %}{{ scope.label }}: {{ scope.fields }}{% endfor %}</p>
+{% endif %}
 {% if not query %}
 {# 何も入れていない: 絵と 1 文と補足 (core/list.html の空の一覧と同じ書き方)。 #}
 <div class="mt-6 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-100 p-6 text-center">

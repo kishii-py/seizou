@@ -21,6 +21,13 @@ COLUMNS = (
     SearchColumn("形式"),
     SearchColumn("最終更新", is_date=True),
 )
+#: マニュアルの表で探す項目。search() と search_labels() がここから作る (「探した項目」の 1 行と実際に探す所をずらさないため)
+LOOKUPS = ("title", "body")
+
+
+def search_labels() -> list[str]:
+    """search() が探す項目の見出し (約束は seizou.core.search)。題・本文。"""
+    return [lookup_label(Manual, lookup) for lookup in LOOKUPS]
 
 
 def search(query, *, partner=None, limit=50):
@@ -29,7 +36,7 @@ def search(query, *, partner=None, limit=50):
     body_label = lookup_label(Manual, "body")
     manuals = Manual.objects.all()
     for term in query.split():
-        manuals = manuals.filter(search_q(["title", "body"], term))
+        manuals = manuals.filter(search_q(LOOKUPS, term))
     manuals = manuals.order_by("title", "pk").select_related("folder")
     total = manuals.count()
     rows = []

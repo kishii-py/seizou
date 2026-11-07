@@ -24,6 +24,10 @@ COLUMNS = (
     SearchColumn("図面番号", is_code=True),
     SearchColumn("単位"),
 )
+#: 品目の表で探す項目。search() と search_labels() がここから作る (「探した項目」の 1 行と実際に探す所をずらさないため)
+ITEM_LOOKUPS = ("part_no", "name", "drawing_no")
+#: 部品の取引先の表で探す項目 (取引先の品番)
+PARTNER_ITEM_LOOKUPS = ("partner_part_no",)
 
 
 def company_lookups() -> list[str]:
@@ -60,6 +64,17 @@ def company_candidates(item, lookups) -> list[tuple[str, object]]:
     return found
 
 
+def search_labels() -> list[str]:
+    """search() が探す項目の見出し (約束は seizou.core.search)。自社品番・品名・図面番号・取引先の品番と、会社ごとの項目のうち
+    company_lookups() が探す物の列の label (拡張の表が無い会社では探さないので出さない)。会社ごとの登録で変わるので関数にする。"""
+    labels = [lookup_label(Item, lookup) for lookup in ITEM_LOOKUPS]
+    labels += [lookup_label(PartnerItem, lookup) for lookup in PARTNER_ITEM_LOOKUPS]
+    prefix = company_fields.EXT_ACCESSOR + "__"
+    company = set(company_lookups())
+    labels += [column.label for column in company_fields.columns_for(Item) if prefix + column.name in company]
+    return list(dict.fromkeys(labels))
+
+
 def search(query, *, partner=None, limit=50):
     links = PartnerItem.objects.all()
     items = Item.objects.all()
@@ -67,11 +82,11 @@ def search(query, *, partner=None, limit=50):
         links = links.filter(partner_id=partner)
         items = items.filter(pk__in=links.values("item_id"))
     company = company_lookups()
-    lookups = ["part_no", "name", "drawing_no", *company]
+    lookups = [*ITEM_LOOKUPS, *company]
     for term in query.split():
         items = items.filter(
             search_q(lookups, term)
-            | Q(pk__in=links.filter(search_q(["partner_part_no"], term)).values("item_id"))
+            | Q(pk__in=links.filter(search_q(PARTNER_ITEM_LOOKUPS, term)).values("item_id"))
         )
     items = items.order_by("part_no")
     total = items.count()

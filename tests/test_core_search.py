@@ -298,3 +298,78 @@ def test_cross_search_agrees_with_list_search(client_logged_in, bracket, shaft):
         assert "P-1001" in listed_body and "P-2002" not in listed_body, word
         found_body = search_page(client_logged_in, q=word, kind="items").content.decode()
         assert detail in found_body and "P-2002" not in found_body, word
+
+
+# --- 探した項目の 1 行 (初見テスト R5 の候補 C36 の 2。V120: 材質で部品が出た人が「ほかの部品が漏れていないか不安」と書いた) ---
+
+
+@pytest.fixture
+def no_registration(monkeypatch):
+    """会社ごとの項目の登録を空から始める (ほかの試験の登録を残さない。tests/test_core_ux_fixes.py と同じ)。"""
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+
+
+def test_search_page_shows_searched_fields_in_provider_order(client_logged_in, bracket, no_registration):
+    """言葉があれば、探した種類ごとの項目の見出しが providers() の順に並び、結果の上に「探した項目」の 1 行が出る。"""
+    response = search_page(client_logged_in, q="P-1001")
+    fields = response.context["searched_fields"]
+    assert [scope["label"] for scope in fields] == [module.LABEL for module in core_search.providers()]
+    by_label = {scope["label"]: scope["fields"] for scope in fields}
+    assert by_label == {
+        "部品マスター": "自社品番・品名・図面番号・取引先の品番",
+        "受注": "受注番号・得意先の注文番号・自社品番・品名",
+        "マニュアル": "題・本文",
+    }
+    body = response.content.decode()
+    assert "探した項目" in body
+    assert "部品マスター: 自社品番・品名・図面番号・取引先の品番 / 受注: " in body
+    # 0 件の箱の上にも出る
+    missing = search_page(client_logged_in, q="作り物でない")
+    assert missing.context["sections"] == []
+    assert "探した項目" in missing.content.decode()
+
+
+def test_searched_fields_follow_the_selected_kind(client_logged_in, bracket, no_registration):
+    """種類の札で 1 つに絞ったら、その種類の分だけ (探していない種類を書かない)。本文の種類の名前は札とメニューにもあるので見ない。"""
+    response = search_page(client_logged_in, q="P-1001", kind="items")
+    assert response.context["searched_fields"] == [{"label": "部品マスター", "fields": "自社品番・品名・図面番号・取引先の品番"}]
+
+
+def test_searched_fields_hidden_without_query(client_logged_in):
+    response = search_page(client_logged_in, q="   ")
+    assert response.context["searched_fields"] == []
+    assert "探した項目" not in response.content.decode()
+
+
+def test_searched_fields_skip_modules_without_search_labels(monkeypatch):
+    """search_labels() は約束の「持たなくてもよい物」。持たない部品は 1 行に出ない (探すのは今までどおり)。"""
+
+    class Plain:
+        KIND = "plain"
+        LABEL = "作り物の種類"
+
+        @staticmethod
+        def search(query, *, partner=None, limit=50):
+            return None
+
+    assert core_search.searched_fields([Plain, orders_search]) == [
+        {"label": "受注", "fields": "受注番号・得意先の注文番号・自社品番・品名"}
+    ]
+
+
+def test_items_search_labels_follow_company_fields(no_registration, monkeypatch):
+    """会社ごとの項目は、company_lookups() が探す物の列の label だけ (拡張の表が無ければ探さないので書かない)。
+
+    画面を通さない: 差し替えたまま検索の画面で探すと、search() が試験の DB に無い ext の lookup で絞るため。
+    """
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "材質", "searchable": True}])
+    # 試験の DB には拡張の表が無いので、company_lookups() は ext の lookup を外し、材質は探さない
+    assert masters_search.company_lookups() == []
+    assert masters_search.search_labels() == ["自社品番", "品名", "図面番号", "取引先の品番"]
+
+    monkeypatch.setattr(masters_search, "company_lookups", lambda: ["ext__ext01"])
+    assert masters_search.search_labels() == ["自社品番", "品名", "図面番号", "取引先の品番", "材質"]
+
+    company_fields.register("masters.Item", "fields.ItemExt", [{"label": "処理の種類", "searchable": True}])
+    labels = masters_search.search_labels()
+    assert labels[-1] == "処理の種類" and "材質" not in labels
