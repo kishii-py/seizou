@@ -110,7 +110,8 @@ def test_create_screen_has_process_column(client_logged_in, processes):
 @pytest.mark.django_db
 def test_company_without_outsourced_process_has_no_column(client_logged_in, user, subcontractor):
     Process.objects.create(code="IN1", name="作り物の社内の工程", is_outsourced=False)
-    item = masters_services.create_item({"part_no": "T-300", "name": "作り物の棒", "unit": "本"}, user)
+    # 単位は数量単位の一覧にある字 (C108 = 405 回目。一覧に無い「本」だと単位の欄の誤りで止まる。この試験は工程の欄を見る物)
+    item = masters_services.create_item({"part_no": "T-300", "name": "作り物の棒", "unit": "個"}, user)
     body = client_logged_in.get(reverse("purchasing:purchaseorder_create")).content.decode()
     assert "<th>工程</th>" not in body and "-process" not in body
     posted = client_logged_in.post(

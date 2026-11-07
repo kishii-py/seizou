@@ -153,7 +153,7 @@ def test_people_without_money_see_no_quote_no(client_logged_in, user, customer, 
             "lines-0-order_line": line.pk,
             "lines-0-item": shaft.pk,
             "lines-0-qty": "12",
-            "lines-0-unit": line.unit,
+            "lines-0-unit": line.unit_code,  # 単位の欄は数量単位の一覧から選ぶ欄 (C108 = 405 回目)
             "lines-0-due_date": "",
             "lines-0-note": "",
         },

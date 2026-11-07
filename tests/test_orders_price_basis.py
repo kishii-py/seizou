@@ -202,7 +202,7 @@ def test_no_money_user_has_no_price_basis_and_keeps_it(settings, logged_in, lump
         "lines-0-item": str(line.item_id),
         "lines-0-customer_part_no": "",
         "lines-0-qty": "200",
-        "lines-0-unit": line.unit,
+        "lines-0-unit": line.unit_code,  # 単位の欄は数量単位の一覧から選ぶ欄 (C108 = 405 回目)
         "lines-0-due_date": "",
         "lines-0-note": "",
     }
