@@ -1388,3 +1388,39 @@ def test_our_issue_marks_shape(manager, plain, uchimo):
         2: {"sent": fixed.pk, "me_too": None},
         10: {"sent": None, "me_too": only.pk},
     }
+
+
+# ---------------------------------------------------------------- 閉じた理由 (依頼書 N323)
+
+
+def test_list_issues_returns_reason_closed_at_labels_and_milestone(fake):
+    fake.listing = Answer(
+        200,
+        [
+            issue(
+                5,
+                "直った件",
+                state="closed",
+                state_reason="completed",
+                closed_at="2026-11-06T03:00:00Z",
+                labels=[{"name": "from-seizou"}, {"name": "不具合"}, "形の違う印"],
+                milestone={"title": "0.1.1"},
+            ),
+            issue(6, "開いた件", state_reason=None, closed_at=None, labels=[], milestone=None),
+            issue(7, "鍵の無い件"),
+        ],
+    )
+
+    rows = github.list_issues("example-owner/example-repo")
+
+    keys = {"number", "title", "body", "state", "html_url", "updated_at", "comments", "thumbs_up"}
+    assert all(set(row) == keys | {"state_reason", "closed_at", "labels", "milestone"} for row in rows)
+    first = rows[0]
+    assert (first["state_reason"], first["closed_at"], first["labels"], first["milestone"]) == (
+        "completed",
+        "2026-11-06T03:00:00Z",
+        ["from-seizou", "不具合"],
+        "0.1.1",
+    )
+    for row in rows[1:]:
+        assert (row["state_reason"], row["closed_at"], row["labels"], row["milestone"]) == ("", "", [], "")

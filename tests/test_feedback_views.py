@@ -610,3 +610,26 @@ def test_issue_rows_show_our_marks_and_me_too_button(client, plain, other, manag
     assert f'<a class="badge badge-soft badge-info" href="/feedback/{sent.pk}/">自社が送った</a>' in rows[1]
 
     assert "うちも済み" not in html_of(client.get("/feedback/"))
+
+
+def test_issue_rows_show_closed_reason_and_milestone(client, plain, gh):
+    gh.listing = gh_tests.Answer(
+        200,
+        [
+            gh_tests.issue(1, "直った件", state="closed", state_reason="completed", milestone={"title": "0.1.1"}),
+            gh_tests.issue(2, "対応しない件", state="closed", state_reason="not_planned"),
+            gh_tests.issue(3, "重複の件", state="closed", state_reason="duplicate"),
+            gh_tests.issue(4, "理由の無い件", state="closed"),
+            gh_tests.issue(5, "版待ちの件", milestone={"title": "0.1.2"}),
+        ],
+    )
+    client.force_login(plain)
+
+    rows = issue_rows(html_of(client.get("/feedback/", {"issue_q": ""})))
+
+    assert '<span class="badge badge-soft badge-success">直した</span>' in rows[1] and "で直る" not in rows[1]
+    assert '<span class="badge badge-ghost">見送った</span>' in rows[2]
+    assert '<span class="badge badge-ghost">見送った</span>' in rows[3]
+    assert '<span class="badge badge-ghost">閉じた</span>' in rows[4] and "見送った" not in rows[4]
+    assert '<span class="badge badge-soft badge-success">開いている</span>' in rows[5]
+    assert '<span class="badge badge-soft badge-info">0.1.2 で直る</span>' in rows[5]
