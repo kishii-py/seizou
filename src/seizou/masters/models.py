@@ -35,7 +35,11 @@ class Partner(models.Model):
     """取引先。取引先の種類は得意先・協力企業・両方のどれか。
 
     金額と消費税の端数の扱いが空のときは、会社 (core の Company) の既定に従う。
-    支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31。31 は月末) の 2 列。画面には 1 つの字で出す。
+    支払の条件は 支払の月 (当日・当月・翌月・翌々月) と 支払日 (1〜31。31 は月末) の 2 列。画面には 1 つの字で出す。
+    支払の月が当日なら支払日は使わない (締日でまとめる得意先は締日、都度の得意先は納品の日が支払期日)。
+    請求の仕方は 締日でまとめる (closing。既定) と 都度 (per_delivery) の 2 つ。中小企業共通 EDI のインボイス仕様編が書く
+    合算請求 (締日ごとに 1 枚) と都度請求 (納品書ごとに 1 枚。現金払いなど) を元にした項目。値に EDI のコードの値は使っていない
+    (EDI に請求の仕方のコードがあるかは未確認)。
     """
 
     ROLE_CUSTOMER = "customer"
@@ -47,10 +51,19 @@ class Partner(models.Model):
         (ROLE_BOTH, "両方"),
     ]
 
+    BILLING_CLOSING = "closing"
+    BILLING_PER_DELIVERY = "per_delivery"
+    BILLING_METHOD_CHOICES = [
+        (BILLING_CLOSING, "締日でまとめる"),
+        (BILLING_PER_DELIVERY, "都度"),
+    ]
+
+    PAYMENT_SAME_DAY = "same_day"
     PAYMENT_CURRENT = "current"
     PAYMENT_NEXT = "next"
     PAYMENT_AFTER_NEXT = "after_next"
     PAYMENT_MONTH_CHOICES = [
+        (PAYMENT_SAME_DAY, "当日"),
         (PAYMENT_CURRENT, "当月"),
         (PAYMENT_NEXT, "翌月"),
         (PAYMENT_AFTER_NEXT, "翌々月"),
@@ -67,7 +80,7 @@ class Partner(models.Model):
         blank=True,
         validators=[MinValueValidator(1), MaxValueValidator(31)],
     )
-    # 支払の月は空 (未設定) か 当月・翌月・翌々月。支払日は空か 1〜31 (31 は月末。締日と同じ約束)。
+    # 支払の月は空 (未設定) か 当日・当月・翌月・翌々月。支払日は空か 1〜31 (31 は月末。締日と同じ約束)。当日のとき支払日は使わない。
     payment_month = models.CharField(
         "支払の月", max_length=10, choices=PAYMENT_MONTH_CHOICES, blank=True, default=""
     )
@@ -82,6 +95,12 @@ class Partner(models.Model):
     )
     tax_mode = models.CharField(
         "消費税の端数の扱い", max_length=10, choices=Company.TAX_CHOICES, blank=True
+    )
+    # 請求の仕方 (C02-3c)。締日でまとめる = 締め期間ごとに 1 枚、都度 = 納品書ごとに作れる。今ある取引先は既定の締日でまとめるのまま。
+    # 列は端数の 2 列の後に置く (詳細と小窓は列の順に出し、小窓は先頭の 8 項目だけなので、前に置くと小窓から「消費税の端数の扱い」が落ちる)。
+    # 入力の欄は締日の前に読む並び (masters.forms.PartnerForm の Meta.fields)。
+    billing_method = models.CharField(
+        "請求の仕方", max_length=15, choices=BILLING_METHOD_CHOICES, default=BILLING_CLOSING
     )
     note = models.CharField("備考", max_length=500, blank=True)
     # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
@@ -106,7 +125,12 @@ class Partner(models.Model):
         return day_label(self.closing_day)
 
     def get_payment_day_display(self):
-        """支払の条件の画面の字。支払の月と合わせて 1 つにする (例「翌月 25 日」「翌月末」)。表の値は 2 列のまま。"""
+        """支払の条件の画面の字。支払の月と合わせて 1 つにする (例「翌月 25 日」「翌月末」)。表の値は 2 列のまま。
+
+        支払の月が当日なら、支払日に関わらず「当日」だけ (支払日は使わない)。
+        """
+        if self.payment_month == self.PAYMENT_SAME_DAY:
+            return self.get_payment_month_display()
         month = self.get_payment_month_display() if self.payment_month else ""
         if self.payment_day is None:
             return month or None
