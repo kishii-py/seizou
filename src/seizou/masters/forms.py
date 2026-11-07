@@ -130,7 +130,11 @@ PROCESS_ACTIVE_HELP = "外すと使用停止にします。指示書の発行の
 
 
 class ProcessForm(ServiceModelForm):
-    """工程を入れる・直す。協力企業に出すか (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
+    """工程を入れる・直す。協力企業に出すか (is_outsourced) も欄に出す (決め PROC-OUT-1)。
+
+    訳: 画面から足した工程も協力企業に出す工程にでき、部品の標準の工程のタブの札と、発注の明細の工程の候補と最初の値 (決め PRICE-5) に効くようにするため。前は欄に出さず、種と立ち上げの答えでだけ入った (その形を選んだ訳の記録は無い = 未確認)。出所 = 作者の決め PROC-OUT-1。
+    変えてよい条件 = 協力企業に出す工程の入れ方を本人が決め直したとき。
+    """
 
     active = forms.BooleanField(label="使用中", required=False, help_text=PROCESS_ACTIVE_HELP)
 
@@ -139,7 +143,11 @@ class ProcessForm(ServiceModelForm):
 
     class Meta:
         model = Process
-        fields = ["code", "name", "sort_order", "use_in_plan"]
+        fields = ["code", "name", "is_outsourced", "sort_order", "use_in_plan"]
+        # 欄の下の説明 (決め PROC-OUT-1)。表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
+        help_texts = {
+            "is_outsourced": "協力企業に出す工程なら印を付けます。部品の詳細の標準の工程のタブで「協力企業に出す」の札が付きます。",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

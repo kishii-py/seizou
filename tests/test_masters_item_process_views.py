@@ -303,3 +303,24 @@ def test_workorder_copies_reordered_list(client_logged_in, user, item, procs):
     # 並べ替えた後の順で写る。使用停止の工程は写らない (今のまま)
     assert [step.process for step in workorder.steps.order_by("seq")] == [paint, cut, bend]
     assert ItemProcess.objects.filter(item=item).count() == 4
+
+
+# ---------------------------------------------------------------- 画面だけで協力企業に出す札まで (決め PROC-OUT-1。C112 の その 3)
+
+
+@pytest.mark.django_db
+def test_outsourced_process_made_on_screen_shows_badge(client_logged_in, item):
+    response = client_logged_in.post(
+        reverse("masters:process_create"),
+        {"code": "PLT", "name": "作り物のめっき", "sort_order": "30", "is_outsourced": "on"},
+    )
+    assert response.status_code == 302
+    plating = Process.objects.get(code="PLT")
+
+    url = reverse("masters:itemprocess_add") + f"?item={item.pk}"
+    body = client_logged_in.get(url, **MODAL).content.decode()
+    assert "PLT 作り物のめっき (協力企業に出す)" in body
+
+    response = client_logged_in.post(url, {"item": item.pk, "processes": [plating.pk]}, **MODAL)
+    assert response.status_code == 204
+    assert detail(client_logged_in, item).count(OUTSOURCED_BADGE) == 1
