@@ -232,9 +232,11 @@ def test_admin_and_jimu_frames_stay(client, settings, user):
     settings.SEIZOU = {"access_control": dict(ON)}
     person = admin()
     frame = FRAME.search(home(client, person)).group(0)
-    # フルコントロールの人の枠は今のまま (2 つの流れの段を全部出す。test_core_today_tasks の test_home_shows_flow_picture_when_nothing_to_do と同じ形)
+    # フルコントロールの人の枠は今のまま (2 つの流れの段を全部出す。test_core_today_tasks の test_home_shows_flow_picture_when_nothing_to_do と同じ形)。
+    # 部品も取引先も無い会社なので、その上に「最初にすること」の段 (ONB-02) も出る
     assert frame.count("はじめての方へ") == 1
-    assert frame.count('<ol class="mt-2 flex flex-wrap items-center gap-2"') == 2
+    for title in ("最初にすること", "受注から入金まで", "発注から検収まで"):
+        assert frame.count(f'<ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="{title}の段"') == 1, title
     assert dashboard.today_tasks(get_user_model().objects.get(pk=person.pk))["guide"] == dashboard.flow_guide()
     # 利用者を渡さない値も今のまま
     assert dashboard.today_tasks()["guide"] == dashboard.flow_guide()

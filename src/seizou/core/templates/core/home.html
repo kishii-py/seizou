@@ -9,7 +9,7 @@
 {# 8 枚目 = 手入力せずに取り込んだ明細 (受注の部品があるとき。N83)。8 枚のときも xl 以上で 4 列 × 2 段。detail のあるカードは数の下に 1 行 (4 枚目は受注の件数、8 枚目は入力を省けた時間 ≒ m 分)。 #}
 {# compare のあるカード (「今月の◯◯」= 今月の受注・今月の支払の見込み・今月の入金。dashboard_stats が core.dashboard の *_month_compare で付ける) は、数の横に「▲ +n 先月より」の札 (core/_stat_delta.html。増えた = 緑、減った = 赤、同じ = 灰) と、数の下に今月の日ごとの数の細い線 (inline SVG。JS を使わない。座標は dashboard.sparkline)。線は箱の幅に伸び縮みし (preserveAspectRatio="none")、太さは伸びない (vector-effect)。本人の決め 11-07 18:2x〜18:4x「2もいい」。受け渡しの seizou-部品の6案-20261107/指示書.md の 3。 #}
 {# help のあるカードは題の横に (i) のボタンを置き、押すと数え方の 1 文を小窓 (base.html の #seizou-modal) に出す。中身は格子の後ろの template を写し、字は textContent で入れる (初見ユーザーテスト R4 の 5-3。決め 11-06 22:2x の C30-1 の a。吹き出しは窓の端と左のメニューの下で切れ、閉じていても頁を横に広げ、読み上げで説明が 2 回入ったため = R5 の r5-a-03・V181)。 #}
-{# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前のボタンで 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。 #}
+{# 今日やること: 手を動かす物のある段だけを、件数の字と移る先の画面の名前のボタンで 1 行ずつ (UX の案 2-A)。行が 1 つも無い会社は、同じ枠に「はじめての方へ」の題で流れの段の並びを出す。枠は 1 つ (aria-labelledby を 2 つにしない)。部品も取引先も 0 の会社には、流れの段の上に「最初にすること」(取引先 → 部品 → 受注の入口。ONB-02 の会期中の小さい版) を出す。 #}
 {# 行き先 (url) のあるカードは、外側を div にし、点線の下の右に行き先の画面の名前の link (「部品マスターを見る」など。名前は HomeView が url から引いた stat.screen) を置く。外側の押下も同じ url へ移る (受注の行と同じ onclick。中の link と (i) のボタンの押下は除く)。初見ユーザーテスト R5 の V38 (カードを入口と見なかった) と V181 (link の中に (i) のボタンが入れ子) の直し。 #}
 {# phone (640px 未満) もカードを 2 列に並べ、カードの中の余白は p-4 (sm から p-6)、phone の数のカードの大きい数だけ text-2xl (sm から text-3xl)。決め 11-06 22:2x の C30-3 の a (R5 の a-flagged-25 で、phone では 8 枚が 1 列に並び、今日やることが 3 画面目から始まったため)。base.html の見た目の約束 (カードの余白 p-6・字の大きさの 4 段) の外の例外。 #}
 {% if stats %}
@@ -83,6 +83,26 @@ if (!window.seizouStatHelp) {
     {% else %}
     <h2 id="flow-guide-title" class="text-lg font-bold">はじめての方へ</h2>
     <p class="mt-2 text-base-content/70">今は手を動かす物がありません。業務の流れの段を押すと、その画面が開きます。</p>
+    {# 最初にすること (ONB-02 の会期中の小さい版): 部品も取引先も 0 の会社にだけ、取引先 → 部品 → 受注の順の入口を枠だけのボタンで並べる (流れの段の上)。 #}
+    {# 数は数字のカードの先頭の 2 枚 (dashboard_stats が部品・取引先の順に先頭へ置き、HomeView は並びを変えずに url だけ外す)。並びが違うときと数が読めない (None) ときは出さない (偽の案内を置かない)。 #}
+    {# 入口のボタンは書ける人にだけ (決め 11-04 12:5x。can_write は部署で開けない人にも偽)。1 つも出せない人には題ごと出さない。矢印は前の段の li に入れる (流れの段と同じ形)。済んだ印は会期後 (ONB-07)。 #}
+    {% with items=stats.0 partners=stats.1 %}
+    {% if items.url_name == "masters:item_list" and items.value == 0 and partners.url_name == "masters:partner_list" and partners.value == 0 %}
+    {% url 'masters:partner_create' as partner_create_url %}{% url 'masters:partner_import' as partner_import_url %}{% url 'masters:item_create' as item_create_url %}{% url 'masters:item_import' as item_import_url %}{% url 'orders:order_create' as order_create_url %}
+    {% can_write "masters.Partner" as can_add_partner %}{% can_write "masters.Item" as can_add_item %}{% can_write "orders.Order" as can_add_order %}
+    {% if can_add_partner and partner_create_url or can_add_item and item_create_url or can_add_order and order_create_url %}
+    <div class="mt-4">
+      <h3 id="first-steps-title" class="font-bold">最初にすること</h3>
+      <p class="mt-1 text-xs text-base-content/60">取引先と部品を登録してから、受注を入れます。</p>
+      <ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="最初にすることの段">
+        {% if can_add_partner and partner_create_url %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ partner_create_url }}">取引先を登録する</a>{% if partner_import_url %}<a class="link link-primary whitespace-nowrap text-xs" href="{{ partner_import_url }}">CSV 取り込み</a>{% endif %}{% if can_add_item and item_create_url or can_add_order and order_create_url %}{% icon "chevron-right" "size-4 text-base-content/60" %}{% endif %}</li>{% endif %}
+        {% if can_add_item and item_create_url %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ item_create_url }}">部品を登録する</a>{% if item_import_url %}<a class="link link-primary whitespace-nowrap text-xs" href="{{ item_import_url }}">CSV 取り込み</a>{% endif %}{% if can_add_order and order_create_url %}{% icon "chevron-right" "size-4 text-base-content/60" %}{% endif %}</li>{% endif %}
+        {% if can_add_order and order_create_url %}<li class="flex items-center gap-2"><a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="{{ order_create_url }}">受注を入れる</a></li>{% endif %}
+      </ol>
+    </div>
+    {% endif %}
+    {% endif %}
+    {% endwith %}
     <div class="mt-4 grid gap-6 2xl:grid-cols-2">
       {% for f in today.guide.flows %}
       <div>

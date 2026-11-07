@@ -287,7 +287,12 @@ def test_home_shows_flow_picture_when_nothing_to_do(logged_in):
     body, section = home_section(logged_in)
     assert section.count("はじめての方へ") == 1
     assert "今日やること" not in section
-    assert section.count('<ol class="mt-2 flex flex-wrap items-center gap-2"') == 2
+    # 部品も取引先も無い会社: 「最初にすること」の段 (ONB-02) の下に、2 つの流れの段 (tests/test_core_dashboard_first_steps.py)
+    assert re.findall(r'<ol class="mt-2 flex flex-wrap items-center gap-2" aria-label="([^"]+)"', section) == [
+        "最初にすることの段",
+        "受注から入金までの段",
+        "発注から検収までの段",
+    ]
     assert "badge" not in section
 
 
