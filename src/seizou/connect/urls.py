@@ -25,6 +25,10 @@ urlpatterns = [
     path("inbox/", views.InboxListView.as_view(), name="inbox_list"),
     path("inbox/<int:pk>/", views.InboxDetailView.as_view(), name="inbox_detail"),
     path("inbox/<int:pk>/accept/", views.InboxAcceptView.as_view(), name="inbox_accept"),
+    # 単価を直して受け入れると保留する (中小企業共通 EDI の条件付受諾と保留)。受け入れの URL (accept/) の下に置かない
+    # (受け入れの URL が字に無いことを見る試験と取り違えないため)。
+    path("inbox/<int:pk>/conditional/", views.InboxConditionalAcceptView.as_view(), name="inbox_accept_conditional"),
+    path("inbox/<int:pk>/hold/", views.InboxHoldView.as_view(), name="inbox_hold"),
     path("inbox/<int:pk>/reject/", views.InboxRejectView.as_view(), name="inbox_reject"),
     path("inbox/<int:pk>/reply/resend/", reply.resend_reply, name="inbox_reply_resend"),
     path("inbox/<int:pk>/sender/", sender.choose_sender, name="inbox_sender"),

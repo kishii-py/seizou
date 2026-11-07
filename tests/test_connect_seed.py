@@ -132,7 +132,7 @@ def _check_a_machining():
         (2, Decimal("60"), datetime.date(2026, 11, 3), "SH-000024", "SO-000021"),
     }
     order = PurchaseOrder.objects.get()
-    assert order.status == PurchaseOrder.STATUS_ACCEPTED  # 注文回答の写し
+    assert order.status == PurchaseOrder.STATUS_PARTIAL  # 受入の後に注文回答の写しが入るので一部納品
     assert order.replied_at is not None
     assert order.reply_message_id is None  # 相手の注文回答の番号は無い (写し)
     assert Receipt.objects.count() == 2

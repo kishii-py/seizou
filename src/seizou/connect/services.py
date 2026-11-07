@@ -5,7 +5,8 @@
   受けるときに os.environ から値を読む。鍵の値を例外の文・ログ・返す物に入れない。
 - 署名の確かめは signing.verify をそのまま呼ぶ。ここで書き直さない。
 - 受け口は受注を作らない (R10)。受け入れて受注にする関数は、受注の部品ができてから足す。
-- 承認 (受け入れ) と断りの後、send_reply が結果を「注文回答」にして相手の受け口へ返す。
+- 受信した注文に答えた後、send_reply が答えを「注文回答」にして相手の受け口へ返す。答えは 4 つ (受諾・条件付受諾・辞退・保留) で、
+  JSON の reply_type に中小企業共通 EDI の注文回答タイプコードの値 (AP・CA・RE・AJ。core.edi_codes) をそのまま持つ。
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
@@ -28,6 +29,7 @@ from urllib.parse import urlsplit
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from seizou.core import edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, map_partner_item, resolve_partner_item
 from seizou.orders.services import create_order
@@ -274,11 +276,17 @@ class ShippingNoticeReceipt:
     notice: object
 
 
-MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・result を字で送ってください。"
-MESSAGE_REPLY_RESULT = "注文回答の結果が accepted か rejected ではありません。"
+MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
+MESSAGE_REPLY_TYPE = "注文回答のタイプ (reply_type) が AP・CA・RE・AJ のどれでもありません。"
+MESSAGE_REPLY_LINES = (
+    "条件付受諾 (CA) の注文回答の明細 (lines) が読めません。line_no (数)・reply_type (AP・CA・RE) と、"
+    "CA の明細の reply_unit_price・reply_qty (0 より大きい数の字)・reply_due_date (YYYY-MM-DD か null) を送ってください。"
+)
 MESSAGE_REPLY_OTHER_PARTNER = "注文回答の元の発注は、その取引先への物ではありません。"
 MESSAGE_REPLY_ORDER_ID = "注文回答の元の注文のデータの番号が、送った物と合いません。"
-_REPLY_RESULTS = ("accepted", "rejected")
+#: 注文回答のタイプの値 (中小企業共通 EDI の注文回答タイプコード) と、明細の回答タイプの値 (注文回答明細回答タイプコード。保留 AJ は無い)
+REPLY_TYPES = frozenset(code for code, _label in edi_codes.ORDER_REPLY_TYPES)
+REPLY_LINE_TYPES = frozenset(code for code, _label in edi_codes.ORDER_REPLY_LINE_TYPES)
 
 # 検収 (EDI の 4 段目) の断る理由と、送らなかった理由の日本語。
 MESSAGE_ACCEPTANCE_SHAPE = "検収の形が読めません。order_id・line_no・accepted_on・qty を送ってください。"
@@ -330,7 +338,11 @@ def _receive_reply(message_id, partner, payload):
     引く順は 発注番号 (order_no) → 発注の取引先が署名の通ったつながりの取引先と同じ → その発注の
     送った注文に order_id の番号がある。同じ回答の番号の 2 回目は何もせずに通す (R11 の考え)。
     発注を書くのは purchasing の services だけ (受け口に利用者はいないので user は None)。
+    答えは reply_type の 4 つ: 受諾 AP → mark_accepted・条件付受諾 CA → mark_conditional (明細の答えは lines)・
+    辞退 RE → mark_rejected・保留 AJ → mark_on_hold。CA の明細は atomic に入る前に _reply_lines で形を見る。
     断るときは全部を戻す (作成 → 送った も残さない)。
+    訳: 相手の 4 つの答えを、答えを待っている発注にだけ当て、形の違う答えを当てずに相手へ返すため。出所 = 中小企業共通 EDI の注文回答タイプコードの項目と決め PRICE-4e (11-07 00:0x)・PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 送り合いの形を変えるとき。
     """
     # connect は purchasing の model を頭で import しない (輪になるため)。
     from django.apps import apps
@@ -343,18 +355,23 @@ def _receive_reply(message_id, partner, payload):
     msg_id = str(message_id)
     order_no = payload.get("order_no")
     order_id = payload.get("order_id")
-    result = payload.get("result")
+    reply_type = payload.get("reply_type")
     # str でない値を filter に渡すと TypeError になるので、先に形を見る。
-    if not all(isinstance(value, str) and value for value in (order_no, order_id, result)):
+    if not all(isinstance(value, str) and value for value in (order_no, order_id, reply_type)):
         return _refuse(MESSAGE_REPLY_SHAPE, msg_id)
-    if result not in _REPLY_RESULTS:
-        return _refuse(MESSAGE_REPLY_RESULT, msg_id)
+    if reply_type not in REPLY_TYPES:
+        return _refuse(MESSAGE_REPLY_TYPE, msg_id)
     try:
         order_message_id = uuid.UUID(order_id)
     except ValueError:
         return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
     reason = payload.get("reason")
     reason = reason if isinstance(reason, str) else ""
+    lines = None
+    if reply_type == edi_codes.REPLY_CONDITIONAL:
+        lines = _reply_lines(payload)
+        if lines is None:
+            return _refuse(MESSAGE_REPLY_LINES, msg_id)
 
     with transaction.atomic():
         # 同じ回答が同時に 2 つ届いても、2 つ目は 1 つ目が終わるまで待ち、番号で見分ける。
@@ -378,8 +395,16 @@ def _receive_reply(message_id, partner, payload):
             # (送った時の返事が落ちた場合の救い)。「取消」は mark_sent が断る。
             if purchase_order.status != purchase_order.STATUS_SENT:
                 purchasing_services.mark_sent(purchase_order, None)
-            if result == "accepted":
+            if reply_type == edi_codes.REPLY_ACCEPTED:
                 updated = purchasing_services.mark_accepted(
+                    purchase_order, None, reply_message_id=message_id
+                )
+            elif reply_type == edi_codes.REPLY_CONDITIONAL:
+                updated = purchasing_services.mark_conditional(
+                    purchase_order, None, lines=lines, reply_message_id=message_id
+                )
+            elif reply_type == edi_codes.REPLY_PENDING:
+                updated = purchasing_services.mark_on_hold(
                     purchase_order, None, reply_message_id=message_id
                 )
             else:
@@ -390,6 +415,59 @@ def _receive_reply(message_id, partner, payload):
             transaction.set_rollback(True)
             return _refuse(str(exc), msg_id)
     return ReplyReceipt(message_id=message_id, purchase_order=updated)
+
+
+def _reply_lines(payload):
+    """条件付受諾 (CA) の注文回答の明細 (lines) を読み、purchasing.services.record_line_replies に渡す並びにする。形が違えば None。
+
+    見る事: 空でない並び・どれも dict・line_no は bool でない 1 以上の整数で重ならない・reply_type は明細の回答タイプ (AP・CA・RE)・
+    CA の明細は reply_unit_price と reply_qty が字で、Decimal に読めて 0 より大きく、発注の明細の単価と数量の列の桁に入る (_fits_field)・
+    reply_due_date は null か日付 (YYYY-MM-DD) の字。AP と RE の明細のほかの鍵は読まない。
+    connect は purchasing の model を頭で import しない (app の登録から引く)。
+    訳: 形の違う明細の答えを表に入れる前に断り、桁を超える数を表に入れて後で 500 になるのを防ぐため。出所 = 中小企業共通 EDI の注文回答明細回答タイプコードの項目と決め PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 送り合いの形を変えるとき。
+    """
+    from django.apps import apps
+
+    line_model = apps.get_model("purchasing", "PurchaseOrderLine")
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list) or not raw_lines:
+        return None
+    rows = []
+    seen = set()
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            return None
+        number = raw.get("line_no")
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1 or number in seen:
+            return None
+        seen.add(number)
+        line_type = raw.get("reply_type")
+        if not isinstance(line_type, str) or line_type not in REPLY_LINE_TYPES:
+            return None
+        row = {"line_no": number, "reply_type": line_type, "unit_price": None, "qty": None, "due_date": None}
+        if line_type == edi_codes.REPLY_CONDITIONAL:
+            for key, name in (("reply_unit_price", "unit_price"), ("reply_qty", "qty")):
+                value = raw.get(key)
+                if not isinstance(value, str):
+                    return None
+                try:
+                    figure = Decimal(value.strip())
+                except InvalidOperation:
+                    return None
+                if not _fits_field(figure, line_model._meta.get_field(name)):
+                    return None
+                row[name] = figure
+            due = raw.get("reply_due_date")
+            if due is not None:
+                if not isinstance(due, str):
+                    return None
+                try:
+                    row["due_date"] = date.fromisoformat(due)
+                except ValueError:
+                    return None
+        rows.append(row)
+    return rows
 
 
 def _receive_acceptance(message_id, partner, payload):
@@ -699,6 +777,58 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     訳: 受信した注文を人が受け入れたときだけ受注にし (R10)、同じ注文を 2 回受け入れても受注を 1 件にするため (R11。2 回届いても 1 件)。出所 = RULES.md R10・R11。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
+    return _accept(inbox, item_mapping, user, send=send, accepted_at=accepted_at)
+
+
+#: 単価を直して受け入れたときの知らせ (入力の土台が「保存しました。」の代わりに出す)
+MESSAGE_CONDITIONAL_SAVED = "単価を直して受け入れました。直した値で受注を作り、相手に条件付きの答えを返しました。相手が発注を直すのを待ちます。"
+#: 単価を直して受け入れるで、どの値も直していなかったときの知らせ
+MESSAGE_CONDITIONAL_UNCHANGED = "どの値も直していないので、受け入れるとして相手に返しました。"
+#: 保留したときの知らせ
+MESSAGE_HOLD_SAVED = "保留にしました。答えが決まったら、受信した注文の詳細から受け入れるか断ってください。"
+
+
+def _restart_reply(locked):
+    """前に保留 (AJ) を答えた行なら、注文回答の番号・送った日時・相手の返事を空に戻し、戻した列の名前の並びを返す。
+
+    送り直しは同じ番号を使い回す (send_reply) が、保留の後の答えは別の知らせなので新しい番号にする
+    (同じ番号は相手の受け口が 2 回目と見なして当てない = R11)。まだ答えていない行は何もせず空の並びを返す。
+    """
+    if not locked.reply_type:
+        return []
+    locked.reply_message_id = None
+    locked.reply_sent_at = None
+    locked.reply_response = ""
+    return ["reply_message_id", "reply_sent_at", "reply_response"]
+
+
+def _answer_payload(answers, count):
+    """単価を直して受け入れるの答えを、_order_lines_problem が読む注文の形 ({"lines": [{"qty", "unit_price"}, …]}) にする。"""
+    lines = []
+    for number in range(1, count + 1):
+        answer = answers.get(number) or {}
+        row = {}
+        for key in ("qty", "unit_price"):
+            if answer.get(key) is not None:
+                row[key] = format(answer[key], "f")
+        lines.append(row)
+    return {"lines": lines}
+
+
+def _number_text(value):
+    """注文回答の明細に書く数の字 (指数の形にしない)。"""
+    return format(value, "f")
+
+
+def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=None):
+    """受信した注文を受け入れて受注を作る (accept と accept_with_conditions の中身)。返す物は作った Order。
+
+    answers が None なら受諾 (AP)。answers があれば、明細ごとの回答単価・回答数量・回答納期で受注の明細を作り、
+    相手の注文と違う明細があれば条件付受諾 (CA) と明細ごとの答え、どの明細も同じなら受諾 (AP) で返す。
+    前に保留 (AJ) を答えた行は、注文回答の番号と送った日時と返事を空に戻してから答えを書く (_restart_reply)。
+    訳: 受信した注文を人が受け入れたときだけ受注にし (R10)、同じ注文を 2 回受け入れても受注を 1 件にするため (R11。2 回届いても 1 件)。出所 = RULES.md R10・R11。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
     # 冒頭の import の並びを変えないため、send_reply と同じく関数の中で import する。
     import datetime
 
@@ -730,9 +860,15 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
         problem = _order_text_problem(payload)
         if problem:
             raise ValueError(f"受け入れられません。{problem}この注文は断り、送る側に送り直してもらってください。")
+        if answers is not None:
+            # 直した値も受注の明細の表の欄に入るかを、受信した注文の数と同じ検査で見る (0 以下は create_order が R02 で止める)。
+            problem = _order_lines_problem(_answer_payload(answers, len(raw_lines)), head="直した値の")
+            if problem:
+                raise ValueError(f"受け入れられません。{problem}直した値を確かめてください。")
         mapping = dict(item_mapping or {})
         items = {}
         lines = []
+        reply_lines = []
         for number, raw in enumerate(raw_lines, start=1):
             part_no, part_name = _part_of(raw, number)
             if part_no not in items:
@@ -750,14 +886,36 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
                 unit_price = item.standard_price
             else:
                 unit_price = _payload_decimal(raw.get("unit_price"), f" {number} 行目の単価")
+            qty = _payload_decimal(raw.get("qty"), f" {number} 行目の数量")
+            due_date = _payload_date(raw.get("due_date"), f" {number} 行目の納期")
+            if answers is not None:
+                answer = answers.get(number) or {}
+                new_price = unit_price if answer.get("unit_price") is None else answer["unit_price"]
+                new_qty = qty if answer.get("qty") is None else answer["qty"]
+                new_due = due_date if answer.get("due_date") is None else answer["due_date"]
+                line_no = raw.get("line_no")
+                line_no = line_no if isinstance(line_no, int) and not isinstance(line_no, bool) else number
+                if (new_price, new_qty, new_due) != (unit_price, qty, due_date):
+                    reply_lines.append(
+                        {
+                            "line_no": line_no,
+                            "reply_type": edi_codes.REPLY_CONDITIONAL,
+                            "reply_unit_price": _number_text(new_price),
+                            "reply_qty": _number_text(new_qty),
+                            "reply_due_date": new_due.isoformat() if new_due else None,
+                        }
+                    )
+                else:
+                    reply_lines.append({"line_no": line_no, "reply_type": edi_codes.REPLY_ACCEPTED})
+                unit_price, qty, due_date = new_price, new_qty, new_due
             lines.append(
                 {
                     "item": item,
-                    "qty": _payload_decimal(raw.get("qty"), f" {number} 行目の数量"),
+                    "qty": qty,
                     "unit": unit if isinstance(unit, str) and unit else item.unit,
                     "unit_price": unit_price,
                     "price_basis": _payload_price_basis(raw.get("price_basis"), f" {number} 行目の単価の単位"),
-                    "due_date": _payload_date(raw.get("due_date"), f" {number} 行目の納期"),
+                    "due_date": due_date,
                     "note": note if isinstance(note, str) else "",
                     "customer_part_no": part_no,
                 }
@@ -780,19 +938,68 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
             customer_order_no=order_no if isinstance(order_no, str) else "",
             source="intake" if intake_row else "inbox",
         )
+        conditional = any(row["reply_type"] == edi_codes.REPLY_CONDITIONAL for row in reply_lines)
+        fields = ["status", "order", "accepted_at", "reply_type", "reply_lines", *_restart_reply(locked)]
         locked.status = Inbox.STATUS_ACCEPTED
         locked.order = order
         locked.accepted_at = timezone.now() if accepted_at is None else accepted_at
-        if send:
-            locked.save(update_fields=["status", "order", "accepted_at"])
-        else:
+        locked.reply_type = edi_codes.REPLY_CONDITIONAL if conditional else edi_codes.REPLY_ACCEPTED
+        locked.reply_lines = reply_lines if conditional else []
+        if not send:
             locked.reply_response = MESSAGE_REPLY_SEED
-            locked.save(update_fields=["status", "order", "accepted_at", "reply_response"])
+            fields = [*dict.fromkeys([*fields, "reply_response"])]
+        locked.save(update_fields=fields)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
     if send:
         send_reply(locked, user)
+    if answers is not None:
+        order.saved_message = MESSAGE_CONDITIONAL_SAVED if conditional else MESSAGE_CONDITIONAL_UNCHANGED
     return order
+
+
+def accept_with_conditions(inbox, item_mapping, answers, user, *, send=True):
+    """受信した注文の単価・数量・納期を明細ごとに直して受け入れ、直した値で受注を作る。返す物は作った Order。
+
+    中小企業共通 EDI の条件付受諾の項目を元にした (ガイドブック 3.2.2。回答納期・回答数量・回答単価を返し、発注者が合わせて注文を変更する)。
+    回答した値で受注を作る。R10 (人が受け入れるまで受注にならない) と R11 は accept と同じ。
+    answers は {明細の並びの番号 (1 から): {"unit_price": Decimal か None, "qty": Decimal, "due_date": date か None}}。
+    unit_price が None (金額の閲覧の無い人の form) なら相手の単価のまま、due_date が None なら注文の納期のまま。
+    相手の注文と違う明細は条件付受諾 (CA) と回答単価・回答数量・回答納期の 3 つ、同じ明細は受諾 (AP) で返す。
+    どの値も直していなければ受諾として返す (条件付のまま返すと、相手の発注が違う値の無い条件付になり、何を直すか分からないため。決め C97-6 (11-07 06:46))。
+    返す受注の saved_message に、条件付で返したか受諾で返したかの知らせの字を付ける。
+    訳: 相手の注文の単価・数量・納期のままでは受けられないときに、直した値で受注を作って相手に返すため。出所 = 決め PRICE-4e (11-07 00:0x)。
+    変えてよい条件 = 条件付受諾の範囲の決めが変わったとき。
+    """
+    return _accept(inbox, item_mapping, user, answers=answers or {}, send=send)
+
+
+def hold(inbox, user, *, send=True):
+    """受信した注文に保留 (AJ) と答え、相手へ返す。受注は作らず、状態は「未処理」のまま。返す物は Inbox。
+
+    中小企業共通 EDI の保留 (AJ) の項目を元にした。受注を作らない。
+    答え直した時に前の答えの中身を残すのは変更の履歴の仕組みの仕事 (電子帳簿保存法。EDI の取引データを全部残す = ガイドブック 3.2.2)。
+    保留を 2 回押しても断らない (2 回目は新しい知らせとして、新しい番号で送る = _restart_reply)。
+    送るのは atomic の外 (R17)。返す受信した注文の saved_message に、保留にした知らせの字を付ける。
+    訳: すぐ答えられない注文に、受注を作らずに保留と相手へ知らせるため。「未処理」の物だけを保留にする (受け入れた・断った注文に保留を返すと記録が食い違うため)。出所 = 決め PRICE-4e (11-07 00:0x)。
+    変えてよい条件 = 保留の扱いの決めが変わったとき。
+    """
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.status != Inbox.STATUS_RECEIVED:
+            raise ValueError(
+                f"保留できません。この注文のデータは「{locked.get_status_display()}」です。"
+                "保留できるのは「未処理」の物だけです。"
+            )
+        fields = ["reply_type", "reply_lines", *_restart_reply(locked)]
+        locked.reply_type = edi_codes.REPLY_PENDING
+        locked.reply_lines = []
+        locked.save(update_fields=fields)
+
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (保留は成立する)。
+    saved = send_reply(locked, user) if send else locked
+    saved.saved_message = MESSAGE_HOLD_SAVED
+    return saved
 
 
 def reject(inbox, reason, user):
@@ -810,9 +1017,12 @@ def reject(inbox, reason, user):
         limit = Inbox._meta.get_field("reason").max_length
         if len(text) > limit:
             raise ValueError(f"断れません。断る理由が {limit} 字を超えています。{limit} 字までに縮めてください。")
+        fields = ["status", "reason", "reply_type", "reply_lines", *_restart_reply(locked)]
         locked.status = Inbox.STATUS_REJECTED
         locked.reason = text
-        locked.save(update_fields=["status", "reason"])
+        locked.reply_type = edi_codes.REPLY_REJECTED
+        locked.reply_lines = []
+        locked.save(update_fields=fields)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (断りは成立する)。
     send_reply(locked, user)
@@ -845,7 +1055,8 @@ def choose_sender(inbox, partner, user):
 
 
 MESSAGE_REPLY_BEFORE_DECISION = (
-    "この受信した注文は、まだ受け入れも断りもしていません。受け入れるか断ってから送ってください。"
+    "この受信した注文は、まだ受け入れも断りもしていません (保留とも答えていません)。"
+    "受け入れる・単価を直して受け入れる・保留する・断るのどれかで答えてから送ってください。"
 )
 MESSAGE_REPLY_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので注文回答を送っていません。"
@@ -854,9 +1065,10 @@ MESSAGE_REPLY_NO_CONNECTION = (
 
 
 def send_reply(inbox, user):
-    """承認か断りの結果を「注文回答」にし、署名して、注文を送ってきた相手の受け口へ送る。
+    """4 つの答え (受諾・条件付受諾・辞退・保留) を注文回答にし、署名して、注文を送ってきた相手の受け口へ送る。
 
-    - 送れるのは、種類が注文で、受け入れたか断った後の行だけ。それ以外は日本語の ValueError。
+    - 送れるのは、種類が注文で、受け入れたか断った後か、保留を答えた行だけ。それ以外は日本語の ValueError。
+    - 答えは受信した注文の reply_type (EDI の注文回答タイプコードの値) を送る。条件付受諾 (CA) は明細の答え (reply_lines) も送る。
     - 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。
     - つながりは受信した注文の取引先の、向き「送る」の物。無ければ HTTP を送らず、返事の欄に書いて返す。
     - 読み取りの行 (入口 = 読み取り) は相手へ送らず、返事の欄に MESSAGE_REPLY_INTAKE を書く。
@@ -870,7 +1082,8 @@ def send_reply(inbox, user):
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
-        if locked.kind != Inbox.KIND_ORDER or locked.status == Inbox.STATUS_RECEIVED:
+        pending = locked.status == Inbox.STATUS_RECEIVED and locked.reply_type == edi_codes.REPLY_PENDING
+        if locked.kind != Inbox.KIND_ORDER or (locked.status == Inbox.STATUS_RECEIVED and not pending):
             raise ValueError("送れません。" + MESSAGE_REPLY_BEFORE_DECISION)
         if locked.reply_message_id is None:
             locked.reply_message_id = uuid.uuid4()
@@ -887,6 +1100,8 @@ def send_reply(inbox, user):
         reply, kind = MESSAGE_REPLY_NO_CONNECTION, "no_connection"
     else:
         accepted = locked.status == Inbox.STATUS_ACCEPTED
+        # 答えのタイプは表の値。空 (答えのタイプを持つ前の行) なら状態から読む (受け入れた = 受諾・断った = 辞退)。
+        reply_type = locked.reply_type or (edi_codes.REPLY_ACCEPTED if accepted else edi_codes.REPLY_REJECTED)
         order_data = locked.payload if isinstance(locked.payload, dict) else {}
         order_no = order_data.get("order_no")
         reply_data = {
@@ -895,9 +1110,10 @@ def send_reply(inbox, user):
             "sent_at": timezone.localtime().isoformat(),
             "order_id": str(locked.message_id),
             "order_no": order_no if isinstance(order_no, str) else "",
-            "result": "accepted" if accepted else "rejected",
+            "reply_type": reply_type,
+            "lines": locked.reply_lines if reply_type == edi_codes.REPLY_CONDITIONAL else [],
             "supplier_order_no": locked.order.order_no if accepted and locked.order else "",
-            "reason": "" if accepted else locked.reason,
+            "reason": locked.reason if reply_type == edi_codes.REPLY_REJECTED else "",
             "supplier": _party(),
         }
         raw = _encode(reply_data)
@@ -1109,8 +1325,10 @@ def _fits_field(number, field):
     return number == number.quantize(Decimal(1).scaleb(-field.decimal_places))
 
 
-def _order_lines_problem(payload):
+def _order_lines_problem(payload, head="注文の"):
     """注文のデータの明細の数量・単価・金額 (数量 × 単価) (単価の単位が式の行は見ない) が、受注の明細の表の欄に入らないときの日本語の文。入れば None。
+
+    head は文の頭の字 (既定は「注文の」。単価を直して受け入れるの直した値は「直した値の」)。
 
     見るのは読める数 (字か整数で、有限の数) のうち 0 より大きい物だけ。読めない数・0 と負・明細の無い注文・形の違う行は見ない
     (承認の時に accept と create_order が止める = N39 の決めと R02)。受け口 (receive) と承認 (accept) が呼ぶ。
@@ -1142,7 +1360,7 @@ def _order_lines_problem(payload):
             if not _fits_field(figure, field):
                 whole = field.max_digits - field.decimal_places
                 return (
-                    f"注文の {number} 行目の{label}は、0 より大きく、"
+                    f"{head} {number} 行目の{label}は、0 より大きく、"
                     f"整数の部分 {whole} 桁・小数 {field.decimal_places} 桁までの数にしてください。"
                 )
             figures[key] = figure
@@ -1151,7 +1369,7 @@ def _order_lines_problem(payload):
             and raw.get("price_basis") != PRICE_BASIS_LUMP
             and figures["qty"] * figures["unit_price"] >= Decimal(10) ** amount_whole
         ):
-            return f"注文の {number} 行目の金額 (数量 × 単価) が、整数の部分 {amount_whole} 桁を超えます。数量と単価を確かめてください。"
+            return f"{head} {number} 行目の金額 (数量 × 単価) が、整数の部分 {amount_whole} 桁を超えます。数量と単価を確かめてください。"
     return None
 
 

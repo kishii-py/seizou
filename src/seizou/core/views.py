@@ -132,6 +132,8 @@ REFUSAL_HEAD_BY_SERVICE = {
     "accept": "受け入れられません。",
     "accept_extracted": "受け入れられません。",
     "reject": "断れません。",
+    "accept_with_conditions": "受け入れられません。",
+    "hold": "保留できません。",
 }
 #: 欄の誤りの知らせに名前を並べる欄の数 (これより多い分は「ほか n つ」)
 INVALID_LABELS_SHOWN = 3

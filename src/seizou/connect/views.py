@@ -1,8 +1,8 @@
 """connect の画面と受け口。
 
-画面 (受信した注文・受信した注文の詳細・受け入れる・断る・取引先との接続) は core の土台を継承する (R15)。
+画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
-書く処理は services の accept・reject だけで、土台が検査の層を通してから呼ぶ。
+書く処理は services の accept・accept_with_conditions・hold・reject だけで、土台が検査の層を通してから呼ぶ。
 
 受け口 (receive_order) は相手の会社の機械が呼ぶ口で、画面ではないので core の土台を継承しない関数の view にした。
 ログインは要らず、CSRF の対象外で、POST だけを受ける (05 の 5 節)。
@@ -19,7 +19,7 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 from seizou.masters.services import active_partners
 
 from . import services
-from .forms import AcceptForm, ConnectionForm, RejectForm
+from .forms import AcceptForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
 from .models import Connection, Inbox
 
 
@@ -133,6 +133,42 @@ class InboxAcceptView(BaseFormView):
     screen_name = "注文を受け入れる"
     screen_help = "相手の品番ごとに自社の部品を選んで保存すると、受注ができます。表に無い品番の対応は、その場で表に足します。"
     template_name = "connect/inbox_accept.html"
+
+
+class InboxConditionalAcceptView(BaseFormView):
+    """単価・数量・納期を直して注文を受け入れる入力 (条件付受諾)。
+
+    使う人: 営業 / いつ: 受信した注文の単価・数量・納期のままでは受けられないとき / 何のために: 直した値で受注を作り、相手に条件付きの答えを返す / 次にすること: 保存すると受注ができ、相手が発注を直すのを待つ
+    """
+
+    model = Inbox
+    form_class = ConditionalAcceptForm
+    service = staticmethod(services.accept_with_conditions)
+    screen_name = "単価を直して受け入れる"
+    screen_help = "明細ごとに回答単価・回答数量・回答納期を直して保存すると、直した値で受注ができ、相手には条件付きの答えを返します。相手が発注を直すまで、相手の発注の値は前のままです。"
+    template_name = "connect/inbox_accept_conditional.html"
+
+    def get_queryset(self):
+        # 土台の dispatch がこの絞りの中から対象を引く。入口が直接の行だけ (読み取りの行は相手に答えを送れない)。ほかは 404
+        return Inbox.objects.filter(source=Inbox.SOURCE_DIRECT)
+
+
+class InboxHoldView(BaseFormView):
+    """注文を保留する入力。
+
+    使う人: 営業 / いつ: 受信した注文にすぐ答えられないとき / 何のために: 受注を作らずに相手へ「保留」と返す / 次にすること: 相手と話して、受け入れるか断る
+    """
+
+    model = Inbox
+    form_class = HoldForm
+    service = staticmethod(services.hold)
+    screen_name = "注文を保留する"
+    screen_help = "受注を作らずに、相手へ「保留」と返します。答えが決まったら、受信した注文の詳細から受け入れるか断ります。"
+    template_name = "connect/inbox_hold.html"
+
+    def get_queryset(self):
+        # 土台の dispatch がこの絞りの中から対象を引く。入口が直接の行だけ (読み取りの行は相手に答えを送れない)。ほかは 404
+        return Inbox.objects.filter(source=Inbox.SOURCE_DIRECT)
 
 
 class InboxRejectView(BaseFormView):

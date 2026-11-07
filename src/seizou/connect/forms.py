@@ -1,15 +1,22 @@
-"""connect の入力の form (受け入れると断る)。保存は form でなく services が行う。
+"""connect の入力の form (受け入れる・単価を直して受け入れる・保留する・断る)。保存は form でなく services が行う。
 
 土台 (BaseFormView) は form の service_kwargs() の辞書を検査の層に渡し、
 services.accept(inbox, item_mapping=..., user=...) / services.reject(inbox, reason=..., user=...) を呼ぶ。
+単価を直して受け入れる (ConditionalAcceptForm) は services.accept_with_conditions(inbox, item_mapping=..., answers=..., user=...) を呼び、
+明細ごとの回答単価・回答数量・回答納期の欄を持つ (中小企業共通 EDI の条件付受諾の項目を元にした)。
+保留する (HoldForm) は欄の無い form で、services.hold(inbox, user=...) を呼ぶ。
 form が見るのは欄の型と必須だけ。決まり (2 回目の受け入れ・断った物) は services が見る。
 """
+
+from datetime import date
+from decimal import Decimal
 
 from django import forms
 from django.apps import apps
 
 from seizou.core.forms import ServiceModelForm
-from seizou.core.widgets import RemoteSelect
+from seizou.core.templatetags.seizou_tags import comma, yen
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import resolve_partner_item
 
 from .models import Connection, Inbox
@@ -104,6 +111,110 @@ class AcceptForm(forms.Form):
     def service_kwargs(self):
         mapping = {part_no: self.cleaned_data[name] for name, part_no in self.part_fields}
         return {"item_mapping": mapping}
+
+
+def _payload_lines(inbox):
+    """受信した注文の明細の並び (形の違う行は空の dict のまま残す。番号を enumerate の番号にそろえるため)。"""
+    payload = inbox.payload if inbox is not None and isinstance(inbox.payload, dict) else {}
+    lines = payload.get("lines")
+    return [line if isinstance(line, dict) else {} for line in lines] if isinstance(lines, list) else []
+
+
+def _figure(value):
+    """届いた数の字を Decimal に読む (connect_tags.payload_number と同じ読み方)。読めなければ None。"""
+    from .templatetags.connect_tags import payload_number
+
+    number = payload_number(value)
+    return number if isinstance(number, Decimal) else None
+
+
+def _due(value):
+    """届いた納期の字を date に読む。読めなければ None。"""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+class ConditionalAcceptForm(AcceptForm):
+    """単価を直して受け入れるの form (中小企業共通 EDI の条件付受諾の項目を元にした)。
+
+    受け入れの form の欄 (相手の品番ごとの自社の部品) の後に、明細ごとに回答単価・回答数量・回答納期の 3 つの欄を置く。
+    初めの値は相手の注文の値。金額の閲覧の無い人 (hide_money) には回答単価の欄を置かない (services は相手の単価のまま作る)。
+    形の違う明細は欄を飛ばすが、番号は明細の並びの番号のまま (受け入れの時に services が断る)。
+    """
+
+    submit_label = "単価を直して受け入れる"
+
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(*args, instance=instance, **kwargs)
+        self.answer_fields = []
+        self.row_start_fields = []
+        for number, raw in enumerate(_payload_lines(instance), start=1):
+            part_no = raw.get("part_no")
+            if not isinstance(part_no, str) or not part_no.strip():
+                continue
+            head = f"{number} 行目 {part_no.strip()}"
+            price, qty, due = _figure(raw.get("unit_price")), _figure(raw.get("qty")), _due(raw.get("due_date"))
+            names = {}
+            if not hide_money:
+                names["unit_price"] = f"line_{number}_unit_price"
+                self.fields[names["unit_price"]] = forms.DecimalField(
+                    label=f"{head} の回答単価",
+                    max_digits=14,
+                    decimal_places=2,
+                    initial=price,
+                    help_text=f"注文は {yen(price)}" if price is not None else "注文に単価はありません",
+                    error_messages={"required": f"{number} 行目の回答単価を入れてください。"},
+                )
+            names["qty"] = f"line_{number}_qty"
+            self.fields[names["qty"]] = forms.DecimalField(
+                label=f"{head} の回答数量",
+                max_digits=12,
+                decimal_places=2,
+                initial=qty,
+                help_text=f"注文は {comma(qty)}{' ' + raw['unit'] if isinstance(raw.get('unit'), str) and raw.get('unit') else ''}"
+                if qty is not None
+                else "注文に数量はありません",
+                error_messages={"required": f"{number} 行目の回答数量を入れてください。"},
+            )
+            names["due_date"] = f"line_{number}_due_date"
+            self.fields[names["due_date"]] = forms.DateField(
+                label=f"{head} の回答納期",
+                required=False,
+                initial=due,
+                # 日付の欄は受注の明細の納期と同じ部品 (orders/forms.py の _date_input)
+                widget=IsoDateInput(),
+                help_text=f"注文は {due:%Y-%m-%d}。空なら注文の納期のまま" if due else "注文に納期はありません",
+                error_messages={"invalid": f"{number} 行目の回答納期を日付 (YYYY-MM-DD) で入れてください。"},
+            )
+            self.row_start_fields.append(next(iter(names.values())))
+            self.answer_fields.append((number, names))
+
+    def service_kwargs(self):
+        answers = {
+            number: {
+                "unit_price": self.cleaned_data[names["unit_price"]] if "unit_price" in names else None,
+                "qty": self.cleaned_data[names["qty"]],
+                "due_date": self.cleaned_data[names["due_date"]],
+            }
+            for number, names in self.answer_fields
+        }
+        return {**super().service_kwargs(), "answers": answers}
+
+
+class HoldForm(forms.Form):
+    """保留するの form。欄は無い (見える欄の無い form のカードは格子を描かない)。"""
+
+    submit_label = "保留する"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def service_kwargs(self):
+        return {}
 
 
 class RejectForm(forms.Form):

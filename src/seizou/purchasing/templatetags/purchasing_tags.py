@@ -9,13 +9,15 @@
 - next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
 - purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
 - purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
+- reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
 """
 
 from decimal import Decimal
 
 from django import template
 
-from seizou.core.templatetags.seizou_tags import yen
+from seizou.core import edi_codes
+from seizou.core.templatetags.seizou_tags import comma, yen
 
 register = template.Library()
 
@@ -193,3 +195,38 @@ def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
     if lines and not hide_money:
         chips.append({"label": "合計", "value": yen(sum((line.amount for line in lines), Decimal("0")))})
     return chips
+
+
+@register.simple_tag
+def reply_line_text(line, hide_money=False):
+    """{% reply_line_text line seizou.hide_money as reply_text %}。明細の下の黄の行に出す、相手の最後の注文回答の明細の答えの字。
+
+    条件付受諾 (CA) の明細は「相手の回答: 単価 ¥24 (注文 ¥25.5)・数量 10 個・納期 2026-11-25 (注文 2026-11-20)」の形。
+    注文と違う所だけ「(注文 …)」を付ける。金額の閲覧の無い人 (hide_money が真) には単価の所を出さない。回答の納期が空なら「納期 —」。
+    受託不可 (RE) の明細は「相手の回答: この明細は受けられない」。受諾 (AP) と空は空の字。読むだけで、問い合わせをしない。
+    """
+    if line.reply_type == edi_codes.REPLY_REJECTED:
+        return "相手の回答: この明細は受けられない"
+    if line.reply_type != edi_codes.REPLY_CONDITIONAL:
+        return ""
+    parts = []
+    if not hide_money and line.reply_unit_price is not None:
+        text = f"単価 {yen(line.reply_unit_price)}"
+        if line.reply_unit_price != line.unit_price:
+            text += f" (注文 {yen(line.unit_price)})"
+        parts.append(text)
+    if line.reply_qty is not None:
+        text = f"数量 {comma(line.reply_qty)}{' ' + line.unit if line.unit else ''}"
+        if line.reply_qty != line.qty:
+            text += f" (注文 {comma(line.qty)})"
+        parts.append(text)
+    text = f"納期 {_date_text(line.reply_due_date)}"
+    if line.reply_due_date != line.due_date:
+        text += f" (注文 {_date_text(line.due_date)})"
+    parts.append(text)
+    return "相手の回答: " + "・".join(parts)
+
+
+def _date_text(value) -> str:
+    """日付の字 (YYYY-MM-DD)。空なら「—」。"""
+    return f"{value:%Y-%m-%d}" if value else "—"

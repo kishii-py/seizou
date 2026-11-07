@@ -45,7 +45,8 @@ REPLY_KEYS = {
     "sent_at",
     "order_id",
     "order_no",
-    "result",
+    "reply_type",
+    "lines",
     "supplier_order_no",
     "reason",
     "supplier",
@@ -135,7 +136,7 @@ def _send_order(subcontractor, item, user):
     )
 
 
-def _reply_raw(po, *, result="accepted", order_id=None, order_no=None, reason=""):
+def _reply_raw(po, *, reply_type="AP", order_id=None, order_no=None, reason=""):
     """手で作る注文回答の本文 (送る側と同じ bytes の作り方)。返す物は (番号, 本文の bytes)。"""
     msg_id = str(uuid.uuid4())
     if order_id is None:
@@ -146,8 +147,9 @@ def _reply_raw(po, *, result="accepted", order_id=None, order_no=None, reason=""
         "sent_at": "2026-11-03T10:00:00+09:00",
         "order_id": order_id,
         "order_no": po.po_no if order_no is None else order_no,
-        "result": result,
-        "supplier_order_no": "SO-0001" if result == "accepted" else "",
+        "reply_type": reply_type,
+        "lines": [],
+        "supplier_order_no": "SO-0001" if reply_type == "AP" else "",
         "reason": reason,
         "supplier": {"id": "b-company", "name": "作り物の受ける会社"},
     }
@@ -197,7 +199,7 @@ def test_accept_sends_reply_and_marks_purchase_order_accepted(
     assert set(sent) == REPLY_KEYS
     assert sent["id"] == str(inbox.reply_message_id)
     assert sent["kind"] == "order_reply"
-    assert sent["result"] == "accepted"
+    assert sent["reply_type"] == "AP"
     assert sent["order_no"] == po.po_no
     assert sent["order_id"] == str(Outbox.objects.get().message_id)
     assert sent["supplier_order_no"] == order.order_no
@@ -233,7 +235,7 @@ def test_reject_sends_reply_with_reason_and_marks_rejected(
     services.reject(inbox, "納期に間に合わないため", user)
 
     sent = json.loads(fake.calls[1]["data"].decode("utf-8"))
-    assert sent["result"] == "rejected"
+    assert sent["reply_type"] == "RE"
     assert sent["reason"] == "納期に間に合わないため"
     assert sent["supplier_order_no"] == ""
     po.refresh_from_db()
@@ -328,7 +330,7 @@ def test_reply_with_unknown_order_or_wrong_order_id_is_refused(
     unknown_id, unknown = _reply_raw(po, order_no="PO-9999")
     wrong_id, wrong = _reply_raw(po, order_id=str(uuid.uuid4()))
     broken_id, broken = _reply_raw(po, order_id="uuid-でない字")
-    shape_id, shape = _reply_raw(po, result="maybe")
+    shape_id, shape = _reply_raw(po, reply_type="ZZ")
 
     responses = {
         "unknown": _signed_post(client, unknown, unknown_id, reply_secret),
@@ -341,7 +343,7 @@ def test_reply_with_unknown_order_or_wrong_order_id_is_refused(
     assert "PO-9999 がありません" in responses["unknown"].json()["message"]
     assert responses["wrong"].json()["message"] == services.MESSAGE_REPLY_ORDER_ID
     assert responses["broken"].json()["message"] == services.MESSAGE_REPLY_ORDER_ID
-    assert responses["shape"].json()["message"] == services.MESSAGE_REPLY_RESULT
+    assert responses["shape"].json()["message"] == services.MESSAGE_REPLY_TYPE
     po.refresh_from_db()
     assert po.status == PurchaseOrder.STATUS_SENT
 
@@ -354,7 +356,7 @@ def test_reply_with_non_string_fields_is_refused(
     po = _send_order(subcontractor, item, user)
     msg_id = str(uuid.uuid4())
     raw = json.dumps(
-        {"id": msg_id, "kind": "order_reply", "order_no": ["PO"], "order_id": 1, "result": "accepted"}
+        {"id": msg_id, "kind": "order_reply", "order_no": ["PO"], "order_id": 1, "reply_type": "AP"}
     ).encode("utf-8")
 
     response = _signed_post(client, raw, msg_id, reply_secret)

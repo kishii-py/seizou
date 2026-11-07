@@ -13,6 +13,9 @@
 - 受入は receive。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
+- 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
+  connect の受け口が mark_accepted・mark_conditional・mark_rejected・mark_on_hold で答えを待っている発注 (送った・相手が保留した) に当てる。
+- 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、全部そろえば「納品された」。受入が先の発注に後から受諾が届いたときも「一部納品」。
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ import uuid
 from django.db import transaction
 from django.utils import timezone
 
+from seizou.core import edi_codes
 from seizou.core.services import next_number
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis, round_amount
 
@@ -46,6 +50,13 @@ _ZERO = Decimal("0")
 _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note"})
 
 _POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
+#: 第 1 版の注文回答を当てられる発注の状態 (答えを待っている状態)。保留の後は、もう一度答えが届く
+REPLY_WAITING = (PurchaseOrder.STATUS_SENT, PurchaseOrder.STATUS_ON_HOLD)
+#: 注文回答を当てられない状態の断りの字 ({status} は今の状態の字、{target} は行き先の状態の字)
+_REPLY_STATUS_MESSAGE = (
+    "状態が「{status}」の発注は「{target}」にできません。"
+    "「送った」の発注だけを進めてください (「相手が保留した」の発注も進められます)。"
+)
 _CANCEL_AFTER_SENT_MESSAGE = (
     "取り消せません。この発注は相手に送ってあります (取り消せるのは「下書き」か「断られた」の発注だけ)。"
     "相手に連絡してください。"
@@ -180,52 +191,173 @@ def mark_sent(purchase_order, user):
 
 
 def mark_accepted(purchase_order, user, *, reply_message_id=None, replied_at=None):
-    """「送った」の発注を「相手が受け入れた」にする。それ以外の状態は ValueError。
+    """答えを待っている発注 (送った・相手が保留した) を「相手が受け入れた」にする。それ以外の状態は ValueError。
 
     注文回答の日時 (こちらに届いて当てた時刻。replied_at を渡せばその日時 = 種の読み込みが使う) を書く。
     reply_message_id は相手の注文回答の番号
     (connect の受け口が渡す。同じ番号の 2 回目は受け口が見分けて呼ばない。DB の一意の制約もある)。
+    注文回答のタイプを受諾 (AP) にし、明細の答えを空に戻す。
+    受入が先に入った発注は「一部納品」にする (決め C45-2 (11-07 00:2x) と決め C97-2 (11-07 06:40)。受入と注文回答の届く順に関わらず、一部だけ戻った発注を一部納品にするため)。
+    全部そろった発注は receive が先に「納品された」にしているので、ここには来ない。
+    訳: 注文回答は答えを待っている発注 (送った・相手が保留した) にだけ当て、届く順が前後しても記録を戻さないため。保留の後は本当の答えが届く (中小企業共通 EDI の注文回答タイプコードの保留 AJ)。出所 = 決め PRICE-4e (11-07 00:0x) と中小企業共通 EDI の注文回答の項目。
+    変えてよい条件 = 答えを当てる状態の決めが変わったとき。
     """
     with transaction.atomic():
-        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
-        if locked.status != PurchaseOrder.STATUS_SENT:
-            raise ValueError(
-                f"状態が「{locked.get_status_display()}」の発注は「相手が受け入れた」にできません。"
-                "「送った」の発注だけを進めてください。"
-            )
-        locked.status = PurchaseOrder.STATUS_ACCEPTED
+        locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_ACCEPTED)
+        locked.status = PurchaseOrder.STATUS_PARTIAL if locked.receipts.exists() else PurchaseOrder.STATUS_ACCEPTED
         locked.replied_at = replied_at or timezone.now()
-        fields = ["status", "replied_at"]
+        locked.reply_type = edi_codes.REPLY_ACCEPTED
+        fields = ["status", "replied_at", "reply_type"]
         if reply_message_id is not None:
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
+        _clear_line_replies(locked)
         return locked
 
 
 def mark_rejected(purchase_order, user, *, reason, reply_message_id=None):
-    """「送った」の発注を「断られた」にする。それ以外の状態は ValueError。
+    """答えを待っている発注 (送った・相手が保留した) を「断られた」にする。それ以外の状態は ValueError。
 
     reason は相手の断りの理由 (500 字で切る。空でもよい)。注文回答の日時と番号は mark_accepted と同じ。
+    注文回答のタイプを辞退 (RE) にし、明細の答えを空に戻す。
+    訳: 注文回答は答えを待っている発注 (送った・相手が保留した) にだけ当て、届く順が前後しても記録を戻さないため。保留の後は本当の答えが届く (中小企業共通 EDI の注文回答タイプコードの保留 AJ)。出所 = 決め PRICE-4e (11-07 00:0x) と中小企業共通 EDI の注文回答の項目。
+    変えてよい条件 = 答えを当てる状態の決めが変わったとき。
     """
     with transaction.atomic():
-        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
-        if locked.status != PurchaseOrder.STATUS_SENT:
-            raise ValueError(
-                f"状態が「{locked.get_status_display()}」の発注は「断られた」にできません。"
-                "「送った」の発注だけを進めてください。"
-            )
+        locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_REJECTED)
         text = reason if isinstance(reason, str) else ""
         limit = PurchaseOrder._meta.get_field("reply_note").max_length
         locked.status = PurchaseOrder.STATUS_REJECTED
         locked.replied_at = timezone.now()
         locked.reply_note = text[:limit]
-        fields = ["status", "replied_at", "reply_note"]
+        locked.reply_type = edi_codes.REPLY_REJECTED
+        fields = ["status", "replied_at", "reply_note", "reply_type"]
+        if reply_message_id is not None:
+            locked.reply_message_id = reply_message_id
+            fields.append("reply_message_id")
+        locked.save(update_fields=fields)
+        _clear_line_replies(locked)
+        return locked
+
+
+def mark_conditional(purchase_order, user, *, lines, reply_message_id=None, replied_at=None):
+    """答えを待っている発注 (送った・相手が保留した) を「相手が条件付で受けた」にし、相手の明細ごとの答えを明細に写す。それ以外の状態は ValueError。
+
+    中小企業共通 EDI の条件付受諾の項目を元にした (ガイドブック 3.2.2「発注者は受注者と協議し、合意した条件で注文変更処理を行う」)。
+    発注の値は変えない (直すのは発注元が変更を送るとき = change_purchase_order)。
+    lines の形は record_line_replies と同じ。注文回答の日時と番号は mark_accepted と同じ。注文回答のタイプは条件付受諾 (CA)。
+    訳: 相手の答えを発注に残し、発注元が直すかを決められるようにするため。出所 = 決め PRICE-4e (11-07 00:0x)・PRICE-4f (11-06 23:1x) と中小企業共通 EDI の注文回答の項目。
+    変えてよい条件 = 条件付受諾の扱いの決めが変わったとき。
+
+    取適法: 合意した単価・数量・納期は、発注の変更 (change_purchase_order) で相手へ送ると、発注の中身を電磁的方法で示した形になる。
+    直さずに進めると、発注と相手の受注の値が違ったままになり、発注の内容を書面で示す決まりに当たるおそれがある。
+    この関数は止めない (詳細の黄の 1 行で「変更」を案内するだけ)。確かめた資料 = 作り手の知識 (公正取引委員会の資料は未読)。
+    """
+    with transaction.atomic():
+        locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_CONDITIONAL)
+        record_line_replies(locked, lines)
+        locked.status = PurchaseOrder.STATUS_CONDITIONAL
+        locked.replied_at = replied_at or timezone.now()
+        locked.reply_type = edi_codes.REPLY_CONDITIONAL
+        fields = ["status", "replied_at", "reply_type"]
         if reply_message_id is not None:
             locked.reply_message_id = reply_message_id
             fields.append("reply_message_id")
         locked.save(update_fields=fields)
         return locked
+
+
+def mark_on_hold(purchase_order, user, *, reply_message_id=None, replied_at=None):
+    """答えを待っている発注 (送った・相手が保留した) を「相手が保留した」にする。それ以外の状態は ValueError。
+
+    注文回答のタイプを保留 (AJ) にし、明細の答えを空に戻す。注文回答の日時と番号は mark_accepted と同じ
+    (流れの枠と段の帯の「回答」は注文回答の日時で読む。保留も注文回答の 1 つなので回答の段に印が付く)。
+    訳: 相手がすぐ答えられない注文を、答えを待つ状態として見せ、後で届く本当の答えを当てられるようにするため。出所 = 決め PRICE-4e (11-07 00:0x。保留は受注を作らず会話で話す)。
+    変えてよい条件 = 保留の扱いの決めが変わったとき。
+    """
+    with transaction.atomic():
+        locked = _lock_waiting_order(purchase_order, PurchaseOrder.STATUS_ON_HOLD)
+        locked.status = PurchaseOrder.STATUS_ON_HOLD
+        locked.replied_at = replied_at or timezone.now()
+        locked.reply_type = edi_codes.REPLY_PENDING
+        fields = ["status", "replied_at", "reply_type"]
+        if reply_message_id is not None:
+            locked.reply_message_id = reply_message_id
+            fields.append("reply_message_id")
+        locked.save(update_fields=fields)
+        _clear_line_replies(locked)
+        return locked
+
+
+def mark_change_accepted(purchase_order, user):
+    """発注の変更 (第 2 版から) に相手の受諾 (AP) が届いたときに、connect の受け口が呼ぶ。返す物は取り直した発注。
+
+    状態が「相手が条件付で受けた」なら「相手が受け入れた」(受入が 1 つでもあれば「一部納品」) にし、明細の答えを空に戻す。
+    ほかの状態では何もしない。断る処理は無い。
+    相手の条件に合わせて直した変更を相手が受け入れたら、条件の話し合いが済んだ印として状態を進める。
+    変更への答えで発注の状態を変えない決まりの、ただ 1 つの例外。出所 = 決め PRICE-4e (11-07 00:0x。発注元の変更を待つ) と
+    決め C97-3 (11-07 06:42。条件付で受けた発注を直して送った変更を相手が受け入れたら、状態を進めて明細の回答を消す)。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+        if locked.status != PurchaseOrder.STATUS_CONDITIONAL:
+            return locked
+        locked.status = PurchaseOrder.STATUS_PARTIAL if locked.receipts.exists() else PurchaseOrder.STATUS_ACCEPTED
+        locked.save(update_fields=["status"])
+        _clear_line_replies(locked)
+        return locked
+
+
+def record_line_replies(purchase_order, lines):
+    """相手の注文回答の明細ごとの答えを、発注の明細に写す。呼ぶ側が発注を select_for_update した atomic の中で呼ぶ。
+
+    lines は [{"line_no": int, "reply_type": "AP"|"CA"|"RE", "unit_price": Decimal|None, "qty": Decimal|None, "due_date": date|None}]。
+    lines にある明細はその答え (条件付受諾 CA の明細だけ値を入れ、AP と RE は値を空)、lines に無い明細は受諾 (AP。EDI の既定) にして値を空にする。
+    発注に無い行番号は ValueError (受け口が相手へ返す文。画面には出ない)。どれかの行番号が無ければ、どの明細も書かない。
+    mark_conditional と、connect の版 2 からの答えが呼ぶ (明細の答えの写し方を 1 か所にする)。
+    訳: 相手の明細ごとの答えを発注の明細に写し、発注に無い行番号の答えを当てずに相手へ返すため。出所 = 中小企業共通 EDI の注文回答明細回答タイプコード (既定 AP) と決め PRICE-4f (11-06 23:1x)。
+    変えてよい条件 = 送り合いが行番号でなく明細の識別で明細を指すようになったとき。
+    """
+    by_no = {line.line_no: line for line in purchase_order.lines.all()}
+    answers = {}
+    for row in lines:
+        number = row["line_no"]
+        if number not in by_no:
+            raise ValueError(f"注文回答の明細の行番号 {number} が発注 {purchase_order.po_no} にありません。")
+        answers[number] = row
+    for number, line in by_no.items():
+        row = answers.get(number, {})
+        line.reply_type = row.get("reply_type", edi_codes.REPLY_ACCEPTED)
+        conditional = line.reply_type == edi_codes.REPLY_CONDITIONAL
+        line.reply_unit_price = row.get("unit_price") if conditional else None
+        line.reply_qty = row.get("qty") if conditional else None
+        line.reply_due_date = row.get("due_date") if conditional else None
+    PurchaseOrderLine.objects.bulk_update(
+        list(by_no.values()), ["reply_type", "reply_unit_price", "reply_qty", "reply_due_date"]
+    )
+
+
+def _lock_waiting_order(purchase_order, target):
+    """発注を select_for_update で引き、答えを待っている状態 (REPLY_WAITING) でなければ ValueError。target は行き先の状態の値。
+
+    mark_accepted・mark_rejected・mark_conditional・mark_on_hold が使う 1 つの門 (断りの字の形をそろえるため)。
+    訳: 注文回答は答えを待っている発注 (送った・相手が保留した) にだけ当て、届く順が前後しても記録を戻さないため。保留の後は本当の答えが届く (中小企業共通 EDI の注文回答タイプコードの保留 AJ)。出所 = 決め PRICE-4e (11-07 00:0x) と中小企業共通 EDI の注文回答の項目。
+    変えてよい条件 = 答えを当てる状態の決めが変わったとき。
+    """
+    locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)
+    if locked.status not in REPLY_WAITING:
+        raise ValueError(
+            _REPLY_STATUS_MESSAGE.format(
+                status=locked.get_status_display(), target=dict(PurchaseOrder.STATUS_CHOICES)[target]
+            )
+        )
+    return locked
+
+
+def _clear_line_replies(purchase_order):
+    """発注の明細の答えを空に戻す (前の答えの明細の値が、次の答えの後に残って読み違えられないようにする)。"""
+    purchase_order.lines.update(reply_type="", reply_unit_price=None, reply_qty=None, reply_due_date=None)
 
 
 # 送った後の知らせの字 (入力の土台 core.views.with_saved_note が、返した発注の saved_message を「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせにする)
@@ -269,6 +401,9 @@ def receive(line, qty, received_on, user, *, note=""):
     断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
     受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る。
     全部の明細で受入の数が明細の数量以上になれば、発注を「納品された」(STATUS_DELIVERED) にする。
+    「相手が受け入れた」の発注に一部の受入が入ると「一部納品」(決め C45-2 (11-07 00:2x) と決め C97-1 (11-07 06:38)。
+    「下書き」「送った」「相手が保留した」「相手が条件付で受けた」は一部の受入では変えない。後で届く注文回答を当て、
+    相手と話す・発注を直す仕事を一覧とタブから消さないため)。
     seizou どうしで送った発注なら、atomic を抜けた後に検収を相手へ送り、送った後の列を持つ受入を返す
     (送れなくても例外にしない。受入は成立する)。
     """
@@ -298,6 +433,9 @@ def receive(line, qty, received_on, user, *, note=""):
             lines = list(annotate_received(locked.lines.all()))
             if lines and all(row.remaining_total <= 0 for row in lines):
                 locked.status = PurchaseOrder.STATUS_DELIVERED
+                locked.save(update_fields=["status"])
+            elif locked.status == PurchaseOrder.STATUS_ACCEPTED:
+                locked.status = PurchaseOrder.STATUS_PARTIAL
                 locked.save(update_fields=["status"])
 
     # 検収を相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。

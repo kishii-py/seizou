@@ -37,7 +37,9 @@ SKIPPED_NO_ROW = {
     "a_machining": {
         "attachments:attachment_delete",
         "connect:inbox_accept",
+        "connect:inbox_accept_conditional",
         "connect:inbox_detail",
+        "connect:inbox_hold",
         "connect:inbox_reject",
         "feedback:feedback_detail",
         "feedback:feedback_update",

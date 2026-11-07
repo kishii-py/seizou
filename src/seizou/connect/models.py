@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation
 from django.db import models
 from django.utils import timezone
 
+from seizou.core import edi_codes
+
 
 class Connection(models.Model):
     """つながり。取引先ごとの、相手の受け口と鍵の置き場の名前と向き。
@@ -134,6 +136,10 @@ class Inbox(models.Model):
     # 相手の受け口が 200 を返したときだけ入れる。空 = まだ相手に届いていない。
     reply_sent_at = models.DateTimeField("注文回答を送った日時", null=True, blank=True)
     reply_response = models.CharField("注文回答の相手の返事", max_length=500, blank=True)
+    # 注文回答のタイプ (EDI の注文回答タイプコードの値のまま。core.edi_codes)。最後に答えた物。保留 (AJ) の間は状態が「未処理」のまま。
+    reply_type = models.CharField("注文回答のタイプ", max_length=2, choices=edi_codes.ORDER_REPLY_TYPES, blank=True)
+    # 条件付受諾 (CA) で相手へ返した明細の答え (送ったとおりの形 = 注文回答の JSON の lines)。ほかの答えは空の並び。送り直しもこの値を送る。
+    reply_lines = models.JSONField("注文回答の明細", default=list, blank=True)
 
     class Meta:
         verbose_name = "受信した注文"
@@ -185,13 +191,13 @@ class Inbox(models.Model):
             return None
 
     def reply_state(self):
-        """詳細に出す注文回答の字。「未処理」なら空の字 (テンプレートが薄い「—」を出す)。
+        """詳細に出す注文回答の字。「未処理」なら空の字 (テンプレートが薄い「—」を出す)。保留 (AJ) を答えた行は「未処理」でも出す。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、承認か断りの後で届いていなければ
         「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
         読み取りの行 (入口 = 読み取り) は相手へ送らないので、返事の欄の字をそのまま出す。
         """
-        if self.status == self.STATUS_RECEIVED:
+        if self.status == self.STATUS_RECEIVED and self.reply_type != edi_codes.REPLY_PENDING:
             return ""
         if self.source == self.SOURCE_INTAKE:
             return self.reply_response

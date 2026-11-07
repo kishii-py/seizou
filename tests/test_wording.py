@@ -107,12 +107,16 @@ REFUSAL_HEADS = (
     "記録できません。",
     "出荷できません。",
     "読み取れません。",
+    "保留できません。",
 )
 #: 赤の知らせの文 (断りの文) を見る services のファイル → 見ない関数 (画面でない口 = 相手の会社への返事の文を作る関数)
 REFUSAL_FILES = {
     "src/seizou/orders/services.py": (),
     "src/seizou/shipping/services.py": (),
-    "src/seizou/purchasing/services.py": ("mark_sent", "mark_accepted", "mark_rejected"),
+    "src/seizou/purchasing/services.py": (
+        "mark_sent", "mark_accepted", "mark_rejected", "mark_conditional", "mark_on_hold", "record_line_replies",
+        "_lock_waiting_order",
+    ),
     "src/seizou/billing/services.py": (),
     "src/seizou/workorders/services.py": (),
     "src/seizou/progress/services.py": (),

@@ -6,6 +6,7 @@ connect/_inbox_entrance.html の中だけ (order_list.html には {% load %} を
 受信した注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (本体の追記 11)。
 payload_number: 届いた本文の数の字を Decimal に読む filter。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す (読めない字はそのまま)。
 payload_price_unit: 届いた明細の単価の後ろに添える単価の単位の字 (「 / 式」「 / 個」の「式」「個」)。
+reply_line_texts: 受信した注文の詳細の「返した条件」の行 (単価を直して受け入れたときに相手へ返した明細ごとの答え)。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -14,7 +15,8 @@ from django import template
 from django.db import DatabaseError
 from django.urls import reverse
 
-from seizou.core import access
+from seizou.core import access, edi_codes
+from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.masters.services import PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, price_basis_text
 
 from .. import services
@@ -112,3 +114,41 @@ def payload_price_unit(line):
         basis = PRICE_BASIS_UNIT
     unit = line.get("unit")
     return price_basis_text(basis, unit if isinstance(unit, str) else "")
+
+
+def _changed(label, value, ordered):
+    """「<見出し> <値>」の字。注文の値と違えば「 (注文 <注文の値>)」を付ける。"""
+    return f"{label} {value}" + (f" (注文 {ordered})" if value != ordered else "")
+
+
+@register.simple_tag
+def reply_line_texts(inbox, hide_money=False):
+    """{% reply_line_texts object seizou.hide_money as reply_texts %}。単価を直して受け入れた (条件付受諾) 行の、返した明細の答えの字の並び。
+
+    条件付受諾 (CA) の明細ごとに「1 行目 T-100: 単価 ¥24 (注文 ¥25.5)・数量 10・納期 2026-11-25 (注文 2026-11-20)」の形。
+    相手の品番と注文の値は、届いた本文 (payload) の同じ line_no の明細から引く (line_no が無い明細は並びの番号)。注文と違う所だけ「(注文 …)」を付ける。
+    hide_money が真 (金額の閲覧の無い人) なら単価の所を出さない。受諾 (AP) の明細は並べない。読むだけ。
+    """
+    payload = inbox.payload if isinstance(inbox.payload, dict) else {}
+    raw_lines = payload.get("lines")
+    ordered = {}
+    for number, raw in enumerate(raw_lines if isinstance(raw_lines, list) else [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        line_no = raw.get("line_no")
+        ordered[line_no if isinstance(line_no, int) and not isinstance(line_no, bool) else number] = (number, raw)
+    texts = []
+    for row in inbox.reply_lines if isinstance(inbox.reply_lines, list) else []:
+        if not isinstance(row, dict) or row.get("reply_type") != edi_codes.REPLY_CONDITIONAL:
+            continue
+        number, raw = ordered.get(row.get("line_no"), (row.get("line_no"), {}))
+        part_no = raw.get("part_no") if isinstance(raw.get("part_no"), str) else ""
+        parts = []
+        if not hide_money:
+            parts.append(
+                _changed("単価", yen(payload_number(row.get("reply_unit_price"))), yen(payload_number(raw.get("unit_price"))))
+            )
+        parts.append(_changed("数量", comma(payload_number(row.get("reply_qty"))), comma(payload_number(raw.get("qty")))))
+        parts.append(_changed("納期", row.get("reply_due_date") or "—", raw.get("due_date") or "—"))
+        texts.append(f"{number} 行目 {part_no}: " + "・".join(parts))
+    return texts
