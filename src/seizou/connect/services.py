@@ -2248,6 +2248,9 @@ def _post_signed(connection, message_id, raw, **options):
     種類は unreachable (届かない) / no_secret / bad_secret。鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
     options は requests.post に渡す (待ちの timeout と、添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
     _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
+    3xx の転送には付いて行かない (allow_redirects=False)。3xx の返事はそのまま呼び手へ返し、呼び手が受け取ったにしない。
+    訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
+    変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
     """
     # 試験が requests.post を差し替えるため、関数の中で import する。
     import requests
@@ -2273,6 +2276,7 @@ def _post_signed(connection, message_id, raw, **options):
             connection.url,
             data=raw,
             headers={**signed, "Content-Type": "application/json"},
+            allow_redirects=False,
             **options,
         )
     except requests.RequestException as exc:
@@ -2297,12 +2301,29 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
 
 
 def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
-    """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。"""
+    """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。
+
+    3xx は受け取ったにせず unreadable (相手の受け口の URL が変わっている)。200 は本文の JSON が受け取った印
+    (_is_received_mark) のときだけ received、ほかは unreadable。新しい種類は作らない (呼び手は received だけを見る)。
+    訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
+    変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
+    """
     answer, failed = _post_signed(connection, message_id, raw, timeout=10)
     if failed is not None:
         return failed
+    if 300 <= answer.status_code < 400:
+        return (
+            f"届きません: 相手の受け口の URL が変わっています (HTTP {answer.status_code})。つながりの URL を直してください。",
+            "unreadable",
+        )
     if answer.status_code == 200:
-        return "受け取った", "received"
+        try:
+            data = answer.json()
+        except ValueError:
+            data = None
+        if _is_received_mark(data, message_id):
+            return "受け取った", "received"
+        return "返事が読めません (HTTP 200。受け取った印が合いません)", "unreadable"
     if answer.status_code == 400:
         # 返事の JSON の message (200 字まで)。読めなければ決まった文。
         try:
@@ -2313,6 +2334,16 @@ def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
             refused = "理由が読めません"
         return f"断られた: {refused[:200]}", "rejected"
     return f"返事が読めません (HTTP {answer.status_code})", "unreadable"
+
+
+def _is_received_mark(data, message_id) -> bool:
+    """200 の返事の本文 (JSON を読んだ物) が受け取った印か。status が received で、id があればそれが送った番号の字と同じ。
+
+    id の無い {"status": "received"} は受け取ったにする (今までの返事の形と、既にある試験の偽物の既定の返事のため)。
+    """
+    if not isinstance(data, dict) or data.get("status") != "received":
+        return False
+    return "id" not in data or data["id"] == str(message_id)
 
 
 # ---------------------------------------------------------------- 送り合った記録 (決め HIST-1 の edi・C106-1)
