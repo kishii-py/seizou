@@ -303,7 +303,11 @@ class PurchaseOrderChangeLineForm(forms.Form):
             return line
         if not self.has_changed():
             return None
-        return {key: data.get(key) if key != "note" else data.get(key, "") for key in LINE_KEYS}
+        line = {key: data.get(key) if key != "note" else data.get(key, "") for key in LINE_KEYS}
+        # 変更の画面には単価の単位の欄が無い (C96 は C99 より前の形)。足す行の単価の単位は部品の単位 (unit = 既定)。
+        if line.get("price_basis") is None:
+            line["price_basis"] = PRICE_BASIS_UNIT
+        return line
 
 
 class PurchaseOrderChangeLineFormSet(forms.BaseFormSet):

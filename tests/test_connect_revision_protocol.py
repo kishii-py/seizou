@@ -276,6 +276,10 @@ def test_acceptance_revision_shape(monkeypatch, user, subcontractor, customer, i
     assert Acceptance.objects.count() == 1
 
 
+#: 注文回答の答え → EDI の注文回答タイプコード (C97 = 359 回目で result の鍵が reply_type になった)
+_REPLY_CODES = {"accepted": "AP", "rejected": "RE"}
+
+
 def _reply_payload(outbox, result, reason=""):
     return {
         "id": str(uuid.uuid4()),
@@ -284,7 +288,7 @@ def _reply_payload(outbox, result, reason=""):
         "order_id": str(outbox.message_id),
         "order_no": outbox.purchase_order.po_no,
         "order_revision_no": outbox.revision_no,
-        "result": result,
+        "reply_type": _REPLY_CODES.get(result, result),
         "supplier_order_no": "SO-0001",
         "reason": reason,
         "supplier": {"id": "b-company", "name": "作り物の受ける会社"},

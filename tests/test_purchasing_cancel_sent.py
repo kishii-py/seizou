@@ -203,7 +203,7 @@ def test_first_reply_after_cancel_is_not_refused(order, user, reply_secret):
         "order_id": str(first.message_id),
         "order_no": order.po_no,
         "order_revision_no": 1,
-        "result": "accepted",
+        "reply_type": "AP",
         "supplier_order_no": "SO-0001",
         "reason": "",
         "supplier": {"id": "b-company", "name": "作り物の受ける会社"},

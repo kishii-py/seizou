@@ -217,7 +217,7 @@ def test_change_is_received_shown_and_accepted(fake, user, subcontractor, items,
     assert revision.status == Inbox.STATUS_ACCEPTED and revision.order is None
 
     reply = _bodies(fake, "order_reply")[-1]
-    assert (reply["order_revision_no"], reply["result"], reply["supplier_order_no"]) == (2, "accepted", order.order_no)
+    assert (reply["order_revision_no"], reply["reply_type"], reply["supplier_order_no"]) == (2, "AP", order.order_no)
     assert Outbox.objects.filter(revision_no=2).order_by("pk").first().reply_type == "AP"
     po.refresh_from_db()
     assert po.status == PurchaseOrder.STATUS_ACCEPTED
