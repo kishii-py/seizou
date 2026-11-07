@@ -5,6 +5,7 @@ _ask_claude を「呼ばれたら AssertionError」に差し替える)。画面�
 """
 
 import re
+from urllib.parse import urlencode
 
 import pytest
 import requests
@@ -505,3 +506,53 @@ def test_detail_send_form_has_issue_text_only_for_manager_connected_confirmed(cl
 
     client.force_login(plain)
     assert 'name="issue_text"' not in html_of(client.get(detail))
+
+
+ME_TOO_URL = "/feedback/issues/1/me-too/"
+
+
+def one_issue(fake):
+    """みんなの Issue の作り物の 1 件 (#1。本文は不具合)。"""
+    fake.listing = gh_tests.Answer(200, [gh_tests.issue(1, "請求の合計が 1 ずれる", gh_tests.ME_TOO_BODY, plus=2)])
+
+
+def test_me_too_endpoint_returns_to_issues_with_green_notice(client, plain, gh, monkeypatch):
+    one_issue(gh)
+    connect_env(monkeypatch)
+    client.force_login(plain)
+
+    response = client.post(ME_TOO_URL, {"issue_q": "請求 ずれる"})
+
+    assert response.status_code == 302
+    assert response["Location"] == "/feedback/?" + urlencode({"tab": "issues", "issue_q": "請求 ずれる"}) + "#issues"
+    row = Feedback.objects.get()
+    assert (row.status, row.created_by, row.sent_url) == ("sent", plain, "https://github.com/kishii-py/seizou/issues/1")
+    assert len(gh_tests.reactions(gh)) == 1
+    html = html_of(client.get(response["Location"]))
+    assert "成功しました。" in html and "Issue #1 に「うちも」を付けました。" in html
+
+    response = client.post(ME_TOO_URL)
+    assert response["Location"] == "/feedback/?tab=issues#issues"
+    html = html_of(client.get(response["Location"]))
+    assert "失敗しました。" in html and "保存できません。この Issue には、あなたの「うちも」が既にあります。" in html
+    assert Feedback.objects.count() == 1
+    assert client.get(ME_TOO_URL).status_code == 405
+
+
+def test_me_too_endpoint_without_connection_leaves_draft_with_yellow_notice(client, plain, gh):
+    one_issue(gh)
+    client.force_login(plain)
+
+    response = client.post(ME_TOO_URL, {"issue_q": ""})
+
+    assert response["Location"] == "/feedback/?tab=issues&issue_q=#issues"
+    assert not gh_tests.reactions(gh)
+    assert Feedback.objects.get().status == "draft"
+    html = html_of(client.get(response["Location"]))
+    assert "確認してください。" in html
+    assert "Issue #1 を同じ困りごととして下書きに残しました (GitHub とつないでいないので 👍 は付けていません)。" in html
+
+    client.logout()
+    response = client.post(ME_TOO_URL)
+    assert response.status_code == 302 and "/login/" in response["Location"]
+    assert Feedback.objects.count() == 1

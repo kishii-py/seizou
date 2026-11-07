@@ -32,6 +32,7 @@ __all__ = [
     "LOGIN_ENV",
     "REPO_ENV",
     "TOKEN_ENV",
+    "add_thumbs_up",
     "check_repo",
     "check_token",
     "client_id",
@@ -353,6 +354,30 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
             }
         )
     return rows
+
+
+def add_thumbs_up(token: str, repo: str, number: int) -> dict:
+    """Issue に 👍 を付ける (POST /repos/{owner}/{repo}/issues/{number}/reactions に {"content": "+1"}。依頼書 N323)。
+
+    返す物は {"created": 初めて付けたか}。GitHub は初めてなら 201、同じ口座の 👍 が既にあれば 200 で既にある物を返す (どちらも成功)。
+    ほかの番号は日本語の GithubError (_refused)。つながらなければ MESSAGE_UNREACHABLE。呼び手は transaction.atomic の外から呼ぶ (R17)。
+    """
+    import requests
+
+    try:
+        answer = requests.post(
+            f"{API}/repos/{check_repo(repo)}/issues/{int(number)}/reactions",
+            json={"content": "+1"},
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    if answer.status_code == 201:
+        return {"created": True}
+    if answer.status_code == 200:
+        return {"created": False}
+    raise _refused(answer.status_code)
 
 
 # ---- OAuth のデバイスの認証 (依頼書 N320) ----

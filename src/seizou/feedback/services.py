@@ -1061,3 +1061,120 @@ def search_issues(words) -> dict:
     found = [row for row in rows if all(term in f"{row['title']}\n{row['body']}".casefold() for term in terms)]
     found.sort(key=lambda row: row["updated_at"], reverse=True)
     return {"issues": found[:ISSUES_SHOWN], "error": "", "repo": repo}
+
+
+# ---- うちもと自社の印 (依頼書 N323。決め 11-07 09:0x〜10:1x) ----
+
+#: うちもの件の困りごと (つないだ会社。会社のトークンで 👍 を付けた)
+ME_TOO_PROBLEM = "同じ困りごとの Issue #{number} に「うちも」を付けた"
+#: うちもの件の困りごと (つないでいない会社。👍 を付けずに下書きで残す)
+ME_TOO_DRAFT_PROBLEM = "同じ困りごとの Issue #{number} がある ({url})。GitHub とつないでいないので 👍 は付けていない。世話役がつないだ後に付ける"
+#: うちもの件を見分ける困りごとの頭 (ME_TOO_PROBLEM と ME_TOO_DRAFT_PROBLEM の頭)
+_ME_TOO_HEAD = "同じ困りごとの Issue #"
+#: Issue の本文の種類の行 (export_markdown が書く「- 種類: <表示名>」)
+_KIND_LINE = re.compile(r"^- 種類:[ \t]*([^\r\n]*?)[ \t\r]*$", re.M)
+
+
+def issue_kind(body) -> str:
+    """Issue の本文の「- 種類: <表示名>」の行を KIND_CHOICES の表示名で引いた種類の値。行が無いか、知らない表示名なら "common" (要望)。"""
+    match = _KIND_LINE.search("" if body is None else str(body))
+    labels = {label: value for value, label in Feedback.KIND_CHOICES}
+    return labels.get(match.group(1), "common") if match else "common"
+
+
+def _issue_number(url, repo):
+    """URL が送り先 (repo = owner/name) の Issue の形なら番号、ほかは None。owner と name の英字の大小は見ない。"""
+    match = _ISSUE_URL.fullmatch(url or "")
+    if match is None:
+        return None
+    owner, name, number = match.groups()
+    if f"{owner}/{name}".casefold() != str(repo or "").casefold():
+        return None
+    return int(number)
+
+
+def our_issue_marks() -> dict[int, dict]:
+    """みんなの Issue の行に付ける自社の印。{Issue の番号: {"sent": 自社が送った件の pk か None, "me_too": うちもの件の pk か None}}。読むだけ。
+
+    送り先 (github_status の repo) の Issue の URL を送った先に持つ件を全部読む (状態は見ない。直した・見送った件も自社が送った物)。
+    うちもの件は困りごとの頭 (「同じ困りごとの Issue #」= ME_TOO_PROBLEM の形) で見分け、ほかは自社が送った件。どちらも pk の小さい最初の 1 つ。
+    世話役でない人にも返す (印は会社の物)。HTTP は呼ばない。
+    """
+    repo = github_status()["repo"]
+    marks: dict[int, dict] = {}
+    rows = Feedback.objects.filter(sent_url__startswith="https://github.com/").order_by("pk").values_list("pk", "sent_url", "problem")
+    for pk, url, problem in rows:
+        number = _issue_number(url, repo)
+        if number is None:
+            continue
+        mark = marks.setdefault(number, {"sent": None, "me_too": None})
+        key = "me_too" if problem.startswith(_ME_TOO_HEAD) else "sent"
+        if mark[key] is None:
+            mark[key] = pk
+    return marks
+
+
+def _issue_list(repo) -> list:
+    """送り先の Issue の全部の並び (search_issues と同じ控え。控えが無ければ GitHub を読んで 5 分控える)。読めなければ github.GithubError。"""
+    key = _issues_cache_key(repo)
+    rows = cache.get(key)
+    if rows is None:
+        rows = github.list_issues(repo, token=github.read_env_value(github.TOKEN_ENV))
+        cache.set(key, rows, ISSUES_CACHE_SECONDS)
+    return rows
+
+
+def me_too(number, user) -> dict:
+    """みんなの Issue の 1 件に「うちも」を付け、押した人の件として残す (ログインした全員)。
+
+    返す物は {"feedback": 作った行, "thumbs_up": 会社のトークンで 👍 を付けたか, "connected": GitHub とつないでいたか}。
+    Issue は search_issues と同じ控えの並びから番号で引く (20 件に絞る前の全部)。件は、題が Issue の題、種類が本文の「- 種類:」の行 (issue_kind)、
+    困りごとが ME_TOO_PROBLEM、状態が送った、送った先が Issue の URL。つないでいない会社は 👍 を付けず、困りごとを ME_TOO_DRAFT_PROBLEM (URL 入り)、
+    状態を下書き、送った先を空にする。断る (日本語の ValueError。件を作らない) のは、ログインしていない・番号が正の整数でない・Issue が送り先に無い・
+    同じ人の同じ Issue の件が既にある (ここまでは 👍 を付けない)・GitHub が断ったとき。
+    HTTP (github.add_thumbs_up) は atomic の外 (R17)。👍 を付けてから件を作り、付けた後は search_issues の控えを消す (👍 の数を読み直す)。
+    訳: GitHub の口の中でこの口だけは世話役でなくても押せる。👍 には文が入らず、取引先の名前や金額が外へ出ないため。
+    GitHub の 👍 は 1 つの口座に 1 つなので、会社に同じ Issue の件 (送った物かうちも) が既にあれば GitHub を呼ばず、件だけ残す (会社の 👍 は 1 つ)。
+    出所 = 本人の決め 11-07 09:0x〜10:1x (受け渡しの指示書のその 2 と指示書2 の C。👍 は GitHub の口座を持つ人しか押せなかった)。
+    変えてよい条件 = 👍 でなく文を送る形 (Issue の返事など) にするときは、世話役だけに戻すかを本人の決めで取り直してから。
+    """
+    if getattr(user, "pk", None) is None:
+        raise ValueError("保存できません。ログインしてから押してください。")
+    if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+        raise ValueError("保存できません。Issue の番号は 1 以上の整数です。「探す」で探し直してください。")
+    status = github_status()
+    repo = status["repo"]
+    try:
+        rows = _issue_list(repo)
+    except github.GithubError:
+        raise ValueError(f"保存できません。GitHub の Issue を読めませんでした (送り先 {repo})。少し待ってから、もう一度押してください。") from None
+    issue = next((row for row in rows if row.get("number") == number), None)
+    url = (issue.get("html_url") or "") if issue is not None else ""
+    # URL が送り先の Issue の形でない返事は、見つからない物として扱う (送った先の列と自社の印を、送り先の Issue の URL だけにする)。
+    if issue is None or _issue_number(url, repo) != number:
+        raise ValueError(f"保存できません。Issue #{number} が送り先に見つかりません。「探す」で探し直してください。")
+    draft_problem = ME_TOO_DRAFT_PROBLEM.format(number=number, url=url)
+    mine = Feedback.objects.filter(created_by_id=user.pk)
+    if mine.filter(sent_url=url).exists() or mine.filter(problem=draft_problem).exists():
+        raise ValueError("保存できません。この Issue には、あなたの「うちも」が既にあります。")
+    connected = status["connected"]
+    thumbs_up = False
+    if connected and not Feedback.objects.filter(sent_url=url).exists():
+        # ここは atomic の外 (R17)。会社の 👍 がまだ無いときだけ付ける。
+        try:
+            github.add_thumbs_up(github.read_env_value(github.TOKEN_ENV), repo, number)
+        except github.GithubError as exc:
+            raise ValueError("送れません。" + str(exc)) from None
+        thumbs_up = True
+        cache.delete(_issues_cache_key(repo))
+    title = _text(issue.get("title"))[:TITLE_MAX_CHARS].strip() or f"Issue #{number}"
+    with transaction.atomic():
+        row = Feedback.objects.create(
+            kind=issue_kind(issue.get("body")),
+            title=title,
+            problem=ME_TOO_PROBLEM.format(number=number) if connected else draft_problem,
+            status="sent" if connected else "draft",
+            sent_url=url if connected else "",
+            created_by=_author(user),
+        )
+    return {"feedback": row, "thumbs_up": thumbs_up, "connected": connected}

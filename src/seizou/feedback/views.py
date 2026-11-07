@@ -15,7 +15,11 @@
 - GitHub でログインしてつなぐ (依頼書 N320): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
   断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
+- 「うちも」の口 (依頼書 N323): me_too。GitHub の口の中でこの口だけはログインした全員が押せる (👍 には文が入らないため)。
+  通ると、services が会社のトークンで Issue に 👍 を付け、押した人の件を残す。
 """
+
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -304,6 +308,35 @@ def github_device_cancel(request):
     except ValueError as exc:
         messages.error(request, str(exc))
     return _back_to_github_setup()
+
+
+def _me_too_notice(request, number, result, *, chat_text="") -> None:
+    """「うちも」が通った後の知らせ。つないだ会社は緑、つないでいない会社は黄 (下書きで残り、世話役の手が要るため。CLAUDE.md の知らせの強さの 3)。"""
+    if result["connected"]:
+        messages.success(request, f"Issue #{number} に「うちも」を付けました。{chat_text}")
+    else:
+        messages.warning(request, f"Issue #{number} を同じ困りごととして下書きに残しました (GitHub とつないでいないので 👍 は付けていません)。")
+
+
+@login_required
+@require_POST
+def me_too(request, number):
+    """みんなの Issue の 1 件に「うちも」を付ける (ログインした全員。依頼書 N323)。通れば知らせ、断られたら赤の知らせで、一覧の Issue の節へ戻る。
+
+    GitHub の口の中でこの口だけは世話役でなくても押せる。訳: 👍 には文が入らず、取引先の名前や金額が外へ出ないため。
+    書くのは services の me_too だけ (押した本人の件を 1 つ作る。HTTP は services が transaction.atomic の外で送る)。
+    戻り先は一覧の ?tab=issues と、POST の隠しの issue_q (あれば。探した結果を出し直し、行の「うちも済み」を見せる) と #issues。
+    """
+    try:
+        result = services.me_too(number, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        _me_too_notice(request, number, result)
+    params = {"tab": "issues"}
+    if "issue_q" in request.POST:
+        params["issue_q"] = request.POST["issue_q"]
+    return HttpResponseRedirect(f"{reverse('feedback:feedback_list')}?{urlencode(params)}#issues")
 
 
 @login_required
