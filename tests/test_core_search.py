@@ -213,12 +213,36 @@ def test_contract_shapes_and_numbers_stay_numbers():
     assert section["columns"][0].label == "番号" and section["more"] is False
 
 
+def topbar_placeholder(body: str) -> str:
+    """上の帯の検索の欄 (aria-label="横断して検索" の input) の placeholder の字。"""
+    tag = re.search(r'<input[^>]*aria-label="横断して検索"[^>]*>', body).group()
+    return re.search(r'placeholder="([^"]*)"', tag).group(1)
+
+
 def test_topbar_search_goes_to_search_page_and_menu_has_search(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
     search_url = reverse("core:search")
     assert f'action="{search_url}"' in body
-    assert 'aria-label="横断して検索"' in body and "品番・品名・注文番号で検索" in body
+    # 上の帯の欄の案内は、マニュアルも探すと分かる字で、13 字を超えない (初見テスト R5 の候補 C36 の 1。V120)
+    placeholder = topbar_placeholder(body)
+    assert placeholder == "品番・品名・マニュアルなど"
+    assert len(placeholder) <= 13
     assert f'href="{search_url}"' in body and ">検索</span>" in body
+
+
+def test_topbar_placeholder_without_manuals_part_keeps_order_no(client_logged_in, monkeypatch):
+    """部品 manuals が入っていない会社では、上の帯の欄の案内は今までの字のまま (マニュアルを探さないため。候補 C36 の 1)。
+
+    本文の全体では「マニュアル」を探さない (左のメニューの入口と検索の画面の種類の札は、部品の名前を差し替えても出るため)。
+    """
+    from seizou.core import context_processors
+
+    names = [name for name in context_processors.part_names() if name != "manuals"]
+    monkeypatch.setattr(context_processors, "part_names", lambda: names)
+
+    placeholder = topbar_placeholder(client_logged_in.get(reverse("core:home")).content.decode())
+    assert placeholder == "品番・品名・注文番号で検索"
+    assert "マニュアル" not in placeholder
 
 
 def test_search_menu_entry_is_active_on_search_page(client_logged_in):

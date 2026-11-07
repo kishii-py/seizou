@@ -1,5 +1,5 @@
 {% load seizou_guide seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る)、今日の日付、現品票を読む (QR のボタン)、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る。欄の案内は、部品 manuals が入っていればマニュアルも探すと分かる字にし、13 字を超えない = tablet の欄の幅で切れないため。初見テスト R5 の候補 C36 の 1)、今日の日付、現品票を読む (QR のボタン)、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
 {# 上の帯の色: 固定の class seizou-header。人ごとの表示の設定で色を選んだ人は、<html> の data-seizou-header の名前で scripts/css/input.css の決まりが塗る (N167)。白 (標準) は bg-base-100 のまま。 #}
 <header class="seizou-header sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
@@ -7,7 +7,7 @@
   <form method="get" action="{{ seizou.search_url }}" role="search" class="min-w-0 flex-1 sm:max-w-md">
     <label class="input w-full rounded-lg">
       {% icon "search" "size-4 text-base-content/50" %}
-      <input type="search" name="q" class="grow" placeholder="品番・品名・注文番号で検索" aria-label="横断して検索">
+      <input type="search" name="q" class="grow" placeholder="{% if "manuals" in seizou.parts %}品番・品名・マニュアルなど{% else %}品番・品名・注文番号で検索{% endif %}" aria-label="横断して検索">
     </label>
   </form>
   {% endif %}
