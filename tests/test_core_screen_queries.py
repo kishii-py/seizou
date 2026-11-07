@@ -45,6 +45,8 @@ SKIPPED_NO_ROW = {
         "feedback:feedback_update",
         "intake:extraction_accept",
         "intake:extraction_detail",
+        "masters:itemprice_delete",  # 種に単価の行が無い (C98。種を足すなら外す)
+        "masters:itemprice_update",
     },
     "b_plating": {
         "attachments:attachment_delete",
@@ -54,6 +56,8 @@ SKIPPED_NO_ROW = {
         "intake:extraction_detail",
         "manuals:manualversion_detail",
         "manuals:manualversion_restore",
+        "masters:itemprice_delete",  # 種に単価の行が無い (C98。種を足すなら外す)
+        "masters:itemprice_update",
         "purchasing:purchaseorder_cancel",
         "purchasing:purchaseorder_detail",
         "purchasing:purchaseorder_send",

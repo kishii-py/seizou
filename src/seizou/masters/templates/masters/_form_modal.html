@@ -1,0 +1,2 @@
+{# masters の入力の小窓の中身。入力の土台は小窓のテンプレートを app ごとに選ぶ (masters/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。削除の確かめは黄の 1 行のカードを form_card で渡す。ほかの入力は土台の小窓のまま。 #}
+{% if request.resolver_match.url_name == "partneritem_delete" %}{% include "core/_form_modal.html" with form_card="masters/_partneritem_delete_card.html" %}{% elif request.resolver_match.url_name == "itemprice_delete" %}{% include "core/_form_modal.html" with form_card="masters/_itemprice_delete_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}

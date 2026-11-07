@@ -5,7 +5,7 @@
 
 この試験が見る所 (1 本目): A 社の部品マスターの一覧の絞り込み (`#list-q`) に `WK-1001` を入れ、行の品番の字から詳細 (道が `/masters/items/<pk>/`) を開く。
 項目の見出しに 自社品番・品名・図面番号・図面ファイル・単位・標準単価・備考 と、A 社の会社ごとの項目 (材質・図面の版) がある。
-タブ「取引先ごとの品番」の件数が 1 以上で、種の `partner_items.csv` の `WK-1001` の行の取引先の品番がある。
+タブ「取引先」(部品の取引先。C98) の件数が 1 以上で、種の `partner_items.csv` の `WK-1001` の行の取引先の品番がある。
 (2 本目): 作り物の TIFF (LZW 圧縮) を付けた印の品番の部品を作ると、詳細の「ファイル」の節に表示用の PNG の絵 (`img` の `src` が `.png`) があり、
 絵が読めた (`complete` かつ `naturalWidth` > 0)。黄色の 1 行 (`.alert-warning`) が無い。図面は種の部品に付けず、印の品番の部品に付ける。
 (3 本目): 詳細のタブに「受注」と「出荷」がある。今の画面には無いので、理由つきの「失敗する前提」の印 (strict) にした。
@@ -47,7 +47,8 @@ def test_e04_fields_and_partner_items(page_a, company_a):
     labels = [text.strip() for text in page_a.locator("dl dt").all_inner_texts()]
     for heading in FIELD_HEADINGS:
         assert any(label.startswith(heading) for label in labels), heading
-    tab = page_a.locator("label.tab").filter(has_text="取引先ごとの品番")
+    # 「取引先」の字だけで探すとほかの字にも当たりうるので、タブの丸 (aria-label) で探す
+    tab = page_a.locator("label.tab").filter(has=page_a.locator("input[aria-label='取引先']"))
     expect(tab).to_have_count(1)
     assert int(tab.locator(".badge").inner_text().replace(",", "")) >= 1
     panels = " ".join(page_a.locator(".tab-content").evaluate_all("els => els.map(e => e.textContent)"))
@@ -71,7 +72,7 @@ def test_e04_tiff_drawing_in_detail(page_a, company_a, tmp_path):
     shot(page_a, "E-04", "a-tiff")
 
 
-@pytest.mark.xfail(reason="06 の E-04 の「受注と出荷のタブ」が今の画面で通らない: 部品の詳細のタブは「取引先ごとの品番」「標準の工程」だけ", strict=True, raises=AssertionError)
+@pytest.mark.xfail(reason="06 の E-04 の「受注と出荷のタブ」が今の画面で通らない: 部品の詳細のタブは「取引先」「標準の工程」だけ", strict=True, raises=AssertionError)
 def test_e04_order_and_shipment_tabs(page_a, company_a):
     login(page_a, company_a)
     _open_seed_detail(page_a, company_a)

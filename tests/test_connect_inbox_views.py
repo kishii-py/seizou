@@ -375,12 +375,12 @@ def test_accept_field_help_says_where_initial_item_comes_from(client_logged_in, 
     known, unknown = form.fields["item_1"], form.fields["item_2"]
     assert known.label == "作り物の得意先 の品番 A-100 (作り物の部品 A-100) に当たる自社の部品"
     assert known.help_text == (
-        "取引先ごとの品番の表で、作り物の得意先 の A-100 は B-200 に当たるので、最初から入れています。"
+        "部品の取引先の表で、作り物の得意先 の A-100 は B-200 に当たるので、最初から入れています。"
         "選び直すと、この受注だけ選んだ部品になります (表は変わりません)。"
     )
     # 品名が無い品番は括弧を付けない
     assert unknown.label == "作り物の得意先 の品番 A-200 に当たる自社の部品"
-    assert unknown.help_text == "取引先ごとの品番の表に、作り物の得意先 の A-200 の対応がまだありません。選んだ部品は、受け入れると表に足します。"
+    assert unknown.help_text == "部品の取引先の表に、作り物の得意先 の A-200 の対応がまだありません。選んだ部品は、受け入れると表に足します。"
 
     # 画面にも欄ごとの説明が出る
     body = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk])).content.decode()
@@ -396,7 +396,7 @@ def test_accept_form_without_partner_keeps_old_words(client_logged_in, user):
     form = AcceptForm(instance=inbox)
 
     assert form.fields["item_1"].label == "相手の品番 A-100 (作り物の部品 A-100)"
-    assert form.fields["item_1"].help_text == "自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。"
+    assert form.fields["item_1"].help_text == "自社の部品を選びます。部品の取引先の表に無い対応は、受け入れると表に足します。"
     response = client_logged_in.get(reverse("connect:inbox_accept", args=[inbox.pk]))
     assert response.status_code == 200
     assert "相手の品番 A-100 (作り物の部品 A-100)" in response.content.decode()

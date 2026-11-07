@@ -5,9 +5,9 @@ import re
 import pytest
 from django.db import IntegrityError, models, transaction
 
-from seizou.masters.models import Item, ItemProcess, Partner, PartnerItem, Process
+from seizou.masters.models import Item, ItemPrice, ItemProcess, Partner, PartnerItem, Process
 
-MASTER_MODELS = [Partner, Item, PartnerItem, Process, ItemProcess]
+MASTER_MODELS = [Partner, Item, PartnerItem, Process, ItemProcess, ItemPrice]
 JAPANESE = re.compile(r"[぀-ヿ一-鿿]")
 
 
@@ -68,3 +68,16 @@ def test_partner_role_properties(role, is_customer, is_subcontractor):
     partner = Partner(code="C001", name="作り物の取引先", role=role)
     assert partner.is_customer is is_customer
     assert partner.is_subcontractor is is_subcontractor
+
+
+@pytest.mark.django_db
+def test_blank_partner_part_no_rows(db):
+    # 品番の空の行は、同じ取引先でも部品ごとにできる (空の字どうしを同じ品番と見ない)。
+    # 同じ取引先と同じ部品に 2 つは表の制約 masters_partneritem_partner_item_blank_unique が止める (決め C98-4)。
+    partner = Partner.objects.create(code="C001", name="作り物の得意先", role="customer")
+    first = Item.objects.create(part_no="T-001", name="作り物の軸")
+    second = Item.objects.create(part_no="T-002", name="作り物の板")
+    PartnerItem.objects.create(partner=partner, item=first, partner_part_no="")
+    PartnerItem.objects.create(partner=partner, item=second, partner_part_no="")
+    with pytest.raises(IntegrityError, match="masters_partneritem_partner_item_blank_unique|UNIQUE|unique"), transaction.atomic():
+        PartnerItem.objects.create(partner=partner, item=first, partner_part_no="")

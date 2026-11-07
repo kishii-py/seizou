@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 部品の取引先の削除の確かめ (画面の全体。JS の無いときと Cmd か Ctrl を押したとき)。中身は小窓と同じカード (masters/_partneritem_delete_card.html)。「削除」で消して ?next= (開いた詳細) へ戻る。 #}
+{% block content %}{% include "masters/_partneritem_delete_card.html" %}
+{% endblock %}

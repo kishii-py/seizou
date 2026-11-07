@@ -203,7 +203,7 @@ def extract_order(file, customer, user):
 def accept_extracted(extraction, item_mapping, user):
     """読み取りを受注 (入口 = 読み取り) にする。受信箱の受け入れと同じ形。返す物は作った Order。
 
-    item_mapping は得意先の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引き、
+    item_mapping は得意先の品番の字 → 自社の Item。無い品番は部品の取引先の表 (masters) で引き、
     選んだ品目が表に無い対応なら表に足す。対応の追加・受注の作成・状態の更新は 1 つのトランザクション。
     受注にした物の 2 回目と捨てた物と受信した注文へ回した物は日本語の ValueError。数量と単価の決まり (R02) は orders の RuleViolation。
     """

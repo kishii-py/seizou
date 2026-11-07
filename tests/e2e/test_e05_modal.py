@@ -5,7 +5,7 @@
 
 この試験が見る所: 部品マスターの一覧を `WK-1001` で 1 行に絞り (絵に小窓を映すため)、品名の字 (小窓の link) を押すと `#seizou-modal` に `open` が付いて品番が出る。
 Esc で `open` が外れる。もう一度開いて「詳細を見る」を押すと部品の詳細 (道が `/masters/items/<pk>/`) に
-「取引先ごとの品番」のタブがあり、ブラウザの戻るで一覧の道に戻る。
+「取引先」のタブがあり、ブラウザの戻るで一覧の道に戻る。
 見ない所 (理由): 受注・出荷の入力と、受注・指示書の詳細の中の小窓 (今夜は部品マスターの一覧だけ)、入力の途中の値
 (部品マスターの一覧に入力が無い)。
 """
@@ -45,7 +45,7 @@ def test_e05_modal_then_detail(page_a, company_a):
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
     modal.get_by_role("link", name="詳細を見る").click()
     page_a.wait_for_url(re.compile(r"/masters/items/\d+/$"))
-    expect(page_a.locator("input[aria-label='取引先ごとの品番']")).to_have_count(1)
+    expect(page_a.locator("input[aria-label='取引先']")).to_have_count(1)
     shot(page_a, "E-05", "a-detail")
 
     page_a.go_back()

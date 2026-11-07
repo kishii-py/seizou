@@ -1,7 +1,7 @@
 """masters の画面 (02 の部品マスターと取引先)。全部 core の土台を継承する (R15)。
 
 一覧は行を押すと詳細、部品の名前の字を押すと小窓 (core の master_link)。会社ごとの項目の列は土台が自動で足す。
-部品の小窓は、取引先ごとの品番 (tabs) と会社ごとの項目も出す (masters/_modal.html)。
+部品の小窓は、部品の取引先 (tabs) と会社ごとの項目も出す (masters/_modal.html)。
 """
 
 import csv
@@ -10,7 +10,7 @@ from urllib.parse import quote
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, Http404
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers
 from django.views.decorators.clickjacking import xframe_options_sameorigin
@@ -25,8 +25,11 @@ from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
 from .forms import HolidayDeleteForm, HolidayForm
+from .forms import PartnerItemDeleteForm, PartnerItemForm, PartnerItemUpdateForm
+from .forms import ItemPriceDeleteForm, ItemPriceForm
 from .models import Item, Partner, Process
 from .models import Holiday
+from .models import ItemPrice, PartnerItem
 
 
 #: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
@@ -50,7 +53,7 @@ def _hide_inactive(view, queryset):
 class ItemListView(BaseListView):
     """部品マスターの一覧。
 
-    使う人: 全員 / いつ: 部品の情報を見るときと、新しい部品を登録するとき / 何のために: 品番・図面・工程・取引先ごとの品番を 1 か所で持つ / 次にすること: 品名を押して小窓、行から詳細へ。直すのは生産管理
+    使う人: 全員 / いつ: 部品の情報を見るときと、新しい部品を登録するとき / 何のために: 品番・図面・工程・取引先を 1 か所で持つ / 次にすること: 品名を押して小窓、行から詳細へ。直すのは生産管理
     """
 
     model = Item
@@ -69,21 +72,21 @@ class ItemListView(BaseListView):
 class ItemDetailView(BaseDetailView):
     """部品の詳細。
 
-    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの品番と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ
+    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの単価と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ。取引先は取引先のタブの「取引先を足す」で足す
     """
 
     model = Item
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
-    screen_help = "部品の項目と、取引先ごとの品番、標準の工程の並び。"
-    # 標準の工程の行の字 (ItemProcess.__str__) が工程を読むので、工程を行と一緒に 1 回で引く (N174)
-    tabs = (("取引先ごとの品番", "partner_items"), ("標準の工程", "item_processes", ("process",)))
+    screen_help = "部品の項目と、取引先と単価、標準の工程の並び。"
+    # 取引先の行の字と標準の工程の行の字 (ItemProcess.__str__) が取引先と工程を読むので、行と一緒に 1 回で引く (N174)
+    tabs = (("取引先", "partner_items", ("partner",)), ("標準の工程", "item_processes", ("process",)))
 
 
 class ItemCreateView(BaseFormView):
     """部品の新規登録の入力。
 
-    使う人: 生産管理 / いつ: 新しい部品が増えたとき / 何のために: 品番・品名・図面を登録する / 次にすること: 部品の詳細で標準の工程と取引先ごとの品番を足す
+    使う人: 生産管理 / いつ: 新しい部品が増えたとき / 何のために: 品番・品名・図面を登録する / 次にすること: 部品の詳細で標準の工程と取引先を足す
     """
 
     model = Item
@@ -109,13 +112,13 @@ class ItemUpdateView(BaseFormView):
 class ItemModalView(BaseModalView):
     """部品の小窓。
 
-    使う人: 全員 / いつ: 受注や指示書の画面で部品を確かめたいとき / 何のために: 画面を移らずに要点と取引先ごとの品番を見る / 次にすること: 要れば部品の詳細へ
+    使う人: 全員 / いつ: 受注や指示書の画面で部品を確かめたいとき / 何のために: 画面を移らずに要点と取引先を見る / 次にすること: 要れば部品の詳細へ
     """
 
     model = Item
     screen_name = "部品の小窓"
-    screen_help = "部品の要点と取引先ごとの品番を見るだけの小窓。詳細へ移れます。"
-    tabs = (("取引先ごとの品番", "partner_items"),)
+    screen_help = "部品の要点と取引先を見るだけの小窓。詳細へ移れます。"
+    tabs = (("取引先", "partner_items"),)
 
 
 class ItemSelectView(BaseSelectView):
@@ -153,14 +156,14 @@ class PartnerListView(BaseListView):
 class PartnerDetailView(BaseDetailView):
     """取引先の詳細。
 
-    使う人: 営業・経理 / いつ: 取引先の条件と履歴を見るとき / 何のために: 項目と取引先ごとの品番、受注と発注の履歴を見る / 次にすること: 「編集」へ
+    使う人: 営業・経理 / いつ: 取引先の条件と履歴を見るとき / 何のために: 項目と、取引する部品と取引先の品番、受注と発注の履歴を見る / 次にすること: 「編集」へ
     """
 
     model = Partner
     screen_name = "取引先の詳細"
-    screen_help = "取引先の項目と、取引先ごとの品番、受注と発注の履歴。"
+    screen_help = "取引先の項目と、取引する部品、受注と発注の履歴。"
     # 受注と発注の履歴は、その部品が入っている会社だけ (土台が hasattr で飛ばす)。本人の決め 11-03 09:2x (協力企業管理の発注履歴)。
-    tabs = (("取引先ごとの品番", "partner_items"), ("受注履歴", "orders"), ("発注履歴", "purchase_orders"))
+    tabs = (("部品", "partner_items", ("item",)), ("受注履歴", "orders"), ("発注履歴", "purchase_orders"))
     template_name = "masters/partner_detail.html"
 
 
@@ -215,6 +218,109 @@ class PartnerSelectView(BaseSelectView):
         partners = services.active_partners()
         roles = PARTNER_SELECT_ROLES.get(self.request.GET.get("role", ""))
         return partners.filter(role__in=roles) if roles else partners
+
+
+# ---------------------------------------------------------------- 部品の取引先 (決め C19-1・C98-1)
+# 部品の詳細の「取引先」のタブと、取引先の詳細の「部品」のタブから小窓で開く。保存と削除の後は小窓が閉じ、タブの中身を取り直す。
+
+
+class PartnerItemAddView(BaseFormView):
+    """部品の取引先の追加の入力。
+
+    使う人: 生産管理・営業 / いつ: 部品を新しい得意先や協力企業と取引するとき / 何のために: 部品と取引先をつなぎ、相手の品番と品名を持つ (品番は空でもよい) / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = PartnerItem
+    form_class = PartnerItemForm
+    service = staticmethod(services.add_partner_item)
+    screen_name = "部品の取引先の追加"
+    screen_help = "部品に得意先か協力企業を足します。取引先の品番は空のままでも足せます。"
+
+
+class PartnerItemUpdateView(BaseFormView):
+    """部品の取引先の編集の入力。
+
+    使う人: 生産管理・営業 / いつ: 相手の品番や品名が分かったときと変わったとき / 何のために: 部品の取引先の行の取引先の品番と品名を直す / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = PartnerItem
+    form_class = PartnerItemUpdateForm
+    service = staticmethod(services.update_partner_item)
+    screen_name = "部品の取引先の編集"
+    screen_help = "部品の取引先の行の、取引先の品番と品名を直します。部品と取引先は直せないので、違うときは行を消して「取引先を足す」で足し直します。"
+
+
+class PartnerItemDeleteView(BaseFormView):
+    """部品の取引先の削除の確かめ。
+
+    使う人: 生産管理・営業 / いつ: 取引先を選び間違えて足した行や、もう取引しない取引先の行を消すとき / 何のために: 部品の取引先の行と、その行の単価の行を消す / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = PartnerItem
+    form_class = PartnerItemDeleteForm
+    service = staticmethod(services.delete_partner_item)
+    template_name = "masters/partneritem_delete.html"
+    screen_name = "部品の取引先の削除"
+    screen_help = "部品の取引先の行を 1 つ消します。その行の単価の行も一緒に消えます。消すと戻せません。"
+
+
+# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-1〜C98-6)
+# 部品の詳細の「取引先」のタブの取引先の行か共通の「単価を足す」から小窓で開く。単価の行に詳細の画面は無いので、
+# 保存と削除の後の移り先は ?next= (開いた部品の詳細)。金額の閲覧が無い人の保存と削除は、土台の金額の門が断る (MONEY_ACTIONS)。
+
+
+class ItemPriceAddView(BaseFormView):
+    """単価の行の追加の入力。
+
+    使う人: 営業・生産管理 / いつ: 見積を出したときと受け取ったとき、単価を改定するとき / 何のために: 取引先ごと (か共通) の数量の帯の単価を、見積の番号・発行日・有効期限と一緒に持つ / 次にすること: 部品の詳細の取引先のタブで確かめ、見積書は取引先の行の「見積書を付ける」で付ける
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceForm
+    service = staticmethod(services.add_item_price)
+    screen_name = "単価の行の追加"
+    screen_help = "部品の単価表に 1 行を足します。数量の下限が空なら数量によらない単価、適用開始日が空ならいつでも効く単価です。改定は新しい適用開始日の行を足します。"
+
+
+class ItemPriceUpdateView(BaseFormView):
+    """単価の行の編集の入力。
+
+    使う人: 営業・生産管理 / いつ: 単価の行を打ち間違えたとき / 何のために: 単価の行の値を直す (改定は直さず新しい行を足す) / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceForm
+    service = staticmethod(services.update_item_price)
+    screen_name = "単価の行の編集"
+    screen_help = "単価の行の値を直します。単価を改定するときは、この行を直さず、新しい適用開始日の行を足します。"
+
+
+class ItemPriceDeleteView(BaseFormView):
+    """単価の行の削除の確かめ。
+
+    使う人: 営業・生産管理 / いつ: 打ち間違えた単価の行を消すとき / 何のために: 単価の行を消す (改定の前の単価は消さず、適用開始日で残す) / 次にすること: 部品の詳細の取引先のタブで確かめる
+    """
+
+    model = ItemPrice
+    form_class = ItemPriceDeleteForm
+    service = staticmethod(services.delete_item_price)
+    template_name = "masters/itemprice_delete.html"
+    screen_name = "単価の行の削除"
+    screen_help = "単価の行を 1 つ消します。受注と発注の明細は単価を写して持つので、今までの明細の金額は変わりません。消すと戻せません。"
+
+
+@login_required
+@require_GET
+def partneritem_detail(request, pk):
+    """部品の取引先の行から部品の詳細へ移るだけの口 (画面でない口)。
+
+    添付ファイルの付けた先へ移る口 (attachments.views.attachment_detail) と、入力の土台の保存の後の移り先
+    (core.views.model_url の detail) が使う。無い番号は 404。
+    付けた先に詳細の画面が無いと、見積書を画面の全体で付けた後と添付ファイルの一覧の行から、添付ファイルの一覧へ落ちるため。
+    取引先の詳細の「部品を足す」を画面の全体で保存すると、移り先は部品の詳細になる (土台が ?next= より保存した物の詳細を先に使う)。
+    """
+    row = get_object_or_404(PartnerItem, pk=pk)
+    return redirect("masters:item_detail", pk=row.item_id)
 
 
 class ProcessListView(BaseListView):

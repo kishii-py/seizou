@@ -764,7 +764,7 @@ MESSAGE_SENDER_DIRECT = "受け口から受信した注文の取引先は署名�
 def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     """受信箱の注文のデータを受け入れて、受注 (入口 = 受信箱) を作る (R10・R11)。
 
-    item_mapping は相手の品番の字 → 自社の Item。無い品番は取引先ごとの品番の表 (masters) で引く。
+    item_mapping は相手の品番の字 → 自社の Item。無い品番は部品の取引先の表 (masters) で引く。
     item_mapping で選んだ品番が表に無ければ、その場で表に対応を足す。
     対応の追加・受注の作成・受信箱の状態の更新は 1 つのトランザクションで行う (どれかが失敗したら全部戻る)。
     受け入れ済みの 2 回目は RuleViolation("R11")、断った物と形の違う物は日本語の ValueError。

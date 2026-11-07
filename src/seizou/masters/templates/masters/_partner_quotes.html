@@ -1,0 +1,7 @@
+{% load attachments_tags seizou_icons %}
+{# 部品の取引先の行の見積書の枡 (masters/_item_partners.html が、添付ファイルの部品がある会社でだけ include する)。その行に付けた添付ファイルの名前を、ログインした人にだけ返す口の link (新しいタブ) で並べ、下に「見積書を付ける」(小窓。備考の初めの値に「見積書」= 入力の土台が GET の値を写す。種類は既定のまま)。行ごとに 1 回の問い合わせ。 #}
+{% attachments_for row.obj as quotes %}{% content_type_id row.obj as quote_ct %}
+<div class="flex flex-col items-start gap-2">
+  {% for quote in quotes %}<a class="link link-primary inline-flex items-center gap-2" href="{% url 'attachments:attachment_download' quote.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}<span class="block max-w-40 truncate" title="{{ quote.original_name }}">{{ quote.original_name }}</span></a>{% endfor %}
+  <a class="btn btn-xs btn-outline border-base-300" href="{% url 'attachments:attachment_add' %}?content_type={{ quote_ct }}&amp;object_id={{ row.obj.pk }}&amp;note=見積書&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'attachments:attachment_add' %}?content_type={{ quote_ct }}&amp;object_id={{ row.obj.pk }}&amp;note=見積書&amp;next={{ request.get_full_path|urlencode }}">{% icon "paperclip" "size-4" %}見積書を付ける</a>
+</div>

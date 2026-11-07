@@ -199,7 +199,7 @@ def test_modal_pair_tab_renders_as_before(logged_in, user, item):
 
     assert response.status_code == 200
     (tab,) = response.context["tabs"]
-    assert (tab["label"], tab["related"], tab["count"]) == ("取引先ごとの品番", "partner_items", 1)
+    assert (tab["label"], tab["related"], tab["count"]) == ("取引先", "partner_items", 1)
     html = response.content.decode()
-    for word in ("取引先ごとの品番", "作り物の協力企業", "XP-174"):
+    for word in ("取引先", "作り物の協力企業", "XP-174"):
         assert word in html, word

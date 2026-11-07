@@ -42,7 +42,7 @@ def _partner_parts(inbox):
 
 
 # 取引先が空の行 (読み取りで差出人の確認待ち) の欄の説明。取引先ごとの説明の字が作れないので、前からの固定の字のまま。
-_HELP_WITHOUT_PARTNER = "自社の部品を選びます。取引先ごとの品番の表に無い対応は、受け入れると表に足します。"
+_HELP_WITHOUT_PARTNER = "自社の部品を選びます。部品の取引先の表に無い対応は、受け入れると表に足します。"
 
 
 def _part_label(partner, part_no, part_name):
@@ -60,7 +60,7 @@ def _part_label(partner, part_no, part_name):
 def _part_help(partner, part_no, known):
     """受け入れの欄の説明 (初見テスト R5 の候補 C08 の 5)。services._item_for の今の動きを字にした物で、動きは変えない。
 
-    known = 取引先ごとの品番の表で当たった自社の品目 (resolve_partner_item。無ければ None)。
+    known = 部品の取引先の表で当たった自社の品目 (resolve_partner_item。無ければ None)。
     表に対応があれば最初から入れたことと、選び直してもこの受注だけで表は変わらないこと。無ければ、受け入れると表に足すこと。
     取引先が空の行は、前からの固定の字。
     """
@@ -68,16 +68,16 @@ def _part_help(partner, part_no, known):
         return _HELP_WITHOUT_PARTNER
     if known is not None:
         return (
-            f"取引先ごとの品番の表で、{partner.name} の {part_no} は {known.part_no} に当たるので、最初から入れています。"
+            f"部品の取引先の表で、{partner.name} の {part_no} は {known.part_no} に当たるので、最初から入れています。"
             "選び直すと、この受注だけ選んだ部品になります (表は変わりません)。"
         )
-    return f"取引先ごとの品番の表に、{partner.name} の {part_no} の対応がまだありません。選んだ部品は、受け入れると表に足します。"
+    return f"部品の取引先の表に、{partner.name} の {part_no} の対応がまだありません。選んだ部品は、受け入れると表に足します。"
 
 
 class AcceptForm(forms.Form):
     """受け入れの form。相手の品番ごとに、自社の品目を選ぶ欄を 1 つ置く。
 
-    欄の見出しと説明は欄ごとに作る (_part_label・_part_help)。初めの値は取引先ごとの品番の表の対応 (無ければ空)。
+    欄の見出しと説明は欄ごとに作る (_part_label・_part_help)。初めの値は部品の取引先の表の対応 (無ければ空)。
     同じ品番が 2 行にあっても欄は 1 つ (item_mapping は品番 → 品目の 1 対 1 のため)。
     """
 

@@ -160,7 +160,7 @@ def test_detail_tabs_have_frame_help(client_logged_in, site, item):
     assert 'aria-label="基本情報の説明"' in html
     assert 'aria-label="関係する物の説明"' in html
     assert html.count(SCREEN_LABEL) == 1
-    assert "取引先ごとの品番が入ると、ここに並びます。" in html
+    assert "取引先が入ると、ここに並びます。" in html
 
 
 @pytest.mark.django_db

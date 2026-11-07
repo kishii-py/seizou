@@ -72,7 +72,7 @@ def test_item_modal_and_detail(client_logged_in):
     assert "詳細を見る" in modal.content.decode()
     detail = client_logged_in.get(reverse("masters:item_detail", args=[item.pk]))
     assert detail.status_code == 200
-    assert "取引先ごとの品番" in detail.content.decode()
+    assert "取引先が入ると、ここに並びます。" in detail.content.decode()
 
 
 @pytest.mark.django_db
