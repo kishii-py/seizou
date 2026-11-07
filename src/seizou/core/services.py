@@ -342,7 +342,7 @@ def update_company(company, data, user):
     書いた後に logging の "seizou.settings" に INFO の 1 行 (変えた列の見出しだけ。値は書かない = 振込先の番号を記録に残さない)。
     logo は、新しく上げたファイル (UploadedFile) なら company/ の下に "logo" + 拡張子 (小文字) で置き、False (「クリア」) なら
     今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
-    (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
+    (部品の図面の masters.services.update_item と同じ。消すのは次の版で)。形 (PNG か JPEG) は form が見る。
     ロゴを上げたら、ロゴから印 (COMPANY_ICONS) を作って同じ storage に置き、外したら印を消す (_write_company_icons)。
     登録番号はインボイス制度で適格請求書に書く番号 (決め LAW-3)。形 (T と 13 桁の数字) は check_registration_no が見る (決め C95-2)。
     変えた列があれば、同じ atomic の中で変更の履歴に 1 行書く (前は取り直した行の core.history.saved_state)。振込先は直したことと

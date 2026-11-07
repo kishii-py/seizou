@@ -18,7 +18,7 @@ SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
 - X-Content-Type-Options: nosniff と、保存させないヘッダー (ログアウトの後に残ったファイルを見せない。図面の口と同じ) を付ける。
   nginx は X-Accel-Redirect のとき Cache-Control と Content-Disposition は引き継ぐが nosniff は落とすので、
   deploy/nginx-files.conf の側でも nosniff を付ける。
-- Django から見えない漏れ (内部の location の internal の付け忘れ、alias の誤り) を外から確かめる命令は会期後。
+- Django から見えない漏れ (内部の location の internal の付け忘れ、alias の誤り) を外から確かめる命令は次の版で。
 - 読み取りの元のファイル (intake/ の道) は、金額の閲覧の判定 (access.can_see_money) を通す (MONEY_PREFIXES)。
 """
 

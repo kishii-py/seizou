@@ -85,7 +85,7 @@ if (!window.seizouStatHelp) {
     <p class="mt-2 text-base-content/70">今は手を動かす物がありません。業務の流れの段を押すと、その画面が開きます。</p>
     {# 最初にすること (ONB-02 の会期中の小さい版): 部品も取引先も 0 の会社にだけ、取引先 → 部品 → 受注の順の入口を枠だけのボタンで並べる (流れの段の上)。 #}
     {# 数は数字のカードの先頭の 2 枚 (dashboard_stats が部品・取引先の順に先頭へ置き、HomeView は並びを変えずに url だけ外す)。並びが違うときと数が読めない (None) ときは出さない (偽の案内を置かない)。 #}
-    {# 入口のボタンは書ける人にだけ (決め 11-04 12:5x。can_write は部署で開けない人にも偽)。1 つも出せない人には題ごと出さない。矢印は前の段の li に入れる (流れの段と同じ形)。済んだ印は会期後 (ONB-07)。 #}
+    {# 入口のボタンは書ける人にだけ (決め 11-04 12:5x。can_write は部署で開けない人にも偽)。1 つも出せない人には題ごと出さない。矢印は前の段の li に入れる (流れの段と同じ形)。済んだ印は次の版で (ONB-07)。 #}
     {% with items=stats.0 partners=stats.1 %}
     {% if items.url_name == "masters:item_list" and items.value == 0 and partners.url_name == "masters:partner_list" and partners.value == 0 %}
     {% url 'masters:partner_create' as partner_create_url %}{% url 'masters:partner_import' as partner_import_url %}{% url 'masters:item_create' as item_create_url %}{% url 'masters:item_import' as item_import_url %}{% url 'orders:order_create' as order_create_url %}

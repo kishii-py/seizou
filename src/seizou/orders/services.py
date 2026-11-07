@@ -67,7 +67,7 @@ _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 
 def _refuse_ext(ext):
     if ext is not None:
-        raise NotImplementedError("会社ごとの項目の保存は core の fields ができてから")
+        raise NotImplementedError("受注の会社ごとの項目は今の版では持たない (部品マスターの項目は fields の save_ext で書く)")
 
 
 def _refuse_unknown_keys(data, allowed, table_name):

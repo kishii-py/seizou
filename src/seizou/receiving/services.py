@@ -5,7 +5,7 @@
 - 入荷を受注の明細から入れたとき (order_line を渡したとき) は、同じ atomic の中で引当を 1 行作る (1 対 1 の自動の引当)。
 - 預かり残 = その明細の引当の合計 − その明細の出荷済みの合計。出荷は shipping の Shipment を apps.get_model で読む
   (出荷の部品が無ければ 0。orders.board の形)。
-- 金額は持たない。在庫の動き (stock) とはつながない (会期後)。
+- 金額は持たない。在庫の動き (stock) とはつながない (次の版で)。
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。番号の無い入力の誤りは日本語の ValueError。
 """
 
@@ -175,7 +175,7 @@ def create_receiving(data, user, *, order_line=None, allocate_qty=None) -> Recei
 def allocate(receiving, order_line, qty, user) -> Allocation:
     """手の引当 (入荷の qty だけを受注の明細に充てる)。引当の合計が入荷の数量を超えれば日本語の ValueError。
 
-    数量が 0 以下と、同じ入荷と明細の引当が既にあるときも ValueError。画面は会期後 (今は試験だけが呼ぶ)。
+    数量が 0 以下と、同じ入荷と明細の引当が既にあるときも ValueError。画面は次の版で (今は試験だけが呼ぶ)。
     """
     with transaction.atomic():
         locked = Receiving.objects.select_for_update().get(pk=receiving.pk)
