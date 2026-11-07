@@ -13,7 +13,7 @@
 {% endblock %}
 {% block more %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill %}{% url 'billing:invoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block edit_button %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill and object.balance > 0 %}<a class="btn btn-primary" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% else %}{{ block.super }}{% endif %}{% endblock %}
-{# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (N155)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (初見テスト R5 の V26。C17) #}
+{# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表 (一式の行は最後の出荷日と「受注 <番号>-<行> の一式」)。単価の後ろに単価の単位 (明細の写し。式なら「/ 式」) を添える。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (N155)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (初見テスト R5 の V26。C17) #}
 {% block tab_rows %}{% if tab.related == "lines" %}
 <div class="overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm">
@@ -21,13 +21,13 @@
     <tbody>
       {% for row in tab.rows %}
       <tr>
-        <td class="whitespace-nowrap font-mono tabular-nums">{{ row.obj.shipment.shipped_at|date:"Y-m-d" }}</td>
-        <td class="whitespace-nowrap font-mono">{{ row.obj.shipment.shipment_no }}</td>
-        <td class="whitespace-nowrap font-mono">{% master_link row.obj.shipment.order_line.item row.obj.shipment.order_line.item.part_no %}</td>
-        <td class="min-w-32">{{ row.obj.shipment.order_line.item.name }}</td>
+        <td class="whitespace-nowrap font-mono tabular-nums">{{ row.obj.shipped_on|date:"Y-m-d" }}</td>
+        <td class="whitespace-nowrap font-mono">{{ row.obj.ref_no }}</td>
+        <td class="whitespace-nowrap font-mono">{% master_link row.obj.order_line.item row.obj.order_line.item.part_no %}</td>
+        <td class="min-w-32">{{ row.obj.order_line.item.name }}</td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.qty|comma }}</td>
-        <td class="whitespace-nowrap">{{ row.obj.shipment.order_line.item.unit }}</td>
-        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.unit_price|comma }}</td>
+        <td class="whitespace-nowrap">{{ row.obj.order_line.item.unit }}</td>
+        {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.unit_price|comma }}<span class="text-base-content/70"> / {{ row.obj.price_unit_text }}</span></td>
         <td class="whitespace-nowrap text-right tabular-nums">{{ row.obj.amount|comma }}</td>{% endif %}
       </tr>
       {% endfor %}

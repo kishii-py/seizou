@@ -18,6 +18,7 @@
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
+- 出荷 1 つの金額は amount_of_shipment の 1 か所 (一式の明細は明細を出し終えた出荷 finishes_line で全額、ほかは 0。決め PRICE-1c)。
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ from seizou.core import access
 from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.orders.services import refresh_status, remaining_qty
+from seizou.masters.services import delivery_amount, reaches_line_qty
+from seizou.orders.services import refresh_status, remaining_qty, shipped_qty
 
 from .models import DeliveryNote, Shipment
 
@@ -75,6 +77,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
     """出荷の保存の部分 (ship と ship_lines が atomic の中で呼ぶ)。明細に行の錠を掛け、R05・R02・分納を見て、出荷を作り、受注の状態を直す。
 
     返す物は (出荷, 錠を掛けた明細)。HTTP は送らない (送るのは _after_ship。atomic の外 = R17)。
+    明細を出し終えた出荷の印 (finishes_line) も付ける (入れた順で、明細の出荷の合計を数量の手前から数量以上にした最初の出荷。印の付いた出荷が既にあるか、発行の請求書に一式の行がある明細には付けない)。
     訳: 取消した受注に出荷を作らず (R05)、0 以下の数を出荷にせず (R02)、分納を許さない会社では残りの数と違う出荷を止めるため。出所 = RULES.md R05・R02 と 会社の設定 partial_shipment (既定は許す)。
     変えてよい条件 = R05・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
@@ -93,12 +96,16 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
                 "分納",
                 f"保存できません。この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
             )
+    # 明細を出し終えた出荷の印 (決め PRICE-1c)。明細の行の錠の中で数えるので、2 人が同じ明細を同時に出荷しても印は 1 つ。
+    done = shipped_qty(locked)
+    finished = Shipment.objects.filter(order_line=locked, finishes_line=True).exists() or _has_issued_lump_line(locked)
     shipment = Shipment.objects.create(
         shipment_no=next_number("shipment"),
         order_line=locked,
         qty=qty,
         shipped_at=shipped_at,
         note=note,
+        finishes_line=not finished and reaches_line_qty(locked.qty, done, qty),
     )
     refresh_status(locked.order, user)
     return shipment, locked
@@ -196,6 +203,23 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
         return note
 
 
+def _has_issued_lump_line(order_line):
+    """受注の明細に、発行の請求書の一式の行 (出荷を指さない請求書の明細) があるか (読むだけ。問い合わせ 1 回)。
+
+    請求書の部品が無いか、請求書の明細が受注の明細を指していなければ偽。請求書の明細の表は受注の明細の逆の関係
+    invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の STATUS_ISSUED から読む
+    (billing を import しない。invoiced_shipments と同じ読み方)。
+    訳: 一式の行で人が金額を決めて載せた明細に、後の出荷で一式の全額をもう一度自動で載せないため。出所 = 作者の決め PRICE-1d と PRICE-1c。
+    変えてよい条件 = 作者が、一式の行を載せた後の出荷の金額の決め方を決め直したとき。
+    """
+    try:
+        lines = _OrderLine._meta.get_field("invoice_lines").related_model
+    except FieldDoesNotExist:
+        return False
+    issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
+    return lines._default_manager.filter(order_line=order_line, shipment__isnull=True, invoice__status=issued).exists()
+
+
 def invoiced_shipments(note):
     """納品書の出荷のうち、発行の請求書に入っている物の (出荷, 請求書) の並び (出荷の pk の順。読むだけ。問い合わせ 1 回)。
 
@@ -283,6 +307,8 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
 
     発行の納品書に入った出荷は R08 で断る (先に cancel_delivery_note)。
     受注より多い数はここでは止めない (現物優先。検査の層が services の前に見る)。
+    明細を出し終えた出荷の印 (finishes_line) も付ける (入れた順で、明細の出荷の合計を数量の手前から数量以上にした最初の出荷。印の付いた出荷が既にあるか、発行の請求書に一式の行がある明細には付けない)。
+    直した出荷の印だけを数え直す (ほかの出荷に付け直さない)。
     訳: 取消した受注の出荷を直さず (R05)、発行の納品書に入った出荷は納品書を取り消してから直し (R08)、0 以下の数にせず (R02)、分納を許さない会社では残りの数と違う数を止めるため。出所 = RULES.md R05・R08・R02 と 会社の設定 partial_shipment (既定は許す)。
     変えてよい条件 = R05・R08・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
@@ -308,12 +334,38 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
                     "分納",
                     f"保存できません。この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
+        # 明細を出し終えた出荷の印を、直した出荷の分だけ数え直す (決め PRICE-1c。ほかの出荷の印は触らない)。
+        others = shipped_qty(line) - locked.qty
+        finished = (
+            Shipment.objects.filter(order_line=line, finishes_line=True).exclude(pk=locked.pk).exists()
+            or _has_issued_lump_line(line)
+        )
+        locked.finishes_line = not finished and reaches_line_qty(line.qty, others, qty)
         locked.qty = qty
         locked.shipped_at = shipped_at
         locked.note = note
-        locked.save(update_fields=["qty", "shipped_at", "note"])
+        locked.save(update_fields=["qty", "shipped_at", "note", "finishes_line"])
         refresh_status(line.order, user)
         return locked
+
+
+def amount_of_shipment(shipment, *, partner=None, rounding=None):
+    """出荷 1 つの金額 (読むだけ)。masters.services.delivery_amount(得意先, 出荷の数量, 受注の明細の単価, 単価の単位, completes=明細を出し終えた出荷か)。
+    partner の既定は受注の得意先 (渡すとそれで丸める。請求書と納品書は得意先を渡す)。rounding は round_amount と同じ (会社の既定を輪の前に 1 回読んで渡す)。
+    請求書 (billing.services.shipment_amount)・納品書の帳票 (reports)・ダッシュボードの出荷の金額が読む 1 か所。呼ぶ側は order_line (と得意先) を一緒に引く。
+
+    訳: 一式の明細は全部を出し終えた出荷で一式の全額、それまでの出荷と多い出荷は 0 円にし、同じ出荷の金額を請求書・納品書・ダッシュボードで同じにするため。出所 = 作者の決め PRICE-1c と PRICE-1b。
+    変えてよい条件 = 作者が一式の金額を請求に載せる時を決め直したとき (masters.services.delivery_amount と一緒に直す)。
+    """
+    line = shipment.order_line
+    return delivery_amount(
+        partner if partner is not None else line.order.customer,
+        shipment.qty,
+        line.unit_price,
+        line.price_basis,
+        completes=shipment.finishes_line,
+        rounding=rounding,
+    )
 
 
 # --- 出荷の知らせ (出荷を相手の seizou の発注の明細へ送る記録。EDI の 3 段目) ---

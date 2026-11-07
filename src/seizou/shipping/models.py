@@ -4,6 +4,7 @@
 納品書は得意先ごとに出荷をまとめた物で、数量と金額の写しを持たない。
 納品書の明細は、その納品書に結ばれた出荷そのもの (R08 の「納品書の数量は出荷の数量と一致する」)。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
+出荷の金額の列は持たない。一式の明細の全額は、明細を出し終えた出荷 (finishes_line) に付く (shipping.services.amount_of_shipment)。
 出荷の知らせ (EDI の 3 段目) の記録は Shipment の notice_* の 3 列。受信した注文で作った受注の出荷だけが、出荷の後に connect.services.send_shipping_notice で相手へ送られる。
 書くときは shipping.services を通す。
 """
@@ -84,6 +85,9 @@ class Shipment(models.Model):
         related_name="shipments",
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # この出荷で、受注の明細の数量を初めて出し終えたか (決め PRICE-1c)。書くのは shipping.services だけ (出荷の時と、出荷を直した時)。
+    # 一式 (単価の単位が式) の明細は、この印の付いた出荷だけが一式の全額を持つ (shipping.services.amount_of_shipment)。部品の単位の明細にも同じ決まりで付く (金額には使わない)。
+    finishes_line = models.BooleanField("明細を出し終えた出荷", default=False, editable=False)
     # 出荷の知らせ (出荷を相手の seizou へ送った記録)。connect.services.send_shipping_notice が shipping.services の
     # assign_notice_number・record_notice_response で書く。
     # 番号は 1 回目に付け、送り直すときに使い回す (相手は同じ番号を 1 件にまとめる = R11)。画面に出さない。
@@ -93,13 +97,14 @@ class Shipment(models.Model):
     notice_response = models.CharField("出荷の知らせの相手の返事", max_length=500, blank=True)
 
     #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
+    #: 明細を出し終えた出荷の印 (finishes_line) も、金額を数えるための列なのでいつも出さない。
     #: 知らせを送った日時と相手の返事の 2 列は、受信した注文で作った受注の出荷 (相手へ出荷の知らせを送る物) だけ出す。
     #: ほかの出荷では入らない欄で、「—」の行は何の欄か迷わせる (初見テスト R5 の候補 C18)。
     #: 送る物かの判定は、送る側と同じ services._is_edi_order を使う (同じ式を 2 か所に書かない)。
     #: shipping.services が頭でこの model を読むので、services は中で import する (頭で読むと輪になる)。
     @property
     def detail_hidden_fields(self):
-        hidden = ("notice_message_id",)
+        hidden = ("notice_message_id", "finishes_line")
         if self.order_line_id is not None:
             from . import services
 

@@ -121,7 +121,7 @@ def test_lines_tab_is_table_in_print_order(money_on, keiri, invoice):
             row["item_name"],
             comma(row["quantity"]),
             row["unit"],
-            comma(row["unit_price"]),
+            f"{comma(row['unit_price'])} / {row['price_unit']}",
             comma(row["amount"]),
         ]
         for row in printed

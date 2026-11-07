@@ -12,7 +12,9 @@
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
-  出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
+  請求書の明細は出荷の行と一式の行 (出荷に結び付かない行。決め PRICE-1d) の 2 つで、どちらも受注の明細 (order_line) を指す。
+  出荷 1 つの金額の式は shipping.services.amount_of_shipment の 1 か所 (shipment_amount が呼ぶ。create_invoice と、請求書の新規登録の画面の
+  行の金額の見込みが同じ関数を使う。一式の明細は明細を出し終えた出荷で一式の全額、ほかは 0 = 決め PRICE-1c)。
 - 消費税の計算は _tax の 1 か所 (請求書の税率ごとの合計に 1 回。インボイス制度。丸める向きは masters.services.round_tax)、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
   都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
@@ -24,6 +26,7 @@
   中身を決めるのは読むだけの reissue_plan の 1 か所 (作り直しの画面も同じ物を読む)。請求書を書く中身は create_invoice と同じ _issue_invoice。
   入金の残る請求書があれば何も変えずに ValueError (文は cancel_refusal)。
 - create_invoice は、返す請求書に画面の知らせの字 saved_note (同じ締めの期間に残った出荷 = unbilled_in_period) を付け、残りがあれば saved_level = "warning" (黄) も付ける (表に書かない。止めない)。
+- 出し切らずに終えた一式の受注の明細 (請求書の新規登録の黄の 1 行が出す物。決め PRICE-1d) は unbilled_lumps、その明細の請求の材料 (出荷の合計・最後の出荷日・一式の全額・出した分) は lump_facts (どちらも読むだけ)。
 """
 
 from __future__ import annotations
@@ -33,12 +36,13 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Max, Q, Sum
 
 from seizou.core import access
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.masters.services import round_amount, round_tax
+from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
+from seizou.shipping.services import amount_of_shipment
 
 from .models import Invoice, InvoiceLine, Payment
 
@@ -55,6 +59,8 @@ _ZERO = Decimal("0")
 # ほかの部品の表は、外部キーの先として引く (shipping と masters の models を import しない)。
 _Shipment = InvoiceLine._meta.get_field("shipment").related_model
 _DeliveryNote = _Shipment._meta.get_field("delivery_note").related_model
+_OrderLine = _Shipment._meta.get_field("order_line").related_model
+_Order = _OrderLine._meta.get_field("order").related_model
 _Partner = Invoice._meta.get_field("customer").related_model
 
 #: 締日の 31 は月末 (masters の締日と支払日と同じ約束)。締日が空の取引先は、請求の期間と支払期日を月末で締める
@@ -102,7 +108,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    金額は round_amount(customer, 数量 × 単価)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
+    受注の明細と単価の単位も写す。金額は shipment_amount (一式の明細は全部を出し終えた出荷で一式の全額、ほかは 0)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
     締日でまとめる得意先は締め期間 = closing_period(customer, 最後の出荷日) (最後の出荷日以降で最初の締日まで。
     初めはその 1 つ前の締日の翌日)。都度の得意先は、最初の出荷日から最後の出荷日まで (納品書 1 枚なら、その出荷の日)。
     期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI の付表では
@@ -167,8 +173,10 @@ def _issue_invoice(customer, shipments, issued_on):
         InvoiceLine.objects.create(
             invoice=invoice,
             shipment=shipment,
+            order_line=shipment.order_line,
             qty=shipment.qty,
             unit_price=unit_price,
+            price_basis=shipment.order_line.price_basis,
             amount=amount,
         )
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の後ろに付ける)。表に書かない。
@@ -413,7 +421,8 @@ def billable_shipments(customer=None):
 
     create_invoice の断る条件の (1) 納品書と (2) 請求済みと同じ。customer を渡せば、その得意先の出荷だけ。
     """
-    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED).values("shipment_id")
+    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     queryset = _Shipment.objects.filter(delivery_note__status=_DeliveryNote.STATUS_ISSUED).exclude(
         pk__in=invoiced
     )
@@ -423,13 +432,13 @@ def billable_shipments(customer=None):
 
 
 def shipment_amount(customer, shipment):
-    """出荷 1 つの請求の金額 (読むだけ)。round_amount(customer, 出荷の数量 × 受注の明細の単価)。
+    """出荷 1 つの請求の金額 (読むだけ)。shipping.services.amount_of_shipment(出荷, partner=得意先) (部品の単位は数量 × 受注の明細の単価を丸めた値。一式の明細は明細を出し終えた出荷で一式の全額、ほかは 0 = 決め PRICE-1c)。
 
     create_invoice が明細の金額に使い、請求書の新規登録の画面 (billing.forms.InvoiceForm の rows) が行の金額の見込みに使う。
-    訳: 画面に出す見込みと保存する明細の金額を 1 つの式にするため (頭の注記の「明細の金額は round_amount の 1 か所で丸め」と同じ考え)。出所 = RULES.md R03・AI の案 (依頼書 N248 = 候補 C74 の 1-1)。
+    訳: 画面に出す見込みと保存する明細の金額を 1 つの式にし、一式の明細は全部を出し終えた出荷で全額を請求に載せるため。出所 = RULES.md R03・作者の決め PRICE-1c。
     変えてよい条件 = 金額の式を変えるときは、この関数の 1 か所を変える (画面の見込みと保存が同じ関数を通る)。丸めを round_amount に任せること (R03) は変えない。
     """
-    return round_amount(customer, shipment.qty * shipment.order_line.unit_price)
+    return amount_of_shipment(shipment, partner=customer)
 
 
 def unbilled_in_period(customer, period_from, period_to):
@@ -438,7 +447,8 @@ def unbilled_in_period(customer, period_from, period_to):
     並びは出荷日・出荷番号。billable_shipments と違い、発行の納品書に入っていない出荷 (納品書が無いか取消) も返す。
     出荷には状態の列が無いので、出荷の取消は見ない。create_invoice が作った後の知らせ (_period_note) に使う。
     """
-    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED).values("shipment_id")
+    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     return (
         _Shipment.objects.filter(
             order_line__order__customer=customer, shipped_at__gte=period_from, shipped_at__lte=period_to
@@ -447,6 +457,75 @@ def unbilled_in_period(customer, period_from, period_to):
         .select_related("delivery_note")
         .order_by("shipped_at", "shipment_no")
     )
+
+
+def unbilled_lumps(customer=None):
+    """出し切らずに終えた一式の受注の明細の並び (読むだけ。並びは受注番号・行番号)。請求書の新規登録の黄の 1 行が出す物 (決め PRICE-1d)。
+
+    次の 5 つが全部当たる受注の明細: (1) 単価の単位が式 (2) 出荷が 1 つ以上あり、出荷が全部、発行の納品書に入っている
+    (3) 明細を出し終えた出荷の印 (finishes_line) の付いた出荷が無い (4) 終わっている = 受注が取消か、出荷の合計が数量以上
+    (5) 発行の請求書に、この明細の一式の行 (出荷を指さない明細) がまだ無い。customer を渡せば、その得意先の明細だけ。
+    (2) は R09 (請求書の明細は、出荷済みの物だけ。「出荷済み」は発行の納品書に入っている出荷) を一式の行にも当てるため。
+    出荷の無い取消の一式 (何も納めていない) は請求の元が無いので出さない。(3) は印の付いた出荷が一式の全額を持つので、二重に請求しないため。
+    (4) はまだ出荷を続ける明細を出さないため。
+    並びの明細に、出荷の合計 (shipped_total) と最後の出荷日 (last_shipped_at) を付ける (lump_facts が読む)。
+    受注の明細の表は出荷の外部キーの先として引く (orders を import しない)。出荷で絞る所は pk__in の副問い合わせで書く
+    (多い側の関係を絞りと集計の両方で結ぶと、出荷の合計が倍に数えられることがあるため)。副問い合わせの order_line_id は空にならないので、
+    NOT IN に空の値は入らない。
+    """
+    shipments = _Shipment.objects.values("order_line_id")
+    issued_lumps = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=True).values(
+        "order_line_id"
+    )
+    queryset = (
+        _OrderLine.objects.filter(price_basis=PRICE_BASIS_LUMP, pk__in=shipments)
+        .exclude(pk__in=shipments.filter(finishes_line=True))
+        .exclude(pk__in=shipments.filter(delivery_note__isnull=True))
+        .exclude(pk__in=shipments.filter(delivery_note__status=_DeliveryNote.STATUS_CANCELLED))
+        .exclude(pk__in=issued_lumps)
+    )
+    if customer is not None:
+        queryset = queryset.filter(order__customer=customer)
+    queryset = (
+        queryset.annotate(shipped_total=Sum("shipments__qty"), last_shipped_at=Max("shipments__shipped_at"))
+        .select_related("order__customer", "item")
+        .order_by("order__order_no", "line_no")
+    )
+    return [
+        line for line in queryset if line.order.status == _Order.STATUS_CANCELLED or line.shipped_total >= line.qty
+    ]
+
+
+def lump_facts(order_line):
+    """一式の受注の明細の請求の材料 (読むだけ)。{"shipped_qty", "last_shipped_at", "full_amount", "shipped_amount"}。
+
+    shipped_qty = 出荷の合計、last_shipped_at = 最後の出荷日、full_amount = 一式の全額 (masters.services.line_amount(得意先, 数量, 単価, 式))、
+    shipped_amount = 出した分 = round_amount(得意先, 単価 × 出荷の合計 ÷ 数量) (出荷の合計が数量以上なら一式の全額)。
+    unbilled_lumps が足した shipped_total・last_shipped_at があれば読み、無ければ出荷から集める。
+    出した分は人が金額を決めるときの目安で、保存の決まりではない (決め PRICE-1d の「一式の全額か出した分だけの金額か」)。丸めは round_amount (R03)。
+    訳: 人が一式の金額を決めるときの目安 (全額と出した分) を、どの画面でも同じ値にするため 1 か所で数える。出所 = 作者の決め PRICE-1d・RULES.md R03 (丸め)。出した分を数量の割合で数えるのは AI の案。
+    変えてよい条件 = 作者が目安の数え方を決め直したとき (保存の決まりではないので、変えても出した請求書の金額は変わらない)。
+    """
+    shipped_qty = getattr(order_line, "shipped_total", None)
+    last_shipped_at = getattr(order_line, "last_shipped_at", None)
+    if shipped_qty is None:
+        totals = _Shipment.objects.filter(order_line=order_line).aggregate(
+            shipped_total=Sum("qty"), last_shipped_at=Max("shipped_at")
+        )
+        shipped_qty = totals["shipped_total"] or _ZERO
+        last_shipped_at = totals["last_shipped_at"]
+    customer = order_line.order.customer
+    full_amount = line_amount(customer, order_line.qty, order_line.unit_price, PRICE_BASIS_LUMP)
+    if shipped_qty >= order_line.qty:
+        shipped_amount = full_amount
+    else:
+        shipped_amount = round_amount(customer, order_line.unit_price * shipped_qty / order_line.qty)
+    return {
+        "shipped_qty": shipped_qty,
+        "last_shipped_at": last_shipped_at,
+        "full_amount": full_amount,
+        "shipped_amount": shipped_amount,
+    }
 
 
 def invoice_period(customer, shipments):

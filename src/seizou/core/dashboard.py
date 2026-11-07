@@ -175,8 +175,8 @@ def monthly_trend(today=None, *, months=6) -> dict | None:
     """月次の推移。today の月を含む直近 months か月を古い順に。受注の部品が無いか DB が読めなければ None。
 
     受注 = 取消でない受注の件数 (受注日の月) と、その明細の金額 (R03 で丸めた値) の合計。
-    出荷 = 出荷の件数 (出荷日の月) と、1 件ずつ round_amount(得意先, 出荷の数量 × 明細の単価) の合計
-    (請求書の明細と同じ式)。後で受注が取消になった出荷も数える (出荷は起きた事 = 現物優先)。
+    出荷 = 出荷の件数 (出荷日の月) と、1 件ずつ shipping.services.amount_of_shipment (部品の単位は round_amount(得意先, 出荷の数量 × 明細の単価)。
+    一式の明細は明細を出し終えた出荷で一式の全額、ほかの出荷は 0 = 決め PRICE-1c) の合計 (請求書の明細と同じ式)。後で受注が取消になった出荷も数える (出荷は起きた事 = 現物優先)。
     出荷の部品が無ければ、出荷の件数と金額は None。
 
     返す物 = {"months", "has_shipping", "is_empty", "max_amount", "chart"}。
@@ -219,19 +219,17 @@ def monthly_trend(today=None, *, months=6) -> dict | None:
         for order_date, amount in lines.values_list("order__order_date", "amount"):
             by_period[(order_date.year, order_date.month)]["order_amount"] += amount
         if has_shipping:
-            from seizou.masters.services import company_rounding, round_amount
+            from seizou.masters.services import company_rounding
+            from seizou.shipping.services import amount_of_shipment
 
             rounding = company_rounding()  # 会社の端数の方法は輪の前に 1 回だけ読む (行ごとに会社の行を読まない)
             shipments = shipment_model._default_manager.filter(
                 shipped_at__gte=start, shipped_at__lt=end
             ).select_related("order_line__order__customer")
             for shipment in shipments:
-                line = shipment.order_line
                 row = by_period[(shipment.shipped_at.year, shipment.shipped_at.month)]
                 row["shipment_count"] += 1
-                row["shipment_amount"] += round_amount(
-                    line.order.customer, shipment.qty * line.unit_price, rounding=rounding
-                )
+                row["shipment_amount"] += amount_of_shipment(shipment, rounding=rounding)
     except DatabaseError:
         return None
 
@@ -253,7 +251,8 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
     """出荷の推移。today の月を含む直近 months か月を古い順に。出荷の部品が無いか DB が読めなければ None。
 
     出荷の件数と数量の合計と金額の合計を、出荷日の月で数える。金額は 1 件ずつ
-    round_amount(受注の得意先, 出荷の数量 × 明細の単価) の合計 (月次の推移の出荷の側と同じ式)。
+    shipping.services.amount_of_shipment (部品の単位は round_amount(受注の得意先, 出荷の数量 × 明細の単価)。一式の明細は明細を出し終えた出荷で
+    一式の全額、ほかの出荷は 0 = 決め PRICE-1c) の合計 (月次の推移の出荷の側と同じ式)。
     後で受注が取消になった出荷も数える (出荷は起きた事 = 現物優先)。
 
     返す物 = {"months", "is_empty", "max_qty", "max_amount", "qty_chart", "amount_chart"}。
@@ -263,7 +262,8 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
     shipment_model = _model("shipping", "Shipment")
     if shipment_model is None:
         return None
-    from seizou.masters.services import company_rounding, round_amount
+    from seizou.masters.services import company_rounding
+    from seizou.shipping.services import amount_of_shipment
 
     if today is None:
         today = timezone.localdate()
@@ -286,13 +286,10 @@ def shipping_trend(today=None, *, months=6) -> dict | None:
             shipped_at__gte=start, shipped_at__lt=end
         ).select_related("order_line__order__customer")
         for shipment in shipments:
-            line = shipment.order_line
             row = by_period[(shipment.shipped_at.year, shipment.shipped_at.month)]
             row["shipment_count"] += 1
             row["shipment_qty"] += shipment.qty
-            row["shipment_amount"] += round_amount(
-                line.order.customer, shipment.qty * line.unit_price, rounding=rounding
-            )
+            row["shipment_amount"] += amount_of_shipment(shipment, rounding=rounding)
     except DatabaseError:
         return None
 

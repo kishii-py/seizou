@@ -37,7 +37,7 @@ pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{% if not hide_money %}{{ line.unit_price|floatformat:"-2g"|yen }}{% endif %}</td>
+      <td class="num">{% if not hide_money %}{{ line.unit_price|floatformat:"-2g"|yen }} / {{ line.price_unit }}{% endif %}</td>
       <td class="num">{% if not hide_money %}{{ line.amount|floatformat:"-2g"|yen }}{% endif %}</td>
     </tr>
     {% endfor %}

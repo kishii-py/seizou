@@ -1,6 +1,7 @@
 {% extends "core/form.html" %}
 {# 請求書を作る: core の入力の画面のカードの代わりに billing/_invoice_create_card.html (出荷の表と合計の枠) を置き、得意先の欄で出荷の行を絞る小さな JS を足す。 #}
 {# 行は checkbox の data-partner (出荷の受注の得意先) で見分け、合わない表の行 (tr) を hidden にする (class は付け替えない)。隠れた行に残った印の数を、表の上の黄の 1 行 (data-picked-elsewhere) に書く (印は外さない。知らせるだけ)。 #}
+{# 一式の節の行 (data-lump-row) も同じ得意先で隠し、見える行が 0 なら一式の節 (data-lump-notice) ごと隠す。出荷の表が無くても一式の表を絞る (出荷の表は行が 0 だと描かない)。 #}
 {# 得意先の欄の change は、欄に付けた narrow が先、document の js/seizou-submit-label.js が後に動く (泡立ちの順) ので、合計の枠とボタンの字は隠した後の行で数え直される。この順に頼っている。 #}
 {# JS が動かなくても、得意先と違う出荷は services が R09 で断る。 #}
 {# 締め期間の欄 (候補 C02 の 6・7): 得意先を変えると、選択肢をその得意先の物 (option の data-partner) だけにして空に戻す。期間を選ぶと、data-partner と data-period の両方が合う行に印を付け、同じ得意先のほかの期間の行の印を外す (期間の字だけで合わせると、隠れた別の得意先の行にも付く)。印を変えた行は泡立つ change を送る (合計の枠とボタンの字の数え直し)。期間の外の行は隠さない。 #}
@@ -10,18 +11,27 @@
 (function () {
   var customer = document.getElementById("id_customer");
   var box = document.getElementById("id_shipments");
-  if (!customer || !box) return;
+  if (!customer) return;
   var notice = document.querySelector("[data-picked-elsewhere]");
   var count = document.querySelector("[data-picked-elsewhere-count]");
+  var lumpNotice = document.querySelector("[data-lump-notice]");
   function narrow() {
     var chosen = customer.value;
     var elsewhere = 0;
-    box.querySelectorAll("input[data-partner]").forEach(function (input) {
-      var row = input.closest("tr");
-      if (!row) return;
-      row.hidden = chosen !== "" && input.dataset.partner !== chosen;
-      if (row.hidden && input.checked) elsewhere += 1;
+    if (box) {
+      box.querySelectorAll("input[data-partner]").forEach(function (input) {
+        var row = input.closest("tr");
+        if (!row) return;
+        row.hidden = chosen !== "" && input.dataset.partner !== chosen;
+        if (row.hidden && input.checked) elsewhere += 1;
+      });
+    }
+    var lumpShown = 0;
+    document.querySelectorAll("[data-lump-row]").forEach(function (row) {
+      row.hidden = chosen !== "" && row.dataset.partner !== chosen;
+      if (!row.hidden) lumpShown += 1;
     });
+    if (lumpNotice) lumpNotice.hidden = lumpShown === 0;
     if (count && count.firstChild && count.firstChild.nodeType === 3) count.firstChild.nodeValue = String(elsewhere);
     if (notice) notice.hidden = elsewhere === 0;
   }
@@ -30,7 +40,7 @@
 
   var period = document.getElementById("id_period");
   var issued = document.getElementById("id_issued_on");
-  if (!period) return;
+  if (!period || !box) return;
   var today = issued ? issued.value : "";
   var issuedTouched = false;
   if (issued) issued.addEventListener("input", function () { issuedTouched = true; });
