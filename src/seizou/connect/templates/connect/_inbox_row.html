@@ -35,9 +35,9 @@ hx の属性は master_link の物を写した。URL は url … as で引き、
       <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
       <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
         {% if row.obj.status == "received" %}
-        {% if row.obj.partner_id %}
+        {% if row.obj.partner_id %}{% can_accept_inbox as can_accept %}{% if can_accept %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_accept' row.obj.pk %}">{% icon "check" "size-4" %}受け入れる</a></li>
-        {% endif %}
+        {% endif %}{% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_reject' row.obj.pk %}">{% icon "x" "size-4" %}断る</a></li>
         {% endif %}
         <li><a class="flex items-center gap-2" href="{% url 'connect:inbox_detail' row.obj.pk %}">{% icon "eye" "size-4" %}詳細を見る</a></li>

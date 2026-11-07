@@ -38,8 +38,7 @@ from seizou.core import fields as company_fields
 
 #: 直したことと見出しだけを残す列 (history_hidden_values) の前と後の字
 HIDDEN_VALUE = "(残していません)"
-#: 金額の閲覧の無い人に出す、金額の項目の前と後の字 (決め 権限の作り方 11-03 の金額の閲覧の行「変更の履歴の単価は (非表示)」)
-MASKED_VALUE = "(非表示)"
+# 金額の閲覧の無い人の金額の項目は、字を置き換えず (「(非表示)」の字はやめた)、項目ごと出さない (Timeline._row。決め 11-07 21:0x の 5)。
 #: 人の字の無い行 (人の無い処理で、呼び手が字を渡さなかった行) の人の字
 SYSTEM_ACTOR = "システム"
 #: 値の型
@@ -212,14 +211,12 @@ def saved_state(obj) -> dict:
     return state
 
 
-def _shown(kind: str, text: str, hide_money: bool) -> str:
+def _shown(kind: str, text: str) -> str:
     """変えた項目の前か後の、画面の字 (money は ¥ の字、number は区切り、bool は「はい」「いいえ」、空は「—」)。"""
     from seizou.core.templatetags.seizou_tags import comma, yen
 
     if text == HIDDEN_VALUE:
         return text
-    if kind == "money" and hide_money:
-        return MASKED_VALUE
     if text in ("", None):
         return "—"
     if kind in ("money", "number"):
@@ -239,13 +236,17 @@ class Timeline:
     1 行 = {"when", "who", "title", "action", "icon", "folded", "items"}。items の 1 つ = {"label", "before", "after", "value"}
     (value は畳む行のその時の値 = 作ったは後、消したは前)。訳: 同じ部品を見る図面のビューア (masters の ItemDrawingViewerView も
     BaseDetailView) は履歴を描かないので、問い合わせを増やさないため。
-    金額の項目 (型 money) は、金額の閲覧の無い人には前と後の両方を MASKED_VALUE にする。判定 (access.can_see_money) は
-    money の項目を描く行がある時だけ 1 回呼ぶ (記録だけの状態では記録に 1 行。money の項目が無ければ記録しない)。
+    金額の項目 (型 money) は、金額の閲覧の無い人には項目ごと出さず (_row)、項目が 1 つも残らない行は行ごと出さない。
+    判定 (access.can_see_money) は money の項目のある行がある時だけ 1 回呼ぶ (記録だけの状態では記録に 1 行。money の項目が無ければ記録しない)。
     記録の字は画面の印 (seizou.hide_money) と同じ「単価と金額を見た」にする。訳: 記録だけの状態の記録は同じ要求の同じ字を
     1 行にまとめる (access.log_only) ので、金額の出る詳細を 1 回開いた記録が、履歴の金額の分で 2 行にならないため
     (tests/test_core_access_hardening.py の「印を何度読んでも 1 行」)。
-    訳: 決め (権限の作り方 11-03・金額の閲覧の行) が「変更の履歴の単価は (非表示)」と決めている。一覧と詳細の列と項目を
-    出さない形 (決め 11-05 09:4x) と別に、変更の履歴だけは「(非表示)」と書かれているため。
+    訳: 金額を見られない人の履歴には、金額の項目を項目ごと出さず、項目が残らない行は行ごと出さない。
+    何のため: 隠した印を見せると、見られない物があると知らせて働く人の気持ちを下げるため。
+    出所 = 作者の決め 11-05 09:3x (本人「閲覧の権限なしは社員のモチベーションが下がる」「そもそもないものに見えた方がいい」) と
+    11-07 21:0x (履歴にも当てると選んだ。それまでの「変更の履歴の単価は (非表示)」(権限の作り方 11-03) を置き換える)。
+    変えてよい条件 = 金額を見られない人にも金額が変わった事実を知らせる業務の理由が出たとき。
+    count (タブの数と「全 n 件」) と last (「最後に直した」) も出す行で数える (出さない行を数に入れると、隠した物があると分かるため)。
     """
 
     def __init__(self, queryset, user, *, limit: int, owner=None):
@@ -260,10 +261,15 @@ class Timeline:
 
     @cached_property
     def count(self) -> int:
-        """全部の行の数。上限より少なければ取った行の数 (数える問い合わせを出さない)。"""
-        if len(self._entries) < self.limit:
-            return len(self._entries)
-        return self._queryset.count()
+        """出す行の数 (詳細のタブの数と「全 n 件」)。上限より少なければ出す行の数 (数える問い合わせを出さない)。
+
+        上限まで取ったときは表の全部の行の数から、取った中で出さない行 (金額の項目だけの行。決め 5) を引く。上限の外にも出さない行が
+        あれば多めに数える (未確認 = 上限を超える履歴を金額の閲覧の無い人が見たときの数。全部を読まないと正しい数にならないので今は読まない)。
+        """
+        entries = self._entries
+        if len(entries) < self.limit:
+            return len(self.rows)
+        return self._queryset.count() - (len(entries) - len(self.rows))
 
     @cached_property
     def rows(self) -> list[dict]:
@@ -271,7 +277,8 @@ class Timeline:
         hide_money = False
         if any(item.get("type") == "money" for entry in entries for item in (entry.changes or ())):
             hide_money = not access.can_see_money(self.user)
-        return [self._row(entry, hide_money) for entry in entries]
+        rows = (self._row(entry, hide_money) for entry in entries)
+        return [row for row in rows if row is not None]
 
     @cached_property
     def last(self) -> dict | None:
@@ -286,15 +293,25 @@ class Timeline:
             return label
         return f"{entry.object_text} を{label}"
 
-    def _row(self, entry, hide_money: bool) -> dict:
+    def _row(self, entry, hide_money: bool) -> dict | None:
+        """1 行。hide_money (金額の閲覧の無い人) なら金額の項目 (型 money) を入れず、項目が 1 つも残らない行 (単価だけを直した行など) は None (出さない)。
+
+        訳: 金額を見られない人の履歴には、金額の項目を項目ごと出さず、項目が残らない行は行ごと出さない。
+        何のため: 隠した印を見せると、見られない物があると知らせて働く人の気持ちを下げるため。
+        出所 = 作者の決め 11-05 09:3x (本人「閲覧の権限なしは社員のモチベーションが下がる」「そもそもないものに見えた方がいい」) と 11-07 21:0x (履歴にも当てると選んだ)。
+        変えてよい条件 = 金額を見られない人にも金額が変わった事実を知らせる業務の理由が出たとき。
+        """
         from seizou.core.templatetags.seizou_tags import without_yen_unit
 
         folded = entry.action in FOLDED_ACTIONS
+        changes = list(entry.changes or ())
         items = []
-        for item in entry.changes or ():
+        for item in changes:
             kind = item.get("type", "text")
-            before = _shown(kind, item.get("before", ""), hide_money)
-            after = _shown(kind, item.get("after", ""), hide_money)
+            if hide_money and kind == "money":
+                continue
+            before = _shown(kind, item.get("before", ""))
+            after = _shown(kind, item.get("after", ""))
             items.append(
                 {
                     "label": without_yen_unit(item.get("label", item.get("field", ""))),
@@ -303,6 +320,8 @@ class Timeline:
                     "value": before if entry.action == "deleted" else after,
                 }
             )
+        if hide_money and changes and not items:
+            return None
         return {
             "when": entry.created_at,
             "who": entry.actor_label or SYSTEM_ACTOR,

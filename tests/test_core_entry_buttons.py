@@ -1,6 +1,7 @@
 """入口のボタンの隠す形 (決め 11-04 00:0x「隠す側でそろえよう」。精査 A2 の S2)。
 
 編集の判定が on のとき、種類の権限の無い人には押すと断られるボタンを出さない (押したときの断りは今のまま)。
+金額の判定が on のとき、金額に関わる操作 (core.access.MONEY_ACTIONS) のボタンを金額の閲覧の無い人には出さない (決め 11-07 21:0x「入口も出さない」)。
 ボタンを出すかは core の tag can_write (core.access.can_write_model と同じ判定) と、印 seizou.hide_money だけで決める。
 人は accounts の services で作る。名前は作り物。
 """
@@ -56,12 +57,14 @@ BUTTON_ACTIONS = {
     "billing.cancel_invoice": "billing.Invoice",
     "billing.record_payment": "billing.Invoice",
     "billing.cancel_payment": "billing.Invoice",
-    # 5 発注の詳細
-    "connect.send_order": "purchasing.PurchaseOrder",
+    # 5 発注の詳細。変更と取消は金額に関わる操作 (発注の新規登録と同じ答え)。再送・受入・検収の送り直しは数だけの操作なので、
+    # 受入の新規登録と同じ答え (金額の閲覧を見ない。決め 11-07 21:1x〜21:2x の 6 と 8)
     "purchasing.cancel_purchase_order": "purchasing.PurchaseOrder",
     "purchasing.change_purchase_order": "purchasing.PurchaseOrder",
-    "purchasing.receive": "purchasing.PurchaseOrder",
-    "connect.send_acceptance": "purchasing.PurchaseOrder",
+    "purchasing.resend_purchase_order": "purchasing.Receipt",
+    "connect.send_order": "purchasing.Receipt",
+    "purchasing.receive": "purchasing.Receipt",
+    "connect.send_acceptance": "purchasing.Receipt",
     # 6 マニュアル
     "manuals.create_folder": "manuals.Manual",
     "manuals.create_manual": "manuals.Manual",
@@ -72,6 +75,13 @@ BUTTON_ACTIONS = {
     "manuals.move_manual": "manuals.Manual",
     "manuals.protect_manual": "manuals.Manual",
     "manuals.delete_manual": "manuals.Manual",
+}
+
+
+#: 新規登録は金額に関わる操作だが、この操作は本人の決め (指示書の 6・7・8) の「足す」にも「足さない」にも無い物 → 理由。
+#: 入口は tag で隠れ、保存は通る (小さい方)。本体に戻す。
+MONEY_PAIR_EXCEPTIONS = {
+    "shipping.cancel_delivery_note": "納品書の取消。決め 7 は「作る」だけを足した",
 }
 
 
@@ -96,8 +106,14 @@ def test_action_kinds_match_create():
     for action, label in BUTTON_ACTIONS.items():
         assert access.ACTION_KINDS[action] == access.ACTION_KINDS[_create_action(label)], action
         assert action not in access.ACCOUNT_ACTIONS, action
-    # 入金の記録は金額が主な登録 (保存で金額の門が断る)。tag の答えは金額を見ない。
+        # 金額の答えも同じ (金額に関わる操作のボタンは、金額に関わる新規登録の model で tag を呼ぶ)。
+        if action not in MONEY_PAIR_EXCEPTIONS:
+            assert (action in access.MONEY_ACTIONS) == (_create_action(label) in access.MONEY_ACTIONS), action
+    assert set(MONEY_PAIR_EXCEPTIONS) <= set(BUTTON_ACTIONS)
+    # 入金の記録は金額に関わる操作 (保存で金額の門が断る)。tag の答えも金額を見る (決め 11-07 21:0x。test_money_entries_hidden_without_money)。
     assert "billing.record_payment" in access.MONEY_ACTIONS
+    # 金額に関わる操作は、どれも編集の権限の種類を持つ (金額の閲覧だけで通す操作は無い)。
+    assert set(access.MONEY_ACTIONS) <= set(access.ACTION_KINDS)
 
 
 # ---------------------------------------------------------------- 共通
@@ -157,11 +173,19 @@ def test_board_menu_hides_ship_and_po(settings, client, on, user, customer, item
     # ⋮ は空にならない (受注の詳細はいつも出る)。
     assert "受注の詳細" in denied
 
-    jimu = account("jimu", permissions=["slip_edit"])
+    jimu = account("jimu", permissions=["slip_edit"], see_money=True)
     for person in (jimu, admin):
         allowed = row_for(person)
         for entry in entries:
             assert entry in allowed, (person.username, entry)
+
+    # 伝票編集で金額の閲覧が無い人: 「発注する」(金額に関わる操作) は出さず、「出荷する」「指示書を発行する」は出す (決め 11-07 21:0x)。
+    clerk = account("clerk", permissions=["slip_edit"])
+    no_money = row_for(clerk)
+    for entry in (entries[2], "発注する"):
+        assert entry not in no_money, entry
+    for entry in (entries[0], entries[1], "出荷する", "指示書を発行する"):
+        assert entry in no_money, entry
 
     # 既定 (log) では権限が無くても出る (断りは保存のとき)。
     settings.SEIZOU = {}
@@ -188,13 +212,23 @@ def test_order_detail_hides_cancel_ship_and_po(client, on, user, customer, item,
     assert "部品の情報を見る" in lines_html
     assert list_href in denied and "一覧に戻る" not in denied  # 一覧へはパンくずで戻る (N163)
 
-    jimu = account("jimu", permissions=["slip_edit"])
+    jimu = account("jimu", permissions=["slip_edit"], see_money=True)
     for person in (jimu, admin):
         allowed = _page(client, person, detail_url)
         assert cancel_href in allowed, person.username
         lines_html = _section(allowed, "order-lines-title")
         for entry in entries:
             assert entry in lines_html, (person.username, entry)
+
+    # 伝票編集で金額の閲覧が無い人: 受注の「取消」(金額に関わる操作) は出さず、出荷と指示書の入口は出す (決め 11-07 21:0x)。
+    clerk = account("clerk", permissions=["slip_edit"])
+    no_money = _page(client, clerk, detail_url)
+    assert cancel_href not in no_money
+    lines_html = _section(no_money, "order-lines-title")
+    for entry in (entries[0], entries[1], "出荷する", "指示書を発行する"):
+        assert entry in lines_html, entry
+    for entry in (entries[2], "発注する"):
+        assert entry not in lines_html, entry
 
     # 取消の受注は、システム管理者にも「取消」を出さない (今の形のまま)。
     orders_services.cancel_order(order, admin)
@@ -218,13 +252,13 @@ def test_order_detail_head_ship_button_by_permission(client, on, user, customer,
 
     # Access の行の無い人と、受注だけの権限の人 (出荷は別の「出荷と納品書」) には無い。受注だけの人の「編集」は緑のまま。
     assert "出荷登録" not in _page(client, user, detail_url)
-    eigyo = account("eigyo", permissions=["orders"])
+    eigyo = account("eigyo", permissions=["orders"], see_money=True)
     page = _page(client, eigyo, detail_url)
     assert "出荷登録" not in page
     assert green_edit in page and white_edit not in page
 
     # 伝票編集 (受注と出荷を含む) の人とシステム管理者には緑の「出荷登録」(明細 1 行なので小窓を直に開く) と白の「編集」
-    jimu = account("jimu", permissions=["slip_edit"])
+    jimu = account("jimu", permissions=["slip_edit"], see_money=True)
     for person in (jimu, admin):
         page = _page(client, person, detail_url)
         assert ship_button in page and "出荷登録" in page, person.username
@@ -233,6 +267,12 @@ def test_order_detail_head_ship_button_by_permission(client, on, user, customer,
     # 出荷だけの人には緑の「出荷登録」だけが出て、受注の「編集」は無い
     shukka = account("shukka", permissions=["shipping"])
     page = _page(client, shukka, detail_url)
+    assert ship_button in page
+    assert edit_href not in page
+
+    # 伝票編集で金額の閲覧が無い人: 受注の「編集」(数の変更で金額が変わる = 金額に関わる操作) は出さず、「出荷登録」は出す (決め 11-07 21:0x)。
+    clerk = account("clerk", permissions=["slip_edit"])
+    page = _page(client, clerk, detail_url)
     assert ship_button in page
     assert edit_href not in page
 
@@ -287,10 +327,18 @@ def test_delivery_note_hides_cancel_and_invoice(client, on, user, item):
     for href in documents:
         assert href in denied, href
 
-    jimu = account("jimu", permissions=["slip_edit"])
+    jimu = account("jimu", permissions=["slip_edit"], see_money=True)
     allowed = _page(client, jimu, detail_url)
     assert cancel_href in allowed
     assert invoice_href in allowed and "請求書作成" in allowed
+
+    # 伝票編集で金額の閲覧が無い人: 「請求書作成」と納品書の「取消」(納品書は金額を刷る書類 = 決め 7 で金額に関わる操作) は出さず、書面は出す (決め 11-07 21:0x)。
+    clerk = account("clerk", permissions=["slip_edit"])
+    no_money = _page(client, clerk, detail_url)
+    assert invoice_href not in no_money and "請求書作成" not in no_money
+    assert cancel_href not in no_money
+    for href in documents:
+        assert href in no_money, href
 
 
 @pytest.mark.django_db
@@ -317,14 +365,13 @@ def test_invoice_hides_cancel_payment_and_documents(settings, client, on, user, 
         assert href not in denied, href
     assert guide not in _page(client, user, unpaid_url)
 
-    # 伝票編集で金額の閲覧が無い人: 書く入口は出し、金額の書面 (印刷と PDF) は出さない。
+    # 伝票編集で金額の閲覧が無い人: 書く入口 (請求書の取消・入金の記録と取消 = 金額に関わる操作) も、金額の書面 (印刷と PDF) も出さない
+    # (決め 11-07 21:0x「入口も出さない」。空のときの案内も出さない)。
     jimu = account("jimu", permissions=["slip_edit"])
     clerk = _page(client, jimu, detail_url)
-    for href in writes:
-        assert href in clerk, href
-    for href in documents:
+    for href in (*writes, *documents):
         assert href not in clerk, href
-    assert guide in _page(client, jimu, unpaid_url)
+    assert guide not in _page(client, jimu, unpaid_url)
 
     keiri = account("keiri", permissions=["billing"], see_money=True)
     full = _page(client, keiri, detail_url)
@@ -336,6 +383,35 @@ def test_invoice_hides_cancel_payment_and_documents(settings, client, on, user, 
     for href in (*writes, *documents):
         assert href in logged, href
     assert guide in _page(client, user, unpaid_url)
+
+
+@pytest.mark.django_db
+def test_money_entries_hidden_without_money(settings, client, user):
+    """金額の判定が on なら、編集の判定が off でも、金額に関わる操作の入口 (受注の「新規登録」) を金額の閲覧の無い人には出さない。
+
+    決め 11-07 21:0x (本人「金額見れない人は金額に関わる操作はできないよねやっぱり」)。数だけの操作 (出荷の「新規登録」) は出す。
+    記録だけ (log) では今までどおり出る。
+    """
+    settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
+    order_create = f'href="{reverse("orders:order_create")}"'
+    shipment_create = f'href="{reverse("shipping:shipment_create")}"'
+    order_list = reverse("orders:order_list")
+    shipment_list = reverse("shipping:shipment_list")
+
+    po_create = f'href="{reverse("purchasing:purchaseorder_create")}"'
+
+    clerk = account("clerk")
+    assert order_create not in _page(client, clerk, order_list)
+    # 発注の新規登録は明細の単価の欄が必須 (見つけ GR-07)。金額の閲覧の無い人には入口ごと出さない。
+    assert po_create not in _page(client, clerk, reverse("purchasing:purchaseorder_list"))
+    assert shipment_create in _page(client, clerk, shipment_list)
+    assert not access.can_write_model(User.objects.get(pk=clerk.pk), apps.get_model("orders.Order"), "create")
+
+    keiri = account("keiri", see_money=True)
+    assert order_create in _page(client, keiri, order_list)
+
+    settings.SEIZOU = {}
+    assert order_create in _page(client, clerk, order_list)
 
 
 # ---------------------------------------------------------------- 5 発注の詳細
@@ -368,10 +444,17 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
     # 出荷の知らせの行 (日と数) は権限に依らず出る。
     assert "2026-11-05" in denied
 
-    buyer = account("buyer", permissions=["purchasing"])
+    buyer = account("buyer", permissions=["purchasing"], see_money=True)
     allowed = _page(client, buyer, detail_url)
     for entry in entries:
         assert entry in allowed, entry
+
+    # 発注の権限で金額の閲覧が無い人: 受入 (決め 8) と再送 (決め 6) は出し、「取消」(金額に関わる操作) は出さない (決め 11-07 21:0x〜21:2x)。
+    clerk = account("clerk", permissions=["purchasing"])
+    no_money = _page(client, clerk, detail_url)
+    for entry in entries[:-1]:
+        assert entry in no_money, entry
+    assert entries[-1] not in no_money
 
     settings.SEIZOU = {}
     logged = _page(client, user, detail_url)

@@ -182,7 +182,8 @@ def test_post_without_price_basis_is_unit(logged_in, customer, shaft):
 
 
 @pytest.mark.django_db
-def test_no_money_user_has_no_price_basis_and_keeps_it(settings, logged_in, lump_order):
+def test_no_money_user_has_no_price_basis_and_cannot_save(settings, logged_in, lump_order):
+    """金額の閲覧の無い人の入力には単価の単位の欄が無く、受注の編集の保存は金額の門が断る (決め 11-07 21:0x の 4 の続き)。式の明細は変わらない。"""
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
     assert "price_basis" not in logged_in.get(reverse("orders:order_create")).content.decode()
     url = reverse("orders:order_update", args=[lump_order.pk])
@@ -207,9 +208,10 @@ def test_no_money_user_has_no_price_basis_and_keeps_it(settings, logged_in, lump
         "lines-0-note": "",
     }
     response = logged_in.post(url, data)
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert "受注は金額が主な内容のため、金額の閲覧の権限が無い方は変更できません。" in response.content.decode()
     line.refresh_from_db()
-    assert (line.qty, line.price_basis, line.amount) == (Decimal("200"), "lump", Decimal("50000"))
+    assert (line.qty, line.price_basis, line.amount) == (Decimal("300"), "lump", Decimal("50000"))
 
 
 # --- 詳細 ---

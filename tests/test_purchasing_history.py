@@ -2,7 +2,7 @@
 
 発注の書く関数が、発注の詳細の「履歴」に作った・直した・取り消したを残すこと、相手の注文回答で書く所 (user が None) の人の字が
 「<取引先の名前> の seizou」になること、明細をまとめて書く所 (取消の版・答えを空に戻す所) が明細ごとに残ること、
-送った発注の変更で単価の前と後が残り金額の閲覧の無い人に「(非表示)」と出ること、詳細の問い合わせの数が履歴の行の数で増えないことを見る。
+送った発注の変更で単価の前と後が残り、金額の閲覧の無い人には単価だけを直した明細の行が出ないこと (決め 5)、詳細の問い合わせの数が履歴の行の数で増えないことを見る。
 相手の受け口への HTTP は requests.post を偽の物に差し替える (外へは出ない)。データは作り物だけ。
 """
 
@@ -171,11 +171,12 @@ def test_change_unit_price_shows_before_after_and_masked(settings, client, logge
     assert {"field": "unit_price", "label": "単価", "type": "money", "before": "1100", "after": "1180"} in line.changes
     assert "単価: ¥1,100 → ¥1,180" in _history_part(logged_in, po)
 
+    # 金額の閲覧の無い人: 単価だけを直した明細の行は出ず、発注の行 (注文履歴番号) は出る (決め 5)。
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
     part = _history_part(client, po)
-    assert "単価: (非表示) → (非表示)" in part
-    assert "1,180" not in part
+    assert "注文履歴番号: 1 → 2" in part
+    assert "(非表示)" not in part and "単価: " not in part and "1,180" not in part
 
 
 @pytest.mark.django_db

@@ -307,11 +307,17 @@ def test_intake_row_has_no_conditional_or_hold_screen(client, user, customer):
 
 
 @pytest.mark.django_db
-def test_conditional_without_money_keeps_order_price(client, settings, sent, own_items):
+def test_conditional_without_money_is_refused(client, settings, sent, own_items):
+    """金額の閲覧の無い人は、受け入れ (条件付を含む。受注を作る操作 = 金額に関わる操作) をしない。入口も出さない (決め 11-07 21:0x)。
+
+    受け入れの画面 (直に開いた物) は回答単価の欄を置かないまま (form の hide_money)。保存は金額の門が断り、受注はできない。
+    """
     _po, inbox = sent
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(account("jimu"))
 
+    assert "単価を直して受け入れる" not in client.get(_url("inbox_accept", inbox)).content.decode()
+    assert "受け入れる</a>" not in client.get(_url("inbox_detail", inbox)).content.decode()
     body = client.get(_url("inbox_accept_conditional", inbox)).content.decode()
     assert "line_1_unit_price" not in body
     assert "line_1_qty" in body
@@ -319,8 +325,18 @@ def test_conditional_without_money_keeps_order_price(client, settings, sent, own
     data = _conditional_data(own_items, line_1_qty="8")
     for key in ("line_1_unit_price", "line_2_unit_price"):
         data.pop(key)
-    client.post(_url("inbox_accept_conditional", inbox), data)
+    response = client.post(_url("inbox_accept_conditional", inbox), data)
 
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert 'data-notice="stop"' in html
+    assert "受信した注文は金額が主な内容のため、金額の閲覧の権限が無い方は受け入れられません。" in html
+    assert Order.objects.count() == 0
+
+    # 金額の閲覧のある人は、回答単価の欄が出て、同じ注文を条件付で受け入れられる。
+    client.force_login(account("keiri", see_money=True))
+    assert "line_1_unit_price" in client.get(_url("inbox_accept_conditional", inbox)).content.decode()
+    client.post(_url("inbox_accept_conditional", inbox), _conditional_data(own_items, line_1_qty="8"))
     line = Order.objects.get().lines.get(line_no=1)
     assert (line.unit_price, line.qty) == (Decimal("25.5"), Decimal("8"))
 

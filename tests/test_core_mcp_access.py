@@ -143,7 +143,7 @@ def test_create_order_refused_without_money(on, world):
     assert "受注は金額が主な内容のため" in refused["error"]
     assert Order.objects.count() == orders_before
 
-    # 金額が主な登録は受注と請求書と入金と単価表の行の追加と編集と削除だけ (MONEY_ACTIONS)。出荷は伝票編集の権限で通る。
+    # 出荷は数だけの操作 (金額に関わる操作 = MONEY_ACTIONS に入れない。決め 11-07 21:1x の 6) なので、伝票編集の権限で通る。
     shipped = tools["ship"](world.order.order_no, 1, "1", world.today.isoformat())
     assert shipped["ok"] is True, shipped
 

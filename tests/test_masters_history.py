@@ -1,6 +1,6 @@
 """マスター (部品・取引先・工程・部品の取引先と単価・標準の工程の並び・休日) の変更の履歴 (決め HIST-0・HIST-1・C98-1・C98-6)。
 
-部品の詳細の「履歴」のタブと「最後に直した」、会社ごとの項目の前と後、金額の閲覧の無い人の「(非表示)」、使用停止と再開、
+部品の詳細の「履歴」のタブと「最後に直した」、会社ごとの項目の前と後、金額の閲覧の無い人には金額の項目が出ないこと (決め 5)、使用停止と再開、
 部品の取引先と単価の行の作る・直す・消す、標準の工程の並び、休日を消した記録を見る。データは作り物だけ。
 """
 
@@ -107,16 +107,19 @@ def test_company_field_before_and_after(monkeypatch, user, item):
 
 
 @pytest.mark.django_db
-def test_standard_price_yen_and_masked(settings, client, logged_in, user, item):
+def test_standard_price_yen_and_hidden(settings, client, logged_in, user, item):
     masters_services.update_item(item, {"standard_price": Decimal("1180")}, user)
 
-    assert "標準単価: ¥1,100 → ¥1,180" in _history_part(_detail(logged_in, item))
+    part = _history_part(_detail(logged_in, item))
+    assert "標準単価: ¥1,100 → ¥1,180" in part
+    assert 'tabular-nums">2</span>' in part  # 作った + 直した
 
+    # 金額の閲覧の無い人: 標準単価だけを直した行は項目が残らないので行ごと出ず、作った行だけ (標準単価の項目なし) が残る (決め 5)。タブの数も 1。
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
     part = _history_part(_detail(client, item))
-    assert "標準単価: (非表示) → (非表示)" in part
-    assert "1,180" not in part
+    assert "(非表示)" not in part and "標準単価" not in part and "1,180" not in part and "1,100" not in part
+    assert "作った" in part and 'tabular-nums">1</span>' in part
 
 
 # ---------------------------------------------------------------- (d) 使用停止と再開
@@ -177,9 +180,12 @@ def test_item_price_rows_on_item_detail(settings, client, logged_in, user, item,
     part = _history_part(_detail(logged_in, item))
     assert "単価: ¥1,100 → ¥1,180" in part
 
+    # 金額の閲覧の無い人: 単価だけを直した行は出ず、単価の行を作った行は単価の項目なしで出る (決め 5)。
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
-    assert "単価: (非表示) → (非表示)" in _history_part(_detail(client, item))
+    part = _history_part(_detail(client, item))
+    assert "(非表示)" not in part and "単価: " not in part and "1,180" not in part and "1,100" not in part
+    assert "を作った" in part
 
 
 # ---------------------------------------------------------------- (f) 標準の工程の並び
@@ -250,11 +256,12 @@ def test_delete_partner_item_records_prices_and_row(settings, client, logged_in,
     assert part.count("を消した") == 3
     assert part.count("その時の値") >= 3
 
+    # 金額の閲覧の無い人: 消した行は出るが、その時の値に単価は無い (決め 5)。
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
     part = _history_part(_detail(client, item))
-    assert "単価: (非表示)" in part
-    assert "¥900" not in part
+    assert part.count("を消した") == 3
+    assert "(非表示)" not in part and "単価: " not in part and "¥900" not in part
 
     masters_services.delete_item_price(common, user)
     assert ChangeLog.objects.count() == before + 4
