@@ -10,6 +10,7 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
   作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
+  受けない形 (PDF・TIFF・PNG・JPEG の外。CAD の .dxf・.dwg は添付で持つ) と 20MB を超える図面は、読む前に ValueError (_refuse_bad_drawing)。
 - 部品の図面を新しいファイルに差し替えたら、前の図面を版 (ItemDrawingVersion) に残す (ファイルは写さず名前の字を持つ)。
   版に戻すのは restore_drawing_version。
 - 使用停止 (active が偽。N135): 消さずに候補から外す。候補の母集団は active_items・active_partners、
@@ -187,6 +188,22 @@ PREVIEW_MAX_SIDE = 2000
 DRAWING_MAX_PAGES = 20
 #: Pillow で読む図面の拡張子 (大文字も)。ほかの形 (PDF など) は読まずに link だけ。
 DRAWING_IMAGE_SUFFIXES = (".tif", ".tiff", ".png", ".jpg", ".jpeg")
+#: 図面として受ける拡張子 (大文字も)。この外の形は保存しない (_refuse_bad_drawing)。
+DRAWING_SUFFIXES = (".pdf", ".tif", ".tiff", ".png", ".jpg", ".jpeg")
+#: 図面として受ける大きさの上限 (バイト)。添付 (attachments の MAX_BYTES) と同じ 20MB。masters は attachments を import しない。
+DRAWING_MAX_BYTES = 20 * 1024 * 1024
+#: CAD のファイルの拡張子。図面としては受けず、部品の詳細の「添付ファイル」の枠で付ける。
+CAD_SUFFIXES = (".dxf", ".dwg")
+DRAWING_BAD_SUFFIX_MESSAGE = (
+    "保存できません。図面ファイルの形式が違います。PDF・TIFF・PNG・JPEG のどれかのファイルを選んでください。"
+)
+DRAWING_CAD_MESSAGE = (
+    "保存できません。CAD のファイル (.dxf・.dwg) は図面ファイルとしては付けられません。"
+    "部品を保存してから、詳細の「添付ファイル」の枠で付けてください。"
+)
+DRAWING_TOO_BIG_FILE_MESSAGE = (
+    "保存できません。図面ファイルが 20MB を超えています。解像度を下げるか分けてから選び直してください。"
+)
 #: 表示用の絵を作れなかったときの文 (本体の決めの字)。Pillow の例外の文は足さない。
 DRAWING_BROKEN_MESSAGE = "図面の表示用の絵は作れませんでした (ファイルが壊れています)。元のファイルは保存してあります。"
 DRAWING_TOO_LARGE_MESSAGE = (
@@ -198,8 +215,12 @@ DRAWING_BOMB_MESSAGE = (
     "図面の表示用の絵は作れませんでした (絵が大きすぎます)。"
     "元のファイルは保存してあります。解像度を下げて付け直すと絵を作れます。"
 )
+#: 表示用の絵を作るときの記憶の予算 (バイト)。白黒の G4 の A0 400dpi (約 496MB) は通し、カラーの A0 (約 992MB) は断る。
+DRAWING_MEMORY_BUDGET = 600 * 1024 * 1024
 # PNG に保存できる形。白黒 (1) は L にしてから縮める (そのまま縮めると細い線が消える)。
 _PREVIEW_MODES = ("L", "RGB", "RGBA")
+# Pillow が記憶に持つ 1 画素のバイト数 (形 → バイト数)。I;16 系は 2、この表に無い形は 4 (RGB も 4 バイトで持つ)。
+_MODE_BYTES = {"1": 1, "L": 1, "P": 1}
 # Pillow の上限 (Image.MAX_IMAGE_PIXELS) と、途中で切れた絵を読むか (ImageFile.LOAD_TRUNCATED_IMAGES) は
 # module 全体の値なので、変えて戻す間を 1 つずつにする。
 _PIXEL_LIMIT_LOCK = threading.Lock()
@@ -208,6 +229,27 @@ _PIXEL_LIMIT_LOCK = threading.Lock()
 def _is_new_upload(value):
     """新しく上げたファイルか。Django の File で、表に既にある FieldFile でない物 (画面の入力では UploadedFile)。"""
     return isinstance(value, File) and not isinstance(value, FieldFile)
+
+
+def _refuse_bad_drawing(file):
+    """新しく上げた図面の名前の拡張子と大きさを見て、受けない物は日本語の ValueError にする。中身は読まない (Image.open の前)。
+
+    拡張子 (小文字にして見る) が CAD_SUFFIXES なら DRAWING_CAD_MESSAGE、DRAWING_SUFFIXES に無ければ
+    DRAWING_BAD_SUFFIX_MESSAGE、大きさが DRAWING_MAX_BYTES を超えれば DRAWING_TOO_BIG_FILE_MESSAGE。
+    _with_drawing_preview が create_item・update_item の transaction.atomic の前で呼ぶので、断ると行もファイルも残らない。
+    表に既にある図面 (上限の前に保存された古い行の .dxf など) は見ない (今のまま開ける)。
+    訳: 図面として受けるのは PDF・TIFF・PNG・JPEG の 20MB までにし、CAD のファイル (.dxf・.dwg) は図面としては受けず添付で持つ。
+    1 枚の図面で同じ VPS の 2 社のサーバーが落ちるのを止めるため (表示用の絵を作る形だけを受ける)。
+    出所 = 本人の決め 11-08 00:16 (断る (おすすめ)・CAD は添付で持つ (おすすめ))。
+    変えてよい条件 = 本人が決め直したとき、または VPS のメモリの目安を変えたとき。
+    """
+    suffix = os.path.splitext(getattr(file, "name", "") or "")[1].lower()
+    if suffix in CAD_SUFFIXES:
+        raise ValueError(DRAWING_CAD_MESSAGE)
+    if suffix not in DRAWING_SUFFIXES:
+        raise ValueError(DRAWING_BAD_SUFFIX_MESSAGE)
+    if (getattr(file, "size", None) or 0) > DRAWING_MAX_BYTES:
+        raise ValueError(DRAWING_TOO_BIG_FILE_MESSAGE)
 
 
 def _drawing_preview(file):
@@ -225,6 +267,12 @@ def _drawing_preview(file):
     訳: 小さなファイルが開くと何 GB にもなる絵 (decompression bomb) で、サーバーの記憶を使い切らせないため。
     出所 = Claude Security の走査の候補 11-07 の 31 (守りを None で外していた)。図面の上限の 3 億画素は 00 の案のまま。
     変えてよい条件 = 図面の上限 (DRAWING_MAX_PIXELS) を変える時。守りを None にして外すことはしない。
+    訳: 表示用の絵を作るときは、絵を読む (load) 前に記憶の使う量 (幅 × 高さ × 1 画素のバイト数。変換が要る形は変換の後の
+    1 枚分を足す) を見積もり、DRAWING_MEMORY_BUDGET を超える絵は読まずに大きすぎるの文にする (部品と元のファイルは保存する)。
+    形式の判定も読む前に置く (PNG は verify、JPEG は縮めて読む)。1 枚の図面で同じ VPS の 2 社のサーバーが記憶の不足で落ちるのを
+    止めるため。白黒の G4 の A0 400dpi (約 496MB) は通し、カラーの A0 (約 992MB) は断る。
+    出所 = 本人の決め 11-08 00:16 と 00-matome.md:25 の「A0 400dpi を読む」(作業場の外の計画の文書。字は依頼書 N361 の写し)。
+    変えてよい条件 = 本人が決め直したとき、または VPS のメモリの目安を変えたとき。
     """
     if not (getattr(file, "name", "") or "").lower().endswith(DRAWING_IMAGE_SUFFIXES):
         return None, "", []
@@ -255,16 +303,53 @@ def _drawing_preview(file):
 
 
 def _read_drawing(file):
-    """_drawing_preview の中身。Pillow の上限を図面の上限まで上げた中で呼ぶ。"""
+    """_drawing_preview の中身。Pillow の上限を図面の上限まで上げた中で呼ぶ。
+
+    Image.open は頭 (大きさと形) だけを読む。絵の全部を読む (load) 前に、画素の数 (DRAWING_MAX_PIXELS) と
+    記憶の予算 (DRAWING_MEMORY_BUDGET) を見て、超えたら読まずに大きすぎるの文を返す。
+    形式の判定も読む前に置く。PNG は verify (中身を広げずに切れと検査の値を見る) で、JPEG は 1/8 に縮めて読む
+    (JPEG の verify は切れていても通るため)。どちらもそのまま絵で出すので表示用は None。
+    """
     with Image.open(file) as image:
         width, height = image.size
         if width * height > DRAWING_MAX_PIXELS:
             return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height), []
-        image.load()  # Image.open は頭だけ読む。壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
-        if image.format in ("PNG", "JPEG"):
+        if _drawing_memory(image) > DRAWING_MEMORY_BUDGET:
+            return None, DRAWING_TOO_LARGE_MESSAGE.format(width=width, height=height), []
+        if image.format == "PNG":
+            image.verify()  # 切れた PNG は OSError (壊れているの文)
             return None, "", []
+        if image.format == "JPEG":
+            # 縮めて読むと記憶は 1/64。切れた JPEG は縮めても load で OSError (壊れているの文)
+            image.draft(image.mode, (max(1, width // 8), max(1, height // 8)))
+            image.load()
+            return None, "", []
+        image.load()  # 壊れた中身はここで例外になる。複数ページは開いたときの 1 枚目
         first = _page_png(image)
         return first, "", _later_pages(image)
+
+
+def _drawing_memory(image):
+    """表示用の絵を作るときに記憶に持つ量の見積もり (バイト)。Image.open の後の大きさと形だけを見る (読まない)。
+
+    幅 × 高さ × (元の 1 画素のバイト数 + 変換の後の 1 画素のバイト数)。変換は _page_png と同じ決め方
+    (白黒 1 → L は 1、_PREVIEW_MODES の外 → RGB か RGBA は 4、_PREVIEW_MODES の中は変換しないので 0)。
+    """
+    width, height = image.size
+    mode = image.mode
+    if mode in _MODE_BYTES:
+        stored = _MODE_BYTES[mode]
+    elif mode.startswith("I;16"):
+        stored = 2
+    else:
+        stored = 4
+    if mode == "1":
+        converted = 1
+    elif mode in _PREVIEW_MODES:
+        converted = 0
+    else:
+        converted = 4
+    return width * height * (stored + converted)
 
 
 def _page_png(page):
@@ -285,7 +370,8 @@ def _page_png(page):
 def _later_pages(image):
     """複数ページの絵の 2 ページ目から後 (DRAWING_MAX_PAGES まで) の PNG の bytes の並び。
 
-    読めない・大きすぎるページがあれば、そのページから後は作らない (誤りの文にしない。1 ページ目は見られる)。
+    読めない・大きすぎる (画素の数か記憶の予算を超える) ページがあれば、そのページから後は作らない
+    (誤りの文にしない。1 ページ目は見られる)。
     """
     pages = []
     for index, page in enumerate(ImageSequence.Iterator(image)):
@@ -296,6 +382,8 @@ def _later_pages(image):
         try:
             width, height = page.size
             if width * height > DRAWING_MAX_PIXELS:
+                break
+            if _drawing_memory(page) > DRAWING_MEMORY_BUDGET:
                 break
             page.load()
             pages.append(_page_png(page))
@@ -310,7 +398,8 @@ def _with_drawing_preview(data):
 
     読むのは表と置き場に書く前。足した 3 つは部品の行と元のファイルと一緒に 1 回で書く。
     2 ページ目から後の PNG は、名前が表示用の保存の後に決まるので、呼ぶ側が保存の後に _save_preview_pages で書く。
-    - 新しく上げたファイル: 読んで、表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。ページ数は 1 にし直す。
+    - 新しく上げたファイル: 拡張子と大きさを _refuse_bad_drawing で見て (受けない物は ValueError)、読んで、
+      表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。ページ数は 1 にし直す。
     - 今の FieldFile (選び直していない) と、鍵が無いとき: data のまま (4 つとも変えない)。
     - False・None・空 (入力の画面の「消す」): 図面と 2 つを空の字にし、ページ数を 1 にする。
     """
@@ -318,6 +407,7 @@ def _with_drawing_preview(data):
         return data, []
     drawing = data["drawing"]
     if _is_new_upload(drawing):
+        _refuse_bad_drawing(drawing)
         png, error, pages = _drawing_preview(drawing)
         preview = ""
         if png is not None:

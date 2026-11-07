@@ -30,6 +30,9 @@ ALLOWED = {
     ".txt": ("text/plain", False),
     ".xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", False),
     ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", False),
+    # CAD のファイル。図面としては受けないので添付で持つ (masters の図面の受け口。決め 11-08 00:16)。中では開かない
+    ".dxf": ("application/octet-stream", False),
+    ".dwg": ("application/octet-stream", False),
 }
 
 #: 付けられる大きさの上限 (バイト)
