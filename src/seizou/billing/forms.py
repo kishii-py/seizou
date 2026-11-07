@@ -25,6 +25,7 @@ from django.utils import timezone
 
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number
 from seizou.core.widgets import IsoDateInput
+from seizou.masters.services import PRICE_BASIS_LUMP
 
 from .models import Invoice
 from .models import Payment
@@ -177,11 +178,12 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
 
     @property
     def rows(self):
-        """出荷の表の行。1 行 = {box・shipment・checked・qty_text・amount・amount_text}。
+        """出荷の表の行。1 行 = {box・shipment・checked・qty_text・amount・amount_text・lump}。
 
         最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
         box は checkbox の subwidget (テンプレートが {{ row.box.tag }} で描く)。qty_text と amount_text は JS が読む素の数の字。
         amount は行の得意先の端数の扱いで 1 円に丸めた金額 (services.shipment_amount)。金額の閲覧が無い人は None。
+        lump = 受注の明細の単価の単位が式 (金額の枡に「(一式)」を添える。一式の途中の出荷は 0。決め PRICE-1c)。
         """
         if self._rows is None:
             rows = []
@@ -196,6 +198,7 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
                         "qty_text": f"{shipment.qty.normalize():f}",
                         "amount": amount,
                         "amount_text": None if amount is None else f"{amount:f}",
+                        "lump": shipment.order_line.price_basis == PRICE_BASIS_LUMP,
                     }
                 )
             self._rows = rows

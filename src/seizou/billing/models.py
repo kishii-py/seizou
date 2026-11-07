@@ -1,7 +1,7 @@
 """請求書の表 (01 の 4 節)。
 
 請求書は得意先ごとに、出荷済みの出荷 (発行の納品書に入っている出荷) をまとめた物。
-明細は出荷ごとに 1 行で、数量・単価・金額の写しを持つ (出した請求書の金額は、後で受注の単価を直しても変わらない)。
+明細は出荷ごとに 1 行 (と、出し切らずに終えた一式の受注の明細に人が金額を決めた行。決め PRICE-1d) で、数量・単価・金額の写しを持つ (出した請求書の金額は、後で受注の単価を直しても変わらない)。
 支払期日も作ったときに計算して残す (後で取引先の支払の欄を直しても、出した請求書の期日は変わらない)。
 文字数の上限は固定 (識別子 35・コード 10)。
 書くときは billing.services を通す。
@@ -12,6 +12,8 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text
 
 
 class Invoice(models.Model):
@@ -82,7 +84,10 @@ class Invoice(models.Model):
 
 
 class InvoiceLine(models.Model):
-    """請求書の明細。出荷 1 つに 1 行。数量・単価・金額は作ったときの写し。"""
+    """請求書の明細。出荷の行 (出荷 1 つに 1 行) か、一式の行 (出荷に結び付かない行。決め PRICE-1d)。どちらも受注の明細を指す。
+    数量・単価・単価の単位・金額は作ったときの写し。中小企業共通 EDI の明細行類型コードは、どちらも既定の 210 (資産譲渡請求明細行) に
+    当たるので列に持たない。
+    """
 
     invoice = models.ForeignKey(
         Invoice,
@@ -90,15 +95,31 @@ class InvoiceLine(models.Model):
         on_delete=models.CASCADE,
         related_name="lines",
     )
+    # 空 = 一式の行 (出荷に結び付かない行。決め PRICE-1d)。
     shipment = models.ForeignKey(
         "shipping.Shipment",
         verbose_name="出荷",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_lines",
+    )
+    # 明細が指す受注の明細。出荷の行は出荷の受注の明細と同じ。中小企業共通 EDI の請求の明細行参照 (受注書ID・受注書明細行ID・注文書ID) を、
+    # 受注番号・行番号・得意先の注文番号で引く。
+    order_line = models.ForeignKey(
+        "orders.OrderLine",
+        verbose_name="受注の明細",
         on_delete=models.PROTECT,
         related_name="invoice_lines",
     )
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
+    # 請求書を作った時の受注の明細の単価の単位の写し (決め PRICE-1b)。一式の行は式。
+    price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
+    # 一式の行だけ: その受注の明細の、発行の納品書に入った出荷の最後の出荷日 (中小企業共通 EDI の明細行取引終了日に当たる。
+    # インボイス制度の適格請求書に載せる取引の日を行に残す)。出荷の行は空 (出荷の出荷日を読む)。
+    last_shipped_at = models.DateField("最後の出荷日", null=True, blank=True)
 
     class Meta:
         verbose_name = "請求書の明細"
@@ -115,10 +136,41 @@ class InvoiceLine(models.Model):
                 fields=["invoice", "shipment"],
                 name="billing_invoiceline_invoice_shipment_unique",
             ),
+            # 出荷の行 (出荷を指し、最後の出荷日は空) か、一式の行 (出荷を指さず、単価の単位が式で、最後の出荷日がある) のどちらか (決め PRICE-1d)。
+            models.CheckConstraint(
+                condition=models.Q(shipment__isnull=False, last_shipped_at__isnull=True)
+                | models.Q(shipment__isnull=True, last_shipped_at__isnull=False, price_basis=PRICE_BASIS_LUMP),
+                name="billing_invoiceline_shipment_or_lump",
+            ),
+            # 1 枚の請求書に、同じ受注の明細の一式の行は 1 行だけ。
+            models.UniqueConstraint(
+                fields=["invoice", "order_line"],
+                condition=models.Q(shipment__isnull=True),
+                name="billing_invoiceline_invoice_lump_unique",
+            ),
         ]
 
+    @property
+    def price_unit_text(self):
+        """単価の後ろに添える字 (読むだけ)。式なら「式」、ほかは部品の単位、空なら「個」(masters の price_basis_text)。"""
+        return price_basis_text(self.price_basis, self.order_line.item.unit)
+
+    @property
+    def shipped_on(self):
+        """表と印刷の「出荷日」の欄の日付 (読むだけ)。出荷の行は出荷日、一式の行は最後の出荷日。"""
+        if self.shipment_id is None:
+            return self.last_shipped_at
+        return self.shipment.shipped_at
+
+    @property
+    def ref_no(self):
+        """表と印刷の「出荷番号」の欄の字 (読むだけ)。出荷の行は出荷番号、一式の行は「受注 <受注番号>-<行番号> の一式」。"""
+        if self.shipment_id is None:
+            return f"受注 {self.order_line.order.order_no}-{self.order_line.line_no} の一式"
+        return self.shipment.shipment_no
+
     def __str__(self):
-        return f"{self.invoice.invoice_no} {self.shipment.shipment_no}"
+        return f"{self.invoice.invoice_no} {self.ref_no}"
 
 
 class Payment(models.Model):

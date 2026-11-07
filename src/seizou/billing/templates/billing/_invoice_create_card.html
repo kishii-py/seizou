@@ -58,7 +58,7 @@
           <td class="whitespace-nowrap">{{ row.shipment.order_line.order.customer }}</td>
           <td class="whitespace-nowrap">{{ row.shipment.order_line.item }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>
-          {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}</td>{% endif %}
+          {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}{% if row.lump %}<span class="text-base-content/70"> (一式)</span>{% endif %}</td>{% endif %}
           <td class="whitespace-nowrap font-mono">{{ row.shipment.delivery_note.note_no }}</td>
         </tr>
         {% endfor %}

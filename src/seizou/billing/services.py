@@ -12,7 +12,9 @@
 - ほかの部品の model は import しない。外部キーの先を related_model で引く (出荷・納品書・取引先)。
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
-  出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
+  請求書の明細は出荷の行と一式の行 (出荷に結び付かない行。決め PRICE-1d) の 2 つで、どちらも受注の明細 (order_line) を指す。
+  出荷 1 つの金額の式は shipping.services.amount_of_shipment の 1 か所 (shipment_amount が呼ぶ。create_invoice と、請求書の新規登録の画面の
+  行の金額の見込みが同じ関数を使う。一式の明細は明細を出し終えた出荷で一式の全額、ほかは 0 = 決め PRICE-1c)。
 - 消費税の計算は _tax の 1 か所 (請求書の税率ごとの合計に 1 回。インボイス制度。丸める向きは masters.services.round_tax)、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
   都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
   支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
@@ -38,7 +40,8 @@ from django.db.models import Q
 from seizou.core import access
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
-from seizou.masters.services import round_amount, round_tax
+from seizou.masters.services import round_tax
+from seizou.shipping.services import amount_of_shipment
 
 from .models import Invoice, InvoiceLine, Payment
 
@@ -102,7 +105,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    金額は round_amount(customer, 数量 × 単価)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
+    受注の明細と単価の単位も写す。金額は shipment_amount (一式の明細は全部を出し終えた出荷で一式の全額、ほかは 0)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
     締日でまとめる得意先は締め期間 = closing_period(customer, 最後の出荷日) (最後の出荷日以降で最初の締日まで。
     初めはその 1 つ前の締日の翌日)。都度の得意先は、最初の出荷日から最後の出荷日まで (納品書 1 枚なら、その出荷の日)。
     期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI の付表では
@@ -167,8 +170,10 @@ def _issue_invoice(customer, shipments, issued_on):
         InvoiceLine.objects.create(
             invoice=invoice,
             shipment=shipment,
+            order_line=shipment.order_line,
             qty=shipment.qty,
             unit_price=unit_price,
+            price_basis=shipment.order_line.price_basis,
             amount=amount,
         )
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の後ろに付ける)。表に書かない。
@@ -413,7 +418,8 @@ def billable_shipments(customer=None):
 
     create_invoice の断る条件の (1) 納品書と (2) 請求済みと同じ。customer を渡せば、その得意先の出荷だけ。
     """
-    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED).values("shipment_id")
+    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     queryset = _Shipment.objects.filter(delivery_note__status=_DeliveryNote.STATUS_ISSUED).exclude(
         pk__in=invoiced
     )
@@ -423,13 +429,13 @@ def billable_shipments(customer=None):
 
 
 def shipment_amount(customer, shipment):
-    """出荷 1 つの請求の金額 (読むだけ)。round_amount(customer, 出荷の数量 × 受注の明細の単価)。
+    """出荷 1 つの請求の金額 (読むだけ)。shipping.services.amount_of_shipment(出荷, partner=得意先) (部品の単位は数量 × 受注の明細の単価を丸めた値。一式の明細は明細を出し終えた出荷で一式の全額、ほかは 0 = 決め PRICE-1c)。
 
     create_invoice が明細の金額に使い、請求書の新規登録の画面 (billing.forms.InvoiceForm の rows) が行の金額の見込みに使う。
-    訳: 画面に出す見込みと保存する明細の金額を 1 つの式にするため (頭の注記の「明細の金額は round_amount の 1 か所で丸め」と同じ考え)。出所 = RULES.md R03・AI の案 (依頼書 N248 = 候補 C74 の 1-1)。
+    訳: 画面に出す見込みと保存する明細の金額を 1 つの式にし、一式の明細は全部を出し終えた出荷で全額を請求に載せるため。出所 = RULES.md R03・作者の決め PRICE-1c。
     変えてよい条件 = 金額の式を変えるときは、この関数の 1 か所を変える (画面の見込みと保存が同じ関数を通る)。丸めを round_amount に任せること (R03) は変えない。
     """
-    return round_amount(customer, shipment.qty * shipment.order_line.unit_price)
+    return amount_of_shipment(shipment, partner=customer)
 
 
 def unbilled_in_period(customer, period_from, period_to):
@@ -438,7 +444,8 @@ def unbilled_in_period(customer, period_from, period_to):
     並びは出荷日・出荷番号。billable_shipments と違い、発行の納品書に入っていない出荷 (納品書が無いか取消) も返す。
     出荷には状態の列が無いので、出荷の取消は見ない。create_invoice が作った後の知らせ (_period_note) に使う。
     """
-    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED).values("shipment_id")
+    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     return (
         _Shipment.objects.filter(
             order_line__order__customer=customer, shipped_at__gte=period_from, shipped_at__lte=period_to

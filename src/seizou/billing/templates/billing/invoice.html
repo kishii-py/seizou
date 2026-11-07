@@ -33,7 +33,7 @@ pdf_notice は PDF を作れない環境で、印刷用の HTML に落とした�
       <td>{{ line.item_name }}</td>
       <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
       <td>{{ line.unit }}</td>
-      <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }} / {{ line.price_unit }}</td>
       <td class="num">{{ line.amount|floatformat:"-2g"|yen }}</td>
     </tr>
     {% endfor %}
