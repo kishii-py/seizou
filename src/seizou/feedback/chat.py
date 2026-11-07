@@ -53,13 +53,13 @@ SEARCH_KEYS = ("number", "title", "state", "state_reason", "thumbs_up", "html_ur
 FALLBACK_TITLE_CHARS = 40
 
 #: 鍵が無いときの 1 文 (入力の画面は AI の段を出さない。口が呼ばれたときだけ返す)
-MESSAGE_NO_KEY = "AI の聞き取りを使うには、会社の .env に ANTHROPIC_API_KEY を設定します。下の入力の形はそのまま使えます。"
+MESSAGE_NO_KEY = "AI の聞き取りを使うには、会社の .env に ANTHROPIC_API_KEY を設定します。入力の形はそのまま使えます。"
 MESSAGE_EMPTY = "困りごとを入力してください。"
 MESSAGE_TOO_LONG = f"{MAX_MESSAGE_CHARS} 字を超えています。短くしてから送信してください。"
 #: 質問を使い切った後の利用者の字の末尾に足す 1 文 (session には足さない)
 FORCE_DRAFT_NOTE = f"(質問は {MAX_QUESTIONS} 回までです。これ以上は聞かず、draft_feedback で下書きを出してください。)"
-#: 下書きができたときの知らせ (口が messages.info で出し、編集の画面の toast に出る)
-DRAFT_READY_MESSAGE = "AI の下書きを作りました。内容を直して「保存」を押してください。画面の絵があれば、入力の形の「画面の絵」の欄で付けられます。"
+#: 下書きができたときの知らせ (口 ask が会話の吹き出しと右上の知らせ (HX-Trigger の seizou:saved) に出す。画面は移らず、入力の形が下書きの編集の形になる)
+DRAFT_READY_MESSAGE = "AI の下書きを入力の形に入れました。直したい所を直して「保存」を押してください。画面の絵があれば「画面の絵」の欄で付けられます。"
 
 _WEEKDAYS = "月火水木金土日"
 

@@ -429,7 +429,7 @@ def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager)
 # ---- 見送ったと直る版 (依頼書 N322。決め 11-07 09:0x〜09:4x) ----
 
 ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
-DISMISSED_SENTENCE = "この一言は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。"
+DISMISSED_SENTENCE = "この件は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。"
 
 
 @pytest.fixture
@@ -530,8 +530,8 @@ def selected_tabs(html: str) -> list[str]:
 
 
 def sent_count(html: str) -> int:
-    """帯の「送った一言」の件数の札の数。"""
-    return int(re.search(r'id="feedback-tab-sent"[^>]*>送った一言<span class="badge[^"]*">(\d+)</span>', html).group(1))
+    """帯の「送った件」の件数の札の数。"""
+    return int(re.search(r'id="feedback-tab-sent"[^>]*>送った件<span class="badge[^"]*">(\d+)</span>', html).group(1))
 
 
 @pytest.fixture
@@ -561,7 +561,7 @@ def github_listing(monkeypatch, settings, tmp_path):
 @pytest.mark.parametrize(
     ("url", "chosen", "below"),
     [
-        ("/feedback/new/", "feedback-tab-send", 'id="feedback-issues-link"'),
+        ("/feedback/new/", "feedback-tab-send", 'name="title"'),
         ("/feedback/", "feedback-tab-sent", 'id="list-card"'),
         ("/feedback/?tab=issues", "feedback-tab-issues", 'id="issues"'),
     ],
@@ -576,7 +576,7 @@ def test_tabs_are_the_same_on_three_screens(client_logged_in, url, chosen, below
     assert 'role="tablist" aria-label="フィードバックの区分" class="tabs seizou-tabs -mb-px"' in bar
     assert re.findall(r'id="(feedback-tab-[a-z]+)"', bar) == TAB_IDS
     assert bar.count('role="tab"') == 3
-    assert ">送る</a>" in bar and ">送った一言<span" in bar and ">みんなの Issue</a>" in bar
+    assert ">送る</a>" in bar and ">送った件<span" in bar and ">みんなの Issue</a>" in bar
     assert selected_tabs(html) == [chosen]
     assert bar.count("tab-active") == 1 and bar.count('aria-selected="true"') == 1
     assert bar.count('<span class="badge') == 1
@@ -641,10 +641,11 @@ def test_send_tab_keeps_screen_and_issue_link_opens_issues_tab(client_logged_in)
     bar = tabs_of(html)
 
     assert 'id="feedback-tab-send" role="tab" class="tab tab-active" href="/feedback/new/?screen=orders%3Aorder_list"' in bar
-    link = re.search(r'<p id="feedback-issues-link".*?</p>', html, re.S).group(0)
+    # link は画面の頭の白い帯の右 (block actions) に置く (灰色の地に字の行を直しに置かない。seizou-フィードバックの段と送る画面-20261107)。帯の中なのでタブより上。
+    link = re.search(r'<a id="feedback-issues-link".*?</a>', html, re.S).group(0)
     assert 'href="/feedback/?tab=issues#issues"' in link
     assert "似た困りごとが GitHub に出ていないか探す" in link
-    assert html.index('id="feedback-tabs"') < html.index('id="feedback-issues-link"')
+    assert html.index("data-screen-head") < html.index('id="feedback-issues-link"') < html.index('id="feedback-tabs"')
 
     assert 'id="feedback-tab-send" role="tab" class="tab" href="/feedback/new/"' in tabs_of(html_of(client_logged_in.get("/feedback/")))
 
@@ -662,7 +663,7 @@ def test_tabs_tag_without_request_selects_nothing():
     tabs = feedback_tags.feedback_tabs({})
 
     assert [tab["key"] for tab in tabs] == ["send", "sent", "issues"]
-    assert [tab["label"] for tab in tabs] == ["送る", "送った一言", "みんなの Issue"]
+    assert [tab["label"] for tab in tabs] == ["送る", "送った件", "みんなの Issue"]
     assert [tab["href"] for tab in tabs] == ["/feedback/new/", "/feedback/", "/feedback/?tab=issues"]
     assert [tab["count"] for tab in tabs] == [None, 0, None]
     assert not any(tab["selected"] for tab in tabs)
@@ -1070,7 +1071,7 @@ def test_issues_tab_shows_board_with_five_columns_and_cards(client, plain, manag
     assert f'<a class="join-item btn btn-sm" href="{href({"tab": "issues", "view": "list"})}">一覧</a>' in html
     assert 'name="view"' not in html and 'name="sort"' not in html
 
-    # タブの外 (送った一言) は盤を描かず、GitHub も読まない。
+    # タブの外 (送った件) は盤を描かず、GitHub も読まない。
     gh.calls.clear()
     html = html_of(client.get("/feedback/"))
     assert 'id="issue-board"' not in html and 'id="issue-sorts"' not in html and not gh.calls

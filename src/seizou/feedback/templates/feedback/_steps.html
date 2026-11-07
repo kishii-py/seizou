@@ -1,0 +1,16 @@
+{# 詳細の「この件の進み具合」の段の帯 (受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md の作る物 1。本人の決め 11-07 17:2x〜18:1x)。feedback_detail.html が block main (題の行の下・基本情報のタブの箱の上) で、tag の feedback_steps で steps を読んでから include する。白いカードに置く (灰色の地に直接置かない = タブの指示書の地の決まり)。 #}
+{# 段は 4 つ (書いた・確認済み・GitHub に送った・直した。見送った件は最後が「見送った」)。済んだ段は ✓ (data-content。core/_stage_band.html と同じ印) と主色、最後の段だけ状態の色 (直した = 緑、見送った = 赤の ✕。core.status_colors)。段の下の小さい字は記録にある物だけ (日時・書いた人・Issue の番号・直る版)。class は色ごとに丸ごと書く (R19)。狭い幅 (sm より狭い) は縦に並べる。 #}
+<section id="feedback-steps" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-steps-title" data-steps-done="{{ steps_done }}">
+  <h2 id="feedback-steps-title" class="text-lg font-bold">この件の進み具合</h2>
+  <ul class="steps steps-vertical mt-4 w-full text-xs sm:steps-horizontal" aria-label="進み具合の段">
+    {% for step in steps %}
+    {% if step.tone == "success" %}<li class="step step-success" data-content="✓" data-step="{{ step.key }}">
+    {% elif step.tone == "error" %}<li class="step step-error" data-content="✕" data-step="{{ step.key }}">
+    {% elif step.done %}<li class="step step-primary" data-content="✓" data-step="{{ step.key }}">
+    {% else %}<li class="step" data-step="{{ step.key }}">{% endif %}
+      <span class="block font-medium{% if not step.done %} text-base-content/60{% endif %}">{{ step.label }}</span>
+      {% if step.when or step.note %}<span class="block text-base-content/60">{% if step.when %}<span class="font-mono tabular-nums">{{ step.when|date:"Y-m-d H:i" }}</span>{% endif %}{% if step.when and step.note %} {% endif %}{{ step.note }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>

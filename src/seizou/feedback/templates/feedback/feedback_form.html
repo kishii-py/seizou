@@ -1,19 +1,21 @@
 {% extends "core/form.html" %}
 {% load feedback_tags seizou_icons %}
-{# フィードバックの新規登録: 鍵のある会社では、上に AI の聞き取りの段 (1 問ずつ。下書きができると編集の画面へ移る)、下に土台の入力の形。鍵が無ければ入力の形だけ。 #}
+{# フィードバックの新規登録 (受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md の作る物 2。本人の決め 11-07 17:2x〜18:1x): 鍵のある会社では、広い幅 (lg 以上) で左に AI の聞き取りのカード (#feedback-chat。画面を下へ送っても上に残る)、右に土台の入力の形 (#feedback-form-column)。狭い幅は上下 (AI が上)。鍵が無ければ入力の形だけ。 #}
+{# 下書きができたら画面を移らず、口 ask が返す編集の形 (feedback/_draft_ready.html の hx-swap-oob) で右の欄 (#feedback-form-column) を差し替える (編集の形は feedback_update へ送るので、同じ件が 2 つにならない)。「うちも」を付けた枝はその件の詳細へ移る (今までどおり)。 #}
 {# AI の段の form は htmx の POST (CSRF の見出しは base.html が付ける)。送信のボタンは主色にしない (主色は入力の形の「保存」だけ)。 #}
 {# 待つ間は、吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
-{# 上の案内 (依頼書 N185): 似た困りごとが GitHub に出ていないかを、一覧の「GitHub の Issue を探す」で先に探せる link。先は「みんなの Issue」のタブ (一覧の ?tab=issues。依頼書 N321)。 #}
-{# いちばん上はタブの帯 (依頼書 N321。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
+{# 似た困りごとが GitHub に出ていないかを先に探す link (依頼書 N185) は、画面の頭の白い帯の右 (block actions) に置く (灰色の地に字の行を直接置かない = タブの指示書の地の決まり。鍵の無い会社でも同じ所)。先は「みんなの Issue」のタブ (一覧の ?tab=issues。依頼書 N321)。 #}
+{# 帯の下の端はタブの帯 (依頼書 N321。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
+{% block actions %}<a id="feedback-issues-link" class="btn btn-outline border-base-300" href="{% url 'feedback:feedback_list' %}?tab=issues#issues">{% icon "search" "size-4" %}似た困りごとが GitHub に出ていないか探す</a>{% endblock %}
 {% block heading_tabs %}{% include "feedback/_tabs.html" %}{% endblock %}
 {% block content %}{% feedback_panel as panel %}
-<p id="feedback-issues-link" class="mb-4 flex items-center gap-2 text-sm text-base-content/70">{% icon "search" "size-4" %}<a class="link link-hover" href="{% url 'feedback:feedback_list' %}?tab=issues#issues">似た困りごとが GitHub に出ていないか探す</a></p>
 {% if panel.available %}
-<section id="feedback-chat" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-chat-title">
+<div id="feedback-columns" class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+<section id="feedback-chat" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22" aria-labelledby="feedback-chat-title">
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
       <h2 id="feedback-chat-title" class="text-lg font-bold">AI に聞き取ってもらう</h2>
-      <p class="mt-2 text-xs text-base-content/60">困りごとを 1 文で書くと、AI が 1 問ずつ (最大 {{ panel.max_questions }} 問) 聞いて、下の入力の形の下書きを作ります。使い方の問いには説明書で答えます。AI はコードと受注や部品のデータを読みません (読むのは画面の目録・画面ごとの説明書・会社の設定だけ)。</p>
+      <p class="mt-2 text-xs text-base-content/60">困りごとを 1 文で書くと、AI が 1 問ずつ (最大 {{ panel.max_questions }} 問) 聞いて、入力の形に下書きを入れます。使い方の問いには説明書で答えます。AI はコードと受注や部品のデータを読みません (読むのは画面の目録・画面ごとの説明書・会社の設定だけ)。</p>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" hx-post="{% url 'feedback:reset' %}" hx-target="#feedback-chat-messages" hx-swap="innerHTML">{% icon "x" "size-4" %}最初から</button>
   </div>
@@ -27,5 +29,6 @@
     </div>
   </form>
 </section>
-{% endif %}
-{{ block.super }}{% endblock %}
+<div id="feedback-form-column" class="min-w-0">{{ block.super }}</div>
+</div>
+{% else %}{{ block.super }}{% endif %}{% endblock %}

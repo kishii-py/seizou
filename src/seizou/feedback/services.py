@@ -459,8 +459,8 @@ def fixed_notice(rows) -> str:
         return ""
     more = "ほか " if len(rows) > 1 else ""
     return (
-        f"あなたの一言から直しました: 「{rows[0].title}」{more}({len(rows)} 件)。"
-        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った一言」のタブで見られます。"
+        f"あなたのフィードバックから直しました: 「{rows[0].title}」{more}({len(rows)} 件)。"
+        "詳細は左のメニューの下の「フィードバック」を開き、上の「送った件」のタブで見られます。"
     )
 
 
@@ -528,7 +528,7 @@ def dismissed_notice(rows) -> str:
         return ""
     more = "ほか " if len(rows) > 1 else ""
     return (
-        f"あなたの一言は見送りになりました: 「{rows[0].title}」{more}({len(rows)} 件)。"
+        f"あなたのフィードバックは見送りになりました: 「{rows[0].title}」{more}({len(rows)} 件)。"
         "理由は GitHub の Issue に書かれています (詳細の「送った先」から開けます)。"
     )
 
@@ -1060,7 +1060,7 @@ def search_issues(words) -> dict:
 
 
 def visible_count(user) -> int:
-    """user に見えるフィードバックの件数 (送る画面と一覧の上のタブの帯の「送った一言」の札)。読むだけ。
+    """user に見えるフィードバックの件数 (送る画面と一覧の上のタブの帯の「送った件」の札)。読むだけ。
 
     絞りは一覧の画面 (views._visible_to) と同じ: 世話役 (can_manage) には全部、ほかの人には自分の書いた分だけ。
     pk の無い利用者 (ログインしていない人) は 0。
@@ -1181,8 +1181,8 @@ def reply_notice(rows) -> str:
         return ""
     more = "ほか " if len({row.feedback_id for row in rows}) > 1 else ""
     return (
-        f"あなたの一言に返事が届きました: 「{rows[0].feedback.title}」{more}({len(rows)} 件)。"
-        "左のメニューの下の「フィードバック」の「送った一言」から開いて読めます。"
+        f"あなたのフィードバックに返事が届きました: 「{rows[0].feedback.title}」{more}({len(rows)} 件)。"
+        "左のメニューの下の「フィードバック」の「送った件」から開いて読めます。"
     )
 
 
