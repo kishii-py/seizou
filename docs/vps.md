@@ -443,8 +443,8 @@ sudo crontab -u seizou -e
 足す 2 行は、道を VPS の物にした次の形です。
 
 ```
-0 2 * * * cd /srv/seizou-sites/a_machining && /srv/seizou/src/.venv/bin/python manage.py seizou_backup >> backups/backup.log 2>&1
-10 2 * * * cd /srv/seizou-sites/b_plating && /srv/seizou/src/.venv/bin/python manage.py seizou_backup >> backups/backup.log 2>&1
+0 2 * * * cd /srv/seizou-sites/a_machining && /srv/seizou/src/.venv/bin/python manage.py seizou_backup --keep 30 >> backups/backup.log 2>&1
+10 2 * * * cd /srv/seizou-sites/b_plating && /srv/seizou/src/.venv/bin/python manage.py seizou_backup --keep 30 >> backups/backup.log 2>&1
 ```
 
 `.env` は控えに入らないので、2 社の `.env` を VPS の外の安全な所に写します。控えのフォルダも、VPS の外に写します。
