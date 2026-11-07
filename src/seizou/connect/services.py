@@ -10,6 +10,8 @@
   受け口は本文の kind で注文と注文回答を見分け、注文回答は元の発注に 1 回だけ当てる。
 - 受入の後、send_acceptance が検収を相手へ送り、受け口は kind が acceptance の物を受注の明細に 1 回だけ当てる。
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
+- 受注と発注の 1 件ごとの会話 (C104): post_chat_message が言葉を残して相手へ送り、受け口は kind が chat_message の物を元の注文に 1 回だけ結ぶ。
+  会話は中小企業共通 EDI に無い seizou どうしだけの種類。言葉を直す関数と消す関数は作らない (ChatMessage の docstring)。
 - 受信した注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
 """
 
@@ -154,6 +156,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が order_reply (注文回答) なら受信箱に入れず、元の発注に当てて ReplyReceipt を返す。
     本文の kind が acceptance (検収) なら受信箱に入れず、受注の明細に当てて AcceptanceReceipt を返す。
     本文の kind が shipping_notice (出荷の知らせ) なら受信箱に入れず、発注の明細に当てて ShippingNoticeReceipt を返す。
+    本文の kind が chat_message (会話の言葉) なら受信箱に入れず、元の注文 (受信した注文か発注) に結んで ChatReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
@@ -211,6 +214,9 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     # 出荷の知らせ (相手が出荷した日と数) も受信した注文の行にせず、元の送った注文の発注の明細に当てる。
     if payload.get("kind") == "shipping_notice":
         return _receive_shipping_notice(message_id, partner, payload)
+    # 会話の言葉 (seizou どうしだけの種類。EDI の文書でない) も受信した注文の行にせず、元の注文 (受信した注文か発注) に結ぶ。
+    if payload.get("kind") == "chat_message":
+        return _receive_chat_message(message_id, partner, payload)
     kind = payload.get("kind")
     if kind is not None and kind != "order":
         # 鍵の値と本文は文に入れない。kind の字だけを 40 字で切って出す。
@@ -466,7 +472,18 @@ class ShippingNoticeReceipt:
     notice: object
 
 
-MESSAGE_REPLY_SHAPE = "注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
+@dataclass(frozen=True)
+class ChatReceipt:
+    """受け口が会話の言葉を元の注文 (受信した注文か発注) に結んだ (か、同じ番号の 2 回目だった) 印。
+
+    受け口の view は message_id だけを読む (ReplyReceipt と同じ)。chat_message は作った ChatMessage の行 (2 回目は 1 回目の行)。
+    """
+
+    message_id: uuid.UUID
+    chat_message: object
+
+
+MESSAGE_REPLY_SHAPE ="注文回答の形が読めません。order_no・order_id・reply_type を字で送ってください。"
 MESSAGE_REPLY_TYPE = "注文回答のタイプ (reply_type) が AP・CA・RE・AJ のどれでもありません。"
 MESSAGE_REPLY_LINES = (
     "条件付受諾 (CA) の注文回答の明細 (lines) が読めません。line_no (数)・reply_type (AP・CA・RE) と、"
@@ -516,6 +533,16 @@ MESSAGE_SHIPPING_NOT_EDI_ORDER = (
     "受信した注文で作った受注ではないので、出荷の知らせを送っていません。"
     "seizou どうしで受信した注文を受け入れた受注の出荷だけが、相手への出荷の知らせになります。"
 )
+#: 会話の言葉の受け口の断り (送る側へ返す文)
+MESSAGE_CHAT_SHAPE = (
+    "会話の言葉の形が読めません。order_id・sender_role・written_at・body を字で、言葉は 1〜2000 字で送ってください。"
+)
+MESSAGE_CHAT_UNKNOWN_ORDER = "会話の元の注文がありません。注文のデータの番号を確かめてください。"
+MESSAGE_CHAT_OTHER_PARTNER = "会話の元の注文は、その取引先との物ではありません。"
+#: 会話の言葉の上限の字数 (EDI に会話は無く、字数の決まりも無いので作品で決めた。docs/nights/20261106/N311.md)
+CHAT_BODY_MAX = 2000
+#: 会話の送り手の立場 (buyer = 発注した側 / supplier = 受けた側)
+CHAT_ROLES = ("buyer", "supplier")
 MESSAGE_SHIPPING_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので出荷の知らせを送っていません。"
     "設定の画面の「取引先との接続」で、この取引先に送る向きの接続を登録してください。"
@@ -940,6 +967,86 @@ def record_shipping_notice(line, qty, shipped_at, user, *, message_id, shipment_
         if existing is None:
             raise
         return existing
+
+
+def _receive_chat_message(message_id, partner, payload):
+    """署名の通った会話の言葉を、元の注文 (自社が受けた側なら受信した注文、発注した側なら発注) に 1 回だけ結ぶ。返す物は ChatReceipt か、断る理由の文。
+
+    会話は中小企業共通 EDI に無い seizou どうしだけの種類 (kind = chat_message)。EDI の電文に直す物に入れない。
+    引く順は 形 → 送り手の立場 (sender_role) で引く表を決める → 元の注文の番号 (order_id) → その注文の取引先が署名の通ったつながりの取引先と同じ。
+    sender_role が buyer (相手が発注した側) なら、自社が受け口で受けた第 1 版の受信した注文。supplier (相手が受けた側) なら、
+    自社が送った第 1 版の注文 (同じ発注の送り直しは同じ番号で複数行なので最初の 1 行) の発注。立場を字で持つのは、1 つの DB に 2 社の役を置く試験で
+    両方の表に同じ番号があるため。相手の発注番号 (order_no) は引く鍵でも記録する列でもないので読まない。author は字なら 100 字で切り、字でなければ空。
+    知らない鍵は読み捨てる (後の版が足す鍵のため)。同じ番号の 2 回目は 1 回目の行を返す (R11 の考え)。
+    相手から会話が届いた知らせ (メール) を足すのは、行を作った後の atomic の外 (同じ番号の 2 回目では呼ばない)。
+    断る処理を足さない: 取消した発注・断った受信した注文・出荷し終えた受注への言葉も受ける。
+    訳: 形の読めない言葉と、その取引先と結び付かない注文への言葉を受けないため (同じ番号の 2 回目は 1 件にまとめる = R11 の考え)。出所 = RULES.md R11・R12 と AI の案 (今の受け口の断りと同じ作り = 出荷の知らせ・検収の受け口。記録 = docs/nights/20261106/N311.md)。
+    変えてよい条件 = 送る JSON の形を変える時に、両方の会社の seizou を同じ版にしてから。
+    """
+    # 冒頭の import の並びを変えないため、send_order と同じく関数の中で import する。
+    from datetime import datetime
+
+    from django.utils import timezone
+
+    from .models import ChatMessage, Outbox
+
+    msg_id = str(message_id)
+    order_id = payload.get("order_id")
+    sender_role = payload.get("sender_role")
+    written_at = payload.get("written_at")
+    body = payload.get("body")
+    # str でない値を uuid と fromisoformat に渡さないよう、先に形を見る。
+    if not all(isinstance(value, str) for value in (order_id, sender_role, written_at, body)):
+        return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
+    if sender_role not in CHAT_ROLES or not body.strip() or len(body) > CHAT_BODY_MAX:
+        return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
+    try:
+        order_message_id = uuid.UUID(order_id)
+        written = datetime.fromisoformat(written_at)
+    except ValueError:
+        return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
+    if written.tzinfo is None or written.utcoffset() is None:
+        return _refuse(MESSAGE_CHAT_SHAPE, msg_id)
+    author = payload.get("author")
+    author = author[: ChatMessage._meta.get_field("author_name").max_length] if isinstance(author, str) else ""
+
+    if sender_role == "buyer":
+        inbox = Inbox.objects.filter(
+            message_id=order_message_id, source=Inbox.SOURCE_DIRECT, revises=None
+        ).first()
+        if inbox is None:
+            return _refuse(MESSAGE_CHAT_UNKNOWN_ORDER, msg_id)
+        if inbox.partner_id != partner.pk:
+            return _refuse(MESSAGE_CHAT_OTHER_PARTNER, msg_id)
+        target = {"inbox": inbox}
+    else:
+        outbox = (
+            Outbox.objects.select_related("purchase_order")
+            .filter(message_id=order_message_id, revision_no=1)
+            .order_by("pk")
+            .first()
+        )
+        if outbox is None:
+            return _refuse(MESSAGE_CHAT_UNKNOWN_ORDER, msg_id)
+        if outbox.purchase_order.partner_id != partner.pk:
+            return _refuse(MESSAGE_CHAT_OTHER_PARTNER, msg_id)
+        target = {"purchase_order": outbox.purchase_order}
+
+    # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない (record_acceptance と同じ)。
+    try:
+        with transaction.atomic():
+            chat = ChatMessage.objects.create(
+                message_id=message_id,
+                direction=ChatMessage.DIRECTION_RECEIVED,
+                author_name=author,
+                body=body,
+                written_at=written,
+                received_at=timezone.now(),
+                **target,
+            )
+    except IntegrityError:
+        chat = ChatMessage.objects.get(message_id=message_id, direction=ChatMessage.DIRECTION_RECEIVED)
+    return ChatReceipt(message_id=message_id, chat_message=chat)
 
 
 def record_inbox(partner, payload, user, *, message_id=None, received_at=None, source=Inbox.SOURCE_DIRECT, extraction=None, sender_name=""):
@@ -2008,3 +2115,237 @@ def send_order(purchase_order, user):
         "注文を送った: 発注 %s 番号 %s 返事の種類 %s", purchase_order.po_no, message_id, kind
     )
     return outbox
+
+
+# --- 受注と発注の 1 件ごとの会話 (C104) ---
+# 意図: 受注と発注のそれぞれで相手と話し、両方の会社の seizou に同じ会話を残すため (本人の決め CHAT-0・CHAT-1 = a)。
+# 相手に届かなかった言葉は「届いていない」と出し、送り直せる (注文の送り直しと同じ作り = 番号の使い回しと受け口の 1 件にまとめる)。
+
+#: 会話が使えない訳の字 (見る順は NOT_CONNECTED → NOT_LINKED → NO_SEND → NOT_SENT)。
+#: NOT_CONNECTED は本人の決め CHAT-2 の添え書きの字のまま。ほかの 3 つは、その字が事実と合わない取引のために足した字 (AI の案)。
+CHAT_REASON_NOT_CONNECTED = "この取引先は seizou とつながっていないので、会話は使えません。社内の書き込みはメモに書いてください。"
+CHAT_REASON_NOT_LINKED = (
+    "この注文は seizou どうしの送り合いで届いた物ではないので、相手の発注と結び付いていません。"
+    "会話は使えません。社内の書き込みはメモに書いてください。"
+)
+CHAT_REASON_NO_SEND = (
+    "この取引先へ送る向きの接続が無いので、会話は使えません。"
+    "設定の画面の「取引先との接続」で送る向きの接続を登録すると使えます。社内の書き込みはメモに書いてください。"
+)
+CHAT_REASON_NOT_SENT = (
+    "この発注はまだ相手の seizou へ送っていないので、会話は使えません。発注を送った後に使えます。社内の書き込みはメモに書いてください。"
+)
+
+
+@dataclass(frozen=True)
+class ChatPeer:
+    """会話の相手と、会話が使えるか (chat_peer の返す物)。
+
+    purchase_order と inbox は会話の結び付く先 (片方だけ。受注は元の第 1 版の受信した注文)。order_id は元の注文のデータの番号
+    (発注した側は第 1 版の送った注文の番号、受けた側は受信した注文の番号。無ければ None)。sender_role は自社の立場 (buyer / supplier)。
+    connection は取引先への向き「送る」の接続 (無ければ None)。reason は使えない訳の字 (空 = 使える)。
+    """
+
+    purchase_order: object
+    inbox: object
+    partner: object
+    order_id: uuid.UUID | None
+    order_no: str
+    sender_role: str
+    connection: object
+    reason: str
+
+
+def _chat_anchor(target):
+    """会話の結び付く先。返す物は (発注, 受信した注文) で、片方か両方が None。
+
+    target は発注・受注・受信した注文のどれか。受注は元の受信した注文 (inbox_message) を引く (無ければ両方 None)。
+    受信した注文が変更の版の行 (revises がある) なら、元の第 1 版の行にする (会話は第 1 版の注文に 1 つ)。
+    """
+    if target._meta.label_lower == "purchasing.purchaseorder":
+        return target, None
+    # 受信した注文の無い受注は RelatedObjectDoesNotExist (AttributeError の子) なので getattr の既定で None。
+    inbox = target if isinstance(target, Inbox) else getattr(target, "inbox_message", None)
+    if inbox is not None and inbox.revises_id is not None:
+        inbox = inbox.revises
+    return None, inbox
+
+
+def chat_peer(target):
+    """会話の相手と、会話が使えるかを読む (読むだけ)。target は発注・受注・受信した注文のどれか。返す物は ChatPeer。
+
+    使えない訳 (reason) は上から最初に当たった物: 取引先に接続が 1 つも無い (受信した注文の取引先が空も含む) → 受注と受信した注文で、
+    seizou どうしの受け口で受けた注文でない (受信した注文の無い受注・入口が読み取り) → 取引先へ向き「送る」の接続が無い
+    → 発注で、送った注文の行が無い。発注・受信した注文・受注の状態 (取消・断った・出荷し終えた) は見ない (断る処理を足さない)。
+    訳: 社内のつもりで書いた字が、相手とつながった後に相手へ届く事故を防ぐため、seizou どうしでつながっていない取引では会話を使えなくする。出所 = 本人の決め 11-06 23:4x〜23:5x (CHAT-2・CHAT-4)「社内だけは事故の元かもな / 繋がっていないで伝達用に打っていたら繋がっていた場合筒抜けでしょう？」。
+    変えてよい条件 = 本人が決め直したとき。(訳の字の NOT_LINKED・NO_SEND・NOT_SENT は AI の案。字だけの違い。記録 = docs/nights/20261106/N311.md)
+    """
+    from .models import Outbox
+
+    purchase_order, inbox = _chat_anchor(target)
+    first = None
+    if purchase_order is not None:
+        partner = purchase_order.partner
+        # 元の注文の番号は第 1 版の番号 (相手の受信した注文の第 1 版の行を引く鍵。send_acceptance と同じ引き方)。
+        first = Outbox.objects.filter(purchase_order=purchase_order, revision_no=1).order_by("pk").first()
+        order_id = first.message_id if first is not None else None
+        order_no = purchase_order.po_no
+        sender_role = "buyer"
+        linked = True
+    else:
+        partner = inbox.partner if inbox is not None else getattr(target, "customer", None)
+        order_id = inbox.message_id if inbox is not None else None
+        order_no = inbox.buyer_order_no() if inbox is not None else ""
+        sender_role = "supplier"
+        linked = inbox is not None and inbox.source == Inbox.SOURCE_DIRECT
+    connection = _send_connection(partner) if partner is not None else None
+    if partner is None or (connection is None and not Connection.objects.filter(partner=partner).exists()):
+        reason = CHAT_REASON_NOT_CONNECTED
+    elif not linked:
+        reason = CHAT_REASON_NOT_LINKED
+    elif connection is None:
+        reason = CHAT_REASON_NO_SEND
+    elif purchase_order is not None and first is None:
+        reason = CHAT_REASON_NOT_SENT
+    else:
+        reason = ""
+    return ChatPeer(
+        purchase_order=purchase_order,
+        inbox=inbox,
+        partner=partner,
+        order_id=order_id,
+        order_no=order_no,
+        sender_role=sender_role,
+        connection=connection,
+        reason=reason,
+    )
+
+
+def chat_messages_for(target):
+    """その注文の会話の行を古い順に返す (読むだけ)。target は発注・受注・受信した注文のどれか。結び付く物が無ければ空。"""
+    from .models import ChatMessage
+
+    purchase_order, inbox = _chat_anchor(target)
+    if purchase_order is not None:
+        return purchase_order.chat_messages.select_related("author")
+    if inbox is not None:
+        return inbox.chat_messages.select_related("author")
+    return ChatMessage.objects.none()
+
+
+def _full_name(user) -> str:
+    """送る JSON の author に入れる氏名 (get_full_name の前後の空白を落とした字)。ログインの名前は会社の外へ出さないので使わない。"""
+    get_full_name = getattr(user, "get_full_name", None)
+    return get_full_name().strip() if callable(get_full_name) else ""
+
+
+def _chat_payload(message, peer, author) -> dict:
+    """会話の言葉の送る JSON (seizou だけの種類。EDI の文書でない)。送り手の会社の辞書は立場の名前の鍵 (buyer / supplier) に置く。"""
+    from django.utils import timezone
+
+    return {
+        "id": str(message.message_id),
+        "kind": "chat_message",
+        "sent_at": timezone.localtime().isoformat(),
+        "order_id": str(peer.order_id),
+        "order_no": peer.order_no,
+        "sender_role": peer.sender_role,
+        peer.sender_role: _party(),
+        "author": author,
+        "written_at": timezone.localtime(message.written_at).isoformat(),
+        "body": message.body,
+    }
+
+
+def _send_chat(message, peer, author, delivered_text):
+    """自社が書いた言葉を相手の受け口へ送り、返事を行に書く。返す物は取り直した ChatMessage に知らせの字を付けた物。
+
+    呼び手は transaction.atomic の外から呼ぶ (R17)。送る所は send_order と同じ _deliver (番号は行の message_id を使い回す)。
+    届いた (received) ときだけ sent_at を書く。届かなければ saved_level = "warning" (黄の知らせ。閉じるまで残る)。
+    """
+    from django.utils import timezone
+
+    from .models import ChatMessage
+
+    raw = _encode(_chat_payload(message, peer, author))
+    # R17: ここは atomic の外。
+    reply, kind = _deliver(peer.connection, message.message_id, raw)
+    with transaction.atomic():
+        saved = ChatMessage.objects.select_for_update().get(pk=message.pk)
+        saved.response = reply[: ChatMessage._meta.get_field("response").max_length]
+        fields = ["response"]
+        if kind == "received":
+            saved.sent_at = timezone.now()
+            fields.append("sent_at")
+        saved.save(update_fields=fields)
+    if kind == "received":
+        saved.saved_message = delivered_text
+    else:
+        saved.saved_message = (
+            f"書いた言葉は残しましたが、相手に届いていません。{saved.response} 「会話」の欄の「送り直す」で送れます。"
+        )
+        saved.saved_level = "warning"
+    logger.info("会話を送った: 行 %s 番号 %s 返事の種類 %s", saved.pk, saved.message_id, kind)
+    return saved
+
+
+def post_chat_message(target, body, user):
+    """会話に言葉を書き、相手の seizou へ送る。target は発注・受注・受信した注文のどれか (受注は元の受信した注文に結ぶ)。
+
+    - 会話が使えない取引 (chat_peer の reason) は「送れません。」+ 訳の ValueError で、行を作らず HTTP を送らない。
+    - 言葉が空か空白だけ・2000 字を超えるときも ValueError。受けた字は変えずに残す (送ったとおりに残すため。画面の欄の前後の空白は form が落とす)。
+    - 行は atomic の中で作り (返事の欄は「送っています」)、atomic の外で相手へ送る (R17)。返事の字を書き、届いたときだけ相手に届いた日時を書く。
+    - 届かなくても例外にしない (書いた言葉は残る)。返す物の saved_message が知らせの字、届かなければ saved_level = "warning"。
+    - 鍵の値・本文・見出しの値をログと返す物に出さない。言葉を直す関数と消す関数は作らない (ChatMessage の docstring)。
+    訳: 会話が使えない取引と、空の言葉と 2000 字を超える言葉を送らないため。出所 = 本人の決め 11-06 23:4x〜23:5x (CHAT-2) と AI の案 (2000 字。根拠の資料は無い。中小企業共通 EDI に会話は無く、字数の決まりも無い。記録 = docs/nights/20261106/N311.md)。
+    変えてよい条件 = 字数は、相手の seizou も同じ字数を受けられる版になってから (受け口が同じ字数で断るため)。
+    """
+    from django.utils import timezone
+
+    from .models import ChatMessage
+
+    peer = chat_peer(target)
+    if peer.reason:
+        raise ValueError("送れません。" + peer.reason)
+    text = body if isinstance(body, str) else ""
+    if not text.strip():
+        raise ValueError("送れません。言葉がありません。言葉を書いてから「送る」を押してください。")
+    if len(text) > CHAT_BODY_MAX:
+        raise ValueError("送れません。言葉が 2000 字を超えています。分けて送ってください。")
+    author = _full_name(user)
+    signed_in = getattr(user, "is_authenticated", False)
+    login_name = user.get_username() if signed_in else ""
+    with transaction.atomic():
+        message = ChatMessage.objects.create(
+            message_id=uuid.uuid4(),
+            purchase_order=peer.purchase_order,
+            inbox=peer.inbox,
+            direction=ChatMessage.DIRECTION_SENT,
+            author=user if signed_in else None,
+            author_name=(author or login_name)[: ChatMessage._meta.get_field("author_name").max_length],
+            body=text,
+            written_at=timezone.now(),
+            response="送っています",
+        )
+    return _send_chat(message, peer, author, "相手に送りました。")
+
+
+def resend_chat_message(message, user):
+    """相手に届いていない自社の言葉を、同じ番号・同じ書いた日時・同じ言葉で相手へ送り直す。返す物と知らせの字は post_chat_message と同じ形。
+
+    相手の受け口は同じ番号を 1 件にまとめる (_receive_chat_message) ので、2 つのタブから押しても相手に 2 行できない。
+    相手から届いた言葉・もう届いた言葉・会話が使えなくなった取引は「送れません。」の ValueError。
+    訳: 相手から届いた言葉と、もう届いた言葉を送り直さないため (送り直しは、届いていない自社の言葉を同じ番号でもう 1 度送る物)。出所 = 本人の決め 11-06 23:2x (CHAT-1 の添え書き「相手に届かなかった言葉は「届いていない」と出し、送り直せる」) と AI の案 (記録 = docs/nights/20261106/N311.md)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    from .models import ChatMessage
+
+    current = ChatMessage.objects.select_related("purchase_order", "inbox", "author").get(pk=message.pk)
+    if current.direction != ChatMessage.DIRECTION_SENT:
+        raise ValueError("送れません。相手から届いた言葉は送り直せません。")
+    if current.sent_at is not None:
+        raise ValueError("送れません。この言葉は相手に届いています。送り直しは要りません。")
+    peer = chat_peer(current.purchase_order or current.inbox)
+    if peer.reason:
+        raise ValueError("送れません。" + peer.reason)
+    return _send_chat(current, peer, _full_name(current.author), "送り直しました。相手に届きました。")
