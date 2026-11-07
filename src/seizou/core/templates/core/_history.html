@@ -1,5 +1,5 @@
 {% load seizou_tags seizou_icons %}
-{# 変更の履歴 (決め HIST-1。core.history の Timeline を timeline で渡して include する。詳細の「履歴」のタブと設定の画面の「設定の履歴」の同じ部品)。新しい順。左に点と縦の線 (流れの枠 core/_flow.html と同じ見た目。流れは古い順で明細の番号と金額の決まりが違うので写して使わない)、右に日時・人・題、その下に「項目: 前 → 後」を 1 項目 1 行 (空は「—」)。作った・消したの値は「その時の値」に畳む。金額の閲覧の無い人の金額の項目は「(非表示)」(core.history が字を作る)。 #}
+{# 変更の履歴 (決め HIST-1。core.history の Timeline を timeline で渡して include する。詳細の「履歴」のタブと設定の画面の「設定の履歴」の同じ部品)。新しい順。左に点と縦の線 (流れの枠 core/_flow.html と同じ見た目。流れは古い順で明細の番号と金額の決まりが違うので写して使わない)、右に日時・人・題、その下に「項目: 前 → 後」を 1 項目 1 行 (空は「—」)。作った・消したの値は「その時の値」に畳む。金額の閲覧の無い人には金額の項目を出さず、項目が残らない行は行ごと出さない (core.history の Timeline が落とす。決め 11-07 21:0x の 5)。 #}
 {% if timeline.rows %}
 <ol class="mt-2" data-history>
   {% for row in timeline.rows %}

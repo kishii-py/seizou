@@ -2,7 +2,7 @@
 
 請求の書く関数 (create_invoice・cancel_invoice・reissue_invoice・record_payment・record_outside_payment・cancel_payment) が、
 請求書の詳細の「履歴」に作った・取り消したを残すこと、請求書の外で受け取った入金 (決め C107-3c) は出荷の詳細の「履歴」に出て
-どの請求書の履歴にも出ないこと、金額の閲覧の無い人に入金の金額が「(非表示)」と出ること、詳細の問い合わせの数が履歴の行の数で
+どの請求書の履歴にも出ないこと、金額の閲覧の無い人には入金の金額の項目が出ないこと (決め 5)、詳細の問い合わせの数が履歴の行の数で
 増えないことを見る。データは作り物だけ。
 """
 
@@ -91,11 +91,12 @@ def test_payment_created_and_cancelled_on_invoice(settings, client, logged_in, u
     assert row.changes == [{"field": "status", "label": "状態", "type": "text", "before": "記録", "after": "取消"}]
     assert f"{payment} を取り消した" in _history_part(logged_in, "billing:invoice_detail", invoice)
 
+    # 金額の閲覧の無い人: 入金を作った行は出るが、金額の項目は無い (決め 5)。
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
     part = _history_part(client, "billing:invoice_detail", invoice)
-    assert "金額: (非表示)" in part
-    assert "1,000" not in part
+    assert f"{payment} を作った" in part and f"{payment} を取り消した" in part
+    assert "(非表示)" not in part and "金額: " not in part and "1,000" not in part
 
 
 @pytest.mark.django_db

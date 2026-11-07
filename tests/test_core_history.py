@@ -29,9 +29,9 @@ MONEY_ON = {"department": "off", "write": "off", "money": "on"}
 PASSWORD = "kumo-tests-2611"
 
 
-def _account(login_id):
-    """金額の閲覧の無い作り物の利用者 (部署も権限も無し)。"""
-    accounts_services.issue_account(login_id, PASSWORD, [], [], {}, None)
+def _account(login_id, **flags):
+    """作り物の利用者 (部署も権限も無し)。see_money=True で金額の閲覧あり (無ければ無し)。"""
+    accounts_services.issue_account(login_id, PASSWORD, [], [], flags, None)
     return get_user_model().objects.get(username=login_id)
 
 
@@ -160,17 +160,40 @@ def test_detail_has_history_tab_last_with_yen(logged_in, user, tracked_item):
 
 
 @pytest.mark.django_db
-def test_history_money_masked_for_people_without_money(settings, client, user, tracked_item):
+def test_history_money_items_hidden_for_people_without_money(settings, client, user, tracked_item):
+    """金額の閲覧の無い人の履歴には、金額の項目を項目ごと出さず、項目が残らない行は行ごと出さない (決め 11-05 09:3x・11-07 21:0x の 5)。
+
+    「(非表示)」の字も出さない。タブの数と「最後に直した」も出す行で数える。
+    """
     before = history.saved_state(tracked_item)
     Item.objects.filter(pk=tracked_item.pk).update(standard_price=Decimal("1180"))
     core_services.record_history(tracked_item, user, before=before)
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(_account("genba"))
+    url = reverse("masters:item_detail", args=[tracked_item.pk])
 
-    body = client.get(reverse("masters:item_detail", args=[tracked_item.pk])).content.decode()
+    # 標準単価だけを直した行は、項目が残らないので行ごと出ない。
+    body = client.get(url).content.decode()
+    assert "(非表示)" not in body and "標準単価" not in body and "1,180" not in body
+    assert 'aria-label="履歴">履歴<span class="badge badge-sm tabular-nums">0</span>' in body
+    assert "まだ履歴がありません。" in body
+    assert "最後に直した —" in body
 
-    assert "標準単価: (非表示) → (非表示)" in body
-    assert "1,180" not in body
+    # 品名と標準単価を一緒に直した行は、品名だけで出る。
+    before = history.saved_state(tracked_item)
+    Item.objects.filter(pk=tracked_item.pk).update(name="作り物の軸 (改)", standard_price=Decimal("1200"))
+    core_services.record_history(tracked_item, user, before=before)
+    body = client.get(url).content.decode()
+    assert "→ 作り物の軸 (改)" in body
+    assert "(非表示)" not in body and "標準単価" not in body and "1,200" not in body
+    assert 'aria-label="履歴">履歴<span class="badge badge-sm tabular-nums">1</span>' in body
+    assert "まだ履歴がありません。" not in body
+
+    # 金額の閲覧のある人には 2 行とも、金額の項目つきで出る。
+    client.force_login(_account("keiri", see_money=True))
+    body = client.get(url).content.decode()
+    assert "標準単価: ¥1,100 → ¥1,180" in body and "標準単価: ¥1,180 → ¥1,200" in body
+    assert 'aria-label="履歴">履歴<span class="badge badge-sm tabular-nums">2</span>' in body
 
 
 @pytest.mark.django_db
