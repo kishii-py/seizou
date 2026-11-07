@@ -13,7 +13,7 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 {# 新しい行があれば、上の「全 N 件」と下の「N 件中 1–M 件」も入れ替える (行だけ増えて件数が古いままにならないように。M = 表に出ている行の数 = InboxListView の shown_count)。<template> で包むのは行の応答の中に置くため。 #}
 {% if rows %}<template><span id="list-count" class="font-medium tabular-nums text-base-content" hx-swap-oob="true">{{ rows.0.obj.total_count|comma }}</span><p id="list-range" class="text-base-content/70" hx-swap-oob="true"><span class="tabular-nums">{{ rows.0.obj.total_count|comma }}</span> 件中 <span class="tabular-nums">1–{{ rows.0.obj.shown_count|comma }}</span> 件</p></template>{% endif %}
 {% elif rows %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に右の端のぼかしを重ねる (C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">

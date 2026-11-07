@@ -24,7 +24,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
 {% can_write "progress.Progress" as can_progress %}
 {% can_write "receiving.Receiving" as can_receive %}
 {% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に右の端のぼかしを重ねる (C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">

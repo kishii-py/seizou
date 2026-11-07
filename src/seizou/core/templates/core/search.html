@@ -52,7 +52,7 @@
 {% for section in sections %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="search-{{ section.kind }}">
   <h2 id="search-{{ section.kind }}" class="text-lg font-bold">{{ section.label }} <span class="tabular-nums">({{ section.total|comma }})</span></h2>
-  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、input.css がこの要素の上に端のぼかしを重ねる (右の端は C34、下の端は C23)。 #}
+  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端は C34。下の端はいつも見えるバー = C23。影は 11-07 の決めでやめた)。 #}
   <div>
   <div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
   <table class="table table-sm table-zebra table-pin-rows">
