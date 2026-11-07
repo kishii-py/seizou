@@ -482,7 +482,7 @@ def get_item(part_no: str) -> dict[str, Any]:
     part_no: 自社品番 (完全一致)。
     返す物: money_hidden 金額を隠したか・part_no・name 品名・drawing_no 図面番号・has_drawing 図面のファイルがあるか・unit 単位・
     standard_price 標準の単価 (字。無ければ null)・note 備考・
-    partner_items (取引先ごとの partner_code・partner_name・partner_part_no 取引先の品番・partner_item_name 取引先の品名)・
+    partner_items (部品の取引先の partner_code・partner_name・partner_part_no 取引先の品番・partner_item_name 取引先の品名)・
     processes (標準の工程。seq 順・process_code 工程コード・process_name 工程の名前)・url 詳細の道。
     standard_price は、金額の閲覧の判定が on の会社で閲覧の無い利用者 (と、利用者を決めずに起こしたとき) には「—」で、そのとき money_hidden が真。
     ok が偽なら error に、品番が無いことと探し方がある。

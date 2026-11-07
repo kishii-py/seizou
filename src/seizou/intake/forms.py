@@ -58,7 +58,7 @@ class UploadForm(forms.Form):
 class AcceptForm(forms.Form):
     """受注にするの form。得意先の品番ごとに、自社の品目を選ぶ欄を 1 つ置く。
 
-    欄の見出しに得意先の品番と品名を出す。初めの値は取引先ごとの品番の表の対応 (無ければ空)。
+    欄の見出しに得意先の品番と品名を出す。初めの値は部品の取引先の表の対応 (無ければ空)。
     同じ品番が 2 行にあっても欄は 1 つ (item_mapping は品番 → 品目の 1 対 1 のため)。
     """
 
@@ -75,7 +75,7 @@ class AcceptForm(forms.Form):
                 queryset=items,
                 label=label,
                 initial=resolve_partner_item(instance.customer, part_no),
-                help_text="自社の品目を選びます。取引先ごとの品番の表に無い対応は、受注にすると表に足します。",
+                help_text="自社の品目を選びます。部品の取引先の表に無い対応は、受注にすると表に足します。",
             )
             self.part_fields.append((name, part_no))
 

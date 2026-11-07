@@ -60,7 +60,7 @@ def user(db):
 
 @pytest.fixture
 def world(user, settings, tmp_path):
-    """得意先 2 つ・部品 2 つ (取引先ごとの品番と標準の工程つき)・受注 1 件 (明細 2 行)・出荷 1 件・指示書 1 枚。"""
+    """得意先 2 つ・部品 2 つ (部品の取引先と標準の工程つき)・受注 1 件 (明細 2 行)・出荷 1 件・指示書 1 枚。"""
     settings.MEDIA_ROOT = tmp_path / "media"
     today = timezone.localdate()
     customer = masters_services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
