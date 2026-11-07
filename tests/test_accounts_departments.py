@@ -599,3 +599,39 @@ def test_catalog_has_department_screens_with_usecase():
         assert screen.name == name
         assert USECASE.fullmatch(screen.usecase), screen.usecase
         assert screen.usecase.startswith("使う人: 総務 / いつ: "), screen.usecase
+
+
+@pytest.mark.django_db
+def test_open_screens_field_is_in_columns(on, client, manager, seizou_dept):
+    """部署の「開ける画面」の check だけ、外の枠に格子を付けて幅の広い画面で 2〜3 列に並べる (初見テスト R5。候補 C83)。
+
+    新規登録 (画面の全体と小窓)・編集の 3 つで見る。部署の「既定の権限」と、アカウントの発行の「権限」「部署」は、
+    外の枠に class の無い 1 列のまま (権限の 2 つの群は別の候補 C90)。選択肢の値は今のまま。
+    """
+    client.force_login(manager)
+    create_url = reverse("accounts:department_create")
+    pages = {
+        "新規登録": client.get(create_url),
+        "編集": client.get(reverse("accounts:department_update", args=[seizou_dept.pk])),
+        "小窓の新規登録": client.get(create_url, HTTP_HX_REQUEST="true", HTTP_HX_TARGET="seizou-modal-box"),
+    }
+    columns = '<div id="id_apps" class="grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">'
+
+    for name, response in pages.items():
+        assert response.status_code == 200, name
+        html = response.content.decode()
+        assert columns in html, name
+        assert '<div id="id_default_permissions">' in html, name
+        assert '<div id="id_default_permissions" class=' not in html, name
+    assert 'hx-target="#seizou-modal-box"' in pages["小窓の新規登録"].content.decode()
+
+    apps = _values(pages["新規登録"].content.decode(), "apps")
+    assert "workorders" in apps
+    assert "bookmarks" not in apps
+
+    issue = client.get(reverse("accounts:access_create"))
+    assert issue.status_code == 200
+    issue_html = issue.content.decode()
+    for name in ("permissions", "departments"):
+        assert f'<div id="id_{name}">' in issue_html, name
+        assert f'<div id="id_{name}" class=' not in issue_html, name

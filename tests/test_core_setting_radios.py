@@ -18,7 +18,7 @@ from django import forms
 from django.urls import reverse
 
 from seizou.core import conf
-from seizou.core.forms import CHOICE_NOTES, Checkboxes, Radios, SettingForm
+from seizou.core.forms import CHECKBOX_CSS, CHOICE_NOTES, Checkboxes, Radios, SettingForm
 from seizou.core.models import SettingOverride
 from tests import test_core_settings_edit
 from tests.test_core_settings_edit import edit_url
@@ -182,3 +182,28 @@ def test_head_line_has_no_key_or_file_names(manager_client, settings):
         assert "ここで保存した値は、" in line, key
         assert conf.SOURCE_ANSWER in line, key
         assert f'<code class="font-mono">{key}</code>' not in body, key
+
+
+# ---------------------------------------------------------------- (i) 複数の checkbox の格子の口
+
+
+def test_checkboxes_columns_put_grid_only_on_the_outer_box(db):
+    """core の Checkboxes は、columns=True のときだけ外の枠に格子の class を付ける (初見テスト R5。候補 C83)。
+
+    1 つずつの check の見た目はどちらも同じ。使わない注文の項目の check は口を開けない (1 列のまま)。
+    """
+    choices = [("a", "A"), ("b", "B")]
+
+    plain = Checkboxes(attrs={"class": CHECKBOX_CSS}, choices=choices).render("x", [], {"id": "id_x"})
+    grid = Checkboxes(attrs={"class": CHECKBOX_CSS}, choices=choices, columns=True).render("x", [], {"id": "id_x"})
+
+    assert '<div id="id_x">' in plain
+    assert '<div id="id_x" class=' not in plain
+    assert '<div id="id_x" class="grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">' in grid
+    for html in (plain, grid):
+        inputs = re.findall(r"<input[^>]*>", html)
+        assert len(inputs) == 2
+        assert all(f'class="{CHECKBOX_CSS}"' in tag for tag in inputs)
+
+    form = SettingForm(key="hidden_fields")
+    assert form.fields[SettingForm.HIDDEN_FIELDS_FIELD].widget.columns is False
