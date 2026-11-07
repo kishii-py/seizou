@@ -1,4 +1,4 @@
 {# 請求書の一覧の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す (rows_template_names)。 #}
 {# core/_rows.html を include し、1 行を billing/_row.html (「入金」の列を入金の状態の印、「状態」の列は取消だけを印) にする (feedback と同じ row_template の形。N164)。 #}
-{# 土台に actions_label="要点" を渡して最後の列の見出しを出す (行の右端の「要点を見る」の目の印は billing/_row.html。押すと請求書の小窓)。 #}
+{# 土台に最後の列の見出し「要点」(actions_label) を渡す (行の右端の「要点を見る」の目の印は billing/_row.html。押すと請求書の小窓)。 #}
 {% include "core/_rows.html" with row_template="billing/_row.html" actions_label="要点" %}
