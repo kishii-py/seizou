@@ -713,9 +713,18 @@ def import_items(rows, user, *, price_skipped=False):
     return _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item, note=note)
 
 
-def import_partners(rows, user):
-    """取引先の CSV の行を入れる。取引先コードが既にあれば update_partner、無ければ create_partner。形は import_items と同じ。"""
-    return _import_rows(rows, user, Partner, "code", "取引先コード", create_partner, update_partner)
+def import_partners(rows, user, *, tax_reread=0):
+    """取引先の CSV の行を入れる。取引先コードが既にあれば update_partner、無ければ create_partner。形は import_items と同じ。
+
+    tax_reread が 1 以上なら (消費税の端数の扱いの前の字「各行四捨五入」「各行切捨」を、form がトータルと
+    消費税の端数の向きに読み替えた行の数。決め C95-3)、知らせに読み替えた行の数の 1 文を足す。
+    """
+    note = (
+        f"消費税の端数の扱いの前の字 (各行四捨五入・各行切捨) の {tax_reread} 行を、トータルと消費税の端数の向きに読み替えました。"
+        if tax_reread
+        else ""
+    )
+    return _import_rows(rows, user, Partner, "code", "取引先コード", create_partner, update_partner, note=note)
 
 
 def set_item_processes(item, processes, user):

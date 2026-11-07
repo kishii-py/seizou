@@ -10,7 +10,7 @@ import re
 from django import forms
 from django.utils import timezone
 
-from seizou.core import csvio
+from seizou.core import csvio, seeds
 from seizou.core.forms import ServiceModelForm
 from seizou.core.widgets import IsoDateInput
 
@@ -367,6 +367,37 @@ class PartnerCsvImportForm(CsvImportForm):
     #: 取引先の一覧の読むだけの列「注文の入口」(一覧の CSV の書き出しに出る。core の dashboard.annotate_order_inlet の列) は読まない。
     #: 一覧で落とした CSV をそのまま入れ直せるように。
     skip_headers = (*csvio.SKIP_HEADERS, "注文の入口")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        #: 消費税の端数の扱いの前の字を読み替えた行の数 (read_tax_mode が数える。知らせの 1 文に使う)
+        self.tax_reread = 0
+        self.cell_readers = {**self.cell_readers, "tax_mode": self.read_tax_mode}
+
+    def read_tax_mode(self, field, raw, present):
+        """消費税の端数の扱いの字を読む。present は CSV にある列の名前の集合。
+
+        前の字 (各行四捨五入・各行切捨。値の line_round・line_floor も) は、トータルと消費税の端数の向きに読み替え、
+        数を tax_reread に足す (決め C95-3。対応は seeds.FORMER_TAX_MODES で、migration が表の値を移したときと同じ)。
+        各行四捨五入 → トータル + 四捨五入、各行切捨 → トータル + 切捨。
+        CSV に消費税の端数の向きの列があるとき (今の形の CSV) は、向きはその列の値を使い、ここでは書かない
+        (人が書いた向きを前の字の向きで上書きしない。read_payment_day が支払の月の列の有無で読み方を変えるのと同じ見方)。
+        前の字でない字は今までどおり読む (選べない字は誤り)。
+        """
+        text = _text_of(raw)
+        direction = seeds.FORMER_TAX_MODES.get(text)
+        if direction is None:
+            return {field.name: csvio.to_value(field, raw)}
+        self.tax_reread += 1
+        if "tax_rounding" in present:
+            return {"tax_mode": "total"}
+        return {"tax_mode": "total", "tax_rounding": direction}
+
+    def service_kwargs(self):
+        kwargs = super().service_kwargs()
+        if self.tax_reread:
+            kwargs["tax_reread"] = self.tax_reread
+        return kwargs
 
 
 # ---------------------------------------------------------------- 図面を版に戻す (第 3 波)

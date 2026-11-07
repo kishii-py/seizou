@@ -136,3 +136,109 @@ def test_partner_form_choices_and_former_value_error():
     assert not form.is_valid()
     assert "tax_mode" in form.errors
     assert "tax_rounding" not in form.errors
+
+
+# ---------------------------------------------------------------- その 2: 前の CSV と種の「各行」の字の読み替え (決め C95-3)
+
+
+@pytest.fixture
+def user(db):
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.create_user(username="tester", password="tests-only")
+
+
+@pytest.fixture
+def no_registration(monkeypatch):
+    """会社ごとの項目の登録を空から始める (ほかの試験の登録を残さない)。"""
+    from seizou.core import fields as company_fields
+
+    monkeypatch.setattr(company_fields, "_REGISTRY", {})
+
+
+def _partner_form(*lines):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from seizou.masters.forms import PartnerCsvImportForm
+
+    content = ("\r\n".join(lines) + "\r\n").encode("utf-8")
+    upload = SimpleUploadedFile("import.csv", content, content_type="text/csv")
+    return PartnerCsvImportForm(data={"encoding": "utf-8-sig"}, files={"file": upload})
+
+
+def _tax_values():
+    return {p.code: (p.tax_mode, p.tax_rounding) for p in Partner.objects.all()}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("header", ["消費税の端数の扱い", "消費税の計算方法"])
+def test_former_partner_csv_rereads_line_values(user, no_registration, header):
+    """(e) 向きの列が無い前の CSV: 各行の 2 つはトータルと前の向きに、トータルはそのまま (向きは空)。"""
+    from seizou.masters import services
+
+    form = _partner_form(
+        f"取引先コード,名前,取引先の種類,{header}",
+        "C001,作り物の得意先 1,得意先,各行四捨五入",
+        "C002,作り物の得意先 2,得意先,各行切捨",
+        "C003,作り物の得意先 3,得意先,トータル",
+    )
+    assert form.is_valid(), form.import_errors or form.errors
+    assert form.tax_reread == 2
+
+    result = services.import_partners(**form.service_kwargs(), user=user)
+
+    assert _tax_values() == {"C001": ("total", "round"), "C002": ("total", "floor"), "C003": ("total", "")}
+    assert "2 行" in result.saved_note and "読み替えました" in result.saved_note
+
+
+@pytest.mark.django_db
+def test_rounding_column_wins_over_former_word(user, no_registration):
+    """(f) 向きの列がある CSV では、向きはその列の値 (前の字の向きで上書きしない)。"""
+    from seizou.masters import services
+
+    form = _partner_form(
+        "取引先コード,名前,取引先の種類,消費税の端数の扱い,消費税の端数の向き",
+        "C001,作り物の得意先 1,得意先,各行切捨,切上",
+        "C002,作り物の得意先 2,得意先,各行切捨,",
+    )
+    assert form.is_valid(), form.import_errors or form.errors
+
+    services.import_partners(**form.service_kwargs(), user=user)
+
+    assert _tax_values() == {"C001": ("total", "ceil"), "C002": ("total", "")}
+
+
+@pytest.mark.django_db
+def test_former_seed_csv_rereads_line_values(tmp_path):
+    """(g) 前の見出しの種の CSV の各行の字も、CSV の取り込みと同じ規則で読み替え、注意に行の数を出す。"""
+    from seizou.core import demo
+    from tests.test_core_demo import PARTNER_HEADER, PARTNER_ITEM_HEADER, write_csv, write_seeds
+
+    rows = [
+        ["C001", "得意先の社", "", "得意先", "", "", "", "切上", "各行四捨五入", ""],
+        ["S001", "協力企業の社", "", "協力企業", "", "", "", "切捨", "各行切捨", ""],
+    ]
+    seeds = write_seeds(tmp_path / "seeds", orders=[])
+    write_csv(seeds / "partners.csv", PARTNER_HEADER, rows)
+    write_csv(seeds / "partner_items.csv", PARTNER_ITEM_HEADER, [])
+
+    summary = demo.load(seeds)
+
+    values = {p.code: (p.rounding, p.tax_mode, p.tax_rounding) for p in Partner.objects.all()}
+    assert values == {"C001": ("ceil", "total", "round"), "S001": ("floor", "total", "floor")}
+    notes = [note for note in summary["注意"] if "読み替えました" in note]
+    assert len(notes) == 1 and "2 行" in notes[0]
+
+
+@pytest.mark.django_db
+def test_other_unknown_word_is_still_an_error(no_registration):
+    """(h) 前の字でない選べない字は、今までどおり誤りで、1 件も入らない。"""
+    form = _partner_form(
+        "取引先コード,名前,取引先の種類,消費税の端数の扱い",
+        "C001,作り物の得意先 1,得意先,各行切上",
+    )
+    assert not form.is_valid()
+    reasons = [reason for _line, _header, reason in form.import_errors]
+    assert "消費税の端数の扱い「各行切上」は使えません。トータル のどれかにしてください。" in reasons
+    assert form.tax_reread == 0
+    assert Partner.objects.count() == 0

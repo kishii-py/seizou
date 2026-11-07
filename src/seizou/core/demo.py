@@ -11,6 +11,8 @@ load(seeds_dir) が、種のフォルダ (答えの YAML と同じ場所の <id>
   YAML は行の番号が取れないので「N 件目」で示す (明細の変換の誤りは「M 行目の明細」まで。services が断った受注は、受注の位置と注文番号)。CSV は行の番号 (見出しが 1 行目)。
 - CSV の見出しと YAML の鍵は、部品の表の verbose_name (日本語の項目名)。対応の表は手で書かず、model の _meta から引く。
   画面の字を直す前の見出し (FORMER_HEADERS) も読む (種の見出しは別の係が持つので、すぐには変えない)。
+  取引先の消費税の端数の扱いの前の字 (各行四捨五入・各行切捨) も、トータルと消費税の端数の向きに読み替えて読む
+  (seeds.FORMER_TAX_MODES。CSV の取り込みと同じ規則。決め C95-3)。
   字 → 値の決まり (FORMER_HEADERS も) は seizou.core.seeds に置く (CSV の取り込みと同じ関数を使う)。
 - 取引先の支払の条件は 支払の月 (当月・翌月・翌々月) と 支払日 (1〜31 の数。31 は月末) の 2 列。
 - 会社ごとの項目 (items.csv の見出しのうち部品の表に無い物) は、core.fields の登録の見出しと突き合わせて ext= にする。
@@ -201,17 +203,35 @@ def _load_partners(seeds_dir, user, notices):
 
     path = _open_file(seeds_dir, "取引先")
     by_label = _fields_by_label(Partner)
-    _headers, rows = _read_csv(path, by_label, ("取引先コード", "名前", "取引先の種類"))
+    headers, rows = _read_csv(path, by_label, ("取引先コード", "名前", "取引先の種類"))
+    # 消費税の端数の向きの列がある種 (今の形) は、向きはその列の値を使う (CSV の取り込みの read_tax_mode と同じ規則)
+    has_tax_rounding = any(by_label[h].name == "tax_rounding" for h in headers)
 
-    made = skipped = 0
+    made = skipped = reread = 0
     for line_no, row in rows:
         with _guard(path.name, f"{line_no} 行目"):
-            data = {by_label[h].name: _coerce(by_label[h], raw) for h, raw in row.items()}
+            data, former = {}, False
+            for header, raw in row.items():
+                field = by_label[header]
+                # 消費税の端数の扱いの前の字は、_coerce (選べる値の外の字で止まる) の前に字で見て読み替える
+                direction = seeds.FORMER_TAX_MODES.get("" if raw is None else str(raw).strip())
+                if field.name == "tax_mode" and direction is not None:
+                    former = True
+                    data["tax_mode"] = "total"
+                    if not has_tax_rounding:
+                        data["tax_rounding"] = direction
+                    continue
+                data[field.name] = _coerce(field, raw)
             if Partner.objects.filter(code=data["code"]).exists():
                 skipped += 1
                 continue
             services.create_partner(data, user)
             made += 1
+            reread += former
+    if reread:
+        notices.append(
+            f"{path.name} の {reread} 行の消費税の計算方法 (各行四捨五入・各行切捨) を、トータルと消費税の端数の向きに読み替えました。"
+        )
     return made, skipped
 
 
