@@ -251,7 +251,12 @@ def create_issue(token: str, repo: str, title: str, body: str, labels) -> dict:
 
 
 def issue_state(repo: str, number: int, token: str = "") -> dict:
-    """Issue の状態 (GET /repos/{owner}/{repo}/issues/{number})。返す物は {"state", "closed_at", "html_url"}。トークンは任意。"""
+    """Issue の状態 (GET /repos/{owner}/{repo}/issues/{number})。トークンは任意。
+
+    返す物は {"state", "closed_at", "html_url", "state_reason", "milestone"} (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+    state_reason は閉じた理由 (completed・not_planned・duplicate・reopened。無ければ空の字)、
+    milestone はマイルストーンの名前 (世話役が付ける直る版。例 0.1.1。無ければ空の字)。
+    """
     import requests
 
     try:
@@ -263,7 +268,15 @@ def issue_state(repo: str, number: int, token: str = "") -> dict:
     data = _json(answer)
     if not isinstance(data, dict):
         raise GithubError("GitHub の返事が読めませんでした。少し待ってからもう一度押してください。")
-    return {"state": data.get("state") or "", "closed_at": data.get("closed_at") or "", "html_url": data.get("html_url") or ""}
+    milestone = data.get("milestone")
+    title = milestone.get("title") if isinstance(milestone, dict) else ""
+    return {
+        "state": data.get("state") or "",
+        "closed_at": data.get("closed_at") or "",
+        "html_url": data.get("html_url") or "",
+        "state_reason": data.get("state_reason") or "",
+        "milestone": title if isinstance(title, str) else "",
+    }
 
 
 def list_issues(repo: str, token: str = "") -> list[dict]:
