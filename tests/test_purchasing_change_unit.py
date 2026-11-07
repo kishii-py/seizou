@@ -6,6 +6,7 @@
 fixture と送る値の組み立ては tests/test_purchasing_change.py の物を写した (既にある試験のファイルを触らないため)。
 """
 
+import json
 import re
 from datetime import date
 from decimal import Decimal
@@ -185,3 +186,14 @@ def test_unlisted_unit_error_shows_under_unit_select(client_logged_in, order, ro
     cell = body[body.index('<select name="lines-3-unit"') :]
     cell = cell[: cell.index("</td>")]
     assert cell.count(UNLISTED_LINE_UNIT.format(unit="本")) == 1
+
+
+@pytest.mark.django_db
+def test_sent_revision_carries_chosen_unit_code(client_logged_in, order, items, fake):
+    calls = len(fake.calls)
+    response = _send_change(client_logged_in, order, _add(items[3], "KGM"))
+    assert response.status_code == 302
+    assert len(fake.calls) == calls + 1
+    sent = json.loads(fake.calls[-1]["data"].decode("utf-8"))
+    [added] = [line for line in sent["lines"] if line["line_no"] == 4]
+    assert (added["unit"], added["unit_code"]) == ("kg", "KGM")
