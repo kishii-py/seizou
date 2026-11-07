@@ -17,15 +17,19 @@
   SearchSection(kind, label, columns, rows, total)
     columns: SearchColumn の並び (見出しの字と、数・識別子・日付の印)。字だけを渡せば印の無い列。
     rows: SearchRow の並び。
-  SearchRow(cells, url)
+  SearchRow(cells, url, match)
     cells: 列の値の並び (columns と同じ数)。数は Decimal / int のまま返す (テンプレートが区切りと右寄せをする)。
       品目と取引先は物のまま返すと、押すと小窓が開く link になる (一覧と同じ)。
     url: 詳細の URL か None。
+    match: 列に出ていない項目で当たった所 (SearchMatch(label, before, hit, after)) か None。部品の search() が
+      find_match(query, cells, candidates) で作る。画面は 1 列目の link の下に「見出し: 値」を灰の小さい字で出し、
+      当たった字を主色の太字にする。
 """
 
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, field
 from importlib import import_module, util
 from urllib.parse import urlencode
@@ -35,13 +39,21 @@ from django.db import DatabaseError
 from django.views.generic import TemplateView
 
 from seizou.core import access
-from seizou.core.views import ScreenMixin, is_master, is_negative, load_model
+from seizou.core.views import ScreenMixin, is_master, is_negative, load_model, search_variants
 from seizou.parts import PARTS
 
 #: 1 種類で画面に出す行の上限 (ページ送りは作らない。超えたら絞り込みを頼む)
 LIMIT = 50
 #: 全部の種類を探す印 (GET の kind)
 ALL = "all"
+#: 列に出ていない項目で当たった所の 1 行に出す値の字の数の目安 (「…」は数えない)
+MATCH_CHARS = 24
+#: 当たった字の前に残す字の数
+MATCH_BEFORE = 8
+#: 省いた所の印 (U+2026 の 1 字)
+ELLIPSIS = "\u2026"
+#: 行の頭に続く Markdown の印 (空白・タブ・# > - * + | : と [ ] [x])。位置を渡して match で当てるので ^ は付けない
+LINE_MARKS = re.compile(r"(?:[ \t#>*+|:-]|\[[ xX]\])+")
 
 
 @dataclass(frozen=True)
@@ -56,11 +68,27 @@ class SearchColumn:
 
 
 @dataclass(frozen=True)
+class SearchMatch:
+    """列に出ていない項目で当たった所。label は項目の見出し、hit は当たった字 (元の値の字のまま)、before と after はその前後の字。"""
+
+    label: str
+    before: str
+    hit: str
+    after: str
+
+    @property
+    def text(self) -> str:
+        """1 行に出す値の字の全部 (画面の title に使う)。"""
+        return self.before + self.hit + self.after
+
+
+@dataclass(frozen=True)
 class SearchRow:
-    """結果の行 1 つ。"""
+    """結果の行 1 つ。match は列に出ていない項目で当たった所 (無ければ None)。"""
 
     cells: tuple
     url: str | None = None
+    match: SearchMatch | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +135,63 @@ def run_search(query: str, *, kind: str = ALL, partner: int | None = None, limit
     return sections
 
 
+def _contains(variant: str, value: str):
+    """value の中で variant (揺れの 1 つ) が最初に現れる所 (大文字と小文字は同じに扱う)。無ければ None。"""
+    return re.search(re.escape(variant), value, re.IGNORECASE)
+
+
+def _make_match(label: str, value: str, found) -> SearchMatch:
+    """value の中の当たった所 (found) から、当たった字のある行だけで SearchMatch を作る。
+
+    行の頭に続く Markdown の印を外し、当たった字の前は MATCH_BEFORE 字まで、前と当たった字と後の合計は MATCH_CHARS 字までにする
+    (省いた所は「…」。「…」は数えない)。当たった字だけで超えるときは、行が続けば後は「…」だけ。
+    """
+    start, end = found.span()
+    line_start = max(value.rfind("\n", 0, start), value.rfind("\r", 0, start)) + 1
+    line_ends = [i for i in (value.find("\n", end), value.find("\r", end)) if i != -1]
+    line_end = min(line_ends) if line_ends else len(value)
+    marks = LINE_MARKS.match(value, line_start, start)
+    head = marks.end() if marks else line_start
+    before = value[head:start]
+    if len(before) > MATCH_BEFORE:
+        before = before[-MATCH_BEFORE:]
+        shown_before = ELLIPSIS + before
+    else:
+        shown_before = before
+    hit = found.group()
+    after = value[end:line_end]
+    room = max(MATCH_CHARS - len(before) - len(hit), 0)
+    if len(after) > room:
+        after = after[:room] + ELLIPSIS
+    return SearchMatch(label, shown_before, hit, after)
+
+
+def find_match(query: str, cells, candidates) -> SearchMatch | None:
+    """列に出ていない項目で当たった所を 1 つ返す。部品の search() が行ごとに呼ぶ。
+
+    query は search() に来た言葉のまま (空白で分けた語ごとに見る)。cells はその行の列の値の並び (SearchRow の cells と同じ物)。
+    candidates は (見出し, 値) の並びで、列に出ていない当たりうる項目を探す順に並べた物。
+    語ごとに順に、揺れ (search_variants。search_q と同じ物) のどれかが列のどれかの字に含まれていれば次の語へ移る。
+    どの列にも無ければ candidates を順に見て (None と空の字は飛ばす)、揺れの順に値の中を探し、最初に見つかった所で返す。
+    どの語でも作れなければ None。行を出すかどうかは今のまま DB が決め、この関数は 1 行を足すかだけを決める
+    (DB の icontains と扱いが違って見つからない行は None になり、今と同じ形で出る)。
+    """
+    shown = [str(value) for value in cells if value is not None]
+    for term in query.split():
+        variants = search_variants(term)
+        if any(_contains(variant, text) for variant in variants for text in shown):
+            continue
+        for label, value in candidates:
+            if value is None or value == "":
+                continue
+            value = str(value)
+            for variant in variants:
+                found = _contains(variant, value)
+                if found:
+                    return _make_match(label, value, found)
+    return None
+
+
 def customer_choices() -> list | None:
     """得意先の選択肢 (取引先の種類が得意先か両方の取引先)。マスターの部品が無いか、表が読めなければ None。"""
     if not apps.is_installed("seizou.masters"):
@@ -129,7 +214,7 @@ def as_column(column) -> SearchColumn:
 
 
 def display_section(section: SearchSection, *, hide_money=False) -> dict:
-    """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url"}、1 枡 = _rows.html と同じ印の辞書。
+    """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url", "match"}、1 枡 = _rows.html と同じ印の辞書。
     枡の boolean は値が真偽なら真で、テンプレートが bool_mark で印にする (C55)。"""
     columns = [as_column(c) for c in section.columns]
     rows = []
@@ -151,7 +236,7 @@ def display_section(section: SearchSection, *, hide_money=False) -> dict:
                     "code": column.is_code,
                 }
             )
-        rows.append({"cells": cells, "url": row.url})
+        rows.append({"cells": cells, "url": row.url, "match": row.match})
     return {
         "kind": section.kind,
         "label": section.label,
