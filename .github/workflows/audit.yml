@@ -1,0 +1,118 @@
+name: audit
+
+# 依存の見張り。製品の依存 (uv.lock) と同梱物 (scripts/vendor.toml) に知られた問題が出たら落ちて知らせる。
+# pip-audit は別名の無い問題を見つけられないので、Django は同じ minor の最新の patch とも比べる。
+
+on:
+  push:
+  schedule:
+    # 週 1 回 (月曜 00:00 UTC = 09:00 JST)
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.12.21"
+      - name: 製品の依存を requirements の形で書き出す
+        run: uv export --locked --no-dev --extra pdf --extra server --no-emit-project --format requirements-txt -o requirements-audit.txt
+      - name: pip-audit で知られた問題を探す
+        run: uvx --from pip-audit==2.10.1 pip-audit --requirement requirements-audit.txt --disable-pip --no-deps
+      - name: Django が同じ minor の最新の patch かを確かめる
+        run: |
+          python3 - <<'EOF'
+          import json
+          import re
+          import sys
+          import tomllib
+          import urllib.request
+
+          RELEASE = re.compile(r"^\d+(\.\d+)*$")
+
+
+          def parse(version):
+              return tuple(int(part) for part in version.split("."))
+
+
+          with open("uv.lock", "rb") as file:
+              lock = tomllib.load(file)
+          locked = [package["version"] for package in lock["package"] if package["name"] == "django"]
+          if len(locked) == 1 and RELEASE.match(locked[0]):
+              current = locked[0]
+          else:
+              print(f"::error::uv.lock の django の項目を 1 つに決められない ({locked})")
+              sys.exit(1)
+
+          with urllib.request.urlopen("https://pypi.org/pypi/Django/json", timeout=30) as response:
+              releases = json.load(response)["releases"]
+          minor = parse(current)[:2]
+          same_minor = [
+              version
+              for version, files in releases.items()
+              if RELEASE.match(version)
+              and parse(version)[:2] == minor
+              and any(not file.get("yanked", False) for file in files)
+          ]
+          if not same_minor:
+              print(f"::error::PyPI に Django {minor[0]}.{minor[1]} 系の版が見つからない")
+              sys.exit(1)
+          latest = max(same_minor, key=parse)
+          if parse(current) < parse(latest):
+              print(
+                  f"::error::uv.lock の Django {current} は、{minor[0]}.{minor[1]} 系の最新の patch {latest} より古い。"
+                  "uv lock --upgrade-package django で上げる"
+              )
+              sys.exit(1)
+          print(f"uv.lock の Django {current} は {minor[0]}.{minor[1]} 系の最新の patch ({latest}) と同じか新しい")
+          EOF
+      - name: 同梱物 (scripts/vendor.toml の path を持つ項目) を OSV で引く
+        run: |
+          python3 - <<'EOF'
+          import json
+          import re
+          import sys
+          import tomllib
+          import urllib.request
+
+          NPM_URL = re.compile(r"^https://cdn\.jsdelivr\.net/npm/((?:@[^/@]+/)?[^/@]+)@([^/]+)/")
+
+          with open("scripts/vendor.toml", "rb") as file:
+              items = tomllib.load(file)["item"]
+          packages = set()
+          skipped = []
+          for item in items:
+              if "path" not in item:
+                  continue
+              match = NPM_URL.match(item["url"])
+              if match and match.group(2) == item["version"]:
+                  packages.add((match.group(1), item["version"]))
+              else:
+                  skipped.append(item["name"])
+
+          found = False
+          for name, version in sorted(packages):
+              body = json.dumps({"package": {"name": name, "ecosystem": "npm"}, "version": version}).encode()
+              request = urllib.request.Request(
+                  "https://api.osv.dev/v1/query",
+                  data=body,
+                  headers={"Content-Type": "application/json"},
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  vulns = json.load(response).get("vulns", [])
+              if vulns:
+                  found = True
+                  ids = ", ".join(vuln["id"] for vuln in vulns)
+                  print(f"::error::{name} {version} に知られた問題がある: {ids}")
+              else:
+                  print(f"{name} {version}: 知られた問題は無い")
+          if skipped:
+              print(f"OSV の package の名前に当てられないので飛ばした: {', '.join(skipped)}")
+          sys.exit(1 if found else 0)
+          EOF

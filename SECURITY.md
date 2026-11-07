@@ -47,7 +47,7 @@
 - 上げたファイルの口がブラウザの中で開くのは、PNG・JPEG・WebP・GIF・PDF・テキストの型だけにし、ほかの型はダウンロードにして `Content-Security-Policy: sandbox` を付ける (nginx に送らせる配り方では、置き場の `deploy/nginx-files.conf` が同じ見出しを付ける)。注文書の読み取りの元のファイル (単価が入る) は、権限の判定の金額の閲覧が有効 (on) のとき、金額を見られない人には返さない (404)。
 - PDF を作る部品 (WeasyPrint) か OS の pango が無いときは、PDF を作らず、印刷用の画面に落ちる (`seizou.core.reports.PdfUnavailable`)。
 - SQL を直接書かない (決まりの検査が止める)。
-- 依存の下限は、知られた問題を直した版に置く。`Django>=5.2.18,<6.2`・`Pillow>=13.0.0`・`weasyprint>=70.0`。
+- 依存の下限は、知られた問題を直した版に置く。uv.lock は直した版 (Django 6.1.3) を入れる。pyproject の下限は `Django>=5.2.19,<6.2`・`Pillow>=13.0.0`・`weasyprint>=70.0`・`requests>=2.33.0`・`PyYAML>=6.0.3` で、Django の下限は 5.2 系の直した版 (6.0.10 より前の 6.0 系と 6.1.0〜6.1.2 も範囲に入るので、pip で入れるときは 6.1.3 以上か 5.2.19 以上の 5.2 系を使う)。
 
 ## 取引先の鍵の作り方
 

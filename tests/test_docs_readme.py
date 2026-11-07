@@ -252,6 +252,55 @@ def test_third_party_lists_anthropic_with_locked_version():
     assert locked[0] in " ".join(found[0]), f"anthropic の行に uv.lock の版 {locked[0]} が無い"
 
 
+def _project_dependency(name):
+    """pyproject.toml の dependencies から、名前 (大文字と小文字を区別しない) が合う字を 1 つ返す。"""
+    dependencies = tomllib.loads(_read("pyproject.toml"))["project"]["dependencies"]
+    found = [
+        dependency
+        for dependency in dependencies
+        if re.match(r"[A-Za-z0-9_.-]+", dependency).group(0).lower() == name.lower()
+    ]
+    assert len(found) == 1, f"pyproject.toml の dependencies に {name} が {len(found)} 個ある (1 個のはず)"
+    return found[0]
+
+
+def _locked_django_version():
+    lock = tomllib.loads(_read("uv.lock"))
+    locked = [package["version"] for package in lock["package"] if package["name"] == "django"]
+    assert len(locked) == 1, f"uv.lock の django の項目が {len(locked)} 個ある (1 個のはず)"
+    return locked[0]
+
+
+def test_security_names_django_lower_bound_of_pyproject():
+    django = _project_dependency("Django")
+    assert django in _read("SECURITY.md"), f"SECURITY.md に pyproject の Django の字 {django} が無い"
+
+
+def test_third_party_lists_django_with_locked_version():
+    version = _locked_django_version()
+    rows = _table_rows(_section(_read("THIRD_PARTY_NOTICES.md"), "## Python の依存 (同梱しない)"))
+    assert rows, "THIRD_PARTY_NOTICES の Python の依存に表が無い"
+    name_column = rows[0].index("名前")
+    found = [row for row in rows[2:] if row[name_column] == "Django"]
+    assert found, "THIRD_PARTY_NOTICES の Python の依存の表に Django の行が無い"
+    assert version in " ".join(found[0]), f"Django の行に uv.lock の版 {version} が無い"
+
+
+def test_locked_django_has_security_release_of_2026_11_03():
+    version = _locked_django_version()
+    assert tuple(int(part) for part in version.split(".")) >= (6, 1, 3), (
+        f"uv.lock の Django が {version} (2026-11-03 の安全の修正の 6.1.3 より前)"
+    )
+
+
+def test_security_names_requests_and_pyyaml_lower_bounds():
+    security = _read("SECURITY.md")
+    for name in ["requests", "PyYAML"]:
+        dependency = _project_dependency(name)
+        assert ">=" in dependency, f"pyproject の {dependency} に下限 (>=) が無い"
+        assert dependency in security, f"SECURITY.md に pyproject の {name} の字 {dependency} が無い"
+
+
 def _intake_api_key_env():
     """src/seizou/intake/services.py の API_KEY_ENV の字を、import せずに読む。"""
     tree = ast.parse(_read("src/seizou/intake/services.py"))

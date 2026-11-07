@@ -11,10 +11,10 @@ requires-python = ">=3.12"
 license = "Apache-2.0 AND MIT AND 0BSD AND OFL-1.1 AND BSD-3-Clause"
 license-files = ["LICENSE", "NOTICE"]
 dependencies = [
-    "Django>=5.2.18,<6.2",
+    "Django>=5.2.19,<6.2",
     "Pillow>=13.0.0",
-    "requests",
-    "PyYAML",
+    "requests>=2.33.0",
+    "PyYAML>=6.0.3",
     "anthropic>=2.3.0",
     "qrcode>=8.2",
     "mcp>=2.3.0",
