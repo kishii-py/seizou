@@ -247,6 +247,19 @@
       },
     });
 
+    // 小窓 (dialog) の中の欄は候補の一覧を包みの中に描くので、小窓の箱 (#seizou-modal-box。daisyUI の modal-box は overflow-y: auto) に
+    // 下で切られる (現品票を読む小窓の指示書の欄で、1 件目しか見えなかった = 本人の報告 11-07 17:0x)。一覧を開いている間だけ箱の
+    // overflow を visible にし、閉じたら戻す (箱の高さは変えない。class は固定の字 = R19)。
+    var modalBox = inDialog ? select.closest("#seizou-modal-box") : null;
+    if (modalBox) {
+      ts.on("dropdown_open", function () {
+        modalBox.classList.add("overflow-visible");
+      });
+      ts.on("dropdown_close", function () {
+        modalBox.classList.remove("overflow-visible");
+      });
+    }
+
     // 登録の行を押したら候補の一覧を閉じる (小窓は seizou-modal.js が data-modal-form で開く。押下は止めない。N162)。
     ts.dropdown.addEventListener("click", function (event) {
       if (event.target.closest && event.target.closest("[data-select-create]")) ts.close();
