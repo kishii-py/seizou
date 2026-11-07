@@ -23,7 +23,7 @@ from seizou.core.media import favicon, protected_file
 from seizou.core.search import SearchView
 from seizou.core.settings_screen import CompanyUpdateView, DisplaySettingsView, SettingsView, SettingUpdateView, mail_test, setting_clear
 from seizou.core.views import HomeView, RememberLoginView
-from seizou.core.views import rule_help
+from seizou.core.views import bell, rule_help
 from seizou.parts import PARTS
 
 
@@ -47,6 +47,7 @@ core_patterns = [
     path("manual/fragment/<str:anchor>/", manual_fragment, name="manual_fragment"),
     path("manual/images/<str:name>", manual_image, name="manual_image"),
     path("rules/<str:code>/", rule_help, name="rule_help"),
+    path("bell/", bell, name="bell"),
     path("guide/<str:anchor>/", screen_guide, name="screen_guide"),
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/company/", CompanyUpdateView.as_view(), name="company_update"),

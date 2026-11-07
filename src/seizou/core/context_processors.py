@@ -218,6 +218,15 @@ def _header_color(user) -> str:
     return name if name in display.HEADER_COLORS and name != display.HEADER_COLOR_DEFAULT else ""
 
 
+def _bell_count(user) -> int:
+    """上の帯の鈴の赤い数 (core.bell.unread_count)。テンプレートが読んだ時に 1 回だけ数える。未ログインは 0。"""
+    from seizou.core import bell
+
+    if not getattr(user, "is_authenticated", False):
+        return 0
+    return bell.unread_count(user)
+
+
 def attach_counts(items: list[dict], user) -> None:
     """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit を付ける。
 
@@ -288,6 +297,8 @@ def seizou(request) -> dict:
             "hide_money": SimpleLazyObject(lambda: _hides_money(user)),
             # 上の帯の色 (人ごとの表示の設定。N167)。base.html の <html> の data-seizou-header。テンプレートが読んだ時に読む
             "header_color": SimpleLazyObject(lambda: _header_color(user)),
+            # 上の帯の知らせの鈴の赤い数 (まだ見ていない知らせの数。core.bell)。core/_bell.html が読んだ時に数える (受け渡しの seizou-部品の6案-20261107/指示書.md の 4)
+            "bell_count": SimpleLazyObject(lambda: _bell_count(user)),
             "practice": practice.is_practice(),  # 練習モード (seizou_practice start が立てたサーバー) の印。base.html が帯と題の「練習: 」を出す
         }
     }

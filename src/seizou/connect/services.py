@@ -34,8 +34,9 @@ from urllib.parse import urlsplit
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.urls import reverse
 
-from seizou.core import edi_codes
+from seizou.core import access, edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, map_partner_item, resolve_partner_item
 from seizou.orders.services import cancel_order, create_order, shipped_qty, update_order
@@ -2936,3 +2937,41 @@ def fetch_chat_file(chat_file, user):
     saved = _write_fetch(current, ChatFile.FETCHED, bytes(content))
     logger.info("会話の添付を受け取った: 添付 %s 識別 %s", saved.pk, saved.file_id)
     return saved
+
+
+# ---- 上の帯の知らせの鈴 (core.bell が呼ぶ読むだけの 2 つ。受け渡しの seizou-部品の6案-20261107/指示書.md の 4) ----
+
+BELL_TITLE = "受信した注文が届きました"
+
+
+def _bell_visible(user) -> bool:
+    """受信した注文を見られる人か (左のメニューと同じ判定 = 部署で connect を開ける人。記録は書かない)。未ログインは見られない。"""
+    return getattr(user, "is_authenticated", False) and access.can_open(user, "connect", record=False)
+
+
+def bell_count(user, since) -> int:
+    """since より後に届いた受信した注文の数 (鈴の赤い数。件数だけ数える)。見られない人は 0。読むだけ。"""
+    if not _bell_visible(user):
+        return 0
+    return Inbox.objects.filter(received_at__gt=since).count()
+
+
+def bell_notices(user, *, limit=10) -> list[dict]:
+    """鈴の箱に並べる受信した注文 (新しい順に limit 件)。1 件 = {"when", "title", "text", "url", "icon"}。見られない人は空の並び。読むだけ。"""
+    if not _bell_visible(user):
+        return []
+    rows = Inbox.objects.select_related("partner").order_by("-received_at", "-pk")[:limit]
+    notices = []
+    for row in rows:
+        name = row.partner.name if row.partner_id else "差出人の確認待ち"
+        summary = row.summary()
+        notices.append(
+            {
+                "when": row.received_at,
+                "title": BELL_TITLE,
+                "text": f"{name} の{row.get_kind_display()}" + (f" ({summary})" if summary else ""),
+                "url": reverse("connect:inbox_detail", args=[row.pk]),
+                "icon": "inbox",
+            }
+        )
+    return notices

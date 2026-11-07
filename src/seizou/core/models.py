@@ -186,3 +186,21 @@ class ChangeLog(models.Model):
 
     def __str__(self):
         return f"{self.created_at:%Y-%m-%d %H:%M} {self.object_text} {self.get_action_display()}"
+
+
+class BellOpened(models.Model):
+    """上の帯の知らせの鈴を最後に開いた日時 (1 人 1 行。受け渡しの seizou-部品の6案-20261107/指示書.md の 4。本人の決め 11-07 18:2x〜18:4x)。
+
+    鈴の赤い数は、この日時より後に起きた知らせ (受信した注文・自分のフィードバックの直した・見送った・返事) の数 (core.bell)。
+    行の無い人 (まだ 1 度も開いていない) は、登録した日時 (date_joined) を代わりに使う。書くのは core.services.open_bell だけ (R13)。
+    """
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+", verbose_name="利用者")
+    opened_at = models.DateTimeField("鈴を開いた日時", default=timezone.now)
+
+    class Meta:
+        verbose_name = "鈴を開いた日時"
+        verbose_name_plural = "鈴を開いた日時"
+
+    def __str__(self):
+        return f"{self.user} {self.opened_at:%Y-%m-%d %H:%M}"

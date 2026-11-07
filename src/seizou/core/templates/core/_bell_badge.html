@@ -1,0 +1,2 @@
+{# 鈴の赤い数 (core/_bell.html と、鈴の小窓の返事 core/_bell_modal.html が oob=True で include する)。count が 0 なら印を出さない (id だけの空の span を残し、oob の差し替えの先にする)。99 を超えたら「99+」。class は丸ごと書く (R19)。 #}
+{% if count %}<span id="seizou-bell-badge" class="badge badge-error badge-xs absolute -right-2 -top-2 min-w-5 px-1 font-bold tabular-nums"{% if oob %} hx-swap-oob="true"{% endif %} aria-label="新しい知らせ {{ count }} 件">{% if count > 99 %}99+{% else %}{{ count }}{% endif %}</span>{% else %}<span id="seizou-bell-badge"{% if oob %} hx-swap-oob="true"{% endif %} hidden></span>{% endif %}
