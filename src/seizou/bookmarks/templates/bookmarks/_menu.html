@@ -1,0 +1,14 @@
+{% load bookmarks_tags seizou_icons %}
+{# 左のメニューの「ブックマーク」の組 (core/_sidebar.html が nav の中、部品の大項目の後で include する。受け渡しの seizou-部品の6案-20261107/指示書.md の 5。本人の決め 11-07 18:2x〜18:4x = A「左のメニューにブックマークを出す」)。☆ で登録した画面を登録の順に並べる。0 件なら何も出さない。 #}
+{# 形は部品の大項目と同じ details (同じ name で、1 つ開くとほかが閉じる)。初めは閉じている (今の画面の大項目の open を取り合わないため。data-seizou-active も付けない = 戻るの後に開き直す物でない)。入口の形 (pl-9・aria-current の印・絵) も大項目の入口と同じ。見つからなくなった画面は並べない (上の帯の ☆ の小窓で「消す」)。全部の画面に出るので、既にある試験が数える字 (待っている数の札 id="menu-count-" など) を書かない。 #}
+{% bookmark_menu as bookmarks %}
+{% if bookmarks %}
+<details id="menu-bookmarks" class="group mb-1" name="seizou-menu-section">
+  <summary class="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary group-open:font-medium group-open:text-primary [&::-webkit-details-marker]:hidden">{% icon "star" "size-5" %}<span class="min-w-0 flex-1 truncate">ブックマーク</span>{% icon "chevron-down" "size-4 -rotate-90 text-base-content/60 transition-transform group-open:rotate-0" %}</summary>
+  <ul class="flex flex-col">
+    {% for item in bookmarks %}
+    <li><a href="{{ item.url }}" class="flex items-center gap-2 rounded-lg py-2 pr-2 pl-9 text-base-content/70 transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-primary/10 aria-[current=page]:font-medium aria-[current=page]:text-primary" {% if item.active %}aria-current="page"{% endif %}>{% icon item.icon "size-4" %}<span class="truncate">{{ item.label }}</span></a></li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
