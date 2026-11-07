@@ -41,7 +41,8 @@ EDI の文書は注文です。発注を保存すると、発注した会社が�
 | `lines[].part_no` | 発注した会社の自社品番 | `masters.Item.part_no` | 35 字 | `orders.OrderLine.customer_part_no`・`masters.PartnerItem.partner_part_no` | 35 字 | 発注者品目ID (注文 314) | UN01005813 |
 | `lines[].part_name` | 品名 | `masters.Item.name` | 100 字 | `masters.PartnerItem.partner_item_name` (取引先の品番の対応を初めて足すときだけ) | 100 字 | 品目名 (注文 316) | UN01005815 |
 | `lines[].qty` | 数量 | `purchasing.PurchaseOrderLine.qty` | 整数 10 桁・小数 2 桁 | `orders.OrderLine.qty` | 整数 10 桁・小数 2 桁 | 注文数量 (注文 253) | UN01006632 |
-| `lines[].unit` | 単位の名前の字 (例「個」) | `purchasing.PurchaseOrderLine.unit` | 10 字 | `orders.OrderLine.unit` | 10 字 | — (単位の名前。EDI は注文数量の数量単位属性 (注文 254) を UNECE Rec.20 のコードで持つ。下の「単位」) | — |
+| `lines[].unit` | 単位の名前の字 (例「個」) | `purchasing.PurchaseOrderLine.unit` | 10 字 | `orders.OrderLine.unit` | 10 字 | — (単位の名前。コードは `lines[].unit_code`。下の「単位」) | — |
+| `lines[].unit_code` | 数量単位コード (例 H87 = 個、KGM = kg。単位が数量単位の一覧に無い字なら空の字) | `purchasing.PurchaseOrderLine.unit_code` | 10 字 | `orders.OrderLine.unit_code` (一覧にあるコードだけ。無いコードは使わず、単位の名前から引く) | 10 字 | 注文数量単位コード (注文 254。注文数量の数量単位属性。値は UNECE Rec.20 のコード) | — |
 | `lines[].unit_price` | 単価 (税抜き) | `purchasing.PurchaseOrderLine.unit_price` | 整数 12 桁・小数 2 桁 | `orders.OrderLine.unit_price` | 整数 12 桁・小数 2 桁 | 注文単価 (注文 245) | UN01005792 |
 | `lines[].price_basis` | 単価の単位 (`unit` = 部品の単位 1 つあたり・`lump` = 一式で数量を掛けない。値はこの 2 つだけで、鍵が無ければ `unit`。ほかの値は受ける側が断る) | `purchasing.PurchaseOrderLine.price_basis` | 10 字 | `orders.OrderLine.price_basis` | 10 字 | — (seizou の項目。中小企業共通 EDI の数量単位コードに一式に当たる値は無く、部品の単位のときは単価基準数量が空か 1 のときと同じ意味) | — |
 | `lines[].due_date` | 納期 (無ければ null) | `purchasing.PurchaseOrderLine.due_date` | 日付 | `orders.OrderLine.due_date` | 日付 | 要求納入日 (注文 288) | UN01005628 |
@@ -162,9 +163,11 @@ EDI に当たる文書はありません。受注と発注の 1 件ごとの会�
 | `RE` | 辞退 (断った) | RE |
 | `AJ` | 保留 (答えを待たせる) | AJ |
 
-### 単位 (lines[].unit)
+### 単位 (lines[].unit と lines[].unit_code)
 
-今は単位の名前の字 (例「個」) を送り、EDI の数量単位コード (UNECE Rec.20。例 H87 = 個、KGM = kg) は送っていません。EDI は数量単位コードの指定が無い数量を、数えられる品目 (定貫品目) の数と見なします (本編 7.3.2 の「数量単位コード」)。
+単位の名前の字 (例「個」) と、EDI の数量単位コード (UNECE Rec.20。例 H87 = 個、KGM = kg) を一緒に送ります。コードの値は、付表 4 の数量単位コードの表 (国際サブセット定義表と＜参考＞の表の 40 行) の項目を元にした一覧 (`masters.QuantityUnit`) の物です。部品と明細の単位は、この一覧から選びます。
+単位が一覧に無い字 (一覧から選ぶ前の部品の字など) の明細は、コードを空の字で送ります。EDI は数量単位コードの指定が無い数量を、数えられる品目 (定貫品目) の数と見なします (本編 7.3.2 の「数量単位コード」)。
+受ける側は、一覧にあるコードが届けばそのコードを使い、無い・一覧に無いコードなら単位の名前から引きます。コードが一覧に無くても、受け入れは止めません。
 
 ## 形
 
