@@ -46,7 +46,7 @@ def test_item_list_search_and_htmx_rows(client_logged_in):
 def test_item_create_goes_through_service_and_redirects(client_logged_in):
     response = client_logged_in.post(
         reverse("masters:item_create"),
-        {"part_no": "P-3003", "name": "カバー", "unit": "個", "standard_price": "120.00"},
+        {"part_no": "P-3003", "name": "カバー", "unit": "H87", "standard_price": "120.00"},
     )
     item = Item.objects.get(part_no="P-3003")
     assert response.status_code == 302
