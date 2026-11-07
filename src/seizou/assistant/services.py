@@ -2,14 +2,16 @@
 
 - 鍵は環境変数 API_KEY_ENV からだけ読み、client に明示して渡す (ほかの資格に落ちる道を作らない)。
   鍵の値を画面・ログ・例外の文・返す物に出さない。製品から外の命令は起こさない。
-- API を呼ぶのは _ask_claude の 1 か所。呼ぶのは atomic の外 (表に書かないので atomic を使わない)。
+- API を呼ぶのは _ask_claude の 1 か所。呼ぶのは atomic の外 (answer が表に書くのは propose の 1 行の作成だけなので atomic を使わない)。
   試験はこの関数を作り物の返事に差し替え、本物の API を呼ばない。
 - 道具の中身は seizou.core.mcp_tools (MCP サーバーと同じ関数)。seizou.assistant.tools が Claude に渡す形と回し方を持つ。
   読む道具は回して結果を Claude に返す。書く道具は回さず、提案のカード (propose) にする (AI は 1 件も保存しない)。
-- 表に書くのは approve の 1 か所 (人が「承認」を押した口から呼ぶ)。順は画面の入力の土台と同じで、
-  権限の判定 → 検査の層 → 部品の services (後ろの 2 つは mcp_tools の書く道具の中)。提案は履歴の往復の中に持つ。
+- 部品の表に書くのは approve の 1 か所 (人が「承認」を押した口から呼ぶ)。順は画面の入力の土台と同じで、
+  権限の判定 → 検査の層 → 部品の services (後ろの 2 つは mcp_tools の書く道具の中)。
+  提案の表 (AssistantProposal) に書くのは propose (作る) と approve (状態を移す) だけ。
 - 答えの数と日付と番号は道具の結果だけから作るよう、system で頼む。答えは素の字 (markdown を描かない)。
-- 会話の履歴は session に持つ (表を作らない)。session には鍵への代入と pop だけをする。
+- 提案は表 (AssistantProposal) に持ち、session には往復の字と提案の番号だけを置く (表を作るのは提案だけ)。
+  session には鍵への代入と pop だけをする。
 - tool_choice・thinking・temperature を送らない (今の世代のモデルは既定のままで動き、強制すると断られる)。
 """
 
@@ -20,6 +22,7 @@ import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
+from django.db import transaction
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 
@@ -27,6 +30,7 @@ from seizou.core import access, ai, mcp_tools
 from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
 from . import tools
+from .models import AssistantProposal
 
 #: 鍵を入れる環境変数の名前 (intake と同じ名前。intake を import しないので、intake の無い会社でも動く)
 API_KEY_ENV = "ANTHROPIC_API_KEY"
@@ -170,11 +174,41 @@ def _proposal(entry):
     }
 
 
-def history(session):
-    """session の履歴のうち、形の合う往復だけを写して返す。
+_HEX = frozenset("0123456789abcdef")
 
-    1 往復 = {"question": 字, "answer": 字, "links": [字...], "tools": [道具の名前...], "proposals": [提案...]}。
-    tools と proposals の無い古い往復も読む (tools は字の並びでなければ []、proposals は形の合う物だけ)。
+
+def _is_number(entry):
+    """提案の番号の辞書か (鍵が id だけで、id が 16 進の 16 字。propose の secrets.token_hex(8) の形)。"""
+    return (
+        isinstance(entry, dict)
+        and set(entry) == {"id"}
+        and isinstance(entry["id"], str)
+        and len(entry["id"]) == 16
+        and set(entry["id"]) <= _HEX
+    )
+
+
+def _row_proposal(row):
+    """表の行を、_proposal が返す形の辞書にする (作った日時は propose と同じ秒までの ISO の字)。"""
+    return {
+        "id": row.proposal_id,
+        "tool": row.tool,
+        "title": row.title,
+        "arguments": dict(row.arguments) if isinstance(row.arguments, dict) else {},
+        "summary": [line for line in row.summary if isinstance(line, str)] if isinstance(row.summary, list) else [],
+        "created_at": row.created_at.isoformat(timespec="seconds"),
+        "state": row.state,
+        "notice": row.notice,
+        "code": row.code,
+        "warnings": list(row.warnings) if isinstance(row.warnings, list) else [],
+        "url": row.url,
+    }
+
+
+def _stored(session):
+    """session の履歴のうち、形の合う往復を写して返す (表は読まない)。
+
+    提案は番号の辞書と、この版より前の辞書の形 (_is_proposal。足りない鍵を補った写し) を、並びのまま残す。
     """
     if session is None:
         return []
@@ -193,7 +227,11 @@ def history(session):
                 "answer": entry["answer"],
                 "links": list(entry["links"]),
                 "tools": [name for name in names if isinstance(name, str)] if isinstance(names, list) else [],
-                "proposals": [_proposal(item) for item in proposals if _is_proposal(item)]
+                "proposals": [
+                    {"id": item["id"]} if _is_number(item) else _proposal(item)
+                    for item in proposals
+                    if _is_number(item) or _is_proposal(item)
+                ]
                 if isinstance(proposals, list)
                 else [],
             }
@@ -201,12 +239,49 @@ def history(session):
     return exchanges
 
 
+def history(session):
+    """session の履歴のうち、形の合う往復だけを写して返す。
+
+    1 往復 = {"question": 字, "answer": 字, "links": [字...], "tools": [道具の名前...], "proposals": [提案...]}。
+    tools と proposals の無い古い往復も読む (tools は字の並びでなければ []、proposals は形の合う物だけ)。
+    提案の番号の辞書は、全部の往復の番号を表から 1 回の問い合わせでまとめて引き、提案の辞書にする (表に無い番号は飛ばす)。
+    番号の辞書が 1 つも無ければ表を読まない (窓は全部の画面で描かれる)。この版より前の辞書の形の提案は、表示のためにそのまま読む。
+    """
+    exchanges = _stored(session)
+    numbers = {item["id"] for exchange in exchanges for item in exchange["proposals"] if _is_number(item)}
+    if not numbers:
+        return exchanges
+    rows = {row.proposal_id: _row_proposal(row) for row in AssistantProposal.objects.filter(proposal_id__in=numbers)}
+    return [
+        {
+            **exchange,
+            "proposals": [
+                rows[item["id"]] if _is_number(item) else item
+                for item in exchange["proposals"]
+                if not _is_number(item) or item["id"] in rows
+            ],
+        }
+        for exchange in exchanges
+    ]
+
+
 def remember(session, exchange):
     """1 往復を履歴の末尾に足し、新しい MAX_TURNS 往復だけを残す。
 
+    足す往復の提案は番号の辞書 ({"id": 番号}) にしてから置く (渡された exchange は変えない。口がその後に吹き出しを描く)。
+    前の往復は session の中身のまま残し、表から作り直して書き戻さない (書き戻しで提案の状態が戻る道を作らない)。
     並びをその場で足すと Django は session が変わったと分からないので、鍵に代入し直す。
     """
-    session[HISTORY_KEY] = (history(session) + [exchange])[-MAX_TURNS:]
+    proposals = exchange.get("proposals")
+    added = {
+        **exchange,
+        "proposals": [
+            {"id": item["id"]}
+            for item in (proposals if isinstance(proposals, list) else [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ],
+    }
+    session[HISTORY_KEY] = (_stored(session) + [added])[-MAX_TURNS:]
 
 
 def forget(session):
@@ -322,7 +397,7 @@ def answer(question, *, page_url, screen_name, user, history):
     """質問に答える。返す物は {"text": 答えの字, "tool_calls": [呼んだ道具の名前...], "tools": [重ねない名前...],
     "links": [URL...], "proposals": [提案...]}。
 
-    例外を外に投げない (API の失敗は日本語の文を text に入れて返す)。user は今は受けるだけ。
+    例外を外に投げない (API の失敗は日本語の文を text に入れて返す)。user は読む道具に渡し、提案を作った人として表に書く。
     空の質問・長すぎる質問・鍵が無いときは API を呼ばない。道具の往復は MAX_TOOL_ROUNDS 回まで。
     書く道具 (tools.WRITE_TOOL_NAMES) は回さずに提案にし、Claude には「提案のカードを出した」と返す。
     """
@@ -359,7 +434,7 @@ def answer(question, *, page_url, screen_name, user, history):
             tool_calls.append(block.name)
             if block.name in tools.WRITE_TOOL_NAMES:
                 # 書く道具は呼ばない。提案のカードにして、保存は人の承認に任せる。
-                proposal = propose(block.name, block.input)
+                proposal = propose(block.name, block.input, user)
                 if proposal is None:
                     content = f"道具 {block.name} の引数が違います。"
                     results.append({"type": "tool_result", "tool_use_id": block.id, "content": content, "is_error": True})
@@ -410,28 +485,47 @@ def _ask_claude(model, system, messages, tools):
 # ---- 提案と承認 ----
 
 
-def propose(name, arguments):
-    """書く道具の呼び出しを提案の辞書にする。arguments が辞書でなければ None。
+def _person(user):
+    """表の利用者の列に入れる人 (ログインした利用者だけ。None や匿名の利用者は None)。"""
+    return user if getattr(user, "is_authenticated", False) else None
 
-    提案は session に置くので、JSON にできる値だけを持つ (arguments は Claude が渡した JSON の値)。
+
+def propose(name, arguments, user=None):
+    """書く道具の呼び出しを提案の辞書にし、同じ値で表 (AssistantProposal) に 1 行作る。arguments が辞書でなければ None。
+
+    提案は表 (AssistantProposal) に持ち、session には番号だけを置く。表の JSON の列に入れるので、
+    JSON にできる値だけを持つ (arguments は Claude が渡した JSON の値)。user は提案を作った人 (無くてもよい)。
     confirm は外す (知らせを飛ばして保存する印を付けられるのは、承認の口だけ)。
     """
     if not isinstance(arguments, dict):
         return None
     kept = {key: value for key, value in arguments.items() if key != "confirm"}
-    return {
+    # 返す辞書の作った日時と表の作った日時を同じ秒にする (表から作った辞書と同じ字になる)。
+    now = timezone.now().replace(microsecond=0)
+    proposal = {
         "id": secrets.token_hex(8),
         "tool": name,
         "title": tools.PROPOSAL_TITLES.get(name, "提案"),
         "arguments": kept,
         "summary": tools.summarize(name, kept),
-        "created_at": timezone.now().isoformat(timespec="seconds"),
-        "state": "pending",
+        "created_at": now.isoformat(timespec="seconds"),
+        "state": AssistantProposal.STATE_PENDING,
         "notice": "",
         "code": "",
         "warnings": [],
         "url": "",
     }
+    AssistantProposal.objects.create(
+        proposal_id=proposal["id"],
+        user=_person(user),
+        tool=name,
+        title=proposal["title"],
+        arguments=kept,
+        summary=proposal["summary"],
+        state=AssistantProposal.STATE_PENDING,
+        created_at=now,
+    )
+    return proposal
 
 
 def _expired(created_at):
@@ -470,6 +564,9 @@ def _carry_out(proposal, user, confirm):
     部署の判定は action の頭の部品 (例 shipping.ship → shipping) を access.require_open に渡す (画面の入力の部署の門と同じ判定)。
     訳: 部署の外の部品に、承認から書かせない (画面なら部署の 403 で止まる操作)。部署の判定が log (既定) なら書いて記録に 1 行だけ。
     出所 = Claude Security の走査の候補 11-07 (承認が部署の門を通らずに書く)。変えてよい条件は access.require_open の訳と同じ。
+    書く道具が思わぬ例外を出したときは、状態を running (処理中) のまま返し、知らせの字は MESSAGE_PROPOSAL_FAILED にする。
+    訳: 書く道具の中の services が保存を済ませた後にも例外が出うるので、承認できる状態に戻すと同じ出荷や受注が 2 件できるため (出荷は shipping.services.ship の atomic の後に、相手への知らせの番号と返事と送り合った記録の行を書き、mcp_tools._ship は受注を読み直す。受注の登録も mcp_tools._create_order が保存の後に明細を数える)。出所 = 依頼書 N351 の作る物 4 (エンタープライズ化の調べ 第一弾の候補 2 の確かめ直し (e)) を、この作業場の shipping・connect・mcp_tools のコードで読んで決めた。
+    変えてよい条件 = 書く道具が、保存の前の誤りと保存の後の誤りを分けて返すようになったとき。
     """
     base = {**proposal, "notice": "", "code": "", "warnings": [], "url": ""}
 
@@ -493,8 +590,8 @@ def _carry_out(proposal, user, confirm):
     except TypeError:
         result = {"ok": False, "error": MESSAGE_PROPOSAL_ARGS}
     except Exception:
-        # 思わぬ誤りでも窓を落とさない。中身は文に入れない (書く道具の中の services が transaction を戻す)。
-        result = {"ok": False, "error": MESSAGE_PROPOSAL_FAILED}
+        # 思わぬ誤りでも窓を落とさない。中身は文に入れない。保存の後の誤りかもしれないので、承認できる状態に戻さない。
+        return {**base, "state": AssistantProposal.STATE_RUNNING, "notice": MESSAGE_PROPOSAL_FAILED}
     if not isinstance(result, dict):
         return refused(MESSAGE_PROPOSAL_FAILED)
     if result.get("ok"):
@@ -505,41 +602,75 @@ def _carry_out(proposal, user, confirm):
     return refused(result.get("error", "") or MESSAGE_PROPOSAL_FAILED, result.get("code", ""))
 
 
+def _missing(proposal_id):
+    """見つからない提案の辞書 (state が missing)。"""
+    return {
+        "id": proposal_id if isinstance(proposal_id, str) else "",
+        "tool": "",
+        "title": "提案",
+        "summary": [],
+        "arguments": {},
+        "created_at": "",
+        "state": "missing",
+        "notice": MESSAGE_PROPOSAL_MISSING,
+        "code": "",
+        "warnings": [],
+        "url": "",
+    }
+
+
+def _decide(pk, outcome, user):
+    """提案の行に、承認の結果 (状態・知らせ・番号・ポカよけの知らせ・道) と、決めた人と日時を書く (atomic の中で呼ぶ)。"""
+    AssistantProposal.objects.filter(pk=pk).update(
+        state=outcome["state"],
+        notice=str(outcome["notice"] or ""),
+        code=str(outcome["code"] or ""),
+        warnings=outcome["warnings"],
+        url=str(outcome["url"] or ""),
+        decided_by=_person(user),
+        decided_at=timezone.now(),
+    )
+
+
 def approve(session, proposal_id, user, *, confirm=False):
     """人が「承認」(知らせの後は「このまま保存」) を押した提案を保存する。返す物は更新した提案の辞書。例外を外に投げない。
 
-    提案は session の履歴の往復から id で探す。無ければ state が missing の辞書 (session は書かない)。
-    保存済みなら書かずに知らせだけを替えて返す。ほかは結果を元の往復に戻し、履歴の鍵に代入し直す。
+    順は (1) 番号が session の往復の提案 (番号の辞書か、この版より前の辞書の形) にあるかを見る。無ければ state が missing の辞書
+    (session に無い番号は、表にあっても承認させない = 自分の session の提案だけ)。(2) 短い atomic の中で、表の行を
+    select_for_update で取る。行が無ければ missing。処理中 (running) か保存済み (saved) なら書かずに「保存済み」の知らせで返す。
+    古い提案は断った (refused) と書いて返す。ほか (承認待ち・知らせ・断った) は処理中に移す (断った提案も、別の人が承認できる)。
+    (3) atomic の外で _carry_out が書く道具を呼ぶ (出荷の道具は相手の会社への HTTP を持つ = R17)。
+    (4) 別の短い atomic で、結果と決めた人と日時を行に書く (書く道具の思わぬ例外は処理中のまま = _carry_out の訳)。
+    session は書かない (表が正。窓は history が表から描く)。
+    訳: session の書き戻しで状態が戻っても、同じ提案を 2 度保存しない (受注の新規と分納の範囲の出荷が黙って 2 件になるため)。承認待ちを短い atomic と select_for_update で処理中に移してから書く道具を呼ぶ。出所 = 本人の決め (11-07 23:3x。案 A = 表を足す) とエンタープライズ化の調べ 第一弾の指摘 ai-1。
+    変えてよい条件 = 提案を DB に持たない形で、process を増やしても二度目を断れる仕組みができたとき。
     """
-    exchanges = history(session)
-    found = None
-    if isinstance(proposal_id, str) and proposal_id:
-        for exchange in exchanges:
-            for proposal in exchange["proposals"]:
-                if proposal["id"] == proposal_id:
-                    found = proposal
-    if found is None:
-        return {
-            "id": proposal_id if isinstance(proposal_id, str) else "",
-            "tool": "",
-            "title": "提案",
-            "summary": [],
-            "arguments": {},
-            "created_at": "",
-            "state": "missing",
-            "notice": MESSAGE_PROPOSAL_MISSING,
-            "code": "",
-            "warnings": [],
-            "url": "",
-        }
-    if found["state"] == "saved":
-        return {**found, "notice": MESSAGE_PROPOSAL_SAVED}
+    if not isinstance(proposal_id, str) or not proposal_id:
+        return _missing(proposal_id)
+    if not any(item["id"] == proposal_id for exchange in _stored(session) for item in exchange["proposals"]):
+        return _missing(proposal_id)
+    with transaction.atomic():
+        row = AssistantProposal.objects.select_for_update().filter(proposal_id=proposal_id).first()
+        if row is None:
+            return _missing(proposal_id)
+        found = _row_proposal(row)
+        if row.state in (AssistantProposal.STATE_RUNNING, AssistantProposal.STATE_SAVED):
+            return {**found, "notice": MESSAGE_PROPOSAL_SAVED}
+        if _expired(found["created_at"]):
+            expired = {
+                **found,
+                "state": AssistantProposal.STATE_REFUSED,
+                "notice": MESSAGE_PROPOSAL_EXPIRED,
+                "code": "",
+                "warnings": [],
+                "url": "",
+            }
+            _decide(row.pk, expired, user)
+            return expired
+        row.state = AssistantProposal.STATE_RUNNING
+        row.save(update_fields=["state"])
+    # ここは atomic の外 (R17)。
     updated = _carry_out(found, user, confirm)
-    session[HISTORY_KEY] = [
-        {
-            **exchange,
-            "proposals": [updated if proposal["id"] == updated["id"] else proposal for proposal in exchange["proposals"]],
-        }
-        for exchange in exchanges
-    ]
+    with transaction.atomic():
+        _decide(row.pk, updated, user)
     return updated

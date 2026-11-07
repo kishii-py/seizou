@@ -556,18 +556,32 @@ def test_approve_missing_and_expired(user, order):
     assert services.approve(session, "", user)["state"] == "missing"
     assert services.approve({}, proposal["id"], user)["state"] == "missing"
 
-    old = {
-        **proposal,
-        "created_at": (timezone.now() - timedelta(minutes=services.PROPOSAL_MAX_MINUTES + 1)).isoformat(timespec="seconds"),
+    # 提案は表に持つので、件ごとに表の行の 1 つの列だけを違える (ほかの列は propose の時の値に戻す)。
+    from seizou.assistant.models import AssistantProposal
+
+    rows = AssistantProposal.objects.filter(proposal_id=proposal["id"])
+    fresh = {
+        "tool": proposal["tool"],
+        "arguments": proposal["arguments"],
+        "created_at": rows.get().created_at,
+        "state": "pending",
+        "notice": "",
+        "code": "",
+        "decided_by": None,
+        "decided_at": None,
     }
+    old = proposal
+    rows.update(**{**fresh, "created_at": timezone.now() - timedelta(minutes=services.PROPOSAL_MAX_MINUTES + 1)})
     expired = services.approve(_session_with(old), old["id"], user)
     assert expired["state"] == "refused"
     assert expired["notice"] == services.MESSAGE_PROPOSAL_EXPIRED
     assert _shipments() == 0
 
-    unknown_tool = {**proposal, "tool": "drop_everything"}
+    unknown_tool = proposal
+    rows.update(**{**fresh, "tool": "drop_everything"})
     assert services.approve(_session_with(unknown_tool), proposal["id"], user)["notice"] == services.MESSAGE_PROPOSAL_ARGS
-    bad_arguments = {**proposal, "arguments": {"nope": 1}}
+    bad_arguments = proposal
+    rows.update(**{**fresh, "arguments": {"nope": 1}})
     assert services.approve(_session_with(bad_arguments), proposal["id"], user)["notice"] == services.MESSAGE_PROPOSAL_ARGS
     assert _shipments() == 0
 
