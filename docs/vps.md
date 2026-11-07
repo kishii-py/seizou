@@ -449,6 +449,8 @@ sudo crontab -u seizou -e
 
 `.env` は控えに入らないので、2 社の `.env` を VPS の外の安全な所に写します。控えのフォルダも、VPS の外に写します。
 
+VPS の外へ暗号で写す例は、[operations.md](operations.md) の「外への写し」の節にあります。取引の記録を残す期間・止まったとき (初動)・定期の仕事と見張り・土台の寿命も、同じ文書の同じ名前の節にあります。
+
 版を上げるときは、[operations.md](operations.md) の「版を上げる手順」の 8 段のとおりに進めます。VPS では、次の段を読み替えます。
 
 - 2 段目 (サーバーを止める): `sudo systemctl stop seizou-a_machining seizou-b_plating`
