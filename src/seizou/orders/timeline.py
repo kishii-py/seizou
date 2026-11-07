@@ -1,7 +1,8 @@
 """受注の詳細の「流れ」の枠の出来事を集める、読むだけの module (決め 11-04 22:0x。N131)。表に書かない。
 
 - 受注から入金までの出来事 (受信した注文・登録・指示書・実績・出荷・納品書・請求書・入金・メモ・取消) を、
-  受注の明細から逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
+  受注の明細から逆向きの関係 (related_name) だけで辿って集める。請求書は出荷の請求書の明細と、受注の明細の請求書の明細
+  (一式の行 = 出荷に結び付かない明細。決め PRICE-1d) の両方から引く。ほかの部品の model は import しない
   (メモだけは逆向きの関係が無いので、notes.services.note_for で読む)。
 - 部品が入っていない会社では、その部品の出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
 - 金額は Event.amount に分けて持ち、題の字に入れない。見せるかはテンプレートが seizou.hide_money で決める
@@ -104,6 +105,9 @@ def events_for(order) -> list[Event]:
                 delivery_notes.setdefault(note.pk, note)
             for invoice_line in _all(shipment, "invoice_lines"):
                 invoices.setdefault(invoice_line.invoice_id, invoice_line.invoice)
+        # 一式の行 (出荷に結び付かない請求書の明細) は受注の明細から引く (一式の行だけの請求書も流れに出す)。
+        for invoice_line in _all(line, "invoice_lines"):
+            invoices.setdefault(invoice_line.invoice_id, invoice_line.invoice)
     events += [_delivery_note_event(note) for note in delivery_notes.values()]
     for invoice in invoices.values():
         events.append(_invoice_event(invoice))
@@ -285,7 +289,7 @@ def reached_stages(line) -> frozenset[int]:
     受注 = いつも / 指示 = 取消でない指示書がある / 着手 = 実績が 1 件でもある取消でない指示書がある
     (BoardRow.started_count。指示書の進みの状態の着手済か完了。C27) / 完了 = 全部の工程で実績が予定に達した
     (生産管理ボードの「進捗」の「完了」と同じ読み方 = BoardRow.current_step が None) / 出荷 = 出荷がある /
-    納品 = 出荷が取消でない納品書に入った / 請求 = 出荷が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
+    納品 = 出荷が取消でない納品書に入った / 請求 = 出荷か、この明細の一式の行が取消でない請求書に入った / 入金 = その請求書に取消でない入金がある。
     例: 指示書の無い明細の出荷は {1, 5}、指示書を発行して未着手のまま出荷は {1, 2, 5}。BoardRow は 1 回だけ作る。
     """
     board = BoardRow(line)
@@ -302,6 +306,11 @@ def reached_stages(line) -> frozenset[int]:
     if any(_is_live(getattr(s, "delivery_note", None)) for s in shipments):
         reached.add(6)
     invoices = {il.invoice_id: il.invoice for s in shipments for il in _all(s, "invoice_lines") if _is_live(il.invoice)}
+    if shipments:
+        # 一式の行 (出荷を指さない請求書の明細) は受注の明細から引く。出荷の無い明細には一式の行も無い (R09) ので読まない。
+        for il in _all(line, "invoice_lines"):
+            if il.shipment_id is None and _is_live(il.invoice):
+                invoices.setdefault(il.invoice_id, il.invoice)
     if invoices:
         reached.add(7)
     if any(_is_live(p) for invoice in invoices.values() for p in _all(invoice, "payments")):
@@ -404,6 +413,9 @@ def linked_for(order, user) -> list[LinkedGroup]:
                 notes.setdefault(note.pk, note)
             for invoice_line in _all(shipment, "invoice_lines"):
                 invoices.setdefault(invoice_line.invoice_id, invoice_line.invoice)
+        # 一式の行 (出荷に結び付かない請求書の明細) は受注の明細から引く (一式の行だけの請求書も並べる)。
+        for invoice_line in _all(line, "invoice_lines"):
+            invoices.setdefault(invoice_line.invoice_id, invoice_line.invoice)
     found = {
         "workorder": [_linked(w, w.wo_no, user, _has_progress(w)) for w in workorders.values() if _is_live(w)],
         "shipment": [_linked(s, s.shipment_no, user) for s in shipments.values()],
@@ -440,6 +452,10 @@ def _linked_lines(order) -> list:
         if invoice_line is not None:
             queryset = invoice_line._default_manager.select_related("invoice")
             lookups.append(Prefetch("shipments__invoice_lines", queryset=queryset))
+    # 一式の行 (出荷に結び付かない請求書の明細) は受注の明細の逆の関係 invoice_lines で、請求書と一緒に読む。
+    lump_line = _related_model(manager.model, "invoice_lines")
+    if lump_line is not None:
+        lookups.append(Prefetch("invoice_lines", queryset=lump_line._default_manager.select_related("invoice")))
     return list(manager.prefetch_related(*lookups))
 
 

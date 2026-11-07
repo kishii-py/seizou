@@ -92,11 +92,12 @@ class Order(models.Model):
 
     @property
     def invoices(self):
-        """この受注の出荷が入った請求書 (取消も含む。1 枚に同じ受注の出荷が 2 つあっても 1 行)。
+        """この受注の明細を指す明細が入った請求書 (出荷の行と一式の行。取消も含む。1 枚に同じ受注の明細が 2 つあっても 1 行)。
 
         受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
+        請求書の明細は全部が受注の明細を指すので、一式の行 (出荷に結び付かない明細。決め PRICE-1d) だけの請求書もこの道で引ける。
         """
-        return _part_model("billing", "Invoice").objects.filter(lines__shipment__order_line__order=self).distinct()
+        return _part_model("billing", "Invoice").objects.filter(lines__order_line__order=self).distinct()
 
 
 class OrderLine(models.Model):

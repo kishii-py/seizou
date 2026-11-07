@@ -98,7 +98,7 @@ LIMITS = {
     "masters:holiday_delete": 20,
     "orders:order_list": 27,
     "orders:order_create": 19,
-    "orders:order_detail": 68,
+    "orders:order_detail": 71,  # 流れの枠が一式の行 (出荷に結び付かない請求書の明細) を受注の明細ごとに 1 回読むので、明細の数 (A 社の種は 3) だけ増える (11-07 の実測 68 → 71。決め PRICE-1d)
     "orders:order_update": 24,
     "orders:order_cancel": 20,
     "orders:orderline_list": 32,

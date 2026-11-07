@@ -19,9 +19,11 @@
 - 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
 """
 
-from decimal import Decimal
+import unicodedata
+from decimal import Decimal, InvalidOperation
 
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core.forms import PlainNumberInput, SubmitLabelMixin, label_number
@@ -104,11 +106,104 @@ class ShipmentChoiceField(forms.ModelMultipleChoiceField):
         return f"{text}・納品書 {note_no}" if note_no else text
 
 
-class InvoiceForm(SubmitLabelMixin, forms.Form):
+def plain_amount(text):
+    """欄に打った金額の字を Decimal にする (全角を半角に・桁の区切りの「,」を外す)。空か数として読めなければ None。"""
+    value = unicodedata.normalize("NFKC", str(text or "")).replace(",", "").strip()
+    if not value:
+        return None
+    try:
+        number = Decimal(value)
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
+
+
+def _plain(value) -> str:
+    """素の数の字 (JS が読む data- の値。区切りを付けず、小数の末尾の 0 を落とす)。"""
+    return f"{value.normalize():f}"
+
+
+class LumpFieldsMixin:
+    """一式の表の欄を足す form の部品 (請求書の新規登録 InvoiceForm と作り直し InvoiceReissueForm。決め PRICE-1d)。
+
+    出し切らずに終えた一式の受注の明細 (services.unbilled_lumps) ごとに、金額の閲覧のある人にだけ欄を 2 つ足す:
+    lump-<受注の明細の pk>-pick (載せる印) と lump-<pk>-amount (請求する金額。1 円の整数で、0 より大きい数 = 作者の決め C107-3)。
+    載せる印があって金額が空の行は、金額の欄の誤り「金額を入れてください。」(欄の形の誤り)。
+    clean の後の _picked_lumps = (受注の明細, 金額) の組の並び (services の lumps に渡す)。
+    """
+
+    def _add_lump_fields(self, lumps):
+        self._lumps = list(lumps)
+        self._picked_lumps = []
+        if self.hide_money:
+            return
+        for line in self._lumps:
+            ref = f"受注 {line.order.order_no}-{line.line_no}"
+            self.fields[f"lump-{line.pk}-pick"] = forms.BooleanField(
+                label=f"{ref} の一式を載せる",
+                required=False,
+                widget=forms.CheckboxInput(attrs={"class": "checkbox", "data-label-pick": True}),
+            )
+            self.fields[f"lump-{line.pk}-amount"] = forms.DecimalField(
+                label=f"{ref} の請求する金額",
+                required=False,
+                max_digits=14,
+                decimal_places=0,
+                min_value=Decimal("1"),
+                error_messages={
+                    "min_value": "一式の金額は 0 より大きい数にしてください。",
+                    "invalid": "一式の金額は 16667 のように 1 円単位の数字で入れてください。",
+                    "max_decimal_places": "一式の金額は 16667 のように 1 円単位の数字で入れてください。",
+                },
+                widget=PlainNumberInput(
+                    attrs={"class": "input w-32", "step": "1", "inputmode": "numeric", "data-lump-amount": True}
+                ),
+            )
+
+    def _lump_field_names(self):
+        return {name for name in self.fields if name.startswith("lump-")}
+
+    def _clean_lumps(self, cleaned) -> int:
+        """載せる印の付いた一式の行を (受注の明細, 金額) の組にして _picked_lumps に持つ。印の付いた行の数 (誤りの行も含む) を返す。"""
+        picked, marked = [], 0
+        if self.hide_money:
+            self._picked_lumps = picked
+            return marked
+        for line in self._lumps:
+            if not cleaned.get(f"lump-{line.pk}-pick"):
+                continue
+            marked += 1
+            name = f"lump-{line.pk}-amount"
+            amount = cleaned.get(name)
+            if amount is None:
+                if name not in self.errors:
+                    self.add_error(name, "金額を入れてください。")
+                continue
+            picked.append((line, amount))
+        self._picked_lumps = picked
+        return marked
+
+    def _lump_marked(self, line) -> bool:
+        """送った form で、一式の行に載せる印が付いているか (描き直しと合計の数え方が読む)。"""
+        if not self.is_bound or self.hide_money:
+            return False
+        return self[f"lump-{line.pk}-pick"].value() in (True, "on", "true", "True", "1")
+
+    def _lump_typed_amount(self, line):
+        """送った form の、一式の行の金額の欄の値 (数として読めなければ None)。"""
+        if not self.is_bound or self.hide_money:
+            return None
+        return plain_amount(self.data.get(self.add_prefix(f"lump-{line.pk}-amount")))
+
+
+class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
     """請求書を作る form。
 
     出荷は表の行 (rows) で描き、印を付けた行の数と税抜の金額の合計を、合計の枠 (line_totals) と保存のボタンの字に出す。
     行の金額は保存と同じ式 (services.shipment_amount)。得意先を選んでいるときは、その得意先の行だけを数える (画面の JS が隠す行を数えない)。
+    一式の表の行 (lump_rows) には、金額の閲覧のある人にだけ「載せる」の印と「請求する金額」の欄を置く (LumpFieldsMixin)。
+    載せる印の付いた一式の行も 1 行として数える (数量は出荷の合計、金額は入れた金額)。出荷の欄は必須でなく、出荷も載せる印の付いた一式の行も
+    無いときだけ出荷の欄の誤りにする (今の必須の止めを置き換えるだけ)。
     """
 
     submit_label_plain = "請求書を作る"
@@ -131,6 +226,7 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
     shipments = ShipmentChoiceField(
         label="出荷",
         queryset=billable_shipments().none(),
+        required=False,
         widget=ShipmentCheckboxes(attrs={"class": "checkbox"}),
         help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
     )
@@ -141,9 +237,13 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
         self._rows = None
         self._lump_rows = None
         candidates = billable_shipments()
-        self.fields["customer"].queryset = _Partner.objects.filter(
-            pk__in=candidates.values("order_line__order__customer_id")
-        ).order_by("code")
+        # 一式の表の明細は 1 回だけ読む (lump_rows と得意先の候補が同じ並びを使う)。
+        self._add_lump_fields(unbilled_lumps())
+        chosen = Q(pk__in=candidates.values("order_line__order__customer_id"))
+        if not self.hide_money and self._lumps:
+            # 請求できる出荷が無く、出し切らずに終えた一式だけが残った得意先も選べるようにする (一式の行だけの請求書を作るため)。
+            chosen |= Q(pk__in={line.order.customer_id for line in self._lumps})
+        self.fields["customer"].queryset = _Partner.objects.filter(chosen).order_by("code")
         self.fields["shipments"].queryset = candidates.select_related(
             "order_line__order__customer", "order_line__item", "delivery_note"
         ).order_by("shipped_at", "shipment_no")
@@ -176,8 +276,9 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
 
     @property
     def head_fields(self):
-        """表の上の欄 (得意先・締め期間・発行日と、土台が足す会社ごとの項目)。出荷の欄は表に描くので除く。"""
-        return [field for field in self.visible_fields() if field.name != "shipments"]
+        """表の上の欄 (得意先・締め期間・発行日と、土台が足す会社ごとの項目)。出荷の欄と一式の表の欄は表に描くので除く。"""
+        lump_names = self._lump_field_names()
+        return [field for field in self.visible_fields() if field.name != "shipments" and field.name not in lump_names]
 
     @property
     def rows(self):
@@ -212,24 +313,35 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
         """一式の節の表の行 (出し切らずに終えた一式の受注の明細。services.unbilled_lumps の並びのまま)。
 
         1 行 = {line (受注の明細)・partner (得意先の pk)・qty_text (数量の字)・shipped_text (出荷の合計の字)・unit (明細の単位)・
-        cancelled (受注が取消か)・full_amount (一式の全額)・shipped_amount (出した分)}。金額の 2 つは金額の閲覧が無い人は None
-        (金額を見られない人に金額を見せない)。得意先を選んでいても全部を描き、テンプレートの JS が data-partner で絞る (出荷の表と同じ)。
+        cancelled (受注が取消か)・full_amount (一式の全額)・shipped_amount (出した分)・shipped_qty (出荷の合計)・
+        pick (載せる印の欄)・amount (請求する金額の欄)・qty_plain (出荷の合計の素の数の字)・amount_plain (送った金額の素の数の字)・
+        full_plain・shipped_plain (「全額」「出した分」のボタンが欄に入れる素の数の字)}。金額と欄は金額の閲覧が無い人は None
+        (金額を見られない人に金額を見せず、決めさせない)。得意先を選んでいても全部を描き、テンプレートの JS が data-partner で絞る (出荷の表と同じ)。
         最初に読んだ時に作って持つ (rows と同じ)。
         """
         if self._lump_rows is None:
             rows = []
-            for line in unbilled_lumps():
+            for line in self._lumps:
                 facts = lump_facts(line)
+                money = not self.hide_money
+                typed = self._lump_typed_amount(line)
                 rows.append(
                     {
                         "line": line,
                         "partner": line.order.customer_id,
                         "qty_text": comma(line.qty),
                         "shipped_text": comma(facts["shipped_qty"]),
+                        "shipped_qty": facts["shipped_qty"],
                         "unit": line.unit,
                         "cancelled": line.order.status == line.order.STATUS_CANCELLED,
-                        "full_amount": None if self.hide_money else facts["full_amount"],
-                        "shipped_amount": None if self.hide_money else facts["shipped_amount"],
+                        "full_amount": facts["full_amount"] if money else None,
+                        "shipped_amount": facts["shipped_amount"] if money else None,
+                        "pick": self[f"lump-{line.pk}-pick"] if money else None,
+                        "amount": self[f"lump-{line.pk}-amount"] if money else None,
+                        "qty_plain": _plain(facts["shipped_qty"]),
+                        "amount_plain": _plain(typed) if typed is not None and typed > 0 else "",
+                        "full_plain": _plain(facts["full_amount"]) if money else "",
+                        "shipped_plain": _plain(facts["shipped_amount"]) if money else "",
                     }
                 )
             self._lump_rows = rows
@@ -253,10 +365,25 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
             for row in self.rows
             if row["checked"] and (not chosen or str(row["shipment"].order_line.order.customer_id) == chosen)
         ]
-        qty = sum((row["shipment"].qty for row in picked), Decimal("0"))
+        # 載せる印の付いた一式の行 (得意先を選んでいれば、その得意先の行だけ)。数量は出荷の合計、金額は入れた金額 (読めなければ金額を出さない)。
+        lumps = [
+            row
+            for row in self.lump_rows
+            if self._lump_marked(row["line"]) and (not chosen or str(row["partner"]) == chosen)
+        ]
+        qty = sum((row["shipment"].qty for row in picked), Decimal("0")) + sum(
+            (row["shipped_qty"] for row in lumps), Decimal("0")
+        )
         amount = None if self.hide_money else sum((row["amount"] for row in picked), Decimal("0"))
+        if amount is not None:
+            for row in lumps:
+                typed = self._lump_typed_amount(row["line"])
+                if typed is None:
+                    amount = None
+                    break
+                amount += typed
         return {
-            "rows": len(picked),
+            "rows": len(picked) + len(lumps),
             "qty": label_number(qty),
             "amount": None if amount is None else label_number(amount),
             "show_amount": not self.hide_money,
@@ -273,12 +400,20 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
             return {}
         return {"rows": str(totals["rows"]), "amount": totals["amount"]}
 
+    def clean(self):
+        cleaned = super().clean()
+        marked = self._clean_lumps(cleaned)
+        if not cleaned.get("shipments") and not marked and "shipments" not in self.errors:
+            self.add_error("shipments", "出荷か一式の行を 1 つ以上選んでください。")
+        return cleaned
+
     def service_kwargs(self):
         data = self.cleaned_data
         return {
             "customer": data["customer"],
-            "shipments": list(data["shipments"]),
+            "shipments": list(data["shipments"] or []),
             "issued_on": data["issued_on"],
+            "lumps": list(self._picked_lumps),
         }
 
 
@@ -296,10 +431,13 @@ class InvoiceCancelForm(forms.Form):
         return {}
 
 
-class InvoiceReissueForm(forms.Form):
-    """請求書を作り直す form。欄は「発行日」だけ。保存のボタンは「IV-000001 を取り消して作り直す」(土台が対象を instance= で渡す)。
+class InvoiceReissueForm(LumpFieldsMixin, forms.Form):
+    """請求書を作り直す form。欄は「発行日」と、出し切らずに終えた一式の欄。保存のボタンは「IV-000001 を取り消して作り直す」(土台が対象を instance= で渡す)。
 
     発行日の初めの値は、作り直す請求書の期間の終わり (締日)。それが今日より後なら今日 (請求書の新規登録で締め期間を選んだときと同じ決め)。
+    一式の欄 (LumpFieldsMixin) は、その得意先の出し切らずに終えた一式の受注の明細 (services.unbilled_lumps(得意先)) ごとに、金額の閲覧のある人にだけ置く
+    (1 期間 1 枚で止まった一式の行を、作り直しの画面から載せるため。取り消す請求書に入っている一式の行は、開いた時はまだ発行の請求書に入っているので並ばない)。
+    欄は土台の入力のカード (core/_form_card.html) の格子に並ぶ (載せる印と請求する金額。金額の欄の下に一式の金額と出した分の字)。
     """
 
     submit_label = "作り直す"
@@ -311,17 +449,35 @@ class InvoiceReissueForm(forms.Form):
         help_text="新しい請求書に載る日付です。初めは締め期間の終わり (今日より後なら今日) が入ります。",
     )
 
-    def __init__(self, *args, instance=None, **kwargs):
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.hide_money = hide_money
         today = timezone.localdate()
         self.fields["issued_on"].initial = today
         if instance is not None:
             self.submit_label = f"{instance.invoice_no} を取り消して作り直す"
             if instance.period_to is not None and instance.period_to < today:
                 self.fields["issued_on"].initial = instance.period_to
+        customer_id = getattr(instance, "customer_id", None)
+        self._add_lump_fields(unbilled_lumps(customer_id) if customer_id is not None else [])
+        if not self.hide_money:
+            for line in self._lumps:
+                facts = lump_facts(line)
+                self.fields[f"lump-{line.pk}-pick"].label = (
+                    f"受注 {line.order.order_no}-{line.line_no} ({line.item}) の一式を載せる"
+                )
+                self.fields[f"lump-{line.pk}-amount"].help_text = (
+                    f"出荷 {comma(facts['shipped_qty'])} {line.unit}・一式の金額 ¥{comma(facts['full_amount'])}"
+                    f"・出した分 ¥{comma(facts['shipped_amount'])}"
+                )
+
+    def clean(self):
+        cleaned = super().clean()
+        self._clean_lumps(cleaned)
+        return cleaned
 
     def service_kwargs(self):
-        return {"issued_on": self.cleaned_data["issued_on"]}
+        return {"issued_on": self.cleaned_data["issued_on"], "lumps": list(self._picked_lumps)}
 
 
 class PaymentForm(SubmitLabelMixin, forms.Form):

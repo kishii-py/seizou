@@ -27,6 +27,9 @@
   入金の残る請求書があれば何も変えずに ValueError (文は cancel_refusal)。
 - create_invoice は、返す請求書に画面の知らせの字 saved_note (同じ締めの期間に残った出荷 = unbilled_in_period) を付け、残りがあれば saved_level = "warning" (黄) も付ける (表に書かない。止めない)。
 - 出し切らずに終えた一式の受注の明細 (請求書の新規登録の黄の 1 行が出す物。決め PRICE-1d) は unbilled_lumps、その明細の請求の材料 (出荷の合計・最後の出荷日・一式の全額・出した分) は lump_facts (どちらも読むだけ)。
+  人が金額を決めた一式の行は create_invoice の lumps = (受注の明細, 金額) で載せる (R09 の見方は _refuse_unbillable_lump。同じ一式を 2 枚に入れない = 作者の決め C107-2。
+  金額は 0 より大きい数 = 作者の決め C107-3)。一式の行だけの請求書の期間は発行日の締め期間 (都度の得意先は発行日の 1 日。作者の決め C107-1)。
+  作り直し (reissue_invoice) は取り消した請求書の一式の行を同じ金額で写し、作り直しの画面で足した一式の行も受ける。
 """
 
 from __future__ import annotations
@@ -104,24 +107,94 @@ def _refuse_unbillable(shipment, customer):
         )
 
 
-def create_invoice(customer, shipments, user, *, issued_on):
-    """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
+def _line_ref(order_line):
+    """断りの字の受注の明細の呼び方 (「受注 O-000001 の 1 行目」)。"""
+    return f"受注 {order_line.order.order_no} の {order_line.line_no} 行目"
+
+
+def _refuse_unbillable_lump(order_line, customer):
+    """一式の行 (出荷に結び付かない請求書の明細) にできない受注の明細なら断る。ロックした受注の明細の行で見る。
+
+    得意先が違う・出荷が無いか発行の納品書に入っていない出荷がある・発行の請求書にこの明細の一式の行がある、の 3 つは
+    RuleViolation("R09") (今の _refuse_unbillable の R09 の見方を一式の行に広げる。新しい決まりの番号は足さない)。
+    そのほかで出し切らずに終えた一式の明細 (unbilled_lumps) でない物 (単価の単位が式でない・明細を出し終えた出荷がある・
+    まだ終わっていない) は ValueError (画面は unbilled_lumps の明細しか出さないので、画面の外から呼んだ時と、開いた後に出荷が進んだ時だけ)。
+    明細を出し終えた出荷のある明細に一式の行を足すと、出荷の行の全額と二重になる。
+    訳: 請求書の明細を出荷済みの物 (発行の納品書に入った出荷) に結び付いた物だけにし (一式の行も出荷のある受注の明細だけ)、同じ一式を 2 枚の請求書に入れないため。出所 = RULES.md R09 と作者の決め PRICE-1d・C107-2。
+    変えてよい条件 = 変えない (R は廃止で残す)。
+    """
+    ref = _line_ref(order_line)
+    if order_line.order.customer_id != customer.pk:
+        raise RuleViolation("R09", f"発行できません。{_R09_RULE}請求書は得意先ごとに作るので、{ref}を外してください。")
+    shipments = list(_Shipment.objects.filter(order_line=order_line).select_related("delivery_note"))
+    if not shipments or not all(_in_issued_note(shipment) for shipment in shipments):
+        raise RuleViolation(
+            "R09", f"発行できません。{_R09_RULE}{ref}の出荷が発行の納品書に入っていないので、外してください。"
+        )
+    billed = (
+        InvoiceLine.objects.select_related("invoice")
+        .filter(order_line=order_line, shipment__isnull=True, invoice__status=Invoice.STATUS_ISSUED)
+        .order_by("pk")
+        .first()
+    )
+    if billed is not None:
+        raise RuleViolation(
+            "R09", f"発行できません。{_R09_RULE}{ref}の一式は請求書 {billed.invoice.invoice_no} に入っているので、外してください。"
+        )
+    if order_line not in unbilled_lumps(customer):
+        raise ValueError(f"発行できません。{ref}は、出し切らずに終えた一式の明細ではありません。出荷の行で請求してください。")
+
+
+def _lump_amount(customer, order_line, amount):
+    """一式の行に載せる金額 (round_amount(得意先, 金額) で 1 円に丸めた Decimal)。丸めた後が 0 以下か、数として読めなければ ValueError
+    (あり得ない入力 = RULES.md の原則。form でも欄の下で止まる)。
+
+    0 も止めるのは、一式の行に載せる金額を 0 より大きい数にするため (0 円の行は請求書に出さず、請求しない一式は「請求しない」の印にする)。
+    訳: 0 円や負の一式の行を請求書に載せないため。出所 = 作者の決め C107-3。
+    変えてよい条件 = 作者が一式の行の金額の決まりを決め直したとき。
+    """
+    try:
+        value = Decimal(str(amount))
+        readable = value.is_finite()
+    except (InvalidOperation, ValueError, TypeError):
+        readable = False
+    if readable:
+        value = round_amount(customer, value)
+    if not readable or not value > 0:
+        raise ValueError(
+            f"発行できません。一式の金額が 0 以下か、数として読めません ({_line_ref(order_line)})。0 より大きい数を入れてください。"
+        )
+    return value
+
+
+def create_invoice(customer, shipments, user, *, issued_on, lumps=()):
+    """得意先の出荷済みの出荷 (と、出し切らずに終えた一式の受注の明細に人が決めた金額) をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    受注の明細と単価の単位も写す。金額は shipment_amount (一式の明細は全部を出し終えた出荷で一式の全額、ほかは 0)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
+    受注の明細と単価の単位も写す。金額は shipment_amount (一式の明細は全部を出し終えた出荷で一式の全額、ほかは 0)。期間は invoice_period(customer, 出荷, issued_on) で、作るときに決めて表に残す。
+    lumps = (受注の明細, 金額) の組の並び (決め PRICE-1d の「人が金額を決めて載せる」)。組ごとに出荷に結び付かない一式の行を 1 行足す
+    (出荷の行の後に受注番号・行番号の順)。一式の行の数量はその明細の発行の納品書に入った出荷の合計、単価と金額は round_amount(得意先, 金額)、
+    単価の単位は式、最後の出荷日はその出荷の最後の出荷日 (lump_facts)。明細ごとに _refuse_unbillable_lump で見てから、金額を見る
+    (0 以下か数として読めなければ ValueError = _lump_amount)。
     締日でまとめる得意先は締め期間 = closing_period(customer, 最後の出荷日) (最後の出荷日以降で最初の締日まで。
     初めはその 1 つ前の締日の翌日)。都度の得意先は、最初の出荷日から最後の出荷日まで (納品書 1 枚なら、その出荷の日)。
-    期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI の付表では
-    法的必須の印が付いている (どの法令の印かは未確認)。都度の請求書でも期間を空にしない。
+    出荷の行があれば期間は出荷で決まり、一式の行は期間を動かさない。出荷の行が無く一式の行だけなら、締日でまとめる得意先は
+    発行日の締め期間 (closing_period(customer, 発行日))、都度の得意先は発行日の 1 日 (作者の決め C107-1)。
+    期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI は取引期間を「法的必須」
+    (インボイス制度で適格請求書等に記載を求められる情報項目) としている。一式の行だけの請求書でも空にしない (決め PRICE-1d)。
+    一式の行の最後の出荷日は明細行取引終了日に当たり、適格請求書に載せる取引の日を行に残す。
+    確かめた資料は中小企業共通 EDI の付表 3 のマッピング表とインボイス仕様編の表 5-3 で、インボイス制度の法令の本文と国税庁の資料は読んでいない (未確認)。
     支払期日は payment_due_date(customer, 期間の終わり) (支払の月か支払日が空の取引先では空)。
     同じ得意先の同じ締め期間に取消でない請求書があれば、R09 の後・期間を決めた後に R23 で止める (_refuse_second_in_period)。
     返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
-    消費税は _tax (明細の金額の合計に 1 回)。
-    訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable)。出所 = RULES.md R09。
+    消費税は _tax (出荷の行と一式の行の金額の合計に 1 回)。
+    出荷も一式の行も無ければ ValueError。
+    訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable、一式の行の見方は _refuse_unbillable_lump)。出所 = RULES.md R09。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
     shipments = list(shipments)
-    if not shipments:
+    lumps = list(lumps)
+    if not shipments and not lumps:
         raise ValueError("発行できません。出荷がありません。請求書に入れる出荷を 1 つ以上選んでください。")
     for obj in shipments:
         if not isinstance(obj, _Shipment):
@@ -129,16 +202,20 @@ def create_invoice(customer, shipments, user, *, issued_on):
                 "R09", f"発行できません。{_R09_RULE}出荷でない物 ({obj}) が入っているので、外してください。"
             )
     with transaction.atomic():
-        # 得意先の行 → 出荷の行の順にロックする (R23。違う出荷を選んだ 2 人が同じ得意先の請求書を同時に作っても 2 枚にしない)。
+        # 得意先の行 → 出荷の行 → 一式の受注の明細の行の順にロックする (R23。違う出荷を選んだ 2 人が同じ得意先の請求書を同時に作っても 2 枚にしない)。
         _Partner.objects.select_for_update().get(pk=customer.pk)
-        return _issue_invoice(customer, shipments, issued_on)
+        return _issue_invoice(customer, shipments, issued_on, lumps=lumps)
 
 
-def _issue_invoice(customer, shipments, issued_on):
+def _issue_invoice(customer, shipments, issued_on, *, lumps=(), copies=(), period=None):
     """請求書と明細を書く中身。create_invoice と reissue_invoice が、得意先の行をロックした transaction の中から呼ぶ。
 
     出荷の行をロックして R09 (_refuse_unbillable) を見て、金額 (shipment_amount)・消費税 (_tax)・期間 (invoice_period)・
     1 期間 1 枚の決まり (R23 = _refuse_second_in_period)・支払期日 (payment_due_date) を決めて書く (2 つの入口で同じ決まりを通す)。
+    lumps = (受注の明細, 金額) の組の並び (人が金額を決めた一式の行)。copies = 作り直しで取り消した請求書から写す一式の行 (InvoiceLine。
+    数量・金額・最後の出荷日をそのまま写す)。どちらも、出荷の行の後に一式の受注の明細の行と、その明細の出荷の行をロックしてから
+    _refuse_unbillable_lump で見る (2 人が同じ一式を同時に載せても 1 枚にしか入らない。一式の行を作る間に、同じ明細の出荷の納品書を取り消させない)。
+    period = 期間を渡すときの (初め, 終わり) (作り直しで出荷の行が無いとき、取り消した請求書と同じ期間にするため)。空なら invoice_period で決める。
     返す請求書に saved_note と、残りがあれば saved_level = "warning" を付ける。
     """
     pks = sorted({shipment.pk for shipment in shipments})
@@ -152,10 +229,14 @@ def _issue_invoice(customer, shipments, issued_on):
         unit_price = shipment.order_line.unit_price
         amount = shipment_amount(customer, shipment)
         lines.append((shipment, unit_price, amount))
-    amounts = [amount for _shipment, _price, amount in lines]
+    lump_lines = _lump_values(customer, lumps, copies)
+    amounts = [amount for _shipment, _price, amount in lines] + [row["amount"] for row in lump_lines]
     subtotal = sum(amounts, _ZERO)
     tax = _tax(customer, amounts)
-    period_from, period_to = invoice_period(customer, locked)
+    if period is not None and not locked:
+        period_from, period_to = period
+    else:
+        period_from, period_to = invoice_period(customer, locked, issued_on)
     _refuse_second_in_period(customer, period_from, period_to)
 
     invoice = Invoice.objects.create(
@@ -179,12 +260,55 @@ def _issue_invoice(customer, shipments, issued_on):
             price_basis=shipment.order_line.price_basis,
             amount=amount,
         )
+    for row in lump_lines:
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            shipment=None,
+            order_line=row["order_line"],
+            qty=row["qty"],
+            unit_price=row["amount"],
+            price_basis=PRICE_BASIS_LUMP,
+            amount=row["amount"],
+            last_shipped_at=row["last_shipped_at"],
+        )
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の後ろに付ける)。表に書かない。
     # 今作った明細は取消でない請求書に入っているので、残りに入らない。
     invoice.saved_note, level = _period_note(customer, period_from, period_to)
     if level:
         invoice.saved_level = level
     return invoice
+
+
+def _lump_values(customer, lumps, copies):
+    """一式の行の値の並び (受注番号・行番号の順)。1 つ = {order_line, qty, amount, last_shipped_at}。_issue_invoice が呼ぶ。
+
+    lumps と copies の受注の明細の行と、その明細の出荷の行をロックしてから、明細ごとに _refuse_unbillable_lump で見る。
+    lumps (受注の明細, 金額) は、金額を _lump_amount で見て、数量と最後の出荷日を lump_facts から決める。
+    copies (取り消した請求書の一式の行) は、数量・金額・最後の出荷日をそのまま写す (同じ金額で写る)。
+    """
+    entries = [(line, amount, None) for line, amount in lumps] + [(row.order_line, row.amount, row) for row in copies]
+    if not entries:
+        return []
+    pks = sorted({line.pk for line, _amount, _copy in entries})
+    locked = {row.pk: row for row in _OrderLine.objects.select_for_update().filter(pk__in=pks).order_by("pk")}
+    # 一式の明細の出荷の行もロックする (一式の行を作る間に、同じ明細の出荷の納品書を取り消させない)。
+    list(_Shipment.objects.select_for_update().filter(order_line_id__in=pks).order_by("pk"))
+    rows = []
+    for line, amount, copy in entries:
+        current = locked[line.pk]
+        _refuse_unbillable_lump(current, customer)
+        if copy is None:
+            facts = lump_facts(current)
+            value = _lump_amount(customer, current, amount)
+            rows.append(
+                {"order_line": current, "qty": facts["shipped_qty"], "amount": value, "last_shipped_at": facts["last_shipped_at"]}
+            )
+        else:
+            rows.append(
+                {"order_line": current, "qty": copy.qty, "amount": copy.amount, "last_shipped_at": copy.last_shipped_at}
+            )
+    rows.sort(key=lambda row: (row["order_line"].order.order_no, row["order_line"].line_no))
+    return rows
 
 
 def _refuse_second_in_period(customer, period_from, period_to):
@@ -302,8 +426,10 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
 
     返す辞書 = {"invoices": 取り消す請求書 (同じ得意先・同じ期間の取消でない請求書の全部。pk の順),
     "shipments": 新しい請求書に入る出荷 (出荷日・出荷番号の順), "refusal": 作り直せない理由の文 (作り直せるなら空の字),
-    "refused": 理由の文の請求書 (無ければ None), "period_from", "period_to": 渡した請求書の期間}。
+    "refused": 理由の文の請求書 (無ければ None), "period_from", "period_to": 渡した請求書の期間,
+    "lumps": 取り消す請求書に入っていた一式の行 (InvoiceLine。受注の明細・数量・金額・最後の出荷日を同じ値で新しい請求書に写す。受注番号・行番号の順)}。
     入る出荷 = 取り消す請求書に入っていた出荷の全部 + その得意先の請求できる出荷 (billable_shipments) のうち出荷日が期間の中 (両端を含む) の物。
+    一式の行 (出荷が空) は出荷の集まりに入れず、lumps に並べる (空の値を出荷の pk__in に渡さない。作り直しで一式の行も落とさない)。
     理由の文は、取り消す請求書のどれかに取消でない入金が残っていれば、その請求書の cancel_refusal の文 (hide_money なら件数だけ)。
     """
     invoices = list(_same_period_invoices(invoice).prefetch_related("payments", "lines"))
@@ -313,7 +439,13 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
         if text:
             refusal, refused = text, row
             break
-    taken = {line.shipment_id for row in invoices for line in row.lines.all()}
+    taken = {line.shipment_id for row in invoices for line in row.lines.all() if line.shipment_id is not None}
+    lump_pks = [line.pk for row in invoices for line in row.lines.all() if line.shipment_id is None]
+    lumps = list(
+        InvoiceLine.objects.filter(pk__in=lump_pks)
+        .select_related("order_line__order", "order_line__item")
+        .order_by("order_line__order__order_no", "order_line__line_no")
+    ) if lump_pks else []
     in_period = billable_shipments(invoice.customer_id).filter(
         shipped_at__gte=invoice.period_from, shipped_at__lte=invoice.period_to
     )
@@ -329,17 +461,22 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
         "refused": refused,
         "period_from": invoice.period_from,
         "period_to": invoice.period_to,
+        "lumps": lumps,
     }
 
 
-def reissue_invoice(invoice, user, *, issued_on):
+def reissue_invoice(invoice, user, *, issued_on, lumps=()):
     """同じ得意先・同じ期間の取消でない請求書を全部取り消し、それらに入っていた出荷と期間の中で残っていた出荷で 1 枚に作り直す。
 
     1 つの transaction で、得意先の行 → 同じ期間の請求書の行の順にロックし (create_invoice と同じ順)、reissue_plan で中身を決める。
     どれかの請求書に取消でない入金が残っていれば、何も変えずに ValueError (文は cancel_refusal。金額の閲覧の無い人には件数だけ)。
     請求書は行を消さずに取消にし、新しい請求書は create_invoice と同じ中身 (_issue_invoice) で書く (R09・期間・R23・支払期日を通す)。
-    期間は invoice_period で決まり、最後の出荷は期間の中にあるので、取り消した請求書と同じ期間になる。
-    返す請求書に saved_message (「IV-000001 を取り消し、この期間の出荷 9 件で IV-000003 を作りました。」) と、
+    取り消した請求書に入っていた一式の行 (reissue_plan の lumps) は同じ数量・金額・最後の出荷日で写し、lumps = (受注の明細, 金額) の組の並び
+    (作り直しの画面の一式の表で人が金額を決めて足した一式の行。create_invoice の lumps と同じ) も足す。写す一式の行と同じ受注の明細は足さない
+    (写す方を残す。画面は写す一式の行の明細を一式の表に出さない)。
+    期間は invoice_period で決まり、最後の出荷は期間の中にあるので、取り消した請求書と同じ期間になる。出荷の行が無く一式の行だけのときは、
+    取り消した請求書と同じ期間にする (発行日で決めると、発行日の月によって期間が変わるため)。
+    返す請求書に saved_message (「IV-000001 を取り消し、この期間の出荷 9 件で IV-000003 を作りました。」。一式の行があれば「出荷 9 件と一式の行 1 件」) と、
     _period_note の saved_note・saved_level を付ける (表に書かない)。
     訳: 同じ得意先の同じ締め期間の請求書を、前の請求書を取り消して 1 枚に作り直すため (入金の残る請求書は取り消さない = cancel_refusal と同じ決まり。取り消した請求書に入っていた出荷は全部入れ、期間の中で残っていた出荷を足すので、作り直しで請求から落ちる出荷は無い)。出所 = RULES.md R23・本人の決め 11-07 00:2x (本人が選んだ案「同じ期間の 2 枚目は赤の知らせで止め、1 枚目を取り消して期間の全部の出荷で作り直すボタンへ案内する」) と 11-07 06:11 (入れる出荷の決め)。入金を先に取り消す順は cancel_refusal の訳のとおり未確認。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
@@ -351,13 +488,24 @@ def reissue_invoice(invoice, user, *, issued_on):
         refusal = plan["refusal"]
         if refusal:
             raise ValueError(refusal)
-        if not plan["shipments"]:
+        copied = {row.order_line_id for row in plan["lumps"]}
+        extra = [(line, amount) for line, amount in lumps if line.pk not in copied]
+        if not plan["shipments"] and not plan["lumps"] and not extra:
             raise ValueError("発行できません。出荷がありません。請求書に入れる出荷を 1 つ以上選んでください。")
         for row in plan["invoices"]:
             row.status = Invoice.STATUS_CANCELLED
             row.save(update_fields=["status"])
-        created = _issue_invoice(customer, plan["shipments"], issued_on)
-        made = f"この期間の出荷 {len(plan['shipments'])} 件で {created.invoice_no} を作りました。"
+        created = _issue_invoice(
+            customer,
+            plan["shipments"],
+            issued_on,
+            lumps=extra,
+            copies=plan["lumps"],
+            period=(plan["period_from"], plan["period_to"]),
+        )
+        lump_count = len(plan["lumps"]) + len(extra)
+        parts = f"出荷 {len(plan['shipments'])} 件" + (f"と一式の行 {lump_count} 件" if lump_count else "")
+        made = f"この期間の{parts}で {created.invoice_no} を作りました。"
         cancelled = "・".join(row.invoice_no for row in plan["invoices"])
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_note を後ろに付ける)。表に書かない。
         created.saved_message = f"{cancelled} を取り消し、{made}" if cancelled else made
@@ -528,14 +676,20 @@ def lump_facts(order_line):
     }
 
 
-def invoice_period(customer, shipments):
-    """請求書の期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。shipments は請求書に入れる出荷 (1 つ以上)。
+def invoice_period(customer, shipments, issued_on=None):
+    """請求書の期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。shipments は請求書に入れる出荷。
 
     締日でまとめる得意先: 最後の出荷日を含む締め期間 = closing_period(customer, 最後の出荷日)。
     都度の得意先: 最初の出荷日〜最後の出荷日 (都度は締めないので、期間は出荷の日)。
+    出荷が無い (一式の行だけの請求書) ときは発行日 issued_on で決める: 締日でまとめる得意先は closing_period(customer, 発行日)、
+    都度の得意先は (発行日, 発行日) (作者の決め C107-1。一式の行は期間を動かさず、取引の日は一式の行の最後の出荷日で行に残す)。
     create_invoice と作り直し (reissue_invoice) が同じ関数を通る (期間を決める所を 2 か所に持たない)。
     """
     days = [shipment.shipped_at for shipment in shipments]
+    if not days:
+        if customer.billing_method == _Partner.BILLING_PER_DELIVERY:
+            return issued_on, issued_on
+        return closing_period(customer, issued_on)
     if customer.billing_method == _Partner.BILLING_PER_DELIVERY:
         return min(days), max(days)
     return closing_period(customer, max(days))
