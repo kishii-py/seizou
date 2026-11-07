@@ -20,6 +20,10 @@
  * - 値を確かめない。空に戻しても誤りを出し直さない (保存のときにサーバーが確かめる)。もう一度押して止まれば、サーバーが描き直す。
  * - class を触らない (classList・className を使わない)。HTML を差し込まない。通信しない。
  *   event は送らない (閉じるボタンの click だけは、今の閉じる手続きを使うために呼ぶ)。
+ * - 止まった後に最初の誤りの欄へ移る (指示書 11-07 の見つけ forms-02): 読み込みの時と、小窓の箱 (#seizou-modal-box) の差し替えの後
+ *   (htmx:afterSettle) に、入力の土台の form の中の最初の [aria-invalid=true] を scrollIntoView (縦は中央) してから focus (preventScroll)。
+ *   字を打って探す欄 (Tom Select) は元の select が隠れているので、同じ id に「-ts-control」を付けた打つ欄へ移す。誤りの欄が無ければ何もしない。
+ *   下の保存の帯に隠れない分は scripts/css/input.css の scroll-padding-bottom が見る。
  */
 (function () {
   "use strict";
@@ -84,4 +88,38 @@
 
   document.addEventListener("input", edited);
   document.addEventListener("change", edited);
+
+  // 誤りの欄の focus の先。字を打って探す欄 (Tom Select) は、同じ id に -ts-control を付けた打つ欄 (元の select は隠れている)。
+  function focusTarget(field) {
+    if (field.id) {
+      var control = document.getElementById(field.id + "-ts-control");
+      if (control) return control;
+    }
+    return field;
+  }
+
+  // root の中の最初の誤りの欄へ移る (見える所まで送ってから focus)。誤りの欄が無ければ何もしない。
+  function focusFirstInvalid(root) {
+    var field = root.querySelector(FORM + " [aria-invalid=true]");
+    if (!field) return;
+    var target = focusTarget(field);
+    if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "center", inline: "nearest" });
+    if (typeof target.focus === "function") target.focus({ preventScroll: true });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      focusFirstInvalid(document);
+    });
+  } else {
+    focusFirstInvalid(document);
+  }
+
+  document.addEventListener("htmx:afterSettle", function (event) {
+    // 小窓の箱の差し替え (保存で止まって小窓の中身が描き直された時) だけ。ほかの差し替え (一覧の行など) では動かない。
+    var box = document.querySelector(MODAL_BOX);
+    var elt = event.detail && event.detail.elt;
+    if (!box || !elt || !box.contains(elt)) return;
+    focusFirstInvalid(box);
+  });
 })();
