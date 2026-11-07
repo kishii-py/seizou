@@ -47,7 +47,10 @@
   <a class="btn btn-outline btn-sm border-base-300" href="{% url 'workorders:workorder_tag_pdf' plan.workorder.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
 </div>
 {# 在庫の見込みの図 (今日から 8 週)。数と座標は workorders_plan の plan_projection が plans.item_projection で作る (在庫の部品が無ければ出さない)。 #}
-{# 小窓の幅に合わせた小さな SVG。幅は viewBox の 448px (max-w-md) より広げない (tablet 以上で軸の字が周りの 12px より大きくならないように。phone では縮む)。色は theme の class だけ。0 より大きい棒は主色、0 より下の棒 (足りない数) は fill-current と text-error で赤。系列ごとに for を分ける (class を組み立てない)。 #}
+{# 小窓の幅に合わせた小さな SVG。幅は viewBox の 448px (max-w-md) より広げない (tablet 以上で高さを 168px 以下に保つため。phone では縮む)。色は theme の class だけ。0 より大きい棒は主色、0 より下の棒 (足りない数) は fill-current と text-error で赤。系列ごとに for を分ける (class を組み立てない)。 #}
+{# 目盛りと日付の字は svg の外の HTML の字 (凡例と同じ 12px) で、図と一緒に縮まない (C50-1 = a。ダッシュボードの棒の図 core/_chart_bars.html と同じ形)。 #}
+{# 字は svg の箱に対する割合の位置 (plans の目盛りの top・日付の left・tick_label_right) に style で置く。字を置く包みも max-w-md にして svg と同じ幅にする (割合の位置が svg とずれないように)。 #}
+{# 目盛りの字は線の高さの中央、日付の字は週の初めの日の帯の左の端から。目盛りの字が svg の左の余白より長ければ、小窓の左の余白にはみ出す。字は読み上げない (棒の title で読む)。 #}
 {% plan_projection plan.item as outlook %}
 {% if outlook %}
 <section class="mt-4" aria-label="在庫の見込み">
@@ -59,22 +62,28 @@
   </ul>
   {# 8 週ずっと 0 のとき、図は薄い線だけの箱になるので、0 だと字で書く (up と down は 0 の日を除いた棒の列。両方が空 = 56 日とも 0)。 #}
   {% if not outlook.chart.up and not outlook.chart.down %}<p class="mt-2 text-xs text-base-content/70">今日から 8 週、見込みの在庫はずっと 0 です。</p>{% endif %}
-  <svg id="plan-stock-chart" class="mt-2 block h-auto w-full max-w-md" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
-    <title>在庫の見込み (今日から 8 週)</title>
-    {% for tick in outlook.chart.ticks %}
-    <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
-    <text class="fill-base-content/70 text-xs" x="{{ outlook.chart.tick_label_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
-    {% endfor %}
-    {% for bar in outlook.chart.up %}
-    <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
-    {% endfor %}
-    {% for bar in outlook.chart.down %}
-    <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
-    {% endfor %}
-    {% for label in outlook.chart.labels %}
-    <text class="fill-base-content/70 text-xs" x="{{ label.x }}" y="{{ outlook.chart.label_y }}" text-anchor="start">{{ label.label }}</text>
-    {% endfor %}
-  </svg>
+  <div class="relative mt-2 max-w-md">
+    <svg id="plan-stock-chart" class="block h-auto w-full max-w-md" viewBox="0 0 {{ outlook.chart.width }} {{ outlook.chart.height }}" role="img" aria-label="在庫の見込みの図。今日から 8 週の、日ごとの見込みの在庫数">
+      <title>在庫の見込み (今日から 8 週)</title>
+      {% for tick in outlook.chart.ticks %}
+      <line class="stroke-base-300" x1="{{ outlook.chart.left }}" x2="{{ outlook.chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}" vector-effect="non-scaling-stroke"></line>
+      {% endfor %}
+      {% for bar in outlook.chart.up %}
+      <rect class="fill-primary" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+      {% endfor %}
+      {% for bar in outlook.chart.down %}
+      <rect class="fill-current text-error" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.date|date:"n/j" }} 見込み {{ bar.qty|comma }}</title></rect>
+      {% endfor %}
+    </svg>
+    <div class="text-xs text-base-content/70 tabular-nums" aria-hidden="true">
+      {% for tick in outlook.chart.ticks %}
+      <span class="absolute whitespace-nowrap" style="top: {{ tick.top }}%; right: {{ outlook.chart.tick_label_right }}%; transform: translateY(-50%)">{{ tick.label }}</span>
+      {% endfor %}
+      {% for label in outlook.chart.labels %}
+      <span class="absolute bottom-0 whitespace-nowrap" style="left: {{ label.left }}%">{{ label.label }}</span>
+      {% endfor %}
+    </div>
+  </div>
   {% with projection=outlook.projection %}
   <p class="mt-2 text-xs text-base-content/70">今の在庫 {% if projection.counted %}{{ projection.current|comma }}{% else %}— (数えていないので 0 から){% endif %}・指示書 {{ projection.workorders }} 件 (+{{ projection.workorder_qty|comma }})・受注 {{ projection.lines }} 件 (−{{ projection.line_qty|comma }})</p>
   {% if projection.undated %}<p class="mt-1 text-xs text-base-content/50">終了日の無い指示書と納期の無い明細 {{ projection.undated }} 件は数えていません。</p>{% endif %}
