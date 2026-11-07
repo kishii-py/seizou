@@ -15,7 +15,7 @@ from django.urls import reverse
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.stock import services as stock_services
-from seizou.workorders import services
+from seizou.workorders import plans, services
 from tests import test_workorders_plan
 
 # 生産計画の試験の fixture を借りる (pytest は module の名前で fixture を見つける)。
@@ -82,6 +82,56 @@ def test_plan_detail_chart_is_capped_at_its_own_width(client_logged_in, user, wo
     assert "mx-auto" not in classes
     assert "overflow-x-auto" not in html
     assert ZERO_NOTE not in html
+
+
+@pytest.mark.django_db
+def test_plan_detail_chart_words_outside_svg(client_logged_in, user, line, workorder, step):
+    """在庫の見込みの図の目盛りと日付の字は svg の外の HTML の 12px の字 (text-xs と text-base-content/70) で、svg の箱に対する割合の
+    位置に置く (候補 C50 の B。C50-1 = a)。字を置く包みも max-w-md で svg と同じ幅。C52 の上限 (max-w-md・w-full・横の送り無し) はそのまま。"""
+    services.plan_step(step, date(2026, 11, 4), date(2026, 11, 5), user)
+
+    html = client_logged_in.get(_detail_url(step), HTTP_HX_REQUEST="true").content.decode()
+    chart = plans.item_projection(line.item)["chart"]
+
+    start = html.index('<svg id="plan-stock-chart"')
+    end = html.index("</svg>", start)
+    svg = html[start:end]
+    words = html[end : html.index("</div>", end)]
+    assert html[:start].rstrip().endswith('<div class="relative mt-2 max-w-md">')
+    assert "<text" not in svg
+    assert svg.count('<line class="stroke-base-300"') == len(chart["ticks"])
+    assert '<div class="text-xs text-base-content/70 tabular-nums" aria-hidden="true">' in words
+    assert chart["ticks"] and len(chart["labels"]) == 8
+    for tick in chart["ticks"]:
+        place = f'top: {tick["top"]}%; right: {chart["tick_label_right"]}%; transform: translateY(-50%)'
+        assert f'<span class="absolute whitespace-nowrap" style="{place}">{tick["label"]}</span>' in words
+    for label in chart["labels"]:
+        assert f'<span class="absolute bottom-0 whitespace-nowrap" style="left: {label["left"]}%">{label["label"]}</span>' in words
+    classes = re.search(r'<svg id="plan-stock-chart" class="([^"]*)"', html).group(1).split()
+    assert "max-w-md" in classes and "w-full" in classes and "mx-auto" not in classes
+    assert "overflow-x-auto" not in html
+
+
+def test_projection_chart_places_are_inside():
+    """在庫の見込みの図の割合の鍵 (目盛りの top・日付の left・tick_label_right) が 0〜100 で、座標の鍵 (目盛りの y・日付の x・
+    tick_label_x) と同じ所を指す (候補 C50 の B。小数 1 桁の字なので 0.1 までずれてよい)。0 より下の見込みも入れる。"""
+    pattern = [5, 5, 3, 0, -4, -4, 2, 8]
+    days = [{"date": START + timedelta(days=offset), "qty": Decimal(pattern[offset % 8])} for offset in range(56)]
+
+    chart = plans.projection_chart({"days": days})
+
+    width, height = chart["width"], chart["height"]
+    right = float(chart["tick_label_right"])
+    assert 0 <= right <= 100
+    assert abs(right - (width - float(chart["tick_label_x"])) * 100 / width) <= 0.1
+    assert any(tick["label"].startswith("-") for tick in chart["ticks"])
+    for tick in chart["ticks"]:
+        assert 0 <= float(tick["top"]) <= 100
+        assert abs(float(tick["top"]) - float(tick["y"]) * 100 / height) <= 0.1
+    assert [label["label"] for label in chart["labels"]] == ["11/9", "11/16", "11/23", "11/30", "12/7", "12/14", "12/21", "12/28"]
+    for label in chart["labels"]:
+        assert 0 <= float(label["left"]) <= 100
+        assert abs(float(label["left"]) - float(label["x"]) * 100 / width) <= 0.1
 
 
 @pytest.mark.django_db

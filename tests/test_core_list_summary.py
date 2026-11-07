@@ -8,6 +8,7 @@
 
 import csv
 import io
+import re
 from datetime import date
 from decimal import Decimal
 from urllib.parse import quote
@@ -250,6 +251,63 @@ def test_chart_tag_scales_bars_and_shortens_labels():
     assert first["value_x"] == "560.0" and second["value_x"] == "380.0"  # 192 + 360 + 8 と 192 + 180 + 8
     assert first["d"].startswith("M192.0,") and third["d"] == "" and third["value_x"] == "200.0"
     assert chart_for(rows, limit=2)["rest"] == 1
+
+
+def _summary_chart_parts(text):
+    """集計の図の包み (名前の列・svg・値の列) を、svg の前 (名前)・svg・svg の後 (値) の 3 つに分ける。"""
+    start = text.index('<div class="flex gap-2 text-xs text-base-content/70">')
+    part = text[start : text.index("</div>", start)]
+    svg_start = part.index('<svg id="summary-chart"')
+    svg_end = part.index("</svg>")
+    return part[:svg_start], part[svg_start:svg_end], part[svg_end:]
+
+
+def test_summary_chart_words_outside_svg(user, orders):
+    """集計の図の名前と値の字は svg の外の HTML の 12px の字 (text-xs と text-base-content/70) で、svg は最小の幅を持たない。
+    名前と値は 1 行の px の高さの行に置き、svg は同じ px の高さ (候補 C50 の A。C50-1 = a)。長い名前は末尾で切り、全文は title。"""
+    far = masters_services.create_partner({"code": "C009", "name": "あ" * 20, "role": "customer"}, user)
+    item = Item.objects.get(part_no="T-100")
+    orders_services.create_order(
+        far, [{"item": item, "qty": Decimal("7"), "unit_price": Decimal("1234")}], user, order_date=date(2026, 11, 4)
+    )
+
+    response = call(_LineList, user, view="summary", g_by="customer", g_val="amount")
+    names, svg, values = _summary_chart_parts(body(response))
+    chart = chart_for(response.context_data["summary"]["rows"])
+
+    assert "<text" not in svg and "min-w-" not in svg
+    assert '<line class="stroke-base-300"' in svg and svg.count('<path class="fill-primary') == 3
+    assert f'style="height: {chart["height"]}px"' in svg and 'preserveAspectRatio="none"' in svg
+    assert f'viewBox="{chart["plot_left"]} 0 {chart["plot_width"]} {chart["height"]}"' in svg
+    rows = f'style="height: {chart["row_height"]}px"'
+    for words in (names, values):
+        assert f'style="padding-top: {chart["top"]}px" aria-hidden="true">' in words
+        assert words.count(rows) == 3
+    for full, short in (("作り物の北の得意先", "作り物の北の得意先"), ("あ" * 20, "あ" * 14 + "…")):
+        assert f'<span class="min-w-0 truncate" title="{full}">{short}</span>' in names
+    # 値は金額の字 (yen:0) で右の列に置く (単価 100 × 数量 6・9、1234 × 7)
+    for money in ("¥600", "¥900", "¥8,638"):
+        assert f"{rows}>{money}</li>" in values
+
+
+def test_chart_tag_places_are_inside():
+    """名前と値の HTML の行 (row_height の px と上の余白 top) の中央が棒の中央 y と同じで、svg の横の範囲 (plot_left・plot_width) が
+    基線と全部の棒を含み、640 の枠の中にある (候補 C50 の A。小数 1 桁の字なので 0.1 までずれてよい)。"""
+    rows = [{"label": "あ" * 20, "value": 10}, {"label": "い", "value": Decimal("5")}, {"label": "う", "value": 0}]
+    chart = chart_for(rows)
+    top, row_height, height = float(chart["top"]), chart["row_height"], chart["height"]
+    assert row_height > 0 and top >= 0
+    for index, bar in enumerate(chart["bars"]):
+        assert abs(top + row_height * (index + 0.5) - float(bar["y"])) <= 0.1
+    assert abs(top + row_height * len(rows) + (height - float(chart["bottom"])) - height) <= 0.1
+    left = float(chart["plot_left"])
+    right = left + float(chart["plot_width"])
+    assert 0 <= left < float(chart["base_x"]) and right <= chart["width"]
+    # svg の右の端は、一番長い棒の値の字の左の端 (value_x)
+    assert abs(right - float(chart["bars"][0]["value_x"])) <= 0.1
+    for bar in chart["bars"]:
+        xs = [float(x) for x in re.findall(r"(-?\d+(?:\.\d+)?),", bar["d"])]
+        assert all(left < x < right for x in xs)
 
 
 @pytest.mark.django_db
