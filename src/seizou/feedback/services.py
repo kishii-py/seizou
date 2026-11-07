@@ -14,12 +14,15 @@
 - 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
   添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
 - 直した (fixed) は世話役が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
+- GitHub でログインしてつなぐ (依頼書 N320。決め 11-07 09:2x): OAuth のデバイスの認証。始める・待つ・やめるの途中は
+  利用者の session (DEVICE_KEY) にだけ置き、表に書かない。承認が済んだら、トークンを貼る形と同じ _store_github で .env に書く。
 """
 
 from __future__ import annotations
 
 import os
 import re
+import time
 from datetime import datetime
 from functools import lru_cache
 
@@ -596,6 +599,14 @@ _ISSUE_URL = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+
 
 MESSAGE_GITHUB_NOT_CONNECTED = "GitHub とまだつないでいません。フィードバックの一覧の「GitHub の設定」から、トークンを置いてください。"
 MESSAGE_GITHUB_CONFIRM_FIRST = "先に「確認済みにする」を押してください。"
+MESSAGE_GITHUB_NO_CLIENT_ID = (
+    "保存できません。GitHub の OAuth App の Client ID が入っていません。"
+    "下の手順でトークンを貼るか、置き場の .env に SEIZOU_GITHUB_CLIENT_ID を書いてください。"
+)
+#: GitHub でログインしてつなぐ途中の控えの session の鍵 (依頼書 N320)
+DEVICE_KEY = "github_device"
+#: slow_down の返事に間隔が無いときに足す秒 (GitHub の Device Flow の決まり)
+DEVICE_SLOW_DOWN_SECONDS = 5
 
 
 def _refuse_github(user, what, *, sending=False) -> None:
@@ -623,6 +634,21 @@ def github_status() -> dict:
     }
 
 
+@sensitive_variables("token")  # 開発の設定 (DEBUG) の誤りの画面に、トークンの値を出さない
+def _store_github(token, repo) -> dict:
+    """トークンを .env に置く (トークンを貼る形とデバイスの認証の共通)。返す物は {"login": 口座の名前, "repo": 送り先}。
+
+    形を見て → 口座の名前を GitHub に聞き (HTTP。atomic の外。表には書かない) → .env に 3 行 (トークン・送り先・口座の名前) を書く。
+    失敗は github.GithubError (呼び手が日本語の ValueError か画面の文にする)。repo は呼び手が check_repo を通した物。
+    """
+    token = github.check_token(token)
+    login = github.whoami(token)
+    github.write_env_value(github.TOKEN_ENV, token)
+    github.write_env_value(github.REPO_ENV, repo)
+    github.write_env_value(github.LOGIN_ENV, login)
+    return {"login": login, "repo": repo}
+
+
 @sensitive_variables("data", "token")  # 開発の設定 (DEBUG) の誤りの画面に、トークンの値を出さない
 def connect_github(data, user) -> dict:
     """GitHub とつなぐ。世話役だけ。data = {"token": トークン, "repo": 送り先 (owner/name。空なら既定)}。
@@ -637,13 +663,138 @@ def connect_github(data, user) -> dict:
     try:
         token = github.check_token(data.get("token"))
         repo = github.check_repo(_text(data.get("repo")) or github.DEFAULT_REPO)
-        login = github.whoami(token)
-        github.write_env_value(github.TOKEN_ENV, token)
-        github.write_env_value(github.REPO_ENV, repo)
-        github.write_env_value(github.LOGIN_ENV, login)
+        return _store_github(token, repo)
     except github.GithubError as exc:
         raise ValueError("保存できません。" + f"GitHub とつなげませんでした。{exc}") from None
-    return {"login": login, "repo": repo}
+
+
+# ---- GitHub でログインしてつなぐ (OAuth のデバイスの認証。依頼書 N320) ----
+
+
+def _device_raw(session):
+    """session の待ちの控え (形の合う辞書だけ。合わなければ None)。"""
+    raw = session.get(DEVICE_KEY) if session is not None else None
+    if not isinstance(raw, dict):
+        return None
+    texts = ("device_code", "user_code", "verification_uri", "repo")
+    numbers = ("interval", "expires_at")
+    if not all(isinstance(raw.get(key), str) and raw.get(key) for key in texts):
+        return None
+    if not all(isinstance(raw.get(key), (int, float)) and not isinstance(raw.get(key), bool) for key in numbers):
+        return None
+    return raw
+
+
+def _drop_device(session) -> None:
+    """session から待ちの控えを消す。"""
+    if session is not None and DEVICE_KEY in session:
+        session.pop(DEVICE_KEY, None)
+        session.modified = True
+
+
+@sensitive_variables("answer")  # 開発の設定 (DEBUG) の誤りの画面に、device_code の値を出さない
+def start_github_device(session, data, user) -> dict:
+    """GitHub でログインしてつなぐを始める。世話役だけ。data = {"repo": 送り先 (owner/name。空なら既定), "private": 真偽}。
+
+    GitHub から 8 文字の符号をもらい (HTTP。atomic の外。表には書かない)、待ちの控えを利用者の session に置く。
+    返す物は {"user_code", "verification_uri", "interval", "expires_at"} (device_code は返さない)。失敗は日本語の ValueError。
+    権限は送り先が非公開なら repo、公開なら public_repo (トークンを貼る形の手順と同じ)。
+
+    訳: Client ID の無い置き場では HTTP を呼ばずに断る。GitHub のデバイスの認証は OAuth App の Client ID が無いと始められないため
+    (出所 = GitHub の Device Flow の仕様。依頼書 N320)。変えてよい条件 = 作品が別の認証の形 (中継のサーバーなど) を持ったとき。
+    """
+    _refuse_github(user, "GitHub とつなぐ")
+    if not isinstance(data, dict):
+        raise ValueError("保存できません。送り先と権限を、項目の名前と値の組で渡してください。")
+    client = github.client_id()
+    if not client:
+        raise ValueError(MESSAGE_GITHUB_NO_CLIENT_ID)
+    scope = "repo" if data.get("private") else "public_repo"
+    try:
+        repo = github.check_repo(_text(data.get("repo")) or github.DEFAULT_REPO)
+        answer = github.device_code(client, scope)
+    except github.GithubError as exc:
+        raise ValueError("保存できません。GitHub とつなげませんでした。" + str(exc)) from None
+    expires_at = time.time() + answer["expires_in"]
+    session[DEVICE_KEY] = {
+        "device_code": answer["device_code"],
+        "user_code": answer["user_code"],
+        "verification_uri": answer["verification_uri"],
+        "interval": answer["interval"],
+        "expires_at": expires_at,
+        "repo": repo,
+        "scope": scope,
+    }
+    session.modified = True
+    return {
+        "user_code": answer["user_code"],
+        "verification_uri": answer["verification_uri"],
+        "interval": answer["interval"],
+        "expires_at": expires_at,
+    }
+
+
+def github_device_state(session) -> dict | None:
+    """GitHub でログインしてつなぐの待ちの状態。待ちが無ければ None。期限を過ぎた控えは消して None。
+
+    返す物は {"user_code", "verification_uri", "interval", "expires_at", "repo"} (device_code は返さない)。HTTP は呼ばない。
+    """
+    raw = _device_raw(session)
+    if raw is None:
+        return None
+    if raw["expires_at"] <= time.time():
+        _drop_device(session)
+        return None
+    return {key: raw[key] for key in ("user_code", "verification_uri", "interval", "expires_at", "repo")}
+
+
+@sensitive_variables("token", "result")  # 開発の設定 (DEBUG) の誤りの画面に、トークンの値を出さない
+def poll_github_device(session, user) -> dict:
+    """GitHub でログインしてつなぐの承認を 1 回聞く (待ちの札が interval 秒ごとに呼ぶ)。
+
+    返す物は {"state": "pending"} / {"state": "connected", "login", "repo"} / {"state": "expired"} / {"state": "denied"} /
+    {"state": "none"} (待ちが無い) / {"state": "error", "message": 日本語の文}。例外を外に投げない。
+    世話役でなければ HTTP を呼ばずに error。承認が済んだら _store_github で .env に書き、待ちの控えを消す。
+    slow_down は控えの間隔を返事の値 (無ければ 5 秒足す) にして pending。トークンの値を返す物と文に入れない。
+    """
+    try:
+        _refuse_github(user, "GitHub とつなぐ")
+    except ValueError as exc:
+        return {"state": "error", "message": str(exc)}
+    raw = _device_raw(session)
+    if raw is None:
+        return {"state": "none"}
+    if raw["expires_at"] <= time.time():
+        _drop_device(session)
+        return {"state": "expired"}
+    try:
+        result = github.device_token(github.client_id(), raw["device_code"])
+    except github.GithubError as exc:
+        _drop_device(session)
+        return {"state": "error", "message": "保存できません。GitHub とつなげませんでした。" + str(exc)}
+    state = result["state"]
+    if state == "pending":
+        return {"state": "pending"}
+    if state == "slow_down":
+        raw["interval"] = result.get("interval") or raw["interval"] + DEVICE_SLOW_DOWN_SECONDS
+        session[DEVICE_KEY] = raw
+        session.modified = True
+        return {"state": "pending"}
+    _drop_device(session)
+    if state in ("expired", "denied"):
+        return {"state": state}
+    token = result["token"]
+    try:
+        stored = _store_github(token, raw["repo"])
+    except github.GithubError as exc:
+        return {"state": "error", "message": "保存できません。GitHub とつなげませんでした。" + str(exc)}
+    return {"state": "connected", "login": stored["login"], "repo": stored["repo"]}
+
+
+def cancel_github_device(session, user) -> None:
+    """GitHub でログインしてつなぐの待ちをやめる (session の控えを消す)。世話役だけ。GitHub には何も送らない。"""
+    _refuse_github(user, "GitHub とつなぐ")
+    _drop_device(session)
 
 
 def disconnect_github(user) -> None:
