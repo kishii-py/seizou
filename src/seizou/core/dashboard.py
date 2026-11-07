@@ -18,7 +18,8 @@
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
-- today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行と段は外し、何も残らなければ None)。
+- today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行と段と、
+  その人が進められない行 (行の書く action を編集の権限・金額の閲覧・部署で行えない。GR-04) は外し、何も残らなければ None)。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -1198,25 +1199,48 @@ _TASK_KEY_OF_STEP = {"purchase_order": "purchase_draft", "reply": "purchase_sent
 
 
 def _task_targets() -> dict:
-    """行の key → (ボタンの字 = 移る先の画面の screen_name, URL の名前, 絞りの GET)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。
+    """行の key → (ボタンの字 = 移る先の画面の screen_name, URL の名前, 絞りの GET, その行を進めるのに要る書く action)。状態の値は model の定数から読む (字を直書きしない)。部品の無い物は空の GET。
 
     納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面 (納品書を作る・請求書の新規登録) へ移る
     (一覧には合う絞りが無く、数えた物と違う物が並ぶため。決め 11-07 20:5x の 2 = 数を押すとその数で絞った画面が開く。flow-02)。
     指示書の無い明細の行は、生産管理ボードを同じ関数 (without_workorder) の絞り「指示書の無い明細だけ」で開く (nav-01 の (b))。
+    書く action は、その行の仕事を保存する画面の service の名前 (検査の層と core.access の ACTION_KINDS・MONEY_ACTIONS と同じ形。
+    下書きの発注は詳細の「再送」= purchasing.resend_purchase_order)。today_tasks が、その action を行えない人の行を外す (_can_proceed。GR-04)。
+    数えるだけで操作の無い行 (返事を待つ発注) は None。
     """
     inbox = _model("connect", "Inbox")
     purchase = _model("purchasing", "PurchaseOrder")
     return {
-        "order": ("受信した注文", "connect:inbox_list", {"f_status": inbox.STATUS_RECEIVED} if inbox else {}),
-        "workorder": ("生産管理ボード", "orders:orderline_list", {"f_open": "1", "f_no_workorder": "1"}),
-        "shipment": ("受注", "orders:order_list", {}),
-        "delivery_note": ("納品書を作る", "shipping:deliverynote_create", {}),
-        "invoice": ("請求書の新規登録", "billing:invoice_create", {}),
-        "payment": ("請求書", "billing:invoice_list", {"f_unpaid": "1"}),
-        "purchase_draft": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_DRAFT} if purchase else {}),
-        "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}),
-        "receipt": ("受入", "purchasing:receipt_list", {}),
+        "order": ("受信した注文", "connect:inbox_list", {"f_status": inbox.STATUS_RECEIVED} if inbox else {}, "connect.accept"),
+        "workorder": ("生産管理ボード", "orders:orderline_list", {"f_open": "1", "f_no_workorder": "1"}, "workorders.issue_workorder"),
+        "shipment": ("受注", "orders:order_list", {}, "shipping.ship"),
+        "delivery_note": ("納品書を作る", "shipping:deliverynote_create", {}, "shipping.create_delivery_note"),
+        "invoice": ("請求書の新規登録", "billing:invoice_create", {}, "billing.create_invoice"),
+        "payment": ("請求書", "billing:invoice_list", {"f_unpaid": "1"}, "billing.record_payment"),
+        "purchase_draft": (
+            "発注",
+            "purchasing:purchaseorder_list",
+            {"f_status": purchase.STATUS_DRAFT} if purchase else {},
+            "purchasing.resend_purchase_order",
+        ),
+        "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}, None),
+        "receipt": ("受入", "purchasing:receipt_list", {}, "purchasing.receive"),
     }
+
+
+def _can_proceed(user, action) -> bool:
+    """行を進める書く action を、その人が行えるか (その操作の入口のボタンと同じ判定 = core の tag can_write。記録は書かない)。
+
+    編集の権限と金額の閲覧は core.access.write_allowed (編集の判定が on で種類の権限が無い・金額の判定が on で金額に関わる操作
+    (MONEY_ACTIONS) なのに金額の閲覧が無い、のときだけ偽)。操作の入口がある部品 (action の . の前) を部署で開けるかは core.access.can_open
+    (伝票編集の権限はあっても、部署で指示書の部品を開けない人には発行の入口が出ないため)。action が None (数えるだけで操作の無い行) は真。
+    訳: 「今日やること」は個人のタスクの枠 (本人の決め 11-05 09:4x) なので、押して移っても操作のボタンが出ない段を並べない。
+    出所 = 見つけ GR-04 (決め 4 = 11-07 21:0x で金額に関わる操作の入口を金額の閲覧の無い人に出さなくなり、進められない段が増えた)。
+    変えてよい条件 = 入口の出し方 (can_write の tag) の判定が変わったとき (この関数も同じ判定にそろえる)。
+    """
+    if action is None:
+        return True
+    return access.write_allowed(user, action) and access.can_open(user, action.split(".")[0], record=False)
 
 
 def today_tasks(user=None) -> dict | None:
@@ -1224,7 +1248,9 @@ def today_tasks(user=None) -> dict | None:
 
     返す物 = {"title": TODAY_TITLE, "rows": [行], "guide": flow_guide() の値}。流れが 1 本も無ければ None。
     行 = {"key" (移る先の表の鍵), "flow" (流れの key), "label" (段の count_label), "count", "unit", "button" (移る先の画面の名前), "url_name", "url" (絞りの GET つき)}。
-    user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行は外す (core.access.can_open。記録は書かない)。None なら外さない。
+    user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行と、その行を進める書く action (_task_targets の 4 つ目) を行えない行
+    (編集の権限か金額の閲覧が無い・操作の入口の部品を部署で開けない = _can_proceed。GR-04) は外す (core.access.can_open と write_allowed。記録は書かない)。
+    None なら外さない。
     user を渡すと、guide も部署で開けない段を外した写し (_open_guide。流れが 1 本も残らなければ None) にし、行が 0 で写しも None なら
     None を返す (「はじめての方へ」の枠ごと出さない。決め C12-2 = a。初見テスト R5 の U159)。行は外す前の guide から作る
     (行の移る先と段の url_name が違う物があり、段を先に外すと開ける行まで消えるため。例: 出荷の段は出荷の一覧、出荷の行は受注の一覧)。
@@ -1241,11 +1267,13 @@ def today_tasks(user=None) -> dict | None:
             key = _TASK_KEY_OF_STEP.get(step["key"], step["key"])
             if not step["count"] or key not in targets:
                 continue
-            button, url_name, params = targets[key]
+            button, url_name, params, action = targets[key]
             url = _url(url_name)
             if url is None:
                 continue
-            if user is not None and not access.can_open(user, url_name.split(":")[0], record=False):
+            if user is not None and not (
+                access.can_open(user, url_name.split(":")[0], record=False) and _can_proceed(user, action)
+            ):
                 continue
             rows.append(
                 {

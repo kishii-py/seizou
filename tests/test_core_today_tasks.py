@@ -1,4 +1,5 @@
 """ダッシュボードの数字のカードの下の段「今日やること」の枠 (core.dashboard.today_tasks と home.html。本人の決め 11-05 09:4x で数字のカードの直下)。件数は作り物のデータを services で作って数える。
+その人が進められない行 (書く action を編集の権限・金額の閲覧・部署で行えない) は出さない (GR-04。個人のタスクの枠 = 本人の決め 11-05 09:4x)。
 
 Django の test client で HTML を見る (本物のブラウザは使わない)。発注はつながりの無い協力企業で作り、相手に送らない。
 名前は作り物だけ。
@@ -17,15 +18,19 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
+from seizou.accounts import demo_seed as accounts_demo_seed
 from seizou.accounts import services as accounts_services
+from seizou.accounts.models import Department
 from seizou.billing import services as billing_services
+from seizou.connect import services as connect_services
 from seizou.connect.models import Inbox
-from seizou.core import dashboard
+from seizou.core import access, dashboard
 from seizou.core.screens import all_screens
 from seizou.core.tours import TOURS
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
+from seizou.purchasing.models import PurchaseOrder
 from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
 
@@ -50,6 +55,21 @@ TARGETS = {
     "purchase_sent": ("purchasing:purchaseorder_list", "?f_status=sent"),
     "receipt": ("purchasing:receipt_list", ""),
 }
+# 行の key → その行を進めるのに要る書く action (_task_targets の 4 つ目。core.access の ACTION_KINDS と同じ名前 = 保存のときの判定と同じ物。
+# 下書きの発注は詳細の「再送」の画面の service。返事を待つ発注は数えるだけで操作が無い = None)
+ACTIONS = {
+    "order": "connect.accept",
+    "workorder": "workorders.issue_workorder",
+    "shipment": "shipping.ship",
+    "delivery_note": "shipping.create_delivery_note",
+    "invoice": "billing.create_invoice",
+    "payment": "billing.record_payment",
+    "purchase_draft": "purchasing.resend_purchase_order",
+    "purchase_sent": None,
+    "receipt": "purchasing.receive",
+}
+#: 部署・編集・金額の判定を全部 on にした会社
+ALL_ON = {"department": "on", "write": "on", "money": "on"}
 SECTION = re.compile(r'<section[^>]*aria-labelledby="flow-guide-title".*?</section>', re.S)
 PASSWORD = "kumo-tests-2611"
 
@@ -123,6 +143,24 @@ def make_work(user, customer, partner, item):
             purchasing_services.mark_sent(purchase_order, user)
 
 
+def make_all_work(user, customer, partner, item):
+    """make_work に、納品書に入っていない出荷・納品書に入って請求書に入っていない出荷・受入の残っている出荷の知らせ (送った発注の明細) を足し、9 行が全部出る形にする。"""
+    make_work(user, customer, partner, item)
+    shipping_services.ship(make_order(user, customer, item).lines.get(), Decimal("10"), timezone.localdate(), user)
+    noted = shipping_services.ship(make_order(user, customer, item).lines.get(), Decimal("10"), timezone.localdate(), user)
+    shipping_services.create_delivery_note(customer, [noted], user)
+    sent = PurchaseOrder.objects.get(status=PurchaseOrder.STATUS_SENT)
+    connect_services.record_shipping_notice(
+        sent.lines.get(), Decimal("40"), timezone.localdate(), user, message_id=uuid.uuid4(), shipment_no="SH-0001"
+    )
+
+
+def keys_of(login_id):
+    """ログイン ID の人の「今日やること」の行の key の並び (枠ごと出さないときは None)。利用者の物は控えを持たないよう取り直す。"""
+    today = dashboard.today_tasks(get_user_model().objects.get(username=login_id))
+    return None if today is None else [row["key"] for row in today["rows"]]
+
+
 def flows_step(row_key):
     """行の key の FLOWS の段 (段の key か、数える物の名前が同じ段)。"""
     return next(step for flow in dashboard.FLOWS for step in flow["steps"] if row_key in (step["key"], step["count"]))
@@ -168,7 +206,7 @@ def test_today_tasks_buttons_are_screen_names(user, customer, partner, shaft):
     for row in rows:
         assert row["button"] == names[row["url_name"]], row["key"]
     # 行にならなかった段 (納品書・請求書・受入) の移る先も、画面の名前のボタン
-    for key, (button, url_name, _params) in dashboard._task_targets().items():
+    for key, (button, url_name, _params, _action) in dashboard._task_targets().items():
         assert button == names[url_name], key
         assert url_name == TARGETS[key][0], key
 
@@ -232,16 +270,61 @@ def test_today_tasks_hides_zero_and_none(monkeypatch):
 def test_today_tasks_hides_rows_of_closed_departments(settings, user, customer, partner, shaft):
     settings.SEIZOU = {"access_control": {"department": "on"}}
     make_work(user, customer, partner, shaft)
-    department = accounts_services.create_department("作り物の受注の部署", ["orders"], ["orders"], None)
+    department = accounts_services.create_department("作り物の受注と出荷の部署", ["orders", "shipping"], ["orders"], None)
     accounts_services.issue_account("juchu", PASSWORD, [department], [], {}, None)
     clerk = get_user_model().objects.get(username="juchu")
 
     rows = dashboard.today_tasks(clerk)["rows"]
-    assert [row["key"] for row in rows] == ["workorder", "shipment"]
+    # 受信した注文・請求書・発注と受入の行は移る先の部品を部署で開けない。指示書の行は、移る先の盤 (受注の部品) は開けても、
+    # 発行の入口のある指示書の部品を部署で開けないので出ない (GR-04)。出荷の行 (出荷の部品を開ける) だけが残る
+    assert [row["key"] for row in rows] == ["shipment"]
     assert {row["url_name"].split(":")[0] for row in rows} == {"orders"}
 
     everyone = {row["url_name"].split(":")[0] for row in dashboard.today_tasks()["rows"]}
     assert {"connect", "billing", "purchasing", "orders"} <= everyone
+
+
+def test_task_targets_hold_the_action_of_each_row():
+    # 行ごとの書く action は core.access の表にある名前 (保存のときの判定と同じ名前)。返事を待つ発注は数えるだけで操作が無い
+    actions = {key: action for key, (_button, _url_name, _params, action) in dashboard._task_targets().items()}
+    assert actions == ACTIONS
+    assert all(action in access.ACTION_KINDS for action in actions.values() if action is not None)
+    # 金額に関わる操作の行 (決め 4 = 11-07 21:0x。受け入れ・納品書・請求書・入金) = 金額の閲覧の無い人には出ない行
+    assert {key for key, action in actions.items() if action in access.MONEY_ACTIONS} == {"order", "delivery_note", "invoice", "payment"}
+
+
+@pytest.mark.django_db
+def test_today_tasks_hides_rows_the_person_cannot_proceed(settings, user, customer, partner, shaft):
+    # GR-04: 押して移っても操作のボタンが出ない行を出さない (個人のタスクの枠 = 本人の決め 11-05 09:4x)。
+    # 人は作り物の会社の種 (accounts の demo_seed) の 3 人 = 現場 genba (製造。権限なし・金額なし)・事務 jimu (受注と出荷。伝票編集・金額なし)・
+    # 経理 keiri (経理。請求書・金額あり) と、フルコントロールの人、jimu と同じ部署と権限で金額を見られる人
+    settings.SEIZOU = {"access_control": dict(ALL_ON)}
+    make_all_work(user, customer, partner, shaft)
+    assert [row["key"] for row in dashboard.today_tasks()["rows"]] == ROW_ORDER
+    accounts_demo_seed.load(user, PASSWORD)
+    accounts_services.issue_account("kanri", PASSWORD, [], [], {"full_control": True}, None)
+    sales = Department.objects.get(name="受注と出荷")
+    accounts_services.issue_account("hanbai-kin", PASSWORD, [sales], ["slip_edit"], {"see_money": True}, None)
+
+    assert keys_of("kanri") == ROW_ORDER
+    # 事務 (金額なし): 受信した注文の受け入れと納品書を作るは金額に関わる操作 (入口が出ない)、指示書の発行は部署で開けない部品 (伝票編集の権限はある)、
+    # 請求書と入金は部署の外。返事を待つ発注は数えるだけの行なので残る
+    assert keys_of("jimu") == ["shipment", "purchase_draft", "purchase_sent", "receipt"]
+    # 同じ部署と権限で金額を見られる人には、金額に関わる操作の 2 行が出る (指示書は部署のまま出ない)
+    assert keys_of("hanbai-kin") == ["order", "shipment", "delivery_note", "purchase_draft", "purchase_sent", "receipt"]
+    # 経理: 移る先の盤と受注の一覧は開けるが、指示書と出荷の編集の権限が無い。進められるのは請求書と入金だけ
+    assert keys_of("keiri") == ["invoice", "payment"]
+    # 現場: 製造の部署は行の移る先をどれも開けない (枠ごと出さない = tests/test_core_home_closed_links と同じ)
+    assert keys_of("genba") is None
+
+
+@pytest.mark.django_db
+def test_today_tasks_keeps_rows_when_judgements_only_log(user, customer, partner, shaft):
+    # 判定が log (既定) の会社では行を外さない (write_allowed と can_open は on のときだけ偽になる)
+    make_all_work(user, customer, partner, shaft)
+    accounts_demo_seed.load(user, PASSWORD)
+    for login_id in ("genba", "jimu", "keiri"):
+        assert keys_of(login_id) == ROW_ORDER, login_id
 
 
 @pytest.mark.django_db

@@ -242,8 +242,9 @@ def test_admin_and_jimu_frames_stay(client, settings, user):
     person = jimu()
     frame = FRAME.search(home(client, person)).group(0)
     rows = dashboard.today_tasks(get_user_model().objects.get(pk=person.pk))["rows"]
-    # 行のある事務の人の枠は「今日やること」の行のまま (行の外し方は N145 の形のまま)
-    assert rows and [row["key"] for row in rows] == [row["key"] for row in dashboard.today_tasks()["rows"] if row["url_name"].split(":")[0] != "billing"]
+    # 行のある事務の人の枠は「今日やること」の行のまま。指示書の行は、指示書の部品を部署で開けない (発行の入口が出ない) ので出ない (GR-04)
+    assert [row["key"] for row in dashboard.today_tasks()["rows"]] == ["workorder", "shipment"]
+    assert [row["key"] for row in rows] == ["shipment"]
     assert '<h2 id="flow-guide-title" class="text-lg font-bold">今日やること</h2>' in frame
     for row in rows:
         assert f'href="{escape(row["url"])}">{row["button"]}<' in frame, row["key"]
