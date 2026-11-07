@@ -222,6 +222,10 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     problem = _order_lines_problem(payload)
     if problem:
         return _refuse(problem, msg_id)
+    # 発注番号・品番・品名・単位・明細の備考の字が受ける表の欄に入らない注文も、受信箱に入れずに断る (数の断りの次。docs/edi-items.md)。
+    problem = _order_text_problem(payload)
+    if problem:
+        return _refuse(problem, msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
@@ -722,6 +726,10 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
         problem = _order_lines_problem(payload)
         if problem:
             raise ValueError(f"受け入れられません。{problem}この注文は断り、送る側に送り直してもらってください。")
+        # 受け口を通らない行 (record_inbox の道) の字も、受注と取引先の品番の表に書く前に止める (数の断りの次)。
+        problem = _order_text_problem(payload)
+        if problem:
+            raise ValueError(f"受け入れられません。{problem}この注文は断り、送る側に送り直してもらってください。")
         mapping = dict(item_mapping or {})
         items = {}
         lines = []
@@ -1123,6 +1131,55 @@ def _order_lines_problem(payload):
             figures[key] = figure
         if len(figures) == 2 and figures["qty"] * figures["unit_price"] >= Decimal(10) ** amount_whole:
             return f"注文の {number} 行目の金額 (数量 × 単価) が、整数の部分 {amount_whole} 桁を超えます。数量と単価を確かめてください。"
+    return None
+
+
+def _order_text_problem(payload):
+    """注文のデータの発注番号・品番・品名・単位・明細の備考が、受ける表の欄の字数に入らないときの日本語の文。入れば None。
+
+    受ける欄は 発注番号 = orders.Order.customer_order_no・品番 = orders.OrderLine.customer_part_no と
+    masters.PartnerItem.partner_part_no の小さい方・品名 = masters.PartnerItem.partner_item_name・
+    単位 = orders.OrderLine.unit・備考 = orders.OrderLine.note。上限は欄の max_length を app の登録から引く
+    (connect は orders と masters の model を頭で import しない。_order_lines_problem と同じ)。
+    見る順は 頭の発注番号 → 明細を上から 1 行ずつ 品番・品名・単位・備考。最初に見つけた 1 つだけを返す。
+    字数は len() で数える (1 字を 1 と数え、バイトで数えない)。品番は前後の空白を外して数える (受け入れは外して表に入れる = _part_of)。
+    字でない値と null と形の違う行は見ない (品番は受け入れの _part_of が断り、ほかは受け入れで使わない)。
+    受け口 (receive) と承認 (accept) が、数の欄の検査 _order_lines_problem の次に呼ぶ。字数の表は docs/edi-items.md。
+    訳: 受けた注文の字が受注と取引先の品番の表の欄に入らず、受け入れの保存で止まる (置き場のデータベースによっては誤りになる) のと、品番を切って入れて別の部品に当たるのを防ぎ、送った側に直す所を返すため。出所 = 作者の決め (中小企業共通 EDI 本編 7.3.3 は、業務アプリが受け取れる桁数を公開し、送る側がそれを守る形。受け取れる字数の表 = docs/edi-items.md)。
+    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。変えたら docs/edi-items.md の「受け取れる字数を超えたとき」も直す。
+    """
+    from django.apps import apps
+
+    if not isinstance(payload, dict):
+        return None
+    order = apps.get_model("orders", "Order")
+    order_line = apps.get_model("orders", "OrderLine")
+    partner_item = apps.get_model("masters", "PartnerItem")
+    order_no = payload.get("order_no")
+    limit = order._meta.get_field("customer_order_no").max_length
+    if isinstance(order_no, str) and len(order_no) > limit:
+        return f"注文の発注番号は {limit} 字までにしてください。"
+    part_no_limit = min(
+        order_line._meta.get_field("customer_part_no").max_length,
+        partner_item._meta.get_field("partner_part_no").max_length,
+    )
+    checks = (
+        ("part_no", "品番", part_no_limit),
+        ("part_name", "品名", partner_item._meta.get_field("partner_item_name").max_length),
+        ("unit", "単位", order_line._meta.get_field("unit").max_length),
+        ("note", "備考", order_line._meta.get_field("note").max_length),
+    )
+    lines = payload.get("lines")
+    for number, raw in enumerate(lines if isinstance(lines, list) else [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        for key, label, limit in checks:
+            value = raw.get(key)
+            if not isinstance(value, str):
+                continue
+            text = value.strip() if key == "part_no" else value
+            if len(text) > limit:
+                return f"注文の {number} 行目の{label}は {limit} 字までにしてください。"
     return None
 
 
