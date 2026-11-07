@@ -126,6 +126,13 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     expect(due_cell).to_have_text(f"{expected.year}年{expected.month}月{expected.day}日")
     shot(printed, "E-29", "a-print")
 
+    # 2 回目の出荷の納品書を出しておく (得意先に請求の候補が残り、同じ締め期間の 2 回目以降でも請求書の新規登録に得意先が出る。
+    # 「取り消して作り直す」が得意先の納品書を全部 1 枚にまとめるため、これが無いと 2 回目から下の確かめで止まる)
+    page_a.goto(f"{company_a.base_url}/shipping/notes/new/")
+    page_a.get_by_label(re.compile(rf"{re.escape(order_no)}(?!\d)")).check()
+    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
+    page_a.wait_for_url(re.compile(r"/shipping/notes/\d+/$"))
+
     page_a.goto(f"{company_a.base_url}/billing/invoices/new/")
     option = page_a.locator("select[name=customer] option").filter(has_text=customer).first
     page_a.select_option("select[name=customer]", value=option.get_attribute("value"))
