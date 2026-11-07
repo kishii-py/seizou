@@ -1,4 +1,4 @@
 {% extends "core/detail.html" %}
-{% load seizou_icons %}
-{# 休日の詳細。core の詳細のまま、見出しの帯に「削除」を足す (編集の画面は無い。間違えた日は削除して足し直す)。 #}
-{% block more %}{% url 'masters:holiday_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endblock %}
+{% load seizou_tags seizou_icons %}
+{# 休日の詳細。core の詳細のまま、見出しの帯に「削除」を足す (編集の画面は無い。間違えた日は削除して足し直す)。削除は休日の新規登録と同じ答え (工程の編集の権限) の人だけに出す (押すと断られる入口を出さない = 見つけ GR-03)。 #}
+{% block more %}{% can_write "masters.Holiday" as can_delete %}{% if can_delete %}{% url 'masters:holiday_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endif %}{% endblock %}

@@ -1,10 +1,11 @@
 {% extends "core/list.html" %}
-{% load seizou_icons %}
+{% load seizou_tags seizou_icons %}
 {# 受注の一覧: 土台の一覧に、注文残の一覧への入口を足す。絞り (状態・得意先・受注日・納期・出荷の残りがある受注だけ) は土台の絞り込みの枠の中 (orders/views.py の宣言。決め 11-04 17:3x)。 #}
 {# 受注の入口は 1 つの画面にまとめる (02 の 8 節の決め 6): 手入力の「新規登録」(主色は土台のこれだけ)・注文書の読み取りのボタン (intake の読み取りの画面へ。枠だけ)・上の段の「受信した注文を開く」。 #}
 {# 部品が入っていない会社では、その入口を出さない。connect のタグは include の先 (connect/_inbox_entrance.html) で読む。 #}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:orderline_list' %}" data-tour="orderline-link">{% icon "list" "size-4" %}生産管理ボード</a>{% if "intake" in seizou.parts %}{% url 'intake:extraction_create' as ocr_url %}{% if ocr_url %}<a class="btn btn-outline border-base-300" href="{{ ocr_url }}" data-tour="ocr">{% icon "file" "size-4" %}注文書を読み取る</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
+{# 「注文書を読み取る」(書く入口) は受注の権限があり部署で intake を開ける人、受信した注文の段 (見るだけの入口) は部署で connect を開ける人にだけ出す (押すと 403 になる入口を出さない = 見つけ GR-03)。 #}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:orderline_list' %}" data-tour="orderline-link">{% icon "list" "size-4" %}生産管理ボード</a>{% if "intake" in seizou.parts %}{% url 'intake:extraction_create' as ocr_url %}{% can_write "intake.Extraction" as can_ocr %}{% if ocr_url and can_ocr %}<a class="btn btn-outline border-base-300" href="{{ ocr_url }}" data-tour="ocr">{% icon "file" "size-4" %}注文書を読み取る</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
 {% block content %}
-{% if "connect" in seizou.parts %}{% include "connect/_inbox_entrance.html" %}{% endif %}
+{% if "connect" in seizou.parts %}{% can_open "connect" as can_inbox %}{% if can_inbox %}{% include "connect/_inbox_entrance.html" %}{% endif %}{% endif %}
 {{ block.super }}
 {% endblock %}

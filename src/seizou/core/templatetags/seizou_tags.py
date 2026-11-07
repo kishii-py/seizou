@@ -7,6 +7,7 @@ yen: 金額の字。comma の字の頭に「¥」を付ける ({{ x|yen }}・{{ 
 yen_if: {{ cell.value|yen_if:cell.money }} で、money が真なら yen、偽なら comma (金額の列とほかの数の列を同じ行で描く所)。
 without_yen_unit: {{ col.label|without_yen_unit }} で、見出しの字から単位の「 (円)」を外す (値に ¥ が付く画面の見出し)。
 can_manage_accounts: {% can_manage_accounts as is_manager %} で、アカウント管理を使える人か (管理者にだけ出す文を分ける)。
+can_open: {% can_open "<app>" as x %} で、部署で部品の画面を開ける人か (見るだけの入口を出すか。core.access.can_open と同じ判定)。
 can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く入口のボタンを出すか (core.access.can_write_model と同じ判定 = 編集の権限と、
 金額に関わる操作の金額の閲覧。押したときの断りは view の require_write)。
 部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
@@ -74,6 +75,19 @@ def can_manage_accounts(context):
 
     request = context.get("request")
     return access.can_manage_accounts(getattr(request, "user", None))
+
+
+@register.simple_tag(takes_context=True)
+def can_open(context, app):
+    """{% can_open "connect" as can_inbox %}。部署で app の画面 (一覧・入力・盤) を開ける人か (core.access.can_open と同じ判定 = 左のメニューの絞り)。
+
+    見るだけの入口 (一覧へ移る link) を、部署で開けない人に出さないため (押すと 403 になる入口を出さない = 見つけ GR-03)。
+    部署の判定が on のときだけ偽になりうる。記録は書かない (record=False)。
+    """
+    from seizou.core import access
+
+    request = context.get("request")
+    return access.can_open(getattr(request, "user", None), app, record=False)
 
 
 @register.simple_tag(takes_context=True)

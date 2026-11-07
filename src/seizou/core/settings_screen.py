@@ -266,12 +266,15 @@ class SettingsView(ScreenMixin, TemplateView):
             for row in context["company_settings"]:
                 if row["key"] in SUPERUSER_ONLY_KEYS:
                     row["editable"] = False
+        # app = 入口の先の部品。部署でその部品を開けない人には入口を出さない (押すと 403 になる入口を出さない = 見つけ GR-03。
+        # 判定は左のメニューと同じ access.can_open。記録は書かない)。無い物は部署を見ない (core の画面と、いつも開ける部品)。
         context["links"] = [
             {
                 "label": "取引先との接続 (つながり)",
                 "help": "取引先ごとの受け口の URL と鍵の置き場の名前。鍵の設定が済みかまだかを見る。",
                 "url": url_or_none("connect:connection_list"),
                 "icon": "inbox",
+                "app": "connect",
             },
             {
                 # 送り合った記録 (決め HIST-1 の edi・C106-1)。取引先との接続と同じく普段は触らないので、左のメニューでなくここから開く
@@ -279,6 +282,7 @@ class SettingsView(ScreenMixin, TemplateView):
                 "help": "取引先と送り合った注文・注文回答・出荷の知らせ・検収の中身を、送ったとおりに残した一覧。",
                 "url": url_or_none("connect:exchange_list"),
                 "icon": "inbox",
+                "app": "connect",
             },
             {
                 "label": "添付ファイルの一覧 (整理用)",
@@ -308,6 +312,9 @@ class SettingsView(ScreenMixin, TemplateView):
         # アカウント管理の入口は、アカウント管理の権限がある人と管理者にだけ出す (無い人が押すと 403 になるため)
         if not access.can_manage_accounts(self.request.user):
             context["links"] = [link for link in context["links"] if link["label"] != "アカウント管理"]
+        for link in context["links"]:
+            if link.get("app") and not access.can_open(self.request.user, link["app"], record=False):
+                link["url"] = None
         context["system_rows"] = system_rows()
         context["parts"] = [part.rsplit(".", 1)[-1] for part in PARTS]
         # メールの知らせ: パスワードは置いてあるかだけ (値は渡さない)。送り方は 1 回だけ読む

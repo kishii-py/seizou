@@ -6,12 +6,14 @@
 部署は作り物の会社の種 (accounts の demo_seed) と同じ部品を、この試験の中で作る。人と名前は作り物。
 """
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.masters import services as masters_services
 from seizou.shipping import services as shipping_services
 from tests import test_orders_board
 from tests.test_billing_payment_views import SHIPPED_AT, _invoice, _order_line
@@ -112,6 +114,78 @@ def test_department_outsider_buttons_hidden(settings, client, user, customer, it
     # keiri の指示書の詳細 (詳細は部署を見ないので開ける。progress は部署の外): 「実績を入力」が無い。
     workorder = _page(client, keiri, docs["urls"]["workorder"])
     assert docs["workorder_progress"] not in workorder and "実績を入力" not in workorder
+
+
+@pytest.mark.django_db
+def test_department_outsider_entrances_hidden(settings, client, user, customer, item, cut):
+    """押すと部署の 403 か権限の断りになる入口 (見つけ GR-03 の 9 か所) を出さない。
+
+    (1) 詳細のパンくずの一覧の名前は、部署で一覧を開けない人には link でなく字。(2) 受注の画面の「注文書を読み取る」は intake を、
+    受信した注文の段は connect を部署で開ける人だけ。(3) 部品と取引先の「CSV 取り込み」はマスター編集の権限の人だけ。
+    (4) 休日の「削除」は工程の権限の人だけ。(5) 設定の「取引先との接続」「送り合った記録」は connect を部署で開ける人だけ。
+    部署の判定が記録だけ (log) なら、今までどおり全部出る。
+    """
+    settings.SEIZOU = {"access_control": {"department": "on", **WRITE_AND_MONEY_ON}}
+    docs = _documents(user, customer, item, cut)
+    depts = _departments()
+    genba = account("genba", departments=[depts["seizo"]], permissions=["workorders"])
+    keiri = account("keiri", departments=[depts["keiri"]], permissions=["billing"], see_money=True)
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"], see_money=True)
+    master = account("master", departments=[depts["sales"]], permissions=["master_edit"])
+    holiday = masters_services.create_holiday({"date": date(2026, 12, 29), "name": "作り物の休み", "kind": "company"}, user)
+
+    order_detail = reverse("orders:order_detail", args=[docs["line"].order.pk])
+    order_list_href = f'href="{reverse("orders:order_list")}"'
+    invoice_list_href = f'href="{reverse("billing:invoice_list")}"'
+    ocr_href = f'href="{reverse("intake:extraction_create")}"'
+    inbox_href = f'href="{reverse("connect:inbox_list")}"'
+    item_import = f'href="{reverse("masters:item_import")}"'
+    partner_import = f'href="{reverse("masters:partner_import")}"'
+    holiday_detail = reverse("masters:holiday_detail", args=[holiday.pk])
+    holiday_delete = f'href="{reverse("masters:holiday_delete", args=[holiday.pk])}"'
+    settings_url = reverse("core:settings")
+    connect_links = (f'href="{reverse("connect:connection_list")}"', f'href="{reverse("connect:exchange_list")}"')
+
+    # (1) genba (製造) は orders と billing を開けない: 受注と請求書の詳細のパンくずは字だけ。jimu (受注と出荷) には link。
+    body = _page(client, genba, order_detail)
+    assert order_list_href not in body and "<span>受注</span>" in body
+    assert order_list_href in _page(client, jimu, order_detail)
+    body = _page(client, genba, docs["urls"]["invoice"])
+    assert invoice_list_href not in body and "<span>請求書</span>" in body
+    assert invoice_list_href in _page(client, keiri, docs["urls"]["invoice"])
+    # (2) keiri (経理) は orders を開けるが intake と connect は開けない。
+    body = _page(client, keiri, reverse("orders:order_list"))
+    assert ocr_href not in body and "注文書を読み取る" not in body
+    assert inbox_href not in body and "受信した注文を開く" not in body
+    body = _page(client, jimu, reverse("orders:order_list"))
+    assert ocr_href in body and inbox_href in body
+    # (3) マスター編集の無い 3 人には「CSV 取り込み」が無い (masters は 3 つの部署が開ける)。
+    for person in (genba, jimu, keiri):
+        assert item_import not in _page(client, person, reverse("masters:item_list")), person.username
+        assert partner_import not in _page(client, person, reverse("masters:partner_list")), person.username
+    assert item_import in _page(client, master, reverse("masters:item_list"))
+    assert partner_import in _page(client, master, reverse("masters:partner_list"))
+    # (4) 工程の権限 (マスター編集に含む) の無い人には休日の「削除」が無い。
+    assert holiday_delete not in _page(client, genba, holiday_detail)
+    assert holiday_delete in _page(client, master, holiday_detail)
+    # (5) connect を開けない genba と keiri には設定の 2 つの入口が無い。
+    for person in (genba, keiri):
+        body = _page(client, person, settings_url)
+        for href in connect_links:
+            assert href not in body, (person.username, href)
+    body = _page(client, jimu, settings_url)
+    for href in connect_links:
+        assert href in body, href
+
+    # 記録だけ: 部署の外でも出る (書く入口は編集の権限で決まるまま)。
+    settings.SEIZOU = {"access_control": {"department": "log", **WRITE_AND_MONEY_ON}}
+    assert order_list_href in _page(client, genba, order_detail)
+    body = _page(client, keiri, reverse("orders:order_list"))
+    assert inbox_href in body and ocr_href not in body  # 注文書を読み取るは受注の書く権限が要る (keiri は請求書だけ)
+    assert ocr_href in _page(client, jimu, reverse("orders:order_list"))
+    body = _page(client, genba, settings_url)
+    for href in connect_links:
+        assert href in body, href
 
 
 @pytest.mark.django_db

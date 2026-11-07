@@ -1325,8 +1325,11 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["edit_url"] = model_url(obj.__class__, "update", obj.pk)
         if context["edit_url"] and not access.can_write_model(self.request.user, obj.__class__, "update"):
             context["edit_url"] = None
-        context["list_url"] = model_url(obj.__class__, "list")
-        context["list_name"] = screen_name_of(context["list_url"])
+        list_url = model_url(obj.__class__, "list")
+        context["list_name"] = screen_name_of(list_url)
+        # 部署で一覧の部品を開けない人には、パンくずの一覧の名前を link にしない (字だけ。押すと 403 になる入口を出さない = 見つけ GR-03。
+        # 判定は左のメニューと同じ access.can_open。記録は書かない)。詳細は部署を見ないので、部署の外の人も開ける。
+        context["list_url"] = list_url if access.can_open(self.request.user, obj._meta.app_label, record=False) else None
         context["status"] = self.status_for(obj)
         context["history"] = history.timeline(obj, self.request.user) if history.keeps_history(obj.__class__) else None
         return context
