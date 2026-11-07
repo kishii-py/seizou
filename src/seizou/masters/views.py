@@ -196,6 +196,7 @@ class PartnerCreateView(BaseFormView):
     form_class = PartnerForm
     service = staticmethod(services.create_partner)
     screen_name = "取引先の新規登録"
+    template_name = "masters/partner_form.html"
     screen_help = "新しい取引先を足します。取引先コードは会社の中で 1 つだけです。"
 
 
@@ -211,6 +212,7 @@ class PartnerUpdateView(BaseFormView):
     form_class = PartnerForm
     service = staticmethod(services.update_partner)
     screen_name = "取引先の編集"
+    template_name = "masters/partner_form.html"
     screen_help = "取引先の項目を編集します。"
 
 

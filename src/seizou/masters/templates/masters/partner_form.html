@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{% load static %}
+{# 取引先の新規登録と編集の入力。土台の入力の画面に、支払の月と支払日の今の値を詳細と同じ字で支払日の欄の下に読み返す JS を足すだけ。小窓の形は masters/_form_modal.html。 #}
+{% block content %}{{ block.super }}<script src="{% static 'masters/partner-form.js' %}" defer></script>{% endblock %}

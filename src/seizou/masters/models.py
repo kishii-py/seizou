@@ -158,6 +158,8 @@ class Partner(models.Model):
         """支払の条件の画面の字。支払の月と合わせて 1 つにする (例「翌月 25 日」「翌月末」)。表の値は 2 列のまま。
 
         支払の月が当日なら、支払日に関わらず「当日」だけ (支払日は使わない)。
+
+        取引先の入力の画面の JS (masters/static/masters/partner-form.js) が同じ分かれで字を作る。分かれを変えたら JS も直す。
         """
         if self.payment_month == self.PAYMENT_SAME_DAY:
             return self.get_payment_month_display()
