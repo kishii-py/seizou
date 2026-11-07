@@ -454,9 +454,33 @@ form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {
   background: transparent;
   box-shadow: none;
 }
-/* Tab で進んだ欄を、貼り付けた行の上まで送る (96px は見本の 1280×720 と 390×844 で確かめた値)。 */
+/* キーボードの焦点 (A11Y-01・A11Y-05。画面の直し 15 件の 7。本人の決め 11-07 21:0x)。
+   (1) link の焦点の枠: daisyUI は .link:focus で outline を none にし (--tw-outline-style: none)、一覧の行の link が持つ utility の
+   focus-visible:outline-2 は outline-style をその変数から読むので、Tab で着いても枠が出なかった (左のメニューの link のように utility の
+   無い .link には daisyUI の .link:focus-visible の 2px の線が出る)。層の外で solid を直に書く (utility の class を足しても同じ変数を
+   読むので直らない)。色はほかの焦点の枠と同じ主色。
+   (2) Tab や Shift+Tab で移った欄を、上の帯 (core/_topbar.html の sticky・h-16 = 4rem) の下に隠さない。html の scroll-padding-top に
+   帯の高さ + 8px。下の保存の帯がある画面の scroll-padding-bottom は、幅ごとの帯の高さ (上の main:has(.seizou-save-row) と同じ
+   141px・113px・65px) + 8px (前は 96px の 1 つで、幅 640 未満では帯の分に足りなかった)。 */
+.link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+html {
+  scroll-padding-top: calc(4rem + 8px);
+}
 html:has(.seizou-save-row) {
-  scroll-padding-bottom: 96px;
+  scroll-padding-bottom: calc(141px + 8px);
+}
+@media (min-width: 640px) {
+  html:has(.seizou-save-row) {
+    scroll-padding-bottom: calc(113px + 8px);
+  }
+}
+@media (min-width: 64rem) {
+  html:has(.seizou-save-row) {
+    scroll-padding-bottom: calc(65px + 8px);
+  }
 }
 /* 右下の「AI に質問」の丸 (assistant/_panel.html の #assistant-root。窓に対して下から 24px・右から 24px) は、下の帯がある画面では帯の上へ上げる
    (本人の報告 11-07 20:3x: 帯の「保存」と丸が隣り合い、送っても離れない → 20:4x「進めて」)。上げる高さ = 上の main の下の余白に足した帯の高さ

@@ -304,7 +304,10 @@ def test_input_css_row_is_bottom_band():
         "html:has(.seizou-save-row) {",
     ):
         assert head in css, head
-    assert "scroll-padding-bottom: 96px;" in css
+    # Tab の送りは幅ごとの帯の高さ + 8px (A11Y-05。tests/test_core_keyboard_focus.py が 3 つの幅の頭も見る)
+    for value in ("calc(141px + 8px)", "calc(113px + 8px)", "calc(65px + 8px)"):
+        assert f"scroll-padding-bottom: {value};" in css, value
+    assert "scroll-padding-bottom: 96px;" not in css
     # 帯がある画面では右下の丸を帯の上へ上げる (幅ごとの帯の高さ + 16px。main の下の余白と同じ 3 つの数)
     lifted = css.index("html:has(.seizou-save-row) #assistant-root {")
     assert "bottom: calc(141px + 1rem);" in css[lifted : css.index("}", lifted)]
