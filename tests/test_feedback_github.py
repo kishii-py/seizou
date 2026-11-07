@@ -1999,3 +1999,24 @@ def test_days_ago():
     assert services.days_ago("2026-11-09T00:00:00Z", now) == "今日"
     assert services.days_ago("", now) == "" and services.days_ago("読めない字", now) == ""
     assert services.days_ago(ago(0)) == "今日"
+
+
+# ---------------------------------------------------------------- つないだ後の画面と戻る道 (本人の報告 11-07 20:3x)
+
+
+def test_setup_screen_hides_token_form_when_connected_and_has_back_link(client, manager, fake, env_file):
+    """つないでいない間はトークンの入力の形と下の帯 (「トークンでつなぐ」) があり、つないだ後は出ない (下の「つなぐ」を押して赤の知らせが出た件)。
+    画面の頭の白い帯に「フィードバックの一覧へ戻る」がいつもある。"""
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/github/"))
+    assert 'name="token"' in html and "seizou-save-row" in html and "トークンでつなぐ</button>" in html
+    assert 'id="github-back"' in html and 'href="/feedback/"' in html
+    assert "GitHub でログインしてつなぐ」でつなぐか" in html
+
+    client.post("/feedback/github/", {"token": TOKEN, "repo": "example-owner/example-repo", "next": "/feedback/github/"})
+    html = html_of(client.get("/feedback/github/"))
+    assert "example-feedback-bot の口座としてつながっています" in html
+    assert 'name="token"' not in html and "seizou-save-row" not in html and "トークンでつなぐ</button>" not in html
+    assert 'id="github-replace"' in html and "外す</button>" in html
+    assert 'id="github-back"' in html
+    assert "やめ方" in html
