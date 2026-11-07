@@ -88,6 +88,21 @@ def test_guide_shows_flow_neighbors(logged_in):
     assert "次の段" not in items.content.decode()
 
 
+def test_guide_order_list_has_next_step_and_inbox_has_none(logged_in):
+    # 「受注」の段は受注の一覧 (ONB-01)。受注の一覧の案内に「次の段: 指示書」が出て、受信した注文の案内には前後の段が出ない
+    orders = guide(logged_in, "orders_order_list").content.decode()
+    assert "受注から入金までの「受注」の段" in orders
+    assert "前の段" not in orders
+    assert re.search(rf'<a class="btn btn-sm btn-outline border-base-300" href="{reverse("orders:orderline_list")}">次の段: 指示書', orders)
+    board = guide(logged_in, "orders_orderline_list").content.decode()
+    assert re.search(rf'<a class="btn btn-sm btn-outline border-base-300" href="{reverse("orders:order_list")}">.*?前の段: 受注</a>', board)
+    assert f'href="{reverse("connect:inbox_list")}"' not in board
+
+    inbox = guide(logged_in, "connect_inbox_list").content.decode()
+    assert "前の段" not in inbox
+    assert "次の段" not in inbox
+
+
 def test_guide_without_htmx_is_400(logged_in):
     response = logged_in.get(reverse("core:screen_guide", args=["core_home"]))
     assert response.status_code == 400

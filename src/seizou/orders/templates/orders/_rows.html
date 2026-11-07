@@ -5,7 +5,9 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
 - 受注の一覧: 状態の列 (列の名前 status) の欄を色の印にする。字は欄の値 (状態の表示名) のまま。列の並びは変えない。
   右端に「要点」の列 (行の「要点を見る」の目の印 = core/_row_summary_link.html。押すと受注の小窓 orders:order_modal を開く。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 - 注文残の一覧 (注残の盤): orders/_board_rows.html (判断の列の印・合計の行・行のメニュー)。
-それ以外 (空の一覧と、ほかの画面) は core/_rows.html をそのまま使う。
+注文残の一覧が空で、検索も絞りの札も無いときは orders/_board_empty.html (「受注を入れると、出荷の残りがある明細がここに並びます。」の
+1 文と「受注の新規登録」のボタン。ONB-01)。
+それ以外 (検索か札のある 0 件、受注の一覧の 0 件、ほかの画面) は core/_rows.html をそのまま使う。
 写した元: core/_rows.html (11-02 夜の main)。土台の表の形が変わったら、ここも合わせる。
 {% endcomment %}
 {% with url_name=request.resolver_match.url_name %}
@@ -56,6 +58,7 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
   {% endif %}
 </div>
 {% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}
+{% elif url_name == "orderline_list" and not search_q and not filter_chips %}{% include "orders/_board_empty.html" %}
 {% else %}{% include "core/_rows.html" %}
 {% endif %}
 {% endwith %}

@@ -1,0 +1,17 @@
+{% load seizou_tags seizou_icons %}{% comment %}
+生産管理ボード (注文残の一覧) が空 (検索も絞りの札も無い) のときの枠 (ONB-01)。orders/_rows.html が include する。
+core/_rows.html の空の枠 (絵と「まだ 1 件もありません。」) を写し、次の一手の 1 文「受注を入れると、出荷の残りがある明細がここに並びます。」と、
+枠だけのボタン「受注の新規登録」(orders:order_create) を足した。盤は create_url を持たない (明細は受注の画面で入れる物で、盤では作れない) ので、
+共通の枝では次にすることが出なかった (「はじめての方へ」の「指示書」の段を押した先が、空の表だけだった)。
+ボタンは受注を書ける人にだけ出す (入口のボタンは権限の無い人に出さない = 決め 11-04 12:5x)。1 文は誰にも出す。
+絞りか検索があって 0 件のときは core/_rows.html の「に合う物はありません。」のまま (orders/_rows.html が分ける)。
+最後の行は core/_rows.html の最後の行の写し (行の部分を返すとき、上の件数と絞りのクリアも入れ替える)。写した元: connect/_inbox_empty.html の形。
+{% endcomment %}
+{% can_write "orders.Order" as can_add_order %}{% url 'orders:order_create' as order_create_url %}
+<div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
+  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
+  <p class="mt-4 font-medium">まだ 1 件もありません。</p>
+  <p class="mt-2 text-xs text-base-content/60">受注を入れると、出荷の残りがある明細がここに並びます。</p>
+  {% if can_add_order and order_create_url %}<a class="btn btn-sm btn-outline mt-4 border-base-300" href="{{ order_create_url }}">{% icon "plus" "size-4" %}受注の新規登録</a>{% endif %}
+</div>
+{% if partial %}{% include "core/_list_meta.html" with oob=True %}{% if filters %}{% include "core/_filter_clear.html" with oob=True %}{% endif %}{% endif %}

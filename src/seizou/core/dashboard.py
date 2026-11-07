@@ -965,12 +965,15 @@ def _inlet_chart(rows, others) -> dict:
 # 業務の流れ (ダッシュボードの「はじめての方へ」の枠と、上の帯の「案内」の小窓の前後の段)。固定の字で、画面から直す口は無い。
 # 1 段 = key・label・model (部品の有無を見る (app_label, name))・url_name・count (数える段の鍵。数えない段は None)・
 # count_label・unit・next_text。部品の入っていない段は出さない (_flow_steps)。数え方は _FLOW_COUNTS の関数。
+# 「受注」の段の移る先は受注の一覧 (受注の 3 つの入口 = 新規登録・注文書の読み取り・受信した注文の帯がそろう画面。ONB-01。
+# 紙や FAX で注文を受ける会社が、導入の初日に空の受信した注文の画面へ着かないため)。数える物は受信した注文の未処理のままで、
+# 「今日やること」の行の移る先 (_task_targets。受信した注文の一覧の未処理の絞り) は変えない。
 FLOWS = (
     {
         "key": "sales",
         "title": "受注から入金まで",
         "steps": (
-            {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "connect:inbox_list",
+            {"key": "order", "label": "受注", "model": ("orders", "Order"), "url_name": "orders:order_list",
              "count": "inbox", "count_label": "受信した注文の未処理", "unit": "件",
              "next_text": "受信した注文を受け入れて、受注にします。"},
             {"key": "workorder", "label": "指示書", "model": ("workorders", "WorkOrder"), "url_name": "orders:orderline_list",
