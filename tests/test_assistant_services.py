@@ -598,3 +598,48 @@ def test_create_order_proposal_saves_order(user, order):
     assert created.order_no in saved["notice"]
     assert "明細 2 行" in saved["notice"]
     assert saved["url"] == reverse("orders:order_detail", args=[created.pk])
+
+
+# ---- 承認の部署の門 (Claude Security の走査の候補 11-07) ----
+
+
+def _outsider(login_id="genba-for-tests"):
+    """製造の部署 (受注と出荷を開けない) の利用者。編集の権限は伝票編集を持つ (部署の軸だけを見る)。"""
+    from seizou.accounts import services as accounts_services
+
+    seizo = accounts_services.create_department("製造", ["workorders", "progress", "masters"], ["workorders"], None)
+    accounts_services.issue_account(login_id, "kumo-tests-2611", [seizo], ["slip_edit"], {}, None)
+    return get_user_model().objects.get(username=login_id)
+
+
+@pytest.mark.django_db
+def test_approve_refused_outside_department(settings, order):
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "log"}}
+    proposal = services.propose("ship", _ship_arguments(order))
+
+    refused = services.approve(_session_with(proposal), proposal["id"], _outsider())
+
+    # 出荷の入力の画面 (部署の 403) と同じく、AI に質問の窓の承認からも書かない
+    assert refused["state"] == "refused"
+    assert refused["code"] == "権限"
+    assert "「出荷」の部品の操作です。" in refused["notice"]
+    assert "あなたの部署: 製造" in refused["notice"]
+    assert "アカウント管理の担当者" in refused["notice"]
+    assert _shipments() == 0
+
+
+@pytest.mark.django_db
+def test_approve_outside_department_log_mode_saves_and_records(settings, order, caplog):
+    import logging
+
+    settings.SEIZOU = {"access_control": {"department": "log", "write": "on", "money": "log"}}
+    proposal = services.propose("ship", _ship_arguments(order))
+
+    with caplog.at_level(logging.WARNING, logger="seizou.access"):
+        saved = services.approve(_session_with(proposal), proposal["id"], _outsider())
+
+    assert saved["state"] == "saved"
+    assert _shipments() == 1
+    lines = [r.getMessage() for r in caplog.records if r.name == "seizou.access"]
+    assert len(lines) == 1
+    assert "記録だけ (部署)" in lines[0] and "shipping.ship" in lines[0]

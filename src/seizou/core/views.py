@@ -1414,14 +1414,28 @@ class BaseFormView(ScreenMixin, FormView):
     object = None
 
     # --- 対象 (直すとき) ---
-    def dispatch(self, request, *args, **kwargs):
+    def _load_object(self, kwargs) -> None:
+        """URL の pk の対象を self.object に引く (model と pk のある直す画面だけ)。
+
+        部品の画面が get_queryset を持つときは、その絞りの中から対象を引く (絞りの外は 404)。土台は get_queryset を持たない。
+        訳: 対象は、ログインの門 (LoginRequiredMixin) と部署の門 (ScreenMixin の screen_denied) を通った後の get と post でだけ引く。
+        何のため: 門の前に引くと、ログインしていない人にも、ある pk はログインへ移り無い pk は 404 になって、記録の有無と数が分かる
+        (部署の外の人には 403 と 404 の違いで分かる)。門を先にすると、どちらの pk も同じ答え (ログインへ移す・403) になる。
+        出所 = Claude Security の走査の候補 11-07 (入力の土台が門の前に記録を引く)。
+        変えてよい条件 = 門より前に対象を引いても、答えが記録の有無で変わらないことを試験 (tests/test_core_access_gate_order.py) で示せるとき。
+        """
         if self.model is not None and "pk" in kwargs:
-            # 部品の画面が get_queryset を持つときは、その絞りの中から対象を引く (絞りの外は 404)。土台は get_queryset を持たない。
-            # ログインの前は利用者で絞れないので表の全部から引く (この後の ScreenMixin・LoginRequiredMixin の門がログインへ移す)。
             get_queryset = getattr(self, "get_queryset", None)
-            source = get_queryset() if get_queryset is not None and request.user.is_authenticated else self.model
+            source = get_queryset() if get_queryset is not None else self.model
             self.object = get_object_or_404(source, pk=kwargs["pk"])
-        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        self._load_object(kwargs)
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        self._load_object(kwargs)
+        return super().post(request, *args, **kwargs)
 
     # --- 小窓の形 ---
     @property

@@ -474,6 +474,31 @@ def can_open(user, app, *, record=True, screen=None) -> bool:
     return False
 
 
+def require_open(user, app, *, what) -> None:
+    """部署で app を開けない人を、部署の判定 (mode("department")) に従って断る。画面の門 (screen_denied) を通らずに書く口が使う。
+
+    on は AccessDenied (code「権限」。呼ぶ側が今の断りの形にする)、log は記録に 1 行 (what = 何をしたか) で通す、off は何もしない。
+    開けるかの判定は can_open と同じ (アカウント管理の部品はここでは見ない = require_write の ACCOUNT_ACTIONS がいつも断る)。
+    訳: AI に質問の窓の「承認」から、部署の外の部品 (例 出荷・受注・指示書) に書かせない。
+    何のため: 同じ操作を画面で行うと、入力の画面の部署の門が 403 で止める。承認は画面を通らずに services へ書くので、
+    門を通さないと、部署で分けた会社 (部署の判定が on) で、部署の外の人が AI に頼んで出荷や受注を登録できてしまう。
+    出所 = Claude Security の走査の候補 11-07 (承認が部署の門を通らずに書く)。
+    変えてよい条件 = 部署の判定が入力の画面でも部署を見なくなったとき (そのときは承認もそろえて外す)。
+    """
+    if app in ACCOUNT_APPS or app in ALWAYS_OPEN_APPS:
+        return
+    if mode("department") == "off" or not _signed_in(user) or is_unrestricted(user):
+        return
+    departments = departments_of(user)
+    if not departments or any(app in (d.apps or ()) for d in departments):
+        return
+    label = app_label(app)
+    names = "・".join(d.name for d in departments)
+    # 字は部署の 403 の画面 (screen_denied) と同じ組み立て (「<部品>」の … です。あなたの部署: …。… 頼んでください。)
+    message = f"「{label}」の部品の操作です。あなたの部署: {names}。この操作を使う必要があるときは、アカウント管理の担当者に頼んでください。"
+    _follow("department", user, AccessDenied(message), what, f"「{label}」を開ける部署")
+
+
 def write_message(kind: str) -> str:
     label = KIND_LABELS[kind]
     group = GROUPS[group_of(kind)][0]
