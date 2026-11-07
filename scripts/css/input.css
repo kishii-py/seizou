@@ -436,3 +436,10 @@ form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {
 html:has(.seizou-save-row) {
   scroll-padding-bottom: 96px;
 }
+/* 選んでいない tab の字 (C49 の 1)。daisyUI の既定は地の字の 50% で、白の地との比が 3.40 と足りない。選ぶ欄の候補の下の段の
+   灰の字と同じ 60% にする (白の地で 4.66・灰の地で 4.59)。選び方は daisyUI と同じ字で、選んだ tab と指を乗せた tab は除く
+   (除く部分を落とすと、選んだ tab と指を乗せた tab も灰になる)。tab に字の色の class を足す形は取らない (utilities の class が
+   選んだ tab の濃い字にも勝つため)。層の外の決まりなので daisyUI の規則より強い。 */
+.tab:is(.tabs>.tab):not(:checked,label:has(:checked),:hover,.tab-active,[aria-selected=true],[aria-current=true],[aria-current=page]) {
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
