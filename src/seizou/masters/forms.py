@@ -82,6 +82,7 @@ class PartnerForm(ServiceModelForm):
             "name",
             "short_name",
             "role",
+            "billing_method",
             "closing_day",
             "payment_month",
             "payment_day",
@@ -90,8 +91,12 @@ class PartnerForm(ServiceModelForm):
             "note",
         ]
         help_texts = {
+            "billing_method": "締日でまとめる = 締日ごとに 1 枚の請求書を作ります。都度 = 納品書ごとに請求書を作れます (現金払いなど)。",
             "closing_day": "1〜31。月末締めは 31",
-            "payment_month": "翌月末払いなら「翌月」と支払日「31」、翌月 25 日払いなら「翌月」と支払日「25」",
+            "payment_month": (
+                "翌月末払いなら「翌月」と支払日「31」、翌月 25 日払いなら「翌月」と支払日「25」。"
+                "「当日」は、締日でまとめるなら締日、都度なら納品の日に払う形です (現金払いなど。支払日は使いません)。"
+            ),
             "payment_day": "1〜31。月末は 31",
             "rounding": "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定に従います。",
             "tax_mode": "消費税の端数 (トータル・各行四捨五入・各行切捨)。空なら会社の既定に従います。",
@@ -100,6 +105,13 @@ class PartnerForm(ServiceModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
+        # 請求の仕方の欄の無い送信 (欄を足す前の形) は、今の値のまま (新規は既定の締日でまとめる) として読む。
+        # 画面の選ぶ欄は空を出さないので、画面から送るときは変わらない。
+        key = self.add_prefix("billing_method")
+        if self.is_bound and key not in self.data:
+            data = self.data.copy()
+            data[key] = self.instance.billing_method
+            self.data = data
         # 端数の 2 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
         # 「?」の説明書の「入れる物」の表は form を作らずに Meta.help_texts を読むので、今の値の無い字のまま出る。
         company = company_defaults()

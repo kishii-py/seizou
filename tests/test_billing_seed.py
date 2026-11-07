@@ -23,11 +23,11 @@ EXPECTED = {"a_machining": 2, "b_plating": 1}
 #: 会社の id: [(得意先の取引先コード, 発行日, 入金の状態の字)]
 EXPECTED_STATUS = {
     "a_machining": [
-        ("C002", datetime.date(2026, 10, 29), "一部入金"),
+        ("C002", datetime.date(2026, 9, 30), "一部入金"),
         ("C003", datetime.date(2026, 11, 2), "未入金"),
         ("C004", datetime.date(2026, 10, 31), "入金済み"),
     ],
-    "b_plating": [("C001", datetime.date(2026, 10, 29), "入金済み"), ("C004", datetime.date(2026, 11, 2), "未入金")],
+    "b_plating": [("C001", datetime.date(2026, 9, 30), "入金済み"), ("C004", datetime.date(2026, 11, 2), "未入金")],
 }
 METHOD_WORDS = ("振込", "現金", "手形", "その他", "", None)
 
@@ -126,3 +126,29 @@ def test_method_words():
     assert demo_seed._method("cash") == "cash"
     with pytest.raises(ValueError, match="小切手"):
         demo_seed._method("小切手")
+
+
+#: 10 月の途中の請求書を 9 月分にした後の形 (候補 C02 の 9 = C02-3b の添え書き・C02-4)。
+#: 会社の id: (得意先の取引先コード, 支払期日, 入金の合計, 請求書に入る出荷の番号)。出荷の番号は 9 の前と同じ。
+SEPTEMBER = {
+    "a_machining": ("C002", datetime.date(2026, 10, 25), Decimal("100000"), ["SH-000001", "SH-000002", "SH-000003", "SH-000006"]),
+    "b_plating": ("C001", datetime.date(2026, 10, 31), None, ["SH-000001", "SH-000006", "SH-000008", "SH-000007"]),
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("company_id", ["a_machining", "b_plating"])
+def test_mid_october_invoice_is_september(company_id, no_registration, media, no_http):
+    """9 月の発行の請求書は期間が 2026-09-01〜2026-09-30 で、入金日は 2026-10-02。10 月の出荷は請求書に入っていない。"""
+    code, due_on, paid, numbers = SEPTEMBER[company_id]
+    demo.load(COMPANIES_DIR / company_id)
+
+    invoice = _invoice(code, datetime.date(2026, 9, 30))
+
+    assert (invoice.period_from, invoice.period_to) == (datetime.date(2026, 9, 1), datetime.date(2026, 9, 30))
+    assert invoice.due_on == due_on
+    assert [line.shipment.shipment_no for line in invoice.lines.order_by("pk")] == numbers
+    payment = Payment.objects.get(invoice=invoice)
+    assert payment.received_on == datetime.date(2026, 10, 2)
+    assert payment.amount == (paid if paid is not None else invoice.total)
+    assert not Invoice.objects.filter(customer__code=code, period_from=datetime.date(2026, 10, 1)).exists()

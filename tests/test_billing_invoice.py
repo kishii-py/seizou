@@ -229,11 +229,44 @@ def test_due_crosses_year():
     assert services.payment_due_date(customer, date(2026, 12, 21)) == date(2027, 3, 25)
 
 
-def test_due_is_none_when_terms_blank():
+def test_due_is_none_when_payment_terms_blank():
+    """支払の月か支払日が空なら None。締日が空の得意先は月末で締めるので、None でなく期日が決まる (C02-3d)。"""
     base = date(2026, 11, 10)
     assert services.payment_due_date(_terms(20, "", 25), base) is None
     assert services.payment_due_date(_terms(20, "next", None), base) is None
-    assert services.payment_due_date(_terms(None, "next", 25), base) is None
+    assert services.payment_due_date(_terms(None, "next", 25), base) == date(2026, 12, 25)
+
+
+def _per_delivery(closing_day, payment_month, payment_day):
+    """請求の仕方が都度で、支払の欄だけを持つ取引先 (保存しない)。"""
+    return Partner(
+        billing_method=Partner.BILLING_PER_DELIVERY,
+        closing_day=closing_day,
+        payment_month=payment_month,
+        payment_day=payment_day,
+    )
+
+
+def test_due_blank_closing_day_closes_at_month_end():
+    """締日が空の得意先は月末で締めて数える (closing_period と同じ。C02-3d)。"""
+    assert services.payment_due_date(_terms(None, "next", 25), date(2026, 11, 10)) == date(2026, 12, 25)
+    assert services.payment_due_date(_terms(None, "next", 31), date(2026, 10, 15)) == date(2026, 11, 30)
+
+
+def test_due_same_day_is_base_date():
+    """支払の月が当日なら期日は基準の日のまま。支払日が空でも同じ (支払日は使わない)。"""
+    assert services.payment_due_date(_terms(20, "same_day", 25), date(2026, 11, 10)) == date(2026, 11, 10)
+    assert services.payment_due_date(_terms(20, "same_day", None), date(2026, 11, 10)) == date(2026, 11, 10)
+    assert services.payment_due_date(_terms(None, "same_day", None), date(2026, 11, 10)) == date(2026, 11, 10)
+
+
+def test_due_per_delivery_uses_delivery_month():
+    """都度の得意先は締日を見ず、納品の日の月を締めの月にする。当日なら納品の日。"""
+    assert services.payment_due_date(_per_delivery(None, "next", 31), date(2026, 10, 15)) == date(2026, 11, 30)
+    assert services.payment_due_date(_per_delivery(None, "same_day", None), date(2026, 10, 15)) == date(2026, 10, 15)
+    assert services.payment_due_date(_per_delivery(20, "next", 25), date(2026, 10, 25)) == date(2026, 11, 25)
+    assert services.payment_due_date(_per_delivery(20, "", 25), date(2026, 10, 25)) is None
+    assert services.payment_due_date(_per_delivery(20, "next", None), date(2026, 10, 25)) is None
 
 
 @pytest.mark.django_db
@@ -383,3 +416,55 @@ def test_unbilled_in_period_counts_shipments_of_cancelled_invoice(user, item):
 
     # 取消の請求書に入っていた出荷は、また請求できるので残りに入る (期間の両端の日も入る)。
     assert list(services.unbilled_in_period(customer, *period)) == [first, second]
+
+
+# --- 都度の得意先の請求書の期間と支払期日 (invoice_period。候補 C02 の 3 = C02-3c・C02-3d) ---
+
+
+@pytest.mark.django_db
+def test_per_delivery_invoice_period_is_shipment_days(user, item):
+    """都度の得意先の請求書の期間は最初の出荷日〜最後の出荷日。支払期日は期間の終わり (納品の日) から決める。"""
+    customer = _customer(user, billing_method="per_delivery", payment_month="next", payment_day=31)
+    line = _order_line(user, customer, item)
+    first = _shipped(user, customer, line, "4", date(2026, 10, 15))
+    second = _shipped(user, customer, line, "3", date(2026, 10, 20))
+
+    invoice = services.create_invoice(customer, [second, first], user, issued_on=ISSUED_ON)
+
+    invoice.refresh_from_db()
+    assert (invoice.period_from, invoice.period_to) == (date(2026, 10, 15), date(2026, 10, 20))
+    assert invoice.due_on == date(2026, 11, 30)
+    assert services.invoice_period(customer, [first]) == (date(2026, 10, 15), date(2026, 10, 15))
+
+
+@pytest.mark.django_db
+def test_per_delivery_same_day_is_paid_on_delivery(user, item):
+    """都度・当日 (現金払い) の得意先は、期間も支払期日も出荷の日。同じ日の 2 枚目も作れる。"""
+    customer = _customer(user, billing_method="per_delivery", payment_month="same_day")
+    line = _order_line(user, customer, item)
+    first = _shipped(user, customer, line, "4", date(2026, 10, 15))
+    second = _shipped(user, customer, line, "3", date(2026, 10, 15))
+
+    one = services.create_invoice(customer, [first], user, issued_on=date(2026, 10, 15))
+    two = services.create_invoice(customer, [second], user, issued_on=date(2026, 10, 15))
+
+    for invoice in (one, two):
+        invoice.refresh_from_db()
+        assert (invoice.period_from, invoice.period_to, invoice.due_on) == (
+            date(2026, 10, 15),
+            date(2026, 10, 15),
+            date(2026, 10, 15),
+        )
+    assert Invoice.objects.filter(customer=customer, status=Invoice.STATUS_ISSUED).count() == 2
+
+
+def test_invoice_period_closing_customer_uses_closing_period():
+    """締日でまとめる得意先の期間は、最後の出荷日の締め期間 (closing_period のまま)。"""
+
+    class _Row:
+        def __init__(self, day):
+            self.shipped_at = day
+
+    customer = _closing(20)
+    rows = [_Row(date(2026, 10, 19)), _Row(date(2026, 10, 29))]
+    assert services.invoice_period(customer, rows) == services.closing_period(customer, date(2026, 10, 29))

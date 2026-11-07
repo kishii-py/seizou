@@ -242,7 +242,7 @@ def test_menu_has_invoice_entry(client_logged_in):
 
 # --- 発行日の案内の字 (初見テスト R5・候補 C02 の 1。初期値は今日のまま) ---
 
-ISSUED_ON_HELP = "請求書に載る日付です。支払期日は発行日でなく、締め期間の終わりと得意先の支払の決まりから決まります。"
+ISSUED_ON_HELP = "請求書に載る日付です。支払期日は発行日でなく、締め期間の終わり (都度の得意先は納品の日) と得意先の支払の決まりから決まります。"
 
 
 def test_issued_on_help_text_on_form():
@@ -473,3 +473,126 @@ def test_create_form_narrows_table_rows(client_logged_in, user, customer, line):
     tags = re.findall(r"<p [^>]*data-picked-elsewhere(?=[\s>])[^>]*>", body)
     assert len(tags) == 1
     assert re.search(r"\shidden(?=[\s>])", tags[0])
+
+
+# --- 「締め期間」の欄と発行日の初期値 (候補 C02 の 6・7 = C02-1・C02-2) ---
+
+PERIOD_HELP = "選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日が入ります。印は後から手で足し外しできます。"
+
+
+def _period_options(body):
+    """締め期間の欄の選択肢 (値, data-partner, data-period, 字) の並び。空の選択肢は除く。"""
+    match = re.search(r'<select name="period"[^>]*>(.*?)</select>', body, re.S)
+    assert match, "締め期間の欄が無い"
+    options = []
+    for attrs, label in re.findall(r"<option ([^>]*)>([^<]*)</option>", match.group(1)):
+        value = re.search(r'value="([^"]*)"', attrs).group(1)
+        if not value:
+            continue
+        partner = re.search(r'data-partner="([^"]*)"', attrs)
+        period = re.search(r'data-period="([^"]*)"', attrs)
+        options.append((value, partner and partner.group(1), period and period.group(1), label))
+    return options
+
+
+def _row_period(body, shipment):
+    match = re.search(r'data-period="([^"]*)"', _box_tag(body, shipment))
+    return match.group(1) if match else None
+
+
+@pytest.mark.django_db
+def test_create_form_has_period_choices_per_customer(client_logged_in, user, item):
+    month_end = _customer(user, "C010", "作り物の月末の得意先", closing_day=31)
+    line = _order_line(user, month_end, item)
+    first = _shipped(user, month_end, line, "1", date(2026, 10, 5))
+    second = _shipped(user, month_end, line, "1", date(2026, 10, 20))
+    november = _shipped(user, month_end, line, "1", date(2026, 11, 5))
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    assert _period_options(body) == [
+        (f"{month_end.pk}:2026-10-01〜2026-10-31", str(month_end.pk), "2026-10-01〜2026-10-31", "2026-10-01〜2026-10-31 (2 件)"),
+        (f"{month_end.pk}:2026-11-01〜2026-11-30", str(month_end.pk), "2026-11-01〜2026-11-30", "2026-11-01〜2026-11-30 (1 件)"),
+    ]
+    for shipment in (first, second, november):
+        tag = _box_tag(body, shipment)
+        assert f'data-partner="{month_end.pk}"' in tag
+        assert _row_period(body, shipment) == "{:%Y-%m-%d}〜{:%Y-%m-%d}".format(
+            *services.closing_period(month_end, shipment.shipped_at)
+        )
+    # 締め期間の欄は得意先と発行日の間 (表の上の欄の格子 = head_fields)
+    form = client_logged_in.get(reverse("billing:invoice_create")).context["form"]
+    assert [field.name for field in form.head_fields][:3] == ["customer", "period", "issued_on"]
+
+
+@pytest.mark.django_db
+def test_row_period_comes_from_closing_period_day_20(client_logged_in, user, customer, line):
+    """20 日締めの得意先の 10/29 の出荷の期間は 10-21〜11-20 (期間を JS で作り直していない確かめ)。"""
+    shipment = _shipped(user, customer, line, "1", date(2026, 10, 29))
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    assert _row_period(body, shipment) == "2026-10-21〜2026-11-20"
+    assert [label for *_rest, label in _period_options(body)] == ["2026-10-21〜2026-11-20 (1 件)"]
+
+
+@pytest.mark.django_db
+def test_per_delivery_customer_has_no_period(client_logged_in, user, item):
+    cash = _customer(user, "C020", "作り物の現金の得意先", billing_method="per_delivery", payment_month="same_day")
+    line = _order_line(user, cash, item)
+    shipment = _shipped(user, cash, line, "1", date(2026, 10, 15))
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    assert f'data-partner="{cash.pk}"' in _box_tag(body, shipment)
+    assert _row_period(body, shipment) is None
+    assert all(partner != str(cash.pk) for _value, partner, _period, _label in _period_options(body))
+
+
+@pytest.mark.django_db
+def test_period_value_is_not_checked_on_post(client_logged_in, user, customer, line):
+    """締め期間に選択肢に無い値を入れて送っても、1 回で保存され、請求書の値は今と同じ (補助の欄。断らない)。"""
+    shipment = _shipped(user, customer, line, "4", date(2026, 11, 5))
+
+    response = client_logged_in.post(
+        reverse("billing:invoice_create"),
+        {"customer": customer.pk, "period": "選択肢に無い値", "shipments": [shipment.pk], "issued_on": "2026-11-30"},
+    )
+
+    assert response.status_code == 302
+    invoice = Invoice.objects.get()
+    assert (invoice.issued_on, invoice.period_from, invoice.period_to) == (
+        date(2026, 11, 30),
+        date(2026, 10, 21),
+        date(2026, 11, 20),
+    )
+    assert list(invoice.lines.values_list("shipment_id", flat=True)) == [shipment.pk]
+
+
+def test_period_help_text_on_form_and_manual():
+    assert InvoiceForm.base_fields["period"].help_text == PERIOD_HELP
+    assert not InvoiceForm.base_fields["period"].required
+    rows = {name: note for name, _required, note in input_rows(InvoiceForm)}
+    assert rows["締め期間"] == PERIOD_HELP
+
+
+def test_issued_on_initial_is_still_today():
+    from django.utils import timezone
+
+    assert InvoiceForm.base_fields["issued_on"].initial is timezone.localdate
+
+
+@pytest.mark.django_db
+def test_create_form_script_picks_period_rows(client_logged_in, user, customer, line):
+    """締め期間の JS は、得意先と期間の両方が合う行だけに印を付け、泡立つ change を送り、発行日に締日を入れる。"""
+    _shipped(user, customer, line, "5")
+
+    body = client_logged_in.get(reverse("billing:invoice_create")).content.decode()
+
+    assert PERIOD_HELP in body
+    assert 'getElementById("id_period")' in body
+    assert "input.dataset.partner !== partner" in body
+    assert "input.dataset.period === chosen" in body
+    assert 'new Event("change", { bubbles: true })' in body
+    assert 'issued.addEventListener("input"' in body
+

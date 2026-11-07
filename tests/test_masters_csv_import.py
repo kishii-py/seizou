@@ -496,7 +496,7 @@ def test_sample_csv(client_logged_in, no_registration, url_name, model, fallback
 def test_sample_csv_imports_back(client_logged_in, user, no_registration):
     item_values = {"自社品番": "P-1001", "品名": "作り物の軸", "図面番号": "DWG-1001", "単位": "個", "標準単価 (円)": "480", "備考": "見本から"}
     partner_values = {
-        "取引先コード": "C001", "名前": "作り物の得意先", "略称": "作り得", "取引先の種類": "得意先", "締日": "月末",
+        "取引先コード": "C001", "名前": "作り物の得意先", "略称": "作り得", "取引先の種類": "得意先", "請求の仕方": "締日でまとめる", "締日": "月末",
         "支払の月": "翌月", "支払日": "25", "金額の端数の扱い": "切捨", "消費税の端数の扱い": "各行切捨", "備考": "",
     }
     for url_name, form_class, values in (
@@ -535,3 +535,125 @@ def test_non_editable_columns_are_not_csv_headers():
     labels = csvio.header_labels(Item)
     assert "図面の表示用" not in labels
     assert not any("誤り" in label for label in labels)
+
+
+# ---------------------------------------------------------------- 請求の仕方と支払の月の当日 (候補 C02 の 1・2。C02-3c・C02-3d)
+
+
+@pytest.mark.django_db
+def test_partner_billing_method_defaults_to_closing(user):
+    """新しく作った取引先の請求の仕方は「締日でまとめる」。都度の値を渡すと都度で保存される。"""
+    plain = services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    assert plain.billing_method == Partner.BILLING_CLOSING == "closing"
+    assert plain.get_billing_method_display() == "締日でまとめる"
+    cash = services.create_partner(
+        {"code": "C002", "name": "作り物の現金の得意先", "role": "customer", "billing_method": "per_delivery"}, user
+    )
+    cash.refresh_from_db()
+    assert cash.billing_method == Partner.BILLING_PER_DELIVERY
+    assert cash.get_billing_method_display() == "都度"
+    services.update_partner(cash, {"billing_method": "closing"}, user)
+    cash.refresh_from_db()
+    assert cash.billing_method == "closing"
+
+
+@pytest.mark.django_db
+def test_partner_unknown_billing_method_is_refused(user):
+    """知らない請求の仕方は日本語の ValueError で、何も保存されない。"""
+    with pytest.raises(ValueError, match="請求の仕方"):
+        services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer", "billing_method": "monthly"}, user)
+    assert Partner.objects.count() == 0
+    partner = services.create_partner({"code": "C001", "name": "作り物の得意先", "role": "customer"}, user)
+    with pytest.raises(ValueError, match="請求の仕方"):
+        services.update_partner(partner, {"billing_method": ""}, user)
+    partner.refresh_from_db()
+    assert partner.billing_method == "closing"
+
+
+def test_billing_method_migration_moves_existing_partners_to_closing():
+    """列を足す migration の既定の値が「締日でまとめる」(今ある取引先は全部「締日でまとめる」のまま移る)。"""
+    from django.db.migrations.loader import MigrationLoader
+
+    migration = MigrationLoader(None, ignore_no_migrations=True).get_migration("masters", "0012_partner_billing_method")
+    added = [op for op in migration.operations if getattr(op, "name", "") == "billing_method"]
+    assert len(added) == 1
+    assert added[0].field.default == "closing"
+    assert not added[0].field.null and not added[0].field.blank
+
+
+@pytest.mark.django_db
+def test_payment_month_same_day_is_saved_and_shown(user):
+    """支払の月の当日は保存でき、支払日の有無に関わらず画面の字は「当日」。今ある形の字は変わらない。"""
+    cash = services.create_partner(
+        {"code": "C001", "name": "作り物の得意先", "role": "customer", "payment_month": "same_day"}, user
+    )
+    cash.refresh_from_db()
+    assert cash.payment_month == Partner.PAYMENT_SAME_DAY
+    assert cash.get_payment_day_display() == "当日"
+    with_day = services.create_partner(
+        {"code": "C002", "name": "作り物の商会", "role": "customer", "payment_month": "same_day", "payment_day": 25}, user
+    )
+    assert with_day.payment_day == 25
+    assert with_day.get_payment_day_display() == "当日"
+    assert Partner(payment_month="next", payment_day=31).get_payment_day_display() == "翌月末"
+    assert Partner(payment_month="next", payment_day=25).get_payment_day_display() == "翌月 25 日"
+    with pytest.raises(ValueError, match=r"当日 \(same_day\)"):
+        services.create_partner({"code": "C003", "name": "作り物の工業", "role": "customer", "payment_month": "today"}, user)
+
+
+@pytest.mark.django_db
+def test_partner_csv_reads_billing_method_words(user, no_registration):
+    """CSV の「請求の仕方」の列の「都度」は都度の値、「締日でまとめる」は締日でまとめるの値。列の無い CSV は締日でまとめる。"""
+    content = csv_bytes(
+        "取引先コード,名前,取引先の種類,請求の仕方",
+        "C001,作り物の一,得意先,都度",
+        "C002,作り物の二,得意先,締日でまとめる",
+    )
+    import_valid(PartnerCsvImportForm, content, user)
+    assert dict(Partner.objects.values_list("code", "billing_method")) == {"C001": "per_delivery", "C002": "closing"}
+
+    import_valid(PartnerCsvImportForm, csv_bytes("取引先コード,名前,取引先の種類", "C003,作り物の三,得意先"), user)
+    assert Partner.objects.get(code="C003").billing_method == "closing"
+    assert "請求の仕方" in csvio.header_labels(Partner)
+
+
+def test_payment_day_same_day_word_reads_back():
+    """一覧の書き出しの支払日の字「当日」を読み戻すと、支払の月が当日・支払日が空 (支払の月の列が無い形)。"""
+    field = Partner._meta.get_field("payment_day")
+    assert read_payment_day(field, "当日", {"code", "payment_day"}) == {"payment_month": "same_day", "payment_day": None}
+
+
+@pytest.mark.django_db
+def test_partner_form_shows_billing_method_and_same_day_help(client_logged_in):
+    """取引先の新規登録に「請求の仕方」の欄と案内の字があり、支払の月の案内に当日の 1 文がある。「?」の「入れる物」の表も同じ字。"""
+    from seizou.core.manual import input_rows
+    from seizou.masters.forms import PartnerForm
+
+    body = client_logged_in.get(reverse("masters:partner_create")).content.decode()
+    billing_help = PartnerForm.base_fields["billing_method"].help_text
+    month_help = PartnerForm.base_fields["payment_month"].help_text
+    assert 'name="billing_method"' in body
+    assert "締日でまとめる = 締日ごとに 1 枚の請求書を作ります。" in billing_help
+    assert "「当日」は、締日でまとめるなら締日、都度なら納品の日に払う形です" in month_help
+    assert billing_help in body
+    assert month_help in body
+    rows = {label: note for label, _required, note in input_rows(PartnerForm)}
+    assert rows["請求の仕方"] == billing_help
+    assert rows["支払の月"] == month_help
+
+
+@pytest.mark.django_db
+def test_partner_edit_without_billing_method_field_keeps_value(client_logged_in, user):
+    """請求の仕方の欄の無い送信 (欄を足す前の形) は、今の値のまま保存する。"""
+    cash = services.create_partner(
+        {"code": "C001", "name": "作り物の現金の得意先", "role": "customer", "billing_method": "per_delivery"}, user
+    )
+
+    response = client_logged_in.post(
+        reverse("masters:partner_update", args=[cash.pk]),
+        {"code": "C001", "name": "作り物の現金の得意先 (改)", "role": "customer", "active": "on"},
+    )
+
+    assert response.status_code == 302
+    cash.refresh_from_db()
+    assert (cash.name, cash.billing_method) == ("作り物の現金の得意先 (改)", "per_delivery")

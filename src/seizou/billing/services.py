@@ -10,7 +10,10 @@
   出荷の受注の得意先と単価は、外部キーをたどって読む (orders を import しない。01 の 1 節)。
 - 金額は DB で計算しない (R03)。明細の金額は masters.services.round_amount の 1 か所で丸め、合計は Python で足す。
   出荷 1 つの金額の式は shipment_amount の 1 か所 (create_invoice と、請求書の新規登録の画面の行の金額の見込みが同じ関数を使う)。
-- 消費税の計算は _tax の 1 か所、請求の期間 (得意先の締め期間) は closing_period の 1 か所、支払期日の計算は payment_due_date の 1 か所。
+- 消費税の計算は _tax の 1 か所、請求書の期間は invoice_period の 1 か所 (締日でまとめる得意先は closing_period の締め期間・
+  都度の得意先は出荷の日)、支払期日の計算は payment_due_date の 1 か所。
+  支払期日: 支払の月が当日なら期間の終わりの日 (支払日は見ない)。締日が空の得意先と、請求の仕方が都度の得意先は月末で締めて数える。
+  支払の月か支払日が空 (当日でない) なら空。今ある請求書の支払期日は作った時の値のまま (計算し直さない)。
 - 入金は record_payment・cancel_payment の 2 つだけが書く。残は Invoice の method (取消でない入金を Python で足す)。
   取消した請求書への入金は R21 で断る。多い入金・未来の入金日は止めない (現物優先)。
   取消でない入金の残る請求書は cancel_invoice が断る (先に cancel_payment。文は cancel_refusal の 1 か所。決め 11-04 06:4x)。
@@ -47,10 +50,10 @@ _Shipment = InvoiceLine._meta.get_field("shipment").related_model
 _DeliveryNote = _Shipment._meta.get_field("delivery_note").related_model
 _Partner = Invoice._meta.get_field("customer").related_model
 
-#: 締日の 31 は月末 (masters の締日と支払日と同じ約束)。締日が空の取引先は、請求の期間を月末で締める
+#: 締日の 31 は月末 (masters の締日と支払日と同じ約束)。締日が空の取引先は、請求の期間と支払期日を月末で締める
 _MONTH_END = 31
 
-#: 支払の月 → 締めの月に足す月の数
+#: 支払の月 → 締めの月に足す月の数 (当日は表を引く前に返すので入れない = payment_due_date の (0))
 _MONTH_OFFSETS = {
     _Partner.PAYMENT_CURRENT: 0,
     _Partner.PAYMENT_NEXT: 1,
@@ -92,9 +95,12 @@ def create_invoice(customer, shipments, user, *, issued_on):
     """得意先の出荷済みの出荷をまとめて請求書を作る。請求書番号は core の連番が付ける。
 
     明細は出荷ごとに 1 行 (並びは出荷日・出荷番号)。数量は出荷の数量、単価は受注の明細の単価の写し、
-    金額は round_amount(customer, 数量 × 単価)。期間は得意先の締め期間 = closing_period(customer, 最後の出荷日)
-    (最後の出荷日以降で最初の締日まで。初めはその 1 つ前の締日の翌日)。作るときに決めて表に残す。
-    支払期日は payment_due_date(customer, 期間の終わり) (支払の欄が空の取引先では空)。
+    金額は round_amount(customer, 数量 × 単価)。期間は invoice_period(customer, 出荷) で、作るときに決めて表に残す。
+    締日でまとめる得意先は締め期間 = closing_period(customer, 最後の出荷日) (最後の出荷日以降で最初の締日まで。
+    初めはその 1 つ前の締日の翌日)。都度の得意先は、最初の出荷日から最後の出荷日まで (納品書 1 枚なら、その出荷の日)。
+    期間は、中小企業共通 EDI の請求の鑑ヘッダ取引期間 (取引開始日・取引終了日) を元にした項目で、EDI の付表では
+    法的必須の印が付いている (どの法令の印かは未確認)。都度の請求書でも期間を空にしない。
+    支払期日は payment_due_date(customer, 期間の終わり) (支払の月か支払日が空の取引先では空)。
     返す請求書に saved_note (同じ期間に残った出荷の知らせの字。_period_note) と、残りがあれば saved_level = "warning" を付ける。
     訳: 請求書の明細を出荷済みの物だけにするため (出荷でない物を混ぜたら断る。出荷ごとの見方は _refuse_unbillable)。出所 = RULES.md R09。
     変えてよい条件 = 変えない (R は廃止で残す)。
@@ -122,7 +128,7 @@ def create_invoice(customer, shipments, user, *, issued_on):
         amounts = [amount for _shipment, _price, amount in lines]
         subtotal = sum(amounts, _ZERO)
         tax = _tax(customer, amounts)
-        period_from, period_to = closing_period(customer, locked[-1].shipped_at)
+        period_from, period_to = invoice_period(customer, locked)
 
         invoice = Invoice.objects.create(
             invoice_no=next_number("invoice"),
@@ -317,6 +323,19 @@ def unbilled_in_period(customer, period_from, period_to):
     )
 
 
+def invoice_period(customer, shipments):
+    """請求書の期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。shipments は請求書に入れる出荷 (1 つ以上)。
+
+    締日でまとめる得意先: 最後の出荷日を含む締め期間 = closing_period(customer, 最後の出荷日)。
+    都度の得意先: 最初の出荷日〜最後の出荷日 (都度は締めないので、期間は出荷の日)。
+    create_invoice と作り直し (reissue_invoice) が同じ関数を通る (期間を決める所を 2 か所に持たない)。
+    """
+    days = [shipment.shipped_at for shipment in shipments]
+    if customer.billing_method == _Partner.BILLING_PER_DELIVERY:
+        return min(days), max(days)
+    return closing_period(customer, max(days))
+
+
 def closing_period(customer, day):
     """day を含む得意先の締め期間 (読むだけ)。(期間の初め, 期間の終わり) の日付の組。
 
@@ -337,18 +356,27 @@ def closing_period(customer, day):
 
 
 def payment_due_date(customer, base_date):
-    """支払期日 (読むだけ)。締日・支払の月・支払日のどれかが空なら None (止めない)。
+    """支払期日 (読むだけ)。base_date は期間の終わり (締日でまとめる得意先は締日、都度の得意先は納品の日)。
 
+    (0) 支払の月が当日なら base_date をそのまま返す (支払日は見ない。現金払いなど)。
+        支払の月か支払日が空なら None (止めない。当日のときは支払日が空でも (0) で返る)。
     (1) 締めの月: base_date の日が、その月の締日 (月の日数より大きければ月末。31 は月末) までなら
-        base_date の月、過ぎていれば翌月。
+        base_date の月、過ぎていれば翌月。締日が空の得意先は月末で締める (closing_period と同じ)。
+        請求の仕方が都度の得意先は締日を見ず、月末で締める (締めの月 = 納品の日の月)。
     (2) 支払の月: 締めの月に 当月 = 0・翌月 = 1・翌々月 = 2 か月を足す (年をまたぐ)。
     (3) 支払日がその月の日数より大きければ月末 (31 は月末)。
+    今ある請求書の支払期日 (Invoice.due_on) は作った時に決めて表に残した値で、ここを変えても変わらない。
     """
-    closing_day = customer.closing_day
     payment_month = customer.payment_month
     payment_day = customer.payment_day
-    if closing_day is None or not payment_month or payment_day is None:
+    if payment_month == _Partner.PAYMENT_SAME_DAY:
+        return base_date
+    if not payment_month or payment_day is None:
         return None
+    if customer.billing_method == _Partner.BILLING_PER_DELIVERY or customer.closing_day is None:
+        closing_day = _MONTH_END
+    else:
+        closing_day = customer.closing_day
     year, month = base_date.year, base_date.month
     if base_date.day > _day_in_month(year, month, closing_day):
         year, month = _add_months(year, month, 1)

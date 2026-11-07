@@ -4,7 +4,7 @@
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
-- masters の決まり (品番の一意・取引先の種類の 3 値・支払の月の 3 値・支払日の 1〜31・取引先 × 取引先の品番の一意) に当たったら、
+- masters の決まり (品番の一意・取引先の種類の 3 値・請求の仕方の 2 値・支払の月の 4 値・支払日の 1〜31・取引先 × 取引先の品番の一意) に当たったら、
   日本語の文の ValueError を投げる。中心の決まり (RULES.md の番号) は masters に無い。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
@@ -46,6 +46,7 @@ _PARTNER_KEYS = frozenset(
         "name",
         "short_name",
         "role",
+        "billing_method",
         "closing_day",
         "payment_month",
         "payment_day",
@@ -57,6 +58,7 @@ _PARTNER_KEYS = frozenset(
 )
 _PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan", "active"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
+_BILLING_METHODS = frozenset(value for value, _label in Partner.BILLING_METHOD_CHOICES)
 _PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
 _PAYMENT_DAY_RANGE = range(1, 32)  # 1〜31 (31 は月末)
 _ROUNDING_MODES = {
@@ -107,10 +109,19 @@ def _refuse_unknown_role(role):
         )
 
 
+def _refuse_unknown_billing_method(method):
+    if method not in _BILLING_METHODS:
+        raise ValueError(
+            f"保存できません。請求の仕方 {method!r} は使えません。"
+            "締日でまとめる (closing)・都度 (per_delivery) のどちらかにしてください。"
+        )
+
+
 def _payment_terms(data):
     """支払の月と支払日を見て、空を表の空の値 (支払の月は ""、支払日は None) にそろえた data を返す。
 
-    支払の月は 当月 (current)・翌月 (next)・翌々月 (after_next) か空。支払日は 1〜31 の整数か空。外れは ValueError。
+    支払の月は 当日 (same_day)・当月 (current)・翌月 (next)・翌々月 (after_next) か空。支払日は 1〜31 の整数か空。外れは ValueError。
+    当日のとき支払日は使わないが、入っていても断らない (表にはそのまま残す)。
     """
     data = dict(data)
     if "payment_month" in data:
@@ -118,7 +129,7 @@ def _payment_terms(data):
         if month and month not in _PAYMENT_MONTHS:
             raise ValueError(
                 f"保存できません。支払の月 {month!r} は使えません。"
-                "当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。"
+                "当日 (same_day)・当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。"
             )
         data["payment_month"] = month
     if "payment_day" in data:
@@ -379,10 +390,13 @@ def restore_drawing_version(item, version, user, *, note=""):
 def create_partner(data, user, *, ext=None):
     """取引先を作る。取引先の種類は customer・subcontractor・both のどれか。取引先コードは一意。
 
-    支払の月は current・next・after_next か空、支払日は 1〜31 の整数か空 (31 は月末)。
+    請求の仕方は closing (締日でまとめる)・per_delivery (都度) のどちらかで、渡さなければ closing。
+    支払の月は same_day・current・next・after_next か空、支払日は 1〜31 の整数か空 (31 は月末)。
     """
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     _refuse_unknown_role(data.get("role"))
+    if "billing_method" in data:
+        _refuse_unknown_billing_method(data["billing_method"])
     data = _payment_terms(data)
     with transaction.atomic():
         _refuse_duplicate_partner_code(data["code"])
@@ -392,10 +406,12 @@ def create_partner(data, user, *, ext=None):
 
 
 def update_partner(partner, data, user, *, ext=None):
-    """data にある鍵だけを書き換える。取引先の種類・取引先コード・支払の条件は create_partner と同じ決まりで見る。"""
+    """data にある鍵だけを書き換える。取引先の種類・請求の仕方・取引先コード・支払の条件は create_partner と同じ決まりで見る。"""
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     if "role" in data:
         _refuse_unknown_role(data["role"])
+    if "billing_method" in data:
+        _refuse_unknown_billing_method(data["billing_method"])
     data = _payment_terms(data)
     with transaction.atomic():
         if "code" in data:

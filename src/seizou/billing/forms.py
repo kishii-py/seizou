@@ -6,6 +6,10 @@
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
   出荷は列の見出しのある表の行 (rows) で描き (billing/_invoice_create_card.html)、印を付けた行の数と税抜の金額の合計を
   合計の枠 (line_totals) と保存のボタンの字 (SubmitLabelMixin) に出す (候補 C74)。行の金額は保存と同じ services.shipment_amount。
+  「締め期間」の欄 (period。候補 C02 の 6) は、請求できる出荷を得意先と締め期間 (services.closing_period) でまとめた選択肢で、
+  選択肢ごとに data-partner と data-period を持つ。締日でまとめる得意先の出荷の行にも同じ data-period を付け、テンプレートの JS が
+  選んだ期間の行に印を付けて発行日に締日を入れる。期間は Python の closing_period の 1 か所で決める (JS で日付を計算しない)。
+  欄は service に渡さない補助の欄で、送った値を検査して断らない (空でも、選択肢に無い値でも保存は今のまま)。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
@@ -23,19 +27,35 @@ from seizou.core.widgets import IsoDateInput
 
 from .models import Invoice
 from .models import Payment
-from .services import billable_shipments, shipment_amount
+from .services import billable_shipments, closing_period, shipment_amount
 
 _Partner = Invoice._meta.get_field("customer").related_model
 
 
+def period_text(period_from, period_to) -> str:
+    """締め期間の字 (「2026-10-01〜2026-10-31」)。締め期間の選択肢と出荷の行の data-period が同じ字を使う。"""
+    return f"{period_from:%Y-%m-%d}〜{period_to:%Y-%m-%d}"
+
+
+def shipment_period(shipment) -> str:
+    """出荷の締め期間の字 (services.closing_period)。請求の仕方が都度の得意先は締めないので空の字。"""
+    customer = shipment.order_line.order.customer
+    if customer.billing_method == _Partner.BILLING_PER_DELIVERY:
+        return ""
+    return period_text(*closing_period(customer, shipment.shipped_at))
+
+
 class ShipmentCheckboxes(forms.CheckboxSelectMultiple):
-    """出荷の checkbox。行ごとに data-partner (出荷の受注の得意先の pk) を付ける。"""
+    """出荷の checkbox。行ごとに data-partner (出荷の受注の得意先の pk) と、締日でまとめる得意先なら data-period (締め期間の字) を付ける。"""
 
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(name, value, label, selected, index, subindex, attrs)
         instance = getattr(value, "instance", None)
         if instance is not None:
             option["attrs"]["data-partner"] = instance.order_line.order.customer_id
+            period = shipment_period(instance)
+            if period:
+                option["attrs"]["data-period"] = period
         return option
 
     def get_context(self, name, value, attrs):
@@ -43,6 +63,27 @@ class ShipmentCheckboxes(forms.CheckboxSelectMultiple):
         # 外の枠 (div) には checkbox の見た目を付けない (Django の雛形は widget の class を外の枠にも付けるため)。
         context["widget"]["attrs"].pop("class", None)
         return context
+
+
+class PeriodSelect(forms.Select):
+    """締め期間の選ぶ欄。選択肢ごとに data-partner (得意先の pk) と data-period (締め期間の字) を付ける (option_data が値ごとに持つ)。
+
+    選択肢は描く時に choices_source (InvoiceForm が渡す関数) から作る。出荷の表の行 (InvoiceForm.rows) と同じ読みを使い、
+    出荷を 2 回読まないため (請求書の新規登録の画面の問い合わせの数を増やさない)。
+    """
+
+    option_data: dict = {}
+    choices_source = None
+
+    def get_context(self, name, value, attrs):
+        if self.choices_source is not None:
+            self.choices, self.option_data = self.choices_source()
+        return super().get_context(name, value, attrs)
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        option["attrs"].update(self.option_data.get(str(value), {}))
+        return option
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
@@ -69,11 +110,19 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
     submit_label_plain = "請求書を作る"
 
     customer = forms.ModelChoiceField(label="得意先", queryset=_Partner.objects.none(), widget=forms.Select)
+    # 補助の欄 (service に渡さない)。選択肢は描く時に作る (_period_choices)。CharField なので選択肢に無い値でも欄の誤りにしない
+    # (選択肢が変わった後の送信で保存が止まると、頼まれていない断る処理になるため)。
+    period = forms.CharField(
+        label="締め期間",
+        required=False,
+        widget=PeriodSelect,
+        help_text="選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日が入ります。印は後から手で足し外しできます。",
+    )
     issued_on = forms.DateField(
         label="発行日",
         initial=timezone.localdate,
         widget=IsoDateInput(attrs={"class": "input w-full"}),
-        help_text="請求書に載る日付です。支払期日は発行日でなく、締め期間の終わりと得意先の支払の決まりから決まります。",
+        help_text="請求書に載る日付です。支払期日は発行日でなく、締め期間の終わり (都度の得意先は納品の日) と得意先の支払の決まりから決まります。",
     )
     shipments = ShipmentChoiceField(
         label="出荷",
@@ -95,10 +144,34 @@ class InvoiceForm(SubmitLabelMixin, forms.Form):
         ).order_by("shipped_at", "shipment_no")
         # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が、印を付けた行だけを数える印 (全部の checkbox に写る)。
         self.fields["shipments"].widget.attrs["data-label-pick"] = True
+        self.fields["period"].widget.choices_source = self._period_choices
+
+    def _period_choices(self):
+        """締め期間の欄の (選択肢, 選択肢ごとの印)。得意先 × 締め期間で、字は「2026-10-01〜2026-10-31 (5 件)」。
+
+        請求の仕方が都度の得意先は入れない。値は「得意先の pk:期間の字」(同じ期間の字の得意先が 2 つあっても値が重ならない)。
+        並びは得意先のコード・期間の初め。出荷は表の行 (rows) と同じ読みを使う。
+        """
+        groups = {}
+        for row in self.rows:
+            shipment = row["shipment"]
+            period = shipment_period(shipment)
+            if not period:
+                continue
+            customer = shipment.order_line.order.customer
+            key = (customer.code, period, customer.pk)
+            groups[key] = groups.get(key, 0) + 1
+        choices = [("", "—")]
+        option_data = {}
+        for (_code, period, customer_pk), count in sorted(groups.items()):
+            value = f"{customer_pk}:{period}"
+            choices.append((value, f"{period} ({count} 件)"))
+            option_data[value] = {"data-partner": customer_pk, "data-period": period}
+        return choices, option_data
 
     @property
     def head_fields(self):
-        """表の上の欄 (得意先・発行日と、土台が足す会社ごとの項目)。出荷の欄は表に描くので除く。"""
+        """表の上の欄 (得意先・締め期間・発行日と、土台が足す会社ごとの項目)。出荷の欄は表に描くので除く。"""
         return [field for field in self.visible_fields() if field.name != "shipments"]
 
     @property
