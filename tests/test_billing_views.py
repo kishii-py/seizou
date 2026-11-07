@@ -698,7 +698,7 @@ def test_reissue_screen_hides_payment_total_without_money(client, settings, user
 
     body = html.unescape(client.get(reverse("billing:invoice_reissue", args=[first.pk])).content.decode())
 
-    assert "残り 1 件" in body
+    assert "入金の記録が 1 件あります" in body  # 断りの字は C04 (361 回目) の形
     assert "合計 ¥" not in body
 
 
