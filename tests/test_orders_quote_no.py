@@ -158,9 +158,11 @@ def test_people_without_money_see_no_quote_no(client_logged_in, user, customer, 
             "lines-0-note": "",
         },
     )
-    assert posted.status_code == 302
+    # 受注の編集の保存は金額の門が断る (決め 11-07 21:0x の 4 の続き)。見積の番号は欄が無くても変わらない。
+    assert posted.status_code == 200
+    assert "受注は金額が主な内容のため、金額の閲覧の権限が無い方は変更できません。" in posted.content.decode()
     line.refresh_from_db()
-    assert (line.qty, line.quote_no) == (Decimal("12"), "Q-1")
+    assert (line.qty, line.quote_no) == (Decimal("10"), "Q-1")
 
 
 @pytest.mark.django_db

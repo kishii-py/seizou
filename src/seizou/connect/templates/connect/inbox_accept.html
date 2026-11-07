@@ -13,7 +13,7 @@
 <div class="mb-6 flex flex-wrap items-center gap-2">
   <span class="text-sm text-base-content/70">ほかの答え方</span>
   {% if object.source == "direct" %}
-  <a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_accept_conditional' object.pk %}">{% icon "pencil" "size-4" %}単価を直して受け入れる</a>
+  {% can_accept_inbox as can_accept %}{% if can_accept %}<a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_accept_conditional' object.pk %}">{% icon "pencil" "size-4" %}単価を直して受け入れる</a>{% endif %}
   {% if object.reply_type != "AJ" %}<a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_hold' object.pk %}">{% icon "info" "size-4" %}保留する</a>{% endif %}
   {% endif %}
   <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>

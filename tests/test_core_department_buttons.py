@@ -81,8 +81,9 @@ def test_department_outsider_buttons_hidden(settings, client, user, customer, it
     settings.SEIZOU = {"access_control": {"department": "on", **WRITE_AND_MONEY_ON}}
     docs = _documents(user, customer, item, cut)
     depts = _departments()
-    # 精査 A7 の手順の 2 人: jimu = 受注と出荷・伝票編集・金額なし、keiri = 経理・請求書・金額あり。
-    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+    # 精査 A7 の手順の 2 人: jimu = 受注と出荷・伝票編集、keiri = 経理・請求書。どちらも金額あり (この試験は部署の軸だけを見る。
+    # 金額に関わる操作の入口 (納品書の取消など) は金額の閲覧の無い人には部署に依らず出ない = 決め 11-07 21:0x。tests/test_core_entry_buttons.py が見る)。
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"], see_money=True)
     keiri = account("keiri", departments=[depts["keiri"]], permissions=["billing"], see_money=True)
 
     # 請求書 (billing は jimu の部署の外): 「入金を記録する」「取り消す」と空のときの案内が無い。

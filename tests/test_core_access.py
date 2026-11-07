@@ -348,8 +348,10 @@ def test_money_actions_refused_without_money(on):
     with pytest.raises(access.AccessDenied) as order:
         access.require_write(clerk, "orders.create_order")
     assert "受注は金額が主な内容" in order.value.message
-    # 金額が主な登録でなければ通る。
-    access.require_write(clerk, "orders.update_order")
+    # 金額に関わらない操作 (受信した注文を断る) なら通る。受注の変更は数の変更で金額が変わるので、金額に関わる操作 (決め 4 の続き)。
+    access.require_write(clerk, "connect.reject")
+    with pytest.raises(access.AccessDenied):
+        access.require_write(clerk, "orders.update_order")
 
     keiri = account("keiri", permissions=["billing", "orders"], see_money=True)
     access.require_write(keiri, "billing.create_invoice")
@@ -406,6 +408,42 @@ def test_write_allowed_sees_money(settings, on):
 
     settings.SEIZOU = {}
     assert access.write_allowed(clerk, "orders.create_order")
+
+
+def test_money_actions_follow_decisions_6_7_8():
+    """決め 4 の範囲 (指示書の決まった答えの続き 6・7・8 = 本人の決め 11-07 21:1x〜21:2x)。
+
+    足す: 受注の変更と取消と「請求しない」の印・受信した注文と読み取った注文書の受け入れ・請求書と入金の取消・発注の新規登録と変更と取消・納品書を作る (7)。
+    足さない: 数や物の情報だけを扱う操作 (6) と受入 (8)。
+    """
+    money = set(access.MONEY_ACTIONS)
+    assert {
+        "orders.update_order",
+        "orders.cancel_order",
+        "orders.mark_no_bill",
+        "orders.clear_no_bill",
+        "connect.accept",
+        "connect.accept_with_conditions",
+        "intake.accept_extracted",
+        "billing.cancel_invoice",
+        "billing.cancel_payment",
+        "purchasing.create_purchase_order",
+        "purchasing.change_purchase_order",
+        "purchasing.cancel_purchase_order",
+        "shipping.create_delivery_note",
+    } <= money
+    assert not money & {
+        "masters.create_item",
+        "masters.update_item",
+        "shipping.ship",
+        "shipping.ship_lines",
+        "shipping.update_shipment",
+        "purchasing.receive",
+        "purchasing.resend_purchase_order",
+    }
+    # 断りの字は「<書面>は金額が主な内容のため、金額の閲覧の権限が無い方は<操作>。」の形 (write_message と同じ締め)。
+    for document, operation in access.MONEY_ACTIONS.values():
+        assert access.money_message(document, operation).endswith(f"{operation}。{access.CONTACT}")
 
 
 @pytest.mark.django_db

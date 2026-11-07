@@ -351,7 +351,11 @@ def test_invoice_print_pdf_need_money(on, client, invoice):
 
 
 @pytest.mark.django_db
-def test_order_create_refused_and_edit_keeps_price(on, client, customer, shaft, order):
+def test_order_create_and_edit_refused_without_money(on, client, customer, shaft, order):
+    """金額の閲覧の無い人は、受注の新規登録も編集 (数の変更で金額が変わる) もできない (決め 11-07 21:0x の 4 と、その続き)。
+
+    入力の画面は開き (単価の欄は無い)、保存のときに金額の門が断る。明細を足す入力の誤りは、門より先に欄の誤りで止まる (今までどおり)。
+    """
     clerk = account("jimu", permissions=["orders"])
     client.force_login(clerk)
     management = {"lines-INITIAL_FORMS": "0", "lines-MIN_NUM_FORMS": "0", "lines-MAX_NUM_FORMS": "1000"}
@@ -396,10 +400,10 @@ def test_order_create_refused_and_edit_keeps_price(on, client, customer, shaft, 
         "lines-0-note": "",
     }
     saved = client.post(url, edit)
-    assert saved.status_code == 302
+    assert saved.status_code == 200
+    assert "受注は金額が主な内容のため、金額の閲覧の権限が無い方は変更できません。" in saved.content.decode()
     line.refresh_from_db()
-    assert line.qty == Decimal("12")
-    assert line.unit_price == Decimal("1500")
+    assert (line.qty, line.unit_price) == (Decimal("10"), Decimal("1500"))
 
     added = client.post(
         url,

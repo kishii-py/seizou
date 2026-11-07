@@ -1,8 +1,8 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons %}
 {% load seizou_outcome %}
-{# 読み取りの詳細。見出しの右に、状態が「読み取った」のときだけ「受注登録」。 #}
-{% block actions %}{{ block.super }}{% if object.status == "extracted" %}
+{# 読み取りの詳細。見出しの右に、状態が「読み取った」のときだけ「受注登録」。受注を作る操作 (intake.accept_extracted = 金額に関わる操作) なので、受注の新規登録と同じ答え (受注の権限 + 金額の閲覧) で、部署で intake を開ける人にだけ出す (決め 11-07 21:0x)。 #}
+{% block actions %}{{ block.super }}{% can_write "orders.Order" app="intake" as can_accept %}{% if can_accept and object.status == "extracted" %}
 <a class="btn btn-primary" href="{% url 'intake:extraction_accept' object.pk %}">{% icon "check" "size-4" %}受注登録</a>
 {% endif %}{% endblock %}
 {% block content %}
