@@ -241,6 +241,11 @@ th {
   white-space: nowrap;
 }
 
+/* 明細の 1 行をページの境で割らない (品名が 2 行になる行が、ページの境で上下に分かれたため。2 ページの請求書の目視 11-07) */
+.report-lines tr {
+  page-break-inside: avoid;
+}
+
 /* 小計・消費税・合計 (tfoot) は最後のページだけに出す。既定の table-footer-group だと WeasyPrint もブラウザの印刷も
    毎ページの下にくり返し、1 ページ目で終わりと読まれるか、合計を 2 回足されるため (見つけ print-01)。3 行は同じページに置く。 */
 .report-lines tfoot {

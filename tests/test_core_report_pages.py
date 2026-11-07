@@ -131,3 +131,61 @@ def test_report_without_number_cell_keeps_plain_page_number():
     assert len(document.pages) == 1
     _body, footer = _body_and_footer(document.pages[0])
     assert footer == "1 / 1"
+
+
+# ---------------------------------------------------------------- 明細の 1 行をページの境で割らない
+
+LONG_NAME_LINES = 30
+
+
+def _long_invoice_context():
+    """作り物の請求書の context (表を読まない)。20 行目から品名が 2 行になり、行の規則が無いと 1 行がページの境で上下に分かれる形。"""
+    lines = [
+        {
+            "shipped_at": SHIPPED_AT,
+            "shipment_no": f"SH-{i:06d}",
+            "item_code": f"MIHON-{i:04d}",
+            "item_name": f"見本のフランジ 外径 {80 + i}",
+            "quantity": 1,
+            "unit": "個",
+            "unit_price": 1500,
+            "price_unit": "個",
+            "amount": 1500,
+        }
+        for i in range(1, LONG_NAME_LINES + 1)
+    ]
+    return {
+        "company": {"name": "架空精機株式会社", "address": "〒000-0000 見本県架空市見本町 1-2-3", "phone": "000-000-0000"},
+        "invoice": {"number": "IV-000123", "issued_on": ISSUED_ON, "period_from": ORDER_DATE, "period_to": ISSUED_ON, "due_on": None},
+        "customer": {"name": "架空商事株式会社"},
+        "lines": lines,
+        "subtotal": 1500 * LONG_NAME_LINES,
+        "tax": 150 * LONG_NAME_LINES,
+        "total": 1650 * LONG_NAME_LINES,
+        "tax_rate_percent": 10,
+        "cancelled": False,
+    }
+
+
+def test_report_css_keeps_each_line_on_one_page():
+    """(f) 明細の行 (tr) をページの境で割らない規則がある。"""
+    assert ".report-lines tr {\n  page-break-inside: avoid;\n}" in _css()
+
+
+@pytest.mark.pdf
+def test_pdf_does_not_split_a_line_across_pages():
+    """(g) 品名が 2 行になる明細があっても、同じ明細の行が 2 つのページに分かれて出ない。"""
+    document = reports._render_document(INVOICE_TEMPLATE, _long_invoice_context())
+    assert len(document.pages) >= 2
+    pages_of_row = {}
+    for index, page in enumerate(document.pages, 1):
+        for table in page._page_box.descendants():
+            if type(table).__name__ != "TableBox" or table.element.get("class") != "report-lines":
+                continue
+            for group in table.children:  # 行の群 (thead・tbody・tfoot)。ほかの表の tr も暗黙の tbody に包まれるので、明細の表だけを見る
+                if type(group).__name__ == "TableRowGroupBox" and group.element.tag == "tbody":
+                    for row in group.children:
+                        pages_of_row.setdefault(id(row.element), set()).add(index)
+    assert len(pages_of_row) == LONG_NAME_LINES
+    split = [pages for pages in pages_of_row.values() if len(pages) > 1]
+    assert split == [], split
