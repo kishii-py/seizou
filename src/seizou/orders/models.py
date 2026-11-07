@@ -5,6 +5,7 @@
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 出荷済みの数と残の数は列に持たず、orders.services の shipped_qty・remaining_qty で毎回出す。
 書くときは orders.services を通す。
+請求しない明細の印 (no_bill。出し切らずに終えた一式の明細に付ける) は orders.services.mark_no_bill と clear_no_bill だけが書き、請求の候補 (billing.services.billable_shipments ほか) が読む。
 """
 
 from functools import cached_property
@@ -92,11 +93,12 @@ class Order(models.Model):
 
     @property
     def invoices(self):
-        """この受注の出荷が入った請求書 (取消も含む。1 枚に同じ受注の出荷が 2 つあっても 1 行)。
+        """この受注の明細を指す明細が入った請求書 (出荷の行と一式の行。取消も含む。1 枚に同じ受注の明細が 2 つあっても 1 行)。
 
         受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
+        請求書の明細は全部が受注の明細を指すので、一式の行 (出荷に結び付かない明細。決め PRICE-1d) だけの請求書もこの道で引ける。
         """
-        return _part_model("billing", "Invoice").objects.filter(lines__shipment__order_line__order=self).distinct()
+        return _part_model("billing", "Invoice").objects.filter(lines__order_line__order=self).distinct()
 
     @property
     def chat_messages(self):
@@ -138,6 +140,9 @@ class OrderLine(models.Model):
     quote_no = models.CharField("見積の番号", max_length=35, blank=True, default="")
     # 受信した注文の明細の工程名 (決め PRICE-5)。中小企業共通 EDI の工程名を元にした列。相手の工程の名前の字のまま持つ (自社の工程マスターにつながない)。受け入れ (connect) だけが入れる。
     process_name = models.CharField("工程名", max_length=100, blank=True, default="")
+    # 請求しない明細の印 (作者の決め C107-3)。出し切らずに終えた一式を請求しないと決めた明細に、請求書の新規登録の一式の表から付ける。
+    # 付けた明細は一式の表に出ず、その出荷も請求書の新規登録の候補と「請求書に入っていない出荷」の数に出さない。出荷の数と出荷の金額は今までどおり数える。書くのは orders.services.mark_no_bill と clear_no_bill だけ。
+    no_bill = models.BooleanField("請求しない", default=False, editable=False)
 
     class Meta:
         verbose_name = "受注の明細"

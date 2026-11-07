@@ -1,5 +1,10 @@
 {% load seizou_icons seizou_tags %}
 {# 入金の取消の確かめのカード (全体の画面 billing/payment_cancel.html と小窓の両方が include する。N158b)。 #}
+{# 請求書の外で受け取った入金 (請求書が空・出荷を指す。決め C107-3c) は、出荷の番号で黄の字を書き、「キャンセル」の戻り先を出荷の詳細にする。 #}
+{% if object.invoice_id %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>請求書 <span class="font-mono">{{ object.invoice.invoice_no }}</span> の入金 (入金日 {{ object.received_on|date:"Y-m-d" }}・{{ object.get_method_display }}{% if not seizou.hide_money %}・金額 {{ object.amount|yen }}{% endif %}) を取り消します。取消の記録は履歴に残り、請求書の残の金額に戻ります。</span></div>
+{% else %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>出荷 <span class="font-mono">{{ object.shipment.shipment_no }}</span> の請求書の外で受け取った入金 (入金日 {{ object.received_on|date:"Y-m-d" }}・{{ object.get_method_display }}{% if not seizou.hide_money %}・金額 {{ object.amount|yen }}{% endif %}) を取り消します。取消の記録は履歴に残り、その出荷は請求書の新規登録にまた並びます。</span></div>
+{% endif %}
 {# 「キャンセル」: 入金には一覧の URL が無く、?next= が無い全体の画面では土台の cancel_url が空になる。そのときは、その入金の請求書の詳細の入金の枠へ戻す (URL を直に開いたとき・Cmd を押して新しいタブで開いたとき。初見テスト R5 の a-blind-14・b-blind-15。候補 C24)。小窓は今のまま「キャンセル」を出さない。 #}
-{% if in_modal or cancel_url %}{% include "core/_form_card.html" %}{% else %}{% url 'billing:invoice_detail' object.invoice_id as invoice_url %}{% include "core/_form_card.html" with cancel_url=invoice_url|add:"#payments" %}{% endif %}
+{% if in_modal or cancel_url %}{% include "core/_form_card.html" %}{% elif not object.invoice_id %}{% url 'shipping:shipment_detail' object.shipment_id as shipment_url %}{% include "core/_form_card.html" with cancel_url=shipment_url %}{% else %}{% url 'billing:invoice_detail' object.invoice_id as invoice_url %}{% include "core/_form_card.html" with cancel_url=invoice_url|add:"#payments" %}{% endif %}

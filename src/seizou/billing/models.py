@@ -5,7 +5,7 @@
 支払期日も作ったときに計算して残す (後で取引先の支払の欄を直しても、出した請求書の期日は変わらない)。
 文字数の上限は固定 (識別子 35・コード 10)。
 書くときは billing.services を通す。
-入金 (Payment) は別の表。残と入金の状態は Invoice の method で出す (列に持たない)。
+入金 (Payment) は別の表。請求書の外で受け取った入金は出荷を指す (請求書は空)。残と入金の状態は Invoice の method で出す (列に持たない)。合計が 0 以下の請求書は入金済み。
 """
 
 from decimal import Decimal
@@ -66,7 +66,11 @@ class Invoice(models.Model):
         return self.total - self.paid_total()
 
     def payment_status(self) -> str:
-        """入金の状態。入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。"""
+        """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め C107-4)。
+        ほかは、入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。
+        """
+        if self.total <= 0:
+            return self.PAYMENT_PAID
         if self.paid_total() == 0:
             return self.PAYMENT_UNPAID
         if self.balance() > 0:
@@ -174,7 +178,7 @@ class InvoiceLine(models.Model):
 
 
 class Payment(models.Model):
-    """請求書に対する入金。取消は行を消さず status を取消にして履歴に残す。
+    """入金。請求書に対する入金か、請求書の外で受け取った出荷の入金 (出荷を指す。決め C107-3c) のどちらか。取消は行を消さず status を取消にして履歴に残す。
 
     残と状態は Invoice の method が取消でない入金を Python で足して出す (列に持たない)。書くときは billing.services を通す。
     """
@@ -197,9 +201,22 @@ class Payment(models.Model):
         (STATUS_CANCELLED, "取消"),
     ]
 
+    # 空 = 請求書の外で受け取った出荷の入金 (shipment を指す。決め C107-3c)。
     invoice = models.ForeignKey(
         Invoice,
         verbose_name="請求書",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+    # 請求書の外で受け取った入金の出荷 (一式でない明細の出荷の「請求しない (別に受け取った)」。決め C107-3c)。
+    # 取消でないこの行があると、その出荷は請求の候補に出ない (billing.services.billable_shipments)。請求書の入金は空。
+    shipment = models.ForeignKey(
+        "shipping.Shipment",
+        verbose_name="出荷",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="payments",
     )
@@ -231,7 +248,15 @@ class Payment(models.Model):
                 condition=models.Q(amount__gt=0),
                 name="billing_payment_amount_positive",
             ),
+            # 請求書の入金 (請求書を指し、出荷は空) か、請求書の外で受け取った出荷の入金 (出荷を指し、請求書は空) のどちらか (決め C107-3c)。
+            models.CheckConstraint(
+                condition=models.Q(invoice__isnull=False, shipment__isnull=True)
+                | models.Q(invoice__isnull=True, shipment__isnull=False),
+                name="billing_payment_invoice_or_shipment",
+            ),
         ]
 
     def __str__(self):
+        if self.invoice_id is None:
+            return f"出荷 {self.shipment.shipment_no} {self.received_on:%Y-%m-%d}"
         return f"{self.invoice.invoice_no} {self.received_on:%Y-%m-%d}"

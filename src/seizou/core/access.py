@@ -117,6 +117,8 @@ _KIND_ACTIONS = {
         "orders.create_order",
         "orders.update_order",
         "orders.cancel_order",
+        "orders.mark_no_bill",
+        "orders.clear_no_bill",
         "connect.accept",
         "connect.reject",
         "connect.accept_with_conditions",
@@ -143,6 +145,7 @@ _KIND_ACTIONS = {
         # 入金 (N56。本体が起こす前に入れる前提)
         "billing.record_payment",
         "billing.cancel_payment",
+        "billing.record_outside_payment",
     ),
     "purchasing": (
         "purchasing.create_purchase_order",
@@ -203,6 +206,8 @@ ACCOUNT_ACTIONS = frozenset(
 MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
     "billing.record_payment": ("入金", "記録できません"),
+    # 請求書の外で受け取った入金 (決め C107-3c) は、今の入金の記録と同じ扱い (受け取った金額を入れることは、金額を決めることと同じ重さ)
+    "billing.record_outside_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
     # 作り直しは請求書を作る操作の別の入口なので、請求書を作るのと同じ扱い
     "billing.reissue_invoice": ("請求書", "作れません"),

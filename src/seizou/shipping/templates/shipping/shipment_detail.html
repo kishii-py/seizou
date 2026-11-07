@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons shipping_tags %}
-{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。受信した注文で作った受注の出荷だけ、下に出荷の知らせの節 (送った印か、赤の届いていない知らせと「送り直す」)。納品書作成は小窓で開く (data-modal-form)。見出しの帯 (#shipment-heading) と中身 (#shipment-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 納品書が無いか取消の納品書の出荷で、納品書の権限がある人に「納品書作成」(そのとき「編集」は白にして block actions の終わりへ)。note_url と can_note は block actions と block edit_button の両方で読むので、block heading の中で 1 回引く (初見テスト R5 の候補 C93)。題の横の要点の札 (得意先と得意先の注文番号。shipping_tags の shipment_head_chips) も block heading の中で引く (#shipment-heading の取り直しでも消えない。初見テスト R5 の候補 C38。決め C38-2 a)。PDF の次に白の「受注の詳細」(この出荷の受注の詳細へ移る。部署で出し分けない = 詳細の画面は部署を見ない。候補 C38)。 #}
+{# 出荷の詳細: 土台の詳細 (項目・「一覧に戻る」・「編集」) に、出荷ラベルの印刷用の画面と PDF の 2 つの link を足す (どちらも新しいタブ)。受信した注文で作った受注の出荷だけ、下に出荷の知らせの節 (送った印か、赤の届いていない知らせと「送り直す」)。納品書作成は小窓で開く (data-modal-form)。見出しの帯 (#shipment-heading) と中身 (#shipment-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 納品書が無いか取消の納品書の出荷で、納品書の権限がある人に「納品書作成」(そのとき「編集」は白にして block actions の終わりへ)。note_url と can_note は block actions と block edit_button の両方で読むので、block heading の中で 1 回引く (初見テスト R5 の候補 C93)。題の横の要点の札 (得意先と得意先の注文番号。shipping_tags の shipment_head_chips) も block heading の中で引く (#shipment-heading の取り直しでも消えない。初見テスト R5 の候補 C38。決め C38-2 a)。PDF の次に白の「受注の詳細」(この出荷の受注の詳細へ移る。部署で出し分けない = 詳細の画面は部署を見ない。候補 C38)。請求書の外で受け取った入金 (決め C107-3c) があるときだけ、出荷の知らせの節の後に「請求書の外で受け取った入金」の節 (入金日・方法・金額 (金額の閲覧の無い人は出さない)・取消の印か、請求書の書く権限の人に「取消」の小窓の link)。小窓で取り消すと seizou:refresh で節が取り直される。 #}
 {% block heading %}<div id="shipment-heading">{% shipment_head_chips object as head_chips %}{% url 'shipping:deliverynote_create' as note_url %}{% can_write "shipping.DeliveryNote" as can_note %}{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
 <a class="btn btn-outline border-base-300" href="{% url 'shipping:shipment_label' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}ラベル</a>
@@ -18,6 +18,15 @@
   <form method="post" action="{% url 'shipping:shipment_notice_resend' object.pk %}" class="mt-4">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}
 </section>
 {% endif %}{% endwith %}
+{% shipment_outside_payments object as outside_payments %}{% if outside_payments %}{% can_write "billing.Invoice" as can_bill %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="shipment-outside-payments-title">
+  <h2 id="shipment-outside-payments-title" class="text-lg font-bold">請求書の外で受け取った入金</h2>
+  <ul class="mt-4 grid gap-2 text-sm">
+    {% for row in outside_payments %}<li class="flex flex-wrap items-center gap-2"><span class="font-mono tabular-nums">{{ row.received_on|date:"Y-m-d" }}</span><span>{{ row.method_label }}</span>{% if not seizou.hide_money %}<span class="tabular-nums">{{ row.amount|yen }}</span>{% endif %}{% if row.cancelled %}<span class="badge badge-soft badge-ghost">取消</span>{% elif row.cancel_url and can_bill %}<a class="btn btn-ghost btn-xs" href="{{ row.cancel_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ row.cancel_url }}">取消</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 </div>
 <div id="shipment-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#shipment-live" hx-target="#shipment-live" hx-swap="outerHTML" hx-select-oob="#shipment-heading"></div>
 {% endblock %}

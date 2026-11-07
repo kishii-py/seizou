@@ -319,3 +319,37 @@ class OrderCancelForm(forms.Form):
 
     def service_kwargs(self) -> dict:
         return {"reason": self.cleaned_data["reason"]}
+
+
+class OrderLineNoBillForm(forms.Form):
+    """受注の明細に「請求しない」の印を付ける form。欄は無い (orders.services.mark_no_bill)。
+
+    保存のボタンは「SO-000001-1 を請求しない」(土台が対象を instance= で渡す)。取消でなく、発行した記録を変えないので赤にしない。
+    """
+
+    submit_label = "請求しない"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.order.order_no}-{instance.line_no} を請求しない"
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+class OrderLineNoBillClearForm(forms.Form):
+    """受注の明細の「請求しない」の印を外す form。欄は無い (orders.services.clear_no_bill)。
+
+    保存のボタンは「SO-000001-1 の請求しないを外す」(土台が対象を instance= で渡す)。赤にしない。
+    """
+
+    submit_label = "請求しないを外す"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.order.order_no}-{instance.line_no} の請求しないを外す"
+
+    def service_kwargs(self) -> dict:
+        return {}

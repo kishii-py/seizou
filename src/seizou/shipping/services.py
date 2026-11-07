@@ -13,6 +13,8 @@
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
+  納品書の取消は、発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷と、請求書の外で受け取った入金を記録した出荷
+  (作者の決め C107-11) があれば断る (文は cancel_refusal の 1 か所。作者の決め C107-6)。
   その請求書に入金があれば、断りの文 (cancel_refusal) に取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計
   (金額の閲覧の無い人には件数だけ) を書く (入金は請求書の逆の関係 payments の先の表として引く。初見テスト R5 の候補 C03)。
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
@@ -243,9 +245,63 @@ def invoiced_shipments(note):
     return list(found.values())
 
 
-def cancel_refusal(note, *, hide_money=False, found=None) -> str:
+def lump_billed_shipments(note):
+    """納品書の出荷のうち、受注の明細に発行の請求書の一式の行 (出荷を指さない請求書の明細) がある物の (出荷, 請求書) の並び
+    (出荷の pk の順。読むだけ。問い合わせ 2 回)。発行の請求書に出荷の行で入った出荷 (invoiced_shipments) は除く。
+
+    請求書の部品が無ければ空の並び。読み方は invoiced_shipments・_has_issued_lump_line と同じ (billing を import しない)。
+    1 つの受注の明細に発行の一式の行が 2 行あれば、明細の pk の小さい方の請求書を返す (作者の決め C107-6)。
+    """
+    try:
+        lines = Shipment._meta.get_field("invoice_lines").related_model
+    except FieldDoesNotExist:
+        return []
+    issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
+    shipments = list(note.shipments.exclude(invoice_lines__invoice__status=issued).order_by("pk"))
+    if not shipments:
+        return []
+    found = {}
+    rows = (
+        lines._default_manager.select_related("invoice")
+        .filter(shipment__isnull=True, invoice__status=issued, order_line_id__in={s.order_line_id for s in shipments})
+        .order_by("pk")
+    )
+    for line in rows:
+        found.setdefault(line.order_line_id, line.invoice)
+    return [(s, found[s.order_line_id]) for s in shipments if s.order_line_id in found]
+
+
+def outside_paid_shipments(note):
+    """納品書の出荷のうち、請求書の外で受け取った入金 (取消でない) を記録した物の (出荷, 入金) の並び
+    (出荷の pk の順。読むだけ。問い合わせ 1 回)。1 つの出荷に取消でない入金が 2 件あれば、入金の pk の小さい方を返す。
+
+    入金の部品が無ければ空の並び。入金の表は出荷の逆の関係 payments の先として引き、「記録」の値はその表の
+    STATUS_RECORDED から読む (billing を import しない。invoiced_shipments と同じ読み方。作者の決め C107-11)。
+    """
+    try:
+        payments = Shipment._meta.get_field("payments").related_model
+    except FieldDoesNotExist:
+        return []
+    found = {}
+    rows = (
+        payments._default_manager.select_related("shipment")
+        .filter(shipment__delivery_note=note, status=payments.STATUS_RECORDED)
+        .order_by("shipment_id", "pk")
+    )
+    for payment in rows:
+        found.setdefault(payment.shipment_id, (payment.shipment, payment))
+    return list(found.values())
+
+
+def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=None) -> str:
     """納品書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
+    発行の請求書に出荷の行で入った出荷が無く、受注の明細に発行の請求書の一式の行がある出荷 (lump_billed_shipments) があれば、
+    その出荷と請求書で「…の一式の行で請求済みです」の文を作る (作者の決め C107-6)。lumps = 呼ぶ側が引いた lump_billed_shipments(note)
+    の並び (取消の確かめのカードの tag が渡す)。省けばここで引く。
+    どちらも無く、請求書の外で受け取った入金 (取消でない) を記録した出荷 (outside_paid_shipments) があれば、その出荷で
+    「…請求書の外で受け取った入金を記録しています」の文を作る (作者の決め C107-11)。outside = 呼ぶ側が引いた outside_paid_shipments(note) の並び。
+    文の順は 出荷の行の請求書 → 一式の行の請求書 → 外の入金。
     発行の請求書に入った出荷のうち、pk の最も小さい出荷の番号と、その請求書の番号で文を作る (invoiced_shipments)。
     その請求書に取消でない入金 (状態が「記録」) があれば、先にすることを取り消す順 (入金 → 請求書 → 納品書) で書き、
     入金の記録の件数と合計 ¥… を添える。hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人。請求書の
@@ -254,12 +310,28 @@ def cancel_refusal(note, *, hide_money=False, found=None) -> str:
     found = 呼ぶ側が引いた invoiced_shipments(note) の並び (取消の確かめのカードの tag が渡す。tag は請求書の payments を
     先に 1 回で引いてあるので、ここでは引き直さない)。省けばここで引く (入金はその請求書の分を 1 回)。
     cancel_delivery_note と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。納品書の状態は見ない。
-    訳: 請求済みの出荷 (発行の請求書に入った出荷) のある納品書を取り消さないため (先に請求書を、その請求書に入金があれば、さらにその前に入金を取り消す)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md)・入金の件数と合計と取り消す順を書くのは本人の決め 11-06 22:2x (C03-2 の a「入金の件数と合計を書く」。本人の言葉は一括の答え「推奨でいこう！」11-06 22:1x。依頼書 N296)・金額の頭の ¥ は本人 11-06 18:2x「全体的に頭に￥の方が見やすくない？」(C43-3)。
+    訳: 請求済みの出荷 (発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷) と、請求書の外で受け取った入金を記録した出荷のある納品書を取り消さないため (先に請求書か入金を、その請求書に入金があれば、さらにその前に入金を取り消す。一式の行の数量は請求した時の出荷の合計の写しで、外の入金は受け取った代金の記録なので、出荷を直せると食い違う)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md) と作者の決め C107-6・C107-11・入金の件数と合計と取り消す順を書くのは本人の決め 11-06 22:2x (C03-2 の a「入金の件数と合計を書く」。本人の言葉は一括の答え「推奨でいこう！」11-06 22:1x。依頼書 N296)・金額の頭の ¥ は本人 11-06 18:2x「全体的に頭に￥の方が見やすくない？」(C43-3)。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     if found is None:
         found = invoiced_shipments(note)
     if not found:
+        if lumps is None:
+            lumps = lump_billed_shipments(note)
+        if lumps:
+            shipment, invoice = lumps[0]
+            return (
+                f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} の"
+                "一式の行で請求済みです。先に請求書を取り消してから、納品書を取り消してください。"
+            )
+        if outside is None:
+            outside = outside_paid_shipments(note)
+        if outside:
+            shipment, _payment = outside[0]
+            return (
+                f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は、請求書の外で受け取った入金を"
+                "記録しています。先に入金を取り消してから、納品書を取り消してください。"
+            )
         return ""
     shipment, invoice = found[0]
     recorded = type(invoice)._meta.get_field("payments").related_model.STATUS_RECORDED
@@ -282,7 +354,7 @@ def cancel_delivery_note(note, user):
     """発行の納品書を取消にする。入っていた出荷は納品書を指したまま残す (取消の納品書の詳細に出る)。
 
     取消の納品書の出荷は請求できず (billing が R09 で断る)、直してから新しい納品書にまとめ直せる。
-    発行の請求書に入った出荷があれば、何も変えずに ValueError (先に請求書を取り消す。その請求書に入金があれば、
+    発行の請求書に入った出荷があれば、何も変えずに ValueError (一式の行で請求した明細の出荷と、請求書の外で受け取った入金を記録した出荷も同じ (文は cancel_refusal)。先に請求書を取り消す。その請求書に入金があれば、
     文は取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計を書く)。文は cancel_refusal の 1 か所で、
     金額の閲覧の無い人には件数だけ (access.hides_money。請求書の cancel_invoice と同じ)。入金の行はロックしない (書かない)。
     """

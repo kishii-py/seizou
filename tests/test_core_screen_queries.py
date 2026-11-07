@@ -102,7 +102,7 @@ LIMITS = {
     "masters:holiday_delete": 20,
     "orders:order_list": 27,
     "orders:order_create": 19,
-    "orders:order_detail": 74,  # 会話のタブ (C104。タブの件数と行・会話の枠の判定と言葉・部署の判定) で +6 (11-07 の実測 69 + 5)
+    "orders:order_detail": 75,  # 会話のタブ (C104。タブの件数と行・会話の枠の判定と言葉・部署の判定) と、流れの枠が一式の行を受注の明細ごとに 1 回読む (C107。A 社の種は明細 3) を合わせた後の 11-07 の実測 75
     "orders:order_update": 24,
     "orders:order_cancel": 20,
     "orders:orderline_list": 32,
@@ -144,7 +144,7 @@ LIMITS = {
     "progress:record_list": 23,
     "progress:progress_create": 20,
     "billing:invoice_list": 23,
-    "billing:invoice_create": 22,  # 一式の節 (出し切らずに終えた一式の受注の明細を 1 回で読む問い合わせ) で +1 (11-07 の実測 21 → 22)
+    "billing:invoice_create": 23,  # 一式の節 (出し切らずに終えた一式の受注の明細を 1 回で読む問い合わせ) で +1 (11-07 の実測 21 → 22)。一式の行の後に出荷が続いた明細 (発行の請求書の一式の行を 1 回で読む。作者の決め C107-7) で +1 (11-07 の実測 22 → 23。一式の行がある会社では出荷の合計を読む 1 回がさらに足る)
     "billing:invoice_detail": 31,
     "billing:invoice_cancel": 21,
     "billing:payment_create": 23,

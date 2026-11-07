@@ -16,7 +16,7 @@ from django.utils import timezone
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseSelectView, FilterSpec, url_or_none
 
 from . import board, services
-from .forms import OrderCancelForm, OrderForm
+from .forms import OrderCancelForm, OrderForm, OrderLineNoBillClearForm, OrderLineNoBillForm
 from .models import Order, OrderLine
 from .services import annotate_remaining
 
@@ -231,6 +231,37 @@ class OrderCancelView(BaseFormView):
     template_name = "orders/order_cancel.html"
     screen_name = "受注を取り消す"
     screen_help = "受注を取消にします。取消の後は、出荷も指示書も作れません。"
+
+
+class OrderLineNoBillView(BaseFormView):
+    """受注の明細を請求しないにする確かめの入力。
+
+    使う人: 経理 / いつ: 出し切らずに終えた一式を請求しないと決めたとき / 何のために: その一式の明細を請求書の新規登録の一式の表と請求の候補から外す / 次にすること: 請求書の新規登録へ戻る
+
+    入口は請求書の新規登録の一式の表の「請求しない」だけ (小窓。JS の無いときは画面の全体と ?next=)。テンプレートは土台の入力の画面と小窓のまま。
+    """
+
+    model = OrderLine
+    form_class = OrderLineNoBillForm
+    service = staticmethod(services.mark_no_bill)
+    screen_name = "請求しないにする"
+    screen_help = "出し切らずに終えた一式の明細を、請求書の新規登録の一式の表と請求の候補から外します。出荷の数と金額は今のまま数え、発行した請求書は変わりません。"
+
+
+class OrderLineNoBillClearView(BaseFormView):
+    """受注の明細の「請求しない」の印を外す確かめの入力。
+
+    使う人: 経理 / いつ: 「請求しない」の印を間違えて付けたとき / 何のために: 印を外して、その明細を請求書の新規登録に戻す / 次にすること: 請求書の新規登録で金額を決めて載せる
+
+    入口は受注の詳細の明細の ⋮ の「請求しないを外す」だけ (印のある明細・金額を見られる人で受注の書く権限の人だけ。小窓。JS の無いときは画面の全体と ?next=)。
+    テンプレートは土台の入力の画面と小窓のまま。
+    """
+
+    model = OrderLine
+    form_class = OrderLineNoBillClearForm
+    service = staticmethod(services.clear_no_bill)
+    screen_name = "請求しないを外す"
+    screen_help = "受注の明細の「請求しない」の印を外します。出し切らずに終えた一式なら、請求書の新規登録の一式の表にまた並び、まだ請求書に入っていない出荷も請求書の新規登録に並びます。"
 
 
 class OrderLineSelectView(BaseSelectView):
