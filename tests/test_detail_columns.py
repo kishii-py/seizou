@@ -156,7 +156,7 @@ def test_order_basic_tab_moved_to_aside(logged_in, order):
     response, body = _get(logged_in, "orders:order_detail", order.pk)
 
     assert 'aria-label="基本情報" checked' not in body
-    assert _radios(body) == [("指示書", True), ("出荷", False), ("請求書", False), ("会話", False), ("履歴", False)]
+    assert _radios(body) == [("指示書", True), ("出荷", False), ("請求書", False), ("会話", False), ("仕入明細", False), ("履歴", False)]
     assert ONE_COLUMN_TABS[:-1] + ' mt-6"' in body
     assert body.count('?part=basic"') == 1
     # 土台の項目 (文脈) は今のまま。右の列のカードへ移すのはテンプレートの tag
@@ -274,7 +274,7 @@ def test_order_opens_first_tab_with_rows(logged_in, user, customer, order):
     shipped(user, customer, order.lines.order_by("line_no").first(), "4")
 
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
-    assert _radios(body) == [("指示書", False), ("出荷", True), ("請求書", False), ("会話", False), ("履歴", False)]
+    assert _radios(body) == [("指示書", False), ("出荷", True), ("請求書", False), ("会話", False), ("仕入明細", False), ("履歴", False)]
 
 
 @pytest.mark.django_db

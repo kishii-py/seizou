@@ -22,6 +22,7 @@ from seizou.masters.services import active_partners
 from . import services
 from .forms import AcceptForm, ChatMessageForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
 from .models import ChatMessage, Connection, Exchange, Inbox
+from .models import ReceivedSelfInvoice
 
 
 def _sender_choices():
@@ -320,3 +321,51 @@ class ChatMessageAddView(BaseFormView):
     service = staticmethod(services.post_chat_message)
     screen_name = "会話に書く"
     screen_help = "受注・発注・受信した注文の「会話」から書いた言葉を、取引先の seizou へ送ります。書いた言葉は直せず、消せません。"
+
+
+# ---------------------------------------------------------------- 受けた仕入明細 (候補 C111)
+
+
+class ReceivedSelfInvoiceListView(BaseListView):
+    """受けた仕入明細の一覧。
+
+    使う人: 経理・営業 / いつ: 得意先 (seizou どうし) から仕入明細が届いたとき / 何のために: 得意先が受け取った数と金額を確かめて答える / 次にすること: 行から詳細へ移り「答える」
+    """
+
+    model = ReceivedSelfInvoice
+    screen_name = "受けた仕入明細"
+    screen_help = "得意先 (seizou どうし) が受け入れた数と金額をまとめて送ってきた仕入明細。行を押すと、明細ごとに自社の出荷と照らして見られます。"
+    columns = ("received_at", "partner", "self_invoice_no", "period_to", "due_on", "total", "status", "revision_no")
+    search_fields = ("self_invoice_no", "partner__name", "partner__code")
+    filters = (
+        {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
+        {"name": "partner", "label": "得意先", "kind": "choice", "field": "partner", "choices": _sender_choices},
+        {"name": "received", "label": "届いた日", "kind": "date_range", "field": "received_at"},
+    )
+    presets = (
+        {"label": "未回答", "params": {"f_status": ReceivedSelfInvoice.STATUS_RECEIVED}},
+        {"label": "確かめ中", "params": {"f_status": ReceivedSelfInvoice.STATUS_PARTIAL}},
+    )
+    ordering = ("-received_at", "-id")
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("partner")
+
+
+class ReceivedSelfInvoiceDetailView(BaseDetailView):
+    """受けた仕入明細の詳細。
+
+    使う人: 経理・営業 / いつ: 仕入明細に答えるとき / 何のために: 得意先が受け取った日・数・金額を、自社の出荷と照らして確かめる / 次にすること: 「答える」で明細ごとに承諾・提案・確認できないを返す
+
+    インボイス制度: ここで承諾した仕入明細が、得意先の仕入税額控除の書類になる (売り手の確認。確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8)。
+    """
+
+    model = ReceivedSelfInvoice
+    screen_name = "受けた仕入明細の詳細"
+    screen_help = "得意先が受け取った日・数・金額と、受注の数と自社の出荷済みの数を、明細ごとに並べて見られます。"
+    template_name = "connect/receivedselfinvoice_detail.html"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("partner").prefetch_related(
+            "lines__order_line__order", "lines__order_line__item"
+        )

@@ -7,6 +7,7 @@ from django.urls import path
 
 from . import views
 from . import acceptance
+from . import self_invoice
 
 app_name = "purchasing"
 
@@ -29,6 +30,7 @@ urlpatterns = [
     path("selfinvoices/", views.SelfInvoiceListView.as_view(), name="selfinvoice_list"),
     path("selfinvoices/new/", views.SelfInvoiceCreateView.as_view(), name="selfinvoice_create"),
     path("selfinvoices/<int:pk>/", views.SelfInvoiceDetailView.as_view(), name="selfinvoice_detail"),
+    path("selfinvoices/<int:pk>/resend/", self_invoice.resend_self_invoice, name="selfinvoice_resend"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
     path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]

@@ -15,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 
 from seizou.core import edi_codes
+from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_UNIT, price_basis_text
 
 
 class Connection(models.Model):
@@ -608,6 +609,8 @@ class Exchange(models.Model):
         "acceptance": "検収",
         "shipping_notice": "出荷の知らせ",
         "chat_message": "会話",
+        "self_invoice": "仕入明細",
+        "self_invoice_response": "仕入明細回答",
     }
 
     direction = models.CharField("向き", max_length=10, choices=DIRECTION_CHOICES)
@@ -669,3 +672,152 @@ class Exchange(models.Model):
         return value if isinstance(value, str) else ""
 
     order_no.short_description = "注文番号"
+
+
+class ReceivedSelfInvoice(models.Model):
+    """受けた仕入明細 (中小企業共通 EDI の仕入明細の項目を元にした)。得意先 (発注元の seizou) が受入をまとめて送った物。受注の明細ごとに答える (承諾・提案・確認できない)。
+
+    インボイス制度では、ここで承諾した仕入明細が、得意先の仕入税額控除の書類になる (売り手の確認。確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8。
+    国税庁の資料と条文は未読)。書くのは connect.services だけ。直す道と消す道は作らない (修正仕入明細は同じ行の版を上げる)。
+    番号と版: 得意先と仕入明細番号の組で 1 行。message_id は今の版を受けた番号 (同じ番号の 2 回目は何もしない = R11)。
+    """
+
+    STATUS_RECEIVED = "received"
+    STATUS_PARTIAL = "partial"
+    STATUS_CONFIRMED = "confirmed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_RECEIVED, "未回答"),
+        (STATUS_PARTIAL, "確かめ中"),
+        (STATUS_CONFIRMED, "確認済"),
+        (STATUS_CANCELLED, "取消"),
+    ]
+
+    partner = models.ForeignKey(
+        "masters.Partner",
+        verbose_name="得意先",
+        on_delete=models.PROTECT,
+        related_name="received_self_invoices",
+    )
+    self_invoice_no = models.CharField("仕入明細番号", max_length=35)
+    revision_no = models.PositiveIntegerField("版", default=1)
+    # 文書の種類 (インボイス文書類型コード)。版 1 は仕入明細 "1"、版 2 からは修正仕入明細 "1C"。
+    document_code = models.CharField("文書の種類", max_length=3, choices=edi_codes.SI_DOC_CHOICES[:2])
+    purpose_code = models.CharField(
+        "目的", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
+    )
+    issued_on = models.DateField("発行日")
+    period_from = models.DateField("締め期間の初め")
+    period_to = models.DateField("締め期間の終わり")
+    due_on = models.DateField("支払期日", null=True, blank=True)
+    subtotal = models.DecimalField("小計", max_digits=14, decimal_places=2)
+    tax = models.DecimalField("消費税", max_digits=14, decimal_places=2)
+    total = models.DecimalField("合計", max_digits=14, decimal_places=2)
+    tax_rate = models.DecimalField("税率 (%)", max_digits=5, decimal_places=2)
+    tax_category_code = models.CharField("課税分類コード", max_length=3)
+    # 得意先が仕入明細に書いた自社 (受ける側) の名前と登録番号 (インボイス制度の受注者の名前と登録番号)。
+    supplier_name = models.CharField("仕入明細の自社の名前", max_length=100)
+    supplier_registration_no = models.CharField("仕入明細の登録番号", max_length=14, blank=True)
+    status = models.CharField("状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_RECEIVED)
+    message_id = models.UUIDField("仕入明細の番号", unique=True)
+    received_at = models.DateTimeField("届いた日時", default=timezone.now)
+    # 答え (仕入明細回答) を送る番号。答えるたびに新しい番号。相手の受け口が 200 を返したときだけ送った日時を入れる。
+    reply_message_id = models.UUIDField("仕入明細回答の番号", null=True, blank=True, unique=True)
+    reply_sent_at = models.DateTimeField("答えを送った日時", null=True, blank=True)
+    reply_response = models.CharField("答えの相手の返事", max_length=500, blank=True)
+
+    #: 詳細と小窓に出さない列 (uuid は画面に出さない)
+    detail_hidden_fields = ("message_id", "reply_message_id")
+    #: 変更の履歴を残す (名前が _sent_at・_response で終わる列は残らない)
+    keeps_history = True
+
+    class Meta:
+        verbose_name = "受けた仕入明細"
+        verbose_name_plural = "受けた仕入明細"
+        ordering = ["-received_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["partner", "self_invoice_no"],
+                name="connect_receivedselfinvoice_partner_no_unique",
+            ),
+        ]
+
+    def __str__(self):
+        # 受注の詳細の「仕入明細」のタブの行の字 (状態を含める)。
+        return (
+            f"{self.self_invoice_no} 第 {self.revision_no} 版 "
+            f"({self.period_from:%Y-%m-%d}〜{self.period_to:%Y-%m-%d}) {self.get_status_display()}"
+        )
+
+    def reply_state(self):
+        """答えを送った結果の字 (詳細の黄の 1 行)。答えを作っていなければ空の字。Inbox.reply_state と同じ形。"""
+        if self.reply_message_id is None:
+            return ""
+        if self.reply_sent_at is not None:
+            return f"送った {timezone.localtime(self.reply_sent_at):%Y-%m-%d %H:%M}"
+        if self.reply_response.startswith(("届きません", "断られた")):
+            return self.reply_response
+        return f"届いていない: {self.reply_response}"
+
+
+class ReceivedSelfInvoiceLine(models.Model):
+    """受けた仕入明細の明細。受注の明細に当てた 1 行 (得意先の受入 1 件)。数・単価・金額は得意先が送った値。答えの列は自社が返した答え。
+
+    受領日は得意先が物を受け取った日 (取適法の支払期日の起算の日)。列の名前と型は送る側 (purchasing.SelfInvoiceLine) と同じ。
+    """
+
+    self_invoice = models.ForeignKey(
+        ReceivedSelfInvoice,
+        verbose_name="受けた仕入明細",
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    line_no = models.PositiveIntegerField("行番号")
+    order_line = models.ForeignKey(
+        "orders.OrderLine",
+        verbose_name="受注の明細",
+        on_delete=models.PROTECT,
+        related_name="received_self_invoice_lines",
+    )
+    buyer_order_no = models.CharField("相手の発注番号", max_length=35, blank=True)
+    buyer_line_no = models.PositiveIntegerField("相手の行番号")
+    order_revision_no = models.PositiveIntegerField("注文履歴番号", default=1)
+    received_on = models.DateField("受領日")
+    qty = models.DecimalField("受領数量", max_digits=12, decimal_places=2)
+    unit = models.CharField("単位", max_length=10, blank=True)
+    unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
+    price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
+    unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
+    amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
+    reply_type = models.CharField("自社の答え", max_length=2, choices=edi_codes.SI_REPLY_LINE_TYPES, blank=True)
+    reply_reason_code = models.CharField("確認できない訳", max_length=3, choices=edi_codes.SI_REASON_CHOICES, blank=True)
+    reply_qty = models.DecimalField("提案の数", max_digits=12, decimal_places=2, null=True, blank=True)
+    reply_unit_price = models.DecimalField("提案の単価", max_digits=14, decimal_places=2, null=True, blank=True)
+    reply_note = models.CharField("書いておく字", max_length=500, blank=True)
+    revised_in = models.PositiveIntegerField("直した版", default=1)
+
+    #: 変更の履歴は受けた仕入明細の詳細の「履歴」に出す
+    history_owner = "self_invoice"
+
+    class Meta:
+        verbose_name = "受けた仕入明細の明細"
+        verbose_name_plural = "受けた仕入明細の明細"
+        ordering = ["self_invoice", "line_no"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(qty__gt=0),
+                name="connect_receivedselfinvoiceline_qty_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["self_invoice", "line_no"],
+                name="connect_receivedselfinvoiceline_line_no_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.self_invoice.self_invoice_no}-{self.line_no}"
+
+    @property
+    def price_unit_text(self):
+        """単価の後ろに添える字 (「¥250 / 個」の「個」。式なら「式」)。"""
+        return price_basis_text(self.price_basis, self.unit)

@@ -1,13 +1,14 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons purchasing_tags %}
 {# 仕入明細の詳細 (候補 C111): core の詳細 (基本情報と「明細」のタブ) の上に、記録の今の状態の黄色の 1 行 (知らせの段 5。閉じるボタンと「確認してください」の頭を付けない) を出す: #}
-{# (a) 相手の登録番号が空 (b) 今の版を相手に送った結果 (届いていない・断られた) (c) 支払期日が受領日から 60 日を超える (purchasing_tags の self_invoice_due_note。止めない)。 #}
+{# (a) 相手の登録番号が空 (b) 今の版が相手に届いていない (送った結果の字と「送り直す」。発注の権限のある人だけボタン。同じ番号で送り直す) (c) 支払期日が受領日から 60 日を超える (purchasing_tags の self_invoice_due_note。止めない)。 #}
 {# 「明細」のタブは、行番号・発注番号-行番号 (発注の詳細へ link)・品目・受領日・受領数量・単位・単価・金額・相手の答え・直した版の表。タブの後の枠に小計・消費税 (税率)・合計・受入の金額の合計・差。 #}
 {# 金額の閲覧の無い人には単価と金額の列と、金額の枠を見出しごと出さない。画面には EDI のコードの字を出さず、日本語の字を出す。 #}
 {% block content %}<div id="selfinvoice-alert">{% if not object.supplier_registration_no and object.status != "cancelled" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-registration-alert>{% icon "alert" "size-5" %}<span>取引先の登録番号が空です。相手が適格請求書発行事業者なら、取引先の詳細で登録番号を入れてください。空のままだと、この仕入明細は仕入税額控除の書類にならないおそれがあります。</span></div>
-{% endif %}{% if object.sent_at is None and object.response %}
-<div class="alert alert-warning alert-soft mb-4" role="alert" data-delivery-alert>{% icon "alert" "size-5" %}<span>{{ object.delivery_state }}</span></div>
+{% endif %}{% if object.sent_at is None %}{% can_write "purchasing.SelfInvoice" as can_si %}
+<div class="alert alert-warning alert-soft mb-4" role="alert" data-delivery-alert>{% icon "alert" "size-5" %}<span>{% if object.response %}{{ object.delivery_state }}{% else %}この仕入明細は、まだ相手に届いていません。{% endif %} 直したら「送り直す」を押してください。</span>{% if can_si %}
+<form method="post" action="{% url 'purchasing:selfinvoice_resend' object.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</div>
 {% endif %}{% self_invoice_due_note object as due_note %}{% if due_note %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-due-alert>{% icon "alert" "size-5" %}<span>{{ due_note }}</span></div>
 {% endif %}</div>{{ block.super }}{% endblock %}

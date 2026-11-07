@@ -51,6 +51,7 @@ SKIPPED_NO_ROW = {
         "progress:progress_delete",  # 種に実績の行が無い (C103)
         "progress:progress_update",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
+        "connect:receivedselfinvoice_detail",  # 種に受けた仕入明細の行が無い (C111。種を足すなら外す)
     },
     "b_plating": {
         "attachments:attachment_delete",
@@ -71,6 +72,7 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_send",
         "purchasing:receipt_detail",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
+        "connect:receivedselfinvoice_detail",  # 種に受けた仕入明細の行が無い (C111。種を足すなら外す)
     },
 }
 
@@ -106,7 +108,7 @@ LIMITS = {
     "masters:holiday_delete": 20,
     "orders:order_list": 27,
     "orders:order_create": 19,
-    "orders:order_detail": 75,  # 会話のタブ (C104。タブの件数と行・会話の枠の判定と言葉・部署の判定) と、流れの枠が一式の行を受注の明細ごとに 1 回読む (C107。A 社の種は明細 3) を合わせた後の 11-07 の実測 75
+    "orders:order_detail": 82,  # 会話のタブ (C104。タブの件数と行・会話の枠の判定と言葉・部署の判定) と、流れの枠が一式の行を受注の明細ごとに 1 回読む (C107。A 社の種は明細 3) を合わせた後の 11-07 の実測 75。仕入明細のタブ (C111。件数と行の 2 回) を足した後の実測 77 + 5
     "orders:order_update": 24,
     "orders:order_cancel": 20,
     "orders:orderline_list": 32,

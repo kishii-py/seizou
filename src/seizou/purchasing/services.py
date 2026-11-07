@@ -1175,7 +1175,8 @@ def create_self_invoice(partner, receipts, user, *, issued_on):
     相手の登録番号 = 取引先の登録番号の写し、状態 = 未送信、目的 = 新規 "9"。billing の関数は関数の中で import する (頭の import の並びを変えない)。
     断るのは (1) 受入が 1 つも無い (2) 受入でない物 (3) ほかの取引先の受入 (4) 既に取消でない仕入明細に入っている受入
     (5) seizou どうしで送った発注の受入でない、のどれか (日本語の ValueError。頭は「発行できません。」)。受入の行をロックしてから見る。
-    作った仕入明細と明細は変更の履歴に「作った」で残す。
+    作った仕入明細と明細は変更の履歴に「作った」で残す。atomic を抜けた後に connect.services.send_self_invoice で相手へ送り (R17)、
+    届かなければ返す物に saved_note (「仕入明細は相手に届いていません。…」) と saved_level = "warning" を付ける (仕入明細は成立する)。
     インボイス制度: 仕入明細書の記載事項は適格請求書と同じ。消費税は税率ごとの合計に 1 回 (決め LAW-2)。
     取適法: 受領日 = 支払期日の起算の日。支払期日は取引先の締日・支払の月・支払日から請求書と同じ計算で作る (決め C111-2)。
     確かめた資料 = 中小企業共通 EDI インボイス仕様編 6.1.1 と Ⅰ.Ⅲ。
@@ -1238,7 +1239,64 @@ def create_self_invoice(partner, receipts, user, *, issued_on):
                 amount=receipt.amount,
             )
             record_history(row, user)
+    # 相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    return _with_self_invoice_notice(_send_self_invoice(self_invoice, user), SELF_INVOICE_UNDELIVERED)
+
+
+#: 仕入明細が相手に届かなかったときの知らせの字 (保存は済んだが人の手が要る物 = 黄。段 3)
+SELF_INVOICE_UNDELIVERED = "仕入明細は相手に届いていません。{response} 直したら「送り直す」を押してください。"
+
+
+def _send_self_invoice(self_invoice, user):
+    """connect.services.send_self_invoice を呼ぶ (関数の中で import する)。返す物は取り直した SelfInvoice。"""
+    from seizou.connect import services as connect_services
+
+    return connect_services.send_self_invoice(self_invoice, user)
+
+
+def _with_self_invoice_notice(self_invoice, template):
+    """送った後の仕入明細に、届かなかったときの知らせの字 (saved_note) と黄 (saved_level = "warning") を付けて返す。届いたら何も付けない。"""
+    if self_invoice.sent_at is None:
+        self_invoice.saved_note = template.format(response=self_invoice.response)
+        self_invoice.saved_level = "warning"
     return self_invoice
+
+
+def assign_self_invoice_number(self_invoice, user):
+    """仕入明細の今の版に送る番号を付けて返す。既にあればそのまま返す (送り直しは同じ番号を使い回す = R11)。
+
+    connect.services.send_self_invoice が送る前に呼ぶ (届かなくても番号が残る)。返す物は uuid.UUID。
+    """
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        if locked.message_id is None:
+            locked.message_id = uuid.uuid4()
+            locked.save(update_fields=["message_id"])
+        return locked.message_id
+
+
+def record_self_invoice_delivery(self_invoice, response, user, *, sent=False):
+    """仕入明細を送った相手の返事を書く (500 字で切る)。sent が真なら送った日時を書き、状態が未送信なら答え待ちにする。
+
+    sent が偽なら送った日時は今の値のまま (消さない)。connect.services.send_self_invoice が呼ぶ。返す物は取り直した SelfInvoice。
+    """
+    limit = SelfInvoice._meta.get_field("response").max_length
+    with transaction.atomic():
+        locked = SelfInvoice.objects.select_for_update().get(pk=self_invoice.pk)
+        locked.response = response[:limit]
+        fields = ["response"]
+        if sent:
+            locked.sent_at = timezone.now()
+            fields.append("sent_at")
+            if locked.status == SelfInvoice.STATUS_DRAFT:
+                before = history.saved_state(locked)
+                locked.status = SelfInvoice.STATUS_SENT
+                fields.append("status")
+                locked.save(update_fields=fields)
+                record_history(locked, user, before=before)
+                return locked
+        locked.save(update_fields=fields)
+        return locked
 
 
 def due_date_note(self_invoice):

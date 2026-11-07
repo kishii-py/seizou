@@ -104,6 +104,15 @@ class Order(models.Model):
         return _part_model("billing", "Invoice").objects.filter(lines__order_line__order=self).distinct()
 
     @property
+    def received_self_invoices(self):
+        """この受注の明細に当てた明細が入った受けた仕入明細 (取消も含む。1 枚に同じ受注の明細が 2 つあっても 1 行)。
+
+        受注の詳細の「仕入明細」のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は connect の物で、orders は書かない。
+        行の字は ReceivedSelfInvoice.__str__ (番号・版・締め期間・状態)。
+        """
+        return _part_model("connect", "ReceivedSelfInvoice").objects.filter(lines__order_line__order=self).distinct()
+
+    @property
     def chat_messages(self):
         """この受注の元の受信した注文の会話 (相手の会社と送り合った言葉。古い順)。
 

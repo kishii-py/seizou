@@ -157,6 +157,7 @@ _KIND_ACTIONS = {
         "purchasing.receive",  # 受入 (N42。協力企業管理の 2 つ目の画面)
         "purchasing.change_purchase_order",  # 送った発注の変更 (C96。相手が出荷し終えるまで変更を送る)
         "purchasing.create_self_invoice",  # 仕入明細を作る (C111。受入をまとめて相手へ送る書類)
+        "connect.send_self_invoice",  # 仕入明細を相手に送り直す口 (C111)
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)

@@ -138,6 +138,48 @@ EDI に当たる文書はありません。受注と発注の 1 件ごとの会�
 | `attachments[].size` | 大きさ (バイト。1 から 20MB まで。ほかは受ける側が断る) | — (会話の添付の大きさの欄) | 整数 (1〜20971520) | — (会話の添付の大きさの欄) | 整数 (1〜20971520) | 添付バイナリファイルサイズ (付表 2。行番号は未確認) | UN01006027 |
 | `attachments[].sha256` | 中身の印 (SHA-256 の 16 進の 64 字。受けた側が取りに行った中身を確かめる) | `connect.ChatFile.sha256` | 64 字 | `connect.ChatFile.sha256` | 64 字 | — (EDI に無い) | — |
 
+## 仕入明細 (kind = self_invoice)
+
+EDI の文書は仕入明細です (文書タイプコード 389 仕入明細書。版 2 からは 384 修正仕入明細書、目的 1 は 384 取消仕入明細書)。発注した会社が、seizou どうしで送った発注の受入をまとめ、受け入れた数・金額・受領日を受けた会社へ送ります。受けた会社は受注の明細に当てて「受けた仕入明細」に入れます。金額は税抜きで、消費税は仕入明細 1 枚の合計に 1 回だけ計算します。
+
+| JSON の鍵 | 意味 | 送る側の元の欄 | 送る字数・桁 | 受ける側が入れる欄 | 受け取れる字数・桁 | EDI の項目 (付表 2) | 共通辞書の ID |
+|---|---|---|---|---|---|---|---|
+| `id` | この知らせの番号 (見出しの webhook-id と同じ値。同じ版の送り直しも同じ値) | `purchasing.SelfInvoice.message_id` | uuid (36 字) | `connect.ReceivedSelfInvoice.message_id` (見出しの webhook-id から) | uuid (36 字) | — (当て先を確かめていない) | — |
+| `kind` | 知らせの種類 | — | 下の「知らせの種類」 | — (種類を見分けるだけ) | 下の「知らせの種類」 | — (当て先を確かめていない) | — |
+| `sent_at` | 送った日時 | — | 日時 (下の「形」) | — (読まない) | 日時 (下の「形」) | — (当て先を確かめていない) | — |
+| `self_invoice_no` | 仕入明細番号 | `purchasing.SelfInvoice.self_invoice_no` | 35 字 | `connect.ReceivedSelfInvoice.self_invoice_no` | 35 字 | インボイス文書ID (仕入明細 SIID1) | UN01005862 |
+| `revision_no` | 版 (第 1 版は 1。修正と取消を送るたびに 1 ずつ増える) | `purchasing.SelfInvoice.revision_no` | 正の整数 | `connect.ReceivedSelfInvoice.revision_no` | 正の整数 | インボイス文書履歴ID (仕入明細 SIID6) | UN01005874 |
+| `document_code` | インボイス文書類型コード (版 1 は 1 = 仕入明細、版 2 からは 1C = 修正仕入明細) | — (版から決める) | 3 字 | `connect.ReceivedSelfInvoice.document_code` | 3 字 | インボイス文書類型コード (仕入明細 SIID7) | UN01005875 |
+| `purpose_code` | インボイス文書目的コード (9 = 新規・4 = 変更・修正・1 = 取消) | `purchasing.SelfInvoice.purpose_code` | 2 字 | `connect.ReceivedSelfInvoice.purpose_code` | 2 字 | インボイス文書目的コード (仕入明細 SIID5) | UN01005869 |
+| `issued_on` | 発行日 | `purchasing.SelfInvoice.issued_on` | 日付 | `connect.ReceivedSelfInvoice.issued_on` | 日付 | インボイス文書発効日 (仕入明細 SIID4) | UN01005865 |
+| `period_from` | 締め期間の初め (取引先の締日で決める) | `purchasing.SelfInvoice.period_from` | 日付 | `connect.ReceivedSelfInvoice.period_from` | 日付 | 鑑ヘッダ取引開始日 (仕入明細 SIID161) | UN01005612 |
+| `period_to` | 締め期間の終わり | `purchasing.SelfInvoice.period_to` | 日付 | `connect.ReceivedSelfInvoice.period_to` | 日付 | 鑑ヘッダ取引終了日 (仕入明細 SIID162) | UN01005613 |
+| `due_on` | 支払期日 (取引先の支払の条件から決める。無ければ null) | `purchasing.SelfInvoice.due_on` | 日付 | `connect.ReceivedSelfInvoice.due_on` | 日付 | 支払期日 (仕入明細 SIID165) | UN01005784 |
+| `subtotal` | 小計 (税抜きの明細の金額の合計) | `purchasing.SelfInvoice.subtotal` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoice.subtotal` | 整数 12 桁・小数 2 桁 | 明細文書ヘッダ課税分類課税対象合計金額 (仕入明細 SIID258) | UN01005839 |
+| `tax` | 消費税 (小計に 1 回だけ率をかけて 1 円に丸めた額) | `purchasing.SelfInvoice.tax` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoice.tax` | 整数 12 桁・小数 2 桁 | 明細文書ヘッダ課税分類税額 (仕入明細 SIID256) | UN01005833 |
+| `total` | 合計 (小計 + 消費税) | `purchasing.SelfInvoice.total` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoice.total` | 整数 12 桁・小数 2 桁 | — (当て先を確かめていない) | — |
+| `tax_rate` | 税率 (百分率の字。例「10」) | `purchasing.SelfInvoice.tax_rate` | 整数 3 桁・小数 2 桁 | `connect.ReceivedSelfInvoice.tax_rate` | 整数 3 桁・小数 2 桁 | 明細文書ヘッダ税率 (仕入明細 SIID262) | UN01005836 |
+| `tax_category_code` | 課税分類コード (S = 標準税率) | — (下の「送り合わない書類と欄」の課税分類コード) | 3 字 | `connect.ReceivedSelfInvoice.tax_category_code` | 3 字 | 明細文書ヘッダ課税分類コード (仕入明細 SIID259) | UN01005841 |
+| `supplier_name` | 受けた会社の名前 (発注した会社の取引先マスターの名前) | `masters.Partner.name` | 100 字 | `connect.ReceivedSelfInvoice.supplier_name` | 100 字 | 受注者名称 (仕入明細 SIID26) | UN01005759 |
+| `supplier_registration_no` | 受けた会社の適格請求書発行事業者の登録番号 (T と 13 桁の数字。無ければ空の字) | `purchasing.SelfInvoice.supplier_registration_no` | 14 字 | `connect.ReceivedSelfInvoice.supplier_registration_no` | 14 字 | 受注者適格請求書発行事業者登録番号 (仕入明細 SIID27) | UN01013039 |
+| `buyer.id` | 発注した会社の id | — (会社の置き場の設定) | 決まりなし | — (読まない) | 読まない | — (当て先を確かめていない) | — |
+| `buyer.name` | 発注した会社の名前 | `core.Company.name` | 100 字 | — (読まない) | 読まない | 発注者名称 (仕入明細 SIID45) | UN01005759 |
+| `lines[].line_no` | 明細の行番号 (受入 1 件に 1 行) | `purchasing.SelfInvoiceLine.line_no` | 正の整数 | `connect.ReceivedSelfInvoiceLine.line_no` | 正の整数 | 明細行ID (仕入明細 SIID313) | UN01009648 |
+| `lines[].order_id` | 元の注文 (第 1 版) の知らせの番号 | `connect.Outbox.message_id` | uuid (36 字) | `connect.Inbox.message_id` (元の受信した注文を引くだけ) | uuid (36 字) | — (seizou どうしで元の注文を引く番号。EDI の項目に当てない) | — |
+| `lines[].order_no` | 発注番号 | `purchasing.PurchaseOrder.po_no` | 35 字 | `connect.ReceivedSelfInvoiceLine.buyer_order_no` | 35 字 | — (当て先を確かめていない) | — |
+| `lines[].order_line_no` | 発注の明細の行番号 | `purchasing.PurchaseOrderLine.line_no` | 正の整数 | `connect.ReceivedSelfInvoiceLine.buyer_line_no`・`orders.OrderLine.line_no` (受注の明細を引く) | 正の整数 | — (当て先を確かめていない) | — |
+| `lines[].order_revision_no` | 発注の注文履歴番号 (送った時の発注の版) | `purchasing.PurchaseOrder.revision_no` | 正の整数 | `connect.ReceivedSelfInvoiceLine.order_revision_no` | 正の整数 | — (当て先を確かめていない) | — |
+| `lines[].part_no` | 発注した会社の自社品番 | `masters.Item.part_no` | 35 字 | — (読まない。受注の明細から引く) | 読まない | — (当て先を確かめていない) | — |
+| `lines[].part_name` | 品名 | `masters.Item.name` | 100 字 | — (読まない。受注の明細から引く) | 読まない | 品目名 (仕入明細 SIID397) | UN01005815 |
+| `lines[].received_on` | 受領日 (発注した会社が物を受け取った日) | `purchasing.SelfInvoiceLine.received_on` | 日付 | `connect.ReceivedSelfInvoiceLine.received_on` | 日付 | 明細行受領日 (仕入明細 SIID496) | UN01005628 |
+| `lines[].qty` | 受領数量 | `purchasing.SelfInvoiceLine.qty` | 整数 10 桁・小数 2 桁 | `connect.ReceivedSelfInvoiceLine.qty` | 整数 10 桁・小数 2 桁 | 受領数量 (仕入明細 SIID355) | JPS2500012 |
+| `lines[].unit` | 単位の名前の字 | `purchasing.SelfInvoiceLine.unit` | 10 字 | `connect.ReceivedSelfInvoiceLine.unit` | 10 字 | — (単位の名前。コードは `lines[].unit_code`) | — |
+| `lines[].unit_code` | 数量単位コード (無ければ空の字) | `purchasing.SelfInvoiceLine.unit_code` | 10 字 | `connect.ReceivedSelfInvoiceLine.unit_code` | 10 字 | 受領数量単位コード (仕入明細 SIID356) | — |
+| `lines[].price_basis` | 単価の単位 (`unit` = 部品の単位 1 つあたり・`lump` = 一式。鍵が無ければ `unit`) | `purchasing.SelfInvoiceLine.price_basis` | 10 字 | `connect.ReceivedSelfInvoiceLine.price_basis` | 10 字 | — (seizou の項目) | — |
+| `lines[].unit_price` | 単価 (税抜き) | `purchasing.SelfInvoiceLine.unit_price` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoiceLine.unit_price` | 整数 12 桁・小数 2 桁 | — (当て先を確かめていない) | — |
+| `lines[].amount` | 金額 (税抜き。受入の金額) | `purchasing.SelfInvoiceLine.amount` | 整数 12 桁・小数 2 桁 | `connect.ReceivedSelfInvoiceLine.amount` | 整数 12 桁・小数 2 桁 | — (当て先を確かめていない) | — |
+| `lines[].revised_in` | この明細を最後に直した版 | `purchasing.SelfInvoiceLine.revised_in` | 正の整数 | `connect.ReceivedSelfInvoiceLine.revised_in` | 正の整数 | — (当て先を確かめていない) | — |
+
 ## コードの値
 
 ### 知らせの種類 (kind)
@@ -149,6 +191,7 @@ EDI に当たる文書はありません。受注と発注の 1 件ごとの会�
 | `shipping_notice` | 出荷の知らせ | 出荷案内 | SMEDespatchAdvice | 351 | 35100 (出荷案内書) |
 | `acceptance` | 検収 | 出荷回答 | SMEReceivingAdvice | 632 | 63201 (出荷回答書) |
 | `chat_message` | 会話の言葉 | — (EDI に無い。seizou どうしだけの種類) | — | — | — |
+| `self_invoice` | 仕入明細 | 仕入明細 | — (確かめていない) | 389 (版 2 からは 384 修正仕入明細書、目的 1 は 384 取消仕入明細書) | — |
 
 取引プロセスID の値は付表 2 と本編の字です (付表 4 の取引プロセスID の表は、出荷回答を SMERecievingAdvice と綴っています)。
 
@@ -181,7 +224,7 @@ EDI に当たる文書はありません。受注と発注の 1 件ごとの会�
 
 ## 受け取れる字数を超えたとき
 
-- 受け口で断る物: 注文の発注番号・品番・品名・単位・明細の備考で、上の表の受け取れる字数を超える字 (品番は前後の空白を外して数えます)、注文の明細の数量・単価・金額 (数量 × 単価)、出荷の知らせの数と出荷番号、検収の数。会話の言葉 (2000 字。空白だけの言葉も断る)。断った注文は「受信した注文」に入りません。断った理由は日本語の文 (例「注文の 2 行目の品番は 35 字までにしてください。」) で送った側に返り、送った側の相手の返事の欄に「断られた: <理由>」の形で残ります。字や数を直して送り直してください。
+- 受け口で断る物: 注文の発注番号・品番・品名・単位・明細の備考で、上の表の受け取れる字数を超える字 (品番は前後の空白を外して数えます)、注文の明細の数量・単価・金額 (数量 × 単価)、出荷の知らせの数と出荷番号、検収の数。会話の言葉 (2000 字。空白だけの言葉も断る)。仕入明細の仕入明細番号・受けた会社の名前・登録番号・課税分類コード・明細の発注番号・単位・数量単位コードで、上の表の受け取れる字数を超える字と、仕入明細の数と金額 (例「仕入明細の 2 行目の単位は 10 字までにしてください。」)。断った注文は「受信した注文」に入りません。断った理由は日本語の文 (例「注文の 2 行目の品番は 35 字までにしてください。」) で送った側に返り、送った側の相手の返事の欄に「断られた: <理由>」の形で残ります。字や数を直して送り直してください。
 - 欄の字数で切って残す物: 検収の発注番号 (35 字)、出荷の知らせの受注番号 (35 字)、注文回答の断った理由 (500 字)、会話の書いた人の氏名 (100 字)。
 - 受けた中身に残すだけの物 (発注した会社の名前・取引先コード・発注の備考など): 字数を見ず、受注の表には入れません。
 

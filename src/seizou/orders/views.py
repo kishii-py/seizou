@@ -175,13 +175,15 @@ class OrderDetailView(BaseDetailView):
         "受注の項目と明細。明細ごとに出荷済みの数と残の数を出し、明細の行から出荷と指示書の発行へ移れます。"
         "指示書・出荷・請求書のタブに、この受注の物が並びます。"
     )
-    # 4 つとも Order の読むだけの property (models.py)。部品が入っていない会社では、そのタブを出さない。
+    # 5 つとも Order の読むだけの property (models.py)。部品が入っていない会社では、そのタブを出さない。
     # 「会話」は元の受信した注文の相手の会社との会話 (C104)。中身は connect/_chat.html (order_detail.html の block tab_rows・tab_empty)。
+    # 「仕入明細」は、この受注の明細に当てた得意先の仕入明細 (受けた仕入明細。C111)。行の字は番号・版・締め期間・状態。
     tabs = (
         ("指示書", "workorders"),
         ("出荷", "shipments"),
         ("請求書", "invoices"),
         ("会話", "chat_messages"),
+        ("仕入明細", "received_self_invoices"),
     )
     template_name = "orders/order_detail.html"
 
