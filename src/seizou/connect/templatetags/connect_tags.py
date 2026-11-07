@@ -60,7 +60,7 @@ def same_order_notice(inbox):
     取引先の空の行 (差出人の確認待ち) と、注文番号の空の行は比べない。
     """
     # 変更と取消の版の行は同じ注文番号で届くので比べない (版の札 = revision_notice を出す)。
-    if inbox.revises_id is not None:
+    if _revises_id(inbox) is not None:
         return None
     if hasattr(inbox, "same_order_pk"):
         pk, status = inbox.same_order_pk, inbox.same_order_status
@@ -100,6 +100,11 @@ def payload_number(value):
     return number if number.is_finite() else value
 
 
+def _revises_id(inbox):
+    """元の行 (第 1 版) の番号。版の列を持たない物 (断片だけを描く試験の作り物の object) は None (第 1 版と同じ扱い)。"""
+    return getattr(inbox, "revises_id", None)
+
+
 #: 注文書目的コード → 版の字 (詳細の「注文履歴番号」の行と札)
 _PURPOSE_WORDS = {edi_codes.PURPOSE_NEW: "新規", edi_codes.PURPOSE_CHANGE: "変更", edi_codes.PURPOSE_CANCEL: "取消"}
 
@@ -128,7 +133,7 @@ def revision_notice(inbox):
     一覧の行は get_queryset の注釈 (pending_revision_pk・pending_revision_no) と select_related の revises を読み、問い合わせを足さない。
     詳細は注釈が無いので 1 回だけ引く。
     """
-    if inbox.revises_id is not None:
+    if _revises_id(inbox) is not None:
         word = "取消" if inbox.purpose_code == edi_codes.PURPOSE_CANCEL else "変更"
         return _notice(f"第 {inbox.revision_no} 版の{word}", inbox.revises_id, inbox.revises.status)
     if hasattr(inbox, "pending_revision_pk"):
@@ -161,7 +166,7 @@ def revision_lines(inbox):
     受注にある行は、明細状態コードによらず数・単価・納期のどれかが注文と違えば「今」の値を持つ (受け入れると注文の値で上書きするので、上書きされる前に見せる)。
     元の行がまだ受注になっていなければ、受注の値は比べない。
     """
-    if inbox.revises_id is None:
+    if _revises_id(inbox) is None:
         return None
     payload = inbox.payload if isinstance(inbox.payload, dict) else {}
     raw_lines = payload.get("lines") if isinstance(payload.get("lines"), list) else []
@@ -205,7 +210,7 @@ def revision_problem(inbox):
 
     元の行が未処理なら「先に第 1 版の注文 (受信した注文 <番号>) を受け入れてください。」。ほかは受け口と受け入れと同じ見方 (services._revision_problem)。
     """
-    if inbox.revises_id is None or inbox.status != Inbox.STATUS_RECEIVED:
+    if _revises_id(inbox) is None or inbox.status != Inbox.STATUS_RECEIVED:
         return None
     base = inbox.revises
     if base.status == Inbox.STATUS_RECEIVED:
