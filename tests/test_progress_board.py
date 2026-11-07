@@ -114,7 +114,7 @@ def test_board_shows_planned_recorded_remaining(client_logged_in, issue, cut, us
     body = _body(_board(client_logged_in))
     row = _row(body, step)
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["3", "10", "7"]
+    assert cells == ["3", "10", "7", "0"]
     assert reverse("workorders:workorder_detail", args=[workorder.pk]) in row
     assert workorder.wo_no in row
     assert "T-100 作り物の軸" in row and reverse("masters:item_modal", args=[step.workorder.order_line.item.pk]) in row
@@ -262,7 +262,7 @@ def test_poll_returns_only_changed_rows(client_logged_in, issue, cut, bend):
     row = _row(body, changed)
     assert 'hx-swap-oob="true"' in row
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', row)
-    assert cells == ["3", "10", "7"]  # 合計は前からの 3 を含む
+    assert cells == ["3", "10", "7", "0"]  # 合計は前からの 3 を含む。不良は 0
     assert f'id="progress-step-{other.pk}"' not in body
     assert _poller_url(body) == f"{reverse('progress:progress_list')}?after={added.pk}"
     assert re.search(r'<div id="progress-poll"[^>]*hx-swap-oob="true"', body)
@@ -375,7 +375,7 @@ def test_board_headers_put_remaining_after_process(client_logged_in, issue, cut)
     body = _body(_board(client_logged_in))
     thead = re.search(r"<thead>(.*?)</thead>", body, re.S).group(1)
     headers = re.findall(r'<th class="[^"]*">([^<]*)</th>', thead)
-    assert headers == ["指示書番号", "工程", "残", "操作", "予定の数", "実績の合計", "部品"]
+    assert headers == ["指示書番号", "工程", "残", "操作", "予定の数", "実績の合計", "不良の合計", "部品"]
 
 
 @pytest.mark.django_db
@@ -385,7 +385,7 @@ def test_board_cells_follow_header_order(client_logged_in, issue, cut, user):
     _record(step, 3, user)
 
     cells = _cells(_row(_body(_board(client_logged_in)), step))
-    assert len(cells) == 7
+    assert len(cells) == 8
     assert workorder.wo_no in cells[0]
     assert reverse("workorders:workorder_detail", args=[workorder.pk]) in cells[0]
     assert "1 切断" in cells[1]

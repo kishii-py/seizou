@@ -230,7 +230,7 @@ def test_defect_only_record_is_started(issue, cut, user):
 def test_board_row_values_with_defect_and_mark(client_logged_in, issue, cut, user):
     """良品 490・不良 10・印あり (予定 500)。盤の行の値は 残 10・予定 500・実績の合計 490・不良の合計 10 で「完了」の札。
 
-    「不良の合計」は盤の行の値 (defect) までで、画面の列は足していない (行の template が依頼の触ってよい物の外。記録に書いた)。
+    「不良の合計」の列 (4 つ目の数の欄) は、本体が取り込みのときに盤の template に足した (387 回目。レーンでは行の template が触ってよい物の外だった)。
     """
     workorder = issue(cut, planned=Decimal("500"))
     step = workorder.steps.get()
@@ -246,7 +246,7 @@ def test_board_row_values_with_defect_and_mark(client_logged_in, issue, cut, use
     assert row["done"] is True
     html_row = _board_html_row(client_logged_in, step)
     cells = re.findall(r'<td class="whitespace-nowrap text-right tabular-nums[^"]*"[^>]*>([^<]*)</td>', html_row)
-    assert cells == ["10", "500", "490"]
+    assert cells == ["10", "500", "490", "10"]
     assert DONE_BADGE in html_row
 
 
