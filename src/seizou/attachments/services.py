@@ -7,8 +7,12 @@
 
 import os
 
+from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Q
+
+from seizou.core import access
 
 from .models import KIND_CHOICES, Attachment
 
@@ -139,3 +143,49 @@ def attachments_for(target):
         .select_related("uploaded_by")
         .order_by("-uploaded_at", "-pk")
     )
+
+
+#: 書いた本人と世話役だけが開ける記録の種類 (app の名前, model の名前)。フィードバックは一覧と詳細を自分の分に絞る (feedback.views._visible_to)
+FEEDBACK_TYPE = ("feedback", "feedback")
+
+
+def _feedback_manager(user) -> bool:
+    """フィードバックの世話役か (feedback.services.can_manage)。feedback の部品が無い会社では偽。
+
+    feedback の services は関数の中で import する (feedback の services も attachments を関数の中で import するので、外で import すると輪になる)。
+    """
+    if not apps.is_installed("seizou.feedback"):
+        return False
+    from seizou.feedback import services as feedback_services
+
+    return feedback_services.can_manage(user)
+
+
+def openable_by(queryset, user):
+    """添付ファイルの並びを、user が付けた先の記録を開ける物だけに絞る (読むだけ)。開く口・削除の画面・一覧・移るだけの口が使う。
+
+    1) 付けた先の部品を、部署で開けない (access.can_open。記録は書かない) 種類の行を外す。部署の判定が off と log の会社・
+       システム管理者・フルコントロール・部署の無い人には何も外さない (画面の門 screen_denied と同じ判定)。アカウント管理の部品は
+       アカウント管理の権限で決まる。
+    2) フィードバックに付けた行は、世話役 (feedback.services.can_manage) でなければ、user が書いたフィードバックの物だけを残す。
+       付けた先が消えた行は、種類 (content_type) で 1) を見て、フィードバックなら世話役だけに残す。
+    訳: 記録を開けない人に、その記録に付けたファイル (フィードバックの画面の絵・部署の外の記録の写真や検査成績書) を開かせず、消させず、
+    一覧で題とファイル名を見せないため。添付は番号を順に変えるだけで開けたので、記録の側の絞りが添付の口で抜けていた。
+    出所 = Claude Security の走査の候補 11-07 (7・8・9)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
+    変えてよい条件 = 記録の部品の開ける人の決め (部署の門・フィードバックの絞り) が変わったとき。部品の判定と食い違う形にはしない。
+    """
+    type_ids = queryset.values_list("content_type_id", flat=True).distinct()
+    hidden = [
+        kind.pk
+        for kind in ContentType.objects.filter(pk__in=list(type_ids))
+        if not access.can_open(user, kind.app_label, record=False)
+    ]
+    if hidden:
+        queryset = queryset.exclude(content_type_id__in=hidden)
+    feedback_type = ContentType.objects.filter(app_label=FEEDBACK_TYPE[0], model=FEEDBACK_TYPE[1]).first()
+    model = feedback_type.model_class() if feedback_type is not None else None
+    if model is not None and not _feedback_manager(user):
+        user_pk = getattr(user, "pk", None)
+        own = model._default_manager.filter(created_by_id=user_pk).values("pk") if user_pk is not None else model._default_manager.none().values("pk")
+        queryset = queryset.filter(~Q(content_type=feedback_type) | Q(object_id__in=own))
+    return queryset
