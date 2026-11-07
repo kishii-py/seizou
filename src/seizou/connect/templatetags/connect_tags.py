@@ -268,11 +268,14 @@ def revision_lines(inbox):
     return result
 
 
-@register.simple_tag
-def revision_problem(inbox):
+@register.simple_tag(takes_context=True)
+def revision_problem(context, inbox):
     """未処理の変更と取消の版を受け入れられない訳の字 ({% revision_problem object as problem %})。受け入れられるか、版でない行は None。
 
     元の行が未処理なら「先に第 1 版の注文 (受信した注文 <番号>) を受け入れてください。」。ほかは受け口と受け入れと同じ見方 (services._revision_problem)。
+    金額の閲覧の無い人 (access.hides_money) には、単価の違いの字に単価の値を入れない (受信した注文の詳細は部署を見ないので、誰でも開ける)。
+    訳: 金額を見られない人に、黄色の 1 行の中の単価を見せないため。出所 = Claude Security の走査の候補 11-07 (39)。
+    変えてよい条件 = services._revision_problem の hide_money の決めが変わったとき。
     """
     if _revises_id(inbox) is None or inbox.status != Inbox.STATUS_RECEIVED:
         return None
@@ -280,7 +283,8 @@ def revision_problem(inbox):
     if base.status == Inbox.STATUS_RECEIVED:
         return f"先に第 1 版の注文 (受信した注文 {base.pk}) を受け入れてください。"
     payload = inbox.payload if isinstance(inbox.payload, dict) else {}
-    return services._revision_problem(base, payload, inbox.revision_no, inbox.purpose_code)
+    hide_money = access.hides_money(context["request"].user)
+    return services._revision_problem(base, payload, inbox.revision_no, inbox.purpose_code, hide_money=hide_money)
 
 
 @register.simple_tag
