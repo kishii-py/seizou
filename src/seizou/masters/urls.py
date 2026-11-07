@@ -49,4 +49,8 @@ urlpatterns = [
     path("holidays/new/", views.HolidayCreateView.as_view(), name="holiday_create"),
     path("holidays/<int:pk>/", views.HolidayDetailView.as_view(), name="holiday_detail"),
     path("holidays/<int:pk>/delete/", views.HolidayDeleteView.as_view(), name="holiday_delete"),
+    # 部品の標準の工程の並び (C112)。追加の道に部品の pk を入れない (権限の tag can_write が引数無しで引くため。部品は ?item=<pk>)
+    path("itemprocesses/add/", views.ItemProcessAddView.as_view(), name="itemprocess_add"),
+    path("itemprocesses/<int:pk>/edit/", views.ItemProcessUpdateView.as_view(), name="itemprocess_update"),
+    path("itemprocesses/<int:pk>/remove/", views.ItemProcessRemoveView.as_view(), name="itemprocess_remove"),
 ]

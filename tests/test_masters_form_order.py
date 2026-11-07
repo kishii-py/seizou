@@ -84,6 +84,7 @@ def test_partner_and_process_update_order_stays(client_logged_in, no_registratio
     assert field_names(client_logged_in, "masters:process_update", process.pk) == [
         "code",
         "name",
+        "is_outsourced",
         "sort_order",
         "use_in_plan",
         "active",

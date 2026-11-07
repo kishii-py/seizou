@@ -9,10 +9,11 @@ import re
 from decimal import Decimal
 
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core import csvio, seeds
-from seizou.core.forms import ServiceModelForm
+from seizou.core.forms import CHECKBOX_CSS, Checkboxes, ServiceModelForm
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 
 from .models import Item, ItemPrice, Partner, PartnerItem, Process
@@ -20,6 +21,7 @@ from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
 from .models import Holiday
+from . import services
 
 
 #: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
@@ -129,7 +131,11 @@ PROCESS_ACTIVE_HELP = "外すと使用停止にします。指示書の発行の
 
 
 class ProcessForm(ServiceModelForm):
-    """工程を入れる・直す。協力企業に出すか (is_outsourced) は欄に出さない (入れるときは偽、直すときは今の値のまま)。"""
+    """工程を入れる・直す。協力企業に出すか (is_outsourced) も欄に出す (決め PROC-OUT-1)。
+
+    訳: 画面から足した工程も協力企業に出す工程にでき、部品の標準の工程のタブの札と、発注の明細の工程の候補と最初の値 (決め PRICE-5) に効くようにするため。前は欄に出さず、種と立ち上げの答えでだけ入った (その形を選んだ訳の記録は無い = 未確認)。出所 = 作者の決め PROC-OUT-1。
+    変えてよい条件 = 協力企業に出す工程の入れ方を本人が決め直したとき。
+    """
 
     active = forms.BooleanField(label="使用中", required=False, help_text=PROCESS_ACTIVE_HELP)
 
@@ -138,7 +144,11 @@ class ProcessForm(ServiceModelForm):
 
     class Meta:
         model = Process
-        fields = ["code", "name", "sort_order", "use_in_plan"]
+        fields = ["code", "name", "is_outsourced", "sort_order", "use_in_plan"]
+        # 欄の下の説明 (決め PROC-OUT-1)。表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
+        help_texts = {
+            "is_outsourced": "協力企業に出す工程なら印を付けます。部品の詳細の標準の工程のタブで「協力企業に出す」の札が付きます。",
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -358,6 +368,104 @@ class ItemPriceDeleteForm(forms.Form):
 
     submit_label = "削除"
     danger = True  # 実行のボタンを削除の確かめの赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+
+# ---------------------------------------------------------------- 部品の標準の工程の並び (決め C19-3。C112)
+
+
+class _ProcessChoices(forms.ModelMultipleChoiceField):
+    """標準の工程の追加の候補の字 (「TURN 旋削」の形)。協力企業に出す工程だけ、後ろに「 (協力企業に出す)」を足す。
+
+    形は workorders/forms.py の ProcessChoiceField と同じ (masters から workorders を import しないので、同じ形を持つ)。
+    """
+
+    def label_from_instance(self, obj):
+        text = f"{obj.code} {obj.name}"
+        return f"{text} (協力企業に出す)" if obj.is_outsourced else text
+
+
+class ItemProcessAddForm(forms.Form):
+    """標準の工程の追加 (決め C19-3)。部品は開いた詳細の ?item=<pk> を土台の get_initial が写す隠しの欄で受ける。
+
+    選べる工程は使用中で、その部品の並びにまだ無い物だけ。選んだ工程は工程の表の並び (並び順 → 工程コード) のまま、
+    並びの最後に足す (services.add_item_processes)。
+    """
+
+    item = forms.ModelChoiceField(queryset=Item.objects.all(), widget=forms.HiddenInput)
+    item_label = forms.CharField(label="部品", required=False, disabled=True)
+    processes = _ProcessChoices(
+        label="足す工程",
+        queryset=Process.objects.none(),
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="使用中で、まだ並びに無い工程だけが出ます。選んだ工程は、工程の並び順のまま並びの最後に足します。順は行の「順を直す」で変えられます。",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        chosen = self.data.get(self.add_prefix("item")) if self.is_bound else self.initial.get("item")
+        pk = str(getattr(chosen, "pk", chosen) or "")
+        item = Item.objects.filter(pk=int(pk)).first() if pk.isdecimal() else None
+        candidates = services.active_processes()
+        if item is not None:
+            self.fields["item_label"].initial = str(item)
+            candidates = candidates.exclude(item_processes__item=item)
+        if self.is_bound:
+            # 送られた工程も候補に残す。小窓を開いた後にほかの人が同じ工程を足しても、Django の「正しく選択してください」で
+            # 止めず、add_item_processes が今ある工程を飛ばす形で通すため (workorders/forms.py の発行の form と同じ考え)。
+            # 無い pk と数字でない字は今のまま欄の誤り。
+            key = self.add_prefix("processes")
+            getlist = getattr(self.data, "getlist", None)
+            sent = getlist(key) if getlist is not None else (self.data.get(key) or [])
+            sent = [int(value) for value in sent if str(value).isdecimal()]
+            if sent:
+                candidates = Process.objects.filter(Q(pk__in=candidates.values("pk")) | Q(pk__in=sent))
+        self.fields["processes"].queryset = candidates
+
+    def service_kwargs(self):
+        # 読むだけの item_label は services に渡さない。並びは queryset の並び (工程の表の並び順 → 工程コード)
+        return {"data": {"item": self.cleaned_data["item"], "processes": list(self.cleaned_data["processes"])}}
+
+
+class ItemProcessMoveForm(forms.Form):
+    """標準の工程の並べ替え (決め C19-3)。土台は instance (並びの 1 行) を渡し、services.move_item_process(行, data={"seq": …}, user=…) を呼ぶ。
+
+    順は 1〜その部品の並びの行の数。
+    """
+
+    item_label = forms.CharField(label="部品", required=False, disabled=True)
+    process_label = forms.CharField(label="工程", required=False, disabled=True)
+    # 「?」の小窓の「入れる物」の表は form を作らずに class の欄 (base_fields) を読むので、class の欄にも説明を置く
+    seq = forms.IntegerField(label="順", min_value=1, help_text="1 で先頭、いちばん大きい番号で最後です。ほかの工程は 1 つずつずれます。")
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        if instance is not None:
+            count = instance.item.item_processes.count()
+            self.fields["item_label"].initial = str(instance.item)
+            self.fields["process_label"].initial = str(instance.process)
+            # 欄の範囲の外は欄の誤り (段 1)。services の端へ置く形は、ほかの道のための物
+            self.fields["seq"] = forms.IntegerField(
+                label="順",
+                min_value=1,
+                max_value=count,
+                initial=instance.seq,
+                help_text=f"1 で先頭、{count} で最後です。ほかの工程は 1 つずつずれます。",
+            )
+
+    def service_kwargs(self):
+        return {"data": {"seq": self.cleaned_data["seq"]}}
+
+
+class ItemProcessRemoveForm(forms.Form):
+    """標準の工程から外す確かめ。欄は無い (土台が remove_item_process(対象, user=…) を呼ぶ)。"""
+
+    submit_label = "外す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
 
     def service_kwargs(self) -> dict:
         return {}

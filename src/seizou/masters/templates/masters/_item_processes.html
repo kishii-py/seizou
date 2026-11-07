@@ -1,0 +1,45 @@
+{% load seizou_tags seizou_icons %}
+{# 部品の詳細の「標準の工程」のタブの中身 (決め C19-3。C112)。masters/item_detail.html の block tab_rows と block tab_empty の両方が include する。 #}
+{# 包みの id="item-processes" は、小窓で保存した後の取り直し (item_detail.html の item-processes-refresh) が入れ替える箱。行がある形と空の形の両方が同じ包みを持つ。 #}
+{# 行: 順・工程 (工程の詳細への link と「協力企業に出す」「使用停止」の札)・操作 (「順を直す」と行の「⋮」の赤の「外す」)。1 行だけのときは「順を直す」を出さない (動かす先が無いため)。 #}
+{# 最後の 1 行も外せ、外すと空の箱 (意味の 1 行と入れ方の 1 行) に入れ替わる (決め C112-1)。 #}
+{# 権限の 2 つの tag は行の for と if の外に置く (行の数で SELECT を増やさない。tests/test_core_tabs_select_related.py)。外すの入口も直すと同じ種類 (items) の答え can_edit_process で出す (tag は verb が update のときだけ pk を付けて道を引くため)。 #}
+{% can_write "masters.ItemProcess" "add" as can_add_process %}{% can_write "masters.ItemProcess" "update" as can_edit_process %}
+<div id="item-processes">
+  {% if can_add_process %}<div class="mb-2 flex justify-end"><a class="btn btn-sm btn-outline border-base-300" href="{% url 'masters:itemprocess_add' %}?item={{ object.pk }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprocess_add' %}?item={{ object.pk }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}工程を足す</a></div>{% endif %}
+  {% if tab.rows %}
+  <div class="overflow-auto rounded-lg border border-base-300">
+    <table class="table table-sm">
+      <thead><tr class="bg-base-200 text-base-content/70"><th class="font-medium">順</th><th class="font-medium">工程</th>{% if can_edit_process %}<th class="font-medium">操作</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for row in tab.rows %}
+        <tr class="h-10{% if row.obj.process.active is False %} text-base-content/50{% endif %}"{% if can_edit_process %} data-row-menu{% endif %}>
+          <td class="whitespace-nowrap tabular-nums">{{ row.obj.seq }}</td>
+          <td><a class="link link-primary" href="{% url 'masters:process_detail' row.obj.process_id %}"><span class="font-mono">{{ row.obj.process.code }}</span> {{ row.obj.process.name }}</a>{% if row.obj.process.is_outsourced %} <span class="badge badge-sm badge-outline border-base-300">協力企業に出す</span>{% endif %}{% if row.obj.process.active is False %} <span class="badge badge-sm badge-soft badge-warning">使用停止</span>{% endif %}</td>
+          {% if can_edit_process %}<td class="whitespace-nowrap">
+            <span class="flex items-center gap-2">
+              {% if tab.count > 1 %}<a class="btn btn-xs btn-outline border-base-300" href="{% url 'masters:itemprocess_update' row.obj.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprocess_update' row.obj.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "chevrons-up-down" "size-4" %}順を直す</a>{% endif %}
+              <details class="dropdown dropdown-end row-menu">
+                <summary class="btn btn-outline btn-xs border-base-300" aria-label="行の操作" title="行の操作">⋮</summary>
+                <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+                  <li><a class="flex items-center gap-2 text-error" href="{% url 'masters:itemprocess_remove' row.obj.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'masters:itemprocess_remove' row.obj.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "x" "size-4" %}外す</a></li>
+                </ul>
+              </details>
+            </span>
+          </td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {# 空のタブ: 土台の空の箱 (core/detail.html の block tab_empty) と同じ箱と 2 行に、何の並びかの 1 行 (C19。押せない人にも出す) と、押せる人にだけ入れ方の 1 行 #}
+  <div class="flex flex-col items-center justify-center p-6 text-center">
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
+    <p class="mt-4 font-medium">まだありません。</p>
+    <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
+    <p class="mt-2 text-xs text-base-content/50">指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。</p>
+    {% if can_add_process %}<p class="mt-2 text-xs text-base-content/50">「工程を足す」で、工程の一覧にある工程を選んで足せます。</p>{% endif %}
+  </div>
+  {% endif %}
+</div>

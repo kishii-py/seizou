@@ -107,3 +107,41 @@ def test_menu_has_process_entry(client_logged_in):
     positions = [masters.index(f'<span class="truncate">{label}</span>') for label in ("部品マスター", "取引先", "工程")]
     assert positions == sorted(positions)
     assert f'href="{reverse("masters:process_list")}"' in masters
+
+
+# ---------------------------------------------------------------- 協力企業に出すかの欄 (決め PROC-OUT-1。C112 の その 3)
+
+
+@pytest.mark.django_db
+def test_process_create_with_is_outsourced(client_logged_in):
+    body = client_logged_in.get(reverse("masters:process_create")).content.decode()
+    assert "協力企業に出すか" in body
+    assert body.count('name="is_outsourced"') == 1
+    assert "協力企業に出す工程なら印を付けます。" in body
+
+    response = client_logged_in.post(
+        reverse("masters:process_create"),
+        {"code": "PLT", "name": "作り物のめっき", "sort_order": "30", "is_outsourced": "on"},
+    )
+
+    assert response.status_code == 302
+    assert Process.objects.get(code="PLT").is_outsourced is True
+
+
+@pytest.mark.django_db
+def test_process_update_sets_and_clears_is_outsourced(client_logged_in):
+    plating = Process.objects.create(code="PLT", name="作り物のめっき", sort_order=30, is_outsourced=True)
+    url = reverse("masters:process_update", args=[plating.pk])
+
+    body = client_logged_in.get(url).content.decode()
+    begin = body.rindex("<input", 0, body.index('name="is_outsourced"'))
+    assert " checked" in body[begin : body.index(">", begin)]
+
+    # check を送らなければ偽
+    assert client_logged_in.post(url, _form_data(plating)).status_code == 302
+    plating.refresh_from_db()
+    assert plating.is_outsourced is False
+
+    client_logged_in.post(url, _form_data(plating, is_outsourced="on"))
+    plating.refresh_from_db()
+    assert plating.is_outsourced is True
