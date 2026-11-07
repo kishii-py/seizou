@@ -18,12 +18,15 @@ VPS を 1 台借りて、2 社分の置き場を https で立て、取引先と�
 <python> manage.py seizou_backup
 ```
 
-この命令は、置き場の `backups/` の下に、日時の名前のフォルダ (例 `backups/20261103-020000/`) を 1 つ作ります。中身は次の 4 つです。
+この命令は、置き場の `backups/` の下に、日時の名前のフォルダ (例 `backups/20261103-020000/`) を 1 つ作ります。中身は次の 5 つです。
 
 - データベースの写し (SQLite は `db.sqlite3`、PostgreSQL は `db.pgdump`)
 - 上げたファイル (図面・添付・マニュアルの画像) の写し `media/`
 - 会社の答え `answers.yaml` の写し (置き場にあるときだけ)
-- 中身の一覧 `backup.json` (取った日時・データベースの種類・会社の id・seizou の版・上げたファイルの数)
+- 中身の一覧 `backup.json` (取った日時・データベースの種類・会社の id・seizou の版・上げたファイルの数・各ファイルの sha256・当てた migration)
+- 会社の作り込みの写し `site/` (`settings.py`・`manage.py`・`fields/`・`templates/`・`static/`・`manual/`・`deploy/`・`CLAUDE.md`・`AGENTS.md`・`README.md`。`.env` とデータベースと上げたファイルは入れない)
+
+命令は、写したデータベースを `integrity_check` で確かめ、通らなければ控えを残さずに止まります (PostgreSQL の写しは確かめません)。
 
 `.env` (鍵) は控えに入りません。`.env` だけは、控えとは別の安全な場所に人の手で写してください。中身を人に見せたり、メールやチャットに貼ったりしません。
 
@@ -32,18 +35,30 @@ VPS を 1 台借りて、2 社分の置き場を https で立て、取引先と�
 毎晩 2 時に自動で控えるには、cron に次の 1 行を足します (置き場と Python の道は例です。自分の物に置き換えてください)。
 
 ```
-0 2 * * * cd /path/to/site && /path/to/.venv/bin/python manage.py seizou_backup >> backups/backup.log 2>&1
+0 2 * * * cd /path/to/site && /path/to/.venv/bin/python manage.py seizou_backup --keep 30 >> backups/backup.log 2>&1
 ```
 
-古い控えは自動では消えません。30 日より前の控えを消すには、先に `<python> manage.py seizou_restore --list` で一覧を見てから、次の 1 行を打ちます。
+`--keep 30` を付けると、命令は新しい控えの確かめが通った後に、名前の日時が 30 日より古い控えを消し、消した名前を 1 行ずつ書きます。戻す前の退避 (`<日時>-before-restore`) は消しません。新しい控えが失敗した夜は、何も消しません。
+
+手で消すときは、先に `<python> manage.py seizou_restore --list` で一覧を見てから消します。30 日より前の控えを消す 1 行の例です。
 
 ```
 find /path/to/site/backups -maxdepth 1 -type d -name '20??????-??????*' -mtime +30 -exec rm -r {} +
 ```
 
+毎朝 6 時に点検し、直す物があればメールで届けるには、cron に次の 1 行を足します (道は上と同じく例です)。
+
+```
+0 6 * * * cd /path/to/site && /path/to/.venv/bin/python manage.py seizou_doctor --mail >> backups/doctor.log 2>&1
+```
+
+メールを送るには、設定の画面の「メールの知らせ」の送り方が要ります。宛先は、「試しに送る」と同じ差出人のアドレスです。良い行だけの朝は、メールを送りません。送れなかったときは、その訳を `backups/doctor.log` に 1 行書きます。外の見張りの道具を使う会社は、命令の終わりの番号 1 (直す物がある) を拾えば足ります。
+
 PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります。`pg_dump` が見つからないとき、命令は何も書かずに止まり、手で取るための 1 行を出します。
 
 `settings.py` の `MEDIA_ROOT` が置き場そのものかその親のフォルダを指しているときは、控えに置き場の全部 (`.env` を含む) が入り、戻しが置き場ごと消すのを防ぐため、控えと戻しは何も書かず何も消さずに止まります (`seizou new` が書く `MEDIA_ROOT = BASE_DIR / "media"` では起きません)。
+
+控えの `site/` は、戻しの命令 (`seizou_restore`) では戻しません (置き場のコードを、控えの古い物で上書きしないため)。置き場ごと失ったときは、`seizou new` で置き場を作り直し、控えの `site/` の中身をその置き場に写してから、`seizou_restore` でデータベースと上げたファイルを戻します。`.env` は、別に写しておいた物を戻します。
 
 ## 戻す (復元)
 
@@ -119,6 +134,8 @@ PostgreSQL の置き場では、この確かめは使えません。
 - つながりの鍵 (取引先ごとの鍵の置き場の名前が `.env` にあるか)
 - つながりの受け口の URL (`https://` か。本番の条件だけ)
 - Cookie が HTTPS だけ (セッションと CSRF の Cookie。本番の条件だけ)
+- 最後の控え (36 時間より古いか、置き場を作って 36 時間を過ぎても控えが無ければ直す。本番の条件だけ)
+- ディスクの空き (1GB か最後の控えの 2 倍を切ったら直す。本番の条件だけ)
 
 「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
 
