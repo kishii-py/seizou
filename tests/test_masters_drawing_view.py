@@ -188,7 +188,15 @@ def test_unsafe_part_no_falls_back(logged_in, user):
 
 @pytest.mark.django_db
 def test_other_extension_is_attachment(logged_in, user):
-    item = new_item(user, upload("shape.DXF", b"0\nSECTION\n0\nEOF\n"))
+    # 上限の前に保存された古い行の形 (今は .dxf を図面として受けない。決め 11-08 00:16)。置き場に書いて名前を入れる。
+    from django.core.files.base import ContentFile
+
+    from seizou.masters.models import Item
+
+    item = new_item(user)
+    name = Item._meta.get_field("drawing").storage.save("drawings/shape.DXF", ContentFile(b"0\nSECTION\n0\nEOF\n"))
+    Item.objects.filter(pk=item.pk).update(drawing=name)
+    item.refresh_from_db()
     assert item.drawing.name.endswith(".DXF")
     response = logged_in.get(gate(item, "original.dxf"))
     assert response.status_code == 200

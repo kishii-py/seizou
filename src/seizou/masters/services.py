@@ -10,6 +10,7 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
   作れなかったときも部品と元のファイルは保存し、理由の 1 文を drawing_preview_error に残す (例外にしない)。
+  受けない形 (PDF・TIFF・PNG・JPEG の外。CAD の .dxf・.dwg は添付で持つ) と 20MB を超える図面は、読む前に ValueError (_refuse_bad_drawing)。
 - 部品の図面を新しいファイルに差し替えたら、前の図面を版 (ItemDrawingVersion) に残す (ファイルは写さず名前の字を持つ)。
   版に戻すのは restore_drawing_version。
 - 使用停止 (active が偽。N135): 消さずに候補から外す。候補の母集団は active_items・active_partners、
@@ -187,6 +188,22 @@ PREVIEW_MAX_SIDE = 2000
 DRAWING_MAX_PAGES = 20
 #: Pillow で読む図面の拡張子 (大文字も)。ほかの形 (PDF など) は読まずに link だけ。
 DRAWING_IMAGE_SUFFIXES = (".tif", ".tiff", ".png", ".jpg", ".jpeg")
+#: 図面として受ける拡張子 (大文字も)。この外の形は保存しない (_refuse_bad_drawing)。
+DRAWING_SUFFIXES = (".pdf", ".tif", ".tiff", ".png", ".jpg", ".jpeg")
+#: 図面として受ける大きさの上限 (バイト)。添付 (attachments の MAX_BYTES) と同じ 20MB。masters は attachments を import しない。
+DRAWING_MAX_BYTES = 20 * 1024 * 1024
+#: CAD のファイルの拡張子。図面としては受けず、部品の詳細の「添付ファイル」の枠で付ける。
+CAD_SUFFIXES = (".dxf", ".dwg")
+DRAWING_BAD_SUFFIX_MESSAGE = (
+    "保存できません。図面ファイルの形式が違います。PDF・TIFF・PNG・JPEG のどれかのファイルを選んでください。"
+)
+DRAWING_CAD_MESSAGE = (
+    "保存できません。CAD のファイル (.dxf・.dwg) は図面ファイルとしては付けられません。"
+    "部品を保存してから、詳細の「添付ファイル」の枠で付けてください。"
+)
+DRAWING_TOO_BIG_FILE_MESSAGE = (
+    "保存できません。図面ファイルが 20MB を超えています。解像度を下げるか分けてから選び直してください。"
+)
 #: 表示用の絵を作れなかったときの文 (本体の決めの字)。Pillow の例外の文は足さない。
 DRAWING_BROKEN_MESSAGE = "図面の表示用の絵は作れませんでした (ファイルが壊れています)。元のファイルは保存してあります。"
 DRAWING_TOO_LARGE_MESSAGE = (
@@ -208,6 +225,27 @@ _PIXEL_LIMIT_LOCK = threading.Lock()
 def _is_new_upload(value):
     """新しく上げたファイルか。Django の File で、表に既にある FieldFile でない物 (画面の入力では UploadedFile)。"""
     return isinstance(value, File) and not isinstance(value, FieldFile)
+
+
+def _refuse_bad_drawing(file):
+    """新しく上げた図面の名前の拡張子と大きさを見て、受けない物は日本語の ValueError にする。中身は読まない (Image.open の前)。
+
+    拡張子 (小文字にして見る) が CAD_SUFFIXES なら DRAWING_CAD_MESSAGE、DRAWING_SUFFIXES に無ければ
+    DRAWING_BAD_SUFFIX_MESSAGE、大きさが DRAWING_MAX_BYTES を超えれば DRAWING_TOO_BIG_FILE_MESSAGE。
+    _with_drawing_preview が create_item・update_item の transaction.atomic の前で呼ぶので、断ると行もファイルも残らない。
+    表に既にある図面 (上限の前に保存された古い行の .dxf など) は見ない (今のまま開ける)。
+    訳: 図面として受けるのは PDF・TIFF・PNG・JPEG の 20MB までにし、CAD のファイル (.dxf・.dwg) は図面としては受けず添付で持つ。
+    1 枚の図面で同じ VPS の 2 社のサーバーが落ちるのを止めるため (表示用の絵を作る形だけを受ける)。
+    出所 = 本人の決め 11-08 00:16 (断る (おすすめ)・CAD は添付で持つ (おすすめ))。
+    変えてよい条件 = 本人が決め直したとき、または VPS のメモリの目安を変えたとき。
+    """
+    suffix = os.path.splitext(getattr(file, "name", "") or "")[1].lower()
+    if suffix in CAD_SUFFIXES:
+        raise ValueError(DRAWING_CAD_MESSAGE)
+    if suffix not in DRAWING_SUFFIXES:
+        raise ValueError(DRAWING_BAD_SUFFIX_MESSAGE)
+    if (getattr(file, "size", None) or 0) > DRAWING_MAX_BYTES:
+        raise ValueError(DRAWING_TOO_BIG_FILE_MESSAGE)
 
 
 def _drawing_preview(file):
@@ -310,7 +348,8 @@ def _with_drawing_preview(data):
 
     読むのは表と置き場に書く前。足した 3 つは部品の行と元のファイルと一緒に 1 回で書く。
     2 ページ目から後の PNG は、名前が表示用の保存の後に決まるので、呼ぶ側が保存の後に _save_preview_pages で書く。
-    - 新しく上げたファイル: 読んで、表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。ページ数は 1 にし直す。
+    - 新しく上げたファイル: 拡張子と大きさを _refuse_bad_drawing で見て (受けない物は ValueError)、読んで、
+      表示用の PNG (作れたとき) と誤りの文 (作れなかったとき) を足す。ページ数は 1 にし直す。
     - 今の FieldFile (選び直していない) と、鍵が無いとき: data のまま (4 つとも変えない)。
     - False・None・空 (入力の画面の「消す」): 図面と 2 つを空の字にし、ページ数を 1 にする。
     """
@@ -318,6 +357,7 @@ def _with_drawing_preview(data):
         return data, []
     drawing = data["drawing"]
     if _is_new_upload(drawing):
+        _refuse_bad_drawing(drawing)
         png, error, pages = _drawing_preview(drawing)
         preview = ""
         if png is not None:
