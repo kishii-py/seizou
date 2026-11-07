@@ -94,12 +94,11 @@ def test_partner_and_process_update_order_stays(client_logged_in, no_registratio
 
 @pytest.mark.django_db
 def test_drawing_restore_order_stays(client_logged_in, no_registration):
-    # 属性 last_fields の無い form (図面を版に戻す) は今の並び (戻す版・備考の後ろに会社ごとの項目) のまま
+    # 図面を版に戻す form は adds_company_fields = False (予備の束 R7 = GA-04。直しても保存されない会社ごとの項目を出さない) なので、
+    # 会社ごとの項目を登録していても 戻す版・備考 だけ
     company_fields.register("masters.Item", "fields.ItemExt", ITEM_FIELDS["a_machining"])
     item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
     assert field_names(client_logged_in, "masters:item_drawing_restore", item.pk) == [
         "version",
         "note",
-        "ext__ext01",
-        "ext__ext02",
     ]
