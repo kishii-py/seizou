@@ -22,7 +22,8 @@ class Feedback(models.Model):
         ("common", "要望"),
         ("usage", "使い方"),
     ]
-    STATUS_CHOICES = [("draft", "下書き"), ("confirmed", "確認済み"), ("sent", "送った"), ("fixed", "直した")]
+    #: 見送った (dismissed) は、GitHub で対応しない・重複として閉じた Issue の件 (決め 11-07 09:0x〜09:4x)。直したと分けて、書いた人に見送りを知らせる
+    STATUS_CHOICES = [("draft", "下書き"), ("confirmed", "確認済み"), ("sent", "送った"), ("fixed", "直した"), ("dismissed", "見送った")]
 
     kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES, default="common")
     screen = models.CharField("画面 (URL の名前)", max_length=100, blank=True)
@@ -49,9 +50,24 @@ class Feedback(models.Model):
     fixed_at = models.DateTimeField("直した日時", null=True, blank=True)
     fixed_note = models.CharField("直した場所", max_length=200, blank=True)
     fixed_seen_at = models.DateTimeField("知らせた日時", null=True, blank=True)
+    #: 見送りの日時と知らせた印は直したと別の列に持つ (直した日時の意味を変えない。決め 11-07 09:0x〜09:4x の 3)
+    dismissed_at = models.DateTimeField("見送った日時", null=True, blank=True)
+    dismissed_note = models.CharField("見送った理由の場所", max_length=200, blank=True)
+    dismissed_seen_at = models.DateTimeField("見送りを知らせた日時", null=True, blank=True)
+    #: 閉じた Issue のマイルストーンの名前 (直る版)。会社が入れている版がこれより古い間は送ったのまま、世話役に見せる (同じ決めの 4)
+    fix_version = models.CharField("直る版", max_length=20, blank=True)
 
-    #: 土台の詳細と小窓に出さない項目 (JSON をそのまま出さない。会話の記録は詳細のテンプレートが描く)
-    detail_hidden_fields = ("transcript", "fixed_at", "fixed_note", "fixed_seen_at")
+    #: 土台の詳細と小窓に出さない項目 (JSON をそのまま出さない。会話の記録・直した・見送った・直る版は詳細のテンプレートが節で描く)
+    detail_hidden_fields = (
+        "transcript",
+        "fixed_at",
+        "fixed_note",
+        "fixed_seen_at",
+        "dismissed_at",
+        "dismissed_note",
+        "dismissed_seen_at",
+        "fix_version",
+    )
 
     class Meta:
         verbose_name = "フィードバック"

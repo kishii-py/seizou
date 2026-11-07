@@ -361,3 +361,90 @@ def test_update_screen_is_limited_to_visible_rows(client, plain, other, manager)
     assert response.status_code == 302 and reverse("core:login") in response["Location"]
 
     assert not hasattr(BaseFormView, "get_queryset")
+
+
+# ---- 見送ったと直る版 (依頼書 N322。決め 11-07 09:0x〜09:4x) ----
+
+ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
+DISMISSED_SENTENCE = "この一言は、GitHub で対応しないとして閉じられました。理由は Issue に書かれています。"
+
+
+@pytest.fixture
+def installed(monkeypatch):
+    """会社が入れている版を差し替える (既定 0.1.0)。返す関数で版を変える。"""
+    from seizou.core import manual
+
+    current = {"value": "0.1.0"}
+    monkeypatch.setattr(manual, "package_version", lambda: current["value"])
+
+    def set_version(value):
+        current["value"] = value
+
+    return set_version
+
+
+def test_detail_shows_dismissed_section(client, plain, manager):
+    row = make(plain, "見送った題")
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    services._write_dismissed(row, "GitHub の Issue #7 (閉じた日 2026-11-06。理由 対応しない)")
+    other = make(plain, "下書きの題")
+
+    client.force_login(plain)
+    html = html_of(client.get(f"/feedback/{row.pk}/"))
+    assert 'id="feedback-dismissed"' in html and "見送りました" in html
+    assert DISMISSED_SENTENCE in html
+    assert "GitHub の Issue #7 (閉じた日 2026-11-06。理由 対応しない)" in html
+    assert f'href="{ISSUE_URL}" target="_blank" rel="noopener"' in html
+    assert 'id="feedback-fixed"' not in html
+    assert 'id="feedback-dismissed"' not in html_of(client.get(f"/feedback/{other.pk}/"))
+
+    client.force_login(manager)
+    html = html_of(client.get(f"/feedback/{row.pk}/"))
+    assert 'id="feedback-dismissed"' in html
+    assert "今の状態: 見送った" in html
+    assert "直したと記録する" not in html and f'action="/feedback/{row.pk}/fixed/"' not in html
+    assert "送ったにする" not in html and "確認済みにする" not in html
+
+
+def test_fix_version_line_only_for_manager(client, plain, manager, installed):
+    row = make(plain, "版待ちの題")
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    Feedback.objects.filter(pk=row.pk).update(fix_version="0.1.1")
+    detail = f"/feedback/{row.pk}/"
+
+    client.force_login(manager)
+    html = html_of(client.get(detail))
+    assert 'id="feedback-fix-version"' in html
+    assert "直る版 0.1.1 が出ています。この会社は 0.1.0 です。版を入れた後の取り込みで「直した」になります。" in html
+
+    installed("")
+    assert "直る版 0.1.1 が出ています。この会社の版が分かりません。" in html_of(client.get(detail))
+
+    client.force_login(plain)
+    html = html_of(client.get(detail))
+    assert 'id="feedback-fix-version"' not in html and "直る版 0.1.1 が出ています" not in html
+
+    plain_row = make(plain, "版待ちでない題")
+    services.mark_sent(plain_row, manager, sent_url=ISSUE_URL)
+    client.force_login(manager)
+    assert 'id="feedback-fix-version"' not in html_of(client.get(f"/feedback/{plain_row.pk}/"))
+
+
+def test_list_has_fix_version_column_and_dismissed_filter(client, plain, manager):
+    waiting = make(plain, "版待ちの題")
+    services.mark_sent(waiting, manager, sent_url=ISSUE_URL)
+    Feedback.objects.filter(pk=waiting.pk).update(fix_version="0.1.1")
+    dismissed = make(plain, "見送った題")
+    services.mark_sent(dismissed, manager, sent_url=ISSUE_URL)
+    services._write_dismissed(dismissed, "GitHub の Issue #7")
+
+    client.force_login(plain)
+    html = html_of(client.get("/feedback/"))
+    assert re.search(r'href="\?&sort=fix_version"[^>]*>直る版<', html)
+    assert html.index(">直る版<") > html.index('href="?&sort=status"')
+    assert "0.1.1" in html
+    assert '<option value="dismissed"' in html and "見送った" in html
+
+    html = html_of(client.get("/feedback/?status=dismissed"))
+    assert "見送った題" in html and "版待ちの題" not in html
+    assert '<option value="dismissed" selected>' in html

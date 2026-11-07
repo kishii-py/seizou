@@ -346,3 +346,107 @@ def test_list_marks_fixed_rows(client, plain, manager):
     assert "<html" not in html
     assert html.count('<tr id="row-') == 1
     assert html.count("badge badge-soft badge-success") == 1
+
+
+# ---- 5. 見送った (依頼書 N322。決め 11-07 09:0x〜09:4x) のログインのときの知らせ ----
+
+DISMISSED_NOTICE = "あなたの一言は見送りになりました"
+#: お知らせの toast の頭 (core/_toasts.html の info の枝)
+INFO_TOAST = '<div class="seizou-toast pointer-events-none relative flex w-80 items-start gap-4 overflow-hidden rounded-xl bg-info/80'
+ISSUE_URL = "https://github.com/example-owner/example-repo/issues/7"
+
+
+def dismiss(row, manager, note="GitHub の Issue #7 (閉じた日 2026-11-06。理由 対応しない)"):
+    """送ったにしてから、取り込みと同じ関数で見送ったにする (本物の GitHub は呼ばない)。"""
+    services.mark_sent(row, manager, sent_url=ISSUE_URL)
+    return services._write_dismissed(row, note)
+
+
+def test_unseen_dismissed_and_notice_text(plain, other, manager):
+    first = dismiss(make(plain, "受注の一覧で並びが戻る"), manager)
+    theirs = dismiss(make(other, "ほかの人の題"), manager)
+    second = dismiss(make(plain, "出荷の画面で日付がずれる"), manager)
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "", manager)
+
+    rows = services.unseen_dismissed(plain)
+    assert [r.pk for r in rows] == [second.pk, first.pk]
+    assert services.unseen_dismissed(AnonymousUser()) == []
+    assert services.dismissed_notice([rows[0]]) == (
+        "あなたの一言は見送りになりました: 「出荷の画面で日付がずれる」(1 件)。"
+        "理由は GitHub の Issue に書かれています (詳細の「送った先」から開けます)。"
+    )
+    assert "「出荷の画面で日付がずれる」ほか (2 件)" in services.dismissed_notice(rows)
+    assert services.dismissed_notice([]) == ""
+
+    before = {row.pk: row.updated_at for row in rows}
+    assert services.mark_dismissed_seen(rows, other) == 0
+    assert services.mark_dismissed_seen(rows, plain) == 2
+    for row in rows:
+        row.refresh_from_db()
+        assert row.dismissed_seen_at is not None
+        assert row.updated_at == before[row.pk]
+    assert services.mark_dismissed_seen(rows, plain) == 0
+    theirs.refresh_from_db()
+    assert theirs.dismissed_seen_at is None
+    fixed.refresh_from_db()
+    assert fixed.fixed_seen_at is None
+
+
+def test_login_shows_dismissed_notice_once(client, plain, manager):
+    row = dismiss(make(plain, "受注の一覧で並びが戻る"), manager)
+
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert DISMISSED_NOTICE in html
+    assert "「受注の一覧で並びが戻る」(1 件)" in html
+    assert NOTICE not in html
+    row.refresh_from_db()
+    assert row.dismissed_seen_at is not None
+    assert row.fixed_seen_at is None
+
+    assert DISMISSED_NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert DISMISSED_NOTICE not in html_of(client.get("/feedback/"))
+
+
+def test_dismissed_notice_only_for_author_and_real_login(client, plain, other, manager):
+    row = dismiss(make(plain), manager)
+
+    assert login(client, "other").status_code == 302
+    assert DISMISSED_NOTICE not in html_of(client.get("/feedback/"))
+    client.logout()
+    client.force_login(plain)
+    assert DISMISSED_NOTICE not in html_of(client.get("/feedback/"))
+    row.refresh_from_db()
+    assert row.dismissed_seen_at is None
+
+    client.logout()
+    assert login(client, "tester").status_code == 302
+    assert DISMISSED_NOTICE in html_of(client.get("/feedback/"))
+
+
+def test_login_shows_fixed_and_dismissed_as_two_notices(client, plain, manager):
+    fixed = make(plain, "直した題")
+    services.mark_fixed(fixed, "版 0.1.1 の受注の一覧", manager)
+    dismissed = dismiss(make(plain, "見送った題"), manager)
+
+    assert login(client, "tester").status_code == 302
+    html = html_of(client.get("/feedback/"))
+    assert NOTICE in html and DISMISSED_NOTICE in html
+    assert html.count(INFO_TOAST) == 2
+    assert html.index(NOTICE) < html.index(DISMISSED_NOTICE)
+    fixed.refresh_from_db()
+    dismissed.refresh_from_db()
+    assert fixed.fixed_seen_at is not None and dismissed.dismissed_seen_at is not None
+
+    html = html_of(client.get("/feedback/"))
+    assert NOTICE not in html and DISMISSED_NOTICE not in html
+
+
+def test_dismissed_status_in_choices_and_filter():
+    assert ("dismissed", "見送った") in Feedback.STATUS_CHOICES
+    assert "dismissed" in services.STATUSES
+    assert services.list_filter({"status": "dismissed"}) == {"status": "dismissed", "kind": ""}
+    assert {"dismissed_at", "dismissed_note", "dismissed_seen_at", "fix_version"} <= set(Feedback.detail_hidden_fields)

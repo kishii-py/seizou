@@ -951,3 +951,198 @@ def test_device_screen_hides_section_when_connected(client, manager, fake, clien
     html = html_of(client.get(SETUP))
     assert 'id="github-device"' not in html
     assert "Authorized OAuth Apps" in html and "Revoke" in html
+# ---------------------------------------------------------------- 閉じた理由と直る版 (依頼書 N322。決め 11-07 09:0x〜09:4x)
+
+#: 取り込みの返す物の鍵 (順もこれ)
+SYNC_KEYS = ["見た", "直した", "見送った", "版待ち", "版の印なし", "読めなかった"]
+
+
+def closed_issue(reason, milestone=None, closed_at="2026-11-06T03:00:00Z", url=ISSUE_URL):
+    """閉じた Issue の GitHub の返事 (state_reason と milestone つき)。milestone は名前の字か None。"""
+    return Answer(
+        200,
+        {
+            "state": "closed",
+            "state_reason": reason,
+            "closed_at": closed_at,
+            "html_url": url,
+            "milestone": {"title": milestone, "number": 3} if milestone else None,
+        },
+    )
+
+
+def sync_counts(**change):
+    """取り込みの返す物の期待 (書かない鍵は 0)。"""
+    return {key: change.get(key, 0) for key in SYNC_KEYS}
+
+
+@pytest.fixture
+def version(monkeypatch):
+    """会社が入れている版を差し替える (既定 0.1.0)。返す関数で版を変える。"""
+    from seizou.core import manual
+
+    current = {"value": "0.1.0"}
+    monkeypatch.setattr(manual, "package_version", lambda: current["value"])
+
+    def set_version(value):
+        current["value"] = value
+
+    return set_version
+
+
+def test_issue_state_returns_reason_and_milestone(fake):
+    fake.issues[7] = closed_issue("not_planned", milestone="0.1.1")
+    fake.issues[8] = Answer(200, {"state": "open", "closed_at": None, "html_url": "x"})
+
+    assert github.issue_state("example-owner/example-repo", 7) == {
+        "state": "closed",
+        "closed_at": "2026-11-06T03:00:00Z",
+        "html_url": ISSUE_URL,
+        "state_reason": "not_planned",
+        "milestone": "0.1.1",
+    }
+    state = github.issue_state("example-owner/example-repo", 8)
+    assert (state["state_reason"], state["milestone"]) == ("", "")
+
+
+@pytest.mark.parametrize(("reason", "words"), [("not_planned", "対応しない"), ("duplicate", "重複")])
+def test_sync_not_planned_and_duplicate_are_dismissed(manager, plain, fake, version, reason, words):
+    row = make(plain, "見送られる件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = closed_issue(reason, milestone="0.1.1")
+
+    counts = services.sync_github(manager)
+
+    assert counts == sync_counts(見た=1, 見送った=1)
+    assert list(counts) == SYNC_KEYS
+    row.refresh_from_db()
+    assert row.status == "dismissed"
+    assert row.dismissed_note == f"GitHub の Issue #7 (閉じた日 2026-11-06。理由 {words})"
+    assert row.dismissed_at is not None and row.dismissed_seen_at is None
+    assert row.fixed_at is None and row.fixed_note == "" and row.fix_version == ""
+    assert services.unseen_fixed(plain) == []
+    assert [r.pk for r in services.unseen_dismissed(plain)] == [row.pk]
+
+    # 見送った件は送ったでないので、次の取り込みでは見ない
+    assert services.sync_github(manager) == sync_counts()
+
+
+def test_sync_completed_waits_for_installed_version(manager, plain, fake, version):
+    row = make(plain, "直る版を待つ件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = closed_issue("completed", milestone="0.1.1")
+
+    assert services.sync_github(manager) == sync_counts(見た=1, 版待ち=1)
+    row.refresh_from_db()
+    assert row.status == "sent"
+    assert row.fix_version == "0.1.1"
+    assert row.fixed_at is None and row.dismissed_at is None
+    assert services.unseen_fixed(plain) == [] and services.unseen_dismissed(plain) == []
+
+    # 会社がその版を入れた後の取り込みで直したになる
+    version("0.1.1")
+    assert services.sync_github(manager) == sync_counts(見た=1, 直した=1)
+    row.refresh_from_db()
+    assert row.status == "fixed"
+    assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06。直る版 0.1.1)"
+    assert [r.pk for r in services.unseen_fixed(plain)] == [row.pk]
+
+
+@pytest.mark.parametrize("installed", ["0.1.1", "0.2.0"])
+def test_sync_completed_with_installed_version_is_fixed(manager, plain, fake, version, installed):
+    row = make(plain, "直った件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = closed_issue("completed", milestone="0.1.1")
+    version(installed)
+
+    assert services.sync_github(manager) == sync_counts(見た=1, 直した=1)
+    row.refresh_from_db()
+    assert row.status == "fixed"
+    assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06。直る版 0.1.1)"
+    assert row.fixed_at is not None and row.dismissed_at is None
+
+
+def test_sync_completed_without_milestone_stays_sent(manager, plain, fake, version):
+    row = make(plain, "版の印の無い件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = closed_issue("completed")
+
+    assert services.sync_github(manager) == sync_counts(見た=1, 版の印なし=1)
+    row.refresh_from_db()
+    assert row.status == "sent"
+    assert row.fix_version == ""
+    assert row.fixed_at is None and row.dismissed_at is None
+
+
+def test_sync_without_reason_is_fixed_as_before(manager, plain, fake, version):
+    row = make(plain, "理由の無い閉じ方の件", status="sent", sent_url=ISSUE_URL)
+    fake.issues[7] = closed_issue(None, milestone="9.9.9")
+
+    assert services.sync_github(manager) == sync_counts(見た=1, 直した=1)
+    row.refresh_from_db()
+    assert row.status == "fixed"
+    assert row.fixed_note == "GitHub の Issue #7 (閉じた日 2026-11-06)"
+
+
+@pytest.mark.parametrize(
+    ("current", "needed", "expected"),
+    [
+        ("0.1.1", "0.1.1", True),
+        ("0.1.0", "0.1.1", False),
+        ("0.2.0", "0.1.9", True),
+        ("", "0.1.1", False),
+        ("0.1.1", "", True),
+        ("0.1.1rc1", "0.1.1", True),
+    ],
+)
+def test_version_at_least(current, needed, expected):
+    assert services.version_at_least(current, needed) is expected
+
+
+def test_write_dismissed_refuses_fixed_and_dismissed(manager, plain):
+    fixed = make(plain, "直した件", status="sent", sent_url=ISSUE_URL)
+    services.mark_fixed(fixed, "", manager)
+    with pytest.raises(ValueError, match="既に直した"):
+        services._write_dismissed(fixed, "GitHub の Issue #7")
+
+    row = make(plain, "見送る件", status="sent", sent_url=ISSUE_URL)
+    services._write_dismissed(row, "GitHub の Issue #7")
+    with pytest.raises(ValueError, match="既に見送った"):
+        services._write_dismissed(row, "GitHub の Issue #7")
+
+
+def six_kinds(plain, fake):
+    """取り込みの 6 つの数が全部 1 以上になる送った件 (#7 直した・#8 見送った・#9 版待ち・#10 版の印なし・#11 読めなかった・#12 開いている)。"""
+    base = "https://github.com/example-owner/example-repo/issues/"
+    for number in range(7, 13):
+        make(plain, f"件 {number}", status="sent", sent_url=f"{base}{number}")
+    fake.issues[7] = closed_issue(None, url=f"{base}7")
+    fake.issues[8] = closed_issue("not_planned", url=f"{base}8")
+    fake.issues[9] = closed_issue("completed", milestone="0.1.1", url=f"{base}9")
+    fake.issues[10] = closed_issue("completed", url=f"{base}10")
+    fake.issues[12] = Answer(200, {"state": "open", "closed_at": None, "html_url": f"{base}12"})
+
+
+SIX_LINE = "GitHub を見ました: 見た 6 件・直した 1 件・見送った 1 件・版待ち 1 件・版の印なし 1 件・読めなかった 1 件"
+
+
+def test_sync_command_writes_six_numbers(plain, fake, version):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    six_kinds(plain, fake)
+    out = StringIO()
+
+    call_command("seizou_feedback_sync", stdout=out)
+
+    assert out.getvalue().strip() == SIX_LINE
+    assert Feedback.objects.filter(status="dismissed").count() == 1
+    assert Feedback.objects.filter(status="sent", fix_version="0.1.1").count() == 1
+
+
+def test_sync_endpoint_shows_six_numbers(client, manager, plain, fake, version):
+    connect(manager, fake)
+    six_kinds(plain, fake)
+    client.force_login(manager)
+
+    response = client.post("/feedback/github/sync/")
+
+    assert response.status_code == 302 and response["Location"] == "/feedback/"
+    assert SIX_LINE in html_of(client.get("/feedback/"))

@@ -46,7 +46,7 @@ class FeedbackListView(BaseListView):
     """
 
     model = Feedback
-    columns = ("created_at", "kind", "title", "screen", "status", "created_by", "input_tokens", "output_tokens")
+    columns = ("created_at", "kind", "title", "screen", "status", "fix_version", "created_by", "input_tokens", "output_tokens")
     search_fields = ("title", "problem", "situation", "wish")
     ordering = ("-created_at", "-pk")
     screen_name = "フィードバック"
@@ -222,7 +222,7 @@ def github_send(request, pk):
 @login_required
 @require_POST
 def github_sync(request):
-    """送った物の GitHub の Issue を読み、閉じた物を直したにする (世話役だけ。断られたら赤の知らせ)。一覧へ戻る。"""
+    """送った物の GitHub の Issue を読み、閉じた物を直した・見送った・版待ちに分ける (世話役だけ。断られたら赤の知らせ)。一覧へ戻る。"""
     try:
         counts = services.sync_github(request.user)
     except ValueError as exc:
@@ -230,7 +230,8 @@ def github_sync(request):
     else:
         messages.success(
             request,
-            f"GitHub を見ました: 見た {counts['見た']} 件・直した {counts['直した']} 件・読めなかった {counts['読めなかった']} 件",
+            f"GitHub を見ました: 見た {counts['見た']} 件・直した {counts['直した']} 件・見送った {counts['見送った']} 件・"
+            f"版待ち {counts['版待ち']} 件・版の印なし {counts['版の印なし']} 件・読めなかった {counts['読めなかった']} 件",
         )
     return HttpResponseRedirect(reverse("feedback:feedback_list"))
 
