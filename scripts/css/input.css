@@ -114,6 +114,21 @@ body > .ts-dropdown [data-select-create]:hover {
   background-color: var(--color-base-200);
 }
 
+/* スマホの欄の字の大きさ (forms-03。画面の直し 15 件の 9。本人の決め 11-07 21:0x)。iOS の Safari は、字が 16px より小さい欄に
+   焦点が移ると画面を拡大する (WebKit の動き。実機は未確認)。幅 639px 以下では、字の欄・選ぶ欄・複数行の欄 (daisyUI の 14px、
+   input-sm は 12px) と、字を打って探す欄の包みと打つ欄 (Tom Select の 13px) の字を 16px にする。欄の高さ (2.5rem) は変えない。
+   層の外の決まりなので、daisyUI の input-sm と utilities の text-xs より強い。Tom Select は部品の CSS (vendor/tom-select.css の
+   .ts-control と .ts-control input の 13px) が app.css より後に読まれるので、上の包みの決まりと同じく .ts-wrapper を頭に付けて詳しさで勝つ。 */
+@media (max-width: 639px) {
+  .input,
+  .select,
+  .textarea,
+  .ts-wrapper .ts-control,
+  .ts-wrapper .ts-control input {
+    font-size: 16px;
+  }
+}
+
 /* 自動の更新で、前の更新と状態が違う物 (発注の一覧の行の欄・発注の詳細の見出しの帯と明細の行) を一瞬だけ色づける。
    2 秒で元の地の色に戻る (JS を使わない)。class は purchasing のテンプレートが if の tag で丸ごと足す (R19)。 */
 @keyframes seizou-changed {
