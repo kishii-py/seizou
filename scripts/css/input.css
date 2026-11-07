@@ -255,52 +255,49 @@ body > .ts-dropdown [data-select-create]:hover {
   }
 }
 
-/* 一覧の表の箱の右の端のぼかし (初見テスト R5 の候補 C34。C34-1 = a)。右に続きがあるときだけ、箱の右の端に薄い灰のぼかしを出す。
-   印: 表の箱 (core/_rows.html と、その写しの 3 つ) の data-scroll-hint。js/seizou-scroll-hint.js が、右に続きがあるときだけ
-   箱を包む要素 (箱の親) に data-more-right を付け、右の端まで送ると外す。溢れの無い幅では付かない。
-   箱そのものの ::after は箱の中身と一緒に送られて動くので、包みの ::after で箱の上に重ねる (本人が見て選んだ見本と同じ形)。
-   形 (見本の数): 幅 40px、左の透明から右の灰 (rgba(120,120,120,0.28)) へ移る帯。箱の枠の 1px の内側に置き、右の角は箱の丸み (rounded-lg = 0.5rem) に合わせる。
-   見出しの行 (z-index 3) と止めた欄 (2) より上に重ね (4)、pointer-events: none で下の欄を押せるままにする。
-   バーの有無は CSS では分からないので、バーがあるときはバーの上にも重なる (見本は箱の中の見える所だけに描いた。違いは本体が絵で見る)。 */
+/* 一覧の表の箱の「右に続きがある」印 (初見テスト R5 の候補 C34 = C34-1 = a。本人の決め 11-07 18:4x「他の部分はフラットなのに影があると統一感がない」
+   → 19:1x「進めて」で、右の端と下の端の灰のぼかしをやめ、右は「→」のボタン、下は箱のいつも見えるスクロールのバー (上の ::-webkit-scrollbar) にした。
+   合計の行 (tfoot) にまで影が掛かっていた件もこれで無くなる)。
+   印: 表の箱 (core/_rows.html と、その写しの 3 つ・横断の検索 core/search.html・進捗の盤 progress/progress_board.html) の data-scroll-hint。
+   js/seizou-scroll-hint.js が、右に続きがあるときだけ箱を包む要素 (箱の親) に data-more-right を付け、包みの中に button[data-scroll-more]
+   (白い丸の中の「→」。押すと 1 画面分右へ送る) を 1 つ作る。右の端まで送ると外れ、ボタンは隠れる。溢れの無い幅では付かない。
+   形: 直径 2rem の白い丸、1px の線 (base-300)、影なし (ほかの面と同じく平ら)。箱の右の端の縦の中央 (包みの子は箱だけなので、包みの 50% = 箱の中央)。
+   右から 1rem (箱の中の縦のバーに重ねない)。見出しの行 (z-index 3) と止めた欄 (2) より上 (4)。指を乗せると地を base-200、
+   キーボードで選ぶと主色の輪。data-more-below (下に続きがある印) は JS が付けるが、今は描かない (盤の見た目を足すときの口として残す)。 */
 [data-more-right] {
   position: relative;
 }
-[data-more-right]::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  bottom: 1px;
-  width: 40px;
-  z-index: 4;
-  pointer-events: none;
-  background: linear-gradient(to right, rgba(120, 120, 120, 0), rgba(120, 120, 120, 0.28));
-  border-radius: 0 calc(0.5rem - 1px) calc(0.5rem - 1px) 0;
+[data-scroll-more] {
+  display: none;
 }
-
-/* 一覧の表の箱の下の端のぼかし (初見テスト R5 の候補 C23。決め C23-2 = a)。下に続きがあるときだけ、箱の下の端に薄い灰のぼかしを出し、最後まで送ると消す。
-   印: 右の端と同じ箱の data-scroll-hint (core/_rows.html と、その写しの 3 つ・横断の検索 core/search.html・進捗の盤 progress/progress_board.html)。
-   js/seizou-scroll-hint.js が、下に続きがあるときだけ箱を包む要素 (箱の親) に data-more-below を付け、下の端まで送ると外す。溢れの無い高さでは付かない。
-   包みの ::after は右の端のぼかしが使うので、下の端は包みの ::before に描く (同じ ::after に描くと、右と下の両方に続きがあるときに 1 つしか出ない)。
-   形 (見本の数): 高さ 40px、上の透明から下の灰 (rgba(120,120,120,0.28)) へ移る帯。箱の枠の 1px の内側に置き、下の 2 つの角は箱の丸み (rounded-lg = 0.5rem) に合わせる。
-   重ね方は右の端と同じ (見出しの行 (z-index 3) と止めた欄 (2) より上の 4。pointer-events: none で下の欄を押せるままにする)。
-   見本は箱の中の見える幅だけに描き、左下の角だけを丸めた。CSS ではバーの幅が分からないので、縦のバーと横のバーの上にも重なり、
-   右と下の両方に続きがあるときは右下の角で 2 つのぼかしが重なって少し濃くなる (違いは本体が絵で見る)。
-   右の端の決まりと 1 つの段に並べず、別の段に書く。 */
-[data-more-below] {
-  position: relative;
-}
-[data-more-below]::before {
-  content: "";
+[data-more-right] > [data-scroll-more] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: absolute;
-  left: 1px;
-  right: 1px;
-  bottom: 1px;
-  height: 40px;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-base-300);
+  border-radius: 9999px;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
   z-index: 4;
-  pointer-events: none;
-  background: linear-gradient(to bottom, rgba(120, 120, 120, 0), rgba(120, 120, 120, 0.28));
-  border-radius: 0 0 calc(0.5rem - 1px) calc(0.5rem - 1px);
+  cursor: pointer;
+}
+[data-more-right] > [data-scroll-more]:hover {
+  background: var(--color-base-200);
+}
+[data-more-right] > [data-scroll-more]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+[data-scroll-more] > svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 /* 上の帯 (ヘッダー) の色。人ごとの表示の設定 (決め 11-05 21:2x。N167)。名前は core.display.HEADER_COLORS の鍵と同じ字。

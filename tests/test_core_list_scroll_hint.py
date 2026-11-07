@@ -1,5 +1,6 @@
-"""一覧の表の左の 1 列目を箱の左に止め、右に続きがあるときだけ箱の右の端にぼかしを出す (初見テスト R5 の候補 C34 の本 B。C34-1 = a)。
-下に続きがあるときだけ箱の下の端にもぼかしを出す (候補 C23。決め C23-2 = a。横断の検索と進捗の盤の箱を含む。試験は末尾)。
+"""一覧の表の左の 1 列目を箱の左に止め、右に続きがあるときだけ箱の右の端に「→」のボタンを出す (初見テスト R5 の候補 C34 の本 B。C34-1 = a。
+本人の決め 11-07 18:4x〜19:1x で、右の端と下の端の灰のぼかしをやめ、右は「→」のボタン、下は箱のいつも見えるスクロールのバーにした)。
+下に続きがある印 (data-more-below) は JS が付けるが、CSS は描かない (候補 C23。決め C23-2 = a。横断の検索と進捗の盤の箱を含む。試験は末尾)。
 
 表の固定の class (seizou-pin-first)・箱の印 (data-scroll-hint) と包み・static の js/seizou-scroll-hint.js の字と base.html の読み込み・
 scripts/css/input.css の決まりの字を見る。JS は動かさない。止まり方と色とぼかしの出し入れはブラウザで見る物なので、
@@ -129,6 +130,13 @@ def test_scroll_hint_js_is_plain_and_only_touches_data_attributes():
         '"htmx:afterSettle"',
         "setAttribute",
         "removeAttribute",
+        # 「→」のボタン (11-07 の決め): 包みに 1 つ作り (createElement。絵は createElementNS)、押すと箱を scrollBy で右へ送る
+        'data-scroll-more',
+        'document.createElement("button")',
+        "createElementNS",
+        "m9 6 6 6-6 6",
+        "scrollBy",
+        '"click"',
     ):
         assert word in text, word
     for word in ("classList", "className", "innerHTML", "insertAdjacentHTML", "outerHTML", "fetch(", "XMLHttpRequest"):
@@ -146,20 +154,27 @@ def test_base_loads_scroll_hint_once_with_defer(logged_in):
     assert "defer" in tag
 
 
-def test_fade_rule_is_in_the_css_source():
-    """右の端のぼかしは包みの ::after で描き、幅 40px・灰の濃さ 0.28・見出しと止めた欄より上・下の欄を押せるまま。"""
+def test_more_right_button_rule_is_in_the_css_source():
+    """右の端の印は「→」のボタン (包みに data-more-right がある間だけ出る)。白い丸・1px の線・影なし・右から 1rem・縦の中央・見出しと止めた欄より上。
+    前の形 (包みの ::after の灰のぼかし) は無い (本人の決め 11-07 18:4x「影があると統一感がない」)。"""
     css = INPUT_CSS.read_text(encoding="utf-8")
     assert "position: relative;" in _rule(css, "[data-more-right]")
-    fade = _rule(css, "[data-more-right]::after")
+    assert "display: none;" in _rule(css, "[data-scroll-more]")
+    button = _rule(css, "[data-more-right] > [data-scroll-more]")
     for word in (
+        "display: flex;",
         "position: absolute;",
-        "right: 1px;",
-        "width: 40px;",
+        "top: 50%;",
+        "right: 1rem;",
+        "transform: translateY(-50%);",
+        "border: 1px solid var(--color-base-300);",
+        "border-radius: 9999px;",
+        "background: var(--color-base-100);",
         "z-index: 4;",
-        "pointer-events: none;",
-        "rgba(120, 120, 120, 0.28)",
     ):
-        assert word in fade, word
+        assert word in button, word
+    assert "box-shadow" not in button
+    assert "[data-more-right]::after" not in css and "rgba(120, 120, 120, 0.28)" not in css
 
 
 # ---------------------------------------------------------------- 下の端のぼかし (初見テスト R5 の候補 C23。決め C23-2 = a)
@@ -182,26 +197,14 @@ def test_scroll_hint_js_marks_the_bottom_edge():
         assert word in text, word
 
 
-def test_bottom_fade_rule_is_in_the_css_source():
-    """下の端のぼかしは包みの ::before で描き (::after は右の端が使う)、高さ 40px・灰の濃さ 0.28・見出しと止めた欄より上・下の欄を押せるまま。
-    右の端の段の後ろに、別の段として書く。"""
+def test_bottom_edge_uses_the_visible_scrollbar_not_a_fade():
+    """下の端の印は、箱のいつも見えるスクロールのバー (::-webkit-scrollbar。Firefox は thin) で、ぼかしは描かない
+    (本人の決め 11-07 18:4x = 合計の行にまで影が掛かっていた)。JS の印 data-more-below に CSS の決まりは無い。"""
     css = INPUT_CSS.read_text(encoding="utf-8")
-    assert "position: relative;" in _rule(css, "[data-more-below]")
-    fade = _rule(css, "[data-more-below]::before")
-    for word in (
-        'content: "";',
-        "position: absolute;",
-        "left: 1px;",
-        "right: 1px;",
-        "bottom: 1px;",
-        "height: 40px;",
-        "z-index: 4;",
-        "pointer-events: none;",
-        "linear-gradient(to bottom,",
-        "rgba(120, 120, 120, 0.28)",
-    ):
-        assert word in fade, word
-    assert css.index("[data-more-below] {") > css.index("[data-more-right]::after {")
+    assert "[data-more-below]" not in css
+    assert "linear-gradient(to bottom," not in css
+    bar = _rule(css, ".overflow-auto::-webkit-scrollbar,\n.overflow-x-auto::-webkit-scrollbar")
+    assert "width: 8px;" in bar and "height: 8px;" in bar
 
 
 @pytest.mark.django_db
