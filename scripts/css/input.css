@@ -162,7 +162,7 @@ body > .ts-dropdown [data-select-create]:hover {
    箱の下端に留める (C52-1 = b。11-06 22:2x)。中を送っても「閉じる」「詳細を見る」が見えたまま。
    箱 (#seizou-modal-box) は p-6 の余白を持ち、留めるだけだと下の余白から送った中身が透けるので、bottom と margin-bottom を
    余白と同じ -1.5rem にし、padding-bottom で戻して行の地を箱の下端まで伸ばす (箱の余白 p-6 を変えたら、ここの 3 つの値も一緒に直す)。
-   入力の小窓は .modal-action を持たないので当たらない。 */
+   入力の小窓は .modal-action を持たないので当たらない (下の seizou-modal-save-row の決まりが同じ形で留める)。 */
 #seizou-modal-box > .modal-action {
   position: sticky;
   bottom: -1.5rem;
@@ -171,6 +171,20 @@ body > .ts-dropdown [data-select-create]:hover {
   padding-top: 0.75rem;
   padding-bottom: 1.5rem;
   border-top: 1px solid var(--color-base-200);
+  background-color: var(--color-base-100);
+}
+/* 入力の小窓 (core/_form_card.html の in_modal の、欄がある形) の下のボタンの行 (固定の class seizou-modal-save-row) も、上の .modal-action と
+   同じ形で箱の下端に留める (M01。画面の直し 15 件の 10。本人の決め 11-07 21:0x)。スマホ (390×844) で進捗の盤と「現品票を読む」から開く実績の
+   入力の小窓は、中身の高さが箱の高さ (100vh - 4rem = 780px) を超え、「記録する」が箱の外に出て、中を送らないと押せなかった。
+   行は form のカード (p-6・線つき) の最後の子なので、留まる範囲はカードの中身の箱の中。負の bottom と margin-bottom は箱の余白 p-6 と同じ -1.5rem
+   (上の .modal-action と同じ値。箱の余白を変えたら一緒に直す)。行の上の線と余白 (border-t・pt-6) はテンプレートの class のまま。
+   欄の無い小窓 (取消の確かめ) の行は溢れないので、印を付けない。 */
+#seizou-modal-box .seizou-modal-save-row {
+  position: sticky;
+  bottom: -1.5rem;
+  z-index: 1;
+  margin-bottom: -1.5rem;
+  padding-bottom: 1.5rem;
   background-color: var(--color-base-100);
 }
 

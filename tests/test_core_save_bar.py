@@ -53,6 +53,8 @@ BAR_WORDS = ("保存していない変更があります",)
 ROW = '<div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">'
 SLOT = '<div class="seizou-save-slot">'
 MODAL_ROW = '<div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
+#: core の入力のカードの小窓の行 (欄がある形)。固定の class seizou-modal-save-row で箱の下端に留める (M01。scripts/css/input.css)
+CARD_MODAL_ROW = '<div class="seizou-modal-save-row mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">'
 #: 下の行を持つ 7 つのテンプレート (受注・発注・確かめ・説明書の編集・core の入力のカード・表示の設定の画面の全体は HTML でも見る。
 #: 一括出荷は明細の作り物が要るので字で見る)。小窓の形の見方が並びの 0・2・3 を名指しするので、足すときは最後に足す
 ROW_TEMPLATES = (
@@ -257,8 +259,9 @@ def test_seven_templates_have_bottom_row():
     # core の入力のカードは、小窓の tag を欄の有る無しで 2 つ (欄の無い形は上の空きと線を描かない。候補 C24) と、
     # 画面の全体の ROW を、それぞれ丸ごと 1 回ずつ書く (class を組み立てず、tag を丸ごと書く。R19)
     source = ROW_TEMPLATES[0].read_text(encoding="utf-8")
-    for tag in (MODAL_ROW, '<div class="flex flex-wrap items-center justify-end gap-2">', ROW):
+    for tag in (CARD_MODAL_ROW, '<div class="flex flex-wrap items-center justify-end gap-2">', ROW):
         assert source.count(tag) == 1, tag
+    assert MODAL_ROW not in source  # 欄がある形の行は留める印つきの 1 つだけ
 
 
 def test_input_css_row_is_bottom_band():
@@ -319,10 +322,11 @@ def test_input_css_row_is_bottom_band():
 
 
 def test_modal_inputs_have_no_bar(logged_in):
-    for url in (
-        reverse("masters:item_create"),
-        reverse("masters:holiday_create"),
-        reverse("purchasing:purchaseorder_create"),
+    # core の入力のカードの小窓は留める印つきの行 (M01)、発注のカードの小窓は今の行のまま
+    for url, modal_row in (
+        (reverse("masters:item_create"), CARD_MODAL_ROW),
+        (reverse("masters:holiday_create"), CARD_MODAL_ROW),
+        (reverse("purchasing:purchaseorder_create"), MODAL_ROW),
     ):
         response = logged_in.get(url, **MODAL)
         assert response.status_code == 200, url
@@ -333,7 +337,7 @@ def test_modal_inputs_have_no_bar(logged_in):
         # 小窓の下の行は貼り付けない (今の形のまま)
         assert "seizou-save-row" not in body, url
         assert "seizou-save-slot" not in body, url
-        assert MODAL_ROW in body, url
+        assert modal_row in body, url
 
 
 def test_pages_without_input_have_no_bar(client, user, order):
