@@ -336,6 +336,7 @@ sudo systemctl reload nginx
 - `proxy_read_timeout 90s` は、11 の `--timeout 90` と合わせた待ち時間です。
 - `setsebool -P` の `-P` は、再起動の後も boolean を残す印です。
 - 443 (https) の server は、13 で certbot が書きます。
+- 図面は 1 つ 20MB まで、形は PDF・TIFF・PNG・JPEG だけを受けます (CAD のファイル .dxf・.dwg は部品の添付ファイルに付けます)。表示用の絵を作るときは、絵を読む前に記憶の使う量を見積もり、600MB を超える絵 (カラーの A0 の走査など) は表示用の絵を作らずに元のファイルだけを保存します。2GB の VPS で、1 枚の図面が gunicorn を記憶の不足で止めないための目安です (白黒の A0 は約 0.5GB で通ります)。
 
 確かめ方: `sudo nginx -t` → `syntax is ok` と `test is successful`・`getsebool httpd_can_network_connect` → `httpd_can_network_connect --> on`・`curl -fsS http://a.example.jp/health/` → `{"ok": true}` (VPS で確かめる。作者の手元では、Django の試しの client で、https の印つきの `/health/` が 200、`ALLOWED_HOSTS` に無い名前が 400、https の印つきのログインの保存が 200、印の無いログインの保存が 403 になるのを見た)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる。`/health/` が 502 で `comm="nginx"` と `name_connect` の記録が出たら boolean を、`include` の所で nginx が止まったら 10 の `httpd_config_t` の行を見る)
