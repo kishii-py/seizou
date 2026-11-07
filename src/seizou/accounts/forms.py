@@ -6,6 +6,7 @@
 from django import forms
 
 from seizou.core import access
+from seizou.core.forms import CHECKBOX_CSS, Checkboxes
 from seizou.core.screens import all_screens
 
 from . import services
@@ -13,16 +14,6 @@ from .models import Department, app_labels
 
 PASSWORD_HELP_NEW = "8 字以上。よくある物・数字だけ・ログイン ID に似た物は使えません。"
 PASSWORD_HELP_EDIT = PASSWORD_HELP_NEW + "空のままなら変わりません。"
-CHECKBOX_CSS = "checkbox checkbox-sm"
-
-
-class Checkboxes(forms.CheckboxSelectMultiple):
-    """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。"""
-
-    def get_context(self, name, value, attrs):
-        context = super().get_context(name, value, attrs)
-        context["widget"]["attrs"].pop("class", None)
-        return context
 
 
 def permission_choices() -> list[tuple[str, str]]:
@@ -149,7 +140,7 @@ class DepartmentForm(forms.Form):
         label="開ける画面",
         choices=(),
         required=False,
-        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}, columns=True),
         help_text="チェックを入れた画面が、この部署の人の左のメニューに出て開けます。部署が 1 つも無い人は全部の画面が開きます。",
     )
     default_permissions = forms.MultipleChoiceField(
