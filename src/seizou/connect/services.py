@@ -1,6 +1,7 @@
 """connect の公開する関数 (01 の 10.4)。ほかの部品と画面は、この関数だけを通してつながりと受信箱を書く。
 
-- 引数の順は 対象 → 値 → user (01 の 10.1)。user は記録のために受ける。記録の列がまだ無いので、今は受けるだけ。
+- 引数の順は 対象 → 値 → user (01 の 10.1)。user は記録のために受け、受信した注文を書く関数は変更の履歴 (core.services.record_history。
+  決め HIST-1) に残す。受け口が作る行は人が無いので、人の字を「<取引先の名前> の seizou」にする。つながりは変更の履歴に入れていない (受けるだけ)。
 - 鍵の値は受け取らず、表にも持たない。つながりは鍵を入れる環境変数の名前だけを持ち、
   受けるときに os.environ から値を読む。鍵の値を例外の文・ログ・返す物に入れない。
 - 署名の確かめは signing.verify をそのまま呼ぶ。ここで書き直さない。
@@ -13,6 +14,8 @@
 - 受注と発注の 1 件ごとの会話 (C104): post_chat_message が言葉を残して相手へ送り、受け口は kind が chat_message の物を元の注文に 1 回だけ結ぶ。
   会話は中小企業共通 EDI に無い seizou どうしだけの種類。言葉を直す関数と消す関数は作らない (ChatMessage の docstring)。
 - 会話の言葉を受けたら、取引先のつながりの自社の連絡先のメールアドレスへ core.mail で知らせる (行を作った後の atomic の外。送れなくても受ける)。
+- 送り合った記録 (Exchange): 送る所 _deliver と受ける所 receive が、送った物と受けた物の中身を送ったとおり・受けたとおりの字で 1 通 1 行に残す
+  (電子帳簿保存法の電子取引のデータ。決め HIST-1 の edi)。金額は exchange_amount が中身から数える (決め C106-1)。直す道と消す道は無い。
 - 受信した注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
 """
 
@@ -39,6 +42,7 @@ from seizou.orders.services import cancel_order, create_order, shipped_qty, upda
 
 from . import signing
 from .models import Acceptance, Connection, Inbox
+from .models import Exchange
 from .models import ShippingNotice
 from .models import _qty_text
 
@@ -156,7 +160,7 @@ def update_connection(connection, partner, url, secret_env, direction, user, *, 
 
     確かめは登録と同じ。鍵の値は受け取らない。
     contact_email は名前でだけ渡せる。None なら今の値のまま (位置の引数で呼ぶ今の呼び手が値を消さないように)、字なら確かめて書く。
-    user は記録のために受ける (記録の列がまだ無いので、今は受けるだけ)。返す物は取り直した Connection。
+    user は記録のために受ける (つながりは変更の履歴に入れていない = 決め HIST-1 の列挙の外なので、今は受けるだけ)。返す物は取り直した Connection。
     """
     _check_connection(
         partner, url, secret_env, direction, exclude_pk=connection.pk, contact_email=contact_email or ""
@@ -218,6 +222,16 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     if partner is None:
         return _refuse(MESSAGE_SIGNATURE_MISMATCH, msg_id)
 
+    # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
+    # 返る時に結果を「受けた」か「断った: <理由>」にする。添付を取りに来た要求 (chat_file) は取引の文書でないので残さない。
+    exchange = _exchange_received(partner, verified_id, raw_body)
+    result = _receive_verified(partner, verified_id, raw_body, msg_id)
+    _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
+    return result
+
+
+def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
+    """署名が通って取引先 partner が決まった後の受け口の中身 (receive が呼ぶ)。返す物は receive と同じ。"""
     try:
         message_id = uuid.UUID(verified_id)
     except ValueError:
@@ -285,9 +299,10 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
             return _refuse(f"注文の変更を受けられません。{problem}", msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
+    # 作った行は同じ atomic の中で変更の履歴に残す (人は無いので、人の字は「<取引先の名前> の seizou」。2 回目は何も書かない)。
     try:
         with transaction.atomic():
-            return Inbox.objects.create(
+            row = Inbox.objects.create(
                 message_id=message_id,
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
@@ -296,6 +311,8 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
                 purpose_code=purpose_code,
                 revises=revises,
             )
+            _record(row, None, by=f"{partner.name} の seizou")
+            return row
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
 
@@ -1276,7 +1293,7 @@ def record_inbox(partner, payload, user, *, message_id=None, received_at=None, s
     """受け口を通さずに、受信した注文を受信箱に 1 行入れる (作り物の種と試験と MCP の試しと、見張るフォルダの読み取りのため)。
 
     署名の確かめ (R12) を通らないので、受け口 (receive) からは呼ばない。相手に何も送らない。
-    user は記録のために受ける。同じ番号の 2 回目は 1 回目の行を返す。
+    user は記録のために受け、作った行を変更の履歴に残す。同じ番号の 2 回目は 1 回目の行を返す (何も書かない)。
     received_at を渡すと、届いた日時をその値にする (timezone 付きの datetime。作り物の種の「届いた日時」のため。渡さなければ今)。同じ番号の 2 回目は 1 回目の行をそのまま返す (届いた日時も書き直さない)。
     source は入口 (Inbox.SOURCE_CHOICES の値。既定は直接)。読み取り (intake の extract_to_inbox) は元の読み取り (extraction) と読み取った差出人の字 (sender_name。列の長さで切る) を渡す。
     partner が None (取引先の空の行 = 差出人の確認待ち) でよいのは、入口が読み取りのときだけ。ほかは日本語の ValueError。
@@ -1306,7 +1323,7 @@ def record_inbox(partner, payload, user, *, message_id=None, received_at=None, s
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
         with transaction.atomic():
-            return Inbox.objects.create(
+            row = Inbox.objects.create(
                 message_id=message_id,
                 partner=partner,
                 kind=Inbox.KIND_ORDER,
@@ -1316,6 +1333,8 @@ def record_inbox(partner, payload, user, *, message_id=None, received_at=None, s
                 sender_name=sender_name,
                 **values,
             )
+            _record(row, user)
+            return row
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
 
@@ -1423,6 +1442,7 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        before = _saved(locked)
         if locked.status == Inbox.STATUS_ACCEPTED:
             raise RuleViolation("R11", "受け入れられません。" + MESSAGE_ALREADY_ACCEPTED)
         if locked.status == Inbox.STATUS_REJECTED:
@@ -1536,6 +1556,7 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
             locked.reply_response = MESSAGE_REPLY_SEED
             fields = [*dict.fromkeys([*fields, "reply_response"])]
         locked.save(update_fields=fields)
+        _record(locked, user, before=before)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
     if send:
@@ -1573,6 +1594,7 @@ def hold(inbox, user, *, send=True):
     """
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        before = _saved(locked)
         if locked.status != Inbox.STATUS_RECEIVED:
             raise ValueError(
                 f"保留できません。この注文のデータは「{locked.get_status_display()}」です。"
@@ -1582,6 +1604,7 @@ def hold(inbox, user, *, send=True):
         locked.reply_type = edi_codes.REPLY_PENDING
         locked.reply_lines = []
         locked.save(update_fields=fields)
+        _record(locked, user, before=before)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (保留は成立する)。
     saved = send_reply(locked, user) if send else locked
@@ -1605,6 +1628,7 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        before = _saved(locked)
         if locked.status == Inbox.STATUS_ACCEPTED:
             raise RuleViolation("R11", "受け入れられません。" + MESSAGE_ALREADY_ACCEPTED)
         if locked.status == Inbox.STATUS_REJECTED:
@@ -1627,6 +1651,7 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
             locked.reply_response = MESSAGE_REPLY_SEED
             fields.append("reply_response")
         locked.save(update_fields=fields)
+        _record(locked, user, before=before)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
     if send:
@@ -1689,6 +1714,7 @@ def reject(inbox, reason, user):
     """受信箱の注文のデータを、理由を書いて断る。断れるのは状態が「届いた」の物だけ。返す物は Inbox。"""
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        before = _saved(locked)
         if locked.status != Inbox.STATUS_RECEIVED:
             raise ValueError(
                 f"断れません。この注文のデータは「{locked.get_status_display()}」です。"
@@ -1706,6 +1732,7 @@ def reject(inbox, reason, user):
         locked.reply_type = edi_codes.REPLY_REJECTED
         locked.reply_lines = []
         locked.save(update_fields=fields)
+        _record(locked, user, before=before)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (断りは成立する)。
     send_reply(locked, user)
@@ -1721,6 +1748,7 @@ def choose_sender(inbox, partner, user):
     """
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        before = _saved(locked)
         if locked.source == Inbox.SOURCE_DIRECT:
             raise ValueError("保存できません。" + MESSAGE_SENDER_DIRECT)
         if locked.status != Inbox.STATUS_RECEIVED:
@@ -1733,6 +1761,7 @@ def choose_sender(inbox, partner, user):
             )
         locked.partner = partner
         locked.save(update_fields=["partner"])
+        _record(locked, user, before=before)
     logger.info("差出人を選んだ: 受信した注文 %s 取引先 %s", locked.pk, partner.code)
     return locked
 
@@ -2225,6 +2254,15 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
     種類は received (受け取った) / rejected (断られた) / unreadable / unreachable / no_secret / bad_secret。
     鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
     """
+    # 署名を作れて POST する直前に、送り合った記録に送ったとおりの字で 1 行作り、返事が決まったら結果の字にする (鍵が無い・形が違う物は送らないので作らない)
+    exchange = _exchange_sent(connection, message_id, raw)
+    result = _deliver_result(connection, message_id, raw)
+    _exchange_result(exchange, result[0])
+    return result
+
+
+def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
+    """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。"""
     answer, failed = _post_signed(connection, message_id, raw, timeout=10)
     if failed is not None:
         return failed
@@ -2240,6 +2278,175 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
             refused = "理由が読めません"
         return f"断られた: {refused[:200]}", "rejected"
     return f"返事が読めません (HTTP {answer.status_code})", "unreadable"
+
+
+# ---------------------------------------------------------------- 送り合った記録 (決め HIST-1 の edi・C106-1)
+
+#: 送り合った記録の結果の字 (送る前・受けて確かめる前)
+EXCHANGE_SENDING = "送っています"
+EXCHANGE_RECEIVING = "受けています"
+#: 送り合った記録に残さない kind (会話の添付を取りに来た要求。取引の文書でなく、送った側も残さない)
+EXCHANGE_SKIPPED_KINDS = frozenset({"chat_file"})
+#: 金額の列の桁 (Exchange.amount の max_digits=20・decimal_places=4 = 小数 4 桁と整数 16 桁)
+_AMOUNT_PLACES = 4
+_AMOUNT_INTEGER_DIGITS = 16
+
+
+def _record(obj, user, *, before=None, by=""):
+    """変更の履歴に残す (core.services.record_history)。冒頭の import の並びを変えないため、関数の中で import する。"""
+    from seizou.core.services import record_history
+
+    return record_history(obj, user, before=before, by=by)
+
+
+def _saved(obj):
+    """書く前の値 (core.history.saved_state)。冒頭の import の並びを変えないため、関数の中で import する。"""
+    from seizou.core import history
+
+    return history.saved_state(obj)
+
+
+def _json_dict(raw):
+    """本文の bytes か字を JSON として読んだ辞書。読めないか辞書でなければ None。"""
+    try:
+        data = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _uuid_or_none(value):
+    """番号の uuid。uuid の形でなければ None。"""
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _kind_of(data) -> str:
+    """送り合った記録の種類の字 (本文の kind。kind の無い注文は "order"。読めない本文は空)。"""
+    if data is None:
+        return ""
+    kind = data.get("kind")
+    if kind is None:
+        return "order"
+    return str(kind)[:35]
+
+
+def _order_amount(data):
+    """注文 (注文の変更と取消の版も) の金額 = 明細ごとの金額の合計 (丸めない)。読めない明細があれば None。
+
+    明細の金額は数量 × 単価。式の行 (price_basis が "lump") は数量を掛けず単価のまま (決め PRICE-1b)。
+    取り消した明細 (明細状態コード 2) は合計に入れない (全部の明細を取り消した取消の版は 0)。
+    """
+    lines = data.get("lines")
+    if not isinstance(lines, list):
+        return None
+    total = Decimal(0)
+    for raw in lines:
+        if not isinstance(raw, dict):
+            return None
+        if _is_deleted(raw):
+            continue
+        if isinstance(raw.get("qty"), bool) or isinstance(raw.get("unit_price"), bool):
+            return None
+        try:
+            qty = Decimal(str(raw["qty"]))
+            price = Decimal(str(raw["unit_price"]))
+        except (KeyError, InvalidOperation, ValueError, TypeError):
+            return None
+        if not (qty.is_finite() and price.is_finite()):
+            return None
+        total += price if raw.get("price_basis") == PRICE_BASIS_LUMP else qty * price
+    return total
+
+
+#: 種類 (本文の kind) → 金額を数える関数。無い種類は金額が空。後の依頼が自分の kind の行を足す (本文に合計の金額がある物はその値)
+EXCHANGE_AMOUNT_KINDS = {"order": _order_amount}
+
+
+def _fits_amount(value) -> bool:
+    """金額を丸めずに列 (小数 4 桁・整数 16 桁) に持てるか。"""
+    _sign, digits, exponent = value.normalize().as_tuple()
+    if not isinstance(exponent, int) or exponent < -_AMOUNT_PLACES:
+        return False
+    return len(digits) + exponent <= _AMOUNT_INTEGER_DIGITS
+
+
+def exchange_amount(data):
+    """送り合った記録の金額。本文の JSON を読んだ辞書を受け、Decimal か None を返す (読むだけ。表に書かない)。
+
+    電子帳簿保存法: 送り合った電子取引のデータを取引金額で探せるようにするための金額。送った本文と受けた本文から同じ決まりで
+    数える (決め C106-1)。注文 (kind の無い注文と、注文の変更・取消の版も) は明細の金額の合計を丸めずに返す (_order_amount)。
+    ほかの種類 (注文回答・検収・出荷の知らせ・会話) は None (金額の無い物は空。注文回答に回答単価があっても空)。
+    読めない値 (lines が並びでない・明細が辞書でない・数量か単価が無いか数として読めない) と、丸めずに持てない値
+    (小数 5 桁以上・桁の上限を超える) も None (行は残し、金額だけ空)。
+    訳: 送った側と受けた側が同じ本文から同じ関数で数え、2 社の送り合った記録の金額を同じ値にするため。丸めないのは、取引先ごとに
+    違う端数の決まりを探すための金額に持ち込まないため。読めない値を空にするのは、受けた物の形の誤りで送り合った記録が残らなく
+    なるのを避けるため。出所 = 持ち主の決め C106-1 と、作者の決め (式の行は PRICE-1b、取り消した明細は C96 の版の決め)。
+    変えてよい条件 = 送る本文に合計の欄を足したとき (その欄を読む形に替える)。
+    """
+    if not isinstance(data, dict):
+        return None
+    reader = EXCHANGE_AMOUNT_KINDS.get(_kind_of(data))
+    if reader is None:
+        return None
+    value = reader(data)
+    if value is None or not _fits_amount(value):
+        return None
+    return value
+
+
+def _exchange_sent(connection, message_id, raw):
+    """送る直前の送り合った記録の 1 行 (結果は「送っています」)。鍵が無いか鍵の形が違って署名を作れない (送らない) ときは作らず None。
+
+    atomic の外から呼ぶ (R17 の _deliver の中。行は autocommit で 1 回ずつ書く)。鍵の値と見出しの署名は表に書かない。
+    """
+    secret = os.environ.get(connection.secret_env)
+    if not secret:
+        return None
+    try:
+        signing.headers_for(secret, str(message_id), raw)
+    except ValueError:
+        return None
+    data = _json_dict(raw)
+    kind = _kind_of(data)
+    if kind in EXCHANGE_SKIPPED_KINDS:
+        return None
+    return Exchange.objects.create(
+        direction=Exchange.DIRECTION_SENT,
+        kind=kind,
+        message_id=_uuid_or_none(message_id),
+        partner=connection.partner,
+        body=raw.decode("utf-8"),
+        amount=exchange_amount(data),
+        result=EXCHANGE_SENDING,
+    )
+
+
+def _exchange_received(partner, verified_id, raw_body: bytes):
+    """署名が通った受けた物の送り合った記録の 1 行 (結果は「受けています」)。添付を取りに来た要求 (chat_file) は作らず None。"""
+    data = _json_dict(raw_body)
+    kind = _kind_of(data)
+    if kind in EXCHANGE_SKIPPED_KINDS:
+        return None
+    return Exchange.objects.create(
+        direction=Exchange.DIRECTION_RECEIVED,
+        kind=kind,
+        message_id=_uuid_or_none(verified_id),
+        partner=partner,
+        body=raw_body.decode("utf-8", errors="replace"),
+        amount=exchange_amount(data),
+        result=EXCHANGE_RECEIVING,
+    )
+
+
+def _exchange_result(exchange, text: str) -> None:
+    """送り合った記録の結果の字を書く (結果の列だけ。ほかの列は直さない)。行が無ければ何もしない。"""
+    if exchange is not None:
+        Exchange.objects.filter(pk=exchange.pk).update(result=str(text)[:500])
 
 
 def send_order(purchase_order, user):

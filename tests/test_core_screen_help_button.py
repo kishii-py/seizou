@@ -155,7 +155,7 @@ HOME_FRAMES = {
 def test_detail_tabs_have_frame_help(client_logged_in, site, item):
     html = page(client_logged_in, reverse("masters:item_detail", args=[item.pk]))
     assert html.count('?part=basic"') == 1
-    assert html.count('name="detail-tabs"') == 3  # 基本情報と関係する物のタブ 2 つ
+    assert html.count('name="detail-tabs"') == 4  # 基本情報と関係する物のタブ 2 つと履歴 (C106)
     assert html.count('?part=related"') == 2
     assert 'aria-label="基本情報の説明"' in html
     assert 'aria-label="関係する物の説明"' in html

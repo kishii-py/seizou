@@ -22,7 +22,7 @@ from django.utils.cache import add_never_cache_headers
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from seizou.core import access, conf, display, doctor, mail, services
+from seizou.core import access, conf, display, doctor, history, mail, services
 from seizou.core.forms import CompanyForm, DisplaySettingsForm, SettingForm
 from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
@@ -274,6 +274,13 @@ class SettingsView(ScreenMixin, TemplateView):
                 "icon": "inbox",
             },
             {
+                # 送り合った記録 (決め HIST-1 の edi・C106-1)。取引先との接続と同じく普段は触らないので、左のメニューでなくここから開く
+                "label": "送り合った記録",
+                "help": "取引先と送り合った注文・注文回答・出荷の知らせ・検収の中身を、送ったとおりに残した一覧。",
+                "url": url_or_none("connect:exchange_list"),
+                "icon": "inbox",
+            },
+            {
                 "label": "添付ファイルの一覧 (整理用)",
                 "help": "各詳細の「添付ファイル」の枠から付けたファイルを全部まとめて探す。付けるのは各詳細から。",
                 "url": url_or_none("attachments:attachment_list"),
@@ -311,6 +318,8 @@ class SettingsView(ScreenMixin, TemplateView):
             "from": mail_values["from"],
             "from_name": mail_values["from_name"],
         }
+        # 設定の履歴 (決め HIST-1 の「会社の設定」。会社の表と設定の上書きの変更の履歴。会社の設定に詳細の画面は無いので、ここに同じ部品で出す)
+        context["settings_history"] = history.settings_timeline(self.request.user)
         return context
 
     def post(self, request, *args, **kwargs):

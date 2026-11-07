@@ -41,6 +41,7 @@ SKIPPED_NO_ROW = {
         "connect:inbox_detail",
         "connect:inbox_hold",
         "connect:inbox_reject",
+        "connect:exchange_detail",  # 種は送り合いをしない (発注・出荷・受け入れは send=False) ので送り合った記録の行が無い (C106)
         "feedback:feedback_detail",
         "feedback:feedback_update",
         "intake:extraction_accept",
@@ -52,6 +53,7 @@ SKIPPED_NO_ROW = {
     },
     "b_plating": {
         "attachments:attachment_delete",
+        "connect:exchange_detail",  # 種は送り合いをしない (発注・出荷・受け入れは send=False) ので送り合った記録の行が無い (C106)
         "feedback:feedback_detail",
         "feedback:feedback_update",
         "intake:extraction_accept",

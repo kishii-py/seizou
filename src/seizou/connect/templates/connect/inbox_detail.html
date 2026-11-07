@@ -81,4 +81,6 @@
   {% include "connect/_payload_lines.html" %}
 </div>
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="chat-heading"><h2 id="chat-heading" class="text-lg font-bold">会話</h2><div class="mt-4">{% include "connect/_chat.html" with chat_target=object %}</div></section>
+{# 履歴 (決め HIST-1。core.history)。この詳細は block content を上書きしてタブを描かないので、会話の枠の後に見出しの枠で出す。「最後に直した」の字は土台の詳細と同じ (決め C40-1)。 #}
+{% if history %}<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="history-heading"><h2 id="history-heading" class="text-lg font-bold">履歴</h2>{% include "core/_history.html" with timeline=history %}<p class="mt-2 text-xs text-base-content/70" data-last-change>最後に直した {% if history.last %}<span class="font-mono tabular-nums">{{ history.last.when|date:"Y-m-d H:i" }}</span> ・ {{ history.last.who }}{% else %}—{% endif %}</p></section>{% endif %}
 {% endblock %}

@@ -1,7 +1,8 @@
 """masters の公開する関数 (01 の 10.4)。ほかの部品と画面はこの関数だけを通してマスターを書く。
 
 - 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
+- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-0・HIST-1) に書く。書く前に core.history.saved_state で前を取り、
+  書いて拡張の表も書いた後に、同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。CSV の取り込みは create と update を通るので同じく残る。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
 - masters の決まり (品番の一意・取引先の種類の 3 値・請求の仕方の 2 値・支払の月の 4 値・支払日の 1〜31・取引先 × 取引先の品番の一意 (品番のある行だけ。品番の空の行は取引先と部品ごとに 1 つ)) に当たったら、
@@ -31,8 +32,8 @@ from django.db.models import Max, Q
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
-from seizou.core import access, calendar
-from seizou.core.services import company_or_none
+from seizou.core import access, calendar, history
+from seizou.core.services import company_or_none, record_history, record_history_deleted
 from seizou.core.templatetags.seizou_tags import comma
 
 from .drawings import page_name
@@ -333,6 +334,7 @@ def create_item(data, user, *, ext=None):
         item = Item.objects.create(**data)
         _save_preview_pages(item, pages)
         _save_ext(item, ext)
+        record_history(item, user)
         return item
 
 
@@ -345,6 +347,8 @@ def update_item(item, data, user, *, ext=None):
     _refuse_unknown_keys(data, _ITEM_KEYS, "部品")
     data, pages = _with_drawing_preview(data)
     with transaction.atomic():
+        # 渡された item の値は画面の form が書き換え済みなので、前は DB から取る (core.history.saved_state)
+        before = history.saved_state(item)
         if "part_no" in data:
             _refuse_duplicate_part_no(data["part_no"], exclude_pk=item.pk)
         if _is_new_upload(data.get("drawing")):
@@ -354,6 +358,7 @@ def update_item(item, data, user, *, ext=None):
         item.save()
         _save_preview_pages(item, pages)
         _save_ext(item, ext)
+        record_history(item, user, before=before)
         return item
 
 
@@ -383,17 +388,19 @@ def restore_drawing_version(item, version, user, *, note=""):
 
     写すのは版の 4 つ (図面と表示用の名前の字・誤りの文・ページ数)。表示用の PNG は作り直さず、ファイルも写さない。
     選んだ版の行は消さない。今の図面が無い部品は版を作らずに戻す。別の部品の版は、何も変えずに ValueError。
-    返す物は部品。user は受けるだけ。
+    返す物は部品。user は変更の履歴に残す (図面ファイルの前と後)。
     """
     if version.item_id != item.pk:
         raise ValueError(f"保存できません。版 {version.version_no} はこの部品の版ではありません。この部品の版を選んでください。")
     with transaction.atomic():
+        before = history.saved_state(item)
         _keep_drawing_as_version(item, note=note)
         item.drawing = version.drawing.name
         item.drawing_preview = version.drawing_preview.name or ""
         item.drawing_preview_error = version.drawing_preview_error
         item.drawing_page_count = version.page_count
         item.save(update_fields=["drawing", "drawing_preview", "drawing_preview_error", "drawing_page_count"])
+        record_history(item, user, before=before)
         return item
 
 
@@ -412,6 +419,7 @@ def create_partner(data, user, *, ext=None):
         _refuse_duplicate_partner_code(data["code"])
         partner = Partner.objects.create(**data)
         _save_ext(partner, ext)
+        record_history(partner, user)
         return partner
 
 
@@ -424,12 +432,14 @@ def update_partner(partner, data, user, *, ext=None):
         _refuse_unknown_billing_method(data["billing_method"])
     data = _payment_terms(data)
     with transaction.atomic():
+        before = history.saved_state(partner)
         if "code" in data:
             _refuse_duplicate_partner_code(data["code"], exclude_pk=partner.pk)
         for key, value in data.items():
             setattr(partner, key, value)
         partner.save()
         _save_ext(partner, ext)
+        record_history(partner, user, before=before)
         return partner
 
 
@@ -438,18 +448,22 @@ def create_process(data, user):
     _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
     with transaction.atomic():
         _refuse_duplicate_process_code(data["code"])
-        return Process.objects.create(**data)
+        process = Process.objects.create(**data)
+        record_history(process, user)
+        return process
 
 
 def update_process(process, data, user):
     """data にある鍵だけを書き換える。工程コードを変えるときも一意を見る。"""
     _refuse_unknown_keys(data, _PROCESS_KEYS, "工程")
     with transaction.atomic():
+        before = history.saved_state(process)
         if "code" in data:
             _refuse_duplicate_process_code(data["code"], exclude_pk=process.pk)
         for key, value in data.items():
             setattr(process, key, value)
         process.save()
+        record_history(process, user, before=before)
         return process
 
 
@@ -486,7 +500,8 @@ def add_partner_item(data, user):
     その行に品番を入れて返す (品名は、その行の品名が空で、渡された品名があるときだけ入れる)。品番の空の行が無ければ新しい行を作る。
     品番が空: 同じ取引先と部品の行が既にあれば (品番の空の行があればその行、無ければ pk の小さい 1 行)、行を作らずにその行を返し、
     返す物の saved_message を PARTNER_ITEM_EXISTS_MESSAGE にする (入力の土台が緑の知らせの字にする。断りではない)。無ければ品番の空の行を作る。
-    user は受けるだけ。
+    user は変更の履歴に残す (作った枝は「作った」、空の行に品番を入れた枝は「直した」、同じ行を返すだけの枝は何も書かないので残さない。
+    map_partner_item はこの関数を呼ぶだけなので、記録はここだけで 1 行)。
 
     訳: 部品と取引先の組を 1 か所で足し、品番の空の行を増やさず、品番が分かったら空の行に入れて、付いた単価の行と見積書をそのまま使うため。
     同じ取引先の同じ品番を断るのは今の決まり (出所 = 未確認)、品番の空の行を埋めるのと増やさないのは決め C19-1 と C98-4 (出所 = 本人の決め)。
@@ -503,27 +518,33 @@ def add_partner_item(data, user):
         if part_no:
             _refuse_taken_partner_part_no(partner, part_no)
             if blank is None:
-                return PartnerItem.objects.create(
+                row = PartnerItem.objects.create(
                     partner=partner, item=item, partner_part_no=part_no, partner_item_name=name
                 )
+                record_history(row, user)
+                return row
+            before = history.saved_state(blank)
             blank.partner_part_no = part_no
             fields = ["partner_part_no"]
             if not blank.partner_item_name and name:
                 blank.partner_item_name = name
                 fields.append("partner_item_name")
             blank.save(update_fields=fields)
+            record_history(blank, user, before=before)
             return blank
         existing = blank or rows.first()
         if existing is not None:
             existing.saved_message = PARTNER_ITEM_EXISTS_MESSAGE
             return existing
-        return PartnerItem.objects.create(partner=partner, item=item, partner_part_no="", partner_item_name=name)
+        row = PartnerItem.objects.create(partner=partner, item=item, partner_part_no="", partner_item_name=name)
+        record_history(row, user)
+        return row
 
 
 def update_partner_item(partner_item, data, user):
     """部品の取引先の行の、取引先の品番と品名を直す (鍵は partner_part_no と partner_item_name だけ。部品と取引先は変えない)。
 
-    品番は前後の空白を外す。渡した鍵だけを直す。返す物は部品の取引先の行。user は受けるだけ。
+    品番は前後の空白を外す。渡した鍵だけを直す。返す物は部品の取引先の行。user は変更の履歴に残す。
     品番があって、同じ取引先のほかの行が同じ品番なら ValueError (今の決まり。add_partner_item と同じ字)。
     品番を空にして、同じ取引先と部品にほかの品番の空の行があれば ValueError (決め C98-4)。どちらも行は変えない。
 
@@ -539,6 +560,7 @@ def update_partner_item(partner_item, data, user):
     if "partner_item_name" in data:
         data["partner_item_name"] = data["partner_item_name"] or ""
     with transaction.atomic():
+        before = history.saved_state(partner_item)
         if "partner_part_no" in data:
             part_no = data["partner_part_no"]
             if part_no:
@@ -552,6 +574,7 @@ def update_partner_item(partner_item, data, user):
         for key, value in data.items():
             setattr(partner_item, key, value)
         partner_item.save()
+        record_history(partner_item, user, before=before)
         return partner_item
 
 
@@ -560,7 +583,9 @@ def delete_partner_item(partner_item, user):
 
     行は atomic の中で取り直して消す。その行の単価の行も一緒に消す (決め C98-1)。金額の閲覧の権限は見ない (決め C98-6 = a。
     部品の取引先の行は取引先と品番の登録が主で、金額を見ない人も選び間違えた行を消せるようにするため。消える単価の行の数は確かめの小窓に出す)。
-    付けた見積書の添付ファイルは消さない (付けた先の無い添付ファイルは、一覧の「付けた先」が「(削除された記録)」)。user は受けるだけ。
+    付けた見積書の添付ファイルは消さない (付けた先の無い添付ファイルは、一覧の「付けた先」が「(削除された記録)」)。
+    user は変更の履歴に残す: 一緒に消える単価の行を 1 行ずつ「消した」で残し、続けて取引先の行を「消した」で残してから消す
+    (どれも部品の詳細の履歴に出る。金額を見られない人が消して見えない単価の行も一緒に消えたとき、どの単価が消えたかを追えるように。決め C98-6・HIST-1)。
 
     訳: 取引先を選び間違えた行は、直す画面で部品と取引先を直せないので、消して足し直すため。
     間違えた行が残ると、単価表から選ぶときと単価のずれを比べるときに誤った単価を使うおそれがある。出所 = 本人の決め C98-1。
@@ -570,8 +595,12 @@ def delete_partner_item(partner_item, user):
         row = PartnerItem.objects.select_for_update().filter(pk=partner_item.pk).first()
         if row is None:
             raise ValueError("削除できません。この部品の取引先の行は既に消してあります。")
-        # 単価の行は部品の取引先の行を PROTECT で指すので、先に消す (消す道を services の 1 つにする)
-        ItemPrice.objects.filter(partner_item=row).delete()
+        # 単価の行は部品の取引先の行を PROTECT で指すので、先に消す (消す道を services の 1 つにする)。消す前に 1 行ずつ変更の履歴に残す
+        prices = ItemPrice.objects.filter(partner_item=row)
+        for price in prices.order_by("pk"):
+            record_history_deleted(price, user)
+        record_history_deleted(row, user)
+        prices.delete()
         row.delete()
     return None
 
@@ -698,7 +727,7 @@ def add_item_price(data, user):
 
     売りの行は工程を空にして保存する。部品の行を select_for_update で取ってから _check_item_price を呼ぶ
     (同じ部品の単価の行の書き込みを順に並べ、同じ条件の行の 2 つの要求が同時に通らないようにする。SQLite では何もしないが、
-    書き込みが 1 つずつなので同じ)。user は受けるだけ (断りの字に金額を出すかの判定には使う)。
+    書き込みが 1 つずつなので同じ)。user は変更の履歴に残し、断りの字に金額を出すかの判定にも使う。
     金額の閲覧の権限が無い人の追加は、入力の土台の金額の門 (core.access の MONEY_ACTIONS) が断る (決め C98-5。この関数は権限を見ない)。
     """
     _refuse_unknown_keys(data, _ITEM_PRICE_KEYS, "単価の行")
@@ -707,32 +736,36 @@ def add_item_price(data, user):
         item = Item.objects.select_for_update().get(pk=values["item"].pk)
         values["item"] = item
         _check_item_price(item, values, user)
-        return ItemPrice.objects.create(**values)
+        row = ItemPrice.objects.create(**values)
+        record_history(row, user)
+        return row
 
 
 def update_item_price(item_price, data, user):
     """単価の行の値を直す。鍵は _ITEM_PRICE_KEYS から item を除いた物 (部品は変えない)。渡した鍵だけを直し、直した行を返す。
 
     今の行の値に渡した鍵の値を重ねた値で、売りなら工程を空にしてから、自分を除いて _check_item_price を呼ぶ。
-    user は受けるだけ。金額の閲覧の権限が無い人の編集は、入力の土台の金額の門が断る (決め C98-5)。
+    user は変更の履歴に残す。金額の閲覧の権限が無い人の編集は、入力の土台の金額の門が断る (決め C98-5)。
     """
     _refuse_unknown_keys(data, _ITEM_PRICE_KEYS - {"item"}, "単価の行")
     current = {name: getattr(item_price, name) for name in _ITEM_PRICE_KEYS - {"item"}}
     values = _price_values({**current, **data})
     with transaction.atomic():
         item = Item.objects.select_for_update().get(pk=item_price.item_id)
+        before = history.saved_state(item_price)
         _check_item_price(item, values, user, exclude_pk=item_price.pk)
         changed = set(data) | ({"process"} if values.get("process") != current.get("process") else set())
         for name in changed:
             setattr(item_price, name, values[name])
         item_price.save()
+        record_history(item_price, user, before=before)
         return item_price
 
 
 def delete_item_price(item_price, user):
     """単価の行を消す。無ければ日本語の ValueError。None を返す (土台は開いた部品の詳細 ?next= へ戻す)。
 
-    行は atomic の中で取り直して消す。user は受けるだけ。
+    行は atomic の中で取り直して消す。user は変更の履歴に残す (消す前に「消した」の 1 行。部品の詳細の履歴に出る)。
     金額の閲覧の権限が無い人の削除は、入力の土台の金額の門 (core.access の MONEY_ACTIONS) が断る (決め C98-6。この関数は権限を見ない)。
 
     訳: 打ち間違えた単価の行が残ると、単価表から選ぶときと単価のずれを比べるときに誤った単価を使うおそれがあるため。
@@ -743,6 +776,7 @@ def delete_item_price(item_price, user):
         row = ItemPrice.objects.select_for_update().filter(pk=item_price.pk).first()
         if row is None:
             raise ValueError("削除できません。この単価の行は既に消してあります。")
+        record_history_deleted(row, user)
         row.delete()
     return None
 
@@ -1199,7 +1233,8 @@ def set_item_processes(item, processes, user):
     """部品の標準の工程の並びを置き換える。processes は Process の並びで、並びの順に順を 1 から付ける。
 
     今の並びは消してから作り直す。空の並びなら全部の行を消して [] を返す (部品を作った直後と同じ形)。工程でない物・同じ工程の 2 回は、何も変えずに日本語の ValueError。
-    返す物は作った ItemProcess の並び。user は受けるだけ。
+    返す物は作った ItemProcess の並び。user は変更の履歴に残す: 行は消してから作り直すので行ごとには残さず、前の並びと後の並び
+    (工程の名前を「・」でつないだ字) が違うときだけ、部品の行に「標準の工程」の 1 行を残す (同じ並びなら残さない。決め HIST-1)。
 
     訳: 空の並びを受けるのは、部品の詳細の「外す」で最後の 1 つも外せるようにするため (選び間違えて足した 1 つ目を、別の工程を足してから外す 2 手なしで外せる)。空の並びは部品を作った直後にもある形で、新しい記録の状態は増えない。出所 = 本人の決め C112-1。前の空の断りは作り物のデータの読み込みのために作った守りで、画面の決めの記録は無かった (出所 = 未確認)。
     変えてよい条件 = 並びを空にできるかを本人が決め直したとき。
@@ -1214,8 +1249,15 @@ def set_item_processes(item, processes, user):
             raise ValueError(f"保存できません。工程 {process.code} が 2 回あります。同じ工程は 1 回だけにしてください。")
         seen.add(process.pk)
     with transaction.atomic():
+        before = "・".join(str(row.process.name) for row in item.item_processes.select_related("process").order_by("seq"))
         item.item_processes.all().delete()
-        return [item.item_processes.create(process=process, seq=seq) for seq, process in enumerate(processes, start=1)]
+        rows = [item.item_processes.create(process=process, seq=seq) for seq, process in enumerate(processes, start=1)]
+        after = "・".join(str(process.name) for process in processes)
+        if before != after:
+            record_history(
+                item, user, changes=[{"field": "item_processes", "label": "標準の工程", "type": "text", "before": before, "after": after}]
+            )
+        return rows
 
 
 def _current_processes(item):
@@ -1322,6 +1364,7 @@ def create_holiday(data, user):
         if existing is not None:
             raise ValueError(f"保存できません。{day:%Y-%m-%d} の休日は既にあります ({existing.name})。")
         row = Holiday.objects.create(**data, created_by=user if getattr(user, "pk", None) is not None else None)
+        record_history(row, user)
     # 同じ要求のこの後の読みが新しい休日を数えるよう、控えを捨てる (別の process は CACHE_SECONDS 秒で読み直す)
     calendar.reset_cache()
     return row
@@ -1330,12 +1373,13 @@ def create_holiday(data, user):
 def delete_holiday(holiday, user):
     """休日を消す。無ければ日本語の ValueError。None を返す (土台が一覧へ移す)。
 
-    行は atomic の中で取り直して消す。書いた後に稼働日の控え (core.calendar) を捨てる。user は受けるだけ (記録の列が無い)。
+    行は atomic の中で取り直して消す。書いた後に稼働日の控え (core.calendar) を捨てる。user は変更の履歴に残す (消す前に「消した」の 1 行)。
     """
     with transaction.atomic():
         row = Holiday.objects.select_for_update().filter(pk=holiday.pk).first()
         if row is None:
             raise ValueError("削除できません。この休日は既に消してあります。")
+        record_history_deleted(row, user)
         row.delete()
     calendar.reset_cache()
     return None

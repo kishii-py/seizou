@@ -63,7 +63,7 @@
   {% endfor %}
 </aside>
 <div class="min-w-0 lg:col-start-1 lg:row-start-3">{% endif %}
-{% if tabs or not aside %}
+{% if tabs or not aside or history %}
 {# 枠の「?」は箱の右上 (tabs の行の右端) に置く (本人 11-04 14:4x「ちゃんと右上がいい」)。開いている tab の枠の「?」だけが見える (tab-content は選んだ物だけ描く)。右の余白 (pr-12) は tabs が「?」の下に回り込まないため。 #}
 <div role="tablist" aria-label="詳細の区分" class="tabs tabs-box relative gap-2 rounded-xl border border-base-300 bg-base-100 p-2 pr-12 shadow-xs{% if aside %} mt-6{% endif %}">
   {% if not aside %}
@@ -127,8 +127,20 @@
     {% endblock %}{% endif %}
   </div>
   {% endfor %}
+  {# 履歴のタブ (決め HIST-1。core.history。model に印のある詳細だけ)。関係する物のタブの後ろに置く。「?」は付けない。右の列のある詳細で関係する物のタブが無ければ、このタブで開く。 #}
+  {% if history %}
+  <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
+    <input type="radio"{% if aside and not tabs %} checked{% endif %} name="detail-tabs" aria-label="履歴">履歴<span class="badge badge-sm tabular-nums">{{ history.count|comma }}</span>
+  </label>
+  <div class="tab-content mt-2 -mr-10 w-[calc(100%+2.5rem)] rounded-lg bg-base-100 p-4" role="tabpanel">
+    <p class="mb-2 text-xs font-medium text-base-content/50">履歴</p>
+    {% include "core/_history.html" with timeline=history %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
+{# 最後に直した日時と人 (決め C40-1。履歴の一番新しい行。列を足さないのは「残す仕組みは 1 つ」= HIST-1 のため)。行が無ければ「—」(今ある行は、次に保存するまで「—」)。 #}
+{% if history %}<p class="mt-2 text-xs text-base-content/70" data-last-change>最後に直した {% if history.last %}<span class="font-mono tabular-nums">{{ history.last.when|date:"Y-m-d H:i" }}</span> ・ {{ history.last.who }}{% else %}—{% endif %}</p>{% endif %}
 {% block after_tabs %}{% endblock %}{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
 {% if aside %}</div>
 </div>{% endif %}

@@ -3,6 +3,7 @@
 注文の受け口は /connect/receive/order/ になる。
 画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは受信した注文の行ごと。差出人を選ぶも同じ。
 注文回答 (承認か断りの結果) も、注文と同じ受け口 (receive) が受ける。
+送り合った記録 (送った物と受けた物の中身。読むだけ) は exchanges/ (exchange_list) と exchanges/<pk>/ (exchange_detail)。左のメニューでなく設定の画面から開く。
 会話 (受注と発注の 1 件ごとの相手とのやり取り) の書く画面は chat/new/ (名前を _create にしない = 一覧の土台の「新規登録」と取り違えない)、送り直す口は chat/<pk>/resend/。添付を開く口は chat/files/<pk>/、相手から届いた添付を取りに行く口は chat/files/<pk>/fetch/。
 """
 
@@ -38,6 +39,8 @@ urlpatterns = [
     path("connections/new/", views.ConnectionCreateView.as_view(), name="connection_create"),
     path("connections/<int:pk>/", views.ConnectionDetailView.as_view(), name="connection_detail"),
     path("connections/<int:pk>/edit/", views.ConnectionUpdateView.as_view(), name="connection_update"),
+    path("exchanges/", views.ExchangeListView.as_view(), name="exchange_list"),
+    path("exchanges/<int:pk>/", views.ExchangeDetailView.as_view(), name="exchange_detail"),
     path("chat/new/", views.ChatMessageAddView.as_view(), name="chatmessage_add"),
     path("chat/<int:pk>/resend/", chat.resend_chat, name="chatmessage_resend"),
     path("chat/files/<int:pk>/", chat.chat_file_download, name="chatfile_download"),

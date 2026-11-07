@@ -7,12 +7,15 @@
   トランザクションの中でだけ呼べる (外で呼ぶと RuntimeError)。行をロックして増やすので、同時に呼んでも重ならない。
 - validate_setting(key, value): 選べる設定の値を確かめて、整えた値を返す。誤りは日本語の ValueError (知らない鍵は KeyError)。
 - set_setting(key, value, user): 設定の画面からの上書き (SettingOverride) を書く。clear_setting(key, user) は消す。
-  どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (履歴の表は持たない)。
+  どちらも書いた後に seizou.core.conf の控えを捨て、logging の "seizou.settings" に INFO の 1 行を書く (変更は core の変更の履歴にも残す)。
 - user_preference(user, key, default): 人ごとの表示の設定 (UserPreference) の値。行が無いか、ログインしていない人は default。
   set_user_preference(user, key, value) は本人の行を書く (鍵と値は core.display の物だけ。標準の値は行を消す)。
 - update_company(company, data, user): 会社の情報 (住所・電話・振込先・登録番号・ロゴ) を直す。設定の画面の「会社の情報」と、答えの YAML の company (命令 seizou new) が呼ぶ。
 - check_registration_no(text): 適格請求書の登録番号の形 (T と 13 桁の数字) を確かめる。形が違えば日本語の ValueError。
 - company_icons(company): ロゴから作った印 (favicon) の URL。無ければ None (土台は static の favicon.svg を出す)。
+- record_history(obj, user, *, before=None, by="", changes=None): 変更の履歴 (ChangeLog) に 1 行書く (作った・直した・使用停止・再開・取消)。
+  各 app の services が、書く前に core.history.saved_state(obj) を取り、書いた後に同じ atomic の中で呼ぶ (決め HIST-1)。
+- record_history_deleted(obj, user, *, by=""): 消す前に呼び、その時の値を前に残して「消した」の 1 行を書く。
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from django.utils import timezone
 
 from seizou.core import conf
 from seizou.core.conf import setting
-from seizou.core.models import Company, NumberSequence, SettingOverride, UserPreference
+from seizou.core.models import ChangeLog, Company, NumberSequence, SettingOverride, UserPreference
 
 logger = logging.getLogger("seizou.settings")
 
@@ -229,8 +232,26 @@ def _user_name(user) -> str:
     return name or "(不明)"
 
 
+def _setting_change(key, before, after) -> list[dict]:
+    """設定 key の前と後の値の変更の履歴の中身 (字は設定の画面の字)。前と後の字が同じなら空の並び。
+
+    settings_screen は関数の中で import する (settings_screen が module の頭でこの module を import するため)。
+    """
+    from seizou.core import settings_screen
+
+    label = settings_screen.SETTING_LABELS.get(key, (key, {}))[0]
+    before_text = settings_screen._display(key, before)
+    after_text = settings_screen._display(key, after)
+    if before_text == after_text:
+        return []
+    return [{"field": key, "label": label, "type": "text", "before": before_text, "after": after_text}]
+
+
 def set_setting(key, value, user):
-    """選べる設定 key を画面の値 value で上書きし、上書きの行 (SettingOverride) を返す。"""
+    """選べる設定 key を画面の値 value で上書きし、上書きの行 (SettingOverride) を返す。
+
+    前と後の字 (設定の画面の字) が違えば、同じ atomic の中で変更の履歴に「直した」の 1 行を書く (決め HIST-1 の「会社の設定」)。
+    """
     value = validate_setting(key, value)
     before = conf.setting(key)
     with transaction.atomic():
@@ -238,6 +259,9 @@ def set_setting(key, value, user):
             key=key,
             defaults={"value": value, "updated_by": user if getattr(user, "pk", None) is not None else None},
         )
+        changes = _setting_change(key, before, value)
+        if changes:
+            _write_history(row, user, ChangeLog.ACTION_UPDATED, changes, text=changes[0]["label"])
     # 同じ要求のこの後の読みが新しい値を読むよう、控えを捨てる (別の process は CACHE_SECONDS 秒で読み直す)
     conf.reset_cache()
     logger.info("設定を変えた: %s %r → %r (%s)", key, before, value, _user_name(user))
@@ -245,12 +269,24 @@ def set_setting(key, value, user):
 
 
 def clear_setting(key, user):
-    """選べる設定 key の画面の上書きを消し、答え (SEIZOU) か既定の値に戻す。上書きが無くても誤りにしない。"""
+    """選べる設定 key の画面の上書きを消し、答え (SEIZOU) か既定の値に戻す。上書きが無くても誤りにしない。
+
+    上書きの行があり、戻った値の字が前と違えば、同じ atomic の中で変更の履歴に「直した」の 1 行を書く (後の値は戻った値の字。
+    消した行でなく値が変わった記録のため)。上書きの行が無ければ値が変わらないので書かない。
+    """
     if key not in conf.DEFAULTS:
         raise KeyError(f"知らない設定の鍵: {key}")
     before = conf.setting(key)
     with transaction.atomic():
-        SettingOverride.objects.filter(key=key).delete()
+        row = SettingOverride.objects.filter(key=key).first()
+        if row is not None:
+            row_pk = row.pk
+            row.delete()
+            conf.reset_cache()
+            changes = _setting_change(key, before, conf.setting(key))
+            if changes:
+                row.pk = row_pk  # delete() は物の pk を None にする。消した行の番号で残す
+                _write_history(row, user, ChangeLog.ACTION_UPDATED, changes, text=changes[0]["label"])
     conf.reset_cache()
     logger.info("設定を戻した: %s %r → %r (%s)", key, before, conf.setting(key), _user_name(user))
 
@@ -308,6 +344,8 @@ def update_company(company, data, user):
     (部品の図面の masters.services.update_item と同じ。消すのは会期後)。形 (PNG か JPEG) は form が見る。
     ロゴを上げたら、ロゴから印 (COMPANY_ICONS) を作って同じ storage に置き、外したら印を消す (_write_company_icons)。
     登録番号はインボイス制度で適格請求書に書く番号 (決め LAW-3)。形 (T と 13 桁の数字) は check_registration_no が見る (決め C95-2)。
+    変えた列があれば、同じ atomic の中で変更の履歴に 1 行書く (前は取り直した行の core.history.saved_state)。振込先は直したことと
+    見出しだけを残し、前と後の値は残さない (Company.history_hidden_values)。
     """
     from pathlib import PurePath
 
@@ -329,8 +367,11 @@ def update_company(company, data, user):
         if name == "registration_no":
             check_registration_no(text)
         values[name] = text
+    from seizou.core import history
+
     with transaction.atomic():
         row = Company.objects.select_for_update().get(pk=company.pk)
+        before = history.saved_state(row)
         changed = [name for name, value in values.items() if getattr(row, name) != value]
         for name in changed:
             setattr(row, name, values[name])
@@ -342,6 +383,7 @@ def update_company(company, data, user):
             changed.append("logo")
         if changed:
             row.save(update_fields=changed)
+            record_history(row, user, before=before)
     if "logo" in changed and not _write_company_icons(row):
         logger.info("印は作らなかった: ロゴを Pillow で絵として開けない (%s)", _user_name(user))
     if changed:
@@ -413,4 +455,112 @@ def company_icons(company) -> dict | None:
     return {"icon": storage.url(icon) + version, "touch": storage.url(touch) + version}
 
 
-__all__ = ["clear_setting", "company", "company_icons", "company_or_none", "next_number", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
+def _actor(user):
+    """変更の履歴の人の列の値 (表にいる利用者だけ。AnonymousUser と表に無い物は None)。"""
+    return user if getattr(user, "pk", None) is not None and getattr(user, "is_authenticated", True) else None
+
+
+def _write_history(obj, user, action, changes, *, by="", text=""):
+    """変更の履歴の 1 行を書く (record_history・record_history_deleted と設定の記録が呼ぶ)。
+
+    人の字はその時の str(user)。人の無い処理は呼び手が渡した by の字。どちらも無ければ空 (画面は「システム」)。
+    行の字は text (渡さなければ str(obj))。出す詳細は core.history.owner_of(obj)。
+    """
+    from seizou.core import history
+
+    actor = _actor(user)
+    owner = history.owner_of(obj)
+    return ChangeLog.objects.create(
+        actor=actor,
+        actor_label=(str(actor) if actor is not None else by or "")[:150],
+        action=action,
+        model=obj._meta.label_lower,
+        object_pk=obj.pk,
+        object_text=(text or str(obj))[:200],
+        owner_model=owner._meta.label_lower,
+        owner_pk=owner.pk,
+        changes=list(changes),
+    )
+
+
+def _hidden_value(obj, name, text) -> str:
+    """history_hidden_values の列は値を残さない (直したことと見出しだけ)。空は空のまま。"""
+    from seizou.core import history
+
+    if text and name in (getattr(obj.__class__, "history_hidden_values", ()) or ()):
+        return history.HIDDEN_VALUE
+    return text
+
+
+def record_history(obj, user, *, before=None, by="", changes=None):
+    """変更の履歴 (ChangeLog) に obj の 1 行を書き、書いた行を返す (書かなければ None)。
+
+    before が None なら「作った」(空でない値を後に)。before (書く前に取った core.history.saved_state(obj)) があれば、
+    今の saved_state と比べ、変わった項目が無ければ何も書かない。使用中 (active) が真 → 偽は「使用停止にした」、偽 → 真は
+    「使用を再開した」、状態 (status) が "cancelled" になったら「取り消した」、ほかは「直した」。
+    changes を渡せば比べずにその並びを「直した」で書く (列でない物 = 標準の工程の並び・設定の値。空の並びなら書かない)。
+    呼び手は書く前に before を取り、書いて拡張の表も書いた後に、同じ transaction.atomic の中で呼ぶ (止まって戻ったら履歴も残らない)。
+    人の無い処理 (受け口) は user が None で、by に人の字 (例「<取引先の名前> の seizou」) を渡す。
+    訳: 誰が・いつ・どの項目を・前の値 → 後の値に直したかを、マスターと伝票の全部で 1 つの表に残すため。出所 = 持ち主の決め
+    (HIST-0・HIST-1・C40-1) と作者の決め、送り合ったデータと伝票の直し・消しの記録を残す電子帳簿保存法の考え (確かめた資料 =
+    中小企業共通 EDI のガイドブック 3.2.2 と EDI インボイス仕様編 6.3.2。法令の本文と国税庁の資料は未読なので、どの表が法律の
+    記録に当たるかは未確認)。
+    変えてよい条件 = 残す列を減らすときは、その列が法律の記録に当たらないかを確かめてから。
+    """
+    from seizou.core import history
+
+    if changes is not None:
+        if not changes:
+            return None
+        return _write_history(obj, user, ChangeLog.ACTION_UPDATED, changes, by=by)
+    after = history.saved_state(obj)
+    if before is None:
+        items = [
+            {"field": name, "label": s["label"], "type": s["type"], "before": "", "after": _hidden_value(obj, name, s["value"])}
+            for name, s in after.items()
+            if s["value"] != ""
+        ]
+        return _write_history(obj, user, ChangeLog.ACTION_CREATED, items, by=by)
+    items = []
+    for name, state in after.items():
+        old = before.get(name, {"value": "", "code": ""})
+        if old.get("value", "") == state["value"] and old.get("code", "") == state.get("code", ""):
+            continue
+        items.append(
+            {
+                "field": name,
+                "label": state["label"],
+                "type": state["type"],
+                "before": _hidden_value(obj, name, old.get("value", "")),
+                "after": _hidden_value(obj, name, state["value"]),
+            }
+        )
+    if not items:
+        return None
+    action = ChangeLog.ACTION_UPDATED
+    changed = {item["field"] for item in items}
+    if "active" in changed and after["active"]["value"] in ("true", "false"):
+        action = ChangeLog.ACTION_RESUMED if after["active"]["value"] == "true" else ChangeLog.ACTION_STOPPED
+    elif "status" in changed and after["status"].get("code") == "cancelled":
+        action = ChangeLog.ACTION_CANCELLED
+    return _write_history(obj, user, action, items, by=by)
+
+
+def record_history_deleted(obj, user, *, by=""):
+    """obj を消す前に呼び、その時の値 (空でない物) を前に残して「消した」の 1 行を書く。書いた行を返す。
+
+    行の字 (object_text) はその時の str(obj) なので、行が表から消えた後も、どの行を消したかを読める。
+    訳: 消した事も、誰が・いつ・何を消したかを残すため。出所 = 持ち主の決め (HIST-1 の「作った・消した (使用停止) も残す」)。
+    変えてよい条件 = record_history と同じ (残す列を減らすときは、その列が法律の記録に当たらないかを確かめてから)。
+    """
+    from seizou.core import history
+
+    items = [
+        {"field": name, "label": s["label"], "type": s["type"], "before": _hidden_value(obj, name, s["value"]), "after": ""}
+        for name, s in history.saved_state(obj).items()
+        if s["value"] != ""
+    ]
+    return _write_history(obj, user, ChangeLog.ACTION_DELETED, items, by=by)
+
+
+__all__ = ["clear_setting", "company", "company_icons", "company_or_none", "next_number", "record_history", "record_history_deleted", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]

@@ -9,6 +9,7 @@ payload_price_unit: 届いた明細の単価の後ろに添える単価の単位
 reply_line_texts: 受信した注文の詳細の「返した条件」の行 (単価を直して受け入れたときに相手へ返した明細ごとの答え)。
 revision_notice・revision_lines・revision_problem: 変更と取消の版 (中小企業共通 EDI の注文変更の方式 2) の札・明細状態と受注の今の値・受け入れられない訳。
 chat_panel: 受注・発注・受信した注文の「会話」の枠 (connect/_chat.html) の中身 (会話が使えるか・言葉の並び・書く先・書けるか。C104)。
+exchange_body: 送り合った記録の詳細の「中身」の枠の字 (JSON を字下げした字と、送ったとおりの字。金額の閲覧の無い人には金額の鍵を外す)。
 """
 
 from decimal import Decimal, InvalidOperation
@@ -314,3 +315,35 @@ def chat_panel(target, user):
         "target_id": target_id,
         "can_write": access.can_open(user, "connect", record=False),
     }
+
+
+def _without_money(value):
+    """JSON の値から、金額の名前 (access.is_money_name) の鍵を鍵ごと外した写し (入れ子の辞書と並びも)。"""
+    if isinstance(value, dict):
+        return {key: _without_money(item) for key, item in value.items() if not access.is_money_name(key)}
+    if isinstance(value, list):
+        return [_without_money(item) for item in value]
+    return value
+
+
+@register.simple_tag
+def exchange_body(exchange, hide_money=False):
+    """{% exchange_body object seizou.hide_money as body %}。送り合った記録の詳細の「中身」の枠の字 (読むだけ)。
+
+    返す物は {"pretty": JSON を字下げした字 (鍵の名前と並びはそのまま), "raw": 送ったとおり・受けたとおりの字}。
+    金額の閲覧の無い人 (hide_money が真) には、金額の名前の鍵を鍵ごと外した字にし (決め 11-05 09:4x の「項目そのものを出さない」)、
+    送ったとおりの字は出さない (空の字)。JSON として読めない中身は、字のまま pretty に出す (金額の閲覧の無い人には出さない = 両方空)。
+    中身の字を書き換えて保存することはしない (表示のための写しだけ)。
+    """
+    import json
+
+    body = exchange.body or ""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        data = None
+    if data is None:
+        return {"pretty": "", "raw": ""} if hide_money else {"pretty": body, "raw": ""}
+    if hide_money:
+        return {"pretty": json.dumps(_without_money(data), ensure_ascii=False, indent=2), "raw": ""}
+    return {"pretty": json.dumps(data, ensure_ascii=False, indent=2), "raw": body}
