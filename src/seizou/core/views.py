@@ -1381,6 +1381,11 @@ class BaseFormView(ScreenMixin, FormView):
         response = super().render_to_response(context, **response_kwargs)
         # 同じ URL で小窓の中身と画面の全体を返すので、ブラウザの保存が取り違えないように見出しで分ける (一覧の HX-Request と同じ)。
         patch_vary_headers(response, ("HX-Target",))
+        # htmx が画面の一部 (HX-Target の箱) だけを差し替える要求 (今はメモの書く枠 = notes/note_form.html の hx-select="#notes")。
+        # 右上の知らせ (_toasts.html) が差し替えに入らないので、合図でも返す (決め 11-07 C57-5)。小窓と画面の全体には付けない。
+        headers = self.request.headers
+        if headers.get("HX-Request") and headers.get("HX-Target") and not self.in_modal:
+            add_notice_trigger(response, context.get("notice"), context.get("warnings") or ())
         return response
 
     def get_initial(self):
