@@ -122,13 +122,36 @@ def providers() -> list:
     return found
 
 
-def run_search(query: str, *, kind: str = ALL, partner: int | None = None, limit: int = LIMIT) -> list[SearchSection]:
-    """kind の種類 (ALL なら全部) を探す。当たりの無い種類と、表の読めない種類は並べない。"""
+def provider_app(module) -> str:
+    """search module の部品の app の名前 (seizou.orders.search → orders)。部署の門 (access.can_open) に渡す名前。"""
+    parts = module.__name__.split(".")
+    return parts[-2] if len(parts) >= 2 else parts[-1]
+
+
+def open_providers(user) -> list:
+    """providers() のうち、利用者が部署でその部品を開ける物だけ (判定は左のメニューと同じ access.can_open。記録は書かない)。
+
+    訳: 部署の判定が on のとき、部署で一覧を開けない部品 (例 受注) の行を、横断の検索から読めないようにする。
+    何のため: 検索は core の画面 (部署に関係なく開く) なので、部品ごとに門を通さないと、一覧の 403 で閉じた部品の行が検索で読める。
+    log (既定) と off では can_open が真を返すので、今までどおり全部を探す (記録の行は書かない。検索は字を打つたびに開くため)。
+    出所 = Claude Security の走査の候補 11-07 (横断検索が部署の門を通らない)。
+    変えてよい条件 = 部署の門が一覧の画面でも部署を見なくなったとき (そのときは検索も同じにそろえる)。
+    """
+    return [module for module in providers() if access.can_open(user, provider_app(module), record=False)]
+
+
+def run_search(
+    query: str, *, kind: str = ALL, partner: int | None = None, limit: int = LIMIT, modules: list | None = None
+) -> list[SearchSection]:
+    """kind の種類 (ALL なら全部) を探す。当たりの無い種類と、表の読めない種類は並べない。
+
+    modules は探す search module の並び (検索の画面は open_providers の物を渡す)。None なら providers() の全部。
+    """
     query = (query or "").strip()
     if not query:
         return []
     sections = []
-    for module in providers():
+    for module in providers() if modules is None else modules:
         if kind != ALL and module.KIND != kind:
             continue
         try:
@@ -290,7 +313,8 @@ class SearchView(ScreenMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         query = self.request.GET.get("q", "").strip()
-        modules = providers()
+        # 部署で開けない部品は、探す物にも chip にも「探した項目」にも入れない (open_providers の訳)
+        modules = open_providers(self.request.user)
         kinds = {m.KIND for m in modules}
         kind = self.request.GET.get("kind", ALL)
         if kind not in kinds:
@@ -302,7 +326,7 @@ class SearchView(ScreenMixin, TemplateView):
         for chip in chips:
             chip["selected"] = chip["kind"] == kind
             chip["query"] = query_string(q=query, kind="" if chip["kind"] == ALL else chip["kind"], partner=partner_value)
-        sections = run_search(query, kind=kind, partner=partner) if query else []
+        sections = run_search(query, kind=kind, partner=partner, modules=modules) if query else []
         context.update(
             {
                 "query": query,
