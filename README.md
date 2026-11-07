@@ -277,8 +277,8 @@ GitHub とつなぐ: 世話役 (アカウント管理の権限がある人) は�
 | `mail` | 知らせのメールの送り方 | `host`・`port`・`security`・`user`・`from`・`from_name`・`site_url` の辞書 (サーバー・ポート・暗号化の方式は `.env` で決める) | `{'host': '', 'port': 587, 'security': 'starttls', 'user': '', 'from': '', 'from_name': '', 'site_url': ''}` | 取引先から会話が届いた知らせをメールで受けたい会社だけ入れる |
 | `session_idle_minutes` | 操作しない間のログインの時間切れ (分) | 分の数 | `120` | 共用の PC が多い会社は短く。画面からは変えない (答えの YAML) |
 | `session_max_hours` | ログインからの最長の時間 (時間) | 時間の数 | `12` | 1 日の勤務より長くしない。画面からは変えない (答えの YAML) |
-| `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 今の版は値を持つ土台で、呼び出しを止める所は次の版。画面からは変えない |
-| `ai_features` | AI を使う機能 | `assistant` (AI チャット)・`intake` (注文書の読み取り)・`feedback` (フィードバックの聞き取り) のそれぞれ `true` / `false` | `{'assistant': True, 'intake': True, 'feedback': True}` | 今の版は値を持つ土台で、止める所は次の版。画面からは変えない |
+| `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 超えた分は API を呼ばずに断る (既定は審査や試用で続けて試しても断られない緩さ)。費用を抑えたい会社は答えの YAML で下げる。画面からは変えない |
+| `ai_features` | AI を使う機能 | `assistant` (AI チャット)・`intake` (注文書の読み取り)・`feedback` (フィードバックの聞き取り) のそれぞれ `true` / `false` | `{'assistant': True, 'intake': True, 'feedback': True}` | `false` にした機能は使えなくなる (窓には鍵が無いときと同じ字が出る)。画面からは変えない |
 
 使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
 
