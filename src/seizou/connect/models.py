@@ -161,6 +161,11 @@ class Inbox(models.Model):
         related_name="revisions",
     )
 
+    #: 変更の履歴 (core.history。決め HIST-1) を残す。受け入れ・断り・保留・差出人の選び直しの前と後が詳細の「履歴」の節に出る
+    keeps_history = True
+    #: 変更の履歴に残さない列。中身は送り合った記録 (Exchange) に受けたとおりに残り、受けた後に変わらないため
+    history_skip = ("payload",)
+
     class Meta:
         verbose_name = "受信した注文"
         verbose_name_plural = "受信した注文"
@@ -571,3 +576,96 @@ def _qty_text(value) -> str:
     """数量の字。末尾の 0 を落とす (10.00 → 10、2.50 → 2.5)。purchasing の models と同じ (connect は purchasing を頭で import しない)。"""
     dec = value if isinstance(value, Decimal) else Decimal(str(value))
     return format(dec.normalize(), "f") if dec != dec.to_integral_value() else str(dec.quantize(Decimal(1)))
+
+
+class Exchange(models.Model):
+    """送り合った記録。会社どうしで送った物と受けた物の中身を、送ったとおり・受けたとおりの字で 1 通 1 行に残す。
+
+    電子帳簿保存法: 電子取引のデータ (送った注文・注文の変更・注文回答・出荷の知らせ・検収・会話) を、直さず消さずに残し、
+    取引年月日 (created_at)・取引金額 (amount)・取引先 (partner) で探せるようにする表 (決め HIST-1 の edi・C106-1・_policy_1106f)。
+    書くのは connect.services の _deliver (送った物) と receive (受けた物) だけ。直す道と消す道は作らない (services が書くのは、
+    作る時の全部の列と、送った後・受けた後の result だけ)。見出し (署名) は残さない。鍵の値は表にも中身にも無い。
+    新しい表にする訳: 送った注文の表 (Outbox) は送った注文の行だけで、注文回答・検収・出荷の知らせ・受けた物には中身を持つ行が無い。
+    送る所 (_deliver) と受ける所 (receive) がどれも 1 か所なので、そこで全部の種類を 1 つの表に残す形を、送り合った物を残す仕組みを
+    1 つにする形として作者が選んだ。Outbox はそのまま使い、同じ番号 (message_id) で結び付く。
+    訳: 送ったとおり・受けたとおりの中身を、直さず消さずに残し、日付・金額・取引先で探せるようにするため。確かめた資料 =
+    中小企業共通 EDI の EDI インボイス仕様編 6.3.2 (電帳法の保存の要件の節。③ 削除変更できない条件で保存する・② 保存期間は 7 年間・
+    ④ 検索の条件) とガイドブック 3.2.2 (EDI 取引データの保存と、修正・削除の履歴)。法令の本文と国税庁の資料は未読。
+    出所 = 法令と持ち主の決め (HIST-1 の edi・C106-1)。
+    変えてよい条件 = 法律の保存の決まりが変わったとき。画面の字には法律の当てはめを書かない。
+    """
+
+    DIRECTION_SENT = "sent"
+    DIRECTION_RECEIVED = "received"
+    DIRECTION_CHOICES = [
+        (DIRECTION_SENT, "送った"),
+        (DIRECTION_RECEIVED, "受けた"),
+    ]
+    #: 種類の字 (本文の kind → 画面の字)。知らない kind は字のまま出す。後の依頼が自分の kind の行を足す
+    KIND_LABELS = {
+        "order": "注文",
+        "order_reply": "注文回答",
+        "acceptance": "検収",
+        "shipping_notice": "出荷の知らせ",
+        "chat_message": "会話",
+    }
+
+    direction = models.CharField("向き", max_length=10, choices=DIRECTION_CHOICES)
+    # 本文の kind の字のまま (kind の無い注文は "order")。choices は持たない (後の依頼の kind も同じ列に入る)
+    kind = models.CharField("種類", max_length=35, blank=True)
+    # 見出しの webhook-id。送り直しは同じ番号で行が増える。uuid の形でない番号は空
+    message_id = models.UUIDField("番号", null=True, blank=True, db_index=True)
+    partner = models.ForeignKey(
+        "masters.Partner", verbose_name="取引先", on_delete=models.PROTECT, related_name="exchanges"
+    )
+    created_at = models.DateTimeField("日時", default=timezone.now)
+    # 送った bytes・受けた bytes を UTF-8 で読んだ字そのもの (整形し直さない)
+    body = models.TextField("中身")
+    # 取引金額 (決め C106-1)。注文と注文の変更は明細の「数量 × 単価」の合計を丸めずに持つ (小数 4 桁まで)。金額の無い物は空。
+    # 名前を amount にして access.MONEY_FIELDS に当て、一覧の列・CSV・詳細の項目を金額の閲覧の無い人に出さない (土台のまま)。
+    # decimal_places=4 は、明細の数量 (小数 2 桁) × 単価 (小数 2 桁) を丸めずに持てる桁。max_digits=20 は整数 16 桁 (明細の金額の列を足しても足りる見込み)
+    amount = models.DecimalField("金額", max_digits=20, decimal_places=4, null=True, blank=True)
+    # 送った後・受けた後の結果の字 (受け取った・断られた: …・届きません…・受けた・断った: …)。Outbox.response と同じ字数
+    result = models.CharField("結果", max_length=500, blank=True)
+
+    #: 詳細の基本情報に出さない列 (番号の uuid は画面に出さない決まり。中身は詳細の枠で整えて出す)
+    detail_hidden_fields = ("message_id", "body")
+
+    class Meta:
+        verbose_name = "送り合った記録"
+        verbose_name_plural = "送り合った記録"
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"{self.get_direction_display()} {self.kind_label()} {timezone.localtime(self.created_at):%Y-%m-%d %H:%M}"
+
+    def _payload(self):
+        """中身を JSON として読んだ辞書 (読めなければ None)。読むだけ。"""
+        import json
+
+        if not hasattr(self, "_payload_cache"):
+            try:
+                data = json.loads(self.body)
+            except ValueError:
+                data = None
+            self._payload_cache = data if isinstance(data, dict) else None
+        return self._payload_cache
+
+    def kind_label(self):
+        """種類の画面の字。注文は中身の注文書目的コードが "4" なら「注文の変更」、"1" なら「注文の取消」。知らない kind は字のまま。"""
+        if self.kind == "order":
+            purpose = (self._payload() or {}).get("purpose_code")
+            if purpose == edi_codes.PURPOSE_CHANGE:
+                return "注文の変更"
+            if purpose == edi_codes.PURPOSE_CANCEL:
+                return "注文の取消"
+        return self.KIND_LABELS.get(self.kind, self.kind)
+
+    kind_label.short_description = "種類"
+
+    def order_no(self):
+        """中身の注文番号 (order_no。どの種類も発注元の発注番号)。無ければ空の字。"""
+        value = (self._payload() or {}).get("order_no")
+        return value if isinstance(value, str) else ""
+
+    order_no.short_description = "注文番号"

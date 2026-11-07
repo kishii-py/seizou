@@ -274,6 +274,13 @@ class SettingsView(ScreenMixin, TemplateView):
                 "icon": "inbox",
             },
             {
+                # 送り合った記録 (決め HIST-1 の edi・C106-1)。取引先との接続と同じく普段は触らないので、左のメニューでなくここから開く
+                "label": "送り合った記録",
+                "help": "取引先と送り合った注文・注文回答・出荷の知らせ・検収の中身を、送ったとおりに残した一覧。",
+                "url": url_or_none("connect:exchange_list"),
+                "icon": "inbox",
+            },
+            {
                 "label": "添付ファイルの一覧 (整理用)",
                 "help": "各詳細の「添付ファイル」の枠から付けたファイルを全部まとめて探す。付けるのは各詳細から。",
                 "url": url_or_none("attachments:attachment_list"),

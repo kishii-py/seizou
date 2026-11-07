@@ -1,6 +1,6 @@
 """connect の画面と受け口。
 
-画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続) は core の土台を継承する (R15)。
+画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続・送り合った記録) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
 書く処理は services の accept・accept_with_conditions・hold・reject だけで、土台が検査の層を通してから呼ぶ。
 会話に書く (受注と発注の 1 件ごとの会話。C104) も入力の土台を継承し、書くのは services.post_chat_message だけ。
@@ -21,7 +21,7 @@ from seizou.masters.services import active_partners
 
 from . import services
 from .forms import AcceptForm, ChatMessageForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
-from .models import ChatMessage, Connection, Inbox
+from .models import ChatMessage, Connection, Exchange, Inbox
 
 
 def _sender_choices():
@@ -203,6 +203,53 @@ class InboxRejectView(BaseFormView):
 
 
 # 取引先との接続の一覧。鍵の値は出さず、置き場の名前と、値が置いてあるか (済み / まだ) だけを出す。入力の画面は作らない。
+def _exchange_kind_choices():
+    """ExchangeListView の種類の絞りの候補 (本文の kind の字 → 画面の字。kind は choices の無い字の列のため)。"""
+    return list(Exchange.KIND_LABELS.items())
+
+
+# 送り合った記録 (決め HIST-1 の edi・C106-1)。書くのは services の _deliver と receive だけで、画面は読むだけ (直す道と消す道は無い)。
+# 左のメニューでなく、設定の画面の「普段は触らない物」から開く (取引先との接続と同じ)。
+class ExchangeListView(BaseListView):
+    """送り合った記録の一覧。
+
+    使う人: 総務・経理・受注と発注の担当 / いつ: 取引先と送り合ったデータを確かめるとき・頼まれてデータを出すとき / 何のために: 送ったとおり・受けたとおりの中身を、日付・取引先・種類・金額で探す / 次にすること: 行を押して中身を見るか、「CSV」で書き出す
+
+    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (決め HIST-1 の edi と C106-1)。
+    """
+
+    model = Exchange
+    screen_name = "送り合った記録"
+    screen_help = "会社どうしで送り合った注文・注文回答・出荷の知らせ・検収などを、送ったとおり・受けたとおりの中身で残した一覧です。直す道と消す道はありません。"
+    columns = ("created_at", "direction", ("kind_label", "種類"), "partner", ("order_no", "注文番号"), ("amount", "金額"), "result")
+    filters = (
+        {"name": "created", "label": "日付", "kind": "date_range", "field": "created_at"},
+        {"name": "partner", "label": "取引先", "kind": "lookup", "field": "partner"},
+        {"name": "kind", "label": "種類", "kind": "choice", "field": "kind", "choices": _exchange_kind_choices},
+        {"name": "direction", "label": "向き", "kind": "choice", "field": "direction"},
+        {"name": "amount", "label": "金額", "kind": "number_range", "field": "amount"},
+    )
+    search_fields = ("body",)
+    ordering = ("-created_at", "-pk")
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("partner")
+
+
+class ExchangeDetailView(BaseDetailView):
+    """送り合った記録の詳細。
+
+    使う人: 総務・経理・受注と発注の担当 / いつ: 取引先と送り合ったデータを確かめるとき・頼まれてデータを出すとき / 何のために: 送ったとおり・受けたとおりの 1 通の中身を読む / 次にすること: 「一覧に戻る」で送り合った記録へ戻る
+
+    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (決め HIST-1 の edi と C106-1)。
+    """
+
+    model = Exchange
+    screen_name = "送り合った記録の詳細"
+    screen_help = "会社どうしで送り合った 1 通の中身を、送ったとおり・受けたとおりの字で出します。直す道と消す道はありません。"
+    template_name = "connect/exchange_detail.html"
+
+
 class ConnectionListView(BaseListView):
     """取引先との接続の一覧。
 
