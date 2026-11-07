@@ -27,8 +27,6 @@ def _read_env(path):
 _read_env(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ["SECRET_KEY"]
-# 前の SECRET_KEY (鍵を計画して入れ替える間だけ .env の SECRET_KEY_FALLBACKS に , 区切りで置く。漏れたときは置かない = seizou の docs/operations.md)
-SECRET_KEY_FALLBACKS = [key.strip() for key in os.environ.get("SECRET_KEY_FALLBACKS", "").split(",") if key.strip()]
 
 # 開発は 1、本番は 0 (.env で切り替える)。1 のときは core の起動の検査が走る。
 DEBUG = os.environ.get("DEBUG", "0") == "1"
