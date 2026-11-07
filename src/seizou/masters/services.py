@@ -35,7 +35,6 @@ from seizou.core.templatetags.seizou_tags import comma
 
 from .drawings import page_name
 from .models import Item, ItemPrice, Partner, PartnerItem
-from .models import PRICE_BASIS_UNIT
 from .models import Process
 from .models import Holiday
 from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
