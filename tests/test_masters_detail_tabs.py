@@ -2,6 +2,7 @@
 
 core の詳細の block tab_rows を masters のテンプレートが差し替える。空の標準の工程のタブだけ、block tab_empty で
 土台と同じ箱に意味の 1 行を足す (初見テスト R5 の V29。C19)。ほかの空のタブは core の形のまま。
+標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。C112)。
 """
 
 import re

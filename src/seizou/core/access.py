@@ -76,7 +76,16 @@ PERMISSION_NAMES = (*GROUPS, *KIND_LABELS)
 # ---------------------------------------------------------------- action の分け方
 
 _KIND_ACTIONS = {
-    "items": ("masters.create_item", "masters.update_item", "masters.import_items", "masters.restore_drawing_version"),
+    "items": (
+        "masters.create_item",
+        "masters.update_item",
+        "masters.import_items",
+        "masters.restore_drawing_version",
+        # 部品の標準の工程の並びを直す 3 つ (C112。決め C19-3)。部品マスターの編集の権限で守る
+        "masters.add_item_processes",
+        "masters.move_item_process",
+        "masters.remove_item_process",
+    ),
     "partners": ("masters.create_partner", "masters.update_partner", "masters.import_partners"),
     "processes": ("masters.create_process", "masters.update_process", "masters.create_holiday", "masters.delete_holiday"),
     "connections": ("connect.register_connection", "connect.update_connection"),

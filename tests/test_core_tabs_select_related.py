@@ -108,7 +108,8 @@ def test_item_detail_process_tab_selects_do_not_grow_with_rows(logged_in, user, 
     assert four == one
     html = logged_in.get(url).content.decode()
     for process in processes:
-        assert f"N174-1 {process.code} {process.name}" in html
+        # 標準の工程のタブは表 (masters/_item_processes.html。C112)。行の字は「<工程コード> <名前>」(部品の品番を付けない)
+        assert f'<span class="font-mono">{process.code}</span> {process.name}' in html
 
 
 def _invoice_with_lines(user, count: int):

@@ -1,12 +1,14 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先ごとの品番のタブは、取引先・取引先の品番・取引先の品名の表 (小窓と同じ形)。空の標準の工程のタブは、土台と同じ箱にその意味の 1 行を足す (block tab_empty)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
+{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときだけ、上に黄色の 1 行 (字は表の列のまま)。取引先ごとの品番のタブは、取引先・取引先の品番・取引先の品名の表 (小窓と同じ形)。標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行。block tab_rows と block tab_empty の両方から include)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
 {% block actions %}{% if object.drawing %}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_drawing_viewer' object.pk %}">{% icon "image" "size-4" %}図面ビューア</a>{% endif %}{% endblock %}
 {% block content %}
 {% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div>{% endif %}
 {% if object.drawing_preview_error %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>{{ object.drawing_preview_error }}</span></div>{% endif %}
 {{ block.super }}
+{# 標準の工程のタブの取り直し (C112): 小窓で保存すると core の js/seizou-modal.js が body に seizou:refresh を出し、このタブの中身 (#item-processes) だけを入れ替える。タブの丸は入れ替えの外なので、開いているタブはそのまま。 #}
+<div id="item-processes-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#item-processes" hx-target="#item-processes" hx-swap="outerHTML"></div>
 {% endblock %}
 {% block tab_rows %}{% if tab.related == "partner_items" %}
 <div class="overflow-auto rounded-lg border border-base-300">
@@ -23,13 +25,8 @@
     </tbody>
   </table>
 </div>
+{% elif tab.related == "item_processes" %}{% include "masters/_item_processes.html" %}
 {% else %}{{ block.super }}{% endif %}{% endblock %}
-{# 空の標準の工程のタブ (block tab_empty の item_processes) は、土台と同じ箱に、何の並びかの 1 文を足す (初見テスト R5 の V29。C19)。意味の説明なので、押せる人の条件は付けない。ほかのタブは土台のまま。 #}
-{% block tab_empty %}{% if tab.related == "item_processes" %}
-<div class="flex flex-col items-center justify-center p-6 text-center">
-  <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/50">{% icon "inbox" "size-6" %}</span>
-  <p class="mt-4 font-medium">まだありません。</p>
-  <p class="mt-2 text-xs text-base-content/50">{{ tab.label }}が入ると、ここに並びます。</p>
-  <p class="mt-2 text-xs text-base-content/50">指示書の発行で工程を選ばないときに写す、この部品の工程の並びです。</p>
-</div>
+{# 標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行)。空のタブの意味の 1 行 (初見テスト R5 の V29。C19) は押せない人にも出す。ほかのタブは土台のまま。 #}
+{% block tab_empty %}{% if tab.related == "item_processes" %}{% include "masters/_item_processes.html" %}
 {% else %}{{ block.super }}{% endif %}{% endblock %}

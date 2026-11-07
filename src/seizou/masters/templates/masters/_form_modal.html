@@ -1,0 +1,3 @@
+{# masters の入力の小窓の中身 (C112)。入力の土台は小窓のテンプレートを app ごとに選ぶ (masters/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける (orders/_form_modal.html と同じ形)。 #}
+{# 標準の工程から外すの確かめは、黄の 1 行と入力のカードのカード (masters/_itemprocess_remove_card.html) を form_card で渡す。ほかの入力は土台の小窓のまま。 #}
+{% if request.resolver_match.url_name == "itemprocess_remove" %}{% include "core/_form_modal.html" with form_card="masters/_itemprocess_remove_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}

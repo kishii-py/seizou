@@ -8,10 +8,11 @@ services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ex
 import re
 
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 
 from seizou.core import csvio, seeds
-from seizou.core.forms import ServiceModelForm
+from seizou.core.forms import CHECKBOX_CSS, Checkboxes, ServiceModelForm
 from seizou.core.widgets import IsoDateInput
 
 from .models import Item, Partner, Process
@@ -19,6 +20,7 @@ from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
 from .models import Holiday
+from . import services
 
 
 #: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
@@ -143,6 +145,103 @@ class ProcessForm(ServiceModelForm):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
 
+
+
+# ---------------------------------------------------------------- 部品の標準の工程の並び (決め C19-3。C112)
+
+
+class _ProcessChoices(forms.ModelMultipleChoiceField):
+    """標準の工程の追加の候補の字 (「TURN 旋削」の形)。協力企業に出す工程だけ、後ろに「 (協力企業に出す)」を足す。
+
+    形は workorders/forms.py の ProcessChoiceField と同じ (masters から workorders を import しないので、同じ形を持つ)。
+    """
+
+    def label_from_instance(self, obj):
+        text = f"{obj.code} {obj.name}"
+        return f"{text} (協力企業に出す)" if obj.is_outsourced else text
+
+
+class ItemProcessAddForm(forms.Form):
+    """標準の工程の追加 (決め C19-3)。部品は開いた詳細の ?item=<pk> を土台の get_initial が写す隠しの欄で受ける。
+
+    選べる工程は使用中で、その部品の並びにまだ無い物だけ。選んだ工程は工程の表の並び (並び順 → 工程コード) のまま、
+    並びの最後に足す (services.add_item_processes)。
+    """
+
+    item = forms.ModelChoiceField(queryset=Item.objects.all(), widget=forms.HiddenInput)
+    item_label = forms.CharField(label="部品", required=False, disabled=True)
+    processes = _ProcessChoices(
+        label="足す工程",
+        queryset=Process.objects.none(),
+        widget=Checkboxes(attrs={"class": CHECKBOX_CSS}),
+        help_text="使用中で、まだ並びに無い工程だけが出ます。選んだ工程は、工程の並び順のまま並びの最後に足します。順は行の「順を直す」で変えられます。",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        chosen = self.data.get(self.add_prefix("item")) if self.is_bound else self.initial.get("item")
+        pk = str(getattr(chosen, "pk", chosen) or "")
+        item = Item.objects.filter(pk=int(pk)).first() if pk.isdecimal() else None
+        candidates = services.active_processes()
+        if item is not None:
+            self.fields["item_label"].initial = str(item)
+            candidates = candidates.exclude(item_processes__item=item)
+        if self.is_bound:
+            # 送られた工程も候補に残す。小窓を開いた後にほかの人が同じ工程を足しても、Django の「正しく選択してください」で
+            # 止めず、add_item_processes が今ある工程を飛ばす形で通すため (workorders/forms.py の発行の form と同じ考え)。
+            # 無い pk と数字でない字は今のまま欄の誤り。
+            key = self.add_prefix("processes")
+            getlist = getattr(self.data, "getlist", None)
+            sent = getlist(key) if getlist is not None else (self.data.get(key) or [])
+            sent = [int(value) for value in sent if str(value).isdecimal()]
+            if sent:
+                candidates = Process.objects.filter(Q(pk__in=candidates.values("pk")) | Q(pk__in=sent))
+        self.fields["processes"].queryset = candidates
+
+    def service_kwargs(self):
+        # 読むだけの item_label は services に渡さない。並びは queryset の並び (工程の表の並び順 → 工程コード)
+        return {"data": {"item": self.cleaned_data["item"], "processes": list(self.cleaned_data["processes"])}}
+
+
+class ItemProcessMoveForm(forms.Form):
+    """標準の工程の並べ替え (決め C19-3)。土台は instance (並びの 1 行) を渡し、services.move_item_process(行, data={"seq": …}, user=…) を呼ぶ。
+
+    順は 1〜その部品の並びの行の数。
+    """
+
+    item_label = forms.CharField(label="部品", required=False, disabled=True)
+    process_label = forms.CharField(label="工程", required=False, disabled=True)
+    # 「?」の小窓の「入れる物」の表は form を作らずに class の欄 (base_fields) を読むので、class の欄にも説明を置く
+    seq = forms.IntegerField(label="順", min_value=1, help_text="1 で先頭、いちばん大きい番号で最後です。ほかの工程は 1 つずつずれます。")
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+        if instance is not None:
+            count = instance.item.item_processes.count()
+            self.fields["item_label"].initial = str(instance.item)
+            self.fields["process_label"].initial = str(instance.process)
+            # 欄の範囲の外は欄の誤り (段 1)。services の端へ置く形は、ほかの道のための物
+            self.fields["seq"] = forms.IntegerField(
+                label="順",
+                min_value=1,
+                max_value=count,
+                initial=instance.seq,
+                help_text=f"1 で先頭、{count} で最後です。ほかの工程は 1 つずつずれます。",
+            )
+
+    def service_kwargs(self):
+        return {"data": {"seq": self.cleaned_data["seq"]}}
+
+
+class ItemProcessRemoveForm(forms.Form):
+    """標準の工程から外す確かめ。欄は無い (土台が remove_item_process(対象, user=…) を呼ぶ)。"""
+
+    submit_label = "外す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self) -> dict:
+        return {}
 
 # ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)
 

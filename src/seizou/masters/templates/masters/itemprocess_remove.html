@@ -1,0 +1,4 @@
+{% extends "core/form.html" %}
+{# 標準の工程から外す (画面の全体。JS の無いときと、Cmd か Ctrl を押して開いたとき)。中身は小窓と同じカード (masters/_itemprocess_remove_card.html。C112)。 #}
+{% block content %}{% include "masters/_itemprocess_remove_card.html" %}
+{% endblock %}

@@ -244,6 +244,16 @@ NOT_FROM_SCREEN = (
         "保存できません。支払の月 … は使えません。当日 (same_day)・当月 (current)・翌月 (next)・翌々月 (after_next) のどれかか、空にしてください。",
         "form は model の選ぶ欄。CSV は、支払の月の列があれば _choice_value が断り、無ければ read_payment_day (masters/forms.py) が選択肢の字からだけ月を作る。",
     ),
+    (
+        "masters",
+        "保存できません。工程でない物 (…) が入っています。工程 (Process) だけを渡してください。",
+        "標準の工程の 3 つの画面の form と services は、工程の表の行 (Process) だけを渡す (masters/forms.py の _ProcessChoices と、今の並びの行の process)。",
+    ),
+    (
+        "masters",
+        "保存できません。工程 … が 2 回あります。同じ工程は 1 回だけにしてください。",
+        "標準の工程の追加の候補は並びに無い工程だけで、add_item_processes は今ある工程を飛ばす。順を直すと外すは今の並びの行から並びを作る。",
+    ),
 )
 
 #: 断片が自分で持つ「入れる物」の見出し (あれば表を足さない)

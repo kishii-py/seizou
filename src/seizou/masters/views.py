@@ -25,8 +25,10 @@ from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
 from .forms import HolidayDeleteForm, HolidayForm
+from .forms import ItemProcessAddForm, ItemProcessMoveForm, ItemProcessRemoveForm
 from .models import Item, Partner, Process
 from .models import Holiday
+from .models import ItemProcess
 
 
 #: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
@@ -69,21 +71,21 @@ class ItemListView(BaseListView):
 class ItemDetailView(BaseDetailView):
     """部品の詳細。
 
-    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの品番と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ
+    使う人: 全員 / いつ: 部品の図面や工程を確かめるとき / 何のために: 項目と取引先ごとの品番と標準の工程を見る / 次にすること: 「編集」か図面ビューアへ。標準の工程は標準の工程のタブの「工程を足す」で足す
     """
 
     model = Item
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
     screen_help = "部品の項目と、取引先ごとの品番、標準の工程の並び。"
-    # 標準の工程の行の字 (ItemProcess.__str__) が工程を読むので、工程を行と一緒に 1 回で引く (N174)
+    # 標準の工程のタブの表 (masters/_item_processes.html) が工程のコード・名前・協力企業に出すか・使用中を読むので、工程を行と一緒に 1 回で引く (N174)
     tabs = (("取引先ごとの品番", "partner_items"), ("標準の工程", "item_processes", ("process",)))
 
 
 class ItemCreateView(BaseFormView):
     """部品の新規登録の入力。
 
-    使う人: 生産管理 / いつ: 新しい部品が増えたとき / 何のために: 品番・品名・図面を登録する / 次にすること: 部品の詳細で標準の工程と取引先ごとの品番を足す
+    使う人: 生産管理 / いつ: 新しい部品が増えたとき / 何のために: 品番・品名・図面を登録する / 次にすること: 部品の詳細の「工程を足す」で標準の工程を足し、取引先ごとの品番も足す
     """
 
     model = Item
@@ -272,6 +274,51 @@ class ProcessUpdateView(BaseFormView):
     screen_name = "工程の編集"
     screen_help = "工程の項目を編集します。「計画に使う」に印を付けると、生産計画の盤に出ます。"
 
+
+
+# ---------------------------------------------------------------- 標準の工程の並び (決め C19-3)
+# 3 つとも model を並びの行 (ItemProcess) にする。部品 (Item) にすると、入力の土台の get_form が部品の会社ごとの項目の欄を
+# 小窓に足すため (会社ごとの項目の登録は部品だけ)。3 つの口は部品を返すので、画面の全体の保存の後は部品の詳細へ移る。
+
+
+class ItemProcessAddView(BaseFormView):
+    """標準の工程の追加の入力。
+
+    使う人: 生産管理 / いつ: 部品を新しく登録したときと、作り方の工程が変わったとき / 何のために: 部品の標準の工程の並びに工程を足す / 次にすること: 部品の詳細の標準の工程のタブで順を確かめる
+    """
+
+    model = ItemProcess
+    form_class = ItemProcessAddForm
+    service = staticmethod(services.add_item_processes)
+    screen_name = "標準の工程の追加"
+    screen_help = "部品の標準の工程の並びの最後に、工程の一覧にある工程を足します。選んだ工程は工程の並び順で並びます。"
+
+
+class ItemProcessUpdateView(BaseFormView):
+    """標準の工程の並べ替えの入力。
+
+    使う人: 生産管理 / いつ: 工程の順が変わったときと、足した工程を途中に入れたいとき / 何のために: 標準の工程の並びで、工程の順を直す / 次にすること: 部品の詳細の標準の工程のタブで確かめる
+    """
+
+    model = ItemProcess
+    form_class = ItemProcessMoveForm
+    service = staticmethod(services.move_item_process)
+    screen_name = "標準の工程の並べ替え"
+    screen_help = "標準の工程の並びで、1 つの工程を何番目に置くかを直します。ほかの工程は 1 つずつずれます。"
+
+
+class ItemProcessRemoveView(BaseFormView):
+    """標準の工程から外す確かめ。
+
+    使う人: 生産管理 / いつ: 間違えて足した工程や、もう使わない工程を並びから外すとき / 何のために: 標準の工程の並びから工程を外す / 次にすること: 部品の詳細の標準の工程のタブで確かめる
+    """
+
+    model = ItemProcess
+    form_class = ItemProcessRemoveForm
+    service = staticmethod(services.remove_item_process)
+    template_name = "masters/itemprocess_remove.html"
+    screen_name = "標準の工程から外す"
+    screen_help = "部品の標準の工程の並びから工程を 1 つ外します。工程の一覧にある工程と、発行済みの指示書の工程は変わりません。"
 
 # ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)
 # 取り込みの画面は model を書かない (土台が会社ごとの項目の欄を form に足すため)。保存の後は土台の既定の移り先 (/) へ移る。
