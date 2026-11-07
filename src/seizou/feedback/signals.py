@@ -1,7 +1,8 @@
 """feedback の signal の受け手。apps.py の ready() が読み込む。表に書くのは services の関数だけ (R13)。
 
-書いた本人がログインしたとき (django.contrib.auth.login が user_logged_in を送る)、まだ知らせていない「直した」を
-右下の toast (messages の info) で 1 回だけ知らせ、知らせた日時を services で書く。
+書いた本人がログインしたとき (django.contrib.auth.login が user_logged_in を送る)、まだ知らせていない「直した」と「見送った」を
+右上の toast (messages の info) で 1 回ずつ知らせ、知らせた日時を services で書く (両方あれば toast は 2 つ。直したが先)。
+- 直したと見送ったは別の受け手 (notify_fixed・notify_dismissed)。直したが無い人にも見送りを知らせるため (依頼書 N322。決め 11-07 09:0x〜09:4x)。
 - 知らせを出せない要求 (MessageMiddleware を通らない要求。試験の force_login など) では、知らせた印を付けない
   (次に画面からログインしたときに出す)。
 - 開発機の自動ログイン (core の DevAutoLoginMiddleware) は login を呼ばないので、この知らせは出ない
@@ -28,3 +29,18 @@ def notify_fixed(sender, request=None, user=None, **kwargs):
     except messages.MessageFailure:
         return
     services.mark_fixed_seen(rows, user)
+
+
+@receiver(user_logged_in, dispatch_uid="seizou.feedback.notify_dismissed")
+def notify_dismissed(sender, request=None, user=None, **kwargs):
+    """ログインした人が書いたフィードバックに、まだ知らせていない「見送った」があれば 1 回知らせる (notify_fixed と同じ形)。"""
+    if request is None:
+        return
+    rows = services.unseen_dismissed(user)
+    if not rows:
+        return
+    try:
+        messages.info(request, services.dismissed_notice(rows))
+    except messages.MessageFailure:
+        return
+    services.mark_dismissed_seen(rows, user)
