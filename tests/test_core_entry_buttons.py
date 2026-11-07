@@ -65,6 +65,8 @@ BUTTON_ACTIONS = {
     "connect.send_order": "purchasing.Receipt",
     "purchasing.receive": "purchasing.Receipt",
     "connect.send_acceptance": "purchasing.Receipt",
+    # 5b 仕入明細の詳細。取消は作るのと同じ扱い (決め 11-07 23:2x。仕組みの側の追記 11-08)
+    "purchasing.cancel_self_invoice": "purchasing.SelfInvoice",
     # 6 マニュアル
     "manuals.create_folder": "manuals.Manual",
     "manuals.create_manual": "manuals.Manual",
