@@ -80,6 +80,19 @@ def registered(action: str) -> list[Check]:
     return list(_REGISTRY.get(action, []))
 
 
+def setting_key_for(name: str) -> str | None:
+    """name の検査の会社の設定の鍵 (例 R01 → over_shipment)。全部の action の登録を見て、最初に当たった物。無ければ None。
+
+    同じ name を複数の action に同じ鍵で登録する (R01 は 1 件の出荷・出荷の編集・一括出荷) ので、最初の 1 つでよい。
+    決まりの番号の「?」の説明 (core.views.rule_help) が、この会社の今の設定の行を出すために読む。読むだけ。
+    """
+    for action_checks in _REGISTRY.values():
+        for check in action_checks:
+            if check.name == name and check.setting_key:
+                return check.setting_key
+    return None
+
+
 def clear(action: str | None = None) -> None:
     """試験のための後始末。"""
     if action is None:

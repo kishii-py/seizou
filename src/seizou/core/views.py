@@ -2121,14 +2121,49 @@ def rule_line(code: str) -> dict | None:
     return None
 
 
+#: 設定の行の 2 文目 (会社の設定の値ごと)。R01・R04・R06・R07 のどれにも合う字にする (R04 は「超える」でないため)
+RULE_SETTING_EFFECTS = {
+    "stop": "この決まりに当たると保存しません。",
+    "warn": "黄の知らせと「このまま保存」のボタンが出ます。",
+    "off": "知らせずに保存します。",
+}
+
+
+def rule_setting_line(code: str) -> str:
+    """決まりの番号の「?」の説明に出す、この会社の今の設定の 1 行。設定の鍵の無い番号は空の字。
+
+    例「この会社の設定「受注より多い出荷 (R01・R04)」は「止める」です。この決まりに当たると保存しません。」。
+    鍵は検査の層の登録 (checks.setting_key_for) から、見出しと値の字は設定の画面の SETTING_LABELS から引く。
+    鍵が SETTING_LABELS に無ければ値を読まない (conf.setting は知らない鍵で KeyError)。値が表に無い字のときも空。
+    Check.current_mode は使わない (知らない値で ValueError を投げ、説明が 500 になるため)。読むだけ。
+    """
+    key = checks.setting_key_for(code)
+    if not key:
+        return ""
+    # settings_screen は module の頭で core.views を import するので、ここで import する (循環を避ける)
+    from seizou.core import conf
+    from seizou.core.settings_screen import SETTING_LABELS
+
+    label = SETTING_LABELS.get(key)
+    if label is None:
+        return ""
+    title, words = label
+    value = conf.setting(key)
+    if not isinstance(value, str) or value not in words or value not in RULE_SETTING_EFFECTS:
+        return ""
+    return f"この会社の設定「{title}」は「{words[value]}」です。{RULE_SETTING_EFFECTS[value]}"
+
+
 @login_required
 @require_GET
 def rule_help(request, code):
     """赤の知らせの決まりの番号の横の「?」が開く小窓の中身 (core/_rule_help.html)。番号の形が違えば 404。
 
     行が無い (RULES.md が置き場に無い・番号が表に無い) ときも 200 で、無い旨の 1 文を出す (htmx が小窓を開けるように)。
+    設定の鍵のある番号 (R01・R04・R06・R07) は、この会社の今の設定の行も出す (rule_setting_line)。
     htmx でない要求にも同じ中身を返す (移す先の頁が無いため)。読むだけ。
     """
     if not RULE_CODE.match(code):
         raise Http404("決まりの番号の形が違います。")
-    return render(request, "core/_rule_help.html", {"code": code, "rule": rule_line(code)})
+    context = {"code": code, "rule": rule_line(code), "setting_line": rule_setting_line(code)}
+    return render(request, "core/_rule_help.html", context)
