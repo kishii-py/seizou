@@ -3,6 +3,8 @@
 OrderForm: 受注の項目と、明細の行の formset (lines) を 1 つに持つ。is_valid() で両方を見て、
 service_kwargs() が services.create_order / update_order の引数を作る (01 の 10.4 の lines の辞書の並び)。
 既にある明細は order_line の鍵 (この受注の OrderLine) で指す。検査の層の R04 もこの鍵を読む。
+直す画面は、開いた時の受注と明細の字 (services.order_state_token) を隠しの欄 state_token に持ち、保存の時に services が今の字と比べる
+(ほかの人の直しと取引先から受け入れた変更を黙って戻さない。N350)。
 
 選べる設定 (seizou.core.conf):
 - order_form が single のときは明細を 1 行に固定する (表は同じ。01 の 9 節)。
@@ -23,6 +25,7 @@ from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
 from seizou.masters.services import UNLISTED_LINE_UNIT, quantity_units
 
+from . import services
 from .models import Order, OrderLine
 
 #: hidden_fields に並んでも外さない欄 (price_basis は金額の決まり R03 が読む欄なので外さない)
@@ -219,7 +222,9 @@ class OrderLineFormSet(forms.BaseFormSet):
 
 class OrderForm(SubmitLabelMixin, ServiceModelForm):
     """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。
-    保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。"""
+    保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。
+    直す画面は、開いた時の受注と明細の字 (services.order_state_token) を隠しの欄 state_token に持ち、保存の時に services が今の字と比べる
+    (ほかの人の直しと取引先から受け入れた変更を黙って戻さない。N350)。"""
 
     class Meta:
         model = Order
@@ -247,6 +252,12 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
             self.fields.pop(name, None)
         self.single = setting("order_form") == "single"
         rows = [] if self.creating else list(instance.lines.order_by("line_no"))
+        if not self.creating:
+            # 開いた時の字。class の欄にしない (使わない項目の候補と突き合わせる試験が base_fields を見る)。
+            # hidden_fields の外す処理の後に足す (外させない)。読んだ明細の並びを渡し、問い合わせを増やさない。
+            self.fields["state_token"] = forms.CharField(
+                required=False, widget=forms.HiddenInput, initial=services.order_state_token(instance, rows)
+            )
         formset_class = forms.formset_factory(
             OrderLineForm,
             formset=OrderLineFormSet,
@@ -341,6 +352,9 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
                 "data": {key: data[key] for key in ORDER_KEYS if key in data},
                 "lines": self.line_dicts(),
             }
+            # 開いた時の字は POST で受けた字をそのまま渡す (ここで作り直さない)。送らない古い画面は空なので比べない。
+            if data.get("state_token"):
+                kwargs["expected_state"] = data["state_token"]
         if ext is not None:
             kwargs["ext"] = ext
         return kwargs
