@@ -14,6 +14,7 @@ SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
 - 断るときは全部 404 (ファイルが「無い」と「見せない」を外から見分けさせない)。MEDIA_ROOT の外は読まない。
 - HTML・SVG・XML・JS のような、ブラウザがスクリプトとして動かしうる型は、必ずダウンロードにする (上げたファイルの
   スクリプトが、同じ origin で動くのを防ぐ)。
+- ブラウザの中で開くのは INLINE_TYPES の型だけ。ほかはダウンロードにし、Content-Security-Policy: sandbox を付ける。
 - X-Content-Type-Options: nosniff と、保存させないヘッダー (ログアウトの後に残ったファイルを見せない。図面の口と同じ) を付ける。
   nginx は X-Accel-Redirect のとき Cache-Control と Content-Disposition は引き継ぐが nosniff は落とすので、
   deploy/nginx-files.conf の側でも nosniff を付ける。
@@ -68,6 +69,10 @@ DOWNLOAD_ONLY_TYPES = frozenset(
         "application/ecmascript",
     }
 )
+#: ブラウザの中で開いてよい型 (許しの一覧)。ここに無い型は全部ダウンロードにする。script を動かしうる型は足さない。
+INLINE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "text/plain"})
+#: ダウンロードにした応答だけに付ける Content-Security-Policy の値。inline の応答には付けない (ブラウザの PDF の表示を止めないため)。
+DOWNLOAD_CSP = "sandbox"
 
 #: 道の最初の部分 → 金額の閲覧の判定 (access.can_see_money) に渡す「何を」の字。
 #: 金額の入ったファイルを置く道の頭だけ。会話の添付 (connect) と添付 (attachments) はそれぞれの口で見る。
@@ -130,14 +135,26 @@ def content_type_of(name: str) -> str:
 
 
 def must_download(name: str, content_type: str) -> bool:
-    """必ずダウンロードにする型か (DOWNLOAD_ONLY_EXTENSIONS と DOWNLOAD_ONLY_TYPES)。"""
+    """必ずダウンロードにする型か。
+
+    止める表 (DOWNLOAD_ONLY_EXTENSIONS と DOWNLOAD_ONLY_TYPES) を先に見る (拡張子が script の形なら、型に関わらず真)。
+    その後は、型 (; の前を小文字にした物) が許しの一覧 (INLINE_TYPES) に無ければ真。
+
+    訳: ブラウザの中で開くのは、絵と PDF とテキストの許しの一覧 (INLINE_TYPES) の型だけにし、ほかはダウンロードにして CSP の sandbox を付ける。止める表 (denylist) の外の型 (RSS・XSLT などの +xml) で、上げたファイルの script が同じ origin で動く道を閉じるため。inline の応答に sandbox を付けないのは、ブラウザの PDF の表示が止まるおそれがあるため。出所 = エンタープライズ化の調べ 第一弾の指摘 web-1 (11-07。確かめ直し 416 回目の直し方の直し (d))。変えてよい条件 = ブラウザの中で開きたい型が増えたとき (一覧に足す。script を動かしうる型は足さない)。
+    """
     if PurePosixPath(name).suffix.lower() in DOWNLOAD_ONLY_EXTENSIONS:
         return True
-    return content_type.split(";", 1)[0].strip().lower() in DOWNLOAD_ONLY_TYPES
+    base = content_type.split(";", 1)[0].strip().lower()
+    if base in DOWNLOAD_ONLY_TYPES:
+        return True
+    return base not in INLINE_TYPES
 
 
-def _protect(response):
+def _protect(response, *, download=False):
+    """nosniff と保存させないヘッダーを付ける。ダウンロードにした応答には CSP の sandbox (DOWNLOAD_CSP) も付ける。"""
     response["X-Content-Type-Options"] = "nosniff"
+    if download:
+        response["Content-Security-Policy"] = DOWNLOAD_CSP
     add_never_cache_headers(response)
     return response
 
@@ -196,6 +213,6 @@ def protected_file(request, name: str):
         response = HttpResponse(status=200, content_type=content_type)
         response["Content-Disposition"] = content_disposition_header(download, target.name)
         response["X-Accel-Redirect"] = INTERNAL_PREFIX + quote(relative.as_posix(), safe="/")
-        return _protect(response)
+        return _protect(response, download=download)
     response = FileResponse(target.open("rb"), content_type=content_type, as_attachment=download, filename=target.name)
-    return _protect(response)
+    return _protect(response, download=download)

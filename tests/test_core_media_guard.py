@@ -16,6 +16,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from seizou.accounts import services as accounts_services
+from seizou.core import media
 from seizou.intake import services as intake_services
 from seizou.masters.services import create_partner
 from tests.test_intake_extract import FAKE_KEY, REPLY_PATH, refuse_api, upload
@@ -198,3 +199,70 @@ def test_detail_shows_source_file_in_default_log_mode(client, extraction, clerk)
     body = detail_body(signed_in(client, clerk), extraction)
     assert "元のファイル" in body
     assert extraction.file.url in body
+
+
+# ---------------------------------------------------------------- 3. ブラウザの中で開く型の許しの一覧と、ダウンロードの CSP の sandbox
+
+INLINE_NAMES = ("x.png", "x.txt", "x.pdf")
+DOWNLOAD_NAMES = ("x.rss", "x.xslt", "x.csv", "page.html")
+
+
+@pytest.fixture
+def kinds(root):
+    drawings = root / "drawings"
+    (drawings / "x.png").write_bytes(PNG)
+    (drawings / "x.txt").write_text("作り物のテキスト", encoding="utf-8")
+    (drawings / "x.pdf").write_bytes(b"%PDF-1.4\n")
+    (drawings / "x.rss").write_text('<?xml version="1.0"?><rss><script>alert(1)</script></rss>', encoding="utf-8")
+    (drawings / "x.xslt").write_text('<?xml version="1.0"?><xsl:stylesheet/>', encoding="utf-8")
+    (drawings / "x.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    return drawings
+
+
+def test_allowlisted_types_open_inline_without_csp(client, kinds, reader):
+    signed_in(client, reader)
+    for name in INLINE_NAMES:
+        response = client.get(f"/media/drawings/{name}")
+        assert response.status_code == 200, name
+        assert response["Content-Disposition"].startswith("inline;"), name
+        assert "Content-Security-Policy" not in response, name
+
+
+def test_other_types_download_with_sandbox(client, kinds, reader):
+    signed_in(client, reader)
+    for name in DOWNLOAD_NAMES:
+        response = client.get(f"/media/drawings/{name}")
+        assert response.status_code == 200, name
+        assert response["Content-Disposition"].startswith("attachment;"), name
+        assert response["Content-Security-Policy"] == "sandbox", name
+        assert response["X-Content-Type-Options"] == "nosniff", name
+
+
+@pytest.mark.parametrize(
+    ("name", "content_type", "download"),
+    [
+        ("a.rss", "application/rss+xml", True),
+        ("a.xslt", "application/xslt+xml", True),
+        ("a.bin", "application/octet-stream", True),
+        ("a.webp", "image/webp", False),
+        ("a.gif", "image/gif", False),
+        ("a.jpg", "image/jpeg", False),
+        ("a.txt", "text/plain; charset=utf-8", False),
+        ("a.svg", "image/png", True),
+    ],
+)
+def test_must_download_allowlist(name, content_type, download):
+    assert media.must_download(name, content_type) is download
+
+
+def test_nginx_mode_sends_sandbox_only_on_downloads(client, kinds, nginx, reader):
+    signed_in(client, reader)
+    rss = client.get("/media/drawings/x.rss", **nginx)
+    assert rss.status_code == 200
+    assert rss["X-Accel-Redirect"] == "/seizou-files/drawings/x.rss"
+    assert rss["Content-Security-Policy"] == "sandbox"
+    assert rss["Content-Disposition"].startswith("attachment;")
+
+    png = client.get("/media/drawings/a.png", **nginx)
+    assert png["X-Accel-Redirect"] == "/seizou-files/drawings/a.png"
+    assert "Content-Security-Policy" not in png
