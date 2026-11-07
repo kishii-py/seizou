@@ -15,9 +15,13 @@ from decimal import Decimal
 
 import pytest
 import requests
+from django.contrib.auth import get_user_model
+from django.urls import reverse
 
+from seizou.accounts import services as accounts_services
 from seizou.connect import services, signing
 from seizou.connect.models import ChatMessage, Connection, Inbox, Outbox
+from seizou.core import access
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.purchasing import services as purchasing_services
@@ -374,3 +378,111 @@ def test_receive_refuses_unreadable_chat_messages(monkeypatch, user, subcontract
     assert isinstance(receipt, services.ChatReceipt)
     assert receipt.chat_message.inbox == inbox
     assert receipt.chat_message.author_name == "名" * 100
+
+
+# ---------------------------------------------------------------- (k) 書く画面
+
+
+MODAL = {"HX-Request": "true", "HX-Target": "seizou-modal-box"}
+
+
+def _form(po, body, **extra):
+    return {"target_kind": "purchase_order", "target_id": po.pk, "body": body, **extra}
+
+
+@pytest.mark.django_db
+def test_add_view_saves_in_modal_and_on_the_full_page(monkeypatch, client, user, subcontractor, item, connections):  # noqa: F811
+    po, _inbox = _sent_order(monkeypatch, subcontractor, item, user)
+    _round_trip(monkeypatch)
+    client.force_login(user)
+    url = reverse("connect:chatmessage_add")
+
+    response = client.post(url, _form(po, "作り物の言葉"), headers=MODAL)
+    assert response.status_code == 204
+    assert json.loads(response["HX-Trigger"]) == {"seizou:saved": {"message": "相手に送りました。", "level": "success"}}
+
+    # 空の言葉は小窓の形の入力のカードを 200 で返し (小窓の上の赤い帯)、行を作らない
+    response = client.post(url, _form(po, "   "), headers=MODAL)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "「言葉」の欄に誤りがあります。" in html
+    assert "言葉を書いてください。" in html
+    assert ChatMessage.objects.filter(direction=ChatMessage.DIRECTION_SENT).count() == 1
+
+    # 画面の全体の POST は next の詳細へ 302 で、次の GET に右上の知らせ
+    detail = reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    response = client.post(url, _form(po, "画面の全体から書いた作り物の言葉", next=detail))
+    assert response.status_code == 302
+    assert response["Location"] == detail
+    assert "相手に送りました。" in client.get(detail).content.decode()
+
+
+@pytest.mark.django_db
+def test_add_view_refuses_unknown_target_and_unusable_trade(monkeypatch, client, user, item, connections):  # noqa: F811
+    lonely = masters_services.create_partner({"code": "S009", "name": "作り物のつながっていない協力企業", "role": "subcontractor"}, user)
+    po = _send_order(lonely, item, user)
+    client.force_login(user)
+    url = reverse("connect:chatmessage_add")
+
+    response = client.post(url, {"target_kind": "purchase_order", "target_id": po.pk + 1000, "body": "作り物"}, headers=MODAL)
+    assert response.status_code == 200
+    assert "書く先の注文が見つかりません。" in response.content.decode()
+    response = client.post(url, _form(po, "作り物の言葉"), headers=MODAL)
+    assert response.status_code == 200
+    assert services.CHAT_REASON_NOT_CONNECTED in response.content.decode()
+    assert not ChatMessage.objects.exists()
+
+
+# ---------------------------------------------------------------- (l) 送り直す口
+
+
+@pytest.mark.django_db
+def test_resend_view(monkeypatch, client, user, subcontractor, item, connections):  # noqa: F811
+    po, _inbox = _sent_order(monkeypatch, subcontractor, item, user)
+    monkeypatch.setattr("requests.post", FakePost(raises=requests.ConnectionError()))
+    saved = services.post_chat_message(po, "届かない作り物の言葉", user)
+    client.force_login(user)
+    url = reverse("connect:chatmessage_resend", args=[saved.pk])
+
+    assert client.get(url).status_code == 405
+    response = client.post(url, headers={"HX-Request": "true"})
+    assert response.status_code == 204
+    assert json.loads(response["HX-Trigger"])["seizou:saved"]["level"] == "warning"
+
+    _round_trip(monkeypatch)
+    response = client.post(url, headers={"HX-Request": "true"})
+    assert response.status_code == 204
+    assert json.loads(response["HX-Trigger"]) == {
+        "seizou:saved": {"message": "送り直しました。相手に届きました。", "level": "success"}
+    }
+    # 相手から届いた行は 404。もう届いた行は断りの字を右上の赤い知らせにして詳細へ移る
+    assert client.post(reverse("connect:chatmessage_resend", args=[_received(saved.message_id).pk])).status_code == 404
+    response = client.post(url)
+    assert response.status_code == 302
+    assert response["Location"] == reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    assert "この言葉は相手に届いています。" in client.get(response["Location"]).content.decode()
+
+
+# ---------------------------------------------------------------- (n) 編集の権限で絞らない
+
+
+@pytest.mark.django_db
+def test_no_write_permission_still_talks(monkeypatch, client, settings, user, subcontractor, item, connections):  # noqa: F811
+    po, _inbox = _sent_order(monkeypatch, subcontractor, item, user)
+    settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
+    department = accounts_services.create_department("会話", ["connect", "orders", "purchasing"], [], None)
+    accounts_services.issue_account("chat-only", "kumo-tests-2611", [department], [], {}, None)
+    plain = get_user_model().objects.get(username="chat-only")
+    access.require_write(plain, "connect.post_chat_message")
+    client.force_login(plain)
+
+    _round_trip(monkeypatch)
+    response = client.post(reverse("connect:chatmessage_add"), _form(po, "権限の無い人の作り物の言葉"), headers=MODAL)
+    assert response.status_code == 204
+    assert ChatMessage.objects.filter(direction=ChatMessage.DIRECTION_SENT, author=plain).count() == 1
+
+    monkeypatch.setattr("requests.post", FakePost(raises=requests.ConnectionError()))
+    saved = services.post_chat_message(po, "届かない作り物の言葉", plain)
+    _round_trip(monkeypatch)
+    response = client.post(reverse("connect:chatmessage_resend", args=[saved.pk]), headers={"HX-Request": "true"})
+    assert response.status_code == 204

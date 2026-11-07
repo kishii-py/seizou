@@ -216,6 +216,11 @@ NOT_FROM_SCREEN = (
         "受け入れの form は item_mapping だけを渡す。accepted_at は作り物の種のための引数。",
     ),
     (
+        "connect",
+        "送れません。言葉が 2000 字を超えています。分けて送ってください。",
+        "会話の書く欄は form の max_length で 2000 字まで。超えた字は form が止める (connect/forms.py の ChatMessageForm)。",
+    ),
+    (
         "core",
         "保存できません。… は画面からは変えられません。答えの YAML の settings に書いてください。",
         "設定の変更の画面は、画面から変えない鍵を 404 にする (core/settings_screen.py の SettingUpdateView.dispatch)。",

@@ -3,11 +3,13 @@
 注文の受け口は /connect/receive/order/ になる。
 画面の URL の名前は <model>_list / _detail の約束 (core の土台が使う)。受け入れると断るは受信した注文の行ごと。差出人を選ぶも同じ。
 注文回答 (承認か断りの結果) も、注文と同じ受け口 (receive) が受ける。
+会話 (受注と発注の 1 件ごとの相手とのやり取り) の書く画面は chat/new/ (名前を _create にしない = 一覧の土台の「新規登録」と取り違えない)、送り直す口は chat/<pk>/resend/。
 """
 
 from django.urls import path
 
 from . import views
+from . import chat
 from . import reply
 from . import sender
 
@@ -36,4 +38,6 @@ urlpatterns = [
     path("connections/new/", views.ConnectionCreateView.as_view(), name="connection_create"),
     path("connections/<int:pk>/", views.ConnectionDetailView.as_view(), name="connection_detail"),
     path("connections/<int:pk>/edit/", views.ConnectionUpdateView.as_view(), name="connection_update"),
+    path("chat/new/", views.ChatMessageAddView.as_view(), name="chatmessage_add"),
+    path("chat/<int:pk>/resend/", chat.resend_chat, name="chatmessage_resend"),
 ]

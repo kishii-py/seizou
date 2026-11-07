@@ -330,3 +330,40 @@ class SenderForm(forms.Form):
         self.fields["partner"].queryset = partner._default_manager.filter(
             role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH)
         ).order_by("code")
+
+
+class ChatMessageForm(forms.Form):
+    """会話に書く form (受注・発注・受信した注文の「会話」の欄と、会話に書く画面)。保存と送るのは services.post_chat_message。
+
+    書く先は hidden の 2 つ (target_kind = 発注か受信した注文・target_id)。受注の詳細から書くときは、受注の元の受信した注文を渡す
+    (connect_tags の chat_panel が作る)。言葉の前後の空白は CharField の既定 (strip) が落とし、落とした後の字が送る字と残す字になる。
+    form が見るのは欄の型と必須と字数 (2000 字) と、書く先が引けるかだけ。会話が使えるか (CHAT-2) は services が見る。
+    """
+
+    TARGET_CHOICES = [("purchase_order", "発注"), ("inbox", "受信した注文")]
+
+    target_kind = forms.ChoiceField(choices=TARGET_CHOICES, widget=forms.HiddenInput)
+    target_id = forms.IntegerField(min_value=1, widget=forms.HiddenInput)
+    body = forms.CharField(
+        label="言葉",
+        max_length=2000,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        error_messages={"required": "言葉を書いてください。"},
+    )
+    submit_label = "送る"
+
+    def clean(self):
+        cleaned = super().clean()
+        kind = cleaned.get("target_kind")
+        pk = cleaned.get("target_id")
+        if kind and pk:
+            # 発注の表は purchasing の物。connect は purchasing の model を頭で import しない (app の登録から引く。読むだけ)。
+            model = apps.get_model("purchasing", "PurchaseOrder") if kind == "purchase_order" else Inbox
+            target = model._default_manager.filter(pk=pk).first()
+            if target is None:
+                raise forms.ValidationError("書く先の注文が見つかりません。受注か発注の詳細の画面を開き直してください。")
+            cleaned["target"] = target
+        return cleaned
+
+    def service_kwargs(self):
+        return {"target": self.cleaned_data["target"], "body": self.cleaned_data["body"]}

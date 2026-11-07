@@ -3,6 +3,7 @@
 画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
 書く処理は services の accept・accept_with_conditions・hold・reject だけで、土台が検査の層を通してから呼ぶ。
+会話に書く (受注と発注の 1 件ごとの会話。C104) も入力の土台を継承し、書くのは services.post_chat_message だけ。
 
 受け口 (receive_order) は相手の会社の機械が呼ぶ口で、画面ではないので core の土台を継承しない関数の view にした。
 ログインは要らず、CSRF の対象外で、POST だけを受ける (05 の 5 節)。
@@ -19,8 +20,8 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 from seizou.masters.services import active_partners
 
 from . import services
-from .forms import AcceptForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
-from .models import Connection, Inbox
+from .forms import AcceptForm, ChatMessageForm, ConditionalAcceptForm, ConnectionForm, HoldForm, RejectForm
+from .models import ChatMessage, Connection, Inbox
 
 
 def _sender_choices():
@@ -246,3 +247,22 @@ class ConnectionUpdateView(BaseFormView):
     service = staticmethod(services.update_connection)
     screen_name = "取引先との接続の編集"
     screen_help = "受け口の URL や鍵の置き場の名前を直して保存します。鍵の値はここに入れず、.env に置きます。"
+
+
+# 会話に書く (C104)。ふだんは受注・発注・受信した注文の詳細の「会話」の欄 (connect/_chat.html) から小窓の形で送り、
+# 保存の後は土台が 204 と seizou:saved を返す。この画面を直に開くのは、JS の無いときと、小窓で誤りを直すとき。
+# 行の詳細の画面は無いので、保存の後は form の hidden の next (開いた詳細の道) へ戻る。URL の名前を _create にしないのは、一覧の土台が「新規登録」を出す名前を避けるため。
+class ChatMessageAddView(BaseFormView):
+    """会話に書く入力。
+
+    使う人: 営業・生産管理 / いつ: 取引先と注文の中身を確かめたいとき / 何のために: 受注と発注の 1 件ごとの会話で、相手の seizou に言葉を送る / 次にすること: 「会話」のタブで相手の返事を待つ
+
+    書いた言葉は直す口も消す口も作らない。電子帳簿保存法の電子取引のデータとして、送ったとおり・受けたとおりに残すため
+    (会話がそれに当たるかの当てはめは未確認で、適法の側に倒した。確かめた資料 = 中小企業共通 EDI ガイドブック 3.2.2)。
+    """
+
+    model = ChatMessage
+    form_class = ChatMessageForm
+    service = staticmethod(services.post_chat_message)
+    screen_name = "会話に書く"
+    screen_help = "受注・発注・受信した注文の「会話」から書いた言葉を、取引先の seizou へ送ります。書いた言葉は直せず、消せません。"

@@ -210,7 +210,7 @@ def test_partner_import_follows_functions_passed_by_name(client_logged_in, folde
 
 def test_not_from_screen_rows_match_services_texts():
     """表の全部の行が、表を当てる前の文の中にある (services の文を直したときに、表が何も言わずに効かなくなるのを防ぐ)。"""
-    assert len(manual.NOT_FROM_SCREEN) == 14
+    assert len(manual.NOT_FROM_SCREEN) == 15
     for app, text, reason in manual.NOT_FROM_SCREEN:
         assert text in manual.all_refusal_texts(app), (app, text)
         assert text not in manual.refusal_texts(app), (app, text)
