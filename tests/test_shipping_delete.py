@@ -414,3 +414,19 @@ def test_operations_has_typo_section_between_trouble_and_practice():
     section = text[start : text.index("\n## ", start + 1)]
     for word in ("棚卸しの調整", "会話", "削除", "金額を見られる人", "受入は、保存した後に画面から直せません。"):
         assert word in section, word
+
+
+# ---------------------------------------------------------------- 6 (任意) 出荷の編集の小窓の「この出荷を削除」
+
+
+@pytest.mark.django_db
+def test_edit_modal_links_to_delete_with_next(logged_in, line, user):
+    shipment = _ship(line, "4", user)
+    edit = reverse("shipping:shipment_update", args=[shipment.pk])
+    delete = f"/shipping/{shipment.pk}/delete/?next=/shipping/"
+
+    modal = logged_in.get(f"{edit}?next=/shipping/", **MODAL).content.decode()
+
+    assert f'href="{delete}" data-modal-form="{delete}"' in modal
+    assert "この出荷を削除" in modal
+    assert "この出荷を削除" not in logged_in.get(edit).content.decode()  # 画面の全体には置かない (小窓だけ)
