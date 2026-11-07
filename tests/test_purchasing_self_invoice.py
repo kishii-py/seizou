@@ -26,7 +26,7 @@ from seizou.purchasing.models import SelfInvoice, SelfInvoiceLine
 
 ORDER_DATE = date(2026, 10, 28)
 DUE_NOTE = (
-    "支払期日 (2027-01-31) が受領日 (2026-11-01) から 60 日を超えます。"
+    "支払期日 (2027-01-31) が受領日 (2026-11-01) から 2 か月 (60 日) を超えます。"
     "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。取引先の支払の条件を確かめてください。"
 )
 
@@ -265,12 +265,49 @@ def test_due_date_note(client_logged_in, user, item, no_http):
     si = services.create_self_invoice(ok, _receipts(po, user, [date(2026, 11, 1)]), user, issued_on=date(2026, 11, 30))
     assert si.due_on == date(2026, 12, 31)
     assert services.due_date_note(si) == ""
-    assert "60 日を超えます" not in client_logged_in.get(reverse("purchasing:selfinvoice_detail", args=[si.pk])).content.decode()
+    assert "2 か月 (60 日) を超えます" not in client_logged_in.get(reverse("purchasing:selfinvoice_detail", args=[si.pk])).content.decode()
 
     empty = _partner(user, "S007", payment_month="", payment_day=None)
     po = _sent_order(empty, item, user)
     si = services.create_self_invoice(empty, _receipts(po, user, [date(2026, 11, 1)]), user, issued_on=date(2026, 11, 30))
     assert services.due_date_note(si) == ""
+
+
+def test_months_later():
+    """月の数え方の口 (billing.services.months_later。追記-60日の数え方の 1)。同じ日が無い月は月末、年をまたぐ。"""
+    from seizou.billing.services import months_later
+
+    assert months_later(date(2027, 1, 31), 1) == date(2027, 2, 28)
+    assert months_later(date(2028, 1, 31), 1) == date(2028, 2, 29)
+    assert months_later(date(2026, 8, 31), 1) == date(2026, 9, 30)
+    assert months_later(date(2026, 7, 1), 2) == date(2026, 9, 1)
+    assert months_later(date(2026, 12, 15), 2) == date(2027, 2, 15)
+
+
+@pytest.mark.django_db
+def test_due_date_note_counts_two_months(client_logged_in, user, item, no_http):
+    """(d2) 60 日は 2 か月で数える (決め C111-2b)。受領 7-01 なら 8-31 (61 日目) まで出さず、9-01 で出す。
+
+    (a) 月末締め・翌月末払い (_partner の既定) は受領 7-01 → 支払期日 8-31 で出ない。
+    (b) 31 日締め・翌々月・1 日払いは受領 7-01 → 支払期日 9-01 で出る。
+    """
+    month_end = _partner(user, "S008")
+    po = _sent_order(month_end, item, user)
+    si = services.create_self_invoice(month_end, _receipts(po, user, [date(2027, 7, 1)]), user, issued_on=date(2027, 7, 31))
+    assert si.due_on == date(2027, 8, 31)
+    assert services.due_date_note(si) == ""
+    assert "を超えます" not in client_logged_in.get(reverse("purchasing:selfinvoice_detail", args=[si.pk])).content.decode()
+
+    late = _partner(user, "S009", payment_month="after_next", payment_day=1)
+    po = _sent_order(late, item, user)
+    si = services.create_self_invoice(late, _receipts(po, user, [date(2027, 7, 1)]), user, issued_on=date(2027, 7, 31))
+    assert si.due_on == date(2027, 9, 1)
+    note = (
+        "支払期日 (2027-09-01) が受領日 (2027-07-01) から 2 か月 (60 日) を超えます。"
+        "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。取引先の支払の条件を確かめてください。"
+    )
+    assert services.due_date_note(si) == note
+    assert note in client_logged_in.get(reverse("purchasing:selfinvoice_detail", args=[si.pk])).content.decode()
 
 
 def test_edi_codes():

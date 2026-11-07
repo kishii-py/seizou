@@ -2,9 +2,15 @@
 
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行い (R13)、
 送るのは connect.services.send_order だけ (R17。HTTP は atomic の外)。
+協力企業への発注書の印刷用の HTML と PDF は、請求書と納品書と同じ関数の view (R15 は class だけを見る)。
 """
 
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from seizou.core import access
+from seizou.core.reports import PdfUnavailable, render_html, render_pdf
 
 from seizou.core import edi_codes
 from seizou.core.views import BaseSelectView
@@ -22,6 +28,10 @@ from .forms import SelfInvoiceAcceptForm, SelfInvoiceCancelForm, SelfInvoiceForm
 from .models import PurchaseOrder
 from .models import PurchaseOrderLine, Receipt
 from .models import SelfInvoice
+from .reports import ORDER_SHEET_TEMPLATE, purchase_order_context
+
+#: 発注書の PDF を作れない環境で、印刷用の HTML の上に出す知らせ (請求書と同じ字)
+PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください"
 
 
 def _subcontractor_choices():
@@ -389,3 +399,30 @@ class PurchaseItemSelectView(BaseSelectView):
     def get_queryset(self):
         # 候補は使用中だけ (N135。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)
         return with_default_process(active_items())
+
+
+@login_required
+def purchaseorder_print(request, pk):
+    """協力企業への発注書の印刷用の HTML (新しいタブで開き、ブラウザで印刷する)。金額が主な書面なので、金額の閲覧の無い人 (on) は 403。"""
+    refused = access.refuse_money_document(request, "発注書")
+    if refused is not None:
+        return refused
+    order = get_object_or_404(PurchaseOrder.objects.select_related("partner"), pk=pk)
+    return HttpResponse(render_html(ORDER_SHEET_TEMPLATE, purchase_order_context(order)))
+
+
+@login_required
+def purchaseorder_pdf(request, pk):
+    """協力企業への発注書の PDF。作れない環境では、印刷用の HTML の上に知らせを出して返す。"""
+    refused = access.refuse_money_document(request, "発注書")
+    if refused is not None:
+        return refused
+    order = get_object_or_404(PurchaseOrder.objects.select_related("partner"), pk=pk)
+    context = purchase_order_context(order)
+    try:
+        data = render_pdf(ORDER_SHEET_TEMPLATE, context)
+    except PdfUnavailable:
+        return HttpResponse(render_html(ORDER_SHEET_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+    response = HttpResponse(data, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{order.po_no}.pdf"'
+    return response

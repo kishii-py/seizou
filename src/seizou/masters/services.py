@@ -459,6 +459,7 @@ def create_partner(data, user, *, ext=None):
 
     請求の仕方は closing (締日でまとめる)・per_delivery (都度) のどちらかで、渡さなければ closing。
     支払の月は same_day・current・next・after_next か空、支払日は 1〜31 の整数か空 (31 は月末)。
+    協力企業の支払の条件が受領から 2 か月を超える形なら、返す取引先に saved_note と saved_level = "warning" を付ける (payment_terms_note。止めない)。
     """
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     _refuse_unknown_role(data.get("role"))
@@ -470,11 +471,17 @@ def create_partner(data, user, *, ext=None):
         partner = Partner.objects.create(**data)
         _save_ext(partner, ext)
         record_history(partner, user)
+        note = payment_terms_note(partner)
+        if note:
+            partner.saved_note = note
+            partner.saved_level = "warning"
         return partner
 
 
 def update_partner(partner, data, user, *, ext=None):
-    """data にある鍵だけを書き換える。取引先の種類・請求の仕方・取引先コード・支払の条件は create_partner と同じ決まりで見る。"""
+    """data にある鍵だけを書き換える。取引先の種類・請求の仕方・取引先コード・支払の条件は create_partner と同じ決まりで見る。
+    協力企業の支払の条件が受領から 2 か月を超える形なら、返す取引先に saved_note と saved_level = "warning" を付ける (payment_terms_note。止めない)。
+    """
     _refuse_unknown_keys(data, _PARTNER_KEYS, "取引先")
     if "role" in data:
         _refuse_unknown_role(data["role"])
@@ -490,7 +497,55 @@ def update_partner(partner, data, user, *, ext=None):
         partner.save()
         _save_ext(partner, ext)
         record_history(partner, user, before=before)
+        note = payment_terms_note(partner)
+        if note:
+            partner.saved_note = note
+            partner.saved_level = "warning"
         return partner
+
+
+#: 取引先の支払の条件が受領から 2 か月を超える形のときの知らせの字 (取引先の保存の後に黄の知らせで出す。金額は出さない)
+PAYMENT_TERMS_NOTE = (
+    "この支払の条件 ({terms}) では、受領日 ({received:%Y-%m-%d}) から支払期日 ({due:%Y-%m-%d}) までが 2 か月 (60 日) を超えます。"
+    "取適法の対象の取引では、支払期日の決まりに反するおそれがあります。支払の条件を確かめてください。"
+)
+#: 支払の条件の字を作るときの締日の空の字 (billing.services.closing_period と同じく月末で締める)
+_CLOSING_MONTH_END_TEXT = "月末"
+#: payment_terms_note が見る締め期間の数 (今日の締め期間から 12 か月分。月の日数で答えの変わる条件を 1 年の中で見つけるため)
+_PAYMENT_TERMS_PERIODS = 12
+
+
+def payment_terms_note(partner) -> str:
+    """協力企業の支払の条件が、受領から 2 か月 (60 日) を超える支払期日を作る形なら知らせの字を返す (読むだけ)。超えなければ空の字。
+
+    見るのは取引先の種類が協力企業か両方 (partner.is_subcontractor) の取引先だけ (得意先だけの取引先は、こちらが払う側でないので空の字)。
+    今日 (timezone.localdate()) を含む締め期間から 12 か月分の締め期間ごとに、期間の初めの日 (その期間で一番早い受領日になりうる日) を受領日として、
+    仕入明細の create_self_invoice と同じ 2 つの呼び (billing.services.closing_period → payment_due_date(取引先, 期間の終わり)) で支払期日を出し、
+    受領日の 2 か月後の日の前日 (billing.services.months_later(受領日, 2) - 1 日) を超えた最初の組を字にする。支払期日が出ない (支払の月か支払日が空) なら空の字。
+    月の数え方は billing の 1 か所 (式を写さない)。仕入明細の詳細の黄の 1 行 (purchasing.services.due_date_note) と同じ数え方。
+    訳: 支払の条件が受領から 2 か月を超える形の協力企業を、取引先を保存した時に知らせ、発注の前に条件を見直せるようにするため。
+    保存は止めない (条件は相手と決めた物で、seizou が断ると記録が実際と食い違うため)。
+    出所 = 本人の決め 11-08 00:24 (取引先の保存の時に出す・保存は止めない・発注の時には出さない) と C111-2b (2 か月で数える)。
+    取適法でも 2 か月で数える運用かは未確認 (仕入明細の due_date_note と同じ)。
+    変えてよい条件 = 本人が決め直したとき、または公正取引委員会が取適法で別の数え方を示したとき。
+    画面の字では法令の当てはめを言い切らない (「…のおそれがあります」「確かめてください」の形)。
+    """
+    from datetime import timedelta
+
+    from seizou.billing.services import closing_period, months_later, payment_due_date
+
+    if not partner.is_subcontractor:
+        return ""
+    period_from, period_to = closing_period(partner, timezone.localdate())
+    for _ in range(_PAYMENT_TERMS_PERIODS):
+        due_on = payment_due_date(partner, period_to)
+        if due_on is None:
+            return ""
+        if due_on > months_later(period_from, 2) - timedelta(days=1):
+            terms = f"締日 {partner.get_closing_day_display() or _CLOSING_MONTH_END_TEXT}・支払日 {partner.get_payment_day_display()}"
+            return PAYMENT_TERMS_NOTE.format(terms=terms, received=period_from, due=due_on)
+        period_from, period_to = closing_period(partner, period_to + timedelta(days=1))
+    return ""
 
 
 def create_process(data, user):

@@ -1,0 +1,50 @@
+{% extends "core/report_base.html" %}
+{% load seizou_tags %}
+{% comment %}
+協力企業への発注書の帳票。context は purchasing.reports.purchase_order_context が作る (表を読むだけ)。
+金額と合計は context の値をそのまま出し、ここでは計算しない。税は扱わない (発注に税の列が無いため。合計は「金額の合計 (税抜)」)。
+受領場所は context の既定の 1 文 (発注に受領場所の列が無い)。支払の条件は取引先の締日と支払日の字。空なら「—」と、notices の 1 行。
+品名の下の「工程 …」は明細の工程の名前。空なら出さない。列は増やさない。
+notices は納期の空の明細と支払の条件の空の知らせ (1 つずつ 1 行)。
+見た目は core の report.css だけを使う (画面の CSS は使わない)。
+pdf_notice は PDF を作れない環境で、印刷用の HTML に落としたときだけ入る。
+{% endcomment %}
+{% block title %}発注書 {{ order.number }}{% endblock %}
+{% block report_title %}発注書{% endblock %}
+{% block head %}
+{% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
+<p class="report-customer">{{ partner.name }} 御中</p>
+<table class="report-meta">
+  <tr><th>発注番号</th><td class="report-docno">{{ order.number }}</td></tr>
+  <tr><th>発注日</th><td>{{ order.date|date:"Y年n月j日" }}</td></tr>
+  <tr><th>受領場所</th><td>{{ delivery_place }}</td></tr>
+  <tr><th>支払の条件</th><td>{% if payment_terms %}{{ payment_terms }}{% else %}—{% endif %}</td></tr>
+</table>
+<p>下記のとおり発注いたします。</p>
+{% for notice in notices %}<p role="alert">{{ notice }}</p>
+{% endfor %}
+{% endblock %}
+{% block content %}
+<table class="report-lines">
+  <thead>
+    <tr><th>品番</th><th>品名</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th><th>納期</th></tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td class="code">{{ line.item_code }}</td>
+      <td>{{ line.item_name }}{% if line.process %}<p class="report-order-no">工程 {{ line.process }}</p>{% endif %}</td>
+      <td class="num">{{ line.quantity|floatformat:"-2g" }}</td>
+      <td>{{ line.unit }}</td>
+      <td class="num">{{ line.unit_price|floatformat:"-2g"|yen }} / {{ line.price_unit }}</td>
+      <td class="num">{{ line.amount|floatformat:"-2g"|yen }}</td>
+      <td class="date">{% if line.due_date %}{{ line.due_date|date:"Y年n月j日" }}{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="report-total"><th colspan="5">金額の合計 (税抜)</th><td class="num">{{ total|floatformat:"-2g"|yen }}</td><td></td></tr>
+  </tfoot>
+</table>
+{% if order.note %}<p>備考 {{ order.note }}</p>{% endif %}
+{% endblock %}

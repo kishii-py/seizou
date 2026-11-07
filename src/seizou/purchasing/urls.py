@@ -1,6 +1,7 @@
 """purchasing の URL。名前の約束は <model>_list / _detail / _create (core の土台が使う)。
 
 送り直す (_send) と取り消す (_cancel) と変更 (_change) は発注の詳細のボタンから入る。
+発注書の印刷用の HTML (_print) と PDF (_pdf) は関数の view。
 """
 
 from django.urls import path
@@ -23,6 +24,8 @@ urlpatterns = [
     path("orders/<int:pk>/cancel/", views.PurchaseOrderCancelView.as_view(), name="purchaseorder_cancel"),
     # 送った発注の変更 (相手が出荷し終えるまで)。_update の名前にしない訳: 土台が _update を全部の発注の「編集」の入口に使うが、変更を送れるのは一部の状態だけのため。
     path("orders/<int:pk>/change/", views.PurchaseOrderChangeView.as_view(), name="purchaseorder_change"),
+    path("orders/<int:pk>/print/", views.purchaseorder_print, name="purchaseorder_print"),
+    path("orders/<int:pk>/pdf/", views.purchaseorder_pdf, name="purchaseorder_pdf"),
     path("receipts/", views.ReceiptListView.as_view(), name="receipt_list"),
     path("receipts/new/", views.ReceiptCreateView.as_view(), name="receipt_create"),
     path("receipts/<int:pk>/", views.ReceiptDetailView.as_view(), name="receipt_detail"),

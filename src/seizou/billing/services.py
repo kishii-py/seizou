@@ -908,6 +908,17 @@ def payment_due_date(customer, base_date):
     return date(year, month, _day_in_month(year, month, payment_day))
 
 
+def months_later(day, count):
+    """day の count か月後の同じ日 (その月に同じ日が無ければ月末) を返す。読むだけ。count は 0 以上の整数。
+
+    締め期間と支払期日と同じ月の数え方を、ほかの部品 (purchasing の 60 日の知らせと masters の取引先の保存の知らせ) から使う口。
+    月の数え方を purchasing と masters に写さないため。式は _add_months と _day_in_month のまま。
+    例: 2027-01-31 の 1 か月後は 2027-02-28 (月末)、2026-08-31 の 1 か月後は 2026-09-30、2026-07-01 の 2 か月後は 2026-09-01。
+    """
+    year, month = _add_months(day.year, day.month, count)
+    return date(year, month, _day_in_month(year, month, day.day))
+
+
 def _add_months(year, month, count):
     """(年, 月) に count か月を足した (年, 月)。"""
     index = year * 12 + (month - 1) + count
