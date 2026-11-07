@@ -342,8 +342,8 @@ def test_reply_revision_number_shape(monkeypatch, user, subcontractor, customer,
 @pytest.mark.parametrize(
     "extra, line_extra, message",
     [
-        ({"purpose_code": "4", "order_revision_no": 2, "order_id": str(uuid.UUID(int=1))}, {}, "まだ受けられません"),
-        ({"purpose_code": "1", "order_revision_no": 2, "order_id": str(uuid.UUID(int=1))}, {}, "まだ受けられません"),
+        ({"purpose_code": "4", "order_revision_no": 2, "order_id": str(uuid.UUID(int=1))}, {}, "注文の変更の元の注文がありません。"),
+        ({"purpose_code": "1", "order_revision_no": 2, "order_id": str(uuid.UUID(int=1))}, {}, "注文の変更の元の注文がありません。"),
         ({"purpose_code": "X"}, {}, "注文書目的コードか明細状態コードが読めません。"),
         ({"purpose_code": 9}, {}, "注文書目的コードか明細状態コードが読めません。"),
         ({}, {"line_status_code": "7"}, "注文書目的コードか明細状態コードが読めません。"),

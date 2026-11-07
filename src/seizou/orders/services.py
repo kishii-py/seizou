@@ -21,7 +21,7 @@ from decimal import Decimal
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Sum, Value
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Min
 from django.db.models.functions import Coalesce
 
 from seizou.core.exceptions import RuleViolation
@@ -34,7 +34,7 @@ _ORDER_KEYS = frozenset({"order_date", "customer_order_no", "note", "customer"})
 _LINE_KEYS = frozenset(
     {"item", "qty", "unit", "unit_price", "due_date", "note", "customer_part_no", "ext"}
 )
-_LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line"}
+_LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line", "line_no"}
 _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note")
 _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
@@ -177,11 +177,13 @@ def update_order(order, data, lines, user, *, ext=None):
 
     data は order_date・customer_order_no・note・customer の鍵だけ。data にある鍵だけを書き換える。
     lines は直した後の明細の全部。id か order_line のある明細はその明細を直し (鍵のある列だけ)、
-    どちらも無い明細は足す (行番号は今の最大 + 1 から)。lines に無い既存の明細は消す。
+    どちらも無い明細は足す (行番号は今の最大 + 1 から。足す明細に line_no があればその番号で足し、次の番号はその番号の次より小さくしない)。
+    lines に無い既存の明細は消す。
     出荷のある明細は消せない (DB の PROTECT が止める物を、日本語の ValueError にして返す)。
     残る明細は全部の金額を計算し直し、終わりに refresh_status で受注の状態を決め直す。
     訳: 取消した受注を直させないため (直すときは新しく受注を作る)。出所 = RULES.md R05。
     変えてよい条件 = 変えない (R は廃止で残す)。
+    訳: 受信した注文の変更で足した明細の行番号を、相手 (発注元) の行番号とそろえるため (出荷の知らせと検収は行番号で明細を指す)。出所 = 作者の決め (11-07。発注の変更の受け入れ)。変えてよい条件 = 送り合いが行番号でなく明細の識別で明細を指すようになったとき。
     """
     _refuse_ext(ext)
     _refuse_unknown_keys(data, _ORDER_KEYS, "受注")
@@ -219,8 +221,9 @@ def update_order(order, data, lines, user, *, ext=None):
             if ref is not _NEW_LINE:
                 _change_line(existing[ref], line, locked.customer)
             else:
-                _add_line(locked, line, next_line_no)
-                next_line_no += 1
+                line_no = line.get("line_no") or next_line_no
+                _add_line(locked, line, line_no)
+                next_line_no = max(next_line_no, line_no + 1)
         return refresh_status(locked, user)
 
 
@@ -272,6 +275,9 @@ def acceptance_summary(order_line):
     """検収 (connect の Acceptance) の数の合計と最後の検収日。逆の関係 acceptances を読むだけで、orders は connect を import しない。
 
     返す物は {"count": 件数, "total": 検収の数の合計 (Decimal), "last_on": 最後の検収日か None}。
+    今の版より前の版の注文への検収があるときだけ、"old_revision" (その検収の版の一番小さい値) と "current_revision" (受注が今合っている注文の版) を足す
+    (前の版への検収も止めずに受けてあり、受注の詳細の検収の枡に「第 n 版の注文への検収 (今は第 m 版)」の札を出すのに使う。無いときは鍵を足さない)。
+    今の版は受注の逆の関係 inbox_message (受信した注文の第 1 版の行) の current_revision_no()。受信した注文で作った受注でなければ見ない。
     connect の部品が無い会社 (逆の関係が無い) では 0 件。読むだけ。
     """
     rows = getattr(order_line, "acceptances", None)
@@ -283,12 +289,21 @@ def acceptance_summary(order_line):
         last_on=Max("accepted_on"),
     )
     total = sums["total"]
+    # 受信した注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
+    inbox = getattr(order_line.order, "inbox_message", None) if sums["count"] else None
+    current = inbox.current_revision_no() if inbox is not None else None
+    old = None
+    if current is not None and current > 1:
+        old = rows.filter(order_revision_no__lt=current).aggregate(low=Min("order_revision_no"))["low"]
     # SQLite は集計の値を桁なしで返すことがあるので Decimal(str()) で受ける。
-    return {
+    summary = {
         "count": sums["count"],
         "total": total if isinstance(total, Decimal) else Decimal(str(total)),
         "last_on": sums["last_on"],
     }
+    if old is not None:
+        summary.update(old_revision=old, current_revision=current)
+    return summary
 
 
 def remaining_qty(order_line):

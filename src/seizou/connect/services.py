@@ -31,11 +31,12 @@ from django.db.models import Q
 from seizou.core import edi_codes
 from seizou.core.exceptions import RuleViolation
 from seizou.masters.services import map_partner_item, resolve_partner_item
-from seizou.orders.services import create_order
+from seizou.orders.services import cancel_order, create_order, shipped_qty, update_order
 
 from . import signing
 from .models import Acceptance, Connection, Inbox
 from .models import ShippingNotice
+from .models import _qty_text
 
 logger = logging.getLogger("seizou.connect")
 
@@ -220,7 +221,8 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
         return _refuse(MESSAGE_RECEIVE_NO_LINES, msg_id)
 
     # 明細の数が受注の明細の表の欄に入らない注文は、受信箱に入れずに断る (承認の後の 500 を防ぐ。精査 A1 の不具合 2)。
-    problem = _order_lines_problem(payload)
+    # 変更の版の取り消した明細 (明細状態コード 2) は受注に入らないので見ない。
+    problem = _order_lines_problem(_without_deleted_lines(payload))
     if problem:
         return _refuse(problem, msg_id)
     # 発注番号・品番・品名・単位・明細の備考の字が受ける表の欄に入らない注文も、受信箱に入れずに断る (数の断りの次。docs/edi-items.md)。
@@ -232,8 +234,18 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     if isinstance(codes, str):
         return _refuse(codes, msg_id)
     revision_no, purpose_code = codes
+    revises = None
     if purpose_code != edi_codes.PURPOSE_NEW:
-        return _refuse(MESSAGE_ORDER_REVISION_NOT_YET, msg_id)
+        # 変更と取消の版。受け入れた後の送り直し (届いた返事が落ちて相手が「再送」を押した) を断らないよう、同じ番号の行は見ずに返す (R11)。
+        existing = Inbox.objects.filter(message_id=message_id).first()
+        if existing is not None:
+            return existing
+        revises = _revision_base(partner, payload)
+        if revises is None:
+            return _refuse(MESSAGE_REVISION_NO_BASE, msg_id)
+        problem = _revision_problem(revises, payload, revision_no, purpose_code)
+        if problem:
+            return _refuse(f"注文の変更を受けられません。{problem}", msg_id)
     # R11: 番号の一意の制約に当て、2 回目は 1 回目の行を返す。
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない。
     try:
@@ -245,6 +257,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
                 payload=payload,
                 revision_no=revision_no,
                 purpose_code=purpose_code,
+                revises=revises,
             )
     except IntegrityError:
         return Inbox.objects.get(message_id=message_id)
@@ -253,7 +266,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
 #: 注文の版とコードの断り (送る側へ返す文)
 MESSAGE_ORDER_CODES = "注文書目的コードか明細状態コードが読めません。"
 MESSAGE_ORDER_REVISION = "注文履歴番号が読めません。新規の注文は 1、変更と取消は 2 以上の整数で送ってください。"
-MESSAGE_ORDER_REVISION_NOT_YET = "注文の変更と取消は、まだ受けられません。"
+MESSAGE_REVISION_NO_BASE = "注文の変更の元の注文がありません。注文のデータの番号 (order_id) を確かめてください。"
 _PURPOSES = frozenset(value for value, _label in edi_codes.PURPOSE_CHOICES)
 _LINE_STATUSES = frozenset(value for value, _label in edi_codes.LINE_STATUS_CHOICES)
 _LINE_REASONS = frozenset(value for value, _label in edi_codes.LINE_REASON_CHOICES) | {""}
@@ -295,6 +308,127 @@ def _order_codes(payload):
     if purpose_code != edi_codes.PURPOSE_NEW and revision_no < 2:
         return MESSAGE_ORDER_REVISION
     return revision_no, purpose_code
+
+
+def _is_deleted(raw) -> bool:
+    """注文の明細が取り消した明細 (明細状態コード 2) か。"""
+    return isinstance(raw, dict) and raw.get("line_status_code") == edi_codes.LINE_DELETED
+
+
+def _without_deleted_lines(payload):
+    """取り消した明細 (明細状態コード 2) を除いた注文の写し (数の欄の検査のため。2 の行は受注に入らない)。"""
+    if not isinstance(payload, dict) or not isinstance(payload.get("lines"), list):
+        return payload
+    return {**payload, "lines": [raw for raw in payload["lines"] if not _is_deleted(raw)]}
+
+
+def _revision_base(partner, payload):
+    """変更と取消の版の元の行 (第 1 版の受信した注文)。注文の order_id (第 1 版の番号) で、署名の通った取引先から受け口で受けた第 1 版の行を引く。無ければ None。"""
+    order_id = payload.get("order_id")
+    if not isinstance(order_id, str):
+        return None
+    try:
+        number = uuid.UUID(order_id)
+    except ValueError:
+        return None
+    return (
+        Inbox.objects.select_related("order")
+        .filter(message_id=number, partner=partner, revises=None, source=Inbox.SOURCE_DIRECT)
+        .first()
+    )
+
+
+def _line_number(raw):
+    """注文の明細の行番号 (1 以上の整数で bool でない)。読めなければ None。"""
+    value = raw.get("line_no") if isinstance(raw, dict) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _decimal_or_none(value):
+    """注文の数の字を Decimal に読む。読めなければ None (読めない数は受け入れの時に断る)。"""
+    try:
+        return _payload_decimal(value, "")
+    except ValueError:
+        return None
+
+
+#: 受注の明細を指す物 (指示書・入荷の引当・検収) の逆の関係の名前。部品の無い会社では属性が無く、無い扱い
+_LINE_REFERENCES = ("workorders", "receiving_allocations", "acceptances")
+
+
+def _referenced(row) -> bool:
+    """受注の明細を指示書・入荷の引当・検収のどれかが指しているか (読むだけ。connect はほかの部品を import しない)。"""
+    for name in _LINE_REFERENCES:
+        related = getattr(row, name, None)
+        if related is not None and related.exists():
+            return True
+    return False
+
+
+def _revision_problem(base, payload, revision_no, purpose_code):
+    """変更と取消の版 (payload) を元の行 (base = 第 1 版の受信した注文) の受注に当てられない訳の字。当てられれば None。
+
+    受け口 (receive)・受け入れ (_accept_revision)・受信した注文の画面 (connect_tags.revision_problem) が同じ見方で呼ぶ。
+    見る順: 元の行が断った → 未処理なら None (受けて待たせる。受け入れの時にもう一度見る) → 受け入れてある版以下の版 → 受注が取消・出荷済 →
+    取消の版で受注が一部出荷 → 変更の版の明細ごと (行番号で受注の明細を引く): 品番が違う・取り消す明細に出荷済みがある・
+    取り消す明細を指示書か入荷の引当か検収が指す・出荷済みのある明細の単価が違う・数が出荷済みより少ない。受注に無い行番号の明細は断らない (受け入れの時に足す)。
+    訳: 出荷し終えた受注と、出した物の記録 (納品書・請求書) と食い違う変更を受注に当てず、作り始めた物の記録 (指示書・入荷の引当) と届いた検収が指す受注の明細を消さないため。出所 = 決め EDIT-1 (11-06 23:2x)・中小企業共通 EDI に合わせた決め EDIT-2 (11-06 23:2x)・決め C96-1 (11-07 06:33。一部を出荷した受注への取消を受けない)・決め C96-4 (11-07 06:37。指示書・入荷の引当・検収・出荷のある受注の明細を消す変更を受けない)。
+    変えてよい条件 = EDIT-1・EDIT-2・C96-1・C96-4 の答えが変わったとき。
+    """
+    if base.status == Inbox.STATUS_REJECTED:
+        return "第 1 版の注文は断ってあるので、変える受注がありません。"
+    if base.status == Inbox.STATUS_RECEIVED:
+        return None
+    order = base.order
+    if order is None:
+        return "第 1 版の注文から作った受注が無いので、変える受注がありません。"
+    current = base.current_revision_no()
+    if revision_no <= current:
+        return f"受注 {order.order_no} は第 {current} 版まで受け入れてあります。"
+    if order.status == order.STATUS_CANCELLED:
+        return f"受注 {order.order_no} は取り消してあります。"
+    if order.status == order.STATUS_SHIPPED:
+        return f"受注 {order.order_no} は出荷済なので変えられません (送った注文を直せるのは、受注を出荷し終えるまで)。"
+    if purpose_code == edi_codes.PURPOSE_CANCEL:
+        if order.status == order.STATUS_PARTIAL:
+            return f"受注 {order.order_no} は一部を出荷済みなので、取消を受けられません。"
+        return None
+    rows = {row.line_no: row for row in order.lines.all()}
+    from seizou.core.templatetags.seizou_tags import yen
+
+    for raw in payload.get("lines") or ():
+        number = _line_number(raw)
+        if number is None:
+            return "明細の行番号が読めません。"
+        row = rows.get(number)
+        if row is None:
+            continue
+        part_no = raw.get("part_no")
+        part_no = part_no.strip() if isinstance(part_no, str) else ""
+        if part_no != row.customer_part_no:
+            shown = row.customer_part_no or "—"
+            return f"明細 {number} の品番が、受注の明細 {number} (相手の品番 {shown}) と違います。"
+        shipped = shipped_qty(row)
+        if _is_deleted(raw):
+            if shipped > 0:
+                return f"明細 {number} は出荷済みの物があるので取り消せません。"
+            if _referenced(row):
+                return f"明細 {number} は、受注の明細に指示書か入荷の引当か検収があるので、受注から消せません。"
+            continue
+        if shipped <= 0:
+            continue
+        unit_price = _decimal_or_none(raw.get("unit_price"))
+        if unit_price is not None and unit_price != row.unit_price:
+            return (
+                f"明細 {number} は出荷済みの物があるので単価は変えられません "
+                f"(注文の単価 {yen(unit_price)}・受注の単価 {yen(row.unit_price)})。"
+            )
+        qty = _decimal_or_none(raw.get("qty"))
+        if qty is not None and qty < shipped:
+            return f"明細 {number} の数 ({_qty_text(qty)}) が出荷済みの数 ({_qty_text(shipped)}) より少なくなります。"
+    return None
 
 
 @dataclass(frozen=True)
@@ -813,6 +947,9 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
         not isinstance(accepted_at, datetime.datetime) or timezone.is_naive(accepted_at)
     ):
         raise ValueError("受け入れられません。承認した日時は timezone 付きの日時にしてください。")
+    # 変更と取消の版 (元の行 revises がある行) は、受注を作らず元の受注を変える。
+    if inbox.revises_id is not None:
+        return _accept_revision(inbox, item_mapping, user, send=send, accepted_at=accepted_at)
 
     with transaction.atomic():
         locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
@@ -897,6 +1034,102 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     if send:
         send_reply(locked, user)
     return order
+
+
+def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
+    """変更と取消の版 (元の行 revises がある受信した注文) を受け入れ、元の行の受注を変える。返す物は変えた受注 (保存の後は受注の詳細へ移る)。
+
+    状態の見方は accept と同じ (受け入れ済みは R11・断った物は ValueError)。元の行が未処理なら、先に第 1 版を受け入れるよう断る。
+    当てられない版 (_revision_problem) は、受け口で受けた後に出荷が進んだときのため、受け入れる時にもう一度見て断る。
+    変更 (目的 "4") は、注文の明細を行番号で受注の明細に当てる: 取り消した明細 (2) は受注から消し、ほかの明細は数・単価・納期・備考を注文の値にし、
+    受注に無い行番号は足す (行番号は相手の番号のまま。出荷の知らせと検収は行番号で明細を指す)。注文に無い受注の明細 (受ける側が足した行) は今のまま。
+    受注を変えるのは orders.services.update_order。取消 (目的 "1") は orders.services.cancel_order。行を「受け入れた」にし (受注 order は空のまま)、
+    atomic の外で注文回答を返す。send が偽なら注文回答を送らず、返事の欄に MESSAGE_REPLY_SEED を書く (accept と同じ)。
+    訳: 受信した注文を人が受け入れたときだけ受注を変え (R10)、同じ版を 2 回受け入れないため (R11)。受ける側が手で直した明細も注文の値で上書きするのは、中小企業共通 EDI の注文変更 (方式 2) が変更の後の注文の全体を送るため。出所 = RULES.md R10・R11 と決め C96-3 (11-07 06:35。受け入れる前の画面で受注と違う値を全部出す)。
+    変えてよい条件 = C96-3 の答えが変わったとき (R10・R11 は変えない)。
+    """
+    from django.utils import timezone
+
+    with transaction.atomic():
+        locked = Inbox.objects.select_for_update().get(pk=inbox.pk)
+        if locked.status == Inbox.STATUS_ACCEPTED:
+            raise RuleViolation("R11", "受け入れられません。" + MESSAGE_ALREADY_ACCEPTED)
+        if locked.status == Inbox.STATUS_REJECTED:
+            raise ValueError("受け入れられません。" + MESSAGE_ACCEPT_REJECTED)
+        base = Inbox.objects.select_for_update().select_related("order").get(pk=locked.revises_id)
+        if base.status == Inbox.STATUS_RECEIVED:
+            raise ValueError(f"受け入れられません。先に第 1 版の注文 (受信した注文 {base.pk}) を受け入れてください。")
+        payload = locked.payload if isinstance(locked.payload, dict) else {}
+        problem = _revision_problem(base, payload, locked.revision_no, locked.purpose_code)
+        if problem:
+            raise ValueError(f"受け入れられません。{problem}この変更は断ってください。")
+        if locked.purpose_code == edi_codes.PURPOSE_CANCEL:
+            order = cancel_order(base.order, user, reason=f"得意先の注文の取消 (注文履歴番号 {locked.revision_no})")
+        else:
+            order = update_order(base.order, {}, _revision_lines(base, payload, item_mapping, user), user)
+        locked.status = Inbox.STATUS_ACCEPTED
+        locked.accepted_at = timezone.now() if accepted_at is None else accepted_at
+        fields = ["status", "accepted_at"]
+        if not send:
+            locked.reply_response = MESSAGE_REPLY_SEED
+            fields.append("reply_response")
+        locked.save(update_fields=fields)
+
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
+    if send:
+        send_reply(locked, user)
+    return order
+
+
+def _revision_lines(base, payload, item_mapping, user):
+    """変更の版の注文を受注の明細に当てる update_order の lines (受注の明細の全部と、足す明細)。
+
+    受注の明細は行番号の順に、注文にあって 2 の行は渡さず (消す)、2 でない行は数・単価・納期・備考を注文の値で、注文に無い行は今の値のまま渡す。
+    注文にあって受注に無い行番号の明細 (2 を除く) は、部品を第 1 版の受け入れと同じ _item_for で引き、相手の行番号 (line_no) で足す。
+    """
+    mapping = dict(item_mapping or {})
+    raw_lines = [raw for raw in payload.get("lines") or () if isinstance(raw, dict)]
+    by_number = {_line_number(raw): raw for raw in raw_lines}
+    rows = list(base.order.lines.order_by("line_no", "pk"))
+    lines = []
+    for row in rows:
+        raw = by_number.get(row.line_no)
+        if raw is None:
+            lines.append({"order_line": row})
+        elif not _is_deleted(raw):
+            lines.append({"order_line": row, **_revision_values(raw, row.line_no)})
+    known = {row.line_no for row in rows}
+    items = {}
+    for raw in raw_lines:
+        number = _line_number(raw)
+        if number in known or _is_deleted(raw):
+            continue
+        part_no, part_name = _part_of(raw, number)
+        if part_no not in items:
+            items[part_no] = _item_for(base.partner, part_no, part_name, mapping, user)
+        item = items[part_no]
+        unit = raw.get("unit")
+        lines.append(
+            {
+                "item": item,
+                "unit": unit if isinstance(unit, str) and unit else item.unit,
+                "customer_part_no": part_no,
+                "line_no": number,
+                **_revision_values(raw, number),
+            }
+        )
+    return lines
+
+
+def _revision_values(raw, number):
+    """注文の明細 1 行の数・単価・納期・備考 (受注に当てる値)。読めない数と日付は日本語の ValueError。"""
+    note = raw.get("note")
+    return {
+        "qty": _payload_decimal(raw.get("qty"), f" {number} 行目の数量"),
+        "unit_price": _payload_decimal(raw.get("unit_price"), f" {number} 行目の単価"),
+        "due_date": _payload_date(raw.get("due_date"), f" {number} 行目の納期"),
+        "note": note if isinstance(note, str) else "",
+    }
 
 
 def reject(inbox, reason, user):

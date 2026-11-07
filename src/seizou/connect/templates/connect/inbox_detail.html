@@ -1,11 +1,14 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons connect_tags %}
 {# 受信した注文の詳細。見出しの右に、状態が「未処理」のときだけ「断る」と「受け入れる」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
-{% block actions %}{{ block.super }}{% if object.status == "received" %}
+{# 変更と取消の版で受け入れられない物 (connect_tags の revision_problem) は「受け入れる」を出さず、詳細の上に黄色の 1 行 (状態の知らせ)。「断る」は今のまま出す。 #}
+{% block actions %}{{ block.super }}{% if object.status == "received" %}{% revision_problem object as problem %}
 <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
-{% if object.partner_id %}<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}受け入れる</a>{% endif %}
+{% if object.partner_id and not problem %}<a class="btn btn-primary" href="{% url 'connect:inbox_accept' object.pk %}">{% icon "check" "size-4" %}受け入れる</a>{% endif %}
 {% endif %}{% endblock %}
-{% block content %}
+{% block content %}{% revision_problem object as problem %}{% if problem %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この変更は受け入れられません。{{ problem }}断る理由を書いて断ってください。</span></div>
+{% endif %}
 {# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (02 の 0 節: uuid は出さない)。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="mb-2 text-xs font-medium text-base-content/50">基本</p>
@@ -32,10 +35,21 @@
     {% endif %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">状態</dt>
-      <dd class="min-w-0">{{ object.get_status_display }}{% same_order_notice object as same %}{% if same %}<div class="mt-2 flex flex-wrap items-center gap-2">{% include "connect/_same_order_notice.html" %}</div>{% endif %}</dd>
+      <dd class="min-w-0">{{ object.get_status_display }}{% same_order_notice object as same %}{% if same %}<div class="mt-2 flex flex-wrap items-center gap-2">{% include "connect/_same_order_notice.html" %}</div>{% endif %}{% revision_notice object as revision %}{% if revision %}<div class="mt-2 flex flex-wrap items-center gap-2">{% include "connect/_revision_notice.html" %}</div>{% endif %}</dd>
     </div>
+    {# 注文履歴番号 (中小企業共通 EDI の注文変更の方式 2)。並びの頭の 6 行 (取引先〜状態) の後に置く。変更と取消の版の行は、変える受注 (元の行 = 第 1 版の受注) への link も出す。 #}
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">注文履歴番号</dt>
+      <dd class="min-w-0">{{ object|revision_label }}</dd>
+    </div>
+    {% if object.revises_id %}
+    <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
+      <dt class="text-base-content/70">変える受注</dt>
+      <dd class="min-w-0 break-words">{% with base_order=object.revises.order %}{% if base_order %}{% url "orders:order_detail" base_order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ base_order.order_no }}</a>{% else %}<span class="font-mono">{{ base_order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}{% endwith %}</dd>
+    </div>
+    {% endif %}
     {# 受け入れて作った受注は受け入れた後、断った理由は断った後、注文回答は未処理でないときだけ出す。未処理の間は 3 行とも出さない (決め C18-1 = a・11-06)。 #}
-    {% if object.status == "accepted" %}
+    {% if object.status == "accepted" and not object.revises_id %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">受け入れて作った受注</dt>
       <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>

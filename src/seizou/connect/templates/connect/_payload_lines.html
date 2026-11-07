@@ -1,5 +1,6 @@
 {# 注文のデータの明細の表 (相手の品番のまま)。受信箱の詳細と受け入れの画面で使う。object は受信箱の行。 #}
-{% load seizou_tags connect_tags %}
+{# 変更と取消の版の行は、明細状態の列と受注の今の値のある表 (connect/_revision_lines.html)。第 1 版の行の表は今のまま (列の数を変えない)。 #}
+{% load seizou_tags connect_tags %}{% revision_lines object as rlines %}{% if rlines is not None %}{% include "connect/_revision_lines.html" %}{% else %}
 <div class="overflow-auto rounded-lg border border-base-300">
 <table class="table table-sm">
   <thead><tr class="bg-base-200 text-base-content/70">
@@ -27,4 +28,4 @@
     {% endfor %}
   </tbody>
 </table>
-</div>
+</div>{% endif %}
