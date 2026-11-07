@@ -58,7 +58,7 @@ DEFAULT_REPO = "kishii-py/seizou"
 #: 作品の OAuth App の Client ID の置き場 (.env の鍵の名前。デバイスの認証で使う)
 CLIENT_ID_ENV = "SEIZOU_GITHUB_CLIENT_ID"
 #: 作品の OAuth App の Client ID の既定。本体が本人の OAuth App の Client ID を入れる。公開の値。鍵ではない
-DEFAULT_CLIENT_ID = ""
+DEFAULT_CLIENT_ID = "Ov23liZedR4FAC4xoPSb"
 
 #: API の頭
 API = "https://api.github.com"
