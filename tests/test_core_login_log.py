@@ -331,6 +331,17 @@ def test_address_lock_writes_one_warning_line_without_password(client, fast_user
     assert len(lines(caplog, "締め出しの間")) == 1
 
 
+@pytest.mark.django_db
+def test_address_count_uses_only_the_first_header_value(client, fast_user, behind_proxy):
+    # 見出しのカンマの後ろの値を替えても、最初の値 (login_guard.client_address が読む物) で数える (5。任意)
+    for i in range(login_guard.ADDRESS_FAIL_LIMIT):
+        attempt(client, f"nobody{i:02d}", WRONG, HTTP_X_REAL_IP=f"{ATTACKER}, 198.51.100.{i + 1}")
+
+    right = attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=f"{ATTACKER}, 198.51.100.200")
+    assert right.status_code == 200 and LOCKED_MESSAGE in body(right)
+    assert attempt(client, "genba01", PASSWORD, HTTP_X_REAL_IP=f"{NEIGHBOR}, {ATTACKER}").status_code == 302
+
+
 # ---------------------------------------------------------------- 手引きの字 (3)
 
 ROOT = Path(__file__).resolve().parents[1]
