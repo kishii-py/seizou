@@ -92,7 +92,7 @@ class StockMove(models.Model):
     )
     created_at = models.DateTimeField("入れた日時", auto_now_add=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。元の記録は source_label() で出す。
+    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。元の記録は source_label() の字で、一覧の「元の記録」の列と、詳細の基本の表の最後の行 (stock/stockmove_detail.html の block basic_extra。候補 C89) に出す。
     #: 棚卸しの調整の控えの 2 列は、行ごとに出し分けるので property にする。棚卸しの調整でない行は 2 列とも出さない。
     #: 棚卸しの調整の行でも、空の列は出さない (数え始めの行の調整の前の在庫数と、列を足す前に入れた行)。
     @property
@@ -125,6 +125,6 @@ class StockMove(models.Model):
         return f"{self.moved_on:%Y-%m-%d} {self.item.part_no} {self.get_kind_display()} {_qty_text(self.qty)}"
 
     def source_label(self) -> str:
-        """元の記録の字 (一覧の「元の記録」の列)。元の記録が無ければ空の字。"""
+        """元の記録の字 (一覧の「元の記録」の列と、詳細の「元の記録」の行)。元の記録が無ければ空の字。"""
         source = self.source
         return "" if source is None else str(source)

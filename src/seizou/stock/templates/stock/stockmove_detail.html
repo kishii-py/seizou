@@ -1,0 +1,17 @@
+{% extends "core/detail.html" %}
+{% load stock_tags %}{% comment %}
+在庫の動きの詳細: 土台の詳細 (core/detail.html) の基本の表の最後 (block basic_extra) に「元の記録」の行を 1 つ足す (候補 C89)。
+値は stock_tags の move_source が返す字と URL。製造の完了は元の指示書、受入は元の受入の行の詳細へ、同じタブで移る link にする。
+払い出しと棚卸しの調整 (元の記録を持たない動き) も行を出して「—」にする (一覧の「元の記録」の列と項目をそろえる)。
+写した元: core/detail.html の基本の表の 1 行 (6547b617 の main の 77-84 行)。土台の行の形が変わったら、ここも合わせる。
+写した元から変えた所: 行に data-move-source、値は source.label と source.url で描く (真偽・金額・日付の枝は持たない)。
+部署でその部品 (指示書 = workorders・受入 = purchasing) を使わない人には、link にせず字だけで出す。詳細の画面は部署を見ないので
+押しても 403 にはならないが、関わる記録の link の今の形 (shipping の請求書の行・受注の詳細の「流れ」の枠) にそろえる。
+link の a に truncate と whitespace-nowrap を付けない (狭い幅で受入の長い字を値の列の中で折り返す)。
+{% endcomment %}
+{% block basic_extra %}{% move_source object as source %}
+      <div class="grid grid-cols-[6rem_1fr] sm:grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2" data-move-source>
+        <dt class="text-base-content/70">元の記録</dt>
+        <dd class="min-w-0 break-words">{% if source.url %}<a class="link link-primary" href="{{ source.url }}">{{ source.label }}</a>{% elif source.label %}{{ source.label }}{% else %}<span class="text-base-content/50">—</span>{% endif %}</dd>
+      </div>
+    {% endblock %}
