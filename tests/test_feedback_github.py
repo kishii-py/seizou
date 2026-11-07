@@ -771,7 +771,7 @@ def test_device_start_shows_code_and_link_without_device_code(client, manager, f
     html = html_of(client.get(SETUP))
     assert "GitHub でログインしてつなぐ</button>" in html and f'action="{START}"' in html
     assert 'id="id_device_repo"' in html and 'name="private"' in html
-    assert html.index("GitHub でログインしてつなぐ</button>") < html.index("トークンを貼ってつなぐ (別の方法)")
+    assert html.index("GitHub でログインしてつなぐ</button>") < html.index('aria-label="トークンを貼ってつなぐ"')
 
     response = start(client)
 
@@ -901,7 +901,8 @@ def test_device_poll_ok_writes_env_and_redirects(client, manager, fake, client_i
     html = html_of(client.get(SETUP))
     assert "example-feedback-bot の口座としてつながりました。" in html
     assert "example-feedback-bot の口座としてつながっています" in html
-    assert 'id="github-device"' not in html
+    # つないでいる間はログインのタブに「使えません」の 1 文だけ (ボタンと form は無い。本人の決め 11-07 20:5x のタブの形)
+    assert 'id="github-device-locked"' in html and 'id="github-device-start"' not in html
     assert OAUTH_TOKEN not in html
 
 
@@ -982,7 +983,8 @@ def test_device_screen_hides_section_when_connected(client, manager, fake, clien
     connect(manager, fake)
     client.force_login(manager)
     html = html_of(client.get(SETUP))
-    assert 'id="github-device"' not in html
+    # つないでいる間はログインのタブに「使えません」の 1 文だけ (ボタンと form は無い。本人の決め 11-07 20:5x のタブの形)
+    assert 'id="github-device-locked"' in html and 'id="github-device-start"' not in html
     assert "Authorized OAuth Apps" in html and "Revoke" in html
 # ---------------------------------------------------------------- 閉じた理由と直る版 (依頼書 N322。決め 11-07 09:0x〜09:4x)
 
@@ -1999,3 +2001,28 @@ def test_days_ago():
     assert services.days_ago("2026-11-09T00:00:00Z", now) == "今日"
     assert services.days_ago("", now) == "" and services.days_ago("読めない字", now) == ""
     assert services.days_ago(ago(0)) == "今日"
+
+
+# ---------------------------------------------------------------- つないだ後の画面と戻る道 (本人の報告 11-07 20:3x)
+
+
+def test_setup_screen_hides_token_form_when_connected_and_has_back_link(client, manager, fake, env_file):
+    """つないでいない間はトークンの入力の形と下の帯 (「トークンでつなぐ」) があり、つないだ後は出ない (下の「つなぐ」を押して赤の知らせが出た件)。
+    画面の頭の白い帯に「フィードバックの一覧へ戻る」がいつもある。"""
+    client.force_login(manager)
+    html = html_of(client.get("/feedback/github/"))
+    assert 'name="token"' in html and "seizou-save-row" in html and "トークンでつなぐ</button>" in html
+    assert 'id="github-back"' in html and 'href="/feedback/"' in html
+    assert "下の 2 つの方法のどちらかでつなぎます" in html
+    # 2 つのつなぎ方のタブ (本人の決め 11-07 20:5x)。Client ID が無い試験の環境ではトークンのタブが初めに開く
+    assert 'role="tablist" aria-label="つなぎ方" class="tabs seizou-tabs' in html
+    assert html.count('name="github-method"') == 2 and html.count('name="github-method"'[:0] + ' checked>') == 1
+    assert "やめ方" not in html
+
+    client.post("/feedback/github/", {"token": TOKEN, "repo": "example-owner/example-repo", "next": "/feedback/github/"})
+    html = html_of(client.get("/feedback/github/"))
+    assert "example-feedback-bot の口座としてつながっています" in html
+    assert 'name="token"' not in html and "seizou-save-row" not in html and "トークンでつなぐ</button>" not in html
+    assert 'id="github-device-locked"' in html and 'id="github-token-locked"' in html and "外す</button>" in html
+    assert html.count("つないでいる間はこの方法は使えません") == 2
+    assert 'id="github-back"' in html and 'id="github-revoke"' in html and "送り方:" in html

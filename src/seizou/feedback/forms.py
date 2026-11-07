@@ -100,7 +100,7 @@ class GithubConnectForm(forms.Form):
     送り先の初期値は、今の送り先 (.env) か既定。class の initial でなく __init__ で読む (起動の後に .env が変わるため)。
     """
 
-    submit_label = "つなぐ"
+    submit_label = "トークンでつなぐ"  # 「GitHub でログインしてつなぐ」のボタンと見分ける字 (本人の報告 11-07 20:3x)
 
     token = forms.CharField(
         label="トークン",

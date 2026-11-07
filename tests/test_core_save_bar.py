@@ -264,9 +264,9 @@ def test_seven_templates_have_bottom_row():
 def test_input_css_row_is_bottom_band():
     """下の行は上の帯と同じ形の下の帯 (C113。決め UX-SAVEBAR-1 = c)。
 
-    窓に対して置き (fixed)、本文の列の左右いっぱい・上に線 1 本・影と角の丸みは無し・地は base-100・左の余白は上の帯と同じ
-    (16px・lg 以上 24px)。右の 64px は右下の「AI に質問」の丸 (右から 24px・幅 40px) と保存のボタンを重ねない分。
-    lg の左の 16rem は左のメニューの幅。メニューの幅・上の帯の余白・丸の置き場を変えるとこの試験が落ちるので、input.css も一緒に直す。
+    窓に対して置き (fixed)、本文の列の左右いっぱい・上に線 1 本・影と角の丸みは無し・地は base-100・左右の余白は上の帯と同じ
+    (16px・lg 以上 24px)。右下の「AI に質問」の丸は、この帯がある画面では帯の上へ上げる (本人の報告 11-07 20:3x「ボタンと AI がくっついている」) ので、
+    右に丸の分の余白は空けない。lg の左の 16rem は左のメニューの幅。メニューの幅・上の帯の余白・丸の置き場を変えるとこの試験が落ちるので、input.css も一緒に直す。
     """
     css = INPUT_CSS.read_text(encoding="utf-8")
     start = css.index(".seizou-save-row {")
@@ -277,7 +277,7 @@ def test_input_css_row_is_bottom_band():
         "right: 0;",
         "bottom: 0;",
         "margin: 0;",
-        "padding: 12px 64px 12px 16px;",
+        "padding: 12px 16px;",
         "border-top: 1px solid var(--color-base-300);",
         "background: var(--color-base-100);",
     ):
@@ -289,7 +289,7 @@ def test_input_css_row_is_bottom_band():
     lg_rule = css[second : css.index("}", second)]
     assert css[:second].rstrip().endswith("@media (min-width: 64rem) {")
     assert "left: 16rem;" in lg_rule
-    assert "padding: 12px 64px 12px 24px;" in lg_rule
+    assert "padding: 12px 24px;" in lg_rule
     # 16rem と余白の元の字 (左のメニューの幅・上の帯の左右の余白・右下の丸の置き場)
     templates = CORE / "templates" / "core"
     assert '<aside class="flex h-screen w-64 ' in (templates / "_sidebar.html").read_text(encoding="utf-8")
@@ -305,6 +305,11 @@ def test_input_css_row_is_bottom_band():
     ):
         assert head in css, head
     assert "scroll-padding-bottom: 96px;" in css
+    # 帯がある画面では右下の丸を帯の上へ上げる (幅ごとの帯の高さ + 16px。main の下の余白と同じ 3 つの数)
+    lifted = css.index("html:has(.seizou-save-row) #assistant-root {")
+    assert "bottom: calc(141px + 1rem);" in css[lifted : css.index("}", lifted)]
+    assert css.count("html:has(.seizou-save-row) #assistant-root {") == 3
+    assert "bottom: calc(113px + 1rem);" in css and "bottom: calc(65px + 1rem);" in css
 
 
 # --- 2. 字の出ない所 ---
