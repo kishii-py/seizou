@@ -136,7 +136,7 @@ def test_row_menu_templates_have_no_z40():
         assert "z-40" not in path.read_text(encoding="utf-8"), path
 
 
-# --- 3. 右下の「AI に質問」が保存と最後の行に重ならない (N160 の形。決め C37 で一度外し、本人の決め 11-07 09:3x で戻した) ---
+# --- 3. 右下の「AI に質問」が保存と最後の行に重ならない (N160 の形。決め C37 で一度外し、本人の決め 11-07 09:3x で戻した。左のメニューの入口は 11-07 16:5x で外した) ---
 
 MAIN_WITH_ROOM = '<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">'
 MAIN_PLAIN = '<main class="flex-1 p-4 lg:p-6">'

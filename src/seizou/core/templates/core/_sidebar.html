@@ -38,7 +38,6 @@
       {% endif %}
       {% endfor %}
     </nav>
-{% if "assistant" in seizou.parts %}{% include "assistant/_menu.html" %}{% endif %}
 {% if "feedback" in seizou.parts %}{% include "feedback/_menu.html" %}{% endif %}
     {% if user.is_authenticated %}
     {% with name=user.get_full_name|default:user.get_username %}

@@ -252,7 +252,7 @@ def build_system(page_url, screen_name):
     """system の字。会社名・今日の日付・今の画面の名前と URL・その画面の説明書・約束を並べる。"""
     today = timezone.localdate()
     parts = [
-        f"あなたは「{_company_name()}」の社内システムの、左のメニューの「AI に質問」で開く AI チャットです。",
+        f"あなたは「{_company_name()}」の社内システムの、画面の右下の「AI に質問」のボタンで開く AI チャットです。",
         f"今日は {today.isoformat()} ({_WEEKDAYS[today.weekday()]}曜日) です。",
     ]
     screen = " ".join(screen_name.split())[:MAX_SCREEN_NAME_CHARS] if isinstance(screen_name, str) else ""

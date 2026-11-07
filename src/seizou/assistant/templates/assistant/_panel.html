@@ -1,5 +1,5 @@
 {% load assistant_tags seizou_icons seizou_tags static %}{% assistant_panel as panel %}
-{# AI チャットの窓 (画面の右下に開く。ログインした人だけ)。入口は 2 つ = 左のメニューの下の「AI に質問」(assistant/_menu.html) と、右下の絵だけの丸いボタン (この file)。core の base.html の 1 行が include する。紙には出さない。 #}
+{# AI チャットの窓 (画面の右下に開く。ログインした人だけ)。入口は右下の絵だけの丸いボタン (この file) の 1 つ (左のメニューの入口は本人の決め 11-07 16:5x で外した)。core の base.html の 1 行が include する。紙には出さない。 #}
 {# z-40 は上の帯 (z-30) の上、知らせの toast (z-50) の下。鍵が無い会社では 1 文だけを出し、入力の欄を出さない。 #}
 {# 窓 (data-assistant-window) は題の帯 (data-assistant-grip) で動かし、右下の角で大きさを変え、「広げる」で画面の 80% にする。位置と大きさは assistant-window.js が inline の style で置く (class を足し引きしない)。右下の「AI に質問」の丸いボタンは動かさない (E-38)。 #}
 {# 吹き出しは core の _chat_bubble.html。待つ間は吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
@@ -39,10 +39,10 @@
 </div>
 <script>
 (function () {
-  // 入口は 2 つ: 左のメニューの「AI に質問」(assistant/_menu.html。#assistant-toggle) と右下の丸いボタン (#assistant-float)。どちらでも小窓を開け閉めする。
+  // 入口は右下の丸いボタン (#assistant-float) の 1 つ (左のメニューの入口は本人の決め 11-07 16:5x で外した)。押すと小窓を開け閉めする。
   // 開いたら質問の欄に focus し、吹き出しの並びを下まで送る。小窓の中で Esc を押したら閉じて、最後に押した入口に focus を戻す (初めは右下の丸)。
   // htmx の object は呼ばない (DOM の event だけを受ける)。
-  var toggles = [document.getElementById("assistant-toggle"), document.getElementById("assistant-float")].filter(Boolean);
+  var toggles = [document.getElementById("assistant-float")].filter(Boolean);
   var panel = document.getElementById("assistant-panel");
   if (!toggles.length || !panel) return;
   var last = toggles[toggles.length - 1];

@@ -1,4 +1,4 @@
-"""AI チャットの窓 (左のメニューの「AI に質問」で開き、画面の右下に出る) と、質問を受ける口 (assistant:ask・assistant:clear) のテスト。
+"""AI チャットの窓 (画面の右下の「AI に質問」のボタンで開く) と、質問を受ける口 (assistant:ask・assistant:clear) のテスト。
 
 本物の API は呼ばない (autouse の fixture が _ask_claude を「呼ばれたら AssertionError」に差し替える)。
 返事が要るテストだけが作り物の返事に差し替える。鍵の有無で窓の中身が変わるので、鍵はテストごとに
@@ -75,7 +75,7 @@ def test_panel_shown_after_login_with_key(with_key, client_logged_in):
     html = client_logged_in.get(reverse("core:home")).content.decode()
 
     for word in (
-        'id="assistant-toggle"',
+        'id="assistant-float"',
         'aria-expanded="false"',
         'hx-post="/assistant/ask/"',
         'name="question"',
@@ -91,7 +91,7 @@ def test_panel_shown_after_login_with_key(with_key, client_logged_in):
 def test_panel_without_key_shows_sentence(without_key, client_logged_in):
     html = client_logged_in.get(reverse("core:home")).content.decode()
 
-    assert 'id="assistant-toggle"' in html
+    assert 'id="assistant-float"' in html
     assert services.MESSAGE_NO_KEY not in html
     assert "AI チャットは、管理者が設定すると使えます。" in html
     assert 'name="question"' not in html
@@ -110,7 +110,7 @@ def test_panel_not_on_login_page(with_key, client):
 def test_panel_keeps_primary_button_count(with_key, client_logged_in):
     html = client_logged_in.get(reverse("masters:item_list")).content.decode()
 
-    assert 'id="assistant-toggle"' in html
+    assert 'id="assistant-float"' in html
     assert html.count("btn-primary") == 1
 
 
