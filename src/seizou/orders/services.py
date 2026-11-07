@@ -8,8 +8,10 @@
 - 決まりの番号の無い入力の誤り (取引先の種類が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
-- 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・customer_part_no・quote_no・process_name・ext。
+- 明細の辞書の鍵は item・qty・unit・unit_code・unit_price・price_basis・due_date・note・customer_part_no・quote_no・process_name・ext。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
+  unit_code は会社どうしの注文の受け入れが相手の送ったコードを渡す鍵 (無くてよい。画面の form は渡さず、一覧の名前の字を unit で渡す)。
+  明細の数量単位コード (決め UNIT-1) を表に書くのは _line_unit の決まりだけ。
   quote_no は単価表から写した見積の番号、process_name は受信した注文の明細の工程名 (どちらも無ければ空の字。C100)。
   update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
 - 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
@@ -30,12 +32,13 @@ from django.db.models.functions import Coalesce
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
+from seizou.masters.services import unit_code_for, unit_name_for
 
 from .models import Order, OrderLine
 
 _ORDER_KEYS = frozenset({"order_date", "customer_order_no", "note", "customer"})
 _LINE_KEYS = frozenset(
-    {"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "customer_part_no", "ext", "quote_no", "process_name"}
+    {"item", "qty", "unit", "unit_code", "unit_price", "price_basis", "due_date", "note", "customer_part_no", "ext", "quote_no", "process_name"}
 )
 _LINE_KEYS_ON_UPDATE = _LINE_KEYS | {"id", "order_line", "line_no"}
 _LINE_FIELDS = ("item", "customer_part_no", "unit", "due_date", "note", "quote_no", "process_name")
@@ -100,19 +103,39 @@ def _amount(customer, qty, unit_price, price_basis):
     return line_amount(customer, qty, unit_price, price_basis)
 
 
+def _line_unit(line, item):
+    """明細の単位の字と数量単位コード (表の 2 列) を返す (決め UNIT-1 = a)。
+
+    - 鍵 unit_code が一覧のコードなら、それを使う (会社どうしの注文で相手が送ったコード)。字が空なら一覧の名前。
+    - 鍵 unit が無ければ、部品の単位とコードを 2 つとも写す (「部品から写すときにコードごと写す」)。
+    - unit の字が部品の単位と同じなら部品のコード、違えば名前から引く (一覧に無い字はコードを空にし、字はそのまま)。
+    訳: 送り合いの数量に、中小企業共通 EDI の数量単位コード (付表 1 の注文数量単位コード。共通必須) を付け、渡された字は変えずに残すため (取引の記録の字を変えない。画面の入力は一覧の名前だけを渡し、読み取りと受け入れは相手の字を渡す)。出所 = 作者の決め・中小企業共通 EDI 付表 1。
+    変えてよい条件 = 読み取りと受け入れの道でも、一覧に無い字を受けないと決めたとき。
+    """
+    code = line.get("unit_code") or ""
+    if code and unit_name_for(code):
+        return line.get("unit") or unit_name_for(code), code
+    if "unit" not in line:
+        return item.unit, item.unit_code
+    unit = line["unit"]
+    return unit, item.unit_code if unit == item.unit else unit_code_for(unit)
+
+
 def _add_line(order, line, line_no):
     item = line["item"]
     qty = _dec(line["qty"])
     unit_price = _dec(line["unit_price"])
     price_basis = line.get("price_basis", PRICE_BASIS_UNIT)
     _check_positive(qty, unit_price)
+    unit, unit_code = _line_unit(line, item)
     return OrderLine.objects.create(
         order=order,
         line_no=line_no,
         item=item,
         customer_part_no=line.get("customer_part_no", ""),
         qty=qty,
-        unit=line["unit"] if "unit" in line else item.unit,
+        unit=unit,
+        unit_code=unit_code,
         unit_price=unit_price,
         price_basis=price_basis,
         amount=_amount(order.customer, qty, unit_price, price_basis),
@@ -144,9 +167,14 @@ def _line_ref(line):
 
 
 def _change_line(row, line, customer):
+    """明細の直し。単位のコードは、単位の字が変わった時か unit_code を渡した時だけ引き直す (受注の編集の画面は同じ字を送り直すので、相手が送ったコードを消さない)。"""
+    unit_changed = "unit_code" in line or ("unit" in line and line["unit"] != row.unit)
     for key in _LINE_FIELDS:
         if key in line:
             setattr(row, key, line[key])
+    if unit_changed:
+        # row.unit は上の for が新しい字に直した後の字。鍵 unit が無くコードだけ渡したときも今の字を使う
+        row.unit, row.unit_code = _line_unit({**line, "unit": row.unit}, row.item)
     if "qty" in line:
         row.qty = _dec(line["qty"])
     if "unit_price" in line:

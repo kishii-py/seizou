@@ -83,7 +83,7 @@ def _update_post(order, qty, **extra):
         "lines-0-order_line": line.pk,
         "lines-0-item": line.item_id,
         "lines-0-qty": qty,
-        "lines-0-unit": line.unit,
+        "lines-0-unit": line.unit_code,
         "lines-0-unit_price": str(line.unit_price),
         "lines-0-due_date": "",
         "lines-0-note": "",
@@ -141,7 +141,7 @@ def test_create_order_with_two_lines_shows_in_list(logged_in, customer, shaft, p
             "lines-0-note": "作り物の備考",
             "lines-1-item": plate.pk,
             "lines-1-qty": "3",
-            "lines-1-unit": "箱",
+            "lines-1-unit": "XBX",
             "lines-1-unit_price": "250.5",
             # 3 行目は空の行 (lines に入れない)
         },

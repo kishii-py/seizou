@@ -305,7 +305,7 @@ def _update_post(order, **line):
         "lines-0-order_line": row.pk,
         "lines-0-item": row.item_id,
         "lines-0-qty": str(row.qty),
-        "lines-0-unit": row.unit,
+        "lines-0-unit": row.unit_code,
         "lines-0-unit_price": str(row.unit_price),
         "lines-0-due_date": "",
         "lines-0-note": "",

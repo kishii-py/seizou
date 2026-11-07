@@ -129,6 +129,8 @@ class OrderLine(models.Model):
     customer_part_no = models.CharField("得意先の品番", max_length=35, blank=True)
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit = models.CharField("単位", max_length=10, blank=True)
+    # 単位の数量単位コード (決め UNIT-1 = a。書くのは orders.services だけ。明細の単位の字が部品の単位と同じなら部品のコードを写し、違う字は名前から引く)
+    unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
     # 単価の単位 (決め PRICE-1b)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは orders.services だけ。
     # 数量の単位の列 (unit) とは別。式は数量の単位でないので unit に入れない (数量は実際の個数のまま)。

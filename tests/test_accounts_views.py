@@ -391,7 +391,7 @@ def test_order_create_refused_and_edit_keeps_price(on, client, customer, shaft, 
         "lines-0-order_line": line.pk,
         "lines-0-item": shaft.pk,
         "lines-0-qty": "12",
-        "lines-0-unit": line.unit,
+        "lines-0-unit": line.unit_code,
         "lines-0-due_date": "",
         "lines-0-note": "",
     }

@@ -21,6 +21,7 @@ from seizou.core.forms import DefaultChoiceField, ServiceModelForm, SubmitLabelM
 from seizou.core.views import use_decimal_input, widget_css
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
+from seizou.masters.services import UNLISTED_LINE_UNIT, quantity_units
 
 from .models import Order, OrderLine
 
@@ -34,6 +35,8 @@ ORDER_KEYS = ("customer", "order_date", "customer_order_no", "note")
 LINES_PREFIX = "lines"
 #: 選ぶ欄の空の選択肢の字 (選ぶ欄の JS が載る前と、JS が無いときに見える)
 EMPTY_LABEL = "選んでください"
+#: 今ある明細の単位が数量単位の一覧に無い字 (コードが空) のとき、単位の欄の下に出す案内。{unit} は今の字
+UNIT_KEPT_HELP = "今の単位「{unit}」は単位の一覧にありません。選ばなければ「{unit}」のまま残ります。"
 #: 金額の閲覧が無い人 (権限の判定の on) が、直す画面で明細の行を足したときの欄の外の誤り
 NEW_LINE_WITHOUT_MONEY = "金額の閲覧の権限が無い方は、明細の行を足せません。足すときはアカウント管理の担当者に頼んでください。"
 
@@ -86,7 +89,15 @@ class OrderLineForm(forms.Form):
         min_value=Decimal("0.01"),
         error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
     )
-    unit = forms.CharField(label="単位", max_length=10, required=False)
+    # 単位は数量単位の一覧から選ぶ (字を打って探す欄。作者の決め)。送る値は一覧のコード、line() が一覧の名前の字にして services に渡す。
+    # 足す明細で空なら鍵を渡さず、services が部品の単位とコードを写す (部品の単位が一覧に無い字なら clean で止める)。
+    unit = forms.ModelChoiceField(
+        label="単位",
+        queryset=None,
+        required=False,
+        widget=RemoteSelect("masters:quantityunit_select"),
+        empty_label=EMPTY_LABEL,
+    )
     # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
     price_basis = DefaultChoiceField(label="単価の単位", choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     unit_price = forms.DecimalField(
@@ -115,6 +126,11 @@ class OrderLineForm(forms.Form):
         self.hide_money = hide_money
         # 部品は使用中だけ。今ある明細の部品は使用停止でも残す (受注の直しを止めない。N135)。
         self.fields["item"].queryset = active_items(keep=self.initial.get("item"))
+        self.fields["unit"].queryset = quantity_units()
+        # 今ある明細の単位が一覧に無い字 (コードが空) なら、欄は空で出し、選ばなければ今の字のまま残ることを欄の下に書く
+        kept = self.initial.get("unit_name") or ""
+        if kept and not self.initial.get("unit"):
+            self.fields["unit"].help_text = UNIT_KEPT_HELP.format(unit=kept)
         if order is not None:
             # 指せるのはこの受注の明細だけ (ほかの受注の明細の番号が来たら欄の誤り)。
             self.fields["order_line"].queryset = OrderLine.objects.filter(order=order)
@@ -139,15 +155,35 @@ class OrderLineForm(forms.Form):
             field.widget.attrs.setdefault("class", widget_css(field.widget))
 
     def clean(self):
+        """行の検査。金額の閲覧の無い人の行の足しを断る。足す明細の部品の単位が数量単位の一覧に無い字で、単位を選んでいなければ、単位の欄の誤りにする。
+
+        今ある明細と消す印の行は単位で止めない (今ある受注の直しを止めない)。
+        訳: 一覧に無い単位の字は、相手の会社に個として読まれるおそれがあるので、明細には入れない (選び直してもらう)。出所 = 作者の決め・中小企業共通 EDI 本編 7.3.2 (4) 数量単位コード。
+        変えてよい条件 = 一覧に無い字も明細に入れてよいと決めたとき。
+        """
         data = super().clean()
         # 単価の欄の無い人が直す画面で行を足すと、services が新しい明細の単価を要るので、ここで断る (消す印の行は除く)。
         if self.hide_money and self.order is not None and not data.get("DELETE"):
             if data.get("order_line") is None and self.has_changed():
                 raise forms.ValidationError(NEW_LINE_WITHOUT_MONEY)
+        item = data.get("item")
+        if (
+            "unit" in self.fields
+            and not data.get("DELETE")
+            and data.get("order_line") is None
+            and data.get("unit") is None
+            and not self.has_error("unit")
+            and getattr(item, "unit_unlisted", False)
+        ):
+            self.add_error("unit", UNLISTED_LINE_UNIT.format(unit=item.unit))
         return data
 
     def line(self) -> dict | None:
-        """services に渡す明細の辞書。消す印の行と空の行は None。"""
+        """services に渡す明細の辞書。消す印の行と空の行は None。
+
+        単位は、選んだ一覧の行の名前の字を渡す。今ある明細で今と同じコードを選んだときと、一覧に無い今の字で選ばなかったときは、
+        単位の鍵を渡さない (字もコードも今のまま)。足す明細で選ばなかったときも鍵を渡さず、services に部品の単位とコードを写させる。
+        """
         data = getattr(self, "cleaned_data", None) or {}
         if not data or data.get("DELETE"):
             return None
@@ -157,9 +193,18 @@ class OrderLineForm(forms.Form):
         line = {key: data[key] for key in LINE_KEYS if key in data}
         if existing is not None:
             line["order_line"] = existing
-        elif not line.get("unit"):
-            # 足す明細の単位が空なら鍵を渡さず、services に品目の単位を写させる。
-            line.pop("unit", None)
+        if "unit" in line:
+            chosen = line.pop("unit")
+            if existing is not None:
+                kept_code = existing.unit_code
+                if chosen is not None and chosen.code == kept_code:
+                    pass  # 今と同じコードを選んだ: 字もコードも変えない (受け入れで入った「キロ」を残す)
+                elif chosen is None and existing.unit and not kept_code:
+                    pass  # 一覧に無い今の字は、選ばなければ残す
+                else:
+                    line["unit"] = chosen.name if chosen is not None else ""
+            elif chosen is not None:
+                line["unit"] = chosen.name
         return line
 
 
@@ -264,7 +309,9 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
             "item": row.item_id,
             "customer_part_no": row.customer_part_no,
             "qty": row.qty,
-            "unit": row.unit,
+            # 単位の欄 (一覧から選ぶ欄) は一覧のコードでしか選んである物を描けない。unit_name は欄でなく、__init__ の案内だけが読む
+            "unit": row.unit_code or None,
+            "unit_name": row.unit,
             "unit_price": row.unit_price,
             "price_basis": row.price_basis,
             "quote_no": row.quote_no,
