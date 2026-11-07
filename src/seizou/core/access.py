@@ -60,7 +60,7 @@ KIND_LABELS = {
 }
 #: 種類の中身の注記 (アカウントの入力の画面の check の字に添える)
 KIND_NOTES = {
-    "items": "部品・標準の工程・図面・取引先ごとの品番",
+    "items": "部品・標準の工程・図面・部品の取引先",
     "orders": "受信した注文の受け入れと断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
     "processes": "工程と会社の休日",
@@ -76,7 +76,16 @@ PERMISSION_NAMES = (*GROUPS, *KIND_LABELS)
 # ---------------------------------------------------------------- action の分け方
 
 _KIND_ACTIONS = {
-    "items": ("masters.create_item", "masters.update_item", "masters.import_items", "masters.restore_drawing_version"),
+    "items": (
+        "masters.create_item",
+        "masters.update_item",
+        "masters.import_items",
+        "masters.restore_drawing_version",
+        # 部品の取引先 (C98)。金額が主な登録 (MONEY_ACTIONS) には入れない (決め C98-6 = a。金額を見ない人も選び間違えた行を消せる)。
+        "masters.add_partner_item",
+        "masters.update_partner_item",
+        "masters.delete_partner_item",
+    ),
     "partners": ("masters.create_partner", "masters.update_partner", "masters.import_partners"),
     "processes": ("masters.create_process", "masters.update_process", "masters.create_holiday", "masters.delete_holiday"),
     "connections": ("connect.register_connection", "connect.update_connection"),

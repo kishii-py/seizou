@@ -4,7 +4,7 @@
 - user は記録のために受ける。記録の列がまだ無いので、今は受けるだけで書かない。
 - ext (会社ごとの項目) は受けるが、None 以外が来たら NotImplementedError を投げる。
   黙って捨てると会社の項目が消えるため。保存は core の fields ができてから足す。
-- masters の決まり (品番の一意・取引先の種類の 3 値・請求の仕方の 2 値・支払の月の 4 値・支払日の 1〜31・取引先 × 取引先の品番の一意) に当たったら、
+- masters の決まり (品番の一意・取引先の種類の 3 値・請求の仕方の 2 値・支払の月の 4 値・支払日の 1〜31・取引先 × 取引先の品番の一意 (品番のある行だけ。品番の空の行は取引先と部品ごとに 1 つ)) に当たったら、
   日本語の文の ValueError を投げる。中心の決まり (RULES.md の番号) は masters に無い。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 部品の図面 (drawing) に新しいファイルが来たら、保存の前に 1 回だけ読んで表示用の PNG を作る (05 の 7 節)。
@@ -57,6 +57,7 @@ _PARTNER_KEYS = frozenset(
     }
 )
 _PROCESS_KEYS = frozenset({"code", "name", "is_outsourced", "sort_order", "use_in_plan", "active"})
+_PARTNER_ITEM_KEYS = frozenset({"partner", "item", "partner_part_no", "partner_item_name"})
 _ROLES = frozenset(value for value, _label in Partner.ROLE_CHOICES)
 _BILLING_METHODS = frozenset(value for value, _label in Partner.BILLING_METHOD_CHOICES)
 _PAYMENT_MONTHS = frozenset(value for value, _label in Partner.PAYMENT_MONTH_CHOICES)
@@ -443,33 +444,147 @@ def update_process(process, data, user):
         return process
 
 
+# ---------------------------------------------------------------- 部品の取引先 (決め C19-1・C98-1・C98-4)
+
+#: 部品の取引先の追加で、同じ取引先と部品の行が既にあったときの緑の知らせの字 (入力の土台の with_saved_note が読む。断りではない)
+PARTNER_ITEM_EXISTS_MESSAGE = "この取引先は、もうこの部品に登録してあります。"
+#: 品番が空の行が同じ取引先と部品にもうあるときの断りの字 (決め C98-4)
+_BLANK_PARTNER_ITEM_MESSAGE = "保存できません。この取引先には、品番が空の行がもうあります。単価はその行に足してください。"
+
+
+def _refuse_taken_partner_part_no(partner, partner_part_no, *, exclude_pk=None):
+    """同じ取引先に同じ品番の行があれば ValueError。品番は空でない字で呼ぶ。
+
+    訳: 取引先の品番から自社の部品を 1 つに引けるようにするため (受け入れと読み取りの自動のつなぎ)。出所 = 未確認。
+    変えてよい条件 = 1 つの取引先の品番を 2 つの部品に結ぶ形を本人が決めたとき。
+    """
+    taken = PartnerItem.objects.select_related("item").filter(partner=partner, partner_part_no=partner_part_no)
+    if exclude_pk is not None:
+        taken = taken.exclude(pk=exclude_pk)
+    existing = taken.first()
+    if existing is not None:
+        raise ValueError(
+            f"保存できません。取引先 {partner} の品番 {partner_part_no} は、既に {existing.item} に対応しています。"
+            "今の対応を使うか、別の品番にしてください。"
+        )
+
+
+def add_partner_item(data, user):
+    """部品の取引先の行を足す。data の鍵は partner・item・partner_part_no・partner_item_name。返す物は部品の取引先の行。
+
+    取引先の品番は前後の空白を外す。取引先の品名は空でよい。
+    品番がある: 同じ取引先に同じ品番の行があれば ValueError (今の決まり)。無ければ、同じ取引先と部品に品番の空の行があれば
+    その行に品番を入れて返す (品名は、その行の品名が空で、渡された品名があるときだけ入れる)。品番の空の行が無ければ新しい行を作る。
+    品番が空: 同じ取引先と部品の行が既にあれば (品番の空の行があればその行、無ければ pk の小さい 1 行)、行を作らずにその行を返し、
+    返す物の saved_message を PARTNER_ITEM_EXISTS_MESSAGE にする (入力の土台が緑の知らせの字にする。断りではない)。無ければ品番の空の行を作る。
+    user は受けるだけ。
+
+    訳: 部品と取引先の組を 1 か所で足し、品番の空の行を増やさず、品番が分かったら空の行に入れて、付いた単価の行と見積書をそのまま使うため。
+    同じ取引先の同じ品番を断るのは今の決まり (出所 = 未確認)、品番の空の行を埋めるのと増やさないのは決め C19-1 と C98-4 (出所 = 本人の決め)。
+    変えてよい条件 = 1 つの取引先が 1 つの部品を何行持てるかを本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, _PARTNER_ITEM_KEYS, "部品の取引先")
+    partner = data["partner"]
+    item = data["item"]
+    part_no = str(data.get("partner_part_no") or "").strip()
+    name = data.get("partner_item_name") or ""
+    with transaction.atomic():
+        rows = PartnerItem.objects.filter(partner=partner, item=item).order_by("pk")
+        blank = rows.filter(partner_part_no="").first()
+        if part_no:
+            _refuse_taken_partner_part_no(partner, part_no)
+            if blank is None:
+                return PartnerItem.objects.create(
+                    partner=partner, item=item, partner_part_no=part_no, partner_item_name=name
+                )
+            blank.partner_part_no = part_no
+            fields = ["partner_part_no"]
+            if not blank.partner_item_name and name:
+                blank.partner_item_name = name
+                fields.append("partner_item_name")
+            blank.save(update_fields=fields)
+            return blank
+        existing = blank or rows.first()
+        if existing is not None:
+            existing.saved_message = PARTNER_ITEM_EXISTS_MESSAGE
+            return existing
+        return PartnerItem.objects.create(partner=partner, item=item, partner_part_no="", partner_item_name=name)
+
+
+def update_partner_item(partner_item, data, user):
+    """部品の取引先の行の、取引先の品番と品名を直す (鍵は partner_part_no と partner_item_name だけ。部品と取引先は変えない)。
+
+    品番は前後の空白を外す。渡した鍵だけを直す。返す物は部品の取引先の行。user は受けるだけ。
+    品番があって、同じ取引先のほかの行が同じ品番なら ValueError (今の決まり。add_partner_item と同じ字)。
+    品番を空にして、同じ取引先と部品にほかの品番の空の行があれば ValueError (決め C98-4)。どちらも行は変えない。
+
+    訳: 同じ取引先の同じ品番を断るのは、取引先の品番から自社の部品を 1 つに引くため (今の決まり。出所 = 未確認)。
+    品番が空の 2 つ目の断りは、品番が空の 2 行は画面で見分けがつかず、それぞれに同じ条件の単価の行を足せて、
+    同じ条件の単価の行を 1 つにする決め (C98-2) が崩れるため (出所 = 本人の決め C98-4)。
+    変えてよい条件 = 1 つの取引先が 1 つの部品を何行持てるかを本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, frozenset({"partner_part_no", "partner_item_name"}), "部品の取引先")
+    data = dict(data)
+    if "partner_part_no" in data:
+        data["partner_part_no"] = str(data["partner_part_no"] or "").strip()
+    if "partner_item_name" in data:
+        data["partner_item_name"] = data["partner_item_name"] or ""
+    with transaction.atomic():
+        if "partner_part_no" in data:
+            part_no = data["partner_part_no"]
+            if part_no:
+                _refuse_taken_partner_part_no(partner_item.partner, part_no, exclude_pk=partner_item.pk)
+            else:
+                others = PartnerItem.objects.filter(
+                    partner_id=partner_item.partner_id, item_id=partner_item.item_id, partner_part_no=""
+                ).exclude(pk=partner_item.pk)
+                if others.exists():
+                    raise ValueError(_BLANK_PARTNER_ITEM_MESSAGE)
+        for key, value in data.items():
+            setattr(partner_item, key, value)
+        partner_item.save()
+        return partner_item
+
+
+def delete_partner_item(partner_item, user):
+    """部品の取引先の行を消す。無ければ日本語の ValueError。None を返す (土台は開いた詳細 ?next= へ戻す)。
+
+    行は atomic の中で取り直して消す。付けた見積書の添付ファイルは消さない (付けた先の無い添付ファイルは、一覧の「付けた先」が
+    「(削除された記録)」)。user は受けるだけ。
+
+    訳: 取引先を選び間違えた行は、直す画面で部品と取引先を直せないので、消して足し直すため。
+    間違えた行が残ると、単価表から選ぶときと単価のずれを比べるときに誤った単価を使うおそれがある。出所 = 本人の決め C98-1。
+    変えてよい条件 = 消し方 (消すか使用停止か) を本人が決め直したとき。
+    """
+    with transaction.atomic():
+        row = PartnerItem.objects.select_for_update().filter(pk=partner_item.pk).first()
+        if row is None:
+            raise ValueError("削除できません。この部品の取引先の行は既に消してあります。")
+        row.delete()
+    return None
+
+
 def map_partner_item(partner, item, partner_part_no, user, *, partner_item_name=""):
-    """取引先の品番を自社の品目に対応させる。
+    """取引先の品番を自社の品目に対応させる (受け入れと読み取りと種の読み込みが、品番のあるときだけ呼ぶ)。
 
     同じ (取引先, 取引先の品番) が既にあれば、同じ品目を指していても ValueError。
     呼ぶ側は先に resolve_partner_item で引き、無いときだけ呼ぶ。
+    同じ取引先と部品に品番の空の行があれば、その行に品番を入れる (行を増やさない。その行の単価の行と見積書を、
+    そのまま受け入れの後も使うため)。中身は add_partner_item。
     """
-    with transaction.atomic():
-        existing = (
-            PartnerItem.objects.select_related("item")
-            .filter(partner=partner, partner_part_no=partner_part_no)
-            .first()
-        )
-        if existing is not None:
-            raise ValueError(
-                f"保存できません。取引先 {partner} の品番 {partner_part_no} は、既に {existing.item} に対応しています。"
-                "今の対応を使うか、別の品番にしてください。"
-            )
-        return PartnerItem.objects.create(
-            partner=partner,
-            item=item,
-            partner_part_no=partner_part_no,
-            partner_item_name=partner_item_name,
-        )
+    return add_partner_item(
+        {"partner": partner, "item": item, "partner_part_no": partner_part_no, "partner_item_name": partner_item_name},
+        user,
+    )
 
 
 def resolve_partner_item(partner, partner_part_no):
-    """取引先の品番から自社の品目を引く。無ければ None。"""
+    """取引先の品番から自社の品目を引く。無ければ None。
+
+    品番が空か空白だけなら、表を引かずに None (品番の空の行は自動のつなぎに使わない。決め C19-1)。
+    """
+    if not str(partner_part_no or "").strip():
+        return None
     mapping = (
         PartnerItem.objects.select_related("item")
         .filter(partner=partner, partner_part_no=partner_part_no)

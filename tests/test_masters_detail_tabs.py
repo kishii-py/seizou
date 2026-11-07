@@ -1,7 +1,8 @@
 """部品と取引先の詳細のタブ (初見テスト 2 回目の所見: 字の並びでなく表で出す。本人の決め 11-03 09:2x: 取引先の受注履歴と発注履歴)。
 
 core の詳細の block tab_rows を masters のテンプレートが差し替える。空の標準の工程のタブだけ、block tab_empty で
-土台と同じ箱に意味の 1 行を足す (初見テスト R5 の V29。C19)。ほかの空のタブは core の形のまま。
+土台と同じ箱に意味の 1 行を足す (初見テスト R5 の V29。C19)。部品の詳細の「取引先」のタブと取引先の詳細の「部品」のタブは、
+行の有る無しに関わらず masters の中身 (足す入口・直す・行の「⋮」の削除。C98) を出す。ほかの空のタブは core の形のまま。
 """
 
 import re
@@ -87,10 +88,10 @@ def test_item_detail_empty_processes_tab_says_what_it_is(client_logged_in, db):
     item = Item.objects.create(part_no="P-3003", name="作り物のピン", unit="個")
     body = client_logged_in.get(reverse("masters:item_detail", args=[item.pk])).content.decode()
 
-    # 意味の 1 行は空の標準の工程のタブにだけ出る (取引先ごとの品番のタブには出ない)
+    # 意味の 1 行は空の標準の工程のタブにだけ出る (取引先のタブには出ない)
     assert body.count(PROCESSES_MEANING) == 1
     assert "標準の工程が入ると、ここに並びます。" in body
-    assert "取引先ごとの品番が入ると、ここに並びます。" in body
+    assert "取引先が入ると、ここに並びます。" in body
     # 箱の中 (2 行目の後で、箱の </div> より前) に出る
     second = body.index("標準の工程が入ると、ここに並びます。</p>")
     assert "</div>" not in body[second : body.index(PROCESSES_MEANING)]
@@ -105,7 +106,7 @@ def test_item_detail_with_processes_has_no_meaning_line(client_logged_in, db):
     body = client_logged_in.get(reverse("masters:item_detail", args=[item.pk])).content.decode()
 
     assert PROCESSES_MEANING not in body
-    assert "取引先ごとの品番が入ると、ここに並びます。" in body
+    assert "取引先が入ると、ここに並びます。" in body
 
 
 def test_partner_detail_empty_tabs_have_no_meaning_line(client_logged_in, db):
@@ -113,5 +114,5 @@ def test_partner_detail_empty_tabs_have_no_meaning_line(client_logged_in, db):
     body = client_logged_in.get(reverse("masters:partner_detail", args=[partner.pk])).content.decode()
 
     assert PROCESSES_MEANING not in body
-    assert "取引先ごとの品番が入ると、ここに並びます。" in body
+    assert "部品が入ると、ここに並びます。" in body
     assert "受注履歴が入ると、ここに並びます。" in body

@@ -258,7 +258,14 @@ class Item(models.Model):
 
 
 class PartnerItem(models.Model):
-    """取引先ごとの品番。取引先の品番を自社の部品に対応させる。"""
+    """部品の取引先。部品と取引先の組を 1 行で持つ。取引先の品番は空でもよい。
+
+    品番の空の行は、その取引先と取引する登録としてだけ使い、受け入れと読み取りの品番の自動のつなぎ
+    (masters.services.resolve_partner_item) には使わない (決め C19-1)。品番の空の行は取引先と部品ごとに 1 つ (決め C98-4)。
+    取引先の品番は、得意先の行では中小企業共通 EDI の発注者品目ID、協力企業の行では受注者品目ID に当たる
+    (項目を元にした。付表 1 の注文の明細の UN01005813 と UN01005812。取引先の種類が両方の行は、その注文の向きで決まる)。
+    単価の行 (ItemPrice) はこの行に付く。見積書はこの行に添付ファイルで付ける (決め PRICE-2)。書くのは masters.services だけ。
+    """
 
     partner = models.ForeignKey(
         Partner,
@@ -272,21 +279,39 @@ class PartnerItem(models.Model):
         on_delete=models.PROTECT,
         related_name="partner_items",
     )
-    partner_part_no = models.CharField("取引先の品番", max_length=35)
+    # 見出しの字「取引先の品番」と字数 35 は変えない (core.demo の種の読み込みが見出しの字から欄を引く。35 は識別子の上限)。
+    partner_part_no = models.CharField("取引先の品番", max_length=35, blank=True, default="")
     partner_item_name = models.CharField("取引先の品名", max_length=100, blank=True)
 
     class Meta:
-        verbose_name = "取引先の品番"
-        verbose_name_plural = "取引先の品番"
+        verbose_name = "部品の取引先"
+        verbose_name_plural = "部品の取引先"
         constraints = [
+            # 同じ取引先の同じ品番は 1 つ。品番が空の行は、同じ取引先でも部品ごとにできるので、空の字どうしを同じ品番と見ない。
             models.UniqueConstraint(
                 fields=["partner", "partner_part_no"],
+                condition=~models.Q(partner_part_no=""),
                 name="masters_partneritem_partner_part_no_unique",
+            ),
+            # 品番が空の行は取引先と部品ごとに 1 つ (決め C98-4)。断りの字は services が出す。
+            # 品番が空の 2 行は画面で見分けがつかず、それぞれに同じ条件の単価の行を足せて、
+            # 同じ条件の単価の行を 1 つにする決め (C98-2) が行をまたいで崩れるため。services を通らない書き込みと、2 つの要求が重なった時も止める。
+            # (取引先, 部品) の組を全部 1 行にする決まりは足さない (1 つの取引先が 1 つの部品を 2 つの品番で呼ぶ行は今も持てる)。
+            models.UniqueConstraint(
+                fields=["partner", "item"],
+                condition=models.Q(partner_part_no=""),
+                name="masters_partneritem_partner_item_blank_unique",
             ),
         ]
 
     def __str__(self):
+        """品番のある行は「略称 取引先の品番」、品番の空の行は「略称 (自社品番 P-1)」。字に金額を入れない。
+
+        訳: 添付ファイルの一覧の「付けた先」と削除の確かめに、品番の空の行も読める字で出すため。
+        """
         partner = self.partner.short_name or self.partner.name
+        if not self.partner_part_no:
+            return f"{partner} (自社品番 {self.item.part_no})"
         return f"{partner} {self.partner_part_no}"
 
 

@@ -12,9 +12,9 @@ from django.utils import timezone
 
 from seizou.core import csvio
 from seizou.core.forms import ServiceModelForm
-from seizou.core.widgets import IsoDateInput
+from seizou.core.widgets import IsoDateInput, RemoteSelect
 
-from .models import Item, Partner, Process
+from .models import Item, Partner, PartnerItem, Process
 from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
@@ -54,7 +54,7 @@ class ItemForm(ServiceModelForm):
         # 意図: 欄の「自社品番」とゴールの「品番」が同じ物かを、社内の品番と取引先の品番の違いで答える。
         # 表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
         help_texts = {
-            "part_no": "社内で部品を呼ぶ品番です (会社の中で同じ品番は 1 つだけ)。得意先や協力企業が別の品番で呼ぶときは、その対応が部品の詳細の「取引先ごとの品番」に並びます。",
+            "part_no": "社内で部品を呼ぶ品番です (会社の中で同じ品番は 1 つだけ)。得意先や協力企業が別の品番で呼ぶときは、その対応が部品の詳細の「取引先」のタブに並び、「取引先を足す」でも足せます。",
         }
 
     def __init__(self, *args, hide_money=False, **kwargs):
@@ -138,6 +138,79 @@ class ProcessForm(ServiceModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _active_on_edit_only(self)
+
+
+# ---------------------------------------------------------------- 部品の取引先 (決め C19-1・C98-1)
+
+#: 部品の取引先の 2 欄の下の説明 (追加と編集で同じ字)
+PARTNER_ITEM_HELP = {
+    "partner_part_no": "相手がこの部品を呼ぶ品番。分からなければ空のまま足せます。空の行は、受け入れと読み取りの品番のつなぎには使いません。",
+    "partner_item_name": "相手がこの部品を呼ぶ品名 (なくてもよい)。",
+}
+
+
+class PartnerItemForm(ServiceModelForm):
+    """部品の取引先の追加。部品の詳細からも取引先の詳細からも同じ入力で開く (開いた側の ?item= か ?partner= が初めの値)。
+
+    欄の queryset は表の全部 (使用停止の部品と取引先の詳細から開いても、初めの値が選んだまま出て検査も通る)。
+    字を打って探す候補は候補の口のまま使用中だけ。保存は土台が cleaned_data を data に渡す (services.add_partner_item)。
+    """
+
+    class Meta:
+        model = PartnerItem
+        fields = ["item", "partner", "partner_part_no", "partner_item_name"]
+        labels = {"item": "部品", "partner": "取引先"}
+        widgets = {"item": RemoteSelect("masters:item_select"), "partner": RemoteSelect("masters:partner_select")}
+        help_texts = PARTNER_ITEM_HELP
+
+    def validate_constraints(self):
+        # 一意は services が見る (core/forms.py の ServiceModelForm.validate_unique と同じ訳)。
+        # 訳: Django の ModelForm は validate_unique の後に validate_constraints も呼ぶので、止めないと、同じ取引先をもう一度空の品番で
+        # 足す保存が services の緑の知らせの前に止まり、同じ取引先の同じ品番の 2 件目も services の字でなく Django の既定の字の赤になるため。
+        return
+
+
+class PartnerItemUpdateForm(ServiceModelForm):
+    """部品の取引先の編集。直すのは取引先の品番と品名だけ (部品と取引先は読むだけの欄で出す。違うときは消して足し直す)。
+
+    Django は form の外の欄 (部品と取引先) を含む表の制約を見ないので、validate_constraints の上書きは要らない。
+    """
+
+    item_text = forms.CharField(label="部品", required=False, disabled=True)
+    partner_text = forms.CharField(label="取引先", required=False, disabled=True)
+
+    #: 読むだけの 2 欄を頭に置く (ModelForm は表の欄を先に並べるため)
+    field_order = ["item_text", "partner_text"]
+
+    class Meta:
+        model = PartnerItem
+        fields = ["partner_part_no", "partner_item_name"]
+        help_texts = PARTNER_ITEM_HELP
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk is not None:
+            self.fields["item_text"].initial = f"{self.instance.item.part_no} {self.instance.item.name}"
+            self.fields["partner_text"].initial = self.instance.partner.name
+
+    def service_kwargs(self):
+        # 読むだけの 2 欄は services に渡さない (update_partner_item の鍵は品番と品名だけ)。
+        return {
+            "data": {
+                "partner_part_no": self.cleaned_data.get("partner_part_no", ""),
+                "partner_item_name": self.cleaned_data.get("partner_item_name", ""),
+            }
+        }
+
+
+class PartnerItemDeleteForm(forms.Form):
+    """部品の取引先の削除の確かめ。欄は無い (土台が delete_partner_item(対象, user=…) を呼ぶ)。"""
+
+    submit_label = "削除"
+    danger = True  # 実行のボタンを削除の確かめの赤 (btn btn-error) にする (core/_form_card.html)
+
+    def service_kwargs(self) -> dict:
+        return {}
 
 
 # ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)

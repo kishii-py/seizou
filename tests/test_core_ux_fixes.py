@@ -328,7 +328,7 @@ def test_detail_tab_shows_partner_item_name(client_logged_in, partner):
 def test_empty_tab_names_what_will_come(client_logged_in):
     item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
     body = text(client_logged_in.get(reverse("masters:item_detail", args=[item.pk])))
-    assert "取引先ごとの品番が入ると、ここに並びます。" in body
+    assert "取引先が入ると、ここに並びます。" in body
     assert "標準の工程が入ると、ここに並びます。" in body
     assert "関係する物が入ると" not in body
 
@@ -341,10 +341,10 @@ def test_item_modal_lists_partner_part_numbers(client_logged_in, partner):
     item = Item.objects.create(part_no="P-1001", name="作り物のブラケット")
     url = reverse("masters:item_modal", args=[item.pk])
     empty = text(client_logged_in.get(url, HTTP_HX_REQUEST="true"))
-    assert "取引先ごとの品番はまだありません。" in empty
+    assert "取引先はまだありません。" in empty
     PartnerItem.objects.create(partner=partner, item=item, partner_part_no="X-1", partner_item_name="相手の軸")
     body = text(client_logged_in.get(url, HTTP_HX_REQUEST="true"))
-    for word in ("取引先ごとの品番", "取引先の品番", "取引先の品名", "作り得", "X-1", "相手の軸"):
+    for word in ("取引先", "取引先の品番", "取引先の品名", "作り得", "X-1", "相手の軸"):
         assert word in body, word
 
 

@@ -341,8 +341,8 @@ def test_modal_shows_small_image_and_warning(client_logged_in, user):
     assert "alert-warning" in broken
     assert services.DRAWING_BROKEN_MESSAGE in broken
     assert "<img" not in broken
-    # 取引先ごとの品番の表は今のまま後に続く
-    assert "取引先ごとの品番" in tiff and tiff.index("<img") < tiff.index("取引先ごとの品番")
+    # 取引先の節 (取引先の行の無い部品は空の字) は今のまま後に続く
+    assert "取引先はまだありません。" in tiff and tiff.index("<img") < tiff.index("取引先はまだありません。")
     # 取引先の小窓 (同じテンプレート) には図面の 2 つが出ない
     partner = Partner.objects.create(code="C801", name="作り物の得意先", role="customer")
     body = text(client_logged_in.get(reverse("masters:partner_modal", args=[partner.pk]), HTTP_HX_REQUEST="true"))
