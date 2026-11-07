@@ -49,7 +49,7 @@
           <td class="whitespace-nowrap text-right tabular-nums">{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% if row.existing %}{{ row.existing.line_no }}{% endif %}{% if row.non_field_errors %}<p class="mt-2 text-xs text-error">{{ row.non_field_errors|join:" " }}</p>{% endif %}</td>
           <td class="min-w-48 [&_[aria-invalid=true]]:border-error">{% if row.existing %}{% master_link row.existing.item %}{% else %}{{ row.item }}{% if row.item.errors %}<p class="mt-2 text-xs text-error">{{ row.item.errors|join:" " }}</p>{% endif %}{% endif %}</td>
           <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{{ row.qty }}{% if row.qty.errors %}<p class="mt-2 text-xs text-error">{{ row.qty.errors|join:" " }}</p>{% endif %}{% if row.shipped > 0 %}<span class="mt-1 block text-xs text-base-content/70">出荷済み {{ row.shipped_text }}</span>{% endif %}</td>
-          <td class="min-w-24">{% if row.existing %}{{ row.existing.unit }}{% else %}{{ row.unit }}{% endif %}</td>
+          <td class="min-w-32">{% if row.existing %}{{ row.existing.unit }}{% else %}{{ row.unit }}{% endif %}</td>
           {% if not form.hide_money %}<td class="min-w-32 [&_[aria-invalid=true]]:border-error">{% if row.existing and row.shipped > 0 %}<span class="tabular-nums">{{ row.existing.unit_price|yen }}</span>{% else %}{{ row.unit_price }}{% if row.unit_price.errors %}<p class="mt-2 text-xs text-error">{{ row.unit_price.errors|join:" " }}</p>{% endif %}{% endif %}</td>{% endif %}
           <td class="min-w-32">{{ row.due_date }}</td>
           <td class="min-w-32">{{ row.note }}</td>
@@ -67,7 +67,7 @@
       <td>{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}</td>
       <td class="min-w-48">{{ row.item }}</td>
       <td class="min-w-32">{{ row.qty }}</td>
-      <td class="min-w-24">{{ row.unit }}</td>
+      <td class="min-w-32">{{ row.unit }}</td>
       <td class="min-w-32">{{ row.unit_price }}</td>
       <td class="min-w-32">{{ row.due_date }}</td>
       <td class="min-w-32">{{ row.note }}</td>
