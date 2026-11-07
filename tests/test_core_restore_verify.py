@@ -155,8 +155,12 @@ def test_verify_shows_media_count_difference(site):  # noqa: F811
 def test_verify_says_backup_has_no_sha256(site):  # noqa: F811
     run("seizou_backup")
     folder = plain_backups(site / "backups")[0]
-    manifest = json.loads((folder / backup.MANIFEST).read_text(encoding="utf-8"))
-    assert "sha256" not in manifest
+    # N358 (444 回目) から seizou_backup の控えは sha256 を持つので、この版より前の控え (sha256 の無い backup.json) を作って見る
+    manifest_path = folder / backup.MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "sha256" in manifest
+    del manifest["sha256"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     code, out = run_code(folder.name, "--verify")
 
