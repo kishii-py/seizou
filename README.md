@@ -23,7 +23,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 この仕組みを一緒に育てる仲間を探している。次の 1 歩は立場ごとに次のとおり。
 
 - 使う会社の方: 2 社の作り物のデータで触ってみる (下の「触り方」)。
-- 直す開発者の方: RULES.md (決まりの一覧。R01〜R21) と、決まりの反例の出し方 (CONTRIBUTING.md) を読む。
+- 直す開発者の方: RULES.md (決まりの一覧。R01〜R23) と、決まりの反例の出し方 (CONTRIBUTING.md) を読む。
 
 会期中 (2026-11-08 まで) は Issue と PR を受けられない。受付を開ける 2026-11-10 の発表の直後まで、Star と Watch で待ってほしい。
 
@@ -34,7 +34,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 - テストの数: 3,085 本 (11-06 05:2x の main 916fff9 の `uv run pytest`。通過 3,034、普段は skip の E2E 51。E2E は、本番の 2 社 (VPS。234 回目の版 8a4326a) で外から回して 47 通過・2 skip・2 xfail = 11-06 06:2x)
 - 画面の数: 120 (11-06 05:2x の main 916fff9。土台を継承した画面の目録 `seizou_screens` の画面)
 - 部品の数: 18 (core と 17 の Django の部品。`src/seizou/parts.py`)
-- 決まりの数: 22 (RULES.md の R01〜R22)
+- 決まりの数: 23 (RULES.md の R01〜R23)
 
 Claude Code のプラグインと、pip で入れる Django の部品を、この 1 つのリポジトリに置く (Apache-2.0)。
 
