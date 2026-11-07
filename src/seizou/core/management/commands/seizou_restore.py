@@ -2,6 +2,8 @@
 
 戻す前に今の物を <日時>-before-restore の名前で控える (戻しの戻し)。--list で控えの一覧を出す。
 確認の問いに yes と答えたときか、--yes のときだけ戻す。端末でないときの問いは、空の答えと同じに扱う。
+--verify は戻さずに、控えの DB が開けるか・控えと今の migration の差・上げたファイルの数を、本番のデータベースと
+上げたファイルに触らずに確かめ、結果を控えの置き場の restore-checks.jsonl に 1 行残す (問いを出さない。--yes があっても戻さない)。
 処理は seizou.core.backup に置き、この命令は引数・問い・一覧・結果を書くだけ。
 """
 
@@ -19,6 +21,7 @@ class Command(BaseCommand):
     help = (
         "控え (seizou_backup のフォルダ) からデータベースと上げたファイルを戻す。"
         "戻す前に今の物を <日時>-before-restore に控える。--list で控えの一覧。"
+        "--verify で、戻さずに本番に触らず、控えから戻せるかを確かめる。"
     )
 
     # 戻しは、ほかの設定に誤りがあっても動かなければならない (05 の 4 節の禁じること)。
@@ -29,6 +32,14 @@ class Command(BaseCommand):
         parser.add_argument("--list", action="store_true", help="控えの一覧を出して終わる。")
         parser.add_argument("--dir", help="控えの置き場 (既定は置き場の backups/)。")
         parser.add_argument("--yes", action="store_true", help="確認の問いを飛ばして戻す。")
+        parser.add_argument(
+            "--verify",
+            action="store_true",
+            help=(
+                "戻さずに、控えから戻せるかを確かめる (本番のデータベースと上げたファイルに触らない)。"
+                "結果を控えの置き場の restore-checks.jsonl に 1 行残す。"
+            ),
+        )
 
     def handle(self, *args, **options):
         try:
@@ -56,6 +67,10 @@ class Command(BaseCommand):
             manifest = backup.read_manifest(folder)
         except backup.BackupError as exc:
             raise CommandError(str(exc)) from exc
+
+        if options["verify"]:
+            self._verify(folder, parent)
+            return
 
         if not options["yes"]:
             media_root = getattr(settings, "MEDIA_ROOT", "") or ""
@@ -88,3 +103,22 @@ class Command(BaseCommand):
         if saved_version != version:
             self.stdout.write(f"控えの seizou の版 ({saved_version}) と今の版 ({version}) が違います。")
         self.stdout.write("次にすること: manage.py migrate → manage.py seizou_doctor → サーバーを立て直す。")
+
+    def _verify(self, folder, parent):
+        """控えを確かめて行を書き、記録を 1 行残す。戻せない所があれば、記録を残してから終わりの番号 1 で終わる。"""
+        try:
+            result = backup.verify_backup(folder)
+            record = backup.record_restore_check(parent, folder, result)
+        except backup.BackupError as exc:
+            raise CommandError(str(exc)) from exc
+        for line in result["lines"]:
+            self.stdout.write(line)
+        seconds = result["seconds"]
+        untouched = "本番のデータベースと上げたファイルには触っていません。"
+        if not result["ok"]:
+            raise CommandError(
+                f"控えから戻せない所があります ({seconds} 秒)。上の行を見て、別の控えを選んでください。{untouched}記録: {record}"
+            )
+        self.stdout.write(
+            f"確かめました: {folder} の DB は開け、上げたファイルの数も合っています ({seconds} 秒)。{untouched}記録: {record}"
+        )

@@ -7,6 +7,8 @@ PostgreSQL は pg_dump を呼ぶ (無ければ案内して止まる)。
 
 命令は引数を読んで結果を書くだけで、処理はこの module に置く。表に書くのは戻しの backup API だけで、
 ORM で表に書く処理は無い。部品 (connect など) を import しない。
+戻せるかの確かめ (seizou_restore --verify) は、控えの DB の写しを一時のフォルダに写して読むだけで開き、
+本番の DB と上げたファイルに触らない。結果は控えの置き場の restore-checks.jsonl に 1 行ずつ残す。
 """
 
 from __future__ import annotations
@@ -18,11 +20,15 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import tempfile
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection
+from django.db.migrations.recorder import MigrationRecorder
 
 from seizou.core import conf
 
@@ -52,6 +58,15 @@ PG_RESTORE_GUIDE = (
     "この命令で戻してください: pg_restore --clean --if-exists --no-owner --dbname {name} {path}。"
     "上げたファイルは、控えの {media} を {media_root} に写してください。"
 )
+#: 戻せるかの確かめの記録の名前 (控えの置き場の中の 1 本のファイル。1 行 = 1 回の確かめ。一覧はフォルダだけを拾うので出ない)
+RESTORE_CHECKS = "restore-checks.jsonl"
+#: 確かめられない DB のときの断り ({saved} = 控えの DB の種類、{kind} = 今の DB の種類)
+VERIFY_SQLITE_ONLY = (
+    "この命令で確かめられるのは SQLite の控えだけです (控えの DB: {saved}、今の DB: {kind})。"
+    "PostgreSQL の控えと置き場は、この命令では確かめられません。何も変えていません。"
+)
+#: quick_check の答えのうち、文に出す行の数
+_QUICK_CHECK_LINES = 3
 
 #: pg_dump の子の process に渡す、DATABASES の鍵と PostgreSQL の標準の環境変数の名前の組
 _PG_ENV = {"HOST": "PGHOST", "PORT": "PGPORT", "USER": "PGUSER", "PASSWORD": "PGPASSWORD"}
@@ -272,6 +287,130 @@ def resolve_folder(arg: str, parent: Path) -> Path:
     if candidate.is_dir():
         return candidate
     raise BackupError(f"控えが見つかりません: {arg} (一覧は seizou_restore --list)")
+
+
+@contextmanager
+def _readonly_copy(db_file: Path):
+    """控えの DB の写しを一時のフォルダに写し、標準の sqlite3 の読むだけの接続で開く (閉じたら一時のフォルダごと消える)。
+
+    WAL の形の写しは、読むだけで開いても隣に -shm と -wal を作るので、控えのフォルダでは開かない (控えの中身を変えない)。
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / db_file.name
+        shutil.copyfile(db_file, copy)
+        conn = sqlite3.connect(copy.as_uri() + "?mode=ro", uri=True)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+
+def _quick_check(conn) -> list[str]:
+    """PRAGMA quick_check の答え。ok なら []、そうでなければ最初の数行。開けない写しは sqlite3.DatabaseError。"""
+    answers = [str(row[0]) for row in conn.execute("PRAGMA quick_check").fetchall()]
+    if answers == ["ok"]:
+        return []
+    return answers[:_QUICK_CHECK_LINES] or ["答えが無い"]
+
+
+def _saved_migrations(conn) -> set[tuple[str, str]] | None:
+    """控えの写しの django_migrations の (app, name)。表が無い (migrate の前の控えか、中身の無い控え) なら None。"""
+    try:
+        rows = conn.execute("SELECT app, name FROM django_migrations").fetchall()
+    except sqlite3.OperationalError:
+        return None
+    return {(str(app), str(name)) for app, name in rows}
+
+
+def _migration_line(saved: set[tuple[str, str]] | None) -> str:
+    """控えと今の DB の当てた migration の差の 1 行 (版の違いの目安。止めない)。今の DB は ORM で読むだけ。"""
+    if saved is None:
+        return "migration: 控えに django_migrations の表がありません (migrate の前の控えか、中身の無い控え)"
+    try:
+        current = set(MigrationRecorder(connection).applied_migrations())
+    except DatabaseError:
+        return "migration: 今のデータベースを読めないので、控えと比べていません"
+    only_saved = len(saved - current)
+    only_now = len(current - saved)
+    if not (only_saved or only_now):
+        return f"migration: 控えと今で同じ ({len(saved)} 件)"
+    return f"migration: 控えにだけある {only_saved} 件・今にだけある {only_now} 件 (版の違いの目安。戻すときは止めない)"
+
+
+def verify_backup(folder: Path) -> dict:
+    """控えから戻せるかを、本番の DB と上げたファイルに触らずに確かめる (seizou_restore --verify の中身)。
+
+    見る物は、控えの DB の写しが開けるか (PRAGMA quick_check)・控えと今の DB の当てた migration の差・
+    控えの media/ のファイルの数と backup.json の media_files・backup.json の sha256 の有無。
+    成否を偽にするのは、DB の写しが無いか開けないか quick_check が ok でないときと、上げたファイルの数が違うとき。
+    migration の差と sha256 の無いことは行に書くだけで、成否を変えない。
+    表ごとの行の数は比べない。本番の DB に書かず、MEDIA_ROOT に触らず、控えのフォルダの中身を変えない。
+    返す物は {"ok": 成否, "lines": 行の並び (字), "seconds": かかった秒}。
+    控えのフォルダでない・SQLite でない (控えか今の DB) は BackupError (確かめられない)。
+
+    訳: 控えから本当に戻せるかを、本番の DB と上げたファイルに触らずに確かめ、確かめた日を残すため (戻しの時間と失ってよい幅を測る材料)。本番の process の中で DB を切り替えない決め (practice.py の docstring) を守るため、控えの写しは標準の sqlite3 の読むだけの接続で quick_check と django_migrations の読みにとどめる (SQL の字はこの 2 つだけ。R14 の訳)。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-8・chk-ops-sre-7 と確かめ直しの (a)(b)(e)(f)。変えてよい条件 = 控えに表ごとの行の数か中身の印 (候補 4) を持たせたとき、比べる物を足す。
+    """
+    started = time.monotonic()
+    folder = Path(folder)
+    manifest = read_manifest(folder)
+    saved_kind = str(manifest.get("database") or "")
+    kind = database_kind()
+    if saved_kind != "sqlite" or kind != "sqlite":
+        raise BackupError(VERIFY_SQLITE_ONLY.format(saved=saved_kind, kind=kind))
+    ok = True
+    lines = []
+    db_file = folder / Path(str(manifest.get("db_file") or "")).name
+    if not db_file.is_file():
+        ok = False
+        lines.append(f"DB の写し: 控えにありません ({db_file.name})")
+    else:
+        saved = None
+        try:
+            with _readonly_copy(db_file) as conn:
+                problems = _quick_check(conn)
+                if not problems:
+                    saved = _saved_migrations(conn)
+        except sqlite3.DatabaseError as exc:
+            problems = [f"開けません。{exc}"]
+        except OSError as exc:
+            raise BackupError(f"控えの DB の写しを読めません: {db_file} ({exc.strerror})。何も変えていません。") from exc
+        if problems:
+            ok = False
+            lines.append(f"DB の写し ({db_file.name}): 壊れています (quick_check: {'・'.join(problems)})")
+        else:
+            lines.append(f"DB の写し ({db_file.name}): 開けます (quick_check: ok)")
+            lines.append(_migration_line(saved))
+    saved_files = manifest.get("media_files")
+    files = _count_files(folder / MEDIA_DIR)
+    if files == saved_files:
+        lines.append(f"上げたファイル: {files} 個 (backup.json と同じ)")
+    else:
+        ok = False
+        lines.append(f"上げたファイルの数が違います: 控えの media/ に {files} 個、backup.json は {saved_files} 個")
+    if "sha256" not in manifest:
+        lines.append("sha256 無し (中身の印を比べていない)")
+    return {"ok": ok, "lines": lines, "seconds": round(time.monotonic() - started, 2)}
+
+
+def record_restore_check(parent: Path, folder: Path, result: dict) -> Path:
+    """確かめの結果を、控えの置き場の restore-checks.jsonl に 1 行足し、記録のファイルの道を返す。
+
+    書くのは日時 (置き場の時計の現地時刻)・控えの名前・かかった秒・成否だけ (鍵の値と DB の中身は書かない)。
+    """
+    path = Path(parent) / RESTORE_CHECKS
+    row = {
+        "checked_at": datetime.now().isoformat(timespec="seconds"),
+        "backup": Path(folder).name,
+        "seconds": result["seconds"],
+        "ok": bool(result["ok"]),
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        raise BackupError(f"確かめの記録を書けません: {path} ({exc.strerror})") from exc
+    return path
 
 
 def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
