@@ -336,4 +336,4 @@ def test_tour_step_still_points_to_stats():
     # ガイドツアーの「今日の数字」の段は今までどおり数字のカードの格子を指し、字も変わらない
     step = tours.TOURS["core:home"][0]
     assert step["selector"] == '[data-tour="stats"]'
-    assert step["text"] == "部品・取引先・今月の受注などの数です。カードを押すと、その一覧が開きます。"
+    assert step["text"] == "部品・取引先・今月の受注などの数です。押せるカードを押すと、その一覧が開きます。"

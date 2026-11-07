@@ -21,7 +21,7 @@ TOURS: dict[str, tuple[dict, ...]] = {
         {
             "selector": '[data-tour="stats"]',
             "title": "今日の数字",
-            "text": "部品・取引先・今月の受注などの数です。カードを押すと、その一覧が開きます。",
+            "text": "部品・取引先・今月の受注などの数です。押せるカードを押すと、その一覧が開きます。",
         },
         {
             "selector": '[data-tour="flow-guide"]',
