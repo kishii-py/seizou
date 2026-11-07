@@ -1,6 +1,10 @@
 {% load seizou_tags %}
 {# 集計の横棒の図 (inline SVG。JS を使わない)。数と座標は core/templatetags/seizou_charts.py の summary_chart が出し、ここは置くだけ。 #}
-{# 色と形の決まりはここ 1 か所: 棒は主色の 1 色、字は薄い小さな字、基線は枠の線の色 (ダッシュボードの図と同じ class)。値は棒の右の字と title で読む。 #}
+{# 色と形の決まりはここ 1 か所: 棒は主色の 1 色、基線は枠の線の色 (ダッシュボードの図と同じ class)。値は図の右の列の字 (右寄せ) と棒の title で読む。 #}
+{# 名前と値の字は svg の外の HTML の字 (凡例と同じ 12px) で、図と一緒に縮まない (C50-1 = a。ダッシュボードの注文の入口の図と同じ形)。 #}
+{# 名前の列 (10rem まで)・棒と基線だけの svg・値の列を横 1 列に並べる。svg は 5rem を元に箱の残りの幅まで伸び、最小の幅の class を付けない (横に送らない)。 #}
+{# 行の高さ (row_height) と上の余白 (top) と svg の高さ (height) は seizou_charts の px の数を style に置き、行の中央と棒の中央を合わせる。 #}
+{# 名前が列に入らなければ末尾で切る (全文は名前と棒の title と集計の表)。字は読み上げない (値は集計の表で読む)。 #}
 <div class="overflow-x-auto">
   <div class="flex gap-2 text-xs text-base-content/70">
     <ul class="min-w-0 max-w-40" style="padding-top: {{ chart.top }}px" aria-hidden="true">

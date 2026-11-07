@@ -382,7 +382,8 @@ def plan_detail(step):
 
 PROJECTION_DAYS = 56  # 在庫の見込みの日の数 (今日から 8 週)
 
-# 図の大きさと余白 (viewBox の単位。小窓の幅に合わせた小さな図。字の大きさは text-xs)
+# 図の大きさと余白 (viewBox の単位。小窓の幅に合わせた小さな図。目盛りと日付の字は svg の外の HTML の text-xs = 12px で、
+# 図と一緒に縮まない。左の余白 _CHART_LEFT と下の余白 (_CHART_BOTTOM から下) は、その字を置く場所)
 _CHART_WIDTH = 448
 _CHART_HEIGHT = 168
 _CHART_LEFT = 44
@@ -422,6 +423,9 @@ def projection_chart(projection):
     日ごとに 1 本。0 より大きい棒は 0 の線から上 (up)、0 より下の棒は 0 の線から下 (down) に分ける
     (テンプレートが系列ごとに for を分けて固定の class で塗る。class を組み立てない)。0 の日は棒を置かない。
     週の始め (7 日ごと) に日付の字を置く。返す物 = 枠と目盛り (0 の線を含む) と棒と日付の字の数。
+    目盛りと日付の字は svg の外の HTML の字 (C50-1 = a。ダッシュボードの棒の図と同じ形) なので、svg の箱に対する割合 (0〜100 の字) も返す:
+    目盛り 1 本の "top" (箱の上の端から y まで)・日付 1 つの "left" (箱の左の端から x まで)・
+    "tick_label_right" (箱の右の端から目盛りの字の右の端 tick_label_x まで)。割合は受け取った見込みの数だけから作る (DB を引き直さない)。
     """
     days = projection["days"]
     values = [day["qty"] for day in days] or [_ZERO_QTY]
