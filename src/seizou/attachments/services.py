@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from seizou.core import access
+from seizou.core.services import record_history_deleted
 
 from .models import KIND_CHOICES, Attachment
 
@@ -122,7 +123,12 @@ def remove_attachment(attachment, user):
     """添付ファイルを消す。付けていた先の記録を返す (付けた先が無ければ None)。
 
     行は atomic の中で取り直して消す (無ければ日本語の ValueError)。storage のファイルは atomic を抜けた後に消す
-    (行が戻ったときにファイルだけが消えないように)。無いファイルは飛ばす。user は受けるだけ (記録の列が無い)。
+    (行が戻ったときにファイルだけが消えないように)。無いファイルは飛ばす。user は消した人として付けた先の記録の履歴に残す
+    (消す前に core.services.record_history_deleted で「消した」の 1 行。付けた先が無い添付は添付そのものが持ち主になり、表に残るだけ)。
+    訳: 検査成績書や写真を消したことを、誰が・いつ・何を消したかと一緒に付けた先の記録の履歴に残すため
+    (電帳法と取適法の訂正削除の見方への当てはめは未確認)。出所 = 本人の決め 11-08 00:37 (残す) と、
+    エンタープライズ化の調べ 第一弾の候補 22 の直し方の直し (a)。
+    変えてよい条件 = 本人が決め直したとき、または添付を消さずに残す形 (論理削除) に変えたとき。
     """
     with transaction.atomic():
         row = Attachment.objects.select_for_update().filter(pk=attachment.pk).first()
@@ -131,6 +137,7 @@ def remove_attachment(attachment, user):
         target = row.target
         name = row.file.name
         storage = row.file.storage
+        record_history_deleted(row, user)
         row.delete()
     if name:
         try:
