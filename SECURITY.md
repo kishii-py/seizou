@@ -35,7 +35,7 @@
 - 上げたファイル (`/media/` の図面・添付・マニュアルの画像) は、開発機でも本番でも同じ口 (`seizou.core.media`) がログインを見てから返す。`MEDIA_ROOT` の外は読まず、断るときは全部 404 にする (「無い」と「見せない」を外から見分けさせない)。HTML・SVG・XML・JS は必ずダウンロードにし (上げたファイルのスクリプトを同じ origin で動かさない)、nosniff と保存させないヘッダーを付ける。nginx に送らせる配り方 (`SEIZOU_FILE_DELIVERY=nginx`。置き場の `deploy/nginx-files.conf`) では、nginx を通った印の無い要求を 503 で止める。
 - PDF を作る部品 (WeasyPrint) か OS の pango が無いときは、PDF を作らず、印刷用の画面に落ちる (`seizou.core.reports.PdfUnavailable`)。
 - SQL を直接書かない (決まりの検査が止める)。
-- 依存の下限は、知られた問題を直した版に置く。`Django>=5.2.18,<6.2`・`Pillow>=13.0.0`・`weasyprint>=70.0`。
+- 依存の下限は、知られた問題を直した版に置く。uv.lock は直した版 (Django 6.1.3) を入れる。pyproject の下限は `Django>=5.2.19,<6.2`・`Pillow>=13.0.0`・`weasyprint>=70.0`・`requests>=2.33.0`・`PyYAML>=6.0.3` で、Django の下限は 5.2 系の直した版 (6.0.10 より前の 6.0 系と 6.1.0〜6.1.2 も範囲に入るので、pip で入れるときは 6.1.3 以上か 5.2.19 以上の 5.2 系を使う)。
 
 ## 取引先の鍵の作り方
 
