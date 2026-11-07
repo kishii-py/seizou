@@ -443,3 +443,26 @@ html:has(.seizou-save-row) {
 .tab:is(.tabs>.tab):not(:checked,label:has(:checked),:hover,.tab-active,[aria-selected=true],[aria-current=true],[aria-current=page]) {
   color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
+/* 淡い札 (badge-soft) と淡い知らせ (alert-soft) の字 (C49 の 6)。daisyUI の既定は字に注意の色そのもの (--color-warning など) を使い、
+   地 (同じ色を 8% だけ白に混ぜた色) との比が 黄 1.69・緑 1.87・赤 2.64・青 2.10 と足りない。字だけを、daisyUI が同じ色に
+   組にしている濃い字の色 (--color-*-content。塗った札と塗った知らせが使う色) にする (決め C49-1 = a。11-06)。
+   色の値と地・縁・状態の点は変えない。主色 (badge-primary) と灰 (badge-ghost) は入れない (主色の濃い字の色は白のため)。
+   中の印 (svg) は線が currentColor なので、字と同じ色になる。層の外の決まりなので、淡い札と淡い知らせの要素そのものに字の色の
+   class を重ねても効かない (中の子の要素の class は効く)。 */
+.badge-soft:is(.badge-warning, .badge-success, .badge-error, .badge-info) {
+  color: var(--badge-fg);
+}
+.alert-soft.alert-warning {
+  color: var(--color-warning-content);
+}
+.alert-soft.alert-error {
+  color: var(--color-error-content);
+}
+.alert-soft.alert-info {
+  color: var(--color-info-content);
+}
+/* 黄の線の札 (マニュアルの「要確認」)。outline は縁が字の色 (currentColor) なので、字を濃くした上で縁を黄に戻す。 */
+.badge-outline.badge-warning {
+  color: var(--badge-fg);
+  border-color: var(--badge-color);
+}
