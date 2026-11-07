@@ -12,6 +12,7 @@
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
+  単位の初期値は受注の明細の数量単位コード (単位の欄は一覧から選ぶ欄。コードの無い受注の明細は空で開く)。
   line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (N124)。
 - 発注・受入・取り消すの保存のボタンの字は、押した結果の数と金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
   金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注のボタンに金額を書かない。
@@ -30,6 +31,7 @@ from seizou.core.views import use_decimal_input
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
 from seizou.masters.services import active_processes, with_default_process
+from seizou.masters.services import UNLISTED_LINE_UNIT, quantity_units
 
 from . import services
 from .models import PurchaseOrder, PurchaseOrderLine, _qty_text
@@ -62,11 +64,12 @@ class PurchaseOrderLineForm(forms.Form):
         decimal_places=2,
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-qty": True}),
     )
-    unit = forms.CharField(
+    # 単位は数量単位の一覧から選ぶ (字を打って探す欄。作者の決め)。送る値は一覧のコード、clean_unit が一覧の名前の字にする。
+    unit = forms.ModelChoiceField(
         label="単位",
-        max_length=10,
+        queryset=None,
         required=False,
-        widget=forms.TextInput(attrs={"class": "input w-full"}),
+        widget=RemoteSelect("masters:quantityunit_select", attrs={"class": "w-full"}),
         help_text="空なら部品の単位を写します。",
     )
     # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
@@ -102,6 +105,7 @@ class PurchaseOrderLineForm(forms.Form):
         super().__init__(*args, **kwargs)
         # 部品は使用中だけ (N135。発注は新しく作るだけの form)
         self.fields["item"].queryset = active_items()
+        self.fields["unit"].queryset = quantity_units()
         # 工程の選択肢と「協力企業に出す工程があるか」は、発注の form が form_kwargs で渡す (行の数だけ引かない。C100)
         if processes is None:
             processes = active_processes().filter(is_outsourced=True)
@@ -114,6 +118,23 @@ class PurchaseOrderLineForm(forms.Form):
         # 数量と単価を字の欄にする (受注の明細と土台と同じ。初期値は詳細と同じ字で出し、「1,200」も通す。初見テスト 5 回目 a-flagged-12)。
         for field in self.fields.values():
             use_decimal_input(field)
+
+    def clean_unit(self):
+        """選んだ一覧の行の名前の字。選ばなければ空の字 (services が部品の単位とコードを写す)。"""
+        chosen = self.cleaned_data.get("unit")
+        return chosen.name if chosen is not None else ""
+
+    def clean(self):
+        """行の検査。部品の単位が数量単位の一覧に無い字で、単位を選んでいなければ、単位の欄の誤りにする (何も入れていない行は formset が検査しない)。
+
+        訳: 一覧に無い単位の字は、相手の会社に個として読まれるおそれがあるので、明細には入れない (選び直してもらう)。出所 = 作者の決め・中小企業共通 EDI 本編 7.3.2 (4) 数量単位コード。
+        変えてよい条件 = 一覧に無い字も明細に入れてよいと決めたとき。
+        """
+        data = super().clean()
+        item = data.get("item")
+        if not data.get("unit") and not self.has_error("unit") and getattr(item, "unit_unlisted", False):
+            self.add_error("unit", UNLISTED_LINE_UNIT.format(unit=item.unit))
+        return data
 
 
 PurchaseOrderLineFormSet = forms.formset_factory(PurchaseOrderLineForm, extra=1)
@@ -170,6 +191,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
         )
         # 注残の盤の「発注する」から来たとき (GET の from_line)、その明細を最初の行の初期値にする。
         # 単価は入れない (協力企業の単価は受注の単価と別で、利用者が打つ)。無い pk・読めない字は初期値なし。
+        # 単位は受注の明細の数量単位コード (選ぶ欄は一覧のコードで描く。コードの無い受注の明細は空で開く)。
         # 盤の「選んだ行の操作」の「発注する」から来たとき (GET の line の繰り返し)、選んだ明細を順に埋める。
         # 取消の受注と残の無い明細は飛ばす。from_line と同じ明細は 1 行にする (N124)。
         from seizou.orders.services import remaining_qty
@@ -188,7 +210,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
             items = with_default_process(active_items()).filter(pk__in=[line.item_id for line, _rest in picked])
             defaults = {row.pk: row.default_process for row in items}
         line_initial = [
-            {"item": line.item_id, "process": defaults.get(line.item_id), "qty": rest, "unit": line.unit, "due_date": line.due_date}
+            {"item": line.item_id, "process": defaults.get(line.item_id), "qty": rest, "unit": line.unit_code or None, "due_date": line.due_date}
             for line, rest in picked
         ] or None
         # 協力企業に出す工程の選択肢と、あるか (テンプレートが「工程」の見出しの列を出すかに読む)

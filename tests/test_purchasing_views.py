@@ -87,7 +87,7 @@ def _post_data(partner, items, total=2):
         "lines-0-due_date": "2026-11-20",
         "lines-1-item": items[1].pk,
         "lines-1-qty": "3",
-        "lines-1-unit": "kg",
+        "lines-1-unit": "KGM",
         "lines-1-unit_price": "100",
     }
     return data

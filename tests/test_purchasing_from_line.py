@@ -117,7 +117,7 @@ def _post_data(partner, line, **extra):
         "lines-MAX_NUM_FORMS": "1000",
         "lines-0-item": line.item_id,
         "lines-0-qty": "6",
-        "lines-0-unit": line.unit,
+        "lines-0-unit": line.unit_code,
         "lines-0-unit_price": "30",
         "lines-0-due_date": line.due_date.isoformat(),
         "lines-0-note": "",
@@ -141,7 +141,7 @@ def test_from_line_prefills_first_row(client_logged_in, subcontractor, line):
     first = form.lines.forms[0].initial
     assert first["item"] == line.item_id
     assert first["qty"] == Decimal("6")
-    assert first["unit"] == "個"
+    assert first["unit"] == "H87"
     assert first["due_date"] == DUE_DATE
     assert "unit_price" not in first
     # 初期値の行と、空の行 1 つ。
