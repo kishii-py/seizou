@@ -194,7 +194,7 @@ def _yen(value):
 def cancel_refusal(invoice, *, hide_money=False) -> str:
     """請求書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
-    取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (残りの件数と合計) を返す。
+    取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (入金の記録の件数と合計) を返す。
     hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人)。
     cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。請求書の状態は見ない。
     訳: 取消でない入金が残ったまま請求書を取り消さないため (先に入金を取り消す)。出所 = 未確認 (この module と cancel_invoice の docstring に「決め 11-04 06:4x」とあるが、本人の言葉は記録に無い。作った晩の記録は docs/nights/20261104/N89.md)。
@@ -203,10 +203,8 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
     rows = [row for row in invoice.payments.all() if row.status == Payment.STATUS_RECORDED]
     if not rows:
         return ""
-    left = f"残り {len(rows)} 件"
-    if not hide_money:
-        left += f"・合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))}"
-    return f"取り消せません。入金が残っています。先に入金を取り消してください ({left})。"
+    money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))})"
+    return f"取り消せません。この請求書には入金の記録が {len(rows)} 件あります{money}。先に入金を取り消してください。"
 
 
 def cancel_invoice(invoice, user):
