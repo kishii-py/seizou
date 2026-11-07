@@ -1,12 +1,13 @@
 """一覧の期間の絞りの近道「今日・今週・今月・先月」(受け渡しの seizou-部品の6案-20261107/指示書.md の 1。本人の決め 11-07 18:2x)。
 
-近道の日付はサーバーが会社の時刻で決める (FilterSpec.preset_range・date_presets)。ボタンは core/_date_presets.html が描き、
-押す動きは static の js/seizou-date-presets.js (JS は動かさず字を見る。ブラウザの確かめは本体の手)。
+近道の日付はサーバーが会社の時刻で決める (FilterSpec.preset_range・date_presets)。ボタンは core/_date_presets.html が
+2 つの日付の欄の右に、同じ行の小さな段 (join) として描き (本人の決め 11-07 23:2x の案 A)、押す動きは static の js/seizou-date-presets.js (JS は動かさず字を見る。ブラウザの確かめは本体の手)。
 一覧の HTML は Django の test client で開く (受注と指示書の一覧 = 期間の絞りを持つ 2 つ)。名前は作り物だけ。
 """
 
 import re
 from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -21,8 +22,8 @@ from seizou.orders.models import Order
 
 JS = Path(seizou.core.__file__).resolve().parent / "static" / "js" / "seizou-date-presets.js"
 SCRIPT_SRC = re.compile(r"<script [^>]*src=\"([^\"]+)\"[^>]*>")
-PRESSED = '<button type="button" class="btn btn-xs btn-soft btn-primary" aria-pressed="true"'
-PLAIN = '<button type="button" class="btn btn-xs btn-ghost text-base-content/70" aria-pressed="false"'
+PRESSED = '<button type="button" class="join-item btn btn-xs btn-primary" aria-pressed="true"'
+PLAIN = '<button type="button" class="join-item btn btn-xs text-base-content/70" aria-pressed="false"'
 TODAY = date(2026, 11, 7)  # 土曜日
 
 
@@ -108,20 +109,20 @@ def presets_box(html: str, name: str) -> str:
     ("url_name", "name", "label"),
     [("orders:order_list", "ordered", "受注日"), ("workorders:workorder_list", "issued", "発行日")],
 )
-def test_lists_show_the_same_presets_under_the_date_fields(client_logged_in, fixed_today, url_name, name, label):
+def test_lists_show_the_same_presets_beside_the_date_fields(client_logged_in, fixed_today, url_name, name, label):
     html = client_logged_in.get(reverse(url_name)).content.decode()
 
     assert f'data-date-range="{name}"' in html
     box = presets_box(html, name)
-    assert f'class="mt-2 flex flex-wrap gap-1" role="group" aria-label="{label}の近道">' in box
+    assert f'class="join" role="group" aria-label="{label}の近道">' in box
     assert "hx-swap-oob" not in box
     assert box.count("<button") == 4 and box.count(PLAIN) == 4 and PRESSED not in box
     assert 'data-preset-start="2026-11-07" data-preset-end="2026-11-07">今日</button>' in box
     assert 'data-preset-start="2026-11-02" data-preset-end="2026-11-08">今週</button>' in box
     assert 'data-preset-start="2026-11-01" data-preset-end="2026-11-30">今月</button>' in box
     assert 'data-preset-start="2026-10-01" data-preset-end="2026-10-31">先月</button>' in box
-    # 近道は 2 つの日付の欄 (始め・終わり) の後、同じ期間の枠の中
-    frame = re.search(rf'<div[^>]*data-date-range="{name}">.*?</div>\s*</div>', html, re.S).group(0)
+    # 近道は 2 つの日付の欄 (始め・終わり) の後、同じ期間の枠の同じ行の中 (行の形は下の test_date_fields_and_presets_share_one_row)
+    frame = re.search(rf'<div[^>]*data-date-range="{name}">.*?</div>\s*</div>\s*</div>', html, re.S).group(0)
     assert frame.count('type="date"') == 2
     assert frame.index('type="date"') < frame.index(f'id="list-f-{name}-presets"')
 
@@ -148,7 +149,63 @@ def test_matching_dates_mark_the_preset_and_rows_partial_redraws_it(client_logge
     assert 'id="list-f-due-presets"' in partial and partial.count('hx-swap-oob="true"') >= 2
 
 
-# ---- 4. JS の字と読み込み ----
+# ---- 4. 期間の塊は 1 行 (日付の欄と近道が同じ折り返す行の中。本人の報告 11-07 20:5x・決め 23:2x の案 A) ----
+
+
+class DivTree(HTMLParser):
+    """div の入れ子 (属性と親の番号) と、日付の欄が開いた所の祖先の div の番号を集める。"""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.divs = []  # 開いた順の (属性, 親の div の番号)
+        self.dates = {}  # 日付の欄の name → 祖先の div の番号 (外から順)
+        self._open = []  # 今開いている div の番号
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "input" and attrs.get("type") == "date":
+            self.dates[attrs.get("name")] = list(self._open)
+        if tag == "div":
+            self.divs.append((attrs, self._open[-1] if self._open else None))
+            self._open.append(len(self.divs) - 1)
+
+    def handle_endtag(self, tag):
+        if tag == "div" and self._open:
+            self._open.pop()
+
+    def find(self, **wanted):
+        return next(i for i, (attrs, _parent) in enumerate(self.divs) if all(attrs.get(k) == v for k, v in wanted.items()))
+
+    def children(self, index):
+        return [i for i, (_attrs, parent) in enumerate(self.divs) if parent == index]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("url_name", "name"), [("orders:order_list", "ordered"), ("orders:order_list", "due"), ("workorders:workorder_list", "issued")])
+def test_date_fields_and_presets_share_one_row(client_logged_in, fixed_today, url_name, name):
+    html = client_logged_in.get(reverse(url_name)).content.decode()
+    tree = DivTree()
+    tree.feed(html)
+
+    box = tree.find(id=f"list-f-{name}-presets")
+    box_attrs, row = tree.divs[box]
+    assert box_attrs["class"] == "join"  # 小さな段。上の余白 (mt-) を持たず、欄の下に落とさない
+    # 近道の箱の親は、期間の枠の直下にある 1 つの折り返す行 (枠の中は見出しとこの行だけ = 2 段)
+    row_attrs, frame = tree.divs[row]
+    assert row_attrs["class"] == "mt-2 flex flex-wrap items-center gap-2"
+    assert tree.divs[frame][0].get("data-date-range") == name
+    assert tree.children(frame) == [row]
+    # 2 つの日付の欄は同じ行の中の、折り返さない 1 つの小箱 (幅が狭いと近道だけが 2 行目に落ちる)
+    starts, ends = tree.dates[f"f_{name}_from"], tree.dates[f"f_{name}_to"]
+    assert starts == ends and starts[-2] == row
+    assert tree.divs[starts[-1]][0]["class"] == "flex items-center gap-2"
+    assert tree.children(row) == [starts[-1], box]
+    # 近道のボタンは全部 段の 1 つ (join-item) の小さなボタン
+    buttons = re.findall(r"<button [^>]*>", presets_box(html, name))
+    assert len(buttons) == 4 and all('class="join-item btn btn-xs ' in b for b in buttons)
+
+
+# ---- 5. JS の字と読み込み ----
 
 
 def test_date_presets_js_is_small_and_plain():

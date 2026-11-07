@@ -5,18 +5,21 @@
 {# 選ぶ欄の幅は、候補と「すべて」のうちいちばん長い字で決める (FilterSpec.select_width の width_ch。候補 C31 の 3。初見テストの V152)。選んだ値で幅が変わらず、隣の欄が動かない。 #}
 {# max-width: 100% と枠の min-w-0 は、phone の幅で長い名前の欄が行からはみ出さないため (はみ出す分は「…」になる)。min-width で決めると max-width より勝ち、はみ出す。 #}
 {# flag は core/_filter_flag.html が描く (値 0 の隠しの欄の後にチェックの 1。ほかの絞りに従う印は htmx の応答で描き直す)。 #}
-{# 期間の欄の下には近道「今日・今週・今月・先月」(core/_date_presets.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 1)。箱の data-date-range は js/seizou-date-presets.js が 2 つの日付の欄を引く印。 #}
+{# 期間の欄の右には近道「今日・今週・今月・先月」の小さな段 (core/_date_presets.html。受け渡しの seizou-部品の6案-20261107/指示書.md の 1)。箱の data-date-range は js/seizou-date-presets.js が 2 つの日付の欄を引く印。 #}
+{# 2 つの日付の欄と近道は同じ折り返す行 (flex-wrap) に並べ、期間の塊を 1 行にする (本人の決め 11-07 23:2x の案 A)。訳: 近道を欄の下に置くと期間の塊だけが 3 段になり、items-end で印の欄と選ぶ欄が下に落ちて並びが崩れたため (本人の報告 11-07 20:5x)。2 つの日付の欄は折り返さない小箱に入れ、幅が狭いときは近道だけが 2 行目に落ちる。 #}
 <div class="mt-4 flex flex-wrap items-end gap-2">
   {% for f in filters %}
   <div{% if f.width_ch %} class="min-w-0"{% endif %}{% if f.kind == "date_range" %} data-date-range="{{ f.name }}"{% endif %}>
     {% if f.kind == "date_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
-    <div class="mt-2 flex items-center gap-2">
-      <input id="list-f-{{ f.name }}" class="input input-sm w-auto" type="date" name="{{ f.param_from }}" value="{{ f.value_from }}" max="9999-12-31" aria-label="{{ f.label }}の始め" data-list-filter>
-      <span class="text-base-content/60">〜</span>
-      <input class="input input-sm w-auto" type="date" name="{{ f.param_to }}" value="{{ f.value_to }}" max="9999-12-31" aria-label="{{ f.label }}の終わり" data-list-filter>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-2">
+        <input id="list-f-{{ f.name }}" class="input input-sm w-auto" type="date" name="{{ f.param_from }}" value="{{ f.value_from }}" max="9999-12-31" aria-label="{{ f.label }}の始め" data-list-filter>
+        <span class="text-base-content/60">〜</span>
+        <input class="input input-sm w-auto" type="date" name="{{ f.param_to }}" value="{{ f.value_to }}" max="9999-12-31" aria-label="{{ f.label }}の終わり" data-list-filter>
+      </div>
+      {% include "core/_date_presets.html" %}
     </div>
-    {% include "core/_date_presets.html" %}
     {% elif f.kind == "number_range" %}
     <label for="list-f-{{ f.name }}" class="block font-medium">{{ f.label }}</label>
     <div class="mt-2 flex items-center gap-2">
