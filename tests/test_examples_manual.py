@@ -100,7 +100,7 @@ TEXT_BANNED = ("self.", "call_service", "=")
 SAMPLE_NUMBER = re.compile(r"[A-Z]{2}-[0-9]|(?<![A-Z0-9])[CS][0-9]{3}(?![0-9])")
 RULE_NUMBER = re.compile(r"(?<![A-Za-z0-9])R[0-9]{2}(?![0-9])")
 QUOTED = re.compile(r"「([^「」]+)」")
-RULE_SECTIONS = ("## 中心の決まり", "## 同梱のポカよけ")
+RULE_SECTIONS = ("## 中心の決まり", "## 標準のポカよけ")
 
 HTMX = {"HTTP_HX_REQUEST": "true"}
 MANUAL_MISSING = "この画面の説明書はまだありません。"
@@ -187,7 +187,7 @@ def view_tabs(screen) -> tuple:
 
 
 def rule_texts() -> dict[str, str]:
-    """RULES.md の「中心の決まり」と「同梱のポカよけ」の表の番号と 2 列目の文。"""
+    """RULES.md の「中心の決まり」と「標準のポカよけ」の表の番号と 2 列目の文。"""
     rules = {}
     section = ""
     for line in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines():

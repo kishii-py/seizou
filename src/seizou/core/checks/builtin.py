@@ -1,4 +1,4 @@
-"""同梱のポカよけ (RULES.md の「同梱のポカよけ」。R01・R04・R06・R07)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07)。
 
 mode は会社の設定 (over_shipment・over_workorder) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。

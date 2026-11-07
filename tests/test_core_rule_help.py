@@ -2,7 +2,7 @@
 
 見る所: 赤の知らせ (core/_notices.html) の番号は残り、番号が決まりの形 (R と 2 桁) のときだけ横に「?」のボタンが出る。
 番号の無い赤の知らせ (「入力」) と黄の知らせには出ない。ボタンが開く口 (core:rule_help) は RULES.md の表のその番号の行の文と、
-行の上の見出し (中心の決まりか同梱のポカよけか) を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
+行の上の見出し (中心の決まりか標準のポカよけか) を返す。行が無ければ 200 で無い旨の 1 文、番号の形が違えば 404。
 文は作り物だけ。本物の API と HTTP は呼ばない。
 """
 
@@ -79,7 +79,7 @@ def test_rule_help_shows_rules_md_line(client, user):
     body = response.content.decode()
     assert "R01 の決まり" in body
     assert _rules_md_text("R01") in body
-    assert "同梱のポカよけ" in body
+    assert "標準のポカよけ" in body
 
     body = client.get("/rules/R02/", HTTP_HX_REQUEST="true").content.decode()
     assert _rules_md_text("R02") in body
