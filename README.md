@@ -31,11 +31,11 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 
 会期中に作った量 (毎朝更新する。元は `docs/nights/`・pytest・画面の目録・`src/seizou/parts.py`・RULES.md・git の履歴)。
 
-- 無人の仕事の回数: 172 本 (11-06 05:2x の main 916fff9 で、`docs/nights/<日付>/` の仕事ごとの記録のファイルを数えた。昼に別の PC で無人で動いた分を含む)
-- commit の数: 1,588 (11-06 05:2x の main 916fff9。うち Claude との共著の印が付いた物 1,568。main への merge の commit は 307)
-- テストの数: 3,085 本 (11-06 05:2x の main 916fff9 の `uv run pytest`。通過 3,034、普段は skip の E2E 51。E2E は、本番の 2 社 (VPS。234 回目の版 8a4326a) で外から回して 47 通過・2 skip・2 xfail = 11-06 06:2x)
-- 画面の数: 120 (11-06 05:2x の main 916fff9。土台を継承した画面の目録 `seizou_screens` の画面)
-- 部品の数: 18 (core と 17 の Django の部品。`src/seizou/parts.py`)
+- 無人の仕事の回数: 348 本 (11-08 03:5x の main f0522cf8 で、`docs/nights/<日付>/` の仕事ごとの記録のファイルを数えた。昼に別の PC で無人で動いた分を含む)
+- commit の数: 2,917 (11-08 03:5x の main f0522cf8。うち Claude との共著の印が付いた物 2,897。main への merge の commit は 531)
+- テストの数: 5,669 本 (11-08 03:5x の main f0522cf8 の `uv run pytest --collect-only`。E2E を除く全体の `uv run pytest` は通過 5,598、普段は skip の E2E は 71 本 (46 ファイル)。E2E は手元の 2 社で 11-08 に回し、記録は `docs/e2e/20261108/` と取り込みの記録)
+- 画面の数: 159 (11-08 03:5x の main f0522cf8。土台を継承した画面の目録 `seizou_screens` の画面)
+- 部品の数: 19 (core と 18 の Django の部品。`src/seizou/parts.py`)
 - 決まりの数: 24 (RULES.md の R01〜R24)
 
 Claude Code のプラグインと、pip で入れる Django の部品を、この 1 つのリポジトリに置く (Apache-2.0)。
@@ -310,14 +310,14 @@ GitHub とつなぐ: 世話役は一覧の「GitHub の設定」から画面「G
 | フィードバックの聞き取り | claude-haiku-5-5 (`feedback_model`) | 聞き取りと仕分けだけなので安い | 下書きは会社の中に残り、GitHub には世話役が送る (トークンが無い会社は手で写す) |
 | 手元の Claude Code からの操作 | MCP サーバー (`manage.py seizou_mcp`) | 画面と同じ `services` と決まりを通す | 書く道具は利用者を決めたときだけ。知らせる段は `confirm=true` が要る |
 
-このリポジトリのコードと文書は、会期中に Claude Code で書いた。生産管理の当事者だった作者 1 人が、会期の 1 週間で、18 の部品と 120 の画面と決まり 24 本を持つ基幹システムの土台を書き、2 社をつないだ。チームは 2 人で、Claude Code (model は主に Claude Fable 5.1 と Claude Opus 5.5) と一緒に作っている。Mac は 2 台で、1 台は作者の手元にあり、仕様から依頼書を書く会話と、枝を main に取り込む会話を動かす。もう 1 台は会社に置いた常時稼働の Mac で、夜は依頼書 1 本ずつで動く無人のレーンがそこで走る。その記録が `docs/nights/` にある (読み方は [docs/nights/README.md](docs/nights/README.md))。作り方は次の 4 段の繰り返し。
+このリポジトリのコードと文書は、会期中に Claude Code で書いた。生産管理の当事者だった作者 1 人が、会期の 1 週間で、19 の部品と 159 の画面と決まり 24 本を持つ基幹システムの土台を書き、2 社をつないだ。チームは 2 人で、Claude Code (model は主に Claude Fable 5.1 と Claude Opus 5.5) と一緒に作っている。Mac は 2 台で、1 台は作者の手元にあり、仕様から依頼書を書く会話と、枝を main に取り込む会話を動かす。もう 1 台は会社に置いた常時稼働の Mac で、夜は依頼書 1 本ずつで動く無人のレーンがそこで走る。その記録が `docs/nights/` にある (読み方は [docs/nights/README.md](docs/nights/README.md))。作り方は次の 4 段の繰り返し。
 
 1. 本体の会話 (作者と Claude Code の会話) が、仕様から依頼書を 1 本ずつ書く。依頼書には書いてよいファイルの表・守ること・採用の条件 (機械で確かめる grep と試験) を書く。
 2. 別の Mac の無人のレーンが依頼書を 1 本ずつ受け、git の作業場を分けて、依頼書の範囲だけを作り、手元の commit で止まる。
 3. 本体の Mac が門 (差分の範囲・禁止語・テスト・書き方の検査・決まりの検査・migration・CSS の作り直し) を通った枝だけを main に取り込む。通らない枝は取り込まず、main を戻す。
 4. 作者が朝に、差分と決まりの一覧とテストの結果を見る。
 
-会期中の取り込みは 231 回 (取り込み係の記録 `docs/nights/<日付>.md` の番号。11-06 05:2x の main 916fff9)、レーンの記録は 172 本、Claude との共著の印が付いた commit は 1,568 (同じ時点)。
+会期中の取り込みは 456 回 (取り込み係の記録 `docs/nights/<日付>.md` の番号。11-08 03:5x の main f0522cf8)、レーンの記録は 348 本、Claude との共著の印が付いた commit は 2,897 (同じ時点)。
 
 | 役 | モデルか機能 | 理由 | 確かめる所 |
 |---|---|---|---|
