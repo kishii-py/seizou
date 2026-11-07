@@ -71,6 +71,8 @@ class ShipmentListView(BaseListView):
         "order_line__order__customer_order_no",
         "order_line__item__part_no",
         "order_line__order__customer__name",
+        # 品名: 表の「部品」の列に出ている品名でも当たる (上の帯の横断の検索と同じ。初見テスト R5 の候補 C36 の 4)
+        "order_line__item__name",
     )
     filters = (
         {"name": "customer", "label": "得意先", "kind": "lookup", "field": "order_line__order__customer", "choices": _customer_choices},
