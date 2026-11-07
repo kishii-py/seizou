@@ -22,10 +22,12 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
+from django.utils.crypto import constant_time_compare, salted_hmac
 from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Sum, Value
 from django.db.models import Count, Max, Min
 from django.db.models.functions import Coalesce
@@ -48,6 +50,16 @@ _SOURCES = frozenset(value for value, _label in Order.SOURCE_CHOICES)
 
 _R02_MESSAGE = "保存できません。数量と単価は 0 より大きい。0 より大きい数を入れてください。"
 _SHIPPED_LINE_MESSAGE = "保存できません。消した明細に出荷があります。数量を直すか、明細を残してください。"
+#: 受注の編集を開いた後に、ほかの人か取引先の変更で受注が直っていたときの断り (update_order の expected_state。N350)
+STALE_ORDER_MESSAGE = "保存できません。この受注は、画面を開いた後にほかの人か取引先の変更で直っています。開き直してから直してください。"
+
+# order_state_token が比べる列 (受注の編集の画面が書き戻す列だけ。状態・請求しない印・金額・日時は入れない)
+_STATE_ORDER_FIELDS = ("customer_id", "order_date", "customer_order_no", "note")
+_STATE_LINE_FIELDS = (
+    "pk", "line_no", "item_id", "customer_part_no", "qty", "unit", "unit_code",
+    "price_basis", "unit_price", "quote_no", "due_date", "note",
+)
+_STATE_SALT = "seizou.orders.order_state_token"
 
 # 出荷済みの数と残の数の型 (OrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -218,7 +230,37 @@ def create_order(customer, lines, user, *, order_date, customer_order_no="", sou
         return order
 
 
-def update_order(order, data, lines, user, *, ext=None):
+def _state_text(value) -> str:
+    """order_state_token に入れる 1 つの値の字。None は空、日付は isoformat、Decimal と数は str。"""
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def order_state_token(order, lines=None) -> str:
+    """受注と明細の今の値の字 (読むだけ)。受注の編集の画面が開いた時に隠しの欄に持ち、update_order が保存の時に今の字と比べる。
+
+    比べる列は、受注の編集の画面が書き戻す列だけ。受注は customer_id・order_date・customer_order_no・note、
+    明細は pk・line_no・item_id・customer_part_no・qty・unit・unit_code・price_basis・unit_price・quote_no・due_date・note。
+    明細は line_no と pk の順に並べる (渡された並びに依らない)。
+    状態 (status)・請求しない印 (no_bill)・金額 (amount)・日時の列は入れない (出荷で状態が変わっただけ・請求しない印を付けただけでは断らない)。
+    返す字は素の sha256 でなく salted_hmac (sha256 の 16 進 64 字)。金額を伏せた人が、隠しの欄の値から単価を割り出せないようにするため。
+    lines が無ければ order.lines を 1 回読む。画面の form は既に読んだ明細の並びを渡し、問い合わせを増やさない。
+    """
+    if lines is None:
+        lines = order.lines.order_by("line_no", "pk")
+    rows = sorted(lines, key=lambda row: (row.line_no, row.pk))
+    state = [
+        [_state_text(getattr(order, name)) for name in _STATE_ORDER_FIELDS],
+        [[_state_text(getattr(row, name)) for name in _STATE_LINE_FIELDS] for row in rows],
+    ]
+    text = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    return salted_hmac(_STATE_SALT, text, algorithm="sha256").hexdigest()
+
+
+def update_order(order, data, lines, user, *, ext=None, expected_state=None):
     """受注の項目と明細を直す。
 
     data は order_date・customer_order_no・note・customer の鍵だけ。data にある鍵だけを書き換える。
@@ -227,9 +269,13 @@ def update_order(order, data, lines, user, *, ext=None):
     lines に無い既存の明細は消す。
     出荷のある明細は消せない (DB の PROTECT が止める物を、日本語の ValueError にして返す)。
     残る明細は全部の金額を計算し直し、終わりに refresh_status で受注の状態を決め直す。
+    expected_state は、受注の編集の画面を開いた時の order_state_token の字。空でなければ、受注を押さえた後に今の字と比べ、
+    違えば何も書かずに ValueError (STALE_ORDER_MESSAGE)。None か空の字なら比べない。
     訳: 取消した受注を直させないため (直すときは新しく受注を作る)。出所 = RULES.md R05。
     変えてよい条件 = 変えない (R は廃止で残す)。
     訳: 受信した注文の変更で足した明細の行番号を、相手 (発注元) の行番号とそろえるため (出荷の知らせと検収は行番号で明細を指す)。出所 = 作者の決め (11-07。発注の変更の受け入れ)。変えてよい条件 = 送り合いが行番号でなく明細の識別で明細を指すようになったとき。
+    訳: 画面を開いた後にほかの人が直した値と、取引先から受け入れた変更 (受信した注文の第 2 版以降) を、古い画面の保存で黙って元に戻さないため。比べる字は画面が書き戻す列だけの salted_hmac (状態・請求しない印・金額は入れない。金額を伏せた人に単価を割り出させない)。expected_state が空なら比べない (受け入れの道と、隠しの欄の無い古い画面)。出所 = エンタープライズ化の調べ 第一弾の指摘 money-1 (11-07。確かめ直し 416 回目の直し方の直し (a)(b)(c))。
+    変えてよい条件 = 受注に版の列を足し、版の番号で比べるようにしたとき。
     """
     _refuse_ext(ext)
     _refuse_unknown_keys(data, _ORDER_KEYS, "受注")
@@ -240,6 +286,11 @@ def update_order(order, data, lines, user, *, ext=None):
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
             raise RuleViolation("R05", "保存できません。取消した受注です。直すときは、新しく受注を作ってください。")
+        if expected_state:
+            # 受注を押さえた後に読むので、ほかの保存と受け入れ (同じ受注を押さえる) が済んだ後の値と比べる。
+            current = order_state_token(locked, list(locked.lines.order_by("line_no", "pk")))
+            if not constant_time_compare(expected_state, current):
+                raise ValueError(STALE_ORDER_MESSAGE)
 
         existing = {row.pk: row for row in locked.lines.all()}
         refs = [_line_ref(line) for line in lines]
