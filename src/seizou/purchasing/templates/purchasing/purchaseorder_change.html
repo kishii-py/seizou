@@ -1,0 +1,108 @@
+{% extends "core/base.html" %}
+{% load seizou_tags seizou_icons %}
+{% block content %}{{ block.super }}
+{# 送った発注の変更: core の入力の画面と同じ形のカードに、備考の欄と明細の行の表。保存すると services が発注を直し、第 n 版の変更として相手へ送る。 #}
+{# 画面の全体で開く (小窓にしない = 明細の表が広いため)。形は発注の入力のカード (purchasing/_purchaseorder_card.html)。協力企業と発注日は字で出す (欄にしない)。 #}
+{# 既にある明細の行は部品と単位を字で出し (直せない)、相手が出荷した行は単価の欄と消す印を出さず「出荷済み s」を出す。明細の表に「出荷の知らせ」「受入の数」の列を足す (直せる限りが見えるように)。 #}
+{# 取り消した明細 (明細状態コード 2) は form に出さない。黄の確かめ (取適法) は右上の知らせに出て、ボタンが「このまま保存」になる。 #}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
+  {% csrf_token %}
+  <p class="flex items-center gap-2 text-xs text-base-content/50">{% icon "info" "size-4" %}直した明細は、保存と同時に相手へ「第 {{ form.instance.revision_no|add:1 }} 版の変更」として送ります。相手が出荷した明細は、数を出荷済みの数より減らせず、単価は変えられず、取り消せません。</p>
+  <dl class="mt-6 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+    <div class="flex gap-4"><dt class="text-base-content/70">協力企業</dt><dd>{% master_link form.instance.partner %}</dd></div>
+    <div class="flex gap-4"><dt class="text-base-content/70">発注日</dt><dd class="font-mono tabular-nums">{{ form.instance.order_date|date:"Y-m-d" }}</dd></div>
+  </dl>
+  <div class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+    {% for field in form.visible_fields %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error">
+      <div class="mb-2 flex items-center gap-2"><label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label><span class="badge badge-xs badge-ghost text-base-content/50">任意</span></div>
+      {{ field }}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+
+  <h2 class="mt-6 text-lg font-bold">明細</h2>
+  <p class="mt-2 text-xs text-base-content/50">「取り消す」に印を付けた明細は、行を残して取り消します。何も入れていない足す行は送りません。</p>
+  {{ form.lines.management_form }}
+  {% if form.lines.non_form_errors %}<div class="alert alert-error alert-soft mt-4" role="alert">{% icon "alert" "size-5" %}<span>{{ form.lines.non_form_errors|join:" " }}</span></div>{% endif %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right">
+      <thead>
+        <tr>
+          <th class="text-right">行番号</th>
+          <th>部品</th>
+          <th>数量</th>
+          <th>単位</th>
+          {% if not form.hide_money %}<th>単価</th>{% endif %}
+          <th>納期</th>
+          <th>備考</th>
+          <th class="text-right">出荷の知らせ</th>
+          <th class="text-right">受入の数</th>
+          <th>取り消す</th>
+        </tr>
+      </thead>
+      <tbody id="po-lines">
+        {% for row in form.lines %}
+        <tr class="align-top" data-change-line="{% if row.existing %}{{ row.existing.line_no }}{% endif %}">
+          <td class="whitespace-nowrap text-right tabular-nums">{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% if row.existing %}{{ row.existing.line_no }}{% endif %}{% if row.non_field_errors %}<p class="mt-2 text-xs text-error">{{ row.non_field_errors|join:" " }}</p>{% endif %}</td>
+          <td class="min-w-48 [&_[aria-invalid=true]]:border-error">{% if row.existing %}{% master_link row.existing.item %}{% else %}{{ row.item }}{% if row.item.errors %}<p class="mt-2 text-xs text-error">{{ row.item.errors|join:" " }}</p>{% endif %}{% endif %}</td>
+          <td class="min-w-32 [&_[aria-invalid=true]]:border-error">{{ row.qty }}{% if row.qty.errors %}<p class="mt-2 text-xs text-error">{{ row.qty.errors|join:" " }}</p>{% endif %}{% if row.shipped > 0 %}<span class="mt-1 block text-xs text-base-content/70">出荷済み {{ row.shipped_text }}</span>{% endif %}</td>
+          <td class="min-w-32">{% if row.existing %}{{ row.existing.unit }}{% else %}{{ row.unit }}{% endif %}</td>
+          {% if not form.hide_money %}<td class="min-w-32 [&_[aria-invalid=true]]:border-error">{% if row.existing and row.shipped > 0 %}<span class="tabular-nums">{{ row.existing.unit_price|yen }}</span>{% else %}{{ row.unit_price }}{% if row.unit_price.errors %}<p class="mt-2 text-xs text-error">{{ row.unit_price.errors|join:" " }}</p>{% endif %}{% endif %}</td>{% endif %}
+          <td class="min-w-32">{{ row.due_date }}</td>
+          <td class="min-w-32">{{ row.note }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{% if row.existing %}{{ row.existing.shipping_notice.total_text }}{% endif %}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{% if row.existing %}{{ row.existing.received_total|comma }}{% endif %}</td>
+          <td class="whitespace-nowrap">{% if row.DELETE %}{{ row.DELETE }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not form.hide_money %}
+  <template id="po-line-template">
+    {% with row=form.lines.empty_form %}<tr class="align-top" data-change-line="">
+      <td>{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}</td>
+      <td class="min-w-48">{{ row.item }}</td>
+      <td class="min-w-32">{{ row.qty }}</td>
+      <td class="min-w-32">{{ row.unit }}</td>
+      <td class="min-w-32">{{ row.unit_price }}</td>
+      <td class="min-w-32">{{ row.due_date }}</td>
+      <td class="min-w-32">{{ row.note }}</td>
+      <td></td>
+      <td></td>
+      <td class="whitespace-nowrap">{{ row.DELETE }}</td>
+    </tr>{% endwith %}
+  </template>
+  <div class="mt-4 flex justify-end"><button class="btn btn-outline btn-sm border-base-300" type="button" data-add-line>{% icon "plus" "size-4" %}行を足す</button></div>
+  {% endif %}
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+  {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
+  {# 下の行 (キャンセルと保存)。発注の入力のカードと同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字)。キャンセルは発注の詳細へ戻る。 #}
+  <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
+    <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
+    <a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_detail' form.instance.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {% else %}<button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}{{ form.submit_label }}</button>{% endif %}
+  </div>
+</form>
+<script>
+(function () {
+  // 明細の行を足す: 空の行の雛形の __prefix__ を次の番号に替えて表の末尾に足し、行の数 (TOTAL_FORMS) を 1 増やす (発注の入力のカードと同じ)。
+  var button = document.querySelector("[data-add-line]");
+  var total = document.getElementById("id_lines-TOTAL_FORMS");
+  var body = document.getElementById("po-lines");
+  var template = document.getElementById("po-line-template");
+  if (!button || !total || !body || !template) return;
+  button.addEventListener("click", function () {
+    var index = parseInt(total.value, 10);
+    body.insertAdjacentHTML("beforeend", template.innerHTML.replace(/__prefix__/g, String(index)));
+    total.value = String(index + 1);
+    if (window.seizouSelect) window.seizouSelect.init(body.lastElementChild);
+  });
+})();
+</script>
+{% include "core/_enter_guard.html" %}
+{% endblock %}

@@ -47,6 +47,7 @@ REPLY_KEYS = {
     "order_no",
     "reply_type",
     "lines",
+    "order_revision_no",
     "supplier_order_no",
     "reason",
     "supplier",

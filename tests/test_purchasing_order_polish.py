@@ -212,13 +212,15 @@ def test_rejected_order_can_be_cancelled_on_screen(client_logged_in, user, subco
 
 
 @pytest.mark.django_db
-def test_accepted_or_sent_order_is_not_cancellable(client_logged_in, user, subcontractor, item, no_http):
+def test_sent_order_with_shipping_notice_is_not_cancellable(client_logged_in, user, subcontractor, item, no_http):
     sent = services.mark_sent(_order(subcontractor, item, user), user)
     accepted = services.mark_accepted(services.mark_sent(_order(subcontractor, item, user), user), user)
 
     for po in (sent, accepted):
-        assert reverse("purchasing:purchaseorder_cancel", args=[po.pk]) not in _detail(client_logged_in, po)
-        with pytest.raises(ValueError, match="「下書き」か「断られた」の発注だけ"):
+        # 「⋯」の「取消」は送った・相手が受け入れたの発注にも出る (押して保存すると断りの字が「変更」の道を案内する)
+        assert reverse("purchasing:purchaseorder_cancel", args=[po.pk]) in _detail(client_logged_in, po)
+        _notice(po.lines.get(), "1", date(2026, 11, 5), f"SH-{po.pk}")
+        with pytest.raises(ValueError, match="^取り消せません。相手が一部を出荷済みなので、取消は送れません。"):
             services.cancel_purchase_order(po, user)
         assert PurchaseOrder.objects.get(pk=po.pk).status == po.status
 
@@ -230,7 +232,7 @@ def test_cancel_message_has_no_event_words(client_logged_in, user, subcontractor
     response = client_logged_in.post(reverse("purchasing:purchaseorder_cancel", args=[sent.pk]), {"reason": ""})
 
     body = response.content.decode()
-    assert "相手に連絡してください" in body
-    assert "「下書き」か「断られた」の発注だけ" in body
+    assert "取り消せません。" in body
+    assert "へのつながりが無いので、取消を相手へ送れません。" in body
     assert "会期後" not in body
     assert PurchaseOrder.objects.get(pk=sent.pk).status == PurchaseOrder.STATUS_SENT

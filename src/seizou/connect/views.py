@@ -77,7 +77,7 @@ class InboxListView(BaseListView):
         queryset = (
             super()
             .get_queryset()
-            .select_related("partner", "order")
+            .select_related("partner", "order", "revises")
             .annotate(newest_pk=Subquery(newest), total_count=Value(super().get_queryset().count(), output_field=IntegerField()))
         )
         # same_order_pk・same_order_status = 同じ取引先から同じ注文番号で前に届いた行 (一番古い 1 つ) の番号と状態
@@ -86,6 +86,8 @@ class InboxListView(BaseListView):
         earlier = (
             Inbox.objects.annotate(order_no_text=KT("payload__order_no"))
             .filter(partner_id=OuterRef("partner_id"), order_no_text=OuterRef("order_no_text"), pk__lt=OuterRef("pk"))
+            # 変更と取消の版の行 (revises がある行) は同じ注文番号で届くので比べない (版の札を出す)。
+            .filter(revises=None)
             .exclude(payload__order_no="")
             .exclude(payload__order_no=None)
             .order_by("pk")
@@ -93,6 +95,13 @@ class InboxListView(BaseListView):
         queryset = queryset.annotate(order_no_text=KT("payload__order_no")).annotate(
             same_order_pk=Subquery(earlier.values("pk")[:1]),
             same_order_status=Subquery(earlier.values("status")[:1]),
+        )
+        # pending_revision_pk・pending_revision_no = 第 1 版の行への未処理の後の版 (一番新しい 1 つ) の番号と版
+        # (状態の列の版の札 = connect_tags の revision_notice)。行と同じ 1 つの問い合わせで読む。
+        pending = Inbox.objects.filter(revises=OuterRef("pk"), status=Inbox.STATUS_RECEIVED).order_by("-revision_no", "-pk")
+        queryset = queryset.annotate(
+            pending_revision_pk=Subquery(pending.values("pk")[:1]),
+            pending_revision_no=Subquery(pending.values("revision_no")[:1]),
         )
         try:
             after = int(self.request.GET.get("after", ""))
