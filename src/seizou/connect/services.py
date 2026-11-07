@@ -21,10 +21,13 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
+import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -63,6 +66,8 @@ MESSAGE_OUT_OF_TOLERANCE = "送った時刻が 5 分の幅の外です。時計�
 MESSAGE_SIGNATURE_MISMATCH = (
     "登録した取引先の署名と合いません。つながりの登録と鍵を確かめてください。"
 )
+#: 受ける向きの 2 つ以上の取引先の鍵で署名が合った (同じ鍵を 2 社に使っている設定の誤り。どの取引先かは出さない)
+MESSAGE_SAME_SECRET = "同じ鍵で署名の合う取引先が 2 つ以上あります。つながりの鍵を取引先ごとに分けてください。"
 MESSAGE_INVALID_ID = "番号 (webhook-id) が uuid の形ではありません。"
 MESSAGE_INVALID_BODY = "本文が JSON の形ではありません。"
 #: 知らない種類の通知 ({kind} は本文の kind の字を 40 字で切った物。字でなければ決まった字)
@@ -97,6 +102,7 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
     """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL → 自社の連絡先のメールアドレス → 2 行目。
 
     送る向きで url が空でなければ、URL の形を確かめる。受ける向きの url は空でよい。
+    settings の SEIZOU_CONNECT_PUBLIC_ONLY が真なら、送る向きの URL は https だけを保存できる (訳は _public_only)。
     contact_email (自社の連絡先のメールアドレス) は空でよい。空でなければ 254 字までのメールアドレスの形を見る (受けた字は文に入れない)。
     同じ取引先と向きのつながりが既にあれば断る。exclude_pk は、直すときに自分の行を除くための引数。
     DB の一意の制約は持たない (表を変えないため)。誤りは日本語の文の ValueError。
@@ -116,6 +122,11 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
         raise ValueError(
             f"保存できません。受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
         )
+    if direction == Connection.DIRECTION_SEND and url and _public_only() and urlsplit(url).scheme != "https":
+        # 送る先を外の名前に絞る設定 (_public_only) では、送る向きの URL は https だけ (127.0.0.1・localhost も外さない)。
+        raise ValueError(
+            "保存できません。この置き場は送る先を外の名前に絞る設定なので、受け口の URL は https:// で始まる URL にしてください。"
+        )
     if contact_email and not _email_is_valid(contact_email):
         # 字は括弧の中にそのまま書く (使い方の画面が ast で集め、画面から起きない文の表 core/manual.py の NOT_FROM_SCREEN と比べるため)
         raise ValueError("保存できません。自社の連絡先のメールアドレスが、メールアドレスの形ではありません。例 info@example.jp の形で入れてください。")
@@ -127,6 +138,58 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
         raise ValueError(
             f"保存できません。この取引先との「{label}」のつながりは既にあります。つながりの一覧の行から編集してください。"
         )
+
+
+def _public_only() -> bool:
+    """送る先を外の名前に絞るか。Django の settings の SEIZOU_CONNECT_PUBLIC_ONLY を読む (既定は偽)。
+
+    会社の設定の画面で変えられる SEIZOU の辞書には入れない (画面から守りを外させないため)。
+    真のとき: _check_connection は送る向きの URL を https だけ保存し、_post_signed は送る前に名前を引いて
+    全部の番地が外の番地 (_private_destination) のときだけ送る。偽のときは今のまま (名前を引かない・http を通す)。
+    訳: ログインした人が送る向きの URL を社内の機械や同じ VPS のもう 1 社 (127.0.0.1) に向け、署名つきの本文を POST させないため。既定は今のまま (LAN の中だけで http で開く置き場と社内の PC の名前を通す決め N15・N19 を破らない)。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-5 と確かめ直しの (a)(b)。
+    変えてよい条件 = 本人が既定を真にすると決めたとき。
+    限り: 名前を確かめた後に requests がもう 1 度名前を引くので、その間に名前の向きを変える攻撃 (DNS rebinding) は止めない ((c)。番地を固定する adapter は作らない)。
+    """
+    from django.conf import settings
+
+    return bool(getattr(settings, "SEIZOU_CONNECT_PUBLIC_ONLY", False))
+
+
+def _private_destination(url):
+    """送る先の URL の名前を引き、外の番地でない番地が 1 つでもあれば返事の欄の文を返す。全部が外の番地なら None。
+
+    名前は socket.getaddrinfo で引き、全部の番地を ipaddress の is_global で見る (IPv6 の %scope は外して読む)。
+    名前が無い・引けない・番地が 1 つも無いときは、今の届かない字 (相手につながりません) を返す。
+    番地の値は文に出すが、鍵と本文は出さない。呼び手 (_post_signed) は atomic の外から呼ぶ (R17)。
+    訳: 送る先を外の名前に絞る設定 (_public_only) のとき、社内か手元の番地へ署名つきの本文を送らないため。出所 = エンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-5 と確かめ直しの (a)(b)。
+    変えてよい条件 = 本人が既定を真にすると決めたとき (_public_only と同じ)。
+    """
+    unreachable = "届きません: 相手につながりません。つながりの URL と、相手が立っているかを確かめてください。"
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return unreachable
+    if not parts.hostname:
+        return unreachable
+    try:
+        found = socket.getaddrinfo(parts.hostname, port or 443, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return unreachable
+    if not found:
+        return unreachable
+    for _family, _type, _proto, _name, address in found:
+        text = str(address[0]).split("%", 1)[0]
+        try:
+            public = ipaddress.ip_address(text).is_global
+        except ValueError:
+            public = False
+        if not public:
+            return (
+                f"送っていません: 受け口の URL の名前が社内か手元の番地 ({text}) を指しています。"
+                "つながりの URL を確かめてください。"
+            )
+    return None
 
 
 def _email_is_valid(text):
@@ -179,7 +242,7 @@ def update_connection(connection, partner, url, secret_env, direction, user, *, 
         return locked
 
 
-def receive(raw_body: bytes, headers: Mapping[str, str]):
+def receive(raw_body: bytes, headers: Mapping[str, str], *, remote: str = ""):
     """受け口が受けた注文のデータを確かめ、受信箱に入れる (R11・R12)。
 
     raw_body は受けた本文の bytes (整形しない)。headers は見出しの名前 → 値の mapping。
@@ -193,10 +256,50 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
     本文の kind が self_invoice (仕入明細) なら受信箱に入れず、受注の明細に当てて受けた仕入明細にし、SelfInvoiceReceipt を返す。
     本文の kind が self_invoice_response (仕入明細回答) なら受信箱に入れず、元の仕入明細の明細に答えを書いて SelfInvoiceResponseReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
+    署名は受ける向きの全部のつながりの鍵で確かめ、署名の合う取引先が 2 つ以上なら断る (_signed_partner)。
+    remote は接続元の IP の字 (受け口の view が core.login_guard.client_address で読んで渡す。名前でだけ渡せる)。
+    結果が決まったら、接続元と結果をログ seizou.connect に 1 行書く (_log_receive)。
     """
     msg_id = _header_value(headers, signing.HEADER_ID)
 
-    partner = None
+    partner, verified_id, refused = _signed_partner(raw_body, headers, msg_id)
+    if refused is not None:
+        _log_receive(remote, msg_id, None, refused)
+        return refused
+
+    # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
+    # 返る時に結果を「受けた」か「断った: <理由>」にする。添付を取りに来た要求 (chat_file) は取引の文書でないので残さない。
+    exchange = _exchange_received(partner, verified_id, raw_body)
+    result = _receive_verified(partner, verified_id, raw_body, msg_id)
+    _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
+    _log_receive(remote, msg_id, partner, result)
+    return result
+
+
+def _log_receive(remote: str, msg_id, partner, result) -> None:
+    """受け口の結果を 1 行ログ seizou.connect に書く (接続元・webhook-id・取引先の pk・結果)。
+
+    取引先が決まらない (署名の前に断った) ときの pk は「-」、接続元が空なら「-」。結果は「受けた」か「断った: <理由>」。
+    断ったは warning、受けたは info。本文と鍵の値は書かない (webhook-id は見出しの字なので %r で書く)。
+    """
+    who = partner.pk if partner is not None else "-"
+    if isinstance(result, str):
+        logger.warning("受け口の記録: 接続元 %s webhook-id=%r 取引先 %s 結果 断った: %s", remote or "-", msg_id, who, result)
+    else:
+        logger.info("受け口の記録: 接続元 %s webhook-id=%r 取引先 %s 結果 受けた", remote or "-", msg_id, who)
+
+
+def _signed_partner(raw_body: bytes, headers: Mapping[str, str], msg_id):
+    """受ける向きの全部のつながりの鍵で署名を確かめ、署名の合う取引先を決める (receive が呼ぶ)。
+
+    返す物は (取引先, 確かめた番号, None) か、断ったとき (None, None, 断る理由の文)。
+    鍵が未設定のつながりと、鍵の形が読めない (短い鍵を含む) つながりは、名前だけをログに出して飛ばす。
+    鍵の見出しの誤り (_HEADER_ERRORS) は鍵と関係なく決まるので、1 つ目に出たところで断る (今までの形のまま)。
+    署名の合う取引先が無ければ MESSAGE_SIGNATURE_MISMATCH、2 つ以上なら MESSAGE_SAME_SECRET で断る (どの取引先かは文に出さない)。
+    訳: 1 つの鍵を 2 社の受ける向きに使うと、注文が別の取引先の物として入るため (後から来る種類は元の注文と取引先を比べるので断られる)。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-2 と確かめ直しの (d)(f)。
+    変えてよい条件 = 1 つの取引先に複数の受ける向きのつながりを持たせると決めたとき。
+    """
+    matched = {}
     verified_id = None
     for connection in Connection.objects.filter(
         direction=Connection.DIRECTION_RECEIVE
@@ -211,27 +314,24 @@ def receive(raw_body: bytes, headers: Mapping[str, str]):
             verified_id = signing.verify(secret, headers, raw_body)
         except signing.SignatureError as exc:
             if exc.reason in _HEADER_ERRORS:
-                return _refuse(_HEADER_ERRORS[exc.reason], msg_id)
+                return None, None, _refuse(_HEADER_ERRORS[exc.reason], msg_id)
             continue
         except ValueError:
-            # 鍵の符号化が壊れている。送り手でなく設定の誤りなので、名前だけを出して次へ。
+            # 鍵の符号化が壊れているか、長さが外れている。送り手でなく設定の誤りなので、名前だけを出して次へ。
             logger.warning(
                 "受け口: 鍵の形が読めないつながりを飛ばした (環境変数 %s。設定の誤り)",
                 connection.secret_env,
             )
             continue
-        partner = connection.partner
-        break
+        # 最初に合った物で止めず、全部のつながりを確かめる (同じ鍵の 2 社を見つけるため)。
+        matched.setdefault(connection.partner_id, connection.partner)
 
-    if partner is None:
-        return _refuse(MESSAGE_SIGNATURE_MISMATCH, msg_id)
-
-    # 署名が通って取引先が決まった物は、送り合った記録に受けたとおりの字で残す (署名の合わない物は取引のデータでないので残さない)。
-    # 返る時に結果を「受けた」か「断った: <理由>」にする。添付を取りに来た要求 (chat_file) は取引の文書でないので残さない。
-    exchange = _exchange_received(partner, verified_id, raw_body)
-    result = _receive_verified(partner, verified_id, raw_body, msg_id)
-    _exchange_result(exchange, f"断った: {result}" if isinstance(result, str) else "受けた")
-    return result
+    if not matched:
+        return None, None, _refuse(MESSAGE_SIGNATURE_MISMATCH, msg_id)
+    if len(matched) > 1:
+        return None, None, _refuse(MESSAGE_SAME_SECRET, msg_id)
+    (partner,) = matched.values()
+    return partner, verified_id, None
 
 
 def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
@@ -619,6 +719,8 @@ MESSAGE_CHAT_OTHER_PARTNER = "会話の元の注文は、その取引先との�
 CHAT_BODY_MAX = 2000
 #: 会話の送り手の立場 (buyer = 発注した側 / supplier = 受けた側)
 CHAT_ROLES = ("buyer", "supplier")
+#: 会話の言葉 1 つに付けられる添付の数の上限 (送る post_chat_message と受ける _chat_file_items で同じ数を使う。本人の決め CHAT-3)
+MAX_CHAT_FILES = 1
 #: 会話の添付を取りに行く要求の断り (送る側へ返す文。その添付の有る無しを、ほかの取引先に教えない)
 MESSAGE_CHAT_FILE_SHAPE = "添付の要求の形が読めません。file_id を字で送ってください。"
 MESSAGE_CHAT_FILE_UNKNOWN = "その添付はありません。"
@@ -1238,13 +1340,18 @@ def _chat_file_items(value):
 
     各要素は id (uuid の字)・name (1〜100 字で、拡張子が添付ファイルの形式の表にある)・size (1 から 20MB までの整数。bool は外す)・
     sha256 (16 進の 64 字) を見る。mime は読まず、自社の表 (attachments.services.ALLOWED) の値を入れる。同じ id が 2 つあれば読めない物にする。
+    並びが MAX_CHAT_FILES (送る側の上限と同じ 1 つ) より長ければ、要素を見る前に読めない物にする。
     返す物は ChatFile の欄の辞書の並び (file_id・name・mime・size・sha256)。
+    訳: 送る側は添付を 1 つまでしか付けないので、それより多い並びを受けて行と比べる手間 (同じ id の確かめは数の 2 乗) を増やさないため。出所 = 本人の決め CHAT-3 (送る側の 1 つまで) とエンタープライズ化の調べ 第一弾の指摘 chk-b2b-msg-4。
+    変えてよい条件 = 送る側の上限を変えるとき (同じ定数 MAX_CHAT_FILES を使う)。
     """
     from seizou.attachments import services as attachment_services
 
     if value is None:
         return []
     if not isinstance(value, list):
+        return None
+    if len(value) > MAX_CHAT_FILES:
         return None
     items = []
     for raw in value:
@@ -2246,8 +2353,12 @@ def _post_signed(connection, message_id, raw, **options):
 
     返す物は (返事, 送れなかった訳)。送れたら (requests の返事, None)、送れなかったら (None, (日本語の文, 種類))。
     種類は unreachable (届かない) / no_secret / bad_secret。鍵が無い・鍵の形が違うときは送らない。鍵の値・本文・見出しの値を返す文に入れない。
-    options は requests.post に渡す (待ちの timeout と、添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
+    options は requests.post に渡す (待ちの timeout と、返事の本文と添付の中身を少しずつ読む stream)。呼び手は transaction.atomic の外から呼ぶ (R17)。
     _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
+    3xx の転送には付いて行かない (allow_redirects=False)。3xx の返事はそのまま呼び手へ返し、呼び手が受け取ったにしない。
+    送る先を外の名前に絞る設定 (_public_only) が真なら、送る前に名前を引き、社内か手元の番地を指すときは送らない (unreachable)。
+    訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
+    変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
     """
     # 試験が requests.post を差し替えるため、関数の中で import する。
     import requests
@@ -2268,11 +2379,18 @@ def _post_signed(connection, message_id, raw, **options):
         )
         return None, (reply, "bad_secret")
 
+    if _public_only():
+        # 送る先を外の名前に絞る設定のときだけ、送る前に名前を引く (偽のときは引かない = 今のまま)。
+        private = _private_destination(connection.url)
+        if private is not None:
+            return None, (private, "unreachable")
+
     try:
         answer = requests.post(
             connection.url,
             data=raw,
             headers={**signed, "Content-Type": "application/json"},
+            allow_redirects=False,
             **options,
         )
     except requests.RequestException as exc:
@@ -2296,23 +2414,112 @@ def _deliver(connection, message_id, raw) -> tuple[str, str]:
     return result
 
 
+#: 送る口が返事の本文を読む上限 (bytes)。受け口の返事は小さな JSON なので、超える物は読めない返事にする
+ANSWER_MAX_BYTES = 64 * 1024
+#: 送る口の全体の締切 (秒。送り始めから返事の本文を読み終わるまで)。1 回の待ちの timeout=10 とは別
+DELIVER_DEADLINE_SECONDS = 30
+#: 会話の添付を取りに行く口の全体の締切 (秒。要求を送り始めてから中身を読み終わるまで)
+FETCH_DEADLINE_SECONDS = 120
+
+
+class _AnswerTimeout(Exception):
+    """返事の本文を読む途中で、全体の締切を過ぎた (_read_answer が投げ、_deliver_result が届かない字にする)。"""
+
+
+def _read_answer(answer, started):
+    """stream=True で受けた返事の本文を、最初の ANSWER_MAX_BYTES だけ iter_content で読む。
+
+    返す物は読んだ bytes か、上限を超えたら None。started (time.monotonic の値) から DELIVER_DEADLINE_SECONDS を
+    過ぎたら読むのをやめて _AnswerTimeout を投げる。close は呼び手 (_deliver_result) が必ず呼ぶ。
+    """
+    body = bytearray()
+    for chunk in answer.iter_content(chunk_size=8 * 1024):
+        body.extend(chunk)
+        if len(body) > ANSWER_MAX_BYTES:
+            return None
+        if time.monotonic() - started > DELIVER_DEADLINE_SECONDS:
+            raise _AnswerTimeout
+    return bytes(body)
+
+
+def _json_or_none(body: bytes):
+    """返事の本文の bytes を JSON として読む。読めなければ None。"""
+    try:
+        return json.loads(body.decode("utf-8"))
+    except ValueError:
+        return None
+
+
+def _close_answer(answer) -> None:
+    """stream=True で受けた返事を閉じる (つながりを返す)。close の無い物は何もしない。"""
+    close = getattr(answer, "close", None)
+    if callable(close):
+        close()
+
+
 def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
-    """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。"""
-    answer, failed = _post_signed(connection, message_id, raw, timeout=10)
+    """_post_signed で送り、返事を (日本語の文, 種類) にする (_deliver の中身)。
+
+    3xx は受け取ったにせず unreadable (相手の受け口の URL が変わっている)。200 は本文の JSON が受け取った印
+    (_is_received_mark) のときだけ received、ほかは unreadable。新しい種類は作らない (呼び手は received だけを見る)。
+    返事は stream=True で受け、200 と 400 の本文は最初の ANSWER_MAX_BYTES (64KB) だけを読む (_read_answer)。
+    64KB を超える本文は unreadable。送り始めから DELIVER_DEADLINE_SECONDS (30 秒) を過ぎたら読むのをやめて unreachable。
+    1 回の待ちの timeout=10 はそのまま。返事は読み終わりに必ず閉じる。
+    訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-1 (11-07。確かめ直し 416 回目)。
+    変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
+    訳: 相手の返事の本文がとても大きいか、少しずつ終わらずに届くと、送る口の thread が止まらず保存の画面も返らないので、本文の上限と全体の締切で読むのをやめる。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-3・connect-6。
+    変えてよい条件 = 未確認 (依頼書に書いていない)。
+    限り: gunicorn の gthread の --timeout が遅い thread を止めないことを前提に置く (未確認)。
+    """
+    # 試験が requests.post を差し替えるため、関数の中で import する (_post_signed と同じ)。
+    import requests
+
+    started = time.monotonic()
+    answer, failed = _post_signed(connection, message_id, raw, timeout=10, stream=True)
     if failed is not None:
         return failed
-    if answer.status_code == 200:
-        return "受け取った", "received"
-    if answer.status_code == 400:
-        # 返事の JSON の message (200 字まで)。読めなければ決まった文。
+    try:
+        status = answer.status_code
+        if 300 <= status < 400:
+            return (
+                f"届きません: 相手の受け口の URL が変わっています (HTTP {status})。つながりの URL を直してください。",
+                "unreadable",
+            )
+        if status not in (200, 400):
+            return f"返事が読めません (HTTP {status})", "unreadable"
         try:
-            refused = answer.json().get("message", "")
-        except (ValueError, AttributeError):
-            refused = ""
+            body = _read_answer(answer, started)
+        except _AnswerTimeout:
+            return (
+                f"届きません: 相手の返事が終わらず、時間切れです ({DELIVER_DEADLINE_SECONDS} 秒)。相手が立っているかを確かめてください。",
+                "unreachable",
+            )
+        except requests.RequestException as exc:
+            return _unreachable_reply(exc), "unreachable"
+        if body is None:
+            return f"返事が読めません (HTTP {status}。本文が {ANSWER_MAX_BYTES // 1024}KB を超えています)", "unreadable"
+        data = _json_or_none(body)
+        if status == 200:
+            if _is_received_mark(data, message_id):
+                return "受け取った", "received"
+            return "返事が読めません (HTTP 200。受け取った印が合いません)", "unreadable"
+        # 400 は返事の JSON の message (200 字まで)。読めなければ決まった文。
+        refused = data.get("message", "") if isinstance(data, dict) else ""
         if not isinstance(refused, str) or not refused:
             refused = "理由が読めません"
         return f"断られた: {refused[:200]}", "rejected"
-    return f"返事が読めません (HTTP {answer.status_code})", "unreadable"
+    finally:
+        _close_answer(answer)
+
+
+def _is_received_mark(data, message_id) -> bool:
+    """200 の返事の本文 (JSON を読んだ物) が受け取った印か。status が received で、id があればそれが送った番号の字と同じ。
+
+    id の無い {"status": "received"} は受け取ったにする (今までの返事の形と、既にある試験の偽物の既定の返事のため)。
+    """
+    if not isinstance(data, dict) or data.get("status") != "received":
+        return False
+    return "id" not in data or data["id"] == str(message_id)
 
 
 # ---------------------------------------------------------------- 送り合った記録 (決め HIST-1 の edi・C106-1)
@@ -2824,7 +3031,7 @@ def post_chat_message(target, body, user, file=None):
 
     - 会話が使えない取引 (chat_peer の reason) は「送れません。」+ 訳の ValueError で、行を作らず HTTP を送らない。
     - 言葉と添付の両方が空 (言葉は空白だけも空)・言葉が 2000 字を超えるときも ValueError。受けた字は変えずに残す (送ったとおりに残すため。画面の欄の前後の空白は form が落とす)。
-    - 添付 (file) は 1 つまで。形式と大きさは今の添付と同じ決まり (_check_chat_file)。中身の印 (SHA-256) を作り、言葉の行と同じ atomic で
+    - 添付 (file) は 1 つまで (MAX_CHAT_FILES。受け口も同じ数で断る)。形式と大きさは今の添付と同じ決まり (_check_chat_file)。中身の印 (SHA-256) を作り、言葉の行と同じ atomic で
       ChatFile の行を作ってファイルを storage に置く (attachments.services.add_attachment と同じ形)。送る JSON には項目だけを載せる。
     - 行は atomic の中で作り (返事の欄は「送っています」)、atomic の外で相手へ送る (R17)。返事の字を書き、届いたときだけ相手に届いた日時を書く。
     - 届かなくても例外にしない (書いた言葉は残る)。返す物の saved_message が知らせの字、届かなければ saved_level = "warning"。
@@ -2930,10 +3137,13 @@ def fetch_chat_file(chat_file, user):
     - 要求は atomic の外 (R17)。本文は {"id", "kind": "chat_file", "file_id"} を署名して、相手の受け口 (自社が登録した接続の URL) へ POST する
       (取りに行く先は「相手の受け口 + 添付の識別 ID」の組。届いた字に書かれた URL へは行かない = ChatFile の docstring)。
       待ちは、つなぐまで 10 秒・読むのは 60 秒。中身は少しずつ読み、20MB (attachments.services.MAX_BYTES) を超えたら読むのをやめる。
+      要求を送り始めてから FETCH_DEADLINE_SECONDS (120 秒) を過ぎたら読むのをやめ、「まだ受け取っていない: 届きません: …時間切れ…」を書く。
     - 200 で、読んだ大きさと中身の印 (SHA-256) が相手の書いた値と同じときだけファイルを置き「受け取った」を書く。ほかは「まだ受け取っていない: <理由>」。
     - 受け口の中では取りに行かない (送り手は 10 秒で返事を待つのをやめるため)。受け手の画面が開いた時と「取り直す」で呼ぶ。
     訳: 相手の seizou に置いた添付を、署名つきの要求で取りに行って自社の側にも残し、中身が相手の書いた大きさと印に合う時だけ受け取ったとするため。出所 = 本人の決め (CHAT-3 = a「推奨で」11-06 23:5x) と中小企業共通 EDI 本編 6.4.1 の URL 記載方式。
     変えてよい条件 = 本人が添付の方式を決め直したとき。
+    訳: 相手が中身を少しずつ終わらずに送ると、取りに行く画面の thread が止まらないので、全体の締切で読むのをやめる。出所 = エンタープライズ化の調べ 第一弾の指摘 connect-3・connect-6。
+    限り: gunicorn の gthread の --timeout が遅い thread を止めないことを前提に置く (未確認)。
     """
     import hashlib
 
@@ -2959,6 +3169,7 @@ def fetch_chat_file(chat_file, user):
     request_id = uuid.uuid4()
     raw = _encode({"id": str(request_id), "kind": "chat_file", "file_id": str(current.file_id)})
     # R17: ここは atomic の外。requests.post を呼ぶのは _post_signed の 1 か所。
+    started = time.monotonic()
     answer, failed = _post_signed(connection, request_id, raw, timeout=(10, 60), stream=True)
     if failed is not None:
         return _write_fetch(current, f"まだ受け取っていない: {failed[0]}")
@@ -2978,6 +3189,11 @@ def fetch_chat_file(chat_file, user):
             content.extend(chunk)
             if len(content) > attachment_services.MAX_BYTES:
                 break
+            if time.monotonic() - started > FETCH_DEADLINE_SECONDS:
+                return _write_fetch(
+                    current,
+                    f"まだ受け取っていない: 届きません: 相手の返事が終わらず、時間切れです ({FETCH_DEADLINE_SECONDS} 秒)。取り直してください。",
+                )
     finally:
         close = getattr(answer, "close", None)
         if callable(close):

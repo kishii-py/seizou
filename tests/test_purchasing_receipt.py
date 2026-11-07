@@ -32,12 +32,22 @@ class FakeResponse:
     def json(self):
         return self._data
 
+    def iter_content(self, chunk_size=1):
+        import json
+
+        body = json.dumps(self._data, ensure_ascii=False).encode("utf-8")
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
+
+    def close(self):
+        pass
+
 
 class FakePost:
     def __init__(self):
         self.calls = 0
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         self.calls += 1
         return FakeResponse(200, {"status": "received"})
 

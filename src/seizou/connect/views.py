@@ -16,6 +16,7 @@ from django.http import FileResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from seizou.core import login_guard
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
 from seizou.masters.services import active_partners
 
@@ -41,7 +42,8 @@ def receive_order(request):
     会話の添付を取りに来た要求 (kind = chat_file) で、返してよい添付 (services.ChatFileGrant) なら、200 でファイルの中身を返す
     (アクセス制御は services._receive_chat_file_request。署名の確かめは receive。ファイル名は元の名前、形式は表の値)。
     """
-    result = services.receive(request.body, request.headers)
+    # 接続元は core の読み方 (REMOTE_ADDR か、設定した見出し) を使い、受け口の記録の 1 行に書く。
+    result = services.receive(request.body, request.headers, remote=login_guard.client_address(request))
     if isinstance(result, str):
         return JsonResponse({"status": "rejected", "message": result}, status=400)
     if isinstance(result, services.ChatFileGrant):

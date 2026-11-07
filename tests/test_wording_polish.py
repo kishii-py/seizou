@@ -441,12 +441,20 @@ class _FakeResponse:
     def json(self):
         return self._data
 
+    def iter_content(self, chunk_size=1):
+        body = json.dumps(self._data, ensure_ascii=False).encode("utf-8")
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
+
+    def close(self):
+        pass
+
 
 class _FakePost:
     def __init__(self, reply):
         self.reply = reply
 
-    def __call__(self, url, data=None, headers=None, timeout=None):
+    def __call__(self, url, data=None, headers=None, timeout=None, **kwargs):
         return self.reply
 
 

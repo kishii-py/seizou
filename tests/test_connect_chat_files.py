@@ -52,8 +52,9 @@ class FakeResponse:
         self.closed = False
 
     def iter_content(self, chunk_size=1):
-        for start in range(0, len(self.content), chunk_size):
-            yield self.content[start : start + chunk_size]
+        body = self.content or (b"" if self._data is None else json.dumps(self._data, ensure_ascii=False).encode("utf-8"))
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
 
     def json(self):
         if self._data is None:
@@ -72,7 +73,7 @@ class RoundTrip:
         self.raises = raises
         self.calls = []
 
-    def __call__(self, url, data=None, headers=None, timeout=None, stream=False):
+    def __call__(self, url, data=None, headers=None, timeout=None, stream=False, **kwargs):
         self.calls.append(
             {"url": url, "data": data, "timeout": timeout, "stream": stream, "in_atomic_block": db_connection.in_atomic_block}
         )
