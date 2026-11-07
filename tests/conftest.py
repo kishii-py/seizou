@@ -6,11 +6,15 @@
 
 置き場の一覧 (seizou.site_registry。seizou new と seizou ai-docs が登録する) の置き場 SEIZOU_HOME は、全部の試験で一時のフォルダにする
 (本物の ~/.seizou/sites.json に書かない)。module の fixture で seizou new を回す試験より先に効くよう、session の fixture にする。
+
+AI の呼び出しの上限 (seizou.core.ai) の回数の数 (一時の置き場のファイル) と同時の数の semaphore も、試験ごとに前と後で捨てる
+(1 回の pytest の中で同じ利用者の数を貯めて、上限で断られないように)。
 """
 
 import pytest
 from django.contrib.auth import get_user_model
 
+from seizou.core import ai
 from seizou.core import conf
 from seizou.core import calendar
 
@@ -31,6 +35,13 @@ def fresh_setting_cache():
     yield
     conf.reset_cache()
     calendar.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def fresh_ai_limits():
+    ai.reset_limits()
+    yield
+    ai.reset_limits()
 
 
 @pytest.fixture
