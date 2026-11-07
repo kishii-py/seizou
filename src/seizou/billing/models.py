@@ -5,7 +5,7 @@
 支払期日も作ったときに計算して残す (後で取引先の支払の欄を直しても、出した請求書の期日は変わらない)。
 文字数の上限は固定 (識別子 35・コード 10)。
 書くときは billing.services を通す。
-入金 (Payment) は別の表。残と入金の状態は Invoice の method で出す (列に持たない)。
+入金 (Payment) は別の表。残と入金の状態は Invoice の method で出す (列に持たない)。合計が 0 以下の請求書は入金済み。
 """
 
 from decimal import Decimal
@@ -66,7 +66,11 @@ class Invoice(models.Model):
         return self.total - self.paid_total()
 
     def payment_status(self) -> str:
-        """入金の状態。入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。"""
+        """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め C107-4)。
+        ほかは、入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。
+        """
+        if self.total <= 0:
+            return self.PAYMENT_PAID
         if self.paid_total() == 0:
             return self.PAYMENT_UNPAID
         if self.balance() > 0:
