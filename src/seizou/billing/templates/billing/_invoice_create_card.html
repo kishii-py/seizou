@@ -103,7 +103,7 @@
         <tr class="align-top" data-label-pick-qty="{{ row.qty_text }}"{% if row.amount_text %} data-label-pick-amount="{{ row.amount_text }}"{% endif %}>
           <td><label class="flex cursor-pointer items-center">{{ row.box.tag }}<span class="sr-only">{{ row.box.choice_label }}</span></label></td>
           <td class="whitespace-nowrap font-mono">{{ row.shipment.shipment_no }}</td>
-          <td class="whitespace-nowrap">{{ row.shipment.shipped_at|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap">{{ row.shipment.shipped_at|date:"Y-m-d" }}{% with day=row.shipment.shipped_at|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap">{{ row.shipment.order_line.order.customer }}</td>
           <td class="whitespace-nowrap">{{ row.shipment.order_line.item }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>

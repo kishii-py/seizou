@@ -19,7 +19,7 @@ from decimal import Decimal
 from django import template
 from django.apps import apps
 
-from seizou.core.templatetags.seizou_tags import yen
+from seizou.core.templatetags.seizou_tags import weekday_ja, yen
 
 from ..models import OrderLine
 
@@ -87,14 +87,14 @@ def order_total(order) -> Decimal:
 def order_head_chips(order, hide_money=False) -> list[dict]:
     """受注の詳細の頭の要点の札 (N163)。札 = {"label", "value"} (値は字)。土台の core/detail.html が head_chips を読んで題の横に並べる。
 
-    得意先 (名前)・一番早い納期 (明細の納期の一番早い日。無ければ札を出さない)・合計 (明細の金額の合計。頭に ¥。明細があり、
+    得意先 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 決め N132。無ければ札を出さない)・合計 (明細の金額の合計。頭に ¥。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (order_aside) は残す (札はその要約)。
     """
     lines = list(order.lines.all())
     dues = sorted(line.due_date for line in lines if line.due_date)
     chips = [{"label": _label(order, "customer"), "value": order.customer.name}]
     if dues:
-        chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d}"})
+        chips.append({"label": "一番早い納期", "value": f"{dues[0]:%Y-%m-%d} ({weekday_ja(dues[0])})"})
     if lines and not hide_money:
         chips.append({"label": "合計", "value": yen(sum((line.amount for line in lines), Decimal("0")))})
     return chips
