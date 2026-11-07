@@ -372,9 +372,9 @@ body > .ts-dropdown [data-select-create]:hover {
    (C21 の形を C113 で変えた。決め C21-1 = e (11-06)・UX-SAVEBAR-1 = c (11-07))。
    形: 本文の列の左右いっぱい (左のメニューの右の端から窓の右の端まで)・上に線 1 本・影と角の丸みは無し・地は上の帯の標準と同じ base-100
    (人ごとの表示の設定で上の帯に色を選んだ人でも、下の帯は base-100 のまま。上の [data-seizou-header] の決まりは下の帯に当てない)・
-   左の余白も上の帯と同じ (px-4 lg:px-6 = 16px・24px)。
-   右の 64px は右下の「AI に質問」の丸 (assistant/_panel.html。右から 24px・幅 40px) と保存のボタンを重ねない分で、丸の無い画面でも
-   同じ 64px を空ける (class を分けない。決め C37 で一度 24px にしたが、本人の決め 11-07 09:3x で右下の丸を戻したので 64px に戻した)。
+   左右の余白も上の帯と同じ (px-4 lg:px-6 = 16px・24px)。右下の「AI に質問」の丸 (assistant/_panel.html) は、この帯がある画面では
+   帯の上へ上げる (下の決まり。本人の報告 11-07 20:3x「ボタンと AI がくっついている」→ 20:4x「進めて」) ので、右に丸の分を空けない
+   (決め C37 で 24px、本人の決め 11-07 09:3x で丸を戻して 64px にしていた分)。
    印は下の行の固定の class seizou-save-row (core/_form_card.html と、それを写した入力のカード・受注・説明書の確かめと編集・
    表示の設定の画面の全体。数は git grep で数える)。小窓の形には付けない。
    行は form の最後の子のまま置く (保存のボタンが form の送るボタンの最後の物で、Ctrl+Enter が押す物 = core/_enter_guard.html)。
@@ -397,14 +397,14 @@ body > .ts-dropdown [data-select-create]:hover {
   z-index: 10;
   background: var(--color-base-100);
   margin: 0;
-  padding: 12px 64px 12px 16px;
+  padding: 12px 16px;
   border-top: 1px solid var(--color-base-300);
   row-gap: 8px;
 }
 @media (min-width: 64rem) {
   .seizou-save-row {
     left: 16rem;
-    padding: 12px 64px 12px 24px;
+    padding: 12px 24px;
   }
 }
 .seizou-save-slot {
@@ -457,6 +457,22 @@ form:has(> .seizou-save-row):not(:has(> :not(input, .seizou-save-row))) {
 /* Tab で進んだ欄を、貼り付けた行の上まで送る (96px は見本の 1280×720 と 390×844 で確かめた値)。 */
 html:has(.seizou-save-row) {
   scroll-padding-bottom: 96px;
+}
+/* 右下の「AI に質問」の丸 (assistant/_panel.html の #assistant-root。窓に対して下から 24px・右から 24px) は、下の帯がある画面では帯の上へ上げる
+   (本人の報告 11-07 20:3x: 帯の「保存」と丸が隣り合い、送っても離れない → 20:4x「進めて」)。上げる高さ = 上の main の下の余白に足した帯の高さ
+   (141px・113px・65px = 幅ごとの帯の最も高い形) + 16px。開いた窓 (丸の上に並ぶ) も一緒に上がる。id で選ぶので Tailwind の bottom-6 より強い。 */
+html:has(.seizou-save-row) #assistant-root {
+  bottom: calc(141px + 1rem);
+}
+@media (min-width: 640px) {
+  html:has(.seizou-save-row) #assistant-root {
+    bottom: calc(113px + 1rem);
+  }
+}
+@media (min-width: 64rem) {
+  html:has(.seizou-save-row) #assistant-root {
+    bottom: calc(65px + 1rem);
+  }
 }
 /* 選んでいない tab の字 (C49 の 1)。daisyUI の既定は地の字の 50% で、白の地との比が 3.40 と足りない。選ぶ欄の候補の下の段の
    灰の字と同じ 60% にする (白の地で 4.66・灰の地で 4.59)。選び方は daisyUI と同じ字で、選んだ tab と指を乗せた tab は除く
