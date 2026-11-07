@@ -233,6 +233,7 @@ POST_FUNCTION_ACTIONS = {
 #: POST の関数の view のうち、権限の表の action を通さない口 → 理由
 POST_FUNCTION_WITHOUT_ACTION = {
     "seizou.core.settings_screen.setting_clear": "設定の門 (settings_denied = アカウント管理の権限)",
+    "seizou.core.settings_screen.mail_test": "設定の門 (settings_denied = アカウント管理の権限)",
     "seizou.connect.views.receive_order": "取引先の受け口 (ログインの外。署名の確かめ = R12)",
     "seizou.assistant.views.ask": "会話の控え (session) だけ",
     "seizou.assistant.views.clear": "会話の控え (session) だけ",

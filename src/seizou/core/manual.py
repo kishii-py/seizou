@@ -221,6 +221,11 @@ NOT_FROM_SCREEN = (
         "会話の書く欄は form の max_length で 2000 字まで。超えた字は form が止める (connect/forms.py の ChatMessageForm)。",
     ),
     (
+        "connect",
+        "保存できません。自社の連絡先のメールアドレスが、メールアドレスの形ではありません。例 info@example.jp の形で入れてください。",
+        "つながりの form の欄は model のメールアドレスの欄 (254 字まで) で、形の違う字と長い字は form が止める (connect/forms.py の ConnectionForm)。",
+    ),
+    (
         "core",
         "保存できません。… は画面からは変えられません。答えの YAML の settings に書いてください。",
         "設定の変更の画面は、画面から変えない鍵を 404 にする (core/settings_screen.py の SettingUpdateView.dispatch)。",
@@ -239,6 +244,36 @@ NOT_FROM_SCREEN = (
         "core",
         "保存できません。hidden_fields は項目の名前の並びにしてください (入れた値: …)。",
         "使わない項目は複数の check で、form が字の並びを作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方は、host・port・security・user・from・from_name・site_url の鍵を持つ辞書にしてください。",
+        "メールの送り方の変更の画面は 7 つの欄で、form が 7 つの鍵の辞書を作る (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「ポート」は 1〜65535 の整数にしてください。",
+        "ポートの欄は整数の欄で、1〜65535 の外は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「暗号化の方式」は starttls・ssl・none のどれかにしてください。",
+        "暗号化の方式は丸の選択で、選べる値の外は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「アカウント」は 254 字までにしてください。",
+        "アカウントの欄は 254 字までで、長い字は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「差出人」がメールアドレスの形ではありません。例 notice@example.jp の形で入れてください。",
+        "差出人の欄はメールアドレスの欄で、形の違う字と長い字は form が止める (core/forms.py の SettingForm)。",
+    ),
+    (
+        "core",
+        "保存できません。メールの送り方の「差出人の名前」は、改行の無い 100 字までにしてください。",
+        "差出人の名前の欄は 100 字までの 1 行の欄で、長い字は form が止め、改行は打てない (core/forms.py の SettingForm)。",
     ),
     (
         "masters",

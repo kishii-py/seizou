@@ -21,6 +21,8 @@ class Connection(models.Model):
     """つながり。取引先ごとの、相手の受け口と鍵の置き場の名前と向き。
 
     同じ取引先に、送る向きと受ける向きの 2 行を持ってよい。
+    contact_email は自社の連絡先のメールアドレス。この取引先から会話が届いたときの知らせの宛先に使う (受ける向きの行の値を先に見て、空なら送る向きの行の値)。
+    項目は中小企業共通 EDI の連絡先／電子メール (連絡先クラスの電子メールアドレス = 国連 CEFACT 共通辞書 UN01005858。注文の発注者メールアドレス・受注者メールアドレス) を元にした。今は取引先へ送らない (送る JSON に入れない)。
     """
 
     DIRECTION_SEND = "send"
@@ -41,6 +43,8 @@ class Connection(models.Model):
     # 環境変数の名前だけを持つ。値は会社のプロジェクトの .env に置く。
     secret_env = models.CharField("鍵の置き場の名前", max_length=100)
     direction = models.CharField("向き", max_length=10, choices=DIRECTION_CHOICES)
+    # 254 字はメールアドレスの長さの上限 (Django の EmailField の既定)。connect の字数の決まり (識別子 35・名称 100・備考 500) の外の形。EDI は字数を決めない
+    contact_email = models.EmailField("自社の連絡先のメールアドレス", max_length=254, blank=True)
 
     class Meta:
         verbose_name = "つながり"

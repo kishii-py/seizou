@@ -12,6 +12,7 @@
 - 出荷の後、send_shipping_notice が出荷の知らせを相手へ送り、受け口は kind が shipping_notice の物を発注の明細に 1 回だけ当てる。
 - 受注と発注の 1 件ごとの会話 (C104): post_chat_message が言葉を残して相手へ送り、受け口は kind が chat_message の物を元の注文に 1 回だけ結ぶ。
   会話は中小企業共通 EDI に無い seizou どうしだけの種類。言葉を直す関数と消す関数は作らない (ChatMessage の docstring)。
+- 会話の言葉を受けたら、取引先のつながりの自社の連絡先のメールアドレスへ core.mail で知らせる (行を作った後の atomic の外。送れなくても受ける)。
 - 受信した注文の入口は 2 つ (直接 = 受け口 / 読み取り = intake の見張り)。読み取りの行は注文回答と出荷の知らせを相手へ送らない (相手は seizou とつながっていない)。差出人の確認待ち (取引先の空の行) は choose_sender で得意先を選んでから承認する。
 """
 
@@ -86,12 +87,14 @@ def _url_is_valid(url):
     return parts.scheme in ("http", "https") and bool(parts.hostname)
 
 
-def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
-    """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL → 2 行目。
+def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, contact_email=""):
+    """つながりの値を確かめる (登録と編集で同じ)。見る順は 向き → 鍵の置き場の名前 → URL → 自社の連絡先のメールアドレス → 2 行目。
 
     送る向きで url が空でなければ、URL の形を確かめる。受ける向きの url は空でよい。
+    contact_email (自社の連絡先のメールアドレス) は空でよい。空でなければ 254 字までのメールアドレスの形を見る (受けた字は文に入れない)。
     同じ取引先と向きのつながりが既にあれば断る。exclude_pk は、直すときに自分の行を除くための引数。
     DB の一意の制約は持たない (表を変えないため)。誤りは日本語の文の ValueError。
+    訳: 知らせのメールが届かない形のアドレスを残さないため。出所 = AI の案。変えてよい条件 = 1 つのつながりに複数のアドレスを持たせる時。
     """
     if direction not in _DIRECTIONS:
         raise ValueError(
@@ -107,6 +110,9 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
         raise ValueError(
             f"保存できません。受け口の URL {url!r} が URL の形ではありません。http:// か https:// で始まる URL にしてください。"
         )
+    if contact_email and not _email_is_valid(contact_email):
+        # 字は括弧の中にそのまま書く (使い方の画面が ast で集め、画面から起きない文の表 core/manual.py の NOT_FROM_SCREEN と比べるため)
+        raise ValueError("保存できません。自社の連絡先のメールアドレスが、メールアドレスの形ではありません。例 info@example.jp の形で入れてください。")
     same = Connection.objects.filter(partner=partner, direction=direction)
     if exclude_pk is not None:
         same = same.exclude(pk=exclude_pk)
@@ -117,32 +123,52 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None):
         )
 
 
-def register_connection(partner, url, secret_env, direction, user):
+def _email_is_valid(text):
+    """自社の連絡先のメールアドレスの形を見る。字で、254 字まで、Django の validate_email が通る。"""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+
+    if not isinstance(text, str) or len(text) > Connection._meta.get_field("contact_email").max_length:
+        return False
+    try:
+        validate_email(text)
+    except ValidationError:
+        return False
+    return True
+
+
+def register_connection(partner, url, secret_env, direction, user, *, contact_email=""):
     """つながりを登録する。secret_env は鍵を入れる環境変数の名前で、値は受け取らない。
 
     向きは send (送る) か receive (受ける)。確かめは _check_connection。
+    contact_email (自社の連絡先のメールアドレス) は名前でだけ渡せる (今の呼び手は位置の引数で呼ぶため)。
     誤りは日本語の文の ValueError。
     """
-    _check_connection(partner, url, secret_env, direction)
+    _check_connection(partner, url, secret_env, direction, contact_email=contact_email)
     with transaction.atomic():
         return Connection.objects.create(
-            partner=partner, url=url, secret_env=secret_env, direction=direction
+            partner=partner, url=url, secret_env=secret_env, direction=direction, contact_email=contact_email
         )
 
 
-def update_connection(connection, partner, url, secret_env, direction, user):
+def update_connection(connection, partner, url, secret_env, direction, user, *, contact_email=None):
     """つながりを直す。引数は register_connection にそろえ、対象を先頭に置く (01 の 10.1)。
 
     確かめは登録と同じ。鍵の値は受け取らない。
+    contact_email は名前でだけ渡せる。None なら今の値のまま (位置の引数で呼ぶ今の呼び手が値を消さないように)、字なら確かめて書く。
     user は記録のために受ける (記録の列がまだ無いので、今は受けるだけ)。返す物は取り直した Connection。
     """
-    _check_connection(partner, url, secret_env, direction, exclude_pk=connection.pk)
+    _check_connection(
+        partner, url, secret_env, direction, exclude_pk=connection.pk, contact_email=contact_email or ""
+    )
     with transaction.atomic():
         locked = Connection.objects.select_for_update().get(pk=connection.pk)
         locked.partner = partner
         locked.url = url
         locked.secret_env = secret_env
         locked.direction = direction
+        if contact_email is not None:
+            locked.contact_email = contact_email
         locked.save()
         return locked
 
@@ -1000,7 +1026,8 @@ def _receive_chat_message(message_id, partner, payload):
     知らない鍵は読み捨てる (後の版が足す鍵のため)。同じ番号の 2 回目は 1 回目の行を返す (R11 の考え。添付の行も作らない)。
     添付 (attachments) は項目だけを受け、言葉の行と同じ atomic で ChatFile の行を作る (ファイルは空。受け手の画面が開いた時に fetch_chat_file が取りに行く)。
     言葉は 2000 字まで。空か空白だけの言葉は、添付が 1 つ以上あるときだけ通す (添付だけの言葉のため)。
-    相手から会話が届いた知らせ (メール) を足すのは、行を作った後の atomic の外 (同じ番号の 2 回目では呼ばない)。
+    行を新しく作った時だけ、行を作った atomic の外で _notify_chat_received を呼び、相手から会話が届いたことをメールで知らせる
+    (同じ番号の 2 回目では呼ばない。送り手が送り直すたびにメールが重ならないように。送れなくても会話は受ける)。
     断る処理を足さない: 取消した発注・断った受信した注文・出荷し終えた受注への言葉も受ける。
     訳: 形の読めない言葉と、その取引先と結び付かない注文への言葉を受けないため (同じ番号の 2 回目は 1 件にまとめる = R11 の考え)。出所 = RULES.md R11・R12 と AI の案 (今の受け口の断りと同じ作り = 出荷の知らせ・検収の受け口。記録 = docs/nights/20261106/N311.md)。添付は項目だけを受け、形と大きさは今の添付と同じ決まり (attachments.services の ALLOWED・MAX_BYTES) で見る (出所 = 本人の決め CHAT-3 の「上限は今の添付と同じ 20MB」)。
     変えてよい条件 = 送る JSON の形を変える時に、両方の会社の seizou を同じ版にしてから。
@@ -1058,6 +1085,7 @@ def _receive_chat_message(message_id, partner, payload):
         target = {"purchase_order": outbox.purchase_order}
 
     # 入れ子の atomic で囲み、制約に当たっても外のトランザクションを壊さない (record_acceptance と同じ)。
+    created = False
     try:
         with transaction.atomic():
             chat = ChatMessage.objects.create(
@@ -1071,9 +1099,103 @@ def _receive_chat_message(message_id, partner, payload):
             )
             for item in files:
                 ChatFile.objects.create(message=chat, **item)
+        created = True
     except IntegrityError:
         chat = ChatMessage.objects.get(message_id=message_id, direction=ChatMessage.DIRECTION_RECEIVED)
+    if created:
+        # 行と添付の行を作った atomic の外で知らせる (サーバーを待つ間、書き込みの鍵を握らないように)
+        _notify_chat_received(chat, partner)
     return ChatReceipt(message_id=message_id, chat_message=chat)
+
+
+#: 会話の知らせのメールに載せる 1 行目の字数の上限 (超えたら切って「…」を付ける)
+CHAT_MAIL_FIRST_LINE_MAX = 100
+
+
+def _chat_first_line(body):
+    """会話の言葉の 1 行目 (空白だけでない最初の行の前後の空白を落とした字)。CHAT_MAIL_FIRST_LINE_MAX 字を超えたら切って「…」。無ければ空の字。"""
+    for line in (body or "").splitlines():
+        text = line.strip()
+        if text:
+            return text if len(text) <= CHAT_MAIL_FIRST_LINE_MAX else text[:CHAT_MAIL_FIRST_LINE_MAX] + "…"
+    return ""
+
+
+def _chat_mail_target(message):
+    """会話の言葉が結ぶ注文の番号の字と、画面の道 (reverse。部品が入っていなければ空の字)。
+
+    自社が発注した側 = 発注の詳細、自社が受けた側 = 受け入れた後は受注の詳細・前は受信した注文の詳細。
+    受け入れる前の番号は、受信した注文の行の payload (相手が送った注文の JSON) の発注番号。字でなければ「受信した注文」だけ。
+    """
+    from django.urls import NoReverseMatch, reverse
+
+    def path(name, pk):
+        try:
+            return reverse(name, args=[pk])
+        except NoReverseMatch:
+            return ""
+
+    if message.purchase_order_id is not None:
+        po = message.purchase_order
+        return f"発注 {po.po_no}", path("purchasing:purchaseorder_detail", po.pk)
+    inbox = message.inbox
+    if inbox.order_id is not None:
+        return f"受注 {inbox.order.order_no}", path("orders:order_detail", inbox.order_id)
+    order_no = inbox.buyer_order_no()
+    label = f"受信した注文 {order_no}" if order_no else "受信した注文"
+    return label, path("connect:inbox_detail", inbox.pk)
+
+
+def _chat_mail_address(partner):
+    """会話の知らせの宛先 (その取引先のつながりの自社の連絡先のメールアドレス 1 つ)。受ける向きの行を先に見て、空なら送る向きの行。無ければ空の字。"""
+    found = dict(
+        Connection.objects.filter(partner=partner).exclude(contact_email="").values_list("direction", "contact_email")
+    )
+    return found.get(Connection.DIRECTION_RECEIVE) or found.get(Connection.DIRECTION_SEND) or ""
+
+
+def _notify_chat_received(message, partner):
+    """相手から届いた会話の言葉を、取引先との接続の自社の連絡先のメールアドレスへメールで知らせる (core.mail.send)。何も返さず、例外を外へ出さない。
+
+    宛先が無い・メールの送り方がまだ・送れない は記録 (logging) だけに書いて戻る (会話の行は残り、受け口は今までどおり受ける)。
+    記録には取引先と言葉の pk だけを書き、アドレスと本文は書かない。atomic の外で呼ぶ (呼ぶのは _receive_chat_message の行を作った後)。
+    件名は「<取引先の名前> から会話が届きました (<番号の字>)」。本文は字だけで、取引先の名前・番号の字・1 行目・リンク・返信しても相手に届かない旨。
+    訳: 相手から会話が届いたことを、seizou を開いていない人も見落とさないため (中小企業共通 EDI 本編 6.4.2 の EDI 文書新着連絡サービスと同じ考え)。宛先は取引先との接続の自社の連絡先のアドレス (受ける向きの行を先に、空なら送る向きの行)。メールには会話の 1 行目と画面へのリンクだけを載せ、2 行目から後と添付は載せない。送れなくても会話は受ける。出所 = 作者の決め (宛先は取引先との接続の画面で登録したアドレス・載せるのは 1 行目とリンクだけ) と中小企業共通 EDI 本編 6.4.2。変えてよい条件 = 作者が宛先か載せる物を決め直した時。
+    """
+    from seizou.core import mail
+
+    address = _chat_mail_address(partner)
+    if not address:
+        logger.info("会話の知らせ: 取引先 %s のつながりに自社の連絡先のメールアドレスが無いので送らなかった", partner.pk)
+        return
+    if not mail.ready():
+        logger.info("会話の知らせ: メールの送り方がまだなので送らなかった")
+        return
+    try:
+        label, path = _chat_mail_target(message)
+        url = mail.link(path) if path else ""
+        first = _chat_first_line(message.body) or "(言葉はありません。添付は seizou で開いてください)"
+        subject = f"{partner.name} から会話が届きました ({label})"
+        body = "\n".join(
+            [
+                f"{partner.name} から、{label} の会話に言葉が届きました。",
+                "",
+                first,
+                "",
+                "続きは seizou の「会話」で読めます。",
+                url or "(seizou の URL の頭が設定に無いので、リンクを付けていません)",
+                "",
+                f"このメールは seizou が送りました。このメールに返信しても {partner.name} には届きません。返事は seizou の「会話」に書いてください。",
+            ]
+        )
+        mail.send([address], subject, body + "\n")
+    except mail.MailNotSent as exc:
+        logger.warning("会話の知らせのメールを送れなかった: 取引先 %s 言葉 %s 訳 %s", partner.pk, message.pk, exc)
+        return
+    except Exception:
+        logger.exception("会話の知らせのメールで思わぬ誤り: 取引先 %s 言葉 %s", partner.pk, message.pk)
+        return
+    logger.info("会話の知らせのメールを送った: 取引先 %s 言葉 %s", partner.pk, message.pk)
 
 
 def _chat_file_items(value):
