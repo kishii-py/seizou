@@ -11,6 +11,7 @@
 - OAuth のデバイスの認証 (依頼書 N320。決め 11-07 09:2x): device_code で 8 文字の符号をもらい、device_token で承認を待つ。
   Client ID は公開の値 (鍵ではない) で、client secret は使わない (持たない)。戻り先の URL も要らない。
   device_code の値とトークンの値を、返す字・例外の文・記録に入れない。
+- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x): list_comments で読み (トークンは任意)、create_comment で書く (会社のトークン)。
 """
 
 from __future__ import annotations
@@ -35,11 +36,13 @@ __all__ = [
     "check_repo",
     "check_token",
     "client_id",
+    "create_comment",
     "create_issue",
     "device_code",
     "device_token",
     "env_path",
     "issue_state",
+    "list_comments",
     "list_issues",
     "read_env_value",
     "remove_env_value",
@@ -353,6 +356,78 @@ def list_issues(repo: str, token: str = "") -> list[dict]:
             }
         )
     return rows
+
+
+# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+
+
+def list_comments(repo: str, number: int, token: str = "") -> list[dict]:
+    """Issue の返事の並び (GET /repos/{owner}/{repo}/issues/{number}/comments?per_page=100 を 1 回)。トークンは任意。
+
+    返す物は 1 件 = {"id": int, "login": 書いた口座, "body": 本文, "created_at": ISO 8601 の字, "html_url": URL} (GitHub の順)。
+    id が整数でない行は外す。返事が並びでなければ GithubError。公開のリポジトリはトークン無しで読める。
+    """
+    # 試験が requests.get を差し替えるため、関数の中で import する。
+    import requests
+
+    try:
+        answer = requests.get(
+            f"{API}/repos/{check_repo(repo)}/issues/{int(number)}/comments",
+            params={"per_page": 100},
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    if answer.status_code != 200:
+        raise _refused(answer.status_code)
+    data = _json(answer)
+    if not isinstance(data, list):
+        raise GithubError("GitHub の返事が読めませんでした。少し待ってからもう一度押してください。")
+    rows = []
+    for item in data:
+        number_id = item.get("id") if isinstance(item, dict) else None
+        if isinstance(number_id, bool) or not isinstance(number_id, int):
+            continue
+        user = item.get("user") if isinstance(item.get("user"), dict) else {}
+        rows.append(
+            {
+                "id": number_id,
+                "login": user.get("login") or "",
+                "body": item.get("body") or "",
+                "created_at": item.get("created_at") or "",
+                "html_url": item.get("html_url") or "",
+            }
+        )
+    return rows
+
+
+def create_comment(token: str, repo: str, number: int, body: str) -> dict:
+    """Issue に返事を 1 件書く (POST /repos/{owner}/{repo}/issues/{number}/comments に {"body": 文})。
+
+    返す物は {"id": int, "html_url": URL, "created_at": ISO 8601 の字, "login": 書いた口座}。201 以外は日本語の GithubError。
+    権限は Issue を作るのと同じ (public_repo か repo)。
+    """
+    import requests
+
+    try:
+        answer = requests.post(
+            f"{API}/repos/{check_repo(repo)}/issues/{int(number)}/comments",
+            json={"body": body},
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise GithubError(MESSAGE_UNREACHABLE) from exc
+    if answer.status_code != 201:
+        raise _refused(answer.status_code)
+    data = _json(answer)
+    number_id = data.get("id") if isinstance(data, dict) else None
+    url = data.get("html_url") if isinstance(data, dict) else None
+    if isinstance(number_id, bool) or not isinstance(number_id, int) or not isinstance(url, str) or not url:
+        raise GithubError("GitHub の返事に返事の番号と URL がありませんでした。GitHub の Issue に返事が出たかを確かめてください。")
+    user = data.get("user") if isinstance(data.get("user"), dict) else {}
+    return {"id": number_id, "html_url": url, "created_at": data.get("created_at") or "", "login": user.get("login") or ""}
 
 
 # ---- OAuth のデバイスの認証 (依頼書 N320) ----
