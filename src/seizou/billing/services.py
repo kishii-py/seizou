@@ -90,8 +90,7 @@ def _refuse_unbillable(shipment, customer):
     訳: 請求書の明細を出荷済みの物 (発行の納品書に入った出荷) だけにするため。出所 = RULES.md R09。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
-    note = shipment.delivery_note
-    if note is None or note.status != _DeliveryNote.STATUS_ISSUED:
+    if not _in_issued_note(shipment):
         raise RuleViolation(
             "R09",
             f"発行できません。{_R09_RULE}出荷 {shipment.shipment_no} は発行の納品書に入っていないので、外してください。",
