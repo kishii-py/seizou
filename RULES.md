@@ -37,7 +37,7 @@
 |---|---|---|---|
 | R13 | 数と金額を変える処理は、部品の `services` の関数を通す。画面から表に直接書かない | 決まりの検査 (見るのは views.py・forms.py と、views/・templatetags/ の下と management/commands の .py。services.py・models.py・migrations は見ない) | `tests/test_r13_services_only.py` |
 | R14 | SQL を直接書かない (`raw`・`cursor` を使わない) | 決まりの検査 | `tests/test_r14_no_raw_sql.py` |
-| R15 | 画面は `core` の土台の画面 (`seizou.core.views` の `Base*View`) を継承する。上書きしてよいのは `model`・`ordering`・`columns`・`search_fields`・`filters`・`presets`・`tabs`・`form_class`・`service`・`template_name`・`get_queryset`・`screen_name`・`screen_help` の 13 だけ | 決まりの検査 | `tests/test_r15_inherit_base_view.py` |
+| R15 | 画面は `core` の土台の画面 (`seizou.core.views` の `Base*View`) を継承する。上書きしてよいのは `model`・`ordering`・`columns`・`search_fields`・`filters`・`presets`・`tabs`・`form_class`・`service`・`template_name`・`get_queryset`・`screen_name`・`screen_help` の 13 だけ | 決まりの検査 (見るのは、親の名前が View で終わる class だけ。関数の画面は見ない) | `tests/test_r15_inherit_base_view.py` |
 | R16 | 部品の表を変えない。会社ごとの項目は拡張の表に足す | 決まりの検査 | `tests/test_r16_no_core_model_change.py` |
 | R17 | 相手の会社への HTTP は `transaction.atomic` の外で送る | 決まりの検査 | `tests/test_r17_http_outside_atomic.py` |
 | R18 | CSRF の見出しは土台のテンプレートの 1 か所にだけ書く | 決まりの検査 | `tests/test_r18_csrf_single_place.py` |
