@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全上の問題 (脆弱性)
+    url: https://github.com/kishii-py/seizou/blob/main/SECURITY.md
+    about: Issue に書かず、SECURITY.md の報告先へ知らせてください。
+  - name: 貢献の手引き (Issue の型と、コードの貢献の条件)
+    url: https://github.com/kishii-py/seizou/blob/main/CONTRIBUTING.md
+    about: 型に迷ったときと、PR を出す前に読んでください。
