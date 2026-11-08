@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load stock_tags %}{% comment %}
-在庫の動きの詳細: 土台の詳細 (core/detail.html) の基本の表の最後 (block basic_extra) に「元の記録」の行を 1 つ足す (候補 C89)。
+在庫の動きの詳細: 土台の詳細 (core/detail.html) の基本の表の最後 (block basic_extra) に「元の記録」の行を 1 つ足す (作者の決め)。
 値は stock_tags の move_source が返す字と URL。製造の完了は元の指示書、受入は元の受入の行の詳細へ、同じタブで移る link にする。
 払い出しと棚卸しの調整 (元の記録を持たない動き) も行を出して「—」にする (一覧の「元の記録」の列と項目をそろえる)。
 写した元: core/detail.html の基本の表の 1 行 (6547b617 の main の 77-84 行)。土台の行の形が変わったら、ここも合わせる。

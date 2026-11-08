@@ -1,7 +1,7 @@
 """在庫の表 (完成品の在庫。北極星 7 節の「在庫」)。
 
 表は在庫の動き (StockMove) だけで、在庫数は列に持たない。在庫数は stock.services が部品ごとの動きの合計から
-毎回出す (出荷済みの数と同じ考え = 01 の 10.4)。出荷は動きの表に書かず、出荷の表から集計で引く。
+毎回出す (出荷済みの数と同じ考え = 部品の公開する関数の設計の決め)。出荷は動きの表に書かず、出荷の表から集計で引く。
 棚卸しの調整の行の「調整の前の在庫数」と「実地の在庫数」は、保存した時の数の控えで、在庫数の計算には使わない。
 元の記録 (製造の完了 = 指示書、受入 = 受入の行) は contenttypes の種類と番号で指す (汎用の参照。attachments と同じ形)。
 ほかの部品の表に列を足さず、ほかの部品の model を import しない (部品は外部キーの字で指す)。
@@ -60,7 +60,7 @@ class StockMove(models.Model):
     )
     kind = models.CharField("種類", max_length=10, choices=KIND_CHOICES)
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
-    # 棚卸しの調整の時の控え (決め C07-1 = a。候補 C07 の 5)。調整の前の在庫数は保存した時の在庫数 (負もある。数え始めは空)、
+    # 棚卸しの調整の時の控え (作者の決め)。調整の前の在庫数は保存した時の在庫数 (負もある。数え始めは空)、
     # 実地の在庫数は入れた数。ほかの種類の行と、列を足す前の調整の行は空。在庫数の計算 (services.balances) は読まない。
     # 書くのは stock.services の adjust だけ (editable=False = 入力の画面の欄にしない)。土台の詳細は model に書いた順に
     # 並べるので、数量のすぐ後に置く。
@@ -92,7 +92,7 @@ class StockMove(models.Model):
     )
     created_at = models.DateTimeField("入れた日時", auto_now_add=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。元の記録は source_label() の字で、一覧の「元の記録」の列と、詳細の基本の表の最後の行 (stock/stockmove_detail.html の block basic_extra。候補 C89) に出す。
+    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。元の記録は source_label() の字で、一覧の「元の記録」の列と、詳細の基本の表の最後の行 (stock/stockmove_detail.html の block basic_extra。作者の決め) に出す。
     #: 棚卸しの調整の控えの 2 列は、行ごとに出し分けるので property にする。棚卸しの調整でない行は 2 列とも出さない。
     #: 棚卸しの調整の行でも、空の列は出さない (数え始めの行の調整の前の在庫数と、列を足す前に入れた行)。
     @property
