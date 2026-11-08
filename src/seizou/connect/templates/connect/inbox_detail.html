@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags seizou_icons connect_tags %}
 {# 受信した注文の詳細。見出しの右に、状態が「未処理」のときだけ「断る」と「受け入れる」。注文回答が届いていないときは、注文回答の枡に「送り直す」。 #}
-{# 中身の最後に「会話」の節 (connect/_chat.html。相手の会社とのやり取り = C104)。受け入れる前・保留の間・断った後にも相手の言葉が届くので、受け入れるかを決めるこの画面でも読んで書ける。この画面はタブを使わないので節で出す。 #}
+{# 中身の最後に「会話」の節 (connect/_chat.html。相手の会社とのやり取り = 作者の決め)。受け入れる前・保留の間・断った後にも相手の言葉が届くので、受け入れるかを決めるこの画面でも読んで書ける。この画面はタブを使わないので節で出す。 #}
 {# 変更と取消の版で受け入れられない物 (connect_tags の revision_problem) は「受け入れる」を出さず、詳細の上に黄色の 1 行 (状態の知らせ)。「断る」は今のまま出す。 #}
 {% block actions %}{{ block.super }}{% if object.status == "received" %}{% revision_problem object as problem %}
 <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
@@ -10,7 +10,7 @@
 {% block content %}{% revision_problem object as problem %}{% if problem %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この変更は受け入れられません。{{ problem }}断る理由を書いて断ってください。</span></div>
 {% endif %}
-{# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (02 の 0 節: uuid は出さない)。 #}
+{# core の基本情報の並びは全部の列 (番号の uuid と中身の JSON を含む) を出すので使わず、決めた項目と明細の表だけを出す (画面の共通の設計の決め: uuid は出さない)。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <p class="mb-2 text-xs font-medium text-base-content/60">基本</p>
   <dl class="grid gap-x-6 sm:grid-cols-2">
@@ -49,7 +49,7 @@
       <dd class="min-w-0 break-words">{% with base_order=object.revises.order %}{% if base_order %}{% url "orders:order_detail" base_order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ base_order.order_no }}</a>{% else %}<span class="font-mono">{{ base_order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}{% endwith %}</dd>
     </div>
     {% endif %}
-    {# 受け入れて作った受注は受け入れた後、断った理由は断った後、注文回答は未処理でないときと保留を答えたときだけ出す。未処理の間は 3 行とも出さない (決め C18-1 = a・11-06)。 #}
+    {# 受け入れて作った受注は受け入れた後、断った理由は断った後、注文回答は未処理でないときと保留を答えたときだけ出す。未処理の間は 3 行とも出さない (作者の決め・11-06)。 #}
     {# 返した条件は、単価を直して受け入れた (条件付受諾) 行だけ出す (connect_tags の reply_line_texts)。送れなかった答えは、答えた行 (reply_type がある行) の「送り直す」で送る。 #}
     {% if object.status == "accepted" and not object.revises_id %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
@@ -81,6 +81,6 @@
   {% include "connect/_payload_lines.html" %}
 </div>
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="chat-heading"><h2 id="chat-heading" class="text-lg font-bold">会話</h2><div class="mt-4">{% include "connect/_chat.html" with chat_target=object %}</div></section>
-{# 履歴 (決め HIST-1。core.history)。この詳細は block content を上書きしてタブを描かないので、会話の枠の後に見出しの枠で出す。「最後に直した」の字は土台の詳細と同じ (決め C40-1)。 #}
+{# 履歴 (作者の決め。core.history)。この詳細は block content を上書きしてタブを描かないので、会話の枠の後に見出しの枠で出す。「最後に直した」の字は土台の詳細と同じ (作者の決め)。 #}
 {% if history %}<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="history-heading"><h2 id="history-heading" class="text-lg font-bold">履歴</h2>{% include "core/_history.html" with timeline=history %}<p class="mt-2 text-xs text-base-content/70" data-last-change>最後に直した {% if history.last %}<span class="font-mono tabular-nums">{{ history.last.when|date:"Y-m-d H:i" }}</span> ・ {{ history.last.who }}{% else %}—{% endif %}</p></section>{% endif %}
 {% endblock %}

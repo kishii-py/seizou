@@ -4,7 +4,7 @@ context: row (土台の row_for の 1 行。obj は Inbox)・columns・new (自�
 表の縞の色より前に出すため、行でなく欄に付ける)。
 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link、取引先は master_link)。状態の列 (列の名前 status) だけ値で書き分ける。
 取引先の列は、取引先の空の行 (読み取りの差出人の確認待ち) だけ、黄の印と読み取った差出人の字で書く。
-状態の列の後ろに、同じ取引先から同じ注文番号で前に届いた行があれば、黄の知らせとその行への link を出す (本体の追記 11。中身は same_order_notice)。
+状態の列の後ろに、同じ取引先から同じ注文番号で前に届いた行があれば、黄の知らせとその行への link を出す (作者の決め。中身は same_order_notice)。
 その後ろに、変更と取消の版の札 (変更の版の行は元の行、第 1 版の行は未処理の後の版への link。中身は revision_notice。同じ断片 connect/_same_order_notice.html に渡す)。
 行の操作は ⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment
 (行に data-row-menu、最後の欄に details.row-menu)。行の押下で詳細へ移る onclick は、link と ⋮ の欄の中の押下では動かない
@@ -12,7 +12,7 @@ context: row (土台の row_for の 1 行。obj は Inbox)・columns・new (自�
 「取引先の情報を見る」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、
 hx の属性は master_link の物を写した。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。
 状態の列は、保留を答えた行 (reply_type が AJ) は「未処理」の印の代わりに黄の札「保留した」、単価を直して受け入れた行 (CA) は受注番号の後に黄の札「条件付」を出す。
-状態が未処理 (値 received) の行は、tr を太字 (font-bold) にし、最初の欄 (受信日時) の字の前に小さい青い点 (daisyUI の status status-info) を出す (決め 11-05 15:0x。N160)。受け入れた行と断った行はそのまま。class の中の if の比べの字は一重の引用符で書く (R19 の検査が class の値を二重の引用符で切るため)。
+状態が未処理 (値 received) の行は、tr を太字 (font-bold) にし、最初の欄 (受信日時) の字の前に小さい青い点 (daisyUI の status status-info) を出す (決め 11-05 15:0x。開発の記録 docs/nights/20261105/N160.md)。受け入れた行と断った行はそのまま。class の中の if の比べの字は一重の引用符で書く (R19 の検査が class の値を二重の引用符で切るため)。
 {% endcomment %}
 <tr id="row-{{ row.pk }}" class="row-hover h-10 cursor-pointer{% if row.obj.status == 'received' %} font-bold{% endif %}" data-row-menu onclick="if(!event.target.closest('a, details')){window.location='{{ row.url }}'}">
   {% for cell in row.cells %}

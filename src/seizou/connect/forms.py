@@ -34,7 +34,7 @@ def _asked_lines(inbox):
     形の違う行 (dict でない行・品番が字でない行・品番が空の字の行) は飛ばす。
     変更と取消の版の行 (元の行 revises がある行) は、受注に無い行番号の明細 (取り消した明細 = 明細状態コード 2 を除く) だけを返す
     (受注にある明細の部品は聞かない。聞くのは受け入れると新しく足す明細の部品だけ)。
-    欄 (_partner_parts) と受け入れの画面の枠の左の行 (_lines_by_part) の両方がこの行を読む (枠に、欄の当たらない行を並べないため。候補 C91)。
+    欄 (_partner_parts) と受け入れの画面の枠の左の行 (_lines_by_part) の両方がこの行を読む (枠に、欄の当たらない行を並べないため。作者の決め)。
     変更の版は受注の行番号を 1 回引くので、受け入れの form は __init__ で 1 回だけ呼んで両方に渡す。
     """
     payload = inbox.payload if inbox is not None and isinstance(inbox.payload, dict) else {}
@@ -89,7 +89,7 @@ _HELP_WITHOUT_PARTNER = "自社の部品を選びます。部品の取引先の�
 
 
 def _part_label(partner, part_no, part_name):
-    """受け入れの欄の見出し (初見テスト R5 の候補 C08 の 5)。
+    """受け入れの欄の見出し (作者の決め)。
 
     取引先があれば「<取引先の名前> の品番 <相手の品番> (<品名>) に当たる自社の部品」(取引先の名前は、画面の「届いた明細 (<取引先> の品番のまま)」と同じ字)。
     取引先が空の行は、前からの字「相手の品番 <相手の品番> (<品名>)」のまま (断る処理は足さない)。品名が無ければ括弧を付けない。
@@ -101,7 +101,7 @@ def _part_label(partner, part_no, part_name):
 
 
 def _part_help(partner, part_no, known):
-    """受け入れの欄の説明 (初見テスト R5 の候補 C08 の 5)。services._item_for の今の動きを字にした物で、動きは変えない。
+    """受け入れの欄の説明 (作者の決め)。services._item_for の今の動きを字にした物で、動きは変えない。
 
     known = 部品の取引先の表で当たった自社の品目 (resolve_partner_item。無ければ None)。
     表に対応があれば最初から入れたことと、選び直してもこの受注だけで表は変わらないこと。無ければ、受け入れると表に足すこと。
@@ -130,7 +130,7 @@ class AcceptForm(forms.Form):
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.part_fields = []
-        # instance の無い form (言葉の試験など) でも part_rows が落ちないよう、早く抜ける前に置く (候補 C91)。
+        # instance の無い form (言葉の試験など) でも part_rows が落ちないよう、早く抜ける前に置く (作者の決め)。
         self._lines_by_part = {}
         if instance is None:
             return
@@ -145,7 +145,7 @@ class AcceptForm(forms.Form):
         for number, (part_no, part_name) in enumerate(_partner_parts(instance, asked), start=1):
             name = f"item_{number}"
             known = resolve_partner_item(partner, part_no)
-            # 字を打って探す欄 (受注の入力と同じ候補の口)。標準の選択欄だと部品が増えたときに探せない (初見テスト 2 回目の所見)。
+            # 字を打って探す欄 (受注の入力と同じ候補の口)。標準の選択欄だと部品が増えたときに探せない (作者の決め)。
             self.fields[name] = forms.ModelChoiceField(
                 queryset=items,
                 widget=RemoteSelect("masters:item_select"),
@@ -162,7 +162,7 @@ class AcceptForm(forms.Form):
 
     @property
     def part_rows(self):
-        """受け入れの画面の枠の並び (connect/_inbox_accept_card.html。候補 C91)。1 つ = {field・lines}。
+        """受け入れの画面の枠の並び (connect/_inbox_accept_card.html。作者の決め)。1 つ = {field・lines}。
 
         part_fields の並びで、field は欄 (self[name])、lines はその品番の届いた明細の行 (_lines_by_part。ふつうは 1 行)。
         最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget と見出しを触るので、__init__ の中で作らない)。
@@ -175,7 +175,7 @@ class AcceptForm(forms.Form):
 
     @property
     def other_fields(self):
-        """枠に入らない見える欄 (土台の get_form が足す会社ごとの項目)。受け入れの画面は枠の後ろに今の格子で出す (候補 C91)。"""
+        """枠に入らない見える欄 (土台の get_form が足す会社ごとの項目)。受け入れの画面は枠の後ろに今の格子で出す (作者の決め)。"""
         names = {name for name, _part_no in self.part_fields}
         return [field for field in self.visible_fields() if field.name not in names]
 
@@ -291,7 +291,7 @@ class HoldForm(forms.Form):
 class RejectForm(forms.Form):
     """断るの form。理由の欄 1 つ。
 
-    書いた理由が注文回答として相手へ送られる行だけ、理由の欄の下にそのことを書く (初見テスト R5 の候補 C72 の 3)。
+    書いた理由が注文回答として相手へ送られる行だけ、理由の欄の下にそのことを書く (作者の決め)。
     説明はこの form の欄 (self.fields) にだけ入れ、class の欄 (base_fields) には書かない
     (題の横の「?」の「入れる物」の表は base_fields を読むので、表の字は変わらない)。
     """
@@ -394,7 +394,7 @@ class ChatMessageForm(forms.Form):
 
     書く先は hidden の 2 つ (target_kind = 発注か受信した注文・target_id)。受注の詳細から書くときは、受注の元の受信した注文を渡す
     (connect_tags の chat_panel が作る)。言葉の前後の空白は CharField の既定 (strip) が落とし、落とした後の字が送る字と残す字になる。
-    form が見るのは欄の型と字数 (2000 字) と、書く先が引けるかだけ。言葉と添付の両方が空か・添付の形式と大きさ・会話が使えるか (CHAT-2) は services が見る。
+    form が見るのは欄の型と字数 (2000 字) と、書く先が引けるかだけ。言葉と添付の両方が空か・添付の形式と大きさ・会話が使えるか (作者の決め) は services が見る。
     """
 
     TARGET_CHOICES = [("purchase_order", "発注"), ("inbox", "受信した注文")]
@@ -428,9 +428,9 @@ class ChatMessageForm(forms.Form):
 
 
 class SelfInvoiceAnswerForm(forms.Form):
-    """受けた仕入明細に答える form (候補 C111。条件付受諾の form と同じく「明細ごとに欄を足す」形)。
+    """受けた仕入明細に答える form (作者の決め。条件付受諾の form と同じく「明細ごとに欄を足す」形)。
 
-    答える明細 (答えが無い・提案・確認できない明細。承諾した明細は出さない = 決め C111-4) ごとに、答え (承諾 / 提案 / 確認できない。既定は承諾)・
+    答える明細 (答えが無い・提案・確認できない明細。承諾した明細は出さない = 作者の決め) ごとに、答え (承諾 / 提案 / 確認できない。既定は承諾)・
     提案の数・提案の単価 (初めの値は仕入明細の値。金額の閲覧の無い人には置かない)・確認できない訳・書いておく字の欄を置く。
     見出しは「明細 n (受注 SO-…-m 品番)」。提案なら数と単価が 0 より大きく、どちらかが仕入明細の値と違うこと、確認できないなら訳を選ぶこと
     を確かめる (欄の下の赤い字)。テンプレートの小さな JS が、提案でない明細の数と単価、確認できないでない明細の訳を隠す。

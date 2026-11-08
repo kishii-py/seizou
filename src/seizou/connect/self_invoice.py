@@ -1,4 +1,4 @@
-"""受けた仕入明細の詳細の仕入明細回答の「送り直す」の口 (候補 C111)。
+"""受けた仕入明細の詳細の仕入明細回答の「送り直す」の口 (作者の決め)。
 
 画面でない口なので関数の view (R15 は class だけを見る)。書くのは connect.services.send_self_invoice_reply だけ (R13)。
 権限は access.require_write。action は答えると同じ connect.answer_self_invoice (注文回答の送り直しが承認と同じ action を使う形)。

@@ -3,10 +3,10 @@
 画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続・送り合った記録) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
 書く処理は services の accept・accept_with_conditions・hold・reject だけで、土台が検査の層を通してから呼ぶ。
-会話に書く (受注と発注の 1 件ごとの会話。C104) も入力の土台を継承し、書くのは services.post_chat_message だけ。
+会話に書く (受注と発注の 1 件ごとの会話。作者の決め) も入力の土台を継承し、書くのは services.post_chat_message だけ。
 
 受け口 (receive_order) は相手の会社の機械が呼ぶ口で、画面ではないので core の土台を継承しない関数の view にした。
-ログインは要らず、CSRF の対象外で、POST だけを受ける (05 の 5 節)。
+ログインは要らず、CSRF の対象外で、POST だけを受ける (会社どうしの受け口の設計の決め)。
 確かめと受信した注文への登録 (注文回答なら元の発注に当てる) は services.receive が行う。返事に鍵の値と本文を入れない。
 """
 
@@ -28,7 +28,7 @@ from .models import ReceivedSelfInvoice
 
 
 def _sender_choices():
-    """InboxListView の取引先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (差出人を選ぶ欄と同じ種類。N135 の active_partners)。"""
+    """InboxListView の取引先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (差出人を選ぶ欄と同じ種類。開発の記録 docs/nights/20261104/N135.md の active_partners)。"""
     partner = Inbox._meta.get_field("partner").related_model
     rows = active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
     return [(row.pk, str(row)) for row in rows]
@@ -52,7 +52,7 @@ def receive_order(request):
     return JsonResponse({"status": "received", "id": str(result.message_id)}, status=200)
 
 
-# 受信した注文。2 秒ごとに、今の一番新しい行より新しい行だけを取りに行き、表の先頭に足す (05 の 5 節)。
+# 受信した注文。2 秒ごとに、今の一番新しい行より新しい行だけを取りに行き、表の先頭に足す (会社どうしの受け口の設計の決め)。
 # 取りに行く要素は connect/_inbox_poll.html、返す行の部分は connect/_rows.html (1 行は connect/_inbox_row.html)。
 # 並びは状態が「未処理」の行を上に、その中と残りは受信日時の新しい順。
 class InboxListView(BaseListView):
@@ -84,7 +84,7 @@ class InboxListView(BaseListView):
         # newest_pk = 受信した注文の一番新しい行の番号 (どの行にも同じ値)。行と同じ 1 つの問い合わせで読むので、
         # 返す行と次に添える after がずれない。GET の after (数) があれば、それより新しい行だけにする。
         newest = Inbox.objects.order_by("-pk").values("pk")[:1]
-        # total_count = 絞りの後の件数 (絞りが無ければ全部。自動の更新で行を足したとき、上の「全 N 件」も直すため。初見テスト 2 回目の所見)。
+        # total_count = 絞りの後の件数 (絞りが無ければ全部。自動の更新で行を足したとき、上の「全 N 件」も直すため。作者の決め)。
         # order は状態の列の受注番号の link のため。
         queryset = (
             super()
@@ -93,7 +93,7 @@ class InboxListView(BaseListView):
             .annotate(newest_pk=Subquery(newest), total_count=Value(super().get_queryset().count(), output_field=IntegerField()))
         )
         # same_order_pk・same_order_status = 同じ取引先から同じ注文番号で前に届いた行 (一番古い 1 つ) の番号と状態
-        # (本体の追記 11。状態の列の黄の知らせ)。行と同じ 1 つの問い合わせで読む。取引先の空の行と、注文番号が空か null の行は比べない
+        # (作者の決め。状態の列の黄の知らせ)。行と同じ 1 つの問い合わせで読む。取引先の空の行と、注文番号が空か null の行は比べない
         # (空の字は JSON の鍵の比べ方で除く。KT の字と "" を比べると SQLite が JSON として読めずに落ちる)。
         earlier = (
             Inbox.objects.annotate(order_no_text=KT("payload__order_no"))
@@ -212,14 +212,14 @@ def _exchange_kind_choices():
     return list(Exchange.KIND_LABELS.items())
 
 
-# 送り合った記録 (決め HIST-1 の edi・C106-1)。書くのは services の _deliver と receive だけで、画面は読むだけ (直す道と消す道は無い)。
+# 送り合った記録 (作者の決め)。書くのは services の _deliver と receive だけで、画面は読むだけ (直す道と消す道は無い)。
 # 左のメニューでなく、設定の画面の「普段は触らない物」から開く (取引先との接続と同じ)。
 class ExchangeListView(BaseListView):
     """送り合った記録の一覧。
 
     使う人: 総務・経理・受注と発注の担当 / いつ: 取引先と送り合ったデータを確かめるとき・頼まれてデータを出すとき / 何のために: 送ったとおり・受けたとおりの中身を、日付・取引先・種類・金額で探す / 次にすること: 行を押して中身を見るか、「CSV」で書き出す
 
-    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (決め HIST-1 の edi と C106-1)。
+    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (作者の決め)。
     """
 
     model = Exchange
@@ -240,8 +240,8 @@ class ExchangeListView(BaseListView):
         """中身 (本文の字) の検索。金額の閲覧が無い人 (on) には検索の項目を持たせない (検索の欄が出ず、GET の q を書いても絞らない)。
 
         訳: 本文には単価と金額の鍵 (unit_price・amount・total など) が送ったとおりの字で入っているので、金額を見られない人が
-        本文を検索すると、行が出るか出ないかで金額が分かってしまうため (金額の範囲の絞りを外したのと同じ訳 = 決め C106-1)。
-        出所 = Claude Security の走査の候補 11-07 (38)。判定は金額の列と同じ控え (土台の _money_columns_shown。log の形では検索も効く)。
+        本文を検索すると、行が出るか出ないかで金額が分かってしまうため (金額の範囲の絞りを外したのと同じ訳 = 作者の決め)。
+        出所 = Claude Security の走査の指摘 (11-07)。判定は金額の列と同じ控え (土台の _money_columns_shown。log の形では検索も効く)。
         変えてよい条件 = 本文から金額の鍵を除いた字だけを検索する形にできたとき (そのときは金額の閲覧の無い人にも検索を戻してよい)。
         要求の無い画面の物 (宣言だけを読む所) には本文の検索を返す。
         """
@@ -258,7 +258,7 @@ class ExchangeDetailView(BaseDetailView):
 
     使う人: 総務・経理・受注と発注の担当 / いつ: 取引先と送り合ったデータを確かめるとき・頼まれてデータを出すとき / 何のために: 送ったとおり・受けたとおりの 1 通の中身を読む / 次にすること: 「一覧に戻る」で送り合った記録へ戻る
 
-    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (決め HIST-1 の edi と C106-1)。
+    電子帳簿保存法: 会社どうしで送り合った電子取引のデータを、直す道も消す道も無い形で残し、日付と金額は範囲で・取引先で・2 つ以上の組み合わせで探せるようにする画面 (作者の決め)。
     """
 
     model = Exchange
@@ -320,7 +320,7 @@ class ConnectionUpdateView(BaseFormView):
     screen_help = "受け口の URL や鍵の置き場の名前を直して保存します。鍵の値はここに入れず、.env に置きます。"
 
 
-# 会話に書く (C104)。ふだんは受注・発注・受信した注文の詳細の「会話」の欄 (connect/_chat.html) から小窓の形で送り、
+# 会話に書く (作者の決め)。ふだんは受注・発注・受信した注文の詳細の「会話」の欄 (connect/_chat.html) から小窓の形で送り、
 # 保存の後は土台が 204 と seizou:saved を返す。この画面を直に開くのは、JS の無いときと、小窓で誤りを直すとき。
 # 行の詳細の画面は無いので、保存の後は form の hidden の next (開いた詳細の道) へ戻る。URL の名前を _create にしないのは、一覧の土台が「新規登録」を出す名前を避けるため。
 class ChatMessageAddView(BaseFormView):
@@ -339,7 +339,7 @@ class ChatMessageAddView(BaseFormView):
     screen_help = "受注・発注・受信した注文の「会話」から書いた言葉を、取引先の seizou へ送ります。書いた言葉は直せず、消せません。"
 
 
-# ---------------------------------------------------------------- 受けた仕入明細 (候補 C111)
+# ---------------------------------------------------------------- 受けた仕入明細 (作者の決め)
 
 
 class ReceivedSelfInvoiceListView(BaseListView):

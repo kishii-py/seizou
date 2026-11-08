@@ -1,6 +1,6 @@
 {% extends "core/detail.html" %}
 {% load connect_tags %}
-{# 送り合った記録の詳細 (決め HIST-1 の edi・C106-1)。基本情報は土台のまま (番号の uuid と中身は model の detail_hidden_fields で外す。金額は金額の閲覧の無い人に土台が出さない)。block main に「中身」の枠: JSON を字下げした字と、送ったとおりの字 (金額の閲覧のある人だけ。畳む)。金額の閲覧の無い人には金額の鍵を鍵ごと外した字だけを出す。中身の枠は送ったとおりの字なので、本文の番号 (uuid) もそのまま出る。直す道と消す道は無い。 #}
+{# 送り合った記録の詳細 (作者の決め)。基本情報は土台のまま (番号の uuid と中身は model の detail_hidden_fields で外す。金額は金額の閲覧の無い人に土台が出さない)。block main に「中身」の枠: JSON を字下げした字と、送ったとおりの字 (金額の閲覧のある人だけ。畳む)。金額の閲覧の無い人には金額の鍵を鍵ごと外した字だけを出す。中身の枠は送ったとおりの字なので、本文の番号 (uuid) もそのまま出る。直す道と消す道は無い。 #}
 {% block main %}{% exchange_body object seizou.hide_money as body %}
 <section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="exchange-body-title">
   <h2 id="exchange-body-title" class="text-lg font-bold">中身</h2>

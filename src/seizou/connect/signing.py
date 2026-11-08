@@ -73,7 +73,7 @@ def _decode_secret(secret: str) -> bytes:
 
     ほどいた bytes が `SECRET_MIN_BYTES`〜`SECRET_MAX_BYTES` (24〜64 bytes) の外なら ValueError (`whsec_` だけの空の鍵も)。
     例外の文に鍵の値を入れない。送る口はこの ValueError で送らず (connect の bad_secret)、受け口はそのつながりを飛ばす。
-    訳: 空や短い鍵は外の誰でも署名を作れるので、鍵として使わない。出所 = Standard Webhooks の形 (この module の頭が名を挙げる。24〜64 bytes の数は指示書の案で、作業場に写しが無く未確認)・エンタープライズ化の調べ 第一弾の指摘 connect-5。
+    訳: 空や短い鍵は外の誰でも署名を作れるので、鍵として使わない。出所 = Standard Webhooks の形 (この module の頭が名を挙げる。24〜64 bytes の数は指示書の案で、作業場に写しが無く未確認)・エンタープライズ化の調べを受けた作者の決め。
     変えてよい条件 = 鍵の作り方 (seizou_secret の 32 bytes) を変えるとき。
     """
     if not secret.startswith(_SECRET_PREFIX):
