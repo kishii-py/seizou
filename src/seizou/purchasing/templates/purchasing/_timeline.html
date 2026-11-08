@@ -1,4 +1,4 @@
 {% load purchasing_timeline %}
-{# 発注の流れの枠 (N139)。発注から受入と検収までの出来事は purchasing の流れの module の events_for が集め、枠の形は受注と同じ core/_flow.html。link は詳細の画面のある出来事 (受入と検収) だけ。取消の発注の「発注を取消」は日時の記録が無いので日時の欄が「—」。 #}
+{# 発注の流れの枠 (開発の記録 docs/nights/20261104/N139.md)。発注から受入と検収までの出来事は purchasing の流れの module の events_for が集め、枠の形は受注と同じ core/_flow.html。link は詳細の画面のある出来事 (受入と検収) だけ。取消の発注の「発注を取消」は日時の記録が無いので日時の欄が「—」。 #}
 {% purchase_order_timeline object as events %}
 {% include "core/_flow.html" with flow_id="po-flow" %}

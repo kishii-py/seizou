@@ -1,12 +1,12 @@
-"""発注の表 (01 の 4 節)。協力企業管理の最小の形。
+"""発注の表 (表の設計の決め)。協力企業管理の最小の形。
 
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 金額は purchasing.services が数量 × 単価 (単価の単位が式なら単価のまま) を取引先の小計の計算方法で丸めて書く (DB で計算しない)。
-受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く (一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。決め PRICE-1c)。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は次の版で。書くときは purchasing.services を通す。
+受入 (Receipt) の金額も、purchasing.services が受け入れた数 × 発注の単価を同じ方法で丸めて書く (一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。作者の決め)。検収は受入の後に connect.services.send_acceptance が相手へ送る (列は Receipt の acceptance_*)。支給材は次の版で。書くときは purchasing.services を通す。
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
-仕入明細 (SelfInvoice・SelfInvoiceLine) は、受入をまとめて相手へ送る書類 (中小企業共通 EDI の仕入明細の項目を元にした。候補 C111)。書くのは purchasing.services だけ。
+仕入明細 (SelfInvoice・SelfInvoiceLine) は、受入をまとめて相手へ送る書類 (中小企業共通 EDI の仕入明細の項目を元にした。作者の決め)。書くのは purchasing.services だけ。
 """
 
 from decimal import Decimal
@@ -72,7 +72,7 @@ class PurchaseOrder(models.Model):
 
     # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「発注」・PRICE-4f) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決めの伝票の「発注」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -122,21 +122,21 @@ class PurchaseOrderLine(models.Model):
     )
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit = models.CharField("単位", max_length=10, blank=True)
-    # 単位の数量単位コード (決め UNIT-1 = a。書くのは purchasing.services だけ。明細の単位の字が部品の単位と同じなら部品のコードを写し、違う字は名前から引く)
+    # 単位の数量単位コード (作者の決め。書くのは purchasing.services だけ。明細の単位の字が部品の単位と同じなら部品のコードを写し、違う字は名前から引く)
     unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
-    # 単価の単位 (決め PRICE-1b)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは purchasing.services だけ。
+    # 単価の単位 (作者の決め)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは purchasing.services だけ。
     # 数量の単位の列 (unit) とは別。式は数量の単位でないので unit に入れない (数量は実際の個数のまま)。
     price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
-    # 協力企業に出す工程 (決め PRICE-5。空でもよい)。入力の欄は工程マスターの使用中で協力企業に出す工程から選ぶ。中小企業共通 EDI の工程名を元に、送る注文の明細に工程の名前を載せる。書くのは purchasing.services だけ。
+    # 協力企業に出す工程 (作者の決め。空でもよい)。入力の欄は工程マスターの使用中で協力企業に出す工程から選ぶ。中小企業共通 EDI の工程名を元に、送る注文の明細に工程の名前を載せる。書くのは purchasing.services だけ。
     # PROTECT の訳: 工程は消さずに使用停止にする作りで、発注に使った工程を消せないようにするため (指示書の工程と同じ)。
     process = models.ForeignKey(
         "masters.Process", verbose_name="工程", on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_order_lines"
     )
-    # 単価表から写した見積の番号 (決め PRICE-0)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。
+    # 単価表から写した見積の番号 (作者の決め)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。
     quote_no = models.CharField("見積の番号", max_length=35, blank=True, default="")
     # 相手の最後の注文回答の、この明細の答え (EDI の注文回答明細回答タイプコードと、条件付受諾の回答の値)。
     # connect の受け口が purchasing.services の mark_conditional・record_line_replies で書き、ほかの答えが届くと空に戻す。
@@ -152,7 +152,7 @@ class PurchaseOrderLine(models.Model):
         "明細状態理由コード", max_length=4, choices=edi_codes.LINE_REASON_CHOICES, blank=True, default=""
     )
 
-    #: 変更の履歴は発注の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「発注」)
+    #: 変更の履歴は発注の詳細の「履歴」に出す (core.history。作者の決めの伝票の「発注」)
     history_owner = "purchase_order"
 
     class Meta:
@@ -178,7 +178,7 @@ class PurchaseOrderLine(models.Model):
         # 受注の明細と同じ形 (候補の口が str(obj) を返す)。発注と部品を読むので、引く側は select_related を付ける。
         text = f"{self.purchase_order.po_no}-{self.line_no} {self.item.part_no} {self.item.name}"
         # 集計 (services.annotate_received) を通し、受入の残が 0 より大きい明細だけ、取引先の名前と受入の残を足す
-        # (受入の入力の候補の口の字。初見テスト R5 の候補 C64)。取引先も読むので、候補の口は purchase_order__partner も select_related する。
+        # (受入の入力の候補の口の字。作者の決め)。取引先も読むので、候補の口は purchase_order__partner も select_related する。
         # 残りは必ず末尾 (受入の画面の JS purchasing/receipt-form.js が「 残り n」を読んで数量の欄の下に写す)。
         # 0 以下の明細は今の字のまま: 受入の一覧の受けすぎの知らせ (services.over_receipt_lines。集計を通すが取引先を読まない) が
         # 同じ字を使い、受けすぎの明細の受入の残はいつもマイナスなので、知らせの字が変わらず問い合わせも増えない。集計の無い明細も今の字のまま。
@@ -190,7 +190,7 @@ class PurchaseOrderLine(models.Model):
     @property
     def price_unit_text(self):
         """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
-        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
+        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(作者の決め。関数は masters の price_basis_text)。"""
         return price_basis_text(self.price_basis, self.unit)
 
     @property
@@ -201,7 +201,7 @@ class PurchaseOrderLine(models.Model):
     @property
     def detail_link_target(self):
         """詳細の基本の表でこの明細の値を押した時の行き先 (読むだけ)。親の発注。
-        明細には詳細の画面が無いので、core の field_items が getattr で読み、発注の詳細への link にする (初見テスト R5 の V69。候補 C80)。"""
+        明細には詳細の画面が無いので、core の field_items が getattr で読み、発注の詳細への link にする (作者の決め)。"""
         return self.purchase_order
 
     @cached_property
@@ -215,7 +215,7 @@ class PurchaseOrderLine(models.Model):
 class Receipt(models.Model):
     """受入。協力企業から受け入れた物の記録。発注の明細ごとに何回でも入れられる (分納)。
 
-    金額は purchasing.services が 受け入れた数 × 明細の単価 を発注の取引先の方法で丸めて書く (DB で計算しない。一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。決め PRICE-1c)。
+    金額は purchasing.services が 受け入れた数 × 明細の単価 を発注の取引先の方法で丸めて書く (DB で計算しない。一式の明細は全部を受け入れた回で一式の全額、ほかの回は 0。作者の決め)。
     列の名前を amount にするのは、金額の閲覧の無い人に土台が「—」を出すため (access.is_money_name)。
     """
 
@@ -248,7 +248,7 @@ class Receipt(models.Model):
     #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
     #: 検収を送った日時と相手の返事の 2 列は、seizou どうしで送った発注の受入 (相手へ検収を送る物) だけ出す。
     #: 送った発注で検収がまだ無い受入は「—」のまま出す (決め 11-05 09:3x の「まだ無い」)。
-    #: 送っていない発注の受入では入らない欄で、「—」の行は何の欄か迷わせる (初見テスト R5 の候補 C18)。
+    #: 送っていない発注の受入では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
     #: 送った発注かの判定は、送る側と同じ services._is_sent_order を使う (同じ式を 2 か所に書かない)。
     #: purchasing.services が頭でこの model を読むので、services は中で import する (頭で読むと輪になる)。
     @property
@@ -291,7 +291,7 @@ class Receipt(models.Model):
         """発注の詳細の「検収」の節に出す字。送る物でない受入は空の字 (テンプレートが薄い「—」を出す)。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、送れていなくて返事があれば
-        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
+        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。作者の決め)。
         """
         if self.acceptance_sent_at is not None:
             return f"送った {timezone.localtime(self.acceptance_sent_at):%Y-%m-%d %H:%M}"
@@ -309,10 +309,10 @@ class SelfInvoice(models.Model):
     税率ごとの合計と税額と税率) は適格請求書と同じ。確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8「請求レスユースケース」と 6.1.1。
     国税庁の資料と条文は未読。
     取適法 (2026-01-01 施行。旧下請法) では、代金の支払期日は物を受け取った日から 60 日以内で定める。支払期日 (due_on) は取引先の締日・
-    支払の月・支払日から作り (請求書と同じ計算)、一番早い受領日から 60 日を超えると詳細に知らせる (止めない。決め C111-2。
+    支払の月・支払日から作り (請求書と同じ計算)、一番早い受領日から 60 日を超えると詳細に知らせる (止めない。作者の決め。
     確かめた資料 = 中小企業共通 EDI インボイス仕様編 Ⅰ.Ⅲ「インボイス以外の改定」。公正取引委員会の一次資料は未読)。
     金額・消費税・税率・期間・支払期日は作った時の写しで、受入や取引先を後で直しても変わらない (請求書と同じ)。
-    取り消した仕入明細は消さずに状態「取消」で残す (決め C111-3)。書くのは purchasing.services だけ。
+    取り消した仕入明細は消さずに状態「取消」で残す (作者の決め)。書くのは purchasing.services だけ。
     状態と答えのコードは core.edi_codes の値 (目的は PURPOSE_*、答えは SI_REPLY_TYPES)。画面にはコードを出さず日本語の字を出す。
     """
 

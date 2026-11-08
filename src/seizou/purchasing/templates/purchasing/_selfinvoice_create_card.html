@@ -1,5 +1,5 @@
 {% load seizou_icons seizou_tags %}
-{# 仕入明細を作る入力のカード (purchasing/selfinvoice_form.html の画面の全体が include する)。写した元: billing/_invoice_create_card.html (候補 C111)。 #}
+{# 仕入明細を作る入力のカード (purchasing/selfinvoice_form.html の画面の全体が include する)。写した元: billing/_invoice_create_card.html (作者の決め)。 #}
 {# 欄の格子は form.head_fields (取引先・発行日と会社ごとの項目) だけにし、その下に受入の節を置く。見出しの行 (「受入」「必須」と合計の枠 core/_line_totals.html)・別の取引先の行に残った印の数の黄の 1 行 (selfinvoice_form.html の JS が hidden だけを出し入れする)・受入の表 (form.rows)・欄の誤りと案内の字。 #}
 {# 表の列 = 選ぶ・受入日・発注番号 (発注番号-行番号)・取引先・部品・数量・単位・金額 (税抜)。金額の閲覧の無い人には金額の列を見出しごと出さない。行が 0 のときは表の箱だけを外す。赤と黄の知らせは右上の知らせ (core/_toasts.html)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>

@@ -1,4 +1,4 @@
-"""発注の詳細の「流れ」の枠のテンプレートの tag (N139)。読むだけで、表に書かない。
+"""発注の詳細の「流れ」の枠のテンプレートの tag (開発の記録 docs/nights/20261104/N139.md)。読むだけで、表に書かない。
 
 - purchase_order_timeline: 発注の流れの出来事の並び (purchasing.timeline.events_for)。土台の詳細の画面は文脈を足す口を持たない (R15) ため、
   枠のテンプレートが {% purchase_order_timeline object as events %} の形で読む (受注の {% order_timeline object as events %} と同じ形)。
@@ -18,5 +18,5 @@ def purchase_order_timeline(purchase_order):
 
 @register.simple_tag
 def purchase_order_stages(purchase_order):
-    """発注の段の帯 (案 4-A の発注。N151)。取消の発注は None (帯を出さない)。"""
+    """発注の段の帯 (作者の決めの発注。開発の記録 docs/nights/20261105/N151.md)。取消の発注は None (帯を出さない)。"""
     return timeline.stage_band(purchase_order)
