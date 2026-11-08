@@ -282,7 +282,7 @@ class Outbox(models.Model):
     replied_at = models.DateTimeField("注文回答の日時", null=True, blank=True)
     reply_message_id = models.UUIDField("注文回答の番号", null=True, blank=True, unique=True)
 
-    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    # 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
 
     class Meta:

@@ -131,7 +131,7 @@ class Radios(forms.RadioSelect):
     文の無い値は名前だけ。1 つの選択肢は core/_radio_option.html で描く (Django の radio_option の代わり)。
     外の枠 (div) には丸の見た目を付けない (Checkboxes と同じ訳)。Django の雛形 (multiple_input.html) は
     widget の class を外の枠 <div id="id_<鍵>"> にも付けるので、付けたままだと外の枠が大きな丸になる。
-    class を渡さないと土台の get_form (core/views.py の widget_css) が字の欄の見た目を付けるので、
+    class を渡さないと土台の get_form (core/views/ の widget_css) が字の欄の見た目を付けるので、
     RADIO_CSS を渡したうえで外の枠からだけ外す。1 つずつの丸には create_option が class を写す (option_inherits_attrs)。
     """
 

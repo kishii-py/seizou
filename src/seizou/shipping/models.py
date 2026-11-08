@@ -109,7 +109,7 @@ class Shipment(models.Model):
     notice_sent_at = models.DateTimeField("出荷の知らせを送った日時", null=True, blank=True)
     notice_response = models.CharField("出荷の知らせの相手の返事", max_length=500, blank=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
+    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
     #: 明細を出し終えた出荷の印 (finishes_line) も、金額を数えるための列なのでいつも出さない。
     #: 知らせを送った日時と相手の返事の 2 列は、受信した注文で作った受注の出荷 (相手へ出荷の知らせを送る物) だけ出す。
     #: ほかの出荷では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。

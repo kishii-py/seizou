@@ -70,7 +70,7 @@ class PurchaseOrder(models.Model):
         "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
     )
 
-    # 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    # 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)
     #: 変更の履歴 (core.history。作者の決めの伝票の「発注」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
@@ -245,7 +245,7 @@ class Receipt(models.Model):
     acceptance_sent_at = models.DateTimeField("検収を送った日時", null=True, blank=True)
     acceptance_response = models.CharField("検収の相手の返事", max_length=500, blank=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
+    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
     #: 検収を送った日時と相手の返事の 2 列は、seizou どうしで送った発注の受入 (相手へ検収を送る物) だけ出す。
     #: 送った発注で検収がまだ無い受入は「—」のまま出す (決め 11-05 09:3x の「まだ無い」)。
     #: 送っていない発注の受入では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
@@ -363,7 +363,7 @@ class SelfInvoice(models.Model):
     replied_at = models.DateTimeField("答えが届いた日時", null=True, blank=True)
     reply_message_id = models.UUIDField("仕入明細回答の番号", null=True, blank=True, unique=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が読む)。uuid は画面に出さない。
+    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("message_id", "reply_message_id")
     #: 変更の履歴 (core.history) を残し、詳細に「履歴」のタブを出す。送った日時と返事と答えの日時は送り直しのたびに動くので残さない。
     keeps_history = True

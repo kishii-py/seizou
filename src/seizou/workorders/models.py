@@ -104,7 +104,7 @@ class WorkOrder(models.Model):
     # 書くのは services.cancel_workorder だけ。
     cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
 
-    #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。
+    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が物 1 件ずつ読む)。
     #: 状態は実績から出す字 (progress_state) を題の横の印で見せるので、基本情報と小窓の項目からは外す (作者の決め)。
     #: 取消の理由は、取り消した指示書だけ出す。発行の指示書では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
     #: 取り消した指示書は、理由が空でも行を出す (理由を書かずに取り消せるため)。

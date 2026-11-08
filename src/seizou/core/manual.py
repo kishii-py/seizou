@@ -462,7 +462,7 @@ def screen_refusals(screen, indexes: dict[str, dict] | None = None) -> list[str]
     """画面 (目録の Screen) 1 つの止まるときの文。その画面の view の service からたどれる文だけを、refusal_texts の並びで返す。
 
     service は view の class の属性 (土台の BaseFormView の service。前例 core/access.py)。無ければ空の並び (節を出さない)。
-    読む services.py は service.__module__ の部品の名前で決める (前例 core/views.py の get_action)。seizou の部品の services.py の外の関数は空。
+    読む services.py は service.__module__ の部品の名前で決める (前例 core/views/ の get_action)。seizou の部品の services.py の外の関数は空。
     service の関数から、同じ services.py の頭の関数を名前でたどり、新しい関数が出なくなるまで繰り返す。別の部品の services.py へはたどらない。
     同じ字の文が 2 つ以上の関数にあるときは、どれか 1 つの関数がたどれれば残す。
     indexes は部品ごとの材料の入れ物 (1 回の描画で services.py を部品ごとに 1 回だけ読むため)。
