@@ -1,7 +1,7 @@
-"""進捗の実績の表 (01 の 4 節)。
+"""進捗の実績の表 (表の設計の決め)。
 
 実績は指示書の工程を指し、1 つの工程に何回でも入れられる。予定を超えた実数もそのまま残す (現物優先)。
-実績の数 (qty) は良品の数。不良の数は defect_qty に分けて持つ (C29-2)。工程の完了は、印 (completes_step) の付いた実績があるかで決める (PROG-1)。
+実績の数 (qty) は良品の数。不良の数は defect_qty に分けて持つ (作者の決め)。工程の完了は、印 (completes_step) の付いた実績があるかで決める (作者の決め)。
 工程ごとの実績の合計・不良の数の合計・完了の印の有る無しは列に持たず、progress.services の recorded_qty・recorded_defect_qty・step_completed で毎回出す。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 書くときは progress.services を通す。
@@ -30,9 +30,9 @@ class Progress(models.Model):
         related_name="progress_records",
     )
     qty = models.DecimalField("実績の数", max_digits=12, decimal_places=2)
-    # 不良の数 (C29-2 = b)。実績の数 (qty) は良品の数 (C29-1) なので、不良は分けて持つ。
+    # 不良の数 (作者の決め)。実績の数 (qty) は良品の数 (作者の決め) なので、不良は分けて持つ。
     defect_qty = models.DecimalField("不良の数", max_digits=12, decimal_places=2, default=Decimal("0"))
-    # 工程の完了の印 (PROG-1)。工程の完了は数でなく、この印の付いた実績があるかで決める。初めは付けない (PROG-1b = a)。
+    # 工程の完了の印 (作者の決め)。工程の完了は数でなく、この印の付いた実績があるかで決める。初めは付けない (作者の決め)。
     completes_step = models.BooleanField("工程の完了", default=False)
     recorded_at = models.DateTimeField("日時")
     recorded_by = models.ForeignKey(
@@ -45,7 +45,7 @@ class Progress(models.Model):
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
-    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history が指示書の工程 → 指示書と辿る。決め HIST-1 の伝票の「実績」・PROG-1d・PROG-1e)。
+    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history が指示書の工程 → 指示書と辿る。作者の決めの伝票の「実績」)。
     #: 実績は指示書の詳細の「進捗」のタブに出る物で、誰がいつ直したか・消したかも同じ詳細で追えるようにするため
     history_owner = "workorder_step.workorder"
 
@@ -53,7 +53,7 @@ class Progress(models.Model):
         verbose_name = "進捗の実績"
         verbose_name_plural = "進捗の実績"
         ordering = ["-recorded_at", "-id"]
-        # R02 の実績の形「良品の数と不良の数はどちらも 0 以上で、合わせて 0 より大きい」(C103-Q2 = a)。form と services を通らずに表へ書いても止める。
+        # R02 の実績の形「良品の数と不良の数はどちらも 0 以上で、合わせて 0 より大きい」(作者の決め)。form と services を通らずに表へ書いても止める。
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(qty__gte=0),
