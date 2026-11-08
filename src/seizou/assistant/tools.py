@@ -12,11 +12,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from django.db import DatabaseError
 
 from seizou.core import mcp_tools
 from seizou.core.templatetags.seizou_tags import yen
+
+logger = logging.getLogger(__name__)
 
 #: 道具 get_manual が返す説明書の字数の上限
 MANUAL_CHARS = 4000
@@ -66,7 +69,9 @@ def _shown(arguments, key, *, optional=False):
     value = arguments.get(key) if isinstance(arguments, dict) else None
     try:
         text = "" if value is None else " ".join(str(value).split())
-    except Exception:
+    except Exception as error:
+        # 値の中身は記録に書かない (AI が作った引数。利用者の入力を含みうる)。
+        logger.warning("提案のカードの引数の値を字にできず、「(読めません)」を出しました: %s", type(error).__name__)
         return _UNREADABLE
     if not text:
         return "" if optional else _UNREADABLE
@@ -128,7 +133,8 @@ def summarize(name, arguments):
         if builder is not None:
             return builder(arguments)
         return [f"{key}: {_shown(arguments, key)}" for key in arguments]
-    except Exception:
+    except Exception as error:
+        logger.warning("提案のカードの要約を作れず (道具 %s)、「(読めません)」を出しました: %s", name, type(error).__name__)
         return [_UNREADABLE]
 
 
@@ -520,8 +526,9 @@ def run_tool(name, arguments, user=None):
         return _error(f"道具 {name} の引数が違います。")
     except (LookupError, DatabaseError):
         return _error(unreadable)
-    except Exception:
-        # 思わぬ誤りでも窓 (全部の画面) を落とさない。中身は文に入れない。
+    except Exception as error:
+        # 思わぬ誤りでも窓 (全部の画面) を落とさない。中身は文に入れない (記録にも例外の種類だけを書く)。
+        logger.warning("AI の道具 %s が思わぬ誤りで止まり、「結果を読めませんでした」を返しました: %s", name, type(error).__name__)
         return _error(unreadable)
     if not isinstance(result, dict):
         return _error(unreadable)
