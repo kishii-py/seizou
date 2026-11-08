@@ -1,4 +1,4 @@
-"""業務マニュアルの画面 (02 の 6 節)。画面は全部 core の土台を継承する (R15)。
+"""業務マニュアルの画面 (業務マニュアルの設計の決め)。画面は全部 core の土台を継承する (R15)。
 
 一覧はフォルダの木 (template tag) と、土台の検索・行・ページ送り・CSV。検索の言葉があれば全部のフォルダを横断する。
 画面でない口 (フォルダを開く・ルートへ移るだけ・htmx の部分・画像のファイル) は関数の view。
@@ -335,7 +335,7 @@ def manual_preview(request, pk):
 def image_upload(request, pk):
     """画像を追加する口 (htmx の部分)。画像の並びを返す (編集の画面の打ちかけの本文を消さないため、画面を移さない)。
 
-    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07 C57-5)。
+    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07)。
     """
     manual = get_object_or_404(Manual, pk=pk)
     try:
@@ -356,7 +356,7 @@ def image_upload(request, pk):
 def image_delete(request, pk):
     """画像を削除する口 (htmx の部分)。画像の並びを返す。
 
-    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07 C57-5)。
+    断った時も枠を返し、断りは見出し HX-Trigger の seizou:notice で右上の赤い知らせに出す (決め 11-07)。
     """
     image = get_object_or_404(ManualImage.objects.select_related("manual"), pk=pk)
     manual = image.manual

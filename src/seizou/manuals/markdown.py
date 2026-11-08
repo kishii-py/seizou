@@ -1,4 +1,4 @@
-"""業務マニュアルの本文 (Markdown の方言) を HTML に描く部品 (02 の 6 節)。方言の約束はこの module の 1 か所。
+"""業務マニュアルの本文 (Markdown の方言) を HTML に描く部品 (業務マニュアルの設計の決め)。方言の約束はこの module の 1 か所。
 
 字から字への関数で、Django を使わない (settings なしで呼べる)。この module の中の `import markdown` は
 site-packages の Python-Markdown を指す (Python 3 の import は絶対)。ほかの module からは

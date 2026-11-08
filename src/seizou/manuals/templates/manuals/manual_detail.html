@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load manuals_tags seizou_tags seizou_icons %}
 {# 見る画面: 上に帯 (置き場の道・版・最終更新・形式・保護・紐付け)、その下に左の目次と右の本文、最後に土台の基本情報。 #}
-{# 操作は「PDF」「版の履歴」(副)・「⋯」(移動・保護・削除 か 保護解除。削除は最後に赤の字)・主色の「編集」の順 (詳細の頭の型。N163)。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。「⋯」はマニュアルの権限がある人だけ (決め 11-04 00:0x)。 #}
+{# 操作は「PDF」「版の履歴」(副)・「⋯」(移動・保護・削除 か 保護解除。削除は最後に赤の字)・主色の「編集」の順 (詳細の頭の型。開発の記録 docs/nights/20261105/N163.md)。保護中は「移動」と「削除」を出さない (保護は移動と削除だけを止める)。「⋯」はマニュアルの権限がある人だけ (決め 11-04 00:0x)。 #}
 {% block actions %}
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manual_pdf' object.pk %}" target="_blank" rel="noopener">{% icon "file" "size-4" %}PDF</a>
 <a class="btn btn-outline border-base-300" href="{% url 'manuals:manualversion_list' object.pk %}">{% icon "list" "size-4" %}版の履歴</a>
