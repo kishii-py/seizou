@@ -75,7 +75,7 @@ def all_screens() -> list[Screen]:
             continue
         screens.append(
             Screen(
-                app=view_class.__module__.split(".")[-2],
+                app=view_class.screen_app(),
                 view=view_class.__name__,
                 name=screen_name,
                 help=getattr(view_class, "screen_help", ""),
