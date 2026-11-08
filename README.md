@@ -31,10 +31,10 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 
 会期中に作った量 (毎朝更新する。元は `docs/nights/`・pytest・画面の目録・`src/seizou/parts.py`・RULES.md・git の履歴)。
 
-- 無人の仕事の回数: 364 本 (11-08 06:3x の main で、`docs/nights/<日付>/` の直下の仕事ごとの記録のファイル (夜の N、昼の D と C) を数えた。昼に別の PC で無人で動いた分を含む)
-- commit の数: 2,936 (11-08 08:0x の main f6e5366a。うち Claude との共著の印が付いた物 2,916。main への merge の commit は 531)
-- テストの数: 5,688 本 (11-08 08:0x の main f6e5366a の `uv run pytest --collect-only`。E2E を除く全体の `uv run pytest` は通過 5,617、普段は skip の E2E は 71 本 (46 ファイル)。E2E は手元の 2 社で 11-08 に回し、絵は手元の `docs/e2e/20261108/` に残し (リポジトリには 11-02 の分を入れてある)、結果は取り込みの記録に書いた)
-- 画面の数: 159 (11-08 08:0x の main f6e5366a。土台を継承した画面の目録 `seizou_screens` の画面)
+- 無人の仕事の回数: 368 本 (11-08 12:0x の main dd76eb86 で、`docs/nights/<日付>/` の直下の仕事ごとの記録のファイル (夜の N、昼の D と C) を数えた。昼に別の PC で無人で動いた分を含む)
+- commit の数: 2,993 (11-08 12:0x の main dd76eb86。うち Claude との共著の印が付いた物 2,973。main への merge の commit は 535)
+- テストの数: 5,691 本 (11-08 12:0x の main dd76eb86 の `uv run pytest --collect-only`。E2E を除く全体の `uv run pytest` は通過 5,620、普段は skip の E2E は 71 本 (46 ファイル)。E2E は手元の 2 社で 11-08 に回し、絵は手元の `docs/e2e/20261108/` に残し (リポジトリには 11-02 の分を入れてある)、結果は取り込みの記録に書いた)
+- 画面の数: 159 (11-08 12:0x の main dd76eb86。土台を継承した画面の目録 `seizou_screens` の画面)
 - 部品の数: 19 (core と 18 の Django の部品。`src/seizou/parts.py`)
 - 決まりの数: 24 (RULES.md の R01〜R24)
 
