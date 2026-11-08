@@ -5,18 +5,18 @@
   得意先と違う出荷を選んだときは、画面で先に断らず services の R09 の赤の知らせに任せる。
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
   出荷は列の見出しのある表の行 (rows) で描き (billing/_invoice_create_card.html)、印を付けた行の数と税抜の金額の合計を
-  合計の枠 (line_totals) と保存のボタンの字 (SubmitLabelMixin) に出す (候補 C74)。行の金額は保存と同じ services.shipment_amount。
-  「締め期間」の欄 (period。候補 C02 の 6) は、請求できる出荷を得意先と締め期間 (services.closing_period) でまとめた選択肢で、
+  合計の枠 (line_totals) と保存のボタンの字 (SubmitLabelMixin) に出す (作者の決め)。行の金額は保存と同じ services.shipment_amount。
+  「締め期間」の欄 (period。作者の決め) は、請求できる出荷を得意先と締め期間 (services.closing_period) でまとめた選択肢で、
   選択肢ごとに data-partner と data-period を持つ。締日でまとめる得意先の出荷の行にも同じ data-period を付け、テンプレートの JS が
   選んだ期間の行に印を付けて発行日に締日を入れる。期間は Python の closing_period の 1 か所で決める (JS で日付を計算しない)。
   欄は service に渡さない補助の欄で、送った値を検査して断らない (空でも、選択肢に無い値でも保存は今のまま)。
-  出し切らずに終えた一式の受注の明細 (services.unbilled_lumps。決め PRICE-1d) は、一式の節の表の行 (lump_rows) で描く (知らせるだけで欄は無い)。
+  出し切らずに終えた一式の受注の明細 (services.unbilled_lumps。作者の決め) は、一式の節の表の行 (lump_rows) で描く (知らせるだけで欄は無い)。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - 作り直す form は「発行日」だけ。service_kwargs() は {"issued_on": …} (土台が reissue_invoice(請求書, user=..., issued_on=...) を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
-- 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
+- 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
 """
 
 import unicodedata
@@ -100,7 +100,7 @@ class PeriodSelect(forms.Select):
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
-    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は R5 の V113)。"""
+    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は 作者の決め)。"""
 
     def label_from_instance(self, obj):
         line = obj.order_line
@@ -131,10 +131,10 @@ def _plain(value) -> str:
 
 
 class LumpFieldsMixin:
-    """一式の表の欄を足す form の部品 (請求書の新規登録 InvoiceForm と作り直し InvoiceReissueForm。決め PRICE-1d)。
+    """一式の表の欄を足す form の部品 (請求書の新規登録 InvoiceForm と作り直し InvoiceReissueForm。作者の決め)。
 
     出し切らずに終えた一式の受注の明細 (services.unbilled_lumps) ごとに、金額の閲覧のある人にだけ欄を 2 つ足す:
-    lump-<受注の明細の pk>-pick (載せる印) と lump-<pk>-amount (請求する金額。1 円の整数で、0 より大きい数 = 作者の決め C107-3)。
+    lump-<受注の明細の pk>-pick (載せる印) と lump-<pk>-amount (請求する金額。1 円の整数で、0 より大きい数 = 作者の決め)。
     載せる印があって金額が空の行は、金額の欄の誤り「金額を入れてください。」(欄の形の誤り)。
     clean の後の _picked_lumps = (受注の明細, 金額) の組の並び (services の lumps に渡す)。
     """
@@ -246,7 +246,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         candidates = billable_shipments()
         # 一式の表の明細は 1 回だけ読む (lump_rows と得意先の候補が同じ並びを使う)。
         self._add_lump_fields(unbilled_lumps())
-        # 一式の行の後に出荷が続いた明細 (読むだけの行。欄は無く、得意先の候補にも足さない = 作者の決め C107-7)。
+        # 一式の行の後に出荷が続いた明細 (読むだけの行。欄は無く、得意先の候補にも足さない = 作者の決め)。
         self._lumps_after = lumps_shipped_after()
         chosen = Q(pk__in=candidates.values("order_line__order__customer_id"))
         if not self.hide_money and self._lumps:
@@ -296,7 +296,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
         box は checkbox の subwidget (テンプレートが {{ row.box.tag }} で描く)。qty_text と amount_text は JS が読む素の数の字。
         amount は行の得意先の端数の扱いで 1 円に丸めた金額 (services.shipment_amount)。金額の閲覧が無い人は None。
-        lump = 受注の明細の単価の単位が式 (金額の枡に「(一式)」を添える。一式の途中の出荷は 0。決め PRICE-1c)。
+        lump = 受注の明細の単価の単位が式 (金額の枡に「(一式)」を添える。一式の途中の出荷は 0。作者の決め)。
         """
         if self._rows is None:
             rows = []
@@ -326,7 +326,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         pick (載せる印の欄)・amount (請求する金額の欄)・qty_plain (出荷の合計の素の数の字)・amount_plain (送った金額の素の数の字)・
         full_plain・shipped_plain (「全額」「出した分」のボタンが欄に入れる素の数の字)・after (偽)}。金額と欄は金額の閲覧が無い人は None
         (金額を見られない人に金額を見せず、決めさせない)。得意先を選んでいても全部を描き、テンプレートの JS が data-partner で絞る (出荷の表と同じ)。
-        その後に、一式の行の後に出荷が続いた明細 (services.lumps_shipped_after。作者の決め C107-7) の行を足す: after が真・invoice (一式の行の請求書)・
+        その後に、一式の行の後に出荷が続いた明細 (services.lumps_shipped_after。作者の決め) の行を足す: after が真・invoice (一式の行の請求書)・
         billed_qty_text (一式の行の数量の字)。金額・欄・「請求しない」は無い (読むだけ)。line_totals と service_kwargs は欄のある行だけを数える。
         最初に読んだ時に作って持つ (rows と同じ)。
         """
@@ -459,9 +459,9 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
 
 
 class InvoiceCancelForm(forms.Form):
-    """請求書を取り消す form。欄は無い。保存のボタンは「IV-000001 を取り消す」(土台が対象を instance= で渡す。N138)。"""
+    """請求書を取り消す form。欄は無い。保存のボタンは「IV-000001 を取り消す」(土台が対象を instance= で渡す。開発の記録 docs/nights/20261104/N138.md)。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -524,7 +524,7 @@ class InvoiceReissueForm(LumpFieldsMixin, forms.Form):
 class PaymentForm(SubmitLabelMixin, forms.Form):
     """入金を記録する form。請求書は欄に持たない (土台が URL の pk の請求書を record_payment に渡す)。
 
-    保存のボタンは「¥12,000 を入金として記録する」(金額を入れる前は「入金として記録する」。N138)。
+    保存のボタンは「¥12,000 を入金として記録する」(金額を入れる前は「入金として記録する」。開発の記録 docs/nights/20261104/N138.md)。
     金額は使う人が自分で入れる字なので、金額の閲覧が無い人にも隠さない (発注の合計は form が掛けて出す字なので隠す)。
     """
 
@@ -540,7 +540,7 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
         max_digits=14,
         decimal_places=2,
         min_value=Decimal("0.01"),
-        # 数でない字 (「8800円」) は直し方の分かる字にする (初見テスト R5 の V37。候補 C25 の 1)。空の字は入力の土台がまとめて「金額を入れてください。」にする。
+        # 数でない字 (「8800円」) は直し方の分かる字にする (作者の決め)。空の字は入力の土台がまとめて「金額を入れてください。」にする。
         error_messages={
             "min_value": "入金の金額は 0 より大きい数にしてください。",
             "invalid": "金額は 8800 のように数字で入れてください。",
@@ -600,7 +600,7 @@ class ShipmentPaymentForm(PaymentForm):
 class PaymentCancelForm(forms.Form):
     """入金を取り消す form。欄は無い。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     def service_kwargs(self):
         return {}

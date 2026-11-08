@@ -2,9 +2,9 @@
 
 - invoice_cancel_refusal: 請求書を取り消せない理由の文 (services.cancel_refusal と同じ文。取消の確かめの画面が黄の知らせで出す)。
 - invoice_reissue_plan: 請求書の作り直しの中身 (services.reissue_plan と同じ物。作り直しの画面が取り消す請求書と入る出荷を出す)。
-- payment_badge: 請求書の入金の状態の印 (core/_status_badge.html。色は core.status_colors の PAYMENT_TONES。N164)。
+- payment_badge: 請求書の入金の状態の印 (core/_status_badge.html。色は core.status_colors の PAYMENT_TONES。開発の記録 docs/nights/20261105/N164.md)。
 - invoice_head_chips: 請求書の詳細の頭の要点の札「合計」「残」。形は orders の orders_detail の order_head_chips と同じ。
-  取消の請求書と金額の閲覧の無い人には出さない (初見テスト R5 の候補 C26 の 6)。
+  取消の請求書と金額の閲覧の無い人には出さない (作者の決め)。
 """
 
 from django import template
@@ -39,7 +39,7 @@ def invoice_reissue_plan(invoice, hide_money=False):
 
 @register.inclusion_tag("core/_status_badge.html")
 def payment_badge(invoice, dot=False, small=False):
-    """{% payment_badge invoice %}。請求書の入金の状態の印 (決め 11-05 16:2x。N164)。発行の請求書だけに使う (取消は呼ぶ側が status_badge)。
+    """{% payment_badge invoice %}。請求書の入金の状態の印 (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N164.md)。発行の請求書だけに使う (取消は呼ぶ側が status_badge)。
 
     字は入金の状態の字 (未入金・一部入金・入金済み)、色は core.status_colors の PAYMENT_TONES (未入金と一部入金 = 橙、入金済み = 緑)。
     入金の状態は Invoice.payment_status (取消でない入金の合計。一覧の「残のある物だけ」= views._unpaid_only と同じ数え方)。
@@ -57,8 +57,8 @@ def invoice_head_chips(invoice, hide_money=False) -> list[dict]:
     取消の請求書と、金額を見られない人 (hide_money が真) には空の並び (札を出さない)。残がマイナスでも札に色を付けない。
     請求書の詳細 billing/invoice_detail.html の block heading がこの形で置いてから block.super を呼び、土台の core/detail.html が
     head_chips を読んで題の横 (入金の状態の印と「?」の後) に並べる (受注の order_head_chips と同じ形)。
-    要点の札は受注と発注 (決め 11-05 16:2x。N163) と出荷 (C38-2 a) だけだったのを、決め 11-06 22:2x の C26-2 a (札「合計」「残」を
-    出す) で請求書にも広げた (初見テスト R5 の V40 の前半。上の基本情報に入金の額が無く、phone では入金の枠が窓の外に残るため)。
+    要点の札は受注と発注 (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N163.md) と出荷 (作者の決め) だけだったのを、決め 11-06 22:2x (札「合計」「残」を
+    出す) で請求書にも広げた (作者の決めの前半。上の基本情報に入金の額が無く、phone では入金の枠が窓の外に残るため)。
     入金は Invoice.balance が self.payments.all() を読むので、詳細の get_queryset が prefetch した物を使う。
     """
     if invoice.status == invoice.STATUS_CANCELLED or hide_money:

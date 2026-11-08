@@ -1,7 +1,7 @@
-"""請求書の表 (01 の 4 節)。
+"""請求書の表 (表の設計の決め)。
 
 請求書は得意先ごとに、出荷済みの出荷 (発行の納品書に入っている出荷) をまとめた物。
-明細は出荷ごとに 1 行 (と、出し切らずに終えた一式の受注の明細に人が金額を決めた行。決め PRICE-1d) で、数量・単価・金額の写しを持つ (出した請求書の金額は、後で受注の単価を直しても変わらない)。
+明細は出荷ごとに 1 行 (と、出し切らずに終えた一式の受注の明細に人が金額を決めた行。作者の決め) で、数量・単価・金額の写しを持つ (出した請求書の金額は、後で受注の単価を直しても変わらない)。
 支払期日も作ったときに計算して残す (後で取引先の支払の欄を直しても、出した請求書の期日は変わらない)。
 文字数の上限は固定 (識別子 35・コード 10)。
 書くときは billing.services を通す。
@@ -73,7 +73,7 @@ class Invoice(models.Model):
     # services はいつも billing.services.consumption_tax_rate() を渡す。既定は services を通さずに作る試験のため。
     tax_rate = models.DecimalField("税率 (%)", max_digits=5, decimal_places=2, default=Decimal("10.00"), editable=False)
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決めの伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
     #: 詳細と小窓の項目の一覧に出さない列 (発行の時の写し。帳票のための列で、入力の欄に無い。core.views.hidden_detail_fields)
     detail_hidden_fields = (
@@ -104,7 +104,7 @@ class Invoice(models.Model):
         return self.total - self.paid_total()
 
     def payment_status(self) -> str:
-        """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め C107-4)。
+        """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め)。
         ほかは、入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。
         """
         if self.total <= 0:
@@ -118,7 +118,7 @@ class Invoice(models.Model):
     def payment_status_label(self) -> str:
         """入金の状態の字 (一覧の「入金」の列と、詳細の「入金」の枠の印)。
 
-        取消の請求書は「—」(状態の payment_status は請求書の状態を見ないまま = N56 の 1-1)。
+        取消の請求書は「—」(状態の payment_status は請求書の状態を見ないまま = 開発の記録 docs/nights/20261103/N56.md の 1-1)。
         """
         if self.status == self.STATUS_CANCELLED:
             return "—"
@@ -126,7 +126,7 @@ class Invoice(models.Model):
 
 
 class InvoiceLine(models.Model):
-    """請求書の明細。出荷の行 (出荷 1 つに 1 行) か、一式の行 (出荷に結び付かない行。決め PRICE-1d)。どちらも受注の明細を指す。
+    """請求書の明細。出荷の行 (出荷 1 つに 1 行) か、一式の行 (出荷に結び付かない行。作者の決め)。どちらも受注の明細を指す。
     数量・単価・単価の単位・金額は作ったときの写し。中小企業共通 EDI の明細行類型コードは、どちらも既定の 210 (資産譲渡請求明細行) に
     当たるので列に持たない。
     発行した時の部品の品番 (part_no)・品名 (item_name)、受注の明細の単位 (unit)、受注の得意先の注文番号 (customer_order_no) も写して持つ
@@ -146,7 +146,7 @@ class InvoiceLine(models.Model):
         on_delete=models.CASCADE,
         related_name="lines",
     )
-    # 空 = 一式の行 (出荷に結び付かない行。決め PRICE-1d)。
+    # 空 = 一式の行 (出荷に結び付かない行。作者の決め)。
     shipment = models.ForeignKey(
         "shipping.Shipment",
         verbose_name="出荷",
@@ -165,7 +165,7 @@ class InvoiceLine(models.Model):
     )
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
-    # 請求書を作った時の受注の明細の単価の単位の写し (決め PRICE-1b)。一式の行は式。
+    # 請求書を作った時の受注の明細の単価の単位の写し (作者の決め)。一式の行は式。
     price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     # 一式の行だけ: その受注の明細の、発行の納品書に入った出荷の最後の出荷日 (中小企業共通 EDI の明細行取引終了日に当たる。
@@ -179,7 +179,7 @@ class InvoiceLine(models.Model):
     # 発行した時の受注の得意先の注文番号の写し (orders.Order.customer_order_no と同じ字数)。
     customer_order_no = models.CharField("得意先の注文番号", max_length=35, blank=True, default="", editable=False)
 
-    #: 変更の履歴は請求書の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「請求書」)
+    #: 変更の履歴は請求書の詳細の「履歴」に出す (core.history。作者の決めの伝票の「請求書」)
     history_owner = "invoice"
 
     class Meta:
@@ -197,7 +197,7 @@ class InvoiceLine(models.Model):
                 fields=["invoice", "shipment"],
                 name="billing_invoiceline_invoice_shipment_unique",
             ),
-            # 出荷の行 (出荷を指し、最後の出荷日は空) か、一式の行 (出荷を指さず、単価の単位が式で、最後の出荷日がある) のどちらか (決め PRICE-1d)。
+            # 出荷の行 (出荷を指し、最後の出荷日は空) か、一式の行 (出荷を指さず、単価の単位が式で、最後の出荷日がある) のどちらか (作者の決め)。
             models.CheckConstraint(
                 condition=models.Q(shipment__isnull=False, last_shipped_at__isnull=True)
                 | models.Q(shipment__isnull=True, last_shipped_at__isnull=False, price_basis=PRICE_BASIS_LUMP),
@@ -235,7 +235,7 @@ class InvoiceLine(models.Model):
 
 
 class Payment(models.Model):
-    """入金。請求書に対する入金か、請求書の外で受け取った出荷の入金 (出荷を指す。決め C107-3c) のどちらか。取消は行を消さず status を取消にして履歴に残す。
+    """入金。請求書に対する入金か、請求書の外で受け取った出荷の入金 (出荷を指す。作者の決め) のどちらか。取消は行を消さず status を取消にして履歴に残す。
 
     残と状態は Invoice の method が取消でない入金を Python で足して出す (列に持たない)。書くときは billing.services を通す。
     """
@@ -258,7 +258,7 @@ class Payment(models.Model):
         (STATUS_CANCELLED, "取消"),
     ]
 
-    # 空 = 請求書の外で受け取った出荷の入金 (shipment を指す。決め C107-3c)。
+    # 空 = 請求書の外で受け取った出荷の入金 (shipment を指す。作者の決め)。
     invoice = models.ForeignKey(
         Invoice,
         verbose_name="請求書",
@@ -267,7 +267,7 @@ class Payment(models.Model):
         on_delete=models.PROTECT,
         related_name="payments",
     )
-    # 請求書の外で受け取った入金の出荷 (一式でない明細の出荷の「請求しない (別に受け取った)」。決め C107-3c)。
+    # 請求書の外で受け取った入金の出荷 (一式でない明細の出荷の「請求しない (別に受け取った)」。作者の決め)。
     # 取消でないこの行があると、その出荷は請求の候補に出ない (billing.services.billable_shipments)。請求書の入金は空。
     shipment = models.ForeignKey(
         "shipping.Shipment",
@@ -296,8 +296,8 @@ class Payment(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_RECORDED
     )
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「入金」) を出す詳細。請求書の入金は請求書の詳細の「履歴」に、
-    #: 請求書の外で受け取った入金 (請求書が空。決め C107-3c) は出荷の詳細の「履歴」に出す (値の入った最初の外部キーの先)。
+    #: 変更の履歴 (core.history。作者の決めの伝票の「入金」) を出す詳細。請求書の入金は請求書の詳細の「履歴」に、
+    #: 請求書の外で受け取った入金 (請求書が空。作者の決め) は出荷の詳細の「履歴」に出す (値の入った最初の外部キーの先)。
     #: 訳: 請求書の無い入金の持ち主が空のまま履歴を書いて止まらないため。出荷にするのは、その入金が出荷に記録され、
     #: 出荷の詳細の「請求書の外で受け取った入金」の枠に出る物だから
     history_owner = ("invoice", "shipment")
@@ -311,7 +311,7 @@ class Payment(models.Model):
                 condition=models.Q(amount__gt=0),
                 name="billing_payment_amount_positive",
             ),
-            # 請求書の入金 (請求書を指し、出荷は空) か、請求書の外で受け取った出荷の入金 (出荷を指し、請求書は空) のどちらか (決め C107-3c)。
+            # 請求書の入金 (請求書を指し、出荷は空) か、請求書の外で受け取った出荷の入金 (出荷を指し、請求書は空) のどちらか (作者の決め)。
             models.CheckConstraint(
                 condition=models.Q(invoice__isnull=False, shipment__isnull=True)
                 | models.Q(invoice__isnull=True, shipment__isnull=False),

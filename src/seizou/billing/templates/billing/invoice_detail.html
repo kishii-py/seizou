@@ -1,9 +1,9 @@
 {% extends "core/detail.html" %}
 {% load billing_tags seizou_tags %}
-{# 見出しの印は入金の状態 (未入金と一部入金 = 橙、入金済み = 緑)。取消の請求書は状態の印 (赤の線の「取消」)。「発行」は印にしない (決め 11-05 16:2x。N164)。 #}
+{# 見出しの印は入金の状態 (未入金と一部入金 = 橙、入金済み = 緑)。取消の請求書は状態の印 (赤の線の「取消」)。「発行」は印にしない (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N164.md)。 #}
 {% block heading_badge %}{% if object.status == "cancelled" %}{% status_badge object dot=True %}{% else %}<span class="inline-flex items-center gap-2"><span class="text-base-content/70">入金</span>{% payment_badge object dot=True %}</span>{% endif %}{% endblock %}
 {% load seizou_tags seizou_icons %}
-{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。N158b)。頭の右の緑はその伝票で次にする操作 1 つ (UX-2 a。11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。初見テスト R5 の候補 C93)。入金の枠は土台の block after_tabs (タブの後・添付ファイルの前) に置く (パソコンの窓で送らずに入金を読んで記録できるように。初見テスト R5 の候補 C26 の 1)。題の横の要点の札は「合計」「残」(billing_tags の invoice_head_chips。取消と金額の閲覧の無い人には出さない。決め 11-06 22:2x の C26-2 a)。 #}
+{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。開発の記録 docs/nights/20261105/N158b.md)。頭の右の緑はその伝票で次にする操作 1 つ (作者の決め 11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。作者の決め)。入金の枠は土台の block after_tabs (タブの後・添付ファイルの前) に置く (パソコンの窓で送らずに入金を読んで記録できるように。作者の決め)。題の横の要点の札は「合計」「残」(billing_tags の invoice_head_chips。取消と金額の閲覧の無い人には出さない。決め 11-06 22:2x)。 #}
 {% block heading %}<div id="invoice-heading">{% invoice_head_chips object seizou.hide_money as head_chips %}{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
 {% if not seizou.hide_money %}
@@ -13,7 +13,7 @@
 {% endblock %}
 {% block more %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill %}{% url 'billing:invoice_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block edit_button %}{% can_write "billing.Invoice" as can_bill %}{% if object.status == "issued" and can_bill and object.balance > 0 %}<a class="btn btn-primary" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>{% else %}{{ block.super }}{% endif %}{% endblock %}
-{# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表 (一式の行は最後の出荷日と「受注 <番号>-<行> の一式」)。単価の後ろに単価の単位 (明細の写し。式なら「/ 式」) を添える。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (N155)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (初見テスト R5 の V26。C17) #}
+{# 「明細」のタブは、印刷用の画面と同じ並び (出荷日・出荷番号・品番・品名・数量・単位・単価・金額) の表 (一式の行は最後の出荷日と「受注 <番号>-<行> の一式」)。単価の後ろに単価の単位 (明細の写し。式なら「/ 式」) を添える。数量・単価・金額は明細の写しのまま。単位は部品の単位 (印刷と同じ)。金額の閲覧が無い人には単価と金額の列を見出しごと出さない (開発の記録 docs/nights/20261105/N155.md)。品名だけが折り返すので、細く縮まないよう幅の下限を付ける (作者の決め) #}
 {% block tab_rows %}{% if tab.related == "lines" %}
 <div class="overflow-auto rounded-lg border border-base-300">
   <table class="table table-sm">
@@ -39,7 +39,7 @@
 </div>
 <div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
 {% endblock %}
-{% block after_tabs %}{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。N155) #}
+{% block after_tabs %}{# 入金の枠: 合計と入金済みと残、入金の並び、記録と取消の入口。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md) #}
 {% can_write "billing.Invoice" as can_bill %}
 <section id="payments" class="mt-6 scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
