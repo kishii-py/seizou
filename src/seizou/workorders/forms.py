@@ -1,7 +1,7 @@
 """workorders の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
 
 土台は service_kwargs() の辞書を検査の層の data に使い、同じ辞書で
-services.issue_workorder(order_line=..., qty=..., steps=..., user=...) を呼ぶ (01 の 10.4)。
+services.issue_workorder(order_line=..., qty=..., steps=..., user=...) を呼ぶ (部品の公開する関数の設計の決め)。
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
 """
 
@@ -43,11 +43,11 @@ class WorkOrderIssueForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 工程は使用中だけ (N140。発行は新しく作るだけの form なので keep を使わない)
+        # 工程は使用中だけ (開発の記録 docs/nights/20261104/N140.md。発行は新しく作るだけの form なので keep を使わない)
         self.fields["processes"].queryset = active_processes()
         # 取消した受注の明細は選択肢に出さない。ただし選んで届いた明細 (POST の値か、新規登録の GET の ?order_line= の初期値) は
         # 選択肢に残す。保存のときに services.issue_workorder が R05 の赤の文で止める (出荷の入力と同じ知らせ)。
-        # Django の「正しく選択してください」で、選んだ明細が欄から消える形にしない (初見テスト 3 回目)。
+        # Django の「正しく選択してください」で、選んだ明細が欄から消える形にしない (作者の決め)。
         chosen = self.data.get(self.add_prefix("order_line")) if self.is_bound else self.initial.get("order_line")
         pk = str(getattr(chosen, "pk", chosen) or "")
         if pk.isdecimal():
@@ -59,7 +59,7 @@ class WorkOrderIssueForm(forms.Form):
         qty = self.cleaned_data["qty"]
         processes = list(self.cleaned_data.get("processes") or ())
         if not processes:
-            # 使用停止の工程は写さない (N140)。部品の標準の工程の並びの行は消さないので、使用中に戻すとまた写る。
+            # 使用停止の工程は写さない (開発の記録 docs/nights/20261104/N140.md)。部品の標準の工程の並びの行は消さないので、使用中に戻すとまた写る。
             standard = line.item.item_processes.filter(process__active=True).select_related("process").order_by("seq")
             processes = [row.process for row in standard]
         return {
@@ -99,9 +99,9 @@ class PlanPlaceForm(forms.Form):
 
 
 class WorkOrderCancelForm(forms.Form):
-    """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。保存のボタンは「WO-000001 を取り消す」(N138)。"""
+    """指示書の取消。理由は指示書の「取消の理由」に残る (services.cancel_workorder)。保存のボタンは「WO-000001 を取り消す」(開発の記録 docs/nights/20261104/N138.md)。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     reason = forms.CharField(
         label="取消の理由",

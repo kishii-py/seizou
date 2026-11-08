@@ -29,7 +29,7 @@ from .forms import PlanPlaceForm, WorkOrderCancelForm, WorkOrderFindForm, WorkOr
 from .models import WorkOrder, WorkOrderStep, with_recorded_total
 from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
-#: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (05 の 6 節の文。shipping の納品書と同じ字)
+#: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (帳票の設計の決めの文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
 
 #: 上の帯の「現品票を読む」の小窓の赤い帯 (段 2 の止まった。小窓の中なので core/_notices.html の帯)。
@@ -52,7 +52,7 @@ READER_CAMERA_MESSAGES = {
 }
 
 
-#: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。C27-1 = a)
+#: 一覧の絞りの「状態」の選び (値は表の状態、字は実績から出す 4 つの字。作者の決め)
 STATUS_FILTER_CHOICES = [
     (WorkOrder.STATUS_ISSUED, "未着手・着手済・完了"),
     (WorkOrder.STATUS_CANCELLED, "取消"),
@@ -84,7 +84,7 @@ class WorkOrderListView(BaseListView):
         ("order_line__item", "部品"),
         "qty",
         "issued_on",
-        # 状態は実績から出す字 (未着手・着手済・完了・取消。C27-1 = a)。行は workorders/_row.html が印にする
+        # 状態は実績から出す字 (未着手・着手済・完了・取消。作者の決め)。行は workorders/_row.html が印にする
         ("progress_state_label", "状態"),
         # 工程ごとの進み (工程の名前・棒・実績の合計 / 予定の数を縦に並べる。本人の決め 11-07 18:2x〜18:4x)。値は WorkOrder.step_progress、
         # 行は workorders/_row.html が棒にする。CSV は str の字 (「切断 3/10・曲げ 0/10」)。並び替えは無い (表の項目でない)
@@ -92,7 +92,7 @@ class WorkOrderListView(BaseListView):
     )
     search_fields = ("wo_no",)
     filters = (
-        # 状態の選びは表の値 (発行・取消) で絞り、字に「発行」を出さない (計算した 4 つの字で絞る種類は土台に無い。C27)
+        # 状態の選びは表の値 (発行・取消) で絞り、字に「発行」を出さない (計算した 4 つの字で絞る種類は土台に無い。作者の決め)
         {"name": "status", "label": "状態", "kind": "choice", "field": "status", "choices": STATUS_FILTER_CHOICES},
         {"name": "process", "label": "工程", "kind": "lookup", "field": "steps__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "order_line__item"},
@@ -104,7 +104,7 @@ class WorkOrderListView(BaseListView):
 
     def get_queryset(self):
         # 工程 (f_process) と今日の計画 (f_today) は、指示書から見て逆向きの FK (工程の行) で絞る。
-        # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。N122)。
+        # どちらかが掛かったときは、同じ指示書が重ならないように distinct で外す (flag の when は filter だけ。開発の記録 docs/nights/20261104/N122.md)。
         joined = self.filter_chosen("process") or self.flag_on("today")
         workorders = super().get_queryset().select_related("order_line__order", "order_line__item")
         # 状態の列 (progress_state_label) と工程の進みの列 (step_progress) は工程と実績の合計と工程の名前を読むので、
@@ -156,7 +156,7 @@ class WorkOrderCancelView(BaseFormView):
 
 
 class PlanBoardView(BaseListView):
-    """生産計画の盤 (02 の 4 節)。盤の中身は template tag (workorders_plan) が plans.build_board で作る。
+    """生産計画の盤 (生産計画の盤の設計の決め)。盤の中身は template tag (workorders_plan) が plans.build_board で作る。
 
     使う人: 生産管理 / いつ: 週の始めと、指示書を発行した後 / 何のために: 工程ごとに日の計画を置く / 次にすること: 製造が盤を見て順に作る
     """
@@ -230,7 +230,7 @@ class WorkOrderStepSelectView(BaseSelectView):
         return WorkOrderStep.objects.select_related("workorder", "process")
 
 
-#: 盤の置き直しの form の誤りの文の終わり。盤には欄が無い (値はドラッグとボタンが送る) ので、直し方でなく次にすることを書く (決め 11-07 C57-5)
+#: 盤の置き直しの form の誤りの文の終わり。盤には欄が無い (値はドラッグとボタンが送る) ので、直し方でなく次にすることを書く (決め 11-07)
 PLAN_FORM_RETRY = "盤を開き直してから、もう一度置いてください。"
 
 
@@ -251,7 +251,7 @@ def plan_place(request):
 
     成功は盤の部分 (workorders/_plan_board.html) を返し、htmx が盤の箱ごと入れ替える。
     失敗 (R05・ValueError・form の誤り・権限) は本文の無い 204 に、見出し HX-Trigger の seizou:notice (core.views.add_notice_trigger) を付けて返す。
-    右上の赤い知らせに出し、盤は変わらない (決め 11-07 C57-5)。
+    右上の赤い知らせに出し、盤は変わらない (決め 11-07)。
     """
     if not request.headers.get("HX-Request"):
         return HttpResponseBadRequest("生産計画の盤からの要求だけを受けます。")

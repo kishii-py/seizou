@@ -1,11 +1,11 @@
-"""指示書の表 (01 の 4 節)。
+"""指示書の表 (表の設計の決め)。
 
 指示書は受注の明細を指し、1 つの明細に何枚でも出せる。工程は指示書ごとに順を持つ。
 指示書の数量の合計は列に持たず、workorders.services の issued_qty で毎回出す。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 書くときは workorders.services を通す。
 指示書の進みの状態 (未着手・着手済・完了・取消) は列に持たず、工程の実績から WorkOrder.progress_state で毎回出す
-(初見テスト R5 の候補 C27。本人の決め 11-07 00:36 = WO-1 b)。完了は工程の実績の完了の印から出す (PROG-1。初見テスト R5 の候補 C103)。
+(本人の決め 11-07 00:36)。完了は工程の実績の完了の印から出す (作者の決め)。
 工程ごとの進み (一覧の「工程の進み」の列の棒) も列に持たず、同じ実績のまとめから WorkOrder.step_progress で毎回出す (本人の決め 11-07 18:2x〜18:4x)。
 """
 
@@ -77,7 +77,7 @@ class WorkOrder(models.Model):
         (STATUS_CANCELLED, "取消"),
     ]
 
-    # 進みの状態 (表の列でなく、工程の実績から出す。progress_state)。字は C27-1 = a の 4 つ。
+    # 進みの状態 (表の列でなく、工程の実績から出す。progress_state)。字は作者の決めの 4 つ。
     PROGRESS_NOT_STARTED = "not_started"
     PROGRESS_STARTED = "started"
     PROGRESS_DONE = "done"
@@ -105,8 +105,8 @@ class WorkOrder(models.Model):
     cancel_reason = models.CharField("取消の理由", max_length=500, blank=True)
 
     #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。
-    #: 状態は実績から出す字 (progress_state) を題の横の印で見せるので、基本情報と小窓の項目からは外す (C27-1 = a)。
-    #: 取消の理由は、取り消した指示書だけ出す。発行の指示書では入らない欄で、「—」の行は何の欄か迷わせる (初見テスト R5 の候補 C18)。
+    #: 状態は実績から出す字 (progress_state) を題の横の印で見せるので、基本情報と小窓の項目からは外す (作者の決め)。
+    #: 取消の理由は、取り消した指示書だけ出す。発行の指示書では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
     #: 取り消した指示書は、理由が空でも行を出す (理由を書かずに取り消せるため)。
     @property
     def detail_hidden_fields(self):
@@ -114,7 +114,7 @@ class WorkOrder(models.Model):
             return ("status",)
         return ("status", "cancel_reason")
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「指示書」「実績」・PROG-1d・PROG-1e) を残し、詳細に「履歴」のタブを出す。
+    #: 変更の履歴 (core.history。作者の決めの伝票の「指示書」「実績」) を残し、詳細に「履歴」のタブを出す。
     #: 状態 (status) は詳細に出さないが、履歴には残す (取消の時に状態の前と後が残り、題の「取り消した」も状態から決まるため)
     keeps_history = True
 
@@ -142,7 +142,7 @@ class WorkOrder(models.Model):
         生産計画の盤の棒の「完了」= plans.bar_state と同じ) / 着手済 = どれかの工程の良品と不良の合計が 0 より大きい
         (実績が 1 件でもある。良品 0・不良だけの実績も着手) / 未着手 = ほか (工程の無い指示書と、進捗の部品が無い置き場を含む)。着手の印は読まない。
         訳: 状態を記録せずに実績だけから出し、記録した状態と実績が食い違わないようにするため。完了の決め方は会社ごとに違うので、決まりで自動に決めず、人が実績の印で決めるため。
-        出所 = 作者の決め (PROG-1・PROG-1a = a。11-07 06:58・07:01) と WO-1 = b (11-07 00:36)「b / 開始の進捗が必要な場合はまた別途だね」と、C27-4 の答え「そもそもstatusは進捗から計算すればいいのでは？」。着手済を良品と不良の合計で見るのは C103-Q2 = a (11-07 07:08)。字の 4 つは C27-1 = a (11-07 00:2x)。
+        出所 = 作者の決め (11-07 06:58・07:01) と作者の決め (11-07 00:36)「b / 開始の進捗が必要な場合はまた別途だね」と、作者の決めの答え「そもそもstatusは進捗から計算すればいいのでは？」。着手済を良品と不良の合計で見るのは作者の決め (11-07 07:08)。字の 4 つは作者の決め (11-07 00:2x)。
         変えてよい条件 = 本人が完了の決め方を変えたとき。
         """
         if status == cls.STATUS_CANCELLED:
@@ -246,7 +246,7 @@ class WorkOrderStep(models.Model):
     planned_start = models.DateField("開始日", null=True, blank=True)
     planned_end = models.DateField("終了日", null=True, blank=True)
 
-    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「指示書」)
+    #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history。作者の決めの伝票の「指示書」)
     history_owner = "workorder"
 
     class Meta:

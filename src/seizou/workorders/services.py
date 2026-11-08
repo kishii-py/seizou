@@ -1,7 +1,7 @@
-"""workorders の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して指示書を書く。
+"""workorders の公開する関数 (部品の公開する関数の設計の決め)。画面とほかの部品は、この関数だけを通して指示書を書く。
 
-- 引数の順は 対象 → 値 → user (01 の 10.1)。
-- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「指示書」) に書く。書く前に core.history.saved_state で前を取り、
+- 引数の順は 対象 → 値 → user (services の書き方の設計の決め)。
+- user は記録のために受け、変更の履歴 (core.services.record_history。作者の決めの伝票の「指示書」) に書く。書く前に core.history.saved_state で前を取り、
   書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。工程の行は指示書の詳細の「履歴」に出る (WorkOrderStep.history_owner)。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
 - 決まりの番号の無い入力の誤り (工程が無い・知らない鍵) は日本語の ValueError。
@@ -9,7 +9,7 @@
 - 受注より多い指示書のポカよけは検査の層 (seizou.core.checks) が services の前に見る。
   ここでは止めず、受注の数を超える数量もそのまま保存する (現物優先)。
 - 指示書の数量の合計は issued_qty で出す (検査の層と同じ関数)。
-  書く前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
+  書く前に、受注の明細の行を select_for_update でロックする (services の書き方の設計の決め)。
 - 受注 (Order・OrderLine) は書かない。
 - 指示書の取消は cancel_workorder。実績が 1 件でも入った指示書は取り消せない (実績は progress を import せず、工程の逆の関係で数える)。
   取り消せない理由の文は cancel_refusal の 1 か所 (取消の確かめのカードも同じ文を出す)。
@@ -115,7 +115,7 @@ def issued_qty(order_line):
 
 
 def plan_step(step, start, end, user):
-    """指示書の工程の予定に開始日と終了日を置く (生産計画の盤。02 の 4 節)。
+    """指示書の工程の予定に開始日と終了日を置く (生産計画の盤。生産計画の盤の設計の決め)。
 
     start と end は日付。両方 None で未計画に戻す。片方だけ None と start > end は ValueError。
     取消した受注の指示書の工程は R05 で止める。取消の指示書は止めない (盤に出さないだけ)。

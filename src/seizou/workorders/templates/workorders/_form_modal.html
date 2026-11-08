@@ -1,3 +1,3 @@
-{# workorders の入力の小窓の中身 (N158b)。入力の土台は小窓のテンプレートを app ごとに選ぶ (workorders/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
+{# workorders の入力の小窓の中身 (開発の記録 docs/nights/20261105/N158b.md)。入力の土台は小窓のテンプレートを app ごとに選ぶ (workorders/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
 {# 指示書の取消は、黄の知らせと取消の理由の欄のカード (workorders/_workorder_cancel_card.html) を form_card で渡す。ほかの入力 (指示書の発行) は土台の小窓のまま。 #}
 {% if request.resolver_match.url_name == "workorder_cancel" %}{% include "core/_form_modal.html" with form_card="workorders/_workorder_cancel_card.html" %}{% else %}{% include "core/_form_modal.html" %}{% endif %}

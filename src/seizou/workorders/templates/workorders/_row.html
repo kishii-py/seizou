@@ -1,7 +1,7 @@
 {% load seizou_tags workorders_tags %}
 {# 指示書の一覧の 1 行 (workorders/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は WorkOrder)・columns。 #}
-{# 欄の描き方は core/_rows.html の 1 行と同じ。「状態」の列 (progress_state_label) だけを進みの状態の印 (未着手・着手済・完了・取消。workorders_tags の workorder_badge) にする (C27-1 = a。土台の row_for は名前が status の列だけを印にするため)。 #}
-{# 「受注の明細」の列 (order_line) は欄の字を「受注番号-行番号」だけにし、title に今の全文 (受注番号-行番号 品番 品名) を出す (初見テスト R5 の候補 C34 の本 A。部品は隣の列にあるので繰り返さない)。CSV は今のまま全文、並び替えは今のまま受注番号の順。 #}
+{# 欄の描き方は core/_rows.html の 1 行と同じ。「状態」の列 (progress_state_label) だけを進みの状態の印 (未着手・着手済・完了・取消。workorders_tags の workorder_badge) にする (作者の決め。土台の row_for は名前が status の列だけを印にするため)。 #}
+{# 「受注の明細」の列 (order_line) は欄の字を「受注番号-行番号」だけにし、title に今の全文 (受注番号-行番号 品番 品名) を出す (作者の決め。部品は隣の列にあるので繰り返さない)。CSV は今のまま全文、並び替えは今のまま受注番号の順。 #}
 {# 「工程の進み」の列 (step_progress。本人の決め 11-07 18:2x〜18:4x): 工程ごとに「工程の名前・細い棒・良品の合計/予定の数」を工程の順に縦に並べる (値は WorkOrder.step_progress)。棒の長さは style の width (class では作らない = R19)、地は base-300 (縞の行の地 base-200 と見分けるため)。予定の数に届いた工程 (full) は棒と数を緑、ほかは主色。長い工程の名前は 1 行で切り、指すと全部 (title)。工程の無い指示書は「—」。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
