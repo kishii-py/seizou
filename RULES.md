@@ -42,7 +42,7 @@
 | R17 | 相手の会社への HTTP は `transaction.atomic` の外で送る | 決まりの検査 | `tests/test_r17_http_outside_atomic.py` |
 | R18 | CSRF の見出しは土台のテンプレートの 1 か所にだけ書く | 決まりの検査 | `tests/test_r18_csrf_single_place.py` |
 | R19 | class 名を途中で組み立てない。古い版の class 名を使わない | 決まりの検査 | `tests/test_r19_no_dynamic_classnames.py` |
-| R20 | AI は部品の中身を書き換えない。会社の違いは拡張の表と設定とテンプレートと会社の検査で出す | 製品の hook (`plugin/hooks/guard_core.py`) | hook のテスト |
+| R20 | AI は部品の中身を書き換えない。会社の違いは拡張の表と設定とテンプレートと会社の検査で出す | 製品の hook (`plugin/hooks/guard_core.py`。Write・Edit・NotebookEdit の書き込みを見る。Bash の道具での書き込みは見ない) | hook のテスト |
 | R22 | 決まりを実装した関数 (断る処理・端数の丸め・ポカよけの検査) は、docstring に「訳:」の行を持つ。訳は、何のためか・出所 (法令・商慣習・作者の決め・AI の案・未確認のどれか)・変えてよい条件を書く。出所が分からない物は「未確認」と書く (推測で埋めない)。断る処理は、今は中心の決まりで断る関数 (`RuleViolation`) と断りの文を返す関数 (`cancel_refusal`) だけを見る | 決まりの検査 | `tests/test_r22_reason_docstring.py` |
 
 番号の無い約束 (決まりの検査は見ない。`tests/test_core_screens.py` が見る): 画面の class の docstring に、ユースケースを「使う人: … / いつ: … / 何のために: … / 次にすること: …」の形で 1〜2 行書く。画面の目録 (`all_screens()`) が `usecase` として拾い、MCP と AI チャットの `list_screens` が返す (AI が画面を選ぶ材料)。
