@@ -1,4 +1,4 @@
-"""アカウント管理の入力 (02 の 7 節)。form は欄と、services の引数 (service_kwargs) を作るだけ。
+"""アカウント管理の入力 (アカウントと権限の設計の決め)。form は欄と、services の引数 (service_kwargs) を作るだけ。
 
 表を読むのは __init__ の中だけ (部署の候補と、画面の小さな script が読む辞書)。書くのは services だけ (R13)。
 """
@@ -21,7 +21,7 @@ PERMISSION_GROUP_HEADINGS = {"master_edit": "マスター", "slip_edit": "伝票
 #: どの部署でも開ける画面の字 (access.ALWAYS_OPEN_APPS の画面。core の画面は左のメニューの app に無いので、字で書く)
 ALWAYS_OPEN_SCREENS = "ダッシュボード・検索・使い方・設定・AI チャット・マニュアル・添付ファイル・フィードバック・メモ"
 
-#: 「部署」の欄の注記 (付けた結果 = 開ける画面と、外したときに残る物。指示書 R6 = ADM-01)
+#: 「部署」の欄の注記 (付けた結果 = 開ける画面と、外したときに残る物。作者の決め)
 DEPARTMENTS_HELP = (
     "部署に チェックを入れると、その部署の既定の権限に チェックが入ります。部署を外しても、入った権限は残ります。"
     "括弧の中が、その部署の人が左のメニューで開ける画面です。"
@@ -42,7 +42,7 @@ MANAGE_ACCOUNTS_HELP = (
 class DepartmentChoiceField(forms.ModelMultipleChoiceField):
     """部署の check の字に、その部署の人が開ける画面を添える (例「製造 (指示書・生産計画・進捗・実績)」)。
 
-    付けた結果を check の字で見せる (権限の種類の check に KIND_NOTES を添えるのと同じ形。指示書 R6 = ADM-01)。
+    付けた結果を check の字で見せる (権限の種類の check に KIND_NOTES を添えるのと同じ形。作者の決め)。
     開ける画面の字 (app_labels) は要求ごとに変わるので、form の __init__ が 1 回だけ読んで app_labels に置く。
     開ける画面を 1 つも持たない部署は「(開ける画面なし)」(どの部署でも開ける画面だけが開く)。
     """

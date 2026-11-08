@@ -1,4 +1,4 @@
-"""アカウント管理の表 (02 の 7 節)。
+"""アカウント管理の表 (アカウントと権限の設計の決め)。
 
 - Department: 部署。開ける部品 (seizou.parts.PARTS の短い名前の並び) と、部署を付けたときに付く既定の権限。
 - Access: 利用者と 1 対 1 の、部署・編集の権限・金額の閲覧・フルコントロール・アカウント管理。
@@ -36,8 +36,8 @@ class Department(models.Model):
     default_permissions = models.JSONField("既定の権限", default=list)
     sort_order = models.PositiveIntegerField("並び順", default=0)
 
-    #: 変更の履歴 (core.history。決め HIST-1 の「アカウントと部署」のうち詳細の画面のある部署) を残し、詳細に「履歴」のタブを出す。
-    #: アカウント (Access と利用者) には付けない (決め C106-2 = a。今の AccessLog のまま書き、新しい表に二重に書かない)
+    #: 変更の履歴 (core.history。作者の決めの「アカウントと部署」のうち詳細の画面のある部署) を残し、詳細に「履歴」のタブを出す。
+    #: アカウント (Access と利用者) には付けない (作者の決め。今の AccessLog のまま書き、新しい表に二重に書かない)
     keeps_history = True
 
     class Meta:
