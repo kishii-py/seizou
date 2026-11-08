@@ -5,7 +5,7 @@
 出荷の編集は services.update_shipment を呼ぶ (数量と出荷日と備考だけ。R01 は検査の層が編集にも当てる)。
 発行の納品書に入った出荷は、先に納品書を取り消してから編集する (R08)。
 出荷の削除は services.delete_shipment を呼び、一覧の行の ⋮ と右クリックの「削除」から小窓で開く (消せない出荷は services.delete_refusal の訳だけを出す)。
-一括出荷の入力は、注文残の盤で選んだ明細をまとめて services.ship_lines に渡す (検査の層は一括出荷の R01。N124)。
+一括出荷の入力は、注文残の盤で選んだ明細をまとめて services.ship_lines に渡す (検査の層は一括出荷の R01。開発の記録 docs/nights/20261104/N124.md)。
 model は出荷にする (小窓のテンプレートは model の app の shipping/_form_modal.html から選ばれるため)。
 
 納品書は、出荷を選んでまとめる画面 (services.create_delivery_note) と一覧と詳細を土台の上に置く。
@@ -37,12 +37,12 @@ from .reports import (
     shipment_label_context,
 )
 
-#: PDF を作れないときに印刷用の HTML の上に出す知らせ (05 の 6 節の文)
+#: PDF を作れないときに印刷用の HTML の上に出す知らせ (帳票の設計の決めの文)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
 
 
 def _customer_choices():
-    """出荷と納品書の一覧の得意先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (N135 の active_partners)。並びは取引先の ordering。"""
+    """出荷と納品書の一覧の得意先の絞りの候補。取引先の種類が得意先か両方で、使用中の物だけ (開発の記録 docs/nights/20261104/N135.md の active_partners)。並びは取引先の ordering。"""
     partner = DeliveryNote._meta.get_field("customer").related_model
     rows = active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
     return [(row.pk, str(row)) for row in rows]
@@ -72,9 +72,9 @@ class ShipmentListView(BaseListView):
         "order_line__order__order_no",
         "order_line__order__customer_order_no",
         "order_line__item__part_no",
-        # 案内の字は「得意先の名前」(末尾の欄の名前「名前」では何の名前か分からないため。初見テスト R5 の U162。候補 C36 の 7)
+        # 案内の字は「得意先の名前」(末尾の欄の名前「名前」では何の名前か分からないため。作者の決め)
         ("order_line__order__customer__name", "得意先の名前"),
-        # 品名: 表の「部品」の列に出ている品名でも当たる (上の帯の横断の検索と同じ。初見テスト R5 の候補 C36 の 4)
+        # 品名: 表の「部品」の列に出ている品名でも当たる (上の帯の横断の検索と同じ。作者の決め)
         "order_line__item__name",
     )
     filters = (
@@ -174,7 +174,7 @@ class ShipmentUpdateView(BaseFormView):
 
 
 class ShipmentDeleteView(BaseFormView):
-    """出荷の削除の確かめ (出荷の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。候補 12)。消した後は ?next= の道 (出荷の一覧) へ戻る。
+    """出荷の削除の確かめ (出荷の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。作者の決め)。消した後は ?next= の道 (出荷の一覧) へ戻る。
 
     使う人: 出荷 / いつ: 違う受注へ入れた出荷や二重に入れた出荷を見つけたとき / 何のために: 打ち間違えた出荷を消す / 次にすること: 正しい受注の明細へ出荷し直す
     """

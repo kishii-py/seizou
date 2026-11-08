@@ -1,8 +1,8 @@
-"""納品書の帳票の context を作る読むだけの関数 (05 の 6 節)。表に書かない。
+"""納品書の帳票の context を作る読むだけの関数 (帳票の設計の決め)。表に書かない。
 
 納品書の表は数量と金額の写しを持たないので、明細は納品書に結ばれた出荷そのものから作る (R08)。
 数量は出荷の数そのまま。単価は受注の明細の単価。金額は shipping.services.amount_of_shipment (部品の単位は数量 × 単価を
-取引先 (空なら会社) の小計の計算方法で丸めた値。一式の明細は明細を出し終えた出荷で一式の全額、ほかの出荷は 0 = 決め PRICE-1c)
+取引先 (空なら会社) の小計の計算方法で丸めた値。一式の明細は明細を出し終えた出荷で一式の全額、ほかの出荷は 0 = 作者の決め)
 (masters.services.round_amount。R03 と同じ 1 か所の丸め。DB で計算しない)。単価の後ろの字は受注の明細の price_unit_text (式なら「式」)。
 税は扱わない (税は請求書と一緒)。
 """
@@ -24,7 +24,7 @@ def delivery_note_context(note) -> dict:
 
     company = 出荷元の {"name", "address", "phone", "logo"} (振込先は請求書だけに出すので渡さない。出荷ラベルと同じ形)、note = {"number", "date"}、customer = 得意先、
     lines = 出荷ごとの {"shipment_no", "shipped_at", "item_code", "item_name", "customer_order_no", "quantity", "unit", "unit_price", "price_unit", "amount"}
-    (customer_order_no は受注の「得意先の注文番号」の写し。得意先が自分の注文番号で照合するため = 見つけ print-03。空なら帳票に出ない)、
+    (customer_order_no は受注の「得意先の注文番号」の写し。得意先が自分の注文番号で照合するため = 作者の決め。空なら帳票に出ない)、
     total = 金額の合計、cancelled = 状態が取消なら真。
     """
     customer = note.customer

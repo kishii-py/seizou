@@ -1,12 +1,12 @@
 """shipping の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
 
-土台は service_kwargs() の辞書を検査の層の data に使い、同じ辞書で services の関数を呼ぶ (01 の 10.4)。
+土台は service_kwargs() の辞書を検査の層の data に使い、同じ辞書で services の関数を呼ぶ (部品の公開する関数の設計の決め)。
 出荷の入力の鍵 order_line と qty は、検査の層の受注より多い出荷のポカよけが読む。
 画面は残りと比べて知らせるだけ (数量の欄の下の字。shipping/shipment-form.js)。止めるか知らせるかは会社の設定に従って検査の層が決める。
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
 一括出荷の form (ShipmentBulkForm) は、注文残の盤で選んだ明細の行ごとに数量と「この行を出さない」の欄を持ち、
-service_kwargs() の lines (受注の明細と数量の組) を検査の層の一括出荷の R01 と services.ship_lines に渡す (N124)。
-出荷と一括出荷と納品書の取消の保存のボタンの字は、押した結果の数と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
+service_kwargs() の lines (受注の明細と数量の組) を検査の層の一括出荷の R01 と services.ship_lines に渡す (開発の記録 docs/nights/20261104/N124.md)。
+出荷と一括出荷と納品書の取消の保存のボタンの字は、押した結果の数と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
 """
 
 from django import forms
@@ -36,7 +36,7 @@ _OrderLine = Shipment._meta.get_field("order_line").related_model
 EMPTY_LABEL = "選んでください"
 #: 出荷の入力で受注の明細が決まっていないときの、数量の欄の下の字 (shipping/shipment-form.js も同じ字を出す)
 NO_LINE_HELP = "受注の明細を選ぶと、残りの数が出ます。"
-#: 出荷の入力の受注の明細の欄の下の字。候補の頭「SO-000021-1」の末尾が明細の行の番号だと分かるように (初見テスト R5 の V106)。
+#: 出荷の入力の受注の明細の欄の下の字。候補の頭「SO-000021-1」の末尾が明細の行の番号だと分かるように (作者の決め)。
 #: 受注番号の形は会社の設定 (order_number) で変わるので、決まった番号を例に書かない。「1 行目」は一括出荷の R01 の文と同じ言い方
 ORDER_LINE_HELP = "候補の頭は「受注番号-行の番号」です (末尾の -1 は 1 行目)。"
 #: 出荷日の欄の誤りの文 (出荷の入力と出荷の編集の 2 つの form が読む。空のときと、日付として読めない字のとき)
@@ -51,7 +51,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
 
     欄の値として受けるのは全部の明細 (取消の受注の明細も)。取消の受注の明細は services が R05 で断る
     (画面で先に断らない)。
-    保存のボタンは「10 個を出荷する」(明細の決まっている形。決まっていなければ「出荷する」。N138)。
+    保存のボタンは「10 個を出荷する」(明細の決まっている形。決まっていなければ「出荷する」。開発の記録 docs/nights/20261104/N138.md)。
     """
 
     submit_label_plain = "出荷する"
@@ -83,7 +83,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
         line = None
         if raw is not None and str(raw).isdecimal():
             line = _OrderLine.objects.filter(pk=int(raw)).first()
-        # 打った数量が残りを超えたら、押す前に欄の下の字で知らせる (shipping/shipment-form.js。初見テスト R5 の V61。止めない)。
+        # 打った数量が残りを超えたら、押す前に欄の下の字で知らせる (shipping/shipment-form.js。作者の決め。止めない)。
         # 会社の設定 (stop・warn・off) はいつも置く (明細を決めずに開き、後から選ぶ画面の全体でも JS が字を分けられるように)。
         # 残りの数は明細が決まっているときだけ置く (描いたときの明細の数。JS は選び直した後は候補の字の「 残り n」を読む)。
         # 土台の use_decimal_input が数量の欄を字の欄に替えても、attrs は写るので残る (data-label-qty と同じ)。
@@ -95,7 +95,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
             remaining = f"{remaining_qty(line).normalize():f}"
             self.fields["qty"].help_text = f"残り {remaining}"
             qty_attrs["data-remaining"] = remaining
-        # 保存のボタンの字 (N138): 描いたときの明細の単位で「10 個を出荷する」。明細を選び直したら JS が「出荷する」に戻す (data-label-line)。
+        # 保存のボタンの字 (開発の記録 docs/nights/20261104/N138.md): 描いたときの明細の単位で「10 個を出荷する」。明細を選び直したら JS が「出荷する」に戻す (data-label-line)。
         self.label_line = line
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if line is not None:
@@ -128,7 +128,7 @@ BULK_SKIP_PREFIX = "skip_"
 
 
 class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
-    """一括出荷の入力 (注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷する。N124)。
+    """一括出荷の入力 (注文残の盤で選んだ明細を、同じ出荷日でまとめて出荷する。開発の記録 docs/nights/20261104/N124.md)。
 
     明細の pk は line の繰り返し。開いたときは土台の get_initial が写した字か字の list (?line=<pk>&line=<pk>)、
     送ったときは行ごとの隠しの欄 line (並びは選んだ順。数でない字は飛ばし、重なりは 1 つにする)。
@@ -136,7 +136,7 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
     開いたときは、取消の受注と残の無い明細を行に出さず、その数を dropped に持つ。送ったときは送られた行をそのまま
     services に渡す (開いた後に取消になった明細は services が R05 で断る。画面で先に断らない)。
     数を残と比べない (受注より多い出荷は、検査の層の一括出荷の R01 が会社の設定に従って見る)。
-    保存のボタンは「2 行・合計 30 個を出荷する」(行の単位が違えば「2 行を出荷する」。N138)。
+    保存のボタンは「2 行・合計 30 個を出荷する」(行の単位が違えば「2 行を出荷する」。開発の記録 docs/nights/20261104/N138.md)。
     """
 
     submit_label_plain = "出荷する"
@@ -180,7 +180,7 @@ class ShipmentBulkForm(SubmitLabelMixin, forms.Form):
                 label="数量", max_digits=12, decimal_places=2, initial=remaining, widget=PlainNumberInput()
             )
             self.fields[f"{BULK_SKIP_PREFIX}{pk}"] = forms.BooleanField(label="この行を出さない", required=False)
-            # 保存のボタンの字を JS が埋め直す印 (N138。同じ行の数量と「この行を出さない」)。
+            # 保存のボタンの字を JS が埋め直す印 (開発の記録 docs/nights/20261104/N138.md。同じ行の数量と「この行を出さない」)。
             self.fields[f"{BULK_QTY_PREFIX}{pk}"].widget.attrs["data-label-qty"] = True
             self.fields[f"{BULK_SKIP_PREFIX}{pk}"].widget.attrs["data-label-skip"] = True
             self.rows.append(
@@ -264,7 +264,7 @@ class DeliveryNoteForm(forms.Form):
     """納品書を作る。発行の納品書に入っていない出荷を選び、得意先は選んだ出荷の受注の得意先にする。
 
     得意先の違う出荷が混ざったときは、services の create_delivery_note が R08 で断る (画面で先に断らない)。
-    出荷は列の見出しのある表の行 (rows) で描く (shipping/_deliverynote_create_card.html。候補 C74)。
+    出荷は列の見出しのある表の行 (rows) で描く (shipping/_deliverynote_create_card.html。作者の決め)。
     """
 
     submit_label = "納品書を作る"
@@ -287,7 +287,7 @@ class DeliveryNoteForm(forms.Form):
 
     @property
     def rows(self):
-        """出荷の表の行 (shipping/_deliverynote_create_card.html。候補 C74)。1 行 = {box・shipment}。
+        """出荷の表の行 (shipping/_deliverynote_create_card.html。作者の決め)。1 行 = {box・shipment}。
 
         最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget を触るので、__init__ の中で作らない)。
         box は checkbox の subwidget (テンプレートが {{ row.box.tag }} で描く。見えない名前は今の行の字)。
@@ -334,9 +334,9 @@ class ShipmentUpdateForm(forms.Form):
 
 
 class DeliveryNoteCancelForm(forms.Form):
-    """納品書を取り消す form。欄は無い。保存のボタンは「DN-000001 を取り消す」(土台が対象を instance= で渡す。N138)。"""
+    """納品書を取り消す form。欄は無い。保存のボタンは「DN-000001 を取り消す」(土台が対象を instance= で渡す。開発の記録 docs/nights/20261104/N138.md)。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -348,7 +348,7 @@ class DeliveryNoteCancelForm(forms.Form):
 
 
 class ShipmentDeleteForm(forms.Form):
-    """出荷の削除の確かめ (候補 12。決め 11-08 00:23)。欄は無い (土台が delete_shipment(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。
+    """出荷の削除の確かめ (決め 11-08 00:23)。欄は無い (土台が delete_shipment(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。
 
     土台が対象を instance= で渡すので、消せない訳 (services.delete_refusal。読むだけ) を refusal に持つ。確かめのカード
     (shipping/_shipment_delete_card.html) は refusal があれば form を出さず訳だけを出す (画面の class は土台の属性しか上書きしない = R15)。

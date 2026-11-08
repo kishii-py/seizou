@@ -1,6 +1,6 @@
 {% load seizou_icons seizou_tags shipping_tags %}
-{# 納品書の取消の確かめのカード (全体の画面 shipping/deliverynote_cancel.html と小窓の両方が include する。N158b)。 #}
-{# 発行の請求書に入った出荷があるときは、form を出さず、黄の断り (1 文目が太字) と、請求済みの出荷と請求書の link の行だけ (請求書の取消のカードと同じ形。初見テスト R5 の候補 C03。依頼書 N196)。link は画面ごと移る。請求書の URL が無い行 (billing を部署で開けない人) は番号の字だけ。取消でない入金のある請求書の link は、請求書の詳細の入金の枠 (#payments) へ向く (入金を先に取り消すため。決め C03-2 a。依頼書 N296)。全体の画面だけ「納品書へ戻る」を出す (小窓の下は納品書の詳細)。受注の明細に発行の請求書の一式の行がある出荷の行 (row.lump。作者の決め C107-6) は、請求書の番号の後に「の一式の行」を添える。請求書の外で受け取った入金を記録した出荷の行 (row.outside。作者の決め C107-11) も同じ形で出す (請求書の link は無く、出荷の詳細への link だけ)。 #}
+{# 納品書の取消の確かめのカード (全体の画面 shipping/deliverynote_cancel.html と小窓の両方が include する。開発の記録 docs/nights/20261105/N158b.md)。 #}
+{# 発行の請求書に入った出荷があるときは、form を出さず、黄の断り (1 文目が太字) と、請求済みの出荷と請求書の link の行だけ (請求書の取消のカードと同じ形。作者の決め。開発の記録 docs/nights/20261106/N196.md)。link は画面ごと移る。請求書の URL が無い行 (billing を部署で開けない人) は番号の字だけ。取消でない入金のある請求書の link は、請求書の詳細の入金の枠 (#payments) へ向く (入金を先に取り消すため。作者の決め。開発の記録 docs/nights/20261106/N296.md)。全体の画面だけ「納品書へ戻る」を出す (小窓の下は納品書の詳細)。受注の明細に発行の請求書の一式の行がある出荷の行 (row.lump。作者の決め) は、請求書の番号の後に「の一式の行」を添える。請求書の外で受け取った入金を記録した出荷の行 (row.outside。作者の決め) も同じ形で出す (請求書の link は無く、出荷の詳細への link だけ)。 #}
 {% deliverynote_billing object seizou.hide_money as billing %}
 {% if billing.refusal %}
 {% with parts=billing.refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}

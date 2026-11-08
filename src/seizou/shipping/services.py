@@ -1,7 +1,7 @@
-"""shipping の公開する関数 (01 の 10.4)。画面とほかの部品は、この関数だけを通して出荷と納品書を書く。
+"""shipping の公開する関数 (部品の公開する関数の設計の決め)。画面とほかの部品は、この関数だけを通して出荷と納品書を書く。
 
-- 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。
-- user は記録のために受け、変更の履歴 (core.services.record_history。決め HIST-1 の伝票の「出荷」「納品書」) に書く。書く前に core.history.saved_state で前を取り、
+- 引数の順は 対象 → 値 → user → * の後のキーワード (services の書き方の設計の決め)。
+- user は記録のために受け、変更の履歴 (core.services.record_history。作者の決めの伝票の「出荷」「納品書」) に書く。書く前に core.history.saved_state で前を取り、
   書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。納品書にまとめた出荷は、出荷の詳細の「履歴」にも納品書の前と後が残る。
   出荷の知らせの列 (番号の uuid・送った日時・相手の返事) は core が残さない列なので、assign_notice_number と record_notice_response は残さない。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
@@ -11,19 +11,19 @@
 - 受注より多い出荷のポカよけは検査の層 (seizou.core.checks) が services の前に見る。
   ここでは止めず、残を超える数もそのまま保存する (現物優先)。
 - 出荷済みの数と残の数は orders.services の関数で出す (検査の層と同じ関数)。
-  集計の前に、受注の明細の行を select_for_update でロックする (01 の 10.1)。
+  集計の前に、受注の明細の行を select_for_update でロックする (services の書き方の設計の決め)。
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
   納品書の取消は、発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷と、請求書の外で受け取った入金を記録した出荷
-  (作者の決め C107-11) があれば断る (文は cancel_refusal の 1 か所。作者の決め C107-6)。
+  (作者の決め) があれば断る (文は cancel_refusal の 1 か所。作者の決め)。
   その請求書に入金があれば、断りの文 (cancel_refusal) に取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計
-  (金額の閲覧の無い人には件数だけ) を書く (入金は請求書の逆の関係 payments の先の表として引く。初見テスト R5 の候補 C03)。
+  (金額の閲覧の無い人には件数だけ) を書く (入金は請求書の逆の関係 payments の先の表として引く。作者の決め)。
 - 打ち間違えた出荷は delete_shipment で消す (断る訳は delete_refusal の 1 か所。本人の決め 11-08 00:23・00:25)。
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
-- 出荷 1 つの金額は amount_of_shipment の 1 か所 (一式の明細は明細を出し終えた出荷 finishes_line で全額、ほかは 0。決め PRICE-1c)。
+- 出荷 1 つの金額は amount_of_shipment の 1 か所 (一式の明細は明細を出し終えた出荷 finishes_line で全額、ほかは 0。作者の決め)。
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
                 "分納",
                 f"保存できません。この会社は分納を許していません (設定「分納」)。残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
             )
-    # 明細を出し終えた出荷の印 (決め PRICE-1c)。明細の行の錠の中で数えるので、2 人が同じ明細を同時に出荷しても印は 1 つ。
+    # 明細を出し終えた出荷の印 (作者の決め)。明細の行の錠の中で数えるので、2 人が同じ明細を同時に出荷しても印は 1 つ。
     done = shipped_qty(locked)
     finished = Shipment.objects.filter(order_line=locked, finishes_line=True).exists() or _has_issued_lump_line(locked)
     shipment = Shipment.objects.create(
@@ -151,7 +151,7 @@ class ShippedLines(list):
 
 
 def ship_lines(lines, shipped_at, user, *, note=""):
-    """選んだ受注の明細を、同じ出荷日でまとめて出荷する (一括出荷。注文残の盤の「選んだ行の操作」。N124)。
+    """選んだ受注の明細を、同じ出荷日でまとめて出荷する (一括出荷。注文残の盤の「選んだ行の操作」。開発の記録 docs/nights/20261104/N124.md)。
 
     lines は (受注の明細, 数量) の組の list。1 行ずつ ship と同じ決まり (R05・R02・分納) を通し、どれか 1 行が断られたら
     全部を保存しない (1 つの atomic)。断りの文の頭に受注番号と行の番号を付ける。
@@ -176,7 +176,7 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
 
     納品書は数量の写しを持たない。結ばれた出荷は delivery_note.shipments.all() で引く。
     issued_on (発行日) は無ければ今日。種の読み込み (core.demo) が出荷日を渡す。
-    訳: 納品書を得意先ごとに作り、発行の納品書に入っている出荷を別の納品書に入れないため (納品書の数量は出荷の数量と一致する)。出所 = RULES.md R08 (仕様 01 の表 (2026-11-01) の理由の列「伝票の整合」)。
+    訳: 納品書を得意先ごとに作り、発行の納品書に入っている出荷を別の納品書に入れないため (納品書の数量は出荷の数量と一致する)。出所 = RULES.md R08 (作者の会期前の決まりの表 (2026-11-01) の理由の列「伝票の整合」)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
@@ -218,7 +218,7 @@ def _has_issued_lump_line(order_line):
     請求書の部品が無いか、請求書の明細が受注の明細を指していなければ偽。請求書の明細の表は受注の明細の逆の関係
     invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の STATUS_ISSUED から読む
     (billing を import しない。invoiced_shipments と同じ読み方)。
-    訳: 一式の行で人が金額を決めて載せた明細に、後の出荷で一式の全額をもう一度自動で載せないため。出所 = 作者の決め PRICE-1d と PRICE-1c。
+    訳: 一式の行で人が金額を決めて載せた明細に、後の出荷で一式の全額をもう一度自動で載せないため。出所 = 作者の決め。
     変えてよい条件 = 作者が、一式の行を載せた後の出荷の金額の決め方を決め直したとき。
     """
     try:
@@ -257,7 +257,7 @@ def lump_billed_shipments(note):
     (出荷の pk の順。読むだけ。問い合わせ 2 回)。発行の請求書に出荷の行で入った出荷 (invoiced_shipments) は除く。
 
     請求書の部品が無ければ空の並び。読み方は invoiced_shipments・_has_issued_lump_line と同じ (billing を import しない)。
-    1 つの受注の明細に発行の一式の行が 2 行あれば、明細の pk の小さい方の請求書を返す (作者の決め C107-6)。
+    1 つの受注の明細に発行の一式の行が 2 行あれば、明細の pk の小さい方の請求書を返す (作者の決め)。
     """
     try:
         lines = Shipment._meta.get_field("invoice_lines").related_model
@@ -283,7 +283,7 @@ def outside_paid_shipments(note):
     (出荷の pk の順。読むだけ。問い合わせ 1 回)。1 つの出荷に取消でない入金が 2 件あれば、入金の pk の小さい方を返す。
 
     入金の部品が無ければ空の並び。入金の表は出荷の逆の関係 payments の先として引き、「記録」の値はその表の
-    STATUS_RECORDED から読む (billing を import しない。invoiced_shipments と同じ読み方。作者の決め C107-11)。
+    STATUS_RECORDED から読む (billing を import しない。invoiced_shipments と同じ読み方。作者の決め)。
     """
     try:
         payments = Shipment._meta.get_field("payments").related_model
@@ -304,10 +304,10 @@ def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=No
     """納品書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
     発行の請求書に出荷の行で入った出荷が無く、受注の明細に発行の請求書の一式の行がある出荷 (lump_billed_shipments) があれば、
-    その出荷と請求書で「…の一式の行で請求済みです」の文を作る (作者の決め C107-6)。lumps = 呼ぶ側が引いた lump_billed_shipments(note)
+    その出荷と請求書で「…の一式の行で請求済みです」の文を作る (作者の決め)。lumps = 呼ぶ側が引いた lump_billed_shipments(note)
     の並び (取消の確かめのカードの tag が渡す)。省けばここで引く。
     どちらも無く、請求書の外で受け取った入金 (取消でない) を記録した出荷 (outside_paid_shipments) があれば、その出荷で
-    「…請求書の外で受け取った入金を記録しています」の文を作る (作者の決め C107-11)。outside = 呼ぶ側が引いた outside_paid_shipments(note) の並び。
+    「…請求書の外で受け取った入金を記録しています」の文を作る (作者の決め)。outside = 呼ぶ側が引いた outside_paid_shipments(note) の並び。
     文の順は 出荷の行の請求書 → 一式の行の請求書 → 外の入金。
     発行の請求書に入った出荷のうち、pk の最も小さい出荷の番号と、その請求書の番号で文を作る (invoiced_shipments)。
     その請求書に取消でない入金 (状態が「記録」) があれば、先にすることを取り消す順 (入金 → 請求書 → 納品書) で書き、
@@ -317,7 +317,7 @@ def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=No
     found = 呼ぶ側が引いた invoiced_shipments(note) の並び (取消の確かめのカードの tag が渡す。tag は請求書の payments を
     先に 1 回で引いてあるので、ここでは引き直さない)。省けばここで引く (入金はその請求書の分を 1 回)。
     cancel_delivery_note と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。納品書の状態は見ない。
-    訳: 請求済みの出荷 (発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷) と、請求書の外で受け取った入金を記録した出荷のある納品書を取り消さないため (先に請求書か入金を、その請求書に入金があれば、さらにその前に入金を取り消す。一式の行の数量は請求した時の出荷の合計の写しで、外の入金は受け取った代金の記録なので、出荷を直せると食い違う)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md) と作者の決め C107-6・C107-11・入金の件数と合計と取り消す順を書くのは本人の決め 11-06 22:2x (C03-2 の a「入金の件数と合計を書く」。本人の言葉は一括の答え「推奨でいこう！」11-06 22:1x。依頼書 N296)・金額の頭の ¥ は本人 11-06 18:2x「全体的に頭に￥の方が見やすくない？」(C43-3)。
+    訳: 請求済みの出荷 (発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷) と、請求書の外で受け取った入金を記録した出荷のある納品書を取り消さないため (先に請求書か入金を、その請求書に入金があれば、さらにその前に入金を取り消す。一式の行の数量は請求した時の出荷の合計の写しで、外の入金は受け取った代金の記録なので、出荷を直せると食い違う)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md) と作者の決め・入金の件数と合計と取り消す順を書くのは本人の決め 11-06 22:2x (作者の決め「入金の件数と合計を書く」。本人の言葉は一括の答え「推奨でいこう！」11-06 22:1x。開発の記録 docs/nights/20261106/N296.md)・金額の頭の ¥ は本人 11-06 18:2x「全体的に頭に￥の方が見やすくない？」(作者の決め)。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     if found is None:
@@ -407,7 +407,7 @@ def delete_refusal(shipment) -> str:
          受注の明細に検収が 1 件でも届いた出荷 (受注の明細の逆の関係 acceptances。connect を import しない。検収は出荷でなく明細を指すので明細で見る)。
     (iv) 明細を出し終えた出荷 (finishes_line)。
     訳: 金額の書類 (納品書・請求書・入金) が指す出荷と、取引先につながる出荷と、明細を出し終えた出荷を消さないため
-    (何を見るかの訳は delete_shipment の訳と同じ)。出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べ 第一弾の候補 12)。
+    (何を見るかの訳は delete_shipment の訳と同じ)。出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べを受けた作者の決め)。
     変えてよい条件 = 本人が決め直したとき (例: 相手につながる出荷の直し方を設計したとき)。
     """
     number = shipment.shipment_no
@@ -469,7 +469,7 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
                     f"保存できません。この会社は分納を許していません (設定「分納」)。この出荷を除いた残りの数 {_qty_text(remaining)} をまとめて出荷してください。",
                 )
         before = history.saved_state(locked)
-        # 明細を出し終えた出荷の印を、直した出荷の分だけ数え直す (決め PRICE-1c。ほかの出荷の印は触らない)。
+        # 明細を出し終えた出荷の印を、直した出荷の分だけ数え直す (作者の決め。ほかの出荷の印は触らない)。
         others = shipped_qty(line) - locked.qty
         finished = (
             Shipment.objects.filter(order_line=line, finishes_line=True).exclude(pk=locked.pk).exists()
@@ -497,7 +497,7 @@ def delete_shipment(shipment, user):
     請求書の明細・請求書の外の入金が指す出荷は、取り消しても行が残るので消さず、「編集」で直す (金額の書類を黙って変えない)。
     取引先につながる出荷 (受信した注文の出荷・送った出荷の知らせ・届いた検収) は消しても相手の記録が戻らないので断り、直し方は別に設計する (会期の外)。
     明細を出し終えた出荷 (finishes_line) は一式の明細の金額が付くので断る。添付と書式つきのメモは消さない (付けた先の無い行が残る。扱いは未定)。
-    出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べ 第一弾の候補 12)。
+    出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べを受けた作者の決め)。
     変えてよい条件 = 本人が決め直したとき (例: 相手につながる出荷の直し方を設計したとき)。
     """
     with transaction.atomic():
@@ -522,7 +522,7 @@ def amount_of_shipment(shipment, *, partner=None, rounding=None):
     partner の既定は受注の得意先 (渡すとそれで丸める。請求書と納品書は得意先を渡す)。rounding は round_amount と同じ (会社の既定を輪の前に 1 回読んで渡す)。
     請求書 (billing.services.shipment_amount)・納品書の帳票 (reports)・ダッシュボードの出荷の金額が読む 1 か所。呼ぶ側は order_line (と得意先) を一緒に引く。
 
-    訳: 一式の明細は全部を出し終えた出荷で一式の全額、それまでの出荷と多い出荷は 0 円にし、同じ出荷の金額を請求書・納品書・ダッシュボードで同じにするため。出所 = 作者の決め PRICE-1c と PRICE-1b。
+    訳: 一式の明細は全部を出し終えた出荷で一式の全額、それまでの出荷と多い出荷は 0 円にし、同じ出荷の金額を請求書・納品書・ダッシュボードで同じにするため。出所 = 作者の決め。
     変えてよい条件 = 作者が一式の金額を請求に載せる時を決め直したとき (masters.services.delivery_amount と一緒に直す)。
     """
     line = shipment.order_line

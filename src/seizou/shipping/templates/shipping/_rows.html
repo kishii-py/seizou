@@ -3,7 +3,7 @@ shipping の一覧 (出荷・納品書) の行の部分。土台は画面の全�
 出荷の一覧 (shipment_list) は core/_rows.html を include し、1 行を shipping/_shipment_row.html にして、土台に最後の列の見出し「要点」(actions_label) を渡す
 (行の右端の「要点を見る」の目の印。押すと出荷の小窓。受け渡しの seizou-部品の6案-20261107/指示書.md の 6。受注と指示書の一覧と同じ形)。
 出荷の一覧の行の ⋮ と右クリックの「編集」「削除」を出すかは、can_write の tag で 1 回だけ決めて行に渡す
-(can_edit。実績の一覧の progress/_rows.html と同じ形。候補 12。本人の決め 11-08 00:25)。列の見出しは「要点」のまま。
+(can_edit。実績の一覧の progress/_rows.html と同じ形。本人の決め 11-08 00:25)。列の見出しは「要点」のまま。
 納品書の一覧 (deliverynote_list) は core/_rows.html をそのまま使う (目の印を付けない)。
 この注に、テンプレートに今無い class の字を書かない (Tailwind はテンプレートの注の字も拾う)。
 {% endcomment %}
