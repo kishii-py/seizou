@@ -1,6 +1,6 @@
 {% load seizou_tags %}
 {# フィードバックの一覧の 1 行 (feedback/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Feedback)・columns。 #}
-{# 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link)。状態の列 (列の名前 status) は状態の色の表 (core.status_colors) の印にする (N152)。class は要素ごとの固定の字。 #}
+{# 欄の描き方は core/_rows.html と同じ (最初の欄は詳細への link)。状態の列 (列の名前 status) は状態の色の表 (core.status_colors) の印にする (開発の記録 docs/nights/20261105/N152.md)。class は要素ごとの固定の字。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10 cursor-pointer" onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}">
   {% for cell in row.cells %}
   {% for col in columns %}{% if forloop.counter0 == forloop.parentloop.counter0 %}

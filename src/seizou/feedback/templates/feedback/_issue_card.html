@@ -1,6 +1,6 @@
-{# みんなの Issue の盤のカード 1 枚 (依頼書 N325)。_issue_board.html が列ごとに include する。issue は services.board_issues の 1 件、board は tag の feedback_board。 #}
+{# みんなの Issue の盤のカード 1 枚 (開発の記録 docs/nights/20261107/N325.md)。_issue_board.html が列ごとに include する。issue は services.board_issues の 1 件、board は tag の feedback_board。 #}
 {# 題を押すと、自社の件で見ている人が開ける物は自社の件の詳細、ほかは GitHub の Issue を新しいタブで開く。題の link はカードいっぱいに広げ (after:absolute after:inset-0。本人の報告 11-07 17:2x = カードのどこを押しても飛べるように)、👍 のボタンだけ手前 (relative z-10) に置いて別に押せる。 #}
-{# 👍 は「うちも」の口 (feedback:me_too。依頼書 N323) への POST。口が戻すのは issue_q だけなので、GET に issue_q があったときだけ隠しで渡す。自社の印のある件は押せない形で数だけを見せる。 #}
+{# 👍 は「うちも」の口 (feedback:me_too。開発の記録 docs/nights/20261107/N323.md) への POST。口が戻すのは issue_q だけなので、GET に issue_q があったときだけ隠しで渡す。自社の印のある件は押せない形で数だけを見せる。 #}
 <article class="relative rounded-lg border border-base-300 bg-base-100 p-3 shadow-xs transition-colors hover:border-primary hover:shadow-sm">
   <div class="flex items-center justify-between gap-2"><span class="font-mono text-xs text-base-content/60">#{{ issue.number }}</span><span class="text-xs text-base-content/60">{{ issue.days }}</span></div>
   <p class="mt-2">{% if issue.detail_url %}<a class="link link-hover font-medium break-words after:absolute after:inset-0 after:rounded-lg" href="{{ issue.detail_url }}">{{ issue.title }}</a>{% else %}<a class="link link-hover font-medium break-words after:absolute after:inset-0 after:rounded-lg" href="{{ issue.html_url }}" target="_blank" rel="noopener">{{ issue.title }}</a>{% endif %}</p>

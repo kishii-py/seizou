@@ -1,9 +1,9 @@
 {% extends "core/list.html" %}
 {% load feedback_tags seizou_icons %}
-{# フィードバックの一覧: 土台の一覧。状態と種類の絞りは、ほかの一覧と同じ土台の「絞り込み」の枠の中 (FeedbackListView.filters の choice。GET は f_status・f_kind。決め UX-FEEDBACK-1 11-07 09:0x)。 #}
-{# GitHub (依頼書 N185): 見出しの行の「新規登録」の左に、世話役だけ白い線のボタン「GitHub の状態を取り込む」(つないでいるときだけ) と「GitHub の設定」。下に皆の「GitHub の Issue を探す」(GET の issue_q。押したときだけ GitHub を読む)。 #}
+{# フィードバックの一覧: 土台の一覧。状態と種類の絞りは、ほかの一覧と同じ土台の「絞り込み」の枠の中 (FeedbackListView.filters の choice。GET は f_status・f_kind。作者の決め 11-07 09:0x)。 #}
+{# GitHub (開発の記録 docs/nights/20261106/N185.md): 見出しの行の「新規登録」の左に、世話役だけ白い線のボタン「GitHub の状態を取り込む」(つないでいるときだけ) と「GitHub の設定」。下に皆の「GitHub の Issue を探す」(GET の issue_q。押したときだけ GitHub を読む)。 #}
 {# block の中で tag が置いた値は、ほかの block から見えないので、tag は 2 つの block で呼ぶ。見出しの行は search=False で呼び、1 回の表示で GitHub を 2 回読まない (読めなかった返事は控えに残らないため)。 #}
-{# タブの帯 (依頼書 N321。feedback/_tabs.html): いちばん上に出す。GET の tab が issues (「みんなの Issue」のタブ) のときは、見出しの行の GitHub のボタンと土台の一覧 (絞り込みと表) を描かず、#issues の節だけを描く。 #}
+{# タブの帯 (開発の記録 docs/nights/20261107/N321.md。feedback/_tabs.html): いちばん上に出す。GET の tab が issues (「みんなの Issue」のタブ) のときは、見出しの行の GitHub のボタンと土台の一覧 (絞り込みと表) を描かず、#issues の節だけを描く。 #}
 {# そのときは探す form に隠しの tab を足し、探した後もタブを保つ (GET の form は action の ? の後ろを欄の値で置き換えるので、隠しの欄が要る)。tab が無いときは今までどおり (表の下に #issues の節)。 #}
 {% block actions %}{% if request.GET.tab != "issues" %}{% feedback_github search=False as github %}{% if github.can_manage %}{% if github.status.connected %}<form method="post" action="{% url 'feedback:github_sync' %}">{% csrf_token %}<button id="feedback-github-sync" type="submit" class="btn btn-outline border-base-300">{% icon "download" "size-4" %}GitHub の状態を取り込む</button></form>{% endif %}<a id="feedback-github-settings" class="btn btn-outline border-base-300" href="{% url 'feedback:github_setup' %}">{% icon "settings" "size-4" %}GitHub の設定</a>{% endif %}{% endif %}{{ block.super }}{% endblock %}
 {% block heading_tabs %}{% include "feedback/_tabs.html" %}{% endblock %}
@@ -16,7 +16,7 @@
     {% if request.GET.tab == "issues" %}<input type="hidden" name="tab" value="issues">{% endif %}
     <input type="search" name="issue_q" value="{{ github.q }}" class="input input-sm w-72" placeholder="言葉 (空白で区切る。空なら新しい順)" aria-label="探す言葉">
     <button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "search" "size-4" %}探す</button>
-    {# みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x): 「みんなの Issue」のタブだけ、探す欄の右に並べ替え (👍 の多い順・新しい順) と、右端に盤と一覧の切り替え。今の view と sort は隠しの欄で探した後も保つ。 #}
+    {# みんなの Issue の盤 (開発の記録 docs/nights/20261107/N325.md。決め 11-07 09:3x〜10:1x): 「みんなの Issue」のタブだけ、探す欄の右に並べ替え (👍 の多い順・新しい順) と、右端に盤と一覧の切り替え。今の view と sort は隠しの欄で探した後も保つ。 #}
     {% if request.GET.tab == "issues" %}{% feedback_board as board %}{% if board.view == "list" %}<input type="hidden" name="view" value="list">{% endif %}{% if board.sort == "new" %}<input type="hidden" name="sort" value="new">{% endif %}
     <div id="issue-sorts" class="join" role="group" aria-label="並べ替え">{% for link in board.sorts %}<a class="join-item btn btn-sm{% if link.selected %} btn-active{% endif %}" href="{{ link.href }}"{% if link.selected %} aria-current="true"{% endif %}>{{ link.label }}</a>{% endfor %}</div>
     <div id="issue-views" class="join ml-auto" role="group" aria-label="カンバンと一覧の切り替え">{% for link in board.views %}<a class="join-item btn btn-sm{% if link.selected %} btn-active{% endif %}" href="{{ link.href }}"{% if link.selected %} aria-current="true"{% endif %}>{{ link.label }}</a>{% endfor %}</div>{% endif %}
