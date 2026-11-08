@@ -146,6 +146,7 @@ def remove_attachment(attachment, user):
         try:
             storage.delete(name)
         except FileNotFoundError:
+            # ファイルが既に無ければ、消せた物とみなす (行は上で消してある)。
             pass
     return target
 
