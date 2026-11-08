@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import threading
 import unicodedata
@@ -48,6 +49,8 @@ from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, pri
 from dataclasses import dataclass
 from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, When
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 _ITEM_KEYS = frozenset(
     {"part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note", "active"}
@@ -387,7 +390,8 @@ def _later_pages(image):
                 break
             page.load()
             pages.append(_page_png(page))
-        except Exception:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
+            logger.warning("図面の %s ページ目を表示用の絵にできず、そのページから後を作りませんでした: %s", index + 1, error)
             break
     return pages
 
