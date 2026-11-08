@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime
@@ -36,6 +37,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from . import services
+
+logger = logging.getLogger(__name__)
 
 #: 読む拡張子 (今の読み取りが受ける種類。小文字にして見る。中身の形は extract_order の _block_for が先頭のバイトで見る)
 EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg")
@@ -111,9 +114,9 @@ def handle(path, user) -> dict:
     row["inbox"] = inbox
     try:
         row["moved"] = _move(path, DONE_DIR)
-    except OSError:
+    except OSError as error:
         # 動かせなければ残す。次の見回りは同じ中身なので API を呼ばずに、もう一度 done/ へ動かす。
-        pass
+        logger.warning("読んだファイル %s を done/ へ動かせず、置いたままにしました (次の見回りでもう一度動かします): %s", path.name, error)
     return row
 
 
