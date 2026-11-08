@@ -1,7 +1,7 @@
-"""指示書の一覧の製造向けの印 (02 の 8 節)。一覧の絞り (WorkOrderListView.filters) の flag が呼ぶ when の関数。
+"""指示書の一覧の製造向けの印 (一覧の画面の設計の決め)。一覧の絞り (WorkOrderListView.filters) の flag が呼ぶ when の関数。
 
 - 印は 2 つ: 未着手だけ (f_unaccepted=1)・今日の計画だけ (f_today=1)。工程は土台の lookup の絞り (f_process)。
-- 読むだけで、表に書かない。未着手は指示書の進みの状態 (実績から出す) と同じ物で、着手の印は無い (初見テスト R5 の候補 C27)。
+- 読むだけで、表に書かない。未着手は指示書の進みの状態 (実績から出す) と同じ物で、着手の印は無い (作者の決め)。
 - when は filter だけを掛ける。工程の行の join で重なった指示書は、一覧の view の get_queryset が distinct で外す。
 """
 
@@ -19,7 +19,7 @@ def unaccepted_only(queryset):
 
     指示書の進みの状態の「未着手」(WorkOrder.progress_state) と同じ物を DB の条件で絞る (行を Python で回さない)。
     実績の表は progress を import せず、工程の逆の関係の先として引く。進捗の部品が無い置き場では、発行の指示書を全部返す。
-    絞りの名前 (unaccepted)・字 (未着手だけ)・URL の f_unaccepted は、古い URL が効くように変えない (初見テスト R5 の候補 C27)。
+    絞りの名前 (unaccepted)・字 (未着手だけ)・URL の f_unaccepted は、古い URL が効くように変えない (作者の決め)。
     """
     issued = queryset.filter(status=WorkOrder.STATUS_ISSUED)
     try:

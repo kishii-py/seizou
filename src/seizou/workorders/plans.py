@@ -1,4 +1,4 @@
-"""生産計画の盤 (02 の 4 節) を作る、読むだけの関数。表に書かない (書くのは services.plan_step)。
+"""生産計画の盤 (生産計画の盤の設計の決め) を作る、読むだけの関数。表に書かない (書くのは services.plan_step)。
 
 工程の決め方 (resolve_process) と期間の解き方 (parse_start・parse_weeks) はここの 1 か所に置く。
 盤の画面の get_queryset・template tag (workorders_plan)・plan_place の 3 つがこれを呼ぶ。
@@ -10,7 +10,7 @@
 - 見た目の材料: 部品の色 (tone。部品の pk で決まる theme の色の名前) と棒の状態 (state。計画・着手・完了・遅れ)。
   class の字は返さない (Tailwind はテンプレートしか読まないので、テンプレートが data- の属性で切り替える)。
 - 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。真 = 発行の指示書で、指示書の状態が完了
-  (最後の工程に完了の印。PROG-1a) で、まだ入庫にしていない完成の数が 0 より大きい。工程ごとの実績のまとめ (_step_totals) を使うため。
+  (最後の工程に完了の印。作者の決め) で、まだ入庫にしていない完成の数が 0 より大きい。工程ごとの実績のまとめ (_step_totals) を使うため。
 - 指示書の詳細の工程のタブの行 (step_rows) もここで作る。工程ごとの実績のまとめ (_step_totals) を使うため。会社の設定 production_plan は見ない。
 """
 
@@ -141,7 +141,7 @@ def bar_state(step, totals) -> str:
     完了と着手は指示書の進みの状態 (WorkOrder.progress_state_of。詳細の題の横と同じ決め方) で決める:
     - done 完了: 最後の工程に完了の印の付いた実績がある (指示書の状態の完了と同じ)。
     - late 遅れ: 終了日が納期より後 (納期が空なら当たらない)。
-    - accepted 着手: その指示書のどれかの工程に実績がある (着手の印は読まない。初見テスト R5 の候補 C27)。
+    - accepted 着手: その指示書のどれかの工程に実績がある (着手の印は読まない。作者の決め)。
     - planned 計画: ほか。
     """
     workorder = step.workorder
@@ -412,7 +412,7 @@ def projection_chart(projection):
     日ごとに 1 本。0 より大きい棒は 0 の線から上 (up)、0 より下の棒は 0 の線から下 (down) に分ける
     (テンプレートが系列ごとに for を分けて固定の class で塗る。class を組み立てない)。0 の日は棒を置かない。
     週の始め (7 日ごと) に日付の字を置く。返す物 = 枠と目盛り (0 の線を含む) と棒と日付の字の数。
-    目盛りと日付の字は svg の外の HTML の字 (C50-1 = a。ダッシュボードの棒の図と同じ形) なので、svg の箱に対する割合 (0〜100 の字) も返す:
+    目盛りと日付の字は svg の外の HTML の字 (作者の決め。ダッシュボードの棒の図と同じ形) なので、svg の箱に対する割合 (0〜100 の字) も返す:
     目盛り 1 本の "top" (箱の上の端から y まで)・日付 1 つの "left" (箱の左の端から x まで)・
     "tick_label_right" (箱の右の端から目盛りの字の右の端 tick_label_x まで)。割合は受け取った見込みの数だけから作る (DB を引き直さない)。
     """
@@ -487,13 +487,13 @@ def item_projection(item):
     return {"projection": projection, "chart": projection_chart(projection)}
 
 
-# --- 指示書の詳細の頭の右の緑の「製造の完了を入庫にする」(UX-2 a。11-06 22:1x。初見テスト R5 の候補 C93) ---
+# --- 指示書の詳細の頭の右の緑の「製造の完了を入庫にする」(作者の決め 11-06 22:1x。作者の決め) ---
 
 
 def finished_due(workorder) -> bool:
     """指示書の詳細の頭の右に緑の「製造の完了を入庫にする」を出すか。読むだけ。
 
-    真 = 発行の指示書で、指示書の状態が完了 (最後の工程に完了の印。PROG-1a。WorkOrder.progress_state_of と同じ決め方。
+    真 = 発行の指示書で、指示書の状態が完了 (最後の工程に完了の印。作者の決め。WorkOrder.progress_state_of と同じ決め方。
     _step_totals で 1 回の問い合わせ。進捗の部品が無ければ空の辞書なので偽) で、
     まだ入庫にしていない完成の数 (stock.services の finished_qty − stocked_qty。入庫の画面が ?workorder= で入れる数と同じ。良品だけ)
     が 0 より大きい。在庫の部品が無ければ偽。
@@ -513,7 +513,7 @@ def finished_due(workorder) -> bool:
     return finished_qty(workorder) - stocked_qty(workorder) > 0
 
 
-# --- 指示書の詳細の工程のタブ (初見テスト R5 の候補 C27 の 1。U58・rb23) ---
+# --- 指示書の詳細の工程のタブ (作者の決め) ---
 
 
 def step_rows(workorder) -> list[dict]:
@@ -521,12 +521,12 @@ def step_rows(workorder) -> list[dict]:
 
     工程は順 (seq) の順で、process を select_related で一緒に読む。実績のまとめは _step_totals を 1 回だけ呼ぶ
     (工程の数で問い合わせが増えない)。recorded = その工程の良品の合計、defect = 不良の合計、
-    done = その工程に完了の印の付いた実績がある (数は見ない。PROG-1)、current = 指示書が完了でないときの、印の無い最初の工程
+    done = その工程に完了の印の付いた実績がある (数は見ない。作者の決め)、current = 指示書が完了でないときの、印の無い最初の工程
     (生産管理ボードの今の工程 = orders.board の BoardRow.current_step と同じ。指示書が完了なら、どの行も偽)。
     進捗の部品が無い置き場 (_step_totals が空の辞書) では、recorded と defect は None で done と current は偽。
     会社の設定 production_plan は見ない (工程のタブは生産計画を使わない会社でも出る)。
     済みは工程ごとの印。今の工程は、指示書が完了でないときの印の無い最初の工程 (生産管理ボードの今の工程と同じ)。
-    途中の工程の印の抜けは、その行に「完了」が無いことで見える (PROG-1a)。
+    途中の工程の印の抜けは、その行に「完了」が無いことで見える (作者の決め)。
     """
     steps = list(workorder.steps.select_related("process").order_by("seq"))
     totals = _step_totals([step.pk for step in steps])

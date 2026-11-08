@@ -46,7 +46,7 @@ def decimal_fits(number) -> bool:
     外から来た数の字 (AI の読み取りの答え・GET の値) を Decimal にした後、字にする前と比べる前に呼ぶ。
     訳: 「1E+999999999」のような短い字は Decimal には読めるが、小数点の形の字にすると 10 億桁になり、1 回の要求や
     1 枚の注文書で記憶を使い切るため、表の列に入り得る桁の外の数を受けない。
-    出所 = Claude Security の走査の候補 (11-07 の 17・30)。桁は表の列の max_digits と decimal_places から決めた AI の案。
+    出所 = Claude Security の走査の指摘 (11-07)。桁は表の列の max_digits と decimal_places から決めた AI の案。
     変えてよい条件 = 表に、もっと広い桁の数と金額の列を足す時 (その列の桁に合わせて広げる)。
     """
     if not isinstance(number, Decimal) or not number.is_finite():
@@ -60,7 +60,7 @@ FORMER_HEADERS = {
     "masters.Partner": {"小計の計算方法": "rounding", "消費税の計算方法": "tax_mode"},
 }
 
-#: 消費税の端数の扱いの前の字と値 → 消費税の端数の向きの値 (決め LAW-2・C95-3)。
+#: 消費税の端数の扱いの前の字と値 → 消費税の端数の向きの値 (作者の決め)。
 #: 明細ごとに丸める 2 つをやめてトータルだけにしたので、前の CSV と種のこの字は、トータルとこの向きに読み替える。
 #: core と masters の migration (0005_company_tax_mode_total・0013_partner_tax_mode_total) が表の値を移したときと同じ対応。
 FORMER_TAX_MODES = {"各行四捨五入": "round", "line_round": "round", "各行切捨": "floor", "line_floor": "floor"}

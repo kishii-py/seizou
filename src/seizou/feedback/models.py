@@ -3,7 +3,7 @@
 現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあれば世話役が「GitHub に送る」で送り、無ければ Issue の文を
 GitHub に手で写す。送った先の URL は sent_url に残す。書くのは services の関数だけ (R13)。
 画面は URL の名前 (例 orders:order_list) で覚える。会話の記録は JSON の並びで持ち、詳細のテンプレートが吹き出しで描く。
-送った件の Issue の返事は FeedbackReply に 1 件ずつ持つ (依頼書 N324)。
+送った件の Issue の返事は FeedbackReply に 1 件ずつ持つ (開発の記録 docs/nights/20261107/N324.md)。
 """
 
 from django.conf import settings
@@ -93,7 +93,7 @@ class Feedback(models.Model):
 
 
 class FeedbackReply(models.Model):
-    """送ったフィードバックの Issue の返事の 1 件 (依頼書 N324。決め 11-07 09:1x〜09:4x)。書くのは services の関数だけ (R13)。
+    """送ったフィードバックの Issue の返事の 1 件 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x)。書くのは services の関数だけ (R13)。
 
     誰が何を書くか:
     - GitHub から読んだ返事 (作者や皆が Issue に書いた物): login あり・created_by 無し。取り込み (services.import_replies) が書き、

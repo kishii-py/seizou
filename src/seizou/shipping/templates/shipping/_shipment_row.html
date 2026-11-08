@@ -1,7 +1,7 @@
 {% load seizou_tags seizou_icons %}
 {# 出荷の一覧の 1 行 (shipping/_rows.html が core/_rows.html の row_template で include する)。context: row (土台の row_for の 1 行。obj は Shipment)・columns。 #}
 {# 欄の描き方は core/_rows.html の既定の 1 行をそのまま写した物 (土台の 1 行の形が変わったら、ここも合わせる)。右端の欄に「要点を見る」の目の印 (土台の目の印の部品を include する。押すと出荷の小窓)。 #}
-{# 行の操作は ⋮ のボタンと、同じ中身の右クリック (候補 12。本人の決め 11-08 00:25)。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment。行の押下で出荷の詳細へ移る onclick は、link と ⋮ の中の押下では動かない (closest('a, details'))。 #}
+{# 行の操作は ⋮ のボタンと、同じ中身の右クリック (本人の決め 11-08 00:25)。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment。行の押下で出荷の詳細へ移る onclick は、link と ⋮ の中の押下では動かない (closest('a, details'))。 #}
 {# 「編集」「削除」は can_edit (shipping/_rows.html が can_write の tag で 1 回だけ決める) が真の人にだけ出す。入力を小窓で開き (data-modal-form は href と 1 字も違わない字)、JS が無いときと新しいタブでは href で画面へ移り、保存の後と「キャンセル」で出荷の一覧へ戻る (?next=)。 #}
 {# 出荷は数の操作なので、金額の閲覧では隠さない (決め 21:0x)。発行の納品書に入った出荷の「編集」は入口で隠さず、開くと今のまま R08 の断りが出る。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}" data-row-menu {% if row.url %}onclick="if(!event.target.closest('a, details')){window.location='{{ row.url }}'}"{% endif %}>

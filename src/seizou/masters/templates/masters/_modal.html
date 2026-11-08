@@ -1,7 +1,7 @@
 {% extends "core/_modal.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# masters の小窓。項目と会社ごとの項目は core の形のまま。部品の取引先は、取引先・取引先の品番・取引先の品名の表で出す (品番の空の行は「—」)。使用停止の部品は、題の下 (項目の上) に詳細と同じ黄色の 1 行 (本人の決め 11-06 17:5x「小窓にも黄色の1行」。C55)。単位が数量単位の一覧に無い字の部品も、同じ所に詳細と同じ黄色の 1 行 (決め UNIT-1)。取引先の小窓には出さない。 #}
+{# masters の小窓。項目と会社ごとの項目は core の形のまま。部品の取引先は、取引先・取引先の品番・取引先の品名の表で出す (品番の空の行は「—」)。使用停止の部品は、題の下 (項目の上) に詳細と同じ黄色の 1 行 (本人の決め 11-06 17:5x「小窓にも黄色の1行」。作者の決め)。単位が数量単位の一覧に無い字の部品も、同じ所に詳細と同じ黄色の 1 行 (作者の決め)。取引先の小窓には出さない。 #}
 {% block above_fields %}{% if request.resolver_match.url_name == "item_modal" and object.active is False %}<div class="mt-4"><div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div></div>{% endif %}{% if request.resolver_match.url_name == "item_modal" and object.unit_unlisted %}<div class="mt-4"><div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>単位「{{ object.unit }}」は単位の一覧にありません。「編集」で一覧から選んでください。選ぶまでは、会社どうしの注文で単位のコードが空になり、相手に個として読まれるおそれがあります。</span></div></div>{% endif %}{% endblock %}
 {% block related %}
 {# 部品の図面。表示用の絵を作れなかったときは黄色の 1 行 (字は表の列のまま)、絵があれば小さい絵 (ログインした人にだけ返す口の URL。押すと同じタブで図面ビューアへ)。取引先の小窓では 2 つとも出ない。 #}

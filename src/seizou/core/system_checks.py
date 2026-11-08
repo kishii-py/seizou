@@ -144,5 +144,5 @@ def check_list_columns(app_configs=None, **kwargs):
 
 @django_checks.register()
 def check_list_filters(app_configs=None, **kwargs):
-    """URL の木にある一覧の画面の filters を見る (check_list_columns と同じ選び方。N122)。"""
+    """URL の木にある一覧の画面の filters を見る (check_list_columns と同じ選び方。開発の記録 docs/nights/20261104/N122.md)。"""
     return list_filter_errors(_url_view_classes(app_configs))

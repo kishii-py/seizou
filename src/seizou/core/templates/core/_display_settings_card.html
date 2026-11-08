@@ -1,5 +1,5 @@
 {% load seizou_icons %}
-{# 表示の設定の見本のカード (小窓の中身 = core.settings_screen.DisplaySettingsView が form_card で渡す。画面の全体 core/display_settings.html も同じカードを include する。決め 11-05 21:2x。N167・C53)。左に項目 (今は「見た目」の 1 つ)、右に上の帯の色の見本。 #}
+{# 表示の設定の見本のカード (小窓の中身 = core.settings_screen.DisplaySettingsView が form_card で渡す。画面の全体 core/display_settings.html も同じカードを include する。決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md・作者の決め)。左に項目 (今は「見た目」の 1 つ)、右に上の帯の色の見本。 #}
 {# 小窓 (in_modal) では見本を押すと form を htmx で同じ URL へ送る (change)。土台は小窓の形で保存すると 204 と HX-Refresh を返し、htmx が画面の全体を読み直す (JS は足さない)。画面の全体では htmx を付けず、見本を選んで「保存」のボタンでふつうに送り、同じ画面へ戻る (Enter では送らない = core/_enter_guard.html)。 #}
 {# 見本の色は scripts/css/input.css の固定の決まり (data-seizou-swatch の名前ごと)。白 (標準) は bg-base-100 のまま。class は組み立てない (R19)。 #}
 <div class="flex flex-col gap-6 sm:flex-row">
@@ -21,7 +21,7 @@
     {% if form.header_color.errors %}<p class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ form.header_color.errors|join:" " }}</p>{% endif %}
     <p class="mt-4 flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}{% if in_modal %}見本を押すとすぐ保存し、画面を読み直します。{% else %}見本を選んで「保存」を押します。{% endif %}</p>
     {% if not in_modal %}
-    {# 下の行 (保存)。ほかの入力の画面と同じく、開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html)。小窓には行も字も描かない。 #}
+    {# 下の行 (保存)。ほかの入力の画面と同じく、開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。作者の決め)、左に書きかけの字 (core/_save_bar.html)。小窓には行も字も描かない。 #}
     <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
       <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
       <button class="btn btn-primary" type="submit">{% icon "check" "size-4" %}保存</button>

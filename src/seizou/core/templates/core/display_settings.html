@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
 {% block content %}
-{# 表示の設定の画面の全体 (shipping/shipment_bulk_form.html と同じ形。C53)。カードの中身は core/_display_settings_card.html (小窓の形 core/_form_modal.html と同じ物) を白い箱で包む (包まないと左の欄の灰が画面の地と同じ色で見えない)。赤と黄の知らせは base.html の core/_notices.html。 #}
+{# 表示の設定の画面の全体 (shipping/shipment_bulk_form.html と同じ形。作者の決め)。カードの中身は core/_display_settings_card.html (小窓の形 core/_form_modal.html と同じ物) を白い箱で包む (包まないと左の欄の灰が画面の地と同じ色で見えない)。赤と黄の知らせは base.html の core/_notices.html。 #}
 <div class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">{% include "core/_display_settings_card.html" %}</div>
 {% endblock %}

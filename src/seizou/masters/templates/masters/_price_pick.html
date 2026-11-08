@@ -1,5 +1,5 @@
 {% load seizou_tags seizou_icons masters_prices %}
-{# 単価表から選ぶ小窓の中身 (C100)。枠は masters/_price_pick_dialog.html の #price-pick (入力の小窓の枠と別)。開いたらカーソルは右上の閉じるボタン。 #}
+{# 単価表から選ぶ小窓の中身 (作者の決め)。枠は masters/_price_pick_dialog.html の #price-pick (入力の小窓の枠と別)。開いたらカーソルは右上の閉じるボタン。 #}
 {# 行の「選ぶ」の data の属性 (data-unit-price・data-price-basis・data-quote-no・発注だけ data-process) を masters/price-pick.js が読み、開いた明細の行の欄に写す。 #}
 {# 字は tag の price_pick が組み、Django の自動の escape を通す (字に HTML を組まない)。金額の閲覧が無い人と単価の種類が読めないときは、小窓の上の赤い帯だけを出す。 #}
 <div class="flex items-start justify-between gap-4">

@@ -1,4 +1,4 @@
-"""決まりの検査 (05 の 4 節。01 の 10.3 の seizou.core.rules.check)。
+"""決まりの検査 (決まりの検査の設計の決め。core の公開する物の設計の決めの seizou.core.rules.check)。
 
 自社のアプリのコードを Python の ast で読み、書き方の決まりの違反の一覧を返す。
 同じ検査を、開発の設定の起動のとき (check_at_startup) と CI (manage.py seizou_check) で回す。

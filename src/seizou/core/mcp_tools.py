@@ -983,7 +983,7 @@ def list_acceptances(order_no: str | None = None, days: int = 30, limit: int = 5
 def _payment_dict(payment, shown: bool) -> dict[str, Any]:
     """入金の 1 件 (請求書と得意先は引いてある物)。
 
-    請求書の外で受け取った入金 (請求書が空・出荷を指す。決め C107-3c) は、invoice_no が None、得意先は出荷の受注の得意先、
+    請求書の外で受け取った入金 (請求書が空・出荷を指す。作者の決め) は、invoice_no が None、得意先は出荷の受注の得意先、
     url は出荷の詳細。どちらの入金にも shipment_no (請求書の入金は None) を入れる。
     """
     invoice = payment.invoice

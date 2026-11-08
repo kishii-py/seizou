@@ -82,7 +82,7 @@ class ProgressCreateView(BaseFormView):
 
 
 class ProgressUpdateView(BaseFormView):
-    """実績の編集 (実績の一覧の行の ⋮ と右クリックの「編集」から小窓で開く。PROG-1d・1e)。保存の後は ?next= の道 (実績の一覧) へ戻る。
+    """実績の編集 (実績の一覧の行の ⋮ と右クリックの「編集」から小窓で開く。作者の決め・1e)。保存の後は ?next= の道 (実績の一覧) へ戻る。
 
     使う人: 製造・生産管理 / いつ: 入れた実績の数や完了の印を間違えたとき / 何のために: 実績を直す / 次にすること: 実績の一覧で確かめる
     """
@@ -96,7 +96,7 @@ class ProgressUpdateView(BaseFormView):
 
 
 class ProgressDeleteView(BaseFormView):
-    """実績の削除の確かめ (実績の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。PROG-1e)。消した後は ?next= の道 (実績の一覧) へ戻る。
+    """実績の削除の確かめ (実績の一覧の行の ⋮ と右クリックの「削除」から小窓で開く。作者の決め)。消した後は ?next= の道 (実績の一覧) へ戻る。
 
     使う人: 製造・生産管理 / いつ: 別の工程や二重に入れた実績を見つけたとき / 何のために: 間違えて入れた実績を消す / 次にすること: 実績の一覧で確かめる
     """
@@ -115,7 +115,7 @@ def step_completed(request, pk):
     """指示書の工程に完了の印の付いた実績があるかを {"completed": 真偽} で返す読むだけの口。
 
     実績の新規登録の JS (progress/progress-form.js) が「指示書の工程」を選び直したときに 1 回読み、真なら欄の下に
-    「この工程には完了の印が付いています。実績は足せます。」を出す (PROG-1c = a。断らない)。部署は見ない (在庫の item_balance と同じ)。
+    「この工程には完了の印が付いています。実績は足せます。」を出す (作者の決め。断らない)。部署は見ない (在庫の item_balance と同じ)。
     """
     step = get_object_or_404(field_at(Progress, "workorder_step").related_model, pk=pk)
     response = JsonResponse({"completed": services.step_completed(step)})

@@ -2,17 +2,17 @@
 
 部品の画面は R15 で get_context_data を上書きできないので、画面に足す物はここで渡す。
 {% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、世話役の印 (info.can_manage) と、削除の印 (info.can_delete) と、GitHub の状態 (info.github)
-{% feedback_github as github %}        GitHub の口の状態と世話役の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。依頼書 N185。search=False で探さない)
-                                       と、GitHub でログインしてつなぐの待ち・Client ID があるか・入力の形 (依頼書 N320)
-                                       と、みんなの Issue の行の自社の印 (marks と、詳細へ移れる件の pk の openable。依頼書 N323)
-{{ github.marks|issue_mark:issue.number }}  みんなの Issue の行の自社の印 ({"sent", "me_too"} か None。依頼書 N323)
+{% feedback_github as github %}        GitHub の口の状態と世話役の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。開発の記録 docs/nights/20261106/N185.md。search=False で探さない)
+                                       と、GitHub でログインしてつなぐの待ち・Client ID があるか・入力の形 (開発の記録 docs/nights/20261107/N320.md)
+                                       と、みんなの Issue の行の自社の印 (marks と、詳細へ移れる件の pk の openable。開発の記録 docs/nights/20261107/N323.md)
+{{ github.marks|issue_mark:issue.number }}  みんなの Issue の行の自社の印 ({"sent", "me_too"} か None。開発の記録 docs/nights/20261107/N323.md)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
-{% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った件 (件数)・みんなの Issue。依頼書 N321。feedback/_tabs.html)
-{% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。依頼書 N324)
-{% feedback_board as board %}          みんなの Issue の盤と一覧の形の材料と、並べ替えと切り替えの link (依頼書 N325。GET の tab が issues のときだけ GitHub を読む)
+{% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った件 (件数)・みんなの Issue。開発の記録 docs/nights/20261107/N321.md。feedback/_tabs.html)
+{% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。開発の記録 docs/nights/20261107/N324.md)
+{% feedback_board as board %}          みんなの Issue の盤と一覧の形の材料と、並べ替えと切り替えの link (開発の記録 docs/nights/20261107/N325.md。GET の tab が issues のときだけ GitHub を読む)
 {% feedback_steps object as steps %}   詳細の「この件の進み具合」の段の帯の材料 (feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)
-info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (依頼書 N324)。
+info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (開発の記録 docs/nights/20261107/N324.md)。
 """
 
 from django import template
@@ -52,7 +52,7 @@ def feedback_panel(context):
 def feedback_detail(context, feedback):
     """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": 世話役か, "can_delete": 下書きを消せるか, "screenshots": 画面の絵 (画像の添付ファイル。付けた順),
     "github": GitHub とつないだ状態 (services.github_status。トークンの値は無い),
-    "version": 会社が入れている版 (manual.package_version。入っていなければ空の字。版待ちの件の直る版と並べて世話役に見せる。依頼書 N322)}。
+    "version": 会社が入れている版 (manual.package_version。入っていなければ空の字。版待ちの件の直る版と並べて世話役に見せる。開発の記録 docs/nights/20261107/N322.md)}。
 
     request が無ければ世話役でなく、消せない。
     """
@@ -68,7 +68,7 @@ def feedback_detail(context, feedback):
         "can_delete": user is not None and services.can_delete(feedback, user),
         "github": services.github_status(),
         "version": manual.package_version(),
-        # 「返事」の節 (依頼書 N324): 下書き (送った日時が空) は返事を書ける人 (書いた人か世話役) にだけ並べる
+        # 「返事」の節 (開発の記録 docs/nights/20261107/N324.md): 下書き (送った日時が空) は返事を書ける人 (書いた人か世話役) にだけ並べる
         "replies": [reply for reply in services.replies_of(feedback) if reply.sent_at or (user is not None and services.can_reply(feedback, user))],
         "can_reply": user is not None and services.can_reply(feedback, user),
         "company_login": services.company_login(),
@@ -87,8 +87,8 @@ def feedback_github(context, search=True):
     皆の Issue を探す (GitHub を読む) のは、GET に issue_q があるときだけ (「探す」を押したとき。空の言葉なら新しい順)。
     一覧を開くたびには GitHub を読まない。request が無ければ世話役でなく、探さず、待ちは None。
     search が偽なら探さない (一覧の見出しの行のボタンが使う。同じ表示の下の枠が探すので、GitHub を 2 回読まない。読めなかった返事は控えに残らないため = services.search_issues)。
-    入力の形をここで渡すのは、部品の画面が R15 で get_context_data を上書きできないため (依頼書 N320)。
-    自社の印 (依頼書 N323) は世話役でない人にも出す (印は会社の物)。詳細へ移る link は openable の件だけにする
+    入力の形をここで渡すのは、部品の画面が R15 で get_context_data を上書きできないため (開発の記録 docs/nights/20261107/N320.md)。
+    自社の印 (開発の記録 docs/nights/20261107/N323.md) は世話役でない人にも出す (印は会社の物)。詳細へ移る link は openable の件だけにする
     (詳細の画面は世話役でない人に自分の書いた件だけを開くので、ほかの人の件の link は 404 になるため)。
     """
     request = context.get("request")
@@ -111,7 +111,7 @@ def feedback_github(context, search=True):
 
 
 def _issue_marks(user, searched) -> dict:
-    """みんなの Issue の行の自社の印と、見ている人が詳細を開ける件の pk (依頼書 N323)。探していなければ両方とも空。読むだけ。"""
+    """みんなの Issue の行の自社の印と、見ている人が詳細を開ける件の pk (開発の記録 docs/nights/20261107/N323.md)。探していなければ両方とも空。読むだけ。"""
     if not searched:
         return {"marks": {}, "openable": set()}
     marks = services.our_issue_marks()
@@ -127,7 +127,7 @@ def _issue_marks(user, searched) -> dict:
 
 @register.filter
 def issue_mark(marks, number):
-    """みんなの Issue の行の自社の印 ({"sent": pk か None, "me_too": pk か None})。marks に番号が無ければ None (依頼書 N323)。"""
+    """みんなの Issue の行の自社の印 ({"sent": pk か None, "me_too": pk か None})。marks に番号が無ければ None (開発の記録 docs/nights/20261107/N323.md)。"""
     return marks.get(number) if isinstance(marks, dict) else None
 
 
@@ -143,13 +143,13 @@ def feedback_fields(fields):
     return [{**item, "label": SCREENS_LABEL} if item["label"] == stored else item for item in fields or []]
 
 
-#: タブの帯の 3 つ (鍵と字)。並びは画面の左から (依頼書 N321。決め 11-07 09:1x〜09:2x)
+#: タブの帯の 3 つ (鍵と字)。並びは画面の左から (開発の記録 docs/nights/20261107/N321.md。決め 11-07 09:1x〜09:2x)
 TABS = (("send", "送る"), ("sent", "送った件"), ("issues", "みんなの Issue"))
 
 
 @register.simple_tag(takes_context=True)
 def feedback_tabs(context):
-    """送る画面と一覧の上のタブの帯 (依頼書 N321)。並び 3 つ [{"key", "label", "href", "count", "selected"}]。例外を出さない。
+    """送る画面と一覧の上のタブの帯 (開発の記録 docs/nights/20261107/N321.md)。並び 3 つ [{"key", "label", "href", "count", "selected"}]。例外を出さない。
 
     href: 送る = 送る画面 (今の GET に screen があれば ?screen= で引き継ぐ。左のメニューの入口が渡した、開いていた画面を失わない)、
     送った件 = 一覧、みんなの Issue = 一覧の ?tab=issues (新しい URL は足さない。部品の画面は R15 で土台の 4 つのまま)。
@@ -231,11 +231,11 @@ def feedback_steps(feedback):
 
 @register.simple_tag
 def feedback_reply_draft(reply):
-    """返事の下書きの、世話役が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。依頼書 N324)。"""
+    """返事の下書きの、世話役が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。開発の記録 docs/nights/20261107/N324.md)。"""
     return services.reply_draft_text(reply)
 
 
-#: みんなの Issue の並べ替えの link (鍵と字。依頼書 N325)。初めは 👍 の多い順
+#: みんなの Issue の並べ替えの link (鍵と字。開発の記録 docs/nights/20261107/N325.md)。初めは 👍 の多い順
 BOARD_SORT_LINKS = (("top", "👍 の多い順"), ("new", "新しい順"))
 #: みんなの Issue の形の切り替えの link (鍵と字)。初めは盤 (選びは覚えない = 毎回盤)
 BOARD_VIEW_LINKS = (("board", "カンバン"), ("list", "一覧"))
@@ -255,7 +255,7 @@ def _board_href(q, view, sort) -> str:
 
 @register.simple_tag(takes_context=True)
 def feedback_board(context):
-    """みんなの Issue のカンバンと一覧の形の材料 (依頼書 N325。決め 11-07 09:3x〜10:1x。5 つの列をいつも出す形は本人の決め 11-07 16:4x)。
+    """みんなの Issue のカンバンと一覧の形の材料 (開発の記録 docs/nights/20261107/N325.md。決め 11-07 09:3x〜10:1x。5 つの列をいつも出す形は本人の決め 11-07 16:4x)。
 
     返す物 {"view": "board" か "list" (GET の view が list なら list。ほかは board), "sort": "top" か "new" (GET の sort。ほかは top),
     "q": GET の issue_q, "keep_q": GET に issue_q があったか, "board": services.board_issues の結果か None,

@@ -1,4 +1,4 @@
-"""出荷の表 (01 の 4 節)。
+"""出荷の表 (表の設計の決め)。
 
 出荷は受注の明細を指し、1 つの明細に何回でも出荷できる (分納)。
 納品書は得意先ごとに出荷をまとめた物で、数量と金額の写しを持たない。
@@ -38,7 +38,7 @@ class DeliveryNote(models.Model):
         "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_ISSUED
     )
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「納品書」) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決めの伝票の「納品書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -53,12 +53,12 @@ class DeliveryNote(models.Model):
     def has_unbilled_shipments(self):
         """この納品書の出荷のうち、発行の請求書に入っていない物が 1 つでもあるか (読むだけ。問い合わせ 1 回)。
 
-        納品書の詳細の頭の緑の「請求書作成」が読む (全部請求済みの納品書には出さない。初見テスト R5 の候補 C93 と C03-1 a)。
+        納品書の詳細の頭の緑の「請求書作成」が読む (全部請求済みの納品書には出さない。作者の決め)。
         請求書の明細の表は出荷の逆の関係 invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の
         STATUS_ISSUED から読む (billing を import しない。shipping.services.invoiced_shipments と同じ読み方)。
         取消の請求書だけに入った出荷は「入っていない」に数える (billing.services.billable_shipments と同じ数え方)。
-        受注の明細に「請求しない」の印がある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め C107-3)。
-        請求書の外で受け取った入金 (取消でない) のある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め C107-3c)。
+        受注の明細に「請求しない」の印がある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め)。
+        請求書の外で受け取った入金 (取消でない) のある出荷は数えない (billing.services.billable_shipments と同じ。作者の決め)。
         入金の表は出荷の逆の関係 payments の先として引き、「記録」の値はその表の STATUS_RECORDED から読む。
         請求書の部品が無ければ偽。
         """
@@ -98,7 +98,7 @@ class Shipment(models.Model):
         related_name="shipments",
     )
     note = models.CharField("備考", max_length=500, blank=True)
-    # この出荷で、受注の明細の数量を初めて出し終えたか (決め PRICE-1c)。書くのは shipping.services だけ (出荷の時と、出荷を直した時)。
+    # この出荷で、受注の明細の数量を初めて出し終えたか (作者の決め)。書くのは shipping.services だけ (出荷の時と、出荷を直した時)。
     # 一式 (単価の単位が式) の明細は、この印の付いた出荷だけが一式の全額を持つ (shipping.services.amount_of_shipment)。部品の単位の明細にも同じ決まりで付く (金額には使わない)。
     finishes_line = models.BooleanField("明細を出し終えた出荷", default=False, editable=False)
     # 出荷の知らせ (出荷を相手の seizou へ送った記録)。connect.services.send_shipping_notice が shipping.services の
@@ -112,7 +112,7 @@ class Shipment(models.Model):
     #: 詳細と小窓に出さない列 (core/views.py の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
     #: 明細を出し終えた出荷の印 (finishes_line) も、金額を数えるための列なのでいつも出さない。
     #: 知らせを送った日時と相手の返事の 2 列は、受信した注文で作った受注の出荷 (相手へ出荷の知らせを送る物) だけ出す。
-    #: ほかの出荷では入らない欄で、「—」の行は何の欄か迷わせる (初見テスト R5 の候補 C18)。
+    #: ほかの出荷では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
     #: 送る物かの判定は、送る側と同じ services._is_edi_order を使う (同じ式を 2 か所に書かない)。
     #: shipping.services が頭でこの model を読むので、services は中で import する (頭で読むと輪になる)。
     @property
@@ -125,7 +125,7 @@ class Shipment(models.Model):
                 return hidden
         return (*hidden, "notice_sent_at", "notice_response")
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「出荷」) を残し、詳細に「履歴」のタブを出す。
+    #: 変更の履歴 (core.history。作者の決めの伝票の「出荷」) を残し、詳細に「履歴」のタブを出す。
     #: 出荷の知らせの番号 (uuid)・送った日時・相手の返事は core が残さない (番号の uuid と、名前が _sent_at・_response で終わる列)
     keeps_history = True
 
@@ -147,7 +147,7 @@ class Shipment(models.Model):
         """出荷の詳細の「出荷の知らせ」の節に出す字。送る物でない出荷は空の字 (テンプレートが節を出さない)。
 
         送れた (相手の受け口が 200) なら「送った <日時>」、送れていなくて返事があれば
-        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。精査 A1 の想定外 S11)。
+        「届いていない: <相手の返事>」。返事が「届きません」「断られた」で始まるときは前置きを付けない (前置きを重ねない。作者の決め)。
         """
         if self.notice_sent_at is not None:
             return f"送った {timezone.localtime(self.notice_sent_at):%Y-%m-%d %H:%M}"

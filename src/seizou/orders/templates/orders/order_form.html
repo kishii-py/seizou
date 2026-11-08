@@ -2,7 +2,7 @@
 {% load static seizou_icons %}
 {% block content %}
 {# 受注の入力: 受注の項目 (2 列の格子) と明細の行の表を 1 つの form に。知らせと「このまま保存」は core/form.html と同じ約束。 #}
-{# 明細の単価の枡の中に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外に 1 つ。C100)。見積の番号の列は作らない。 #}
+{# 明細の単価の枡の中に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外に 1 つ。作者の決め)。見積の番号の列は作らない。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄と明細の行を埋めて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。</p>
@@ -47,7 +47,7 @@
   </div>
 
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  {# 下の行 (キャンセルと保存)。開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない)。 #}
+  {# 下の行 (キャンセルと保存)。開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。作者の決め)、左に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない)。 #}
   <div class="seizou-save-row flex flex-wrap items-center justify-end gap-2">
     <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}

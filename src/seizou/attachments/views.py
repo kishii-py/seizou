@@ -1,4 +1,4 @@
-"""attachments の画面と口 (02 の 5 節の N30)。画面は core の土台を継承する (R15)。
+"""attachments の画面と口 (添付ファイルの設計の決め。開発の記録 docs/nights/20261103/N30.md)。画面は core の土台を継承する (R15)。
 
 付けるのは記録の詳細の「添付ファイル」の枠 (attachments/_panel.html) からだけ。付ける画面の名前は
 attachment_add にする (attachment_create にすると、土台の一覧が付ける先の無い「新規登録」を出すため)。
@@ -38,7 +38,7 @@ class AttachmentListView(BaseListView):
     screen_help = "受注や部品などの詳細の「添付ファイル」の枠から付けたファイルを、全部まとめて探す一覧。行を押すと、付けた先の詳細を開きます。"
 
     def get_queryset(self):
-        # 付けた先の記録を開ける人の行だけ (部署の外の記録・ほかの人のフィードバックの題とファイル名を出さない。候補 11-07 の 9)
+        # 付けた先の記録を開ける人の行だけ (部署の外の記録・ほかの人のフィードバックの題とファイル名を出さない。Claude Security の走査の指摘 (11-07))
         return services.openable_by(super().get_queryset(), self.request.user)
 
 
@@ -70,7 +70,7 @@ class AttachmentDeleteView(BaseFormView):
     screen_help = "添付ファイルを削除し、付けた先の記録の詳細に戻ります。削除したファイルは元に戻せません。"
 
     def get_queryset(self):
-        # 土台の dispatch がこの絞りの中から対象を引く (外は確かめの画面も削除も 404。候補 11-07 の 8)
+        # 土台の dispatch がこの絞りの中から対象を引く (外は確かめの画面も削除も 404。Claude Security の走査の指摘 (11-07))
         return services.openable_by(Attachment.objects.all(), self.request.user)
 
 
@@ -79,7 +79,7 @@ def attachment_detail(request, pk):
     """付けた先の記録の詳細へ移るだけの口 (保存の後と一覧の行の移り先)。
 
     付けた先が無いか、付けた先に詳細の画面が無ければ一覧へ (一覧も無ければ /)。
-    付けた先の記録を開けない人には 404 (services.openable_by。付けた先の種類と番号を移り先で見せない。候補 11-07 の 9)。
+    付けた先の記録を開けない人には 404 (services.openable_by。付けた先の種類と番号を移り先で見せない。Claude Security の走査の指摘 (11-07))。
     """
     attachment = get_object_or_404(services.openable_by(Attachment.objects.all(), request.user), pk=pk)
     target = attachment.target
@@ -96,7 +96,7 @@ def attachment_download(request, pk):
     無い番号と、storage にファイルが無いときは 404。開いたファイルは FileResponse が閉じる。
     付けた先の記録を開けない人 (部署の外の記録・ほかの人のフィードバックの画面の絵) にも 404 (services.openable_by)。
     訳: 記録を開けない人に、番号を順に変えるだけで付けたファイルを開かせないため。「無い」と「見せない」は外から見分けさせない
-    (上げたファイルの口 core.media と同じ 404)。出所 = Claude Security の走査の候補 11-07 (7)。
+    (上げたファイルの口 core.media と同じ 404)。出所 = Claude Security の走査の指摘 (11-07)。
     変えてよい条件 = 記録の部品の開ける人の決めが変わったとき (services.openable_by を直す)。
     金額が主な記録 (services.MONEY_TARGETS) に付けたファイルは、金額の閲覧が log の会社では返して seizou.access に 1 行残す
     (on の会社の金額を見られない人には openable_by が外すので 404。本人の決め 11-08 00:13)。

@@ -1,11 +1,11 @@
 {% extends "core/form.html" %}
 {% load seizou_icons seizou_tags %}
 {% block content %}
-{# 注文書を読み取る。鍵が無い会社では、黄の帯と手入力への link だけを出し、土台の入力のカード (欄と保存のボタン) は描かない (使えない欄を押して空振りしないため。C09)。 #}
+{# 注文書を読み取る。鍵が無い会社では、黄の帯と手入力への link だけを出し、土台の入力のカード (欄と保存のボタン) は描かない (使えない欄を押して空振りしないため。作者の決め)。 #}
 {# 帯は開いた時に出る状態の帯 (CLAUDE.md の「知らせの強さ」の段 5) で、右上の知らせへ移さない。アカウント管理の権限がある人にだけ、同じ帯の 2 行目 (<br> の後。字の色の class は足さない) に鍵の置き場の文 (services.MESSAGE_NO_KEY_MANAGER) と設定の画面への link を出す (AI チャットの窓と同じ形。決め B-16)。 #}
 {% if form.ready %}
 {# 「読み取る」は AI の返事を待つので数秒かかる。押したら core の js/seizou-guard.js が、押したボタンを押せなくして 2 回目の送信を止め、字を「処理中…」にする (form に data-seizou-sent)。 #}
-{# その後で下の script が、押したボタンの中身を下の template (回る印と「読み取り中…」) に入れ替える (決め 11-05 15:0x。N160)。class を足し引きしない。ブラウザの戻るで戻ったときは guard が元の字に戻す。 #}
+{# その後で下の script が、押したボタンの中身を下の template (回る印と「読み取り中…」) に入れ替える (決め 11-05 15:0x。開発の記録 docs/nights/20261105/N160.md)。class を足し引きしない。ブラウザの戻るで戻ったときは guard が元の字に戻す。 #}
 {# 順: 本文の script は defer の guard より先に動くので、submit の受けは DOMContentLoaded の後に付ける (guard の受けの後に並び、同じ押下で guard の setTimeout の後に動く)。 #}
 <div data-intake-upload>{{ block.super }}</div>
 <template data-intake-busy><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>読み取り中…</template>

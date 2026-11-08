@@ -1,4 +1,4 @@
 {% load seizou_icons %}
-{# 標準の工程から外すの確かめのカード (画面の全体 masters/itemprocess_remove.html と小窓の両方が include する。C112)。黄の 1 行に外す工程と部品と、残る物を出し、その下に入力のカード (欄は無く、赤の「外す」のボタン)。 #}
+{# 標準の工程から外すの確かめのカード (画面の全体 masters/itemprocess_remove.html と小窓の両方が include する。作者の決め)。黄の 1 行に外す工程と部品と、残る物を出し、その下に入力のカード (欄は無く、赤の「外す」のボタン)。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ object.process }} を、この部品 ({{ object.item.part_no }} {{ object.item.name }}) の標準の工程から外します。工程の一覧にある工程と、発行済みの指示書の工程はそのまま残ります。外した工程は「工程を足す」でまた足せます。</span></div>
 {% include "core/_form_card.html" %}

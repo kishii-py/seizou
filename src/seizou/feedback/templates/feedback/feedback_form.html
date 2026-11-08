@@ -4,8 +4,8 @@
 {# 下書きができたら画面を移らず、口 ask が返す編集の形 (feedback/_draft_ready.html の hx-swap-oob) で右の欄 (#feedback-form-column) を差し替える (編集の形は feedback_update へ送るので、同じ件が 2 つにならない)。「うちも」を付けた枝はその件の詳細へ移る (今までどおり)。 #}
 {# AI の段の form は htmx の POST (CSRF の見出しは base.html が付ける)。送信のボタンは主色にしない (主色は入力の形の「保存」だけ)。 #}
 {# 待つ間は、吹き出しの並びの下に AI の吹き出し (中に点の動き) を出す。htmx が要求の間だけ hx-indicator の箱に htmx-request の class を付け、その間だけ箱が見える。 #}
-{# 似た困りごとが GitHub に出ていないかを先に探す link (依頼書 N185) は、画面の頭の白い帯の右 (block actions) に置く (灰色の地に字の行を直接置かない = タブの指示書の地の決まり。鍵の無い会社でも同じ所)。先は「みんなの Issue」のタブ (一覧の ?tab=issues。依頼書 N321)。 #}
-{# 帯の下の端はタブの帯 (依頼書 N321。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
+{# 似た困りごとが GitHub に出ていないかを先に探す link (開発の記録 docs/nights/20261106/N185.md) は、画面の頭の白い帯の右 (block actions) に置く (灰色の地に字の行を直接置かない = タブの指示書の地の決まり。鍵の無い会社でも同じ所)。先は「みんなの Issue」のタブ (一覧の ?tab=issues。開発の記録 docs/nights/20261107/N321.md)。 #}
+{# 帯の下の端はタブの帯 (開発の記録 docs/nights/20261107/N321.md。feedback/_tabs.html)。この画面では「送る」が選ばれる。 #}
 {% block actions %}<a id="feedback-issues-link" class="btn btn-outline border-base-300" href="{% url 'feedback:feedback_list' %}?tab=issues#issues">{% icon "search" "size-4" %}似た困りごとが GitHub に出ていないか探す</a>{% endblock %}
 {% block heading_tabs %}{% include "feedback/_tabs.html" %}{% endblock %}
 {% block content %}{% feedback_panel as panel %}

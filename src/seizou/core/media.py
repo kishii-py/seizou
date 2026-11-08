@@ -118,7 +118,7 @@ def is_public(relative: PurePosixPath) -> bool:
     """ログインしていなくても返すファイルか = 会社の情報のロゴだけ (ログインの画面と左上に出すので、ログインの前にも要る)。
 
     今の会社の行の logo と同じ道の物だけ。company/ の下のほかのファイルや、外した古いロゴは含めない。
-    例外はロゴから作った印 (core.services.COMPANY_ICONS の 2 つの名前。ロゴがあるときだけ。ブラウザのタブに出す)。N166
+    例外はロゴから作った印 (core.services.COMPANY_ICONS の 2 つの名前。ロゴがあるときだけ。ブラウザのタブに出す)。開発の記録 docs/nights/20261105/N166.md
     """
     from seizou.core.models import Company
     from seizou.core.services import COMPANY_ICONS
@@ -140,7 +140,7 @@ def must_download(name: str, content_type: str) -> bool:
     止める表 (DOWNLOAD_ONLY_EXTENSIONS と DOWNLOAD_ONLY_TYPES) を先に見る (拡張子が script の形なら、型に関わらず真)。
     その後は、型 (; の前を小文字にした物) が許しの一覧 (INLINE_TYPES) に無ければ真。
 
-    訳: ブラウザの中で開くのは、絵と PDF とテキストの許しの一覧 (INLINE_TYPES) の型だけにし、ほかはダウンロードにして CSP の sandbox を付ける。止める表 (denylist) の外の型 (RSS・XSLT などの +xml) で、上げたファイルの script が同じ origin で動く道を閉じるため。inline の応答に sandbox を付けないのは、ブラウザの PDF の表示が止まるおそれがあるため。出所 = エンタープライズ化の調べ 第一弾の指摘 web-1 (11-07。確かめ直し 416 回目の直し方の直し (d))。変えてよい条件 = ブラウザの中で開きたい型が増えたとき (一覧に足す。script を動かしうる型は足さない)。
+    訳: ブラウザの中で開くのは、絵と PDF とテキストの許しの一覧 (INLINE_TYPES) の型だけにし、ほかはダウンロードにして CSP の sandbox を付ける。止める表 (denylist) の外の型 (RSS・XSLT などの +xml) で、上げたファイルの script が同じ origin で動く道を閉じるため。inline の応答に sandbox を付けないのは、ブラウザの PDF の表示が止まるおそれがあるため。出所 = エンタープライズ化の調べを受けた作者の決め (11-07)。変えてよい条件 = ブラウザの中で開きたい型が増えたとき (一覧に足す。script を動かしうる型は足さない)。
     """
     if PurePosixPath(name).suffix.lower() in DOWNLOAD_ONLY_EXTENSIONS:
         return True
@@ -167,7 +167,7 @@ def _unavailable(request, reason: str, advice: str):
 def favicon(request):
     """印の口 (/favicon.ico。画面でない。ログインを見ない)。ロゴから作った印があればその絵へ、無ければ static の favicon.svg へ移す (302)。
 
-    Django の誤りの画面と、PDF や CSV を開いたタブは <link rel="icon"> を持たず、ブラウザがこの URL を取りに来る。決め 11-05 20:1x。N166
+    Django の誤りの画面と、PDF や CSV を開いたタブは <link rel="icon"> を持たず、ブラウザがこの URL を取りに来る。決め 11-05 20:1x。開発の記録 docs/nights/20261105/N166.md
     表は読まず、ロゴと同じ storage の印のファイルの有無で決める (印はロゴを外すと消える。データベースの無い誤りの画面でも動く)。
     """
     from seizou.core.models import Company

@@ -3,7 +3,7 @@ connect の一覧 (受信した注文・取引先との接続) の行の部分�
 受信した注文の一覧 (inbox_list) は core/_rows.html を include し、1 行を connect/_inbox_row.html (状態の列の書き分けと、
 最後の「操作」の列) にする (core の row_template と actions_label)。
 受信した注文の自動の更新 (GET に after がある) は、after より新しい行の <tr> だけを返す (全部を描き直さない)。
-after=0 は一覧が空だった時の取りに行きで、行が届いたら表ごと返し、まだ空なら空の枠を返す (検索も絞りも無ければ connect/_inbox_empty.html、あれば core の空の表示。N160)。
+after=0 は一覧が空だった時の取りに行きで、行が届いたら表ごと返し、まだ空なら空の枠を返す (検索も絞りも無ければ connect/_inbox_empty.html、あれば core の空の表示。開発の記録 docs/nights/20261105/N160.md)。
 どちらも、次の after を持った取りに行く要素 (connect/_inbox_poll.html) を hx-swap-oob で入れ直す。
 受信した注文の一覧が空のときは、検索も絞りも無ければ connect/_inbox_empty.html (「取引先から注文が届くと、ここに並びます。」と取引先との接続への link)、あれば core/_rows.html の空の表示。取引先との接続の一覧は core/_rows.html をそのまま使う。
 {% endcomment %}
@@ -13,7 +13,7 @@ after=0 は一覧が空だった時の取りに行きで、行が届いたら表
 {# 新しい行があれば、上の「全 N 件」と下の「N 件中 1–M 件」も入れ替える (行だけ増えて件数が古いままにならないように。M = 表に出ている行の数 = InboxListView の shown_count)。<template> で包むのは行の応答の中に置くため。 #}
 {% if rows %}<template><span id="list-count" class="font-medium tabular-nums text-base-content" hx-swap-oob="true">{{ rows.0.obj.total_count|comma }}</span><p id="list-range" class="text-base-content/70" hx-swap-oob="true"><span class="tabular-nums">{{ rows.0.obj.total_count|comma }}</span> 件中 <span class="tabular-nums">1–{{ rows.0.obj.shown_count|comma }}</span> 件</p></template>{% endif %}
 {% elif rows %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">

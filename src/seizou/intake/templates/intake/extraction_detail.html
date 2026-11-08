@@ -38,7 +38,7 @@
       <dt class="text-base-content/70">作った受注</dt>
       <dd class="min-w-0 break-words">{% if object.order %}{% url "orders:order_detail" object.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ object.order.order_no }}</a>{% else %}<span class="font-mono">{{ object.order.order_no }}</span>{% endif %}{% elif inbox.order %}{% url "orders:order_detail" inbox.order.pk as order_url %}{% if order_url %}<a class="link link-primary font-mono" href="{{ order_url }}">{{ inbox.order.order_no }}</a>{% else %}<span class="font-mono">{{ inbox.order.order_no }}</span>{% endif %}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd>
     </div>
-    {# 元のファイル (単価入りの注文書) の行は、金額の閲覧の無い人 (seizou.hide_money) には出さない。上げたファイルの口 (core.media) も 404 にする。決め 11-08 00:13。N360 #}
+    {# 元のファイル (単価入りの注文書) の行は、金額の閲覧の無い人 (seizou.hide_money) には出さない。上げたファイルの口 (core.media) も 404 にする。決め 11-08 00:13。開発の記録 docs/nights/20261108/N360.md #}
     {% if not seizou.hide_money %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">元のファイル</dt>

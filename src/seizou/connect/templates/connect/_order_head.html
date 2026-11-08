@@ -1,4 +1,4 @@
-{# 受信した注文の相手の発注番号と発注日 (payload の order_no と order_date。読めなければ薄い「—」)。詳細の「基本」と受け入れの「届いた明細」の dl の中に置く。受け入れると、受注の「得意先の注文番号」と「受注日」になる (訳は説明書の断片に書く。C08-3 = a)。 #}
+{# 受信した注文の相手の発注番号と発注日 (payload の order_no と order_date。読めなければ薄い「—」)。詳細の「基本」と受け入れの「届いた明細」の dl の中に置く。受け入れると、受注の「得意先の注文番号」と「受注日」になる (訳は説明書の断片に書く。作者の決め)。 #}
 <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
   <dt class="text-base-content/70">相手の発注番号</dt>
   <dd class="min-w-0 break-words">{% with order_no=object.buyer_order_no %}{% if order_no %}<span class="font-mono">{{ order_no }}</span>{% else %}<span class="text-base-content/60">—</span>{% endif %}{% endwith %}</dd>

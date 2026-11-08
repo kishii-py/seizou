@@ -1,4 +1,4 @@
-"""2 社の作り物のマニュアルの種 (本体が core/demo.py から呼ぶ。N35 は demo.py を触らない)。
+"""2 社の作り物のマニュアルの種 (本体が core/demo.py から呼ぶ。開発の記録 docs/nights/20261103/N35.md は demo.py を触らない)。
 
 load(seeds_dir, user) が、種のフォルダの名前 (a_machining か b_plating) で会社を選んで入れる。
 ほかの名前は何もしない。書くのは services の関数だけ (表に直接書かない)。標準出力に書かない。

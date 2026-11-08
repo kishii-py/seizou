@@ -1,4 +1,4 @@
-{# みんなの Issue のカンバン (依頼書 N325。決め 11-07 09:3x〜10:1x。5 つの列をいつも同じ順で出す形は本人の決め 11-07 16:4x)。feedback_list.html の「みんなの Issue」のタブ (?tab=issues) が、カンバンの形 (GET の view が list でない) のときに include する。材料は tag の feedback_board (board)。 #}
+{# みんなの Issue のカンバン (開発の記録 docs/nights/20261107/N325.md。決め 11-07 09:3x〜10:1x。5 つの列をいつも同じ順で出す形は本人の決め 11-07 16:4x)。feedback_list.html の「みんなの Issue」のタブ (?tab=issues) が、カンバンの形 (GET の view が list でない) のときに include する。材料は tag の feedback_board (board)。 #}
 {# 列は services.BOARD_COLUMNS の順にいつも 5 つ並べ、件数 0 の列も頭 (札と件数 0) を出して、その下に点線の枠の「まだありません」を置く (票がどの状態の列に載っているかを一目で分かるようにする。件数で列の並びが変わらない)。広い幅では横幅を等分し (列の最小の幅 13rem)、狭い幅は #issue-board の中で横に流す (画面の全体は横にはみ出さない)。 #}
 {# 列の札は core/_status_badge.html (色ごとに class を丸ごと書いた if の枝。R19) を include する。色は services.BOARD_COLUMNS の意味の色 (送った件の状態の札と同じ表の名前)。 #}
 <div id="issue-board" class="mt-4 flex gap-4 overflow-x-auto">

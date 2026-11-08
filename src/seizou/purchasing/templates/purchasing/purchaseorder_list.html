@@ -10,7 +10,7 @@
 - 取りに行かない間: 検索の欄に字を打っている間 (欄にカーソルがある間)・ほかの要求の途中 (#list-loading に htmx-request)・表を下か右へ動かしている間
   (#rows の箱の scrollTop か scrollLeft が 0 でない。入れ替えると箱が先頭と左の端に戻るため)・行の ⋮ のメニューを開いている間・表の中にキーボードの
   位置がある間 (document.activeElement が #rows の中)・字を選んでいる間 (window.getSelection() の字が空でない。入れ替えると選びが消えるため)。
-  指示書 11-07 の見つけ GS-01 (発注番号をなぞってコピーする前に消える・スマホで右へ送っても左に戻される)。
+  作者の決め (発注番号をなぞってコピーする前に消える・スマホで右へ送っても左に戻される)。
 - 返った行の部分 (purchasing/_rows.html) で #rows の中を入れ替える。件数と CSV は core/_rows.html が oob で直す。
 {% endcomment %}
 {% block content %}{{ block.super }}

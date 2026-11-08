@@ -1,4 +1,4 @@
 {% extends "core/list.html" %}
 {% load seizou_tags seizou_icons %}
-{# 取引先の一覧。core の一覧のまま、上の帯に「CSV 取り込み」を足す (主色は土台の「新規登録」の 1 つだけ)。取り込みは取引先の編集の権限の人だけに出す (「新規登録」と同じ答え。押すと断られる入口を出さない = 見つけ GR-03)。 #}
+{# 取引先の一覧。core の一覧のまま、上の帯に「CSV 取り込み」を足す (主色は土台の「新規登録」の 1 つだけ)。取り込みは取引先の編集の権限の人だけに出す (「新規登録」と同じ答え。押すと断られる入口を出さない = 作者の決め)。 #}
 {% block actions %}{{ block.super }}{% can_write "masters.Partner" as can_import %}{% if can_import %}<a class="btn btn-outline border-base-300" href="{% url 'masters:partner_import' %}">{% icon "file" "size-4" %}CSV 取り込み</a>{% endif %}{% endblock %}

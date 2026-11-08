@@ -11,7 +11,7 @@ start.py は uv run --no-project で動き、この module を import できな�
 訳: プラグインの MCP を、利用者が自分の手で作るか登録した置き場だけで起こすため。開いたフォルダの README.md から
 python の道を読む形では、攻撃者が用意したフォルダ (manage.py・answers.yaml・起動の 1 行) を Claude Code で開くだけで、
 その中の実行ファイルと manage.py が利用者の権限で動いた。一覧は利用者のホームの下にあり、開いたフォルダの中身では足せない。
-出所: 本人の決め 11-08 01:0x (今夜作る) と、Claude Security の走査の候補 13 (plugin/mcp/start.py)。
+出所: 本人の決め 11-08 01:0x (今夜作る) と、Claude Security の走査の指摘 (plugin/mcp/start.py)。
 変えてよい条件: 本人が決め直したとき、または Claude Code がプラグインの MCP サーバーを開いたフォルダごとに許す仕組みを持ったとき。
 """
 

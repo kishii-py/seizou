@@ -1,4 +1,4 @@
-"""発注の詳細の「流れ」の枠の出来事を集める、読むだけの module (N139。受注の流れ orders.timeline と同じ形)。表に書かない。
+"""発注の詳細の「流れ」の枠の出来事を集める、読むだけの module (開発の記録 docs/nights/20261104/N139.md。受注の流れ orders.timeline と同じ形)。表に書かない。
 
 - 発注から受入と検収までの出来事 (登録・注文を送った・注文回答・出荷の知らせ・受入・検収・取消) を、
   発注と明細からの逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
@@ -36,7 +36,7 @@ KINDS = (
 )
 _RANK = {kind: rank for rank, kind in enumerate(KINDS)}
 
-#: 出来事の種類ごとの絵記号 (core の seizou_icons の PATHS にある名前だけ。流れの枠の点に出す。N163)。種類を足すときはここにも足す。
+#: 出来事の種類ごとの絵記号 (core の seizou_icons の PATHS にある名前だけ。流れの枠の点に出す。開発の記録 docs/nights/20261105/N163.md)。種類を足すときはここにも足す。
 KIND_ICONS = {
     "order": "pencil",
     "sent": "external",
@@ -146,7 +146,7 @@ def _reply_event(purchase_order) -> Event:
 
 def _notice_event(line, notice, partner_name) -> Event:
     # 出荷の知らせの詳細の画面は無い (発注の詳細の明細の表の「相手からの出荷の知らせ」の列)。model_url は None を返す。
-    # 題は相手の名前と「相手の出荷番号」で、相手から届いた知らせと相手が付けた番号だと分かるようにする (初見テスト R5 の V107。C45)。
+    # 題は相手の名前と「相手の出荷番号」で、相手から届いた知らせと相手が付けた番号だと分かるようにする (作者の決め)。
     title = f"{partner_name} の出荷の知らせ (相手の出荷番号 {notice.shipment_no}・{_qty(notice.qty, line)})"
     return Event(notice.shipped_at, "shipping_notice", title, _url(notice), line.line_no)
 
@@ -172,7 +172,7 @@ def _sort_key(event: Event) -> tuple:
     return (0, day, _RANK[event.kind], clock, event.line_no or 0)
 
 
-# --- 段の帯 (案 4-A の発注。N151。受注の段の帯 = orders.timeline の STAGES・Stage・StageBand と同じ形) ---------------
+# --- 段の帯 (作者の決めの発注。開発の記録 docs/nights/20261105/N151.md。受注の段の帯 = orders.timeline の STAGES・Stage・StageBand と同じ形) ---------------
 
 #: 発注の段の名前 (並びの順)。流れの出来事の種類 (KINDS の order・sent・reply・shipping_notice・receipt・acceptance) に当たる名詞。
 #: 字を変えるときはここだけ。
@@ -188,7 +188,7 @@ STAGES = (
 
 @dataclass(frozen=True)
 class Stage:
-    """帯の 1 段。no は 1 から (受注の帯 = orders.timeline.Stage と同じ意味。C06)。
+    """帯の 1 段。no は 1 から (受注の帯 = orders.timeline.Stage と同じ意味。作者の決め)。
 
     done は今の段より前で全部の明細が通った段、skipped は今の段より前で通っていない明細がある段
     (発注では、先の段でも届かない検収を含む = _acceptance_unreachable)、current は今の段。
@@ -222,7 +222,7 @@ ACCEPTANCE = STAGES.index("検収") + 1
 
 
 def reached_stages(line) -> frozenset[int]:
-    """発注の明細 1 行が実際に通った段の集まり (1〜6 の数。読むだけ。C06)。
+    """発注の明細 1 行が実際に通った段の集まり (1〜6 の数。読むだけ。作者の決め)。
 
     送付と回答は発注の全体で決まる段 (_order_reached)、出荷の知らせ・受入・検収は明細ごとの段 (_line_reached)。
     例: 相手へ送らずに頼んで注文回答の写しがあり、出荷の知らせと受入がある明細は {1, 3, 4, 5}。
@@ -243,7 +243,7 @@ def stage_band(purchase_order) -> StageBand | None:
     """発注の段の帯。取消の発注は None (帯を出さない)。発注の全体の段と送った注文の行は 1 回だけ読む。
 
     今の段 = 明細ごとの今の段の最小 (明細が無ければ発注の全体の段)。今の段より前の段は、全部の明細が通った段だけ done (✓)、
-    通っていない明細が 1 行でもある段は skipped (受注の帯と同じ決まり。C06-4 = b)。
+    通っていない明細が 1 行でもある段は skipped (受注の帯と同じ決まり。作者の決め)。
     先の段の検収は、届かない検収 (_acceptance_unreachable) なら skipped。
     """
     if purchase_order.status == purchase_order.STATUS_CANCELLED:
@@ -296,7 +296,7 @@ def _line_reached(line) -> frozenset[int]:
 
 
 def _acceptance_unreachable(purchase_order, outbox) -> bool:
-    """届かない検収か (C06-4 = b のこの版の読み)。送った注文の行が 1 つも無く、状態が「下書き」でない発注で真。
+    """届かない検収か (作者の決めのこの版の読み)。送った注文の行が 1 つも無く、状態が「下書き」でない発注で真。
 
     受入の後に検収を送るのは送った注文の行がある発注だけ (purchasing.services の receive と _is_sent_order と同じ読み)。
     作った後に送る道は「下書き」の間だけ出る「再送」なので、「下書き」を過ぎて送った注文の行が無い発注は検収に届かない。

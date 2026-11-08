@@ -6,7 +6,7 @@ view が qr_text (出荷の詳細の絶対 URL) を足す。company は出荷元
 数量は出荷の数そのまま。context の値をそのまま出し、ここでは計算しない。
 見た目は core の report.css だけを使う (画面の CSS は使わない)。A4 縦の上半分に収める。並べるのは表だけ。
 離れて読む品番・数量・得意先の注文番号の行は report-big (20pt の太字)、題は block report_heading の上書きで小さく (report-title-compact)
-(見つけ print-06。得意先の受入の人が荷の上のラベルを離れて読む)。
+(作者の決め。得意先の受入の人が荷の上のラベルを離れて読む)。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
 {% endcomment %}
 {% block title %}出荷ラベル {{ label.number }}{% endblock %}

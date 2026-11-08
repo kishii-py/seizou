@@ -1,4 +1,4 @@
-"""仕入明細の詳細の「送り直す」の口 (候補 C111)。
+"""仕入明細の詳細の「送り直す」の口 (作者の決め)。
 
 画面でない口なので関数の view (R15 は class だけを見る)。書くのは connect.services.send_self_invoice だけ (R13)。
 権限は access.require_write (action は connect.send_self_invoice = core/access.py の発注の種類)。

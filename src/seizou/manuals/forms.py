@@ -252,7 +252,7 @@ class FolderDeleteForm(ConfirmForm):
         """中に保護されたフォルダかマニュアルがあれば、押す前に見せる断りの字 (無ければ空の字)。
 
         字は delete_folder が押した後に断る字と同じ (services.FOLDER_PROTECTED_INSIDE の 1 か所)。
-        訳: 押した後に断られる削除を、押す前の確かめの画面で分かるようにするため (断る条件は delete_folder のまま)。出所 = 押す前に見せることは AI の案 (依頼書 N231 = 候補 C73。UX の見直しの案 confirm_print-06)。中に保護された物があると削除しない決まり自体の出所は未確認。
+        訳: 押した後に断られる削除を、押す前の確かめの画面で分かるようにするため (断る条件は delete_folder のまま)。出所 = 押す前に見せることは AI の案 (開発の記録 docs/nights/20261106/N231.md = 作者の決め)。中に保護された物があると削除しない決まり自体の出所は未確認。
         変えてよい条件 = delete_folder の断る条件を変えるときは一緒に変える。ほかは Issue「決まりの提案」でこの訳に対して議論してから。
         """
         if self.contents["protected"]:

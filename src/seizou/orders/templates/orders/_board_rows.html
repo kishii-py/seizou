@@ -2,21 +2,21 @@
 注文残の一覧 (注残の盤) の行の部分。orders/_rows.html が、行があるときに include する (空の一覧は core/_rows.html)。
 core/_rows.html の「行がある時」の部分 (表の箱・見出し・ページ送り・partial のときの _list_meta.html の oob) を写して、次を変える。
 - 欄は列の名前で出し分ける: 受注番号は受注の詳細への link、納期までは「n 日遅れ」(赤)・「今日」・「あと n 日」の字
-  (orders.board.BoardRow.days_left_label。ダッシュボードの納期アラートと同じ型 = W01 の直し 11-07)、指示書の「未」と空の進捗は薄い字、
+  (orders.board.BoardRow.days_left_label。ダッシュボードの納期アラートと同じ型 = 直し 11-07)、指示書の「未」と空の進捗は薄い字、
   計画の終了日が納期より後なら印、判断は印の code ごとに色の印 (字は orders.board.JUDGEMENTS)。
 - 数量・出荷済み・検収・残・在庫は土台の数の欄 (columns の kind = number。右寄せと負の赤は土台)。納期までも kind = number のまま
   (CSV と並び替えは稼働日の数のまま) で、枡の字だけ名前で出す。検収が 0 の行・在庫の無い行・納期の無い行の「—」も名前で出す。
-- 日付の枡 (納期・計画の終了日・受注日) は土台と同じく曜日の 1 字を添える (決め N132。W04 の直し 11-07)。CSV は日付のまま。
+- 日付の枡 (納期・計画の終了日・受注日) は土台と同じく曜日の 1 字を添える (作者の決め (開発の記録 docs/nights/20261104/N132.md)。直し 11-07)。CSV は日付のまま。
 - 在庫: stock の部品の在庫数。合計は出さない (合計の行の枡は空)。
-- 預かり (N184。決め 11-06 18:3x): receiving の引当の合計。0 と部品の無い会社は「—」。合計は出さない (合計の行の枡は空)。
+- 預かり (開発の記録 docs/nights/20261106/N184.md。決め 11-06 18:3x): receiving の引当の合計。0 と部品の無い会社は「—」。合計は出さない (合計の行の枡は空)。
   引当の合計が受注の数より少ない行には、値の横に「預かり待ち」の札 (会社の設定 receiving_required が off でないときだけ = 本体の決め 11-06 20:1x。判断は orders.board.BoardRow.receiving_waiting)。
 - 行は data-row-menu を持ち、最後に「操作」の列 (orders/_row_menu.html。⋮ と右クリックの同じメニュー)。行に onclick は無い。
 - 合計の行 (数量・出荷済み・検収・残) は tag board_totals が、絞り込みの後の全部の明細から出す (盤の columns に total は書かない)。
-- 「出荷する」「指示書を発行する」「入荷を記録する」(N184)「発注する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける (権限の無い人には出さない = 決め 11-04 00:0x)。行ごとでなく 1 回だけ呼ぶ。
+- 「出荷する」「指示書を発行する」「入荷を記録する」(開発の記録 docs/nights/20261106/N184.md)「発注する」の項目は tag can_write (core の access.can_write_model と同じ判定) が出し分ける (権限の無い人には出さない = 決め 11-04 00:0x)。行ごとでなく 1 回だけ呼ぶ。
 - 行の選ぶ欄 (受注番号の枡の中。name が line、form が board-bulk) は、orderline_list.html の帯の form の値になる。帯のボタンが 1 つも出ない人には欄を出さない。
   取消の受注と残の無い明細には出さない。欄は見せない class (sr-only) で、行の link と ⋮ の外を押すと orders/board-select.js が欄を切り替え、
   選んだ行に data-tone を付ける (行の固定の class が主色の薄い地にする。決め 11-04 22:4x)。全部を選ぶ・外すは帯の 2 つのボタン。
-  列を足さずに受注番号の枡に入れるのは、既にある盤の試験が枡の番号と合計の行の枡の数を見るため (N124)。
+  列を足さずに受注番号の枡に入れるのは、既にある盤の試験が枡の番号と合計の行の枡の数を見るため (開発の記録 docs/nights/20261104/N124.md)。
 - 「実績を入れる」も同じ tag (progress の部品を部署で開ける人だけ。実績の記録は編集の権限が要らないので、決めるのは部署の判定 = 決め 11-04 12:5x)。
 class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄は、要素ごと if で出し分ける。
 写した元: core/_rows.html (11-03 の main)。土台の表の形が変わったら、ここも合わせる。
@@ -27,7 +27,7 @@ class の中に {{ }} と {% if %} を書かない (R19)。見た目の違う欄
 {% can_write "progress.Progress" as can_progress %}
 {% can_write "receiving.Receiving" as can_receive %}
 {% url 'shipping:shipment_bulk_create' as bulk_ship_url %}{% url 'purchasing:purchaseorder_create' as bulk_po_url %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">

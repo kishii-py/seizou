@@ -1,8 +1,8 @@
 {% extends "core/detail.html" %}
 {% load feedback_tags seizou_icons %}
 {# フィードバックの詳細: 題の行の下に「この件の進み具合」の段の帯 (block main。feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)、土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
-{# 状態の節の GitHub (依頼書 N185): つないでいて確認済みなら「GitHub に送る」(送ったにするの左)、つないでいなければ「GitHub とつなぐ」への link。 #}
-{# 見送った (依頼書 N322): 「直しました」の次に「見送りました」の節。状態の節に、版待ちの件の直る版と会社の版 (世話役だけ)。見送った物は直したと同じく記録と送るの形を出さない。 #}
+{# 状態の節の GitHub (開発の記録 docs/nights/20261106/N185.md): つないでいて確認済みなら「GitHub に送る」(送ったにするの左)、つないでいなければ「GitHub とつなぐ」への link。 #}
+{# 見送った (開発の記録 docs/nights/20261107/N322.md): 「直しました」の次に「見送りました」の節。状態の節に、版待ちの件の直る版と会社の版 (世話役だけ)。見送った物は直したと同じく記録と送るの形を出さない。 #}
 {% block main %}{% feedback_steps object as steps %}{% include "feedback/_steps.html" with steps_done=object.status %}{% endblock %}
 {% block content %}{% feedback_fields fields as fields %}{{ block.super }}
 {% if object.fixed_at %}
@@ -58,7 +58,7 @@
     <button id="feedback-copy" type="button" class="btn btn-sm btn-outline border-base-300" data-done="写しました">{% icon "check" "size-4" %}Issue の文を写す</button>
   </div>
 </section>
-{# 「返事」の節 (依頼書 N324): 送った・直した・見送ったの件の Issue の返事と、返事を書く形。 #}
+{# 「返事」の節 (開発の記録 docs/nights/20261107/N324.md): 送った・直した・見送ったの件の Issue の返事と、返事を書く形。 #}
 {% include "feedback/_replies.html" %}
 {% if info.can_manage %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">

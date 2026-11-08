@@ -1,4 +1,4 @@
-"""core の公開する関数 (01 の 10.3)。
+"""core の公開する関数 (core の公開する物の設計の決め)。
 
 - company(): 会社の設定 (Company) の 1 行。無ければ既定で作る。
 - company_or_none(): 会社の設定 (Company) の 1 行を読むだけ。無ければ作らずに None。
@@ -14,7 +14,7 @@
 - check_registration_no(text): 適格請求書の登録番号の形 (T と 13 桁の数字) を確かめる。形が違えば日本語の ValueError。
 - company_icons(company): ロゴから作った印 (favicon) の URL。無ければ None (土台は static の favicon.svg を出す)。
 - record_history(obj, user, *, before=None, by="", changes=None): 変更の履歴 (ChangeLog) に 1 行書く (作った・直した・使用停止・再開・取消)。
-  各 app の services が、書く前に core.history.saved_state(obj) を取り、書いた後に同じ atomic の中で呼ぶ (決め HIST-1)。
+  各 app の services が、書く前に core.history.saved_state(obj) を取り、書いた後に同じ atomic の中で呼ぶ (作者の決め)。
 - record_history_deleted(obj, user, *, by=""): 消す前に呼び、その時の値を前に残して「消した」の 1 行を書く。
 """
 
@@ -79,7 +79,7 @@ def next_number(kind: str) -> str:
 
 
 #: 字で持つ設定 (model の名前)。空でない 100 字まで
-_TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model")  # feedback_model は N59 の前提 (本体が先に入れた)
+_TEXT_SETTINGS = ("assistant_model", "intake_model", "feedback_model")  # feedback_model は開発の記録 docs/nights/20261103/N59.md の前提 (本体が先に入れた)
 _TEXT_MAX = 100
 
 #: 業種 (industry) の字数の上限 (左上の会社の名前の下に出す)
@@ -251,7 +251,7 @@ def _setting_change(key, before, after) -> list[dict]:
 def set_setting(key, value, user):
     """選べる設定 key を画面の値 value で上書きし、上書きの行 (SettingOverride) を返す。
 
-    前と後の字 (設定の画面の字) が違えば、同じ atomic の中で変更の履歴に「直した」の 1 行を書く (決め HIST-1 の「会社の設定」)。
+    前と後の字 (設定の画面の字) が違えば、同じ atomic の中で変更の履歴に「直した」の 1 行を書く (作者の決めの「会社の設定」)。
     """
     value = validate_setting(key, value)
     before = conf.setting(key)
@@ -293,7 +293,7 @@ def clear_setting(key, user):
 
 
 def user_preference(user, key, default=""):
-    """人ごとの表示の設定 key の値 (読むだけ。決め 11-05 21:2x。N167)。行が無いか、ログインしていない人 (表に無い利用者を含む) は default。"""
+    """人ごとの表示の設定 key の値 (読むだけ。決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md)。行が無いか、ログインしていない人 (表に無い利用者を含む) は default。"""
     if user is None or not getattr(user, "is_authenticated", False) or getattr(user, "pk", None) is None:
         return default
     row = UserPreference.objects.filter(user=user, key=key).first()
@@ -325,10 +325,10 @@ def set_user_preference(user, key, value):
 
 #: 会社の情報の画面と答えの YAML の company が書く列 (画面の欄の順)
 COMPANY_INFO_FIELDS = ("address", "phone", "bank_account", "registration_no", "logo")
-#: 適格請求書発行事業者の登録番号の形 (T と 13 桁の数字を続けた 14 字。決め LAW-3・C95-2)。
+#: 適格請求書発行事業者の登録番号の形 (T と 13 桁の数字を続けた 14 字。作者の決め)。
 #: 数字は [0-9] で書く (\d は全角の数字にも当たる)。cli.py の答えの読みは core を import しないので、同じ形を写して持つ
 REGISTRATION_NO_PATTERN = re.compile(r"T[0-9]{13}")
-#: ロゴから作る印 (favicon) の絵 (ロゴと同じ storage の固定の名前 → 一辺の画素。PNG)。決め 11-05 20:1x。N166
+#: ロゴから作る印 (favicon) の絵 (ロゴと同じ storage の固定の名前 → 一辺の画素。PNG)。決め 11-05 20:1x。開発の記録 docs/nights/20261105/N166.md
 COMPANY_ICONS = {"company/favicon.png": 32, "company/apple-touch-icon.png": 180}
 
 
@@ -344,7 +344,7 @@ def update_company(company, data, user):
     今のファイルを外す。ほかの値 (今のファイル・None) は触らない。差し替えた・外した古いファイルは置き場に残す
     (部品の図面の masters.services.update_item と同じ。消すのは次の版で)。形 (PNG か JPEG) は form が見る。
     ロゴを上げたら、ロゴから印 (COMPANY_ICONS) を作って同じ storage に置き、外したら印を消す (_write_company_icons)。
-    登録番号はインボイス制度で適格請求書に書く番号 (決め LAW-3)。形 (T と 13 桁の数字) は check_registration_no が見る (決め C95-2)。
+    登録番号はインボイス制度で適格請求書に書く番号 (作者の決め)。形 (T と 13 桁の数字) は check_registration_no が見る (作者の決め)。
     変えた列があれば、同じ atomic の中で変更の履歴に 1 行書く (前は取り直した行の core.history.saved_state)。振込先は直したことと
     見出しだけを残し、前と後の値は残さない (Company.history_hidden_values)。
     """
@@ -400,7 +400,7 @@ def check_registration_no(text):
     update_company が呼ぶ。小文字の t・T の無い 13 桁・桁の足りない値・全角の字は止める (字を直して通すことはしない)。
     検査の数字 (13 桁の最初の 1 桁) と、国税庁の公表サイトでの登録の有無は見ない。
     確かめた資料: 中小企業共通 EDI の付表 3 の SIID27 の値の例 (T と 13 桁を続けた 1 つの字)。国税庁の資料は未読。
-    訳: お客様に渡す請求書に形の違う登録番号を刷らないため (形の違う値は打ち間違いしか無い。RULES.md の「止めるのは、あり得ない入力と、記録どうしの矛盾だけ」のあり得ない入力)。出所 = 法令 (インボイス制度の登録番号の形。決め LAW-3・C95-2)。
+    訳: お客様に渡す請求書に形の違う登録番号を刷らないため (形の違う値は打ち間違いしか無い。RULES.md の「止めるのは、あり得ない入力と、記録どうしの矛盾だけ」のあり得ない入力)。出所 = 法令 (インボイス制度の登録番号の形。作者の決め)。
     変えてよい条件 = 登録番号の形が法令で変わったとき。
     """
     if text and not REGISTRATION_NO_PATTERN.fullmatch(text):
@@ -408,7 +408,7 @@ def check_registration_no(text):
 
 
 def _write_company_icons(row) -> bool:
-    """今の印 (COMPANY_ICONS) を消し、ロゴがあれば、ロゴから印を作って同じ storage に置く。決め 11-05 20:1x。N166
+    """今の印 (COMPANY_ICONS) を消し、ロゴがあれば、ロゴから印を作って同じ storage に置く。決め 11-05 20:1x。開発の記録 docs/nights/20261105/N166.md
 
     正方形になるよう上下か左右に余白を足してから縮める (余白は透明。ロゴが透明を持たなければ白)。
     ロゴを Pillow で絵として開けない (SVG など) ときは作らず False (ロゴはそのまま)。ロゴが無ければ消すだけで True。
@@ -440,7 +440,7 @@ def company_icons(company) -> dict | None:
     """ロゴから作った印の URL ({"icon": 32 の PNG, "touch": 180 の PNG})。会社にロゴが無いか印のファイルが無ければ None。
 
     URL の末尾に ?v=<字> を付ける。字は 32 の印の更新時刻 (秒) の 16 進 (storage が時刻を持たなければ大きさの 16 進)。
-    印を作り直すと字が変わるので、ブラウザが古い印を出し続けない (決め 11-06 00:0x。N173。/favicon.ico の口は付けない)。
+    印を作り直すと字が変わるので、ブラウザが古い印を出し続けない (決め 11-06 00:0x。開発の記録 docs/nights/20261106/N173.md。/favicon.ico の口は付けない)。
     """
     if not getattr(company, "logo", None):
         return None
@@ -503,7 +503,7 @@ def record_history(obj, user, *, before=None, by="", changes=None):
     呼び手は書く前に before を取り、書いて拡張の表も書いた後に、同じ transaction.atomic の中で呼ぶ (止まって戻ったら履歴も残らない)。
     人の無い処理 (受け口) は user が None で、by に人の字 (例「<取引先の名前> の seizou」) を渡す。
     訳: 誰が・いつ・どの項目を・前の値 → 後の値に直したかを、マスターと伝票の全部で 1 つの表に残すため。出所 = 持ち主の決め
-    (HIST-0・HIST-1・C40-1) と作者の決め、送り合ったデータと伝票の直し・消しの記録を残す電子帳簿保存法の考え (確かめた資料 =
+    と作者の決め、送り合ったデータと伝票の直し・消しの記録を残す電子帳簿保存法の考え (確かめた資料 =
     中小企業共通 EDI のガイドブック 3.2.2 と EDI インボイス仕様編 6.3.2。法令の本文と国税庁の資料は未読なので、どの表が法律の
     記録に当たるかは未確認)。
     変えてよい条件 = 残す列を減らすときは、その列が法律の記録に当たらないかを確かめてから。
@@ -551,7 +551,7 @@ def record_history_deleted(obj, user, *, by=""):
     """obj を消す前に呼び、その時の値 (空でない物) を前に残して「消した」の 1 行を書く。書いた行を返す。
 
     行の字 (object_text) はその時の str(obj) なので、行が表から消えた後も、どの行を消したかを読める。
-    訳: 消した事も、誰が・いつ・何を消したかを残すため。出所 = 持ち主の決め (HIST-1 の「作った・消した (使用停止) も残す」)。
+    訳: 消した事も、誰が・いつ・何を消したかを残すため。出所 = 持ち主の決め (作者の決めの「作った・消した (使用停止) も残す」)。
     変えてよい条件 = record_history と同じ (残す列を減らすときは、その列が法律の記録に当たらないかを確かめてから)。
     """
     from seizou.core import history

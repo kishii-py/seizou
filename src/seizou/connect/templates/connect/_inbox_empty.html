@@ -1,8 +1,8 @@
 {% load seizou_icons %}{% comment %}
-受信した注文の一覧が空 (検索も絞りも無い) のときの枠 (決め 11-05 15:0x。N160)。connect/_rows.html が 2 か所 (画面の全体と行の部分、2 秒ごとの after=0 の取りに行き) で include する。
+受信した注文の一覧が空 (検索も絞りも無い) のときの枠 (決め 11-05 15:0x。開発の記録 docs/nights/20261105/N160.md)。connect/_rows.html が 2 か所 (画面の全体と行の部分、2 秒ごとの after=0 の取りに行き) で include する。
 core/_rows.html の空の枠 (絵と「まだ 1 件もありません。」) を写し、「取引先から注文が届くと、ここに並びます。」の 1 文と、取引先との接続の一覧への link を足した (受信した注文は取引先の機械が作るので、新規登録の入口は無い)。
 絞りか検索があって 0 件のときは core/_rows.html の「絞りの条件に合う物はありません。」のまま (connect/_rows.html が分ける)。
-最後の行は core/_rows.html の最後の行の写し (行の部分を返すとき、上の件数と絞りのクリアも入れ替える)。写した元: core/_rows.html の 43〜55 行目と 57 行目 (N160 を起こした main)。
+最後の行は core/_rows.html の最後の行の写し (行の部分を返すとき、上の件数と絞りのクリアも入れ替える)。写した元: core/_rows.html の 43〜55 行目と 57 行目 (開発の記録 docs/nights/20261105/N160.md を起こした main)。
 {% endcomment %}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>

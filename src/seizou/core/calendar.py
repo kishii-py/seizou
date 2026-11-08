@@ -15,7 +15,7 @@ CACHE_SECONDS 秒より新しければ控えを返す (1 回の要求の中で�
 書いた時 (masters の services の create_holiday・delete_holiday) に reset_cache() で捨て、別の process の書いた休日は
 CACHE_SECONDS 秒で読み直す。表が読めないとき (app の登録の前・migrate の前・db の無い試験) は空の集合を返し、控えに入れない。
 
-core はほかの部品を import しない (01 の 1 節)。休日の表は apps.get_model で名前から引き、masters が入っていない会社では
+core はほかの部品を import しない (部品どうしの呼ぶ向きの設計の決め)。休日の表は apps.get_model で名前から引き、masters が入っていない会社では
 休日を空の集合として、定休日の曜日だけで数える。
 """
 

@@ -1,13 +1,13 @@
 {% load seizou_icons seizou_tags %}
 {# 読み取りを受注にするの入力のカード (intake/extraction_accept.html が include する)。 #}
-{# 写した元: core/_form_card.html (候補 C91。受信した注文の受け入れ connect/_inbox_accept_card.html と同じ形。納品書を作る shipping/_deliverynote_create_card.html と同じ作り)。form の開きの tag・頭の案内の 1 行・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存。黄の知らせの後の「このまま保存」を含む)・_enter_guard.html は写した元の字のまま。 #}
+{# 写した元: core/_form_card.html (作者の決め。受信した注文の受け入れ connect/_inbox_accept_card.html と同じ形。納品書を作る shipping/_deliverynote_create_card.html と同じ作り)。form の開きの tag・頭の案内の 1 行・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存。黄の知らせの後の「このまま保存」を含む)・_enter_guard.html は写した元の字のまま。 #}
 {# 変えた所: 欄の格子を、得意先の品番ごとの欄 1 つに枠 1 つにした (form.part_rows)。枠の左にその品番の読み取った明細の行 (行番号・得意先の品番・品名・数量と単位・納期・単価)、右に欄。sm 以上は 2 列、phone は縦に重ねる。枠に入らない見える欄 (form.other_fields) は写した元の格子で枠の後ろに出す。 #}
 {# 枠の左の値は intake/_lines.html の同じ枡と同じ filter と字。空の数量・納期・単価は薄い「—」(connect/_order_head.html と同じ字)。単価は金額の閲覧の無い人 (seizou.hide_money) には dt も dd も出さない。 #}
 {# 枠の箱と外の包みに「grid gap-x-6」の字を入れない (試験が入力のカードの欄の格子をその字で探すため。tests/test_core_screen_polish.py・tests/test_small_inputs_modal.py)。data-accept-part は試験が枠を探す印で、見た目に効かない。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
-  {# 欄の無い form (形の違う明細だけの読み取り) は枠も格子も描かない (写した元と同じ。候補 C24) #}
+  {# 欄の無い form (形の違う明細だけの読み取り) は枠も格子も描かない (写した元と同じ。作者の決め) #}
   {% if form.part_rows %}
   <div class="grid gap-4{% if form|has_required %} mt-6{% endif %}">
     {% for row in form.part_rows %}{% with field=row.field %}
@@ -32,7 +32,7 @@
         {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
         {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
         {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
-        {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
+        {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。作者の決め)。ほかの欄は今の class のまま灰 #}
         {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
       </div>
     </div>
@@ -57,7 +57,7 @@
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
       {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
-      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。初見テスト R5 の V61)。ほかの欄は今の class のまま灰 #}
+      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。作者の決め)。ほかの欄は今の class のまま灰 #}
       {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endif %}
@@ -67,8 +67,8 @@
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。C21)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと書く (R19)。 #}
-  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (U69・a-blind-15。候補 C24)。画面の全体では行は窓の下の帯になって流れの外に出るので、欄の無い form のカードの中には空きも線も残らない。中身の無いカードの枠は scripts/css/input.css が描かない (C113) #}
+  {# 下の行 (キャンセルと保存)。画面の全体では開いた時から窓の下の端に貼り付け (seizou-save-row。scripts/css/input.css。作者の決め)、左の字の置き場 (seizou-save-slot) に書きかけの字 (core/_save_bar.html。黄の知らせの後は描かない) を置く。小窓 (in_modal) は今の形のまま (貼り付けず、字も描かない)。class は組み立てず tag を丸ごと書く (R19)。 #}
+  {# 小窓で見える欄が 0 個のときは、上の空き (mt-6・pt-6) と何も区切らない線 (border-t) を描かない (作者の決め)。画面の全体では行は窓の下の帯になって流れの外に出るので、欄の無い form のカードの中には空きも線も残らない。中身の無いカードの枠は scripts/css/input.css が描かない (作者の決め) #}
   {% if in_modal %}
   {% if form.visible_fields %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
@@ -80,7 +80,7 @@
     <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
   {% endif %}
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
-    {# 実行のボタン: 黄の知らせの後は「このまま保存」(黄)、取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。U125。候補 C24)、ほかは主の色 #}
+    {# 実行のボタン: 黄の知らせの後は「このまま保存」(黄)、取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。作者の決め)、ほかは主の色 #}
     {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
     {% elif form.danger %}<button class="btn btn-error" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "x" "size-4" %}{{ form.submit_label|default:"保存" }}</button>
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}

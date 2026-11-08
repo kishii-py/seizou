@@ -1,3 +1,3 @@
 {% extends "core/list.html" %}
-{# 休日の一覧 (N158b): core の一覧のまま、「新規登録」を小窓で開く。年の絞りは HolidayListView の filters (日付) と presets (前の年・今年・次の年) で、カードの中のタブと「絞り込み」の枠に出る (N266)。 #}
+{# 休日の一覧 (開発の記録 docs/nights/20261105/N158b.md): core の一覧のまま、「新規登録」を小窓で開く。年の絞りは HolidayListView の filters (日付) と presets (前の年・今年・次の年) で、カードの中のタブと「絞り込み」の枠に出る (開発の記録 docs/nights/20261106/N266.md)。 #}
 {% block actions %}{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}

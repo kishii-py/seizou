@@ -2,8 +2,8 @@
 
 書いた本人がログインしたとき (django.contrib.auth.login が user_logged_in を送る)、まだ知らせていない「直した」と「見送った」を
 右上の toast (messages の info) で 1 回ずつ知らせ、知らせた日時を services で書く (両方あれば toast は 2 つ。直したが先)。
-- 直したと見送ったは別の受け手 (notify_fixed・notify_dismissed)。直したが無い人にも見送りを知らせるため (依頼書 N322。決め 11-07 09:0x〜09:4x)。
-- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) も別の受け手 (notify_replies)。toast は直した・見送った・返事の順。
+- 直したと見送ったは別の受け手 (notify_fixed・notify_dismissed)。直したが無い人にも見送りを知らせるため (開発の記録 docs/nights/20261107/N322.md。決め 11-07 09:0x〜09:4x)。
+- Issue の返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x) も別の受け手 (notify_replies)。toast は直した・見送った・返事の順。
 - 知らせを出せない要求 (MessageMiddleware を通らない要求。試験の force_login など) では、知らせた印を付けない
   (次に画面からログインしたときに出す)。
 - 開発機の自動ログイン (core の DevAutoLoginMiddleware) は login を呼ばないので、この知らせは出ない
@@ -51,7 +51,7 @@ def notify_dismissed(sender, request=None, user=None, **kwargs):
 def notify_replies(sender, request=None, user=None, **kwargs):
     """ログインした人が書いたフィードバックの Issue に、まだ知らせていない返事があれば 1 回知らせる (notify_fixed と同じ形)。
 
-    会社の口座が書いた返事と、会社の中で書いた返事は知らせない (services.unseen_replies が外す。依頼書 N324)。
+    会社の口座が書いた返事と、会社の中で書いた返事は知らせない (services.unseen_replies が外す。開発の記録 docs/nights/20261107/N324.md)。
     """
     if request is None:
         return

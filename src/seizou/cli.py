@@ -25,7 +25,7 @@ seizou ai-docs <置き場> [--force]
     .claude/settings.json が無ければ、CLAUDE.md と AGENTS.md が既にあって止まる前に書く (既にある物は --force でも書き直さない)。
     置き場を、プラグインの MCP が起こしてよい置き場の一覧に、この python で登録する (これも止まる前。版を上げた後に打つ)。
 seizou github-token [<置き場>]
-    会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (依頼書 N185)。
+    会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (開発の記録 docs/nights/20261106/N185.md)。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
     画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
 
@@ -66,7 +66,7 @@ FIELD_FLAGS = ("required", "in_list", "searchable")
 REQUIRED_KEYS = ("id", "name", "port")
 #: 答えの YAML の company の下に書ける鍵 (core.services.COMPANY_INFO_FIELDS のうち字の物。ロゴは根の鍵 logo か設定の画面から上げる)
 COMPANY_KEYS = ("address", "phone", "bank_account", "registration_no")
-#: core.services.REGISTRATION_NO_PATTERN と同じ形 (core は Django を読むので import せずに写す。決め C95-2)
+#: core.services.REGISTRATION_NO_PATTERN と同じ形 (core は Django を読むので import せずに写す。作者の決め)
 REGISTRATION_NO = re.compile(r"T[0-9]{13}")
 #: --demo のつながりの種の受け口の頭を、相手の置き場の URL にする環境変数 (SEIZOU_PARTNER_<相手の会社の id の大文字>_URL)。答えの partner_base_urls より勝つ
 PARTNER_URL_ENV = re.compile(r"SEIZOU_PARTNER_([A-Z][A-Z0-9_]*)_URL")
@@ -113,7 +113,7 @@ CREATE_ADMIN = (
 )
 
 # 会社の設定 (core の Company) の 1 行を、答えの会社名と会社の情報 (company) で作る短い Python。既にあれば触らない。
-# ロゴ (答えの logo。任意) は設定の画面と同じく上げたファイルの形で update_company に渡すので、印 (favicon) も同時にできる。N166
+# ロゴ (答えの logo。任意) は設定の画面と同じく上げたファイルの形で update_company に渡すので、印 (favicon) も同時にできる。開発の記録 docs/nights/20261105/N166.md
 CREATE_COMPANY = (
     "import importlib, json, os, pathlib; "
     "Company = importlib.import_module('seizou.core.models').Company; "
@@ -210,7 +210,7 @@ def load_answers(path: Path) -> dict:
             )
 
     # 会社の情報 (任意)。打ち違えた鍵を黙って捨てると請求書に住所が出ないので、知らない鍵は断る。
-    # 登録番号の形が違うと請求書に違う番号が出るので断る (決め C95-2)
+    # 登録番号の形が違うと請求書に違う番号が出るので断る (作者の決め)
     company = answers.get("company")
     if company is not None:
         if not isinstance(company, dict):
@@ -223,7 +223,7 @@ def load_answers(path: Path) -> dict:
             if key == "registration_no" and value.strip() and not REGISTRATION_NO.fullmatch(value.strip()):
                 raise AnswerError(f"company の registration_no は T と 13 桁の数字で書きます (例: T0000000000000): {value!r}")
 
-    # ロゴ (任意。答えの YAML の横からの道)。無いファイルを黙って飛ばすとロゴと印 (favicon) が入らないので断る。N166
+    # ロゴ (任意。答えの YAML の横からの道)。無いファイルを黙って飛ばすとロゴと印 (favicon) が入らないので断る。開発の記録 docs/nights/20261105/N166.md
     logo = answers.get("logo")
     if logo is not None and not (isinstance(logo, str) and (path.parent / logo).is_file()):
         raise AnswerError(f"logo のファイルがありません: {logo!r}。答えの YAML の横からの道で、PNG か JPEG の絵のファイルを書きます。")
@@ -468,7 +468,7 @@ def item_columns(answers: dict) -> tuple[list[dict], list[str]]:
 
 
 def model_line(column: dict) -> str:
-    """拡張の表の 1 列。文字の上限は 100 (01 の 4 節)。必須でなければ空を許す。"""
+    """拡張の表の 1 列。文字の上限は 100 (表の設計の決め)。必須でなければ空を許す。"""
     label = repr(column["label"])
     optional = not column["required"]
     blank = ", blank=True" if optional else ""
@@ -568,7 +568,7 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         encoding="utf-8",
     )
     write_secret_file(site / ".env", render("env.tmpl", secret_key=secrets.token_urlsafe(50)))
-    # git に入れない物 (.env・db.sqlite3・media/ ほか)。既にあれば書き直さない。決め 11-06 00:0x。N172
+    # git に入れない物 (.env・db.sqlite3・media/ ほか)。既にあれば書き直さない。決め 11-06 00:0x。開発の記録 docs/nights/20261106/N172.md
     write_gitignore(site)
     # Claude Code に .env・DB・控えを読ませない設定 (.claude/settings.json)。既にあれば書き直さない。決め 11-08 00:5x
     write_claude_settings(site)
@@ -583,7 +583,7 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
         ),
         encoding="utf-8",
     )
-    # AI が守る決まり (CLAUDE.md) と、Claude 以外の道具向けの短い版 (AGENTS.md)。決め 11-05 17:2x。N165
+    # AI が守る決まり (CLAUDE.md) と、Claude 以外の道具向けの短い版 (AGENTS.md)。決め 11-05 17:2x。開発の記録 docs/nights/20261105/N165.md
     write_ai_docs(site, company_id, str(answers["name"]))
     (site / "checks.py").write_text(render("checks.py.tmpl", id=company_id), encoding="utf-8")
     (site / "deploy").mkdir(parents=True, exist_ok=True)
@@ -596,13 +596,13 @@ def write_project(site: Path, answers_path: Path, answers: dict, settings: dict)
 
 
 def write_ai_docs(site: Path, company_id: str, name: str) -> None:
-    """置き場に、AI が守る決まり (CLAUDE.md) と短い版 (AGENTS.md) を書く (seizou new と seizou ai-docs が呼ぶ)。N165・N170"""
+    """置き場に、AI が守る決まり (CLAUDE.md) と短い版 (AGENTS.md) を書く (seizou new と seizou ai-docs が呼ぶ)。開発の記録 docs/nights/20261105/N165.md・docs/nights/20261105/N170.md"""
     (site / "CLAUDE.md").write_text(render("CLAUDE.md.tmpl", id=company_id, name=name), encoding="utf-8")
     (site / "AGENTS.md").write_text(render("AGENTS.md.tmpl", id=company_id, name=name), encoding="utf-8")
 
 
 def write_gitignore(site: Path) -> bool:
-    """置き場に .gitignore (git に入れない物 = 鍵と DB と上げたファイル) を書く。既にあれば触らない (人が直した物を消さない)。書いたら True。N172"""
+    """置き場に .gitignore (git に入れない物 = 鍵と DB と上げたファイル) を書く。既にあれば触らない (人が直した物を消さない)。書いたら True。開発の記録 docs/nights/20261106/N172.md"""
     path = site / ".gitignore"
     if path.exists():
         return False
@@ -619,7 +619,7 @@ def write_claude_settings(site: Path) -> bool:
     Edit(/.env) は NotebookEdit のために残す。Bash(*seizou_secret*) は、鍵の値を作って画面に出す命令を AI に打たせない。
     限り: shell (Bash の道具の cat や python)・manage.py diffsettings・grep -r・子の process の読みは止まらない (SECURITY.md)。
     既にある settings.json は会社か人が直した物なので、--force でも書き直さない (黙って消さない)。
-    出所: 本人の決め 11-08 00:5x (hook に Read は足さず、置き場の deny で止める) と、仕組みの調べの候補 7。
+    出所: 本人の決め 11-08 00:5x (hook に Read は足さず、置き場の deny で止める) と、仕組みの調べを受けた作者の決め。
     変えてよい条件: 本人が決め直したとき、または Claude Code の permissions の書き方が変わったとき。
     """
     path = site / ".claude" / "settings.json"
@@ -637,7 +637,7 @@ def register_site_for_plugin(site: Path) -> None:
     一覧の python で起こす。人から受け取ったフォルダを開いただけで、その中の実行ファイルと manage.py が動くのを止めるため。
     python は README.md の起動の 1 行 (start_line) と同じ sys.executable。
     一覧に書けないときと、今の一覧が壊れているときは、置き場づくりを止めずに標準エラーへ 1 行を出す (MCP がこの置き場で立たないだけなので)。
-    出所: 本人の決め 11-08 01:0x と、Claude Security の走査の候補 13。変えてよい条件: 本人が決め直したとき。
+    出所: 本人の決め 11-08 01:0x と、Claude Security の走査の指摘。変えてよい条件: 本人が決め直したとき。
     """
     try:
         path = site_registry.register_site(site)
@@ -939,7 +939,7 @@ def _new_report(
 
 
 def command_ai_docs(site: Path, force: bool = False) -> int:
-    """seizou ai-docs (決め 11-05 22:5x。N170)。既にある会社の置き場に、CLAUDE.md と AGENTS.md を後から書く。
+    """seizou ai-docs (決め 11-05 22:5x。開発の記録 docs/nights/20261105/N170.md)。既にある会社の置き場に、CLAUDE.md と AGENTS.md を後から書く。
 
     置き場は manage.py と answers.yaml があるフォルダ。会社の id と名前は置き場の answers.yaml の id と name
     (write_project と同じ値)。load_answers は使わない (logo の道は元の答えの YAML の横からなので、置き場の写しでは断られる)。
@@ -977,7 +977,7 @@ def command_ai_docs(site: Path, force: bool = False) -> int:
 
 
 def command_github_token(site: Path) -> int:
-    """seizou github-token (依頼書 N185。決め 11-06 21:2x)。会社の置き場の .env に、GitHub のトークン・送り先・口座の名前の 3 行を書く。
+    """seizou github-token (開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x)。会社の置き場の .env に、GitHub のトークン・送り先・口座の名前の 3 行を書く。
 
     画面の process が置き場の .env に書けない置き場のための道。置き場は manage.py と answers.yaml があるフォルダ。
     トークンは getpass で聞き (画面に出さない)、送り先を聞き (空なら既定)、GitHub に口座の名前を聞いて確かめてから書く。

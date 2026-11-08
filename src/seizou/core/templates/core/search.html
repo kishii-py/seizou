@@ -2,7 +2,7 @@
 {% load seizou_tags seizou_icons %}
 {% block content %}
 {# 横断の検索: 上のカードに言葉の欄・種類の chip・得意先の選択。下に種類ごとのカード (一覧と同じ表)。読むだけの画面。 #}
-{# 欄の案内は上の帯の欄 (core/_topbar.html) と同じ字と同じ書き分け。細かい項目は下の「探した項目」の 1 行に出す (初見テスト R5 の候補 C36 の 3)。 #}
+{# 欄の案内は上の帯の欄 (core/_topbar.html) と同じ字と同じ書き分け。細かい項目は下の「探した項目」の 1 行に出す (作者の決め)。 #}
 <form id="search-form" method="get" action="{{ request.path }}" role="search" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
   <div class="flex flex-col gap-2 sm:flex-row">
     <label class="input input-lg w-full">
@@ -32,7 +32,7 @@
   </div>
 </form>
 {% if query and searched_fields %}
-{# 探した項目: 種類ごとに、探した項目の見出し (部品の search_labels)。結果の表の上にも、0 件の箱の上にも出す (初見テスト R5 の候補 C36 の 2)。 #}
+{# 探した項目: 種類ごとに、探した項目の見出し (部品の search_labels)。結果の表の上にも、0 件の箱の上にも出す (作者の決め)。 #}
 <p class="mt-4 text-xs text-base-content/60"><span class="mr-2 font-medium">探した項目</span>{% for scope in searched_fields %}{% if not forloop.first %} / {% endif %}{{ scope.label }}: {{ scope.fields }}{% endfor %}</p>
 {% endif %}
 {% if not query %}
@@ -52,7 +52,7 @@
 {% for section in sections %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="search-{{ section.kind }}">
   <h2 id="search-{{ section.kind }}" class="text-lg font-bold">{{ section.label }} <span class="tabular-nums">({{ section.total|comma }})</span></h2>
-  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端は C34。下の端はいつも見えるバー = C23。影は 11-07 の決めでやめた)。 #}
+  {# 表の箱を包む要素。箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端は作者の決め。下の端はいつも見えるバー = 作者の決め。影は 11-07 の決めでやめた)。 #}
   <div>
   <div class="mt-4 max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
   <table class="table table-sm table-zebra table-pin-rows">

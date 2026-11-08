@@ -1,9 +1,9 @@
-"""フィードバックの AI の聞き取り (依頼書 N59 の 2 段目)。口 (views の ask・reset) と tag (feedback_panel) が呼ぶ。
+"""フィードバックの AI の聞き取り (開発の記録 docs/nights/20261103/N59.md の 2 段目)。口 (views の ask・reset) と tag (feedback_panel) が呼ぶ。
 
 約束:
 - AI はコードと、受注・部品のデータを読まない。道具は読むだけの 3 つ (画面の目録・画面ごとの説明書・会社の設定) と、
-  送り先の GitHub の Issue を探す 1 つ (search_issues。依頼書 N323) と、下書きを受け取る 1 つ (draft_feedback) と、
-  「うちも」を受け取る 1 つ (me_too_issue。依頼書 N323) だけ。数と金額を変える道具は渡さない。
+  送り先の GitHub の Issue を探す 1 つ (search_issues。開発の記録 docs/nights/20261107/N323.md) と、下書きを受け取る 1 つ (draft_feedback) と、
+  「うちも」を受け取る 1 つ (me_too_issue。開発の記録 docs/nights/20261107/N323.md) だけ。数と金額を変える道具は渡さない。
 - API を呼ぶのは assistant の _ask_claude 越しの 1 か所 (feedback の中で SDK を読み込まない)。鍵は assistant と同じ環境変数。
   読む道具は assistant の run_tool で回す。API を呼ぶのは atomic の外 (表に書くのは services の関数の中だけ)。
 - AI は 1 回の返事に 1 問ずつ、最大 MAX_QUESTIONS 問で打ち切る。その後は draft_feedback で下書きを出すよう頼み、
@@ -42,9 +42,9 @@ CHAT_KEY = "feedback_chat"
 TOOL_NAMES = ("company_info", "list_screens", "get_manual")
 #: 下書きを受け取る道具の名前 (回さずに横取りする)
 DRAFT_TOOL = "draft_feedback"
-#: 送り先の GitHub の Issue を探す道具の名前 (feedback の中だけの読む道具。依頼書 N323)
+#: 送り先の GitHub の Issue を探す道具の名前 (feedback の中だけの読む道具。開発の記録 docs/nights/20261107/N323.md)
 SEARCH_TOOL = "search_issues"
-#: 「うちも」を受け取る道具の名前 (回さずに横取りする。依頼書 N323)
+#: 「うちも」を受け取る道具の名前 (回さずに横取りする。開発の記録 docs/nights/20261107/N323.md)
 ME_TOO_TOOL = "me_too_issue"
 #: search_issues の道具が返す件数と、1 件に入れる鍵 (本文は入れない = 短く・公開の字を減らす)
 SEARCH_SHOWN = 5
@@ -94,7 +94,7 @@ DRAFT_SCHEMA = {
     },
 }
 
-#: 送り先の GitHub の Issue を探す道具 (読むだけ。依頼書 N323)
+#: 送り先の GitHub の Issue を探す道具 (読むだけ。開発の記録 docs/nights/20261107/N323.md)
 SEARCH_SCHEMA = {
     "name": SEARCH_TOOL,
     "description": "送り先の GitHub の Issue を言葉で探す (題と本文の先頭)。同じ困りごとが既にあるかを見る。読むだけ。",
@@ -104,7 +104,7 @@ SEARCH_SCHEMA = {
         "required": ["words"],
     },
 }
-#: 「うちも」を受け取る道具。呼び出しを横取りして services.me_too が件を作る (依頼書 N323)
+#: 「うちも」を受け取る道具。呼び出しを横取りして services.me_too が件を作る (開発の記録 docs/nights/20261107/N323.md)
 ME_TOO_SCHEMA = {
     "name": ME_TOO_TOOL,
     "description": "利用者が「同じ困りごとだ」と言ったときに 1 回だけ呼ぶ。その Issue に「うちも」を付け、利用者の件として残す。下書きは作らない。",

@@ -20,7 +20,7 @@ def flow_guide():
 
 @register.simple_tag(takes_context=True)
 def today_tasks(context):
-    """「今日やること」の枠の値 (core.dashboard.today_tasks)。request の利用者で、部署で開けない行と「はじめての方へ」の段と、その人が進められない行 (GR-04) を外す。行も段も残らなければ None (枠ごと出さない)。"""
+    """「今日やること」の枠の値 (core.dashboard.today_tasks)。request の利用者で、部署で開けない行と「はじめての方へ」の段と、その人が進められない行 (作者の決め) を外す。行も段も残らなければ None (枠ごと出さない)。"""
     user = getattr(context.get("request"), "user", None)
     return dashboard.today_tasks(user)
 

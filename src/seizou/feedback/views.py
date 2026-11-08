@@ -1,4 +1,4 @@
-"""feedback の画面と口 (依頼書 N59)。画面は core の土台を継承する (R15)。
+"""feedback の画面と口 (開発の記録 docs/nights/20261103/N59.md)。画面は core の土台を継承する (R15)。
 
 - 画面 4 つ: 一覧・新規登録・詳細・編集。URL の名前は土台の約束 (<app>:<model>_list / _detail / _create / _update)。
   上書きするのは 13 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
@@ -7,19 +7,19 @@
   services の update_feedback が断る (赤の知らせ)。
 - 口 (状態の変更と削除) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
   断られたら messages.error、通れば messages.success で、どちらも詳細へ戻る (削除が通ったときだけ一覧へ)。
-- 画面の欄の候補の口 screen_select は GET の関数の view (login_required・require_GET)。画面の目録は表でないので BaseSelectView の子にせず、同じ形の JSON を返す (候補 C85)。
+- 画面の欄の候補の口 screen_select は GET の関数の view (login_required・require_GET)。画面の目録は表でないので BaseSelectView の子にせず、同じ形の JSON を返す (作者の決め)。
 - AI の聞き取りの口 (ask・reset) は htmx の POST だけを受ける (htmx の見出しが無ければ 400)。失敗の文も吹き出しで 200 を返す
   (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら画面を移らず、吹き出しと右の欄の編集の形 (hx-swap-oob) を 200 で返す
   (_draft_ready。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
-- GitHub の口 (依頼書 N185): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
+- GitHub の口 (開発の記録 docs/nights/20261106/N185.md): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
   断るのは services (ValueError を赤の知らせ)。HTTP は services が transaction.atomic の外で送る (R17)。
-- GitHub でログインしてつなぐ (依頼書 N320): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
+- GitHub でログインしてつなぐ (開発の記録 docs/nights/20261107/N320.md): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
   断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
-- タブの帯 (依頼書 N321): 送る画面と一覧の上に「送る」「送った件」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
+- タブの帯 (開発の記録 docs/nights/20261107/N321.md): 送る画面と一覧の上に「送る」「送った件」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
   新しい URL は足さず、「みんなの Issue」は一覧の ?tab=issues で、表を描かないので一覧の get_queryset は空を返す。
-- 「うちも」の口 (依頼書 N323): me_too。GitHub の口の中でこの口だけはログインした全員が押せる (👍 には文が入らないため)。
+- 「うちも」の口 (開発の記録 docs/nights/20261107/N323.md): me_too。GitHub の口の中でこの口だけはログインした全員が押せる (👍 には文が入らないため)。
   通ると、services が会社のトークンで Issue に 👍 を付け、押した人の件を残す。
 """
 
@@ -59,7 +59,7 @@ class FeedbackListView(BaseListView):
     model = Feedback
     columns = ("created_at", "kind", "title", "screen", "status", "fix_version", "created_by", "input_tokens", "output_tokens")
     search_fields = ("title", "problem", "situation", "wish")
-    # 一覧の絞り (土台の FilterSpec。受注の一覧 OrderListView と同じ形。決め UX-FEEDBACK-1 11-07 09:0x「filterの部分が二箇所あって統一感がない」)。
+    # 一覧の絞り (土台の FilterSpec。受注の一覧 OrderListView と同じ形。作者の決め 11-07 09:0x「filterの部分が二箇所あって統一感がない」)。
     # 候補は表の choices の並びのまま (状態 = 下書き・確認済み・送った・直した・見送った、種類 = 6 つ)。GET の名前は土台の f_status・f_kind。
     filters = (
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
@@ -74,7 +74,7 @@ class FeedbackListView(BaseListView):
         # 土台 (super) が検索と絞り (f_status・f_kind) を当てた後に、自分の分に絞る (世話役は全部)。
         queryset = _visible_to(super().get_queryset(), self.request.user)
         if self.request.GET.get("tab") == "issues":
-            # 「みんなの Issue」のタブは表を描かないので数えない (依頼書 N321)
+            # 「みんなの Issue」のタブは表を描かないので数えない (開発の記録 docs/nights/20261107/N321.md)
             return queryset.none()
         return queryset
 
@@ -126,7 +126,7 @@ class FeedbackUpdateView(BaseFormView):
 
 
 class GithubSetupView(BaseFormView):
-    """GitHub とつなぐ (依頼書 N185。決め 11-06 21:2x)。
+    """GitHub とつなぐ (開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x)。
 
     使う人: 世話役 (アカウント管理の担当者) / いつ: フィードバックを GitHub の Issue に直接送れるようにするとき / 何のために: GitHub の口座のトークンを置き、送り先を決める / 次にすること: 確認済みの下書きの詳細で「GitHub に送る」
 
@@ -226,7 +226,7 @@ def github_disconnect(request):
 def github_send(request, pk):
     """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。
 
-    POST の issue_text は、世話役が詳細の欄で伏せ字を戻した Issue の文 (依頼書 N323)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
+    POST の issue_text は、世話役が詳細の欄で伏せ字を戻した Issue の文 (開発の記録 docs/nights/20261107/N323.md)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
     """
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
@@ -334,7 +334,7 @@ def _me_too_notice(request, number, result, *, chat_text="") -> None:
 @login_required
 @require_POST
 def me_too(request, number):
-    """みんなの Issue の 1 件に「うちも」を付ける (ログインした全員。依頼書 N323)。通れば知らせ、断られたら赤の知らせで、一覧の Issue の節へ戻る。
+    """みんなの Issue の 1 件に「うちも」を付ける (ログインした全員。開発の記録 docs/nights/20261107/N323.md)。通れば知らせ、断られたら赤の知らせで、一覧の Issue の節へ戻る。
 
     GitHub の口の中でこの口だけは世話役でなくても押せる。訳: 👍 には文が入らず、取引先の名前や金額が外へ出ないため。
     書くのは services の me_too だけ (押した本人の件を 1 つ作る。HTTP は services が transaction.atomic の外で送る)。
@@ -392,7 +392,7 @@ def _draft_ready(request, feedback):
 def ask(request):
     """AI の聞き取りの 1 往復。字の返事はその往復の吹き出しを返し、下書きができたら画面を移らずに右の欄を編集の形に差し替える (_draft_ready)。
 
-    AI が似た Issue に「うちも」を付けたら (me_too_issue の横取り。依頼書 N323)、知らせを積んでその件の詳細へ移す。
+    AI が似た Issue に「うちも」を付けたら (me_too_issue の横取り。開発の記録 docs/nights/20261107/N323.md)、知らせを積んでその件の詳細へ移す。
     """
     if not request.headers.get("HX-Request"):
         return HttpResponseBadRequest(_HTMX_ONLY)
@@ -403,7 +403,7 @@ def ask(request):
         screen=request.POST.get("screen", ""),
     )
     if result.get("me_too"):
-        # AI の聞き取りで「うちも」を付けた (依頼書 N323): 知らせを積み、中身の無い 200 でその件の詳細へ移す (下書きでないので編集の画面へは移さない)。
+        # AI の聞き取りで「うちも」を付けた (開発の記録 docs/nights/20261107/N323.md): 知らせを積み、中身の無い 200 でその件の詳細へ移す (下書きでないので編集の画面へは移さない)。
         _me_too_notice(request, result["number"], result, chat_text="あなたの件として残しました。")
         response = HttpResponse(status=200)
         response["HX-Redirect"] = reverse("feedback:feedback_detail", args=[result["feedback"].pk])
@@ -425,7 +425,7 @@ def reset(request):
     return HttpResponse("")
 
 
-# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+# ---- Issue の返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x) ----
 
 
 def _visible_reply(request, reply_pk):
@@ -482,7 +482,7 @@ def reply_mark_sent(request, reply_pk):
 @login_required
 @require_GET
 def screen_select(request):
-    """「画面」の欄 (字を打って探す欄) の候補の口。画面の目録から、打った字を含む画面を 1 ページずつ返す (GET だけ。候補 C85)。
+    """「画面」の欄 (字を打って探す欄) の候補の口。画面の目録から、打った字を含む画面を 1 ページずつ返す (GET だけ。作者の決め)。
 
     返す形は core の候補の口 (BaseSelectView.get) と同じ {"items": [{"id", "text"}], "more", "recent": [], "create": None}。
     id は URL の名前、text は選ぶ欄の字 (services.screen_choices。同じ名前の 2 つ目からは「名前 (2)」)。並びは目録の順。

@@ -1,11 +1,11 @@
-"""会話 (受注と発注の 1 件ごとの相手とのやり取り。C104) の「送り直す」の口。
+"""会話 (受注と発注の 1 件ごとの相手とのやり取り。作者の決め) の「送り直す」の口。
 
 画面でない口なので関数の view (R15 は class だけを見る。connect/reply.py の resend_reply と同じ形)。書くのは connect.services.resend_chat_message だけ (R13)。
 権限は access.require_write。action は会話に書く画面と同じ connect.post_chat_message (core/access.py の FREE_ACTIONS = 編集の権限を問わない。
-決め C104-1 (11-07 06:26)「取引先との会話を書ける人を編集の権限では絞らない」)。部署の門は置かない (検収と注文回答の送り直しと同じ扱い)。
+作者の決め (11-07 06:26)「取引先との会話を書ける人を編集の権限では絞らない」)。部署の門は置かない (検収と注文回答の送り直しと同じ扱い)。
 htmx の要求には本文の無い 204 に HX-Trigger の seizou:saved (右上の知らせ。届けば緑、届かなければ黄) を付けて返し、会話の枠は seizou:refresh で取り直す。
 htmx でない要求 (JS の無いとき) は messages に積んで、結び付いた詳細へ移る。
-会話の添付 (C104 のその 2) の口も置く: 取りに行く口 fetch_chat_file (受けた側。相手の seizou へ取りに行き、添付の 1 行の断片を返す) と、
+会話の添付 (作者の決め) の口も置く: 取りに行く口 fetch_chat_file (受けた側。相手の seizou へ取りに行き、添付の 1 行の断片を返す) と、
 開く口 chat_file_download (ログインした人にだけファイルを返す。attachments/views.py の attachment_download と同じ形)。
 """
 

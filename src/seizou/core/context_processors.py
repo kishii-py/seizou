@@ -44,13 +44,13 @@ def _inbox_received_params() -> dict:
     return {"f_status": inbox.STATUS_RECEIVED} if inbox is not None else {}
 
 
-#: 左のメニューの入口の横に出す待っている数 (決め 11-05 の 1-A)。鍵は入口の URL の名前、値は (説明, 単位, 数える物, 移る先)。
+#: 左のメニューの入口の横に出す待っている数 (決め 11-05)。鍵は入口の URL の名前、値は (説明, 単位, 数える物, 移る先)。
 #: 数える物は core.dashboard の queryset を返す関数の名前 (部品が無ければ None) で、入口ごとに 1 回ずつ .count() する ((B) の形)。
-#: 受信した注文・指示書・受入・請求書は、N145 の today_tasks が flow_guide で数える関数そのもの (今日やることと同じ数)。
+#: 受信した注文・指示書・受入・請求書は、開発の記録 docs/nights/20261105/N145.md の today_tasks が flow_guide で数える関数そのもの (今日やることと同じ数)。
 #: today_tasks を呼ぶと 9 回数えるので呼ばない。納期が過ぎた明細は today_tasks に無いので、due_alerts の遅れと同じ条件の関数。
 #: 移る先は (URL の名前, 絞りの GET の辞書か、それを返す関数) で、数の印を押したときに開く画面 (入口の字を押したときは今までどおり
 #: 絞り無しの入口。数を置く入口は変えず、押した後に移る先だけを変える)。決め 11-07 20:5x の 2 (数を押すとその数で絞った一覧が開く。
-#: N146 の「移り先は変えない」を置き換える。nav-01)。生産管理ボードの数は盤のタブ「納期が過ぎた」と同じ組 (orders の presets の
+#: 開発の記録 docs/nights/20261105/N146.md の「移り先は変えない」を置き換える。nav-01)。生産管理ボードの数は盤のタブ「納期が過ぎた」と同じ組 (orders の presets の
 #: f_open=1&f_overdue=1。数える関数 _overdue_lines と同じ条件)。受信した注文の数は状態「届いた」の絞り (今日やることの行と同じ)。
 #: 指示書の数は明細の行を数えているので、指示書の一覧でなく生産管理ボードを、数える関数と同じ絞り「指示書の無い明細だけ」
 #: (f_open=1&f_no_workorder=1。dashboard.without_workorder) で開く。合う絞りのまだ無い物 (受入の残・請求書に入っていない出荷) は、
@@ -141,7 +141,7 @@ def mark_active(items: list[dict], path: str) -> None:
 def custom_sections() -> list[dict]:
     """会社の設定 menu (左のメニューの括り)。1 つ = {"label", "apps", "screens"}。形の違う物は捨てる。空なら []。
 
-    決め 11-03 (02 の 8 節の候補 4): 括りは会社ごとに答えの YAML で決め、同じ画面を 2 つの括りに出せる。
+    決め 11-03 (一覧の画面の設計の決め): 括りは会社ごとに答えの YAML で決め、同じ画面を 2 つの括りに出せる。
     会社の括りは大項目だけで、中項目は書けない (本体の選び 11-03 14:1x)。
     """
     from seizou.core import conf
@@ -237,7 +237,7 @@ def _menu_count(name: str) -> int | None:
 
 
 def _header_color(user) -> str:
-    """上の帯の色の名前 (人ごとの表示の設定。決め 11-05 21:2x。N167)。テンプレートが読んだ時に 1 回だけ読む。
+    """上の帯の色の名前 (人ごとの表示の設定。決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md)。テンプレートが読んだ時に 1 回だけ読む。
 
     標準 (白)・未ログイン・表を読めないときは空の字 (土台の base.html は data-seizou-header を出さない)。名前は core.display.HEADER_COLORS の物だけ。
     """
@@ -264,7 +264,7 @@ def attach_counts(items: list[dict], user) -> None:
     """左のメニューの入口 (MENU_COUNTS にある物) に、待っている数 count と説明 count_label と単位 count_unit と、数を押したときに開く URL count_url を付ける。
 
     使う人: 現場と事務の全員 / いつ: 朝や手の空いた時に左のメニューを見る / 何のために: 待っている仕事の数から仕事へ入る。
-    数は N145 の「今日やること」と同じ元 (core.dashboard の数える関数)。count は SimpleLazyObject で、テンプレートが読んだ時
+    数は開発の記録 docs/nights/20261105/N145.md の「今日やること」と同じ元 (core.dashboard の数える関数)。count は SimpleLazyObject で、テンプレートが読んだ時
     (左のメニューを描くとき) だけ入口ごとに 1 回数える (htmx の行の取り直しでは数えない)。未ログインには付けない。
     数えられない時は None、0 は 0 のままで、どちらもテンプレートは印を出さない。items は visible_menu の後の入口 (開ける物だけ)。
     count_url は、移る先が入口と違う画面でその画面が items に無い (部署で開けない) ときは入口そのもの (問い合わせを足さずに見る)。
@@ -331,9 +331,9 @@ def seizou(request) -> dict:
             # 存在する部品の短い名前 (例 "masters")。テンプレートが {% if "attachments" in seizou.parts %} で、
             # 入っている部品の枠だけを include するために使う。
             "parts": part_names(),
-            # 金額の閲覧が無い人 (on) に金額の枡を隠す印。テンプレートが読んだ時に判定し、log では記録に 1 行 (精査 A2 の B4)
+            # 金額の閲覧が無い人 (on) に金額の枡を隠す印。テンプレートが読んだ時に判定し、log では記録に 1 行 (作者の決め)
             "hide_money": SimpleLazyObject(lambda: _hides_money(user)),
-            # 上の帯の色 (人ごとの表示の設定。N167)。base.html の <html> の data-seizou-header。テンプレートが読んだ時に読む
+            # 上の帯の色 (人ごとの表示の設定。開発の記録 docs/nights/20261105/N167.md)。base.html の <html> の data-seizou-header。テンプレートが読んだ時に読む
             "header_color": SimpleLazyObject(lambda: _header_color(user)),
             # 上の帯の知らせの鈴の赤い数 (まだ見ていない知らせの数。core.bell)。core/_bell.html が読んだ時に数える (受け渡しの seizou-部品の6案-20261107/指示書.md の 4)
             "bell_count": SimpleLazyObject(lambda: _bell_count(user)),

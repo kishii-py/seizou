@@ -1,6 +1,6 @@
 {% extends "core/list.html" %}
 {% load seizou_icons purchasing_tags %}
-{# 受入の一覧: core の一覧の上に、取引先ごとの先月と今月の支払の見込みの表。主色のボタンは土台の「新規登録」だけ。小窓で保存した後は、行に加えて支払の見込みの表と左のメニューの「受入」の印も、画面を移らずに取り直す (#receipt-list-refresh。HX-Target が list-card の要求に土台が画面の全体を返し、hx-swap="none" で本体は差し込まず hx-select-oob の 2 つだけを入れ替える。決め C05-2 = a)。 #}
+{# 受入の一覧: core の一覧の上に、取引先ごとの先月と今月の支払の見込みの表。主色のボタンは土台の「新規登録」だけ。小窓で保存した後は、行に加えて支払の見込みの表と左のメニューの「受入」の印も、画面を移らずに取り直す (#receipt-list-refresh。HX-Target が list-card の要求に土台が画面の全体を返し、hx-swap="none" で本体は差し込まず hx-select-oob の 2 つだけを入れ替える。作者の決め)。 #}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'purchasing:purchaseorder_list' %}">{% icon "cart" "size-4" %}発注の一覧</a><a class="btn btn-outline border-base-300" href="{% url 'purchasing:selfinvoice_list' %}">{% icon "file" "size-4" %}仕入明細</a>{% with create_in_modal=True %}{{ block.super }}{% endwith %}{% endblock %}
 {# 受けすぎの知らせ: 開いた頁の受入の行の明細のうち、受入の数の合計が明細の数量を超えた物を、表の上に黄の知らせで並べる (over_receipt_notices。集計 1 回。受入は止めない)。 #}
 {% block content %}{% include "purchasing/_payable_table.html" %}{% over_receipt_notices rows as over_receipts %}{% if over_receipts %}

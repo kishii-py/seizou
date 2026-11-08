@@ -1,6 +1,6 @@
 {% load seizou_icons %}
 {# 明細の 1 行 (row は formset の 1 つの form)。行の誤りは欄の下 (赤)。欄の案内 (今ある明細の単位が一覧に無い字のとき) は欄の下 (灰)。既にある明細を指す隠しの欄は最後の列に置く。 #}
-{# 単価の枡の中に、単価の欄の下に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。部品が空の行は押せない形。C100)。 #}
+{# 単価の枡の中に、単価の欄の下に見積の番号の欄と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。部品が空の行は押せない形。作者の決め)。 #}
 <tr class="align-top" data-order-line>
   {% for field in row.visible_fields %}{% if field.name != "DELETE" and field.name != "quote_no" %}
   <td class="{% if field.name == "item" %}min-w-56 w-56{% elif field.name == "unit" %}min-w-20{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">

@@ -1,10 +1,10 @@
-"""会社ごとの項目 (01 の 4 節の拡張の表と 10.3)。
+"""会社ごとの項目 (表の設計の決めの拡張の表と、core の公開する物の設計の決め)。
 
 会社のプロジェクトの fields/apps.py の ready() が
     register("masters.Item", "fields.ItemExt", [{"name": "ext01", "label": "材質", "type": "text", ...}, ...])
 と呼ぶ。列の名前は答えた順の連番 ext01・ext02…。拡張の表は部品の表に 1 対 1 (OneToOneField。related_name は "ext")。
 一覧の土台は in_list の列を自動で足し、入力の土台は欄を自動で足して ext= に分けて services に渡し、検索は searchable の列も見る。
-入力の土台が足す字の欄には、拡張の表に既にある値を候補 (HTML の datalist) で付ける (ext_suggestions。C28)。
+入力の土台が足す字の欄には、拡張の表に既にある値を候補 (HTML の datalist) で付ける (ext_suggestions。作者の決め)。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from seizou.core.widgets import DatalistInput
 TYPES = ("text", "number", "date", "choice", "bool")
 EXT_PREFIX = "ext__"
 EXT_ACCESSOR = "ext"
-#: 字の欄の候補 (既にある値) の数の上限 (推測の目安。2 社の種の値は多くて 8 つ。C28)
+#: 字の欄の候補 (既にある値) の数の上限 (推測の目安。2 社の種の値は多くて 8 つ。作者の決め)
 SUGGESTION_LIMIT = 20
 
 
@@ -107,7 +107,7 @@ def list_columns_for(model) -> list[Column]:
 
 
 def form_fields_for(model) -> dict[str, forms.Field]:
-    """入力の土台が足す欄。鍵は ext__<列の名前>。字の欄の候補は描くときに ext_suggestions で読む (C28)。"""
+    """入力の土台が足す欄。鍵は ext__<列の名前>。字の欄の候補は描くときに ext_suggestions で読む (作者の決め)。"""
     return {
         EXT_PREFIX + c.name: c.form_field(values=functools.partial(ext_suggestions, model, c.name))
         for c in columns_for(model)
@@ -164,7 +164,7 @@ def save_ext(obj, ext: dict | None):
 
 
 def frequent_values(queryset, field_name: str, limit: int = SUGGESTION_LIMIT) -> list:
-    """queryset の field_name の、空でない値を重なり無しで、多い順 (同じ数は値の順) に limit まで返す (字の欄の候補の元。C28)。
+    """queryset の field_name の、空でない値を重なり無しで、多い順 (同じ数は値の順) に limit まで返す (字の欄の候補の元。作者の決め)。
 
     queryset の絞りのまま数える (部品なら使用停止の物も数える)。
     """
@@ -179,7 +179,7 @@ def frequent_values(queryset, field_name: str, limit: int = SUGGESTION_LIMIT) ->
 
 
 def ext_suggestions(model, column_name: str) -> list:
-    """拡張の表の 1 列に既にある値 (frequent_values)。入力の土台が足す字の欄の候補 (HTML の datalist) が描くときに呼ぶ (C28)。
+    """拡張の表の 1 列に既にある値 (frequent_values)。入力の土台が足す字の欄の候補 (HTML の datalist) が描くときに呼ぶ (作者の決め)。
 
     拡張の表から読む (部品の表から ext__ で読まない。拡張の表の行の無い部品を数えないため)。
     登録が無い・拡張の表が引けない (LookupError)・読めない (DatabaseError) ときは候補を出さない (空の並び)。

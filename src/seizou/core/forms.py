@@ -6,9 +6,9 @@ form が見るのは欄の型と必須だけ。services の決まりの違反は
 整数の欄は、表の検査 (MinValueValidator・MaxValueValidator) から下限と上限を取り、欄の min・max と
 form の検査にそろえる (例: 締日は 1〜31。誤りの文は「1 以上」「31 以下」)。
 SettingForm: 選べる設定 1 つの入力 (設定の画面の「編集」)。値を確かめて整えるのは core の services。
-SubmitLabelMixin: 保存のボタンの字に、押した結果の対象と数と金額を書く口 (N138)。字を組むのは部品の form、
+SubmitLabelMixin: 保存のボタンの字に、押した結果の対象と数と金額を書く口 (開発の記録 docs/nights/20261104/N138.md)。字を組むのは部品の form、
 入力のたびに埋め直すのは static の js/seizou-submit-label.js (同じ型を同じ決まりで埋める)。
-line_totals: 明細の合計の枠 (core/_line_totals.html) と保存のボタンの字の元 (N149)。
+line_totals: 明細の合計の枠 (core/_line_totals.html) と保存のボタンの字の元 (開発の記録 docs/nights/20261105/N149.md)。
 """
 
 import json
@@ -102,8 +102,8 @@ CHECKBOX_GROUPS_CSS = "grid gap-x-6 gap-y-4 sm:grid-cols-2"
 class Checkboxes(forms.CheckboxSelectMultiple):
     """複数の checkbox。外の枠 (div) には checkbox の見た目を付けない (Django の雛形は外の枠にも class を付けるため)。
 
-    選択肢に群があるときは、外の枠に CHECKBOX_GROUPS_CSS を付け、群ごとの枠を幅の広い画面で横に並べる (群が先。C90)。
-    群が無く columns=True の欄だけ、外の枠に格子 (CHECKBOX_COLUMNS_CSS) を付け、幅の広い画面で 2〜3 列に並べる (C83)。
+    選択肢に群があるときは、外の枠に CHECKBOX_GROUPS_CSS を付け、群ごとの枠を幅の広い画面で横に並べる (群が先。作者の決め)。
+    群が無く columns=True の欄だけ、外の枠に格子 (CHECKBOX_COLUMNS_CSS) を付け、幅の広い画面で 2〜3 列に並べる (作者の決め)。
     どちらでもない欄は 1 列 (外の枠に class を付けない)。
     """
 
@@ -154,7 +154,7 @@ class Radios(forms.RadioSelect):
 
 #: 設定の変更の画面の丸の選択で、選べる値の名前の下に出す、選ぶと何が起きるかの 1 文 ({鍵: {送る値: 文}})。
 #: 字は RULES.md のポカよけの節の段落 (知らせる・止める) と README.md の「選べる設定」の表から写し、新しい言葉を作らない。
-#: 写せる字の無い値は持たない (名前だけ出す)。知らせの出る場所は書かない (C57 で変わるため)。
+#: 写せる字の無い値は持たない (名前だけ出す)。知らせの出る場所は書かない (作者の決めで変わるため)。
 #: 真偽の送る値は "true" / "false"。ポカよけの 3 つの鍵は同じ 3 つの文を使う。
 #: 設定の画面の SETTING_LABELS には入れない (値の字は設定の画面の表の「今の値」にも出るので、長い文を入れると表が崩れる)。
 _CHECK_MODE_NOTES = {
@@ -178,7 +178,7 @@ class SettingForm(forms.Form):
     メールの送り方 (mail) は 7 つの欄 (暗号化の方式は丸の選択。欄の名前は頭に mail_ を付ける)、
     使わない注文の項目 (hidden_fields) は複数の checkbox、ほか (model の名前・主色・業種) は字。
     主色と業種は空で既定に戻せるので任意 (OPTIONAL_KEYS)。字の欄の注記 (help_text) は、設定の画面の表で名前の下に出す
-    2 行目と同じ字 (settings_screen.setting_note。「# と 16 進の 6 桁」は値を打つ所で要るため。初見テスト R5 の V99。候補 C14)。
+    2 行目と同じ字 (settings_screen.setting_note。「# と 16 進の 6 桁」は値を打つ所で要るため。作者の決め)。
     欄の初期値は今の値 (conf.setting)。値を確かめて整えるのは services の validate_setting (form は欄の型だけ)。
     選択肢の字は日本語だけ (設定の画面の値の字と同じ)。送る値 (丸と option の value) は英字の値のまま (真偽は "true" / "false" で送り、form が真偽に直す)。
     """
@@ -323,7 +323,7 @@ class SettingForm(forms.Form):
 
 
 class DisplaySettingsForm(forms.Form):
-    """表示の設定 (人ごとの見た目) の入力。今は上の帯の色 (core.display.HEADER_COLORS) の 1 つだけ。決め 11-05 21:2x。N167
+    """表示の設定 (人ごとの見た目) の入力。今は上の帯の色 (core.display.HEADER_COLORS) の 1 つだけ。決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md
 
     初期値は本人の今の値 (画面の get_initial)。値を確かめて保存するのは services の set_user_preference (form は選べる名前だけ)。
     """
@@ -365,7 +365,7 @@ class CompanyForm(ServiceModelForm):
     def clean_registration_no(self):
         """登録番号の形を確かめる (services.check_registration_no と同じ 1 か所)。形が違えば欄の下の赤い字。
 
-        訳: 請求書に形の違う登録番号を刷らないよう、保存の前に欄で止めるため。出所 = 法令 (インボイス制度の登録番号の形。決め LAW-3・C95-2)。
+        訳: 請求書に形の違う登録番号を刷らないよう、保存の前に欄で止めるため。出所 = 法令 (インボイス制度の登録番号の形。作者の決め)。
         変えてよい条件 = 登録番号の形が法令で変わったとき。
         """
         value = self.cleaned_data.get("registration_no", "")
@@ -428,7 +428,7 @@ class DefaultChoiceField(forms.ChoiceField):
 
 
 def line_totals(pairs, *, show_amount=True) -> dict:
-    """明細の合計の枠 (core/_line_totals.html) と保存のボタンの字の元 (N149。案 5-A)。
+    """明細の合計の枠 (core/_line_totals.html) と保存のボタンの字の元 (開発の記録 docs/nights/20261105/N149.md。作者の決め)。
 
     pairs は (数量, 単価) か (数量, 単価, 一式か) の組の並び (単価は None でよい)。一式か が真の行は数量を掛けずに単価を金額に足す
     (受注と発注の明細の単価の単位が式の行。core は部品を import しないので、一式かどうかは部品の form が決めて渡す)。
@@ -465,7 +465,7 @@ def line_totals(pairs, *, show_amount=True) -> dict:
 
 
 class SubmitLabelMixin:
-    """保存のボタンの字に、押した結果の対象と数と金額を書く口 (N138。決め 11-04 23:0x「ボタンに金額を入れて、押す前の迷いを減らす」)。
+    """保存のボタンの字に、押した結果の対象と数と金額を書く口 (開発の記録 docs/nights/20261104/N138.md。決め 11-04 23:0x「ボタンに金額を入れて、押す前の迷いを減らす」)。
 
     - submit_label_plain: 数の分からないときの字 (例「出荷する」)。入力のカードの「必須」の案内もこの字を引く。
     - submit_label_templates(): 字の型の並び。{rows} (行の数)・{qty} (数量の合計)・{amount} (金額の合計) の置き場を、

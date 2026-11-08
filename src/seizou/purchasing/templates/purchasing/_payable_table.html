@@ -1,7 +1,7 @@
 {% load purchasing_tags seizou_tags seizou_icons %}{% comment %}
 支払の見込み (取引先ごと。先月と今月)。受入の一覧の上に置く。中身は tag payable_table (purchasing.services.payable_by_partner)。
-金額を見られない人 (payable.hidden) には表ごと出さない (中身が全部金額のため。「—」も出さない。N155)。class の中に {{ }} と {% if %} を書かない (R19)。
-合計の行の下に「仕入明細で確かめ中の金額」の行 (payable.checking。仕入明細に入れてまだ相手が承諾していない明細の受入の金額。2 か月とも 0 なら出さない。C111-1)。
+金額を見られない人 (payable.hidden) には表ごと出さない (中身が全部金額のため。「—」も出さない。開発の記録 docs/nights/20261105/N155.md)。class の中に {{ }} と {% if %} を書かない (R19)。
+合計の行の下に「仕入明細で確かめ中の金額」の行 (payable.checking。仕入明細に入れてまだ相手が承諾していない明細の受入の金額。2 か月とも 0 なら出さない。作者の決め)。
 {% endcomment %}{% payable_table as payable %}{% if not payable.hidden %}
 <section id="payable-table" class="mb-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payable-title">
   <h2 id="payable-title" class="text-lg font-bold">支払の見込み (取引先ごと)</h2>

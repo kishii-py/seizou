@@ -1,5 +1,5 @@
 {% load seizou_icons %}{% comment %}
-attachments の一覧の行の部分 (初見テスト R5 の UX の見直しの案 list-09。C88)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す (rows_template_names)。
+attachments の一覧の行の部分 (作者の決め)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す (rows_template_names)。
 行が無く、検索の言葉も絞りも無いときだけ、空の枠に「添付ファイルは、…から付けます。」の 1 文を足す。一覧に新規登録の入口は無く (付ける先が要るため)、
 付けるのは各詳細の「添付ファイル」の枠から。それ以外は core/_rows.html をそのまま使う。
 写した元: core/_rows.html の空の枠 (流した日の main。intake/_rows.html と同じ形)。土台の空の枠の形が変わったら、ここも合わせる。

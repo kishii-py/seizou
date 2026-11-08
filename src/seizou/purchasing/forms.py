@@ -7,16 +7,16 @@
 - 取り消す form は理由の欄 1 つ。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
 - 取引先と部品を選ぶ欄は字を打って探す欄 (RemoteSelect)。取引先の候補の口は masters の取引先の口に role=supplier (協力企業か両方の物だけ)。
-  部品の候補の口は purchasing の部品の口 (purchasing:item_select) で、単位だけを返し標準単価を返さない (協力企業への単価は利用者が打つ。C01-1 = a)。
+  部品の候補の口は purchasing の部品の口 (purchasing:item_select) で、単位だけを返し標準単価を返さない (協力企業への単価は利用者が打つ。作者の決め)。
   送られた値は、どちらも __init__ の queryset (使用中だけ。取引先は協力企業か両方) が確かめる。
 - 欄の見た目の class は固定の字で書く (土台の base.html の注記にある物だけ。CSS に入れるため)。
 - 発注を入れる form は、初期値の from_line (受注の明細の pk。注残の盤の「発注する」が GET で渡す) があれば、
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
   単位の初期値は受注の明細の数量単位コード (単位の欄は一覧から選ぶ欄。コードの無い受注の明細は空で開く)。
-  line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (N124)。
-- 発注・受入・取り消すの保存のボタンの字は、押した結果の数と金額と対象を書く (N138。字を組むのは core の SubmitLabelMixin)。
+  line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (開発の記録 docs/nights/20261104/N124.md)。
+- 発注・受入・取り消すの保存のボタンの字は、押した結果の数と金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
   金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注のボタンに金額を書かない。
-- 仕入明細を作る form (SelfInvoiceForm。候補 C111) は請求書の新規登録 (billing.forms.InvoiceForm) と同じ形: 取引先・発行日の欄の下に受入の表の行 (rows)、
+- 仕入明細を作る form (SelfInvoiceForm。作者の決め) は請求書の新規登録 (billing.forms.InvoiceForm) と同じ形: 取引先・発行日の欄の下に受入の表の行 (rows)、
   印を付けた行の数と税抜の合計を合計の枠 (line_totals) と保存のボタンの字に出し、行の checkbox の data-partner でテンプレートの JS が取引先で行を絞る。
   候補は services.self_invoice_receipts() (取消でない仕入明細に入っていない、seizou どうしで送った発注の受入)。金額は受入の金額そのまま。
 """
@@ -54,7 +54,7 @@ class PurchaseOrderLineForm(forms.Form):
     item = forms.ModelChoiceField(
         label="部品", queryset=None, widget=RemoteSelect("purchasing:item_select", attrs={"class": "w-full"})
     )
-    # 協力企業に出す工程 (決め PRICE-5。空でもよい)。選択肢は使用中で協力企業に出す工程だけ。協力企業に出す工程の無い会社では欄を外す (C100)。
+    # 協力企業に出す工程 (作者の決め。空でもよい)。選択肢は使用中で協力企業に出す工程だけ。協力企業に出す工程の無い会社では欄を外す (作者の決め)。
     process = forms.ModelChoiceField(
         label="工程",
         queryset=None,
@@ -77,7 +77,7 @@ class PurchaseOrderLineForm(forms.Form):
         widget=RemoteSelect("masters:quantityunit_select", attrs={"class": "w-full"}),
         help_text="空なら部品の単位を写します。",
     )
-    # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
+    # 単価の単位 (作者の決め)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
     # data-label-lump は、合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が式の行を数量倍しない印。
     price_basis = DefaultChoiceField(
         label="単価の単位",
@@ -91,7 +91,7 @@ class PurchaseOrderLineForm(forms.Form):
         decimal_places=2,
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-price": True}),
     )
-    # 単価表から写した見積の番号 (決め PRICE-0)。表の列にせず、単価の枡の中に置く (purchasing/_purchaseorder_card.html)。
+    # 単価表から写した見積の番号 (作者の決め)。表の列にせず、単価の枡の中に置く (purchasing/_purchaseorder_card.html)。
     quote_no = forms.CharField(
         label="見積の番号",
         max_length=35,
@@ -108,10 +108,10 @@ class PurchaseOrderLineForm(forms.Form):
 
     def __init__(self, *args, processes=None, has_process=None, **kwargs):
         super().__init__(*args, **kwargs)
-        # 部品は使用中だけ (N135。発注は新しく作るだけの form)
+        # 部品は使用中だけ (開発の記録 docs/nights/20261104/N135.md。発注は新しく作るだけの form)
         self.fields["item"].queryset = active_items()
         self.fields["unit"].queryset = quantity_units()
-        # 工程の選択肢と「協力企業に出す工程があるか」は、発注の form が form_kwargs で渡す (行の数だけ引かない。C100)
+        # 工程の選択肢と「協力企業に出す工程があるか」は、発注の form が form_kwargs で渡す (行の数だけ引かない。作者の決め)
         if processes is None:
             processes = active_processes().filter(is_outsourced=True)
         if has_process is None:
@@ -120,7 +120,7 @@ class PurchaseOrderLineForm(forms.Form):
             self.fields["process"].queryset = processes
         else:
             self.fields.pop("process")
-        # 数量と単価を字の欄にする (受注の明細と土台と同じ。初期値は詳細と同じ字で出し、「1,200」も通す。初見テスト 5 回目 a-flagged-12)。
+        # 数量と単価を字の欄にする (受注の明細と土台と同じ。初期値は詳細と同じ字で出し、「1,200」も通す。作者の決め)。
         for field in self.fields.values():
             use_decimal_input(field)
 
@@ -174,7 +174,7 @@ def _order_lines(raw):
 class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
     """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。
 
-    保存のボタンは「3 行・合計 ¥45,000 で発注する」(単価の無い行があれば「3 行で発注する」。金額の閲覧が無い人も「3 行で発注する」。N138)。
+    保存のボタンは「3 行・合計 ¥45,000 で発注する」(単価の無い行があれば「3 行で発注する」。金額の閲覧が無い人も「3 行で発注する」。開発の記録 docs/nights/20261104/N138.md)。
     """
 
     submit_label_plain = "発注する"
@@ -198,7 +198,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
         # 単価は入れない (協力企業の単価は受注の単価と別で、利用者が打つ)。無い pk・読めない字は初期値なし。
         # 単位は受注の明細の数量単位コード (選ぶ欄は一覧のコードで描く。コードの無い受注の明細は空で開く)。
         # 盤の「選んだ行の操作」の「発注する」から来たとき (GET の line の繰り返し)、選んだ明細を順に埋める。
-        # 取消の受注と残の無い明細は飛ばす。from_line と同じ明細は 1 行にする (N124)。
+        # 取消の受注と残の無い明細は飛ばす。from_line と同じ明細は 1 行にする (開発の記録 docs/nights/20261104/N124.md)。
         from seizou.orders.services import remaining_qty
 
         self.from_line = _order_line(self.initial.get("from_line"))
@@ -209,7 +209,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
             rest = remaining_qty(line)
             if rest > 0:
                 picked.append((line, rest))
-        # 発注の明細の工程の最初の値 (決め PRICE-5): 選んだ明細の部品の分を 1 回の問い合わせで引く (盤は何行も選べるので行ごとに引かない。C100)。
+        # 発注の明細の工程の最初の値 (作者の決め): 選んだ明細の部品の分を 1 回の問い合わせで引く (盤は何行も選べるので行ごとに引かない。作者の決め)。
         defaults = {}
         if picked:
             items = with_default_process(active_items()).filter(pk__in=[line.item_id for line, _rest in picked])
@@ -269,7 +269,7 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
     def service_kwargs(self):
         data, ext = company_fields.split_ext(self.cleaned_data)
         lines = [
-            # 工程の欄を外した会社 (協力企業に出す工程が無い) では、無い欄の鍵を services に渡さない (C100)
+            # 工程の欄を外した会社 (協力企業に出す工程が無い) では、無い欄の鍵を services に渡さない (作者の決め)
             {key: row.cleaned_data[key] for key in LINE_KEYS if key in row.cleaned_data}
             for row in self.lines.forms
             if row.has_changed()
@@ -293,7 +293,7 @@ class PurchaseOrderChangeLineForm(forms.Form):
     """送った発注の変更の明細の 1 行。line は既にある明細を指す隠しの欄 (足す行は空)。
 
     既にある明細の行は部品と単位を直せない (欄を出さず、字で出す。部品を変えるときは取り消して行を足す)。
-    足す行の単位は数量単位の一覧から選ぶ (空なら部品の単位を写す。C108 の発注の明細と同じ)。
+    足す行の単位は数量単位の一覧から選ぶ (空なら部品の単位を写す。作者の決めの発注の明細と同じ)。
     相手が出荷済み (purchasing.services.known_shipped_qty が 0 より大きい) の行は単価の欄と消す印を出さない (欄の横に「出荷済み s」)。
     金額の閲覧が無い人には単価の欄を出さない (既にある明細の単価は今のまま送る)。
     """
@@ -311,7 +311,7 @@ class PurchaseOrderChangeLineForm(forms.Form):
         error_messages={"min_value": "数量は 0 より大きい数にしてください。"},
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
-    # 足す行の単位は数量単位の一覧から選ぶ (発注の明細の行 PurchaseOrderLineForm と同じ欄。N349)。送る値は一覧のコード、clean_unit が一覧の名前の字にする。
+    # 足す行の単位は数量単位の一覧から選ぶ (発注の明細の行 PurchaseOrderLineForm と同じ欄。開発の記録 docs/nights/20261107/N349.md)。送る値は一覧のコード、clean_unit が一覧の名前の字にする。
     unit = forms.ModelChoiceField(
         label="単位",
         queryset=None,
@@ -392,7 +392,7 @@ class PurchaseOrderChangeLineForm(forms.Form):
         if not self.has_changed():
             return None
         line = {key: data.get(key) if key != "note" else data.get(key, "") for key in LINE_KEYS}
-        # 変更の画面には単価の単位の欄と見積の番号の欄が無い (C96 は C99・C100 より前の形)。
+        # 変更の画面には単価の単位の欄と見積の番号の欄が無い (変更の画面は、この 2 つの欄を足す前に作った形のまま。作者の決め)。
         # 足す行の単価の単位は部品の単位 (unit = 既定)、見積の番号は空の字 (表の既定。None は保存で止まる)。
         if line.get("price_basis") is None:
             line["price_basis"] = PRICE_BASIS_UNIT
@@ -474,9 +474,9 @@ class SendForm(forms.Form):
 
 
 class CancelForm(forms.Form):
-    """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。保存のボタンは「PO-000001 を取り消す」(N138)。"""
+    """取り消す form。理由は備考の末尾に「取消の理由: …」で残る。保存のボタンは「PO-000001 を取り消す」(開発の記録 docs/nights/20261104/N138.md)。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     reason = forms.CharField(
         label="取消の理由", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3})
@@ -527,8 +527,8 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
     欄の値として受けるのは全部の明細で、取消の発注の明細は services が日本語の文で断る (出荷の form と同じ考え)。
     初期値の line (発注の詳細の「受入を登録」が GET の ?line=<pk> で渡す) があれば、その明細の受入の残を数量の初期値にする
     (受入の残は purchasing.services.remaining_qty。受注の明細の残 = orders の同じ名前の関数とは別)。
-    数量の欄の下に、選んだ明細の受入の残を出す (数を比べて断ることはしない。初見テスト R5 の候補 C64)。
-    保存のボタンは「5 個を受け入れる」(明細の決まっている形。決まっていなければ「受け入れる」。N138)。
+    数量の欄の下に、選んだ明細の受入の残を出す (数を比べて断ることはしない。作者の決め)。
+    保存のボタンは「5 個を受け入れる」(明細の決まっている形。決まっていなければ「受け入れる」。開発の記録 docs/nights/20261104/N138.md)。
     """
 
     submit_label_plain = "受け入れる"
@@ -561,9 +561,9 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
             rest = services.remaining_qty(line)
             if rest > 0:
                 self.initial.setdefault("qty", rest)
-        # 保存のボタンの字 (N138): 描いたときの明細の単位で「5 個を受け入れる」。明細を選び直したら JS が「受け入れる」に戻す。
+        # 保存のボタンの字 (開発の記録 docs/nights/20261104/N138.md): 描いたときの明細の単位で「5 個を受け入れる」。明細を選び直したら JS が「受け入れる」に戻す。
         self.label_line = _purchase_line(self.data.get("line")) if self.is_bound else line
-        # 数量の欄の下に、同じ明細 (送った値か ?line= の初期値) の受入の残を出す (出荷の入力の「残り n」と同じ置き場。C64)。
+        # 数量の欄の下に、同じ明細 (送った値か ?line= の初期値) の受入の残を出す (出荷の入力の「残り n」と同じ置き場。作者の決め)。
         # 0 やマイナスもそのまま出す (比べない・断らない)。?qty= (出荷の知らせの残り) で数量が入っていても、欄の下は明細の受入の残。
         # help_text は欄の宣言でなくここで置く (説明書の「入れる物」の表は宣言 = base_fields を読むので、字を変えない)。
         if self.label_line is None:
@@ -595,7 +595,7 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
         return {"line": data["line"], "qty": data["qty"], "received_on": data["received_on"], "note": data["note"]}
 
 
-# --- 仕入明細 (候補 C111) ---
+# --- 仕入明細 (作者の決め) ---
 
 _Partner = PurchaseOrder._meta.get_field("partner").related_model
 
@@ -754,7 +754,7 @@ class SelfInvoiceCancelForm(forms.Form):
 
 
 class SelfInvoiceAcceptForm(forms.Form):
-    """相手の提案を受け入れる form (候補 C111)。提案 (UV) の明細ごとに印の欄 (既定は全部に印)。
+    """相手の提案を受け入れる form (作者の決め)。提案 (UV) の明細ごとに印の欄 (既定は全部に印)。
 
     字は「明細 n: 数 40 → 38・単価 ¥25.5 → ¥26・金額 ¥1,020 → ¥988」(違う所だけ。金額は保存と同じ services.self_invoice_line_amount。
     金額の閲覧の無い人には単価と金額を書かない)。service_kwargs は {"line_nos": [印の明細の行番号]}。

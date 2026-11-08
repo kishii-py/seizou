@@ -3,7 +3,7 @@ purchasing の一覧 (発注・受入) の行の部分。土台は画面の全�
 発注の一覧 (purchaseorder_list) は core/_rows.html を include し、1 行を purchasing/_purchaseorder_row.html にする (状態の字 data-live と、
 前の更新と状態が違う行の欄の色 seizou-changed)。2 秒ごとの更新で取りに行く要素は purchasing/purchaseorder_list.html にあり、ここには置かない。
 受入の一覧 (receipt_list) で行が無く、検索の言葉も絞りも無いときだけ、空の枠の 2 行目を「受入は発注の明細ごとに記録します。…」にし、ボタンを「発注の一覧」にする
-(受入は発注の明細に結ぶので、発注が無いと受入の新規登録の「発注の明細」に選べる物が無い。初見テスト R5 の UX の見直しの案 list-09。C88)。
+(受入は発注の明細に結ぶので、発注が無いと受入の新規登録の「発注の明細」に選べる物が無い。作者の決め)。
 写した元: core/_rows.html の空の枠 (流した日の main。intake/_rows.html と同じ形)。土台の空の枠の形が変わったら、ここも合わせる。
 それ以外 (受入の一覧に行があるとき・検索か絞りで 0 件のとき) は core/_rows.html をそのまま使う。
 この注に、テンプレートに今無い class の字を書かない (Tailwind はテンプレートの注の字も拾う)。

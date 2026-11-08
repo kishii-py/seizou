@@ -1,7 +1,7 @@
 {% extends "core/detail.html" %}
 {% load seizou_tags %}
 {% load seizou_icons %}
-{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときと、単位が数量単位の一覧に無い字のときだけ、上に黄色の 1 行 (図面の字は表の列のまま)。取引先のタブは masters/_item_partners.html (取引先を足す・直す・消す。取引先の行ごとに単価の行 (足す・直す・消す) と見積書、共通の単価の行。行が無いときも同じ中身。C98)。標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行。block tab_rows と block tab_empty の両方から include。C112)。小窓で保存か削除をした後は #item-partners-refresh と #item-processes-refresh がタブの中身だけを取り直す (開いているタブはそのまま)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
+{# 部品の詳細。使用停止の部品と、図面の表示用の絵を作れなかったときと、単位が数量単位の一覧に無い字のときだけ、上に黄色の 1 行 (図面の字は表の列のまま)。取引先のタブは masters/_item_partners.html (取引先を足す・直す・消す。取引先の行ごとに単価の行 (足す・直す・消す) と見積書、共通の単価の行。行が無いときも同じ中身。作者の決め)。標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行。block tab_rows と block tab_empty の両方から include。作者の決め)。小窓で保存か削除をした後は #item-partners-refresh と #item-processes-refresh がタブの中身だけを取り直す (開いているタブはそのまま)。見出し・ボタン・ファイルの節は core の詳細のまま。 #}
 {% block actions %}{% if object.drawing %}<a class="btn btn-outline border-base-300" href="{% url 'masters:item_drawing_viewer' object.pk %}">{% icon "image" "size-4" %}図面ビューア</a>{% endif %}{% endblock %}
 {% block content %}
 {% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の部品です。受注と発注の候補に出ません。今までの受注と発注の記録はそのまま残ります。</span></div>{% endif %}
@@ -15,7 +15,7 @@
 {% block tab_rows %}{% if tab.related == "partner_items" %}{% include "masters/_item_partners.html" %}
 {% elif tab.related == "item_processes" %}{% include "masters/_item_processes.html" %}
 {% else %}{{ block.super }}{% endif %}{% endblock %}
-{# 標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行)。空のタブの意味の 1 行 (初見テスト R5 の V29。C19) は押せない人にも出す。空の取引先のタブは masters/_item_partners.html (足す入口と入り方の 1 行。C98)。ほかのタブは土台のまま。 #}
+{# 標準の工程のタブは masters/_item_processes.html (工程を足す・順を直す・外す。空のタブは意味の 1 行と入れ方の 1 行)。空のタブの意味の 1 行 (作者の決め) は押せない人にも出す。空の取引先のタブは masters/_item_partners.html (足す入口と入り方の 1 行。作者の決め)。ほかのタブは土台のまま。 #}
 {% block tab_empty %}{% if tab.related == "item_processes" %}{% include "masters/_item_processes.html" %}
 {% elif tab.related == "partner_items" %}{% include "masters/_item_partners.html" %}
 {% else %}{{ block.super }}{% endif %}{% endblock %}

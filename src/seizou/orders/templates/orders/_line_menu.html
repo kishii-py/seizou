@@ -1,11 +1,11 @@
 {% load seizou_tags seizou_icons %}{% comment %}
 受注の詳細の明細 1 行の操作のメニュー (⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment)。
 context: line (受注の明細。annotate_remaining の remaining_total と item を持つ)・order (受注)・can_issue (指示書の発行の入口を出すか。can_write の tag の答え)・can_ship と can_po と can_receive (出荷と発注と入荷の記録の入口を出すか。can_write の tag の答え)。
-「納品書を作る」は、明細に納品書の無い出荷 (line.board.unnoted_shipment) があるときだけ出し、受注が取消でも残が 0 でも出す。権限はその行でだけ can_write の tag を呼んで決める (呼ぶ側のテンプレートを変えないため。N130)。
+「納品書を作る」は、明細に納品書の無い出荷 (line.board.unnoted_shipment) があるときだけ出し、受注が取消でも残が 0 でも出す。権限はその行でだけ can_write の tag を呼んで決める (呼ぶ側のテンプレートを変えないため。開発の記録 docs/nights/20261104/N130.md)。
 決め 11-03 17:2x (本人「どんどん進めて」): 行の頭に並べていた「出荷する」「指示書を発行する」のボタンを、注残の盤と同じ行のメニューに移す (表が幅 1280 の画面で枠より広くなり、検収と残の列が横の送りの先に隠れていたため)。
 項目は画面へ移る link だけ。出荷・指示書の発行・入荷の記録・発注・納品書の作成の 5 つは data-modal-form を持ち、core の JS (js/seizou-modal.js) が小窓で開く。JS が無いときは href で画面へ移る (決め 11-04 17:5x)。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。出荷と指示書と発注と入荷の記録は、受注が取消でなく残が 0 より大きいときだけ。
-「請求しないを外す」(作者の決め C107-8) は「請求しない」の印のある明細だけに、金額を見られる人で受注の書く権限のある人にだけ出し、小窓で開く (受注の取消と残に依らない。権限はその行でだけ can_write の tag を呼んで決める = 「納品書を作る」と同じ形)。
-入荷の記録の項目 (決め 11-06 18:3x。N183) は receiving の入荷の新規登録を ?order_line=<pk> で開く (form がその明細の部品・得意先・残りの数・預かりを初期値にし、保存すると明細に引き当てる)。context の can_receive は can_write "receiving.Receiving" の答え (呼ぶ側が 1 回だけ呼ぶ)。位置は「指示書を発行する」の直後 (盤の行のメニューと同じ。N184)。
+「請求しないを外す」(作者の決め) は「請求しない」の印のある明細だけに、金額を見られる人で受注の書く権限のある人にだけ出し、小窓で開く (受注の取消と残に依らない。権限はその行でだけ can_write の tag を呼んで決める = 「納品書を作る」と同じ形)。
+入荷の記録の項目 (決め 11-06 18:3x。開発の記録 docs/nights/20261106/N183.md) は receiving の入荷の新規登録を ?order_line=<pk> で開く (form がその明細の部品・得意先・残りの数・預かりを初期値にし、保存すると明細に引き当てる)。context の can_receive は can_write "receiving.Receiving" の答え (呼ぶ側が 1 回だけ呼ぶ)。位置は「指示書を発行する」の直後 (盤の行のメニューと同じ。開発の記録 docs/nights/20261106/N184.md)。
 {% endcomment %}
 {% url 'shipping:shipment_create' as ship_url %}{% url 'workorders:workorder_create' as issue_url %}{% url 'purchasing:purchaseorder_create' as po_url %}{% url 'receiving:receiving_create' as receiving_url %}{% url 'shipping:deliverynote_create' as note_url %}{% url 'masters:item_modal' line.item_id as item_modal_url %}
 <details class="dropdown row-menu">

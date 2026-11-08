@@ -3,7 +3,7 @@ progress の一覧の行の部分。土台は htmx の要求に、この部分�
 盤 (url_name が progress_list) の自動の更新: after より大きい pk の実績を持つ工程の行 (変わった行) だけを、
 template で包んだ hx-swap-oob で返す。続けて、次の after を持った取りに行く要素 (progress/_board_poll.html) を入れ直す。
 after が無いか読めない要求には行を返さず、取りに行く要素だけを返す (template tag が今の一番新しい pk を印にする)。
-実績の一覧 (url_name が record_list) は、1 行を progress/_record_row.html (行の ⋮ と右クリックの「編集」「削除」。PROG-1e = a) にし、
+実績の一覧 (url_name が record_list) は、1 行を progress/_record_row.html (行の ⋮ と右クリックの「編集」「削除」。作者の決め) にし、
 最後に「操作」の列を出す。「編集」「削除」を出すかは can_write の tag で 1 回だけ決める (can_edit。在庫の一覧の masters/_rows.html と同じ形)。
 それ以外は core/_rows.html をそのまま使う。
 {% endcomment %}

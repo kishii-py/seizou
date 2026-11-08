@@ -1,5 +1,5 @@
 {% load seizou_tags seizou_icons %}{% comment %}
-masters の一覧の行の部分 (N135)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
-部品と取引先 (N135) と工程 (N140) の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。休日の一覧は core/_rows.html のまま。在庫の一覧 (stock の stock_list。model が部品なので土台がこの部分を選ぶ) は、1 行を stock/_row.html (行の ⋮) にし、最後に「操作」の列を出す。⋮ の書く 2 つの項目を出すかは can_write の tag で 1 回だけ決める (can_move)。
+masters の一覧の行の部分 (開発の記録 docs/nights/20261104/N135.md)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+部品と取引先 (開発の記録 docs/nights/20261104/N135.md) と工程 (開発の記録 docs/nights/20261104/N140.md) の一覧は、1 行を masters/_row.html (使用停止の行を薄い字で描く) にする (core の row_template)。休日の一覧は core/_rows.html のまま。在庫の一覧 (stock の stock_list。model が部品なので土台がこの部分を選ぶ) は、1 行を stock/_row.html (行の ⋮) にし、最後に「操作」の列を出す。⋮ の書く 2 つの項目を出すかは can_write の tag で 1 回だけ決める (can_move)。
 {% endcomment %}
 {% if request.resolver_match.url_name == "item_list" or request.resolver_match.url_name == "partner_list" or request.resolver_match.url_name == "process_list" %}{% include "core/_rows.html" with row_template="masters/_row.html" %}{% elif request.resolver_match.url_name == "stock_list" %}{% can_write "stock.StockMove" as can_move %}{% include "core/_rows.html" with row_template="stock/_row.html" actions_label="操作" %}{% else %}{% include "core/_rows.html" %}{% endif %}

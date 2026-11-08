@@ -14,7 +14,7 @@ tests と migrations の下は歩かない (engine の SKIP_DIRS)。
 (d) Check を継承した class (基底が Check か <名前>.Check の形。seizou.core.checks の Check)。
 本文は入れ子の関数と class の中を除く (入れ子の物は、その物が対象になる)。
 (a) は、今は中心の決まり (RuleViolation) に絞る。番号の無い断り (ValueError・PermissionError) は見ない
-(対象が 80 を超えたので、依頼書 N226 の守ることのとおり絞った。RULES.md の R22 の末尾の 1 句)。
+(対象が 80 を超えたので、開発の記録 docs/nights/20261107/N226.md の守ることのとおり絞った。RULES.md の R22 の末尾の 1 句)。
 
 違反は、docstring が無い・「訳:」で始まる行が無い・その行に「出所 =」が無い の 3 つ。行は def (class) の行。
 """

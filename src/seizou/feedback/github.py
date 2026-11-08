@@ -1,4 +1,4 @@
-"""フィードバックの GitHub の口 (依頼書 N185。決め 11-06 21:2x)。GitHub の API の薄い口と、会社の置き場の .env の読み書き。
+"""フィードバックの GitHub の口 (開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x)。GitHub の API の薄い口と、会社の置き場の .env の読み書き。
 
 約束:
 - 鍵 (トークン) の置き場は会社の置き場の .env だけ。書く関数は同じフォルダの一時ファイルに 0o600 で書いてから置き換える。
@@ -8,10 +8,10 @@
   呼び手 (feedback の services) は transaction.atomic の外から呼ぶ (R17)。
 - Django の settings を読むのは env_path の中だけ。端末の seizou github-token は Django を起こさず、.env の道を path で渡して呼ぶ。
 - 表に書かない (表に書くのは feedback の services だけ = R13)。
-- OAuth のデバイスの認証 (依頼書 N320。決め 11-07 09:2x): device_code で 8 文字の符号をもらい、device_token で承認を待つ。
+- OAuth のデバイスの認証 (開発の記録 docs/nights/20261107/N320.md。決め 11-07 09:2x): device_code で 8 文字の符号をもらい、device_token で承認を待つ。
   Client ID は公開の値 (鍵ではない) で、client secret は使わない (持たない)。戻り先の URL も要らない。
   device_code の値とトークンの値を、返す字・例外の文・記録に入れない。
-- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x): list_comments で読み (トークンは任意)、create_comment で書く (会社のトークン)。
+- Issue の返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x): list_comments で読み (トークンは任意)、create_comment で書く (会社のトークン)。
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ TOKEN_PREFIXES = ("ghp_", "github_pat_", "gho_")
 BODY_CHARS = 300
 #: Issue の並びの 1 ページの件数 (GitHub の per_page の上限)
 PER_PAGE = 100
-#: Issue の並びを読み進めるページの上限 (みんなの Issue の盤が開いている Issue を読む。100 件 × 10 = 1000 件。依頼書 N325)
+#: Issue の並びを読み進めるページの上限 (みんなの Issue の盤が開いている Issue を読む。100 件 × 10 = 1000 件。開発の記録 docs/nights/20261107/N325.md)
 BOARD_PAGES = 10
 
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -296,7 +296,7 @@ def create_issue(token: str, repo: str, title: str, body: str, labels) -> dict:
 def issue_state(repo: str, number: int, token: str = "") -> dict:
     """Issue の状態 (GET /repos/{owner}/{repo}/issues/{number})。トークンは任意。
 
-    返す物は {"state", "closed_at", "html_url", "state_reason", "milestone"} (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+    返す物は {"state", "closed_at", "html_url", "state_reason", "milestone"} (開発の記録 docs/nights/20261107/N322.md。決め 11-07 09:0x〜09:4x)。
     state_reason は閉じた理由 (completed・not_planned・duplicate・reopened。無ければ空の字)、
     milestone はマイルストーンの名前 (世話役が付ける直る版。例 0.1.1。無ければ空の字)。
     """
@@ -327,9 +327,9 @@ def list_issues(repo: str, token: str = "", *, state: str = "all", since: str = 
 
     pull request の行 (pull_request の鍵がある物) は外す。1 件 = {"number", "title", "body" (先頭 BODY_CHARS 字), "state",
     "html_url", "updated_at", "comments", "thumbs_up" (reactions の +1)}。
-    依頼書 N323 で 4 つを足した: "state_reason" (閉じた理由 completed・not_planned・duplicate・reopened。無ければ空の字)・
+    開発の記録 docs/nights/20261107/N323.md で 4 つを足した: "state_reason" (閉じた理由 completed・not_planned・duplicate・reopened。無ければ空の字)・
     "closed_at" (閉じた日時の字か空の字)・"labels" (印の名前の並び)・"milestone" (マイルストーンの名前 = 直る版。無ければ空の字)。
-    依頼書 N325 で鍵語の引数を足した (みんなの Issue の盤が使う。既にある呼び方 list_issues(repo, token=…) は今までどおり 1 回だけ読み、params も同じ):
+    開発の記録 docs/nights/20261107/N325.md で鍵語の引数を足した (みんなの Issue の盤が使う。既にある呼び方 list_issues(repo, token=…) は今までどおり 1 回だけ読み、params も同じ):
     state は all・open・closed、since は ISO 8601 の字 (空でなければ params に入れ、GitHub は「その日時より後に更新された物」だけを返す)、
     pages は読むページの数 (2 以上なら page=2, 3, … と読み進め、返事の件数が PER_PAGE より少ないか、pages (上限 BOARD_PAGES) に達したら止める)。
     どのページで失敗しても GithubError (読めた分も返さない)。
@@ -382,7 +382,7 @@ def _issue_row(item: dict) -> dict:
     }
 
 
-# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+# ---- Issue の返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x) ----
 
 
 def list_comments(repo: str, number: int, token: str = "") -> list[dict]:
@@ -455,7 +455,7 @@ def create_comment(token: str, repo: str, number: int, body: str) -> dict:
 
 
 def add_thumbs_up(token: str, repo: str, number: int) -> dict:
-    """Issue に 👍 を付ける (POST /repos/{owner}/{repo}/issues/{number}/reactions に {"content": "+1"}。依頼書 N323)。
+    """Issue に 👍 を付ける (POST /repos/{owner}/{repo}/issues/{number}/reactions に {"content": "+1"}。開発の記録 docs/nights/20261107/N323.md)。
 
     返す物は {"created": 初めて付けたか}。GitHub は初めてなら 201、同じ口座の 👍 が既にあれば 200 で既にある物を返す (どちらも成功)。
     ほかの番号は日本語の GithubError (_refused)。つながらなければ MESSAGE_UNREACHABLE。呼び手は transaction.atomic の外から呼ぶ (R17)。
@@ -478,7 +478,7 @@ def add_thumbs_up(token: str, repo: str, number: int) -> dict:
     raise _refused(answer.status_code)
 
 
-# ---- OAuth のデバイスの認証 (依頼書 N320) ----
+# ---- OAuth のデバイスの認証 (開発の記録 docs/nights/20261107/N320.md) ----
 
 #: デバイスの認証の口に付ける見出し (JSON で返してもらう。Authorization は付けない)
 _DEVICE_HEADERS = {"Accept": "application/json"}

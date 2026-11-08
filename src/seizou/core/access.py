@@ -1,4 +1,4 @@
-"""権限の判定の 1 か所 (02 の 7 節)。画面の土台・左のメニュー・横断検索・帳票の口・accounts の部品がここを呼ぶ。
+"""権限の判定の 1 か所 (アカウントと権限の設計の決め)。画面の土台・左のメニュー・横断検索・帳票の口・accounts の部品がここを呼ぶ。
 
 3 つの判定と、それぞれの状態 (会社の設定 access_control。seizou.core.conf.access_control):
   部署 (department): 一覧と入力と盤の画面を、部署の「開ける部品」で開けるか。
@@ -83,15 +83,15 @@ _KIND_ACTIONS = {
         "masters.update_item",
         "masters.import_items",
         "masters.restore_drawing_version",
-        # 部品の取引先 (C98)。金額が主な登録 (MONEY_ACTIONS) には入れない (決め C98-6 = a。金額を見ない人も選び間違えた行を消せる)。
+        # 部品の取引先 (作者の決め)。金額が主な登録 (MONEY_ACTIONS) には入れない (作者の決め。金額を見ない人も選び間違えた行を消せる)。
         "masters.add_partner_item",
         "masters.update_partner_item",
         "masters.delete_partner_item",
-        # 単価の行 (C98)。追加と編集と削除は金額が主な登録 (MONEY_ACTIONS) にも入れる (決め C98-5・C98-6 = a)。
+        # 単価の行 (作者の決め)。追加と編集と削除は金額が主な登録 (MONEY_ACTIONS) にも入れる (作者の決め)。
         "masters.add_item_price",
         "masters.update_item_price",
         "masters.delete_item_price",
-        # 部品の標準の工程の並びを直す 3 つ (C112。決め C19-3)。部品マスターの編集の権限で守る
+        # 部品の標準の工程の並びを直す 3 つ (作者の決め)。部品マスターの編集の権限で守る
         "masters.add_item_processes",
         "masters.move_item_process",
         "masters.remove_item_process",
@@ -131,14 +131,14 @@ _KIND_ACTIONS = {
     "workorders": ("workorders.issue_workorder", "workorders.cancel_workorder", "workorders.plan_step"),
     "shipping": (
         "shipping.ship",
-        # 一括出荷 (N124。注文残の盤で選んだ明細をまとめて出荷)
+        # 一括出荷 (開発の記録 docs/nights/20261104/N124.md。注文残の盤で選んだ明細をまとめて出荷)
         "shipping.ship_lines",
         "shipping.update_shipment",
-        # 打ち間違えた出荷を消す (候補 12。決め 11-08 00:23)
+        # 打ち間違えた出荷を消す (決め 11-08 00:23)
         "shipping.delete_shipment",
         "shipping.create_delivery_note",
         "shipping.cancel_delivery_note",
-        # 出荷の知らせを相手に送り直す口 (N55。本体が起こす前に入れる前提)
+        # 出荷の知らせを相手に送り直す口 (開発の記録 docs/nights/20261103/N55.md。本体が起こす前に入れる前提)
         "connect.send_shipping_notice",
     ),
     "billing": (
@@ -146,38 +146,38 @@ _KIND_ACTIONS = {
         "billing.cancel_invoice",
         # 請求書の作り直し (同じ締め期間の請求書を取り消して 1 枚に作る。R23)
         "billing.reissue_invoice",
-        # 入金 (N56。本体が起こす前に入れる前提)
+        # 入金 (開発の記録 docs/nights/20261103/N56.md。本体が起こす前に入れる前提)
         "billing.record_payment",
         "billing.cancel_payment",
         "billing.record_outside_payment",
-        # 受けた仕入明細に答える (C111。金額を確かめて得意先へ返すのは、請求書と入金を扱う人の仕事)
+        # 受けた仕入明細に答える (作者の決め。金額を確かめて得意先へ返すのは、請求書と入金を扱う人の仕事)
         "connect.answer_self_invoice",
     ),
     "purchasing": (
         "purchasing.create_purchase_order",
         "purchasing.cancel_purchase_order",
         "connect.send_order",
-        "purchasing.resend_purchase_order",  # 発注の送り直し (N96。本体が起こす前に入れる前提)
-        "connect.send_acceptance",  # 検収を相手に送り直す口 (N54。本体が起こす前に入れる前提)
-        "purchasing.receive",  # 受入 (N42。協力企業管理の 2 つ目の画面)
-        "purchasing.change_purchase_order",  # 送った発注の変更 (C96。相手が出荷し終えるまで変更を送る)
-        "purchasing.create_self_invoice",  # 仕入明細を作る (C111。受入をまとめて相手へ送る書類)
-        "connect.send_self_invoice",  # 仕入明細を相手に送り直す口 (C111)
-        "purchasing.cancel_self_invoice",  # 相手が答える前の仕入明細の取消 (C111。取消も相手へ送る)
-        "purchasing.accept_self_invoice_proposals",  # 相手の提案を受け入れて修正仕入明細を送る (C111)
+        "purchasing.resend_purchase_order",  # 発注の送り直し (開発の記録 docs/nights/20261104/N96.md。本体が起こす前に入れる前提)
+        "connect.send_acceptance",  # 検収を相手に送り直す口 (開発の記録 docs/nights/20261103/N54.md。本体が起こす前に入れる前提)
+        "purchasing.receive",  # 受入 (開発の記録 docs/nights/20261103/N42.md。協力企業管理の 2 つ目の画面)
+        "purchasing.change_purchase_order",  # 送った発注の変更 (作者の決め。相手が出荷し終えるまで変更を送る)
+        "purchasing.create_self_invoice",  # 仕入明細を作る (作者の決め。受入をまとめて相手へ送る書類)
+        "connect.send_self_invoice",  # 仕入明細を相手に送り直す口 (作者の決め)
+        "purchasing.cancel_self_invoice",  # 相手が答える前の仕入明細の取消 (作者の決め。取消も相手へ送る)
+        "purchasing.accept_self_invoice_proposals",  # 相手の提案を受け入れて修正仕入明細を送る (作者の決め)
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)
 ACTION_KINDS = {action: kind for kind, actions in _KIND_ACTIONS.items() for action in actions}
 #: 権限が要らない action (見る・探す・現場の記録)
-# 権限の要らない action (見る・探す・現場の記録)。在庫の動き (N42) は現場の記録と同じ扱い
+# 権限の要らない action (見る・探す・現場の記録)。在庫の動き (開発の記録 docs/nights/20261103/N42.md) は現場の記録と同じ扱い
 FREE_ACTIONS = frozenset(
     {
-        # フィードバック (N59。鍵の無い会社でも誰でも伝えられる = 本体が起こす前に入れる前提)
+        # フィードバック (開発の記録 docs/nights/20261103/N59.md。鍵の無い会社でも誰でも伝えられる = 本体が起こす前に入れる前提)
         "feedback.create_feedback",
         "feedback.update_feedback",
         "progress.record_progress",
-        # 実績を直す・消す (C103。権限は実績を入れるのと同じ = PROG-1d)
+        # 実績を直す・消す (作者の決め。権限は実績を入れるのと同じ = 作者の決め)
         "progress.update_progress",
         "progress.delete_progress",
         "attachments.add_attachment",
@@ -186,27 +186,27 @@ FREE_ACTIONS = frozenset(
         "stock.record_issued",
         "stock.adjust",
         "receiving.create_receiving",  # 入荷 (支給品と預かり品の現場の記録。在庫の動きと同じ扱い)
-        # 書式つきのメモ (N114。現場の記録と同じ扱い = ログインした人なら誰でも書ける。本体が起こす前に入れる前提)
+        # 書式つきのメモ (開発の記録 docs/nights/20261104/N114.md。現場の記録と同じ扱い = ログインした人なら誰でも書ける。本体が起こす前に入れる前提)
         "notes.save_note",
         "notes.add_image",
-        # 会話 (C104。受注と発注の 1 件ごとの相手とのやり取り。メモ・添付と同じく編集の権限を問わない = 決め C104-1 (11-07 06:26)。書く画面は connect の部署の門だけが効く)
+        # 会話 (作者の決め。受注と発注の 1 件ごとの相手とのやり取り。メモ・添付と同じく編集の権限を問わない = 作者の決め (11-07 06:26)。書く画面は connect の部署の門だけが効く)
         "connect.post_chat_message",
-        # 人ごとの表示の設定 (N167。本人の画面の見た目だけを変える = ログインした人なら誰でも変えられる)
+        # 人ごとの表示の設定 (開発の記録 docs/nights/20261105/N167.md。本人の画面の見た目だけを変える = ログインした人なら誰でも変えられる)
         "core.set_user_preference",
     }
 )
-#: アカウント管理の門で守る action (3 状態の外)。core.set_setting は設定の画面からの変更 (N48) の action で、
-#: 画面の門 (can_manage_accounts) と同じ判定で 2 重に断る (依頼書 N48 の迷った事 2 = 本体の決め)
+#: アカウント管理の門で守る action (3 状態の外)。core.set_setting は設定の画面からの変更 (開発の記録 docs/nights/20261103/N48.md) の action で、
+#: 画面の門 (can_manage_accounts) と同じ判定で 2 重に断る (開発の記録 docs/nights/20261103/N48.md の迷った事 2 = 本体の決め)
 ACCOUNT_ACTIONS = frozenset(
     {
         "accounts.issue_account",
         "accounts.update_account",
         "accounts.delete_account",
         "core.set_setting",
-        "feedback.connect_github",  # 「GitHub とつなぐ」(N185)。世話役 = アカウント管理の権限。services も同じ判定で 2 重に断る
-        # 会社の情報の変更 (N80。設定の画面の「会社の情報」。門は設定の変更と同じ)
+        "feedback.connect_github",  # 「GitHub とつなぐ」(開発の記録 docs/nights/20261106/N185.md)。世話役 = アカウント管理の権限。services も同じ判定で 2 重に断る
+        # 会社の情報の変更 (開発の記録 docs/nights/20261103/N80.md。設定の画面の「会社の情報」。門は設定の変更と同じ)
         "core.update_company",
-        # 部署を画面から直す口 (N57。本体が起こす前に入れる前提)
+        # 部署を画面から直す口 (開発の記録 docs/nights/20261103/N57.md。本体が起こす前に入れる前提)
         "accounts.create_department",
         "accounts.update_department",
         "accounts.delete_department",
@@ -219,30 +219,30 @@ ACCOUNT_ACTIONS = frozenset(
 #: 何のため: 登録されている金額を見られない人が操作すると、金額を確かめられないまま記録を作るか変えることになり、誤りの元になるため。
 #: 出所 = 作者の決め 11-07 21:0x (本人「金額を見れない人は受注処理できなくない？見れないんだからミスの元でしょう」
 #: 「金額見れない人は金額に関わる操作はできないよねやっぱり」「登録されている金額見れないんだから危険だよ」)。
-#: 変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 決め C98-6 の、部品の取引先の行を消す操作) だけを外してよい。
+#: 変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 部品の取引先の行を消す操作) だけを外してよい。
 #: 数や物の情報だけを扱う操作 (部品の登録と編集・出荷と一括出荷と出荷の直し・発注の送り直し) は入れない (決め 11-07 21:1x の 6)。
 #: 訳: 現場の人が金額の閲覧なしで出荷と受入を続けられるようにするため。金額はこの操作では決まらず、単価から後で決まる。出所 = 作者の決め 11-07 21:1x。
-#: 変えてよい条件 = この操作の入力に金額の欄が加わったとき (そのときは決め 4 に従って MONEY_ACTIONS に足す)。
+#: 変えてよい条件 = この操作の入力に金額の欄が加わったとき (そのときは金額の閲覧の決めに従って MONEY_ACTIONS に足す)。
 #: 受入 (purchasing.receive) も入れない (決め 11-07 21:2x の 8。訳は purchasing.services.receive の docstring)。
 MONEY_ACTIONS = {
     "billing.create_invoice": ("請求書", "作れません"),
     "billing.record_payment": ("入金", "記録できません"),
-    # 請求書の外で受け取った入金 (決め C107-3c) は、今の入金の記録と同じ扱い (受け取った金額を入れることは、金額を決めることと同じ重さ)
+    # 請求書の外で受け取った入金 (作者の決め) は、今の入金の記録と同じ扱い (受け取った金額を入れることは、金額を決めることと同じ重さ)
     "billing.record_outside_payment": ("入金", "記録できません"),
     "orders.create_order": ("受注", "新規登録できません"),
     # 作り直しは請求書を作る操作の別の入口なので、請求書を作るのと同じ扱い
     "billing.reissue_invoice": ("請求書", "作れません"),
-    # 単価の行は単価だけを中身に持つ登録 (決め C98-5・C98-6 = a。金額を見られない人が単価を決める形にしない。消すのも単価を決める操作)。
+    # 単価の行は単価だけを中身に持つ登録 (作者の決め。金額を見られない人が単価を決める形にしない。消すのも単価を決める操作)。
     # 部品の取引先の行の削除は入れない (金額を見ない人も選び間違えた取引先の行を消すため)。
     "masters.add_item_price": ("単価表", "単価の行を足せません"),
     "masters.update_item_price": ("単価表", "単価の行を直せません"),
     "masters.delete_item_price": ("単価表", "単価の行を消せません"),
-    # 仕入明細 (C111) は金額が主な書類なので、請求書を作るのと同じ扱い
+    # 仕入明細 (作者の決め) は金額が主な書類なので、請求書を作るのと同じ扱い
     "purchasing.create_self_invoice": ("仕入明細", "作れません"),
     "connect.answer_self_invoice": ("仕入明細", "答えられません"),
     # 提案を受け入れるのは仕入明細の金額を直す登録
     "purchasing.accept_self_invoice_proposals": ("仕入明細", "直せません"),
-    # --- 決め 4 の続き (11-07 21:1x〜21:2x): 金額のある記録を変える・取り消す操作と、受注と発注を作る操作 ---
+    # --- 金額の閲覧の決めの続き (作者の決め 11-07 21:1x〜21:2x): 金額のある記録を変える・取り消す操作と、受注と発注を作る操作 ---
     # 受注の変更は単価の欄を出さなくても数の変更で金額が変わる。取消と「請求しない」の印の付け外しは請求の金額が変わる
     "orders.update_order": ("受注", "変更できません"),
     "orders.cancel_order": ("受注", "取り消せません"),
@@ -255,12 +255,12 @@ MONEY_ACTIONS = {
     # 請求書と入金の取消は、請求と入金の金額を戻す操作
     "billing.cancel_invoice": ("請求書", "取り消せません"),
     "billing.cancel_payment": ("入金", "取り消せません"),
-    # 発注の新規登録 (明細の単価の欄が必須 = 見つけ GR-07。入口ごと出さない)・変更 (数の変更で金額が変わる)・取消
+    # 発注の新規登録 (明細の単価の欄が必須 = 作者の決め。入口ごと出さない)・変更 (数の変更で金額が変わる)・取消
     "purchasing.create_purchase_order": ("発注", "新規登録できません"),
     "purchasing.change_purchase_order": ("発注", "変更できません"),
     "purchasing.cancel_purchase_order": ("発注", "取り消せません"),
-    # 納品書を作る (決め 7)。訳: 納品書は単価と金額を刷って得意先へ渡す書類なので、金額を確かめられない人が作ると、誤った金額の書類が外へ出るため。
-    # 出所 = 作者の決め 11-07 21:2x (決め 4 の範囲を聞き直した答え)。変えてよい条件 = 納品書から単価と金額を外す会社の設定ができたとき。
+    # 納品書を作る (作者の決め)。訳: 納品書は単価と金額を刷って得意先へ渡す書類なので、金額を確かめられない人が作ると、誤った金額の書類が外へ出るため。
+    # 出所 = 作者の決め 11-07 21:2x (金額の閲覧の決めの範囲を聞き直した答え)。変えてよい条件 = 納品書から単価と金額を外す会社の設定ができたとき。
     "shipping.create_delivery_note": ("納品書", "作れません"),
     # 納品書の取消も同じ扱い (作者の決め 11-07 23:2x「推奨で」= 作ると取消を同じ扱いにする。入口は tag で隠れていたが、直に開くと保存が通っていた)
     "shipping.cancel_delivery_note": ("納品書", "取り消せません"),
@@ -275,7 +275,7 @@ MONEY_ACTIONS = {
 
 #: アカウント管理の権限で開く部品 (3 状態の外)
 ACCOUNT_APPS = ("accounts",)
-#: 部署に関係なく開く部品 (検索・使い方・ダッシュボード・設定は core の画面。notes = 書式つきのメモ。N114)
+#: 部署に関係なく開く部品 (検索・使い方・ダッシュボード・設定は core の画面。notes = 書式つきのメモ。開発の記録 docs/nights/20261104/N114.md)
 ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments", "feedback", "notes")
 
 # ---------------------------------------------------------------- 金額の値
@@ -487,7 +487,7 @@ def require_open(user, app, *, what) -> None:
     訳: AI に質問の窓の「承認」から、部署の外の部品 (例 出荷・受注・指示書) に書かせない。
     何のため: 同じ操作を画面で行うと、入力の画面の部署の門が 403 で止める。承認は画面を通らずに services へ書くので、
     門を通さないと、部署で分けた会社 (部署の判定が on) で、部署の外の人が AI に頼んで出荷や受注を登録できてしまう。
-    出所 = Claude Security の走査の候補 11-07 (承認が部署の門を通らずに書く)。
+    出所 = Claude Security の走査の指摘 (11-07) (承認が部署の門を通らずに書く)。
     変えてよい条件 = 部署の判定が入力の画面でも部署を見なくなったとき (そのときは承認もそろえて外す)。
     """
     if app in ACCOUNT_APPS or app in ALWAYS_OPEN_APPS:
@@ -524,7 +524,7 @@ def require_write(user, action) -> None:
        何のため: 登録されている金額を見られない人が操作すると、金額を確かめられないまま記録を作るか変えることになり、誤りの元になるため。
        出所 = 作者の決め 11-07 21:0x (本人「金額を見れない人は受注処理できなくない？見れないんだからミスの元でしょう」
        「金額見れない人は金額に関わる操作はできないよねやっぱり」「登録されている金額見れないんだから危険だよ」)。
-       変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 決め C98-6 の、部品の取引先の行を消す操作) だけを外してよい。
+       変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 部品の取引先の行を消す操作) だけを外してよい。
     """
     if action in ACCOUNT_ACTIONS and not can_manage_accounts(user):
         raise AccessDenied(ACCOUNT_MESSAGE)
@@ -663,7 +663,7 @@ def write_allowed(user, action) -> bool:
     何のため: 登録されている金額を見られない人が操作すると、金額を確かめられないまま記録を作るか変えることになり、誤りの元になるため。
     出所 = 作者の決め 11-07 21:0x (本人「金額を見れない人は受注処理できなくない？見れないんだからミスの元でしょう」
     「金額見れない人は金額に関わる操作はできないよねやっぱり」「登録されている金額見れないんだから危険だよ」)。
-    変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 決め C98-6 の、部品の取引先の行を消す操作) だけを外してよい。
+    変えてよい条件 = 金額を見ずに行っても金額の誤りが起きないと示せる操作 (例: 部品の取引先の行を消す操作) だけを外してよい。
     """
     if action in ACCOUNT_ACTIONS:
         return can_manage_accounts(user)

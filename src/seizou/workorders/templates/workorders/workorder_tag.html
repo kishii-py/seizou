@@ -6,7 +6,7 @@ view が qr_text (読み取りの着地の絶対 URL) を足す。company は会
 数は context の値をそのまま出し、ここでは計算しない。
 見た目は core の report.css だけを使う (画面の CSS は使わない)。A4 縦の上半分に収める。並べるのは表だけ。
 離れて読む品番・数量・納期の行は report-big (20pt の太字)、題は block report_heading の上書きで小さく (report-title-compact)、
-数量には受注の明細の単位を添える (見つけ print-06。現場の人は棚や台車の上の札を 1〜2 m 離れて読む)。
+数量には受注の明細の単位を添える (作者の決め。現場の人は棚や台車の上の札を 1〜2 m 離れて読む)。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
 {% endcomment %}
 {% block title %}現品票 {{ tag.number }}{% endblock %}

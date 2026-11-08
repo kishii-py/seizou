@@ -1,5 +1,5 @@
 {% extends "core/form.html" %}
 {# 添付ファイルを付ける: 土台の入力の上に、付ける先 (種類と番号) の 1 行 (入金の記録の頭の 1 行と同じ形。黄の帯にしない)。付ける先が引けないときは出さない。詳細の枠から開く小窓は土台の小窓のまま (後ろに詳細が見えるため)。 #}
-{# 付ける先の字は、付ける先の記録を開ける人にだけ出す (attachments_tags の target_text_for。Claude Security の走査の候補 11-07 の 10)。 #}
+{# 付ける先の字は、付ける先の記録を開ける人にだけ出す (attachments_tags の target_text_for。Claude Security の走査の指摘 (11-07))。 #}
 {% load attachments_tags %}
 {% block content %}{% target_text_for form request.user as target_text %}{% if target_text %}<p class="mb-4 text-sm text-base-content/70">付ける先: {{ target_text }}</p>{% endif %}{{ block.super }}{% endblock %}

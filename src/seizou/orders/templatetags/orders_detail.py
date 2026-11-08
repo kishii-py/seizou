@@ -1,4 +1,4 @@
-"""受注の詳細の右の列 (案 3-D・8-B。N150) のテンプレートの tag。読むだけで、表に書かない。
+"""受注の詳細の右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md) のテンプレートの tag。読むだけで、表に書かない。
 
 - order_aside: 右の列のカードの並び (得意先・日付・金額・基本情報)。土台の詳細の画面は文脈を足す口を持たない (R15) ため、
   受注の詳細の block content が {% order_aside object fields seizou.hide_money as aside %} の形で置いてから block.super を呼び、
@@ -6,10 +6,10 @@
   aside = {"cards": [カード]}。カード = {"title": 題, "rows": [行]} と、基本情報のカードだけ "help" (枠の「?」の part) と
   "help_label" (「?」の名前)。行は土台の詳細の項目と同じ形 {"label", "value", "master", "file", "money"}。
 - 金額の閲覧は seizou.hide_money を読むだけ (access.can_see_money を呼ばない = 金額の閲覧の記録を増やさない)。
-- order_head_chips: 受注の詳細の頭の要点の札 (N163)。受注の詳細の block heading が {% order_head_chips object seizou.hide_money as head_chips %}
+- order_head_chips: 受注の詳細の頭の要点の札 (開発の記録 docs/nights/20261105/N163.md)。受注の詳細の block heading が {% order_head_chips object seizou.hide_money as head_chips %}
   の形で置いてから block.super を呼び、土台の core/detail.html が head_chips を読んで題の横に 3 つまで並べる。
-- order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。N184)。
-- order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x。C15-1 b・UX-2 a)。受注の詳細の block heading が
+- order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。開発の記録 docs/nights/20261106/N184.md)。
+- order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x)。受注の詳細の block heading が
   {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
 - order_total: 明細の金額の合計 (受注の小窓 orders/_modal.html の「明細の合計」。order_aside の金額のカードと同じ式。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 """
@@ -45,7 +45,7 @@ def order_aside(order, fields, hide_money=False) -> dict:
 
     得意先 (名前は小窓を開く字・取引先コード)・日付 (受注日・相手の発注日・明細の一番早い納期)・金額 (明細の金額の合計。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)・基本情報 (土台の項目 fields から得意先と受注日を除いた物)。
-    相手の発注日は、受信した注文から作った受注で、その payload の発注日が読めるときだけ出す (候補 C08 の 4)。
+    相手の発注日は、受信した注文から作った受注で、その payload の発注日が読めるときだけ出す (作者の決め)。
     受注日は編集で直せるので、行の名「受注日」は変えずに行を分ける (直した後も両方の字が正しい)。
     受信した注文は逆向きの 1 対 1 (inbox_message) で引き、connect の model を import しない (orders/timeline.py と同じ引き方)。
     """
@@ -85,9 +85,9 @@ def order_total(order) -> Decimal:
 
 @register.simple_tag
 def order_head_chips(order, hide_money=False) -> list[dict]:
-    """受注の詳細の頭の要点の札 (N163)。札 = {"label", "value"} (値は字)。土台の core/detail.html が head_chips を読んで題の横に並べる。
+    """受注の詳細の頭の要点の札 (開発の記録 docs/nights/20261105/N163.md)。札 = {"label", "value"} (値は字)。土台の core/detail.html が head_chips を読んで題の横に並べる。
 
-    得意先 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 決め N132。無ければ札を出さない)・合計 (明細の金額の合計。頭に ¥。明細があり、
+    得意先 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 作者の決め (開発の記録 docs/nights/20261104/N132.md)。無ければ札を出さない)・合計 (明細の金額の合計。頭に ¥。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (order_aside) は残す (札はその要約)。
     """
     lines = list(order.lines.all())
@@ -110,7 +110,7 @@ def _allocation_model():
 
 @register.simple_tag
 def order_line_allocations(order) -> list[tuple]:
-    """受注の詳細の明細の行と、行ごとの引当の合計の組の並び [(明細, 引当の合計)] (「預かり」の列。決め 11-06 18:3x。N184)。
+    """受注の詳細の明細の行と、行ごとの引当の合計の組の並び [(明細, 引当の合計)] (「預かり」の列。決め 11-06 18:3x。開発の記録 docs/nights/20261106/N184.md)。
 
     明細は order.lines.all() (画面の prefetch の写し) の順。引当の合計は receiving.services.annotate_allocated を
     明細の queryset に 1 回当てて読む (明細の数だけ SQL を出さない)。receiving の部品が無ければ全部 0 で、問い合わせをしない。
@@ -129,7 +129,7 @@ def order_line_allocations(order) -> list[tuple]:
 
 @register.simple_tag
 def order_ship_lines(order) -> list:
-    """受注の詳細の頭の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x。C15-1 b・UX-2 a)。
+    """受注の詳細の頭の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x)。
 
     取消の受注は空。ほかは order.lines.all() (画面の prefetch の写し。annotate_remaining の残と行番号の順) のうち、
     残が 0 より大きい明細を行番号の順のまま返す (問い合わせを増やさない)。出荷の書く権限と出荷の部品の有無はテンプレートが見る。

@@ -1,4 +1,4 @@
-"""フィードバックの services (01 の 10.1)。表に書くのはここの関数だけ (R13)。
+"""フィードバックの services (services の書き方の設計の決め)。表に書くのはここの関数だけ (R13)。
 
 約束:
 - 書くのはここだけ。書く関数は transaction.atomic の中。番号の無い入力の誤りは日本語の ValueError
@@ -14,10 +14,10 @@
 - 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
   添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
 - 直した (fixed) は世話役が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
-- GitHub でログインしてつなぐ (依頼書 N320。決め 11-07 09:2x): OAuth のデバイスの認証。始める・待つ・やめるの途中は
+- GitHub でログインしてつなぐ (開発の記録 docs/nights/20261107/N320.md。決め 11-07 09:2x): OAuth のデバイスの認証。始める・待つ・やめるの途中は
   利用者の session (DEVICE_KEY) にだけ置き、表に書かない。承認が済んだら、トークンを貼る形と同じ _store_github で .env に書く。
 - 見送った (dismissed) は sync_github だけが付ける (GitHub で対応しない・重複として閉じた Issue)。直したと別の列に日時と知らせた印を持ち、
-  書いた人がログインしたときに 1 回だけ知らせる (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+  書いた人がログインしたときに 1 回だけ知らせる (開発の記録 docs/nights/20261107/N322.md。決め 11-07 09:0x〜09:4x)。
 """
 
 from __future__ import annotations
@@ -652,7 +652,7 @@ def export_markdown(feedback) -> str:
     return "\n".join(lines) + "\n"
 
 
-# ---- GitHub (依頼書 N185。決め 11-06 21:2x) ----
+# ---- GitHub (開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x) ----
 
 #: Issue に付ける印 (協力者でない口座が付けた印は、GitHub が黙って外す)
 GITHUB_LABEL = "from-seizou"
@@ -669,7 +669,7 @@ MESSAGE_GITHUB_NO_CLIENT_ID = (
     "保存できません。GitHub の OAuth App の Client ID が入っていません。"
     "下の手順でトークンを貼るか、置き場の .env に SEIZOU_GITHUB_CLIENT_ID を書いてください。"
 )
-#: GitHub でログインしてつなぐ途中の控えの session の鍵 (依頼書 N320)
+#: GitHub でログインしてつなぐ途中の控えの session の鍵 (開発の記録 docs/nights/20261107/N320.md)
 DEVICE_KEY = "github_device"
 #: slow_down の返事に間隔が無いときに足す秒 (GitHub の Device Flow の決まり)
 DEVICE_SLOW_DOWN_SECONDS = 5
@@ -734,7 +734,7 @@ def connect_github(data, user) -> dict:
         raise ValueError("保存できません。" + f"GitHub とつなげませんでした。{exc}") from None
 
 
-# ---- GitHub でログインしてつなぐ (OAuth のデバイスの認証。依頼書 N320) ----
+# ---- GitHub でログインしてつなぐ (OAuth のデバイスの認証。開発の記録 docs/nights/20261107/N320.md) ----
 
 
 def _device_raw(session):
@@ -767,7 +767,7 @@ def start_github_device(session, data, user) -> dict:
     権限は送り先が非公開なら repo、公開なら public_repo (トークンを貼る形の手順と同じ)。
 
     訳: Client ID の無い置き場では HTTP を呼ばずに断る。GitHub のデバイスの認証は OAuth App の Client ID が無いと始められないため
-    (出所 = GitHub の Device Flow の仕様。依頼書 N320)。変えてよい条件 = 作品が別の認証の形 (中継のサーバーなど) を持ったとき。
+    (出所 = GitHub の Device Flow の仕様。開発の記録 docs/nights/20261107/N320.md)。変えてよい条件 = 作品が別の認証の形 (中継のサーバーなど) を持ったとき。
     """
     _refuse_github(user, "GitHub とつなぐ")
     if not isinstance(data, dict):
@@ -881,7 +881,7 @@ def send_to_github(feedback, user, text=None) -> str:
     """確認済みの下書きを GitHub の Issue にし、送ったにする。世話役だけ。作った Issue の URL を返す。
 
     題は Issue の文の 1 行目の「# 」を外した字、本文は Issue の文の全部、印は from-seizou と種類の表示。
-    Issue の文は、text が None なら export_markdown (伏せ字の入った文)、字なら世話役が詳細の欄で直した文 (前後の空白を外す。依頼書 N323)。
+    Issue の文は、text が None なら export_markdown (伏せ字の入った文)、字なら世話役が詳細の欄で直した文 (前後の空白を外す。開発の記録 docs/nights/20261107/N323.md)。
     確認済みでない・つないでいない・直した文が空か題が無いときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
     HTTP は atomic の外 (R17)。送った後に mark_sent (atomic) で URL を残す。
     訳: 世話役の直した文は、もう一度伏せずにそのまま送る。伏せ字の初めの形 (mask_text・_MONEY) は単価のように外へ出したくない数を
@@ -965,7 +965,7 @@ def _save_fix_version(feedback, version) -> None:
 
 
 def sync_github(user=None) -> dict:
-    """送った物の GitHub の Issue を 1 件ずつ読み、閉じた物を閉じた理由で分ける (依頼書 N322。決め 11-07 09:0x〜09:4x)。
+    """送った物の GitHub の Issue を 1 件ずつ読み、閉じた物を閉じた理由で分ける (開発の記録 docs/nights/20261107/N322.md。決め 11-07 09:0x〜09:4x)。
 
     返す物は {"見た", "直した", "見送った", "版待ち", "版の印なし", "読めなかった"} の件数 (鍵の順もこれ)。
     見るのは、状態が送ったで、送った先が https://github.com/<owner>/<name>/issues/<番号> の形の物だけ (ほかの URL は飛ばす)。
@@ -980,7 +980,7 @@ def sync_github(user=None) -> dict:
     user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
     訳: 対応しないとして閉じた物と、直った版がまだ会社に入っていない物に「直しました」と知らせないため。
     出所 = 本人の決め 11-07 09:0x〜09:4x の 1・2・4。変えてよい条件 = 閉じた理由の分け方か版の決まりを、本人の決めで変えたとき。
-    返事 (依頼書 N324。決め 11-07 09:1x〜09:4x): 最後に、送った・直した・見送ったの件の Issue の返事を読み (_sync_replies)、
+    返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x): 最後に、送った・直した・見送ったの件の Issue の返事を読み (_sync_replies)、
     新しく表に入れた数を "返事" の鍵 (鍵の順は最後) にする。返事を読めなかった件も読めなかったに数える。
     """
     if user is not None:
@@ -1057,7 +1057,7 @@ def search_issues(words) -> dict:
     return {"issues": found[:ISSUES_SHOWN], "error": "", "repo": repo}
 
 
-# ---- タブの帯の件数 (依頼書 N321) ----
+# ---- タブの帯の件数 (開発の記録 docs/nights/20261107/N321.md) ----
 
 
 def visible_count(user) -> int:
@@ -1074,7 +1074,7 @@ def visible_count(user) -> int:
     return Feedback.objects.filter(created_by_id=user_pk).count()
 
 
-# ---- Issue の返事 (依頼書 N324。決め 11-07 09:1x〜09:4x) ----
+# ---- Issue の返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x) ----
 #
 # 世話役 (作者) が Issue に書いた返事を、取り込みで読んで表 (FeedbackReply) に残し、送った件の詳細に出す。
 # 書いた人には、ログインの画面からログインしたときに 1 回だけ知らせる (直したと同じ形。signals.py)。
@@ -1263,7 +1263,7 @@ def send_reply(reply, text, user) -> str:
     HTTP は atomic の外 (R17)。送った後に atomic で本文・送った日時・GitHub の id・口座・GitHub に出た日時を書く。
     訳: 書いた人の返事は公開の Issue に出るので、取引先の名前や金額が出ないよう、世話役が伏せ字を確かめた文だけを送るため。
     出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D。Issue を送るときと同じ確認)。
-    変えてよい条件 = 送る前の確認の形 (N323 の「送る前に直せる」) を本人の決めで変えたとき、同じ形に合わせる。
+    変えてよい条件 = 送る前の確認の形 (開発の記録 docs/nights/20261107/N323.md の「送る前に直せる」) を本人の決めで変えたとき、同じ形に合わせる。
     """
     _refuse_github(user, "返事を GitHub に送る", sending=True)
     if reply.sent_at is not None:
@@ -1297,7 +1297,7 @@ def mark_reply_sent(reply, user):
     """つないでいない会社で、世話役が伏せ字の文を GitHub に手で写した後に、返事を送ったにする。世話役だけ。
 
     送った日時だけを今にする (本文と GitHub の id は変えない)。GitHub の id が空のままなので、次の取り込みで同じ返事が
-    GitHub から読まれると、別の行で入ることがある (依頼書 N324 の記録に書いた)。送った返事は ValueError。
+    GitHub から読まれると、別の行で入ることがある (開発の記録 docs/nights/20261107/N324.md の記録に書いた)。送った返事は ValueError。
     """
     _refuse_non_manager(user, "返事を送った状態")
     if reply.sent_at is not None:
@@ -1319,7 +1319,7 @@ def replies_of(feedback) -> list:
     return list(rows.order_by(F("posted_at").asc(nulls_last=True), "created_at", "pk"))
 
 
-# ---- うちもと自社の印 (依頼書 N323。決め 11-07 09:0x〜10:1x) ----
+# ---- うちもと自社の印 (開発の記録 docs/nights/20261107/N323.md。決め 11-07 09:0x〜10:1x) ----
 
 #: うちもの件の困りごと (つないだ会社。会社のトークンで 👍 を付けた)
 ME_TOO_PROBLEM = "同じ困りごとの Issue #{number} に「うちも」を付けた"
@@ -1436,7 +1436,7 @@ def me_too(number, user) -> dict:
     return {"feedback": row, "thumbs_up": thumbs_up, "connected": connected}
 
 
-# ---- みんなの Issue の盤 (依頼書 N325。決め 11-07 09:3x〜10:1x) ----
+# ---- みんなの Issue の盤 (開発の記録 docs/nights/20261107/N325.md。決め 11-07 09:3x〜10:1x) ----
 #
 # 「みんなの Issue」のタブ (一覧の ?tab=issues) が、送り先のリポジトリの Issue を 5 つの列に分けて並べる。読むだけ (表に書かない)。
 # 列は Issue の状態・閉じた理由・ラベル・マイルストーンから分ける (GitHub の Projects の盤は読まない。名前と並びは作者の盤と同じ)。
@@ -1518,7 +1518,7 @@ def board_kind(issue) -> str:
     """盤のカードの種類の札の字 (Feedback.KIND_CHOICES の表示名)。
 
     Issue のラベルに表示名と同じ字があればそれ (ラベルの並びの先の物)、無ければ本文の「- 種類: <表示名>」の行 (export_markdown が書く行)、
-    どちらも無いか知らない字なら空の字。種類の値 (bug など) を返す issue_kind (依頼書 N323。「うちも」の件の種類) と違い、画面に出す表示名を返す。
+    どちらも無いか知らない字なら空の字。種類の値 (bug など) を返す issue_kind (開発の記録 docs/nights/20261107/N323.md。「うちも」の件の種類) と違い、画面に出す表示名を返す。
     """
     names = [label for _, label in Feedback.KIND_CHOICES]
     for label in issue.get("labels") or []:

@@ -1,4 +1,4 @@
 {# 指示書の一覧の行の部分。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す (rows_template_names)。 #}
-{# core/_rows.html を include し、1 行を workorders/_row.html (「状態」の列を進みの状態の印・「受注の明細」の列を受注番号-行番号だけ。C34) にする (billing と同じ row_template の形。初見テスト R5 の候補 C27)。 #}
+{# core/_rows.html を include し、1 行を workorders/_row.html (「状態」の列を進みの状態の印・「受注の明細」の列を受注番号-行番号だけ。作者の決め) にする (billing と同じ row_template の形。作者の決め)。 #}
 {# 右端に「要点」の列 (行の「要点を見る」の目の印。押すと指示書の小窓 workorders:workorder_modal を開く。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。見出しは土台の actions_label、欄は workorders/_row.html の最後の td。 #}
 {% include "core/_rows.html" with row_template="workorders/_row.html" actions_label="要点" %}

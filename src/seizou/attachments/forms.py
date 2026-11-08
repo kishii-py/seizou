@@ -74,7 +74,7 @@ class AttachmentForm(forms.Form):
 
         付ける先が引けないときと、user が付ける先の記録を開けないとき (services.can_open_target) は空の字。
         訳: 開けない記録の題やログイン ID を、GET の種類と番号を変えるだけで読ませないため。
-        出所 = Claude Security の走査の候補 11-07 (10)。変えてよい条件 = services.can_open_target と同じ。
+        出所 = Claude Security の走査の指摘 (11-07)。変えてよい条件 = services.can_open_target と同じ。
         """
         target = self.target_preview
         if target is None or not services.can_open_target(target, user):

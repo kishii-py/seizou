@@ -7,12 +7,12 @@
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
 - notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
 - next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
-- purchase_order_aside: 発注の詳細の右の列 (案 3-D・8-B。N150) のカードの並び。形は orders の orders_detail の order_aside と同じ。
-- purchase_order_head_chips: 発注の詳細の頭の要点の札 (N163)。形は orders の orders_detail の order_head_chips と同じ。
+- purchase_order_aside: 発注の詳細の右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md) のカードの並び。形は orders の orders_detail の order_aside と同じ。
+- purchase_order_head_chips: 発注の詳細の頭の要点の札 (開発の記録 docs/nights/20261105/N163.md)。形は orders の orders_detail の order_head_chips と同じ。
 - purchase_order_modal_lines: 発注の小窓の明細の表に出す明細 (取り消した明細を外す。頭の札と同じ数え方)。
 - reply_line_text: 発注の詳細の明細の下の黄の行に出す、相手の注文回答の明細の答え (条件付受諾の回答単価・回答数量・回答納期)。
 - can_change_order・revision_state: 送った発注の変更 (中小企業共通 EDI の注文変更の方式 2) の「変更」のボタンを出すかと、今の版の送った記録と相手の答え。
-- self_invoice_due_note・self_invoice_line_answer: 仕入明細の詳細の 60 日の黄の 1 行の字 (services.due_date_note) と、明細ごとの相手の答えの字 (候補 C111)。
+- self_invoice_due_note・self_invoice_line_answer: 仕入明細の詳細の 60 日の黄の 1 行の字 (services.due_date_note) と、明細ごとの相手の答えの字 (作者の決め)。
 - self_invoice_cancel_refusal: 仕入明細を取り消せない訳の文 (services.cancel_self_invoice_refusal と同じ文。取消の確かめのカードが黄で出す)。
 """
 
@@ -131,7 +131,7 @@ def notice_rests(line):
 
 @register.simple_tag
 def next_receipt(purchase_order):
-    """{% next_receipt object as receipt %}。頭の右の緑の「受入を記録する」の行き先 (UX-2 a。初見テスト R5 の候補 C93)。読むだけ。
+    """{% next_receipt object as receipt %}。頭の右の緑の「受入を記録する」の行き先 (作者の決め)。読むだけ。
 
     取消と断られた発注は None。ほかは lines_with_received (行番号の順) を回し、受入の残 (remaining_total) が 0 より大きい明細で、
     notice_rests (出荷日の古い順) の rest が 0 より大きい最初の知らせが見つかったら {"line", "rest_text"} を返す。無ければ None。
@@ -165,7 +165,7 @@ def _counted_lines(purchase_order) -> list:
 
 @register.simple_tag
 def purchase_order_aside(purchase_order, fields, hide_money=False):
-    """{% purchase_order_aside object fields seizou.hide_money as aside %}。発注の詳細の右の列 (案 3-D・8-B。N150)。読むだけ。
+    """{% purchase_order_aside object fields seizou.hide_money as aside %}。発注の詳細の右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md)。読むだけ。
 
     協力企業 (名前は小窓を開く字・取引先コード)・日付 (発注日・明細の一番早い納期)・金額 (明細の金額の合計。明細があり、
     金額を見られる人 = hide_money が偽のときだけ)・基本情報 (土台の項目 fields から取引先と発注日を除いた物)。
@@ -202,9 +202,9 @@ def purchase_order_aside(purchase_order, fields, hide_money=False):
 
 @register.simple_tag
 def purchase_order_head_chips(purchase_order, hide_money=False) -> list[dict]:
-    """{% purchase_order_head_chips object seizou.hide_money as head_chips %}。発注の詳細の頭の要点の札 (N163)。読むだけ。
+    """{% purchase_order_head_chips object seizou.hide_money as head_chips %}。発注の詳細の頭の要点の札 (開発の記録 docs/nights/20261105/N163.md)。読むだけ。
 
-    札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 決め N132。無ければ札を出さない)・
+    札 = {"label", "value"} (値は字)。協力企業 (名前)・一番早い納期 (明細の納期の一番早い日に曜日の 1 字を添える = 作者の決め (開発の記録 docs/nights/20261104/N132.md)。無ければ札を出さない)・
     合計 (明細の金額の合計。頭に ¥。明細があり、金額を見られる人 = hide_money が偽のときだけ)。右の列のカード (purchase_order_aside) は残す (札はその要約)。
     """
     lines = _counted_lines(purchase_order)

@@ -26,7 +26,7 @@ class CoreConfig(AppConfig):
         model_fields.BLANK_CHOICE_LABEL = EMPTY_LABEL
 
         # 開発の設定 (DEBUG) のときだけ、起動時に決まりの検査 (書き方の決まり) を回す。
-        # 本番の形では検査の module を読まない (05 の 4 節)。判定を import の前に置く。
+        # 本番の形では検査の module を読まない (決まりの検査の設計の決め)。判定を import の前に置く。
         from django.conf import settings
 
         if settings.DEBUG:

@@ -1,9 +1,9 @@
 {% load attachments_tags seizou_icons %}
 {# 添付ファイルの枠: core の詳細の画面 (core/detail.html) の下に出る。付ける・開く・削除へ進む。 #}
 {# ファイルはログインした人にだけ返す口で開く。media の生の URL と保存の名前は出さない。 #}
-{# 「添付ファイルを付ける」は入力の土台の小窓で開く (data-modal-form。core の js/seizou-modal.js が htmx で小窓の箱に読む。決め 11-05 11:4x。N157)。href は同じ URL のまま (JS の無いとき・Cmd か Ctrl を押したときは画面の全体の入力へ移る)。 #}
+{# 「添付ファイルを付ける」は入力の土台の小窓で開く (data-modal-form。core の js/seizou-modal.js が htmx で小窓の箱に読む。決め 11-05 11:4x。開発の記録 docs/nights/20261105/N157.md)。href は同じ URL のまま (JS の無いとき・Cmd か Ctrl を押したときは画面の全体の入力へ移る)。 #}
 {# 小窓で保存すると seizou-modal.js が小窓を閉じて body に seizou:refresh を出し、この枠は同じ詳細の画面を htmx で取り直して #attachments だけを入れ替える (hx-select。一覧の行の取り直しと同じ合図)。開く・削除は今のまま (画面を移る)。 #}
-{# 金額が主な記録の添付は、金額を見られない人には枠に出さない (attachments.services.openable_by。N367)。 #}
+{# 金額が主な記録の添付は、金額を見られない人には枠に出さない (attachments.services.openable_by。開発の記録 docs/nights/20261108/N367.md)。 #}
 {% attachments_for object request.user as attachment_rows %}{% content_type_id object as attachment_ct %}
 <section id="attachments" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="attachments-heading" hx-get="{{ request.get_full_path }}" hx-trigger="seizou:refresh from:body" hx-select="#attachments" hx-target="#attachments" hx-swap="outerHTML ignoreTitle:true">
   <div class="flex flex-wrap items-center justify-between gap-4">

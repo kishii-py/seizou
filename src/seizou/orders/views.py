@@ -38,7 +38,7 @@ def _open_orders(orders):
 
 
 def _status_chosen(values):
-    """状態の絞りに値があるか (受注の一覧の印の disabled_when。状態を選んだら印を切にして、その状態の全部を出す = N118)。"""
+    """状態の絞りに値があるか (受注の一覧の印の disabled_when。状態を選んだら印を切にして、その状態の全部を出す = 開発の記録 docs/nights/20261104/N118.md)。"""
     return values.get("status") is not None
 
 
@@ -79,10 +79,10 @@ class OrderListView(BaseListView):
         {"name": "customer", "label": "得意先", "kind": "choice", "field": "customer", "choices": _customer_choices},
         {"name": "ordered", "label": "受注日", "kind": "date_range", "field": "order_date"},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
-        # 既定で入の flag。状態を選んだら、印を切に描いて掛けない (disabled_when。N118 の「状態を選んだら既定を外す」を土台の形で。N143)。
+        # 既定で入の flag。状態を選んだら、印を切に描いて掛けない (disabled_when。開発の記録 docs/nights/20261104/N118.md の「状態を選んだら既定を外す」を土台の形で。開発の記録 docs/nights/20261104/N143.md)。
         {"name": "open", "label": "出荷の残りがある受注だけ", "kind": "flag", "when": _open_orders, "default": True, "disabled_when": _status_chosen},
     )
-    # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が足す (既定の印を切る)。
+    # 絞りのタブ (土台の presets。作者の決め)。「すべて」は土台が足す (既定の印を切る)。
     presets = (
         {"label": "出荷の残りがある", "params": {"f_open": "1"}},
         {"label": "今月の受注", "params": _this_month_ordered},
@@ -129,7 +129,7 @@ class OrderLineListView(BaseListView):
         {"name": "board__acceptance_total", "label": "検収", "kind": "number", "sort_key": "acceptance_total"},
         {"name": "remaining_total", "label": "残", "kind": "number", "sortable": True},
         {"name": "board__stock_balance", "label": "在庫", "kind": "number", "sort_key": "stock_balance"},
-        # 預かり = 入荷の引当の合計 (receiving。決め 11-06 18:3x。N184)。並び替えは annotate の allocated_total (board.prefetch_for が足す)
+        # 預かり = 入荷の引当の合計 (receiving。決め 11-06 18:3x。開発の記録 docs/nights/20261106/N184.md)。並び替えは annotate の allocated_total (board.prefetch_for が足す)
         {"name": "board__allocated", "label": "預かり", "kind": "number", "sort_key": "allocated_total"},
         ("board__workorder_label", "指示書"),
         ("board__progress_label", "進捗"),
@@ -149,7 +149,7 @@ class OrderLineListView(BaseListView):
         {"name": "overdue", "label": "納期が過ぎた物だけ", "kind": "flag", "when": _overdue_lines},
         {"name": "no_workorder", "label": "指示書の無い明細だけ", "kind": "flag", "when": dashboard.without_workorder},
     )
-    # 絞りのタブ (土台の presets。UX の案 3-A)。「出荷の残りがある」は既定の印と同じ組 (開いた直後に選ばれた見た目になる)。
+    # 絞りのタブ (土台の presets。作者の決め)。「出荷の残りがある」は既定の印と同じ組 (開いた直後に選ばれた見た目になる)。
     presets = (
         {"label": "出荷の残りがある", "params": {"f_open": "1"}},
         {"label": "納期が過ぎた", "params": {"f_open": "1", "f_overdue": "1"}},
@@ -180,8 +180,8 @@ class OrderDetailView(BaseDetailView):
         "指示書・出荷・請求書のタブに、この受注の物が並びます。"
     )
     # 5 つとも Order の読むだけの property (models.py)。部品が入っていない会社では、そのタブを出さない。
-    # 「会話」は元の受信した注文の相手の会社との会話 (C104)。中身は connect/_chat.html (order_detail.html の block tab_rows・tab_empty)。
-    # 「仕入明細」は、この受注の明細に当てた得意先の仕入明細 (受けた仕入明細。C111)。行の字は番号・版・締め期間・状態。
+    # 「会話」は元の受信した注文の相手の会社との会話 (作者の決め)。中身は connect/_chat.html (order_detail.html の block tab_rows・tab_empty)。
+    # 「仕入明細」は、この受注の明細に当てた得意先の仕入明細 (受けた仕入明細。作者の決め)。行の字は番号・版・締め期間・状態。
     tabs = (
         ("指示書", "workorders"),
         ("出荷", "shipments"),
@@ -291,7 +291,7 @@ class OrderLineNoBillClearView(BaseFormView):
 
 class OrderLineSelectView(BaseSelectView):
     model = OrderLine
-    # 得意先の名前・取引先コード・得意先の注文番号でも探せる (相手の注文書を見ながら選ぶ。初見テスト R4 2-2)。
+    # 得意先の名前・取引先コード・得意先の注文番号でも探せる (相手の注文書を見ながら選ぶ。作者の決め)。
     search_fields = (
         "order__order_no",
         "item__part_no",

@@ -2,7 +2,7 @@
 
 大きさの決まりはこの module の数、色と形の決まりは core/_summary_chart.html の 1 か所に置く。
 棒は主色の 1 色 (fill-primary)、基線は stroke-base-300。名前と値の字は svg の外の HTML の字 (text-xs と text-base-content/70。
-凡例と同じ 12px) で、図と一緒に縮まない (C50-1 = a。ダッシュボードの図 core/_chart_bars.html と注文の入口の図と同じ書き方)。
+凡例と同じ 12px) で、図と一緒に縮まない (作者の決め。ダッシュボードの図 core/_chart_bars.html と注文の入口の図と同じ書き方)。
 名前と値は ROW の px の高さの HTML の行に置き、svg は preserveAspectRatio="none" で高さを px に止める (入口の図と同じ形)。
 svg の高さの px は viewBox の高さと同じなので、行の中央と棒の中央 (y) が合う。座標は小数 1 桁の字。JS を使わない。
 """

@@ -1,6 +1,6 @@
 {% load seizou_icons seizou_tags %}
 {# 納品書を作るの入力のカード (shipping/deliverynote_form.html の画面の全体と shipping/_form_modal.html の小窓の両方が include する)。 #}
-{# 写した元: core/_form_card.html (候補 C74。請求書の新規登録の billing/_invoice_create_card.html と同じ作り)。form の開きの tag (小窓の形は htmx で同じ URL へ送る)・頭の案内の 1 行・欄の格子の 1 つずつの欄・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存)・_enter_guard.html は写した元の字のまま。 #}
+{# 写した元: core/_form_card.html (作者の決め。請求書の新規登録の billing/_invoice_create_card.html と同じ作り)。form の開きの tag (小窓の形は htmx で同じ URL へ送る)・頭の案内の 1 行・欄の格子の 1 つずつの欄・hidden の欄・next と confirmed の hidden・下の行 (キャンセルと保存)・_enter_guard.html は写した元の字のまま。 #}
 {# 変えた所: 欄の格子は form.head_fields (会社ごとの項目) だけにし、欄が無ければ格子を描かない。その下に出荷の節を置く。見出しの行 (「出荷」「必須」)・出荷の表 (form.rows。行の checkbox の見えない名前は今の行の字)・欄の誤りと案内の字。 #}
 {# 行が 0 のときは、表と案内の字の代わりに「納品書に入っていない出荷はありません。」の 1 行を出す (欄の誤りは出す)。下の行は行の数で包まない (止める処理を足さない)。赤と黄の知らせは右上の知らせ (core/_toasts.html)。小窓では core/_form_modal.html の帯。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
@@ -72,7 +72,7 @@
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{# 開いた元の画面の道 (?next=)。止まって描き直しても、保存の後もそこへ戻す (土台の BaseFormView.next_url) #}
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  {# 下の行 (キャンセルと保存)。core/_form_card.html と同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字。小窓は今の形のまま。C21)。 #}
+  {# 下の行 (キャンセルと保存)。core/_form_card.html と同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字。小窓は今の形のまま。作者の決め)。 #}
   {% if in_modal %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
   {% else %}

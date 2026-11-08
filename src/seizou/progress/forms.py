@@ -1,7 +1,7 @@
 """progress の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
 
 土台は service_kwargs() の辞書を検査の層の data に使い、同じ辞書で
-services.record_progress(workorder_step=..., qty=..., recorded_at=..., user=..., note=..., defect_qty=..., completes_step=...) を呼ぶ (01 の 10.4)。
+services.record_progress(workorder_step=..., qty=..., recorded_at=..., user=..., note=..., defect_qty=..., completes_step=...) を呼ぶ (部品の公開する関数の設計の決め)。
 ほかの部品の model は import せず、外部キーの先として引く (読むだけ)。
 """
 
@@ -17,7 +17,7 @@ from .models import Progress
 
 _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model
 
-#: 印の付いた工程を選んだときに「指示書の工程」の欄の下に出す字 (PROG-1c = a。断らない・色を変えない)。
+#: 印の付いた工程を選んだときに「指示書の工程」の欄の下に出す字 (作者の決め。断らない・色を変えない)。
 #: 実績の新規登録の画面で工程を選び直したときは progress/progress-form.js が同じ字を出し入れする。
 STEP_COMPLETED_HELP = "この工程には完了の印が付いています。実績は足せます。"
 
@@ -26,9 +26,9 @@ class ProgressRecordForm(forms.Form):
     """実績の入力。日時の既定は今。予定を超えた実数も入れられる (現物優先)。
 
     日時はブラウザの日付と時刻の選び (分まで) で、値の形はその欄が受ける「2026-11-06T14:30」(日付と時刻の間が T・秒なし) にする。
-    不良の数は空なら 0、「この工程を完了にする」はいつも空で始める (PROG-1b = a。?completes_step=on の付いた URL でも)。
+    不良の数は空なら 0、「この工程を完了にする」はいつも空で始める (作者の決め。?completes_step=on の付いた URL でも)。
     選んである工程 (送った値か ?workorder_step= の初期値) に完了の印の付いた実績があれば、「指示書の工程」の欄の下に
-    STEP_COMPLETED_HELP を出す (PROG-1c = a)。help_text は宣言でなく __init__ で置く (「?」の「入れる物」の表は宣言 = base_fields を読むので、字を変えない)。
+    STEP_COMPLETED_HELP を出す (作者の決め)。help_text は宣言でなく __init__ で置く (「?」の「入れる物」の表は宣言 = base_fields を読むので、字を変えない)。
     """
 
     submit_label = "記録する"
@@ -69,7 +69,7 @@ class ProgressRecordForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 印はいつも空で始める (PROG-1b = a)。土台の get_initial は新規登録の GET の鍵を全部初期値に写すので、ここで外す。
+        # 印はいつも空で始める (作者の決め)。土台の get_initial は新規登録の GET の鍵を全部初期値に写すので、ここで外す。
         self.initial.pop("completes_step", None)
         step_pk = _chosen_pk(self.data.get(self.add_prefix("workorder_step")) if self.is_bound else self.initial.get("workorder_step"))
         if step_pk is not None and services.step_completed(step_pk):
@@ -87,7 +87,7 @@ class ProgressRecordForm(forms.Form):
 
 
 class ProgressUpdateForm(forms.Form):
-    """実績の編集 (PROG-1d = b)。良品の数・不良の数・完了の印・日時・備考を直す。工程の欄は出さない (別の工程に入れた実績は消して入れ直す)。
+    """実績の編集 (作者の決め)。良品の数・不良の数・完了の印・日時・備考を直す。工程の欄は出さない (別の工程に入れた実績は消して入れ直す)。
 
     欄の名前・説明・誤りの字は実績の入力 (ProgressRecordForm) と同じ。
     ModelForm にしない。ModelForm は検査の前に新しい値を対象へ書き込み、検査の層 (R07) が直す前の数を読めなくなる。
@@ -141,7 +141,7 @@ class ProgressUpdateForm(forms.Form):
 
 
 class ProgressDeleteForm(forms.Form):
-    """実績の削除の確かめ (PROG-1e = a)。欄は無い (土台が delete_progress(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。"""
+    """実績の削除の確かめ (作者の決め)。欄は無い (土台が delete_progress(対象, user=…) を呼ぶ)。実行のボタンは赤の「削除」。"""
 
     submit_label = "削除"
     danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html)

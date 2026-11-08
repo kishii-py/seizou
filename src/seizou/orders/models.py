@@ -1,4 +1,4 @@
-"""受注の表 (01 の 4 節)。
+"""受注の表 (表の設計の決め)。
 
 項目の名前は中小企業共通 EDI の注文の必須の項目を元にした (得意先の注文番号・受注日・行番号・単価・数量・単位・納期)。
 単価の単位 (price_basis) は中小企業共通 EDI に当たる値の無い seizou の項目 (式に当たる数量単位コードと単価コードは無い。EDI の注文単価は 1 単位あたりの単価)。
@@ -67,7 +67,7 @@ class Order(models.Model):
     )
     note = models.CharField("備考", max_length=500, blank=True)
 
-    #: 変更の履歴 (core.history。決め HIST-1 の伝票の「受注」) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決めの伝票の「受注」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -99,7 +99,7 @@ class Order(models.Model):
         """この受注の明細を指す明細が入った請求書 (出荷の行と一式の行。取消も含む。1 枚に同じ受注の明細が 2 つあっても 1 行)。
 
         受注の詳細のタブのための読むだけの入口 (土台の tabs は名前で引く)。表は下流の部品の物で、orders は書かない。
-        請求書の明細は全部が受注の明細を指すので、一式の行 (出荷に結び付かない明細。決め PRICE-1d) だけの請求書もこの道で引ける。
+        請求書の明細は全部が受注の明細を指すので、一式の行 (出荷に結び付かない明細。作者の決め) だけの請求書もこの道で引ける。
         """
         return _part_model("billing", "Invoice").objects.filter(lines__order_line__order=self).distinct()
 
@@ -141,24 +141,24 @@ class OrderLine(models.Model):
     customer_part_no = models.CharField("得意先の品番", max_length=35, blank=True)
     qty = models.DecimalField("数量", max_digits=12, decimal_places=2)
     unit = models.CharField("単位", max_length=10, blank=True)
-    # 単位の数量単位コード (決め UNIT-1 = a。書くのは orders.services だけ。明細の単位の字が部品の単位と同じなら部品のコードを写し、違う字は名前から引く)
+    # 単位の数量単位コード (作者の決め。書くのは orders.services だけ。明細の単位の字が部品の単位と同じなら部品のコードを写し、違う字は名前から引く)
     unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
     unit_price = models.DecimalField("単価", max_digits=14, decimal_places=2)
-    # 単価の単位 (決め PRICE-1b)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは orders.services だけ。
+    # 単価の単位 (作者の決め)。部品の単位 (1 つあたり) か式 (一式。金額に数量を掛けない)。書くのは orders.services だけ。
     # 数量の単位の列 (unit) とは別。式は数量の単位でないので unit に入れない (数量は実際の個数のまま)。
     price_basis = models.CharField("単価の単位", max_length=10, choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
     due_date = models.DateField("納期", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
-    # 単価表から写した見積の番号 (決め PRICE-0)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。書くのは orders.services だけ。
+    # 単価表から写した見積の番号 (作者の決め)。中小企業共通 EDI の (明細行参照) 見積回答書ID を元にした列。手でも打てる。書くのは orders.services だけ。
     quote_no = models.CharField("見積の番号", max_length=35, blank=True, default="")
-    # 受信した注文の明細の工程名 (決め PRICE-5)。中小企業共通 EDI の工程名を元にした列。相手の工程の名前の字のまま持つ (自社の工程マスターにつながない)。受け入れ (connect) だけが入れる。
+    # 受信した注文の明細の工程名 (作者の決め)。中小企業共通 EDI の工程名を元にした列。相手の工程の名前の字のまま持つ (自社の工程マスターにつながない)。受け入れ (connect) だけが入れる。
     process_name = models.CharField("工程名", max_length=100, blank=True, default="")
-    # 請求しない明細の印 (作者の決め C107-3)。出し切らずに終えた一式を請求しないと決めた明細に、請求書の新規登録の一式の表から付ける。
+    # 請求しない明細の印 (作者の決め)。出し切らずに終えた一式を請求しないと決めた明細に、請求書の新規登録の一式の表から付ける。
     # 付けた明細は一式の表に出ず、その出荷も請求書の新規登録の候補と「請求書に入っていない出荷」の数に出さない。出荷の数と出荷の金額は今までどおり数える。書くのは orders.services.mark_no_bill と clear_no_bill だけ。
     no_bill = models.BooleanField("請求しない", default=False, editable=False)
 
-    #: 変更の履歴は受注の詳細の「履歴」に出す (core.history。決め HIST-1 の伝票の「受注」)
+    #: 変更の履歴は受注の詳細の「履歴」に出す (core.history。作者の決めの伝票の「受注」)
     history_owner = "order"
 
     class Meta:
@@ -183,7 +183,7 @@ class OrderLine(models.Model):
     def __str__(self):
         text = f"{self.order.order_no}-{self.line_no} {self.item.part_no} {self.item.name}"
         # 集計 (services.annotate_remaining) を通した明細だけ、得意先の名前と得意先の注文番号 (あれば) と受注の残りを足す
-        # (出荷の入力の候補の口の字。得意先の注文書を見ながら選べるように = 初見テスト R4 2-2)。
+        # (出荷の入力の候補の口の字。得意先の注文書を見ながら選べるように = 作者の決め)。
         # 残りは必ず末尾 (出荷の画面の JS が「 残り n」を読んで数量の欄の下に写す)。集計の無い明細は今の字のまま。
         remaining = getattr(self, "remaining_total", None)
         if remaining is None:
@@ -201,13 +201,13 @@ class OrderLine(models.Model):
     @property
     def detail_link_target(self):
         """詳細の基本の表でこの明細の値を押した時の行き先 (読むだけ)。親の受注。
-        明細には詳細の画面が無いので、core の field_items が getattr で読み、受注の詳細への link にする (初見テスト R5 の V69。候補 C80)。"""
+        明細には詳細の画面が無いので、core の field_items が getattr で読み、受注の詳細への link にする (作者の決め)。"""
         return self.order
 
     @property
     def price_unit_text(self):
         """単価の後ろに添える字 (読むだけ)。「¥250 / 個」の「個」、「¥50,000 / 式」の「式」。
-        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(決め PRICE-1b。関数は masters の price_basis_text)。"""
+        式なら「式」、ほかはこの明細の数量の単位、空なら「個」(作者の決め。関数は masters の price_basis_text)。"""
         return price_basis_text(self.price_basis, self.unit)
 
     @cached_property

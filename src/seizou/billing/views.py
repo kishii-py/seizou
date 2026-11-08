@@ -3,7 +3,7 @@
 class の中に書くのは、土台が上書きを許す属性だけ。保存は services の関数だけが行う (R13)。
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
-請求書の外で受け取った入金 (出荷を指す入金。決め C107-3c) の記録は ShipmentPaymentCreateView で、payment_detail は出荷の詳細へ移す。
+請求書の外で受け取った入金 (出荷を指す入金。作者の決め) の記録は ShipmentPaymentCreateView で、payment_detail は出荷の詳細へ移す。
 一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は取消でない入金の合計が合計に足りない発行の請求書 = 一部入金も入る
 (ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
 """
@@ -78,7 +78,7 @@ class InvoiceListView(BaseListView):
     def get_queryset(self):
         invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
         if self.flag_on("unpaid"):
-            # 入金の有無は印の when (_unpaid_only) が見る。状態の絞り (f_status) に読める値が無いときだけ、状態を発行に絞る (N120・N127)。
+            # 入金の有無は印の when (_unpaid_only) が見る。状態の絞り (f_status) に読める値が無いときだけ、状態を発行に絞る (開発の記録 docs/nights/20261104/N120.md・docs/nights/20261104/N127.md)。
             if not self.filter_chosen("status"):
                 invoices = invoices.filter(status=Invoice.STATUS_ISSUED)
         return invoices
@@ -93,8 +93,8 @@ class InvoiceDetailView(BaseDetailView):
     model = Invoice
     screen_name = "請求書の詳細"
     screen_help = "請求書の項目と明細。印刷用の画面と PDF は新しいタブで開きます。"
-    # 明細のタブの表が出荷と受注の明細と部品を読むので、3 つを行と一緒に 1 回で引く (N174。表は C17)
-    # 一式の行 (出荷が空) も同じ字が出るよう、明細の受注の明細から部品と受注を引く (出荷は空の外部キーを外部結合で引く。決め PRICE-1d)
+    # 明細のタブの表が出荷と受注の明細と部品を読むので、3 つを行と一緒に 1 回で引く (開発の記録 docs/nights/20261106/N174.md。表は作者の決め)
+    # 一式の行 (出荷が空) も同じ字が出るよう、明細の受注の明細から部品と受注を引く (出荷は空の外部キーを外部結合で引く。作者の決め)
     tabs = (("明細", "lines", ("shipment", "order_line__item", "order_line__order")),)
     template_name = "billing/invoice_detail.html"
 
@@ -216,7 +216,7 @@ class PaymentCancelView(BaseFormView):
 def payment_detail(request, pk):
     """保存と取消の後に請求書の詳細へ移るだけの口 (土台は保存の後に、services が返す Payment の _detail へ移す)。
 
-    請求書の外で受け取った入金 (請求書が空。決め C107-3c) は、その出荷の詳細へ移す (請求書の無い入金で落ちないため)。
+    請求書の外で受け取った入金 (請求書が空。作者の決め) は、その出荷の詳細へ移す (請求書の無い入金で落ちないため)。
     """
     payment = get_object_or_404(Payment, pk=pk)
     if payment.invoice_id is None:

@@ -14,7 +14,7 @@
   module が無い部品は飛ばす。search() が DatabaseError を投げた部品も飛ばす (HomeView の数字のカードと同じ)。
   module は次の 1 つを持ってもよい (持たなくてもよい。持たない部品も今までどおり探せ、「探した項目」の 1 行に出ないだけ)。
   - search_labels() -> list[str]: search() が探す項目の見出しの並び (例 ["題", "本文"])。検索の画面が、言葉があるときに
-      「探した項目」の 1 行へ「LABEL: 見出し・見出し」の形で出す (初見テスト R5 の候補 C36 の 2)。見出しは一覧の案内
+      「探した項目」の 1 行へ「LABEL: 見出し・見出し」の形で出す (作者の決め)。見出しは一覧の案内
       (BaseListView.search_hint) と同じく、表の項目は lookup_label、会社ごとの項目は列の label。search() と同じ lookup の並び
       (module の定数) から作り、字の 1 行と実際に探す所をずらさない。読むだけ。表を読まない。
 
@@ -134,7 +134,7 @@ def open_providers(user) -> list:
     訳: 部署の判定が on のとき、部署で一覧を開けない部品 (例 受注) の行を、横断の検索から読めないようにする。
     何のため: 検索は core の画面 (部署に関係なく開く) なので、部品ごとに門を通さないと、一覧の 403 で閉じた部品の行が検索で読める。
     log (既定) と off では can_open が真を返すので、今までどおり全部を探す (記録の行は書かない。検索は字を打つたびに開くため)。
-    出所 = Claude Security の走査の候補 11-07 (横断検索が部署の門を通らない)。
+    出所 = Claude Security の走査の指摘 (11-07) (横断検索が部署の門を通らない)。
     変えてよい条件 = 部署の門が一覧の画面でも部署を見なくなったとき (そのときは検索も同じにそろえる)。
     """
     return [module for module in providers() if access.can_open(user, provider_app(module), record=False)]
@@ -262,7 +262,7 @@ def as_column(column) -> SearchColumn:
 
 def display_section(section: SearchSection, *, hide_money=False) -> dict:
     """テンプレートが描く形。1 列 = SearchColumn、1 行 = {"cells", "url", "match"}、1 枡 = _rows.html と同じ印の辞書。
-    枡の boolean は値が真偽なら真で、テンプレートが bool_mark で印にする (C55)。"""
+    枡の boolean は値が真偽なら真で、テンプレートが bool_mark で印にする (作者の決め)。"""
     columns = [as_column(c) for c in section.columns]
     rows = []
     for row in section.rows:
@@ -336,7 +336,7 @@ class SearchView(ScreenMixin, TemplateView):
                 "customers": customers,
                 "partner": partner_value,
                 "sections": [display_section(s, hide_money=not access.can_see_money(self.request.user, record=False)) for s in sections],
-                # 「探した項目」の 1 行 (言葉があるときだけ。初見テスト R5 の候補 C36 の 2)
+                # 「探した項目」の 1 行 (言葉があるときだけ。作者の決め)
                 "searched_fields": searched_fields(modules, kind) if query else [],
                 "limit": LIMIT,
             }

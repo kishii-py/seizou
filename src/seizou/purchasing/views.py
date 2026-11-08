@@ -35,7 +35,7 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 def _subcontractor_choices():
-    """発注の一覧の取引先の絞りの候補 (取引先の種類が協力企業か両方で、使用中の物。発注を入れる form の候補と同じ = N135。名前の順)。"""
+    """発注の一覧の取引先の絞りの候補 (取引先の種類が協力企業か両方で、使用中の物。発注を入れる form の候補と同じ = 開発の記録 docs/nights/20261104/N135.md。名前の順)。"""
     partner_model = PurchaseOrder._meta.get_field("partner").related_model
     rows = active_partners().filter(role__in=(partner_model.ROLE_SUBCONTRACTOR, partner_model.ROLE_BOTH))
     return [(row.pk, str(row)) for row in rows.order_by("name", "pk")]
@@ -70,7 +70,7 @@ class PurchaseOrderListView(BaseListView):
         {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
     )
-    # 絞りのタブ (土台の presets。UX の案 3-A)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
+    # 絞りのタブ (土台の presets。作者の決め)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
     # 土台のタブは 4 つまで (PRESET_LIMIT)。「相手が条件付で受けた」「相手が保留した」はタブにせず、状態の絞りで選ぶ (詳細の黄の 1 行で気づく)。
     presets = (
         {"label": "下書き", "params": {"f_status": PurchaseOrder.STATUS_DRAFT}},
@@ -97,9 +97,9 @@ class PurchaseOrderDetailView(BaseDetailView):
         "発注の項目と明細、相手へ送った記録。「下書き」のときは送り直し、「下書き」「断られた」の発注と相手がまだ出荷していない送った発注は取消ができます。"
         "相手が出荷し終えるまでは「変更」で直した中身を送れます。"
     )
-    # 「会話」は connect の会話の言葉 (ChatMessage の related_name。相手の会社とのやり取り = C104)。最後に置く (件数のある最初のタブで開くので、送った発注は「送った記録」で開く)。
+    # 「会話」は connect の会話の言葉 (ChatMessage の related_name。相手の会社とのやり取り = 作者の決め)。最後に置く (件数のある最初のタブで開くので、送った発注は「送った記録」で開く)。
     # 中身は connect/_chat.html (purchaseorder_detail.html の block tab_rows・tab_empty)。connect の無い会社では、そのタブを出さない。
-    # 「仕入明細」は、この発注の受入が入った仕入明細 (PurchaseOrder.self_invoices。取消も含む。行の字は番号・版・締め期間・状態。C111)。「会話」の後に置く。
+    # 「仕入明細」は、この発注の受入が入った仕入明細 (PurchaseOrder.self_invoices。取消も含む。行の字は番号・版・締め期間・状態。作者の決め)。「会話」の後に置く。
     tabs = (("送った記録", "outbox_messages"), ("受入", "receipts"), ("会話", "chat_messages"), ("仕入明細", "self_invoices"))
     template_name = "purchasing/purchaseorder_detail.html"
 
@@ -216,7 +216,7 @@ class ReceiptListView(BaseListView):
         ("line__item", "部品"),
         "qty",
         "amount",
-        # 取消でない仕入明細の番号 (Receipt.self_invoice_no。入っていなければ空。C111)
+        # 取消でない仕入明細の番号 (Receipt.self_invoice_no。入っていなければ空。作者の決め)
         ("self_invoice_no", "仕入明細"),
         "note",
     )
@@ -267,7 +267,7 @@ class ReceiptCreateView(BaseFormView):
     )
 
 
-# --- 仕入明細 (受入をまとめて相手へ送る書類。候補 C111) ---
+# --- 仕入明細 (受入をまとめて相手へ送る書類。作者の決め) ---
 
 
 class SelfInvoiceListView(BaseListView):
@@ -302,7 +302,7 @@ class SelfInvoiceDetailView(BaseDetailView):
     使う人: 経理・生産管理 / いつ: 相手の答えを確かめるとき / 何のために: 明細ごとの受領日・数・金額と相手の答え、受入の金額との差を見る / 次にすること: 提案があれば受け入れて直す。確認できない明細は会話で相手と話す
 
     インボイス制度: 仕入明細書は売り手 (相手) の確認で適格請求書と同じ扱いになる (確かめた資料 = 中小企業共通 EDI インボイス仕様編 3.1.8)。
-    取適法: 受領日から 60 日を超える支払期日を黄の 1 行で知らせる (止めない。決め C111-2)。
+    取適法: 受領日から 60 日を超える支払期日を黄の 1 行で知らせる (止めない。作者の決め)。
     電子帳簿保存法: 送った中身は送り合った記録に残る。
     """
 
@@ -390,14 +390,14 @@ class PurchaseOrderLineSelectView(BaseSelectView):
 class PurchaseItemSelectView(BaseSelectView):
     model = PurchaseOrderLine._meta.get_field("item").related_model
     search_fields = ("part_no", "name")
-    # 単位だけを返す。部品の標準単価は受注の売りの単価で、協力企業への単価と違うので、発注の明細に写さない (C01-1 = a)。
-    # 単位のコード (数量単位コード) も返す (選ぶ欄の JS が明細の単位の欄 (一覧から選ぶ欄) に写す。決め UNIT-1)。
+    # 単位だけを返す。部品の標準単価は受注の売りの単価で、協力企業への単価と違うので、発注の明細に写さない (作者の決め)。
+    # 単位のコード (数量単位コード) も返す (選ぶ欄の JS が明細の単位の欄 (一覧から選ぶ欄) に写す。作者の決め)。
     # default_process は部品の標準の工程に協力企業に出す使用中の工程が 1 つだけのときの工程の pk (masters.services.with_default_process)。
-    # 選ぶ欄の JS が同じ行の工程の欄に写す (C100)。
+    # 選ぶ欄の JS が同じ行の工程の欄に写す (作者の決め)。
     columns = ("unit", "unit_code", "default_process")
 
     def get_queryset(self):
-        # 候補は使用中だけ (N135。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)
+        # 候補は使用中だけ (開発の記録 docs/nights/20261104/N135.md。発注の明細の部品の欄。送られた値は form の queryset が同じ絞りで確かめる)
         return with_default_process(active_items())
 
 

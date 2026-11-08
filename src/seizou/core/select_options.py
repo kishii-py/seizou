@@ -1,4 +1,4 @@
-"""選ぶ欄の候補の 2 段の字・最近使った物・0 件のときの登録の入口 (N162。core の候補の口 BaseSelectView が呼ぶ。読むだけで表に書かない)。
+"""選ぶ欄の候補の 2 段の字・最近使った物・0 件のときの登録の入口 (開発の記録 docs/nights/20261105/N162.md。core の候補の口 BaseSelectView が呼ぶ。読むだけで表に書かない)。
 
 - lines(obj): 候補の 2 段の字 (上の段, 下の段)。表 LINES に無い model は (str(obj), "") = 今の 1 行のまま。
 - with_company_fields(queryset): 会社ごとの項目のある model なら拡張の表を一緒に読む (1 ページで 30 回読まない)。
@@ -26,7 +26,7 @@ COMPANY_FIELDS = "*company_fields*"
 LINES = {
     "masters.Item": (("part_no",), ("name", COMPANY_FIELDS, "unit")),
     "masters.Partner": (("code", "short_name"), ("name", "role")),
-    # 数量の単位は上の段に名前、下の段に数量単位コード (決め UNIT-1)
+    # 数量の単位は上の段に名前、下の段に数量単位コード (作者の決め)
     "masters.QuantityUnit": (("name",), ("code",)),
     # 指示書は上の段に指示書番号、下の段に受注の明細の字 (OrderLine.__str__ の「受注番号-行番号 品番 品名」)
     "workorders.WorkOrder": (("wo_no",), ("order_line",)),
@@ -80,7 +80,7 @@ RECENT_SCAN = 50
 def recent(queryset) -> list:
     """queryset (候補の母集団。使用中と取引先の種類の絞りの後) の行のうち、最近の受注・発注・出荷で使った物を新しい順に RECENT_LIMIT 件まで。
 
-    「最近」は会社の中の全員の記録で見る (受注・発注・出荷の表に書いた人の列が無いため。N162 の迷った事の 1)。
+    「最近」は会社の中の全員の記録で見る (受注・発注・出荷の表に書いた人の列が無いため。開発の記録 docs/nights/20261105/N162.md の迷った事の 1)。
     日付の新しい順。同じ日付は RECENT_SOURCES の並びの順と、元の中の新しい行の順。部品の入っていない元と、DB が読めない元は飛ばす。
     """
     rows = []

@@ -1,4 +1,4 @@
-"""CSV の読み方の共通の関数 (05 の 8 節の「入れる」)。
+"""CSV の読み方の共通の関数 (CSV の取り込みの設計の決めの「入れる」)。
 
 部品の取り込みの form が使う。core の部品なので、ほかの部品を import しない (model は引数で受ける)。
 一覧の土台の CSV の書き出し (core.views の csv_response) も、真偽の字を to_text で作る (書き出しと取り込みの字を 1 か所にそろえるため)。
@@ -231,7 +231,7 @@ def neutralize(text: str) -> str:
     数の値 (Decimal・int・float) は呼ぶ側 (to_text) が通さない (負の数「-5」を字にしないため)。
     訳: 人や取引先が入れた字 (取引先の名前・部署・ロット・相手の注文番号など) が「=」などで始まると、書き出した CSV を
     表計算で開いたときに式として動き、別のサイトへのリンクや外の命令を起こせるため、字として読ませる。
-    出所 = Claude Security の走査の候補 (11-07 の 1・14・15・16・36・41・44・45) と OWASP の CSV injection の対策。
+    出所 = Claude Security の走査の指摘 (11-07) と OWASP の CSV injection の対策。
     変えてよい条件 = 書き出しの形を表計算で開かない形 (JSON など) に替える時か、式の字の一覧 (FORMULA_HEADS) を表計算の変化に合わせる時。
     取り込みの restore と 1 対で変える。
     """
@@ -246,7 +246,7 @@ def restore(text: str) -> str:
     例外: 人が「'=」のように「'」の後に式の字を続けて入れた正しい値は、書き出して取り込み直すと頭の「'」が 1 字欠ける
     (書き出しが付けた「'」と見分けられないため)。
     訳: 一覧の CSV をそのまま取り込み直したときに、書き出しが付けた「'」が値に入らないようにするため。
-    出所 = Claude Security の走査の候補 11-07 の対策 (neutralize) に合わせた AI の案。
+    出所 = Claude Security の走査の指摘 (11-07) の対策 (neutralize) に合わせた AI の案。
     変えてよい条件 = neutralize の付け方を変える時 (1 対で変える)。
     """
     if text.startswith(FORMULA_GUARD) and text[len(FORMULA_GUARD):].startswith(FORMULA_HEADS):

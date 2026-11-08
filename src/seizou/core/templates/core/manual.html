@@ -4,8 +4,8 @@
 {% block content %}
 {# 使い方 (画面ごとの説明書): 大きい画面は左に目次・右に本文、小さい画面は目次が上。本文は画面の目録の順に断片を縦に並べる。読むだけの画面。 #}
 {# 断片は class を持たない素の HTML なので、本文の箱の子の選び方の class で形を付ける (Tailwind の preflight が既定の見た目を消すため)。 #}
-{# 目次は details で開け閉めする (summary の形は左のメニューの大項目 core/_sidebar.html と同じ字)。HTML は開いた形で描き、1024px (lg) より狭い窓だけ nav の中の script が初めに閉じる。訳: phone で目次の行が畳めずに長く続き、前書きが窓の何枚も下にあった (依頼書 N256 = 候補 C48 の 1。所見 b-blind-12)。JS の無い窓と広い画面では全部の行が見える。script を nav の中 (details の後) に置くのは、nav の次の要素を本文の列のままにし、本文の節より前で閉じて /manual/#<画面> の飛び先をずらさないため。script に飛び先の link の字と nav の閉じの字を書かない (試験が nav の中の link を数える)。 #}
-{# 目次の頭には、前書きがあれば「はじめに」(前書きの箱 id="index" へ)、業務の流れがあれば「業務の流れ」(id="flows" へ) の行を置き、その後に目録の並びの画面の行を置く。字は固定で、summary の画面の数には入れない。印刷用 core/manual_print.html の目次も同じ 2 行。訳: 目次の 1 つ目を押すと前書きと業務の流れの箱を飛び越え、左の目次から業務の流れへ飛べなかった (依頼書 N265 = 候補 C48 の 1 の 2。所見 b-blind-12)。 #}
+{# 目次は details で開け閉めする (summary の形は左のメニューの大項目 core/_sidebar.html と同じ字)。HTML は開いた形で描き、1024px (lg) より狭い窓だけ nav の中の script が初めに閉じる。訳: phone で目次の行が畳めずに長く続き、前書きが窓の何枚も下にあった (開発の記録 docs/nights/20261106/N256.md = 作者の決め)。JS の無い窓と広い画面では全部の行が見える。script を nav の中 (details の後) に置くのは、nav の次の要素を本文の列のままにし、本文の節より前で閉じて /manual/#<画面> の飛び先をずらさないため。script に飛び先の link の字と nav の閉じの字を書かない (試験が nav の中の link を数える)。 #}
+{# 目次の頭には、前書きがあれば「はじめに」(前書きの箱 id="index" へ)、業務の流れがあれば「業務の流れ」(id="flows" へ) の行を置き、その後に目録の並びの画面の行を置く。字は固定で、summary の画面の数には入れない。印刷用 core/manual_print.html の目次も同じ 2 行。訳: 目次の 1 つ目を押すと前書きと業務の流れの箱を飛び越え、左の目次から業務の流れへ飛べなかった (開発の記録 docs/nights/20261106/N265.md = 作者の決め)。 #}
 <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
   <nav aria-label="目次" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs lg:sticky lg:top-22 lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto">
     <details id="seizou-manual-toc" class="group" open>

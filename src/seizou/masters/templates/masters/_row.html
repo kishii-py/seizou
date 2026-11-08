@@ -1,5 +1,5 @@
 {% load seizou_tags %}
-{# 部品と取引先 (N135) と工程 (N140) の一覧の 1 行。描き方は core/_rows.html の行と同じで、使用停止 (使用中が偽) の行だけ字を薄くする。休日の行には使わない。 #}
+{# 部品と取引先 (開発の記録 docs/nights/20261104/N135.md) と工程 (開発の記録 docs/nights/20261104/N140.md) の一覧の 1 行。描き方は core/_rows.html の行と同じで、使用停止 (使用中が偽) の行だけ字を薄くする。休日の行には使わない。 #}
 <tr id="row-{{ row.pk }}" class="row-hover h-10{% if row.url %} cursor-pointer{% endif %}{% if row.obj.active is False %} text-base-content/60{% endif %}" {% if row.url %}onclick="if(!event.target.closest('a')){window.location='{{ row.url }}'}"{% endif %}>
   {% for cell in row.cells %}
   {% if forloop.first and row.url and not cell.numeric and not cell.master %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}{% if cell.date or cell.datetime %} font-mono tabular-nums{% endif %}"><a class="link link-primary block max-w-xs truncate focus-visible:outline-2 focus-visible:outline-primary" href="{{ row.url }}" title="{{ cell.value|default_if_none:'' }}">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% elif cell.date %}{{ cell.value|date:"Y-m-d" }}{% else %}{{ cell.value|default_if_none:"" }}{% endif %}</a></td>

@@ -1,4 +1,4 @@
-"""注残の盤 (注文残の一覧。02 の 8 節) の列の値と合計を作る、読むだけの module。表に書かない。
+"""注残の盤 (注文残の一覧。一覧の画面の設計の決め) の列の値と合計を作る、読むだけの module。表に書かない。
 
 - 1 行の判断の値は BoardRow。OrderLine.board (読むだけの cached_property) が作り、一覧の columns が board__<名前> で読む。
 - 指示書・工程・実績の合計は prefetch_for で 1 ページ分まとめて読む。annotate_remaining の後に多の join を足さない
@@ -7,11 +7,11 @@
 - 在庫 (stock) は annotate_balance の Subquery で読む (join を足さない)。無ければ None。
 - 引当の合計 (receiving。「預かり」の列) は receiving.services.annotate_allocated の Subquery で読む (join を足さない)。
   無ければ None。「預かり待ち」の札は、引当の合計が受注の数より少なく、会社の設定 receiving_required が off (通す) で
-  ないときだけ (本体の決め 11-06 20:1x。通すの会社は支給材の無い注文が多く、全部の行に札が付くため)。N184。
+  ないときだけ (本体の決め 11-06 20:1x。通すの会社は支給材の無い注文が多く、全部の行に札が付くため)。開発の記録 docs/nights/20261106/N184.md。
 - 出荷 (shipping) と納品書は、行のメニューの「納品書を作る」の対象を決めるため、prefetch_for が別の問い合わせで読む (join を足さない)。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 - 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。枡の字は days_left_label
-  (「n 日遅れ」「今日」「あと n 日」。ダッシュボードの納期アラートと同じ型。W01 の直し 11-07)。
+  (「n 日遅れ」「今日」「あと n 日」。ダッシュボードの納期アラートと同じ型。直し 11-07)。
 - 盤の絞り (出荷の残りがある物だけ・納期・納期が過ぎた物だけ) は views.OrderLineListView.filters の宣言 (決め 11-04 17:3x)。
 """
 
@@ -91,7 +91,7 @@ def annotate_acceptance(queryset):
     """検収の数の合計 (acceptance_total) を副問い合わせで足す。connect の部品が無い (逆の関係 acceptances が無い) ときは 0。
 
     orders は connect を import しない (逆の関係の model を OrderLine の descriptor から取る)。副問い合わせなので、
-    annotate_remaining の出荷の Sum (join) と掛け合わない。決め 11-03 (EDI の 4 段目 = 検収。N54 が落とした盤の列)。
+    annotate_remaining の出荷の Sum (join) と掛け合わない。決め 11-03 (EDI の 4 段目 = 検収。開発の記録 docs/nights/20261103/N54.md が落とした盤の列)。
     """
     relation = getattr(OrderLine, "acceptances", None)
     if relation is None:
@@ -115,7 +115,7 @@ def prefetch_for(queryset):
 
     行の数に関わらず、指示書と工程の 2 回の問い合わせで済む。workorders の部品が無ければ queryset をそのまま返す。
     出荷 (納品書つき) も 1 回の問い合わせで読む (BoardRow.unnoted_shipment のため。shipping の部品が無ければ読まない)。
-    引当の合計 (allocated_total) は receiving の部品があれば Subquery で足す (問い合わせを増やさない。N184)。
+    引当の合計 (allocated_total) は receiving の部品があれば Subquery で足す (問い合わせを増やさない。開発の記録 docs/nights/20261106/N184.md)。
     """
     queryset = annotate_acceptance(queryset)
     if apps.is_installed("seizou.receiving"):
@@ -125,7 +125,7 @@ def prefetch_for(queryset):
         queryset = annotate_allocated(queryset)
     shipment_model = _shipment_model()
     if shipment_model is not None:
-        # prefetch は別の問い合わせなので、annotate_remaining の出荷の Sum と掛け合わない (N130)。
+        # prefetch は別の問い合わせなので、annotate_remaining の出荷の Sum と掛け合わない (開発の記録 docs/nights/20261104/N130.md)。
         shipments = shipment_model.objects.select_related("delivery_note").order_by("shipped_at", "pk")
         queryset = queryset.prefetch_related(Prefetch("shipments", queryset=shipments))
     workorder_model, step_model = _workorder_models()
@@ -209,14 +209,14 @@ class BoardRow:
 
     @cached_property
     def all_done(self) -> bool:
-        """指示書が 1 枚以上あり、全部の指示書の状態が完了 (最後の工程に完了の印。PROG-1a)。「進捗」の「完了」と段の帯の「4 完了」が読む。"""
+        """指示書が 1 枚以上あり、全部の指示書の状態が完了 (最後の工程に完了の印。作者の決め)。「進捗」の「完了」と段の帯の「4 完了」が読む。"""
         if not self.workorders:
             return False
         return all(state == type(w).PROGRESS_DONE for w, state in zip(self.workorders, self.workorder_states))
 
     @cached_property
     def started_count(self) -> int:
-        """実績が 1 件でもある (着手済か完了の) 指示書の数。段の帯の「着手」が読む (C27)。"""
+        """実績が 1 件でもある (着手済か完了の) 指示書の数。段の帯の「着手」が読む (作者の決め)。"""
         return sum(
             1
             for w, state in zip(self.workorders, self.workorder_states)
@@ -233,7 +233,7 @@ class BoardRow:
 
         状態は指示書の進みの状態の字 (WorkOrder.PROGRESS_LABELS) から選ぶ: 全部の指示書が完了なら「完了」、
         どれにも実績が無ければ「未着手」、ほかは「着手済」(指示書が 1 枚ならその指示書の状態と同じ字。
-        製造部が指示書を受け取った合図の印は作らない = 本人の決め WO-2 = b。初見テスト R5 の候補 C27)。
+        製造部が指示書を受け取った合図の印は作らない = 本人の決め)。
         """
         if not self.workorders:
             return "未"
@@ -294,7 +294,7 @@ class BoardRow:
 
     @cached_property
     def current_step(self):
-        """完了でない指示書の、完了の印の無い最初の工程 (無ければ None)。指示書が全部完了なら None (PROG-1a)。"""
+        """完了でない指示書の、完了の印の無い最初の工程 (無ければ None)。指示書が全部完了なら None (作者の決め)。"""
         model = type(self.workorders[0]) if self.workorders else None
         for state, steps in zip(self.workorder_states, self._steps_by_workorder):
             if state == model.PROGRESS_DONE:
@@ -356,7 +356,7 @@ class BoardRow:
         納期が過ぎていれば「n 日遅れ」、納期が今日なら「今日」、先なら「あと n 日」。days_left が None (納期が無い行・残 0 の行) は
         空の字 (枡の「—」はテンプレート)。「今日」は暦の日 (納期 = 今日) で決める。納期が先でも間に稼働日が無い日 (土曜に見る
         日曜の納期・金曜に見る土曜の納期) は「あと 0 日」。稼働日の 0 を「今日」と書くと、暦の日で数えるダッシュボードの
-        「あと 1 日」と食い違うため (W01 の直し 11-07。0 の字は本人が見て直してよい)。
+        「あと 1 日」と食い違うため (直し 11-07。0 の字は本人が見て直してよい)。
         """
         days = self.days_left
         if days is None:
@@ -424,7 +424,7 @@ class BoardRow:
     # --- 納品書 ---
     @cached_property
     def unnoted_shipment(self):
-        """納品書の無い出荷 (納品書が取消の物を含む) のうち、出荷日 → pk の順で最後の物。無ければ None (N130)。
+        """納品書の無い出荷 (納品書が取消の物を含む) のうち、出荷日 → pk の順で最後の物。無ければ None (開発の記録 docs/nights/20261104/N130.md)。
 
         行のメニューの「納品書を作る」が対象にする。決まりは納品書の入力の候補 (shipping の DeliveryNoteForm) と同じ。
         shipping の部品が無ければ None。prefetch があればその写しを読む (.all() だけ。納品書は select_related の写し)。

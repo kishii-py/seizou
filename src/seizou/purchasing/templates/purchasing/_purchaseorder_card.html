@@ -1,11 +1,11 @@
 {% load seizou_icons %}
 {# 発注の入力のカード (purchasing/purchaseorder_form.html の画面の全体と purchasing/_form_modal.html の小窓の両方が include する)。 #}
-{# 発注の欄と明細の行の表と「行を足す」の script。中身は purchaseorder_form.html にあった字のまま移した (N124)。 #}
+{# 発注の欄と明細の行の表と「行を足す」の script。中身は purchaseorder_form.html にあった字のまま移した (開発の記録 docs/nights/20261104/N124.md)。 #}
 {# 小窓の形 (in_modal) の form は、core/_form_card.html と同じ属性で同じ URL (GET の from_line と line を含む) へ htmx で送り、返った中身で小窓の箱を差し替える。 #}
 {# 小窓の中の「行を足す」の script は、htmx が差し替えた中身の script を実行するので動く見込み (ブラウザで未確認)。 #}
-{# 頭の 1 文の後ろの「…保存と同時に注文を送ります。」は、練習モードでは出さない (練習のサーバーは相手へ送らず、上の黄の帯と食い違うため。初見テスト R5 の V08)。 #}
-{# 2 文目は、送った発注の変更と取消 (相手が出荷し終えるまで送れる) に合わせた字 (C01-2 = a)。 #}
-{# 工程の列は協力企業に出す工程のある会社だけ (form.has_process)。単価の枡の中に見積の番号と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外。部品が空の行は押せない形。C100)。 #}
+{# 頭の 1 文の後ろの「…保存と同時に注文を送ります。」は、練習モードでは出さない (練習のサーバーは相手へ送らず、上の黄の帯と食い違うため。作者の決め)。 #}
+{# 2 文目は、送った発注の変更と取消 (相手が出荷し終えるまで送れる) に合わせた字 (作者の決め)。 #}
+{# 工程の列は協力企業に出す工程のある会社だけ (form.has_process)。単価の枡の中に見積の番号と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外。部品が空の行は押せない形。作者の決め)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。{% if not seizou.practice %}つながりのある取引先には、「{{ form.submit_label_plain }}」を押すと保存と同時に注文を送ります。送った発注は、相手が出荷し終えるまでは、変更と取消を相手へ送れます。{% endif %}</p>
@@ -69,7 +69,7 @@
   <div class="mt-4 flex justify-end"><button class="btn btn-outline btn-sm border-base-300" type="button" data-add-line>{% icon "plus" "size-4" %}行を足す</button></div>
 
   {% if warnings %}<input type="hidden" name="confirmed" value="1">{% endif %}
-  {# 下の行 (キャンセルと保存)。core/_form_card.html と同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字。小窓は今の形のまま。C21)。 #}
+  {# 下の行 (キャンセルと保存)。core/_form_card.html と同じ形 (画面の全体は窓の下の端に貼り付けて左に書きかけの字。小窓は今の形のまま。作者の決め)。 #}
   {% if in_modal %}
   <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
   {% else %}

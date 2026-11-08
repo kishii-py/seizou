@@ -1,11 +1,11 @@
-"""アカウント管理の services (02 の 7 節)。表に書くのはここだけ (R13)。
+"""アカウント管理の services (アカウントと権限の設計の決め)。表に書くのはここだけ (R13)。
 
 全部 transaction.atomic の中で書き、アカウントの変更は AccessLog に前と後 (snapshot) を残す。user は変えた人。
 返す物は利用者 (User)。core に利用者の詳細の画面が無いので、入力の土台の保存の後の移り先は一覧になる。
 断る変更は日本語の ValueError (何も変えず、記録も残さない)。入力の土台が赤の知らせにする。
-部署 (Department) の作る・直す・消すもここ。部署を直しても既にいる人の権限は変えない (N36 の約束)。
-部署の変更は AccessLog でなく変更の履歴 (core.services.record_history。決め HIST-1) に残す。アカウントの変更は今の AccessLog のまま書き、
-変更の履歴には二重に書かない (決め C106-2 = a)。
+部署 (Department) の作る・直す・消すもここ。部署を直しても既にいる人の権限は変えない (開発の記録 docs/nights/20261103/N36.md の約束)。
+部署の変更は AccessLog でなく変更の履歴 (core.services.record_history。作者の決め) に残す。アカウントの変更は今の AccessLog のまま書き、
+変更の履歴には二重に書かない (作者の決め)。
 """
 
 from __future__ import annotations
@@ -225,7 +225,7 @@ def update_department(target, data, user) -> Department:
     """部署を直す。data の鍵は name・apps・default_permissions・sort_order (無い鍵は今のまま)。
 
     表から読み直して直す (渡された物を書き換えない)。既にいる人の権限と部署の付け外しには触らない
-    (N36 の約束「部署と権限は別々に付け外しする」)。アカウントの記録の表 (AccessLog) には残さない (create_department と同じ)。
+    (開発の記録 docs/nights/20261103/N36.md の約束「部署と権限は別々に付け外しする」)。アカウントの記録の表 (AccessLog) には残さない (create_department と同じ)。
     user は変えた人で、変えた項目の前と後を変更の履歴に残す (開ける部品と既定の権限は画面の字)。返すのは直した部署 (土台が詳細へ移す)。
     """
     row = Department.objects.select_for_update().get(pk=target.pk)

@@ -1,7 +1,7 @@
 {% load seizou_icons seizou_tags workorders_plan %}
 {# 計画の詳細の小窓 (決め 11-04 14:5x)。生産計画の盤の棒と未計画のカードを押すと開く。枠 (dialog) は base.html の 1 か所。見るだけ (置き直しは盤のドラッグ)。 #}
 {# 中身は workorders_plan の plan_detail が plans.plan_detail で作る (小窓の view は土台のまま。R15)。形は core/_modal.html にそろえる (題・項目・「閉じる」・「詳細を見る」)。 #}
-{# 小窓の道を htmx でなく直に開いたときは、土台が core/modal_page.html から whole_page で include する (題は土台の題の段に出し、小窓の題と「閉じる」は描かない。見つけ FB-12)。 #}
+{# 小窓の道を htmx でなく直に開いたときは、土台が core/modal_page.html から whole_page で include する (題は土台の題の段に出し、小窓の題と「閉じる」は描かない。作者の決め)。 #}
 {% plan_detail object as plan %}
 {% if not whole_page %}<div class="flex items-start justify-between gap-4">
   <h3 class="min-w-0 truncate text-lg font-bold">計画の詳細</h3>
@@ -49,7 +49,7 @@
 </div>
 {# 在庫の見込みの図 (今日から 8 週)。数と座標は workorders_plan の plan_projection が plans.item_projection で作る (在庫の部品が無ければ出さない)。 #}
 {# 小窓の幅に合わせた小さな SVG。幅は viewBox の 448px (max-w-md) より広げない (tablet 以上で高さを 168px 以下に保つため。phone では縮む)。色は theme の class だけ。0 より大きい棒は主色、0 より下の棒 (足りない数) は fill-current と text-error で赤。系列ごとに for を分ける (class を組み立てない)。 #}
-{# 目盛りと日付の字は svg の外の HTML の字 (凡例と同じ 12px) で、図と一緒に縮まない (C50-1 = a。ダッシュボードの棒の図 core/_chart_bars.html と同じ形)。 #}
+{# 目盛りと日付の字は svg の外の HTML の字 (凡例と同じ 12px) で、図と一緒に縮まない (作者の決め。ダッシュボードの棒の図 core/_chart_bars.html と同じ形)。 #}
 {# 字は svg の箱に対する割合の位置 (plans の目盛りの top・日付の left・tick_label_right) に style で置く。字を置く包みも max-w-md にして svg と同じ幅にする (割合の位置が svg とずれないように)。 #}
 {# 目盛りの字は線の高さの中央、日付の字は週の初めの日の帯の左の端から。目盛りの字が svg の左の余白より長ければ、小窓の左の余白にはみ出す。字は読み上げない (棒の title で読む)。 #}
 {% plan_projection plan.item as outlook %}
