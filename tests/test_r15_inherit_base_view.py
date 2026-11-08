@@ -12,7 +12,12 @@ from seizou.core.rules.constants import BASE_VIEWS, OVERRIDABLE_ATTRS
 from tests.rules_helpers import line_of as _line_of, rules_md_text as _rules_md_text
 
 FIXTURES = Path(__file__).parent / "fixtures" / "rules" / "r15"
-CORE_VIEWS = Path(seizou.core.__file__).parent / "views.py"
+CORE_VIEWS = Path(seizou.core.__file__).parent / "views"
+
+
+def _core_views_files() -> list[Path]:
+    """core の画面の土台の package (views/) の中の .py を全部。"""
+    return sorted(CORE_VIEWS.glob("*.py"))
 
 
 def test_bad_example_reports_views_not_inheriting_base():
@@ -72,9 +77,11 @@ def test_only_views_files_are_checked(tmp_path):
 
 
 def test_core_views_are_out_of_scope():
+    files = _core_views_files()
     result = check([CORE_VIEWS])
 
-    assert result.scanned == 1
+    assert len(files) >= 1
+    assert result.scanned == len(files)
     assert result.violations == ()
 
 
@@ -86,13 +93,15 @@ def test_message_is_the_rules_md_text():
 
 
 def test_base_view_names_match_core_views():
-    tree = ast.parse(CORE_VIEWS.read_text(encoding="utf-8"))
+    files = _core_views_files()
     names = {
         node.name
-        for node in tree.body
+        for path in files
+        for node in ast.parse(path.read_text(encoding="utf-8")).body
         if isinstance(node, ast.ClassDef) and node.name.startswith("Base") and node.name.endswith("View")
     }
 
+    assert len(files) >= 1
     assert names == BASE_VIEWS
 
 
@@ -145,10 +154,12 @@ def test_nested_class_in_view_is_reported(tmp_path):
 
 
 def test_overridable_constants_match_core_views():
-    tree = ast.parse(CORE_VIEWS.read_text(encoding="utf-8"))
+    files = _core_views_files()
+    assert len(files) >= 1
     (value,) = [
         node.value
-        for node in tree.body
+        for path in files
+        for node in ast.parse(path.read_text(encoding="utf-8")).body
         if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "OVERRIDABLE" for target in node.targets)
     ]

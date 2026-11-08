@@ -106,9 +106,10 @@ def test_package_scan_is_clean_and_fast():
 
 def test_one_file_is_checked_within_one_second():
     started = time.perf_counter()
-    check([SEIZOU_DIR / "core" / "views.py"])
+    result = check([SEIZOU_DIR / "core" / "views" / "lists.py"])
 
     assert time.perf_counter() - started < 1
+    assert result.scanned >= 1
 
 
 def test_migrations_tests_and_library_folders_are_not_walked(tmp_path):
