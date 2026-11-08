@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
@@ -31,6 +32,8 @@ from seizou.core.manual import UNREADABLE, fragment_name, read_fragment
 
 from . import tools
 from .models import AssistantProposal
+
+logger = logging.getLogger(__name__)
 
 #: 鍵を入れる環境変数の名前 (intake と同じ名前。intake を import しないので、intake の無い会社でも動く)
 API_KEY_ENV = "ANTHROPIC_API_KEY"
@@ -607,8 +610,10 @@ def _carry_out(proposal, user, confirm):
         result = function(**proposal["arguments"], confirm=confirm)
     except TypeError:
         result = {"ok": False, "error": MESSAGE_PROPOSAL_ARGS}
-    except Exception:
+    except Exception as error:
         # 思わぬ誤りでも窓を落とさない。中身は文に入れない。保存の後の誤りかもしれないので、承認できる状態に戻さない。
+        # 運用者が保存されたかを確かめられるよう、記録に道具の名前と例外の種類だけを書く (引数の中身は書かない)。
+        logger.warning("AI の提案の承認で書く道具 %s が思わぬ誤りで止まり、処理中のまま返しました (保存の後の誤りかもしれません): %s", tool, type(error).__name__)
         return {**base, "state": AssistantProposal.STATE_RUNNING, "notice": MESSAGE_PROPOSAL_FAILED}
     if not isinstance(result, dict):
         return refused(MESSAGE_PROPOSAL_FAILED)

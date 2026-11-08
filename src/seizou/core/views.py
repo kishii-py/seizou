@@ -2274,7 +2274,7 @@ class HomeView(ScreenMixin, TemplateView):
 def decimal_or_none(value) -> Decimal | None:
     try:
         return Decimal(str(value))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - 数に読めない値 (空・字など) は None (読む側が「値が無い」と扱う。誤りでない)
         return None
 
 
