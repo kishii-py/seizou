@@ -6,7 +6,7 @@
 - 預かり残 = その明細の引当の合計 − その明細の出荷済みの合計。出荷は shipping の Shipment を apps.get_model で読む
   (出荷の部品が無ければ 0。orders.board の形)。
 - 金額は持たない。在庫の動き (stock) とはつながない (次の版で)。
-- 引数の順は 対象 → 値 → user → * の後のキーワード (01 の 10.1)。番号の無い入力の誤りは日本語の ValueError。
+- 引数の順は 対象 → 値 → user → * の後のキーワード (services の書き方の設計の決め)。番号の無い入力の誤りは日本語の ValueError。
 """
 
 from __future__ import annotations
