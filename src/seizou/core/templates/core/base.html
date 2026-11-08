@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% if seizou.practice %}練習: {% endif %}{% block title %}{{ screen_name|default:"seizou" }}{% endblock %}{% if seizou.company_name %} | {{ seizou.company_name }}{% endif %}</title>
-{# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。ロゴから作った印があればそれ、無ければ部品の favicon.svg (N166)。 #}
+{# 印 (favicon)。ログインと誤りの画面もこの head を使う (block body だけを上書きするため)。ロゴから作った印があればそれ、無ければ部品の favicon.svg (開発の記録 docs/nights/20261105/N166.md)。 #}
 {% company_favicon seizou.company as favicon %}{% if favicon %}
 <link rel="icon" href="{{ favicon.icon }}" type="image/png">
 <link rel="apple-touch-icon" href="{{ favicon.touch }}">
@@ -49,7 +49,7 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
   <input id="seizou-drawer" type="checkbox" class="drawer-toggle" aria-label="メニューの開け閉め">
   <div class="drawer-content flex min-h-screen min-w-0 flex-col">
     {% include "core/_topbar.html" %}
-    {# 右下の「AI に質問」の丸いボタン (assistant/_panel.html。下から 24px・幅と高さ 40px) が、画面の最後の行と「保存」を隠さないよう、窓を出す画面だけ下に 136px (pb-34 = 前の 96px にボタンの高さの 40px を足した。決め 11-05 15:0x。N160) 空ける。余白の段 (2・4・6) の外の例外。lg:p-6 が下の余白も上書きするので lg:pb-34 も書く。決め C37 で一度外し、本人の決め 11-07 09:3x (右下の丸を戻す) で戻した。 #}
+    {# 右下の「AI に質問」の丸いボタン (assistant/_panel.html。下から 24px・幅と高さ 40px) が、画面の最後の行と「保存」を隠さないよう、窓を出す画面だけ下に 136px (pb-34 = 前の 96px にボタンの高さの 40px を足した。決め 11-05 15:0x。開発の記録 docs/nights/20261105/N160.md) 空ける。余白の段 (2・4・6) の外の例外。lg:p-6 が下の余白も上書きするので lg:pb-34 も書く。作者の決めで一度外し、本人の決め 11-07 09:3x (右下の丸を戻す) で戻した。 #}
     {% if "assistant" in seizou.parts and user.is_authenticated %}<main class="flex-1 p-4 pb-34 lg:p-6 lg:pb-34">{% else %}<main class="flex-1 p-4 lg:p-6">{% endif %}
       {% comment %}画面の頭の白い帯 (本人の決め 11-07 17:0x = 形 A)。灰色の地 (bg-base-200) に直接置くのは場所を表す面だけ: 題・「?」・ボタン (block heading。詳細などは子が上書きする) と、
          画面を切り替えるタブ (block heading_tabs。フィードバックのタブ) を 1 つの白い帯に載せ、帯は上の帯から続け (main の余白の外まで広げる)、下の端に 1px の線を引く。
@@ -128,7 +128,7 @@ seizou-select.js の overflow-visible (小窓の箱に候補の一覧を切ら�
   });
 })();
 (function () {
-  // 画面の一部を取りに行く要求 (htmx) の失敗を知らせる (指示書 11-07 の見つけ FB-02 と FB-01)。受ける所はここの 1 か所。
+  // 画面の一部を取りに行く要求 (htmx) の失敗を知らせる (作者の決め 11-07)。受ける所はここの 1 か所。
   // - 失敗 (4xx・5xx の応答 = htmx:responseError、通信切れ = htmx:sendError、時間切れ = htmx:timeout) は右上の赤い知らせ (段 2) で出す。
   //   出し方は、画面の一部の差し替えの止まった知らせと同じ seizou:notice の合図 (level stop。seizou-modal.js が写す元の赤い箱を写す)。
   //   新しい知らせの部品を作らない。字は「<操作>できません。<理由>。<次にすること>。」(操作は GET なら「読み込めません」、ほかは「送れません」)。

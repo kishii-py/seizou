@@ -144,7 +144,7 @@ def has_time(started) -> bool:
     """clock() で取った started から、次の 1 回の呼び出しを始めてよいか (締め切りまでの残りが ROUND_SECONDS 秒以上か)。
 
     各回の待ちは今の 60 秒のままなので、残りが 60 秒より短ければ次の回を始めない (合計は DEADLINE_SECONDS の 75 秒の内)。
-    訳: 1 つの質問の待ちの合計を 75 秒の内に収め、nginx と gunicorn の 90 秒で画面が誤りになる前に答えを返し、thread を長くふさがないため。出所 = エンタープライズ化の調べ 第一弾の候補 18 の確かめ直しの直し方の直し (a) (11-07)。変えてよい条件 = gunicorn の --timeout と nginx の proxy_read_timeout を変えたとき、または各部品の 1 回の待ち (TIMEOUT_SECONDS) を変えたとき。
+    訳: 1 つの質問の待ちの合計を 75 秒の内に収め、nginx と gunicorn の 90 秒で画面が誤りになる前に答えを返し、thread を長くふさがないため。出所 = エンタープライズ化の調べを受けた作者の決め (11-07)。変えてよい条件 = gunicorn の --timeout と nginx の proxy_read_timeout を変えたとき、または各部品の 1 回の待ち (TIMEOUT_SECONDS) を変えたとき。
     """
     return DEADLINE_SECONDS - (_now() - started) >= ROUND_SECONDS
 
@@ -282,7 +282,7 @@ def take_watch_call() -> bool:
     見張り (intake の extract_to_inbox) が、同じ中身の確かめの後、読み取りに回す前に 1 枚ごとに呼ぶ
     (同じ中身で API を呼ばない物は数えない。形式・大きさ・鍵で API の前に断られる物は 1 枚と数える)。
     数は置き場の cache/ai/ のファイルで、日付ごとの鍵に持つ (目安。同時に動く見張りが 2 つあると 1〜2 枚ずれうる)。
-    訳: 注文書の見張りの費用に 1 日の上限を付けるため。API を呼ぶ回数で数え、超えた物は読まずに置いたまま (動かさず、次の日に読む)。出所 = 本人の決め 11-08 00:29 (見張り 1 日 200 枚) と、エンタープライズ化の調べ 第一弾の候補 18 の直し方の直し (d) (11-07)。変えてよい条件 = 本人が決め直したとき、または会社が設定 ai_limits の watch_per_day で変えたとき。
+    訳: 注文書の見張りの費用に 1 日の上限を付けるため。API を呼ぶ回数で数え、超えた物は読まずに置いたまま (動かさず、次の日に読む)。出所 = 本人の決め 11-08 00:29 (見張り 1 日 200 枚) と、エンタープライズ化の調べを受けた作者の決め (11-07)。変えてよい条件 = 本人が決め直したとき、または会社が設定 ai_limits の watch_per_day で変えたとき。
     """
     limit = conf.ai_limits()["watch_per_day"]
     key = f"{CACHE_PREFIX}watch-day:{timezone.localdate().isoformat()}"

@@ -24,7 +24,7 @@ class Command(BaseCommand):
         "--verify で、戻さずに本番に触らず、控えから戻せるかを確かめる。"
     )
 
-    # 戻しは、ほかの設定に誤りがあっても動かなければならない (05 の 4 節の禁じること)。
+    # 戻しは、ほかの設定に誤りがあっても動かなければならない (決まりの検査の設計の決めの禁じること)。
     requires_system_checks = []
 
     def add_arguments(self, parser):

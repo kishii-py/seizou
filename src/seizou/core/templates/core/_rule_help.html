@@ -5,7 +5,7 @@
   <form method="dialog"><button class="btn btn-ghost btn-square btn-sm" type="submit" aria-label="閉じる" autofocus>{% icon "x" "size-4" %}</button></form>
 </div>{% endif %}
 {% if whole_page %}<div>{% else %}<div class="mt-4 max-h-[70vh] overflow-y-auto">{% endif %}
-  {# 並びは RULES.md の行の文 → この会社の今の設定の行 (設定の鍵のある番号だけ) → 節の見出し。設定の行は「既定は知らせる」の見出しより前に置き、動きと食い違って見えないようにする (初見テスト R5 の V31)。RULES.md の行が無くても設定の行は出す。 #}
+  {# 並びは RULES.md の行の文 → この会社の今の設定の行 (設定の鍵のある番号だけ) → 節の見出し。設定の行は「既定は知らせる」の見出しより前に置き、動きと食い違って見えないようにする (作者の決め)。RULES.md の行が無くても設定の行は出す。 #}
   {% if rule %}<p>{{ rule.text }}</p>{% else %}<p class="text-base-content/70">決まりの一覧 (RULES.md) に {{ code }} の行が見つかりません。</p>{% endif %}
   {% if setting_line %}<p class="mt-2">{{ setting_line }}</p>{% endif %}
   {% if rule %}<p class="mt-2 text-base-content/70">{{ rule.section }}</p>{% endif %}

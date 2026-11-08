@@ -1,6 +1,6 @@
 {% load seizou_icons %}
-{# 詳細の頭の「⋯」(その他の操作) のメニュー (N163。決め 11-05 16:2x)。赤い操作 (取消・削除) 1 つを、メニューの最後に赤の字で置き、主のボタンから離す (押し間違えを防ぐ)。出す条件 (状態と権限) は呼ぶ側が見てから include する。 #}
-{# context: more_url (移る先)・more_label (字)・more_modal (真なら同じ URL の data-modal-form を足す = 小窓で開く。N158)。開け閉めは core の js/seizou-row-menu.js (Esc・外の押下・項目の押下で閉じる)。 #}
+{# 詳細の頭の「⋯」(その他の操作) のメニュー (開発の記録 docs/nights/20261105/N163.md。決め 11-05 16:2x)。赤い操作 (取消・削除) 1 つを、メニューの最後に赤の字で置き、主のボタンから離す (押し間違えを防ぐ)。出す条件 (状態と権限) は呼ぶ側が見てから include する。 #}
+{# context: more_url (移る先)・more_label (字)・more_modal (真なら同じ URL の data-modal-form を足す = 小窓で開く。開発の記録 docs/nights/20261105/N158.md)。開け閉めは core の js/seizou-row-menu.js (Esc・外の押下・項目の押下で閉じる)。 #}
 <details class="dropdown dropdown-end row-menu" data-detail-more>
   <summary class="btn btn-outline border-base-300" aria-label="その他の操作" title="その他の操作">⋯</summary>
   <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">

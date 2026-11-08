@@ -1,16 +1,16 @@
 {% extends "core/base.html" %}
 {% load seizou_tags seizou_icons %}
 {% block title %}{{ object }} | {{ screen_name|default:"seizou" }}{% endblock %}
-{# 詳細: 頭の型 (パンくず・大きい題と状態の印と「?」・右にボタン。N163)、tabs で基本情報と関係する物、ファイルの節。関係する物の行は block tab_rows (部品と取引先の詳細が、部品の取引先を表に差し替える)。空のタブの字は block tab_empty (指示書の詳細が、進捗のタブに入れる場所の 1 文を足す。部品の詳細が、標準の工程のタブに意味の 1 文を足す)。 #}
+{# 詳細: 頭の型 (パンくず・大きい題と状態の印と「?」・右にボタン。開発の記録 docs/nights/20261105/N163.md)、tabs で基本情報と関係する物、ファイルの節。関係する物の行は block tab_rows (部品と取引先の詳細が、部品の取引先を表に差し替える)。空のタブの字は block tab_empty (指示書の詳細が、進捗のタブに入れる場所の 1 文を足す。部品の詳細が、標準の工程のタブに意味の 1 文を足す)。 #}
 {% block heading %}
-{# 詳細の頭の型 (決め 11-05 16:2x。N163)。1 段目にパンくず (一覧の名前 › 題)、2 段目の左に大きい題・状態の印・「?」(要点の札 = head_chips。子が block heading の中で tag の as で置く。3 つまで)、右にボタン。小さい画面の名前の行はやめた (発注の 2 段をやめる。画面の名前はタブの題と「?」)。 #}
+{# 詳細の頭の型 (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N163.md)。1 段目にパンくず (一覧の名前 › 題)、2 段目の左に大きい題・状態の印・「?」(要点の札 = head_chips。子が block heading の中で tag の as で置く。3 つまで)、右にボタン。小さい画面の名前の行はやめた (発注の 2 段をやめる。画面の名前はタブの題と「?」)。 #}
 {# パンくずの一覧の名前は、子が with の tag で渡す crumb か、土台の BaseDetailView が一覧の画面の名前から引く list_name。パンくずがあれば「一覧に戻る」は出さない。一覧の名前が引けない詳細だけ、ボタンの左端に「一覧に戻る」。 #}
 {# ボタンは左から block actions (副。白い線)・block more (「⋯」。赤い操作 1 つは core/_detail_more.html を include し、最後に赤の字で置く)・block edit_button (主のボタン 1 つ。土台は「編集」。土台の「編集」は開いた詳細の道を ?next= で渡す (編集の画面の「キャンセル」で詳細へ戻る)。ほかの主のボタンを持つ詳細はここを上書きする)。 #}
 {% with crumb_name=crumb|default:list_name %}
 {% if crumb_name %}<nav aria-label="パンくず" class="mb-2 flex flex-wrap items-center gap-2 text-sm">{% app_icon screen_app "size-4 text-base-content/60" %}{% if list_url %}<a class="rounded text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary" href="{{ list_url }}">{{ crumb_name }}</a>{% else %}<span>{{ crumb_name }}</span>{% endif %}{% icon "chevron-right" "size-4 text-base-content/60" %}<span class="font-medium" aria-current="page">{{ object }}</span></nav>{% endif %}
 <div class="mb-4 flex flex-wrap items-start justify-between gap-4" data-detail-head>
   <div class="min-w-48 flex-1">
-    {# 状態の印の無い詳細は、題と「?」を折り返さない組 (min-w-0) に入れ、「?」だけが次の行へ落ちないようにする (題は truncate で縮む。初見テスト R5 の r5-a-08・r5-b-10。N266)。block heading_badge は状態の枝にだけ置くので、状態 (choices つきの status) の無い model の子が heading_badge を上書きしても出ない (今上書きする請求書と指示書は status を持つ)。 #}
+    {# 状態の印の無い詳細は、題と「?」を折り返さない組 (min-w-0) に入れ、「?」だけが次の行へ落ちないようにする (題は truncate で縮む。作者の決め。開発の記録 docs/nights/20261106/N266.md)。block heading_badge は状態の枝にだけ置くので、状態 (choices つきの status) の無い model の子が heading_badge を上書きしても出ない (今上書きする請求書と指示書は status を持つ)。 #}
     <div class="flex flex-wrap items-center gap-2">
       {% if status %}
       <h1 class="truncate text-3xl font-bold tracking-tight" title="{{ object }}">{{ object }}</h1>
@@ -36,7 +36,7 @@
 {% endwith %}
 {% endblock %}
 {% block content %}
-{# 右の列 (案 3-D・8-B。N150): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)。狭い幅は 1 列で、全幅の口 block wide (子の明細。受注は明細の節、発注は #po-live) → block main (子の流れ・メモ) → 右のカード → 関係する物のタブ → block after_tabs (子の枠。請求書の入金の枠) → 添付の順 (カードより先に明細を見せる。決め 11-06 22:2x の C26-1 a。初見テスト R5 の候補 C26 の 5)。lg 以上は 1 段目に全幅の口 (明細の表が窓 1280 で右のカードの横の箱に入らず切れたため。決め 11-06 22:2x = C22)、2 段目の左に block main、3 段目の左にタブ・block after_tabs・添付、右のカードは 2・3 段目にまたがる。3 段目は 1fr (右が高いときの空きを左の列の一番下に出す)。全幅の口は if aside の中なので、aside を置かない詳細の HTML の字は変わらない。block main を aside の閉じと同じ行に置くのは、aside を置かない詳細の HTML の字を変えないため (if の外に出る字は改行 2 つだけ)。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。1 列の詳細は、基本情報と関係する物のタブ → block after_tabs → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
+{# 右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md): 子のテンプレートが block content の中で tag の as で aside (右の列のカードの並び) を置いてから block.super を呼ぶと、幅 lg 以上で左右の 2 列 (左が広く、右は 20rem)。狭い幅は 1 列で、全幅の口 block wide (子の明細。受注は明細の節、発注は #po-live) → block main (子の流れ・メモ) → 右のカード → 関係する物のタブ → block after_tabs (子の枠。請求書の入金の枠) → 添付の順 (カードより先に明細を見せる。決め 11-06 22:2x)。lg 以上は 1 段目に全幅の口 (明細の表が窓 1280 で右のカードの横の箱に入らず切れたため。決め 11-06 22:2x)、2 段目の左に block main、3 段目の左にタブ・block after_tabs・添付、右のカードは 2・3 段目にまたがる。3 段目は 1fr (右が高いときの空きを左の列の一番下に出す)。全幅の口は if aside の中なので、aside を置かない詳細の HTML の字は変わらない。block main を aside の閉じと同じ行に置くのは、aside を置かない詳細の HTML の字を変えないため (if の外に出る字は改行 2 つだけ)。aside を置かない詳細は今の 1 列のまま (基本情報のタブを出す)。1 列の詳細は、基本情報と関係する物のタブ → block after_tabs → 添付の順。カードの形は orders の orders_detail の tag の docstring。カードの項目の名は小さい灰の字、値は太い字。 #}
 {% if aside %}<div id="detail-columns" class="grid gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_auto_1fr] lg:items-start">
 <div id="detail-wide" class="min-w-0 lg:col-span-2 lg:row-start-1">{% block wide %}{% endblock %}</div>
 <div class="min-w-0 lg:col-start-1 lg:row-start-2">{% endif %}
@@ -74,7 +74,7 @@
     <div class="absolute right-2 top-2">{% include "core/_screen_help.html" with part="basic" label="基本情報の説明" %}</div>
     <p class="mb-2 text-xs font-medium text-base-content/60">基本</p>
     <dl class="grid gap-x-6 sm:grid-cols-2">
-      {# マスターでない相手に詳細の画面があれば、値をその詳細への link にする (field.url。明細は親の伝票。部署でその部品を使わない人には字のまま。同じタブで移る。右の列のカードの値も同じ。候補 C80)。 #}
+      {# マスターでない相手に詳細の画面があれば、値をその詳細への link にする (field.url。明細は親の伝票。部署でその部品を使わない人には字のまま。同じタブで移る。右の列のカードの値も同じ。作者の決め)。 #}
       {% for field in fields %}
       <div class="grid grid-cols-[6rem_1fr] sm:grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
         <dt class="text-base-content/70">{{ field.label|without_yen_unit }}</dt>
@@ -86,7 +86,7 @@
           {% else %}{% with day=field.value|weekday_ja %}{% if day %}<span class="font-mono tabular-nums">{{ field.value|date:"Y-m-d" }}</span> <span class="text-xs text-base-content/60">({{ day }})</span>{% with clock=field.value|time:"H:i" %}{% if clock %} <span class="font-mono tabular-nums">{{ clock }}</span>{% endif %}{% endwith %}{% else %}{{ field.value|yen_if:field.money }}{% endif %}{% endwith %}{% endif %}</dd>
       </div>
       {% endfor %}
-    {# block basic_extra: 子のテンプレートが基本の表の最後に行を足す所 (在庫の動きの詳細の「元の記録」の行。候補 C89) #}{% block basic_extra %}{% endblock %}</dl>
+    {# block basic_extra: 子のテンプレートが基本の表の最後に行を足す所 (在庫の動きの詳細の「元の記録」の行。作者の決め) #}{% block basic_extra %}{% endblock %}</dl>
     {% if files %}
     <p class="mb-2 mt-6 text-xs font-medium text-base-content/60">ファイル</p>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -127,7 +127,7 @@
     {% endblock %}{% endif %}
   </div>
   {% endfor %}
-  {# 履歴のタブ (決め HIST-1。core.history。model に印のある詳細だけ)。関係する物のタブの後ろに置く。「?」は付けない。右の列のある詳細で関係する物のタブが無ければ、このタブで開く。 #}
+  {# 履歴のタブ (作者の決め。core.history。model に印のある詳細だけ)。関係する物のタブの後ろに置く。「?」は付けない。右の列のある詳細で関係する物のタブが無ければ、このタブで開く。 #}
   {% if history %}
   <label class="tab gap-2 rounded-lg has-checked:bg-primary has-checked:text-primary-content focus-within:outline-2 focus-within:outline-primary">
     <input type="radio"{% if aside and not tabs %} checked{% endif %} name="detail-tabs" aria-label="履歴">履歴<span class="badge badge-sm tabular-nums">{{ history.count|comma }}</span>
@@ -139,7 +139,7 @@
   {% endif %}
 </div>
 {% endif %}
-{# 最後に直した日時と人 (決め C40-1。履歴の一番新しい行。列を足さないのは「残す仕組みは 1 つ」= HIST-1 のため)。行が無ければ「—」(今ある行は、次に保存するまで「—」)。 #}
+{# 最後に直した日時と人 (作者の決め。履歴の一番新しい行。列を足さないのは「残す仕組みは 1 つ」= 作者の決めのため)。行が無ければ「—」(今ある行は、次に保存するまで「—」)。 #}
 {% if history %}<p class="mt-2 text-xs text-base-content/70" data-last-change>最後に直した {% if history.last %}<span class="font-mono tabular-nums">{{ history.last.when|date:"Y-m-d H:i" }}</span> ・ {{ history.last.who }}{% else %}—{% endif %}</p>{% endif %}
 {% block after_tabs %}{% endblock %}{% if "attachments" in seizou.parts %}{% include "attachments/_panel.html" %}{% endif %}
 {% if aside %}</div>

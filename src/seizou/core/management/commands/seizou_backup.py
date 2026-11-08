@@ -29,7 +29,7 @@ def keep_days(value: str) -> int:
 class Command(BaseCommand):
     help = "データベースと上げたファイルと答えの YAML を、日時の名前のフォルダに控える (バックアップ)。.env (鍵) は控えない。"
 
-    # 控えは、ほかの設定に誤りがあっても取れなければならない (05 の 4 節の禁じること)。
+    # 控えは、ほかの設定に誤りがあっても取れなければならない (決まりの検査の設計の決めの禁じること)。
     requires_system_checks = []
 
     def add_arguments(self, parser):

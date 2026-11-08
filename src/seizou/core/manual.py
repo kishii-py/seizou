@@ -1,4 +1,4 @@
-"""使い方のページ (05 の 10 節。画面ごとの説明書。業務マニュアルの部品 seizou.manuals とは別)。会社の置き場の manual/ にある画面ごとの説明書を、目次つきで 1 ページに並べる画面と、その約束。
+"""使い方のページ (画面の目録と使い方の設計の決め。画面ごとの説明書。業務マニュアルの部品 seizou.manuals とは別)。会社の置き場の manual/ にある画面ごとの説明書を、目次つきで 1 ページに並べる画面と、その約束。
 
 約束 (会社の置き場が持つ物。/seizou:manual の命令が書く):
   置き場: Path(settings.BASE_DIR) / "manual" の 1 か所。BASE_DIR が無ければ、置き場が無いのと同じに扱う。
@@ -15,7 +15,7 @@
 
 画面の並び:
   目次と本文は目録の並び (部品の並びと URL の並び) のまま。左のメニューの区分には分けない。
-  使い方の画面と印刷の目次は、頭に「はじめに」(前書きがあるとき) と「業務の流れ」(流れがあるとき) の行を置き、その後が目録の並び (依頼書 N265)。
+  使い方の画面と印刷の目次は、頭に「はじめに」(前書きがあるとき) と「業務の流れ」(流れがあるとき) の行を置き、その後が目録の並び (開発の記録 docs/nights/20261106/N265.md)。
   /manual/?print=1 は印刷用の 1 枚 (core/manual_print.html。左のメニューと上の帯なし) を返す。
 
 冊子 (PDF):
@@ -32,18 +32,18 @@
   htmx でない要求 (新しいタブ・JS の無いとき) は /manual/#<anchor> へ移す。anchor が画面の目録に無ければ 404。
   絵の相対の道 (src="images/…") は、小窓を開いたページの道で解けないように /manual/images/ に直して出す (置き場のファイルは直さない)。
 
-自動の付け足し (依頼書 N168。置き場のファイルは直さず、出すときに断片の字の後に足す。断片の無い画面と読めない画面には足さない):
+自動の付け足し (開発の記録 docs/nights/20261105/N168.md。置き場のファイルは直さず、出すときに断片の字の後に足す。断片の無い画面と読めない画面には足さない):
   入れる物: 画面の view が form_class を持ち、断片に <h3>入れる物</h3> が無ければ、欄の名前・必須・説明の表 (input_rows)。
   絵: 断片に <img が無く、manual/images/<名前>.png があれば、その絵 (命令 manage.py seizou_manual_shots が撮る)。
   止まるときの文: 部品の services.py の断りの文のうち REFUSAL_HEADS で始まり、画面から起きない文の表 (NOT_FROM_SCREEN) に無い物 (refusal_texts)。
-    使い方の画面と印刷と小窓は、画面の view の service からたどれる文だけを「この画面で止まるときの文」として画面ごとに足す (screen_refusals。依頼書 N256)。
+    使い方の画面と印刷と小窓は、画面の view の service からたどれる文だけを「この画面で止まるときの文」として画面ごとに足す (screen_refusals。開発の記録 docs/nights/20261106/N256.md)。
     service を持たない画面 (一覧・詳細・ダッシュボードなど) と、たどれる文が無い画面には足さない。
     冊子は、その部品の最初の章の前に 1 回だけ置く (manual_sections(booklet=True) の app_refusals)。小窓で枠 (?part=) を選んだときは何も足さない。
 
-業務の流れの章 (依頼書 N169。断片は使わず、固定の表 FLOWS から描く):
+業務の流れの章 (開発の記録 docs/nights/20261105/N169.md。断片は使わず、固定の表 FLOWS から描く):
   使い方の画面と印刷の 1 枚は画面の箱の並びの前に、冊子は目次 (と前書き) の後で最初の画面の章の前に、同じ core/_manual_flows.html を出す。
   手順の画面の名前は、同じページのその画面の章 (id = 断片の名前) へ飛ぶ。
-  使い方の画面と印刷の目次には頭に 1 行入れ (依頼書 N265)、冊子の目次と章の番号と栞には入れない。
+  使い方の画面と印刷の目次には頭に 1 行入れ (開発の記録 docs/nights/20261106/N265.md)、冊子の目次と章の番号と栞には入れない。
   手順の画面が目録に無い (部品が入っていない) 手順は落とす。最初の手順が落ちた流れは出さない。流れが 1 つも無ければ章を出さない。
 """
 
@@ -117,7 +117,7 @@ FRAGMENT_TEMPLATE = "core/_manual_fragment.html"
 #: 断片の無い画面の 1 文の前半 (テンプレートが /seizou:manual の案内を続ける)
 MISSING_SENTENCE = "この画面の説明書はまだありません。"
 
-#: 業務の流れの章の流れ (依頼書 N169)。1 つの流れ = {"title", "steps"}。1 つの手順 = {"url_name", "do", "stage", "note"} と、相手の会社の手順だけ "remote": True。
+#: 業務の流れの章の流れ (開発の記録 docs/nights/20261105/N169.md)。1 つの流れ = {"title", "steps"}。1 つの手順 = {"url_name", "do", "stage", "note"} と、相手の会社の手順だけ "remote": True。
 #: url_name は画面の目録の URL の名前 (相手の会社の手順は、相手が使う同じ画面)。do は人がすること、note は終わると変わること (無ければ空)。
 #: stage は受注の段 (orders.timeline.STAGES) か発注の段 (purchasing.timeline.STAGES) の字そのまま (段の変わらない手順は空)。字を変えるときは、その 2 つと合わせる。
 FLOWS = (
@@ -164,7 +164,7 @@ BOOKLET_PRIMARY_COLOR = "#1f3a5f"
 #: 冊子の表紙の副題
 BOOKLET_SUBTITLE = "画面ごとの操作の手引きと、お金と数の決まり"
 
-#: 止まるときの文の 1 文目の語 (依頼書 N156 の型。tests/test_wording.py の REFUSAL_HEADS と同じ字の組)
+#: 止まるときの文の 1 文目の語 (開発の記録 docs/nights/20261105/N156.md の型。tests/test_wording.py の REFUSAL_HEADS と同じ字の組)
 REFUSAL_HEADS = (
     "保存できません。",
     "取り消せません。",
@@ -180,7 +180,7 @@ REFUSAL_HEADS = (
     "保留できません。",
 )
 
-#: 止まるときの文のうち、画面からは起きない物 (依頼書 N256 = 候補 C48 の 2 の 2)。1 行 = (部品, refusal_texts の字, 画面から起きない訳)。
+#: 止まるときの文のうち、画面からは起きない物 (開発の記録 docs/nights/20261106/N256.md = 作者の決め)。1 行 = (部品, refusal_texts の字, 画面から起きない訳)。
 #: 画面の form が作らない値 (英字の鍵や選択肢の外の値) への断りで、画面を使う人には起きないので、冊子・使い方の画面・印刷・小窓の全部から除く。
 #: 字は _literal_text の字 (f-string の {…} は「…」)。英字を含むかで一律に除かない (.env・URL・brand_color・industry の文は画面から起きる)。
 #: services.py の文を直して字が合わなくなると tests/test_core_manual_auto.py が落ちる (表が何も言わずに効かなくなるのを防ぐ)。
@@ -430,7 +430,7 @@ def refusal_texts(app: str) -> list[str]:
 
     ファイルを pathlib で読み、ast で見る (import しない・inspect を使わない)。同じ文は 1 つにし、ファイルの並びのまま返す。
     services.py の無い部品と、会社が足した app は空の並び。相手の会社への返事の文は頭の語で始まらないので入らない。
-    画面から起きない文の表 (NOT_FROM_SCREEN) の文は除く (冊子・使い方の画面・印刷・小窓の全部に効く。依頼書 N256)。
+    画面から起きない文の表 (NOT_FROM_SCREEN) の文は除く (冊子・使い方の画面・印刷・小窓の全部に効く。開発の記録 docs/nights/20261106/N256.md)。
     """
     excluded = _not_from_screen(app)
     return [text for text in all_refusal_texts(app) if text not in excluded]

@@ -1,4 +1,4 @@
-"""入力の欄の widget (05 の 2 節。枠は core)。
+"""入力の欄の widget (選ぶ欄の設計の決め。枠は core)。
 
 RemoteSelect: 候補をサーバーの候補の口 (BaseSelectView の子) から 1 ページずつ取る <select>。
 描くときは選んである値の <option> だけを描き、全件を描かない (候補は static の js/seizou-select.js が
@@ -13,12 +13,12 @@ DecimalField・FloatField の数の入力をこれに替える。送られた字
 初期値の Decimal は詳細と同じ字 (seizou_tags.comma。「1,200」「12.5」) で出し、印 data-number を付ける
 (js/seizou-number.js が、この印の欄だけを、欄を離れた時に 3 桁ごとの区切りの字にそろえる)。
 IntegerInput: 整数の欄。同じ形で inputmode="numeric"。入力の土台が IntegerField の数の入力をこれに替える。
-DatalistInput: 字の欄に、既にある値の候補 (<datalist>) を付ける。候補は描くときに読む。候補に無い字もそのまま送る (断らない)。C28
-IsoDateInput: 日付の欄。type="date" と ISO の字 (2026-11-04) に、年の上限 max="9999-12-31" を付ける。C31
+DatalistInput: 字の欄に、既にある値の候補 (<datalist>) を付ける。候補は描くときに読む。候補に無い字もそのまま送る (断らない)。作者の決め
+IsoDateInput: 日付の欄。type="date" と ISO の字 (2026-11-04) に、年の上限 max="9999-12-31" を付ける。作者の決め
 上限が無いと、chromium (Chrome・Edge) の日付の欄は年の区切りに 6 桁 (275760 年) まで受け、4 桁で月へ進まない。
 そのため 8 桁を続けて打つと「202611/02/0」のように崩れる。一覧の絞りの期間の欄 (core/_filters.html) も同じ上限を付ける。
 Safari の系統は、Playwright の webkit (Safari そのものではない) で上限を付けても直らなかった。Mac と iPad の Safari そのものでは試していない。
-ClearableFileWidget: 今のファイルを「クリア」で外せるファイルの欄。<input type=file> だけを描き、「現在:」の link と「クリア」は core/_file_field.html が枠の上に描く。C40
+ClearableFileWidget: 今のファイルを「クリア」で外せるファイルの欄。<input type=file> だけを描き、「現在:」の link と「クリア」は core/_file_field.html が枠の上に描く。作者の決め
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ class DecimalInput(forms.TextInput):
 
     def format_value(self, value):
         # 初期値の Decimal は詳細と同じ字 (comma。3 桁ごとの区切り・小数の末尾の 0 を落とす) で出す (1200.00 →「1,200」・12.50 →「12.5」)。
-        # 初見テスト 5 回目 U43・a-flagged-12。打った字 (字で来る bound の値) はそのまま。
+        # 作者の決め。打った字 (字で来る bound の値) はそのまま。
         if isinstance(value, Decimal):
             return comma(value)
         return super().format_value(value)
@@ -130,7 +130,7 @@ class IntegerInput(forms.TextInput):
 
 
 class DatalistInput(forms.TextInput):
-    """字の欄に、既にある値の候補を HTML の <datalist> で付ける (初見テスト 5 回目の V83。候補 C28 の 3)。
+    """字の欄に、既にある値の候補を HTML の <datalist> で付ける (作者の決め)。
 
     欄は自由に打てるまま。候補に無い字もそのまま送り、知らせも出さない (断らない)。
     values は候補の字の並びを返す関数 (引数無し)。描くとき (render) に 1 回だけ呼び、作る時には呼ばない。
@@ -154,7 +154,7 @@ class DatalistInput(forms.TextInput):
 
 
 class IsoDateInput(forms.DateInput):
-    """日付の欄 (type="date")。値は ISO の字 (2026-11-04) で描き、年の上限 max="9999-12-31" を付ける (初見テストの V39・U41。候補 C31 の 1)。
+    """日付の欄 (type="date")。値は ISO の字 (2026-11-04) で描き、年の上限 max="9999-12-31" を付ける (作者の決め)。
 
     上限の理由は頭の注記のとおり (chromium で 8 桁を続けて打てるようにするため)。
     Django の DateField が受ける年は 9999 年まで (Python の date の上限) なので、上限で入らなくなる日付は無い (断る処理ではない)。
@@ -170,7 +170,7 @@ class IsoDateInput(forms.DateInput):
 
 
 class ClearableFileWidget(forms.ClearableFileInput):
-    """今のファイルを「クリア」で外せるファイルの欄。描くのは <input type=file> だけにする (初見テスト R5 の a-flagged-13。候補 C40 の その 2)。
+    """今のファイルを「クリア」で外せるファイルの欄。描くのは <input type=file> だけにする (作者の決め)。
 
     Django の ClearableFileInput は「現在: <link>」「クリア」「変更:」を input と同じ所に描くので、破線の枠
     (core/_file_field.html) の中に入り、枠の中に字と check が並んでいた。この子は input だけを描き、

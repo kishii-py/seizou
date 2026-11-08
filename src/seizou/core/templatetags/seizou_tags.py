@@ -1,6 +1,6 @@
 """共通の template tag。
 
-master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (01 の 10.3。決め 11-02 12:5x)。
+master_link: 品目か取引先を渡すと名前を出し、押すと小窓で開く link になる (core の公開する物の設計の決め。決め 11-02 12:5x)。
 小窓の URL は <app>:<model>_modal の約束 (例 masters:item_modal)。無ければ名前だけを出す。
 comma: 数を 3 桁ごとの区切りつきで出す (Decimal は小数の末尾の 0 を落とす。None は空)。{{ x|comma:0 }} で小数の桁を決める (見るだけの丸め)。
 yen: 金額の字。comma の字の頭に「¥」を付ける ({{ x|yen }}・{{ x|yen:0 }}・{{ x|floatformat:"-2g"|yen }}。100450 → ¥100,450、-1000 → -¥1,000)。数の形でない字 (「—」など) はそのまま。
@@ -13,11 +13,11 @@ can_write: {% can_write "<app>.<Model>" as x %} で、部品の model の書く�
 部署の判定が on のときは、ボタンの行き先の部品 (app= で渡す。無ければ model の部品) を部署で開けない人にも出さない (core.access.can_open と同じ判定)。
 has_required: {% if form|has_required %} で、form の見える欄に必須の欄があるか (入力の土台の案内の文を出すか)。
 rule_code: {{ notice.code|rule_code }} で、決まりの番号 (R と 2 桁) ならその字、ほかは空。
-split_first_sentence: {% with parts=notice.message|split_first_sentence %} で、知らせの文を 1 文目 (最初の「。」まで) と残りの 2 つに分ける (core/_notices.html が 1 文目を太字にする。N156)。
+split_first_sentence: {% with parts=notice.message|split_first_sentence %} で、知らせの文を 1 文目 (最初の「。」まで) と残りの 2 つに分ける (core/_notices.html が 1 文目を太字にする。開発の記録 docs/nights/20261105/N156.md)。
 weekday_ja: {{ day|weekday_ja }} で、日付の曜日の 1 字 (月〜日)。日付でない物と None は空 (一覧の日付の枡と詳細の日付の項目が添える)。
 status_badge: {% status_badge obj %} で、状態 (status) の印を状態の色の表 (core.status_colors) の意味の色で出す (core/_status_badge.html)。dot=True で頭に点 (詳細の見出し)、small=True で小さい印。
 bool_mark: {% bool_mark value %} で、真偽の値の印 (真 = チェックの丸の絵を主色で・偽 = 何も出さない。core/_bool_mark.html)。一覧の枡と詳細と小窓の項目が、値が真偽のとき (boolean が真) に使う。
-company_favicon: {% company_favicon seizou.company as favicon %} で、ロゴから作った印の URL の辞書 (icon・touch) か None (core.services.company_icons。N166)。
+company_favicon: {% company_favicon seizou.company as favicon %} で、ロゴから作った印の URL の辞書 (icon・touch) か None (core.services.company_icons。開発の記録 docs/nights/20261105/N166.md)。
 """
 
 import re
@@ -81,7 +81,7 @@ def can_manage_accounts(context):
 def can_open(context, app):
     """{% can_open "connect" as can_inbox %}。部署で app の画面 (一覧・入力・盤) を開ける人か (core.access.can_open と同じ判定 = 左のメニューの絞り)。
 
-    見るだけの入口 (一覧へ移る link) を、部署で開けない人に出さないため (押すと 403 になる入口を出さない = 見つけ GR-03)。
+    見るだけの入口 (一覧へ移る link) を、部署で開けない人に出さないため (押すと 403 になる入口を出さない = 作者の決め)。
     部署の判定が on のときだけ偽になりうる。記録は書かない (record=False)。
     """
     from seizou.core import access
@@ -154,7 +154,7 @@ def rule_code(value):
 
 @register.filter
 def split_first_sentence(value):
-    """{% with parts=notice.message|split_first_sentence %}。知らせの文を (1 文目, 残り) の 2 つに分ける (N156)。
+    """{% with parts=notice.message|split_first_sentence %}。知らせの文を (1 文目, 残り) の 2 つに分ける (開発の記録 docs/nights/20261105/N156.md)。
 
     1 文目は最初の「。」までの字 (赤は「保存できません。」のような頭、黄は状況の文)。残りは前後の空白を落とした字。
     「。」が無ければ全部が 1 文目で、残りは空の字。None は空の字。
@@ -182,7 +182,7 @@ def weekday_ja(value):
 
 @register.inclusion_tag("core/_status_badge.html")
 def status_badge(obj, dot=False, small=False):
-    """{% status_badge obj %}。obj の状態 (status) の印を、状態の色の表 (core.status_colors) の意味の色で出す (案 4-C・8-A。N152)。
+    """{% status_badge obj %}。obj の状態 (status) の印を、状態の色の表 (core.status_colors) の意味の色で出す (作者の決め。開発の記録 docs/nights/20261105/N152.md)。
 
     字は状態の表示名 (get_status_display)。色は obj の部品 (_meta.app_label) と値で読む (部品で意味が分かれる字のため)。
     dot が真なら頭に点 (詳細の見出し)、small が真なら小さい印 (最初の画面の最近の受注)。表に無い値は今の主色のまま。
@@ -195,13 +195,13 @@ def status_badge(obj, dot=False, small=False):
 
 @register.inclusion_tag("core/_bool_mark.html")
 def bool_mark(value):
-    """{% bool_mark value %}。真偽の値の印 (本人の決め 11-06 17:1x。C55)。真ならチェックの丸の絵、偽と真偽でない値は何も出さない。"""
+    """{% bool_mark value %}。真偽の値の印 (本人の決め 11-06 17:1x)。真ならチェックの丸の絵、偽と真偽でない値は何も出さない。"""
     return {"value": value}
 
 
 @register.simple_tag
 def company_favicon(company):
-    """ロゴから作った印 (favicon) の URL の辞書か None。土台の head が印の行を 2 通りに分けるのに使う (N166)。"""
+    """ロゴから作った印 (favicon) の URL の辞書か None。土台の head が印の行を 2 通りに分けるのに使う (開発の記録 docs/nights/20261105/N166.md)。"""
     from seizou.core import services
 
     return services.company_icons(company)

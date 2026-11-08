@@ -15,7 +15,7 @@
       <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを閉じる">{% icon "x" "size-4" %}</label>
     </div>
     <nav class="flex-1 overflow-y-auto px-4 py-2" aria-label="メニュー">
-      {# 入口の横の待っている数 (決め 11-05 の 1-A) は、入口の <a> の外 (同じ li の中) の入れ物 (id="menu-count-…"。数が 0 でも残る = 受入の一覧と発注の詳細が hx-select-oob で入れ替える的) に、別の <a> として置く。押すと、その数で絞った一覧 (context_processors の MENU_COUNTS の移る先) が開く (決め 11-07 20:5x の 2。nav-01)。<a> の中に <a> を入れない (HTML として誤り)。 #}
+      {# 入口の横の待っている数 (決め 11-05) は、入口の <a> の外 (同じ li の中) の入れ物 (id="menu-count-…"。数が 0 でも残る = 受入の一覧と発注の詳細が hx-select-oob で入れ替える的) に、別の <a> として置く。押すと、その数で絞った一覧 (context_processors の MENU_COUNTS の移る先) が開く (決め 11-07 20:5x の 2。nav-01)。<a> の中に <a> を入れない (HTML として誤り)。 #}
       {# 大項目 = details (JS 無し)。name をそろえて、1 つ開くとほかが閉じる。今の画面の大項目には open を付ける。中項目 (受注管理など) は小さい見出し。ダッシュボードの括りと入口が 1 つだけの括りは、開け閉め無しで入口を直に出す (collapsible が偽)。決め 11-03 14:1x。戻るの後は末尾の script が今の大項目を開き直す。 #}
       {% for section in seizou.sections %}
       {% if section.collapsible %}
@@ -52,7 +52,7 @@
     {% endif %}
   </aside>
 </div>
-{# 戻る (htmx の履歴の復元) は body の中身を差し替える。新しい中身が古い中身より先に入るので、同じ name の details の取り合いで今の大項目が閉じる (本人の初見テスト 3 回目)。差し替えの後に今の大項目 (data-seizou-active) を開き直す。差し替えのたびにこの script も入り直すので、登録は 1 回だけ。 #}
+{# 戻る (htmx の履歴の復元) は body の中身を差し替える。新しい中身が古い中身より先に入るので、同じ name の details の取り合いで今の大項目が閉じる (作者の決め)。差し替えの後に今の大項目 (data-seizou-active) を開き直す。差し替えのたびにこの script も入り直すので、登録は 1 回だけ。 #}
 <script>
 if (!window.seizouSidebarReopen) {
   window.seizouSidebarReopen = true;

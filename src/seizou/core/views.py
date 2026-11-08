@@ -1,4 +1,4 @@
-"""画面の土台 (01 の 2 節と 10.3)。
+"""画面の土台 (画面の土台と core の公開する物の設計の決め)。
 
 部品の画面はここの Base*View を継承する (R15)。継承した画面が上書きしてよいのは
 model・ordering・columns・search_fields・filters・presets・tabs・form_class・service・template_name・
@@ -118,8 +118,8 @@ class Notice:
 
 
 #: 入力の土台が欄の検査で止まった時の赤の知らせ (BaseFormView.form_invalid) の 1 文目。
-#: 決め 11-06 C57-3「保存されなかったら理由が何でも出す。欄の誤りなら 1 (欄の下の赤い字) と 2 (止まった知らせ) の両方」。
-#: service の関数の名前で選ぶ (依頼書 N156 の表のうち入力の土台に当たる行)。字は core.manual.REFUSAL_HEADS の組の中だけ。
+#: 決め 11-06「保存されなかったら理由が何でも出す。欄の誤りなら 1 (欄の下の赤い字) と 2 (止まった知らせ) の両方」。
+#: service の関数の名前で選ぶ (開発の記録 docs/nights/20261105/N156.md の表のうち入力の土台に当たる行)。字は core.manual.REFUSAL_HEADS の組の中だけ。
 #: 名前が cancel_ で始まる物は「取り消せません。」、BaseFormView.DELETE_SERVICE_PREFIXES で始まる物は「削除できません。」、
 #: 下の表の名前はその字、ほかの全部 (service の無い画面も) は「保存できません。」。
 REFUSAL_HEAD_SAVE = "保存できません。"
@@ -178,7 +178,7 @@ def invalid_form_message(form, head: str) -> str:
 
     欄の外の誤り (form.non_field_errors) が無い時は、誤りのある欄の名前と直し方。名前が 1 つも取れない時 (明細の行か隠しの欄だけ) は
     「入れた値に誤りがあります。…」。欄の外の誤りがある時は、その字を " " でつないで続け、名前の取れる欄の誤りもあれば
-    「「品名」の欄も直してください。」を足す (欄の外の誤りの帯はこの知らせに移した。決め 11-06 C57-3)。
+    「「品名」の欄も直してください。」を足す (欄の外の誤りの帯はこの知らせに移した。決め 11-06)。
     """
     labels = invalid_field_labels(form)
     errors = " ".join(str(error) for error in form.non_field_errors())
@@ -189,12 +189,12 @@ def invalid_form_message(form, head: str) -> str:
     return f"{head}入れた値に誤りがあります。赤い字のとおりに直してから、もう一度押してください。"
 
 
-#: 画面の一部だけを差し替える応答で、止まった知らせ (赤) と確かめ (黄) を右上に出す合図の名前 (core/static/js/seizou-modal.js が受ける。決め 11-07 C57-5)
+#: 画面の一部だけを差し替える応答で、止まった知らせ (赤) と確かめ (黄) を右上に出す合図の名前 (core/static/js/seizou-modal.js が受ける。決め 11-07)
 NOTICE_EVENT = "seizou:notice"
 
 
 def add_notice_trigger(response, notice=None, warnings=()):
-    """応答に、止まった知らせと確かめを右上の知らせに出す合図 (見出し HX-Trigger の seizou:notice) を付けて返す (決め 11-07 C57-5)。
+    """応答に、止まった知らせと確かめを右上の知らせに出す合図 (見出し HX-Trigger の seizou:notice) を付けて返す (決め 11-07)。
 
     画面の一部だけを差し替える応答では、右上の知らせ (core/_toasts.html) が差し替えに入らない。合図を受けた seizou-modal.js が、
     base.html の template#seizou-toast-template の赤 (stop) と黄 (check) の箱を写す (見た目と印は _toasts.html と同じ。段は CLAUDE.md の「知らせの強さ」)。
@@ -228,7 +228,7 @@ def model_url(model, kind: str, *args) -> str | None:
 
 
 def screen_name_of(url: str | None) -> str:
-    """URL の画面の名前 (画面の class の screen_name)。詳細のパンくずの 1 段目に一覧の名前を出すため (N163)。
+    """URL の画面の名前 (画面の class の screen_name)。詳細のパンくずの 1 段目に一覧の名前を出すため (開発の記録 docs/nights/20261105/N163.md)。
 
     URL が無いか、引けないか、画面の class が名前を持たなければ空。空なら詳細は「一覧に戻る」を出す。
     reverse は script の頭 (置き場の道) を付けた道を返し、resolve はそれを受けないので、頭を外してから引く。
@@ -494,7 +494,7 @@ class FilterSpec:
     flag: f_<name>=1 が入、f_<name>=0 が切、鍵が無いか読めない値は default (省略は切)。field と choices は書けない。
       欄は hidden の 0 の後にチェックの 1 を置くので、入のときは両方が届き、後の 1 を読む。when の中は .filter()・.exclude()・
       annotate だけにする (services を呼ばない。SQL を書かない)。「クリア」と「絞りを外す」は f_ を外すので default に戻る。
-      default と違う値のときを active とする。札 (BaseListView.filter_chips) は active のうち狭める物 (flag は入) だけで、「絞りを外す」は札があるときだけ出す (N161)。
+      default と違う値のときを active とする。札 (BaseListView.filter_chips) は active のうち狭める物 (flag は入) だけで、「絞りを外す」は札があるときだけ出す (開発の記録 docs/nights/20261105/N161.md)。
       values: 同じ一覧の絞りの名前ごとの読めた値の辞書 (FilterSpec.values_by_name。読めた値の無い絞りは鍵が無い)。
       when が 2 つの引数を受ける関数なら when(queryset, values) で呼ぶ (1 つの関数は今までどおり when(queryset)。inspect.signature で見る)。
       disabled_when が真の間は、隠しの欄が印の値を持ち越す (入なら 1)。従う絞りを外すと、印は元の値に戻る。
@@ -809,7 +809,7 @@ class FilterSpec:
 
     @classmethod
     def select_width(cls, options) -> int:
-        """選ぶ欄の幅 (ch の数)。候補と「すべて」のうち、いちばん幅の広い字で決める (初見テストの V152。候補 C31 の 3)。
+        """選ぶ欄の幅 (ch の数)。候補と「すべて」のうち、いちばん幅の広い字で決める (作者の決め)。
 
         選んだ値は必ず候補の 1 つなので、欄の幅は選ぶ前と後で変わらず、選んだ名前も切れない。
         字の幅は全角 (east_asian_width が W か F) を 2、ほかを 1 と数える。core/_filters.html が
@@ -868,7 +868,7 @@ class BaseListView(ScreenMixin, ListView):
     page_sizes = PAGE_SIZES
     template_name = "core/list.html"
     #: 札の × と「絞りを外す」と空の枠の「すべて外す」が取り直す一覧の枠の id (core/list.html)。
-    #: この枠を名指しした htmx の要求には画面の全体を返し、htmx が枠だけを選んで入れ替える (欄・タブ・札・表がそろう。N161)
+    #: この枠を名指しした htmx の要求には画面の全体を返し、htmx が枠だけを選んで入れ替える (欄・タブ・札・表がそろう。開発の記録 docs/nights/20261105/N161.md)
     LIST_TARGET = "list-card"
 
     # --- 列 ---
@@ -877,7 +877,7 @@ class BaseListView(ScreenMixin, ListView):
         for col in company_fields.list_columns_for(self.model):
             specs.append(ColumnSpec(self.model, (company_fields.EXT_PREFIX + col.name, col.label), ext_type=col.type))
         # 金額の列は、金額の閲覧が無い人には列ごと出さない (見出し・欄・合計の行・並び替え・集計の量・CSV から外れ、「—」も出さない。
-        # 本人の決め 11-05 09:4x。N155)。log の形では見せて記録に 1 行 (同じ要求は 1 行)。金額の列の無い一覧は判定しない。
+        # 本人の決め 11-05 09:4x。開発の記録 docs/nights/20261105/N155.md)。log の形では見せて記録に 1 行 (同じ要求は 1 行)。金額の列の無い一覧は判定しない。
         if any(spec.money for spec in specs) and not self._money_columns_shown():
             specs = [spec for spec in specs if not spec.money]
         return specs
@@ -885,7 +885,7 @@ class BaseListView(ScreenMixin, ListView):
     def _money_columns_shown(self) -> bool:
         """金額の列を見せるか。判定 (記録つき) は 1 要求で 1 回だけ呼び、答えを画面に控える。
 
-        column_specs は 1 要求で何度も呼ばれる (並び替え・get_queryset・行・合計・CSV) ため。記録の行の数は今までと同じ (N174)。
+        column_specs は 1 要求で何度も呼ばれる (並び替え・get_queryset・行・合計・CSV) ため。記録の行の数は今までと同じ (開発の記録 docs/nights/20261106/N174.md)。
         """
         if not hasattr(self, "_money_ok"):
             self._money_ok = access.can_see_money(self.request.user)
@@ -956,7 +956,7 @@ class BaseListView(ScreenMixin, ListView):
     def get_queryset(self):
         qs = super().get_queryset()
         # 列の FK (前向きの ForeignKey と OneToOneField。annotate の列は除く) の相手を、行と一緒に 1 回の SELECT で引く
-        # (行ごとに相手を読む SELECT が行の数だけ出ないため。N174)。部品の get_queryset が同じ名前を足しても害は無い。
+        # (行ごとに相手を読む SELECT が行の数だけ出ないため。開発の記録 docs/nights/20261106/N174.md)。部品の get_queryset が同じ名前を足しても害は無い。
         related = [
             spec.name.split("__")[0]
             for spec in self.column_specs()
@@ -983,7 +983,7 @@ class BaseListView(ScreenMixin, ListView):
             if col.type in FilterSpec.EXT_KINDS and field not in declared:
                 specs.append(FilterSpec(self.model, {"name": col.name, "field": field}))
         # 金額の名前の絞りは、金額の閲覧が無い人には出さず効かせない (絞りの欄・札・apply_filters・flag_on・filter_chosen・集計の軸の全部から外れる。
-        # 列と同じ = 本人の決め 11-05 09:4x。N155。決め C106-1「金額を見られない人には列と絞りを出さない」)。範囲の欄が残ると、
+        # 列と同じ = 本人の決め 11-05 09:4x。開発の記録 docs/nights/20261105/N155.md。作者の決め「金額を見られない人には列と絞りを出さない」)。範囲の欄が残ると、
         # 行が出るか出ないかで金額が分かってしまうため。URL に f_<名前>_from を書いても無い欄と同じ扱い (断る処理ではない)。
         # 判定は column_specs と同じ控え (1 要求で 1 回)。金額の絞りの無い一覧と、要求の無い画面の物 (起動の検査と試験が宣言だけを読む) は判定しない。
         if any(spec.money for spec in specs) and getattr(self, "request", None) is not None and not self._money_columns_shown():
@@ -1007,7 +1007,7 @@ class BaseListView(ScreenMixin, ListView):
         return any(spec.values(self.filter_params) for spec in self.filter_specs() if spec.name == name)
 
     def filter_chips(self, specs, items) -> list[dict]:
-        """効いている絞りの札 (core/_filter_clear.html。本人の決め 11-05 16:2x。N161)。
+        """効いている絞りの札 (core/_filter_clear.html。本人の決め 11-05 16:2x。開発の記録 docs/nights/20261105/N161.md)。
 
         絞りの枠の値のうち狭める物だけ (flag は入のときだけ。既定で入の印を切った物と、ほかの絞りに従って切に描いた印は札にしない)。
         キーワード・件数・並び替え・集計の軸は札にしない。タブ (presets) は札にしない (タブが入れた値は、その絞りの札になる)。
@@ -1095,9 +1095,9 @@ class BaseListView(ScreenMixin, ListView):
                     "date": spec.is_date,
                     "datetime": spec.is_datetime,
                     "code": spec.is_code,
-                    # 状態の列 (choices を持つ status の項目。status_for と同じ読み方) は core/_rows.html が状態の色の表で印にする (N152)
+                    # 状態の列 (choices を持つ status の項目。status_for と同じ読み方) は core/_rows.html が状態の色の表で印にする (開発の記録 docs/nights/20261105/N152.md)
                     "status": spec.name == "status" and bool(getattr(spec.field, "choices", None)),
-                    # 真偽の値は、行のテンプレートが bool_mark の印にする (真 = チェックの丸・偽 = 空。本人の決め 11-06 17:1x。C55)
+                    # 真偽の値は、行のテンプレートが bool_mark の印にする (真 = チェックの丸・偽 = 空。本人の決め 11-06 17:1x)
                     "boolean": isinstance(value, bool),
                 }
             )
@@ -1125,7 +1125,7 @@ class BaseListView(ScreenMixin, ListView):
         """検索の欄の案内 (例「自社品番・品名・図面番号・材質」)。search_fields の見出しと、検索に使う会社ごとの項目の見出し。
 
         search_fields の見出しは、字の lookup なら lookup_label (辿る物は末尾の欄の名前)、(lookup, 見出し) の組なら組の見出し
-        (末尾の欄の名前では何の名前か分からない所に書く。例 出荷の一覧の「得意先の名前」= 初見テスト R5 の候補 C36 の 7)。
+        (末尾の欄の名前では何の名前か分からない所に書く。例 出荷の一覧の「得意先の名前」= 作者の決め)。
         """
         labels = [item[1] if isinstance(item, (tuple, list)) else lookup_label(self.model, item) for item in self.search_fields]
         labels += [c.label for c in company_fields.columns_for(self.model) if c.searchable]
@@ -1159,7 +1159,7 @@ class BaseListView(ScreenMixin, ListView):
         context["query_without_filters"] = self.query_without(
             "page", "format", *(name for spec in filter_specs for name in spec.params)
         )
-        # 効いている絞りの札 (core/_filter_clear.html が絞り込みの枠の下に並べる。N161)
+        # 効いている絞りの札 (core/_filter_clear.html が絞り込みの枠の下に並べる。開発の記録 docs/nights/20261105/N161.md)
         context["filter_chips"] = self.filter_chips(filter_specs, context["filters"])
         context["presets"] = self.preset_tabs()
         context["create_url"] = model_url(self.model, "create")
@@ -1263,7 +1263,7 @@ class BaseListView(ScreenMixin, ListView):
 class BaseDetailView(ScreenMixin, DetailView):
     """詳細の土台。1 件と、関係する物の一覧 (tabs = ((見出し, related_name), ...)。3 つ目の FK の名前の並びは任意。related_tab)。
 
-    履歴のタブと「最後に直した」の 1 行は core.history (決め HIST-1・C40-1)。model に印 (keeps_history か history_owner) が
+    履歴のタブと「最後に直した」の 1 行は core.history (作者の決め)。model に印 (keeps_history か history_owner) が
     あるときだけ context の history に core.history.timeline を置く (tabs には入れない。開くまで問い合わせない)。
     """
 
@@ -1274,16 +1274,16 @@ class BaseDetailView(ScreenMixin, DetailView):
     def field_items(self, obj) -> list[dict]:
         """項目の一覧。1 項目 = {"label", "value", "master", "file", "money", "boolean"} (file はファイルの項目だけ、file_info の形。
         money は金額の項目なら真で、テンプレートが yen_if で ¥ を付ける。テンプレートの filter の引数に使うので、全部の行が鍵を持つ。
-        boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。
+        boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。作者の決め)。
         url は、マスターでない相手に詳細の画面があり、部署でその部品を使える人のときだけ、その詳細の URL (無ければ None。全部の行が鍵を持つ)。
-        明細は親の伝票 (model の detail_link_target)。テンプレートが link にする (record_url。候補 C80)。"""
+        明細は親の伝票 (model の detail_link_target)。テンプレートが link にする (record_url。作者の決め)。"""
         items = []
         hidden = hidden_detail_fields(obj)
         for f in obj._meta.concrete_fields:
             if f.primary_key or f.name in ("password",) or f.name in hidden:
                 continue
             if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
-                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。N155)
+                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md)
             value = display_value(obj, f.name)
             is_file = isinstance(f, models.FileField)
             items.append(
@@ -1297,7 +1297,7 @@ class BaseDetailView(ScreenMixin, DetailView):
                     "url": None if is_file else self.record_url(value),
                 }
             )
-            # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (初見テスト 2 回目の E-05)
+            # 受注の明細のような相手の表が部品を持つなら、部品の行を足して小窓で開けるようにする (作者の決め)
             linked = getattr(value, "item", None) if value is not None and not is_master(value) else None
             if is_master(linked) and not any(c.name == "item" for c in obj._meta.concrete_fields):
                 items.append(
@@ -1319,7 +1319,7 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["tabs"] = [
             self.tab_for(obj, label, related, names) for label, related, names in _tab_specs(self.tabs) if hasattr(obj, related)
         ]
-        # 右の列のある詳細は、件数のある最初のタブで開く (無ければ 1 つ目。選ばないと何も出ないため = N150。初見テスト R5 の候補 C26 の 2)
+        # 右の列のある詳細は、件数のある最初のタブで開く (無ければ 1 つ目。選ばないと何も出ないため = 開発の記録 docs/nights/20261105/N150.md。作者の決め)
         chosen = next((tab for tab in context["tabs"] if tab["count"] >= 1), context["tabs"][0] if context["tabs"] else None)
         for tab in context["tabs"]:
             tab["selected"] = tab is chosen
@@ -1328,7 +1328,7 @@ class BaseDetailView(ScreenMixin, DetailView):
             context["edit_url"] = None
         list_url = model_url(obj.__class__, "list")
         context["list_name"] = screen_name_of(list_url)
-        # 部署で一覧の部品を開けない人には、パンくずの一覧の名前を link にしない (字だけ。押すと 403 になる入口を出さない = 見つけ GR-03。
+        # 部署で一覧の部品を開けない人には、パンくずの一覧の名前を link にしない (字だけ。押すと 403 になる入口を出さない = 作者の決め。
         # 判定は左のメニューと同じ access.can_open。記録は書かない)。詳細は部署を見ないので、部署の外の人も開ける。
         context["list_url"] = list_url if access.can_open(self.request.user, obj._meta.app_label, record=False) else None
         context["status"] = self.status_for(obj)
@@ -1352,7 +1352,7 @@ class BaseDetailView(ScreenMixin, DetailView):
         URL が引けたときだけ、部署でその部品を開けるかを access.can_open の record=False で見る (関わる記録の link の
         orders/timeline.py の _linked_url と同じ判定。log の時に、開いていない画面を開いたと記録に書かない)。
         URL の無い値では self.request を読まない (request の無い BaseDetailView() でも field_items が通る)。
-        初見テスト R5 の V69。候補 C80。
+        作者の決め。
         """
         if value is None or getattr(value, "_meta", None) is None or is_master(value):
             return None
@@ -1375,7 +1375,7 @@ def related_tab(obj, label: str, related: str, select_related=()) -> dict:
     """関係する物の 1 つのタブ (詳細と小窓)。{"label", "related", "count", "rows"}。行は最大 100 件、1 行 = {"obj", "url"}。
 
     select_related は、行の __str__ が読む FK の名前 (tabs の 3 つ目)。名前があれば行と相手を 1 回の SELECT で引く
-    (タブの行の数だけ SELECT が出ないため。N174)。親の get_queryset が prefetch した related には書かない (取り直しになる)。
+    (タブの行の数だけ SELECT が出ないため。開発の記録 docs/nights/20261106/N174.md)。親の get_queryset が prefetch した related には書かない (取り直しになる)。
     """
     manager = getattr(obj, related)
     queryset = manager.all()
@@ -1395,7 +1395,7 @@ class BaseFormView(ScreenMixin, FormView):
     seizou-modal.js が小窓を閉じ、右上の知らせを出し、一覧の行を今の絞りのまま取り直す。
     それ以外の要求 (直の要求・htmx のほかの要求) は今までどおり画面の全体で、保存したら移る。
 
-    開いた元の画面へ戻す口 (11-05。本人の指摘と初見テスト R4): 詳細などの入口が ?next=<開いた画面の道> を付けて開くと、
+    開いた元の画面へ戻す口 (11-05。本人の指摘と作者の決め): 詳細などの入口が ?next=<開いた画面の道> を付けて開くと、
     「キャンセル」の先と、保存の後に一覧へ戻る形の移り先 (保存した物の詳細が無い物) をその道にする。保存した物の詳細へ移る形は今のまま。
     道は同じサイトの「/」で始まる物だけ (外・絶対 URL は捨てて今までどおり)。form の hidden の next で POST にも引き継ぐ。
     """
@@ -1422,7 +1422,7 @@ class BaseFormView(ScreenMixin, FormView):
         訳: 対象は、ログインの門 (LoginRequiredMixin) と部署の門 (ScreenMixin の screen_denied) を通った後の get と post でだけ引く。
         何のため: 門の前に引くと、ログインしていない人にも、ある pk はログインへ移り無い pk は 404 になって、記録の有無と数が分かる
         (部署の外の人には 403 と 404 の違いで分かる)。門を先にすると、どちらの pk も同じ答え (ログインへ移す・403) になる。
-        出所 = Claude Security の走査の候補 11-07 (入力の土台が門の前に記録を引く)。
+        出所 = Claude Security の走査の指摘 (11-07) (入力の土台が門の前に記録を引く)。
         変えてよい条件 = 門より前に対象を引いても、答えが記録の有無で変わらないことを試験 (tests/test_core_access_gate_order.py) で示せるとき。
         """
         if self.model is not None and "pk" in kwargs:
@@ -1471,7 +1471,7 @@ class BaseFormView(ScreenMixin, FormView):
         # 同じ URL で小窓の中身と画面の全体を返すので、ブラウザの保存が取り違えないように見出しで分ける (一覧の HX-Request と同じ)。
         patch_vary_headers(response, ("HX-Target",))
         # htmx が画面の一部 (HX-Target の箱) だけを差し替える要求 (今はメモの書く枠 = notes/note_form.html の hx-select="#notes")。
-        # 右上の知らせ (_toasts.html) が差し替えに入らないので、合図でも返す (決め 11-07 C57-5)。小窓と画面の全体には付けない。
+        # 右上の知らせ (_toasts.html) が差し替えに入らないので、合図でも返す (決め 11-07)。小窓と画面の全体には付けない。
         headers = self.request.headers
         if headers.get("HX-Request") and headers.get("HX-Target") and not self.in_modal:
             add_notice_trigger(response, context.get("notice"), context.get("warnings") or ())
@@ -1481,7 +1481,7 @@ class BaseFormView(ScreenMixin, FormView):
         """form の初期値。class の initial の写しに、新規登録の画面の GET の値を足す。
 
         受注の明細から出荷の新規登録・指示書の発行へ、明細を選んだ形で移る入口のため (例 ?order_line=<pk>)。
-        写すのは GET の鍵の全部 (値は字のまま。同じ鍵が 2 つ以上あれば字の list = 注文残の盤で選んだ明細の ?line=<pk>&line=<pk>。N124)。form の欄に無い鍵も写すので、form の __init__ が
+        写すのは GET の鍵の全部 (値は字のまま。同じ鍵が 2 つ以上あれば字の list = 注文残の盤で選んだ明細の ?line=<pk>&line=<pk>。開発の記録 docs/nights/20261104/N124.md)。form の欄に無い鍵も写すので、form の __init__ が
         self.initial.get("from_line") のように読める (注残の盤の「発注する」が明細の pk を渡す入口のため。決め 11-03)。
         写さない物: POST の要求 (送られた値が正)・編集の画面 (対象の値が正)・会社ごとの項目 (ext__)・開いた元の画面の道 (next。入力の値でない)。
         値の検査はしない。保存のときに form と検査の層と service が見る (数でない値や無い pk は、選ぶ欄が何も選ばないだけ)。
@@ -1506,7 +1506,7 @@ class BaseFormView(ScreenMixin, FormView):
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
         model = self.model or getattr(getattr(form, "_meta", None), "model", None)
-        # form の class の属性 adds_company_fields = False の form には、会社ごとの項目を足さない (指示書 R7 = GA-04)。
+        # form の class の属性 adds_company_fields = False の form には、会社ごとの項目を足さない (作者の決め)。
         # 自分の欄だけを service_kwargs で渡す確かめの form (図面を版に戻す) に足すと、直しても保存されない欄が出るため。
         # 土台が form の属性を読む先例は submit_label (core/_form_card.html) と last_fields (下)。
         if model is not None and getattr(form, "adds_company_fields", True):
@@ -1514,7 +1514,7 @@ class BaseFormView(ScreenMixin, FormView):
                 form.fields[name] = field
                 if self.object is not None and not form.is_bound:
                     form.initial[name] = company_fields.ext_value(self.object, name[len(company_fields.EXT_PREFIX):])
-        # form の class の属性 last_fields (欄の名前の並び) の欄を、会社ごとの項目を足した後の最後へ回す (V35)。
+        # form の class の属性 last_fields (欄の名前の並び) の欄を、会社ごとの項目を足した後の最後へ回す (作者の決め)。
         # Django の field_order は form の __init__ の中で並べるので、この後に足す会社ごとの項目より後ろへは回せない。
         # 土台が form の属性を読む先例は submit_label (core/_form_card.html)。使う所は masters の ItemForm・PartnerForm・ProcessForm。
         # 属性の無い form と、form に無い名前 (新規登録で外した使用中の欄など) は今の並びのまま。
@@ -1595,7 +1595,7 @@ class BaseFormView(ScreenMixin, FormView):
         return HttpResponseRedirect(url)
 
     def form_invalid(self, form):
-        """欄の検査で止まった時も、止まった知らせ (赤) を出す (決め 11-06 C57-3。欄の誤りなら欄の下の赤い字と知らせの両方)。
+        """欄の検査で止まった時も、止まった知らせ (赤) を出す (決め 11-06。欄の誤りなら欄の下の赤い字と知らせの両方)。
 
         画面の全体では右上の赤い知らせ (core/_toasts.html)、小窓では小窓の上の赤い帯 (core/_form_modal.html の core/_notices.html)。
         番号は「入力」(決まりの番号でない) なので、番号と「?」は出ない (services の ValueError の断りと同じ道)。
@@ -1658,7 +1658,7 @@ def use_decimal_input(field) -> None:
     """数の欄の数の入力 (type="number") を、字の欄に替える (小数は DecimalInput、整数は IntegerInput)。
 
     type="number" はブラウザが「12e」のような字を空にして送り、空のまま保存されるため (整数の欄 = 締日なども同じ。
-    初見テスト 2 回目の所見)。字の欄にして、誤りはサーバーの検査が日本語で出す (整数の下限と上限は
+    作者の決め)。字の欄にして、誤りはサーバーの検査が日本語で出す (整数の下限と上限は
     ServiceModelForm が表の検査から form の検査に付けてある)。全角の数字と「1,200」は半角の数にそろえて通す。
     """
     if isinstance(field, (django_forms.DecimalField, django_forms.FloatField)):
@@ -1678,7 +1678,7 @@ def use_decimal_input(field) -> None:
 
 
 def use_clearable_file_widget(field) -> None:
-    """ファイルの欄の ClearableFileInput を、input だけを描く ClearableFileWidget に替える (初見テスト R5 の a-flagged-13。候補 C40 の その 2)。
+    """ファイルの欄の ClearableFileInput を、input だけを描く ClearableFileWidget に替える (作者の決め)。
 
     Django の ClearableFileInput は「現在: <link>」「クリア」「変更:」を input と同じ所に描き、破線の枠 (core/_file_field.html) の
     中に並んでいた。替えた後は、枠の中は新規登録と同じ (input・絵・「ファイルを選ぶ か、ここへドラッグ」) で、
@@ -1698,11 +1698,11 @@ def use_clearable_file_widget(field) -> None:
 
 
 def use_label_required(name: str, field) -> None:
-    """空のまま保存したときの字 (required) を、見出し入りの字にする (初見テスト R5 の V37。候補 C25 の 2)。
+    """空のまま保存したときの字 (required) を、見出し入りの字にする (作者の決め)。
 
-    決め 11-06 18:3x C25-1 = a「全部の画面の「空のまま」の字を、まとめて「<見出し>を入れてください。」
+    決め 11-06 18:3x「全部の画面の「空のまま」の字を、まとめて「<見出し>を入れてください。」
     (選ぶ欄は「<見出し>を選んでください。」) に替える」。「このフィールドは必須です。」では何を入れるか分からず、
-    「フィールド」は事務の言葉でない (V37)。欄を見つけるたびに直さずに済むよう、入力の土台でまとめて替える。
+    「フィールド」は事務の言葉でない (作者の決め)。欄を見つけるたびに直さずに済むよう、入力の土台でまとめて替える。
     替えるのは required の字が Django の既定のままの欄だけ。欄ごとに書いた字 (出荷日・休日・文字コード・受信した注文など) は
     そのまま残す。欄ごとに直したい字は、今までどおり forms.py の error_messages に書く。隠した欄は字が画面に出ないので替えない。
     字は欄の class で選ぶ (widget では選ばない): 1 つの checkbox (BooleanField) は「<見出し>に チェックを入れてください。」、
@@ -1760,7 +1760,7 @@ def _dash_variant(text: str) -> str:
 
 
 def _kana_switch_variants(text: str) -> list[str]:
-    """1 語の中の仮名の 1 か所で字の種類を切り替えた揺れ (「ニッケルメッキ」から「ニッケルめっき」を作る。初見テスト 3 回目)。
+    """1 語の中の仮名の 1 か所で字の種類を切り替えた揺れ (「ニッケルメッキ」から「ニッケルめっき」を作る。作者の決め)。
 
     隣り合う 2 字がどちらも仮名 (ひらがな・カタカナ・長音の「ー」) の所 k ごとに、カタカナ (text[:k]) + ひらがな (text[k:]) と
     ひらがな (text[:k]) + カタカナ (text[k:]) の 2 つを、左の k から順に返す。仮名の外の字は変えない。2 か所以上の切り替えは作らない。
@@ -1783,7 +1783,7 @@ def _kana_switch_variants(text: str) -> list[str]:
 
 
 def search_variants(term: str) -> list[str]:
-    """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (初見テスト 2 回目の所見)。
+    """検索の語の揺れ。全角と半角 (NFKC)・ひらがなとカタカナを同じに扱う (作者の決め)。
 
     返す物は重ねない並び (打った字・NFKC・長音とダッシュ (英数字の後の「ー」・‐・− など) を - にした形・カタカナ・ひらがな・
     1 語の中の仮名の 1 か所で字の種類を切り替えた形)。DB の側は変えず、OR で引く。揺れの数は SEARCH_VARIANTS_MAX まで
@@ -1829,7 +1829,7 @@ def widget_css(widget) -> str:
         return "checkbox"
     if isinstance(widget, RemoteSelect):
         # 字を打って探す欄 (Tom Select) には daisyUI の select の class を付けない。Tom Select が包みに class を写し、
-        # select の見た目 (overflow と矢印) が候補の一覧を隠して二重の枠と矢印になるため (初見テスト 2 回目の所見)。
+        # select の見た目 (overflow と矢印) が候補の一覧を隠して二重の枠と矢印になるため (作者の決め)。
         # 包みの見た目は scripts/css/input.css の .ts-wrapper の決まりで input にそろえる。
         return "w-full"
     if isinstance(widget, (widgets.Select, widgets.SelectMultiple)):
@@ -1845,11 +1845,11 @@ class BaseModalView(ScreenMixin, DetailView):
     """小窓の土台。見るだけと、詳細への移動のボタンと、編集の権限のある人には編集の link。template は <app>/_modal.html か core/_modal.html。
 
     項目 (先頭の modal_fields 個) の後に、会社ごとの項目 (一覧に出す物。一覧の列と同じ取り方) を見出しと値で並べる。
-    1 項目 = {"label", "value", "money", "boolean"} (boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。C55)。
+    1 項目 = {"label", "value", "money", "boolean"} (boolean は値が真偽なら真で、テンプレートが bool_mark で印にする。作者の決め)。
     tabs = ((見出し, related_name), ...) があれば、関係する物の一覧も出す (詳細のタブと同じ形。3 つ目の FK の名前の並びも同じ)。
     htmx でない要求 (link を新しいタブで開いた時・画面の目録や履歴や AI に質問の窓から小窓の道を直に開いた時) には、枠の無い中身でなく詳細の画面へ移す。
     詳細の画面が無い表 (計画の詳細の指示書の工程) は、土台の画面の中に小窓と同じ中身を置いた画面の全体 (core/modal_page.html) を返す
-    (決まりの番号の説明 rule_help と同じ形。見つけ FB-12)。同じ URL で中身と全体を返すので Vary: HX-Request を付ける。
+    (決まりの番号の説明 rule_help と同じ形。作者の決め)。同じ URL で中身と全体を返すので Vary: HX-Request を付ける。
     """
 
     modal_fields: int = 8
@@ -1893,7 +1893,7 @@ class BaseModalView(ScreenMixin, DetailView):
             if f.primary_key or f.name in hidden:
                 continue
             if access.is_money_name(f.name) and not access.can_see_money(self.request.user):
-                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。N155)
+                continue  # 金額の閲覧が無い人には、金額の項目を項目ごと出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md)
             value = display_value(obj, f.name)
             if isinstance(f, models.FileField):
                 info = file_info(value)
@@ -1922,12 +1922,12 @@ class BaseModalView(ScreenMixin, DetailView):
 
 
 class BaseSelectView(ScreenMixin, View):
-    """候補の口。Tom Select の候補を 1 ページ返す (05 の 2 節)。
+    """候補の口。Tom Select の候補を 1 ページ返す (選ぶ欄の設計の決め)。
 
     columns に項目の名前を並べると、候補ごとに id と text の横にその値も返す (例 部品の unit と standard_price。
-    選ぶ欄の JS が、同じ行の空の単位と単価の欄に写す = 05 の 2 節の「選んだら写す」)。金額の項目
+    選ぶ欄の JS が、同じ行の空の単位と単価の欄に写す = 選ぶ欄の設計の決めの「選んだら写す」)。金額の項目
     (access.is_money_name) は、金額の閲覧が無い人には返さない。
-    候補ごとに text (選んだ値の欄の字。今の 1 行) の横に、2 段の字 title と sub (core.select_options.lines) も返す (N162)。
+    候補ごとに text (選んだ値の欄の字。今の 1 行) の横に、2 段の字 title と sub (core.select_options.lines) も返す (開発の記録 docs/nights/20261105/N162.md)。
     字を打つ前の 1 ページ目は recent (core.select_options.recent) も返す。
     0 件のときの登録の行 create (core.select_options.create_entry。書けない人には None) も返す。
     """
@@ -1959,13 +1959,13 @@ class BaseSelectView(ScreenMixin, View):
         names = self.shown_columns()
         items = [self.candidate(obj, names) for obj in rows[: self.per_page]]
         recent = []
-        if not term and page == 1:  # 字を打つ前の 1 ページ目だけ (N162)
+        if not term and page == 1:  # 字を打つ前の 1 ページ目だけ (開発の記録 docs/nights/20261105/N162.md)
             recent = [self.candidate(obj, names) for obj in select_options.recent(qs)]
         create = select_options.create_entry(request.user, self.model)
         return JsonResponse({"items": items, "more": more, "recent": recent, "create": create})
 
     def candidate(self, obj, names) -> dict:
-        """候補の 1 つ。text は今の 1 行の字 (選んだ値の欄の字。変えない)。title と sub は候補の 2 段の字 (N162)。"""
+        """候補の 1 つ。text は今の 1 行の字 (選んだ値の欄の字。変えない)。title と sub は候補の 2 段の字 (開発の記録 docs/nights/20261105/N162.md)。"""
         title, sub = select_options.lines(obj)
         return {"id": obj.pk, "text": str(obj), "title": title, "sub": sub, **{name: getattr(obj, name) for name in names}}
 
@@ -2039,7 +2039,7 @@ def dashboard_stats() -> list[dict]:
     1 枚 = {"label", "value", "unit", "note", "help", "icon", "url", "url_name"} (と、数の下の 1 行 "detail" のあるカード)。"url_name" は url を作った URL の名前で、
     行き先のあるカードだけに付く (HomeView が、部署で開けない画面へ行くカードの url を外すのに使う)。金額のカード (支払の見込みと入金) は "money" が真で、
     HomeView が金額を見られない人には並びから外す (カードごと出さない)。
-    "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (初見ユーザーテスト R4 の 5-3。UX の案 6-E)。
+    "help" は数え方の 1 文 (何をどう数えたかと期間)。画面はカードの題の横の (i) の小窓に出す (作者の決め)。
     文は下の数え方の式と合わせる (式を変えたら文も直す)。
     「今月の◯◯」のカード (今月の受注・今月の支払の見込み・今月の入金) は "compare" に、先月の同じ日までとの差と今月の日ごとの数の細い線
     (core.dashboard の *_month_compare。読めなければ None) を持ち、help に比べ方の 1 文 (COMPARE_HELP) を足す。画面は札 (core/_stat_delta.html) と
@@ -2109,7 +2109,7 @@ def dashboard_stats() -> list[dict]:
             "url": url_or_none("orders:orderline_list"),
             "url_name": "orders:orderline_list",
         }
-        # 数の下の 1 行 = 受注の件数 (受注の一覧のタブ「出荷の残りがある」と今日やることの出荷の行と同じ数え方。R5 の V78 で、
+        # 数の下の 1 行 = 受注の件数 (受注の一覧のタブ「出荷の残りがある」と今日やることの出荷の行と同じ数え方。作者の決めで、
         # 明細の行の数を受注の件数と読み違えそうと書かれたため)。数えられないときは 1 行ごと出さない (偽の 0 を置かない)。
         open_orders = dashboard.orders_to_ship()
         open_count = count_or_none(open_orders) if open_orders is not None else None
@@ -2131,7 +2131,7 @@ def dashboard_stats() -> list[dict]:
                 "url_name": "connect:inbox_list",
             }
         )
-    # 6 枚目: 今月の支払の見込み (受入の部品があるとき。受け入れた数 × 発注の単価の合計 = N42 の要望 4)
+    # 6 枚目: 今月の支払の見込み (受入の部品があるとき。受け入れた数 × 発注の単価の合計 = 開発の記録 docs/nights/20261103/N42.md の要望 4)
     payable = dashboard.payable_this_month(today)
     if payable is not None:
         compare = dashboard.payable_month_compare(today)
@@ -2150,7 +2150,7 @@ def dashboard_stats() -> list[dict]:
                 "compare": compare,
             }
         )
-    # 7 枚目: 入金 (入金の表 = billing の Payment があるとき。入金日が今月の、取消でない入金の金額の合計 = N56 の要望)
+    # 7 枚目: 入金 (入金の表 = billing の Payment があるとき。入金日が今月の、取消でない入金の金額の合計 = 開発の記録 docs/nights/20261103/N56.md の要望)
     payments = dashboard.payments_this_month(today)
     if payments is not None:
         compare = dashboard.payments_month_compare(today)
@@ -2168,7 +2168,7 @@ def dashboard_stats() -> list[dict]:
                 "compare": compare,
             }
         )
-    # 8 枚目: 手入力せずに取り込んだ明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、入力を省けた時間 = N83)
+    # 8 枚目: 手入力せずに取り込んだ明細 (受注の部品があるとき。読み取りと受信した注文から受注にした今月の明細の行数と、入力を省けた時間 = 開発の記録 docs/nights/20261104/N83.md)
     hands_free = dashboard.hands_free_lines(today)
     if hands_free is not None:
         minutes = f"{dashboard.minutes_per_line().normalize():f}"
@@ -2237,8 +2237,8 @@ class HomeView(ScreenMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        # 部署で開けない画面へ行くカードは、url を外した写しにする (数は出し、押せない div で描く。決め A-03。初見テスト R5 の U159。
-        # 候補 C12 の 3)。判定は今日やることの行を外すのと同じ引き方 (URL の名前の : の前の部品を can_open。記録は書かない)。
+        # 部署で開けない画面へ行くカードは、url を外した写しにする (数は出し、押せない div で描く。作者の決め。
+        # 作者の決め)。判定は今日やることの行を外すのと同じ引き方 (URL の名前の : の前の部品を can_open。記録は書かない)。
         # 並びの中の dict は書き換えず、新しい並びを作る (試験が同じ dict を返す関数に差し替えるため)。写しは下の画面の名前の枝に入らない。
         context["stats"] = [
             {**stat, "url": None}
@@ -2249,7 +2249,7 @@ class HomeView(ScreenMixin, TemplateView):
         for stat in context["stats"]:
             if stat.get("url"):
                 # カードの行き先の link の字「<画面の名前>を見る」の名前。「?」の後ろ (絞りの GET) を付けたままでは引けないので外す。
-                # 引けなければ空で、画面は「一覧を見る」を出す (詳細のパンくずの「一覧に戻る」と同じ考え)。R5 の V38
+                # 引けなければ空で、画面は「一覧を見る」を出す (詳細のパンくずの「一覧に戻る」と同じ考え)。作者の決め
                 stat["screen"] = screen_name_of(stat["url"].split("?", 1)[0])
         context["recent_orders"] = recent_orders()
         context["orders_url"] = url_or_none("orders:order_list")
@@ -2259,7 +2259,7 @@ class HomeView(ScreenMixin, TemplateView):
         if not access.can_open(user, "orders", record=False):
             # 受注の部品を部署で開けない人には、納期アラートの「生産管理ボードを見る」と最近の受注の「受注の一覧を見る」を出さない
             # (テンプレートは値が無ければ link ごと出さない。行の受注番号の link は受注の詳細へ移り、詳細は部署を見ないので残す)。
-            # due_alerts の値は書き換えず、写しの list_url だけを外す (候補 C12 の 3)。
+            # due_alerts の値は書き換えず、写しの list_url だけを外す (作者の決め)。
             context["orders_url"] = None
             if context["alerts"] is not None:
                 context["alerts"] = {**context["alerts"], "list_url": None}
@@ -2344,7 +2344,7 @@ def rule_help(request, code):
     """赤の知らせの決まりの番号の横の「?」が開く説明。番号の形が違えば 404。
 
     htmx の要求 (画面の全体の右上の知らせと、盤やメモの書く枠の帯の「?」。同じタブの小窓で開く) には小窓の中身
-    (core/_rule_help.html) を返す。htmx でない要求 (小窓の入力の赤い帯の「?」が開く新しいタブ。決め C20-1 = a。
+    (core/_rule_help.html) を返す。htmx でない要求 (小窓の入力の赤い帯の「?」が開く新しいタブ。作者の決め。
     同じ小窓に説明を入れると入れた値が消えるため) には画面の全体 (core/rule_help.html。土台の画面の中に同じ中身の箱を置き、
     小窓の閉じるボタンは出さない) を返す。同じ URL で中身と全体を返すので Vary: HX-Request を付ける。
     行が無い (RULES.md が置き場に無い・番号が表に無い) ときも 200 で、無い旨の 1 文を出す (htmx が小窓を開けるように)。

@@ -1,4 +1,4 @@
-"""選べる設定 (01 の 9 節と 10.5)。
+"""選べる設定 (選べる設定の設計の決め)。
 
 読む順は 3 段: 画面の上書き (表 SettingOverride。設定の画面から保存した値) → 会社の settings.py の辞書 SEIZOU →
 既定 (DEFAULTS)。鍵は DEFAULTS のとおり。
@@ -65,7 +65,7 @@ CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
 LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line", "session_idle_minutes", "session_max_hours", "ai_limits", "ai_features")
 #: 値の出所の字 (設定の画面の「どこで決めたか」の列・設定の変更の画面の頭の行・MCP と AI チャットの company_info の sources が出す)。
-#: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (初見テスト R5 の V99・U101。候補 C14)。
+#: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (作者の決め)。
 #: 順に、画面の上書き (SettingOverride)・会社の settings.py の SEIZOU (導入の時に答えの YAML から作る)・DEFAULTS
 SOURCE_SCREEN = "この画面で変えた"
 SOURCE_ANSWER = "導入の時に決めた"
@@ -194,7 +194,7 @@ def mail_env_value(key: str):
     暗号化の方式は MAIL_SECURITY のどれか (大小を問わない)、ほかは既定の starttls。
     訳: パスワード (.env の EMAIL_HOST_PASSWORD) を渡す先を、.env を書ける人 (置き場を預かる人) だけが決めるため。
     画面から変えられると、アカウント管理の権限の人が自分のサーバーを入れて「試しに送る」を押すだけで、パスワードを受け取れる。
-    出所 = Claude Security の走査の候補 (11-07 の 11・23・25・26)。
+    出所 = Claude Security の走査の指摘 (11-07)。
     変えてよい条件 = 画面で送り先を変えられる人を、.env を書ける人と同じ人 (システム管理者) に限ると決めた時。
     """
     default = DEFAULTS["mail"][key]
@@ -268,7 +268,7 @@ def session_limits() -> tuple[int, int]:
     既定 (DEFAULTS) に戻す (access_control() と mail_settings() と同じ考え。答えの YAML の書き損じで全部の画面を 500 にしない)。
     core.middleware.SessionTimeoutMiddleware と、ログインの画面 (core.views.RememberLoginView) が読む。
     訳: 共用の PC が多い町工場の事務所で、離れた席の開いたままの画面から伝票を直されないため。既定は審査と現場で切れすぎない緩めの値
-    (操作しない間 2 時間・ログインから最長 12 時間) にし、会社が答えの YAML で縮められる。出所 = 本人の決め 11-08 00:40 (エンタープライズ化の調べ 第一弾の候補 24)。
+    (操作しない間 2 時間・ログインから最長 12 時間) にし、会社が答えの YAML で縮められる。出所 = 本人の決め 11-08 00:40 (エンタープライズ化の調べを受けた作者の決め)。
     変えてよい条件 = 本人が決め直したとき、または会社が設定 (session_idle_minutes・session_max_hours) で変えたとき。
     """
 

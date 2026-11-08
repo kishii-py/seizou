@@ -1,6 +1,6 @@
 """R13 の検査: 数と金額を変える処理は部品の services を通す。画面から表に直接書かない。
 
-対象は services.py の外の、画面と form とテンプレートタグと管理コマンド (05 の 4 節)。
+対象は services.py の外の、画面と form とテンプレートタグと管理コマンド (決まりの検査の設計の決め)。
 ファイルの名前が views.py か forms.py、すぐ上のフォルダが views か templatetags、
 またはパスの中に management/commands がある .py。services.py・models.py・migrations の中は見ない。
 seizou.core の中も見る (core の画面と管理コマンドも表に直接書かない)。

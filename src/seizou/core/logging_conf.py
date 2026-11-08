@@ -7,7 +7,7 @@ settings.py が `LOGGING = default_logging()` の 1 行で読む。module の頭
 権限の判定・ログインの締め出し) を journald に常に残すため。Django の既定は django の記録をメールの handler にしか渡さず、
 ADMINS が空だとどこにも残らない。handler は stderr の 1 つだけ。Django を読まない module にしたのは、版を上げた時に
 中身の直しが既にある置き場にも届くように (parts.py と同じ形)。出所 = 本人の決め (11-08 00:20「journald は常に」) と
-エンタープライズ化の調べ 第一弾の指摘 chk-ops-sre-1・ops-2 と確かめ直しの (b)。
+エンタープライズ化の調べを受けた作者の決め。
 変えてよい条件 = 本人が決め直したとき、または置き場が journald でない記録の置き場を使うと決めたとき。
 """
 
@@ -29,7 +29,7 @@ def default_logging() -> dict:
     権限の判定・ログインの締め出し) を journald に常に残すため。Django の既定は django の記録をメールの handler にしか渡さず、
     ADMINS が空だとどこにも残らない。handler は stderr の 1 つだけ。Django を読まない module にしたのは、版を上げた時に
     中身の直しが既にある置き場にも届くように (parts.py と同じ形)。出所 = 本人の決め (11-08 00:20「journald は常に」) と
-    エンタープライズ化の調べ 第一弾の指摘 chk-ops-sre-1・ops-2 と確かめ直しの (b)。
+    エンタープライズ化の調べを受けた作者の決め。
     変えてよい条件 = 本人が決め直したとき、または置き場が journald でない記録の置き場を使うと決めたとき。
     """
     return {

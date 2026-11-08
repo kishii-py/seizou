@@ -1,7 +1,7 @@
-"""状態の色の表 (案 4-C・8-A。N152)。状態の値 → 意味の色を 1 か所に持つ。
+"""状態の色の表 (作者の決め。開発の記録 docs/nights/20261105/N152.md)。状態の値 → 意味の色を 1 か所に持つ。
 
 印 (template tag status_badge と core/_status_badge.html) がこの表を読む。土台の詳細の見出しの印・一覧の状態の列の印・
-最初の画面の最近の受注の印が使う。意味の色は 5 つで 1 組 (決め 11-05 16:2x。N164)。名前は daisyUI の印の色の名前と同じ字:
+最初の画面の最近の受注の印が使う。意味の色は 5 つで 1 組 (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N164.md)。名前は daisyUI の印の色の名前と同じ字:
 - ghost   = 灰 (作成・下書き・まだ)
 - info    = 青 (進行中 = 受注・発行・送った・受信した・読み取った・相手が受け入れた)
 - warning = 橙 (注意 = 一部出荷・一部納品・相手が条件付で受けた・相手が保留した・遅れ・未入金・一部入金)
@@ -15,7 +15,7 @@ sent = 送った・rejected = 断った)。部品で意味が分かれる字は 
 (accepted: 発注の「相手が受け入れた」は進行中 = 青、受信した注文の「受け入れた」は終わり = 緑)。
 部品の model に状態の値を足したら、ここにも 1 行足す (tests/test_core_status_colors.py が、表に無い値を見つけると落ちる)。
 状態 (status) の列でない状態の色も同じ 5 つから選ぶ: 請求書の入金の状態は PAYMENT_TONES (billing の tag payment_badge が読む)、
-指示書の進みの状態は WORKORDER_TONES (workorders の tag workorder_badge が読む。初見テスト R5 の候補 C27)。
+指示書の進みの状態は WORKORDER_TONES (workorders の tag workorder_badge が読む。作者の決め)。
 """
 
 #: 意味の色の名前 (core/_status_badge.html の枝の字と同じ)
@@ -48,7 +48,7 @@ STATUS_TONES = {
     "ordered": "success",  # intake 受注にした
     "inbox": "success",  # intake 受信した注文へ回した
     # 赤の線 = 止まった (取消・断った・捨てた)
-    "dismissed": "error",  # feedback 見送った (GitHub で対応しない・重複として閉じた。N322)
+    "dismissed": "error",  # feedback 見送った (GitHub で対応しない・重複として閉じた。開発の記録 docs/nights/20261107/N322.md)
     "cancelled": "error",  # orders・purchasing・shipping・workorders・billing 取消
     "rejected": "error",  # purchasing 断られた・connect 断った
     "discarded": "error",  # intake 捨てた
@@ -60,7 +60,7 @@ APP_TONES = {
 }
 
 #: 請求書の入金の状態 (billing の Invoice.payment_status の値。表の列でなく、取消でない入金の合計から出す) → 意味の色。
-#: 請求書の印 (billing の tag payment_badge) が読む。取消の請求書は状態の色 (STATUS_TONES の cancelled = 赤の線)。N164
+#: 請求書の印 (billing の tag payment_badge) が読む。取消の請求書は状態の色 (STATUS_TONES の cancelled = 赤の線)。開発の記録 docs/nights/20261105/N164.md
 PAYMENT_TONES = {
     "unpaid": "warning",  # 未入金
     "partial": "warning",  # 一部入金
@@ -68,7 +68,7 @@ PAYMENT_TONES = {
 }
 
 #: 指示書の進みの状態 (workorders の WorkOrder.progress_state の値。表の列でなく、工程の実績から出す) → 意味の色。
-#: 指示書の印 (workorders の tag workorder_badge) が読む。取消は状態の色と同じ赤の線。C27
+#: 指示書の印 (workorders の tag workorder_badge) が読む。取消は状態の色と同じ赤の線。作者の決め
 WORKORDER_TONES = {
     "not_started": "ghost",  # 未着手 (まだ)
     "started": "info",  # 着手済 (進行中)

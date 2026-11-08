@@ -1,4 +1,4 @@
-"""変更の履歴を読む関数 (決め HIST-0・HIST-1・C40-1)。表 (core.models.ChangeLog) には書かない。書くのは core.services の
+"""変更の履歴を読む関数 (作者の決め)。表 (core.models.ChangeLog) には書かない。書くのは core.services の
 record_history と record_history_deleted だけ。
 
 - keeps_history(model): model の class 属性 keeps_history が真か、history_owner があれば真 (印は model の class に置く。
@@ -263,7 +263,7 @@ class Timeline:
     def count(self) -> int:
         """出す行の数 (詳細のタブの数と「全 n 件」)。上限より少なければ出す行の数 (数える問い合わせを出さない)。
 
-        上限まで取ったときは表の全部の行の数から、取った中で出さない行 (金額の項目だけの行。決め 5) を引く。上限の外にも出さない行が
+        上限まで取ったときは表の全部の行の数から、取った中で出さない行 (金額の項目だけの行。作者の決め) を引く。上限の外にも出さない行が
         あれば多めに数える (未確認 = 上限を超える履歴を金額の閲覧の無い人が見たときの数。全部を読まないと正しい数にならないので今は読まない)。
         """
         entries = self._entries

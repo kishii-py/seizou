@@ -4,7 +4,7 @@
 seizou.core.views を import しない (Django の設定が無くても検査を動かすため)。
 """
 
-#: seizou.core.views の土台の画面 (01 の 10.3)。R15 の検査が見る。
+#: seizou.core.views の土台の画面 (core の公開する物の設計の決め)。R15 の検査が見る。
 BASE_VIEWS = frozenset(
     {
         "BaseListView",
@@ -15,7 +15,7 @@ BASE_VIEWS = frozenset(
     }
 )
 
-#: 土台を継承した画面が上書きしてよい属性 (01 の 10.3。R15 の 2 文目)。
+#: 土台を継承した画面が上書きしてよい属性 (core の公開する物の設計の決め。R15 の 2 文目)。
 #: seizou.core.views の OVERRIDABLE と同じ並び (tests/test_r15_inherit_base_view.py が突き合わせる)。
 OVERRIDABLE_ATTRS = (
     "model",
@@ -33,7 +33,7 @@ OVERRIDABLE_ATTRS = (
     "screen_help",
 )
 
-#: 部品の app の名前 (01 の 1 節の表)。R16 の検査 (夜の N9) が見る。
+#: 部品の app の名前 (部品どうしの呼ぶ向きの設計の決めの表)。R16 の検査 (開発の記録 docs/nights/20261102/N9.md) が見る。
 PART_APPS = (
     "core",
     "masters",

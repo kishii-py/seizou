@@ -1,4 +1,4 @@
-"""検査の層 (ポカよけ。01 の 10.7)。
+"""検査の層 (ポカよけ。検査の層の設計の決め)。
 
 画面から入った値が services に渡る前に、その会社のポカよけを順に通す。
 入力の土台 (BaseFormView) と受信箱の受け入れの画面が run を呼ぶ。services は呼ばない。
@@ -115,7 +115,7 @@ def run(action: str, data: dict, user) -> list[CheckWarning]:
         if not message:
             continue
         if mode == "stop":
-            # 止めるの赤の知らせは「保存できません。」を頭に付ける (文の型。決め 11-05 09:5x。N156)。知らせるの黄は検査の文のまま。
+            # 止めるの赤の知らせは「保存できません。」を頭に付ける (文の型。決め 11-05 09:5x。開発の記録 docs/nights/20261105/N156.md)。知らせるの黄は検査の文のまま。
             raise CheckViolation(check.code, "保存できません。" + message)
         warnings.append(CheckWarning(check.code, message))
     return warnings

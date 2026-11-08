@@ -1,2 +1,2 @@
-{% load seizou_icons %}{# 真偽の値の印 (本人の決め 11-06 17:1x「はいとかはわかりにくいな。こういう感じで全体的にアイコンで統一したい」。C55)。真はチェックの丸の絵を主色で、偽は何も出さない (「—」も出さない)。読み上げは真だけ「はい」(絵は aria-hidden なので、包む span に名前を付ける)。seizou_tags の bool_mark が描く。 #}
+{% load seizou_icons %}{# 真偽の値の印 (本人の決め 11-06 17:1x「はいとかはわかりにくいな。こういう感じで全体的にアイコンで統一したい」。作者の決め)。真はチェックの丸の絵を主色で、偽は何も出さない (「—」も出さない)。読み上げは真だけ「はい」(絵は aria-hidden なので、包む span に名前を付ける)。seizou_tags の bool_mark が描く。 #}
 {% if value is True %}<span class="inline-flex align-middle text-primary" role="img" aria-label="はい">{% icon "check-circle" "size-5" %}</span>{% endif %}

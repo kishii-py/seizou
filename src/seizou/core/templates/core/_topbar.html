@@ -1,11 +1,11 @@
 {% load seizou_guide seizou_icons %}
-{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る。欄の案内は、部品 manuals が入っていればマニュアルも探すと分かる字にし、13 字を超えない = tablet の欄の幅で切れないため。初見テスト R5 の候補 C36 の 1)、今日の日付、現品票を読む (QR のボタン)、知らせの鈴、ブックマークの ☆、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
-{# 上の帯の色: 固定の class seizou-header。人ごとの表示の設定で色を選んだ人は、<html> の data-seizou-header の名前で scripts/css/input.css の決まりが塗る (N167)。白 (標準) は bg-base-100 のまま。 #}
+{# 上の帯: 小さい画面のメニューのボタン、横断の検索 (検索の画面へ送る。欄の案内は、部品 manuals が入っていればマニュアルも探すと分かる字にし、13 字を超えない = tablet の欄の幅で切れないため。作者の決め)、今日の日付、現品票を読む (QR のボタン)、知らせの鈴、ブックマークの ☆、案内 (この画面でできること。ユースケースのある画面だけ)、使い方 (画面ごとの説明書)、利用者。偽の数字は置かない。 #}
+{# 上の帯の色: 固定の class seizou-header。人ごとの表示の設定で色を選んだ人は、<html> の data-seizou-header の名前で scripts/css/input.css の決まりが塗る (開発の記録 docs/nights/20261105/N167.md)。白 (標準) は bg-base-100 のまま。 #}
 <header class="seizou-header sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-base-300 bg-base-100 px-4 lg:px-6">
   <label for="seizou-drawer" class="btn btn-ghost btn-square btn-sm lg:hidden" aria-label="メニューを開く">{% icon "menu" "size-5" %}</label>
   {% if seizou.search_url %}
   {# 幅が 640px より狭いときは、検索の欄を押している間だけ右の組 (日付・現品票を読む・☆・案内・使い方・利用者) を出さず、欄を残りの幅いっぱいに広げる。欄から離れると戻る。CSS の class だけで、JS は無い。 #}
-  {# 決め方: この form の中の focus だけで決める (header の全体の focus で決めると、☆や利用者のメニューを押したときも右の組が消え、押したボタンが指の下から消えるため)。初見テスト R5 の候補 C36 の 6 (決め C36-1 = a)。 #}
+  {# 決め方: この form の中の focus だけで決める (header の全体の focus で決めると、☆や利用者のメニューを押したときも右の組が消え、押したボタンが指の下から消えるため)。作者の決め。 #}
   <form method="get" action="{{ seizou.search_url }}" role="search" class="peer min-w-0 flex-1 sm:max-w-md">
     <label class="input w-full rounded-lg">
       {% icon "search" "size-4 text-base-content/60" %}
@@ -22,7 +22,7 @@
     {# ブックマーク (☆): 部品 bookmarks が入っていれば、その部品の帯の部品を出す (登録と一覧の小窓)。 #}
     {% if "bookmarks" in seizou.parts %}{% include "bookmarks/_star.html" %}{% endif %}
     {% if screen_anchor %}{% screen_has_guide as has_guide %}{% if has_guide %}<a class="btn btn-sm btn-outline border-base-300" href="{% url 'core:manual' %}#{{ screen_anchor }}" hx-get="{% url 'core:screen_guide' screen_anchor %}" hx-target="#seizou-modal-box" hx-swap="innerHTML" hx-on::after-request="document.getElementById('seizou-modal').showModal()" onclick="event.preventDefault()" title="この画面でできること" aria-label="この画面の案内" data-tour="guide">{% icon "info" "size-4" %}<span class="hidden sm:inline">案内</span></a>{% endif %}{% endif %}
-    {# 使い方 (?): ダッシュボードと使い方の画面のほかでは、今の画面の説明の所 (/manual/#<画面の名前>。題の横の「?」と「案内」の href と同じ飛び先) で開く。ダッシュボードからは頭 (はじめに・業務の流れ) で開く。訳: 使い方の頭から目次を何度も送って今の画面の説明を探す手間を省くため (候補 C86)。 #}
+    {# 使い方 (?): ダッシュボードと使い方の画面のほかでは、今の画面の説明の所 (/manual/#<画面の名前>。題の横の「?」と「案内」の href と同じ飛び先) で開く。ダッシュボードからは頭 (はじめに・業務の流れ) で開く。訳: 使い方の頭から目次を何度も送って今の画面の説明を探す手間を省くため (作者の決め)。 #}
     {% if seizou.manual_url %}<a class="btn btn-square btn-sm btn-outline border-base-300" href="{{ seizou.manual_url }}{% if screen_anchor and screen_anchor != 'core_home' and screen_anchor != 'core_manual' %}#{{ screen_anchor }}{% endif %}" title="使い方" aria-label="使い方">{% icon "help" "size-4" %}</a>{% endif %}
     {% if user.is_authenticated %}
     {% with name=user.get_full_name|default:user.get_username %}

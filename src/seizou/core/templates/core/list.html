@@ -1,13 +1,13 @@
 {% extends "core/base.html" %}
 {% load seizou_icons %}
-{# 「新規登録」を小窓で開く一覧は、子のテンプレートが with の tag で create_in_modal=True を渡して block.super を呼ぶ (小さい入力だけ。N158b)。空の一覧の「新規登録」(core/_rows.html) は画面へ移るまま。 #}
+{# 「新規登録」を小窓で開く一覧は、子のテンプレートが with の tag で create_in_modal=True を渡して block.super を呼ぶ (小さい入力だけ。開発の記録 docs/nights/20261105/N158b.md)。空の一覧の「新規登録」(core/_rows.html) は画面へ移るまま。 #}
 {% block actions %}{% if create_url %}<a class="btn btn-primary" href="{{ create_url }}"{% if create_in_modal %} data-modal-form="{{ create_url }}"{% endif %}>{% icon "plus" "size-4" %}新規登録</a>{% endif %}{% endblock %}
 {% block content %}
 {# 一覧: 1 枚のカードの中に、絞り込みの枠・道具の行・表。検索と件数とページ送りは htmx で表の部分 (#rows) だけを差し替える。 #}
-{# 絞り込みの枠は開け閉めでき、幅が 640px より狭いときは初めは閉じて表を先に見せ、キーワードが入っていれば開いて出す (キーワードは札にならず、閉じると絞っていることが画面に出ないため。初見テスト R5 の C39-2)。 #}
+{# 絞り込みの枠は開け閉めでき、幅が 640px より狭いときは初めは閉じて表を先に見せ、キーワードが入っていれば開いて出す (キーワードは札にならず、閉じると絞っていることが画面に出ないため。作者の決め)。 #}
 {# hx-history="false": 一覧は htmx の履歴の写し (sessionStorage) を残さない。写しは欄の打った字と件数の選びを持たないので、戻ると検索の欄と件数が古いまま出るため。 #}
 {# 戻るは毎回サーバーへ聞き直し (HX-History-Restore-Request)、土台は画面の全体を返す。 #}
-{# 枠の id は list-card: 札の × と「絞りを外す」と空の枠の「すべて外す」は、この枠を htmx で丸ごと取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを選ぶ。N161)。 #}
+{# 枠の id は list-card: 札の × と「絞りを外す」と空の枠の「すべて外す」は、この枠を htmx で丸ごと取り直す (土台は HX-Target が list-card の要求に画面の全体を返し、htmx が hx-select で枠だけを選ぶ。開発の記録 docs/nights/20261105/N161.md)。 #}
 <div id="list-card" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" hx-indicator="#list-loading" hx-history="false">
   {% if presets %}{% include "core/_presets.html" %}{% endif %}
   <form method="get" action="{{ request.path }}" hx-get="{{ request.path }}" hx-target="#rows" hx-push-url="true" hx-trigger="submit, input changed delay:300ms from:#list-q, change from:#list-per, change from:[data-list-filter]:not([type=date]), change delay:800ms from:[data-list-filter][type=date], seizou:refresh from:body">
@@ -21,7 +21,7 @@
       <div role="search">
         {% if search_hint %}
         <label for="list-q" class="mt-2 block font-medium">キーワード</label>
-        {# 幅が 640px より狭いときだけ、欄の案内と同じ字を見出しの下に折り返して出す (欄の幅で案内が切れ、何で絞れるかが読めないため。初見テスト R5 の候補 C36 の 5)。欄の id は付けない。 #}
+        {# 幅が 640px より狭いときだけ、欄の案内と同じ字を見出しの下に折り返して出す (欄の幅で案内が切れ、何で絞れるかが読めないため。作者の決め)。欄の id は付けない。 #}
         <p class="mt-1 text-xs text-base-content/60 sm:hidden">{{ search_hint }}で絞り込む</p>
         <label class="input mt-2 w-full">
           {% icon "search" "size-4 text-base-content/60" %}

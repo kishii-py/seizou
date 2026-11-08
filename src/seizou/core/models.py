@@ -25,7 +25,7 @@ class Company(models.Model):
         ("ceil", "切上"),
         ("floor", "切捨"),
     ]
-    # 消費税の扱いは、請求書の税率ごとの合計に 1 回だけ計算するトータルだけ (決め LAW-2。インボイス制度)。
+    # 消費税の扱いは、請求書の税率ごとの合計に 1 回だけ計算するトータルだけ (作者の決め。インボイス制度)。
     # 明細ごとに丸めて足す 2 つの扱いは外し、今の値は core と masters の migration がトータルと消費税の端数の向きに移した。
     TAX_CHOICES = [
         ("total", "トータル"),
@@ -36,20 +36,20 @@ class Company(models.Model):
     theme = models.CharField("画面の色", max_length=35, default="light")
     rounding = models.CharField("端数の扱い", max_length=10, choices=ROUNDING_CHOICES, default="round")
     tax_mode = models.CharField("税の扱い", max_length=10, choices=TAX_CHOICES, default="total")
-    # 消費税 (請求書の金額の合計 × 率) を 1 円に丸める向き (決め C95-1b)。既定は切捨。
-    # 取引先の同じ名前の欄が空なら、この値に従う。会社の値を変える画面は作らない (会社の端数と同じ。決め C32-1)。
+    # 消費税 (請求書の金額の合計 × 率) を 1 円に丸める向き (作者の決め)。既定は切捨。
+    # 取引先の同じ名前の欄が空なら、この値に従う。会社の値を変える画面は作らない (会社の端数と同じ。作者の決め)。
     tax_rounding = models.CharField("消費税の端数の向き", max_length=10, choices=ROUNDING_CHOICES, default="floor")
     address = models.CharField("住所", max_length=100, blank=True)
     phone = models.CharField("電話", max_length=35, blank=True)
     bank_account = models.CharField("振込先", max_length=100, blank=True)
-    # 適格請求書発行事業者の登録番号 (決め LAW-3)。インボイス制度 (消費税法の適格請求書等保存方式) では、
+    # 適格請求書発行事業者の登録番号 (作者の決め)。インボイス制度 (消費税法の適格請求書等保存方式) では、
     # 適格請求書に、発行する事業者の名前と登録番号を書く。形は T と 13 桁の数字を続けた 14 字 (中小企業共通 EDI の
     # 付表 3 の SIID27「受注者適格請求書発行事業者登録番号」と同じ形)。空 = 登録していない事業者で、請求書に行を出さない。
-    # 形の確かめは core.services.check_registration_no (決め C95-2)。出すのは請求書の印刷だけ (core/report_base.html。納品書などの context は鍵を選んで渡すので出ない)。
+    # 形の確かめは core.services.check_registration_no (作者の決め)。出すのは請求書の印刷だけ (core/report_base.html。納品書などの context は鍵を選んで渡すので出ない)。
     registration_no = models.CharField("登録番号", max_length=14, blank=True)
     logo = models.FileField("ロゴ", upload_to="company/", blank=True)
 
-    #: 変更の履歴 (core.history。決め HIST-1 の「会社の設定」) を残す。会社に詳細の画面は無いので、設定の画面の「設定の履歴」に出す
+    #: 変更の履歴 (core.history。作者の決めの「会社の設定」) を残す。会社に詳細の画面は無いので、設定の画面の「設定の履歴」に出す
     keeps_history = True
     #: 直したことと見出しだけを残し、前と後の値は残さない列 (振込先の番号を記録に残さない。core.services.update_company の今の決め)
     history_hidden_values = ("bank_account",)
@@ -112,7 +112,7 @@ class SettingOverride(models.Model):
 
 
 class UserPreference(models.Model):
-    """人ごとの表示の設定 (決め 11-05 21:2x。N167)。1 人 1 鍵 1 行。書くのは core.services.set_user_preference だけ (R13)。
+    """人ごとの表示の設定 (決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md)。1 人 1 鍵 1 行。書くのは core.services.set_user_preference だけ (R13)。
 
     鍵と見出しは core.display にある。今の鍵は上の帯の色 (header_color) だけで、ほかの表示の設定も表を変えずに同じ表へ鍵を足す。
     標準の値は行を持たない (行が無ければ標準)。履歴は持たない。
@@ -135,7 +135,7 @@ class UserPreference(models.Model):
 
 
 class ChangeLog(models.Model):
-    """変更の履歴 (決め HIST-0・HIST-1)。マスターと伝票を、誰が・いつ・どの項目を・前の値 → 後の値に直したかの 1 行。
+    """変更の履歴 (作者の決め)。マスターと伝票を、誰が・いつ・どの項目を・前の値 → 後の値に直したかの 1 行。
 
     書くのは core.services.record_history と record_history_deleted だけ (R13。UserPreference と同じ形)。読むのは core.history。
     表と行は ContentType でなく字 (model = _meta.label_lower・object_pk・object_text) で持つ。行や表を消しても読めるため。

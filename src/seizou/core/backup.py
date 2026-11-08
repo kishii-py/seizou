@@ -172,7 +172,7 @@ def take_backup(parent: Path, *, suffix: str = "", full: bool = False) -> dict:
     会社の作り込みの許しの一覧 (SITE_FILES・SITE_DIRS) を site/ に写し、backup.json に sha256・migrations・site_files の鍵を足し、
     控えのフォルダを持ち主だけが読める権限にする。戻す前の退避と練習モードの写しは full を渡さない (今のまま)。
     PostgreSQL の写し (db.pgdump) は確かめない。
-    訳: 壊れた控えを黙って残さず、戻した時に会社ごとの項目や帳票の形も一緒に戻せるようにするため。作り込みを入れるのは本人の決め (11-08 00:0x)。確かめと写しを命令の道だけにしたのは、生きた DB が壊れたときに戻す前の退避と練習モードが止まらないように (確かめ直しの (b))。.env は控えない決まり (backup.py の docstring・docs/operations.md の「毎日の控え」) のまま。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-3・ops-4・chk-ops-sre-5 と確かめ直しの (b)(f)。変えてよい条件 = 本人が控えの範囲を決め直したとき、または戻す前の退避にも確かめを掛けると決めたとき。
+    訳: 壊れた控えを黙って残さず、戻した時に会社ごとの項目や帳票の形も一緒に戻せるようにするため。作り込みを入れるのは本人の決め (11-08 00:0x)。確かめと写しを命令の道だけにしたのは、生きた DB が壊れたときに戻す前の退避と練習モードが止まらないように (確かめ直しの (b))。.env は控えない決まり (backup.py の docstring・docs/operations.md の「毎日の控え」) のまま。出所 = エンタープライズ化の調べを受けた作者の決め。変えてよい条件 = 本人が控えの範囲を決め直したとき、または戻す前の退避にも確かめを掛けると決めたとき。
     """
     _refuse_bad_media_root()
     kind = database_kind()
@@ -247,7 +247,7 @@ def sqlite_integrity(path: Path) -> list[str]:
 def _verify_sqlite_copy(path: Path) -> None:
     """写した DB の確かめ。integrity_check が ok の 1 行でないか、開けなければ BackupError (呼び手が作りかけのフォルダを消す)。
 
-    訳: 壊れた写しを控えとして黙って残さないため。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-3 と確かめ直しの (b)(g)。変えてよい条件 = 戻す前の退避にも確かめを掛けると本人が決めたとき (呼び手を増やす)。
+    訳: 壊れた写しを控えとして黙って残さないため。出所 = エンタープライズ化の調べを受けた作者の決め。変えてよい条件 = 戻す前の退避にも確かめを掛けると本人が決めたとき (呼び手を増やす)。
     """
     try:
         rows = sqlite_integrity(path)
@@ -421,7 +421,7 @@ def prune_backups(parent: Path, keep_days: int, *, now: datetime | None = None, 
     消さない物: 戻す前の退避 (-before-restore)・keep に渡した名前 (今取った控え)・名前の形が合わない物・
     backup.json を読めない物 (控えでない物には触らない)。日時はフォルダの名前で決め、mtime は見ない (写し直しで動くため)。
     now は置き場の時計の現地時刻 (tz 無し。new_name と同じ時計)。既定は今。
-    訳: 古い控えを手の find で消さずに済ませ、世代を日数で保つため。退避を消さないのは、戻しを取り消す道を残すため。出所 = エンタープライズ化の調べ 第一弾の候補 4 の作る物 (2) と依頼書 N358。変えてよい条件 = 本人が世代の数え方 (日数・回数) を決め直したとき。
+    訳: 古い控えを手の find で消さずに済ませ、世代を日数で保つため。退避を消さないのは、戻しを取り消す道を残すため。出所 = エンタープライズ化の調べを受けた作者の決めと開発の記録 docs/nights/20261108/N358.md。変えてよい条件 = 本人が世代の数え方 (日数・回数) を決め直したとき。
     """
     parent = Path(parent)
     if not parent.is_dir():
@@ -514,7 +514,7 @@ def verify_backup(folder: Path) -> dict:
     返す物は {"ok": 成否, "lines": 行の並び (字), "seconds": かかった秒}。
     控えのフォルダでない・SQLite でない (控えか今の DB) は BackupError (確かめられない)。
 
-    訳: 控えから本当に戻せるかを、本番の DB と上げたファイルに触らずに確かめ、確かめた日を残すため (戻しの時間と失ってよい幅を測る材料)。本番の process の中で DB を切り替えない決め (practice.py の docstring) を守るため、控えの写しは標準の sqlite3 の読むだけの接続で quick_check と django_migrations の読みにとどめる (SQL の字はこの 2 つだけ。R14 の訳)。出所 = エンタープライズ化の調べ 第一弾の指摘 ops-8・chk-ops-sre-7 と確かめ直しの (a)(b)(e)(f)。変えてよい条件 = 控えに表ごとの行の数か中身の印 (候補 4) を持たせたとき、比べる物を足す。
+    訳: 控えから本当に戻せるかを、本番の DB と上げたファイルに触らずに確かめ、確かめた日を残すため (戻しの時間と失ってよい幅を測る材料)。本番の process の中で DB を切り替えない決め (practice.py の docstring) を守るため、控えの写しは標準の sqlite3 の読むだけの接続で quick_check と django_migrations の読みにとどめる (SQL の字はこの 2 つだけ。R14 の訳)。出所 = エンタープライズ化の調べを受けた作者の決め。変えてよい条件 = 控えに表ごとの行の数か中身の印 (作者の決め) を持たせたとき、比べる物を足す。
     """
     started = time.monotonic()
     folder = Path(folder)
@@ -613,7 +613,7 @@ def _refuse_broken_db(db_file: Path) -> None:
 
     止めるのは quick_check が ok でないときと、写しが開けない (sqlite3.DatabaseError) ときだけ。migration の差では止めない
     (版の違いは戻した後の migrate で埋める)。止めるときは退避を作らず、本番の DB と上げたファイルに触らない。
-    訳: SQLite の backup API は控えの中身を確かめずに page を写すので、壊れた控えで本番の DB を上書きしないため。出所 = エンタープライズ化の調べ 第一弾の確かめ直しの (d)。変えてよい条件 = 候補 4 の確かめ (控えの sha256・integrity_check) が入ったら、その確かめに寄せる。
+    訳: SQLite の backup API は控えの中身を確かめずに page を写すので、壊れた控えで本番の DB を上書きしないため。出所 = エンタープライズ化の調べを受けた作者の決め。変えてよい条件 = 控えの確かめ (控えの sha256・integrity_check) が入ったら、その確かめに寄せる。
     """
     try:
         with _readonly_copy(db_file) as conn:

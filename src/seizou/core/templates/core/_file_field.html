@@ -1,7 +1,7 @@
 {% load seizou_icons %}
 {# ファイルの欄 (決め 11-04 14:4x)。破線の枠の中に <input type=file> を 1 つ置き、枠へドラッグしても入る (core/static/js/seizou-file-drop.js)。 #}
 {# 渡し方: 入力の土台 (core/form.html) は loop の field をそのまま {{ field }} で出す (name・id・accept・multiple は widget のまま)。 #}
-{# 編集の画面の今のファイル: 土台が欄の widget を core.widgets.ClearableFileWidget (input だけを描く) に替え、「現在:」の link と「クリア」の check は、ここで枠の上に描く (初見テスト R5 の a-flagged-13。候補 C40)。 #}
+{# 編集の画面の今のファイル: 土台が欄の widget を core.widgets.ClearableFileWidget (input だけを描く) に替え、「現在:」の link と「クリア」の check は、ここで枠の上に描く (作者の決め)。 #}
 {# 字・check の name と id・必須かどうか・描き直しの check の印は widget の文脈 (field.subwidgets.0.data) の値をそのまま出す (name は drawing-clear・logo-clear のまま。services と E2E が読む)。 #}
 {# form の外の欄 (manuals/_images.html) は input_name・input_id・input_accept・input_label を渡し、ここで <input> を描く。 #}
 {# 素の <input type=file> は見せない (scripts/css/input.css の [data-file-drop] input[type=file] = 画面の外に置くだけで、キーボードの焦点は残る)。 #}

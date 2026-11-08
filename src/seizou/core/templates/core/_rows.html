@@ -2,7 +2,7 @@
 {# 一覧の表の部分 (htmx はここだけを返す)。数は右寄せ・日付と識別子は等幅・長い字は省略して title に全文・行の高さは一定。 #}
 {# row_template: 1 行を描く template の名前 (無ければ下の欄の描き方)。actions_label: 最後の列の見出し (無ければ列を出さない)。include する側が with で渡す (connect の受信した注文)。 #}
 {% if rows %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">
@@ -44,7 +44,7 @@
 </div>
 {% else %}
 {# 空の一覧: 絵と 1 文と次の操作 (主色のボタンは見出しの右の 1 つだけなので、ここは枠だけのボタン)。 #}
-{# 検索か札 (BaseListView.filter_chips) があれば、その字を 1 文に入れて「すべて外す」(一覧の枠を取り直す)。無ければ「まだ 1 件もありません。」(app の _rows.html が自分の文を出す一覧も、検索か絞りがある 0 件はここに任せる。N161)。 #}
+{# 検索か札 (BaseListView.filter_chips) があれば、その字を 1 文に入れて「すべて外す」(一覧の枠を取り直す)。無ければ「まだ 1 件もありません。」(app の _rows.html が自分の文を出す一覧も、検索か絞りがある 0 件はここに任せる。開発の記録 docs/nights/20261105/N161.md)。 #}
 <div class="flex min-h-64 flex-col items-center justify-center rounded-lg border border-dashed border-base-300 p-6 text-center">
   {% if search_q or filter_chips %}
   <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "search" "size-6" %}</span>

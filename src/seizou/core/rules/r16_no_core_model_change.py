@@ -1,6 +1,6 @@
 """R16 の検査: 部品の表を変えない。会社ごとの項目は拡張の表に足す。
 
-見る形 (05 の 4 節。言い切れる物だけ):
+見る形 (決まりの検査の設計の決め。言い切れる物だけ):
 - models.py (と models/ の中の .py) の class で、親が部品の app の models の class である物。
   親の名前は同じファイルの import で決める (例 from seizou.masters.models import Item の後の
   class MyItem(Item)、import seizou.masters.models as masters_models の後の masters_models.Item)。
@@ -9,7 +9,7 @@
   (会社の側に部品の app 名の migration がある)。フォルダには行が無いので、行の番号は 0。
   中身は読まない (枠が場所だけを渡す)。
 
-部品の app の名前は constants.PART_APPS (01 の 1 節の表) から読む。
+部品の app の名前は constants.PART_APPS (部品どうしの呼ぶ向きの設計の決めの表) から読む。
 OneToOneField や ForeignKey で部品の表を指す (拡張の表) のは継承でないので出さない。
 """
 

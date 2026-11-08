@@ -55,7 +55,7 @@ SETTING_LABELS = {
     "ai_features": ("AI を使う機能", {True: "使う", False: "止める"}),
 }
 
-#: 設定の名前の下に小さな字で出す 2 行目 (名前の括弧の説明を分けた物。初見テスト R5 の V99・U101。候補 C14)。
+#: 設定の名前の下に小さな字で出す 2 行目 (名前の括弧の説明を分けた物。作者の決め)。
 #: 設定の画面の表の「設定」の列と、設定の変更の画面の欄の注記 (forms の SettingForm の help_text) に出す。
 #: SETTING_LABELS の (名前, 値の日本語) の 2 つ組の形は変えない (2 つに分けて読む所がそのまま動くように)
 SETTING_NOTES = {
@@ -114,7 +114,7 @@ def hideable_fields() -> tuple:
 #: 設定の変更を断る 403 の画面の文
 SETTINGS_DENIED_TEXT = "「設定の変更」の画面です。アカウント管理の権限が要ります。" + access.CONTACT
 #: 画面から変えるのはシステム管理者だけの鍵。アカウント管理の権限 1 つで 3 つの判定を外せないように。
-#: LOCKED_KEYS と違い、鍵は画面にあり、システム管理者は変えられる (精査 A2 の S5)
+#: LOCKED_KEYS と違い、鍵は画面にあり、システム管理者は変えられる (作者の決め)
 SUPERUSER_ONLY_KEYS = ("access_control",)
 #: システム管理者だけの鍵を変えようとした人に出す 403 の画面の文
 SUPERUSER_ONLY_TEXT = "「権限の判定」は、システム管理者だけが画面から変えられます。変えるときはシステム管理者に頼んでください。"
@@ -143,7 +143,7 @@ def _dict_parts(key: str, value: dict) -> list[str]:
 
     中の値は同じ鍵の表で日本語にする。並びは SUB_LABELS の順に固定する (PostgreSQL の jsonb は鍵を並べ替えて返すので、
     保存した並びに頼らない)。知らない鍵はその後ろ。_display はこれを「・」でつなぎ、設定の画面の表は塊ごとに出す
-    (640px 以上の幅では塊の途中で折らない。初見テスト R5 の a-blind-08。候補 C14)。
+    (640px 以上の幅では塊の途中で折らない。作者の決め)。
     メールの送り方 (mail) の中の値は _display の表を通さない (サーバーの名前やアカウントが選べる値の字に化けないように)。
     暗号化の方式だけを MAIL_SECURITY_LABELS で引き、ほかは字のまま、空の字は「なし」にする。
     """
@@ -278,7 +278,7 @@ class SettingsView(ScreenMixin, TemplateView):
             for row in context["company_settings"]:
                 if row["key"] in SUPERUSER_ONLY_KEYS:
                     row["editable"] = False
-        # app = 入口の先の部品。部署でその部品を開けない人には入口を出さない (押すと 403 になる入口を出さない = 見つけ GR-03。
+        # app = 入口の先の部品。部署でその部品を開けない人には入口を出さない (押すと 403 になる入口を出さない = 作者の決め。
         # 判定は左のメニューと同じ access.can_open。記録は書かない)。無い物は部署を見ない (core の画面と、いつも開ける部品)。
         context["links"] = [
             {
@@ -289,7 +289,7 @@ class SettingsView(ScreenMixin, TemplateView):
                 "app": "connect",
             },
             {
-                # 送り合った記録 (決め HIST-1 の edi・C106-1)。取引先との接続と同じく普段は触らないので、左のメニューでなくここから開く
+                # 送り合った記録 (作者の決め)。取引先との接続と同じく普段は触らないので、左のメニューでなくここから開く
                 "label": "送り合った記録",
                 "help": "取引先と送り合った注文・注文回答・出荷の知らせ・検収の中身を、送ったとおりに残した一覧。",
                 "url": url_or_none("connect:exchange_list"),
@@ -337,7 +337,7 @@ class SettingsView(ScreenMixin, TemplateView):
             "from": mail_values["from"],
             "from_name": mail_values["from_name"],
         }
-        # 設定の履歴 (決め HIST-1 の「会社の設定」。会社の表と設定の上書きの変更の履歴。会社の設定に詳細の画面は無いので、ここに同じ部品で出す)
+        # 設定の履歴 (作者の決めの「会社の設定」。会社の表と設定の上書きの変更の履歴。会社の設定に詳細の画面は無いので、ここに同じ部品で出す)
         context["settings_history"] = history.settings_timeline(self.request.user)
         return context
 
@@ -471,7 +471,7 @@ class CompanyUpdateView(BaseFormView):
     対象はいつも会社の 1 行 (services.company())。土台の call_service が update_company(会社, user=..., data=...) を呼ぶ。
     門は設定の変更と同じ settings_denied (アカウント管理の権限。3 状態の外)。form_valid の require_write も core.update_company (ACCOUNT_ACTIONS) で 2 重に断る。
 
-    登録番号はインボイス制度 (適格請求書に発行する事業者の名前と登録番号を書く) のための欄で、請求書だけに出す (決め LAW-3)。形 (T と 13 桁の数字) の違う番号は止める (決め C95-2)。
+    登録番号はインボイス制度 (適格請求書に発行する事業者の名前と登録番号を書く) のための欄で、請求書だけに出す (作者の決め)。形 (T と 13 桁の数字) の違う番号は止める (作者の決め)。
     """
 
     screen_name = "会社の情報の変更"
@@ -498,12 +498,12 @@ class CompanyUpdateView(BaseFormView):
 
 
 class DisplaySettingsView(BaseFormView):
-    """表示の設定 (人ごとの見た目。今は上の帯 = ヘッダーの色だけ。決め 11-05 21:2x。N167)。
+    """表示の設定 (人ごとの見た目。今は上の帯 = ヘッダーの色だけ。決め 11-05 21:2x。開発の記録 docs/nights/20261105/N167.md)。
 
     使う人: ログインする全員 / いつ: 使い始めるときと、ほかの人のアカウントでも入る端末を使うとき / 何のために: 上の帯を自分だけの色にし、ほかの人のアカウントで入ったままの画面に目で気づく / 次にすること: 見本を押すと保存され、画面が読み直されて上の帯の色が変わる
 
     右上の利用者のメニューの「表示の設定」から小窓で開く (data-modal-form)。小窓の中身は見本のカード (core/_display_settings_card.html)。
-    画面の全体 (新しいタブ・URL の直打ち・JS の無い窓。template_name = core/display_settings.html) も同じカードで描き、見本を選んで「保存」で保存して同じ画面へ戻る (C53)。
+    画面の全体 (新しいタブ・URL の直打ち・JS の無い窓。template_name = core/display_settings.html) も同じカードで描き、見本を選んで「保存」で保存して同じ画面へ戻る (作者の決め)。
     土台の call_service が set_user_preference(user=本人, key=..., value=...) を呼ぶ (本人の行だけ。権限の表では FREE_ACTIONS)。
     小窓の保存の後は、204 に HX-Refresh を付けて画面の全体を読み直す (上の帯の色は <html> の属性なので、seizou:refresh の取り直しでは変わらない)。
     """
@@ -515,7 +515,7 @@ class DisplaySettingsView(BaseFormView):
     service = staticmethod(services.set_user_preference)
     success_message = "表示の設定を保存しました。"
     success_url = reverse_lazy("core:display_settings")
-    template_name = "core/display_settings.html"  # 画面の全体も見本のカードで描く (C53)。小窓の形は土台の get_template_names のまま
+    template_name = "core/display_settings.html"  # 画面の全体も見本のカードで描く (作者の決め)。小窓の形は土台の get_template_names のまま
     extra_context = {"form_card": "core/_display_settings_card.html"}
 
     def get_initial(self):
