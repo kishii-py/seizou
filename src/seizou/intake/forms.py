@@ -14,7 +14,7 @@ from .models import Extraction
 
 
 def _customer_queryset():
-    """得意先の候補 (取引先の種類が得意先か両方で、使用中の物。N135)。取引先の表は Extraction の外部キーの先から引く。読むだけ。"""
+    """得意先の候補 (取引先の種類が得意先か両方で、使用中の物。開発の記録 docs/nights/20261104/N135.md)。取引先の表は Extraction の外部キーの先から引く。読むだけ。"""
     partner = Extraction._meta.get_field("customer").related_model
     return active_partners().filter(role__in=(partner.ROLE_CUSTOMER, partner.ROLE_BOTH))
 
@@ -34,7 +34,7 @@ def _customer_parts(extraction):
 
 
 def _lines_by_part(extraction):
-    """読み取りを受注にする画面の枠の左に並べる行 (intake/_extraction_accept_card.html。候補 C91)。読むだけ。
+    """読み取りを受注にする画面の枠の左に並べる行 (intake/_extraction_accept_card.html。作者の決め)。読むだけ。
 
     読み取った明細 (extracted の lines の dict) を、得意先の品番 (前後の空白を落とした字) ごとに、読み取った順のまま並べた辞書で返す。
     行の選び方は _customer_parts と同じ (dict でない行・品番が字でない行・品番が空の字の行を飛ばす)。extracted が dict でなければ空の辞書。
@@ -83,7 +83,7 @@ class AcceptForm(forms.Form):
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.part_fields = []
-        # instance の無い form (言葉の試験など) でも part_rows が落ちないよう、早く抜ける前に置く (候補 C91)。
+        # instance の無い form (言葉の試験など) でも part_rows が落ちないよう、早く抜ける前に置く (作者の決め)。
         self._lines_by_part = {}
         if instance is None:
             return
@@ -102,7 +102,7 @@ class AcceptForm(forms.Form):
 
     @property
     def part_rows(self):
-        """受注にする画面の枠の並び (intake/_extraction_accept_card.html。候補 C91)。1 つ = {field・lines}。
+        """受注にする画面の枠の並び (intake/_extraction_accept_card.html。作者の決め)。1 つ = {field・lines}。
 
         part_fields の並びで、field は欄 (self[name])、lines はその品番の読み取った明細の行 (_lines_by_part。ふつうは 1 行)。
         最初に読んだ時に作って持つ (土台の get_form が __init__ の後に欄の widget と見出しを触るので、__init__ の中で作らない)。
@@ -115,7 +115,7 @@ class AcceptForm(forms.Form):
 
     @property
     def other_fields(self):
-        """枠に入らない見える欄 (土台の get_form が足す会社ごとの項目)。受注にする画面は枠の後ろに今の格子で出す (候補 C91)。"""
+        """枠に入らない見える欄 (土台の get_form が足す会社ごとの項目)。受注にする画面は枠の後ろに今の格子で出す (作者の決め)。"""
         names = {name for name, _part_no in self.part_fields}
         return [field for field in self.visible_fields() if field.name not in names]
 

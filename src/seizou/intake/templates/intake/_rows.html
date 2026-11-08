@@ -1,5 +1,5 @@
 {% load seizou_icons %}{% comment %}
-intake の一覧の行の部分 (N159)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
+intake の一覧の行の部分 (開発の記録 docs/nights/20261105/N159.md)。土台は画面の全体でも htmx の要求でも、この部分を core/_rows.html より先に探す。
 行が無く、検索の言葉も絞りも無いときだけ、空の枠の 2 行目とボタンの字を「読み取る」にする (決め 11-05 13:3x)。それ以外は core/_rows.html をそのまま使う。
 写した元: core/_rows.html の空の枠 (11-05 の main。manuals/_rows.html と同じ形)。土台の空の枠の形が変わったら、ここも合わせる。
 {% endcomment %}{% if not rows and not search_q and not filter_active %}
