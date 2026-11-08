@@ -196,7 +196,8 @@ def test_open_bell_lists_notices_marks_new_and_clears_badge(client_logged_in, us
     assert 'id="seizou-bell-list"' in html and "data-new" not in html and ">新</span>" not in html
 
     # 新しく届くとまた数える。
-    received(customer)
+    # Windows の時計の粒度では opened_at と同じ時刻になりうる (CI で 0 == 1 で落ちた) ので、届いた時刻を明示的に 1 ms 後にする。
+    received(customer, received_at=BellOpened.objects.get(user=user).opened_at + timedelta(milliseconds=1))
     assert bell.unread_count(user) == 1
 
 
