@@ -2082,11 +2082,7 @@ def send_shipping_notice(shipment, user):
         return shipping_services.record_notice_response(current, MESSAGE_SHIPPING_NOT_EDI_ORDER, user)
     message_id = shipping_services.assign_notice_number(current, user)
 
-    connection = (
-        Connection.objects.filter(partner_id=inbox.partner_id, direction=Connection.DIRECTION_SEND)
-        .order_by("pk")
-        .first()
-    )
+    connection = _send_connection(inbox.partner)
     if connection is None:
         return shipping_services.record_notice_response(current, MESSAGE_SHIPPING_NO_CONNECTION, user)
 
@@ -2325,7 +2321,7 @@ def _unreachable_reply(exc) -> str:
 def _send_connection(partner):
     """取引先 partner の、向き「送る」のつながりを 1 つ引く (pk の小さい物)。無ければ None。
 
-    send_order・send_reply・send_acceptance が呼ぶ。無いときの扱い (例外か返事の欄の文か) は呼び手が決める。
+    send_order・send_reply・send_acceptance・send_shipping_notice が呼ぶ。無いときの扱い (例外か返事の欄の文か) は呼び手が決める。
     """
     return (
         Connection.objects.filter(partner=partner, direction=Connection.DIRECTION_SEND)

@@ -9,18 +9,19 @@ load(seeds_dir, user) が、種のフォルダの holidays.yaml (休日) を読�
   (core の demo.load の transaction.atomic が全体を巻き戻す)。「注意」の文は足さない。
 - 種類は日本語の字 (祝日・会社の休み) か値 (public・company) で書く。日付は YAML の日付か YYYY-MM-DD の字。
 - 定休日の曜日 (土日) は種に書かない (設定 weekly_holidays)。
-- YAML の読み方と鍵の確かめは billing/demo_seed.py の物を写した (core の private な関数を import しない)。
+- YAML の読み方と鍵の確かめは core の公開の seeds の関数を使う (billing・connect・stock の demo_seed.py と同じ)。
 """
 
 from __future__ import annotations
 
-import datetime
-from contextlib import contextmanager
 from pathlib import Path
 
-import yaml
-
-from seizou.core.exceptions import RuleViolation
+from seizou.core.seeds import (
+    check_keys as _check_keys,
+    date as _date,
+    guard as _guard,
+    read as _read,
+)
 
 from . import services
 from .models import Holiday
@@ -29,46 +30,6 @@ HOLIDAYS_FILE = "holidays.yaml"
 HOLIDAYS_ROOT = "休日"
 HOLIDAY_KEYS = ("日付", "名前", "種類")
 KIND_WORDS = {"祝日": Holiday.KIND_PUBLIC, "会社の休み": Holiday.KIND_COMPANY}
-
-
-@contextmanager
-def _guard(name, number):
-    """services と変換の誤りに、ファイルと位置を付けて ValueError に上げ直す (巻き戻しは呼んだ側の atomic)。"""
-    try:
-        yield
-    except (ValueError, RuleViolation) as exc:
-        raise ValueError(f"{name} の {number} 件目: {exc}") from exc
-
-
-def _read(path, root_key):
-    """YAML を読み、根の鍵の下の並びを返す。"""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{path.name} を YAML として読めません: {exc}") from exc
-    if not isinstance(data, dict) or root_key not in data:
-        raise ValueError(f"{path.name} に「{root_key}」の並びがありません。")
-    entries = data[root_key] or []
-    if not isinstance(entries, list):
-        raise ValueError(f"{path.name} の「{root_key}」は並びで書いてください。")
-    return entries
-
-
-def _check_keys(entry, allowed, what):
-    if not isinstance(entry, dict):
-        raise ValueError(f"{what}の形が違います (鍵と値の並びではありません)。")
-    unknown = [key for key in entry if key not in allowed]
-    if unknown:
-        raise ValueError(f"{what}の鍵「{'」「'.join(unknown)}」が分かりません。")
-
-
-def _date(raw):
-    if isinstance(raw, datetime.date):
-        return raw
-    try:
-        return datetime.date.fromisoformat(str(raw).strip())
-    except ValueError as exc:
-        raise ValueError(f"日付「{raw}」を日付 (YYYY-MM-DD) として読めません。") from exc
 
 
 def _kind(raw):
@@ -90,7 +51,7 @@ def load(seeds_dir, user) -> dict:
     for number, entry in enumerate(_read(path, HOLIDAYS_ROOT), start=1):
         with _guard(path.name, number):
             _check_keys(entry, HOLIDAY_KEYS, "休日")
-            day = _date(entry.get("日付"))
+            day = _date(entry.get("日付"), "日付")
             kind = _kind(entry.get("種類"))
             if Holiday.objects.filter(date=day).exists():
                 skipped += 1
