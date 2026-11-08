@@ -347,3 +347,90 @@ def test_settings_check_takes_empty_brand_color_and_industry_as_unset(settings):
 
     settings.SEIZOU = {"brand_color": "#15803D", "industry": "機械加工"}
     assert [(row.ok, row.label) for row in doctor.check_settings()] == [(True, "会社の選べる設定")]
+
+
+# ---------------------------------------------------------------- 決まりの検査 (会社の置き場。N375)
+
+RULES = "決まりの検査 (会社の置き場)"
+
+
+def write_app(site, files: dict[str, str]):
+    """置き場に作り物の app (shop) を置く。"""
+    app = site / "shop"
+    app.mkdir(exist_ok=True)
+    for name, text in files.items():
+        (app / name).write_text(text, encoding="utf-8")
+    return app
+
+
+@pytest.mark.django_db
+def test_rules_row_good_when_site_has_no_violation(site):
+    """(a) 置き場の側に違反の無い app → 良いの行 (走査した本数を出す)。本番の条件でも開発の条件でも出る。"""
+    write_app(site, {"__init__.py": "", "views.py": "from seizou.core.views import BaseListView\n\n\nclass ShopList(BaseListView):\n    pass\n"})
+
+    for production in (False, True):
+        rows = [row for row in doctor.run(production=production) if row.label == RULES]
+        assert len(rows) == 1
+        assert rows[0].ok
+        assert rows[0].detail.startswith("違反 0 件 (走査 ")
+        scanned = int(rows[0].detail.split("走査 ")[1].split(" 本")[0])
+        assert scanned >= 2
+
+
+@pytest.mark.django_db
+def test_rules_row_fix_when_view_writes_table_directly(site):
+    """(b) views.py で表に直接書く (R13 の違反) 1 本 → 直すの行に「違反 1 件」・R13・ファイル:行。終わりの番号は 1。"""
+    write_app(
+        site,
+        {
+            "__init__.py": "",
+            "views.py": (
+                "from seizou.masters.models import Item\n"
+                "\n"
+                "\n"
+                "def make_item(name):\n"
+                "    return Item.objects.create(name=name)\n"
+            ),
+        },
+    )
+
+    code, out = run_doctor()
+
+    assert code == 1
+    fixes = [line for line in fix_lines(out) if RULES in line]
+    assert len(fixes) == 1, fix_lines(out)
+    line = fixes[0]
+    assert "違反 1 件。最初の 1 件: R13 shop/views.py:5 " in line
+    assert "数と金額を変える処理は" in line
+    assert "seizou_check" in line and "/seizou:fix" in line
+    assert "黙らせた" not in line
+
+
+@pytest.mark.django_db
+def test_rules_row_counts_silenced_without_fix(site):
+    """黙らせた違反は直すにせず、数だけを良いの行に添える。"""
+    write_app(site, {"views.py": "def drop(item):\n    item.delete()  # seizou: ignore[R13]\n"})
+
+    [row] = [row for row in doctor.run(production=False) if row.label == RULES]
+
+    assert row.ok
+    assert row.detail.endswith("。黙らせた 1 件")
+
+
+@pytest.mark.django_db
+def test_rules_row_fix_when_check_raises(site, monkeypatch):
+    """(c) 検査そのものが例外で止まる → 直すの行に例外の種類だけを出す (例外の文は出さない)。"""
+    from seizou.core import rules
+
+    def broken(paths):
+        raise RuntimeError("fake-detail-must-not-appear")
+
+    monkeypatch.setattr(rules, "check", broken)
+
+    code, out = run_doctor()
+
+    assert code == 1
+    fixes = [line for line in fix_lines(out) if RULES in line]
+    assert fixes == [f"直す  {RULES}: 決まりの検査が回らなかった: RuntimeError → 直し方: {doctor.RULES_ERROR_FIX}"]
+    assert "fake-detail-must-not-appear" not in out
+    assert "Traceback" not in out

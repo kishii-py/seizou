@@ -27,7 +27,7 @@ from . import (
 )
 from .engine import Result, Violation, run
 
-__all__ = ["RULES", "Result", "Violation", "check", "check_at_startup", "default_paths", "last_result"]
+__all__ = ["RULES", "Result", "Violation", "check", "check_at_startup", "default_paths", "last_result", "site_paths"]
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,22 @@ def default_paths() -> list[Path]:
     if base_dir is not None:
         paths.append(Path(base_dir))
     return paths
+
+
+def site_paths() -> list[Path]:
+    """会社の置き場の側だけの検査の対象: 会社のプロジェクトの BASE_DIR (settings に無ければ空)。
+
+    default_paths から部品の置き場 (seizou の package) を外した物。判定の中身は check と同じ。Django の設定を読む。
+    会社の置き場では部品は .venv の site-packages に入るので、歩くときに飛ばされる (engine.SKIP_DIRS)。
+    BASE_DIR の中に部品の置き場がある形 (seizou のリポジトリそのもの) では、部品の中も歩く。
+    訳: 本番の点検 (seizou_doctor) が会社の置き場の決まりの検査を回すため。部品の中は CI が見るので、本番では会社の側だけを見て時間を短くする。
+    出所 = 11-08 の採点の崩す役の指摘を受けた依頼 (開発の記録 docs/nights/20261108/N375.md)。
+    変えてよい条件 = 会社の置き場の形 (seizou new が書く settings.py の BASE_DIR) が変わったとき。
+    """
+    from django.conf import settings
+
+    base_dir = getattr(settings, "BASE_DIR", None)
+    return [Path(base_dir)] if base_dir is not None else []
 
 
 def check_at_startup() -> Result | None:
