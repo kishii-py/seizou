@@ -72,7 +72,7 @@ def company_root(cwd: Path) -> Path | None:
     """会社の置き場。CLAUDE_PROJECT_DIR (Claude Code を開いたフォルダ) を先に見て、見つからなければ cwd から探す。無ければ None。
 
     訳: 会話の中で cd して cwd が置き場の外 (部品のソースなど) に移っても、開いた置き場の会話なら守りを外さないため。
-    出所: 本人の決め 11-08 00:5x と、仕組みの調べの候補 7 (hook の抜け道)。変えてよい条件: Claude Code が開いたフォルダを別の形で渡すようになったとき。
+    出所: 本人の決め 11-08 00:5x と、仕組みの調べを受けた作者の決め (hook の抜け道)。変えてよい条件: Claude Code が開いたフォルダを別の形で渡すようになったとき。
     """
     project = os.environ.get("CLAUDE_PROJECT_DIR", "")
     if project:
@@ -94,7 +94,7 @@ def is_parts(target: Path) -> bool:
 
     訳: 名前は小文字にそろえて比べる。大文字と小文字を区別しないファイルの置き場 (macOS・Windows) で、
     SITE-PACKAGES/SEIZOU のように書いた道が同じ部品を指したまま == の比べを抜けるのを止めるため。
-    出所: 仕組みの調べの候補 7 (hook の抜け道)。変えてよい条件: 部品の package の名前に大文字を使うようになったとき。
+    出所: 仕組みの調べを受けた作者の決め (hook の抜け道)。変えてよい条件: 部品の package の名前に大文字を使うようになったとき。
     """
     names = [name.lower() for name in target.parts]
     for index, name in enumerate(names[:-1]):
