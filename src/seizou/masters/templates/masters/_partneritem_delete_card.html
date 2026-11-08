@@ -1,4 +1,4 @@
 {% load seizou_icons %}
-{# 部品の取引先の削除の確かめのカード (画面の全体 masters/partneritem_delete.html と小窓の両方が include する。受注の取消のカード orders/_order_cancel_card.html と同じ形)。黄の 1 行に消す行と、一緒に消える単価の行の件数 (件数だけ。金額は出さない) と、消した後に起きることを書き、その下に入力のカード (赤の「削除」)。字に金額を入れない (決め C98-1)。 #}
+{# 部品の取引先の削除の確かめのカード (画面の全体 masters/partneritem_delete.html と小窓の両方が include する。受注の取消のカード orders/_order_cancel_card.html と同じ形)。黄の 1 行に消す行と、一緒に消える単価の行の件数 (件数だけ。金額は出さない) と、消した後に起きることを書き、その下に入力のカード (赤の「削除」)。字に金額を入れない (作者の決め)。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ object.partner }}{% if object.partner_part_no %} (取引先の品番 {{ object.partner_part_no }}){% endif %} を、この部品 ({{ object.item.part_no }} {{ object.item.name }}) の取引先から消します。{% with price_count=object.prices.count %}{% if price_count %}この行の単価の行 {{ price_count }} 件も一緒に消えます。{% endif %}{% endwith %}消すと戻せません。{% if object.partner_part_no %}この取引先の品番で届く注文と注文書の読み取りは、次から自社の部品を選び直します (選ぶと、また行が足されます)。{% endif %}この行に付けた見積書の添付ファイルは残り、添付ファイルの一覧の「付けた先」は「(削除された記録)」になります。</span></div>
 {% include "core/_form_card.html" %}

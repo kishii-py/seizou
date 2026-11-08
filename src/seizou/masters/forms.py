@@ -1,7 +1,7 @@
 """masters の入力の form。保存は form でなく services が行う (土台が ModelForm の save を呼ぶことは無い)。
 
 form に service_kwargs() が無いので、土台は cleaned_data を data= (会社ごとの項目は ext=) に分けて
-services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ext) を呼ぶ (01 の 10.4)。
+services.create_item(data, user, ext=ext) / update_item(item, data, user, ext=ext) を呼ぶ (部品の公開する関数の設計の決め)。
 締日と支払日の min・max (1〜31) は土台の ServiceModelForm が表の検査から付ける。ここは欄の下の案内だけ。
 """
 
@@ -24,10 +24,10 @@ from .models import Holiday
 from . import services
 
 
-#: 使用中の欄の下の案内 (取引先と部品で同じ字。N135)
+#: 使用中の欄の下の案内 (取引先と部品で同じ字。開発の記録 docs/nights/20261104/N135.md)
 ACTIVE_HELP = "外すと使用停止にします。受注と発注の候補に出なくなり、今までの受注と発注の記録はそのまま残ります。"
 
-#: 部品の単位の欄の下の案内 (決め UNIT-1 = a)
+#: 部品の単位の欄の下の案内 (作者の決め)
 UNIT_HELP = "数え方の単位を一覧から選びます。字を打つと絞れます (例「kg」「箱」)。会社どうしの注文には、単位のコードも一緒に送ります。"
 #: 単位が一覧に無い字のまま (移す前の字) の部品の、単位の欄の下の案内。{unit} は今の字
 UNIT_UNLISTED_HELP = (
@@ -35,14 +35,14 @@ UNIT_UNLISTED_HELP = (
     "会社どうしの注文では単位のコードが空になります (相手に個として読まれるおそれがあります)。"
 )
 
-#: 取引先の端数の 3 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。初見テスト 5 回目の V119)
+#: 取引先の端数の 3 欄の案内。{current} は会社の既定の今の値 (会社の行の選択肢の字。作者の決め)
 ROUNDING_HELP = "納品書と請求書の金額の端数 (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
 TAX_HELP = "消費税は、請求書 1 枚の金額の合計に 1 回だけ率をかけて計算します (トータル)。1 円に丸める向きは「消費税の端数の向き」で選びます。空なら会社の既定 (今は {current}) に従います。"
 TAX_ROUNDING_HELP = "請求書の消費税を 1 円に丸める向き (四捨五入・切上・切捨)。空なら会社の既定 (今は {current}) に従います。"
 
 
 def _active_on_edit_only(form):
-    """使用中の欄 (外すと使用停止。N135) は編集の画面だけに出す。新規登録は使用中で作る (表の既定)。
+    """使用中の欄 (外すと使用停止。開発の記録 docs/nights/20261104/N135.md) は編集の画面だけに出す。新規登録は使用中で作る (表の既定)。
 
     表の列は editable=False (CSV の見出しに出さない) なので、ModelForm は値を写さない。編集の初期値はここで写す。
     """
@@ -68,7 +68,7 @@ def _unit_on_edit(form):
 
 class ItemForm(ServiceModelForm):
     active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
-    #: 単位は数量単位の一覧から選ぶ (決め UNIT-1 = a。字を打って探す欄 = UX-1)。送る値は一覧のコード、
+    #: 単位は数量単位の一覧から選ぶ (作者の決め。字を打って探す欄 = 作者の決め)。送る値は一覧のコード、
     #: cleaned_data は一覧の名前の字 (services が名前からコードを引く)。新規登録の初めの値は空 (個を選んでおかない)。
     unit = forms.ModelChoiceField(
         label="単位",
@@ -79,13 +79,13 @@ class ItemForm(ServiceModelForm):
     )
 
     #: 土台 (入力の土台の get_form) が会社ごとの項目を足した後も、この欄を最後に置く。
-    #: 使用中の行が会社ごとの項目を押し下げず、編集の並びが新規登録 + 最後に使用中になるように (初見テスト 5 回目の V35)。
+    #: 使用中の行が会社ごとの項目を押し下げず、編集の並びが新規登録 + 最後に使用中になるように (作者の決め)。
     last_fields = ("active",)
 
     class Meta:
         model = Item
         fields = ["part_no", "name", "drawing_no", "drawing", "unit", "standard_price", "note"]
-        # 自社品番の欄の下の説明 (初見テスト R5 の V87。C19-2 = a: 見出しは変えず、欄の下に説明)。
+        # 自社品番の欄の下の説明 (作者の決め: 見出しは変えず、欄の下に説明)。
         # 意図: 欄の「自社品番」とゴールの「品番」が同じ物かを、社内の品番と取引先の品番の違いで答える。
         # 表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
         help_texts = {
@@ -107,7 +107,7 @@ class ItemForm(ServiceModelForm):
         return chosen.name if chosen is not None else ""
 
     def clean(self):
-        """一覧に無い今の単位の字は、選ばなければ鍵を渡さず残す (勝手に個にも空にもしない。決め UNIT-1 の「画面で選んでもらう」)。
+        """一覧に無い今の単位の字は、選ばなければ鍵を渡さず残す (勝手に個にも空にもしない。作者の決めの「画面で選んでもらう」)。
 
         入力の土台は cleaned_data をそのまま data にし、update_item は渡した鍵だけを直す。一覧の単位があった部品で欄を空にして保存したら、単位を空にする。
         """
@@ -121,9 +121,9 @@ class PartnerForm(ServiceModelForm):
     active = forms.BooleanField(label="使用中", required=False, help_text=ACTIVE_HELP)
 
     #: 行の頭 (幅 640 以上の 2 列の左) から始める欄 (入力のカード core/_form_card.html が読む)。
-    #: 締日 → 支払の月 → 支払日の順を崩さずに、「支払の月」と「支払日」を同じ行の左右に並べる (初見テスト 5 回目の V42)。
+    #: 締日 → 支払の月 → 支払日の順を崩さずに、「支払の月」と「支払日」を同じ行の左右に並べる (作者の決め)。
     row_start_fields = ("payment_month",)
-    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。V35)
+    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。作者の決め)
     last_fields = ("active",)
 
     class Meta:
@@ -170,7 +170,7 @@ class PartnerForm(ServiceModelForm):
             data = self.data.copy()
             data[key] = self.instance.billing_method
             self.data = data
-        # 端数の 3 欄の案内に会社の既定の今の値を出す (V119)。会社の行は読むだけ (無ければ表の既定の字)。
+        # 端数の 3 欄の案内に会社の既定の今の値を出す (作者の決め)。会社の行は読むだけ (無ければ表の既定の字)。
         # 「?」の説明書の「入れる物」の表は form を作らずに Meta.help_texts を読むので、今の値の無い字のまま出る。
         company = company_defaults()
         self.fields["rounding"].help_text = ROUNDING_HELP.format(current=company.get_rounding_display())
@@ -180,7 +180,7 @@ class PartnerForm(ServiceModelForm):
     def clean_registration_no(self):
         """登録番号の形を確かめる (core.services.check_registration_no と同じ 1 か所)。形が違えば欄の下の赤い字。
 
-        訳: 形の違う登録番号を仕入明細に載せないため (形の違う値は打ち間違いしか無い)。出所 = 法令 (インボイス制度の登録番号の形) と決め C95-2。
+        訳: 形の違う登録番号を仕入明細に載せないため (形の違う値は打ち間違いしか無い)。出所 = 法令 (インボイス制度の登録番号の形) と作者の決め。
         変えてよい条件 = 登録番号の形が法令で変わったとき。
         """
         from seizou.core.services import check_registration_no
@@ -193,26 +193,26 @@ class PartnerForm(ServiceModelForm):
         return value
 
 
-#: 工程の使用中の欄の下の案内 (N140)
+#: 工程の使用中の欄の下の案内 (開発の記録 docs/nights/20261104/N140.md)
 PROCESS_ACTIVE_HELP = "外すと使用停止にします。指示書の発行の候補に出ず、部品の標準の工程の並びからも写しません。今までの指示書の工程はそのまま残ります。"
 
 
 class ProcessForm(ServiceModelForm):
-    """工程を入れる・直す。協力企業に出すか (is_outsourced) も欄に出す (決め PROC-OUT-1)。
+    """工程を入れる・直す。協力企業に出すか (is_outsourced) も欄に出す (作者の決め)。
 
-    訳: 画面から足した工程も協力企業に出す工程にでき、部品の標準の工程のタブの札と、発注の明細の工程の候補と最初の値 (決め PRICE-5) に効くようにするため。前は欄に出さず、種と立ち上げの答えでだけ入った (その形を選んだ訳の記録は無い = 未確認)。出所 = 作者の決め PROC-OUT-1。
+    訳: 画面から足した工程も協力企業に出す工程にでき、部品の標準の工程のタブの札と、発注の明細の工程の候補と最初の値 (作者の決め) に効くようにするため。前は欄に出さず、種と立ち上げの答えでだけ入った (その形を選んだ訳の記録は無い = 未確認)。出所 = 作者の決め。
     変えてよい条件 = 協力企業に出す工程の入れ方を本人が決め直したとき。
     """
 
     active = forms.BooleanField(label="使用中", required=False, help_text=PROCESS_ACTIVE_HELP)
 
-    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。V35)
+    #: 会社ごとの項目を足した後も最後に置く欄 (部品の ItemForm とそろえる。作者の決め)
     last_fields = ("active",)
 
     class Meta:
         model = Process
         fields = ["code", "name", "is_outsourced", "sort_order", "use_in_plan"]
-        # 欄の下の説明 (決め PROC-OUT-1)。表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
+        # 欄の下の説明 (作者の決め)。表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
         help_texts = {
             "is_outsourced": "協力企業に出す工程なら印を付けます。部品の詳細の標準の工程のタブで「協力企業に出す」の札が付きます。",
         }
@@ -222,7 +222,7 @@ class ProcessForm(ServiceModelForm):
         _active_on_edit_only(self)
 
 
-# ---------------------------------------------------------------- 部品の取引先 (決め C19-1・C98-1)
+# ---------------------------------------------------------------- 部品の取引先 (作者の決め)
 
 #: 部品の取引先の 2 欄の下の説明 (追加と編集で同じ字)
 PARTNER_ITEM_HELP = {
@@ -295,7 +295,7 @@ class PartnerItemDeleteForm(forms.Form):
         return {}
 
 
-# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-3)
+# ---------------------------------------------------------------- 単価の行 (単価表。作者の決め)
 
 #: 部品が見つからないときの欄の外の誤り (添付ファイルの付ける先が無いときと同じ形)
 MESSAGE_PRICE_ITEM_NOT_FOUND = "単価を足す部品が見つかりません。部品の詳細の取引先のタブの「単価を足す」から開き直してください。"
@@ -310,10 +310,10 @@ class _PartnerItemChoiceField(forms.ModelChoiceField):
 
 
 class ItemPriceForm(ServiceModelForm):
-    """単価の行の追加と編集。部品の詳細の取引先の行か共通の「単価を足す」から開き、その部品の取引先の中からだけ選ぶ (決め PRICE-2)。
+    """単価の行の追加と編集。部品の詳細の取引先の行か共通の「単価を足す」から開き、その部品の取引先の中からだけ選ぶ (作者の決め)。
 
     部品は足すときだけ隠した欄 (?item=<pk> の初めの値)。直すときは部品の欄を外す (部品は変えない)。
-    単価と数量の下限は 0 より大きい (欄の下限。決め C98-3)。金額の閲覧が無い人 (hide_money) には単価の欄を出さない。
+    単価と数量の下限は 0 より大きい (欄の下限。作者の決め)。金額の閲覧が無い人 (hide_money) には単価の欄を出さない。
     """
 
     item_text = forms.CharField(label="部品", required=False, disabled=True)
@@ -441,7 +441,7 @@ class ItemPriceDeleteForm(forms.Form):
 
 
 
-# ---------------------------------------------------------------- 部品の標準の工程の並び (決め C19-3。C112)
+# ---------------------------------------------------------------- 部品の標準の工程の並び (作者の決め)
 
 
 class _ProcessChoices(forms.ModelMultipleChoiceField):
@@ -456,7 +456,7 @@ class _ProcessChoices(forms.ModelMultipleChoiceField):
 
 
 class ItemProcessAddForm(forms.Form):
-    """標準の工程の追加 (決め C19-3)。部品は開いた詳細の ?item=<pk> を土台の get_initial が写す隠しの欄で受ける。
+    """標準の工程の追加 (作者の決め)。部品は開いた詳細の ?item=<pk> を土台の get_initial が写す隠しの欄で受ける。
 
     選べる工程は使用中で、その部品の並びにまだ無い物だけ。選んだ工程は工程の表の並び (並び順 → 工程コード) のまま、
     並びの最後に足す (services.add_item_processes)。
@@ -498,7 +498,7 @@ class ItemProcessAddForm(forms.Form):
 
 
 class ItemProcessMoveForm(forms.Form):
-    """標準の工程の並べ替え (決め C19-3)。土台は instance (並びの 1 行) を渡し、services.move_item_process(行, data={"seq": …}, user=…) を呼ぶ。
+    """標準の工程の並べ替え (作者の決め)。土台は instance (並びの 1 行) を渡し、services.move_item_process(行, data={"seq": …}, user=…) を呼ぶ。
 
     順は 1〜その部品の並びの行の数。
     """
@@ -538,7 +538,7 @@ class ItemProcessRemoveForm(forms.Form):
         return {}
 
 
-# ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)
+# ---------------------------------------------------------------- CSV 取り込み (CSV の取り込みの設計の決め)
 
 #: 支払日の字の月の部分 (画面の字, 値)。長い字から合わせる (「翌々月」を「翌月」と読み違えない)。
 _MONTH_WORDS = tuple(
@@ -740,7 +740,7 @@ class ItemCsvImportForm(CsvImportForm):
     def __init__(self, *args, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
         if hide_money:
-            # 金額の閲覧が無い人 (権限の判定の on) は標準単価の列を読まない (値があっても変えない。精査 A2 の B3。
+            # 金額の閲覧が無い人 (権限の判定の on) は標準単価の列を読まない (値があっても変えない。作者の決め。
             # 部品の編集の画面の ItemForm が欄を外すのと同じ考え)。土台は __init__ に hide_money の引数がある form にだけ渡す。
             self.unread_fields = ("standard_price",)
 
@@ -772,7 +772,7 @@ class PartnerCsvImportForm(CsvImportForm):
         """消費税の端数の扱いの字を読む。present は CSV にある列の名前の集合。
 
         前の字 (各行四捨五入・各行切捨。値の line_round・line_floor も) は、トータルと消費税の端数の向きに読み替え、
-        数を tax_reread に足す (決め C95-3。対応は seeds.FORMER_TAX_MODES で、migration が表の値を移したときと同じ)。
+        数を tax_reread に足す (作者の決め。対応は seeds.FORMER_TAX_MODES で、migration が表の値を移したときと同じ)。
         各行四捨五入 → トータル + 四捨五入、各行切捨 → トータル + 切捨。
         CSV に消費税の端数の向きの列があるとき (今の形の CSV) は、向きはその列の値を使い、ここでは書かない
         (人が書いた向きを前の字の向きで上書きしない。read_payment_day が支払の月の列の有無で読み方を変えるのと同じ見方)。
@@ -808,7 +808,7 @@ class DrawingRestoreForm(forms.Form):
     """図面を版に戻す確認の form。選べる版はこの部品の版だけ (新しい順)。
 
     土台は instance (部品) を渡し、services.restore_drawing_version(item, user=…, version=…, note=…) を呼ぶ。
-    会社ごとの項目 (材質など) は足さない (adds_company_fields = False。service_kwargs が渡さないので、足すと直しても保存されない欄になる。指示書 R7 = GA-04)。
+    会社ごとの項目 (材質など) は足さない (adds_company_fields = False。service_kwargs が渡さないので、足すと直しても保存されない欄になる。作者の決め)。
     """
 
     submit_label = "図面を版に戻す"

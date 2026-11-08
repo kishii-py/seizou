@@ -1,8 +1,8 @@
 {% load seizou_tags seizou_icons masters_prices %}
-{# 部品の詳細の「取引先」のタブの中身 (block tab_rows と block tab_empty の両方から include する)。頭に「共通の単価を足す」と「取引先を足す」、取引先の行ごとに単価の行と見積書と「直す」「単価を足す」と行の「⋮」の赤の「削除」(決め C19-1・PRICE-2・C98-1)。足す・直す・消すは小窓で開く (data-modal-form。JS の無いときは画面の全体)。 #}
+{# 部品の詳細の「取引先」のタブの中身 (block tab_rows と block tab_empty の両方から include する)。頭に「共通の単価を足す」と「取引先を足す」、取引先の行ごとに単価の行と見積書と「直す」「単価を足す」と行の「⋮」の赤の「削除」(作者の決め)。足す・直す・消すは小窓で開く (data-modal-form。JS の無いときは画面の全体)。 #}
 {# 包みの id (item-partners) は、小窓で保存か削除をした後の取り直し (item_detail.html の #item-partners-refresh) が入れ替える箱。取引先の行が無いときも同じ id の箱 (土台の空の枠と同じ箱を 1 つだけ持つ) を出す。共通の単価の行があれば、取引先の行が 0 件でも表を出し、その下に空の枠の箱を出す。 #}
 {# 部品の取引先の削除の入口は直すと同じ答え (can_edit_partner) で出す。can_write の tag は verb が update のときだけ pk を付けて URL を引くので、"delete" では URL を引けずにいつも真になる。削除の action は直すと同じ種類 (items)。単価の行も同じ (can_edit_price)。 #}
-{# 単価の「足す」「直す」「削除」は、金額を見られる人 (not seizou.hide_money) にだけ出す (金額の閲覧が無い人は単価の行の追加・編集・削除を保存できない。決め C98-5・C98-6 = a。押しても断られる入口を出さない)。部品の取引先の行の「直す」と「削除」は金額の閲覧を見ない (決め C98-6 = a)。 #}
+{# 単価の「足す」「直す」「削除」は、金額を見られる人 (not seizou.hide_money) にだけ出す (金額の閲覧が無い人は単価の行の追加・編集・削除を保存できない。作者の決め。押しても断られる入口を出さない)。部品の取引先の行の「直す」と「削除」は金額の閲覧を見ない (作者の決め)。 #}
 {# 見積書の枡は添付ファイルの部品がある会社だけ (masters/_partner_quotes.html。attachments_tags の load は include の中)。共通の見積書は部品の添付ファイルの枠に付ける。 #}
 {% can_write "masters.PartnerItem" "add" as can_add_partner %}{% can_write "masters.PartnerItem" "update" as can_edit_partner %}{% can_write "masters.ItemPrice" "add" as can_add_price %}{% can_write "masters.ItemPrice" "update" as can_edit_price %}{% item_price_rows object tab.rows as price_rows %}
 <div id="item-partners">

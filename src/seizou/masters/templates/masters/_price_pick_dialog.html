@@ -1,5 +1,5 @@
 {% load static %}
-{# 単価表から選ぶ小窓の枠と JS の読み込み (C100)。受注の入力 (orders/order_form.html) と発注の入力のカード (purchasing/_purchaseorder_card.html) が form の外に 1 つ include する。 #}
+{# 単価表から選ぶ小窓の枠と JS の読み込み (作者の決め)。受注の入力 (orders/order_form.html) と発注の入力のカード (purchasing/_purchaseorder_card.html) が form の外に 1 つ include する。 #}
 {# 入力の小窓の枠 (base.html の #seizou-modal) と別の枠にする訳: 発注の入力は #seizou-modal の中でも開くので、同じ枠に読むと入れかけの発注が消えるため。form の外に置くのは入れ子の form にしないため。 #}
 <dialog id="price-pick" class="modal" aria-label="単価表から選ぶ"><div id="price-pick-box" class="modal-box max-w-lg rounded-xl p-6"></div><form method="dialog" class="modal-backdrop"><button tabindex="-1">閉じる</button></form></dialog>
 <script src="{% static 'masters/price-pick.js' %}" defer></script>

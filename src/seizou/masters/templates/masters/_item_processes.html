@@ -1,8 +1,8 @@
 {% load seizou_tags seizou_icons %}
-{# 部品の詳細の「標準の工程」のタブの中身 (決め C19-3。C112)。masters/item_detail.html の block tab_rows と block tab_empty の両方が include する。 #}
+{# 部品の詳細の「標準の工程」のタブの中身 (作者の決め)。masters/item_detail.html の block tab_rows と block tab_empty の両方が include する。 #}
 {# 包みの id="item-processes" は、小窓で保存した後の取り直し (item_detail.html の item-processes-refresh) が入れ替える箱。行がある形と空の形の両方が同じ包みを持つ。 #}
 {# 行: 順・工程 (工程の詳細への link と「協力企業に出す」「使用停止」の札)・操作 (「順を直す」と行の「⋮」の赤の「外す」)。1 行だけのときは「順を直す」を出さない (動かす先が無いため)。 #}
-{# 最後の 1 行も外せ、外すと空の箱 (意味の 1 行と入れ方の 1 行) に入れ替わる (決め C112-1)。 #}
+{# 最後の 1 行も外せ、外すと空の箱 (意味の 1 行と入れ方の 1 行) に入れ替わる (作者の決め)。 #}
 {# 権限の 2 つの tag は行の for と if の外に置く (行の数で SELECT を増やさない。tests/test_core_tabs_select_related.py)。外すの入口も直すと同じ種類 (items) の答え can_edit_process で出す (tag は verb が update のときだけ pk を付けて道を引くため)。 #}
 {% can_write "masters.ItemProcess" "add" as can_add_process %}{% can_write "masters.ItemProcess" "update" as can_edit_process %}
 <div id="item-processes">
@@ -33,7 +33,7 @@
     </table>
   </div>
   {% else %}
-  {# 空のタブ: 土台の空の箱 (core/detail.html の block tab_empty) と同じ箱と 2 行に、何の並びかの 1 行 (C19。押せない人にも出す) と、押せる人にだけ入れ方の 1 行 #}
+  {# 空のタブ: 土台の空の箱 (core/detail.html の block tab_empty) と同じ箱と 2 行に、何の並びかの 1 行 (作者の決め。押せない人にも出す) と、押せる人にだけ入れ方の 1 行 #}
   <div class="flex flex-col items-center justify-center p-6 text-center">
     <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
     <p class="mt-4 font-medium">まだありません。</p>

@@ -2,7 +2,7 @@
 
 一覧は行を押すと詳細、部品の名前の字を押すと小窓 (core の master_link)。会社ごとの項目の列は土台が自動で足す。
 部品の小窓は、部品の取引先 (tabs) と会社ごとの項目も出す (masters/_modal.html)。
-単価表から選ぶ小窓 (ItemPricePickView) は、受注と発注の明細の行から開き、その日に効く単価を並べる (C100)。
+単価表から選ぶ小窓 (ItemPricePickView) は、受注と発注の明細の行から開き、その日に効く単価を並べる (作者の決め)。
 """
 
 import csv
@@ -35,7 +35,7 @@ from .models import ItemPrice, PartnerItem
 from .models import ItemProcess
 
 
-#: 部品と取引先 (N135) と工程 (N140) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
+#: 部品と取引先 (開発の記録 docs/nights/20261104/N135.md) と工程 (開発の記録 docs/nights/20261104/N140.md) の一覧の絞りの印。既定は切 = 使用中だけを出す。入にすると使用停止の行も薄い字で出す。
 #: when は何もしない (使用中だけに絞るのは画面の get_queryset。印が切のとき)。
 INACTIVE_FILTER = {"name": "inactive", "label": "使用停止も出す", "kind": "flag", "when": FilterSpec.as_is}
 
@@ -45,11 +45,11 @@ def _unit_unlisted(queryset):
     return queryset.exclude(unit="").filter(unit_code="")
 
 
-#: 部品マスターの一覧の絞り「単位を選び直す部品だけ」(決め UNIT-1 の「当たらない字は移す時に一覧にして画面で選んでもらう」)
+#: 部品マスターの一覧の絞り「単位を選び直す部品だけ」(作者の決めの「当たらない字は移す時に一覧にして画面で選んでもらう」)
 UNIT_UNLISTED_FILTER = {"name": "unit_unlisted", "label": "単位を選び直す部品だけ", "kind": "flag", "when": _unit_unlisted}
 
 
-#: 取引先の候補の口の GET の role → 出す取引先の種類 (精査 A9 の 4 節の 1。受注の得意先の欄は customer)。
+#: 取引先の候補の口の GET の role → 出す取引先の種類 (作者の決め。受注の得意先の欄は customer)。
 #: 無い・知らない値なら種類で絞らない (今までどおり全部。マニュアルの紐付けの欄など)。
 PARTNER_SELECT_ROLES = {
     "customer": (Partner.ROLE_CUSTOMER, Partner.ROLE_BOTH),
@@ -91,7 +91,7 @@ class ItemDetailView(BaseDetailView):
     template_name = "masters/item_detail.html"
     screen_name = "部品の詳細"
     screen_help = "部品の項目と、取引先と単価、標準の工程の並び。"
-    # 取引先の行の字と標準の工程の行の字 (ItemProcess.__str__) が取引先と工程を読み、標準の工程のタブの表 (masters/_item_processes.html) が工程のコード・名前・協力企業に出すか・使用中を読むので、行と一緒に 1 回で引く (N174)
+    # 取引先の行の字と標準の工程の行の字 (ItemProcess.__str__) が取引先と工程を読み、標準の工程のタブの表 (masters/_item_processes.html) が工程のコード・名前・協力企業に出すか・使用中を読むので、行と一緒に 1 回で引く (開発の記録 docs/nights/20261106/N174.md)
     tabs = (("取引先", "partner_items", ("partner",)), ("標準の工程", "item_processes", ("process",)))
 
 
@@ -136,17 +136,17 @@ class ItemModalView(BaseModalView):
 class ItemSelectView(BaseSelectView):
     model = Item
     search_fields = ("part_no", "name")
-    # 候補ごとに単位と単位のコード (数量単位コード) と標準単価も返す (選ぶ欄の JS が受注の明細の行の空の単位と単価の欄に写す。初見テスト R4 4-3b。
+    # 候補ごとに単位と単位のコード (数量単位コード) と標準単価も返す (選ぶ欄の JS が受注の明細の行の空の単位と単価の欄に写す。作者の決め。
     # 明細の単位の欄 (一覧から選ぶ欄) には単位のコードで写す)。標準単価は金額の閲覧が無い人には返さない (土台の BaseSelectView が外す)。
     columns = ("unit", "unit_code", "standard_price")
 
     def get_queryset(self):
-        # 候補は使用中だけ (N135。受注と発注の入力の欄が、使用停止の部品を出さない)
+        # 候補は使用中だけ (開発の記録 docs/nights/20261104/N135.md。受注と発注の入力の欄が、使用停止の部品を出さない)
         return services.active_items()
 
 
 class QuantityUnitSelectView(BaseSelectView):
-    # 部品と明細の単位の欄の候補 (決め UNIT-1 = a)。名前とコードで探す (「k」で kg・km ほか、「本」で 4 つの本)。並びは付表 4 の並び (表の ordering)。
+    # 部品と明細の単位の欄の候補 (作者の決め)。名前とコードで探す (「k」で kg・km ほか、「本」で 4 つの本)。並びは付表 4 の並び (表の ordering)。
     model = QuantityUnit
     search_fields = ("name", "code")
 
@@ -158,7 +158,7 @@ class ItemPricePickView(BaseModalView):
     """
 
     # 中身は masters/_price_pick.html (GET の kind・partner・on・qty を tag の price_pick が読む)。小窓の土台は htmx でない要求を部品の詳細へ移し、
-    # 部署で開けるかを見ない (詳細・小窓・候補の口と同じ)。枠は受注と発注の入力が include する masters/_price_pick_dialog.html (C100)。
+    # 部署で開けるかを見ない (詳細・小窓・候補の口と同じ)。枠は受注と発注の入力が include する masters/_price_pick_dialog.html (作者の決め)。
     model = Item
     template_name = "masters/_price_pick.html"
     screen_name = "単価表から選ぶ"
@@ -181,7 +181,7 @@ class PartnerListView(BaseListView):
     template_name = "masters/partner_list.html"
 
     def get_queryset(self):
-        # 注文の入口の列 (core.dashboard.annotate_order_inlet の annotate。並び替えと絞り込みはしない。N83 の 6 = N94 の 1b)
+        # 注文の入口の列 (core.dashboard.annotate_order_inlet の annotate。並び替えと絞り込みはしない。開発の記録 docs/nights/20261104/N83.md の 6 = 開発の記録 docs/nights/20261104/N94.md の 1b)
         return dashboard.annotate_order_inlet(_hide_inactive(self, super().get_queryset()))
 
 
@@ -204,7 +204,7 @@ class PartnerCreateView(BaseFormView):
 
     使う人: 営業 / いつ: 取引先が増えたとき / 何のために: 得意先か協力企業を登録する / 次にすること: 受注と発注で選べるようになる
 
-    消費税の端数の扱いはトータル (請求書の税率ごとの合計に 1 回だけ計算する) だけを選べる (インボイス制度。決め LAW-2)。1 円に丸める向きは「消費税の端数の向き」で選ぶ (決め C95-1b)。
+    消費税の端数の扱いはトータル (請求書の税率ごとの合計に 1 回だけ計算する) だけを選べる (インボイス制度。作者の決め)。1 円に丸める向きは「消費税の端数の向き」で選ぶ (作者の決め)。
     """
 
     model = Partner
@@ -220,7 +220,7 @@ class PartnerUpdateView(BaseFormView):
 
     使う人: 営業・経理 / いつ: 締日・支払日・端数の扱いを直すとき / 何のために: 取引先の項目を直す / 次にすること: 取引先の詳細で確かめる
 
-    消費税の端数の扱いはトータル (請求書の税率ごとの合計に 1 回だけ計算する) だけを選べる (インボイス制度。決め LAW-2)。1 円に丸める向きは「消費税の端数の向き」で選ぶ (決め C95-1b)。
+    消費税の端数の扱いはトータル (請求書の税率ごとの合計に 1 回だけ計算する) だけを選べる (インボイス制度。作者の決め)。1 円に丸める向きは「消費税の端数の向き」で選ぶ (作者の決め)。
     """
 
     model = Partner
@@ -247,14 +247,14 @@ class PartnerSelectView(BaseSelectView):
     search_fields = ("code", "name", "short_name")
 
     def get_queryset(self):
-        # 候補は使用中だけ (N135。受注の得意先の欄が、使用停止の取引先を出さない)。
+        # 候補は使用中だけ (開発の記録 docs/nights/20261104/N135.md。受注の得意先の欄が、使用停止の取引先を出さない)。
         # GET の role があれば取引先の種類で絞る (customer = 得意先と両方 / supplier = 協力企業と両方。受注の得意先の欄に協力企業を出さない)。
         partners = services.active_partners()
         roles = PARTNER_SELECT_ROLES.get(self.request.GET.get("role", ""))
         return partners.filter(role__in=roles) if roles else partners
 
 
-# ---------------------------------------------------------------- 部品の取引先 (決め C19-1・C98-1)
+# ---------------------------------------------------------------- 部品の取引先 (作者の決め)
 # 部品の詳細の「取引先」のタブと、取引先の詳細の「部品」のタブから小窓で開く。保存と削除の後は小窓が閉じ、タブの中身を取り直す。
 
 
@@ -298,7 +298,7 @@ class PartnerItemDeleteView(BaseFormView):
     screen_help = "部品の取引先の行を 1 つ消します。その行の単価の行も一緒に消えます。消すと戻せません。"
 
 
-# ---------------------------------------------------------------- 単価の行 (単価表。決め PRICE-0〜3・C98-1〜C98-6)
+# ---------------------------------------------------------------- 単価の行 (単価表。作者の決め)
 # 部品の詳細の「取引先」のタブの取引先の行か共通の「単価を足す」から小窓で開く。単価の行に詳細の画面は無いので、
 # 保存と削除の後の移り先は ?next= (開いた部品の詳細)。金額の閲覧が無い人の保存と削除は、土台の金額の門が断る (MONEY_ACTIONS)。
 
@@ -414,7 +414,7 @@ class ProcessUpdateView(BaseFormView):
 
 
 
-# ---------------------------------------------------------------- 標準の工程の並び (決め C19-3)
+# ---------------------------------------------------------------- 標準の工程の並び (作者の決め)
 # 3 つとも model を並びの行 (ItemProcess) にする。部品 (Item) にすると、入力の土台の get_form が部品の会社ごとの項目の欄を
 # 小窓に足すため (会社ごとの項目の登録は部品だけ)。3 つの口は部品を返すので、画面の全体の保存の後は部品の詳細へ移る。
 
@@ -458,7 +458,7 @@ class ItemProcessRemoveView(BaseFormView):
     screen_name = "標準の工程から外す"
     screen_help = "部品の標準の工程の並びから工程を 1 つ外します。工程の一覧にある工程と、発行済みの指示書の工程は変わりません。"
 
-# ---------------------------------------------------------------- CSV 取り込み (05 の 8 節)
+# ---------------------------------------------------------------- CSV 取り込み (CSV の取り込みの設計の決め)
 # 取り込みの画面は model を書かない (土台が会社ごとの項目の欄を form に足すため)。保存の後は土台の既定の移り先 (/) へ移る。
 
 
@@ -517,7 +517,7 @@ def partner_import_sample(request):
 @require_GET
 @xframe_options_sameorigin
 def item_drawing(request, pk, filename):
-    """部品の図面のファイルを、ログインした人にだけ返す口 (画面でない口。05 の 7 節)。
+    """部品の図面のファイルを、ログインした人にだけ返す口 (画面でない口。部品の図面の設計の決め)。
 
     どのファイルを返すか (元か表示用・版・ページ・Content-Type・名前の見出し) は drawings.resolve の 1 か所で決める。
     返す物が無ければ 404。ブラウザに保存させない (ログアウトの後に残った図面を見せない)。
@@ -599,7 +599,7 @@ class HolidayListView(BaseListView):
     screen_help = "祝日と会社の休みを日付の順に並べる表。生産管理ボードの「納期まで」は、この休日と定休日の曜日を除いた稼働日で数えます。年で絞れます。"
     columns = ("date", "name", "kind", "created_by")
     search_fields = ("name",)
-    # 年の絞りは、受注と発注の一覧と同じく、カードの中の絞りのタブと「絞り込み」の枠の「日付」(土台の FilterSpec と presets。N266)。
+    # 年の絞りは、受注と発注の一覧と同じく、カードの中の絞りのタブと「絞り込み」の枠の「日付」(土台の FilterSpec と presets。開発の記録 docs/nights/20261106/N266.md)。
     # 絞りは土台の get_queryset が検索の後に当てるので、キーワードで探しても年が外れない。「すべて」は土台が足す。
     filters = ({"name": "date", "label": "日付", "kind": "date_range", "field": "date"},)
     presets = (

@@ -1,5 +1,5 @@
 {% load seizou_tags seizou_icons %}
-{# 取引先の詳細の「部品」のタブの中身 (block tab_rows と block tab_empty の両方から include する)。この取引先と取引する部品の並び。頭に「部品を足す」、行ごとに「直す」と行の「⋮」の赤の「削除」(決め C19-1・C98-1)。形は部品の詳細の masters/_item_partners.html と同じ。 #}
+{# 取引先の詳細の「部品」のタブの中身 (block tab_rows と block tab_empty の両方から include する)。この取引先と取引する部品の並び。頭に「部品を足す」、行ごとに「直す」と行の「⋮」の赤の「削除」(作者の決め)。形は部品の詳細の masters/_item_partners.html と同じ。 #}
 {# 包みの id (partner-items) は、小窓で保存か削除をした後の取り直し (partner_detail.html の #partner-items-refresh) が入れ替える箱。削除の入口は直すと同じ答え (can_edit_partner) で出す (訳は masters/_item_partners.html の頭)。 #}
 {% can_write "masters.PartnerItem" "add" as can_add_partner %}{% can_write "masters.PartnerItem" "update" as can_edit_partner %}
 <div id="partner-items">

@@ -33,7 +33,7 @@ PARTNER_ITEM_LOOKUPS = ("partner_part_no",)
 def company_lookups() -> list[str]:
     """会社ごとの項目のうち検索に使う物の lookup (例 ext__ext01)。拡張の表が無い (登録だけある) 会社では空。
 
-    一覧の絞り込み (BaseListView) は同じ登録を見るので、全体の検索でも同じ項目が当たる (初見テスト 2 回目の所見 1)。
+    一覧の絞り込み (BaseListView) は同じ登録を見るので、全体の検索でも同じ項目が当たる (作者の決め)。
     """
     lookups = company_fields.search_fields_for(Item)
     if not lookups:

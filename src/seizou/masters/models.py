@@ -1,4 +1,4 @@
-"""マスターの表 (01 の 4 節)。
+"""マスターの表 (表の設計の決め)。
 
 文字数の上限は固定 (識別子 35・名称 100・備考 500・コード 10)。
 ほかの部品はこの表を外部キーで指してよいが、書くときは masters.services を通す。
@@ -20,9 +20,9 @@ from seizou.core.services import company_or_none
 #: 締日と支払日の 31 は月末の印
 MONTH_END_DAY = 31
 
-#: 単価の単位 (決め PRICE-1b)。部品の数量の単位 1 つあたり (unit) か、一式 (lump。金額に数量を掛けない) か。
-#: 受注と発注の明細の単価の単位 (C99) も同じ値と字を使う。中小企業共通 EDI の数量単位コード (付表 4) に一式に当たる値は無い
-#: (SET「セット」は数える組の数で、数量を掛けない一式とは違う) ので、会社どうしの JSON では seizou の項目として送る (PRICE-1b の edi)。
+#: 単価の単位 (作者の決め)。部品の数量の単位 1 つあたり (unit) か、一式 (lump。金額に数量を掛けない) か。
+#: 受注と発注の明細の単価の単位 (作者の決め) も同じ値と字を使う。中小企業共通 EDI の数量単位コード (付表 4) に一式に当たる値は無い
+#: (SET「セット」は数える組の数で、数量を掛けない一式とは違う) ので、会社どうしの JSON では seizou の項目として送る (作者の決め)。
 #: 部品の単位のときは、EDI の単価基準数量が空か 1 (定貫品目) のときと同じ意味。
 PRICE_BASIS_UNIT = "unit"
 PRICE_BASIS_LUMP = "lump"
@@ -43,7 +43,7 @@ def price_basis_text(price_basis, unit):
 
     画面の「¥250 / 個」「¥50,000 / 式」の後ろの字。単位が空の部品は個で数える (中小企業共通 EDI は数量単位コードを指定しない品物を
     定貫品目 = 数えられる品目と見なす = 本編 7.3.2 (4) 数量単位コード。付表 4 の H87 の名前は「個<デフォルト>」)。
-    受注と発注の明細の単価の字 (C99) と、同じ条件の単価の行の断りの字 (masters.services) も使う。
+    受注と発注の明細の単価の字 (作者の決め) と、同じ条件の単価の行の断りの字 (masters.services) も使う。
     """
     if price_basis == PRICE_BASIS_LUMP:
         return "式"
@@ -122,11 +122,11 @@ class Partner(models.Model):
     tax_mode = models.CharField(
         "消費税の端数の扱い", max_length=10, choices=Company.TAX_CHOICES, blank=True
     )
-    # 消費税を 1 円に丸める向き (決め C95-1b)。空なら会社の既定 (Company.tax_rounding。既定は切捨) に従う。
+    # 消費税を 1 円に丸める向き (作者の決め)。空なら会社の既定 (Company.tax_rounding。既定は切捨) に従う。
     tax_rounding = models.CharField(
         "消費税の端数の向き", max_length=10, choices=Company.ROUNDING_CHOICES, blank=True
     )
-    # 請求の仕方 (C02-3c)。締日でまとめる = 締め期間ごとに 1 枚、都度 = 納品書ごとに作れる。今ある取引先は既定の締日でまとめるのまま。
+    # 請求の仕方 (作者の決め)。締日でまとめる = 締め期間ごとに 1 枚、都度 = 納品書ごとに作れる。今ある取引先は既定の締日でまとめるのまま。
     # 列は端数の 3 列の後に置く (詳細と小窓は列の順に出し、小窓は先頭の 8 項目だけなので、前に置くと小窓から「消費税の端数の扱い」が落ちる)。
     # 入力の欄は締日の前に読む並び (masters.forms.PartnerForm の Meta.fields)。
     billing_method = models.CharField(
@@ -134,18 +134,18 @@ class Partner(models.Model):
     )
     # 相手の適格請求書発行事業者の登録番号 (中小企業共通 EDI の仕入明細の受注者の登録番号 SIID27 を元にした。インボイス制度)。
     # 仕入明細 (purchasing.SelfInvoice) に相手の番号として写す。名前と字数は会社の登録番号 (core.Company.registration_no) と同じ。
-    # 形 (T と 13 桁の数字) は masters.services が core.services.check_registration_no で見る (決め C95-2)。空は登録していない相手。
+    # 形 (T と 13 桁の数字) は masters.services が core.services.check_registration_no で見る (作者の決め)。空は登録していない相手。
     registration_no = models.CharField("登録番号", max_length=14, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
-    # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
+    # 使用停止 (決め 11-04 22:0x。開発の記録 docs/nights/20261104/N135.md): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
     # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 
     #: 詳細と小窓の項目の一覧に出さない列 (core の土台が読む)。支払日の行の字 (get_payment_day_display) が
-    #: 支払の月を含めて「翌月末」「翌月 25 日」と出すので、「支払の月 翌月」の行と二重になる (初見テスト 5 回目の V98)。
+    #: 支払の月を含めて「翌月末」「翌月 25 日」と出すので、「支払の月 翌月」の行と二重になる (作者の決め)。
     #: 支払日が空で支払の月だけあるときも、支払日の行が「翌月」と出すので、情報は減らない。一覧の列 (支払日だけ) と同じ見せ方。
     detail_hidden_fields = ("payment_month",)
-    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -177,7 +177,7 @@ class Partner(models.Model):
         return f"{month} {day_label(self.payment_day)}" if month else day_label(self.payment_day)
 
     # 端数の 3 列の画面の字 (詳細と小窓の土台の display_value が読む)。空の行を「—」でなく「会社の既定 (四捨五入)」と出す
-    # (初見テスト 4 回目の U118)。自分で書いた get_<列>_display があると Django は choices の自動の関数を付けないので、
+    # (作者の決め)。自分で書いた get_<列>_display があると Django は choices の自動の関数を付けないので、
     # 値があるときの選択肢の字 (例「切上」) もここで引く。表の値はそのまま。
 
     def get_rounding_display(self):
@@ -223,7 +223,7 @@ class Item(models.Model):
         "標準単価 (円)", max_digits=14, decimal_places=2, null=True, blank=True
     )
     note = models.CharField("備考", max_length=500, blank=True)
-    # 使用停止 (決め 11-04 22:0x。N135): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
+    # 使用停止 (決め 11-04 22:0x。開発の記録 docs/nights/20261104/N135.md): 外すと候補に出ず、新しい受注と発注に使えない。消さないので、今までの記録からは見える。
     # 編集の画面の欄は form が足す。CSV の見出しと見本には出さない (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
     # 図面の表示用の絵を作れなかった理由の 1 文 (空 = 作れた、か作る必要が無い)。書くのは masters.services だけ。
@@ -231,7 +231,7 @@ class Item(models.Model):
     drawing_preview_error = models.CharField(
         "図面の表示用の誤り", max_length=500, blank=True, editable=False
     )
-    # 単位の数量単位コード (決め UNIT-1 = a。値は QuantityUnit のコード)。書くのは masters.services だけで、単位の名前 (unit) から引く。
+    # 単位の数量単位コード (作者の決め。値は QuantityUnit のコード)。書くのは masters.services だけで、単位の名前 (unit) から引く。
     # 一覧に無い単位の字 (移す前の字) は空 (unit_unlisted)。入力の画面と CSV の見出しに出さない (editable=False。CSV は「単位」の名前の列で読む)。
     # 置き場: 小窓の先頭の 8 項目をずらさず (隠す列の drawing_preview_error の後)、最後の列は drawing_page_count のまま。
     unit_code = models.CharField("数量単位コード", max_length=10, blank=True, editable=False)
@@ -241,13 +241,13 @@ class Item(models.Model):
 
     #: 詳細と小窓の項目の一覧に出さない列 (core の土台が物 1 件ずつ読む)。仕組みのための列で、入力の画面に無い物。
     #: 表示用 (drawing_preview) は、絵がある部品だけ出す (土台の詳細の「ファイル」の節が、この列の行から TIFF の図面の絵を出す)。
-    #: 絵の無い部品では「—」の行になり、何の欄か分からないので出さない (初見テスト 3 回目)。
+    #: 絵の無い部品では「—」の行になり、何の欄か分からないので出さない (作者の決め)。
     @property
     def detail_hidden_fields(self):
         hidden = ("drawing_preview_error", "drawing_page_count")
         return hidden if self.drawing_preview else (*hidden, "drawing_preview")
 
-    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
     #: 変更の履歴に残さない列 (表示用の図面の 3 列。仕組みのための列で、利用者の欄でない。detail_hidden_fields と同じ列)
     history_skip = ("drawing_preview", "drawing_preview_error", "drawing_page_count")
@@ -262,7 +262,7 @@ class Item(models.Model):
 
     @property
     def unit_unlisted(self):
-        """単位の字があるのに数量単位コードが無い (一覧に無い字のまま。決め UNIT-1 の「当たらない字は画面で選んでもらう」)。
+        """単位の字があるのに数量単位コードが無い (一覧に無い字のまま。作者の決めの「当たらない字は画面で選んでもらう」)。
 
         詳細と小窓の黄色の 1 行と、入力の画面の欄の下の案内が読む。一覧の絞りは同じ条件を表の上で見る (masters.views)。
         """
@@ -322,10 +322,10 @@ class PartnerItem(models.Model):
     """部品の取引先。部品と取引先の組を 1 行で持つ。取引先の品番は空でもよい。
 
     品番の空の行は、その取引先と取引する登録としてだけ使い、受け入れと読み取りの品番の自動のつなぎ
-    (masters.services.resolve_partner_item) には使わない (決め C19-1)。品番の空の行は取引先と部品ごとに 1 つ (決め C98-4)。
+    (masters.services.resolve_partner_item) には使わない (作者の決め)。品番の空の行は取引先と部品ごとに 1 つ (作者の決め)。
     取引先の品番は、得意先の行では中小企業共通 EDI の発注者品目ID、協力企業の行では受注者品目ID に当たる
     (項目を元にした。付表 1 の注文の明細の UN01005813 と UN01005812。取引先の種類が両方の行は、その注文の向きで決まる)。
-    単価の行 (ItemPrice) はこの行に付く。見積書はこの行に添付ファイルで付ける (決め PRICE-2)。書くのは masters.services だけ。
+    単価の行 (ItemPrice) はこの行に付く。見積書はこの行に添付ファイルで付ける (作者の決め)。書くのは masters.services だけ。
     """
 
     partner = models.ForeignKey(
@@ -344,7 +344,7 @@ class PartnerItem(models.Model):
     partner_part_no = models.CharField("取引先の品番", max_length=35, blank=True, default="")
     partner_item_name = models.CharField("取引先の品名", max_length=100, blank=True)
 
-    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。決め HIST-1 の「部品の取引先と単価」)
+    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。作者の決めの「部品の取引先と単価」)
     history_owner = "item"
 
     class Meta:
@@ -357,9 +357,9 @@ class PartnerItem(models.Model):
                 condition=~models.Q(partner_part_no=""),
                 name="masters_partneritem_partner_part_no_unique",
             ),
-            # 品番が空の行は取引先と部品ごとに 1 つ (決め C98-4)。断りの字は services が出す。
+            # 品番が空の行は取引先と部品ごとに 1 つ (作者の決め)。断りの字は services が出す。
             # 品番が空の 2 行は画面で見分けがつかず、それぞれに同じ条件の単価の行を足せて、
-            # 同じ条件の単価の行を 1 つにする決め (C98-2) が行をまたいで崩れるため。services を通らない書き込みと、2 つの要求が重なった時も止める。
+            # 同じ条件の単価の行を 1 つにする決め (作者の決め) が行をまたいで崩れるため。services を通らない書き込みと、2 つの要求が重なった時も止める。
             # (取引先, 部品) の組を全部 1 行にする決まりは足さない (1 つの取引先が 1 つの部品を 2 つの品番で呼ぶ行は今も持てる)。
             models.UniqueConstraint(
                 fields=["partner", "item"],
@@ -387,11 +387,11 @@ class Process(models.Model):
     is_outsourced = models.BooleanField("協力企業に出すか", default=False)
     sort_order = models.PositiveIntegerField("並び順", default=0)
     use_in_plan = models.BooleanField("計画に使う", default=False)
-    # 使用停止 (N140。部品と取引先の N135 と同じ形): 外すと指示書の発行の候補に出ず、部品の標準の工程の並びからも写さない。
+    # 使用停止 (開発の記録 docs/nights/20261104/N140.md。部品と取引先の開発の記録 docs/nights/20261104/N135.md と同じ形): 外すと指示書の発行の候補に出ず、部品の標準の工程の並びからも写さない。
     # 消さないので、今までの指示書の工程はそのまま残る。編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 
-    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -430,17 +430,17 @@ class ItemProcess(models.Model):
 
 
 class ItemPrice(models.Model):
-    """単価の行 (単価表)。部品ごとに、取引先の行 (部品の取引先) か共通の、売りか協力企業への発注の単価を持つ (決め PRICE-0・PRICE-2)。
+    """単価の行 (単価表)。部品ごとに、取引先の行 (部品の取引先) か共通の、売りか協力企業への発注の単価を持つ (作者の決め)。
 
     1 行 = 部品・取引先の行 (空 = 共通。どの取引先にも同じ単価)・売りか発注か・協力企業の工程 (発注の行だけ。空 = 工程によらない)・
-    数量の下限 (空 = 数量によらない。帯の終わりは次の行の下限の 1 つ手前 = 決め PRICE-1)・単価・単価の単位 (部品の単位か式 = 決め PRICE-1b)・
-    適用開始日 (空 = いつでも効く。改定は行を直さず、新しい適用開始日の行を足す = 決め PRICE-3)・見積の番号と発行日と有効期限・備考。
+    数量の下限 (空 = 数量によらない。帯の終わりは次の行の下限の 1 つ手前 = 作者の決め)・単価・単価の単位 (部品の単位か式 = 作者の決め)・
+    適用開始日 (空 = いつでも効く。改定は行を直さず、新しい適用開始日の行を足す = 作者の決め)・見積の番号と発行日と有効期限・備考。
 
     中小企業共通 EDI の項目を元にした欄: 見積の番号 = 見積回答書ID (UN01008345)・見積の発行日 = 見積回答書発行日 (UN01008352)・
     見積の有効期限 = 見積有効期限 (UN01005613。空 = 期限なし)・単価 = 見積回答単価 (UN01005792。1 単位あたりの単価で、式の行は当たらない)。
-    EDI に無い seizou の項目: 売りか発注か・共通・数量の下限・適用開始日・単価の単位の式 (決め PRICE-1・PRICE-2・PRICE-3・PRICE-1b の edi)。
+    EDI に無い seizou の項目: 売りか発注か・共通・数量の下限・適用開始日・単価の単位の式 (作者の決め)。
 
-    表の制約は 3 つ: 単価は 0 より大きい・数量の下限は空か 0 より大きい (決め C98-3)・同じ条件の行は 1 つ (決め C98-2)。
+    表の制約は 3 つ: 単価は 0 より大きい・数量の下限は空か 0 より大きい (作者の決め)・同じ条件の行は 1 つ (作者の決め)。
     断りの字は masters.services が出す (表の制約は services を通らない書き込みと、2 つの要求が重なった時の守り)。
     書くのは masters.services だけ。
     """
@@ -454,13 +454,13 @@ class ItemPrice(models.Model):
 
     # 全部の行が部品を持つ (共通の行も部品を指す。読むのはいつも部品から)
     item = models.ForeignKey(Item, verbose_name="部品", on_delete=models.PROTECT, related_name="prices")
-    # 空 = 共通 (決め PRICE-2)。取引先の行を消すときは services.delete_partner_item が先にこの行を消す (決め C98-1)。
+    # 空 = 共通 (作者の決め)。取引先の行を消すときは services.delete_partner_item が先にこの行を消す (作者の決め)。
     # PROTECT の訳: 表で一緒に消す (CASCADE) と、services を通らない消し方でも単価の行が黙って消え、変更の履歴が行ごとに消した事を残せないため。
     partner_item = models.ForeignKey(
         PartnerItem, verbose_name="取引先", on_delete=models.PROTECT, null=True, blank=True, related_name="prices"
     )
     kind = models.CharField("売りか発注か", max_length=10, choices=KIND_CHOICES)
-    # 協力企業への発注の行だけが持つ (空 = 工程によらない。決め PRICE-0・PRICE-5)。売りの行は services が空にそろえる。
+    # 協力企業への発注の行だけが持つ (空 = 工程によらない。作者の決め)。売りの行は services が空にそろえる。
     process = models.ForeignKey(
         Process, verbose_name="協力企業の工程", on_delete=models.PROTECT, null=True, blank=True, related_name="item_prices"
     )
@@ -475,20 +475,20 @@ class ItemPrice(models.Model):
     quote_expires = models.DateField("見積の有効期限", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
 
-    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。決め HIST-1 の「部品の取引先と単価」・C98-1・C98-6)
+    #: 変更の履歴は部品の詳細の「履歴」に出す (core.history。作者の決めの「部品の取引先と単価」)
     history_owner = "item"
 
     class Meta:
         verbose_name = "単価の行"
         verbose_name_plural = "単価表"
         constraints = [
-            # 単価と数量の下限は 0 より大きい (決め C98-3)。数量の下限の空は「数量によらない」で通す。
+            # 単価と数量の下限は 0 より大きい (作者の決め)。数量の下限の空は「数量によらない」で通す。
             models.CheckConstraint(condition=models.Q(unit_price__gt=0), name="masters_itemprice_unit_price_positive"),
             models.CheckConstraint(
                 condition=models.Q(min_qty__isnull=True) | models.Q(min_qty__gt=0),
                 name="masters_itemprice_min_qty_positive",
             ),
-            # 同じ条件 (部品・取引先の行か共通・売りか発注か・工程・数量の下限・適用開始日) の単価の行は 1 つ (決め C98-2)。断りの字は services が出す。
+            # 同じ条件 (部品・取引先の行か共通・売りか発注か・工程・数量の下限・適用開始日) の単価の行は 1 つ (作者の決め)。断りの字は services が出す。
             # 空 (NULL) の欄どうしを同じ値と見るため、空を表に無い値 (外部キーは 0・数量の下限は 0・日付は 1 年 1 月 1 日) に置き換えた式で一意にする。
             # fields だけの UniqueConstraint は空の欄を別々の値と見るので、共通の行・工程の空・下限の空・開始日の空の重なりを止めない。
             # nulls_distinct=False は SQLite が対応せず、制約が作られない (Django の警告 models.W047)。
@@ -515,7 +515,7 @@ class ItemPrice(models.Model):
 
     @property
     def quote_expired(self):
-        """見積の有効期限が今日より前なら真 (決め PRICE-3b の「期限切れ」の印の元)。期限が空なら偽。読むだけ。"""
+        """見積の有効期限が今日より前なら真 (作者の決めの「期限切れ」の印の元)。期限が空なら偽。読むだけ。"""
         return self.quote_expires is not None and self.quote_expires < timezone.localdate()
 
     @property
@@ -587,7 +587,7 @@ class Holiday(models.Model):
     )
     created_at = models.DateTimeField("登録した日時", auto_now_add=True)
 
-    #: 変更の履歴 (core.history。決め HIST-0・HIST-1) を残し、詳細に「履歴」のタブを出す
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
 
     class Meta:
@@ -600,7 +600,7 @@ class Holiday(models.Model):
 
 
 class QuantityUnit(models.Model):
-    """数量の単位の一覧 (読むだけの表。決め UNIT-1 = a)。
+    """数量の単位の一覧 (読むだけの表。作者の決め)。
 
     中小企業共通 EDI の付表 4 (識別コード定義表) の「数量単位コード」のシートの、国際サブセット定義表 15 行と
     ＜参考＞の表 25 行の、コードと日本語の名前の項目を元にした。コードは国連 CEFACT の数量単位コード (UNECE Rec.20) の
