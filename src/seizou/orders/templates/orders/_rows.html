@@ -6,14 +6,14 @@ orders の一覧の行の部分。土台は画面の全体でも htmx の要求�
   右端に「要点」の列 (行の「要点を見る」の目の印 = core/_row_summary_link.html。押すと受注の小窓 orders:order_modal を開く。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 - 注文残の一覧 (注残の盤): orders/_board_rows.html (判断の列の印・合計の行・行のメニュー)。
 注文残の一覧が空で、検索も絞りの札も無いときは orders/_board_empty.html (「受注を入れると、出荷の残りがある明細がここに並びます。」の
-1 文と「受注の新規登録」のボタン。ONB-01)。
+1 文と「受注の新規登録」のボタン。作者の決め)。
 それ以外 (検索か札のある 0 件、受注の一覧の 0 件、ほかの画面) は core/_rows.html をそのまま使う。
 写した元: core/_rows.html (11-02 夜の main)。土台の表の形が変わったら、ここも合わせる。
 {% endcomment %}
 {% with url_name=request.resolver_match.url_name %}
 {% if rows and url_name == "orderline_list" %}{% include "orders/_board_rows.html" %}
 {% elif rows and url_name == "order_list" %}
-{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め。C34)。 #}
+{# 表の箱を包む要素。右に続きがあるときだけ、箱の印 (data-scroll-hint) を見る JS がこの要素に印を付け、この要素の中に「→」のボタンを作る (右の端の影はやめた。11-07 の決め)。 #}
 <div>
 <div class="max-h-[70vh] overflow-auto rounded-lg border border-base-300" data-scroll-hint>
 <table class="table table-sm table-zebra table-pin-rows seizou-pin-first">

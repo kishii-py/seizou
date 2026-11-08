@@ -1,13 +1,13 @@
 """orders の入力の form。保存は form でなく services が行う (土台が ModelForm の save を呼ぶことは無い)。
 
 OrderForm: 受注の項目と、明細の行の formset (lines) を 1 つに持つ。is_valid() で両方を見て、
-service_kwargs() が services.create_order / update_order の引数を作る (01 の 10.4 の lines の辞書の並び)。
+service_kwargs() が services.create_order / update_order の引数を作る (部品の公開する関数の設計の決めの lines の辞書の並び)。
 既にある明細は order_line の鍵 (この受注の OrderLine) で指す。検査の層の R04 もこの鍵を読む。
 直す画面は、開いた時の受注と明細の字 (services.order_state_token) を隠しの欄 state_token に持ち、保存の時に services が今の字と比べる
-(ほかの人の直しと取引先から受け入れた変更を黙って戻さない。N350)。
+(ほかの人の直しと取引先から受け入れた変更を黙って戻さない。開発の記録 docs/nights/20261108/N350.md)。
 
 選べる設定 (seizou.core.conf):
-- order_form が single のときは明細を 1 行に固定する (表は同じ。01 の 9 節)。
+- order_form が single のときは明細を 1 行に固定する (表は同じ。選べる設定の設計の決め)。
 - hidden_fields に名前が並んだ欄を外す。決まりが見る欄 (得意先・品目・数量・単価・単価の単位) と、
   services が要る受注日は外さない。外した欄の鍵は services に渡さない (直すときは今の値のまま)。
 """
@@ -84,7 +84,7 @@ class OrderLineForm(forms.Form):
     )
     # 相手の注文書の品番 (例 RB-3110)。表は部品の次 (注文書を見ながら 部品 → 品番 の順に入れる)。
     customer_part_no = forms.CharField(label="得意先の品番", max_length=35, required=False)
-    # 0 以下は保存の前に欄の横で断る (R02 の決まりは services にもあり、こちらは入力の誤りの案内。初見テスト 2 回目の所見)
+    # 0 以下は保存の前に欄の横で断る (R02 の決まりは services にもあり、こちらは入力の誤りの案内。作者の決め)
     qty = forms.DecimalField(
         label="数量",
         max_digits=12,
@@ -101,7 +101,7 @@ class OrderLineForm(forms.Form):
         widget=RemoteSelect("masters:quantityunit_select"),
         empty_label=EMPTY_LABEL,
     )
-    # 単価の単位 (決め PRICE-1b)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
+    # 単価の単位 (作者の決め)。「式」は数量を掛けずに単価を金額にする。値と字は部品マスターの単価表と同じ。
     price_basis = DefaultChoiceField(label="単価の単位", choices=PRICE_BASIS_CHOICES, default=PRICE_BASIS_UNIT)
     unit_price = forms.DecimalField(
         label="単価",
@@ -110,7 +110,7 @@ class OrderLineForm(forms.Form):
         min_value=Decimal("0.01"),
         error_messages={"min_value": "単価は 0 より大きい数にしてください。"},
     )
-    # 単価表から写した見積の番号 (決め PRICE-0)。表の列にせず、単価の枡の中に置く (orders/_order_line_row.html)。
+    # 単価表から写した見積の番号 (作者の決め)。表の列にせず、単価の枡の中に置く (orders/_order_line_row.html)。
     quote_no = forms.CharField(
         label="見積の番号",
         max_length=35,
@@ -122,12 +122,12 @@ class OrderLineForm(forms.Form):
 
     def __init__(self, *args, order=None, hide_money=False, **kwargs):
         super().__init__(*args, **kwargs)
-        # 数量と単価を字の欄にする (土台と同じ。初期値は詳細と同じ字で出し、「1,732」も通す。初見テスト 5 回目 a-flagged-12)。
+        # 数量と単価を字の欄にする (土台と同じ。初期値は詳細と同じ字で出し、「1,732」も通す。作者の決め)。
         for field in self.fields.values():
             use_decimal_input(field)
         self.order = order
         self.hide_money = hide_money
-        # 部品は使用中だけ。今ある明細の部品は使用停止でも残す (受注の直しを止めない。N135)。
+        # 部品は使用中だけ。今ある明細の部品は使用停止でも残す (受注の直しを止めない。開発の記録 docs/nights/20261104/N135.md)。
         self.fields["item"].queryset = active_items(keep=self.initial.get("item"))
         self.fields["unit"].queryset = quantity_units()
         # 今ある明細の単位が一覧に無い字 (コードが空) なら、欄は空で出し、選ばなければ今の字のまま残ることを欄の下に書く
@@ -144,9 +144,9 @@ class OrderLineForm(forms.Form):
             # 単価の単位も金額を変えるので、単価の欄と組で外す (直す保存では鍵を渡さず、今の値のまま)。
             self.fields.pop("unit_price", None)
             self.fields.pop("price_basis", None)
-            # 見積の番号も単価の元なので、単価の欄と組で外す (C100。直す保存では鍵を渡さず、今の値のまま)。
+            # 見積の番号も単価の元なので、単価の欄と組で外す (作者の決め。直す保存では鍵を渡さず、今の値のまま)。
             self.fields.pop("quote_no", None)
-        # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が数量と単価を読む印 (N149)。
+        # 合計の枠と保存のボタンの字の JS (seizou-submit-label.js) が数量と単価を読む印 (開発の記録 docs/nights/20261105/N149.md)。
         self.fields["qty"].widget.attrs["data-label-qty"] = True
         if "unit_price" in self.fields:
             self.fields["unit_price"].widget.attrs["data-label-price"] = True
@@ -212,7 +212,7 @@ class OrderLineForm(forms.Form):
 
 
 class OrderLineFormSet(forms.BaseFormSet):
-    """明細の行の formset。消す印 (DELETE) に、合計の枠とボタンの字の JS が行を飛ばす印を付ける (N149)。"""
+    """明細の行の formset。消す印 (DELETE) に、合計の枠とボタンの字の JS が行を飛ばす印を付ける (開発の記録 docs/nights/20261105/N149.md)。"""
 
     def add_fields(self, form, index):
         super().add_fields(form, index)
@@ -222,15 +222,15 @@ class OrderLineFormSet(forms.BaseFormSet):
 
 class OrderForm(SubmitLabelMixin, ServiceModelForm):
     """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。
-    保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。N149)。
+    保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。開発の記録 docs/nights/20261105/N149.md)。
     直す画面は、開いた時の受注と明細の字 (services.order_state_token) を隠しの欄 state_token に持ち、保存の時に services が今の字と比べる
-    (ほかの人の直しと取引先から受け入れた変更を黙って戻さない。N350)。"""
+    (ほかの人の直しと取引先から受け入れた変更を黙って戻さない。開発の記録 docs/nights/20261108/N350.md)。"""
 
     class Meta:
         model = Order
         fields = ["customer", "order_date", "customer_order_no", "note"]
         widgets = {
-            # 候補は得意先と両方の取引先だけ (協力企業を出さない。精査 A9 の 4 節の 1)
+            # 候補は得意先と両方の取引先だけ (協力企業を出さない。作者の決め)
             "customer": RemoteSelect("masters:partner_select", query={"role": "customer"}),
             "order_date": _date_input(),
         }
@@ -241,12 +241,12 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
         self.hide_money = hide_money
         self.submit_label_plain = "受注する" if self.creating else "保存"
         self.fields["customer"].empty_label = EMPTY_LABEL
-        # 得意先は使用中だけ。直す受注の今の得意先は使用停止でも残す (N135)。
+        # 得意先は使用中だけ。直す受注の今の得意先は使用停止でも残す (開発の記録 docs/nights/20261104/N135.md)。
         self.fields["customer"].queryset = active_partners(keep=None if self.creating else instance.customer_id)
         if self.creating:
             # create_order に note の引数が無いので、入れる画面に備考の欄を置かない。
             self.fields.pop("note")
-            # 受注日の初期値は今日 (出荷日・発注日と同じ形。初見テスト R4 4-3a)。直す画面は受注の今の値のまま。
+            # 受注日の初期値は今日 (出荷日・発注日と同じ形。作者の決め)。直す画面は受注の今の値のまま。
             self.fields["order_date"].initial = timezone.localdate
         for name in hidden_names():
             self.fields.pop(name, None)
@@ -361,9 +361,9 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
 
 
 class OrderCancelForm(forms.Form):
-    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存のボタンは「SO-000001 を取り消す」(N138)。"""
+    """受注の取消。理由は備考の末尾に足される (services.cancel_order)。保存のボタンは「SO-000001 を取り消す」(開発の記録 docs/nights/20261104/N138.md)。"""
     submit_label = "取り消す"
-    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。初見テスト R5 の U125。候補 C24)
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
 
     reason = forms.CharField(
         label="取消の理由",

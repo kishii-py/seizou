@@ -1,4 +1,4 @@
 {% load orders_timeline %}
-{# 受注の流れの枠 (決め 11-04 22:0x。N131)。受注から入金までの出来事は orders の流れの module の events_for が集め、枠の形は core/_flow.html。取消の受注の「受注を取消」は日時の記録が無いので日時の欄が「—」。 #}
+{# 受注の流れの枠 (決め 11-04 22:0x。開発の記録 docs/nights/20261104/N131.md)。受注から入金までの出来事は orders の流れの module の events_for が集め、枠の形は core/_flow.html。取消の受注の「受注を取消」は日時の記録が無いので日時の欄が「—」。 #}
 {% order_timeline object as events %}
 {% include "core/_flow.html" with flow_id="order-flow" %}
