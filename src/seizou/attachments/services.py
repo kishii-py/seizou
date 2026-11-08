@@ -1,4 +1,4 @@
-"""添付ファイルの services (01 の 10.1)。表に書くのはここの関数だけ (R13)。
+"""添付ファイルの services (services の書き方の設計の決め)。表に書くのはここの関数だけ (R13)。
 
 付ける先は contenttypes で指す (ほかの部品の model と services を使わない)。
 許す形式は ALLOWED の 1 か所で決め、形式 (mime) はこの表の値を入れる (Python の標準の推測は OS で答えが違うので使わない)。
@@ -99,7 +99,7 @@ def add_attachment(target, file, user, *, kind, note=""):
     _refuse_bad_target(target)
     if getattr(user, "is_authenticated", False) and not can_open_target(target, user):
         # 訳: 付ける (保存) も、読む・消す・一覧 (openable_by) と同じ人だけにする。何のため = 部署の外の記録やほかの人の
-        # フィードバックにファイルを付けられると、開けない記録を外から変えられるため。出所 = Claude Security の走査の候補 10
+        # フィードバックにファイルを付けられると、開けない記録を外から変えられるため。出所 = Claude Security の走査の指摘
         # (11-07。係 sB は下見だけを直し、保存は本体が門で足した)。変えてよい条件 = 付ける先を開けない人に付けさせる業務の理由が出たとき。
         raise ValueError("保存できません。" + MESSAGE_CANNOT_OPEN_TARGET)
     original_name, mime = _refuse_bad_file(file)
@@ -130,7 +130,7 @@ def remove_attachment(attachment, user):
     (消す前に core.services.record_history_deleted で「消した」の 1 行。付けた先が無い添付は添付そのものが持ち主になり、表に残るだけ)。
     訳: 検査成績書や写真を消したことを、誰が・いつ・何を消したかと一緒に付けた先の記録の履歴に残すため
     (電帳法と取適法の訂正削除の見方への当てはめは未確認)。出所 = 本人の決め 11-08 00:37 (残す) と、
-    エンタープライズ化の調べ 第一弾の候補 22 の直し方の直し (a)。
+    エンタープライズ化の調べを受けた作者の決め。
     変えてよい条件 = 本人が決め直したとき、または添付を消さずに残す形 (論理削除) に変えたとき。
     """
     with transaction.atomic():
@@ -216,7 +216,7 @@ def openable_by(queryset, user):
        付けた先が消えた行は、種類 (content_type) で 1) を見て、フィードバックなら世話役だけに残す。
     訳: 記録を開けない人に、その記録に付けたファイル (フィードバックの画面の絵・部署の外の記録の写真や検査成績書) を開かせず、消させず、
     一覧で題とファイル名を見せないため。添付は番号を順に変えるだけで開けたので、記録の側の絞りが添付の口で抜けていた。
-    出所 = Claude Security の走査の候補 11-07 (7・8・9)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
+    出所 = Claude Security の走査の指摘 (11-07)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
     変えてよい条件 = 記録の部品の開ける人の決め (部署の門・フィードバックの絞り) が変わったとき。部品の判定と食い違う形にはしない。
     3) 金額を見られない人 (access.can_see_money が偽 = 金額の閲覧が on で閲覧の無い人。記録は書かない) には、付けた先が
        金額が主な記録 (MONEY_TARGETS) の種類の行を外す。付けた先が消えた行も種類で見る。
@@ -253,7 +253,7 @@ def can_open_target(target, user) -> bool:
 
     openable_by の 1 件の形: 付けた先の部品を部署で開けるか (access.can_open。記録は書かない) と、フィードバックは書いた本人か世話役か。
     訳: 開けない記録 (ほかの人のフィードバック・アカウント管理の部品の行・部署の外の記録) の題やログイン ID を、
-    付ける入力の頭の 1 行で、種類と番号を変えるだけで読ませないため。出所 = Claude Security の走査の候補 11-07 (10)。
+    付ける入力の頭の 1 行で、種類と番号を変えるだけで読ませないため。出所 = Claude Security の走査の指摘 (11-07)。
     変えてよい条件 = openable_by と同じ (2 つは同じ判定にそろえる)。
     """
     meta = getattr(target, "_meta", None)

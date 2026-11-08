@@ -16,7 +16,7 @@ register = template.Library()
 
 @register.simple_tag
 def attachments_for(obj, user=None):
-    """記録の添付ファイルの並び。user を渡したときは、その人が開ける物だけ (金額が主な記録の添付を金額を見られない人に出さない。N367)。
+    """記録の添付ファイルの並び。user を渡したときは、その人が開ける物だけ (金額が主な記録の添付を金額を見られない人に出さない。開発の記録 docs/nights/20261108/N367.md)。
 
     添付が 1 つも無い記録では、絞り (services.openable_by) を呼ばない。外す行が無いので答えは同じで、全部の詳細の画面に
     絞りの問い合わせ (付けた先の種類を引く 2 回) を足さないため (tests/test_core_screen_queries.py の上限)。
