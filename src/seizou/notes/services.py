@@ -1,4 +1,4 @@
-"""書式つきのメモの services (01 の 10.1)。表に書くのはここの関数だけ (R13)。
+"""書式つきのメモの services (services の書き方の設計の決め)。表に書くのはここの関数だけ (R13)。
 
 付ける先は contenttypes で指す (ほかの部品の model と services を使わない)。1 つの記録にメモは 1 つ。
 本文の HTML は clean_html の 1 か所で掃除する (nh3。許す tag と属性を ALLOWED_TAGS・ALLOWED_ATTRIBUTES に絞る)。
