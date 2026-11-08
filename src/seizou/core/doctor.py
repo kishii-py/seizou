@@ -33,7 +33,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 from django.utils import timezone
 
-from seizou.core import backup, conf, media, middleware, services
+from seizou.core import backup, conf, media, middleware, rules, services
 from seizou.core.access import KIND_TITLES as ACCESS_TITLES
 
 #: ほかの PC から開けない名前 (ALLOWED_HOSTS にこれだけなら、本番では直す)
@@ -644,6 +644,55 @@ def check_ai_docs() -> list[Row]:
     return [_good(label, f"{missing[0]} がありません。seizou ai-docs {base} --force で 2 つとも書き直せます (人が直した方も書き直す)。")]
 
 
+RULES_LABEL = "決まりの検査 (会社の置き場)"
+RULES_FIX = (
+    "開発の起動 (DEBUG=1) で全面の知らせを見るか、seizou_check <置き場> で一覧を出し、"
+    "/seizou:fix で会社の置き場の側だけを直す。"
+)
+RULES_ERROR_FIX = "seizou_check <置き場> を打って止まる所を見る。直らなければ seizou の不具合として知らせる。"
+#: 直すの行に出す、最初の違反の決まりの文の頭の字数
+RULES_MESSAGE_HEAD = 40
+
+
+def _rules_place(path: str, base: Path) -> str:
+    """違反のファイルを、置き場から見た道で返す (置き場の外なら渡された道のまま)。"""
+    try:
+        return Path(path).resolve().relative_to(base.resolve()).as_posix()
+    except ValueError:
+        return path
+
+
+def check_rules() -> list[Row]:
+    """会社の置き場の決まりの検査 (R13〜R19・R22)。違反 0 なら良い、1 件でもあれば直す。黙らせた物は数だけ添える。
+
+    検査の対象は rules.site_paths() (会社の置き場の側だけ。部品の中は CI が見る)。判定は rules.check のまま。
+    文には決まりの番号・置き場から見たファイルと行・決まりの文の頭だけを出し、コードの行の中身 (鍵の値や利用者の入力が入りうる) は出さない。
+    検査そのものが例外で止まったら、例外の種類だけを出して直すにする (例外の文は出さない)。
+    訳: 起動のときの決まりの検査は開発の設定 (DEBUG=1) でしか回らず、会社の置き場には CI が無いため、本番で打つ点検でも回して、
+    お金と数の決まりを破る変更を本番の前に知らせる (cron で毎朝回す置き場では直すのメールで届く)。
+    出所 = 11-08 の採点の崩す役の指摘を受けた依頼 (開発の記録 docs/nights/20261108/N375.md)。
+    変えてよい条件 = 会社の置き場に CI ができたとき (この行を開発の条件だけにしてよい) か、決まりの検査の結果の形 (rules.Result) が変わったとき。
+    """
+    label = RULES_LABEL
+    base = _base_dir()
+    if base is None:
+        return []
+    try:
+        result = rules.check(rules.site_paths())
+    except Exception as exc:
+        return [_bad(label, f"決まりの検査が回らなかった: {type(exc).__name__}", RULES_ERROR_FIX)]
+    silenced = f"。黙らせた {result.silenced} 件" if result.silenced else ""
+    if not result.violations:
+        return [_good(label, f"違反 0 件 (走査 {result.scanned} 本){silenced}")]
+    first = result.violations[0]
+    head = first.message[:RULES_MESSAGE_HEAD]
+    detail = (
+        f"違反 {len(result.violations)} 件。最初の 1 件: {first.code} {_rules_place(first.path, base)}:{first.line} {head}"
+        f"{silenced}"
+    )
+    return [_bad(label, detail, RULES_FIX)]
+
+
 def _safe(label, check) -> list[Row]:
     """点検の関数を 1 つ呼ぶ。例外は、その関数の行を「直す」にして次へ進む。"""
     try:
@@ -692,6 +741,7 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("settings.py の塊", check_settings_blocks, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
         ("AI が守る決まり", check_ai_docs, False),
+        (RULES_LABEL, check_rules, False),
     ]
     rows = []
     for label, check, production_only in checks:
