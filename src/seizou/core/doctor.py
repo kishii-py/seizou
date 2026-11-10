@@ -49,6 +49,12 @@ COOKIE_FIX = (
     "無ければ足し、nginx で https を受ける (seizou の docs/operations.md の「版を上げる手順」)。"
     "LAN の中だけで http で開く置き場は、この 2 行を消すので、この行は直すのまま残る。"
 )
+#: 開発の設定 (DEBUG が真) のまま --production で点検したときの、Cookie が http でも送られるときの直し方
+COOKIE_FIX_DEBUG = (
+    "開発の設定 (.env の DEBUG=1) では、settings.py の if not DEBUG: の中の 2 行が働かない。"
+    "本番にするときに .env の DEBUG を 0 にして、点検し直す "
+    "(0 にしても直すのままなら、settings.py にその 2 行があるかを見る。seizou の docs/operations.md の「本番の守り」)。"
+)
 
 
 @dataclass(frozen=True)
@@ -494,11 +500,18 @@ def check_connection_urls() -> list[Row]:
 
 
 def check_cookies() -> list[Row]:
+    """セッションと CSRF の Cookie を HTTPS の道でだけ送るか。偽の設定があれば直すで、DEBUG が真なら直し方を DEBUG を 0 にする案内にする。
+
+    訳: 開発の設定のまま --production で点検すると、settings.py に 2 行があっても直すになり、「無ければ足し」の直し方では
+    次にすることが分からないため、DEBUG が 1 のときは DEBUG を 0 にする案内を出す。出所 = 精査 Q4 (2026-11-10) のつまずく所 9。
+    変えてよい条件 = 雛形の Cookie の塊の形 (if not DEBUG:) が変わったとき。
+    """
     label = "Cookie が HTTPS だけ"
     off = [name for name in ("SESSION_COOKIE_SECURE", "CSRF_COOKIE_SECURE") if not getattr(settings, name, False)]
     if not off:
         return [_good(label, "セッションと CSRF の Cookie を HTTPS の道でだけ送る")]
-    return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", COOKIE_FIX)]
+    fix = COOKIE_FIX_DEBUG if settings.DEBUG else COOKIE_FIX
+    return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", fix)]
 
 
 #: パスワードの決まりが settings に無いときの直し方 (開発の記録 docs/nights/20261108/N354.md)

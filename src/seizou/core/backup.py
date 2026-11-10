@@ -50,9 +50,10 @@ NAME_PATTERN = re.compile(r"^\d{8}-\d{6}(-before-restore)?$")
 NAME_TIME_FORMAT = "%Y%m%d-%H%M%S"
 NAME_TIME_LENGTH = 15
 #: 命令 seizou_backup の控えだけが持つ、会社の作り込みの写しのフォルダと、写す物の許しの一覧 (置き場の直下。無い物は飛ばす。一覧の外は写さない)
+#: checks.py は会社のポカよけ、.claude/ は Claude Code に .env・DB・控えを読ませない設定 (seizou new が書く)。置き場ごと失って作り直したときに消えないように写す
 SITE_DIR = "site"
-SITE_FILES = ("settings.py", "manage.py", "CLAUDE.md", "AGENTS.md", "README.md")
-SITE_DIRS = ("fields", "templates", "static", "manual", "deploy")
+SITE_FILES = ("settings.py", "manage.py", "CLAUDE.md", "AGENTS.md", "README.md", "checks.py")
+SITE_DIRS = ("fields", "templates", "static", "manual", "deploy", ".claude")
 #: 作り込みのフォルダを写すときに外す物
 SITE_IGNORE = ("__pycache__",)
 #: integrity_check が通らないときに断りの文に添える行の数

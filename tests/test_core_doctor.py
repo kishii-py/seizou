@@ -295,6 +295,25 @@ def test_cookie_row_only_in_production(site, settings):
     assert any("Cookie が HTTPS だけ" in line for line in fix_lines(out))
 
 
+@pytest.mark.django_db
+def test_cookie_fix_points_to_debug_zero_in_dev_settings(site, settings):
+    """開発の設定のまま --production で点検すると、Cookie の直し方は DEBUG を 0 にする案内になる (精査 Q4 のつまずく所 9)。"""
+    settings.SESSION_COOKIE_SECURE = False
+    settings.DEBUG = True
+    code, out = run_doctor("--production")
+    rows = [line for line in fix_lines(out) if "Cookie が HTTPS だけ" in line]
+    assert len(rows) == 1
+    assert "DEBUG を 0" in rows[0]
+    assert "無ければ足し" not in rows[0]
+
+    settings.DEBUG = False
+    code, out = run_doctor("--production")
+    rows = [line for line in fix_lines(out) if "Cookie が HTTPS だけ" in line]
+    assert len(rows) == 1
+    assert "無ければ足し" in rows[0]
+    assert "docs/operations.md" in rows[0]
+
+
 def test_scaffold_sets_https_cookies_only_in_production():
     import ast
     import string

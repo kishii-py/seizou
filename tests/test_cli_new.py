@@ -99,7 +99,10 @@ def test_settings_follow_the_contract(built):
     assert re.search(r"""['"]partial_shipment['"]: True,""", block.group(1))
     secret = secret_value(site)
     assert secret not in text
-    assert [line for line in text.splitlines() if "SECRET_KEY" in line] == ['SECRET_KEY = os.environ["SECRET_KEY"]']
+    assert [line for line in text.splitlines() if "SECRET_KEY" in line] == [
+        'SECRET_KEY = os.environ["SECRET_KEY"]',
+        'SECRET_KEY_FALLBACKS = [value.strip() for value in os.environ.get("SECRET_KEY_FALLBACKS", "").split(",") if value.strip()]',
+    ]
 
 
 def test_env_has_only_generated_secret(built):
