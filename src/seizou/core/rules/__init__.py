@@ -70,7 +70,7 @@ def site_paths() -> list[Path]:
     """会社の置き場の側だけの検査の対象: 会社のプロジェクトの BASE_DIR (settings に無ければ空)。
 
     default_paths から部品の置き場 (seizou の package) を外した物。判定の中身は check と同じ。Django の設定を読む。
-    会社の置き場では部品は .venv の site-packages に入るので、歩くときに飛ばされる (engine.SKIP_DIRS)。
+    会社の置き場では部品は .venv の site-packages に入るので、歩くときに飛ばされる (engine.SKIP_DIRS)。置き場の data のフォルダ (engine.SITE_DATA_DIRS) も歩かない。
     BASE_DIR の中に部品の置き場がある形 (seizou のリポジトリそのもの) では、部品の中も歩く。
     訳: 本番の点検 (seizou_doctor) が会社の置き場の決まりの検査を回すため。部品の中は CI が見るので、本番では会社の側だけを見て時間を短くする。
     出所 = 11-08 の採点の崩す役の指摘を受けた依頼 (開発の記録 docs/nights/20261108/N375.md)。

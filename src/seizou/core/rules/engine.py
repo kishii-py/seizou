@@ -4,6 +4,7 @@
 決まりごとの module に同じ木を渡す。どの決まりも 1 ファイルの中で答えを出す。
 字のファイル (.html・.js) は 1 回だけ UTF-8 の字で読み、find_text を持つ決まりに渡す。
 Django の設定を読まない。
+渡されたフォルダのすぐ下にある置き場の data のフォルダ (SITE_DATA_DIRS) は歩かない。
 
 決まりごとの module は次の物を持つ。
 - CODE: 番号 (例 "R14")
@@ -29,6 +30,11 @@ from pathlib import Path
 
 #: 歩くときに中身を読まないフォルダの名前。直に渡したファイルとフォルダには当てない。
 SKIP_DIRS = frozenset({"migrations", "tests", ".venv", "site-packages", "node_modules", ".git", "vendor"})
+
+#: 渡されたフォルダのすぐ下にあるときだけ歩かない、会社の置き場の data のフォルダの名前 (訳は _walk の docstring)。
+#: 直に渡したフォルダには当てない。SKIP_DIRS と違い、会社の app の中の同じ名前のフォルダ (例 orders/media/) は歩く。
+#: Django の設定を読まないので、名前は settings から読まずに字で持つ (ずれは tests/test_core_rules_site_data.py が見る)。
+SITE_DATA_DIRS = frozenset({"backups", "practice", "staticfiles", "media", "cache"})
 
 #: 字で読むファイルの末尾 (R18・R19 が見る)。
 TEXT_SUFFIXES = frozenset({".html", ".js"})
@@ -151,7 +157,12 @@ def run(paths: Iterable[str | os.PathLike], rules: Sequence) -> Result:
 
 
 def _walk(paths: Iterable[str | os.PathLike]) -> tuple[list[Path], list[Path]]:
-    """読む .py の一覧と、中身を読まずに場所だけを渡すフォルダの一覧を返す。"""
+    """読む .py の一覧と、中身を読まずに場所だけを渡すフォルダの一覧を返す。
+
+    渡されたフォルダのすぐ下の SITE_DATA_DIRS は歩かず、その中の migrations の場所も決まりに渡さない。
+    訳: 置き場の控え (backups/)・練習の写し (practice/)・collectstatic の写し (staticfiles/)・上げたファイル (media/)・締め出しと AI の回数の数 (cache/) は、会社のコードの古い写しか data で、そこに残った違反は置き場で直せないので数えない。出所 = 精査 Q4 (2026-11-10) のつまずく所 1。
+    変えてよい条件 = seizou new が書く置き場の data のフォルダの名前か、置き場の形が変わったとき。
+    """
     # 字のファイル (TEXT_SUFFIXES) も同じ files に入れる (seen を共通にし、同じファイルを 2 度数えない)。
     # run が末尾で .py と字のファイルに分けて読む。
     files: list[Path] = []
@@ -175,14 +186,19 @@ def _walk(paths: Iterable[str | os.PathLike]) -> tuple[list[Path], list[Path]]:
             continue
         if not start.is_dir():
             continue
+        top = True
         for root, dirnames, filenames in os.walk(start):
             kept = []
             for name in sorted(dirnames):
+                if top and name in SITE_DATA_DIRS:
+                    # 渡されたフォルダのすぐ下の data のフォルダ。中も、中の migrations の場所も渡さない。
+                    continue
                 if name not in SKIP_DIRS:
                     kept.append(name)
                 elif name in LOCATION_DIRS:
                     add(location_dirs, Path(root, name))
             dirnames[:] = kept
+            top = False
             for name in sorted(filenames):
                 if name.endswith(".py"):
                     add(files, Path(root, name))
