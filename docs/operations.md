@@ -424,7 +424,7 @@ SECRET_KEY_FALLBACKS = [value.strip() for value in os.environ.get("SECRET_KEY_FA
 
 ## 会社ごとの項目を立てた後に足す
 
-部品マスターに会社ごとの項目 (例 表面の仕上げ) を、置き場を立てた後に足す手順です。部品の表 (`masters` の `Item`) は変えず、1 対 1 の拡張の表 (`fields/models.py` の `ItemExt`) に列を足します。この手順は、置き場に `fields/` がある会社 (`seizou new` の時に、答えの YAML の `item_fields` に項目を書いた会社) のための物です。
+部品マスターに会社ごとの項目 (例 表面の仕上げ) を、置き場を立てた後に足す手順です。部品の表 (`masters` の `Item`) は変えず、1 対 1 の拡張の表 (`fields/models.py` の `ItemExt`) に列を足します。この手順は、置き場に `fields/` がある会社 (`seizou new` の時に、答えの YAML の `item_fields` に項目を書いたか、業種の見本が項目を補った会社) のための物です。
 
 画面の欄と一覧の列は、置き場の `fields/` の 2 つのファイル (`models.py` と `apps.py`) で決まります。答えの YAML の `item_fields` は、`seizou new` が置き場を作る時に読む物です。置き場の `answers.yaml` を後で直しても、画面は変わりません。
 
