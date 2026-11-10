@@ -7,7 +7,7 @@
 Claude Code が使える方は、プラグインの命令で会社のシステムを立てる。`/seizou:build` は問いを 3 つ聞く (会社の名前と業種・部品マスターに足したい項目・生産計画を立てているか)。答えると、上の Python の命令 `seizou new` と同じ会社の置き場ができる。答えの YAML を渡せば、問いは飛ばせる。
 `seizou new` (と `/seizou:build`) は会社の置き場に、Claude Code が置き場を開いたときに読む `CLAUDE.md` (AI が守る決まりと、変えた後に `seizou_check` と `/simplify` を回す流れ) と、その短い版の `AGENTS.md` も書く。それより前に作った置き場には、`seizou ai-docs <置き場>` で後から足せる (書き直すときは `--force`)。`seizou new` と `seizou ai-docs` は、置き場に `.gitignore` が無ければ、鍵 (`.env`) とデータベースと上げたファイルと控えを git に入れない `.gitignore` も書く。点検 (`seizou_doctor`) は、CLAUDE.md と AGENTS.md の無い置き場に `seizou ai-docs` を勧める 1 行を出す。
 
-プラグインの入れ方: `git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git && claude --plugin-dir seizou/plugin` の 1 行で、プラグインを読み込んだ Claude Code の会話が開く (読み込まれるのは、その会話の間だけ。skill 4 つ・hook 1 つ・MCP サーバー 1 つが入る)。開いた会話で `/seizou:build` を打つ。`/seizou:build` は、uv が無ければ公式の版つきの入れ方 (`curl -LsSf https://astral.sh/uv/0.13.5/install.sh | sh`。Windows は `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.ps1 | iex"`) で入れ、uv が 0.11.0 より古ければ `uv self update` を打ち、clone した `seizou` の中で `uv sync --locked` を打って部品を入れる (PATH を変える段は要らない)。11-05 に作者の Mac で、`claude --plugin-dir seizou/plugin plugin details seizou` の出力にこの 3 種類が並ぶことを確かめた。
+プラグインの入れ方: `git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git` と `claude --plugin-dir seizou/plugin` を 1 行ずつ打つと (Windows の PowerShell でも同じ 2 行)、プラグインを読み込んだ Claude Code の会話が開く (読み込まれるのは、その会話の間だけ。skill 4 つ・hook 1 つ・MCP サーバー 1 つが入る)。開いた会話で `/seizou:build` を打つ。`/seizou:build` は、uv が無ければ公式の版つきの入れ方 (`curl -LsSf https://astral.sh/uv/0.13.5/install.sh | sh`。Windows は `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.ps1 | iex"`) で入れ、uv が 0.11.0 より古ければ `uv self update` を打ち、clone した `seizou` の中で `uv sync --locked` を打って部品を入れる (PATH を変える段は要らない)。11-05 に作者の Mac で、`claude --plugin-dir seizou/plugin plugin details seizou` の出力にこの 3 種類が並ぶことを確かめた。
 
 | 命令 | 何をするか | 確認のテスト |
 |---|---|---|
@@ -21,7 +21,7 @@ Claude Code が使える方は、プラグインの命令で会社のシステ�
 
 会社の置き場で `manage.py seizou_mcp` を打つと、MCP サーバー (Claude Code が seizou の機能を道具として呼び出すための窓口。標準入力と標準出力でやり取りする) が動き出す。手元の Claude Code に「今週納期の注文残は」「この明細を 5 個出荷して」「めっきの前処理の手順書は」と頼むと、Claude Code が会社のシステムの道具を呼んで読み書きする。業務マニュアルも探して読める。道具は部品の services と読むだけの関数を通るので、画面から入れたときと同じ決まりで書かれる。
 
-起動のしかた: プラグインの `plugin/.mcp.json` が起動用の script `plugin/mcp/start.py` を `uv run --no-project python` で呼ぶ。この script は、`seizou new` と `seizou ai-docs` が `~/.seizou/sites.json` に登録した置き場 (Claude Code を開いたフォルダがその 1 つのとき) だけで、登録した python で `manage.py seizou_mcp` を打つ。登録の無いフォルダでは起動せず、登録の仕方を 1 行で知らせる (開いただけのフォルダの中の物を動かさないため)。プラグインを使わないときは、次の 1 行で登録する (`<python>` は置き場の `README.md` の起動の 1 行の python)。
+起動のしかた: プラグインの `plugin/.mcp.json` が起動用の script `plugin/mcp/start.py` を `uv run --no-project python` で呼ぶ。この script は、`seizou new` と `seizou ai-docs` が `~/.seizou/sites.json` に登録した置き場 (Claude Code を開いたフォルダがその 1 つのとき) だけで、登録した python で `manage.py seizou_mcp` を打つ。登録の無いフォルダでは起動せず、登録の仕方を 1 行で知らせる (開いただけのフォルダの中の物を動かさないため)。プラグインを使わないときは、次の 1 行で登録する (`<python>` は置き場の `README.md` の起動の 1 行の python。Windows では `<seizou を clone した場所>\.venv\Scripts\python.exe` の形)。
 
 ```
 claude mcp add seizou -- <python> <置き場>/manage.py seizou_mcp --user <利用者名>

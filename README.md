@@ -6,6 +6,8 @@
 
 seizou は、そのための公開の部品 (OSS。Apache-2.0)。受注から出荷・納品書・請求書までの生産管理と、取引先との注文の送り合いが、日本語の画面で動く。動かす人は、工場の中で Excel と PC を任された 1 人。プログラムは書けなくてよい。
 
+まず試すなら、下の[「試す」](#試す)の命令で、手元の PC に作り物の 2 社を立てる。
+
 /seizou は Claude Code のプラグインの命令の名前で、GitHub のリポジトリと pip で入れる部品の名前は seizou。
 
 Claude Code のプラグインと、pip で入れる Django の部品を、この 1 つのリポジトリに置く (Apache-2.0)。
@@ -41,13 +43,16 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 手元の PC に作り物の 2 社 (機械加工の若葉精機と、表面処理の白樺めっき工業) を立てて、受注から請求書までと、2 社の間の注文の送り合いを画面で通せる。要る物は `git` と `uv`。
 
 ```sh
-git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git && cd seizou && uv sync --locked
+git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git
+cd seizou
+uv sync --locked
 uv run seizou new examples/companies/a_machining.yaml --demo
 uv run seizou new examples/companies/b_plating.yaml --demo
 ```
 
-`seizou new` が終わりに出す起動の 1 行を打ち、ブラウザで開く (A 社は http://127.0.0.1:8001/ 、B 社は http://127.0.0.1:8002/ )。見る順と手順は [docs/getting-started.md](docs/getting-started.md) の「触り方」にある。Claude Code を使う方は、[docs/plugin.md](docs/plugin.md) の `/seizou:build` でも立てられる。
+`seizou new` が終わりに出す起動の 1 行を打ち、ブラウザで開く (A 社は http://127.0.0.1:8001/ 、B 社は http://127.0.0.1:8002/ )。見る順と手順は [docs/getting-started.md](docs/getting-started.md) の「触り方」にある。作り物の 3 人 (`genba`・`jimu`・`keiri`) の ID と合言葉も、同じ「触り方」にある。Claude Code を使う方は、[docs/plugin.md](docs/plugin.md) の `/seizou:build` でも立てられる。
 
+- Windows は PowerShell を開き、上の 5 行を 1 行ずつ打つ (uv の入れ方は [docs/getting-started.md](docs/getting-started.md) の「前提」)。
 - 今ある入れ方は、端末で命令を打つ方法だけ。作者の手元 (macOS) で通した物で、Linux と Windows は CI の試験だけ (手で通した確認はまだ無い)。
 - ソフトは無料。AI の機能 (注文書の読み取り・AI チャット・フィードバックの聞き取り) を使う会社だけ、Anthropic の API の鍵 (`ANTHROPIC_API_KEY`) と、読んだ分の費用が要る。鍵が無くても、ほかの画面は動く。
 

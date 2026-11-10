@@ -46,7 +46,7 @@ SECTION_DOCS = {
     "## 選べる設定": SETTINGS,
     "## 取引先とつなぐ": "docs/connect.md",
     "## 決まり": "docs/rules.md",
-    "## 会期後の道筋": ROADMAP,
+    "## これからの道筋": ROADMAP,
 }
 
 # README の選べる設定の鍵 (01 の 9 節の 5 つ)
@@ -162,10 +162,10 @@ def test_readme_links_rules_md():
 
 
 def test_readme_after_period_is_five_lines_or_less():
-    body = _section(_read(ROADMAP), "## 会期後の道筋")
+    body = _section(_read(ROADMAP), "## これからの道筋")
     items = [line for line in body if line.startswith("- ")]
-    assert items, f"{ROADMAP} の会期後の道筋に箇条が無い"
-    assert len(items) <= 5, f"会期後の道筋の箇条が {len(items)} 行ある (5 行まで)"
+    assert items, f"{ROADMAP} のこれからの道筋に箇条が無い"
+    assert len(items) <= 5, f"これからの道筋の箇条が {len(items)} 行ある (5 行まで)"
 
 
 def test_readme_uses_based_on_wording():
