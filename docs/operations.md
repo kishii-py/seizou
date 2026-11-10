@@ -60,6 +60,32 @@ PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります�
 
 控えの `site/` は、戻しの命令 (`seizou_restore`) では戻しません (置き場のコードを、控えの古い物で上書きしないため)。置き場ごと失ったときは、`seizou new` で置き場を作り直し、控えの `site/` の中身をその置き場に写してから、`seizou_restore` でデータベースと上げたファイルを戻します。`.env` は、別に写しておいた物を戻します。
 
+会社のポカよけ `checks.py` と、Claude Code の設定 `.claude/` は、控えの `site/` に入りません。`seizou new` は空の `checks.py` を作るので、置き場ごと失う前に、置き場の `checks.py` と `.claude/` を `.env` と同じく別の場所に写しておきます。作り直した置き場には、その写しを戻します。
+
+### Windows の PC で、毎晩の控えと毎朝の点検を回す
+
+Windows には cron がありません。Windows の PC に置いた置き場では、タスク スケジューラ (Windows に入っている、決まった時刻に命令を打つ仕組み) を使います。この小節の例は、作者の手元の Windows の実機では未確認です。
+
+置き場に `.bat` のファイルを 1 つずつ置き、タスク スケジューラからそのファイルを呼ぶ形を勧めます。`schtasks` の `/TR` に書ける字は 261 字までなので、命令を直に書くと、道が長いときに入りません。
+
+毎晩の控えのファイル (例 `<置き場>\backup.bat`) の中身です。`<python>` は、置き場の README の「起動」の 1 行に出てくる Python です (Windows では `<seizou を clone した場所>\.venv\Scripts\python.exe` の形)。
+
+```
+@echo off
+cd /d "<置き場>"
+"<python>" manage.py seizou_backup --keep 30 >> backups\backup.log 2>&1
+```
+
+次の命令で、毎晩 2 時にこのファイルを呼ぶ仕事を置きます。道に空白があるときの `schtasks` の引用符の付け方も、未確認です。
+
+```
+schtasks /Create /TN "seizou 控え <会社の id>" /SC DAILY /ST 02:00 /TR "<置き場>\backup.bat"
+```
+
+毎朝の点検は、同じ形の `.bat` (例 `<置き場>\doctor.bat`) の 3 行目を `"<python>" manage.py seizou_doctor --mail >> backups\doctor.log 2>&1` にし、`/ST 06:00` で置きます。`/TN` の名前は、控えの仕事と別の名前にします。
+
+古い控えは `--keep 30` で消えます (上の `find` の 1 行は、Windows では使えません)。PC の電源が切れている時刻には、控えも点検も回りません。置いた次の日に、`<python> manage.py seizou_restore --list` と `backups\backup.log` で、控えが取れたかを確かめてください。
+
 ## 外への写し (VPS の外へ暗号で控える)
 
 この手順は、作者の手元では未確認です (restic と R2 で 1 回なぞるまで、この 1 文を残します)。
@@ -229,7 +255,7 @@ PostgreSQL の置き場では、この確かめは使えません。
 - つながりの鍵 (取引先ごとの鍵の置き場の名前が `.env` にあるか)
 - つながりの受け口の URL (`https://` か。本番の条件だけ)
 - Cookie が HTTPS だけ (セッションと CSRF の Cookie。本番の条件だけ)
-- 最後の控え (36 時間より古いか、置き場を作って 36 時間を過ぎても控えが無ければ直す。本番の条件だけ)
+- 最後の控え (36 時間より古いか、置き場を作って 36 時間を過ぎても控えが無ければ直す。本番の条件だけ。直し方は「cron の行を確かめる」と出るが、Windows の PC では、タスク スケジューラに置いた控えの仕事を確かめる)
 - ディスクの空き (1GB か最後の控えの 2 倍を切ったら直す。本番の条件だけ)
 - 作り物の利用者の合言葉 (公開の合言葉のままの人がいないか。本番の条件では直す)
 - AI が守る決まり (置き場の CLAUDE.md と AGENTS.md。無くても止めない)
@@ -319,7 +345,7 @@ SECRET_KEY_FALLBACKS=<前の値>
 3. サーバーを起動し直します。
 4. ログインの最長の時間 (「ログイン状態を保存する」を付けたときの 2 週間。Django の既定の `SESSION_COOKIE_AGE`) が過ぎたら、`SECRET_KEY_FALLBACKS` の行を消して、もう 1 度起動し直します。
 
-`settings.py` に `SECRET_KEY_FALLBACKS` の行が無い置き場 (この版より前に `seizou new` で作った物) は、下の「版を上げる手順」のとおりに足してから進めます。
+`settings.py` に `SECRET_KEY_FALLBACKS` の行が無い置き場 (v0.1.0 までの seizou で作った置き場は、全部これに当たります) は、下の「版を上げる手順」のとおりに足してから進めます。
 
 漏れたときは、`SECRET_KEY_FALLBACKS` を使いません。`SECRET_KEY` を新しい値だけにして起動し直します。漏れた値で作られたログインを残さないためで、全員がログインし直すことになります。
 
@@ -359,18 +385,18 @@ seizou の新しい版を入れるときは、次の順に進めます。
 
 1. `<python> manage.py seizou_backup` で控えを取ります。
 2. サーバーを止めます。
-3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `pip install -U seizou` か `uv pip install -U seizou` です。本番の VPS ([docs/vps.md](vps.md) の 5 の形) では `uv sync --locked --no-dev --extra pdf --extra server` です。`--extra pdf` が無いと PDF の部品 (weasyprint) が入らず、`--extra server` が無いと本番の Web サーバーの gunicorn が入りません (gunicorn は extra `server` に入っています。この版より前に別に入れた gunicorn を残す置き場は、`--inexact` も付けます)。
+3. seizou を入れ直します。git から入れた人は `cd <seizou を clone した場所> && git pull && uv sync --locked`、PyPI の版を使う人は `uv pip install --python <python> -U seizou` です。`<python>` は、上の「この文書は何か」と同じく、置き場の README の「起動」の 1 行に出てくる Python です。入れる先の Python を名指しするのは、端末の `pip` が別の Python に入れることがあり、uv が作った `.venv` には `pip` が無いためです。本番の VPS ([docs/vps.md](vps.md) の 5 の形) では `uv sync --locked --no-dev --extra pdf --extra server` です。`--extra pdf` が無いと PDF の部品 (weasyprint) が入らず、`--extra server` が無いと本番の Web サーバーの gunicorn が入りません (gunicorn は extra `server` に入っています。v0.1.0 より前に git の main の seizou で作り、gunicorn を別に入れて残す置き場は、`--inexact` も付けます)。
 4. `<python> manage.py migrate` を打ちます。
 5. `<python> manage.py seizou_doctor` で点検し、直す物があれば直します。
 6. 本番で nginx が静的ファイルを配る形なら、`<python> manage.py collectstatic --no-input` を打ちます。
 7. サーバーを立てます (runserver の 1 行か、サーバーの service の再起動。手元の 2 社のデモは `uv run python scripts/sites.py restart`)。
 8. 画面を 1 つ開いて、ログインと一覧が出ることを確かめます。
 
-版を上げた後に、置き場ごとに `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。この命令は置き場を、プラグインの MCP が起こしてよい置き場の一覧 (`~/.seizou/sites.json`) に、打った python で登録します (登録の無い置き場では、プラグインの MCP は立ちません)。Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) が無い置き場 (この版より前に作った物) には、それも書きます (既にあれば触りません)。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、登録と settings.json はその前に済んでいます。
+版を上げた後に、置き場ごとに `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。この命令は置き場を、プラグインの MCP が起こしてよい置き場の一覧 (`~/.seizou/sites.json`) に、打った python で登録します (登録の無い置き場では、プラグインの MCP は立ちません)。Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) には、それも書きます (既にあれば触りません)。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、登録と settings.json はその前に済んでいます。
 
-うまく動かないときは、前の版に戻します。PyPI の版は `pip install seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
+うまく動かないときは、前の版に戻します。PyPI の版は `uv pip install --python <python> seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
 
-`settings.py` に次の行が無い置き場 (この版より前に `seizou new` で作った物) は、版を上げるときに足します。`ALLOWED_HOSTS` の行の後に、次の塊を足します。Cookie の 2 行は、HTTPS で開く置き場だけです (上の「HTTPS と Cookie」)。
+点検 (`--production`) の「Cookie が HTTPS だけ」が直すを出したら、`settings.py` に次の行があるかを見ます。行が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) は、版を上げるときに足します。`ALLOWED_HOSTS` の行の後に、次の塊を足します。Cookie の 2 行は、HTTPS で開く置き場だけです (上の「HTTPS と Cookie」)。
 
 ```
 SESSION_COOKIE_HTTPONLY = True
@@ -380,15 +406,59 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 ```
 
-`MIDDLEWARE` の `"seizou.core.middleware.DevAutoLoginMiddleware",` の次の行に、`"seizou.core.middleware.HtmxLoginMiddleware",` を足します。
+点検 (`--production`) の「settings.py の塊」が直すを出し、`HtmxLoginMiddleware` が無いと書いたときは、`MIDDLEWARE` の `"seizou.core.middleware.DevAutoLoginMiddleware",` の次の行に、`"seizou.core.middleware.HtmxLoginMiddleware",` を足します。この行が無いのは、v0.1.0 より前に git の main の seizou で作った置き場です。
 
-画面ごとの説明書の断片が無い置き場 (この版より前に、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
+画面ごとの説明書の断片が無い置き場 (v0.1.0 より前に git の main の seizou で、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
 
-`settings.py` に `AUTH_PASSWORD_VALIDATORS` の行が無い置き場 (この版より前に `seizou new` で作った物) は、`from seizou.parts import PARTS` の次の行に `from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと `manage.py changepassword` も、アカウント管理の画面と同じ決まり (8 字以上・よくある語でない・数字だけでない・ID に似ていない) で断ります。
+点検 (`--production`) の「パスワードの決まり」が直すを出したら、`settings.py` に `AUTH_PASSWORD_VALIDATORS` の行があるかを見ます。行が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) は、`from seizou.parts import PARTS` の次の行に `from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと `manage.py changepassword` も、アカウント管理の画面と同じ決まり (8 字以上・よくある語でない・数字だけでない・ID に似ていない) で断ります。
 
-ログインの時間切れ (上の「ログインの時間切れ」) は、`settings.py` の `MIDDLEWARE` の 1 行で動きます。この版より前に作った置き場は、`"seizou.core.middleware.HtmxLoginMiddleware",` の次の行に `"seizou.core.middleware.SessionTimeoutMiddleware",` を足します。この行が無いと、時間切れは働きません。足すのは seizou の版を上げた後で、足したらサーバーを立て直します。先に足すと、古い seizou にはこの名前が無いので、サーバーが起動しません。
+ログインの時間切れ (上の「ログインの時間切れ」) は、`settings.py` の `MIDDLEWARE` の 1 行で動きます。この行が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) は、`"seizou.core.middleware.HtmxLoginMiddleware",` の次の行に `"seizou.core.middleware.SessionTimeoutMiddleware",` を足します。この行が無いと、時間切れは働きません。足すのは seizou の版を上げた後で、足したらサーバーを立て直します。先に足すと、古い seizou にはこの名前が無いので、サーバーが起動しません。
 
-`settings.py` に `LOGGING` の行が無い置き場 (この版より前に `seizou new` で作った物) は、import の並び (`from seizou.parts import PARTS` の次) に `from seizou.core.logging_conf import default_logging` を、`LANGUAGE_CODE` の行の後に `LOGGING = default_logging()` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと、500 の誤りと seizou の記録がサーバーの記録 (journald) に残ります。
+点検 (`--production`) の「settings.py の塊」が直すを出し、`LOGGING` が無いと書いたときは、`settings.py` に `LOGGING` の行があるかを見ます。行が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) は、import の並び (`from seizou.parts import PARTS` の次) に `from seizou.core.logging_conf import default_logging` を、`LANGUAGE_CODE` の行の後に `LOGGING = default_logging()` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと、500 の誤りと seizou の記録がサーバーの記録 (journald) に残ります。
+
+`settings.py` に `SECRET_KEY_FALLBACKS` の行が無い置き場 (v0.1.0 までの seizou で作った置き場は、全部これに当たります) は、`SECRET_KEY = os.environ["SECRET_KEY"]` の行の次に、次の 1 行を足します。足した後に、サーバーを立て直します。この行は seizou の部品を使わないので、版を上げる前に足してもかまいません。この行が無いと、上の「鍵を入れ替えるとき・漏れたとき・取引をやめるとき」で `.env` に書いた `SECRET_KEY_FALLBACKS` を、Django が読みません。
+
+```python
+SECRET_KEY_FALLBACKS = [value.strip() for value in os.environ.get("SECRET_KEY_FALLBACKS", "").split(",") if value.strip()]
+```
+
+## 会社ごとの項目を立てた後に足す
+
+部品マスターに会社ごとの項目 (例 表面の仕上げ) を、置き場を立てた後に足す手順です。部品の表 (`masters` の `Item`) は変えず、1 対 1 の拡張の表 (`fields/models.py` の `ItemExt`) に列を足します。この手順は、置き場に `fields/` がある会社 (`seizou new` の時に、答えの YAML の `item_fields` に項目を書いたか、業種の見本が項目を補った会社) のための物です。
+
+画面の欄と一覧の列は、置き場の `fields/` の 2 つのファイル (`models.py` と `apps.py`) で決まります。答えの YAML の `item_fields` は、`seizou new` が置き場を作る時に読む物です。置き場の `answers.yaml` を後で直しても、画面は変わりません。
+
+1. 置き場の `fields/models.py` の `ItemExt` に、列を 1 行足します。列の名前は、今ある最後の `ext<番号>` の次の番号にします (例 `ext02` まであれば `ext03`)。字の項目の例です。
+
+```python
+    ext03 = models.CharField('表面の仕上げ', max_length=100, blank=True)
+```
+
+ほかの型の行は、`seizou new` が書く形に合わせます。`<見出し>` は画面に出る項目の名前です。
+
+- 数: `models.DecimalField('<見出し>', max_digits=14, decimal_places=2, null=True, blank=True)`
+- 日付: `models.DateField('<見出し>', null=True, blank=True)`
+- 選ぶ物: `models.CharField('<見出し>', max_length=100, choices=[('<値>', '<値>'), ...], blank=True)`
+- はい/いいえ: `models.BooleanField('<見出し>', default=False, blank=True)`
+
+2. 同じ置き場の `fields/apps.py` の `ITEM_FIELDS` に、同じ列の 1 行を足します。鍵の並びは、`seizou new` が書いた行と同じです (`name`・`label`・`type`・`required`・`in_list`・`searchable`・`choices`)。上の例の列なら、次の 1 行です。
+
+```python
+    {'name': 'ext03', 'label': '表面の仕上げ', 'type': 'text', 'required': False, 'in_list': True, 'searchable': False, 'choices': []},
+```
+
+`type` は `text` (字)・`number` (数)・`date` (日付)・`choice` (選ぶ物)・`bool` (はい/いいえ) のどれかで、1 の行の型と合わせます。`in_list` を `True` にすると部品の一覧に列が出ます。`searchable` を `True` にすると、検索がこの列も見ます。`choice` の項目は、`choices` に 1 の行と同じ値を並べます。
+
+3. 置き場で次の 2 つの命令を打ち、サーバーを立て直します。
+
+```
+<python> manage.py makemigrations fields
+<python> manage.py migrate
+```
+
+`models.py` だけを直して `apps.py` を直さないと、編集の画面に欄が出ず、誤りの字も出ません。2 つのファイルを両方直してから、サーバーを立て直してください。
+
+足した列の値はデータベースに入るので、毎日の控えに入ります。`fields/` のファイルは、控えの `site/` に入ります (上の「毎日の控え」)。
 
 ## 困ったとき
 
@@ -430,7 +500,7 @@ if not DEBUG:
 
 ## 定期の仕事と見張り
 
-システムを預かる人が、決まった間隔でする仕事です。cron に置く物は、控えと同じ利用者の cron に足します。
+システムを預かる人が、決まった間隔でする仕事です。cron に置く物は、控えと同じ利用者の cron に足します。Windows の PC では、cron の代わりに、上の「Windows の PC で、毎晩の控えと毎朝の点検を回す」の形でタスク スケジューラに置きます。
 
 | 仕事 | いつ | どうやって | 見落としたとき |
 |---|---|---|---|
@@ -496,7 +566,7 @@ seizou は、Django と Python の上で動きます。どちらも版ごとに�
 
 発行の納品書に入った出荷は、納品書を取り消す、出荷を直すか消す、納品書を作り直す、の順に直します。納品書を取り消す操作と作り直す操作は金額の操作なので、金額の判定を有効にした会社では、金額を見られる人だけが行えます。
 
-取引先につながる出荷は、受信した注文で作った受注の出荷・出荷の知らせを送った出荷・検収の届いた出荷の 3 つです。どれも消せません。出荷の知らせを送り直しても、相手の記録は 1 回目の数のまま残ります。数の誤りは、受注の詳細の「会話」のタブで相手に伝えてください。この出荷の直し方は、別に設計します (会期の外)。
+取引先につながる出荷は、受信した注文で作った受注の出荷・出荷の知らせを送った出荷・検収の届いた出荷の 3 つです。どれも消せません。出荷の知らせを送り直しても、相手の記録は 1 回目の数のまま残ります。数の誤りは、受注の詳細の「会話」のタブで相手に伝えてください。この出荷の直し方は、まだありません (これから設計します)。
 
 受入は、保存した後に画面から直せません。数の誤りは、運用で見つけて直します。受入の金額の誤りは、相手が seizou を使う協力企業なら、相手が仕入明細に出した提案を受け入れて、修正仕入明細の金額で直せます (受入の行の金額は変わりません)。ほかの取引先では直せません。受入の数と日付と在庫の入庫は、どちらの場合も誤ったまま残ります。
 
@@ -539,7 +609,7 @@ seizou は、Django と Python の上で動きます。どちらも版ごとに�
 
 ### この版より前に作った置き場
 
-この版より前の `seizou new` が作った置き場では、`settings.py` の `MEDIA_ROOT = BASE_DIR / "media"` の行の後に、次の塊を足してから使います。
+`settings.py` に次の塊が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) では、`MEDIA_ROOT = BASE_DIR / "media"` の行の後に、次の塊を足してから使います。
 
 ```python
 # 練習モード: manage.py seizou_practice start が立てるサーバーだけが、写した DB と上げたファイルの道を渡す。
