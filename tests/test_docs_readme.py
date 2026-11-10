@@ -387,3 +387,39 @@ def test_relative_links_in_docs_exist():
         base = (ROOT / name).parent
         for target in RELATIVE_LINK.findall(_read(name)):
             assert (base / target).exists(), f"{name} の link の先 {target} が無い"
+
+
+# ---- メニューの入口と設定の鍵の、コード → 文書の向き (精査 Q5 の 2 節の 4・5・10) ----
+
+
+def _menu_labels_from_urls():
+    """左のメニューの入口の字の集まり。src/seizou/*/urls.py の MENU と、core の CORE_MENU の 1 行だけから集める。
+
+    context_processors.py の全体には当てない (全体に当てると MENU_COUNTS の説明の字や部品の app の名前まで拾うため)。
+    """
+    labels = set()
+    for path in (ROOT / "src" / "seizou").glob("*/urls.py"):
+        labels.update(MENU_ENTRY.findall(path.read_text(encoding="utf-8")))
+    core_lines = [
+        line for line in _read("src/seizou/core/context_processors.py").splitlines() if line.startswith("CORE_MENU = ")
+    ]
+    assert len(core_lines) == 1, f"context_processors.py の「CORE_MENU = 」で始まる行が {len(core_lines)} 行ある (1 行のはず)"
+    labels.update(MENU_ENTRY.findall(core_lines[0]))
+    return labels
+
+
+def test_screens_table_lists_every_menu_entry():
+    """左のメニューの入口が全部、docs/screens.md の画面の一覧の表の「入口」の列にある。
+
+    訳: 上の test_readme_menu_entries_exist_in_source は文書 → コードの向き (文書に書いた入口が実物にある) だけを見るので、
+    メニューにあるのに文書に無い入口を見落とす (精査 Q5 の 2 節の 4。生産管理ボード・受けた仕入明細・入荷が抜けていた)。
+    ここでコード → 文書の向きも見る。メニューに入口を足すレーンは、docs/screens.md の画面の一覧にも行を足す。
+    """
+    rows = _table_rows(_section(_read(SCREENS), "## 画面の一覧"))
+    assert rows, f"{SCREENS} の画面の一覧に表が無い"
+    column = rows[0].index("入口")
+    entries = {row[column] for row in rows[2:]}
+    missing = sorted(label for label in _menu_labels_from_urls() if label not in entries)
+    assert not missing, " / ".join(
+        f"{label} が urls.py の MENU か CORE_MENU にあるのに、docs/screens.md の画面の一覧に無い" for label in missing
+    )
