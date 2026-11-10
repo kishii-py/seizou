@@ -133,3 +133,26 @@ def test_new_demo_on_cp932_pipe_finishes(tmp_path):
     out = result.stdout.decode("cp932")
     assert "入れた" in out
     assert "作り物のデータを登録しました" in out
+
+
+# 道の頭の ~ (精査 Q6 の 7。Windows PowerShell 5.1 は外の命令に ~ をそのまま渡す)
+
+
+def test_paths_expand_user_home(tmp_path, monkeypatch):
+    # POSIX は HOME、Windows は USERPROFILE からホームを読むので、2 つとも一時のフォルダにする
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("SEIZOU_HOME", str(home / ".seizou"))
+    site = home / "seizou-sites" / "sample_co"
+    site.mkdir(parents=True)
+    (site / "manage.py").write_text("", encoding="utf-8")
+    (site / "answers.yaml").write_text("id: sample_co\nname: 作り物の会社\n", encoding="utf-8")
+
+    code, out, err = run_new(["ai-docs", "~/seizou-sites/sample_co"])
+
+    assert code == 0, err
+    assert (site / "CLAUDE.md").is_file()
+    parser = cli.build_parser()
+    assert parser.parse_args(["new", "a.yaml", "--password-file", "~/pw/admin.txt"]).password_file == home / "pw" / "admin.txt"
+    assert parser.parse_args(["github-token", "~/seizou-sites/sample_co"]).site == site

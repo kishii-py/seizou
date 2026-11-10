@@ -21,11 +21,13 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     起動はしない。起動の 1 行を最後に出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
+    置き場の道の頭の ~ は利用者のホームに広げる。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
     .claude/settings.json が無ければ、CLAUDE.md と AGENTS.md が既にあって止まる前に書く (既にある物は --force でも書き直さない)。
     置き場を、プラグインの MCP が起こしてよい置き場の一覧に、この python で登録する (これも止まる前。版を上げた後に打つ)。
 seizou github-token [<置き場>]
     会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (開発の記録 docs/nights/20261106/N185.md)。
+    置き場の道の頭の ~ は利用者のホームに広げる。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
     画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
 
@@ -1039,8 +1041,13 @@ def command_github_token(site: Path) -> int:
     return EXIT_OK
 
 
+def user_path(text: str) -> Path:
+    """命令の道の引数。頭の ~ を利用者のホームに広げる (Windows PowerShell 5.1 は外の命令に ~ をそのまま渡すため)。"""
+    return Path(text).expanduser()
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
+    parser =argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
     commands = parser.add_subparsers(dest="command", required=True)
     new = commands.add_parser(
         "new",
@@ -1056,7 +1063,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     new.add_argument(
         "--password-file",
-        type=Path,
+        type=user_path,
         metavar="PATH",
         help="管理者のパスワードを画面に出さず、このファイルに admin:<値> の 1 行で書く (持ち主だけが読める)",
     )
@@ -1065,14 +1072,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="既にある会社の置き場に、AI が守る決まりの CLAUDE.md と AGENTS.md を書く",
         description="既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。",
     )
-    ai_docs.add_argument("site", type=Path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
+    ai_docs.add_argument("site", type=user_path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
     ai_docs.add_argument("--force", action="store_true", help="CLAUDE.md か AGENTS.md が既にあっても、2 つとも書き直す")
     github_token = commands.add_parser(
         "github-token",
         help="会社の置き場の .env に、フィードバックを GitHub に送るトークンを書く (画面に出さずに聞く)",
         description="会社の置き場の .env に、フィードバックを GitHub に送るトークン・送り先・口座の名前の 3 行を書く。トークンは画面に出さずに聞く。",
     )
-    github_token.add_argument("site", type=Path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
+    github_token.add_argument("site", type=user_path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
     return parser
 
 
