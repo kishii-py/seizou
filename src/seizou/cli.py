@@ -715,7 +715,8 @@ def _copy_fragments(source: Path, site: Path) -> int:
 
 def child_env(extra: dict | None = None) -> dict:
     # 代入にする。親 (pytest-django など) の DJANGO_SETTINGS_MODULE を子に引き継がない。
-    return {**os.environ, "DJANGO_SETTINGS_MODULE": "settings", **(extra or {})}
+    # 子の標準出力と標準エラーを UTF-8 にそろえる (run_manage が UTF-8 で読むため。Windows の管の既定は cp932 か cp1252)。
+    return {**os.environ, "DJANGO_SETTINGS_MODULE": "settings", "PYTHONIOENCODING": "utf-8", **(extra or {})}
 
 
 def run_manage(site: Path, args: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
@@ -1076,6 +1077,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 標準出力と標準エラーの文字コードで表せない字を ? にして書く (Windows の管の cp932 や cp1252 で、日本語の出力で落ちないように)。
+    # 文字コードは変えない (管の読み手の文字コードのまま書く)。--help の日本語も守るので、引数を読む前に行う
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = build_parser().parse_args(argv)
     if args.command == "new":
         return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)

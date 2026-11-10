@@ -7,6 +7,8 @@ Windows の実機は無いので、macOS の上で Windows の形を模す。OS 
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from tests.test_cli_new import FIXTURE, run_new
 POSIX_PYTHON = "/opt/作り物/.venv/bin/python"
 WINDOWS_PYTHON = r"C:\Users\作り物\seizou\.venv\Scripts\python.exe"
 WINDOWS_SITE = r"C:\Users\作り物\seizou-sites\a_machining"
+COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
 
 
 # 起動の 1 行と、置き場で打つ manage.py の 1 行 (精査 Q6 の 1・精査 Q1 の 10)
@@ -70,3 +73,63 @@ def test_new_report_practice_line_has_python_on_windows(tmp_path, monkeypatch):
     assert len(practice) == 1, out
     assert '& "' in practice[0]
     assert f'& "{sys.executable}" manage.py seizou_practice start' in practice[0]
+
+
+# 子の process の出力の文字コード (精査 Q6 の 4・6)
+
+
+def _child_env_like_windows_pipe(encoding: str, **extra: str) -> dict:
+    """Windows の管か file に向けた形を模す環境 (PYTHONUTF8 を外し、標準出力の文字コードを encoding にする)。
+
+    回す人の環境の相手の URL の頭 (SEIZOU_PARTNER_<id>_URL。外の置き場の作り直しのスクリプトが置く物) は子に渡さない。
+    """
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONUTF8" and not cli.PARTNER_URL_ENV.fullmatch(key)}
+    return {**env, "PYTHONIOENCODING": encoding, **extra}
+
+
+def test_child_env_sets_utf8_output(monkeypatch):
+    monkeypatch.setenv("PYTHONIOENCODING", "cp932")
+    assert cli.child_env()["PYTHONIOENCODING"] == "utf-8"
+    assert cli.child_env({"PYTHONIOENCODING": "x"})["PYTHONIOENCODING"] == "x"  # 呼ぶ側が渡した値が勝つ
+
+
+def test_run_manage_reads_japanese_from_child(tmp_path, monkeypatch):
+    # 親の標準出力が cp932 でも、子は UTF-8 で書き、run_manage は置き換えの字 (U+FFFD) を混ぜずに読む
+    (tmp_path / "manage.py").write_text('print("入れた 30 件・飛ばした 0 件")\n', encoding="utf-8")
+    monkeypatch.setenv("PYTHONIOENCODING", "cp932")
+    result = cli.run_manage(tmp_path, [])
+    assert result.returncode == 0, result.stderr
+    assert "入れた 30 件・飛ばした 0 件" in result.stdout
+    assert "\ufffd" not in result.stdout
+
+
+def test_help_does_not_crash_on_cp1252_output():
+    # 英語の Windows の管 (cp1252) でも、--help の日本語で落ちない (表せない字は ? にする)
+    result = subprocess.run(
+        [sys.executable, "-m", "seizou.cli", "--help"],
+        env=_child_env_like_windows_pipe("cp1252"),
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+
+
+def test_new_demo_on_cp932_pipe_finishes(tmp_path):
+    # 精査 Q6 の模し方 B: 日本語の Windows の管 (cp932) に向けて seizou new --demo を打っても、終わりまで行く
+    command = [
+        sys.executable,
+        "-m",
+        "seizou.cli",
+        "new",
+        str(COMPANIES_DIR / "a_machining.yaml"),
+        "--demo",
+        "--password-file",
+        str(tmp_path / "admin-a.txt"),
+    ]
+    env = _child_env_like_windows_pipe("cp932", SEIZOU_SITES_DIR=str(tmp_path / "sites"), SEIZOU_HOME=str(tmp_path / "home"))
+    result = subprocess.run(command, env=env, cwd=tmp_path, capture_output=True, check=False, timeout=600)
+    assert result.returncode == 0, result.stderr.decode("cp932", errors="replace")
+    out = result.stdout.decode("cp932")
+    assert "入れた" in out
+    assert "作り物のデータを登録しました" in out
