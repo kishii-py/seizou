@@ -112,7 +112,7 @@ def test_doctor_exit_code_with_access_control(site, settings):
     assert any(ACCESS in line for line in good_lines(out))
     assert any(BLOCKS in line for line in good_lines(out))
 
-    # 記録だけで確かめている間は、本番の点検が「権限の判定」の直す 1 件で終わる (README の 1 句)
+    # 記録だけで確かめている間は、本番の点検が「権限の判定」の直す 1 件で終わる (docs/rules.md の 1 句)
     settings.SEIZOU = {"access_control": ALL_LOG}
     code, out = run_doctor()
     assert code == 1

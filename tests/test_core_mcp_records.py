@@ -601,7 +601,8 @@ def test_new_tools_are_listed_everywhere():
     assert "受注側" in described["list_acceptances"]
     assert "出所" in described["company_info"]
 
-    lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+    # README の MCP の節は docs/plugin.md に分けた (2026-11-10)
+    lines = (ROOT / "docs" / "plugin.md").read_text(encoding="utf-8").splitlines()
     for name in NEW_TOOLS:
         rows = [line for line in lines if line.startswith(f"| `{name}` |")]
         assert len(rows) == 1, name

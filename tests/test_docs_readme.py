@@ -1,4 +1,6 @@
-"""README・SECURITY・THIRD_PARTY_NOTICES の形を、作品の実物と照らし合わせて確かめる。
+"""README と、README から分けた docs/ の文書・SECURITY・THIRD_PARTY_NOTICES の形を、作品の実物と照らし合わせて確かめる。
+
+README は入口だけにし、節は docs/ の文書に分けた (2026-11-10)。節を見る試験は、分けた先の文書を読む。
 
 標準の library だけを使い、Django を読まない。
 設定の既定は src/seizou/core/conf.py を ast で読み (conf.py は Django を import するため)、
@@ -18,7 +20,34 @@ DOCS = [
     "GOVERNANCE.md",
     "SECURITY.md",
     "THIRD_PARTY_NOTICES.md",
+    # README から分けた文書
+    "docs/getting-started.md",
+    "docs/plugin.md",
+    "docs/screens.md",
+    "docs/settings.md",
+    "docs/connect.md",
+    "docs/rules.md",
+    "docs/production.md",
+    "docs/development.md",
+    "docs/roadmap.md",
+    "docs/why.md",
+    "docs/hackathon.md",
 ]
+
+# README から分けた節の置き場 (見出し → 文書)
+GETTING_STARTED = "docs/getting-started.md"
+PLUGIN = "docs/plugin.md"
+SCREENS = "docs/screens.md"
+SETTINGS = "docs/settings.md"
+ROADMAP = "docs/roadmap.md"
+DEVELOPMENT = "docs/development.md"
+SECTION_DOCS = {
+    "## 前提": GETTING_STARTED,
+    "## 選べる設定": SETTINGS,
+    "## 取引先とつなぐ": "docs/connect.md",
+    "## 決まり": "docs/rules.md",
+    "## 会期後の道筋": ROADMAP,
+}
 
 # README の選べる設定の鍵 (01 の 9 節の 5 つ)
 SETTING_KEYS = [
@@ -99,14 +128,22 @@ def _as_doc_value(value):
 
 
 def test_readme_has_new_sections():
-    headings = {line.strip() for line in _read("README.md").splitlines() if line.startswith("## ")}
-    for heading in ["## 前提", "## 選べる設定", "## 取引先とつなぐ", "## 決まり", "## 会期後の道筋"]:
-        assert heading in headings, f"README に見出し「{heading}」が無い"
+    for heading, name in SECTION_DOCS.items():
+        headings = {line.strip() for line in _read(name).splitlines() if line.startswith("## ")}
+        assert heading in headings, f"{name} に見出し「{heading}」が無い"
+
+
+def test_readme_links_every_split_doc():
+    """README (入口) から、分けた文書の全部へ link がある。"""
+    text = _read("README.md")
+    for name in DOCS:
+        if name.startswith("docs/"):
+            assert f"]({name})" in text, f"README に {name} への link が無い"
 
 
 def test_readme_settings_table_matches_defaults():
-    rows = _table_rows(_section(_read("README.md"), "## 選べる設定"))
-    assert rows, "README の選べる設定に表が無い"
+    rows = _table_rows(_section(_read(SETTINGS), "## 選べる設定"))
+    assert rows, f"{SETTINGS} の選べる設定に表が無い"
     header = rows[0]
     assert "設定の鍵" in header and "既定" in header, "選べる設定の表の見出しに「設定の鍵」と「既定」が無い"
     key_column = header.index("設定の鍵")
@@ -116,7 +153,7 @@ def test_readme_settings_table_matches_defaults():
     for key in SETTING_KEYS:
         assert key in table, f"選べる設定の表に {key} が無い"
         assert table[key] == _as_doc_value(defaults[key]), (
-            f"{key} の既定が conf.py と違う (README: {table[key]}、conf.py: {defaults[key]!r})"
+            f"{key} の既定が conf.py と違う ({SETTINGS}: {table[key]}、conf.py: {defaults[key]!r})"
         )
 
 
@@ -125,9 +162,9 @@ def test_readme_links_rules_md():
 
 
 def test_readme_after_period_is_five_lines_or_less():
-    body = _section(_read("README.md"), "## 会期後の道筋")
+    body = _section(_read(ROADMAP), "## 会期後の道筋")
     items = [line for line in body if line.startswith("- ")]
-    assert items, "README の会期後の道筋に箇条が無い"
+    assert items, f"{ROADMAP} の会期後の道筋に箇条が無い"
     assert len(items) <= 5, f"会期後の道筋の箇条が {len(items)} 行ある (5 行まで)"
 
 
@@ -186,13 +223,12 @@ def test_no_secret_like_values_in_docs():
 
 
 def test_readme_has_plugin_screen_and_flow_sections():
-    text = _read("README.md")
-    headings = {line.strip() for line in text.splitlines() if line.startswith("## ")}
-    for heading in ["## Claude Code のプラグイン", "## 画面の一覧", "## 業務の流れ"]:
-        assert heading in headings, f"README に見出し「{heading}」が無い"
-    flow = {line.strip() for line in _section(text, "## 業務の流れ")}
+    for heading, name in [("## Claude Code のプラグイン", PLUGIN), ("## 画面の一覧", SCREENS), ("## 業務の流れ", SCREENS)]:
+        headings = {line.strip() for line in _read(name).splitlines() if line.startswith("## ")}
+        assert heading in headings, f"{name} に見出し「{heading}」が無い"
+    flow = {line.strip() for line in _section(_read(SCREENS), "## 業務の流れ")}
     for heading in ["### 生産計画", "### 注文書の読み取り", "### 使い方", "### 業務マニュアル", "### CSV の取り込み"]:
-        assert heading in flow, f"README の「業務の流れ」に小節「{heading}」が無い"
+        assert heading in flow, f"{SCREENS} の「業務の流れ」に小節「{heading}」が無い"
 
 
 # urls.py の MENU と、core の CORE_MENU の入口は、どちらも ("<字>", "<URL の名前>") の形で書いてある
@@ -208,8 +244,8 @@ def _menu_labels_in_source():
 
 
 def test_readme_menu_entries_exist_in_source():
-    rows = _table_rows(_section(_read("README.md"), "## 画面の一覧"))
-    assert rows, "README の画面の一覧に表が無い"
+    rows = _table_rows(_section(_read(SCREENS), "## 画面の一覧"))
+    assert rows, f"{SCREENS} の画面の一覧に表が無い"
     header = rows[0]
     assert "入口" in header, "画面の一覧の表の見出しに「入口」が無い"
     column = header.index("入口")
@@ -221,8 +257,8 @@ def test_readme_menu_entries_exist_in_source():
 
 
 def test_readme_skill_table_matches_plugin_skills():
-    rows = _table_rows(_section(_read("README.md"), "## Claude Code のプラグイン"))
-    assert rows, "README のプラグインの節に表が無い"
+    rows = _table_rows(_section(_read(PLUGIN), "## Claude Code のプラグイン"))
+    assert rows, f"{PLUGIN} のプラグインの節に表が無い"
     documented = set()
     for row in rows[2:]:
         documented.update(re.findall(r"^/seizou:([a-z]+)$", row[0]))
@@ -233,9 +269,9 @@ def test_readme_skill_table_matches_plugin_skills():
 def test_readme_e2e_env_names_are_in_conftest():
     conftest = _read("tests/e2e/conftest.py")
     names = set()
-    for name in ["README.md", "CONTRIBUTING.md"]:
+    for name in [DEVELOPMENT, "CONTRIBUTING.md"]:
         names.update(re.findall(r"SEIZOU_E2E[A-Z_]*", _read(name)))
-    assert "SEIZOU_E2E" in names, "README に環境変数 SEIZOU_E2E の説明が無い"
+    assert "SEIZOU_E2E" in names, f"{DEVELOPMENT} に環境変数 SEIZOU_E2E の説明が無い"
     for name in sorted(names):
         assert name in conftest, f"{name} が tests/e2e/conftest.py に無い"
 
@@ -322,15 +358,15 @@ MCP_HEADING = "## 手元の Claude Code から操作する (MCP)"
 
 
 def test_readme_mcp_section_tools_exist_in_source():
-    text = _read("README.md")
+    text = _read(PLUGIN)
     headings = [line.strip() for line in text.splitlines() if line.startswith("## ")]
-    assert MCP_HEADING in headings, f"README に見出し「{MCP_HEADING}」が無い"
+    assert MCP_HEADING in headings, f"{PLUGIN} に見出し「{MCP_HEADING}」が無い"
     plugin_index = headings.index("## Claude Code のプラグイン")
     assert headings[plugin_index + 1] == MCP_HEADING, (
         f"「{MCP_HEADING}」が「## Claude Code のプラグイン」のすぐ次の見出しでない (次は {headings[plugin_index + 1]})"
     )
     rows = _table_rows(_section(text, MCP_HEADING))
-    assert rows, "README の MCP の節に表が無い"
+    assert rows, f"{PLUGIN} の MCP の節に表が無い"
     assert rows[0] == ["道具", "何をするか", "読む / 書く"], f"MCP の節の表の見出しが違う: {rows[0]}"
     tools = rows[2:]
     assert len(tools) >= 12, f"MCP の節の表の道具が {len(tools)} 行しか無い (12 行以上)"
@@ -339,3 +375,15 @@ def test_readme_mcp_section_tools_exist_in_source():
         name = row[0]
         assert f"def {name}(" in source, f"MCP の節の道具 {name} が src/seizou/core/mcp_tools.py に無い"
         assert row[2] in ("読む", "書く"), f"MCP の節の道具 {name} の「読む / 書く」が {row[2]}"
+
+
+# 相対の link (http で始まらない物) の先。# より後ろ (節の印) は見ない
+RELATIVE_LINK = re.compile(r"\]\((?!https?:|mailto:|#)([^)#\s]+)(?:#[^)]*)?\)")
+
+
+def test_relative_links_in_docs_exist():
+    """README と分けた文書の相対の link の先が、リポジトリに在る (README を分けた時に link が切れないように)。"""
+    for name in DOCS:
+        base = (ROOT / name).parent
+        for target in RELATIVE_LINK.findall(_read(name)):
+            assert (base / target).exists(), f"{name} の link の先 {target} が無い"

@@ -14,7 +14,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     置き場には、Claude Code に .env・DB・控え (backups/) を読ませない .claude/settings.json も書く (既にあれば書き直さない)。
     置き場は、プラグインの MCP が起こしてよい置き場の一覧 (~/.seizou/sites.json。seizou.site_registry) に、この python で登録する。
     --demo-password random は、作り物の利用者 3 人 (genba・jimu・keiri) に別々の乱数のパスワードを作り、1 人 1 行で出す
-    (<値> なら 3 人ともその値)。既定は README に書いた公開の合言葉 (手元で試す置き場のため)。
+    (<値> なら 3 人ともその値)。既定は docs/getting-started.md に書いた公開の合言葉 (手元で試す置き場のため)。
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
@@ -1024,7 +1024,7 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument(
         "--demo-password",
         metavar="random|<値>",
-        help="--demo の作り物の利用者 3 人のパスワード。random なら 1 人ずつ乱数を作って 1 人 1 行で出す。既定は README の公開の合言葉",
+        help="--demo の作り物の利用者 3 人のパスワード。random なら 1 人ずつ乱数を作って 1 人 1 行で出す。既定は docs/getting-started.md の公開の合言葉",
     )
     new.add_argument(
         "--password-file",

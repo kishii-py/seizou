@@ -8,7 +8,7 @@
 
 トンネル (外から手元の PC へ通す道具) は使いません。注文を受ける側には、外から届く https の名前を持たせます。外から届く名前を持たない会社どうしをつなぐ中継は、会期後です。
 
-手元の 2 社のデモ (README の「触り方」) との違いは 3 つです。
+手元の 2 社のデモ ([getting-started.md](getting-started.md) の「触り方」) との違いは 3 つです。
 
 - 起動は、runserver でなく gunicorn と systemd です。
 - 開く URL は、`http://127.0.0.1:<ポート>` でなく `https://<名前>` です。
@@ -16,7 +16,7 @@
 
 OS は AlmaLinux 9 (RHEL 系) です。仕事で使う前提なので、SELinux (OS がプログラムごとに読み書きできる物を絞る仕組み) は Enforcing (断る形) のまま使います。動かないときも、`setenforce 0` で SELinux を止めません。
 
-データベースは、`seizou new` の既定の SQLite のままにします。README の「本番の決まり」は PostgreSQL を勧めていますが、この手順は小さな 2 社を SQLite で立てます。PostgreSQL へ移す手順は会期後です。
+データベースは、`seizou new` の既定の SQLite のままにします。[production.md](production.md) の「本番の決まり」は PostgreSQL を勧めていますが、この手順は小さな 2 社を SQLite で立てます。PostgreSQL へ移す手順は会期後です。
 
 立てた後の毎日の運用 (控え・戻し・点検・版上げ) は [operations.md](operations.md) にあります。
 
@@ -93,7 +93,7 @@ sudo sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.c
 sudo systemctl enable --now dnf-automatic-install.timer
 ```
 
-時計が合っているかを見ます。受ける側は注文の時刻を前後 5 分の幅で確かめるので、時計がずれると注文を断ります (README の「取引先とつなぐ」)。
+時計が合っているかを見ます。受ける側は注文の時刻を前後 5 分の幅で確かめるので、時計がずれると注文を断ります ([connect.md](connect.md) の「取引先とつなぐ」)。
 
 ```
 timedatectl
@@ -121,7 +121,7 @@ sudo dnf install epel-release
 sudo dnf install git nginx python3.12 certbot python3-certbot-nginx pango policycoreutils-python-utils
 ```
 
-`pango` は PDF の帳票を作るための部品です (README の「前提」)。`policycoreutils-python-utils` は、10 で context を足す命令 `semanage` を入れます。
+`pango` は PDF の帳票を作るための部品です ([getting-started.md](getting-started.md) の「前提」)。`policycoreutils-python-utils` は、10 で context を足す命令 `semanage` を入れます。
 
 確かめ方: `nginx -v` → `nginx version:` で始まる 1 行・`certbot --version` → `certbot` で始まる 1 行・`python3.12 --version` → `Python 3.12.` で始まる 1 行 (VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)

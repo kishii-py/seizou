@@ -1,4 +1,4 @@
-"""上げたファイル (MEDIA_ROOT の下。図面・添付・マニュアルの画像など) を、ログインした人にだけ返す口 (README の「本番の決まり」)。
+"""上げたファイル (MEDIA_ROOT の下。図面・添付・マニュアルの画像など) を、ログインした人にだけ返す口 (docs/production.md の「本番の決まり」)。
 
 開発機でも本番でも同じ view (/media/<path>) を通る。違うのは配り方だけで、会社の settings.py の
 SEIZOU_FILE_DELIVERY (環境変数から読む) で選ぶ。
@@ -52,7 +52,7 @@ INTERNAL_PREFIX = "/seizou-files/"
 PROXY_HEADER = "X-Seizou-Proxy"
 PROXY_HEADER_META = "HTTP_X_SEIZOU_PROXY"
 PROXY_HEADER_VALUE = "nginx"
-#: 置き場に seizou new が書く nginx の設定の断片 (503 の画面と README が指す)。
+#: 置き場に seizou new が書く nginx の設定の断片 (503 の画面と docs/production.md が指す)。
 NGINX_SNIPPET = "deploy/nginx-files.conf"
 
 #: ブラウザがスクリプトとして動かしうる型。inline で返すと同じ origin で動くので、必ずダウンロードにする。

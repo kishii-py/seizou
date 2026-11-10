@@ -3,7 +3,7 @@
 点検 (seizou_doctor) が公開の合言葉のままの人を出し、変えると消えること。
 種 (accounts.demo_seed.load) が合言葉を受けること。
 seizou new --demo --demo-password random が 3 人に別々の乱数を作って 1 人 1 行で出し、置き場の 3 人がその値で入れること。
-合言葉と利用者は作り物 (公開の合言葉は README に書いてある字)。
+合言葉と利用者は作り物 (公開の合言葉は docs/getting-started.md に書いてある字)。
 """
 
 import io

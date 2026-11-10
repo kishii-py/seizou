@@ -442,13 +442,15 @@ def _table_rows(lines):
 
 
 def test_readme_has_setting_row_and_section():
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    rows = _table_rows(_section(text, "## 選べる設定"))
+    # README の「選べる設定」は docs/settings.md に、「業務の流れ」は docs/screens.md に分けた (2026-11-10)
+    settings_doc = (ROOT / "docs" / "settings.md").read_text(encoding="utf-8")
+    rows = _table_rows(_section(settings_doc, "## 選べる設定"))
     header = rows[0]
     table = {row[header.index("設定の鍵")]: row[header.index("既定")] for row in rows[2:]}
     assert table["feedback_model"] == conf.DEFAULTS["feedback_model"]
 
-    flow = "\n".join(_section(text, "## 業務の流れ"))
+    screens_doc = (ROOT / "docs" / "screens.md").read_text(encoding="utf-8")
+    flow = "\n".join(_section(screens_doc, "## 業務の流れ"))
     assert re.search(r"^### フィードバック$", flow, re.M)
     assert "feedback_model" in flow
 

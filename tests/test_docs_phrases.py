@@ -1,4 +1,4 @@
-"""公開する 5 つの文書の言い回しを確かめる。
+"""公開する文書 (根の 5 つと、README から分けた docs/ の文書) の言い回しを確かめる。
 
 標準の library だけを使い、Django を読まない。
 """
@@ -13,6 +13,18 @@ DOCS = [
     "GOVERNANCE.md",
     "SECURITY.md",
     "THIRD_PARTY_NOTICES.md",
+    # README から分けた文書 (2026-11-10)
+    "docs/getting-started.md",
+    "docs/plugin.md",
+    "docs/screens.md",
+    "docs/settings.md",
+    "docs/connect.md",
+    "docs/rules.md",
+    "docs/production.md",
+    "docs/development.md",
+    "docs/roadmap.md",
+    "docs/why.md",
+    "docs/hackathon.md",
 ]
 
 # 書かない言い回し (文書の決まり)
