@@ -22,6 +22,8 @@ ${start_line}
 
 ## 控え (バックアップ) と点検
 
+`<python>` は、上の「起動」の 1 行にある python です。Windows の PowerShell では `& "<python>" manage.py …` の形で打ちます。
+
 - 控えを取る: `<python> manage.py seizou_backup` (この置き場の `backups/` に日時の名前のフォルダを作る。`.env` は入らないので、別の安全な場所に写す)。
 - 戻す: `<python> manage.py seizou_restore --list` で控えを選び、サーバーを止めてから `<python> manage.py seizou_restore <控えの名前>`。
 - 点検: `<python> manage.py seizou_doctor` (鍵の有無・migrate の漏れ・置き場の権限・設定の値を見て、直す物を 1 行ずつ出す)。版の上げ方は seizou の `docs/operations.md`。

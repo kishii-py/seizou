@@ -18,7 +18,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
-    起動はしない。起動の 1 行を最後に出す。
+    起動はしない。起動の 1 行を最後に出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
@@ -525,14 +525,38 @@ def seizou_items(answers: dict, settings: dict) -> str:
     return "\n".join(f"    {key!r}: {value!r}," for key, value in values.items())
 
 
-def start_line(site: Path, port: int) -> str:
+def _on_windows() -> bool:
+    """Windows の上で動いているか (起動の 1 行の形を PowerShell に合わせるため)。試験はこの関数を差し替える。"""
+    return os.name == "nt"
+
+
+def manage_line(command: str) -> str:
+    """置き場で打つ manage.py の 1 行 (<python> manage.py <command>)。python はこの命令を動かす python (sys.executable)。
+
+    macOS と Linux では、python の道に空白があるときだけ "…" で囲む。Windows では、python の道をいつも "…" で囲み、頭に & を置く
+    (PowerShell は引用符で始まる字を命令と読まず、& があれば命令として打つ)。
+    """
     python = sys.executable
+    if _on_windows():
+        return f'& "{python}" manage.py {command}'
     if " " in python:
         python = f'"{python}"'
+    return f"{python} manage.py {command}"
+
+
+def start_line(site: Path, port: int) -> str:
+    """起動の 1 行 (seizou new の「次にすること」と、置き場の README.md の「起動」に出す)。
+
+    macOS と Linux では cd <置き場> && <python> manage.py runserver <port> (置き場の道に空白があるときだけ "…" で囲む)。
+    Windows では cd "<置き場>"; & "<python>" manage.py runserver <port> (Windows PowerShell 5.1 は && を区切りと読まないので ; で分ける)。
+    """
+    run = manage_line(f"runserver {port}")
     place = str(site)
+    if _on_windows():
+        return f'cd "{place}"; {run}'
     if " " in place:
         place = f'"{place}"'
-    return f"cd {place} && {python} manage.py runserver {port}"
+    return f"cd {place} && {run}"
 
 
 def write_secret_file(path: Path, text: str) -> None:
@@ -935,7 +959,10 @@ def _new_report(
         print(f"作り物の利用者 {len(made_passwords)} 人のパスワード: --demo-password で渡した値にしました。")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
-    print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
+    print(
+        f"練習するときは: 置き場で {manage_line('seizou_practice start')} を打つ"
+        " (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは同じ python で seizou_practice stop)。"
+    )
 
 
 def command_ai_docs(site: Path, force: bool = False) -> int:
