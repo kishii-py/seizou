@@ -1,7 +1,9 @@
 """入れる所から画面が開くまでを通して確かめる (CI の install の job と、手元の確かめの両方で使う)。
 
 する事: 一時の置き場に、作り物の 2 社を seizou new --demo で立てる → 置き場ごとに manage.py runserver を起こす →
-/health/ が 200・最初の画面が開く・点検 (seizou_doctor) が結果の行を出す、までを見る。どれかが外れたら 1 で終わる。
+/health/ が 200・最初の画面が開く・受注の一覧に作り物の受注が並ぶ・点検 (seizou_doctor) が止まらずに終わる、までを見る。
+どれかが外れたら 1 で終わる。通ったかどうかは、終わりの番号とファイルと HTTP の答えで決め、出力の日本語の字では決めない
+(英語の Windows の端末は日本語を「?」に置き換えるため。字が読めたかどうかは、知らせとして 1 行出すだけにする)。
 訳: Linux と Windows は試験 (pytest) だけで、入れる所から起動までを通した確かめが無かった (精査 Q6 の提案 11-11)。
     実機の代わりに、GitHub Actions の ubuntu・windows・macos でこの 1 本を回す。環境変数 PYTHONUTF8 は置かない
     (使う人の PC と同じ既定の文字コードで通すため)。
@@ -11,7 +13,9 @@
 from __future__ import annotations
 
 import http.cookiejar
+import locale
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +30,10 @@ COMPANIES = (("a_machining", 18001), ("b_plating", 18002))
 READY_SECONDS = 120
 SEEDED = "作り物のデータを登録しました"
 DOCTOR_RESULT = "点検の結果"
+#: 作り物の受注の番号の頭 (受注の一覧の HTML にこの字があれば、種が入っている。ASCII なので文字コードに左右されない)
+ORDER_PREFIX = b"SO-0"
+#: 出力の行の終わりの、パスワードに見える字の並び (seizou new は管理者のパスワードを 1 度だけ出す。記録には写さない)
+SECRET_AT_END = re.compile(r"(?<=: )[A-Za-z0-9_-]{12,}\s*$")
 
 
 def say(text: str) -> None:
@@ -39,7 +47,19 @@ def run(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Completed
 
 
 def tail(text: str, lines: int = 25) -> str:
-    return "\n".join(text.splitlines()[-lines:])
+    """出力の終わりの行。パスワードに見える字の並びは伏せる。"""
+    return "\n".join(SECRET_AT_END.sub("(伏せた)", line) for line in text.splitlines()[-lines:])
+
+
+def fetch(url: str, opener: urllib.request.OpenerDirector) -> tuple[int, bytes]:
+    """url を 1 回開いて、HTTP の状態と本文を返す (開けなければ 0 と空)。"""
+    try:
+        with opener.open(url, timeout=15) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as error:
+        return error.code, b""
+    except (urllib.error.URLError, OSError):
+        return 0, b""
 
 
 def wait_for(url: str, opener: urllib.request.OpenerDirector, seconds: int) -> int:
@@ -74,11 +94,13 @@ def main() -> int:
                     env,
                 )
                 site = sites / company
-                if new.returncode != 0 or SEEDED not in new.stdout or not (site / "manage.py").is_file():
+                if new.returncode != 0 or not (site / "manage.py").is_file() or not (site / "db.sqlite3").is_file():
                     failures.append(f"{company}: seizou new が通らなかった (終わりの番号 {new.returncode})")
                     say(f"--- {company} seizou new の出力の終わり\n{tail(new.stdout)}\n{tail(new.stderr)}")
                     continue
                 say(f"{company}: seizou new --demo が通った ({time.monotonic() - started:.0f} 秒)")
+                if SEEDED not in new.stdout:
+                    say(f"{company}: 知らせ = seizou new の出力の日本語が読めなかった (端末の文字コード {locale.getpreferredencoding(False)})")
 
                 log = (Path(work) / f"{company}-server.log").open("w", encoding="utf-8")
                 server = subprocess.Popen(
@@ -101,14 +123,19 @@ def main() -> int:
                     failures.append(f"{company}: 最初の画面が {home} (200 のはず)")
                 else:
                     say(f"{company}: 最初の画面が開いた")
+                status, body = fetch(f"http://127.0.0.1:{port}/orders/", opener)
+                if status != 200 or ORDER_PREFIX not in body:
+                    failures.append(f"{company}: 受注の一覧に作り物の受注が無い (状態 {status})")
+                else:
+                    say(f"{company}: 受注の一覧に作り物の受注が並んだ")
 
                 doctor = run([sys.executable, "manage.py", "seizou_doctor"], site, env)
-                if DOCTOR_RESULT not in doctor.stdout:
-                    failures.append(f"{company}: 点検が結果の行を出さなかった (終わりの番号 {doctor.returncode})")
+                if doctor.returncode not in (0, 1) or "Traceback" in doctor.stdout + doctor.stderr or not doctor.stdout.strip():
+                    failures.append(f"{company}: 点検が止まった (終わりの番号 {doctor.returncode})")
                     say(f"--- {company} seizou_doctor の出力の終わり\n{tail(doctor.stdout)}\n{tail(doctor.stderr)}")
                 else:
-                    result = [line for line in doctor.stdout.splitlines() if DOCTOR_RESULT in line][-1]
-                    say(f"{company}: {result.strip()}")
+                    results = [line for line in doctor.stdout.splitlines() if DOCTOR_RESULT in line]
+                    say(f"{company}: 点検が終わった ({results[-1].strip() if results else '結果の行の日本語は読めなかった'})")
         finally:
             for company, server, log_path in servers:
                 server.terminate()
