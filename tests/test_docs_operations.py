@@ -5,6 +5,7 @@ tests/test_docs_vps.py と同じ)。
 鍵の行の見方・鍵の値に見える字・書かない言い回しは、既にある文書の試験の名前を import して同じ見方で見る (字をここに写さない)。
 """
 
+import ast
 import re
 from pathlib import Path
 
@@ -110,3 +111,90 @@ def test_vps_has_no_copy_destination_or_restic_url():
     assert COPY_DESTINATION_HOST not in text, f"docs/vps.md に {COPY_DESTINATION_HOST} がある (operations.md にだけ置く)"
     restic_urls = [url for url in URL.findall(text) if RESTIC in url.lower()]
     assert not restic_urls, f"docs/vps.md に restic の URL がある (operations.md にだけ置く): {restic_urls}"
+
+
+# ---- 版を上げる命令・立てた後に項目を足す手順・Windows の控え・控えの site/ (開発の記録 docs/nights/20261111/N388.md) ----
+
+PRODUCTION_DOC = ROOT / "docs" / "production.md"
+BACKUP_PY = ROOT / "src" / "seizou" / "core" / "backup.py"
+
+# 版を上げる 3 段の PyPI の命令は、入れる先の python を名指しする (端末の pip は別の Python に入れるため)
+UPGRADE_SECTION = "版を上げる手順"
+PYPI_UPGRADE = "uv pip install --python <python> -U seizou"
+OLD_PYPI_UPGRADE = "`pip install -U seizou`"
+PRODUCTION_DAILY_SECTION = "毎日の運用"
+PYTHON_OPTION = "--python"
+
+# 立てた後に会社ごとの項目を足す節 (2 つのファイルと makemigrations)
+FIELDS_SECTION = "会社ごとの項目"
+FIELDS_WORDS = ("fields/models.py", "ITEM_FIELDS", "makemigrations fields")
+
+# Windows の PC で控えと点検を回す小節 (cron の代わりのタスク スケジューラ。例は実機で未確認)
+WINDOWS = "Windows"
+WINDOWS_WORDS = ("タスク スケジューラ", "未確認")
+
+# 控えの中身の site/ の行と、backup.py の許しの一覧
+BACKUP_SECTION = "毎日の控え"
+SITE_COPY = "`site/`"
+SITE_LISTS = ("SITE_FILES", "SITE_DIRS")
+
+
+def _subsection(text, word):
+    """見出し (### ) に word を含む小節の行。小節は見出しの行から、次の ## か ### の見出しの前まで。"""
+    lines = text.splitlines()
+    for start, line in enumerate(lines):
+        if line.startswith("### ") and word in line:
+            rest = range(start + 1, len(lines))
+            end = next((i for i in rest if lines[i].startswith(("## ", "### "))), len(lines))
+            return lines[start:end]
+    return []
+
+
+def _backup_site_names():
+    """backup.py の SITE_FILES と SITE_DIRS の字。Django を読まないので、ast で定数だけを読む。"""
+    names = {}
+    for node in ast.parse(BACKUP_PY.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target, value = node.target, node.value
+        else:
+            continue
+        if isinstance(target, ast.Name) and target.id in SITE_LISTS:
+            names[target.id] = ast.literal_eval(value)
+    return names
+
+
+def test_upgrade_names_python_for_pypi_install():
+    section = "\n".join(_section(_read(DOC), UPGRADE_SECTION))
+    assert PYPI_UPGRADE in section, f"「{UPGRADE_SECTION}」の節に {PYPI_UPGRADE} が無い"
+    assert OLD_PYPI_UPGRADE not in section, f"「{UPGRADE_SECTION}」の節に、入れる先を名指ししない {OLD_PYPI_UPGRADE} が残っている"
+
+    daily = "\n".join(_section(_read(PRODUCTION_DOC), PRODUCTION_DAILY_SECTION))
+    assert PYTHON_OPTION in daily, f"docs/production.md の「{PRODUCTION_DAILY_SECTION}」の節に {PYTHON_OPTION} が無い"
+
+
+def test_operations_has_section_for_adding_company_fields():
+    section = _section(_read(DOC), FIELDS_SECTION)
+    assert section, f"docs/operations.md に「{FIELDS_SECTION}」を含む ## の節が無い"
+    body = "\n".join(section)
+    missing = [word for word in FIELDS_WORDS if word not in body]
+    assert not missing, f"「{FIELDS_SECTION}」の節に無い字: {missing}"
+
+
+def test_operations_has_windows_scheduler_subsection():
+    subsection = _subsection(_read(DOC), WINDOWS)
+    assert subsection, f"docs/operations.md に「{WINDOWS}」を含む ### の小節が無い"
+    body = "\n".join(subsection)
+    missing = [word for word in WINDOWS_WORDS if word not in body]
+    assert not missing, f"「{WINDOWS}」の小節に無い字: {missing}"
+
+
+def test_backup_site_line_names_every_site_file_and_dir():
+    names = _backup_site_names()
+    assert set(names) == set(SITE_LISTS), f"backup.py から読めなかった一覧: {set(SITE_LISTS) - set(names)}"
+
+    lines = [line for line in _section(_read(DOC), BACKUP_SECTION) if line.startswith("- ") and SITE_COPY in line]
+    assert len(lines) == 1, f"「{BACKUP_SECTION}」の節に、{SITE_COPY} の箇条が 1 行でない: {len(lines)} 行"
+    missing = [name for name in [*names["SITE_FILES"], *names["SITE_DIRS"]] if f"`{name}" not in lines[0]]
+    assert not missing, f"「{BACKUP_SECTION}」の {SITE_COPY} の行に、backup.py の一覧の名前が無い: {missing}"
