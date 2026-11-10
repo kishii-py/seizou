@@ -400,27 +400,28 @@ def delete_refusal(shipment) -> str:
     """出荷を消せない訳の文 (読むだけ)。消せるなら空の字。delete_shipment と削除の確かめのカードが同じ文を使う。
 
     見る順 (最初に当たった 1 つの文を返す。どの文も「削除できません。」で始め、出荷番号と次にすることを書く):
-    (i) 発行の納品書に入っている (取消の納品書を指す出荷は断らない)。
     (ii) 請求書の明細か、請求書の外の入金が指している。請求書と入金の状態は問わない (取り消しても行は残り、表の外部キーは PROTECT)。
          請求書の明細の表は出荷の逆の関係 invoice_lines、入金の表は逆の関係 payments の先として引く (billing を import しない)。
+    (i) 発行の納品書に入っている (取消の納品書を指す出荷は断らない)。
     (iii) 取引先につながる: 受信した注文で作った受注の出荷 (_is_edi_order)・出荷の知らせを送った出荷 (notice_sent_at が空でない)・
          受注の明細に検収が 1 件でも届いた出荷 (受注の明細の逆の関係 acceptances。connect を import しない。検収は出荷でなく明細を指すので明細で見る)。
     (iv) 明細を出し終えた出荷 (finishes_line)。
     訳: 金額の書類 (納品書・請求書・入金) が指す出荷と、取引先につながる出荷と、明細を出し終えた出荷を消さないため
     (何を見るかの訳は delete_shipment の訳と同じ)。出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べを受けた作者の決め)。
+    (ii) を (i) より先に見るのは、(ii) は請求書と入金を取り消しても外れないので、納品書を取り消させた後に断らないため。出所 = AI の案 (開発の記録 docs/nights/20261111/N377.md)。
     変えてよい条件 = 本人が決め直したとき (例: 相手につながる出荷の直し方を設計したとき)。
     """
     number = shipment.shipment_no
+    if _has_reverse_rows(Shipment, "invoice_lines", shipment) or _has_reverse_rows(Shipment, "payments", shipment):
+        return (
+            f"削除できません。出荷 {number} は請求書の明細か請求書の外の入金の記録が指しています"
+            " (取り消した請求書と入金の記録も、出荷を指したまま残ります)。数や日付の誤りは「編集」で直してください。"
+        )
     note = shipment.delivery_note
     if note is not None and note.status == DeliveryNote.STATUS_ISSUED:
         return (
             f"削除できません。出荷 {number} は納品書 {note.note_no} に入っています。"
             "先に納品書を取り消してください (納品書を取り消す・作り直すのは、金額を見られる人です)。"
-        )
-    if _has_reverse_rows(Shipment, "invoice_lines", shipment) or _has_reverse_rows(Shipment, "payments", shipment):
-        return (
-            f"削除できません。出荷 {number} は請求書の明細か請求書の外の入金の記録が指しています"
-            " (取り消した請求書と入金の記録も、出荷を指したまま残ります)。数や日付の誤りは「編集」で直してください。"
         )
     order = shipment.order_line.order
     if _is_edi_order(order) or shipment.notice_sent_at is not None or _has_reverse_rows(_OrderLine, "acceptances", shipment.order_line):

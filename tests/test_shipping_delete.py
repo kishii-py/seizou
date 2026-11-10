@@ -165,7 +165,7 @@ def test_invoice_line_is_refused_even_after_cancel(user, customer, line):
     shipment = _ship(line, "4", user)
     note = services.create_delivery_note(customer, [shipment], user)
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
-    _assert_refused(shipment, user, "納品書")  # 発行の請求書の出荷は発行の納品書にも入っている (先に納品書の文)
+    _assert_refused(shipment, user, "請求書の明細か請求書の外の入金の記録が指しています")  # 発行の請求書の出荷は、請求書を取り消しても消せないので初めから請求書の文
 
     billing_services.cancel_invoice(invoice, user)
     services.cancel_delivery_note(note, user)
