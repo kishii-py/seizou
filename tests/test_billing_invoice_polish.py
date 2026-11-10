@@ -114,5 +114,6 @@ def test_cancelled_invoice_balance_cell_is_dash(client_logged_in, user, item, in
     fresh_row = _row_html(body, fresh.pk)
     assert DASH_CELL not in fresh_row
     assert fresh_row.count("16,500") == 2
-    # 列の値 (CSV と集計が読む物) は数のまま。数え方はもう一方の報告の担当なので、ここでは変えない
-    assert _cells(response, invoice.invoice_no)["balance"] == Decimal("16000.00")
+    # 行の欄の値と CSV の残は、取消の請求書では空 (Invoice.get_balance_display。N377 = 精査の「取り消した請求書の残が CSV に残る」の直し)。
+    # 11-07 の T03 (035eaf7e) の時は数のまま残していた。集計 (core/summary.py) は display_value を読まないので変わらない
+    assert _cells(response, invoice.invoice_no)["balance"] is None
