@@ -25,7 +25,21 @@ from seizou.core.views import Notice
 
 ROOT = Path(__file__).resolve().parent.parent
 BANNED = "外注"
-SCAN = ("src/seizou", "README.md", "plugin", "examples", "tests", "scripts", "SECURITY.md", "CONTRIBUTING.md", "GOVERNANCE.md", "AGENTS.md", "RULES.md")
+#: README から分けた文書 (2026-11-10。README は入口だけにし、節は docs/ に置いた。記録の docs/nights/ と docs/e2e/ は見ない)
+README_DOCS = (
+    "docs/getting-started.md",
+    "docs/plugin.md",
+    "docs/screens.md",
+    "docs/settings.md",
+    "docs/connect.md",
+    "docs/rules.md",
+    "docs/production.md",
+    "docs/development.md",
+    "docs/roadmap.md",
+    "docs/why.md",
+    "docs/hackathon.md",
+)
+SCAN = ("src/seizou", "README.md", *README_DOCS, "plugin", "examples", "tests", "scripts", "SECURITY.md", "CONTRIBUTING.md", "GOVERNANCE.md", "AGENTS.md", "RULES.md")
 SUFFIXES = {".py", ".html", ".js", ".md", ".yaml", ".yml", ".csv", ".txt", ".toml", ".json"}
 SKIP_PARTS = {"migrations", "__pycache__", ".tools", "node_modules"}
 

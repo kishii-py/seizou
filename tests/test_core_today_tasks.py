@@ -394,7 +394,8 @@ def test_manual_fragments_and_readme_say_today():
     texts = [path.read_text(encoding="utf-8") for path in FRAGMENTS]
     assert texts[0] == texts[1] == texts[2]
     assert "今日やること" in texts[0]
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    # README の「業務の流れ」は docs/screens.md に分けた (2026-11-10)
+    readme = (ROOT / "docs" / "screens.md").read_text(encoding="utf-8")
     assert "ダッシュボードの数字のカードの下の枠「今日やること」には" in readme
     assert "ダッシュボードの最初の枠「今日やること」には" not in readme
     assert "数字のカードの下の「今日やること」に" in texts[0]

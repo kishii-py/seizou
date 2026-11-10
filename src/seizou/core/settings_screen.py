@@ -28,7 +28,7 @@ from seizou.core.models import SettingOverride
 from seizou.core.views import BaseFormView, ScreenMixin, url_or_none
 from seizou.parts import PARTS
 
-#: 選べる設定の見出しと、値の読み方 (README の「選べる設定」の表と同じ言葉)
+#: 選べる設定の見出しと、値の読み方 (docs/settings.md の「選べる設定」の表と同じ言葉)
 SETTING_LABELS = {
     "order_form": ("受注の形", {"multi": "1 件に明細が複数", "single": "1 件 1 品"}),
     "partial_shipment": ("分納", {True: "許す", False: "許さない"}),
