@@ -36,6 +36,7 @@ from .models import Payment
 from .services import (
     billable_shipments,
     closing_period,
+    consumption_tax,
     lump_facts,
     lumps_shipped_after,
     shipment_amount,
@@ -572,7 +573,7 @@ class ShipmentPaymentForm(PaymentForm):
     """請求書の外で受け取った入金を出荷に記録する form (billing.services.record_outside_payment)。欄は PaymentForm と同じ。
     出荷は欄に持たない (土台が URL の pk の出荷を渡す)。
 
-    開いた form は、入金の方法の初めの値を現金、金額の初めの値を出荷の金額 (services.shipment_amount。金額の閲覧の無い人には入れない) にする。
+    開いた form は、入金の方法の初めの値を現金、金額の初めの値を出荷の金額 (税抜。services.shipment_amount) に消費税 (services.consumption_tax) を足した税込の金額 (金額の閲覧の無い人には入れない) にする。
     保存のボタンは「¥1,375 を出荷 SH-000001 の入金として記録する」(金額を入れる前は「出荷 SH-000001 の入金として記録する」)。
     """
 
@@ -584,11 +585,14 @@ class ShipmentPaymentForm(PaymentForm):
             return
         line = instance.order_line
         self.submit_label_plain = f"出荷 {instance.shipment_no} の入金として記録する"
-        amount = None if hide_money else shipment_amount(line.order.customer, instance)
-        if amount is not None:
-            self.fields["amount"].initial = amount
         facts = f"出荷 {instance.shipment_no} (受注 {line.order.order_no}-{line.line_no}・{line.item.part_no}・{comma(instance.qty)} {line.unit})"
-        money = "" if amount is None else f"の金額は ¥{comma(amount)} です。"
+        money = ""
+        if not hide_money:
+            customer = line.order.customer
+            amount = shipment_amount(customer, instance)
+            tax = consumption_tax(customer, [amount])
+            self.fields["amount"].initial = amount + tax
+            money = f"の金額は ¥{comma(amount + tax)} (税抜 ¥{comma(amount)}・消費税 ¥{comma(tax)}) です。"
         self.fields["amount"].help_text = f"{facts}{money if money else 'の入金です。'}受け取った金額を入れます。"
 
     def submit_label_templates(self) -> list:
