@@ -338,6 +338,9 @@ def seizou(request) -> dict:
             # 上の帯の知らせの鈴の赤い数 (まだ見ていない知らせの数。core.bell)。core/_bell.html が読んだ時に数える (受け渡しの seizou-部品の6案-20261107/指示書.md の 4)
             "bell_count": SimpleLazyObject(lambda: _bell_count(user)),
             "practice": practice.is_practice(),  # 練習モード (seizou_practice start が立てたサーバー) の印。base.html が帯と題の「練習: 」を出す
+            # 知らせの帯の字 (選べる設定 site_notice。空なら出さない)。base.html が練習モードの帯の下に出す (core/_site_notice_band.html)。
+            # 表の上書きは conf の控えから読み、DB が読めないときも例外を投げない (会社の行の読みの try の外に置き、DB が止まっても帯を出す)
+            "site_notice": conf.site_notice(),
         }
     }
 
