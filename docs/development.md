@@ -41,6 +41,6 @@ Django の部品を直すときの命令。
 | `SEIZOU_E2E_SEED_NAME_<会社の id>_<PARTNERS か ITEMS>_<コード>` | 外の置き場で種の行の名前を直してあるとき (相手の会社の行を実名にした、など) の差し替え (例 `SEIZOU_E2E_SEED_NAME_A_MACHINING_PARTNERS_S001`) |
 | `SEIZOU_E2E_BASE_URL_A_MACHINING`・`SEIZOU_E2E_BASE_URL_B_PLATING` | 外の置き場 (VPS など) で回すときの 2 社の URL (例 `https://a.example.jp`)。2 社とも書くと、runserver を起動せずにその URL で回す。置き場のファイルを読む E-30 は skip |
 
-回し方: `SEIZOU_E2E=1 uv run pytest tests/e2e -q -rs`。画面の絵は `docs/e2e/<日付>/` に番号つきで残る。外の置き場で回すと、試験が置いた `E2E-` の印の行 (受注・部品・発注など) がその置き場に残るので、人に見せる前に `--demo` で作り直す。
+回し方: `SEIZOU_E2E=1 uv run pytest tests/e2e -q -rs`。Windows の PowerShell では `$env:SEIZOU_E2E = "1"` を打ってから `uv run pytest tests/e2e -q -rs` を打つ。ただし、試験が自分で立てた 2 社を止める所 (`tests/e2e/conftest.py` の `os.killpg`) は Windows ではまだ動かない。画面の絵は `docs/e2e/<日付>/` に番号つきで残る。外の置き場で回すと、試験が置いた `E2E-` の印の行 (受注・部品・発注など) がその置き場に残るので、人に見せる前に `--demo` で作り直す。
 
 `docs/` には [docs/vps.md](vps.md) (VPS に 2 社を立てて https でつなぐ手順)・[docs/operations.md](operations.md) (運用。控え・鍵の入れ替え・版を上げる手順)・[docs/denchoho.md](denchoho.md) (電子取引のデータの保存と seizou)・[docs/edi-items.md](edi-items.md) (会社どうしで送り合う項目の表)・[docs/intake-watch.md](intake-watch.md) (注文書の見張り) と、`docs/images/` (README の画面の絵) と `docs/nights/` (夜の無人の仕事の記録。日付のまとめと仕事ごとのファイル) と `docs/e2e/` (E2E の絵) を置く。
