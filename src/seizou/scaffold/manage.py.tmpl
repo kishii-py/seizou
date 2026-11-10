@@ -7,6 +7,10 @@ from pathlib import Path
 
 
 def main():
+    # 端末の文字コードで出せない字を ? にして書く (Django を読む前の誤りの文も守る。読んだ後は core の app も同じ守りを呼ぶ)
+    from seizou.console import replace_unencodable_output
+
+    replace_unencodable_output()
     base_dir = Path(__file__).resolve().parent
     sys.path.insert(0, str(base_dir))
     # 代入にする (setdefault にしない)。外から別の settings の名前が渡っても、この会社の settings を読む。

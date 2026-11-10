@@ -56,7 +56,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from seizou import site_registry
+from seizou import console, site_registry
 
 EXIT_OK = 0
 EXIT_CHILD = 1
@@ -1085,10 +1085,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     # 標準出力と標準エラーの文字コードで表せない字を ? にして書く (Windows の管の cp932 や cp1252 で、日本語の出力で落ちないように)。
-    # 文字コードは変えない (管の読み手の文字コードのまま書く)。--help の日本語も守るので、引数を読む前に行う
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(errors="replace")
+    # 文字コードは変えない (管の読み手の文字コードのまま書く)。--help の日本語も守るので、引数を読む前に行う。
+    # 置き場の manage.py の命令と同じ関数 (seizou.console。Django を読まない)
+    console.replace_unencodable_output()
     args = build_parser().parse_args(argv)
     if args.command == "new":
         return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)
