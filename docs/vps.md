@@ -4,9 +4,9 @@
 
 ## この文書は何か
 
-この文書は、VPS (借りるサーバー) を 1 台借りて、2 社分の置き場を別のポートで立て、nginx と Let's Encrypt の https の下に置き、2 社の間で注文を送り合うまでの手順です。上の段から順に、手で打ちます。建てる命令は会期後です。
+この文書は、VPS (借りるサーバー) を 1 台借りて、2 社分の置き場を別のポートで立て、nginx と Let's Encrypt の https の下に置き、2 社の間で注文を送り合うまでの手順です。上の段から順に、手で打ちます。建てる命令は、これから作ります。
 
-トンネル (外から手元の PC へ通す道具) は使いません。注文を受ける側には、外から届く https の名前を持たせます。外から届く名前を持たない会社どうしをつなぐ中継は、会期後です。
+トンネル (外から手元の PC へ通す道具) は使いません。2 社とも、外から届く https の名前を持たせます。注文は受ける会社の受け口へ、注文回答・出荷の知らせ・検収は発注した会社の受け口へ届くためです。外から届く名前を持たない会社どうしをつなぐ中継は、これから作ります。
 
 手元の 2 社のデモ ([getting-started.md](getting-started.md) の「触り方」) との違いは 3 つです。
 
@@ -16,7 +16,7 @@
 
 OS は AlmaLinux 9 (RHEL 系) です。仕事で使う前提なので、SELinux (OS がプログラムごとに読み書きできる物を絞る仕組み) は Enforcing (断る形) のまま使います。動かないときも、`setenforce 0` で SELinux を止めません。
 
-データベースは、`seizou new` の既定の SQLite のままにします。[production.md](production.md) の「本番の決まり」は PostgreSQL を勧めていますが、この手順は小さな 2 社を SQLite で立てます。PostgreSQL へ移す手順は会期後です。
+データベースは、`seizou new` の既定の SQLite のままにします。[production.md](production.md) の「本番の決まり」は PostgreSQL を勧めていますが、この手順は小さな 2 社を SQLite で立てます。PostgreSQL へ移す手順は、これから作ります。
 
 立てた後の毎日の運用 (控え・戻し・点検・版上げ) は [operations.md](operations.md) にあります。
 
@@ -145,11 +145,11 @@ sudo install -d -o seizou -g seizou /srv/seizou/answers /srv/seizou-sites
 ```
 sudo -u seizou -H python3.12 -m venv /srv/seizou/tools
 sudo -u seizou -H /srv/seizou/tools/bin/pip install uv
-sudo -u seizou -H git clone https://github.com/kishii-py/seizou.git /srv/seizou/src
+sudo -u seizou -H git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git /srv/seizou/src
 sudo -u seizou -H /srv/seizou/tools/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --extra server --python /usr/bin/python3.12
 ```
 
-`--python /usr/bin/python3.12` は、3 で入れた OS の Python を使う印です。uv が自分で取る Python は `/srv/seizou` の下に置かれ、SELinux の印が実行の物にならないので使いません。`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。`--extra server` は、本番の Web サーバーの gunicorn を入れる印です (seizou の extra `server`)。この版より前に gunicorn を別に入れた置き場は、`--extra server` を付けて打ち直せば、そのまま同じ venv に入ります。版を上げるときも、同じ形で打ちます (18)。
+seizou は、版の tag (例 `v0.1.0`) から入れます。`--python /usr/bin/python3.12` は、3 で入れた OS の Python を使う印です。uv が自分で取る Python は `/srv/seizou` の下に置かれ、SELinux の印が実行の物にならないので使いません。`--no-dev` は、開発と試験の道具 (pytest など) を入れない印です。`--extra server` は、本番の Web サーバーの gunicorn を入れる印です (seizou の extra `server`)。この版より前に gunicorn を別に入れた置き場は、`--extra server` を付けて打ち直せば、そのまま同じ venv に入ります。版を上げるときも、同じ形で打ちます (18)。
 
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/seizou --help` → `new       答えの YAML から会社のプロジェクトを作る` の行・`sudo -u seizou -H /srv/seizou/src/.venv/bin/gunicorn --version` → `gunicorn (version` で始まる 1 行 (gunicorn は VPS で確かめる)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
@@ -433,7 +433,7 @@ sudo systemctl restart seizou-a_machining seizou-b_plating
 
 ## 17. A 社から発注して、B 社の受信した注文に出るまで
 
-A 社の「発注」の「新規登録」で、B 社への発注を保存します。保存すると、注文のデータが B 社へ送られます。B 社の「受信した注文」に新しい行が出たら、行の「承認」を押し、「注文を受け入れる」の画面で保存します。
+A 社の「発注」の「新規登録」で、B 社への発注を保存します。保存すると、注文のデータが B 社へ送られます。B 社の「受信した注文」に新しい行が出たら、行の操作の「受け入れる」を押し、「注文を受け入れる」の画面で「受け入れる」を押します。
 
 届かないときは、次の 5 つを見ます。
 
@@ -475,7 +475,7 @@ VPS の外へ暗号で写す例は、[operations.md](operations.md) の「外へ
 版を上げるときは、[operations.md](operations.md) の「版を上げる手順」の 8 段のとおりに進めます。VPS では、次の段を読み替えます。
 
 - 2 段目 (サーバーを止める): `sudo systemctl stop seizou-a_machining seizou-b_plating`
-- 3 段目 (入れ直す): `sudo -u seizou -H git -C /srv/seizou/src pull` と、5 の `uv sync … --extra server` の 1 行
+- 3 段目 (入れ直す): `sudo -u seizou -H git -C /srv/seizou/src fetch --tags` と `sudo -u seizou -H git -C /srv/seizou/src checkout <上げる版の tag>` と、5 の `uv sync … --extra server` の 1 行 (5 で tag から入れたので、`pull` は使えません)
 - 4〜6 段目 (`migrate`・点検・`collectstatic --no-input`): 2 社とも打つ
 - 6 段目の後: `sudo restorecon -R /srv/seizou-sites /srv/seizou/src/.venv/bin` (入れ直しで増えたファイルの context をそろえる)
 - 7 段目 (サーバーを立てる): `sudo systemctl restart seizou-a_machining seizou-b_plating`
@@ -515,7 +515,7 @@ sudo crontab -u seizou-a_machining -e
 sudo crontab -u seizou -e
 ```
 
-この後の seizou の命令 (点検・`migrate`・控え・戻しなど) は、`sudo -u seizou-a_machining -H <命令>` の形で、会社の利用者として打ちます。18 の版を上げる手順の 4〜6 段目も同じです (3 段目の `git pull` と `uv sync` は、今までどおり利用者 `seizou` で打ちます)。
+この後の seizou の命令 (点検・`migrate`・控え・戻しなど) は、`sudo -u seizou-a_machining -H <命令>` の形で、会社の利用者として打ちます。18 の版を上げる手順の 4〜6 段目も同じです (3 段目の `git fetch`・`git checkout` と `uv sync` は、今までどおり利用者 `seizou` で打ちます)。
 
 ### unit の利用者と守りの行
 

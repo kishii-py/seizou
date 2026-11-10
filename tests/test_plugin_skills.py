@@ -125,3 +125,15 @@ def test_manual_uses_screen_catalog():
     body = _body("manual")
     for word in ("seizou_screens", "--format tsv", "manual/", "images/"):
         assert word in body, f"manual の本文に {word} が無い"
+
+
+def test_connect_registers_both_directions():
+    """connect は 1 つの取引先に送る向きと受ける向きの 2 行を登録させ、入口を今の画面の道で書く。
+
+    片向きだけを登録すると、注文は届くが注文回答・出荷の知らせ・検収が返らない (往復には 2 社とも両方の向きが要る。connect/forms.py の向きの説明)。
+    つながりの一覧の入口は、右上の利用者のメニューの「設定」の「普段は触らない物」にあり、左のメニューには無い (core/settings_screen.py)。
+    """
+    body = _body("connect")
+    assert "2 行" in body, "connect の本文に「2 行」が無い (送る向きと受ける向きの 2 行を登録する)"
+    for word in ("向きは、この会社と逆", "左のメニューの「つながり」"):
+        assert word not in body, f"connect の本文に「{word}」がある"
