@@ -133,10 +133,24 @@ def verify_settings(base: Path, env: dict, db_path: Path, media_path: Path) -> b
     return Path(lines[-2]).resolve() == db_path.resolve() and Path(lines[-1]).resolve() == media_path.resolve()
 
 
+def _on_windows() -> bool:
+    """Windows の Python で動いているか (os.name が nt)。試験が差し替える。"""
+    return os.name == "nt"
+
+
 def launch(args: list[str], *, cwd: Path, env: dict, log: Path) -> subprocess.Popen:
-    """runserver を別の process として立てる (出力は log に足す。命令を打った端末を閉じても残る)。試験が差し替える。"""
+    """runserver を別の process として立てる (出力は log に足す。命令を打った端末を閉じても残る)。試験が差し替える。
+
+    Windows では端末の窓から離して立てる (start_new_session は POSIX だけ)。
+    """
+    if _on_windows():
+        # 2 つの名前は Windows の subprocess だけにある。POSIX の Popen は 0 でない creationflags を断るので、POSIX では渡さない
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200) | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        detach = {"creationflags": flags}
+    else:
+        detach = {"start_new_session": True}
     with log.open("ab") as out:
-        return subprocess.Popen(args, cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        return subprocess.Popen(args, cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT, **detach)
 
 
 def wait_ready(proc, port: int) -> bool:
