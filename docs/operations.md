@@ -24,7 +24,7 @@ VPS を 1 台借りて、2 社分の置き場を https で立て、取引先と�
 - 上げたファイル (図面・添付・マニュアルの画像) の写し `media/`
 - 会社の答え `answers.yaml` の写し (置き場にあるときだけ)
 - 中身の一覧 `backup.json` (取った日時・データベースの種類・会社の id・seizou の版・上げたファイルの数・各ファイルの sha256・当てた migration)
-- 会社の作り込みの写し `site/` (`settings.py`・`manage.py`・`fields/`・`templates/`・`static/`・`manual/`・`deploy/`・`CLAUDE.md`・`AGENTS.md`・`README.md`。`.env` とデータベースと上げたファイルは入れない)
+- 会社の作り込みの写し `site/` (`settings.py`・`manage.py`・`checks.py`・`fields/`・`templates/`・`static/`・`manual/`・`deploy/`・`.claude/`・`CLAUDE.md`・`AGENTS.md`・`README.md`。`.env` とデータベースと上げたファイルは入れない)
 
 命令は、写したデータベースを `integrity_check` で確かめ、通らなければ控えを残さずに止まります (PostgreSQL の写しは確かめません)。
 
@@ -60,7 +60,7 @@ PostgreSQL の置き場では、PostgreSQL の命令 `pg_dump` が要ります�
 
 控えの `site/` は、戻しの命令 (`seizou_restore`) では戻しません (置き場のコードを、控えの古い物で上書きしないため)。置き場ごと失ったときは、`seizou new` で置き場を作り直し、控えの `site/` の中身をその置き場に写してから、`seizou_restore` でデータベースと上げたファイルを戻します。`.env` は、別に写しておいた物を戻します。
 
-会社のポカよけ `checks.py` と、Claude Code の設定 `.claude/` は、控えの `site/` に入りません。`seizou new` は空の `checks.py` を作るので、置き場ごと失う前に、置き場の `checks.py` と `.claude/` を `.env` と同じく別の場所に写しておきます。作り直した置き場には、その写しを戻します。
+会社のポカよけ `checks.py` と、Claude Code の設定 `.claude/` も、控えの `site/` に入ります。`seizou new` は空の `checks.py` を作るので、置き場を作り直したときは、控えの `site/checks.py` で上書きします。v0.1.0 までの seizou で取った控えには、この 2 つが入っていません。その控えしか無いときは、別の場所に写しておいた物を戻します。
 
 ### Windows の PC で、毎晩の控えと毎朝の点検を回す
 
@@ -261,7 +261,7 @@ PostgreSQL の置き場では、この確かめは使えません。
 - AI が守る決まり (置き場の CLAUDE.md と AGENTS.md。無くても止めない)
 - 権限の判定 (部署・編集の権限・金額の閲覧が記録だけのままなら、本番の条件では直す。断られる人がいないかを `seizou.access` の記録で確かめ終えたら on にする)
 - settings.py の塊 (`LOGGING` と `HtmxLoginMiddleware` の行があるか。本番の条件だけ)
-- 決まりの検査 (会社の置き場) (会社の置き場のコードが、書き方の決まり R13〜R19・R22 を破っていないか。違反があれば直す。最初の 1 件の番号とファイルと行を出す。seizou の部品の中は見ない。本番の条件でも開発の条件でも見る)
+- 決まりの検査 (会社の置き場) (会社の置き場のコードが、書き方の決まり R13〜R19・R22 を破っていないか。違反があれば直す。最初の 1 件の番号とファイルと行を出す。seizou の部品の中は見ない。置き場の `backups/`・`practice/`・`staticfiles/`・`media/`・`cache/` の下は見ない。本番の条件でも開発の条件でも見る)
 
 「本番の条件」は、`.env` の `DEBUG` が 0 のときか、`--production` を付けたときです。開発の設定 (`DEBUG` が 1) のままでは、本番の条件の行を出さずに、その案内を 1 行出します。HTTPS の細かい設定は、`<python> manage.py check --deploy` で見ます。LAN の中だけで使う置き場では、当たらない項目もあります。
 
