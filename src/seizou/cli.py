@@ -18,14 +18,16 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
-    起動はしない。起動の 1 行を最後に出す。
+    起動はしない。起動の 1 行を最後に出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
+    置き場の道の頭の ~ は利用者のホームに広げる。
     .gitignore が無ければ同じく書く (既にある .gitignore は --force でも書き直さない)。
     .claude/settings.json が無ければ、CLAUDE.md と AGENTS.md が既にあって止まる前に書く (既にある物は --force でも書き直さない)。
     置き場を、プラグインの MCP が起こしてよい置き場の一覧に、この python で登録する (これも止まる前。版を上げた後に打つ)。
 seizou github-token [<置き場>]
     会社の置き場 (既定は今のフォルダ) の .env に、フィードバックを GitHub に送るトークンと送り先と口座の名前の 3 行を書く (開発の記録 docs/nights/20261106/N185.md)。
+    置き場の道の頭の ~ は利用者のホームに広げる。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
     画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
 
@@ -525,14 +527,38 @@ def seizou_items(answers: dict, settings: dict) -> str:
     return "\n".join(f"    {key!r}: {value!r}," for key, value in values.items())
 
 
-def start_line(site: Path, port: int) -> str:
+def _on_windows() -> bool:
+    """Windows の上で動いているか (起動の 1 行の形を PowerShell に合わせるため)。試験はこの関数を差し替える。"""
+    return os.name == "nt"
+
+
+def manage_line(command: str) -> str:
+    """置き場で打つ manage.py の 1 行 (<python> manage.py <command>)。python はこの命令を動かす python (sys.executable)。
+
+    macOS と Linux では、python の道に空白があるときだけ "…" で囲む。Windows では、python の道をいつも "…" で囲み、頭に & を置く
+    (PowerShell は引用符で始まる字を命令と読まず、& があれば命令として打つ)。
+    """
     python = sys.executable
+    if _on_windows():
+        return f'& "{python}" manage.py {command}'
     if " " in python:
         python = f'"{python}"'
+    return f"{python} manage.py {command}"
+
+
+def start_line(site: Path, port: int) -> str:
+    """起動の 1 行 (seizou new の「次にすること」と、置き場の README.md の「起動」に出す)。
+
+    macOS と Linux では cd <置き場> && <python> manage.py runserver <port> (置き場の道に空白があるときだけ "…" で囲む)。
+    Windows では cd "<置き場>"; & "<python>" manage.py runserver <port> (Windows PowerShell 5.1 は && を区切りと読まないので ; で分ける)。
+    """
+    run = manage_line(f"runserver {port}")
     place = str(site)
+    if _on_windows():
+        return f'cd "{place}"; {run}'
     if " " in place:
         place = f'"{place}"'
-    return f"cd {place} && {python} manage.py runserver {port}"
+    return f"cd {place} && {run}"
 
 
 def write_secret_file(path: Path, text: str) -> None:
@@ -691,7 +717,8 @@ def _copy_fragments(source: Path, site: Path) -> int:
 
 def child_env(extra: dict | None = None) -> dict:
     # 代入にする。親 (pytest-django など) の DJANGO_SETTINGS_MODULE を子に引き継がない。
-    return {**os.environ, "DJANGO_SETTINGS_MODULE": "settings", **(extra or {})}
+    # 子の標準出力と標準エラーを UTF-8 にそろえる (run_manage が UTF-8 で読むため。Windows の管の既定は cp932 か cp1252)。
+    return {**os.environ, "DJANGO_SETTINGS_MODULE": "settings", "PYTHONIOENCODING": "utf-8", **(extra or {})}
 
 
 def run_manage(site: Path, args: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
@@ -935,7 +962,10 @@ def _new_report(
         print(f"作り物の利用者 {len(made_passwords)} 人のパスワード: --demo-password で渡した値にしました。")
     print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
-    print("練習するときは: 置き場で manage.py seizou_practice start (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは seizou_practice stop)。")
+    print(
+        f"練習するときは: 置き場で {manage_line('seizou_practice start')} を打つ"
+        " (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは同じ python で seizou_practice stop)。"
+    )
 
 
 def command_ai_docs(site: Path, force: bool = False) -> int:
@@ -1011,8 +1041,13 @@ def command_github_token(site: Path) -> int:
     return EXIT_OK
 
 
+def user_path(text: str) -> Path:
+    """命令の道の引数。頭の ~ を利用者のホームに広げる (Windows PowerShell 5.1 は外の命令に ~ をそのまま渡すため)。"""
+    return Path(text).expanduser()
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
+    parser =argparse.ArgumentParser(prog="seizou", description="町工場の会社のシステムを作る命令。")
     commands = parser.add_subparsers(dest="command", required=True)
     new = commands.add_parser(
         "new",
@@ -1028,7 +1063,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     new.add_argument(
         "--password-file",
-        type=Path,
+        type=user_path,
         metavar="PATH",
         help="管理者のパスワードを画面に出さず、このファイルに admin:<値> の 1 行で書く (持ち主だけが読める)",
     )
@@ -1037,18 +1072,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="既にある会社の置き場に、AI が守る決まりの CLAUDE.md と AGENTS.md を書く",
         description="既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。",
     )
-    ai_docs.add_argument("site", type=Path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
+    ai_docs.add_argument("site", type=user_path, help="会社の置き場のフォルダ (例 ~/seizou-sites/<id>)")
     ai_docs.add_argument("--force", action="store_true", help="CLAUDE.md か AGENTS.md が既にあっても、2 つとも書き直す")
     github_token = commands.add_parser(
         "github-token",
         help="会社の置き場の .env に、フィードバックを GitHub に送るトークンを書く (画面に出さずに聞く)",
         description="会社の置き場の .env に、フィードバックを GitHub に送るトークン・送り先・口座の名前の 3 行を書く。トークンは画面に出さずに聞く。",
     )
-    github_token.add_argument("site", type=Path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
+    github_token.add_argument("site", type=user_path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 標準出力と標準エラーの文字コードで表せない字を ? にして書く (Windows の管の cp932 や cp1252 で、日本語の出力で落ちないように)。
+    # 文字コードは変えない (管の読み手の文字コードのまま書く)。--help の日本語も守るので、引数を読む前に行う
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = build_parser().parse_args(argv)
     if args.command == "new":
         return command_new(args.answers, args.demo, args.password_file, demo_password=args.demo_password)
