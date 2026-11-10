@@ -237,3 +237,67 @@ def test_manifest_has_no_hooks_key():
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
 
     assert set(data) == {"name", "version", "description"}
+
+
+# 日本語の道と、UTF-8 を既定にしない標準入力 (日本語の Windows の cp932 と、英語の Windows の cp1252)
+
+NOT_UTF8_ENCODINGS = ["cp932", "cp1252"]
+
+
+def make_japanese_site(tmp_path: Path) -> Path:
+    """日本語のフォルダの下に、places と同じ形の会社の置き場と、置き場の中の部品の写しを作る。"""
+    site = tmp_path.resolve() / "作り物の会社" / "sites" / "sample_co"
+    for name in ("manage.py", "answers.yaml", "settings.py", "fields/models.py"):
+        touch(site / name)
+    touch(site / "seizou" / "parts.py")
+    touch(site / "seizou" / "core" / "views.py")
+    return site
+
+
+def run_guard_without_utf8_mode(site: Path, file_path: Path, encoding: str) -> tuple[int, str]:
+    """Write の JSON を UTF-8 のバイトで渡し (Claude Code と同じ)、UTF-8 を既定にしない子の python で回す。
+
+    子の環境変数から CLAUDE_PROJECT_DIR と PYTHONUTF8 を外し、PYTHONIOENCODING に encoding を置く
+    (Windows の CI の job が置く PYTHONUTF8 に左右されないため)。終わりの番号と、UTF-8 として解いた標準エラーを返す。
+    """
+    env = {name: value for name, value in os.environ.items() if name not in {"CLAUDE_PROJECT_DIR", "PYTHONUTF8"}}
+    env["PYTHONIOENCODING"] = encoding
+    payload = {
+        "session_id": "test",
+        "transcript_path": "",
+        "cwd": str(site),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(file_path), "content": "作り物の中身"},
+    }
+    result = subprocess.run(
+        [sys.executable, str(GUARD)],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        cwd=site,
+        env=env,
+        check=False,
+    )
+    return result.returncode, result.stderr.decode("utf-8", errors="replace")
+
+
+@pytest.mark.parametrize("encoding", NOT_UTF8_ENCODINGS)
+def test_blocks_japanese_folder_without_utf8_mode(tmp_path, encoding):
+    # 標準入力の既定の文字コードが UTF-8 でなくても、日本語のフォルダの下の置き場で部品の写しへの書き込みを止める
+    site = make_japanese_site(tmp_path)
+
+    code, stderr = run_guard_without_utf8_mode(site, site / "seizou" / "core" / "views.py", encoding)
+
+    assert code == 2, stderr
+    assert "R20" in stderr
+
+
+@pytest.mark.parametrize("encoding", NOT_UTF8_ENCODINGS)
+def test_allows_company_place_in_japanese_folder_without_utf8_mode(tmp_path, encoding):
+    # 読み方を変えても、会社の場所への書き込みまでは止めない
+    site = make_japanese_site(tmp_path)
+
+    code, stderr = run_guard_without_utf8_mode(site, site / "fields" / "models.py", encoding)
+
+    assert code == 0, stderr
+    assert stderr == ""

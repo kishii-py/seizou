@@ -1,4 +1,5 @@
 """AI が部品 (seizou) の中身を書き換えないように、Write・Edit・NotebookEdit を止める (R20。Claude Code の PreToolUse の hook)。
+標準入力はバイトで読み、UTF-8 として解く (Windows の既定の文字コードで日本語の道を読み違えないため)。
 
 製品の hook。公開のプラグインに入る。登録は同じフォルダの hooks.json。
 
@@ -54,8 +55,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 def read_input(stream) -> dict:
     try:
-        data = json.loads(stream.read() or "{}")
-    except json.JSONDecodeError:
+        data = json.loads((stream.read() or b"{}").decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -141,7 +142,7 @@ def decide(data: dict) -> tuple[int, str]:
 
 
 def main() -> int:
-    code, message = decide(read_input(sys.stdin))
+    code, message = decide(read_input(sys.stdin.buffer))
     if message:
         print(message, file=sys.stderr)
     return code
