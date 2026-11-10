@@ -1,0 +1,4 @@
+{# 知らせの帯。選べる設定 site_notice に字を入れた置き場だけで出る (例: 誰でも触れるデモの「本物の情報を入れないでください」、会社の「棚卸しのため 12/29 は入力を止めます」)。 #}
+{# base.html が <body> の直後、練習モードの帯の下で include する (ログインと誤りの画面にも出る)。帳票と PDF と、画面の一部の差し替えと小窓の中身は base.html を継がないので出ない。 #}
+{# 字は autoescape のまま出す (HTML を通さない)。class は練習モードの帯 (core/_practice_band.html) と同じ固定の字で、今の app.css にある物だけ (R19。CSS を作り直さない)。 #}
+<div class="bg-warning text-warning-content px-4 py-2 text-center text-sm font-bold" role="status" data-site-notice>{{ seizou.site_notice }}</div>

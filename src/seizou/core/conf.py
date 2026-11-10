@@ -41,6 +41,7 @@ DEFAULTS = {
     "session_max_hours": 12,  # ログインからの最長の時間 (時間)。答えの YAML の settings で変える
     "ai_limits": {"concurrent": 2, "per_hour": 30, "watch_per_day": 200},  # AI の呼び出しの上限 (process ごとの同時の数・人ごと機能ごとの 1 時間の回数・注文書の見張りの 1 日の枚数)
     "ai_features": {"assistant": True, "intake": True, "feedback": True},  # AI を使う機能ごとの使う / 止める
+    "site_notice": "",  # 全部の画面の上に出す知らせの帯の字 (200 字まで。空なら出さない。答えの YAML の settings で入れる。core/_site_notice_band.html)
 }
 
 #: 知らせのメールの送り方 (mail) の中の鍵の並び (設定の画面の表の塊と、設定の変更の画面の欄の並び)
@@ -63,7 +64,7 @@ CHOICES = {
 #: 画面の上書きの控えの寿命 (秒)。別の process (gunicorn の複数の worker) が、ほかの worker の書いた上書きを読み直すまでの長さ
 CACHE_SECONDS = 30
 #: 画面からは変えない鍵 (形が深いので答えの YAML で書く。services と設定の画面が読む)
-LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line", "session_idle_minutes", "session_max_hours", "ai_limits", "ai_features")
+LOCKED_KEYS = ("menu", "weekly_holidays", "transcription_minutes_per_line", "session_idle_minutes", "session_max_hours", "ai_limits", "ai_features", "site_notice")
 #: 値の出所の字 (設定の画面の「どこで決めたか」の列・設定の変更の画面の頭の行・MCP と AI チャットの company_info の sources が出す)。
 #: 事務の人が読める画面の言葉にし、作る人向けの字 (settings.py・YAML) を出さない (作者の決め)。
 #: 順に、画面の上書き (SettingOverride)・会社の settings.py の SEIZOU (導入の時に答えの YAML から作る)・DEFAULTS
@@ -259,6 +260,40 @@ def brand_color() -> str:
     if isinstance(value, str) and BRAND_COLOR_PATTERN.fullmatch(value):
         return value.lower()
     return ""
+
+
+#: 知らせの帯 (site_notice) の字数の上限 (前後の空白を落とした後の字数)
+SITE_NOTICE_MAX = 200
+
+
+def check_site_notice(value) -> str:
+    """知らせの帯 (site_notice) の値を確かめて、前後の空白を落とした字を返す。
+
+    字でない値 (YAML の数・真偽・空の値の None) と、SITE_NOTICE_MAX 字を超える字は日本語の ValueError で断る。
+    文は services の validate_setting の断りの文と同じ形 (「保存できません。」で始め、直し方と空のときの動きを書く)。
+    入れた値は文に入れず、字数だけを入れる (長い字で文が読めなくならないように)。
+    今は site_notice() だけが呼ぶ (鍵は LOCKED_KEYS にあり、設定の画面からは保存しない)。
+    訳: 何のために 200 字で切るかは、依頼書に書かれておらず未確認。出所 = 依頼書 N398 (11-11。200 字の根拠は未確認)。
+    変えてよい条件 = 帯にもっと長い字を出したい会社が出たとき、または本人が上限を決め直したとき。
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"保存できません。site_notice (知らせの帯) は字にしてください。空なら帯を出しません (入れた値の種類: {type(value).__name__})。")
+    text = value.strip()
+    if len(text) > SITE_NOTICE_MAX:
+        raise ValueError(f"保存できません。site_notice (知らせの帯) は {SITE_NOTICE_MAX} 字までの字にしてください。空なら帯を出しません (入れた字数: {len(text)})。")
+    return text
+
+
+def site_notice() -> str:
+    """全部の画面の上に出す知らせの帯の字 (site_notice。読むだけ。例外を投げない)。空なら帯を出さない。
+
+    値は check_site_notice で確かめ、断られた値 (字でない値と SITE_NOTICE_MAX 字を超える字) は空の字 (帯を出さない) にする。
+    全部の画面の描画 (core.context_processors.seizou) が読むので、答えの YAML の書き損じで全部の画面を 500 にしない (brand_color() と同じ考え)。
+    """
+    try:
+        return check_site_notice(setting("site_notice"))
+    except ValueError:
+        return ""
 
 
 def session_limits() -> tuple[int, int]:
