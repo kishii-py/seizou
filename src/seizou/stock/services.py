@@ -402,7 +402,16 @@ def record_finished(workorder, qty, user, *, moved_on=None, note=""):
 
 
 def record_received(receipt, user):
-    """受入を入庫にする。purchasing の receive が transaction.atomic の中で呼ぶ (日付と備考は受入の物)。"""
+    """受入を入庫にする。purchasing の receive が transaction.atomic の中で呼ぶ (日付と備考は受入の物)。
+
+    発注の明細に工程 (協力企業に出す工程) がある受入は入庫にせず None を返す。
+    訳: 協力企業に工程を出した物の受入は、社内の指示書の途中の物が戻っただけで完成品ではないので、在庫の入庫にしない
+    (完成品の入庫は指示書の「製造の完了を入庫にする」の 1 回)。工程の無い発注の受入 (買った部品や完成品) は今までどおり入庫にする。
+    出所 = AI の案 (開発の記録 docs/nights/20261111/N378.md)。
+    変えてよい条件 = 協力企業の工程の受入を指示書の工程の実績に結ぶ形を作ったとき、または工程のある受入も完成品として数える会社があると分かったとき。
+    """
+    if receipt.line.process_id is not None:
+        return None
     with transaction.atomic():
         return _move(
             receipt.line.item,
