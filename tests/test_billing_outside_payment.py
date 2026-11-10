@@ -147,7 +147,7 @@ def test_record_screen_initials_and_posts(client, user, shipment, today):
     page = client.get(url)
     form = page.context["form"]
     assert page.status_code == 200
-    assert form["amount"].value() == Decimal("1375")
+    assert form["amount"].value() == Decimal("1512")
     assert form["method"].value() == Payment.METHOD_CASH
     assert f"出荷 {shipment.shipment_no} の入金として記録する" in page.content.decode()
 

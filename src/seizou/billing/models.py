@@ -103,6 +103,14 @@ class Invoice(models.Model):
         """残 = 合計 − 入金済み。多い入金ならマイナス (止めない)。"""
         return self.total - self.paid_total()
 
+    def get_balance_display(self) -> Decimal | None:
+        """一覧の「残」の欄の値 (画面と CSV の書き出し。core の display_value が get_<名前>_display を先に読む)。
+        取消の請求書は None (CSV は空の欄。画面は billing/_row.html が「—」を出す)。ほかは balance()。
+        """
+        if self.status == self.STATUS_CANCELLED:
+            return None
+        return self.balance()
+
     def payment_status(self) -> str:
         """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め)。
         ほかは、入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。
