@@ -634,6 +634,7 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     退避の前に、控えの DB を --verify と同じ quick_check で確かめ、壊れていれば何も変えずに止める (_refuse_broken_db)。
     answers.yaml は戻さない (置き場の settings.py と対の物で、データではない)。
     site/ (会社の作り込み。命令 seizou_backup の控えだけ) は控えに入るが、この関数は戻さない (置き場のコードを控えの古い物で上書きしないため。置き場ごと失ったときは手引きのとおり手で写す)。
+    上げたファイルの入れ替えが途中で止まったら、退避の在りかと打ち直しの案内を BackupError で返す。
     返す物は {"folder": 控え, "retreat": 退避のフォルダ, "manifest": 控えの backup.json}。
     """
     _refuse_bad_media_root()
@@ -678,14 +679,23 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
 
     root = _media_root()
     if root is not None:
-        if root.exists():
-            shutil.rmtree(root)
-        saved_media = folder / MEDIA_DIR
-        if saved_media.is_dir():
-            shutil.copytree(saved_media, root)
-        else:
-            # 控えのときに上げたファイルが無かった = 無い状態に戻す (DB の行と食い違わせない。退避にある)
-            root.mkdir(parents=True)
+        try:
+            if root.exists():
+                shutil.rmtree(root)
+            saved_media = folder / MEDIA_DIR
+            if saved_media.is_dir():
+                shutil.copytree(saved_media, root)
+            else:
+                # 控えのときに上げたファイルが無かった = 無い状態に戻す (DB の行と食い違わせない。退避にある)
+                root.mkdir(parents=True)
+        except OSError as exc:
+            # copytree の shutil.Error は strerror を持たないので、そのときは理由を添えない
+            reason = f" ({exc.strerror})" if exc.strerror else ""
+            raise BackupError(
+                f"データベースは戻しましたが、上げたファイル ({root}) の入れ替えが途中で止まりました{reason}。"
+                f"ほかの道具で開いているファイルを閉じてから、もう 1 度 seizou_restore {folder} を打つと、控えのとおりに戻ります。"
+                f"戻す前の物は {retreat['folder']} にあります。"
+            ) from exc
 
     conf.reset_cache()
     return {"folder": folder, "retreat": retreat["folder"], "manifest": manifest}
