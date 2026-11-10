@@ -387,3 +387,76 @@ def test_relative_links_in_docs_exist():
         base = (ROOT / name).parent
         for target in RELATIVE_LINK.findall(_read(name)):
             assert (base / target).exists(), f"{name} の link の先 {target} が無い"
+
+
+# ---- メニューの入口と設定の鍵の、コード → 文書の向き (精査 Q5 の 2 節の 4・5・10) ----
+
+
+def _menu_labels_from_urls():
+    """左のメニューの入口の字の集まり。src/seizou/*/urls.py の MENU と、core の CORE_MENU の 1 行だけから集める。
+
+    context_processors.py の全体には当てない (全体に当てると MENU_COUNTS の説明の字や部品の app の名前まで拾うため)。
+    """
+    labels = set()
+    for path in (ROOT / "src" / "seizou").glob("*/urls.py"):
+        labels.update(MENU_ENTRY.findall(path.read_text(encoding="utf-8")))
+    core_lines = [
+        line for line in _read("src/seizou/core/context_processors.py").splitlines() if line.startswith("CORE_MENU = ")
+    ]
+    assert len(core_lines) == 1, f"context_processors.py の「CORE_MENU = 」で始まる行が {len(core_lines)} 行ある (1 行のはず)"
+    labels.update(MENU_ENTRY.findall(core_lines[0]))
+    return labels
+
+
+def test_screens_table_lists_every_menu_entry():
+    """左のメニューの入口が全部、docs/screens.md の画面の一覧の表の「入口」の列にある。
+
+    訳: 上の test_readme_menu_entries_exist_in_source は文書 → コードの向き (文書に書いた入口が実物にある) だけを見るので、
+    メニューにあるのに文書に無い入口を見落とす (精査 Q5 の 2 節の 4。生産管理ボード・受けた仕入明細・入荷が抜けていた)。
+    ここでコード → 文書の向きも見る。メニューに入口を足すレーンは、docs/screens.md の画面の一覧にも行を足す。
+    """
+    rows = _table_rows(_section(_read(SCREENS), "## 画面の一覧"))
+    assert rows, f"{SCREENS} の画面の一覧に表が無い"
+    column = rows[0].index("入口")
+    entries = {row[column] for row in rows[2:]}
+    missing = sorted(label for label in _menu_labels_from_urls() if label not in entries)
+    assert not missing, " / ".join(
+        f"{label} が urls.py の MENU か CORE_MENU にあるのに、docs/screens.md の画面の一覧に無い" for label in missing
+    )
+
+
+def test_settings_table_lists_every_default_key():
+    """conf.py の DEFAULTS の鍵が全部、docs/settings.md の選べる設定の表の「設定の鍵」の列にあり、既定の字が合う。
+
+    訳: 上の test_readme_settings_table_matches_defaults は SETTING_KEYS に挙げた鍵だけを見るので、DEFAULTS に足した鍵を
+    表に書き忘れても通る (精査 Q5 の 2 節の 5。transcription_minutes_per_line・hidden_fields・weekly_holidays が抜けていた)。
+    既定が空の字 ("") の鍵は、表で「(空)」と書くので既定の字を比べない。
+    """
+    rows = _table_rows(_section(_read(SETTINGS), "## 選べる設定"))
+    assert rows, f"{SETTINGS} の選べる設定に表が無い"
+    header = rows[0]
+    key_column = header.index("設定の鍵")
+    default_column = header.index("既定")
+    table = {row[key_column]: row[default_column] for row in rows[2:]}
+    defaults = _conf_defaults()
+    missing = [key for key in defaults if key not in table]
+    assert not missing, f"conf.py の DEFAULTS の鍵 {missing} が {SETTINGS} の選べる設定の表に無い"
+    for key, value in defaults.items():
+        if value == "":
+            continue
+        assert table[key] == _as_doc_value(value), (
+            f"{key} の既定が conf.py と違う ({SETTINGS}: {table[key]}、conf.py: {value!r})"
+        )
+
+
+def test_settings_doc_names_watch_folder_and_where_to_edit():
+    """docs/settings.md に、注文書の見張りのフォルダの鍵と、置き場を作った後に直すファイル (settings.py の SEIZOU) が書いてある。
+
+    訳: intake_watch_folder は DEFAULTS に無く (intake/watch.py の default_folder が settings の SEIZOU から直に読む)、上の 2 本では見ない。
+    置き場を作った後に設定を変えるときは settings.py の SEIZOU を直して起動し直す (動いている間に answers.yaml を読み直す所は src に無い)。
+    どの文書もそれを書いていなかった (精査 Q5 の 2 節の 5 と 10)。
+    """
+    text = _read(SETTINGS)
+    assert "intake_watch_folder" in text, f"{SETTINGS} に注文書の見張りのフォルダの鍵 intake_watch_folder が無い"
+    lines = [line for line in text.splitlines() if "`SEIZOU`" in line and "起動し直す" in line]
+    assert lines, f"{SETTINGS} に、置き場の settings.py の辞書 SEIZOU を直して起動し直す事を書いた行が無い"

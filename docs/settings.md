@@ -4,7 +4,7 @@
 
 ## 選べる設定
 
-会社によって向き不向きが分かれる動きは、設定で選ぶ。受注より多い出荷のような間違いに気づかせる検査 (ポカよけ) も、止める・知らせる・通すを選べる。設定は答えの YAML の `settings` に書き、`seizou new` が会社の `settings.py` の辞書 `SEIZOU` に写す。答えに無い鍵は既定で補う。
+会社によって向き不向きが分かれる動きは、設定で選ぶ。受注より多い出荷のような間違いに気づかせる検査 (ポカよけ) も、止める・知らせる・通すを選べる。設定は答えの YAML の `settings` に書き、`seizou new` が会社の `settings.py` の辞書 `SEIZOU` に写す。答えに無い鍵は既定で補う。置き場を作った後に変えるときは、置き場の `settings.py` の辞書 `SEIZOU` の行を直して起動し直す。置き場の `answers.yaml` だけを直しても、起動し直しても値は変わらない (点検の直し方の文のとおり、`answers.yaml` の `settings` も同じ値にしておく)。画面から変えられる鍵は、下に書いた設定の画面でも変えられる。
 
 | 設定の鍵 | 何を選ぶか | 選べる値 | 既定 | 向く場合 |
 |---|---|---|---|---|
@@ -15,7 +15,10 @@
 | `receiving_required` | 支給品・預かり品の入荷 (引当) がまだ無い受注の明細で、指示書を発行するときと出荷するとき | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `off` | 表面処理のように、得意先からワーク (預かり品) が届かないと始められない会社は止める。支給材の無い注文もある機械加工は通す |
 | `over_payment` | 請求書の残を超える入金 (ポカよけの R24) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 同じ入金の 2 重の記録に気づきたい会社は知らせる (多く振り込まれた入金も、確かめてから現物のとおり記録できる)。入金を残までと決めている会社は止める (多く振り込まれた入金は記録できなくなる)。気にしない会社は通す |
 | `order_number` | 受注番号の形 | `seq` (連番) / `ym_seq` (年月 + 連番) | `seq` | 月ごとに数える会社は年月つき |
+| `transcription_minutes_per_line` | 1 行の手入力にかかる分 (手で打たずに取り込んだ明細 1 行を何分と数えるか。ダッシュボードの「≒ 転記 m 分」の数え方) | 分の数 | `1` | 1 行の手入力に 1 分より長くかかる会社は大きくする。画面からは変えない (答えの YAML) |
+| `hidden_fields` | 使わない注文の項目を、受注の入力の form から隠す | 列の名前の一覧 (決まりが見る項目は隠せない) | `[]` | 使わない注文の項目がある会社は、その列の名前を書く。設定の画面では、外せる項目の候補に印を付けて選ぶ |
 | `production_plan` | 生産計画の画面を使うか (立ち上げの問 3) | `true` (使う) / `false` (使わない) | `true` | 工程ごとに日の計画を立てる会社は使う。立てない会社は使わない (メニューに「生産計画」が出ない) |
+| `weekly_holidays` | 定休日の曜日 (マスターの「休日」の表と合わせて稼働日を決める。生産管理ボードの「納期まで」は稼働日の数) | 曜日の番号の一覧 (0 = 月 〜 6 = 日) | `[5, 6]` | 既定は土日。土曜も動かす会社は `[6]` にする。祝日と会社の休みは、日付でマスターの「休日」に入れる。画面からは変えない (答えの YAML) |
 | `access_control` | 権限の判定 (部署・編集の権限・金額の閲覧のそれぞれ。部署の判定が絞るのは左のメニュー・一覧・入力・ボタン・横断検索・AI の承認。詳細・小窓・選ぶ欄は、ほかの画面の入力から使うので部署では閉じない。辞書の鍵は department = 部署・write = 編集の権限・money = 金額の閲覧) | 3 つそれぞれ `off` (使わない) / `log` (記録だけ) / `on` (有効) | `{'department': 'log', 'write': 'log', 'money': 'log'}` | 立ち上げてすぐは記録だけにし、断られる人がいないかをサーバーの記録で確かめてから有効にする。例の 2 社は 3 つとも有効 |
 | `assistant_model` | AI チャットが使う model | Claude の model の名前 | `claude-sonnet-5-5` | 速さを優先するなら sonnet。精度を優先するなら opus |
 | `intake_model` | 注文書の読み取りが使う model | Claude の model の名前 | `claude-opus-5-5` | 読み取りは精度が要るので opus。費用を抑えるなら sonnet |
@@ -26,9 +29,11 @@
 | `mail` | 知らせのメールの送り方 | `host`・`port`・`security`・`user`・`from`・`from_name`・`site_url` の辞書 (サーバー・ポート・暗号化の方式は `.env` で決める) | `{'host': '', 'port': 587, 'security': 'starttls', 'user': '', 'from': '', 'from_name': '', 'site_url': ''}` | 取引先から会話が届いた知らせをメールで受けたい会社だけ入れる |
 | `session_idle_minutes` | 操作しない間のログインの時間切れ (分) | 分の数 | `120` | 共用の PC が多い会社は短く。画面からは変えない (答えの YAML) |
 | `session_max_hours` | ログインからの最長の時間 (時間) | 時間の数 | `12` | 1 日の勤務より長くしない。画面からは変えない (答えの YAML) |
-| `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 超えた分は API を呼ばずに断る (既定は審査や試用で続けて試しても断られない緩さ)。費用を抑えたい会社は答えの YAML で下げる。画面からは変えない |
+| `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 超えた分は API を呼ばずに断る (既定は試用で続けて試しても断られない緩さ)。費用を抑えたい会社は答えの YAML で下げる。画面からは変えない |
 | `ai_features` | AI を使う機能 | `assistant` (AI チャット)・`intake` (注文書の読み取り)・`feedback` (フィードバックの聞き取り) のそれぞれ `true` / `false` | `{'assistant': True, 'intake': True, 'feedback': True}` | `false` にした機能は使えなくなる (窓には鍵が無いときと同じ文が出る)。画面からは変えない |
 
 使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
 
-右上の利用者のメニューの「設定」から、アカウント管理の権限がある人 (権限の Django の部品が無い会社ではシステム管理者) は、この表の設定を 1 つずつ画面で変えられる (行の「編集」。`access_control` だけはシステム管理者だけが変えられる)。画面で保存した値は会社の置き場のデータベースに入り、答えの YAML (`settings.py` の `SEIZOU`) の値より優先される。設定の画面の「出所」の列で、今の値が画面・答え・既定のどれから来たかが分かる。「答えの値に戻す」を押すと、画面の値を消して答えの値に戻る。画面からは変えない物は 7 つ (`menu` = 左のメニューの括り・`weekly_holidays`・`transcription_minutes_per_line`・`session_idle_minutes`・`session_max_hours`・`ai_limits`・`ai_features`) で、答えの YAML の settings に書く。変えた値はその場で反映される (複数の worker で動かす置き場では 30 秒以内にそろう)。
+注文書の見張り (`seizou_intake_watch`) が見るフォルダは、`SEIZOU` の `intake_watch_folder` に書く (既定は空。命令の引数でフォルダを渡せば、それが先に使われる)。この鍵は表の設定と違い、設定の画面には出ない ([docs/intake-watch.md](intake-watch.md))。
+
+右上の利用者のメニューの「設定」から、アカウント管理の権限がある人 (権限の Django の部品が無い会社ではシステム管理者) は、この表の設定を 1 つずつ画面で変えられる (行の「編集」。`access_control` だけはシステム管理者だけが変えられる)。画面で保存した値は会社の置き場のデータベースに入り、答えの YAML (`settings.py` の `SEIZOU`) の値より優先される。設定の画面の「どこで決めたか」の列で、今の値を「この画面で変えた」「導入の時に決めた」「初期値」のどれで決めたかが分かる。編集の画面の「答えの値に戻す」を押すと、画面で変えた値を消し、導入の時に決めた値 (`settings.py` の `SEIZOU`) に戻る。画面からは変えない物は 7 つ (`menu` = 左のメニューの括り・`weekly_holidays`・`transcription_minutes_per_line`・`session_idle_minutes`・`session_max_hours`・`ai_limits`・`ai_features`) で、答えの YAML の settings に書く (作った後は `settings.py` の `SEIZOU`)。変えた値はその場で反映される (複数の worker で動かす置き場では 30 秒以内にそろう)。
