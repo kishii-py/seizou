@@ -74,6 +74,21 @@ MESSAGE_INVALID_BODY = "本文が JSON の形ではありません。"
 MESSAGE_UNKNOWN_KIND = "知らない種類の通知です: {kind}"
 #: 明細の無い注文 (送る側へ返す文。承認の時の MESSAGE_NO_LINES とは読み手が違う)
 MESSAGE_RECEIVE_NO_LINES = "明細の無い注文は受けません。"
+#: 送り手の辞書 (buyer か supplier) の id が自社の id と同じ本文 (受け口の URL を自社に向けた設定の誤り)
+MESSAGE_FROM_SELF = (
+    "送り手の会社の id が、この会社の id と同じです。"
+    "送る向きのつながりの受け口の URL が、自社の受け口を指していないかを確かめてください。"
+)
+#: 送る向きのつながりの受け口の URL が空 (送らない。頭を「届きません」にして「届いていない: 」の前置きを重ねない)
+MESSAGE_NO_URL = (
+    "届きません: この取引先の送る向きのつながりに、受け口の URL がありません。"
+    "設定の画面の「取引先との接続」で、相手の受け口の URL を入れてください。"
+)
+#: 相手の受け口が 404 を返した (受け口の URL の道の誤り。種類は unreadable)
+MESSAGE_NOT_FOUND = (
+    "届きません: 相手の受け口が見つかりません (HTTP 404)。"
+    "つながりの受け口の URL が /connect/receive/order/ で終わるかを確かめてください。"
+)
 
 # 鍵と関係なく決まる誤り。1 つ目の鍵で出たら、ほかの鍵を試さずに断る。
 _HEADER_ERRORS = {
@@ -257,6 +272,7 @@ def receive(raw_body: bytes, headers: Mapping[str, str], *, remote: str = ""):
     本文の kind が self_invoice_response (仕入明細回答) なら受信箱に入れず、元の仕入明細の明細に答えを書いて SelfInvoiceResponseReceipt を返す。
     kind が無い物は注文として入れる。知らない kind と、明細 (lines) の無い注文は断る (受信箱に残さない)。
     署名は受ける向きの全部のつながりの鍵で確かめ、署名の合う取引先が 2 つ以上なら断る (_signed_partner)。
+    送り手の辞書 (buyer か supplier) の id が自社の id と同じ本文は、kind で分ける前に断る (_sent_by_self)。
     remote は接続元の IP の字 (受け口の view が core.login_guard.client_address で読んで渡す。名前でだけ渡せる)。
     結果が決まったら、接続元と結果をログ seizou.connect に 1 行書く (_log_receive)。
     """
@@ -334,6 +350,28 @@ def _signed_partner(raw_body: bytes, headers: Mapping[str, str], msg_id):
     return partner, verified_id, None
 
 
+def _sent_by_self(payload) -> bool:
+    """本文の送り手の辞書 (buyer か supplier) の id が、自社の id と同じか (_receive_verified が呼ぶ)。
+
+    payload の buyer と supplier のうち辞書の物を見て、id が空でない字で自社の id と同じなら真。自社の id が空なら偽。
+    訳: 送り手の会社の id が自社の id と同じ本文は、受信箱にも元の伝票にも当てずに断る。送る向きの受け口の URL を自社に向けた設定の誤りで、相手に届いていない発注を「受け取った」と記録しないため。自社の id が空の置き場 (試験の設定 tests/settings.py の SEIZOU = {}) では比べない (1 つの DB で 2 社の役をする試験が、自社あての送り合いで回っているため)。出所 = 依頼書 N382 (精査 Q3 の報告の T1、2026-11-10)。
+    変えてよい条件 = 1 つの置き場が自社あての知らせを受ける形を、本人が決めたとき。
+    """
+    # 冒頭の import の並びを変えないため、_party と同じく関数の中で import する。
+    from seizou.core.conf import company_id
+
+    own = company_id()
+    if not own:
+        return False
+    for key in ("buyer", "supplier"):
+        party = payload.get(key)
+        if isinstance(party, dict):
+            sender = party.get("id")
+            if isinstance(sender, str) and sender and sender == own:
+                return True
+    return False
+
+
 def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
     """署名が通って取引先 partner が決まった後の受け口の中身 (receive が呼ぶ)。返す物は receive と同じ。"""
     try:
@@ -348,6 +386,9 @@ def _receive_verified(partner, verified_id, raw_body: bytes, msg_id):
         return _refuse(MESSAGE_INVALID_BODY, msg_id)
     if not isinstance(payload, dict):
         return _refuse(MESSAGE_INVALID_BODY, msg_id)
+    # 送り手が自社の本文 (受け口の URL を自社に向けた設定の誤り) は、kind で分ける前に断る。
+    if _sent_by_self(payload):
+        return _refuse(MESSAGE_FROM_SELF, msg_id)
 
     # 注文回答 (承認か断りの結果) は受信した注文の行にせず、元の発注に当てる。
     # kind が無い物は注文として入れる。知らない kind は断る。
@@ -2353,6 +2394,7 @@ def _post_signed(connection, message_id, raw, **options):
     _deliver (注文・注文回答・検収・出荷の知らせ・会話の言葉) と fetch_chat_file (会話の添付を取りに行く) が呼ぶ。
     3xx の転送には付いて行かない (allow_redirects=False)。3xx の返事はそのまま呼び手へ返し、呼び手が受け取ったにしない。
     送る先を外の名前に絞る設定 (_public_only) が真なら、送る前に名前を引き、社内か手元の番地を指すときは送らない (unreachable)。
+    受け口の URL が空のつながりは送らずに MESSAGE_NO_URL を返す (空の URL を requests に渡すと送る途中の誤りの文になり、直す所が分からないため)。
     訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べを受けた作者の決め (11-07)。
     変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
     """
@@ -2374,6 +2416,10 @@ def _post_signed(connection, message_id, raw, **options):
             "送っていません。.env の値を確かめてください。"
         )
         return None, (reply, "bad_secret")
+
+    if not connection.url:
+        # 空の URL を requests に渡すと「送る途中で誤りが起きました」になり、直す所が分からない。送らずに直す所を返す。
+        return None, (MESSAGE_NO_URL, "unreachable")
 
     if _public_only():
         # 送る先を外の名前に絞る設定のときだけ、送る前に名前を引く (偽のときは引かない = 今のまま)。
@@ -2461,6 +2507,7 @@ def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
     返事は stream=True で受け、200 と 400 の本文は最初の ANSWER_MAX_BYTES (64KB) だけを読む (_read_answer)。
     64KB を超える本文は unreadable。送り始めから DELIVER_DEADLINE_SECONDS (30 秒) を過ぎたら読むのをやめて unreachable。
     1 回の待ちの timeout=10 はそのまま。返事は読み終わりに必ず閉じる。
+    404 は、受け口の URL の道の誤りが分かる文にする (種類は unreadable のまま)。
     訳: 3xx の転送に付いて行くと、道を誤った http の URL で届いていない注文を受け取ったと記録しうる (POST が GET に変わり、ログインの画面の 200 で終わる) ので、転送を追わず、返事の印 (status と送った番号) が合うときだけ受け取ったにする。出所 = エンタープライズ化の調べを受けた作者の決め (11-07)。
     変えてよい条件 = 相手の受け口が転送を返す形を、本人が認めたとき。
     訳: 相手の返事の本文がとても大きいか、少しずつ終わらずに届くと、送る口の thread が止まらず保存の画面も返らないので、本文の上限と全体の締切で読むのをやめる。出所 = エンタープライズ化の調べを受けた作者の決め。
@@ -2481,6 +2528,8 @@ def _deliver_result(connection, message_id, raw) -> tuple[str, str]:
                 f"届きません: 相手の受け口の URL が変わっています (HTTP {status})。つながりの URL を直してください。",
                 "unreadable",
             )
+        if status == 404:
+            return MESSAGE_NOT_FOUND, "unreadable"
         if status not in (200, 400):
             return f"返事が読めません (HTTP {status})", "unreadable"
         try:
