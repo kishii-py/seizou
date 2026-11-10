@@ -423,3 +423,40 @@ def test_screens_table_lists_every_menu_entry():
     assert not missing, " / ".join(
         f"{label} が urls.py の MENU か CORE_MENU にあるのに、docs/screens.md の画面の一覧に無い" for label in missing
     )
+
+
+def test_settings_table_lists_every_default_key():
+    """conf.py の DEFAULTS の鍵が全部、docs/settings.md の選べる設定の表の「設定の鍵」の列にあり、既定の字が合う。
+
+    訳: 上の test_readme_settings_table_matches_defaults は SETTING_KEYS に挙げた鍵だけを見るので、DEFAULTS に足した鍵を
+    表に書き忘れても通る (精査 Q5 の 2 節の 5。transcription_minutes_per_line・hidden_fields・weekly_holidays が抜けていた)。
+    既定が空の字 ("") の鍵は、表で「(空)」と書くので既定の字を比べない。
+    """
+    rows = _table_rows(_section(_read(SETTINGS), "## 選べる設定"))
+    assert rows, f"{SETTINGS} の選べる設定に表が無い"
+    header = rows[0]
+    key_column = header.index("設定の鍵")
+    default_column = header.index("既定")
+    table = {row[key_column]: row[default_column] for row in rows[2:]}
+    defaults = _conf_defaults()
+    missing = [key for key in defaults if key not in table]
+    assert not missing, f"conf.py の DEFAULTS の鍵 {missing} が {SETTINGS} の選べる設定の表に無い"
+    for key, value in defaults.items():
+        if value == "":
+            continue
+        assert table[key] == _as_doc_value(value), (
+            f"{key} の既定が conf.py と違う ({SETTINGS}: {table[key]}、conf.py: {value!r})"
+        )
+
+
+def test_settings_doc_names_watch_folder_and_where_to_edit():
+    """docs/settings.md に、注文書の見張りのフォルダの鍵と、置き場を作った後に直すファイル (settings.py の SEIZOU) が書いてある。
+
+    訳: intake_watch_folder は DEFAULTS に無く (intake/watch.py の default_folder が settings の SEIZOU から直に読む)、上の 2 本では見ない。
+    置き場を作った後に設定を変えるときは settings.py の SEIZOU を直して起動し直す (動いている間に answers.yaml を読み直す所は src に無い)。
+    どの文書もそれを書いていなかった (精査 Q5 の 2 節の 5 と 10)。
+    """
+    text = _read(SETTINGS)
+    assert "intake_watch_folder" in text, f"{SETTINGS} に注文書の見張りのフォルダの鍵 intake_watch_folder が無い"
+    lines = [line for line in text.splitlines() if "`SEIZOU`" in line and "起動し直す" in line]
+    assert lines, f"{SETTINGS} に、置き場の settings.py の辞書 SEIZOU を直して起動し直す事を書いた行が無い"
