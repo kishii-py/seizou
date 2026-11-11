@@ -1457,6 +1457,7 @@ def import_items(rows, user, *, price_skipped=False):
     rows の 1 つは {"line": 行の番号, "data": {列の名前: 値}, "ext": {会社ごとの項目の列の名前: 値} か None}。
     data は CSV にある列だけ (無い列は更新しても今の値のまま)。返す物は ImportResult ({"入れた": n, "更新した": m} の辞書)。
     price_skipped が真なら (金額の閲覧が無い人の取り込みで標準単価の列を読まなかった)、知らせに 1 文を足す。
+    渡された行の標準単価が 0 以下の部品があれば、数と自社品番 (5 件まで) を黄の知らせの 1 文で足す (入れる。断らない。本体の決め 11-11 14:2x)。
     """
     note = "標準単価の列は金額の閲覧の権限が無いので読みませんでした。" if price_skipped else ""
     result = _import_rows(rows, user, Item, "part_no", "自社品番", create_item, update_item, note=note)
@@ -1466,6 +1467,20 @@ def import_items(rows, user, *, price_skipped=False):
     if unlisted:
         result.saved_note += (
             f"単位が一覧に無い部品が {unlisted} 件あります。部品マスターの絞り「単位を選び直す部品だけ」で開き、部品の編集で単位を選んでください。"
+        )
+        result.saved_level = "warning"
+    # 標準単価の列を読んだ行のうち、0 以下の値で入った部品を数え、受注に写すと R02 で止まる事を黄の知らせで伝える (取り込みは止めない)
+    low_price = [
+        row["data"].get("part_no")
+        for row in rows
+        if row["data"].get("standard_price") is not None and row["data"]["standard_price"] <= 0
+    ]
+    if low_price:
+        shown = 5
+        listed = low_price[:shown] + ([f"ほか {len(low_price) - shown} 件"] if len(low_price) > shown else [])
+        result.saved_note += (
+            f"標準単価が 0 以下の部品が {len(low_price)} 件あります ({'・'.join(listed)})。"
+            "受注に写すと R02 (数量と単価は 0 より大きい) で保存できないので、部品の編集で直してください。"
         )
         result.saved_level = "warning"
     return result
