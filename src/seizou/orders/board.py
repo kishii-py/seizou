@@ -9,6 +9,9 @@
   無ければ None。「預かり待ち」の札は、引当の合計が受注の数より少なく、会社の設定 receiving_required が off (通す) で
   ないときだけ (本体の決め 11-06 20:1x。通すの会社は支給材の無い注文が多く、全部の行に札が付くため)。開発の記録 docs/nights/20261106/N184.md。
 - 出荷 (shipping) と納品書は、行のメニューの「納品書を作る」の対象を決めるため、prefetch_for が別の問い合わせで読む (join を足さない)。
+- 協力企業に出した工程の出ている数とまだ渡していない数 (purchasing) は、prefetch_for が工程の問い合わせに
+  purchasing.services.annotate_subcontract の Subquery で足し (問い合わせを増やさない)、「進捗」の字の後ろに「・協力企業 n」「・渡す前 n」
+  として出す (BoardRow.progress_label。見比べのまとめの M01 の 3 段目)。無ければ足さない。判断の印と列と絞りは変えない。
 - ほかの部品の model は import せず、apps.get_model と外部キーの先で関数の中で引く。
 - 納期まで (days_left) は稼働日の数 (core.calendar)。遅れの判断は暦の日。枡の字は days_left_label
   (「n 日遅れ」「今日」「あと n 日」。ダッシュボードの納期アラートと同じ型。直し 11-07)。
@@ -135,6 +138,12 @@ def prefetch_for(queryset):
     # 指示書の状態・進捗の盤と同じ式 (良品の合計・不良の合計・完了の印。progress の部品が無ければ 0・0・偽の Value)。
     # 印は Exists の副問い合わせなので、工程の問い合わせは 1 回のまま。
     steps = step_model.objects.select_related("process").order_by("seq").annotate(**step_model.total_expressions())
+    if apps.is_installed("seizou.purchasing"):
+        # 協力企業に出した工程の出ている数とまだ渡していない数 (BoardRow.progress_label)。3 つとも Subquery なので、実績の Sum と
+        # 受注の明細の残の Sum と掛け合わず、工程の問い合わせは 1 回のまま (見比べのまとめの M01 の 3 段目)。
+        from seizou.purchasing.services import annotate_subcontract
+
+        steps = annotate_subcontract(steps)
     workorders = (
         workorder_model.objects.exclude(status=workorder_model.STATUS_CANCELLED)
         .order_by("issued_on", "pk")
@@ -316,6 +325,10 @@ class BoardRow:
         """「進捗」の列の字。指示書が無ければ空。全部の指示書が完了なら「完了」、ほかは「<今の工程> <実績>/<予定>」。
 
         どちらでもなければ空 (工程の無い指示書だけの行)。
+        今の工程を協力企業に出していれば、後ろに「・協力企業 <出ている数>」と「・渡す前 <まだ渡していない数>」を足す (0 より大きい数だけ。
+        順は協力企業 → 渡す前。見比べのまとめの M01 の 3 段目)。数は purchasing.services.annotate_subcontract の値 (出した明細の受入の残を
+        渡した日の有る無しで分けた合計)。prefetch_for が工程に足した値があれば問い合わせをせず、無ければ (受注の詳細の段の帯・関数の試験)
+        今の工程 1 つだけを同じ関数で 1 回読む。purchasing の部品が無ければ足さない (今までの字のまま)。CSV の「進捗」の列も同じ字。
         """
         if not self.workorders:
             return ""
@@ -324,7 +337,23 @@ class BoardRow:
         step = self.current_step
         if step is None:
             return ""
-        return f"{step.process.name} {_num(self.recorded_of(step))}/{_num(step.planned_qty)}"
+        label = f"{step.process.name} {_num(self.recorded_of(step))}/{_num(step.planned_qty)}"
+        if not apps.is_installed("seizou.purchasing"):
+            return label
+        names = ("subcontract_out_total", "subcontract_waiting_total")
+        if all(hasattr(step, name) for name in names):
+            out, waiting = (getattr(step, name) for name in names)
+        else:
+            from seizou.purchasing.services import annotate_subcontract
+
+            row = annotate_subcontract(type(step)._default_manager.filter(pk=step.pk)).values(*names).get()
+            out, waiting = (row[name] for name in names)
+        out, waiting = _dec(out), _dec(waiting)
+        if out > 0:
+            label += f"・協力企業 {_num(out)}"
+        if waiting > 0:
+            label += f"・渡す前 {_num(waiting)}"
+        return label
 
     # --- 計画と納期 ---
     @cached_property
