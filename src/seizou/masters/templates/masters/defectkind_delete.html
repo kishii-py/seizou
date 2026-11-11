@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 不良の区分の削除の確認 (2 段目 N407b): 社員の削除 (masters/staff_delete.html) と同じ 1 枚のカード。「削除」で区分を消し、不良の区分の一覧へ戻る。赤の知らせは base.html が出す。 #}
+{# 不良の行の件数 (form.line_count) は DefectKindDeleteForm が masters.services.defect_kind_line_count で数える。1 件以上なら、写して残す事と集計の行を 1 文ずつで出す。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-start gap-2">{% icon "alert" "size-5 text-error" %}<span>{{ object.name }} を削除します。{% if form.line_count %}この区分の不良の行 {{ form.line_count }} 件には、区分の名前を写して残します。不良の集計の区分の行では「未設定」に入ります。区分ごとの数を残したいときは、消さずに使用停止にしてください。{% endif %}</span></p>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'masters:defectkind_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}

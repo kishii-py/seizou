@@ -15,7 +15,8 @@ from seizou.core.views import BaseFormView, BaseListView, field_at
 
 from . import services
 from .forms import ProgressDeleteForm, ProgressRecordForm, ProgressUpdateForm
-from .models import Progress
+from .forms import ProgressDefectNoteForm
+from .models import Progress, ProgressDefect
 
 
 def _process_choices():
@@ -89,7 +90,10 @@ class ProgressCreateView(BaseFormView):
     service = staticmethod(services.record_progress)
     template_name = "progress/progress_form.html"
     screen_name = "実績の新規登録"
-    screen_help = "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。社員が居る会社では、作業した人を社員番号か名前で入れます。"
+    screen_help = (
+        "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。社員が居る会社では、作業した人を社員番号か名前で入れます。"
+        "不良の区分がある会社では、不良を区分ごとの行で入れます。"
+    )
 
 
 class ProgressUpdateView(BaseFormView):
@@ -103,7 +107,10 @@ class ProgressUpdateView(BaseFormView):
     service = staticmethod(services.update_progress)
     template_name = "progress/progress_form.html"
     screen_name = "実績の編集"
-    screen_help = "入れた実績の良品の数・不良の数・完了の印・日時・備考と作業した人を直します。工程は直せません。別の工程に入れた実績は消して入れ直します。"
+    screen_help = (
+        "入れた実績の良品の数・不良の数・完了の印・日時・備考と作業した人を直します。不良の区分がある会社では、不良の行を直します。"
+        "工程は直せません。別の工程に入れた実績は消して入れ直します。"
+    )
 
 
 class ProgressDeleteView(BaseFormView):
@@ -118,6 +125,88 @@ class ProgressDeleteView(BaseFormView):
     template_name = "progress/progress_delete.html"
     screen_name = "実績の削除"
     screen_help = "間違えて入れた実績を消します。消した実績は戻せません。"
+
+
+
+# ---------------------------------------------------------------- 不良の行 (見比べのまとめの M09。2 段目 N407b)
+
+#: 不良の一覧の日時の列の名前 (実績の日時を辿る。土台の列は __ で辿る名前の型を読まないので、行の部分 progress/_defect_row.html が 1 列目を分まで出す)
+RECORDED_AT_COLUMN = "progress__recorded_at"
+
+
+def _without_countermeasure(queryset):
+    """対策の欄が空の不良の行だけ (絞り「対策の無い行だけ」)。"""
+    return queryset.filter(countermeasure="")
+
+
+class ProgressDefectListView(BaseListView):
+    """不良の一覧 (実績で入れた不良の行)。
+
+    区分の列 (kind_name。見出しは「区分」) の字は、土台の display_value が ProgressDefect.get_kind_name_display から取る
+    (区分の今の名前。消した区分は写しの名前、区分の無い行は「区分なし」)。集計 (?view=summary) の区分の軸は外部キーで数えるので、
+    消した区分の行と区分の無い行は土台の空の行の字「未設定」に入る (見せる字の「区分なし」とは別の字のまま。本体の 11-11 16:3x の答え)。
+    日時と指示書の工程の列は実績を辿る名前なので、行と一緒に実績・指示書の工程・指示書・工程・区分を 1 回で引く (行ごとに読まない)。
+    新規登録と削除の画面は無い (行は実績の入力と編集で足して消す)。行の ⋮ と右クリックの「原因と対策を書く」で原因と対策を書き足す。
+
+    使う人: 品質・生産管理・社長 / いつ: 品質の問合せが来たときと、月に 1 回の振り返り / 何のために: どの工程でいつ何の不良が出たかを見て、多い不良から手を打つ / 次にすること: 行の「編集」で原因と対策を書く
+    """
+
+    model = ProgressDefect
+    screen_name = "不良の一覧"
+    screen_help = (
+        "実績で入れた不良の行。区分・工程・部品・月で絞り、「集計」で区分ごとの数と割合を見て CSV に出せます。"
+        "区分を消した行と区分の無い行は、集計で「未設定」に入ります。"
+    )
+    # 1 列目は日時 (行の部分 progress/_defect_row.html が 1 列目を分まで出す。会社ごとの項目の列は土台が最後に足すので、1 列目は動かない)
+    columns = (
+        {"name": RECORDED_AT_COLUMN, "label": "日時", "sort_key": RECORDED_AT_COLUMN},
+        {"name": "progress__workorder_step", "label": "指示書の工程", "sort_key": "progress__workorder_step__workorder__wo_no"},
+        {"name": "kind_name", "label": "区分", "sort_key": "kind__name"},
+        "qty",
+        "cause_note",
+        "countermeasure",
+    )
+    search_fields = (
+        ("progress__workorder_step__workorder__wo_no", "指示書の番号"),
+        ("kind__name", "区分"),
+        ("kind_name", "区分"),
+        "cause_note",
+        "countermeasure",
+    )
+    filters = (
+        {"name": "recorded", "label": "期間", "kind": "date_range", "field": RECORDED_AT_COLUMN},
+        {"name": "kind", "label": "区分", "kind": "lookup", "field": "kind"},
+        {"name": "process", "label": "工程", "kind": "lookup", "field": "progress__workorder_step__process", "choices": _process_choices},
+        {"name": "item", "label": "部品", "kind": "lookup", "field": "progress__workorder_step__workorder__order_line__item"},
+        {"name": "no_countermeasure", "label": "対策の無い行だけ", "kind": "flag", "when": _without_countermeasure},
+    )
+    ordering = ("-progress__recorded_at", "-pk")
+
+    def get_queryset(self):
+        # 日時・指示書の工程の字 (指示書の番号と工程の名前)・区分の見せる字を、行と一緒に 1 回で引く。
+        # 土台が列の外部キーを引くのは、列の名前が表の外部キーのときだけ (ここの列は __ で辿る名前と字の欄)。
+        return super().get_queryset().select_related(
+            "progress__workorder_step__workorder", "progress__workorder_step__process", "kind"
+        )
+
+
+class ProgressDefectUpdateView(BaseFormView):
+    """不良の行の原因と対策を書く (不良の一覧の行の ⋮ と右クリックの「原因と対策を書く」から小窓で開く)。保存の後は ?next= の道 (不良の一覧) へ戻る。
+
+    区分と数は実績の編集で直す (ここでは出さない)。削除の画面は無い (行は実績の編集で数を空にして消す)。
+
+    使う人: 品質 / いつ: 不良の原因を調べた後 / 何のために: 原因と対策を不良の行に残す / 次にすること: 不良の一覧で確かめる
+    """
+
+    model = ProgressDefect
+    form_class = ProgressDefectNoteForm
+    service = staticmethod(services.update_defect_note)
+    screen_name = "不良の原因と対策"
+    screen_help = "不良の行に原因と対策を書きます。区分と数は実績の編集で直します。"
+
+    def get_queryset(self):
+        # 保存のボタンの字 (指示書の工程と区分の見せる字) が読む物を、対象と一緒に引く
+        return ProgressDefect.objects.select_related("progress__workorder_step__workorder", "progress__workorder_step__process", "kind")
 
 
 @login_required

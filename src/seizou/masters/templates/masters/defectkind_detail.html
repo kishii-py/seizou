@@ -1,0 +1,9 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons %}
+{# 不良の区分の詳細 (2 段目 N407b)。社員の詳細 (masters/staff_detail.html) と同じく、使用停止の区分だけ上に黄色の 1 行 (知らせの段 5 の状態)。 #}
+{# 見出しの帯の「⋯」に「削除」を、社員の詳細と同じ形で足す。削除は不良の区分の新規登録と同じ答え (工程の編集の権限) の人だけに出す (押すと断られる入口を出さない)。 #}
+{% block more %}{% can_write "masters.DefectKind" as can_delete %}{% if can_delete %}{% url 'masters:defectkind_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endif %}{% endblock %}
+{% block content %}
+{% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の区分です。実績の入力の候補に出ません。今までの不良の行の区分はそのまま残ります。</span></div>{% endif %}
+{{ block.super }}
+{% endblock %}

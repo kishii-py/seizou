@@ -51,6 +51,10 @@ SKIPPED_NO_ROW = {
         "masters:staff_delete",  # 種に社員の行が無い (N401b。種を足すなら外す)
         "masters:staff_detail",
         "masters:staff_update",
+        "masters:defectkind_delete",  # 種に不良の区分の行が無い (N407b。種を足すなら外す)
+        "masters:defectkind_detail",
+        "masters:defectkind_update",
+        "progress:progressdefect_update",  # 種に不良の行が無い (N407b。種に実績と不良の行を足すなら外す)
         "progress:progress_delete",  # 種に実績の行が無い (C103)
         "progress:progress_update",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
@@ -73,6 +77,10 @@ SKIPPED_NO_ROW = {
         "masters:staff_delete",  # 種に社員の行が無い (N401b。種を足すなら外す)
         "masters:staff_detail",
         "masters:staff_update",
+        "masters:defectkind_delete",  # 種に不良の区分の行が無い (N407b。種を足すなら外す)
+        "masters:defectkind_detail",
+        "masters:defectkind_update",
+        "progress:progressdefect_update",  # 種に不良の行が無い (N407b。種に実績と不良の行を足すなら外す)
         "progress:progress_delete",  # 種に実績の行が無い (C103)
         "progress:progress_update",
         "purchasing:purchaseorder_cancel",
