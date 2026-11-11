@@ -8,7 +8,7 @@
   取消の画面は「このまま取り消す」。字は入力の土台 core.views.BaseFormView.check_words が選ぶ)。
 - 通す (mode = "off"): 呼ばない。
 
-標準のポカよけ (R01・R04・R06・R07・R24・R26・R27・R28・R29・R30) は builtin にあり、mode は会社の設定の値をそのまま使う。
+標準のポカよけ (R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33) は builtin にあり、mode は会社の設定の値をそのまま使う。
 会社のポカよけは、会社のプロジェクトの checks.py が register を呼んで足す (core の道具だけで書く)。
 検査は読むだけで、表を書かない (書くのは services)。
 """

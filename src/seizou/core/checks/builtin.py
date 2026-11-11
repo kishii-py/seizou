@@ -1,6 +1,6 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind・same_customer_order_no・subcontract_return) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
@@ -9,6 +9,8 @@ R27 は出荷の編集・出荷の削除・納品書の取消の 3 つの action
 R28 は実績の入力と実績の編集の 2 つの action に掛ける (編集は、直す前と同じ社員のままなら見ない)。
 R29 は発注の明細の「完了にする」と受入の入力 (「残りは受け入れずに完了にする」を選んだとき) の 2 つの action に掛ける。
 R30 (会社の設定 progress_defect_kind) は実績の入力だけに掛ける。
+R31 は受注の新規登録・受注の編集・読み取りを受注にする・受信した注文の受け入れ (条件付きの受け入れを含む) の 5 つの action に掛ける。
+R33 は受入の入力・発注の明細の「完了にする」・実績の入力の 3 つの action に掛ける (指示書の工程を指す発注の明細だけを見る)。
 """
 
 from __future__ import annotations
