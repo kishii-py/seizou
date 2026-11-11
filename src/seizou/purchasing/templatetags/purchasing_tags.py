@@ -6,6 +6,7 @@
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
 - line_completed_label: 発注の詳細の明細の受入の残の枡の「完了」「完了 (受けない n)」の印の字 (N400b。完了の印の無い明細は空の字)。
+- line_step: 発注の詳細の明細の部品の枡の下の「指示書 <番号> の工程 <順> <名前>」の字と指示書の pk (N406b。指示書の工程の無い明細は None)。
 - notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
 - next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
 - purchase_order_aside: 発注の詳細の右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md) のカードの並び。形は orders の orders_detail の order_aside と同じ。
@@ -120,6 +121,25 @@ def over_receipt_notices(rows):
     if not ids:
         return []
     return [{"line": line, "message": services.over_receipt_message(line)} for line in services.over_receipt_lines(ids)]
+
+
+@register.simple_tag
+def line_step(line):
+    """{% line_step line as step %}。発注の詳細の明細の部品の枡の下に出す、指示書の工程の字と行き先 (N406b)。
+
+    指示書の工程を指す明細は {"text": 「指示書 <指示書番号> の工程 <順> <工程の名前>」, "workorder": 指示書の pk}、ほかは None (問い合わせなし)。
+    明細の表の並び (PurchaseOrder.lines_with_received) は工程を一緒に読まないので、工程と指示書と工程の名前をここで 1 回で引く
+    (指示書の工程を指す明細の数だけ 1 回ずつ。workorders の model は import せず、明細の外部キーの先を引く)。
+    """
+    if line.workorder_step_id is None:
+        return None
+    from ..forms import workorder_step_text
+
+    step_model = type(line)._meta.get_field("workorder_step").related_model
+    step = step_model._default_manager.select_related("workorder", "process").filter(pk=line.workorder_step_id).first()
+    if step is None:
+        return None
+    return {"text": workorder_step_text(step), "workorder": step.workorder_id}
 
 
 @register.simple_tag

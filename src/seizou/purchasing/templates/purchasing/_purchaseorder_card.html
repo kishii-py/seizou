@@ -5,6 +5,7 @@
 {# 小窓の中の「行を足す」の script は、htmx が差し替えた中身の script を実行するので動く見込み (ブラウザで未確認)。 #}
 {# 頭の 1 文の後ろの「…保存と同時に注文を送ります。」は、練習モードでは出さない (練習のサーバーは相手へ送らず、上の黄の帯と食い違うため。作者の決め)。 #}
 {# 2 文目は、送った発注の変更と取消 (相手が出荷し終えるまで送れる) に合わせた字 (作者の決め)。 #}
+{# 指示書の工程 (N406b): 明細の行の隠しの欄 (workorder_step) は部品の枡の中に描く (描かないと送った値が消える。足す行の雛形も同じ)。指示書の工程のある行は、部品の欄の下に「指示書 <番号> の工程 <順> <名前>」(row.workorder_step_text)。見出しの列は足さない。欄の下の説明 (help_text) は、今は「渡した日」の欄だけが持つ。 #}
 {# 工程の列は協力企業に出す工程のある会社だけ (form.has_process)。単価の枡の中に見積の番号と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外。部品が空の行は押せない形。作者の決め)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
@@ -18,6 +19,7 @@
       </div>
       {{ field }}
       {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -48,7 +50,7 @@
         {% for row in form.lines %}
         <tr class="align-top">
           {% for field in row.visible_fields %}{% if field.name != "quote_no" %}
-          <td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">{{ field }}{% if field.errors %}<p class="mt-2 text-xs text-error">{{ field.errors|join:" " }}</p>{% endif %}{% if field.name == "unit_price" %}
+          <td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %} [&_[aria-invalid=true]]:border-error">{{ field }}{% if field.errors %}<p class="mt-2 text-xs text-error">{{ field.errors|join:" " }}</p>{% endif %}{% if field.name == "item" %}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% if row.workorder_step_text %}<span class="block text-xs text-base-content/70">{{ row.workorder_step_text }}</span>{% endif %}{% endif %}{% if field.name == "unit_price" %}
             {% if row.quote_no %}<div class="mt-1">{{ row.quote_no }}{% if row.quote_no.errors %}<p class="mt-2 text-xs text-error">{{ row.quote_no.errors|join:" " }}</p>{% endif %}</div>{% endif %}
             {% if not seizou.hide_money %}<button type="button" class="btn btn-xs btn-outline border-base-300 mt-1" data-price-pick="{% url 'masters:item_price_pick' 0 %}" data-price-kind="purchase" data-price-partner-field="partner" data-price-date-field="order_date"{% if not row.item.value %} disabled{% endif %}>{% icon "yen" "size-4" %}単価表から選ぶ</button>{% endif %}
           {% endif %}</td>
@@ -60,7 +62,7 @@
   </div>
   <template id="po-line-template">
     <tr class="align-top">
-      {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "quote_no" %}<td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %}">{{ field }}{% if field.name == "unit_price" %}
+      {% for field in form.lines.empty_form.visible_fields %}{% if field.name != "quote_no" %}<td class="{% if field.name == "item" %}min-w-48{% else %}min-w-32{% endif %}">{{ field }}{% if field.name == "item" %}{% for hidden in form.lines.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}{% if field.name == "unit_price" %}
         <div class="mt-1">{{ form.lines.empty_form.quote_no }}</div>
         {% if not seizou.hide_money %}<button type="button" class="btn btn-xs btn-outline border-base-300 mt-1" data-price-pick="{% url 'masters:item_price_pick' 0 %}" data-price-kind="purchase" data-price-partner-field="partner" data-price-date-field="order_date"{% if not form.lines.empty_form.item.value %} disabled{% endif %}>{% icon "yen" "size-4" %}単価表から選ぶ</button>{% endif %}
       {% endif %}</td>{% endif %}{% endfor %}
