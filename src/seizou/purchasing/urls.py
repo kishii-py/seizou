@@ -45,5 +45,7 @@ urlpatterns = [
         views.PurchaseOrderLineCompleteClearView.as_view(),
         name="purchaseorderline_complete_clear",
     ),
+    # 明細の渡した日 (N406b。入口は発注の詳細の明細の ⋮。左のメニューには足さない)
+    path("lines/<int:pk>/handed/", views.PurchaseOrderLineHandedView.as_view(), name="purchaseorderline_handed"),
     path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]

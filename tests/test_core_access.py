@@ -490,3 +490,17 @@ def test_completed_mark_actions_follow_write_kind_without_money(on):
         with pytest.raises(access.AccessDenied) as caught:
             access.require_write(seller, action)
         assert caught.value.message.startswith("発注の編集の権限がありません。")
+
+
+@pytest.mark.django_db
+def test_set_handed_on_follows_purchasing_kind_without_money(on):
+    """発注の明細の渡した日 (N406b) は、発注の編集の権限で守り、金額の閲覧は問わない (数と日だけの操作。受入と同じ考え)。"""
+    action = "purchasing.set_handed_on"
+    assert access.ACTION_KINDS[action] == "purchasing"
+    assert action not in access.MONEY_ACTIONS
+    buyer = account("buyer", permissions=["purchasing"])
+    seller = account("seller", permissions=["orders"])
+    access.require_write(buyer, action)  # 金額の閲覧が無くても通す
+    with pytest.raises(access.AccessDenied) as caught:
+        access.require_write(seller, action)
+    assert caught.value.message.startswith("発注の編集の権限がありません。")

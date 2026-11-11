@@ -179,6 +179,8 @@ _KIND_ACTIONS = {
         # 発注の明細の完了の印の付け外し (N400b。本体の決め 11-11 13:4x。受注の完了と同じく MONEY_ACTIONS に入れない)
         "purchasing.mark_completed",
         "purchasing.clear_completed",
+        # 指示書の工程を指す発注の明細の渡した日 (N406b。数と日だけの操作で金額に関わらないので、受入と同じく MONEY_ACTIONS に入れない)
+        "purchasing.set_handed_on",
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)

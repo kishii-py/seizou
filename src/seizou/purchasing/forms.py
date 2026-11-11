@@ -15,6 +15,9 @@
   その明細の部品・残の数・単位・納期を最初の明細の行の初期値にする。orders の model は import せず apps.get_model で引く。
   単位の初期値は受注の明細の数量単位コード (単位の欄は一覧から選ぶ欄。コードの無い受注の明細は空で開く)。
   line (盤で選んだ明細の pk の繰り返し) があれば、選んだ明細を同じ形で順に埋める (開発の記録 docs/nights/20261104/N124.md)。
+  step (指示書の工程の pk の繰り返し。指示書の詳細の「協力企業に出す」が渡す) があれば、その後ろに指示書の工程ごとの行を足し、
+  行の隠しの欄 workorder_step と「渡した日」の欄を出す (N406b。指示書の工程の行が無い form には「渡した日」の欄を出さない)。
+- 渡した日の form (PurchaseOrderLineHandedForm。N406b) は欄 1 つ。上の 1 行を lead_text に持つ (core/_form_card.html が描く)。
 - 発注・受入・取り消すの保存のボタンの字は、押した結果の数と金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
   金額の閲覧が無い人 (土台が hide_money=True を渡す) には、発注のボタンに金額を書かない。
 - 仕入明細を作る form (SelfInvoiceForm。作者の決め) は請求書の新規登録 (billing.forms.InvoiceForm) と同じ形: 取引先・発行日の欄の下に受入の表の行 (rows)、
@@ -107,6 +110,17 @@ class PurchaseOrderLineForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "input w-full"}),
     )
 
+    # 指示書の工程 (N406b。指示書の詳細の「協力企業に出す」= ?step= で開いた行だけに値が入る隠しの欄)。値の確かめ (部品と工程が指示書の工程と同じか) は
+    # services の create_purchase_order が行う (1 段目の断り)。選べるのは指示書の工程 (workorders の model は import せず、明細の外部キーの先を引く)。
+    workorder_step = forms.ModelChoiceField(
+        queryset=PurchaseOrderLine._meta.get_field("workorder_step").related_model._default_manager.all(),
+        required=False,
+        widget=forms.HiddenInput,
+    )
+
+    #: 部品の欄の下に出す「指示書 <指示書番号> の工程 <順> <工程の名前>」の字 (発注の form が行ごとに置く。指示書の工程の無い行は空)
+    workorder_step_text = ""
+
     def __init__(self, *args, processes=None, has_process=None, **kwargs):
         super().__init__(*args, **kwargs)
         # 部品は使用中だけ (開発の記録 docs/nights/20261104/N135.md。発注は新しく作るだけの form)
@@ -172,6 +186,63 @@ def _order_lines(raw):
     return lines
 
 
+#: 指示書の工程の model (workorders を import せず、発注の明細の外部キーの先を引く)
+_Step = PurchaseOrderLine._meta.get_field("workorder_step").related_model
+
+
+def workorder_step_text(step) -> str:
+    """指示書の工程の字「指示書 <指示書番号> の工程 <順> <工程の名前>」(services の断りの字と同じ形。発注の明細の行・発注の詳細・渡した日の画面・受入の入力が使う)。"""
+    return f"指示書 {step.workorder.wo_no} の工程 {step.seq} {step.process.name}"
+
+
+def _pks(raw) -> list[int]:
+    """GET か送った値の pk の字 (字か字の list) を、読める物だけ int の並びにする (1 未満と重なりは捨てる。並びは渡された順)。"""
+    values = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+    pks = []
+    for value in values:
+        try:
+            pk = int(str(value))
+        except (TypeError, ValueError):
+            continue
+        if pk >= 1 and pk not in pks:
+            pks.append(pk)
+    return pks
+
+
+def _steps_by_pk(pks) -> dict:
+    """指示書の工程を pk で引く {pk: 工程} (指示書・受注の明細と受注・部品・工程を一緒に 1 回で読む)。"""
+    if not pks:
+        return {}
+    rows = _Step._default_manager.select_related(
+        "workorder__order_line__order", "workorder__order_line__item", "process"
+    ).filter(pk__in=pks)
+    return {row.pk: row for row in rows}
+
+
+def _steps_to_send(raw) -> list:
+    """GET の step (字か字の list。指示書の詳細の「協力企業に出す」が渡す) から、発注の明細の行にする指示書の工程を選んだ順に返す。
+
+    飛ばす: 無い pk と読めない字・取消の指示書・取消の受注・工程の「協力企業に出すか」が偽・その工程を指す取り消していない明細がある
+    (services.step_lines が空でない。出した工程を 2 回出さないため)。発注を取り消すと、その工程はまた出せる。
+    訳: 協力企業に出した工程を、気づかずにもう一度発注しないため (取消の指示書と取消の受注の工程と、協力企業に出さない工程は、出す物ではない)。
+    飛ばすだけで断らない (services は 1 つの工程に明細 2 つを断らない = 1 段目の決め)。出所 = 見比べのまとめの M01 (依頼書 N406b の 2)。
+    変えてよい条件 = 1 つの工程を分けて 2 社以上に出す会社があると分かったとき。
+    """
+    found = _steps_by_pk(_pks(raw))
+    workorder_model = _Step._meta.get_field("workorder").related_model
+    steps = []
+    for pk in _pks(raw):
+        step = found.get(pk)
+        if step is None or step.workorder.status == workorder_model.STATUS_CANCELLED:
+            continue
+        if step.workorder.order_line.order.status == "cancelled" or not step.process.is_outsourced:
+            continue
+        if services.step_lines(step):
+            continue
+        steps.append(step)
+    return steps
+
+
 class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
     """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。
 
@@ -184,6 +255,17 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
         label="取引先", queryset=None, widget=RemoteSelect("masters:partner_select", query={"role": "supplier"})
     )
     order_date = forms.DateField(label="発注日", initial=timezone.localdate, widget=_date_input())
+    # 渡した日 (N406b)。指示書の工程を指す明細だけに写す。指示書の工程の行が無い form では __init__ が外す (今の発注の新規登録の見え方を変えない)。
+    handed_on = forms.DateField(
+        label="渡した日",
+        required=False,
+        initial=timezone.localdate,
+        widget=_date_input(),
+        help_text=(
+            "指示書の工程を指す明細に写します。空なら、まだ渡していない扱いです。"
+            "後から発注の詳細の明細の ⋮ の「渡した日」で入れられます。"
+        ),
+    )
     note = forms.CharField(
         label="備考", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 2})
     )
@@ -218,16 +300,60 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
         line_initial = [
             {"item": line.item_id, "process": defaults.get(line.item_id), "qty": rest, "unit": line.unit_code or None, "due_date": line.due_date}
             for line, rest in picked
-        ] or None
+        ]
+        # 指示書の詳細の「協力企業に出す」から来たとき (GET の step。字か字の list。N406b)、指示書の工程ごとに明細の行を 1 行ずつ、
+        # from_line と line の行の後ろに足す: 部品 = 指示書の受注の明細の部品・工程 = 指示書の工程の工程・数量 = 予定の数・
+        # 単位 = 受注の明細の数量単位コード (無ければ空)・納期 = 工程の終了日・指示書の工程 = その工程 (飛ばす工程は _steps_to_send)。
+        steps = _steps_to_send(self.initial.get("step")) if not self.is_bound else []
+        line_initial += [
+            {
+                "item": step.workorder.order_line.item_id,
+                "process": step.process_id,
+                "qty": step.planned_qty,
+                "unit": step.workorder.order_line.unit_code or None,
+                "due_date": step.planned_end,
+                "workorder_step": step.pk,
+            }
+            for step in steps
+        ]
+        # 取引先の初期値: 指示書の工程の行が 1 つ以上あり、どの行も出し先の既定 (services.default_subcontractor) が同じ取引先なら、その取引先
+        if steps and "partner" not in self.initial:
+            partners = {services.default_subcontractor(step.workorder.order_line.item, step.process) for step in steps}
+            chosen = partners.pop() if len(partners) == 1 else None
+            if chosen is not None:
+                self.initial["partner"] = chosen.pk
         # 協力企業に出す工程の選択肢と、あるか (テンプレートが「工程」の見出しの列を出すかに読む)
         processes = active_processes().filter(is_outsourced=True)
         self.has_process = processes.exists()
         self.lines = PurchaseOrderLineFormSet(
             data=self.data if self.is_bound else None,
-            initial=line_initial,
+            initial=line_initial or None,
             prefix="lines",
             form_kwargs={"processes": processes, "has_process": self.has_process},
         )
+        # 明細の行の「指示書 … の工程 …」の字 (開いた形は初期値、送った形は送った値の工程。止まって描き直しても字と欄が残る)。
+        # 指示書の工程の行が無い form (開いた形で step の行が無く、送った形でどの行の指示書の工程も空) では「渡した日」の欄を外す。
+        has_step = self._label_step_rows(steps)
+        if not has_step:
+            self.fields.pop("handed_on")
+
+    def _label_step_rows(self, steps) -> bool:
+        """明細の行の form に workorder_step_text を置き、指示書の工程の行があるかを返す。開いた形は steps (引いた工程)、送った形は送った値を 1 回で引く。"""
+        rows = self.lines.forms
+        if self.is_bound:
+            raw = {row: row.data.get(row.add_prefix("workorder_step")) for row in rows}
+            found = _steps_by_pk([pk for value in raw.values() for pk in _pks(value)])
+            chosen = {row: found.get(next(iter(_pks(value)), None)) for row, value in raw.items()}
+            # 送った形は、どれかの行の隠しの欄が空でなければ「渡した日」の欄を残す (読めない値は行の欄の誤りになる)
+            has_step = any(value not in (None, "") for value in raw.values())
+        else:
+            by_pk = {step.pk: step for step in steps}
+            chosen = {row: by_pk.get((row.initial or {}).get("workorder_step")) for row in rows}
+            has_step = bool(steps)
+        for row, step in chosen.items():
+            if step is not None:
+                row.workorder_step_text = workorder_step_text(step)
+        return has_step
 
     def submit_label_templates(self) -> list:
         if self.hide_money:
@@ -269,12 +395,18 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
 
     def service_kwargs(self):
         data, ext = company_fields.split_ext(self.cleaned_data)
-        lines = [
+        lines = []
+        for row in self.lines.forms:
+            if not row.has_changed():
+                continue
             # 工程の欄を外した会社 (協力企業に出す工程が無い) では、無い欄の鍵を services に渡さない (作者の決め)
-            {key: row.cleaned_data[key] for key in LINE_KEYS if key in row.cleaned_data}
-            for row in self.lines.forms
-            if row.has_changed()
-        ]
+            line = {key: row.cleaned_data[key] for key in LINE_KEYS if key in row.cleaned_data}
+            # 指示書の工程のある行だけ、指示書の工程と渡した日 (欄の値。空なら None) を足す (N406b)。ほかの行の辞書は今のまま (鍵を足さない)
+            step = row.cleaned_data.get("workorder_step")
+            if step is not None:
+                line["workorder_step"] = step
+                line["handed_on"] = data.get("handed_on")
+            lines.append(line)
         kwargs = {
             "partner": data["partner"],
             "lines": lines,
@@ -541,6 +673,45 @@ class PurchaseOrderLineCompleteClearForm(forms.Form):
         return {}
 
 
+class PurchaseOrderLineHandedForm(forms.Form):
+    """発注の明細の渡した日を直す form (purchasing.services.set_handed_on。N406b)。欄は渡した日 1 つ。
+
+    初期値は明細の渡した日、空なら今日。空にして保存すると、まだ渡していない扱いに戻る。
+    保存のボタンは「PO-000001-1 の渡した日を保存する」(土台が対象を instance= で渡す)。カードの頭の 1 行 (lead_text。core/_form_card.html) に
+    「<部品> を <取引先> へ (指示書 <指示書番号> の工程 <順> <工程の名前>)」を出す (指示書の工程の無い明細は括弧を出さない。保存は services が断る)。
+    会社ごとの項目は足さない (service_kwargs が渡さないので、直しても保存されない欄が出るため)。
+    """
+
+    submit_label = "渡した日を保存する"
+    lead_text = ""
+    adds_company_fields = False
+
+    handed_on = forms.DateField(
+        label="渡した日",
+        required=False,
+        widget=_date_input(),
+        help_text="空にして保存すると、まだ渡していない扱いに戻ります。",
+    )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is None:
+            return
+        line = PurchaseOrderLine.objects.select_related(
+            "purchase_order__partner", "item", "workorder_step__workorder", "workorder_step__process"
+        ).get(pk=instance.pk)
+        self.submit_label = f"{line.purchase_order.po_no}-{line.line_no} の渡した日を保存する"
+        if not self.is_bound:
+            self.initial.setdefault("handed_on", line.handed_on or timezone.localdate())
+        lead = f"{line.item} を {line.purchase_order.partner.name} へ"
+        if line.workorder_step is not None:
+            lead += f" ({workorder_step_text(line.workorder_step)})"
+        self.lead_text = lead
+
+    def service_kwargs(self):
+        return {"handed_on": self.cleaned_data.get("handed_on")}
+
+
 def _purchase_line(raw):
     """発注の明細の pk の字から明細を引く。読めない字・1 未満・無い pk は None (画面は 200 のまま)。"""
     if raw is None:
@@ -634,8 +805,15 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
             # まだ受け入れていない出荷の知らせに前の版の注文への知らせがあれば、明細の欄の下に印を出す (止めない。押す手は増えない)。
             # 明細を選び直しても、この字は描いた時の明細の物のまま (purchasing/receipt-form.js は数量の欄の下だけを書き替える)。
             old = _old_revision_notice(self.label_line)
+            notes = []
             if old is not None:
-                self.fields["line"].help_text = f"第 {old} 版の注文への出荷の知らせです (今は第 {self.label_line.purchase_order.revision_no} 版)。"
+                notes.append(f"第 {old} 版の注文への出荷の知らせです (今は第 {self.label_line.purchase_order.revision_no} 版)。")
+            # 指示書の工程を指す明細の受入は、その工程の実績になる (RULES.md R32)。前の版の知らせの字があれば、その後ろに続ける (N406b)。
+            step = self.label_line.workorder_step if self.label_line.workorder_step_id is not None else None
+            if step is not None:
+                notes.append(f"{workorder_step_text(step)} の実績になります。")
+            if notes:
+                self.fields["line"].help_text = "".join(notes)
 
     def submit_label_templates(self) -> list:
         if self.label_line is None:

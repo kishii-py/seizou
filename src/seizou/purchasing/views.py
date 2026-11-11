@@ -24,6 +24,7 @@ from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
 from .forms import PurchaseOrderChangeForm
 from .forms import PurchaseOrderLineCompleteClearForm, PurchaseOrderLineCompleteForm
+from .forms import PurchaseOrderLineHandedForm
 from .forms import ReceiptForm
 from .forms import SelfInvoiceAcceptForm, SelfInvoiceCancelForm, SelfInvoiceForm
 from .models import PurchaseOrder
@@ -224,6 +225,23 @@ class PurchaseOrderLineCompleteClearView(BaseFormView):
     service = staticmethod(services.clear_completed)
     screen_name = "完了を外す"
     screen_help = "発注の明細の完了を外します。足りない分がまた受入の残に数えられ、受入の候補に戻ります。相手の seizou へは何も送りません。"
+
+
+
+class PurchaseOrderLineHandedView(BaseFormView):
+    """発注の明細の渡した日の入力。
+
+    使う人: 生産管理・出荷の担当 / いつ: 発注の後で協力企業に現物を渡したときと、渡した日を間違えたとき / 何のために: 渡した日を入れ、協力企業に出ている数とまだ渡していない数を分けて見る / 次にすること: 戻ったら、指示書の詳細の「戻りを受け入れる」か受入の新規登録で受け入れる
+
+    入口は発注の詳細の明細の ⋮ の「渡した日」だけ (指示書の工程を指す明細・取消でない発注・取り消していない明細・受入を書ける人だけ。小窓。
+    JS の無いときは画面の全体と ?next=)。テンプレートは土台の入力の画面と小窓のまま。上の 1 行は form の lead_text (core/_form_card.html が描く)。N406b。
+    """
+
+    model = PurchaseOrderLine
+    form_class = PurchaseOrderLineHandedForm
+    service = staticmethod(services.set_handed_on)
+    screen_name = "渡した日"
+    screen_help = "協力企業に現物を渡した日を入れます。空にして保存すると、まだ渡していない扱いに戻ります。相手の seizou へは何も送りません。"
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面) ---
