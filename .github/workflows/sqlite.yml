@@ -21,8 +21,12 @@ jobs:
           version: "0.12.21"
       - name: WeasyPrint の OS の部品を入れる
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libharfbuzz-subset0
+          # 実行の場の apt の取り先が、まれに名前を引けずに落ちる (2026-11-11 に 2 回続いた)。3 回まで試す
+          for attempt in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libharfbuzz-subset0 && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep 30
+          done
       - name: 依存を入れる
         run: uv sync --locked --group dev --extra pdf
       - name: ruff
