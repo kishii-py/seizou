@@ -369,11 +369,14 @@ def _order_lines_section(client, order) -> str:
 
 @pytest.mark.django_db
 def test_order_detail_item_cell_splits_part_no_and_name(logged_in, order, shaft):
-    """初見テスト R5 の V53 (候補 C15 の 1): 部品の欄は、品番だけを部品の小窓の link にし、品名は link の外の薄い字。"""
+    """初見テスト R5 の V53 (候補 C15 の 1): 部品の欄は、品番だけを部品の小窓の link にし、品名は link の外の薄い字。
+
+    品番の span は折り返さない印つき (489 回目の本体の直し。幅 1280 の画面で表がはみ出さないよう、品名だけを折り返せるようにした)。
+    """
     section = _order_lines_section(logged_in, order)
 
     modal = re.escape(reverse("masters:item_modal", args=[shaft.pk]))
-    assert re.search(rf'<span class="font-mono"><a class="link master-link" href="{modal}"[^>]*>T-100</a></span>', section)
+    assert re.search(rf'<span class="whitespace-nowrap font-mono"><a class="link master-link" href="{modal}"[^>]*>T-100</a></span>', section)
     assert '</a></span> <span class="text-base-content/70">作り物の軸</span>' in section
 
 
