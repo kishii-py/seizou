@@ -34,7 +34,8 @@ def _list_csv(context, company) -> bytes:
 def _open_import(page, company) -> None:
     page.goto(f"{company.base_url}/masters/items/")
     page.get_by_role("link", name="CSV 取り込み").click()
-    page.wait_for_url(re.compile(r"/masters/items/import/$"))
+    # 入口は開いた一覧の道を ?next= で渡す (取り込んだ後に一覧へ戻る。494 回目) ので、道の後ろに ? が続いてよい
+    page.wait_for_url(re.compile(r"/masters/items/import/(\?|$)"))
 
 
 def _send(page, path) -> None:
@@ -52,6 +53,8 @@ def test_e32_round_trip_no_diff(context, page_a, company_a, tmp_path):
     _send(page_a, csv_path)
     expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
     expect(page_a.get_by_text("CSV の誤り")).to_have_count(0)
+    # 取り込んだ後は、開いていた部品マスターの一覧へ戻る (ダッシュボードへ移らない。494 回目)
+    assert urlparse(page_a.url).path == "/masters/items/"
     shot(page_a, "E-32", "a-import")
 
     assert _list_csv(context, company_a) == before
