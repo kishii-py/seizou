@@ -6,6 +6,7 @@
 出荷済みの数と残の数は列に持たず、orders.services の shipped_qty・remaining_qty で毎回出す。
 書くときは orders.services を通す。
 請求しない明細の印 (no_bill。出し切らずに終えた一式の明細に付ける) は orders.services.mark_no_bill と clear_no_bill だけが書き、請求の候補 (billing.services.billable_shipments ほか) が読む。
+完了の印 (completed。人が足りないまま終えると決めた明細に付ける) は orders.services.mark_completed と clear_completed だけが書き、残の数え方 (orders.services.remaining_qty・annotate_remaining。RULES.md R25) が読む。
 """
 
 from functools import cached_property
@@ -157,6 +158,9 @@ class OrderLine(models.Model):
     # 請求しない明細の印 (作者の決め)。出し切らずに終えた一式を請求しないと決めた明細に、請求書の新規登録の一式の表から付ける。
     # 付けた明細は一式の表に出ず、その出荷も請求書の新規登録の候補と「請求書に入っていない出荷」の数に出さない。出荷の数と出荷の金額は今までどおり数える。書くのは orders.services.mark_no_bill と clear_no_bill だけ。
     no_bill = models.BooleanField("請求しない", default=False, editable=False)
+    # 人が付け外しする完了の印 (本人の決め 11-11 08:4x・09:3x)。出荷の数と結ばない。明細が終わっているのは、この印が真か、出荷の合計が数量以上のとき。
+    # 書くのは orders.services.mark_completed と clear_completed だけ (出荷・数量の直しでは書き換えない)。
+    completed = models.BooleanField("完了", default=False, editable=False)
 
     #: 変更の履歴は受注の詳細の「履歴」に出す (core.history。作者の決めの伝票の「受注」)
     history_owner = "order"

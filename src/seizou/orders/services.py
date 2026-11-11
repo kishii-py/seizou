@@ -15,9 +15,11 @@
   明細の数量単位コード (作者の決め) を表に書くのは _line_unit の決まりだけ。
   quote_no は単価表から写した見積の番号、process_name は受信した注文の明細の工程名 (どちらも無ければ空の字。作者の決め)。
   update_order では、既にある明細を指す id か order_line (この受注の OrderLine) も受ける (同じ意味)。
-- 受注の状態 (受注・一部出荷・出荷済) は refresh_status が出荷済みの数から決め直す。
+- 受注の状態 (受注・一部出荷・出荷済) は refresh_status が明細の残 (annotate_remaining の remaining_total。RULES.md R25) から決め直す。
   shipping.services.ship と update_order の終わりに呼ぶ。止めない (現物優先)。
 - 請求しない明細の印は mark_no_bill が付ける。外すのは clear_no_bill。この 2 つのほかは印を書かない。
+- 完了の印は mark_completed と clear_completed だけが書く。出荷と数量の直しでは書き換えない (印と出荷の数を結ばない)。
+  明細が終わっているのは、完了の印が真か、出荷の合計が数量以上のとき (RULES.md R25。残は remaining_qty・annotate_remaining の 1 か所)。
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Sum, Value
-from django.db.models import Count, Max, Min
+from django.db.models import Case, Count, Max, Min, When
 from django.db.models.functions import Coalesce
 
 from seizou.core import history
@@ -63,6 +65,7 @@ _STATE_SALT = "seizou.orders.order_state_token"
 
 # 出荷済みの数と残の数の型 (OrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
+_ZERO = Decimal("0")
 
 
 def _refuse_ext(ext):
@@ -401,6 +404,84 @@ def clear_no_bill(order_line, user):
     return locked
 
 
+def _qty_text(value) -> str:
+    """知らせに出す数の字。末尾の 0 を落とす (10.00 → 10、4.50 → 4.5)。shipping.services._qty_text と同じ形
+    (shipping が orders を import するので、orders は shipping を import せずに形を写す)。
+
+    訳: 完了の知らせの数を、出荷の知らせの数と同じ字にするため。出所 = shipping.services._qty_text の訳と同じ (未確認)。
+    変えてよい条件 = shipping.services._qty_text と一緒に変えるとき。
+    """
+    dec = _dec(value).normalize()
+    if dec == dec.to_integral_value():
+        return str(dec.quantize(Decimal(1)))
+    return format(dec, "f")
+
+
+def mark_completed(order_line, user):
+    """受注の明細を、人が完了にする (足りないまま終える)。返す物は錠を掛けて取り直した明細 (saved_message 付き)。
+
+    受注の明細の行に錠を掛け、印を書き、変更の履歴に残し、refresh_status で受注の状態を決め直す (同じ transaction.atomic の中)。
+    取消の受注の明細は日本語の ValueError。もう完了の明細と、出荷の合計が数量以上で終わっている明細は、何も書かずに返す (断らない)。
+    印は出荷の数と結ばない。出した数と金額はそのまま請求に残り、印は clear_completed で外せる。
+    出荷の「残りは出さずに完了にする」(shipping.services.ship の close_rest) も、この関数を呼ぶ。
+    取消 (cancel_order) との違い: 取消は受注の全部をやめて戻せず、R05 で出荷も指示書も作れない。完了は明細ごとの印で、出した数と金額はそのまま請求に残り、外せる。
+    訳: 得意先が残りは要らないと言った明細や、不良で作り直さない分のある明細を、数量を出荷済みに下げて元の注文の数を消さずに終え、
+    生産管理ボード・今日やること・在庫の見通し・出荷の候補の残から外すため。取り消した受注の明細は、受注の取消 (R05) の後なので完了にしない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    with transaction.atomic():
+        locked = OrderLine.objects.select_for_update().select_related("order").get(pk=order_line.pk)
+        if locked.order.status == Order.STATUS_CANCELLED:
+            raise ValueError("保存できません。取り消した受注の明細は完了にできません。出荷を続けるときは、新しく受注を作ってください。")
+        label = f"{locked.order.order_no}-{locked.line_no}"
+        if shipped_qty(locked) >= locked.qty:
+            # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+            locked.saved_message = f"{label} は数量まで出荷済みで、終わっています。"
+            return locked
+        if not locked.completed:
+            before = history.saved_state(locked)
+            locked.completed = True
+            locked.save(update_fields=["completed"])
+            record_history(locked, user, before=before)
+            refresh_status(locked.order, user)
+    locked.saved_message = (
+        f"{label} を完了にしました。残り {_qty_text(unfilled_qty(locked))} は出さずに終えます。"
+        "また出すときは、明細の ⋮ から完了を外してください。"
+    )
+    return locked
+
+
+def clear_completed(order_line, user):
+    """受注の明細の完了を外す。返す物は錠を掛けて取り直した明細 (saved_message 付き)。
+
+    受注の明細の行に錠を掛け、印を外し、変更の履歴に残し、refresh_status で受注の状態を決め直す (同じ transaction.atomic の中)。
+    取消の受注の明細は日本語の ValueError。完了でない明細は何も書かずに返す (断らない)。
+    外した後の残 (remaining_qty) が 0 より大きければ、知らせの字に「残り n をまた出せます。」を足す。
+    訳: 誤って完了にした明細や、得意先がやはり残りを要ると言った明細を、また出荷の候補と生産管理ボードの残に戻すため。
+    取り消した受注の明細は、受注の取消 (R05) の後で出荷を続けないので外さない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    with transaction.atomic():
+        locked = OrderLine.objects.select_for_update().select_related("order").get(pk=order_line.pk)
+        if locked.order.status == Order.STATUS_CANCELLED:
+            raise ValueError("保存できません。取り消した受注の明細の完了は外せません。出荷を続けるときは、新しく受注を作ってください。")
+        if locked.completed:
+            before = history.saved_state(locked)
+            locked.completed = False
+            locked.save(update_fields=["completed"])
+            record_history(locked, user, before=before)
+            refresh_status(locked.order, user)
+    message = f"{locked.order.order_no}-{locked.line_no} の完了を外しました。"
+    rest = remaining_qty(locked)
+    if rest > 0:
+        message += f"残り {_qty_text(rest)} をまた出せます。"
+    # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+    locked.saved_message = message
+    return locked
+
+
 def shipped_qty(order_line):
     """受注の明細に対する出荷済みの数 (出荷から集計。列に持たない)。
 
@@ -454,39 +535,79 @@ def acceptance_summary(order_line):
 
 
 def remaining_qty(order_line):
-    """受注の明細の残 (受注の数 − 出荷済みの数)。マイナスも返す (現物優先)。"""
-    return order_line.qty - shipped_qty(order_line)
+    """受注の明細の残 (RULES.md R25)。完了の明細は min(数量 − 出荷済みの数, 0)、ほかは 数量 − 出荷済みの数。マイナスも返す (現物優先)。
+
+    完了の明細は足りない分を残に数えず、多く出した分はマイナスのまま見せる。明細が終わっている = この残が 0 以下
+    (完了の明細か、出荷の合計が数量以上)。読む所の「残が 0 より大きい = 終わっていない」の見方は、そのまま使える。
+    完了の印は渡された明細の値を読む (印を書いた後は取り直した明細を渡す)。
+    訳: 人が完了にした明細の足りない分を、生産管理ボード・今日やること・在庫の見通し・出荷の候補の残に数えないため。
+    完了の印と出荷の数は結ばず、どちらかを満たせば終わっている。出荷済みの数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    rest = order_line.qty - shipped_qty(order_line)
+    if order_line.completed:
+        return min(rest, _ZERO)
+    return rest
+
+
+def unfilled_qty(order_line):
+    """完了の明細の出さずに終えた数 = max(数量 − 出荷済みの数, 0)。完了でなければ 0 (読むだけ)。
+
+    完了にした時の知らせの字と、明細の完了の印の画面が読む。
+    訳: 人が完了にした明細の足りない分を、生産管理ボード・今日やること・在庫の見通し・出荷の候補の残に数えないため。
+    完了の印と出荷の数は結ばず、どちらかを満たせば終わっている。出荷済みの数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    if not order_line.completed:
+        return _ZERO
+    return max(order_line.qty - shipped_qty(order_line), _ZERO)
 
 
 def annotate_remaining(queryset):
     """受注の明細の queryset に、出荷済みの数 (shipped_total) と残の数 (remaining_total) を足して返す。
 
-    shipped_qty・remaining_qty と同じ式 (出荷の数の合計、出荷が無ければ 0)。一覧と候補の口が使う。
+    shipped_qty・remaining_qty と同じ式 (出荷の数の合計、出荷が無ければ 0。残は RULES.md R25 = 完了の明細は
+    min(数量 − 出荷済みの数, 0)、ほかは 数量 − 出荷済みの数)。一覧と候補の口が使う。
     出荷の表 (shipping) が無いときは、出荷済みの数を 0 とする。
+    訳: 人が完了にした明細の足りない分を、生産管理ボード・今日やること・在庫の見通し・出荷の候補の残に数えないため。
+    完了の印と出荷の数は結ばず、どちらかを満たせば終わっている。出荷済みの数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
     """
     try:
         OrderLine._meta.get_field("shipments")
     except FieldDoesNotExist:
-        shipped = Value(Decimal("0"), output_field=_QTY_FIELD)
+        shipped = Value(_ZERO, output_field=_QTY_FIELD)
     else:
-        shipped = Coalesce(Sum("shipments__qty"), Value(Decimal("0")), output_field=_QTY_FIELD)
+        shipped = Coalesce(Sum("shipments__qty"), Value(_ZERO), output_field=_QTY_FIELD)
+    rest = ExpressionWrapper(F("qty") - F("shipped_total"), output_field=_QTY_FIELD)
     return queryset.annotate(shipped_total=shipped).annotate(
-        remaining_total=ExpressionWrapper(F("qty") - F("shipped_total"), output_field=_QTY_FIELD)
+        remaining_total=Case(
+            # 完了の明細: 多く出した分はマイナスのまま、足りない分は 0
+            When(completed=True, shipped_total__gt=F("qty"), then=rest),
+            When(completed=True, then=Value(_ZERO)),
+            default=rest,
+            output_field=_QTY_FIELD,
+        )
     )
 
 
 def refresh_status(order, user):
-    """受注の状態を、明細の出荷済みの数から決め直す。返す物は取り直した Order。
+    """受注の状態を、明細の残 (annotate_remaining の remaining_total。RULES.md R25) から決め直す。返す物は取り直した Order。
 
-    取消はそのまま。全部の明細が出荷済み (出荷済みの数 >= 数量) なら出荷済、1 つでも出荷があれば一部出荷、
-    ほかは受注。明細が 0 行なら受注。受注より多い出荷も出荷済にする (止めない。現物優先)。
+    取消はそのまま。全部の明細が済んだ (残が 0 以下) なら出荷済、1 つでも出荷があれば一部出荷、ほかは受注。明細が 0 行なら受注。
+    完了でない明細の「済んだ」は今までどおり出荷済みの数 >= 数量。完了の明細は足りなくても済んだと数える
+    (全部の明細を出荷 0 で完了にした受注も出荷済。「出荷の残りがある受注」に残さないため)。
+    受注より多い出荷も出荷済にする (止めない。現物優先)。
     """
     with transaction.atomic():
         locked = Order.objects.select_for_update().get(pk=order.pk)
         if locked.status == Order.STATUS_CANCELLED:
             return locked
         rows = list(annotate_remaining(OrderLine.objects.filter(order=locked)))
-        if rows and all(row.shipped_total >= row.qty for row in rows):
+        if rows and all(row.remaining_total <= 0 for row in rows):
             status = Order.STATUS_SHIPPED
         elif any(row.shipped_total > 0 for row in rows):
             status = Order.STATUS_PARTIAL

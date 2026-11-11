@@ -21,6 +21,9 @@
 - 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
   connect の受け口が mark_accepted・mark_conditional・mark_rejected・mark_on_hold で答えを待っている発注 (送った・相手が保留した) に当てる。
 - 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、全部そろえば「納品された」。受入が先の発注に後から受諾が届いたときも「一部納品」。
+- 完了の印は mark_completed と clear_completed だけが書く。受入と発注の変更では書き換えない (印と受入の数を結ばない)。
+  明細が終わっているのは、完了の印が真か、受入の合計が数量以上のとき (RULES.md R25。残は remaining_qty・annotate_received の 1 か所)。
+  完了は相手の seizou へ送らない (相手にも止めてほしいときは、完了を外してから「変更」で数を直して送る)。
 - 仕入明細は create_self_invoice。受入をまとめ、消費税は billing の 1 か所 (consumption_tax) で合計に 1 回、期間と支払期日は billing の closing_period・payment_due_date を呼ぶ (式を写さない)。
   候補の受入は self_invoice_receipts、詳細の 60 日の黄の 1 行の字は due_date_note (どちらも読むだけ)。
 """
@@ -826,9 +829,14 @@ def _revision_refused(purchase_order):
 # --- 受入 (協力企業管理の 2 つ目の画面。受け入れた数 × 発注の単価が支払の金額) ---
 
 
-def receive(line, qty, received_on, user, *, note=""):
+def receive(line, qty, received_on, user, *, note="", close_rest=False):
     """発注の明細に受入を 1 件入れる。金額は masters.services.delivery_amount (部品の単位は受け入れた数 × 明細の単価を発注の取引先の方法で丸める (R03 の形)。
     一式の明細は、明細の受入の合計を数量の手前から数量以上にした回で、その明細に金額の載った受入がまだ無ければ一式の全額、ほかの回は 0 = 作者の決め)。
+
+    close_rest が真なら「残りは受け入れずに完了にする」受入: 同じ atomic の中で受入を作った後に、受入の残 (remaining_qty。RULES.md R25) が
+    0 より大きければ mark_completed を呼ぶ (この受入で数量に届いたら何もしない。一式の明細の断りは mark_completed のとおりで、断られたら受入も残らない)。
+    足りないまま完了にした時は、返す受入に saved_message「受入を保存しました。<mark_completed の字>」(と saved_level) を付ける (表に書かない)。
+    完了の明細への受入は断らない (取り消した明細と同じ。候補に出さないだけ)。
 
     断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
     受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る (明細に工程のある受入は入れない = stock.services.record_received)。
@@ -874,6 +882,11 @@ def receive(line, qty, received_on, user, *, note=""):
             from seizou.stock import services as stock_services
 
             stock_services.record_received(receipt, user)
+        closed = None
+        if close_rest and remaining_qty(current) > 0:
+            # 完了の印を書き、全部の明細が済めば「納品された」にする (mark_completed)。下の状態の見方は、書いた後の状態から始める。
+            closed = mark_completed(current, user)
+            locked.refresh_from_db(fields=["status"])
         if locked.status != PurchaseOrder.STATUS_DELIVERED:
             # 取り消した明細 (明細状態コード 2) は「納品された」の見方に入れない (受入は断らない = 現物優先。候補に出さないだけ)。
             lines = list(annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
@@ -889,11 +902,149 @@ def receive(line, qty, received_on, user, *, note=""):
                 record_history(locked, user, before=before)
 
     # 検収を相手へ送る。HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
+    result = receipt
     if _is_sent_order(locked):
         from seizou.connect import services as connect_services
 
-        return connect_services.send_acceptance(receipt, user)
-    return receipt
+        result = connect_services.send_acceptance(receipt, user)
+    if closed is not None:
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせ)。表に書かない。
+        result.saved_message = f"受入を保存しました。{closed.saved_message}"
+        level = getattr(closed, "saved_level", None)
+        if level:
+            result.saved_level = level
+    return result
+
+
+# --- 完了の印 (人が足りないまま終える明細。RULES.md R25) ---
+
+#: 送った発注を完了にした時の知らせの後ろの字 (完了は相手の seizou へ送らない)
+COMPLETED_NOT_SENT_NOTE = (
+    "相手の seizou には伝わりません。相手にも止めてほしいときは、完了を外してから、"
+    "発注の「変更」で数量を受入済みの数に直して送ってください。"
+)
+
+
+def _all_live_lines_done(purchase_order):
+    """取り消していない明細が 1 行以上あり、全部の受入の残 (annotate_received の remaining_total。RULES.md R25) が 0 以下か (読むだけ)。"""
+    rows = list(annotate_received(purchase_order.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
+    return bool(rows) and all(row.remaining_total <= 0 for row in rows)
+
+
+def mark_completed(line, user):
+    """発注の明細を、人が完了にする (受入の足りないまま終える)。返す物は取り直した明細 (saved_message 付き)。
+
+    発注の行に錠を掛け (receive と同じ)、印を書き、変更の履歴に残す。取り消していない明細が全部済んだ (残が 0 以下) なら、
+    発注を「納品された」にして変更の履歴に残す (同じ transaction.atomic の中)。
+    断る (日本語の ValueError): 取消の発注・取り消した明細 (明細状態コード 2)・一式の明細 (単価の単位が式) で受入が 1 件以上あり、
+    金額の載った受入が無い明細 (受入が 0 件の一式は払う物が無いので断らない)。
+    もう完了の明細と、受入の合計が数量以上で終わっている明細は、何も書かずに返す (断らない)。
+    seizou どうしで送った発注 (_is_sent_order) では、知らせの字の後ろに COMPLETED_NOT_SENT_NOTE を足し、saved_level を "warning" にする
+    (保存は済んだが人の手が要る物。CLAUDE.md の知らせの強さの表の下の注記)。相手へは何も送らない。
+    完了で「納品された」になった発注には「変更」が出ない (CHANGEABLE_STATUSES に無い) ので、相手に知らせるときは外してから「変更」で送る。
+    訳: 協力企業の戻りが足りないまま終える明細を、数量を受入済みに下げて元の発注の数を消さずに終え、受入の候補と「受入の残」から外すため。
+    取消の発注と取り消した明細は受け入れない物なので完了にしない。一式の明細は全部を受け入れた回で一式の全額を載せる (receive) ので、
+    金額の載らないまま終えると払う物が消える。そのときは残りの数で受入を入れて全額を載せる。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味か、一式の明細を足りないまま終えた時の払い方を決め直したとき。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=line.purchase_order_id)
+        if locked.status == PurchaseOrder.STATUS_CANCELLED:
+            raise ValueError("保存できません。取り消した発注の明細は完了にできません。受け入れを続けるときは、新しく発注を入れてください。")
+        current = PurchaseOrderLine.objects.get(pk=line.pk)
+        if current.is_cancelled:
+            raise ValueError("保存できません。取り消した明細は完了にできません。取り消した明細は受入の残に数えないので、完了は要りません。")
+        label = f"{locked.po_no}-{current.line_no}"
+        if received_qty(current) >= current.qty:
+            # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+            current.saved_message = f"{label} は数量まで受け入れ済みで、終わっています。"
+            return current
+        if not current.completed:
+            receipts = current.receipts.all()
+            if current.price_basis == PRICE_BASIS_LUMP and receipts.exists() and not receipts.filter(amount__gt=0).exists():
+                raise ValueError(
+                    "保存できません。一式の明細で、受け入れた物に一式の金額がまだ載っていないので、完了にできません。"
+                    "全部を受け入れたことにするときは、残りの数で受入を入れてください。"
+                )
+            before = history.saved_state(current)
+            current.completed = True
+            current.save(update_fields=["completed"])
+            record_history(current, user, before=before)
+            if locked.status != PurchaseOrder.STATUS_DELIVERED and _all_live_lines_done(locked):
+                before = history.saved_state(locked)
+                locked.status = PurchaseOrder.STATUS_DELIVERED
+                locked.save(update_fields=["status"])
+                record_history(locked, user, before=before)
+        message = (
+            f"{label} を完了にしました。残り {_qty_text(unfilled_qty(current))} は受け入れずに終えます。"
+            "また受け入れるときは、明細の ⋮ から完了を外してください。"
+        )
+        if _is_sent_order(locked):
+            message += COMPLETED_NOT_SENT_NOTE
+            current.saved_level = "warning"
+        current.saved_message = message
+        return current
+
+
+def _reopened_status(purchase_order):
+    """完了を外して受入の残が戻った「納品された」の発注の、決め直した状態 (読むだけ)。
+
+    受入が 1 つでもあり、第 1 版の注文回答のタイプが受諾なら「一部納品」。ほかは注文回答のタイプから決める
+    (受諾 → 相手が受け入れた・条件付 → 相手が条件付で受けた・保留 → 相手が保留した・辞退 → 断られた・空 → 送った注文があれば送った、無ければ下書き)。
+    訳: 完了を外した発注を、受入の数で状態を変える今の決まり (receive の docstring = 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、
+    ほかの状態は一部の受入では変えない) と同じ見方に戻し、後で届く注文回答と受入を今までどおり当てられるようにするため。
+    出所 = 本人の決め 11-11 08:4x・09:3x を受けた作者の決め (開発の記録 docs/nights/20261111/N400.md)。
+    変えてよい条件 = 発注の状態の決め方 (receive・mark_accepted) が変わったとき。
+    """
+    reply = purchase_order.reply_type
+    if reply == edi_codes.REPLY_ACCEPTED and purchase_order.receipts.exists():
+        return PurchaseOrder.STATUS_PARTIAL
+    by_reply = {
+        edi_codes.REPLY_ACCEPTED: PurchaseOrder.STATUS_ACCEPTED,
+        edi_codes.REPLY_CONDITIONAL: PurchaseOrder.STATUS_CONDITIONAL,
+        edi_codes.REPLY_PENDING: PurchaseOrder.STATUS_ON_HOLD,
+        edi_codes.REPLY_REJECTED: PurchaseOrder.STATUS_REJECTED,
+    }
+    if reply in by_reply:
+        return by_reply[reply]
+    return PurchaseOrder.STATUS_SENT if _is_sent_order(purchase_order) else PurchaseOrder.STATUS_DRAFT
+
+
+def clear_completed(line, user):
+    """発注の明細の完了を外す。返す物は取り直した明細 (saved_message 付き)。
+
+    発注の行に錠を掛け (receive と同じ)、印を外し、変更の履歴に残す。外した後、発注が「納品された」で、取り消していない明細のどれかに
+    受入の残があれば、状態を _reopened_status で決め直して変更の履歴に残す (同じ transaction.atomic の中)。
+    取消の発注の明細は日本語の ValueError。完了でない明細は何も書かずに返す (断らない)。
+    外した後の受入の残 (remaining_qty) が 0 より大きければ、知らせの字に「残り n をまた受け入れられます。」を足す。相手へは何も送らない。
+    訳: 誤って完了にした明細や、協力企業がやはり残りを納めると言った明細を、また受入の候補と「受入の残」に戻すため。
+    取消の発注は受け入れない物なので外さない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=line.purchase_order_id)
+        if locked.status == PurchaseOrder.STATUS_CANCELLED:
+            raise ValueError("保存できません。取り消した発注の明細の完了は外せません。受け入れを続けるときは、新しく発注を入れてください。")
+        current = PurchaseOrderLine.objects.get(pk=line.pk)
+        if current.completed:
+            before = history.saved_state(current)
+            current.completed = False
+            current.save(update_fields=["completed"])
+            record_history(current, user, before=before)
+            if locked.status == PurchaseOrder.STATUS_DELIVERED and not _all_live_lines_done(locked):
+                before = history.saved_state(locked)
+                locked.status = _reopened_status(locked)
+                locked.save(update_fields=["status"])
+                record_history(locked, user, before=before)
+        message = f"{locked.po_no}-{current.line_no} の完了を外しました。"
+        rest = remaining_qty(current)
+        if rest > 0:
+            message += f"残り {_qty_text(rest)} をまた受け入れられます。"
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        current.saved_message = message
+        return current
 
 
 # --- 検収 (受入を相手の seizou の受注の明細へ送る記録。EDI の 4 段目) ---
@@ -945,18 +1096,55 @@ def received_qty(line):
 
 
 def remaining_qty(line):
-    """発注の明細の受入の残 = 明細の数量 − 受入の数。マイナスも返す (現物優先)。"""
-    return line.qty - received_qty(line)
+    """発注の明細の受入の残 (RULES.md R25)。完了の明細は min(数量 − 受入の数, 0)、ほかは 数量 − 受入の数。マイナスも返す (現物優先)。
+
+    完了の明細は足りない分を残に数えず、多く受けた分はマイナスのまま見せる。明細が終わっている = この残が 0 以下
+    (完了の明細か、受入の合計が数量以上)。完了の印は渡された明細の値を読む (印を書いた後は取り直した明細を渡す)。
+    訳: 人が完了にした明細の足りない分を、受入の候補・「受入の残」・出荷の知らせのある明細の数に数えないため。
+    完了の印と受入の数は結ばず、どちらかを満たせば終わっている。受入の数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    rest = line.qty - received_qty(line)
+    if line.completed:
+        return min(rest, _ZERO)
+    return rest
+
+
+def unfilled_qty(line):
+    """完了の明細の受け入れずに終えた数 = max(数量 − 受入の数, 0)。完了でなければ 0 (読むだけ)。
+
+    完了にした時の知らせの字と、明細の完了の印の画面が読む。
+    訳: 人が完了にした明細の足りない分を、受入の候補・「受入の残」・出荷の知らせのある明細の数に数えないため。
+    完了の印と受入の数は結ばず、どちらかを満たせば終わっている。受入の数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
+    """
+    if not line.completed:
+        return _ZERO
+    return max(line.qty - received_qty(line), _ZERO)
 
 
 def annotate_received(queryset):
     """発注の明細の queryset に、受入の数 (received_total) と受入の残 (remaining_total) を足して返す。
 
-    received_qty・remaining_qty と同じ式 (受入の数の合計、受入が無ければ 0)。join は受入の 1 つだけ。候補の口と詳細が使う。
+    received_qty・remaining_qty と同じ式 (受入の数の合計、受入が無ければ 0。残は RULES.md R25 = 完了の明細は
+    min(数量 − 受入の数, 0)、ほかは 数量 − 受入の数)。join は受入の 1 つだけ。候補の口と詳細が使う。
+    訳: 人が完了にした明細の足りない分を、受入の候補・「受入の残」・出荷の知らせのある明細の数に数えないため。
+    完了の印と受入の数は結ばず、どちらかを満たせば終わっている。受入の数と金額は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
     """
     received = Coalesce(Sum("receipts__qty"), Value(_ZERO), output_field=_QTY_FIELD)
+    rest = ExpressionWrapper(F("qty") - F("received_total"), output_field=_QTY_FIELD)
     return queryset.annotate(received_total=received).annotate(
-        remaining_total=ExpressionWrapper(F("qty") - F("received_total"), output_field=_QTY_FIELD)
+        remaining_total=Case(
+            # 完了の明細: 多く受けた分はマイナスのまま、足りない分は 0
+            When(completed=True, received_total__gt=F("qty"), then=rest),
+            When(completed=True, then=Value(_ZERO)),
+            default=rest,
+            output_field=_QTY_FIELD,
+        )
     )
 
 
@@ -965,7 +1153,12 @@ def annotate_order_received(queryset):
 
     明細と受入の合計は別の Subquery で足す (lines と receipts の 2 つの join を 1 つの問い合わせに置くと、行が重なって数えられる)。
     取り消した発注の差は 0 (受け入れない発注に残を出さない。作者の決め)。
+    差からは、取り消していない完了の明細の受け入れずに終えた数 (unfilled_qty と同じ式) の合計も引く (RULES.md R25)。これも別の Subquery
+    (明細ごとの受入の数は、その中の Subquery で数える。join を重ねない)。ordered_total と received_total の 2 列は変えない。
     発注の一覧が使う。読むだけ。
+    訳: 人が完了にした明細の足りない分を、発注の一覧の「受入の残」に数えないため。取り消した明細の受入の数え方は変えない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    変えてよい条件 = 本人が完了の印の意味を決め直したとき。
     """
     ordered = (
         PurchaseOrderLine.objects.filter(purchase_order=OuterRef("pk"))
@@ -983,13 +1176,36 @@ def annotate_order_received(queryset):
         .annotate(total=Sum("qty"))
         .values("total")[:1]
     )
+    # 取り消していない完了の明細ごとの max(数量 − その明細の受入の数, 0) の合計 (unfilled_qty と同じ式)。
+    line_received = (
+        Receipt.objects.filter(line=OuterRef("pk")).order_by().values("line").annotate(total=Sum("qty")).values("total")[:1]
+    )
+    unfilled = (
+        PurchaseOrderLine.objects.filter(purchase_order=OuterRef("pk"), completed=True)
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
+        .annotate(
+            line_received=Coalesce(Subquery(line_received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
+        )
+        .annotate(
+            short=Case(
+                When(qty__gt=F("line_received"), then=ExpressionWrapper(F("qty") - F("line_received"), output_field=_QTY_FIELD)),
+                default=Value(_ZERO),
+                output_field=_QTY_FIELD,
+            )
+        )
+        .order_by()
+        .values("purchase_order")
+        .annotate(total=Sum("short"))
+        .values("total")[:1]
+    )
+    unfilled_total = Coalesce(Subquery(unfilled, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
     return queryset.annotate(
         ordered_total=Coalesce(Subquery(ordered, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
         received_total=Coalesce(Subquery(received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD),
     ).annotate(
         receive_remaining=Case(
             When(status=PurchaseOrder.STATUS_CANCELLED, then=Value(_ZERO)),
-            default=ExpressionWrapper(F("ordered_total") - F("received_total"), output_field=_QTY_FIELD),
+            default=ExpressionWrapper(F("ordered_total") - F("received_total") - unfilled_total, output_field=_QTY_FIELD),
             output_field=_QTY_FIELD,
         )
     )
