@@ -39,6 +39,7 @@ SETTING_LABELS = {
     "progress_staff": ("作業した人の無い実績 (R26)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "billed_shipment": ("請求済みの出荷の直し (R27)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "progress_inactive_staff": ("使用停止の社員を作業した人にした実績 (R28)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
+    "lump_completion": ("一式の金額の載らない発注の明細の完了 (R29)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
     "transcription_minutes_per_line": ("1 行の手入力にかかる分", {}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),

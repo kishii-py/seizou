@@ -64,6 +64,17 @@ def delete_refusal(shipment) -> str:
     return services.delete_refusal(shipment)
 
 
+def completes_without_lump_amount(purchase_order_line, *, adding_qty=None) -> bool:
+    """一式の発注の明細を、一式の金額が載らないまま完了にするか (R29 が読む。purchasing.services の同じ名前の関数)。purchasing の部品が無ければ False。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.purchasing"):
+        return False
+    from seizou.purchasing import services
+
+    return services.completes_without_lump_amount(purchase_order_line, adding_qty=adding_qty)
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)

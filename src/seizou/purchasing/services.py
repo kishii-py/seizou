@@ -834,7 +834,7 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
     一式の明細は、明細の受入の合計を数量の手前から数量以上にした回で、その明細に金額の載った受入がまだ無ければ一式の全額、ほかの回は 0 = 作者の決め)。
 
     close_rest が真なら「残りは受け入れずに完了にする」受入: 同じ atomic の中で受入を作った後に、受入の残 (remaining_qty。RULES.md R25) が
-    0 より大きければ mark_completed を呼ぶ (この受入で数量に届いたら何もしない。一式の明細の断りは mark_completed のとおりで、断られたら受入も残らない)。
+    0 より大きければ mark_completed を呼ぶ (この受入で数量に届いたら何もしない。一式の明細は検査の層の R29 が知らせる (services は断らない))。
     足りないまま完了にした時は、返す受入に saved_message「受入を保存しました。<mark_completed の字>」(と saved_level) を付ける (表に書かない)。
     完了の明細への受入は断らない (取り消した明細と同じ。候補に出さないだけ)。
 
@@ -925,6 +925,38 @@ COMPLETED_NOT_SENT_NOTE = (
 )
 
 
+#: 一式の明細を金額の載らないまま完了にした時の知らせの後ろの字 (知らせの設定が「通す」の会社でも、済んだ後に分かるようにする)
+LUMP_ZERO_NOTE = "一式の金額は載っていないので、この明細の支払の金額は 0 円です。"
+
+
+def completes_without_lump_amount(line, *, adding_qty=None):
+    """一式の明細 (単価の単位が式) を、一式の金額が載らないまま完了にするかを返す (読むだけ)。検査の層の R29 が core.checks.tools から呼ぶ。
+
+    真になるのは、明細が一式で、完了の印が偽で、金額の載った受入が無く、次のどちらかのとき。
+    人が完了にする (adding_qty が None。mark_completed) なら、受入が 1 件以上あり、受入の合計が数量より少ないとき。受入が 0 件なら払う物が無いので偽。
+    受入の入力の「残りは受け入れずに完了にする」(adding_qty = 今回の受入の数。receive の close_rest) なら、今までの受入の合計 + 今回の数が数量より少ないとき
+    (今回の受入は一式の全額を載せない回なので、受け入れた物が 1 件以上あるのに金額が載らない)。
+    見方は receive と同じ。金額の載った受入があるかは receive の booked (一式の明細の金額が 0 より大きい受入)、今回の回で全額が載るかは
+    receive の completes (reaches_line_qty。合計がちょうど数量になる回も全額が載る) の裏。
+    取消の発注・取り消した明細 (明細状態コード 2) と、今回の数が 0 以下の受入は偽 (services が先に赤で断るので、黄の知らせの後に赤を出さないため。R24 の取消の請求書と同じ考え)。
+    訳: 一式の発注の明細を、一式の金額が載らないまま完了にした間違い (支払の金額が 0 円のまま残る) に気づかせるため。
+    出所 = 本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・13:1x (一式の完了の断りを知らせるに変える)。
+    変えてよい条件 = 一式の金額を載せる時 (receive の booked と completes) か、完了の印の意味が変わったとき。
+    """
+    if line.price_basis != PRICE_BASIS_LUMP or line.completed or line.is_cancelled:
+        return False
+    if line.purchase_order.status == PurchaseOrder.STATUS_CANCELLED:
+        return False
+    receipts = line.receipts.all()
+    if receipts.filter(amount__gt=0).exists():
+        return False
+    done = received_qty(line)
+    if adding_qty is None:
+        return receipts.exists() and done < line.qty
+    adding = _dec(adding_qty)
+    return adding > 0 and done + adding < line.qty
+
+
 def _all_live_lines_done(purchase_order):
     """取り消していない明細が 1 行以上あり、全部の受入の残 (annotate_received の remaining_total。RULES.md R25) が 0 以下か (読むだけ)。"""
     rows = list(annotate_received(purchase_order.lines.exclude(line_status_code=edi_codes.LINE_DELETED)))
@@ -936,16 +968,17 @@ def mark_completed(line, user):
 
     発注の行に錠を掛け (receive と同じ)、印を書き、変更の履歴に残す。取り消していない明細が全部済んだ (残が 0 以下) なら、
     発注を「納品された」にして変更の履歴に残す (同じ transaction.atomic の中)。
-    断る (日本語の ValueError): 取消の発注・取り消した明細 (明細状態コード 2)・一式の明細 (単価の単位が式) で受入が 1 件以上あり、
-    金額の載った受入が無い明細 (受入が 0 件の一式は払う物が無いので断らない)。
+    断る (日本語の ValueError): 取消の発注・取り消した明細 (明細状態コード 2)。
     もう完了の明細と、受入の合計が数量以上で終わっている明細は、何も書かずに返す (断らない)。
+    一式の明細を金額の載らないまま完了にした時 (completes_without_lump_amount が印を書く前に真) は、知らせの字の後ろに LUMP_ZERO_NOTE を足す
+    (知らせの設定が「通す」の会社でも、済んだ後に分かるようにする。saved_level は変えない)。
     seizou どうしで送った発注 (_is_sent_order) では、知らせの字の後ろに COMPLETED_NOT_SENT_NOTE を足し、saved_level を "warning" にする
     (保存は済んだが人の手が要る物。CLAUDE.md の知らせの強さの表の下の注記)。相手へは何も送らない。
     完了で「納品された」になった発注には「変更」が出ない (CHANGEABLE_STATUSES に無い) ので、相手に知らせるときは外してから「変更」で送る。
     訳: 協力企業の戻りが足りないまま終える明細を、数量を受入済みに下げて元の発注の数を消さずに終え、受入の候補と「受入の残」から外すため。
-    取消の発注と取り消した明細は受け入れない物なので完了にしない。一式の明細は全部を受け入れた回で一式の全額を載せる (receive) ので、
-    金額の載らないまま終えると払う物が消える。そのときは残りの数で受入を入れて全額を載せる。
-    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
+    取消の発注と取り消した明細は受け入れない物なので完了にしない。一式の明細を金額の載らないまま完了にすると支払の金額が 0 円のまま残るので、
+    検査の層の R29 で知らせる (止めるか通すかは会社が選ぶ = 本人の決め 11-11 12:5x・13:1x)。全部を受け入れたことにするときは、残りの数で受入を入れて全額を載せる。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x・12:5x・13:1x。
     変えてよい条件 = 本人が完了の印の意味か、一式の明細を足りないまま終えた時の払い方を決め直したとき。
     """
     with transaction.atomic():
@@ -960,13 +993,9 @@ def mark_completed(line, user):
             # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
             current.saved_message = f"{label} は数量まで受け入れ済みで、終わっています。"
             return current
+        # 一式の金額の載らないまま完了にするか (印を書いた後は偽になるので、書く前に見る。検査の層の R29 と同じ見方)
+        lump_zero = completes_without_lump_amount(current)
         if not current.completed:
-            receipts = current.receipts.all()
-            if current.price_basis == PRICE_BASIS_LUMP and receipts.exists() and not receipts.filter(amount__gt=0).exists():
-                raise ValueError(
-                    "保存できません。一式の明細で、受け入れた物に一式の金額がまだ載っていないので、完了にできません。"
-                    "全部を受け入れたことにするときは、残りの数で受入を入れてください。"
-                )
             before = history.saved_state(current)
             current.completed = True
             current.save(update_fields=["completed"])
@@ -983,6 +1012,8 @@ def mark_completed(line, user):
         if _is_sent_order(locked):
             message += COMPLETED_NOT_SENT_NOTE
             current.saved_level = "warning"
+        if lump_zero:
+            message += LUMP_ZERO_NOTE
         current.saved_message = message
         return current
 

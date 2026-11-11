@@ -433,6 +433,58 @@ class ProgressInactiveStaffOnUpdate(Check):
         return _inactive_staff_message(self, staff)
 
 
+class LumpCompletion(Check):
+    """R29: 一式の発注の明細を、受入があるのに一式の金額の載った受入が無いうちに完了にしたら (発注の明細の「完了にする」)。
+
+    data の object は完了にする発注の明細 (土台の入力の画面が URL の pk の明細を渡す)。見方は tools.completes_without_lump_amount
+    (purchasing.services の同じ名前の関数。受入が 0 件の一式の明細・取消の発注・取り消した明細は偽)。
+    訳: 一式の発注の明細を、一式の金額が載らないまま完了にした間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・13:1x (今朝の断る処理を知らせるに変える)・会社の設定 lump_completion。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R29"
+    action = "purchasing.mark_completed"
+    setting_key = "lump_completion"
+    #: R29 の文 (受入の入力の LumpCompletionOnReceipt も同じ文。止めるのときは run が頭に「保存できません。」を付ける)
+    message = (
+        "一式の明細で、受け入れた物に一式の金額がまだ載っていません。完了にすると、この明細の支払の金額は 0 円のまま残ります。"
+        "全部を受け入れたことにするときは、残りの数で受入を入れてください。"
+    )
+
+    def run(self, data, user):
+        line = data.get("object")
+        if line is None:
+            return None
+        if tools.completes_without_lump_amount(line):
+            return self.message
+        return None
+
+
+class LumpCompletionOnReceipt(Check):
+    """R29: 受入の入力の「残りは受け入れずに完了にする」で、一式の発注の明細を一式の金額の載った受入が無いまま完了にしたら。
+
+    data の line は発注の明細、qty は今回の受入の数、close_rest は「残りは受け入れずに完了にする」(purchasing.services.receive の引数。受入の form の service_kwargs)。
+    close_rest が真のときだけ見る。今回の数で数量に届く受入は一式の全額が載るので知らせない (tools.completes_without_lump_amount の adding_qty)。
+    訳: 一式の発注の明細を、一式の金額が載らないまま完了にした間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。R29 を受入の入力にも掛ける)。出所 = 本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・13:1x (今朝の断る処理を知らせるに変える)・会社の設定 lump_completion。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R29"
+    action = "purchasing.receive"
+    setting_key = "lump_completion"
+
+    def run(self, data, user):
+        if not data.get("close_rest"):
+            return None
+        line = data.get("line")
+        qty = data.get("qty")
+        if line is None or qty is None:
+            return None
+        if tools.completes_without_lump_amount(line, adding_qty=qty):
+            return LumpCompletion.message
+        return None
+
+
 BUILTIN = (
     OverShipment(),
     OverShipmentOnUpdate(),
@@ -447,6 +499,8 @@ BUILTIN = (
     BilledShipmentOnDelete(),
     ProgressInactiveStaff(),
     ProgressInactiveStaffOnUpdate(),
+    LumpCompletion(),
+    LumpCompletionOnReceipt(),
 )
 
 for _check in BUILTIN:

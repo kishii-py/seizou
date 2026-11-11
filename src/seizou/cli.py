@@ -84,6 +84,7 @@ SETTING_DEFAULTS = {
     "progress_staff": "warn",
     "billed_shipment": "warn",
     "progress_inactive_staff": "warn",
+    "lump_completion": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,
