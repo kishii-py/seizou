@@ -25,10 +25,6 @@ from seizou.workorders import services as workorders_services
 
 ORDER_DATE = date(2026, 11, 2)
 RECORDED_AT = datetime(2026, 11, 3, 10, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-INACTIVE_TARO = (
-    "保存できません。社員番号 0012 (作り物の太郎) は使用停止です。"
-    "使用中の社員の番号を入れるか、社員の編集で「使用中」に戻してください。"
-)
 
 
 @pytest.fixture
@@ -96,12 +92,18 @@ def test_record_with_staff_writes_only_foreign_key(user, step, taro):
     assert display_value(Progress.objects.get(), "staff_name") == "0012 作り物の太郎 (直した)"
 
 
-def test_record_refuses_inactive_staff(user, step, taro):
+def test_record_writes_inactive_staff(user, step, taro):
+    """services は使用停止の社員の実績も保存し、外部キーを書く。
+
+    本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる)。知らせるか止めるかは検査の層の R28 が
+    services の前に見る (tests/test_r28_inactive_staff.py)。
+    """
     masters_services.update_staff(taro, {"active": False}, user)
-    with pytest.raises(ValueError) as error:
-        _record(step, user, staff=taro)
-    assert str(error.value) == INACTIVE_TARO
-    assert not Progress.objects.exists()
+    progress = _record(step, user, staff=taro)
+    progress.refresh_from_db()
+    assert progress.staff == taro
+    assert progress.staff_name == "" and progress.staff_code == ""
+    assert progress.get_staff_name_display() == "0012 作り物の太郎"
 
 
 def test_record_with_name_only(user, step):
@@ -159,14 +161,18 @@ def test_update_with_same_inactive_staff_passes(user, step, taro):
     assert progress.qty == Decimal("2") and progress.staff == taro
 
 
-def test_update_with_other_inactive_staff_is_refused(user, step, taro, jiro):
+def test_update_with_other_inactive_staff_writes(user, step, taro, jiro):
+    """services は、実績を別の使用停止の社員に直せる (外部キーを書き、2 つの写しを空にする)。
+
+    本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる)。知らせるか止めるかは検査の層の R28 が
+    services の前に見る (tests/test_r28_inactive_staff.py)。
+    """
     progress = _record(step, user, staff=jiro)
     masters_services.update_staff(taro, {"active": False}, user)
-    with pytest.raises(ValueError) as error:
-        _update(progress, user, staff=taro)
-    assert str(error.value) == INACTIVE_TARO
+    _update(progress, user, staff=taro)
     progress.refresh_from_db()
-    assert progress.qty == Decimal("1") and progress.staff == jiro
+    assert progress.qty == Decimal("2") and progress.staff == taro
+    assert progress.staff_name == "" and progress.staff_code == ""
 
 
 def test_update_switches_between_staff_and_name(user, step, taro, jiro):

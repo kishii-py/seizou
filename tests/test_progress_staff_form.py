@@ -1,7 +1,8 @@
 """実績の入力と編集の「社員番号」と「社員の一覧に居ない人の名前」の欄、実績の一覧の「作業した人」(2 段目 N401b。本人の決め 11-11 09:0x)。
 
 使用中の社員が 0 人の会社では欄が出ない。社員が居ると、現品票の QR から開く道 (?workorder_step=) と小窓の両方に 2 つの欄が出る。
-番号は照合の字 (先頭の 0 を省ける) で社員を引き、一覧に無い番号・使用停止の番号・番号と名前の両方は欄の誤りで止める。
+番号は照合の字 (先頭の 0 を省ける) で社員を引き、一覧に無い番号と、番号と名前の両方は欄の誤りで止める。
+使用停止の番号は欄の誤りにせず、R28 の知らせを出す (本人の決め 11-11 13:1x による読み替え。使用停止の社員を断らず、R28 で知らせる)。
 社員を消した後の写しを持つ実績の編集では欄を出さず、写しを変えない。見せる字は Progress.get_staff_name_display の 1 つだけ。
 社員と実績は services で作る (工程の行だけは R07 の試験と同じく表に直に作る)。名前は作り物だけ。
 """
@@ -33,7 +34,7 @@ RECORDED_AT = datetime(2026, 11, 3, 10, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
 MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 FIELDS = ('name="staff_code"', 'name="staff_name"')
 UNKNOWN_99 = "社員番号 99 は社員の一覧にありません。番号を確かめるか、社員の一覧に足してください。"
-INACTIVE_TARO = "社員番号 0012 (作り物の太郎) は使用停止です。使用中の社員の番号を入れてください。"
+R28_TARO = "社員番号 0012 (作り物の太郎) は使用停止の社員です。番号に間違いが無ければ、このまま保存できます。"
 BOTH = "社員番号と名前のどちらか一方を入れます。社員番号を入れたときは、名前を空にしてください。"
 R26_MESSAGE = "作業した人が入っていません。社員番号か、社員の一覧に居ない人の名前を入れてください。"
 
@@ -180,7 +181,11 @@ def test_short_number_in_modal(client_logged_in, step, taro):
 # ---------------------------------------------------------------- (d) 欄の誤り
 
 
-def test_unknown_inactive_and_both_are_field_errors(client_logged_in, user, step, taro, jiro):
+def test_unknown_and_both_are_field_errors_and_inactive_warns_r28(client_logged_in, user, step, taro, jiro):
+    """一覧に無い番号と、番号と名前の両方は欄の誤り。使用停止の番号は欄の誤りにせず、R28 の黄色の知らせと「このまま保存」を出す。
+
+    使用停止の番号の所は、本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる)。
+    """
     response = _post(client_logged_in, step, staff_code="99")
     assert response.status_code == 200
     assert _field_errors(response, "staff_code") == [UNKNOWN_99]
@@ -196,8 +201,16 @@ def test_unknown_inactive_and_both_are_field_errors(client_logged_in, user, step
     masters_services.update_staff(taro, {"active": False}, user)
     response = _post(client_logged_in, step, staff_code="12")
     assert response.status_code == 200
-    assert _field_errors(response, "staff_code") == [INACTIVE_TARO]
+    assert _field_errors(response, "staff_code") == []
+    body = response.content.decode()
+    assert 'data-notice="check"' in body and "R28" in body and "このまま保存" in body
+    assert [warning.message for warning in response.context["warnings"]] == [R28_TARO]
     assert not Progress.objects.exists()
+
+    response = _post(client_logged_in, step, staff_code="12", confirmed="1")
+    assert response.status_code == 302
+    record = Progress.objects.get()
+    assert record.staff == taro and record.staff_name == "" and record.staff_code == ""
 
 
 def test_too_long_values_are_field_errors(client_logged_in, step, taro):
@@ -263,7 +276,11 @@ def test_renamed_staff_shows_in_list_and_edit_keeps_inactive_staff(client_logged
     assert record.staff == taro and record.qty == Decimal("2") and record.note == "直した"
 
 
-def test_edit_changes_staff_and_refuses_other_inactive(client_logged_in, user, step, taro, jiro):
+def test_edit_changes_staff_and_warns_other_inactive_r28(client_logged_in, user, step, taro, jiro):
+    """編集で別の社員に直せる。別の使用停止の社員に直すと、R28 の黄色の知らせが出て、「このまま保存」で直る。
+
+    使用停止の社員の所は、本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる)。
+    """
     record = _record(step, user, staff=taro)
     response = _edit(client_logged_in, record, staff_code="34")
     assert response.status_code == 302
@@ -273,9 +290,17 @@ def test_edit_changes_staff_and_refuses_other_inactive(client_logged_in, user, s
     masters_services.update_staff(taro, {"active": False}, user)
     response = _edit(client_logged_in, record, staff_code="12")
     assert response.status_code == 200
-    assert _field_errors(response, "staff_code") == [INACTIVE_TARO]
+    assert _field_errors(response, "staff_code") == []
+    body = response.content.decode()
+    assert 'data-notice="check"' in body and "R28" in body and "このまま保存" in body
+    assert [warning.message for warning in response.context["warnings"]] == [R28_TARO]
     record.refresh_from_db()
     assert record.staff == jiro
+
+    response = _edit(client_logged_in, record, staff_code="12", confirmed="1")
+    assert response.status_code == 302
+    record.refresh_from_db()
+    assert record.staff == taro and record.qty == Decimal("2")
 
 
 def test_edit_initial_name_for_helper_and_switch_to_name(client_logged_in, user, step, taro):

@@ -1,10 +1,11 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R28)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・progress_inactive_staff) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
 R07 は実績の入力と実績の編集の 2 つの action に掛ける。R26 は実績の入力だけに掛ける。
+R28 は実績の入力と実績の編集の 2 つの action に掛ける (編集は、直す前と同じ社員のままなら見ない)。
 """
 
 from __future__ import annotations
@@ -281,7 +282,71 @@ class ProgressWithoutStaff(Check):
         return "作業した人が入っていません。社員番号か、社員の一覧に居ない人の名前を入れてください。"
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment(), ProgressWithoutStaff())
+def _inactive_staff_message(check, staff) -> str:
+    """R28 の文。続けて足す 1 文は mode で分ける (止めるの文の頭には、検査の層が「保存できません。」を付ける)。"""
+    head = f"社員番号 {staff.code} ({staff.name}) は使用停止の社員です。"
+    if check.current_mode() == "stop":
+        return head + "使用中の社員の番号を入れるか、社員の編集で「使用中」に戻してください。"
+    return head + "番号に間違いが無ければ、このまま保存できます。"
+
+
+def _inactive_staff(data):
+    """data の staff が使用停止の社員ならその社員、ほかは None。
+
+    staff の鍵が無い・None・progress.services.KEEP (作業した人を変えない編集) と使用中の社員は None
+    (active を持たない物は使用中と見る。core から progress を import しないため)。
+    """
+    staff = data.get("staff")
+    if staff is None or getattr(staff, "active", True):
+        return None
+    return staff
+
+
+class ProgressInactiveStaff(Check):
+    """R28: 実績の作業した人に、使用停止の社員を入れたら (実績の入力)。
+
+    data の staff は作業した社員 (masters の Staff。progress.services.record_progress の引数)。社員が無い実績 (名前だけと空) は見ない (空は R26 が見る)。
+    文は「社員番号 <番号> (<名前>) は使用停止の社員です。」に、知らせるなら「番号に間違いが無ければ、このまま保存できます。」、
+    止めるなら「使用中の社員の番号を入れるか、社員の編集で「使用中」に戻してください。」を続ける。
+    訳: 打ち間違いで辞めた人の番号に当たったときに気づかせるため。前は使用停止の社員の実績を断ったが、運用の誤りを防ぐ物は、まず分かるようにして、止めるかは会社が選ぶ (北極星のポカよけの考え方 11-11 12:5x)。既定は知らせる。直すときに同じ社員のままなら見ない (前の断りと同じ範囲)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 13:1x。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R28"
+    action = "progress.record_progress"
+    setting_key = "progress_inactive_staff"
+
+    def run(self, data, user):
+        staff = _inactive_staff(data)
+        if staff is None:
+            return None
+        return _inactive_staff_message(self, staff)
+
+
+class ProgressInactiveStaffOnUpdate(Check):
+    """R28: 実績の作業した人を、使用停止の社員に直したら (実績の編集)。
+
+    data の object は直す前の実績 (土台の入力の画面が渡す)。staff の鍵が無いか KEEP か None なら見ない。
+    社員が使用停止で、直す前の実績の社員と違うときだけ文を返す (同じ社員のままなら何も出さない)。文は ProgressInactiveStaff と同じ。
+    訳: 打ち間違いで辞めた人の番号に当たったときに気づかせるため。前は使用停止の社員の実績を断ったが、運用の誤りを防ぐ物は、まず分かるようにして、止めるかは会社が選ぶ (北極星のポカよけの考え方 11-11 12:5x)。既定は知らせる。直すときに同じ社員のままなら見ない (前の断りと同じ範囲)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 13:1x。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R28"
+    action = "progress.update_progress"
+    setting_key = "progress_inactive_staff"
+
+    def run(self, data, user):
+        staff = _inactive_staff(data)
+        if staff is None:
+            return None
+        progress = data.get("object")
+        if progress is not None and staff.pk == getattr(progress, "staff_id", None):
+            return None
+        return _inactive_staff_message(self, staff)
+
+
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment(), ProgressWithoutStaff(), ProgressInactiveStaff(), ProgressInactiveStaffOnUpdate())
 
 for _check in BUILTIN:
     register(_check)

@@ -711,7 +711,7 @@ class StaffUpdateView(BaseFormView):
     form_class = StaffForm
     service = staticmethod(services.update_staff)
     screen_name = "社員の編集"
-    screen_help = "社員番号・名前・備考を直します。辞めた人は「使用中」を外すと、実績の入力でその番号を使えなくなります。"
+    screen_help = "社員番号・名前・備考を直します。辞めた人は「使用中」を外すと、実績の入力でその番号を入れたときに知らせが出ます (止めるかは設定で選べます)。"
 
 
 class StaffDeleteView(BaseFormView):

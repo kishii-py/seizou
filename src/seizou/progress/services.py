@@ -14,7 +14,8 @@
   書く前に、指示書の工程の行を select_for_update でロックする (services の書き方の設計の決め)。
 - 指示書 (WorkOrder・WorkOrderStep) は書かない。
 - 作業した人 (本人の決め 11-11 09:0x): record_progress と update_progress は、社員 (staff) を渡されたら外部キーだけを書き、名前の写し (staff_name) と
-  番号の写し (staff_code) は空にする。使用停止の社員は断る (直すときは、今の実績と違う社員のときだけ)。社員が無ければ、渡された名前
+  番号の写し (staff_code) は空にする。使用停止の社員も書く (止めるか知らせるかは、検査の層のポカよけ R28 が会社の設定 progress_inactive_staff で決める。
+  本人の決め 11-11 13:1x)。社員が無ければ、渡された名前
   (社員の一覧に居ない人) を名前の写しにだけ書く。update_progress の 2 つの引数の既定は KEEP (作業した人を変えない)。
   写しに社員の名前と番号を書くのは、社員を消すときの copy_staff_before_delete だけ (masters.services.delete_staff が同じ atomic の中で呼ぶ)。
   作業した人の無い実績のポカよけ (R26) は検査の層が services の前に見る。ここでは止めない。
@@ -45,19 +46,6 @@ _WorkOrderStep = Progress._meta.get_field("workorder_step").related_model
 KEEP = object()
 #: 名前の写しの上限 (表の staff_name の字数)
 _STAFF_NAME_MAX = Progress._meta.get_field("staff_name").max_length
-
-
-def _refuse_inactive_staff(staff):
-    """使用停止の社員なら、日本語の ValueError で断る (入力の土台が赤の知らせにする)。表に書かない。
-
-    訳: 辞めた人の番号で、新しい実績を入れないため (打ち間違いで辞めた人の番号に当たったときに気づく)。今までの実績は社員を指したままなので、使用停止にしても作業した人は消えない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 09:0x。
-    変えてよい条件 = 辞めた人の実績を後から入れる運用が要ると本人が決めたとき。
-    """
-    if not staff.active:
-        raise ValueError(
-            f"保存できません。社員番号 {staff.code} ({staff.name}) は使用停止です。"
-            "使用中の社員の番号を入れるか、社員の編集で「使用中」に戻してください。"
-        )
 
 
 def _staff_name_text(staff_name) -> str:
@@ -97,8 +85,9 @@ def record_progress(
     不良が 0 より大きいときは「実績 <数>・不良 <数>」、作業した人の見せる字が空でないときは「作業した人は <見せる字> です。」、
     印を付けたときはその後ろに「この工程に完了の印を付けました。」) を付ける (表に書かない)。
     印の付いた工程にも記録する (止めない。作者の決め)。
-    作業した人: staff (社員) があれば外部キーだけを書き、2 つの写しは空のまま (渡された staff_name は使わない)。使用停止の社員は
-    日本語の ValueError (_refuse_inactive_staff)。staff が無ければ、staff_name の前後の空白を落として名前の写しに書く (社員の一覧に居ない人。空でもよい)。
+    作業した人: staff (社員) があれば外部キーだけを書き、2 つの写しは空のまま (渡された staff_name は使わない)。使用停止の社員も
+    書く (止めるか知らせるかは、検査の層のポカよけ R28 が会社の設定 progress_inactive_staff で決める。本人の決め 11-11 13:1x)。
+    staff が無ければ、staff_name の前後の空白を落として名前の写しに書く (社員の一覧に居ない人。空でもよい)。
     訳: 良品も不良も無い空の実績と、負の数の実績を記録しないため (全部が不良の回は良品 0 で記録できる)。出所 = RULES.md R02 と作者の決め (11-07 07:08)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -107,11 +96,7 @@ def record_progress(
     with transaction.atomic():
         locked = _WorkOrderStep.objects.select_for_update().get(pk=workorder_step.pk)
         _check_r02(qty, defect_qty)
-        if staff is not None:
-            _refuse_inactive_staff(staff)
-            worker_name = ""
-        else:
-            worker_name = _staff_name_text(staff_name)
+        worker_name = "" if staff is not None else _staff_name_text(staff_name)
         created = Progress.objects.create(
             workorder_step=locked,
             qty=qty,
@@ -145,8 +130,8 @@ def update_progress(
     間違えて付けた完了の印も、ここで外す。在庫は動かさない (実績は在庫を動かさない。入庫は stock の「製造の完了を入庫にする」)。
     返す実績に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> の実績を直しました。」) を付ける (表に書かない)。
     予定を超えた実績の知らせは検査の層 (R07 の OverProgressOnUpdate) が services の前に見る。ここでは止めない (現物優先)。
-    作業した人: staff を渡さなければ (既定の KEEP) 変えない。staff が社員なら、今の実績と違う社員のときだけ使用停止かを見て
-    (同じ社員なら使用停止にした後でも通す)、外部キーを書き、2 つの写しを空にする。staff が None なら外部キーを空にし、
+    作業した人: staff を渡さなければ (既定の KEEP) 変えない。staff が社員なら、使用停止の社員も外部キーを書き、2 つの写しを空にする
+    (止めるか知らせるかは、検査の層のポカよけ R28 が会社の設定 progress_inactive_staff で決める。本人の決め 11-11 13:1x)。staff が None なら外部キーを空にし、
     staff_name の字を名前の写しに書き (staff_name が KEEP なら今の名前の写しのまま)、番号の写しを空にする。
     訳: 良品も不良も無い空の実績と、負の数の実績にしないため (直すときも入れるときと同じ R02 を当てる)。出所 = RULES.md R02 と作者の決め (11-07 07:08。作者の決め 11-07 07:04)。
     変えてよい条件 = 変えない (R は廃止で残す)。
@@ -160,8 +145,6 @@ def update_progress(
         fields = ["qty", "defect_qty", "completes_step", "recorded_at", "note"]
         if staff is not KEEP:
             if staff is not None:
-                if staff.pk != locked.staff_id:
-                    _refuse_inactive_staff(staff)
                 worker_name = ""
             else:
                 worker_name = locked.staff_name if staff_name is KEEP else _staff_name_text(staff_name)

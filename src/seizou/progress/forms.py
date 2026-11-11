@@ -9,6 +9,8 @@ services.record_progress(workorder_step=..., qty=..., recorded_at=..., user=...,
 社員を消した後の写しを持つ実績 (社員を指す欄が空で、番号の写しがある実績) の編集では 2 つの欄を出さず、services に作業した人を渡さない
 (services の既定 KEEP で写しを変えない。消した人の写しを画面から書き換える道を作らない)。
 作業した人が空のときの知らせは R26 (検査の層) が出す。form では止めない (会社が設定 progress_staff で選ぶ)。
+使用停止の社員の番号も欄の誤りにせず、その社員を services に渡す。知らせるか止めるかは R28 (検査の層) が決める
+(会社が設定 progress_inactive_staff で選ぶ。本人の決め 11-11 13:1x)。
 """
 
 from decimal import Decimal
@@ -35,9 +37,8 @@ STAFF_CODE_LABEL = "社員番号"
 STAFF_CODE_HELP = "社員の札のバーコードを読むか、番号を打ちます。先頭の 0 は省けます。"
 STAFF_NAME_LABEL = "社員の一覧に居ない人の名前"
 STAFF_NAME_HELP = "応援の人など、社員の一覧に居ない人が作業したときだけ入れます。"
-#: 作業した人の欄の誤り ({code} は社員番号、{name} は社員の名前)。欄の下の赤い字に出す
+#: 作業した人の欄の誤り ({code} は社員番号)。欄の下の赤い字に出す
 STAFF_UNKNOWN_MESSAGE = "社員番号 {code} は社員の一覧にありません。番号を確かめるか、社員の一覧に足してください。"
-STAFF_INACTIVE_MESSAGE = "社員番号 {code} ({name}) は使用停止です。使用中の社員の番号を入れてください。"
 STAFF_BOTH_MESSAGE = "社員番号と名前のどちらか一方を入れます。社員番号を入れたときは、名前を空にしてください。"
 
 
@@ -179,7 +180,7 @@ class ProgressUpdateForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        self.staff = _clean_staff(self, self.record)
+        self.staff = _clean_staff(self)
         return cleaned_data
 
     def service_kwargs(self):
@@ -224,15 +225,16 @@ def _staff_copied_after_delete(record) -> bool:
     return record is not None and record.staff_id is None and bool(record.staff_code)
 
 
-def _clean_staff(form, record=None):
+def _clean_staff(form):
     """作業した人の 2 つの欄を確かめ、引いた社員 (無ければ None) を返す。誤りは欄の下の赤い字 (add_error) にする。欄の無い form は None。
 
-    社員番号は masters.services.staff_by_code で引く (先頭の 0 と全角の数字は同じ番号と見る)。居なければ STAFF_UNKNOWN_MESSAGE、
-    使用停止なら STAFF_INACTIVE_MESSAGE (編集で、今の実績と同じ社員のときは通す)。番号と名前の両方が入っていれば名前の欄に STAFF_BOTH_MESSAGE。
-    訳: 実績に残す作業した人を、社員の一覧の 1 人か、社員の一覧に居ない人の名前のどちらか 1 つに決めるため (打ち間違えた番号と辞めた人の番号で、
-    違う人の実績にしないため)。使用停止の社員を断るのは services (_refuse_inactive_staff) と同じ訳で、画面では欄の下に先に出す。
-    編集で同じ社員を通すのは、社員を使用停止にした後も、その人の前の実績の数や日時を直せるようにするため (services の update_progress と同じ)。
-    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 09:0x (依頼書 N401b)。
+    社員番号は masters.services.staff_by_code で引く (先頭の 0 と全角の数字は同じ番号と見る)。居なければ STAFF_UNKNOWN_MESSAGE。
+    番号と名前の両方が入っていれば名前の欄に STAFF_BOTH_MESSAGE。使用停止の社員は欄の誤りにせず、その社員を返す
+    (知らせるか止めるかは、検査の層のポカよけ R28 が会社の設定 progress_inactive_staff で決める。本人の決め 11-11 13:1x)。
+    訳: 実績に残す作業した人を、社員の一覧の 1 人か、社員の一覧に居ない人の名前のどちらか 1 つに決めるため (打ち間違えた番号で、
+    違う人の実績にしないため)。辞めた人の番号は、前は欄の誤りで断ったが、運用の誤りを防ぐ物は、まず分かるようにして、止めるかは会社が選ぶ
+    (北極星のポカよけの考え方 11-11 12:5x) ので R28 に任せる。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 09:0x (依頼書 N401b)・11-11 13:1x (依頼書 N404)。
     変えてよい条件 = 社員の一覧に居ない人の名前と社員番号を両方残す運用が要ると本人が決めたとき (そのときは services の写しの決まりも変える)。
     """
     if "staff_code" not in form.fields:
@@ -246,9 +248,6 @@ def _clean_staff(form, record=None):
     staff = masters_services.staff_by_code(code)
     if staff is None:
         form.add_error("staff_code", STAFF_UNKNOWN_MESSAGE.format(code=code))
-        return None
-    if not staff.active and (record is None or staff.pk != record.staff_id):
-        form.add_error("staff_code", STAFF_INACTIVE_MESSAGE.format(code=staff.code, name=staff.name))
         return None
     return staff
 

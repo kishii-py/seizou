@@ -128,10 +128,14 @@ def test_create_goes_through_service_and_refuses_the_same_number(logged_in):
 
 
 def test_update_unchecks_active_and_list_hides_it(logged_in, ichiro):
+    """「使用中」の説明の字は、本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる)。"""
     url = reverse("masters:staff_update", args=[ichiro.pk])
     body = logged_in.get(url).content.decode()
     assert 'name="active"' in body
-    assert "外すと、実績の入力でこの社員番号を使えなくなります。今までの実績の作業した人はそのまま残ります。" in body
+    assert (
+        "外すと、実績の入力でこの社員番号を入れたときに知らせが出ます (止めるかは設定で選べます)。"
+        "今までの実績の作業した人はそのまま残ります。"
+    ) in body
 
     response = logged_in.post(url, {"code": "0012", "name": "作り物 一郎", "note": "辞めた"})
     assert response.status_code == 302
