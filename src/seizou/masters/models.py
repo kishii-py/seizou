@@ -618,8 +618,13 @@ class Staff(models.Model):
     # 編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 
+    #: 詳細の項目の一覧に出さない列 (照合の字。services が社員番号から作る、仕組みのための列で、入力の画面に無い物)
+    detail_hidden_fields = ("code_key",)
+
     #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
+    #: 変更の履歴に残さない列 (照合の字。社員番号を直したことは「社員番号」の行に残る。detail_hidden_fields と同じ列)
+    history_skip = ("code_key",)
 
     class Meta:
         verbose_name = "社員"

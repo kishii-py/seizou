@@ -15,7 +15,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.urls import reverse
 
+from seizou.core.models import ChangeLog
 from seizou.core.screens import all_screens
+from seizou.core.views import hidden_detail_fields
 from seizou.masters import services
 from seizou.masters.models import Process, Staff
 from seizou.orders import services as orders_services
@@ -255,3 +257,23 @@ def test_delete_without_progress_says_only_deleted(logged_in, ichiro):
     assert response.status_code == 302
     messages = [str(m) for m in get_messages(response.wsgi_request)]
     assert messages == ["社員 0012 作り物 一郎 を削除しました。"]
+
+
+# ---------------------------------------------------------------- (h) 照合の字は詳細と履歴に出さない
+
+
+def test_detail_and_history_hide_code_key(logged_in, user, ichiro):
+    """照合の字 (code_key) は仕組みのための列なので、詳細の「基本情報」と変更の履歴に出さない (N401b の要望 4)。
+
+    社員番号を直したことは「社員番号」の行に残る (先頭の 0 だけを変える直しでも、照合の字の行は足さない)。
+    """
+    assert hidden_detail_fields(ichiro) == frozenset({"code_key"})
+    body = logged_in.get(reverse("masters:staff_detail", args=[ichiro.pk])).content.decode()
+    assert "照合の字" not in body
+    assert "社員番号" in body
+
+    services.update_staff(ichiro, {"code": "012", "name": "作り物 一郎"}, user)
+    rows = list(ChangeLog.objects.filter(model="masters.staff", object_pk=ichiro.pk).order_by("pk"))
+    assert {"field": "code", "label": "社員番号", "type": "text", "before": "", "after": "0012"} in rows[0].changes
+    assert rows[1].changes == [{"field": "code", "label": "社員番号", "type": "text", "before": "0012", "after": "012"}]
+    assert all(change["field"] != "code_key" for row in rows for change in row.changes)
