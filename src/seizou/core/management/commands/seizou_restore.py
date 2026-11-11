@@ -4,6 +4,7 @@
 確認の問いに yes と答えたときか、--yes のときだけ戻す。端末でないときの問いは、空の答えと同じに扱う。
 --verify は戻さずに、控えの DB が開けるか・控えと今の migration の差・上げたファイルの数を、本番のデータベースと
 上げたファイルに触らずに確かめ、結果を控えの置き場の restore-checks.jsonl に 1 行残す (問いを出さない。--yes があっても戻さない)。
+戻す前に会社のポート (127.0.0.1) で待ち受けがあれば、サーバーが立っていそうだと 1 行で知らせてから聞く (--yes のときは知らせて進む。止めない)。
 処理は seizou.core.backup に置き、この命令は引数・問い・一覧・結果を書くだけ。
 """
 
@@ -12,9 +13,33 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from seizou.core import backup
+from seizou.core import backup, practice
 
 MEGABYTE = 1024 * 1024
+
+#: 置き場のポートで待ち受けがあるときに、戻す前に出す 1 行
+RUNNING_NOTICE = (
+    "置き場のポート {port} で、サーバーが立っているようです。"
+    "立てたまま戻すと、戻している間に画面で保存した物が残らないことがあります。止めてから戻すのを勧めます。"
+)
+
+
+def _running_port() -> int | None:
+    """置き場のサーバーが立っていそうなら、その会社のポートを返す (settings の SEIZOU の port に 127.0.0.1 でつながる)。
+
+    会社のポートが無い・整数でない・つながらないときは None。どんな例外も捕まえて None にする
+    (戻しはほかの設定に誤りがあっても動く約束なので、ポートを見られないときは今のとおり知らせずに進む)。
+    練習のサーバー (会社のポート + 100) は見ない (練習は写しの DB を使い、戻しの置き換えを受けないため)。
+    訳: 立てたまま戻すと戻している間の保存が残らないことがあるので、置き場のポートで待ち受けがあるときは、何が起きるかを 1 行で知らせてから聞く。止めはしない (本人の決め 11-11 12:5x のポカよけの考え方)。出所 = 精査 Q4 (2026-11-10) の D2 と、本体の決め 11-11 14:2x。変えてよい条件 = 置き場のサーバーの待ち方 (127.0.0.1 の会社のポート) が変わったとき。
+    """
+    try:
+        seizou = getattr(settings, "SEIZOU", {}) or {}
+        port = seizou.get("port") if isinstance(seizou, dict) else None
+        if isinstance(port, int) and not isinstance(port, bool) and practice.port_is_open(port):
+            return port
+    except Exception:  # noqa: BLE001 - ポートを見られないときは知らせずに進む (戻しを止めない)
+        return None
+    return None
 
 
 class Command(BaseCommand):
@@ -71,6 +96,10 @@ class Command(BaseCommand):
         if options["verify"]:
             self._verify(folder, parent)
             return
+
+        port = _running_port()
+        if port is not None:
+            self.stdout.write(RUNNING_NOTICE.format(port=port))
 
         if not options["yes"]:
             media_root = getattr(settings, "MEDIA_ROOT", "") or ""
