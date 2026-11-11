@@ -39,6 +39,10 @@
   出荷の金額の式 (shipment_amount) は変えない (作者の決め)。
 - 請求済みの出荷を後で直すか消しても止めない (検査の層の R27 が直す前に知らせる。本人の決め 11-11 12:5x〜13:0x)。
   請求した時の数量と今の出荷の数量が違う明細は changed_lines (読むだけ) が返す。
+- 締めの一括 (締日を選ぶと、その締日の得意先の請求書をまとめて作る):
+  closing_date(年, 月, 締日) は締める日 (その月の日数より大きい締日は月末。読むだけ)。
+  closing_plan(締める日) は得意先ごとの行 (作る・もう在る・一式の金額を待つ・締日が空。読むだけ。2 段目の画面と create_closing_invoices が同じ中身を読む)。
+  create_closing_invoices(締める日, user, issued_on=…) は作る行の得意先ごとに _issue_invoice を通し、どれかの得意先で断られたら 1 枚も作らない。
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Max, Q, Sum
+from django.utils import timezone
 
 from seizou.core import access, history
 from seizou.core.exceptions import RuleViolation
@@ -576,6 +581,276 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_note を後ろに付ける)。表に書かない。
         created.saved_message = f"{cancelled} を取り消し、{made}" if cancelled else made
         return created
+
+
+# --- 締めの一括 (締日を選ぶと、その締日の得意先の請求書をまとめて作る) ---
+
+#: 作らなかった得意先の名前を知らせの字に並べる数 (6 社目からは「ほか n 社」)
+_CLOSING_NAMES_SHOWN = 5
+
+
+def closing_date(year, month, closing_day):
+    """締める日 (読むだけ)。year 年 month 月の締日 closing_day の日付。closing_day は 1〜31 の整数で、その月の日数より大きければ月末 (31 は月末)。
+
+    締めの一括の 2 段目の form が年・月・締日を選び、この関数で締める日 (date) にする。closing_plan と create_closing_invoices は締める日だけを受ける。
+    月の日数への寄せ方は closing_period と同じ (_day_in_month)。例: 2027 年 2 月の 31 → 2027-02-28、2028 年 2 月の 30 → 2028-02-29。
+    1〜31 の外か整数でなければ ValueError (2 段目の form が先に止めるので、画面の外から呼んだ時だけ)。
+    """
+    if isinstance(closing_day, bool) or not isinstance(closing_day, int) or not 1 <= closing_day <= _MONTH_END:
+        raise ValueError(
+            f"発行できません。締日が 1〜31 の整数ではありません (入れた値: {closing_day!r})。締日は 1〜31 (31 は月末) で選んでください。"
+        )
+    return date(year, month, _day_in_month(year, month, closing_day))
+
+
+def _refuse_early_closing(closing_on):
+    """締める日が今日 (timezone.localdate()) より後なら、何も読まずに ValueError。締める日が今日なら通す。
+
+    訳: 締日の前に締めると、締めた後の同じ期間の出荷が R23 で 2 枚目にできず、作り直しが要るため。1 社だけ先に締める道は請求書の新規登録に残す。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M12) と本人の決め 11-11 09:5x。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    if closing_on > timezone.localdate():
+        raise ValueError(
+            f"発行できません。締める日 ({closing_on:%Y-%m-%d}) がまだ来ていません。締日の後に作ってください。"
+            "1 社だけ先に締めるときは、請求書の新規登録から作ってください。"
+        )
+
+
+def _closing_customers(closing_on):
+    """締める日が締日の得意先の queryset (読むだけ。並びは取引先コード)。
+
+    請求の仕方が「締日でまとめる」で、締日が空でなく、closing_period(得意先, 締める日) の終わりが締める日と同じ得意先。
+    問い合わせは締日の値で絞る: 締日が締める日の日と同じ得意先。締める日が月末なら、締日が締める日の日以上の得意先も入れる
+    (closing_period は月の日数より大きい締日を月末に寄せるので、2026-02-28 の回には締日 28〜31 の得意先が入り、期間の終わりはどれも 2 月末)。
+    締日が空の得意先は入れない (本人の決め 11-11 09:5x。closing_plan が "no_closing_day" の行で挙げる)。
+    取引先の種類と使用中の印は見ない (closing_plan が行にするのは、請求の材料がある得意先だけ。使用停止の得意先でも請求できる出荷があれば作る)。
+    """
+    same_day = Q(closing_day=closing_on.day)
+    if closing_on.day == _day_in_month(closing_on.year, closing_on.month, _MONTH_END):
+        same_day |= Q(closing_day__gte=closing_on.day)
+    return _Partner.objects.filter(
+        same_day, billing_method=_Partner.BILLING_CLOSING, closing_day__isnull=False
+    ).order_by("code")
+
+
+def closing_plan(closing_on, *, hide_money=False):
+    """締めの一括の中身 (読むだけ)。2 段目の画面の表と create_closing_invoices が同じ物を読む (作り直しの reissue_plan と reissue_invoice と同じ形)。
+
+    返す物は得意先ごとの行の list (並びは得意先のコード)。1 行 = 辞書
+    {"customer": 得意先, "period_from", "period_to": 期間 (締日が空の行は None),
+    "state": 下の 4 つのどれか, "shipments": 出荷の list (出荷日・出荷番号の順), "amount": shipments の shipment_amount の合計 (税抜。hide_money なら None),
+    "invoices": 同じ得意先の同じ期間 (初めと終わりが同じ) の取消でない請求書 (pk の順。_refuse_second_in_period と同じ見方),
+    "waiting_lumps": 金額を決めていない一式の受注の明細 (unbilled_lumps のうち、最後の出荷日が締める日以前の物), "reason": 作らない行の訳の文 (金額を書かない。作る行は空の字)}。
+    締める日が締日の得意先 (_closing_customers) の行: 期間 = closing_period(得意先, 締める日)。shipments = 請求できる出荷 (billable_shipments) のうち、
+    出荷日が期間の中 (両端を含む) の物 (取消でない請求書に入った出荷・「請求しない」の印の明細の出荷・請求書の外で受け取った入金のある出荷は
+    billable_shipments が除く。納品書を作っていない出荷も入る。期間より前に残った出荷と、締める日より後の出荷は入れない)。
+    state の決め方 (上から順に見る):
+    - "exists" (作らない): invoices がある。shipments があれば作り直しが要る (訳の文に出荷番号を並べる)。
+    - "waiting" (作らない): waiting_lumps がある (一式の金額を人が決める。締める日より後に終わった一式は、この締めを止めない)。
+    - "make" (作る): shipments がある。
+    - どれも無い得意先は行にしない。
+    締日が空の得意先の行: 請求の仕方が「締日でまとめる」で締日が空の得意先のうち、請求できる出荷に出荷日が締める日以前の物がある得意先を
+    "no_closing_day" (作らない) の行にする (本人の決め 11-11 09:5x。月末で出すとミスの元なので入れず、作り忘れに気づけるよう挙げる)。
+    期間は None、shipments はその出荷、invoices と waiting_lumps は空。
+    """
+    return _closing_rows(closing_on, _closing_customers(closing_on), hide_money=hide_money)
+
+
+def _closing_rows(closing_on, customers, *, hide_money):
+    """closing_plan の中身 (読むだけ)。customers = 締める日が締日の得意先 (create_closing_invoices はロックした行を渡す)。
+
+    問い合わせは得意先の数に依らない: 請求できる出荷・同じ期間の請求書・一式の明細・締日が空の得意先の出荷を 1 回ずつ引き、得意先ごとに分ける。
+    """
+    customers = list(customers)
+    periods = {customer.pk: closing_period(customer, closing_on) for customer in customers}
+    rows = []
+    if customers:
+        start = min(period_from for period_from, _period_to in periods.values())
+        found = _shipments_by_customer(
+            billable_shipments().filter(
+                order_line__order__customer__in=list(periods), shipped_at__gte=start, shipped_at__lte=closing_on
+            )
+        )
+        invoices = {}
+        for invoice in Invoice.objects.filter(
+            customer_id__in=list(periods), status=Invoice.STATUS_ISSUED, period_to=closing_on
+        ).order_by("pk"):
+            if invoice.period_from == periods[invoice.customer_id][0]:
+                invoices.setdefault(invoice.customer_id, []).append(invoice)
+        lumps = {}
+        for line in unbilled_lumps():
+            if line.order.customer_id in periods and line.last_shipped_at <= closing_on:
+                lumps.setdefault(line.order.customer_id, []).append(line)
+        for customer in customers:
+            period_from, period_to = periods[customer.pk]
+            shipments = [shipment for shipment in found.get(customer.pk, []) if shipment.shipped_at >= period_from]
+            same_period = invoices.get(customer.pk, [])
+            waiting = lumps.get(customer.pk, [])
+            if same_period:
+                state = "exists"
+            elif waiting:
+                state = "waiting"
+            elif shipments:
+                state = "make"
+            else:
+                continue
+            rows.append(
+                _closing_row(customer, (period_from, period_to), state, shipments, same_period, waiting, hide_money=hide_money)
+            )
+    loose = billable_shipments().filter(
+        order_line__order__customer__billing_method=_Partner.BILLING_CLOSING,
+        order_line__order__customer__closing_day__isnull=True,
+        shipped_at__lte=closing_on,
+    )
+    for shipments in _shipments_by_customer(loose.select_related("order_line__order__customer")).values():
+        customer = shipments[0].order_line.order.customer
+        rows.append(_closing_row(customer, (None, None), "no_closing_day", shipments, [], [], hide_money=hide_money))
+    rows.sort(key=lambda row: row["customer"].code)
+    return rows
+
+
+def _shipments_by_customer(queryset):
+    """出荷の queryset を {得意先の pk: 出荷の list (出荷日・出荷番号の順)} にする (問い合わせ 1 回)。"""
+    found = {}
+    for shipment in queryset.select_related("order_line__order", "order_line__item").order_by("shipped_at", "shipment_no"):
+        found.setdefault(shipment.order_line.order.customer_id, []).append(shipment)
+    return found
+
+
+def _closing_row(customer, period, state, shipments, invoices, waiting, *, hide_money):
+    """closing_plan の 1 行の辞書。金額は shipment_amount の合計 (hide_money なら None)。"""
+    amount = None if hide_money else sum((shipment_amount(customer, shipment) for shipment in shipments), _ZERO)
+    return {
+        "customer": customer,
+        "period_from": period[0],
+        "period_to": period[1],
+        "state": state,
+        "shipments": shipments,
+        "amount": amount,
+        "invoices": invoices,
+        "waiting_lumps": waiting,
+        "reason": _closing_reason(state, shipments, invoices, waiting),
+    }
+
+
+def _closing_reason(state, shipments, invoices, waiting):
+    """作らない行の訳の文 (金額を書かない)。作る行は空の字。"""
+    numbers = "・".join(invoice.invoice_no for invoice in invoices)
+    if state == "exists" and shipments:
+        left = "・".join(shipment.shipment_no for shipment in shipments)
+        return f"請求書 {numbers} の後に、この期間の出荷が {len(shipments)} 件あります ({left})。作り直しで入れてください。"
+    if state == "exists":
+        return f"請求書 {numbers} がもう在ります。"
+    if state == "waiting":
+        refs = "・".join(_line_ref(line) for line in waiting)
+        return f"金額を決めていない一式の明細があります ({refs})。請求書の新規登録で金額を決めて作ってください。"
+    if state == "no_closing_day":
+        return (
+            f"締日が空なので入れませんでした (請求していない出荷 {len(shipments)} 件)。"
+            "取引先に締日を入れるか、請求書の新規登録で作ってください。"
+        )
+    return ""
+
+
+def _closing_label(row):
+    """作らなかった行の短い訳 (知らせの字に名前と並べる)。"""
+    if row["state"] == "exists":
+        return "作り直しが要る" if row["shipments"] else "もう在る"
+    if row["state"] == "waiting":
+        return "一式の金額"
+    return "締日が空"
+
+
+def _needs_hand(row):
+    """人の手が要る作らなかった行か ("waiting"・"no_closing_day"・作り直しが要る "exists")。"""
+    return row["state"] in ("waiting", "no_closing_day") or (row["state"] == "exists" and bool(row["shipments"]))
+
+
+class ClosedInvoices(list):
+    """締めの一括の返す物 (作った請求書の list。並びは得意先のコード)。入力の土台は saved_message・saved_note・saved_level を知らせに使う
+    (一括出荷の shipping.services.ShippedLines と同じ形)。skipped = 作らなかった行 (closing_plan の行のうち state が "make" でない物)。
+    """
+
+    def __init__(self, invoices, closing_on, skipped):
+        super().__init__(invoices)
+        self.closing_on = closing_on
+        self.skipped = list(skipped)
+
+    @property
+    def saved_message(self) -> str:
+        """「<締める日> 締めで <n> 社の請求書を作りました (<最初の番号>〜<最後の番号>)。」(1 枚なら番号は 1 つ)。"""
+        if not self:
+            return ""
+        numbers = self[0].invoice_no if len(self) == 1 else f"{self[0].invoice_no}〜{self[-1].invoice_no}"
+        return f"{self.closing_on:%Y-%m-%d} 締めで {len(self)} 社の請求書を作りました ({numbers})。"
+
+    @property
+    def saved_note(self) -> str:
+        """「作らなかった得意先 <n> 社: <名前> (<短い訳>)・…。」(名前は 5 社まで、6 社目からは「ほか n 社」)。作らなかった行が無ければ空の字。"""
+        if not self.skipped:
+            return ""
+        names = [f"{row['customer'].name} ({_closing_label(row)})" for row in self.skipped[:_CLOSING_NAMES_SHOWN]]
+        if len(self.skipped) > _CLOSING_NAMES_SHOWN:
+            names.append(f"ほか {len(self.skipped) - _CLOSING_NAMES_SHOWN} 社")
+        return f"作らなかった得意先 {len(self.skipped)} 社: {'・'.join(names)}。"
+
+    @property
+    def saved_level(self) -> str:
+        """人の手が要る作らなかった行があれば "warning" (閉じるまで残る黄)。ほかは空の字 (緑)。"""
+        return "warning" if any(_needs_hand(row) for row in self.skipped) else ""
+
+
+def create_closing_invoices(closing_on, user, *, issued_on):
+    """締める日 (closing_on) が締日の得意先の請求書を、得意先ごとに 1 枚ずつまとめて作る (締めの一括)。返す物は ClosedInvoices (作った請求書の並び)。
+
+    先に _refuse_early_closing (締める日が今日より後なら何も読まずに止める)。1 つの transaction.atomic の中で、締める日が締日の得意先
+    (_closing_customers) の行を pk の順に select_for_update でロックし (create_invoice と同じく得意先の行を先にロックする。2 人が同時に押すと
+    後の人は待ち、前の人が作った請求書を "exists" と読む)、ロックの後に closing_plan と同じ中身 (_closing_rows) で行を決める。
+    締日が空の得意先の行は作らないので、ロックしない。state が "make" の行ごとに _issue_invoice(得意先, 行の出荷, issued_on, user) を呼ぶ
+    (R09・期間・R23・支払期日・発行の時の写し・変更の履歴は今の 1 か所を通す)。発行日は人が入れた日、支払期日は期間の終わりから決まる。
+    "make" の行が 1 つも無ければ、何も作らずに ValueError (内訳は もう在る・人の手が要る・締日が空 の社の数のうち 0 でない物)。
+    どれかの得意先で RuleViolation か ValueError が出たら全部を戻し、断りの文の頭に得意先の名前を付けて同じ型で投げ直す
+    (一括出荷 shipping.services.ship_lines と同じ形。決まりの番号と止めの link はそのまま)。
+    返す物の saved_message・saved_note・saved_level は ClosedInvoices が作る (作った請求書ごとの _period_note の字は使わない)。
+    訳: 締日の得意先の請求書を 1 回の操作でまとめて作り、月末に得意先の数だけ同じ操作を繰り返さないため。得意先ごとに R09 と R23 を今の 1 か所 (_issue_invoice) で通し、どれかの得意先で断られたら 1 枚も作らない (一括出荷 ship_lines と同じ)。同じ期間の請求書がもう在る得意先と、金額を決めていない一式の明細が残る得意先は作らずに挙げる (直した後に押し直すと、残りの得意先だけを作る)。締日が空の得意先は月末で出すとミスの元なので入れず、作り忘れに気づけるよう挙げる。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M12)・RULES.md R09 と R23・本人の決め 11-11 09:5x。
+    変えてよい条件 = 本人が締めの一括の決めを決め直したとき。
+    """
+    _refuse_early_closing(closing_on)
+    with transaction.atomic():
+        customers = list(_closing_customers(closing_on).select_for_update().order_by("pk"))
+        rows = _closing_rows(closing_on, customers, hide_money=True)
+        skipped = [row for row in rows if row["state"] != "make"]
+        if len(skipped) == len(rows):
+            raise ValueError(
+                f"発行できません。{closing_on:%Y-%m-%d} 締めで作る請求書がありません。{_closing_breakdown(skipped)}。"
+                + ("得意先ごとの訳を確かめてください。" if skipped else "締める日を確かめてください。")
+            )
+        created = []
+        for row in rows:
+            if row["state"] != "make":
+                continue
+            customer = row["customer"]
+            try:
+                created.append(_issue_invoice(customer, row["shipments"], issued_on, user))
+            except RuleViolation as exc:
+                raise RuleViolation(
+                    exc.code, f"発行できません。{customer.name}: {exc.message.removeprefix('発行できません。')}", link=exc.link
+                ) from exc
+            except ValueError as exc:
+                raise ValueError(f"発行できません。{customer.name}: {str(exc).removeprefix('発行できません。')}") from exc
+    return ClosedInvoices(created, closing_on, skipped)
+
+
+def _closing_breakdown(skipped):
+    """作る行が無い時の内訳の字 (文末の「。」は呼ぶ側)。行が無ければ「この締日の得意先に、請求できる出荷がありません」。"""
+    if not skipped:
+        return "この締日の得意先に、請求できる出荷がありません"
+    counts = (
+        ("もう在る", sum(1 for row in skipped if row["state"] == "exists" and not _needs_hand(row))),
+        ("人の手が要る", sum(1 for row in skipped if row["state"] != "no_closing_day" and _needs_hand(row))),
+        ("締日が空の", sum(1 for row in skipped if row["state"] == "no_closing_day")),
+    )
+    return "・".join(f"{label} {count} 社" for label, count in counts if count)
 
 
 def _payment_values(amount, method, note):
