@@ -12,8 +12,10 @@ chat_panel: 受注・発注・受信した注文の「会話」の枠 (connect/_
 exchange_body: 送り合った記録の詳細の「中身」の枠の字 (JSON を字下げした字と、送ったとおりの字。金額の閲覧の無い人には金額の鍵を外す)。
 received_self_invoice_rows・received_self_invoice_registration_note: 受けた仕入明細の詳細の明細の表の行 (受注の数と自社の出荷済みの数と答えの字) と、
 登録番号が自社の登録番号と違うときの黄の 1 行の字 (作者の決め)。received_self_invoice_compare: 同じ詳細の「請求書と比べる」の枠の中身。
+secret_fingerprint: 取引先との接続の詳細の「鍵の指紋」の字 (鍵の値は返さない。2 社で読み合わせるため。本体の決め 11-11 14:2x)。
 """
 
+import os
 from decimal import Decimal, InvalidOperation
 
 from django import template
@@ -25,7 +27,7 @@ from seizou.core import access, edi_codes
 from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.masters.services import PRICE_BASIS_UNIT, PRICE_BASIS_VALUES, price_basis_text
 
-from .. import services
+from .. import services, signing
 from ..forms import SenderForm
 from ..models import Inbox
 
@@ -426,3 +428,23 @@ def received_self_invoice_compare(received):
     invoices = list(issued_invoices_overlapping(received.partner, received.period_from, received.period_to))
     invoiced = sum((invoice.subtotal for invoice in invoices), Decimal("0"))
     return {"confirmed": confirmed, "invoices": invoices, "invoiced": invoiced, "difference": confirmed - invoiced}
+
+
+#: 鍵の指紋の代わりに出す字 (鍵の置き場に値はあるが、鍵の形 (接頭辞つきの base64・24〜64 bytes) で読めないとき)
+SECRET_UNREADABLE = "鍵の形が読めません"
+
+
+@register.simple_tag
+def secret_fingerprint(connection):
+    """つながりの詳細の「鍵の指紋」の字 (signing.fingerprint)。鍵の値は返さない (読むだけ)。
+
+    つながりの鍵の置き場の名前 (secret_env) の環境変数を読み、値が無ければ空の字、鍵の形が読めなければ SECRET_UNREADABLE を返す。
+    鍵の値と鍵の形は、返す字にもログにも出さない (ValueError の文も出さない)。
+    """
+    value = os.environ.get(getattr(connection, "secret_env", "") or "")
+    if not value:
+        return ""
+    try:
+        return signing.fingerprint(value)
+    except ValueError:
+        return SECRET_UNREADABLE
