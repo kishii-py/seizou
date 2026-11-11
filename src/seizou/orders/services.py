@@ -9,6 +9,7 @@
 - 決まりの番号の無い入力の誤り (取引先の種類が得意先でない・明細が無い・知らない鍵) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - ポカよけは検査の層 (seizou.core.checks) が services の前に見る。ここでは中心の決まりだけを見る。
+- customer_order_no_key と same_customer_order_no は、検査の層 (R31) のための読むだけの関数 (表に書かない)。
 - 明細の辞書の鍵は item・qty・unit・unit_code・unit_price・price_basis・due_date・note・customer_part_no・quote_no・process_name・ext。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
   unit_code は会社どうしの注文の受け入れが相手の送ったコードを渡す鍵 (無くてよい。画面の form は渡さず、一覧の名前の字を unit で渡す)。
@@ -25,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from decimal import Decimal
 
 from django.core.exceptions import FieldDoesNotExist
@@ -480,6 +482,37 @@ def clear_completed(order_line, user):
     # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
     locked.saved_message = message
     return locked
+
+
+def customer_order_no_key(value) -> str:
+    """得意先の注文番号の照合の字 (全角と半角をそろえ (NFKC)、前後の空白を落とし、大文字と小文字を同じにした字)。None と空は空の字。読むだけ。
+
+    「ＰＯ－１００」「 po-100 」「PO-100」は同じ字になる。先頭の 0 は落とさない (「PO-0100」と「PO-100」は別の字)。
+    訳: 同じ注文書を 2 回入れて 2 倍作る間違いに、保存の前に気づかせるため (検査の層の R31 が読む)。全角と半角・大文字と小文字・前後の空白の違いは、手で打つ字と読み取りの字で揺れるので同じ番号と見る。先頭の 0 は得意先の番号の一部なので落とさない。取消の受注は何も作らないので見ない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 照合の字を表の列に持つと決めたとき (そのときは列を足して DB で比べる)。
+    """
+    if not value:
+        return ""
+    return unicodedata.normalize("NFKC", str(value)).strip().casefold()
+
+
+def same_customer_order_no(customer, customer_order_no, *, exclude_pk=None) -> list[str]:
+    """同じ得意先の受注のうち、取消でなく、得意先の注文番号が空でなく、照合の字 (customer_order_no_key) が同じ物の受注番号の並び (受注番号の順)。
+
+    exclude_pk の受注は除く。入れた番号の照合の字が空か、得意先が無ければ、表を読まずに空の並びを返す。
+    問い合わせは 1 回 (得意先・取消でない・番号が空でない、で絞った行の受注番号と得意先の注文番号だけを読み、照合の字は Python で比べる)。読むだけ。
+    訳: 同じ注文書を 2 回入れて 2 倍作る間違いに、保存の前に気づかせるため (検査の層の R31 が読む)。全角と半角・大文字と小文字・前後の空白の違いは、手で打つ字と読み取りの字で揺れるので同じ番号と見る。先頭の 0 は得意先の番号の一部なので落とさない。取消の受注は何も作らないので見ない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 照合の字を表の列に持つと決めたとき (そのときは列を足して DB で比べる)。
+    """
+    key = customer_order_no_key(customer_order_no)
+    if not key or customer is None:
+        return []
+    rows = Order.objects.filter(customer=customer).exclude(status=Order.STATUS_CANCELLED).exclude(customer_order_no="")
+    if exclude_pk is not None:
+        rows = rows.exclude(pk=exclude_pk)
+    return [
+        order_no
+        for order_no, their_no in rows.order_by("order_no").values_list("order_no", "customer_order_no")
+        if customer_order_no_key(their_no) == key
+    ]
 
 
 def shipped_qty(order_line):

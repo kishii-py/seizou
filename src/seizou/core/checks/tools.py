@@ -75,6 +75,13 @@ def completes_without_lump_amount(purchase_order_line, *, adding_qty=None) -> bo
     return services.completes_without_lump_amount(purchase_order_line, adding_qty=adding_qty)
 
 
+def same_customer_order_no(customer, customer_order_no, exclude_pk=None) -> list[str]:
+    """同じ得意先で、得意先の注文番号の照合の字が同じ受注 (取消を除く) の受注番号の並び (R31 が読む。orders.services の同じ名前の関数)。"""
+    from seizou.orders import services
+
+    return services.same_customer_order_no(customer, customer_order_no, exclude_pk=exclude_pk)
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)
