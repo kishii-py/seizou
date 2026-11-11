@@ -616,6 +616,7 @@ class CsvImportForm(forms.Form):
     clean() がファイルを読み、行ごとに字を値に直して確かめる。誤りは (行の番号, 欄 = 見出しの字, 理由) で
     import_errors に集め、1 件でもあれば form を通さない (1 件も入れない)。通れば cleaned_data["rows"] に
     services.import_* に渡す行を置き、import_counts (入れる・更新する・飛ばした の数) を置く。表には書かない。
+    入れられるが確かめてほしい行は、誤りがあっても無くても import_notices に同じ形で集める (子の _row_notices が決める)。
     """
 
     submit_label = "取り込む"
@@ -651,6 +652,8 @@ class CsvImportForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.import_errors = []
+        #: 入れる前に確かめる行 (行の番号, 見出しの字, 理由)。入れられる行で、誤りで止まった時に画面の表に出す
+        self.import_notices = []
         self.import_counts = None
         self.header_hint = "・".join(csvio.header_labels(self.model))
         #: CSV にあったが読まなかった見出し (知らせの 1 文に使う)
@@ -681,6 +684,7 @@ class CsvImportForm(forms.Form):
                 self.unread_headers = [header for header, field in columns.items() if field.name in self.unread_fields]
                 columns = {header: field for header, field in columns.items() if field.name not in self.unread_fields}
                 rows, skipped = self._read_rows(table, columns, ext_columns, errors)
+                self.import_notices = self._row_notices(rows, columns)
         if errors:
             self.import_errors = errors
             raise forms.ValidationError(
@@ -722,6 +726,10 @@ class CsvImportForm(forms.Form):
             rows.append({"line": line, "data": data, "ext": ext or None})
         return rows, skipped
 
+    def _row_notices(self, rows, columns):
+        """入れる前に確かめる行の並び (行の番号, 見出しの字, 理由)。親は空の並び (取引先の取り込みは何も並べない)。子が決める。"""
+        return []
+
     def _counts(self, rows, skipped):
         """入れる・更新する・飛ばした の数 (読むだけ)。"""
         existing = set(self.model.objects.values_list(self.key_name, flat=True))
@@ -745,6 +753,41 @@ class ItemCsvImportForm(CsvImportForm):
             # 金額の閲覧が無い人 (権限の判定の on) は標準単価の列を読まない (値があっても変えない。作者の決め。
             # 部品の編集の画面の ItemForm が欄を外すのと同じ考え)。土台は __init__ に hide_money の引数がある form にだけ渡す。
             self.unread_fields = ("standard_price",)
+
+    def _row_notices(self, rows, columns):
+        """入れる前に確かめる行を並べる (読むだけ。表に書かない。断らない)。
+
+        標準単価の列を読んだ行で値が 0 以下の行と、単位の字が空でなく単位の一覧でコードを引けない行
+        (services.unit_code_for。取り込みの後の数え方 _with_unit_code と同じ関数) を、(行の番号, CSV の見出しの字, 理由) で並べる。
+        理由の字に金額は書かない。金額の閲覧の無い人は標準単価の列を読まない (columns に無い) ので、標準単価の行は出ない。
+        訳: どちらの行も入れられるが、標準単価が 0 以下の部品は受注に写すと R02 で止まり、一覧に無い単位は入れた後に選び直す要がある。
+        ほかの行の誤りで止まった時に一緒に見えるよう、入れる前の表に並べる。出所 = 本体の決め 11-11 14:2x (断らない。入れる前の表と結果に黄の知らせで並べる)。
+        変えてよい条件 = 0 以下の標準単価か一覧に無い単位を、取り込みで断ると本人が決め直したとき。
+        """
+        headers = {field.name: header for header, field in columns.items()}
+        price_header, unit_header = headers.get("standard_price"), headers.get("unit")
+        codes = {}
+        notices = []
+        for row in rows:
+            line, data = row["line"], row["data"]
+            price = data.get("standard_price")
+            if price_header and price is not None and price <= 0:
+                notices.append(
+                    (
+                        line,
+                        price_header,
+                        "標準単価が 0 以下です。入れられますが、この部品を受注に写すと「数量と単価は 0 より大きい」(R02) で保存できません。",
+                    )
+                )
+            unit = (data.get("unit") or "").strip() if unit_header else ""
+            if unit:
+                if unit not in codes:
+                    codes[unit] = services.unit_code_for(unit)
+                if not codes[unit]:
+                    notices.append(
+                        (line, unit_header, f"単位「{unit}」は単位の一覧にありません。入れられますが、入れた後に部品の編集で単位を選び直してください。")
+                    )
+        return notices
 
     def service_kwargs(self):
         kwargs = super().service_kwargs()
