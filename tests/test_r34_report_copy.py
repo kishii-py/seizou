@@ -187,6 +187,8 @@ def test_a_closing_bulk_keeps_a_copy_per_invoice(user, item, monkeypatch):
     _ship(user, _line(user, second, item), "6")
 
     created = billing_services.create_closing_invoices(ISSUED_ON, user, issued_on=ISSUED_ON)
+    # 写しが残った時は、写しの知らせを足さない (作らなかった得意先が無ければ緑のまま)
+    assert created.copy_failed == [] and "写しを残せなかった" not in created.saved_note and created.saved_level == ""
 
     assert len(created) == 2
     for invoice in created:
@@ -340,6 +342,9 @@ def test_d_closing_bulk_is_not_stopped_when_the_copy_fails(user, item, monkeypat
     assert Invoice.objects.filter(pk=invoice.pk).exists()
     assert _copies(invoice) == []
     assert len(_copy_warnings(caplog)) == 1
+    # 一括の結果の知らせも黄になり、写しを残せなかった請求書の番号を言う (描けなければ黄色の知らせで伝える)
+    assert created.saved_level == "warning"
+    assert f"発行の時の写しを残せなかった請求書 1 枚: {invoice.invoice_no}。会社の帳票のテンプレートを確かめてください。" in created.saved_note
 
 
 @pytest.mark.django_db

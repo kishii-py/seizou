@@ -58,7 +58,7 @@ from django.utils import timezone
 from seizou.core import access, history
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import company, next_number, record_history
-from seizou.core.services import keep_report_copy, note_copy_failed
+from seizou.core.services import COPY_FAILED_NOTE, keep_report_copy, note_copy_failed
 from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
 from seizou.shipping.services import amount_of_shipment
 
@@ -798,19 +798,37 @@ class ClosedInvoices(list):
         return f"{self.closing_on:%Y-%m-%d} 締めで {len(self)} 社の請求書を作りました ({numbers})。"
 
     @property
+    def copy_failed(self) -> list:
+        """発行の時の写しを残せなかった請求書 (R34。_issue_invoice が請求書ごとの saved_note に COPY_FAILED_NOTE を足した物)。読むだけ。"""
+        return [invoice for invoice in self if COPY_FAILED_NOTE in (getattr(invoice, "saved_note", "") or "")]
+
+    @property
     def saved_note(self) -> str:
-        """「作らなかった得意先 <n> 社: <名前> (<短い訳>)・…。」(名前は 5 社まで、6 社目からは「ほか n 社」)。作らなかった行が無ければ空の字。"""
-        if not self.skipped:
-            return ""
-        names = [f"{row['customer'].name} ({_closing_label(row)})" for row in self.skipped[:_CLOSING_NAMES_SHOWN]]
-        if len(self.skipped) > _CLOSING_NAMES_SHOWN:
-            names.append(f"ほか {len(self.skipped) - _CLOSING_NAMES_SHOWN} 社")
-        return f"作らなかった得意先 {len(self.skipped)} 社: {'・'.join(names)}。"
+        """「作らなかった得意先 <n> 社: <名前> (<短い訳>)・…。」(名前は 5 社まで、6 社目からは「ほか n 社」)。作らなかった行が無ければ空の字。
+
+        発行の時の写しを残せなかった請求書があれば、後ろに「発行の時の写しを残せなかった請求書 <n> 枚: <番号>・…。会社の帳票のテンプレートを
+        確かめてください。」を足す (番号は 5 枚まで、6 枚目からは「ほか n 枚」。R34 の「描けなければ黄色の知らせで伝える」を、一括でも通す)。
+        """
+        parts = []
+        if self.skipped:
+            names = [f"{row['customer'].name} ({_closing_label(row)})" for row in self.skipped[:_CLOSING_NAMES_SHOWN]]
+            if len(self.skipped) > _CLOSING_NAMES_SHOWN:
+                names.append(f"ほか {len(self.skipped) - _CLOSING_NAMES_SHOWN} 社")
+            parts.append(f"作らなかった得意先 {len(self.skipped)} 社: {'・'.join(names)}。")
+        failed = self.copy_failed
+        if failed:
+            numbers = [invoice.invoice_no for invoice in failed[:_CLOSING_NAMES_SHOWN]]
+            if len(failed) > _CLOSING_NAMES_SHOWN:
+                numbers.append(f"ほか {len(failed) - _CLOSING_NAMES_SHOWN} 枚")
+            parts.append(
+                f"発行の時の写しを残せなかった請求書 {len(failed)} 枚: {'・'.join(numbers)}。会社の帳票のテンプレートを確かめてください。"
+            )
+        return "".join(parts)
 
     @property
     def saved_level(self) -> str:
-        """人の手が要る作らなかった行があれば "warning" (閉じるまで残る黄)。ほかは空の字 (緑)。"""
-        return "warning" if any(_needs_hand(row) for row in self.skipped) else ""
+        """人の手が要る作らなかった行か、発行の時の写しを残せなかった請求書があれば "warning" (閉じるまで残る黄)。ほかは空の字 (緑)。"""
+        return "warning" if any(_needs_hand(row) for row in self.skipped) or self.copy_failed else ""
 
 
 def create_closing_invoices(closing_on, user, *, issued_on):
