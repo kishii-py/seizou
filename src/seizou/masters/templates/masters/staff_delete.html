@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load seizou_icons %}
+{# 社員の削除の確認 (2 段目 N401b): 休日の削除 (masters/holiday_delete.html) と同じ 1 枚のカード。「削除」で社員を消し、社員の一覧へ戻る。赤の知らせは base.html が出す。 #}
+{# 実績の件数 (form.progress_count) は StaffDeleteForm が masters.services.staff_progress_count で数える。1 件以上なら、写して残す事を 1 文で出す。 #}
+{% block content %}
+<form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs">
+  {% csrf_token %}
+  <p class="flex items-start gap-2">{% icon "alert" "size-5 text-error" %}<span>{{ object.code }} {{ object.name }} を削除します。{% if form.progress_count %}この社員の実績 {{ form.progress_count }} 件には、名前と番号を写して残します。{% endif %}</span></p>
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-6">
+    <a class="btn btn-outline border-base-300" href="{% url 'masters:staff_detail' object.pk %}">{% icon "arrow-left" "size-4" %}キャンセル</a>
+    <button class="btn btn-error" type="submit">{% icon "x" "size-4" %}削除</button>
+  </div>
+</form>
+{% endblock %}

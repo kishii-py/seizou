@@ -26,11 +26,13 @@ from .forms import ItemForm, PartnerForm, ProcessForm
 from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
 from .forms import HolidayDeleteForm, HolidayForm
+from .forms import StaffDeleteForm, StaffForm
 from .forms import ItemPriceDeleteForm, ItemPriceForm
 from .forms import ItemProcessAddForm, ItemProcessMoveForm, ItemProcessRemoveForm
 from .forms import PartnerItemDeleteForm, PartnerItemForm, PartnerItemUpdateForm
 from .models import Item, Partner, Process, QuantityUnit
 from .models import Holiday
+from .models import Staff
 from .models import ItemPrice, PartnerItem
 from .models import ItemProcess
 
@@ -648,3 +650,79 @@ class HolidayDeleteView(BaseFormView):
     template_name = "masters/holiday_delete.html"
     screen_name = "休日の削除"
     screen_help = "休日を消し、休日の一覧に戻ります。消した日は稼働日として数えます。"
+
+
+# ---------------------------------------------------------------- 社員 (実績の作業した人。本人の決め 11-11 09:0x)
+# 工程の画面と同じ形 (一覧は使用中だけ・新規登録は小窓・詳細は使用停止の黄色の 1 行) に、休日と同じ形の削除の確かめを足す。
+
+
+class StaffListView(BaseListView):
+    """社員の一覧。
+
+    使う人: 総務・生産管理 / いつ: 人が入ったときと辞めたとき / 何のために: 実績に残す作業した人を、社員番号で引けるようにする / 次にすること: 実績の入力で社員番号を入れる
+    """
+
+    model = Staff
+    template_name = "masters/staff_list.html"
+    screen_name = "社員"
+    screen_help = "実績に作業した人を残すための社員の一覧。使用中の社員が 1 人でも居ると、実績の入力に「社員番号」の欄が出ます。"
+    columns = ("code", "name", "note")
+    search_fields = ("code", "name")
+    filters = (INACTIVE_FILTER,)
+    # 表の並び (社員番号の字の順) と同じ。書かないと土台の既定 (新しい順) になる
+    ordering = ("code", "pk")
+
+    def get_queryset(self):
+        return _hide_inactive(self, super().get_queryset())
+
+
+class StaffDetailView(BaseDetailView):
+    """社員の詳細。
+
+    使う人: 総務・生産管理 / いつ: 社員の番号と名前を確かめるとき / 何のために: 実績に残す作業した人を、社員番号で引けるようにする / 次にすること: 「編集」で直すか、「削除」で消す
+    """
+
+    model = Staff
+    template_name = "masters/staff_detail.html"
+    screen_name = "社員の詳細"
+    screen_help = "社員番号・名前・備考と使用中か。「編集」で直し、「削除」で消します。"
+
+
+class StaffCreateView(BaseFormView):
+    """社員の新規登録の入力。
+
+    使う人: 総務・生産管理 / いつ: 人が入ったとき / 何のために: 実績に残す作業した人を、社員番号で引けるようにする / 次にすること: 実績の入力で社員番号を入れる
+    """
+
+    model = Staff
+    form_class = StaffForm
+    service = staticmethod(services.create_staff)
+    screen_name = "社員の新規登録"
+    screen_help = "社員番号と名前を登録します。先頭の 0 の数が違う番号は、同じ番号と見ます。"
+
+
+class StaffUpdateView(BaseFormView):
+    """社員の編集の入力。
+
+    使う人: 総務・生産管理 / いつ: 名前が変わったときと辞めたとき / 何のために: 実績に残す作業した人を、社員番号で引けるようにする / 次にすること: 実績の一覧の「作業した人」で確かめる
+    """
+
+    model = Staff
+    form_class = StaffForm
+    service = staticmethod(services.update_staff)
+    screen_name = "社員の編集"
+    screen_help = "社員番号・名前・備考を直します。辞めた人は「使用中」を外すと、実績の入力でその番号を使えなくなります。"
+
+
+class StaffDeleteView(BaseFormView):
+    """社員の削除の確かめ。
+
+    使う人: 総務・生産管理 / いつ: 間違えて足した社員や、残さなくてよい社員を消すとき / 何のために: 実績に残す作業した人を、社員番号で引けるようにする / 次にすること: 社員の一覧で確かめる
+    """
+
+    model = Staff
+    form_class = StaffDeleteForm
+    service = staticmethod(services.delete_staff)
+    template_name = "masters/staff_delete.html"
+    screen_name = "社員の削除"
+    screen_help = "社員を消し、社員の一覧に戻ります。この社員の実績には、消す時の名前と番号を写して残します。"
