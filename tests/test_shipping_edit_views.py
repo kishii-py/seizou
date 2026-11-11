@@ -160,17 +160,25 @@ def test_cancel_note_on_screen(logged_in, shipment, note):
 
 
 @pytest.mark.django_db
-def test_invoiced_note_cancel_is_red(logged_in, user, customer, shipment, note):
+def test_invoiced_note_cancel_is_yellow_then_cancelled(logged_in, user, customer, shipment, note):
+    """請求書に入った出荷の納品書の取消は、止めずに R27 の黄で知らせ、confirmed=1 の 2 回目で取り消す (本人の決め 11-11 13:0x)。"""
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    url = reverse("shipping:deliverynote_cancel", args=[note.pk])
 
-    response = logged_in.post(reverse("shipping:deliverynote_cancel", args=[note.pk]), {})
+    response = logged_in.post(url, {})
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert 'data-notice="stop"' in body
+    assert 'data-notice="check"' in body and "R27" in body
+    assert 'data-notice="stop"' not in body
     assert invoice.invoice_no in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
+
+    again = logged_in.post(url, {"confirmed": "1"})
+    assert again.status_code == 302
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_CANCELLED
 
 
 @pytest.mark.django_db
@@ -184,63 +192,62 @@ def test_cancel_note_screen_says_cancel(logged_in, user, customer, shipment, not
     # 欄の無い form なので、土台の「必須」の案内は出ない
     assert "「必須」の欄を埋めて" not in body
 
-    # 請求済みで止まった画面は、赤の知らせと黄の断りだけで、取り消すボタンを出さない (初見テスト R5 の候補 C03。依頼書 N196)
+    # 請求済みの出荷の納品書は、押す前の画面にも取り消すボタンが出る (前は断りだけ。本人の決め 11-11 13:0x で止めずに知らせる)
     billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
-    response = logged_in.post(url, {})
-    assert response.status_code == 200
-    body = response.content.decode()
-    assert 'data-notice="stop"' in body
-    assert "取り消す</button>" not in body
+    body = logged_in.get(url).content.decode()
+    assert "取り消す</button>" in body
     assert "保存</button>" not in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
 
 
-# --- 請求済みの納品書の取消は、押す前に断りの文と link を出す (初見テスト R5 の候補 C03。依頼書 N196) ---
+# --- 請求済みの納品書の取消は、押す前に知らせの文と link を出し、取り消すボタンも出す (初見テスト R5 の候補 C03。依頼書 N196 を N403b で直した) ---
 
 #: 入力のカード (core/_form_card.html) の form の頭 (画面の全体には上の帯のログアウトの form もあるので、class まで見る)
 FORM_CARD = '<form method="post" class="rounded-xl'
 
 
+#: 取消のカードの知らせの黄の 1 行 (押す前だけ出す。字は services.billed_notice)
+NOTICE_LINE = 'role="status" data-billed-notice>'
+
+
 @pytest.mark.django_db
-def test_invoiced_note_cancel_screen_refuses_before_press(logged_in, user, customer, shipment, note):
-    """全体の画面を GET すると、黄の断りと出荷・請求書の link と「納品書へ戻る」が出て、form と取り消すボタンは出ない。"""
+def test_invoiced_note_cancel_screen_notices_before_press(logged_in, user, customer, shipment, note):
+    """全体の画面を GET すると、確かめの文・知らせの黄の 1 行・出荷と請求書の link・form と取り消すボタンが出る。"""
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
 
     page = logged_in.get(reverse("shipping:deliverynote_cancel", args=[note.pk]))
 
     assert page.status_code == 200
     body = page.content.decode()
-    warning = body[body.index("alert-warning") :]
-    warning = warning[: warning.index("</div>")]
-    assert '<span class="font-semibold">取り消せません。</span>' in warning
-    assert services.cancel_refusal(note).partition("。")[2].strip() in warning
-    assert "この納品書を取り消します。" not in body
-    assert FORM_CARD not in body
-    assert f"{note.note_no} を取り消す</button>" not in body
-    # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が後で付いても通るように)
+    assert "この納品書を取り消します。" in body
+    line = body[body.index(NOTICE_LINE) :]
+    assert services.billed_notice(note) in line[: line.index("</div>")]
+    assert "取り消せません。" not in body
+    assert FORM_CARD in body
+    assert f"{note.note_no} を取り消す</button>" in body
+    # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が付いても通るように)
     assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
     assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
-    assert f'href="{reverse("shipping:deliverynote_detail", args=[note.pk])}"' in body
-    assert "納品書へ戻る" in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
 
 
 @pytest.mark.django_db
-def test_invoiced_note_cancel_post_shows_refusal_without_button(logged_in, user, customer, shipment, note):
-    """URL を直に開いて POST すると、赤の知らせの下に同じ黄の断りが出て、確かめの文と送信のボタンは残らない。"""
+def test_invoiced_note_cancel_post_shows_notice_once(logged_in, user, customer, shipment, note):
+    """押した後は、土台の黄の知らせ (R27) が同じ文を出すので、カードの黄の 1 行は出さない。請求書の行と確かめの文は残る。"""
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
 
     response = logged_in.post(reverse("shipping:deliverynote_cancel", args=[note.pk]), {})
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert 'data-notice="stop"' in body
-    assert "alert-warning" in body
-    assert "この納品書を取り消します。" not in body
-    assert FORM_CARD not in body
-    assert f"{note.note_no} を取り消す</button>" not in body
+    assert 'data-notice="check"' in body and "R27" in body
+    assert body.count(services.billed_notice(note).partition("。")[0]) == 1
+    assert NOTICE_LINE not in body
+    assert "この納品書を取り消します。" in body
+    assert FORM_CARD in body
+    assert 'name="confirmed" value="1"' in body
     assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
@@ -334,20 +341,18 @@ def test_update_form_keeps_head_line_when_stopped(logged_in, shipment, note):
 
 
 # --- 取消のカードの請求書の link を、入金があれば入金の枠へ向ける (初見テスト R5 の候補 C03。決め C03-2 a。依頼書 N296) ---
-
-#: 取消のカードの断りの後半 (請求書に入金 6,500 が 1 件)
-PAID_ONE = "先に請求書の入金を取り消し (入金の記録 1 件・合計 ¥6,500)、次に請求書を、最後に納品書を取り消してください。"
+# 知らせの文には入金を書かない (N403b。前の断りの文は入金の件数と合計と取り消す順を書いた)。link の行き先は今のまま。
 
 
 def _warning(body):
-    """取消のカードの黄の断りの帯の中身 (最初の alert-warning から閉じの </div> まで)。"""
-    warning = body[body.index("alert-warning") :]
+    """取消のカードの知らせの黄の 1 行の中身 (NOTICE_LINE から閉じの </div> まで)。"""
+    warning = body[body.index(NOTICE_LINE) :]
     return warning[: warning.index("</div>")]
 
 
 @pytest.mark.django_db
 def test_cancel_card_links_paid_invoice_to_payments(logged_in, user, customer, shipment, note):
-    """入金の無い請求書の link は請求書の詳細のまま。入金を 1 件記録すると、link は入金の枠 (#payments) へ向き、断りは入金の文になる。
+    """入金の無い請求書の link は請求書の詳細のまま。入金を 1 件記録すると、link は入金の枠 (#payments) へ向く。知らせの文は入金を書かない。
 
     入金を取り消すと、link は請求書の詳細へ戻る。どの形でも納品書は発行のまま。
     """
@@ -365,7 +370,7 @@ def test_cancel_card_links_paid_invoice_to_payments(logged_in, user, customer, s
     body = logged_in.get(url).content.decode()
     assert paid in body
     assert plain not in body
-    assert PAID_ONE in _warning(body)
+    assert "入金" not in _warning(body)
 
     billing_services.cancel_payment(payment, user)
     body = logged_in.get(url).content.decode()
@@ -392,12 +397,12 @@ def test_cancel_card_links_every_row_of_paid_invoice(logged_in, user, customer, 
 
     assert body.count(f'href="{reverse("billing:invoice_detail", args=[paid_invoice.pk])}#payments"') == 2
     assert body.count(f'href="{reverse("billing:invoice_detail", args=[unpaid_invoice.pk])}"') == 1
-    assert PAID_ONE in _warning(body)
+    assert services.billed_notice(note) in _warning(body)
 
 
 @pytest.mark.django_db
-def test_cancel_card_counts_payments_without_money(settings, client, user, customer, shipment, note):
-    """金額の閲覧の判定を on にした会社で、金額を見られない人の取消の画面の断りは件数だけ (合計の入った文が無い)。"""
+def test_cancel_card_has_no_money_for_viewer_without_money(settings, client, user, customer, shipment, note):
+    """金額の閲覧の判定を on にした会社で、金額を見られない人の取消の画面も、知らせの文と取り消すボタンが出る (文に金額と入金の件数が無い)。"""
     settings.SEIZOU = {"access_control": dict(ALL_ON)}
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
     billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
@@ -407,8 +412,10 @@ def test_cancel_card_counts_payments_without_money(settings, client, user, custo
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert "(入金の記録 1 件)、次に請求書を" in body
-    assert "・合計 ¥6,500)" not in body
+    assert services.billed_notice(note) in _warning(body)
+    assert "入金の記録" not in body
+    assert "¥6,500" not in body
+    assert f"{note.note_no} を取り消す</button>" in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
 

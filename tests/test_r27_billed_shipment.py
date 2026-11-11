@@ -1,7 +1,8 @@
 """R27: 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) を
 直すか消そうとしたら (標準のポカよけ。会社の設定 billed_shipment。本人の決め 11-11 12:5x〜13:0x)。
 
-出荷の編集 (shipping.update_shipment) と出荷の削除 (shipping.delete_shipment) の画面を、設定の 3 つの値 (warn・stop・off) で回す。
+出荷の編集 (shipping.update_shipment) と出荷の削除 (shipping.delete_shipment) と納品書の取消 (shipping.cancel_delivery_note。
+本人の決め 11-11 13:0x。依頼書 N403b) の画面を、設定の 3 つの値 (warn・stop・off) で回す。
 知らせるのときは黄の知らせと「このまま保存」が出て、confirmed=1 の 2 回目で直る (消える)。請求書の明細の写しは変わらない。
 services は請求済みの出荷を断らない (新しい断る処理は無い)。services が断る出荷 (発行の納品書に入っている = R08・
 delete_refusal が断る出荷) には R27 の黄を出さず、今のまま赤だけを出す (黄の後に赤を出さない)。
@@ -22,7 +23,7 @@ from seizou.core.exceptions import CheckViolation
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services
-from seizou.shipping.models import Shipment
+from seizou.shipping.models import DeliveryNote, Shipment
 from tests.rules_helpers import rules_md_text
 
 ORDER_DATE = date(2026, 11, 2)
@@ -33,6 +34,7 @@ UPDATE = "shipping.update_shipment"
 #: 小窓で開いた画面の POST (htmx の見出し。tests/test_r24_over_payment.py と同じ)
 MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 DELETE = "shipping.delete_shipment"
+NOTE_CANCEL = "shipping.cancel_delivery_note"
 
 
 @pytest.fixture
@@ -116,6 +118,8 @@ def test_r27_row_in_rules_md_and_setting_key():
     assert checks.setting_key_for("R27") == "billed_shipment"
     assert "R27" in [check.name for check in checks.registered(UPDATE)]
     assert "R27" in [check.name for check in checks.registered(DELETE)]
+    assert "R27" in [check.name for check in checks.registered(NOTE_CANCEL)]
+    assert "納品書を取り消そうとしたら" in rules_md_text("R27")
 
 
 # --- (a) 知らせる (既定) ---
@@ -344,3 +348,114 @@ def test_r27_shipment_in_issued_note_shows_only_r08(settings, user, logged_in, c
     assert 'data-notice="stop"' in body and "R08" in body
     shipment.refresh_from_db()
     assert shipment.qty == Decimal("4")
+
+
+# --- (h) 請求書に入った出荷の納品書の取消 (本人の決め 11-11 13:0x「それでOK」。依頼書 N403b) ---
+
+
+def _cancel_url(note):
+    return reverse("shipping:deliverynote_cancel", args=[note.pk])
+
+
+@pytest.fixture
+def invoiced_note(user, customer, line):
+    """受注 10 のうち 4 を出荷して納品書を作り、その出荷を請求書に入れた物。(納品書, 出荷, 請求書) を返す。"""
+    shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    note = services.create_delivery_note(customer, [shipment], user)
+    shipment.refresh_from_db()
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
+    return note, shipment, invoice
+
+
+@pytest.mark.django_db
+def test_r27_note_cancel_text(settings, user, invoiced_note):
+    """(h) 検査の文は shipping.services.billed_notice と同じ (カードと同じ 1 か所の文)。取り消し済みの納品書と請求していない納品書には文を返さない。"""
+    settings.SEIZOU = {}
+    note, shipment, invoice = invoiced_note
+
+    warnings = checks.run(NOTE_CANCEL, {"object": note}, user)
+
+    assert [(warning.code, warning.message) for warning in warnings] == [
+        (
+            "R27",
+            f"納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に入っています。"
+            "納品書を取り消しても、請求書は変わりません。",
+        )
+    ]
+    assert warnings[0].message == services.billed_notice(note)
+    services.cancel_delivery_note(note, user)
+    note.refresh_from_db()
+    assert checks.run(NOTE_CANCEL, {"object": note}, user) == []
+
+
+@pytest.mark.django_db
+def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
+    """(h) 既定 (知らせる) で取り消すと黄の知らせが出て、confirmed=1 の 2 回目で取り消される。請求書は発行のまま。"""
+    settings.SEIZOU = {}
+    note, _shipment, invoice = invoiced_note
+
+    first = logged_in.post(_cancel_url(note), {})
+    assert first.status_code == 200
+    body = first.content.decode()
+    assert 'data-notice="check"' in body and "R27" in body and invoice.invoice_no in body
+    assert 'name="confirmed" value="1"' in body
+    assert 'data-notice="stop"' not in body
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+    second = logged_in.post(_cancel_url(note), {"confirmed": "1"})
+    assert second.status_code == 302
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_CANCELLED
+    invoice.refresh_from_db()
+    assert invoice.status == invoice.STATUS_ISSUED
+
+
+@pytest.mark.django_db
+def test_r27_note_cancel_stop_and_off(settings, logged_in, invoiced_note):
+    """(h) 止めるでは赤で止まり、confirmed=1 を付けても取り消さない。通すでは何も出ずに取り消す。"""
+    note, _shipment, _invoice = invoiced_note
+
+    settings.SEIZOU = {"billed_shipment": "stop"}
+    stopped = logged_in.post(_cancel_url(note), {})
+    assert stopped.status_code == 200
+    body = stopped.content.decode()
+    assert 'data-notice="stop"' in body and "R27" in body
+    assert 'data-notice="check"' not in body
+    assert logged_in.post(_cancel_url(note), {"confirmed": "1"}).status_code == 200
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_ISSUED
+
+    settings.SEIZOU = {"billed_shipment": "off"}
+    passed = logged_in.post(_cancel_url(note), {})
+    assert passed.status_code == 302
+    note.refresh_from_db()
+    assert note.status == DeliveryNote.STATUS_CANCELLED
+
+
+# --- (i) 取り消して作り直しても、請求書の明細の写しは変わらない ---
+
+
+@pytest.mark.django_db
+def test_r27_note_recreated_keeps_invoice_copy(settings, user, logged_in, customer, line, invoiced_note):
+    """(i) 請求書に入った出荷の納品書を取り消し、同じ出荷で作り直しても、請求書の明細 (数量・単価・金額の写し) は変わらない。
+
+    作り直した納品書を刷ると、N376 のとおり請求書の明細の写しの単価で出る (受注の単価を 100 から 120 に直した後でも 100)。
+    刷る確かめは印刷用の HTML の画面で見る (PDF の部品に依らない)。
+    """
+    settings.SEIZOU = {}
+    note, shipment, invoice = invoiced_note
+    copies = list(invoice.lines.order_by("pk").values_list("shipment_id", "qty", "unit_price", "amount"))
+    orders_services.update_order(line.order, {}, [{"id": line.pk, "unit_price": Decimal("120")}], user)
+
+    assert logged_in.post(_cancel_url(note), {"confirmed": "1"}).status_code == 302
+    shipment.refresh_from_db()
+    renewed = services.create_delivery_note(customer, [shipment], user)
+
+    invoice.refresh_from_db()
+    assert invoice.status == invoice.STATUS_ISSUED
+    assert list(invoice.lines.order_by("pk").values_list("shipment_id", "qty", "unit_price", "amount")) == copies
+    body = logged_in.get(reverse("shipping:deliverynote_print", args=[renewed.pk])).content.decode()
+    assert renewed.note_no in body
+    assert "¥100 / 個" in body
+    assert "¥120" not in body

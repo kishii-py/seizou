@@ -1,8 +1,9 @@
-"""一式の行で請求した明細の出荷の納品書の取消を断る (作者の決め C107-6)。
+"""一式の行で請求した明細の出荷の納品書の取消 (作者の決め C107-6 を、本人の決め 11-11 13:0x で「止めずに知らせる」に変えた)。
 
-発行の請求書に一式の行 (出荷に結び付かない請求書の明細) がある受注の明細の出荷も「請求書に入った出荷」と数え、
-その出荷の納品書を取り消せない (一式の行の数量は請求した時の出荷の合計の写しなので、出荷を直せると食い違う)。
-文は shipping.services.cancel_refusal の 1 か所。形の手本 = tests/test_shipping_cancel_note.py。作り物のデータだけを使う。
+発行の請求書に一式の行 (出荷に結び付かない請求書の明細) がある受注の明細の出荷も「請求書に入った出荷」と数える。
+前はその出荷の納品書を取り消せなかったが、納品書は出荷の記録を刷った物で、取り消しても請求書の一式の行 (写し) は変わらないので、
+取り消せる形にし、検査の層の R27 が知らせる (本人の決め 11-11 10:1x・13:0x「それでOK」)。
+知らせの文は shipping.services.billed_notice の 1 か所。形の手本 = tests/test_shipping_cancel_note.py。作り物のデータだけを使う。
 """
 
 from datetime import date
@@ -56,29 +57,32 @@ def _lump_billed(user, customer, item):
 
 
 @pytest.mark.django_db
-def test_lump_billed_note_cannot_be_cancelled(user, customer, item):
+def test_lump_billed_note_can_be_cancelled(user, customer, item):
+    """一式の行で請求した明細の出荷の納品書も取り消せ、知らせの文は請求書の番号と「請求書は変わりません」を書く。一式の行は変わらない。"""
     note, shipment, invoice = _lump_billed(user, customer, item)
     expected = (
-        f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} の"
-        "一式の行で請求済みです。先に請求書を取り消してから、納品書を取り消してください。"
+        f"納品書 {note.note_no} の出荷 {shipment.shipment_no} の受注の明細は、請求書 {invoice.invoice_no} の一式の行で請求済みです。"
+        "納品書を取り消しても、請求書は変わりません。"
     )
+    lump_row = invoice.lines.get()
 
     assert services.lump_billed_shipments(note) == [(shipment, invoice)]
-    assert services.cancel_refusal(note) == expected
-    with pytest.raises(ValueError) as caught:
-        services.cancel_delivery_note(note, user)
-    assert str(caught.value) == expected
+    assert services.billed_notice(note) == expected
+    assert services.cancel_delivery_note(note, user).status == DeliveryNote.STATUS_CANCELLED
     note.refresh_from_db()
-    assert note.status == DeliveryNote.STATUS_ISSUED
+    assert note.status == DeliveryNote.STATUS_CANCELLED
+    invoice.refresh_from_db()
+    assert invoice.status == invoice.STATUS_ISSUED
+    assert (invoice.lines.get().qty, invoice.lines.get().amount) == (lump_row.qty, lump_row.amount)
 
 
 @pytest.mark.django_db
-def test_cancelling_lump_invoice_allows_note_cancel(user, customer, item):
+def test_cancelling_lump_invoice_clears_notice(user, customer, item):
     note, _shipment, invoice = _lump_billed(user, customer, item)
 
     billing_services.cancel_invoice(invoice, user)
 
-    assert services.cancel_refusal(note) == ""
+    assert services.billed_notice(note) == ""
     assert services.cancel_delivery_note(note, user).status == DeliveryNote.STATUS_CANCELLED
 
 
@@ -96,10 +100,10 @@ def test_shipment_line_invoice_comes_first(user, customer, item):
         customer, [unit_shipment], user, issued_on=NOV_30, lumps=[(lump, Decimal("16667"))]
     )
 
-    refusal = services.cancel_refusal(note)
+    notice = services.billed_notice(note)
 
-    assert f"出荷 {unit_shipment.shipment_no} は請求書 {invoice.invoice_no} で請求済みです。" in refusal
-    assert "一式の行" not in refusal
+    assert f"出荷 {unit_shipment.shipment_no} は請求書 {invoice.invoice_no} に入っています。" in notice
+    assert "一式の行" not in notice
 
 
 @pytest.mark.django_db
@@ -110,11 +114,14 @@ def test_cancel_screen_shows_lump_invoice_link(client, user, customer, item, hea
 
     body = client.get(reverse("shipping:deliverynote_cancel", args=[note.pk]), **headers).content.decode()
 
-    assert '<span class="font-semibold">取り消せません。</span>' in body
+    # 押す前に知らせの黄の 1 行と、請求済みの出荷と請求書の link の行が出て、取り消すボタンも出る
+    assert services.billed_notice(note) in body
+    assert "取り消せません。" not in body
     assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
     assert f"{invoice.invoice_no}</a>の一式の行 で請求済み" in body
     assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
-    assert FORM_CARD not in body
+    assert FORM_CARD in body
+    assert f"{note.note_no} を取り消す</button>" in body
 
     detail = client.get(reverse("shipping:deliverynote_detail", args=[note.pk])).content.decode()
     assert "で請求済みです (出荷 1 件)。" in detail
@@ -128,4 +135,4 @@ def test_unit_only_note_has_no_lump_rows(user, customer, item):
     note = services.create_delivery_note(customer, [shipment], user)
 
     assert services.lump_billed_shipments(note) == []
-    assert services.cancel_refusal(note) == ""
+    assert services.billed_notice(note) == ""

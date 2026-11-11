@@ -5,7 +5,7 @@ mode は会社の設定 (over_shipment・over_workorder・over_payment・progres
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
 R07 は実績の入力と実績の編集の 2 つの action に掛ける。R26 は実績の入力だけに掛ける。
-R27 は出荷の編集と出荷の削除の 2 つの action に掛ける。
+R27 は出荷の編集・出荷の削除・納品書の取消の 3 つの action に掛ける。
 R28 は実績の入力と実績の編集の 2 つの action に掛ける (編集は、直す前と同じ社員のままなら見ない)。
 """
 
@@ -317,8 +317,8 @@ class BilledShipmentOnUpdate(Check):
 
     data の object は直す前の出荷 (土台の入力の画面が渡す)。請求済みかは shipping.services.billed_by を道具 (tools.billed_by) で読む。
     services の update_shipment が断る出荷 (受注が取消 = R05・発行の納品書に入っている = R08) には文を返さない
-    (黄の後に赤を出さないため。R24 が取消の請求書を見ないのと同じ)。今ある請求済みの出荷は全部が発行の納品書に入っているので、
-    納品書を取り消せるようになるまでは、直すと R08 の赤だけが出る。数量を変えたかどうかは見ない (出荷日と備考だけの直しでも知らせる)。
+    (黄の後に赤を出さないため。R24 が取消の請求書を見ないのと同じ)。発行の納品書に入った請求済みの出荷は、直すと R08 の赤だけが出る
+    (納品書を取り消すと、取消の R27 が知らせ、その後の直しでこの検査が知らせる)。数量を変えたかどうかは見ない (出荷日と備考だけの直しでも知らせる)。
     訳: 請求済みの出荷を直すか消すと、請求書の明細の写し (数量・一式の行の数量) や受け取った代金の記録と、出荷の記録が食い違うので、直す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。納品書を請求の条件から外したので、納品書の取消の断りが間接に止めていた守りの代わりに置く。出所 = 本人の決め 11-11 12:5x〜13:0x (「止めない」「わかるようになっていればいい」「会社ごとにつけたければ自由にすればいい」)・会社の設定 billed_shipment。
     変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
@@ -367,6 +367,29 @@ class BilledShipmentOnDelete(Check):
         if billed is None:
             return None
         return _billed_text(shipment, billed, "delete")
+
+
+class BilledShipmentOnNoteCancel(Check):
+    """R27: 請求済みの出荷の入った納品書を取り消そうとしたら (納品書の取消)。
+
+    data の object は取り消す納品書 (土台の入力の画面が渡す)。文は shipping.services.billed_notice の 1 か所 (取消の確かめのカードと同じ文。
+    金額は書かない)。services の cancel_delivery_note が断る納品書 (取り消し済み) には文を返さない (黄の後に赤を出さないため)。
+    shipping.services は関数の中で import する (core の検査の道具 tools.billed_by と同じ読み方。core を読み込む時に shipping を読まない)。
+    訳: 請求済みの出荷を直すか消すと、請求書の明細の写し (数量・一式の行の数量) や受け取った代金の記録と、出荷の記録が食い違うので、直す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。納品書は出荷の記録を刷った物なので取り消しても請求書は変わらないが、取り消した後に出荷を直すと請求書と違ってくるので、取り消す前に知らせる。出所 = 本人の決め 11-11 12:5x〜13:0x (「止めない」「わかるようになっていればいい」「会社ごとにつけたければ自由にすればいい」)・本人の決め 11-11 13:0x (請求書に入った出荷の納品書の取消も止めずに知らせる。「それでOK」)・会社の設定 billed_shipment。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R27"
+    action = "shipping.cancel_delivery_note"
+    setting_key = "billed_shipment"
+
+    def run(self, data, user):
+        note = data.get("object")
+        if note is None or note.status == type(note).STATUS_CANCELLED:
+            return None
+        from seizou.shipping import services
+
+        return services.billed_notice(note) or None
 
 
 def _inactive_staff_message(check, staff) -> str:
@@ -445,6 +468,7 @@ BUILTIN = (
     ProgressWithoutStaff(),
     BilledShipmentOnUpdate(),
     BilledShipmentOnDelete(),
+    BilledShipmentOnNoteCancel(),
     ProgressInactiveStaff(),
     ProgressInactiveStaffOnUpdate(),
 )

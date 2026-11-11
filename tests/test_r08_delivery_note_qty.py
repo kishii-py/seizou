@@ -181,22 +181,24 @@ def test_cancelled_note_shipment_is_billable(user, customer, line):
 
 
 @pytest.mark.django_db
-def test_invoiced_note_cannot_be_cancelled(user, customer, line):
+def test_invoiced_note_can_be_cancelled(user, customer, line):
+    """請求書に入った出荷の納品書も取り消せる (前は断った。本人の決め 11-11 10:1x・13:0x で、止めずに検査の層の R27 で知らせる形にした。依頼書 N403b)。
+
+    納品書は出荷の記録を刷った物なので、取り消しても請求書は発行のまま変わらない。知らせの文は shipping.services.billed_notice。
+    """
     shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
     note = services.create_delivery_note(customer, [shipment], user)
     shipment.refresh_from_db()
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
 
-    with pytest.raises(ValueError) as caught:
-        services.cancel_delivery_note(note, user)
-    message = str(caught.value)
-    assert invoice.invoice_no in message
-    assert note.note_no in message
-    assert shipment.shipment_no in message
-    assert "先に請求書を取り消して" in message
+    notice = services.billed_notice(note)
+    assert invoice.invoice_no in notice
+    assert note.note_no in notice
+    assert shipment.shipment_no in notice
+    assert services.cancel_delivery_note(note, user).status == DeliveryNote.STATUS_CANCELLED
 
-    note.refresh_from_db()
-    assert note.status == DeliveryNote.STATUS_ISSUED
+    invoice.refresh_from_db()
+    assert invoice.status == invoice.STATUS_ISSUED
 
 
 @pytest.mark.django_db

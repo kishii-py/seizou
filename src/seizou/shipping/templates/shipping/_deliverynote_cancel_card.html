@@ -1,16 +1,17 @@
 {% load seizou_icons seizou_tags shipping_tags %}
 {# 納品書の取消の確かめのカード (全体の画面 shipping/deliverynote_cancel.html と小窓の両方が include する。開発の記録 docs/nights/20261105/N158b.md)。 #}
-{# 発行の請求書に入った出荷があるときは、form を出さず、黄の断り (1 文目が太字) と、請求済みの出荷と請求書の link の行だけ (請求書の取消のカードと同じ形。作者の決め。開発の記録 docs/nights/20261106/N196.md)。link は画面ごと移る。請求書の URL が無い行 (billing を部署で開けない人) は番号の字だけ。取消でない入金のある請求書の link は、請求書の詳細の入金の枠 (#payments) へ向く (入金を先に取り消すため。作者の決め。開発の記録 docs/nights/20261106/N296.md)。全体の画面だけ「納品書へ戻る」を出す (小窓の下は納品書の詳細)。受注の明細に発行の請求書の一式の行がある出荷の行 (row.lump。作者の決め) は、請求書の番号の後に「の一式の行」を添える。請求書の外で受け取った入金を記録した出荷の行 (row.outside。作者の決め) も同じ形で出す (請求書の link は無く、出荷の詳細への link だけ)。 #}
-{% deliverynote_billing object seizou.hide_money as billing %}
-{% if billing.refusal %}
-{% with parts=billing.refusal|split_first_sentence %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span><span class="font-semibold">{{ parts.0 }}</span>{% if parts.1 %} {{ parts.1 }}{% endif %}</span></div>{% endwith %}
-<ul class="mb-4 grid gap-1 text-sm" aria-label="取り消せない訳の出荷">
+{# 上から: 確かめの本文の黄の枠 (知らせ (段 2・3) ではない)・請求済みの出荷があるときの知らせの黄の 1 行と、請求済みの出荷と請求書の link の行・土台の入力のカード (取り消すボタン)。 #}
+{# 請求済みの出荷 (発行の請求書に入った出荷・一式の行で請求した明細の出荷・請求書の外で受け取った入金を記録した出荷) のある納品書も取り消せる (納品書は出荷の記録を刷った物。本人の決め 11-11 10:1x・13:0x)。取り消すボタンは隠さない。 #}
+{# 知らせの 1 行 (billing.notice。字は services.billed_notice の 1 か所) は押す前だけ出す。押した後は検査の層の R27 の黄 (画面の全体は右上、小窓は上の帯) と「このまま取り消す」を土台が出すので、同じ字を二重に出さない (作者の決め。開発の記録 docs/nights/20261111/N403b.md)。会社が止めるにしたときは、押した後に土台が赤で出す。 #}
+{# 行の link は画面ごと移る。請求書の URL が無い行 (billing を部署で開けない人) は番号の字だけ。取消でない入金のある請求書の link は、請求書の詳細の入金の枠 (#payments) へ向く (作者の決め。開発の記録 docs/nights/20261106/N296.md)。受注の明細に発行の請求書の一式の行がある出荷の行 (row.lump) は、請求書の番号の後に「の一式の行」を添える。請求書の外で受け取った入金を記録した出荷の行 (row.outside) も同じ形で出す (請求書の link は無く、出荷の詳細への link だけ)。 #}
+{% deliverynote_billing object card=True as billing %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この納品書を取り消します。取り消した納品書の出荷も請求でき、出荷を直してから新しい納品書にまとめ直せます。</span></div>
+{% if billing.rows %}
+{% if billing.notice and not warnings %}<div class="alert alert-warning alert-soft mb-4" role="status" data-billed-notice>{% icon "alert" "size-5" %}<span>{{ billing.notice }}</span></div>{% endif %}
+<ul class="mb-4 grid gap-1 text-sm" aria-label="請求済みの出荷">
   {% for row in billing.rows %}{% if row.outside %}<li>出荷 <a class="link link-primary font-mono tabular-nums" href="{{ row.shipment_url }}">{{ row.shipment_no }}</a> は請求書の外で受け取った入金を記録済み</li>
   {% else %}<li>出荷 <a class="link link-primary font-mono tabular-nums" href="{{ row.shipment_url }}">{{ row.shipment_no }}</a> は請求書 {% if row.invoice_url %}<a class="link link-primary font-mono tabular-nums" href="{{ row.invoice_url }}{% if row.has_payments %}#payments{% endif %}">{{ row.invoice_no }}</a>{% else %}<span class="font-mono tabular-nums">{{ row.invoice_no }}</span>{% endif %}{% if row.lump %}の一式の行{% endif %} で請求済み</li>{% endif %}
   {% endfor %}
 </ul>
-{% if not in_modal %}<div class="flex flex-wrap items-center justify-end gap-2"><a class="btn btn-outline border-base-300" href="{% url 'shipping:deliverynote_detail' object.pk %}">{% icon "arrow-left" "size-4" %}納品書へ戻る</a></div>{% endif %}
-{% else %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。</span></div>
-{% include "core/_form_card.html" %}
 {% endif %}
+{% include "core/_form_card.html" %}

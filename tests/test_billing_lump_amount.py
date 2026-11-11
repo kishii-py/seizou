@@ -180,7 +180,7 @@ def test_no_mark_after_a_lump_line_is_issued(user, customer, item):
     assert shipping_services.amount_of_shipment(later) == Decimal("0")
 
     # 納品書を取り消してから最初の出荷を直しても、印は付かない。
-    # 一式の行で請求した明細の納品書は services では取り消せない (作者の決め C107-6 = shipping.services.cancel_refusal) ので、
+    # 一式の行で請求した明細の納品書は、前は services では取り消せなかった (作者の決め C107-6。N403b で取り消せる形にした) ので、
     # 断りの前に取り消した納品書の形を表に直接作り、update_shipment の印の見方だけを見る。
     type(first.delivery_note).objects.filter(pk=first.delivery_note_id).update(status="cancelled")
     first.refresh_from_db()
