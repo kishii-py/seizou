@@ -256,6 +256,7 @@ def test_migration_exists_and_matches_model(db):
     import seizou.core
 
     files = sorted(path.name for path in (Path(seizou.core.__file__).parent / "migrations").glob("0*.py"))
-    assert files[-1] == "0008_bellopened.py"
+    # 鈴の表の migration が在る (後ろに別の migration が続いてよい。最後の名前までは固めない)
+    assert "0008_bellopened.py" in files
     # 表と migration が合っている (変更があれば SystemExit で落ちる)。
     call_command("makemigrations", "core", check=True, dry_run=True, verbosity=0)
