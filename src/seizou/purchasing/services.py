@@ -43,6 +43,7 @@ from django.utils import timezone
 
 from seizou.core import edi_codes, history
 from seizou.core.services import next_number, record_history
+from seizou.core.services import keep_report_copy, note_copy_failed
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 from seizou.masters.services import PRICE_BASIS_LUMP, delivery_amount, reaches_line_qty
 from seizou.masters.services import unit_code_for
@@ -52,6 +53,7 @@ from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
 from .models import SelfInvoice, SelfInvoiceLine
 from .models import _qty_text
+from .reports import ORDER_SHEET_TEMPLATE, purchase_order_context
 
 from datetime import datetime, timedelta
 from typing import NamedTuple
@@ -225,6 +227,7 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     send が偽なら、つながりがあっても送らない (作り物のデータの種が、相手に送らずに発注を入れるため)。
     明細の鍵 workorder_step (指示書の工程) と handed_on (渡した日) は新規登録だけで受ける。workorder_step のある明細は部品と工程を
     指示書の工程から写し (_from_workorder_steps)、使用停止の部品の確かめは写した部品で行う。送る注文の明細の項目は今のまま (2 つは送らない)。
+    発行の時の帳票の写し (第 1 版) を残す (R34)。描けなければ、返す発注の saved_note に字を足して黄にする (core.services.keep_report_copy・note_copy_failed)。
     """
     _refuse_non_subcontractor(partner)
     if not lines:
@@ -244,14 +247,24 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
         record_history(purchase_order, user)
         for row in created:
             record_history(row, user)
+        copied = keep_report_copy(
+            purchase_order,
+            user,
+            title="発注書",
+            template=ORDER_SHEET_TEMPLATE,
+            context=purchase_order_context(purchase_order),
+            revision=purchase_order.revision_no,
+        )
 
     # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
     if send and _has_send_connection(partner):
         from seizou.connect import services as connect_services
 
         outbox = connect_services.send_order(purchase_order, user)
-        return _with_delivery_notice(PurchaseOrder.objects.get(pk=purchase_order.pk), outbox)
-    return PurchaseOrder.objects.get(pk=purchase_order.pk)
+        result = _with_delivery_notice(PurchaseOrder.objects.get(pk=purchase_order.pk), outbox)
+    else:
+        result = PurchaseOrder.objects.get(pk=purchase_order.pk)
+    return note_copy_failed(result) if copied is None else result
 
 
 def cancel_purchase_order(purchase_order, user, *, reason=""):
@@ -755,6 +768,8 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
     (今の版の最初の送った注文の行の reply_type が "RE")、コードを表のまま版を 1 上げて送る (相手と話した後に同じ中身をもう一度送るため)。
     送るときは同じ atomic の中で版を 1 上げ、目的を "4" にし、取り消していない明細の全部の受入が数以上なら「納品された」にする。状態はほかに変えない
     (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。atomic の外で connect.services.send_order を呼び、届いたかの知らせを付けて返す。
+    版を上げたときは、発行の時の帳票の写し (第 n 版) を残す (R34)。版を上げずに返すときは残さない。描けなければ、返す発注の saved_note に字を足して黄にする
+    (core.services.keep_report_copy・note_copy_failed)。
     断る (頭は「保存できません。」): 状態が「送った」「相手が受け入れた」の外・相手が全部の明細を出荷し終えている・相手が出荷済みの明細の単価の変更と、
     出荷済みの数より少ない数と取消・取り消していない明細が 0 行・つながりが無い・数量と単価が 0 以下・知らない鍵・使用停止の部品。
     訳: 相手が出荷し終えるまでは発注を直して変更として送れるようにし、出した物の記録と食い違う直し (出荷済みの明細の単価・数・取消) を止めるため。出所 = 作者の決め (11-06 23:1x)・作者の決め (11-06 23:2x)・中小企業共通 EDI に合わせた作者の決め (受注者が出した物の金額は仕入明細の流れで確かめる)。
@@ -862,12 +877,21 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
         _record_lines(states, user)
         for row in created:
             record_history(row, user)
+        copied = keep_report_copy(
+            locked,
+            user,
+            title="発注書",
+            template=ORDER_SHEET_TEMPLATE,
+            context=purchase_order_context(locked),
+            revision=locked.revision_no,
+        )
 
     # 相手への HTTP は atomic の外 (R17)。connect と purchasing の循環を避けるため関数の中で import する。
     from seizou.connect import services as connect_services
 
     outbox = connect_services.send_order(PurchaseOrder.objects.get(pk=locked.pk), user)
-    return _with_delivery_notice(PurchaseOrder.objects.get(pk=locked.pk), outbox)
+    result = _with_delivery_notice(PurchaseOrder.objects.get(pk=locked.pk), outbox)
+    return note_copy_failed(result) if copied is None else result
 
 
 def _revision_refused(purchase_order):

@@ -39,6 +39,7 @@ from seizou.core import history
 from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number, record_history, record_history_deleted
+from seizou.core.services import keep_report_copy, note_copy_failed
 from seizou.masters.services import delivery_amount, reaches_line_qty
 from seizou.orders.services import mark_completed, refresh_status, remaining_qty, shipped_qty
 
@@ -178,6 +179,8 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
 
     納品書は数量の写しを持たない。結ばれた出荷は delivery_note.shipments.all() で引く。
     issued_on (発行日) は無ければ今日。種の読み込み (core.demo) が出荷日を渡す。
+    発行の時の帳票の写しを残す (R34)。描けなければ、返す納品書の saved_note に字を足して黄にする (core.services.keep_report_copy・note_copy_failed)。
+    shipping.reports は頭で .services を import するので、関数の中で import する (輪を避ける)。
     訳: 納品書を得意先ごとに作り、発行の納品書に入っている出荷を別の納品書に入れないため (納品書の数量は出荷の数量と一致する)。出所 = RULES.md R08 (作者の会期前の決まりの表 (2026-11-01) の理由の列「伝票の整合」)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -211,6 +214,10 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
             shipment.delivery_note = note
             shipment.save(update_fields=["delivery_note"])
             record_history(shipment, user, before=before)
+        from .reports import DELIVERY_NOTE_TEMPLATE, delivery_note_context
+
+        if keep_report_copy(note, user, title="納品書", template=DELIVERY_NOTE_TEMPLATE, context=delivery_note_context(note)) is None:
+            note_copy_failed(note)
         return note
 
 

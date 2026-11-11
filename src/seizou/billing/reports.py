@@ -12,6 +12,9 @@ from decimal import Decimal
 
 from seizou.core.services import company
 
+#: 請求書の帳票のテンプレート (core/report_base.html を継ぐ。印刷用の画面・PDF・発行の時の写しが同じ名前を読む)
+INVOICE_TEMPLATE = "billing/invoice.html"
+
 
 def invoice_context(invoice):
     """請求書の帳票の context。

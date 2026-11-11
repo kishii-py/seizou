@@ -204,3 +204,46 @@ class BellOpened(models.Model):
 
     def __str__(self):
         return f"{self.user} {self.opened_at:%Y-%m-%d %H:%M}"
+
+
+class ReportCopy(models.Model):
+    """帳票の写し (R34)。請求書と納品書を発行した時と、発注を作るか変えて版を上げた時の、その時の帳票の HTML の字の 1 行。
+
+    書くのは core.services.keep_report_copy だけ (R13)。写しを書くのは次の 4 つのときだけ: 請求書を発行したとき
+    (billing.services._issue_invoice。新規登録・作り直し・締めの一括が通る)・納品書を作ったとき (shipping.services.create_delivery_note)・
+    発注を作ったとき (第 1 版。purchasing.services.create_purchase_order)・送った発注を変えて版を上げたとき (第 n 版。
+    purchasing.services.change_purchase_order)。取消のときと、印刷用の画面や PDF を開いたときは書かない。
+    html は、印刷用の画面と同じテンプレートを同じ context の関数で描いた HTML の字そのもの (QR の字と金額を隠す印は渡さない)。
+    ファイルにせず表の字で持つので、控え (seizou_backup) と練習モードの写しに入る。直す道と消す道は作らない (ChangeLog と同じ)。
+    元の記録は ContentType でなく字 (model = _meta.label_lower・object_pk・object_text) で指す。元の記録を消しても読めるため (ChangeLog と同じ)。
+    訳: 出した請求書・納品書・発注書を、後から出した時の字と数で開き直せるようにするため (得意先や協力企業から問合せが来たときに、渡した物と同じ物を見て答える)。帳票は開くたびに今の記録から作るので、受注の単価・部品マスター・会社の設定を後で直すと刷り直しの字が変わり、発注の前の版の中身は残らない。発行と同じ処理の中で書き、直す道と消す道を作らない。写しは印刷用の画面と同じ HTML の字で持ち、発行の処理では PDF を作らない (PDF の部品の無い置き場でも発行を止めないため)。写しを描けないとき (会社の置き場で帳票のテンプレートを上書きして誤ったときなど) は、写しだけを戻して発行を続け、黄色の知らせで伝える (写しのために新しく止める処理を足さない)。電子帳簿保存法への当てはめは未確認。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M06) と AI の案 (残す時と形)。変えてよい条件 = 本人が決め直したとき (写しを消す口を作る・刷るたびに残す・PDF で残す、と決めたとき)。
+    """
+
+    created_at = models.DateTimeField("日時", default=timezone.now)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="作った人",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    # その時の人の字。人の無い処理は呼び手が渡した字。どちらも無ければ空 (ChangeLog の actor_label と同じ形)
+    actor_label = models.CharField("作った人の名前", max_length=150, blank=True)
+    model = models.CharField("表", max_length=100)
+    object_pk = models.PositiveBigIntegerField("行の番号")
+    object_text = models.CharField("帳票の番号", max_length=200)
+    title = models.CharField("帳票の名前", max_length=20)
+    revision = models.PositiveIntegerField("版", default=1)
+    template = models.CharField("テンプレートの名前", max_length=100)
+    html = models.TextField("中身")
+
+    class Meta:
+        verbose_name = "帳票の写し"
+        verbose_name_plural = "帳票の写し"
+        ordering = ("-created_at", "-pk")
+        indexes = [models.Index(fields=["model", "object_pk", "created_at"], name="core_reportcopy_object")]
+
+    def __str__(self):
+        text = f"{self.created_at:%Y-%m-%d %H:%M} {self.object_text} {self.title}"
+        return f"{text} 第 {self.revision} 版" if self.revision >= 2 else text
