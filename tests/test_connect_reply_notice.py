@@ -99,8 +99,18 @@ def test_accept_with_conditions_undelivered_is_warning(received, unreachable, us
     )
 
     assert _is_undelivered(order, received)
-    # 条件付で返した知らせの字はそのまま
-    assert order.saved_message == services.MESSAGE_CONDITIONAL_SAVED
+    # 届いていないので「相手に返しました」と書かない字にする (後ろの黄の知らせ「注文回答は相手に届いていません。」と食い違わせない)
+    assert order.saved_message == services.MESSAGE_CONDITIONAL_SAVED_UNDELIVERED
+    assert "返しました" not in order.saved_message
+
+
+def test_accept_with_conditions_unchanged_undelivered_does_not_say_replied(received, unreachable, user, own_item):  # noqa: F811
+    """どの値も直さずに「単価を直して受け入れる」を通した時も、届いていなければ「相手に返しました」と書かない。"""
+    order = services.accept_with_conditions(received, {"T-100": own_item}, {}, user)
+
+    assert _is_undelivered(order, received)
+    assert order.saved_message == services.MESSAGE_CONDITIONAL_UNCHANGED_UNDELIVERED
+    assert "返しました" not in order.saved_message
 
 
 def test_hold_undelivered_is_warning(received, unreachable, user):  # noqa: F811

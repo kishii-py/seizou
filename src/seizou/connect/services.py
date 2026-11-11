@@ -1630,6 +1630,9 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
 MESSAGE_CONDITIONAL_SAVED = "単価を直して受け入れました。直した値で受注を作り、相手に条件付きの答えを返しました。相手が発注を直すのを待ちます。"
 #: 単価を直して受け入れるで、どの値も直していなかったときの知らせ
 MESSAGE_CONDITIONAL_UNCHANGED = "どの値も直していないので、受け入れるとして相手に返しました。"
+#: 上の 2 つの、注文回答が相手に届かなかったときの字 (「相手に返しました」と書かない。後ろに MESSAGE_REPLY_UNDELIVERED の黄の知らせが続く)
+MESSAGE_CONDITIONAL_SAVED_UNDELIVERED = "単価を直して受け入れました。直した値で受注を作りました。"
+MESSAGE_CONDITIONAL_UNCHANGED_UNDELIVERED = "どの値も直していないので、そのまま受け入れました。"
 #: 保留したときの知らせ
 MESSAGE_HOLD_SAVED = "保留にしました。答えが決まったら、受信した注文の詳細から受け入れるか断ってください。"
 
@@ -1643,17 +1646,19 @@ def _with_reply_notice(result, inbox):
     前に置くのは、受注を作った知らせの 1 文 (orders.services.create_order の saved_note) を知らせの終わりに残すため。saved_message は変えない。
     赤にせず黄にするのは、受け入れ・保留・断るそのものは成立しているため (相手に届いていない発注と同じ形。本体の決め 11-11 14:2x)。
     """
-    response = inbox.reply_response or ""
-    if (
-        inbox.source == Inbox.SOURCE_DIRECT
-        and inbox.reply_sent_at is None
-        and response
-        and response != MESSAGE_REPLY_SEED
-    ):
+    if _reply_undelivered(inbox):
         note = getattr(result, "saved_note", "")
-        result.saved_note = MESSAGE_REPLY_UNDELIVERED.format(response=response) + (note if isinstance(note, str) else "")
+        result.saved_note = MESSAGE_REPLY_UNDELIVERED.format(response=inbox.reply_response) + (note if isinstance(note, str) else "")
         result.saved_level = "warning"
     return result
+
+
+def _reply_undelivered(inbox) -> bool:
+    """注文回答を送った後に取り直した受信した注文 (inbox) が、相手に届いていない形か (読むだけ。_with_reply_notice と同じ見方)。"""
+    response = inbox.reply_response or ""
+    return bool(
+        inbox.source == Inbox.SOURCE_DIRECT and inbox.reply_sent_at is None and response and response != MESSAGE_REPLY_SEED
+    )
 
 
 def _restart_reply(locked):
@@ -1832,10 +1837,17 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
         _record(locked, user, before=before)
 
     # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。届かなければ黄の知らせ。
+    undelivered = False
     if send:
-        _with_reply_notice(order, send_reply(locked, user))
+        replied = send_reply(locked, user)
+        undelivered = _reply_undelivered(replied)
+        _with_reply_notice(order, replied)
     if answers is not None:
-        order.saved_message = MESSAGE_CONDITIONAL_SAVED if conditional else MESSAGE_CONDITIONAL_UNCHANGED
+        # 届かなかったときは「相手に返しました」と書かない字にする (後ろに続く黄の知らせ「注文回答は相手に届いていません。」と食い違わせない)
+        if conditional:
+            order.saved_message = MESSAGE_CONDITIONAL_SAVED_UNDELIVERED if undelivered else MESSAGE_CONDITIONAL_SAVED
+        else:
+            order.saved_message = MESSAGE_CONDITIONAL_UNCHANGED_UNDELIVERED if undelivered else MESSAGE_CONDITIONAL_UNCHANGED
     return order
 
 
