@@ -36,7 +36,7 @@
 | `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 超えた分は API を呼ばずに断る (既定は試用で続けて試しても断られない緩さ)。費用を抑えたい会社は答えの YAML で下げる。画面からは変えない |
 | `ai_features` | AI を使う機能 | `assistant` (AI チャット)・`intake` (注文書の読み取り)・`feedback` (フィードバックの聞き取り) のそれぞれ `true` / `false` | `{'assistant': True, 'intake': True, 'feedback': True}` | `false` にした機能は使えなくなる (窓には鍵が無いときと同じ文が出る)。画面からは変えない |
 
-使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` と `progress_staff` と `progress_inactive_staff` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
+使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` と `progress_staff` と `billed_shipment` と `progress_inactive_staff` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
 
 注文書の見張り (`seizou_intake_watch`) が見るフォルダは、`SEIZOU` の `intake_watch_folder` に書く (既定は空。命令の引数でフォルダを渡せば、それが先に使われる)。この鍵は表の設定と違い、設定の画面には出ない ([docs/intake-watch.md](intake-watch.md))。
 
