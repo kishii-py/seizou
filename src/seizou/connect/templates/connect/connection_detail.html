@@ -1,6 +1,7 @@
 {% extends "core/detail.html" %}
-{% load seizou_icons %}
+{% load seizou_icons connect_tags %}
 {# 取引先との接続の詳細。core の基本情報の下に「鍵の設定」のカードを足す。鍵の値は出さず、置いてあるか (済み / まだ) と、.env に足す 1 行の名前の形だけを出す。 #}
+{# 鍵があるときは「鍵の指紋」(connect_tags の secret_fingerprint。鍵の値から戻せない字) を出し、2 社で電話で読み合わせられるようにする (本体の決め 11-11 14:2x)。 #}
 {% block content %}{{ block.super }}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="secret-title">
   <div class="flex flex-wrap items-center gap-2">
@@ -11,6 +12,9 @@
   <p class="mt-2 text-xs text-base-content/60">鍵の置き場の名前 <span class="font-mono">{{ object.secret_env }}</span></p>
   {% if object.has_secret %}
   <p class="mt-4">鍵の値は .env にあります。値は画面に出しません。</p>
+  {% secret_fingerprint object as fingerprint %}
+  <p class="mt-2">鍵の指紋 <code class="rounded-lg bg-base-200 px-2 py-1 font-mono">{{ fingerprint }}</code></p>
+  <p class="mt-4 text-base-content/70">相手の会社のつながりの詳細の鍵の指紋と同じなら、2 社の鍵の値は同じです。電話で読み合わせるときは、この字を使ってください (鍵の値は読み上げません)。</p>
   {% else %}
   <p class="mt-4">会社の置き場の .env に、次の形の 1 行を足して、起動し直してください。</p>
   <p class="mt-2"><code class="rounded-lg bg-base-200 px-2 py-1 font-mono">{{ object.secret_env }}=</code></p>

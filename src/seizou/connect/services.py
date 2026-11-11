@@ -155,6 +155,83 @@ def _check_connection(partner, url, secret_env, direction, *, exclude_pk=None, c
         )
 
 
+#: 手元の番地の名前 (url_points_to_self が自社のポートと組で見る。urlsplit の hostname は小文字で、IPv6 の [] を外した字)
+_LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})
+#: seizou の受け口の道の終わり (connection_url_notes が見る。相手の置き場の道なので reverse で引かない)
+_RECEIVE_ORDER_PATH = "/connect/receive/order/"
+
+# つながりを保存した後の黄の知らせの字 (connection_url_notes が返す。止めない)
+NOTE_URL_SELF = "この受け口の URL は自社の seizou を指しています。このままでは相手に届きません。相手の担当者に聞いた URL に直してください。"
+NOTE_URL_EMPTY = "送る向きなのに受け口の URL が空です。このままでは、この取引先へ送れません。相手の担当者に聞いた URL を入れてください。"
+NOTE_URL_PATH = "受け口の URL が /connect/receive/order/ で終わっていません。seizou の受け口の URL はこの形で終わります。相手の担当者に確かめてください。"
+
+
+def url_points_to_self(url) -> bool:
+    """受け口の URL が自社の seizou を指すか (読むだけ。例外を投げない。外へは問い合わせない)。
+
+    URL が _url_is_valid で偽なら偽。名前が 127.0.0.1・localhost・::1 のどれかで、ポート (URL に無ければ http は 80、https は 443) が
+    自社のポート (settings の SEIZOU の port が整数のとき) と同じなら真。core.conf.mail_settings() の site_url が空でなく、
+    その名前と URL の名前が同じ (大小を問わない) なら真。ほかは偽。名前は引かない (mail_settings が設定の画面の上書きを読むのは今のまま)。
+    呼び手は connection_url_notes (つながりを保存した後の黄の知らせ) と、点検 (seizou_doctor)。名前と引数を変えない。
+    訳: 送る向きの受け口の URL を自社に向けた打ち違い (手元の 2 社のポートの打ち違い・VPS で自社の名前を入れた) を、保存した後の黄の知らせと点検で分かるようにするため。止めない (本人の決め 11-11 12:5x の考え方)。手元の PC の名前 (点の無い名前) と自社の名前の別名は見ない (名前を引かない)。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T1)。変えてよい条件 = 自社を指すかの見方を本人が広げると決めたとき。
+    """
+    from django.conf import settings
+
+    from seizou.core.conf import mail_settings
+
+    if not _url_is_valid(url):
+        return False
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    seizou = getattr(settings, "SEIZOU", {}) or {}
+    own_port = seizou.get("port") if isinstance(seizou, dict) else None
+    if host in _LOOPBACK_NAMES and isinstance(own_port, int) and not isinstance(own_port, bool):
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if port == own_port:
+            return True
+    site_url = mail_settings().get("site_url") or ""
+    if not isinstance(site_url, str) or not site_url:
+        return False
+    try:
+        site_host = urlsplit(site_url).hostname or ""
+    except ValueError:
+        return False
+    return bool(site_host) and site_host == host
+
+
+def connection_url_notes(connection) -> list[str]:
+    """つながりの受け口の URL の黄の知らせの字の並び (読むだけ。表に書かない)。
+
+    向きが送るのときだけ見る。URL が空なら NOTE_URL_EMPTY だけ。空でなければ、url_points_to_self が真なら NOTE_URL_SELF、
+    URL の道が /connect/receive/order/ で終わらなければ NOTE_URL_PATH (2 つとも当たれば 2 つ。終わりの / が無い形も知らせる =
+    Django は POST の終わりの / を足さないため)。受ける向きは空の並び。
+    """
+    if connection.direction != Connection.DIRECTION_SEND:
+        return []
+    url = connection.url or ""
+    if not url:
+        return [NOTE_URL_EMPTY]
+    notes = []
+    if url_points_to_self(url):
+        notes.append(NOTE_URL_SELF)
+    try:
+        path = urlsplit(url).path
+    except ValueError:
+        path = ""
+    if not path.endswith(_RECEIVE_ORDER_PATH):
+        notes.append(NOTE_URL_PATH)
+    return notes
+
+
+def _with_url_notes(connection):
+    """connection_url_notes が空でなければ、返すつながりに黄の知らせ (saved_note と saved_level) を付けて返す。属性は画面の知らせのためだけで、表に書かない。"""
+    notes = connection_url_notes(connection)
+    if notes:
+        connection.saved_note = "".join(notes)
+        connection.saved_level = "warning"
+    return connection
+
+
 def _public_only() -> bool:
     """送る先を外の名前に絞るか。Django の settings の SEIZOU_CONNECT_PUBLIC_ONLY を読む (既定は偽)。
 
@@ -227,12 +304,14 @@ def register_connection(partner, url, secret_env, direction, user, *, contact_em
     向きは send (送る) か receive (受ける)。確かめは _check_connection。
     contact_email (自社の連絡先のメールアドレス) は名前でだけ渡せる (今の呼び手は位置の引数で呼ぶため)。
     誤りは日本語の文の ValueError。
+    保存した後に、送る向きの受け口の URL が空・自社を指す・道の形が違うときは、返す物に黄の知らせ (saved_note と saved_level) を付ける (止めない。本体の決め 11-11 14:2x)。
     """
     _check_connection(partner, url, secret_env, direction, contact_email=contact_email)
     with transaction.atomic():
-        return Connection.objects.create(
+        connection = Connection.objects.create(
             partner=partner, url=url, secret_env=secret_env, direction=direction, contact_email=contact_email
         )
+    return _with_url_notes(connection)
 
 
 def update_connection(connection, partner, url, secret_env, direction, user, *, contact_email=None):
@@ -241,6 +320,7 @@ def update_connection(connection, partner, url, secret_env, direction, user, *, 
     確かめは登録と同じ。鍵の値は受け取らない。
     contact_email は名前でだけ渡せる。None なら今の値のまま (位置の引数で呼ぶ今の呼び手が値を消さないように)、字なら確かめて書く。
     user は記録のために受ける (つながりは変更の履歴に入れていない = 作者の決めの列挙の外なので、今は受けるだけ)。返す物は取り直した Connection。
+    保存した後に、送る向きの受け口の URL が空・自社を指す・道の形が違うときは、返す物に黄の知らせ (saved_note と saved_level) を付ける (止めない。本体の決め 11-11 14:2x)。
     """
     _check_connection(
         partner, url, secret_env, direction, exclude_pk=connection.pk, contact_email=contact_email or ""
@@ -254,7 +334,7 @@ def update_connection(connection, partner, url, secret_env, direction, user, *, 
         if contact_email is not None:
             locked.contact_email = contact_email
         locked.save()
-        return locked
+    return _with_url_notes(locked)
 
 
 def receive(raw_body: bytes, headers: Mapping[str, str], *, remote: str = ""):
@@ -1521,6 +1601,8 @@ MESSAGE_NO_REASON = "断る理由がありません。理由を書いてから�
 MESSAGE_REPLY_SEED = "作り物の種の読み込みなので注文回答を送っていません (相手の記録は相手の種が持つ)。"
 MESSAGE_NO_SENDER = "差出人の取引先が決まっていません。受信した注文の詳細の「差出人を選ぶ」で得意先を選んでから受け入れてください。"
 MESSAGE_REPLY_INTAKE = "注文書の読み取りから入った注文なので、注文回答は送りません。"
+#: 受け入れ・保留・断るの後に注文回答が届かなかったときの黄の知らせ ({response} は返事の欄 reply_response の字。発注の UNDELIVERED_MESSAGE と同じ形。金額を入れない)
+MESSAGE_REPLY_UNDELIVERED = "注文回答は相手に届いていません。{response} 直したら、受信した注文の詳細の「送り直す」を押してください。"
 MESSAGE_SENDER_DIRECT = "受け口から受信した注文の取引先は署名で決まります (R12)。"
 
 
@@ -1550,6 +1632,28 @@ MESSAGE_CONDITIONAL_SAVED = "単価を直して受け入れました。直した
 MESSAGE_CONDITIONAL_UNCHANGED = "どの値も直していないので、受け入れるとして相手に返しました。"
 #: 保留したときの知らせ
 MESSAGE_HOLD_SAVED = "保留にしました。答えが決まったら、受信した注文の詳細から受け入れるか断ってください。"
+
+
+def _with_reply_notice(result, inbox):
+    """注文回答を送った後に取り直した受信した注文 (inbox) を見て、届いていなければ result に黄の知らせの字を付けて返す (読むだけ。表に書かない)。
+
+    付けるのは、入口が直接 (Inbox.SOURCE_DIRECT) で、reply_sent_at が空で、reply_response が空でなく MESSAGE_REPLY_SEED でもないときだけ
+    (読み取りの行は相手へ送らない = MESSAGE_REPLY_INTAKE なので知らせない。送る向きのつながりが無い時も届いていないので知らせる)。
+    result の saved_note の前に MESSAGE_REPLY_UNDELIVERED を置き (前からある saved_note はその後ろに残す)、saved_level を "warning" にする。
+    前に置くのは、受注を作った知らせの 1 文 (orders.services.create_order の saved_note) を知らせの終わりに残すため。saved_message は変えない。
+    赤にせず黄にするのは、受け入れ・保留・断るそのものは成立しているため (相手に届いていない発注と同じ形。本体の決め 11-11 14:2x)。
+    """
+    response = inbox.reply_response or ""
+    if (
+        inbox.source == Inbox.SOURCE_DIRECT
+        and inbox.reply_sent_at is None
+        and response
+        and response != MESSAGE_REPLY_SEED
+    ):
+        note = getattr(result, "saved_note", "")
+        result.saved_note = MESSAGE_REPLY_UNDELIVERED.format(response=response) + (note if isinstance(note, str) else "")
+        result.saved_level = "warning"
+    return result
 
 
 def _restart_reply(locked):
@@ -1727,9 +1831,9 @@ def _accept(inbox, item_mapping, user, *, answers=None, send=True, accepted_at=N
         locked.save(update_fields=fields)
         _record(locked, user, before=before)
 
-    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。届かなければ黄の知らせ。
     if send:
-        send_reply(locked, user)
+        _with_reply_notice(order, send_reply(locked, user))
     if answers is not None:
         order.saved_message = MESSAGE_CONDITIONAL_SAVED if conditional else MESSAGE_CONDITIONAL_UNCHANGED
     return order
@@ -1775,8 +1879,11 @@ def hold(inbox, user, *, send=True):
         locked.save(update_fields=fields)
         _record(locked, user, before=before)
 
-    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (保留は成立する)。
-    saved = send_reply(locked, user) if send else locked
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (保留は成立する)。届かなければ黄の知らせ。
+    saved = locked
+    if send:
+        saved = send_reply(locked, user)
+        _with_reply_notice(saved, saved)
     saved.saved_message = MESSAGE_HOLD_SAVED
     return saved
 
@@ -1823,9 +1930,9 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
         locked.save(update_fields=fields)
         _record(locked, user, before=before)
 
-    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (受け入れは成立する)。届かなければ黄の知らせ。
     if send:
-        send_reply(locked, user)
+        _with_reply_notice(order, send_reply(locked, user))
     return order
 
 
@@ -1917,9 +2024,8 @@ def reject(inbox, reason, user):
         locked.save(update_fields=fields)
         _record(locked, user, before=before)
 
-    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (断りは成立する)。
-    send_reply(locked, user)
-    return locked
+    # 注文回答を相手へ返す。HTTP は atomic の外 (R17)。届かなくても例外にしない (断りは成立する)。届かなければ黄の知らせ。
+    return _with_reply_notice(locked, send_reply(locked, user))
 
 
 def choose_sender(inbox, partner, user):

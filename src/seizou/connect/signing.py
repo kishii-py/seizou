@@ -87,6 +87,23 @@ def _decode_secret(secret: str) -> bytes:
     return key
 
 
+#: 鍵の指紋の計算で鍵の bytes の前に付ける決まった字 (署名の HMAC と同じ字の並びの hash にしないため)
+_FINGERPRINT_PREFIX = b"seizou-key-fingerprint\0"
+
+
+def fingerprint(secret: str) -> str:
+    """鍵の指紋の字 (例の形 `0a1b 2c3d 4e5f 6a7b`)。2 社で鍵の値を電話で読み合わせるときに、値の代わりに読む。
+
+    `_decode_secret` でほどいた鍵の bytes の前に決まった字を付けて SHA-256 を取り、頭の 16 字の 16 進を 4 字ずつ空白で区切る。
+    片道の計算の頭だけなので、指紋の字から鍵の値には戻せない。2 社で鍵の値が同じなら同じ字になる (違えば、ほぼ確実に違う字になる)。
+    鍵の形が読めなければ `_decode_secret` の ValueError をそのまま投げる (文に値を入れない)。
+    鍵の値と鍵の形は、返す字にもログにも出さない。
+    """
+    key = _decode_secret(secret)
+    digest = hashlib.sha256(_FINGERPRINT_PREFIX + key).hexdigest()[:16]
+    return " ".join(digest[start : start + 4] for start in range(0, 16, 4))
+
+
 def sign(secret: str, msg_id: str, timestamp: int, body: bytes) -> str:
     """「番号.時刻.本文」を HMAC-SHA256 で署名する。
 
