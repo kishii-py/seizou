@@ -1,0 +1,32 @@
+{% load seizou_tags seizou_icons %}{% comment %}
+不良の一覧の 1 行 (progress/_rows.html が不良の一覧 progressdefect_list のときに core/_rows.html の row_template として渡す。N407b)。
+写した元: progress/_record_row.html (実績の一覧の 1 行。その元は stock/_row.html と core/_rows.html の行)。土台の表の行の形が変わったら、ここも合わせる。
+写した元から変えた所: 最後の「操作」の欄の項目は「原因と対策を書く」の 1 つだけ (区分と数は実績の編集で直し、行は実績の編集で消す)。
+1 列目 (日時) は実績を辿る名前なので、土台の列は日時の印 (cell.datetime) を付けない。画面 (ProgressDefectListView) の 1 列目は日時なので、ここで 1 列目を分まで出す
+(画面の class は土台の 13 の属性のほかを上書きしない決まり R15 のため、行の作り方 row_for は変えない。会社ごとの項目の列は最後に足されるので 1 列目は動かない)。
+行の操作は ⋮ のボタンと、同じ中身の右クリック。markup の約束と動きは core の js/seizou-row-menu.js の頭の comment。
+「原因と対策を書く」は入力を小窓で開く (data-modal-form は href と 1 字も違わない字)。JS が無いときと新しいタブでは href で画面へ移り、
+保存の後と「キャンセル」で不良の一覧へ戻る (?next=)。can_edit (progress/_rows.html が can_write の tag で 1 回だけ決める) が真の人にだけ出す。
+{% endcomment %}
+<tr id="row-{{ row.pk }}" class="row-hover h-10" data-row-menu>
+  {% for cell in row.cells %}
+  {% if forloop.first %}<td class="whitespace-nowrap font-mono tabular-nums">{{ cell.value|date:"Y-m-d H:i" }}</td>
+  {% elif cell.numeric %}<td class="whitespace-nowrap text-right tabular-nums">{% if cell.master %}{% master_link cell.master cell.value %}{% elif cell.negative %}<span class="text-error">{{ cell.value|yen_if:cell.money }}</span>{% else %}{{ cell.value|yen_if:cell.money }}{% endif %}</td>
+  {% elif cell.date or cell.datetime %}<td class="whitespace-nowrap font-mono tabular-nums">{% if cell.datetime %}{{ cell.value|date:"Y-m-d H:i" }}{% else %}{{ cell.value|date:"Y-m-d" }}{% with day=cell.value|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}{% endif %}</td>
+  {% elif cell.master %}<td class="whitespace-nowrap"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{% master_link cell.master cell.value %}</span></td>
+  {% elif cell.boolean %}<td class="whitespace-nowrap">{% bool_mark cell.value %}</td>
+  {% elif cell.status %}<td class="whitespace-nowrap">{% status_badge row.obj %}</td>
+  {% else %}<td class="whitespace-nowrap{% if cell.code %} font-mono{% endif %}"><span class="block max-w-xs truncate" title="{{ cell.value|default_if_none:'' }}">{{ cell.value|default_if_none:"" }}</span></td>
+  {% endif %}
+  {% endfor %}
+  <td class="whitespace-nowrap text-right">
+    {% if can_edit %}{% url 'progress:progressdefect_update' row.pk as note_url %}
+    <details class="dropdown dropdown-end row-menu">
+      <summary class="btn btn-ghost btn-xs" aria-label="行の操作" title="行の操作">⋮</summary>
+      <ul class="menu dropdown-content z-50 w-56 rounded-lg border border-base-300 bg-base-100 p-2 shadow-sm">
+        <li><a class="flex items-center gap-2" href="{{ note_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ note_url }}?next={{ request.get_full_path|urlencode }}">{% icon "pencil" "size-4" %}原因と対策を書く</a></li>
+      </ul>
+    </details>
+    {% endif %}
+  </td>
+</tr>

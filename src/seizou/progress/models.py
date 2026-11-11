@@ -145,6 +145,10 @@ class ProgressDefect(models.Model):
 
     #: 変更の履歴は指示書の詳細の「履歴」に出す (実績と同じ所。core.history が実績 → 指示書の工程 → 指示書と辿る)
     history_owner = "progress.workorder_step.workorder"
+    #: 変更の履歴に残さない列 (N407b。本体の 11-11 16:3x の答え (2))。区分の名前の写しの字は見せる字の関数 (get_kind_name_display) を読むので、
+    #: 履歴では「不良の区分」と同じ字が並ぶだけになる (区分の無い行では写しが無いのに「区分なし」と出る)。区分を消した事は「不良の区分」の行の前後に残る。
+    #: 「実績」は残す (指示書の詳細の履歴には実績がいくつも並ぶので、どの実績の不良の行かを示す)。
+    history_skip = ("kind_name",)
 
     class Meta:
         verbose_name = "不良の行"

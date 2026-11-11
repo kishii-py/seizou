@@ -27,12 +27,14 @@ from .forms import ItemCsvImportForm, PartnerCsvImportForm
 from .forms import DrawingRestoreForm
 from .forms import HolidayDeleteForm, HolidayForm
 from .forms import StaffDeleteForm, StaffForm
+from .forms import DefectKindDeleteForm, DefectKindForm
 from .forms import ItemPriceDeleteForm, ItemPriceForm
 from .forms import ItemProcessAddForm, ItemProcessMoveForm, ItemProcessRemoveForm
 from .forms import PartnerItemDeleteForm, PartnerItemForm, PartnerItemUpdateForm
 from .models import Item, Partner, Process, QuantityUnit
 from .models import Holiday
 from .models import Staff
+from .models import DefectKind
 from .models import ItemPrice, PartnerItem
 from .models import ItemProcess
 
@@ -726,3 +728,79 @@ class StaffDeleteView(BaseFormView):
     template_name = "masters/staff_delete.html"
     screen_name = "社員の削除"
     screen_help = "社員を消し、社員の一覧に戻ります。この社員の実績には、消す時の名前と番号を写して残します。"
+
+
+# ---------------------------------------------------------------- 不良の区分 (実績の不良の行が選ぶ一覧。見比べのまとめの M09。2 段目 N407b)
+# 社員の画面と同じ形 (一覧は使用中だけ・新規登録は小窓・詳細は使用停止の黄色の 1 行・削除の確かめは件数を添える)。
+
+
+class DefectKindListView(BaseListView):
+    """不良の区分の一覧。
+
+    使う人: 品質・生産管理 / いつ: 不良の分け方を決めたときと見直すとき / 何のために: 実績の不良を区分ごとに数えられるようにする / 次にすること: 実績の入力で不良を区分ごとの行で入れる
+    """
+
+    model = DefectKind
+    template_name = "masters/defectkind_list.html"
+    screen_name = "不良の区分"
+    screen_help = "実績に入れる不良の区分。集計の行になるので、同じ名前は 2 つ作れません。並び順の小さい順に、実績の入力の候補に並びます。"
+    columns = ("name", "sort_order", "note")
+    search_fields = ("name",)
+    filters = (INACTIVE_FILTER,)
+    # 表の並び (並び順・名前) と同じ。書かないと土台の既定 (新しい順) になる
+    ordering = ("sort_order", "name", "pk")
+
+    def get_queryset(self):
+        return _hide_inactive(self, super().get_queryset())
+
+
+class DefectKindDetailView(BaseDetailView):
+    """不良の区分の詳細。
+
+    使う人: 品質・生産管理 / いつ: 区分の名前と並び順を確かめるとき / 何のために: 実績の不良を区分ごとに数えられるようにする / 次にすること: 「編集」で直すか、「削除」で消す
+    """
+
+    model = DefectKind
+    template_name = "masters/defectkind_detail.html"
+    screen_name = "不良の区分の詳細"
+    screen_help = "名前・並び順・備考と使用中か。「編集」で直し、「削除」で消します。"
+
+
+class DefectKindCreateView(BaseFormView):
+    """不良の区分の新規登録の入力。
+
+    使う人: 品質・生産管理 / いつ: 新しい種類の不良を分けて数えたいとき / 何のために: 実績の不良を区分ごとに数えられるようにする / 次にすること: 実績の入力で不良を区分ごとの行で入れる
+    """
+
+    model = DefectKind
+    form_class = DefectKindForm
+    service = staticmethod(services.create_defect_kind)
+    screen_name = "不良の区分の新規登録"
+    screen_help = "不良の区分の名前と並び順を登録します。前後の空白を除いて同じ名前は、2 つ作れません。"
+
+
+class DefectKindUpdateView(BaseFormView):
+    """不良の区分の編集の入力。
+
+    使う人: 品質・生産管理 / いつ: 区分の名前や並び順を変えるときと、使わなくなったとき / 何のために: 実績の不良を区分ごとに数えられるようにする / 次にすること: 実績の入力の候補で確かめる
+    """
+
+    model = DefectKind
+    form_class = DefectKindForm
+    service = staticmethod(services.update_defect_kind)
+    screen_name = "不良の区分の編集"
+    screen_help = "名前・並び順・備考を直します。使わなくなった区分は「使用中」を外すと、実績の入力の候補に出なくなります。"
+
+
+class DefectKindDeleteView(BaseFormView):
+    """不良の区分の削除の確かめ。
+
+    使う人: 品質・生産管理 / いつ: 間違えて足した区分や、残さなくてよい区分を消すとき / 何のために: 実績の不良を区分ごとに数えられるようにする / 次にすること: 不良の区分の一覧で確かめる
+    """
+
+    model = DefectKind
+    form_class = DefectKindDeleteForm
+    service = staticmethod(services.delete_defect_kind)
+    template_name = "masters/defectkind_delete.html"
+    screen_name = "不良の区分の削除"
+    screen_help = "不良の区分を消し、不良の区分の一覧に戻ります。この区分の不良の行には、消す時の名前を写して残します。"

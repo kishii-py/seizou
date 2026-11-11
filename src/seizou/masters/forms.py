@@ -22,6 +22,7 @@ from .models import company_defaults
 from .models import ItemDrawingVersion
 from .models import Holiday
 from .models import Staff
+from .models import DefectKind
 from . import services
 
 
@@ -900,6 +901,49 @@ class StaffDeleteForm(forms.Form):
         super().__init__(*args, **kwargs)
         has_row = getattr(instance, "pk", None) is not None
         self.progress_count = services.staff_progress_count(instance) if has_row else 0
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+# ---------------------------------------------------------------- 不良の区分 (実績の不良の行が選ぶ一覧。見比べのまとめの M09。2 段目 N407b)
+
+#: 不良の区分の使用中の欄の下の案内
+DEFECT_KIND_ACTIVE_HELP = "外すと、実績の入力の候補に出なくなります。今までの不良の行の区分はそのまま残ります。"
+
+
+class DefectKindForm(ServiceModelForm):
+    """不良の区分を入れる・直す。欄は名前・並び順・備考。使用中は編集の画面だけに出す (社員の StaffForm と同じ形)。
+
+    名前の重複 (前後の空白を落とした名前) は services (create_defect_kind・update_defect_kind) が日本語の ValueError で断り、土台が赤の知らせにする。
+    """
+
+    active = forms.BooleanField(label="使用中", required=False, help_text=DEFECT_KIND_ACTIVE_HELP)
+
+    #: 会社ごとの項目を足した後も最後に置く欄 (社員の StaffForm とそろえる)
+    last_fields = ("active",)
+
+    class Meta:
+        model = DefectKind
+        fields = ["name", "sort_order", "note"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _active_on_edit_only(self)
+
+
+class DefectKindDeleteForm(forms.Form):
+    """不良の区分の削除の確認。欄は無い (土台が delete_defect_kind(対象, user=…) を呼ぶ)。
+
+    土台は __init__ が instance の引数を名指しする form に対象の区分を渡す (core.views.forms の _accepts_instance)。
+    その区分を指す不良の行の件数を line_count に持ち、確かめの画面が「この区分の不良の行 <n> 件には、区分の名前を写して残します。…」を出す。
+    保存していない区分 (ボタンの字の試験が空の記録で作る) は 0 件 (表を読まない)。
+    """
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        has_row = getattr(instance, "pk", None) is not None
+        self.line_count = services.defect_kind_line_count(instance) if has_row else 0
 
     def service_kwargs(self) -> dict:
         return {}

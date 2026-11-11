@@ -13,6 +13,7 @@ MENU = [
     ("工程", "masters:process_list"),
     ("休日", "masters:holiday_list"),
     ("社員", "masters:staff_list"),
+    ("不良の区分", "masters:defectkind_list"),
 ]
 
 urlpatterns = [
@@ -57,6 +58,11 @@ urlpatterns = [
     path("staff/<int:pk>/", views.StaffDetailView.as_view(), name="staff_detail"),
     path("staff/<int:pk>/edit/", views.StaffUpdateView.as_view(), name="staff_update"),
     path("staff/<int:pk>/delete/", views.StaffDeleteView.as_view(), name="staff_delete"),
+    path("defect-kinds/", views.DefectKindListView.as_view(), name="defectkind_list"),
+    path("defect-kinds/new/", views.DefectKindCreateView.as_view(), name="defectkind_create"),
+    path("defect-kinds/<int:pk>/", views.DefectKindDetailView.as_view(), name="defectkind_detail"),
+    path("defect-kinds/<int:pk>/edit/", views.DefectKindUpdateView.as_view(), name="defectkind_update"),
+    path("defect-kinds/<int:pk>/delete/", views.DefectKindDeleteView.as_view(), name="defectkind_delete"),
     # 部品の標準の工程の並び (作者の決め)。追加の道に部品の pk を入れない (権限の tag can_write が引数無しで引くため。部品は ?item=<pk>)
     path("itemprocesses/add/", views.ItemProcessAddView.as_view(), name="itemprocess_add"),
     path("itemprocesses/<int:pk>/edit/", views.ItemProcessUpdateView.as_view(), name="itemprocess_update"),

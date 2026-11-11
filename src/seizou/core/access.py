@@ -63,7 +63,7 @@ KIND_NOTES = {
     "items": "部品・標準の工程・図面・部品の取引先と単価表",
     "orders": "受信した注文の受け入れ・条件付の受け入れ・保留・断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
-    "processes": "工程と会社の休日と社員",
+    "processes": "工程と会社の休日と社員と不良の区分",
     "purchasing": "仕入明細を作る・送る・取り消す・相手の提案を受け入れるを含む",
     "billing": "受けた仕入明細に答えるを含む",
 }
@@ -105,6 +105,10 @@ _KIND_ACTIONS = {
         "masters.create_staff",
         "masters.update_staff",
         "masters.delete_staff",
+        # 不良の区分 (N407b。見比べのまとめの M09)。金額の欄が無いので金額に関わる操作 (MONEY_ACTIONS) には入れない
+        "masters.create_defect_kind",
+        "masters.update_defect_kind",
+        "masters.delete_defect_kind",
     ),
     "connections": ("connect.register_connection", "connect.update_connection"),
     "manuals": (
@@ -194,6 +198,8 @@ FREE_ACTIONS = frozenset(
         # 実績を直す・消す (作者の決め。権限は実績を入れるのと同じ = 作者の決め)
         "progress.update_progress",
         "progress.delete_progress",
+        # 不良の行の原因と対策を書く (N407b。権限は実績を入れて直すのと同じ。金額に関わる操作には入れない)
+        "progress.update_defect_note",
         "attachments.add_attachment",
         "attachments.remove_attachment",
         "stock.record_finished",
