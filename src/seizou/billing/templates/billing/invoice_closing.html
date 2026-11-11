@@ -1,0 +1,6 @@
+{% extends "core/form.html" %}
+{# 締日でまとめて請求書を作る (締めの一括の 2 段目。依頼書 N402b): 欄は年月・締日・発行日。入口は請求書の一覧の上の「締日でまとめて作る」。全体の画面だけで開く (小窓の link は無い)。 #}
+{# 中身はカード (billing/_invoice_closing_card.html = 土台の入力のカードと、締める日の表)。押した後は土台が請求書の一覧へ移し、右上の知らせを出す (作った = 緑、人の手が要る得意先がある = 閉じるまで残る黄)。 #}
+{# 作る物が無いとき・締日がまだ来ていないとき・金額の閲覧が無いときは、土台が右上の赤の知らせを出す (services の ValueError と RuleViolation、require_write)。 #}
+{% block content %}{% include "billing/_invoice_closing_card.html" %}
+{% endblock %}

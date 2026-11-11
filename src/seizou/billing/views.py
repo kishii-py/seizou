@@ -27,6 +27,7 @@ from seizou.core.views import BaseModalView
 from . import services
 from .forms import (
     InvoiceCancelForm,
+    InvoiceClosingForm,
     InvoiceForm,
     InvoiceReissueForm,
     PaymentCancelForm,
@@ -165,6 +166,23 @@ class InvoiceReissueView(BaseFormView):
     template_name = "billing/invoice_reissue.html"
     screen_name = "請求書を作り直す"
     screen_help = "同じ締め期間の請求書を取り消し、入っていた出荷と期間の中で残っていた出荷で 1 枚に作り直します。"
+
+
+class InvoiceClosingView(BaseFormView):
+    """締日でまとめて請求書を作る入力 (締めの一括の 2 段目。依頼書 N402b)。入口は請求書の一覧の上の「締日でまとめて作る」。
+
+    使う人: 経理 / いつ: 締日の後 / 何のために: 年月と締日を選び、その締日の得意先の請求書を 1 回でまとめて作る / 次にすること: 請求書の一覧で作った請求書を開いて印刷する
+
+    欄の下の表 (billing/_invoice_closing_card.html) は form の plan (services.closing_plan) を描く。保存は services.create_closing_invoices。
+    返す物は作った請求書の list (ClosedInvoices) なので、土台は保存の後に請求書の一覧へ移し、返す物の saved_message・saved_note・saved_level で知らせを出す。
+    """
+
+    model = Invoice
+    form_class = InvoiceClosingForm
+    service = staticmethod(services.create_closing_invoices)
+    template_name = "billing/invoice_closing.html"
+    screen_name = "締日でまとめて請求書を作る"
+    screen_help = "年月と締日を選び、その日が締日の得意先の請求書をまとめて作ります。作る得意先と、作らない得意先とその訳を表で確かめてから押します。"
 
 
 class PaymentCreateView(BaseFormView):

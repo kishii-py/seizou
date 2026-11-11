@@ -161,6 +161,8 @@ _KIND_ACTIONS = {
         "billing.cancel_invoice",
         # 請求書の作り直し (同じ締め期間の請求書を取り消して 1 枚に作る。R23)
         "billing.reissue_invoice",
+        # 締めの一括 (N402)
+        "billing.create_closing_invoices",
         # 入金 (開発の記録 docs/nights/20261103/N56.md。本体が起こす前に入れる前提)
         "billing.record_payment",
         "billing.cancel_payment",
@@ -252,6 +254,8 @@ MONEY_ACTIONS = {
     "orders.create_order": ("受注", "新規登録できません"),
     # 作り直しは請求書を作る操作の別の入口なので、請求書を作るのと同じ扱い
     "billing.reissue_invoice": ("請求書", "作れません"),
+    # 締めの一括 (N402) も請求書を作る操作の別の入口なので、請求書を作るのと同じ扱い
+    "billing.create_closing_invoices": ("請求書", "作れません"),
     # 単価の行は単価だけを中身に持つ登録 (作者の決め。金額を見られない人が単価を決める形にしない。消すのも単価を決める操作)。
     # 部品の取引先の行の削除は入れない (金額を見ない人も選び間違えた取引先の行を消すため)。
     "masters.add_item_price": ("単価表", "単価の行を足せません"),

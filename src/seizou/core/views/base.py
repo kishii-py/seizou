@@ -74,6 +74,7 @@ REFUSAL_HEAD_CANCEL = "取り消せません。"
 REFUSAL_HEAD_DELETE = "削除できません。"
 REFUSAL_HEAD_BY_SERVICE = {
     "create_invoice": "発行できません。",
+    "create_closing_invoices": "発行できません。",
     "create_delivery_note": "発行できません。",
     "issue_workorder": "発行できません。",
     "issue_account": "発行できません。",
