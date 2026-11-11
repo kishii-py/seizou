@@ -1,0 +1,34 @@
+{% load seizou_tags %}
+{# 締めの一括のカード (billing/invoice_closing.html が include する。依頼書 N402b)。上は土台の入力のカード (core/_form_card.html = 年月・締日・発行日と保存のボタン)、下は締める日の表のカード。 #}
+{# 表は form.plan (services.closing_plan) を読むだけ。行の並びは plan のまま。列は 得意先・締め期間・出荷の件数・税抜の金額 (金額の閲覧のある人だけ)・作るか・訳。作らない行の訳は plan の reason。 #}
+{# 作り直しが要る行 (state が exists で出荷が残る) は、その請求書の作り直しの画面へのリンク。金額を決めていない一式の明細が残る行 (waiting) と締日が空の行 (no_closing_day) は、請求書の新規登録 (?customer=) へのリンク。締日が空の行は、締め期間の枡を「締日が空」とし、取引先の詳細へのリンクも付ける (締日を入れる入口)。 #}
+{# 開き直し: 年月か締日を変えると、包みの箱 (#invoice-closing) が htmx の get で同じ画面を ?month=…&closing_day=… で取り直し、箱ごと差し替える (発行日は送らないので、締める日に戻る)。 #}
+{# 箱ごと差し替えるのは、欄の書きかけの印 (js/seizou-form-guard.js の data-seizou-dirty) を残さず、保存のボタンの字と発行日も選んだ締めに合わせるため。画面を移らないので、離れる時の確かめは出ない。 #}
+{# JS が動かないときは表が描き直されないが、送ると送った年月と締日で作る (作る物が無ければ赤の知らせ)。表は灰色の地に直に置かず、カードの面の中に置く (CLAUDE.md の 11-07 17:0x)。 #}
+<div id="invoice-closing" hx-get="{{ request.path }}" hx-trigger="change from:#id_month, change from:#id_closing_day" hx-include="#id_month, #id_closing_day" hx-target="this" hx-select="#invoice-closing" hx-swap="outerHTML" hx-push-url="true" hx-history="false">
+{% include "core/_form_card.html" %}
+<section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" data-closing-section>
+  <p class="mb-2 font-medium" data-closing-summary>{{ form.closing_on|date:"Y-m-d" }} 締め: 作る {{ form.make_count }} 社・作らない {{ form.skip_count }} 社</p>
+  {% if form.plan %}
+  <div class="overflow-x-auto">
+    <table class="table table-sm" data-closing-plan>
+      <thead><tr><th>得意先</th><th>締め期間</th><th class="text-right">出荷の件数</th>{% if not form.hide_money %}<th class="text-right">税抜の金額</th>{% endif %}<th>作るか</th><th>訳</th></tr></thead>
+      <tbody>
+      {% for row in form.plan %}
+      <tr class="align-top" data-state="{{ row.state }}" data-code="{{ row.customer.code }}">
+        <td class="whitespace-nowrap">{{ row.customer.name }}</td>
+        <td class="whitespace-nowrap">{% if row.state == "no_closing_day" %}締日が空{% else %}{{ row.period_from|date:"Y-m-d" }}〜{{ row.period_to|date:"Y-m-d" }}{% endif %}</td>
+        <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipments|length }} 件</td>
+        {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">¥{{ row.amount|comma }}</td>{% endif %}
+        <td class="whitespace-nowrap">{% if row.state == "make" %}作る{% else %}作らない{% endif %}</td>
+        <td>{{ row.reason }}{% if row.state == "exists" and row.shipments %}<span class="block">{% for invoice in row.invoices %}{% if not forloop.first %}・{% endif %}<a class="link link-primary" href="{% url 'billing:invoice_reissue' invoice.pk %}">{{ invoice.invoice_no }} を作り直す</a>{% endfor %}</span>{% elif row.state == "waiting" %}<span class="block"><a class="link link-primary" href="{% url 'billing:invoice_create' %}?customer={{ row.customer.pk }}">請求書の新規登録</a></span>{% elif row.state == "no_closing_day" %}<span class="block"><a class="link link-primary" href="{% url 'masters:partner_detail' row.customer.pk %}">取引先の詳細</a>・<a class="link link-primary" href="{% url 'billing:invoice_create' %}?customer={{ row.customer.pk }}">請求書の新規登録</a></span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p data-closing-empty>この締日の得意先に、請求できる出荷はありません。</p>
+  {% endif %}
+</section>
+</div>

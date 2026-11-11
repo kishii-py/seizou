@@ -14,6 +14,8 @@
   出し切らずに終えた一式の受注の明細 (services.unbilled_lumps。作者の決め) は、一式の節の表の行 (lump_rows) で描く (知らせるだけで欄は無い)。
 - 取り消す form は欄が無い。service_kwargs() は空の辞書 (土台が cancel_invoice(請求書, user=...) を呼ぶ)。
 - 作り直す form は「発行日」だけ。service_kwargs() は {"issued_on": …} (土台が reissue_invoice(請求書, user=..., issued_on=...) を呼ぶ)。
+- 締めの一括の form (InvoiceClosingForm。依頼書 N402b) は「年月」「締日」「発行日」。年月と締日から締める日 (services.closing_date) を決め、
+  plan (services.closing_plan) をテンプレートが表に描く。service_kwargs() は {"closing_on": …, "issued_on": …} (土台が create_closing_invoices を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
 - 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
@@ -36,7 +38,9 @@ from .models import Invoice
 from .models import Payment
 from .services import (
     billable_shipments,
+    closing_date,
     closing_period,
+    closing_plan,
     consumption_tax,
     lump_facts,
     lumps_shipped_after,
@@ -526,6 +530,143 @@ class InvoiceReissueForm(LumpFieldsMixin, forms.Form):
 
     def service_kwargs(self):
         return {"issued_on": self.cleaned_data["issued_on"], "lumps": list(self._picked_lumps)}
+
+
+#: 締めの一括の「年月」に並べる月の数 (今月とその前の 11 か月)
+CLOSING_MONTHS = 12
+#: 締日の値の月末 (31。得意先が 1 社も無いときの締日の選択肢と、締日の初めの値)
+CLOSING_MONTH_END = 31
+
+
+def closing_month_choices(today):
+    """「年月」の選択肢。今月とその前の 11 か月 (新しい順)。値は「2026-10」、字は「2026 年 10 月」。"""
+    choices = []
+    year, month = today.year, today.month
+    for _ in range(CLOSING_MONTHS):
+        choices.append((f"{year:04d}-{month:02d}", f"{year} 年 {month} 月"))
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    return choices
+
+
+def closing_day_choices():
+    """「締日」の選択肢。請求の仕方が「締日でまとめる」得意先 (種類が得意先か両方) の締日 (空を除く) を重ねずに小さい順に並べる。
+
+    字は取引先の締日の字 (31 は「月末」、ほかは「n 日」)。得意先が 1 社も無ければ「月末」だけ。協力企業だけの取引先の締日は請求の締めでないので並べない。
+    """
+    days = set(
+        _Partner.objects.filter(
+            billing_method=_Partner.BILLING_CLOSING,
+            closing_day__isnull=False,
+            role__in=(_Partner.ROLE_CUSTOMER, _Partner.ROLE_BOTH),
+        ).values_list("closing_day", flat=True)
+    ) or {CLOSING_MONTH_END}
+    return [(str(day), _Partner(closing_day=day).get_closing_day_display()) for day in sorted(days)]
+
+
+def _chosen(value, allowed, default) -> str:
+    """選ぶ欄の値の字。GET の字 (同じ鍵が 2 つ以上なら最後) か送った字が選択肢にあればその字、ほかは default (断らない)。"""
+    if isinstance(value, (list, tuple)):
+        value = value[-1] if value else None
+    text = "" if value is None else str(value)
+    return text if text in allowed else default
+
+
+class InvoiceClosingForm(SubmitLabelMixin, forms.Form):
+    """締めの一括の form (依頼書 N402b)。欄は「年月」「締日」「発行日」。
+
+    年月は今月とその前の 11 か月 (初めは前の月)、締日は締日でまとめる得意先の締日 (初めは月末。並びに無ければ一番小さい締日)。
+    開いた form は GET の ?month=2026-10&closing_day=31 (土台の get_initial が写す) を初めの値として読み、読めない値は初めの値のまま (断らない)。
+    読んだ値は self.initial に書き戻す (選ぶ欄の見え方と表の締めを同じにするため)。送った form は送った値で決める (選択肢に無い値は欄の誤り)。
+    発行日の初めの値は締める日 (services.closing_date)。plan は締める日の services.closing_plan (テンプレートが表に描く)。
+    保存のボタンの字は「<n> 社・税抜 ¥<合計> の請求書を作る」(金額の閲覧が無い人は「<n> 社の請求書を作る」、作る得意先が 0 なら「請求書を作る」)。
+    字はサーバーが組み、ボタンに型 (data-submit-label) を置かない: core の seizou-submit-label.js は数える行の無い form では字を
+    「請求書を作る」に戻すので、発行日を直しただけで社の数が消えるため。年月か締日を変えると画面のカードごと描き直す (billing/_invoice_closing_card.html)。
+    会社ごとの項目 (請求書の拡張の表の欄) は足さない (adds_company_fields)。作る請求書が何枚にもなり、欄の値を渡す先が無いため。
+    """
+
+    submit_label_plain = "請求書を作る"
+    #: ボタンに型を置かない (上の docstring。SubmitLabelMixin の property を空の字で置き換える)
+    submit_label_template = ""
+    adds_company_fields = False
+
+    month = forms.ChoiceField(label="年月", choices=())
+    closing_day = forms.TypedChoiceField(
+        label="締日",
+        coerce=int,
+        choices=(),
+        help_text="請求の仕方が「締日でまとめる」得意先の締日が並びます。年月か締日を選ぶと、下の表と発行日が選んだ締めに変わります。",
+    )
+    issued_on = forms.DateField(
+        label="発行日",
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
+        help_text="作る請求書に載る日付です。初めは締める日が入ります。支払期日は発行日でなく、締め期間の終わりと得意先の支払の決まりから決まります。",
+    )
+
+    def __init__(self, *args, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hide_money = hide_money
+        self._plan = None
+        months = closing_month_choices(timezone.localdate())
+        days = closing_day_choices()
+        self.fields["month"].choices = months
+        self.fields["closing_day"].choices = days
+        month_values = [value for value, _label in months]
+        day_values = [value for value, _label in days]
+        default_day = str(CLOSING_MONTH_END) if str(CLOSING_MONTH_END) in day_values else day_values[0]
+        if self.is_bound:
+            month = self.data.get(self.add_prefix("month"))
+            day = self.data.get(self.add_prefix("closing_day"))
+        else:
+            month = self.initial.get("month")
+            day = self.initial.get("closing_day")
+        self._month = _chosen(month, month_values, month_values[1])
+        self._day = _chosen(day, day_values, default_day)
+        if not self.is_bound:
+            self.initial["month"] = self._month
+            self.initial["closing_day"] = self._day
+        self.fields["issued_on"].initial = self.closing_on
+
+    @property
+    def closing_on(self):
+        """締める日 (年月と締日から services.closing_date で出す)。"""
+        year, month = (int(part) for part in self._month.split("-"))
+        return closing_date(year, month, int(self._day))
+
+    @property
+    def plan(self):
+        """締める日の services.closing_plan (金額の閲覧が無い人は金額が None)。最初に読んだ時に作って持つ。"""
+        if self._plan is None:
+            self._plan = closing_plan(self.closing_on, hide_money=self.hide_money)
+        return self._plan
+
+    @property
+    def make_count(self) -> int:
+        """表の作る得意先の数 (state が "make" の行)。"""
+        return sum(1 for row in self.plan if row["state"] == "make")
+
+    @property
+    def skip_count(self) -> int:
+        """表の作らない得意先の数。"""
+        return len(self.plan) - self.make_count
+
+    def submit_label_templates(self) -> list:
+        if self.hide_money:
+            return ["{rows} 社の請求書を作る"]
+        return ["{rows} 社・税抜 ¥{amount} の請求書を作る", "{rows} 社の請求書を作る"]
+
+    def submit_label_values(self) -> dict:
+        made = [row for row in self.plan if row["state"] == "make"]
+        if not made:
+            return {}
+        values = {"rows": str(len(made))}
+        if not self.hide_money:
+            values["amount"] = label_number(sum((row["amount"] for row in made), Decimal("0")))
+        return values
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        year, month = (int(part) for part in data["month"].split("-"))
+        return {"closing_on": closing_date(year, month, data["closing_day"]), "issued_on": data["issued_on"]}
 
 
 class PaymentForm(SubmitLabelMixin, forms.Form):

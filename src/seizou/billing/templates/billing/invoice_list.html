@@ -1,2 +1,5 @@
 {% extends "core/list.html" %}
+{% load seizou_icons seizou_tags %}
 {# 請求書の一覧: 土台の一覧 (行は billing/_rows.html と _row.html = 入金の列の印と、状態の列の取消の印。開発の記録 docs/nights/20261105/N164.md)。「残のある物だけ」(一部入金も入る) は絞り込みの枠の中の印 (InvoiceListView.filters の unpaid。GET は f_unpaid=1。開発の記録 docs/nights/20261104/N127.md)。 #}
+{# 上のボタンの「締日でまとめて作る」(締めの一括。依頼書 N402b) は、請求書を書ける人にだけ出す (金額の閲覧の無い人には、請求書を作る操作が金額に関わる操作 = core.access.MONEY_ACTIONS なので出ない)。 #}
+{% block actions %}{{ block.super }}{% can_write "billing.Invoice" as can_close %}{% if can_close %}<a class="btn btn-ghost" href="{% url 'billing:invoice_closing' %}">{% icon "calendar" "size-4" %}締日でまとめて作る</a>{% endif %}{% endblock %}
