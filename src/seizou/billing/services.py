@@ -126,6 +126,8 @@ def _refuse_unbillable_lump(order_line, customer, *, copying=False):
     そのほかで出し切らずに終えた一式の明細 (unbilled_lumps) でない物 (単価の単位が式でない・明細を出し終えた出荷がある・
     まだ終わっていない) は ValueError (画面は unbilled_lumps の明細しか出さないので、画面の外から呼んだ時と、開いた後に出荷が進んだ時だけ)。
     明細を出し終えた出荷のある明細に一式の行を足すと、出荷の行の全額と二重になる。
+    作り直しで写す一式の行 (copying が真) の出荷が無い時 (出荷を全部消した後) の R09 の文は、作り直す前の請求書を取り消してから請求書の新規登録で作り直す道を書く。
+    作り直しの画面では写す一式の行を外せないので、止まった時の文で請求書の新規登録へ案内する。出所 = 本体の決め 11-11 15:0x (N403 の記録の迷った事 9 の (1))。
     訳: 請求書の明細を出荷済みの物 (出荷の記録がある出荷) に結び付いた物だけにし (一式の行も出荷のある受注の明細だけ)、同じ一式を 2 枚の請求書に入れないため。納品書は出荷の記録を刷った物で、発行したかどうかを請求の条件にしない。出所 = RULES.md R09 と作者の決め・本人の決め 11-11 10:1x (「納品書は出荷の記録を写したものであるべきでは？」「OK」)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
@@ -133,6 +135,12 @@ def _refuse_unbillable_lump(order_line, customer, *, copying=False):
     if order_line.order.customer_id != customer.pk:
         raise RuleViolation("R09", f"発行できません。{_R09_RULE}請求書は得意先ごとに作るので、{ref}を外してください。")
     if not _Shipment.objects.filter(order_line=order_line).exists():
+        if copying:
+            raise RuleViolation(
+                "R09",
+                f"発行できません。{_R09_RULE}{ref}の出荷が無いので、この一式の行は作り直しで写せません。"
+                "作り直す前の請求書を取り消してから、請求書の新規登録で作り直してください。",
+            )
         raise RuleViolation("R09", f"発行できません。{_R09_RULE}{ref}の出荷が無いので、外してください。")
     billed = (
         InvoiceLine.objects.select_related("invoice")

@@ -101,12 +101,17 @@ class PeriodSelect(forms.Select):
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
-    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は 作者の決め)。"""
+    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は 作者の決め)。
+
+    「・納品書 …」は、出荷が発行の納品書に入っている時だけ付ける。取消の納品書を指したままの出荷と、納品書の無い出荷は付けない
+    (取消の納品書の出荷も請求できるので、取り消した番号を出さない。依頼書 N403b)。「発行」の値は納品書の表の STATUS_ISSUED から読む (shipping の model を import しない)。
+    """
 
     def label_from_instance(self, obj):
         line = obj.order_line
         qty = f"{obj.qty.normalize():f}"
-        note_no = obj.delivery_note.note_no if obj.delivery_note else ""
+        note = obj.delivery_note
+        note_no = note.note_no if note is not None and note.status == type(note).STATUS_ISSUED else ""
         text = (
             f"出荷 {obj.shipment_no}・{line.order.customer.name}・{line.item.part_no} {line.item.name}"
             f"・数量 {qty}・出荷日 {obj.shipped_at:%Y-%m-%d}"
