@@ -4,9 +4,10 @@
 欄の下の字は「保存の時に確かめの知らせが出ます。」と言い、押すと入荷の赤の知らせで止まった (欄の下の字と赤が別の事を言った)。
 本体の決め 11-11 14:2x で、欄の下の字は入荷の有無を見て出し分け、赤の知らせと同じ事を言うようにした。
 
-- 候補の口 (orders:orderline_select) は for=shipping のときだけ、明細ごとに検査の層の preview の最初の止める (無ければ最初の知らせる) の文を
-  ship_notice、その mode を ship_notice_mode として返す。文が無ければ鍵を足さない。通す (off) の会社では読みが増えない。
-- 出荷の form は、明細が決まっていれば同じ文で欄の下の字を始め、数量の欄に data-ship-notice と data-ship-notice-mode を置く。
+- 出荷の form は、明細を決めて開いた時 (受注の詳細や生産管理ボードから) と止まって描き直した時に、検査の層の preview の最初の止める
+  (無ければ最初の知らせる) の文で欄の下の字を始め、数量の欄に data-ship-notice と data-ship-notice-mode を置く。
+- 候補の口 (orders:orderline_select) は知らせを返さない。画面の中で明細を選び直した時は、今までどおり保存の時に知らせる
+  (本人の決め 11-11 21:1x。候補の口に知らせを足すには、土台を継承した画面が上書きしてよい名前 (R15) を広げる要があるため)。
 - 保存の時の赤の知らせは、検査の層が登録の順 (標準のポカよけの R01 が先、入荷の検査が後) に見た最初の止める。
   JS (shipping/shipment-form.js) の字の順は、この順に合わせる (JS の動きは pytest では見られない)。
 
@@ -104,74 +105,39 @@ def _post(client, line, qty):
     return client.post(reverse("shipping:shipment_create"), data)
 
 
-# ---------------------------------------------------------------- (b) 候補の口
+# ---------------------------------------------------------------- (b) 候補の口は知らせを返さない
 
 
 @pytest.mark.django_db
-def test_select_for_shipping_carries_the_notice_of_a_line_without_receiving(settings, logged_in, lines):
+@pytest.mark.parametrize("mode", ["stop", "warn"])
+def test_select_does_not_carry_the_notice(settings, logged_in, lines, mode):
+    """入荷を確かめる会社でも、候補の口は明細の知らせの鍵を返さず、読みも増やさない (for=shipping を付けても同じ)。"""
     missing, received = lines
-    settings.SEIZOU = {"receiving_required": "stop"}
-
-    rows = _candidates(logged_in, **{"for": "shipping"})
-    assert rows[missing.pk]["ship_notice"] == MESSAGE
-    assert rows[missing.pk]["ship_notice_mode"] == "stop"
-    # 文に保存の時の赤の頭は付けない (欄の下の字は、赤の知らせの 2 文目からと同じ字)
-    assert not rows[missing.pk]["ship_notice"].startswith(STOP_HEAD)
-    # 入荷を記録した明細には鍵が無い
-    assert "ship_notice" not in rows[received.pk]
-    assert "ship_notice_mode" not in rows[received.pk]
-    # 字 (選んだ値の欄の字と「 残り n」) は今のまま
-    assert rows[missing.pk]["text"].endswith(" 残り 10")
-
-    # for の無い要求 (今の出荷の選ぶ欄の形) には鍵が無い
-    plain = _candidates(logged_in)
-    assert set(plain) == set(rows)
-    assert all("ship_notice" not in row and "ship_notice_mode" not in row for row in plain.values())
-
-
-@pytest.mark.django_db
-def test_select_for_shipping_carries_warn_mode(settings, logged_in, lines):
-    missing, received = lines
-    settings.SEIZOU = {"receiving_required": "warn"}
-
-    rows = _candidates(logged_in, **{"for": "shipping"})
-    assert rows[missing.pk]["ship_notice"] == MESSAGE
-    assert rows[missing.pk]["ship_notice_mode"] == "warn"
-    assert "ship_notice" not in rows[received.pk]
-
-
-@pytest.mark.django_db
-def test_select_for_shipping_has_no_notice_when_receiving_is_off(settings, logged_in, lines):
-    settings.SEIZOU = {"receiving_required": "off"}
-
-    rows = _candidates(logged_in, **{"for": "shipping"})
-    assert rows
-    assert all("ship_notice" not in row and "ship_notice_mode" not in row for row in rows.values())
-
-
-@pytest.mark.django_db
-def test_select_for_shipping_adds_no_reads_when_receiving_is_off(settings, logged_in, lines):
-    """入荷の検査が通す (off) の会社では、for=shipping でも候補の口の読みは増えない (preview が off の検査を呼ばない)。"""
+    settings.SEIZOU = {"receiving_required": mode}
     url = reverse("orders:orderline_select")
-    settings.SEIZOU = {"receiving_required": "off"}
     logged_in.get(url)  # 設定の上書きの控えを先に読んでおく
 
     with CaptureQueriesContext(connection) as plain:
-        logged_in.get(url)
-    with CaptureQueriesContext(connection) as shipping:
-        logged_in.get(url, {"for": "shipping"})
-    assert len(shipping) == len(plain)
+        rows = _candidates(logged_in)
+    with CaptureQueriesContext(connection) as asked:
+        same = _candidates(logged_in, **{"for": "shipping"})
+
+    assert set(rows) == set(same) == {missing.pk, received.pk}
+    assert all("ship_notice" not in row and "ship_notice_mode" not in row for row in [*rows.values(), *same.values()])
+    # 字 (選んだ値の欄の字と「 残り n」) は今のまま
+    assert rows[missing.pk]["text"].endswith(" 残り 10")
+    assert len(asked) == len(plain)
 
 
 # ---------------------------------------------------------------- (c) 出荷の form
 
 
 @pytest.mark.django_db
-def test_shipment_form_select_asks_for_shipping_candidates(logged_in, lines):
+def test_shipment_form_select_url_is_unchanged(logged_in, lines):
     body = logged_in.get(reverse("shipping:shipment_create")).content.decode()
 
-    assert f'data-select-url="{reverse("orders:orderline_select")}?for=shipping"' in body
-    # 小窓の link の型は今のまま (URL の名前から作る)
+    # 選ぶ欄の候補の口は今のまま (知らせのための引数を付けない)
+    assert f'data-select-url="{reverse("orders:orderline_select")}"' in body
     assert f'data-modal-url="{reverse("orders:orderline_modal", args=[0])}"' in body
 
 

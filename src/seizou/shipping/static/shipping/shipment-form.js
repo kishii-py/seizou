@@ -21,8 +21,8 @@
  * - 選んだ明細に、保存の時に検査の層が出す数に依らない知らせ (例 支給品・預かり品の入荷が無い明細) があれば、欄の下の字の頭にその文と
  *   mode の字 (止めるは「このままでは保存できません。」、知らせるは「保存の時に確かめの知らせが出ます。」) を出し、data-tone="warning" を付ける
  *   (保存の時の赤の知らせと同じ文。会社の設定 data-over-shipment と別に出す。開発の記録 docs/nights/20261111/N421.md)。文と mode は、
- *   選び直した明細なら候補の口 (orders:orderline_select の for=shipping) が候補と一緒に返す ship_notice と ship_notice_mode を、描いたときの
- *   明細なら数量の欄の data-ship-notice と data-ship-notice-mode を読む (残りの数と同じ読み分け。鍵が無ければ知らせ無し)。字の順は、保存の時の
+ *   描いたときの明細の物だけを、数量の欄の data-ship-notice と data-ship-notice-mode から読む。画面の中で選び直した明細には出さない
+ *   (候補は知らせを持たない。今までどおり保存の時に知らせる。本人の決め 11-11 21:1x)。字の順は、保存の時の
  *   赤の知らせの文が先頭に来る順にする。検査の層は受注より多い出荷 (R01) を先に見るので、打った数が残りを超え、data-over-shipment が
  *   止める (stop) なら超えた字を先に、知らせの文を後ろに出す。それ以外は知らせの文を先に、超えた字か「残り n」を後ろに出す
  *   (字の形は shipping/forms.py の描いた字と同じ)。
@@ -105,11 +105,6 @@
         remainingText = null;
         baseText = NO_LINE_TEXT;
       } else {
-        var option = chosenOption(select, value);
-        if (option && option.ship_notice) {
-          noticeText = String(option.ship_notice);
-          noticeMode = String(option.ship_notice_mode || "");
-        }
         var match = REMAINING.exec(chosenText(select, value).trim());
         if (match) {
           remainingText = match[1];

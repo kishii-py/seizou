@@ -63,8 +63,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
     order_line = forms.ModelChoiceField(
         label="受注の明細",
         queryset=_OrderLine.objects.select_related("order", "item"),
-        # 候補の口の for=shipping は、明細ごとの出荷の知らせ (ship_notice と ship_notice_mode) も返す (選び直したときに shipping/shipment-form.js が読む)
-        widget=RemoteSelect("orders:orderline_select", query={"for": "shipping"}),
+        widget=RemoteSelect("orders:orderline_select"),
         empty_label=EMPTY_LABEL,
         help_text=ORDER_LINE_HELP,
     )
@@ -105,8 +104,10 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
             help_text = f"残り {remaining}"
             qty_attrs["data-remaining"] = remaining
             # 保存の時に検査の層が出す知らせのうち、数に依らない物 (例 支給品・預かり品の入荷が無い明細) を、欄の下の字の頭に先に出す
-            # (保存の時の赤の知らせと同じ文。最初の止めるの文、無ければ最初の知らせるの文。候補の口の for=shipping と同じ選び方。
-            # 開発の記録 docs/nights/20261111/N421.md)。文と mode は数量の欄にも置く (JS が描いたときの明細の知らせとして読む)。
+            # (保存の時の赤の知らせと同じ文。最初の止めるの文、無ければ最初の知らせるの文。開発の記録 docs/nights/20261111/N421.md)。
+            # 文と mode は数量の欄にも置く (JS が描いたときの明細の知らせとして読む)。出すのは、明細を決めて開いた時 (受注の詳細や
+            # 生産管理ボードから) と、止まって描き直した時だけ。画面の中で明細を選び直した時は出さず、今までどおり保存の時に知らせる
+            # (本人の決め 11-11 21:1x。候補の口に知らせを足すには、土台を継承した画面が上書きしてよい名前 (R15) を広げる要があるため)。
             # 利用者は None (form は利用者を受けない。入荷の検査は利用者を見ない)。止めるか知らせるかは今のとおり保存の時に検査の層が決める。
             found = checks.preview("shipping.ship", {"order_line": line}, None)
             chosen = next((item for item in found if item[0] == "stop"), found[0] if found else None)

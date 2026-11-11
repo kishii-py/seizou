@@ -13,7 +13,7 @@ from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from seizou.core import checks, dashboard
+from seizou.core import dashboard
 from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, FilterSpec, url_or_none
 
 from . import board, services
@@ -349,24 +349,6 @@ class OrderLineSelectView(BaseSelectView):
             # 集計 (Sum) を含む queryset では model の Meta.ordering が効かないので、並びをここで決める。
             .order_by("order__order_no", "line_no", "pk")
         )
-
-    def candidate(self, obj, names) -> dict:
-        """候補の 1 つ。GET の for が shipping (出荷の新規登録の選ぶ欄。shipping/forms.py の order_line) のときだけ、明細の出荷の知らせを足す。
-
-        知らせは検査の層の preview ("shipping.ship"。数を入れる前の明細) の最初の止めるの文 (無ければ最初の知らせるの文) を ship_notice、
-        その mode ("stop" か "warn") を ship_notice_mode にする。文が無ければ鍵を足さない。出荷の入力の JS (shipping/shipment-form.js) が、
-        選び直した明細の数量の欄の下に、保存の時の赤の知らせと同じ文を出すために読む (JS は通信しないので候補と一緒に返す。開発の記録 docs/nights/20261111/N421.md)。
-        候補ごとに検査を回すので、通す (off) でない検査の読みが候補の数だけ増える (通す検査は preview が呼ばない)。
-        """
-        row = super().candidate(obj, names)
-        if self.request.GET.get("for") != "shipping":
-            return row
-        found = checks.preview("shipping.ship", {"order_line": obj}, self.request.user)
-        chosen = next((item for item in found if item[0] == "stop"), found[0] if found else None)
-        if chosen is not None:
-            row["ship_notice"] = chosen[1].message
-            row["ship_notice_mode"] = chosen[0]
-        return row
 
 
 @login_required
