@@ -205,7 +205,7 @@ def test_screen_defect_only_saves_and_zero_zero_is_r02(client_logged_in, step):
 
 def test_form_fields_and_labels():
     fields = ProgressRecordForm.base_fields
-    assert list(fields) == ["workorder_step", "qty", "defect_qty", "completes_step", "recorded_at", "note"]
+    assert list(fields) == ["workorder_step", "staff_code", "staff_name", "qty", "defect_qty", "completes_step", "recorded_at", "note"]
     assert fields["defect_qty"].label == "不良の数"
     assert fields["defect_qty"].required is False
     assert fields["completes_step"].label == "この工程を完了にする"
