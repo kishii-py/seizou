@@ -761,7 +761,7 @@ def unbilled_lumps(customer=None, *, include_no_bill=False):
     """出し切らずに終えた一式の受注の明細の並び (読むだけ。並びは受注番号・行番号)。請求書の新規登録の黄の 1 行が出す物 (作者の決め)。
 
     次の 6 つが全部当たる受注の明細: (1) 単価の単位が式 (2) 出荷が 1 つ以上あり、出荷が全部、発行の納品書に入っている
-    (3) 明細を出し終えた出荷の印 (finishes_line) の付いた出荷が無い (4) 終わっている = 受注が取消か、出荷の合計が数量以上
+    (3) 明細を出し終えた出荷の印 (finishes_line) の付いた出荷が無い (4) 終わっている = 受注が取消か、出荷の合計が数量以上か、受注の明細が完了 (RULES.md R25)
     (5) 発行の請求書に、この明細の一式の行 (出荷を指さない明細) がまだ無い (6) 受注の明細に「請求しない」の印 (no_bill) が無い
     (人が請求しないと決めた明細を一式の表から外す = 作者の決め。include_no_bill が真なら (6) を見ない = 作り直しの写しの見方)。
     customer を渡せば、その得意先の明細だけ。
@@ -794,7 +794,7 @@ def unbilled_lumps(customer=None, *, include_no_bill=False):
         .order_by("order__order_no", "line_no")
     )
     return [
-        line for line in queryset if line.order.status == _Order.STATUS_CANCELLED or line.shipped_total >= line.qty
+        line for line in queryset if line.order.status == _Order.STATUS_CANCELLED or line.completed or line.shipped_total >= line.qty
     ]
 
 

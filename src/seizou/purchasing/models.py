@@ -6,6 +6,7 @@
 受入の数と残は列に持たず、purchasing.services の集計 (received_qty・remaining_qty・annotate_received) で出す。
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
+完了の印 (completed。人が受入の足りないまま終えると決めた明細に付ける) は purchasing.services.mark_completed と clear_completed だけが書き、受入の残の数え方 (purchasing.services.remaining_qty・annotate_received。RULES.md R25) が読む。
 仕入明細 (SelfInvoice・SelfInvoiceLine) は、受入をまとめて相手へ送る書類 (中小企業共通 EDI の仕入明細の項目を元にした。作者の決め)。書くのは purchasing.services だけ。
 """
 
@@ -151,6 +152,10 @@ class PurchaseOrderLine(models.Model):
     line_status_reason_code = models.CharField(
         "明細状態理由コード", max_length=4, choices=edi_codes.LINE_REASON_CHOICES, blank=True, default=""
     )
+    # 人が付け外しする完了の印 (本人の決め 11-11 08:4x・09:3x)。受入の数と結ばない。明細が終わっているのは、この印が真か、受入の合計が数量以上のとき。
+    # 書くのは purchasing.services.mark_completed と clear_completed だけ (受入・発注の変更の数量の直しでは書き換えない)。
+    # 明細状態コードの「明細行取消」(2) は使わない (相手へ送る取消のコードで、明細の数量と金額の合計からも外れるため)。
+    completed = models.BooleanField("完了", default=False, editable=False)
 
     #: 変更の履歴は発注の詳細の「履歴」に出す (core.history。作者の決めの伝票の「発注」)
     history_owner = "purchase_order"

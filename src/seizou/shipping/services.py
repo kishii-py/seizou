@@ -13,6 +13,7 @@
 - 出荷済みの数と残の数は orders.services の関数で出す (検査の層と同じ関数)。
   集計の前に、受注の明細の行を select_for_update でロックする (services の書き方の設計の決め)。
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
+  「残りは出さずに完了にする」出荷 (ship の close_rest) は、同じトランザクションの中で orders.services.mark_completed を呼ぶ (完了の印を書くのは orders)。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
   発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
   納品書の取消は、発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷と、請求書の外で受け取った入金を記録した出荷
@@ -40,7 +41,7 @@ from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number, record_history, record_history_deleted
 from seizou.masters.services import delivery_amount, reaches_line_qty
-from seizou.orders.services import refresh_status, remaining_qty, shipped_qty
+from seizou.orders.services import mark_completed, refresh_status, remaining_qty, shipped_qty
 
 from .models import DeliveryNote, Shipment
 
@@ -78,12 +79,14 @@ def _yen(value) -> str:
     return f"{_dec(value).normalize():,f}"
 
 
-def _record_shipment(order_line, qty, shipped_at, user, note):
+def _record_shipment(order_line, qty, shipped_at, user, note, *, close_rest=False):
     """出荷の保存の部分 (ship と ship_lines が atomic の中で呼ぶ)。明細に行の錠を掛け、R05・R02・分納を見て、出荷を作り、受注の状態を直す。
 
     返す物は (出荷, 錠を掛けた明細)。HTTP は送らない (送るのは _after_ship。atomic の外 = R17)。
     明細を出し終えた出荷の印 (finishes_line) も付ける (入れた順で、明細の出荷の合計を数量の手前から数量以上にした最初の出荷。印の付いた出荷が既にあるか、発行の請求書に一式の行がある明細には付けない)。
+    close_rest が真 (残りは出さずに完了にする出荷。ship が渡す) なら、分納の検査をしない。
     訳: 取消した受注に出荷を作らず (R05)、0 以下の数を出荷にせず (R02)、分納を許さない会社では残りの数と違う出荷を止めるため。出所 = RULES.md R05・R02 と 会社の設定 partial_shipment (既定は許す)。
+    残りは出さずに完了にする出荷は分納に数えない (この出荷の後に残りを出さないので、分けて出すことにならない。出所 = 本人の決め 11-11 08:4x・09:3x を受けた作者の決め。開発の記録 docs/nights/20261111/N400.md)。
     変えてよい条件 = R05・R02 は変えない (R は廃止で残す)。分納は会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
     qty = _dec(qty)
@@ -94,7 +97,7 @@ def _record_shipment(order_line, qty, shipped_at, user, note):
         )
     if not qty > 0:
         raise RuleViolation("R02", _R02_MESSAGE)
-    if not setting("partial_shipment"):
+    if not setting("partial_shipment") and not close_rest:
         remaining = remaining_qty(locked)
         if qty != remaining:
             raise RuleViolation(
@@ -128,15 +131,24 @@ def _after_ship(shipment, order, user, send):
     return shipment
 
 
-def ship(order_line, qty, shipped_at, user, *, note="", send=True):
+def ship(order_line, qty, shipped_at, user, *, note="", send=True, close_rest=False):
     """受注の明細を qty だけ出荷する。出荷番号は core の連番が付ける。
 
     send が偽なら、受信した注文で作った受注の出荷でも出荷の知らせを送らず (番号も付けず)、出荷の返事の欄に MESSAGE_NOTICE_SEED を書く。
+    close_rest が真なら「残りは出さずに完了にする」出荷: 同じ atomic の中で出荷を作った後に、残 (orders.services.remaining_qty。RULES.md R25) が
+    0 より大きければ orders.services.mark_completed を呼ぶ (この出荷で数量に届いたら何もしない)。分納を許さない会社でも分納の検査で断らない
+    (_record_shipment)。足りないまま完了にした時は、返す出荷に saved_message「出荷を保存しました。<mark_completed の字>」を付ける (表に書かない)。
+    完了の明細への出荷は断らない (現物優先。候補の口が残の 0 より大きい明細だけを出す)。
     """
     with transaction.atomic():
-        shipment, locked = _record_shipment(order_line, qty, shipped_at, user, note)
+        shipment, locked = _record_shipment(order_line, qty, shipped_at, user, note, close_rest=close_rest)
+        closed = mark_completed(locked, user) if close_rest and remaining_qty(locked) > 0 else None
     # 出荷の知らせを相手へ送る。HTTP は atomic の外 (R17)。shipping と connect の循環を避けるため関数の中で import する。
-    return _after_ship(shipment, locked.order, user, send)
+    result = _after_ship(shipment, locked.order, user, send)
+    if closed is not None:
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        result.saved_message = f"出荷を保存しました。{closed.saved_message}"
+    return result
 
 
 class ShippedLines(list):
