@@ -30,6 +30,11 @@ seizou github-token [<置き場>]
     置き場の道の頭の ~ は利用者のホームに広げる。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
     画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
+seizou answers-template <道>
+    答えの YAML の雛形 (src/seizou/scaffold/answers.yaml.tmpl) を、置き換えをせずにそのまま <道> に写す。いちばん小さい答え (id・name・port) と、
+    任意の鍵の例を # の注で持つ (PyPI だけで入れた人が examples/ を持たないため)。道の頭の ~ は利用者のホームに広げる。
+    道は必須 (既定の道を持たない。clone したフォルダの中に answers.yaml を書いてしまわないため)。
+    既にあるファイルは上書きしない。書き出す先のフォルダが無ければ作らない。どちらも何も書かずに終わりの番号 2。
 
 終わりの番号: 0 = できた / 1 = migrate などの子の process が失敗した / 2 = 答えか置き場の誤り。
 
@@ -1068,6 +1073,33 @@ def command_github_token(site: Path) -> int:
     return EXIT_OK
 
 
+#: 答えの YAML の雛形 (seizou.scaffold の中。README.md.tmpl と同じ置き場なので配布物に入る)
+ANSWERS_TEMPLATE = "answers.yaml.tmpl"
+
+
+def command_answers_template(path: Path) -> int:
+    """seizou answers-template (依頼書 N426。精査 Q1 の足りない物の 1)。答えの YAML の雛形を path に書き出す。
+
+    雛形はそのまま写す (render の $ の置き換えは使わない)。書けたら「書いた:」の 1 行で終わりの番号 0。
+    訳: 既にあるファイルは上書きせず、書き出す先のフォルダが無ければ作らずに、何も書かずに終わりの番号 2 で止まる。
+    人が書き始めた答えを黙って消さないためと、打ち違えた道に知らないフォルダを作らないため
+    (seizou new と seizou ai-docs の「既にあります」と同じ形。業務のデータを断る処理ではない)。
+    出所 = 本体の決め 11-11 14:2x (係 c の聞く物 5)。変えてよい条件 = 上書きの口 (--force) を足すなら、本体の決めの後。
+    """
+    if path.exists():
+        print(f"止まりました: 既にあります: {path} (上書きしません)", file=sys.stderr)
+        return EXIT_INPUT
+    if not path.parent.is_dir():
+        print(f"止まりました: フォルダがありません: {path.parent}", file=sys.stderr)
+        return EXIT_INPUT
+    text = resources.files("seizou.scaffold").joinpath(ANSWERS_TEMPLATE).read_text(encoding="utf-8")
+    # x = 無いときだけ作る (確かめた後に別の手がファイルを置いても、上書きしない)
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(text)
+    print(f"書いた: {path}。値を直してから seizou new {path} を打ちます。")
+    return EXIT_OK
+
+
 def user_path(text: str) -> Path:
     """命令の道の引数。頭の ~ を利用者のホームに広げる (Windows PowerShell 5.1 は外の命令に ~ をそのまま渡すため)。"""
     return Path(text).expanduser()
@@ -1107,6 +1139,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="会社の置き場の .env に、フィードバックを GitHub に送るトークン・送り先・口座の名前の 3 行を書く。トークンは画面に出さずに聞く。",
     )
     github_token.add_argument("site", type=user_path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
+    answers_template = commands.add_parser(
+        "answers-template",
+        help="答えの YAML の雛形 (説明の注つき) を書き出す",
+        description="答えの YAML の雛形を書き出す。いちばん小さい答え (id・name・port) と、任意の鍵の例を # の注で持つ。既にあるファイルは上書きしない。",
+    )
+    answers_template.add_argument("path", type=user_path, help="書き出す先のファイルの道 (例 ~/mihon_seisakusho.yaml)")
     return parser
 
 
@@ -1122,6 +1160,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_ai_docs(args.site, args.force)
     if args.command == "github-token":
         return command_github_token(args.site)
+    if args.command == "answers-template":
+        return command_answers_template(args.path)
     return EXIT_INPUT
 
 
