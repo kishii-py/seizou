@@ -1,7 +1,7 @@
 {% extends "core/form.html" %}
 {% load seizou_tags connect_tags %}
 {% block content %}
-{# 単価を直して受け入れる (中小企業共通 EDI の条件付受諾の項目を元にした): 上に届いた明細 (相手の品番のまま)、下に相手の品番ごとの自社の部品と、明細ごとの回答単価・回答数量・回答納期の欄。 #}
+{# 条件を直して受け入れる (中小企業共通 EDI の条件付受諾の項目を元にした): 上に届いた明細 (相手の品番のまま)、下に相手の品番ごとの自社の部品と、明細ごとの回答単価・回答数量・回答納期の欄。 #}
 {# 入口が直接の行だけ開く (読み取りの行は 404 = connect/views.py の get_queryset)。同じ注文番号の知らせは受け入れの画面と同じ。 #}
 {% same_order_notice object as same %}{% if same %}<div class="mb-6 flex flex-wrap items-center gap-2">{% include "connect/_same_order_notice.html" %}</div>{% endif %}
 {% include "connect/_inbox_order_box.html" %}

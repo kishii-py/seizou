@@ -105,7 +105,7 @@ def test_accept_with_conditions_undelivered_is_warning(received, unreachable, us
 
 
 def test_accept_with_conditions_unchanged_undelivered_does_not_say_replied(received, unreachable, user, own_item):  # noqa: F811
-    """どの値も直さずに「単価を直して受け入れる」を通した時も、届いていなければ「相手に返しました」と書かない。"""
+    """どの値も直さずに「条件を直して受け入れる」を通した時も、届いていなければ「相手に返しました」と書かない。"""
     order = services.accept_with_conditions(received, {"T-100": own_item}, {}, user)
 
     assert _is_undelivered(order, received)

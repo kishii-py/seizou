@@ -1,8 +1,8 @@
-"""connect の入力の form (受け入れる・単価を直して受け入れる・保留する・断る)。保存は form でなく services が行う。
+"""connect の入力の form (受け入れる・条件を直して受け入れる・保留する・断る)。保存は form でなく services が行う。
 
 土台 (BaseFormView) は form の service_kwargs() の辞書を検査の層に渡し、
 services.accept(inbox, item_mapping=..., user=...) / services.reject(inbox, reason=..., user=...) を呼ぶ。
-単価を直して受け入れる (ConditionalAcceptForm) は services.accept_with_conditions(inbox, item_mapping=..., answers=..., user=...) を呼び、
+条件を直して受け入れる (ConditionalAcceptForm) は services.accept_with_conditions(inbox, item_mapping=..., answers=..., user=...) を呼び、
 明細ごとの回答単価・回答数量・回答納期の欄を持つ (中小企業共通 EDI の条件付受諾の項目を元にした)。
 保留する (HoldForm) は欄の無い form で、services.hold(inbox, user=...) を呼ぶ。
 form が見るのは欄の型と必須だけ。決まり (2 回目の受け入れ・断った物) は services が見る。
@@ -210,14 +210,14 @@ def _due(value):
 
 
 class ConditionalAcceptForm(AcceptForm):
-    """単価を直して受け入れるの form (中小企業共通 EDI の条件付受諾の項目を元にした)。
+    """条件を直して受け入れるの form (中小企業共通 EDI の条件付受諾の項目を元にした)。
 
     受け入れの form の欄 (相手の品番ごとの自社の部品) の後に、明細ごとに回答単価・回答数量・回答納期の 3 つの欄を置く。
     初めの値は相手の注文の値。金額の閲覧の無い人 (hide_money) には回答単価の欄を置かない (services は相手の単価のまま作る)。
     形の違う明細は欄を飛ばすが、番号は明細の並びの番号のまま (受け入れの時に services が断る)。
     """
 
-    submit_label = "単価を直して受け入れる"
+    submit_label = "条件を直して受け入れる"
 
     def __init__(self, *args, instance=None, hide_money=False, **kwargs):
         super().__init__(*args, instance=instance, **kwargs)

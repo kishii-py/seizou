@@ -1626,12 +1626,12 @@ def accept(inbox, item_mapping, user, *, send=True, accepted_at=None):
     return _accept(inbox, item_mapping, user, send=send, accepted_at=accepted_at)
 
 
-#: 単価を直して受け入れたときの知らせ (入力の土台が「保存しました。」の代わりに出す)
-MESSAGE_CONDITIONAL_SAVED = "単価を直して受け入れました。直した値で受注を作り、相手に条件付きの答えを返しました。相手が発注を直すのを待ちます。"
-#: 単価を直して受け入れるで、どの値も直していなかったときの知らせ
+#: 条件を直して受け入れたときの知らせ (入力の土台が「保存しました。」の代わりに出す)
+MESSAGE_CONDITIONAL_SAVED = "条件を直して受け入れました。直した値で受注を作り、相手に条件付きの答えを返しました。相手が発注を直すのを待ちます。"
+#: 条件を直して受け入れるで、どの値も直していなかったときの知らせ
 MESSAGE_CONDITIONAL_UNCHANGED = "どの値も直していないので、受け入れるとして相手に返しました。"
 #: 上の 2 つの、注文回答が相手に届かなかったときの字 (「相手に返しました」と書かない。後ろに MESSAGE_REPLY_UNDELIVERED の黄の知らせが続く)
-MESSAGE_CONDITIONAL_SAVED_UNDELIVERED = "単価を直して受け入れました。直した値で受注を作りました。"
+MESSAGE_CONDITIONAL_SAVED_UNDELIVERED = "条件を直して受け入れました。直した値で受注を作りました。"
 MESSAGE_CONDITIONAL_UNCHANGED_UNDELIVERED = "どの値も直していないので、そのまま受け入れました。"
 #: 保留したときの知らせ
 MESSAGE_HOLD_SAVED = "保留にしました。答えが決まったら、受信した注文の詳細から受け入れるか断ってください。"
@@ -1676,7 +1676,7 @@ def _restart_reply(locked):
 
 
 def _answer_payload(answers, count):
-    """単価を直して受け入れるの答えを、_order_lines_problem が読む注文の形 ({"lines": [{"qty", "unit_price"}, …]}) にする。"""
+    """条件を直して受け入れるの答えを、_order_lines_problem が読む注文の形 ({"lines": [{"qty", "unit_price"}, …]}) にする。"""
     lines = []
     for number in range(1, count + 1):
         answer = answers.get(number) or {}
@@ -2069,7 +2069,7 @@ def choose_sender(inbox, partner, user):
 
 MESSAGE_REPLY_BEFORE_DECISION = (
     "この受信した注文は、まだ受け入れも断りもしていません (保留とも答えていません)。"
-    "受け入れる・単価を直して受け入れる・保留する・断るのどれかで答えてから送ってください。"
+    "受け入れる・条件を直して受け入れる・保留する・断るのどれかで答えてから送ってください。"
 )
 MESSAGE_REPLY_NO_CONNECTION = (
     "取引先との接続 (送る向き) が無いので注文回答を送っていません。"
@@ -2343,7 +2343,7 @@ def _fits_field(number, field):
 def _order_lines_problem(payload, head="注文の"):
     """注文のデータの明細の数量・単価・金額 (数量 × 単価) (単価の単位が式の行は見ない) が、受注の明細の表の欄に入らないときの日本語の文。入れば None。
 
-    head は文の頭の字 (既定は「注文の」。単価を直して受け入れるの直した値は「直した値の」)。
+    head は文の頭の字 (既定は「注文の」。条件を直して受け入れるの直した値は「直した値の」)。
 
     見るのは読める数 (字か整数で、有限の数) のうち 0 より大きい物だけ。読めない数・0 と負・明細の無い注文・形の違う行は見ない
     (承認の時に accept と create_order が止める = 開発の記録 docs/nights/20261103/N39.md の決めと R02)。受け口 (receive) と承認 (accept) が呼ぶ。

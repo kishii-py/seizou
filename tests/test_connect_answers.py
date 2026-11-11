@@ -1,7 +1,7 @@
-"""受け入れの画面の 4 つの答え (受け入れる・単価を直して受け入れる・保留する・断る) のテスト (候補 C97)。
+"""受け入れの画面の 4 つの答え (受け入れる・条件を直して受け入れる・保留する・断る) のテスト (候補 C97)。
 
 1 つの DB に、注文を送る会社と受ける会社の両方の役を置く (tests/test_connect_reply.py と同じ形。つながりと偽の requests.post もそこから使う)。
-受ける側は画面 (受け入れ・単価を直して受け入れる・保留する・断る) から答え、相手の受け口が発注に当てるところまでを見る。
+受ける側は画面 (受け入れ・条件を直して受け入れる・保留する・断る) から答え、相手の受け口が発注に当てるところまでを見る。
 相手への HTTP は requests.post を偽の物に差し替え、受けた本文を services.receive に渡す (外へは出ない)。
 鍵はテストのたびに作り、環境変数に置く。取引先・品目・会社は作り物。
 """
@@ -99,7 +99,7 @@ def _sent_json(fake):
 
 
 def _conditional_data(own_items, **values):
-    """単価を直して受け入れるの POST の値。初めは相手の注文の値のまま (values で欄を替える)。"""
+    """条件を直して受け入れるの POST の値。初めは相手の注文の値のまま (values で欄を替える)。"""
     data = {
         "item_1": own_items[0].pk,
         "item_2": own_items[1].pk,
@@ -125,7 +125,7 @@ def test_accept_screen_shows_other_answers(client, user, sent, customer):
     body = client.get(_url("inbox_accept", inbox)).content.decode()
     assert "ほかの答え方" in body
     for name, label in (
-        ("inbox_accept_conditional", "単価を直して受け入れる"),
+        ("inbox_accept_conditional", "条件を直して受け入れる"),
         ("inbox_hold", "保留する"),
         ("inbox_reject", "断る"),
     ):
@@ -156,7 +156,7 @@ def test_held_row_has_no_hold_link_and_accepted_row_has_no_other_answers(client,
     assert "ほかの答え方" not in body
 
 
-# --- (b) (c) 単価を直して受け入れる ---
+# --- (b) (c) 条件を直して受け入れる ---
 
 
 @pytest.mark.django_db
@@ -316,7 +316,7 @@ def test_conditional_without_money_is_refused(client, settings, sent, own_items)
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
     client.force_login(account("jimu"))
 
-    assert "単価を直して受け入れる" not in client.get(_url("inbox_accept", inbox)).content.decode()
+    assert "条件を直して受け入れる" not in client.get(_url("inbox_accept", inbox)).content.decode()
     assert "受け入れる</a>" not in client.get(_url("inbox_detail", inbox)).content.decode()
     body = client.get(_url("inbox_accept_conditional", inbox)).content.decode()
     assert "line_1_unit_price" not in body
