@@ -50,6 +50,20 @@ def has_active_staff() -> bool:
     return services.has_active_staff()
 
 
+def billed_by(shipment):
+    """出荷が請求済みなら (種類, 記録) の組、でなければ None (R27 が読む。shipping.services.billed_by)。"""
+    from seizou.shipping import services
+
+    return services.billed_by(shipment)
+
+
+def delete_refusal(shipment) -> str:
+    """出荷を消せない訳の文 (消せるなら空の字。R27 が読む。shipping.services.delete_refusal)。"""
+    from seizou.shipping import services
+
+    return services.delete_refusal(shipment)
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)
