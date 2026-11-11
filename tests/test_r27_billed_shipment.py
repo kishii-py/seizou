@@ -8,6 +8,7 @@ delete_refusal が断る出荷) には R27 の黄を出さず、今のまま赤�
 作り物のデータは全部 services で作る。
 """
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -29,6 +30,8 @@ SHIPPED_AT = date(2026, 11, 5)
 NEW_SHIPPED_AT = date(2026, 11, 6)
 ISSUED_ON = date(2026, 11, 30)
 UPDATE = "shipping.update_shipment"
+#: 小窓で開いた画面の POST (htmx の見出し。tests/test_r24_over_payment.py と同じ)
+MODAL = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "seizou-modal-box"}
 DELETE = "shipping.delete_shipment"
 
 
@@ -217,6 +220,26 @@ def test_r27_lump_billed_shipment_edit_and_delete(settings, user, logged_in, lum
     # 一式の行の数量 (写し) は変わらない。食い違いは請求書の側から読める (billing.services.changed_lines)。
     assert InvoiceLine.objects.get(invoice=invoice, order_line=lump).qty == Decimal("100")
     assert [(billed, now) for _row, billed, now in billing_services.changed_lines(invoice)] == [(Decimal("100"), Decimal("50"))]
+
+
+@pytest.mark.django_db
+def test_r27_lump_billed_shipment_delete_in_modal(settings, logged_in, lump_billed):
+    """(c) 出荷の削除は一覧から小窓で開く。小窓でも黄の帯と「このまま保存」が出て、confirmed=1 の 2 回目で消える (204 と seizou:saved)。"""
+    settings.SEIZOU = {}
+    _lump, _first, second, invoice = lump_billed
+
+    first = logged_in.post(_delete_url(second), {}, **MODAL)
+    assert first.status_code == 200
+    body = first.content.decode()
+    assert "alert-warning" in body and "R27" in body and "このまま保存" in body
+    assert 'name="confirmed" value="1"' in body
+    assert invoice.invoice_no in body
+    assert Shipment.objects.filter(pk=second.pk).exists()
+
+    again = logged_in.post(_delete_url(second), {"confirmed": "1"}, **MODAL)
+    assert again.status_code == 204
+    assert "seizou:saved" in json.loads(again["HX-Trigger"])
+    assert not Shipment.objects.filter(pk=second.pk).exists()
 
 
 # --- (d) 請求書の外で入金を受け取った出荷 ---
