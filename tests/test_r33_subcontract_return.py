@@ -125,6 +125,9 @@ def test_r33_warn_receipt_over_qty_whole_page(settings, logged_in, user, wo):
     assert 'data-notice="check"' in body and "R33" in body and 'name="confirmed" value="1"' in body
     _assert_sentences(body, _over(po, 12, 10, 2) + WARN_TAIL)
     assert Receipt.objects.count() == 1
+    saved = logged_in.post(reverse("purchasing:receipt_create"), _receipt_post(line, "8", confirmed="1"))
+    assert saved.status_code == 302
+    assert services.received_qty(line) == Decimal("12")
 
     both_po, both = subcontract_po(user, wo.subcontractor, wo.step, "3", handed_on=None)
     warnings = checks.run(RECEIVE, {"line": both, "qty": Decimal("5")}, user)

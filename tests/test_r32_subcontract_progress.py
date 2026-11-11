@@ -6,12 +6,14 @@
 作り物のデータは services で作る (tests/test_purchasing_subcontract.py の build_workorder)。
 """
 
+import json
 from datetime import date
 from decimal import Decimal
 
 import pytest
 from django.utils import timezone
 
+from seizou.connect import services as connect_services
 from seizou.masters import services as masters_services
 from seizou.progress import services as progress_services
 from seizou.progress.models import Progress
@@ -20,7 +22,9 @@ from seizou.purchasing.models import Receipt
 from seizou.stock.models import StockMove
 from seizou.workorders import services as workorders_services
 from tests.rules_helpers import rules_md_text
-from tests.test_purchasing_subcontract import ORDER_DATE, build_workorder, line_of, subcontract_po
+from tests.test_connect_send import FakePost
+from tests.test_connect_signing import _new_secret
+from tests.test_purchasing_subcontract import ENV_NAME, ORDER_DATE, PARTNER_URL, build_workorder, line_of, subcontract_po
 
 DAY = date(2026, 11, 5)
 STEP_NOT_COMPLETED_NOTE = (
@@ -122,6 +126,41 @@ def test_r32_close_rest_that_reaches_qty_marks_once(user, wo):
     assert result.saved_message == (
         f"受入を保存しました。{_step_text(wo)} に実績 10 を記録しました。この工程に完了の印を付けました。"
     )
+
+
+@pytest.mark.django_db
+def test_r32_receipt_on_sent_order_still_sends_acceptance(user, wo, monkeypatch):
+    """seizou どうしで送った発注の、指示書の工程を指す明細の受入も実績を作り、検収は今のまま (同じ項目で) 相手へ送る。"""
+    fake = FakePost()
+    monkeypatch.setattr("requests.post", fake)
+    monkeypatch.setenv(ENV_NAME, _new_secret())
+    partner = masters_services.create_partner({"code": "S090", "name": "作り物のめっき屋 送る", "role": "subcontractor"}, user)
+    connect_services.register_connection(partner, PARTNER_URL, ENV_NAME, "send", user)
+    _po, line = subcontract_po(user, partner, wo.step)
+    assert len(fake.calls) == 1
+
+    result = services.receive(line, Decimal("4"), DAY, user)
+
+    (record,) = _records(wo.step)
+    saved = Receipt.objects.get(pk=result.pk)
+    assert saved.progress == record
+    assert saved.acceptance_sent_at is not None
+    assert len(fake.calls) == 2
+    body = json.loads(fake.calls[-1]["data"])
+    assert set(body) == {
+        "id",
+        "kind",
+        "sent_at",
+        "order_id",
+        "order_no",
+        "order_revision_no",
+        "line_no",
+        "accepted_on",
+        "qty",
+        "buyer",
+    }
+    assert body["kind"] == "acceptance" and Decimal(body["qty"]) == Decimal("4")
+    assert result.saved_message == f"受入を保存しました。{_step_text(wo)} に実績 4 を記録しました。"
 
 
 # ---------------------------------------------------------------- (d) (e) 指示書の工程の無い明細と取消の発注は今のまま
