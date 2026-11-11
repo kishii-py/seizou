@@ -166,24 +166,47 @@ def test_not_unbilled_lump_is_value_error(user, customer, item):
     assert Invoice.objects.count() == 0
 
 
-# ---------------------------------------------------------------- (e) 納品書と得意先の R09
+# ---------------------------------------------------------------- (e) 出荷と得意先の R09
 
 
 @pytest.mark.django_db
-def test_lump_without_issued_note_or_other_customer_is_r09(user, customer, item):
-    no_note = _line(user, customer, item)
-    shipping_services.ship(no_note, Decimal("100"), OCT_10, user)
-    orders_services.cancel_order(no_note.order, user)
+def test_lump_without_shipment_or_other_customer_is_r09(user, customer, item):
+    no_shipment = _line(user, customer, item)
+    orders_services.cancel_order(no_shipment.order, user)
     other = _customer(user, code="C002")
     theirs = _cancelled_lump(user, other, item)
 
     with pytest.raises(RuleViolation) as caught:
-        services.create_invoice(customer, [], user, issued_on=NOV_30, lumps=[(no_note, "1000")])
-    assert "1 行目の出荷が発行の納品書に入っていないので、外してください。" in str(caught.value)
+        services.create_invoice(customer, [], user, issued_on=NOV_30, lumps=[(no_shipment, "1000")])
+    assert caught.value.code == "R09"
+    assert "1 行目の出荷が無いので、外してください。" in str(caught.value)
     with pytest.raises(RuleViolation) as caught:
         services.create_invoice(customer, [], user, issued_on=NOV_30, lumps=[(theirs, "1000")])
     assert "請求書は得意先ごとに作るので、受注" in str(caught.value)
     assert Invoice.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_lump_without_delivery_note_can_be_billed(user, customer, item):
+    """納品書を作っていない出荷と、取り消した納品書を指したままの出荷の一式の明細も、一式の行を載せられる (本人の決め 11-11 10:1x)。"""
+    no_note = _line(user, customer, item)
+    shipping_services.ship(no_note, Decimal("60"), OCT_10, user)
+    shipping_services.ship(no_note, Decimal("40"), OCT_10, user)
+    orders_services.cancel_order(no_note.order, user)
+    cancelled_note = _line(user, customer, item)
+    shipment = shipped(user, customer, cancelled_note, "100", OCT_10)
+    shipping_services.cancel_delivery_note(shipment.delivery_note, user)
+    orders_services.cancel_order(cancelled_note.order, user)
+
+    invoice = services.create_invoice(
+        customer, [], user, issued_on=NOV_30, lumps=[(no_note, "1000"), (cancelled_note, "2000")]
+    )
+
+    rows = list(invoice.lines.order_by("pk"))
+    assert [(row.order_line_id, row.shipment_id, row.qty, row.amount) for row in rows] == [
+        (no_note.pk, None, Decimal("100"), Decimal("1000")),
+        (cancelled_note.pk, None, Decimal("100"), Decimal("2000")),
+    ]
 
 
 # ---------------------------------------------------------------- (f) 金額は 0 より大きい数 (C107-3)

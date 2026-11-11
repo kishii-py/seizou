@@ -170,15 +170,14 @@ def test_cancel_note_then_update_shipment(user, customer, line):
 
 
 @pytest.mark.django_db
-def test_cancelled_note_shipment_is_not_billable(user, customer, line):
+def test_cancelled_note_shipment_is_billable(user, customer, line):
+    """取り消した納品書の出荷も請求できる (納品書は出荷の記録を刷った物。本人の決め 11-11 10:1x)。"""
     shipment = services.ship(line, Decimal("4"), SHIPPED_AT, user)
     note = services.create_delivery_note(customer, [shipment], user)
     services.cancel_delivery_note(note, user)
 
-    with pytest.raises(RuleViolation) as caught:
-        billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
-    assert caught.value.code == "R09"
-    assert shipment.shipment_no in caught.value.message
+    invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=date(2026, 11, 30))
+    assert [row.shipment_id for row in invoice.lines.all()] == [shipment.pk]
 
 
 @pytest.mark.django_db

@@ -1,6 +1,7 @@
 """請求書の外で受け取った入金を、請求の候補の出荷にだけ記録させる (作者の決め C107-10。billing.services.record_outside_payment の断り)。
 
-断る出荷 = 発行の請求書に入った出荷・取消でない外の入金がもうある出荷・発行の納品書に入っていない出荷 (この順)。
+断る出荷 = 発行の請求書に入った出荷・取消でない外の入金がもうある出荷 (この順)。納品書を作っていない出荷と、取り消した納品書を指したままの
+出荷には記録できる (納品書を発行したかどうかは見ない。本人の決め 11-11 10:1x)。
 作り直し (reissue_invoice) は、取り消す請求書に入っていた出荷のうち外の入金のある物を写さず、保存の後の知らせに並べる。
 作り物のデータだけを使う。
 """
@@ -77,19 +78,18 @@ def test_second_outside_payment_is_refused_until_first_cancelled(user, customer,
 
 
 @pytest.mark.django_db
-def test_shipment_without_issued_note_is_refused(user, customer, line):
+def test_shipment_without_issued_note_can_be_recorded(user, customer, line):
     no_note = shipping_services.ship(line, Decimal("3"), NOV_05, user)
     cancelled = shipped(user, customer, line, "4", NOV_05)
     shipping_services.cancel_delivery_note(cancelled.delivery_note, user)
     cancelled.refresh_from_db()
 
     for shipment in (no_note, cancelled):
-        with pytest.raises(ValueError) as caught:
-            services.record_outside_payment(shipment, NOV_10, Decimal("100"), user)
-        assert str(caught.value) == (
-            f"記録できません。出荷 {shipment.shipment_no} は発行の納品書に入っていません。納品書を発行してから記録してください。"
-        )
-    assert Payment.objects.count() == 0
+        payment = services.record_outside_payment(shipment, NOV_10, Decimal("100"), user)
+        assert payment.shipment_id == shipment.pk
+    assert Payment.objects.filter(status=Payment.STATUS_RECORDED).count() == 2
+    # 記録した出荷は請求の候補に出ない。
+    assert not services.billable_shipments(customer).filter(pk__in=[no_note.pk, cancelled.pk]).exists()
 
 
 @pytest.mark.django_db

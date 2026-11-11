@@ -1,10 +1,11 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
 R07 は実績の入力と実績の編集の 2 つの action に掛ける。R26 は実績の入力だけに掛ける。
+R27 は出荷の編集と出荷の削除の 2 つの action に掛ける。
 """
 
 from __future__ import annotations
@@ -281,7 +282,105 @@ class ProgressWithoutStaff(Check):
         return "作業した人が入っていません。社員番号か、社員の一覧に居ない人の名前を入れてください。"
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment(), ProgressWithoutStaff())
+#: R27 の知らせの「…と、」の前の字 (操作ごと・請求済みの種類ごと。billed_by の種類 = line・lump・outside)
+_R27_DOING = {
+    "update": {"line": "数量を直す", "lump": "出荷を直す", "outside": "数量を直す"},
+    "delete": {"line": "出荷を消す", "lump": "出荷を消す", "outside": "出荷を消す"},
+}
+
+
+def _billed_text(shipment, billed, operation) -> str:
+    """R27 の知らせの文 (請求済みの種類ごと)。どの請求書か入金かと、直すか消すと何と違ってくるかと、次にすることを書く。金額は書かない。"""
+    kind, record = billed
+    doing = _R27_DOING[operation][kind]
+    number = shipment.shipment_no
+    if kind == "line":
+        return (
+            f"出荷 {number} は請求書 {record.invoice.invoice_no} に入っています。{doing}と、請求書の数量 ({_num(record.qty)}) と違ってきます。"
+            "請求書も直すときは、請求書を取り消して作り直してください。"
+        )
+    if kind == "lump":
+        return (
+            f"出荷 {number} の受注の明細は、請求書 {record.invoice.invoice_no} の一式の行で請求済みです。"
+            f"{doing}と、一式の行の数量 ({_num(record.qty)}) と出荷の合計が違ってきます。"
+            "請求書も直すときは、請求書を取り消し、一式の金額を決め直して載せ直してください。"
+        )
+    return (
+        f"出荷 {number} には、請求書の外で受け取った入金 ({record.received_on:%Y-%m-%d}) が記録されています。"
+        f"{doing}と、受け取った代金と出荷が違ってきます。入金も直すときは、出荷の詳細でその入金を取り消してから記録し直してください。"
+    )
+
+
+class BilledShipmentOnUpdate(Check):
+    """R27: 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) を直そうとしたら (出荷の編集)。
+
+    data の object は直す前の出荷 (土台の入力の画面が渡す)。請求済みかは shipping.services.billed_by を道具 (tools.billed_by) で読む。
+    services の update_shipment が断る出荷 (受注が取消 = R05・発行の納品書に入っている = R08) には文を返さない
+    (黄の後に赤を出さないため。R24 が取消の請求書を見ないのと同じ)。今ある請求済みの出荷は全部が発行の納品書に入っているので、
+    納品書を取り消せるようになるまでは、直すと R08 の赤だけが出る。数量を変えたかどうかは見ない (出荷日と備考だけの直しでも知らせる)。
+    訳: 請求済みの出荷を直すか消すと、請求書の明細の写し (数量・一式の行の数量) や受け取った代金の記録と、出荷の記録が食い違うので、直す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。納品書を請求の条件から外したので、納品書の取消の断りが間接に止めていた守りの代わりに置く。出所 = 本人の決め 11-11 12:5x〜13:0x (「止めない」「わかるようになっていればいい」「会社ごとにつけたければ自由にすればいい」)・会社の設定 billed_shipment。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R27"
+    action = "shipping.update_shipment"
+    setting_key = "billed_shipment"
+
+    def run(self, data, user):
+        shipment = data.get("object")
+        if shipment is None:
+            return None
+        order = shipment.order_line.order
+        if order.status == type(order).STATUS_CANCELLED:
+            return None
+        note = shipment.delivery_note
+        if note is not None and note.status == type(note).STATUS_ISSUED:
+            return None
+        billed = tools.billed_by(shipment)
+        if billed is None:
+            return None
+        return _billed_text(shipment, billed, "update")
+
+
+class BilledShipmentOnDelete(Check):
+    """R27: 請求済みの出荷を消そうとしたら (出荷の削除)。
+
+    data の object は消す出荷 (土台の入力の画面が渡す)。services の delete_refusal が断る出荷 (請求書の明細か入金が指す・発行の納品書に入っている・
+    取引先につながる・明細を出し終えた) には文を返さない (黄の後に赤を出さないため)。今は、一式の行で請求した明細の出荷だけが当たる。
+    請求書の明細と入金が指す出荷を消せるようになったら、同じ式のまま、その出荷にも当たる。
+    訳: 請求済みの出荷を直すか消すと、請求書の明細の写し (数量・一式の行の数量) や受け取った代金の記録と、出荷の記録が食い違うので、直す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。納品書を請求の条件から外したので、納品書の取消の断りが間接に止めていた守りの代わりに置く。出所 = 本人の決め 11-11 12:5x〜13:0x (「止めない」「わかるようになっていればいい」「会社ごとにつけたければ自由にすればいい」)・会社の設定 billed_shipment。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R27"
+    action = "shipping.delete_shipment"
+    setting_key = "billed_shipment"
+
+    def run(self, data, user):
+        shipment = data.get("object")
+        if shipment is None:
+            return None
+        if tools.delete_refusal(shipment):
+            return None
+        billed = tools.billed_by(shipment)
+        if billed is None:
+            return None
+        return _billed_text(shipment, billed, "delete")
+
+
+BUILTIN = (
+    OverShipment(),
+    OverShipmentOnUpdate(),
+    OverShipmentLines(),
+    OrderBelowShipped(),
+    OverWorkorder(),
+    OverProgress(),
+    OverProgressOnUpdate(),
+    OverPayment(),
+    ProgressWithoutStaff(),
+    BilledShipmentOnUpdate(),
+    BilledShipmentOnDelete(),
+)
 
 for _check in BUILTIN:
     register(_check)

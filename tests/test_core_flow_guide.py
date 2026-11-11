@@ -158,7 +158,7 @@ def test_flow_guide_counts_delivery_and_invoice(user, customer, shaft):
     shipment = shipping_services.ship(line, Decimal("10"), timezone.localdate(), user)
     sales = counts("sales")
     assert sales["納品書"] == 1
-    assert sales["請求書"] == 0
+    assert sales["請求書"] == 1  # 納品書を作る前の出荷も請求できる (本人の決め 11-11 10:1x)
 
     shipping_services.create_delivery_note(customer, [shipment], user)
     shipment.refresh_from_db()
