@@ -198,9 +198,10 @@ def test_billable_shipments_matches_create_rules(user, item):
     others = _shipped(user, other, other_line, "4")
     services.create_invoice(customer, [invoiced], user, issued_on=ISSUED_ON)
 
-    assert set(services.billable_shipments()) == {billable, others}
-    assert list(services.billable_shipments(customer)) == [billable]
-    assert no_note not in services.billable_shipments()
+    # 納品書の無い出荷も請求できる (本人の決め 11-11 10:1x)。請求書に入った出荷だけが外れる。
+    assert set(services.billable_shipments()) == {no_note, billable, others}
+    assert set(services.billable_shipments(customer)) == {no_note, billable}
+    assert invoiced not in services.billable_shipments()
 
 
 # --- 支払期日 (payment_due_date) ---
@@ -393,9 +394,10 @@ def test_create_notes_unbilled_shipments_in_same_period(user, item):
     assert invoice.saved_level == "warning"
     assert invoice.saved_note == (
         f"この期間 (2026-11-01〜2026-11-30) の{customer.name}の出荷で、まだ請求書に入っていない物が 2 件あります: "
-        f"{b.shipment_no}・{c.shipment_no} (発行の納品書なし)。"
+        f"{b.shipment_no}・{c.shipment_no}。"
     )
-    assert invoice.saved_note.count("(発行の納品書なし)") == 1
+    # 納品書の無い出荷 C も請求書に入れられるので、印を付けずに並べる (本人の決め 11-11 10:1x)。
+    assert "納品書" not in invoice.saved_note
     assert d.shipment_no not in invoice.saved_note
     assert e.shipment_no not in invoice.saved_note
     # 読むだけの関数を直に呼んでも、出荷日の順に B・C。

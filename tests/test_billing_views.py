@@ -133,7 +133,8 @@ def test_create_form_hides_unbillable(client_logged_in, user, customer, line):
     body = response.content.decode()
     assert response.status_code == 200
     assert billable.shipment_no in body
-    assert no_note.shipment_no not in body
+    # 納品書の無い出荷も候補に並ぶ (本人の決め 11-11 10:1x)。請求書に入った出荷は並ばない。
+    assert no_note.shipment_no in body
     assert invoiced.shipment_no not in body
     # 行ごとに得意先の印が付く (得意先の欄で行を絞る JS が読む)。
     assert f'data-partner="{customer.pk}"' in body
@@ -289,7 +290,7 @@ def test_create_warns_unbilled_shipments_in_same_period(client_logged_in, user, 
         (
             "warning",
             "保存しました。この期間 (2026-10-21〜2026-11-20) の作り物の得意先の出荷で、まだ請求書に入っていない物が 2 件あります: "
-            f"{second.shipment_no}・{no_note.shipment_no} (発行の納品書なし)。",
+            f"{second.shipment_no}・{no_note.shipment_no}。",
         )
     ]
     assert later.shipment_no not in _messages(response)[0][1]

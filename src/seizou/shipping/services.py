@@ -372,7 +372,7 @@ def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=No
 def cancel_delivery_note(note, user):
     """発行の納品書を取消にする。入っていた出荷は納品書を指したまま残す (取消の納品書の詳細に出る)。
 
-    取消の納品書の出荷は請求できず (billing が R09 で断る)、直してから新しい納品書にまとめ直せる。
+    取消の納品書の出荷も請求できる (納品書は出荷の記録を刷った物。本人の決め 11-11 10:1x)。直してから新しい納品書にまとめ直せる。
     発行の請求書に入った出荷があれば、何も変えずに ValueError (一式の行で請求した明細の出荷と、請求書の外で受け取った入金を記録した出荷も同じ (文は cancel_refusal)。先に請求書を取り消す。その請求書に入金があれば、
     文は取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計を書く)。文は cancel_refusal の 1 か所で、
     金額の閲覧の無い人には件数だけ (access.hides_money。請求書の cancel_invoice と同じ)。入金の行はロックしない (書かない)。

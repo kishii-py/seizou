@@ -1,8 +1,8 @@
 """出し切らずに終えた一式の受注の明細 (billing.services.unbilled_lumps) と、その請求の材料 (lump_facts) と、
 請求書の新規登録の黄の 1 行と表 (決め PRICE-1d の「請求書を作る画面で知らせて、人が金額を決めて載せる」の知らせる所)。
 
-出す物 = 単価の単位が式・出荷が全部発行の納品書に入っている・明細を出し終えた出荷の印が無い・終わっている (受注が取消か、
-出荷の合計が数量以上)・発行の請求書に一式の行がまだ無い、の 5 つが全部当たる明細。
+出す物 = 単価の単位が式・出荷が 1 つ以上ある (納品書を発行したかどうかは見ない。本人の決め 11-11 10:1x)・明細を出し終えた出荷の印が無い・
+終わっている (受注が取消か、出荷の合計が数量以上)・発行の請求書に一式の行がまだ無い、の 5 つが全部当たる明細。
 一式の行を作る関数はまだ無い (後の依頼) ので、一式の行は試験の中で表に直接作る。作り物のデータだけを使う。
 """
 
@@ -138,22 +138,22 @@ def test_open_completed_unshipped_unit_lumps_are_not_listed(user, customer, item
 
 
 @pytest.mark.django_db
-def test_lump_with_shipment_outside_issued_note_is_not_listed(user, customer, item):
-    # (f) 出荷の 1 つが納品書に入っていない。
+def test_lump_with_shipment_outside_issued_note_is_listed(user, customer, item):
+    # (f) 出荷の 1 つが納品書に入っていない明細も並ぶ (納品書を発行したかどうかは見ない。本人の決め 11-11 10:1x)。
     no_note = _line(user, customer, item)
     shipped(user, customer, no_note, "60", OCT_10)
     shipping_services.ship(no_note, Decimal("40"), OCT_20, user)
     orders_services.cancel_order(no_note.order, user)
-    # (f) 出荷が取消の納品書にしか入っていない。
+    # (f) 出荷が取消の納品書にしか入っていない明細も並ぶ。
     cancelled_note = _line(user, customer, item)
     shipment = shipped(user, customer, cancelled_note, "100", OCT_10)
     shipping_services.cancel_delivery_note(shipment.delivery_note, user)
     orders_services.cancel_order(cancelled_note.order, user)
-    assert services.unbilled_lumps() == []
-    # 取消の納品書の出荷を、新しい納品書に入れ直すと出る。
+    assert services.unbilled_lumps() == [no_note, cancelled_note]
+    # 取消の納品書の出荷を、新しい納品書に入れ直しても並んだまま。
     shipment.refresh_from_db()
     shipping_services.create_delivery_note(customer, [shipment], user)
-    assert services.unbilled_lumps() == [cancelled_note]
+    assert services.unbilled_lumps() == [no_note, cancelled_note]
 
 
 @pytest.mark.django_db
