@@ -15,7 +15,9 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.db.models import ProtectedError, Sum
+from django.test.utils import CaptureQueriesContext
 
 from seizou.core.exceptions import RuleViolation
 from seizou.core.models import ChangeLog
@@ -382,6 +384,24 @@ def test_update_defect_note(user, fixer, step, scratch):
     assert [(row.action, row.actor, row.object_pk) for row in logs] == [(ChangeLog.ACTION_UPDATED, fixer, line.pk)]
     assert (logs[0].owner_model, logs[0].owner_pk) == ("workorders.workorder", step.workorder_id)
     assert [item["field"] for item in logs[0].changes] == ["cause_note", "countermeasure"]
+
+
+def test_update_defect_note_reads_only_the_defect_table(user, fixer, step, scratch):
+    """原因と対策を書くときの行の取り直しは、親の実績の表を引かない (本体の直し。N407 の記録の要望 4)。
+
+    Meta の並び (実績・pk) のままだと実績の表と結ぶ問い合わせになり、PostgreSQL では実績の行までロックして、
+    update_progress (指示書の工程 → 実績 → 不良の行) とロックの順が食い違う。
+    """
+    progress = _record(step, user, defects=[{"kind": scratch, "qty": Decimal("3")}])
+    line = _lines(progress)[0]
+
+    with CaptureQueriesContext(connection) as queries:
+        services.update_defect_note(line, "刃の摩耗", "刃を替えた", fixer)
+
+    table = ProgressDefect._meta.db_table
+    selects = [q["sql"] for q in queries if q["sql"].lstrip().upper().startswith("SELECT") and f'FROM "{table}"' in q["sql"]]
+    assert selects, [q["sql"] for q in queries]
+    assert "JOIN" not in selects[0].upper(), selects[0]
 
 
 # ---------------------------------------------------------------- 区分を消す

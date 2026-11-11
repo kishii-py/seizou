@@ -426,12 +426,13 @@ def count_by_staff(staff) -> int:
 def update_defect_note(defect, cause_note, countermeasure, user):
     """不良の行の原因と対策を書く (区分と数は変えない)。2 段目の「原因と対策を書く」画面が呼ぶ。既に無ければ日本語の ValueError。
 
-    行は transaction.atomic の中で select_for_update で取り直す。変更の履歴を user で残す (指示書の詳細の「履歴」に出る)。
+    行は transaction.atomic の中で select_for_update で取り直す。取り直しの問い合わせは pk の順にして、親の実績の表を引かない (Meta の並びのままだと実績の表と結び、
+    PostgreSQL では実績の行までロックして、update_progress のロックの順と食い違う)。変更の履歴を user で残す (指示書の詳細の「履歴」に出る)。
     返す行に、画面の知らせの字 saved_message (「<指示書の番号> の工程 <順> <工程の名前> の不良 (<見せる字> <数>) の原因と対策を保存しました。」)
     を付ける (表に書かない)。
     """
     with transaction.atomic():
-        row = ProgressDefect.objects.select_for_update().filter(pk=defect.pk).first()
+        row = ProgressDefect.objects.select_for_update().filter(pk=defect.pk).order_by("pk").first()
         if row is None:
             raise ValueError("保存できません。この不良の行は既に消してあります。")
         before = history.saved_state(row)
