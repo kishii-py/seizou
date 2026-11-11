@@ -84,7 +84,7 @@
   {% if form.rows %}
   {% can_write "billing.Invoice" as can_bill %}
   <div class="mt-4 overflow-x-auto">
-    <table id="{{ field.auto_id }}" class="table table-sm">
+    <table id="{{ field.auto_id }}" class="table table-sm [&_td]:px-2 [&_th]:px-2">
       <thead>
         <tr>
           <th>選ぶ</th>
@@ -105,7 +105,7 @@
           <td class="whitespace-nowrap font-mono">{{ row.shipment.shipment_no }}</td>
           <td class="whitespace-nowrap">{{ row.shipment.shipped_at|date:"Y-m-d" }}{% with day=row.shipment.shipped_at|weekday_ja %}{% if day %} <span class="text-xs text-base-content/60">({{ day }})</span>{% endif %}{% endwith %}</td>
           <td class="whitespace-nowrap">{{ row.shipment.order_line.order.customer }}</td>
-          <td class="whitespace-nowrap">{{ row.shipment.order_line.item }}</td>
+          <td>{{ row.shipment.order_line.item }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>
           {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}{% if row.lump %}<span class="text-base-content/70"> (一式)</span>{% endif %}</td>{% endif %}
           <td class="whitespace-nowrap font-mono">{% if row.shipment.delivery_note.status == "issued" %}{{ row.shipment.delivery_note.note_no }}{% endif %}</td>{# 「納品書」の列は発行の納品書の番号だけ (取消の納品書を指したままの出荷は空。候補の字 billing.forms.ShipmentChoiceField と同じ。依頼書 N403b) #}
