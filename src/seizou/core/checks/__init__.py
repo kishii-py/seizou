@@ -111,7 +111,7 @@ def run(action: str, data: dict, user, *, stop_head: str = STOP_HEAD) -> list[Ch
 
     止めるの検査が文を返したら CheckViolation (文の頭に stop_head を付ける)。知らせるの文は一覧で返す。
     stop_head = 止めるの赤の知らせの頭の字。入力の土台 (BaseFormView.check_words) が、削除の画面は「削除できません。」、
-    取消の画面は「取り消せません。」を渡す。渡さない呼び方 (保存の画面・受信箱の受け入れ・AI の提案の承認) は「保存できません。」のまま。
+    取消の画面は「取り消せません。」を渡し、保存の画面は「保存できません。」を渡す。渡さない呼び方 (AI の提案の承認 = core.mcp_tools) は「保存できません。」のまま。
     """
     warnings: list[CheckWarning] = []
     for check in registered(action):

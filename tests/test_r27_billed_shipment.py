@@ -392,15 +392,21 @@ def test_r27_note_cancel_text(settings, user, invoiced_note):
 
 
 @pytest.mark.django_db
-def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
-    """(h) 既定 (知らせる) で取り消すと黄の知らせと「このまま取り消す」が出て、confirmed=1 の 2 回目で取り消される。請求書は発行のまま。"""
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["whole", "modal"])
+def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note, headers):
+    """(h) 既定 (知らせる) で取り消すと黄の知らせと「このまま取り消す」が出て、confirmed=1 の 2 回目で取り消される。請求書は発行のまま。
+
+    納品書の取消の入口は納品書の詳細の小窓なので、画面の全体と小窓の両方で見る。押した後はカードの知らせの 1 行を出さない (同じ字の二重を避ける)。
+    """
     settings.SEIZOU = {}
     note, _shipment, invoice = invoiced_note
 
-    first = logged_in.post(_cancel_url(note), {})
+    first = logged_in.post(_cancel_url(note), {}, **headers)
     assert first.status_code == 200
     body = first.content.decode()
-    assert 'data-notice="check"' in body and "R27" in body and invoice.invoice_no in body
+    assert "alert-warning" in body and "R27" in body and invoice.invoice_no in body
+    assert body.count(services.billed_notice(note).partition("。")[0]) == 1
+    assert "data-billed-notice" not in body
     assert "このまま取り消す</button>" in body
     assert "このまま保存" not in body
     assert 'name="confirmed" value="1"' in body
@@ -408,8 +414,8 @@ def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
 
-    second = logged_in.post(_cancel_url(note), {"confirmed": "1"})
-    assert second.status_code == 302
+    second = logged_in.post(_cancel_url(note), {"confirmed": "1"}, **headers)
+    assert second.status_code == (204 if headers else 302)
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_CANCELLED
     invoice.refresh_from_db()
@@ -429,6 +435,8 @@ def test_r27_note_cancel_stop_and_off(settings, logged_in, invoiced_note):
     assert '<span class="font-semibold">取り消せません。</span>' in body
     assert "保存できません。" not in body
     assert 'data-notice="check"' not in body
+    # 赤の知らせが同じ字を出すので、カードの知らせの黄の 1 行は出さない (赤と黄の二重にしない)
+    assert "data-billed-notice" not in body
     assert logged_in.post(_cancel_url(note), {"confirmed": "1"}).status_code == 200
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
