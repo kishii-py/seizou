@@ -86,6 +86,7 @@ SETTING_DEFAULTS = {
     "progress_inactive_staff": "warn",
     "lump_completion": "warn",
     "progress_defect_kind": "warn",
+    "subcontract_return": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

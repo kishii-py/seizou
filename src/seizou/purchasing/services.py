@@ -15,6 +15,11 @@
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
   process は協力企業に出す工程 (masters.Process か None)、quote_no は単価表から写した見積の番号 (無ければ空の字。作者の決め)。
   明細の数量単位コード (unit_code。作者の決め) は鍵で受けず、_add_line が単位の字から決めて書く。
+- 新規登録 (create_purchase_order) の明細だけは、鍵 workorder_step (協力企業に出す指示書の工程) と handed_on (現物を渡した日) も受ける
+  (見比べのまとめの M01)。workorder_step のある明細は、部品と工程を指示書の工程から写す。送った発注の変更の鍵 (_LINE_KEYS_ON_CHANGE) には足さない。
+  渡した日は set_handed_on で直す。出ている数・まだ渡していない数・工程ごとの集計は out_qty・waiting_qty・annotate_subcontract (読むだけ)。
+- 指示書の工程を指す明細の受入は、同じ transaction.atomic の中で progress.services.record_progress を呼び、受け入れた数を良品の数にした
+  実績をその工程に作って受入に結ぶ (RULES.md R32。progress の部品があるときだけ。関数の中で import)。受入を伴わない完了は実績を作らない。
 - 受入は receive。受入の金額は masters.services.delivery_amount (一式は全部を受け入れた回で全額)。受入の数と残は列に持たず received_qty・remaining_qty・annotate_received で出す。
 - 受入は stock の部品があれば在庫の入庫も作る (関数の中で import。同じ transaction.atomic の中)。
 - 受入の後、seizou どうしで送った発注 (送った注文の行がある物) なら connect.services.send_acceptance で検収を相手へ送る (HTTP は atomic の外 = R17)。
@@ -41,13 +46,15 @@ from seizou.core.services import next_number, record_history
 from seizou.masters.services import PRICE_BASIS_UNIT, line_amount, refuse_inactive, refuse_unknown_price_basis
 from seizou.masters.services import PRICE_BASIS_LUMP, delivery_amount, reaches_line_qty
 from seizou.masters.services import unit_code_for
+from seizou.masters.services import item_prices
 
 from .models import PurchaseOrder, PurchaseOrderLine
 from .models import Receipt
 from .models import SelfInvoice, SelfInvoiceLine
 from .models import _qty_text
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from django.apps import apps
 from django.db.models import DecimalField, ExpressionWrapper, F, OuterRef, Subquery, Sum, Value
@@ -62,6 +69,15 @@ _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 _ZERO = Decimal("0")
 
 _LINE_KEYS = frozenset({"item", "qty", "unit", "unit_price", "price_basis", "due_date", "note", "process", "quote_no"})
+#: 新規登録の明細の辞書の鍵 (指示書の工程と渡した日は新規登録だけ。送った発注の変更で足す明細は、今までどおり指示書の工程を持たない)
+_LINE_KEYS_ON_CREATE = _LINE_KEYS | {"workorder_step", "handed_on"}
+#: 指示書の工程を指す明細の部品か工程が、指示書の工程と違うときの断りの字 ({what} は「部品」か「工程」)
+_STEP_MISMATCH_MESSAGE = (
+    "保存できません。明細 {line_no} の{what}が、指示書 {wo_no} の工程 {seq} {name} と違います。"
+    "指示書の工程から出すときは、部品と工程を変えずに保存してください。"
+)
+#: 指示書の工程の無い明細に渡した日を入れたときの断りの頭 (後ろに次にすることを続ける)
+_HANDED_WITHOUT_STEP_MESSAGE = "保存できません。渡した日は、指示書の工程を指す明細だけに入れられます。"
 
 _POSITIVE_MESSAGE = "保存できません。数量か単価が 0 以下です。数量と単価は 0 より大きい数にしてください。"
 #: 第 1 版の注文回答を当てられる発注の状態 (答えを待っている状態)。保留の後は、もう一度答えが届く
@@ -92,9 +108,9 @@ def _refuse_non_subcontractor(partner):
         )
 
 
-def _refuse_bad_lines(lines):
+def _refuse_bad_lines(lines, allowed=_LINE_KEYS):
     for line in lines:
-        unknown = sorted(set(line) - _LINE_KEYS)
+        unknown = sorted(set(line) - allowed)
         if unknown:
             raise ValueError(
                 f"保存できません。知らない項目 ({'・'.join(unknown)}) があります。発注の明細の列の名前だけを渡してください。"
@@ -155,7 +171,43 @@ def _add_line(purchase_order, line, line_no):
         # 工程の種類 (協力企業に出すか) は services で断らない (入力の欄の選択肢が絞る。作者の決め)
         process=line.get("process"),
         quote_no=line.get("quote_no", ""),
+        # 指示書の工程と渡した日は新規登録の鍵だけ (変更で足す明細は鍵を受けないので空のまま)
+        workorder_step=line.get("workorder_step"),
+        handed_on=line.get("handed_on"),
     )
+
+
+def _from_workorder_steps(lines):
+    """新規登録の明細の辞書の並びを返す。指示書の工程 (workorder_step) を指す明細は、部品と工程を指示書の工程から写した新しい辞書にする
+    (渡された辞書は変えない)。部品は指示書の受注の明細の部品、工程は指示書の工程の工程。
+
+    断る (日本語の ValueError): 指示書の工程を指す明細の辞書に item か process があり、写す物と違う (部品を先に見る。process が None も違う)・
+    指示書の工程の無い明細に渡した日 (handed_on) がある。
+    指示書の工程が協力企業に出す工程でなくても、指示書が取消でも、1 つの工程に明細が 2 つあっても断らない (入口の選ぶ欄が絞る。明細の工程と同じ考え)。
+    訳: 指示書の工程を指す明細の部品と工程が違うと、戻りを実績にする先と受け取った物が食い違い、記録が成り立たないため (表の作りの上の断り。ポカよけではない)。
+    渡した日は指示書の工程に出した現物の記録なので、指示書の工程の無い明細には持たない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01)。
+    変えてよい条件 = 1 つの明細で別の部品に加工して戻す会社があると分かったとき。
+    """
+    resolved = []
+    for line_no, line in enumerate(lines, start=1):
+        step = line.get("workorder_step")
+        if step is None:
+            if line.get("handed_on") is not None:
+                raise ValueError(_HANDED_WITHOUT_STEP_MESSAGE + "指示書の工程を選ぶか、渡した日を空にしてください。")
+            resolved.append(line)
+            continue
+        item = step.workorder.order_line.item
+        process = step.process
+        for key, copied, what in (("item", item, "部品"), ("process", process, "工程")):
+            if key in line and getattr(line[key], "pk", line[key]) != copied.pk:
+                raise ValueError(
+                    _STEP_MISMATCH_MESSAGE.format(
+                        line_no=line_no, what=what, wo_no=step.workorder.wo_no, seq=step.seq, name=process.name
+                    )
+                )
+        resolved.append({**line, "item": item, "process": process})
+    return resolved
 
 
 def _has_send_connection(partner):
@@ -171,11 +223,14 @@ def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None
     送った注文の表に返事を残し、発注は「作成」のまま。届かなければ、返す発注に黄の知らせの字を付ける)。
     つながりが無ければ送らない。
     send が偽なら、つながりがあっても送らない (作り物のデータの種が、相手に送らずに発注を入れるため)。
+    明細の鍵 workorder_step (指示書の工程) と handed_on (渡した日) は新規登録だけで受ける。workorder_step のある明細は部品と工程を
+    指示書の工程から写し (_from_workorder_steps)、使用停止の部品の確かめは写した部品で行う。送る注文の明細の項目は今のまま (2 つは送らない)。
     """
     _refuse_non_subcontractor(partner)
     if not lines:
         raise ValueError("保存できません。明細がありません。明細を 1 行以上入れてください。")
-    _refuse_bad_lines(lines)
+    _refuse_bad_lines(lines, _LINE_KEYS_ON_CREATE)
+    lines = _from_workorder_steps(lines)
     refuse_inactive(partner, [line.get("item") for line in lines])
     with transaction.atomic():
         purchase_order = PurchaseOrder.objects.create(
@@ -840,6 +895,14 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
 
     断るのは「取消」の発注と 0 以下の数量だけ (「断られた」や「作成」の発注も受け入れる = 現物優先)。
     受入の残より多くても止めない。stock の部品があれば、同じ atomic の中で在庫の入庫も作る (明細に工程のある受入は入れない = stock.services.record_received)。
+    明細に指示書の工程 (workorder_step) があり、progress の部品があれば、同じ atomic の中で受け入れた数を良品の数にした実績をその工程に作り、
+    受入の progress に結ぶ (RULES.md R32。_record_returned)。この受入の後に明細が終わっている (R25 = 完了の印が真か、受入の合計が数量以上) か、
+    close_rest で完了にするときは、その実績に工程の完了の印を付ける。実績は close_rest の mark_completed より先に作るので、実績は 1 件・印は 1 回。
+    取り消した明細・取消の指示書の工程・完了の印の付いた工程への受入も断らず、実績も作る (現物優先。受け取った物が戻った事実を残す)。
+    実績を作ったときは、返す受入の saved_message を「受入を保存しました。<record_progress の字>」にし、close_rest の字があればその後ろに続ける。
+    訳: 戻りを受入と実績で 2 回入れずに、指示書の工程を進めるため。受入のときに、受け入れた数と同じ数で実績を作る (後から人が実績を直すか消すのは止めない)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01・コードで確かめた 2 本は、戻りの受入が実績の入力の口を通る)。
+    変えてよい条件 = 本人が決め直したとき。
     全部の明細で受入の数が明細の数量以上になれば、発注を「納品された」(STATUS_DELIVERED) にする。
     「相手が受け入れた」の発注に一部の受入が入ると「一部納品」(作者の決め (11-07 00:2x) と作者の決め (11-07 06:38)。
     「下書き」「送った」「相手が保留した」「相手が条件付で受けた」は一部の受入では変えない。後で届く注文回答を当て、
@@ -882,6 +945,11 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
             from seizou.stock import services as stock_services
 
             stock_services.record_received(receipt, user)
+        recorded = None
+        if current.workorder_step_id is not None and apps.is_installed("seizou.progress"):
+            # 戻りを指示書の工程の実績にする (RULES.md R32)。close_rest の mark_completed より先に作り、印はこの 1 件にだけ付ける
+            # (mark_completed は実績を作らない。先に印があるので、mark_completed の印の無い旨の 1 文も出ない)。
+            recorded = _record_returned(receipt, current, locked, user, finishes=close_rest or remaining_qty(current) <= 0)
         closed = None
         if close_rest and remaining_qty(current) > 0:
             # 完了の印を書き、全部の明細が済めば「納品された」にする (mark_completed)。下の状態の見方は、書いた後の状態から始める。
@@ -907,13 +975,47 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
         from seizou.connect import services as connect_services
 
         result = connect_services.send_acceptance(receipt, user)
-    if closed is not None:
+    if recorded is not None or closed is not None:
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_level が "warning" なら黄の知らせ)。表に書かない。
-        result.saved_message = f"受入を保存しました。{closed.saved_message}"
+        # 実績を作ったときは record_progress の字、足りないまま完了にしたときは mark_completed の字を、この順に続ける。
+        result.saved_message = (
+            "受入を保存しました。"
+            + (recorded.saved_message if recorded is not None else "")
+            + (closed.saved_message if closed is not None else "")
+        )
+    if closed is not None:
         level = getattr(closed, "saved_level", None)
         if level:
             result.saved_level = level
     return result
+
+
+def _record_returned(receipt, line, purchase_order, user, *, finishes):
+    """指示書の工程を指す明細の受入から、その工程の実績を作って受入に結ぶ。receive が受入を作ったのと同じ transaction.atomic の中で呼ぶ。返す物は作った実績。
+
+    値は progress.services.record_progress に渡す: 工程 = 明細の指示書の工程・良品の数 = 受け入れた数・不良の数 0・日時 = 受入日に今の時刻を
+    合わせた日時 (aware)・人 = user・備考 = 「協力企業 <取引先の名前> からの受入 (<発注番号>-<行番号>)」・作業した人は空 (社員も名前も渡さない)。
+    finishes が真なら工程の完了の印を付ける (receive が、この受入の後に明細が終わっているか、close_rest で完了にするときに真で渡す)。
+    実績は在庫を動かさない (工程のある明細の受入は stock.services.record_received が入庫にしない)。
+    訳: 戻りを受入と実績で 2 回入れずに、指示書の工程を進めるため。受入のときに、受け入れた数と同じ数で実績を作る (後から人が実績を直すか消すのは止めない)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01・コードで確かめた 2 本は、戻りの受入が実績の入力の口を通る)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    from seizou.progress import services as progress_services
+
+    now = timezone.localtime().time().replace(microsecond=0)
+    recorded_at = timezone.make_aware(datetime.combine(receipt.received_on, now))
+    created = progress_services.record_progress(
+        line.workorder_step,
+        receipt.qty,
+        recorded_at,
+        user,
+        note=f"協力企業 {purchase_order.partner.name} からの受入 ({purchase_order.po_no}-{line.line_no})",
+        completes_step=finishes,
+    )
+    receipt.progress = created
+    receipt.save(update_fields=["progress"])
+    return created
 
 
 # --- 完了の印 (人が足りないまま終える明細。RULES.md R25) ---
@@ -927,6 +1029,11 @@ COMPLETED_NOT_SENT_NOTE = (
 
 #: 一式の明細を金額の載らないまま完了にした時の知らせの後ろの字 (知らせの設定が「通す」の会社でも、済んだ後に分かるようにする)
 LUMP_ZERO_NOTE = "一式の金額は載っていないので、この明細の支払の金額は 0 円です。"
+
+#: 指示書の工程を指す明細を、受入を伴わずに完了にした時の知らせの後ろの字 (工程に完了の印の付いた実績が無いときだけ)
+STEP_NOT_COMPLETED_NOTE = (
+    "指示書の工程の完了の印は変えていません。工程を終えるときは、指示書の詳細の進捗のタブで実績に完了の印を付けてください。"
+)
 
 
 def completes_without_lump_amount(line, *, adding_qty=None):
@@ -975,6 +1082,11 @@ def mark_completed(line, user):
     seizou どうしで送った発注 (_is_sent_order) では、知らせの字の後ろに COMPLETED_NOT_SENT_NOTE を足し、saved_level を "warning" にする
     (保存は済んだが人の手が要る物。CLAUDE.md の知らせの強さの表の下の注記)。相手へは何も送らない。
     完了で「納品された」になった発注には「変更」が出ない (CHANGEABLE_STATUSES に無い) ので、相手に知らせるときは外してから「変更」で送る。
+    受入を伴わない完了 (と clear_completed) は進捗の実績を作らず、工程の完了の印も変えない。指示書の工程を指す明細を完了にしたとき、
+    その工程に完了の印の付いた実績が無ければ (progress.services.step_completed が偽)、知らせの字の後ろに STEP_NOT_COMPLETED_NOTE を足す
+    (receive の close_rest から呼ばれたときは、receive が先に印の付いた実績を作るので出ない)。
+    訳: 戻りが 0 個のまま終えるときに、数の無い実績を作らないため (コードで確かめた 2 本も、0 個で終えるときは工程を動かさない)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01)。変えてよい条件 = 本人が決め直したとき。
     訳: 協力企業の戻りが足りないまま終える明細を、数量を受入済みに下げて元の発注の数を消さずに終え、受入の候補と「受入の残」から外すため。
     取消の発注と取り消した明細は受け入れない物なので完了にしない。一式の明細を金額の載らないまま完了にすると支払の金額が 0 円のまま残るので、
     検査の層の R29 で知らせる (止めるか通すかは会社が選ぶ = 本人の決め 11-11 12:5x・13:1x)。全部を受け入れたことにするときは、残りの数で受入を入れて全額を載せる。
@@ -1014,8 +1126,19 @@ def mark_completed(line, user):
             current.saved_level = "warning"
         if lump_zero:
             message += LUMP_ZERO_NOTE
+        if _step_left_open(current):
+            message += STEP_NOT_COMPLETED_NOTE
         current.saved_message = message
         return current
+
+
+def _step_left_open(line):
+    """明細が指示書の工程を指し、その工程に完了の印の付いた実績が無いか (progress.services.step_completed が偽。読むだけ)。progress の部品が無ければ偽。"""
+    if line.workorder_step_id is None or not apps.is_installed("seizou.progress"):
+        return False
+    from seizou.progress import services as progress_services
+
+    return not progress_services.step_completed(line.workorder_step_id)
 
 
 def _reopened_status(purchase_order):
@@ -1049,6 +1172,7 @@ def clear_completed(line, user):
     受入の残があれば、状態を _reopened_status で決め直して変更の履歴に残す (同じ transaction.atomic の中)。
     取消の発注の明細は日本語の ValueError。完了でない明細は何も書かずに返す (断らない)。
     外した後の受入の残 (remaining_qty) が 0 より大きければ、知らせの字に「残り n をまた受け入れられます。」を足す。相手へは何も送らない。
+    指示書の工程を指す明細でも、進捗の実績は作らず、工程の完了の印も変えない (mark_completed と同じ)。
     訳: 誤って完了にした明細や、協力企業がやはり残りを納めると言った明細を、また受入の候補と「受入の残」に戻すため。
     取消の発注は受け入れない物なので外さない。
     出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M03) と本人の決め 11-11 08:4x・09:3x。
@@ -1076,6 +1200,249 @@ def clear_completed(line, user):
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         current.saved_message = message
         return current
+
+
+# --- 協力企業に出した指示書の工程 (見比べのまとめの M01。渡した日・出ている数・まだ渡していない数) ---
+
+
+def set_handed_on(line, handed_on, user):
+    """指示書の工程を指す発注の明細の渡した日を直す。handed_on が None なら空に戻す (まだ渡していない扱い)。返す物は取り直した明細 (saved_message 付き)。
+
+    発注の行に錠を掛け (mark_completed と同じ)、欄を書き、変更の履歴に残す (同じ日なら履歴は増えない)。相手の seizou へは送らない。
+    断る (日本語の ValueError。頭は「保存できません。」): 取消の発注・取り消した明細 (明細状態コード 2)・指示書の工程の無い明細。
+    完了の明細と受入のある明細は断らない。
+    返す明細の saved_message は「<発注番号>-<行番号> の渡した日を <日付> にしました。」、空に戻したときは
+    「<発注番号>-<行番号> の渡した日を空にしました (まだ渡していない扱いです)。」(表に書かない)。
+    訳: 現物を協力企業に渡した日を残し、出ている数とまだ渡していない数を分けて見るため。取消の発注と取り消した明細は渡す物ではなく、
+    指示書の工程の無い明細は渡した記録を持たない (表の作りの上の断り)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。渡した記録は 3 本・コードで確かめた 1 本は渡したときに日を書く)。
+    変えてよい条件 = 分けて渡す記録が要ると本人が決めたとき。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().get(pk=line.purchase_order_id)
+        if locked.status == PurchaseOrder.STATUS_CANCELLED:
+            raise ValueError("保存できません。取り消した発注の明細の渡した日は直せません。渡すときは、新しく発注を入れてください。")
+        current = PurchaseOrderLine.objects.get(pk=line.pk)
+        if current.is_cancelled:
+            raise ValueError("保存できません。取り消した明細の渡した日は直せません。取り消した明細は協力企業に渡す物ではありません。")
+        if current.workorder_step_id is None:
+            raise ValueError(_HANDED_WITHOUT_STEP_MESSAGE + "この明細は指示書の工程に結んでいないので、渡した日は要りません。")
+        before = history.saved_state(current)
+        current.handed_on = handed_on
+        current.save(update_fields=["handed_on"])
+        record_history(current, user, before=before)
+        label = f"{locked.po_no}-{current.line_no}"
+        if handed_on is None:
+            current.saved_message = f"{label} の渡した日を空にしました (まだ渡していない扱いです)。"
+        else:
+            current.saved_message = f"{label} の渡した日を {handed_on:%Y-%m-%d} にしました。"
+        return current
+
+
+def _is_live_subcontract(line):
+    """指示書の工程を指す、取り消していない明細か (取消でない発注の、明細状態コードが 2 でない明細)。読むだけ。"""
+    return (
+        line.workorder_step_id is not None
+        and not line.is_cancelled
+        and line.purchase_order.status != PurchaseOrder.STATUS_CANCELLED
+    )
+
+
+def out_qty(line):
+    """出ている数 (協力企業に渡して、まだ戻っていない数。読むだけ)。
+
+    指示書の工程を指し、渡した日のある、取り消していない明細 (取消でない発注の、明細状態コードが 2 でない明細) の受入の残
+    (remaining_qty。RULES.md R25) のうち 0 より大きい分。ほかは 0 (指示書の工程の無い明細・取り消した明細・取消の発注の明細・
+    まだ渡していない明細・完了の明細・多く戻った明細)。
+    """
+    if not _is_live_subcontract(line) or line.handed_on is None:
+        return _ZERO
+    return max(remaining_qty(line), _ZERO)
+
+
+def waiting_qty(line):
+    """まだ渡していない数 (協力企業に出す明細のうち、まだ現物を渡していない数。読むだけ)。
+
+    指示書の工程を指し、渡した日の無い、取り消していない明細の受入の残 (remaining_qty。RULES.md R25) のうち 0 より大きい分。ほかは 0
+    (out_qty と同じ。渡した日のある明細は 0)。
+    """
+    if not _is_live_subcontract(line) or line.handed_on is not None:
+        return _ZERO
+    return max(remaining_qty(line), _ZERO)
+
+
+def annotate_subcontract(steps):
+    """指示書の工程の queryset に、その工程を指す明細の出ている数の合計 (subcontract_out_total)・まだ渡していない数の合計
+    (subcontract_waiting_total)・取り消していない明細の数 (subcontract_line_count) を足して返す。読むだけ。
+
+    値は out_qty・waiting_qty の明細ごとの和と同じ (取り消していない明細の受入の残のうち 0 より大きい分を、渡した日の有る無しで分ける)。
+    3 つとも別の Subquery で足し、工程の queryset の join を増やさない (annotate_order_received と同じ考え。明細ごとの受入の数は、その中の
+    Subquery で数える)。生産管理ボードと指示書の詳細と今日やることが使う。
+    """
+    line_received = (
+        Receipt.objects.filter(line=OuterRef("pk")).order_by().values("line").annotate(total=Sum("qty")).values("total")[:1]
+    )
+    lines = (
+        PurchaseOrderLine.objects.filter(workorder_step=OuterRef("pk"))
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
+        .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+        .annotate(
+            line_received=Coalesce(Subquery(line_received, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
+        )
+        .annotate(
+            # 受入の残 (R25) のうち 0 より大きい分: 完了の明細は 0、ほかは max(数量 − 受入の数, 0)
+            open_qty=Case(
+                When(completed=True, then=Value(_ZERO)),
+                When(qty__gt=F("line_received"), then=ExpressionWrapper(F("qty") - F("line_received"), output_field=_QTY_FIELD)),
+                default=Value(_ZERO),
+                output_field=_QTY_FIELD,
+            )
+        )
+        .order_by()
+    )
+
+    def _open_total(handed):
+        rows = lines.filter(handed_on__isnull=not handed).values("workorder_step").annotate(total=Sum("open_qty")).values("total")[:1]
+        return Coalesce(Subquery(rows, output_field=_QTY_FIELD), Value(_ZERO), output_field=_QTY_FIELD)
+
+    count = lines.values("workorder_step").annotate(n=Count("pk")).values("n")[:1]
+    return steps.annotate(
+        subcontract_out_total=_open_total(True),
+        subcontract_waiting_total=_open_total(False),
+        subcontract_line_count=Coalesce(Subquery(count, output_field=IntegerField()), Value(0), output_field=IntegerField()),
+    )
+
+
+def step_lines(step):
+    """指示書の工程を指す、取り消していない明細 (取消でない発注の、明細状態コードが 2 でない明細) の list。読むだけ。
+
+    受入の数 (received_total) と受入の残 (remaining_total) を足し (annotate_received)、発注番号 → 行番号の順に並べる。
+    発注と取引先と部品と工程は select_related で一緒に引く。
+    """
+    rows = (
+        PurchaseOrderLine.objects.filter(workorder_step=step)
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
+        .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+        .select_related("purchase_order__partner", "item", "process")
+    )
+    return list(annotate_received(rows).order_by("purchase_order__po_no", "line_no", "pk"))
+
+
+def unreturned_lines(step):
+    """指示書の工程を指す明細のうち、出ている数かまだ渡していない数が 0 より大きい明細の list (step_lines の並び。読むだけ)。
+
+    取り消していない明細の受入の残 (remaining_total) が 0 より大きい明細と同じ (渡した日があれば出ている数、無ければまだ渡していない数)。
+    検査の層の R33 (実績の入力) が core.checks.tools から呼ぶ。
+    """
+    return [line for line in step_lines(step) if line.remaining_total > 0]
+
+
+def steps_to_subcontract():
+    """これから協力企業に出す指示書の工程の queryset (読むだけ。指示書の順 → 工程の順)。
+
+    工程の「協力企業に出すか」が真・指示書が発行 (取消でない)・受注が取消でない・その工程を指す取り消していない明細が無い・
+    工程の完了の印の付いた実績が無い (WorkOrderStep.total_expressions() の completed_mark) 指示書の工程。
+    workorders の model は import せず、外部キーの先として引く。発注を取り消すと、その工程はまた出る。
+    """
+    step_model = PurchaseOrderLine._meta.get_field("workorder_step").related_model
+    workorder_model = step_model._meta.get_field("workorder").related_model
+    order_model = workorder_model._meta.get_field("order_line").related_model._meta.get_field("order").related_model
+    live_lines = (
+        PurchaseOrderLine.objects.filter(workorder_step=OuterRef("pk"))
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
+        .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+    )
+    return (
+        step_model.objects.filter(process__is_outsourced=True, workorder__status=workorder_model.STATUS_ISSUED)
+        .exclude(workorder__order_line__order__status=order_model.STATUS_CANCELLED)
+        .annotate(completed_mark=step_model.total_expressions()["completed_mark"], has_live_lines=Exists(live_lines))
+        .filter(completed_mark=False, has_live_lines=False)
+        .select_related("workorder", "process")
+        .order_by("workorder_id", "seq", "pk")
+    )
+
+
+def default_subcontractor(item, process, *, on_date=None):
+    """部品と工程の、協力企業への出し先の既定の取引先 (読むだけ)。ちょうど 1 社ならその取引先、ほかは None。
+
+    masters.services.item_prices の行のうち、売りか発注かが「協力企業への発注」・工程がその工程・取引先の行 (共通でない)・
+    適用開始日が空か on_date (既定は今日) 以前の行を取り、その取引先が使用中で、種類が協力企業か両方の物を数える。
+    訳: 同じ部品と工程を出す先が 1 社に決まっているときに、発注のたびに出し先を選ぶ手間を減らすため。2 社以上ならどこへ出すか分からないので入れない。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。出し先の既定を部品の工程に持つ本は 4 本。seizou は部品・工程・取引先を持つ
+    単価表の発注の行から決める)。
+    変えてよい条件 = 部品の工程の行に出し先の欄を持つと本人が決めたとき。
+    """
+    if on_date is None:
+        on_date = timezone.localdate()
+    process_pk = getattr(process, "pk", process)
+    partners = {}
+    for price in item_prices(item):
+        if price.kind != type(price).KIND_PURCHASE or price.process_id != process_pk or price.partner_item_id is None:
+            continue
+        if price.start_date is not None and price.start_date > on_date:
+            continue
+        partner = price.partner_item.partner
+        if partner.active and partner.is_subcontractor:
+            partners[partner.pk] = partner
+    return next(iter(partners.values())) if len(partners) == 1 else None
+
+
+class ReturnGap(NamedTuple):
+    """指示書の工程を指す明細の、1 回の受入の戻りの数の食い違い (R33 が読む。読むだけ)。
+
+    label = 「<発注番号>-<行番号>」・qty = 明細の数量・total = 今までの受入の合計 + 今回の数・not_handed = 渡した日が空・
+    over = 数量を超える分 (超えなければ 0)・short = 「残りは受け入れずに完了にする」で戻らないまま完了にする分 (当たらなければ 0)。
+    """
+
+    label: str
+    qty: Decimal
+    total: Decimal
+    not_handed: bool
+    over: Decimal
+    short: Decimal
+
+
+def receipt_return_gap(line, qty, *, close_rest=False):
+    """受入 1 回の戻りの数の食い違い (ReturnGap)。食い違いが無ければ None (読むだけ。検査の層の R33 が core.checks.tools から呼ぶ)。
+
+    見るのは指示書の工程を指す明細だけ。取消の発注・今回の数が 0 以下・取り消した明細の「残りは受け入れずに完了にする」は None
+    (services が先に赤で断るので、黄の知らせの後に赤を出さないため。R29 の completes_without_lump_amount と同じ考え)。
+    not_handed = 渡した日が空。over = 今までの受入の合計 + 今回の数が数量を超える分。
+    short = close_rest が真で、渡した日があり、完了の印が偽で、今までの受入の合計 + 今回の数が数量より少ない分
+    (もう完了の明細は receive が完了の印を書かないので数えない)。
+    訳: 協力企業に出した工程の戻りの数の食い違い (渡す前の戻り・多い戻り・目減りで完了) に気づかせるため (止めるか知らせるかは会社が選ぶ)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。目減りと多い戻りを知らせる本は 2 本、多い戻りを止める本は 2 本)・
+    本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)。
+    変えてよい条件 = 会社の設定 subcontract_return で選ぶ。数え方を変える提案は Issue「決まりの提案」で。
+    """
+    if line.workorder_step_id is None or line.purchase_order.status == PurchaseOrder.STATUS_CANCELLED:
+        return None
+    adding = _dec(qty)
+    if not adding > 0 or (close_rest and line.is_cancelled):
+        return None
+    total = received_qty(line) + adding
+    handed = line.handed_on is not None
+    over = total - line.qty if total > line.qty else _ZERO
+    short = line.qty - total if (close_rest and handed and not line.completed and total < line.qty) else _ZERO
+    if handed and over == 0 and short == 0:
+        return None
+    return ReturnGap(f"{line.purchase_order.po_no}-{line.line_no}", line.qty, total, not handed, over, short)
+
+
+def short_return_qty(line):
+    """発注の明細を受入を伴わずに完了にしたとき、渡した数のうち戻らないまま終える数 (読むだけ。検査の層の R33 が core.checks.tools から呼ぶ)。
+
+    指示書の工程を指し、渡した日があり、完了の印が偽で、受入の合計が数量より少ない明細の 数量 − 受入の合計。ほかは 0
+    (取消の発注と取り消した明細は mark_completed が先に赤で断るので 0。黄の知らせの後に赤を出さないため)。
+    訳: 協力企業に渡した数より少ない戻りで明細を終える (目減りで完了) 間違いに気づかせるため (止めるか知らせるかは会社が選ぶ)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。目減りを知らせる本は 2 本)・本人の決め 11-11 12:5x。
+    変えてよい条件 = 会社の設定 subcontract_return で選ぶ。数え方を変える提案は Issue「決まりの提案」で。
+    """
+    if line.workorder_step_id is None or line.handed_on is None or line.completed or line.is_cancelled:
+        return _ZERO
+    if line.purchase_order.status == PurchaseOrder.STATUS_CANCELLED:
+        return _ZERO
+    return max(line.qty - received_qty(line), _ZERO)
 
 
 # --- 検収 (受入を相手の seizou の受注の明細へ送る記録。EDI の 4 段目) ---

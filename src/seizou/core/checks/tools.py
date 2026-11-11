@@ -86,6 +86,39 @@ def completes_without_lump_amount(purchase_order_line, *, adding_qty=None) -> bo
     return services.completes_without_lump_amount(purchase_order_line, adding_qty=adding_qty)
 
 
+def receipt_return_gap(purchase_order_line, qty, *, close_rest=False):
+    """指示書の工程を指す発注の明細の、1 回の受入の戻りの数の食い違い (R33 が読む。purchasing.services の同じ名前の関数)。食い違いが無いか、purchasing の部品が無ければ None。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.purchasing"):
+        return None
+    from seizou.purchasing import services
+
+    return services.receipt_return_gap(purchase_order_line, qty, close_rest=close_rest)
+
+
+def short_return_qty(purchase_order_line) -> Decimal:
+    """発注の明細を完了にしたとき、渡した数のうち戻らないまま終える数 (R33 が読む。purchasing.services の同じ名前の関数)。purchasing の部品が無ければ 0。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.purchasing"):
+        return Decimal("0")
+    from seizou.purchasing import services
+
+    return services.short_return_qty(purchase_order_line)
+
+
+def unreturned_lines(workorder_step) -> list:
+    """指示書の工程を指す明細のうち、出ている数かまだ渡していない数のある明細 (R33 が読む。purchasing.services の同じ名前の関数)。purchasing の部品が無ければ空。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.purchasing"):
+        return []
+    from seizou.purchasing import services
+
+    return services.unreturned_lines(workorder_step)
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)
