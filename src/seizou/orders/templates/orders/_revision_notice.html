@@ -1,0 +1,5 @@
+{% load seizou_icons seizou_tags %}
+{# 取引先から取消か変更が届いたまま、受け入れも断りもしていない受注の黄色の 1 行 (知らせの段 5 の状態。知らせではない。依頼書 N417)。中身は orders_detail の order_revision_notice が作る revision (無ければ何も描かない)。 #}
+{# 受注の詳細 (orders/order_detail.html の #order-live の頭) と、出荷の新規登録の画面の全体 (shipping/shipment_form.html) と小窓 (shipping/_form_modal.html) が include する。出荷は止めない。 #}
+{# 受信した注文の詳細への link は、部署で connect を開ける人だけ (押すと 403 になる入口を出さない = 作者の決め)。開けない人には字だけを出す。 #}
+{% if revision %}{% can_open "connect" as can_inbox %}<div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-notice>{% icon "alert" "size-5" %}<span>{{ revision.text }}{% if revision.url and can_inbox %} <a class="link" href="{{ revision.url }}">受信した注文の詳細を開く</a>{% endif %}</span></div>{% endif %}
