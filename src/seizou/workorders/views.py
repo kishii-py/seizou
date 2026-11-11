@@ -124,7 +124,7 @@ class WorkOrderDetailView(BaseDetailView):
     model = WorkOrder
     screen_name = "指示書の詳細"
     screen_help = "指示書の項目と、工程の並び。"
-    tabs = (("工程", "steps"), ("進捗", "progress_records"))
+    tabs = (("工程", "steps"), ("進捗", "progress_records"), ("協力企業", "subcontract_lines"))
     template_name = "workorders/workorder_detail.html"
 
 

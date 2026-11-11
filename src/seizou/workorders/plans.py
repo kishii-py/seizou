@@ -12,6 +12,7 @@
 - 指示書の詳細の頭の「製造の完了を入庫にする」を出すか (finished_due) もここで決める。真 = 発行の指示書で、指示書の状態が完了
   (最後の工程に完了の印。作者の決め) で、まだ入庫にしていない完成の数が 0 より大きい。工程ごとの実績のまとめ (_step_totals) を使うため。
 - 指示書の詳細の工程のタブの行 (step_rows) もここで作る。工程ごとの実績のまとめ (_step_totals) を使うため。会社の設定 production_plan は見ない。
+  行には協力企業に出した明細の値 (subcontract。N406b) も足す。明細と数は purchasing の services の関数を関数の中で import して読む (purchasing の部品が無い置き場では None)。
 """
 
 from __future__ import annotations
@@ -516,8 +517,63 @@ def finished_due(workorder) -> bool:
 # --- 指示書の詳細の工程のタブ (作者の決め) ---
 
 
+def _qty(value) -> Decimal:
+    """集計の値を Decimal にそろえる (SQLite は桁なしや int で返すことがある)。"""
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+def _subcontract_reads(workorder, steps):
+    """工程の queryset に協力企業の数の合計を足した物と、指示書の工程を指す取り消していない明細の list を返す (N406b。読むだけ)。
+
+    数の合計は purchasing.services.annotate_subcontract (工程の queryset の Subquery。問い合わせは増えない)、明細は指示書の property
+    subcontract_lines に purchasing.services.annotate_received (受入の残 remaining_total) を足して 1 回で読む (工程の数で増えない)。
+    purchasing の部品が無い置き場 (property が AttributeError) では (steps, None)。
+    """
+    try:
+        lines = workorder.subcontract_lines
+    except AttributeError:
+        return steps, None
+    from seizou.purchasing import services as purchasing_services
+
+    return purchasing_services.annotate_subcontract(steps), list(purchasing_services.annotate_received(lines))
+
+
+def _subcontract_value(workorder, step, lines):
+    """工程 1 つの協力企業の値 (N406b。読むだけ)。lines はその工程を指す取り消していない明細 (受入の残 remaining_total 付き)。
+
+    {"lines": 明細ごとの {"pk", "purchase_order", "po_no", "line_no", "partner", "out", "waiting", "done"} の並び,
+     "out_total": 出ている数の合計, "waiting_total": まだ渡していない数の合計, "can_send": 出せるか, "open_line": 終わっていない最初の明細の pk か None}。
+    明細ごとの出ている数とまだ渡していない数は purchasing.services.out_qty・waiting_qty と同じ決め方 (受入の残のうち 0 より大きい分を、
+    渡した日の有る無しで分ける) を、読んだ受入の残から出す (明細ごとに問い合わせない)。done = 受入の残が 0 以下 (RULES.md R25 の終わっている)。
+    出せる = 工程の「協力企業に出すか」が真・指示書が発行・その工程を指す取り消していない明細が無い。
+    """
+    entries = []
+    for line in lines:
+        rest = _qty(line.remaining_total)
+        open_qty = rest if rest > 0 else _ZERO_QTY
+        entries.append(
+            {
+                "pk": line.pk,
+                "purchase_order": line.purchase_order_id,
+                "po_no": line.purchase_order.po_no,
+                "line_no": line.line_no,
+                "partner": line.purchase_order.partner.name,
+                "out": open_qty if line.handed_on is not None else _ZERO_QTY,
+                "waiting": open_qty if line.handed_on is None else _ZERO_QTY,
+                "done": rest <= 0,
+            }
+        )
+    return {
+        "lines": entries,
+        "out_total": _qty(step.subcontract_out_total),
+        "waiting_total": _qty(step.subcontract_waiting_total),
+        "can_send": bool(step.process.is_outsourced) and workorder.status == WorkOrder.STATUS_ISSUED and not entries,
+        "open_line": next((entry["pk"] for entry in entries if not entry["done"]), None),
+    }
+
+
 def step_rows(workorder) -> list[dict]:
-    """指示書の詳細の工程のタブの行 (読むだけ)。1 行 = {"step", "recorded", "defect", "done", "current"}。
+    """指示書の詳細の工程のタブの行 (読むだけ)。1 行 = {"step", "recorded", "defect", "done", "current", "subcontract"}。
 
     工程は順 (seq) の順で、process を select_related で一緒に読む。実績のまとめは _step_totals を 1 回だけ呼ぶ
     (工程の数で問い合わせが増えない)。recorded = その工程の良品の合計、defect = 不良の合計、
@@ -527,11 +583,21 @@ def step_rows(workorder) -> list[dict]:
     会社の設定 production_plan は見ない (工程のタブは生産計画を使わない会社でも出る)。
     済みは工程ごとの印。今の工程は、指示書が完了でないときの印の無い最初の工程 (生産管理ボードの今の工程と同じ)。
     途中の工程の印の抜けは、その行に「完了」が無いことで見える (作者の決め)。
+    subcontract = 協力企業に出した明細の値 (_subcontract_value。N406b)。purchasing の部品が無い置き場では None。
+    明細は 1 つの指示書の工程の全部を 1 回で読み、数の合計は工程の問い合わせに足す (工程の数で問い合わせが増えない)。
     """
-    steps = list(workorder.steps.select_related("process").order_by("seq"))
+    steps, lines = _subcontract_reads(workorder, workorder.steps.select_related("process").order_by("seq"))
+    steps = list(steps)
+    by_step = {}
+    for line in lines or ():
+        by_step.setdefault(line.workorder_step_id, []).append(line)
+    subcontract = {step.pk: None if lines is None else _subcontract_value(workorder, step, by_step.get(step.pk, [])) for step in steps}
     totals = _step_totals([step.pk for step in steps])
     if not totals:
-        return [{"step": step, "recorded": None, "defect": None, "done": False, "current": False} for step in steps]
+        return [
+            {"step": step, "recorded": None, "defect": None, "done": False, "current": False, "subcontract": subcontract[step.pk]}
+            for step in steps
+        ]
     workorder_done = WorkOrder.progress_state_of(workorder.status, steps, totals) == WorkOrder.PROGRESS_DONE
     rows = []
     current_found = workorder_done
@@ -547,6 +613,7 @@ def step_rows(workorder) -> list[dict]:
                 "defect": step_totals.defect,
                 "done": done,
                 "current": current,
+                "subcontract": subcontract[step.pk],
             }
         )
     return rows

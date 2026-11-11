@@ -224,6 +224,29 @@ class WorkOrder(models.Model):
             raise AttributeError("progress_records") from None
         return records._default_manager.filter(workorder_step__workorder=self)
 
+    @property
+    def subcontract_lines(self):
+        """この指示書の工程を指す、取り消していない協力企業への発注の明細 (読むだけ。詳細の「協力企業」のタブと工程のタブの行が使う。N406b)。
+
+        purchasing を import せず、工程の逆の関係 (purchasing の外部キー purchase_order_lines) の先の表として引く。取消の発注の明細と、
+        取り消した明細 (明細状態コード 2) は入れない。並びは発注番号 → 行番号。行の字が読む発注と取引先と部品を一緒に読む。
+        purchasing の部品が無いときは AttributeError (土台の hasattr が偽になり、タブを出さない = progress_records と同じ形)。
+        """
+        try:
+            lines = WorkOrderStep._meta.get_field("purchase_order_lines").related_model
+        except FieldDoesNotExist:
+            raise AttributeError("subcontract_lines") from None
+        from seizou.core import edi_codes
+
+        orders = lines._meta.get_field("purchase_order").related_model
+        return (
+            lines._default_manager.filter(workorder_step__workorder=self)
+            .exclude(line_status_code=edi_codes.LINE_DELETED)
+            .exclude(purchase_order__status=orders.STATUS_CANCELLED)
+            .select_related("purchase_order__partner", "item")
+            .order_by("purchase_order__po_no", "line_no", "pk")
+        )
+
 
 class WorkOrderStep(models.Model):
     """指示書の工程。順は 1 から。予定の数は検査の層が実績の合計と比べる。"""
