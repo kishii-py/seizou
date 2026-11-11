@@ -16,6 +16,7 @@
     </details>{% endif %}{% elif object.status != "cancelled" %}{{ block.super }}{% endif %}{% endblock %}
 {% block more %}{% can_write "orders.Order" as can_cancel %}{% if object.status != "cancelled" and can_cancel %}{% url 'orders:order_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endblock %}
 {% block content %}<div id="order-live">
+{% order_revision_notice object as revision %}{% include "orders/_revision_notice.html" %}
 {% load orders_timeline %}{% order_stages object as band %}{% include "core/_stage_band.html" with stages_id="order-stages" %}
 {% order_aside object fields seizou.hide_money as aside %}
 {{ block.super }}

@@ -13,16 +13,20 @@
   {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
 - order_line_completed_label: 明細の表の残の枡の「完了」「完了 (出さない n)」の印の字 (N400b。完了の印の無い明細は空の字)。
 - order_total: 明細の金額の合計 (受注の小窓 orders/_modal.html の「明細の合計」。order_aside の金額のカードと同じ式。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
+- order_revision_notice: 取引先から取消か変更が届いたまま、受け入れも断りもしていない受注の黄色の 1 行の中身 (依頼書 N417。
+  受注の詳細と出荷の新規登録の画面の全体と小窓が {% order_revision_notice object as revision %} の形で置き、orders/_revision_notice.html が出す)。
 """
 
 from decimal import Decimal
 
 from django import template
 from django.apps import apps
+from django.urls import NoReverseMatch, reverse
 
+from seizou.core import edi_codes
 from seizou.core.templatetags.seizou_tags import comma, weekday_ja, yen
 
-from ..models import OrderLine
+from ..models import Order, OrderLine
 
 register = template.Library()
 
@@ -76,6 +80,62 @@ def order_aside(order, fields, hide_money=False) -> dict:
         }
     )
     return {"cards": cards}
+
+
+def _revision_target_order(target):
+    """受注か、受注の明細か、受注の明細の番号 (字か数) から受注を読む。どれでもなければ None。
+
+    明細の番号は、その明細を 1 回引いて受注を読む (無ければ None)。番号でない字 (空・小数・英字) と真偽の値は表を読まずに None。
+    """
+    if isinstance(target, Order):
+        return target
+    if isinstance(target, OrderLine):
+        return target.order
+    if isinstance(target, bool) or not isinstance(target, (int, str)) or not str(target).isdecimal():
+        return None
+    line = OrderLine.objects.select_related("order").filter(pk=int(target)).first()
+    return line.order if line is not None else None
+
+
+@register.simple_tag
+def order_revision_notice(target):
+    """受注の画面の上の黄色の 1 行 (知らせの段 5 の状態) の中身 ({% order_revision_notice object as revision %})。出さないときは None。
+
+    target は受注か、受注の明細か、受注の明細の番号 (出荷の新規登録の form.order_line.value)。どれでもなければ None。
+    受注の受信した注文 (逆向きの 1 対 1 の inbox_message。無ければ None) の後の版 (revisions) のうち、状態が未処理の物で
+    版の番号が一番大きい物を 1 回の問い合わせで引く。受け入れた版と断った版は出さない (受け入れた版は受注に入っていて、
+    断った版は受注が前の版のままで正しい)。保留を答えた版は状態が未処理のままなので出す。
+    返す物 = {"text": 字, "url": その版の受信した注文の詳細の URL (名前が引けなければ None)}。字は目的のコードで「取消」と「変更」を選び、金額を入れない。
+    connect の model を import しない (状態の値は受信した注文の行から読む。order_aside と同じ引き方)。読むだけで、表に書かない。
+
+    訳: 取引先から取消か変更が届いたまま、受け入れも断りもしていない受注を、受注の詳細と出荷の入力で分かるようにし、
+    取り消された物を作ったり出荷したりしないため。止めない (保存の前の確認も足さない。本人の決め 11-11 12:5x の考え方)。
+    出所 = 本体の決め 11-11 14:2x (精査 Q3 の T7・M6)。変えてよい条件 = 届いた版を受注の画面で受け入れる形を足すとき。
+    """
+    order = _revision_target_order(target)
+    inbox = getattr(order, "inbox_message", None) if order is not None else None
+    if inbox is None:
+        return None
+    later = (
+        inbox.revisions.filter(status=inbox.STATUS_RECEIVED)
+        .order_by("-revision_no", "-pk")
+        .values("pk", "revision_no", "purpose_code")
+        .first()
+    )
+    if later is None:
+        return None
+    word = "取消" if later["purpose_code"] == edi_codes.PURPOSE_CANCEL else "変更"
+    try:
+        url = reverse("connect:inbox_detail", args=[later["pk"]])
+    except NoReverseMatch:
+        url = None
+    return {
+        "text": (
+            f"取引先から第 {later['revision_no']} 版の{word}が届いています。"
+            "受け入れるまで、この受注は前の版の中身のままです。受信した注文の詳細で、受け入れるか断ってください。"
+        ),
+        "url": url,
+    }
 
 
 @register.simple_tag
