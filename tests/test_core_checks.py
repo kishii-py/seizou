@@ -61,11 +61,12 @@ def test_register_replaces_same_name():
 
 
 def test_builtin_checks_follow_company_setting(settings):
+    """R28 の行は、本人の決め 11-11 13:1x による読み替え (使用停止の社員を断らず、R28 で知らせる) で足した。"""
     from seizou.core.checks import builtin
 
     settings.SEIZOU = {"over_shipment": "stop", "over_workorder": "off", "over_payment": "stop"}
     modes = {c.name: c.current_mode() for c in builtin.BUILTIN}
-    assert modes == {"R01": "stop", "R04": "stop", "R06": "off", "R07": "off", "R24": "stop", "R26": "warn"}
+    assert modes == {"R01": "stop", "R04": "stop", "R06": "off", "R07": "off", "R24": "stop", "R26": "warn", "R27": "warn", "R28": "warn"}
 
 
 def test_builtin_default_mode_is_warn(settings):

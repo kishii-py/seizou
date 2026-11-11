@@ -82,7 +82,7 @@ seizou は、会社ごとの項目を本物の列として足し、向き不向�
 この仕組みを一緒に育てる仲間を探している。Issue と PR を受け付けている。
 
 - 使う会社の方: 上の「試す」で作り物の 2 社を触り、困りごとや要望を、画面の「フィードバック」か GitHub の Issue で伝えてほしい。プログラムを書かない方の、決まりの提案と反例が貢献の芯になる ([CONTRIBUTING.md](CONTRIBUTING.md))。
-- 直す開発者の方: [RULES.md](RULES.md) (決まりの一覧。R01〜R26) と [CONTRIBUTING.md](CONTRIBUTING.md) (受け入れの条件と Issue の型) を読んでほしい。手元で確かめる命令は [docs/development.md](docs/development.md) にある。
+- 直す開発者の方: [RULES.md](RULES.md) (決まりの一覧。R01〜R28) と [CONTRIBUTING.md](CONTRIBUTING.md) (受け入れの条件と Issue の型) を読んでほしい。手元で確かめる命令は [docs/development.md](docs/development.md) にある。
 
 運営の決まりは [GOVERNANCE.md](GOVERNANCE.md)、安全上の問題の報告先は [SECURITY.md](SECURITY.md)、版ごとの変更は [CHANGELOG.md](CHANGELOG.md) にある。
 

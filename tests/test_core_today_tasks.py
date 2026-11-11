@@ -214,14 +214,16 @@ def test_today_tasks_buttons_are_screen_names(user, customer, partner, shaft):
 @pytest.mark.django_db
 def test_note_and_invoice_rows_open_the_screens_that_list_those_shipments(logged_in, user, customer, shaft):
     # 納品書に入っていない出荷の行は「納品書を作る」へ、請求書に入っていない出荷の行は「請求書の新規登録」へ移り、
-    # どちらの画面にも数えた出荷だけが並ぶ (決め 11-07 20:5x の 2。flow-02。一覧へ移ると数えた物と違う物が並んでいた)
+    # どちらの画面にも数えた出荷だけが並ぶ (決め 11-07 20:5x の 2。flow-02。一覧へ移ると数えた物と違う物が並んでいた)。
+    # 請求書に入っていない出荷は、納品書の無い出荷も数える (本人の決め 11-11 10:1x)。
     unnoted = shipping_services.ship(make_order(user, customer, shaft).lines.get(), Decimal("10"), timezone.localdate(), user)
     noted = shipping_services.ship(make_order(user, customer, shaft).lines.get(), Decimal("10"), timezone.localdate(), user)
     shipping_services.create_delivery_note(customer, [noted], user)
 
     rows = {row["key"]: row for row in dashboard.today_tasks(user)["rows"]}
     assert (rows["delivery_note"]["count"], rows["delivery_note"]["button"]) == (1, "納品書を作る")
-    assert (rows["invoice"]["count"], rows["invoice"]["button"]) == (1, "請求書の新規登録")
+    # 請求書の新規登録は納品書の無い出荷も数える (本人の決め 11-11 10:1x)。納品書を作るの件数は変えない。
+    assert (rows["invoice"]["count"], rows["invoice"]["button"]) == (2, "請求書の新規登録")
     assert rows["delivery_note"]["url"] == reverse("shipping:deliverynote_create")
     assert rows["invoice"]["url"] == reverse("billing:invoice_create")
 
@@ -230,7 +232,7 @@ def test_note_and_invoice_rows_open_the_screens_that_list_those_shipments(logged
     assert list(note_screen.context["form"].fields["shipments"].queryset) == [unnoted]
     invoice_screen = logged_in.get(rows["invoice"]["url"])
     assert invoice_screen.status_code == 200
-    assert list(invoice_screen.context["form"].fields["shipments"].queryset) == [noted]
+    assert list(invoice_screen.context["form"].fields["shipments"].queryset) == [unnoted, noted]
 
     body, section = home_section(logged_in)
     assert f'href="{rows["delivery_note"]["url"]}">納品書を作る<' in section

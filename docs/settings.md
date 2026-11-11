@@ -15,6 +15,8 @@
 | `receiving_required` | 支給品・預かり品の入荷 (引当) がまだ無い受注の明細で、指示書を発行するときと出荷するとき | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `off` | 表面処理のように、得意先からワーク (預かり品) が届かないと始められない会社は止める。支給材の無い注文もある機械加工は通す |
 | `over_payment` | 請求書の残を超える入金 (ポカよけの R24) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 同じ入金の 2 重の記録に気づきたい会社は知らせる (多く振り込まれた入金も、確かめてから現物のとおり記録できる)。入金を残までと決めている会社は止める (多く振り込まれた入金は記録できなくなる)。気にしない会社は通す |
 | `progress_staff` | 社員の一覧に使用中の社員が居る会社で、作業した人 (社員番号か名前) の無い実績 (ポカよけの R26) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 共用の端末で何人もが実績を入れる会社は止める。社員を登録していない会社には知らせが出ない。作業した人を入れても入れなくてもよい会社は通す |
+| `billed_shipment` | 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) の直しと削除 (ポカよけの R27) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 請求書を作り直す前に出荷の誤りに気づきたい会社は知らせる。請求した後の出荷の直しを経理だけにしたい会社は止める。気にしない会社は通す |
+| `progress_inactive_staff` | 作業した人に使用停止の社員 (辞めた人) の番号を入れた実績 (ポカよけの R28。直すときに同じ社員のままなら見ない) | `warn` (知らせる) / `stop` (止める) / `off` (通す) | `warn` | 辞めた人の実績を後から入れることがある会社は知らせる (番号と名前を確かめて保存できる)。辞めた人の番号を使わせない会社は止める。気にしない会社は通す |
 | `order_number` | 受注番号の形 | `seq` (連番) / `ym_seq` (年月 + 連番) | `seq` | 月ごとに数える会社は年月つき |
 | `transcription_minutes_per_line` | 1 行の手入力にかかる分 (手で打たずに取り込んだ明細 1 行を何分と数えるか。ダッシュボードの「≒ 転記 m 分」の数え方) | 分の数 | `1` | 1 行の手入力に 1 分より長くかかる会社は大きくする。画面からは変えない (答えの YAML) |
 | `hidden_fields` | 使わない注文の項目を、受注の入力の form から隠す | 列の名前の一覧 (決まりが見る項目は隠せない) | `[]` | 使わない注文の項目がある会社は、その列の名前を書く。設定の画面では、外せる項目の候補に印を付けて選ぶ |
@@ -34,7 +36,7 @@
 | `ai_limits` | AI の呼び出しの上限 | `concurrent` (process ごとの同時の数)・`per_hour` (人ごと機能ごとの 1 時間の回数)・`watch_per_day` (見張るフォルダの 1 日の枚数) の辞書 | `{'concurrent': 2, 'per_hour': 30, 'watch_per_day': 200}` | 超えた分は API を呼ばずに断る (既定は試用で続けて試しても断られない緩さ)。費用を抑えたい会社は答えの YAML で下げる。画面からは変えない |
 | `ai_features` | AI を使う機能 | `assistant` (AI チャット)・`intake` (注文書の読み取り)・`feedback` (フィードバックの聞き取り) のそれぞれ `true` / `false` | `{'assistant': True, 'intake': True, 'feedback': True}` | `false` にした機能は使えなくなる (窓には鍵が無いときと同じ文が出る)。画面からは変えない |
 
-使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` と `progress_staff` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
+使わない注文の項目は `hidden_fields` (列の名前の一覧) に書いて隠す。決まりが見る項目は隠せない。例の 2 社は、A 社が `over_shipment` を `stop` (止める) に、B 社が `warn` (知らせる) にしている。値を読む所は、`partial_shipment` が出荷の Django の部品、`order_number` が番号を振る関数、`over_shipment` と `over_workorder` と `receiving_required` と `over_payment` と `progress_staff` と `billed_shipment` と `progress_inactive_staff` がポカよけの検査、`order_form` と `hidden_fields` が受注の入力の form、`production_plan` が指示書の Django の部品のメニューと生産計画の盤、`access_control` が core の権限の判定。
 
 注文書の見張り (`seizou_intake_watch`) が見るフォルダは、`SEIZOU` の `intake_watch_folder` に書く (既定は空。命令の引数でフォルダを渡せば、それが先に使われる)。この鍵は表の設定と違い、設定の画面には出ない ([docs/intake-watch.md](intake-watch.md))。
 

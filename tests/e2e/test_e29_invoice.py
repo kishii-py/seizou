@@ -4,8 +4,9 @@
 期待: 出荷済みの物だけが選べ (R09)、支払期日が締日と支払の月と支払日から出る (決め 11-02 18:4x)。
 
 この試験が見る所 (HTML だけ): A 社で数量 10 の受注を入れ、4 を出荷して納品書を出す。同じ受注にもう 1 回 2 を出荷する (納品書に入れない)。
-左のメニューの「請求書」→「新規登録」で得意先 (標準の `<select>`) を選ぶと、出荷の欄 (checkbox) に 1 回目の出荷 (納品書番号の入った行) が
-あり、2 回目の出荷 (納品書なし) の出荷番号が無い。納品書番号の行に印を付けて「請求書を作る」を押すと、請求書の詳細 (道が `/billing/invoices/<pk>/`) へ移る。
+左のメニューの「請求書」→「新規登録」で得意先 (標準の `<select>`) を選ぶと、出荷の欄 (checkbox) に 1 回目の出荷 (納品書番号の入った行) と、
+2 回目の出荷 (納品書番号の無い行) の両方がある (「出荷済み」は出荷の記録がある出荷と読み、納品書を発行したかどうかは見ない。本人の決め 11-11 10:1x)。
+納品書番号の行に印を付けて「請求書を作る」を押すと、請求書の詳細 (道が `/billing/invoices/<pk>/`) へ移る。
 同じ置き場で回すたびに今日の出荷で請求書を作るので、同じ締め期間の 2 回目からは同じ得意先の同じ締め期間の 2 枚目として右上の赤の知らせで止まる (R23)。
 そのときは知らせの「… を取り消して、この期間の全部の出荷で作り直す」のボタンで作り直しの画面へ進み、「… を取り消して作り直す」を押して詳細へ移る。
 「印刷用の画面」(新しいタブ) に「請求書」・得意先の名前・`WK-1001`・この回の出荷番号で数量 4 の行が 1 つあり (作り直した請求書には前の回の出荷も入る)、
@@ -95,7 +96,9 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     with_note = [text for text in labels if re.search(rf"{re.escape(note_no)}(?!\d)", text)]
     assert len(with_note) == 1
     assert re.search(rf"{re.escape(first_shipment)}(?!\d)", with_note[0])
-    assert not [text for text in labels if re.search(rf"{re.escape(second_shipment)}(?!\d)", text)]
+    without_note = [text for text in labels if re.search(rf"{re.escape(second_shipment)}(?!\d)", text)]
+    assert len(without_note) == 1
+    assert "納品書" not in without_note[0]
 
     page_a.get_by_label(re.compile(rf"{re.escape(note_no)}(?!\d)")).check()
     with page_a.expect_navigation():
@@ -126,12 +129,10 @@ def test_e29_billable_only_and_due_date(context, page_a, company_a):
     expect(due_cell).to_have_text(f"{expected.year}年{expected.month}月{expected.day}日")
     shot(printed, "E-29", "a-print")
 
-    # 2 回目の出荷の納品書を出しておく (得意先に請求の候補が残り、同じ締め期間の 2 回目以降でも請求書の新規登録に得意先が出る。
-    # 「取り消して作り直す」が得意先の納品書を全部 1 枚にまとめるため、これが無いと 2 回目から下の確かめで止まる)
-    page_a.goto(f"{company_a.base_url}/shipping/notes/new/")
-    page_a.get_by_label(re.compile(rf"{re.escape(order_no)}(?!\d)")).check()
-    page_a.locator("form[data-enter-guard] button.btn-primary[type=submit]").first.click()
-    page_a.wait_for_url(re.compile(r"/shipping/notes/\d+/$"))
+    # 3 回目の出荷 (1) を入れておく (得意先に請求の候補が残り、同じ締め期間の 2 回目以降でも請求書の新規登録に得意先が出る。
+    # 「取り消して作り直す」が期間の中の請求できる出荷を全部 1 枚にまとめ、納品書の無い 2 回目の出荷も入るため、これが無いと 2 回目から下の確かめで止まる)
+    fill_shipment(page_a, company_a, order_no=order_no, qty=1)
+    expect(page_a.locator(".seizou-toast[role=status]")).to_be_visible()
 
     page_a.goto(f"{company_a.base_url}/billing/invoices/new/")
     option = page_a.locator("select[name=customer] option").filter(has_text=customer).first

@@ -614,7 +614,7 @@ class Staff(models.Model):
     code_key = models.CharField("照合の字", max_length=10, unique=True, editable=False)
     name = models.CharField("名前", max_length=100)
     note = models.CharField("備考", max_length=500, blank=True)
-    # 使用停止 (Process の active と同じ形): 外すと新しい実績で断る。消さないので、今までの実績は社員を指したまま残る。
+    # 使用停止 (Process の active と同じ形): 外すと、新しい実績にこの社員の番号を入れたときに、検査の層のポカよけ R28 が知らせる (止めるかは会社の設定 progress_inactive_staff)。消さないので、今までの実績は社員を指したまま残る。
     # 編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
     active = models.BooleanField("使用中", default=True, editable=False)
 

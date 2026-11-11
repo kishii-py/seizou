@@ -21,6 +21,7 @@
   その請求書に入金があれば、断りの文 (cancel_refusal) に取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計
   (金額の閲覧の無い人には件数だけ) を書く (入金は請求書の逆の関係 payments の先の表として引く。作者の決め)。
 - 打ち間違えた出荷は delete_shipment で消す (断る訳は delete_refusal の 1 か所。本人の決め 11-08 00:23・00:25)。
+- 請求済みの出荷 (billed_by) の直しと削除は断らない。検査の層の R27 が services の前に知らせる (本人の決め 11-11 12:5x〜13:0x)。
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
@@ -312,6 +313,40 @@ def outside_paid_shipments(note):
     return list(found.values())
 
 
+def billed_by(shipment):
+    """出荷 1 つが請求済みなら、何で請求済みかの (種類, 記録) の組を返す (読むだけ。問い合わせ 3 回まで)。請求済みでなければ None。
+
+    種類と記録 (見る順は cancel_refusal の文の順と同じ。最初に当たった 1 つを返す):
+    "line" = 発行の請求書に出荷の行で入っている (記録はその請求書の明細。明細の pk の小さい方)。
+    "lump" = 受注の明細に発行の請求書の一式の行がある (記録はその一式の行。明細の pk の小さい方)。
+    "outside" = 請求書の外で受け取った入金 (取消でない) を記録している (記録はその入金。入金の pk の小さい方)。
+    請求書の明細は請求書を一緒に引く (呼ぶ側が請求書の番号を字にするため)。取消の請求書と取消の入金は見ない。
+    請求書の部品が無ければ None。読み方は invoiced_shipments・_has_issued_lump_line・outside_paid_shipments と同じ
+    (請求書の明細と入金の表は出荷の逆の関係 invoice_lines・payments の先として引き、billing を import しない)。
+    検査の層の R27 (core.checks.builtin。請求済みの出荷を直すか消そうとしたら知らせる) が、出荷の編集と削除の前に読む。
+    """
+    try:
+        lines = Shipment._meta.get_field("invoice_lines").related_model
+    except FieldDoesNotExist:
+        return None
+    issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
+    rows = lines._default_manager.select_related("invoice").filter(invoice__status=issued).order_by("pk")
+    row = rows.filter(shipment=shipment).first()
+    if row is not None:
+        return "line", row
+    row = rows.filter(order_line_id=shipment.order_line_id, shipment__isnull=True).first()
+    if row is not None:
+        return "lump", row
+    try:
+        payments = Shipment._meta.get_field("payments").related_model
+    except FieldDoesNotExist:
+        return None
+    paid = payments._default_manager.filter(shipment=shipment, status=payments.STATUS_RECORDED).order_by("pk").first()
+    if paid is not None:
+        return "outside", paid
+    return None
+
+
 def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=None) -> str:
     """納品書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
@@ -372,7 +407,7 @@ def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=No
 def cancel_delivery_note(note, user):
     """発行の納品書を取消にする。入っていた出荷は納品書を指したまま残す (取消の納品書の詳細に出る)。
 
-    取消の納品書の出荷は請求できず (billing が R09 で断る)、直してから新しい納品書にまとめ直せる。
+    取消の納品書の出荷も請求できる (納品書は出荷の記録を刷った物。本人の決め 11-11 10:1x)。直してから新しい納品書にまとめ直せる。
     発行の請求書に入った出荷があれば、何も変えずに ValueError (一式の行で請求した明細の出荷と、請求書の外で受け取った入金を記録した出荷も同じ (文は cancel_refusal)。先に請求書を取り消す。その請求書に入金があれば、
     文は取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計を書く)。文は cancel_refusal の 1 か所で、
     金額の閲覧の無い人には件数だけ (access.hides_money。請求書の cancel_invoice と同じ)。入金の行はロックしない (書かない)。
@@ -454,6 +489,7 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
 
     発行の納品書に入った出荷は R08 で断る (先に cancel_delivery_note)。
     受注より多い数はここでは止めない (現物優先。検査の層が services の前に見る)。
+    請求済みの出荷 (billed_by) は断らず、検査の層の R27 が知らせる (本人の決め 11-11 12:5x〜13:0x)。
     明細を出し終えた出荷の印 (finishes_line) も付ける (入れた順で、明細の出荷の合計を数量の手前から数量以上にした最初の出荷。印の付いた出荷が既にあるか、発行の請求書に一式の行がある明細には付けない)。
     直した出荷の印だけを数え直す (ほかの出荷に付け直さない)。
     訳: 取消した受注の出荷を直さず (R05)、発行の納品書に入った出荷は納品書を取り消してから直し (R08)、0 以下の数にせず (R02)、分納を許さない会社では残りの数と違う数を止めるため。出所 = RULES.md R05・R08・R02 と 会社の設定 partial_shipment (既定は許す)。
@@ -506,6 +542,8 @@ def delete_shipment(shipment, user):
     (refresh_status。取消の受注は変えない)。在庫は出荷を動きの表に書かず集計で引くので、行を消せば出荷の前の数に戻る。
     出荷の知らせは送らない (HTTP を呼ばない)。添付と書式つきのメモは消さない (付けた先の無い行が残る)。
     返す物 (消した出荷。pk は None) に、画面の知らせの字 saved_message (「出荷 <番号> を削除しました。」) を付ける (表に書かない)。
+    請求済みの出荷 (billed_by) は断らず、検査の層の R27 が知らせる (本人の決め 11-11 12:5x〜13:0x。今は delete_refusal が断らない出荷のうち、
+    一式の行で請求した明細の出荷だけが当たる)。
     訳: 違う受注の明細へ入れた出荷などの打ち間違いを消し、受注の状態と在庫を出荷の前に戻すため。発行の納品書が指す出荷は、先に納品書を取り消す。
     請求書の明細・請求書の外の入金が指す出荷は、取り消しても行が残るので消さず、「編集」で直す (金額の書類を黙って変えない)。
     取引先につながる出荷 (受信した注文の出荷・送った出荷の知らせ・届いた検収) は消しても相手の記録が戻らないので断り、直し方は別に設計する (会期の外)。
