@@ -194,6 +194,21 @@ def test_receiving_the_other_line_after_completion_delivers(user, subcontractor,
 
 
 @pytest.mark.django_db
+def test_change_delivers_order_with_completed_line(user, sent_partner, items):
+    """「変更」の終わりの「納品された」の判定も、完了の明細を済んだと数え、取り消した明細を外す。"""
+    po, (first, second, third) = _po(user, sent_partner, items, ["100", "10", "5"])
+    services.receive(first, Decimal("98"), DAY, user)
+    services.mark_completed(first, user)
+    services.receive(second, Decimal("5"), DAY, user)
+    assert _status(po) == PurchaseOrder.STATUS_SENT
+
+    services.change_purchase_order(po, {}, [{"line": _line(first.pk)}, {"line": _line(second.pk), "qty": Decimal("5")}], user)
+    assert _line(third.pk).is_cancelled
+    assert _line(first.pk).completed is True
+    assert _status(po) == PurchaseOrder.STATUS_DELIVERED
+
+
+@pytest.mark.django_db
 def test_clear_after_receipts_on_accepted_order_is_partial(user, sent_partner, items):
     po, (first, second) = _po(user, sent_partner, items, ["100", "10"])
     services.mark_accepted(po, None)
@@ -318,6 +333,24 @@ def test_sent_order_completion_warns_and_sends_nothing(user, sent_partner, items
     )
     assert _status(po) == PurchaseOrder.STATUS_DELIVERED
     assert po.revision_no == 1
+
+
+@pytest.mark.django_db
+def test_sent_order_receive_close_rest_warns(user, sent_partner, items, fake):
+    """送った発注の受入の「残りは受け入れずに完了にする」: 検収は今までどおり送り、完了は送らず、返す受入に黄の知らせの字を付ける。"""
+    po, (first, _second) = _po(user, sent_partner, items, ["100", "10"])
+    services.receive(first, Decimal("98"), DAY, user)
+    calls = len(fake.calls)
+
+    receipt = services.receive(_line(first.pk), Decimal("1"), DAY, user, close_rest=True)
+    assert len(fake.calls) == calls + 1  # 検収の 1 回だけ
+    assert receipt.acceptance_sent_at is not None
+    assert receipt.saved_level == "warning"
+    assert receipt.saved_message == (
+        f"受入を保存しました。{po.po_no}-1 を完了にしました。残り 1 は受け入れずに終えます。"
+        "また受け入れるときは、明細の ⋮ から完了を外してください。" + SENT_NOTE
+    )
+    assert _line(first.pk).completed is True
 
 
 @pytest.mark.django_db
