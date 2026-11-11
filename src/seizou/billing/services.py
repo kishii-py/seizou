@@ -58,10 +58,12 @@ from django.utils import timezone
 from seizou.core import access, history
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import company, next_number, record_history
+from seizou.core.services import keep_report_copy, note_copy_failed
 from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
 from seizou.shipping.services import amount_of_shipment
 
 from .models import Invoice, InvoiceLine, Payment
+from .reports import INVOICE_TEMPLATE, invoice_context
 
 #: 消費税の率 (会社の設定に置くまでの定数)
 TAX_RATE = Decimal("0.10")
@@ -238,6 +240,7 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     書いた請求書と明細は、変更の履歴に「作った」で残す (人は user)。
     発行した時の会社の登録番号・住所・電話・振込先と得意先の名前と税率、明細の品番・品名・単位 (受注の明細から)・得意先の注文番号を写す
     (刷り直しても渡した時と同じ字。決め 11-07 23:4x・11-08 00:0x。訳は billing.models の Invoice と InvoiceLine)。
+    発行の時の帳票の写しを残す (R34)。描けなければ、返す請求書の saved_note に字を足して黄にする (core.services.keep_report_copy・note_copy_failed)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     locked = list(_Shipment.objects.select_for_update().filter(pk__in=pks).order_by("pk"))
@@ -312,6 +315,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     invoice.saved_note, level = _period_note(customer, period_from, period_to)
     if level:
         invoice.saved_level = level
+    if keep_report_copy(invoice, user, title="請求書", template=INVOICE_TEMPLATE, context=invoice_context(invoice)) is None:
+        note_copy_failed(invoice)
     return invoice
 
 

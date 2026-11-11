@@ -16,6 +16,10 @@
 - record_history(obj, user, *, before=None, by="", changes=None): 変更の履歴 (ChangeLog) に 1 行書く (作った・直した・使用停止・再開・取消)。
   各 app の services が、書く前に core.history.saved_state(obj) を取り、書いた後に同じ atomic の中で呼ぶ (作者の決め)。
 - record_history_deleted(obj, user, *, by=""): 消す前に呼び、その時の値を前に残して「消した」の 1 行を書く。
+- keep_report_copy(obj, user, *, title, template, context, revision=1, by=""): 帳票の写し (ReportCopy) を 1 行書く (R34)。
+  請求書と納品書を発行した時と、発注を作るか変えて版を上げた時に、各 app の services が同じ atomic の中で呼ぶ。描けなければ写しだけを戻して None。
+  note_copy_failed(obj) は、None の時に返す物の saved_note の後ろに COPY_FAILED_NOTE を足し、saved_level を "warning" にする (表に書かない)。
+- report_copies(obj): その記録の写しを古い順に返す (読むだけ)。写しを直す関数と消す関数は無い。
 """
 
 from __future__ import annotations
@@ -29,8 +33,11 @@ from django.utils import timezone
 from seizou.core import conf
 from seizou.core.conf import setting
 from seizou.core.models import BellOpened, ChangeLog, Company, NumberSequence, SettingOverride, UserPreference
+from seizou.core.models import ReportCopy
 
 logger = logging.getLogger("seizou.settings")
+#: 帳票の写しを残せなかった時の WARNING (keep_report_copy)
+report_logger = logging.getLogger("seizou.reports")
 
 PREFIXES = {
     "order": "SO",
@@ -564,6 +571,63 @@ def record_history_deleted(obj, user, *, by=""):
     return _write_history(obj, user, ChangeLog.ACTION_DELETED, items, by=by)
 
 
+# ---- 帳票の写し (R34。請求書・納品書・発注書を発行した時の字。2 段目の詳細の枠が report_copies を読む) ----
+
+#: 写しを残せなかった時に、返す物の saved_note の後ろに足す字 (黄色の知らせ。note_copy_failed)
+COPY_FAILED_NOTE = "発行の時の写しを残せませんでした。会社の帳票のテンプレートを確かめてください。"
+
+
+def keep_report_copy(obj, user, *, title, template, context, revision=1, by=""):
+    """帳票の写し (ReportCopy) を 1 行書き、書いた行を返す。描けなければ None (例外を上げない)。R34。
+
+    呼ぶ側の transaction.atomic の中で呼ぶ約束 (発行が戻れば写しも戻り、発行の無い写しが残らない)。
+    入れ子の transaction.atomic (savepoint) の中で core.reports.render_html(template, context) で HTML を描き、1 行作る。
+    savepoint の中で例外が出たら、その savepoint だけを戻し、logging の "seizou.reports" に WARNING (例外の情報つき・帳票の名前と番号) を
+    残して None を返す。呼ぶ側は None を覚えておき、最後に返す物に note_copy_failed を掛ける。
+    context は印刷用の画面と同じ context の関数の結果 (印刷用の画面だけが足す QR の字 qr_text と金額を隠す印 hide_money は渡さない)。
+    人の列は変更の履歴と同じ形 (_actor。人の字はその時の str(user)、人の無い処理は by の字、どちらも無ければ空)。
+    表は obj._meta.label_lower、行の番号は obj.pk、帳票の番号は str(obj)。revision は版 (発注の revision_no。請求書と納品書は 1)。PDF は作らない。
+    訳: 出した請求書・納品書・発注書を、後から出した時の字と数で開き直せるようにするため (得意先や協力企業から問合せが来たときに、渡した物と同じ物を見て答える)。帳票は開くたびに今の記録から作るので、受注の単価・部品マスター・会社の設定を後で直すと刷り直しの字が変わり、発注の前の版の中身は残らない。発行と同じ処理の中で書き、直す道と消す道を作らない。写しは印刷用の画面と同じ HTML の字で持ち、発行の処理では PDF を作らない (PDF の部品の無い置き場でも発行を止めないため)。写しを描けないとき (会社の置き場で帳票のテンプレートを上書きして誤ったときなど) は、写しだけを戻して発行を続け、黄色の知らせで伝える (写しのために新しく止める処理を足さない)。電子帳簿保存法への当てはめは未確認。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M06) と AI の案 (残す時と形)。変えてよい条件 = 本人が決め直したとき (写しを消す口を作る・刷るたびに残す・PDF で残す、と決めたとき)。
+    """
+    from seizou.core import reports
+
+    try:
+        # 例外は savepoint の外で捕まえる (中で捕まえると、DB の例外の後に外の transaction が使えなくなる)
+        with transaction.atomic():
+            html = reports.render_html(template, context)
+            actor = _actor(user)
+            return ReportCopy.objects.create(
+                actor=actor,
+                actor_label=(str(actor) if actor is not None else by or "")[:150],
+                model=obj._meta.label_lower,
+                object_pk=obj.pk,
+                object_text=str(obj)[:200],
+                title=title,
+                revision=revision,
+                template=template,
+                html=html,
+            )
+    except Exception:
+        report_logger.warning("帳票の写しを残せなかった: %s %s (テンプレート %s)", title, obj, template, exc_info=True)
+        return None
+
+
+def note_copy_failed(obj):
+    """写しを残せなかった時に、返す物 obj の saved_note の後ろに COPY_FAILED_NOTE を足し、saved_level を "warning" (黄) にして obj を返す。
+
+    既にある saved_note の字は消さない。表に書かない (入力の土台 core.views.with_saved_note が知らせの後ろに付ける属性)。
+    """
+    note = getattr(obj, "saved_note", "")
+    obj.saved_note = f"{note}{COPY_FAILED_NOTE}" if isinstance(note, str) else COPY_FAILED_NOTE
+    obj.saved_level = "warning"
+    return obj
+
+
+def report_copies(obj):
+    """記録 obj の帳票の写しの queryset (日時の古い順。同じ日時は pk の順)。読むだけ。表 (_meta.label_lower) と行の番号で引く。"""
+    return ReportCopy.objects.filter(model=obj._meta.label_lower, object_pk=obj.pk).order_by("created_at", "pk")
+
+
 # ---- 上の帯の知らせの鈴 (core.bell が読む。受け渡しの seizou-部品の6案-20261107/指示書.md の 4) ----
 
 
@@ -587,4 +651,4 @@ def open_bell(user):
     return row
 
 
-__all__ = ["bell_opened_at", "clear_setting", "company", "company_icons", "company_or_none", "next_number", "open_bell", "record_history", "record_history_deleted", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]
+__all__ = ["bell_opened_at", "clear_setting", "company", "company_icons", "company_or_none", "keep_report_copy", "next_number", "note_copy_failed", "open_bell", "record_history", "record_history_deleted", "report_copies", "set_setting", "set_user_preference", "transaction", "update_company", "user_preference", "validate_setting"]

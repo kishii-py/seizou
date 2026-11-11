@@ -36,9 +36,9 @@ from .forms import (
 )
 from .models import Invoice, Payment
 from .models import InvoiceLine
-from .reports import invoice_context
+from .reports import INVOICE_TEMPLATE, invoice_context
 
-REPORT_TEMPLATE = "billing/invoice.html"
+REPORT_TEMPLATE = INVOICE_TEMPLATE
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください"
 
 
