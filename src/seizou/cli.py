@@ -84,6 +84,7 @@ SETTING_DEFAULTS = {
     "progress_staff": "warn",
     "billed_shipment": "warn",
     "progress_inactive_staff": "warn",
+    "progress_defect_kind": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

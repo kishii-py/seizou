@@ -34,6 +34,7 @@
 | R26 | 社員の一覧に使用中の社員が居る会社で、作業した人 (社員番号か、社員の一覧に居ない人の名前) の無い実績を入れたら | `progress_staff` | `tests/test_r26_progress_staff.py` |
 | R27 | 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) を直すか消そうとしたら | `billed_shipment` | `tests/test_r27_billed_shipment.py` |
 | R28 | 実績の作業した人に、使用停止の社員を入れたら (直すときに同じ社員のままなら見ない) | `progress_inactive_staff` | `tests/test_r28_inactive_staff.py` |
+| R30 | 不良の区分の一覧に使用中の区分がある会社で、区分を選んでいない不良のある実績を入れたら | `progress_defect_kind` | `tests/test_r30_defect_kind.py` |
 
 ## 書き方の決まり (決まりの検査が止める。自社の画面のコードを、起動のときと CI で検査する)
 

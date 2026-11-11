@@ -11,6 +11,13 @@
 写しを書くのは 2 つのときだけ。社員の一覧に居ない人 (応援) を名前で入れたとき (名前の写しだけ) と、社員を消すとき
 (masters.services.delete_staff が progress.services.copy_staff_before_delete を呼び、消す時の名前と番号を写してから外部キーを空にする)。
 外部キーは PROTECT なので、services を通らずに社員を消す道は表が止める。見せる字は get_staff_name_display の 1 か所で作る (表に書かない)。
+
+不良の行 (ProgressDefect。見比べのまとめの M09) は、実績の不良を区分ごとに持つ。1 行 = 区分 (masters.DefectKind への外部キー。空でよい)・数・原因・対策。
+人が打つのは行だけで、実績の不良の数 (defect_qty) は progress.services がいつも行の数の合計を書く (盤・生産管理ボード・R02 の表の制約は今のまま実績の不良の数を読む)。
+不良のある実績には、いつも 1 行以上の不良の行がある。不良の数だけを渡されたとき (区分の一覧を使わない会社) は、区分の無い 1 行を services が作る。
+区分を消すときは、masters.services.delete_defect_kind が progress.services.copy_defect_kind_before_delete を呼び、その区分を指す行の全部に
+消す時の区分の名前を写し (kind_name) てから外部キーを空にする。外部キーは PROTECT なので、services を通らずに区分を消す道は表が止める。
+見せる字は get_kind_name_display の 1 か所で作る (表に書かない)。
 """
 
 from decimal import Decimal
@@ -106,3 +113,57 @@ class Progress(models.Model):
         if self.staff_id is not None:
             return str(self.staff)
         return " ".join(part for part in (self.staff_code, self.staff_name) if part)
+
+
+#: 区分の外部キーも写しの名前も空の不良の行の見せる字
+NO_KIND_TEXT = "区分なし"
+
+
+class ProgressDefect(models.Model):
+    """不良の行 (実績の不良を区分ごとに持つ行。見比べのまとめの M09)。書くのは progress.services だけ。
+
+    実績の不良の数 (Progress.defect_qty) は、この行の数の合計を services が書く (人が合計を別に打たない)。
+    区分の名前の写し (kind_name) を書くのは、区分を消すとき (progress.services.copy_defect_kind_before_delete) だけ。
+    """
+
+    progress = models.ForeignKey(Progress, verbose_name="実績", on_delete=models.CASCADE, related_name="defects")
+    # 外部キーの先は字で書く (progress の models は masters の models を import しない)。
+    # PROTECT: services (masters.services.delete_defect_kind) を通らずに区分を消す道を表が止め、写しの無いまま外部キーだけが空になる道を作らない。
+    kind = models.ForeignKey(
+        "masters.DefectKind",
+        verbose_name="不良の区分",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="progress_defects",
+    )
+    # 区分の名前の写し。書くのは、区分を消すときだけ。
+    kind_name = models.CharField("区分の名前の写し", max_length=100, blank=True, default="")
+    qty = models.DecimalField("数", max_digits=12, decimal_places=2)
+    cause_note = models.CharField("原因", max_length=500, blank=True)
+    countermeasure = models.CharField("対策", max_length=500, blank=True)
+
+    #: 変更の履歴は指示書の詳細の「履歴」に出す (実績と同じ所。core.history が実績 → 指示書の工程 → 指示書と辿る)
+    history_owner = "progress.workorder_step.workorder"
+
+    class Meta:
+        verbose_name = "不良の行"
+        verbose_name_plural = "不良の行"
+        ordering = ("progress", "pk")
+        constraints = [
+            # 不良の行の数は 0 より大きい (0 の行は作らず、行を消す)。services を通らずに表へ書いても止める。
+            models.CheckConstraint(condition=models.Q(qty__gt=0), name="progress_progressdefect_qty_positive"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_name_display()} {_qty_text(self.qty)}"
+
+    def get_kind_name_display(self) -> str:
+        """不良の行の区分の見せる字 (一覧の列・CSV・知らせの字・変更の履歴が、この 1 つの関数で読む。表に書かない)。
+
+        外部キーがあれば区分の今の名前。空なら写しの名前。両方が空なら「区分なし」。土台の display_value は
+        get_<欄の名前>_display を先に見るので、一覧の列と CSV の kind_name もこの字になる。
+        """
+        if self.kind_id is not None:
+            return self.kind.name
+        return self.kind_name or NO_KIND_TEXT
