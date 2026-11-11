@@ -408,7 +408,8 @@ def test_lists_have_import_button(client_logged_in, list_name, import_name):
     body = client_logged_in.get(reverse(list_name)).content.decode()
 
     assert "CSV 取り込み" in body
-    assert f'href="{reverse(import_name)}"' in body
+    # 入口は開いた一覧の道を ?next= で渡す (取り込んだ後に一覧へ戻る。tests/test_masters_csv_import_next.py)
+    assert f'href="{reverse(import_name)}?next={reverse(list_name)}"' in body
     assert "新規登録" in body
     assert body.count("btn-primary") == 1
 
