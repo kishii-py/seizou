@@ -36,6 +36,7 @@
 | R28 | 実績の作業した人に、使用停止の社員を入れたら (直すときに同じ社員のままなら見ない) | `progress_inactive_staff` | `tests/test_r28_inactive_staff.py` |
 | R29 | 一式の発注の明細を、受入があるのに一式の金額の載った受入が無いうちに完了にしたら | `lump_completion` | `tests/test_r29_lump_completion.py` |
 | R30 | 不良の区分の一覧に使用中の区分がある会社で、区分を選んでいない不良のある実績を入れたら | `progress_defect_kind` | `tests/test_r30_defect_kind.py` |
+| R31 | 同じ得意先に、得意先の注文番号が同じ受注が既にあったら (取消の受注と番号の空の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。全角と半角・大文字と小文字・前後の空白の違いは同じ番号と見る) | `same_customer_order_no` | `tests/test_r31_same_customer_order_no.py` |
 
 ## 書き方の決まり (決まりの検査が止める。自社の画面のコードを、起動のときと CI で検査する)
 

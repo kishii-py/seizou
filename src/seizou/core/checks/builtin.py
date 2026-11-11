@@ -546,6 +546,139 @@ class DefectWithoutKind(Check):
         return head + "不良の集計では「未設定」の行に入ります。このまま保存できます。"
 
 
+#: R31 の文に並べる受注番号の数 (これより多ければ「 ほか <n> 件」を付ける)
+_R31_LISTED = 3
+
+
+def _same_order_no_message(check, customer_order_no, order_nos) -> str:
+    """R31 の文。番号は入れた字の前後の空白を落とした字 (照合の字にしない)。受注番号は 3 件までを「、」でつなぐ。金額は書かない。
+
+    続けて足す 1 文は mode で分ける (止めるの文の頭には、検査の層が「保存できません。」を付けるので、「このまま保存できます」と出さない)。
+    """
+    listed = "、".join(order_nos[:_R31_LISTED])
+    if len(order_nos) > _R31_LISTED:
+        listed += f" ほか {len(order_nos) - _R31_LISTED} 件"
+    head = f"得意先の注文番号 {str(customer_order_no).strip()} は、同じ得意先の受注 {listed} にもあります。"
+    if check.current_mode() == "stop":
+        return head + "同じ注文書を 2 回入れていないか、既にある受注を確かめてください。"
+    return head + "同じ注文書を 2 回入れていないか確かめてください。1 枚の注文書を受注に分けて入れたのなら、このまま保存できます。"
+
+
+def _same_order_no_text(check, customer, customer_order_no) -> str | None:
+    """得意先と番号から、同じ番号の受注があれば R31 の文、無ければ None。得意先が無いか、番号が字でないか空なら見ない。"""
+    if customer is None or not isinstance(customer_order_no, str) or not customer_order_no.strip():
+        return None
+    found = tools.same_customer_order_no(customer, customer_order_no)
+    if not found:
+        return None
+    return _same_order_no_message(check, customer_order_no, found)
+
+
+class SameCustomerOrderNo(Check):
+    """R31: 同じ得意先に、得意先の注文番号が同じ受注が既にあったら (受注の新規登録)。
+
+    data の customer は得意先、customer_order_no は得意先の注文番号 (受注の入力の form の service_kwargs と、MCP の道具と AI チャットの提案の create_order が同じ鍵で渡す)。
+    比べるのは照合の字 (orders.services.customer_order_no_key) で、見方は tools.same_customer_order_no。
+    文は「得意先の注文番号 <番号> は、同じ得意先の受注 <受注番号の並び> にもあります。」に、知らせるなら「同じ注文書を 2 回入れていないか確かめてください。
+    1 枚の注文書を受注に分けて入れたのなら、このまま保存できます。」、止めるなら「同じ注文書を 2 回入れていないか、既にある受注を確かめてください。」を続ける。
+    訳: 同じ注文書を 2 人が入れる・同じ注文書を 2 回読み取りに置く・同じ注文が手入力と受信した注文の両方から入る間違いに、保存の前に気づかせるため。1 枚の注文書の部品を受注に分けて入れる会社では同じ番号が正しいので、止めずに知らせる (止めるか知らせるか通すかは会社が選ぶ。既定は知らせる)。別の得意先の同じ番号・番号の空の受注・取消の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。services が断る物 (取消の受注の編集・受注にした読み取り・未処理でない受信した注文・変更と取消の版) には文を返さない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R31"
+    action = "orders.create_order"
+    setting_key = "same_customer_order_no"
+
+    def run(self, data, user):
+        return _same_order_no_text(self, data.get("customer"), data.get("customer_order_no"))
+
+
+class SameCustomerOrderNoOnUpdate(Check):
+    """R31: 受注の得意先の注文番号か得意先を直して、同じ得意先に同じ番号の受注が既にあるようにしたら (受注の編集)。
+
+    data の object は直す受注 (土台の入力の画面が渡す)。取消の受注は見ない (services の update_order が R05 で先に断る)。
+    新しい得意先は data の customer (無ければ受注の得意先)、新しい番号は data の customer_order_no (無ければ受注の番号。設定 hidden_fields で欄を外した会社は鍵が来ない)。
+    受注の画面の form は ModelForm で、検証の中で object の得意先と番号を送った値に書き換える (core.history.saved_state の注記) ので、object から直す前の値は読めない。
+    そこで、新しい得意先と番号で同じ番号の受注を引き、直す受注そのものが並びに入っていれば (表の今の値が新しい値と同じ = 番号も得意先も変えていない) 何も出さない。
+    入っていなければ、並びは直す受注のほかの受注だけなので、その並びで知らせる (直している受注は数えない)。受注番号と状態は form の欄でないので object から読む。
+    訳: 同じ注文書を 2 人が入れる・同じ注文書を 2 回読み取りに置く・同じ注文が手入力と受信した注文の両方から入る間違いに、保存の前に気づかせるため。1 枚の注文書の部品を受注に分けて入れる会社では同じ番号が正しいので、止めずに知らせる (止めるか知らせるか通すかは会社が選ぶ。既定は知らせる)。別の得意先の同じ番号・番号の空の受注・取消の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。services が断る物 (取消の受注の編集・受注にした読み取り・未処理でない受信した注文・変更と取消の版) には文を返さない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R31"
+    action = "orders.update_order"
+    setting_key = "same_customer_order_no"
+
+    def run(self, data, user):
+        order = data.get("object")
+        if order is None:
+            return None
+        if order.status == type(order).STATUS_CANCELLED:
+            return None
+        customer = data["customer"] if "customer" in data else order.customer
+        customer_order_no = data["customer_order_no"] if "customer_order_no" in data else order.customer_order_no
+        if customer is None or not isinstance(customer_order_no, str) or not customer_order_no.strip():
+            return None
+        found = tools.same_customer_order_no(customer, customer_order_no)
+        if order.order_no in found or not found:
+            return None
+        return _same_order_no_message(self, customer_order_no, found)
+
+
+class SameCustomerOrderNoOnExtraction(Check):
+    """R31: 注文書の読み取りを受注にするとき、同じ得意先に、読み取った注文番号と同じ番号の受注が既にあったら (読み取りの受け入れ)。
+
+    data の object は受注にする読み取り (土台の入力の画面が URL の pk の読み取りを渡す)。状態が「読み取った」でない読み取り
+    (受注にした・捨てた・受信した注文へ回した。services の accept_extracted が断る) と、得意先の空の読み取りは見ない。
+    番号は読み取った中身の order_no (字でなければ見ない)。intake の model は import しない (属性と、object の class の状態の定数で読む)。
+    訳: 同じ注文書を 2 人が入れる・同じ注文書を 2 回読み取りに置く・同じ注文が手入力と受信した注文の両方から入る間違いに、保存の前に気づかせるため。1 枚の注文書の部品を受注に分けて入れる会社では同じ番号が正しいので、止めずに知らせる (止めるか知らせるか通すかは会社が選ぶ。既定は知らせる)。別の得意先の同じ番号・番号の空の受注・取消の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。services が断る物 (取消の受注の編集・受注にした読み取り・未処理でない受信した注文・変更と取消の版) には文を返さない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R31"
+    action = "intake.accept_extracted"
+    setting_key = "same_customer_order_no"
+
+    def run(self, data, user):
+        extraction = data.get("object")
+        if extraction is None:
+            return None
+        if extraction.status != type(extraction).STATUS_EXTRACTED:
+            return None
+        extracted = extraction.extracted if isinstance(extraction.extracted, dict) else {}
+        return _same_order_no_text(self, extraction.customer, extracted.get("order_no"))
+
+
+class SameCustomerOrderNoOnInbox(Check):
+    """R31: 受信した注文を受け入れるとき、同じ得意先に、相手の発注番号と同じ得意先の注文番号の受注が既にあったら (受信した注文の受け入れ)。
+
+    data の object は受け入れる受信した注文 (土台の入力の画面が URL の pk の行を渡す)。変更と取消の版 (revises_id がある行。受注を作らず元の受注を変える)・
+    状態が未処理でない行 (受け入れた = R11・断った)・取引先の空の行 (差出人の確認待ち) は、services が断るか受注を作らないので見ない。
+    番号は buyer_order_no()、得意先は partner。connect の model は import しない (属性と、object の class の状態の定数で読む)。
+    訳: 同じ注文書を 2 人が入れる・同じ注文書を 2 回読み取りに置く・同じ注文が手入力と受信した注文の両方から入る間違いに、保存の前に気づかせるため。1 枚の注文書の部品を受注に分けて入れる会社では同じ番号が正しいので、止めずに知らせる (止めるか知らせるか通すかは会社が選ぶ。既定は知らせる)。別の得意先の同じ番号・番号の空の受注・取消の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。services が断る物 (取消の受注の編集・受注にした読み取り・未処理でない受信した注文・変更と取消の版) には文を返さない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R31"
+    action = "connect.accept"
+    setting_key = "same_customer_order_no"
+
+    def run(self, data, user):
+        inbox = data.get("object")
+        if inbox is None:
+            return None
+        if inbox.revises_id is not None or inbox.partner_id is None:
+            return None
+        if inbox.status != type(inbox).STATUS_RECEIVED:
+            return None
+        return _same_order_no_text(self, inbox.partner, inbox.buyer_order_no())
+
+
+class SameCustomerOrderNoOnConditionalInbox(SameCustomerOrderNoOnInbox):
+    """R31: 受信した注文を、単価・数量・納期を直して受け入れるとき (条件付受諾)。見方と文は SameCustomerOrderNoOnInbox と同じ。
+
+    訳: 同じ注文書を 2 人が入れる・同じ注文書を 2 回読み取りに置く・同じ注文が手入力と受信した注文の両方から入る間違いに、保存の前に気づかせるため。1 枚の注文書の部品を受注に分けて入れる会社では同じ番号が正しいので、止めずに知らせる (止めるか知らせるか通すかは会社が選ぶ。既定は知らせる)。別の得意先の同じ番号・番号の空の受注・取消の受注は見ない。直すときは、番号か得意先を変えたときだけ見る。services が断る物 (取消の受注の編集・受注にした読み取り・未処理でない受信した注文・変更と取消の版) には文を返さない。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M35) と北極星のポカよけの考え方 (本人の決め 11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    action = "connect.accept_with_conditions"
+
+
 BUILTIN = (
     OverShipment(),
     OverShipmentOnUpdate(),
@@ -564,6 +697,11 @@ BUILTIN = (
     LumpCompletion(),
     LumpCompletionOnReceipt(),
     DefectWithoutKind(),
+    SameCustomerOrderNo(),
+    SameCustomerOrderNoOnUpdate(),
+    SameCustomerOrderNoOnExtraction(),
+    SameCustomerOrderNoOnInbox(),
+    SameCustomerOrderNoOnConditionalInbox(),
 )
 
 for _check in BUILTIN:

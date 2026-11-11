@@ -171,6 +171,7 @@ CHOICE_NOTES = {
     "progress_inactive_staff": _CHECK_MODE_NOTES,
     "lump_completion": _CHECK_MODE_NOTES,
     "progress_defect_kind": _CHECK_MODE_NOTES,
+    "same_customer_order_no": _CHECK_MODE_NOTES,
     "order_form": {"single": "画面が短く、番号が部品と 1 対 1 になる。"},
     "production_plan": {"false": "メニューに「生産計画」が出ない。"},
 }
