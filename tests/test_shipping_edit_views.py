@@ -402,7 +402,10 @@ def test_cancel_card_links_every_row_of_paid_invoice(logged_in, user, customer, 
 
 @pytest.mark.django_db
 def test_cancel_card_has_no_money_for_viewer_without_money(settings, client, user, customer, shipment, note):
-    """金額の閲覧の判定を on にした会社で、金額を見られない人の取消の画面も、知らせの文と取り消すボタンが出る (文に金額と入金の件数が無い)。"""
+    """金額の閲覧の判定を on にした会社で、金額を見られない人には、納品書の取消の画面を開いた時点で断る (納品書の取消は金額に関わる操作。
+
+    本人の決め 11-12 07:2x。直す前は画面が開いて取り消すボタンも出たが、保存で断られた)。開けない画面にも、金額と入金の件数は出ない。
+    """
     settings.SEIZOU = {"access_control": dict(ALL_ON)}
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
     billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), user)
@@ -410,12 +413,12 @@ def test_cancel_card_has_no_money_for_viewer_without_money(settings, client, use
 
     response = client.get(reverse("shipping:deliverynote_cancel", args=[note.pk]))
 
-    assert response.status_code == 200
+    assert response.status_code == 403
     body = response.content.decode()
-    assert services.billed_notice(note) in _warning(body)
+    assert "納品書は金額が主な内容のため、金額の閲覧の権限が無い方は取り消せません。" in body
     assert "入金の記録" not in body
     assert "¥6,500" not in body
-    assert f"{note.note_no} を取り消す</button>" in body
+    assert f"{note.note_no} を取り消す</button>" not in body
     note.refresh_from_db()
     assert note.status == DeliveryNote.STATUS_ISSUED
 

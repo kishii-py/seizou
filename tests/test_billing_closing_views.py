@@ -411,13 +411,15 @@ def test_e_without_money_post_is_refused(settings, client_logged_in, world):
 def test_e_without_money_table_has_no_amount(settings, client_logged_in, world):
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
 
-    body = _body(client_logged_in.get(_url(**OCT_QUERY)))
+    response = client_logged_in.get(_url(**OCT_QUERY))
 
-    table = _plan_table(body)
-    assert _headers(table) == ["得意先", "締め期間", "出荷の件数", "作るか", "訳"]
-    assert "¥" not in table
-    assert _rows(table)["C001"][2] == ["作り物の得意先 C001", "2026-10-01〜2026-10-31", "2 件", "作る", ""]
-    assert _button(body) == ("2 社の請求書を作る", False)
+    # 締めの一括は金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x。
+    # 直す前は金額の列の無い表が開き、保存で断られた)。開けない画面に、締めの表と金額は出ない
+    assert response.status_code == 403
+    body = response.content.decode()
+    assert "請求書は金額が主な内容のため、金額の閲覧の権限が無い方は作れません。" in body
+    assert "data-closing-plan" not in body and "税抜の金額" not in body
+    assert "作り物の得意先 C001" not in body
 
 
 @pytest.mark.django_db

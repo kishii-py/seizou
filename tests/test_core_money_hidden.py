@@ -251,7 +251,10 @@ def test_invoice_payments_and_payment_form_without_money(money_on, jimu, keiri, 
     assert ">合計</dt>" in shown_panel and "金額" in _heads(shown_panel, 'id="payments-heading"')
 
     form = reverse("billing:payment_create", args=[invoice.pk])
-    hidden_form = _get(jimu, form)[1]
+    # 入金の記録は金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x)。開けない画面に合計は出ない
+    refused = jimu.get(form)
+    hidden_form = refused.content.decode()
+    assert refused.status_code == 403 and "入金は金額が主な内容" in hidden_form
     assert '合計 <span class="tabular-nums">' not in hidden_form and 'tabular-nums">—</span>' not in hidden_form
     assert '合計 <span class="tabular-nums">' in _get(keiri, form)[1]
 

@@ -244,7 +244,9 @@ def test_writer_only_can_complete_and_clear(settings, client, user, short_line):
     client.force_login(user)
     complete_url, clear_url = _urls(short_line)
 
-    assert client.get(complete_url).status_code == 200
+    # 開いた時点で断る (「この画面は開けません」。保存の時と同じ訳の字。本人の決め 11-12 07:2x)。直に送っても、土台の権限の断り (赤) になる
+    opened = client.get(complete_url)
+    assert opened.status_code == 403 and "発注の編集の権限がありません。" in opened.content.decode()
     refused = client.post(complete_url, {}).content.decode()
     assert "発注の編集の権限がありません。" in refused
     assert _line(short_line.pk).completed is False

@@ -92,12 +92,14 @@ def test_refusal_counts_without_money(on, client, user, invoice):
     assert "¥" not in refusal
     assert _status(invoice) == Invoice.STATUS_ISSUED
 
-    # 取消の確かめの画面の黄の文も件数だけ
+    # 取消の確かめの画面は、金額の閲覧の無い人には開いた時点で断る (請求書の取消は金額に関わる操作。本人の決め 11-12 07:2x)。
+    # 開けない画面にも、金額と入金の件数は出ない
     client.force_login(jimu)
     response = client.get(reverse("billing:invoice_cancel", args=[invoice.pk]))
-    assert response.status_code == 200
+    assert response.status_code == 403
     html = response.content.decode()
-    assert ONE_LEFT_COUNT in html
+    assert "請求書は金額が主な内容のため、金額の閲覧の権限が無い方は取り消せません。" in html
+    assert ONE_LEFT_COUNT not in html
     assert ONE_LEFT not in html
     assert "取り消す</button>" not in html
 

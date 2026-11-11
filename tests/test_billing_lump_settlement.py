@@ -379,11 +379,15 @@ def test_create_form_has_lump_fields_only_with_money(settings, client, user, cus
     assert 'data-fill="50000"' in body and 'data-fill="16667"' in body
     assert "金額を決めて「載せる」に印を付けると、この請求書に 1 行で載ります。" in body
 
+    # 金額の閲覧の無い人には、開いた時点で断る (請求書を作るのは金額に関わる操作。本人の決め 11-12 07:2x。
+    # 直す前は欄の無い画面に「金額を見られる人が請求に載せます。」と出た)。開けない画面に、一式の欄は出ない
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
-    body = client.get(reverse("billing:invoice_create")).content.decode()
+    response = client.get(reverse("billing:invoice_create"))
+    body = response.content.decode()
+    assert response.status_code == 403
+    assert "請求書は金額が主な内容のため、金額の閲覧の権限が無い方は作れません。" in body
     assert f"lump-{line.pk}-amount" not in body
     assert f"lump-{line.pk}-pick" not in body
-    assert "金額を見られる人が請求に載せます。" in body
 
 
 # ---------------------------------------------------------------- (j) 詳細と印刷

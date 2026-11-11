@@ -198,8 +198,15 @@ def test_post_saves_process_and_quote_no(client_logged_in, subcontractor, items,
 
 
 @pytest.mark.django_db
-def test_people_without_money_keep_quote_no_without_pick(client_logged_in, processes, settings):
+def test_people_without_money_cannot_open_the_purchase_order_form(client_logged_in, processes, settings):
+    """発注の登録は金額に関わる操作なので、金額の閲覧の無い人には、入力の画面を開いた時点で断る (本人の決め 11-12 07:2x)。
+
+    直す前は、「単価表から選ぶ」の無い画面 (見積の番号の欄は有る) が開き、保存で断られた。開けない画面に、明細の欄は出ない。
+    """
     settings.SEIZOU = MONEY_ON
-    body = client_logged_in.get(reverse("purchasing:purchaseorder_create")).content.decode()
+    response = client_logged_in.get(reverse("purchasing:purchaseorder_create"))
+    body = response.content.decode()
+    assert response.status_code == 403
+    assert "金額の閲覧の権限が無い方は" in body
     assert "data-price-pick" not in body
-    assert 'name="lines-0-quote_no"' in body
+    assert 'name="lines-0-quote_no"' not in body

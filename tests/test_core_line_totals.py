@@ -241,28 +241,29 @@ def test_order_post_skips_deleted_lines(logged_in, user, customer, item, plate):
     assert _button(body)[0] == "1 行・合計 ¥1,000 で保存"
 
 
-def test_order_hides_amount_without_money(settings, logged_in, user, customer, item, plate):
+def test_order_form_does_not_open_without_money(settings, logged_in, user, customer, item, plate):
+    """受注の登録と変更は金額に関わる操作なので、金額の閲覧の無い人には、入力の画面を開いた時点で断る (本人の決め 11-12 07:2x)。
+
+    直す前は、金額の組の無い合計の枠と「n 行で受注する」のボタンの画面が開き、保存で断られた。開けない画面に、合計の枠と金額は出ない。
+    """
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
 
-    body = logged_in.get(reverse("orders:order_create")).content.decode()
-    assert _frame(body) == {"rows": "0", "qty": "0", "amount": None}
+    opened = logged_in.get(reverse("orders:order_create"))
+    body = opened.content.decode()
+    assert opened.status_code == 403
+    assert "受注は金額が主な内容のため、金額の閲覧の権限が無い方は新規登録できません。" in body
+    assert FRAME.findall(body) == []
     assert "data-line-totals-amount" not in body
     assert "金額 ¥<span" not in body
-    label, template, plain = _button(body)
-    assert (label, template, plain) == ("受注する", ["{rows} 行で受注する"], "受注する")
-    # 明細の上の注記に単価の文 (2 文目) を出さない (初見テスト R5 の候補 C11 の 1。V56・U54)。
-    assert "金額は数量 × 単価で" not in body
 
-    # 編集の形: 明細の初期値に単価があっても金額を出さない。
+    # 編集の形: 明細に単価があっても、開けない画面に金額は出ない。
     order = _two_line_order(user, customer, item, plate)
-    body = logged_in.get(reverse("orders:order_update", args=[order.pk])).content.decode()
-    assert _frame(body) == {"rows": "2", "qty": "30", "amount": None}
+    opened = logged_in.get(reverse("orders:order_update", args=[order.pk]))
+    body = opened.content.decode()
+    assert opened.status_code == 403
+    assert "金額の閲覧の権限が無い方は" in body
+    assert FRAME.findall(body) == []
     assert "金額 ¥<span" not in body
-    assert _button(body)[:2] == ("2 行で保存", ["{rows} 行で保存"])
-    assert "¥" not in _button(body)[0]
-    # 注記は 1 文目 (行の消し方) だけが残り、単価の文は出ない。
-    assert "金額は数量 × 単価で" not in body
-    assert "行を消すときは、表の右の端の「消す」に印を付けて保存します。" in body
 
 
 # --- 3. 発注 ---

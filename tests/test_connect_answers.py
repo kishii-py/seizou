@@ -310,7 +310,8 @@ def test_intake_row_has_no_conditional_or_hold_screen(client, user, customer):
 def test_conditional_without_money_is_refused(client, settings, sent, own_items):
     """金額の閲覧の無い人は、受け入れ (条件付を含む。受注を作る操作 = 金額に関わる操作) をしない。入口も出さない (決め 11-07 21:0x)。
 
-    受け入れの画面 (直に開いた物) は回答単価の欄を置かないまま (form の hide_money)。保存は金額の門が断り、受注はできない。
+    受け入れの画面を直に開くと、開いた時点で断る (本人の決め 11-12 07:2x。直す前は回答単価の欄の無い画面が開いた)。
+    直に送った時も金額の門が断り、受注はできない。描き直した画面にも回答単価の欄は置かない (form の hide_money)。
     """
     _po, inbox = sent
     settings.SEIZOU = {"access_control": dict(MONEY_ON)}
@@ -318,9 +319,12 @@ def test_conditional_without_money_is_refused(client, settings, sent, own_items)
 
     assert "条件を直して受け入れる" not in client.get(_url("inbox_accept", inbox)).content.decode()
     assert "受け入れる</a>" not in client.get(_url("inbox_detail", inbox)).content.decode()
-    body = client.get(_url("inbox_accept_conditional", inbox)).content.decode()
+    opened = client.get(_url("inbox_accept_conditional", inbox))
+    body = opened.content.decode()
+    assert opened.status_code == 403
+    assert "受信した注文は金額が主な内容のため、金額の閲覧の権限が無い方は受け入れられません。" in body
     assert "line_1_unit_price" not in body
-    assert "line_1_qty" in body
+    assert "line_1_qty" not in body
 
     data = _conditional_data(own_items, line_1_qty="8")
     for key in ("line_1_unit_price", "line_2_unit_price"):
@@ -331,6 +335,9 @@ def test_conditional_without_money_is_refused(client, settings, sent, own_items)
     html = response.content.decode()
     assert 'data-notice="stop"' in html
     assert "受信した注文は金額が主な内容のため、金額の閲覧の権限が無い方は受け入れられません。" in html
+    # 直に送って描き直した画面にも、回答単価の欄は出ない (数量の欄は出る)
+    assert "line_1_unit_price" not in html
+    assert "line_1_qty" in html
     assert Order.objects.count() == 0
 
     # 金額の閲覧のある人は、回答単価の欄が出て、同じ注文を条件付で受け入れられる。

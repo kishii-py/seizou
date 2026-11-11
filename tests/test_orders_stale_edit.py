@@ -308,10 +308,17 @@ def test_stale_save_after_accepting_change_that_removed_a_line_is_refused(fake, 
 
 
 @pytest.mark.django_db
-def test_token_for_user_without_money_is_the_same_keyed_value(settings, logged_in, order):
-    """金額の閲覧の無い人の編集の画面にも同じ字 (鍵のある hmac の 16 進 64 字) を置く。単価の欄は無い。"""
+def test_edit_form_does_not_open_for_user_without_money(settings, logged_in, order):
+    """受注の変更は金額に関わる操作なので、金額の閲覧の無い人には、編集の画面を開いた時点で断る (本人の決め 11-12 07:2x)。
+
+    直す前は、単価の欄の無い画面が開き、隠しの欄に鍵のある hmac の字 (金額を読めない形) を置いていた。開けない画面には、
+    隠しの欄 state_token も単価の欄も出ない。字そのものが鍵のある hmac の 16 進 64 字である事は、services の関数で見る。
+    """
     settings.SEIZOU = {"access_control": {"department": "off", "write": "off", "money": "on"}}
-    token = _token(logged_in, order)
-    assert HEX64.fullmatch(token)
-    assert token == services.order_state_token(order)
-    assert 'name="lines-0-unit_price"' not in logged_in.get(reverse("orders:order_update", args=[order.pk])).content.decode()
+    response = logged_in.get(reverse("orders:order_update", args=[order.pk]))
+    body = response.content.decode()
+    assert response.status_code == 403
+    assert "金額の閲覧の権限が無い方は" in body
+    assert 'name="state_token"' not in body
+    assert 'name="lines-0-unit_price"' not in body
+    assert HEX64.fullmatch(services.order_state_token(order))

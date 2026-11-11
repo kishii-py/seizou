@@ -301,8 +301,10 @@ def test_money_masked_in_payment_screens(on, client, invoice):
     assert "—" not in panel and "合計" not in panel  # 合計・入金済み・残の行ごと出ない (N155)
     assert "未入金" in panel
 
+    # 入金の記録は金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x)。開けない画面に金額は出ない
     form = client.get(reverse("billing:payment_create", args=[invoice.pk]))
-    assert form.status_code == 200
+    assert form.status_code == 403
+    assert "入金は金額が主な内容" in form.content.decode()
     assert "16,500" not in form.content.decode()
 
     refused = client.post(reverse("billing:payment_create", args=[invoice.pk]), POST)

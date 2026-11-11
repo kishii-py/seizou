@@ -239,8 +239,12 @@ def test_create_form_hides_lump_amounts_without_money(settings, client, user, cu
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
     line = _cancelled_lump(user, customer, item)
     client.force_login(user)
-    body = client.get(reverse("billing:invoice_create")).content.decode()
-    assert LUMP_SECTION in body
-    assert f"{line.order.order_no}-1" in body
+    response = client.get(reverse("billing:invoice_create"))
+    body = response.content.decode()
+    # 請求書を作るのは金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x。
+    # 直す前は一式の金額を隠した節が開いた)。開けない画面に、一式の節と金額は出ない
+    assert response.status_code == 403
+    assert LUMP_SECTION not in body
+    assert f"{line.order.order_no}-1" not in body
     assert "¥50,000" not in body and "¥16,667" not in body
     assert "<th class=\"text-right\">一式の金額</th>" not in body

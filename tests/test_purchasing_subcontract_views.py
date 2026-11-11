@@ -451,7 +451,9 @@ def test_handed_screen_clears_and_sets(logged_in, user, wo):
 def test_handed_screen_refuses_without_write(settings, logged_in, user, wo):
     po, line = subcontract_po(user, wo.subcontractor, wo.step)
     settings.SEIZOU = {"access_control": dict(NO_WRITE)}
-    assert logged_in.get(_handed_url(line)).status_code == 200
+    # 開いた時点で断る (「この画面は開けません」。保存の時と同じ訳の字。本人の決め 11-12 07:2x)。直に送っても断る
+    opened = logged_in.get(_handed_url(line))
+    assert opened.status_code == 403 and "発注の編集の権限がありません。" in opened.content.decode()
     refused = logged_in.post(_handed_url(line), {"handed_on": ""}).content.decode()
     assert "発注の編集の権限がありません。" in refused
     assert line_of(line.pk).handed_on == HANDED

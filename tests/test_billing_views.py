@@ -453,12 +453,14 @@ def test_create_form_without_money(settings, client_logged_in, user, customer, l
 
     response = client_logged_in.get(reverse("billing:invoice_create"))
 
+    # 請求書を作るのは金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x。
+    # 直す前は金額を隠した画面が開き、保存で断られた)。開けない画面に、金額の列と出荷の表は出ない
     body = response.content.decode()
-    assert response.status_code == 200
+    assert response.status_code == 403
+    assert "請求書は金額が主な内容のため、金額の閲覧の権限が無い方は作れません。" in body
     assert "金額 (税抜)" not in body
     assert "data-label-pick-amount" not in body
-    assert _frame(body)["amount"] is None
-    assert _button(body) == ("請求書を作る", ["{rows} 行の請求書を作る"], "請求書を作る")
+    assert 'name="shipments"' not in body
 
 
 @pytest.mark.django_db
@@ -697,9 +699,14 @@ def test_reissue_screen_hides_payment_total_without_money(client, settings, user
     services.record_payment(first, date(2026, 12, 1), Decimal("100"), user)
     client.force_login(account("clerk", permissions=["billing"]))
 
-    body = html.unescape(client.get(reverse("billing:invoice_reissue", args=[first.pk])).content.decode())
+    response = client.get(reverse("billing:invoice_reissue", args=[first.pk]))
+    body = html.unescape(response.content.decode())
 
-    assert "入金の記録が 1 件あります" in body  # 断りの字は C04 (361 回目) の形
+    # 作り直しは金額に関わる操作なので、金額の閲覧の無い人には開いた時点で断る (本人の決め 11-12 07:2x。
+    # 直す前は入金の件数だけを出した画面が開いた)。開けない画面に、入金の件数と合計は出ない
+    assert response.status_code == 403
+    assert "請求書は金額が主な内容のため、金額の閲覧の権限が無い方は作れません。" in body
+    assert "入金の記録が 1 件あります" not in body
     assert "合計 ¥" not in body
 
 

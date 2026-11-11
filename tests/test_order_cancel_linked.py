@@ -226,8 +226,9 @@ def test_department_outsider_numbers_are_not_links(settings, client, user, custo
     settings.SEIZOU = {"access_control": {"department": "on", "write": "on", "money": "on"}}
     order, workorder, shipment, note, invoice = _flowed(user, customer, item, cut)
     depts = _departments()
-    # 「受注と出荷」の部署は orders と shipping を開け、workorders と billing を開けない
-    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+    # 「受注と出荷」の部署は orders と shipping を開け、workorders と billing を開けない。
+    # 受注の取消は金額に関わる操作なので、金額の閲覧のある人で開く (無い人には、開いた時点で 403 の画面。tests/test_core_form_open_gate.py)
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"], see_money=True)
 
     body = _page(client, jimu, _cancel_url(order))
 

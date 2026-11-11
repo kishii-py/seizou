@@ -109,14 +109,19 @@ def test_help_text_names_tax_included_amount(client, user, item):
 
 @pytest.mark.django_db
 def test_no_initial_amount_without_money(settings, client, user, item):
-    """(d) 金額の閲覧の無い人には初めの値が無く、説明に金額 (¥) が無い。"""
+    """(d) 金額の閲覧の無い人には、入金の記録の画面を開いた時点で断る (入金の記録は金額に関わる操作。本人の決め 11-12 07:2x。
+
+    直す前は、初めの値と金額の説明の無い画面が開いた)。開けない画面に、金額の欄と金額の説明は出ない。
+    """
     customer = _customer(user, "C001")
     shipment = _shipment(user, customer, item)
     settings.SEIZOU = {"access_control": dict(NO_MONEY)}
     client.force_login(user)
 
-    form = _form(client, shipment)
+    page = client.get(reverse("billing:shipment_payment_create", args=[shipment.pk]))
 
-    assert form["amount"].value() is None
-    assert "¥" not in form.fields["amount"].help_text
-    assert f"出荷 {shipment.shipment_no} " in form.fields["amount"].help_text
+    assert page.status_code == 403
+    body = page.content.decode()
+    assert "金額の閲覧の権限が無い方は" in body
+    assert 'name="amount"' not in body
+    assert f"出荷 {shipment.shipment_no} " not in body
