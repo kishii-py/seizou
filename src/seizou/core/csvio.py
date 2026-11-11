@@ -19,9 +19,11 @@ from __future__ import annotations
 import csv
 import io
 from collections import Counter
+from datetime import datetime
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from seizou.core import fields as company_fields
 from seizou.core import seeds
@@ -258,6 +260,8 @@ def to_text(value):
     """表の値を、一覧の CSV の書き出しの 1 つの欄の字にする (to_value の逆の向き)。
 
     None は空の字、真偽は取り込みが読む字の組にある書き出しの字 (seeds.TRUE_TEXT・FALSE_TEXT。決め 11-06 22:0x)、ほかは str。
+    日時は、置き場の時刻帯 (settings の TIME_ZONE) の時刻にして「年-月-日 時:分:秒」で書く (時刻帯の印「+00:00」は付けない)。
+    訳: 表は日時を世界標準時で持つので、str のままだと画面の時刻と 9 時間ずれた字が CSV に出る (N407b の記録の要望 3)。
     真偽は isinstance で見る (数の 0 と 1 は数の字のまま)。
     数 (Decimal・int・float) は str のまま。ほかの字は neutralize を通す (式の字で始まる字の頭に「'」)。
     """
@@ -265,6 +269,9 @@ def to_text(value):
         return ""
     if isinstance(value, bool):
         return seeds.TRUE_TEXT if value else seeds.FALSE_TEXT
+    if isinstance(value, datetime):
+        local = timezone.localtime(value) if timezone.is_aware(value) else value
+        return local.strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(value, (int, float, Decimal)):
         return str(value)
     return neutralize(str(value))
