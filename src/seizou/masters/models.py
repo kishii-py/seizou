@@ -635,6 +635,33 @@ class Staff(models.Model):
         return f"{self.code} {self.name}"
 
 
+class DefectKind(models.Model):
+    """不良の区分 (実績の不良の行が選ぶ一覧。見比べのまとめの M09)。書くのは masters.services だけ。
+
+    名前は一意 (同じ名前が 2 行あると、不良の集計の行が 2 つに分かれるため)。services が前後の空白 (全角の空白を含む) を落としてから書く。
+    コードの欄は持たない (区分は選ぶ欄で選び、番号で打たないため)。使わなくなった区分は消さずに使用停止 (active が偽) にできる。
+    消すときは masters.services.delete_defect_kind が、不良の行に区分の名前を写してから消す (不良の行の外部キーは progress の側にだけあり、PROTECT)。
+    """
+
+    name = models.CharField("名前", max_length=100, unique=True)
+    sort_order = models.PositiveIntegerField("並び順", default=0)
+    note = models.CharField("備考", max_length=500, blank=True)
+    # 使用停止 (Process と Staff の active と同じ形): 外すと、実績の入力の不良の行の区分の候補に出ない (2 段目の画面)。
+    # 消さないので、今までの不良の行は区分を指したまま残る。編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
+    active = models.BooleanField("使用中", default=True, editable=False)
+
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+
+    class Meta:
+        verbose_name = "不良の区分"
+        verbose_name_plural = "不良の区分"
+        ordering = ("sort_order", "name", "pk")
+
+    def __str__(self):
+        return self.name
+
+
 class QuantityUnit(models.Model):
     """数量の単位の一覧 (読むだけの表。作者の決め)。
 
