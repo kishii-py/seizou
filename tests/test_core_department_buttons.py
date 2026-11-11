@@ -139,8 +139,9 @@ def test_department_outsider_entrances_hidden(settings, client, user, customer, 
     invoice_list_href = f'href="{reverse("billing:invoice_list")}"'
     ocr_href = f'href="{reverse("intake:extraction_create")}"'
     inbox_href = f'href="{reverse("connect:inbox_list")}"'
-    item_import = f'href="{reverse("masters:item_import")}"'
-    partner_import = f'href="{reverse("masters:partner_import")}"'
+    # 取り込みの入口は、開いた一覧の道を ?next= で渡すので、閉じの " の前まで (頭) で見る
+    item_import = f'href="{reverse("masters:item_import")}'
+    partner_import = f'href="{reverse("masters:partner_import")}'
     holiday_detail = reverse("masters:holiday_detail", args=[holiday.pk])
     holiday_delete = f'href="{reverse("masters:holiday_delete", args=[holiday.pk])}"'
     settings_url = reverse("core:settings")
