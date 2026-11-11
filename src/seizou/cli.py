@@ -83,6 +83,7 @@ SETTING_DEFAULTS = {
     "over_payment": "warn",
     "progress_staff": "warn",
     "billed_shipment": "warn",
+    "progress_inactive_staff": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,
