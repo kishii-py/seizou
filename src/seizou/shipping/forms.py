@@ -13,7 +13,7 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 
-from seizou.core import conf
+from seizou.core import checks, conf
 from seizou.core.forms import (
     CHECKBOX_CSS,
     Checkboxes,
@@ -57,11 +57,14 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
     submit_label_plain = "出荷する"
     # 欄の下の字を、JS が data-tone="warning" を付けた間だけ黄の字にする欄 (core/_form_card.html。数量が残りを超えた時。shipping/shipment-form.js)
     warning_help_fields = ("qty",)
+    #: 数量の欄の下の字で、検査の層の知らせの文の後に続ける字 (mode ごと。shipping/shipment-form.js の STOP_TEXT と WARN_TEXT と同じ字)
+    NOTICE_TAILS = {"stop": "このままでは保存できません。", "warn": "保存の時に確かめの知らせが出ます。"}
 
     order_line = forms.ModelChoiceField(
         label="受注の明細",
         queryset=_OrderLine.objects.select_related("order", "item"),
-        widget=RemoteSelect("orders:orderline_select"),
+        # 候補の口の for=shipping は、明細ごとの出荷の知らせ (ship_notice と ship_notice_mode) も返す (選び直したときに shipping/shipment-form.js が読む)
+        widget=RemoteSelect("orders:orderline_select", query={"for": "shipping"}),
         empty_label=EMPTY_LABEL,
         help_text=ORDER_LINE_HELP,
     )
@@ -99,8 +102,20 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
             self.fields["qty"].help_text = NO_LINE_HELP
         else:
             remaining = f"{remaining_qty(line).normalize():f}"
-            self.fields["qty"].help_text = f"残り {remaining}"
+            help_text = f"残り {remaining}"
             qty_attrs["data-remaining"] = remaining
+            # 保存の時に検査の層が出す知らせのうち、数に依らない物 (例 支給品・預かり品の入荷が無い明細) を、欄の下の字の頭に先に出す
+            # (保存の時の赤の知らせと同じ文。最初の止めるの文、無ければ最初の知らせるの文。候補の口の for=shipping と同じ選び方。
+            # 開発の記録 docs/nights/20261111/N421.md)。文と mode は数量の欄にも置く (JS が描いたときの明細の知らせとして読む)。
+            # 利用者は None (form は利用者を受けない。入荷の検査は利用者を見ない)。止めるか知らせるかは今のとおり保存の時に検査の層が決める。
+            found = checks.preview("shipping.ship", {"order_line": line}, None)
+            chosen = next((item for item in found if item[0] == "stop"), found[0] if found else None)
+            if chosen is not None:
+                mode, warning = chosen
+                qty_attrs["data-ship-notice"] = warning.message
+                qty_attrs["data-ship-notice-mode"] = mode
+                help_text = warning.message + self.NOTICE_TAILS[mode] + help_text
+            self.fields["qty"].help_text = help_text
         # 保存のボタンの字 (開発の記録 docs/nights/20261104/N138.md): 描いたときの明細の単位で「10 個を出荷する」。明細を選び直したら JS が「出荷する」に戻す (data-label-line)。
         self.label_line = line
         self.fields["qty"].widget.attrs["data-label-qty"] = True

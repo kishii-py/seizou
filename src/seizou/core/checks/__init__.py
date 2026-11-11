@@ -127,3 +127,29 @@ def run(action: str, data: dict, user, *, stop_head: str = STOP_HEAD) -> list[Ch
             raise CheckViolation(check.code, stop_head + message)
         warnings.append(CheckWarning(check.code, message))
     return warnings
+
+
+def preview(action: str, data: dict, user) -> list[tuple[str, CheckWarning]]:
+    """action に登録された検査が今の data で返す文を、断らずに集める (読むだけ。表を書かず、run は変えない)。
+
+    登録の順に見て、設定が通す (off) の検査は呼ばない。文を返した検査を (mode, CheckWarning(code, 文)) の並びで返す。mode は "stop" か "warn"。
+    止めるの文にも頭 (stop_head) を付けず、CheckViolation を出さない。検査の run が例外を出したとき (数の無い data で呼ぶので、
+    会社の checks.py の検査が qty を前提に誤りを出すなど) と、会社の設定の mode が不正なときは、その検査を飛ばす (呼ぶ画面を落とさない)。
+    出荷の新規登録の数量の欄の下の字 (shipping.forms.ShipmentForm) と、受注の明細の候補の口の for=shipping
+    (orders.views.OrderLineSelectView) が、数を入れる前の明細で呼ぶ。
+
+    訳: 保存の前に、保存の時に検査の層が出す知らせ (数に依らない物) を画面に先に出すため。止めるか知らせるかの判定は run と同じ設定を読む。
+    出所 = 精査 Q1 (2026-11-10) の番号 1 と、本体の決め 11-11 14:2x (開発の記録 docs/nights/20261111/N421.md)。変えてよい条件 = 検査の層の mode の作りが変わったとき。
+    """
+    found: list[tuple[str, CheckWarning]] = []
+    for check in registered(action):
+        try:
+            mode = check.current_mode()
+            if mode == "off":
+                continue
+            message = check.run(data, user)
+        except Exception:  # 読むだけの先回り。誤りは保存の時の run が今のとおり出す
+            continue
+        if message:
+            found.append((mode, CheckWarning(check.code, message)))
+    return found
