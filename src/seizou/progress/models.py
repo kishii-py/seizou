@@ -5,6 +5,12 @@
 工程ごとの実績の合計・不良の数の合計・完了の印の有る無しは列に持たず、progress.services の recorded_qty・recorded_defect_qty・step_completed で毎回出す。
 文字数の上限は固定 (識別子 35・備考 500・コード 10)。
 書くときは progress.services を通す。
+
+作業した人 (本人の決め 11-11 09:0x) は、社員 (masters.Staff) への外部キー staff と、名前の写し staff_name・番号の写し staff_code の 3 つで持つ。
+社員が居る間は外部キーだけを書き、見せる字は社員の今の番号と名前にする (社員の一覧で名前を直すと前の実績の表示も直る)。
+写しを書くのは 2 つのときだけ。社員の一覧に居ない人 (応援) を名前で入れたとき (名前の写しだけ) と、社員を消すとき
+(masters.services.delete_staff が progress.services.copy_staff_before_delete を呼び、消す時の名前と番号を写してから外部キーを空にする)。
+外部キーは PROTECT なので、services を通らずに社員を消す道は表が止める。見せる字は get_staff_name_display の 1 か所で作る (表に書かない)。
 """
 
 from decimal import Decimal
@@ -44,6 +50,20 @@ class Progress(models.Model):
         related_name="progress_records",
     )
     note = models.CharField("備考", max_length=500, blank=True)
+    # 作業した人 (本人の決め 11-11 09:0x)。外部キーの先は字で書く (progress の models は masters の models を import しない)。
+    # PROTECT: services (masters.services.delete_staff) を通らずに社員を消す道を表が止め、写しの無いまま外部キーだけが空になる道を作らない。
+    staff = models.ForeignKey(
+        "masters.Staff",
+        verbose_name="社員",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="progress_records",
+    )
+    # 名前の写し。書くのは、社員の一覧に居ない人 (応援) を名前で入れたときと、社員を消すときだけ。
+    staff_name = models.CharField("作業した人", max_length=100, blank=True, default="")
+    # 社員番号の写し。書くのは、社員を消すときだけ。
+    staff_code = models.CharField("社員番号の写し", max_length=10, blank=True, default="")
 
     #: 変更の履歴は指示書の詳細の「履歴」に出す (core.history が指示書の工程 → 指示書と辿る。作者の決めの伝票の「実績」)。
     #: 実績は指示書の詳細の「進捗」のタブに出る物で、誰がいつ直したか・消したかも同じ詳細で追えるようにするため
@@ -71,4 +91,18 @@ class Progress(models.Model):
 
     def __str__(self):
         recorded_at = timezone.localtime(self.recorded_at).strftime("%Y-%m-%d %H:%M")
-        return f"{self.workorder_step} 実績 {_qty_text(self.qty)} ({recorded_at})"
+        text = f"{self.workorder_step} 実績 {_qty_text(self.qty)} ({recorded_at})"
+        worker = self.get_staff_name_display()
+        # 指示書の詳細の「進捗」のタブの行はこの字を出す。作業した人の無い実績は今の字のまま。
+        return f"{text} 作業 {worker}" if worker else text
+
+    def get_staff_name_display(self) -> str:
+        """実績の「作業した人」の見せる字 (一覧の列・CSV・指示書の詳細・知らせの字が、この 1 つの関数で読む。表に書かない)。
+
+        外部キーがあれば「<社員の今の番号> <今の名前>」。空なら写しの「<番号の写し> <名前の写し>」
+        (番号の写しが空なら名前の写しだけ。両方が空なら空の字)。土台の display_value は get_<欄の名前>_display を先に見るので、
+        一覧の列と CSV の staff_name もこの字になる。
+        """
+        if self.staff_id is not None:
+            return str(self.staff)
+        return " ".join(part for part in (self.staff_code, self.staff_name) if part)

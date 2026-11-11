@@ -166,6 +166,7 @@ CHOICE_NOTES = {
     "over_shipment": _CHECK_MODE_NOTES,
     "over_workorder": _CHECK_MODE_NOTES,
     "over_payment": _CHECK_MODE_NOTES,
+    "progress_staff": _CHECK_MODE_NOTES,
     "order_form": {"single": "画面が短く、番号が部品と 1 対 1 になる。"},
     "production_plan": {"false": "メニューに「生産計画」が出ない。"},
 }

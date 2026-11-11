@@ -19,6 +19,10 @@
 - 選ぶ小窓の行 (effective_prices・price_choices) と発注の工程の最初の値 (default_process・with_default_process) は読むだけ (作者の決め)。
 - 部品の単位の数量単位コード (unit_code。作者の決め) は、create_item・update_item が単位の名前から引いて書く (_with_unit_code)。
   呼ぶ側はコードを渡さない。名前とコードを引くのは unit_code_for・unit_name_for (読むだけ。一覧は QuantityUnit)。
+- 社員 (Staff。本人の決め 11-11 09:0x) を書くのは create_staff・update_staff・delete_staff。照合の字 (code_key) は staff_code_key が作る。
+  社員を消すときは、同じ transaction.atomic の中で progress.services.copy_staff_before_delete を呼び、実績に名前と番号を写す。
+  masters の models は progress を知らない (外部キーは progress の側だけ)。masters から progress へは、関数の中で import した
+  services の 2 つの関数 (copy_staff_before_delete・count_by_staff) を呼ぶだけ (payment_terms_note が billing の services を呼ぶのと同じ形)。
 """
 
 from __future__ import annotations
@@ -26,13 +30,15 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import threading
 import unicodedata
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
+from django.apps import apps
 from django.core.files.base import ContentFile, File
-from django.db import transaction
-from django.db.models import Max, Q
+from django.db import IntegrityError, transaction
+from django.db.models import Max, ProtectedError, Q
 from django.db.models.fields.files import FieldFile
 from PIL import Image, ImageFile, ImageSequence
 
@@ -45,6 +51,7 @@ from .models import Item, ItemPrice, Partner, PartnerItem, QuantityUnit
 from .models import Process
 from .models import ItemProcess
 from .models import Holiday
+from .models import Staff
 from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
 from dataclasses import dataclass
 from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, When
@@ -1628,3 +1635,160 @@ def delete_holiday(holiday, user):
         row.delete()
     calendar.reset_cache()
     return None
+
+
+# ---------------------------------------------------------------- 社員 (実績の作業した人。本人の決め 11-11 09:0x)
+
+_STAFF_KEYS = frozenset({"code", "name", "note", "active"})
+#: 数字だけの社員番号 (全角を半角にそろえた後。先頭の 0 を落とす番号)
+_DIGITS_ONLY = re.compile(r"[0-9]+")
+
+
+def staff_code_key(code) -> str:
+    """社員番号の照合の字 (読むだけ)。「0012」「12」「１２」は同じ「12」になる。
+
+    全角を半角にそろえ (unicodedata.normalize の NFKC)、前後の空白を落とし、数字だけの番号は先頭の 0 を落とす (全部が 0 なら「0」)。
+    英字を含む番号は 0 を落とさず、大文字と小文字も分ける (「A012」と「A12」と「a12」は別の番号)。
+    """
+    text = unicodedata.normalize("NFKC", str(code or "")).strip()
+    if _DIGITS_ONLY.fullmatch(text):
+        return text.lstrip("0") or "0"
+    return text
+
+
+def _same_code_staff(code, *, exclude_pk=None):
+    """照合の字が code と同じ社員 (exclude_pk の社員を除く)。居なければ None。"""
+    others = Staff.objects.filter(code_key=staff_code_key(code))
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    return others.first()
+
+
+#: 社員番号の重複の断りの字 ({code} は入れた番号、{other_code} と {other_name} は居る社員の番号と名前)
+_DUPLICATE_STAFF_MESSAGE = (
+    "保存できません。社員番号 {code} は {other_code} {other_name} と同じ番号です "
+    "(先頭の 0 の数が違う番号も同じ番号と見ます)。別の番号にしてください。"
+)
+
+
+def _refuse_duplicate_staff_code(code, *, exclude_pk=None):
+    """照合の字が同じ社員がほかに居れば、日本語の ValueError で断る (先頭の 0 の数が違う番号も同じ番号と見る)。
+
+    訳: 同じ人を 2 つの番号で登録し、実績の作業した人が 2 人に分かれないため。番号の桁は会社で違い (3 桁・4 桁・5 桁)、札のバーコードと手の打ち込みで先頭の 0 の数が変わるので、先頭の 0 の数が違う番号も同じ番号と見る。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 09:0x。
+    変えてよい条件 = 会社が番号の桁を決めて表示もそろえたいと本人が決めたとき (そのときは照合の字の作り方を変える)。
+    """
+    other = _same_code_staff(code, exclude_pk=exclude_pk)
+    if other is not None:
+        raise ValueError(_DUPLICATE_STAFF_MESSAGE.format(code=code, other_code=other.code, other_name=other.name))
+
+
+def _refuse_duplicate_staff_on_race(code, error, *, exclude_pk=None):
+    """2 人が同時に保存して表の一意の制約 (code_key) で止まったとき、_refuse_duplicate_staff_code と同じ文の ValueError にする。
+
+    呼ぶのは書いた transaction.atomic の外 (中の処理が戻った後に、先に保存された社員を読み直すため)。
+    照合の字が同じ社員が見つからなければ何もしない (呼び手が元の IntegrityError を投げ直す)。
+    訳: 同じ人を 2 つの番号で登録し、実績の作業した人が 2 人に分かれないため (_refuse_duplicate_staff_code の訳と同じ。同時の保存は表の一意の制約で止める)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02) と本人の決め 11-11 09:0x。
+    変えてよい条件 = _refuse_duplicate_staff_code と同じ。
+    """
+    other = _same_code_staff(code, exclude_pk=exclude_pk)
+    if other is not None:
+        raise ValueError(_DUPLICATE_STAFF_MESSAGE.format(code=code, other_code=other.code, other_name=other.name)) from error
+
+
+def create_staff(data, user):
+    """社員を作る。data の鍵は code・name・note・active。照合の字 (code_key) は code から作って書く。
+
+    照合の字が同じ社員がほかに居れば日本語の ValueError (_refuse_duplicate_staff_code)。確かめは transaction.atomic の中で行い、
+    2 人が同時に保存したときは表の一意の制約で止めて同じ文の ValueError にする。変更の履歴を残す (create_process と同じ形)。
+    """
+    _refuse_unknown_keys(data, _STAFF_KEYS, "社員")
+    code = data.get("code")
+    try:
+        with transaction.atomic():
+            _refuse_duplicate_staff_code(code)
+            staff = Staff(**data)
+            staff.code_key = staff_code_key(staff.code)
+            staff.save()
+            record_history(staff, user)
+            return staff
+    except IntegrityError as error:
+        _refuse_duplicate_staff_on_race(code, error)
+        raise
+
+
+def update_staff(staff, data, user):
+    """data にある鍵だけを書き換える (鍵は create_staff と同じ)。社員番号を変えるときも照合の字の一意を見て、照合の字を作り直す。
+
+    使用中 (active) を外すと変更の履歴は「使用停止にした」、戻すと「使用を再開した」(core.services.record_history)。
+    """
+    _refuse_unknown_keys(data, _STAFF_KEYS, "社員")
+    try:
+        with transaction.atomic():
+            before = history.saved_state(staff)
+            if "code" in data:
+                _refuse_duplicate_staff_code(data["code"], exclude_pk=staff.pk)
+            for key, value in data.items():
+                setattr(staff, key, value)
+            staff.code_key = staff_code_key(staff.code)
+            staff.save()
+            record_history(staff, user, before=before)
+            return staff
+    except IntegrityError as error:
+        _refuse_duplicate_staff_on_race(staff.code, error, exclude_pk=staff.pk)
+        raise
+
+
+def delete_staff(staff, user):
+    """社員を消す。消す前に、その社員を指す実績の全部へ消す時の名前と番号を写し、実績の社員の欄を空にする。既に無ければ日本語の ValueError。
+
+    行は transaction.atomic の中で select_for_update で取り直す。progress の部品が入っていれば progress.services.copy_staff_before_delete を
+    同じ atomic の中で呼び、写した件数を受け取る。その後に社員の「消した」を変更の履歴に残し、社員の行を消す。
+    返す物 (消した社員。pk は None) に、画面の知らせの字 saved_message (「社員 <番号> <名前> を削除しました。」。写した件数が 1 以上なら
+    後ろに「実績 <n> 件に、名前と番号を写して残しました。」) を付ける (表に書かない)。
+    ほかの表がまだ社員を指していて消せなければ (ProtectedError)、日本語の ValueError (今は progress だけが指すので起きない見込み)。
+    訳: 社員を消しても、実績に誰が作ったかを残すため (品質の問合せに、後から作った人を答えられるように)。消す時の名前と番号を写してから社員を指す欄を空にし、社員を消す事と同じ処理の中で行う。表の外部キーは PROTECT なので、この関数を通らずに社員を消す道は表が止め、写しの無いまま欄だけが空になる道は無い。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02。社員を消すときに写す形は G03) と本人の決め 11-11 09:0x。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    with transaction.atomic():
+        row = Staff.objects.select_for_update().filter(pk=staff.pk).first()
+        if row is None:
+            raise ValueError("削除できません。この社員は既に消してあります。")
+        copied = 0
+        if apps.is_installed("seizou.progress"):
+            from seizou.progress.services import copy_staff_before_delete
+
+            copied = copy_staff_before_delete(row, user)
+        text = f"社員 {row.code} {row.name} を削除しました。"
+        if copied:
+            text += f"実績 {copied} 件に、名前と番号を写して残しました。"
+        record_history_deleted(row, user)
+        try:
+            row.delete()
+        except ProtectedError as error:
+            raise ValueError("削除できません。この社員を指す記録が残っています。") from error
+        row.saved_message = text
+        return row
+
+
+def staff_progress_count(staff) -> int:
+    """この社員を指す実績の件数 (読むだけ。progress の部品が無ければ 0)。2 段目の削除の確かめの画面が読む。"""
+    if not apps.is_installed("seizou.progress"):
+        return 0
+    from seizou.progress.services import count_by_staff
+
+    return count_by_staff(staff)
+
+
+def staff_by_code(code):
+    """照合の字が code と同じ社員 (読むだけ)。使用停止の社員も返す。居なければ None。"""
+    return Staff.objects.filter(code_key=staff_code_key(code)).first()
+
+
+def active_staff(*, keep=None):
+    """使用中の社員 (候補の母集団。読むだけ)。keep (社員か pk) は使用停止でも残す (active_items と同じ口)。"""
+    return _active(Staff, keep)
+
+
+def has_active_staff() -> bool:
+    """使用中の社員が 1 人でも居れば真 (読むだけ。標準のポカよけ R26 が core.checks.tools から読む)。"""
+    return Staff.objects.filter(active=True).exists()

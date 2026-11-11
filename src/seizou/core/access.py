@@ -63,7 +63,7 @@ KIND_NOTES = {
     "items": "部品・標準の工程・図面・部品の取引先と単価表",
     "orders": "受信した注文の受け入れ・条件付の受け入れ・保留・断り・注文書の読み取りを含む",
     "workorders": "生産計画の置き直しを含む",
-    "processes": "工程と会社の休日",
+    "processes": "工程と会社の休日と社員",
     "purchasing": "仕入明細を作る・送る・取り消す・相手の提案を受け入れるを含む",
     "billing": "受けた仕入明細に答えるを含む",
 }
@@ -97,7 +97,15 @@ _KIND_ACTIONS = {
         "masters.remove_item_process",
     ),
     "partners": ("masters.create_partner", "masters.update_partner", "masters.import_partners"),
-    "processes": ("masters.create_process", "masters.update_process", "masters.create_holiday", "masters.delete_holiday"),
+    "processes": (
+        "masters.create_process",
+        "masters.update_process",
+        "masters.create_holiday",
+        "masters.delete_holiday",
+        "masters.create_staff",
+        "masters.update_staff",
+        "masters.delete_staff",
+    ),
     "connections": ("connect.register_connection", "connect.update_connection"),
     "manuals": (
         "manuals.create_folder",

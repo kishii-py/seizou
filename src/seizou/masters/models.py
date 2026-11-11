@@ -599,6 +599,37 @@ class Holiday(models.Model):
         return f"{self.date:%Y-%m-%d} {self.name}"
 
 
+class Staff(models.Model):
+    """社員 (現場で実績を入れる人の一覧。ログインのアカウントとは別に持つ。本人の決め 11-11 09:0x)。書くのは masters.services だけ。
+
+    社員番号 (code) は会社の字のまま持ち、後から直せる。同じ人かは照合の字 (code_key) で見る。照合の字は services が code から作る
+    (全角を半角にそろえ、前後の空白を落とし、数字だけの番号は先頭の 0 を落とす。英字を含む番号は 0 を落とさず、大文字と小文字も分ける)。
+    個人の情報は番号と名前だけにし、入社日・部署・連絡先・ログインのアカウントとのつながりは持たない (本人の決め 11-11 09:0x)。
+    辞めた人は消さずに使用停止 (active が偽) にできる。消すときは masters.services.delete_staff が、実績に名前と番号を写してから消す
+    (実績の外部キーは progress の側にだけあり、PROTECT)。
+    """
+
+    code = models.CharField("社員番号", max_length=10)
+    # 照合の字 (「0012」「12」「１２」は同じ「12」)。一意の制約は照合の字に置く (2 人が同時に保存しても同じ番号の社員が 2 人にならない)。
+    code_key = models.CharField("照合の字", max_length=10, unique=True, editable=False)
+    name = models.CharField("名前", max_length=100)
+    note = models.CharField("備考", max_length=500, blank=True)
+    # 使用停止 (Process の active と同じ形): 外すと新しい実績で断る。消さないので、今までの実績は社員を指したまま残る。
+    # 編集の画面の欄は form が足す (editable=False)。書くのは masters.services だけ。
+    active = models.BooleanField("使用中", default=True, editable=False)
+
+    #: 変更の履歴 (core.history。作者の決め) を残し、詳細に「履歴」のタブを出す
+    keeps_history = True
+
+    class Meta:
+        verbose_name = "社員"
+        verbose_name_plural = "社員"
+        ordering = ("code", "pk")
+
+    def __str__(self):
+        return f"{self.code} {self.name}"
+
+
 class QuantityUnit(models.Model):
     """数量の単位の一覧 (読むだけの表。作者の決め)。
 
