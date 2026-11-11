@@ -18,8 +18,11 @@
 - annotate_order_inlet: 取引先の queryset に、注文の入口 (seizou で直接・注文書の読み取り・手入力) の字の列 order_inlet を足す。
 - order_inlets: 得意先ごとの注文の入口と今月の明細の数を、1 か所の受注に集まる図 (inline SVG) の座標つきで返す。
 - flow_guide: 業務の流れ (受注から入金まで・発注から検収まで) の段ごとの画面の URL と、手を動かす物の件数と、流れごとの次にすること。
+  発注から検収までの流れには、「発注」の前に「協力企業に出す」(協力企業に出していない工程)、「受入」の前に「渡す」(協力企業に渡していない明細) の段がある (見比べのまとめの M01 の 3 段目)。
 - today_tasks: 「今日やること」の枠 (flow_guide の段のうち件数のある物を、移る先の絞りの GET つきで 1 行ずつ。部署で開けない行と段と、
   その人が進められない行 (行の書く action を編集の権限・金額の閲覧・部署で行えない。作者の決め) は外し、何も残らなければ None)。
+  協力企業に出していない工程の行は指示書の一覧を絞り「協力企業に出していない工程があるだけ」で、協力企業に渡していない明細の行は発注の一覧を
+  絞り「渡していない明細があるだけ」で開く (数え方と絞りは purchasing.services の同じ関数。数は行の数、一覧は指示書か発注の件数)。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -998,6 +1001,9 @@ FLOWS = (
         "key": "purchase",
         "title": "発注から検収まで",
         "steps": (
+            {"key": "subcontract", "label": "協力企業に出す", "model": ("purchasing", "PurchaseOrderLine"), "url_name": "workorders:workorder_list",
+             "count": "subcontract", "count_label": "協力企業に出していない工程", "unit": "行",
+             "next_text": "指示書の詳細の工程の行から、協力企業に出す工程を発注に出します。"},
             {"key": "purchase_order", "label": "発注", "model": ("purchasing", "PurchaseOrder"), "url_name": "purchasing:purchaseorder_list",
              "count": "purchase_draft", "count_label": "まだ送っていない発注", "unit": "件",
              "next_text": "下書きのままの発注を協力企業に送ります。"},
@@ -1006,6 +1012,9 @@ FLOWS = (
              "next_text": "協力企業の返事を待ちます。断られた発注は直して送り直します。"},
             {"key": "shipping_notice", "label": "出荷の知らせ", "model": ("connect", "ShippingNotice"), "url_name": "purchasing:purchaseorder_list",
              "count": None, "count_label": "", "unit": "", "next_text": ""},
+            {"key": "handover", "label": "渡す", "model": ("purchasing", "PurchaseOrderLine"), "url_name": "purchasing:purchaseorder_list",
+             "count": "handover", "count_label": "協力企業に渡していない明細", "unit": "行",
+             "next_text": "現物を協力企業に渡したら、発注の明細の ⋮ の「渡した日」で日を入れます。"},
             {"key": "receipt", "label": "受入", "model": ("purchasing", "Receipt"), "url_name": "purchasing:receipt_list",
              "count": "receipt", "count_label": "受入の残っている知らせの明細", "unit": "行",
              "next_text": "届いた物を受入に記録します。"},
@@ -1162,6 +1171,26 @@ def _noticed_lines_to_receive():
     return annotate_received(queryset).filter(remaining_total__gt=0)
 
 
+def _steps_to_subcontract():
+    """協力企業に出していない工程 (purchasing.services.steps_to_subcontract。指示書の一覧の絞り「協力企業に出していない工程があるだけ」と
+    同じ関数。数は工程の行の数)。purchasing の部品が無ければ None。"""
+    if _model("purchasing", "PurchaseOrderLine") is None:
+        return None
+    from seizou.purchasing.services import steps_to_subcontract
+
+    return steps_to_subcontract()
+
+
+def _lines_not_handed():
+    """協力企業に渡していない明細 (purchasing.services.lines_not_handed。発注の一覧の絞り「渡していない明細があるだけ」と同じ関数。
+    数は明細の行の数)。purchasing の部品が無ければ None。"""
+    if _model("purchasing", "PurchaseOrderLine") is None:
+        return None
+    from seizou.purchasing.services import lines_not_handed
+
+    return lines_not_handed()
+
+
 # 数える段の鍵 (FLOWS の count) → 数える物の queryset を返す関数 (部品が無ければ None)。
 _FLOW_COUNTS = {
     "inbox": _received_inbox,
@@ -1173,6 +1202,8 @@ _FLOW_COUNTS = {
     "purchase_draft": _purchase_drafts,
     "purchase_sent": _purchases_sent,
     "receipt": _noticed_lines_to_receive,
+    "subcontract": _steps_to_subcontract,
+    "handover": _lines_not_handed,
 }
 
 
@@ -1207,6 +1238,8 @@ def _task_targets() -> dict:
     納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面 (納品書を作る・請求書の新規登録) へ移る
     (一覧には合う絞りが無く、数えた物と違う物が並ぶため。決め 11-07 20:5x の 2 = 数を押すとその数で絞った画面が開く。flow-02)。
     指示書の無い明細の行は、生産管理ボードを同じ関数 (without_workorder) の絞り「指示書の無い明細だけ」で開く (nav-01 の (b))。
+    協力企業に出していない工程の行は指示書の一覧を、協力企業に渡していない明細の行は発注の一覧を、数える関数と同じ関数の絞りで開く
+    (purchasing.services の steps_to_subcontract と lines_not_handed。進める action は発注の新規登録と渡した日。見比べのまとめの M01 の 3 段目)。
     書く action は、その行の仕事を保存する画面の service の名前 (検査の層と core.access の ACTION_KINDS・MONEY_ACTIONS と同じ形。
     下書きの発注は詳細の「再送」= purchasing.resend_purchase_order)。today_tasks が、その action を行えない人の行を外す (_can_proceed。作者の決め)。
     数えるだけで操作の無い行 (返事を待つ発注) は None。
@@ -1228,6 +1261,8 @@ def _task_targets() -> dict:
         ),
         "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}, None),
         "receipt": ("受入", "purchasing:receipt_list", {}, "purchasing.receive"),
+        "subcontract": ("指示書", "workorders:workorder_list", {"f_to_subcontract": "1"}, "purchasing.create_purchase_order"),
+        "handover": ("発注", "purchasing:purchaseorder_list", {"f_not_handed": "1"}, "purchasing.set_handed_on"),
     }
 
 

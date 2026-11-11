@@ -40,7 +40,8 @@ FRAGMENTS = (
     ROOT / "examples" / "companies" / "a_machining" / "manual" / "core_home.html",
     ROOT / "examples" / "companies" / "b_plating" / "manual" / "core_home.html",
 )
-# 流れの順 (受注から入金まで → 発注から検収まで) の行の key
+# 流れの順 (受注から入金まで → 発注から検収まで) の行の key。make_all_work が作る 9 行 (協力企業に出していない工程と
+# 協力企業に渡していない明細の 2 行 (N406c) は作らない。2 行の人ごとの出方は tests/test_subcontract_board_today.py が見る)
 ROW_ORDER = ["order", "workorder", "shipment", "delivery_note", "invoice", "payment", "purchase_draft", "purchase_sent", "receipt"]
 # 行の key → 移る先の URL の名前と絞りの GET (納品書と請求書は、その出荷だけが並ぶ作る画面。決め 11-07 20:5x の 2。flow-02。
 # 指示書の無い明細は、生産管理ボードを数える関数と同じ絞りで。nav-01。受入の残は合う絞りが無く素の一覧)
@@ -54,6 +55,9 @@ TARGETS = {
     "purchase_draft": ("purchasing:purchaseorder_list", "?f_status=draft"),
     "purchase_sent": ("purchasing:purchaseorder_list", "?f_status=sent"),
     "receipt": ("purchasing:receipt_list", ""),
+    # 協力企業に出していない工程と協力企業に渡していない明細は、数える関数と同じ関数の絞りで一覧を開く (N406c)
+    "subcontract": ("workorders:workorder_list", "?f_to_subcontract=1"),
+    "handover": ("purchasing:purchaseorder_list", "?f_not_handed=1"),
 }
 # 行の key → その行を進めるのに要る書く action (_task_targets の 4 つ目。core.access の ACTION_KINDS と同じ名前 = 保存のときの判定と同じ物。
 # 下書きの発注は詳細の「再送」の画面の service。返事を待つ発注は数えるだけで操作が無い = None)
@@ -67,6 +71,9 @@ ACTIONS = {
     "purchase_draft": "purchasing.resend_purchase_order",
     "purchase_sent": None,
     "receipt": "purchasing.receive",
+    # 協力企業に出す工程を発注にする (発注の新規登録) と、渡した日を入れる (N406c)
+    "subcontract": "purchasing.create_purchase_order",
+    "handover": "purchasing.set_handed_on",
 }
 #: 部署・編集・金額の判定を全部 on にした会社
 ALL_ON = {"department": "on", "write": "on", "money": "on"}
@@ -144,7 +151,7 @@ def make_work(user, customer, partner, item):
 
 
 def make_all_work(user, customer, partner, item):
-    """make_work に、納品書に入っていない出荷・納品書に入って請求書に入っていない出荷・受入の残っている出荷の知らせ (送った発注の明細) を足し、9 行が全部出る形にする。"""
+    """make_work に、納品書に入っていない出荷・納品書に入って請求書に入っていない出荷・受入の残っている出荷の知らせ (送った発注の明細) を足し、ROW_ORDER の 9 行が全部出る形にする (協力企業の 2 行は作らない)。"""
     make_work(user, customer, partner, item)
     shipping_services.ship(make_order(user, customer, item).lines.get(), Decimal("10"), timezone.localdate(), user)
     noted = shipping_services.ship(make_order(user, customer, item).lines.get(), Decimal("10"), timezone.localdate(), user)
@@ -291,8 +298,14 @@ def test_task_targets_hold_the_action_of_each_row():
     actions = {key: action for key, (_button, _url_name, _params, action) in dashboard._task_targets().items()}
     assert actions == ACTIONS
     assert all(action in access.ACTION_KINDS for action in actions.values() if action is not None)
-    # 金額に関わる操作の行 (決め 4 = 11-07 21:0x。受け入れ・納品書・請求書・入金) = 金額の閲覧の無い人には出ない行
-    assert {key for key, action in actions.items() if action in access.MONEY_ACTIONS} == {"order", "delivery_note", "invoice", "payment"}
+    # 金額に関わる操作の行 (決め 4 = 11-07 21:0x。受け入れ・納品書・請求書・入金と、協力企業に出す工程の発注の新規登録 = N406c) = 金額の閲覧の無い人には出ない行
+    assert {key for key, action in actions.items() if action in access.MONEY_ACTIONS} == {
+        "order",
+        "delivery_note",
+        "invoice",
+        "payment",
+        "subcontract",
+    }
 
 
 @pytest.mark.django_db
@@ -316,8 +329,9 @@ def test_today_tasks_hides_rows_the_person_cannot_proceed(settings, user, custom
     assert keys_of("hanbai-kin") == ["order", "shipment", "delivery_note", "purchase_draft", "purchase_sent", "receipt"]
     # 経理: 移る先の盤と受注の一覧は開けるが、指示書と出荷の編集の権限が無い。進められるのは請求書と入金だけ
     assert keys_of("keiri") == ["invoice", "payment"]
-    # 現場: 製造の部署は行の移る先をどれも開けない (枠ごと出さない = tests/test_core_home_closed_links と同じ)
-    assert keys_of("genba") is None
+    # 現場: 製造の部署は行の移る先をどれも開けない。「協力企業に出す」の段 (指示書の一覧。N406c) は開けるので、行の無い「はじめての方へ」の枠になる
+    # (tests/test_core_home_closed_links と同じ)
+    assert keys_of("genba") == []
 
 
 @pytest.mark.django_db
@@ -342,7 +356,7 @@ def test_today_tasks_adds_no_query(monkeypatch):
     with CaptureQueriesContext(connection) as captured:
         today = dashboard.today_tasks()
     counted_steps = [step for flow in today["guide"]["flows"] for step in flow["steps"] if step["count"] is not None]
-    assert len(counted_steps) == 9
+    assert len(counted_steps) == 11  # 協力企業の 2 段 (N406c) を足して 11
     assert len(captured.captured_queries) == len(counted_steps)
     assert calls == [1]
 

@@ -71,6 +71,7 @@ class PurchaseOrderListView(BaseListView):
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
         {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
+        {"name": "not_handed", "label": "渡していない明細があるだけ", "kind": "flag", "when": services.orders_with_lines_not_handed},
     )
     # 絞りのタブ (土台の presets。作者の決め)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
     # 土台のタブは 4 つまで (PRESET_LIMIT)。「相手が条件付で受けた」「相手が保留した」はタブにせず、状態の絞りで選ぶ (詳細の黄の 1 行で気づく)。
