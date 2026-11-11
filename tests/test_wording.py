@@ -38,6 +38,8 @@ README_DOCS = (
     "docs/roadmap.md",
     "docs/why.md",
     "docs/hackathon.md",
+    "docs/answers.md",
+    "docs/glossary.md",
 )
 SCAN = ("src/seizou", "README.md", *README_DOCS, "plugin", "examples", "tests", "scripts", "SECURITY.md", "CONTRIBUTING.md", "GOVERNANCE.md", "AGENTS.md", "RULES.md")
 SUFFIXES = {".py", ".html", ".js", ".md", ".yaml", ".yml", ".csv", ".txt", ".toml", ".json"}

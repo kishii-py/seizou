@@ -32,6 +32,8 @@ DOCS = [
     "docs/roadmap.md",
     "docs/why.md",
     "docs/hackathon.md",
+    "docs/answers.md",
+    "docs/glossary.md",
 ]
 
 # README から分けた節の置き場 (見出し → 文書)
