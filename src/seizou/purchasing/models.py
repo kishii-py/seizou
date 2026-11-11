@@ -7,6 +7,9 @@
 注文回答のタイプ (reply_type) は中小企業共通 EDI の注文回答タイプコードと注文回答明細回答タイプコードの項目を元にした値 (core.edi_codes)。
 注文履歴番号・注文書目的コード・明細状態コード・明細状態理由コードは中小企業共通 EDI の項目を元にした (注文変更の方式 2。値は core.edi_codes)。取り消した明細 (明細状態コード 2) は行を残し、受入の候補と数と金額の合計に入れない。
 完了の印 (completed。人が受入の足りないまま終えると決めた明細に付ける) は purchasing.services.mark_completed と clear_completed だけが書き、受入の残の数え方 (purchasing.services.remaining_qty・annotate_received。RULES.md R25) が読む。
+明細の指示書の工程 (workorder_step。協力企業に出した指示書の工程。見比べのまとめの M01) は purchasing.services.create_purchase_order だけが書く (部品と工程は指示書の工程から写す)。
+明細の渡した日 (handed_on。現物を協力企業に渡した日。空 = まだ渡していない) は purchasing.services.create_purchase_order と set_handed_on だけが書く。
+受入の実績 (Receipt.progress。指示書の工程を指す明細の受入から作った進捗の実績。RULES.md R32) は purchasing.services.receive だけが書く (人が実績を消すと空になる)。
 仕入明細 (SelfInvoice・SelfInvoiceLine) は、受入をまとめて相手へ送る書類 (中小企業共通 EDI の仕入明細の項目を元にした。作者の決め)。書くのは purchasing.services だけ。
 """
 
@@ -156,6 +159,20 @@ class PurchaseOrderLine(models.Model):
     # 書くのは purchasing.services.mark_completed と clear_completed だけ (受入・発注の変更の数量の直しでは書き換えない)。
     # 明細状態コードの「明細行取消」(2) は使わない (相手へ送る取消のコードで、明細の数量と金額の合計からも外れるため)。
     completed = models.BooleanField("完了", default=False, editable=False)
+    # 協力企業に出した指示書の工程 (見比べのまとめの M01。空 = 指示書の工程に結ばない明細)。書くのは purchasing.services.create_purchase_order だけ
+    # (部品と工程は指示書の工程から写す)。この明細の受入は、同じ処理の中でこの工程の実績になる (RULES.md R32)。
+    # PROTECT の訳: 指示書は取り消すだけで消さないので、工程が消えるのは表の外の消し方だけ。そのときに明細の結びが黙って消えないようにするため。
+    workorder_step = models.ForeignKey(
+        "workorders.WorkOrderStep",
+        verbose_name="指示書の工程",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="purchase_order_lines",
+        editable=False,
+    )
+    # 現物を協力企業に渡した日 (空 = まだ渡していない)。書くのは purchasing.services.create_purchase_order と set_handed_on だけ。
+    handed_on = models.DateField("渡した日", null=True, blank=True, editable=False)
 
     #: 変更の履歴は発注の詳細の「履歴」に出す (core.history。作者の決めの伝票の「発注」)
     history_owner = "purchase_order"
@@ -249,8 +266,19 @@ class Receipt(models.Model):
     # 相手の受け口が 200 を返したときだけ入れる。空 = まだ相手に届いていない (か、送る物ではない)。
     acceptance_sent_at = models.DateTimeField("検収を送った日時", null=True, blank=True)
     acceptance_response = models.CharField("検収の相手の返事", max_length=500, blank=True)
+    # 指示書の工程を指す明細の受入から作った進捗の実績 (RULES.md R32)。書くのは purchasing.services.receive だけ。画面に出さない照合の列。
+    # SET_NULL の訳: 人が実績を消しても、受け取った事実と金額の記録は残すため。
+    progress = models.OneToOneField(
+        "progress.Progress",
+        verbose_name="受入から作った実績",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="receipt",
+        editable=False,
+    )
 
-    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) はいつも画面に出さない。
+    #: 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が物 1 件ずつ読む)。番号 (uuid) と受入から作った実績はいつも画面に出さない。
     #: 検収を送った日時と相手の返事の 2 列は、seizou どうしで送った発注の受入 (相手へ検収を送る物) だけ出す。
     #: 送った発注で検収がまだ無い受入は「—」のまま出す (決め 11-05 09:3x の「まだ無い」)。
     #: 送っていない発注の受入では入らない欄で、「—」の行は何の欄か迷わせる (作者の決め)。
@@ -258,7 +286,7 @@ class Receipt(models.Model):
     #: purchasing.services が頭でこの model を読むので、services は中で import する (頭で読むと輪になる)。
     @property
     def detail_hidden_fields(self):
-        hidden = ("acceptance_message_id",)
+        hidden = ("acceptance_message_id", "progress")
         if self.line_id is not None:
             from . import services
 

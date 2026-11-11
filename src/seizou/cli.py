@@ -87,6 +87,7 @@ SETTING_DEFAULTS = {
     "lump_completion": "warn",
     "progress_defect_kind": "warn",
     "same_customer_order_no": "warn",
+    "subcontract_return": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

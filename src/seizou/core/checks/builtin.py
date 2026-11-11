@@ -679,6 +679,106 @@ class SameCustomerOrderNoOnConditionalInbox(SameCustomerOrderNoOnInbox):
     action = "connect.accept_with_conditions"
 
 
+def _subcontract_return_message(check, body) -> str:
+    """R33 の文。続けて足す 1 文は mode で分ける (止めるの文の頭には検査の層が「保存できません。」を付けるので、止めるに「このまま保存できます」を出さない)。金額は書かない。"""
+    if check.current_mode() == "stop":
+        return body + "数と渡した日を確かめてから、もう一度保存してください。"
+    return body + "数と記録に間違いが無ければ、このまま保存できます。"
+
+
+def _short_return_text(label, qty, short) -> str:
+    """R33 の目減りで完了の文 (受入の「残りは受け入れずに完了にする」と、発注の明細の「完了にする」で同じ文)。"""
+    return f"{label} は、渡した {_num(qty)} のうち {_num(short)} が戻らないまま完了になります。"
+
+
+class SubcontractReturnOnReceipt(Check):
+    """R33: 指示書の工程を指す発注の明細の受入で、渡した日が空・受入の合計が数量を超える・渡した数に届かないまま「残りは受け入れずに完了にする」(受入の入力)。
+
+    data の line は発注の明細、qty は今回の受入の数、close_rest は「残りは受け入れずに完了にする」(purchasing.services.receive の引数。受入の form の service_kwargs)。
+    比べ方は purchasing.services.receipt_return_gap (tools.receipt_return_gap)。指示書の工程を指さない明細と取消の発注の明細は見ない (services が断るので、黄の後に赤を出さない)。
+    当たる文を全部つなぐ: 渡した日が空 →「<発注番号>-<行番号> は、まだ協力企業に渡した日が入っていません。」/ 合計が数量を超える →
+    「… は、この受入で戻りが <合計> になり、発注の数 <数量> より <差> 多くなります。」/ 目減りで完了 →「… は、渡した <数量> のうち <差> が戻らないまま完了になります。」。
+    訳: 協力企業に出した工程の戻りの数の食い違い (渡す前の戻り・多い戻り・目減りで完了) と、戻りを受入と実績で 2 回入れる間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。目減りと多い戻りを知らせる本は 2 本、多い戻りを止める本は 2 本)・本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・会社の設定 subcontract_return。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R33"
+    action = "purchasing.receive"
+    setting_key = "subcontract_return"
+
+    def run(self, data, user):
+        line = data.get("line")
+        qty = data.get("qty")
+        if line is None or qty is None:
+            return None
+        gap = tools.receipt_return_gap(line, qty, close_rest=bool(data.get("close_rest")))
+        if gap is None:
+            return None
+        parts = []
+        if gap.not_handed:
+            parts.append(f"{gap.label} は、まだ協力企業に渡した日が入っていません。")
+        if gap.over > 0:
+            parts.append(
+                f"{gap.label} は、この受入で戻りが {_num(gap.total)} になり、発注の数 {_num(gap.qty)} より {_num(gap.over)} 多くなります。"
+            )
+        if gap.short > 0:
+            parts.append(_short_return_text(gap.label, gap.qty, gap.short))
+        return _subcontract_return_message(self, "".join(parts))
+
+
+class SubcontractReturnOnComplete(Check):
+    """R33: 指示書の工程を指し、渡した日のある発注の明細を、受入の合計が数量に届かないまま完了にしたら (発注の明細の「完了にする」)。
+
+    data の object は完了にする発注の明細 (土台の入力の画面が URL の pk の明細を渡す)。比べ方は purchasing.services.short_return_qty
+    (tools.short_return_qty。完了の印が真の明細・取消の発注・取り消した明細は 0)。文は受入の目減りで完了と同じ。
+    訳: 協力企業に出した工程の戻りの数の食い違い (渡す前の戻り・多い戻り・目減りで完了) と、戻りを受入と実績で 2 回入れる間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。目減りと多い戻りを知らせる本は 2 本、多い戻りを止める本は 2 本)・本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・会社の設定 subcontract_return。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R33"
+    action = "purchasing.mark_completed"
+    setting_key = "subcontract_return"
+
+    def run(self, data, user):
+        line = data.get("object")
+        if line is None:
+            return None
+        short = tools.short_return_qty(line)
+        if not short > 0:
+            return None
+        label = f"{line.purchase_order.po_no}-{line.line_no}"
+        return _subcontract_return_message(self, _short_return_text(label, line.qty, short))
+
+
+class SubcontractReturnOnProgress(Check):
+    """R33: 協力企業に出していて終わっていない明細 (出ている数かまだ渡していない数がある明細) のある指示書の工程に、実績の入力で実績を入れたら。
+
+    data の workorder_step は指示書の工程 (progress.services.record_progress の引数)。明細は purchasing.services.unreturned_lines
+    (tools.unreturned_lines。取り消していない明細の受入の残が 0 より大きい明細) を発注番号 → 行番号の順に並べ、「・」でつなぐ。
+    実績の編集 (progress.update_progress) には掛けない (受入から作った実績を直すたびに知らせが出ないようにするため)。
+    訳: 協力企業に出した工程の戻りの数の食い違い (渡す前の戻り・多い戻り・目減りで完了) と、戻りを受入と実績で 2 回入れる間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M01。目減りと多い戻りを知らせる本は 2 本、多い戻りを止める本は 2 本)・本人の決め 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・会社の設定 subcontract_return。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R33"
+    action = "progress.record_progress"
+    setting_key = "subcontract_return"
+
+    def run(self, data, user):
+        step = data.get("workorder_step")
+        if step is None:
+            return None
+        lines = tools.unreturned_lines(step)
+        if not lines:
+            return None
+        labels = "・".join(f"{line.purchase_order.po_no}-{line.line_no}" for line in lines)
+        body = (
+            f"指示書 {step.workorder.wo_no} の工程 {step.seq} {step.process.name} は、協力企業に出しています ({labels})。"
+            "戻りは受入で入れると、この工程の実績になります。"
+        )
+        return _subcontract_return_message(self, body)
+
+
 BUILTIN = (
     OverShipment(),
     OverShipmentOnUpdate(),
@@ -702,6 +802,9 @@ BUILTIN = (
     SameCustomerOrderNoOnExtraction(),
     SameCustomerOrderNoOnInbox(),
     SameCustomerOrderNoOnConditionalInbox(),
+    SubcontractReturnOnReceipt(),
+    SubcontractReturnOnComplete(),
+    SubcontractReturnOnProgress(),
 )
 
 for _check in BUILTIN:
