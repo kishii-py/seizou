@@ -22,7 +22,10 @@
 - 社員 (Staff。本人の決め 11-11 09:0x) を書くのは create_staff・update_staff・delete_staff。照合の字 (code_key) は staff_code_key が作る。
   社員を消すときは、同じ transaction.atomic の中で progress.services.copy_staff_before_delete を呼び、実績に名前と番号を写す。
   masters の models は progress を知らない (外部キーは progress の側だけ)。masters から progress へは、関数の中で import した
-  services の 2 つの関数 (copy_staff_before_delete・count_by_staff) を呼ぶだけ (payment_terms_note が billing の services を呼ぶのと同じ形)。
+  services の関数 (copy_staff_before_delete・count_by_staff と、不良の区分の copy_defect_kind_before_delete・count_by_defect_kind) を呼ぶだけ
+  (payment_terms_note が billing の services を呼ぶのと同じ形)。
+- 不良の区分 (DefectKind。見比べのまとめの M09) を書くのは create_defect_kind・update_defect_kind・delete_defect_kind。名前は前後の空白を落として
+  一意にする。区分を消すときは、同じ transaction.atomic の中で progress.services.copy_defect_kind_before_delete を呼び、不良の行に区分の名前を写す (社員と同じ形)。
 """
 
 from __future__ import annotations
@@ -52,6 +55,7 @@ from .models import Process
 from .models import ItemProcess
 from .models import Holiday
 from .models import Staff
+from .models import DefectKind
 from .models import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, price_basis_text  # noqa: F401  (orders・purchasing・connect が読む)
 from dataclasses import dataclass
 from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, When
@@ -1792,3 +1796,149 @@ def active_staff(*, keep=None):
 def has_active_staff() -> bool:
     """使用中の社員が 1 人でも居れば真 (読むだけ。標準のポカよけ R26 が core.checks.tools から読む)。"""
     return Staff.objects.filter(active=True).exists()
+
+
+# ---------------------------------------------------------------- 不良の区分 (実績の不良の行が選ぶ一覧。見比べのまとめの M09)
+
+_DEFECT_KIND_KEYS = frozenset({"name", "sort_order", "note", "active"})
+#: 不良の区分の名前の重複の断りの字 ({name} は前後の空白を落とした名前)
+_DUPLICATE_DEFECT_KIND_MESSAGE = (
+    "保存できません。不良の区分「{name}」は既にあります。集計の行が分かれないように、今の区分を使うか、別の名前にしてください。"
+)
+
+
+def _defect_kind_values(data):
+    """data の写し。名前があれば前後の空白 (全角の空白を含む。str.strip が落とす) を落とす。"""
+    values = dict(data)
+    if "name" in values:
+        values["name"] = str(values["name"] or "").strip()
+    return values
+
+
+def _refuse_duplicate_defect_kind(name, *, exclude_pk=None):
+    """同じ名前の区分がほかにあれば、日本語の ValueError で断る (name は前後の空白を落とした名前)。
+
+    訳: 同じ名前の区分が 2 つあると、不良の集計の行が 2 つに分かれ、同じ不良の数が割れるため。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    others = DefectKind.objects.filter(name=name)
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    if others.exists():
+        raise ValueError(_DUPLICATE_DEFECT_KIND_MESSAGE.format(name=name))
+
+
+def _refuse_duplicate_defect_kind_on_race(name, error, *, exclude_pk=None):
+    """2 人が同時に保存して表の一意の制約 (name) で止まったとき、_refuse_duplicate_defect_kind と同じ文の ValueError にする。
+
+    呼ぶのは書いた transaction.atomic の外 (中の処理が戻った後に、先に保存された区分を読み直すため)。
+    同じ名前の区分が見つからなければ何もしない (呼び手が元の IntegrityError を投げ直す。並び順の負の数のような、ほかの表の制約で止まったとき)。
+    訳: 同じ名前の区分が 2 つあると、不良の集計の行が 2 つに分かれ、同じ不良の数が割れるため (同時の保存は表の一意の制約で止める)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    others = DefectKind.objects.filter(name=name)
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    if others.exists():
+        raise ValueError(_DUPLICATE_DEFECT_KIND_MESSAGE.format(name=name)) from error
+
+
+def create_defect_kind(data, user):
+    """不良の区分を作る。data の鍵は name・sort_order・note・active。名前は前後の空白 (全角の空白を含む) を落としてから書く。
+
+    同じ名前の区分がほかにあれば日本語の ValueError (_refuse_duplicate_defect_kind)。確かめは transaction.atomic の中で行い、
+    2 人が同時に保存したときは表の一意の制約で止めて同じ文の ValueError にする。変更の履歴を残す。
+    返す区分に、画面の知らせの字 saved_message (「不良の区分「<名前>」を登録しました。」) を付ける (表に書かない)。
+    訳: 同じ名前の区分が 2 つあると、不良の集計の行が 2 つに分かれ、同じ不良の数が割れるため。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, _DEFECT_KIND_KEYS, "不良の区分")
+    values = _defect_kind_values(data)
+    name = values.get("name", "")
+    try:
+        with transaction.atomic():
+            _refuse_duplicate_defect_kind(name)
+            kind = DefectKind.objects.create(**values)
+            record_history(kind, user)
+    except IntegrityError as error:
+        _refuse_duplicate_defect_kind_on_race(name, error)
+        raise
+    kind.saved_message = f"不良の区分「{kind.name}」を登録しました。"
+    return kind
+
+
+def update_defect_kind(kind, data, user):
+    """data にある鍵だけを書き換える (鍵は create_defect_kind と同じ)。名前を変えるときも、前後の空白を落として一意を見る。
+
+    使用中 (active) を外すと変更の履歴は「使用停止にした」、戻すと「使用を再開した」(core.services.record_history)。
+    返す区分に、画面の知らせの字 saved_message (「不良の区分「<名前>」を直しました。」) を付ける (表に書かない)。
+    訳: 同じ名前の区分が 2 つあると、不良の集計の行が 2 つに分かれ、同じ不良の数が割れるため。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09)。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    _refuse_unknown_keys(data, _DEFECT_KIND_KEYS, "不良の区分")
+    values = _defect_kind_values(data)
+    try:
+        with transaction.atomic():
+            before = history.saved_state(kind)
+            if "name" in values:
+                _refuse_duplicate_defect_kind(values["name"], exclude_pk=kind.pk)
+            for key, value in values.items():
+                setattr(kind, key, value)
+            kind.save()
+            record_history(kind, user, before=before)
+    except IntegrityError as error:
+        _refuse_duplicate_defect_kind_on_race(values.get("name", kind.name), error, exclude_pk=kind.pk)
+        raise
+    kind.saved_message = f"不良の区分「{kind.name}」を直しました。"
+    return kind
+
+
+def delete_defect_kind(kind, user):
+    """不良の区分を消す。消す前に、その区分を指す不良の行の全部へ消す時の区分の名前を写し、行の区分の欄を空にする。既に無ければ日本語の ValueError。
+
+    行は transaction.atomic の中で select_for_update で取り直す。progress の部品が入っていれば progress.services.copy_defect_kind_before_delete を
+    同じ atomic の中で呼び、写した件数を受け取る。その後に区分の「消した」を変更の履歴に残し、区分の行を消す。
+    返す物 (消した区分。pk は None) に、画面の知らせの字 saved_message (「不良の区分「<名前>」を削除しました。」。写した件数が 1 以上なら
+    後ろに「不良の行 <n> 件に、区分の名前を写して残しました。」) を付ける (表に書かない)。
+    ほかの表がまだ区分を指していて消せなければ (ProtectedError)、日本語の ValueError (今は progress だけが指すので起きない見込み)。
+    訳: 区分を消しても、不良の行に何の不良だったかを残すため (品質の問合せに、後から区分の名前を答えられるように)。消す時の名前を写してから区分を指す欄を空にし、区分を消す事と同じ処理の中で行う。表の外部キーは PROTECT なので、この関数を通らずに区分を消す道は表が止める。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09) と、社員を消すときの形 (本人の決め 11-11 09:0x) をそろえた物。
+    変えてよい条件 = 本人が決め直したとき。
+    """
+    with transaction.atomic():
+        row = DefectKind.objects.select_for_update().filter(pk=kind.pk).first()
+        if row is None:
+            raise ValueError("削除できません。この不良の区分は既に消してあります。")
+        copied = 0
+        if apps.is_installed("seizou.progress"):
+            from seizou.progress.services import copy_defect_kind_before_delete
+
+            copied = copy_defect_kind_before_delete(row, user)
+        text = f"不良の区分「{row.name}」を削除しました。"
+        if copied:
+            text += f"不良の行 {copied} 件に、区分の名前を写して残しました。"
+        record_history_deleted(row, user)
+        try:
+            row.delete()
+        except ProtectedError as error:
+            raise ValueError("削除できません。この不良の区分を指す記録が残っています。") from error
+        row.saved_message = text
+        return row
+
+
+def defect_kind_line_count(kind) -> int:
+    """この区分を指す不良の行の件数 (読むだけ。progress の部品が無ければ 0)。2 段目の削除の確かめの画面が読む。"""
+    if not apps.is_installed("seizou.progress"):
+        return 0
+    from seizou.progress.services import count_by_defect_kind
+
+    return count_by_defect_kind(kind)
+
+
+def active_defect_kinds(*, keep=None):
+    """使用中の不良の区分 (候補の母集団。読むだけ)。keep (区分か pk) は使用停止でも残す (編集で今の行の区分を候補に残すため。active_staff と同じ口)。"""
+    return _active(DefectKind, keep)
+
+
+def has_active_defect_kinds() -> bool:
+    """使用中の不良の区分が 1 つでもあれば真 (読むだけ。標準のポカよけ R30 が core.checks.tools から読む)。"""
+    return DefectKind.objects.filter(active=True).exists()

@@ -50,6 +50,17 @@ def has_active_staff() -> bool:
     return services.has_active_staff()
 
 
+def has_active_defect_kinds() -> bool:
+    """不良の区分の一覧に使用中の区分が 1 つでもあるか (R30 が読む)。masters の部品が無ければ False。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.masters"):
+        return False
+    from seizou.masters import services
+
+    return services.has_active_defect_kinds()
+
+
 def billed_by(shipment):
     """出荷が請求済みなら (種類, 記録) の組、でなければ None (R27 が読む。shipping.services.billed_by)。"""
     from seizou.shipping import services

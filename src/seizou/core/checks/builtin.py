@@ -1,6 +1,6 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
@@ -8,6 +8,7 @@ R07 は実績の入力と実績の編集の 2 つの action に掛ける。R26 �
 R27 は出荷の編集と出荷の削除の 2 つの action に掛ける。
 R28 は実績の入力と実績の編集の 2 つの action に掛ける (編集は、直す前と同じ社員のままなら見ない)。
 R29 は発注の明細の「完了にする」と受入の入力 (「残りは受け入れずに完了にする」を選んだとき) の 2 つの action に掛ける。
+R30 (会社の設定 progress_defect_kind) は実績の入力だけに掛ける。
 """
 
 from __future__ import annotations
@@ -484,6 +485,42 @@ class LumpCompletionOnReceipt(Check):
         if tools.completes_without_lump_amount(line, adding_qty=qty):
             return LumpCompletion.message
         return None
+def _defect_without_kind(data) -> Decimal:
+    """区分を選んでいない不良の数。data に不良の行 (defects) があれば区分の無い行の数の合計、無ければ不良の数 (defect_qty)。
+
+    defects が None なら渡していないのと同じに見る。不良の数だけの入力 (区分の欄の無い入力) は、services が区分の無い 1 行にするため、全部を数える。
+    """
+    defects = data.get("defects")
+    if defects is not None:
+        return sum((_dec(line.get("qty") or 0) for line in defects if line.get("kind") is None), Decimal("0"))
+    return _dec(data.get("defect_qty") or 0)
+
+
+class DefectWithoutKind(Check):
+    """R30: 不良の区分の一覧に使用中の区分がある会社で、区分を選んでいない不良のある実績を入れたら (実績の入力)。
+
+    data の defects は不良の行の並び (1 行 = {"kind": 区分か None, "qty": 数, …})、defect_qty は不良の数 (progress.services.record_progress の引数)。
+    区分を選んでいない不良の数 (defects があれば区分の無い行の数の合計、無ければ defect_qty) が 0 なら何も出さない。
+    文は「区分を選んでいない不良が <数> あります。」に、知らせるなら「不良の集計では「未設定」の行に入ります。このまま保存できます。」、
+    止めるなら「不良の行の区分を選んでください。」を続ける (止めるの文の頭には、検査の層が「保存できません。」を付ける)。
+    実績の編集 (progress.update_progress) には掛けない (区分を作る前に入れた実績を直すたびに、知らせが出ないようにするため。R26 と同じ)。
+    訳: 区分を選ばずに入れた不良に気づかせるため (区分の無い不良は、集計の「未設定」の行に入り、どの不良が多いかを数えられない)。止めるか知らせるかは会社が選ぶ。既定は知らせる。区分の一覧に使用中の区分が 1 つも無い会社では何もしない (区分を使わない会社の動きを変えない)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M09)・会社の設定 progress_defect_kind・北極星のポカよけの考え方 (11-11 12:5x)。変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R30"
+    action = "progress.record_progress"
+    setting_key = "progress_defect_kind"
+
+    def run(self, data, user):
+        if not tools.has_active_defect_kinds():
+            return None
+        without_kind = _defect_without_kind(data)
+        if not without_kind > 0:
+            return None
+        head = f"区分を選んでいない不良が {_num(without_kind)} あります。"
+        if self.current_mode() == "stop":
+            return head + "不良の行の区分を選んでください。"
+        return head + "不良の集計では「未設定」の行に入ります。このまま保存できます。"
 
 
 BUILTIN = (
@@ -502,6 +539,7 @@ BUILTIN = (
     ProgressInactiveStaffOnUpdate(),
     LumpCompletion(),
     LumpCompletionOnReceipt(),
+    DefectWithoutKind(),
 )
 
 for _check in BUILTIN:
