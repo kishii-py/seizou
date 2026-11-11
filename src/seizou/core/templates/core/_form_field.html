@@ -1,0 +1,21 @@
+{% load seizou_icons seizou_tags %}
+{# 入力のカードの欄 1 つ (core/_form_card.html が、格子の中と、開け閉めの枠 (fold_fields) の中の 2 か所から include する。字は 1 か所に持つ)。 #}
+    {% if field.widget_type == "checkbox" %}
+    <div class="sm:col-span-2">
+      <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% else %}
+    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}{% if field.name in form.row_start_fields %} sm:col-start-1{% endif %}">
+      <div class="mb-2 flex items-center gap-2">
+        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
+        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
+      </div>
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
+      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
+      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
+      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。作者の決め)。ほかの欄は今の class のまま灰 #}
+      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endif %}

@@ -60,7 +60,38 @@ DEFECT_DROP_HELP = "数を空にすると、この行を消します。"
 DEFECT_COPIED_HELP = "消した区分「{name}」です。区分を選び直さなければ、そのまま残ります。"
 
 
-class ProgressRecordForm(forms.Form):
+#: 不良の行を包む開け閉めの枠の見出し (入力のカードの fold_label)
+DEFECT_FOLD_LABEL = "不良を入れる"
+
+
+class DefectFoldMixin:
+    """不良の行の欄を、入力のカードの開け閉めの枠 (core/_form_card.html の fold_fields) に入れる form の共通の所。
+
+    fold_fields は枠に入れる欄の名前 (不良の行の区分・数・原因の全部の組。_add_defect_fields が置く。不良の行の欄が無い form は空で、枠を描かない)。
+    fold_open は枠を開いて描くか: 今の不良の行がある (編集) か、送った値に不良の行の字があるか、不良の行の欄に誤りがあるとき。ほかは閉じて描く。
+    閉じていても欄は form の中にあり、値は送られる (clean は今のまま)。
+    訳: 現場でスマホから入れる実績の多くは不良が無い。不良の区分を登録した会社では欄が 17 個並び、「記録する」まで 2 画面あまり送っていたので、
+    不良の行は「不良を入れる」を押した時だけ開く。値のある行を見えないまま保存させないために、値か誤りがある時は開いたまま出す。
+    出所 = 本人の決め 11-11 22:1x。変えてよい条件 = 本人が見せ方を決め直したとき。
+    """
+
+    fold_fields = ()
+    fold_label = DEFECT_FOLD_LABEL
+
+    @property
+    def fold_open(self) -> bool:
+        if not self.fold_fields:
+            return False
+        if getattr(self, "defect_rows", None):
+            return True
+        if not self.is_bound:
+            return False
+        if any(str(self.data.get(self.add_prefix(name)) or "").strip() for name in self.fold_fields):
+            return True
+        return any(name in self.errors for name in self.fold_fields)
+
+
+class ProgressRecordForm(DefectFoldMixin, forms.Form):
     """実績の入力。日時の既定は今。予定を超えた実数も入れられる (現物優先)。
 
     日時はブラウザの日付と時刻の選び (分まで) で、値の形はその欄が受ける「2026-11-06T14:30」(日付と時刻の間が T・秒なし) にする。
@@ -145,7 +176,7 @@ class ProgressRecordForm(forms.Form):
         return kwargs
 
 
-class ProgressUpdateForm(forms.Form):
+class ProgressUpdateForm(DefectFoldMixin, forms.Form):
     """実績の編集 (作者の決め)。良品の数・不良の数・完了の印・日時・備考を直す。工程の欄は出さない (別の工程に入れた実績は消して入れ直す)。
 
     欄の名前・説明・誤りの字は実績の入力 (ProgressRecordForm) と同じ。
@@ -365,6 +396,7 @@ def _add_defect_fields(form, rows):
     区分の候補は使用中の区分と「区分なし」(今の行の組は、今の区分を使用停止でも残す)。消した区分の写しだけの行の組は、区分を「区分なし」で開き、
     欄の下に写しの名前を出す。区分の欄は行の頭から始める (row_start_fields。区分と数を同じ行の左右に並べる)。
     form.defect_numbers に組の番号の並び、form.defect_rows に今の行 (pk → 行) を持つ (clean が読む)。
+    form.fold_fields に、入力のカードの開け閉めの枠 (「不良を入れる」) に入れる欄の名前を持つ (DefectFoldMixin。初めは閉じて描く)。
     """
     added = {}
     numbers = []
@@ -396,6 +428,8 @@ def _add_defect_fields(form, rows):
     form.initial.pop("defect_qty", None)
     form.defect_numbers = numbers
     form.defect_rows = {row.pk: row for row in rows}
+    # 入力のカードの開け閉めの枠に入れる欄 (見える欄だけ。pk の隠しの欄は入れない。DefectFoldMixin)
+    form.fold_fields = tuple(name for name in added if not name.endswith("_pk"))
     form.row_start_fields = (*type(form).row_start_fields, *(f"defect_{n}_kind" for n in numbers))
 
 

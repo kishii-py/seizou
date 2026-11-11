@@ -11,25 +11,19 @@
   {% if form.visible_fields %}
   <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 [&_input[type=number]]:text-right [&_input[inputmode=decimal]]:text-right [&_input[inputmode=numeric]]:text-right{% if form|has_required %} mt-6{% endif %}">
     {% for field in form.visible_fields %}
-    {% if field.widget_type == "checkbox" %}
-    <div class="sm:col-span-2">
-      <label class="flex cursor-pointer items-center gap-2">{{ field }}<span class="font-medium">{{ field.label }}</span></label>
-      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60">{{ field.help_text }}</p>{% endif %}
-    </div>
-    {% else %}
-    <div class="min-w-0 [&_[aria-invalid=true]]:border-error{% if field.widget_type == 'textarea' or field.widget_type == 'checkboxselectmultiple' or field.widget_type == 'checkboxes' or field.widget_type == 'shipmentcheckboxes' %} sm:col-span-2{% endif %}{% if field.name in form.row_start_fields %} sm:col-start-1{% endif %}">
-      <div class="mb-2 flex items-center gap-2">
-        <label for="{{ field.id_for_label }}" class="font-medium">{{ field.label }}</label>
-        {% if field.field.required %}<span class="badge badge-xs badge-soft badge-error">必須</span>{% else %}<span class="badge badge-xs badge-ghost text-base-content/60">任意</span>{% endif %}
+    {% if field.name in form.fold_fields %}{% if field.name == form.fold_fields.0 %}
+    {# 開け閉めできる欄の組 (form の属性 fold_fields = 枠に入れる欄の名前の並び・fold_label = 見出しの字・fold_open = 開いて描くか)。最初の欄の位置に枠を 1 つ描き、中に組の欄を並べる。 #}
+    {# 閉じていても欄は form の中にあり、値は送られる。開いて描くのは、値か誤りがあるとき (form が決める)。見た目は一覧の絞り込みの枠 (core/list.html) と同じ。例 実績の入力の不良の行 (本人の決め 11-11 22:1x) #}
+    <details class="group rounded-lg bg-base-200 p-4 sm:col-span-2" data-form-fold{% if form.fold_open %} open{% endif %}>
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <span class="min-w-0 flex-1 font-medium">{{ form.fold_label }}</span>
+        {% icon "chevron-down" "size-4 -rotate-90 text-base-content/60 transition-transform group-open:rotate-0" %}
+      </summary>
+      <div class="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        {% for field in form.visible_fields %}{% if field.name in form.fold_fields %}{% include "core/_form_field.html" %}{% endif %}{% endfor %}
       </div>
-      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% include "core/_file_field.html" %}{% else %}{{ field }}{% endif %}
-      {% if field.errors %}<p id="{{ field.auto_id }}_error" class="mt-2 flex items-center gap-2 text-xs text-error">{% icon "alert" "size-4" %}{{ field.errors|join:" " }}</p>{% endif %}
-      {% if field.widget_type == "clearablefile" or field.widget_type == "file" %}{% if form.is_bound and field.data %}<p id="{{ field.auto_id }}_reselect" class="mt-2 flex items-center gap-2 text-xs text-warning">{% icon "alert" "size-4" %}ファイルは選び直してください。止まった画面では、選んだファイルが外れます。</p>{% endif %}{% endif %}
-      {# 欄の下の字。form の warning_help_fields に名前のある欄だけ、data-tone="warning" の間は黄の字にする (JS は class を触らず data-tone だけを付け外しする = R19。例 出荷の数量が残りを超えた時の shipping/shipment-form.js。作者の決め)。ほかの欄は今の class のまま灰 #}
-      {% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="mt-2 text-xs text-base-content/60{% if field.name in form.warning_help_fields %} data-[tone=warning]:text-warning{% endif %}">{{ field.help_text }}</p>{% endif %}
-    </div>
-    {% endif %}
+    </details>
+    {% endif %}{% else %}{% include "core/_form_field.html" %}{% endif %}
     {% endfor %}
   </div>
   {% endif %}
