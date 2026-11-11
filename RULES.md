@@ -32,6 +32,7 @@
 | R07 | 進捗の実績の数が、その工程の予定の数を超えたら | `over_workorder` | `tests/test_r07_over_progress.py` |
 | R24 | 入金の金額が、請求書の残を超えたら | `over_payment` | `tests/test_r24_over_payment.py` |
 | R26 | 社員の一覧に使用中の社員が居る会社で、作業した人 (社員番号か、社員の一覧に居ない人の名前) の無い実績を入れたら | `progress_staff` | `tests/test_r26_progress_staff.py` |
+| R29 | 一式の発注の明細を、受入があるのに一式の金額の載った受入が無いうちに完了にしたら | `lump_completion` | `tests/test_r29_lump_completion.py` |
 
 ## 書き方の決まり (決まりの検査が止める。自社の画面のコードを、起動のときと CI で検査する)
 

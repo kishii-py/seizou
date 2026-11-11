@@ -323,7 +323,11 @@ def test_sent_order_shows_change_guide_and_warns(client, user, sent_partner, ite
 
 
 @pytest.mark.django_db
-def test_lump_line_without_amount_is_refused_in_red(client, user, subcontractor, items):
+def test_lump_line_without_amount_warns_in_yellow(client, user, subcontractor, items):
+    """本人の決め 11-11 13:1x による読み替え (一式の完了を断らずに R29 で知らせる)。
+
+    既定 (知らせる) では、小窓の上の黄の帯と「このまま保存」が出て、印はまだ偽。止めるの赤は tests/test_r29_lump_completion.py が見る。
+    """
     _po_obj, (line,) = _po(user, subcontractor, items, ["10"], price_basis="lump")
     services.receive(line, Decimal("4"), DAY, user)
     assert Receipt.objects.get(line=line).amount == Decimal("0")
@@ -333,10 +337,15 @@ def test_lump_line_without_amount_is_refused_in_red(client, user, subcontractor,
     modal = client.post(complete_url, {}, **MODAL)
     assert modal.status_code == 200
     html = modal.content.decode()
-    assert 'data-notice="stop"' in html
-    assert "保存できません。" in html
-    assert "一式の明細で、受け入れた物に一式の金額がまだ載っていないので、完了にできません。" in html
+    assert "alert-warning" in html and "このまま保存" in html
+    assert 'data-notice="stop"' not in html
+    assert "一式の明細で、受け入れた物に一式の金額がまだ載っていません。" in html
     assert _line(line.pk).completed is False
+
+    confirmed = client.post(complete_url, {"confirmed": "1"}, **MODAL)
+    assert confirmed.status_code == 204
+    assert _line(line.pk).completed is True
+    assert Receipt.objects.get(line=line).amount == Decimal("0")
 
 
 # ---------------------------------------------------------------- 画面の字

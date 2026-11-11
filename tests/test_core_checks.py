@@ -65,7 +65,7 @@ def test_builtin_checks_follow_company_setting(settings):
 
     settings.SEIZOU = {"over_shipment": "stop", "over_workorder": "off", "over_payment": "stop"}
     modes = {c.name: c.current_mode() for c in builtin.BUILTIN}
-    assert modes == {"R01": "stop", "R04": "stop", "R06": "off", "R07": "off", "R24": "stop", "R26": "warn"}
+    assert modes == {"R01": "stop", "R04": "stop", "R06": "off", "R07": "off", "R24": "stop", "R26": "warn", "R29": "warn"}
 
 
 def test_builtin_default_mode_is_warn(settings):

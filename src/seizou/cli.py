@@ -82,6 +82,7 @@ SETTING_DEFAULTS = {
     "receiving_required": "off",
     "over_payment": "warn",
     "progress_staff": "warn",
+    "lump_completion": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

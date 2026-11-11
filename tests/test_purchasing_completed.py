@@ -292,19 +292,31 @@ def test_cancelled_order_and_cancelled_line_are_refused(user, subcontractor, sen
 
 
 @pytest.mark.django_db
-def test_lump_line_without_amount_is_refused(user, subcontractor, items):
+def test_lump_line_without_amount_can_be_completed(user, subcontractor, items):
+    """本人の決め 11-11 13:1x による読み替え (一式の完了を断らずに R29 で知らせる)。
+
+    services は断らずに印を真にし、受入の金額は 0 のまま、済んだ知らせの字に支払の金額が 0 円である事を足す
+    (知らせるか止めるかは検査の層の R29 が会社の設定で決める。tests/test_r29_lump_completion.py)。
+    """
     po, (line,) = _po(user, subcontractor, items, ["10"], price_basis="lump")
     services.receive(line, Decimal("4"), DAY, user)
     assert Receipt.objects.get(line=line).amount == Decimal("0")
 
-    with pytest.raises(ValueError, match="^保存できません。一式の明細で、受け入れた物に一式の金額がまだ載っていないので、完了にできません。"):
-        services.mark_completed(line, user)
-    assert _line(line.pk).completed is False
+    marked = services.mark_completed(line, user)
+    assert marked.completed is True
+    assert _line(line.pk).completed is True
+    assert Receipt.objects.get(line=line).amount == Decimal("0")
+    assert "支払の金額は 0 円です" in marked.saved_message
+    assert getattr(marked, "saved_level", None) is None
 
-    # 受入の「残りは受け入れずに完了にする」も同じ断りで、受入ごと残らない
-    with pytest.raises(ValueError, match="^保存できません。一式の明細で"):
-        services.receive(_line(line.pk), Decimal("1"), DAY, user, close_rest=True)
-    assert Receipt.objects.filter(line=line).count() == 1
+    # 受入の「残りは受け入れずに完了にする」も断らず、受入 (金額 0) が残り、印が真になる
+    _po2, (other,) = _po(user, subcontractor, items, ["10"], price_basis="lump")
+    services.receive(other, Decimal("4"), DAY, user)
+    receipt = services.receive(_line(other.pk), Decimal("1"), DAY, user, close_rest=True)
+    assert Receipt.objects.filter(line=other).count() == 2
+    assert receipt.amount == Decimal("0")
+    assert "支払の金額は 0 円です" in receipt.saved_message
+    assert _line(other.pk).completed is True
 
 
 @pytest.mark.django_db
