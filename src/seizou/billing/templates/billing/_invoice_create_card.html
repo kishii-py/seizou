@@ -108,7 +108,7 @@
           <td class="whitespace-nowrap">{{ row.shipment.order_line.item }}</td>
           <td class="whitespace-nowrap text-right tabular-nums">{{ row.shipment.qty|comma }}</td>
           {% if not form.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}{% if row.lump %}<span class="text-base-content/70"> (一式)</span>{% endif %}</td>{% endif %}
-          <td class="whitespace-nowrap font-mono">{{ row.shipment.delivery_note.note_no }}</td>
+          <td class="whitespace-nowrap font-mono">{% if row.shipment.delivery_note.status == "issued" %}{{ row.shipment.delivery_note.note_no }}{% endif %}</td>{# 「納品書」の列は発行の納品書の番号だけ (取消の納品書を指したままの出荷は空。候補の字 billing.forms.ShipmentChoiceField と同じ。依頼書 N403b) #}
           {% if can_bill and not form.hide_money %}<td class="whitespace-nowrap">{% if not row.lump %}{% url 'billing:shipment_payment_create' row.shipment.pk as outside_url %}<a class="btn btn-ghost btn-xs" href="{{ outside_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ outside_url }}" data-row-drop>請求しない (別に受け取った)</a>{% endif %}</td>{% endif %}
         </tr>
         {% endfor %}

@@ -32,7 +32,7 @@
 | R07 | 進捗の実績の数が、その工程の予定の数を超えたら | `over_workorder` | `tests/test_r07_over_progress.py` |
 | R24 | 入金の金額が、請求書の残を超えたら | `over_payment` | `tests/test_r24_over_payment.py` |
 | R26 | 社員の一覧に使用中の社員が居る会社で、作業した人 (社員番号か、社員の一覧に居ない人の名前) の無い実績を入れたら | `progress_staff` | `tests/test_r26_progress_staff.py` |
-| R27 | 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) を直すか消そうとしたら | `billed_shipment` | `tests/test_r27_billed_shipment.py` |
+| R27 | 請求済みの出荷 (請求書に出荷の行で入った出荷・一式の行で請求した明細の出荷・請求書の外で入金を受け取った出荷) を直すか消そうとしたら、その出荷の入った納品書を取り消そうとしたら | `billed_shipment` | `tests/test_r27_billed_shipment.py` |
 | R28 | 実績の作業した人に、使用停止の社員を入れたら (直すときに同じ社員のままなら見ない) | `progress_inactive_staff` | `tests/test_r28_inactive_staff.py` |
 | R29 | 一式の発注の明細を、受入があるのに一式の金額の載った受入が無いうちに完了にしたら | `lump_completion` | `tests/test_r29_lump_completion.py` |
 | R30 | 不良の区分の一覧に使用中の区分がある会社で、区分を選んでいない不良のある実績を入れたら | `progress_defect_kind` | `tests/test_r30_defect_kind.py` |

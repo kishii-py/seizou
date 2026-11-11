@@ -1,6 +1,8 @@
-"""請求書の外で受け取った入金を記録した出荷のある納品書の取消を断る (作者の決め C107-11。shipping.services.outside_paid_shipments と cancel_refusal)。
+"""請求書の外で受け取った入金を記録した出荷のある納品書の取消 (作者の決め C107-11 を、本人の決め 11-11 13:0x で「止めずに知らせる」に変えた。
+shipping.services.outside_paid_shipments と billed_notice)。
 
-記録した後に納品書を取り消して出荷の数量を直せると、受け取った代金と出荷が食い違うので、請求済みの出荷と同じ扱いで断る。
+前は請求済みの出荷と同じ扱いで断ったが、納品書は出荷の記録を刷った物で、取り消しても入金の記録は変わらないので、取り消せる形にし、
+検査の層の R27 が知らせる (取り消した後に出荷を直すと、受け取った代金と出荷が食い違うため。本人の決め 11-11 10:1x・13:0x「それでOK」)。
 文の順は 出荷の行の請求書 → 一式の行の請求書 → 外の入金。形の手本 = tests/test_shipping_cancel_lump.py。作り物のデータだけを使う。
 """
 
@@ -49,44 +51,45 @@ def _note(user, customer, line, *qtys):
 
 
 @pytest.mark.django_db
-def test_outside_paid_note_cannot_be_cancelled(user, customer, line):
+def test_outside_paid_note_can_be_cancelled(user, customer, line):
+    """外の入金を記録した出荷の納品書も取り消せ、知らせの文は「入金の記録は変わりません」を書く (金額と入金日は書かない)。入金は記録のまま。"""
     note, [shipment] = _note(user, customer, line, "5")
     payment = billing_services.record_outside_payment(shipment, NOV_05, Decimal("1375"), user)
     expected = (
-        f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は、請求書の外で受け取った入金を記録しています。"
-        "先に入金を取り消してから、納品書を取り消してください。"
+        f"納品書 {note.note_no} の出荷 {shipment.shipment_no} には、請求書の外で受け取った入金が記録されています。"
+        "納品書を取り消しても、入金の記録は変わりません。"
     )
 
     assert services.outside_paid_shipments(note) == [(shipment, payment)]
-    assert services.cancel_refusal(note) == expected
-    with pytest.raises(ValueError) as caught:
-        services.cancel_delivery_note(note, user)
-    assert str(caught.value) == expected
+    assert services.billed_notice(note) == expected
+    assert services.cancel_delivery_note(note, user).status == DeliveryNote.STATUS_CANCELLED
     note.refresh_from_db()
-    assert note.status == DeliveryNote.STATUS_ISSUED
+    assert note.status == DeliveryNote.STATUS_CANCELLED
+    payment.refresh_from_db()
+    assert payment.status == payment.STATUS_RECORDED
 
 
 @pytest.mark.django_db
-def test_cancelling_payment_allows_note_cancel(user, customer, line):
+def test_cancelling_payment_clears_notice(user, customer, line):
     note, [shipment] = _note(user, customer, line, "5")
     payment = billing_services.record_outside_payment(shipment, NOV_05, Decimal("1375"), user)
 
     billing_services.cancel_payment(payment, user)
 
-    assert services.cancel_refusal(note) == ""
+    assert services.billed_notice(note) == ""
     assert services.cancel_delivery_note(note, user).status == DeliveryNote.STATUS_CANCELLED
 
 
 @pytest.mark.django_db
-def test_invoice_refusal_comes_first(user, customer, line):
+def test_invoice_notice_comes_first(user, customer, line):
     note, [billed, paid] = _note(user, customer, line, "4", "5")
     invoice = billing_services.create_invoice(customer, [billed], user, issued_on=NOV_30)
     billing_services.record_outside_payment(paid, NOV_05, Decimal("1375"), user)
 
-    refusal = services.cancel_refusal(note)
+    notice = services.billed_notice(note)
 
-    assert f"出荷 {billed.shipment_no} は請求書 {invoice.invoice_no} で請求済みです。" in refusal
-    assert "請求書の外で受け取った入金" not in refusal
+    assert f"出荷 {billed.shipment_no} は請求書 {invoice.invoice_no} に入っています。" in notice
+    assert "請求書の外で受け取った入金" not in notice
 
 
 @pytest.mark.django_db
@@ -98,10 +101,13 @@ def test_cancel_screen_lists_outside_paid_shipment(client, user, customer, line,
 
     body = client.get(reverse("shipping:deliverynote_cancel", args=[note.pk]), **headers).content.decode()
 
-    assert '<span class="font-semibold">取り消せません。</span>' in body
+    # 押す前に知らせの黄の 1 行と、外の入金の出荷の行が出て、取り消すボタンも出る
+    assert services.billed_notice(note) in body
+    assert "取り消せません。" not in body
     assert "は請求書の外で受け取った入金を記録済み" in body
     assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
-    assert FORM_CARD not in body
+    assert FORM_CARD in body
+    assert f"{note.note_no} を取り消す</button>" in body
 
     detail = client.get(reverse("shipping:deliverynote_detail", args=[note.pk])).content.decode()
     assert 'id="deliverynote-invoices"' not in detail
@@ -112,4 +118,4 @@ def test_note_without_outside_payment_is_unchanged(user, customer, line):
     note, _shipments = _note(user, customer, line, "5")
 
     assert services.outside_paid_shipments(note) == []
-    assert services.cancel_refusal(note) == ""
+    assert services.billed_notice(note) == ""

@@ -5,12 +5,13 @@
 - payment_badge: 請求書の入金の状態の印 (core/_status_badge.html。色は core.status_colors の PAYMENT_TONES。開発の記録 docs/nights/20261105/N164.md)。
 - invoice_head_chips: 請求書の詳細の頭の要点の札「合計」「残」。形は orders の orders_detail の order_head_chips と同じ。
   取消の請求書と金額の閲覧の無い人には出さない (作者の決め)。
+- invoice_changed_note: 請求した後に出荷の数量が変わった明細の黄色の 1 行の字 (services.changed_lines。請求書の詳細が読む。依頼書 N403b)。
 """
 
 from django import template
 
 from seizou.core.status_colors import PAYMENT_TONES
-from seizou.core.templatetags.seizou_tags import yen
+from seizou.core.templatetags.seizou_tags import comma, yen
 
 register = template.Library()
 
@@ -67,3 +68,26 @@ def invoice_head_chips(invoice, hide_money=False) -> list[dict]:
         {"label": invoice._meta.get_field("total").verbose_name, "value": yen(invoice.total)},
         {"label": "残", "value": yen(invoice.balance())},
     ]
+
+
+@register.simple_tag
+def invoice_changed_note(invoice) -> str:
+    """{% invoice_changed_note object as changed_note %}。請求した後に出荷の数量が変わった明細の黄色の 1 行の字 (読むだけ)。無ければ空の字。
+
+    services.changed_lines(invoice) を 1 回だけ引く (明細のタブの行ごとには引かない)。並びは changed_lines のまま (明細の pk の順)。
+    出荷の行は「S-000031 (請求 50・今 48)」、一式の行は「受注 SO-… の n 行目の一式 (請求 300・今 280)」。数は comma の字。
+    字は「請求した後に出荷の数量が変わった明細があります: <並び (「・」でつなぐ)>。請求書も直すときは、取り消して作り直してください。」。
+    金額は書かない (金額の閲覧の無い人にも同じ字)。取消の請求書は空の字 (changed_lines が空を返す)。
+    """
+    from .. import services
+
+    parts = []
+    for line, billed, now in services.changed_lines(invoice):
+        if line.shipment_id is not None:
+            name = line.shipment.shipment_no
+        else:
+            name = f"受注 {line.order_line.order.order_no} の {line.order_line.line_no} 行目の一式"
+        parts.append(f"{name} (請求 {comma(billed)}・今 {comma(now)})")
+    if not parts:
+        return ""
+    return f"請求した後に出荷の数量が変わった明細があります: {'・'.join(parts)}。請求書も直すときは、取り消して作り直してください。"

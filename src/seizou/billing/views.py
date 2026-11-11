@@ -58,7 +58,7 @@ def _unpaid_only(invoices):
 class InvoiceListView(BaseListView):
     """請求書の一覧。
 
-    使う人: 経理 / いつ: 締日の後 / 何のために: 納品書の出た出荷をまとめた請求書を持つ / 次にすること: 「新規登録」か行から詳細へ (印刷)
+    使う人: 経理 / いつ: 締日の後 / 何のために: 出荷をまとめた請求書を持つ / 次にすること: 「新規登録」か行から詳細へ (印刷)
     """
 
     model = Invoice
@@ -126,7 +126,7 @@ class InvoiceModalView(BaseModalView):
 class InvoiceCreateView(BaseFormView):
     """請求書の新規登録の入力。
 
-    使う人: 経理 / いつ: 締日の後 / 何のために: 得意先ごとに納品書の出た出荷をまとめて請求書を作る / 次にすること: 請求書の詳細から印刷
+    使う人: 経理 / いつ: 締日の後 / 何のために: 得意先ごとに出荷をまとめて請求書を作る / 次にすること: 請求書の詳細から印刷
 
     消費税は services の _tax が、請求書の税率ごとの合計に 1 回だけ計算する (インボイス制度。丸める向きは取引先の消費税の端数の向き。この画面は計算しない)。
     """
@@ -136,7 +136,7 @@ class InvoiceCreateView(BaseFormView):
     service = staticmethod(services.create_invoice)
     template_name = "billing/invoice_form.html"
     screen_name = "請求書の新規登録"
-    screen_help = "得意先を選び、納品書の出た出荷をまとめて請求書を作ります。"
+    screen_help = "得意先を選び、まだ請求書に入っていない出荷をまとめて請求書を作ります。"
 
 
 class InvoiceCancelView(BaseFormView):

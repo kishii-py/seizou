@@ -15,13 +15,11 @@
 - 受注 (Order・OrderLine) は書かない。出荷を作った後、同じトランザクションの中で orders.services.refresh_status を呼び、受注の状態を進める。
   「残りは出さずに完了にする」出荷 (ship の close_rest) は、同じトランザクションの中で orders.services.mark_completed を呼ぶ (完了の印を書くのは orders)。
 - 納品書を出した後の出荷は、cancel_delivery_note で納品書を取り消してから update_shipment で直す (R08)。
-  発行の請求書に入った出荷の納品書は取り消せない (請求書の明細は billing を import せず、出荷の逆の関係で引く)。
-  納品書の取消は、発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷と、請求書の外で受け取った入金を記録した出荷
-  (作者の決め) があれば断る (文は cancel_refusal の 1 か所。作者の決め)。
-  その請求書に入金があれば、断りの文 (cancel_refusal) に取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計
-  (金額の閲覧の無い人には件数だけ) を書く (入金は請求書の逆の関係 payments の先の表として引く。作者の決め)。
+  納品書は出荷の記録を刷った物なので、請求済みの出荷 (発行の請求書に入った出荷・受注の明細に発行の請求書の一式の行がある出荷・
+  請求書の外で受け取った入金を記録した出荷) のある納品書も取り消せる (本人の決め 11-11 10:1x・13:0x)。請求済みの事は、
+  検査の層の R27 が取り消す前に知らせる (文は billed_notice の 1 か所。請求書の明細は billing を import せず、出荷の逆の関係で引く)。
 - 打ち間違えた出荷は delete_shipment で消す (断る訳は delete_refusal の 1 か所。本人の決め 11-08 00:23・00:25)。
-- 請求済みの出荷 (billed_by) の直しと削除は断らない。検査の層の R27 が services の前に知らせる (本人の決め 11-11 12:5x〜13:0x)。
+- 請求済みの出荷 (billed_by) の直しと削除と、その出荷の入った納品書の取消は断らない。検査の層の R27 が services の前に知らせる (本人の決め 11-11 12:5x〜13:0x)。
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
@@ -37,7 +35,7 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
-from seizou.core import access, history
+from seizou.core import history
 from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import next_number, record_history, record_history_deleted
@@ -69,15 +67,6 @@ def _qty_text(value) -> str:
     if dec == dec.to_integral_value():
         return str(dec.quantize(Decimal(1)))
     return format(dec, "f")
-
-
-def _yen(value) -> str:
-    """金額の字。billing.services._yen と同じ形 (3 桁ごとの区切り。小数の末尾の 0 を落とす。7500.00 → 7,500、1234.50 → 1,234.5)。
-
-    頭の ¥ は呼ぶ側の字に書く (「合計 ¥{_yen(…)}」)。shipping は billing を import しないので形を写す
-    (_qty_text が core.checks.builtin._num の形を写すのと同じ)。
-    """
-    return f"{_dec(value).normalize():,f}"
 
 
 def _record_shipment(order_line, qty, shipped_at, user, note, *, close_rest=False):
@@ -316,7 +305,7 @@ def outside_paid_shipments(note):
 def billed_by(shipment):
     """出荷 1 つが請求済みなら、何で請求済みかの (種類, 記録) の組を返す (読むだけ。問い合わせ 3 回まで)。請求済みでなければ None。
 
-    種類と記録 (見る順は cancel_refusal の文の順と同じ。最初に当たった 1 つを返す):
+    種類と記録 (見る順は billed_notice の文の順と同じ。最初に当たった 1 つを返す):
     "line" = 発行の請求書に出荷の行で入っている (記録はその請求書の明細。明細の pk の小さい方)。
     "lump" = 受注の明細に発行の請求書の一式の行がある (記録はその一式の行。明細の pk の小さい方)。
     "outside" = 請求書の外で受け取った入金 (取消でない) を記録している (記録はその入金。入金の pk の小さい方)。
@@ -347,80 +336,59 @@ def billed_by(shipment):
     return None
 
 
-def cancel_refusal(note, *, hide_money=False, found=None, lumps=None, outside=None) -> str:
-    """納品書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
+def billed_notice(note, *, found=None, lumps=None, outside=None) -> str:
+    """納品書に請求済みの出荷があるときの知らせの文 (読むだけ)。請求済みの出荷が無ければ空の字。金額と入金の件数は書かない。
 
-    発行の請求書に出荷の行で入った出荷が無く、受注の明細に発行の請求書の一式の行がある出荷 (lump_billed_shipments) があれば、
-    その出荷と請求書で「…の一式の行で請求済みです」の文を作る (作者の決め)。lumps = 呼ぶ側が引いた lump_billed_shipments(note)
-    の並び (取消の確かめのカードの tag が渡す)。省けばここで引く。
-    どちらも無く、請求書の外で受け取った入金 (取消でない) を記録した出荷 (outside_paid_shipments) があれば、その出荷で
-    「…請求書の外で受け取った入金を記録しています」の文を作る (作者の決め)。outside = 呼ぶ側が引いた outside_paid_shipments(note) の並び。
-    文の順は 出荷の行の請求書 → 一式の行の請求書 → 外の入金。
-    発行の請求書に入った出荷のうち、pk の最も小さい出荷の番号と、その請求書の番号で文を作る (invoiced_shipments)。
-    その請求書に取消でない入金 (状態が「記録」) があれば、先にすることを取り消す順 (入金 → 請求書 → 納品書) で書き、
-    入金の記録の件数と合計 ¥… を添える。hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人。請求書の
-    cancel_refusal と同じ)。入金は請求書の逆の関係 payments の先の表から読み、「記録」の値はその表の STATUS_RECORDED
-    から読む (billing を import しない)。合計は行を読んで Python で足す (R03。DB の側で計算しない)。
-    found = 呼ぶ側が引いた invoiced_shipments(note) の並び (取消の確かめのカードの tag が渡す。tag は請求書の payments を
-    先に 1 回で引いてあるので、ここでは引き直さない)。省けばここで引く (入金はその請求書の分を 1 回)。
-    cancel_delivery_note と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。納品書の状態は見ない。
-    訳: 請求済みの出荷 (発行の請求書に入った出荷と、受注の明細に発行の請求書の一式の行がある出荷) と、請求書の外で受け取った入金を記録した出荷のある納品書を取り消さないため (先に請求書か入金を、その請求書に入金があれば、さらにその前に入金を取り消す。一式の行の数量は請求した時の出荷の合計の写しで、外の入金は受け取った代金の記録なので、出荷を直せると食い違う)。出所 = AI の案 (docs/nights/20261102/N26.md。文をこの関数の 1 か所にしたのは docs/nights/20261106/N196.md) と作者の決め・入金の件数と合計と取り消す順を書くのは本人の決め 11-06 22:2x (作者の決め「入金の件数と合計を書く」。本人の言葉は一括の答え「推奨でいこう！」11-06 22:1x。開発の記録 docs/nights/20261106/N296.md)・金額の頭の ¥ は本人 11-06 18:2x「全体的に頭に￥の方が見やすくない？」(作者の決め)。
-    変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
+    見る順は 出荷の行の請求書 (invoiced_shipments) → 一式の行の請求書 (lump_billed_shipments) → 外の入金 (outside_paid_shipments)
+    (billed_by と同じ順。最初に当たった種類の、出荷の pk の最も小さい 1 つで文を作る)。
+    出荷の行:「納品書 <番号> の出荷 <番号> は請求書 <番号> に入っています。納品書を取り消しても、請求書は変わりません。」
+    一式の行:「納品書 <番号> の出荷 <番号> の受注の明細は、請求書 <番号> の一式の行で請求済みです。納品書を取り消しても、請求書は変わりません。」
+    外の入金:「納品書 <番号> の出荷 <番号> には、請求書の外で受け取った入金が記録されています。納品書を取り消しても、入金の記録は変わりません。」
+    found・lumps・outside = 呼ぶ側が引いた invoiced_shipments(note)・lump_billed_shipments(note)・outside_paid_shipments(note)
+    の並び (取消の確かめのカードの tag が渡す)。省けばここで引く。納品書の状態は見ない。
+    検査の層の R27 (納品書の取消。core.checks.builtin) と取消の確かめのカード (shipping_tags の deliverynote_billing) が同じ文を使う。
     """
     if found is None:
         found = invoiced_shipments(note)
-    if not found:
-        if lumps is None:
-            lumps = lump_billed_shipments(note)
-        if lumps:
-            shipment, invoice = lumps[0]
-            return (
-                f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} の"
-                "一式の行で請求済みです。先に請求書を取り消してから、納品書を取り消してください。"
-            )
-        if outside is None:
-            outside = outside_paid_shipments(note)
-        if outside:
-            shipment, _payment = outside[0]
-            return (
-                f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は、請求書の外で受け取った入金を"
-                "記録しています。先に入金を取り消してから、納品書を取り消してください。"
-            )
-        return ""
-    shipment, invoice = found[0]
-    recorded = type(invoice)._meta.get_field("payments").related_model.STATUS_RECORDED
-    payments = [row for row in invoice.payments.all() if row.status == recorded]
-    if not payments:
+    if found:
+        shipment, invoice = found[0]
         return (
-            f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} で"
-            "請求済みです。先に請求書を取り消してから、納品書を取り消してください。"
+            f"納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に入っています。"
+            "納品書を取り消しても、請求書は変わりません。"
         )
-    left = f"入金の記録 {len(payments)} 件"
-    if not hide_money:
-        left += f"・合計 ¥{_yen(sum((row.amount for row in payments), Decimal(0)))}"
-    return (
-        f"取り消せません。納品書 {note.note_no} の出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} で"
-        f"請求済みです。先に請求書の入金を取り消し ({left})、次に請求書を、最後に納品書を取り消してください。"
-    )
+    if lumps is None:
+        lumps = lump_billed_shipments(note)
+    if lumps:
+        shipment, invoice = lumps[0]
+        return (
+            f"納品書 {note.note_no} の出荷 {shipment.shipment_no} の受注の明細は、請求書 {invoice.invoice_no} の一式の行で請求済みです。"
+            "納品書を取り消しても、請求書は変わりません。"
+        )
+    if outside is None:
+        outside = outside_paid_shipments(note)
+    if outside:
+        shipment, _payment = outside[0]
+        return (
+            f"納品書 {note.note_no} の出荷 {shipment.shipment_no} には、請求書の外で受け取った入金が記録されています。"
+            "納品書を取り消しても、入金の記録は変わりません。"
+        )
+    return ""
 
 
 def cancel_delivery_note(note, user):
     """発行の納品書を取消にする。入っていた出荷は納品書を指したまま残す (取消の納品書の詳細に出る)。
 
     取消の納品書の出荷も請求できる (納品書は出荷の記録を刷った物。本人の決め 11-11 10:1x)。直してから新しい納品書にまとめ直せる。
-    発行の請求書に入った出荷があれば、何も変えずに ValueError (一式の行で請求した明細の出荷と、請求書の外で受け取った入金を記録した出荷も同じ (文は cancel_refusal)。先に請求書を取り消す。その請求書に入金があれば、
-    文は取り消す順 (入金 → 請求書 → 納品書) と入金の記録の件数と合計を書く)。文は cancel_refusal の 1 か所で、
-    金額の閲覧の無い人には件数だけ (access.hides_money。請求書の cancel_invoice と同じ)。入金の行はロックしない (書かない)。
+    断るのは、取り消し済みの納品書 (ValueError) だけ。請求済みの出荷 (発行の請求書に入った出荷・一式の行で請求した明細の出荷・
+    請求書の外で受け取った入金を記録した出荷) のある納品書も取り消し、請求書と入金は触らない (知らせは検査の層の R27。文は billed_notice)。
+    訳: 納品書は出荷の記録を刷った物で、取り消して作り直しても請求書の明細 (写し) は変わらないので、請求済みの出荷のある納品書も取り消せる。請求済みの事は検査の層の R27 が知らせる。出所 = 本人の決め 11-11 10:1x・13:0x。変えてよい条件 = 本人が決め直したとき。
     """
     with transaction.atomic():
         locked = DeliveryNote.objects.select_for_update().get(pk=note.pk)
         if locked.status == DeliveryNote.STATUS_CANCELLED:
             raise ValueError("取り消せません。この納品書は取り消し済みです。納品書の詳細を開き直してください。")
-        # 出荷の行をロックする (請求書の作成と同時に走っても、どちらかが待つ)。文は cancel_refusal の 1 か所。
+        # 出荷の行をロックする (請求書の作成と同時に走っても、どちらかが待つ)。
         list(Shipment.objects.select_for_update().filter(delivery_note=locked).order_by("pk"))
-        refusal = cancel_refusal(locked, hide_money=access.hides_money(user))
-        if refusal:
-            raise ValueError(refusal)
         before = history.saved_state(locked)
         locked.status = DeliveryNote.STATUS_CANCELLED
         locked.save(update_fields=["status"])

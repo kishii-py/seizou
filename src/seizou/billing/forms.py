@@ -1,7 +1,8 @@
 """billing の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
 
 - 作る form: 得意先・出荷 (checkbox)・発行日。service_kwargs() が create_invoice の引数を作る。
-  候補は billable_shipments() (発行の納品書に入っていて、取消でない請求書に入っていない出荷) と、その出荷のある得意先。
+  候補は billable_shipments() (出荷の記録があり、取消でない請求書に入っていない出荷。「請求しない」の印の明細の出荷と、
+  請求書の外で受け取った入金 (取消でない) のある出荷は除く。納品書を発行したかどうかは見ない) と、その出荷のある得意先。
   得意先と違う出荷を選んだときは、画面で先に断らず services の R09 の赤の知らせに任せる。
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
   出荷は列の見出しのある表の行 (rows) で描き (billing/_invoice_create_card.html)、印を付けた行の数と税抜の金額の合計を
@@ -101,12 +102,17 @@ class PeriodSelect(forms.Select):
 
 
 class ShipmentChoiceField(forms.ModelMultipleChoiceField):
-    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は 作者の決め)。"""
+    """出荷を選ぶ欄。字は「出荷 出荷番号・得意先・品番 品名・数量 n・出荷日 日付・納品書 納品書番号」(区切りは「・」。目視の所見 11-05。名前は 作者の決め)。
+
+    「・納品書 …」は、出荷が発行の納品書に入っている時だけ付ける。取消の納品書を指したままの出荷と、納品書の無い出荷は付けない
+    (取消の納品書の出荷も請求できるので、取り消した番号を出さない。依頼書 N403b)。「発行」の値は納品書の表の STATUS_ISSUED から読む (shipping の model を import しない)。
+    """
 
     def label_from_instance(self, obj):
         line = obj.order_line
         qty = f"{obj.qty.normalize():f}"
-        note_no = obj.delivery_note.note_no if obj.delivery_note else ""
+        note = obj.delivery_note
+        note_no = note.note_no if note is not None and note.status == type(note).STATUS_ISSUED else ""
         text = (
             f"出荷 {obj.shipment_no}・{line.order.customer.name}・{line.item.part_no} {line.item.name}"
             f"・数量 {qty}・出荷日 {obj.shipped_at:%Y-%m-%d}"
@@ -236,7 +242,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         queryset=billable_shipments().none(),
         required=False,
         widget=ShipmentCheckboxes(attrs={"class": "checkbox"}),
-        help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
+        help_text="まだ請求書に入っていない出荷が並びます (納品書を作っていない出荷も並びます)。",
     )
 
     def __init__(self, *args, hide_money=False, **kwargs):

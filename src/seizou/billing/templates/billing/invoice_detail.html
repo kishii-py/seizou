@@ -35,7 +35,9 @@
   </table>
 </div>
 {% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block content %}<div id="invoice-live">{{ block.super }}
+{# 請求した後に出荷の数量が変わった明細があれば、詳細の上に黄色の 1 行 (知らせの段 5 = 記録の今の状態。閉じるボタンと「確認してください」の頭を付けない)。字は billing_tags の invoice_changed_note (services.changed_lines を 1 回だけ引く。金額は書かない。取消の請求書には出ない)。#invoice-live の中なので、小窓で保存した後の取り直しにも入る。小窓と一覧には出さない (依頼書 N403b) #}
+{% block content %}<div id="invoice-live">{% invoice_changed_note object as changed_note %}{% if changed_note %}
+<div class="alert alert-warning alert-soft mb-4" role="status" data-changed-lines>{% icon "alert" "size-5" %}<span>{{ changed_note }}</span></div>{% endif %}{{ block.super }}
 </div>
 <div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
 {% endblock %}

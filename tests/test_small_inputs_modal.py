@@ -210,7 +210,7 @@ def _deliverynote_cancel(w):
         post={},
         saved=_status_is(DeliveryNote, note.pk, DeliveryNote.STATUS_CANCELLED),
         confirm=True,
-        text="この納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。",
+        text="この納品書を取り消します。取り消した納品書の出荷も請求でき、出荷を直してから新しい納品書にまとめ直せます。",
         moved=True,
     )
 
@@ -466,38 +466,33 @@ def test_invoice_cancel_refusal_in_modal(world):
     assert close not in whole
 
 
-def test_deliverynote_cancel_refusal_in_modal(world):
-    """請求済みの納品書の取消の小窓は、押す前に黄の断りと出荷・請求書の link を出し、form と取り消すボタンを出さない。
+#: 納品書の取消のカードの知らせの黄の 1 行 (押す前だけ出す。字は shipping.services.billed_notice)
+NOTICE_LINE = 'role="status" data-billed-notice>'
 
-    全体の画面だけ「納品書へ戻る」を出す (小窓の下は納品書の詳細。初見テスト R5 の候補 C03。依頼書 N196)。
+
+def test_deliverynote_cancel_notice_in_modal(world):
+    """請求済みの納品書の取消の小窓は、押す前に知らせの黄の 1 行と出荷・請求書の link を出し、form と取り消すボタンも出す。
+
+    前は断りだけでボタンを出さなかった (初見テスト R5 の候補 C03。依頼書 N196)。本人の決め 11-11 13:0x で止めずに知らせる形にした (依頼書 N403b)。
     """
     invoice = _invoice(world.user)
     note = DeliveryNote.objects.get()
     shipment = note.shipments.get()
     url = reverse("shipping:deliverynote_cancel", args=[note.pk])
-    back = f'href="{reverse("shipping:deliverynote_detail", args=[note.pk])}"'
 
-    modal = text(world.client.get(url, **MODAL))
-    assert "<html" not in modal
-    alert = modal[modal.index("alert-warning") :]
-    assert shipping_services.cancel_refusal(note).partition("。")[2].strip() in alert[: alert.index("</div>")]
-    assert '<form method="post"' not in modal
-    assert f"{note.note_no} を取り消す</button>" not in modal
-    assert "この納品書を取り消します。" not in modal
-    # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が後で付いても通るように)
-    assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in modal
-    assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in modal
-    assert back not in modal
-
-    whole = text(world.client.get(url))
-    assert "<html" in whole
-    assert back in whole
-    assert "納品書へ戻る" in whole
+    for body in (text(world.client.get(url, **MODAL)), text(world.client.get(url))):
+        alert = body[body.index(NOTICE_LINE) :]
+        assert shipping_services.billed_notice(note) in alert[: alert.index("</div>")]
+        assert "この納品書を取り消します。" in body
+        assert f"{note.note_no} を取り消す</button>" in body
+        # 請求書の詳細の href は閉じの " まで見ない (入金の枠への行き先が付いても通るように)
+        assert f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}' in body
+        assert f'href="{reverse("shipping:shipment_detail", args=[shipment.pk])}"' in body
     assert DeliveryNote.objects.get().status == DeliveryNote.STATUS_ISSUED
 
 
 def test_deliverynote_cancel_links_payments_in_modal(world):
-    """請求書に入金があれば、納品書の取消の小窓と全体の画面の両方で、断りは入金の文になり、請求書の link は入金の枠へ向く。
+    """請求書に入金があれば、納品書の取消の小窓と全体の画面の両方で、請求書の link は入金の枠へ向く。知らせの文は入金を書かない (N403b)。
 
     入金の無い請求書の link は請求書の詳細のまま (閉じの " まで見る。初見テスト R5 の候補 C03。決め C03-2 a。依頼書 N296)。
     """
@@ -513,11 +508,11 @@ def test_deliverynote_cancel_links_payments_in_modal(world):
 
     billing_services.record_payment(invoice, RECEIVED_ON, Decimal("6500"), world.user)
     for body in (text(world.client.get(url, **MODAL)), text(world.client.get(url))):
-        alert = body[body.index("alert-warning") :]
-        assert "(入金の記録 1 件・合計 ¥6,500)" in alert[: alert.index("</div>")]
+        alert = body[body.index(NOTICE_LINE) :]
+        assert "入金" not in alert[: alert.index("</div>")]
         assert paid in body
         assert plain not in body
-        assert f"{note.note_no} を取り消す</button>" not in body
+        assert f"{note.note_no} を取り消す</button>" in body
     assert DeliveryNote.objects.get().status == DeliveryNote.STATUS_ISSUED
 
 
@@ -706,14 +701,16 @@ def test_other_buttons_keep_primary(world, name):
 
 
 def test_warned_cancel_keeps_yellow_button(world, cancel_checks):
-    """黄の知らせが出た後は、取消の確かめでも「このまま保存」の黄のボタン (赤にしない。C24 の 2)。"""
+    """黄の知らせが出た後は、取消の確かめでも黄のボタン (赤にしない。C24 の 2)。字は取消の画面なので「このまま取り消す」
+    (前は「このまま保存」。本体の決め 11-11 15:0x で、取消の画面は操作に合う字にした。依頼書 N403b)。"""
     checks.register(_CancelNote())
     case = BUILD["order_cancel"](world)
     for response in (world.client.post(case.url, case.post), world.client.post(case.url, case.post, **MODAL)):
         assert response.status_code == 200
         card = _card(text(response))
         assert card.count(WARNING_BUTTON) == 1
-        assert "このまま保存</button>" in card
+        assert "このまま取り消す</button>" in card
+        assert "このまま保存" not in card
         assert DANGER_BUTTON not in card
         assert PRIMARY_BUTTON not in card
     assert not case.saved()
