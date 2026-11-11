@@ -3,7 +3,9 @@
 
 出荷の編集 (shipping.update_shipment) と出荷の削除 (shipping.delete_shipment) と納品書の取消 (shipping.cancel_delivery_note。
 本人の決め 11-11 13:0x。依頼書 N403b) の画面を、設定の 3 つの値 (warn・stop・off) で回す。
-知らせるのときは黄の知らせと「このまま保存」が出て、confirmed=1 の 2 回目で直る (消える)。請求書の明細の写しは変わらない。
+知らせるのときは黄の知らせと「このまま保存」(削除の画面は「このまま削除」、納品書の取消は「このまま取り消す」) が出て、
+confirmed=1 の 2 回目で直る (消える・取り消す)。請求書の明細の写しは変わらない。
+止めるの赤の頭は、出荷の編集は「保存できません。」、削除は「削除できません。」、納品書の取消は「取り消せません。」(本体の決め 11-11 15:0x)。
 services は請求済みの出荷を断らない (新しい断る処理は無い)。services が断る出荷 (発行の納品書に入っている = R08・
 delete_refusal が断る出荷) には R27 の黄を出さず、今のまま赤だけを出す (黄の後に赤を出さない)。
 作り物のデータは全部 services で作る。
@@ -102,11 +104,11 @@ def _codes(warnings):
     return [warning.code for warning in warnings]
 
 
-def _assert_warned(response, *texts):
-    """黄の知らせ (R27) と「このまま保存」が出て、赤は出ていない。"""
+def _assert_warned(response, *texts, button="このまま保存"):
+    """黄の知らせ (R27) と黄の後のボタン (編集は「このまま保存」、削除は「このまま削除」) が出て、赤は出ていない。"""
     assert response.status_code == 200
     body = response.content.decode()
-    assert 'data-notice="check"' in body and "R27" in body and "このまま保存" in body
+    assert 'data-notice="check"' in body and "R27" in body and f"{button}</button>" in body
     assert 'name="confirmed" value="1"' in body
     assert 'data-notice="stop"' not in body
     for text in texts:
@@ -217,7 +219,7 @@ def test_r27_lump_billed_shipment_edit_and_delete(settings, user, logged_in, lum
     assert first.qty == Decimal("50")
 
     deleting = logged_in.post(_delete_url(second), {})
-    _assert_warned(deleting, invoice.invoice_no, "出荷を消すと、一式の行の数量 (100) と出荷の合計が違ってきます。")
+    _assert_warned(deleting, invoice.invoice_no, "出荷を消すと、一式の行の数量 (100) と出荷の合計が違ってきます。", button="このまま削除")
     assert Shipment.objects.filter(pk=second.pk).exists()
     assert logged_in.post(_delete_url(second), {"confirmed": "1"}).status_code == 302
     assert not Shipment.objects.filter(pk=second.pk).exists()
@@ -228,14 +230,15 @@ def test_r27_lump_billed_shipment_edit_and_delete(settings, user, logged_in, lum
 
 @pytest.mark.django_db
 def test_r27_lump_billed_shipment_delete_in_modal(settings, logged_in, lump_billed):
-    """(c) 出荷の削除は一覧から小窓で開く。小窓でも黄の帯と「このまま保存」が出て、confirmed=1 の 2 回目で消える (204 と seizou:saved)。"""
+    """(c) 出荷の削除は一覧から小窓で開く。小窓でも黄の帯と「このまま削除」が出て、confirmed=1 の 2 回目で消える (204 と seizou:saved)。"""
     settings.SEIZOU = {}
     _lump, _first, second, invoice = lump_billed
 
     first = logged_in.post(_delete_url(second), {}, **MODAL)
     assert first.status_code == 200
     body = first.content.decode()
-    assert "alert-warning" in body and "R27" in body and "このまま保存" in body
+    assert "alert-warning" in body and "R27" in body and "このまま削除</button>" in body
+    assert "このまま保存" not in body
     assert 'name="confirmed" value="1"' in body
     assert invoice.invoice_no in body
     assert Shipment.objects.filter(pk=second.pk).exists()
@@ -390,7 +393,7 @@ def test_r27_note_cancel_text(settings, user, invoiced_note):
 
 @pytest.mark.django_db
 def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
-    """(h) 既定 (知らせる) で取り消すと黄の知らせが出て、confirmed=1 の 2 回目で取り消される。請求書は発行のまま。"""
+    """(h) 既定 (知らせる) で取り消すと黄の知らせと「このまま取り消す」が出て、confirmed=1 の 2 回目で取り消される。請求書は発行のまま。"""
     settings.SEIZOU = {}
     note, _shipment, invoice = invoiced_note
 
@@ -398,6 +401,8 @@ def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
     assert first.status_code == 200
     body = first.content.decode()
     assert 'data-notice="check"' in body and "R27" in body and invoice.invoice_no in body
+    assert "このまま取り消す</button>" in body
+    assert "このまま保存" not in body
     assert 'name="confirmed" value="1"' in body
     assert 'data-notice="stop"' not in body
     note.refresh_from_db()
@@ -413,7 +418,7 @@ def test_r27_note_cancel_warns_then_cancels(settings, logged_in, invoiced_note):
 
 @pytest.mark.django_db
 def test_r27_note_cancel_stop_and_off(settings, logged_in, invoiced_note):
-    """(h) 止めるでは赤で止まり、confirmed=1 を付けても取り消さない。通すでは何も出ずに取り消す。"""
+    """(h) 止めるでは赤の頭が「取り消せません。」で止まり、confirmed=1 を付けても取り消さない。通すでは何も出ずに取り消す。"""
     note, _shipment, _invoice = invoiced_note
 
     settings.SEIZOU = {"billed_shipment": "stop"}
@@ -421,6 +426,8 @@ def test_r27_note_cancel_stop_and_off(settings, logged_in, invoiced_note):
     assert stopped.status_code == 200
     body = stopped.content.decode()
     assert 'data-notice="stop"' in body and "R27" in body
+    assert '<span class="font-semibold">取り消せません。</span>' in body
+    assert "保存できません。" not in body
     assert 'data-notice="check"' not in body
     assert logged_in.post(_cancel_url(note), {"confirmed": "1"}).status_code == 200
     note.refresh_from_db()
@@ -459,3 +466,45 @@ def test_r27_note_recreated_keeps_invoice_copy(settings, user, logged_in, custom
     assert renewed.note_no in body
     assert "¥100 / 個" in body
     assert "¥120" not in body
+
+
+# --- (l) 削除の画面の止めるの頭と黄の後のボタン (本体の決め 11-11 15:0x。N403 の記録の迷った事 9 の (2)) ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["whole", "modal"])
+def test_r27_delete_uses_delete_words(settings, logged_in, lump_billed, headers):
+    """(l) 止めるで出荷を消そうとすると赤の頭は「削除できません。」、知らせるで黄の後のボタンは「このまま削除」(画面の全体と小窓の両方)。"""
+    _lump, _first, second, _invoice = lump_billed
+
+    settings.SEIZOU = {"billed_shipment": "stop"}
+    stopped = logged_in.post(_delete_url(second), {}, **headers).content.decode()
+    assert 'data-notice="stop"' in stopped and "R27" in stopped
+    assert f'<span class="font-semibold">削除できません。</span> 出荷 {second.shipment_no} の受注の明細は' in stopped
+    assert "保存できません。" not in stopped
+
+    settings.SEIZOU = {}
+    warned = logged_in.post(_delete_url(second), {}, **headers).content.decode()
+    assert "R27" in warned and "このまま削除</button>" in warned
+    assert "このまま保存" not in warned
+    assert Shipment.objects.filter(pk=second.pk).exists()
+
+
+# --- (m) 出荷の編集 (保存の画面) の字は今のまま ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["whole", "modal"])
+def test_r27_edit_keeps_save_words(settings, logged_in, invoiced, headers):
+    """(m) 出荷の編集の R27 は、止めるの赤の頭が今のまま「保存できません。」、知らせるの黄の後のボタンが今のまま「このまま保存」。"""
+    shipment, _invoice = invoiced
+
+    settings.SEIZOU = {"billed_shipment": "stop"}
+    stopped = logged_in.post(_edit_url(shipment), _edit_post(3), **headers).content.decode()
+    assert f'<span class="font-semibold">保存できません。</span> 出荷 {shipment.shipment_no} は請求書' in stopped
+    assert "削除できません。" not in stopped and "取り消せません。" not in stopped
+
+    settings.SEIZOU = {}
+    warned = logged_in.post(_edit_url(shipment), _edit_post(3), **headers).content.decode()
+    assert "R27" in warned and "このまま保存</button>" in warned
+    assert "このまま削除" not in warned and "このまま取り消す" not in warned

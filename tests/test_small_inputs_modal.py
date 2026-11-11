@@ -701,14 +701,16 @@ def test_other_buttons_keep_primary(world, name):
 
 
 def test_warned_cancel_keeps_yellow_button(world, cancel_checks):
-    """黄の知らせが出た後は、取消の確かめでも「このまま保存」の黄のボタン (赤にしない。C24 の 2)。"""
+    """黄の知らせが出た後は、取消の確かめでも黄のボタン (赤にしない。C24 の 2)。字は取消の画面なので「このまま取り消す」
+    (前は「このまま保存」。本体の決め 11-11 15:0x で、取消の画面は操作に合う字にした。依頼書 N403b)。"""
     checks.register(_CancelNote())
     case = BUILD["order_cancel"](world)
     for response in (world.client.post(case.url, case.post), world.client.post(case.url, case.post, **MODAL)):
         assert response.status_code == 200
         card = _card(text(response))
         assert card.count(WARNING_BUTTON) == 1
-        assert "このまま保存</button>" in card
+        assert "このまま取り消す</button>" in card
+        assert "このまま保存" not in card
         assert DANGER_BUTTON not in card
         assert PRIMARY_BUTTON not in card
     assert not case.saved()

@@ -4,7 +4,8 @@
 入力の土台 (BaseFormView) と受信箱の受け入れの画面が run を呼ぶ。services は呼ばない。
 
 - 止める (mode = "stop"): 検査が文を返したら CheckViolation を投げる。赤の知らせ。保存しない。
-- 知らせる (mode = "warn"): 文を CheckWarning として一覧で返す。黄の知らせと「このまま保存」。
+- 知らせる (mode = "warn"): 文を CheckWarning として一覧で返す。黄の知らせと「このまま保存」(削除の画面は「このまま削除」、
+  取消の画面は「このまま取り消す」。字は入力の土台 core.views.BaseFormView.check_words が選ぶ)。
 - 通す (mode = "off"): 呼ばない。
 
 標準のポカよけ (R01・R04・R06・R07・R24・R26・R27・R28) は builtin にあり、mode は会社の設定の値をそのまま使う。
@@ -101,10 +102,16 @@ def clear(action: str | None = None) -> None:
         _REGISTRY.pop(action, None)
 
 
-def run(action: str, data: dict, user) -> list[CheckWarning]:
+#: 止めるの赤の知らせの頭の既定 (保存の画面。run の stop_head を渡さない呼び方)
+STOP_HEAD = "保存できません。"
+
+
+def run(action: str, data: dict, user, *, stop_head: str = STOP_HEAD) -> list[CheckWarning]:
     """action に登録された検査を順に通す。
 
-    止めるの検査が文を返したら CheckViolation。知らせるの文は一覧で返す。
+    止めるの検査が文を返したら CheckViolation (文の頭に stop_head を付ける)。知らせるの文は一覧で返す。
+    stop_head = 止めるの赤の知らせの頭の字。入力の土台 (BaseFormView.check_words) が、削除の画面は「削除できません。」、
+    取消の画面は「取り消せません。」を渡す。渡さない呼び方 (保存の画面・受信箱の受け入れ・AI の提案の承認) は「保存できません。」のまま。
     """
     warnings: list[CheckWarning] = []
     for check in registered(action):
@@ -115,7 +122,8 @@ def run(action: str, data: dict, user) -> list[CheckWarning]:
         if not message:
             continue
         if mode == "stop":
-            # 止めるの赤の知らせは「保存できません。」を頭に付ける (文の型。決め 11-05 09:5x。開発の記録 docs/nights/20261105/N156.md)。知らせるの黄は検査の文のまま。
-            raise CheckViolation(check.code, "保存できません。" + message)
+            # 止めるの赤の知らせは頭の字 (stop_head。既定は「保存できません。」。削除の画面は「削除できません。」、取消の画面は「取り消せません。」) を付ける
+            # (文の型。決め 11-05 09:5x。開発の記録 docs/nights/20261105/N156.md。削除と取消の字は本体の決め 11-11 15:0x)。知らせるの黄は検査の文のまま。
+            raise CheckViolation(check.code, stop_head + message)
         warnings.append(CheckWarning(check.code, message))
     return warnings

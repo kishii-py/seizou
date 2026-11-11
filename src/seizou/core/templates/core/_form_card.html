@@ -49,8 +49,8 @@
     <div class="seizou-save-slot">{% if not warnings %}{% include "core/_save_bar.html" %}{% endif %}</div>
   {% endif %}
     {% if cancel_url %}<a class="btn btn-outline border-base-300" href="{{ cancel_url }}">{% icon "arrow-left" "size-4" %}キャンセル</a>{% endif %}
-    {# 実行のボタン: 黄の知らせの後は「このまま保存」(黄)、取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。作者の決め)、ほかは主の色 #}
-    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}このまま保存</button>
+    {# 実行のボタン: 黄の知らせの後は黄のボタン。字は入力の土台が渡す warning_button_label (BaseFormView.check_words。削除の画面は「このまま削除」、取消の画面は「このまま取り消す」、ほかの全部は「このまま保存」。土台の外から include されて渡らないときも「このまま保存」。本体の決め 11-11 15:0x)。取消の確かめ (form.danger) は削除の確かめと同じ赤 (manuals/confirm.html。作者の決め)、ほかは主の色 #}
+    {% if warnings %}<button class="btn btn-warning" type="submit">{% icon "alert" "size-4" %}{{ warning_button_label|default:"このまま保存" }}</button>
     {% elif form.danger %}<button class="btn btn-error" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "x" "size-4" %}{{ form.submit_label|default:"保存" }}</button>
     {% else %}<button class="btn btn-primary" type="submit"{% if form.submit_label_template %} data-submit-label="{{ form.submit_label_template }}" data-submit-label-plain="{{ form.submit_label_plain }}"{% endif %}>{% icon "check" "size-4" %}{{ form.submit_label|default:"保存" }}</button>{% endif %}
   </div>

@@ -19,7 +19,22 @@ from seizou.core import fields as company_fields
 from seizou.core.exceptions import CheckViolation, RuleError
 from seizou.core.widgets import ClearableFileWidget, DecimalInput, IntegerInput, RemoteSelect
 
-from .base import Notice, ScreenMixin, add_notice_trigger, invalid_form_message, model_url, refusal_head
+from .base import (
+    REFUSAL_HEAD_CANCEL,
+    REFUSAL_HEAD_DELETE,
+    REFUSAL_HEAD_SAVE,
+    Notice,
+    ScreenMixin,
+    add_notice_trigger,
+    invalid_form_message,
+    model_url,
+    refusal_head,
+)
+
+#: ポカよけの黄の知らせの後の実行のボタンの字 (BaseFormView.check_words が service の名前で選ぶ。core/_form_card.html が読む)
+CONFIRM_LABEL_SAVE = "このまま保存"
+CONFIRM_LABEL_DELETE = "このまま削除"
+CONFIRM_LABEL_CANCEL = "このまま取り消す"
 
 
 class BaseFormView(ScreenMixin, FormView):
@@ -27,7 +42,7 @@ class BaseFormView(ScreenMixin, FormView):
 
     小窓の形 (決め 11-04 17:5x〜18:0x。一覧の行の操作はページを移らず小窓で入力する): htmx の要求で見出し HX-Target が
     seizou-modal-box (base.html の小窓の箱) のとき、同じ URL の入力を小窓の中身 (<app>/_form_modal.html か core/_form_modal.html)
-    で返す。誤り・赤の知らせ・黄の知らせと「このまま保存」(confirmed=1) は、同じ形のカードが小窓の中に描き直される。
+    で返す。誤り・赤の知らせ・黄の知らせと「このまま保存」(confirmed=1。削除と取消の画面の字は check_words) は、同じ形のカードが小窓の中に描き直される。
     保存したら移らず、本文の無い 204 に HX-Trigger の seizou:saved (知らせの字と色) を付けて返す (messages に残さない)。
     seizou-modal.js が小窓を閉じ、右上の知らせを出し、一覧の行を今の絞りのまま取り直す。
     それ以外の要求 (直の要求・htmx のほかの要求) は今までどおり画面の全体で、保存したら移る。
@@ -179,6 +194,26 @@ class BaseFormView(ScreenMixin, FormView):
             raise RuntimeError(f"{type(self).__name__} に service が無い")
         return service
 
+    def check_words(self) -> tuple[str, str]:
+        """検査の層の止めるの赤の知らせの頭と、黄の知らせの後の実行のボタンの字の組 (service の関数の名前で選ぶ)。
+
+        名前が cancel_ で始まる画面は (「取り消せません。」,「このまま取り消す」)、DELETE_SERVICE_PREFIXES で始まる画面は
+        (「削除できません。」,「このまま削除」)、ほかの全部 (保存の画面と service の無い画面) は (「保存できません。」,「このまま保存」)。
+        見る順は refusal_head と同じ (cancel_ を先に見る)。refusal_head の表 (REFUSAL_HEAD_BY_SERVICE の「発行できません。」「記録できません。」など) は
+        使わない (今の保存の画面のポカよけ = R01・R04・R06・R07・R24・R26・R28 の赤の頭を「保存できません。」のまま変えないため)。
+        頭は form_valid が検査の層の run に stop_head で渡し、ボタンの字は get_context_data が warning_button_label で core/_form_card.html に渡す。
+        訳: 出荷の削除と納品書の取消のように保存でない操作で、止めるの赤と黄の後のボタンが「保存」と出ると、何が止まったか・何を押すのかが分かりにくいため。保存の画面の字は変えない。出所 = 本体の決め 11-11 15:0x (N403 の記録の迷った事 9 の (2))。変えてよい条件 = 本人が知らせの字の決め (CLAUDE.md の知らせの強さ) を決め直したとき。
+        """
+        try:
+            name = self.get_service().__name__
+        except RuntimeError:
+            name = ""
+        if name.startswith("cancel_"):
+            return REFUSAL_HEAD_CANCEL, CONFIRM_LABEL_CANCEL
+        if name.startswith(self.DELETE_SERVICE_PREFIXES):
+            return REFUSAL_HEAD_DELETE, CONFIRM_LABEL_DELETE
+        return REFUSAL_HEAD_SAVE, CONFIRM_LABEL_SAVE
+
     def service_kwargs(self, form) -> dict:
         if hasattr(form, "service_kwargs"):
             return dict(form.service_kwargs())
@@ -203,7 +238,7 @@ class BaseFormView(ScreenMixin, FormView):
         if self.object is not None:
             check_data.setdefault("object", self.object)
         try:
-            warnings = checks.run(self.get_action(), check_data, self.request.user)
+            warnings = checks.run(self.get_action(), check_data, self.request.user, stop_head=self.check_words()[0])
         except CheckViolation as exc:
             return self.render_to_response(self.get_context_data(form=form, notice=exc))
         if warnings and self.request.POST.get("confirmed") != "1":
@@ -280,6 +315,8 @@ class BaseFormView(ScreenMixin, FormView):
         context = super().get_context_data(**kwargs)
         context.setdefault("notice", None)
         context.setdefault("warnings", [])
+        # 黄の知らせの後の実行のボタンの字 (check_words。削除の画面は「このまま削除」、取消の画面は「このまま取り消す」、ほかは「このまま保存」)
+        context["warning_button_label"] = self.check_words()[1]
         context["object"] = self.object
         context["in_modal"] = self.in_modal
         # 小窓では「キャンセル」を出さない (閉じるボタンだけ)。開いた元の画面 (?next=) があればそこへ、無ければ一覧へ戻す。
