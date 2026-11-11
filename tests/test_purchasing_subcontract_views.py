@@ -512,7 +512,7 @@ def test_receipt_saved_message_is_services_text(logged_in, user, wo):
 
 @pytest.mark.django_db
 def test_receipt_without_handed_on_shows_yellow_band_in_modal(logged_in, user, wo):
-    """戻りのポカよけ (R33) の知らせは、小窓の上の黄の帯と「このまま保存」(知らせの強さの 3)。"""
+    """渡した日の無い明細の受入の R33 の知らせは、小窓の上の黄の帯と「このまま保存」(知らせの強さの 3)。"""
     _po, line = subcontract_po(user, wo.subcontractor, wo.step, handed_on=None)
     response = logged_in.post(
         reverse("purchasing:receipt_create"), {"line": line.pk, "qty": "4", "received_on": DAY.isoformat()}, **MODAL
