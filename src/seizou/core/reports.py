@@ -1,6 +1,6 @@
-"""帳票の部品 (render_html と render_pdf)。
+"""帳票の部品 (render_html と render_pdf と、描いた後の HTML の字から PDF を作る render_html_pdf)。
 
-WeasyPrint は render_pdf の中でだけ import する。WeasyPrint (か OS の pango) が無い環境では
+WeasyPrint は PDF を作る関数 (render_pdf と render_html_pdf) の中でだけ import する。WeasyPrint (か OS の pango) が無い環境では
 render_pdf が PdfUnavailable を投げ、画面はそれを捕まえて印刷用の HTML に落とす。
 PDF を出すには extras を入れる (`pip install "seizou[pdf]"`。手元の開発は `uv sync --extra pdf`) と、OS に pango を入れる。
 """
@@ -58,8 +58,26 @@ def render_pdf(template, context):
     return _render_document(template, context).write_pdf(pdf_version=PDF_VERSION)
 
 
+def render_html_pdf(html):
+    """描いた後の HTML の字 (帳票の写しの html など) を WeasyPrint で PDF にし、その bytes を返す。
+
+    取り口と起点と PDF の版は render_pdf と同じ (fetch_local だけを使う取り口・BASE_URL・PDF_VERSION)。
+    HTML の中の CSS とフォントとロゴの URL は、PDF を作る時のファイルを読む。WeasyPrint が無ければ PdfUnavailable。
+    """
+    return _document_maker()(html).write_pdf(pdf_version=PDF_VERSION)
+
+
 def _render_document(template, context):
-    """WeasyPrint の document (ページに割り付けた物) を返す。"""
+    """WeasyPrint の document (ページに割り付けた物) を返す。
+
+    WeasyPrint を読めるかを先に確かめてから、テンプレートを render_html で描く (読めない置き場では描かずに PdfUnavailable)。
+    """
+    make = _document_maker()
+    return make(render_html(template, context))
+
+
+def _document_maker():
+    """HTML の字から WeasyPrint の document (ページに割り付けた物) を作る関数を返す。WeasyPrint が無ければ PdfUnavailable。"""
     try:
         from weasyprint import HTML
         from weasyprint.urls import URLFetcher, URLFetcherResponse
@@ -76,8 +94,10 @@ def _render_document(template, context):
             body, content_type = fetch_local(url)
             return URLFetcherResponse(url, body, {"Content-Type": content_type})
 
-    html = render_html(template, context)
-    return HTML(string=html, base_url=BASE_URL, url_fetcher=LocalFetcher()).render()
+    def make(html):
+        return HTML(string=html, base_url=BASE_URL, url_fetcher=LocalFetcher()).render()
+
+    return make
 
 
 def fetch_local(url):

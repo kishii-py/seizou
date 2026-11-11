@@ -17,7 +17,7 @@ from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE
 
 
 class Invoice(models.Model):
-    """請求書。請求書番号は core の連番が付ける。
+    """請求書。請求書番号は core の連番が付ける。keeps_report_copy は帳票の写し (core.ReportCopy。R34) を持つ印で、詳細に「発行の時の写し」の枠を出す。
 
     発行した時の会社の登録番号・住所・電話・振込先 (issuer_ の 4 列) と、得意先の名前 (customer_name) と、税率 (tax_rate。百分率) を写して持つ。
     書くのは billing.services._issue_invoice の 1 か所。帳票 (billing.reports.invoice_context) は写しだけを読み、写しが空でも今の値で補わない。
@@ -75,6 +75,7 @@ class Invoice(models.Model):
 
     #: 変更の履歴 (core.history。作者の決めの伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
+    keeps_report_copy = True
     #: 詳細と小窓の項目の一覧に出さない列 (発行の時の写し。帳票のための列で、入力の欄に無い。core.views.hidden_detail_fields)
     detail_hidden_fields = (
         "issuer_registration_no",

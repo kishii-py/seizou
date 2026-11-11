@@ -17,7 +17,7 @@ from django.utils import timezone
 
 
 class DeliveryNote(models.Model):
-    """納品書。納品書番号は core の連番が付ける。"""
+    """納品書。納品書番号は core の連番が付ける。keeps_report_copy は帳票の写し (core.ReportCopy。R34) を持つ印で、詳細に「発行の時の写し」の枠を出す。"""
 
     STATUS_ISSUED = "issued"
     STATUS_CANCELLED = "cancelled"
@@ -40,6 +40,7 @@ class DeliveryNote(models.Model):
 
     #: 変更の履歴 (core.history。作者の決めの伝票の「納品書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
+    keeps_report_copy = True
 
     class Meta:
         verbose_name = "納品書"
