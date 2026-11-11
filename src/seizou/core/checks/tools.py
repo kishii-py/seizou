@@ -75,6 +75,13 @@ def delete_refusal(shipment) -> str:
     return services.delete_refusal(shipment)
 
 
+def billed_notice(delivery_note) -> str:
+    """請求済みの出荷の入った納品書を取り消す前の知らせの文 (請求済みの出荷が無ければ空の字。R27 が読む。shipping.services.billed_notice)。"""
+    from seizou.shipping import services
+
+    return services.billed_notice(delivery_note)
+
+
 def completes_without_lump_amount(purchase_order_line, *, adding_qty=None) -> bool:
     """一式の発注の明細を、一式の金額が載らないまま完了にするか (R29 が読む。purchasing.services の同じ名前の関数)。purchasing の部品が無ければ False。"""
     from django.apps import apps

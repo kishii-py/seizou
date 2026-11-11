@@ -21,11 +21,12 @@ PRICE_DOWN_TAIL = (
     "取適法の対象の取引では、発注した後の減額は、相手が合意しても違反になるおそれがあります。"
     "打ち間違いを合意した単価へ直すときは、このまま保存してください。"
 )
-#: 数を減らす・納期を早める・取り消す変更と、送った発注の取消の確かめ
-ORDER_CHANGE_TAIL = (
-    "取適法の対象の取引では、相手に責めの無い取消や変更は、相手が負った費用を負担しないと違反になるおそれがあります。"
-    "相手と話して決めた後なら、このまま保存してください。"
-)
+#: 数を減らす・納期を早める・取り消す変更と、送った発注の取消の確かめの、法の説明の 1 文
+_ORDER_CHANGE_LAW = "取適法の対象の取引では、相手に責めの無い取消や変更は、相手が負った費用を負担しないと違反になるおそれがあります。"
+#: 発注の変更の確かめの末尾 (黄の後のボタンは「このまま保存」)
+ORDER_CHANGE_TAIL = _ORDER_CHANGE_LAW + "相手と話して決めた後なら、このまま保存してください。"
+#: 送った発注の取消の確かめの末尾 (黄の後のボタンは「このまま取り消す」。N403b の記録の要望)
+ORDER_CANCEL_TAIL = _ORDER_CHANGE_LAW + "相手と話して決めた後なら、このまま取り消してください。"
 
 
 def _price_text(value, unit) -> str:
@@ -113,7 +114,7 @@ class LawOrderCancel(Check):
         purchase_order = data.get("object")
         if purchase_order is None or not services.can_cancel_sent_order(purchase_order):
             return None
-        return "送った発注を取り消します。" + ORDER_CHANGE_TAIL
+        return "送った発注を取り消します。" + ORDER_CANCEL_TAIL
 
 
 class LawSelfInvoicePriceDown(Check):

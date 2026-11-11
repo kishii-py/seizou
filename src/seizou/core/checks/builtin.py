@@ -376,7 +376,7 @@ class BilledShipmentOnNoteCancel(Check):
 
     data の object は取り消す納品書 (土台の入力の画面が渡す)。文は shipping.services.billed_notice の 1 か所 (取消の確かめのカードと同じ文。
     金額は書かない)。services の cancel_delivery_note が断る納品書 (取り消し済み) には文を返さない (黄の後に赤を出さないため)。
-    shipping.services は関数の中で import する (core の検査の道具 tools.billed_by と同じ読み方。core を読み込む時に shipping を読まない)。
+    文は検査の道具 tools.billed_notice で読む (tools.billed_by と同じく、core を読み込む時に shipping を読まない)。
     訳: 請求済みの出荷を直すか消すと、請求書の明細の写し (数量・一式の行の数量) や受け取った代金の記録と、出荷の記録が食い違うので、直す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。納品書は出荷の記録を刷った物なので取り消しても請求書は変わらないが、取り消した後に出荷を直すと請求書と違ってくるので、取り消す前に知らせる。出所 = 本人の決め 11-11 12:5x〜13:0x (「止めない」「わかるようになっていればいい」「会社ごとにつけたければ自由にすればいい」)・本人の決め 11-11 13:0x (請求書に入った出荷の納品書の取消も止めずに知らせる。「それでOK」)・会社の設定 billed_shipment。
     変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
     """
@@ -389,9 +389,7 @@ class BilledShipmentOnNoteCancel(Check):
         note = data.get("object")
         if note is None or note.status == type(note).STATUS_CANCELLED:
             return None
-        from seizou.shipping import services
-
-        return services.billed_notice(note) or None
+        return tools.billed_notice(note) or None
 
 
 def _inactive_staff_message(check, staff) -> str:

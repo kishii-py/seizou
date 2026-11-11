@@ -2,7 +2,7 @@
 
 1 つの DB に注文を送る会社 (A = 協力企業 S001 へ発注する) と受ける会社 (B = 得意先 C001 から受注する) の両方の役を置く
 (tests/test_connect_reply.py の形)。相手への HTTP は requests.post を偽の物に差し替え、受けた本文を受け口に渡すか、決めた返事を返す。
-取引先と品目は作り物。日は固定の値を渡す。取適法の確かめ (purchasing.checks の LawOrderCancel) は黄の知らせで、「このまま保存」(confirmed=1) で通す。
+取引先と品目は作り物。日は固定の値を渡す。取適法の確かめ (purchasing.checks の LawOrderCancel) は黄の知らせで、「このまま取り消す」(confirmed=1) で通す。
 """
 
 import json
@@ -115,7 +115,10 @@ def test_cancel_sent_order_warns_then_sends_cancel_revision(client_logged_in, or
     assert response.status_code == 200
     # 右上の黄の知らせ (1 文目は太字の span、2 文目から後ろはその後)
     assert '<span class="font-semibold">送った発注を取り消します。</span> 取適法の対象の取引では、相手に責めの無い取消や変更は' in body
-    assert "このまま保存" in body
+    # 取消の画面の黄の後のボタンは「このまま取り消す」(N403b)。知らせの文の末尾もボタンの字に合わせる (本体の直し 488 回目)
+    assert "相手と話して決めた後なら、このまま取り消してください。" in body
+    assert "このまま取り消す" in body
+    assert "このまま保存" not in body
     order.refresh_from_db()
     assert order.status == PurchaseOrder.STATUS_SENT
 
