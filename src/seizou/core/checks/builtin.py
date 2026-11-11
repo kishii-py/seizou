@@ -485,6 +485,8 @@ class LumpCompletionOnReceipt(Check):
         if tools.completes_without_lump_amount(line, adding_qty=qty):
             return LumpCompletion.message
         return None
+
+
 def _defect_without_kind(data) -> Decimal:
     """区分を選んでいない不良の数。data に不良の行 (defects) があれば区分の無い行の数の合計、無ければ不良の数 (defect_qty)。
 
