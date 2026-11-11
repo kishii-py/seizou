@@ -34,6 +34,7 @@ from .models import Order, OrderLine
 #: 判断の印の code と字 (印の字はこの 1 か所。テンプレートは code で色を選ぶ)。規則は BoardRow.judgement_code
 JUDGEMENTS = (
     ("cancelled", "取消"),
+    ("completed", "完了"),
     ("done", "出荷済み"),
     ("ship", "出荷できる"),
     ("late", "遅れ"),
@@ -452,11 +453,17 @@ class BoardRow:
     def judgement_code(self) -> str:
         """判断の印の code。上から順に最初に当たった物 (決まった規則だけ。自動の判断はしない)。
 
-        1 取消: 受注が取消 / 2 出荷済み: 残が 0 以下 / 3 出荷できる: 完成の数が残以上、か、在庫が残以上 /
-        4 遅れ: 納期が今日より前 / 5 指示書が要る: 指示書の数量の合計が残より少ない / 6 製造中: ほか。
+        1 取消: 受注が取消 / 2 完了: 完了の印のある明細で、出荷済みの数が数量より少ない (足りないまま完了にした。N400b。RULES.md R25) /
+        3 出荷済み: 残が 0 以下 (数量に届いた完了の明細もここ) / 4 出荷できる: 完成の数が残以上、か、在庫が残以上 /
+        5 遅れ: 納期が今日より前 / 6 指示書が要る: 指示書の数量の合計が残より少ない / 7 製造中: ほか。
+        出荷済みの数は annotate_remaining の shipped_total (盤の一覧の写し) があればそれ、無ければ services.shipped_qty (関数の試験のため)。
         """
         if self.line.order.status == Order.STATUS_CANCELLED:
             return "cancelled"
+        if self.line.completed:
+            shipped = getattr(self.line, "shipped_total", None)
+            if _dec(services.shipped_qty(self.line) if shipped is None else shipped) < self.line.qty:
+                return "completed"
         remaining = self.remaining
         if remaining <= 0:
             return "done"

@@ -20,6 +20,7 @@ from django.utils import timezone
 from seizou.core import fields as company_fields
 from seizou.core.conf import setting
 from seizou.core.forms import DefaultChoiceField, ServiceModelForm, SubmitLabelMixin, line_totals
+from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.views import use_decimal_input, widget_css
 from seizou.core.widgets import IsoDateInput, RemoteSelect
 from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_LUMP, PRICE_BASIS_UNIT, active_items, active_partners
@@ -411,6 +412,46 @@ class OrderLineNoBillClearForm(forms.Form):
         super().__init__(*args, **kwargs)
         if instance is not None:
             self.submit_label = f"{instance.order.order_no}-{instance.line_no} の請求しないを外す"
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+class OrderLineCompleteForm(forms.Form):
+    """受注の明細を完了にする form。欄は無い (orders.services.mark_completed)。
+
+    保存のボタンは「SO-000001-1 を完了にする」(土台が対象を instance= で渡す)。取消でなく外せるので赤にしない。
+    残 (services.remaining_qty) が 0 より大きい明細では、カードの頭の 1 行 (lead_text。core/_form_card.html) に
+    「残り n は出さずに終えます。…」を出す (n は数の字。画面の説明の字で、知らせの帯にしない = 依頼書 N400b の 2)。
+    """
+
+    submit_label = "完了にする"
+    lead_text = ""
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.order.order_no}-{instance.line_no} を完了にする"
+            rest = services.remaining_qty(instance)
+            if rest > 0:
+                self.lead_text = f"残り {comma(rest)} は出さずに終えます。出した数と金額はそのまま残り、請求の候補にも残ります。"
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+class OrderLineCompleteClearForm(forms.Form):
+    """受注の明細の完了を外す form。欄は無い (orders.services.clear_completed)。
+
+    保存のボタンは「SO-000001-1 の完了を外す」(土台が対象を instance= で渡す)。赤にしない。
+    """
+
+    submit_label = "完了を外す"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.order.order_no}-{instance.line_no} の完了を外す"
 
     def service_kwargs(self) -> dict:
         return {}

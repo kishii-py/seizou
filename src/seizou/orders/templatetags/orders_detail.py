@@ -11,6 +11,7 @@
 - order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。開発の記録 docs/nights/20261106/N184.md)。
 - order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x)。受注の詳細の block heading が
   {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
+- order_line_completed_label: 明細の表の残の枡の「完了」「完了 (出さない n)」の印の字 (N400b。完了の印の無い明細は空の字)。
 - order_total: 明細の金額の合計 (受注の小窓 orders/_modal.html の「明細の合計」。order_aside の金額のカードと同じ式。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 """
 
@@ -19,7 +20,7 @@ from decimal import Decimal
 from django import template
 from django.apps import apps
 
-from seizou.core.templatetags.seizou_tags import weekday_ja, yen
+from seizou.core.templatetags.seizou_tags import comma, weekday_ja, yen
 
 from ..models import OrderLine
 
@@ -138,3 +139,26 @@ def order_ship_lines(order) -> list:
     if order.status == order.STATUS_CANCELLED:
         return []
     return [line for line in order.lines.all() if line.remaining_total > 0]
+
+
+@register.simple_tag
+def order_line_completed_label(line) -> str:
+    """受注の詳細の明細の表の残の枡の「完了」の印の字 (N400b。本人の決め 11-11 08:4x・09:3x。RULES.md R25)。
+
+    完了の印が偽なら空の字 (印を出さない)。完了の明細で、出荷済みの数 (画面の prefetch の写しの shipped_total) が数量より少なければ
+    「完了 (出さない n)」(n = 数量 − 出荷済み = orders.services.unfilled_qty と同じ式)、数量以上なら「完了」。
+    数は prefetch の写し (annotate_remaining の shipped_total と completed) から出し、明細ごとに問い合わせを増やさない。
+    写しの無い明細 (shipped_total を持たない) だけ orders.services.unfilled_qty で読む。読むだけで、表に書かない。
+    """
+    if not line.completed:
+        return ""
+    shipped = getattr(line, "shipped_total", None)
+    if shipped is None:
+        from ..services import unfilled_qty
+
+        unfilled = unfilled_qty(line)
+    else:
+        unfilled = line.qty - (shipped if isinstance(shipped, Decimal) else Decimal(str(shipped)))
+    if unfilled > 0:
+        return f"完了 (出さない {comma(unfilled)})"
+    return "完了"
