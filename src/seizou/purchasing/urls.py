@@ -38,5 +38,12 @@ urlpatterns = [
     path("selfinvoices/<int:pk>/cancel/", views.SelfInvoiceCancelView.as_view(), name="selfinvoice_cancel"),
     path("selfinvoices/<int:pk>/accept/", views.SelfInvoiceAcceptProposalsView.as_view(), name="selfinvoice_accept"),
     path("lines/select/", views.PurchaseOrderLineSelectView.as_view(), name="purchaseorderline_select"),
+    # 明細の完了の印の付け外し (N400b。入口は発注の詳細の明細の ⋮。左のメニューには足さない)
+    path("lines/<int:pk>/complete/", views.PurchaseOrderLineCompleteView.as_view(), name="purchaseorderline_complete"),
+    path(
+        "lines/<int:pk>/complete/clear/",
+        views.PurchaseOrderLineCompleteClearView.as_view(),
+        name="purchaseorderline_complete_clear",
+    ),
     path("items/select/", views.PurchaseItemSelectView.as_view(), name="item_select"),
 ]
