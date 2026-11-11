@@ -37,7 +37,7 @@ SETTING_LABELS = {
     "receiving_required": ("支給品と預かり品の入荷が無い明細の指示書の発行と出荷", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "over_payment": ("請求書の残を超える入金 (R24)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "progress_staff": ("作業した人の無い実績 (R26)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
-    "billed_shipment": ("請求済みの出荷の直し (R27)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
+    "billed_shipment": ("請求済みの出荷の直しと削除と、納品書の取消 (R27)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "progress_inactive_staff": ("使用停止の社員を作業した人にした実績 (R28)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "lump_completion": ("一式の金額の載らない発注の明細の完了 (R29)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "progress_defect_kind": ("区分を選んでいない不良のある実績 (R30)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),

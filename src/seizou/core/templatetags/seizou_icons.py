@@ -102,6 +102,7 @@ MENU_ICONS = {
     "core:home": "home",
     "core:search": "search",
     "masters:partner_list": "users",
+    "masters:staff_list": "user",
 }
 
 

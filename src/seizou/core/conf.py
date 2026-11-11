@@ -25,7 +25,7 @@ DEFAULTS = {
     "receiving_required": "off",  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷: warn / stop / off
     "over_payment": "warn",  # 請求書の残を超える入金のポカよけ (R24): warn / stop / off
     "progress_staff": "warn",  # 作業した人の無い実績のポカよけ (R26): warn / stop / off
-    "billed_shipment": "warn",  # 請求済みの出荷の直しと削除のポカよけ (R27): warn / stop / off
+    "billed_shipment": "warn",  # 請求済みの出荷の直しと削除と、納品書の取消のポカよけ (R27): warn / stop / off
     "progress_inactive_staff": "warn",  # 使用停止の社員を作業した人にした実績のポカよけ (R28): warn / stop / off
     "lump_completion": "warn",  # 一式の金額の載らない発注の明細の完了のポカよけ (R29): warn / stop / off
     "progress_defect_kind": "warn",  # 区分を選んでいない不良のある実績のポカよけ (R30): warn / stop / off
