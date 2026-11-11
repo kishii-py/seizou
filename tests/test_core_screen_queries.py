@@ -80,6 +80,8 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_detail",
         "purchasing:purchaseorder_modal",  # 発注の小窓 (依頼書 N346)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorder_send",
+        "purchasing:purchaseorderline_complete",  # 発注の明細の完了の確かめ (N400b)。B 社の種に発注の行が無い (上の発注の画面と同じ)
+        "purchasing:purchaseorderline_complete_clear",
         "purchasing:receipt_detail",
         "purchasing:selfinvoice_detail",  # 種に仕入明細の行が無い (C111。種を足すなら外す)
         "connect:receivedselfinvoice_detail",  # 種に受けた仕入明細の行が無い (C111。種を足すなら外す)
