@@ -114,6 +114,19 @@ def issued_qty(order_line):
     )
 
 
+def open_workorders(order_line) -> list:
+    """受注の明細の、終わっていない指示書の並び (指示書番号の順)。読むだけ。
+
+    終わっていない = 取消でなく、進みの状態が完了でない指示書 (WorkOrder.progress_state。完了は最後の工程に完了の印の付いた実績がある物。
+    未着手と着手済が当たる)。指示書の無い明細は空の並び。ポカよけ R35 (受注の明細を完了にする時の知らせ) が core.checks.tools 越しに読む。
+    """
+    found = []
+    for workorder in WorkOrder.objects.filter(order_line=order_line).exclude(status=WorkOrder.STATUS_CANCELLED).order_by("wo_no", "pk"):
+        if workorder.progress_state() != WorkOrder.PROGRESS_DONE:
+            found.append(workorder)
+    return found
+
+
 def plan_step(step, start, end, user):
     """指示書の工程の予定に開始日と終了日を置く (生産計画の盤。生産計画の盤の設計の決め)。
 

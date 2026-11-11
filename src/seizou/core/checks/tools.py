@@ -133,6 +133,17 @@ def unreturned_lines(workorder_step) -> list:
     return services.unreturned_lines(workorder_step)
 
 
+def open_workorders(order_line) -> list:
+    """受注の明細の、終わっていない指示書 (取消でなく、進みの状態が完了でない物) の並び (R35 が読む。workorders.services の同じ名前の関数)。workorders の部品が無ければ空。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.workorders"):
+        return []
+    from seizou.workorders import services
+
+    return services.open_workorders(order_line)
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)

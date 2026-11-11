@@ -88,6 +88,7 @@ SETTING_DEFAULTS = {
     "progress_defect_kind": "warn",
     "same_customer_order_no": "warn",
     "subcontract_return": "warn",
+    "open_workorder_completion": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

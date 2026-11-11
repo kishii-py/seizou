@@ -1,6 +1,6 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33・R35)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind・same_customer_order_no・subcontract_return) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind・same_customer_order_no・subcontract_return・open_workorder_completion) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
@@ -11,6 +11,7 @@ R29 は発注の明細の「完了にする」と受入の入力 (「残りは�
 R30 (会社の設定 progress_defect_kind) は実績の入力だけに掛ける。
 R31 は受注の新規登録・受注の編集・読み取りを受注にする・受信した注文の受け入れ (条件付きの受け入れを含む) の 5 つの action に掛ける。
 R33 は受入の入力・発注の明細の「完了にする」・実績の入力の 3 つの action に掛ける (指示書の工程を指す発注の明細だけを見る)。
+R35 は受注の明細の「完了にする」と出荷の入力 (「残りは出さずに完了にする」を選び、残りが残るとき) の 2 つの action に掛ける。
 """
 
 from __future__ import annotations
@@ -781,6 +782,77 @@ class SubcontractReturnOnProgress(Check):
         return _subcontract_return_message(self, body)
 
 
+#: R35 の文に並べる指示書番号の数 (これより多い分は「ほか n 件」)
+_OPEN_WORKORDERS_SHOWN = 3
+
+
+def _open_workorder_message(check, order_line):
+    """R35 の文。受注の明細 order_line に終わっていない指示書があれば文、無ければ None (明細の「完了にする」と出荷の入力が同じ文を出す)。
+
+    文は「この明細には、終わっていない指示書が <n> 件あります (<指示書番号>・…)。」(番号は 3 件まで、4 件目からは「ほか n 件」) に、
+    知らせるなら「完了にしても指示書は残ります。作らないときは、指示書を取り消してください。このまま保存できます。」、
+    止めるなら「指示書を終えるか取り消してから、完了にしてください。」を続ける (止めるの文の頭には、検査の層が「保存できません。」を付ける)。
+    終わっていない指示書の見方は tools.open_workorders (workorders.services の同じ名前の関数。取消でなく、進みの状態が完了でない指示書)。
+    """
+    found = tools.open_workorders(order_line)
+    if not found:
+        return None
+    numbers = [workorder.wo_no for workorder in found[:_OPEN_WORKORDERS_SHOWN]]
+    if len(found) > _OPEN_WORKORDERS_SHOWN:
+        numbers.append(f"ほか {len(found) - _OPEN_WORKORDERS_SHOWN} 件")
+    head = f"この明細には、終わっていない指示書が {len(found)} 件あります ({'・'.join(numbers)})。"
+    if check.current_mode() == "stop":
+        return head + "指示書を終えるか取り消してから、完了にしてください。"
+    return head + "完了にしても指示書は残ります。作らないときは、指示書を取り消してください。このまま保存できます。"
+
+
+class OpenWorkOrderCompletion(Check):
+    """R35: 受注の明細を完了にするときに、その明細の終わっていない指示書があったら (明細の「完了にする」)。
+
+    data の object は完了にする受注の明細 (土台の入力の画面が URL の pk の明細を渡す)。もう完了の印が付いた明細と、数量まで出荷して終わっている明細は、
+    完了の処理 (orders.services.mark_completed) が何も書かないので見ない。指示書には触らない (完了にしても、指示書は発行のまま残る)。
+    訳: 残りを出さずに終える明細の指示書が発行のまま残り、現場がもう要らない物を作り続ける間違いに、完了を押す時に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 本人の決め 11-11 22:5x (完了にする時の黄の確かめ) と 11-11 12:5x (ポカよけはまず分かるようにし、止めるかは会社が選ぶ)・会社の設定 open_workorder_completion。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R35"
+    action = "orders.mark_completed"
+    setting_key = "open_workorder_completion"
+
+    def run(self, data, user):
+        line = data.get("object")
+        if line is None:
+            return None
+        if getattr(line, "completed", False) or tools.shipped_qty(line) >= line.qty:
+            return None
+        return _open_workorder_message(self, line)
+
+
+class OpenWorkOrderCompletionOnShip(Check):
+    """R35: 出荷の入力の「残りは出さずに完了にする」で、終わっていない指示書のある受注の明細を完了にしたら。
+
+    data の order_line は受注の明細、qty は今回の出荷の数、close_rest は「残りは出さずに完了にする」(shipping.services.ship の引数。出荷の form の service_kwargs)。
+    close_rest が真で、今回の数を足しても出荷の合計が数量に届かないときだけ見る (届く出荷は、完了の印を付けずに終わるため)。
+    訳: 残りを出さずに終える明細の指示書が発行のまま残り、現場がもう要らない物を作り続ける間違いに気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。R35 を出荷の入力にも掛ける)。出所 = 本人の決め 11-11 22:5x と 11-11 12:5x・会社の設定 open_workorder_completion。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R35"
+    action = "shipping.ship"
+    setting_key = "open_workorder_completion"
+
+    def run(self, data, user):
+        if not data.get("close_rest"):
+            return None
+        line = data.get("order_line")
+        qty = data.get("qty")
+        if line is None or qty is None:
+            return None
+        if getattr(line, "completed", False) or tools.shipped_qty(line) + qty >= line.qty:
+            return None
+        return _open_workorder_message(self, line)
+
+
 BUILTIN = (
     OverShipment(),
     OverShipmentOnUpdate(),
@@ -807,6 +879,8 @@ BUILTIN = (
     SubcontractReturnOnReceipt(),
     SubcontractReturnOnComplete(),
     SubcontractReturnOnProgress(),
+    OpenWorkOrderCompletion(),
+    OpenWorkOrderCompletionOnShip(),
 )
 
 for _check in BUILTIN:
