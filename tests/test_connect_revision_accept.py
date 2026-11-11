@@ -240,6 +240,22 @@ def test_cancel_revision_cancels_order(fake, user, subcontractor, items):
     assert "得意先の注文の取消 (注文履歴番号 2)" in order.note
 
 
+@pytest.mark.django_db
+def test_pending_cancel_revision_badge_says_cancel(fake, user, subcontractor, items, client_logged_in):
+    """取消の版が届いたまま受け入れていない時、第 1 版の行の札は「取消が届いています」と出す (直す前は取消でも「変更が届いています」だった)。"""
+    po = _send_first(subcontractor, items, user)
+    base, _order = _accept_first(items, user)
+    _send(_cancel(po), user)
+    # 一覧 (注釈で読む道)
+    list_body = client_logged_in.get(reverse("connect:inbox_list")).content.decode()
+    assert "第 2 版の取消が届いています" in list_body
+    assert "第 2 版の変更が届いています" not in list_body
+    # 詳細 (注釈が無いので 1 回引く道)
+    detail_body = client_logged_in.get(reverse("connect:inbox_detail", args=[base.pk])).content.decode()
+    assert "第 2 版の取消が届いています" in detail_body
+    assert "第 2 版の変更が届いています" not in detail_body
+
+
 def _refused(outbox, text):
     assert outbox.response.startswith("断られた: 注文の変更を受けられません。")
     assert text in outbox.response

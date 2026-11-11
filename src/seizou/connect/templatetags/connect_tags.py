@@ -6,7 +6,7 @@ connect/_inbox_entrance.html の中だけ (order_list.html には {% load %} を
 受信した注文の一覧の行と詳細の「同じ注文番号の注文が既に届いています」の知らせの中身も置く (作者の決め)。
 payload_number: 届いた本文の数の字を Decimal に読む filter。{{ line.qty|payload_number|comma }} で末尾の 0 を落として出す (読めない字はそのまま)。
 payload_price_unit: 届いた明細の単価の後ろに添える単価の単位の字 (「 / 式」「 / 個」の「式」「個」)。
-reply_line_texts: 受信した注文の詳細の「返した条件」の行 (単価を直して受け入れたときに相手へ返した明細ごとの答え)。
+reply_line_texts: 受信した注文の詳細の「返した条件」の行 (条件を直して受け入れたときに相手へ返した明細ごとの答え)。
 revision_notice・revision_lines・revision_problem: 変更と取消の版 (中小企業共通 EDI の注文変更の方式 2) の札・明細状態と受注の今の値・受け入れられない訳。
 chat_panel: 受注・発注・受信した注文の「会話」の枠 (connect/_chat.html) の中身 (会話が使えるか・言葉の並び・書く先・書けるか。作者の決め)。
 exchange_body: 送り合った記録の詳細の「中身」の枠の字 (JSON を字下げした字と、送ったとおりの字。金額の閲覧の無い人には金額の鍵を外す)。
@@ -135,7 +135,7 @@ def _changed(label, value, ordered):
 
 @register.simple_tag
 def reply_line_texts(inbox, hide_money=False):
-    """{% reply_line_texts object seizou.hide_money as reply_texts %}。単価を直して受け入れた (条件付受諾) 行の、返した明細の答えの字の並び。
+    """{% reply_line_texts object seizou.hide_money as reply_texts %}。条件を直して受け入れた (条件付受諾) 行の、返した明細の答えの字の並び。
 
     条件付受諾 (CA) の明細ごとに「1 行目 T-100: 単価 ¥24 (注文 ¥25.5)・数量 10・納期 2026-11-25 (注文 2026-11-20)」の形。
     相手の品番と注文の値は、届いた本文 (payload) の同じ line_no の明細から引く (line_no が無い明細は並びの番号)。注文と違う所だけ「(注文 …)」を付ける。
@@ -195,8 +195,8 @@ def revision_notice(inbox):
     """変更と取消の版の札の中身 ({% revision_notice row.obj as revision %})。無ければ None。
 
     変更の版の行は {"label": 「第 n 版の変更」か「第 n 版の取消」, 元の行 (第 1 版) の番号と状態と URL}。
-    第 1 版の行は、未処理の後の版があれば {"label": 「第 n 版の変更が届いています」, その版の番号・状態・URL}。
-    一覧の行は get_queryset の注釈 (pending_revision_pk・pending_revision_no) と select_related の revises を読み、問い合わせを足さない。
+    第 1 版の行は、未処理の後の版があれば {"label": 「第 n 版の変更が届いています」か「第 n 版の取消が届いています」(その版の目的で選ぶ), その版の番号・状態・URL}。
+    一覧の行は get_queryset の注釈 (pending_revision_pk・pending_revision_no・pending_revision_purpose) と select_related の revises を読み、問い合わせを足さない。
     詳細は注釈が無いので 1 回だけ引く。
     """
     if _revises_id(inbox) is not None:
@@ -204,17 +204,20 @@ def revision_notice(inbox):
         return _notice(f"第 {inbox.revision_no} 版の{word}", inbox.revises_id, inbox.revises.status)
     if hasattr(inbox, "pending_revision_pk"):
         pk, number = inbox.pending_revision_pk, inbox.pending_revision_no
+        purpose = getattr(inbox, "pending_revision_purpose", None)
     else:
         later = (
             Inbox.objects.filter(revises=inbox, status=Inbox.STATUS_RECEIVED)
             .order_by("-revision_no", "-pk")
-            .values("pk", "revision_no")
+            .values("pk", "revision_no", "purpose_code")
             .first()
         )
-        pk, number = (later["pk"], later["revision_no"]) if later else (None, None)
+        pk, number, purpose = (later["pk"], later["revision_no"], later["purpose_code"]) if later else (None, None, None)
     if pk is None:
         return None
-    return _notice(f"第 {number} 版の変更が届いています", pk, Inbox.STATUS_RECEIVED)
+    # 取消の版が届いているのに「変更が届いています」と出していた (届いた版の目的で字を選ぶ。受注の詳細の黄色の 1 行と同じ言い分け)
+    word = "取消" if purpose == edi_codes.PURPOSE_CANCEL else "変更"
+    return _notice(f"第 {number} 版の{word}が届いています", pk, Inbox.STATUS_RECEIVED)
 
 
 def _number(value):

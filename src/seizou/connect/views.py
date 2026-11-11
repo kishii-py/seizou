@@ -1,6 +1,6 @@
 """connect の画面と受け口。
 
-画面 (受信した注文・受信した注文の詳細・受け入れる・単価を直して受け入れる・保留する・断る・取引先との接続・送り合った記録) は core の土台を継承する (R15)。
+画面 (受信した注文・受信した注文の詳細・受け入れる・条件を直して受け入れる・保留する・断る・取引先との接続・送り合った記録) は core の土台を継承する (R15)。
 class の中で上書きするのは、約束の名前 (model・ordering・columns・template_name・get_queryset など) だけ。
 書く処理は services の accept・accept_with_conditions・hold・reject だけで、土台が検査の層を通してから呼ぶ。
 会話に書く (受注と発注の 1 件ごとの会話。作者の決め) も入力の土台を継承し、書くのは services.post_chat_message だけ。
@@ -108,12 +108,13 @@ class InboxListView(BaseListView):
             same_order_pk=Subquery(earlier.values("pk")[:1]),
             same_order_status=Subquery(earlier.values("status")[:1]),
         )
-        # pending_revision_pk・pending_revision_no = 第 1 版の行への未処理の後の版 (一番新しい 1 つ) の番号と版
-        # (状態の列の版の札 = connect_tags の revision_notice)。行と同じ 1 つの問い合わせで読む。
+        # pending_revision_pk・pending_revision_no・pending_revision_purpose = 第 1 版の行への未処理の後の版 (一番新しい 1 つ) の番号と版と目的
+        # (状態の列の版の札 = connect_tags の revision_notice。目的は取消か変更かの字を選ぶ)。行と同じ 1 つの問い合わせで読む。
         pending = Inbox.objects.filter(revises=OuterRef("pk"), status=Inbox.STATUS_RECEIVED).order_by("-revision_no", "-pk")
         queryset = queryset.annotate(
             pending_revision_pk=Subquery(pending.values("pk")[:1]),
             pending_revision_no=Subquery(pending.values("revision_no")[:1]),
+            pending_revision_purpose=Subquery(pending.values("purpose_code")[:1]),
         )
         try:
             after = int(self.request.GET.get("after", ""))
@@ -165,7 +166,7 @@ class InboxConditionalAcceptView(BaseFormView):
     model = Inbox
     form_class = ConditionalAcceptForm
     service = staticmethod(services.accept_with_conditions)
-    screen_name = "単価を直して受け入れる"
+    screen_name = "条件を直して受け入れる"
     screen_help = "明細ごとに回答単価・回答数量・回答納期を直して保存すると、直した値で受注ができ、相手には条件付きの答えを返します。相手が発注を直すまで、相手の発注の値は前のままです。"
     template_name = "connect/inbox_accept_conditional.html"
 
