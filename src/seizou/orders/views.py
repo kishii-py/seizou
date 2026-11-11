@@ -18,6 +18,7 @@ from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, BaseMo
 
 from . import board, services
 from .forms import OrderCancelForm, OrderForm, OrderLineNoBillClearForm, OrderLineNoBillForm
+from .forms import OrderLineCompleteClearForm, OrderLineCompleteForm
 from .models import Order, OrderLine
 from .services import annotate_remaining
 
@@ -287,6 +288,38 @@ class OrderLineNoBillClearView(BaseFormView):
     service = staticmethod(services.clear_no_bill)
     screen_name = "請求しないを外す"
     screen_help = "受注の明細の「請求しない」の印を外します。出し切らずに終えた一式なら、請求書の新規登録の一式の表にまた並び、まだ請求書に入っていない出荷も請求書の新規登録に並びます。"
+
+
+class OrderLineCompleteView(BaseFormView):
+    """受注の明細を完了にする (足りないまま終える) 確かめの入力。
+
+    使う人: 生産管理 / いつ: 得意先が残りを要らないと言ったときや、不良で作り直さない分を残して終えるとき / 何のために: 残りを出さずに明細を完了にし、生産管理ボードと今日やることから外す / 次にすること: 受注の詳細へ戻る
+
+    入口は受注の詳細の明細の ⋮ と生産管理ボードの行の ⋮ の「完了にする」(終わっていない明細・取消でない受注・受注を書ける人だけ。小窓。JS の無いときは画面の全体と ?next=)。
+    テンプレートは土台の入力の画面と小窓のまま。残りの数の 1 行は form の lead_text (core/_form_card.html が描く)。
+    """
+
+    model = OrderLine
+    form_class = OrderLineCompleteForm
+    service = staticmethod(services.mark_completed)
+    screen_name = "完了にする"
+    screen_help = "受注の明細を、残りを出さずに完了にします。出した数と金額はそのまま残り、完了は明細の ⋮ の「完了を外す」で外せます。"
+
+
+class OrderLineCompleteClearView(BaseFormView):
+    """受注の明細の完了を外す確かめの入力。
+
+    使う人: 生産管理 / いつ: 誤って完了にしたときや、追加で出すことになったとき / 何のために: 完了の明細の残を戻し、また出荷できるようにする / 次にすること: 受注の詳細か生産管理ボードから出荷する
+
+    入口は受注の詳細の明細の ⋮ の「完了を外す」だけ (完了の印のある明細・取消でない受注・受注を書ける人だけ。小窓。JS の無いときは画面の全体と ?next=)。
+    生産管理ボードの既定の一覧には完了の明細が出ないので、盤の行の ⋮ には置かない。テンプレートは土台の入力の画面と小窓のまま。
+    """
+
+    model = OrderLine
+    form_class = OrderLineCompleteClearForm
+    service = staticmethod(services.clear_completed)
+    screen_name = "完了を外す"
+    screen_help = "受注の明細の完了を外します。足りない分がまた残に数えられ、出荷の候補と生産管理ボードに戻ります。"
 
 
 class OrderLineSelectView(BaseSelectView):

@@ -5,6 +5,7 @@
 ダッシュボードのカード「今月の支払の見込み」は core の dashboard_stats() が数字のカードの並びに出す (11-03 の本体の直し)。
 - live_state: 発注の一覧と詳細の 2 秒ごとの更新で、行の状態の字 (data-live) と、前の更新と字が違うか (seizou-changed を付けるか)。
 - over_receipt_text・over_receipt_notices: 受入の数が発注の明細の数量を超えたときの黄の知らせの字 (発注の詳細の明細と、受入の一覧)。
+- line_completed_label: 発注の詳細の明細の受入の残の枡の「完了」「完了 (受けない n)」の印の字 (N400b。完了の印の無い明細は空の字)。
 - notice_rests: 発注の詳細の出荷の知らせの行ごとの、まだ受け入れていない数 (「受入を記録する」の数量)。
 - next_receipt: 発注の詳細の頭の右の緑の「受入を記録する」の行き先 (まだ受け入れていない出荷の知らせのうち、明細の順で最初・知らせの古い順で最初の物)。
 - purchase_order_aside: 発注の詳細の右の列 (作者の決め。開発の記録 docs/nights/20261105/N150.md) のカードの並び。形は orders の orders_detail の order_aside と同じ。
@@ -119,6 +120,28 @@ def over_receipt_notices(rows):
     if not ids:
         return []
     return [{"line": line, "message": services.over_receipt_message(line)} for line in services.over_receipt_lines(ids)]
+
+
+@register.simple_tag
+def line_completed_label(line) -> str:
+    """{% line_completed_label line as completed_label %}。発注の詳細の明細の表の受入の残の枡の「完了」の印の字 (N400b。RULES.md R25)。
+
+    完了の印が偽なら空の字 (印を出さない)。完了の明細で、受入の数 (lines_with_received の写しの received_total) が数量より少なければ
+    「完了 (受けない n)」(n = 数量 − 受入の数 = services.unfilled_qty と同じ式)、数量以上なら「完了」。
+    数は写しから出し、明細ごとに問い合わせを増やさない。写しの無い明細 (received_total を持たない) だけ services.unfilled_qty で読む。
+    """
+    if not line.completed:
+        return ""
+    received = getattr(line, "received_total", None)
+    if received is None:
+        from .. import services
+
+        unfilled = services.unfilled_qty(line)
+    else:
+        unfilled = line.qty - (received if isinstance(received, Decimal) else Decimal(str(received)))
+    if unfilled > 0:
+        return f"完了 (受けない {comma(unfilled)})"
+    return "完了"
 
 
 @register.simple_tag

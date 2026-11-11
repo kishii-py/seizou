@@ -5,6 +5,7 @@
   (partner・lines・order_date・note と、会社ごとの項目があれば ext) を作る。
 - 送り直す form は欄が無い。service_kwargs() は空の辞書 (土台が resend_purchase_order(発注, user=...) を呼ぶ)。
 - 取り消す form は理由の欄 1 つ。
+- 発注の明細の完了にする・完了を外す form (N400b) は欄が無い。完了にするの form は、残りの数と「変更」の案内の 1 行を lead_text に持つ (core/_form_card.html が描く)。
 - ほかの部品の model は import せず、外部キーの先を related_model で引く (読むだけ)。
 - 取引先と部品を選ぶ欄は字を打って探す欄 (RemoteSelect)。取引先の候補の口は masters の取引先の口に role=supplier (協力企業か両方の物だけ)。
   部品の候補の口は purchasing の部品の口 (purchasing:item_select) で、単位だけを返し標準単価を返さない (協力企業への単価は利用者が打つ。作者の決め)。
@@ -491,6 +492,55 @@ class CancelForm(forms.Form):
         return {"reason": self.cleaned_data["reason"]}
 
 
+#: 送った発注の明細の完了にするの確かめの画面の案内 (「変更」の入口が出る発注 = services.can_change_order が真のときだけ)
+CHANGE_GUIDE = "相手にも伝えるときは、完了にせずに発注の「変更」で数量を受入済みの数に直して送ってください。"
+
+
+class PurchaseOrderLineCompleteForm(forms.Form):
+    """発注の明細を完了にする form。欄は無い (purchasing.services.mark_completed)。
+
+    保存のボタンは「PO-000001-1 を完了にする」(土台が対象を instance= で渡す)。取消でなく外せるので赤にしない。
+    受入の残 (services.remaining_qty) が 0 より大きい明細では、カードの頭の 1 行 (lead_text。core/_form_card.html) に
+    「残り n は受け入れずに終えます。…」を出す。seizou どうしで送った発注で「変更」の入口が出る発注 (services.can_change_order) では、
+    同じ 1 行の後ろに「変更」の案内 (CHANGE_GUIDE) を足す (完了は相手に伝わらないため。N400b の依頼書の 5)。
+    """
+
+    submit_label = "完了にする"
+    lead_text = ""
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.purchase_order.po_no}-{instance.line_no} を完了にする"
+            parts = []
+            rest = services.remaining_qty(instance)
+            if rest > 0:
+                parts.append(f"残り {comma(rest)} は受け入れずに終えます。受け入れた数と金額はそのまま残り、支払の見込みにも残ります。")
+            if services.can_change_order(instance.purchase_order):
+                parts.append(CHANGE_GUIDE)
+            self.lead_text = "".join(parts)
+
+    def service_kwargs(self):
+        return {}
+
+
+class PurchaseOrderLineCompleteClearForm(forms.Form):
+    """発注の明細の完了を外す form。欄は無い (purchasing.services.clear_completed)。
+
+    保存のボタンは「PO-000001-1 の完了を外す」(土台が対象を instance= で渡す)。赤にしない。
+    """
+
+    submit_label = "完了を外す"
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.submit_label = f"{instance.purchase_order.po_no}-{instance.line_no} の完了を外す"
+
+    def service_kwargs(self):
+        return {}
+
+
 def _purchase_line(raw):
     """発注の明細の pk の字から明細を引く。読めない字・1 未満・無い pk は None (画面は 200 のまま)。"""
     if raw is None:
@@ -546,6 +596,12 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
         decimal_places=2,
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any"}),
     )
+    # 残りは受け入れずに完了にする受入 (N400b。purchasing.services.receive の close_rest。本人の決め 11-11 08:4x・09:3x)
+    close_rest = forms.BooleanField(
+        label="残りは受け入れずに完了にする",
+        required=False,
+        help_text="この受入の後の残りを受け入れずに、明細を完了にします。受け入れた数と金額はそのまま残り、発注の詳細から完了を外せます。",
+    )
     note = forms.CharField(
         label="備考",
         max_length=500,
@@ -592,7 +648,13 @@ class ReceiptForm(SubmitLabelMixin, forms.Form):
 
     def service_kwargs(self):
         data = self.cleaned_data
-        return {"line": data["line"], "qty": data["qty"], "received_on": data["received_on"], "note": data["note"]}
+        return {
+            "line": data["line"],
+            "qty": data["qty"],
+            "received_on": data["received_on"],
+            "note": data["note"],
+            "close_rest": bool(data.get("close_rest")),
+        }
 
 
 # --- 仕入明細 (作者の決め) ---

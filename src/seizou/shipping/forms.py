@@ -72,6 +72,12 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
         widget=IsoDateInput(),
         error_messages=SHIPPED_AT_ERRORS,
     )
+    # 残りは出さずに完了にする出荷 (N400b。shipping.services.ship の close_rest。本人の決め 11-11 08:4x・09:3x)。一括出荷と出荷の編集には置かない。
+    close_rest = forms.BooleanField(
+        label="残りは出さずに完了にする",
+        required=False,
+        help_text="この出荷の後の残りを出さずに、明細を完了にします。出した数と金額はそのまま残り、受注の詳細から完了を外せます。",
+    )
     note = forms.CharField(label="備考", max_length=500, required=False)
 
     def __init__(self, *args, **kwargs):
@@ -117,6 +123,7 @@ class ShipmentForm(SubmitLabelMixin, forms.Form):
             "qty": data["qty"],
             "shipped_at": data["shipped_at"],
             "note": data.get("note", ""),
+            "close_rest": bool(data.get("close_rest")),
         }
 
 

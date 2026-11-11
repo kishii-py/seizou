@@ -23,6 +23,7 @@ from seizou.masters.services import with_default_process
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
 from .forms import PurchaseOrderChangeForm
+from .forms import PurchaseOrderLineCompleteClearForm, PurchaseOrderLineCompleteForm
 from .forms import ReceiptForm
 from .forms import SelfInvoiceAcceptForm, SelfInvoiceCancelForm, SelfInvoiceForm
 from .models import PurchaseOrder
@@ -191,6 +192,38 @@ class PurchaseOrderChangeView(BaseFormView):
     def get_queryset(self):
         # 変更を送れる状態 (「送った」「相手が受け入れた」) の発注だけ (外は 404)。
         return PurchaseOrder.objects.filter(status__in=services.CHANGEABLE_STATUSES)
+
+
+class PurchaseOrderLineCompleteView(BaseFormView):
+    """発注の明細を完了にする (受入の足りないまま終える) 確かめの入力。
+
+    使う人: 生産管理 / いつ: 協力企業からの戻りが足りないまま終えるとき (目減り・不良で作り直さない分) / 何のために: 明細を完了にし、受入の候補と「受入の残」から外す / 次にすること: 発注の詳細へ戻る
+
+    入口は発注の詳細の明細の ⋮ の「完了にする」だけ (取消でも断られたでもない発注の、取り消していない終わっていない明細・発注を書ける人だけ。小窓。JS の無いときは画面の全体と ?next=)。
+    テンプレートは土台の入力の画面と小窓のまま。残りの数と「変更」の案内の 1 行は form の lead_text (core/_form_card.html が描く)。
+    """
+
+    model = PurchaseOrderLine
+    form_class = PurchaseOrderLineCompleteForm
+    service = staticmethod(services.mark_completed)
+    screen_name = "完了にする"
+    screen_help = "発注の明細を、残りを受け入れずに完了にします。受け入れた数と金額はそのまま残り、完了は明細の ⋮ の「完了を外す」で外せます。相手の seizou には伝わりません。"
+
+
+class PurchaseOrderLineCompleteClearView(BaseFormView):
+    """発注の明細の完了を外す確かめの入力。
+
+    使う人: 生産管理 / いつ: 誤って完了にしたときや、協力企業がやはり残りを納めると言ったとき / 何のために: 完了の明細の受入の残を戻し、また受け入れられるようにする / 次にすること: 発注の詳細から受入を登録する
+
+    入口は発注の詳細の明細の ⋮ の「完了を外す」だけ (完了の印のある明細・取消でない発注・発注を書ける人だけ。小窓。JS の無いときは画面の全体と ?next=)。
+    テンプレートは土台の入力の画面と小窓のまま。
+    """
+
+    model = PurchaseOrderLine
+    form_class = PurchaseOrderLineCompleteClearForm
+    service = staticmethod(services.clear_completed)
+    screen_name = "完了を外す"
+    screen_help = "発注の明細の完了を外します。足りない分がまた受入の残に数えられ、受入の候補に戻ります。相手の seizou へは何も送りません。"
 
 
 # --- 受入 (協力企業管理の 2 つ目の画面) ---

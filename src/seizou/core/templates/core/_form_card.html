@@ -5,6 +5,7 @@
 {# form_action: 送り先を今の URL と別にするときだけ渡す (フィードバックの送る画面で、AI の下書きができた後に右の欄へ差し替える編集の形 = feedback/_draft_ready.html。小窓の形 (in_modal) とは一緒に渡さない)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if form.is_multipart %} enctype="multipart/form-data"{% endif %}{% if form_action %} action="{{ form_action }}"{% endif %}{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% if form.is_multipart %} hx-encoding="multipart/form-data"{% endif %}{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
+  {% if form.lead_text %}<p class="mb-4 text-sm text-base-content/70" data-form-lead>{{ form.lead_text }}</p>{% endif %}{# 頭の 1 行 (form の属性 lead_text。字が空なら描かない。欄の無い確かめの「残り n は出さずに終えます。…」。本体の決め 11-11 13:4x。N400b) #}
   {% if form|has_required %}<p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄を埋めて「{% firstof form.submit_label_plain form.submit_label "保存" %}」を押します。入れた値は、止まったときも消えません{% if form.is_multipart %} (ファイルは選び直します){% endif %}。</p>{% endif %}
   {# 見える欄が 0 個の form (欄の無い取消の確かめ・注文を送り直す) は格子を描かない。白い枠に見える物の無い帯を作らないため (作者の決め) #}
   {% if form.visible_fields %}

@@ -24,4 +24,7 @@ urlpatterns = [
     path("lines/<int:pk>/modal/", views.orderline_modal, name="orderline_modal"),
     path("lines/<int:pk>/no-bill/", views.OrderLineNoBillView.as_view(), name="orderline_no_bill"),
     path("lines/<int:pk>/clear-no-bill/", views.OrderLineNoBillClearView.as_view(), name="orderline_no_bill_clear"),
+    # 明細の完了の印の付け外し (N400b。入口は受注の詳細の明細の ⋮ と生産管理ボードの行の ⋮。左のメニューには足さない)
+    path("lines/<int:pk>/complete/", views.OrderLineCompleteView.as_view(), name="orderline_complete"),
+    path("lines/<int:pk>/complete/clear/", views.OrderLineCompleteClearView.as_view(), name="orderline_complete_clear"),
 ]

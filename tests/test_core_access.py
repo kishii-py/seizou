@@ -461,3 +461,32 @@ def test_reissue_invoice_is_a_money_action(on):
 
     keiri = account("keiri", permissions=["billing"], see_money=True)
     access.require_write(keiri, "billing.reissue_invoice")
+
+
+@pytest.mark.django_db
+def test_completed_mark_actions_follow_write_kind_without_money(on):
+    """受注と発注の明細の「完了にする」「完了を外す」(N400b。本体の決め 11-11 13:4x) は、受注と発注の編集の権限で守り、金額の閲覧は問わない。
+
+    訳: 完了を上げ下げできる人は、受注や発注を書ける人と同じ (本人の決め 11-11 08:4x)。完了は出した数と金額を変えないので、金額に関わる操作にしない。
+    """
+    kinds = {
+        "orders.mark_completed": "orders",
+        "orders.clear_completed": "orders",
+        "purchasing.mark_completed": "purchasing",
+        "purchasing.clear_completed": "purchasing",
+    }
+    for action, kind in kinds.items():
+        assert access.ACTION_KINDS[action] == kind
+        assert action not in access.MONEY_ACTIONS
+    seller = account("seller", permissions=["orders"])
+    buyer = account("buyer", permissions=["purchasing"])
+    for action in ("orders.mark_completed", "orders.clear_completed"):
+        access.require_write(seller, action)  # 金額の閲覧が無くても通す
+        with pytest.raises(access.AccessDenied) as caught:
+            access.require_write(buyer, action)
+        assert caught.value.message.startswith("受注の編集の権限がありません。")
+    for action in ("purchasing.mark_completed", "purchasing.clear_completed"):
+        access.require_write(buyer, action)
+        with pytest.raises(access.AccessDenied) as caught:
+            access.require_write(seller, action)
+        assert caught.value.message.startswith("発注の編集の権限がありません。")

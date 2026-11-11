@@ -129,6 +129,9 @@ _KIND_ACTIONS = {
         "orders.cancel_order",
         "orders.mark_no_bill",
         "orders.clear_no_bill",
+        # 受注の明細の完了の印の付け外し (N400b。本体の決め 11-11 13:4x。完了は出した数と金額を変えないので MONEY_ACTIONS に入れない)
+        "orders.mark_completed",
+        "orders.clear_completed",
         "connect.accept",
         "connect.reject",
         "connect.accept_with_conditions",
@@ -173,6 +176,9 @@ _KIND_ACTIONS = {
         "connect.send_self_invoice",  # 仕入明細を相手に送り直す口 (作者の決め)
         "purchasing.cancel_self_invoice",  # 相手が答える前の仕入明細の取消 (作者の決め。取消も相手へ送る)
         "purchasing.accept_self_invoice_proposals",  # 相手の提案を受け入れて修正仕入明細を送る (作者の決め)
+        # 発注の明細の完了の印の付け外し (N400b。本体の決め 11-11 13:4x。受注の完了と同じく MONEY_ACTIONS に入れない)
+        "purchasing.mark_completed",
+        "purchasing.clear_completed",
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)

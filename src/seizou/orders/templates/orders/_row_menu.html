@@ -3,6 +3,7 @@
 context: line (受注の明細。board・remaining_total・order・item を持つ) と can_issue (指示書の発行の入口を出すか。can_write の tag の答え)・can_ship と can_po (出荷と発注の入口を出すか。can_write の tag の答え)・can_progress (実績の入口を出すか。can_write の tag の答え = progress の部品を部署で開けるか)・can_receive (入荷の記録の入口を出すか。can_write "receiving.Receiving" の答え。開発の記録 docs/nights/20261106/N184.md)。
 「納品書を作る」は、行に納品書の無い出荷 (line.board.unnoted_shipment) があるときだけ出し、その出荷を選んだ形で納品書の入力を開く。権限はその行でだけ can_write の tag を呼んで決める (呼ぶ側のテンプレートを変えないため。開発の記録 docs/nights/20261104/N130.md)。
 項目は画面へ移る link だけ (メニューの中で入力しない)。出荷・指示書の発行・入荷の記録・実績・納品書の作成・発注の 6 つは data-modal-form を持ち、core の JS (js/seizou-modal.js) が小窓で開く。JS が無いときは href で画面へ移る (決め 11-04 17:5x)。URL は url … as で引き、部品が入っていない会社では URL が空なので、その項目を出さない。
+「完了にする」(N400b。本人の決め 11-11 08:4x・09:3x) は、受注の詳細の明細の ⋮ と同じ出し方 (終わっていない明細 = 完了の印が偽で残が 0 より大きい明細・取消でない受注・受注を書ける人。権限はその行でだけ can_write "orders.Order" を呼ぶ)。1 組目の最後に置き、小窓で開く。「完了を外す」は、盤の既定の一覧に完了の明細が出ないので置かない (受注の詳細から外す)。
 「部品の情報を見る」は master_link と同じ小窓 (#seizou-modal) を開く。menu の中で下線が付かないように a を自分で書き、hx の属性は master_link の物を写した。
 最上段は対象の明細の品番と品名の見出し (押せない字。daisyUI の menu-title。全部の字は title にも)。項目は線 (中身の無い li を daisyUI の menu が 1px の線にする) で 3 組に分ける = 社内で進める (出荷する・指示書を発行する・入荷を記録する・実績を入れる) / 外へ出す書類 (発注する・納品書を作る) / 見る (受注の詳細・部品の情報を見る・図面・添付・現品票)。2 組目の前の線は 2 組目の項目が 1 つでもあるときだけ出す (線が 2 本続かないため)。3 組目は「受注の詳細」がいつもあるので、前の線をいつも出す。近道のキーは無い (決め 11-05 15:0x。開発の記録 docs/nights/20261105/N160.md)。
 {% endcomment %}
@@ -17,6 +18,7 @@ context: line (受注の明細。board・remaining_total・order・item を持�
     {% if receiving_url and can_receive %}<li><a class="flex items-center gap-2" href="{{ receiving_url }}?order_line={{ line.pk }}" data-modal-form="{{ receiving_url }}?order_line={{ line.pk }}">{% icon "download" "size-4" %}入荷を記録する</a></li>{% endif %}
     {% endif %}
     {% if progress_url and can_progress and line.board.current_step %}<li><a class="flex items-center gap-2" href="{{ progress_url }}?workorder_step={{ line.board.current_step.pk }}" data-modal-form="{{ progress_url }}?workorder_step={{ line.board.current_step.pk }}">{% icon "activity" "size-4" %}実績を入れる</a></li>{% endif %}
+    {% if line.order.status != "cancelled" and not line.completed and line.remaining_total > 0 %}{% can_write "orders.Order" as can_complete %}{% if can_complete %}{% url 'orders:orderline_complete' line.pk as complete_url %}<li><a class="flex items-center gap-2" href="{{ complete_url }}?next={{ request.get_full_path|urlencode }}" data-modal-form="{{ complete_url }}">{% icon "check-circle" "size-4" %}完了にする</a></li>{% endif %}{% endif %}
     {% if note_url and line.board.unnoted_shipment %}{% can_write "shipping.DeliveryNote" as can_note %}{% endif %}
     {% if po_url and can_po and line.order.status != "cancelled" and line.remaining_total > 0 or note_url and line.board.unnoted_shipment and can_note %}<li></li>{% endif %}
     {% if po_url and can_po and line.order.status != "cancelled" and line.remaining_total > 0 %}<li><a class="flex items-center gap-2" href="{{ po_url }}?from_line={{ line.pk }}" data-modal-form="{{ po_url }}?from_line={{ line.pk }}">{% icon "cart" "size-4" %}発注する</a></li>{% endif %}
