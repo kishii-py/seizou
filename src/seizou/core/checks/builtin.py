@@ -1,10 +1,10 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
-R07 は実績の入力と実績の編集の 2 つの action に掛ける。
+R07 は実績の入力と実績の編集の 2 つの action に掛ける。R26 は実績の入力だけに掛ける。
 """
 
 from __future__ import annotations
@@ -257,7 +257,31 @@ class OverPayment(Check):
         return None
 
 
-BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment())
+class ProgressWithoutStaff(Check):
+    """R26: 社員の一覧に使用中の社員が居る会社で、作業した人 (社員番号か、社員の一覧に居ない人の名前) の無い実績を入れたら (実績の入力)。
+
+    data の staff は作業した社員 (masters の Staff)、staff_name は社員の一覧に居ない人の名前 (progress.services.record_progress の引数)。
+    staff が無く、staff_name が空 (空白だけも空と見る) なら知らせる。実績の編集 (progress.update_progress) には掛けない
+    (社員を登録する前に入れた実績を直すたびに、知らせが出ないようにするため)。
+    訳: 共用の端末で実績を入れる現場で、誰が作ったかの無い実績に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。社員の一覧に使用中の社員が 1 人も居ない会社では何もしない (各自のアカウントでログインして入れる会社の動きを変えない)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M02)・会社の設定 progress_staff・本人の決め 11-11 09:0x。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R26"
+    action = "progress.record_progress"
+    setting_key = "progress_staff"
+
+    def run(self, data, user):
+        if not tools.has_active_staff():
+            return None
+        if data.get("staff") is not None:
+            return None
+        if str(data.get("staff_name") or "").strip():
+            return None
+        return "作業した人が入っていません。社員番号か、社員の一覧に居ない人の名前を入れてください。"
+
+
+BUILTIN = (OverShipment(), OverShipmentOnUpdate(), OverShipmentLines(), OrderBelowShipped(), OverWorkorder(), OverProgress(), OverProgressOnUpdate(), OverPayment(), ProgressWithoutStaff())
 
 for _check in BUILTIN:
     register(_check)

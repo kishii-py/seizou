@@ -39,6 +39,17 @@ def recorded_qty(workorder_step) -> Decimal:
     return services.recorded_qty(workorder_step)
 
 
+def has_active_staff() -> bool:
+    """社員の一覧に使用中の社員が 1 人でも居るか (R26 が読む)。masters の部品が無ければ False。"""
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.masters"):
+        return False
+    from seizou.masters import services
+
+    return services.has_active_staff()
+
+
 def standard_price(item) -> Decimal | None:
     """品目の標準単価。"""
     return getattr(item, "standard_price", None)

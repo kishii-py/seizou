@@ -24,6 +24,7 @@ DEFAULTS = {
     "over_workorder": "warn",  # 受注より多い指示書の数量と予定より多い実績 (R06・R07): warn / stop / off
     "receiving_required": "off",  # 支給品と預かり品の入荷 (引当) が無い受注の明細の指示書の発行と出荷: warn / stop / off
     "over_payment": "warn",  # 請求書の残を超える入金のポカよけ (R24): warn / stop / off
+    "progress_staff": "warn",  # 作業した人の無い実績のポカよけ (R26): warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
     "transcription_minutes_per_line": 1,  # 1 行の手入力にかかる分 (ダッシュボードの「手入力せずに取り込んだ明細」の入力を省けた時間 ≒ m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
@@ -58,6 +59,7 @@ CHOICES = {
     "over_workorder": ("warn", "stop", "off"),
     "receiving_required": ("warn", "stop", "off"),
     "over_payment": ("warn", "stop", "off"),
+    "progress_staff": ("warn", "stop", "off"),
     "order_number": ("seq", "ym_seq"),
 }
 
