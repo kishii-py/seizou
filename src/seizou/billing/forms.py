@@ -1,7 +1,8 @@
 """billing の入力の form。保存は form でなく services が行う (土台が form の save を呼ぶことは無い)。
 
 - 作る form: 得意先・出荷 (checkbox)・発行日。service_kwargs() が create_invoice の引数を作る。
-  候補は billable_shipments() (発行の納品書に入っていて、取消でない請求書に入っていない出荷) と、その出荷のある得意先。
+  候補は billable_shipments() (出荷の記録があり、取消でない請求書に入っていない出荷。「請求しない」の印の明細の出荷と、
+  請求書の外で受け取った入金 (取消でない) のある出荷は除く。納品書を発行したかどうかは見ない) と、その出荷のある得意先。
   得意先と違う出荷を選んだときは、画面で先に断らず services の R09 の赤の知らせに任せる。
   checkbox の行ごとに data-partner (出荷の受注の得意先の pk) を付け、テンプレートの小さな JS が得意先の欄で行を絞る。
   出荷は列の見出しのある表の行 (rows) で描き (billing/_invoice_create_card.html)、印を付けた行の数と税抜の金額の合計を
@@ -241,7 +242,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         queryset=billable_shipments().none(),
         required=False,
         widget=ShipmentCheckboxes(attrs={"class": "checkbox"}),
-        help_text="納品書の出た出荷のうち、まだ請求書に入っていない物だけが並びます。",
+        help_text="まだ請求書に入っていない出荷が並びます (納品書を作っていない出荷も並びます)。",
     )
 
     def __init__(self, *args, hide_money=False, **kwargs):

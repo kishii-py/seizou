@@ -170,6 +170,7 @@ class ShipmentUpdateView(BaseFormView):
     screen_help = (
         "数量と出荷日と備考を直します。発行の納品書に入った出荷は、先に納品書を取り消してから直します。"
         "受注の残を超える数は、会社の設定に従って止めるか知らせます。"
+        "請求書に入った出荷を直すと、会社の設定に従って知らせるか止めます (請求書の数量は変わりません)。"
     )
 
 
@@ -250,7 +251,7 @@ class DeliveryNoteCancelView(BaseFormView):
     service = staticmethod(services.cancel_delivery_note)
     template_name = "shipping/deliverynote_cancel.html"
     screen_name = "納品書を取り消す"
-    screen_help = "発行の納品書を取り消します。この納品書の出荷は請求できなくなり、出荷を直してから新しい納品書にまとめ直せます。"
+    screen_help = "発行の納品書を取り消します。取り消した納品書の出荷も請求できます。請求書に入った出荷の納品書を取り消しても、請求書は変わりません。"
 
 
 @login_required

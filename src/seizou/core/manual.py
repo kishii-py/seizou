@@ -132,7 +132,7 @@ FLOWS = (
             {"url_name": "progress:progress_create", "do": "工程が終わるたびに、実績の数と日時を入れる。", "stage": "完了", "note": "最後の工程の実績に「この工程を完了にする」を付けると「完了」になる。"},
             {"url_name": "shipping:shipment_create", "do": "できた物を送るときに、明細ごとに出荷を記録する。", "stage": "出荷", "note": "受注の状態が「一部出荷」か「出荷済」になる。"},
             {"url_name": "shipping:deliverynote_create", "do": "同じ得意先の出荷をまとめて、納品書を作る。", "stage": "納品", "note": ""},
-            {"url_name": "billing:invoice_create", "do": "締日の後に、納品書の出た出荷をまとめて請求書を作る。", "stage": "請求", "note": ""},
+            {"url_name": "billing:invoice_create", "do": "締日の後に、出荷をまとめて請求書を作る。", "stage": "請求", "note": ""},
             {"url_name": "billing:payment_create", "do": "入金があったら、請求書に入金の日付と金額を記録する。", "stage": "入金", "note": "請求書の残が減る。"},
         ),
     },
