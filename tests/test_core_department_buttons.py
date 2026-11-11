@@ -253,7 +253,8 @@ def test_department_outsider_sees_invoice_number_without_link_on_note_cancel(set
     cancel = reverse("shipping:deliverynote_cancel", args=[shipment.delivery_note_id])
     invoice_href = f'href="{reverse("billing:invoice_detail", args=[invoice.pk])}'
     depts = _departments()
-    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"])
+    # 納品書の取消は金額に関わる操作なので、金額の閲覧のある人で開く (無い人には、開いた時点で 403 の画面。tests/test_core_form_open_gate.py)
+    jimu = account("jimu", departments=[depts["sales"]], permissions=["slip_edit"], see_money=True)
 
     body = _page(client, jimu, cancel)
     assert "alert-warning" in body and "納品書を取り消しても、請求書は変わりません。" in body

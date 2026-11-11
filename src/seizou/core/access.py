@@ -569,6 +569,25 @@ def require_write(user, action) -> None:
         _follow("money", user, AccessDenied(money_message(*money)), f"{action} を保存しようとした", "金額の閲覧")
 
 
+def write_refusal(user, action) -> str:
+    """require_write が断る人には断りの文、通す人には空の字 (記録は書かない。例外を上げない)。入力の画面を開いた時点の門 (入力の土台 BaseFormView) が読む。
+
+    見る順と文は require_write と同じ (1) アカウント管理 2) 編集の権限の種類 3) 金額に関わる操作)。断るのは判定が on のときだけで、
+    記録だけ (log) と切 (off) の会社は通す (write_allowed と同じ。空の字 = write_allowed が真)。
+    訳: 編集の権限か金額の閲覧が無くて保存できない人が、入力の画面を URL で開いて、全部入れてから保存で断られる手間を無くすため (入口のボタンと link を出さない決めと同じ向き)。出所 = 精査の報告 (2026-11-10 の D1) と本人の決め 11-12 07:2x (開いた時点で断る)。
+    変えてよい条件 = 本人が、開いた時点で断る決めを変えたとき。
+    """
+    if action in ACCOUNT_ACTIONS:
+        return "" if can_manage_accounts(user) else ACCOUNT_MESSAGE
+    kind = ACTION_KINDS.get(action)
+    if kind is not None and mode("write") == "on" and not is_unrestricted(user) and kind not in permissions_of(user):
+        return write_message(kind)
+    money = MONEY_ACTIONS.get(action)
+    if money is not None and mode("money") == "on" and not has_money(user):
+        return money_message(*money)
+    return ""
+
+
 def can_see_money(user, *, record=True, what="単価と金額を見た") -> bool:
     """単価と金額を見せるか。log では見せて (record が真なら) 記録に 1 行、on では見せない。"""
     state = mode("money")

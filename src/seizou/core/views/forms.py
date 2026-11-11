@@ -82,7 +82,25 @@ class BaseFormView(ScreenMixin, FormView):
             source = get_queryset() if get_queryset is not None else self.model
             self.object = get_object_or_404(source, pk=kwargs["pk"])
 
+    def _open_denied(self):
+        """この画面の操作を保存できない人 (編集の権限か金額の閲覧が無い。判定が on の会社) には、開いた時点で 403 の画面を返す。ほかは None。
+
+        文は保存の時の断りと同じ (access.write_refusal。記録は書かない)。対象 (URL の pk) を引く前に見る: 断る人には、ある pk も無い pk も
+        同じ 403 を返し、記録の有無が分からないようにする (_load_object の訳と同じ)。service の無い画面は見ない。
+        訳: 入力の画面を URL で開いて、全部入れてから保存で断られる手間を無くすため (入口のボタンと link を出さない決めと同じ向き)。出所 = 精査の報告 (2026-11-10 の D1) と本人の決め 11-12 07:2x (開いた時点で断る)。
+        変えてよい条件 = 本人が、開いた時点で断る決めを変えたとき。
+        """
+        if self.service is None:
+            return None
+        text = access.write_refusal(self.request.user, self.get_action())
+        if not text:
+            return None
+        return access.denied_response(self.request, access.DENIED_HEADING, text)
+
     def get(self, request, *args, **kwargs):
+        denied = self._open_denied()
+        if denied is not None:
+            return denied
         self._load_object(kwargs)
         return super().get(request, *args, **kwargs)
 
