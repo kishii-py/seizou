@@ -18,7 +18,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
-    起動はしない。起動の 1 行を最後に出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
+    起動はしない。起動の 1 行は、管理者の行の後の「起動:」の行の次の行に、ほかの字を付けずに出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     置き場の道の頭の ~ は利用者のホームに広げる。
@@ -554,7 +554,7 @@ def manage_line(command: str) -> str:
 
 
 def start_line(site: Path, port: int) -> str:
-    """起動の 1 行 (seizou new の「次にすること」と、置き場の README.md の「起動」に出す)。
+    """起動の 1 行 (seizou new の「起動:」の次の行と、置き場の README.md の「起動」に出す)。
 
     macOS と Linux では cd <置き場> && <python> manage.py runserver <port> (置き場の道に空白があるときだけ "…" で囲む)。
     Windows では cd "<置き場>"; & "<python>" manage.py runserver <port> (Windows PowerShell 5.1 は && を区切りと読まないので ; で分ける)。
@@ -811,7 +811,8 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     if failure is not None:
         return failure
 
-    _new_report(site, answers["port"], admin_lines, made_passwords, demo_password, password_file)
+    demo_accounts = demo and (answers_path.parent / answers["id"] / DEMO_ACCOUNTS_MARKER).is_file()
+    _new_report(site, answers["port"], admin_lines, made_passwords, demo_password, password_file, demo_accounts)
     return EXIT_OK
 
 
@@ -952,9 +953,21 @@ def _new_recipe_processes(site: Path, recipe_found, recipe_added: dict) -> int |
 
 
 def _new_report(
-    site: Path, port: int, admin_lines: list[str], made_passwords: dict, demo_password: str | None, password_file: Path | None
+    site: Path,
+    port: int,
+    admin_lines: list[str],
+    made_passwords: dict,
+    demo_password: str | None,
+    password_file: Path | None,
+    demo_accounts: bool = False,
 ) -> None:
-    """seizou new の段 (できた物)。管理者と作り物の利用者のパスワードの行と、起動・点検・練習の 1 行ずつを出す。"""
+    """seizou new の段 (できた物)。使う人に要る行を、できた物 → 管理者 → 作り物の利用者のパスワード → 起動 → 点検・練習の順に出す。
+
+    起動の 1 行 (start_line) は「起動:」の行の次の行に、前後に字を付けずに出す (写す範囲を人が切り出さないため)。
+    管理者のパスワードの行は値で終える (admin_lines は _new_admin が作る。scripts/install_smoke.py が行の終わりの値を伏せる)。
+    demo_accounts (種に作り物の利用者の印がある) で --demo-password を渡していないときだけ、3 人の公開の合言葉の在りかを 1 行で指す (値は出さない)。
+    決め 11-11 14:2x (開発の記録 docs/nights/20261111/N426.md)。
+    """
     print(f"できた物: {site} の会社のプロジェクト。")
     for line in admin_lines:
         print(line)
@@ -967,7 +980,14 @@ def _new_report(
             print(f"作り物の利用者 {login_id} のパスワード: {value}")
     elif made_passwords:
         print(f"作り物の利用者 {len(made_passwords)} 人のパスワード: --demo-password で渡した値にしました。")
-    print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
+    print(
+        "起動: 次の 1 行を打ちます。この端末は起動している間ふさがります。2 社目は新しい端末の窓で打ちます。"
+        "止めるときは、この端末で Control を押しながら C を押します。"
+    )
+    print(start_line(site, port))
+    print(f"起動したら、ブラウザで http://127.0.0.1:{port}/login/ を開いてログインします。")
+    if demo_accounts and not demo_password:
+        print(f"作り物の 3 人 ({'・'.join(DEMO_ACCOUNT_IDS)}) の ID と合言葉は、seizou の docs/getting-started.md の「触り方」にあります。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print(
         f"練習するときは: 置き場で {manage_line('seizou_practice start')} を打つ"
