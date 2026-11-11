@@ -25,7 +25,9 @@ jobs:
           for attempt in 1 2 3; do
             sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libharfbuzz-subset0 && break
             if [ "$attempt" = 3 ]; then exit 1; fi
-            sleep 30
+            # 実行の場の既定の取り先 (鏡の一覧 /etc/apt/apt-mirrors.txt) の名前が引けない時は、Ubuntu の本家の取り先に替えて試す
+            sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+            sleep 15
           done
       - name: 依存を入れる
         run: uv sync --locked --group dev --extra pdf
