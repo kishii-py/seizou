@@ -12,6 +12,7 @@ MENU = [
     ("取引先", "masters:partner_list"),
     ("工程", "masters:process_list"),
     ("休日", "masters:holiday_list"),
+    ("社員", "masters:staff_list"),
 ]
 
 urlpatterns = [
@@ -51,6 +52,11 @@ urlpatterns = [
     path("holidays/new/", views.HolidayCreateView.as_view(), name="holiday_create"),
     path("holidays/<int:pk>/", views.HolidayDetailView.as_view(), name="holiday_detail"),
     path("holidays/<int:pk>/delete/", views.HolidayDeleteView.as_view(), name="holiday_delete"),
+    path("staff/", views.StaffListView.as_view(), name="staff_list"),
+    path("staff/new/", views.StaffCreateView.as_view(), name="staff_create"),
+    path("staff/<int:pk>/", views.StaffDetailView.as_view(), name="staff_detail"),
+    path("staff/<int:pk>/edit/", views.StaffUpdateView.as_view(), name="staff_update"),
+    path("staff/<int:pk>/delete/", views.StaffDeleteView.as_view(), name="staff_delete"),
     # 部品の標準の工程の並び (作者の決め)。追加の道に部品の pk を入れない (権限の tag can_write が引数無しで引くため。部品は ?item=<pk>)
     path("itemprocesses/add/", views.ItemProcessAddView.as_view(), name="itemprocess_add"),
     path("itemprocesses/<int:pk>/edit/", views.ItemProcessUpdateView.as_view(), name="itemprocess_update"),

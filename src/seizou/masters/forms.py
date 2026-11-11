@@ -21,6 +21,7 @@ from .models import MONTH_END_DAY
 from .models import company_defaults
 from .models import ItemDrawingVersion
 from .models import Holiday
+from .models import Staff
 from . import services
 
 
@@ -852,6 +853,53 @@ class HolidayForm(ServiceModelForm):
 
 class HolidayDeleteForm(forms.Form):
     """休日の削除の確認。欄は無い (土台が delete_holiday(対象, user=…) を呼ぶ)。"""
+
+    def service_kwargs(self) -> dict:
+        return {}
+
+
+# ---------------------------------------------------------------- 社員 (実績の作業した人。本人の決め 11-11 09:0x)
+
+#: 社員の使用中の欄の下の案内
+STAFF_ACTIVE_HELP = "外すと、実績の入力でこの社員番号を使えなくなります。今までの実績の作業した人はそのまま残ります。"
+
+
+class StaffForm(ServiceModelForm):
+    """社員を入れる・直す。欄は社員番号・名前・備考。使用中は編集の画面だけに出す。照合の字は services が社員番号から作る (欄に出さない)。
+
+    社員番号の重複 (先頭の 0 の数が違う番号を含む) は services (create_staff・update_staff) が日本語の ValueError で断り、土台が赤の知らせにする。
+    """
+
+    active = forms.BooleanField(label="使用中", required=False, help_text=STAFF_ACTIVE_HELP)
+
+    #: 会社ごとの項目を足した後も最後に置く欄 (工程の ProcessForm とそろえる)
+    last_fields = ("active",)
+
+    class Meta:
+        model = Staff
+        fields = ["code", "name", "note"]
+        # 欄の下の説明。表の help_text には書かない (AlterField の migration が要るため)。「?」の「入れる物」の表も同じ字を読む。
+        help_texts = {
+            "code": "札のバーコードと同じ番号。先頭の 0 は省いても同じ番号と見ます。",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _active_on_edit_only(self)
+
+
+class StaffDeleteForm(forms.Form):
+    """社員の削除の確認。欄は無い (土台が delete_staff(対象, user=…) を呼ぶ)。
+
+    土台は __init__ が instance の引数を名指しする form に対象の社員を渡す (core.views.forms の _accepts_instance)。
+    その社員を指す実績の件数を progress_count に持ち、確かめの画面が「この社員の実績 <n> 件には、名前と番号を写して残します。」を出す。
+    保存していない社員 (ボタンの字の試験が空の記録で作る) は 0 件 (表を読まない)。
+    """
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        has_row = getattr(instance, "pk", None) is not None
+        self.progress_count = services.staff_progress_count(instance) if has_row else 0
 
     def service_kwargs(self) -> dict:
         return {}

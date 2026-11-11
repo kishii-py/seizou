@@ -1,0 +1,9 @@
+{% extends "core/detail.html" %}
+{% load seizou_tags seizou_icons %}
+{# 社員の詳細 (2 段目 N401b)。工程の詳細 (masters/process_detail.html) と同じく、使用停止の社員だけ上に黄色の 1 行 (知らせの段 5 の状態)。 #}
+{# 見出しの帯の「⋯」に「削除」を、休日の詳細 (masters/holiday_detail.html) と同じ形で足す。削除は社員の新規登録と同じ答え (工程の編集の権限) の人だけに出す (押すと断られる入口を出さない)。 #}
+{% block more %}{% can_write "masters.Staff" as can_delete %}{% if can_delete %}{% url 'masters:staff_delete' object.pk as delete_url %}{% include "core/_detail_more.html" with more_url=delete_url more_label="削除" %}{% endif %}{% endblock %}
+{% block content %}
+{% if object.active is False %}<div class="alert alert-warning alert-soft mb-4" role="status">{% icon "alert" "size-5" %}<span>使用停止の社員です。実績の入力でこの社員番号を使えません。今までの実績の作業した人はそのまま残ります。</span></div>{% endif %}
+{{ block.super }}
+{% endblock %}

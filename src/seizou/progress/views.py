@@ -42,29 +42,40 @@ class ProgressBoardView(BaseListView):
 class ProgressListView(BaseListView):
     """実績の一覧。
 
+    作業した人の列 (staff_name。見出しは表の「作業した人」) の字は、土台の display_value が Progress.get_staff_name_display から取る
+    (社員の今の番号と名前。消した社員と社員の一覧に居ない人は写し)。並び替えの鍵は社員の番号。「人」の列はログインした人のまま。
+    検索は、社員を指す実績 (社員の番号と名前) と写しだけの実績 (番号と名前の写し) の両方を番号と名前の字で探す。絞り「作業した社員」は今居る社員で絞る。
+
     使う人: 製造・生産管理 / いつ: 入れた実績を確かめるとき / 何のために: 工程ごとの実績の記録を見る / 次にすること: 指示書の詳細へ
     """
 
     model = Progress
     screen_name = "実績の一覧"
-    screen_help = "指示書の工程ごとに入れた実績の記録。日時の新しい順に並びます。"
+    screen_help = "指示書の工程ごとに入れた実績の記録。日時の新しい順に並びます。作業した人の列と絞りがあります。"
     columns = (
         {"name": "workorder_step", "sort_key": "workorder_step__workorder__wo_no"},
         "qty",
         "defect_qty",
         "completes_step",
         "recorded_at",
+        {"name": "staff_name", "sort_key": "staff__code"},
         "recorded_by",
         "note",
     )
-    search_fields = ("workorder_step__workorder__wo_no",)
+    search_fields = ("workorder_step__workorder__wo_no", "staff__code", "staff__name", "staff_code", "staff_name")
     filters = (
         {"name": "recorded", "label": "期間", "kind": "date_range", "field": "recorded_at"},
         {"name": "process", "label": "工程", "kind": "lookup", "field": "workorder_step__process", "choices": _process_choices},
         {"name": "item", "label": "部品", "kind": "lookup", "field": "workorder_step__workorder__order_line__item"},
         {"name": "user", "label": "入れた人", "kind": "lookup", "field": "recorded_by"},
+        {"name": "staff", "label": "作業した社員", "kind": "lookup", "field": "staff"},
     )
     ordering = ("-recorded_at", "-id")
+
+    def get_queryset(self):
+        # 作業した人の列の字 (get_staff_name_display) は社員を読むので、行と一緒に 1 回で引く (行ごとに社員を読まない)。
+        # 土台が列の外部キーを引くのは、列の名前が外部キーのときだけ (staff_name は字の欄)。
+        return super().get_queryset().select_related("staff")
 
 
 class ProgressCreateView(BaseFormView):
@@ -78,7 +89,7 @@ class ProgressCreateView(BaseFormView):
     service = staticmethod(services.record_progress)
     template_name = "progress/progress_form.html"
     screen_name = "実績の新規登録"
-    screen_help = "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。"
+    screen_help = "指示書の工程を選び、実績の数と日時を入れます。予定を超えた数も記録できます。社員が居る会社では、作業した人を社員番号か名前で入れます。"
 
 
 class ProgressUpdateView(BaseFormView):
@@ -92,7 +103,7 @@ class ProgressUpdateView(BaseFormView):
     service = staticmethod(services.update_progress)
     template_name = "progress/progress_form.html"
     screen_name = "実績の編集"
-    screen_help = "入れた実績の良品の数・不良の数・完了の印・日時・備考を直します。工程は直せません。別の工程に入れた実績は消して入れ直します。"
+    screen_help = "入れた実績の良品の数・不良の数・完了の印・日時・備考と作業した人を直します。工程は直せません。別の工程に入れた実績は消して入れ直します。"
 
 
 class ProgressDeleteView(BaseFormView):
