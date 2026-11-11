@@ -128,15 +128,18 @@ def line_step(line):
     """{% line_step line as step %}。発注の詳細の明細の部品の枡の下に出す、指示書の工程の字と行き先 (N406b)。
 
     指示書の工程を指す明細は {"text": 「指示書 <指示書番号> の工程 <順> <工程の名前>」, "workorder": 指示書の pk}、ほかは None (問い合わせなし)。
-    明細の表の並び (PurchaseOrder.lines_with_received) は工程を一緒に読まないので、工程と指示書と工程の名前をここで 1 回で引く
-    (指示書の工程を指す明細の数だけ 1 回ずつ。workorders の model は import せず、明細の外部キーの先を引く)。
+    明細の表の並び (PurchaseOrder.lines_with_received) が工程と指示書と工程の名前を一緒に読んでいれば、それを使う (問い合わせなし)。
+    一緒に読んでいない明細 (ほかの入口から渡された物) だけ、ここで 1 回で引く (workorders の model は import せず、明細の外部キーの先を引く)。
     """
     if line.workorder_step_id is None:
         return None
     from ..forms import workorder_step_text
 
-    step_model = type(line)._meta.get_field("workorder_step").related_model
-    step = step_model._default_manager.select_related("workorder", "process").filter(pk=line.workorder_step_id).first()
+    field = type(line)._meta.get_field("workorder_step")
+    if field.is_cached(line):
+        step = line.workorder_step
+    else:
+        step = field.related_model._default_manager.select_related("workorder", "process").filter(pk=line.workorder_step_id).first()
     if step is None:
         return None
     return {"text": workorder_step_text(step), "workorder": step.workorder_id}

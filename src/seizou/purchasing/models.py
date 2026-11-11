@@ -102,10 +102,18 @@ class PurchaseOrder(models.Model):
 
     @property
     def lines_with_received(self):
-        """明細に受入の数 (received_total) と受入の残 (remaining_total) を足した物 (読むだけ。詳細の明細の表が回す)。"""
+        """明細に受入の数 (received_total) と受入の残 (remaining_total) を足した物 (読むだけ。詳細の明細の表が回す)。
+
+        指示書の工程と、その指示書と工程の名前も一緒に読む (明細の部品の枡の下の「指示書 … の工程 …」を、明細ごとに問い合わせずに出すため。
+        purchasing_tags の line_step が読む。発注の詳細は 2 秒ごとに取り直すので、明細の数だけ問い合わせを増やさない)。
+        """
         from . import services
 
-        return services.annotate_received(self.lines.select_related("item", "process").order_by("line_no", "pk"))
+        return services.annotate_received(
+            self.lines.select_related("item", "process", "workorder_step__workorder", "workorder_step__process").order_by(
+                "line_no", "pk"
+            )
+        )
 
 
 class PurchaseOrderLine(models.Model):
