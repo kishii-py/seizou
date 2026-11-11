@@ -91,6 +91,7 @@ seizou は、会社ごとの項目を本物の列として足し、向き不向�
 | 文書 | 中身 |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | 前提と触り方 (入れて、作り物の 2 社で受注から請求までと注文の送り合いを通す) |
+| [docs/answers.md](docs/answers.md) | 自分の会社の答えの YAML の書き方 (鍵ごとの書き方・例・作った後に直すファイル) |
 | [docs/screens.md](docs/screens.md) | 画面の一覧と業務の流れ |
 | [docs/settings.md](docs/settings.md) | 選べる設定 |
 | [docs/connect.md](docs/connect.md) | 取引先とつなぐ仕組みと、社内の 1 つの形 |
@@ -104,6 +105,7 @@ seizou は、会社ごとの項目を本物の列として足し、向き不向�
 | [docs/denchoho.md](docs/denchoho.md) | 電子取引のデータの保存 (電子帳簿保存法) |
 | [docs/roadmap.md](docs/roadmap.md) | 今の状態とこれからの道筋 |
 | [docs/why.md](docs/why.md) | 誰の何のため・既にある道具との違い |
+| [docs/glossary.md](docs/glossary.md) | 言葉の一覧 (部品マスター・置き場・答えの YAML・ポカよけ ほか) |
 | [docs/development.md](docs/development.md) | 開発する人へ (試験・検査・E2E) |
 | [docs/hackathon.md](docs/hackathon.md) | Built with Claude: Japan 2026 の記録 (どう作ったか・会期中に作った量) |
 

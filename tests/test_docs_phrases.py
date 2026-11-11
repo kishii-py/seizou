@@ -25,6 +25,8 @@ DOCS = [
     "docs/roadmap.md",
     "docs/why.md",
     "docs/hackathon.md",
+    "docs/answers.md",
+    "docs/glossary.md",
 ]
 
 # 書かない言い回し (文書の決まり)
