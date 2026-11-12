@@ -9,7 +9,8 @@
 置き場の親は環境変数 SEIZOU_SITES_DIR (無ければ ~/seizou-sites)。id を書かなければ、親の下の answers.yaml を持つ置き場の全部。
 port は置き場の answers.yaml の port。python はこの repo の .venv の物 (README の起動の 1 行と同じ)。
 runserver は --noreload で立て、出力は <親>/<id>.runserver.log に足す。止めるのは、その port で待ち受けている process だけ
-(lsof -ti :<port> で探す。pkill のように名前では殺さない)。
+(lsof -ti :<port> で探す。pkill のように名前では殺さない)。lsof が無い PC (Windows) では、この道具が立てたときに
+<親>/<id>.runserver.pid に書いた pid の記録で止める (lsof が答えず、port が開いていて、記録が在るときだけ)。
 作り手の運用の道具で、公開のプラグインには入れない。標準の library と、この repo の依存 (yaml) だけで書く。
 """
 
@@ -42,6 +43,10 @@ class Site:
     @property
     def log(self) -> Path:
         return self.path.parent / f"{self.id}.runserver.log"
+
+    @property
+    def pid_file(self) -> Path:
+        return self.path.parent / f"{self.id}.runserver.pid"
 
 
 def sites_dir() -> Path:
@@ -103,9 +108,12 @@ def start(site: Site, python: Path) -> str:
     if port_is_open(site.port):
         return f"{site.id}: port {site.port} は既に立っている (飛ばした)"
     with site.log.open("ab") as log:
-        subprocess.Popen(
+        child = subprocess.Popen(
             start_command(site, python), cwd=site.path, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
+    pid = getattr(child, "pid", None)  # Popen を差し替えた試験の偽は pid を持たない物を返す
+    if isinstance(pid, int):
+        site.pid_file.write_text(f"{pid}\n", encoding="utf-8")
     deadline = time.monotonic() + START_WAIT_SECONDS
     while time.monotonic() < deadline:
         if port_is_open(site.port):
@@ -117,7 +125,7 @@ def start(site: Site, python: Path) -> str:
 def stop(site: Site) -> str:
     pids = listening_pids(site.port)
     if not pids:
-        return f"{site.id}: port {site.port} に process は無い"
+        return stop_recorded(site)
     for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)
@@ -129,7 +137,44 @@ def stop(site: Site) -> str:
     left = listening_pids(site.port)
     if left:
         return f"{site.id}: port {site.port} の process {left} が止まらない"
+    site.pid_file.unlink(missing_ok=True)
     return f"{site.id}: port {site.port} を止めた (pid {', '.join(map(str, pids))})"
+
+
+def recorded_pid(site: Site) -> int | None:
+    """この道具が立てたときに書いた pid (記録が無いか、数でなければ None)。"""
+    try:
+        text = site.pid_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return int(text) if text.isdigit() else None
+
+
+def stop_recorded(site: Site) -> str:
+    """lsof が答えないとき、port が開いていて、この道具が立てた記録の pid があれば、その pid にだけ送る。
+
+    訳: lsof の無い PC (Windows) で restart が古いサーバーを止めずに成功の形の文を出したため (精査 Q6 の 8、本体の決め
+    11-11 14:2x)。記録の pid は後で別の process が使うことがあるので、lsof が答える PC では使わない。
+    """
+    if not port_is_open(site.port):
+        return f"{site.id}: port {site.port} に process は無い"
+    pid = recorded_pid(site)
+    if pid is None:
+        return (
+            f"{site.id}: port {site.port} は開いているが、止める process が分からない"
+            " (lsof が無く、この道具が立てた記録も無い)"
+        )
+    try:
+        os.kill(pid, signal.SIGTERM)  # Windows の Python では TerminateProcess になる
+    except OSError:  # ProcessLookupError を含む。Windows は無い pid に OSError を出す
+        pass
+    deadline = time.monotonic() + STOP_WAIT_SECONDS
+    while time.monotonic() < deadline and port_is_open(site.port):
+        time.sleep(0.2)
+    if port_is_open(site.port):
+        return f"{site.id}: port {site.port} の process (pid {pid}。立てた時の記録) が止まらない"
+    site.pid_file.unlink(missing_ok=True)
+    return f"{site.id}: port {site.port} を止めた (pid {pid}。立てた時の記録)"
 
 
 def status(site: Site) -> str:
@@ -167,7 +212,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "stop":
             print(stop(site))
         else:
-            print(stop(site))
+            line = stop(site)
+            print(line)
+            if "分からない" in line or "止まらない" in line:  # 止められないまま立て直したと出さない
+                code = 1
+                continue
             line = start(site, python)
             print(line)
             if "答えない" in line:

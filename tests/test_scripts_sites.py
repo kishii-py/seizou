@@ -127,3 +127,68 @@ def test_main_without_sites_dir_fails(sites, tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path / "none"))
     assert sites.main(["status"]) == 2
     assert "置き場の親が無い" in capsys.readouterr().err
+
+
+class FakeChild:
+    pid = 4321
+
+
+def test_start_records_the_pid_it_launched(sites, tmp_path, monkeypatch):
+    site = sites.Site(id="a_co", path=write_site(tmp_path, "a_co", 8101), port=8101)
+    answers = iter([False, True])
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: next(answers))
+    monkeypatch.setattr(sites.subprocess, "Popen", lambda cmd, **kw: FakeChild())
+    monkeypatch.setattr(sites.time, "sleep", lambda s: None)
+
+    assert "で立った" in sites.start(site, Path("/venv/bin/python3"))
+    assert (tmp_path / "a_co.runserver.pid").read_text(encoding="utf-8").strip() == "4321"
+
+
+def test_stop_without_lsof_uses_the_recorded_pid(sites, tmp_path, monkeypatch):
+    site = sites.Site(id="a_co", path=tmp_path / "a_co", port=8101)
+    record = tmp_path / "a_co.runserver.pid"
+    record.write_text("4321\n", encoding="utf-8")
+    monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    killed = []
+    monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: not killed)
+    monkeypatch.setattr(sites.time, "sleep", lambda s: None)
+
+    line = sites.stop(site)
+
+    assert "止めた" in line
+    assert killed == [(4321, sites.signal.SIGTERM)]
+    assert not record.exists()
+
+
+def test_stop_with_lsof_ignores_the_record(sites, tmp_path, monkeypatch):
+    site = sites.Site(id="a_co", path=tmp_path / "a_co", port=8101)
+    record = tmp_path / "a_co.runserver.pid"
+    record.write_text("4321\n", encoding="utf-8")
+    pids = iter([[4242], [4242], []])
+    monkeypatch.setattr(sites, "listening_pids", lambda port: next(pids, []))
+    killed = []
+    monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: True)
+    monkeypatch.setattr(sites.time, "sleep", lambda s: None)
+
+    assert "止めた (pid 4242)" in sites.stop(site)
+    assert killed == [(4242, sites.signal.SIGTERM)]
+    assert not record.exists()
+
+
+def test_restart_does_not_start_when_the_open_port_has_no_known_process(sites, tmp_path, monkeypatch, capsys):
+    write_site(tmp_path, "a_co", 8101)
+    monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path))
+    monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: True)
+    killed = []
+    monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    started = []
+    monkeypatch.setattr(sites, "start", lambda site, python: started.append(site.id) or "立った")
+
+    assert sites.main(["restart", "a_co"]) == 1
+    out = capsys.readouterr().out
+    assert "port 8101 は開いているが、止める process が分からない" in out
+    assert started == []
+    assert killed == []
