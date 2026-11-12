@@ -504,28 +504,57 @@ class BoardRow:
         return total if isinstance(total, Decimal) else Decimal(str(total))
 
     @cached_property
+    def shipped_total(self) -> Decimal:
+        """出荷済みの数。annotate_remaining の shipped_total (盤の一覧の写し) があればそれ、無ければ services.shipped_qty (関数の試験のため)。"""
+        shipped = getattr(self.line, "shipped_total", None)
+        return _dec(services.shipped_qty(self.line) if shipped is None else shipped)
+
+    @cached_property
+    def shipped_from_workorders(self) -> Decimal:
+        """出荷済みのうち、指示書で作った分と数える数 = 出荷済みの数と完成の数の小さい方 (読むだけ)。
+
+        判断の「出荷できる」と「指示書が要る」が、完成の数と指示書の数量の合計からこの数を引いて、残と比べる (can_ship_now・needs_workorder)。
+        訳: 完成の数と指示書の数量の合計は、出荷しても減らない。引かずに残と比べると、分けて作って出荷した後に食い違う
+        (数量 10 の明細に 5 の指示書を出して完成させ、その 5 を出荷すると、残りの 5 を作る指示書が無いのに「出荷できる」と出た)。
+        出荷は、指示書で作った物から先に出たと数える (在庫から出した分と分ける記録は無い。在庫で足りるかは在庫数で別に見る)。
+        出所 = 本人の決め 11-13 06:5x。変えてよい条件 = 出荷と指示書を結ぶ記録ができて、どの指示書の物を出したかが分かるようになったとき。
+        """
+        return min(self.shipped_total, self.completed_total)
+
+    @cached_property
+    def can_ship_now(self) -> bool:
+        """残を今出せるか (判断の「出荷できる」の式): まだ出荷していない完成の数 (完成の数 − shipped_from_workorders) が残以上、か、在庫が残以上。"""
+        remaining = self.remaining
+        if self.completed_total - self.shipped_from_workorders >= remaining:
+            return True
+        return self.stock_balance is not None and self.stock_balance >= remaining
+
+    @cached_property
+    def needs_workorder(self) -> bool:
+        """残を作る指示書が足りないか (判断の「指示書が要る」の式): まだ出荷していない指示書の数量 (指示書の数量の合計 − shipped_from_workorders) が残より少ない。"""
+        return self.issued_total - self.shipped_from_workorders < self.remaining
+
+    @cached_property
     def judgement_code(self) -> str:
         """判断の印の code。上から順に最初に当たった物 (決まった規則だけ。自動の判断はしない)。
 
         1 取消: 受注が取消 / 2 完了: 完了の印のある明細で、出荷済みの数が数量より少ない (足りないまま完了にした。N400b。RULES.md R25) /
-        3 出荷済み: 残が 0 以下 (数量に届いた完了の明細もここ) / 4 出荷できる: 完成の数が残以上、か、在庫が残以上 /
-        5 遅れ: 納期が今日より前 / 6 指示書が要る: 指示書の数量の合計が残より少ない / 7 製造中: ほか。
-        出荷済みの数は annotate_remaining の shipped_total (盤の一覧の写し) があればそれ、無ければ services.shipped_qty (関数の試験のため)。
+        3 出荷済み: 残が 0 以下 (数量に届いた完了の明細もここ) / 4 出荷できる: まだ出荷していない完成の数が残以上、か、在庫が残以上 (can_ship_now) /
+        5 遅れ: 納期が今日より前 / 6 指示書が要る: まだ出荷していない指示書の数量が残より少ない (needs_workorder) / 7 製造中: ほか。
+        4 と 6 は、完成の数と指示書の数量の合計から、出荷済みのうち指示書で作った分 (shipped_from_workorders。訳はそこ) を引いて比べる
+        (本人の決め 11-13 06:5x。前は引かずに比べ、分けて作って出荷した後に「出荷できる」と出た)。
         """
         if self.line.order.status == Order.STATUS_CANCELLED:
             return "cancelled"
-        if self.line.completed:
-            shipped = getattr(self.line, "shipped_total", None)
-            if _dec(services.shipped_qty(self.line) if shipped is None else shipped) < self.line.qty:
-                return "completed"
-        remaining = self.remaining
-        if remaining <= 0:
+        if self.line.completed and self.shipped_total < self.line.qty:
+            return "completed"
+        if self.remaining <= 0:
             return "done"
-        if self.completed_total >= remaining or (self.stock_balance is not None and self.stock_balance >= remaining):
+        if self.can_ship_now:
             return "ship"
         if self.is_overdue:
             return "late"
-        if self.issued_total < remaining:
+        if self.needs_workorder:
             return "need_workorder"
         return "making"
 
@@ -535,10 +564,11 @@ class BoardRow:
 
         上から順に最初に当たった物: 受注が取消・完了の印のある明細・残が 0 以下 → 空 /
         入荷が要るのに引当が 1 つも無い (会社の設定 receiving_required が off でなく、引当の合計が 0 以下。指示書の発行と出荷の検査
-        = receiving.checks が止めるか知らせる形と同じ見方) → receive / 完成の数か在庫が残以上 (判断の「出荷できる」と同じ式) → ship /
-        指示書の数量の合計が残より少ない (判断の「指示書が要る」と同じ式。納期を過ぎた明細も) → issue / ほか (製造中) → ship。読むだけ。
+        = receiving.checks が止めるか知らせる形と同じ見方) → receive / 今出せる (判断の「出荷できる」と同じ式 = can_ship_now) → ship /
+        残を作る指示書が足りない (判断の「指示書が要る」と同じ式 = needs_workorder。納期を過ぎた明細も) → issue / ほか (製造中) → ship。読むだけ。
         訳: 緑のボタンを「その伝票で次にする操作 1 つ」にするため (受注を入れた直後に「出荷登録」が出て、入荷が要る会社では押すと止まった)。
-        出所 = 本人の決め 11-12 19:0x と精査「事務の 1 人の 1 日」の 9。変えてよい条件 = 本人が緑のボタンの決め方を変えたとき (判断の式を変える時は、ここも合わせる)。
+        出所 = 本人の決め 11-12 19:0x と精査「事務の 1 人の 1 日」の 9。変えてよい条件 = 本人が緑のボタンの決め方を変えたとき
+        (判断の式は can_ship_now と needs_workorder の 1 か所ずつなので、式を変えると判断と緑のボタンの両方が変わる)。
         """
         if self.line.order.status == Order.STATUS_CANCELLED or self.line.completed:
             return ""
@@ -548,9 +578,9 @@ class BoardRow:
         allocated = self.allocated
         if allocated is not None and allocated <= 0 and conf.setting("receiving_required") != "off":
             return "receive"
-        if self.completed_total >= remaining or (self.stock_balance is not None and self.stock_balance >= remaining):
+        if self.can_ship_now:
             return "ship"
-        if self.issued_total < remaining:
+        if self.needs_workorder:
             return "issue"
         return "ship"
 
