@@ -193,9 +193,10 @@ def test_invoice_with_adjustment_cannot_be_cancelled(user, invoice):
 
     with pytest.raises(ValueError) as caught:
         services.cancel_invoice(invoice, user)
-    assert str(caught.value) == "取り消せません。この請求書には調整が 1 件あります (合計 ¥-660)。先に入金と調整を取り消してください。"
+    # 調整だけのときは「先に調整を取り消してください」(入金が無いのに入金と書かない)。マイナスの額は「-¥660」(507 回目の本体の直し)
+    assert str(caught.value) == "取り消せません。この請求書には調整が 1 件あります (合計 -¥660)。先に調整を取り消してください。"
     assert services.cancel_refusal(_fresh(invoice), hide_money=True) == (
-        "取り消せません。この請求書には調整が 1 件あります。先に入金と調整を取り消してください。"
+        "取り消せません。この請求書には調整が 1 件あります。先に調整を取り消してください。"
     )
     with pytest.raises(ValueError) as again:
         services.reissue_invoice(invoice, user, issued_on=ISSUED_ON)
@@ -212,7 +213,9 @@ def test_refusal_with_payment_and_adjustment(user, invoice):
     services.record_payment(invoice, RECEIVED_ON, Decimal("54340"), user)
     services.record_adjustment(invoice, ADJUSTED_ON, Decimal("-660"), user)
     assert services.cancel_refusal(_fresh(invoice)) == (
-        "取り消せません。この請求書には入金の記録が 1 件と調整が 1 件あります (合計 ¥54,340)。先に入金と調整を取り消してください。"
+        # 合計は、件数のすぐ後ろに、その物の合計を書く (1 つの括弧にまとめると、どちらの額かが読み取れない。507 回目の本体の直し)
+        "取り消せません。この請求書には入金の記録が 1 件 (合計 ¥54,340) と調整が 1 件 (合計 -¥660) あります。"
+        "先に入金と調整を取り消してください。"
     )
     assert services.cancel_refusal(_fresh(invoice), hide_money=True) == (
         "取り消せません。この請求書には入金の記録が 1 件と調整が 1 件あります。先に入金と調整を取り消してください。"

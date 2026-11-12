@@ -478,13 +478,20 @@ def _yen(value):
     return f"{value.normalize():,f}"
 
 
+def _signed_yen(value) -> str:
+    """頭に ¥ を付けた金額の字。マイナスは「-¥660」(画面の yen の字と同じ形)。"""
+    return f"-¥{_yen(-value)}" if value < 0 else f"¥{_yen(value)}"
+
+
 def cancel_refusal(invoice, *, hide_money=False) -> str:
     """請求書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
     取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (入金の記録の件数と合計) を返す。
-    取消でない調整が残っていれば、「この請求書には入金の記録が n 件と調整が m 件あります (合計 ¥…)。先に入金と調整を取り消してください。」
-    (入金が 0 件なら「調整が m 件」だけ)。合計は、入金があれば入金の合計、調整だけなら調整の合計 (入金だけのときの字と合計の意味を変えないため)。
-    調整が無ければ、入金だけのときの字のまま変えない。
+    取消でない調整が残っていれば、調整も取り消す文を返す。入金と調整の両方があるときは
+    「この請求書には入金の記録が n 件 (合計 ¥…) と調整が m 件 (合計 -¥…) あります。先に入金と調整を取り消してください。」、
+    調整だけなら「この請求書には調整が m 件あります (合計 -¥…)。先に調整を取り消してください。」。
+    合計は、件数のすぐ後ろに、その物の合計を書く (入金の合計と調整の合計を 1 つの括弧にまとめない。どちらの額かが読み取れないため。
+    本体の直し 11-12)。マイナスの額は「-¥660」の形 (画面の yen の字と同じ)。調整が無ければ、入金だけのときの字のまま変えない。
     hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人)。
     cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。作り直し (reissue_plan・reissue_invoice) も同じ文で止まる。請求書の状態は見ない。
     訳: 取消でない入金が残ったまま請求書を取り消さないため (先に入金を取り消す)。出所 = 未確認 (この module と cancel_invoice の docstring に「決め 11-04 06:4x」とあるが、本人の言葉は記録に無い。作った晩の記録は docs/nights/20261104/N89.md)。
@@ -495,13 +502,19 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
     adjustments = [row for row in invoice.adjustments.all() if row.status == Adjustment.STATUS_RECORDED]
     if not rows and not adjustments:
         return ""
+
+    def total(found) -> str:
+        return "" if hide_money else f" (合計 {_signed_yen(sum((row.amount for row in found), _ZERO))})"
+
     if not adjustments:
-        money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))})"
-        return f"取り消せません。この請求書には入金の記録が {len(rows)} 件あります{money}。先に入金を取り消してください。"
-    counted = rows or adjustments
-    money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in counted), _ZERO))})"
-    head = f"入金の記録が {len(rows)} 件と調整が {len(adjustments)} 件" if rows else f"調整が {len(adjustments)} 件"
-    return f"取り消せません。この請求書には{head}あります{money}。先に入金と調整を取り消してください。"
+        return f"取り消せません。この請求書には入金の記録が {len(rows)} 件あります{total(rows)}。先に入金を取り消してください。"
+    if not rows:
+        return f"取り消せません。この請求書には調整が {len(adjustments)} 件あります{total(adjustments)}。先に調整を取り消してください。"
+    if hide_money:
+        head = f"入金の記録が {len(rows)} 件と調整が {len(adjustments)} 件"
+    else:
+        head = f"入金の記録が {len(rows)} 件{total(rows)} と調整が {len(adjustments)} 件{total(adjustments)} "
+    return f"取り消せません。この請求書には{head}あります。先に入金と調整を取り消してください。"
 
 
 def cancel_invoice(invoice, user):
