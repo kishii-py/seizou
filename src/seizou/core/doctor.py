@@ -4,7 +4,8 @@
 本番の条件の行は DEBUG が偽のとき (か --production) だけ見る。
 環境変数は読まない。つながりの鍵の有無は Connection.has_secret() で見て、.env は権限だけを見る (中身は読まない)。
 点検の関数は 1 つにつき 1 つの物を見て、Row の並びを返す。どの関数も例外を外に出さない (run が行にする)。
-部品 (connect など) を module の頭で import しない。つながりの model は apps.get_model で、作り物の利用者の合言葉は accounts の demo_seed を import_module で、関数の中で引く。
+部品 (connect など) を module の頭で import しない。つながりの model は apps.get_model で、受け口の URL が自社を指すかの見方は connect の services を、
+作り物の利用者の合言葉は accounts の demo_seed を import_module で、関数の中で引く。
 """
 
 from __future__ import annotations
@@ -423,7 +424,13 @@ def check_file_delivery() -> list[Row]:
         rows.append(_bad(label, f"断片の alias ({shown}) が MEDIA_ROOT と違う", f"断片の alias を MEDIA_ROOT ({media_root}) に合わせる。"))
     if rows:
         return rows
-    return [_good(label, "nginx に渡す (断片の alias は MEDIA_ROOT と同じ)")]
+    return [
+        _good(
+            label,
+            "nginx に渡す (断片の alias は MEDIA_ROOT と同じ。nginx が動いているかと、断片を読み込んだかは見ていない。"
+            "上げたファイルを画面で 1 つ開いて確かめる)",
+        )
+    ]
 
 
 def check_settings() -> list[Row]:
@@ -499,6 +506,37 @@ def check_connection_urls() -> list[Row]:
     return rows
 
 
+def check_connection_self() -> list[Row]:
+    """送る向きのつながりの受け口の URL が自社の受け口を指していないか。指していれば直す、指していないつながりには行を出さない。
+
+    見方は connect の services の url_points_to_self (手元の番地と自社のポートの組か、メールの設定の site_url の名前) に任せる。
+    つながりの読み方とつながりの表が無い会社の扱いは check_connection_urls と同じ (_connections)。connect の部品が無い会社では行を出さない
+    (import は関数の中でする)。url_points_to_self が例外を出したら、run の _safe の扱いに任せる。本番の条件でも開発の条件でも見る。
+    訳: 送る向きの受け口の URL が自社を指していると、発注が相手に届かず、送るまで気づかないので、毎朝の点検でも分かるようにする
+    (つながりを保存した後の黄の知らせは、保存した時に 1 回だけ出る)。指していないつながりに良いの行を出さないのは、点検の行の数と
+    docs/vps.md の「良い 22 件」を変えないため。出所 = 精査 Q3 (2026-11-10) の T1・本体の決め 11-11 14:2x (係 b の聞く物 1 の点検の 1 行)・
+    開発の記録 docs/nights/20261111/N415.md (url_points_to_self)。
+    変えてよい条件 = url_points_to_self の見方が変わったとき (この関数は見方を持たない)、または点検に注意の段ができたとき。
+    """
+    links = _connections()
+    if not links:
+        return []
+    connect_services = import_module("seizou.connect.services")
+    rows = []
+    for link in links:
+        if link.direction != link.DIRECTION_SEND or not link.url:
+            continue
+        if connect_services.url_points_to_self(link.url):
+            rows.append(
+                _bad(
+                    f"つながり {link} の受け口の URL",
+                    "自社の受け口を指している (相手に届かない)",
+                    "つながりの画面で、受け口の URL を相手の会社の受け口に直す。",
+                )
+            )
+    return rows
+
+
 def check_cookies() -> list[Row]:
     """セッションと CSRF の Cookie を HTTPS の道でだけ送るか。偽の設定があれば直すで、DEBUG が真なら直し方を DEBUG を 0 にする案内にする。
 
@@ -566,8 +604,11 @@ def check_settings_blocks() -> list[Row]:
     return [_bad(label, "・".join(missing), f"settings.py に {'と'.join(adds)}{SETTINGS_BLOCKS_FIX}")]
 
 
-#: 権限の判定が記録だけのままのときの直し方 (決め 11-07 22:3x・23:3x)
-ACCESS_CONTROL_FIX = "断られる人がいないかを seizou.access の記録で確かめ終えたら、設定の画面の「権限の判定」で on にする。"
+#: 権限の判定が記録だけのままのときの直し方 (決め 11-07 22:3x・23:3x。字を画面の字にそろえ、記録の見場所を書く = 本体の決め 11-11 14:2x)
+ACCESS_CONTROL_FIX = (
+    "断られる人がいないかを seizou.access の記録 (手元は runserver の窓、VPS は sudo journalctl -u seizou-<会社の id>) で"
+    "確かめ終えたら、設定の画面の「権限の判定」で「有効」にする。"
+)
 
 
 def _access_detail(modes: dict) -> str:
@@ -592,11 +633,13 @@ def check_access_control(production: bool) -> list[Row]:
     開発の条件では良いにして、今の状態を 1 行で出す (check_demo_passwords の開発の行と同じ形)。
     訳: docs/rules.md の「立ち上げてすぐは記録だけ」の決めは残し、本番の条件 (DEBUG=0) で部署・編集・金額の閲覧の判定が「記録だけ」の
     ままなら、点検が「直す」を出し、終わりの番号 1 で終わる。記録だけで確かめている間に点検が失敗で終わるのは、確かめ終えたら
-    有効にする合図として受け入れる。直し方の字には「断られる人がいないかを seizou.access の記録で確かめ終えたら on にする」と書き、
+    有効にする合図として受け入れる。直し方の字には「断られる人がいないかを seizou.access の記録 (手元は runserver の窓、VPS は
+    journalctl) で確かめ終えたら、設定の画面の「権限の判定」で「有効」にする」と書き (画面の字にそろえ、記録の見場所を書く)、
     docs/rules.md の「立ち上げてすぐは記録だけ」の文に「その間、本番の点検は直す 1 件で終わる」の 1 句を足し、試験の fixture
     (tests/test_core_doctor.py の site の SEIZOU) に access_control の on を足す。記録だけのままでは金額を見られない人の決め
     (21:0x) が働かないため。欠点として、記録だけの間はほかの「直す」が同じ失敗の番号に埋もれやすい。
-    出所 = 本人の決め (11-07 22:3x・23:3x) と docs/settings.md の「選べる設定」の access_control の行。
+    出所 = 本人の決め (11-07 22:3x・23:3x) と docs/settings.md の「選べる設定」の access_control の行と、
+    本体の決め 11-11 14:2x (直し方の字を画面の字にそろえ、記録の見場所を書く)。
     変えてよい条件 = 本人が既定そのものを「止める」に変えるか、点検に中間の段を作るか失敗にしない形に変えると決めたとき。
     """
     label = "権限の判定"
@@ -633,6 +676,63 @@ def check_demo_passwords(production: bool) -> list[Row]:
     if production:
         return [_bad(label, detail, DEMO_PASSWORD_FIX)]
     return [_good(label, f"{detail}。外から開ける置き場にする前に、{DEMO_PASSWORD_FIX}")]
+
+
+#: 置き場の、部品のテンプレートを上書きするフォルダ (雛形の settings.py の TEMPLATES の DIRS = BASE_DIR / "templates")
+SITE_TEMPLATES = "templates"
+#: 上書きを数えないフォルダの名前
+TEMPLATE_SKIP_DIRS = frozenset({"__pycache__"})
+
+
+def _part_template_dirs() -> list[Path]:
+    """seizou の部品の app の templates/ のフォルダ (app の並びの順。Django が app の templates/ を探す順と同じ)。"""
+    return [Path(config.path) / "templates" for config in apps.get_app_configs() if config.name.startswith("seizou.")]
+
+
+def check_template_overrides() -> list[Row]:
+    """置き場の templates/ で部品のテンプレートを上書きした数と、そのうち部品の側のファイルが上書きより新しい数。
+
+    置き場の templates/ の下のファイル (__pycache__ の下を除く) のうち、seizou の部品の app の templates/ の下に同じ相対の道の
+    ファイルがある物を上書きと数える (部品に無い道 = 会社が足したテンプレートは数えない)。2 つの app が同じ道を持つときは、
+    app の並びで先の物を部品の側とする。部品の側のファイルの更新の時刻が上書きより新しい物を別に数え、最初の 1 件の道
+    (相対の道の順) を添える。上書きが 0 件なら行を出さない。1 件以上なら、いつも良いの 1 行にする (直すにしない)。
+    訳: 会社が上書きしたテンプレートは、版を上げて部品の側が直っても古いまま画面に出るので、上書きの数と、部品の側のファイルが
+    上書きより新しい数を、点検で分かるようにする。中身の比べには上書きした時の部品の側の写しが要り、今は持たないので、ファイルの
+    時刻で数える (中身が同じでも新しい側に数えることがある。uv は版ごとの入れ物から写すので部品のファイルの時刻はその版を最初に
+    取った時刻になり、控えから写し直した上書きは元の時刻を保つ。直すにしない訳)。上書きが無い置き場で行を出さないのは、点検の
+    行の数と docs/vps.md の「良い 22 件」を変えないため。出所 = 精査 Q4 (2026-11-10) の D3 と、本体の決め 11-11 14:2x。
+    変えてよい条件 = 上書きした時の部品の側の印を置き場に残す形ができたとき (そのときは中身で比べ、直すにしてよい)。
+    """
+    label = "上書きしたテンプレート"
+    base = _base_dir()
+    if base is None:
+        return []
+    root = base / SITE_TEMPLATES
+    if not root.is_dir():
+        return []
+    part_dirs = _part_template_dirs()
+    count = 0
+    newer = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if TEMPLATE_SKIP_DIRS.intersection(relative.parts) or not path.is_file():
+            continue
+        part = next((folder / relative for folder in part_dirs if (folder / relative).is_file()), None)
+        if part is None:
+            continue
+        count += 1
+        if part.stat().st_mtime > path.stat().st_mtime:
+            newer.append(relative.as_posix())
+    if not count:
+        return []
+    first = f"。最初の 1 件: {SITE_TEMPLATES}/{newer[0]}" if newer else ""
+    return [
+        _good(
+            label,
+            f"上書き {count} 件 (部品の側のファイルが上書きより新しい物 {len(newer)} 件{first})。"
+            "版を上げた後は、部品の側のテンプレートと見比べる",
+        )
+    ]
 
 
 #: 置き場に置く、AI が守る決まり (seizou new と seizou ai-docs が書く 2 つ。開発の記録 docs/nights/20261105/N165.md・docs/nights/20261105/N170.md)
@@ -749,10 +849,12 @@ def run(*, production: bool | None = None) -> list[Row]:
         ("権限の判定", lambda: check_access_control(production), False),
         ("つながりの鍵", check_connection_secrets, False),
         ("つながりの受け口の URL", check_connection_urls, True),
+        ("つながりの受け口の URL が自社を指すか", check_connection_self, False),
         ("Cookie が HTTPS だけ", check_cookies, True),
         ("パスワードの決まり", check_password_validators, True),
         ("settings.py の塊", check_settings_blocks, True),
         ("作り物の利用者の合言葉", lambda: check_demo_passwords(production), False),
+        ("上書きしたテンプレート", check_template_overrides, False),
         ("AI が守る決まり", check_ai_docs, False),
         (RULES_LABEL, check_rules, False),
     ]
