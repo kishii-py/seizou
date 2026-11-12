@@ -121,7 +121,9 @@ def test_reply_undelivered_row_appears_until_sent(user, customer, item, no_http)
 
     Inbox.objects.filter(pk=inbox.pk).update(reply_response=UNREACHABLE)
     row = row_of("reply_undelivered")
-    assert shown(row) == ("相手に届いていない注文回答", 1, "件", "受信した注文", reverse("connect:inbox_list"), "sales")
+    assert shown(row) == (
+        "相手に届いていない注文回答", 1, "件", "受信した注文", reverse("connect:inbox_list") + "?f_reply_undelivered=1", "sales"
+    )
     assert row["url_name"] == "connect:inbox_list"
 
     # 相手が受け取った (送った日時が入った) ら行が消える
@@ -180,7 +182,9 @@ def test_notice_undelivered_row_counts_refused_notices(user, customer, item, no_
 
     Shipment.objects.filter(pk=shipment.pk).update(notice_response=REFUSED)
     row = row_of("notice_undelivered")
-    assert shown(row) == ("相手に届いていない出荷の知らせ", 1, "件", "出荷", reverse("shipping:shipment_list"), "sales")
+    assert shown(row) == (
+        "相手に届いていない出荷の知らせ", 1, "件", "出荷", reverse("shipping:shipment_list") + "?f_notice_undelivered=1", "sales"
+    )
 
     Shipment.objects.filter(pk=shipment.pk).update(notice_sent_at=timezone.now())
     assert row_of("notice_undelivered") is None
@@ -201,7 +205,9 @@ def test_acceptance_undelivered_row_appears_until_sent(user, subcontractor, item
 
     Receipt.objects.filter(pk=receipt.pk).update(acceptance_response=UNREACHABLE)
     row = row_of("acceptance_undelivered")
-    assert shown(row) == ("相手に届いていない検収", 1, "件", "受入", reverse("purchasing:receipt_list"), "purchase")
+    assert shown(row) == (
+        "相手に届いていない検収", 1, "件", "受入", reverse("purchasing:receipt_list") + "?f_acceptance_undelivered=1", "purchase"
+    )
 
     Receipt.objects.filter(pk=receipt.pk).update(acceptance_sent_at=timezone.now())
     assert row_of("acceptance_undelivered") is None
@@ -283,7 +289,7 @@ def test_home_shows_undelivered_row_with_count_and_button(logged_in, user, custo
     assert response.status_code == 200
     section = SECTION.search(response.content.decode()).group(0)
     assert '相手に届いていない注文回答 <span class="font-bold tabular-nums">1</span> 件' in section
-    assert f'href="{reverse("connect:inbox_list")}">受信した注文<' in section
+    assert f'href="{reverse("connect:inbox_list")}?f_reply_undelivered=1">受信した注文<' in section
 
 
 @pytest.mark.django_db

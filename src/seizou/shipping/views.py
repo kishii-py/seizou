@@ -59,6 +59,19 @@ def _customer_choices():
     return [(row.pk, str(row)) for row in rows]
 
 
+def _notice_undelivered_only(queryset):
+    """出荷の一覧の絞り「出荷の知らせが届いていない物だけ」の when: 相手に届いていない出荷の知らせ (services.notices_undelivered) の出荷。
+
+    今日やることの「相手に届いていない出荷の知らせ」の数 (core.dashboard) と同じ関数で絞る。副問い合わせで絞るので、join を足さず、同じ行は重ならない。
+    connect の部品が無い置き場では何も絞らない (指示書の一覧の絞り「協力企業に出していない工程があるだけ」と同じ扱い)。
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.connect"):
+        return queryset
+    return queryset.filter(pk__in=services.notices_undelivered().values("pk"))
+
+
 class ShipmentListView(BaseListView):
     """出荷の一覧。
 
@@ -91,6 +104,7 @@ class ShipmentListView(BaseListView):
     filters = (
         {"name": "customer", "label": "得意先", "kind": "lookup", "field": "order_line__order__customer", "choices": _customer_choices},
         {"name": "shipped", "label": "出荷日", "kind": "date_range", "field": "shipped_at"},
+        {"name": "notice_undelivered", "label": "出荷の知らせが届いていない物だけ", "kind": "flag", "when": _notice_undelivered_only},
     )
     ordering = ("-shipped_at", "-id")
 

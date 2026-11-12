@@ -1661,6 +1661,26 @@ def _reply_undelivered(inbox) -> bool:
     )
 
 
+def replies_undelivered():
+    """相手に届いていない注文回答の受信した注文の queryset (読むだけ)。
+
+    受信した注文のうち、入口が直接で、送った日時が空で、返事の欄が空でなく (送ろうとした)、送る物でない字
+    (MESSAGE_REPLY_SEED・MESSAGE_REPLY_INTAKE) でない物。まだ答えていない行は返事の欄が空なので、入らない。
+    見方は、保存した後の黄の知らせ (_reply_undelivered) と同じ。注文回答のタイプ (reply_type) は見ない:
+    変更と取消の版を受け入れた・断った時の注文回答は、タイプを書かずに送る (send_reply が状態から決める) ので、タイプで絞ると、
+    その注文回答が届かなかった時に黄の知らせは出るのに、この関数で数えなかった (本体の直し 11-12。N416 の記録の「本体の判断が要る事」2)。
+    今日やることの「相手に届いていない注文回答」の数 (core.dashboard) と、受信した注文の一覧の絞り「注文回答が届いていない物だけ」
+    (connect.views) が、この 1 つの関数を使う (数と一覧が食い違わないため。本体の決め 11-12 13:4x)。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    return (
+        Inbox.objects.filter(source=Inbox.SOURCE_DIRECT, reply_sent_at__isnull=True)
+        .exclude(reply_response="")
+        .exclude(reply_response__in=(MESSAGE_REPLY_SEED, MESSAGE_REPLY_INTAKE))
+    )
+
+
 def _restart_reply(locked):
     """前に保留 (AJ) を答えた行なら、注文回答の番号・送った日時・相手の返事を空に戻し、戻した列の名前の並びを返す。
 

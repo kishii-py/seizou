@@ -43,6 +43,19 @@ def _subcontractor_choices():
     return [(row.pk, str(row)) for row in rows.order_by("name", "pk")]
 
 
+def _acceptance_undelivered_only(queryset):
+    """受入の一覧の絞り「検収が届いていない物だけ」の when: 相手に届いていない検収 (services.acceptances_undelivered) の受入。
+
+    今日やることの「相手に届いていない検収」の数 (core.dashboard) と同じ関数で絞る。副問い合わせで絞るので、join を足さず、同じ行は重ならない。
+    connect の部品が無い置き場では何も絞らない (指示書の一覧の絞り「協力企業に出していない工程があるだけ」と同じ扱い)。
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("seizou.connect"):
+        return queryset
+    return queryset.filter(pk__in=services.acceptances_undelivered().values("pk"))
+
+
 class PurchaseOrderListView(BaseListView):
     """発注の一覧。
 
@@ -277,6 +290,9 @@ class ReceiptListView(BaseListView):
         "line__purchase_order__partner__name",
         "line__item__part_no",
         "line__item__name",
+    )
+    filters = (
+        {"name": "acceptance_undelivered", "label": "検収が届いていない物だけ", "kind": "flag", "when": _acceptance_undelivered_only},
     )
     ordering = ("-received_on", "-pk")
     template_name = "purchasing/receipt_list.html"

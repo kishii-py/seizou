@@ -34,6 +34,14 @@ def _sender_choices():
     return [(row.pk, str(row)) for row in rows]
 
 
+def _reply_undelivered_only(queryset):
+    """InboxListView の絞り「注文回答が届いていない物だけ」の when: 相手に届いていない注文回答 (services.replies_undelivered) の受信した注文。
+
+    今日やることの「相手に届いていない注文回答」の数 (core.dashboard) と同じ関数で絞る。副問い合わせで絞るので、join を足さず、同じ行は重ならない。
+    """
+    return queryset.filter(pk__in=services.replies_undelivered().values("pk"))
+
+
 @csrf_exempt
 @require_POST
 def receive_order(request):
@@ -72,6 +80,7 @@ class InboxListView(BaseListView):
         {"name": "status", "label": "状態", "kind": "choice", "field": "status"},
         {"name": "partner", "label": "取引先", "kind": "lookup", "field": "partner", "choices": _sender_choices},
         {"name": "received", "label": "受信日", "kind": "date_range", "field": "received_at"},
+        {"name": "reply_undelivered", "label": "注文回答が届いていない物だけ", "kind": "flag", "when": _reply_undelivered_only},
     )
     ordering = (
         Case(When(status=Inbox.STATUS_RECEIVED, then=Value(0)), default=Value(1), output_field=IntegerField()),

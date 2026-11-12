@@ -1536,6 +1536,26 @@ def record_acceptance_response(receipt, response, user, *, sent=False):
         return locked
 
 
+def acceptances_undelivered():
+    """相手に届いていない検収の受入の queryset (読むだけ)。
+
+    受入のうち、送った日時が空で、返事の欄が空でなく、送る物でない字 (connect.services の MESSAGE_ACCEPTANCE_NOT_SENT_ORDER) でない物。
+    今日やることの「相手に届いていない検収」の数 (core.dashboard) と、受入の一覧の絞り「検収が届いていない物だけ」(purchasing.views) が、
+    この 1 つの関数を使う (数と一覧が食い違わないため。本体の決め 11-12 13:4x)。字の定数は connect.services から関数の中で読むので、
+    connect の部品が無い置き場では呼ばない (呼ぶ側の core.dashboard と一覧の絞りが確かめる)。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    # connect と purchasing の循環を避けるため関数の中で import する。
+    from seizou.connect.services import MESSAGE_ACCEPTANCE_NOT_SENT_ORDER
+
+    return (
+        Receipt.objects.filter(acceptance_sent_at__isnull=True)
+        .exclude(acceptance_response="")
+        .exclude(acceptance_response=MESSAGE_ACCEPTANCE_NOT_SENT_ORDER)
+    )
+
+
 def received_qty(line):
     """発注の明細の受入の数 (受入から集計。列に持たない。orders.services.shipped_qty と同じ形)。"""
     return line.receipts.aggregate(total=Coalesce(Sum("qty"), Value(_ZERO), output_field=_QTY_FIELD))["total"]
