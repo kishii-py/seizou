@@ -63,6 +63,20 @@ def can_accept_inbox(context):
 
 
 @register.simple_tag
+def reply_resendable(inbox) -> bool:
+    """受信した注文の詳細の注文回答の枡に「送り直す」を出すか ({% reply_resendable object as resendable %})。読むだけ。権限は呼ぶ側が can_accept_inbox で見る。
+
+    入口が直接で、まだ相手に届いていない (送った日時が空) 行のうち、答えのタイプ (reply_type) がある行か、
+    送ろうとして届かなかった行 (保存した後の黄の知らせと同じ見方 = services._reply_undelivered)。
+    訳: 変更と取消の版を受け入れた・断った時の注文回答は、タイプを書かずに送る (send_reply が状態から決める)。タイプのある行にだけ出すと、その注文回答が届かなかった時、黄の知らせと今日やることの行が「送り直す」を案内するのに、詳細に「送り直す」が出なかった。出所 = N419 の記録の要望と本体の直し 11-12 (508 回目)。
+    変えてよい条件 = 届いていない注文回答の見方 (_reply_undelivered) を変えたとき (ここも同じ見方にそろえる)。
+    """
+    if inbox.source != inbox.SOURCE_DIRECT or inbox.reply_sent_at is not None:
+        return False
+    return bool(inbox.reply_type) or services._reply_undelivered(inbox)
+
+
+@register.simple_tag
 def same_order_notice(inbox):
     """同じ取引先から同じ注文番号で前に届いた行 (一番古い 1 つ) の知らせの中身 ({% same_order_notice row.obj as same %})。無ければ None。
 

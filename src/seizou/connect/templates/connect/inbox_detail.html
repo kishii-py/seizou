@@ -50,7 +50,7 @@
     </div>
     {% endif %}
     {# 受け入れて作った受注は受け入れた後、断った理由は断った後、注文回答は未処理でないときと保留を答えたときだけ出す。未処理の間は 3 行とも出さない (作者の決め・11-06)。 #}
-    {# 返した条件は、条件を直して受け入れた (条件付受諾) 行だけ出す (connect_tags の reply_line_texts)。送れなかった答えは、答えた行 (reply_type がある行) の「送り直す」で送る。 #}
+    {# 返した条件は、条件を直して受け入れた (条件付受諾) 行だけ出す (connect_tags の reply_line_texts)。送れなかった答えは、注文回答の枡の「送り直す」で送る (答えのタイプのある行と、変更と取消の版の答えが届かなかった行に出す。connect_tags の reply_resendable)。 #}
     {% if object.status == "accepted" and not object.revises_id %}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">受け入れて作った受注</dt>
@@ -67,7 +67,7 @@
     {# 注文回答 = 受け入れ・条件を直して受け入れ・保留・断りの答えを、注文を送ってきた相手へ返した記録 (送った日時か、届いていない理由)。 #}
     <div class="grid grid-cols-[minmax(6rem,10rem)_1fr] gap-4 border-b border-base-200 py-2">
       <dt class="text-base-content/70">注文回答</dt>
-      <dd class="min-w-0 break-words">{% with reply=object.reply_state %}{% if reply %}{{ reply }}{% else %}<span class="text-base-content/60">—</span>{% endif %}{% endwith %}{% can_accept_inbox as can_accept %}{% if can_accept and object.reply_type and not object.reply_sent_at and object.source == "direct" %}<form method="post" action="{% url 'connect:inbox_reply_resend' object.pk %}" class="mt-2">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</dd>
+      <dd class="min-w-0 break-words">{% with reply=object.reply_state %}{% if reply %}{{ reply }}{% else %}<span class="text-base-content/60">—</span>{% endif %}{% endwith %}{% can_accept_inbox as can_accept %}{% reply_resendable object as resendable %}{% if can_accept and resendable %}<form method="post" action="{% url 'connect:inbox_reply_resend' object.pk %}" class="mt-2">{% csrf_token %}<button class="btn btn-xs btn-outline border-base-300" type="submit">{% icon "external" "size-4" %}送り直す</button></form>{% endif %}</dd>
     </div>
     {% endif %}
     {% if object.reply_type == "CA" %}{% reply_line_texts object seizou.hide_money as reply_texts %}
