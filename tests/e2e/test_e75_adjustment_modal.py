@@ -1,15 +1,17 @@
 """E-75 調整の記録と取消を、請求書の詳細の小窓で行う (売掛の 2 段目 N409b。入口を入金と同じ小窓にした 510 回目)。
 
 手順: A 社で請求書を 1 枚作る (E-55 と同じ手順) → 入金の記録の画面の全体で 1,000 を記録する → 請求書の詳細の入金の枠の
-「調整を記録する」を押す → 小窓の金額の欄を -660 に打ち直す → 押す → 調整の行の「取り消す」を押す → 小窓の「取り消す」を押す。
-期待: 「調整を記録する」で小窓が開き (道は請求書の詳細のまま)、金額の欄には残をマイナスにした数が入っていて、保存のボタンは
-「-¥<残> の調整を記録する」。-660 と打つと、ボタンは「-¥660 の調整を記録する」になる (マイナスは ¥ の前)。押すと小窓が閉じ、
+「調整を記録する」を押す → 小窓の「残を消す金額を入れる」を押す → 金額の欄を -660 に打ち直す → 押す → 調整の行の「取り消す」を押す →
+小窓の「取り消す」を押す。
+期待: 「調整を記録する」で小窓が開き (道は請求書の詳細のまま)、金額の欄は空で、保存のボタンは「調整を記録する」。
+「残を消す金額を入れる」を押すと、金額の欄に残をマイナスにした数が入り、ボタンは「-¥<残> の調整を記録する」になる (保存はされない)。
+-660 と打つと、ボタンは「-¥660 の調整を記録する」になる (マイナスは ¥ の前)。押すと小窓が閉じ、
 右上に「…に調整 (振込手数料 -¥660) を記録しました。」が出て、入金の枠に調整の行が 1 つ増え、「調整」が -¥660 になる。
 行の「取り消す」で小窓に黄の 1 行「…の調整 (…金額 -¥660) を取り消します。」が出て、押すと小窓が閉じ、行の状態が「取消」になり、
 行の「取り消す」が無くなり、「調整」が ¥0 に戻る。
 
-この試験が見る所: `#seizou-modal[open]` の数・道・小窓の `input[name=amount]` の値・保存のボタンの字・右上の済んだ知らせの字・
-`#payments [data-adjustment-row]` の数と字・入金の枠の「調整」の字・`pageerror` の数。
+この試験が見る所: `#seizou-modal[open]` の数・道・小窓の `input[name=amount]` の値・`[data-fill-amount]` のボタン・保存のボタンの字・
+右上の済んだ知らせの字・`#payments [data-adjustment-row]` の数と字・入金の枠の「調整」の字・`pageerror` の数。
 見ない所 (理由): 前回の残に数えた調整の取消の黄の知らせ (R36。会社の設定を「載せる」に変える手順が要るので、
 tests/test_billing_adjustment_views.py が応答の HTML で見る)、金額の閲覧の無い人 (同じ試験のファイルが見る)、電話の幅 (本体の手の確かめ)。
 請求書を 1 つ・入金を 1 件・調整を 1 件 (取消) 増やす (E-55 と同じく A 社の DB に残る)。
@@ -55,8 +57,14 @@ def test_e75_adjustment_is_recorded_and_cancelled_in_modal(page_a, company_a):
     box = page_a.locator("#seizou-modal-box")
     amount = box.locator("input[name=amount]")
     button = box.locator(SUBMIT).first
-    expect(amount).to_have_value("-" + balance.removeprefix("¥").replace(",", ""))
+    # 金額は空で開く (残の全額を消す数を初めから入れない)。押した時だけ、残をマイナスにした数が入る
+    expect(amount).to_have_value("")
+    expect(button).to_have_text(re.compile(r"^\s*調整を記録する\s*$"))
+    box.locator("[data-fill-amount]").click()
+    expect(amount).to_have_value("-" + balance.removeprefix("¥"))
     expect(button).to_have_text(re.compile(rf"^\s*-{re.escape(balance)} の調整を記録する\s*$"))
+    expect(modal).to_have_count(1)
+    assert page_a.locator(ROWS).count() == 0  # 押しても保存はされない
 
     amount.click()
     amount.select_text()

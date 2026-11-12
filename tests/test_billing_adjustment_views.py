@@ -4,6 +4,9 @@
 調整は金額に関わる操作 (core.access.MONEY_ACTIONS) なので、金額の閲覧の無い人 (金額の判定が on) には入口を出さず、画面を開いた時点で断る。
 調整の入口は入金と同じ小窓で開く (data-modal-form。510 回目に本体が billing/_form_modal.html に調整の 2 つの枝を足した。URL を直に開けば画面の全体)。
 画面に出すマイナスの金額は「-¥660」にそろえる (保存のボタンの字と保存の後の知らせも。510 回目)。
+金額の欄は空で開く。残のある請求書は、頭の 1 行の「残を消す金額を入れる」を押した時だけ、残をマイナスにした数が入る
+(入金の記録の「残の全額を入れる」と同じ形。初めから −残 を入れる形は 510 回目にやめた = 一部入金の請求書で残の全額を消す数が
+押す前から入っているのを避ける)。
 見た目の確かめは開発サーバーを起こさず、応答の HTML (欄の並び・知らせの段の印・ボタンの字) で見る。
 作り物の組み方は tests/test_billing_payment_views.py の関数を借りる (test_ で始まる名前は import しない)。合計 16,500 の請求書 (出荷 4 と 6)。
 """
@@ -28,6 +31,7 @@ from tests.test_billing_payment_views import ALL_ON, MODAL, RECEIVED_ON, _custom
 ADJUSTED_ON = date(2026, 12, 26)
 FEE = {"adjusted_on": "2026-12-26", "amount": "-660", "reason": "fee", "note": "作り物の振込手数料"}
 HEADING = "この画面は開けません"
+FILL_LABEL = ">残を消す金額を入れる</button>"
 MONEY_REFUSAL = "調整は金額が主な内容"
 
 
@@ -130,7 +134,7 @@ def test_detail_hides_adjustment_button_and_amounts_without_money(on, client, us
 # --- 調整の記録 ---
 
 
-def test_create_get_fields_initial_and_button(client_logged_in, paid_short):
+def test_create_get_fields_fill_button_and_plain_label(client_logged_in, paid_short):
     response = client_logged_in.get(_create_url(paid_short))
 
     body = response.content.decode()
@@ -139,10 +143,18 @@ def test_create_get_fields_initial_and_button(client_logged_in, paid_short):
     for label in ("値引き", "振込手数料", "相殺", "端数", "その他"):
         assert f">{label}</option>" in body
     assert '<option value="fee" selected>振込手数料</option>' in body
-    # 入金済みが 0 より大きく残のある請求書では、金額の初めの値が −残 (振込手数料の差を 1 回で消す)
-    assert re.search(r'name="amount" value="-660"', body)
+    # 金額の欄は空で開く (残を消す数を初めから入れない)。頭の 1 行の「残を消す金額を入れる」を押した時だけ −残 が入る
+    assert re.search(r'<input[^>]*name="amount"', body)
+    assert not re.search(r'name="amount" value=', body)
+    assert body.count('data-fill-amount="-660"') == 1
+    assert body.count(FILL_LABEL) == 1
+    tag = re.search(r"<button [^>]*data-fill-amount[^>]*>", body).group(0)
+    assert 'type="button"' in tag and "btn-xs" in tag and "btn-primary" not in tag
+    # 入金の記録と同じ JS (billing/payment-fill.js) が、カードの包みの中の金額の欄に字を入れる
+    assert body.count("billing/payment-fill.js") == 1
+    assert body.index("data-adjustment-card") < body.index('name="amount"') < body.index("billing/payment-fill.js")
     assert "残を減らすときはマイナスで入れます (振込手数料 660 円なら -660)。" in body
-    assert _button(body) == "-¥660 の調整を記録する"
+    assert _button(body) == "調整を記録する"
     # 頭の 1 行 (入金の記録の画面と同じ形)
     assert f"請求書 <span class=\"font-mono\">{paid_short.invoice_no}</span> (作り物の得意先)。" in body
     for text in ("合計 <span class=\"tabular-nums\">¥16,500</span>", "入金済み <span class=\"tabular-nums\">¥15,840</span>",
@@ -152,11 +164,33 @@ def test_create_get_fields_initial_and_button(client_logged_in, paid_short):
     assert body.count("btn-primary") == 1
 
 
-def test_create_get_without_payment_leaves_amount_empty(client_logged_in, invoice):
+def test_create_get_unpaid_invoice_has_fill_button_too(client_logged_in, invoice):
+    """入金の無い請求書 (相殺で全額を消す時など) も、金額は空で開き、押せば残の全額をマイナスにした数が入る。"""
     body = client_logged_in.get(_create_url(invoice)).content.decode()
     assert re.search(r'<input[^>]*name="amount"', body)
     assert not re.search(r'name="amount" value=', body)
+    assert body.count('data-fill-amount="-16,500"') == 1 and body.count(FILL_LABEL) == 1
     assert _button(body) == "調整を記録する"
+
+
+@pytest.mark.parametrize("extra", [Decimal("0"), Decimal("1000")], ids=["paid", "overpaid"])
+def test_create_get_no_fill_button_when_nothing_remains(client_logged_in, user, invoice, extra):
+    """残が 0 かマイナスの請求書には「残を消す金額を入れる」を出さない (入金の「残の全額を入れる」と同じ条件)。"""
+    services.record_payment(invoice, RECEIVED_ON, invoice.total + extra, user)
+
+    body = client_logged_in.get(_create_url(invoice)).content.decode()
+
+    assert "data-fill-amount" not in body
+    assert "残を消す金額を入れる" not in body
+
+
+def test_create_post_with_filled_text_clears_balance(client_logged_in, invoice):
+    """ボタンが入れる字 (桁の区切りのあるマイナスの数) のまま送ると、残が 0 になる。"""
+    response = client_logged_in.post(_create_url(invoice), {**FEE, "amount": "-16,500", "reason": "offset"})
+
+    assert response.status_code == 302
+    assert Adjustment.objects.get().amount == Decimal("-16500")
+    assert Invoice.objects.get(pk=invoice.pk).payment_status() == Invoice.PAYMENT_PAID
 
 
 def test_create_post_clears_balance_and_returns_to_invoice(client_logged_in, user, paid_short):
@@ -237,7 +271,11 @@ def test_create_in_modal_shows_the_card_and_saves_without_leaving(client_logged_
     assert f"請求書 <span class=\"font-mono\">{paid_short.invoice_no}</span> (作り物の得意先)。" in body
     assert "残 <span class=\"tabular-nums\">¥660</span>" in body
     assert _field_names(body) == ["adjusted_on", "amount", "reason", "note"]
-    assert _button(body) == "-¥660 の調整を記録する"
+    # 小窓も同じカード: 金額は空・「残を消す金額を入れる」が 1 つ・JS の読み込みが 1 つ
+    assert not re.search(r'name="amount" value=', body)
+    assert body.count('data-fill-amount="-660"') == 1 and body.count(FILL_LABEL) == 1
+    assert body.count("billing/payment-fill.js") == 1
+    assert _button(body) == "調整を記録する"
 
     saved = client_logged_in.post(_create_url(paid_short), FEE, **MODAL)
     assert saved.status_code == 204

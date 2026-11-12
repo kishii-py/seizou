@@ -21,7 +21,7 @@
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
   期日は手形と電子記録債権のときに必ず入れる (空なら期日の欄の誤り。services の _payment_values も断る)。方法で欄を出し入れする JS は無い。
 - 調整の form (AdjustmentForm。依頼書 N409b): 調整日・金額 (1 円単位の整数。マイナスを許し、0 は欄の誤り)・訳・備考。請求書は土台が URL の pk で引く。
-  金額の初めの値は、入金済みが 0 より大きく残が 0 より大きい請求書なら −残。調整を取り消す form は欄が無い (土台が cancel_adjustment(調整, user=...) を呼ぶ)。
+  金額は空で開く (残を消す数は、カードの「残を消す金額を入れる」を押した時だけ入る。510 回目)。調整を取り消す form は欄が無い (土台が cancel_adjustment(調整, user=...) を呼ぶ)。
 - 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
 """
 
@@ -780,7 +780,9 @@ class AdjustmentForm(SubmitLabelMixin, forms.Form):
 
     欄は 調整日・金額・訳・備考。請求書は欄に持たない (土台が URL の pk の請求書を record_adjustment の 1 つ目の引数に渡す)。
     金額は 1 円単位の整数で、マイナスを許す (残を減らす調整はマイナス)。0 は欄の誤り (services も断る)。
-    開いた form は、入金済みが 0 より大きく残が 0 より大きい請求書なら、金額の初めの値を −残 にする (金額の閲覧の無い人には入れない)。
+    金額は空で開く。残のある請求書では、カード (billing/_adjustment_create_card.html) の「残を消す金額を入れる」を押した時だけ −残 が入る
+    (入金の記録の「残の全額を入れる」と同じ形。初めから −残 を入れる形は 510 回目にやめた。一部入金の請求書で、残の全額を消す数が
+    押す前から入っていると、打ち直さずに押した時に売掛が消えるため)。
     保存のボタンは「-¥660 の調整を記録する」(金額を入れる前は「調整を記録する」。字を組むのは core の SubmitLabelMixin。マイナスを ¥ の前に置くのも core)。
     """
 
@@ -807,14 +809,6 @@ class AdjustmentForm(SubmitLabelMixin, forms.Form):
     note = forms.CharField(
         label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
     )
-
-    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        if instance is None or hide_money:
-            return
-        balance = instance.balance()
-        if instance.paid_total() > 0 and balance > 0:
-            self.fields["amount"].initial = -balance
 
     def clean_amount(self):
         """金額が 0 なら欄の誤り (段 1)。

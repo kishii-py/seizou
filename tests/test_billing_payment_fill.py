@@ -5,6 +5,7 @@
 作り物の組み方は tests/test_billing_payment_views.py の関数を借りる (test_ で始まる名前は import しない)。
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -149,6 +150,7 @@ def test_js_file_keeps_promises():
         'document.addEventListener("click"',
         "[data-fill-amount]",
         "[data-payment-card]",
+        "[data-adjustment-card]",
         'input[name="amount"]',
         'new Event("input", { bubbles: true })',
     ):
@@ -165,6 +167,45 @@ def test_js_file_keeps_promises():
         ".submit(",
     ):
         assert word not in text, word
+
+
+# --- 7b. 調整の記録のカードでも同じ JS が動く (510 回目) ---
+
+#: node で payment-fill.js を動かす小さな台 (document とカードとボタンと欄の代わりの物だけを置く)。引数は JS のパス・カードの印・ボタンの字。
+_JS_RUNNER = """
+const fs = require("fs");
+const handlers = {};
+class Element {}
+global.Element = Element;
+global.window = {};
+global.document = { addEventListener: (type, fn) => { handlers[type] = fn; } };
+const events = [];
+const input = { value: "old", dispatchEvent: (event) => { events.push(event.type + ":" + event.bubbles); } };
+const card = { querySelector: (selector) => (selector === 'input[name="amount"]' ? input : null) };
+const button = new Element();
+button.getAttribute = (name) => (name === "data-fill-amount" ? process.argv[4] : null);
+button.closest = (selector) => {
+  if (selector === "[data-fill-amount]") return button;
+  const marks = selector.split(",").map((part) => part.trim());
+  return marks.includes(process.argv[3]) ? card : null;
+};
+(0, eval)(fs.readFileSync(process.argv[2], "utf8"));
+handlers.click({ target: button });
+process.stdout.write(JSON.stringify({ value: input.value, events: events }));
+"""
+
+
+@pytest.mark.parametrize("mark, filled", [("[data-payment-card]", "734,900"), ("[data-adjustment-card]", "-734,240")])
+def test_js_fills_amount_in_payment_and_adjustment_cards(tmp_path, mark, filled):
+    """入金の記録のカードでも調整の記録のカードでも、押すとボタンの字が金額の欄に入り、input の event が 1 回出る (node で JS を動かす)。"""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node が無い (JS を動かせない)")
+    runner = tmp_path / "runner.js"
+    runner.write_text(_JS_RUNNER, encoding="utf-8")
+    result = subprocess.run([node, str(runner), str(JS), mark, filled], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"value": filled, "events": ["input:true"]}
 
 
 # --- 8. node --check ---
