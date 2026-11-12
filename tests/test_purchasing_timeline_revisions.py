@@ -114,7 +114,8 @@ def test_refused_change_shows_reason_only_when_given(user, subcontractor, item, 
 def test_conditional_and_pending_answers_have_their_own_words(client_logged_in, user, subcontractor, item, send_connection, reply_type, words):  # noqa: F811
     """相手が第 2 版に条件付 (CA) か保留 (AJ) で答えた時、「答えた」「答え待ち」でなく、第 1 版の答えと同じ言葉で出す。
 
-    訳: 相手の seizou は、変更の版にも「条件を直して受け入れる」と「保留する」で答えられる (connect の受け口は版 2 からの答えの種類をそのまま書く)。
+    訳: 相手の seizou は、変更の版の行も「保留する」にできる (保留 AJ が届く)。条件付 (CA) は、今の seizou は変更の版には返さないが、
+    connect の受け口は版 2 からの答えの種類をそのまま書くので、届いた時に読める言葉を用意する。
     直す前は、流れの枠が「相手が第 2 版の変更に答えた」、詳細の頭の札が「相手の答え待ち」、送った記録の行は答えの字なしで、答えの中身が読めなかった。
     """
     po = _second_revision(user, _conditional(user, subcontractor, item), reply_type=reply_type)

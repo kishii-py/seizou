@@ -169,7 +169,8 @@ def _revision_reply_event(outbox) -> Event:
     """版 2 からの相手の答え (送った注文の行の reply_type・reply_note・replied_at。connect.services._record_revision_reply が書く)。
 
     受諾 (AP) は「相手が第 n 版の変更を受け入れた」、条件付受諾 (CA) は「…を条件付で受けた」、保留 (AJ) は「…を保留した」
-    (版 1 の答えの題 _REPLY_TITLES と同じ言葉。相手の seizou は変更の版にも「条件を直して受け入れる」と「保留する」で答えられる。511 回目)、
+    (版 1 の答えの題 _REPLY_TITLES と同じ言葉。511 回目。今の seizou が変更の版に返す答えは 受諾・辞退・保留 の 3 つ = 相手は版の行も
+    「保留する」にできる。条件付は、受け口 (connect.services) が書きうる値への備えで、今の seizou は版には返さない)、
     辞退 (RE) は「相手が第 n 版の変更を断った (理由: …)」(理由が空なら括弧なし)、4 つの外の値は「相手が第 n 版の変更に答えた」。
     取消の版は「変更」が「取消」になる。種類は版 1 の答えと同じ reply。
     """

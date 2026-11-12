@@ -307,7 +307,8 @@ class Outbox(models.Model):
         return text
 
 
-#: 版 2 からの注文回答の字 (送った記録の行の末尾)。条件付と保留は 511 回目に足した (相手は変更の版にも条件付と保留で答えられる)。
+#: 版 2 からの注文回答の字 (送った記録の行の末尾)。条件付と保留は 511 回目に足した (相手は変更の版の行も「保留する」にできる。
+#: 条件付は、受け口が書きうる値への備えで、今の seizou は変更の版には返さない)。
 #: 同じ言葉を、発注の流れの枠 (purchasing.timeline) と詳細の頭の札 (purchasing_tags の _REPLY_WORDS) も持つ (字を変える時は 3 か所)
 _REPLY_TEXTS = {
     edi_codes.REPLY_ACCEPTED: "相手が受け入れた",
