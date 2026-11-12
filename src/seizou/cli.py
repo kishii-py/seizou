@@ -97,6 +97,7 @@ SETTING_DEFAULTS = {
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,
+    "invoice_previous_balance": False,
     "access_control": {"department": "log", "write": "log", "money": "log"},
     "assistant_model": "claude-sonnet-5-5",
     "intake_model": "claude-opus-5-5",

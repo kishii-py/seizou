@@ -36,6 +36,7 @@ DEFAULTS = {
     "transcription_minutes_per_line": 1,  # 1 行の手入力にかかる分 (ダッシュボードの「手入力せずに取り込んだ明細」の入力を省けた時間 ≒ m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
     "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
+    "invoice_previous_balance": False,  # 請求書の前回の残: true (請求書を作る時に前回の残を数えて写す) / false (写さない。帳票に出ない)
     "weekly_holidays": [5, 6],  # 定休日の曜日 (0 = 月 〜 6 = 日)。既定は土日。休日の表 (masters の Holiday) と合わせて稼働日を決める (core.calendar)
     "access_control": {"department": "log", "write": "log", "money": "log"},  # 権限の判定: 部署・編集の権限・金額の閲覧のそれぞれ off / log / on
     "assistant_model": "claude-sonnet-5-5",  # AI チャットが使う model (会社の鍵で呼ぶ)

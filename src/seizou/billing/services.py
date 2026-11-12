@@ -50,6 +50,11 @@
   取消でない調整の残る請求書は、入金と同じく cancel_invoice と作り直しが断る (文は cancel_refusal)。直すときは取り消して記録し直す。
 - 入金の期日 (Payment.matures_on): 手形と電子記録債権は期日を必ず入れる (_payment_values。record_payment と record_outside_payment が通る)。
   ほかの方法で入っていても断らずに残す。期日と入金日の前後は見ない。
+- 前回の残 (Invoice.previous_balance): 会社の設定 invoice_previous_balance が「載せる」のときだけ、_issue_invoice が請求書を作る時に
+  _previous_balance で数えて写す (数えた日時 previous_balance_at も)。「載せない」なら 2 つとも空。得意先の行をロックした後に数えるので、
+  請求書の新規登録・作り直し・締めの一括の 3 つの入口で同じ値になる。写した後に入金と調整が変わっても、写した値は変えない。
+- 得意先ごとの台帳 customer_ledger(得意先) と、得意先ごとの残 with_receivables(取引先の queryset) は読むだけ (書く口を持たない)。
+  入金は請求書ごとのまま (得意先の残から消す形にしない)。請求書の外で受け取った入金は売掛でないので数えない。
 """
 
 from __future__ import annotations
@@ -59,10 +64,12 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import DecimalField, F, Max, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from seizou.core import access, history
+from seizou.core.conf import setting
 from seizou.core.exceptions import RuleViolation
 from seizou.core.services import company, next_number, record_history
 from seizou.core.services import COPY_FAILED_NOTE, keep_report_copy, note_copy_failed
@@ -253,6 +260,9 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     出荷の行には出荷の出荷番号と出荷日も写す (一式の行は空。出荷を消しても明細に残る。本人の決め 11-11 12:5x〜13:0x。訳は InvoiceLine)。
     写しは帳票の写し (keep_report_copy) より前に書く (帳票の写しは、呼んだ時点の記録から描くため)。
     発行の時の帳票の写しを残す (R34)。描けなければ、返す請求書の saved_note に字を足して黄にする (core.services.keep_report_copy・note_copy_failed)。
+    会社の設定 invoice_previous_balance が「載せる」なら、前回の残 (_previous_balance) と数えた日時 (timezone.now()) を請求書を作る時に書く
+    (「載せない」なら 2 つとも空)。得意先の行をロックした後に数えるので、3 つの入口 (新規登録・作り直し・締めの一括) で同じ値になる。
+    作り直しは、取り消した同じ期間の請求書を数えない (期間が同じで、取消でもあるため)。前回の残も帳票の写しより前に書く。
     """
     pks = sorted({shipment.pk for shipment in shipments})
     locked = list(_Shipment.objects.select_for_update().filter(pk__in=pks).order_by("pk"))
@@ -276,6 +286,11 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
         period_from, period_to = invoice_period(customer, locked, issued_on)
     _refuse_second_in_period(customer, period_from, period_to)
 
+    # 前回の残の写し (会社の設定が「載せる」のときだけ)。今作る請求書はまだ表に無いので数えない。
+    previous_balance = previous_balance_at = None
+    if setting("invoice_previous_balance"):
+        previous_balance = _previous_balance(customer, period_from)
+        previous_balance_at = timezone.now()
     # 発行した時の会社の情報 (1 回だけ読む)。帳票の刷り直しは、この写しだけを読む (billing.reports.invoice_context)。
     issuer = company()
     invoice = Invoice.objects.create(
@@ -294,6 +309,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
         issuer_bank_account=issuer.bank_account,
         customer_name=customer.name,
         tax_rate=consumption_tax_rate(),
+        previous_balance=previous_balance,
+        previous_balance_at=previous_balance_at,
     )
     record_history(invoice, user)
     created = []
@@ -332,6 +349,17 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     if keep_report_copy(invoice, user, title="請求書", template=INVOICE_TEMPLATE, context=invoice_context(invoice)) is None:
         note_copy_failed(invoice)
     return invoice
+
+
+def _previous_balance(customer, period_from):
+    """前回の残 (読むだけ)。同じ得意先の発行の請求書のうち、期間の終わりが period_from より前の物の、今の残 (Invoice.balance) の合計。
+
+    入金と調整を prefetch して Python で足す (DB で掛け算と丸めをしない)。_issue_invoice が得意先の行をロックした後に呼ぶ。
+    """
+    invoices = Invoice.objects.filter(
+        customer_id=customer.pk, status=Invoice.STATUS_ISSUED, period_to__lt=period_from
+    ).prefetch_related("payments", "adjustments")
+    return sum((invoice.balance() for invoice in invoices), _ZERO)
 
 
 def _refuse_missing_shipments(shipments, locked):
@@ -1134,6 +1162,115 @@ def cancel_adjustment(adjustment, user):
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
+
+
+#: 台帳の同じ日の行の並び (請求 → 入金 → 調整)
+_LEDGER_ORDER = {"invoice": 0, "payment": 1, "adjustment": 2}
+
+
+def _ledger_row(kind, on, amount, record, invoice, **extra):
+    """台帳の 1 行の辞書 (customer_ledger)。種類ごとの鍵は、当たらない種類では None。"""
+    row = {
+        "kind": kind,
+        "on": on,
+        "amount": amount,
+        "balance": None,
+        "record": record,
+        "invoice": invoice,
+        "period_from": None,
+        "period_to": None,
+        "method": None,
+        "matures_on": None,
+        "reason": None,
+    }
+    row.update(extra)
+    return row
+
+
+def customer_ledger(customer, *, hide_money=False) -> dict:
+    """得意先ごとの台帳 (読むだけ。書く口を持たない)。返す物 = {"rows", "billed", "paid", "adjusted", "balance"}。
+
+    行は、発行の請求書 (kind "invoice"・on = 発行日・amount = 合計・period_from と period_to = 期間)、取消でない請求書の取消でない入金
+    (kind "payment"・on = 入金日・amount = −入金・method = 方法の字・matures_on = 期日)、取消でない請求書の取消でない調整
+    (kind "adjustment"・on = 調整日・amount = 調整の金額・reason = 訳の字) を、日の古い順に並べる。同じ日は 請求 → 入金 → 調整 → pk の順。
+    行ごとの balance は、そこまでの残 (累計)。record は行の記録 (請求書・入金・調整)、invoice はその請求書。
+    取消の請求書と、取消の入金と調整と、請求書の外で受け取った入金 (請求書が空) は並べない (請求書の外の入金は売掛でないため)。
+    billed = 請求の合計・paid = 入金の合計・adjusted = 調整の合計・balance = billed − paid + adjusted (= 最後の行の残。行が無ければ 0)。
+    hide_money が真なら、金額と残と 4 つの合計を None にする (金額の閲覧の無い人。行の並びは同じ)。
+    問い合わせは 3 回 (請求書・入金・調整。入金と調整は請求書を一緒に読む)。
+    """
+    invoices = list(
+        Invoice.objects.filter(customer_id=customer.pk, status=Invoice.STATUS_ISSUED).order_by("issued_on", "pk")
+    )
+    payments = list(
+        Payment.objects.filter(
+            invoice__customer_id=customer.pk, invoice__status=Invoice.STATUS_ISSUED, status=Payment.STATUS_RECORDED
+        ).select_related("invoice")
+    )
+    adjustments = list(
+        Adjustment.objects.filter(
+            invoice__customer_id=customer.pk, invoice__status=Invoice.STATUS_ISSUED, status=Adjustment.STATUS_RECORDED
+        ).select_related("invoice")
+    )
+    rows = [
+        _ledger_row(
+            "invoice", row.issued_on, row.total, row, row, period_from=row.period_from, period_to=row.period_to
+        )
+        for row in invoices
+    ]
+    rows += [
+        _ledger_row(
+            "payment", row.received_on, -row.amount, row, row.invoice, method=row.get_method_display(), matures_on=row.matures_on
+        )
+        for row in payments
+    ]
+    rows += [
+        _ledger_row("adjustment", row.adjusted_on, row.amount, row, row.invoice, reason=row.get_reason_display())
+        for row in adjustments
+    ]
+    rows.sort(key=lambda row: (row["on"], _LEDGER_ORDER[row["kind"]], row["record"].pk))
+    running = _ZERO
+    for row in rows:
+        running += row["amount"]
+        row["balance"] = running
+    billed = sum((row.total for row in invoices), _ZERO)
+    paid = sum((row.amount for row in payments), _ZERO)
+    adjusted = sum((row.amount for row in adjustments), _ZERO)
+    if hide_money:
+        for row in rows:
+            row["amount"] = row["balance"] = None
+        return {"rows": rows, "billed": None, "paid": None, "adjusted": None, "balance": None}
+    return {"rows": rows, "billed": billed, "paid": paid, "adjusted": adjusted, "balance": billed - paid + adjusted}
+
+
+def with_receivables(partners):
+    """取引先の queryset に、得意先ごとの残を足した queryset (読むだけ)。得意先ごとの残の一覧 (3 段目) が使う。
+
+    足す名前: receivable_billed = 請求の合計 (発行の請求書の合計)、receivable_paid = 入金の合計 (発行の請求書の取消でない入金)、
+    receivable_adjusted = 調整の合計 (発行の請求書の取消でない調整)、receivable_balance = 残 (請求 − 入金 + 調整)。無ければ 0。
+    customer_ledger の合計と同じ見方 (請求書の外で受け取った入金は数えない)。表ごとの副問い合わせの Sum で足す
+    (結び付けを並べて数が倍にならないように。保存した金額の足し引きだけで、掛け算と丸めをしない)。
+    """
+    money = DecimalField(max_digits=14, decimal_places=2)
+
+    def summed(queryset, group, field):
+        rows = queryset.order_by().values(group).annotate(sum=Sum(field)).values("sum")
+        return Coalesce(Subquery(rows, output_field=money), Value(_ZERO), output_field=money)
+
+    billed = Invoice.objects.filter(customer=OuterRef("pk"), status=Invoice.STATUS_ISSUED)
+    paid = Payment.objects.filter(
+        invoice__customer=OuterRef("pk"), invoice__status=Invoice.STATUS_ISSUED, status=Payment.STATUS_RECORDED
+    )
+    adjusted = Adjustment.objects.filter(
+        invoice__customer=OuterRef("pk"), invoice__status=Invoice.STATUS_ISSUED, status=Adjustment.STATUS_RECORDED
+    )
+    return partners.annotate(
+        receivable_billed=summed(billed, "customer", "total"),
+        receivable_paid=summed(paid, "invoice__customer", "amount"),
+        receivable_adjusted=summed(adjusted, "invoice__customer", "amount"),
+    ).annotate(
+        receivable_balance=F("receivable_billed") - F("receivable_paid") + F("receivable_adjusted"),
+    )
 
 
 def billable_shipments(customer=None):

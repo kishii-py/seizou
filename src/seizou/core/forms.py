@@ -176,6 +176,7 @@ CHOICE_NOTES = {
     "open_workorder_completion": _CHECK_MODE_NOTES,
     "order_form": {"single": "画面が短く、番号が部品と 1 対 1 になる。"},
     "production_plan": {"false": "メニューに「生産計画」が出ない。"},
+    "invoice_previous_balance": {"true": "請求書に前回の残と今回のご請求額が載る。入金と調整を seizou で記録している会社だけ。"},
 }
 
 
