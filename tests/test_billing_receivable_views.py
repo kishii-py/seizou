@@ -6,6 +6,9 @@
 金額は billing.services の with_receivables と customer_ledger の値 (画面では数えない)。金額の閲覧の無い人 (金額の判定が on) には、
 一覧・CSV・台帳の金額と残を見出しごと出さない (「—」も出さない)。
 見た目の確かめは開発サーバーを起こさず、応答の HTML (列の並び・行の行き先・マイナスの残の赤い字) で見る。
+513 回目に本体が直した所: 一覧に 4 つの金額の合計の行を足した・一覧の「得意先」の選ぶ欄をやめた (キーワードで探す。選ぶ欄があると、
+行が得意先そのものの一覧に、得意先ごとの件数が 1 ずつ並ぶ「集計」の切り替えが出るため)・台帳のパンくずを「売掛の残 › 名前」にした
+(パンくずが一覧へ戻る道になるので、「売掛の残に戻る」のボタンはやめた = 詳細の土台の決め)。
 作り物の組み方は tests/test_billing_ledger.py の関数を借りる (test_ で始まる名前は import しない)。得意先は月末締め (締日 31)。
 """
 
@@ -152,7 +155,7 @@ def test_menu_has_receivable_entry(logged_in, book):
 def test_list_has_no_create_button(logged_in, book):
     body = _list(logged_in).content.decode()
     empty = _list(logged_in, q="無い得意先").content.decode()
-    nothing = _list(logged_in, f_customer=book["first"].pk, f_open="1", q="無い").content.decode()
+    nothing = _list(logged_in, f_open="1", q="無い").content.decode()
 
     for html in (body, empty, nothing):
         assert "新規登録" not in html
@@ -193,17 +196,16 @@ def test_open_only_drops_zero_balance(logged_in, book):
 
 
 @pytest.mark.django_db
-def test_customer_filter_and_search(logged_in, book):
-    chosen = _list(logged_in, f_customer=book["over"].pk)
+def test_search_by_name_and_code(logged_in, book):
+    """得意先はキーワード (名前と取引先コード) で探す。得意先を選ぶ欄は置かない (行が得意先そのものの一覧のため。513 回目)。"""
     searched = _list(logged_in, q="払い済み")
     by_code = _list(logged_in, q="C001")
-    select = re.search(r'<select[^>]*name="f_customer".*?</select>', chosen.content.decode(), re.S).group(0)
-    options = dict(re.findall(r'<option value="(\d+)"[^>]*>([^<]+)</option>', select))
 
-    assert _codes(chosen) == ["C005"]
     assert _codes(searched) == ["C002"]
     assert _codes(by_code) == ["C001"]
-    assert sorted(options.values()) == sorted(["作り物の得意先", "作り物の払い済みの得意先", "作り物の入れすぎの得意先"])
+    assert 'name="f_customer"' not in searched.content.decode()
+    # 知らない絞りの GET (前の版の URL) は読まずに、全部を並べる
+    assert _codes(_list(logged_in, f_customer=book["over"].pk)) == ["C001", "C002", "C005"]
 
 
 @pytest.mark.django_db
@@ -233,10 +235,37 @@ def test_negative_balance_is_red_in_list(logged_in, book):
 
 
 @pytest.mark.django_db
-def test_summary_view_opens(logged_in, book):
-    response = _list(logged_in, view="summary")
+def test_list_has_no_summary_toggle(logged_in, book):
+    """「集計」の切り替えを出さない (まとめる軸が無い。得意先ごとの件数は 1 ずつで、量は「締日の合計」になるため。513 回目)。"""
+    response = _list(logged_in)
+    body = response.content.decode()
 
-    assert response.status_code == 200
+    assert response.context["summary_axes"] == []
+    assert "view=summary" not in body
+    # 集計の URL を直に開いても、表のまま (土台の決め = 軸の無い一覧は表)
+    direct = _list(logged_in, view="summary")
+    assert direct.status_code == 200
+    assert _codes(direct) == ["C001", "C002", "C005"]
+
+
+@pytest.mark.django_db
+def test_list_has_total_row_that_follows_filters(logged_in, book):
+    """一覧の下に、請求・入金・調整・残の合計の行 (会社の売掛の残の合計を 1 行で読む。絞りに合わせて変わる。513 回目)。"""
+    ledgers = {key: services.customer_ledger(book[key]) for key in ("first", "paid_up", "over")}
+
+    def expected(keys):
+        return [sum(ledgers[key][name] for key in keys) for name in ("billed", "paid", "adjusted", "balance")]
+
+    everything = _list(logged_in)
+    totals = everything.context["totals"]
+    assert [cell["value"] for cell in totals[3:]] == expected(["first", "paid_up", "over"])
+    assert all(cell["money"] for cell in totals[3:]) and not any(cell["numeric"] for cell in totals[:3])
+    # 作り物の 3 社の残の合計 = 10,000 + 0 − 400
+    assert totals[6]["value"] == Decimal("9600")
+    assert "¥9,600" in everything.content.decode()
+
+    open_only = _list(logged_in, f_open="1")
+    assert [cell["value"] for cell in open_only.context["totals"][3:]] == expected(["first", "over"])
 
 
 @pytest.mark.django_db
@@ -329,7 +358,12 @@ def test_ledger_has_no_edit_or_delete_and_goes_back_to_list(logged_in, book):
     assert reverse("masters:partner_update", args=[partner.pk]) not in body
     assert "編集" not in actions
     assert "data-detail-more" not in body
-    assert f'href="{reverse("billing:receivable_list")}"' in actions and "売掛の残に戻る" in actions
+    # 一覧へ戻る道はパンくず (「売掛の残 › 名前」。取引先の一覧は指さない)。パンくずがあるので、戻るボタンは置かない (詳細の土台の決め)
+    crumb = re.search(r'<nav aria-label="パンくず".*?</nav>', body, re.S).group(0)
+    assert f'href="{reverse("billing:receivable_list")}">売掛の残</a>' in crumb
+    assert reverse("masters:partner_list") not in crumb
+    assert f'aria-current="page">{partner}</span>' in crumb
+    assert "売掛の残に戻る" not in body
     assert "売掛の台帳" in body
 
 

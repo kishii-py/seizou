@@ -1,9 +1,11 @@
 {% extends "core/detail.html" %}
 {% load billing_tags seizou_tags seizou_icons %}
 {% comment %}
-得意先の売掛の台帳 (依頼書 N409c。売掛の 3 段目)。読むだけ。頭 (パンくず・題・「?」) は core の詳細のまま。
+得意先の売掛の台帳 (依頼書 N409c。売掛の 3 段目)。読むだけ。頭 (題・「?」) は core の詳細のまま。
+- パンくず (block heading): 「売掛の残 › 名前」。土台のパンくずは model の一覧 (取引先の一覧) を指すので、with の tag で一覧の名前 (crumb) と
+  一覧の道 (list_url) を売掛の残に替えてから土台を呼ぶ (513 回目)。パンくずが一覧へ戻る道なので、戻るボタンは置かない (詳細の土台の決め)。
 - 主のボタン (block edit_button): 土台の「編集」(取引先の編集) を出さない。取引先を直すのは取引先の画面。
-- 副のボタン (block actions): 「売掛の残に戻る」。パンくずの一覧の名前は土台のまま「取引先」(変えるには block heading の全部を写すので変えない)。
+- 副のボタン (block actions) は土台のまま空。
 - block more は土台のまま空 (削除の口は出ない)。
 - 中身 (block content): 得意先の札 (取引先コード・名前・締日と、請求の合計・入金の合計・調整の合計・残) と台帳の表。block.super を呼ばない
   (取引先の基本情報と履歴のタブと添付ファイルの枠を出さない。読むだけの画面に書く入口を置かないため)。
@@ -11,8 +13,8 @@
   マイナスの残 (札と行) は赤い字。金額の字は yen の「-¥660」(請求書の詳細の入金の枠と同じく、調整の合計と入金の行の金額には色を付けない)。
 - 金額の閲覧が無い人 (seizou.hide_money) には、4 つの合計と、表の金額と残の列を見出しごと出さない (「—」も出さない。請求書の詳細の入金の枠と同じ)。
 {% endcomment %}
+{% block heading %}{% url 'billing:receivable_list' as receivable_list_url %}{% with crumb="売掛の残" list_url=receivable_list_url %}{{ block.super }}{% endwith %}{% endblock %}
 {% block edit_button %}{% endblock %}
-{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'billing:receivable_list' %}">{% icon "arrow-left" "size-4" %}売掛の残に戻る</a>{% endblock %}
 {% block content %}{% receivable_ledger object seizou.hide_money as ledger %}
 <section id="receivable-summary" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="得意先と残">
   <dl class="grid gap-x-6 gap-y-2 sm:grid-cols-3">

@@ -58,15 +58,6 @@ def _issued_customers(partners):
     return partners.filter(Exists(Invoice.objects.filter(customer=OuterRef("pk"), status=Invoice.STATUS_ISSUED)))
 
 
-def _receivable_customer_choices():
-    """売掛の残の一覧の「得意先」の絞りの候補 (発行の請求書のある取引先。取引先コードの順。字は取引先の名前)。
-
-    一覧の model が取引先そのものなので、外部キーの lookup でなく、取引先の id の choice で絞る (発注の一覧の取引先の絞りと同じ形)。
-    """
-    rows = _issued_customers(PartnerModel.objects.all()).order_by("code", "pk")
-    return [(row.pk, str(row)) for row in rows]
-
-
 def _unpaid_only(invoices):
     """「残のある物だけ」の印の条件 (残 = 合計 − 取消でない入金 + 取消でない調整 が 0 より大きい請求書 = 一部入金も入る)。
 
@@ -313,6 +304,9 @@ class ReceivableListView(BaseListView):
     「残のある得意先だけ」の印は FilterSpec.as_is で、条件 (残が 0 でない) は get_queryset が annotate の後に掛ける (土台の絞りは annotate の前に掛かるため)。
     行を押すと得意先の台帳 (receivable_detail) へ移る (masters/_rows.html の分かれが 1 行を billing/_receivable_row.html にする)。
     取引先の新規登録のボタンは出さない (billing/receivable_list.html が block actions を空にする)。
+    一覧の下に、4 つの金額の合計の行 (会社の売掛の残の合計を 1 行で読む。絞りに合わせて変わる。金額の閲覧が無い人には出ない。513 回目)。
+    絞りに「得意先」の選ぶ欄は置かない (キーワードで探す。選ぶ欄を置くと、行が得意先そのものの一覧に、得意先ごとの件数が 1 ずつ並ぶ
+    「集計」の切り替えが出るため。513 回目)。
     """
 
     model = PartnerModel
@@ -325,16 +319,13 @@ class ReceivableListView(BaseListView):
         "code",
         "name",
         "closing_day",
-        {"name": "receivable_billed", "label": "請求の合計", "kind": "money"},
-        {"name": "receivable_paid", "label": "入金の合計", "kind": "money"},
-        {"name": "receivable_adjusted", "label": "調整の合計", "kind": "money"},
-        {"name": "receivable_balance", "label": "残", "kind": "money", "sortable": True},
+        {"name": "receivable_billed", "label": "請求の合計", "kind": "money", "total": True},
+        {"name": "receivable_paid", "label": "入金の合計", "kind": "money", "total": True},
+        {"name": "receivable_adjusted", "label": "調整の合計", "kind": "money", "total": True},
+        {"name": "receivable_balance", "label": "残", "kind": "money", "sortable": True, "total": True},
     )
     search_fields = ("code", "name")
-    filters = (
-        {"name": "customer", "label": "得意先", "kind": "choice", "field": "id", "choices": _receivable_customer_choices},
-        {"name": "open", "label": "残のある得意先だけ", "kind": "flag", "when": FilterSpec.as_is},
-    )
+    filters = ({"name": "open", "label": "残のある得意先だけ", "kind": "flag", "when": FilterSpec.as_is},)
     ordering = ("code",)
     template_name = "billing/receivable_list.html"
 
@@ -351,9 +342,9 @@ class ReceivableDetailView(BaseDetailView):
     使う人: 経理 / いつ: 得意先から残を問われたとき・月末に入金を確かめるとき / 何のために: 請求・入金・調整を日付で並べて残を見る / 次にすること: 請求書を開いて入金か調整を記録する
 
     台帳の行と 4 つの合計は billing_tags の receivable_ledger (services.customer_ledger) を 1 回だけ引く (画面では数えない。行の残も関数の値)。
-    billing/receivable_detail.html は、取引先の編集のボタンを出さず (block edit_button を空)、「売掛の残に戻る」を置き (block actions)、
+    billing/receivable_detail.html は、取引先の編集のボタンを出さず (block edit_button を空)、パンくずを「売掛の残 › 名前」にし (block heading)、
     中身を得意先の札と台帳の表にする (block content。取引先の基本情報と履歴のタブと添付ファイルの枠は出さない = 読むだけの画面に書く入口を置かない)。
-    パンくずは土台のまま「取引先」を指す。
+    パンくずが一覧へ戻る道なので、戻るボタンは置かない (詳細の土台の決め。513 回目に「取引先」を指していたパンくずを直した)。
     """
 
     model = PartnerModel
