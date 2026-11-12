@@ -100,7 +100,17 @@ class BaseDetailView(ScreenMixin, DetailView):
         return context
 
     def tab_for(self, obj, label: str, related: str, select_related=()) -> dict:
-        return related_tab(obj, label, related, select_related)
+        """関係する物の 1 つのタブ (related_tab)。自分の詳細の画面が無い行 (明細) は、親の記録の詳細へ移る link にする。
+
+        行き先の決め方は、基本の表の値と同じ record_url (model の detail_link_target = 親の受注・発注。部署でその部品を開けない人には
+        link を出さない)。自分の詳細の画面がある行の link は、今までどおり related_tab が付けた物のまま変えない。
+        親を読む問い合わせは足さない前提 (タブの行の字が親を読むので、行は親と一緒に読んである。例: 指示書の「協力企業」のタブ)。
+        """
+        tab = related_tab(obj, label, related, select_related)
+        for row in tab["rows"]:
+            if row["url"] is None:
+                row["url"] = self.record_url(row["obj"])
+        return tab
 
     def status_for(self, obj) -> str | None:
         """見出しの横の状態の印。choices を持つ status の項目があればその表示名、無ければ None。"""

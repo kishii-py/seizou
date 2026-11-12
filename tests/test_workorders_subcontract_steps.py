@@ -191,8 +191,9 @@ def test_subcontract_tab_lists_lines(logged_in, user, wo):
 
     assert re.search(r'aria-label="協力企業">協力企業<span class="badge badge-sm tabular-nums">1</span>', body)
     text = f"{po.po_no}-1 {wo.item.part_no} {wo.item.name}"
-    # 行の行き先: 発注の明細に詳細の画面が無いので、土台は行を link にしない (字だけ)
-    assert f'<span class="block truncate px-2 py-2" title="{text}">{text}</span>' in body
+    # 行の行き先: 発注の明細に詳細の画面は無いが、土台が親の発注の詳細へ移る link にする (509 回目の本体の直し。前は字だけだった)
+    detail = reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    assert f'href="{detail}"><span class="truncate">{text}</span>' in body
     assert f"{cancelled_po.po_no}-1" not in body.split('aria-label="協力企業"', 1)[1]
     assert list(wo.workorder.subcontract_lines) == [line]
 
