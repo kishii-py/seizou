@@ -4,6 +4,8 @@
   受注の明細から逆向きの関係 (related_name) だけで辿って集める。請求書は出荷の請求書の明細と、受注の明細の請求書の明細
   (一式の行 = 出荷に結び付かない明細。作者の決め) の両方から引く。ほかの部品の model は import しない
   (メモだけは逆向きの関係が無いので、notes.services.note_for で読む)。
+- 受信した注文から作った受注は、得意先から後で届いた変更と取消の版 (元の受信した注文の revisions) ごとに「第 n 版の変更が届いた」と、
+  答えた版へのこちらの答え (受け入れた・保留した・断った) も出す (発注の側の流れと向かい合う字。本体の決め 11-12 23:3x。依頼書 N440)。
 - 部品が入っていない会社では、その部品の出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
 - 金額は Event.amount に分けて持ち、題の字に入れない。見せるかはテンプレートが seizou.hide_money で決める
   (受注の詳細の明細の表の単価と金額と同じ形 = access.can_see_money)。
@@ -65,7 +67,7 @@ CANCELLED = "cancelled"
 class Event:
     """流れの 1 つの出来事。
 
-    when は日時 (datetime) か日付 (date)、取消の受注だけ None。url はその記録の詳細の画面 (無ければ None)。
+    when は日時 (datetime) か日付 (date)、取消の受注と、答えた日時の読めない版の答えだけ None。url はその記録の詳細の画面 (無ければ None)。
     line_no は明細の番号 (受注の全体の物は None)。amount は金額 (無ければ None。テンプレートが隠すかを決める)。
     who は誰が (記録に人の列がある出来事の人の名前か、受信した注文の取引先の名前)、via は注文の入口 (受注の登録と受信した注文だけ)。
     """
@@ -92,7 +94,8 @@ class Event:
 
 def events_for(order) -> list[Event]:
     """受注の流れの出来事を、日の昇順に並べて返す (読むだけ)。"""
-    events = [*_inbox_events(order), _registered(order)]
+    inbox_events, undated = _inbox_events(order)
+    events = [*inbox_events, _registered(order)]
     delivery_notes = {}
     invoices = {}
     for line in _all(order, "lines"):
@@ -115,7 +118,7 @@ def events_for(order) -> list[Event]:
     events += _note_events(order)
     if order.status == order.STATUS_CANCELLED:
         events.append(Event(None, "cancel", "受注を取消"))
-    return sorted(events, key=_sort_key)
+    return _after_arrivals(sorted(events, key=_sort_key), undated)
 
 
 def _all(obj, name) -> list:
@@ -152,17 +155,66 @@ def _inlet(order) -> str:
     return _inbox_inlet(inbox) if inbox is not None else order.get_source_display()
 
 
-def _inbox_events(order) -> list[Event]:
+def _inbox_events(order) -> tuple[list[Event], list[tuple[Event, Event]]]:
+    """受信した注文の組の出来事と、日時の無い版の答えの組 (その版の「届いた」, 答え) の並び (_after_arrivals が並べた後に入れる)。"""
     # 受信した注文から作った受注だけ。connect が無いか、手入力の受注なら getattr が None を返す
     # (逆向きの 1 対 1 の「無い」は AttributeError の仲間)。
     inbox = getattr(order, "inbox_message", None)
     if inbox is None:
-        return []
+        return [], []
     url = _url(inbox)
     sender = inbox.partner.name if inbox.partner_id else inbox.sender_name
     events = [Event(inbox.received_at, "inbox", "注文が届いた", url, who=sender, via=_inbox_inlet(inbox))]
     if inbox.accepted_at is not None:
         events.append(Event(inbox.accepted_at, "inbox", "受信した注文を受け入れ", url))
+    # 後の版の行は受注 1 件につき 1 回だけ読む (明細の数で増やさない)。受信した注文の既定の並びは届いた日時の降順なので、版の番号の順を書く。
+    undated = []
+    for revision in inbox.revisions.order_by("revision_no", "pk"):
+        arrived, answer = _revision_events(revision)
+        events.append(arrived)
+        if answer is not None and answer.when is None:
+            undated.append((arrived, answer))
+        elif answer is not None:
+            events.append(answer)
+    return events, undated
+
+
+def _revision_events(revision) -> tuple[Event, Event | None]:
+    """後の版 1 つの「第 n 版の変更が届いた」(取消は「取消が届いた」) と、その版へのこちらの答え (答えていなければ None)。
+
+    答えは connect.services が書く列から読む: 受け入れた = 状態「受け入れた」(日時は承認した日時 accepted_at)、
+    断った = 状態「断った」(理由 reason を「 (理由: …)」で添え、空なら括弧なし)、保留した = 状態「未処理」で注文回答のタイプが保留 (AJ)。
+    保留と断りは答えた日時の列が無いので、注文回答が相手に届いた日時 (reply_sent_at) を使う。それも空 (相手に届いていない・
+    承認した日時の列より前に受け入れた行) なら日時なし (None) にし、その版の「届いた」の直後に置く (_after_arrivals)。
+    保留の後に受け入れるか断った版は、注文回答のタイプと送った日時が今の答えに書き直される (connect.services._restart_reply) ので、今の答えだけを出す。
+    字は発注の側の流れ (purchasing.timeline の _revision_name と _revision_reply_event) と向かい合う形。行き先はその版の受信した注文の詳細。
+    """
+    from seizou.core import edi_codes  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
+
+    word = "取消" if revision.purpose_code == edi_codes.PURPOSE_CANCEL else "変更"
+    what = f"第 {revision.revision_no} 版の{word}"
+    url = _url(revision)
+    arrived = Event(revision.received_at, "inbox", f"{what}が届いた", url)
+    if revision.status == revision.STATUS_ACCEPTED:
+        return arrived, Event(revision.accepted_at or revision.reply_sent_at, "inbox", f"{what}を受け入れた", url)
+    if revision.status == revision.STATUS_REJECTED:
+        reason = f" (理由: {revision.reason})" if revision.reason else ""
+        return arrived, Event(revision.reply_sent_at, "inbox", f"{what}を断った{reason}", url)
+    if revision.reply_type == edi_codes.REPLY_PENDING:
+        return arrived, Event(revision.reply_sent_at, "inbox", f"{what}を保留した", url)
+    return arrived, None
+
+
+def _after_arrivals(events, undated) -> list[Event]:
+    """日の順に並べた出来事の並びに、日時の無い版の答えを、その版の「届いた」の直後に入れる (同じ物かを is で見る)。
+
+    訳: 保留と断りは答えた日時の列を持たず、注文回答が相手に届いていない間は日時が無い。日時なし (None) のまま並べると
+    最後 (「受注を取消」の隣) に出て、届いた版と答えが離れる。出所 = 依頼書 N440 (2026-11-12)。
+    変えてよい条件 = 受信した注文の行に答えた日時の列ができたとき (その列の日時で並べる)。
+    """
+    for arrived, answer in undated:
+        at = next(n for n, event in enumerate(events) if event is arrived)
+        events.insert(at + 1, answer)
     return events
 
 
