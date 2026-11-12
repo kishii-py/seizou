@@ -306,9 +306,22 @@ ALWAYS_OPEN_APPS = ("core", "assistant", "manuals", "attachments", "feedback", "
 
 # ---------------------------------------------------------------- 金額の値
 
-#: 金額の項目の名前 (core の 1 か所の集まり)
+#: 金額の項目の名前 (core の 1 か所の集まり)。変更の履歴・詳細の項目・AI の道具が、列の名前がこの中にあるかで金額かどうかを見分ける。
+#: 金額の列を足すときは、ここに名前があるかを確かめる (previous_balance = 請求書の前回の残は、列を足した時に漏れていて、
+#: 金額の閲覧の無い人の履歴に出た。507 回目に足した)。
 MONEY_FIELDS = frozenset(
-    {"unit_price", "amount", "standard_price", "total", "subtotal", "tax", "balance", "paid_total", "reply_unit_price"}
+    {
+        "unit_price",
+        "amount",
+        "standard_price",
+        "total",
+        "subtotal",
+        "tax",
+        "balance",
+        "paid_total",
+        "reply_unit_price",
+        "previous_balance",
+    }
 )
 #: 金額の閲覧が無い人に見せる字
 MASK = "—"
