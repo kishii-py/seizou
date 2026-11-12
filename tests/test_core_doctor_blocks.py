@@ -64,7 +64,7 @@ def test_access_control_log_is_fix_in_production(site, settings):
     settings.SEIZOU = {"access_control": ALL_LOG}
     [row] = doctor.check_access_control(True)
     assert not row.ok and row.label == ACCESS
-    assert "seizou.access" in row.fix and "on にする" in row.fix
+    assert "seizou.access" in row.fix and "「有効」にする" in row.fix and "journalctl" in row.fix
     assert "記録だけ: 部署・編集の権限・金額の閲覧" in row.detail and "金額が見える" in row.detail
 
     # 立ち上げてすぐの既定 (3 つとも記録だけ) も同じ

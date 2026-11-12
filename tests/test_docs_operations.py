@@ -198,3 +198,15 @@ def test_backup_site_line_names_every_site_file_and_dir():
     assert len(lines) == 1, f"「{BACKUP_SECTION}」の節に、{SITE_COPY} の箇条が 1 行でない: {len(lines)} 行"
     missing = [name for name in [*names["SITE_FILES"], *names["SITE_DIRS"]] if f"`{name}" not in lines[0]]
     assert not missing, f"「{BACKUP_SECTION}」の {SITE_COPY} の行に、backup.py の一覧の名前が無い: {missing}"
+
+
+# 点検の節の見出しの字と、点検の一覧に要る字 (点検の行 check_template_overrides の名前。開発の記録 docs/nights/20261111/N420.md)
+DOCTOR_SECTION = "立ち上げの確かめ"
+TEMPLATE_OVERRIDES = "上書きしたテンプレート"
+
+
+def test_doctor_list_names_template_overrides():
+    section = _section(_read(DOC), DOCTOR_SECTION)
+    assert section, f"docs/operations.md に「{DOCTOR_SECTION}」を含む ## の節が無い"
+    items = [line for line in section if line.startswith("- ") and TEMPLATE_OVERRIDES in line]
+    assert len(items) == 1, f"「{DOCTOR_SECTION}」の節の点検の一覧に「{TEMPLATE_OVERRIDES}」の行が 1 行でない: {len(items)} 行"
