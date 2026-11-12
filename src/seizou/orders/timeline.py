@@ -24,6 +24,7 @@ from decimal import Decimal
 from django.apps import apps
 from django.utils import timezone
 
+from seizou.core import edi_codes
 from seizou.core.dashboard import INLETS
 from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.views import model_url
@@ -189,8 +190,6 @@ def _revision_events(revision) -> tuple[Event, Event | None]:
     保留の後に受け入れるか断った版は、注文回答のタイプと送った日時が今の答えに書き直される (connect.services._restart_reply) ので、今の答えだけを出す。
     字は発注の側の流れ (purchasing.timeline の _revision_name と _revision_reply_event) と向かい合う形。行き先はその版の受信した注文の詳細。
     """
-    from seizou.core import edi_codes  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
-
     word = "取消" if revision.purpose_code == edi_codes.PURPOSE_CANCEL else "変更"
     what = f"第 {revision.revision_no} 版の{word}"
     url = _url(revision)
