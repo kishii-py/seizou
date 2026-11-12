@@ -119,7 +119,7 @@ class InvoiceModalView(BaseModalView):
 
     def get_queryset(self):
         # 入金は残と入金の状態 (Invoice.balance・payment_status) が読む。明細は詳細の「明細」のタブと同じ 3 つ (出荷・部品・受注) を一緒に 1 回で読む
-        # (一式の行は出荷が空)。並びは InvoiceLine の Meta の ordering のまま。
+        # (一式の行と、出荷を消した出荷の行は出荷が空。小窓の表は出荷番号の写しを読む)。並びは InvoiceLine の Meta の ordering のまま。
         lines = InvoiceLine.objects.select_related("shipment", "order_line__item", "order_line__order")
         return Invoice.objects.select_related("customer").prefetch_related("payments", Prefetch("lines", queryset=lines))
 
