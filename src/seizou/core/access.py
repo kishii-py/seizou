@@ -631,6 +631,18 @@ def is_money_name(name: str) -> bool:
     return str(name).rsplit("__", 1)[-1] in MONEY_FIELDS
 
 
+def without_money_keys(value):
+    """JSON の値から、金額の名前 (is_money_name) の鍵を鍵ごと外した写し (入れ子の辞書と並びも)。辞書と並びでない値はそのまま返す。
+
+    金額の閲覧の無い人に JSON の中身を見せる所 (connect の送り合いの中身・変更の履歴の JSON の項目) が使う。
+    """
+    if isinstance(value, dict):
+        return {key: without_money_keys(item) for key, item in value.items() if not is_money_name(key)}
+    if isinstance(value, list):
+        return [without_money_keys(item) for item in value]
+    return value
+
+
 # ---------------------------------------------------------------- 画面と帳票の門
 
 

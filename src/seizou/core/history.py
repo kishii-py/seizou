@@ -211,6 +211,31 @@ def saved_state(obj) -> dict:
     return state
 
 
+def _money_free_json(text):
+    """履歴の値の字が JSON (辞書か並び) で、金額の名前の鍵を含むなら、その鍵を鍵ごと外した JSON の字。JSON でないか、金額の鍵が無ければ None。
+
+    字の形は plain_text と同じ (鍵を並べた JSON)。受信した注文の「注文回答の明細」(回答単価が入る) のような JSON の項目を、
+    金額の閲覧の無い人に出す時に使う (Timeline._row)。
+    """
+    if not isinstance(text, str) or text[:1] not in ("[", "{"):
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    stripped = access.without_money_keys(value)
+    if stripped == value:
+        return None
+    return json.dumps(stripped, ensure_ascii=False, sort_keys=True)
+
+
+def _has_money(item) -> bool:
+    """履歴の 1 項目が金額を含むか (型が money か、JSON の値の中に金額の名前の鍵がある)。"""
+    if item.get("type") == "money":
+        return True
+    return any(_money_free_json(item.get(key, "")) is not None for key in ("before", "after"))
+
+
 def _shown(kind: str, text: str) -> str:
     """変えた項目の前か後の、画面の字 (money は ¥ の字、number は区切り、bool は「はい」「いいえ」、空は「—」)。"""
     from seizou.core.templatetags.seizou_tags import comma, yen
@@ -237,7 +262,7 @@ class Timeline:
     (value は畳む行のその時の値 = 作ったは後、消したは前)。訳: 同じ部品を見る図面のビューア (masters の ItemDrawingViewerView も
     BaseDetailView) は履歴を描かないので、問い合わせを増やさないため。
     金額の項目 (型 money) は、金額の閲覧の無い人には項目ごと出さず (_row)、項目が 1 つも残らない行は行ごと出さない。
-    判定 (access.can_see_money) は money の項目のある行がある時だけ 1 回呼ぶ (記録だけの状態では記録に 1 行。money の項目が無ければ記録しない)。
+    判定 (access.can_see_money) は money の項目 (か、金額の鍵を含む JSON の項目) のある行がある時だけ 1 回呼ぶ (記録だけの状態では記録に 1 行。money の項目が無ければ記録しない)。
     記録の字は画面の印 (seizou.hide_money) と同じ「単価と金額を見た」にする。訳: 記録だけの状態の記録は同じ要求の同じ字を
     1 行にまとめる (access.log_only) ので、金額の出る詳細を 1 回開いた記録が、履歴の金額の分で 2 行にならないため
     (tests/test_core_access_hardening.py の「印を何度読んでも 1 行」)。
@@ -275,7 +300,7 @@ class Timeline:
     def rows(self) -> list[dict]:
         entries = self._entries
         hide_money = False
-        if any(item.get("type") == "money" for entry in entries for item in (entry.changes or ())):
+        if any(_has_money(item) for entry in entries for item in (entry.changes or ())):
             hide_money = not access.can_see_money(self.user)
         rows = (self._row(entry, hide_money) for entry in entries)
         return [row for row in rows if row is not None]
@@ -295,6 +320,7 @@ class Timeline:
 
     def _row(self, entry, hide_money: bool) -> dict | None:
         """1 行。hide_money (金額の閲覧の無い人) なら金額の項目 (型 money) を入れず、項目が 1 つも残らない行 (単価だけを直した行など) は None (出さない)。
+        JSON の値の項目は、中の金額の名前の鍵を鍵ごと外して出す (金額だけが変わった項目は入れない)。
 
         訳: 金額を見られない人の履歴には、金額の項目を項目ごと出さず、項目が残らない行は行ごと出さない。
         何のため: 隠した印を見せると、見られない物があると知らせて働く人の気持ちを下げるため。
@@ -310,8 +336,18 @@ class Timeline:
             kind = item.get("type", "text")
             if hide_money and kind == "money":
                 continue
-            before = _shown(kind, item.get("before", ""))
-            after = _shown(kind, item.get("after", ""))
+            before_text, after_text = item.get("before", ""), item.get("after", "")
+            if hide_money and kind != "money":
+                # JSON の値 (受信した注文の「注文回答の明細」など) の中の金額の鍵は、鍵ごと外して出す。
+                # 外した後に前と後が同じ項目 (金額だけが変わった) は、金額の項目と同じく項目ごと出さない (515 回目)。
+                stripped = [_money_free_json(text) for text in (before_text, after_text)]
+                if any(text is not None for text in stripped):
+                    before_text = before_text if stripped[0] is None else stripped[0]
+                    after_text = after_text if stripped[1] is None else stripped[1]
+                    if before_text == after_text:
+                        continue
+            before = _shown(kind, before_text)
+            after = _shown(kind, after_text)
             items.append(
                 {
                     "label": without_yen_unit(item.get("label", item.get("field", ""))),

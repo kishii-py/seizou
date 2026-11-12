@@ -354,12 +354,8 @@ def chat_panel(target, user):
 
 
 def _without_money(value):
-    """JSON の値から、金額の名前 (access.is_money_name) の鍵を鍵ごと外した写し (入れ子の辞書と並びも)。"""
-    if isinstance(value, dict):
-        return {key: _without_money(item) for key, item in value.items() if not access.is_money_name(key)}
-    if isinstance(value, list):
-        return [_without_money(item) for item in value]
-    return value
+    """JSON の値から、金額の名前 (access.is_money_name) の鍵を鍵ごと外した写し (入れ子の辞書と並びも)。中身は core.access.without_money_keys。"""
+    return access.without_money_keys(value)
 
 
 @register.simple_tag
