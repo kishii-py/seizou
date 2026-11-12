@@ -35,10 +35,10 @@ def _departments():
     """作り物の会社の種と同じ部署 3 つ (部品の並びは accounts/demo_seed.py の DEPARTMENTS の写し)。"""
     return {
         "sales": accounts_services.create_department(
-            "受注と出荷", ["orders", "intake", "connect", "shipping", "purchasing", "stock", "masters"], ["orders", "shipping"], None
+            "受注と出荷", ["orders", "intake", "connect", "shipping", "purchasing", "stock", "receiving", "masters"], ["orders", "shipping"], None
         ),
         "keiri": accounts_services.create_department("経理", ["billing", "orders", "shipping", "masters"], ["billing"], None),
-        "seizo": accounts_services.create_department("製造", ["workorders", "progress", "stock", "masters"], ["workorders"], None),
+        "seizo": accounts_services.create_department("製造", ["workorders", "progress", "stock", "receiving", "masters"], ["workorders"], None),
     }
 
 

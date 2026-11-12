@@ -20,10 +20,18 @@ DEMO_PASSWORD = "seizou-demo-1103"
 #: seizou new --demo --demo-password が子の process に渡す環境変数 (ログイン ID → 合言葉の JSON)。cli.py の DEMO_PASSWORDS_ENV と同じ名前
 PASSWORDS_ENV = "SEIZOU_DEMO_PASSWORDS"
 
-#: (部署, 開ける部品, 既定の権限, 並び)
+#: (部署, 開ける部品, 既定の権限, 並び)。
+#: 入荷 (receiving) は「製造」と「受注と出荷」に入れる (本人の決め 11-13 07:3x)。入荷の記録は書く権限の要らない現場の記録なので、
+#: 部署で開けるかだけで決まる。入荷が無いと指示書と出荷を止める設定の会社で、現場は左のメニューから、事務は受注の詳細の緑の
+#: 「入荷を記録する」から入れられるようにするため (前はどの部署にも無く、管理者だけが入荷を記録できた)。経理と総務には入れない。
 DEPARTMENTS = (
-    ("製造", ("workorders", "progress", "stock", "masters"), ("workorders",), 1),
-    ("受注と出荷", ("orders", "intake", "connect", "shipping", "purchasing", "stock", "masters"), ("orders", "shipping"), 2),
+    ("製造", ("workorders", "progress", "stock", "receiving", "masters"), ("workorders",), 1),
+    (
+        "受注と出荷",
+        ("orders", "intake", "connect", "shipping", "purchasing", "stock", "receiving", "masters"),
+        ("orders", "shipping"),
+        2,
+    ),
     ("経理", ("billing", "orders", "shipping", "masters"), ("billing",), 3),
     ("総務", ("masters",), ("master_edit",), 4),
 )
