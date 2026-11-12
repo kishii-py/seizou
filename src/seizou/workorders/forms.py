@@ -11,8 +11,10 @@ from django.db.models import Q
 from seizou.core.forms import CHECKBOX_CSS, Checkboxes
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_processes
+from seizou.orders.services import remaining_qty
 
 from .models import WorkOrder, WorkOrderStep
+from .services import issued_qty
 
 _OrderLine = WorkOrder._meta.get_field("order_line").related_model
 
@@ -53,6 +55,25 @@ class WorkOrderIssueForm(forms.Form):
         if pk.isdecimal():
             field = self.fields["order_line"]
             field.queryset = _OrderLine.objects.filter(~Q(order__status="cancelled") | Q(pk=int(pk))).select_related("order", "item")
+            if not self.is_bound and "qty" not in self.initial:
+                self._set_initial_qty(int(pk))
+
+    def _set_initial_qty(self, pk):
+        """受注の明細から開いた入力 (?order_line=<pk>) の「数量」の初めの値に、まだ指示書を出していない数を入れる。
+
+        入れる数 = 受注の明細の残 (orders.services.remaining_qty。完了の明細は 0 以下 = RULES.md R25) − 取消でない指示書の数量の合計
+        (services.issued_qty。R06 の検査と同じ関数)。0 以下の時と、取消の受注の明細の時は入れない (空のまま)。人はそのまま保存するか打ち直す。
+        送った後の描き直し (bound) と、数量の初めの値が既にある時は呼ばない (人が打った値と渡された値をそのまま出す)。
+        訳: 受注の詳細の緑の「指示書を発行する」と明細の ⋮ から開いた入力で、数量を打たずに工程を選んで保存できるようにするため
+        (出荷・入荷・受入の入力は、残りの数が数量に入って開く)。出所 = 本人の決め 11-12 23:3x (依頼書 N441)。
+        変えてよい条件 = 本人が初めの値の数え方を決め直したとき。断る処理ではなく、保存の処理と検査は変えない。
+        """
+        line = _OrderLine.objects.filter(pk=pk).select_related("order").first()
+        if line is None or line.order.status == "cancelled":
+            return
+        rest = remaining_qty(line) - issued_qty(line)
+        if rest > 0:
+            self.initial["qty"] = rest
 
     def service_kwargs(self):
         line = self.cleaned_data["order_line"]
