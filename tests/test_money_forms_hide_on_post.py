@@ -12,7 +12,9 @@
 (<input>・<select>・<textarea> の name の末尾が core.access.MONEY_FIELDS の名前) と、作り物の記録の単価と金額の字が無い。
 「残の全額を入れる」「残を消す金額を入れる」のボタン (data-fill-amount) も無い。
 字の並びが正しいこと (試験が空振りしないこと) は、金額の閲覧のある人が同じ画面を開いた時に、同じ字のどれかが出ることで見る
-(出ない画面は MONEY_NOT_ON_SCREEN に訳を書く)。
+(出ない画面は MONEY_NOT_ON_SCREEN に訳を書く)。ただし、受注の変更と発注の変更は、空の中身で送ると明細の formset の行を描かない
+(管理の欄が無いため) ので、明細の単価の字が出ないことは試験 2 (tests/test_money_forms_direct_post.py。明細の行を描いた事も見る) で見る。
+締めの一括は、空の中身でも作り物の出荷の入った締めの表を描くよう、今日を CLOSING_TODAY に止める (描いた事は DRAWN_ON_EMPTY_POST で見る)。
 
 作り物の金額は、ほかの数と紛れない値にする: 単価 7,331・数量 3 → 金額 21,993。入金 4,987・調整 −1,129・提案の単価 7,129。
 記録は services で作る (既にある試験の helper を import する。そのファイルは変えない)。会社・人・品番は作り物。
@@ -65,8 +67,8 @@ ISSUED_ON = date(2026, 11, 30)
 RECEIVED_ON = date(2026, 12, 25)
 ADJUSTED_ON = date(2026, 12, 26)
 DUE_DATE = date(2026, 11, 20)
-#: 締めの一括の画面の今日 (2026-11-20 締めの後)
-CLOSING_TODAY = date(2026, 11, 25)
+#: 締めの一括の画面の今日。年月の初めの値 (前の月) が 2026-11 になり、空の中身で送っても 2026-11-20 締めの表 (作り物の出荷 1 件) を描く。
+CLOSING_TODAY = date(2026, 12, 5)
 
 #: 金額の閲覧の無い人の描き直しにも出てよい、金額の項目の欄 (URL の名前 → 欄の名前)。
 #: 訳: 入金の記録・請求書の外で受け取った入金の記録・調整の記録の金額 (amount) は、使う人が自分で入れる字なので隠さない
@@ -103,6 +105,9 @@ MONEY_NOT_ON_SCREEN: dict[str, str] = {
 
 #: 記録を作れなかった画面・送る形が特別な画面 (URL の名前 → 訳)。数を固定する。
 NOT_COVERED: dict[str, str] = {}
+
+#: 空の中身の描き直しに、作り物の記録の部分を描いた印 (URL の名前 → 本文に在る字)。字の無いことが、描かなかったからでないことを見る。
+DRAWN_ON_EMPTY_POST = {"billing:invoice_closing": "2026-11-20 締め: 作る 1 社"}
 
 
 def _url_patterns(patterns, namespace=""):
@@ -196,7 +201,7 @@ class World:
         self.owner = User.objects.create_superuser("owner", password="pass-for-tests-only")
 
     def freeze_today(self):
-        """締めの一括の「年月」の選択肢 (今月とその前の 11 か月) に 2026-11 が入るよう、今日を CLOSING_TODAY にする
+        """締めの一括の「年月」の初めの値 (前の月) が 2026-11 になるよう、今日を CLOSING_TODAY にする
         (tests/test_billing_closing_views.py の today と同じ差し替え)。"""
         self.monkeypatch.setattr("seizou.billing.forms.timezone.localdate", lambda *args, **kwargs: CLOSING_TODAY)
         self.monkeypatch.setattr("seizou.billing.services.timezone.localdate", lambda *args, **kwargs: CLOSING_TODAY)
@@ -461,6 +466,8 @@ def test_empty_post_redraw_hides_money(client, money_on, world, name):
     assert money_field_names(body, TYPED_MONEY_FIELDS.get(name, frozenset())) == [], name
     assert found_texts(body, texts) == [], name
     assert "data-fill-amount" not in body, name
+    if name in DRAWN_ON_EMPTY_POST:
+        assert DRAWN_ON_EMPTY_POST[name] in body, name
 
     # 空振りでないこと: 金額の閲覧のある人が同じ画面を開くと、同じ字のどれかが出る (出ない画面は MONEY_NOT_ON_SCREEN)。
     client.force_login(money_person())

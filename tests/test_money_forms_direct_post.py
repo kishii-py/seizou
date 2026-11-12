@@ -40,6 +40,14 @@ from tests.test_money_forms_hide_on_post import (
 
 HEADING = "この画面は開けません"
 
+#: 描き直しに、作り物の記録の部分を描いた印 (URL の名前 → 本文に在る字)。字の無いことが、描かなかったからでないことを見る
+#: (受注の変更と発注の変更は、試験 1 の空の中身では明細の行を描かないので、ここで見る)。
+DRAWN = {
+    "orders:order_update": 'name="lines-0-qty"',
+    "purchasing:purchaseorder_change": 'name="lines-0-qty"',
+    "billing:invoice_closing": "2026-11-20 締め: 作る 1 社",
+}
+
 
 def _management(total, initial):
     return {
@@ -258,6 +266,8 @@ def test_direct_post_is_refused_and_redraw_hides_money(client, money_on, world, 
     assert money_field_names(body, TYPED_MONEY_FIELDS.get(name, frozenset())) == [], name
     assert found_texts(body, texts) == [], name
     assert "data-fill-amount" not in body, name
+    if name in DRAWN:
+        assert DRAWN[name] in body, name
 
     # 同じ人が同じ画面を開くと、開いた時点で 403。断りの字は送った時と同じ文。
     opened = client.get(url)
