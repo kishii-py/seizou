@@ -223,7 +223,10 @@ class OrderLine(models.Model):
 
     @cached_property
     def acceptance(self):
-        """検収の要約 (読むだけ)。受注の詳細の明細の表が読む。関数は orders.services.acceptance_summary。"""
+        """検収の要約 (読むだけ)。受注の詳細の明細の表が読む。関数は orders.services.acceptance_summary。
+
+        受注の詳細は明細と一緒に検収を先に読む (orders.timeline.detail_lookups) ので、その写しから作り、明細ごとに問い合わせない (依頼書 N432)。
+        """
         from . import services
 
         return services.acceptance_summary(self)

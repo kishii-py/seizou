@@ -135,19 +135,10 @@ def prefetch_for(queryset):
     workorder_model, step_model = _workorder_models()
     if workorder_model is None:
         return queryset
-    # 指示書の状態・進捗の盤と同じ式 (良品の合計・不良の合計・完了の印。progress の部品が無ければ 0・0・偽の Value)。
-    # 印は Exists の副問い合わせなので、工程の問い合わせは 1 回のまま。
-    steps = step_model.objects.select_related("process").order_by("seq").annotate(**step_model.total_expressions())
-    if apps.is_installed("seizou.purchasing"):
-        # 協力企業に出した工程の出ている数とまだ渡していない数 (BoardRow.progress_label)。3 つとも Subquery なので、実績の Sum と
-        # 受注の明細の残の Sum と掛け合わず、工程の問い合わせは 1 回のまま (見比べのまとめの M01 の 3 段目)。
-        from seizou.purchasing.services import annotate_subcontract
-
-        steps = annotate_subcontract(steps)
     workorders = (
         workorder_model.objects.exclude(status=workorder_model.STATUS_CANCELLED)
         .order_by("issued_on", "pk")
-        .prefetch_related(Prefetch("steps", queryset=steps))
+        .prefetch_related(Prefetch("steps", queryset=steps_for_board(step_model)))
     )
     if apps.is_installed("seizou.stock"):
         # 在庫数は Subquery なので、annotate_remaining の後に当てても残は変わらず、問い合わせの数も増えない。
@@ -155,6 +146,23 @@ def prefetch_for(queryset):
 
         queryset = annotate_balance(queryset, "item_id")
     return queryset.prefetch_related(Prefetch("workorders", queryset=workorders))
+
+
+def steps_for_board(step_model):
+    """BoardRow が読む工程の queryset (工程の名前つき・順の昇順)。生産管理ボード (prefetch_for) と受注の詳細 (timeline.detail_lookups) が使う。
+
+    指示書の状態・進捗の盤と同じ式 (良品の合計・不良の合計・完了の印。progress の部品が無ければ 0・0・偽の Value) を足す。
+    印は Exists の副問い合わせなので、工程の問い合わせは 1 回のまま。BoardRow は足した値を読み、工程ごとに問い合わせない。
+    集計の annotate を足すと model の既定の並び (Meta.ordering) が外れるので、順 (seq) の並びを書いて付ける。
+    """
+    steps = step_model.objects.select_related("process").order_by("seq").annotate(**step_model.total_expressions())
+    if apps.is_installed("seizou.purchasing"):
+        # 協力企業に出した工程の出ている数とまだ渡していない数 (BoardRow.progress_label)。3 つとも Subquery なので、実績の Sum と
+        # 受注の明細の残の Sum と掛け合わず、工程の問い合わせは 1 回のまま (見比べのまとめの M01 の 3 段目)。
+        from seizou.purchasing.services import annotate_subcontract
+
+        steps = annotate_subcontract(steps)
+    return steps
 
 
 def totals_of(queryset) -> dict:

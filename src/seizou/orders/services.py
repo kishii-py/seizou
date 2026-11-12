@@ -540,22 +540,36 @@ def acceptance_summary(order_line):
     (前の版への検収も止めずに受けてあり、受注の詳細の検収の枡に「第 n 版の注文への検収 (今は第 m 版)」の札を出すのに使う。無いときは鍵を足さない)。
     今の版は受注の逆の関係 inbox_message (受信した注文の第 1 版の行) の current_revision_no()。受信した注文で作った受注でなければ見ない。
     connect の部品が無い会社 (逆の関係が無い) では 0 件。読むだけ。
+    明細と一緒に先に読んだ検収 (prefetch。受注の詳細の orders.timeline.detail_lookups) があれば、その行から同じ値を作り、
+    明細ごとに問い合わせない (依頼書 N432)。先に読んでいなければ aggregate で読む。返す dict の中身はどちらも同じ。
     """
     rows = getattr(order_line, "acceptances", None)
     if rows is None:
         return {"count": 0, "total": Decimal("0"), "last_on": None}
-    sums = rows.aggregate(
-        count=Count("pk"),
-        total=Coalesce(Sum("qty"), Value(Decimal("0")), output_field=_QTY_FIELD),
-        last_on=Max("accepted_on"),
-    )
+    read = getattr(order_line, "_prefetched_objects_cache", {}).get("acceptances")
+    if read is not None:
+        read = list(read)
+        sums = {
+            "count": len(read),
+            "total": sum((row.qty for row in read), Decimal("0")),
+            "last_on": max((row.accepted_on for row in read), default=None),
+        }
+    else:
+        sums = rows.aggregate(
+            count=Count("pk"),
+            total=Coalesce(Sum("qty"), Value(Decimal("0")), output_field=_QTY_FIELD),
+            last_on=Max("accepted_on"),
+        )
     total = sums["total"]
     # 受信した注文は受注の 1 対 1 の逆の関係。無ければ RelatedObjectDoesNotExist (AttributeError の子) で None。
     inbox = getattr(order_line.order, "inbox_message", None) if sums["count"] else None
     current = inbox.current_revision_no() if inbox is not None else None
     old = None
     if current is not None and current > 1:
-        old = rows.filter(order_revision_no__lt=current).aggregate(low=Min("order_revision_no"))["low"]
+        if read is not None:
+            old = min((row.order_revision_no for row in read if row.order_revision_no < current), default=None)
+        else:
+            old = rows.filter(order_revision_no__lt=current).aggregate(low=Min("order_revision_no"))["low"]
     # SQLite は集計の値を桁なしで返すことがあるので Decimal(str()) で受ける。
     summary = {
         "count": sums["count"],
