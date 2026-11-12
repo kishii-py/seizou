@@ -1929,6 +1929,8 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
     受注に無い行番号は足す (行番号は相手の番号のまま。出荷の知らせと検収は行番号で明細を指す)。注文に無い受注の明細 (受ける側が足した行) は今のまま。
     受注を変えるのは orders.services.update_order。取消 (目的 "1") は orders.services.cancel_order。行を「受け入れた」にし (受注 order は空のまま)、
     atomic の外で注文回答を返す。send が偽なら注文回答を送らず、返事の欄に MESSAGE_REPLY_SEED を書く (accept と同じ)。
+    保留 (AJ) を答えた版を受け入れる時は、保留の答えのタイプを空に戻し、注文回答の番号を新しくする (保留の番号のまま送ると、
+    相手の受け口が同じ番号の 2 回目と見て当てず、相手の発注には「相手が保留した」のまま残るため。511 回目)。
     訳: 受信した注文を人が受け入れたときだけ受注を変え (R10)、同じ版を 2 回受け入れないため (R11)。受ける側が手で直した明細も注文の値で上書きするのは、中小企業共通 EDI の注文変更 (方式 2) が変更の後の注文の全体を送るため。出所 = RULES.md R10・R11 と作者の決め (11-07 06:35。受け入れる前の画面で受注と違う値を全部出す)。
     変えてよい条件 = 作者の決めの答えが変わったとき (R10・R11 は変えない)。
     元の行の鍵は受信した注文の行だけにかける (select_for_update の of=("self",))。受注の行の鍵は orders.services の update_order・cancel_order が取る。order は空になれる列で、PostgreSQL は外部結合の空になれる側に FOR UPDATE をかけられないため (postgres の CI が落ちた。11-07)。
@@ -1956,6 +1958,12 @@ def _accept_revision(inbox, item_mapping, user, *, send=True, accepted_at=None):
         locked.status = Inbox.STATUS_ACCEPTED
         locked.accepted_at = timezone.now() if accepted_at is None else accepted_at
         fields = ["status", "accepted_at"]
+        # 保留 (AJ) を答えた後の受け入れは、別の知らせとして新しい番号で送る (_restart_reply。第 1 版の受け入れと断りと同じ)。
+        # 版の受諾は答えのタイプを書かない (send_reply が状態から受諾と読む) ので、保留のタイプも空に戻す。
+        if locked.reply_type:
+            fields += ["reply_type", "reply_lines", *_restart_reply(locked)]
+            locked.reply_type = ""
+            locked.reply_lines = []
         if not send:
             locked.reply_response = MESSAGE_REPLY_SEED
             fields.append("reply_response")
