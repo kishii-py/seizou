@@ -173,6 +173,8 @@ def test_create_post_clears_balance_and_returns_to_invoice(client_logged_in, use
     assert f"請求書 {paid_short.invoice_no} に調整 (振込手数料 ¥-660) を記録しました。" in body
     assert _summary(panel) == {"合計": "¥16,500", "入金済み": "¥15,840", "調整": "-¥660", "残": "¥0"}
     assert Invoice.objects.get(pk=paid_short.pk).payment_status() == Invoice.PAYMENT_PAID
+    # 枠の頭の入金の印も入金済み (「入金済み」は合計の並びの見出しにもあるので、ほかの 2 つの状態の字が無い事で見る)
+    assert "一部入金" not in panel and "未入金" not in panel
     (row,) = _adjustment_rows(panel)
     for text in ("2026-12-26", "-¥660", "振込手数料", "作り物の振込手数料", "tester", ">記録</td>", _cancel_url(adjustment)):
         assert text in row, text
