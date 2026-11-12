@@ -8,7 +8,8 @@
 - 金額は Event.amount に分けて持ち、題の字に入れない。見せるかはテンプレートが seizou.hide_money で決める
   (発注の詳細の明細の表の単価と金額と同じ形 = access.can_see_money)。
 - 並びは日の昇順。同じ日の中は仕事の順 (KINDS の順)、同じ種類の中は時刻 (日付だけの出来事は 0 時) と明細の番号の順。
-  取消の発注は取り消した日時の記録が無いので、「発注を取消」は日時なし (None) で最後に置く。
+  ただし注文を送ったと相手の答えは、同じ日の中で時刻の順に並べる (変更の版を送った後に前の版の答えが前に出ないように。本体の決め 11-11 14:2x)。
+  時刻まで同じなら KINDS の順 (送ったが先)。取消の発注は取り消した日時の記録が無いので、「発注を取消」は日時なし (None) で最後に置く。
 """
 
 from __future__ import annotations
@@ -35,6 +36,8 @@ KINDS = (
     "cancel",
 )
 _RANK = {kind: rank for rank, kind in enumerate(KINDS)}
+#: 同じ日の中の並びの組の順位。注文を送った (sent) と相手の答え (reply) は同じ組にし、組の中は時刻で並べる (本体の決め 11-11 14:2x)。
+_GROUP_RANK = {**_RANK, "reply": _RANK["sent"]}
 
 #: 出来事の種類ごとの絵記号 (core の seizou_icons の PATHS にある名前だけ。流れの枠の点に出す。開発の記録 docs/nights/20261105/N163.md)。種類を足すときはここにも足す。
 KIND_ICONS = {
@@ -162,14 +165,15 @@ def _receipt_events(line, receipt) -> list[Event]:
 
 
 def _sort_key(event: Event) -> tuple:
+    """並べる鍵 = (日時の無い物を最後に, 日, 並びの組の順位, 時刻, KINDS の順位, 明細の番号)。"""
     if event.when is None:
-        return (1, date.max, 0, time.min, 0)
+        return (1, date.max, 0, time.min, 0, 0)
     if isinstance(event.when, datetime):
         moment = timezone.localtime(event.when) if timezone.is_aware(event.when) else event.when
         day, clock = moment.date(), moment.time()
     else:
         day, clock = event.when, time.min
-    return (0, day, _RANK[event.kind], clock, event.line_no or 0)
+    return (0, day, _GROUP_RANK[event.kind], clock, _RANK[event.kind], event.line_no or 0)
 
 
 # --- 段の帯 (作者の決めの発注。開発の記録 docs/nights/20261105/N151.md。受注の段の帯 = orders.timeline の STAGES・Stage・StageBand と同じ形) ---------------

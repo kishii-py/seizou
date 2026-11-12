@@ -26,14 +26,16 @@
 </form>
 {% else %}{% next_receipt object as receipt %}{% if receipt %}<a class="btn btn-primary" href="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を記録する</a>{% endif %}{% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
-{# 相手が条件付で受けた・相手が保留した発注は、記録の今の状態を黄の 1 行で出す (知らせの段 5。答えが届くと 2 秒ごとの入れ替えで開いている画面にも出る)。 #}
-{% block content %}<div id="po-alert">{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
+{# 相手が条件付で受けた・相手が保留した発注は、記録の今の状態を黄の 1 行で出す (知らせの段 5。答えが届くと 2 秒ごとの入れ替えで開いている画面にも出る)。後の版を相手が受け入れた条件付の発注は、受け入れた事の 1 行に替える (本体の決め 11-11 14:2x)。revision_state は #po-alert の頭で 1 回だけ呼び、条件付の分かれと revision.alert の両方が同じ値を読む。 #}
+{% block content %}<div id="po-alert">{% revision_state object as revision %}{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「再送」を押してください。</span></div>
-{% endif %}{% endwith %}{% elif object.status == "conditional" %}
+{% endif %}{% endwith %}{% elif object.status == "conditional" %}{% if revision and revision.delivered and revision.reply == "AP" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手は第 {{ object.revision_no }} 版の変更を受け入れました ({{ revision.replied_at|date:"Y-m-d H:i" }})。相手の受注は第 {{ object.revision_no }} 版の中身です。発注の状態の字は「相手が条件付で受けた」のまま変わりません。</span></div>
+{% else %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が条件付で受けました ({{ object.replied_at|date:"Y-m-d H:i" }})。明細の下の黄の行に、相手の回答単価・回答数量・回答納期が出ています。合わせるときは「変更」で発注を直して送り、合わせないときは相手と話して決めてください。</span></div>
-{% elif object.status == "on_hold" %}
+{% endif %}{% elif object.status == "on_hold" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が保留しました ({{ object.replied_at|date:"Y-m-d H:i" }})。答えが届くのを待つか、相手と話して決めてください。</span></div>
-{% endif %}{% revision_state object as revision %}{% if revision.alert %}
+{% endif %}{% if revision.alert %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-alert>{% icon "alert" "size-5" %}<span>{{ revision.alert }}</span></div>
 {% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}
 <div id="purchaseorder-detail-poll" hidden hx-get="{{ request.path }}" hx-trigger="every 2s [!document.querySelector('#po-heading [data-detail-more][open]') && !document.querySelector('#po-live details.row-menu[open]') && !document.querySelector('#po-live section .overflow-x-auto')?.scrollLeft && !String(window.getSelection())], seizou:refresh from:body" hx-select="#po-live" hx-target="#po-live" hx-swap="outerHTML" hx-select-oob="#po-heading,#po-alert,#detail-aside,#menu-count-purchasingreceipt_list" hx-headers="js:{'X-Seizou-Live': Array.from(document.querySelectorAll('[data-live]'), function (e) { return e.dataset.live; }).join(' ')}"></div>
