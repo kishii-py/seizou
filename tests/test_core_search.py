@@ -90,8 +90,10 @@ def test_empty_query_searches_nothing_and_shows_hint(client_logged_in, bracket, 
     # 題と説明、chip (全て・部品マスター・受注) と得意先の選択。説明の 1 文は題の下に出さず (決め 11-03 14:1x)、
     # 目録と説明書が読む screen_help にある
     assert "<h1" in body and "検索</h1>" in body
-    # 探す種類が分かる字 (初見テスト R5 の候補 C36 の 3。探す種類は providers() の 3 つで、取引先は探さない)
-    assert "部品マスター・受注・マニュアルを横断して探し" in response.context["screen_help"]
+    # 探す種類が分かる字 (初見テスト R5 の候補 C36 の 3。取引先は探さない)。screen_help は種類を名指しせず (N414)、
+    # 種類は本文の「…をまとめて探します。」が開ける部品の見出しから作って示す (種類が増えても食い違わない)
+    assert "品番・品名・伝票の番号やマニュアルの言葉で、記録を横断して探し" in response.context["screen_help"]
+    assert "・".join(module.LABEL for module in core_search.providers()) + "をまとめて探します。" in body
     assert "全て" in body and "部品マスター" in body and "受注" in body
     assert "全得意先" in body
 
@@ -320,7 +322,9 @@ def test_search_page_shows_searched_fields_in_provider_order(client_logged_in, b
         "部品マスター": "自社品番・品名・図面番号・取引先の品番",
         "受注": "受注番号・得意先の注文番号・自社品番・品名",
         "出荷": "出荷番号・納品書番号",
+        "発注": "発注番号",
         "指示書": "指示書番号",
+        "請求書": "請求書番号",
         "マニュアル": "題・本文",
     }
     body = response.content.decode()
