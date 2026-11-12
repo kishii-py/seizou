@@ -488,6 +488,8 @@ def mark_change_accepted(purchase_order, user):
     相手の条件に合わせて直した変更を相手が受け入れたら、条件の話し合いが済んだ印として状態を進める。
     変更への答えで発注の状態を変えない決まりの、ただ 1 つの例外。出所 = 作者の決め (11-07 00:0x。発注元の変更を待つ) と
     作者の決め (11-07 06:42。条件付で受けた発注を直して送った変更を相手が受け入れたら、状態を進めて明細の回答を消す)。
+    呼ぶ所は connect.services の注文回答の受け口 (_receive_reply。今の版の変更への受諾が届いた時だけ。古い版と取消の版では呼ばない)。
+    11-12 までは呼ぶ所がつながっていなかった (本人の決め 11-12 14:1x で、決めたとおりにつないだ)。
     """
     with transaction.atomic():
         locked = PurchaseOrder.objects.select_for_update().get(pk=purchase_order.pk)

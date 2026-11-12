@@ -5,6 +5,9 @@
 送った記録の日時 (Outbox.sent_at) と、第 2 版への相手の答え (Outbox.reply_type・reply_note・replied_at) は、試験の中で update で入れる
 (送る口と受け口を通さずに、出来事の時刻の順だけを作るため)。
 発注の詳細の HTML は Django の test client で取り、#po-alert の中の字と段 (alert-warning) を見る。
+N437 (本人の決め 11-12 14:1x) の後は、今の版の変更への受諾が受け口に届くと、発注の状態が「相手が受け入れた」に進む
+(tests/test_connect_revision_reply_status.py)。ここの試験は、答えを表に直に書いて「条件付のまま、今の版に受諾が在る」形を作るので、
+その直しの前に答えが届いていた発注 (前の記録) の見え方を見る試験として残す (黄の 1 行の字から「状態の字は…変わりません」を消した)。
 """
 
 import re
@@ -124,8 +127,7 @@ def test_accepted_second_revision_replaces_conditional_alert(client_logged_in, u
 
     assert (
         '<div class="alert alert-warning alert-soft mb-4" role="alert">' in alert
-        and "<span>相手は第 2 版の変更を受け入れました (2026-11-10 10:20)。相手の受注は第 2 版の中身です。"
-        "発注の状態の字は「相手が条件付で受けた」のまま変わりません。</span></div>" in alert
+        and "<span>相手は第 2 版の変更を受け入れました (2026-11-10 10:20)。相手の受注は第 2 版の中身です。</span></div>" in alert
     )
     assert ADJUST_TEXT not in alert
     assert "data-revision-alert" not in alert

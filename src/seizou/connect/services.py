@@ -913,7 +913,7 @@ def _receive_reply(message_id, partner, payload):
         )
         if outbox is None:
             return _refuse(MESSAGE_REPLY_ORDER_ID, msg_id)
-        # 版 2 から (変更と取消) の答えは送った注文の行に書き、発注の状態と第 1 版の答えの列は変えない。
+        # 版 2 から (変更と取消) の答えは送った注文の行に書き、発注の状態と第 1 版の答えの列は変えない (例外は下の 1 つ)。
         if outbox.revision_no >= 2:
             _record_revision_reply(outbox, message_id, reply_type, reason)
             # 条件付受諾 (CA) の明細の答えは、第 1 版と同じく発注の明細に写す (答えの写し方を 1 か所にする)。
@@ -923,6 +923,15 @@ def _receive_reply(message_id, partner, payload):
                 except ValueError as exc:
                     transaction.set_rollback(True)
                     return _refuse(str(exc), msg_id)
+            # 例外: 今の版の変更を相手が受け入れた (AP) ら、条件付で受けた発注を「相手が受け入れた」に進める
+            # (条件の話し合いが済んだ印。作者の決め 11-07 06:42・本人の決め 11-12 14:1x)。古い版への遅れた答えと、取消の版への答えでは進めない。
+            # 条件付でない発注では mark_change_accepted が何もしない。同じ番号の答えの 2 回目も、状態がもう進んでいるので何も起きない (R11)。
+            if (
+                reply_type == edi_codes.REPLY_ACCEPTED
+                and outbox.revision_no == purchase_order.revision_no
+                and outbox.purpose_code != edi_codes.PURPOSE_CANCEL
+            ):
+                purchase_order = purchasing_services.mark_change_accepted(purchase_order, None)
             return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
         if purchase_order.reply_message_id == message_id:
             return ReplyReceipt(message_id=message_id, purchase_order=purchase_order)
@@ -1018,7 +1027,9 @@ def _record_revision_reply(outbox, message_id, reply_type, reason):
 
     reply_type は EDI の注文回答タイプコードの値 (core.edi_codes)。同じ回答の番号 (reply_message_id) の 2 回目は何もしない。
     別の番号の答えは上書きする (後から届いた本当の答えを残すため)。断らない (ValueError を投げない)。
-    発注の状態と第 1 版の答えの列 (PurchaseOrder.replied_at ほか) は変えない (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。
+    発注の状態と第 1 版の答えの列 (PurchaseOrder.replied_at ほか) は、この関数では変えない (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。
+    今の版の変更への受諾で、条件付で受けた発注を進めるのは、呼ぶ側 (_receive_reply) が purchasing.services.mark_change_accepted で行う
+    (作者の決め 11-07 06:42・本人の決め 11-12 14:1x)。
     """
     from django.utils import timezone
 
