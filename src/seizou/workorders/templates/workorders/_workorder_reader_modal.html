@@ -1,4 +1,4 @@
-{% load seizou_icons static %}
+{% load seizou_icons seizou_static %}
 {# 上の帯の「現品票を読む」の小窓の中身 (workorders.views.workorder_reader)。頭は入力の小窓 (core/_form_modal.html) と同じ形 (題と閉じるボタン)。 #}
 {# 止まった知らせ (読み取れない QR・見つからない指示書) は小窓の上の赤い帯 (core/_notices.html。CLAUDE.md の知らせの強さの小窓の例外)。 #}
 {# カメラの節: 端末のカメラで現品票の QR を読む (workorders/qr-reader.js。映像は端末の中だけで読み、送るのは読めた字だけ)。映像の枠と案内は、カメラが動いたら JS が hidden を外す。 #}

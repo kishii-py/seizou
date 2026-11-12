@@ -1,5 +1,5 @@
 {% extends "core/form.html" %}
-{% load static %}
+{% load seizou_static %}
 {# 出荷の新規登録の入力。土台の入力の画面に、受注の明細を選び直したときに数量の欄の下の「残り n」を写す JS を足すだけ。 #}
 {# カードの上に、開いた時の明細 (?order_line=) か送った明細の受注に取引先から取消か変更が届いたまま受け入れていなければ、黄色の 1 行 (orders/_revision_notice.html。依頼書 N417)。明細を選び直した時には差し替えない。出荷は止めない。 #}
 {% block content %}{% load orders_detail %}{% order_revision_notice form.order_line.value as revision %}{% include "orders/_revision_notice.html" %}{{ block.super }}<script src="{% static 'shipping/shipment-form.js' %}" defer></script>{% endblock %}

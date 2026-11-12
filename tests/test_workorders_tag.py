@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from seizou.core import reports
+from seizou.core.templatetags.seizou_static import stamped_static
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
@@ -126,7 +127,8 @@ def test_tag_shows_workorder_and_steps(logged_in, workorder, order):
     assert "<svg" in body and 'role="img"' in body
     # QR の下の字 = 読み取りの着地の絶対 URL
     assert "http://testserver" + _scan_url(workorder) in body
-    assert 'href="/static/css/report.css"' in body
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'href="{stamped_static("css/report.css")}"' in body and 'href="/static/css/report.css?v=' in body
     assert "<form" not in body
     assert "csrf" not in body.lower()
     assert PDF_NOTICE_WORDS not in body

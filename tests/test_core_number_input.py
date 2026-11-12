@@ -257,7 +257,7 @@ def _run_number_js(cases):
 def test_base_loads_number_js_once_with_defer(logged_in):
     # 並びの中の位置は見ない (同じ並びの最後に 1 行を足すほかの依頼と、順が入れ替わっても通るように)。
     body = text(logged_in.get(reverse("core:home")))
-    found = [src for src in SCRIPT_TAG.findall(body) if src.endswith("js/seizou-number.js")]
+    found = [src for src in SCRIPT_TAG.findall(body) if src.startswith("/static/js/seizou-number.js?v=")]
     assert len(found) == 1
     assert "defer" in re.search(r"<script [^>]*js/seizou-number\.js[^>]*>", body).group(0)
 

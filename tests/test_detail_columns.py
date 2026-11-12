@@ -294,7 +294,7 @@ def test_base_loads_detail_tabs_once_with_defer(logged_in):
     """
     body = logged_in.get(reverse("core:home")).content.decode()
 
-    scripts = [src for src in re.findall(r"<script [^>]*src=\"([^\"]+)\"[^>]*>", body) if src.endswith("js/seizou-detail-tabs.js")]
+    scripts = [src for src in re.findall(r"<script [^>]*src=\"([^\"]+)\"[^>]*>", body) if src.startswith("/static/js/seizou-detail-tabs.js?v=")]
     assert len(scripts) == 1
     assert "defer" in re.search(r"<script [^>]*js/seizou-detail-tabs\.js[^>]*>", body).group(0)
 

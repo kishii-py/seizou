@@ -1,4 +1,4 @@
-{% load static %}
+{% load seizou_static %}
 {# stock の入力の小窓の中身。土台の小窓 (core/_form_modal.html) のまま描き、払い出しと棚卸しの調整のときだけ、部品を選んだときに今の在庫数を出す JS を読む (画面の全体は stock/stockmove_form.html が読む)。htmx が差し替えの後に script を動かす。 #}
 {% include "core/_form_modal.html" %}
 {% if request.resolver_match.url_name == "issue_create" or request.resolver_match.url_name == "adjust_create" %}<script src="{% static 'stock/stock-form.js' %}" data-balance-url="{% url 'stock:item_balance' 0 %}"></script>{% endif %}

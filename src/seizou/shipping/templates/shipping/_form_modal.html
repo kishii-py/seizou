@@ -1,4 +1,4 @@
-{% load static seizou_icons %}
+{% load seizou_static seizou_icons %}
 {# shipping の入力の小窓の中身。入力の土台は小窓のテンプレートを app ごとに選ぶ (shipping/_form_modal.html → core/_form_modal.html) ので、画面の URL の名前で出し分ける。 #}
 {# 一括出荷は明細の表のカード (shipping/_shipment_bulk_card.html) を form_card で渡す。題と閉じるボタンと知らせは core/_form_modal.html の物。納品書の取消は確かめのカード (shipping/_deliverynote_cancel_card.html)。納品書を作るは出荷の表のカード (shipping/_deliverynote_create_card.html。作者の決め)。出荷の削除は確かめのカード (shipping/_shipment_delete_card.html。作者の決め)。ほかの入力 (出荷の新規登録・編集) は土台の小窓のまま。 #}
 {# 出荷の新規登録の小窓だけ、中身の頭 (題の上) に、明細の受注に取引先から取消か変更が届いたまま受け入れていなければ黄色の 1 行 (orders/_revision_notice.html。依頼書 N417)。題と欄の間は土台の core/_form_modal.html の中なので、この口からは題の上に置く。出荷は止めない。 #}

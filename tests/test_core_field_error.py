@@ -44,8 +44,8 @@ def text(response) -> str:
 def test_base_loads_field_error_js_once_after_submit_label(client_logged_in):
     body = text(client_logged_in.get(reverse("core:home")))
     scripts = SCRIPT_SRC.findall(body)
-    found = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-field-error.js")]
-    label = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-submit-label.js")]
+    found = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-field-error.js?v=")]
+    label = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-submit-label.js?v=")]
     assert len(found) == 1 and len(label) == 1
     # すぐ次かは見ない (今は間に seizou-number.js と seizou-scroll-hint.js があり、並びの最後に 1 行を足すほかの依頼と順が入れ替わっても通るように)
     assert found[0] > label[0]

@@ -16,6 +16,7 @@ from django.urls import reverse
 
 from seizou.core import reports
 from seizou.core.services import company
+from seizou.core.templatetags.seizou_static import stamped_static
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.shipping import services
@@ -147,7 +148,8 @@ def test_print_html_has_note_no_and_quantities(client, user, note, two_shipments
     assert note.note_no in body
     assert "作り物の得意先" in body and "作り物の製作所" in body
     assert "T-100" in body and "作り物の軸" in body
-    assert 'href="/static/css/report.css"' in body
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'href="{stamped_static("css/report.css")}"' in body and 'href="/static/css/report.css?v=' in body
     assert PDF_NOTICE_WORDS not in body
 
     # 数量は出荷と同じ (R08)。金額は数量 × 受注の単価を丸めた値で、合計は金額の和。

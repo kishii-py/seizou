@@ -17,13 +17,17 @@ from PIL import Image
 
 from seizou.core import services as core_services
 from seizou.core.models import Company
+from seizou.core.templatetags.seizou_static import stamped_static
 from seizou.core.widgets import ClearableFileWidget
 from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.masters.models import Item
 from tests.test_intake_extract import FAKE_KEY
 
-SCRIPT = '<script src="/static/js/seizou-file-drop.js" defer></script>'
+
+def script_tag():
+    """土台が読む JS の 1 行 (URL には中身の印 ?v= が付く。N442)。"""
+    return f'<script src="{stamped_static("js/seizou-file-drop.js")}" defer></script>'
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +107,8 @@ def test_multiple_input_keeps_multiple_in_box(logged_in):
 def test_script_is_loaded_from_base(logged_in):
     html = logged_in.get(reverse("core:home")).content.decode()
 
-    assert html.count(SCRIPT) == 1
+    assert html.count(script_tag()) == 1
+    assert html.count('<script src="/static/js/seizou-file-drop.js?v=') == 1
     path = finders.find("js/seizou-file-drop.js")
     assert path
     with open(path, encoding="utf-8") as f:

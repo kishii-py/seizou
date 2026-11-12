@@ -49,8 +49,8 @@ def test_base_loads_guard_after_row_menu(client):
     body = client.get(reverse("core:home")).content.decode()
 
     scripts = SCRIPT_SRC.findall(body)
-    guard = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-guard.js")]
-    menu = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-row-menu.js")]
+    guard = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-guard.js?v=")]
+    menu = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-row-menu.js?v=")]
     assert len(guard) == 1 and len(menu) == 1
     assert guard[0] == menu[0] + 1
     tag = re.search(r"<script [^>]*js/seizou-guard\.js[^>]*>", body).group(0)
@@ -61,5 +61,5 @@ def test_base_loads_guard_after_row_menu(client):
 def test_login_page_loads_guard_too(client):
     body = client.get(reverse("core:login")).content.decode()
 
-    scripts = [src for src in SCRIPT_SRC.findall(body) if src.endswith("js/seizou-guard.js")]
+    scripts = [src for src in SCRIPT_SRC.findall(body) if src.startswith("/static/js/seizou-guard.js?v=")]
     assert len(scripts) == 1

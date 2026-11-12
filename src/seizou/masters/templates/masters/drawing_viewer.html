@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load static seizou_icons masters_drawing %}
+{% load seizou_static seizou_icons masters_drawing %}
 {# 図面ビューア: 部品の図面を拡大・縮小・原寸・回転・移動 (drawing-viewer.js) して見る。ページ送り・版の選択・見比べるは link と GET の form (JS が無くても動く)。 #}
 {# 絵の URL はログインした人にだけ返す口 (masters:item_drawing)。PDF はブラウザの表示に任せる (iframe)。版の表は枠の下。 #}
 {# 頭: 題の上にパンくず (一覧 › 部品 › この画面。core/detail.html の頭と同じ形)。部品の詳細へはパンくずで戻る (右上に戻るボタンを置かない = core/detail.html の「パンくずがあれば一覧に戻るを出さない」と同じ考え)。 #}

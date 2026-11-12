@@ -74,8 +74,8 @@ def text(response) -> str:
 def test_base_loads_form_guard_after_modal(logged_in):
     body = text(logged_in.get(reverse("core:home")))
     scripts = SCRIPT_SRC.findall(body)
-    guard = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-form-guard.js")]
-    modal = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-modal.js")]
+    guard = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-form-guard.js?v=")]
+    modal = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-modal.js?v=")]
     assert len(guard) == 1 and len(modal) == 1
     assert guard[0] == modal[0] + 1
     assert "defer" in re.search(r"<script [^>]*js/seizou-form-guard\.js[^>]*>", body).group(0)

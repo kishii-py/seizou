@@ -1,4 +1,4 @@
 {% extends "core/form.html" %}
-{% load static %}
+{% load seizou_static %}
 {# 在庫の払い出しと棚卸しの調整の入力。土台の入力の画面に、部品を選んだときに数の欄の下へ今の在庫数を出す JS を足すだけ。小窓の形は stock/_form_modal.html。 #}
 {% block content %}{{ block.super }}<script src="{% static 'stock/stock-form.js' %}" data-balance-url="{% url 'stock:item_balance' 0 %}" defer></script>{% endblock %}
