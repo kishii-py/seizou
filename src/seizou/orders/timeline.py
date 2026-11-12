@@ -307,9 +307,10 @@ def reached_stages(line) -> frozenset[int]:
         reached.add(6)
     invoices = {il.invoice_id: il.invoice for s in shipments for il in _all(s, "invoice_lines") if _is_live(il.invoice)}
     if shipments:
-        # 一式の行 (出荷を指さない請求書の明細) は受注の明細から引く。出荷の無い明細には一式の行も無い (R09) ので読まない。
+        # 一式の行 (最後の出荷日がある請求書の明細 = billing の InvoiceLine.is_lump) は受注の明細から引く。出荷の無い明細には一式の行も無い (R09) ので読まない。
+        # 出荷を消した出荷の行 (出荷が空で、最後の出荷日も空) は一式の行と数えない (依頼書 N403c)。
         for il in _all(line, "invoice_lines"):
-            if il.shipment_id is None and _is_live(il.invoice):
+            if il.last_shipped_at is not None and _is_live(il.invoice):
                 invoices.setdefault(il.invoice_id, il.invoice)
     if invoices:
         reached.add(7)

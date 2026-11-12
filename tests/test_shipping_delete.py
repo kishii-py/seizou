@@ -1,8 +1,9 @@
 """打ち間違えた出荷を消す道 (shipping.services.delete_shipment と delete_refusal。本人の決め 11-08 00:23・00:25。指示書の候補 12)。
 
 消すと出荷の行が無くなり、受注の状態と在庫が出荷の前に戻り、変更の履歴に「消した」の 1 行が残る。
-発行の納品書に入った出荷・請求書の明細か請求書の外の入金が指す出荷・取引先につながる出荷 (受信した注文の出荷・送った出荷の知らせ・
+発行の納品書に入った出荷・請求書の外の入金が指す出荷・取引先につながる出荷 (受信した注文の出荷・送った出荷の知らせ・
 届いた検収)・明細を出し終えた出荷は、日本語の ValueError で断り、何も変えない (字は delete_refusal の 1 か所)。
+請求書の明細が指す出荷は消せる (明細は出荷番号と出荷日の写しを持って残る。依頼書 N403c)。
 作り物の得意先・部品・受注だけを使う。相手への HTTP は偽物 (呼ばれたら落とす) にする。
 """
 
@@ -161,16 +162,32 @@ def test_cancelled_note_shipment_can_be_deleted(user, customer, line):
 
 
 @pytest.mark.django_db
-def test_invoice_line_is_refused_even_after_cancel(user, customer, line):
+@pytest.mark.parametrize("cancel_invoice", [False, True], ids=["issued", "cancelled"])
+def test_invoice_line_shipment_can_be_deleted_and_line_stays(user, customer, line, cancel_invoice):
+    """請求書の明細が指す出荷は、納品書を取り消せば消せる (発行の請求書も取消の請求書も)。請求書の明細は出荷番号と出荷日の写しを持って残る。
+
+    前は「請求書を取り消しても消せない」(test_invoice_line_is_refused_even_after_cancel) だった。期待を変えた訳: 本人の決め 11-11 12:5x〜13:0x
+    (請求済みの出荷の直しと削除は止めない) で、請求書の明細が出荷番号と出荷日を写して残し、請求書に入った出荷を消せるようにしたため (依頼書 N403c)。
+    """
     shipment = _ship(line, "4", user)
     note = services.create_delivery_note(customer, [shipment], user)
     invoice = billing_services.create_invoice(customer, [shipment], user, issued_on=ISSUED_ON)
-    _assert_refused(shipment, user, "請求書の明細か請求書の外の入金の記録が指しています")  # 発行の請求書の出荷は、請求書を取り消しても消せないので初めから請求書の文
+    # 発行の納品書に入っている間は、納品書の文で断る (請求書の文は無くなった)。
+    _assert_refused(shipment, user, f"納品書 {note.note_no} に入っています")
 
-    billing_services.cancel_invoice(invoice, user)
+    if cancel_invoice:
+        billing_services.cancel_invoice(invoice, user)
     services.cancel_delivery_note(note, user)
+    shipment.refresh_from_db()
 
-    _assert_refused(shipment, user, "請求書の明細か請求書の外の入金の記録が指しています")
+    assert services.delete_refusal(shipment) == ""
+    services.delete_shipment(shipment, user)
+
+    assert not Shipment.objects.filter(pk=shipment.pk).exists()
+    row = invoice.lines.get()
+    assert row.shipment_id is None
+    assert (row.shipment_no, row.shipped_at, row.qty) == (shipment.shipment_no, SHIPPED_AT, Decimal("4"))
+    assert _deleted_logs(shipment.pk).count() == 1
 
 
 @pytest.mark.django_db
@@ -181,7 +198,8 @@ def test_outside_payment_is_refused_even_after_cancel(user, customer, line):
     billing_services.cancel_payment(payment, user)
     services.cancel_delivery_note(note, user)
 
-    _assert_refused(shipment, user, "請求書の明細か請求書の外の入金の記録が指しています")
+    # 断りの字は依頼書 N403c で「請求書の外で受け取った入金の記録」だけを言う形にした (断る事は変えていない)。
+    _assert_refused(shipment, user, "請求書の外で受け取った入金の記録が指しています")
 
 
 @pytest.mark.django_db

@@ -146,6 +146,15 @@ class InvoiceLine(models.Model):
     (請求書の会社の情報・得意先の名前・税率の写しは Invoice の訳のとおり)。マスターや受注を後から直すと刷り直しの字が変わるため。
     部品の単位は後から直されることがあるため、受注の明細から写す。納品書は会期中は写さない (shipping の migration が増えるため)。
     出所 = 本人の決め 11-07 23:4x (今回は請求書だけ) と 11-08 00:0x (単位・注文番号)。変えてよい条件 = 本人が決め直したとき (納品書も写すと決めたとき)。
+
+    出荷の行は、発行した時の出荷の出荷番号 (shipment_no) と出荷日 (shipped_at) も写して持つ (書くのは billing.services._issue_invoice の 1 か所。
+    一式の行は空のまま)。出荷を消すと、明細の出荷の外部キーは空になり (SET_NULL)、写しが残る (出荷を消した出荷の行)。
+    一式の行かどうかは最後の出荷日 (last_shipped_at) があるかで見る (is_lump。出荷が空かでは見ない。出荷を消した出荷の行も出荷が空のため)。
+    表と印刷の「出荷番号」「出荷日」の欄 (ref_no・shipped_on) は、出荷の行なら写しを読む (出荷を消した行も同じ字が出る)。
+    migration (0008) の前に作った明細の出荷番号と出荷日の写しは、migration の時の今の出荷の値で埋めた (発行の時の値は残っていない)。
+    訳: 請求書に入った出荷を消しても、請求書の明細の出荷番号と出荷日が残り、刷り直しても渡した時と同じ字を出すため。
+    出荷を消せるようにしたのは、請求済みの出荷の直しと削除を止めない本人の決め 11-11 12:5x〜13:0x による (知らせるのは検査の層の R27)。
+    出所 = 本人の決め 11-11 12:5x〜13:0x と、社員を消すときに名前と番号を実績に写す形 (N401)。変えてよい条件 = 本人が決め直したとき。
     """
 
     invoice = models.ForeignKey(
@@ -154,11 +163,12 @@ class InvoiceLine(models.Model):
         on_delete=models.CASCADE,
         related_name="lines",
     )
-    # 空 = 一式の行 (出荷に結び付かない行。作者の決め)。
+    # 空 = 一式の行 (出荷に結び付かない行。作者の決め) か、出荷を消した出荷の行 (出荷番号と出荷日の写しが残る)。
+    # 出荷を消すと空になる (SET_NULL。請求書に入った出荷も消せる = 本人の決め 11-11 12:5x〜13:0x)。
     shipment = models.ForeignKey(
         "shipping.Shipment",
         verbose_name="出荷",
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="invoice_lines",
@@ -186,6 +196,9 @@ class InvoiceLine(models.Model):
     unit = models.CharField("単位", max_length=10, blank=True, default="", editable=False)
     # 発行した時の受注の得意先の注文番号の写し (orders.Order.customer_order_no と同じ字数)。
     customer_order_no = models.CharField("得意先の注文番号", max_length=35, blank=True, default="", editable=False)
+    # 出荷の行だけ: 発行した時の出荷の出荷番号と出荷日の写し (shipping.Shipment の shipment_no・shipped_at と同じ字数と型)。一式の行は空。
+    shipment_no = models.CharField("出荷番号", max_length=35, blank=True, default="", editable=False)
+    shipped_at = models.DateField("出荷日", null=True, blank=True, editable=False)
 
     #: 変更の履歴は請求書の詳細の「履歴」に出す (core.history。作者の決めの伝票の「請求書」)
     history_owner = "invoice"
@@ -205,16 +218,17 @@ class InvoiceLine(models.Model):
                 fields=["invoice", "shipment"],
                 name="billing_invoiceline_invoice_shipment_unique",
             ),
-            # 出荷の行 (出荷を指し、最後の出荷日は空) か、一式の行 (出荷を指さず、単価の単位が式で、最後の出荷日がある) のどちらか (作者の決め)。
+            # 出荷の行 (出荷を指すか出荷番号の写しがあり、最後の出荷日は空) か、一式の行 (出荷を指さず、出荷番号の写しが空で、単価の単位が式で、
+            # 最後の出荷日がある) のどちらか (作者の決め)。出荷を消した出荷の行は、出荷が空で出荷番号の写しがある (本人の決め 11-11 12:5x〜13:0x)。
             models.CheckConstraint(
-                condition=models.Q(shipment__isnull=False, last_shipped_at__isnull=True)
-                | models.Q(shipment__isnull=True, last_shipped_at__isnull=False, price_basis=PRICE_BASIS_LUMP),
+                condition=(models.Q(shipment__isnull=False) | ~models.Q(shipment_no="")) & models.Q(last_shipped_at__isnull=True)
+                | models.Q(shipment__isnull=True, shipment_no="", last_shipped_at__isnull=False, price_basis=PRICE_BASIS_LUMP),
                 name="billing_invoiceline_shipment_or_lump",
             ),
-            # 1 枚の請求書に、同じ受注の明細の一式の行は 1 行だけ。
+            # 1 枚の請求書に、同じ受注の明細の一式の行 (最後の出荷日がある行) は 1 行だけ (出荷を消した出荷の行を一式の行と数えない)。
             models.UniqueConstraint(
                 fields=["invoice", "order_line"],
-                condition=models.Q(shipment__isnull=True),
+                condition=models.Q(last_shipped_at__isnull=False),
                 name="billing_invoiceline_invoice_lump_unique",
             ),
         ]
@@ -225,18 +239,32 @@ class InvoiceLine(models.Model):
         return price_basis_text(self.price_basis, self.unit)
 
     @property
+    def is_lump(self):
+        """一式の行か (読むだけ)。一式の行だけが最後の出荷日を持つ (表の制約 billing_invoiceline_shipment_or_lump)。
+
+        出荷が空かでは見ない (出荷を消した出荷の行も出荷が空のため)。単価の単位でも見ない (一式の受注の明細の出荷の行も単価の単位が式のため)。
+        問い合わせで絞るときは last_shipped_at__isnull=False (shipping と orders は billing を import せず、同じ列で見る)。
+        """
+        return self.last_shipped_at is not None
+
+    @property
+    def is_shipment_deleted(self):
+        """出荷を消した出荷の行か (読むだけ)。一式の行でなく、出荷が空の行 (出荷番号と出荷日の写しが残る)。"""
+        return not self.is_lump and self.shipment_id is None
+
+    @property
     def shipped_on(self):
-        """表と印刷の「出荷日」の欄の日付 (読むだけ)。出荷の行は出荷日、一式の行は最後の出荷日。"""
-        if self.shipment_id is None:
+        """表と印刷の「出荷日」の欄の日付 (読むだけ)。出荷の行は出荷日の写し (出荷を消した行も同じ)、一式の行は最後の出荷日。"""
+        if self.is_lump:
             return self.last_shipped_at
-        return self.shipment.shipped_at
+        return self.shipped_at
 
     @property
     def ref_no(self):
-        """表と印刷の「出荷番号」の欄の字 (読むだけ)。出荷の行は出荷番号、一式の行は「受注 <受注番号>-<行番号> の一式」。"""
-        if self.shipment_id is None:
+        """表と印刷の「出荷番号」の欄の字 (読むだけ)。出荷の行は出荷番号の写し (出荷を消した行も同じ)、一式の行は「受注 <受注番号>-<行番号> の一式」。"""
+        if self.is_lump:
             return f"受注 {self.order_line.order.order_no}-{self.order_line.line_no} の一式"
-        return self.shipment.shipment_no
+        return self.shipment_no
 
     def __str__(self):
         return f"{self.invoice.invoice_no} {self.ref_no}"

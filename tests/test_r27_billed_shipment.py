@@ -266,23 +266,54 @@ def test_r27_outside_paid_shipment_edit_warns(settings, user, logged_in, line):
     _assert_warned(logged_in.post(_edit_url(shipment), _edit_post(3)), "請求書の外で受け取った入金 (2026-11-06)")
 
 
-# --- (e) delete_refusal が断る出荷には黄を出さない ---
+# --- (j) 請求書の明細が指す出荷の削除 (依頼書 N403c。前の (e)「赤で断る」を書き換えた) ---
+# 期待を変えた訳: 本人の決め 11-11 12:5x〜13:0x (請求済みの出荷の直しと削除は止めない) で、請求書の明細が出荷番号と出荷日を写して残し、
+# 請求書に入った出荷を消せるようにしたため。delete_refusal が断らなくなったので、R27 の削除の検査が当たる。
+
+#: 請求書に入った出荷を消すときの R27 の字の真ん中 (core.checks.builtin._billed_text の削除の出荷の行)
+DELETE_LINE_TEXT = "消しても、請求書の明細 (出荷番号と出荷日の写し) は残ります。"
 
 
 @pytest.mark.django_db
-def test_r27_invoice_line_shipment_delete_stays_red(settings, user, logged_in, invoiced):
-    """(e) 請求書の明細が指す出荷を消そうとしたときは、R27 の黄を出さずに、今のまま delete_refusal の赤で断る。"""
+def test_r27_invoice_line_shipment_delete_warns_then_deletes(settings, user, logged_in, invoiced):
+    """(j) 請求書の明細が指す出荷 (分納の、明細を出し終えていない出荷) を消そうとすると、既定で黄の知らせと「このまま削除」が出る。
+    もう一度押すと消え、請求書の明細は出荷番号と出荷日の写しを持って残る (数量も変わらない)。"""
     settings.SEIZOU = {}
-    shipment, _invoice = invoiced
-    assert services.delete_refusal(shipment)
-    assert checks.run(DELETE, {"object": shipment}, user) == []
+    shipment, invoice = invoiced
+    assert not shipment.finishes_line
+    assert services.delete_refusal(shipment) == ""
+    assert [warning.message for warning in checks.run(DELETE, {"object": shipment}, user)] == [
+        f"出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に入っています。{DELETE_LINE_TEXT}"
+        "請求書も直すときは、請求書を取り消して作り直してください。"
+    ]
 
-    response = logged_in.post(_delete_url(shipment), {})
+    deleting = logged_in.post(_delete_url(shipment), {})
+    _assert_warned(deleting, invoice.invoice_no, DELETE_LINE_TEXT, button="このまま削除")
+    assert Shipment.objects.filter(pk=shipment.pk).exists()
 
-    assert response.status_code == 200
-    body = response.content.decode()
-    assert 'data-notice="check"' not in body and "このまま保存" not in body
-    assert 'data-notice="stop"' in body and "削除できません。" in body
+    assert logged_in.post(_delete_url(shipment), {"confirmed": "1"}).status_code == 302
+    assert not Shipment.objects.filter(pk=shipment.pk).exists()
+    row = InvoiceLine.objects.get(invoice=invoice)
+    assert row.shipment_id is None
+    assert (row.shipment_no, row.shipped_at, row.qty) == (shipment.shipment_no, SHIPPED_AT, Decimal("4"))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("headers", [{}, MODAL], ids=["whole", "modal"])
+def test_r27_invoice_line_shipment_delete_stop_is_red(settings, logged_in, invoiced, headers):
+    """(j) 止めるでは、赤の知らせの頭に「削除できません。」が付いて止まり、出荷は残る (画面の全体と小窓の両方)。"""
+    settings.SEIZOU = {"billed_shipment": "stop"}
+    shipment, invoice = invoiced
+
+    stopped = logged_in.post(_delete_url(shipment), {}, **headers).content.decode()
+
+    assert 'data-notice="stop"' in stopped and "R27" in stopped
+    assert (
+        f'<span class="font-semibold">削除できません。</span> 出荷 {shipment.shipment_no} は請求書 {invoice.invoice_no} に入っています。'
+        in stopped
+    )
+    assert DELETE_LINE_TEXT in stopped
+    assert "このまま削除" not in stopped
     assert Shipment.objects.filter(pk=shipment.pk).exists()
 
 
