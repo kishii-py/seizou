@@ -136,4 +136,5 @@
     </table>
   </div>
   {% endif %}{% endwith %}
+  {% if not seizou.hide_money %}{# 得意先の売掛の台帳へ (依頼書 N409c。枠の中の一番下。金額の閲覧のある人だけ) #}<p class="mt-4 text-sm" data-ledger-link><a class="link link-primary inline-flex items-center gap-2" href="{% url 'billing:receivable_detail' object.customer_id %}">{% icon "list" "size-4" %}得意先の台帳を見る</a></p>{% endif %}
 </section>{% endblock %}

@@ -8,12 +8,14 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 (adjustment_detail = 請求書の詳細へ移るだけの口) へ移る。入口は請求書の詳細の入金の枠 (入金と同じく小窓で開く。510 回目)。
 一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は残 (合計 − 取消でない入金 + 取消でない調整) が 0 より大きい発行の請求書 = 一部入金も入る
 (ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
+売掛の残 (得意先ごとの残の一覧) と得意先の売掛の台帳 (依頼書 N409c。売掛の 3 段目) は、model が取引先 (請求書の得意先の外部キーの先として引き、
+masters を import しない) の読むだけの一覧と詳細。残と台帳は services の with_receivables と customer_ledger の値を出し、画面では数えない。
 """
 
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import DecimalField, F, Sum, Value
+from django.db.models import DecimalField, Exists, F, OuterRef, Sum, Value
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -21,7 +23,7 @@ from django.urls import reverse
 
 from seizou.core import access
 from seizou.core.reports import PdfUnavailable, render_html, render_pdf
-from seizou.core.views import BaseDetailView, BaseFormView, BaseListView
+from seizou.core.views import BaseDetailView, BaseFormView, BaseListView, FilterSpec
 from django.db.models import Prefetch
 
 from seizou.core.views import BaseModalView
@@ -44,6 +46,25 @@ from .reports import INVOICE_TEMPLATE, invoice_context
 
 REPORT_TEMPLATE = INVOICE_TEMPLATE
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください"
+#: 取引先の表 (masters の Partner)。請求書の得意先の外部キーの先として引く (読むだけ。売掛の残と台帳の model)
+PartnerModel = Invoice._meta.get_field("customer").related_model
+
+
+def _issued_customers(partners):
+    """発行の請求書が 1 枚以上ある取引先だけにした queryset (売掛の残の一覧の行と、得意先の絞りの候補)。
+
+    請求書は Exists で見る (請求書の表と結び付けると、請求書の数だけ取引先の行が増えるため)。取消だけの取引先は入らない。
+    """
+    return partners.filter(Exists(Invoice.objects.filter(customer=OuterRef("pk"), status=Invoice.STATUS_ISSUED)))
+
+
+def _receivable_customer_choices():
+    """売掛の残の一覧の「得意先」の絞りの候補 (発行の請求書のある取引先。取引先コードの順。字は取引先の名前)。
+
+    一覧の model が取引先そのものなので、外部キーの lookup でなく、取引先の id の choice で絞る (発注の一覧の取引先の絞りと同じ形)。
+    """
+    rows = _issued_customers(PartnerModel.objects.all()).order_by("code", "pk")
+    return [(row.pk, str(row)) for row in rows]
 
 
 def _unpaid_only(invoices):
@@ -279,6 +300,69 @@ class AdjustmentCancelView(BaseFormView):
     template_name = "billing/adjustment_cancel.html"
     screen_name = "調整を取り消す"
     screen_help = "記録した調整を取消にします。取消の記録は履歴に残り、請求書の残の金額に戻ります。"
+
+
+class ReceivableListView(BaseListView):
+    """売掛の残 (得意先ごとの残の一覧。依頼書 N409c。売掛の 3 段目)。読むだけ。
+
+    使う人: 経理 / いつ: 得意先から残を問われたとき・月末に入金を確かめるとき / 何のために: 得意先ごとに請求・入金・調整の合計と残を並べる / 次にすること: 行から得意先の台帳へ。CSV で書き出す
+
+    行は発行の請求書が 1 枚以上ある取引先だけ。請求・入金・調整の合計と残は services.with_receivables の annotate の列
+    (台帳の customer_ledger と同じ見方。画面では数えない)。金額の 4 列は kind が money (annotate の名前は access.MONEY_FIELDS に無いため)。
+    金額の閲覧が無い人には、土台が一覧と CSV から 4 列を見出しごと外す。
+    「残のある得意先だけ」の印は FilterSpec.as_is で、条件 (残が 0 でない) は get_queryset が annotate の後に掛ける (土台の絞りは annotate の前に掛かるため)。
+    行を押すと得意先の台帳 (receivable_detail) へ移る (masters/_rows.html の分かれが 1 行を billing/_receivable_row.html にする)。
+    取引先の新規登録のボタンは出さない (billing/receivable_list.html が block actions を空にする)。
+    """
+
+    model = PartnerModel
+    screen_name = "売掛の残"
+    screen_help = (
+        "得意先ごとに、発行の請求書の合計・入金の合計・調整の合計と残 (請求 − 入金 + 調整) を並べます。"
+        "発行の請求書のある取引先だけが並びます。行を押すと得意先の台帳へ移ります。"
+    )
+    columns = (
+        "code",
+        "name",
+        "closing_day",
+        {"name": "receivable_billed", "label": "請求の合計", "kind": "money"},
+        {"name": "receivable_paid", "label": "入金の合計", "kind": "money"},
+        {"name": "receivable_adjusted", "label": "調整の合計", "kind": "money"},
+        {"name": "receivable_balance", "label": "残", "kind": "money", "sortable": True},
+    )
+    search_fields = ("code", "name")
+    filters = (
+        {"name": "customer", "label": "得意先", "kind": "choice", "field": "id", "choices": _receivable_customer_choices},
+        {"name": "open", "label": "残のある得意先だけ", "kind": "flag", "when": FilterSpec.as_is},
+    )
+    ordering = ("code",)
+    template_name = "billing/receivable_list.html"
+
+    def get_queryset(self):
+        partners = _issued_customers(services.with_receivables(super().get_queryset()))
+        if self.flag_on("open"):
+            partners = partners.exclude(receivable_balance=0)
+        return partners
+
+
+class ReceivableDetailView(BaseDetailView):
+    """得意先の売掛の台帳 (依頼書 N409c。売掛の 3 段目)。読むだけ。
+
+    使う人: 経理 / いつ: 得意先から残を問われたとき・月末に入金を確かめるとき / 何のために: 請求・入金・調整を日付で並べて残を見る / 次にすること: 請求書を開いて入金か調整を記録する
+
+    台帳の行と 4 つの合計は billing_tags の receivable_ledger (services.customer_ledger) を 1 回だけ引く (画面では数えない。行の残も関数の値)。
+    billing/receivable_detail.html は、取引先の編集のボタンを出さず (block edit_button を空)、「売掛の残に戻る」を置き (block actions)、
+    中身を得意先の札と台帳の表にする (block content。取引先の基本情報と履歴のタブと添付ファイルの枠は出さない = 読むだけの画面に書く入口を置かない)。
+    パンくずは土台のまま「取引先」を指す。
+    """
+
+    model = PartnerModel
+    screen_name = "売掛の台帳"
+    screen_help = (
+        "得意先の請求・入金・調整を日付の古い順に並べ、行ごとにそこまでの残を出します。"
+        "取消の請求書と、取消の入金と調整は並びません。読むだけの画面です。"
+    )
+    template_name = "billing/receivable_detail.html"
 
 
 @login_required

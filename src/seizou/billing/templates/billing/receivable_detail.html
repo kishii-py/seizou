@@ -1,0 +1,73 @@
+{% extends "core/detail.html" %}
+{% load billing_tags seizou_tags seizou_icons %}
+{% comment %}
+得意先の売掛の台帳 (依頼書 N409c。売掛の 3 段目)。読むだけ。頭 (パンくず・題・「?」) は core の詳細のまま。
+- 主のボタン (block edit_button): 土台の「編集」(取引先の編集) を出さない。取引先を直すのは取引先の画面。
+- 副のボタン (block actions): 「売掛の残に戻る」。パンくずの一覧の名前は土台のまま「取引先」(変えるには block heading の全部を写すので変えない)。
+- block more は土台のまま空 (削除の口は出ない)。
+- 中身 (block content): 得意先の札 (取引先コード・名前・締日と、請求の合計・入金の合計・調整の合計・残) と台帳の表。block.super を呼ばない
+  (取引先の基本情報と履歴のタブと添付ファイルの枠を出さない。読むだけの画面に書く入口を置かないため)。
+  台帳と 4 つの合計は billing_tags の receivable_ledger (services.customer_ledger) を 1 回だけ引く (足し引きしない。行の残も関数の値)。
+  マイナスの残 (札と行) は赤い字。金額の字は yen の「-¥660」(請求書の詳細の入金の枠と同じく、調整の合計と入金の行の金額には色を付けない)。
+- 金額の閲覧が無い人 (seizou.hide_money) には、4 つの合計と、表の金額と残の列を見出しごと出さない (「—」も出さない。請求書の詳細の入金の枠と同じ)。
+{% endcomment %}
+{% block edit_button %}{% endblock %}
+{% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'billing:receivable_list' %}">{% icon "arrow-left" "size-4" %}売掛の残に戻る</a>{% endblock %}
+{% block content %}{% receivable_ledger object seizou.hide_money as ledger %}
+<section id="receivable-summary" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-label="得意先と残">
+  <dl class="grid gap-x-6 gap-y-2 sm:grid-cols-3">
+    <div><dt class="text-xs text-base-content/60">取引先コード</dt><dd class="font-mono">{{ object.code }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">名前</dt><dd>{{ object.name }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">締日</dt><dd>{% if object.closing_day %}{{ object.get_closing_day_display }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</dd></div>
+  </dl>
+  {% if not seizou.hide_money %}<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-4" data-receivable-totals>
+    <div><dt class="text-xs text-base-content/60">請求の合計</dt><dd class="tabular-nums">{{ ledger.billed|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">入金の合計</dt><dd class="tabular-nums">{{ ledger.paid|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">調整の合計</dt><dd class="tabular-nums">{{ ledger.adjusted|yen }}</dd></div>
+    <div><dt class="text-xs text-base-content/60">残</dt><dd class="tabular-nums">{% if ledger.balance < 0 %}<span class="text-error">{{ ledger.balance|yen }}</span>{% else %}{{ ledger.balance|yen }}{% endif %}</dd></div>
+  </dl>{% endif %}
+</section>
+<section id="ledger" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="ledger-heading">
+  <h2 id="ledger-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "list" "size-5 text-base-content/70" %}台帳</h2>
+  {% if ledger.rows %}
+  <div class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>日</th>
+          <th>区分</th>
+          <th>番号</th>
+          <th>期間</th>
+          <th>入金の方法</th>
+          <th>期日</th>
+          <th>訳</th>
+          {% if not seizou.hide_money %}<th class="text-right">金額</th>
+          <th class="text-right">残</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ledger.rows %}
+        <tr class="hover:bg-base-200" data-ledger-row>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ row.on|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap">{% if row.kind == "invoice" %}請求{% elif row.kind == "payment" %}入金{% else %}調整{% endif %}</td>
+          <td class="whitespace-nowrap font-mono"><a class="link link-primary" href="{% url 'billing:invoice_detail' row.invoice.pk %}">{{ row.invoice.invoice_no }}</a></td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{% if row.kind == "invoice" %}{{ row.period_from|date:"Y-m-d" }}〜{{ row.period_to|date:"Y-m-d" }}{% endif %}</td>
+          <td class="whitespace-nowrap">{{ row.method|default_if_none:"" }}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ row.matures_on|date:"Y-m-d" }}</td>
+          <td class="whitespace-nowrap">{{ row.reason|default_if_none:"" }}</td>
+          {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}</td>
+          <td class="whitespace-nowrap text-right tabular-nums">{% if row.balance < 0 %}<span class="text-error">{{ row.balance|yen }}</span>{% else %}{{ row.balance|yen }}{% endif %}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="flex flex-col items-center justify-center p-6 text-center">
+    <span class="flex size-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">{% icon "inbox" "size-6" %}</span>
+    <p class="mt-4 font-medium">発行の請求書は、まだありません。</p>
+    <p class="mt-2 text-xs text-base-content/60">請求書を発行すると、請求・入金・調整が日付の古い順に並びます。</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

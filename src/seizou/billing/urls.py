@@ -6,6 +6,8 @@
 入金の記録 (payment_create) は請求書の詳細の「入金」の枠から入り、保存の後は payment_detail (移るだけの口) が請求書の詳細へ戻す。
 請求書の外で受け取った入金の記録 (shipment_payment_create) は請求書の新規登録の出荷の行から入り、保存の後は payment_detail が出荷の詳細へ移す。
 調整の記録 (adjustment_create) と取消 (adjustment_cancel) は請求書の詳細の入金の枠から入り、保存の後は adjustment_detail (移るだけの口) が請求書の詳細へ戻す。
+売掛の残 (receivable_list) と得意先の売掛の台帳 (receivable_detail。pk は取引先) は model が取引先なので、名前の約束の外 (receivable_) にして、
+土台の model の URL (取引先の一覧と詳細) と重ねない。台帳へは売掛の残の行と、請求書の詳細の入金の枠の「得意先の台帳を見る」から入る。
 """
 
 from django.urls import path
@@ -15,7 +17,7 @@ from . import views
 app_name = "billing"
 
 #: 左のメニューに並べる入口 (core の context processor が読む)
-MENU = [("請求書", "billing:invoice_list")]
+MENU = [("請求書", "billing:invoice_list"), ("売掛の残", "billing:receivable_list")]
 
 urlpatterns = [
     path("invoices/", views.InvoiceListView.as_view(), name="invoice_list"),
@@ -34,4 +36,6 @@ urlpatterns = [
     path("invoices/<int:pk>/adjustments/new/", views.AdjustmentCreateView.as_view(), name="adjustment_create"),
     path("adjustments/<int:pk>/", views.adjustment_detail, name="adjustment_detail"),
     path("adjustments/<int:pk>/cancel/", views.AdjustmentCancelView.as_view(), name="adjustment_cancel"),
+    path("receivables/", views.ReceivableListView.as_view(), name="receivable_list"),
+    path("receivables/<int:pk>/", views.ReceivableDetailView.as_view(), name="receivable_detail"),
 ]
