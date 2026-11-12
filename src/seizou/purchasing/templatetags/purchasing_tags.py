@@ -313,6 +313,18 @@ def _date_text(value) -> str:
 
 
 @register.simple_tag
+def can_mark_sent_outside(purchase_order):
+    """{% can_mark_sent_outside object as sent_outside %}。発注の詳細の頭の右の緑の「発注書を送った」と、黄の 1 行
+    「この取引先とは seizou でつながっていません。…」を出すか (purchasing.services.can_mark_sent_outside。依頼書 N439)。読むだけ。
+
+    発注の詳細の発注は、つながりの有無 (can_send) を同じ問い合わせで読んである (purchasing.views の get_queryset) ので、2 か所から呼んでも問い合わせは増えない。
+    """
+    from .. import services
+
+    return services.can_mark_sent_outside(purchase_order)
+
+
+@register.simple_tag
 def can_change_order(purchase_order):
     """{% can_change_order object as can_change %}。発注の詳細の「変更」のボタンを出すか (purchasing.services.can_change_order)。読むだけ。"""
     from .. import services

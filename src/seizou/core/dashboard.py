@@ -1167,11 +1167,13 @@ def _purchase_drafts():
 
 
 def _purchases_sent():
-    """返事を待つ発注 (状態が送った)。"""
-    purchase_model = _model("purchasing", "PurchaseOrder")
-    if purchase_model is None:
+    """返事を待つ発注 (purchasing.services.waiting_reply = 状態が「送った」で、発注書を seizou の外で送っていない物。
+    発注の一覧の絞り「返事を待っている物だけ」と同じ関数。訳はそこ。依頼書 N439)。purchasing の部品が無ければ None。"""
+    if _model("purchasing", "PurchaseOrder") is None:
         return None
-    return purchase_model._default_manager.filter(status=purchase_model.STATUS_SENT)
+    from seizou.purchasing.services import waiting_reply
+
+    return waiting_reply()
 
 
 def _noticed_lines_to_receive():
@@ -1309,7 +1311,8 @@ def _task_targets() -> dict:
             {"f_status": purchase.STATUS_DRAFT} if purchase else {},
             "purchasing.resend_purchase_order",
         ),
-        "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_status": purchase.STATUS_SENT} if purchase else {}, None),
+        # 返事を待つ発注は、数える関数 (purchasing.services.waiting_reply) と同じ関数の絞り「返事を待っている物だけ」で一覧を開く (依頼書 N439)
+        "purchase_sent": ("発注", "purchasing:purchaseorder_list", {"f_waiting_reply": "1"}, None),
         "receipt": ("受入", "purchasing:receipt_list", {}, "purchasing.receive"),
         "subcontract": ("指示書", "workorders:workorder_list", {"f_to_subcontract": "1"}, "purchasing.create_purchase_order"),
         "handover": ("発注", "purchasing:purchaseorder_list", {"f_not_handed": "1"}, "purchasing.set_handed_on"),

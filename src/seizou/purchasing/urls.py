@@ -1,6 +1,6 @@
 """purchasing の URL。名前の約束は <model>_list / _detail / _create (core の土台が使う)。
 
-送り直す (_send) と取り消す (_cancel) と変更 (_change) は発注の詳細のボタンから入る。
+送り直す (_send) と取り消す (_cancel) と変更 (_change) と発注書を送った (_sent_outside) は発注の詳細のボタンから入る。
 発注書の印刷用の HTML (_print) と PDF (_pdf) は関数の view。
 """
 
@@ -22,6 +22,8 @@ urlpatterns = [
     path("orders/<int:pk>/modal/", views.PurchaseOrderModalView.as_view(), name="purchaseorder_modal"),
     path("orders/<int:pk>/send/", views.PurchaseOrderSendView.as_view(), name="purchaseorder_send"),
     path("orders/<int:pk>/cancel/", views.PurchaseOrderCancelView.as_view(), name="purchaseorder_cancel"),
+    # つながりの無い取引先へ発注書を seizou の外で送った事を記録する (依頼書 N439。入口は発注の詳細の頭の右の緑のボタン)
+    path("orders/<int:pk>/sent-outside/", views.PurchaseOrderSentOutsideView.as_view(), name="purchaseorder_sent_outside"),
     # 送った発注の変更 (相手が出荷し終えるまで)。_update の名前にしない訳: 土台が _update を全部の発注の「編集」の入口に使うが、変更を送れるのは一部の状態だけのため。
     path("orders/<int:pk>/change/", views.PurchaseOrderChangeView.as_view(), name="purchaseorder_change"),
     path("orders/<int:pk>/print/", views.purchaseorder_print, name="purchaseorder_print"),

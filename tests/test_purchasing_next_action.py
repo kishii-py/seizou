@@ -99,7 +99,10 @@ def test_draft_order_keeps_resend_green(client_logged_in, user, subcontractor, i
 
     head = _actions(_detail(client_logged_in, po))
 
-    assert "再送" in head
+    # つながりの無い取引先の「作成」の発注は、頭の右の緑が「再送」の代わりに「発注書を送った」(依頼書 N439。本人の決め 11-12 14:3x・18:2x)。
+    # 知らせがあっても「受入を記録する」にならない事は今のまま
+    assert "発注書を送った" in head
+    assert "再送" not in head
     assert "受入を記録する" not in head
     assert head.count("btn-primary") == 1
     assert fake_post.calls == 0
