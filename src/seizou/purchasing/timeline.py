@@ -3,6 +3,9 @@
 - 発注から受入と検収までの出来事 (登録・注文を送った・注文回答・出荷の知らせ・受入・検収・取消) を、
   発注と明細からの逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
   (送った注文は connect の Outbox の outbox_messages、出荷の知らせは connect の ShippingNotice の shipping_notices)。
+- 版 2 から (変更と取消) の送った注文は、題を「第 n 版の変更を送った (…)」「第 n 版の取消を送れなかった (…)」のように版と目的つきにし、
+  その版への相手の答え (送った注文の行の reply_type と replied_at) も相手の答えの出来事にする (字は送った記録のタブの行とそろえる。本体の決め 11-12 13:4x)。
+  版 1 の題は今のまま。版 2 からの答えでは段の帯を進めない。
 - connect が入っていない会社では、送った注文と出荷の知らせの出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
 - 明細と、明細ごとの出荷の知らせと受入は、lines_for がまとめて 3 回で読む (明細の数だけ問い合わせない。発注の詳細は 2 秒ごとに取り直すため)。
   events_for と stage_band は、その並びを渡されればそれを使い、渡されなければ自分で読む。
@@ -111,7 +114,10 @@ def events_for(purchase_order, lines=None) -> list[Event]:
     # 出荷の知らせの題に出す相手の名前は、ここで 1 回だけ読む (知らせごとに読み直さない。詳細は 2 秒ごとに取り直すため)。
     partner_name = purchase_order.partner.name
     events = [Event(purchase_order.order_date, "order", "発注を登録")]
-    events += [_sent_event(outbox) for outbox in _all(purchase_order, "outbox_messages")]
+    # 送った注文の行は 1 回だけ読み、送った出来事と版 2 からの答えの出来事の両方をその並びから作る (版の数で問い合わせを増やさない)。
+    outbox = _all(purchase_order, "outbox_messages")
+    events += [_sent_event(row) for row in outbox]
+    events += [_revision_reply_event(row) for row in outbox if row.revision_no >= 2 and row.replied_at is not None]
     if purchase_order.replied_at is not None:
         events.append(_reply_event(purchase_order))
     for line in lines_for(purchase_order) if lines is None else lines:
@@ -142,13 +148,37 @@ def _person(user) -> str:
     return "" if user is None else str(user)
 
 
+def _revision_name(outbox) -> str:
+    """版 2 からの送った注文の行の版と目的の字「第 n 版の変更」か「第 n 版の取消」(送った記録のタブの行 = connect の Outbox.__str__ と同じ字)。"""
+    kind = "取消" if outbox.purpose_code == edi_codes.PURPOSE_CANCEL else "変更"
+    return f"第 {outbox.revision_no} 版の{kind}"
+
+
 def _sent_event(outbox) -> Event:
     # 送った注文の詳細の画面は無い (送った記録は発注の詳細のタブ)。model_url は None を返す。
+    # 版 1 は「注文」、版 2 からは「第 n 版の変更」か「第 n 版の取消」を題の頭にする (本体の決め 11-12 13:4x)。
+    what = "注文" if outbox.revision_no < 2 else _revision_name(outbox)
     if outbox.response == RECEIVED:
-        title = "注文を送った (相手が受け取った)"
+        title = f"{what}を送った (相手が受け取った)"
     else:
-        title = f"注文を送れなかった ({outbox.response})"
+        title = f"{what}を送れなかった ({outbox.response})"
     return Event(outbox.sent_at, "sent", title, _url(outbox))
+
+
+def _revision_reply_event(outbox) -> Event:
+    """版 2 からの相手の答え (送った注文の行の reply_type・reply_note・replied_at。connect.services._record_revision_reply が書く)。
+
+    受諾 (AP) は「相手が第 n 版の変更を受け入れた」、辞退 (RE) は「相手が第 n 版の変更を断った (理由: …)」(理由が空なら括弧なし)、
+    ほかの値は「相手が第 n 版の変更に答えた」。取消の版は「変更」が「取消」になる。種類は版 1 の答えと同じ reply。
+    """
+    what = _revision_name(outbox)
+    if outbox.reply_type == edi_codes.REPLY_ACCEPTED:
+        title = f"相手が{what}を受け入れた"
+    elif outbox.reply_type == edi_codes.REPLY_REJECTED:
+        title = f"相手が{what}を断った" + (f" (理由: {outbox.reply_note})" if outbox.reply_note else "")
+    else:
+        title = f"相手が{what}に答えた"
+    return Event(outbox.replied_at, "reply", title)
 
 
 #: 注文回答のタイプ (中小企業共通 EDI の注文回答タイプコード) → 流れの題。辞退 (RE) は理由を添えるので _reply_event が作る
