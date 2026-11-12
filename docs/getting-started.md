@@ -59,11 +59,11 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.p
    uv sync --locked
    ```
 
-   帳票の PDF も使うなら、`uv sync --locked` の代わりに `uv sync --locked --extra pdf` を打つ。PyPI の `pip install seizou` でも部品は入るが、例の 2 社の答えと種 (`examples/companies/`) は clone した物を使う。
+   帳票の PDF も使うなら、`uv sync --locked` の代わりに `uv sync --locked --extra pdf` を打つ。PyPI の `pip install seizou` でも部品は入るが、例の 2 社の答えと種 (`examples/companies/`) は clone した物を使う。PyPI だけで入れた人は、`seizou answers-template <道>` で答えの YAML の雛形を書き出せる (v0.1.0 の次の版から)。
 2. 会社のプロジェクトを作る命令を、`examples/companies/` にある 2 社の答えの YAML で 1 回ずつ打つ: `uv run seizou new examples/companies/a_machining.yaml --demo` と `uv run seizou new examples/companies/b_plating.yaml --demo`。この命令が会社のプロジェクトを `~/seizou-sites/<会社の id>/` に作り、データベースを用意し (migrate)、管理者を 1 人作る。置き場の親は環境変数 `SEIZOU_SITES_DIR` で変えられる。`--demo` は作り物のデータを入れる指定だ。答えの YAML と同じ場所の `<会社の id>/` (種のフォルダ) から、部品・取引先・部品の取引先・工程・受注・つながりと、標準の工程・図面・指示書・出荷・納品書・請求書と、部品が持つ種 (業務マニュアル・権限 (作り物の部署とアカウント)・在庫・出荷の知らせと検収・入金) を読み込む。読み込んだ種類ごとに「<種類>: 入れた n 件・飛ばした m 件」の行を出し、最後に「作り物のデータを登録しました: <種のフォルダ>」の文を出す。種の中身は `examples/companies/README.md` に書いてある。
    答えの YAML の `industry` が業種の見本 (`src/seizou/recipes/` の 4 本 = 機械加工・表面処理・鋳造・板金) の名前か言い換えに当たると、`seizou new` は部品マスターの項目・工程・向く設定を見本から最初に入れ、「業種の見本 (<業種>) から入れました: …」の行を出す (答えの YAML に書いた項目と設定が勝つ。見本を入れないときは答えの YAML に `recipe: none` と書く)。例の 2 社の答えと種は見本と同じ中身なので、足される物は無い。
    答えの YAML に `logo:` (答えの YAML のあるフォルダから見た相対のパスで、PNG か JPEG の絵のファイル) を書くと、`seizou new` は会社のロゴと、ロゴから作った印 (favicon。ブラウザのタブに出る絵) も入れる。後から設定の画面の「会社の情報」でロゴを上げても、印ができる。印は会社の置き場で `manage.py seizou_company_icons` を打つと、ロゴから作り直せる (データベースの表には書かない)。
-3. 2 社を別のポートで起動する。A 社 (若葉精機。作り物の名前で、機械加工の注文を送る側) は 8001、B 社 (白樺めっき工業。作り物の名前で、表面処理の注文を受ける側) は 8002。`seizou new` は終わりに「次にすること: <起動の 1 行> で起動し、http://127.0.0.1:<ポート>/login/ を開いてログインします。」の文を出す。「次にすること: 」の後ろから「 で起動し」の前までが起動の 1 行で、置き場と Python の場所が埋めてある。その 1 行を写して端末で打つ。A 社の例は次の形。
+3. 2 社を別のポートで起動する。A 社 (若葉精機。作り物の名前で、機械加工の注文を送る側) は 8001、B 社 (白樺めっき工業。作り物の名前で、表面処理の注文を受ける側) は 8002。`seizou new` は終わりに「起動: 次の 1 行を打ちます。…」の行を出し、その次の行に起動の 1 行だけを出す。起動の 1 行には、置き場と Python の場所が埋めてある。その 1 行を写して端末で打つ (v0.1.0 の出力では、起動の 1 行は「次にすること: <起動の 1 行> で起動し、…」の文の中にある)。A 社の例は次の形。
 
    ```sh
    cd ~/seizou-sites/a_machining && <seizou を clone した場所>/.venv/bin/python manage.py runserver 8001
@@ -71,7 +71,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.p
 
    この端末は、起動している間ふさがる。B 社は新しい端末の窓を開いて、B 社の起動の 1 行 (末尾が `runserver 8002`) を打つ。止めるときは、その端末で Control を押しながら C を押す (Windows も同じ)。
 
-   Windows の PowerShell では、`seizou new` が出した起動の 1 行が `&&` でつないだ形なら、`cd …` と `& "<python>" manage.py runserver <ポート>` の 2 行に分けて打つ (実機で未確認)。A 社の例は次の形。
+   Windows では、`seizou new` は起動の 1 行を PowerShell で打てる形 (`cd "<置き場>"; & "<python>" manage.py runserver <ポート>`) で出すので、その 1 行をそのまま打つ。v0.1.0 の出力の起動の 1 行は `&&` でつないだ形なので、そのときだけ `cd …` と `& "<python>" manage.py runserver <ポート>` の 2 行に分けて打つ (実機で未確認)。A 社の 2 行の例は次の形。
 
    ```powershell
    cd $HOME\seizou-sites\a_machining
@@ -142,7 +142,7 @@ port: 8003
 | `settings` | 任意 | 選べる設定。鍵と既定は[「選べる設定」](settings.md)にある。書かない鍵は既定になる |
 | `partner_base_urls` | 任意 | `--demo` のときだけ使う。作り物のつながりの種の受け口の頭 (相手の会社の id → 置き場の URL の頭) |
 
-答えの YAML の雛形を出す命令は無い。Claude Code を使う方は、`/seizou:build` の 3 問に答えると、同じ形の答えの YAML が書かれて置き場が立つ ([「Claude Code から使う」](plugin.md))。
+`seizou answers-template <道>` を打つと、説明の注つきの答えの YAML の雛形を `<道>` に書き出す (既にあるファイルは上書きしない。v0.1.0 の次の版から)。鍵ごとの書き方の全部は[「答えの YAML の書き方」](answers.md)にある。Claude Code を使う方は、`/seizou:build` の 3 問に答えると、同じ形の答えの YAML が書かれて置き場が立つ ([「Claude Code から使う」](plugin.md))。
 
 ### 試した置き場から使い始める
 

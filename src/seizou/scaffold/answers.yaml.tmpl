@@ -1,0 +1,43 @@
+## seizou の答えの YAML の雛形 (値は作り物の例)。
+## 使い方: id・name・port の値を自分の会社の値に直して保存し、seizou new <このファイルの道> を打つ。
+## 任意の鍵は、行の頭が「# 」の例にしてある。使う鍵は、その鍵の行と、下の字下げした行の頭の「# 」を外して、値を直す。
+## 「## 」で始まる行は説明で、外さなくてよい。
+## 鍵ごとの書き方の全部は、seizou の docs/answers.md (答えの YAML の書き方) にある。
+
+## 会社の id。英小文字で始め、英小文字と数字と _ だけで書く (ハイフンと大文字は使えない)。置き場のフォルダ ~/seizou-sites/<id>/ の名前になる
+id: mihon_seisakusho
+## 会社の名前
+name: 見本製作所
+## 起動の 1 行の runserver のポート。整数で書き、ほかの会社の置き場と同じ番号にしない
+port: 8003
+
+## ここから任意の鍵
+
+## 業種。業種の見本 (機械加工・表面処理・鋳造・板金) の名前か言い換えに当たると、部品マスターの項目・工程・向く設定を見本から最初に入れる
+# industry: 板金
+
+## 業種の見本を入れないときだけ書く (書けるのは none だけ)
+# recipe: none
+
+## 会社の情報。納品書と請求書の会社の欄に出る。値は字で書き、数に読める値は引用符で囲む
+# company:
+#   address: 〒000-0003 見本県架空市見本町 7-8-9
+#   phone: "00-0000-0003"
+#   bank_account: 作り物銀行 見本支店 普通 0000003 名義 ミホンセイサクショ
+#   registration_no: T0000000000003
+
+## 会社のロゴ。答えの YAML のあるフォルダから見た、PNG か JPEG の絵のファイルの道
+## この行の「# 」を外すときは、先にそのファイルを置く (ファイルが無いと seizou new が止まる)
+# logo: logo.png
+
+## 部品マスターに足す項目の並び (1 項目の例)。type は text・number・date・choice・bool のどれか
+# item_fields:
+#   - label: 材質
+#     type: text
+#     required: false
+#     in_list: true
+#     searchable: true
+
+## 選べる設定 (1 つの鍵の例)。鍵と既定は seizou の docs/settings.md にある。書かない鍵は既定になる
+# settings:
+#   over_shipment: warn

@@ -32,7 +32,9 @@ SEEDED = "作り物のデータを登録しました"
 DOCTOR_RESULT = "点検の結果"
 #: 作り物の受注の番号の頭 (受注の一覧の HTML にこの字があれば、種が入っている。ASCII なので文字コードに左右されない)
 ORDER_PREFIX = b"SO-0"
-#: 出力の行の終わりの、パスワードに見える字の並び (seizou new は管理者のパスワードを 1 度だけ出す。記録には写さない)
+#: 出力の行の終わりの、パスワードに見える字の並び (seizou new は管理者のパスワードを 1 度だけ出す。記録には写さない)。
+#: 伏せるのは「管理者のパスワード: <値>」と「作り物の利用者 <ID> のパスワード: <値>」の行 (どちらも値で行が終わる)。
+#: 日本語の語で探さないのは、英語の Windows の端末で日本語が「?」になるため (試験 tests/test_scripts_install_smoke.py)
 SECRET_AT_END = re.compile(r"(?<=: )[A-Za-z0-9_-]{12,}\s*$")
 
 
@@ -47,7 +49,10 @@ def run(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Completed
 
 
 def tail(text: str, lines: int = 25) -> str:
-    """出力の終わりの行。パスワードに見える字の並びは伏せる。"""
+    """出力の終わりの行。パスワードに見える字の並び (「: 」の後ろで行の終わりまでの 12 字以上) は伏せる。
+
+    seizou new の終わりの塊では、パスワードの行だけが値で終わる。「起動:」の次の行の起動の 1 行は値の形に当たらないので残る。
+    """
     return "\n".join(SECRET_AT_END.sub("(伏せた)", line) for line in text.splitlines()[-lines:])
 
 

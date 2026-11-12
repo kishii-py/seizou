@@ -18,7 +18,7 @@ seizou new <answers.yaml> [--demo] [--password-file <path>]
     答えの industry が業種の見本 (src/seizou/recipes/<業種の id>.yaml) に当たると、答えに無い項目と設定を見本から補い、
     工程を見本から入れる (答えが勝つ。recipe: none なら入れない)。
     置き場の親は環境変数 SEIZOU_SITES_DIR で変えられる (<その値>/<id>/)。
-    起動はしない。起動の 1 行を最後に出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
+    起動はしない。起動の 1 行は、管理者の行の後の「起動:」の行の次の行に、ほかの字を付けずに出す。起動の 1 行は、Windows では PowerShell で打てる形 (cd "<置き場>"; & "<python>" manage.py runserver <port>) にする。
 seizou ai-docs <置き場> [--force]
     既にある会社の置き場 (manage.py と answers.yaml があるフォルダ) に、seizou new と同じ CLAUDE.md と AGENTS.md を後から書く。どちらかが既にあれば、--force のときだけ 2 つとも書き直す。
     置き場の道の頭の ~ は利用者のホームに広げる。
@@ -30,6 +30,11 @@ seizou github-token [<置き場>]
     置き場の道の頭の ~ は利用者のホームに広げる。
     トークンは画面に出さずに聞き、GitHub に口座の名前を聞いて確かめてから書く。出すのは口座の名前だけ。
     画面の process が置き場の .env に書けない置き場のための道 (ふだんは画面「GitHub とつなぐ」で貼る)。
+seizou answers-template <道>
+    答えの YAML の雛形 (src/seizou/scaffold/answers.yaml.tmpl) を、置き換えをせずにそのまま <道> に写す。いちばん小さい答え (id・name・port) と、
+    任意の鍵の例を # の注で持つ (PyPI だけで入れた人が examples/ を持たないため)。道の頭の ~ は利用者のホームに広げる。
+    道は必須 (既定の道を持たない。clone したフォルダの中に answers.yaml を書いてしまわないため)。
+    既にあるファイルは上書きしない。書き出す先のフォルダが無ければ作らない。どちらも何も書かずに終わりの番号 2。
 
 終わりの番号: 0 = できた / 1 = migrate などの子の process が失敗した / 2 = 答えか置き場の誤り。
 
@@ -555,7 +560,7 @@ def manage_line(command: str) -> str:
 
 
 def start_line(site: Path, port: int) -> str:
-    """起動の 1 行 (seizou new の「次にすること」と、置き場の README.md の「起動」に出す)。
+    """起動の 1 行 (seizou new の「起動:」の次の行と、置き場の README.md の「起動」に出す)。
 
     macOS と Linux では cd <置き場> && <python> manage.py runserver <port> (置き場の道に空白があるときだけ "…" で囲む)。
     Windows では cd "<置き場>"; & "<python>" manage.py runserver <port> (Windows PowerShell 5.1 は && を区切りと読まないので ; で分ける)。
@@ -812,7 +817,8 @@ def command_new(answers_path: Path, demo: bool, password_file: Path | None = Non
     if failure is not None:
         return failure
 
-    _new_report(site, answers["port"], admin_lines, made_passwords, demo_password, password_file)
+    demo_accounts = demo and (answers_path.parent / answers["id"] / DEMO_ACCOUNTS_MARKER).is_file()
+    _new_report(site, answers["port"], admin_lines, made_passwords, demo_password, password_file, demo_accounts)
     return EXIT_OK
 
 
@@ -953,9 +959,21 @@ def _new_recipe_processes(site: Path, recipe_found, recipe_added: dict) -> int |
 
 
 def _new_report(
-    site: Path, port: int, admin_lines: list[str], made_passwords: dict, demo_password: str | None, password_file: Path | None
+    site: Path,
+    port: int,
+    admin_lines: list[str],
+    made_passwords: dict,
+    demo_password: str | None,
+    password_file: Path | None,
+    demo_accounts: bool = False,
 ) -> None:
-    """seizou new の段 (できた物)。管理者と作り物の利用者のパスワードの行と、起動・点検・練習の 1 行ずつを出す。"""
+    """seizou new の段 (できた物)。使う人に要る行を、できた物 → 管理者 → 作り物の利用者のパスワード → 起動 → 点検・練習の順に出す。
+
+    起動の 1 行 (start_line) は「起動:」の行の次の行に、前後に字を付けずに出す (写す範囲を人が切り出さないため)。
+    管理者のパスワードの行は値で終える (admin_lines は _new_admin が作る。scripts/install_smoke.py が行の終わりの値を伏せる)。
+    demo_accounts (種に作り物の利用者の印がある) で --demo-password を渡していないときだけ、3 人の公開の合言葉の在りかを 1 行で指す (値は出さない)。
+    決め 11-11 14:2x (開発の記録 docs/nights/20261111/N426.md)。
+    """
     print(f"できた物: {site} の会社のプロジェクト。")
     for line in admin_lines:
         print(line)
@@ -968,7 +986,14 @@ def _new_report(
             print(f"作り物の利用者 {login_id} のパスワード: {value}")
     elif made_passwords:
         print(f"作り物の利用者 {len(made_passwords)} 人のパスワード: --demo-password で渡した値にしました。")
-    print(f"次にすること: {start_line(site, port)} で起動し、http://127.0.0.1:{port}/login/ を開いてログインします。")
+    print(
+        "起動: 次の 1 行を打ちます。この端末は起動している間ふさがります。2 社目は新しい端末の窓で打ちます。"
+        "止めるときは、この端末で Control を押しながら C を押します。"
+    )
+    print(start_line(site, port))
+    print(f"起動したら、ブラウザで http://127.0.0.1:{port}/login/ を開いてログインします。")
+    if demo_accounts and not demo_password:
+        print(f"作り物の 3 人 ({'・'.join(DEMO_ACCOUNT_IDS)}) の ID と合言葉は、seizou の docs/getting-started.md の「触り方」にあります。")
     print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print(
         f"練習するときは: 置き場で {manage_line('seizou_practice start')} を打つ"
@@ -1049,6 +1074,33 @@ def command_github_token(site: Path) -> int:
     return EXIT_OK
 
 
+#: 答えの YAML の雛形 (seizou.scaffold の中。README.md.tmpl と同じ置き場なので配布物に入る)
+ANSWERS_TEMPLATE = "answers.yaml.tmpl"
+
+
+def command_answers_template(path: Path) -> int:
+    """seizou answers-template (依頼書 N426。精査 Q1 の足りない物の 1)。答えの YAML の雛形を path に書き出す。
+
+    雛形はそのまま写す (render の $ の置き換えは使わない)。書けたら「書いた:」の 1 行で終わりの番号 0。
+    訳: 既にあるファイルは上書きせず、書き出す先のフォルダが無ければ作らずに、何も書かずに終わりの番号 2 で止まる。
+    人が書き始めた答えを黙って消さないためと、打ち違えた道に知らないフォルダを作らないため
+    (seizou new と seizou ai-docs の「既にあります」と同じ形。業務のデータを断る処理ではない)。
+    出所 = 本体の決め 11-11 14:2x (係 c の聞く物 5)。変えてよい条件 = 上書きの口 (--force) を足すなら、本体の決めの後。
+    """
+    if path.exists():
+        print(f"止まりました: 既にあります: {path} (上書きしません)", file=sys.stderr)
+        return EXIT_INPUT
+    if not path.parent.is_dir():
+        print(f"止まりました: フォルダがありません: {path.parent}", file=sys.stderr)
+        return EXIT_INPUT
+    text = resources.files("seizou.scaffold").joinpath(ANSWERS_TEMPLATE).read_text(encoding="utf-8")
+    # x = 無いときだけ作る (確かめた後に別の手がファイルを置いても、上書きしない)
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(text)
+    print(f"書いた: {path}。値を直してから seizou new {path} を打ちます。")
+    return EXIT_OK
+
+
 def user_path(text: str) -> Path:
     """命令の道の引数。頭の ~ を利用者のホームに広げる (Windows PowerShell 5.1 は外の命令に ~ をそのまま渡すため)。"""
     return Path(text).expanduser()
@@ -1088,6 +1140,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="会社の置き場の .env に、フィードバックを GitHub に送るトークン・送り先・口座の名前の 3 行を書く。トークンは画面に出さずに聞く。",
     )
     github_token.add_argument("site", type=user_path, nargs="?", default=Path("."), help="会社の置き場のフォルダ (既定は今のフォルダ)")
+    answers_template = commands.add_parser(
+        "answers-template",
+        help="答えの YAML の雛形 (説明の注つき) を書き出す",
+        description="答えの YAML の雛形を書き出す。いちばん小さい答え (id・name・port) と、任意の鍵の例を # の注で持つ。既にあるファイルは上書きしない。",
+    )
+    answers_template.add_argument("path", type=user_path, help="書き出す先のファイルの道 (例 ~/mihon_seisakusho.yaml)")
     return parser
 
 
@@ -1103,6 +1161,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_ai_docs(args.site, args.force)
     if args.command == "github-token":
         return command_github_token(args.site)
+    if args.command == "answers-template":
+        return command_answers_template(args.path)
     return EXIT_INPUT
 
 
