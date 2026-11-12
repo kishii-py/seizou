@@ -7,6 +7,7 @@
 {# 2 文目は、送った発注の変更と取消 (相手が出荷し終えるまで送れる) に合わせた字 (作者の決め)。 #}
 {# 指示書の工程 (N406b): 明細の行の隠しの欄 (workorder_step) は部品の枡の中に描く (描かないと送った値が消える。足す行の雛形も同じ)。指示書の工程のある行は、部品の欄の下に「指示書 <番号> の工程 <順> <名前>」(row.workorder_step_text)。見出しの列は足さない。欄の下の説明 (help_text) は、今は「渡した日」の欄だけが持つ。 #}
 {# 工程の列は協力企業に出す工程のある会社だけ (form.has_process)。単価の枡の中に見積の番号と「単価表から選ぶ」(masters/_price_pick_dialog.html の小窓。枠は form の外。部品が空の行は押せない形。作者の決め)。 #}
+{# 金額の閲覧の無い人には、この画面は開いた時点で断る (本人の決め 11-12 07:2x)。seizou.hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。 #}
 <form method="post" class="rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs"{% if in_modal %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#seizou-modal-box" hx-swap="innerHTML"{% endif %} novalidate data-enter-guard>
   {% csrf_token %}
   <p class="flex items-center gap-2 text-xs text-base-content/60">{% icon "info" "size-4" %}「必須」の欄と明細を 1 行以上入れて「{{ form.submit_label_plain }}」を押します。入れた値は、止まったときも消えません。{% if not seizou.practice %}つながりのある取引先には、「{{ form.submit_label_plain }}」を押すと保存と同時に注文を送ります。送った発注は、相手が出荷し終えるまでは、変更と取消を相手へ送れます。{% endif %}</p>

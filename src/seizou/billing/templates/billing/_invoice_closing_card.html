@@ -5,6 +5,7 @@
 {# 開き直し: 年月か締日を変えると、包みの箱 (#invoice-closing) が htmx の get で同じ画面を ?month=…&closing_day=… で取り直し、箱ごと差し替える (発行日は送らないので、締める日に戻る)。 #}
 {# 箱ごと差し替えるのは、欄の書きかけの印 (js/seizou-form-guard.js の data-seizou-dirty) を残さず、保存のボタンの字と発行日も選んだ締めに合わせるため。画面を移らないので、離れる時の確かめは出ない。 #}
 {# JS が動かないときは表が描き直されないが、送ると送った年月と締日で作る (作る物が無ければ赤の知らせ)。表は灰色の地に直に置かず、カードの面の中に置く (CLAUDE.md の 11-07 17:0x)。 #}
+{# 金額の閲覧の無い人には、この画面は開いた時点で断る (本人の決め 11-12 07:2x)。seizou.hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。 #}
 <div id="invoice-closing" hx-get="{{ request.path }}" hx-trigger="change from:#id_month, change from:#id_closing_day" hx-include="#id_month, #id_closing_day" hx-target="this" hx-select="#invoice-closing" hx-swap="outerHTML" hx-push-url="true" hx-history="false">
 {% include "core/_form_card.html" %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" data-closing-section>
