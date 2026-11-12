@@ -18,7 +18,7 @@ description: 会社のシステムの画面ごとの使い方を、日本語の�
 
 1. 会社のシステムの置き場は `~/seizou-sites/<id>/` です (`/seizou:build` が作った所。`<id>` は会社の id = 会社を見分ける短い名前)。今の作業のフォルダがそこでなければ、どの会社かを聞きます。候補は `~/seizou-sites/` の下のフォルダの名前です。
 2. 置き場に `manage.py` と `answers.yaml` が無ければ、「先に `/seizou:build` で会社のシステムを立ち上げてください」の趣旨を伝えて止まります。
-3. 置き場の `README.md` の「起動」にある 1 行 (`seizou new` が書いた `cd <置き場> && <python> manage.py runserver <port>`) を読み、`<python>` の所を覚えます。この後の `manage.py` は、いつもこの python で、置き場の中で打ちます。
+3. 置き場の `README.md` の「起動」にある 1 行 (`seizou new` が書いた 1 行。macOS と Linux では `cd <置き場> && <python> manage.py runserver <port>`、Windows では `cd "<置き場>"; & "<python>" manage.py runserver <port>`) を読み、`<python>` の所を覚えます。この後の `manage.py` は、いつもこの python で、置き場の中で打ちます。担当者に `manage.py` の命令を案内するとき、置き場が Windows (`README.md` の起動の 1 行が `cd "…"; & "…"` の形) なら、`& "<python>" manage.py …` の形で案内します。
 4. 命令が見つからないときや失敗したときは、出力をそのまま担当者に見せて止まります。手で作業を補いません。
 
 ## 3. 読む
