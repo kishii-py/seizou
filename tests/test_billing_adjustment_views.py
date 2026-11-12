@@ -2,17 +2,19 @@
 
 使う場面: 得意先が振込手数料 660 円を引いて振り込んだ。経理は入金 15,840 を記録し、続けて −660 の調整を記録すると、請求書は入金済みになる。
 調整は金額に関わる操作 (core.access.MONEY_ACTIONS) なので、金額の閲覧の無い人 (金額の判定が on) には入口を出さず、画面を開いた時点で断る。
-調整の入口は小窓でなく画面の全体で開く (billing/_form_modal.html に調整のカードの口がまだ無いため。記録 docs/nights/20261111/N409b.md)。
+調整の入口は入金と同じ小窓で開く (data-modal-form。510 回目に本体が billing/_form_modal.html に調整の 2 つの枝を足した。URL を直に開けば画面の全体)。
 画面に出すマイナスの金額は「-¥660」にそろえる (保存のボタンの字と保存の後の知らせも。510 回目)。
 見た目の確かめは開発サーバーを起こさず、応答の HTML (欄の並び・知らせの段の印・ボタンの字) で見る。
 作り物の組み方は tests/test_billing_payment_views.py の関数を借りる (test_ で始まる名前は import しない)。合計 16,500 の請求書 (出荷 4 と 6)。
 """
 
+import json
 import re
 from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from seizou.billing import services
@@ -21,7 +23,7 @@ from seizou.core.screens import all_screens
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from tests.billing_helpers import shipped
-from tests.test_billing_payment_views import ALL_ON, RECEIVED_ON, _customer, _invoice, _order_line, _panel, account
+from tests.test_billing_payment_views import ALL_ON, MODAL, RECEIVED_ON, _customer, _invoice, _order_line, _panel, account
 
 ADJUSTED_ON = date(2026, 12, 26)
 FEE = {"adjusted_on": "2026-12-26", "amount": "-660", "reason": "fee", "note": "作り物の振込手数料"}
@@ -94,8 +96,8 @@ def test_detail_shows_adjustment_button_for_issued_invoice(client_logged_in, inv
     panel = _panel(_detail(client_logged_in, invoice))
     assert f'href="{_create_url(invoice)}?next=' in panel
     assert "調整を記録する" in panel
-    # 小窓でなく画面の全体で開く (調整のカードの小窓の口が無い)。入金の記録は今のまま小窓
-    assert f'data-modal-form="{_create_url(invoice)}' not in panel
+    # 入金の記録と同じく小窓で開く (href は Cmd を押して新しいタブで開く時の画面の全体)
+    assert f'data-modal-form="{_create_url(invoice)}?next=' in panel
     assert 'data-modal-form="' + reverse("billing:payment_create", args=[invoice.pk]) in panel
     assert _summary(panel) == {"合計": "¥16,500", "入金済み": "¥0", "調整": "¥0", "残": "¥16,500"}
     # 調整の無い請求書には調整の並びを出さない
@@ -179,6 +181,8 @@ def test_create_post_clears_balance_and_returns_to_invoice(client_logged_in, use
     (row,) = _adjustment_rows(panel)
     for text in ("2026-12-26", "-¥660", "振込手数料", "作り物の振込手数料", "tester", ">記録</td>", _cancel_url(adjustment)):
         assert text in row, text
+    # 調整の取消も小窓で開く (入金の取消と同じ)
+    assert f'data-modal-form="{_cancel_url(adjustment)}"' in row
     # 残が 0 なので、頭の右の緑の「入金を記録する」は出ない (枠の白いボタンは出る)
     assert body.count("btn-primary") == 0
 
@@ -216,6 +220,60 @@ def test_create_on_cancelled_invoice_is_refused(client_logged_in, user, invoice)
     assert '<span class="font-semibold">記録できません。</span>' in body
     assert f"請求書 {invoice.invoice_no} は取消です。発行の請求書を選び直してください。" in body
     assert Adjustment.objects.count() == 0
+
+
+# --- 小窓 (請求書の詳細を離れずに記録して取り消す。510 回目) ---
+
+
+def test_create_in_modal_shows_the_card_and_saves_without_leaving(client_logged_in, paid_short):
+    """小窓で開いた調整の記録は、画面の全体と同じカード (頭の 1 行つき) を出し、保存すると移らずに知らせを返す。"""
+    opened = client_logged_in.get(_create_url(paid_short), **MODAL)
+    body = opened.content.decode()
+    assert opened.status_code == 200
+    assert "<html" not in body and 'class="seizou-modal-wide"' in body
+    assert "data-adjustment-card" in body
+    assert f"請求書 <span class=\"font-mono\">{paid_short.invoice_no}</span> (作り物の得意先)。" in body
+    assert "残 <span class=\"tabular-nums\">¥660</span>" in body
+    assert _field_names(body) == ["adjusted_on", "amount", "reason", "note"]
+    assert _button(body) == "-¥660 の調整を記録する"
+
+    saved = client_logged_in.post(_create_url(paid_short), FEE, **MODAL)
+    assert saved.status_code == 204
+    note = json.loads(saved["HX-Trigger"])["seizou:saved"]
+    assert note == {"message": f"請求書 {paid_short.invoice_no} に調整 (振込手数料 -¥660) を記録しました。", "level": "success"}
+    assert list(get_messages(saved.wsgi_request)) == []
+    assert Adjustment.objects.get().amount == Decimal("-660")
+
+
+def test_create_in_modal_bad_amount_stays_in_the_modal(client_logged_in, paid_short):
+    """小窓で金額に 0 を入れて押すと、小窓の中身のまま、上の赤い帯と欄の下の字で止まる (右上の知らせは小窓の後ろに隠れるので使わない)。"""
+    response = client_logged_in.post(_create_url(paid_short), {**FEE, "amount": "0"}, **MODAL)
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "<html" not in body and "data-adjustment-card" in body
+    assert 'data-notice="stop"' in body and "記録できません。" in body
+    assert "調整の金額は 0 でない数にしてください。" in body
+    assert Adjustment.objects.count() == 0
+
+
+def test_cancel_in_modal_shows_the_yellow_line_and_saves_without_leaving(client_logged_in, user, paid_short):
+    adjustment = services.record_adjustment(paid_short, ADJUSTED_ON, Decimal("-660"), user)
+    url = _cancel_url(adjustment)
+
+    opened = client_logged_in.get(url, **MODAL)
+    body = opened.content.decode()
+    assert opened.status_code == 200
+    assert "<html" not in body and 'class="seizou-modal-wide"' in body
+    assert f"請求書 <span class=\"font-mono\">{paid_short.invoice_no}</span> の調整 (調整日 2026-12-26・振込手数料・金額 -¥660) を取り消します。" in body
+    # 小窓は閉じるボタンだけ (「キャンセル」の link を出さない。入金の取消と同じ)
+    assert "#payments" not in body
+    assert '<button class="btn btn-error" type="submit">' in body and "取り消す</button>" in body
+
+    saved = client_logged_in.post(url, {}, **MODAL)
+    assert saved.status_code == 204
+    assert json.loads(saved["HX-Trigger"])["seizou:saved"] == {"message": "取り消しました。", "level": "success"}
+    assert Adjustment.objects.get(pk=adjustment.pk).status == Adjustment.STATUS_CANCELLED
 
 
 # --- 調整の取消 ---
@@ -273,6 +331,15 @@ def test_cancel_counted_adjustment_warns_then_cancels(settings, client_logged_in
     assert "このまま取り消す</button>" in body
     assert 'name="confirmed" value="1"' in body
     assert 'data-notice="stop"' not in body
+    assert Adjustment.objects.get(pk=adjustment.pk).status == Adjustment.STATUS_RECORDED
+
+    # 小窓でも同じ (黄の知らせは小窓の上の帯。取消はまだ行われない)
+    in_modal = client_logged_in.post(_cancel_url(adjustment), {}, **MODAL)
+    text = in_modal.content.decode()
+    assert in_modal.status_code == 200
+    assert "<html" not in text and "alert-warning" in text and "R36" in text
+    assert f"請求書 {november.invoice_no} の前回の残に数えて刷っています。" in text
+    assert "このまま取り消す</button>" in text and 'name="confirmed" value="1"' in text
     assert Adjustment.objects.get(pk=adjustment.pk).status == Adjustment.STATUS_RECORDED
 
     second = client_logged_in.post(_cancel_url(adjustment), {"confirmed": "1"})

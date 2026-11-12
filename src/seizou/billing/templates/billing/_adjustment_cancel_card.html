@@ -1,5 +1,5 @@
 {% load seizou_icons seizou_tags %}
-{# 調整の取消の確かめのカード (依頼書 N409b。入金の取消の billing/_payment_cancel_card.html と同じ形)。 #}
+{# 調整の取消の確かめのカード (依頼書 N409b。入金の取消の billing/_payment_cancel_card.html と同じ形)。全体の画面 (billing/adjustment_cancel.html) と小窓 (billing/_form_modal.html。510 回目) の両方が include する。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>請求書 <span class="font-mono">{{ object.invoice.invoice_no }}</span> の調整 (調整日 {{ object.adjusted_on|date:"Y-m-d" }}・{{ object.get_reason_display }}{% if not seizou.hide_money %}・金額 {{ object.amount|yen }}{% endif %}) を取り消します。取消の記録は履歴に残り、請求書の残の金額に戻ります。</span></div>
-{# 「キャンセル」: 調整には一覧の URL が無く、?next= が無いと土台の cancel_url が空になる。そのときは、その調整の請求書の詳細の入金の枠へ戻す (入金の取消と同じ)。 #}
+{# 「キャンセル」: 調整には一覧の URL が無く、?next= が無いと土台の cancel_url が空になる。そのときは、その調整の請求書の詳細の入金の枠へ戻す (入金の取消と同じ)。小窓は「キャンセル」を出さない。 #}
 {% if in_modal or cancel_url %}{% include "core/_form_card.html" %}{% else %}{% url 'billing:invoice_detail' object.invoice_id as invoice_url %}{% include "core/_form_card.html" with cancel_url=invoice_url|add:"#payments" %}{% endif %}

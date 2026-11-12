@@ -3,7 +3,7 @@
 {# 見出しの印は入金の状態 (未入金と一部入金 = 橙、入金済み = 緑)。取消の請求書は状態の印 (赤の線の「取消」)。「発行」は印にしない (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N164.md)。 #}
 {% block heading_badge %}{% if object.status == "cancelled" %}{% status_badge object dot=True %}{% else %}<span class="inline-flex items-center gap-2"><span class="text-base-content/70">入金</span>{% payment_badge object dot=True %}</span>{% endif %}{% endblock %}
 {% load seizou_tags seizou_icons %}
-{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。開発の記録 docs/nights/20261105/N158b.md)。頭の右の緑はその伝票で次にする操作 1 つ (作者の決め 11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。作者の決め)。入金の枠は土台の block after_tabs (タブの後・添付ファイルの前) に置く (パソコンの窓で送らずに入金を読んで記録できるように。作者の決め)。題の横の要点の札は「合計」「残」(billing_tags の invoice_head_chips。取消と金額の閲覧の無い人には出さない。決め 11-06 22:2x)。 #}
+{# 請求書の詳細: core の詳細 (基本情報と「明細」のタブ)。印刷用の画面と PDF は新しいタブで開く普通の link。取消でないときだけ「取り消す」。取消と入金の記録と入金の取消と調整の記録と調整の取消は小窓で開く (data-modal-form)。見出しの帯 (#invoice-heading) と中身 (#invoice-live) は、小窓で保存した後の seizou:refresh で取り直す (決め 11-05 11:4x。開発の記録 docs/nights/20261105/N158b.md)。頭の右の緑はその伝票で次にする操作 1 つ (作者の決め 11-06 22:1x。無ければ今のまま): 発行で残があり、請求書の権限がある人に「入金を記録する」(入金の枠の同じボタンは白。全額入金済みでも枠から押せる。作者の決め)。入金の枠は土台の block after_tabs (タブの後・添付ファイルの前) に置く (パソコンの窓で送らずに入金を読んで記録できるように。作者の決め)。題の横の要点の札は「合計」「残」(billing_tags の invoice_head_chips。取消と金額の閲覧の無い人には出さない。決め 11-06 22:2x)。 #}
 {% block heading %}<div id="invoice-heading">{% invoice_head_chips object seizou.hide_money as head_chips %}{{ block.super }}</div>{% endblock %}
 {% block actions %}{{ block.super }}
 {% if not seizou.hide_money %}
@@ -41,7 +41,7 @@
 </div>
 <div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
 {% endblock %}
-{% block after_tabs %}{# 入金の枠: 前回の残の 1 行 (写しのある請求書だけ)、合計と入金済みと調整と残、入金の並び (期日の列は手形と電子記録債権の期日。空なら空)、調整の並び (調整のある請求書だけ)、入金と調整の記録と取消の入口 (調整の入口は小窓でなく画面の全体で開く。依頼書 N409b)。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md) #}
+{% block after_tabs %}{# 入金の枠: 前回の残の 1 行 (写しのある請求書だけ)、合計と入金済みと調整と残、入金の並び (期日の列は手形と電子記録債権の期日。空なら空)、調整の並び (調整のある請求書だけ)、入金と調整の記録と取消の入口 (どれも小窓で開く。調整は依頼書 N409b と 510 回目)。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md) #}
 {% can_write "billing.Invoice" as can_bill %}
 <section id="payments" class="mt-6 scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
@@ -49,7 +49,7 @@
       {% if object.status == "cancelled" %}<span class="badge badge-ghost">{{ object.payment_status_label }}</span>
       {% else %}{% payment_badge object %}{% endif %}</h2>
     {% if object.status == "issued" and can_bill %}<div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>
-      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:adjustment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}調整を記録する</a></div>{% endif %}
+      <a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:adjustment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:adjustment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}調整を記録する</a></div>{% endif %}
   </div>
   {# 前回の残の写しのある請求書 (会社の設定が「載せる」のときに作った請求書。依頼書 N409b): 枠の頭の下に「前回の残・今回のご請求額」の 1 行 (帳票と同じ値。写しのまま出し、計算し直さない)。灰色の地に字の行を直に置かないので、枠の中に置く。金額の閲覧が無い人には出さない #}
   {% if not seizou.hide_money %}{% invoice_billed_now object as billed_now %}{% if billed_now is not None %}<p class="mt-4 text-sm text-base-content/70" data-previous-balance>前回の残 <span class="tabular-nums">{{ object.previous_balance|yen }}</span>・今回のご請求額 <span class="tabular-nums">{{ billed_now|yen }}</span></p>{% endif %}{% endif %}
@@ -101,7 +101,7 @@
   </div>
   {% endif %}
   {% endwith %}
-  {# 調整の並び (依頼書 N409b): 調整のある請求書だけ、入金の並びの下に出す (取消の調整も並べる)。金額の閲覧が無い人には金額の列を見出しごと出さない (入金の並びと同じ)。「取り消す」は取消でない調整で、請求書の権限のある人だけ (画面の全体で開く)。 #}
+  {# 調整の並び (依頼書 N409b): 調整のある請求書だけ、入金の並びの下に出す (取消の調整も並べる)。金額の閲覧が無い人には金額の列を見出しごと出さない (入金の並びと同じ)。「取り消す」は取消でない調整で、請求書の権限のある人だけ (小窓で開く)。 #}
   {% with adjustment_rows=object.adjustments.all %}{% if adjustment_rows %}
   <h3 class="mt-6 font-medium">調整</h3>
   <div class="mt-2 overflow-x-auto">
@@ -128,7 +128,7 @@
           <td class="whitespace-nowrap">{% if row.recorded_by %}{{ row.recorded_by }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td class="whitespace-nowrap font-mono tabular-nums">{{ row.recorded_at|date:"Y-m-d H:i" }}</td>
           <td class="whitespace-nowrap">{{ row.get_status_display }}</td>
-          <td class="whitespace-nowrap text-right">{% if row.status == "recorded" and can_bill %}<a class="btn btn-ghost btn-sm text-error" href="{% url 'billing:adjustment_cancel' row.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}</td>
+          <td class="whitespace-nowrap text-right">{% if row.status == "recorded" and can_bill %}<a class="btn btn-ghost btn-sm text-error" href="{% url 'billing:adjustment_cancel' row.pk %}" data-modal-form="{% url 'billing:adjustment_cancel' row.pk %}">{% icon "x" "size-4" %}取り消す</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

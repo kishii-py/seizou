@@ -1,5 +1,5 @@
 {% load seizou_tags %}
-{# 調整の記録のカード (依頼書 N409b。入金の記録の billing/_payment_create_card.html と同じ形)。入力の頭に請求書の番号と得意先と 合計・入金済み・調整・残 の 1 行 (確かめでなく入力の頭なので黄の帯にしない)。金額の欄の初めの値が −残 になる請求書があるので、「残の全額を入れる」は置かない。小窓の形の口 (billing/_form_modal.html) はまだ無いので、入口は画面の全体で開く。 #}
+{# 調整の記録のカード (依頼書 N409b。入金の記録の billing/_payment_create_card.html と同じ形)。入力の頭に請求書の番号と得意先と 合計・入金済み・調整・残 の 1 行 (確かめでなく入力の頭なので黄の帯にしない)。金額の欄の初めの値が −残 になる請求書があるので、「残の全額を入れる」は置かない。全体の画面 (billing/adjustment_form.html) と小窓 (billing/_form_modal.html。510 回目) の両方が include する。 #}
 <div data-adjustment-card>
 <p class="mb-4 text-sm text-base-content/70">請求書 <span class="font-mono">{{ object.invoice_no }}</span> ({{ object.customer.name }})。{% if not seizou.hide_money %}合計 <span class="tabular-nums">{{ object.total|yen }}</span>・入金済み <span class="tabular-nums">{{ object.paid_total|yen }}</span>・調整 <span class="tabular-nums">{{ object.adjusted_total|yen }}</span>・残 <span class="tabular-nums">{{ object.balance|yen }}</span>{% endif %}</p>
 {% include "core/_form_card.html" %}
