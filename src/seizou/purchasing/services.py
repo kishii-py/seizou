@@ -316,10 +316,11 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
         if locked.status in CHANGEABLE_STATUSES:
             lines = _live_lines(locked)
             if any(known_shipped_qty(line) > 0 for line in lines):
-                # 断る条件は同じ。字だけ、その発注で行える道を指す物にする (seizou の外で送った発注には「変更」が出ない)
-                raise ValueError(
-                    _CANCEL_RECEIVED_OUTSIDE_MESSAGE if locked.sent_outside_at is not None else _CANCEL_SHIPPED_MESSAGE
-                )
+                # 断る条件は同じ。字だけ、その発注で行える道を指す物にする (seizou の外で送った発注には「変更」が出ない)。
+                # raise は字の名前を 1 つずつ書く (断りの文の頭を見る検査 tests/test_wording.py が、名前から字を引くため)
+                if locked.sent_outside_at is not None:
+                    raise ValueError(_CANCEL_RECEIVED_OUTSIDE_MESSAGE)
+                raise ValueError(_CANCEL_SHIPPED_MESSAGE)
             # seizou の外で送った発注は、相手へ送らずに取り消す (sent は偽のまま。下の「下書き」の取消と同じ道)
             if locked.sent_outside_at is None:
                 if not _has_send_connection(locked.partner):
