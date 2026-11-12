@@ -65,6 +65,8 @@ ISSUED_ON = date(2026, 11, 30)
 RECEIVED_ON = date(2026, 12, 25)
 ADJUSTED_ON = date(2026, 12, 26)
 DUE_DATE = date(2026, 11, 20)
+#: 締めの一括の画面の今日 (2026-11-20 締めの後)
+CLOSING_TODAY = date(2026, 11, 25)
 
 #: 金額の閲覧の無い人の描き直しにも出てよい、金額の項目の欄 (URL の名前 → 欄の名前)。
 #: 訳: 入金の記録・請求書の外で受け取った入金の記録・調整の記録の金額 (amount) は、使う人が自分で入れる字なので隠さない
@@ -192,6 +194,12 @@ class World:
     def __init__(self, monkeypatch):
         self.monkeypatch = monkeypatch
         self.owner = User.objects.create_superuser("owner", password="pass-for-tests-only")
+
+    def freeze_today(self):
+        """締めの一括の「年月」の選択肢 (今月とその前の 11 か月) に 2026-11 が入るよう、今日を CLOSING_TODAY にする
+        (tests/test_billing_closing_views.py の today と同じ差し替え)。"""
+        self.monkeypatch.setattr("seizou.billing.forms.timezone.localdate", lambda *args, **kwargs: CLOSING_TODAY)
+        self.monkeypatch.setattr("seizou.billing.services.timezone.localdate", lambda *args, **kwargs: CLOSING_TODAY)
 
     # --- マスター ---
     @cached_property
@@ -366,10 +374,10 @@ MAKERS = {
         reverse("purchasing:selfinvoice_accept", args=[w.proposed_self_invoice.pk]),
         _base() + [PROPOSED_PRICE, PROPOSED_PRICE * QTY] + record_money(w.proposed_self_invoice),
     ),
-    "billing:invoice_create": lambda w: (reverse("billing:invoice_create"), _base() + [w.noted_shipment.qty and AMOUNT]),
+    "billing:invoice_create": lambda w: (_made(w.noted_shipment) and reverse("billing:invoice_create"), _base()),
     "billing:invoice_closing": lambda w: (
-        reverse("billing:invoice_closing") + "?month=2026-11&closing_day=20",
-        _base() + [w.noted_shipment.qty and AMOUNT],
+        _made(w.noted_shipment, w.freeze_today()) and reverse("billing:invoice_closing") + "?month=2026-11&closing_day=20",
+        _base(),
     ),
     "billing:invoice_cancel": lambda w: (reverse("billing:invoice_cancel", args=[w.invoice.pk]), _base() + record_money(w.invoice)),
     "billing:invoice_reissue": lambda w: (reverse("billing:invoice_reissue", args=[w.invoice.pk]), _base() + record_money(w.invoice)),
@@ -397,6 +405,11 @@ MAKERS = {
 def _fresh(record):
     record.refresh_from_db()
     return record
+
+
+def _made(*records) -> bool:
+    """記録を作らせるだけの印 (MAKERS の lambda の中で、URL の前に記録を作る)。いつも真。"""
+    return True
 
 
 @pytest.fixture

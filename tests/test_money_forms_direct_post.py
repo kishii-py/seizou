@@ -72,6 +72,7 @@ def _invoice_create(w):
 
 def _invoice_closing(w):
     w.noted_shipment
+    w.freeze_today()
     data = {"month": "2026-11", "closing_day": "20", "issued_on": "2026-11-20"}
     return reverse("billing:invoice_closing"), data, lambda: Invoice.objects.count(), [PRICE, AMOUNT]
 
