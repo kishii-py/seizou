@@ -1195,8 +1195,12 @@ def _lines_not_handed():
 
 
 def _replies_undelivered():
-    """相手に届いていない注文回答。受信した注文のうち、入口が直接で、注文回答のタイプが空でなく (答えた)、送った日時が空で、返事の欄が空でなく、
+    """相手に届いていない注文回答。受信した注文のうち、入口が直接で、送った日時が空で、返事の欄が空でなく (送ろうとした)、
     送る物でない字 (connect.services の MESSAGE_REPLY_SEED・MESSAGE_REPLY_INTAKE) でない物。connect の部品が無ければ None。読むだけ。
+    見方は、保存した後の黄の知らせ (connect.services の _reply_undelivered) と同じ。注文回答のタイプ (reply_type) は見ない:
+    変更と取消の版を受け入れた・断った時の注文回答は、タイプを書かずに送る (send_reply が状態から決める) ので、タイプで絞ると、
+    その注文回答が届かなかった時に黄の知らせは出るのに、この行に数えなかった (本体の直し 11-12。N416 の記録の「本体の判断が要る事」2)。
+    まだ答えていない行は返事の欄が空なので、数えない。
 
     訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
     """
@@ -1207,7 +1211,6 @@ def _replies_undelivered():
 
     return (
         inbox_model._default_manager.filter(source=inbox_model.SOURCE_DIRECT, reply_sent_at__isnull=True)
-        .exclude(reply_type="")
         .exclude(reply_response="")
         .exclude(reply_response__in=(MESSAGE_REPLY_SEED, MESSAGE_REPLY_INTAKE))
     )
@@ -1399,7 +1402,7 @@ def _undelivered_rows(flow_key, user) -> list:
 
 
 def today_tasks(user=None) -> dict | None:
-    """「今日やること」の枠。flow_guide() の段のうち件数が 1 以上の物を、流れの順に 1 行ずつ並べる。読むだけで、ここでは問い合わせをしない (数は flow_guide の物)。
+    """「今日やること」の枠。flow_guide() の段のうち件数が 1 以上の物を、流れの順に 1 行ずつ並べる。読むだけ。段の行の数は flow_guide の物で、ここでは数え直さない (ここで数えるのは、下の相手に届いていない物の行だけ)。
 
     返す物 = {"title": TODAY_TITLE, "rows": [行], "guide": flow_guide() の値}。流れが 1 本も無ければ None。
     行 = {"key" (移る先の表の鍵), "flow" (流れの key), "label" (段の count_label), "count", "unit", "button" (移る先の画面の名前), "url_name", "url" (絞りの GET つき)}。

@@ -137,9 +137,38 @@ def test_reply_undelivered_row_appears_until_sent(user, customer, item, no_http)
     Inbox.objects.filter(pk=inbox.pk).update(reply_response=UNREACHABLE, source=Inbox.SOURCE_INTAKE)
     assert row_of("reply_undelivered") is None
 
-    # 答えていない行 (注文回答のタイプが空) は数えない
+    # 注文回答のタイプが空でも、送ろうとして届かなかった行は数える (変更と取消の版を受け入れた・断った時の注文回答は、
+    # タイプを書かずに送る。保存した後の黄の知らせ = connect.services の _reply_undelivered と同じ見方。506 回目の本体の直し)
     Inbox.objects.filter(pk=inbox.pk).update(source=Inbox.SOURCE_DIRECT, reply_type="")
+    assert row_of("reply_undelivered")["count"] == 1
+    # まだ答えていない行 (返事の欄が空) は数えない
+    Inbox.objects.filter(pk=inbox.pk).update(reply_response="")
     assert row_of("reply_undelivered") is None
+
+
+@pytest.mark.django_db
+def test_reply_row_and_saved_notice_agree(user, customer, item, no_http):
+    """今日やることの行と、保存した後の黄の知らせ (connect.services の _reply_undelivered) は、同じ受信した注文を「届いていない」と見る。
+
+    訳: 2 つの見方がずれると、黄の知らせは出たのに行が出ない (か、その逆の) 事が起きる。変更と取消の版の注文回答は注文回答のタイプを
+    書かずに送るので、行の側だけがタイプで絞ると、その注文回答を数えなかった (506 回目の本体の直し)。
+    """
+    inbox = answered_inbox(user, customer, item)
+    accepted = edi_codes.REPLY_ACCEPTED
+    states = [
+        {"reply_response": "", "reply_sent_at": None, "reply_type": accepted},  # まだ送っていない
+        {"reply_response": UNREACHABLE, "reply_sent_at": None, "reply_type": accepted},  # 届かなかった
+        {"reply_response": UNREACHABLE, "reply_sent_at": None, "reply_type": ""},  # 版の注文回答が届かなかった
+        {"reply_response": UNREACHABLE, "reply_sent_at": timezone.now(), "reply_type": accepted},  # 送り直して届いた
+        {"reply_response": connect_services.MESSAGE_REPLY_SEED, "reply_sent_at": None, "reply_type": accepted},  # 作り物の種
+    ]
+    seen = []
+    for state in states:
+        Inbox.objects.filter(pk=inbox.pk).update(**state)
+        noticed = connect_services._reply_undelivered(Inbox.objects.get(pk=inbox.pk))
+        assert (row_of("reply_undelivered") is not None) == noticed, state
+        seen.append(noticed)
+    assert seen == [False, True, True, False, False]
 
 
 @pytest.mark.django_db

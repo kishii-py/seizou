@@ -357,7 +357,10 @@ def test_today_tasks_adds_no_query(monkeypatch):
         today = dashboard.today_tasks()
     counted_steps = [step for flow in today["guide"]["flows"] for step in flow["steps"] if step["count"] is not None]
     assert len(counted_steps) == 11  # 協力企業の 2 段 (N406c) を足して 11
-    assert len(captured.captured_queries) == len(counted_steps)
+    # 段の行は flow_guide が数えた数を使い、today_tasks は数え直さない。today_tasks が自分で数えるのは、相手に届いていない物の行
+    # (注文回答・出荷の知らせ・検収。N416) だけで、1 行につき 1 回 (506 回目に、この 3 回を足した数に直した)
+    assert len(captured.captured_queries) == len(counted_steps) + len(dashboard._UNDELIVERED_TASKS)
+    assert len(dashboard._UNDELIVERED_TASKS) == 3
     assert calls == [1]
 
 
