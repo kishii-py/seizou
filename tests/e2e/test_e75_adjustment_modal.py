@@ -74,7 +74,9 @@ def test_e75_adjustment_is_recorded_and_cancelled_in_modal(page_a, company_a):
 
     button.click()
     expect(modal).to_have_count(0)
-    expect(page_a.locator(".seizou-toast[role=status]")).to_contain_text("に調整 (振込手数料 -¥660) を記録しました。")
+    # 右上には、先に記録した入金の知らせも 5 秒の間は残っているので、調整の知らせを字で選ぶ
+    saved = page_a.locator(".seizou-toast[role=status]").filter(has_text="に調整 (振込手数料 -¥660) を記録しました。")
+    expect(saved).to_have_count(1)
     rows = page_a.locator(ROWS)
     expect(rows).to_have_count(1)
     expect(rows.first).to_contain_text("-¥660")
