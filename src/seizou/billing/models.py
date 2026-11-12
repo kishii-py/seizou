@@ -6,6 +6,10 @@
 文字数の上限は固定 (識別子 35・コード 10)。
 書くときは billing.services を通す。
 入金 (Payment) は別の表。請求書の外で受け取った入金は出荷を指す (請求書は空)。残と入金の状態は Invoice の method で出す (列に持たない)。合計が 0 以下の請求書は入金済み。
+調整 (Adjustment) も別の表。請求書を指し、値引き・振込手数料・相殺・端数で請求書の残を増やすか減らす (残を減らす調整はマイナス)。
+請求書の残 = 合計 − 取消でない入金 + 取消でない調整 (Invoice.balance。一覧・詳細・ダッシュボード・検査の層・入金の状態が同じ式を使う)。
+入金の期日 (Payment.matures_on) は手形と電子記録債権の期日 (支払期日 Invoice.due_on と別の物)。
+前回の残 (Invoice.previous_balance) は、会社の設定が「載せる」のときだけ請求書を作る時に数えて写す (空なら帳票に出さない)。
 """
 
 from decimal import Decimal
@@ -72,6 +76,11 @@ class Invoice(models.Model):
     # 発行した時の消費税の率の写し (百分率。10.00 = 10%。purchasing.SelfInvoice.tax_rate と同じ形)。
     # services はいつも billing.services.consumption_tax_rate() を渡す。既定は services を通さずに作る試験のため。
     tax_rate = models.DecimalField("税率 (%)", max_digits=5, decimal_places=2, default=Decimal("10.00"), editable=False)
+    # 前回の残の写し (会社の設定 invoice_previous_balance が「載せる」のときだけ、billing.services._issue_invoice が作る時に書く。
+    # 同じ得意先の発行の請求書のうち、期間の終わりがこの請求書の期間の初めより前の物の、作る時の残の合計)。設定が「載せない」の間に作った請求書は空。
+    previous_balance = models.DecimalField("前回の残", max_digits=14, decimal_places=2, null=True, blank=True, editable=False)
+    # 前回の残を数えた日時 (検査の層の R36 が、数えた入金と調整を見分けるのに読む。仕組みのための列)。
+    previous_balance_at = models.DateTimeField("前回の残を数えた日時", null=True, blank=True, editable=False)
 
     #: 変更の履歴 (core.history。作者の決めの伝票の「請求書」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
@@ -84,9 +93,13 @@ class Invoice(models.Model):
         "issuer_bank_account",
         "customer_name",
         "tax_rate",
+        "previous_balance",
+        "previous_balance_at",
     )
     #: 変更の履歴に値を残さない列 (直したことと見出しだけ。core.models.Company の振込先と同じ)
     history_hidden_values = ("issuer_bank_account",)
+    #: 変更の履歴に残さない列 (前回の残を数えた日時。仕組みのための列)
+    history_skip = ("previous_balance_at",)
 
     class Meta:
         verbose_name = "請求書"
@@ -100,9 +113,19 @@ class Invoice(models.Model):
         """取消でない入金の金額の合計 (Python で足す。self.payments.all() を絞るので、一覧の prefetch_related が効く)。"""
         return sum((row.amount for row in self.payments.all() if row.status == Payment.STATUS_RECORDED), Decimal("0"))
 
+    def adjusted_total(self) -> Decimal:
+        """取消でない調整の金額の合計 (Python で足す。self.adjustments.all() を絞るので、一覧の prefetch_related が効く。残を減らす調整はマイナス)。"""
+        return sum(
+            (row.amount for row in self.adjustments.all() if row.status == Adjustment.STATUS_RECORDED), Decimal("0")
+        )
+
     def balance(self) -> Decimal:
-        """残 = 合計 − 入金済み。多い入金ならマイナス (止めない)。"""
-        return self.total - self.paid_total()
+        """残 = 合計 − 入金済み + 調整 (取消でない調整の合計。残を減らす調整はマイナス)。多い入金ならマイナス (止めない)。
+
+        一覧の「残のある物だけ」(billing.views._unpaid_only)・ダッシュボードの「入金の残っている請求書」(core.dashboard._invoices_to_be_paid)・
+        得意先ごとの残 (billing.services.with_receivables) は、同じ式を問い合わせの足し引きで数える。
+        """
+        return self.total - self.paid_total() + self.adjusted_total()
 
     def get_balance_display(self) -> Decimal | None:
         """一覧の「残」の欄の値 (画面と CSV の書き出し。core の display_value が get_<名前>_display を先に読む)。
@@ -114,15 +137,16 @@ class Invoice(models.Model):
 
     def payment_status(self) -> str:
         """入金の状態。合計が 0 以下 (一式の途中の出荷だけを入れた請求書など) なら入金済み (残は 0 以下で、入金を待つ物ではない。作者の決め)。
-        ほかは、入金済みが 0 なら未入金、残が 0 より大きければ一部入金、ほかは入金済み。請求書の状態 (発行 / 取消) は見ない。
+        ほかは、残 (調整を数えた残) が 0 以下なら入金済み、入金済みが 0 なら未入金、ほかは一部入金。請求書の状態 (発行 / 取消) は見ない。
+        調整だけで残が 0 になった請求書 (入金なし・調整 = −合計) は入金済み。調整の無い請求書の答えは、見る順を変える前と同じ。
         """
         if self.total <= 0:
             return self.PAYMENT_PAID
+        if self.balance() <= 0:
+            return self.PAYMENT_PAID
         if self.paid_total() == 0:
             return self.PAYMENT_UNPAID
-        if self.balance() > 0:
-            return self.PAYMENT_PARTIAL
-        return self.PAYMENT_PAID
+        return self.PAYMENT_PARTIAL
 
     def payment_status_label(self) -> str:
         """入金の状態の字 (一覧の「入金」の列と、詳細の「入金」の枠の印)。
@@ -275,18 +299,24 @@ class Payment(models.Model):
     """入金。請求書に対する入金か、請求書の外で受け取った出荷の入金 (出荷を指す。作者の決め) のどちらか。取消は行を消さず status を取消にして履歴に残す。
 
     残と状態は Invoice の method が取消でない入金を Python で足して出す (列に持たない)。書くときは billing.services を通す。
+    期日 (matures_on) は手形と電子記録債権の期日で、その 2 つの方法では必ず入れる (billing.services._payment_values)。ほかの方法で入れても残す。
+    期日と入金日の前後は見ない。依頼書 N409 の前に記録した手形の入金の期日は空のまま (migration で埋めない)。
     """
 
     METHOD_TRANSFER = "transfer"
     METHOD_CASH = "cash"
     METHOD_BILL = "bill"
+    METHOD_E_BOND = "e_bond"
     METHOD_OTHER = "other"
     METHOD_CHOICES = [
         (METHOD_TRANSFER, "振込"),
         (METHOD_CASH, "現金"),
         (METHOD_BILL, "手形"),
+        (METHOD_E_BOND, "電子記録債権"),
         (METHOD_OTHER, "その他"),
     ]
+    #: 期日 (matures_on) を必ず入れる入金の方法 (手形と電子記録債権。billing.services._payment_values と入金の form が見る)
+    METHODS_WITH_MATURITY = (METHOD_BILL, METHOD_E_BOND)
 
     STATUS_RECORDED = "recorded"
     STATUS_CANCELLED = "cancelled"
@@ -319,6 +349,8 @@ class Payment(models.Model):
     method = models.CharField(
         "入金の方法", max_length=10, choices=METHOD_CHOICES, default=METHOD_TRANSFER
     )
+    # 手形と電子記録債権の期日 (支払期日 Invoice.due_on と別の物。空 = 期日の無い方法か、依頼書 N409 の前に記録した入金)。
+    matures_on = models.DateField("期日", null=True, blank=True)
     note = models.CharField("備考", max_length=500, blank=True)
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -360,3 +392,75 @@ class Payment(models.Model):
         if self.invoice_id is None:
             return f"出荷 {self.shipment.shipment_no} {self.received_on:%Y-%m-%d}"
         return f"{self.invoice.invoice_no} {self.received_on:%Y-%m-%d}"
+
+
+
+class Adjustment(models.Model):
+    """請求書の調整 (値引き・振込手数料・相殺・端数・その他)。請求書を指し、請求書の残を増やすか減らす。残を減らす調整はマイナスで入れる
+    (振込手数料 660 を引いて振り込まれたら −660)。金額は 0 でない数。取消は行を消さず status を取消にして履歴に残す (入金と同じ)。
+    直すときは取り消して記録し直す (編集の口は作らない)。書くのは billing.services (record_adjustment・cancel_adjustment) だけ。
+    残は Invoice の method (balance = 合計 − 入金済み + 調整) が取消でない調整を Python で足して出す (列に持たない)。
+    訳: 請求書の残を、値引き・振込手数料・相殺・端数で消すため (残を減らす調整はマイナス)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)・
+    本人の答え (調整を請求書に結ぶ)。変えてよい条件 = 本人が調整の持ち方を決め直したとき。
+    """
+
+    REASON_DISCOUNT = "discount"
+    REASON_FEE = "fee"
+    REASON_OFFSET = "offset"
+    REASON_ROUNDING = "rounding"
+    REASON_OTHER = "other"
+    REASON_CHOICES = [
+        (REASON_DISCOUNT, "値引き"),
+        (REASON_FEE, "振込手数料"),
+        (REASON_OFFSET, "相殺"),
+        (REASON_ROUNDING, "端数"),
+        (REASON_OTHER, "その他"),
+    ]
+
+    STATUS_RECORDED = "recorded"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_RECORDED, "記録"),
+        (STATUS_CANCELLED, "取消"),
+    ]
+
+    invoice = models.ForeignKey(
+        Invoice,
+        verbose_name="請求書",
+        on_delete=models.PROTECT,
+        related_name="adjustments",
+    )
+    adjusted_on = models.DateField("調整日")
+    # 0 でない数。足すも引くも (残を減らす調整はマイナス)。
+    amount = models.DecimalField("金額", max_digits=14, decimal_places=2)
+    reason = models.CharField("訳", max_length=10, choices=REASON_CHOICES, default=REASON_FEE)
+    note = models.CharField("備考", max_length=500, blank=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="記録した人",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    recorded_at = models.DateTimeField("記録の日時", auto_now_add=True)
+    status = models.CharField(
+        "状態", max_length=10, choices=STATUS_CHOICES, default=STATUS_RECORDED
+    )
+
+    #: 変更の履歴 (core.history) は請求書の詳細の「履歴」に出す
+    history_owner = "invoice"
+
+    class Meta:
+        verbose_name = "調整"
+        verbose_name_plural = "調整"
+        ordering = ["-adjusted_on", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(amount=0),
+                name="billing_adjustment_amount_not_zero",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice.invoice_no} {self.adjusted_on:%Y-%m-%d} {self.get_reason_display()}"

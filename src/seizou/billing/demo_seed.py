@@ -8,7 +8,8 @@ load(seeds_dir, user) が、種のフォルダの payments.yaml (入金) を読�
 - 2 回入れても重ならない。自然な鍵で既にある物は飛ばす (上書きしない): 入金 = 請求書 × 入金日 × 金額 (取消でない物)。
 - 1 件でも services が断ったら、ファイルと「N 件目」を文に入れて ValueError を上げる
   (core の demo.load の transaction.atomic が全体を巻き戻す)。「注意」の文は足さない。
-- 入金の方法は日本語の字 (振込・現金・手形・その他) か値で書く。空なら振込。
+- 入金の方法は日本語の字 (振込・現金・手形・電子記録債権・その他) か値で書く。空なら振込。
+- 期日 (手形と電子記録債権の期日) は日付で書く。空なら空 (手形と電子記録債権で空なら services が断る)。
 - 数える物: 入金をそれぞれ 1 件と数える。
 - ほかの部品の model は関数の中で import する。取引先の引き方は stock/demo_seed.py の物を写した
   (core の private な関数を import しない)。YAML の読み方は core の公開の seeds の関数を使う。
@@ -33,7 +34,7 @@ from .models import Invoice, Payment
 PAYMENTS_FILE = "payments.yaml"
 PAYMENTS_ROOT = "請求書"
 INVOICE_KEYS = ("得意先の取引先コード", "発行日", "入金")
-PAYMENT_KEYS = ("入金日", "金額", "入金の方法", "備考")
+PAYMENT_KEYS = ("入金日", "金額", "入金の方法", "期日", "備考")
 
 
 def _method(raw):
@@ -46,7 +47,7 @@ def _method(raw):
         return by_label[text]
     if text in by_label.values():
         return text
-    raise ValueError(f"入金の方法「{text}」は使えません。振込・現金・手形・その他 のどれかにしてください。")
+    raise ValueError(f"入金の方法「{text}」は使えません。振込・現金・手形・電子記録債権・その他 のどれかにしてください。")
 
 
 # --- 引き方 (stock/demo_seed.py の _partner_by_code を写した) ---
@@ -92,13 +93,16 @@ def _load_invoice(entry, user):
         received_on = _date(raw.get("入金日"), "入金日")
         amount = _decimal(raw.get("金額"), "金額")
         method = _method(raw.get("入金の方法"))
+        matures_on = _date(raw.get("期日"), "期日") if _text(raw.get("期日")) else None
         exists = Payment.objects.filter(
             invoice=invoice, received_on=received_on, amount=amount, status=Payment.STATUS_RECORDED
         ).exists()
         if exists:
             skipped += 1
             continue
-        services.record_payment(invoice, received_on, amount, user, method=method, note=_text(raw.get("備考")))
+        services.record_payment(
+            invoice, received_on, amount, user, method=method, note=_text(raw.get("備考")), matures_on=matures_on
+        )
         made += 1
     return made, skipped
 

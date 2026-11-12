@@ -32,10 +32,12 @@ DEFAULTS = {
     "same_customer_order_no": "warn",  # 同じ得意先で、得意先の注文番号が同じ受注のポカよけ (R31): warn / stop / off
     "subcontract_return": "warn",  # 協力企業に出した工程の戻りの数の食い違いのポカよけ (R33): warn / stop / off
     "open_workorder_completion": "warn",  # 終わっていない指示書のある受注の明細の完了のポカよけ (R35): warn / stop / off
+    "printed_balance": "warn",  # 前回の残に数えた入金と調整の取消のポカよけ (R36): warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
     "transcription_minutes_per_line": 1,  # 1 行の手入力にかかる分 (ダッシュボードの「手入力せずに取り込んだ明細」の入力を省けた時間 ≒ m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
     "production_plan": True,  # 生産計画の画面 (メニューの「生産計画」と工程ごとの盤) を使う
+    "invoice_previous_balance": False,  # 請求書の前回の残: true (請求書を作る時に前回の残を数えて写す) / false (写さない。帳票に出ない)
     "weekly_holidays": [5, 6],  # 定休日の曜日 (0 = 月 〜 6 = 日)。既定は土日。休日の表 (masters の Holiday) と合わせて稼働日を決める (core.calendar)
     "access_control": {"department": "log", "write": "log", "money": "log"},  # 権限の判定: 部署・編集の権限・金額の閲覧のそれぞれ off / log / on
     "assistant_model": "claude-sonnet-5-5",  # AI チャットが使う model (会社の鍵で呼ぶ)
@@ -74,6 +76,7 @@ CHOICES = {
     "same_customer_order_no": ("warn", "stop", "off"),
     "subcontract_return": ("warn", "stop", "off"),
     "open_workorder_completion": ("warn", "stop", "off"),
+    "printed_balance": ("warn", "stop", "off"),
     "order_number": ("seq", "ym_seq"),
 }
 

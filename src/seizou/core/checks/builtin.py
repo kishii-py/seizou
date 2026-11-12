@@ -1,6 +1,6 @@
-"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33・R35)。
+"""標準のポカよけ (RULES.md の「標準のポカよけ」。R01・R04・R06・R07・R24・R26・R27・R28・R29・R30・R31・R33・R35・R36)。
 
-mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind・same_customer_order_no・subcontract_return・open_workorder_completion) の値をそのまま使う。既定は warn。
+mode は会社の設定 (over_shipment・over_workorder・over_payment・progress_staff・billed_shipment・progress_inactive_staff・lump_completion・progress_defect_kind・same_customer_order_no・subcontract_return・open_workorder_completion・printed_balance) の値をそのまま使う。既定は warn。
 文は RULES.md の番号の文と同じ趣旨で、何が起きて何をすればよいかを書く。
 data の鍵は各 action を呼ぶ画面の土台と services の約束 (部品の公開する関数の設計の決めの引数の名前) に合わせる。
 R01 は 1 件の出荷・出荷の編集・一括出荷の 3 つの action に掛ける (一括出荷は開発の記録 docs/nights/20261104/N124.md)。
@@ -12,6 +12,7 @@ R30 (会社の設定 progress_defect_kind) は実績の入力だけに掛ける�
 R31 は受注の新規登録・受注の編集・読み取りを受注にする・受信した注文の受け入れ (条件付きの受け入れを含む) の 5 つの action に掛ける。
 R33 は受入の入力・発注の明細の「完了にする」・実績の入力の 3 つの action に掛ける (指示書の工程を指す発注の明細だけを見る)。
 R35 は受注の明細の「完了にする」と出荷の入力 (「残りは出さずに完了にする」を選び、残りが残るとき) の 2 つの action に掛ける。
+R36 は入金の取消と調整の取消の 2 つの action に掛ける。
 """
 
 from __future__ import annotations
@@ -236,8 +237,11 @@ class OverPayment(Check):
     """R24: 入金の金額が、請求書の残を超えたら (入金の記録)。
 
     data の object は入金を記録する請求書 (土台の入力の画面が URL の pk の請求書を渡す)、amount は今回の入金の金額。
-    請求書は渡された物の属性 (total・status・paid_total()・balance()) で読み、billing の model を import しない。
+    請求書は渡された物の属性 (total・status・paid_total()・adjusted_total()・balance()) で読み、billing の model を import しない。
+    残は調整を数えた残 (合計 − 入金済み + 調整。Invoice.balance)。
     残と同じ額 (「残の全額を入れる」で入れた額) は知らせない。残が 0 以下 (入金済み・多い入金の後) なら、どの額でも知らせる。
+    調整のある請求書の文は「今回の入金 (¥…) が請求書の残 (¥…) を超えます。…」(入金の合計と請求書の合計を比べると、調整の分だけ食い違うため)。
+    調整の無い請求書の文は今の字のまま。
     取消の請求書は見ない (service の R21 が先に赤で止める。黄の後に赤を出さないため)。
     訳: 残を超える入金 (同じ入金の 2 重の記録など) に、保存の前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。残はマイナスも見せる)。出所 = 会社の設定 over_payment (RULES.md R24・決め 11-07 00:38)。
     変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
@@ -256,6 +260,12 @@ class OverPayment(Check):
             return None
         balance = invoice.balance()
         if _dec(amount) > balance:
+            adjusted = getattr(invoice, "adjusted_total", None)
+            if adjusted is not None and adjusted() != 0:
+                return (
+                    f"今回の入金 ({yen(_dec(amount))}) が請求書の残 ({yen(balance)}) を超えます。"
+                    "同じ入金を 2 回記録していないか、金額を確かめてください。"
+                )
             total = invoice.paid_total() + _dec(amount)
             return (
                 f"入金の合計 ({yen(total)}) が請求書の合計 ({yen(invoice.total)}) を超えます。"
@@ -860,6 +870,70 @@ class OpenWorkOrderCompletionOnShip(Check):
         return _open_workorder_message(self, line)
 
 
+def _printed_balance_message(record, label):
+    """R36 の文 (金額を書かない)。record を前回の残に数えた請求書 (billing.services.counted_in) があれば文、無ければ None。
+
+    文は「<label> は、請求書 <番号> の前回の残に数えて刷っています。取り消すと、<番号> に刷った前回の残と、台帳の残が違ってきます。
+    請求書も直すときは、<番号> を作り直してください。」(請求書が 2 枚以上なら番号を「・」で並べる)。
+    請求書の外で受け取った入金 (請求書が空) と、取り消し済みの入金と調整には文を返さない (services が断るので、黄の後に赤を出さない)。
+    """
+    if record is None or getattr(record, "invoice_id", None) is None or record.status == "cancelled":
+        return None
+    from seizou.billing import services as billing_services
+
+    found = billing_services.counted_in(record)
+    if not found:
+        return None
+    numbers = "・".join(invoice.invoice_no for invoice in found)
+    return (
+        f"{label} は、請求書 {numbers} の前回の残に数えて刷っています。"
+        f"取り消すと、{numbers} に刷った前回の残と、台帳の残が違ってきます。請求書も直すときは、{numbers} を作り直してください。"
+    )
+
+
+class PrintedBalanceOnPaymentCancel(Check):
+    """R36: 前回の残を写した請求書に数えた入金を取り消そうとしたら (入金の取消)。
+
+    data の object は取り消す入金 (土台の入力の画面が URL の pk の入金を渡す)。数えた請求書は billing.services.counted_in の 1 か所
+    (同じ得意先の発行の請求書のうち、前回の残の写しがあり、期間の初めが入金の請求書の期間の終わりより後で、前回の残を数えた日時が入金の記録の日時以後の物)。
+    請求書の外で受け取った入金と、取り消し済みの入金には文を返さない。文に金額を書かない。services の cancel_payment は断らない。
+    訳: 得意先に送った請求書の前回の残に数えた入金と調整を後から取り消すと、刷った前回の残と台帳が食い違うので、取り消す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)・本人の決め 11-11 12:5x (まず分かるようにし、止めるかは会社が選ぶ)。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R36"
+    action = "billing.cancel_payment"
+    setting_key = "printed_balance"
+
+    def run(self, data, user):
+        payment = data.get("object")
+        if payment is None:
+            return None
+        return _printed_balance_message(payment, f"入金 ({payment.received_on:%Y-%m-%d})")
+
+
+class PrintedBalanceOnAdjustmentCancel(Check):
+    """R36: 前回の残を写した請求書に数えた調整を取り消そうとしたら (調整の取消)。
+
+    data の object は取り消す調整。数えた請求書の見方は入金の取消 (PrintedBalanceOnPaymentCancel) と同じ (billing.services.counted_in)。
+    取り消し済みの調整には文を返さない。文に金額を書かない。services の cancel_adjustment は断らない。調整の取消の画面は 2 段目 (N409b) が作る。
+    訳: 得意先に送った請求書の前回の残に数えた入金と調整を後から取り消すと、刷った前回の残と台帳が食い違うので、取り消す前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる)。出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)・本人の決め 11-11 12:5x (まず分かるようにし、止めるかは会社が選ぶ)。
+    変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
+    """
+
+    name = "R36"
+    action = "billing.cancel_adjustment"
+    setting_key = "printed_balance"
+
+    def run(self, data, user):
+        adjustment = data.get("object")
+        if adjustment is None:
+            return None
+        return _printed_balance_message(
+            adjustment, f"調整 ({adjustment.adjusted_on:%Y-%m-%d}・{adjustment.get_reason_display()})"
+        )
+
+
 BUILTIN = (
     OverShipment(),
     OverShipmentOnUpdate(),
@@ -888,6 +962,8 @@ BUILTIN = (
     SubcontractReturnOnProgress(),
     OpenWorkOrderCompletion(),
     OpenWorkOrderCompletionOnShip(),
+    PrintedBalanceOnPaymentCancel(),
+    PrintedBalanceOnAdjustmentCancel(),
 )
 
 for _check in BUILTIN:

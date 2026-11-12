@@ -1120,21 +1120,41 @@ def _shipments_to_invoice():
 
 
 def _invoices_to_be_paid():
-    """発行の請求書のうち、取消でない入金の合計が合計に足りない物 (一部入金も数える)。"""
+    """発行の請求書のうち、残 (合計 − 取消でない入金 + 取消でない調整) が 0 より大きい物 (一部入金も数える)。
+
+    billing の Invoice.balance と、請求書の一覧の「残のある物だけ」(billing.views._unpaid_only) と同じ式。
+    調整の表 (billing の Adjustment) が無ければ、入金だけで数える (調整を足す前の形)。
+    入金と調整は表ごとの副問い合わせの Sum で足す (結び付けを 2 つ並べると、入金と調整の数だけ行が増えて合計が倍になるため)。
+    """
+    from django.db.models import Subquery
+
     invoice_model = _model("billing", "Invoice")
     payment_model = _model("billing", "Payment")
     if invoice_model is None or payment_model is None:
         return None
-    # 保存した入金の金額を足すだけ (掛け算と丸めをしない)。名前を paid_total にしない (Invoice の method と重なる)。
-    paid = Coalesce(
-        Sum("payments__amount", filter=Q(payments__status=payment_model.STATUS_RECORDED)),
-        Value(Decimal("0")),
-        output_field=DecimalField(max_digits=14, decimal_places=2),
-    )
+    adjustment_model = _model("billing", "Adjustment")
+    money = DecimalField(max_digits=14, decimal_places=2)
+
+    def recorded_sum(model):
+        # 保存した入金と調整の金額を足すだけ (掛け算と丸めをしない)。名前を paid_total にしない (Invoice の method と重なる)。
+        rows = (
+            model._default_manager.filter(invoice=OuterRef("pk"), status=model.STATUS_RECORDED)
+            .order_by()
+            .values("invoice")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
+        return Coalesce(Subquery(rows, output_field=money), Value(Decimal("0")), output_field=money)
+
+    sums = {"paid_sum": recorded_sum(payment_model)}
+    settled = F("paid_sum")
+    if adjustment_model is not None:
+        sums["adjusted_sum"] = recorded_sum(adjustment_model)
+        settled = F("paid_sum") - F("adjusted_sum")
     return (
         invoice_model._default_manager.filter(status=invoice_model.STATUS_ISSUED)
-        .annotate(paid_sum=paid)
-        .filter(paid_sum__lt=F("total"))
+        .annotate(**sums)
+        .filter(total__gt=settled)
     )
 
 
