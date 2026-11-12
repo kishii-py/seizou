@@ -180,8 +180,10 @@ class InboxConditionalAcceptView(BaseFormView):
     template_name = "connect/inbox_accept_conditional.html"
 
     def get_queryset(self):
-        # 土台の dispatch がこの絞りの中から対象を引く。入口が直接の行だけ (読み取りの行は相手に答えを送れない)。ほかは 404
-        return Inbox.objects.filter(source=Inbox.SOURCE_DIRECT)
+        # 土台の dispatch がこの絞りの中から対象を引く。入口が直接の行だけ (読み取りの行は相手に答えを送れない)。ほかは 404。
+        # 変更と取消の版の行 (元の行 revises がある行) も開かない (本人の決め 11-12 18:3x。版の受け入れは答えを読まないので、
+        # 直した値が使われない入口になっていた。版への答え方は 受け入れる・保留する・断る の 3 つ)
+        return Inbox.objects.filter(source=Inbox.SOURCE_DIRECT, revises__isnull=True)
 
 
 class InboxHoldView(BaseFormView):

@@ -9,14 +9,16 @@
 {# 受け入れる前に、相手の発注番号と発注日を詳細と同じ行の形で見せる (作者の決め)。枠は 4 つの答えの画面が include する断片。 #}
 {% include "connect/_inbox_order_box.html" %}
 {# ほかの答え方 (作者の決め)。「受け入れる」は下の入力のカード。読み取りの行は相手に答えを送れないので「断る」だけ。保留した行は「保留する」を出さない。 #}
+{# 変更と取消の版の行 (元の行 revises がある行) には「条件を直して受け入れる」を出さない (本人の決め 11-12 18:3x。版の受け入れは答えを読まず、変更をそのまま受け入れるため。前は入口が出て、直した値が使われなかった)。 #}
 {% if object.status == "received" %}
 <div class="mb-6 flex flex-wrap items-center gap-2">
   <span class="text-sm text-base-content/70">ほかの答え方</span>
   {% if object.source == "direct" %}
-  {% can_accept_inbox as can_accept %}{% if can_accept %}<a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_accept_conditional' object.pk %}">{% icon "pencil" "size-4" %}条件を直して受け入れる</a>{% endif %}
+  {% if not object.revises_id %}{% can_accept_inbox as can_accept %}{% if can_accept %}<a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_accept_conditional' object.pk %}">{% icon "pencil" "size-4" %}条件を直して受け入れる</a>{% endif %}{% endif %}
   {% if object.reply_type != "AJ" %}<a class="btn btn-outline border-base-300" href="{% url 'connect:inbox_hold' object.pk %}">{% icon "info" "size-4" %}保留する</a>{% endif %}
   {% endif %}
   <a class="btn btn-outline btn-error" href="{% url 'connect:inbox_reject' object.pk %}">{% icon "x" "size-4" %}断る</a>
+  {% if object.revises_id %}<p class="w-full text-xs text-base-content/70">変更と取消には「条件を直して受け入れる」はありません。条件を変えたいときは、「断る」で理由を書くか、会話で伝えます。</p>{% endif %}
   {% if object.source == "intake" %}<p class="w-full text-xs text-base-content/70">注文書の読み取りから入った注文は、相手に答えを送れないので、「条件を直して受け入れる」と「保留する」はありません。受け入れた後に、受注の編集で直します。</p>{% endif %}
 </div>
 {% endif %}
