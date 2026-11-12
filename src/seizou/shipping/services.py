@@ -5,6 +5,7 @@
   書いた後に同じ transaction.atomic の中で残す (止まって戻ったら履歴も残らない)。納品書にまとめた出荷は、出荷の詳細の「履歴」にも納品書の前と後が残る。
   出荷の知らせの列 (番号の uuid・送った日時・相手の返事) は core が残さない列なので、assign_notice_number と record_notice_response は残さない。
 - 中心の決まりに当たったら RuleViolation(code, message)。message は RULES.md の番号の文と、次にすること。
+  出荷の編集の R08 の断りだけは決まりの文を入れず、どの納品書に入っているかと次にすることを書く (決まりの番号は code で画面に出る。本体の決め 11-11 14:2x)。
 - 分納を許さない設定 (partial_shipment が偽) の違反も RuleViolation で、code は設定の画面の名前「分納」。
 - 決まりの番号の無い入力の誤り (出荷の一覧が空) は日本語の ValueError。
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
@@ -480,8 +481,8 @@ def update_shipment(shipment, qty, shipped_at, user, *, note=""):
         if current is not None and current.status == DeliveryNote.STATUS_ISSUED:
             raise RuleViolation(
                 "R08",
-                f"保存できません。{_R08_RULE}出荷 {locked.shipment_no} は納品書 {current.note_no} に入っているので、"
-                "先に納品書を取り消してください。",
+                f"保存できません。出荷 {locked.shipment_no} は納品書 {current.note_no} に入っています。"
+                "先に納品書を取り消してから直してください。",
             )
         if not qty > 0:
             raise RuleViolation("R02", _R02_MESSAGE)

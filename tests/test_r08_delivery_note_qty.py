@@ -148,7 +148,10 @@ def test_issued_note_blocks_shipment_update(user, customer, line):
     with pytest.raises(RuleViolation) as caught:
         services.update_shipment(shipment, Decimal("3"), SHIPPED_AT, user)
     assert caught.value.code == "R08"
-    assert caught.value.message.startswith("保存できません。" + R08_RULE)
+    assert caught.value.message == (
+        f"保存できません。出荷 {shipment.shipment_no} は納品書 {note.note_no} に入っています。"
+        "先に納品書を取り消してから直してください。"
+    )
     assert note.note_no in caught.value.message
     assert shipment.shipment_no in caught.value.message
 
