@@ -180,6 +180,20 @@ def test_revision_reply_without_type_is_listed(make, logged_in):
     assert listed(logged_in, filtered_url("reply_undelivered")) == set()
 
 
+def test_inbox_poll_keeps_the_undelivered_flag(make, logged_in):
+    # 受信した注文の一覧は 2 秒ごとに新しい行を取りに行き、絞りの欄 (data-list-filter) の今の値も送る (connect/_inbox_poll.html)。
+    # 印を入れた一覧の取りに行きは、届いていない注文回答の行だけを足す (まだ答えていない新しい行は足さない)
+    first = make("reply_undelivered", UNREACHABLE)
+    body = logged_in.get(filtered_url("reply_undelivered")).content.decode()
+    assert 'hx-include="[data-list-filter]"' in body
+    newer = make("reply_undelivered", REFUSED)
+    make("reply_undelivered", "")  # まだ答えていない行 (返事の欄が空)
+    poll = logged_in.get(
+        reverse("connect:inbox_list"), {"after": str(first), "f_reply_undelivered": "1"}, HTTP_HX_REQUEST="true"
+    ).content.decode()
+    assert poll.count('id="row-') == 1 and f'id="row-{newer}"' in poll
+
+
 @pytest.mark.parametrize("key", KEYS)
 def test_part_function_and_core_function_agree(key, make):
     # (d) 部品の関数と core の関数が同じ pk の集まりを返す
