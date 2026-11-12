@@ -2,7 +2,7 @@
 
 普段は触らない物を、左のメニューでなくここにまとめる (本人の指摘 11-03 昼「普段簡単に触らないものは、設定をいじれる所に」):
 会社の選べる設定の今の値と出所 (この画面で変えた / 導入の時に決めた / 初期値。アカウント管理の権限がある人は行の「編集」から
-1 つずつ変え、「答えの値に戻す」で画面の値を消す。conf.LOCKED_KEYS の鍵は画面から変えず、導入の時に答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、フィードバックの一覧の入口 (入っている会社だけ)、システムの状態 (開発の設定・自動ログイン・
+1 つずつ変え、「導入の時の値に戻す」で画面の値を消す。conf.LOCKED_KEYS の鍵は画面から変えず、導入の時に答えの YAML で書く)、取引先との接続 (つながり) とアカウント管理 (入っている会社だけ) の入口、フィードバックの一覧の入口 (入っている会社だけ)、システムの状態 (開発の設定・自動ログイン・
 ファイルの配り方・DB・AI の鍵の有無・MCP の利用者の有無・入っている部品・点検 (ボタンで走らせる))。鍵の値は出さない (有るか無いかだけ)。
 """
 
@@ -386,13 +386,13 @@ class SettingUpdateView(BaseFormView):
     """設定の変更 (選べる設定 1 つの入力。URL の key が鍵)。
 
     使う人: アカウント管理の担当者 / いつ: 会社の動きを変えると決めたとき / 何のために: 答えの YAML を直さずに設定を変える /
-    次にすること: 設定の画面で出所が「画面」になった事を見る。
+    次にすること: 設定の画面の「どこで決めたか」が「この画面で変えた」になった事を見る。
 
     model は持たない (self.object は None のまま)。土台の call_service が set_setting(user=..., key=..., value=...) を呼ぶ。
     """
 
     screen_name = "設定の変更"
-    screen_help = "会社の選べる設定を 1 つ変える。保存した値は答えの YAML より優先され、「答えの値に戻す」で答えの値に戻る。"
+    screen_help = "会社の選べる設定を 1 つ変える。保存した値は導入の時に決めた値より優先され、「導入の時の値に戻す」で導入の時に決めた値に戻る。"
     screen_icon = "settings"
     form_class = SettingForm
     service = staticmethod(services.set_setting)
@@ -437,7 +437,7 @@ class SettingUpdateView(BaseFormView):
 @login_required
 @require_POST
 def setting_clear(request, key):
-    """「答えの値に戻す」の口。画面の上書きを消し、設定の画面へ戻る。"""
+    """「導入の時の値に戻す」の口。画面の上書きを消し、設定の画面へ戻る。"""
     denied = settings_denied(request)
     if denied is not None:
         return denied
@@ -452,7 +452,7 @@ def setting_clear(request, key):
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "答えの値に戻しました。")
+        messages.success(request, "導入の時の値に戻しました。")
     return HttpResponseRedirect(reverse("core:settings"))
 
 

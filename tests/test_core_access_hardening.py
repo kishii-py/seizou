@@ -125,7 +125,7 @@ def test_manual_images_log_mode_records(client, manual, caplog):
 
 
 def test_access_control_edit_is_superuser_only(client, admin):
-    # システム管理者が先に画面の値を置く (「答えの値に戻す」が消せる行がある形で見る)。
+    # システム管理者が先に画面の値を置く (「導入の時の値に戻す」が消せる行がある形で見る)。
     core_services.set_setting("access_control", {"department": "log", "write": "log", "money": "log"}, admin)
     before = (conf.setting("access_control"), SettingOverride.objects.count())
     a2_manager = account("a2_manager", manage_accounts=True)

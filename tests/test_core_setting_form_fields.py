@@ -1,7 +1,7 @@
 """設定の変更の画面の字の欄 (初見テスト R5 の候補 C67)。
 
 主色 (brand_color) と業種 (industry) は空で保存すると既定 (土台の色・左上の seizou) に戻るので、欄を「任意」にする。
-form の必須と services の validate_setting が空を通す鍵が食い違わない事、空で保存して「答えの値に戻す」で戻る行き来、
+form の必須と services の validate_setting が空を通す鍵が食い違わない事、空で保存して「導入の時の値に戻す」で戻る行き来、
 形の合わない主色を今と同じく services が断る事を見る。model の名前の 3 つの欄は必須のまま。
 主色の画面だけ、欄の右に今の色で塗った見本の四角を出す (打ち直したときに塗り直すのは画面の JS。ここでは最初の描き方を見る)。
 会社の設定は settings の fixture で SEIZOU を替える。名前と値は作り物だけ。
@@ -84,9 +84,9 @@ def test_empty_brand_color_saves_and_clear_goes_back_to_answer(manager_client, s
     assert "style=" not in html_tag(manager_client)
     assert conf.setting_source("brand_color") == conf.SOURCE_SCREEN
 
-    # 出所が「画面」になったので、もう一度開くと「答えの値に戻す」が出て、押すと答えの色に戻る
+    # 出所が「画面」になったので、もう一度開くと「導入の時の値に戻す」が出て、押すと答えの色に戻る
     body = manager_client.get(edit_url("brand_color")).content.decode()
-    assert clear_url("brand_color") in body and "答えの値に戻す" in body
+    assert clear_url("brand_color") in body and "導入の時の値に戻す" in body
     assert manager_client.post(clear_url("brand_color")).status_code == 302
     assert conf.brand_color() == "#15803d"
 

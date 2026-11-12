@@ -295,7 +295,7 @@ def test_edit_choice_setting_from_screen(manager_client):
     assert 'name="over_shipment"' in body and "止める" in body
     assert f'href="{reverse("core:settings")}"' in body and "キャンセル" in body
     assert body.count("btn-primary") == 1
-    assert "答えの値に戻す" not in body
+    assert "導入の時の値に戻す" not in body
 
     response = manager_client.post(edit_url("over_shipment"), {"over_shipment": "stop"})
     assert response.status_code == 302 and response["Location"] == reverse("core:settings")
@@ -395,7 +395,7 @@ def test_clear_restores_answer_value(manager_client, settings):
     assert conf.setting("over_shipment") == "off"
 
     body = manager_client.get(edit_url("over_shipment")).content.decode()
-    assert f'action="{clear_url("over_shipment")}"' in body and "答えの値に戻す" in body
+    assert f'action="{clear_url("over_shipment")}"' in body and "導入の時の値に戻す" in body
 
     response = manager_client.post(clear_url("over_shipment"))
     assert response.status_code == 302 and response["Location"] == reverse("core:settings")
@@ -404,6 +404,23 @@ def test_clear_restores_answer_value(manager_client, settings):
     assert conf.setting_source("over_shipment") == conf.SOURCE_ANSWER
 
     body = manager_client.get(response["Location"]).content.decode()
-    assert "答えの値に戻しました。" in body
+    assert "導入の時の値に戻しました。" in body
 
-    assert "答えの値に戻す" not in manager_client.get(edit_url("over_shipment")).content.decode()
+    assert "導入の時の値に戻す" not in manager_client.get(edit_url("over_shipment")).content.decode()
+
+
+def test_clear_button_uses_the_column_word(manager_client, settings):
+    """戻すボタンの字は、設定の画面の「どこで決めたか」の列の字「導入の時に決めた」にそろえる (精査 Q5 の 2 節の 6。本体の決め 11-11 14:2x)。"""
+    settings.SEIZOU = {"over_shipment": "stop"}
+    manager_client.post(edit_url("over_shipment"), {"over_shipment": "off"})
+    assert conf.setting_source("over_shipment") == conf.SOURCE_SCREEN
+
+    body = manager_client.get(edit_url("over_shipment")).content.decode()
+    assert f'action="{clear_url("over_shipment")}"' in body and "導入の時の値に戻す" in body
+    assert "答えの値" not in body
+    # 戻す form の action から次の </button> までを切り出し、絵 (svg) の後ろの字をボタンの字として読む
+    button = body.split(f'action="{clear_url("over_shipment")}"', 1)[1].split("</button>", 1)[0]
+    label = button.rsplit(">", 1)[1].strip()
+    assert label == "導入の時の値に戻す"
+    # ボタンの字の頭と、列の値「導入の時に決めた」の頭の 3 字が同じ
+    assert label[:3] == conf.SOURCE_ANSWER[:3] == "導入の"
