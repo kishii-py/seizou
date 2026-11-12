@@ -4,7 +4,8 @@
 数量・単価・金額は明細の写しをそのまま出し、ここでは計算し直さない。単価の単位の字は明細の price_unit_text (写しの単位を読む)。
 品番・品名・単位・得意先の注文番号・会社の登録番号・住所・電話・振込先・得意先の名前・税率は発行の時の写し (billing.models の訳)。
 写しが空でも今の値で補わない。会社名とロゴは写さないので、今の会社の設定を読む。
-出荷日と出荷番号の欄は、出荷の行は出荷の物、一式の行 (出荷に結び付かない行。作者の決め) は最後の出荷日と「受注 <番号>-<行> の一式」。
+出荷日と出荷番号の欄は、出荷の行は明細の出荷日と出荷番号の写し (出荷を消した行も同じ字。依頼書 N403c)、
+一式の行 (出荷に結び付かない行。作者の決め) は最後の出荷日と「受注 <番号>-<行> の一式」(InvoiceLine.shipped_on・ref_no)。
 各行の customer_order_no は、得意先が自分の注文番号で照合するため (作者の決め)。空なら帳票に出ない。
 """
 
@@ -23,7 +24,7 @@ def invoice_context(invoice):
     (登録番号はインボイス制度の適格請求書の記載事項 = 作者の決め。帳票の土台 report_base.html は空でない鍵だけを出す)。
     """
     lines = []
-    for row in invoice.lines.select_related("shipment", "order_line__order"):
+    for row in invoice.lines.select_related("order_line__order"):
         lines.append(
             {
                 "shipped_at": row.shipped_on,

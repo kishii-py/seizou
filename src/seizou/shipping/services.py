@@ -21,6 +21,8 @@
   検査の層の R27 が取り消す前に知らせる (文は billed_notice の 1 か所。請求書の明細は billing を import せず、出荷の逆の関係で引く)。
 - 打ち間違えた出荷は delete_shipment で消す (断る訳は delete_refusal の 1 か所。本人の決め 11-08 00:23・00:25)。
 - 請求済みの出荷 (billed_by) の直しと削除と、その出荷の入った納品書の取消は断らない。検査の層の R27 が services の前に知らせる (本人の決め 11-11 12:5x〜13:0x)。
+  請求書に入った出荷を消しても、請求書の明細は出荷番号と出荷日の写しを持って残る (依頼書 N403c)。
+  請求書の明細の一式の行は、最後の出荷日 (last_shipped_at) がある行で見分ける (出荷を消した出荷の行も出荷が空のため)。
 - 出荷の後、受信した注文で作った受注の出荷なら connect.services.send_shipping_notice で出荷の知らせを相手へ送る (HTTP は atomic の外 = R17)。
   出荷の知らせの列 (notice_*) は assign_notice_number・record_notice_response が書く。update_shipment は送り直さない。
 - 一括出荷 (ship_lines) は、選んだ明細を 1 つの atomic で ship と同じ決まりに通し、出荷の知らせは全部を保存した後に送る (R17)。
@@ -223,11 +225,12 @@ def create_delivery_note(customer, shipments, user, *, issued_on=None):
 
 
 def _has_issued_lump_line(order_line):
-    """受注の明細に、発行の請求書の一式の行 (出荷を指さない請求書の明細) があるか (読むだけ。問い合わせ 1 回)。
+    """受注の明細に、発行の請求書の一式の行 (最後の出荷日がある請求書の明細) があるか (読むだけ。問い合わせ 1 回)。
 
     請求書の部品が無いか、請求書の明細が受注の明細を指していなければ偽。請求書の明細の表は受注の明細の逆の関係
     invoice_lines の先として引き、「発行」の値は明細の外部キー invoice の先の表の STATUS_ISSUED から読む
     (billing を import しない。invoiced_shipments と同じ読み方)。
+    一式の行は最後の出荷日 (last_shipped_at) がある行で見る (billing.models.InvoiceLine.is_lump。出荷を消した出荷の行も出荷が空なので、出荷が空かでは見ない)。
     訳: 一式の行で人が金額を決めて載せた明細に、後の出荷で一式の全額をもう一度自動で載せないため。出所 = 作者の決め。
     変えてよい条件 = 作者が、一式の行を載せた後の出荷の金額の決め方を決め直したとき。
     """
@@ -236,7 +239,7 @@ def _has_issued_lump_line(order_line):
     except FieldDoesNotExist:
         return False
     issued = lines._meta.get_field("invoice").related_model.STATUS_ISSUED
-    return lines._default_manager.filter(order_line=order_line, shipment__isnull=True, invoice__status=issued).exists()
+    return lines._default_manager.filter(order_line=order_line, last_shipped_at__isnull=False, invoice__status=issued).exists()
 
 
 def invoiced_shipments(note):
@@ -263,10 +266,11 @@ def invoiced_shipments(note):
 
 
 def lump_billed_shipments(note):
-    """納品書の出荷のうち、受注の明細に発行の請求書の一式の行 (出荷を指さない請求書の明細) がある物の (出荷, 請求書) の並び
+    """納品書の出荷のうち、受注の明細に発行の請求書の一式の行 (最後の出荷日がある請求書の明細) がある物の (出荷, 請求書) の並び
     (出荷の pk の順。読むだけ。問い合わせ 2 回)。発行の請求書に出荷の行で入った出荷 (invoiced_shipments) は除く。
 
     請求書の部品が無ければ空の並び。読み方は invoiced_shipments・_has_issued_lump_line と同じ (billing を import しない)。
+    同じ受注の明細の、出荷を消した出荷の行 (出荷が空で、最後の出荷日も空) は一式の行と数えない。
     1 つの受注の明細に発行の一式の行が 2 行あれば、明細の pk の小さい方の請求書を返す (作者の決め)。
     """
     try:
@@ -280,7 +284,7 @@ def lump_billed_shipments(note):
     found = {}
     rows = (
         lines._default_manager.select_related("invoice")
-        .filter(shipment__isnull=True, invoice__status=issued, order_line_id__in={s.order_line_id for s in shipments})
+        .filter(last_shipped_at__isnull=False, invoice__status=issued, order_line_id__in={s.order_line_id for s in shipments})
         .order_by("pk")
     )
     for line in rows:
@@ -315,7 +319,7 @@ def billed_by(shipment):
 
     種類と記録 (見る順は billed_notice の文の順と同じ。最初に当たった 1 つを返す):
     "line" = 発行の請求書に出荷の行で入っている (記録はその請求書の明細。明細の pk の小さい方)。
-    "lump" = 受注の明細に発行の請求書の一式の行がある (記録はその一式の行。明細の pk の小さい方)。
+    "lump" = 受注の明細に発行の請求書の一式の行 (最後の出荷日がある明細。出荷を消した出荷の行は数えない) がある (記録はその一式の行。明細の pk の小さい方)。
     "outside" = 請求書の外で受け取った入金 (取消でない) を記録している (記録はその入金。入金の pk の小さい方)。
     請求書の明細は請求書を一緒に引く (呼ぶ側が請求書の番号を字にするため)。取消の請求書と取消の入金は見ない。
     請求書の部品が無ければ None。読み方は invoiced_shipments・_has_issued_lump_line・outside_paid_shipments と同じ
@@ -331,7 +335,7 @@ def billed_by(shipment):
     row = rows.filter(shipment=shipment).first()
     if row is not None:
         return "line", row
-    row = rows.filter(order_line_id=shipment.order_line_id, shipment__isnull=True).first()
+    row = rows.filter(order_line_id=shipment.order_line_id, last_shipped_at__isnull=False).first()
     if row is not None:
         return "lump", row
     try:
@@ -423,22 +427,27 @@ def delete_refusal(shipment) -> str:
     """出荷を消せない訳の文 (読むだけ)。消せるなら空の字。delete_shipment と削除の確かめのカードが同じ文を使う。
 
     見る順 (最初に当たった 1 つの文を返す。どの文も「削除できません。」で始め、出荷番号と次にすることを書く):
-    (ii) 請求書の明細か、請求書の外の入金が指している。請求書と入金の状態は問わない (取り消しても行は残り、表の外部キーは PROTECT)。
-         請求書の明細の表は出荷の逆の関係 invoice_lines、入金の表は逆の関係 payments の先として引く (billing を import しない)。
+    (ii) 請求書の外で受け取った入金の記録が指している。入金の状態は問わない (取り消しても行は残り、入金の記録は出荷を持ち主にして
+         変更の履歴を残すので、持ち主が消えると履歴の置き場が無くなる。表の外部キーは PROTECT)。
+         入金の表は出荷の逆の関係 payments の先として引く (billing を import しない)。
+         請求書の明細が指す出荷は断らない (明細は出荷番号と出荷日の写しを持って残り、出荷の外部キーは空になる。知らせるのは検査の層の R27)。
     (i) 発行の納品書に入っている (取消の納品書を指す出荷は断らない)。
     (iii) 取引先につながる: 受信した注文で作った受注の出荷 (_is_edi_order)・出荷の知らせを送った出荷 (notice_sent_at が空でない)・
          受注の明細に検収が 1 件でも届いた出荷 (受注の明細の逆の関係 acceptances。connect を import しない。検収は出荷でなく明細を指すので明細で見る)。
     (iv) 明細を出し終えた出荷 (finishes_line)。
-    訳: 金額の書類 (納品書・請求書・入金) が指す出荷と、取引先につながる出荷と、明細を出し終えた出荷を消さないため
+    訳: 金額の書類 (納品書・入金) が指す出荷と、取引先につながる出荷と、明細を出し終えた出荷を消さないため
     (何を見るかの訳は delete_shipment の訳と同じ)。出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べを受けた作者の決め)。
-    (ii) を (i) より先に見るのは、(ii) は請求書と入金を取り消しても外れないので、納品書を取り消させた後に断らないため。出所 = AI の案 (開発の記録 docs/nights/20261111/N377.md)。
+    請求書の明細が指す出荷を (ii) から外したのは、請求済みの出荷の直しと削除を止めない本人の決め 11-11 12:5x〜13:0x による
+    (請求書の明細は出荷番号と出荷日を写して残す。依頼書 N403c)。請求書の外で受け取った入金が指す出荷は、入金を取り消した後も
+    今のまま消せない (本人の決め 11-11 20:1x「それでOK」。入金に出荷番号を写して消せるようにする形は作らない)。
+    (ii) を (i) より先に見るのは、(ii) は入金を取り消しても外れないので、納品書を取り消させた後に断らないため。出所 = AI の案 (開発の記録 docs/nights/20261111/N377.md)。
     変えてよい条件 = 本人が決め直したとき (例: 相手につながる出荷の直し方を設計したとき)。
     """
     number = shipment.shipment_no
-    if _has_reverse_rows(Shipment, "invoice_lines", shipment) or _has_reverse_rows(Shipment, "payments", shipment):
+    if _has_reverse_rows(Shipment, "payments", shipment):
         return (
-            f"削除できません。出荷 {number} は請求書の明細か請求書の外の入金の記録が指しています"
-            " (取り消した請求書と入金の記録も、出荷を指したまま残ります)。数や日付の誤りは「編集」で直してください。"
+            f"削除できません。出荷 {number} は請求書の外で受け取った入金の記録が指しています"
+            " (入金を取り消しても、記録は出荷を指したまま残ります)。数や日付の誤りは「編集」で直してください。"
         )
     note = shipment.delivery_note
     if note is not None and note.status == DeliveryNote.STATUS_ISSUED:
@@ -518,10 +527,12 @@ def delete_shipment(shipment, user):
     (refresh_status。取消の受注は変えない)。在庫は出荷を動きの表に書かず集計で引くので、行を消せば出荷の前の数に戻る。
     出荷の知らせは送らない (HTTP を呼ばない)。添付と書式つきのメモは消さない (付けた先の無い行が残る)。
     返す物 (消した出荷。pk は None) に、画面の知らせの字 saved_message (「出荷 <番号> を削除しました。」) を付ける (表に書かない)。
-    請求済みの出荷 (billed_by) は断らず、検査の層の R27 が知らせる (本人の決め 11-11 12:5x〜13:0x。今は delete_refusal が断らない出荷のうち、
-    一式の行で請求した明細の出荷だけが当たる)。
+    請求済みの出荷 (billed_by) は断らず、検査の層の R27 が知らせる (本人の決め 11-11 12:5x〜13:0x。delete_refusal が断らない出荷のうち、
+    請求書に出荷の行で入った出荷と、一式の行で請求した明細の出荷が当たる)。
+    請求書の明細が指す出荷も消せる (明細には出荷番号と出荷日の写しが残る)。検査の層の R27 が知らせる。消すと、指していた請求書の明細の
+    出荷の外部キーは空になる (SET_NULL。取消の請求書の明細も同じ)。明細の数量・単価・金額と請求書の合計は変えない。消した事は今のとおり変更の履歴に残る。
     訳: 違う受注の明細へ入れた出荷などの打ち間違いを消し、受注の状態と在庫を出荷の前に戻すため。発行の納品書が指す出荷は、先に納品書を取り消す。
-    請求書の明細・請求書の外の入金が指す出荷は、取り消しても行が残るので消さず、「編集」で直す (金額の書類を黙って変えない)。
+    請求書の外の入金が指す出荷は、取り消しても入金の行が残るので消さず、「編集」で直す (金額の書類を黙って変えない)。
     取引先につながる出荷 (受信した注文の出荷・送った出荷の知らせ・届いた検収) は消しても相手の記録が戻らないので断り、直し方は別に設計する (会期の外)。
     明細を出し終えた出荷 (finishes_line) は一式の明細の金額が付くので断る。添付と書式つきのメモは消さない (付けた先の無い行が残る。扱いは未定)。
     出所 = 本人の決め 11-08 00:23・00:25 (エンタープライズ化の調べを受けた作者の決め)。

@@ -39,6 +39,8 @@
   出荷の金額の式 (shipment_amount) は変えない (作者の決め)。
 - 請求済みの出荷を後で直すか消しても止めない (検査の層の R27 が直す前に知らせる。本人の決め 11-11 12:5x〜13:0x)。
   請求した時の数量と今の出荷の数量が違う明細は changed_lines (読むだけ) が返す。
+  請求書に入った出荷を消すと、明細は出荷を指さなくなり、出荷番号と出荷日の写しを持って残る (出荷を消した出荷の行)。
+  一式の行は最後の出荷日がある行 (InvoiceLine.is_lump) で見分け、出荷が空かでは見ない。
 - 締めの一括 (締日を選ぶと、その締日の得意先の請求書をまとめて作る):
   closing_date(年, 月, 締日) は締める日 (その月の日数より大きい締日は月末。読むだけ)。
   closing_plan(締める日) は得意先ごとの行 (作る・もう在る・一式の金額を待つ・締日が空。読むだけ。2 段目の画面と create_closing_invoices が同じ中身を読む)。
@@ -149,9 +151,10 @@ def _refuse_unbillable_lump(order_line, customer, *, copying=False):
                 "作り直す前の請求書を取り消してから、請求書の新規登録で作り直してください。",
             )
         raise RuleViolation("R09", f"発行できません。{_R09_RULE}{ref}の出荷が無いので、外してください。")
+    # 一式の行は最後の出荷日がある行 (InvoiceLine.is_lump。出荷を消した出荷の行は出荷が空でも一式の行でない)。
     billed = (
         InvoiceLine.objects.select_related("invoice")
-        .filter(order_line=order_line, shipment__isnull=True, invoice__status=Invoice.STATUS_ISSUED)
+        .filter(order_line=order_line, last_shipped_at__isnull=False, invoice__status=Invoice.STATUS_ISSUED)
         .order_by("pk")
         .first()
     )
@@ -240,6 +243,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
     書いた請求書と明細は、変更の履歴に「作った」で残す (人は user)。
     発行した時の会社の登録番号・住所・電話・振込先と得意先の名前と税率、明細の品番・品名・単位 (受注の明細から)・得意先の注文番号を写す
     (刷り直しても渡した時と同じ字。決め 11-07 23:4x・11-08 00:0x。訳は billing.models の Invoice と InvoiceLine)。
+    出荷の行には出荷の出荷番号と出荷日も写す (一式の行は空。出荷を消しても明細に残る。本人の決め 11-11 12:5x〜13:0x。訳は InvoiceLine)。
+    写しは帳票の写し (keep_report_copy) より前に書く (帳票の写しは、呼んだ時点の記録から描くため)。
     発行の時の帳票の写しを残す (R34)。描けなければ、返す請求書の saved_note に字を足して黄にする (core.services.keep_report_copy・note_copy_failed)。
     """
     pks = sorted({shipment.pk for shipment in shipments})
@@ -294,6 +299,8 @@ def _issue_invoice(customer, shipments, issued_on, user, *, lumps=(), copies=(),
             unit_price=unit_price,
             price_basis=shipment.order_line.price_basis,
             amount=amount,
+            shipment_no=shipment.shipment_no,
+            shipped_at=shipment.shipped_at,
             **_line_snapshot(shipment.order_line),
         ))
     for row in lump_lines:
@@ -492,10 +499,12 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
     "refused": 理由の文の請求書 (無ければ None), "period_from", "period_to": 渡した請求書の期間,
     "lumps": 取り消す請求書に入っていた一式の行 (InvoiceLine。受注の明細・数量・金額・最後の出荷日を同じ値で新しい請求書に写す。受注番号・行番号の順),
     "outside_paid": 取り消す請求書に入っていた出荷のうち、請求書の外で受け取った入金 (取消でない) のある物の (出荷, 入金) の並び (出荷日・出荷番号の順。
-    1 つの出荷に 2 件あれば入金の pk の小さい方)}。
+    1 つの出荷に 2 件あれば入金の pk の小さい方),
+    "deleted": 取り消す請求書に入っていた、出荷を消した出荷の行 (InvoiceLine。出荷番号と出荷日の写しだけが残る。写しの出荷日・出荷番号の順)}。
     請求書の外で受け取った入金 (取消でない) のある出荷は写さず、outside_paid に並べる (作者の決め。代金を受け取った出荷をもう一度請求しない)。
+    出荷を消した出荷の行は、出荷の記録が無いので新しい請求書に入れず (R09)、deleted に並べる (本人の決め 11-11 12:5x〜13:0x で出荷を消せるようにした後の形)。
     入る出荷 = 取り消す請求書に入っていた出荷の全部 + その得意先の請求できる出荷 (billable_shipments) のうち出荷日が期間の中 (両端を含む) の物。
-    一式の行 (出荷が空) は出荷の集まりに入れず、lumps に並べる (空の値を出荷の pk__in に渡さない。作り直しで一式の行も落とさない)。
+    一式の行 (最後の出荷日がある行 = InvoiceLine.is_lump) は出荷の集まりに入れず、lumps に並べる (空の値を出荷の pk__in に渡さない。作り直しで一式の行も落とさない)。
     理由の文は、取り消す請求書のどれかに取消でない入金が残っていれば、その請求書の cancel_refusal の文 (hide_money なら件数だけ)。
     """
     invoices = list(_same_period_invoices(invoice).prefetch_related("payments", "lines"))
@@ -506,7 +515,11 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
             refusal, refused = text, row
             break
     taken = {line.shipment_id for row in invoices for line in row.lines.all() if line.shipment_id is not None}
-    lump_pks = [line.pk for row in invoices for line in row.lines.all() if line.shipment_id is None]
+    lump_pks = [line.pk for row in invoices for line in row.lines.all() if line.is_lump]
+    deleted = sorted(
+        (line for row in invoices for line in row.lines.all() if line.is_shipment_deleted),
+        key=lambda line: (line.shipped_at or date.min, line.shipment_no),
+    )
     lumps = list(
         InvoiceLine.objects.filter(pk__in=lump_pks)
         .select_related("order_line__order", "order_line__item")
@@ -536,6 +549,7 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
         "period_to": invoice.period_to,
         "lumps": lumps,
         "outside_paid": outside_paid,
+        "deleted": deleted,
     }
 
 
@@ -554,6 +568,8 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
     _period_note の saved_note・saved_level を付ける (表に書かない)。
     請求書の外で受け取った入金 (取消でない) のある出荷は写さず (reissue_plan の outside_paid。作者の決め)、saved_message の末に
     「別に受け取った入金があるので入れない出荷: S-…。」を足して saved_level を "warning" にする (閉じるまで残す黄。黙って落とさない)。
+    出荷を消した出荷の行 (reissue_plan の deleted) は新しい請求書に入れず (出荷の記録が無い = R09)、saved_message の末に
+    「出荷を消したので入れない明細: S-…。」を足して saved_level を "warning" にする (同じく黙って落とさない。作り直しの画面の表には出さない)。
     訳: 同じ得意先の同じ締め期間の請求書を、前の請求書を取り消して 1 枚に作り直すため (入金の残る請求書は取り消さない = cancel_refusal と同じ決まり。取り消した請求書に入っていた出荷は全部入れ、期間の中で残っていた出荷を足すので、作り直しで請求から落ちる出荷は無い)。出所 = RULES.md R23・本人の決め 11-07 00:2x (本人が選んだ案「同じ期間の 2 枚目は赤の知らせで止め、1 枚目を取り消して期間の全部の出荷で作り直すボタンへ案内する」) と 11-07 06:11 (入れる出荷の決め)。入金を先に取り消す順は cancel_refusal の訳のとおり未確認。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
@@ -589,6 +605,11 @@ def reissue_invoice(invoice, user, *, issued_on, lumps=()):
             # 写さなかった出荷を、保存の後の知らせに並べて人の目に入れる (黙って落とさない。閉じるまで残す黄)。
             numbers = "・".join(shipment.shipment_no for shipment, _payment in plan["outside_paid"])
             made += f"別に受け取った入金があるので入れない出荷: {numbers}。"
+            created.saved_level = "warning"
+        if plan["deleted"]:
+            # 出荷を消した出荷の行も、保存の後の知らせに並べて人の目に入れる (黙って落とさない。閉じるまで残す黄)。
+            numbers = "・".join(line.shipment_no for line in plan["deleted"])
+            made += f"出荷を消したので入れない明細: {numbers}。"
             created.saved_level = "warning"
         cancelled = "・".join(row.invoice_no for row in plan["invoices"])
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出し、saved_note を後ろに付ける)。表に書かない。
@@ -1020,7 +1041,7 @@ def billable_shipments(customer=None):
     受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作者の決め。受注の明細の列を外部キーの道で読む)。
     請求書の外で受け取った入金 (取消でない) のある出荷は除く (作者の決め。出荷の逆の関係 payments)。
     """
-    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    # 出荷が空の行 (一式の行と、出荷を消した出荷の行) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     queryset = (
         _Shipment.objects.exclude(pk__in=invoiced)
@@ -1050,7 +1071,7 @@ def unbilled_in_period(customer, period_from, period_to):
     受注の明細に「請求しない」の印 (no_bill) がある出荷は除く (作った後の知らせに数えると、入れ忘れと読み違えるため。作者の決め)。
     請求書の外で受け取った入金 (取消でない) のある出荷も除く (作者の決め。訳は同じ)。
     """
-    # 一式の行 (出荷が空) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
+    # 出荷が空の行 (一式の行と、出荷を消した出荷の行) を外す。空の値が NOT IN に入ると、どの出荷も外れるため。
     invoiced = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=False).values("shipment_id")
     return (
         _Shipment.objects.filter(
@@ -1068,7 +1089,8 @@ def unbilled_lumps(customer=None, *, include_no_bill=False):
 
     次の 6 つが全部当たる受注の明細: (1) 単価の単位が式 (2) 出荷が 1 つ以上ある (納品書を発行したかどうかは見ない)
     (3) 明細を出し終えた出荷の印 (finishes_line) の付いた出荷が無い (4) 終わっている = 受注が取消か、出荷の合計が数量以上か、受注の明細が完了 (RULES.md R25)
-    (5) 発行の請求書に、この明細の一式の行 (出荷を指さない明細) がまだ無い (6) 受注の明細に「請求しない」の印 (no_bill) が無い
+    (5) 発行の請求書に、この明細の一式の行 (最後の出荷日がある明細 = InvoiceLine.is_lump。出荷を消した出荷の行は数えない) がまだ無い
+    (6) 受注の明細に「請求しない」の印 (no_bill) が無い
     (人が請求しないと決めた明細を一式の表から外す = 作者の決め。include_no_bill が真なら (6) を見ない = 作り直しの写しの見方)。
     customer を渡せば、その得意先の明細だけ。
     (2) は R09 (請求書の明細は、出荷済みの物だけ。「出荷済み」は出荷の記録がある出荷。本人の決め 11-11 10:1x) を一式の行にも当てるため。
@@ -1080,7 +1102,7 @@ def unbilled_lumps(customer=None, *, include_no_bill=False):
     NOT IN に空の値は入らない。
     """
     shipments = _Shipment.objects.values("order_line_id")
-    issued_lumps = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=True).values(
+    issued_lumps = InvoiceLine.objects.filter(invoice__status=Invoice.STATUS_ISSUED, last_shipped_at__isnull=False).values(
         "order_line_id"
     )
     queryset = (
@@ -1112,9 +1134,10 @@ def lumps_shipped_after(customer=None):
     後に増えた分だけが後の出荷になる。一式の行で請求した後に前の出荷を直すと、出荷の合計が一式の行の数量より少なくなることがある
     (止めずに検査の層の R27 で知らせる。本人の決め 11-11 12:5x〜13:0x)。列を足さずに見られる。
     読むだけで断らない。止めない (作者の決め)。一式の行の請求書を取り消すと、この並びから外れ、明細は終わっていれば unbilled_lumps の並びに戻る (金額を決め直して載せる)。
+    一式の行は最後の出荷日がある行 (InvoiceLine.is_lump) で、出荷を消した出荷の行は数えない。
     """
     rows = InvoiceLine.objects.filter(
-        invoice__status=Invoice.STATUS_ISSUED, shipment__isnull=True, order_line__no_bill=False
+        invoice__status=Invoice.STATUS_ISSUED, last_shipped_at__isnull=False, order_line__no_bill=False
     ).select_related("invoice", "order_line__order__customer", "order_line__item")
     if customer is not None:
         rows = rows.filter(order_line__order__customer=customer)
@@ -1140,6 +1163,9 @@ def changed_lines(invoice):
 
     出荷の行は、明細の数量 (請求した時の出荷の数量の写し) と出荷の今の数量を比べる。一式の行は、明細の数量 (請求した時のその受注の明細の
     出荷の合計の写し = lump_facts) と、その受注の明細の今の出荷の合計を比べる (出荷が 1 つも無くなった明細の今の数量は 0)。
+    出荷を消した出荷の行 (InvoiceLine.is_shipment_deleted) も今の数量を 0 として並べる (明細の数量は 0 より大きいので必ず並ぶ。
+    呼ぶ側は明細の is_shipment_deleted で「消した」の印を出す。本人の決め 11-11 12:5x〜13:0x で出荷を消せるようにした後の形)。
+    一式の行は最後の出荷日がある行 (InvoiceLine.is_lump) で見分ける (出荷が空かでは見ない)。
     取消の請求書は空の並び (もう請求していないため)。
     請求済みの出荷を直すか消しても止めない (直す前に検査の層の R27 が知らせる。本人の決め 11-11 12:5x〜13:0x) ので、直した後の食い違いを
     請求書の側から読む口。請求書の詳細の印 (2 段目) が使う。問い合わせは、明細と出荷で 1 回 (select_related)、
@@ -1148,7 +1174,7 @@ def changed_lines(invoice):
     if invoice.status == Invoice.STATUS_CANCELLED:
         return []
     lines = list(InvoiceLine.objects.filter(invoice=invoice).select_related("shipment").order_by("pk"))
-    lump_pks = {line.order_line_id for line in lines if line.shipment_id is None}
+    lump_pks = {line.order_line_id for line in lines if line.is_lump}
     totals = {}
     if lump_pks:
         totals = dict(
@@ -1160,7 +1186,12 @@ def changed_lines(invoice):
         )
     found = []
     for line in lines:
-        current = line.shipment.qty if line.shipment_id is not None else (totals.get(line.order_line_id) or _ZERO)
+        if line.is_lump:
+            current = totals.get(line.order_line_id) or _ZERO
+        elif line.shipment_id is None:
+            current = _ZERO  # 出荷を消した出荷の行
+        else:
+            current = line.shipment.qty
         if current != line.qty:
             found.append((line, line.qty, current))
     return found

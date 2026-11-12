@@ -75,7 +75,8 @@ def invoice_changed_note(invoice) -> str:
     """{% invoice_changed_note object as changed_note %}。請求した後に出荷の数量が変わった明細の黄色の 1 行の字 (読むだけ)。無ければ空の字。
 
     services.changed_lines(invoice) を 1 回だけ引く (明細のタブの行ごとには引かない)。並びは changed_lines のまま (明細の pk の順)。
-    出荷の行は「S-000031 (請求 50・今 48)」、一式の行は「受注 SO-… の n 行目の一式 (請求 300・今 280)」。数は comma の字。
+    出荷の行は「S-000031 (請求 50・今 48)」、一式の行は「受注 SO-… の n 行目の一式 (請求 300・今 280)」、
+    出荷を消した出荷の行は「S-000031 (請求 50・出荷を消した)」(番号は明細の出荷番号の写し。依頼書 N403c)。数は comma の字。
     字は「請求した後に出荷の数量が変わった明細があります: <並び (「・」でつなぐ)>。請求書も直すときは、取り消して作り直してください。」。
     金額は書かない (金額の閲覧の無い人にも同じ字)。取消の請求書は空の字 (changed_lines が空を返す)。
     """
@@ -83,10 +84,13 @@ def invoice_changed_note(invoice) -> str:
 
     parts = []
     for line, billed, now in services.changed_lines(invoice):
-        if line.shipment_id is not None:
-            name = line.shipment.shipment_no
-        else:
+        if line.is_lump:
             name = f"受注 {line.order_line.order.order_no} の {line.order_line.line_no} 行目の一式"
+        elif line.shipment_id is None:
+            parts.append(f"{line.shipment_no} (請求 {comma(billed)}・出荷を消した)")
+            continue
+        else:
+            name = line.shipment.shipment_no
         parts.append(f"{name} (請求 {comma(billed)}・今 {comma(now)})")
     if not parts:
         return ""
