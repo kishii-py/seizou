@@ -296,8 +296,8 @@ class SettingForm(forms.Form):
                 required=False,
                 initial=values["site_url"],
                 help_text=(
-                    "メールのリンクと、現品票の QR の頭。人がこの seizou を開く URL の頭です (例 https://seizou.example.jp)。"
-                    "空なら、メールにリンクを付けず、現品票の QR は刷った時に開いていた住所になります。"
+                    "メールのリンクと、現品票・納品書・出荷ラベルの QR の頭。人がこの seizou を開く URL の頭です (例 https://seizou.example.jp)。"
+                    "空なら、メールにリンクを付けず、QR は刷った時に開いていた住所になります。"
                 ),
             )
         elif key == "hidden_fields":

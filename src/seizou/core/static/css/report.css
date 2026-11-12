@@ -41,7 +41,8 @@ body {
   display: none;
 }
 
-/* 印刷用の画面の上の黄色の 1 行 (現品票の QR が手元の PC の中だけの住所を指すときの知らせ。workorders/workorder_tag.html の .report-screen-notice)。
+/* 印刷用の画面の上の黄色の 1 行 (現品票・納品書・出荷ラベルの QR が手元の PC の中だけの住所を指すときの知らせ。
+   workorders/workorder_tag.html・shipping/delivery_note.html・shipping/shipment_label.html の .report-screen-notice。字は core.reports.qr_url が返す名前から口ごとに作る)。
    .report-actions と同じく、ふだんは出さず、下の media の screen の塊の中でだけ出す (紙と PDF には出さない)。この規則も media の screen の塊より前に置く。
    淡い黄の地は、帳票の色 (黒・灰と白) の外で、この 1 つだけが画面の知らせの色 (紙と PDF には出ないので、白黒の印刷に関わらない)。 */
 .report-screen-notice {

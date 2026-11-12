@@ -3,6 +3,8 @@
 WeasyPrint は PDF を作る関数 (render_pdf と render_html_pdf) の中でだけ import する。WeasyPrint (か OS の pango) が無い環境では
 render_pdf が PdfUnavailable を投げ、画面はそれを捕まえて印刷用の HTML に落とす。
 PDF を出すには extras を入れる (`pip install "seizou[pdf]"`。手元の開発は `uv sync --extra pdf`) と、OS に pango を入れる。
+帳票の QR の字は qr_url が作る (現品票・納品書・出荷ラベルの口が呼ぶ。設定の URL の頭があればそれを付け、無くて手元だけの住所で開いた時は、
+画面に知らせを出すための住所の名前も返す)。
 """
 
 from __future__ import annotations
