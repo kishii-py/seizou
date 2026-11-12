@@ -612,6 +612,15 @@ def unfilled_qty(order_line):
     return max(order_line.qty - shipped_qty(order_line), _ZERO)
 
 
+def unissued_qty(order_line):
+    """受注の明細の残のうち、作る指示書がまだ無い数 (読むだけ。0 以上)。指示書の発行の入力 (workorders) が数量の初めの値に使う。
+
+    数え方は生産管理ボードの判断の「指示書が要る」と同じ (orders.board の BoardRow.unissued。出荷済みのうち指示書で作った分を、
+    指示書の数量の合計から引いて、残と比べる = 本人の決め 11-13 06:5x)。今出せる明細・取消の受注・完了の明細は 0。
+    """
+    return order_line.board.unissued
+
+
 def annotate_remaining(queryset):
     """受注の明細の queryset に、出荷済みの数 (shipped_total) と残の数 (remaining_total) を足して返す。
 

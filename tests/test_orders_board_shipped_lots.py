@@ -13,6 +13,7 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
+from seizou.orders import services as orders_services
 from seizou.orders.models import OrderLine
 from seizou.shipping import services as shipping_services
 from tests import test_orders_board
@@ -107,3 +108,45 @@ def test_unshipped_lines_judge_as_before(user, customer, item, cut):  # noqa: F8
     finished = _line(user, customer, item, due=_ahead())
     _lot(user, finished, cut, "10", done="10")
     assert _judged(finished) == ("ship", "ship")
+
+
+@pytest.mark.django_db
+def test_unissued_is_the_part_no_workorder_covers(user, customer, item, cut):  # noqa: F811
+    """残のうち、作る指示書がまだ無い数 (BoardRow.unissued と orders.services.unissued_qty)。指示書の発行の入力の数量の初めの値が読む。
+
+    判断の「指示書が要る」と同じ見方で、今出せる明細・残の全部に指示書が出ている明細・取消の受注は 0。
+    """
+
+    def unissued(line):
+        fresh = OrderLine.objects.get(pk=line.pk)
+        assert orders_services.unissued_qty(fresh) == fresh.board.unissued
+        return fresh.board.unissued
+
+    fresh = _line(user, customer, item, due=_ahead())
+    assert unissued(fresh) == Decimal("10")
+
+    shipped_lot = _line(user, customer, item, due=_ahead())
+    _lot(user, shipped_lot, cut, "5", done="5")
+    assert unissued(shipped_lot) == Decimal("5")
+    _ship(user, shipped_lot, "5")
+    assert unissued(shipped_lot) == Decimal("5")
+
+    in_production = _line(user, customer, item, due=_ahead())
+    _lot(user, in_production, cut, "10", done="5")
+    _ship(user, in_production, "5")
+    assert unissued(in_production) == Decimal("0")
+
+    ready = _line(user, customer, item, due=_ahead())
+    _lot(user, ready, cut, "10", done="10")
+    _ship(user, ready, "4")
+    assert unissued(ready) == Decimal("0")
+
+    over_shipped = _line(user, customer, item, due=_ahead())
+    _lot(user, over_shipped, cut, "5", done="5")
+    _ship(user, over_shipped, "8")
+    assert unissued(over_shipped) == Decimal("2")
+
+    cancelled = _line(user, customer, item, due=_ahead())
+    orders_services.cancel_order(cancelled.order, user)
+    assert unissued(cancelled) == Decimal("0")
+

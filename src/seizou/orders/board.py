@@ -535,6 +535,17 @@ class BoardRow:
         return self.issued_total - self.shipped_from_workorders < self.remaining
 
     @cached_property
+    def unissued(self) -> Decimal:
+        """残のうち、作る指示書がまだ無い数 (0 より小さくしない)。指示書の発行の入力の数量の初めの値が読む (orders.services.unissued_qty)。
+
+        取消の受注・残が 0 以下・今出せる明細 (can_ship_now) は 0。ほかは 残 − まだ出荷していない指示書の数量
+        (指示書の数量の合計 − shipped_from_workorders)。判断の「指示書が要る」(needs_workorder) が真の明細で 0 より大きい (同じ見方)。
+        """
+        if self.line.order.status == Order.STATUS_CANCELLED or self.remaining <= 0 or self.can_ship_now:
+            return _ZERO
+        return max(self.remaining - (self.issued_total - self.shipped_from_workorders), _ZERO)
+
+    @cached_property
     def judgement_code(self) -> str:
         """判断の印の code。上から順に最初に当たった物 (決まった規則だけ。自動の判断はしない)。
 

@@ -12,10 +12,12 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.orders import services as orders_services
+from seizou.progress import services as progress_services
 from seizou.shipping import services as shipping_services
 from seizou.workorders import services
 from seizou.workorders.models import WorkOrder
@@ -118,6 +120,28 @@ def test_shipped_and_issued_are_both_subtracted(client_logged_in, user, line, cu
     _issue(line, "3", cut, user)
     response = _open(client_logged_in, line)
     assert response.context["form"].initial["qty"] == Decimal("5")
+
+
+@pytest.mark.django_db
+def test_lot_made_and_shipped_opens_with_the_rest(client_logged_in, user, line, cut):
+    """5 の指示書を出して完成させ、その 5 を出荷した明細: 残りの 5 が入る (生産管理ボードの「指示書が要る」と同じ見方。本人の決め 11-13 06:5x)。
+
+    前は、出荷と指示書の両方を引いて 0 になり、空で開いた (525 回目の本体の直しで、判断の式と同じ数え方にそろえた)。
+    """
+    workorder = _issue(line, "5", cut, user)
+    progress_services.record_progress(workorder.steps.get(seq=1), Decimal("5"), timezone.now(), user, completes_step=True)
+    shipping_services.ship(line, Decimal("5"), SHIPPED_AT, user)
+    response = _open(client_logged_in, line)
+    assert response.context["form"].initial["qty"] == Decimal("5")
+
+
+@pytest.mark.django_db
+def test_line_ready_to_ship_opens_empty(client_logged_in, user, line, cut):
+    """10 を完成させて 4 を出荷した明細: 残りの 6 は完成していて出せるので、数量は空 (作る指示書は要らない)。"""
+    workorder = _issue(line, "10", cut, user)
+    progress_services.record_progress(workorder.steps.get(seq=1), Decimal("10"), timezone.now(), user, completes_step=True)
+    shipping_services.ship(line, Decimal("4"), SHIPPED_AT, user)
+    assert "qty" not in _open(client_logged_in, line).context["form"].initial
 
 
 @pytest.mark.django_db

@@ -11,10 +11,9 @@ from django.db.models import Q
 from seizou.core.forms import CHECKBOX_CSS, Checkboxes
 from seizou.core.widgets import RemoteSelect
 from seizou.masters.services import active_processes
-from seizou.orders.services import remaining_qty
+from seizou.orders.services import unissued_qty
 
 from .models import WorkOrder, WorkOrderStep
-from .services import issued_qty
 
 _OrderLine = WorkOrder._meta.get_field("order_line").related_model
 
@@ -61,10 +60,10 @@ class WorkOrderIssueForm(forms.Form):
     def _set_initial_qty(self, pk):
         """受注の明細から開いた入力 (?order_line=<pk>) の「数量」の初めの値に、まだ指示書を出していない数を入れる。
 
-        入れる数 = 受注の明細の残 (orders.services.remaining_qty。完了の明細は 0 以下 = RULES.md R25) − 取消でない指示書の数量の合計
-        (services.issued_qty。R06 の検査と同じ関数)。0 以下の時と、取消の受注の明細の時は入れない (空のまま)。人はそのまま保存するか打ち直す。
-        指示書で作った物を出荷した後は、出荷と指示書の両方を引くので少なめになる (例 = 数量 10 に 5 の指示書を出し、その 5 を出荷すると空)。
-        多すぎる数を入れない側に倒している (入った数のまま保存して作りすぎない。足りない分は人が打つ。522 回目の本体の注)。
+        入れる数 = 残のうち、作る指示書がまだ無い数 (orders.services.unissued_qty。生産管理ボードの判断の「指示書が要る」と同じ見方 =
+        出荷済みのうち指示書で作った分を、指示書の数量の合計から引いて、残と比べる。本人の決め 11-13 06:5x)。
+        例 = 数量 10 に 5 の指示書を出して完成させ、その 5 を出荷した明細は、残りの 5 が入る。
+        0 の時 (残の全部に指示書が出ている・今出せる・完了の明細) と、取消の受注の明細の時は入れない (空のまま)。人はそのまま保存するか打ち直す。
         送った後の描き直し (bound) と、数量の初めの値が既にある時は呼ばない (人が打った値と渡された値をそのまま出す)。
         訳: 受注の詳細の緑の「指示書を発行する」と明細の ⋮ から開いた入力で、数量を打たずに工程を選んで保存できるようにするため
         (出荷・入荷・受入の入力は、残りの数が数量に入って開く)。出所 = 本人の決め 11-12 23:3x (依頼書 N441)。
@@ -73,7 +72,7 @@ class WorkOrderIssueForm(forms.Form):
         line = _OrderLine.objects.filter(pk=pk).select_related("order").first()
         if line is None or line.order.status == "cancelled":
             return
-        rest = remaining_qty(line) - issued_qty(line)
+        rest = unissued_qty(line)
         if rest > 0:
             self.initial["qty"] = rest
 
