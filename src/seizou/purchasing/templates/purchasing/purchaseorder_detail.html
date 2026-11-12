@@ -19,7 +19,10 @@
 {% endblock %}
 {# 「⋯」の「取消」は「下書き」「断られた」と、「送った」「相手が受け入れた」の発注に出す (一部を出荷した発注にも出し、押して保存すると断りの字が「変更」の道を案内する)。 #}
 {% block more %}{% can_write "purchasing.PurchaseOrder" as can_po %}{% if can_po %}{% if object.status == "draft" or object.status == "rejected" or object.status == "sent" or object.status == "accepted" %}{% url 'purchasing:purchaseorder_cancel' object.pk as cancel_url %}{% include "core/_detail_more.html" with more_url=cancel_url more_label="取消" more_modal=True %}{% endif %}{% endif %}{% endblock %}
-{% block edit_button %}{% can_write "purchasing.Receipt" as can_receipt %}{% if can_receipt %}{% revision_state object as revision %}{% if object.status == "draft" or revision and not revision.delivered %}
+{# 「下書き」で、取引先に向き「送る」のつながりが無い発注 (purchasing_tags の can_mark_sent_outside) は、頭の右の緑を「再送」の代わりに「発注書を送った」にする (小窓で確かめる。出す人は「再送」と同じ。依頼書 N439。本人の決め 11-12 14:3x・18:2x)。つながりのある発注と、版が 2 以上の「再送」の分かれは今のまま。 #}
+{% block edit_button %}{% can_write "purchasing.Receipt" as can_receipt %}{% if can_receipt %}{% revision_state object as revision %}{% can_mark_sent_outside object as sent_outside %}{% if sent_outside %}{% url 'purchasing:purchaseorder_sent_outside' object.pk as sent_outside_url %}
+<a class="btn btn-primary" href="{{ sent_outside_url }}" data-modal-form="{{ sent_outside_url }}">{% icon "check" "size-4" %}発注書を送った</a>
+{% elif object.status == "draft" or revision and not revision.delivered %}
 <form method="post" action="{% url 'purchasing:purchaseorder_send' object.pk %}">
   {% csrf_token %}
   <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}再送</button>
@@ -27,14 +30,19 @@
 {% else %}{% next_receipt object as receipt %}{% if receipt %}<a class="btn btn-primary" href="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を記録する</a>{% endif %}{% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
 {# 相手が条件付で受けた・相手が保留した発注は、記録の今の状態を黄の 1 行で出す (知らせの段 5。答えが届くと 2 秒ごとの入れ替えで開いている画面にも出る)。後の版を相手が受け入れた条件付の発注は、受け入れた事の 1 行に替える (本体の決め 11-11 14:2x)。今の版の変更への受諾が届くと、発注の状態は「相手が受け入れた」に進む (本人の決め 11-12 14:1x。connect の受け口) ので、この 1 行が出るのは、その直しの前に答えが届いていた発注 (状態が条件付のまま残った記録) だけ。revision_state は #po-alert の頭で 1 回だけ呼び、条件付の分かれと revision.alert の両方が同じ値を読む。 #}
+{# つながりの無い「下書き」の発注で、送った記録の無い物は、発注書を seizou の外で送る案内の 1 行 (知らせの段 5)。「発注書を送った」で記録した発注は、取消でない間、記録した日時と、答えが届かない事の 1 行 (依頼書 N439)。 #}
 {% block content %}<div id="po-alert">{% revision_state object as revision %}{% if object.status == "draft" %}{% with last=object.outbox_messages.first %}{% if last and last.response != "受け取った" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>注文は相手に届いていません。{{ last.response }} 直したら「再送」を押してください。</span></div>
-{% endif %}{% endwith %}{% elif object.status == "conditional" %}{% if revision and revision.delivered and revision.reply == "AP" %}
+{% elif not last %}{% can_mark_sent_outside object as sent_outside %}{% if sent_outside %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この取引先とは seizou でつながっていません。発注書 (印刷用の画面か PDF) を FAX・郵送・メールなどで送り、送った後に「発注書を送った」を押してください。</span></div>
+{% endif %}{% endif %}{% endwith %}{% elif object.status == "conditional" %}{% if revision and revision.delivered and revision.reply == "AP" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手は第 {{ object.revision_no }} 版の変更を受け入れました ({{ revision.replied_at|date:"Y-m-d H:i" }})。相手の受注は第 {{ object.revision_no }} 版の中身です。</span></div>
 {% else %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が条件付で受けました ({{ object.replied_at|date:"Y-m-d H:i" }})。明細の下の黄の行に、相手の回答単価・回答数量・回答納期が出ています。合わせるときは「変更」で発注を直して送り、合わせないときは相手と話して決めてください。</span></div>
 {% endif %}{% elif object.status == "on_hold" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が保留しました ({{ object.replied_at|date:"Y-m-d H:i" }})。答えが届くのを待つか、相手と話して決めてください。</span></div>
+{% endif %}{% if object.sent_outside_at and object.status != "cancelled" %}
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>発注書を seizou の外で送った発注です ({{ object.sent_outside_at|date:"Y-m-d H:i" }})。相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら「受入を記録する」で記録します。</span></div>
 {% endif %}{% if revision.alert %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-alert>{% icon "alert" "size-5" %}<span>{{ revision.alert }}</span></div>
 {% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}

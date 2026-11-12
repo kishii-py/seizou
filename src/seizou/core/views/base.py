@@ -81,6 +81,7 @@ REFUSAL_HEAD_BY_SERVICE = {
     "record_payment": "記録できません。",
     "record_outside_payment": "記録できません。",
     "record_adjustment": "記録できません。",
+    "mark_sent_outside": "記録できません。",
     "cancel_adjustment": "取り消せません。",
     "ship_lines": "出荷できません。",
     "receive": "受け入れられません。",

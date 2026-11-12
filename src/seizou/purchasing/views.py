@@ -22,6 +22,7 @@ from seizou.masters.services import with_default_process
 
 from . import services
 from .forms import CancelForm, PurchaseOrderForm, SendForm
+from .forms import SentOutsideForm
 from .forms import PurchaseOrderChangeForm
 from .forms import PurchaseOrderLineCompleteClearForm, PurchaseOrderLineCompleteForm
 from .forms import PurchaseOrderLineHandedForm
@@ -85,6 +86,8 @@ class PurchaseOrderListView(BaseListView):
         {"name": "partner", "label": "取引先", "kind": "choice", "field": "partner", "choices": _subcontractor_choices},
         {"name": "due", "label": "納期", "kind": "date_range", "field": "lines__due_date"},
         {"name": "not_handed", "label": "渡していない明細があるだけ", "kind": "flag", "when": services.orders_with_lines_not_handed},
+        # 相手の答えを待つ発注 (状態が「送った」で、発注書を seizou の外で送っていない物)。今日やることの「返事を待つ発注」と同じ関数 (依頼書 N439)
+        {"name": "waiting_reply", "label": "返事を待っている物だけ", "kind": "flag", "when": services.orders_waiting_reply},
     )
     # 絞りのタブ (土台の presets。作者の決め)。「すべて」は土台が先頭に足す。組は状態の絞り (f_status) の値だけ。
     # 土台のタブは 4 つまで (PRESET_LIMIT)。「相手が条件付で受けた」「相手が保留した」はタブにせず、状態の絞りで選ぶ (詳細の黄の 1 行で気づく)。
@@ -120,7 +123,8 @@ class PurchaseOrderDetailView(BaseDetailView):
     template_name = "purchasing/purchaseorder_detail.html"
 
     def get_queryset(self):
-        return services.annotate_order_notices(services.annotate_order_received(super().get_queryset()))
+        # 取引先に向き「送る」のつながりがあるか (can_send) も同じ問い合わせで読む (頭の右の緑の「発注書を送った」と黄の 1 行が読む。依頼書 N439)
+        return services.annotate_can_send(services.annotate_order_notices(services.annotate_order_received(super().get_queryset())))
 
 
 class PurchaseOrderModalView(BaseModalView):
@@ -168,6 +172,26 @@ class PurchaseOrderSendView(BaseFormView):
     service = staticmethod(services.resend_purchase_order)
     screen_name = "注文を送り直す"
     screen_help = "「下書き」のままの発注と、相手に届いていない変更と取消を、つながりの相手へもう一度送ります。"
+
+
+class PurchaseOrderSentOutsideView(BaseFormView):
+    """「発注書を送った」の確かめの入力。
+
+    使う人: 生産管理 / いつ: つながりの無い取引先に、発注書を FAX・郵送・メールなどで送った後 / 何のために: 発注を「送った」にして、まだ送っていない発注から外す / 次にすること: 現物が戻ったら受入を記録する
+
+    入口は発注の詳細の頭の右の緑の「発注書を送った」だけ (状態が「下書き」で、取引先に向き「送る」のつながりが無い発注。出す人は「再送」と同じ)。
+    小窓で開き、JS の無いときと URL を直に開いたときは画面の全体。テンプレートは土台の入力の画面と小窓のまま。
+    説明の 1 文と発注番号と取引先の名前は form の lead_text (core/_form_card.html が描く)。依頼書 N439 (本人の決め 11-12 14:3x・18:2x)。
+    """
+
+    model = PurchaseOrder
+    form_class = SentOutsideForm
+    service = staticmethod(services.mark_sent_outside)
+    screen_name = "発注書を送った"
+    screen_help = (
+        "つながりの無い取引先に発注書 (印刷用の画面か PDF) を送った後に押すと、発注の状態が「送った」になります。"
+        "相手の seizou へは何も送りません。"
+    )
 
 
 class PurchaseOrderCancelView(BaseFormView):

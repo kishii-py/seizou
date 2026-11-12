@@ -1,6 +1,6 @@
 """発注の詳細の「流れ」の枠の出来事を集める、読むだけの module (開発の記録 docs/nights/20261104/N139.md。受注の流れ orders.timeline と同じ形)。表に書かない。
 
-- 発注から受入と検収までの出来事 (登録・注文を送った・注文回答・出荷の知らせ・受入・検収・取消) を、
+- 発注から受入と検収までの出来事 (登録・注文を送った・発注書を seizou の外で送った・注文回答・出荷の知らせ・受入・検収・取消) を、
   発注と明細からの逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
   (送った注文は connect の Outbox の outbox_messages、出荷の知らせは connect の ShippingNotice の shipping_notices)。
 - 版 2 から (変更と取消) の送った注文は、題を「第 n 版の変更を送った (…)」「第 n 版の取消を送れなかった (…)」のように版と目的つきにし、
@@ -58,6 +58,8 @@ KIND_ICONS = {
 
 #: 送った注文の相手の返事のうち、相手の受け口が受け取った印 (connect.services._deliver の 200 の字)。
 RECEIVED = "受け取った"
+#: 発注書を seizou の外で送った (purchasing.services.mark_sent_outside) 出来事の題 (依頼書 N439)
+SENT_OUTSIDE_TITLE = "発注書を送った (seizou の外で)"
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,9 @@ def events_for(purchase_order, lines=None) -> list[Event]:
     outbox = _all(purchase_order, "outbox_messages")
     events += [_sent_event(row) for row in outbox]
     events += [_revision_reply_event(row) for row in outbox if row.revision_no >= 2 and row.replied_at is not None]
+    # 発注書を seizou の外で送った発注は、押した日時を送った出来事にする (種類は sent。依頼書 N439)
+    if purchase_order.sent_outside_at is not None:
+        events.append(Event(purchase_order.sent_outside_at, "sent", SENT_OUTSIDE_TITLE))
     if purchase_order.replied_at is not None:
         events.append(_reply_event(purchase_order))
     for line in lines_for(purchase_order) if lines is None else lines:

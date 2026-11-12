@@ -53,7 +53,8 @@ TARGETS = {
     "invoice": ("billing:invoice_create", ""),
     "payment": ("billing:invoice_list", "?f_unpaid=1"),
     "purchase_draft": ("purchasing:purchaseorder_list", "?f_status=draft"),
-    "purchase_sent": ("purchasing:purchaseorder_list", "?f_status=sent"),
+    # 返事を待つ発注は、数える関数 (purchasing.services.waiting_reply) と同じ関数の絞りで一覧を開く (依頼書 N439。発注書を seizou の外で送った発注を除く)
+    "purchase_sent": ("purchasing:purchaseorder_list", "?f_waiting_reply=1"),
     "receipt": ("purchasing:receipt_list", ""),
     # 協力企業に出していない工程と協力企業に渡していない明細は、数える関数と同じ関数の絞りで一覧を開く (N406c)
     "subcontract": ("workorders:workorder_list", "?f_to_subcontract=1"),

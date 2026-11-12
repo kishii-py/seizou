@@ -11,6 +11,8 @@
 - 入力の欄の誤り (型・必須) は form の仕事。ここでは full_clean() を呼ばない。
 - 保存と同時に送る (02)。発注を保存したトランザクションを抜けた後で、取引先に向き「送る」の
   つながりがあれば connect.services.send_order を呼ぶ。相手への HTTP は atomic の外 (R17)。
+- つながりの無い取引先への発注は、発注書を seizou の外 (FAX・郵送・メールなど) で送った後に mark_sent_outside で「送った」にし、
+  発注書を送った日時 (sent_outside_at) を残す (依頼書 N439)。相手の答えを待つ発注は waiting_reply (読むだけ。この列が空の「送った」の発注)。
 - 明細の辞書の鍵は item・qty・unit・unit_price・price_basis・due_date・note・process・quote_no。
   price_basis は単価の単位 (unit か lump。無ければ unit = 今と同じ)。
   process は協力企業に出す工程 (masters.Process か None)、quote_no は単価表から写した見積の番号 (無ければ空の字。作者の決め)。
@@ -65,6 +67,7 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Count, IntegerField
 from django.db.models import Case, When
 from django.db.models import Exists
+from django.db.models import BooleanField
 
 # 数の合計の型 (PurchaseOrderLine.qty と同じ桁)
 _QTY_FIELD = DecimalField(max_digits=12, decimal_places=2)
@@ -213,9 +216,26 @@ def _from_workorder_steps(lines):
 
 
 def _has_send_connection(partner):
-    """取引先に向き「送る」のつながりがあるか (読むだけ。connect の model を import しない)。"""
-    connections = partner.connections
+    """取引先に向き「送る」のつながりがあるか (読むだけ。connect の model を import しない)。connect の無い会社では関係が無いので偽。"""
+    connections = getattr(partner, "connections", None)
+    if connections is None:
+        return False
     return connections.filter(direction=connections.model.DIRECTION_SEND).exists()
+
+
+def annotate_can_send(queryset):
+    """発注の queryset に、取引先に向き「送る」のつながりがあるか (can_send。真偽) を足す (読むだけ。副問い合わせなので問い合わせの数は増えない)。
+
+    見方は _has_send_connection と、明細の can_send (_live_lines) と同じ。connect の無い会社では偽。
+    発注の詳細 (purchasing.views) が使い、頭の右の緑のボタンと黄の 1 行 (#po-alert) が、同じ値を can_mark_sent_outside で読む
+    (発注の詳細は 2 秒ごとに取り直すので、つながりを読む問い合わせを足さないため。依頼書 N439)。
+    """
+    try:
+        connection_model = PurchaseOrder._meta.get_field("partner").related_model._meta.get_field("connections").related_model
+    except FieldDoesNotExist:
+        return queryset.annotate(can_send=Value(False, output_field=BooleanField()))
+    sendable = connection_model.objects.filter(partner_id=OuterRef("partner_id"), direction=connection_model.DIRECTION_SEND)
+    return queryset.annotate(can_send=Exists(sendable))
 
 
 def create_purchase_order(partner, lines, user, *, order_date, note="", ext=None, send=True):
@@ -273,9 +293,15 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
     状態が「送った」「相手が受け入れた」で、相手がどの明細も出荷していない (can_cancel_sent_order) なら、同じ atomic で状態を取消・版を 1 上げ・
     目的を "1" (打切り)・全部の明細を明細状態コード 2 にし、atomic の外で取消の版を相手へ送る (connect.services.send_order)。届いたかの知らせを付けて返す。
     一部でも相手が出荷済みの明細があれば、取消は送らず「変更」の道を案内する字で断る。「納品された」「取消」とつながりの無い送った発注も断る。
+    発注書を seizou の外で送った発注 (sent_outside_at が空でない = mark_sent_outside で「送った」にした発注) は、状態が CHANGEABLE_STATUSES でも
+    「下書き」の取消と同じ道で、相手へ送らずに取り消す (つながりの有無を見ない。版・目的・明細状態コードも変えない)。
+    受入が 1 つでもあれば (known_shipped_qty は受入の数も見る)、今の断り (_CANCEL_SHIPPED_MESSAGE) のまま。
     reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す (受注の取消と同じ形)。
     訳: 相手が 1 個も出していない送った発注は、取消 (中小企業共通 EDI の注文書目的コード 1 打切り) を相手へ送れるようにし、出した後は数を直す変更で残りを止めるため。出所 = 作者の決め (11-06 23:2x)・作者の決め (11-06 23:1x)・作者の決め (11-07 06:33。取消を送れるのは相手が 1 個も出していない間だけ)。
     変えてよい条件 = 作者の決めの答えが変わったとき。
+    訳 (seizou の外で送った発注): 「発注書を送った」を押した後に、取消も変更もできない発注を作らないため。seizou は相手に何も送っていないので、
+    取消を送る先が無い。取消は、取引先に自分で伝える (取消の確かめのカードに 1 行を出す)。出所 = 本体の決め 11-12 (依頼書 N439。本人の決め 11-12 14:3x・18:2x を食い違い無く作るための細かい所)。
+    変えてよい条件 = 本人が、seizou の外で送った発注の取消の扱いを決め直したとき。
     """
     sent = False
     with transaction.atomic():
@@ -284,12 +310,14 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
             lines = _live_lines(locked)
             if any(known_shipped_qty(line) > 0 for line in lines):
                 raise ValueError(_CANCEL_SHIPPED_MESSAGE)
-            if not _has_send_connection(locked.partner):
-                raise ValueError(
-                    f"取り消せません。取引先 {locked.partner.name} へのつながりが無いので、取消を相手へ送れません。"
-                    "設定の画面の「取引先との接続」で登録してください。"
-                )
-            sent = True
+            # seizou の外で送った発注は、相手へ送らずに取り消す (sent は偽のまま。下の「下書き」の取消と同じ道)
+            if locked.sent_outside_at is None:
+                if not _has_send_connection(locked.partner):
+                    raise ValueError(
+                        f"取り消せません。取引先 {locked.partner.name} へのつながりが無いので、取消を相手へ送れません。"
+                        "設定の画面の「取引先との接続」で登録してください。"
+                    )
+                sent = True
         elif locked.status not in (PurchaseOrder.STATUS_DRAFT, PurchaseOrder.STATUS_REJECTED):
             raise ValueError(_CANCEL_AFTER_SENT_MESSAGE.format(status=locked.get_status_display()))
         before = history.saved_state(locked)
@@ -367,6 +395,58 @@ def mark_sent(purchase_order, user):
             locked.save(update_fields=["status"])
             record_history(locked, user, before=before, by=_partner_by(locked))
         return locked
+
+
+#: 「発注書を送った」を記録した後の知らせの字 (入力の土台が「保存しました。」の代わりに出す)
+SENT_OUTSIDE_MESSAGE = "発注書を送った事を記録しました。状態を「送った」にしました。"
+
+
+def can_mark_sent_outside(purchase_order) -> bool:
+    """「発注書を送った」を出す発注か (読むだけ): 状態が「下書き」で、取引先に向き「送る」のつながりが無い。
+
+    状態を先に見て、外ならつながりを読まない。つながりは、発注に annotate_can_send の値 (can_send) があればそれを読み (問い合わせなし)、
+    無ければ _has_send_connection で読む。発注の詳細の頭の右の緑のボタンと、黄の 1 行 (#po-alert) が使う。押した時の断りは mark_sent_outside が錠の中で見直す。
+    """
+    if purchase_order.status != PurchaseOrder.STATUS_DRAFT:
+        return False
+    can_send = getattr(purchase_order, "can_send", None)
+    if can_send is None:
+        can_send = _has_send_connection(purchase_order.partner)
+    return not can_send
+
+
+def mark_sent_outside(purchase_order, user):
+    """つながりの無い取引先へ発注書を seizou の外 (FAX・郵送・メールなど) で送った事を記録し、「下書き」の発注を「送った」にする。
+
+    行を錠で引き、状態を「送った」にし、発注書を送った日時 (sent_outside_at) に今の日時を書き、変更の履歴を 1 行残す (人は user)。
+    返す発注に済んだ知らせの字 (saved_message = SENT_OUTSIDE_MESSAGE) を付ける (表に書かない)。相手へは何も送らない (HTTP なし)。
+    断る (頭は「記録できません。」): 状態が「下書き」でない・取引先に向き「送る」のつながりがある (つながりのある取引先は「再送」で送る)。
+    押した後の発注は、ダッシュボードの「まだ送っていない発注」(状態が「下書き」) と「返事を待つ発注」(waiting_reply) のどちらにも数えない。
+    受入は今までどおり (receive)。取消は相手へ送らずに取り消す (cancel_purchase_order)。押し間違えを外す操作は無い (取り消して入れ直す)。
+    訳: つながりの無い取引先への発注は、発注書を刷って seizou の外で送る。送った後に押すボタンが無く、発注が「下書き」のまま残り、
+    受入が全部済むまで「まだ送っていない発注」に数え続けたため。seizou では答えが届かない発注なので、返事を待つ発注には数えない。
+    出所 = 本人の決め 11-12 14:3x (「足す」) と 18:2x (ボタンの名前と押す前の説明の 1 文)。列で見分ける形と取消の扱いは本体の決め 11-12 (依頼書 N439)。
+    変えてよい条件 = 本人が、つながりの無い取引先への発注の送り方 (新しい状態を足す・押し間違えを外す操作を作る、など) を決め直したとき。
+    """
+    with transaction.atomic():
+        locked = PurchaseOrder.objects.select_for_update().select_related("partner").get(pk=purchase_order.pk)
+        if locked.status != PurchaseOrder.STATUS_DRAFT:
+            statuses = dict(PurchaseOrder.STATUS_CHOICES)
+            raise ValueError(
+                f"記録できません。「発注書を送った」を記録できるのは、状態が「{statuses[PurchaseOrder.STATUS_DRAFT]}」の発注だけです。"
+                f"この発注の状態は「{locked.get_status_display()}」です。"
+            )
+        if _has_send_connection(locked.partner):
+            raise ValueError(
+                f"記録できません。取引先 {locked.partner.name} とは seizou でつながっています。「再送」で注文を送ってください。"
+            )
+        before = history.saved_state(locked)
+        locked.status = PurchaseOrder.STATUS_SENT
+        locked.sent_outside_at = timezone.now()
+        locked.save(update_fields=["status", "sent_outside_at"])
+        record_history(locked, user, before=before)
+    locked.saved_message = SENT_OUTSIDE_MESSAGE
+    return locked
 
 
 def mark_accepted(purchase_order, user, *, reply_message_id=None, replied_at=None):
@@ -1410,6 +1490,25 @@ def orders_with_lines_not_handed(queryset):
     発注の一覧の絞り「渡していない明細があるだけ」の when。明細の join を足さない副問い合わせなので、同じ発注は重ならない。
     """
     return queryset.filter(pk__in=lines_not_handed().values("purchase_order_id"))
+
+
+def waiting_reply():
+    """相手の答え (注文回答) を待つ発注の queryset (読むだけ): 状態が「送った」で、発注書を seizou の外で送っていない (sent_outside_at が空) 物。
+
+    今日やることの「返事を待つ発注」の数 (core.dashboard) と、発注の一覧の絞り「返事を待っている物だけ」(orders_waiting_reply) が、
+    この 1 つの関数を使う (数と一覧が食い違わないため)。送った記録の行が無い「送った」の発注 (作り物の種) も、今までどおり数える。
+    訳: 「発注書を送った」で「送った」にした発注は、seizou では答えが届かないので、返事を待つ発注に数えないため。
+    出所 = 本人の決め 11-12 14:3x と本体の決め 11-12 (依頼書 N439)。変えてよい条件 = 本人が、返事を待つ発注の数え方を決め直したとき。
+    """
+    return PurchaseOrder.objects.filter(status=PurchaseOrder.STATUS_SENT, sent_outside_at__isnull=True)
+
+
+def orders_waiting_reply(queryset):
+    """発注の queryset を、相手の答えを待つ発注 (waiting_reply) に狭める (読むだけ)。発注の一覧の絞り「返事を待っている物だけ」の when。
+
+    副問い合わせで絞るので、同じ発注は重ならない (orders_with_lines_not_handed と同じ形)。
+    """
+    return queryset.filter(pk__in=waiting_reply().values("pk"))
 
 
 def default_subcontractor(item, process, *, on_date=None):

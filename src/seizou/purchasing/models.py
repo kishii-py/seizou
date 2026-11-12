@@ -73,6 +73,10 @@ class PurchaseOrder(models.Model):
     purpose_code = models.CharField(
         "注文書目的コード", max_length=2, choices=edi_codes.PURPOSE_CHOICES, default=edi_codes.PURPOSE_NEW
     )
+    # つながりの無い取引先へ、発注書を seizou の外 (FAX・郵送・メールなど) で送ったと記録した日時 (空 = 記録していない)。
+    # 書くのは purchasing.services.mark_sent_outside だけ。状態の値は足さず、「送った」の発注のうち seizou の外で送った物をこの列で見分ける
+    # (送った記録の行が無い事では見分けない。作り物の種は、送った記録の無い「送った」の発注を作るため)。本人の決め 11-12 14:3x・18:2x と本体の決め 11-12 (依頼書 N439)。
+    sent_outside_at = models.DateTimeField("発注書を送った日時", null=True, blank=True, editable=False)
 
     # 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が読む)。uuid は画面に出さない。
     detail_hidden_fields = ("reply_message_id",)

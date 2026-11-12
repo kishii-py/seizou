@@ -192,6 +192,9 @@ _KIND_ACTIONS = {
         "purchasing.clear_completed",
         # 指示書の工程を指す発注の明細の渡した日 (N406b。数と日だけの操作で金額に関わらないので、受入と同じく MONEY_ACTIONS に入れない)
         "purchasing.set_handed_on",
+        # つながりの無い取引先へ発注書を seizou の外で送った事の記録 (依頼書 N439。本人の決め 11-12 14:3x・18:2x)。
+        # 「再送」と同じく金額を決める操作ではないので MONEY_ACTIONS に入れない
+        "purchasing.mark_sent_outside",
     ),
 }
 #: 書く action → 編集の権限の種類 (action は検査の層と同じ名前 = <service の module の app>.<関数の名前>)

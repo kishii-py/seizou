@@ -1,4 +1,6 @@
 {% load seizou_icons %}
 {# 発注の取消の確かめのカード (全体の画面 purchasing/purchaseorder_cancel.html と小窓の両方が include する。開発の記録 docs/nights/20261105/N158b.md)。黄の知らせに画面の 1 文 (PurchaseOrderCancelView.screen_help) を出し、入力のカード (取消の理由の欄と「<発注番号> を取り消す」)。 #}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>{{ screen_help }}</span></div>
-{% include "core/_form_card.html" %}
+{# 発注書を seizou の外で送った発注 (sent_outside_at がある) は、相手へ取消を送らないので、取引先に自分で伝える 1 行を足す (依頼書 N439。本体の決め 11-12)。 #}
+{% if object.sent_outside_at %}<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>この発注は、発注書を seizou の外で送っています。取消は、取引先に自分で伝えてください。</span></div>
+{% endif %}{% include "core/_form_card.html" %}

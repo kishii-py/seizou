@@ -92,6 +92,7 @@ SKIPPED_NO_ROW = {
         "purchasing:purchaseorder_detail",
         "purchasing:purchaseorder_modal",  # 発注の小窓 (依頼書 N346)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorder_send",
+        "purchasing:purchaseorder_sent_outside",  # 「発注書を送った」の確かめ (N439)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorderline_complete",  # 発注の明細の完了の確かめ (N400b)。B 社の種に発注の行が無い (上の発注の画面と同じ)
         "purchasing:purchaseorderline_complete_clear",
         "purchasing:purchaseorderline_handed",  # 発注の明細の渡した日 (N406b)。B 社の種に発注の行が無い (上の発注の画面と同じ)
@@ -167,6 +168,7 @@ LIMITS = {
     "purchasing:purchaseorder_detail": 56,
     "purchasing:purchaseorder_modal": 9,  # 発注の小窓 (依頼書 N346)。11-07 の実測 4 (A 社。htmx でない GET = 詳細へ移るだけ) + 5
     "purchasing:purchaseorder_send": 20,
+    "purchasing:purchaseorder_sent_outside": 21,  # 「発注書を送った」の確かめ (依頼書 N439)。11-12 の実測 19 (鈴の 3 を含む。A 社。B 社の種に発注の行が無い) − 3 + 5
     "purchasing:purchaseorder_cancel": 20,
     "purchasing:receipt_list": 25,
     "purchasing:receipt_create": 19,

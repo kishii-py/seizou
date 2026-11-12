@@ -630,6 +630,30 @@ class CancelForm(forms.Form):
         return {"reason": self.cleaned_data["reason"]}
 
 
+#: 「発注書を送った」の確かめの、押す前に出す説明の 1 文 (本人の決め 11-12 18:2x)
+SENT_OUTSIDE_EXPLAIN = "発注書 (印刷用の画面か PDF) を、FAX・郵送・メールなどで取引先に送った後に押します。"
+
+
+class SentOutsideForm(forms.Form):
+    """「発注書を送った」の確かめの form。欄は無い (purchasing.services.mark_sent_outside。依頼書 N439)。
+
+    カードの頭の 1 行 (lead_text。core/_form_card.html) に、押す前の説明の 1 文と、発注番号と取引先の名前を出す (土台が対象を instance= で渡す)。
+    保存のボタンの字は「発注書を送った」。取消でなく相手へも送らないので、赤にしない。会社ごとの項目は足さない (保存されない欄を出さないため)。
+    """
+
+    submit_label = "発注書を送った"
+    lead_text = ""
+    adds_company_fields = False
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is not None:
+            self.lead_text = f"{SENT_OUTSIDE_EXPLAIN}発注番号 {instance.po_no}・取引先 {instance.partner.name}。"
+
+    def service_kwargs(self):
+        return {}
+
+
 #: 送った発注の明細の完了にするの確かめの画面の案内 (「変更」の入口が出る発注 = services.can_change_order が真のときだけ)
 CHANGE_GUIDE = "相手にも伝えるときは、完了にせずに発注の「変更」で数量を受入済みの数に直して送ってください。"
 
