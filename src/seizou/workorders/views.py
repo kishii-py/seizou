@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseBadRequest
+from django.http.request import split_domain_port
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import Resolver404, get_script_prefix, resolve, reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -20,6 +21,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from seizou.core import access
+from seizou.core import conf
+from seizou.core import mail
 from seizou.core import reports
 from seizou.core.exceptions import RuleError
 from seizou.core.views import REFUSAL_HEAD_SAVE, BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice, add_notice_trigger
@@ -31,6 +34,13 @@ from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
 #: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (帳票の設計の決めの文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+#: 手元の PC の中だけの住所の名前 (この名前で開いて刷った現品票の QR は、スマホでは開けない)
+LOCAL_ONLY_HOSTS = ("127.0.0.1", "localhost")
+#: 設定の URL の頭が空で、手元だけの住所で現品票を開いたときに、印刷用の画面の上に出す黄色の 1 行 ({host} は開いている住所の名前)
+TAG_LOCAL_NOTICE = (
+    "この現品票の QR は、この PC の中だけの住所 ({host}) を指すので、スマホでは開けません。"
+    "社内のスマホから開くには、設定の「メールの送り方」の「seizou の URL の頭」に、社内から開ける URL を入れてから刷ってください。"
+)
 
 #: 上の帯の「現品票を読む」の小窓の赤い帯 (段 2 の止まった。小窓の中なので core/_notices.html の帯)。
 #: QR の字が、この住所で刷った現品票の QR でない (別の住所・別の画面の QR・URL でない字)。
@@ -280,29 +290,44 @@ def plan_place(request):
     return add_notice_trigger(HttpResponse(status=204), notice)
 
 
+def _tag_qr(request, pk) -> tuple[str, str]:
+    """現品票の QR の字と、印刷用の画面の上に出す黄色の 1 行の字 (出さないときは空の字) を返す。読むだけ。
+
+    QR の字は読み取りの着地 (workorders:workorder_scan) の URL。設定の URL の頭 (mail の site_url) があれば、
+    メールのリンクと同じ付け方 (core.mail.link) でその頭を付ける。空なら今までどおり開いている住所から作る (build_absolute_uri)。
+    黄色の 1 行は、頭が空で、開いている住所の名前が LOCAL_ONLY_HOSTS (127.0.0.1・localhost) のときだけ。
+    1 行は画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-screen-notice)。
+    訳: 現品票の QR を、手元の PC の住所で刷ってもスマホから開けるようにするため (設定の URL の頭があればそれを使い、無くて手元だけの住所なら刷る前に知らせる)。
+    出所 = 本体の決め 11-11 14:2x。変えてよい条件 = QR の頭を別の設定で持つと決めたとき。
+    """
+    path = reverse("workorders:workorder_scan", args=[pk])
+    linked = mail.link(path)
+    if linked:
+        return linked, ""
+    host, _port = split_domain_port(request.get_host())
+    notice = TAG_LOCAL_NOTICE.format(host=host) if host in LOCAL_ONLY_HOSTS else ""
+    return request.build_absolute_uri(path), notice
+
+
 @login_required
 def workorder_tag(request, pk):
-    """指示書の現品票の印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は読み取りの着地の URL。"""
+    """指示書の現品票の印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は読み取りの着地の URL (_tag_qr)。"""
     workorder = get_object_or_404(
         WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
-    context = {
-        **workorder_tag_context(workorder),
-        "qr_text": request.build_absolute_uri(reverse("workorders:workorder_scan", args=[pk])),
-    }
+    qr_text, qr_notice = _tag_qr(request, pk)
+    context = {**workorder_tag_context(workorder), "qr_text": qr_text, "qr_notice": qr_notice}
     return HttpResponse(reports.render_html(WORKORDER_TAG_TEMPLATE, context))
 
 
 @login_required
 def workorder_tag_pdf(request, pk):
-    """指示書の現品票の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
+    """指示書の現品票の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。QR の中身は印刷用の HTML と同じ (_tag_qr)。"""
     workorder = get_object_or_404(
         WorkOrder.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
-    context = {
-        **workorder_tag_context(workorder),
-        "qr_text": request.build_absolute_uri(reverse("workorders:workorder_scan", args=[pk])),
-    }
+    qr_text, qr_notice = _tag_qr(request, pk)
+    context = {**workorder_tag_context(workorder), "qr_text": qr_text, "qr_notice": qr_notice}
     try:
         data = reports.render_pdf(WORKORDER_TAG_TEMPLATE, context)
     except reports.PdfUnavailable:
@@ -353,16 +378,28 @@ def workorder_scan(request, pk):
 
 
 def _scan_pk_from_qr(text: str, request) -> int | None:
-    """カメラが読んだ QR の字から、読み取りの着地の指示書の pk を出す。この住所で刷った現品票の QR でなければ None。
+    """カメラが読んだ QR の字から、読み取りの着地の指示書の pk を出す。この会社の住所で刷った現品票の QR でなければ None。
 
-    通すのは、開いている住所 (名前とポート) と同じ住所の URL で、道が読み取りの着地 (workorders:workorder_scan) の物だけ。
+    通すのは、開いている住所 (名前とポート) か、設定の URL の頭 (mail の site_url) の住所 (名前とポート) と同じ住所の URL で、
+    道が読み取りの着地 (workorders:workorder_scan) の物だけ。頭が空か読めない字 (答えの YAML の書き損じ) なら、開いている住所だけ。
     別の住所・javascript: などの URL・別の画面の道 (出荷ラベルや納品書の QR)・URL でない字は None。
     scheme (http か https か) の違いは見ない。http の置き場の時に刷り、https に移った後に読む札を止めないため。
     道の頭 (script prefix) が「/」でない置き場では、頭を外して「/」から始まる形にしてから引く。
     訳: 協力企業や取引先の seizou で刷った現品票を、この会社の同じ番号の指示書と取り違えて実績を入れないため (別の住所の札は開かず、「指示書」の欄で探す)。出所 = 作者の決め (2026-11-07)。
+    設定の URL の頭の住所も通すのは、頭で刷った現品票 (_tag_qr) を、別の住所 (例 手元の PC の 127.0.0.1) で開いた「現品票を読む」でも開けるようにするため。
+    これは下の「変えてよい条件」の「同じ会社が 2 つ以上の住所で開くことになったとき」に当たる (通す住所は、開いている住所と設定の URL の頭の 2 つ)。出所 = 本体の決め 11-11 14:2x。
     変えてよい条件 = 同じ会社が 2 つ以上の住所で開くことになったとき (通す住所の並びを会社の設定に持つ形にする)。
     """
-    if not url_has_allowed_host_and_scheme(text, allowed_hosts={request.get_host()}, require_https=False):
+    allowed_hosts = {request.get_host()}
+    site_url = conf.mail_settings()["site_url"]
+    if site_url:
+        try:
+            site_host = urlsplit(site_url).netloc
+        except ValueError:
+            site_host = ""
+        if site_host:
+            allowed_hosts.add(site_host)
+    if not url_has_allowed_host_and_scheme(text, allowed_hosts=allowed_hosts, require_https=False):
         return None
     path = urlsplit(text).path
     prefix = get_script_prefix()

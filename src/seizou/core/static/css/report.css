@@ -41,6 +41,13 @@ body {
   display: none;
 }
 
+/* 印刷用の画面の上の黄色の 1 行 (現品票の QR が手元の PC の中だけの住所を指すときの知らせ。workorders/workorder_tag.html の .report-screen-notice)。
+   .report-actions と同じく、ふだんは出さず、下の media の screen の塊の中でだけ出す (紙と PDF には出さない)。この規則も media の screen の塊より前に置く。
+   淡い黄の地は、帳票の色 (黒・灰と白) の外で、この 1 つだけが画面の知らせの色 (紙と PDF には出ないので、白黒の印刷に関わらない)。 */
+.report-screen-notice {
+  display: none;
+}
+
 /* ブラウザで印刷用の画面をそのまま見るとき (PDF でないとき) は、紙と同じ余白を画面にも付ける。印刷と PDF は @page の余白。 */
 @media screen {
   body {
@@ -53,6 +60,15 @@ body {
     display: flex;
     justify-content: flex-end;
     margin-bottom: 6mm;
+  }
+
+  .report-screen-notice {
+    display: block;
+    margin-bottom: 3mm;
+    padding: 2mm 3mm;
+    border-radius: 1.5mm;
+    background: #fef3c7;
+    color: #000;
   }
 }
 
