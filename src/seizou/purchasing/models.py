@@ -79,7 +79,8 @@ class PurchaseOrder(models.Model):
     sent_outside_at = models.DateTimeField("発注書を送った日時", null=True, blank=True, editable=False)
 
     # 詳細と小窓に出さない列 (core/views/ の hidden_detail_fields が読む)。uuid は画面に出さない。
-    detail_hidden_fields = ("reply_message_id",)
+    # 発注書を送った日時は、詳細の黄の 1 行と流れの枠の出来事に出す (基本情報に出すと、押していない発注の全部に「—」の 1 行が増える。518 回目)
+    detail_hidden_fields = ("reply_message_id", "sent_outside_at")
     #: 変更の履歴 (core.history。作者の決めの伝票の「発注」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
     keeps_report_copy = True

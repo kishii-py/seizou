@@ -109,8 +109,8 @@ def test_status_labels(user, po):
     )
     rejected = services.mark_rejected(services.mark_sent(other, user), user, reason="作り物の理由")
     assert rejected.get_status_display() == "断られた"
-    # 注文回答の番号は詳細と小窓に出さない
-    assert PurchaseOrder.detail_hidden_fields == ("reply_message_id",)
+    # 注文回答の番号と、発注書を送った日時 (黄の 1 行と流れの枠に出す。518 回目) は、詳細と小窓の項目に出さない
+    assert PurchaseOrder.detail_hidden_fields == ("reply_message_id", "sent_outside_at")
 
 
 @pytest.mark.django_db

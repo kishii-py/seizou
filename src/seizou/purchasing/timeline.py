@@ -347,11 +347,17 @@ def _order_reached(purchase_order, outbox) -> frozenset[int]:
     """発注の全体で通った段の集まり (1〜3 の数)。outbox は送った注文の行の並び (呼ぶ側が 1 回だけ読む)。
 
     発注 = いつも。回答 = 注文回答の日時がある (相手が受け入れたも断られたも回答)。送付 = 状態が「送った」か、
-    送った注文を相手の受け口が受け取った (送れなかった物は数えない)。注文回答の後は状態が変わるので、送った注文の行で読む
-    (流れの枠の「注文を送った (相手が受け取った)」と同じ読み)。
+    送った注文を相手の受け口が受け取った (送れなかった物は数えない) か、発注書を seizou の外で送ったと記録してある (sent_outside_at)。
+    注文回答の後は状態が変わるので、送った注文の行で読む (流れの枠の「注文を送った (相手が受け取った)」と同じ読み)。
+    seizou の外で送った発注には送った注文の行が無いので、押した日時で読む (全部を受け入れて「納品された」になった後も「送付」を通った段に数える。
+    流れの枠の「発注書を送った (seizou の外で)」と同じ読み。518 回目)。
     """
     reached = {1}
-    if purchase_order.status == purchase_order.STATUS_SENT or any(row.response == RECEIVED for row in outbox):
+    if (
+        purchase_order.status == purchase_order.STATUS_SENT
+        or purchase_order.sent_outside_at is not None
+        or any(row.response == RECEIVED for row in outbox)
+    ):
         reached.add(2)
     if purchase_order.replied_at is not None:
         reached.add(3)

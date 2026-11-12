@@ -42,7 +42,7 @@
 {% endif %}{% elif object.status == "on_hold" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が保留しました ({{ object.replied_at|date:"Y-m-d H:i" }})。答えが届くのを待つか、相手と話して決めてください。</span></div>
 {% endif %}{% if object.sent_outside_at and object.status != "cancelled" %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>発注書を seizou の外で送った発注です ({{ object.sent_outside_at|date:"Y-m-d H:i" }})。相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら「受入を記録する」で記録します。</span></div>
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>発注書を seizou の外で送った発注です ({{ object.sent_outside_at|date:"Y-m-d H:i" }})。相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら、明細の行の ⋮ の「受入を登録」で記録します。</span></div>
 {% endif %}{% if revision.alert %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-alert>{% icon "alert" "size-5" %}<span>{{ revision.alert }}</span></div>
 {% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}

@@ -47,7 +47,8 @@ ALERT_DRAFT = (
     "送った後に「発注書を送った」を押してください。"
 )
 ALERT_SENT_HEAD = "発注書を seizou の外で送った発注です ("
-ALERT_SENT_TAIL = "相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら「受入を記録する」で記録します。"
+# 受入の入口は、明細の行の ⋮ の「受入を登録」(緑の「受入を記録する」は出荷の知らせのある発注にだけ出るので、この発注には出ない。518 回目の本体の直し)
+ALERT_SENT_TAIL = "相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら、明細の行の ⋮ の「受入を登録」で記録します。"
 CANCEL_LINE = "この発注は、発注書を seizou の外で送っています。取消は、取引先に自分で伝えてください。"
 TIMELINE_TITLE = "発注書を送った (seizou の外で)"
 NOT_DRAFT = "記録できません。「発注書を送った」を記録できるのは、状態が「下書き」の発注だけです。"
@@ -175,7 +176,7 @@ def test_button_and_alert_only_for_unlinked_draft(logged_in, user, partner, link
     assert "発注書を送った</a>" in body
     assert f'action="{_send_url(unlinked)}"' not in body  # 「再送」は出ない
     assert ALERT_DRAFT in body
-    assert "発注書を送った日時" in body  # 基本情報に列が出る (土台の出し方のまま)
+    assert "発注書を送った日時" not in body  # 基本情報には出さない (レーンは土台の出し方のまま出していた。518 回目の本体の直しで隠した)
 
     linked_draft = _draft(linked, user, item)
     body = _detail(logged_in, linked_draft)
@@ -409,3 +410,56 @@ def test_migration_leaves_existing_orders_empty():
     assert new.get_model("purchasing", "PurchaseOrder").objects.get(pk=old_order.pk).sent_outside_at is None
     executor = MigrationExecutor(connection)
     executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+# --- 518 回目の本体の直し (レーンの記録の迷った事 3・5 と要望 2) ---
+
+
+@pytest.mark.django_db
+def test_alert_names_the_real_receipt_entrance(logged_in, user, partner, item):
+    """押した後の黄の 1 行が指す受入の入口は、その画面に在る (明細の行の ⋮ の「受入を登録」)。頭の右の緑の「受入を記録する」は出ない。"""
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+
+    body = _detail(logged_in, po)
+
+    assert ALERT_SENT_TAIL in body
+    assert "受入を登録</a>" in body
+    assert "受入を記録する" not in body
+
+
+@pytest.mark.django_db
+def test_stage_band_counts_sent_outside_as_sent(user, partner, item):
+    """段の帯の「送付」は、発注書を seizou の外で送った発注でも通った段に数える (全部を受け入れて「納品された」になった後も)。
+
+    訳: 送った記録の行 (Outbox) が無いので、状態が「送った」でなくなると「送付」が通っていない印になっていた (レーンの要望 2)。
+    """
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+    line = po.lines.get()
+    assert 2 in timeline.reached_stages(line)
+
+    services.receive(line, line.qty, DAY, user)
+    po.refresh_from_db()
+    assert po.status == PurchaseOrder.STATUS_DELIVERED
+    assert 2 in timeline.reached_stages(po.lines.get())
+
+    # 押していない「下書き」の発注は、今までどおり「送付」を通っていない
+    assert 2 not in timeline.reached_stages(_draft(partner, user, item).lines.get())
+
+
+@pytest.mark.django_db
+def test_sent_outside_at_is_not_in_basic_info(logged_in, user, partner, item):
+    """「発注書を送った日時」は、詳細の基本情報と小窓の項目に出さない (押していない発注に「—」の 1 行を増やさない)。
+
+    押した日時は、黄の 1 行と流れの枠の出来事に出る (レーンの迷った事 5)。
+    """
+    label = PurchaseOrder._meta.get_field("sent_outside_at").verbose_name
+    draft = _draft(partner, user, item)
+    assert label not in _detail(logged_in, draft)
+
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+    body = _detail(logged_in, po)
+    start = body.index('<aside id="detail-aside"')
+    assert label not in body[start : body.index("</aside>", start)]  # 右の列 (基本情報のカード) に出ない。履歴のタブには列の名前が出る
+    assert ALERT_SENT_HEAD in body and TIMELINE_TITLE in body
+    assert "sent_outside_at" in PurchaseOrder.detail_hidden_fields
+
