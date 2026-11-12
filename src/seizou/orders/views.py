@@ -194,7 +194,12 @@ class OrderDetailView(BaseDetailView):
 
     def get_queryset(self):
         # 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む。
+        # 流れの枠・段の帯・明細の表が明細から辿る物 (指示書・工程・実績・出荷・納品書・請求書・入金・検収) も、関係ごとに 1 回で
+        # 一緒に読む (timeline.detail_lookups。明細の数だけ問い合わせを増やさない。依頼書 N432)。
+        from . import timeline  # この画面だけが使うので、関数の中で読む
+
         lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
+        lines = lines.prefetch_related(*timeline.detail_lookups(OrderLine))
         return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
 
 

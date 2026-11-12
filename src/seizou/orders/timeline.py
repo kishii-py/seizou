@@ -500,3 +500,65 @@ def _linked_url(obj, user) -> str | None:
 def _has_progress(workorder) -> bool:
     """指示書の工程に実績が 1 件でも入っているか (_workorder_events と同じ辿り方。progress の部品が無ければ偽)。"""
     return any(_all(step, "progress_records") for step in _all(workorder, "steps"))
+
+
+# --- 受注の詳細が明細と一緒に読む物 (依頼書 N432) ----------------------------------------------------------------------
+
+
+def detail_lookups(line_model) -> list:
+    """受注の詳細が明細と一緒に読む物の prefetch の並び (読むだけ)。受注の詳細の画面 (OrderDetailView.get_queryset) が明細の queryset に足す。
+
+    流れの枠 (events_for)・段の帯 (stage_band)・明細の表 (行のメニューの BoardRow.unnoted_shipment と「検収」の枡の
+    services.acceptance_summary) が明細から辿る物を、関係ごとに 1 回でまとめて読む。3 つとも画面の prefetch の写し
+    (_all(order, "lines") と order.lines.all()) を読むので、関数は変えずに済む。
+    辿る物: 指示書の全部 (取消も。流れの枠は取消の発行も出す) → 工程 (BoardRow が読む実績のまとめつき = board.steps_for_board) →
+    実績 (記録した人つき)、出荷 (納品書つき) → 出荷の請求書の明細 (請求書つき) → その請求書の入金 (記録した人つき)、
+    受注の明細の請求書の明細 (一式の行。請求書つき) → その請求書の入金、検収。
+    並びは関係ごとの model の既定の並び (逆向きの関係の all と同じ。流れの出来事は同じ日時の中で辿った順に並ぶので、順を変えない)。
+    部品が入っていなくて関係が無ければ、その関係から先は読まない (_related_model。_all と同じ扱い。ほかの部品の model は import しない)。
+    流れの関数を画面の外から呼んだ時 (試験・ほかの画面) は、今までどおり明細ごとに読む。
+    訳: 受注の詳細は小窓で保存するたびに取り直す。明細ごとに辿ると、明細 1 行につき 13〜17 回の問い合わせが増え、明細の多い受注で
+    開くのが遅くなった (本体が作り物の A 社の種で測った数)。出所 = 依頼書 N432 (2026-11-12)。変えてよい条件 = 流れの枠・段の帯・
+    明細の表が辿る関係を変えたとき (ここにも足す。足さないと、その関係だけ明細ごとに読む)。
+    """
+    from django.db.models import Prefetch  # 頭の import を足すと、ほかの候補が行番号で引く行がずれるので、ここで読む
+
+    from .board import steps_for_board
+
+    lookups = []
+    workorder = _related_model(line_model, "workorders")
+    if workorder is not None:
+        lookups.append(Prefetch("workorders", queryset=workorder._default_manager.all()))
+        step = _related_model(workorder, "steps")
+        if step is not None:
+            lookups.append(Prefetch("workorders__steps", queryset=steps_for_board(step)))
+            record = _related_model(step, "progress_records")
+            if record is not None:
+                records = record._default_manager.select_related("recorded_by")
+                lookups.append(Prefetch("workorders__steps__progress_records", queryset=records))
+    shipment = _related_model(line_model, "shipments")
+    if shipment is not None:
+        lookups.append(Prefetch("shipments", queryset=shipment._default_manager.select_related("delivery_note")))
+        lookups += _invoice_lookups(shipment, "shipments__")
+    # 一式の行 (出荷に結び付かない請求書の明細) は受注の明細の逆の関係 invoice_lines で読む (events_for・reached_stages と同じ辿り方)。
+    lookups += _invoice_lookups(line_model, "")
+    if _related_model(line_model, "acceptances") is not None:
+        lookups.append("acceptances")
+    return lookups
+
+
+def _invoice_lookups(model, prefix) -> list:
+    """model の請求書の明細 (請求書つき) と、その請求書の入金 (記録した人つき) の prefetch。請求の部品が無ければ空。prefix は model までの道。"""
+    from django.db.models import Prefetch
+
+    invoice_line = _related_model(model, "invoice_lines")
+    if invoice_line is None:
+        return []
+    path = f"{prefix}invoice_lines"
+    lookups = [Prefetch(path, queryset=invoice_line._default_manager.select_related("invoice"))]
+    invoice = _related_model(invoice_line, "invoice")
+    payment = _related_model(invoice, "payments") if invoice is not None else None
+    if payment is not None:
+        # 請求書は請求書の明細と一緒に読んだ物 (select_related の写し) を辿り、入金だけを 1 回で読む。
+        lookups.append(Prefetch(f"{path}__invoice__payments", queryset=payment._default_manager.select_related("recorded_by")))
+    return lookups
