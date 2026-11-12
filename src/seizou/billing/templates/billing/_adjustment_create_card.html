@@ -1,5 +1,6 @@
 {% load static seizou_tags %}
 {# 調整の記録のカード (依頼書 N409b。入金の記録の billing/_payment_create_card.html と同じ形)。入力の頭に請求書の番号と得意先と 合計・入金済み・調整・残 の 1 行 (確かめでなく入力の頭なので黄の帯にしない)。金額の欄は空で開く。残が 0 より大きく、金額の閲覧がある人には、残の右に「残を消す金額を入れる」(押すと残をマイナスにした数を金額の欄に入れる。保存はしない。入金の記録と同じ billing/payment-fill.js。510 回目)。全体の画面 (billing/adjustment_form.html) と小窓 (billing/_form_modal.html。510 回目) の両方が include する。 #}
+{# 金額の閲覧の無い人には、この画面は開いた時点で断る (本人の決め 11-12 07:2x)。seizou.hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。 #}
 <div data-adjustment-card>
 <p class="mb-4 text-sm text-base-content/70">請求書 <span class="font-mono">{{ object.invoice_no }}</span> ({{ object.customer.name }})。{% if not seizou.hide_money %}合計 <span class="tabular-nums">{{ object.total|yen }}</span>・入金済み <span class="tabular-nums">{{ object.paid_total|yen }}</span>・調整 <span class="tabular-nums">{{ object.adjusted_total|yen }}</span>・残 <span class="tabular-nums">{{ object.balance|yen }}</span>{% with balance=object.balance %}{% if balance > 0 %}<button type="button" class="btn btn-xs btn-outline border-base-300 ml-2 align-middle" data-fill-amount="-{{ balance|comma }}">残を消す金額を入れる</button>{% endif %}{% endwith %}{% endif %}</p>
 {% include "core/_form_card.html" %}

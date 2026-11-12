@@ -72,7 +72,10 @@ def _date_input():
 
 
 class OrderLineForm(forms.Form):
-    """明細の 1 行。order_line は既にある明細を指す隠しの欄 (足す行は空)。"""
+    """明細の 1 行。order_line は既にある明細を指す隠しの欄 (足す行は空)。
+
+    hide_money は親の form が渡す。金額の閲覧の無い人には、親の form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。この分かれは、直に送って断られた時と欄の誤りの描き直しで、単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
+    """
 
     order_line = forms.ModelChoiceField(
         queryset=OrderLine.objects.none(), required=False, widget=forms.HiddenInput
@@ -225,7 +228,10 @@ class OrderForm(SubmitLabelMixin, ServiceModelForm):
     """受注の項目と明細の行。入れる画面と直す画面で同じ form を使う (入れる画面には備考を置かない)。
     保存のボタンは「1 行・合計 ¥4,800 で受注する」(編集は「… で保存」。金額の閲覧が無い人は「1 行で受注する」。開発の記録 docs/nights/20261105/N149.md)。
     直す画面は、開いた時の受注と明細の字 (services.order_state_token) を隠しの欄 state_token に持ち、保存の時に services が今の字と比べる
-    (ほかの人の直しと取引先から受け入れた変更を黙って戻さない。開発の記録 docs/nights/20261108/N350.md)。"""
+    (ほかの人の直しと取引先から受け入れた変更を黙って戻さない。開発の記録 docs/nights/20261108/N350.md)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
+    """
 
     class Meta:
         model = Order

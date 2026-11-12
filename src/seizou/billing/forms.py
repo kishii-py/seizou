@@ -226,6 +226,8 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
     一式の表の行 (lump_rows) には、金額の閲覧のある人にだけ「載せる」の印と「請求する金額」の欄を置く (LumpFieldsMixin)。
     載せる印の付いた一式の行も 1 行として数える (数量は出荷の合計、金額は入れた金額)。出荷の欄は必須でなく、出荷も載せる印の付いた一式の行も
     無いときだけ出荷の欄の誤りにする (今の必須の止めを置き換えるだけ)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     submit_label_plain = "請求書を作る"
@@ -494,6 +496,8 @@ class InvoiceReissueForm(LumpFieldsMixin, forms.Form):
     一式の欄 (LumpFieldsMixin) は、その得意先の出し切らずに終えた一式の受注の明細 (services.unbilled_lumps(得意先)) ごとに、金額の閲覧のある人にだけ置く
     (1 期間 1 枚で止まった一式の行を、作り直しの画面から載せるため。取り消す請求書に入っている一式の行は、開いた時はまだ発行の請求書に入っているので並ばない)。
     欄は土台の入力のカード (core/_form_card.html) の格子に並ぶ (載せる印と請求する金額。金額の欄の下に一式の金額と出した分の字)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     submit_label = "作り直す"
@@ -586,6 +590,8 @@ class InvoiceClosingForm(SubmitLabelMixin, forms.Form):
     字はサーバーが組み、ボタンに型 (data-submit-label) を置かない: core の seizou-submit-label.js は数える行の無い form では字を
     「請求書を作る」に戻すので、発行日を直しただけで社の数が消えるため。年月か締日を変えると画面のカードごと描き直す (billing/_invoice_closing_card.html)。
     会社ごとの項目 (請求書の拡張の表の欄) は足さない (adds_company_fields)。作る請求書が何枚にもなり、欄の値を渡す先が無いため。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     submit_label_plain = "請求書を作る"
@@ -740,6 +746,8 @@ class ShipmentPaymentForm(PaymentForm):
 
     開いた form は、入金の方法の初めの値を現金、金額の初めの値を出荷の金額 (税抜。services.shipment_amount) に消費税 (services.consumption_tax) を足した税込の金額 (金額の閲覧の無い人には入れない) にする。
     保存のボタンは「¥1,375 を出荷 SH-000001 の入金として記録する」(金額を入れる前は「出荷 SH-000001 の入金として記録する」)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     def __init__(self, *args, instance=None, hide_money=False, **kwargs):

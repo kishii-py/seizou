@@ -247,6 +247,8 @@ class PurchaseOrderForm(SubmitLabelMixin, forms.Form):
     """発注を入れる form。保存と同時に送るのは services (create_purchase_order) の中。
 
     保存のボタンは「3 行・合計 ¥45,000 で発注する」(単価の無い行があれば「3 行で発注する」。金額の閲覧が無い人も「3 行で発注する」。開発の記録 docs/nights/20261104/N138.md)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。この form の分かれは保存のボタンの字に金額を書かないだけで、明細の単価の欄は利用者が打つ欄として描き直しにも残る (隠すかは本体に渡した。docs/nights/20261112/N436.md の迷った事 1)。
     """
 
     submit_label_plain = "発注する"
@@ -429,6 +431,8 @@ class PurchaseOrderChangeLineForm(forms.Form):
     足す行の単位は数量単位の一覧から選ぶ (空なら部品の単位を写す。作者の決めの発注の明細と同じ)。
     相手が出荷済み (purchasing.services.known_shipped_qty が 0 より大きい) の行は単価の欄と消す印を出さない (欄の横に「出荷済み s」)。
     金額の閲覧が無い人には単価の欄を出さない (既にある明細の単価は今のまま送る)。
+
+    hide_money は親の form が渡す。金額の閲覧の無い人には、親の form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。この分かれは、直に送って断られた時と欄の誤りの描き直しで、単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     line = forms.ModelChoiceField(queryset=PurchaseOrderLine.objects.none(), required=False, widget=forms.HiddenInput)
@@ -549,6 +553,8 @@ class PurchaseOrderChangeForm(SubmitLabelMixin, forms.Form):
     形は受注の直しの form (orders.forms.OrderForm と OrderLineForm) にそろえる: 既にある明細は隠しの欄 line で指し、消す印 (DELETE) で取り消す。
     取り消した明細 (明細状態コード 2) は form に出さない。協力企業と発注日は直せない (字で出す)。
     保存のボタンは「第 n 版の変更を送る」(n は今の版 + 1)。金額の閲覧が無い人は単価の欄が無く、行も足せない。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     note = forms.CharField(label="備考", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 2}))
@@ -873,6 +879,8 @@ class SelfInvoiceForm(SubmitLabelMixin, forms.Form):
 
     受入は表の行 (rows) で描き、印を付けた行の数と税抜の金額の合計を、合計の枠 (line_totals) と保存のボタンの字に出す。
     行の金額は受入の金額そのまま (保存と同じ値)。取引先を選んでいるときは、その取引先の行だけを数える (画面の JS が隠す行を数えない)。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     submit_label_plain = "仕入明細を作る"
@@ -998,6 +1006,8 @@ class SelfInvoiceAcceptForm(forms.Form):
 
     字は「明細 n: 数 40 → 38・単価 ¥25.5 → ¥26・金額 ¥1,020 → ¥988」(違う所だけ。金額は保存と同じ services.self_invoice_line_amount。
     金額の閲覧の無い人には単価と金額を書かない)。service_kwargs は {"line_nos": [印の明細の行番号]}。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     submit_label = "受け入れて修正仕入明細を送る"

@@ -316,6 +316,8 @@ class ItemPriceForm(ServiceModelForm):
 
     部品は足すときだけ隠した欄 (?item=<pk> の初めの値)。直すときは部品の欄を外す (部品は変えない)。
     単価と数量の下限は 0 より大きい (欄の下限。作者の決め)。金額の閲覧が無い人 (hide_money) には単価の欄を出さない。
+
+    金額の閲覧の無い人には、この form の画面は開いた時点で断る (本人の決め 11-12 07:2x)。hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。
     """
 
     item_text = forms.CharField(label="部品", required=False, disabled=True)
