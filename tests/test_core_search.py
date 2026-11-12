@@ -319,6 +319,7 @@ def test_search_page_shows_searched_fields_in_provider_order(client_logged_in, b
     assert by_label == {
         "部品マスター": "自社品番・品名・図面番号・取引先の品番",
         "受注": "受注番号・得意先の注文番号・自社品番・品名",
+        "出荷": "出荷番号・納品書番号",
         "マニュアル": "題・本文",
     }
     body = response.content.decode()
