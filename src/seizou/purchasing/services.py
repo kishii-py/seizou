@@ -101,6 +101,12 @@ _CANCEL_SHIPPED_MESSAGE = (
     "取り消せません。相手が一部を出荷済みなので、取消は送れません。"
     "出していない明細を取り消し、出した明細の数を出荷済みの数に直す変更を「変更」で送ってください。"
 )
+#: 発注書を seizou の外で送った発注 (sent_outside_at がある) の変更の断りの字。相手の seizou は元の注文を受け取っていないので、
+#: 後からつながりを登録しても変更を送らない (本人の決め 11-12 21:4x)。行える道 (取り消して入れ直す・明細の完了) を指す
+_CHANGE_OUTSIDE_MESSAGE = (
+    "保存できません。発注書を seizou の外で送った発注は、変更を相手へ送れません。"
+    "取引先に伝えた上で、取り消して入れ直すか、明細の行の ⋮ の「完了にする」で残りを終わらせてください。"
+)
 #: 発注書を seizou の外で送った発注 (sent_outside_at がある) の、受入の後の取消の断りの字。断る条件は _CANCEL_SHIPPED_MESSAGE と同じ。
 #: この発注には「変更」が出ない (相手へ送る道が無い) ので、行える道 (明細の完了 = mark_completed) を指す (518 回目の本体の直し)
 _CANCEL_RECEIVED_OUTSIDE_MESSAGE = (
@@ -820,8 +826,13 @@ def can_change_order(purchase_order):
 
     状態が「送った」か「相手が受け入れた」・取り消していない明細のどれかで相手が出した数 (known_shipped_qty) が数量より少ない・
     取引先に向き「送る」のつながりがある。状態を先に見て、外ならつながり・出荷の知らせ・受入を読まずに偽を返す。
+    発注書を seizou の外で送った発注 (sent_outside_at がある) は、後からつながりを登録しても偽 (change_purchase_order も断る)。
+    訳: 相手の seizou は元の注文を受け取っていないので、第 2 版の変更を送らない。取消と同じく、seizou からは相手へ何も送らない。
+    出所 = 本人の決め 11-12 21:4x。変えてよい条件 = 本人が、seizou の外で送った発注の直し方を決め直したとき。
     """
     if purchase_order.status not in CHANGEABLE_STATUSES:
+        return False
+    if purchase_order.sent_outside_at is not None:
         return False
     lines = _live_lines(purchase_order)
     if not lines or not getattr(lines[0], "can_send", False):
@@ -876,7 +887,8 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
     (変更への答えを待つ間も受入と出荷の知らせを今のまま受けるため)。atomic の外で connect.services.send_order を呼び、届いたかの知らせを付けて返す。
     版を上げたときは、発行の時の帳票の写し (第 n 版) を残す (R34)。版を上げずに返すときは残さない。描けなければ、返す発注の saved_note に字を足して黄にする
     (core.services.keep_report_copy・note_copy_failed)。
-    断る (頭は「保存できません。」): 状態が「送った」「相手が受け入れた」の外・相手が全部の明細を出荷し終えている・相手が出荷済みの明細の単価の変更と、
+    断る (頭は「保存できません。」): 状態が「送った」「相手が受け入れた」の外・発注書を seizou の外で送った発注 (sent_outside_at がある。
+    後からつながりを登録しても送らない = 本人の決め 11-12 21:4x。訳は can_change_order)・相手が全部の明細を出荷し終えている・相手が出荷済みの明細の単価の変更と、
     出荷済みの数より少ない数と取消・取り消していない明細が 0 行・つながりが無い・数量と単価が 0 以下・知らない鍵・使用停止の部品。
     訳: 相手が出荷し終えるまでは発注を直して変更として送れるようにし、出した物の記録と食い違う直し (出荷済みの明細の単価・数・取消) を止めるため。出所 = 作者の決め (11-06 23:1x)・作者の決め (11-06 23:2x)・中小企業共通 EDI に合わせた作者の決め (受注者が出した物の金額は仕入明細の流れで確かめる)。
     変えてよい条件 = 作者の決めの答えが変わったとき。
@@ -890,6 +902,8 @@ def change_purchase_order(purchase_order, data, lines, user, *, ext=None):
                 f"保存できません。状態が「{locked.get_status_display()}」の発注は、変更を送れません。"
                 "変更を送れるのは「送った」か「相手が受け入れた」の発注です。"
             )
+        if locked.sent_outside_at is not None:
+            raise ValueError(_CHANGE_OUTSIDE_MESSAGE)
         live = annotate_received(locked.lines.exclude(line_status_code=edi_codes.LINE_DELETED)).order_by("line_no")
         live = {line.pk: line for line in live}
         shipped = {pk: known_shipped_qty(line) for pk, line in live.items()}

@@ -661,3 +661,56 @@ def test_law_warning_only_when_the_cancel_goes_through(logged_in, user, partner,
     assert services.can_cancel_outside_order(PurchaseOrder.objects.get(pk=outside.pk)) is True
     assert checks.LawOrderCancel().run({"object": PurchaseOrder.objects.get(pk=outside.pk)}, user).startswith(LAW_HEAD)
 
+
+# --- 520 回目 (本人の決め 11-12 21:4x): seizou の外で送った発注には、後からつながりを登録しても「変更」を出さない ---
+
+
+@pytest.mark.django_db
+def test_no_change_for_sent_outside_order_after_linking(monkeypatch, logged_in, user, partner, item):
+    """「発注書を送った」で送った発注には、後から同じ取引先とのつながりを登録しても「変更」を出さず、変更も相手へ送らない。
+
+    訳: つながりを登録すると「変更」が出て、押して保存すると、元の注文を受け取っていない相手の seizou へ第 2 版の変更が送られた。
+    取消と同じく、seizou からは相手へ何も送らない (本人の決め 11-12 21:4x)。相手への HTTP は no_http が止める (呼ばれたら落ちる)。
+    """
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+    change_url = reverse("purchasing:purchaseorder_change", args=[po.pk])
+    assert services.can_change_order(PurchaseOrder.objects.get(pk=po.pk)) is False  # つながりの無い間は、今までも出ない
+
+    monkeypatch.setenv(ORDER_ENV, _new_secret())
+    connect_services.register_connection(partner, SUPPLIER_URL, ORDER_ENV, "send", user)
+    fresh = PurchaseOrder.objects.get(pk=po.pk)
+
+    assert services.can_change_order(fresh) is False
+    assert change_url not in _detail(logged_in, fresh)
+
+    # 変更の画面を直に開いて保存しても断る (版を上げず、相手へ送らない)
+    line = fresh.lines.get()
+    rows = [{"line": line, "qty": Decimal("12"), "unit_price": line.unit_price, "due_date": line.due_date, "note": ""}]
+    with pytest.raises(ValueError) as refused:
+        services.change_purchase_order(fresh, {"note": ""}, rows, user)
+    message = str(refused.value)
+    assert message.startswith("保存できません。発注書を seizou の外で送った発注は、変更を相手へ送れません。")
+    assert "「完了にする」" in message
+    fresh.refresh_from_db()
+    assert fresh.revision_no == 1 and fresh.lines.get().qty == Decimal("10")
+    assert not Outbox.objects.filter(purchase_order=fresh).exists()
+
+    # 一部を受け入れた後 (一部納品) も同じ
+    services.receive(fresh.lines.get(), Decimal("2"), DAY, user)
+    fresh = PurchaseOrder.objects.get(pk=po.pk)
+    assert fresh.status == PurchaseOrder.STATUS_PARTIAL
+    assert services.can_change_order(fresh) is False
+    assert change_url not in _detail(logged_in, fresh)
+
+
+@pytest.mark.django_db
+def test_change_stays_for_orders_sent_by_seizou(logged_in, user, linked, item):
+    """seizou で送った発注の「変更」は今のまま出る (発注書を送った日時の無い発注)。"""
+    sent = services.create_purchase_order(
+        linked, [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("45")}], user, order_date=DAY
+    )
+    sent = PurchaseOrder.objects.get(pk=sent.pk)
+    assert sent.status == PurchaseOrder.STATUS_SENT and sent.sent_outside_at is None
+    assert services.can_change_order(sent) is True
+    assert reverse("purchasing:purchaseorder_change", args=[sent.pk]) in _detail(logged_in, sent)
+
