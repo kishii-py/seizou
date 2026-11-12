@@ -45,6 +45,11 @@
   closing_date(年, 月, 締日) は締める日 (その月の日数より大きい締日は月末。読むだけ)。
   closing_plan(締める日) は得意先ごとの行 (作る・もう在る・一式の金額を待つ・締日が空。読むだけ。2 段目の画面と create_closing_invoices が同じ中身を読む)。
   create_closing_invoices(締める日, user, issued_on=…) は作る行の得意先ごとに _issue_invoice を通し、どれかの得意先で断られたら 1 枚も作らない。
+- 調整 (値引き・振込手数料・相殺・端数・その他) は record_adjustment・cancel_adjustment の 2 つだけが書く。調整は請求書を指し、残を減らす調整はマイナス。
+  請求書の残 = 合計 − 取消でない入金 + 取消でない調整 (Invoice.balance)。取消の請求書には記録しない (ValueError。入金の R21 と同じ見方)。
+  取消でない調整の残る請求書は、入金と同じく cancel_invoice と作り直しが断る (文は cancel_refusal)。直すときは取り消して記録し直す。
+- 入金の期日 (Payment.matures_on): 手形と電子記録債権は期日を必ず入れる (_payment_values。record_payment と record_outside_payment が通る)。
+  ほかの方法で入っていても断らずに残す。期日と入金日の前後は見ない。
 """
 
 from __future__ import annotations
@@ -64,13 +69,15 @@ from seizou.core.services import COPY_FAILED_NOTE, keep_report_copy, note_copy_f
 from seizou.masters.services import PRICE_BASIS_LUMP, line_amount, round_amount, round_tax
 from seizou.shipping.services import amount_of_shipment
 
-from .models import Invoice, InvoiceLine, Payment
+from .models import Adjustment, Invoice, InvoiceLine, Payment
 from .reports import INVOICE_TEMPLATE, invoice_context
 
 #: 消費税の率 (会社の設定に置くまでの定数)
 TAX_RATE = Decimal("0.10")
 #: 入金の備考の上限 (表の列と同じ)
 PAYMENT_NOTE_MAX = 500
+#: 調整の備考の上限 (表の列と同じ)
+ADJUSTMENT_NOTE_MAX = 500
 
 _R09_RULE = "請求書の明細は、出荷済みの物だけ。"
 _R21_RULE = "取消した請求書には、入金を記録できない。"
@@ -446,22 +453,33 @@ def cancel_refusal(invoice, *, hide_money=False) -> str:
     """請求書を取り消せない理由の文 (読むだけ)。取り消せるなら空の字。
 
     取消でない入金が 1 件でも残っていれば、先に入金を取り消す文 (入金の記録の件数と合計) を返す。
+    取消でない調整が残っていれば、「この請求書には入金の記録が n 件と調整が m 件あります (合計 ¥…)。先に入金と調整を取り消してください。」
+    (入金が 0 件なら「調整が m 件」だけ)。合計は、入金があれば入金の合計、調整だけなら調整の合計 (入金だけのときの字と合計の意味を変えないため)。
+    調整が無ければ、入金だけのときの字のまま変えない。
     hide_money が真なら合計を書かず件数だけ (金額の閲覧の無い人)。
-    cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。請求書の状態は見ない。
+    cancel_invoice と取消の確かめの画面 (billing_tags の invoice_cancel_refusal) が同じ文を使う。作り直し (reissue_plan・reissue_invoice) も同じ文で止まる。請求書の状態は見ない。
     訳: 取消でない入金が残ったまま請求書を取り消さないため (先に入金を取り消す)。出所 = 未確認 (この module と cancel_invoice の docstring に「決め 11-04 06:4x」とあるが、本人の言葉は記録に無い。作った晩の記録は docs/nights/20261104/N89.md)。
+    取消でない調整が残る請求書も取り消させないのは、請求書を取り消すと、付けた調整が数える先 (請求書の残と台帳) を失うため (表の作りの訳。出所 = 依頼書 N409 の作者の決め)。
     変えてよい条件 = Issue「決まりの提案」でこの訳に対して議論してから。
     """
     rows = [row for row in invoice.payments.all() if row.status == Payment.STATUS_RECORDED]
-    if not rows:
+    adjustments = [row for row in invoice.adjustments.all() if row.status == Adjustment.STATUS_RECORDED]
+    if not rows and not adjustments:
         return ""
-    money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))})"
-    return f"取り消せません。この請求書には入金の記録が {len(rows)} 件あります{money}。先に入金を取り消してください。"
+    if not adjustments:
+        money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in rows), _ZERO))})"
+        return f"取り消せません。この請求書には入金の記録が {len(rows)} 件あります{money}。先に入金を取り消してください。"
+    counted = rows or adjustments
+    money = "" if hide_money else f" (合計 ¥{_yen(sum((row.amount for row in counted), _ZERO))})"
+    head = f"入金の記録が {len(rows)} 件と調整が {len(adjustments)} 件" if rows else f"調整が {len(adjustments)} 件"
+    return f"取り消せません。この請求書には{head}あります{money}。先に入金と調整を取り消してください。"
 
 
 def cancel_invoice(invoice, user):
     """請求書を取消にする。明細は残す (入っていた出荷は、また請求できる)。
 
     取消でない入金が残っていれば、何も変えずに ValueError (先に cancel_payment で入金を取り消す。決め 11-04 06:4x)。
+    取消でない調整が残っていても同じ (先に cancel_adjustment で調整を取り消す。依頼書 N409)。
     文は cancel_refusal の 1 か所 (金額の閲覧の無い人には件数だけ = access.hides_money)。
     入金の行はロックしない (record_payment は請求書の行をロックしてから入金を足すので、請求書の行のロックで足りる)。
     """
@@ -507,7 +525,7 @@ def reissue_plan(invoice, *, hide_money=False) -> dict:
     一式の行 (最後の出荷日がある行 = InvoiceLine.is_lump) は出荷の集まりに入れず、lumps に並べる (空の値を出荷の pk__in に渡さない。作り直しで一式の行も落とさない)。
     理由の文は、取り消す請求書のどれかに取消でない入金が残っていれば、その請求書の cancel_refusal の文 (hide_money なら件数だけ)。
     """
-    invoices = list(_same_period_invoices(invoice).prefetch_related("payments", "lines"))
+    invoices = list(_same_period_invoices(invoice).prefetch_related("payments", "adjustments", "lines"))
     refusal, refused = "", None
     for row in invoices:
         text = cancel_refusal(row, hide_money=hide_money)
@@ -905,10 +923,15 @@ def _closing_breakdown(skipped):
     return "・".join(f"{label} {count} 社" for label, count in counts if count)
 
 
-def _payment_values(amount, method, note):
-    """入金の金額・方法・備考の値を見て、Decimal に直した金額を返す (読むだけ)。record_payment と record_outside_payment が同じ検査を使う。
+def _payment_values(amount, method, note, matures_on=None):
+    """入金の金額・方法・備考・期日の値を見て、Decimal に直した金額を返す (読むだけ)。record_payment と record_outside_payment が同じ検査を使う。
 
-    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / 電子記録債権 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    方法が手形か電子記録債権 (Payment.METHODS_WITH_MATURITY) で期日が空なら ValueError「記録できません。手形と電子記録債権は期日を入れてください。」。
+    ほかの方法で期日が入っていても断らない (記録に残す)。期日と入金日の前後は見ない。
+    訳: 手形と電子記録債権で受け取った代金は、期日まで現金にならないので、期日を持たずに記録すると、いつ入るかが分からなくなるため。
+    期日と入金日の前後を見ないのは、先の期日の手形を受け取る場面も、期日の過ぎた物を後から記録する場面もあるため。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)。変えてよい条件 = 本人が入金の期日の扱いを決め直したとき。
     """
     try:
         amount = Decimal(str(amount))
@@ -920,22 +943,28 @@ def _payment_values(amount, method, note):
     if not amount > 0:
         raise ValueError(f"記録できません。入金の金額が 0 以下です。入金の金額は 0 より大きい数にしてください (入れた値: {amount})。")
     if method not in dict(Payment.METHOD_CHOICES):
-        raise ValueError(f"記録できません。知らない入金の方法です。入金の方法は 振込 / 現金 / 手形 / その他 のどれかにしてください (入れた値: {method!r})。")
+        raise ValueError(
+            "記録できません。知らない入金の方法です。入金の方法は 振込 / 現金 / 手形 / 電子記録債権 / その他 のどれかにしてください"
+            f" (入れた値: {method!r})。"
+        )
+    if method in Payment.METHODS_WITH_MATURITY and matures_on is None:
+        raise ValueError("記録できません。手形と電子記録債権は期日を入れてください。")
     if len(note or "") > PAYMENT_NOTE_MAX:
         raise ValueError(f"記録できません。備考が {PAYMENT_NOTE_MAX} 字を超えています。備考は {PAYMENT_NOTE_MAX} 字までにしてください。")
     return amount
 
 
-def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_TRANSFER, note=""):
+def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_TRANSFER, note="", matures_on=None):
     """請求書に入金を 1 件記録する。記録した人は user (pk が無ければ空)。
 
-    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    金額は 0 より大きい数。入金の方法は 振込 / 現金 / 手形 / 電子記録債権 / その他。備考は 500 字まで (番号の無い入力の誤り = ValueError)。
+    期日 (matures_on) は手形と電子記録債権では必ず入れる (空なら ValueError)。ほかの方法でも入っていれば残す (_payment_values)。
     取消した請求書には記録できない (R21)。多い入金 (残を超える額)・未来の入金日・入金済みの請求書へのさらなる入金は止めない (現物優先)。
     返す入金に、画面の知らせの字 saved_message (「請求書 <番号> に ¥<金額> を入金として記録しました。」) を付ける (表に書かない)。
     訳: 取消した請求書に入金を記録させないため (なぜ要るかは未確認。原則の「記録どうしの矛盾」に当たるかは本人が決める)。出所 = RULES.md R21 (決め 11-03 14:1x。理由の字は作者の会期前の決まりの表 (2026-11-01) に無い)。
     変えてよい条件 = 変えない (R は廃止で残す)。
     """
-    amount = _payment_values(amount, method, note)
+    amount = _payment_values(amount, method, note, matures_on)
     with transaction.atomic():
         locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
         if locked.status == Invoice.STATUS_CANCELLED:
@@ -945,6 +974,7 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
             received_on=received_on,
             amount=amount,
             method=method,
+            matures_on=matures_on,
             note=note or "",
             recorded_by=user if getattr(user, "pk", None) is not None else None,
         )
@@ -954,7 +984,7 @@ def record_payment(invoice, received_on, amount, user, *, method=Payment.METHOD_
         return payment
 
 
-def record_outside_payment(shipment, received_on, amount, user, *, method=Payment.METHOD_CASH, note=""):
+def record_outside_payment(shipment, received_on, amount, user, *, method=Payment.METHOD_CASH, note="", matures_on=None):
     """請求書の外で受け取った入金 (現金など) を出荷に 1 件記録する。記録した人は user (pk が無ければ空)。
 
     請求の候補 (billable_shipments) と同じ出荷にだけ記録する: 発行の請求書に入った出荷・取消でない請求書の外の入金がもうある出荷には
@@ -962,7 +992,7 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
     一式の明細の出荷と、受注の明細に「請求しない」の印がある出荷は見ない (断りはこの 2 つだけ)。
     記録した出荷は、請求の候補 (billable_shipments・unbilled_in_period) と納品書の詳細の緑の「請求書作成」に出ない。
     出荷の金額 (ダッシュボードの出荷の金額と売上の数え方) は変えない。ダッシュボードの今月の入金 (core.dashboard.payments_this_month) に入る。
-    入金を取り消す (cancel_payment) と、その出荷は請求の候補に戻る。金額・方法・備考の値の検査は record_payment と同じ (_payment_values)。
+    入金を取り消す (cancel_payment) と、その出荷は請求の候補に戻る。金額・方法・備考・期日の値の検査は record_payment と同じ (_payment_values)。
     金額は人が入れた値で、出荷の金額と比べない (多い入金も少ない入金も止めない = 現物優先)。方法の既定は現金 (請求書の外で受け取る場面の多くのため)。
     出荷の行をロックしてから書く (請求書の作成 = create_invoice と納品書の取消 = cancel_delivery_note も出荷の行をロックするので、同時に走ってもどちらかが待つ)。
     返す入金に、画面の知らせの字 saved_message (「出荷 <番号> の ¥<金額> を、請求書の外で受け取った入金として記録しました。」) を付ける (表に書かない)。
@@ -970,7 +1000,7 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
     訳: 同じ代金を 2 回受け取った記録 (請求書の入金と請求書の外の入金、または請求書の外の入金の 2 件) を作らないため (二重の記録はダッシュボードの今月の入金を誤らせ、後で直す手が大きい)。出所 = 作者の決め。
     変えてよい条件 = 作者が請求書の外で受け取った入金の扱いを決め直したとき。
     """
-    amount = _payment_values(amount, method, note)
+    amount = _payment_values(amount, method, note, matures_on)
     with transaction.atomic():
         locked = _Shipment.objects.select_for_update().get(pk=shipment.pk)
         _refuse_outside_payment(locked)
@@ -979,6 +1009,7 @@ def record_outside_payment(shipment, received_on, amount, user, *, method=Paymen
             received_on=received_on,
             amount=amount,
             method=method,
+            matures_on=matures_on,
             note=note or "",
             recorded_by=user if getattr(user, "pk", None) is not None else None,
         )
@@ -1026,6 +1057,78 @@ def cancel_payment(payment, user):
             raise ValueError("取り消せません。この入金は取り消し済みです。請求書の詳細を開き直してください。")
         before = history.saved_state(locked)
         locked.status = Payment.STATUS_CANCELLED
+        locked.save(update_fields=["status"])
+        record_history(locked, user, before=before)
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        locked.saved_message = "取り消しました。"
+        return locked
+
+
+def _adjustment_amount(amount):
+    """調整の金額を Decimal に直して返す (読むだけ)。数として読めないか 0 なら ValueError (あり得ない入力 = RULES.md の原則)。
+
+    0 を止めるのは、0 円の調整は残を動かさず、記録しても意味が無いため (表の制約 billing_adjustment_amount_not_zero と同じ)。
+    """
+    try:
+        value = Decimal(str(amount))
+        readable = value.is_finite()
+    except (InvalidOperation, ValueError, TypeError):
+        readable = False
+    if not readable:
+        raise ValueError(f"記録できません。調整の金額を数として読めません (入れた値: {amount!r})。数を入れてください。")
+    if value == 0:
+        raise ValueError("記録できません。調整の金額が 0 です。残を減らす調整はマイナス、増やす調整はプラスの数にしてください。")
+    return value
+
+
+def record_adjustment(invoice, adjusted_on, amount, user, *, reason=Adjustment.REASON_FEE, note=""):
+    """請求書に調整 (値引き・振込手数料・相殺・端数・その他) を 1 件記録する。記録した人は user (pk が無ければ空)。
+
+    金額は 0 でない数 (足すも引くも。残を減らす調整はマイナス = 振込手数料 660 は −660)。数として読めないか 0 なら ValueError。
+    訳 (reason) が choices に無い・備考が 500 字を超える、も ValueError。請求書の行をロックしてから書く (record_payment と同じ)。
+    取消の請求書には記録せず ValueError「記録できません。請求書 IV-… は取消です。発行の請求書を選び直してください。」(新しい決まりの番号は足さない)。
+    返す調整に、画面の知らせの字 saved_message (「請求書 IV-… に調整 (振込手数料 ¥-660) を記録しました。」) を付ける (表に書かない)。
+    変更の履歴に「作った」で残す (請求書の詳細の「履歴」に出る = Adjustment.history_owner)。
+    訳: 取消の請求書は残と台帳から外れるので、そこに付けた調整は数える先が無くなり、記録が成り立たないため (入金の R21 と同じ見方)。
+    出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)・本人の答え (調整を請求書に結ぶ)。変えてよい条件 = 本人が調整の持ち方を決め直したとき。
+    """
+    value = _adjustment_amount(amount)
+    labels = dict(Adjustment.REASON_CHOICES)
+    if reason not in labels:
+        raise ValueError(
+            "記録できません。知らない調整の訳です。訳は 値引き / 振込手数料 / 相殺 / 端数 / その他 のどれかにしてください"
+            f" (入れた値: {reason!r})。"
+        )
+    if len(note or "") > ADJUSTMENT_NOTE_MAX:
+        raise ValueError(
+            f"記録できません。備考が {ADJUSTMENT_NOTE_MAX} 字を超えています。備考は {ADJUSTMENT_NOTE_MAX} 字までにしてください。"
+        )
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
+        if locked.status == Invoice.STATUS_CANCELLED:
+            raise ValueError(f"記録できません。請求書 {locked.invoice_no} は取消です。発行の請求書を選び直してください。")
+        adjustment = Adjustment.objects.create(
+            invoice=locked,
+            adjusted_on=adjusted_on,
+            amount=value,
+            reason=reason,
+            note=note or "",
+            recorded_by=user if getattr(user, "pk", None) is not None else None,
+        )
+        record_history(adjustment, user)
+        # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
+        adjustment.saved_message = f"請求書 {locked.invoice_no} に調整 ({labels[reason]} ¥{_yen(value)}) を記録しました。"
+        return adjustment
+
+
+def cancel_adjustment(adjustment, user):
+    """記録した調整を取消にする。行は消さない (履歴)。請求書の状態は見ない (cancel_payment と同じ形)。取り消し済みなら ValueError。"""
+    with transaction.atomic():
+        locked = Adjustment.objects.select_for_update().get(pk=adjustment.pk)
+        if locked.status == Adjustment.STATUS_CANCELLED:
+            raise ValueError("取り消せません。この調整は取り消し済みです。請求書の詳細を開き直してください。")
+        before = history.saved_state(locked)
+        locked.status = Adjustment.STATUS_CANCELLED
         locked.save(update_fields=["status"])
         record_history(locked, user, before=before)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。

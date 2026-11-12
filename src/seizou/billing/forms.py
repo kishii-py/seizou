@@ -17,8 +17,9 @@
 - 締めの一括の form (InvoiceClosingForm。依頼書 N402b) は「年月」「締日」「発行日」。年月と締日から締める日 (services.closing_date) を決め、
   plan (services.closing_plan) をテンプレートが表に描く。service_kwargs() は {"closing_on": …, "issued_on": …} (土台が create_closing_invoices を呼ぶ)。
 - ほかの部品の model は import しない。外部キーの先を related_model で引く。
-- 入金の form: 入金日・金額・入金の方法・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
+- 入金の form: 入金日・金額・入金の方法・期日・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
+  期日は手形と電子記録債権のときに必ず入れる (空なら期日の欄の誤り。services の _payment_values も断る)。方法で欄を出し入れする JS は無い。
 - 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
 """
 
@@ -696,9 +697,22 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
         widget=PlainNumberInput(attrs={"class": "input w-full", "step": "any", "data-label-amount": True}),
     )
     method = forms.ChoiceField(label="入金の方法", choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_TRANSFER)
+    matures_on = forms.DateField(
+        label="期日",
+        required=False,
+        help_text="手形と電子記録債権のときは必ず入れます。",
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
+    )
     note = forms.CharField(
         label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
     )
+
+    def clean(self):
+        """方法が手形か電子記録債権で期日が空なら、期日の欄の誤り (段 1)。services の _payment_values と同じ見方 (訳もそちら)。"""
+        data = super().clean()
+        if data.get("method") in Payment.METHODS_WITH_MATURITY and not data.get("matures_on") and "matures_on" not in self.errors:
+            self.add_error("matures_on", "手形と電子記録債権は期日を入れてください。")
+        return data
 
     def submit_label_templates(self) -> list:
         return ["¥{amount} を入金として記録する"]
@@ -713,6 +727,7 @@ class PaymentForm(SubmitLabelMixin, forms.Form):
             "amount": data["amount"],
             "method": data["method"],
             "note": data["note"],
+            "matures_on": data.get("matures_on"),
         }
 
 

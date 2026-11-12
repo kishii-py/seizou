@@ -194,3 +194,20 @@ def test_r24_warn_in_modal_then_confirm(settings, logged_in, fully_paid):
     assert second.status_code == 204
     assert "seizou:saved" in json.loads(second["HX-Trigger"])
     assert Payment.objects.count() == 2
+
+
+# --- 調整のある請求書 (依頼書 N409。請求書の残 = 合計 − 入金 + 調整) ---
+
+
+@pytest.mark.django_db
+def test_r24_text_with_adjustment_uses_invoice_balance(settings, user, partly_paid):
+    """調整のある請求書では、入金の合計と請求書の合計を比べず、今回の入金と請求書の残 (調整を数えた残) を比べる字にする。"""
+    services.record_adjustment(partly_paid, RECEIVED_ON, Decimal("-500"), user)
+    settings.SEIZOU = {"over_payment": "warn"}
+    (warning,) = checks.run(ACTION, _data(partly_paid, "10000"), user)
+    assert warning.code == "R24"
+    assert warning.message == (
+        "今回の入金 (¥10,000) が請求書の残 (¥9,500) を超えます。同じ入金を 2 回記録していないか、金額を確かめてください。"
+    )
+    # 調整を数えた残と同じ額なら知らせない
+    assert checks.run(ACTION, _data(partly_paid, "9500"), user) == []

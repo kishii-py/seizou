@@ -153,7 +153,7 @@ def test_create_get_shows_invoice_summary(client_logged_in, invoice):
     assert "残" in body and "16,500" in body
     for name in ("received_on", "amount", "method", "note"):
         assert f'name="{name}"' in body
-    for label in ("振込", "現金", "手形", "その他"):
+    for label in ("振込", "現金", "手形", "電子記録債権", "その他"):
         assert f">{label}</option>" in body
     assert "キャンセル" in body
     assert response.context["cancel_url"] == reverse("billing:invoice_list")

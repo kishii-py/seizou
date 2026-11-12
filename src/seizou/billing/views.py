@@ -4,14 +4,14 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
 請求書の外で受け取った入金 (出荷を指す入金。作者の決め) の記録は ShipmentPaymentCreateView で、payment_detail は出荷の詳細へ移す。
-一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は取消でない入金の合計が合計に足りない発行の請求書 = 一部入金も入る
+一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は残 (合計 − 取消でない入金 + 取消でない調整) が 0 より大きい発行の請求書 = 一部入金も入る
 (ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
 """
 
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models import DecimalField, F, Sum, Value
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -34,7 +34,7 @@ from .forms import (
     PaymentForm,
     ShipmentPaymentForm,
 )
-from .models import Invoice, Payment
+from .models import Adjustment, Invoice, Payment
 from .models import InvoiceLine
 from .reports import INVOICE_TEMPLATE, invoice_context
 
@@ -43,17 +43,29 @@ PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使い�
 
 
 def _unpaid_only(invoices):
-    """「残のある物だけ」の印の条件 (取消でない入金の合計が合計に足りない請求書 = 一部入金も入る)。
+    """「残のある物だけ」の印の条件 (残 = 合計 − 取消でない入金 + 取消でない調整 が 0 より大きい請求書 = 一部入金も入る)。
 
-    core.dashboard の _invoices_to_be_paid と同じ数え方 (保存した入金の金額を足すだけ。掛け算と丸めをしない)。
+    Invoice.balance と、core.dashboard の _invoices_to_be_paid と同じ式 (保存した入金と調整の金額を足し引きするだけ。掛け算と丸めをしない)。
+    入金と調整は表ごとの副問い合わせの Sum で足す (結び付けを 2 つ並べると、入金と調整の数だけ行が増えて合計が倍になるため)。
     状態を発行に絞るのは InvoiceListView.get_queryset。
     """
-    paid = Coalesce(
-        Sum("payments__amount", filter=Q(payments__status=Payment.STATUS_RECORDED)),
-        Value(Decimal("0")),
-        output_field=DecimalField(max_digits=14, decimal_places=2),
-    )
-    return invoices.annotate(paid_sum=paid).filter(paid_sum__lt=F("total"))
+    from django.db.models import OuterRef, Subquery
+
+    money = DecimalField(max_digits=14, decimal_places=2)
+    sums = {}
+    for name, model, status in (
+        ("paid_sum", Payment, Payment.STATUS_RECORDED),
+        ("adjusted_sum", Adjustment, Adjustment.STATUS_RECORDED),
+    ):
+        rows = (
+            model.objects.filter(invoice=OuterRef("pk"), status=status)
+            .order_by()
+            .values("invoice")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
+        sums[name] = Coalesce(Subquery(rows, output_field=money), Value(Decimal("0")), output_field=money)
+    return invoices.annotate(**sums).filter(total__gt=F("paid_sum") - F("adjusted_sum"))
 
 
 class InvoiceListView(BaseListView):
@@ -77,7 +89,7 @@ class InvoiceListView(BaseListView):
     template_name = "billing/invoice_list.html"
 
     def get_queryset(self):
-        invoices = super().get_queryset().select_related("customer").prefetch_related("payments")
+        invoices = super().get_queryset().select_related("customer").prefetch_related("payments", "adjustments")
         if self.flag_on("unpaid"):
             # 入金の有無は印の when (_unpaid_only) が見る。状態の絞り (f_status) に読める値が無いときだけ、状態を発行に絞る (開発の記録 docs/nights/20261104/N120.md・docs/nights/20261104/N127.md)。
             if not self.filter_chosen("status"):
@@ -100,7 +112,7 @@ class InvoiceDetailView(BaseDetailView):
     template_name = "billing/invoice_detail.html"
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related("payments")
+        return super().get_queryset().prefetch_related("payments", "adjustments")
 
 
 class InvoiceModalView(BaseModalView):
@@ -118,10 +130,10 @@ class InvoiceModalView(BaseModalView):
     screen_help = "請求書の要点 (得意先・発行日・締め期間・合計・残・入金の状態・明細) を見るだけの小窓。請求書の一覧の行の目の印から開き、詳細へ移れます。"
 
     def get_queryset(self):
-        # 入金は残と入金の状態 (Invoice.balance・payment_status) が読む。明細は詳細の「明細」のタブと同じ 3 つ (出荷・部品・受注) を一緒に 1 回で読む
+        # 入金と調整は残と入金の状態 (Invoice.balance・payment_status) が読む。明細は詳細の「明細」のタブと同じ 3 つ (出荷・部品・受注) を一緒に 1 回で読む
         # (一式の行と、出荷を消した出荷の行は出荷が空。小窓の表は出荷番号の写しを読む)。並びは InvoiceLine の Meta の ordering のまま。
         lines = InvoiceLine.objects.select_related("shipment", "order_line__item", "order_line__order")
-        return Invoice.objects.select_related("customer").prefetch_related("payments", Prefetch("lines", queryset=lines))
+        return Invoice.objects.select_related("customer").prefetch_related("payments", "adjustments", Prefetch("lines", queryset=lines))
 
 
 class InvoiceCreateView(BaseFormView):

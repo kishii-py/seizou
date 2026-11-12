@@ -236,8 +236,11 @@ class OverPayment(Check):
     """R24: 入金の金額が、請求書の残を超えたら (入金の記録)。
 
     data の object は入金を記録する請求書 (土台の入力の画面が URL の pk の請求書を渡す)、amount は今回の入金の金額。
-    請求書は渡された物の属性 (total・status・paid_total()・balance()) で読み、billing の model を import しない。
+    請求書は渡された物の属性 (total・status・paid_total()・adjusted_total()・balance()) で読み、billing の model を import しない。
+    残は調整を数えた残 (合計 − 入金済み + 調整。Invoice.balance)。
     残と同じ額 (「残の全額を入れる」で入れた額) は知らせない。残が 0 以下 (入金済み・多い入金の後) なら、どの額でも知らせる。
+    調整のある請求書の文は「今回の入金 (¥…) が請求書の残 (¥…) を超えます。…」(入金の合計と請求書の合計を比べると、調整の分だけ食い違うため)。
+    調整の無い請求書の文は今の字のまま。
     取消の請求書は見ない (service の R21 が先に赤で止める。黄の後に赤を出さないため)。
     訳: 残を超える入金 (同じ入金の 2 重の記録など) に、保存の前に気づかせるため (止めるか知らせるかは会社が選ぶ。既定は知らせる。残はマイナスも見せる)。出所 = 会社の設定 over_payment (RULES.md R24・決め 11-07 00:38)。
     変えてよい条件 = 会社の設定で選ぶ。既定を変える提案は Issue「決まりの提案」で。
@@ -256,6 +259,12 @@ class OverPayment(Check):
             return None
         balance = invoice.balance()
         if _dec(amount) > balance:
+            adjusted = getattr(invoice, "adjusted_total", None)
+            if adjusted is not None and adjusted() != 0:
+                return (
+                    f"今回の入金 ({yen(_dec(amount))}) が請求書の残 ({yen(balance)}) を超えます。"
+                    "同じ入金を 2 回記録していないか、金額を確かめてください。"
+                )
             total = invoice.paid_total() + _dec(amount)
             return (
                 f"入金の合計 ({yen(total)}) が請求書の合計 ({yen(invoice.total)}) を超えます。"
