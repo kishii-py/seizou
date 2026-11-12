@@ -937,11 +937,25 @@ def _version_parts(text) -> tuple[int, ...]:
     return tuple(parts)
 
 
+def _dev_base(text) -> tuple[int, ...] | None:
+    """途中の版 (「.dev」で始まる段を持つ版。例 "0.2.0.dev0") の、その段の前までの番号の tuple。途中の版でなければ None。"""
+    parts = str(text or "").strip().split(".")
+    for index, part in enumerate(parts):
+        if part.strip().lower().startswith("dev"):
+            return _version_parts(".".join(parts[:index]))
+    return None
+
+
 def version_at_least(current, needed) -> bool:
     """会社が入れている版 (current) が、直る版 (needed) と同じか新しいか。
 
     版の字を「.」で分け、各段の先頭の数字だけを int にして tuple で比べる ("0.1.1" と "0.1.1rc1" は同じ段の 1 と 1)。
     current が空 (package が入っていない) なら False。needed が空なら True。
+    会社の版が途中の版 (main の版 = 次に出す版の番号に「.dev0」を付けた物。例 "0.2.0.dev0") の時は、その番号の出した版より前として扱う:
+    「.dev」の前までの番号が、直る版より大きい時だけ真 ("0.2.0.dev0" は "0.2.0" に届いていない。"0.1.1" には届いている)。
+    訳 (途中の版): main から入れた会社は、直る版が出る前の main を使っている事がある。途中の版を出した版と同じに数えると、
+    直しを入れる前に「直した」と知らせてしまう。出所 = 本人の決め 11-13 06:0x (main の版を 0.2.0.dev0 にする)。
+    変えてよい条件 = main の版の付け方 (GOVERNANCE.md) を変えるとき。
     訳: 会社が直った版を入れる前に「直した」と知らせると、書いた人が画面で直っていないのを見て、知らせが信用を失うため、
     入れている版が直る版に届いたかを見る。出所 = 本人の決め 11-07 09:0x〜09:4x の 4 と 5 (版の 3 つ目の数を直しを外へ出すときに上げる)。
     変えてよい条件 = 版の番号の決まり (GOVERNANCE.md の世話役の節) を変えるときに、同じ決めに合わせて変える。
@@ -950,6 +964,11 @@ def version_at_least(current, needed) -> bool:
         return True
     if not str(current or "").strip():
         return False
+    base = _dev_base(current)
+    if base is not None:
+        wanted = _version_parts(needed)
+        size = max(len(base), len(wanted))
+        return base + (0,) * (size - len(base)) > wanted + (0,) * (size - len(wanted))
     return _version_parts(current) >= _version_parts(needed)
 
 

@@ -1124,6 +1124,13 @@ def test_sync_without_reason_is_fixed_as_before(manager, plain, fake, version):
         ("", "0.1.1", False),
         ("0.1.1", "", True),
         ("0.1.1rc1", "0.1.1", True),
+        # 途中の版 (.dev) は、その番号の出した版より前 (本人の決め 11-13 06:0x で、main の版が 0.2.0.dev0 になった)
+        ("0.2.0.dev0", "0.2.0", False),
+        ("0.2.0.dev0", "0.2", False),
+        ("0.2.0.dev0", "0.1.1", True),
+        ("0.2.0.dev0", "0.1.0", True),
+        ("0.2.0.dev3", "0.2.1", False),
+        ("0.2.1.dev0", "0.2.0", True),
     ],
 )
 def test_version_at_least(current, needed, expected):
