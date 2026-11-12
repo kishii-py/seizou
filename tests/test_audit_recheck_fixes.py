@@ -145,7 +145,8 @@ def test_holiday_create_shows_japanese_required_messages(logged_in):
 # ---------------------------------------------------------------- 6. ダッシュボードの流れの案内の行き先
 
 SALES_LABELS = ["受注", "指示書", "出荷", "納品書", "請求書", "入金"]
-PURCHASE_LABELS = ["発注", "注文回答", "出荷の知らせ", "受入", "検収"]
+# 「協力企業に出す」と「渡す」は見比べのまとめの M01 の 3 段目 (N406c) で足した段
+PURCHASE_LABELS = ["協力企業に出す", "発注", "注文回答", "出荷の知らせ", "渡す", "受入", "検収"]
 
 
 def sales_step(key):
@@ -179,7 +180,13 @@ def test_flow_neighbors_follow_new_targets():
     assert lines["next"]["label"] == "出荷"
     # 受信した注文の画面は段でなくなった (受注の一覧の帯から 1 手で開く)。案内の小窓に前後の段は出ない (ONB-01)
     assert dashboard.flow_neighbors("connect:inbox_list") is None
-    assert dashboard.flow_neighbors("workorders:workorder_list") is None
+    # 指示書の一覧は、発注から検収までの流れの「協力企業に出す」の段になった (N406c)。次の段は発注
+    assert dashboard.flow_neighbors("workorders:workorder_list") == {
+        "flow": "発注から検収まで",
+        "label": "協力企業に出す",
+        "prev": None,
+        "next": {"label": "発注", "url": reverse("purchasing:purchaseorder_list")},
+    }
 
 
 def test_home_flow_links_go_to_inbox_and_orderlines(logged_in, customer):

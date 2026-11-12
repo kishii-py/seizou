@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
@@ -27,6 +28,19 @@ def unaccepted_only(queryset):
     except FieldDoesNotExist:
         return issued
     return issued.filter(~Exists(records._default_manager.filter(workorder_step__workorder=OuterRef("pk"))))
+
+
+def to_subcontract_only(queryset):
+    """協力企業に出していない工程があるだけ: これから協力企業に出す工程 (purchasing.services.steps_to_subcontract) を持つ指示書。
+
+    今日やることの「協力企業に出していない工程」の数 (core.dashboard) と同じ関数で絞る (数は工程の行の数、この一覧は指示書の数)。
+    工程の副問い合わせで絞るので、join を足さず、同じ指示書は重ならない。purchasing の部品が無い置き場では何も絞らない。
+    """
+    if not apps.is_installed("seizou.purchasing"):
+        return queryset
+    from seizou.purchasing.services import steps_to_subcontract
+
+    return queryset.filter(pk__in=steps_to_subcontract().values("workorder_id"))
 
 
 def planned_today(queryset):

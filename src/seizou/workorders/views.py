@@ -99,6 +99,7 @@ class WorkOrderListView(BaseListView):
         {"name": "issued", "label": "発行日", "kind": "date_range", "field": "issued_on"},
         {"name": "unaccepted", "label": "未着手だけ", "kind": "flag", "when": worklist.unaccepted_only},
         {"name": "today", "label": "今日の計画だけ", "kind": "flag", "when": worklist.planned_today},
+        {"name": "to_subcontract", "label": "協力企業に出していない工程があるだけ", "kind": "flag", "when": worklist.to_subcontract_only},
     )
     ordering = ("-issued_on", "-id")
 

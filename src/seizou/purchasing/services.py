@@ -1386,6 +1386,30 @@ def steps_to_subcontract():
     )
 
 
+def lines_not_handed():
+    """協力企業に渡していない明細の queryset (読むだけ)。
+
+    指示書の工程を指し、渡した日の無い、取り消していない明細 (取消でない発注の、明細状態コードが 2 でない明細) のうち、まだ渡していない数
+    (waiting_qty = 受入の残 (RULES.md R25) のうち 0 より大きい分) が 0 より大きい物。完了の明細は受入の残が 0 以下なので入らない。
+    今日やることの「協力企業に渡していない明細」の数 (core.dashboard) と、発注の一覧の絞り「渡していない明細があるだけ」
+    (orders_with_lines_not_handed) が、この 1 つの関数を使う (数と一覧が食い違わないため。見比べのまとめの M01 の 3 段目)。
+    """
+    rows = (
+        PurchaseOrderLine.objects.filter(workorder_step__isnull=False, handed_on__isnull=True)
+        .exclude(line_status_code=edi_codes.LINE_DELETED)
+        .exclude(purchase_order__status=PurchaseOrder.STATUS_CANCELLED)
+    )
+    return annotate_received(rows).filter(remaining_total__gt=0)
+
+
+def orders_with_lines_not_handed(queryset):
+    """発注の queryset を、協力企業に渡していない明細 (lines_not_handed) を持つ発注に狭める (読むだけ)。
+
+    発注の一覧の絞り「渡していない明細があるだけ」の when。明細の join を足さない副問い合わせなので、同じ発注は重ならない。
+    """
+    return queryset.filter(pk__in=lines_not_handed().values("purchase_order_id"))
+
+
 def default_subcontractor(item, process, *, on_date=None):
     """部品と工程の、協力企業への出し先の既定の取引先 (読むだけ)。ちょうど 1 社ならその取引先、ほかは None。
 

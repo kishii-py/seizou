@@ -27,7 +27,8 @@ from seizou.shipping import services as shipping_services
 from seizou.workorders import services as workorders_services
 
 SALES = ["受注", "指示書", "出荷", "納品書", "請求書", "入金"]
-PURCHASE = ["発注", "注文回答", "出荷の知らせ", "受入", "検収"]
+# 「協力企業に出す」(指示書の一覧) と「渡す」(発注の一覧) は見比べのまとめの M01 の 3 段目 (N406c) で足した段
+PURCHASE = ["協力企業に出す", "発注", "注文回答", "出荷の知らせ", "渡す", "受入", "検収"]
 NOT_COUNTED = {"出荷の知らせ", "検収"}
 
 
@@ -214,7 +215,8 @@ def test_flow_guide_one_query_per_counted_step():
     with CaptureQueriesContext(connection) as captured:
         guide = dashboard.flow_guide()
     counted = [step for flow in guide["flows"] for step in flow["steps"] if step["count"] is not None]
-    assert len(counted) == 9
+    # 協力企業に出していない工程と協力企業に渡していない明細の 2 段 (N406c) を足して 11
+    assert len(counted) == 11
     assert len(captured.captured_queries) == len(counted)
 
 
@@ -233,8 +235,9 @@ def test_flow_neighbors_prev_and_next():
 
     purchase = dashboard.flow_neighbors("purchasing:purchaseorder_list")
     assert purchase["flow"] == "発注から検収まで"
-    assert purchase["label"] == "発注・注文回答・出荷の知らせ"
-    assert purchase["prev"] is None
+    # 「渡す」の段も発注の一覧へ移り、前の段は指示書の一覧へ移る「協力企業に出す」(N406c)
+    assert purchase["label"] == "発注・注文回答・出荷の知らせ・渡す"
+    assert purchase["prev"] == {"label": "協力企業に出す", "url": reverse("workorders:workorder_list")}
     assert purchase["next"] == {"label": "受入", "url": reverse("purchasing:receipt_list")}
 
     billing = dashboard.flow_neighbors("billing:invoice_list")
