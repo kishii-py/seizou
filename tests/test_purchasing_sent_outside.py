@@ -55,6 +55,9 @@ ALERT_SENT_TAIL = "相手の答えと出荷の知らせは、seizou には届き
 CANCEL_LINE = "この発注は、発注書を seizou の外で送っています。取消は、取引先に自分で伝えてください。"
 TIMELINE_TITLE = "発注書を送った (seizou の外で)"
 NOT_DRAFT = "記録できません。「発注書を送った」を記録できるのは、状態が「下書き」の発注だけです。"
+#: 送った発注の取消の黄の確かめ (purchasing.checks の LawOrderCancel。seizou で送った発注の取消と同じ字)
+LAW_HEAD = "送った発注を取り消します。"
+LAW_TAIL = "相手と話して決めた後なら、このまま取り消してください。"
 
 
 @pytest.fixture(autouse=True)
@@ -359,7 +362,15 @@ def test_cancel_sent_outside_without_sending(logged_in, user, partner, item):
     po = services.mark_sent_outside(_draft(partner, user, item), user)
     body = logged_in.get(_cancel_url(po), **MODAL).content.decode()
     assert CANCEL_LINE in body
+    # 1 回目は、seizou で送った発注の取消と同じ黄の確かめ (取適法) が出て、取り消さない (本人の決め 11-12 21:2x。519 回目)
     response = logged_in.post(_cancel_url(po), {"reason": "作り物の理由"}, **MODAL)
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert LAW_HEAD in body and LAW_TAIL in body and "このまま取り消す" in body
+    po.refresh_from_db()
+    assert po.status == PurchaseOrder.STATUS_SENT
+    # 「このまま取り消す」で進む (相手へは送らない)
+    response = logged_in.post(_cancel_url(po), {"reason": "作り物の理由", "confirmed": "1"}, **MODAL)
     assert response.status_code == 204
     po.refresh_from_db()
     assert po.status == PurchaseOrder.STATUS_CANCELLED
@@ -618,4 +629,35 @@ def test_clear_completed_reopens_sent_outside_order(user, partner, item):
     untouched.refresh_from_db()
     assert untouched.status == PurchaseOrder.STATUS_SENT
     assert untouched.sent_outside_at is not None
+
+
+# --- 519 回目 (本人の決め 11-12 21:2x): seizou の外で送った発注の取消にも、取適法の黄の確かめを出す ---
+
+
+@pytest.mark.django_db
+def test_law_warning_only_when_the_cancel_goes_through(logged_in, user, partner, item):
+    """黄の確かめを出すのは、取り消せる時だけ。受入のある発注は、確かめを出さずに断る (「このまま取り消す」を押させてから断らない)。
+
+    押していない「下書き」の発注の取消には、今までどおり確かめを出さない (相手に何も伝わっていない発注なので)。
+    """
+    from seizou.purchasing import checks
+
+    received = services.mark_sent_outside(_draft(partner, user, item), user)
+    services.receive(received.lines.get(), Decimal("2"), DAY, user)
+    body = logged_in.post(_cancel_url(received), {"reason": ""}, **MODAL).content.decode()
+    assert LAW_HEAD not in body
+    assert "受入を記録した発注は取り消せません。" in body
+    assert services.can_cancel_outside_order(PurchaseOrder.objects.get(pk=received.pk)) is False
+
+    draft = _draft(partner, user, item)
+    assert services.can_cancel_outside_order(draft) is False
+    assert checks.LawOrderCancel().run({"object": draft}, user) is None
+    response = logged_in.post(_cancel_url(draft), {"reason": ""}, **MODAL)
+    assert response.status_code == 204
+    draft.refresh_from_db()
+    assert draft.status == PurchaseOrder.STATUS_CANCELLED
+
+    outside = services.mark_sent_outside(_draft(partner, user, item), user)
+    assert services.can_cancel_outside_order(PurchaseOrder.objects.get(pk=outside.pk)) is True
+    assert checks.LawOrderCancel().run({"object": PurchaseOrder.objects.get(pk=outside.pk)}, user).startswith(LAW_HEAD)
 

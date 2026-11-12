@@ -96,12 +96,16 @@ class LawOrderChange(Check):
 
 
 class LawOrderCancel(Check):
-    """送った発注の取消 (相手へ取消を送れる発注) に、黄色の確かめを出す (止めない)。
+    """送った発注の取消に、黄色の確かめを出す (止めない)。相手へ取消を送れる発注と、発注書を seizou の外で送った発注。
 
-    相手がどの明細も出荷していない「送った」「相手が受け入れた」の発注 (purchasing.services.can_cancel_sent_order が真) だけに出す。
-    一部を出荷済みの発注には出さない (services が「変更」の道を案内する字ですぐ断る。確かめに「このまま保存」を押させてから断らないため)。
+    相手がどの明細も出荷していない「送った」「相手が受け入れた」の発注 (purchasing.services.can_cancel_sent_order が真) と、
+    発注書を seizou の外で送った発注で受入の無い物 (purchasing.services.can_cancel_outside_order が真。相手へは送らずに取り消す) に出す。
+    一部を出荷済みの発注と受入のある発注には出さない (services がすぐ断る。確かめに「このまま取り消す」を押させてから断らないため)。
+    押していない「下書き」の発注の取消には出さない (相手に何も伝わっていない発注)。
     訳: 送った発注の数を減らす・納期を早める・明細を取り消す保存に気づかせ、取適法の不当な給付内容の変更の禁止 (発注の取消を含む) に当たるおそれを知らせるため。相手と合意した変更は止めない。出所 = 法令 (取適法) と作者の決め (11-07 00:0x)。確かめた資料 = 作り手の知識 (公正取引委員会の文書は未読)。
     変えてよい条件 = 公正取引委員会の資料で当てはめを確かめた後に、会社の決めで変える。
+    訳 (seizou の外で送った発注): 発注書を FAX などで送った発注の取消も、相手から見れば同じ取消なので、同じ確かめを出す。
+    出所 = 本人の決め 11-12 21:2x。変えてよい条件 = 本人が、seizou の外で送った発注の取消の確かめを決め直したとき。
     """
 
     name = "law_order_cancel"
@@ -112,7 +116,9 @@ class LawOrderCancel(Check):
         from . import services
 
         purchase_order = data.get("object")
-        if purchase_order is None or not services.can_cancel_sent_order(purchase_order):
+        if purchase_order is None:
+            return None
+        if not (services.can_cancel_sent_order(purchase_order) or services.can_cancel_outside_order(purchase_order)):
             return None
         return "送った発注を取り消します。" + ORDER_CANCEL_TAIL
 

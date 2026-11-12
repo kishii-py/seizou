@@ -375,6 +375,18 @@ def can_cancel_sent_order(purchase_order):
     return all(known_shipped_qty(line) <= 0 for line in lines)
 
 
+def can_cancel_outside_order(purchase_order):
+    """発注書を seizou の外で送った発注を、相手へ送らずに取り消せるか (読むだけ)。取消の確かめ (purchasing.checks の LawOrderCancel) が使う。
+
+    発注書を送った日時 (sent_outside_at) があり、状態が CHANGEABLE_STATUSES (この発注では「送った」か「一部納品」) で、
+    どの明細にも受入が無い (known_shipped_qty が 0。受入があれば cancel_purchase_order が断る)。状態の外ならほかを読まずに偽。
+    can_cancel_sent_order (取消を相手へ送れる発注) と同じ形で、つながりの有無は見ない。
+    """
+    if purchase_order.sent_outside_at is None or purchase_order.status not in CHANGEABLE_STATUSES:
+        return False
+    return all(known_shipped_qty(line) <= 0 for line in _live_lines(purchase_order))
+
+
 def record_reply_after_cancel(purchase_order, user, *, reason, reply_message_id):
     """取消を送った後に届いた第 1 版の注文回答を、発注の状態を変えずに第 1 版の答えの列 (replied_at・reply_note・reply_message_id) にだけ書く。
 
