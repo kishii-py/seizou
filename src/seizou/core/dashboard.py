@@ -23,7 +23,7 @@
   その人が進められない行 (行の書く action を編集の権限・金額の閲覧・部署で行えない。作者の決め) は外し、何も残らなければ None)。
   協力企業に出していない工程の行は指示書の一覧を絞り「協力企業に出していない工程があるだけ」で、協力企業に渡していない明細の行は発注の一覧を
   絞り「渡していない明細があるだけ」で開く (数え方と絞りは purchasing.services の同じ関数。数は行の数、一覧は指示書か発注の件数)。
-  流れごとの段の行の後に、相手に届いていない注文回答・出荷の知らせ・検収の行 (_UNDELIVERED_TASKS。件数が 1 以上の物だけ) を足し、受信した注文・出荷・受入の素の一覧へ移す。
+  流れごとの段の行の後に、相手に届いていない注文回答・出荷の知らせ・検収の行 (_UNDELIVERED_TASKS。件数が 1 以上の物だけ) を足し、受信した注文・出荷・受入の一覧を、届いていない物だけの絞りで開く (数え方と絞りは connect・shipping・purchasing の services の同じ関数)。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -1215,62 +1215,30 @@ def _lines_not_handed():
 
 
 def _replies_undelivered():
-    """相手に届いていない注文回答。受信した注文のうち、入口が直接で、送った日時が空で、返事の欄が空でなく (送ろうとした)、
-    送る物でない字 (connect.services の MESSAGE_REPLY_SEED・MESSAGE_REPLY_INTAKE) でない物。connect の部品が無ければ None。読むだけ。
-    見方は、保存した後の黄の知らせ (connect.services の _reply_undelivered) と同じ。注文回答のタイプ (reply_type) は見ない:
-    変更と取消の版を受け入れた・断った時の注文回答は、タイプを書かずに送る (send_reply が状態から決める) ので、タイプで絞ると、
-    その注文回答が届かなかった時に黄の知らせは出るのに、この行に数えなかった (本体の直し 11-12。N416 の記録の「本体の判断が要る事」2)。
-    まだ答えていない行は返事の欄が空なので、数えない。
-
-    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
-    """
-    inbox_model = _model("connect", "Inbox")
-    if inbox_model is None:
+    """相手に届いていない注文回答 (connect.services.replies_undelivered。受信した注文の一覧の絞り「注文回答が届いていない物だけ」と同じ関数。訳はそこ)。connect の部品が無ければ None。"""
+    if _model("connect", "Inbox") is None:
         return None
-    from seizou.connect.services import MESSAGE_REPLY_INTAKE, MESSAGE_REPLY_SEED
+    from seizou.connect.services import replies_undelivered
 
-    return (
-        inbox_model._default_manager.filter(source=inbox_model.SOURCE_DIRECT, reply_sent_at__isnull=True)
-        .exclude(reply_response="")
-        .exclude(reply_response__in=(MESSAGE_REPLY_SEED, MESSAGE_REPLY_INTAKE))
-    )
+    return replies_undelivered()
 
 
 def _notices_undelivered():
-    """相手に届いていない出荷の知らせ。出荷のうち、送った日時が空で、返事の欄が空でなく、送る物でない字
-    (shipping.services の MESSAGE_NOTICE_SEED・connect.services の MESSAGE_SHIPPING_NOT_EDI_ORDER) でない物。shipping か connect の部品が無ければ None。読むだけ。
-
-    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
-    """
-    shipment_model = _model("shipping", "Shipment")
-    if shipment_model is None or _model("connect", "Connection") is None:
+    """相手に届いていない出荷の知らせ (shipping.services.notices_undelivered。出荷の一覧の絞り「出荷の知らせが届いていない物だけ」と同じ関数。訳はそこ)。shipping か connect の部品が無ければ None。"""
+    if _model("shipping", "Shipment") is None or _model("connect", "Connection") is None:
         return None
-    from seizou.connect.services import MESSAGE_SHIPPING_NOT_EDI_ORDER
-    from seizou.shipping.services import MESSAGE_NOTICE_SEED
+    from seizou.shipping.services import notices_undelivered
 
-    return (
-        shipment_model._default_manager.filter(notice_sent_at__isnull=True)
-        .exclude(notice_response="")
-        .exclude(notice_response__in=(MESSAGE_NOTICE_SEED, MESSAGE_SHIPPING_NOT_EDI_ORDER))
-    )
+    return notices_undelivered()
 
 
 def _acceptances_undelivered():
-    """相手に届いていない検収。受入のうち、送った日時が空で、返事の欄が空でなく、送る物でない字
-    (connect.services の MESSAGE_ACCEPTANCE_NOT_SENT_ORDER) でない物。purchasing か connect の部品が無ければ None。読むだけ。
-
-    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
-    """
-    receipt_model = _model("purchasing", "Receipt")
-    if receipt_model is None or _model("connect", "Connection") is None:
+    """相手に届いていない検収 (purchasing.services.acceptances_undelivered。受入の一覧の絞り「検収が届いていない物だけ」と同じ関数。訳はそこ)。purchasing か connect の部品が無ければ None。"""
+    if _model("purchasing", "Receipt") is None or _model("connect", "Connection") is None:
         return None
-    from seizou.connect.services import MESSAGE_ACCEPTANCE_NOT_SENT_ORDER
+    from seizou.purchasing.services import acceptances_undelivered
 
-    return (
-        receipt_model._default_manager.filter(acceptance_sent_at__isnull=True)
-        .exclude(acceptance_response="")
-        .exclude(acceptance_response=MESSAGE_ACCEPTANCE_NOT_SENT_ORDER)
-    )
+    return acceptances_undelivered()
 
 
 # 数える段の鍵 (FLOWS の count) → 数える物の queryset を返す関数 (部品が無ければ None)。
@@ -1364,22 +1332,27 @@ def _can_proceed(user, action) -> bool:
 
 
 #: 相手に届いていない物の行 (今日やることで、属する流れの段の行の後に足す。FLOWS の段ではないので、「はじめての方へ」と案内の前後の段は変えない)。
-#: 1 行 = key・count (数える関数)・label (count_label)・unit・button (移る先の画面の名前)・url_name (移る先)・action (その行を進める書く action =
-#: 詳細の「送り直す」の口の action)・flow (属する流れの key)。移る先は素の一覧 (届いていない物だけの絞りは無い。受入の残の行と同じ扱い)。
+#: 1 行 = key・count (数える関数)・label (count_label)・unit・button (移る先の画面の名前)・url_name (移る先)・params (移る先の絞りの GET)・
+#: action (その行を進める書く action = 詳細の「送り直す」の口の action)・flow (属する流れの key)。移る先は、数える関数と同じ関数の絞り
+#: (受信した注文・出荷・受入の一覧の「…が届いていない物だけ」。本体の決め 11-12 13:4x) を付けた一覧。
 _UNDELIVERED_TASKS = (
     {"key": "reply_undelivered", "count": _replies_undelivered, "label": "相手に届いていない注文回答", "unit": "件",
-     "button": "受信した注文", "url_name": "connect:inbox_list", "action": "connect.accept", "flow": "sales"},
+     "button": "受信した注文", "url_name": "connect:inbox_list", "params": {"f_reply_undelivered": "1"},
+     "action": "connect.accept", "flow": "sales"},
     {"key": "notice_undelivered", "count": _notices_undelivered, "label": "相手に届いていない出荷の知らせ", "unit": "件",
-     "button": "出荷", "url_name": "shipping:shipment_list", "action": "connect.send_shipping_notice", "flow": "sales"},
+     "button": "出荷", "url_name": "shipping:shipment_list", "params": {"f_notice_undelivered": "1"},
+     "action": "connect.send_shipping_notice", "flow": "sales"},
     {"key": "acceptance_undelivered", "count": _acceptances_undelivered, "label": "相手に届いていない検収", "unit": "件",
-     "button": "受入", "url_name": "purchasing:receipt_list", "action": "connect.send_acceptance", "flow": "purchase"},
+     "button": "受入", "url_name": "purchasing:receipt_list", "params": {"f_acceptance_undelivered": "1"},
+     "action": "connect.send_acceptance", "flow": "purchase"},
 )
 
 
 def _undelivered_rows(flow_key, user) -> list:
     """流れ flow_key に属する、相手に届いていない物の行 (_UNDELIVERED_TASKS の順に、件数が 1 以上の物だけ)。問い合わせは 1 行につき 1 回。
 
-    行の辞書の鍵は today_tasks の行と同じ。数える関数が None を返す (部品が無い) か DB が読めない行は出さない (偽の 0 を置かない)。
+    行の辞書の鍵は today_tasks の行と同じ。url は today_tasks の段の行と同じ形で、移る先の絞りの GET (params) を付ける。
+    数える関数が None を返す (部品が無い) か DB が読めない行は出さない (偽の 0 を置かない)。
     user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行と、行の action を行えない行 (core.access の can_open と
     write_allowed。記録は書かない) は数えずに外す。_can_proceed は使わない: _can_proceed は action の . の前の部品 (3 行とも connect) を
     部署で開けるかも見るが、出荷の知らせと検収の「送り直す」の口は出荷と発注の画面にあり、口 (shipping/shipping_notice.py・
@@ -1415,7 +1388,7 @@ def _undelivered_rows(flow_key, user) -> list:
                 "unit": task["unit"],
                 "button": task["button"],
                 "url_name": task["url_name"],
-                "url": url,
+                "url": f"{url}?{urlencode(task['params'])}" if task["params"] else url,
             }
         )
     return rows

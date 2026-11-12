@@ -616,3 +616,24 @@ def record_notice_response(shipment, response, user, *, sent=False):
             fields.append("notice_sent_at")
         locked.save(update_fields=fields)
         return locked
+
+
+def notices_undelivered():
+    """相手に届いていない出荷の知らせの出荷の queryset (読むだけ)。
+
+    出荷のうち、送った日時が空で、返事の欄が空でなく、送る物でない字 (MESSAGE_NOTICE_SEED・connect.services の
+    MESSAGE_SHIPPING_NOT_EDI_ORDER) でない物。今日やることの「相手に届いていない出荷の知らせ」の数 (core.dashboard) と、
+    出荷の一覧の絞り「出荷の知らせが届いていない物だけ」(shipping.views) が、この 1 つの関数を使う (数と一覧が食い違わないため。
+    本体の決め 11-12 13:4x)。字の定数は connect.services から関数の中で読むので、connect の部品が無い置き場では呼ばない
+    (呼ぶ側の core.dashboard と一覧の絞りが確かめる)。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    # shipping と connect の循環を避けるため関数の中で import する。
+    from seizou.connect.services import MESSAGE_SHIPPING_NOT_EDI_ORDER
+
+    return (
+        Shipment.objects.filter(notice_sent_at__isnull=True)
+        .exclude(notice_response="")
+        .exclude(notice_response__in=(MESSAGE_NOTICE_SEED, MESSAGE_SHIPPING_NOT_EDI_ORDER))
+    )
