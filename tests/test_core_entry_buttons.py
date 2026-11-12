@@ -15,16 +15,20 @@ from django.contrib.auth import get_user_model
 from django.urls import resolve, reverse
 
 from seizou.billing import services as billing_services
+from seizou.connect import services as connect_services
 from seizou.core import access
 from seizou.core.templatetags import seizou_tags
 from seizou.manuals import services as manuals_services
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from seizou.orders.templatetags import orders_board
+from seizou.purchasing import services as purchasing_services
 from seizou.purchasing.models import PurchaseOrder
 from seizou.shipping import services as shipping_services
 from tests import test_orders_board, test_purchasing_receipt_views
 from tests.test_billing_payment_views import RECEIVED_ON, SHIPPED_AT, _customer, _invoice, _order_line
+from tests.test_connect_reply import ORDER_ENV, SUPPLIER_URL
+from tests.test_connect_signing import _new_secret
 from tests.test_core_access import account
 from tests.test_orders_board import _issue, _line, _tr
 from tests.test_purchasing_receipt_views import _order as _purchase_order
@@ -62,6 +66,8 @@ BUTTON_ACTIONS = {
     "purchasing.cancel_purchase_order": "purchasing.PurchaseOrder",
     "purchasing.change_purchase_order": "purchasing.PurchaseOrder",
     "purchasing.resend_purchase_order": "purchasing.Receipt",
+    # つながりの無い取引先への発注の「発注書を送った」(依頼書 N439)。出す人は「再送」と同じ (金額を決める操作でない)
+    "purchasing.mark_sent_outside": "purchasing.Receipt",
     "connect.send_order": "purchasing.Receipt",
     "purchasing.receive": "purchasing.Receipt",
     "connect.send_acceptance": "purchasing.Receipt",
@@ -420,14 +426,9 @@ def test_money_entries_hidden_without_money(settings, client, user):
 # ---------------------------------------------------------------- 5 発注の詳細
 
 
-@pytest.mark.django_db
-def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, item, fake_post):
-    partner = masters_services.create_partner(
-        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
-    )
-    # つながりの無い協力企業の発注は送られず「作成」のまま = 「送り直す」「取り消す」が出る形。
-    po = _purchase_order(partner, user, (item, "10", "25"))
-    assert po.status == PurchaseOrder.STATUS_DRAFT
+def _assert_purchase_order_entries(settings, client, user, po, send_entry, absent):
+    """発注の詳細の書く入口を、権限ごとに見る。send_entry は頭の右の緑のボタン (「再送」の form か「発注書を送った」の link)、
+    absent はその発注には誰にも出ない方の入口。"""
     line = po.lines.get()
     _notice(line, "4", date(2026, 11, 5), "SH-0001")
     detail_url = reverse("purchasing:purchaseorder_detail", args=[po.pk])
@@ -437,7 +438,7 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
         f'href="{receipt_url}?line={line.pk}&amp;qty=',
         "受入を登録",
         "受入を記録する",
-        f'action="{reverse("purchasing:purchaseorder_send", args=[po.pk])}"',
+        send_entry,
         f'href="{reverse("purchasing:purchaseorder_cancel", args=[po.pk])}"',
     )
 
@@ -451,8 +452,9 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
     allowed = _page(client, buyer, detail_url)
     for entry in entries:
         assert entry in allowed, entry
+    assert absent not in allowed
 
-    # 発注の権限で金額の閲覧が無い人: 受入 (決め 8) と再送 (決め 6) は出し、「取消」(金額に関わる操作) は出さない (決め 11-07 21:0x〜21:2x)。
+    # 発注の権限で金額の閲覧が無い人: 受入 (決め 8) と再送 (決め 6。「発注書を送った」も同じ) は出し、「取消」(金額に関わる操作) は出さない (決め 11-07 21:0x〜21:2x)。
     clerk = account("clerk", permissions=["purchasing"])
     no_money = _page(client, clerk, detail_url)
     for entry in entries[:-1]:
@@ -463,6 +465,58 @@ def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, it
     logged = _page(client, user, detail_url)
     for entry in entries:
         assert entry in logged, entry
+    assert absent not in logged
+
+
+@pytest.mark.django_db
+def test_purchase_order_hides_receipt_and_actions(settings, client, on, user, item, fake_post, monkeypatch):
+    """つながりのある協力企業の「下書き」の発注 (送らずに作った物): 頭の右の緑は「再送」。「受入」「取り消す」と一緒に、権限で出し分ける。
+
+    つながりの無い協力企業の発注は、頭の右の緑が「発注書を送った」になった (依頼書 N439。下の試験)。「再送」を見るために、
+    向き「送る」のつながりを登録する (518 回目。見る物は今までと同じ)。
+    """
+    monkeypatch.setenv(ORDER_ENV, _new_secret())
+    partner = masters_services.create_partner(
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
+    )
+    connect_services.register_connection(partner, SUPPLIER_URL, ORDER_ENV, "send", user)
+    po = purchasing_services.create_purchase_order(
+        partner, [{"item": item, "qty": Decimal("10"), "unit_price": Decimal("25")}], user, order_date=date(2026, 11, 2), send=False
+    )
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+
+    _assert_purchase_order_entries(
+        settings,
+        client,
+        user,
+        po,
+        f'action="{reverse("purchasing:purchaseorder_send", args=[po.pk])}"',
+        f'href="{reverse("purchasing:purchaseorder_sent_outside", args=[po.pk])}"',
+    )
+    assert fake_post.calls == 0
+
+
+@pytest.mark.django_db
+def test_purchase_order_sent_outside_button_by_permission(settings, client, on, user, item, fake_post):
+    """つながりの無い協力企業の「下書き」の発注: 頭の右の緑は「発注書を送った」の小窓の入口で、「再送」は出ない (依頼書 N439。本人の決め 11-12 14:3x・18:2x)。
+
+    出す人は「再送」と同じ (発注の書く権限。金額の閲覧は見ない)。
+    """
+    partner = masters_services.create_partner(
+        {"code": "S001", "name": "作り物の協力企業", "role": "subcontractor"}, user
+    )
+    # つながりの無い協力企業の発注は送られず「作成」のまま。
+    po = _purchase_order(partner, user, (item, "10", "25"))
+    assert po.status == PurchaseOrder.STATUS_DRAFT
+
+    _assert_purchase_order_entries(
+        settings,
+        client,
+        user,
+        po,
+        f'href="{reverse("purchasing:purchaseorder_sent_outside", args=[po.pk])}"',
+        f'action="{reverse("purchasing:purchaseorder_send", args=[po.pk])}"',
+    )
     assert fake_post.calls == 0
 
 

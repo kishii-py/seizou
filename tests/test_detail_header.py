@@ -173,7 +173,8 @@ def test_head_order_and_one_primary(logged_in, user, cut, item, order, workorder
     assert actions.count("btn-primary") == 0
 
     actions = _actions(_get(logged_in, "purchasing:purchaseorder_detail", purchase_order.pk)[1])
-    assert actions.index("data-detail-more") < actions.index("再送</button>")
+    # つながりの無い協力企業の「下書き」の発注なので、頭の右の緑は「再送」の代わりに「発注書を送った」(依頼書 N439。本人の決め 11-12 14:3x・18:2x)
+    assert actions.index("data-detail-more") < actions.index("発注書を送った</a>")
     assert actions.count("btn-primary") == 1
 
     actions = _actions(_get(logged_in, "masters:item_detail", item.pk)[1])
