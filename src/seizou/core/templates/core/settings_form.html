@@ -1,7 +1,7 @@
 {% extends "core/form.html" %}
 {% load seizou_icons %}
-{# 設定の変更: 選べる設定 1 つの入力。「答えの値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。主色の画面だけ、欄の右に打った字の色の見本を出す (小さな JS。形の合わない字のときは出さない)。メールの送り方の画面だけ、頭の行の下の別の段に、今開いている URL の頭を見本として出す (見せるだけで保存しない)。 #}
-{% block actions %}{% if can_clear %}<form method="post" action="{% url 'core:setting_clear' setting_key %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}答えの値に戻す</button></form>{% endif %}{% endblock %}
+{# 設定の変更: 選べる設定 1 つの入力。「導入の時の値に戻す」は入力の form の中に入れ子にできないので見出しの右に置き、出所が「画面」のときだけ出す。主色の画面だけ、欄の右に打った字の色の見本を出す (小さな JS。形の合わない字のときは出さない)。メールの送り方の画面だけ、頭の行の下の別の段に、今開いている URL の頭を見本として出す (見せるだけで保存しない)。 #}
+{% block actions %}{% if can_clear %}<form method="post" action="{% url 'core:setting_clear' setting_key %}">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}導入の時の値に戻す</button></form>{% endif %}{% endblock %}
 {% block content %}
 <p class="mb-4 text-sm text-base-content/70">「{{ setting_label }}」。今の値の出所: {{ source }}。ここで保存した値は、導入の時に決めた値より先に使われます。</p>
 {% if setting_key == "mail" %}<p class="mb-4 text-sm text-base-content/70">今この画面を開いている URL の頭は <code class="font-mono">{{ site_url_hint }}</code> です。社外からも開く置き場なら、社外から開く URL の頭を「seizou の URL の頭」に入れます。</p>{% endif %}

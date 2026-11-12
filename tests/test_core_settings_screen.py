@@ -213,7 +213,7 @@ def test_settings_screen_does_not_call_accounts_a_part(manager_client):
 
 
 def test_settings_source_column_follows_screen_edit_and_clear(manager_client, settings):
-    """画面で変えた後と「答えの値に戻す」の後に、「どこで決めたか」の列の字が変わる。"""
+    """画面で変えた後と「導入の時の値に戻す」の後に、「どこで決めたか」の列の字が変わる。"""
     from seizou.core import conf
 
     settings.SEIZOU = {"over_shipment": "stop"}
