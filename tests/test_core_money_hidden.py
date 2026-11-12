@@ -243,7 +243,8 @@ def test_invoice_payments_and_payment_form_without_money(money_on, jimu, keiri, 
 
     assert ">合計</dt>" not in panel and ">入金済み</dt>" not in panel and ">残</dt>" not in panel
     assert OLD_DASH_VALUE not in panel and OLD_DASH_CELL not in panel
-    assert _heads(panel, 'id="payments-heading"') == ["入金日", "入金の方法", "備考", "記録した人", "記録の日時", "状態", "操作"]
+    # 「期日」は手形と電子記録債権の期日の列 (依頼書 N409b。金額でないので金額の閲覧の無い人にも出す)
+    assert _heads(panel, 'id="payments-heading"') == ["入金日", "入金の方法", "期日", "備考", "記録した人", "記録の日時", "状態", "操作"]
     assert "一部入金" in panel
 
     shown = _get(keiri, url)[1]
