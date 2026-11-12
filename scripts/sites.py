@@ -10,7 +10,7 @@
 port は置き場の answers.yaml の port。python はこの repo の .venv の物 (README の起動の 1 行と同じ)。
 runserver は --noreload で立て、出力は <親>/<id>.runserver.log に足す。止めるのは、その port で待ち受けている process だけ
 (lsof -ti :<port> で探す。pkill のように名前では殺さない)。lsof が無い PC (Windows) では、この道具が立てたときに
-<親>/<id>.runserver.pid に書いた pid の記録で止める (lsof が答えず、port が開いていて、記録が在るときだけ)。
+<親>/<id>.runserver.pid に書いた pid の記録で止める (lsof の命令が無く、port が開いていて、記録が在るときだけ)。
 作り手の運用の道具で、公開のプラグインには入れない。標準の library と、この repo の依存 (yaml) だけで書く。
 """
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -150,14 +151,25 @@ def recorded_pid(site: Site) -> int | None:
     return int(text) if text.isdigit() else None
 
 
+def lsof_missing() -> bool:
+    """lsof の命令そのものが無い PC か (Windows)。在るのに待ち受けの process を答えない時とは分ける。"""
+    return shutil.which("lsof") is None
+
+
 def stop_recorded(site: Site) -> str:
-    """lsof が答えないとき、port が開いていて、この道具が立てた記録の pid があれば、その pid にだけ送る。
+    """lsof が pid を答えないとき。lsof の命令が無い PC で、port が開いていて、この道具が立てた記録の pid があれば、その pid にだけ送る。
 
     訳: lsof の無い PC (Windows) で restart が古いサーバーを止めずに成功の形の文を出したため (精査 Q6 の 8、本体の決め
-    11-11 14:2x)。記録の pid は後で別の process が使うことがあるので、lsof が答える PC では使わない。
+    11-11 14:2x)。記録の pid は後で別の process が使うことがあるので、lsof の在る PC では使わない。lsof が在るのに
+    待ち受けの process を答えないのは、ほかの利用者の process などで、記録の pid の物とは限らないため (本体の直し 11-12)。
     """
     if not port_is_open(site.port):
         return f"{site.id}: port {site.port} に process は無い"
+    if not lsof_missing():
+        return (
+            f"{site.id}: port {site.port} は開いているが、止める process が分からない"
+            " (lsof が待ち受けの process を答えない。記録の pid は使わない)"
+        )
     pid = recorded_pid(site)
     if pid is None:
         return (

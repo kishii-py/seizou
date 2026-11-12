@@ -112,6 +112,8 @@ def test_stop_kills_only_listening_pids(sites, tmp_path, monkeypatch):
 def test_stop_without_process_says_so(sites, tmp_path, monkeypatch):
     site = sites.Site(id="a_co", path=tmp_path / "a_co", port=8101)
     monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    # 実の port を見ない (この PC で 8101 を何かが開けていても、試験の答えが変わらないようにする)
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: False)
     assert "process は無い" in sites.stop(site)
 
 
@@ -149,6 +151,7 @@ def test_stop_without_lsof_uses_the_recorded_pid(sites, tmp_path, monkeypatch):
     record = tmp_path / "a_co.runserver.pid"
     record.write_text("4321\n", encoding="utf-8")
     monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    monkeypatch.setattr(sites, "lsof_missing", lambda: True)
     killed = []
     monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
     monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: not killed)
@@ -177,10 +180,40 @@ def test_stop_with_lsof_ignores_the_record(sites, tmp_path, monkeypatch):
     assert not record.exists()
 
 
+def test_stop_with_lsof_that_answers_nothing_does_not_use_the_record(sites, tmp_path, monkeypatch):
+    """lsof は在るが待ち受けの process を答えない (ほかの利用者の process など) ときは、記録の pid に送らない。
+
+    訳: 記録の pid は、立てたサーバーが道具の外で落ちた後に、別の process が使っていることがある。
+    lsof の在る PC では、lsof が答えた pid だけを止める (本体の直し 11-12)。
+    """
+    site = sites.Site(id="a_co", path=tmp_path / "a_co", port=8101)
+    record = tmp_path / "a_co.runserver.pid"
+    record.write_text("4321\n", encoding="utf-8")
+    monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    monkeypatch.setattr(sites, "lsof_missing", lambda: False)
+    monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: True)
+    killed = []
+    monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+    line = sites.stop(site)
+
+    assert "止める process が分からない" in line and "lsof が待ち受けの process を答えない" in line
+    assert killed == []
+    assert record.exists()
+
+
+def test_lsof_missing_follows_the_path(sites, monkeypatch):
+    monkeypatch.setattr(sites.shutil, "which", lambda name: None)
+    assert sites.lsof_missing() is True
+    monkeypatch.setattr(sites.shutil, "which", lambda name: "/usr/sbin/lsof")
+    assert sites.lsof_missing() is False
+
+
 def test_restart_does_not_start_when_the_open_port_has_no_known_process(sites, tmp_path, monkeypatch, capsys):
     write_site(tmp_path, "a_co", 8101)
     monkeypatch.setenv("SEIZOU_SITES_DIR", str(tmp_path))
     monkeypatch.setattr(sites, "listening_pids", lambda port: [])
+    monkeypatch.setattr(sites, "lsof_missing", lambda: True)
     monkeypatch.setattr(sites, "port_is_open", lambda port, host=sites.HOST, timeout=0.5: True)
     killed = []
     monkeypatch.setattr(sites.os, "kill", lambda pid, sig: killed.append((pid, sig)))
