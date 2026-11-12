@@ -7,6 +7,7 @@
   取消の請求書と金額の閲覧の無い人には出さない (作者の決め)。
 - invoice_changed_note: 請求した後に出荷の数量が変わった明細の黄色の 1 行の字 (services.changed_lines。請求書の詳細が読む。依頼書 N403b)。
 - invoice_billed_now: 前回の残の写しのある請求書の今回のご請求額 (前回の残 + 合計。請求書の詳細の入金の枠の 1 行が読む。依頼書 N409b)。
+- receivable_ledger: 得意先の台帳 (services.customer_ledger と同じ物。得意先の売掛の台帳の画面が札と表に読む。依頼書 N409c)。
 """
 
 from django import template
@@ -108,3 +109,17 @@ def invoice_billed_now(invoice):
     if invoice.previous_balance is None:
         return None
     return invoice.previous_balance + invoice.total
+
+
+@register.simple_tag
+def receivable_ledger(customer, hide_money=False) -> dict:
+    """{% receivable_ledger object seizou.hide_money as ledger %}。得意先の台帳 (services.customer_ledger と同じ物。読むだけ)。
+
+    返す物 = {"rows", "billed", "paid", "adjusted", "balance"}。行は日の古い順で、行ごとの balance はそこまでの残 (累計)。
+    hide_money は seizou.hide_money (金額の閲覧の無い人で真)。真なら金額と残と 4 つの合計が None (行の並びは同じ)。
+    得意先の売掛の台帳 (billing/receivable_detail.html) が block content で 1 回だけ引き、得意先の札と台帳の表が同じ値を読む
+    (画面とテンプレートで足し引きしない)。
+    """
+    from .. import services
+
+    return services.customer_ledger(customer, hide_money=bool(hide_money))

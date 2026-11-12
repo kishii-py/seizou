@@ -65,6 +65,7 @@ def test_display_helpers_use_menu_labels(manager, seizou_dept, sales_dept):
     labels = app_labels()
     assert labels["masters"] == "部品マスター・取引先・工程・休日・社員・不良の区分"
     assert labels["purchasing"] == "発注・受入"
+    assert labels["billing"] == "請求書・売掛の残"
     assert "指示書" in labels["workorders"]
     assert "intake" not in labels
 

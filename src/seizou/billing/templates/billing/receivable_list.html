@@ -1,0 +1,8 @@
+{% extends "core/list.html" %}
+{% comment %}
+売掛の残 (得意先ごとの残の一覧。依頼書 N409c。売掛の 3 段目): core の一覧のまま (絞り込みの枠・道具の行・表・CSV)。
+一覧の model は取引先なので、土台の block actions の「新規登録」は取引先の新規登録を指す。読むだけの一覧なので、block actions を空にする (block.super を呼ばない。在庫の一覧と同じ形)。
+1 行は masters/_rows.html の分かれが billing/_receivable_row.html にする (行を押すと得意先の売掛の台帳へ)。請求・入金・調整の合計と残は columns の kind が money の annotate の列で、
+土台が右寄せ・マイナスの赤・金額の閲覧の無い人への出し分けをする。
+{% endcomment %}
+{% block actions %}{% endblock %}

@@ -190,6 +190,9 @@ LIMITS = {
     "billing:payment_create": 23,
     "billing:payment_cancel": 21,
     "billing:adjustment_create": 22,  # 調整の記録 (依頼書 N409b)。11-12 の実測 20 (鈴の 3 を含む。2 社とも) − 3 + 5
+    # 得意先の売掛の台帳 (依頼書 N409c。pk は取引先)。11-12 の実測 21 (鈴の 3 を含む。2 社とも。台帳の 3 回は行の数に依らない。
+    # 最初の取引先の台帳の行は A 社 0・B 社 2) − 3 + 5
+    "billing:receivable_detail": 23,
     "intake:extraction_list": 20,
     "intake:extraction_create": 20,
     "attachments:attachment_list": 20,
