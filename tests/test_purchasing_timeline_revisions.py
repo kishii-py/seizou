@@ -103,6 +103,41 @@ def test_refused_change_shows_reason_only_when_given(user, subcontractor, item, 
     assert _reply_titles(without_reason) == ["相手が条件付で受けた", "相手が第 2 版の変更を断った"]
 
 
+# --- (b2) 条件付と保留の答え (511 回目。流れの枠・送った記録の行・詳細の頭の札の 3 か所で同じ言葉) ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("reply_type, words", [
+    (edi_codes.REPLY_CONDITIONAL, "条件付で受けた"),
+    (edi_codes.REPLY_PENDING, "保留した"),
+])
+def test_conditional_and_pending_answers_have_their_own_words(client_logged_in, user, subcontractor, item, send_connection, reply_type, words):  # noqa: F811
+    """相手が第 2 版に条件付 (CA) か保留 (AJ) で答えた時、「答えた」「答え待ち」でなく、第 1 版の答えと同じ言葉で出す。
+
+    訳: 相手の seizou は、変更の版にも「条件を直して受け入れる」と「保留する」で答えられる (connect の受け口は版 2 からの答えの種類をそのまま書く)。
+    直す前は、流れの枠が「相手が第 2 版の変更に答えた」、詳細の頭の札が「相手の答え待ち」、送った記録の行は答えの字なしで、答えの中身が読めなかった。
+    """
+    po = _second_revision(user, _conditional(user, subcontractor, item), reply_type=reply_type)
+
+    # 流れの枠
+    assert _reply_titles(po) == ["相手が条件付で受けた", f"相手が第 2 版の変更を{words}"]
+    # 送った記録のタブの行 (connect の Outbox の字)
+    row = Outbox.objects.filter(purchase_order=po, revision_no=2).order_by("pk").first()
+    assert str(row).startswith("第 2 版の変更 ") and str(row).endswith(f"・相手が{words}")
+    # 詳細の頭の札
+    body = client_logged_in.get(reverse("purchasing:purchaseorder_detail", args=[po.pk])).content.decode()
+    assert f"第 2 版 (変更)・相手が{words}" in body
+    assert "相手の答え待ち" not in body
+
+
+@pytest.mark.django_db
+def test_unknown_answer_code_keeps_the_plain_words(user, subcontractor, item, send_connection):  # noqa: F811
+    """4 つの種類の外の値 (今の受け口は書かない) は、流れの枠だけ「相手が第 2 版の変更に答えた」と出す (落とさない)。"""
+    po = _second_revision(user, _conditional(user, subcontractor, item), reply_type="ZZ")
+
+    assert _reply_titles(po) == ["相手が条件付で受けた", "相手が第 2 版の変更に答えた"]
+
+
 # --- (c) 取消の版 ---
 
 

@@ -320,8 +320,9 @@ def can_change_order(purchase_order):
     return services.can_change_order(purchase_order)
 
 
-#: 版 2 からの相手の答え (EDI の注文回答タイプコード) の字。答えが無ければ「相手の答え待ち」
-_REPLY_WORDS = {"AP": "相手が受け入れた", "RE": "相手が断った"}
+#: 版 2 からの相手の答え (EDI の注文回答タイプコード) の字。答えが無ければ「相手の答え待ち」。条件付 (CA) と保留 (AJ) は 511 回目に足した
+#: (答えたのに「相手の答え待ち」と出ていた)。同じ言葉を、流れの枠 (purchasing.timeline) と送った記録の行 (connect.models の _REPLY_TEXTS) も持つ
+_REPLY_WORDS = {"AP": "相手が受け入れた", "CA": "相手が条件付で受けた", "RE": "相手が断った", "AJ": "相手が保留した"}
 
 
 @register.simple_tag

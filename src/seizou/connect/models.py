@@ -307,8 +307,14 @@ class Outbox(models.Model):
         return text
 
 
-#: 版 2 からの注文回答の字 (送った記録の行の末尾)
-_REPLY_TEXTS = {edi_codes.REPLY_ACCEPTED: "相手が受け入れた", edi_codes.REPLY_REJECTED: "相手が断った"}
+#: 版 2 からの注文回答の字 (送った記録の行の末尾)。条件付と保留は 511 回目に足した (相手は変更の版にも条件付と保留で答えられる)。
+#: 同じ言葉を、発注の流れの枠 (purchasing.timeline) と詳細の頭の札 (purchasing_tags の _REPLY_WORDS) も持つ (字を変える時は 3 か所)
+_REPLY_TEXTS = {
+    edi_codes.REPLY_ACCEPTED: "相手が受け入れた",
+    edi_codes.REPLY_CONDITIONAL: "相手が条件付で受けた",
+    edi_codes.REPLY_REJECTED: "相手が断った",
+    edi_codes.REPLY_PENDING: "相手が保留した",
+}
 
 
 class Acceptance(models.Model):

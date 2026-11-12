@@ -168,17 +168,28 @@ def _sent_event(outbox) -> Event:
 def _revision_reply_event(outbox) -> Event:
     """版 2 からの相手の答え (送った注文の行の reply_type・reply_note・replied_at。connect.services._record_revision_reply が書く)。
 
-    受諾 (AP) は「相手が第 n 版の変更を受け入れた」、辞退 (RE) は「相手が第 n 版の変更を断った (理由: …)」(理由が空なら括弧なし)、
-    ほかの値は「相手が第 n 版の変更に答えた」。取消の版は「変更」が「取消」になる。種類は版 1 の答えと同じ reply。
+    受諾 (AP) は「相手が第 n 版の変更を受け入れた」、条件付受諾 (CA) は「…を条件付で受けた」、保留 (AJ) は「…を保留した」
+    (版 1 の答えの題 _REPLY_TITLES と同じ言葉。相手の seizou は変更の版にも「条件を直して受け入れる」と「保留する」で答えられる。511 回目)、
+    辞退 (RE) は「相手が第 n 版の変更を断った (理由: …)」(理由が空なら括弧なし)、4 つの外の値は「相手が第 n 版の変更に答えた」。
+    取消の版は「変更」が「取消」になる。種類は版 1 の答えと同じ reply。
     """
     what = _revision_name(outbox)
-    if outbox.reply_type == edi_codes.REPLY_ACCEPTED:
-        title = f"相手が{what}を受け入れた"
+    if outbox.reply_type in _REVISION_REPLY_VERBS:
+        title = f"相手が{what}を{_REVISION_REPLY_VERBS[outbox.reply_type]}"
     elif outbox.reply_type == edi_codes.REPLY_REJECTED:
         title = f"相手が{what}を断った" + (f" (理由: {outbox.reply_note})" if outbox.reply_note else "")
     else:
         title = f"相手が{what}に答えた"
     return Event(outbox.replied_at, "reply", title)
+
+
+#: 版 2 からの答えの題の終わりの言葉 (注文回答のタイプ → 「相手が第 n 版の変更を…」の続き)。辞退 (RE) は理由を添えるので _revision_reply_event が作る。
+#: 同じ言葉を、送った記録の行 (connect.models の _REPLY_TEXTS) と詳細の頭の札 (purchasing_tags の _REPLY_WORDS) も持つ (字を変える時は 3 か所)
+_REVISION_REPLY_VERBS = {
+    edi_codes.REPLY_ACCEPTED: "受け入れた",
+    edi_codes.REPLY_CONDITIONAL: "条件付で受けた",
+    edi_codes.REPLY_PENDING: "保留した",
+}
 
 
 #: 注文回答のタイプ (中小企業共通 EDI の注文回答タイプコード) → 流れの題。辞退 (RE) は理由を添えるので _reply_event が作る
