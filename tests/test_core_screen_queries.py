@@ -65,6 +65,7 @@ SKIPPED_NO_ROW = {
         "connect:receivedselfinvoice_answer",
         "purchasing:selfinvoice_cancel",
         "purchasing:selfinvoice_accept",
+        "billing:adjustment_cancel",  # 種に調整の行が無い (N409b。種を足すなら外す)
     },
     "b_plating": {
         "attachments:attachment_delete",
@@ -100,6 +101,7 @@ SKIPPED_NO_ROW = {
         "connect:receivedselfinvoice_answer",
         "purchasing:selfinvoice_cancel",
         "purchasing:selfinvoice_accept",
+        "billing:adjustment_cancel",  # 種に調整の行が無い (N409b。種を足すなら外す)
     },
 }
 
@@ -187,6 +189,7 @@ LIMITS = {
     "billing:invoice_cancel": 21,
     "billing:payment_create": 23,
     "billing:payment_cancel": 21,
+    "billing:adjustment_create": 22,  # 調整の記録 (依頼書 N409b)。11-12 の実測 20 (鈴の 3 を含む。2 社とも) − 3 + 5
     "intake:extraction_list": 20,
     "intake:extraction_create": 20,
     "attachments:attachment_list": 20,

@@ -1,0 +1,5 @@
+{% extends "core/form.html" %}
+{% load seizou_tags %}
+{# 調整を取り消す (依頼書 N409b): 欄の無い form。取消の記録は履歴に残り、請求書の残の金額に戻る。前回の残に数えた調整の黄の知らせ (R36) は土台が出す。 #}
+{% block content %}{% include "billing/_adjustment_cancel_card.html" %}
+{% endblock %}

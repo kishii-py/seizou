@@ -464,6 +464,24 @@ def test_reissue_invoice_is_a_money_action(on):
 
 
 @pytest.mark.django_db
+def test_adjustment_actions_are_billing_money_actions(on):
+    """調整の記録と取消 (依頼書 N409b) は請求書の権限の組で、請求書の残の金額を変える操作なので入金の記録と取消と同じ扱い。"""
+    assert access.ACTION_KINDS["billing.record_adjustment"] == "billing"
+    assert access.ACTION_KINDS["billing.cancel_adjustment"] == "billing"
+    assert access.MONEY_ACTIONS["billing.record_adjustment"] == ("調整", "記録できません")
+    assert access.MONEY_ACTIONS["billing.cancel_adjustment"] == ("調整", "取り消せません")
+    clerk = account("clerk", permissions=["billing"])
+    for action in ("billing.record_adjustment", "billing.cancel_adjustment"):
+        with pytest.raises(access.AccessDenied) as caught:
+            access.require_write(clerk, action)
+        assert "調整は金額が主な内容" in caught.value.message
+
+    keiri = account("keiri", permissions=["billing"], see_money=True)
+    access.require_write(keiri, "billing.record_adjustment")
+    access.require_write(keiri, "billing.cancel_adjustment")
+
+
+@pytest.mark.django_db
 def test_completed_mark_actions_follow_write_kind_without_money(on):
     """受注と発注の明細の「完了にする」「完了を外す」(N400b。本体の決め 11-11 13:4x) は、受注と発注の編集の権限で守り、金額の閲覧は問わない。
 

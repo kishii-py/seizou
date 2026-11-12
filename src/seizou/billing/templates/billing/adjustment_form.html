@@ -1,0 +1,5 @@
+{% extends "core/form.html" %}
+{% load seizou_tags %}
+{# 調整の記録 (依頼書 N409b): 土台の入力の上に、請求書の番号と得意先と 合計・入金済み・調整・残 の 1 行。金額の閲覧が無い人には 合計・入金済み・調整・残 を出さない (入金の記録の画面と同じ)。 #}
+{% block content %}{% include "billing/_adjustment_create_card.html" %}
+{% endblock %}

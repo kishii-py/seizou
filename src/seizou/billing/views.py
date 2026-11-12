@@ -4,6 +4,8 @@ class の中に書くのは、土台が上書きを許す属性だけ。保存�
 印刷用の HTML と PDF は関数の view。PDF を作れない環境 (PdfUnavailable) では、印刷用の HTML に知らせを付けて返す。
 入金の記録と取消は土台の入力の画面。保存の後は services が返す入金の _detail (payment_detail = 請求書の詳細へ移るだけの口) へ移る。
 請求書の外で受け取った入金 (出荷を指す入金。作者の決め) の記録は ShipmentPaymentCreateView で、payment_detail は出荷の詳細へ移す。
+調整 (値引き・振込手数料・相殺・端数・その他。依頼書 N409b) の記録と取消も土台の入力の画面。保存の後は services が返す調整の _detail
+(adjustment_detail = 請求書の詳細へ移るだけの口) へ移る。入口は請求書の詳細の入金の枠 (小窓でなく画面の全体で開く)。
 一覧の「入金」と「残」は Invoice の method の列で、「残のある物だけ」(絞り込みの枠の印 f_unpaid=1。印の名前は変えない) は残 (合計 − 取消でない入金 + 取消でない調整) が 0 より大きい発行の請求書 = 一部入金も入る
 (ダッシュボードの「入金の残っている請求書」と同じ数え方。本人の決め 11-05 09:3x。状態の絞りがあれば、状態はそちらを使う)。
 """
@@ -26,6 +28,8 @@ from seizou.core.views import BaseModalView
 
 from . import services
 from .forms import (
+    AdjustmentCancelForm,
+    AdjustmentForm,
     InvoiceCancelForm,
     InvoiceClosingForm,
     InvoiceForm,
@@ -242,6 +246,41 @@ class PaymentCancelView(BaseFormView):
     screen_help = "記録した入金を取消にします。取消の記録は履歴に残り、請求書の残の金額に戻ります。"
 
 
+class AdjustmentCreateView(BaseFormView):
+    """調整の記録の入力 (依頼書 N409b)。入口は請求書の詳細の入金の枠の「調整を記録する」。
+
+    使う人: 経理 / いつ: 振込手数料や値引きで請求書の残が消えないとき / 何のために: 調整を記録して請求書の残を消す / 次にすること: 請求書の詳細の入金の枠で残を確かめる
+
+    頭の 1 行 (billing/_adjustment_create_card.html) は合計・入金済み・調整・残を読むので、入金と調整を請求書と一緒に引く。
+    """
+
+    model = Invoice
+    form_class = AdjustmentForm
+    service = staticmethod(services.record_adjustment)
+    template_name = "billing/adjustment_form.html"
+    screen_name = "調整の記録"
+    screen_help = "請求書の残を、値引き・振込手数料・相殺・端数で増やすか減らします。残を減らすときはマイナスで入れます。"
+
+    def get_queryset(self):
+        return Invoice.objects.select_related("customer").prefetch_related("payments", "adjustments")
+
+
+class AdjustmentCancelView(BaseFormView):
+    """調整を取り消す入力 (依頼書 N409b)。入口は請求書の詳細の入金の枠の調整の行の「取り消す」。
+
+    使う人: 経理 / いつ: 調整を間違えて記録したとき / 何のために: 調整を取消にして残を戻す (記録は履歴に残る) / 次にすること: 正しい調整を記録し直す
+
+    前回の残に数えた調整の取消は、検査の層の R36 が黄の知らせ (知らせる) か赤の知らせ (止める) を出す (土台の check_words の字)。
+    """
+
+    model = Adjustment
+    form_class = AdjustmentCancelForm
+    service = staticmethod(services.cancel_adjustment)
+    template_name = "billing/adjustment_cancel.html"
+    screen_name = "調整を取り消す"
+    screen_help = "記録した調整を取消にします。取消の記録は履歴に残り、請求書の残の金額に戻ります。"
+
+
 @login_required
 def payment_detail(request, pk):
     """保存と取消の後に請求書の詳細へ移るだけの口 (土台は保存の後に、services が返す Payment の _detail へ移す)。
@@ -252,6 +291,13 @@ def payment_detail(request, pk):
     if payment.invoice_id is None:
         return HttpResponseRedirect(reverse("shipping:shipment_detail", args=[payment.shipment_id]))
     return HttpResponseRedirect(reverse("billing:invoice_detail", args=[payment.invoice_id]))
+
+
+@login_required
+def adjustment_detail(request, pk):
+    """保存と取消の後に請求書の詳細の入金の枠へ移るだけの口 (土台は保存の後に、services が返す Adjustment の _detail へ移す。payment_detail と同じ形)。"""
+    adjustment = get_object_or_404(Adjustment, pk=pk)
+    return HttpResponseRedirect(reverse("billing:invoice_detail", args=[adjustment.invoice_id]))
 
 
 @login_required

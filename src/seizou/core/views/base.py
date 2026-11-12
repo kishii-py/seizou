@@ -80,6 +80,8 @@ REFUSAL_HEAD_BY_SERVICE = {
     "issue_account": "発行できません。",
     "record_payment": "記録できません。",
     "record_outside_payment": "記録できません。",
+    "record_adjustment": "記録できません。",
+    "cancel_adjustment": "取り消せません。",
     "ship_lines": "出荷できません。",
     "receive": "受け入れられません。",
     "accept": "受け入れられません。",

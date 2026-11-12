@@ -5,6 +5,7 @@
 締日でまとめて作る (invoice_closing。締めの一括) は、請求書の一覧の上の「締日でまとめて作る」から入り、保存の後は請求書の一覧へ戻る。
 入金の記録 (payment_create) は請求書の詳細の「入金」の枠から入り、保存の後は payment_detail (移るだけの口) が請求書の詳細へ戻す。
 請求書の外で受け取った入金の記録 (shipment_payment_create) は請求書の新規登録の出荷の行から入り、保存の後は payment_detail が出荷の詳細へ移す。
+調整の記録 (adjustment_create) と取消 (adjustment_cancel) は請求書の詳細の入金の枠から入り、保存の後は adjustment_detail (移るだけの口) が請求書の詳細へ戻す。
 """
 
 from django.urls import path
@@ -30,4 +31,7 @@ urlpatterns = [
     path("shipments/<int:pk>/payments/new/", views.ShipmentPaymentCreateView.as_view(), name="shipment_payment_create"),
     path("payments/<int:pk>/", views.payment_detail, name="payment_detail"),
     path("payments/<int:pk>/cancel/", views.PaymentCancelView.as_view(), name="payment_cancel"),
+    path("invoices/<int:pk>/adjustments/new/", views.AdjustmentCreateView.as_view(), name="adjustment_create"),
+    path("adjustments/<int:pk>/", views.adjustment_detail, name="adjustment_detail"),
+    path("adjustments/<int:pk>/cancel/", views.AdjustmentCancelView.as_view(), name="adjustment_cancel"),
 ]
