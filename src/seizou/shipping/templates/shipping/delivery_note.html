@@ -6,10 +6,13 @@
 見た目は core の report.css だけを使う (画面の CSS は使わない)。
 品名の下の「注文番号 …」は得意先の注文番号 (受注の写し。作者の決め)。空なら出さない。列は増やさない。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
+qr_notice は、QR が手元の PC の中だけの住所を指すときの黄色の 1 行 (view が core.reports.qr_url の結果から作る。空なら出さない)。
+画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-screen-notice)。PDF を作れなかったときの HTML にも出る。帳票の写しには入らない。
 {% endcomment %}
 {% block title %}納品書 {{ note.number }}{% endblock %}
 {% block report_title %}納品書{% endblock %}
 {% block head %}
+{% if qr_notice %}<p class="report-screen-notice" role="status">{{ qr_notice }}</p>{% endif %}
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-customer">{{ customer.name }} 御中</p>
 <table class="report-meta">

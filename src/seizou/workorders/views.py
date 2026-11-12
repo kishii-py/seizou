@@ -13,7 +13,6 @@ from urllib.parse import urlsplit
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseBadRequest
-from django.http.request import split_domain_port
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import Resolver404, get_script_prefix, resolve, reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -22,7 +21,6 @@ from django.views.decorators.http import require_POST
 
 from seizou.core import access
 from seizou.core import conf
-from seizou.core import mail
 from seizou.core import reports
 from seizou.core.exceptions import RuleError
 from seizou.core.views import REFUSAL_HEAD_SAVE, BaseDetailView, BaseFormView, BaseListView, BaseModalView, BaseSelectView, Notice, add_notice_trigger
@@ -34,8 +32,8 @@ from .reports import WORKORDER_TAG_TEMPLATE, workorder_tag_context
 
 #: PDF を作れないときに現品票の印刷用の HTML の上に出す知らせ (帳票の設計の決めの文。shipping の納品書と同じ字)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
-#: 手元の PC の中だけの住所の名前 (この名前で開いて刷った現品票の QR は、スマホでは開けない)
-LOCAL_ONLY_HOSTS = ("127.0.0.1", "localhost")
+#: 手元の PC の中だけの住所の名前 (この名前で開いて刷った現品票の QR は、スマホでは開けない)。core の帳票の部品の物を同じ名前で読む
+LOCAL_ONLY_HOSTS = reports.LOCAL_ONLY_HOSTS
 #: 設定の URL の頭が空で、手元だけの住所で現品票を開いたときに、印刷用の画面の上に出す黄色の 1 行 ({host} は開いている住所の名前)
 TAG_LOCAL_NOTICE = (
     "この現品票の QR は、この PC の中だけの住所 ({host}) を指すので、スマホでは開けません。"
@@ -293,20 +291,15 @@ def plan_place(request):
 def _tag_qr(request, pk) -> tuple[str, str]:
     """現品票の QR の字と、印刷用の画面の上に出す黄色の 1 行の字 (出さないときは空の字) を返す。読むだけ。
 
-    QR の字は読み取りの着地 (workorders:workorder_scan) の URL。設定の URL の頭 (mail の site_url) があれば、
-    メールのリンクと同じ付け方 (core.mail.link) でその頭を付ける。空なら今までどおり開いている住所から作る (build_absolute_uri)。
-    黄色の 1 行は、頭が空で、開いている住所の名前が LOCAL_ONLY_HOSTS (127.0.0.1・localhost) のときだけ。
+    QR の字は読み取りの着地 (workorders:workorder_scan) の URL。頭の決め方は core の帳票の部品の qr_url
+    (設定の URL の頭 (mail の site_url) があれば core.mail.link でその頭を付け、空なら開いている住所から作る)。納品書と出荷ラベルと同じ。
+    黄色の 1 行は、qr_url が手元だけの住所の名前 (127.0.0.1・localhost) を返したときだけ、TAG_LOCAL_NOTICE にその名前を入れて作る。
     1 行は画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-screen-notice)。
     訳: 現品票の QR を、手元の PC の住所で刷ってもスマホから開けるようにするため (設定の URL の頭があればそれを使い、無くて手元だけの住所なら刷る前に知らせる)。
     出所 = 本体の決め 11-11 14:2x。変えてよい条件 = QR の頭を別の設定で持つと決めたとき。
     """
-    path = reverse("workorders:workorder_scan", args=[pk])
-    linked = mail.link(path)
-    if linked:
-        return linked, ""
-    host, _port = split_domain_port(request.get_host())
-    notice = TAG_LOCAL_NOTICE.format(host=host) if host in LOCAL_ONLY_HOSTS else ""
-    return request.build_absolute_uri(path), notice
+    qr_text, local_host = reports.qr_url(request, reverse("workorders:workorder_scan", args=[pk]))
+    return qr_text, TAG_LOCAL_NOTICE.format(host=local_host) if local_host else ""
 
 
 @login_required
