@@ -47,6 +47,9 @@ def _assert_start_block(lines: list[str], site: Path) -> int:
     assert lines[start + 1] == cli.start_line(site, PORT)
     assert f"http://127.0.0.1:{PORT}/login/" in lines[start + 2]
     check = _index(lines, lambda line: line.startswith("点検:"))
+    # 点検の行は、打つ命令をそのまま出す (起動の 1 行がすぐ上でなくなったので、「上の 1 行と同じ python」と書かない)
+    assert cli.manage_line("seizou_doctor") in lines[check]
+    assert "上の 1 行" not in lines[check]
     practice = _index(lines, lambda line: line.startswith("練習するときは:"))
     assert start + 2 < check < practice
     assert not [line for line in lines if line.startswith("次にすること: ")]

@@ -994,7 +994,8 @@ def _new_report(
     print(f"起動したら、ブラウザで http://127.0.0.1:{port}/login/ を開いてログインします。")
     if demo_accounts and not demo_password:
         print(f"作り物の 3 人 ({'・'.join(DEMO_ACCOUNT_IDS)}) の ID と合言葉は、seizou の docs/getting-started.md の「触り方」にあります。")
-    print("点検: 同じ置き場で、上の 1 行と同じ python の manage.py seizou_doctor を打つと、直す物を直し方つきで出します (何も書き換えません)。")
+    # 点検の行は、打つ命令をそのまま出す (練習の行と同じ形)。起動の 1 行が点検の行のすぐ上でなくなったので、「上の 1 行と同じ python」と書かない
+    print(f"点検: 置き場で {manage_line('seizou_doctor')} を打つと、直す物を直し方つきで出します (何も書き換えません)。")
     print(
         f"練習するときは: 置き場で {manage_line('seizou_practice start')} を打つ"
         " (今のデータの写しを使うサーバーを別のポートで立てる。ここでの登録は本番に残らず、取引先へは送らない。閉じるときは同じ python で seizou_practice stop)。"
