@@ -39,6 +39,17 @@ from .reports import (
 
 #: PDF を作れないときに印刷用の HTML の上に出す知らせ (帳票の設計の決めの文)
 PDF_NOTICE = "PDF の準備がありません。印刷用の画面をお使いください。"
+#: 設定の URL の頭が空で、手元だけの住所で納品書を開いたときに、印刷用の画面の上に出す黄色の 1 行
+#: ({host} は開いている住所の名前。core.reports.qr_url が返す。現品票の TAG_LOCAL_NOTICE と同じ字で、頭だけ違う)
+DELIVERY_NOTE_LOCAL_NOTICE = (
+    "この納品書の QR は、この PC の中だけの住所 ({host}) を指すので、スマホでは開けません。"
+    "社内のスマホから開くには、設定の「メールの送り方」の「seizou の URL の頭」に、社内から開ける URL を入れてから刷ってください。"
+)
+#: 同じく、出荷ラベルの印刷用の画面の上に出す黄色の 1 行
+SHIPMENT_LABEL_LOCAL_NOTICE = (
+    "この出荷ラベルの QR は、この PC の中だけの住所 ({host}) を指すので、スマホでは開けません。"
+    "社内のスマホから開くには、設定の「メールの送り方」の「seizou の URL の頭」に、社内から開ける URL を入れてから刷ってください。"
+)
 
 
 def _customer_choices():
@@ -257,11 +268,16 @@ class DeliveryNoteCancelView(BaseFormView):
 
 @login_required
 def deliverynote_print(request, pk):
-    """納品書の印刷用の HTML (ブラウザの印刷で A4 1 枚)。"""
+    """納品書の印刷用の HTML (ブラウザの印刷で A4 1 枚)。QR の中身は納品書の詳細の URL (頭は core.reports.qr_url が決める)。
+
+    手元だけの住所で開いたときは、黄色の 1 行 (qr_notice。DELIVERY_NOTE_LOCAL_NOTICE) を画面の上に出す (紙と PDF には出ない)。
+    """
     note = get_object_or_404(DeliveryNote.objects.select_related("customer"), pk=pk)
+    qr_text, local_host = reports.qr_url(request, reverse("shipping:deliverynote_detail", args=[pk]))
     context = {
         **delivery_note_context(note),
-        "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+        "qr_text": qr_text,
+        "qr_notice": DELIVERY_NOTE_LOCAL_NOTICE.format(host=local_host) if local_host else "",
         "hide_money": not access.can_see_money(request.user),  # 金額の閲覧が無い人 (on) には単価と金額の枡を空で出す
     }
     return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, context))
@@ -269,17 +285,24 @@ def deliverynote_print(request, pk):
 
 @login_required
 def deliverynote_pdf(request, pk):
-    """納品書の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
+    """納品書の PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。QR の中身は印刷用の HTML と同じ (core.reports.qr_url)。
+
+    黄色の 1 行 (qr_notice) は、PDF を作れずに印刷用の HTML を返すときだけ渡す (PDF は紙と同じく出さないため)。
+    """
     note = get_object_or_404(DeliveryNote.objects.select_related("customer"), pk=pk)
+    qr_text, local_host = reports.qr_url(request, reverse("shipping:deliverynote_detail", args=[pk]))
     context = {
         **delivery_note_context(note),
-        "qr_text": request.build_absolute_uri(reverse("shipping:deliverynote_detail", args=[pk])),
+        "qr_text": qr_text,
         "hide_money": not access.can_see_money(request.user),  # 金額の閲覧が無い人 (on) には単価と金額の枡を空で出す
     }
     try:
         data = reports.render_pdf(DELIVERY_NOTE_TEMPLATE, context)
     except reports.PdfUnavailable:
-        return HttpResponse(reports.render_html(DELIVERY_NOTE_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+        qr_notice = DELIVERY_NOTE_LOCAL_NOTICE.format(host=local_host) if local_host else ""
+        return HttpResponse(
+            reports.render_html(DELIVERY_NOTE_TEMPLATE, {**context, "qr_notice": qr_notice, "pdf_notice": PDF_NOTICE})
+        )
     response = HttpResponse(data, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{note.note_no}.pdf"'
     return response
@@ -287,31 +310,43 @@ def deliverynote_pdf(request, pk):
 
 @login_required
 def shipment_label(request, pk):
-    """出荷ラベルの印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は出荷の詳細の URL。"""
+    """出荷ラベルの印刷用の HTML (ブラウザの印刷で A4 縦の上半分)。QR の中身は出荷の詳細の URL (頭は core.reports.qr_url が決める)。
+
+    手元だけの住所で開いたときは、黄色の 1 行 (qr_notice。SHIPMENT_LABEL_LOCAL_NOTICE) を画面の上に出す (紙と PDF には出ない)。
+    """
     shipment = get_object_or_404(
         Shipment.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
+    qr_text, local_host = reports.qr_url(request, reverse("shipping:shipment_detail", args=[pk]))
     context = {
         **shipment_label_context(shipment),
-        "qr_text": request.build_absolute_uri(reverse("shipping:shipment_detail", args=[pk])),
+        "qr_text": qr_text,
+        "qr_notice": SHIPMENT_LABEL_LOCAL_NOTICE.format(host=local_host) if local_host else "",
     }
     return HttpResponse(reports.render_html(SHIPMENT_LABEL_TEMPLATE, context))
 
 
 @login_required
 def shipment_label_pdf(request, pk):
-    """出荷ラベルの PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。"""
+    """出荷ラベルの PDF。作れなければ、印刷用の HTML の上に知らせを出して返す。QR の中身は印刷用の HTML と同じ (core.reports.qr_url)。
+
+    黄色の 1 行 (qr_notice) は、PDF を作れずに印刷用の HTML を返すときだけ渡す (PDF は紙と同じく出さないため)。
+    """
     shipment = get_object_or_404(
         Shipment.objects.select_related("order_line__order__customer", "order_line__item"), pk=pk
     )
+    qr_text, local_host = reports.qr_url(request, reverse("shipping:shipment_detail", args=[pk]))
     context = {
         **shipment_label_context(shipment),
-        "qr_text": request.build_absolute_uri(reverse("shipping:shipment_detail", args=[pk])),
+        "qr_text": qr_text,
     }
     try:
         data = reports.render_pdf(SHIPMENT_LABEL_TEMPLATE, context)
     except reports.PdfUnavailable:
-        return HttpResponse(reports.render_html(SHIPMENT_LABEL_TEMPLATE, {**context, "pdf_notice": PDF_NOTICE}))
+        qr_notice = SHIPMENT_LABEL_LOCAL_NOTICE.format(host=local_host) if local_host else ""
+        return HttpResponse(
+            reports.render_html(SHIPMENT_LABEL_TEMPLATE, {**context, "qr_notice": qr_notice, "pdf_notice": PDF_NOTICE})
+        )
     response = HttpResponse(data, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{shipment.shipment_no}.pdf"'
     return response

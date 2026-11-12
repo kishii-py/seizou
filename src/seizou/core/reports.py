@@ -13,7 +13,10 @@ from urllib.parse import unquote, urlsplit
 from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.exceptions import SuspiciousFileOperation
+from django.http.request import split_domain_port
 from django.template.loader import render_to_string
+
+from seizou.core import mail
 
 # WeasyPrint が帳票の中の URL (/static/... など) を解くときの仮の起点。
 # .invalid は使われないと決まった名前で、この起点の URL はネットに出ず、fetch_local が手元のファイルから返す。
@@ -173,3 +176,26 @@ def _checked_relative(relative):
     if any(segment in ("", ".", "..") for segment in relative.split("/")):
         raise ValueError(f"読めないパスの形です: {relative}")
     return relative
+
+
+#: 手元の PC の中だけの住所の名前 (この名前で開いて刷った帳票の QR は、スマホでは開けない。qr_url が見る)
+LOCAL_ONLY_HOSTS = ("127.0.0.1", "localhost")
+
+
+def qr_url(request, path) -> tuple[str, str]:
+    """帳票の QR の字と、手元だけの住所の名前 (そうでなければ空の字) を返す。読むだけ。現品票・納品書・出荷ラベルの口が呼ぶ。
+
+    QR の字は path (詳細や読み取りの着地の道) の URL。設定の URL の頭 (mail の site_url) があれば、
+    メールのリンクと同じ付け方 (core.mail.link) でその頭を付け、名前は空の字。空なら開いている住所から作る (build_absolute_uri)。
+    名前は、頭が空で、開いている住所の名前 (ポートを除く) が LOCAL_ONLY_HOSTS (127.0.0.1・localhost) のときだけ返す。
+    呼ぶ口は、名前があれば印刷用の画面の上に黄色の 1 行 (report.css の .report-screen-notice。紙と PDF には出ない) を出す。字は口ごとに持つ。
+    帳票の写し (core.services.keep_report_copy) は request を持たないので、この関数を呼ばない。
+    訳: 帳票の QR を、手元の PC の住所で刷ってもスマホから開けるようにするため (設定の URL の頭があればそれを使い、無くて手元だけの住所なら刷る前に知らせる)。
+    出所 = 本体の決め 11-11 14:2x (現品票) と 11-12 13:1x (納品書と出荷ラベルも同じ扱いにそろえる)。
+    変えてよい条件 = QR の頭を別の設定で持つと決めたとき。手元だけの住所の名前を足すときは、知らせを出す住所が増えるので本体に聞く。
+    """
+    linked = mail.link(path)
+    if linked:
+        return linked, ""
+    host, _port = split_domain_port(request.get_host())
+    return request.build_absolute_uri(path), host if host in LOCAL_ONLY_HOSTS else ""

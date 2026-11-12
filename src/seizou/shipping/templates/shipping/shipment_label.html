@@ -8,10 +8,13 @@ view が qr_text (出荷の詳細の絶対 URL) を足す。company は出荷元
 離れて読む品番・数量・得意先の注文番号の行は report-big (20pt の太字)、題は block report_heading の上書きで小さく (report-title-compact)
 (作者の決め。得意先の受入の人が荷の上のラベルを離れて読む)。
 pdf_notice は、PDF を作れなかったときに PDF の口が渡す知らせ。
+qr_notice は、QR が手元の PC の中だけの住所を指すときの黄色の 1 行 (view が core.reports.qr_url の結果から作る。空なら出さない)。
+画面で見るときだけ出し、紙と PDF には出さない (report.css の .report-screen-notice)。PDF を作れなかったときの HTML にも出る。
 {% endcomment %}
 {% block title %}出荷ラベル {{ label.number }}{% endblock %}
 {% block report_heading %}<h1 class="report-title report-title-compact">出荷ラベル</h1>{% endblock %}
 {% block head %}
+{% if qr_notice %}<p class="report-screen-notice" role="status">{{ qr_notice }}</p>{% endif %}
 {% if pdf_notice %}<p role="alert">{{ pdf_notice }}</p>{% endif %}
 <p class="report-customer">{{ label.customer }} 御中</p>
 {% endblock %}
