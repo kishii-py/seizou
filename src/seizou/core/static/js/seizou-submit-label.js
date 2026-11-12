@@ -17,6 +17,7 @@
  * - 単価の空か数でない行が 1 つでもあれば {amount} を埋めない (次の型へ)。
  * - 明細の選ぶ欄 (data-label-line) の値が描いたときの値と違えば、単位が分からないので plain の字にする。
  * - 数は全角を半角に、桁の区切りの「,」を外して読み、小数 2 桁で四捨五入して 3 桁ごとに区切る。
+ * - 型の「¥{amount}」にマイナスの数が入った字「¥-660」は「-¥660」にする (画面の yen の字・サーバーが描く初めの字と同じ形。調整の記録)。
  * - ボタンの最後の字の node だけを書き換える (前の印の絵は残す)。class を触らない。取った字を HTML として差し込まない。通信しない。
  * - 明細の合計の枠 (core/_line_totals.html の data-line-totals) があれば、同じ数えで rows・qty・amount の字 (data-line-totals-rows・-qty・-amount) を埋め直す (N149)。
  *   0 行でも数を書く。数でない数量があれば 3 つとも「—」。単価の空か数でない行があれば amount は「—」。金額の組が無い枠 (金額の閲覧が無い人・一括出荷) には書かない。
@@ -114,7 +115,7 @@
         if (!found[name]) complete = false;
         return found[name] || "";
       });
-      if (complete) return text;
+      if (complete) return text.replace(/¥-/g, "-¥");
     }
     return null;
   }

@@ -485,6 +485,7 @@ class SubmitLabelMixin:
       分かる値で全部埋められる最初の型を使う。どれも埋められなければ submit_label_plain。
     - submit_label_values(): 型を埋める値の字 (分かる物だけ)。開いた form は初期値、送った form は通った値から組む。
     - submit_label: 描くときのボタンの字。submit_label_template: ボタンの data-submit-label に置く型の並び (JSON)。
+      型の「¥{amount}」にマイナスの数が入った字「¥-660」は「-¥660」にする (画面の yen の字と同じ形。調整の記録のボタン)。
       js/seizou-submit-label.js が入力のたびに同じ型を埋め直す (JS が無ければ描いたときの字のまま)。型が無ければ空。
     """
 
@@ -510,7 +511,7 @@ class SubmitLabelMixin:
         values = {key: value for key, value in self.submit_label_values().items() if value}
         for template in self.submit_label_templates():
             if all(name in values for name in SUBMIT_LABEL_SLOT.findall(template)):
-                return SUBMIT_LABEL_SLOT.sub(lambda match: values[match.group(1)], template)
+                return SUBMIT_LABEL_SLOT.sub(lambda match: values[match.group(1)], template).replace("¥-", "-¥")
         return self.submit_label_plain
 
     @property

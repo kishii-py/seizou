@@ -781,7 +781,7 @@ class AdjustmentForm(SubmitLabelMixin, forms.Form):
     欄は 調整日・金額・訳・備考。請求書は欄に持たない (土台が URL の pk の請求書を record_adjustment の 1 つ目の引数に渡す)。
     金額は 1 円単位の整数で、マイナスを許す (残を減らす調整はマイナス)。0 は欄の誤り (services も断る)。
     開いた form は、入金済みが 0 より大きく残が 0 より大きい請求書なら、金額の初めの値を −残 にする (金額の閲覧の無い人には入れない)。
-    保存のボタンは「¥-660 の調整を記録する」(金額を入れる前は「調整を記録する」。字を組むのは core の SubmitLabelMixin)。
+    保存のボタンは「-¥660 の調整を記録する」(金額を入れる前は「調整を記録する」。字を組むのは core の SubmitLabelMixin。マイナスを ¥ の前に置くのも core)。
     """
 
     submit_label_plain = "調整を記録する"

@@ -3,6 +3,7 @@
 使う場面: 得意先が振込手数料 660 円を引いて振り込んだ。経理は入金 15,840 を記録し、続けて −660 の調整を記録すると、請求書は入金済みになる。
 調整は金額に関わる操作 (core.access.MONEY_ACTIONS) なので、金額の閲覧の無い人 (金額の判定が on) には入口を出さず、画面を開いた時点で断る。
 調整の入口は小窓でなく画面の全体で開く (billing/_form_modal.html に調整のカードの口がまだ無いため。記録 docs/nights/20261111/N409b.md)。
+画面に出すマイナスの金額は「-¥660」にそろえる (保存のボタンの字と保存の後の知らせも。510 回目)。
 見た目の確かめは開発サーバーを起こさず、応答の HTML (欄の並び・知らせの段の印・ボタンの字) で見る。
 作り物の組み方は tests/test_billing_payment_views.py の関数を借りる (test_ で始まる名前は import しない)。合計 16,500 の請求書 (出荷 4 と 6)。
 """
@@ -137,7 +138,7 @@ def test_create_get_fields_initial_and_button(client_logged_in, paid_short):
     # 入金済みが 0 より大きく残のある請求書では、金額の初めの値が −残 (振込手数料の差を 1 回で消す)
     assert re.search(r'name="amount" value="-660"', body)
     assert "残を減らすときはマイナスで入れます (振込手数料 660 円なら -660)。" in body
-    assert _button(body) == "¥-660 の調整を記録する"
+    assert _button(body) == "-¥660 の調整を記録する"
     # 頭の 1 行 (入金の記録の画面と同じ形)
     assert f"請求書 <span class=\"font-mono\">{paid_short.invoice_no}</span> (作り物の得意先)。" in body
     for text in ("合計 <span class=\"tabular-nums\">¥16,500</span>", "入金済み <span class=\"tabular-nums\">¥15,840</span>",
@@ -170,7 +171,7 @@ def test_create_post_clears_balance_and_returns_to_invoice(client_logged_in, use
     detail = client_logged_in.get(hop["Location"])
     body = detail.content.decode()
     panel = _panel(detail)
-    assert f"請求書 {paid_short.invoice_no} に調整 (振込手数料 ¥-660) を記録しました。" in body
+    assert f"請求書 {paid_short.invoice_no} に調整 (振込手数料 -¥660) を記録しました。" in body
     assert _summary(panel) == {"合計": "¥16,500", "入金済み": "¥15,840", "調整": "-¥660", "残": "¥0"}
     assert Invoice.objects.get(pk=paid_short.pk).payment_status() == Invoice.PAYMENT_PAID
     # 枠の頭の入金の印も入金済み (「入金済み」は合計の並びの見出しにもあるので、ほかの 2 つの状態の字が無い事で見る)

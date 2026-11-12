@@ -82,7 +82,7 @@ def test_fee_adjustment_clears_balance(user, logged_in, invoice):
 
     adjustment = services.record_adjustment(invoice, ADJUSTED_ON, Decimal("-660"), user, reason=Adjustment.REASON_FEE)
 
-    assert adjustment.saved_message == f"請求書 {invoice.invoice_no} に調整 (振込手数料 ¥-660) を記録しました。"
+    assert adjustment.saved_message == f"請求書 {invoice.invoice_no} に調整 (振込手数料 -¥660) を記録しました。"
     assert adjustment.recorded_by == user
     assert adjustment.status == Adjustment.STATUS_RECORDED
     fresh = _fresh(invoice)

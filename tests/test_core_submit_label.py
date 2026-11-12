@@ -132,6 +132,12 @@ def test_mixin_fills_the_first_complete_template():
     assert json.loads(_Sample().submit_label_template) == ["{rows} 行・合計 ¥{amount} で発注する", "{rows} 行で発注する"]
 
 
+def test_mixin_writes_minus_before_yen():
+    """マイナスの金額は「¥-660」でなく「-¥660」(画面の yen の字と同じ形。調整の記録のボタン。510 回目)。型の「¥{amount}」は変えない。"""
+    assert _Sample(found={"rows": "1", "amount": "-660"}).submit_label == "1 行・合計 -¥660 で発注する"
+    assert _Sample(found={"rows": "1", "amount": "660"}).submit_label == "1 行・合計 ¥660 で発注する"
+
+
 # --- 2. 出荷 ---
 
 
@@ -377,6 +383,59 @@ def test_js_passes_node_check():
         pytest.skip("node が無い (node --check を回せない)")
     result = subprocess.run([node, "--check", str(JS)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
+
+
+#: node で seizou-submit-label.js を動かす小さな台 (document と form とボタンの代わりの物だけを置く)。引数は JS のパス・型・金額の欄の字。
+_JS_RUNNER = """
+const fs = require("fs");
+const handlers = {};
+class Element {}
+global.Element = Element;
+global.document = { addEventListener: (type, fn) => { handlers[type] = fn; } };
+const text = { nodeType: 3, nodeValue: "" };
+const button = {
+  lastChild: text,
+  getAttribute: (name) => (name === "data-submit-label" ? JSON.stringify([process.argv[3]]) : "plain"),
+};
+const amount = new Element();
+amount.value = process.argv[4];
+const form = {
+  querySelectorAll: () => [],
+  querySelector: (selector) => {
+    if (selector === "[data-label-amount]") return amount;
+    if (selector === "button[data-submit-label]") return button;
+    return null;
+  },
+};
+amount.closest = () => form;
+(0, eval)(fs.readFileSync(process.argv[2], "utf8"));
+handlers.input({ target: amount });
+process.stdout.write(Buffer.from(text.nodeValue, "utf8").toString("hex"));
+"""
+
+
+@pytest.mark.parametrize("typed, label", [
+    ("-660", "-¥660 の調整を記録する"),
+    ("－６６０", "-¥660 の調整を記録する"),
+    ("-1,234,567", "-¥1,234,567 の調整を記録する"),
+    ("660", "¥660 の調整を記録する"),
+    ("", "plain"),
+])
+def test_js_writes_minus_before_yen(tmp_path, typed, label):
+    """入力のたびに組み直すボタンの字も、マイナスの金額は「-¥660」(サーバーが描く字と同じ形。510 回目)。
+
+    node で JS を動かし、金額の欄に入れた後のボタンの字を読む (字は 16 進で受け取る。OS の端末の文字コードに寄らないため)。
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node が無い (JS を動かせない)")
+    runner = tmp_path / "runner.js"
+    runner.write_text(_JS_RUNNER, encoding="utf-8")
+    result = subprocess.run(
+        [node, str(runner), str(JS), "¥{amount} の調整を記録する", typed], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert bytes.fromhex(result.stdout).decode("utf-8") == label
 
 
 def test_js_file_counts_picked_rows():

@@ -1130,7 +1130,7 @@ def record_adjustment(invoice, adjusted_on, amount, user, *, reason=Adjustment.R
     金額は 0 でない数 (足すも引くも。残を減らす調整はマイナス = 振込手数料 660 は −660)。数として読めないか 0 なら ValueError。
     訳 (reason) が choices に無い・備考が 500 字を超える、も ValueError。請求書の行をロックしてから書く (record_payment と同じ)。
     取消の請求書には記録せず ValueError「記録できません。請求書 IV-… は取消です。発行の請求書を選び直してください。」(新しい決まりの番号は足さない)。
-    返す調整に、画面の知らせの字 saved_message (「請求書 IV-… に調整 (振込手数料 ¥-660) を記録しました。」) を付ける (表に書かない)。
+    返す調整に、画面の知らせの字 saved_message (「請求書 IV-… に調整 (振込手数料 -¥660) を記録しました。」。マイナスは画面の yen の字と同じ形) を付ける (表に書かない)。
     変更の履歴に「作った」で残す (請求書の詳細の「履歴」に出る = Adjustment.history_owner)。
     訳: 取消の請求書は残と台帳から外れるので、そこに付けた調整は数える先が無くなり、記録が成り立たないため (入金の R21 と同じ見方)。
     出所 = 多くの工場の生産管理で要った動き (見比べのまとめの M28)・本人の答え (調整を請求書に結ぶ)。変えてよい条件 = 本人が調整の持ち方を決め直したとき。
@@ -1160,7 +1160,7 @@ def record_adjustment(invoice, adjusted_on, amount, user, *, reason=Adjustment.R
         )
         record_history(adjustment, user)
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
-        adjustment.saved_message = f"請求書 {locked.invoice_no} に調整 ({labels[reason]} ¥{_yen(value)}) を記録しました。"
+        adjustment.saved_message = f"請求書 {locked.invoice_no} に調整 ({labels[reason]} {_signed_yen(value)}) を記録しました。"
         return adjustment
 
 
