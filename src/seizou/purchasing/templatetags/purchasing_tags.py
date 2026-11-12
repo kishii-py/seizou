@@ -182,11 +182,18 @@ def next_receipt(purchase_order):
     取消と断られた発注は None。ほかは lines_with_received (行番号の順) を回し、受入の残 (remaining_total) が 0 より大きい明細で、
     notice_rests (出荷日の古い順) の rest が 0 より大きい最初の知らせが見つかったら {"line", "rest_text"} を返す。無ければ None。
     条件は明細の表の「受入を記録する」と同じなので、表の一番上の「受入を記録する」と同じ行き先になる。権限は見ない (テンプレートが見る)。
+    発注書を seizou の外で送った発注 (sent_outside_at がある。purchasing.services.mark_sent_outside) は、知らせが無くても、
+    受入の残のある最初の明細を行き先にする。rest_text は空の字 (数量を渡さない = 明細の行の ⋮ の「受入を登録」と同じ入口で、
+    受入の form が明細の受入の残を数量の初めの値にする)。
+    訳: seizou の外で送った発注には相手の出荷の知らせが届かないので、緑が出ず、受入の入口が明細の行の ⋮ の中だけだった。
+    その発注で次にする操作は受入なので、緑に出す。出所 = 本人の決め 11-12 21:0x。押していない発注 (送った記録の無い「送った」の発注を含む) は今のまま。
+    変えてよい条件 = 本人が、seizou の外で送った発注の緑のボタンを決め直したとき。
     """
     from .. import services
 
     if purchase_order.status in (purchase_order.STATUS_CANCELLED, purchase_order.STATUS_REJECTED):
         return None
+    outside = purchase_order.sent_outside_at is not None
     for line in purchase_order.lines_with_received:
         # 取り消した明細 (明細状態コード 2) は受入の行き先にしない。
         if line.remaining_total <= 0 or line.is_cancelled:
@@ -194,6 +201,8 @@ def next_receipt(purchase_order):
         for entry in services.notice_rests(line):
             if entry["rest"] > 0:
                 return {"line": line, "rest_text": entry["rest_text"]}
+        if outside:
+            return {"line": line, "rest_text": ""}
     return None
 
 

@@ -27,7 +27,7 @@
   {% csrf_token %}
   <button class="btn btn-primary" type="submit">{% icon "external" "size-4" %}再送</button>
 </form>
-{% else %}{% next_receipt object as receipt %}{% if receipt %}<a class="btn btn-primary" href="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}&amp;qty={{ receipt.rest_text }}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を記録する</a>{% endif %}{% endif %}{% endif %}{% endblock %}
+{% else %}{% next_receipt object as receipt %}{% if receipt %}<a class="btn btn-primary" href="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}{% if receipt.rest_text %}&amp;qty={{ receipt.rest_text }}{% endif %}&amp;next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'purchasing:receipt_create' %}?line={{ receipt.line.pk }}{% if receipt.rest_text %}&amp;qty={{ receipt.rest_text }}{% endif %}&amp;next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}受入を記録する</a>{% endif %}{% endif %}{% endif %}{% endblock %}
 {# 送れなかった「作成」の発注は、送った記録の最後の行 (Outbox の並びは新しい順) の返事を頭の黄の知らせに出す (保存の直後も、送り直すまで)。 #}
 {# 相手が条件付で受けた・相手が保留した発注は、記録の今の状態を黄の 1 行で出す (知らせの段 5。答えが届くと 2 秒ごとの入れ替えで開いている画面にも出る)。後の版を相手が受け入れた条件付の発注は、受け入れた事の 1 行に替える (本体の決め 11-11 14:2x)。今の版の変更への受諾が届くと、発注の状態は「相手が受け入れた」に進む (本人の決め 11-12 14:1x。connect の受け口) ので、この 1 行が出るのは、その直しの前に答えが届いていた発注 (状態が条件付のまま残った記録) だけ。revision_state は #po-alert の頭で 1 回だけ呼び、条件付の分かれと revision.alert の両方が同じ値を読む。 #}
 {# つながりの無い「下書き」の発注で、送った記録の無い物は、発注書を seizou の外で送る案内の 1 行 (知らせの段 5)。「発注書を送った」で記録した発注は、取消でない間、記録した日時と、答えが届かない事の 1 行 (依頼書 N439)。 #}
@@ -42,7 +42,7 @@
 {% endif %}{% elif object.status == "on_hold" %}
 <div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>相手が保留しました ({{ object.replied_at|date:"Y-m-d H:i" }})。答えが届くのを待つか、相手と話して決めてください。</span></div>
 {% endif %}{% if object.sent_outside_at and object.status != "cancelled" %}
-<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>発注書を seizou の外で送った発注です ({{ object.sent_outside_at|date:"Y-m-d H:i" }})。相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら、明細の行の ⋮ の「受入を登録」で記録します。</span></div>
+<div class="alert alert-warning alert-soft mb-4" role="alert">{% icon "alert" "size-5" %}<span>発注書を seizou の外で送った発注です ({{ object.sent_outside_at|date:"Y-m-d H:i" }})。相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら「受入を記録する」で記録します。</span></div>
 {% endif %}{% if revision.alert %}
 <div class="alert alert-warning alert-soft mb-4" role="alert" data-revision-alert>{% icon "alert" "size-5" %}<span>{{ revision.alert }}</span></div>
 {% endif %}</div>{% purchase_order_aside object fields seizou.hide_money as aside %}{{ block.super }}

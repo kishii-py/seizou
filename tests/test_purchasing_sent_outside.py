@@ -27,10 +27,12 @@ from seizou.core.models import ChangeLog
 from seizou.masters import services as masters_services
 from seizou.purchasing import services, timeline
 from seizou.purchasing.models import PurchaseOrder
+from seizou.purchasing.templatetags.purchasing_tags import next_receipt
 from tests.test_connect_reply import ORDER_ENV, SUPPLIER_URL
 from tests.test_connect_send import FakePost
 from tests.test_connect_signing import _new_secret
 from tests.test_core_access import account
+from tests.test_detail_header import _actions
 
 COMPANIES_DIR = Path(__file__).resolve().parent.parent / "examples" / "companies"
 DAY = date(2026, 11, 12)
@@ -47,8 +49,9 @@ ALERT_DRAFT = (
     "送った後に「発注書を送った」を押してください。"
 )
 ALERT_SENT_HEAD = "発注書を seizou の外で送った発注です ("
-# 受入の入口は、明細の行の ⋮ の「受入を登録」(緑の「受入を記録する」は出荷の知らせのある発注にだけ出るので、この発注には出ない。518 回目の本体の直し)
-ALERT_SENT_TAIL = "相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら、明細の行の ⋮ の「受入を登録」で記録します。"
+# 受入の入口は、頭の右の緑の「受入を記録する」(本人の決め 11-12 21:0x。519 回目から、seizou の外で送った発注にも出る。
+# 518 回目は緑が出なかったので、明細の行の ⋮ の「受入を登録」を指していた)
+ALERT_SENT_TAIL = "相手の答えと出荷の知らせは、seizou には届きません。現物が戻ったら「受入を記録する」で記録します。"
 CANCEL_LINE = "この発注は、発注書を seizou の外で送っています。取消は、取引先に自分で伝えてください。"
 TIMELINE_TITLE = "発注書を送った (seizou の外で)"
 NOT_DRAFT = "記録できません。「発注書を送った」を記録できるのは、状態が「下書き」の発注だけです。"
@@ -429,14 +432,14 @@ def test_migration_leaves_existing_orders_empty():
 
 @pytest.mark.django_db
 def test_alert_names_the_real_receipt_entrance(logged_in, user, partner, item):
-    """押した後の黄の 1 行が指す受入の入口は、その画面に在る (明細の行の ⋮ の「受入を登録」)。頭の右の緑の「受入を記録する」は出ない。"""
+    """押した後の黄の 1 行が指す受入の入口は、その画面に在る (頭の右の緑の「受入を記録する」。明細の行の ⋮ の「受入を登録」も今のまま)。"""
     po = services.mark_sent_outside(_draft(partner, user, item), user)
 
     body = _detail(logged_in, po)
 
     assert ALERT_SENT_TAIL in body
+    assert "受入を記録する</a>" in _actions(body)
     assert "受入を登録</a>" in body
-    assert "受入を記録する" not in body
 
 
 @pytest.mark.django_db
@@ -474,4 +477,90 @@ def test_sent_outside_at_is_not_in_basic_info(logged_in, user, partner, item):
     assert label not in body[start : body.index("</aside>", start)]  # 右の列 (基本情報のカード) に出ない。履歴のタブには列の名前が出る
     assert ALERT_SENT_HEAD in body and TIMELINE_TITLE in body
     assert "sent_outside_at" in PurchaseOrder.detail_hidden_fields
+
+
+# --- 519 回目 (本人の決め 11-12 21:0x): seizou の外で送った発注の詳細の頭の右に、緑の「受入を記録する」を出す ---
+
+
+def _receipt_link(po, line):
+    """緑の「受入を記録する」の行き先 (受入の小窓)。数量は渡さない: 明細の行の ⋮ の「受入を登録」と同じ入口で、form が受入の残を初めの値にする。"""
+    detail = reverse("purchasing:purchaseorder_detail", args=[po.pk])
+    return f'{reverse("purchasing:receipt_create")}?line={line.pk}&amp;next={detail}'
+
+
+@pytest.mark.django_db
+def test_green_receipt_after_sent_outside(logged_in, user, partner, item):
+    """「発注書を送った」で送った発注は、出荷の知らせが届かなくても、受入の残がある間、頭の右に緑の「受入を記録する」が出る。
+
+    訳: seizou の外で送った発注には相手の出荷の知らせが届かないので、緑 (知らせのある発注にだけ出る = 作者の決め) が出ず、
+    受入の入口が明細の行の ⋮ の中だけだった。次にする操作は受入なので、緑に出す (本人の決め 11-12 21:0x)。
+    """
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+    line = po.lines.get()
+    link = _receipt_link(po, line)
+
+    head = _actions(_detail(logged_in, po))
+    assert f'<a class="btn btn-primary" href="{link}" data-modal-form="{link}">' in head
+    assert "受入を記録する</a>" in head and head.count("btn-primary") == 1
+    assert "qty=" not in head
+    target = next_receipt(PurchaseOrder.objects.get(pk=po.pk))
+    assert target["line"].pk == line.pk and target["rest_text"] == ""
+
+    # 小窓の数量の初めの値は、明細の受入の残 (⋮ の「受入を登録」と同じ)
+    form = logged_in.get(f'{reverse("purchasing:receipt_create")}?line={line.pk}').context["form"]
+    assert Decimal(str(form["qty"].value())) == Decimal("10")
+
+    # 一部を受け入れても、残がある間は出る (行き先は同じ明細)
+    services.receive(line, Decimal("4"), DAY, user)
+    assert f'href="{link}"' in _actions(_detail(logged_in, po))
+
+    # 全部を受け入れると出ない
+    services.receive(line, Decimal("6"), DAY, user)
+    head = _actions(_detail(logged_in, po))
+    assert "受入を記録する" not in head and "btn-primary" not in head
+    assert next_receipt(PurchaseOrder.objects.get(pk=po.pk)) is None
+
+
+@pytest.mark.django_db
+def test_green_receipt_goes_to_first_open_line(logged_in, user, partner, item):
+    """明細が 2 行の時は、受入の残のある最初の明細 (行番号の順) の小窓を開く。"""
+    other = masters_services.create_item({"part_no": "T-200", "name": "作り物の板", "unit": "枚"}, user)
+    lines = [
+        {"item": item, "qty": Decimal("10"), "unit_price": Decimal("45")},
+        {"item": other, "qty": Decimal("3"), "unit_price": Decimal("20")},
+    ]
+    po = services.mark_sent_outside(services.create_purchase_order(partner, lines, user, order_date=DAY, send=False), user)
+    first, second = po.lines.order_by("line_no")
+
+    assert f'href="{_receipt_link(po, first)}"' in _actions(_detail(logged_in, po))
+
+    services.receive(first, Decimal("10"), DAY, user)
+    head = _actions(_detail(logged_in, po))
+    assert f'href="{_receipt_link(po, second)}"' in head and f"?line={first.pk}&" not in head
+
+
+@pytest.mark.django_db
+def test_no_green_receipt_when_cancelled_or_not_marked(logged_in, user, partner, item):
+    """取り消した発注と、「発注書を送った」を押していない発注には出さない (今までと同じ)。"""
+    cancelled = services.cancel_purchase_order(services.mark_sent_outside(_draft(partner, user, item), user), user)
+    assert cancelled.status == PurchaseOrder.STATUS_CANCELLED
+    assert "受入を記録する" not in _actions(_detail(logged_in, cancelled))
+
+    # 送った記録も印も無い「送った」の発注 (作り物の種の形)。出荷の知らせが無いので、今までどおり緑は出ない
+    unmarked = services.mark_sent(_draft(partner, user, item), user)
+    assert unmarked.sent_outside_at is None
+    assert "受入を記録する" not in _actions(_detail(logged_in, unmarked))
+    assert next_receipt(PurchaseOrder.objects.get(pk=unmarked.pk)) is None
+
+
+@pytest.mark.django_db
+def test_green_receipt_needs_purchasing_write(judged, client, user, partner, item):
+    """緑の「受入を記録する」を出す人は、今までの緑と同じ (発注の書く権限。金額の閲覧は見ない)。"""
+    po = services.mark_sent_outside(_draft(partner, user, item), user)
+
+    client.force_login(account("miru"))
+    assert "受入を記録する" not in _actions(_detail(client, po))
+
+    client.force_login(account("buyer", permissions=["purchasing"]))
+    assert "受入を記録する</a>" in _actions(_detail(client, po))
 
