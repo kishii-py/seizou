@@ -15,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
 
+from seizou.core.copies import report_copy, report_copy_pdf
 from seizou.core.guide import screen_guide
 from seizou.core.health import health
 from seizou.core.login_guard import LockoutAuthenticationForm
@@ -46,6 +47,8 @@ core_patterns = [
     path("manual/pdf/", manual_pdf, name="manual_pdf"),
     path("manual/fragment/<str:anchor>/", manual_fragment, name="manual_fragment"),
     path("manual/images/<str:name>", manual_image, name="manual_image"),
+    path("copies/<int:pk>/", report_copy, name="report_copy"),
+    path("copies/<int:pk>/pdf/", report_copy_pdf, name="report_copy_pdf"),
     path("rules/<str:code>/", rule_help, name="rule_help"),
     path("bell/", bell, name="bell"),
     path("guide/<str:anchor>/", screen_guide, name="screen_guide"),

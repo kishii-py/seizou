@@ -25,7 +25,7 @@ from seizou.masters.services import PRICE_BASIS_CHOICES, PRICE_BASIS_UNIT, price
 
 
 class PurchaseOrder(models.Model):
-    """発注。1 件に明細が複数。発注番号は core の連番が付ける。"""
+    """発注。1 件に明細が複数。発注番号は core の連番が付ける。keeps_report_copy は帳票の写し (core.ReportCopy。R34) を版ごとに持つ印で、詳細に「発行の時の写し」の枠を出す。"""
 
     STATUS_DRAFT = "draft"
     STATUS_SENT = "sent"
@@ -78,6 +78,7 @@ class PurchaseOrder(models.Model):
     detail_hidden_fields = ("reply_message_id",)
     #: 変更の履歴 (core.history。作者の決めの伝票の「発注」) を残し、詳細に「履歴」のタブを出す
     keeps_history = True
+    keeps_report_copy = True
 
     class Meta:
         verbose_name = "発注"

@@ -21,6 +21,8 @@ class BaseDetailView(ScreenMixin, DetailView):
 
     履歴のタブと「最後に直した」の 1 行は core.history (作者の決め)。model に印 (keeps_history か history_owner) が
     あるときだけ context の history に core.history.timeline を置く (tabs には入れない。開くまで問い合わせない)。
+    model に印 keeps_report_copy があるときだけ、context の report_copies に帳票の写し (core.services.report_copies の並び) を置く
+    (「発行の時の写し」の枠。core/_report_copies.html)。
     """
 
     tabs: tuple = ()
@@ -89,6 +91,12 @@ class BaseDetailView(ScreenMixin, DetailView):
         context["list_url"] = list_url if access.can_open(self.request.user, obj._meta.app_label, record=False) else None
         context["status"] = self.status_for(obj)
         context["history"] = history.timeline(obj, self.request.user) if history.keeps_history(obj.__class__) else None
+        # 帳票の写し (R34) は、写しを持つ model (class 属性 keeps_report_copy) の詳細でだけ読む (ほかの詳細の問い合わせを増やさない)。
+        # 枠 (core/_report_copies.html) を出すかは、テンプレートが行の有無と金額の閲覧 (seizou.hide_money) で決める。小窓には置かない。
+        if getattr(obj, "keeps_report_copy", False):
+            from seizou.core.services import report_copies
+
+            context["report_copies"] = list(report_copies(obj))
         return context
 
     def tab_for(self, obj, label: str, related: str, select_related=()) -> dict:

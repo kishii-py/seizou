@@ -1,0 +1,35 @@
+{% load seizou_icons %}
+{# 発行の時の写しの枠 (R34 の 2 段目): core の詳細の画面 (core/detail.html) の添付ファイルの枠の上に出る。写しごとに日時・帳票の名前と版・作った人と、「開く」(写しの HTML) と「PDF」(写しから作る PDF) を新しいタブで開く link。 #}
+{# 出すのは、詳細の土台 (BaseDetailView) が写しを持つ model (keeps_report_copy) の詳細でだけ置く report_copies に行があり、金額の閲覧の無い人 (seizou.hide_money) でないときだけ (core/detail.html が決める)。 #}
+{# 写しを消す口は作らない (R34) ので「削除」は置かない。箱と表の class は添付ファイルの枠 (attachments/_panel.html) と同じ物だけを使う。 #}
+<section id="report-copies" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="report-copies-heading">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h2 id="report-copies-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "file" "size-5 text-base-content/70" %}発行の時の写し<span class="badge badge-sm tabular-nums">{{ report_copies|length }}</span></h2>
+  </div>
+  <p class="mt-4 text-base-content/70">発行した時に残した帳票です。後で受注や部品マスターを直しても、取り消した後も、発行した時の形のまま開きます (取消の印は付きません)。</p>
+  <div class="mt-4 overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>帳票</th>
+          <th>作った人</th>
+          <th class="text-right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for copy in report_copies %}
+        <tr class="hover:bg-base-200">
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ copy.created_at|date:"Y-m-d H:i" }}</td>
+          <td class="whitespace-nowrap">{{ copy.title }}{% if copy.revision >= 2 %} 第 {{ copy.revision }} 版{% endif %}</td>
+          <td class="whitespace-nowrap">{% if copy.actor_label %}{{ copy.actor_label }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
+          <td class="whitespace-nowrap text-right">
+            <a class="btn btn-ghost btn-sm" href="{% url 'core:report_copy' copy.pk %}" target="_blank" rel="noopener">{% icon "external" "size-4" %}開く</a>
+            <a class="btn btn-ghost btn-sm" href="{% url 'core:report_copy_pdf' copy.pk %}" target="_blank" rel="noopener">{% icon "download" "size-4" %}PDF</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
