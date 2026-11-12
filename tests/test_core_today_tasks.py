@@ -329,9 +329,9 @@ def test_today_tasks_hides_rows_the_person_cannot_proceed(settings, user, custom
     assert keys_of("hanbai-kin") == ["order", "shipment", "delivery_note", "purchase_draft", "purchase_sent", "receipt"]
     # 経理: 移る先の盤と受注の一覧は開けるが、指示書と出荷の編集の権限が無い。進められるのは請求書と入金だけ
     assert keys_of("keiri") == ["invoice", "payment"]
-    # 現場: 製造の部署は行の移る先をどれも開けない。「協力企業に出す」の段 (指示書の一覧。N406c) は開けるので、行の無い「はじめての方へ」の枠になる
-    # (tests/test_core_home_closed_links と同じ)
-    assert keys_of("genba") == []
+    # 現場: 製造の部署は行の移る先をどれも開けない (枠ごと出さない = tests/test_core_home_closed_links と同じ)。
+    # 「協力企業に出す」の段 (N406c) は指示書の一覧へ移るが、仕事をする発注の部品を開けない人には出さない (段の needs。504 回目の直し)
+    assert keys_of("genba") is None
 
 
 @pytest.mark.django_db

@@ -26,7 +26,7 @@ from seizou.core.templatetags.seizou_tags import comma, yen
 from seizou.masters import services as masters_services
 from seizou.orders import services as orders_services
 from tests.test_core_access import account
-from tests.test_core_dashboard_views import ROW_TWO_TOP, row_of, section_of
+from tests.test_core_dashboard_views import ROW_ONE, row_of, section_of
 
 #: 部署と編集の判定を on にした会社 (金額の判定は既定のまま)
 ON = {"department": "on", "write": "on"}
@@ -191,28 +191,19 @@ def jimu():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("with_orders", [False, True], ids=["empty", "orders"])
-def test_genba_frame_has_only_the_subcontract_step_beside_alerts(client, settings, user, with_orders):
-    # 現場の人の部署 (製造) は、今日やることの行の移る先をどれも開けない。発注から検収までの流れの「協力企業に出す」の段は指示書の一覧へ
-    # 移るので開ける (見比べのまとめの M01 の 3 段目。N406c)。行の無い「はじめての方へ」の枠に、その段 1 つだけが出て、納期アラートと同じ段に並ぶ
-    # (N406c の前は、開ける段が 1 つも無く、枠ごと出さずに納期アラートが段を占めていた)
+def test_genba_has_no_frame_and_alerts_take_the_row(client, settings, user, with_orders):
+    # 「協力企業に出す」の段 (N406c) は指示書の一覧へ移るが、仕事をする発注の部品を開けない現場の人には出さない
+    # (段の needs。504 回目の直し。細かい出方は tests/test_core_flow_step_needs.py)。開ける段が無いので、枠ごと出ない
     settings.SEIZOU = {"access_control": dict(ON)}
     if with_orders:
         make_orders(user)
     person = genba()
     body = home(client, person)
 
-    frame = FRAME.search(body).group(0)
-    assert frame.count('<h2 id="flow-guide-title" class="text-lg font-bold">はじめての方へ</h2>') == 1
-    assert frame.count("<ol ") == 1
-    assert '<h3 class="font-bold">発注から検収まで</h3>' in frame
-    assert "受注から入金まで" not in frame
-    steps = re.findall(r'<a class="btn btn-sm btn-outline border-base-300 whitespace-nowrap" href="([^"]*)">([^<]*)</a>', frame)
-    assert steps == [(reverse("workorders:workorder_list"), "協力企業に出す")]
-    assert row_of(body, "due-alerts-title").startswith(ROW_TWO_TOP)
-    assert row_of(body, "due-alerts-title") == row_of(body, "flow-guide-title")
-    today = dashboard.today_tasks(get_user_model().objects.get(pk=person.pk))
-    assert today["rows"] == []
-    assert [[step["key"] for step in flow["steps"]] for flow in today["guide"]["flows"]] == [["subcontract"]]
+    assert 'data-tour="flow-guide"' not in body
+    assert 'id="flow-guide-title"' not in body
+    assert row_of(body, "due-alerts-title").startswith(ROW_ONE)
+    assert dashboard.today_tasks(get_user_model().objects.get(pk=person.pk)) is None
 
 
 @pytest.mark.django_db

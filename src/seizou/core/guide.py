@@ -2,7 +2,8 @@
 
 /guide/<anchor>/ (core:screen_guide)。anchor は URL の名前の : を _ に替えた字 (画面の土台が context に置く screen_anchor)。
 画面は目録 (manual.screen_for_anchor) で引き、anchor の字は HTML に戻さない (目録の画面の字だけを出す)。
-部署の権限は見ない (中身は画面の class の docstring の字だけで、数も金額も出さない)。
+ユースケースの 4 行は部署の権限を見ない (中身は画面の class の docstring の字だけで、数も金額も出さない)。
+前後の画面への link は、その人が部署で開ける段だけで決める (dashboard.flow_neighbors に人を渡す。開けない画面への link を出さない。504 回目の直し)。
 """
 
 from django.contrib.auth.decorators import login_required
@@ -40,7 +41,7 @@ def screen_guide(request, anchor: str):
         {
             "screen": screen,
             "rows": rows,
-            "neighbors": dashboard.flow_neighbors(screen.url_name),
+            "neighbors": dashboard.flow_neighbors(screen.url_name, request.user),
             "has_tour": tours.tour_for(screen.url_name) is not None,
         },
     )

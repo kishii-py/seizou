@@ -1001,7 +1001,9 @@ FLOWS = (
         "key": "purchase",
         "title": "発注から検収まで",
         "steps": (
+            # needs = 段の仕事 (工程を発注に出す) をする部品。移る先 (指示書の一覧) を開けても、この部品を部署で開けない人には段を出さない (_step_open)
             {"key": "subcontract", "label": "協力企業に出す", "model": ("purchasing", "PurchaseOrderLine"), "url_name": "workorders:workorder_list",
+             "needs": "purchasing",
              "count": "subcontract", "count_label": "協力企業に出していない工程", "unit": "行",
              "next_text": "指示書の詳細の工程の行から、協力企業に出す工程を発注に出します。"},
             {"key": "purchase_order", "label": "発注", "model": ("purchasing", "PurchaseOrder"), "url_name": "purchasing:purchaseorder_list",
@@ -1333,15 +1335,27 @@ def today_tasks(user=None) -> dict | None:
     return {"title": TODAY_TITLE, "rows": rows, "guide": guide}
 
 
+def _step_open(user, step) -> bool:
+    """段を、その人が部署で開けるか (記録は書かない)。段の移る先の部品 (URL の名前の : の前) と、段の仕事をする部品 (段の needs。無い段は見ない) の両方を開ける人だけ真。
+
+    訳: 「協力企業に出す」の段は指示書の一覧へ移るが、仕事 (工程を発注に出す) は発注の部品でする。指示書だけを開ける現場の人に、進められない段 1 つだけの「はじめての方へ」の枠と、開けない画面への案内の link を出さないため。出所 = 作者の決め (部署で開けない段は外し、何も残らなければ枠ごと出さない) と本体の直し 11-12 (504 回目。N406c の記録の「本体の判断が要る事」)。
+    変えてよい条件 = 移る先の部品と仕事をする部品が違う段を足すときは、その段に needs を書く (今ある段の出方は変えない)。
+    """
+    parts = [step["url_name"].split(":")[0]]
+    if step.get("needs"):
+        parts.append(step["needs"])
+    return all(access.can_open(user, part, record=False) for part in parts)
+
+
 def _open_guide(guide: dict, user) -> dict | None:
-    """flow_guide() の値から、部署で開けない段を外した写し。段の URL の名前の : の前の部品を core.access.can_open で見る (記録は書かない)。
+    """flow_guide() の値から、部署で開けない段を外した写し。段の移る先の部品と、段の仕事をする部品 (needs) を core.access.can_open で見る (_step_open。記録は書かない)。
 
     段の残らない流れは入れず、流れが 1 本も残らなければ None。写しの流れの next は、残した段のうち件数が 1 以上の最初の段
     (flow_guide と同じ選び方)。元の guide の dict は書き換えない。問い合わせは増えない (can_open は Access の行の控えを読む)。
     """
     flows = []
     for flow in guide["flows"]:
-        steps = [step for step in flow["steps"] if access.can_open(user, step["url_name"].split(":")[0], record=False)]
+        steps = [step for step in flow["steps"] if _step_open(user, step)]
         if not steps:
             continue
         first = next((step for step in steps if step["count"]), None)
@@ -1349,14 +1363,19 @@ def _open_guide(guide: dict, user) -> dict | None:
     return {"flows": flows} if flows else None
 
 
-def flow_neighbors(url_name: str) -> dict | None:
+def flow_neighbors(url_name: str, user=None) -> dict | None:
     """「案内」の小窓の、流れの中の前後の画面。url_name の画面が段にある最初の流れで、その画面の段の前の段と後の段 (同じ画面の段は飛ばす) を返す。無ければ None。問い合わせをしない。
+
+    user を渡すと、その人が部署で開けない段 (_step_open) を先に外してから前後を決める (開けない画面への link を出さない。
+    その画面の段を開けない人には None)。None なら外さない。
 
     返す物 = {"flow": 流れの title, "label": その画面の段の label を「・」でつないだ字, "prev": {"label", "url"} か None, "next": 同じ形か None}。
     前後は部品の入っている段だけで決める (指示書の部品が無い会社では、出荷の前の段が受注)。
     """
     for flow in FLOWS:
         steps = _flow_steps(flow)
+        if user is not None:
+            steps = [step for step in steps if _step_open(user, step)]
         here = [index for index, step in enumerate(steps) if step["url_name"] == url_name]
         if not here:
             continue
