@@ -256,7 +256,7 @@ def test_list_and_csv_hide_money_without_money(money_on, jimu, book):
     response = _list(jimu)
     body = response.content.decode()
     rows = _csv(_list(jimu, format="csv"))
-    sorted_rows = _list(jimu, sort="-receivable_balance")
+    sorted_rows = _list(jimu, sort="receivable_balance")  # 並べ替えが効けば C005 (残 −400) が先頭に来る
 
     assert response.status_code == 200
     assert _headings(body) == ["取引先コード", "名前", "締日"]
