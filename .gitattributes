@@ -1,0 +1,21 @@
+# 改行と bytes の扱い。後に書いた行が前の行より勝つので、全体の行を先頭に置く。
+# 試験 = tests/test_repo_line_endings.py
+
+# 字のファイルは、どの OS で取り出しても LF にそろえる (Git for Windows の既定の core.autocrlf=true でも CRLF にしない)。
+* text=auto eol=lf
+
+# 同梱物 (scripts/vendor.toml の path の物) は、取ったままの bytes を保つ。sha256 を見る試験 (tests/test_build_vendor.py) があるため。
+src/seizou/core/static/vendor/** -text
+src/seizou/core/static/fonts/** -text
+
+# 絵と PDF とフォントは、字として扱わない (改行を変えず、差分を字で出さない)。
+*.png binary
+*.tif binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.ttf binary
+*.woff2 binary
