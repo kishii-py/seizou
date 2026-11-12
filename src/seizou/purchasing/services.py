@@ -100,6 +100,12 @@ _CANCEL_SHIPPED_MESSAGE = (
     "取り消せません。相手が一部を出荷済みなので、取消は送れません。"
     "出していない明細を取り消し、出した明細の数を出荷済みの数に直す変更を「変更」で送ってください。"
 )
+#: 発注書を seizou の外で送った発注 (sent_outside_at がある) の、受入の後の取消の断りの字。断る条件は _CANCEL_SHIPPED_MESSAGE と同じ。
+#: この発注には「変更」が出ない (相手へ送る道が無い) ので、行える道 (明細の完了 = mark_completed) を指す (518 回目の本体の直し)
+_CANCEL_RECEIVED_OUTSIDE_MESSAGE = (
+    "取り消せません。受入を記録した発注は取り消せません。"
+    "残りを受け取らないときは、明細の行の ⋮ の「完了にする」で終わらせ、取引先には自分で伝えてください。"
+)
 
 
 def _dec(value):
@@ -295,7 +301,8 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
     一部でも相手が出荷済みの明細があれば、取消は送らず「変更」の道を案内する字で断る。「納品された」「取消」とつながりの無い送った発注も断る。
     発注書を seizou の外で送った発注 (sent_outside_at が空でない = mark_sent_outside で「送った」にした発注) は、状態が CHANGEABLE_STATUSES でも
     「下書き」の取消と同じ道で、相手へ送らずに取り消す (つながりの有無を見ない。版・目的・明細状態コードも変えない)。
-    受入が 1 つでもあれば (known_shipped_qty は受入の数も見る)、今の断り (_CANCEL_SHIPPED_MESSAGE) のまま。
+    受入が 1 つでもあれば (known_shipped_qty は受入の数も見る)、今までどおり断る。断りの字は、この発注で行える道 (明細の行の ⋮ の「完了にする」)
+    を指す (_CANCEL_RECEIVED_OUTSIDE_MESSAGE。_CANCEL_SHIPPED_MESSAGE の「変更」は、つながりの無い発注には出ないため。518 回目)。
     reason が空でなければ、備考の末尾に改行して「取消の理由: …」を足す (受注の取消と同じ形)。
     訳: 相手が 1 個も出していない送った発注は、取消 (中小企業共通 EDI の注文書目的コード 1 打切り) を相手へ送れるようにし、出した後は数を直す変更で残りを止めるため。出所 = 作者の決め (11-06 23:2x)・作者の決め (11-06 23:1x)・作者の決め (11-07 06:33。取消を送れるのは相手が 1 個も出していない間だけ)。
     変えてよい条件 = 作者の決めの答えが変わったとき。
@@ -309,7 +316,10 @@ def cancel_purchase_order(purchase_order, user, *, reason=""):
         if locked.status in CHANGEABLE_STATUSES:
             lines = _live_lines(locked)
             if any(known_shipped_qty(line) > 0 for line in lines):
-                raise ValueError(_CANCEL_SHIPPED_MESSAGE)
+                # 断る条件は同じ。字だけ、その発注で行える道を指す物にする (seizou の外で送った発注には「変更」が出ない)
+                raise ValueError(
+                    _CANCEL_RECEIVED_OUTSIDE_MESSAGE if locked.sent_outside_at is not None else _CANCEL_SHIPPED_MESSAGE
+                )
             # seizou の外で送った発注は、相手へ送らずに取り消す (sent は偽のまま。下の「下書き」の取消と同じ道)
             if locked.sent_outside_at is None:
                 if not _has_send_connection(locked.partner):

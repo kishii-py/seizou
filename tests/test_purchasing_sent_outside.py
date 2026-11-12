@@ -370,13 +370,25 @@ def test_cancel_sent_outside_without_sending(logged_in, user, partner, item):
 
 @pytest.mark.django_db
 def test_cancel_sent_outside_after_receipt_is_refused(user, partner, item):
+    """受入のある発注の取消は、今までどおり断る。断りの字は、その発注で行える道を指す (518 回目の本体の直し)。
+
+    つながりのある発注の断りは「変更」で送る道を案内するが、seizou の外で送った発注には「変更」が出ない (つながりが無い)。
+    残りを受け取らない時の道は、明細の行の ⋮ の「完了にする」(受入の足りないまま終える)。
+    """
     po = services.mark_sent_outside(_draft(partner, user, item), user)
     services.receive(po.lines.get(), Decimal("2"), DAY, user)
     with pytest.raises(ValueError) as refused:
         services.cancel_purchase_order(po, user)
-    assert str(refused.value) == services._CANCEL_SHIPPED_MESSAGE
+    message = str(refused.value)
+    assert message.startswith("取り消せません。") and "「完了にする」" in message
+    assert "「変更」" not in message and "送れません" not in message
     po.refresh_from_db()
     assert po.status == PurchaseOrder.STATUS_SENT
+
+    # 断りの字が指す道が通る: 明細を完了にすると、発注は「納品された」になる
+    services.mark_completed(po.lines.get(), user)
+    po.refresh_from_db()
+    assert po.status == PurchaseOrder.STATUS_DELIVERED
 
 
 @pytest.mark.django_db
