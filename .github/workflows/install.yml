@@ -18,9 +18,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      # 改行を CRLF に変えずに取り出す (windows.yml と同じ)。
-      - name: 改行を変えない設定にする
-        run: git config --global core.autocrlf false
+      # Windows では、Git for Windows の既定 (core.autocrlf=true) で取り出す (使う人と同じ。windows.yml と同じ)。
+      # .gitattributes が字のファイルを LF にそろえるので、この設定でも画面が開くまでが通る事を見る。
+      - name: Windows では Git for Windows の既定の改行の設定にする
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
