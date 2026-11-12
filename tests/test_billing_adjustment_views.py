@@ -100,6 +100,8 @@ def test_detail_shows_adjustment_button_for_issued_invoice(client_logged_in, inv
     assert f'data-modal-form="{_create_url(invoice)}?next=' in panel
     assert 'data-modal-form="' + reverse("billing:payment_create", args=[invoice.pk]) in panel
     assert _summary(panel) == {"合計": "¥16,500", "入金済み": "¥0", "調整": "¥0", "残": "¥16,500"}
+    # 合計・入金済み・調整・残 の 4 つは 1 行に並ぶ (sm 以上で 4 列。3 列だと「残」だけが 2 行目に回る。510 回目)
+    assert '<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-4">' in panel
     # 調整の無い請求書には調整の並びを出さない
     assert _adjustment_rows(panel) == [] and "<h3" not in panel
 
