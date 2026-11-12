@@ -1338,7 +1338,7 @@ def _can_proceed(user, action) -> bool:
 _UNDELIVERED_TASKS = (
     {"key": "reply_undelivered", "count": _replies_undelivered, "label": "相手に届いていない注文回答", "unit": "件",
      "button": "受信した注文", "url_name": "connect:inbox_list", "params": {"f_reply_undelivered": "1"},
-     "action": "connect.accept", "flow": "sales"},
+     "action": "connect.send_reply", "flow": "sales"},
     {"key": "notice_undelivered", "count": _notices_undelivered, "label": "相手に届いていない出荷の知らせ", "unit": "件",
      "button": "出荷", "url_name": "shipping:shipment_list", "params": {"f_notice_undelivered": "1"},
      "action": "connect.send_shipping_notice", "flow": "sales"},

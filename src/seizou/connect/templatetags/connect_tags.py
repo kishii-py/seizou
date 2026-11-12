@@ -62,9 +62,19 @@ def can_accept_inbox(context):
     return access.write_allowed(context["request"].user, access.action_name(services.accept))
 
 
+@register.simple_tag(takes_context=True)
+def can_resend_reply(context):
+    """今の利用者が注文回答を送り直せるか ({% can_resend_reply as can_resend %})。受信した注文の詳細の「送り直す」を出すかの判定。
+
+    編集の判定が on のとき受注の権限で偽になりうる。金額の判定では偽にならない (送り直しは金額に関わる操作でない = 本人の決め 11-12 14:3x)。
+    「受け入れる」などの入口は can_accept_inbox のまま (金額に関わる操作)。
+    """
+    return access.write_allowed(context["request"].user, access.action_name(services.send_reply))
+
+
 @register.simple_tag
 def reply_resendable(inbox) -> bool:
-    """受信した注文の詳細の注文回答の枡に「送り直す」を出すか ({% reply_resendable object as resendable %})。読むだけ。権限は呼ぶ側が can_accept_inbox で見る。
+    """受信した注文の詳細の注文回答の枡に「送り直す」を出すか ({% reply_resendable object as resendable %})。読むだけ。権限は呼ぶ側が can_resend_reply で見る。
 
     入口が直接で、まだ相手に届いていない (送った日時が空) 行のうち、答えのタイプ (reply_type) がある行か、
     送ろうとして届かなかった行 (保存した後の黄の知らせと同じ見方 = services._reply_undelivered)。

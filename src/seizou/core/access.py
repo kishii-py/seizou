@@ -140,6 +140,9 @@ _KIND_ACTIONS = {
         "connect.reject",
         "connect.accept_with_conditions",
         "connect.hold",
+        # 注文回答を相手へ送り直す口 (受信した注文の詳細の「送り直す」)。すでに決まった答えを同じ中身でもう一度送るだけで、答えを決め直さない。
+        # 金額を決める操作ではないので MONEY_ACTIONS に入れない (本人の決め 11-12 14:3x。出荷の知らせと検収の送り直しと同じ扱い)
+        "connect.send_reply",
         "intake.extract_order",
         "intake.accept_extracted",
     ),

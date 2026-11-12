@@ -1,8 +1,9 @@
 """受信した注文の詳細の注文回答の「送り直す」の口。
 
 画面でない口なので関数の view (R15 は class だけを見る)。書くのは connect.services.send_reply だけ (R13)。
-権限は access.require_write。action は承認と同じ connect.accept (注文回答は承認と断るの結果を返す物なので、
-承認できる人が送り直す。core/access.py に connect.send_reply が無いため = 要望)。
+権限は access.require_write。action は connect.send_reply (受注の種類の編集の権限。金額に関わる操作ではない)。
+送り直しは、すでに決まった答えを同じ中身でもう一度送るだけなので、受注を編集できる人なら、金額の閲覧が無くても送り直せる
+(本人の決め 11-12 14:3x。前は承認と同じ connect.accept で、金額の閲覧の無い人は送り直せなかった)。
 部署の門は置かない (検収と出荷の知らせの送り直しと同じ扱い)。
 """
 
@@ -21,7 +22,7 @@ from . import services
 from .models import Inbox
 
 #: 権限の表の action の名前 (字で書かず関数から作る = 名前がずれない)
-ACTION = access.action_name(services.accept)
+ACTION = access.action_name(services.send_reply)
 
 
 @login_required

@@ -1,7 +1,8 @@
 """受信した注文の詳細の注文回答の「送り直す」の口 (connect/reply.py の resend_reply。精査 A1 の想定外 S8)。
 
 承認か断りの後に注文回答が届かなかった受信した注文は、詳細の注文回答の枡に「送り直す」が出る。押すと services.send_reply を
-呼び、受信した注文の詳細へ戻る。権限は承認と同じ connect.accept。
+呼び、受信した注文の詳細へ戻る。権限は connect.send_reply (受注の編集の権限。金額の閲覧は要らない = 本人の決め 11-12 14:3x。
+金額の閲覧の無い人の出方は tests/test_connect_reply_resend_permission.py)。
 1 つの DB に 2 社の役を置く形と、偽の requests.post は test_connect_reply.py と同じ (外へは HTTP を送らない)。
 鍵はテストのたびに作り、環境変数に置く。取引先・品目・会社は作り物。
 """
