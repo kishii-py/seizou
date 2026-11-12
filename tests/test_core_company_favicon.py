@@ -20,10 +20,15 @@ from PIL import Image
 
 from seizou.core import services
 from seizou.core.models import Company
+from seizou.core.templatetags.seizou_static import stamped_static
 
 ICON = "company/favicon.png"
 TOUCH = "company/apple-touch-icon.png"
-SVG_LINE = '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">'
+
+
+def svg_line():
+    """static の favicon.svg を指す head の行 (URL には中身の印 ?v= が付く。N442)。"""
+    return f'<link rel="icon" href="{stamped_static("favicon.svg")}" type="image/svg+xml">'
 
 
 @pytest.fixture
@@ -84,13 +89,14 @@ def test_unreadable_logo_is_saved_without_icons(admin, media, caplog):
 def test_head_points_to_company_icons_or_svg(admin, media):
     anonymous = Client()
     body = anonymous.get(reverse("core:login")).content.decode()
-    assert SVG_LINE in body and 'rel="apple-touch-icon"' not in body
+    assert svg_line() in body and 'rel="apple-touch-icon"' not in body
+    assert 'href="/static/favicon.svg?v=' in body
 
     services.update_company(services.company(), {"logo": png_upload()}, admin)
     body = anonymous.get(reverse("core:login")).content.decode()
     assert '<link rel="icon" href="/media/company/favicon.png?v=' in body  # 字は test_core_company_icons.py が見る (N173)
     assert '<link rel="apple-touch-icon" href="/media/company/apple-touch-icon.png?v=' in body
-    assert body.count('rel="icon"') == 1 and SVG_LINE not in body
+    assert body.count('rel="icon"') == 1 and svg_line() not in body and "/static/favicon.svg" not in body
     # ログインの前のタブにも出すので、印の 2 つはログインしていなくても返す
     for name in (ICON, TOUCH):
         response = anonymous.get("/media/" + name)

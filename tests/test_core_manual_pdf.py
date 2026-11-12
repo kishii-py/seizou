@@ -25,6 +25,7 @@ from seizou.core import manual as core_manual
 from seizou.core import reports, services
 from seizou.core.manual import fragment_name
 from seizou.core.screens import all_screens
+from seizou.core.templatetags.seizou_static import stamped_static
 
 ITEM_FRAGMENT = (
     "<section><h2>部品マスター</h2><p>作り物の説明の字</p>"
@@ -204,7 +205,8 @@ def test_booklet_has_cover_toc_and_chapters(db, manual):
     assert "display: none" not in style.group(1)
     assert ".booklet-chapter img {" in style.group(1)
     assert "max-width: 100%" in style.group(1)
-    assert 'href="/static/css/report.css"' in html
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'href="{stamped_static("css/report.css")}"' in html and 'href="/static/css/report.css?v=' in html
     assert "csrf" not in html.lower()
 
 

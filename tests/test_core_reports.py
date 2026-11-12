@@ -16,6 +16,7 @@ from django.urls import reverse
 
 import seizou.core
 from seizou.core import reports
+from seizou.core.templatetags.seizou_static import stamped_static
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -59,7 +60,8 @@ def test_render_html_returns_sample_text():
     for line in context["lines"]:
         assert line["item_name"] in html
     assert "116,150" in html
-    assert 'href="/static/css/report.css"' in html
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'href="{stamped_static("css/report.css")}"' in html and 'href="/static/css/report.css?v=' in html
 
 
 def test_reports_module_imports_without_weasyprint(reports_without_weasyprint):

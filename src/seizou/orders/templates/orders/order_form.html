@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load static seizou_icons %}
+{% load seizou_static seizou_icons %}
 {# 金額の閲覧の無い人には、この画面は開いた時点で断る (本人の決め 11-12 07:2x)。seizou.hide_money の分かれは、直に送って断られた時と欄の誤りの描き直しで、金額と単価を見せないための守りとして残す (本人の決め 11-12 14:0x。消さない。試験 = tests/test_money_forms_hide_on_post.py)。 #}
 {% block content %}
 {# 受注の入力: 受注の項目 (2 列の格子) と明細の行の表を 1 つの form に。知らせと「このまま保存」は core/form.html と同じ約束。 #}

@@ -132,7 +132,8 @@ def test_viewer_shows_tools_and_gated_image(logged_in, user):
     assert "data-drawing-viewer" in body
     assert image_sources(body) == [gate(item, "preview.png")]
     assert "/media/" not in body
-    assert re.search(r'<script src="[^"]*masters/drawing-viewer\.js" defer></script>', body)
+    # URL には中身の印 ?v= が付く (N442)
+    assert re.search(r'<script src="/static/masters/drawing-viewer\.js\?v=[0-9a-f]{10}" defer></script>', body)
     assert f'href="{gate(item, "original.tif")}" download' in body
     assert f'href="{reverse("masters:item_detail", args=[item.pk])}"' in body
     assert "ページ 1 / 1" in body

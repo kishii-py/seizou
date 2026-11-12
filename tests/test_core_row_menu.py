@@ -141,8 +141,8 @@ def test_base_loads_js_after_select(client):
     body = client.get(reverse("core:home")).content.decode()
 
     scripts = re.findall(r"<script [^>]*src=\"([^\"]+)\"[^>]*>", body)
-    menu = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-row-menu.js")]
-    select = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-select.js")]
+    menu = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-row-menu.js?v=")]
+    select = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-select.js?v=")]
     assert len(menu) == 1 and len(select) == 1
     assert menu[0] == select[0] + 1
     tag = re.search(r"<script [^>]*js/seizou-row-menu\.js[^>]*>", body).group(0)

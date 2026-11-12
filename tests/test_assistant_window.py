@@ -9,6 +9,8 @@ import pytest
 from django.contrib.staticfiles import finders
 from django.urls import reverse
 
+from seizou.core.templatetags.seizou_static import stamped_static
+
 from tests import test_assistant_views
 
 # AI チャットの窓の試験の fixture を借りる (pytest は module の名前で fixture を見つける)。
@@ -40,7 +42,8 @@ def test_window_has_grip_and_expand_button(key, request, client_logged_in):
 def test_window_script_is_loaded(with_key, client_logged_in, client):
     html = client_logged_in.get(reverse("core:home")).content.decode()
 
-    assert f'src="/static/{WINDOW_JS}" defer' in html
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'src="{stamped_static(WINDOW_JS)}" defer' in html and f'src="/static/{WINDOW_JS}?v=' in html
     assert finders.find(WINDOW_JS)
     client.logout()
     assert WINDOW_JS not in client.get(reverse("core:login")).content.decode()

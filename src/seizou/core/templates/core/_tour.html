@@ -1,4 +1,4 @@
-{% load static seizou_icons %}
+{% load seizou_static seizou_icons %}
 {# ガイドツアーの段の JSON と、枠と吹き出しの markup。段のある画面だけ出す (core.tours の TOURS を seizou_tour の tag が渡す)。動きは core の static の seizou-tour.js。class は固定の字で、JS は class を足さない (Tailwind はテンプレートの字だけを読むため)。 #}
 {% if steps %}
 {{ steps|json_script:"seizou-tour" }}

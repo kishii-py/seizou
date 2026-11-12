@@ -22,6 +22,7 @@ from django.views import defaults
 import seizou.core
 from seizou.core import fields as company_fields
 from seizou.core import urls as core_urls
+from seizou.core.templatetags.seizou_static import stamped_static
 from seizou.core.views import BaseListView
 from seizou.masters.models import Item, ItemProcess, Partner, PartnerItem, Process
 
@@ -282,7 +283,9 @@ def test_csrf_failure_page_is_japanese():
 @pytest.mark.django_db
 def test_favicon_link_and_file(client):
     body = text(client.get(reverse("core:login")))
-    assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in body
+    # URL には中身の印 ?v= が付く (N442)
+    assert f'<link rel="icon" href="{stamped_static("favicon.svg")}" type="image/svg+xml">' in body
+    assert 'href="/static/favicon.svg?v=' in body
     assert FAVICON.read_text(encoding="utf-8").startswith("<svg")
 
 

@@ -1,5 +1,5 @@
 {% extends "core/list.html" %}
-{% load seizou_icons seizou_tags static %}
+{% load seizou_icons seizou_tags seizou_static %}
 {# 注文残の一覧 (注残の盤): 土台の一覧に、受注の一覧への入口を足す。絞り (出荷の残りがある物だけ・納期・納期が過ぎた物だけ) は土台の絞り込みの枠の中 (orders/views.py の宣言。決め 11-04 17:3x)。 #}
 {% block actions %}<a class="btn btn-outline border-base-300" href="{% url 'orders:order_list' %}" data-tour="order-link">{% icon "clipboard" "size-4" %}受注の一覧</a>{{ block.super }}{% endblock %}
 {# 題の下の 1 行は、この画面だけに出す (決め 11-04 18:1x。題は「生産管理ボード」、中身は受注残)。 #}

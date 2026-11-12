@@ -370,8 +370,8 @@ def test_js_file_keeps_promises():
 def test_base_loads_js_after_modal(logged_in):
     body = logged_in.get(reverse("core:home")).content.decode()
     scripts = re.findall(r'<script src="([^"]+)"', body)
-    label = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-submit-label.js")]
-    modal = [i for i, src in enumerate(scripts) if src.endswith("js/seizou-modal.js")]
+    label = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-submit-label.js?v=")]
+    modal = [i for i, src in enumerate(scripts) if src.startswith("/static/js/seizou-modal.js?v=")]
     assert len(label) == 1 and len(modal) == 1
     assert label[0] > modal[0]
     assert "defer" in re.search(r"<script [^>]*js/seizou-submit-label\.js[^>]*>", body).group(0)

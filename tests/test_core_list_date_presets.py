@@ -231,7 +231,7 @@ def test_date_presets_js_is_small_and_plain():
 def test_base_loads_date_presets_js_with_defer(client_logged_in):
     body = client_logged_in.get(reverse("core:home")).content.decode()
 
-    scripts = [src for src in SCRIPT_SRC.findall(body) if src.endswith("js/seizou-date-presets.js")]
+    scripts = [src for src in SCRIPT_SRC.findall(body) if src.startswith("/static/js/seizou-date-presets.js?v=")]
     assert len(scripts) == 1
     tag = re.search(r"<script [^>]*js/seizou-date-presets\.js[^>]*>", body).group(0)
     assert "defer" in tag

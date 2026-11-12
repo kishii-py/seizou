@@ -17,6 +17,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from seizou.core import access
+from seizou.core.templatetags.seizou_static import stamped_static
 from seizou.masters import services as masters_services
 from seizou.masters.models import Process
 from seizou.notes import services
@@ -80,8 +81,10 @@ def test_note_panel_on_workorder_and_order_detail(client_logged_in, user, order,
         assert "メモはまだありません。" in html, url
         data = target_data(obj)
         assert f'{reverse("notes:note_edit")}?content_type={data["content_type"]}&amp;object_id={obj.pk}' in html, url
-        assert 'src="/static/vendor/quill.js" defer' in html
-        assert 'src="/static/notes/note-editor.js" defer' in html
+        # URL には中身の印 ?v= が付く (N442)
+        assert f'src="{stamped_static("vendor/quill.js")}" defer' in html
+        assert f'src="{stamped_static("notes/note-editor.js")}" defer' in html
+        assert 'src="/static/vendor/quill.js?v=' in html and 'src="/static/notes/note-editor.js?v=' in html
 
     services.save_note(order, "<h2>段取り</h2><p>注意<script>alert(1)</script></p>", user)
     html = client_logged_in.get(reverse("orders:order_detail", args=[order.pk])).content.decode()

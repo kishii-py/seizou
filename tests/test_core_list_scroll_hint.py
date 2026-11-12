@@ -164,7 +164,7 @@ def test_base_loads_scroll_hint_once_with_defer(logged_in):
     """base.html は新しい JS を 1 回だけ defer で読む (並びの中の位置は見ない。後から足す 1 行と順が入れ替わっても通るように)。"""
     body = logged_in.get(reverse("core:home")).content.decode()
 
-    scripts = [src for src in SCRIPT_SRC.findall(body) if src.endswith("js/seizou-scroll-hint.js")]
+    scripts = [src for src in SCRIPT_SRC.findall(body) if src.startswith("/static/js/seizou-scroll-hint.js?v=")]
     assert len(scripts) == 1
     tag = re.search(r"<script [^>]*js/seizou-scroll-hint\.js[^>]*>", body).group(0)
     assert "defer" in tag
