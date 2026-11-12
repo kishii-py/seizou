@@ -167,6 +167,8 @@ _KIND_ACTIONS = {
         "billing.record_payment",
         "billing.cancel_payment",
         "billing.record_outside_payment",
+        "billing.record_adjustment",
+        "billing.cancel_adjustment",
         # 受けた仕入明細に答える (作者の決め。金額を確かめて得意先へ返すのは、請求書と入金を扱う人の仕事)
         "connect.answer_self_invoice",
     ),
@@ -281,6 +283,9 @@ MONEY_ACTIONS = {
     # 請求書と入金の取消は、請求と入金の金額を戻す操作
     "billing.cancel_invoice": ("請求書", "取り消せません"),
     "billing.cancel_payment": ("入金", "取り消せません"),
+    # 調整 (依頼書 N409b) は請求書の残の金額を変える操作なので、入金の記録と取消と同じ扱い
+    "billing.record_adjustment": ("調整", "記録できません"),
+    "billing.cancel_adjustment": ("調整", "取り消せません"),
     # 発注の新規登録 (明細の単価の欄が必須 = 作者の決め。入口ごと出さない)・変更 (数の変更で金額が変わる)・取消
     "purchasing.create_purchase_order": ("発注", "新規登録できません"),
     "purchasing.change_purchase_order": ("発注", "変更できません"),

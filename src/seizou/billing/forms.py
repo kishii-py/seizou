@@ -20,6 +20,8 @@
 - 入金の form: 入金日・金額・入金の方法・期日・備考。請求書は土台が URL の pk で引き、record_payment の 1 つ目の引数に渡す (欄に持たない)。
   金額の 0 以下は欄の横で断る (services でも断る)。入金を取り消す form は欄が無い (土台が cancel_payment(入金, user=...) を呼ぶ)。
   期日は手形と電子記録債権のときに必ず入れる (空なら期日の欄の誤り。services の _payment_values も断る)。方法で欄を出し入れする JS は無い。
+- 調整の form (AdjustmentForm。依頼書 N409b): 調整日・金額 (1 円単位の整数。マイナスを許し、0 は欄の誤り)・訳・備考。請求書は土台が URL の pk で引く。
+  金額の初めの値は、入金済みが 0 より大きく残が 0 より大きい請求書なら −残。調整を取り消す form は欄が無い (土台が cancel_adjustment(調整, user=...) を呼ぶ)。
 - 入金と請求書の取消の保存のボタンの字は、押した結果の金額と対象を書く (開発の記録 docs/nights/20261104/N138.md。字を組むのは core の SubmitLabelMixin)。
 """
 
@@ -35,6 +37,7 @@ from seizou.core.templatetags.seizou_tags import comma
 from seizou.core.widgets import IsoDateInput
 from seizou.masters.services import PRICE_BASIS_LUMP
 
+from .models import Adjustment
 from .models import Invoice
 from .models import Payment
 from .services import (
@@ -767,6 +770,84 @@ class PaymentCancelForm(forms.Form):
     """入金を取り消す form。欄は無い。"""
     submit_label = "取り消す"
     danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (core/_form_card.html。作者の決め)
+
+    def service_kwargs(self):
+        return {}
+
+
+class AdjustmentForm(SubmitLabelMixin, forms.Form):
+    """請求書に調整 (値引き・振込手数料・相殺・端数・その他) を記録する form (billing.services.record_adjustment。依頼書 N409b)。
+
+    欄は 調整日・金額・訳・備考。請求書は欄に持たない (土台が URL の pk の請求書を record_adjustment の 1 つ目の引数に渡す)。
+    金額は 1 円単位の整数で、マイナスを許す (残を減らす調整はマイナス)。0 は欄の誤り (services も断る)。
+    開いた form は、入金済みが 0 より大きく残が 0 より大きい請求書なら、金額の初めの値を −残 にする (金額の閲覧の無い人には入れない)。
+    保存のボタンは「¥-660 の調整を記録する」(金額を入れる前は「調整を記録する」。字を組むのは core の SubmitLabelMixin)。
+    """
+
+    submit_label_plain = "調整を記録する"
+
+    adjusted_on = forms.DateField(
+        label="調整日",
+        initial=timezone.localdate,
+        widget=IsoDateInput(attrs={"class": "input w-full"}),
+    )
+    amount = forms.DecimalField(
+        label="金額",
+        max_digits=14,
+        decimal_places=0,
+        help_text="残を減らすときはマイナスで入れます (振込手数料 660 円なら -660)。",
+        # 数でない字と小数は直し方の分かる字にする。空の字は入力の土台がまとめて「金額を入れてください。」にする。
+        error_messages={
+            "invalid": "金額は -660 のように数字で入れてください。",
+            "max_decimal_places": "調整の金額は 1 円単位の整数で入れてください。",
+        },
+        widget=PlainNumberInput(attrs={"class": "input w-full", "data-label-amount": True}),
+    )
+    reason = forms.ChoiceField(label="訳", choices=Adjustment.REASON_CHOICES, initial=Adjustment.REASON_FEE)
+    note = forms.CharField(
+        label="備考", max_length=500, required=False, widget=forms.TextInput(attrs={"class": "input w-full"})
+    )
+
+    def __init__(self, *args, instance=None, hide_money=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if instance is None or hide_money:
+            return
+        balance = instance.balance()
+        if instance.paid_total() > 0 and balance > 0:
+            self.fields["amount"].initial = -balance
+
+    def clean_amount(self):
+        """金額が 0 なら欄の誤り (段 1)。
+
+        訳: 0 の調整は請求書の残を変えず、記録だけが残って台帳の行が増えるため (表の制約 billing_adjustment_amount_not_zero と
+        services の _adjustment_amount も 0 を断る。画面では欄の横で先に断る)。出所 = 依頼書 N409b (欄の誤りの字)・N409 の表の作り。
+        変えてよい条件 = 本人が 0 の調整を残す決めをしたとき (表の制約と services も一緒に変える)。
+        """
+        value = self.cleaned_data.get("amount")
+        if value is not None and value == 0:
+            raise forms.ValidationError("調整の金額は 0 でない数にしてください。")
+        return value
+
+    def submit_label_templates(self) -> list:
+        return ["¥{amount} の調整を記録する"]
+
+    def submit_label_values(self) -> dict:
+        return {"amount": label_number(self.submit_value("amount"))}
+
+    def service_kwargs(self):
+        data = self.cleaned_data
+        return {
+            "adjusted_on": data["adjusted_on"],
+            "amount": data["amount"],
+            "reason": data["reason"],
+            "note": data["note"],
+        }
+
+
+class AdjustmentCancelForm(forms.Form):
+    """調整を取り消す form。欄は無い (土台が cancel_adjustment(調整, user=...) を呼ぶ)。"""
+    submit_label = "取り消す"
+    danger = True  # 実行のボタンを削除の確かめと同じ赤 (btn btn-error) にする (入金の取消と同じ)
 
     def service_kwargs(self):
         return {}

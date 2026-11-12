@@ -7,6 +7,8 @@
 出荷日と出荷番号の欄は、出荷の行は明細の出荷日と出荷番号の写し (出荷を消した行も同じ字。依頼書 N403c)、
 一式の行 (出荷に結び付かない行。作者の決め) は最後の出荷日と「受注 <番号>-<行> の一式」(InvoiceLine.shipped_on・ref_no)。
 各行の customer_order_no は、得意先が自分の注文番号で照合するため (作者の決め)。空なら帳票に出ない。
+前回の残 (previous_balance) は請求書を作る時の写し (会社の設定が「載せる」のときだけ。空なら None)。今回のご請求額 (billed_now) は
+写しと合計の足し算だけで、写しが空なら None (帳票は今の字のまま)。写した後に入金と調整が変わっても、刷る字は変わらない (依頼書 N409b)。
 """
 
 from decimal import Decimal
@@ -40,6 +42,7 @@ def invoice_context(invoice):
             }
         )
     current = company()
+    previous_balance = invoice.previous_balance
     return {
         "company": {
             "name": current.name,
@@ -61,6 +64,8 @@ def invoice_context(invoice):
         "subtotal": invoice.subtotal,
         "tax": invoice.tax,
         "total": invoice.total,
+        "previous_balance": previous_balance,
+        "billed_now": None if previous_balance is None else previous_balance + invoice.total,
         "tax_rate_percent": _percent_text(invoice.tax_rate),
         "cancelled": invoice.status == invoice.STATUS_CANCELLED,
     }
