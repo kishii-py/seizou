@@ -217,7 +217,8 @@ class OrderModalView(BaseModalView):
     screen_help = "受注の要点 (得意先・日付・状態・明細・合計) を見るだけの小窓。受注の一覧の行の目の印から開き、詳細へ移れます。"
 
     def get_queryset(self):
-        # 詳細 (OrderDetailView.get_queryset) と同じ読み方: 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む。
+        # 詳細 (OrderDetailView.get_queryset) の明細と同じ読み方: 明細は出荷済みの数と残の数 (annotate_remaining) を付けて、行番号の順に 1 回で読む
+        # (詳細だけが辿る指示書・出荷・請求書・検収の先読みは、小窓では足さない)。
         lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
         return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
 

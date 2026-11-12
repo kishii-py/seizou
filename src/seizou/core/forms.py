@@ -295,7 +295,10 @@ class SettingForm(forms.Form):
                 max_length=200,
                 required=False,
                 initial=values["site_url"],
-                help_text="メールのリンクの頭。人がこの seizou を開く URL の頭です (例 https://seizou.example.jp)。空ならリンクを付けません。",
+                help_text=(
+                    "メールのリンクと、現品票の QR の頭。人がこの seizou を開く URL の頭です (例 https://seizou.example.jp)。"
+                    "空なら、メールにリンクを付けず、現品票の QR は刷った時に開いていた住所になります。"
+                ),
             )
         elif key == "hidden_fields":
             self.fields[self.HIDDEN_FIELDS_FIELD] = forms.MultipleChoiceField(
