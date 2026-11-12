@@ -23,6 +23,7 @@
   その人が進められない行 (行の書く action を編集の権限・金額の閲覧・部署で行えない。作者の決め) は外し、何も残らなければ None)。
   協力企業に出していない工程の行は指示書の一覧を絞り「協力企業に出していない工程があるだけ」で、協力企業に渡していない明細の行は発注の一覧を
   絞り「渡していない明細があるだけ」で開く (数え方と絞りは purchasing.services の同じ関数。数は行の数、一覧は指示書か発注の件数)。
+  流れごとの段の行の後に、相手に届いていない注文回答・出荷の知らせ・検収の行 (_UNDELIVERED_TASKS。件数が 1 以上の物だけ) を足し、受信した注文・出荷・受入の素の一覧へ移す。
 - flow_neighbors: 画面の URL の名前から、流れの中の前後の段の画面 (「案内」の小窓の link)。
 - reading_match: 読み取りの一致率 (読んだ明細のうち、そのまま受注に残った行と人が直した行の数。intake の outcome が数える)。見張りの道 (受信した注文を経て受注にした読み取り) も数える。
 - どれも読むだけで、表に書かない。金額の掛け算と丸めと合計は Python で行う (R03。DB で計算しない)。
@@ -1193,6 +1194,62 @@ def _lines_not_handed():
     return lines_not_handed()
 
 
+def _replies_undelivered():
+    """相手に届いていない注文回答。受信した注文のうち、入口が直接で、注文回答のタイプが空でなく (答えた)、送った日時が空で、返事の欄が空でなく、
+    送る物でない字 (connect.services の MESSAGE_REPLY_SEED・MESSAGE_REPLY_INTAKE) でない物。connect の部品が無ければ None。読むだけ。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    inbox_model = _model("connect", "Inbox")
+    if inbox_model is None:
+        return None
+    from seizou.connect.services import MESSAGE_REPLY_INTAKE, MESSAGE_REPLY_SEED
+
+    return (
+        inbox_model._default_manager.filter(source=inbox_model.SOURCE_DIRECT, reply_sent_at__isnull=True)
+        .exclude(reply_type="")
+        .exclude(reply_response="")
+        .exclude(reply_response__in=(MESSAGE_REPLY_SEED, MESSAGE_REPLY_INTAKE))
+    )
+
+
+def _notices_undelivered():
+    """相手に届いていない出荷の知らせ。出荷のうち、送った日時が空で、返事の欄が空でなく、送る物でない字
+    (shipping.services の MESSAGE_NOTICE_SEED・connect.services の MESSAGE_SHIPPING_NOT_EDI_ORDER) でない物。shipping か connect の部品が無ければ None。読むだけ。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    shipment_model = _model("shipping", "Shipment")
+    if shipment_model is None or _model("connect", "Connection") is None:
+        return None
+    from seizou.connect.services import MESSAGE_SHIPPING_NOT_EDI_ORDER
+    from seizou.shipping.services import MESSAGE_NOTICE_SEED
+
+    return (
+        shipment_model._default_manager.filter(notice_sent_at__isnull=True)
+        .exclude(notice_response="")
+        .exclude(notice_response__in=(MESSAGE_NOTICE_SEED, MESSAGE_SHIPPING_NOT_EDI_ORDER))
+    )
+
+
+def _acceptances_undelivered():
+    """相手に届いていない検収。受入のうち、送った日時が空で、返事の欄が空でなく、送る物でない字
+    (connect.services の MESSAGE_ACCEPTANCE_NOT_SENT_ORDER) でない物。purchasing か connect の部品が無ければ None。読むだけ。
+
+    訳: 相手に届いていない注文回答・出荷の知らせ・検収を、詳細を開かなくても今日やることで気づけるようにするため (届かなかった物は自動では送り直さず、人が「送り直す」を押す)。作り物の種の読み込みと、相手が seizou でない物 (送る物でない) は数えない。相手に断られた物 (「断られた: …」) も、届いていない物として数える。出所 = 本体の決め 11-11 14:2x (精査 Q3 の T8・M4)。変えてよい条件 = 届いていない物の数え方を本人が決め直したとき。
+    """
+    receipt_model = _model("purchasing", "Receipt")
+    if receipt_model is None or _model("connect", "Connection") is None:
+        return None
+    from seizou.connect.services import MESSAGE_ACCEPTANCE_NOT_SENT_ORDER
+
+    return (
+        receipt_model._default_manager.filter(acceptance_sent_at__isnull=True)
+        .exclude(acceptance_response="")
+        .exclude(acceptance_response=MESSAGE_ACCEPTANCE_NOT_SENT_ORDER)
+    )
+
+
 # 数える段の鍵 (FLOWS の count) → 数える物の queryset を返す関数 (部品が無ければ None)。
 _FLOW_COUNTS = {
     "inbox": _received_inbox,
@@ -1283,6 +1340,64 @@ def _can_proceed(user, action) -> bool:
     return access.write_allowed(user, action) and access.can_open(user, action.split(".")[0], record=False)
 
 
+#: 相手に届いていない物の行 (今日やることで、属する流れの段の行の後に足す。FLOWS の段ではないので、「はじめての方へ」と案内の前後の段は変えない)。
+#: 1 行 = key・count (数える関数)・label (count_label)・unit・button (移る先の画面の名前)・url_name (移る先)・action (その行を進める書く action =
+#: 詳細の「送り直す」の口の action)・flow (属する流れの key)。移る先は素の一覧 (届いていない物だけの絞りは無い。受入の残の行と同じ扱い)。
+_UNDELIVERED_TASKS = (
+    {"key": "reply_undelivered", "count": _replies_undelivered, "label": "相手に届いていない注文回答", "unit": "件",
+     "button": "受信した注文", "url_name": "connect:inbox_list", "action": "connect.accept", "flow": "sales"},
+    {"key": "notice_undelivered", "count": _notices_undelivered, "label": "相手に届いていない出荷の知らせ", "unit": "件",
+     "button": "出荷", "url_name": "shipping:shipment_list", "action": "connect.send_shipping_notice", "flow": "sales"},
+    {"key": "acceptance_undelivered", "count": _acceptances_undelivered, "label": "相手に届いていない検収", "unit": "件",
+     "button": "受入", "url_name": "purchasing:receipt_list", "action": "connect.send_acceptance", "flow": "purchase"},
+)
+
+
+def _undelivered_rows(flow_key, user) -> list:
+    """流れ flow_key に属する、相手に届いていない物の行 (_UNDELIVERED_TASKS の順に、件数が 1 以上の物だけ)。問い合わせは 1 行につき 1 回。
+
+    行の辞書の鍵は today_tasks の行と同じ。数える関数が None を返す (部品が無い) か DB が読めない行は出さない (偽の 0 を置かない)。
+    user を渡すと、移る先の部品 (URL の名前の : の前) を部署で開けない行と、行の action を行えない行 (core.access の can_open と
+    write_allowed。記録は書かない) は数えずに外す。_can_proceed は使わない: _can_proceed は action の . の前の部品 (3 行とも connect) を
+    部署で開けるかも見るが、出荷の知らせと検収の「送り直す」の口は出荷と発注の画面にあり、口 (shipping/shipping_notice.py・
+    purchasing/acceptance.py) は access.require_write で action の種類 (出荷・購買) だけを見るため。
+    """
+    rows = []
+    for task in _UNDELIVERED_TASKS:
+        if task["flow"] != flow_key:
+            continue
+        url = _url(task["url_name"])
+        if url is None:
+            continue
+        if user is not None and not (
+            access.can_open(user, task["url_name"].split(":")[0], record=False)
+            and access.write_allowed(user, task["action"])
+        ):
+            continue
+        queryset = task["count"]()
+        if queryset is None:
+            continue
+        try:
+            count = queryset.count()
+        except DatabaseError:
+            continue
+        if not count:
+            continue
+        rows.append(
+            {
+                "key": task["key"],
+                "flow": flow_key,
+                "label": task["label"],
+                "count": count,
+                "unit": task["unit"],
+                "button": task["button"],
+                "url_name": task["url_name"],
+                "url": url,
+            }
+        )
+    return rows
+
+
 def today_tasks(user=None) -> dict | None:
     """「今日やること」の枠。flow_guide() の段のうち件数が 1 以上の物を、流れの順に 1 行ずつ並べる。読むだけで、ここでは問い合わせをしない (数は flow_guide の物)。
 
@@ -1296,6 +1411,7 @@ def today_tasks(user=None) -> dict | None:
     (行の移る先と段の url_name が違う物があり、段を先に外すと開ける行まで消えるため。例: 出荷の段は出荷の一覧、出荷の行は受注の一覧)。
     納品書に入っていない出荷と請求書に入っていない出荷の行は、その出荷だけが並ぶ作る画面へ移る (_task_targets)。移る先に合う絞りが無い段
     (受入の残) は素の一覧へ移る。
+    流れごとの段の行の後に、その流れに属する相手に届いていない物の行 (受注の流れに注文回答と出荷の知らせ、発注の流れに検収) を件数が 1 以上の物だけ足し、この行だけはここで 1 行につき 1 回数える (_undelivered_rows。素の一覧へ移る)。
     """
     guide = flow_guide()
     if guide is None:
@@ -1327,6 +1443,7 @@ def today_tasks(user=None) -> dict | None:
                     "url": f"{url}?{urlencode(params)}" if params else url,
                 }
             )
+        rows.extend(_undelivered_rows(flow["key"], user))
     if user is None:
         return {"title": TODAY_TITLE, "rows": rows, "guide": guide}
     guide = _open_guide(guide, user)
