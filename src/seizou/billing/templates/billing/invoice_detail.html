@@ -41,7 +41,7 @@
 </div>
 <div id="invoice-detail-refresh" hidden hx-get="{{ request.path }}" hx-trigger="seizou:refresh from:body" hx-select="#invoice-live" hx-target="#invoice-live" hx-swap="outerHTML" hx-select-oob="#invoice-heading"></div>
 {% endblock %}
-{% block after_tabs %}{# 入金の枠: 合計と入金済みと調整と残、入金の並び、調整の並び (調整のある請求書だけ)、入金と調整の記録と取消の入口 (調整の入口は小窓でなく画面の全体で開く。依頼書 N409b)。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md) #}
+{% block after_tabs %}{# 入金の枠: 前回の残の 1 行 (写しのある請求書だけ)、合計と入金済みと調整と残、入金の並び (期日の列は手形と電子記録債権の期日。空なら空)、調整の並び (調整のある請求書だけ)、入金と調整の記録と取消の入口 (調整の入口は小窓でなく画面の全体で開く。依頼書 N409b)。金額の閲覧が無い人には、合計と入金済みと残の行と、入金の並びの金額の列を出さない (「—」も出さない。開発の記録 docs/nights/20261105/N155.md) #}
 {% can_write "billing.Invoice" as can_bill %}
 <section id="payments" class="mt-6 scroll-mt-22 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="payments-heading">
   <div class="flex flex-wrap items-center justify-between gap-4">
@@ -51,6 +51,8 @@
     {% if object.status == "issued" and can_bill %}<div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}" data-modal-form="{% url 'billing:payment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}入金を記録する</a>
       <a class="btn btn-sm btn-outline border-base-300" href="{% url 'billing:adjustment_create' object.pk %}?next={{ request.get_full_path|urlencode }}">{% icon "plus" "size-4" %}調整を記録する</a></div>{% endif %}
   </div>
+  {# 前回の残の写しのある請求書 (会社の設定が「載せる」のときに作った請求書。依頼書 N409b): 枠の頭の下に「前回の残・今回のご請求額」の 1 行 (帳票と同じ値。写しのまま出し、計算し直さない)。灰色の地に字の行を直に置かないので、枠の中に置く。金額の閲覧が無い人には出さない #}
+  {% if not seizou.hide_money %}{% invoice_billed_now object as billed_now %}{% if billed_now is not None %}<p class="mt-4 text-sm text-base-content/70" data-previous-balance>前回の残 <span class="tabular-nums">{{ object.previous_balance|yen }}</span>・今回のご請求額 <span class="tabular-nums">{{ billed_now|yen }}</span></p>{% endif %}{% endif %}
   {% if not seizou.hide_money %}<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-3">
     <div><dt class="text-xs text-base-content/60">合計</dt><dd class="tabular-nums">{{ object.total|yen }}</dd></div>
     <div><dt class="text-xs text-base-content/60">入金済み</dt><dd class="tabular-nums">{{ object.paid_total|yen }}</dd></div>
@@ -66,6 +68,7 @@
           <th>入金日</th>
           {% if not seizou.hide_money %}<th class="text-right">金額</th>{% endif %}
           <th>入金の方法</th>
+          <th>期日</th>
           <th>備考</th>
           <th>記録した人</th>
           <th>記録の日時</th>
@@ -79,6 +82,7 @@
           <td class="whitespace-nowrap font-mono tabular-nums">{{ row.received_on|date:"Y-m-d" }}</td>
           {% if not seizou.hide_money %}<td class="whitespace-nowrap text-right tabular-nums">{{ row.amount|yen }}</td>{% endif %}
           <td class="whitespace-nowrap">{{ row.get_method_display }}</td>
+          <td class="whitespace-nowrap font-mono tabular-nums">{{ row.matures_on|date:"Y-m-d" }}</td>
           <td class="max-w-xs break-words text-base-content/70">{% if row.note %}{{ row.note }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td class="whitespace-nowrap">{% if row.recorded_by %}{{ row.recorded_by }}{% else %}<span class="text-base-content/60">—</span>{% endif %}</td>
           <td class="whitespace-nowrap font-mono tabular-nums">{{ row.recorded_at|date:"Y-m-d H:i" }}</td>

@@ -6,6 +6,7 @@
 - invoice_head_chips: 請求書の詳細の頭の要点の札「合計」「残」。形は orders の orders_detail の order_head_chips と同じ。
   取消の請求書と金額の閲覧の無い人には出さない (作者の決め)。
 - invoice_changed_note: 請求した後に出荷の数量が変わった明細の黄色の 1 行の字 (services.changed_lines。請求書の詳細が読む。依頼書 N403b)。
+- invoice_billed_now: 前回の残の写しのある請求書の今回のご請求額 (前回の残 + 合計。請求書の詳細の入金の枠の 1 行が読む。依頼書 N409b)。
 """
 
 from django import template
@@ -95,3 +96,15 @@ def invoice_changed_note(invoice) -> str:
     if not parts:
         return ""
     return f"請求した後に出荷の数量が変わった明細があります: {'・'.join(parts)}。請求書も直すときは、取り消して作り直してください。"
+
+
+@register.simple_tag
+def invoice_billed_now(invoice):
+    """{% invoice_billed_now object as billed_now %}。前回の残の写しのある請求書の今回のご請求額 (前回の残の写し + 合計)。写しが空なら None (読むだけ)。
+
+    帳票 (billing.reports.invoice_context の billed_now) と同じ足し算だけ (計算し直さない)。写しが 0 の請求書 (前の期間の請求書が無い得意先) も
+    写しのある請求書なので値を返す (空 = 会社の設定が「載せない」の間に作った請求書、0 = 「載せる」で数えた結果が 0。N409 の記録の 13)。
+    """
+    if invoice.previous_balance is None:
+        return None
+    return invoice.previous_balance + invoice.total

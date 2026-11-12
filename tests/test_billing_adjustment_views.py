@@ -309,6 +309,23 @@ def test_money_less_user_is_refused_on_open_and_on_post(on, client, user, paid_s
     assert Adjustment.objects.count() == 2
 
 
+# --- 入金の並びの期日の列 ---
+
+
+def test_payment_rows_show_maturity_column(client_logged_in, user, invoice):
+    """入金の並びに「期日」の列 (入金の方法の後)。手形の入金は期日が並び、期日の無い振込は空の欄 (「—」を出さない)。"""
+    services.record_payment(invoice, RECEIVED_ON, Decimal("6000"), user, method="bill", matures_on=date(2027, 2, 28))
+    services.record_payment(invoice, date(2026, 12, 20), Decimal("500"), user)
+
+    panel = _panel(_detail(client_logged_in, invoice))
+    head = re.search(r"<thead>(.*?)</thead>", panel, re.S).group(1)
+    assert re.findall(r"<th[^>]*>([^<]+)</th>", head) == ["入金日", "金額", "入金の方法", "期日", "備考", "記録した人", "記録の日時", "状態", "操作"]
+    rows = re.findall(r'<tr class="hover:bg-base-200">(.*?)</tr>', panel, re.S)
+    cells = [re.findall(r"<td[^>]*>(.*?)</td>", row, re.S) for row in rows]
+    by_method = {row[2]: row[3] for row in cells}
+    assert by_method == {"手形": "2027-02-28", "振込": ""}
+
+
 # --- 目録と無い行 ---
 
 
