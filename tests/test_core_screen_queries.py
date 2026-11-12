@@ -5,7 +5,9 @@
 ほかの引数の画面と、model の行の無い画面は飛ばし、名前を下の一覧に書いて数を固定する (黙って減らない)。
 応答は 200・302・404 のどれかで、SQL の数は上限の表 (無ければ共通の上限) 以下であること。上限だけを見るので、数を下げる直しは通る。
 上限の表は 11-06 に実測した数 (2 社で大きい方) に 5 を足した値。共通の上限は実測の最大に 10 を足した値。
-設定と休日の控え (conf と calendar) は画面ごとに捨てる。どの画面も控えの読みを 1 回ずつ含むので、数は開く順と所要の時間に依らない。
+設定と休日の控え (conf と calendar) と、Django の ContentType の控えは画面ごとに捨てる。どの画面も控えの読みを 1 回ずつ含むので、数は開く順と所要の時間に依らない。
+ContentType の控えは 11-12 (504 回目) に足した。捨てないと、添付ファイルの枠のある詳細 (納品書・指示書) の数が、同じ process で先に回った試験が
+控えを温めたかで 1 つ変わり、この試験だけを回すと落ちた (全部を回すと通った)。
 名前は作り物だけ (examples/companies の種)。
 """
 
@@ -14,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
@@ -152,7 +155,8 @@ LIMITS = {
     "shipping:shipment_modal": 8,  # 出荷の小窓 (依頼書 N346)。11-07 の実測 3 (2 社とも。htmx でない GET = 詳細へ移るだけ) + 5
     "shipping:deliverynote_list": 22,
     "shipping:deliverynote_create": 20,
-    "shipping:deliverynote_detail": 25,
+    # 11-12 に測り直した。実測 26 (ContentType の控えが空の時。発行の時の写しの枠の 1 回 = N410b を含む。2 社とも) + 5
+    "shipping:deliverynote_detail": 31,
     "shipping:deliverynote_cancel": 20,
     "purchasing:purchaseorder_list": 27,
     "purchasing:purchaseorder_create": 22,
@@ -167,7 +171,8 @@ LIMITS = {
     "purchasing:receipt_detail": 25,
     "workorders:workorder_list": 23,
     "workorders:workorder_create": 21,
-    "workorders:workorder_detail": 33,
+    # 11-12 に測り直した。実測 34 (ContentType の控えが空の時。2 社とも) + 5
+    "workorders:workorder_detail": 39,
     "workorders:workorder_modal": 8,
     "workorders:workorder_cancel": 20,
     "workorders:plan_index": 29,
@@ -278,6 +283,7 @@ def test_every_screen_stays_under_query_limit(company_id, client, no_registratio
             continue
         conf.reset_cache()
         calendar.reset_cache()
+        ContentType.objects.clear_cache()
         with CaptureQueriesContext(connection) as queries:
             response = client.get(url)
         count = len(queries)
