@@ -1064,13 +1064,13 @@ def list_payments(invoice_no: str | None = None, days: int = 30, limit: int = 50
     limit: 返す件数 (1〜200。既定 50)。
     返す物: count・money_hidden 金額を隠したか・items (入金ごとの invoice_no 請求書番号・
     customer_code と customer_name 得意先の取引先コードと名前・received_on 入金日・amount 金額・
-    method 入金の方法 (transfer / cash / bill / other) と method_label (振込 / 現金 / 手形 / その他)・note 備考・
+    method 入金の方法 (transfer / cash / bill / e_bond / other) と method_label (振込 / 現金 / 手形 / 電子記録債権 / その他)・note 備考・
     status と status_label 状態 (recorded 記録 / cancelled 取消)・recorded_by 記録した人のログイン ID・recorded_at 記録の日時・
     url 請求書の詳細の道)。
     invoice_no を渡したときだけ invoice (invoice_no・customer_code・customer_name・issued_on 発行日・due_on 支払期日・
     status と status_label 請求書の状態 (issued 発行 / cancelled 取消)・total 合計・paid_total 入金済み・balance 残・
     payment_status と payment_status_label 入金の状態 (unpaid 未入金 / partial 一部入金 / paid 入金済み)・url) もある。
-    残 (balance) は 合計 − 取消でない入金の合計 で、多い入金ならマイナス。
+    残 (balance) は 合計 − 取消でない入金の合計 + 取消でない調整の合計 (値引き・振込手数料・相殺・端数。残を減らす調整はマイナス) で、多い入金ならマイナス。
     金額 (amount・total・paid_total・balance) は金額の閲覧の判定に従い、見せない相手には「—」で money_hidden が真。入金の状態と方法は見える。
     ok が偽なら error に、読めなかった引数とその直し方か、請求書番号が無いことか、部品が入っていないことがある。
     """

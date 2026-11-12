@@ -43,7 +43,7 @@ def payment_badge(invoice, dot=False, small=False):
     """{% payment_badge invoice %}。請求書の入金の状態の印 (決め 11-05 16:2x。開発の記録 docs/nights/20261105/N164.md)。発行の請求書だけに使う (取消は呼ぶ側が status_badge)。
 
     字は入金の状態の字 (未入金・一部入金・入金済み)、色は core.status_colors の PAYMENT_TONES (未入金と一部入金 = 橙、入金済み = 緑)。
-    入金の状態は Invoice.payment_status (取消でない入金の合計。一覧の「残のある物だけ」= views._unpaid_only と同じ数え方)。
+    入金の状態は Invoice.payment_status (残 = 合計 − 取消でない入金 + 取消でない調整。一覧の「残のある物だけ」= views._unpaid_only と同じ数え方)。
     """
     state = invoice.payment_status()
     return {"tone": PAYMENT_TONES[state], "label": invoice.PAYMENT_LABELS[state], "dot": dot, "small": small}
@@ -53,7 +53,7 @@ def payment_badge(invoice, dot=False, small=False):
 def invoice_head_chips(invoice, hide_money=False) -> list[dict]:
     """{% invoice_head_chips object seizou.hide_money as head_chips %}。請求書の詳細の頭の要点の札。読むだけ。
 
-    札 = {"label", "value"} (値は字)。「合計」(請求書の合計。名は model の項目の verbose_name) と「残」(合計 − 取消でない入金の合計 =
+    札 = {"label", "value"} (値は字)。「合計」(請求書の合計。名は model の項目の verbose_name) と「残」(合計 − 取消でない入金の合計 + 取消でない調整の合計 =
     Invoice.balance。名は入金の枠の字と同じ) の 2 つで、値は受注の「合計」の札と同じ yen の字 (頭に ¥。マイナスの残は「-¥1,000」)。
     取消の請求書と、金額を見られない人 (hide_money が真) には空の並び (札を出さない)。残がマイナスでも札に色を付けない。
     請求書の詳細 billing/invoice_detail.html の block heading がこの形で置いてから block.super を呼び、土台の core/detail.html が
