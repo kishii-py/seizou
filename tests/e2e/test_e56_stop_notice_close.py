@@ -107,7 +107,8 @@ def test_e56_payment_stop_closes_on_page_and_in_modal(page_a, company_a):
 
     # 小窓
     page_a.goto(invoice_url)
-    page_a.locator("#payments a[data-modal-form]").click()
+    # 入金の枠の小窓のボタンは「入金を記録する」と「調整を記録する」の 2 つ (510 回目から)。入金の方を URL で選ぶ
+    page_a.locator('#payments a[data-modal-form*="/payments/new/"]').click()
     expect(page_a.locator("#seizou-modal[open]")).to_have_count(1)
     box = page_a.locator("#seizou-modal-box")
     band = page_a.locator(MODAL_STOP)
