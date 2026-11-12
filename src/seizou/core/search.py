@@ -306,7 +306,7 @@ class SearchView(ScreenMixin, TemplateView):
     """
 
     screen_name = "検索"
-    screen_help = "部品マスター・受注・マニュアルを横断して探し、行を押すと詳細へ移る。"
+    screen_help = "品番・品名・伝票の番号やマニュアルの言葉で、記録を横断して探し、行を押すと詳細へ移る。"
     screen_icon = "search"
     template_name = "core/search.html"
 

@@ -480,7 +480,7 @@ def test_create_form_narrows_table_rows(client_logged_in, user, customer, line):
 
 # --- 「締め期間」の欄と発行日の初期値 (候補 C02 の 6・7 = C02-1・C02-2) ---
 
-PERIOD_HELP = "選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日が入ります。印は後から手で足し外しできます。"
+PERIOD_HELP = "選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日 (締日が今日より後なら今日) が入ります。印は後から手で足し外しできます。"
 
 
 def _period_options(body):

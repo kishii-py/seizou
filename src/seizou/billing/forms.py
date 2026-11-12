@@ -237,7 +237,7 @@ class InvoiceForm(LumpFieldsMixin, SubmitLabelMixin, forms.Form):
         label="締め期間",
         required=False,
         widget=PeriodSelect,
-        help_text="選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日が入ります。印は後から手で足し外しできます。",
+        help_text="選ぶと、その得意先のその締め期間の出荷に印が付き、発行日に締日 (締日が今日より後なら今日) が入ります。印は後から手で足し外しできます。",
     )
     issued_on = forms.DateField(
         label="発行日",
