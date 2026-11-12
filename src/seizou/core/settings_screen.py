@@ -44,6 +44,7 @@ SETTING_LABELS = {
     "same_customer_order_no": ("同じ得意先の注文番号の受注 (R31)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "subcontract_return": ("協力企業に出した工程の戻りの数の食い違い (R33)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "open_workorder_completion": ("終わっていない指示書のある受注の明細の完了 (R35)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
+    "printed_balance": ("前回の残に数えた入金と調整の取消 (R36)", {"warn": "知らせる", "stop": "止める", "off": "通す"}),
     "order_number": ("受注番号の形", {"seq": "連番", "ym_seq": "年月 + 連番"}),
     "transcription_minutes_per_line": ("1 行の手入力にかかる分", {}),
     "production_plan": ("生産計画の画面", {True: "使う", False: "使わない"}),

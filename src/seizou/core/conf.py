@@ -32,6 +32,7 @@ DEFAULTS = {
     "same_customer_order_no": "warn",  # 同じ得意先で、得意先の注文番号が同じ受注のポカよけ (R31): warn / stop / off
     "subcontract_return": "warn",  # 協力企業に出した工程の戻りの数の食い違いのポカよけ (R33): warn / stop / off
     "open_workorder_completion": "warn",  # 終わっていない指示書のある受注の明細の完了のポカよけ (R35): warn / stop / off
+    "printed_balance": "warn",  # 前回の残に数えた入金と調整の取消のポカよけ (R36): warn / stop / off
     "order_number": "seq",  # 受注番号の形: seq (連番) / ym_seq (年月 + 連番)
     "transcription_minutes_per_line": 1,  # 1 行の手入力にかかる分 (ダッシュボードの「手入力せずに取り込んだ明細」の入力を省けた時間 ≒ m 分。答えの YAML の settings で変える)
     "hidden_fields": [],  # 使わない注文の項目 (決まりが見る項目は隠せない)
@@ -75,6 +76,7 @@ CHOICES = {
     "same_customer_order_no": ("warn", "stop", "off"),
     "subcontract_return": ("warn", "stop", "off"),
     "open_workorder_completion": ("warn", "stop", "off"),
+    "printed_balance": ("warn", "stop", "off"),
     "order_number": ("seq", "ym_seq"),
 }
 

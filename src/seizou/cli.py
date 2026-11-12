@@ -94,6 +94,7 @@ SETTING_DEFAULTS = {
     "same_customer_order_no": "warn",
     "subcontract_return": "warn",
     "open_workorder_completion": "warn",
+    "printed_balance": "warn",
     "order_number": "seq",
     "hidden_fields": [],
     "production_plan": True,

@@ -53,6 +53,7 @@
 - 前回の残 (Invoice.previous_balance): 会社の設定 invoice_previous_balance が「載せる」のときだけ、_issue_invoice が請求書を作る時に
   _previous_balance で数えて写す (数えた日時 previous_balance_at も)。「載せない」なら 2 つとも空。得意先の行をロックした後に数えるので、
   請求書の新規登録・作り直し・締めの一括の 3 つの入口で同じ値になる。写した後に入金と調整が変わっても、写した値は変えない。
+- 前回の残に数えた入金と調整 (counted_in。読むだけ) は、cancel_payment と cancel_adjustment が断らず、検査の層の R36 が取り消す前に知らせる。
 - 得意先ごとの台帳 customer_ledger(得意先) と、得意先ごとの残 with_receivables(取引先の queryset) は読むだけ (書く口を持たない)。
   入金は請求書ごとのまま (得意先の残から消す形にしない)。請求書の外で受け取った入金は売掛でないので数えない。
 """
@@ -1078,6 +1079,7 @@ def cancel_payment(payment, user):
     """記録した入金を取消にする。行は消さない (履歴)。請求書の状態は見ない (取消の請求書に残った入金も取り消せる)。
 
     請求書の外で受け取った入金を取り消すと、その出荷は請求の候補に戻る。
+    前回の残に数えた入金 (counted_in) は断らず、検査の層 (R36) が知らせる。
     """
     with transaction.atomic():
         locked = Payment.objects.select_for_update().get(pk=payment.pk)
@@ -1150,7 +1152,10 @@ def record_adjustment(invoice, adjusted_on, amount, user, *, reason=Adjustment.R
 
 
 def cancel_adjustment(adjustment, user):
-    """記録した調整を取消にする。行は消さない (履歴)。請求書の状態は見ない (cancel_payment と同じ形)。取り消し済みなら ValueError。"""
+    """記録した調整を取消にする。行は消さない (履歴)。請求書の状態は見ない (cancel_payment と同じ形)。取り消し済みなら ValueError。
+
+    前回の残に数えた調整 (counted_in) は断らず、検査の層 (R36) が知らせる。
+    """
     with transaction.atomic():
         locked = Adjustment.objects.select_for_update().get(pk=adjustment.pk)
         if locked.status == Adjustment.STATUS_CANCELLED:
@@ -1162,6 +1167,27 @@ def cancel_adjustment(adjustment, user):
         # 画面の知らせの字 (入力の土台 core.views.with_saved_note が「保存しました。」の代わりに出す)。表に書かない。
         locked.saved_message = "取り消しました。"
         return locked
+
+
+def counted_in(record) -> list:
+    """入金か調整 (record) を前回の残に数えた請求書の並び (読むだけ。期間の初め・pk の順)。検査の層の R36 が読む。
+
+    同じ得意先の発行の請求書のうち、前回の残の写しがあり (previous_balance が空でない)、期間の初めが record の請求書の期間の終わりより後で、
+    前回の残を数えた日時 (previous_balance_at) が record の記録の日時 (recorded_at) 以後の物 (_previous_balance の数え方の裏返し)。
+    請求書の外で受け取った入金 (請求書が空) と、取り消し済みの入金と調整は空の並び。
+    """
+    invoice = record.invoice if record.invoice_id is not None else None
+    if invoice is None or record.status == record.STATUS_CANCELLED:
+        return []
+    return list(
+        Invoice.objects.filter(
+            customer_id=invoice.customer_id,
+            status=Invoice.STATUS_ISSUED,
+            previous_balance__isnull=False,
+            period_from__gt=invoice.period_to,
+            previous_balance_at__gte=record.recorded_at,
+        ).order_by("period_from", "pk")
+    )
 
 
 #: 台帳の同じ日の行の並び (請求 → 入金 → 調整)
