@@ -9,8 +9,9 @@
 - order_head_chips: 受注の詳細の頭の要点の札 (開発の記録 docs/nights/20261105/N163.md)。受注の詳細の block heading が {% order_head_chips object seizou.hide_money as head_chips %}
   の形で置いてから block.super を呼び、土台の core/detail.html が head_chips を読んで題の横に 3 つまで並べる。
 - order_line_allocations: 明細の表の行と、行ごとの引当の合計の組 (「預かり」の列。決め 11-06 18:3x。開発の記録 docs/nights/20261106/N184.md)。
-- order_ship_lines: 頭の緑の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x)。受注の詳細の block heading が
-  {% order_ship_lines object as ship_lines %} の形で置き、block actions と block edit_button が読む (head_chips と同じ形)。
+- order_next_action: 頭の緑のボタン (その受注で次にする操作 1 つ。「入荷を記録する」「指示書を発行する」「出荷登録」のどれか) の中身
+  (決め 11-06 22:1x と、本人の決め 11-12 19:0x)。受注の詳細の block heading が {% order_next_action object ... as next_action %} の形で置き、
+  block actions と block edit_button が読む (head_chips と同じ形)。
 - order_line_completed_label: 明細の表の残の枡の「完了」「完了 (出さない n)」の印の字 (N400b。完了の印の無い明細は空の字)。
 - order_total: 明細の金額の合計 (受注の小窓 orders/_modal.html の「明細の合計」。order_aside の金額のカードと同じ式。受け渡しの seizou-部品の6案-20261107/指示書.md の 6)。
 - order_revision_notice: 取引先から取消か変更が届いたまま、受け入れも断りもしていない受注の黄色の 1 行の中身 (依頼書 N417。
@@ -188,17 +189,41 @@ def order_line_allocations(order) -> list[tuple]:
     return [(line, totals.get(line.pk) or _ZERO) for line in lines]
 
 
-@register.simple_tag
-def order_ship_lines(order) -> list:
-    """受注の詳細の頭の「出荷登録」で出荷できる明細の並び (決め 11-06 22:1x)。
+#: 受注の詳細の頭の緑のボタンの操作 (決める順)。1 つ = (BoardRow.next_action の値, ボタンの字, 絵記号, 行を選ぶメニューの見出し)
+_NEXT_ACTIONS = (
+    ("receive", "入荷を記録する", "download", "入荷を記録する行を選ぶ"),
+    ("issue", "指示書を発行する", "factory", "指示書を発行する行を選ぶ"),
+    ("ship", "出荷登録", "truck", "出荷する行を選ぶ"),
+)
 
-    取消の受注は空。ほかは order.lines.all() (画面の prefetch の写し。annotate_remaining の残と行番号の順) のうち、
-    残が 0 より大きい明細を行番号の順のまま返す (問い合わせを増やさない)。出荷の書く権限と出荷の部品の有無はテンプレートが見る。
-    読むだけで、表に書かない。
+
+@register.simple_tag
+def order_next_action(order, can_receive, can_issue, can_ship, receiving_url, issue_url, ship_url):
+    """受注の詳細の頭の緑のボタン (その伝票で次にする操作 1 つ) の中身。出す物が無ければ None (土台の「編集」が緑になる)。
+
+    返す物 = {"key", "label" (ボタンの字), "icon", "menu_title" (2 行以上の時の行を選ぶメニューの見出し), "url" (小窓の入口。?order_line=<pk> を付ける),
+    "lines" (その操作の明細。行番号の順)}。
+    決め方 (本人の決め 11-12 19:0x): 入荷を記録する → 指示書を発行する → 出荷登録 の順に、当たる明細が 1 つでもあり、その人が行える
+    (書く権限があり、部品が入っている = URL が空でない) 最初の操作。明細ごとの次の操作は board の BoardRow.next_action (生産管理ボードの判断と同じ見方)。
+    出荷登録は、今までどおり残のある明細の全部を並べる (入荷か指示書が要る明細も、その操作を行えない人は出荷を選べる = 作者の決め 11-06 22:1x の形)。
+    取消の受注は None。権限と URL は呼ぶ側のテンプレートが can_write と url の tag で渡す (明細の ⋮ のメニューと同じ答え)。
+    order.lines.all() は画面の prefetch の写し (annotate_remaining の残・引当の合計・在庫数つき) なので、問い合わせを増やさない。読むだけ。
+    訳: 受注を入れた直後に次にするのは指示書の発行 (入荷が要る会社は入荷) なのに、緑が「出荷登録」で、押すと止まる会社があった。
+    出所 = 本人の決め 11-12 19:0x・精査「事務の 1 人の 1 日」の 9。変えてよい条件 = 本人が緑のボタンの決め方を変えたとき。
     """
     if order.status == order.STATUS_CANCELLED:
-        return []
-    return [line for line in order.lines.all() if line.remaining_total > 0]
+        return None
+    open_lines = [line for line in order.lines.all() if line.remaining_total > 0]
+    allowed = {"receive": bool(can_receive and receiving_url), "issue": bool(can_issue and issue_url), "ship": bool(can_ship and ship_url)}
+    urls = {"receive": receiving_url, "issue": issue_url, "ship": ship_url}
+    by_action = {}
+    for line in open_lines:
+        by_action.setdefault(line.board.next_action, []).append(line)
+    for key, label, icon, menu_title in _NEXT_ACTIONS:
+        lines = open_lines if key == "ship" else by_action.get(key, [])
+        if lines and allowed[key]:
+            return {"key": key, "label": label, "icon": icon, "menu_title": menu_title, "url": urls[key], "lines": lines}
+    return None
 
 
 @register.simple_tag

@@ -113,6 +113,23 @@ def annotate_acceptance(queryset):
     )
 
 
+def annotate_for_next_action(queryset):
+    """受注の明細の queryset に、引当の合計 (allocated_total) と在庫数 (stock_balance) を Subquery で足す (問い合わせを増やさない)。
+
+    受注の詳細が、明細ごとの次の操作 (BoardRow.next_action) を、明細の数だけ問い合わせずに読むために使う。部品 (receiving・stock) が
+    無ければ、その値は足さない (BoardRow は None と読む)。盤の一覧の prefetch_for と同じ 2 つの関数を呼ぶ。
+    """
+    if apps.is_installed("seizou.receiving"):
+        from seizou.receiving.services import annotate_allocated
+
+        queryset = annotate_allocated(queryset)
+    if apps.is_installed("seizou.stock"):
+        from seizou.stock.services import annotate_balance
+
+        queryset = annotate_balance(queryset, "item_id")
+    return queryset
+
+
 def prefetch_for(queryset):
     """指示書 (取消を除く) と工程と、工程ごとの実績の合計 (recorded_total) と不良の合計 (defect_total)・完了の印 (completed_mark)
     を 1 ページ分まとめて読む prefetch を足す。
@@ -511,6 +528,31 @@ class BoardRow:
         if self.issued_total < remaining:
             return "need_workorder"
         return "making"
+
+    @cached_property
+    def next_action(self) -> str:
+        """この明細で次にする操作 ("receive"・"issue"・"ship"。する事が無ければ空の字)。受注の詳細の頭の緑のボタンが読む (orders_detail の order_next_action)。
+
+        上から順に最初に当たった物: 受注が取消・完了の印のある明細・残が 0 以下 → 空 /
+        入荷が要るのに引当が 1 つも無い (会社の設定 receiving_required が off でなく、引当の合計が 0 以下。指示書の発行と出荷の検査
+        = receiving.checks が止めるか知らせる形と同じ見方) → receive / 完成の数か在庫が残以上 (判断の「出荷できる」と同じ式) → ship /
+        指示書の数量の合計が残より少ない (判断の「指示書が要る」と同じ式。納期を過ぎた明細も) → issue / ほか (製造中) → ship。読むだけ。
+        訳: 緑のボタンを「その伝票で次にする操作 1 つ」にするため (受注を入れた直後に「出荷登録」が出て、入荷が要る会社では押すと止まった)。
+        出所 = 本人の決め 11-12 19:0x と精査「事務の 1 人の 1 日」の 9。変えてよい条件 = 本人が緑のボタンの決め方を変えたとき (判断の式を変える時は、ここも合わせる)。
+        """
+        if self.line.order.status == Order.STATUS_CANCELLED or self.line.completed:
+            return ""
+        remaining = self.remaining
+        if remaining <= 0:
+            return ""
+        allocated = self.allocated
+        if allocated is not None and allocated <= 0 and conf.setting("receiving_required") != "off":
+            return "receive"
+        if self.completed_total >= remaining or (self.stock_balance is not None and self.stock_balance >= remaining):
+            return "ship"
+        if self.issued_total < remaining:
+            return "issue"
+        return "ship"
 
     @cached_property
     def judgement(self) -> str:

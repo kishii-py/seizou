@@ -171,7 +171,7 @@ class OrderLineListView(BaseListView):
 class OrderDetailView(BaseDetailView):
     """受注の詳細。
 
-    使う人: 営業・生産管理 / いつ: 受注の中身と進み具合を確かめるとき / 何のために: 明細ごとの出荷済みと残、指示書・出荷・請求書を見る / 次にすること: 明細の行から出荷か指示書の発行へ。直すなら「編集」
+    使う人: 営業・生産管理 / いつ: 受注の中身と進み具合を確かめるとき / 何のために: 明細ごとの出荷済みと残、指示書・出荷・請求書を見る / 次にすること: 右上の緑のボタン (入荷の記録・指示書の発行・出荷のうち次の操作) へ。直すなら「編集」
     """
 
     model = Order
@@ -199,6 +199,8 @@ class OrderDetailView(BaseDetailView):
         from . import timeline  # この画面だけが使うので、関数の中で読む
 
         lines = annotate_remaining(OrderLine.objects.select_related("item")).order_by("line_no")
+        # 頭の緑のボタン (明細ごとの次の操作 = board の BoardRow.next_action) が読む引当の合計と在庫数も、同じ問い合わせに足す (517 回目)。
+        lines = board.annotate_for_next_action(lines)
         lines = lines.prefetch_related(*timeline.detail_lookups(OrderLine))
         return Order.objects.select_related("customer").prefetch_related(Prefetch("lines", queryset=lines))
 

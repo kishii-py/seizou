@@ -86,6 +86,19 @@ def _get(client, name, pk):
     return response, response.content.decode()
 
 
+def _issue_all(order, user, cut):
+    """残のある明細のうち、指示書の無い明細の全部に、残の数の指示書を発行する (どの明細も「製造中」になる)。
+
+    受注の詳細の頭の緑のボタンは、指示書が要る明細があると「指示書を発行する」になる (本人の決め 11-12 19:0x。517 回目)。
+    緑の「出荷登録」を見る試験は、先にこれを呼んで、指示書の要る明細を無くす。
+    """
+    for line in orders_services.annotate_remaining(order.lines.all()).order_by("line_no"):
+        if line.remaining_total > 0 and not line.workorders.exists():
+            workorders_services.issue_workorder(
+                line, line.remaining_total, [{"process": cut, "planned_qty": line.remaining_total}], user
+            )
+
+
 def _crumb(body):
     return re.search(r'<nav aria-label="パンくず"[^>]*>.*?</nav>', body, re.S).group(0)
 
@@ -141,9 +154,10 @@ def test_back_to_list_only_when_no_list_name(logged_in, item, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_head_order_and_one_primary(logged_in, item, order, workorder, purchase_order):
+def test_head_order_and_one_primary(logged_in, user, cut, item, order, workorder, purchase_order):
+    _issue_all(order, user, cut)  # 1 行目は fixture の指示書、2 行目にも指示書を発行する (2 行とも製造中)
     body = _get(logged_in, "orders:order_detail", order.pk)[1]
-    # 明細 2 行とも残がある受注は、主のボタンが緑の「出荷登録」(行を選ぶメニュー) で、「編集」は白 (C15-1 b・UX-2 a)
+    # 明細 2 行とも残があり指示書が出ている受注は、主のボタンが緑の「出荷登録」(行を選ぶメニュー) で、「編集」は白 (C15-1 b・UX-2 a)
     edit = f'<a class="btn btn-outline border-base-300" href="{reverse("orders:order_update", args=[order.pk])}?next={reverse("orders:order_detail", args=[order.pk])}">'
     marks = ('<nav aria-label="パンくず"', '<h1 class="truncate', 'aria-label="この画面の説明"', "data-detail-actions")
     positions = [body.index(mark) for mark in marks]
@@ -174,9 +188,10 @@ def _ship_link(line):
 
 
 @pytest.mark.django_db
-def test_order_head_ship_menu_for_open_lines(logged_in, order):
-    """候補 C15 の 4 (C15-1 b・UX-2 a): 残のある明細が 2 行の受注は、頭の右端に緑の「出荷登録」のメニュー (行番号・品番・残) を出し、
-    「編集」は白で「⋯」の左。"""
+def test_order_head_ship_menu_for_open_lines(logged_in, user, cut, order):
+    """候補 C15 の 4 (C15-1 b・UX-2 a): 残のある明細が 2 行で、どちらも指示書が出ている受注は、頭の右端に緑の「出荷登録」のメニュー
+    (行番号・品番・残) を出し、「編集」は白で「⋯」の左。指示書が要る明細がある時の緑は tests/test_orders_detail_next_action.py が見る。"""
+    _issue_all(order, user, cut)
     actions = _actions(_get(logged_in, "orders:order_detail", order.pk)[1])
     lines = list(orders_services.annotate_remaining(order.lines.all()).order_by("line_no"))
 
@@ -191,8 +206,9 @@ def test_order_head_ship_menu_for_open_lines(logged_in, order):
 
 
 @pytest.mark.django_db
-def test_order_head_ship_link_for_one_open_line(logged_in, order, shipment):
-    """残のある明細が 1 行 (1 行目を出し切った) の受注は、緑の「出荷登録」がその行の出荷の小窓を直に開く。"""
+def test_order_head_ship_link_for_one_open_line(logged_in, user, cut, order, shipment):
+    """残のある明細が 1 行 (1 行目を出し切った) で、その行に指示書が出ている受注は、緑の「出荷登録」がその行の出荷の小窓を直に開く。"""
+    _issue_all(order, user, cut)  # 残っている 2 行目に指示書を発行する (製造中)
     first, second = order.lines.order_by("line_no")
     actions = _actions(_get(logged_in, "orders:order_detail", order.pk)[1])
 

@@ -236,12 +236,15 @@ def test_order_detail_hides_cancel_ship_and_po(client, on, user, customer, item,
 
 
 @pytest.mark.django_db
-def test_order_detail_head_ship_button_by_permission(client, on, user, customer, item, admin):
+def test_order_detail_head_ship_button_by_permission(client, on, user, customer, item, cut, admin):
     """受注の詳細の頭の緑の「出荷登録」(候補 C15 の 4。C15-1 b・UX-2 a) は、出荷の書く権限のある人だけに出す。
 
     出すときの「編集」は白。受注の書く権限の無い人には「編集」を出さない (今のまま)。止める処理は足さない。
+    明細には指示書を発行しておく (製造中)。指示書が要る明細の緑は「指示書を発行する」になる (本人の決め 11-12 19:0x。
+    その時の権限ごとの出し分けは tests/test_orders_detail_next_action.py が見る)。
     """
     line = _line(user, customer, item)
+    _issue(user, line, cut)
     order = line.order
     detail_url = reverse("orders:order_detail", args=[order.pk])
     ship_url = f'{reverse("shipping:shipment_create")}?order_line={line.pk}'
