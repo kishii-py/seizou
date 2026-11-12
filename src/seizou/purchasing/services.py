@@ -28,6 +28,7 @@
 - 注文回答の 4 つの答え (受諾 AP = 相手が受け入れた・条件付受諾 CA = 相手が条件付で受けた・辞退 RE = 断られた・保留 AJ = 相手が保留した) は、
   connect の受け口が mark_accepted・mark_conditional・mark_rejected・mark_on_hold で答えを待っている発注 (送った・相手が保留した) に当てる。
 - 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、全部そろえば「納品された」。受入が先の発注に後から受諾が届いたときも「一部納品」。
+  発注書を seizou の外で送った「送った」の発注 (sent_outside_at がある) も、一部の受入で「一部納品」(答えが届かない発注なので。本人の決め 11-12 21:1x)。
 - 完了の印は mark_completed と clear_completed だけが書く。受入と発注の変更では書き換えない (印と受入の数を結ばない)。
   明細が終わっているのは、完了の印が真か、受入の合計が数量以上のとき (RULES.md R25。残は remaining_qty・annotate_received の 1 か所)。
   完了は相手の seizou へ送らない (相手にも止めてほしいときは、完了を外してから「変更」で数を直して送る)。
@@ -1024,6 +1025,9 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
     「相手が受け入れた」の発注に一部の受入が入ると「一部納品」(作者の決め (11-07 00:2x) と作者の決め (11-07 06:38)。
     「下書き」「送った」「相手が保留した」「相手が条件付で受けた」は一部の受入では変えない。後で届く注文回答を当て、
     相手と話す・発注を直す仕事を一覧とタブから消さないため)。
+    ただし、発注書を seizou の外で送った「送った」の発注 (sent_outside_at がある。mark_sent_outside) は、一部の受入で「一部納品」にする。
+    訳: seizou の外で送った発注には注文回答が届かないので、「送った」のまま待つ訳が無く、一覧の状態で一部だけ届いた発注を見分けられるようにするため。
+    出所 = 本人の決め 11-12 21:1x。変えてよい条件 = 本人が、seizou の外で送った発注の状態の進め方を決め直したとき。
     seizou どうしで送った発注なら、atomic を抜けた後に検収を相手へ送り、送った後の列を持つ受入を返す
     (送れなくても例外にしない。受入は成立する)。
     金額が 0 の受入も、受入日 (received_on) と受け入れた数は残る (取適法 (2026-01-01 施行。旧下請法) の代金の支払期日は物を受け取った日から
@@ -1080,7 +1084,10 @@ def receive(line, qty, received_on, user, *, note="", close_rest=False):
                 locked.status = PurchaseOrder.STATUS_DELIVERED
                 locked.save(update_fields=["status"])
                 record_history(locked, user, before=before)
-            elif locked.status == PurchaseOrder.STATUS_ACCEPTED:
+            elif locked.status == PurchaseOrder.STATUS_ACCEPTED or (
+                # 発注書を seizou の外で送った発注は、答えを待たないので「送った」からも進める (本人の決め 11-12 21:1x)
+                locked.status == PurchaseOrder.STATUS_SENT and locked.sent_outside_at is not None
+            ):
                 before = history.saved_state(locked)
                 locked.status = PurchaseOrder.STATUS_PARTIAL
                 locked.save(update_fields=["status"])
@@ -1263,11 +1270,15 @@ def _reopened_status(purchase_order):
 
     受入が 1 つでもあり、第 1 版の注文回答のタイプが受諾なら「一部納品」。ほかは注文回答のタイプから決める
     (受諾 → 相手が受け入れた・条件付 → 相手が条件付で受けた・保留 → 相手が保留した・辞退 → 断られた・空 → 送った注文があれば送った、無ければ下書き)。
+    発注書を seizou の外で送った発注 (sent_outside_at がある) は、送った注文の行も注文回答も無いので、先に分ける:
+    受入が 1 つでもあれば「一部納品」、無ければ「送った」(receive の決まりと同じ。「下書き」に戻さない = 「発注書を送った」を押した事を消さない。519 回目)。
     訳: 完了を外した発注を、受入の数で状態を変える今の決まり (receive の docstring = 「相手が受け入れた」の発注に一部の受入が入ると「一部納品」、
     ほかの状態は一部の受入では変えない) と同じ見方に戻し、後で届く注文回答と受入を今までどおり当てられるようにするため。
     出所 = 本人の決め 11-11 08:4x・09:3x を受けた作者の決め (開発の記録 docs/nights/20261111/N400.md)。
     変えてよい条件 = 発注の状態の決め方 (receive・mark_accepted) が変わったとき。
     """
+    if purchase_order.sent_outside_at is not None:
+        return PurchaseOrder.STATUS_PARTIAL if purchase_order.receipts.exists() else PurchaseOrder.STATUS_SENT
     reply = purchase_order.reply_type
     if reply == edi_codes.REPLY_ACCEPTED and purchase_order.receipts.exists():
         return PurchaseOrder.STATUS_PARTIAL

@@ -341,8 +341,8 @@ def test_receipts_after_sent_outside(user, partner, item):
     line = po.lines.get()
     services.receive(line, Decimal("4"), DAY, user)
     po.refresh_from_db()
-    # 今までどおり: 「送った」の発注は一部の受入では状態を変えない (「一部納品」に進むのは「相手が受け入れた」の発注だけ)
-    assert po.status == PurchaseOrder.STATUS_SENT
+    # seizou の外で送った発注は、一部の受入で「一部納品」に進む (本人の決め 11-12 21:1x。519 回目。前は全部を受け入れるまで「送った」のままだった)
+    assert po.status == PurchaseOrder.STATUS_PARTIAL
     assert _count(user, "purchase_sent") == 0
     services.receive(line, Decimal("6"), DAY, user)
     po.refresh_from_db()
@@ -386,7 +386,7 @@ def test_cancel_sent_outside_after_receipt_is_refused(user, partner, item):
     assert message.startswith("取り消せません。") and "「完了にする」" in message
     assert "「変更」" not in message and "送れません" not in message
     po.refresh_from_db()
-    assert po.status == PurchaseOrder.STATUS_SENT
+    assert po.status == PurchaseOrder.STATUS_PARTIAL  # 一部の受入で「一部納品」になっている (519 回目)。断られた取消では変わらない
 
     # 断りの字が指す道が通る: 明細を完了にすると、発注は「納品された」になる
     services.mark_completed(po.lines.get(), user)
@@ -563,4 +563,59 @@ def test_green_receipt_needs_purchasing_write(judged, client, user, partner, ite
 
     client.force_login(account("buyer", permissions=["purchasing"]))
     assert "受入を記録する</a>" in _actions(_detail(client, po))
+
+
+# --- 519 回目 (本人の決め 11-12 21:1x): seizou の外で送った発注は、一部の受入で「一部納品」に進める ---
+
+
+@pytest.mark.django_db
+def test_partial_receipt_moves_only_sent_outside_orders(user, partner, item):
+    """一部の受入で「一部納品」に進むのは、発注書を seizou の外で送った発注だけ。印の無い「送った」の発注は今までどおり「送った」のまま。
+
+    訳: 「送った」の発注を一部の受入で変えないのは、後で届く相手の答えを当てるため (作者の決め 11-07)。seizou の外で送った発注には
+    答えが届かないので、一覧の状態で一部だけ届いた発注を見分けられるようにする (本人の決め 11-12 21:1x)。
+    """
+    outside = services.mark_sent_outside(_draft(partner, user, item), user)
+    services.receive(outside.lines.get(), Decimal("1"), DAY, user)
+    outside.refresh_from_db()
+    assert outside.status == PurchaseOrder.STATUS_PARTIAL
+    # 状態の変わった事は変更の履歴に残る
+    assert any("一部納品" in str(log.changes) or PurchaseOrder.STATUS_PARTIAL in str(log.changes) for log in _logs(outside))
+
+    unmarked = services.mark_sent(_draft(partner, user, item), user)
+    services.receive(unmarked.lines.get(), Decimal("1"), DAY, user)
+    unmarked.refresh_from_db()
+    assert unmarked.status == PurchaseOrder.STATUS_SENT
+
+    draft = _draft(partner, user, item)
+    services.receive(draft.lines.get(), Decimal("1"), DAY, user)
+    draft.refresh_from_db()
+    assert draft.status == PurchaseOrder.STATUS_DRAFT
+
+
+@pytest.mark.django_db
+def test_clear_completed_reopens_sent_outside_order(user, partner, item):
+    """完了を外して受入の残が戻った時、発注書を seizou の外で送った発注は「下書き」に戻らない (受入があれば「一部納品」、無ければ「送った」)。
+
+    訳: 決め直す関数は、送った注文の行 (Outbox) の無い発注を「下書き」に戻す。seizou の外で送った発注には行が無いので、
+    「発注書を送った」を押した発注が「下書き」に戻り、「まだ送っていない発注」に数え直されていた (519 回目に本体が読んで見つけた)。
+    """
+    received = services.mark_sent_outside(_draft(partner, user, item), user)
+    line = received.lines.get()
+    services.receive(line, Decimal("4"), DAY, user)
+    services.mark_completed(received.lines.get(), user)
+    received.refresh_from_db()
+    assert received.status == PurchaseOrder.STATUS_DELIVERED
+    services.clear_completed(received.lines.get(), user)
+    received.refresh_from_db()
+    assert received.status == PurchaseOrder.STATUS_PARTIAL
+
+    untouched = services.mark_sent_outside(_draft(partner, user, item), user)
+    services.mark_completed(untouched.lines.get(), user)
+    untouched.refresh_from_db()
+    assert untouched.status == PurchaseOrder.STATUS_DELIVERED
+    services.clear_completed(untouched.lines.get(), user)
+    untouched.refresh_from_db()
+    assert untouched.status == PurchaseOrder.STATUS_SENT
+    assert untouched.sent_outside_at is not None
 
