@@ -4,6 +4,8 @@
   発注と明細からの逆向きの関係 (related_name) だけで辿って集める。ほかの部品の model は import しない
   (送った注文は connect の Outbox の outbox_messages、出荷の知らせは connect の ShippingNotice の shipping_notices)。
 - connect が入っていない会社では、送った注文と出荷の知らせの出来事が無いだけで、枠は開く (関係は getattr で辿り、無ければ空)。
+- 明細と、明細ごとの出荷の知らせと受入は、lines_for がまとめて 3 回で読む (明細の数だけ問い合わせない。発注の詳細は 2 秒ごとに取り直すため)。
+  events_for と stage_band は、その並びを渡されればそれを使い、渡されなければ自分で読む。
 - 検収は発注の側では受入の列 (Receipt.acceptance_sent_at = 相手の受け口が受け取った日時) で、送れていない物は出来事にしない。
 - 金額は Event.amount に分けて持ち、題の字に入れない。見せるかはテンプレートが seizou.hide_money で決める
   (発注の詳細の明細の表の単価と金額と同じ形 = access.can_see_money)。
@@ -19,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
 
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from seizou.core import edi_codes
@@ -83,15 +86,35 @@ class Event:
         return KIND_ICONS[self.kind]
 
 
-def events_for(purchase_order) -> list[Event]:
-    """発注の流れの出来事を、日の昇順に並べて返す (読むだけ)。"""
+def lines_for(purchase_order) -> list:
+    """発注の明細を、明細ごとの出荷の知らせと受入 (受け入れた人つき) と一緒に読んだ並び (読むだけ)。
+
+    問い合わせは明細・出荷の知らせ・受入の 3 回で、明細の数に依らない (明細ごとに逆向きの関係を読むと、明細 1 行につき 5 回ほど増えた)。
+    並びの順は明細の既定の順 (逆向きの関係の all と同じ)。出荷の知らせと受入の順も、それぞれの既定の順のまま。
+    connect が入っていない会社では出荷の知らせの関係が無いので、先に読まない (辿る側の _all が空を返す)。
+    """
+    manager = getattr(purchase_order, "lines", None)
+    if manager is None:
+        return []
+    model = manager.model
+    related = []
+    if hasattr(model, "shipping_notices"):
+        related.append("shipping_notices")
+    if hasattr(model, "receipts"):
+        receipts = model._meta.get_field("receipts").related_model._default_manager.select_related("received_by")
+        related.append(Prefetch("receipts", queryset=receipts))
+    return list(manager.all().prefetch_related(*related))
+
+
+def events_for(purchase_order, lines=None) -> list[Event]:
+    """発注の流れの出来事を、日の昇順に並べて返す (読むだけ)。lines は lines_for の並び (渡さなければここで読む)。"""
     # 出荷の知らせの題に出す相手の名前は、ここで 1 回だけ読む (知らせごとに読み直さない。詳細は 2 秒ごとに取り直すため)。
     partner_name = purchase_order.partner.name
     events = [Event(purchase_order.order_date, "order", "発注を登録")]
     events += [_sent_event(outbox) for outbox in _all(purchase_order, "outbox_messages")]
     if purchase_order.replied_at is not None:
         events.append(_reply_event(purchase_order))
-    for line in _all(purchase_order, "lines"):
+    for line in lines_for(purchase_order) if lines is None else lines:
         events += [_notice_event(line, notice, partner_name) for notice in _all(line, "shipping_notices")]
         for receipt in _all(line, "receipts"):
             events += _receipt_events(line, receipt)
@@ -243,8 +266,9 @@ def stage_of(line) -> int:
     return max(reached_stages(line))
 
 
-def stage_band(purchase_order) -> StageBand | None:
+def stage_band(purchase_order, lines=None) -> StageBand | None:
     """発注の段の帯。取消の発注は None (帯を出さない)。発注の全体の段と送った注文の行は 1 回だけ読む。
+    lines は lines_for の並び (渡さなければここで読む。明細ごとには問い合わせない)。
 
     今の段 = 明細ごとの今の段の最小 (明細が無ければ発注の全体の段)。今の段より前の段は、全部の明細が通った段だけ done (✓)、
     通っていない明細が 1 行でもある段は skipped (受注の帯と同じ決まり。作者の決め)。
@@ -255,7 +279,11 @@ def stage_band(purchase_order) -> StageBand | None:
     outbox = _all(purchase_order, "outbox_messages")
     head = _order_reached(purchase_order, outbox)
     # 取り消した明細 (明細状態コード 2) は段を見ない (残る明細が無ければ発注の全体の段)。
-    of_reached = [head | _line_reached(line) for line in _all(purchase_order, "lines") if not line.is_cancelled]
+    of_reached = [
+        head | _line_reached(line)
+        for line in (lines_for(purchase_order) if lines is None else lines)
+        if not line.is_cancelled
+    ]
     of_lines = [max(reached) for reached in of_reached]
     current = min(of_lines, default=max(head))
     passed = of_reached or [head]

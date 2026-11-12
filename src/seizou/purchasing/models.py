@@ -107,14 +107,17 @@ class PurchaseOrder(models.Model):
 
         指示書の工程と、その指示書と工程の名前も一緒に読む (明細の部品の枡の下の「指示書 … の工程 …」を、明細ごとに問い合わせずに出すため。
         purchasing_tags の line_step が読む。発注の詳細は 2 秒ごとに取り直すので、明細の数だけ問い合わせを増やさない)。
+        相手からの出荷の知らせ (connect の逆向きの関係 shipping_notices) も、明細ごとに問い合わせずに 1 回で読む
+        (明細の shipping_notice と purchasing.services の notice_rests が読む。connect が入っていない会社では関係が無いので読まない)。
         """
         from . import services
 
-        return services.annotate_received(
-            self.lines.select_related("item", "process", "workorder_step__workorder", "workorder_step__process").order_by(
-                "line_no", "pk"
-            )
+        lines = self.lines.select_related("item", "process", "workorder_step__workorder", "workorder_step__process").order_by(
+            "line_no", "pk"
         )
+        if hasattr(self.lines.model, "shipping_notices"):
+            lines = lines.prefetch_related("shipping_notices")
+        return services.annotate_received(lines)
 
 
 class PurchaseOrderLine(models.Model):
