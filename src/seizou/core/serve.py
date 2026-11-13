@@ -84,7 +84,11 @@ def build_app():
 
 
 def run(host: str, port: int, threads: int) -> None:
-    """待ち受けを始める (止めるまで戻らない)。"""
-    from waitress import serve
+    """待ち受けを始める (止めるまで戻らない)。
 
-    serve(build_app(), host=host, port=port, threads=threads, ident="seizou")
+    waitress の serve() でなく create_server() で起こす。serve() は logging.basicConfig() を呼ぶので、
+    置き場の記録 (settings の LOGGING) の行が 2 回ずつ出るため (11-14 に実際に起こして見た)。
+    """
+    import waitress
+
+    waitress.create_server(build_app(), host=host, port=port, threads=threads, ident="seizou").run()

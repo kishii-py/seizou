@@ -188,3 +188,48 @@ def test_doctor_collectstatic_row_is_good_with_the_lan_switch(settings, tmp_path
     row = doctor.check_collectstatic()[0]
     assert row.ok is True
     assert "seizou_serve" in row.detail
+
+
+def test_command_flushes_the_lines_before_it_starts_to_wait(settings, monkeypatch):
+    """案内の行は、待ち受けを始める前に書き出す (記録のファイルへ流すと、止めるまで行が出なかった。11-14 に実際に起こして見た)。"""
+
+    class Stream(io.StringIO):
+        flushed_with = None
+
+        def flush(self):
+            type(self).flushed_with = self.getvalue()
+            super().flush()
+
+    seen = {}
+    out = Stream()
+    monkeypatch.setattr(serve, "run", lambda host, port, threads: seen.setdefault("at_run", Stream.flushed_with))
+    settings.SEIZOU = {"port": 8123}
+    call_command("seizou_serve", stdout=out)
+    assert seen["at_run"] is not None
+    assert "サーバーを起こします" in seen["at_run"]
+
+
+def test_run_does_not_touch_the_logging_setup(monkeypatch):
+    """waitress の serve() は logging.basicConfig() を呼び、置き場の記録の行が 2 回ずつ出る。create_server で起こす。"""
+    import logging
+
+    import waitress
+
+    calls = []
+
+    class Server:
+        def run(self):
+            calls.append("run")
+
+    def create_server(app, **kwargs):
+        calls.append(kwargs)
+        return Server()
+
+    monkeypatch.setattr(waitress, "create_server", create_server)
+    monkeypatch.setattr(waitress, "serve", lambda *args, **kwargs: pytest.fail("serve() を呼ばない"))
+    monkeypatch.setattr(logging, "basicConfig", lambda *args, **kwargs: pytest.fail("basicConfig を呼ばない"))
+    monkeypatch.setattr(serve, "build_app", lambda: object())
+
+    serve.run("127.0.0.1", 18999, 2)
+    assert calls[0]["host"] == "127.0.0.1" and calls[0]["port"] == 18999 and calls[0]["threads"] == 2
+    assert calls[-1] == "run"

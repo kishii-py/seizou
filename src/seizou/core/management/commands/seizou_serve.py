@@ -37,4 +37,6 @@ class Command(BaseCommand):
                 ".env に SEIZOU_LAN_HTTP=1 の行を足して起こし直します (足さないと、ほかの端末からログインできません。"
                 "seizou の docs/operations.md の「社内の PC で動かす」)。"
             )
+        # 待ち受けは止めるまで戻らないので、上の行を先に書き出す (記録のファイルへ流しても、起こした時に行が出るように)
+        self.stdout.flush()
         serve.run(host, port, options["threads"])
