@@ -10,7 +10,7 @@
 |---|---|
 | Claude Code の契約 | プラグイン (立ち上げの命令 `/seizou:build`) で立てるときは要る。下の「触り方」の Python の命令 `seizou new` で立てるときは要らない |
 | 外のネット | 最初に入れるときだけ要る (uv と Python の依存を取る)。CSS を作り直す道具 (Tailwind CSS と daisyUI) は、開発のときだけ取る。画面の CSS と JS とフォントは配布物に同梱していて、動かすときに外へ取りに行かない |
-| OS | 作者の手元は macOS。Linux と Windows は、試験と、入れる所から画面が開くまでを CI (GitHub Actions) で通している。人の手で通した確認と、日本語の Windows の実機での確認はまだ無い |
+| OS | 作者の手元は macOS。Linux と Windows は、試験と、入れる所から画面が開くまでを CI (GitHub Actions) で通している。Linux は、VPS (AlmaLinux 9) に [docs/vps.md](vps.md) の手順で人の手でも入れて通した (この文書の手元の PC の形は、Linux では CI だけ)。日本語の Windows の実機での確認はまだ無い |
 | 端末の道具 | `git` と `uv` (Python の道具) が要る。git は git-scm.com の配布物で入る。uv は公式の版つきの 1 行で入る (OS ごとの命令は表の下の「uv の入れ方」)。`/seizou:build` は uv が無ければ自分で入れる |
 | 費用 | ソフトは無料 (Apache-2.0)。かかるのは、Claude Code の契約 (プラグインで立てるときだけ)・注文書の読み取りと AI チャットの API の費用 (読んだ分だけ。読み取り 1 枚の実測は下の行)・置き場を VPS に置くならその月額 (手元の PC でも動く) |
 | PDF の帳票 | extras `[pdf]` (WeasyPrint) と、OS の pango が要る。納品書と請求書の詳細に、印刷用の画面と PDF の入口がある。PDF を作れないときは PDF を作らず、印刷用の画面に「PDF の準備がありません」の知らせを出す (印刷用の画面は使える。`seizou.core.reports` の約束) |
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.p
 
 ## 触り方
 
-今ある入れ方は、端末で命令を打つ方法だけで、作者の手元 (macOS) で通した物。Linux と Windows は、入れる所から画面が開くまでを CI で通している (人の手で通した確認と、日本語の Windows の実機での確認はまだ無い)。PDF の帳票には WeasyPrint と OS の pango が要る (無くても画面は動く)。
+今ある入れ方は、端末で命令を打つ方法だけで、作者の手元 (macOS) で通した物。Linux と Windows は、入れる所から画面が開くまでを CI で通している。Linux は、VPS (AlmaLinux 9) に [docs/vps.md](vps.md) の手順で人の手でも入れて通した (この文書の手元の PC の形は、Linux では CI だけ)。日本語の Windows の実機での確認はまだ無い。PDF の帳票には WeasyPrint と OS の pango が要る (無くても画面は動く)。
 
 端末の開き方は、Mac は「ターミナル」、Windows は PowerShell、Linux は端末のアプリ。
 
