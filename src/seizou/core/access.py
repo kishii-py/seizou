@@ -235,7 +235,7 @@ ACCOUNT_ACTIONS = frozenset(
         "accounts.update_account",
         "accounts.delete_account",
         "core.set_setting",
-        "feedback.connect_github",  # 「GitHub とつなぐ」(開発の記録 docs/nights/20261106/N185.md)。世話役 = アカウント管理の権限。services も同じ判定で 2 重に断る
+        "feedback.connect_github",  # 「GitHub とつなぐ」(開発の記録 docs/nights/20261106/N185.md)。アカウント管理の権限がある人だけ。services も同じ判定で 2 重に断る
         # 会社の情報の変更 (開発の記録 docs/nights/20261103/N80.md。設定の画面の「会社の情報」。門は設定の変更と同じ)
         "core.update_company",
         # 部署を画面から直す口 (開発の記録 docs/nights/20261103/N57.md。本体が起こす前に入れる前提)

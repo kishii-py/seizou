@@ -89,7 +89,7 @@ def test_issue_headings_follow_contributing(writer):
         # 箇条の見出しを持たない型 (決まりの提案・業務の流れの違い) と使い方は、要望の見出しを使う。
         source = types.get(label) or types["要望"]
         assert headings == expected.get(value, ["困っている場面", "欲しい動き"]), label
-        # 出す見出しは、その型の見出しの中から CONTRIBUTING の並びのまま (欄で埋まらない見出しは世話役が足す)。
+        # 出す見出しは、その型の見出しの中から CONTRIBUTING の並びのまま (欄で埋まらない見出しはアカウント管理の担当者が足す)。
         assert headings == [heading for heading in source if heading in headings], label
         assert not {"困りごと", "場面", "望む形"} & set(headings), label
 

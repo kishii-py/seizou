@@ -21,4 +21,4 @@
 | 点検 | 置き場の立ち上げの確かめ。命令は `seizou_doctor` で、読むだけで何も書き換えない。直す物があれば「直す」の行で知らせる | [「運用の手引き」](operations.md) |
 | 練習モード | 今のデータの写しを使う練習用のサーバー。置き場で `manage.py seizou_practice start` を打つと別のポートで起動する (SQLite の置き場だけ)。ここでの登録は本番に残らず、取引先へも送らない | [「画面の一覧」](screens.md)の練習モード・[「運用の手引き」](operations.md) |
 | 本番 | 社内で実際に使う置き場。本番の形では `.env` の `DEBUG` を 0 にする (`seizou new` の既定は開発の設定の 1)。本番で使うときの決まりと点検は別の文書にある | [「本番で使う」](production.md) |
-| 世話役 | seizou の OSS の側で、Issue と PR を受け付け、merge する役。今は作者が暫定で務める。会社のシステムの画面と画面ごとの説明書が「世話役」と呼ぶ、会社の中でフィードバックを確かめて GitHub に送るアカウント管理の担当者とは、別の役 | [GOVERNANCE.md](../GOVERNANCE.md) |
+| 世話役 | seizou の OSS の側で、Issue と PR を受け付け、merge する役。今は作者が暫定で務める。会社の中でフィードバックを確かめて GitHub に送る人は、アカウント管理の担当者と呼ぶ | [GOVERNANCE.md](../GOVERNANCE.md) |

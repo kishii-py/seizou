@@ -1,8 +1,8 @@
 {% extends "core/detail.html" %}
 {% load feedback_tags seizou_icons %}
-{# フィードバックの詳細: 題の行の下に「この件の進み具合」の段の帯 (block main。feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)、土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (世話役だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
+{# フィードバックの詳細: 題の行の下に「この件の進み具合」の段の帯 (block main。feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)、土台の基本情報の後に、会話の記録 (吹き出し)・Issue の文 (写す)・状態 (アカウント管理の担当者だけ)・下書きの削除 (消せる人だけ) の 4 つの節。 #}
 {# 状態の節の GitHub (開発の記録 docs/nights/20261106/N185.md): つないでいて確認済みなら「GitHub に送る」(送ったにするの左)、つないでいなければ「GitHub とつなぐ」への link。 #}
-{# 見送った (開発の記録 docs/nights/20261107/N322.md): 「直しました」の次に「見送りました」の節。状態の節に、版待ちの件の直る版と会社の版 (世話役だけ)。見送った物は直したと同じく記録と送るの形を出さない。 #}
+{# 見送った (開発の記録 docs/nights/20261107/N322.md): 「直しました」の次に「見送りました」の節。状態の節に、版待ちの件の直る版と会社の版 (アカウント管理の担当者だけ)。見送った物は直したと同じく記録と送るの形を出さない。 #}
 {% block main %}{% feedback_steps object as steps %}{% include "feedback/_steps.html" with steps_done=object.status %}{% endblock %}
 {% block content %}{% feedback_fields fields as fields %}{{ block.super }}
 {% if object.fixed_at %}
@@ -63,7 +63,7 @@
 {% if info.can_manage %}
 <section class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-status-title">
   <h2 id="feedback-status-title" class="text-lg font-bold">状態</h2>
-  <p class="mt-2 text-xs text-base-content/60">今の状態: {{ object.get_status_display }}。世話役が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
+  <p class="mt-2 text-xs text-base-content/60">今の状態: {{ object.get_status_display }}。アカウント管理の担当者が Issue の文を見てから「確認済み」にし、GitHub に写したら「送った」にします (URL は任意)。</p>
   {% if object.fix_version and object.status == "sent" %}<p id="feedback-fix-version" class="mt-2 text-xs text-base-content/60">直る版 {{ object.fix_version }} が出ています。{% if info.version %}この会社は {{ info.version }} です。{% else %}この会社の版が分かりません。{% endif %}版を入れた後の取り込みで「直した」になります。</p>{% endif %}
   {% if object.status != "fixed" and object.status != "dismissed" %}<p class="mt-2 text-xs text-base-content/60">直した版を入れたら「直したと記録する」で、直した場所と版 (任意) を残します。書いた人が次にログインしたときに、1 回だけ知らせが出ます。</p>{% endif %}
   {% if object.status == "draft" or object.status == "confirmed" %}<p class="mt-2 text-xs text-base-content/60">{% if info.github.connected %}GitHub とつないであるので、確認済みの物は「GitHub に送る」で Issue にできます (送り先 {{ info.github.repo }})。送った Issue の URL が残ります。{% else %}「GitHub とつなぐ」でトークンを置くと、確認済みの物を手で写さずに GitHub に送れます。{% endif %}</p>{% endif %}

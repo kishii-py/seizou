@@ -8,7 +8,7 @@
 この試験が見る所: `#feedback-chat` の有無に応じた `#feedback-columns` の数と `#feedback-form-column form` (鍵の無い会社は
 `form[data-enter-guard]`)・保存の後の URL・`section#feedback-steps` の `data-steps-done`・`li[data-step]` の数と class と `data-content`・
 `#feedback-tabs` の数。
-見ない所 (理由): AI の段の「送信」(本物の AI に送らない)、確認済み・GitHub に送った・直した・見送ったの段 (世話役の操作と GitHub が要る。
+見ない所 (理由): AI の段の「送信」(本物の AI に送らない)、確認済み・GitHub に送った・直した・見送ったの段 (アカウント管理の担当者の操作と GitHub が要る。
 段の描き分けは単体の試験 tests/test_feedback_steps.py が見る)、「送った件」の字 (E-58 が見る)、みんなの Issue (E-74)、
 画面の絵を添える欄、B 社 (同じ部品)。
 DB に残る物: A 社にフィードバック 1 件 (下書き。題は `E2E-fb-<日時>`)。

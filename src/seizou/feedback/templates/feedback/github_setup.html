@@ -1,7 +1,7 @@
 {% extends "core/form.html" %}
 {% load feedback_tags seizou_icons %}
 {# 「GitHub とつなぐ」(開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x): 上に今の状態 (つないでいれば「外す」と送り方とやめ方)、下に 2 つのつなぎ方のタブ = 「GitHub でログインしてつなぐ」(開発の記録 docs/nights/20261107/N320.md。決め 11-07 09:2x) と「トークンを貼ってつなぐ」(手順と土台の入力の形)。本人の決め 11-07 20:5x「タブで分けて、どちらかが有効な時はもう片方では何もできないことがわかる感じ」。 #}
-{# 世話役でない人には断りの文だけを出す (状態・タブ・入力の形を出さない)。部品の画面は R15 で dispatch を上書きできないため。送られても services が断る。 #}
+{# アカウント管理の担当者でない人には断りの文だけを出す (状態・タブ・入力の形を出さない)。部品の画面は R15 で dispatch を上書きできないため。送られても services が断る。 #}
 {# 「外す」の form と「GitHub でログインしてつなぐ」の form は土台の入力の form の外に置く (form を入れ子にしない)。トークンの値と device_code はどこにも描かない。 #}
 {# タブは詳細の区分と同じ radio の形 (tabs seizou-tabs + tab-content。JS 無し)。Client ID があればログインのタブを初めに開き、無ければトークンのタブを開く。選んでいないタブの中身 (トークンの形と下に貼り付く帯も) は描かれない。 #}
 {# つないでいる間はどちらのタブも入力の形を出さず、「外す」でからの 1 文だけ (下の帯の「トークンでつなぐ」も出ない = 本人の報告 11-07 20:3x: つないだ後に下の「つなぐ」を押して赤の知らせが出た)。画面の頭の白い帯の右に「フィードバックの一覧へ戻る」(この画面には戻る道が無かった)。 #}
@@ -20,7 +20,7 @@
     <p class="flex items-center gap-2">{% icon "check" "size-5 text-success" %}{% if github.status.login %}{{ github.status.login }} の口座として{% endif %}つながっています。送り先 <span class="font-mono">{{ github.status.repo }}</span></p>
     <form method="post" action="{% url 'feedback:github_disconnect' %}">{% csrf_token %}<button id="github-disconnect" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "x" "size-4" %}外す</button></form>
   </div>
-  <p class="mt-4 text-xs text-base-content/60">送り方: 下書きの詳細で、世話役が「確認済みにする」を押してから「GitHub に送る」を押します。Issue の URL が詳細に残ります。画面の絵は GitHub の Issue に手で付けます。GitHub で Issue が閉じたら、一覧の「GitHub の状態を取り込む」で直したになります。</p>
+  <p class="mt-4 text-xs text-base-content/60">送り方: 下書きの詳細で、アカウント管理の担当者が「確認済みにする」を押してから「GitHub に送る」を押します。Issue の URL が詳細に残ります。画面の絵は GitHub の Issue に手で付けます。GitHub で Issue が閉じたら、一覧の「GitHub の状態を取り込む」で直したになります。</p>
   <p id="github-revoke" class="mt-2 text-xs text-base-content/60">やめ方: 「外す」で .env から消します。GitHub の側でも、トークンを貼ってつないだときはそのトークンを「Settings」→「Developer settings」→「Personal access tokens」で「Delete」、GitHub でログインしてつないだときは「Settings」→「Applications」→「Authorized OAuth Apps」で seizou を「Revoke」します。</p>
   {% else %}
   <p class="mt-4 text-base-content/70">まだつないでいません。下の 2 つの方法のどちらかでつなぎます。つなぐと、もう片方の方法は使えなくなります (替えるときは「外す」でから)。</p>

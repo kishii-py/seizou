@@ -1,15 +1,15 @@
 """feedback の画面が使う tag。読むだけ (書くのは services の関数)。
 
 部品の画面は R15 で get_context_data を上書きできないので、画面に足す物はここで渡す。
-{% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、世話役の印 (info.can_manage) と、削除の印 (info.can_delete) と、GitHub の状態 (info.github)
-{% feedback_github as github %}        GitHub の口の状態と世話役の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。開発の記録 docs/nights/20261106/N185.md。search=False で探さない)
+{% feedback_detail object as info %}   詳細の Issue の文 (info.issue_text) と、アカウント管理の担当者の印 (info.can_manage) と、削除の印 (info.can_delete) と、GitHub の状態 (info.github)
+{% feedback_github as github %}        GitHub の口の状態とアカウント管理の担当者の印と、皆の Issue を探した結果 (一覧と「GitHub とつなぐ」の画面。開発の記録 docs/nights/20261106/N185.md。search=False で探さない)
                                        と、GitHub でログインしてつなぐの待ち・Client ID があるか・入力の形 (開発の記録 docs/nights/20261107/N320.md)
                                        と、みんなの Issue の行の自社の印 (marks と、詳細へ移れる件の pk の openable。開発の記録 docs/nights/20261107/N323.md)
 {{ github.marks|issue_mark:issue.number }}  みんなの Issue の行の自社の印 ({"sent", "me_too"} か None。開発の記録 docs/nights/20261107/N323.md)
 {% feedback_panel as panel %}          入力の画面の AI の段の状態 (鍵があるか・会話・開いていた画面)
 {% feedback_fields fields as fields %}  詳細の基本情報の項目の並び (影響する画面の見出しを入力の画面と同じ字にした写し。block.super の前に置く)
 {% feedback_tabs as tabs %}            送る画面と一覧の上のタブの帯 (送る・送った件 (件数)・みんなの Issue。開発の記録 docs/nights/20261107/N321.md。feedback/_tabs.html)
-{% feedback_reply_draft reply as text %}  返事の下書きの、世話役が直す前の初めの字 (伏せ字の入った文。開発の記録 docs/nights/20261107/N324.md)
+{% feedback_reply_draft reply as text %}  返事の下書きの、アカウント管理の担当者が直す前の初めの字 (伏せ字の入った文。開発の記録 docs/nights/20261107/N324.md)
 {% feedback_board as board %}          みんなの Issue の盤と一覧の形の材料と、並べ替えと切り替えの link (開発の記録 docs/nights/20261107/N325.md。GET の tab が issues のときだけ GitHub を読む)
 {% feedback_steps object as steps %}   詳細の「この件の進み具合」の段の帯の材料 (feedback/_steps.html。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)
 info の replies・can_reply・company_login は詳細の「返事」の節 (_replies.html) が使う (開発の記録 docs/nights/20261107/N324.md)。
@@ -50,11 +50,11 @@ def feedback_panel(context):
 
 @register.simple_tag(takes_context=True)
 def feedback_detail(context, feedback):
-    """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": 世話役か, "can_delete": 下書きを消せるか, "screenshots": 画面の絵 (画像の添付ファイル。付けた順),
+    """詳細に足す物。{"issue_text": GitHub の Issue に写す文, "can_manage": アカウント管理の担当者か, "can_delete": 下書きを消せるか, "screenshots": 画面の絵 (画像の添付ファイル。付けた順),
     "github": GitHub とつないだ状態 (services.github_status。トークンの値は無い),
-    "version": 会社が入れている版 (manual.package_version。入っていなければ空の字。版待ちの件の直る版と並べて世話役に見せる。開発の記録 docs/nights/20261107/N322.md)}。
+    "version": 会社が入れている版 (manual.package_version。入っていなければ空の字。版待ちの件の直る版と並べてアカウント管理の担当者に見せる。開発の記録 docs/nights/20261107/N322.md)}。
 
-    request が無ければ世話役でなく、消せない。
+    request が無ければアカウント管理の担当者でなく、消せない。
     """
     # 版の口 (core の manual) はこの tag だけが使うので、ここで import する。
     from seizou.core import manual
@@ -68,7 +68,7 @@ def feedback_detail(context, feedback):
         "can_delete": user is not None and services.can_delete(feedback, user),
         "github": services.github_status(),
         "version": manual.package_version(),
-        # 「返事」の節 (開発の記録 docs/nights/20261107/N324.md): 下書き (送った日時が空) は返事を書ける人 (書いた人か世話役) にだけ並べる
+        # 「返事」の節 (開発の記録 docs/nights/20261107/N324.md): 下書き (送った日時が空) は返事を書ける人 (書いた人かアカウント管理の担当者) にだけ並べる
         "replies": [reply for reply in services.replies_of(feedback) if reply.sent_at or (user is not None and services.can_reply(feedback, user))],
         "can_reply": user is not None and services.can_reply(feedback, user),
         "company_login": services.company_login(),
@@ -77,19 +77,19 @@ def feedback_detail(context, feedback):
 
 @register.simple_tag(takes_context=True)
 def feedback_github(context, search=True):
-    """GitHub の口の状態。{"status": services.github_status() (トークンの値は無い), "can_manage": 世話役か,
+    """GitHub の口の状態。{"status": services.github_status() (トークンの値は無い), "can_manage": アカウント管理の担当者か,
     "searched": 皆の Issue を探したか, "q": 探した言葉, "search": services.search_issues の結果か None,
     "device": GitHub でログインしてつなぐの待ち (services.github_device_state。device_code は無い) か None,
     "client_id": 作品の Client ID があるか, "device_form": 「GitHub でログインしてつなぐ」の入力の形 (GithubDeviceForm),
     "marks": みんなの Issue の行の自社の印 (services.our_issue_marks。探したときだけ。ほかは空の辞書),
-    "openable": 自社の印の件のうち、見ている人が詳細を開ける件の pk の集まり (世話役は全部、ほかの人は自分の書いた件)}。
+    "openable": 自社の印の件のうち、見ている人が詳細を開ける件の pk の集まり (アカウント管理の担当者は全部、ほかの人は自分の書いた件)}。
 
     皆の Issue を探す (GitHub を読む) のは、GET に issue_q があるときだけ (「探す」を押したとき。空の言葉なら新しい順)。
-    一覧を開くたびには GitHub を読まない。request が無ければ世話役でなく、探さず、待ちは None。
+    一覧を開くたびには GitHub を読まない。request が無ければアカウント管理の担当者でなく、探さず、待ちは None。
     search が偽なら探さない (一覧の見出しの行のボタンが使う。同じ表示の下の枠が探すので、GitHub を 2 回読まない。読めなかった返事は控えに残らないため = services.search_issues)。
     入力の形をここで渡すのは、部品の画面が R15 で get_context_data を上書きできないため (開発の記録 docs/nights/20261107/N320.md)。
-    自社の印 (開発の記録 docs/nights/20261107/N323.md) は世話役でない人にも出す (印は会社の物)。詳細へ移る link は openable の件だけにする
-    (詳細の画面は世話役でない人に自分の書いた件だけを開くので、ほかの人の件の link は 404 になるため)。
+    自社の印 (開発の記録 docs/nights/20261107/N323.md) はアカウント管理の担当者でない人にも出す (印は会社の物)。詳細へ移る link は openable の件だけにする
+    (詳細の画面はアカウント管理の担当者でない人に自分の書いた件だけを開くので、ほかの人の件の link は 404 になるため)。
     """
     request = context.get("request")
     user = getattr(request, "user", None) if request is not None else None
@@ -194,7 +194,7 @@ STEPS_DONE = {"draft": 1, "confirmed": 2, "sent": 3, "fixed": 4, "dismissed": 4}
 def feedback_steps(feedback):
     """詳細の「この件の進み具合」の段の帯の材料 (feedback/_steps.html)。並び 4 つ [{"key", "label", "done", "tone", "when", "note"}]。読むだけ。
 
-    done: 済んだ段か。状態より前の段は全部済んだ印にする (世話役が確認せずに送った件でも「確認済み」は済んだ印 = 指示書の「決めを待つ所」1 の勧め。
+    done: 済んだ段か。状態より前の段は全部済んだ印にする (アカウント管理の担当者が確認せずに送った件でも「確認済み」は済んだ印 = 指示書の「決めを待つ所」1 の勧め。
           下書きから直接「直した」にした件も、間の段は済んだ印)。
     tone: 済んだ段は "primary"、最後の段だけ状態の色の表 (core.status_colors.tone_for) の意味の色 (直した = success、見送った = error)。済んでいない段は空の字。
     when と note: 記録にある物だけ (書いた = 書いた日時と書いた人、GitHub に送った = Issue の番号 (sent_url の末尾。無ければ空)、直した = 直した日時、
@@ -231,7 +231,7 @@ def feedback_steps(feedback):
 
 @register.simple_tag
 def feedback_reply_draft(reply):
-    """返事の下書きの、世話役が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。開発の記録 docs/nights/20261107/N324.md)。"""
+    """返事の下書きの、アカウント管理の担当者が直す前の初めの字 (services.reply_draft_text = 取引先の名前と金額らしい数を伏せた本文。開発の記録 docs/nights/20261107/N324.md)。"""
     return services.reply_draft_text(reply)
 
 

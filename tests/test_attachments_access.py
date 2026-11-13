@@ -1,6 +1,6 @@
 """添付ファイルを、付けた先の記録を開ける人にだけ開かせる・消させる・一覧に出す・付ける先の字を見せる (Claude Security の走査の候補 11-07 の 7・8・9・10)。
 
-- フィードバックの画面の絵は、書いた本人と世話役 (アカウント管理の権限) だけ (feedback の一覧と詳細の絞りと同じ)。ほかの人には 404。
+- フィードバックの画面の絵は、書いた本人とアカウント管理の担当者 だけ (feedback の一覧と詳細の絞りと同じ)。ほかの人には 404。
 - 部署の判定が on の会社では、付けた先の部品を部署で開けない人には、開く・消す・一覧に出すをしない (404)。
 作り物のデータだけ。storage は tmp_path の下。本物の API は呼ばない (フィードバックは services で作る)。
 """
@@ -226,7 +226,7 @@ def test_add_form_target_line_hidden_from_department_outsider(settings, order_fi
 
 
 def test_add_attachment_refuses_targets_the_user_cannot_open(screenshot, author, other, manager):
-    """付ける (保存) も開ける人だけ: ほかの人のフィードバックには付けられず、書いた本人と世話役は付けられる (候補 10 の保存の側)。"""
+    """付ける (保存) も開ける人だけ: ほかの人のフィードバックには付けられず、書いた本人とアカウント管理の担当者は付けられる (候補 10 の保存の側)。"""
     feedback = screenshot.target
     with pytest.raises(ValueError, match="付ける先の記録を開けません"):
         services.add_attachment(feedback, SimpleUploadedFile("hoka.png", PNG_BYTES), other, kind="photo")

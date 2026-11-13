@@ -1,6 +1,6 @@
 """フィードバックの表。
 
-現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあれば世話役が「GitHub に送る」で送り、無ければ Issue の文を
+現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあればアカウント管理の担当者が「GitHub に送る」で送り、無ければ Issue の文を
 GitHub に手で写す。送った先の URL は sent_url に残す。書くのは services の関数だけ (R13)。
 画面は URL の名前 (例 orders:order_list) で覚える。会話の記録は JSON の並びで持ち、詳細のテンプレートが吹き出しで描く。
 送った件の Issue の返事は FeedbackReply に 1 件ずつ持つ (開発の記録 docs/nights/20261107/N324.md)。
@@ -11,7 +11,7 @@ from django.db import models
 
 
 class Feedback(models.Model):
-    """現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあれば世話役が「GitHub に送る」で送り、無ければ手で写す。書くのは services の関数だけ (R13)。"""
+    """現場の人のフィードバックの 1 件。下書きは会社の中に残り、トークンがあればアカウント管理の担当者が「GitHub に送る」で送り、無ければ手で写す。書くのは services の関数だけ (R13)。"""
 
     #: 種類。前の 5 つは CONTRIBUTING.md の Issue の型の名前と並び (決め 11-04 14:4x の 7)。値の英字は既にある 4 つを残し、
     #: 足りない型 (決まりの反例・決まりの提案) だけ足した。使い方は CONTRIBUTING の型に無い (説明書で答える会社の中の問い) ので最後に置く。
@@ -55,7 +55,7 @@ class Feedback(models.Model):
     dismissed_at = models.DateTimeField("見送った日時", null=True, blank=True)
     dismissed_note = models.CharField("見送った理由の場所", max_length=200, blank=True)
     dismissed_seen_at = models.DateTimeField("見送りを知らせた日時", null=True, blank=True)
-    #: 閉じた Issue のマイルストーンの名前 (直る版)。会社が入れている版がこれより古い間は送ったのまま、世話役に見せる (同じ決めの 4)
+    #: 閉じた Issue のマイルストーンの名前 (直る版)。会社が入れている版がこれより古い間は送ったのまま、アカウント管理の担当者に見せる (同じ決めの 4)
     fix_version = models.CharField("直る版", max_length=20, blank=True)
 
     #: 土台の詳細と小窓に出さない項目 (JSON をそのまま出さない。会話の記録・直した・見送った・直る版は詳細のテンプレートが節で描く)
@@ -98,8 +98,8 @@ class FeedbackReply(models.Model):
     誰が何を書くか:
     - GitHub から読んだ返事 (作者や皆が Issue に書いた物): login あり・created_by 無し。取り込み (services.import_replies) が書き、
       github_id・posted_at・sent_at (posted_at と同じ) が入る。この会社の口座が書いた返事は、知らせた日時 (seen_at) も入れて知らせない。
-    - 会社の中で書いた下書き (書いた人か世話役が詳細で書いた返事): created_by あり・sent_at 無し。github_id は空。
-    - 送った返事 (世話役が伏せ字を直して GitHub に送った下書き): created_by と sent_at の両方あり。GitHub に送ったなら github_id と login も入る。
+    - 会社の中で書いた下書き (書いた人かアカウント管理の担当者が詳細で書いた返事): created_by あり・sent_at 無し。github_id は空。
+    - 送った返事 (アカウント管理の担当者が伏せ字を直して GitHub に送った下書き): created_by と sent_at の両方あり。GitHub に送ったなら github_id と login も入る。
       手で写して「送ったにする」を押した物は sent_at だけが入る。
     """
 

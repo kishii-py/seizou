@@ -117,7 +117,7 @@ def test_update_feedback_owner_or_manager(plain, other, manager):
     row.refresh_from_db()
     assert row.title == "直した題"
 
-    services.update_feedback(row, {"title": "世話役が直した題"}, manager)
+    services.update_feedback(row, {"title": "アカウント管理の担当者が直した題"}, manager)
     services.mark_confirmed(row, manager)
     with pytest.raises(ValueError, match="書いた人"):
         services.update_feedback(row, {"title": "確認済みの後の題"}, plain)
@@ -125,7 +125,7 @@ def test_update_feedback_owner_or_manager(plain, other, manager):
         services.update_feedback(row, {"status": "draft"}, manager)
 
     row.refresh_from_db()
-    assert row.title == "世話役が直した題"
+    assert row.title == "アカウント管理の担当者が直した題"
     assert row.status == "confirmed"
     assert (row.input_tokens, row.output_tokens) == (7, 8)
 

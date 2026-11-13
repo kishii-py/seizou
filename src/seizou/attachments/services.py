@@ -162,7 +162,7 @@ def attachments_for(target):
     )
 
 
-#: 書いた本人と世話役だけが開ける記録の種類 (app の名前, model の名前)。フィードバックは一覧と詳細を自分の分に絞る (feedback.views._visible_to)
+#: 書いた本人とアカウント管理の担当者だけが開ける記録の種類 (app の名前, model の名前)。フィードバックは一覧と詳細を自分の分に絞る (feedback.views._visible_to)
 FEEDBACK_TYPE = ("feedback", "feedback")
 
 #: 金額が主な記録の種類 (app の名前, model の名前)。金額を見られない人には、これらに付けた添付を開かせない (openable_by の 3)。
@@ -196,7 +196,7 @@ def is_money_target(attachment) -> bool:
 
 
 def _feedback_manager(user) -> bool:
-    """フィードバックの世話役か (feedback.services.can_manage)。feedback の部品が無い会社では偽。
+    """フィードバックのアカウント管理の担当者か (feedback.services.can_manage)。feedback の部品が無い会社では偽。
 
     feedback の services は関数の中で import する (feedback の services も attachments を関数の中で import するので、外で import すると輪になる)。
     """
@@ -213,8 +213,8 @@ def openable_by(queryset, user):
     1) 付けた先の部品を、部署で開けない (access.can_open。記録は書かない) 種類の行を外す。部署の判定が off と log の会社・
        システム管理者・フルコントロール・部署の無い人には何も外さない (画面の門 screen_denied と同じ判定)。アカウント管理の部品は
        アカウント管理の権限で決まる。
-    2) フィードバックに付けた行は、世話役 (feedback.services.can_manage) でなければ、user が書いたフィードバックの物だけを残す。
-       付けた先が消えた行は、種類 (content_type) で 1) を見て、フィードバックなら世話役だけに残す。
+    2) フィードバックに付けた行は、アカウント管理の担当者 (feedback.services.can_manage) でなければ、user が書いたフィードバックの物だけを残す。
+       付けた先が消えた行は、種類 (content_type) で 1) を見て、フィードバックならアカウント管理の担当者だけに残す。
     訳: 記録を開けない人に、その記録に付けたファイル (フィードバックの画面の絵・部署の外の記録の写真や検査成績書) を開かせず、消させず、
     一覧で題とファイル名を見せないため。添付は番号を順に変えるだけで開けたので、記録の側の絞りが添付の口で抜けていた。
     出所 = Claude Security の走査の指摘 (11-07)。判定は access.can_open と feedback の一覧と詳細の絞り (_visible_to) の写し。
@@ -252,7 +252,7 @@ def openable_by(queryset, user):
 def can_open_target(target, user) -> bool:
     """user が記録 (target) を開けるか (読むだけ)。付ける入力の頭の「付ける先」の 1 行を出すかの判定。
 
-    openable_by の 1 件の形: 付けた先の部品を部署で開けるか (access.can_open。記録は書かない) と、フィードバックは書いた本人か世話役か。
+    openable_by の 1 件の形: 付けた先の部品を部署で開けるか (access.can_open。記録は書かない) と、フィードバックは書いた本人かアカウント管理の担当者か。
     訳: 開けない記録 (ほかの人のフィードバック・アカウント管理の部品の行・部署の外の記録) の題やログイン ID を、
     付ける入力の頭の 1 行で、種類と番号を変えるだけで読ませないため。出所 = Claude Security の走査の指摘 (11-07)。
     変えてよい条件 = openable_by と同じ (2 つは同じ判定にそろえる)。

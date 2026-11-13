@@ -121,7 +121,7 @@ def test_steps_of_dismissed_and_of_fixed_from_draft(plain, manager):
     assert steps[3]["label"] == "見送った" and steps[3]["when"] == row.dismissed_at
     assert steps[2]["note"] == "Issue #7"
 
-    # 世話役が確認せずに送った件と、下書きから直接「直した」にした件も、間の段は済んだ印 (指示書の「決めを待つ所」1 の勧め)。
+    # アカウント管理の担当者が確認せずに送った件と、下書きから直接「直した」にした件も、間の段は済んだ印 (指示書の「決めを待つ所」1 の勧め)。
     direct = make(plain, "下書きから直した題")
     services.mark_fixed(direct, "", manager)
     steps = feedback_tags.feedback_steps(direct)

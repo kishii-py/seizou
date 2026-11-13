@@ -38,7 +38,7 @@ urlpatterns = [
     path("<int:pk>/github/", views.github_send, name="github_send"),
     path("ask/", views.ask, name="ask"),
     path("reset/", views.reset, name="reset"),
-    # Issue の返事 (開発の記録 docs/nights/20261107/N324.md): 書く (書いた人か世話役)・GitHub に送る・手で写した後に送ったにする (世話役)
+    # Issue の返事 (開発の記録 docs/nights/20261107/N324.md): 書く (書いた人かアカウント管理の担当者)・GitHub に送る・手で写した後に送ったにする (アカウント管理の担当者)
     path("<int:pk>/replies/", views.reply_add, name="reply_add"),
     path("replies/<int:reply_pk>/send/", views.reply_send, name="reply_send"),
     path("replies/<int:reply_pk>/sent/", views.reply_mark_sent, name="reply_mark_sent"),

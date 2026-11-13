@@ -125,9 +125,9 @@ def test_fixed_from_any_state_and_locks_author(plain, manager):
 
     with pytest.raises(ValueError, match="書いた人"):
         services.update_feedback(sent, {"title": "書いた人が直す題"}, plain)
-    services.update_feedback(sent, {"title": "世話役が直した題"}, manager)
+    services.update_feedback(sent, {"title": "アカウント管理の担当者が直した題"}, manager)
     sent.refresh_from_db()
-    assert (sent.title, sent.status) == ("世話役が直した題", "fixed")
+    assert (sent.title, sent.status) == ("アカウント管理の担当者が直した題", "fixed")
     with pytest.raises(ValueError, match="下書きだけ"):
         services.delete_feedback(sent, manager)
     assert Feedback.objects.filter(pk=sent.pk).exists()

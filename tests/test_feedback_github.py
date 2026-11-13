@@ -520,7 +520,7 @@ def test_list_buttons_and_sync_endpoint(client, manager, plain, fake):
     client.force_login(manager)
     html = html_of(client.get("/feedback/"))
     assert "GitHub の設定" in html and "GitHub の状態を取り込む" not in html
-    # 世話役のボタンは見出しの行の「新規登録」の左 (カードの外の別の行は無い。候補 C114)
+    # アカウント管理の担当者のボタンは見出しの行の「新規登録」の左 (カードの外の別の行は無い。候補 C114)
     assert 'id="feedback-github-settings" class="btn btn-outline border-base-300"' in html
     assert html.index('id="feedback-github-settings"') < html.index('class="btn btn-primary" href="/feedback/new/"') < html.index('id="list-card"')
 
@@ -1363,7 +1363,7 @@ def test_add_reply_by_author_and_manager(manager, plain, no_http):
     assert reply.sent_at is None and reply.github_id is None and reply.login == ""
     assert reply.seen_at is not None
     assert services.unseen_replies(plain) == []
-    assert services.add_reply(row, "世話役から", manager).created_by == manager
+    assert services.add_reply(row, "アカウント管理の担当者から", manager).created_by == manager
     with pytest.raises(ValueError, match="書いた人かアカウント管理の担当者だけ"):
         services.add_reply(row, "ほかの人から", other)
 
@@ -1406,7 +1406,7 @@ def test_reply_add_endpoint_and_404_for_others(client, plain, fake):
     assert fake.calls == []
 
 
-# ---- 送る (世話役が直して会社のトークンで)
+# ---- 送る (アカウント管理の担当者が直して会社のトークンで)
 
 
 def test_send_reply_posts_edited_text(manager, plain, fake):
@@ -1414,15 +1414,15 @@ def test_send_reply_posts_edited_text(manager, plain, fake):
     row = make(plain, status="sent", sent_url=ISSUE_URL)
     reply = services.add_reply(row, "作り物の文", plain)
 
-    url = services.send_reply(reply, "  世話役が直した文  ", manager)
+    url = services.send_reply(reply, "  アカウント管理の担当者が直した文  ", manager)
 
     assert url == f"{ISSUE_URL}#issuecomment-9001"
     method, api, kwargs = fake.calls[-1]
     assert (method, api) == ("POST", "https://api.github.com/repos/example-owner/example-repo/issues/7/comments")
-    assert kwargs["json"] == {"body": "世話役が直した文"}
+    assert kwargs["json"] == {"body": "アカウント管理の担当者が直した文"}
     assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
     reply.refresh_from_db()
-    assert reply.body == "世話役が直した文"
+    assert reply.body == "アカウント管理の担当者が直した文"
     assert reply.sent_at is not None and reply.github_id == 9001
     assert reply.login == "example-feedback-bot"
     assert reply.posted_at is not None and reply.created_by == plain
@@ -1434,7 +1434,7 @@ def test_send_reply_posts_edited_text(manager, plain, fake):
     from seizou.feedback.models import FeedbackReply
 
     fake.issues[7] = Answer(200, {"state": "open", "closed_at": None, "html_url": ISSUE_URL})
-    fake.comments = Answer(200, [comment(9001, "example-feedback-bot", "世話役が直した文")])
+    fake.comments = Answer(200, [comment(9001, "example-feedback-bot", "アカウント管理の担当者が直した文")])
     assert services.sync_github(manager)["返事"] == 0
     assert FeedbackReply.objects.count() == 1
 
@@ -1484,10 +1484,10 @@ def test_reply_send_endpoint(client, manager, plain, fake):
     assert comments_calls(fake) == []
 
     client.force_login(manager)
-    response = client.post(f"/feedback/replies/{reply.pk}/send/", {"body": "世話役が直した文"})
+    response = client.post(f"/feedback/replies/{reply.pk}/send/", {"body": "アカウント管理の担当者が直した文"})
     assert response["Location"] == f"/feedback/{row.pk}/"
     assert f"返事を GitHub に送りました: {ISSUE_URL}#issuecomment-9001" in html_of(client.get(f"/feedback/{row.pk}/"))
-    assert fake.calls[-1][2]["json"] == {"body": "世話役が直した文"}
+    assert fake.calls[-1][2]["json"] == {"body": "アカウント管理の担当者が直した文"}
 
 
 # ---- 手で写した印 (つないでいない会社)
@@ -1517,7 +1517,7 @@ def test_mark_reply_sent_sets_only_sent_at(client, manager, plain, no_http):
 
 # ---------------------------------------------------------------- 送る前に直せる (依頼書 N323)
 
-#: 世話役が伏せ字の「〇〇」のうち「1円」だけを戻した Issue の文 (単価は伏せたまま)
+#: アカウント管理の担当者が伏せ字の「〇〇」のうち「1円」だけを戻した Issue の文 (単価は伏せたまま)
 EDITED = "# 合計が 1円 ずれる\n\n- 種類: 不具合\n\n## 実際の動き\n請求の合計が 1円 ずれる。単価は 〇〇。\n"
 
 
@@ -1701,7 +1701,7 @@ def test_me_too_without_connection_leaves_draft_without_thumbs_up(plain, uchimo)
     row = result["feedback"]
     assert (row.status, row.sent_url, row.title) == ("draft", "", "古い件 10")
     assert row.problem == (
-        f"同じ困りごとの Issue #10 がある ({SEIZOU_ISSUES}10)。GitHub とつないでいないので 👍 は付けていない。世話役がつないだ後に付ける"
+        f"同じ困りごとの Issue #10 がある ({SEIZOU_ISSUES}10)。GitHub とつないでいないので 👍 は付けていない。アカウント管理の担当者がつないだ後に付ける"
     )
     with pytest.raises(ValueError, match="既にあります"):
         services.me_too(10, plain)

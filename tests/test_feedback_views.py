@@ -727,7 +727,7 @@ def test_replies_section_only_for_sent_fixed_dismissed(client, plain, manager, r
         assert '<h2 id="feedback-replies-title"' in section and "返事" in section
         assert "まだ返事はありません。" in section
         assert f'action="/feedback/{row.pk}/replies/"' in section and "返事を書く" in section
-        assert "作者からの返事に答えます。送るのは世話役です。" in section
+        assert "作者からの返事に答えます。送るのはアカウント管理の担当者です。" in section
         # 返事の節は「Issue の文」の節の次
         assert html.index('id="feedback-issue-title"') < html.index('id="feedback-replies"')
 
@@ -745,7 +745,7 @@ def test_replies_show_github_and_drafts(client, plain, manager, reply_env, monke
     assert "example-author" in section and "どの画面で起きましたか" in section
     assert '<span class="badge badge-sm">この会社</span>' in section
     assert "受注の一覧の画面です。" in section and '<span class="badge badge-sm">下書き</span>' in section
-    assert "世話役の確認を待っています。" in section
+    assert "アカウント管理の担当者の確認を待っています。" in section
     assert "/send/" not in section and "/sent/" not in section
     assert section.index("どの画面で起きましたか") < section.index("受注の一覧の画面です。")
     assert "html_url" not in section and "issuecomment" not in section
@@ -768,7 +768,7 @@ def test_manager_form_starts_with_masked_text(client, plain, manager, reply_env)
     assert f'action="/feedback/replies/{reply.pk}/sent/"' in section
     assert f'data-reply-copy="feedback-reply-body-{reply.pk}"' in section and "送ったにする" in section
     assert "GitHub に送る" not in section
-    assert "世話役の確認を待っています。" not in section
+    assert "アカウント管理の担当者の確認を待っています。" not in section
 
     # つないだ会社: GitHub に送る
     reply_env()

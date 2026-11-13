@@ -1,7 +1,7 @@
 {% load feedback_tags seizou_icons %}
 {# 「返事」の節 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x)。詳細の「Issue の文」の節の次に include する (object と info は詳細の物)。 #}
 {# 状態が送った・直した・見送ったの件にだけ出す。返事の本文は公開の場の誰でも書けるので字のまま出す (自動の escape を外さない)。 #}
-{# 下書き (送った日時が空) は書いた人と世話役にだけ並ぶ (tag が外す)。世話役は伏せ字の入った初めの字を直して「GitHub に送る」、 #}
+{# 下書き (送った日時が空) は書いた人とアカウント管理の担当者にだけ並ぶ (tag が外す)。アカウント管理の担当者は伏せ字の入った初めの字を直して「GitHub に送る」、 #}
 {# つないでいない会社では「写す」で文を写して GitHub に手で貼り、「送ったにする」を押す。 #}
 {% if object.status == "sent" or object.status == "fixed" or object.status == "dismissed" %}
 <section id="feedback-replies" class="mt-6 rounded-xl border border-base-300 bg-base-100 p-6 shadow-xs" aria-labelledby="feedback-replies-title">
@@ -20,7 +20,7 @@
       {% if info.can_manage %}
       {% feedback_reply_draft reply as draft_text %}
       <form method="post" action="{% if info.github.connected %}{% url 'feedback:reply_send' reply.pk %}{% else %}{% url 'feedback:reply_mark_sent' reply.pk %}{% endif %}" class="mt-4">{% csrf_token %}
-        <textarea id="feedback-reply-body-{{ reply.pk }}" name="body" rows="4" class="textarea w-full text-sm" aria-label="世話役が直す返事の文">{{ draft_text }}</textarea>
+        <textarea id="feedback-reply-body-{{ reply.pk }}" name="body" rows="4" class="textarea w-full text-sm" aria-label="アカウント管理の担当者が直す返事の文">{{ draft_text }}</textarea>
         <p class="mt-2 text-xs text-base-content/60">伏せ字 (〇〇) を確かめ、要るところを直してから送ってください。{% if not info.github.connected %}GitHub とつないでいないので、「写す」で文を写して Issue に貼ってから「送ったにする」を押してください。{% endif %}</p>
         <div class="mt-2 flex flex-wrap items-center justify-end gap-2">
           {% if info.github.connected %}
@@ -32,7 +32,7 @@
         </div>
       </form>
       {% else %}
-      <p class="mt-2 text-xs text-base-content/60">世話役の確認を待っています。</p>
+      <p class="mt-2 text-xs text-base-content/60">アカウント管理の担当者の確認を待っています。</p>
       {% endif %}
       {% endif %}
     </li>
@@ -44,14 +44,14 @@
   {% if info.can_reply %}
   <form method="post" action="{% url 'feedback:reply_add' object.pk %}" class="mt-6">{% csrf_token %}
     <textarea id="feedback-reply-new" name="body" rows="3" class="textarea w-full text-sm" aria-label="返事"></textarea>
-    <p class="mt-2 text-xs text-base-content/60">作者からの返事に答えます。送るのは世話役です。</p>
+    <p class="mt-2 text-xs text-base-content/60">作者からの返事に答えます。送るのはアカウント管理の担当者です。</p>
     <div class="mt-2 flex justify-end">
       <button id="feedback-reply-add" type="submit" class="btn btn-sm btn-outline border-base-300">{% icon "pencil" "size-4" %}返事を書く</button>
     </div>
   </form>
   {% endif %}
 </section>
-{# 「写す」: 押したら data-reply-copy の textarea の字 (世話役が直した後の字) をクリップボードに写し、ボタンの字を data-done にする。クリップボードの無いブラウザでは何もしない。 #}
+{# 「写す」: 押したら data-reply-copy の textarea の字 (アカウント管理の担当者が直した後の字) をクリップボードに写し、ボタンの字を data-done にする。クリップボードの無いブラウザでは何もしない。 #}
 <script>
 (function () {
   if (!navigator.clipboard) return;

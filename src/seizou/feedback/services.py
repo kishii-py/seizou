@@ -3,17 +3,17 @@
 約束:
 - 書くのはここだけ。書く関数は transaction.atomic の中。番号の無い入力の誤りは日本語の ValueError
   (文は何が起きて何をすればよいか。画面の土台が赤の知らせにし、口は messages.error にする)。
-- GitHub へは、世話役がトークンを置いた会社 (github.py。鍵は置き場の .env だけ) だけが送る。確認済みの下書きを send_to_github で
+- GitHub へは、アカウント管理の担当者がトークンを置いた会社 (github.py。鍵は置き場の .env だけ) だけが送る。確認済みの下書きを send_to_github で
   Issue にし、閉じた Issue を sync_github で閉じた理由と直る版で分ける (直した・見送った・版待ち)。HTTP は transaction.atomic の外で
-  送る (R17。送る前に書く物は無く、送った後に書く物は mark_sent・_write_fixed・_write_dismissed・_save_fix_version の atomic)。トークンが無い会社は今までどおり、世話役が Issue の文 (export_markdown) を手で写す。
+  送る (R17。送る前に書く物は無く、送った後に書く物は mark_sent・_write_fixed・_write_dismissed・_save_fix_version の atomic)。トークンが無い会社は今までどおり、アカウント管理の担当者が Issue の文 (export_markdown) を手で写す。
 - 皆の Issue を探す search_issues は読むだけ (トークンは無くてよい。返事は django.core.cache に 5 分だけ控える)。
 - 伏せ字は取引先マスターの名前と金額らしい数だけ。品番・数量・会社の自分の名前・人の名前は伏せない。
 - 画面の目録は URL の木を歩いて作るので、process の中で 1 回だけ作って覚える (screen_catalog)。
   試験は screen_catalog.cache_clear() で作り直す。
-- 世話役 = アカウント管理の権限 (seizou.core.access.can_manage_accounts)。確認済みと送ったにできるのは世話役だけ。
+- アカウント管理の担当者 = アカウント管理の権限 (seizou.core.access.can_manage_accounts) がある人。確認済みと送ったにできるのはこの人だけ。
 - 画面の絵は添付ファイルの部品の services (add_attachment・attachments_for) を通して下書きに結ぶ (表は変えない)。
   添付ファイルの部品が無い会社では欄を出さず、付けようとすると ValueError。決まり (画像だけ・5MB・3 枚) は書く前に全部見る。
-- 直した (fixed) は世話役が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
+- 直した (fixed) はアカウント管理の担当者が mark_fixed で、どの状態からでも付ける。書いた人がログインしたときに 1 回だけ知らせる (signals.py)。
 - GitHub でログインしてつなぐ (開発の記録 docs/nights/20261107/N320.md。決め 11-07 09:2x): OAuth のデバイスの認証。始める・待つ・やめるの途中は
   利用者の session (DEVICE_KEY) にだけ置き、表に書かない。承認が済んだら、トークンを貼る形と同じ _store_github で .env に書く。
 - 見送った (dismissed) は sync_github だけが付ける (GitHub で対応しない・重複として閉じた Issue)。直したと別の列に日時と知らせた印を持ち、
@@ -46,7 +46,7 @@ from .models import FeedbackReply
 
 #: 種類の値の並び (CONTRIBUTING.md の Issue の型の 5 つ = 不具合・決まりの反例・決まりの提案・業務の流れの違い・要望 と、型の外の使い方)
 KINDS = tuple(value for value, _ in Feedback.KIND_CHOICES)
-#: 状態の値の並び (下書き → 確認済み → 送った と、世話役がどの状態からでも付ける直した と、取り込みが付ける見送った)
+#: 状態の値の並び (下書き → 確認済み → 送った と、アカウント管理の担当者がどの状態からでも付ける直した と、取り込みが付ける見送った)
 STATUSES = tuple(value for value, _ in Feedback.STATUS_CHOICES)
 #: data に入れてよい鍵
 FIELD_KEYS = ("kind", "screen", "title", "problem", "situation", "wish", "screens")
@@ -153,12 +153,12 @@ def normalize_screens(value) -> str:
 
 
 def can_manage(user) -> bool:
-    """世話役か (アカウント管理の権限かフルコントロールかシステム管理者。権限の部品が無い会社ではシステム管理者だけ)。"""
+    """アカウント管理の担当者か (アカウント管理の権限かフルコントロールかシステム管理者。権限の部品が無い会社ではシステム管理者だけ)。"""
     return access.can_manage_accounts(user)
 
 
 def can_edit(feedback, user) -> bool:
-    """直せるか。書いた人で状態が下書きのとき、か世話役。"""
+    """直せるか。書いた人で状態が下書きのとき、かアカウント管理の担当者。"""
     if can_manage(user):
         return True
     user_pk = getattr(user, "pk", None)
@@ -358,7 +358,7 @@ def create_feedback(data, user, *, transcript=(), input_tokens=0, output_tokens=
 def update_feedback(feedback, data, user, *, screenshots=()):
     """data にある鍵だけを書き換える (create_feedback と同じ確かめ)。状態・token・会話の記録は変えない。
 
-    直せるのは、書いた人 (下書きの間) か世話役だけ (外は ValueError)。
+    直せるのは、書いた人 (下書きの間) かアカウント管理の担当者だけ (外は ValueError)。
     screenshots は create_feedback と同じ (直せる人だけが付けられる。直せない人は絵も付けない)。
     """
     if not can_edit(feedback, user):
@@ -380,7 +380,7 @@ def _refuse_non_manager(user, what) -> None:
 
 
 def mark_confirmed(feedback, user):
-    """下書き → 確認済み。世話役だけ。下書きでなければ ValueError。"""
+    """下書き → 確認済み。アカウント管理の担当者だけ。下書きでなければ ValueError。"""
     _refuse_non_manager(user, "確認済み")
     if feedback.status != "draft":
         raise ValueError(f"保存できません。下書きだけを確認済みにできます (今は {feedback.get_status_display()})。")
@@ -391,7 +391,7 @@ def mark_confirmed(feedback, user):
 
 
 def mark_sent(feedback, user, sent_url=""):
-    """下書きか確認済み → 送った。世話役だけ。送った物をもう一度は ValueError。
+    """下書きか確認済み → 送った。アカウント管理の担当者だけ。送った物をもう一度は ValueError。
 
     sent_url は空か、http:// か https:// で始まる 200 字までの字 (GitHub の Issue の URL など。字として持つだけ)。
     直した物も ValueError (直した後に送ったへ戻さない)。
@@ -412,7 +412,7 @@ def mark_sent(feedback, user, sent_url=""):
 
 
 def mark_fixed(feedback, note, user):
-    """直した状態にする (下書き・確認済み・送ったのどれからでも。Issue にせずに直す事もあるため)。世話役だけ。
+    """直した状態にする (下書き・確認済み・送ったのどれからでも。Issue にせずに直す事もあるため)。アカウント管理の担当者だけ。
 
     note は直した場所と版 (例「版 0.4.0 の受注の入力の画面」。空でよい。前後の空白を外して 200 字まで)。
     直した日時は今にし、知らせた日時は空にする (書いた人が次にログインしたときに 1 回知らせる = signals.py)。
@@ -557,14 +557,14 @@ MESSAGE_DELETE_DRAFT_ONLY = "下書きだけを削除できます (今は {statu
 
 
 def can_delete(feedback, user) -> bool:
-    """削除できるか。状態が下書きで、直せる人 (書いた人か世話役) のとき。"""
+    """削除できるか。状態が下書きで、直せる人 (書いた人かアカウント管理の担当者) のとき。"""
     return feedback.status == "draft" and can_edit(feedback, user)
 
 
 def delete_feedback(feedback, user) -> None:
     """下書きを 1 件消す。
 
-    下書きだけ。書いた人か世話役 (アカウント管理の権限)。確認済みと送った物は残す (世話役が GitHub に写した物と、
+    下書きだけ。書いた人かアカウント管理の担当者。確認済みと送った物は残す (アカウント管理の担当者が GitHub に写した物と、
     その前の確かめの印)。会話の記録と token も一緒に消える。
     行は atomic の中で select_for_update で取り直し、無い → 状態 → 人の順に確かめる (外れたら日本語の ValueError)。
     """
@@ -611,13 +611,13 @@ def mask_text(text) -> str:
 
 
 #: Issue の文の本文の見出しと、見出しの下に入れる欄 (CONTRIBUTING.md の Issue の型の見出しと並び。決め 11-04 14:4x の 7)。
-#: 不具合と決まりの反例は、その型の見出しのうち欄で埋まる物だけ (ブラウザ・重さ・選べる設定の値などは世話役が足す)。
+#: 不具合と決まりの反例は、その型の見出しのうち欄で埋まる物だけ (ブラウザ・重さ・選べる設定の値などはアカウント管理の担当者が足す)。
 ISSUE_SECTIONS = {
     "bug": (("再現の手順", ("situation",)), ("期待した動き", ("wish",)), ("実際の動き", ("problem",))),
     "counter": (("操作の手順", ("situation",)), ("止まるはずの決まりの番号", ("wish",)), ("実際に起きた事", ("problem",))),
 }
 #: ほかの種類は要望の見出し (決まりの提案と業務の流れの違いは、CONTRIBUTING が箇条の見出しを持たない)。
-#: 困りごとと場面は「困っている場面」に空の行で結ぶ。「今はどうしているか」は欄が無いので出さない (世話役が足す)。
+#: 困りごとと場面は「困っている場面」に空の行で結ぶ。「今はどうしているか」は欄が無いので出さない (アカウント管理の担当者が足す)。
 REQUEST_SECTIONS = (("困っている場面", ("problem", "situation")), ("欲しい動き", ("wish",)))
 
 
@@ -626,7 +626,7 @@ def export_markdown(feedback) -> str:
 
     本文の見出しは CONTRIBUTING.md の Issue の型にそろえる (ISSUE_SECTIONS・REQUEST_SECTIONS。困りごと・場面・望む形の欄を入れる)。
     取引先の名前と金額らしい数は伏せる。会話の記録・書いた人・会社名は入れない。空の節は出さない。
-    画面の絵 (画像の添付ファイル) が 1 枚以上なら、末尾に枚数とファイル名 (伏せ字つき) の 1 行。絵そのものは入れない (世話役が Issue に手で付ける)。0 枚なら今までと同じ文。
+    画面の絵 (画像の添付ファイル) が 1 枚以上なら、末尾に枚数とファイル名 (伏せ字つき) の 1 行。絵そのものは入れない (アカウント管理の担当者が Issue に手で付ける)。0 枚なら今までと同じ文。
     """
     names = _partner_names()
     lines = [
@@ -648,7 +648,7 @@ def export_markdown(feedback) -> str:
     shots = screenshots_of(feedback)
     if shots:
         files = "・".join(_mask(row.original_name, names).strip() for row in shots)
-        lines.extend(["", f"画面の絵: {len(shots)} 枚 ({files}。絵は世話役が Issue に手で付ける)"])
+        lines.extend(["", f"画面の絵: {len(shots)} 枚 ({files}。絵はアカウント管理の担当者が Issue に手で付ける)"])
     return "\n".join(lines) + "\n"
 
 
@@ -676,7 +676,7 @@ DEVICE_SLOW_DOWN_SECONDS = 5
 
 
 def _refuse_github(user, what, *, sending=False) -> None:
-    """GitHub の口は世話役だけ (外は日本語の ValueError)。what は「GitHub とつなぐ」のような動きの字。
+    """GitHub の口はアカウント管理の担当者だけ (外は日本語の ValueError)。what は「GitHub とつなぐ」のような動きの字。
 
     文の頭は、送る口 (sending) なら「送れません。」、ほかは「保存できません。」(断りの文の型。tests/test_wording.py)。
     """
@@ -717,7 +717,7 @@ def _store_github(token, repo) -> dict:
 
 @sensitive_variables("data", "token")  # 開発の設定 (DEBUG) の誤りの画面に、トークンの値を出さない
 def connect_github(data, user) -> dict:
-    """GitHub とつなぐ。世話役だけ。data = {"token": トークン, "repo": 送り先 (owner/name。空なら既定)}。
+    """GitHub とつなぐ。アカウント管理の担当者だけ。data = {"token": トークン, "repo": 送り先 (owner/name。空なら既定)}。
 
     形を見て → 口座の名前を GitHub に聞き (HTTP。atomic の外。表には書かない) → .env に 3 行 (トークン・送り先・口座の名前) を書く。
     返す物は {"login": 口座の名前, "repo": 送り先}。失敗は日本語の ValueError (画面の土台が赤の知らせにする)。
@@ -760,7 +760,7 @@ def _drop_device(session) -> None:
 
 @sensitive_variables("answer")  # 開発の設定 (DEBUG) の誤りの画面に、device_code の値を出さない
 def start_github_device(session, data, user) -> dict:
-    """GitHub でログインしてつなぐを始める。世話役だけ。data = {"repo": 送り先 (owner/name。空なら既定), "private": 真偽}。
+    """GitHub でログインしてつなぐを始める。アカウント管理の担当者だけ。data = {"repo": 送り先 (owner/name。空なら既定), "private": 真偽}。
 
     GitHub から 8 文字の符号をもらい (HTTP。atomic の外。表には書かない)、待ちの控えを利用者の session に置く。
     返す物は {"user_code", "verification_uri", "interval", "expires_at"} (device_code は返さない)。失敗は日本語の ValueError。
@@ -820,7 +820,7 @@ def poll_github_device(session, user) -> dict:
 
     返す物は {"state": "pending"} / {"state": "connected", "login", "repo"} / {"state": "expired"} / {"state": "denied"} /
     {"state": "none"} (待ちが無い) / {"state": "error", "message": 日本語の文}。例外を外に投げない。
-    世話役でなければ HTTP を呼ばずに error。承認が済んだら _store_github で .env に書き、待ちの控えを消す。
+    アカウント管理の担当者でなければ HTTP を呼ばずに error。承認が済んだら _store_github で .env に書き、待ちの控えを消す。
     slow_down は控えの間隔を返事の値 (無ければ 5 秒足す) にして pending。トークンの値を返す物と文に入れない。
     """
     try:
@@ -858,13 +858,13 @@ def poll_github_device(session, user) -> dict:
 
 
 def cancel_github_device(session, user) -> None:
-    """GitHub でログインしてつなぐの待ちをやめる (session の控えを消す)。世話役だけ。GitHub には何も送らない。"""
+    """GitHub でログインしてつなぐの待ちをやめる (session の控えを消す)。アカウント管理の担当者だけ。GitHub には何も送らない。"""
     _refuse_github(user, "GitHub とつなぐ")
     _drop_device(session)
 
 
 def disconnect_github(user) -> None:
-    """GitHub から外す。世話役だけ。.env と os.environ から 3 つの行 (トークン・送り先・口座の名前) を消す。"""
+    """GitHub から外す。アカウント管理の担当者だけ。.env と os.environ から 3 つの行 (トークン・送り先・口座の名前) を消す。"""
     _refuse_github(user, "GitHub から外す")
     try:
         for key in (github.TOKEN_ENV, github.REPO_ENV, github.LOGIN_ENV):
@@ -878,14 +878,14 @@ MESSAGE_GITHUB_TEXT_NO_TITLE = "Issue の文の 1 行目に、題を「# 題」�
 
 
 def send_to_github(feedback, user, text=None) -> str:
-    """確認済みの下書きを GitHub の Issue にし、送ったにする。世話役だけ。作った Issue の URL を返す。
+    """確認済みの下書きを GitHub の Issue にし、送ったにする。アカウント管理の担当者だけ。作った Issue の URL を返す。
 
     題は Issue の文の 1 行目の「# 」を外した字、本文は Issue の文の全部、印は from-seizou と種類の表示。
-    Issue の文は、text が None なら export_markdown (伏せ字の入った文)、字なら世話役が詳細の欄で直した文 (前後の空白を外す。開発の記録 docs/nights/20261107/N323.md)。
+    Issue の文は、text が None なら export_markdown (伏せ字の入った文)、字ならアカウント管理の担当者が詳細の欄で直した文 (前後の空白を外す。開発の記録 docs/nights/20261107/N323.md)。
     確認済みでない・つないでいない・直した文が空か題が無いときは、HTTP を呼ばずに ValueError。GitHub が断ったら ValueError で、状態は変えない。
     HTTP は atomic の外 (R17)。送った後に mark_sent (atomic) で URL を残す。
-    訳: 世話役の直した文は、もう一度伏せずにそのまま送る。伏せ字の初めの形 (mask_text・_MONEY) は単価のように外へ出したくない数を
-    伏せたままにしておくための物で、「1円ずれる」のように伏せると不具合の要点が読めなくなる数だけを、世話役が判断して戻すため。
+    訳: アカウント管理の担当者の直した文は、もう一度伏せずにそのまま送る。伏せ字の初めの形 (mask_text・_MONEY) は単価のように外へ出したくない数を
+    伏せたままにしておくための物で、「1円ずれる」のように伏せると不具合の要点が読めなくなる数だけを、アカウント管理の担当者が判断して戻すため。
     出所 = 本人の決め 11-07 09:0x〜10:1x (11-07 朝の通しで「1円」が伏せ字になった)。変えてよい条件 = 送る前の確かめの形を本人の決めで変えたとき。
     """
     _refuse_github(user, "GitHub に送る", sending=True)
@@ -993,10 +993,10 @@ def sync_github(user=None) -> dict:
       版を待たない。
     - completed でマイルストーン (直る版) あり → 会社が入れている版 (manual.package_version) が同じか新しければ直した
       (直した場所は「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD。直る版 0.1.1)」)。古ければ送ったのまま直る版を残し、版待ちに数える (知らせない)。
-    - completed でマイルストーン無し → 送ったのまま版の印なしに数える (自動では直したにしない。世話役が版を入れた後に手で「直したと記録する」)。
+    - completed でマイルストーン無し → 送ったのまま版の印なしに数える (自動では直したにしない。アカウント管理の担当者が版を入れた後に手で「直したと記録する」)。
     - 理由が空 (古い Issue と理由の無い閉じ方) と知らない字 → 今までどおり直した (「GitHub の Issue #<番号> (閉じた日 YYYY-MM-DD)」)。
     読めなかった物は数えて飛ばす (止めない)。HTTP は 1 件ずつ atomic の外 (R17)。トークンがあれば使う (無くても公開のリポジトリは読める)。
-    user は画面の口なら request.user (世話役でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
+    user は画面の口なら request.user (アカウント管理の担当者でなければ ValueError)。None は置き場の持ち主が打つ管理の命令 (seizou_feedback_sync) だけ。
     訳: 対応しないとして閉じた物と、直った版がまだ会社に入っていない物に「直しました」と知らせないため。
     出所 = 本人の決め 11-07 09:0x〜09:4x の 1・2・4。変えてよい条件 = 閉じた理由の分け方か版の決まりを、本人の決めで変えたとき。
     返事 (開発の記録 docs/nights/20261107/N324.md。決め 11-07 09:1x〜09:4x): 最後に、送った・直した・見送ったの件の Issue の返事を読み (_sync_replies)、
@@ -1082,7 +1082,7 @@ def search_issues(words) -> dict:
 def visible_count(user) -> int:
     """user に見えるフィードバックの件数 (送る画面と一覧の上のタブの帯の「送った件」の札)。読むだけ。
 
-    絞りは一覧の画面 (views._visible_to) と同じ: 世話役 (can_manage) には全部、ほかの人には自分の書いた分だけ。
+    絞りは一覧の画面 (views._visible_to) と同じ: アカウント管理の担当者 (can_manage) には全部、ほかの人には自分の書いた分だけ。
     pk の無い利用者 (ログインしていない人) は 0。
     """
     user_pk = getattr(user, "pk", None)
@@ -1098,7 +1098,7 @@ def visible_count(user) -> int:
 # 世話役 (作者) が Issue に書いた返事を、取り込みで読んで表 (FeedbackReply) に残し、送った件の詳細に出す。
 # 書いた人には、ログインの画面からログインしたときに 1 回だけ知らせる (直したと同じ形。signals.py)。
 # 会社の口座 (.env の SEIZOU_GITHUB_LOGIN) が書いた返事は表に残すが知らせない。
-# 書いた人が詳細で書いた返事は下書きで残し、世話役が伏せ字を直してから会社のトークンで Issue に送る (送る前の確認は Issue と同じ)。
+# 書いた人が詳細で書いた返事は下書きで残し、アカウント管理の担当者が伏せ字を直してから会社のトークンで Issue に送る (送る前の確認は Issue と同じ)。
 # HTTP は transaction.atomic の外 (R17)。
 
 #: 返事を読む件の状態 (送った・直した・見送った)
@@ -1229,7 +1229,7 @@ MESSAGE_REPLY_NOT_ISSUE = "この件は GitHub の Issue に送った物では�
 
 
 def can_reply(feedback, user) -> bool:
-    """返事を書けるか。件を書いた人か世話役。"""
+    """返事を書けるか。件を書いた人かアカウント管理の担当者。"""
     if can_manage(user):
         return True
     user_pk = getattr(user, "pk", None)
@@ -1250,11 +1250,11 @@ def _reply_body(text) -> tuple[str, str]:
 
 
 def add_reply(feedback, text, user):
-    """書いた人か世話役が、送った件に返事の下書きを 1 件書く。作った行を返す。
+    """書いた人かアカウント管理の担当者が、送った件に返事の下書きを 1 件書く。作った行を返す。
 
     状態が送った・直した・見送ったの件だけ (下書きと確認済みはまだ Issue が無いので断る)。文は前後の空白を外して 2000 字まで。
-    書いた人は user、知らせた日時は今 (会社の中で書いた物は知らせない)。GitHub には送らない (送るのは世話役の send_reply)。
-    訳: 返事は書いた人の字のまま公開の Issue に出るので、Issue の文と同じく世話役の確認 (伏せ字) を通してから送るため、
+    書いた人は user、知らせた日時は今 (会社の中で書いた物は知らせない)。GitHub には送らない (送るのはアカウント管理の担当者の send_reply)。
+    訳: 返事は書いた人の字のまま公開の Issue に出るので、Issue の文と同じくアカウント管理の担当者の確認 (伏せ字) を通してから送るため、
     ここでは下書きとして残すだけにする。出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D)。
     変えてよい条件 = 書いた人が直接 Issue に返事を書ける形に変えるときは、本人の決めを取り直してから。
     """
@@ -1270,17 +1270,17 @@ def add_reply(feedback, text, user):
 
 
 def reply_draft_text(reply) -> str:
-    """世話役が直す前の返事の初めの字 (取引先の名前と金額らしい数を伏せた本文)。読むだけ。"""
+    """アカウント管理の担当者が直す前の返事の初めの字 (取引先の名前と金額らしい数を伏せた本文)。読むだけ。"""
     return mask_text(reply.body)
 
 
 def send_reply(reply, text, user) -> str:
-    """世話役が直した返事の文を、会社のトークンで件の Issue に書き、送ったにする。Issue の返事の URL を返す。
+    """アカウント管理の担当者が直した返事の文を、会社のトークンで件の Issue に書き、送ったにする。Issue の返事の URL を返す。
 
-    世話役だけ。送った返事・つないでいない会社・送った先が Issue の形でない件は、HTTP を呼ばずに断る。
-    文は世話役が直した物 (前後の空白を外して 2000 字まで)。GitHub が断ったら ValueError で、返事は下書きのまま。
+    アカウント管理の担当者だけ。送った返事・つないでいない会社・送った先が Issue の形でない件は、HTTP を呼ばずに断る。
+    文はアカウント管理の担当者が直した物 (前後の空白を外して 2000 字まで)。GitHub が断ったら ValueError で、返事は下書きのまま。
     HTTP は atomic の外 (R17)。送った後に atomic で本文・送った日時・GitHub の id・口座・GitHub に出た日時を書く。
-    訳: 書いた人の返事は公開の Issue に出るので、取引先の名前や金額が出ないよう、世話役が伏せ字を確かめた文だけを送るため。
+    訳: 書いた人の返事は公開の Issue に出るので、取引先の名前や金額が出ないよう、アカウント管理の担当者が伏せ字を確かめた文だけを送るため。
     出所 = 本人の決め 11-07 09:1x〜09:4x (指示書2 の D。Issue を送るときと同じ確認)。
     変えてよい条件 = 送る前の確認の形 (開発の記録 docs/nights/20261107/N323.md の「送る前に直せる」) を本人の決めで変えたとき、同じ形に合わせる。
     """
@@ -1313,7 +1313,7 @@ def send_reply(reply, text, user) -> str:
 
 
 def mark_reply_sent(reply, user):
-    """つないでいない会社で、世話役が伏せ字の文を GitHub に手で写した後に、返事を送ったにする。世話役だけ。
+    """つないでいない会社で、アカウント管理の担当者が伏せ字の文を GitHub に手で写した後に、返事を送ったにする。アカウント管理の担当者だけ。
 
     送った日時だけを今にする (本文と GitHub の id は変えない)。GitHub の id が空のままなので、次の取り込みで同じ返事が
     GitHub から読まれると、別の行で入ることがある (開発の記録 docs/nights/20261107/N324.md の記録に書いた)。送った返事は ValueError。
@@ -1343,7 +1343,7 @@ def replies_of(feedback) -> list:
 #: うちもの件の困りごと (つないだ会社。会社のトークンで 👍 を付けた)
 ME_TOO_PROBLEM = "同じ困りごとの Issue #{number} に「うちも」を付けた"
 #: うちもの件の困りごと (つないでいない会社。👍 を付けずに下書きで残す)
-ME_TOO_DRAFT_PROBLEM = "同じ困りごとの Issue #{number} がある ({url})。GitHub とつないでいないので 👍 は付けていない。世話役がつないだ後に付ける"
+ME_TOO_DRAFT_PROBLEM = "同じ困りごとの Issue #{number} がある ({url})。GitHub とつないでいないので 👍 は付けていない。アカウント管理の担当者がつないだ後に付ける"
 #: うちもの件を見分ける困りごとの頭 (ME_TOO_PROBLEM と ME_TOO_DRAFT_PROBLEM の頭)
 _ME_TOO_HEAD = "同じ困りごとの Issue #"
 #: Issue の本文の種類の行 (export_markdown が書く「- 種類: <表示名>」)
@@ -1373,7 +1373,7 @@ def our_issue_marks() -> dict[int, dict]:
 
     送り先 (github_status の repo) の Issue の URL を送った先に持つ件を全部読む (状態は見ない。直した・見送った件も自社が送った物)。
     うちもの件は困りごとの頭 (「同じ困りごとの Issue #」= ME_TOO_PROBLEM の形) で見分け、ほかは自社が送った件。どちらも pk の小さい最初の 1 つ。
-    世話役でない人にも返す (印は会社の物)。HTTP は呼ばない。
+    アカウント管理の担当者でない人にも返す (印は会社の物)。HTTP は呼ばない。
     """
     repo = github_status()["repo"]
     marks: dict[int, dict] = {}
@@ -1408,10 +1408,10 @@ def me_too(number, user) -> dict:
     状態を下書き、送った先を空にする。断る (日本語の ValueError。件を作らない) のは、ログインしていない・番号が正の整数でない・Issue が送り先に無い・
     同じ人の同じ Issue の件が既にある (ここまでは 👍 を付けない)・GitHub が断ったとき。
     HTTP (github.add_thumbs_up) は atomic の外 (R17)。👍 を付けてから件を作り、付けた後は search_issues の控えを消す (👍 の数を読み直す)。
-    訳: GitHub の口の中でこの口だけは世話役でなくても押せる。👍 には文が入らず、取引先の名前や金額が外へ出ないため。
+    訳: GitHub の口の中でこの口だけはアカウント管理の担当者でなくても押せる。👍 には文が入らず、取引先の名前や金額が外へ出ないため。
     GitHub の 👍 は 1 つの口座に 1 つなので、会社に同じ Issue の件 (送った物かうちも) が既にあれば GitHub を呼ばず、件だけ残す (会社の 👍 は 1 つ)。
     出所 = 本人の決め 11-07 09:0x〜10:1x (受け渡しの指示書のその 2 と指示書2 の C。👍 は GitHub の口座を持つ人しか押せなかった)。
-    変えてよい条件 = 👍 でなく文を送る形 (Issue の返事など) にするときは、世話役だけに戻すかを本人の決めで取り直してから。
+    変えてよい条件 = 👍 でなく文を送る形 (Issue の返事など) にするときは、アカウント管理の担当者だけに戻すかを本人の決めで取り直してから。
     """
     if getattr(user, "pk", None) is None:
         raise ValueError("保存できません。ログインしてから押してください。")
@@ -1582,7 +1582,7 @@ def _own_mark(mark):
 def _openable_pks(user, marks) -> set:
     """自社の印の件のうち、user が詳細を開ける件の pk の集まり。読むだけ。
 
-    世話役は全部、ほかの人は自分の書いた件だけ (詳細の画面の絞りと同じ。一覧の tag の feedback_github の openable と同じ見分け方)。
+    アカウント管理の担当者は全部、ほかの人は自分の書いた件だけ (詳細の画面の絞りと同じ。一覧の tag の feedback_github の openable と同じ見分け方)。
     """
     pks = {pk for mark in marks.values() for pk in mark.values() if pk is not None}
     if not pks or user is None:

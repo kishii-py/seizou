@@ -1,8 +1,8 @@
 """feedback の画面と口 (開発の記録 docs/nights/20261103/N59.md)。画面は core の土台を継承する (R15)。
 
 - 画面 4 つ: 一覧・新規登録・詳細・編集。URL の名前は土台の約束 (<app>:<model>_list / _detail / _create / _update)。
-  上書きするのは 13 の属性だけ。画面に足す物 (Issue の文・世話役の印) は template tag で渡す。
-- 一覧と詳細は get_queryset で自分の分に絞る (世話役 = アカウント管理の権限は全部)。編集の画面も同じ絞りの中から
+  上書きするのは 13 の属性だけ。画面に足す物 (Issue の文・アカウント管理の担当者の印) は template tag で渡す。
+- 一覧と詳細は get_queryset で自分の分に絞る (アカウント管理の担当者は全部)。編集の画面も同じ絞りの中から
   対象を引く (土台の dispatch が部品の get_queryset を読む)。絞りの中で直せない物 (確認済みの後の書いた人) は
   services の update_feedback が断る (赤の知らせ)。
 - 口 (状態の変更と削除) は画面でないので関数の view (login_required・require_POST)。書くのは services の関数だけ (R13)。
@@ -12,9 +12,9 @@
   (htmx は 4xx・5xx の返事を差し替えないため)。下書きができたら画面を移らず、吹き出しと右の欄の編集の形 (hx-swap-oob) を 200 で返す
   (_draft_ready。受け渡しの seizou-フィードバックの段と送る画面-20261107/指示書.md)。
 - CSRF の見出しは土台の base.html が htmx の要求に付ける (R18)。
-- GitHub の口 (開発の記録 docs/nights/20261106/N185.md): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれも世話役だけで、
+- GitHub の口 (開発の記録 docs/nights/20261106/N185.md): 画面「GitHub とつなぐ」と、口の github_disconnect・github_send・github_sync。どれもアカウント管理の担当者だけで、
   断るのは services (ValueError を赤の知らせ)。HTTP は services が transaction.atomic の外で送る (R17)。
-- GitHub でログインしてつなぐ (開発の記録 docs/nights/20261107/N320.md): 口の github_device_start・github_device_poll・github_device_cancel。どれも世話役だけで、
+- GitHub でログインしてつなぐ (開発の記録 docs/nights/20261107/N320.md): 口の github_device_start・github_device_poll・github_device_cancel。どれもアカウント管理の担当者だけで、
   断るのは services。途中の控えは利用者の session にだけ置く (表に書かない)。待ちの札 (_github_device_card.html) が
   interval 秒ごとに github_device_poll を htmx で呼び、つながったら中身の無い 200 の HX-Redirect で画面の全体を読み直す。
 - タブの帯 (開発の記録 docs/nights/20261107/N321.md): 送る画面と一覧の上に「送る」「送った件」「みんなの Issue」(tag の feedback_tabs と feedback/_tabs.html)。
@@ -43,7 +43,7 @@ from .models import FeedbackReply
 
 
 def _visible_to(queryset, user):
-    """世話役には全部、ほかの人には自分の書いた分だけ。"""
+    """アカウント管理の担当者には全部、ほかの人には自分の書いた分だけ。"""
     queryset = queryset.select_related("created_by")
     if services.can_manage(user):
         return queryset
@@ -53,7 +53,7 @@ def _visible_to(queryset, user):
 class FeedbackListView(BaseListView):
     """フィードバックの一覧。
 
-    使う人: 全員 / いつ: 伝えた困りごとの行方を見るとき / 何のために: 自分の下書きと状態を見る (アカウント管理の担当者は全部) / 次にすること: 行から詳細へ。世話役は Issue の文を写す
+    使う人: 全員 / いつ: 伝えた困りごとの行方を見るとき / 何のために: 自分の下書きと状態を見る (アカウント管理の担当者は全部) / 次にすること: 行から詳細へ。アカウント管理の担当者は Issue の文を写す
     """
 
     model = Feedback
@@ -71,7 +71,7 @@ class FeedbackListView(BaseListView):
     template_name = "feedback/feedback_list.html"
 
     def get_queryset(self):
-        # 土台 (super) が検索と絞り (f_status・f_kind) を当てた後に、自分の分に絞る (世話役は全部)。
+        # 土台 (super) が検索と絞り (f_status・f_kind) を当てた後に、自分の分に絞る (アカウント管理の担当者は全部)。
         queryset = _visible_to(super().get_queryset(), self.request.user)
         if self.request.GET.get("tab") == "issues":
             # 「みんなの Issue」のタブは表を描かないので数えない (開発の記録 docs/nights/20261107/N321.md)
@@ -82,7 +82,7 @@ class FeedbackListView(BaseListView):
 class FeedbackCreateView(BaseFormView):
     """フィードバックの入力。
 
-    使う人: 全員 / いつ: 画面で困ったとき・直してほしいとき・おかしい動きを見つけたとき / 何のために: 困りごと・要望・不具合を下書きにして会社の中に残す / 次にすること: 詳細で内容を確かめる。世話役が確認済みにして GitHub に写す
+    使う人: 全員 / いつ: 画面で困ったとき・直してほしいとき・おかしい動きを見つけたとき / 何のために: 困りごと・要望・不具合を下書きにして会社の中に残す / 次にすること: 詳細で内容を確かめる。アカウント管理の担当者が確認済みにして GitHub に写す
     """
 
     model = Feedback
@@ -96,13 +96,13 @@ class FeedbackCreateView(BaseFormView):
 class FeedbackDetailView(BaseDetailView):
     """フィードバックの詳細。
 
-    使う人: 全員 / いつ: 下書きの内容と状態を確かめるとき / 何のために: 会話の記録と Issue の文を見る / 次にすること: 世話役は「確認済みにする」、GitHub に写したら「送ったにする」
+    使う人: 全員 / いつ: 下書きの内容と状態を確かめるとき / 何のために: 会話の記録と Issue の文を見る / 次にすること: アカウント管理の担当者は「確認済みにする」、GitHub に写したら「送ったにする」
     """
 
     model = Feedback
     template_name = "feedback/feedback_detail.html"
     screen_name = "フィードバックの詳細"
-    screen_help = "下書きの内容・会話の記録・GitHub の Issue に写す文を見ます。世話役は状態を確認済みと送ったに進めます。"
+    screen_help = "下書きの内容・会話の記録・GitHub の Issue に写す文を見ます。アカウント管理の担当者は状態を確認済みと送ったに進めます。"
 
     def get_queryset(self):
         return _visible_to(super().get_queryset(), self.request.user)
@@ -128,10 +128,10 @@ class FeedbackUpdateView(BaseFormView):
 class GithubSetupView(BaseFormView):
     """GitHub とつなぐ (開発の記録 docs/nights/20261106/N185.md。決め 11-06 21:2x)。
 
-    使う人: 世話役 (アカウント管理の担当者) / いつ: フィードバックを GitHub の Issue に直接送れるようにするとき / 何のために: GitHub の口座のトークンを置き、送り先を決める / 次にすること: 確認済みの下書きの詳細で「GitHub に送る」
+    使う人: アカウント管理の担当者 / いつ: フィードバックを GitHub の Issue に直接送れるようにするとき / 何のために: GitHub の口座のトークンを置き、送り先を決める / 次にすること: 確認済みの下書きの詳細で「GitHub に送る」
 
-    世話役だけの画面。部品の画面は R15 で dispatch を上書きできないので、世話役でない人には template が断りの文だけを出し
-    (入力の形を出さない)、送られても services の connect_github が断る (赤の知らせ)。入口 (一覧と詳細の link) も世話役だけに出す。
+    アカウント管理の担当者だけの画面。部品の画面は R15 で dispatch を上書きできないので、アカウント管理の担当者でない人には template が断りの文だけを出し
+    (入力の形を出さない)、送られても services の connect_github が断る (赤の知らせ)。入口 (一覧と詳細の link) もアカウント管理の担当者だけに出す。
     つないだ後は、form の隠しの next で同じ画面へ戻る (土台の next_url。success_url は R15 の 13 の外)。
     """
 
@@ -139,7 +139,7 @@ class GithubSetupView(BaseFormView):
     service = staticmethod(services.connect_github)
     template_name = "feedback/github_setup.html"
     screen_name = "GitHub とつなぐ"
-    screen_help = "フィードバックを GitHub の Issue に直接送るための設定。「GitHub でログインしてつなぐ」か「トークンを貼ってつなぐ」の 2 つのタブのどちらかでつなぎ、つないでいる間はもう片方は使えない。トークンは会社の .env にだけ置き、画面には二度と出ない。世話役 (アカウント管理の担当者) だけが使う。"
+    screen_help = "フィードバックを GitHub の Issue に直接送るための設定。「GitHub でログインしてつなぐ」か「トークンを貼ってつなぐ」の 2 つのタブのどちらかでつなぎ、つないでいる間はもう片方は使えない。トークンは会社の .env にだけ置き、画面には二度と出ない。アカウント管理の担当者 だけが使う。"
 
 
 def _back_to_detail(pk):
@@ -149,7 +149,7 @@ def _back_to_detail(pk):
 @login_required
 @require_POST
 def confirm(request, pk):
-    """下書きを確認済みにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    """下書きを確認済みにする (アカウント管理の担当者だけ。断られたら赤の知らせ)。詳細へ戻る。"""
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
         services.mark_confirmed(feedback, request.user)
@@ -163,7 +163,7 @@ def confirm(request, pk):
 @login_required
 @require_POST
 def sent(request, pk):
-    """送った状態にする (世話役だけ。POST の sent_url は任意)。詳細へ戻る。"""
+    """送った状態にする (アカウント管理の担当者だけ。POST の sent_url は任意)。詳細へ戻る。"""
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
         services.mark_sent(feedback, request.user, sent_url=request.POST.get("sent_url", ""))
@@ -177,7 +177,7 @@ def sent(request, pk):
 @login_required
 @require_POST
 def fixed(request, pk):
-    """直した状態にする (世話役だけ。POST の fixed_note は直した場所と版で任意)。詳細へ戻る。
+    """直した状態にする (アカウント管理の担当者だけ。POST の fixed_note は直した場所と版で任意)。詳細へ戻る。
 
     書いた人には、次にログインの画面からログインしたときに知らせが出る (signals.py)。
     """
@@ -194,7 +194,7 @@ def fixed(request, pk):
 @login_required
 @require_POST
 def delete(request, pk):
-    """下書きを削除する (書いた人か世話役。下書きだけ)。消したら一覧へ、断られたら赤の知らせで詳細へ戻る。
+    """下書きを削除する (書いた人かアカウント管理の担当者。下書きだけ)。消したら一覧へ、断られたら赤の知らせで詳細へ戻る。
 
     対象は一覧と同じ絞り (_visible_to) の中から引く (ほかの人の下書きは 404)。
     """
@@ -211,7 +211,7 @@ def delete(request, pk):
 @login_required
 @require_POST
 def github_disconnect(request):
-    """GitHub から外す (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻る。"""
+    """GitHub から外す (アカウント管理の担当者だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻る。"""
     try:
         services.disconnect_github(request.user)
     except ValueError as exc:
@@ -224,9 +224,9 @@ def github_disconnect(request):
 @login_required
 @require_POST
 def github_send(request, pk):
-    """確認済みの下書きを GitHub の Issue にし、送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。
+    """確認済みの下書きを GitHub の Issue にし、送ったにする (アカウント管理の担当者だけ。断られたら赤の知らせ)。詳細へ戻る。
 
-    POST の issue_text は、世話役が詳細の欄で伏せ字を戻した Issue の文 (開発の記録 docs/nights/20261107/N323.md)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
+    POST の issue_text は、アカウント管理の担当者が詳細の欄で伏せ字を戻した Issue の文 (開発の記録 docs/nights/20261107/N323.md)。欄の無い要求は None で、今までどおり export_markdown の文を送る。
     """
     feedback = get_object_or_404(Feedback, pk=pk)
     try:
@@ -241,7 +241,7 @@ def github_send(request, pk):
 @login_required
 @require_POST
 def github_sync(request):
-    """送った物の GitHub の Issue を読み、閉じた物を直した・見送った・版待ちに分ける (世話役だけ。断られたら赤の知らせ)。一覧へ戻る。"""
+    """送った物の GitHub の Issue を読み、閉じた物を直した・見送った・版待ちに分ける (アカウント管理の担当者だけ。断られたら赤の知らせ)。一覧へ戻る。"""
     try:
         counts = services.sync_github(request.user)
     except ValueError as exc:
@@ -272,7 +272,7 @@ def _device_form_message(form) -> str:
 @login_required
 @require_POST
 def github_device_start(request):
-    """GitHub でログインしてつなぐを始める (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す。
+    """GitHub でログインしてつなぐを始める (アカウント管理の担当者だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す。
 
     戻った画面が session の待ちを見て、8 文字の符号と「GitHub を開く」の札を出す。
     """
@@ -315,7 +315,7 @@ def github_device_poll(request):
 @login_required
 @require_POST
 def github_device_cancel(request):
-    """GitHub でログインしてつなぐの待ちをやめる (世話役だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す (知らせは無し)。"""
+    """GitHub でログインしてつなぐの待ちをやめる (アカウント管理の担当者だけ。断られたら赤の知らせ)。「GitHub とつなぐ」の画面へ戻す (知らせは無し)。"""
     try:
         services.cancel_github_device(request.session, request.user)
     except ValueError as exc:
@@ -324,7 +324,7 @@ def github_device_cancel(request):
 
 
 def _me_too_notice(request, number, result, *, chat_text="") -> None:
-    """「うちも」が通った後の知らせ。つないだ会社は緑、つないでいない会社は黄 (下書きで残り、世話役の手が要るため。CLAUDE.md の知らせの強さの 3)。"""
+    """「うちも」が通った後の知らせ。つないだ会社は緑、つないでいない会社は黄 (下書きで残り、アカウント管理の担当者の手が要るため。CLAUDE.md の知らせの強さの 3)。"""
     if result["connected"]:
         messages.success(request, f"Issue #{number} に「うちも」を付けました。{chat_text}")
     else:
@@ -336,7 +336,7 @@ def _me_too_notice(request, number, result, *, chat_text="") -> None:
 def me_too(request, number):
     """みんなの Issue の 1 件に「うちも」を付ける (ログインした全員。開発の記録 docs/nights/20261107/N323.md)。通れば知らせ、断られたら赤の知らせで、一覧の Issue の節へ戻る。
 
-    GitHub の口の中でこの口だけは世話役でなくても押せる。訳: 👍 には文が入らず、取引先の名前や金額が外へ出ないため。
+    GitHub の口の中でこの口だけはアカウント管理の担当者でなくても押せる。訳: 👍 には文が入らず、取引先の名前や金額が外へ出ないため。
     書くのは services の me_too だけ (押した本人の件を 1 つ作る。HTTP は services が transaction.atomic の外で送る)。
     戻り先は一覧の ?tab=issues と、POST の隠しの issue_q (あれば。探した結果を出し直し、行の「うちも済み」を見せる) と #issues。
     """
@@ -437,9 +437,9 @@ def _visible_reply(request, reply_pk):
 @login_required
 @require_POST
 def reply_add(request, pk):
-    """送った件に返事の下書きを書く (書いた人か世話役。断られたら赤の知らせ)。詳細へ戻る。
+    """送った件に返事の下書きを書く (書いた人かアカウント管理の担当者。断られたら赤の知らせ)。詳細へ戻る。
 
-    対象は一覧と同じ絞り (_visible_to) の中から引く (ほかの人の件は 404)。GitHub には送らない (送るのは世話役)。
+    対象は一覧と同じ絞り (_visible_to) の中から引く (ほかの人の件は 404)。GitHub には送らない (送るのはアカウント管理の担当者)。
     """
     feedback = get_object_or_404(_visible_to(Feedback.objects.all(), request.user), pk=pk)
     try:
@@ -447,14 +447,14 @@ def reply_add(request, pk):
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "返事を書きました。世話役が伏せ字を確かめてから GitHub に送ります。")
+        messages.success(request, "返事を書きました。アカウント管理の担当者が伏せ字を確かめてから GitHub に送ります。")
     return _back_to_detail(pk)
 
 
 @login_required
 @require_POST
 def reply_send(request, reply_pk):
-    """世話役が直した返事の文 (POST の body) を、会社のトークンで Issue に送る (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    """アカウント管理の担当者が直した返事の文 (POST の body) を、会社のトークンで Issue に送る (アカウント管理の担当者だけ。断られたら赤の知らせ)。詳細へ戻る。"""
     reply = _visible_reply(request, reply_pk)
     try:
         url = services.send_reply(reply, request.POST.get("body", ""), request.user)
@@ -468,7 +468,7 @@ def reply_send(request, reply_pk):
 @login_required
 @require_POST
 def reply_mark_sent(request, reply_pk):
-    """つないでいない会社で、世話役が返事を GitHub に手で写した後に送ったにする (世話役だけ。断られたら赤の知らせ)。詳細へ戻る。"""
+    """つないでいない会社で、アカウント管理の担当者が返事を GitHub に手で写した後に送ったにする (アカウント管理の担当者だけ。断られたら赤の知らせ)。詳細へ戻る。"""
     reply = _visible_reply(request, reply_pk)
     try:
         services.mark_reply_sent(reply, request.user)

@@ -1,7 +1,7 @@
 {% extends "core/list.html" %}
 {% load feedback_tags seizou_icons %}
 {# フィードバックの一覧: 土台の一覧。状態と種類の絞りは、ほかの一覧と同じ土台の「絞り込み」の枠の中 (FeedbackListView.filters の choice。GET は f_status・f_kind。作者の決め 11-07 09:0x)。 #}
-{# GitHub (開発の記録 docs/nights/20261106/N185.md): 見出しの行の「新規登録」の左に、世話役だけ白い線のボタン「GitHub の状態を取り込む」(つないでいるときだけ) と「GitHub の設定」。下に皆の「GitHub の Issue を探す」(GET の issue_q。押したときだけ GitHub を読む)。 #}
+{# GitHub (開発の記録 docs/nights/20261106/N185.md): 見出しの行の「新規登録」の左に、アカウント管理の担当者だけ白い線のボタン「GitHub の状態を取り込む」(つないでいるときだけ) と「GitHub の設定」。下に皆の「GitHub の Issue を探す」(GET の issue_q。押したときだけ GitHub を読む)。 #}
 {# block の中で tag が置いた値は、ほかの block から見えないので、tag は 2 つの block で呼ぶ。見出しの行は search=False で呼び、1 回の表示で GitHub を 2 回読まない (読めなかった返事は控えに残らないため)。 #}
 {# タブの帯 (開発の記録 docs/nights/20261107/N321.md。feedback/_tabs.html): いちばん上に出す。GET の tab が issues (「みんなの Issue」のタブ) のときは、見出しの行の GitHub のボタンと土台の一覧 (絞り込みと表) を描かず、#issues の節だけを描く。 #}
 {# そのときは探す form に隠しの tab を足し、探した後もタブを保つ (GET の form は action の ? の後ろを欄の値で置き換えるので、隠しの欄が要る)。tab が無いときは今までどおり (表の下に #issues の節)。 #}

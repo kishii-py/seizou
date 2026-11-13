@@ -314,7 +314,7 @@ def test_export_markdown_screenshot_line(client_logged_in, plain):
         form_data(title="絵のある題"), plain, screenshots=[png("作り物の得意先_5,000円.png"), png("b.png")]
     )
     text = services.export_markdown(shot_row)
-    line = "画面の絵: 2 枚 (〇〇_〇〇.png・b.png。絵は世話役が Issue に手で付ける)"
+    line = "画面の絵: 2 枚 (〇〇_〇〇.png・b.png。絵はアカウント管理の担当者が Issue に手で付ける)"
     assert text.splitlines()[-1] == line
     assert "作り物の得意先" not in text
     assert "5,000" not in text

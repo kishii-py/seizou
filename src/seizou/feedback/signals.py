@@ -7,7 +7,7 @@
 - 知らせを出せない要求 (MessageMiddleware を通らない要求。試験の force_login など) では、知らせた印を付けない
   (次に画面からログインしたときに出す)。
 - 開発機の自動ログイン (core の DevAutoLoginMiddleware) は login を呼ばないので、この知らせは出ない
-  (自動ログインの人は superuser = 世話役。書いた人として確かめるときは、ログインの画面からその人でログインする)。
+  (自動ログインの人は superuser = アカウント管理の担当者。書いた人として確かめるときは、ログインの画面からその人でログインする)。
 """
 
 from django.contrib import messages
