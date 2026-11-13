@@ -285,3 +285,47 @@ def test_restore_question_names_the_new_command():
 
     text = Path(command.__file__).read_text(encoding="utf-8")
     assert "runserver / gunicorn / seizou_serve" in text
+
+
+def test_run_says_what_to_do_when_the_port_is_taken(monkeypatch):
+    """待ち受けを始められない時 (同じポートでもう立っている) は、OS の誤りの字のままにせず、次にすることを 1 行で出す。"""
+    import waitress
+
+    def create_server(app, **kwargs):
+        raise OSError(48, "Address already in use")
+
+    monkeypatch.setattr(waitress, "create_server", create_server)
+    monkeypatch.setattr(serve, "build_app", lambda: object())
+    with pytest.raises(serve.ServeError) as caught:
+        serve.run("0.0.0.0", 18999, 2)
+    text = str(caught.value)
+    assert text.startswith("サーバーを起こせません。")
+    assert "18999" in text and "--port" in text
+
+
+def test_command_turns_the_start_error_into_one_line(settings, monkeypatch):
+    from django.core.management.base import CommandError
+
+    def run(host, port, threads):
+        raise serve.ServeError("サーバーを起こせません。試験の文。")
+
+    monkeypatch.setattr(serve, "run", run)
+    settings.SEIZOU = {"port": 8123}
+    with pytest.raises(CommandError) as caught:
+        call_command("seizou_serve", stdout=io.StringIO())
+    assert "サーバーを起こせません。" in str(caught.value)
+
+
+def test_default_threads_is_the_same_as_the_vps_guide():
+    """同時にさばく数の既定は、VPS の手順 (gunicorn --threads 4) と同じ 4。それより多い数を確かめた事が無いため。"""
+    assert serve.DEFAULT_THREADS == 4
+    text = (Path(__file__).resolve().parent.parent / "docs" / "vps.md").read_text(encoding="utf-8")
+    assert "--threads 4" in text
+
+
+def test_operations_guide_warns_about_the_client_ip_header():
+    """nginx の無い置き場で接続元の見出しを信じると、端末が接続元を偽れる。手引きの「社内の PC で動かす」に書かない注意がある。"""
+    text = (Path(__file__).resolve().parent.parent / "docs" / "operations.md").read_text(encoding="utf-8")
+    section = text.split("## 社内の PC で動かす", 1)[1].split("\n## ", 1)[0]
+    assert "SEIZOU_CLIENT_IP_HEADER" in section
+    assert "書きません" in section

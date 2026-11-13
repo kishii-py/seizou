@@ -23,8 +23,8 @@ from django.contrib.staticfiles import finders
 
 #: 待ち受ける番地の既定 (社内のほかの端末から開けるように、PC の全部の番地で待つ)
 DEFAULT_HOST = "0.0.0.0"  # noqa: S104
-#: 同時にさばく要求の数の既定 (waitress の threads。VPS の手順の gunicorn は 4)
-DEFAULT_THREADS = 8
+#: 同時にさばく要求の数の既定 (waitress の threads)。VPS の手順の gunicorn (--threads 4) と同じ数。それより多い数を確かめた事が無い
+DEFAULT_THREADS = 4
 #: LAN の中だけで http で開く置き場の印 (settings の名前。.env の SEIZOU_LAN_HTTP=1)
 LAN_HTTP_SETTING = "SEIZOU_LAN_HTTP"
 
@@ -108,4 +108,14 @@ def run(host: str, port: int, threads: int) -> None:
     """
     import waitress
 
-    waitress.create_server(build_app(), host=host, port=port, threads=threads, ident="seizou").run()
+    app = build_app()
+    try:
+        server = waitress.create_server(app, host=host, port=port, threads=threads, ident="seizou")
+    except OSError as exc:
+        # 待ち受けを始められなかった (同じポートでもう立っている・番地がこの PC に無いなど)。OS の誤りの字は末尾に添える
+        raise ServeError(
+            f"サーバーを起こせません。番地 {host}・ポート {port} で待ち受けを始められませんでした。"
+            "同じポートでサーバーがもう立っていないか (前に起こした窓・練習モード) を見るか、"
+            f"--port で別のポートを指定してください (OS の知らせ: {exc})。"
+        ) from exc
+    server.run()

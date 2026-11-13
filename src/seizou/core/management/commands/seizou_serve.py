@@ -44,4 +44,7 @@ class Command(BaseCommand):
             )
         # 待ち受けは止めるまで戻らないので、上の行を先に書き出す (記録のファイルへ流しても、起こした時に行が出るように)
         self.stdout.flush()
-        serve.run(host, port, options["threads"])
+        try:
+            serve.run(host, port, options["threads"])
+        except serve.ServeError as exc:
+            raise CommandError(str(exc)) from exc
