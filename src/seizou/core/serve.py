@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from django.conf import settings
@@ -35,6 +36,22 @@ class ServeError(Exception):
 def lan_http() -> bool:
     """LAN の中だけで http で開く置き場か (settings の SEIZOU_LAN_HTTP が真)。"""
     return bool(getattr(settings, LAN_HTTP_SETTING, False))
+
+
+def lan_http_unread() -> bool:
+    """.env に印 (SEIZOU_LAN_HTTP=1) があるのに、settings.py が印を読んでいないか。
+
+    この命令より前に作った置き場の settings.py には、印を読む行が無い (版を上げても settings.py は書き換わらない)。
+    置き場の settings.py は .env の行を環境変数に入れるので、環境変数に印があって settings に無ければ、読んでいないと見る。
+    """
+    return os.environ.get(LAN_HTTP_SETTING, "") == "1" and not lan_http()
+
+
+#: 印を読んでいない置き場への直し方 (命令の知らせと点検の行で同じ字を使う)
+LAN_HTTP_UNREAD_FIX = (
+    "settings.py の if not DEBUG: の塊のすぐ後ろに、印を読む 5 行を足して、サーバーを起こし直す "
+    "(seizou の docs/operations.md の「社内の PC で動かす」の立て方の 2)。"
+)
 
 
 def default_port() -> int:

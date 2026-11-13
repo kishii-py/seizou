@@ -233,3 +233,55 @@ def test_run_does_not_touch_the_logging_setup(monkeypatch):
     serve.run("127.0.0.1", 18999, 2)
     assert calls[0]["host"] == "127.0.0.1" and calls[0]["port"] == 18999 and calls[0]["threads"] == 2
     assert calls[-1] == "run"
+
+
+def test_command_tells_when_settings_do_not_read_the_switch(settings, monkeypatch):
+    """前に作った置き場: .env に印があっても settings.py に印を読む行が無いと働かない。その時は、settings.py に足す案内を出す。"""
+    monkeypatch.setattr(serve, "run", lambda host, port, threads: None)
+    monkeypatch.setenv("SEIZOU_LAN_HTTP", "1")
+    settings.SEIZOU = {"port": 8123}
+    settings.DEBUG = False
+    settings.SESSION_COOKIE_SECURE = True
+    settings.CSRF_COOKIE_SECURE = True
+    settings.SEIZOU_LAN_HTTP = False
+    assert serve.lan_http_unread() is True
+
+    out = io.StringIO()
+    call_command("seizou_serve", stdout=out)
+    text = out.getvalue()
+    assert "settings.py" in text
+    assert "印を読む行" in text
+    assert ".env に SEIZOU_LAN_HTTP=1 の行を足して" not in text
+
+    settings.SEIZOU_LAN_HTTP = True
+    assert serve.lan_http_unread() is False
+    monkeypatch.delenv("SEIZOU_LAN_HTTP")
+    settings.SEIZOU_LAN_HTTP = False
+    assert serve.lan_http_unread() is False
+
+
+def test_doctor_cookie_row_says_fix_when_settings_do_not_read_the_switch(settings, monkeypatch):
+    """点検: .env に印があるのに settings.py が読んでいない置き場は、Cookie の行を直すにして、settings.py に足す行を案内する。"""
+    monkeypatch.setenv("SEIZOU_LAN_HTTP", "1")
+    settings.DEBUG = False
+    settings.SEIZOU_LAN_HTTP = False
+    for secure in (True, False):
+        settings.SESSION_COOKIE_SECURE = secure
+        settings.CSRF_COOKIE_SECURE = secure
+        row = doctor.check_cookies()[0]
+        assert row.ok is False
+        assert "印を読む行" in row.detail
+        assert "settings.py" in row.fix and "社内の PC で動かす" in row.fix
+
+    monkeypatch.delenv("SEIZOU_LAN_HTTP")
+    settings.SESSION_COOKIE_SECURE = True
+    settings.CSRF_COOKIE_SECURE = True
+    assert doctor.check_cookies()[0].ok is True
+
+
+def test_restore_question_names_the_new_command():
+    """戻す前の確かめの文は、止めるサーバーの例に seizou_serve も挙げる。"""
+    import seizou.core.management.commands.seizou_restore as command
+
+    text = Path(command.__file__).read_text(encoding="utf-8")
+    assert "runserver / gunicorn / seizou_serve" in text

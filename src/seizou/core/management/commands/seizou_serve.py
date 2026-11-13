@@ -31,6 +31,11 @@ class Command(BaseCommand):
         self.stdout.write(f"この PC からは http://127.0.0.1:{port}/ 、社内のほかの端末からは http://<この PC の社内の番地>:{port}/ で開きます。")
         if settings.DEBUG:
             self.stdout.write("知らせ: 開発の設定 (.env の DEBUG=1) のままです。本番で使うときは DEBUG を 0 にして起こし直します。")
+        elif serve.lan_http_unread():
+            self.stdout.write(
+                "知らせ: .env に SEIZOU_LAN_HTTP=1 がありますが、この置き場の settings.py に印を読む行がありません "
+                f"(この命令より前に作った置き場)。{serve.LAN_HTTP_UNREAD_FIX}"
+            )
         elif getattr(settings, "SESSION_COOKIE_SECURE", False) or getattr(settings, "CSRF_COOKIE_SECURE", False):
             self.stdout.write(
                 "知らせ: ログインの Cookie を HTTPS の道でだけ送る設定です。LAN の中だけで http で開く置き場は、"

@@ -34,7 +34,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 from django.utils import timezone
 
-from seizou.core import backup, conf, media, middleware, rules, services
+from seizou.core import backup, conf, media, middleware, rules, serve, services
 from seizou.core.access import KIND_TITLES as ACCESS_TITLES
 
 #: ほかの PC から開けない名前 (ALLOWED_HOSTS にこれだけなら、本番では直す)
@@ -388,7 +388,7 @@ def check_collectstatic() -> list[Row]:
     変えてよい条件 = seizou_serve が STATIC_ROOT から返す形に変わったとき、か印を分けるとき。
     """
     label = "collectstatic"
-    if getattr(settings, "SEIZOU_LAN_HTTP", False):
+    if serve.lan_http():
         return [_good(label, "集めなくてよい (SEIZOU_LAN_HTTP=1。manage.py seizou_serve が部品のファイルを直に返す)")]
     root = getattr(settings, "STATIC_ROOT", None)
     if not root:
@@ -560,12 +560,19 @@ def check_cookies() -> list[Row]:
     会社が印を書いて選んだ形を、毎朝の点検で直すと出し続けないため。外から届く置き場に印を書いた誤りに気づけるよう、
     良いの行に印の名前と「外から届く置き場では書かない」を出す。出所 = 本人の決め 11-14 (社内の PC の本番の形)。
     変えてよい条件 = LAN の置き場でも https を受ける形を足したとき。
+
+    .env に印があるのに settings.py が印を読んでいない置き場 (seizou_serve より前に作った置き場) は、直すにして足す行を案内する。
+    訳: その置き場は、印を書いても Cookie の形が変わらず、http ではログインできないままになる。Cookie が HTTPS だけなら
+    今までは良いと出ていたので、点検では気づけなかった。出所 = 本体の判断 11-14 (本人の決めの命令を作った後に見つけた)。
+    変えてよい条件 = 版を上げる時に settings.py を書き換える仕組みができたとき。
     """
     label = "Cookie が HTTPS だけ"
+    if serve.lan_http_unread():
+        return [_bad(label, ".env に SEIZOU_LAN_HTTP=1 があるが、settings.py に印を読む行が無い (http ではログインできない)", serve.LAN_HTTP_UNREAD_FIX)]
     off = [name for name in ("SESSION_COOKIE_SECURE", "CSRF_COOKIE_SECURE") if not getattr(settings, name, False)]
     if not off:
         return [_good(label, "セッションと CSRF の Cookie を HTTPS の道でだけ送る")]
-    if getattr(settings, "SEIZOU_LAN_HTTP", False):
+    if serve.lan_http():
         return [_good(label, "http でも送る (SEIZOU_LAN_HTTP=1 = LAN の中だけで http で開く置き場。外から届く置き場では書かない)")]
     fix = COOKIE_FIX_DEBUG if settings.DEBUG else COOKIE_FIX
     return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", fix)]

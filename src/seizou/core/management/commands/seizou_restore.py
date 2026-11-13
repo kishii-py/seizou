@@ -107,7 +107,7 @@ class Command(BaseCommand):
                 f"{folder} の控え ({manifest.get('created_at', '')}) を戻します。"
                 f"今のデータベースと上げたファイル ({media_root}) は置き換わります "
                 f"(戻す前の物は {parent} に <日時>{backup.RETREAT_SUFFIX} の名前で控えます)。"
-                "サーバー (runserver / gunicorn) を止めてから進めてください。"
+                "サーバー (runserver / gunicorn / seizou_serve) を止めてから進めてください。"
             )
             try:
                 answer = input("本当に戻しますか? (yes と打つと進む): ")
