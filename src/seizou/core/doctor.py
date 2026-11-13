@@ -48,7 +48,8 @@ SETTING_FIX = "answers.yaml の settings と settings.py の SEIZOU を直す (�
 COOKIE_FIX = (
     "settings.py の if not DEBUG: の中に SESSION_COOKIE_SECURE = True と CSRF_COOKIE_SECURE = True があるかを見て、"
     "無ければ足し、nginx で https を受ける (seizou の docs/operations.md の「版を上げる手順」)。"
-    "LAN の中だけで http で開く置き場は、この 2 行を消すので、この行は直すのまま残る。"
+    "LAN の中だけで http で開く置き場 (社内の PC で manage.py seizou_serve で起こす形) は、.env に SEIZOU_LAN_HTTP=1 を書く "
+    "(seizou の docs/operations.md の「社内の PC で動かす」)。"
 )
 #: 開発の設定 (DEBUG が真) のまま --production で点検したときの、Cookie が http でも送られるときの直し方
 COOKIE_FIX_DEBUG = (
@@ -379,7 +380,16 @@ def check_css() -> list[Row]:
 
 
 def check_collectstatic() -> list[Row]:
+    """静的ファイル (画面の CSS と JS) を STATIC_ROOT に集めてあるか。LAN の中だけで http で開く置き場は、集めなくてよい。
+
+    訳: nginx は STATIC_ROOT に集めた物を配るので、集めていないと本番で画面の見た目が出ない。社内の PC で
+    manage.py seizou_serve で起こす置き場は、命令が部品のファイルを直に返す (core/serve.py) ので、集める手間を求めない。
+    見分けは .env の SEIZOU_LAN_HTTP=1 (この形の置き場が書く印)。出所 = 本人の決め 11-14 (社内の PC の本番の形)。
+    変えてよい条件 = seizou_serve が STATIC_ROOT から返す形に変わったとき、か印を分けるとき。
+    """
     label = "collectstatic"
+    if getattr(settings, "SEIZOU_LAN_HTTP", False):
+        return [_good(label, "集めなくてよい (SEIZOU_LAN_HTTP=1。manage.py seizou_serve が部品のファイルを直に返す)")]
     root = getattr(settings, "STATIC_ROOT", None)
     if not root:
         return [_bad(label, "STATIC_ROOT が空", "settings.py に STATIC_ROOT を書く。")]
@@ -389,7 +399,8 @@ def check_collectstatic() -> list[Row]:
                 label,
                 f"{root} に css/app.css が無い",
                 "manage.py collectstatic --no-input を打つ "
-                "(DEBUG=0 では runserver が静的ファイルを送らないので、nginx が STATIC_ROOT を配る)。",
+                "(DEBUG=0 では runserver が静的ファイルを送らないので、nginx が STATIC_ROOT を配る。"
+                "社内の PC で manage.py seizou_serve で起こす置き場は、.env に SEIZOU_LAN_HTTP=1 を書けば集めなくてよい)。",
             )
         ]
     return [_good(label, f"{root} に集めてある")]
@@ -543,11 +554,19 @@ def check_cookies() -> list[Row]:
     訳: 開発の設定のまま --production で点検すると、settings.py に 2 行があっても直すになり、「無ければ足し」の直し方では
     次にすることが分からないため、DEBUG が 1 のときは DEBUG を 0 にする案内を出す。出所 = 精査 Q4 (2026-11-10) のつまずく所 9。
     変えてよい条件 = 雛形の Cookie の塊の形 (if not DEBUG:) が変わったとき。
+
+    LAN の中だけで http で開く置き場 (.env の SEIZOU_LAN_HTTP=1) は、http でも送るのが決めた形なので、良いにして印の名前を出す。
+    訳: 社内の PC で manage.py seizou_serve で起こす形は https を受ける物が無く、HTTPS だけにするとログインできない。
+    会社が印を書いて選んだ形を、毎朝の点検で直すと出し続けないため。外から届く置き場に印を書いた誤りに気づけるよう、
+    良いの行に印の名前と「外から届く置き場では書かない」を出す。出所 = 本人の決め 11-14 (社内の PC の本番の形)。
+    変えてよい条件 = LAN の置き場でも https を受ける形を足したとき。
     """
     label = "Cookie が HTTPS だけ"
     off = [name for name in ("SESSION_COOKIE_SECURE", "CSRF_COOKIE_SECURE") if not getattr(settings, name, False)]
     if not off:
         return [_good(label, "セッションと CSRF の Cookie を HTTPS の道でだけ送る")]
+    if getattr(settings, "SEIZOU_LAN_HTTP", False):
+        return [_good(label, "http でも送る (SEIZOU_LAN_HTTP=1 = LAN の中だけで http で開く置き場。外から届く置き場では書かない)")]
     fix = COOKIE_FIX_DEBUG if settings.DEBUG else COOKIE_FIX
     return [_bad(label, f"{'・'.join(off)} が偽 (http でも送る)", fix)]
 

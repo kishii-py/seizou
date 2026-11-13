@@ -34,6 +34,8 @@ dependencies = [
     "mcp>=2.3.0",
     "markdown>=3.11.2",
     "nh3>=0.2.20",
+    "waitress>=3.0.2",
+    "whitenoise>=6.9.0",
 ]
 
 [project.scripts]

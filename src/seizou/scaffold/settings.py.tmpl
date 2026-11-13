@@ -45,13 +45,22 @@ ALLOWED_HOSTS = [
 ]
 
 # 本番 (DEBUG=0) は HTTPS で開く (nginx が https を受け、Django へ X-Forwarded-Proto を渡す)。
-# セッションと CSRF の Cookie は HTTPS の道でだけ送る。LAN の中だけで http で開く置き場は、
-# この形ではログインできないので、Cookie の 2 行を消す (seizou の docs/operations.md の「本番の守り」)。
+# セッションと CSRF の Cookie は HTTPS の道でだけ送る。
 SESSION_COOKIE_HTTPONLY = True
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# LAN の中だけで http で開く置き場 (社内の PC で manage.py seizou_serve で起こす形) は、.env に SEIZOU_LAN_HTTP=1 を書く。
+# 上の形のままでは、http ではブラウザが Cookie を送らず、ログインできないため。nginx を通さないので、
+# https で届いたと見なす見出し (X-Forwarded-Proto) も信じない。外から届く置き場 (VPS) では書かない
+# (seizou の docs/operations.md の「社内の PC で動かす」)。
+SEIZOU_LAN_HTTP = os.environ.get("SEIZOU_LAN_HTTP", "0") == "1"
+if SEIZOU_LAN_HTTP:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_PROXY_SSL_HEADER = None
 
 # 部品の app は seizou.parts.PARTS から読む (配布物を上げたときに、このファイルを作り直さなくてよい)。
 # 会社ごとの項目の app (fields) は、置き場に fields/ があり、部品マスター (seizou.masters) があるときだけ入れる。
