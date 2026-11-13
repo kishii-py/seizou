@@ -190,7 +190,7 @@ class DevAutoLoginMiddleware:
     """開発機で、ログインの画面を飛ばして画面を開けるようにする。
 
     ログインしていない要求を、first_superuser() の要求として扱う (request.user を入れ替えるだけ)。
-    - 動く条件は dev_auto_login_enabled() の 3 つ。本番の形 (gunicorn・DEBUG=0) では鎖から外れる (MiddlewareNotUsed)。
+    - 動く条件は dev_auto_login_enabled() の 3 つ。本番の形 (gunicorn・DEBUG=0) と、社内の PC の seizou_serve では鎖から外れる (MiddlewareNotUsed)。
     - ログインの画面からログインした人の要求には何もしない (権限ごとの見え方は、その人でログインして確かめる)。
     - session には書かず、last_login も更新しない。ログアウトすると、次の要求からまた superuser として扱う。
     - AuthenticationMiddleware の後ろに置く (request.user が要る)。

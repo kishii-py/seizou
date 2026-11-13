@@ -111,6 +111,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.13.5/install.p
 
 スマホの実機では未確認。
 
+ここまでは試す間の形 (`runserver`)。社内の PC で本番として使い続けるときは、`manage.py seizou_serve` で起こす ([「運用の手引き」](operations.md)の「社内の PC で動かす」)。
+
 ## 自分の会社で使い始める
 
 作り物の 2 社で試した後に、自分の会社の置き場を立てる手。

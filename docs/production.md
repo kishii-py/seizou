@@ -9,7 +9,7 @@
 - DB は PostgreSQL を使う。開発と試しは SQLite で動く。PostgreSQL は 15 以上 (今の `uv.lock` の Django 6.1 の下限。CI は PostgreSQL 16 で試験を回す)。PostgreSQL にするには、`seizou new` を打つ前に、環境変数 `SEIZOU_DB=postgres` と、接続の環境変数 (PGHOST・PGUSER・PGPASSWORD・PGDATABASE) を入れる (置き場の README の「本番で使うとき」と同じ)。
 - 11-07 に Claude Security (Claude Code のプラグイン) で `src/seizou` と `plugin` を走査し、出た候補 45 件を人が選り分けて直した。出荷・発注・フィードバック・プラグインなどは、まだ走査していない。走査は定期に回す物だ。
 - 注文書の読み取りに使う API の鍵は、環境変数 (`ANTHROPIC_API_KEY`) に入れる。製品は Claude の契約の枠を使わない。
-- 置き場は VPS (月額固定) を既定として勧める。手元の PC でも動くが、手元の PC で動かす会社は注文のデータを送るだけになる (受けるには外から届く URL が要るため)。
+- 本番の形は 2 つ。取引先から注文のデータを受ける会社は VPS (月額固定) に置く ([docs/vps.md](vps.md))。社内だけで使う会社は、社内の PC 1 台に置き、LAN の中だけで開く形でもよい (`manage.py seizou_serve` で起こす。nginx は要らない。手順と気をつける事は [docs/operations.md](operations.md) の「社内の PC で動かす」)。社内の PC で動かす会社は、注文のデータを送るだけになる (受けるには外から届く URL が要るため)。
 - PDF の帳票は Linux のサーバーか、GTK を入れた PC で作る。Windows の手元の PC では GTK の実行環境を別に入れる必要があり、要注意。
 - 適格請求書の登録番号 (T と 13 桁の数字) は、答えの YAML の `company` の `registration_no` か設定の画面の「会社の情報」で入れ、請求書の会社の名前の下に出る (空なら出さない。形の違う番号は止める)。消費税は請求書の税率ごとの合計に 1 回だけ計算し (今の率は 10% の 1 つ)、1 円に丸める向きは取引先の「消費税の端数の向き」(空なら会社の既定の切捨) で選ぶ。会社の住所・電話・振込先・ロゴは、答えの YAML の `company` か設定の画面の「会社の情報」で入れ、納品書と請求書の会社の欄に出る (振込先は請求書だけ。ロゴは答えの YAML の `logo:` か画面から)。
 - 上げたファイル (`/media/` の図面・添付・マニュアルの画像) は、開発機でも本番でも、ログインした人にだけ返す (`seizou.core.media`)。HTML や SVG のような、ブラウザがスクリプトとして動かしうる型は、必ずダウンロードにする。既定は Django がファイルを送る。大きなファイルを nginx に送らせるには、置き場の `deploy/nginx-files.conf` を nginx の設定に読み込み、`.env` に `SEIZOU_FILE_DELIVERY=nginx` を足す。nginx を通った印の無い要求は、空のファイルを返さずに 503 の画面で止まる (設定の漏れに、その場で気づくため)。`internal` の付け忘れのような、Django から見えない漏れを外から確かめる命令は、これから作る。

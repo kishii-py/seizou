@@ -35,6 +35,8 @@ pip で入れるときに別に取ってくる物。同梱しないので全文�
 | Pillow | 製品の依存 | MIT-CMU | 確かめた (版 13.0.0) |
 | requests | 製品の依存 | Apache-2.0 | 確かめた (版 2.34.2) |
 | gunicorn | 製品の依存 (extras `server`。VPS で動かすときの WSGI サーバー) | MIT | 確かめた (版 26.2.0) |
+| waitress | 製品の依存 (社内の PC で動かすときの WSGI サーバー。`manage.py seizou_serve`) | ZPL-2.1 | 確かめた (版 3.0.2。2026-11-14。package の情報の License の欄は ZPL 2.1) |
+| whitenoise | 製品の依存 (`manage.py seizou_serve` が画面の CSS と JS を返す) | MIT | 確かめた (版 6.12.0。2026-11-14) |
 | PyYAML | 製品の依存 | MIT | 確かめた (版 6.0.3) |
 | anthropic | 製品の依存 (注文書の読み取り) | Apache-2.0 | 確かめた (版 2.3.0) |
 | qrcode | 製品の依存 (現品票とラベルの QR) | BSD-3-Clause | 確かめた (版 8.2。package の情報の分類は BSD とだけあり、3 条項は package に入った LICENSE のファイルで確かめた) |
