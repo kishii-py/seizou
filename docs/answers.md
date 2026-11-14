@@ -16,7 +16,7 @@ port: 8003
 
 このファイルを、例えば `~/mihon_seisakusho.yaml` に保存して `seizou new ~/mihon_seisakusho.yaml` を打つ (clone した seizou のフォルダでは `uv run seizou new ~/mihon_seisakusho.yaml`)。打つ場所と、作った後の起動の 1 行は[「入れて触る」](getting-started.md)の「自分の会社で使い始める」にある。
 
-`seizou answers-template <道>` を打つと、この 3 行に任意の鍵の例と説明の注を付けた雛形を `<道>` に書き出せる (既にあるファイルは上書きしない。v0.1.0 の次の版から)。
+`seizou answers-template <道>` を打つと、この 3 行に任意の鍵の例と説明の注を付けた雛形を `<道>` に書き出せる (既にあるファイルは上書きしない。v0.2.0 から)。
 
 ## 鍵ごとの書き方
 

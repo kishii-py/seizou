@@ -31,7 +31,7 @@ def test_manifest_is_json_named_seizou():
 def test_manifest_has_only_name_version_description():
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert set(data) == {"name", "version", "description"}
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "0.2.0"
     assert data["description"].strip()
 
 

@@ -43,7 +43,7 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 手元の PC に作り物の 2 社 (機械加工の若葉精機と、表面処理の白樺めっき工業) を立てて、受注から請求書までと、2 社の間の注文の送り合いを画面で通せる。要る物は `git` と `uv`。
 
 ```sh
-git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git
+git clone --branch v0.2.0 https://github.com/kishii-py/seizou.git
 cd seizou
 uv sync --locked
 uv run seizou new examples/companies/a_machining.yaml --demo
@@ -58,14 +58,14 @@ uv run seizou new examples/companies/b_plating.yaml --demo
 
 ## 今の状態
 
-版は v0.1.0 (2026-11-08)。冒頭の 1 文の 3 つの句 (1 つの命令で自社専用・部品マスターを中心に社内の情報を 1 つに・同じ仕組みで会社どうしもつながる) は、手元の 2 社でも、VPS に https で立てた離れた 2 社でも、画面で通る (句ごとの状態は [docs/roadmap.md](docs/roadmap.md))。
+版は v0.2.0 (2026-11-14)。最初の版は v0.1.0 (2026-11-08)。冒頭の 1 文の 3 つの句 (1 つの命令で自社専用・部品マスターを中心に社内の情報を 1 つに・同じ仕組みで会社どうしもつながる) は、手元の 2 社でも、VPS に https で立てた離れた 2 社でも、画面で通る (句ごとの状態は [docs/roadmap.md](docs/roadmap.md))。
 
 本番の前に残る物は 6 つ (2026-11-08 の時点)。
 
 1. 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS (AlmaLinux) に [docs/vps.md](docs/vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)
 2. PostgreSQL の実機の置き場 (VPS の 2 社は SQLite で立てている。控えから入れ直す手順もこれから)
 3. Claude Security の未走査の部品 (出荷・発注・フィードバック・プラグイン) の走査
-4. 部品の版を上げた実例 (今は v0.1.0 の 1 版だけ。出した migration を消さない決まりと試験はある)
+4. 部品の版を上げた実例を重ねる (v0.2.0 へ上げる通しは、手元では v0.1.0 から、VPS では v0.1.0 の少し前の main から、1 回ずつ確かめた。実際の会社での版上げはまだ。出した migration を消さない決まりと試験はある)
 5. 置き場を立てる命令と、公開の URL を持たない会社のための中継
 6. 2 段階の確認 (ログインのときの 2 要素認証)
 

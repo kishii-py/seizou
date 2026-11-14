@@ -110,3 +110,16 @@ workorders/0003_workorder_cancel_reason.py
 workorders/0004_workorder_accepted.py
 workorders/0005_wording_started.py
 workorders/0006_remove_accepted.py
+# ここから下は 0.2.0 (2026-11-14) で足した物。
+billing/0008_n403c_invoiceline_shipment_copy.py
+billing/0009_n409_adjustment_maturity_previous_balance.py
+core/0009_reportcopy.py
+masters/0018_staff.py
+masters/0019_defectkind.py
+orders/0010_m03_orderline_completed.py
+progress/0003_staff.py
+progress/0004_progressdefect.py
+progress/0005_defect_lines_from_progress.py
+purchasing/0013_m03_purchaseorderline_completed.py
+purchasing/0014_m01_subcontract_step.py
+purchasing/0015_n439_sent_outside_at.py

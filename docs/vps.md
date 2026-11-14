@@ -145,7 +145,7 @@ sudo install -d -o seizou -g seizou /srv/seizou/answers /srv/seizou-sites
 ```
 sudo -u seizou -H python3.12 -m venv /srv/seizou/tools
 sudo -u seizou -H /srv/seizou/tools/bin/pip install uv
-sudo -u seizou -H git clone --branch v0.1.0 https://github.com/kishii-py/seizou.git /srv/seizou/src
+sudo -u seizou -H git clone --branch v0.2.0 https://github.com/kishii-py/seizou.git /srv/seizou/src
 sudo -u seizou -H /srv/seizou/tools/bin/uv sync --directory /srv/seizou/src --locked --no-dev --extra pdf --extra server --python /usr/bin/python3.12
 ```
 

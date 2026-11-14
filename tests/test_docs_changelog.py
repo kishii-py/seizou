@@ -40,18 +40,49 @@ def test_new_version_has_the_four_parts():
     assert "manage.py seizou_serve" in section
 
 
-def test_migration_count_matches_the_unreleased_migrations():
-    """節に書いた migration の本数は、出した一覧 (released_migrations.txt) にまだ無い migration の数と同じ。"""
-    listed = {
-        line.strip()
-        for line in (PACKAGE / "released_migrations.txt").read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.startswith("#")
-    }
-    on_disk = {f"{path.parent.parent.name}/{path.name}" for path in PACKAGE.glob("*/migrations/0*.py")}
-    unreleased = on_disk - listed
+def _package_version():
+    import tomllib
+
+    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+
+def _released_lines():
+    return (PACKAGE / "released_migrations.txt").read_text(encoding="utf-8").splitlines()
+
+
+def test_migration_count_matches_the_block_added_for_the_version():
+    """節に書いた migration の本数は、出した一覧 (released_migrations.txt) の「0.2.0 で足した物」の塊の行の数と同じ。"""
+    lines = _released_lines()
+    starts = [index for index, line in enumerate(lines) if line.startswith("#") and "0.2.0" in line]
+    assert len(starts) == 1, "出した一覧に、0.2.0 で足した物の塊の見出しが 1 つ要る"
+    block = [line for line in lines[starts[0] + 1 :] if line.strip() and not line.startswith("#")]
     match = re.search(r"migrate が (\d+) 本の migration を当てる", _section("0.2.0"))
     assert match, "migration の本数の文が無い"
-    assert int(match.group(1)) == len(unreleased)
+    assert int(match.group(1)) == len(block)
+
+
+def test_a_released_version_lists_every_migration_and_has_a_dated_section():
+    """出す版の commit (版の番号に .dev が無い) では、出した一覧に全部の migration が載り、変更の記録のその版の節の頭に日付がある。
+
+    途中の版 (.dev) の間は、まだ出していない migration があってよい (次に版を出す時に足す)。
+    訳: 一覧に無い migration を配ると、後でその migration を消すか名前を変えても試験が気づかず、その版を入れた会社で migrate が止まる。
+    出所 = 0.2.0 を出す準備 (本人の決め 11-14)。変えてよい条件 = 版の出し方を変えたとき。
+    """
+    version = _package_version()
+    listed = {line.strip() for line in _released_lines() if line.strip() and not line.startswith("#")}
+    on_disk = {f"{path.parent.parent.name}/{path.name}" for path in PACKAGE.glob("*/migrations/0*.py")}
+    if ".dev" in version:
+        assert listed <= on_disk
+        return
+    assert on_disk - listed == set(), sorted(on_disk - listed)
+    assert re.search(rf"^## {re.escape(version)} \(\d{{4}}-\d{{2}}-\d{{2}}\)$", _text(), re.M), f"{version} の節の頭に日付が無い"
+
+
+def test_package_version_is_the_release():
+    """この commit の版の番号は 0.2.0 (出す版)。出した後に main を次の途中の版にする時に、この試験を直す。"""
+    assert _package_version() == "0.2.0"
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    assert 'name = "seizou"\nversion = "0.2.0"\n' in lock
 
 
 def test_intro_names_the_next_patch_version_of_the_current_line():

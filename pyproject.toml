@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "seizou"
-version = "0.2.0.dev0"
+version = "0.2.0"
 description = "町工場や中小の製造業が、1 つの命令で自社専用のシステムを持つための Django の部品"
 readme = "README.md"
 authors = [{ name = "Atsuro Kishii" }]
