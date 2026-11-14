@@ -71,3 +71,12 @@ def test_new_version_names_the_permission_change_and_the_fragment_counts():
     assert "site/manual/" in section
     # 配布物を空の環境に入れて置き場を作る通しも確かめた
     assert "空の環境" in section
+
+
+def test_new_version_says_where_the_upgrade_was_tried():
+    """上げる通しを確かめた所と、確かめていない所を書き分ける (VPS の形は 11-14 に確かめた。PostgreSQL と Windows の実機はまだ)。"""
+    intro = _section("0.2.0").split("### ", 1)[0]
+    assert "VPS の形" in intro and "gunicorn と nginx" in intro
+    unverified = intro.split("未確認", 1)[0].rsplit("。", 1)[-1]
+    assert "PostgreSQL" in unverified and "Windows の実機" in unverified
+    assert "VPS" not in unverified
