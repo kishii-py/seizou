@@ -78,11 +78,31 @@ def test_a_released_version_lists_every_migration_and_has_a_dated_section():
     assert re.search(rf"^## {re.escape(version)} \(\d{{4}}-\d{{2}}-\d{{2}}\)$", _text(), re.M), f"{version} の節の頭に日付が無い"
 
 
-def test_package_version_is_the_release():
-    """この commit の版の番号は 0.2.0 (出す版)。出した後に main を次の途中の版にする時に、この試験を直す。"""
-    assert _package_version() == "0.2.0"
+def _released_versions():
+    """変更の記録の、日付つきの節の版の番号 (新しい順)。"""
+    return re.findall(r"^## (\d+\.\d+\.\d+) \(\d{4}-\d{2}-\d{2}\)$", _text(), re.M)
+
+
+def _numbers(version):
+    return tuple(int(part) for part in version.split("."))
+
+
+def test_package_version_fits_the_changelog_and_the_lock():
+    """版の番号は、lock と同じで、変更の記録の出した版と食い違わない。
+
+    出す版の commit では、いちばん新しい日付つきの節と同じ番号。出した後の main は、次の途中の版 (.dev。GOVERNANCE.md の決まり) で、
+    その番号は、いちばん新しい出した版より大きい (出した版と同じか小さい番号の途中の版は、出した版より前と見分けが付かない)。
+    出所 = 0.2.0 を出した時の段取り (本人の決め 11-14)。変えてよい条件 = 版の番号の決まり (GOVERNANCE.md) を変えたとき。
+    """
+    version = _package_version()
     lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
-    assert 'name = "seizou"\nversion = "0.2.0"\n' in lock
+    assert f'name = "seizou"\nversion = "{version}"\n' in lock
+    released = _released_versions()
+    assert released, "変更の記録に、日付つきの節が無い"
+    if ".dev" in version:
+        assert _numbers(version.split(".dev")[0]) > _numbers(released[0]), (version, released[0])
+    else:
+        assert version == released[0]
 
 
 def test_intro_names_the_next_patch_version_of_the_current_line():
