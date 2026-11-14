@@ -461,8 +461,10 @@ def _readonly_copy(db_file: Path):
     """控えの DB の写しを一時のフォルダに写し、標準の sqlite3 の読むだけの接続で開く (閉じたら一時のフォルダごと消える)。
 
     WAL の形の写しは、読むだけで開いても隣に -shm と -wal を作るので、控えのフォルダでは開かない (控えの中身を変えない)。
+    書けないフォルダでは、そもそも開けない (戻しも、この写しから読む。restore_backup の注)。
+    一時のフォルダの片づけの失敗は見ない (ここから出る OSError を、写しを作れなかった時だけにするため)。
     """
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         copy = Path(tmp) / db_file.name
         shutil.copyfile(db_file, copy)
         conn = sqlite3.connect(copy.as_uri() + "?mode=ro", uri=True)
@@ -633,6 +635,7 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     """控えから DB と上げたファイルを戻す。戻す前に今の物を retreat_parent に控える (退避が失敗したら戻さない)。
 
     退避の前に、控えの DB を --verify と同じ quick_check で確かめ、壊れていれば何も変えずに止める (_refuse_broken_db)。
+    控えの DB は、確かめも戻しも一時のフォルダの写しから読み、控えのフォルダには書かない (読むだけの場所に置いた控えからも戻せる。訳は下の注)。
     answers.yaml は戻さない (置き場の settings.py と対の物で、データではない)。
     site/ (会社の作り込み。命令 seizou_backup の控えだけ) は控えに入るが、この関数は戻さない (置き場のコードを控えの古い物で上書きしないため。置き場ごと失ったときは手引きのとおり手で写す)。
     上げたファイルの入れ替えが途中で止まったら、退避の在りかと打ち直しの案内を BackupError で返す。
@@ -666,15 +669,24 @@ def restore_backup(folder: Path, *, retreat_parent: Path) -> dict:
     retreat = take_backup(retreat_parent, suffix=RETREAT_SUFFIX)
 
     try:
-        source = sqlite3.connect(str(db_file))
-        try:
+        # 控えの DB は、一時のフォルダの写しから読む (_readonly_copy。戻す前の確かめと同じ)。控えのフォルダの中では開かない。
+        # 訳: WAL の形の写しは、開くと隣に -shm と -wal を作る。書けない場所 (持ち主の違う控え・読むだけで付けた媒体) の控えは
+        # 「attempt to write a readonly database」で戻せず、書ける場所でも控えの中身に触る。
+        # 出所 = 作者が 2026-11-14 に Linux の置き場で、読むだけの場所の控えから戻せなかった事 (tests/test_core_restore_readonly.py)。
+        # 変えてよい条件 = 写しを作らずに、控えの DB を書かずに読める開き方に替え、同じ試験が通るとき。
+        with _readonly_copy(db_file) as source:
             connection.ensure_connection()
             source.backup(connection.connection)
-        finally:
-            source.close()
     except sqlite3.DatabaseError as exc:
         raise BackupError(
             f"控えの DB を写せませんでした ({exc})。上げたファイルはまだ変えていません。"
+            f"戻す前の物は {retreat['folder']} にあります。"
+        ) from exc
+    except OSError as exc:
+        # 一時のフォルダに写しを作れない (空きが無い・控えの DB を読めない)。DB を写し始める前なので、何も変えていない
+        reason = f" ({exc.strerror})" if exc.strerror else ""
+        raise BackupError(
+            f"控えの DB の写しを一時のフォルダに作れませんでした: {db_file}{reason}。データベースと上げたファイルはまだ変えていません。"
             f"戻す前の物は {retreat['folder']} にあります。"
         ) from exc
 
