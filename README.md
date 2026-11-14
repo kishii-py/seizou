@@ -40,6 +40,13 @@ It is made for the one person in the factory who looks after Excel and the PC, w
 
 ## 試す
 
+入れずに触るなら、公開のデモがある。作り物の 2 社を、作者が外の置き場で動かしている。
+
+- 機械加工の若葉精機: https://a.ts-sample.top/
+- 表面処理の白樺めっき工業: https://b.ts-sample.top/
+
+ID とパスワードは、ログインの画面の上の帯に出ている (現場・事務・経理の 3 人)。2 社は取引先どうしで、注文を送り合える。入れたデータは毎晩消えるので、本物の情報は入れない。AI の機能は、デモでは切ってある。付けられるファイルは 1MB まで。感想と不具合は [Issue](https://github.com/kishii-py/seizou/issues) へ。
+
 手元の PC に作り物の 2 社 (機械加工の若葉精機と、表面処理の白樺めっき工業) を立てて、受注から請求書までと、2 社の間の注文の送り合いを画面で通せる。要る物は `git` と `uv`。
 
 ```sh
