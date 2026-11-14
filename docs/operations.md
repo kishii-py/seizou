@@ -445,7 +445,9 @@ seizou の新しい版を入れるときは、次の順に進めます。
 
 画面が読む JS と CSS の URL には、ファイルの中身から作った印 (`?v=…`) が付くので、版を上げて中身が変わると、利用者が何もしなくてもブラウザは新しいファイルを取りに行きます。nginx が静的ファイルを配る置き場は、今までどおり 6 の `collectstatic` を打ちます (印は `collectstatic` が集める前の元のファイルから作るので、打たないと、新しい URL で前の版のファイルが配られます)。
 
-版を上げた後に、置き場ごとに `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。この命令は置き場を、プラグインの MCP が起こしてよい置き場の一覧 (`~/.seizou/sites.json`) に、打った python で登録します (登録の無い置き場では、プラグインの MCP は立ちません)。Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) には、それも書きます (既にあれば触りません)。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、登録と settings.json はその前に済んでいます。
+版を上げた後に、置き場で `<python> manage.py seizou_manual_defaults` を打ちます。この命令は、画面ごとの説明書の断片の標準の組のうち、置き場の `manual/` に無い物を写します。置き場の `manual/` は作った時の断片のままなので、打たないと、新しい版で増えた画面の「使い方」が「この画面の説明書はまだありません。」になります (0.1.0 で作った置き場を上げると、23 画面がそうなります)。既にある断片は上書きしません。命令は、置き場の断片のうち標準と字が違う物の数も出します (自社で直した物か、前の版の標準の物。`--list` で名前)。標準の新しい文に替えたい断片は、置き場のファイルを消してから、もう一度打ちます。
+
+続けて、置き場ごとに `seizou ai-docs <置き場>` を打ちます (git から入れた人は clone した場所で `uv run seizou ai-docs <置き場>`)。この命令は置き場を、プラグインの MCP が起こしてよい置き場の一覧 (`~/.seizou/sites.json`) に、打った python で登録します (登録の無い置き場では、プラグインの MCP は立ちません)。Claude Code に `.env`・DB・控えを読ませない設定 (`.claude/settings.json`) が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) には、それも書きます (既にあれば触りません)。`CLAUDE.md` と `AGENTS.md` が既にある置き場では「止まりました: 既にあります」と出ますが、登録と settings.json はその前に済んでいます。
 
 うまく動かないときは、前の版に戻します。PyPI の版は `uv pip install --python <python> seizou==<前の版>`、git から入れた人は `git checkout <前の tag>` と `uv sync --locked` です。続けて、サーバーを止めてから、`<python> manage.py seizou_restore <1 で取った控えの名前>` で戻します。
 
@@ -461,7 +463,7 @@ if not DEBUG:
 
 点検 (`--production`) の「settings.py の塊」が直すを出し、`HtmxLoginMiddleware` が無いと書いたときは、`MIDDLEWARE` の `"seizou.core.middleware.DevAutoLoginMiddleware",` の次の行に、`"seizou.core.middleware.HtmxLoginMiddleware",` を足します。この行が無いのは、v0.1.0 より前に git の main の seizou で作った置き場です。
 
-画面ごとの説明書の断片が無い置き場 (v0.1.0 より前に git の main の seizou で、`--demo` を付けずに `seizou new` で作った物) は、版を上げた後に、部品の中の標準の組を置き場の `manual/` に写します: `cp -n <seizou を clone した場所>/src/seizou/core/manual_default/*.html <置き場>/manual/`。`-n` は、同じ名前のファイル (自社で直した断片) を上書きしない印です。
+画面ごとの説明書の断片が無い置き場 (v0.1.0 より前に git の main の seizou で、`--demo` を付けずに `seizou new` で作った物) も、上の `<python> manage.py seizou_manual_defaults` で、部品の中の標準の組が置き場の `manual/` に入ります (同じ名前のファイル = 自社で直した断片は上書きしません)。
 
 点検 (`--production`) の「パスワードの決まり」が直すを出したら、`settings.py` に `AUTH_PASSWORD_VALIDATORS` の行があるかを見ます。行が無い置き場 (v0.1.0 より前に git の main の seizou で作った物) は、`from seizou.parts import PARTS` の次の行に `from seizou.core.passwords import VALIDATORS as AUTH_PASSWORD_VALIDATORS` を足します。足すのは 3 で seizou を入れ直した後、7 でサーバーを立てる前です (先に足すと、古い seizou にこの部品が無く、起動しません)。足すと `manage.py changepassword` も、アカウント管理の画面と同じ決まり (8 字以上・よくある語でない・数字だけでない・ID に似ていない) で断ります。
 
