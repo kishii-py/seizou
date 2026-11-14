@@ -65,7 +65,9 @@ def test_new_version_names_the_permission_change_and_the_fragment_counts():
     """権限が変わった操作 (注文回答の送り直し) と、説明書の断片の数の読み方を書く (11-14 に確かめた事)。"""
     section = _section("0.2.0")
     assert "送り直す" in section and "金額の閲覧" in section
-    # 標準の断片が変わった数 (43) と、--demo の置き場で命令が出した数 (50) の両方を書く (読む人の数と食い違わないように)
-    assert "43 枚" in section and "50 件" in section
+    # 説明書の断片: 標準が変わった数 (43)・手を入れていない物を替える事・直した物は替えない事・替える前の物の在りか
+    assert "43 枚" in section
+    assert "新しい標準に替える" in section and "自社で直した断片は替えず" in section
+    assert "site/manual/" in section
     # 配布物を空の環境に入れて置き場を作る通しも確かめた
     assert "空の環境" in section
