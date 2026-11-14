@@ -12,7 +12,7 @@ README の冒頭の 1 文 (町工場や中小の製造業が、1 つの命令で
 
 本番の前に残る物は次の 6 つ (2026-11-08 の時点。README の「今の状態」と同じ一覧で、この文書の一覧を正にする)。
 
-1. 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS の AlmaLinux 9 に [docs/vps.md](vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)
+1. 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS (AlmaLinux) に [docs/vps.md](vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)
 2. PostgreSQL の実機の置き場 (VPS の 2 社は SQLite で立てている。控えから入れ直す手順もこれから)
 3. Claude Security の未走査の部品 (出荷・発注・フィードバック・プラグイン) の走査
 4. 部品の版を上げた実例 (今は v0.1.0 の 1 版だけ。出した migration を消さない決まりと試験はある)

@@ -53,7 +53,7 @@ uv run seizou new examples/companies/b_plating.yaml --demo
 `seizou new` が終わりに出す起動の 1 行を打ち、ブラウザで開く (A 社は http://127.0.0.1:8001/ 、B 社は http://127.0.0.1:8002/ )。見る順と手順は [docs/getting-started.md](docs/getting-started.md) の「触り方」にある。作り物の 3 人 (`genba`・`jimu`・`keiri`) の ID と合言葉も、同じ「触り方」にある。Claude Code を使う方は、[docs/plugin.md](docs/plugin.md) の `/seizou:build` でも立てられる。
 
 - Windows は PowerShell を開き、上の 5 行を 1 行ずつ打つ (uv の入れ方は [docs/getting-started.md](docs/getting-started.md) の「前提」)。
-- 今ある入れ方は、端末で命令を打つ方法だけ。作者の手元 (macOS) で通した物で、Linux と Windows は、入れる所から画面が開くまでを CI で通している。Linux は、VPS (AlmaLinux 9) に [docs/vps.md](docs/vps.md) の手順で人の手でも入れて通した (手元の PC で試す形は、Linux では CI だけ)。日本語の Windows の実機での確認はまだ無い。
+- 今ある入れ方は、端末で命令を打つ方法だけ。作者の手元 (macOS) で通した物で、Linux と Windows は、入れる所から画面が開くまでを CI で通している。Linux は、VPS (AlmaLinux) に [docs/vps.md](docs/vps.md) の手順で人の手でも入れて通した (手元の PC で試す形は、Linux では CI だけ)。日本語の Windows の実機での確認はまだ無い。
 - ソフトは無料。AI の機能 (注文書の読み取り・AI チャット・フィードバックの聞き取り) を使う会社だけ、Anthropic の API の鍵 (`ANTHROPIC_API_KEY`) と、読んだ分の費用が要る。鍵が無くても、ほかの画面は動く。
 
 ## 今の状態
@@ -62,7 +62,7 @@ uv run seizou new examples/companies/b_plating.yaml --demo
 
 本番の前に残る物は 6 つ (2026-11-08 の時点)。
 
-1. 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS の AlmaLinux 9 に [docs/vps.md](docs/vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)
+1. 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS (AlmaLinux) に [docs/vps.md](docs/vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)
 2. PostgreSQL の実機の置き場 (VPS の 2 社は SQLite で立てている。控えから入れ直す手順もこれから)
 3. Claude Security の未走査の部品 (出荷・発注・フィードバック・プラグイン) の走査
 4. 部品の版を上げた実例 (今は v0.1.0 の 1 版だけ。出した migration を消さない決まりと試験はある)

@@ -1,6 +1,6 @@
 """「本番の前に残る物」の 1 つ目: Linux は VPS で手で通した事に数え、残りは日本語の Windows の実機と書く。
 
-本人の決め 11-14 08:0x。VPS (AlmaLinux 9) に docs/vps.md の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で
+本人の決め 11-14 08:0x。VPS (AlmaLinux) に docs/vps.md の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で
 通してあるので、「Linux と Windows で手で通した確認」を残る物に数えない。手元の PC の形 (runserver で試す手順) を Linux で
 人の手で通した事は無いので、そこは CI だけと書き分ける。変えてよい条件 = 日本語の Windows の実機で通したとき (この 1 つ目を消す)。
 """
@@ -35,7 +35,7 @@ def test_first_item_is_the_japanese_windows_machine(name):
     text = _text(name)
     assert "日本語の Windows の実機で手で通した確認" in text
     assert "Linux は済み" in text
-    assert "AlmaLinux 9" in text
+    assert "AlmaLinux" in text
 
 
 def _first_item(name):
@@ -56,3 +56,15 @@ def test_install_sections_say_what_was_done_by_hand(name):
     assert "日本語の Windows の実機での確認はまだ無い" in text
     # 手元の PC の形を Linux で人の手で通したとは書かない
     assert "CI" in text
+
+
+@pytest.mark.parametrize("name", sorted({*LIST_DOCS, *INSTALL_DOCS}))
+def test_hand_run_sentences_do_not_name_an_os_version(name):
+    """手で通した VPS の OS の版の数字を書かない。
+
+    訳: 11-14 に実際の VPS を読むと、OS は手順書 (docs/vps.md) の字 (AlmaLinux 9) と違う版だった。手順書の字を、通した事の文に
+    写して書いていた (本体の誤り)。版の数字は、確かめた物だけを書く。変えてよい条件 = 通した OS の版を本人に確かめたとき。
+    """
+    for line in _text(name).splitlines():
+        if "手で立て" in line or "人の手でも入れて通した" in line:
+            assert "AlmaLinux 9" not in line, line[:80]

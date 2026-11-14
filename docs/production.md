@@ -4,7 +4,7 @@
 
 ## 本番の決まり
 
-本番で使うときの決まり (予定)。本番の前に残る物 (2026-11-08 の時点。これから作る) は 6 つ = 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS の AlmaLinux 9 に [docs/vps.md](vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)・PostgreSQL の実機の置き場 (VPS の 2 社は SQLite で立てている。控えから入れ直す手順もこれから)・Claude Security の未走査の部品 (出荷・発注・フィードバック・プラグイン) の走査・部品の版を上げた実例 (今は v0.1.0 の 1 版だけ。出した migration を消さない決まりと試験はある)・置き場を立てる命令と公開の URL を持たない会社のための中継・2 段階の確認。それぞれの所在は下と[「これからの道筋」](roadmap.md)にある。
+本番で使うときの決まり (予定)。本番の前に残る物 (2026-11-08 の時点。これから作る) は 6 つ = 日本語の Windows の実機で手で通した確認 (Linux は済み = VPS (AlmaLinux) に [docs/vps.md](vps.md) の手順で 2 社を手で立て、発注が相手の受注になるまでを画面で通した。Windows は今は CI だけ。2026-11-11 から、入れる所から画面が開くまでを CI が ubuntu・windows・macos で通している)・PostgreSQL の実機の置き場 (VPS の 2 社は SQLite で立てている。控えから入れ直す手順もこれから)・Claude Security の未走査の部品 (出荷・発注・フィードバック・プラグイン) の走査・部品の版を上げた実例 (今は v0.1.0 の 1 版だけ。出した migration を消さない決まりと試験はある)・置き場を立てる命令と公開の URL を持たない会社のための中継・2 段階の確認。それぞれの所在は下と[「これからの道筋」](roadmap.md)にある。
 
 - DB は PostgreSQL を使う。開発と試しは SQLite で動く。PostgreSQL は 15 以上 (今の `uv.lock` の Django 6.1 の下限。CI は PostgreSQL 16 で試験を回す)。PostgreSQL にするには、`seizou new` を打つ前に、環境変数 `SEIZOU_DB=postgres` と、接続の環境変数 (PGHOST・PGUSER・PGPASSWORD・PGDATABASE) を入れる (置き場の README の「本番で使うとき」と同じ)。
 - 11-07 に Claude Security (Claude Code のプラグイン) で `src/seizou` と `plugin` を走査し、出た候補 45 件を人が選り分けて直した。出荷・発注・フィードバック・プラグインなどは、まだ走査していない。走査は定期に回す物だ。
