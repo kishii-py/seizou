@@ -480,6 +480,8 @@ VPS の外へ暗号で写す例は、[operations.md](operations.md) の「外へ
 - 6 段目の後: `sudo restorecon -R /srv/seizou-sites /srv/seizou/src/.venv/bin` (入れ直しで増えたファイルの context をそろえる)
 - 7 段目 (サーバーを立てる): `sudo systemctl restart seizou-a_machining seizou-b_plating`
 
+控えから戻したとき ([operations.md](operations.md) の「戻す」) は、サーバーを立てる前に、戻した会社の `sudo restorecon -R /srv/seizou-sites/<会社の id>/media` を打ちます。戻す命令は `media/` を消して作り直すので、作り直したフォルダに 10 の印 (`httpd_sys_content_t`) が付いているとは限りません (作者の VPS では、戻した後に毎回この 1 行を打っていて、打たなかった時の印は見ていない = 未確認)。印が無いと、nginx は上げたファイルを読めません。確かめ方は 10 と同じ `ls -Zd /srv/seizou-sites/<会社の id>/media | grep -c httpd_sys_content_t` → `1`。
+
 確かめ方: `sudo -u seizou -H /srv/seizou/src/.venv/bin/python /srv/seizou-sites/a_machining/manage.py seizou_restore --list` → 控えの名前 (`20` で始まる日時) の行が並ぶ (作者の手元では、`seizou_backup` の後に `20261104-060125  2026-11-04T06:01:25  sqlite  seizou 0.1.0  0.7 MB` の形の 1 行を見た)
 確かめ方: `getenforce` → `Enforcing`・`sudo ausearch -m AVC,USER_AVC -ts recent` → `<no matches>` (VPS で確かめる)
 

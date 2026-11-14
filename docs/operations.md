@@ -195,6 +195,8 @@ restic forget --keep-daily 30 --keep-monthly 84 --prune
 
 命令は、戻す前の今の物を `backups/<日時>-before-restore/` に控えます。戻したことを取り消すには、同じ命令にその名前を渡します (`<python> manage.py seizou_restore <日時>-before-restore`)。
 
+控えは、名前の代わりにフォルダの道でも渡せます (`backups/` の外に置いた控え。例 `<python> manage.py seizou_restore /mnt/usb/20261101-020000`)。命令は控えのフォルダに何も書かないので、書けない場所 (持ち主の違うフォルダ・読むだけで付けた外付けの媒体) に置いた控えからも戻せます。戻す前の今の物は、このときも置き場の `backups/` に控えます。
+
 上げたファイルは、控えの時点の物にそろいます。控えの後に上げたファイルは消えますが、`<日時>-before-restore` の中に残っています。`answers.yaml` は戻しません (置き場の `settings.py` と対の物で、データではないため)。
 
 命令は、別の会社の控えと、データベースの種類が違う控えを戻しません。
